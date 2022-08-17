@@ -1,0 +1,33 @@
+name: λ
+
+on: push
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup Haskell
+        uses: haskell/actions/setup@v1
+        with: 
+          enable-stack: true
+
+      - name: Cache build
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.stack
+            .stack-work
+          # Best effort for cache: tie it to Stack resolver and package config
+          key: ${{ matrix.os }}-stack-${{ hashFiles('stack.yaml.lock', 'package.yaml') }}
+          restore-keys: |
+            ${{ matrix.os }}-stack
+
+      - name: Run tests
+        run: stack test --ghc-options="-Werror"
