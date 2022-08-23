@@ -1,0 +1,14 @@
+type Counter =
+  | Counter Text Button Button
+
+main : IO Counter
+main =
+  (count, setCount) <- IO.state 0
+  _ <- IO.setTitle "You clicked {count} times"
+  return
+    ( Counter "You clicked {count} times"
+        (Button "+" (setCount (count + 1)))
+        (Button "-" (setCount (count - 1)))
+    )
+
+main
