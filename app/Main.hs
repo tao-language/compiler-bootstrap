@@ -1,4 +1,4 @@
-import Core (Term(..))
+import Core (Term (..))
 import Reducer (evaluate)
 import qualified System.Environment
 import Tao
