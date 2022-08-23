@@ -1,0 +1,8 @@
+wordcount : [Text] -> [(Text, Int)]
+wordcount lines =
+  lines
+    |> flatMap split
+    |> filter isWord
+    |> counts
+
+wordcount
