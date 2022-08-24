@@ -29,14 +29,13 @@ constructorName = do
 typeName :: Parser String
 typeName = constructorName
 
-binaryOperator :: Parser String
-binaryOperator =
-  oneOf
-    [ text "==",
-      text "+",
-      text "-",
-      text "*"
-    ]
+operator :: Parser String
+operator = do
+  let ops = ["==", "+", "-", "*"]
+  _ <- token (char '(')
+  op <- token (oneOf (map text ops))
+  _ <- token (char ')')
+  succeed op
 
 comment :: Parser String
 comment = do
@@ -44,30 +43,15 @@ comment = do
   _ <- zeroOrOne space
   until' (== '\n') anyChar
 
-binding :: Parser Binding
-binding = do
-  oneOf
-    [ do
-        x <- token variableName
-        _ <- token (char '@')
-        p <- token pattern
-        succeed (p, x),
-      do
-        p <- pattern
-        succeed (p, ""),
-      do
-        x <- variableName
-        succeed (PAny, x)
-    ]
-
 pattern :: Parser Pattern
 pattern = do
   oneOf
     [ fmap (const PAny) (char '_'),
+      fmap (PAs PAny) variableName,
       fmap PInt integer,
       do
         ctr <- token constructorName
-        ps <- zeroOrMore (token binding)
+        ps <- zeroOrMore (token pattern)
         succeed (PCtr ctr ps),
       do
         _ <- token (char '(')
@@ -76,23 +60,43 @@ pattern = do
         succeed p
     ]
 
+-- binding :: Parser Binding
+-- binding = do
+--   p <- token pattern
+--   x <- oneOf [do _ <- token (char '@'); token variableName, succeed ""]
+--   succeed (p, x)
+
 case' :: Char -> Parser Case
 case' delimiter = do
   _ <- token (char delimiter)
-  bindings <- oneOrMore (token binding)
+  ps <- oneOrMore (token pattern)
   _ <- token (text "->")
   expr <- expression
-  succeed (bindings, expr)
+  succeed (ps, expr)
+
+def :: Parser (Pattern, Expr)
+def = do
+  p <- token pattern
+  _ <- token (char '=')
+  expr <- token expression
+  _ <- token (char ';')
+  succeed (p, expr)
+
+definition :: Parser (Variable, Expr)
+definition = do
+  _ <- token (char '@')
+  name <- token variableName
+  _ <- token (char '=')
+  expr <- token expression
+  _ <- token (char ';')
+  -- TODO: support newlines and indentation aware parsing
+  -- expr <- expression
+  -- _ <- zeroOrMore (oneOf [char ' ', char '\t'])
+  -- _ <- oneOf [char '\n', char ';']
+  succeed (name, expr)
 
 expression :: Parser Expr
 expression = do
-  let binop :: Parser String
-      binop = do
-        _ <- token (char '(')
-        op <- token binaryOperator
-        _ <- token (char ')')
-        succeed op
-
   let cases :: Parser [Case]
       cases = do
         c <- token (case' '\\')
@@ -103,8 +107,8 @@ expression = do
     [ atom (const err) (char '_'),
       atom var variableName,
       atom int integer,
-      atom (const . Call) binop,
-      atom match cases,
+      atom (const . Call) operator,
+      atom (match "") cases,
       prefix let' (oneOrMore definition),
       prefix (const id) comment,
       inbetween (const id) (char '(') (char ')')
@@ -133,19 +137,6 @@ context :: Parser Context
 context = do
   defs <- zeroOrMore typeDefinition
   succeed (foldr id empty defs)
-
-definition :: Parser (Variable, Expr)
-definition = do
-  _ <- token (char '@')
-  name <- token variableName
-  _ <- token (char '=')
-  expr <- token expression
-  _ <- token (char ';')
-  -- TODO: support newlines and indentation aware parsing
-  -- expr <- expression
-  -- _ <- zeroOrMore (oneOf [char ' ', char '\t'])
-  -- _ <- oneOf [char '\n', char ';']
-  succeed (name, expr)
 
 term :: Parser Term
 term = do

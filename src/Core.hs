@@ -24,13 +24,12 @@ type Type = Term
 
 data Pattern
   = PAny
+  | PAs Pattern Variable
   | PInt Int
-  | PCtr Constructor [Binding]
+  | PCtr Constructor [Pattern]
   deriving (Eq, Show)
 
-type Binding = (Pattern, Variable)
-
-type Case = ([Binding], Expr)
+type Case = ([Pattern], Expr)
 
 -- TODO: make Context opaque
 type Context = [(Constructor, [(Constructor, Int)])]
@@ -112,26 +111,26 @@ let' defs a ctx = do
     |> resolve
     |> foldr (\(x, b) a -> App (Lam x a) b) (a ctx)
 
-match :: [([Binding], Expr)] -> Expr
-match [] = err
-match (([], a) : _) = a
-match cases = \ctx -> do
+match :: String -> [Case] -> Expr
+match _ [] = err
+match _ (([], a) : _) = a
+match "" cases = \ctx -> do
   let freeVars = map (\(_, a) -> freeVariables (a ctx)) cases |> foldl union []
   let x = newName freeVars "%"
+  match x cases ctx
+match x cases = \ctx -> do
   case findAlts cases ctx of
     Just alts -> do
-      let branches =
-            map (matchCtr x) alts
-              |> map (`filterMap` cases)
-              |> map match
+      let branches = map (\alt -> match "" (remaining (matchCtr x alt) cases)) alts
       lam [x] (app (var x) branches) ctx
     Nothing -> case cases of
-      ((PInt i, y) : ps, a) : cases -> do
+      (PAs p y : ps, a) : cases -> match x ((p : ps, let' [(y, var x)] a) : cases) ctx
+      (PInt i : ps, a) : cases -> do
         let cond = eq (var x) (int i)
-        let then' = match [(ps, let' [(y, var x)] a)]
-        let else' = app (match cases) [var x]
+        let then' = match "" [(ps, a)]
+        let else' = app (match "" cases) [var x]
         lam [x] (if' cond then' else') ctx
-      _ -> lam [x] (match (filterMap (matchAny x) cases)) ctx
+      _ -> lam [x] (match "" (remaining (matchAny x) cases)) ctx
 
 -- Helper functions
 freeVariables :: Term -> [String]
@@ -158,27 +157,29 @@ lastNameIndex prefix (x : xs) = case lastNameIndex prefix xs of
     Nothing -> Just i
   Nothing -> if prefix == x then Just 0 else nameIndex prefix x
 
-findAlts :: [([Binding], Expr)] -> Context -> Maybe [(Constructor, Int)]
+findAlts :: [([Pattern], Expr)] -> Context -> Maybe [(Constructor, Int)]
 findAlts [] _ = Nothing
-findAlts (((PCtr ctr _, _) : _, _) : _) ctx = lookup ctr ctx
+findAlts ((PCtr ctr _ : _, _) : _) ctx = lookup ctr ctx
 findAlts (_ : cases) ctx = findAlts cases ctx
 
 matchAny :: Variable -> Case -> Maybe Case
-matchAny x ((PAny, y) : ps, a) = Just (ps, let' [(y, var x)] a)
+matchAny _ (PAny : ps, a) = Just (ps, a)
+matchAny x (PAs p y : ps, a) = matchAny x (p : ps, let' [(y, var x)] a)
 matchAny _ _ = Nothing
 
 matchCtr :: Variable -> (Constructor, Int) -> Case -> Maybe Case
-matchCtr x (_, n) ((PAny, y) : ps, a) = Just (replicate n (PAny, "") ++ ps, let' [(y, var x)] a)
-matchCtr x (ctr, _) ((PCtr ctr' qs, y) : ps, a) | ctr == ctr' = Just (qs ++ ps, let' [(y, var x)] a)
+matchCtr _ (_, n) (PAny : ps, a) = Just (replicate n PAny ++ ps, a)
+matchCtr x (ctr, n) (PAs p y : ps, a) = matchCtr x (ctr, n) (p : ps, let' [(y, var x)] a)
+matchCtr _ (ctr, _) (PCtr ctr' qs : ps, a) | ctr == ctr' = Just (qs ++ ps, a)
 matchCtr _ _ _ = Nothing
 
--- Standard library functions
-filterMap :: (a -> Maybe b) -> [a] -> [b]
-filterMap _ [] = []
-filterMap f (x : xs) = case f x of
-  Just y -> y : filterMap f xs
-  Nothing -> filterMap f xs
+remaining :: (Case -> Maybe Case) -> [Case] -> [Case]
+remaining f (case' : cases) = case f case' of
+  Just case' -> case' : remaining f cases
+  Nothing -> remaining f cases
+remaining _ _ = []
 
+-- Standard library functions
 delete :: Eq a => a -> [a] -> [a]
 delete _ [] = []
 delete x (x' : xs) | x == x' = delete x xs

@@ -34,14 +34,16 @@ coreTests = describe "--== Core language ==--" $ do
 
   it "☯ match" $ do
     let ctx = defineType "T" [] [("A", 0), ("B", 1)] empty
-    match [] ctx `shouldBe` Err
-    match [([], int 1), ([], int 2)] ctx `shouldBe` Int 1
-    match [([(PAny, "x")], var "x")] ctx `shouldBe` Lam "%0" (App (Lam "x" (Var "x")) (App Fix (Lam "x" (Var "%0"))))
-    match [([(PInt 1, "x")], var "x")] ctx `shouldBe` lam ["%0"] (if' (eq (var "%0") (int 1)) (let' [("x", var "%0")] (var "x")) (app err [var "%0"])) empty
-    match [([(PInt 1, "x")], var "x"), ([(PAny, "y")], var "y")] ctx `shouldBe` lam ["%0"] (if' (eq (var "%0") (int 1)) (let' [("x", var "%0")] (var "x")) (app (lam ["%0"] (let' [("y", var "%0")] (var "y"))) [var "%0"])) empty
-    match [([(PCtr "Unknown" [], "x")], var "x")] ctx `shouldBe` Lam "%0" Err
-    match [([(PCtr "A" [], "x")], var "x")] ctx `shouldBe` lam ["%0"] (app (app (var "%0") [let' [("x", var "%0")] (var "x")]) [err]) empty
-    match [([(PCtr "B" [(PAny, "a")], "x")], var "x")] ctx `shouldBe` lam ["%0"] (app (app (var "%0") [err]) [lam ["%1"] (let' [("x", var "%0")] (var "x"))]) empty
+    match "" [] ctx `shouldBe` Err
+    match "" [([], int 1), ([], int 2)] ctx `shouldBe` Int 1
+    match "" [([PAny], var "x")] ctx `shouldBe` Lam "%0" (Var "x")
+    match "x" [([PAny], var "x")] ctx `shouldBe` Lam "x" (Var "x")
+    match "" [([PAs PAny "x"], var "x")] ctx `shouldBe` lam ["%0"] (let' [("x", var "%0")] (var "x")) empty
+    match "" [([PInt 1], var "x")] ctx `shouldBe` lam ["%0"] (if' (eq (var "%0") (int 1)) (var "x") (app err [var "%0"])) empty
+    match "" [([PInt 1], var "x"), ([PAny], var "y")] ctx `shouldBe` lam ["%0"] (if' (eq (var "%0") (int 1)) (var "x") (app (lam ["%0"] (var "y")) [var "%0"])) empty
+    match "" [([PCtr "Unknown" []], var "x")] ctx `shouldBe` Lam "%0" Err
+    match "" [([PCtr "A" []], var "x")] ctx `shouldBe` lam ["%0"] (app (var "%0") [var "x", err]) empty
+    match "" [([PCtr "B" [PAny]], var "x")] ctx `shouldBe` lam ["%0"] (app (var "%0") [err, lam ["%0"] (var "x")]) empty
 
   it "☯ nameIndex" $ do
     nameIndex "" "" `shouldBe` Nothing
