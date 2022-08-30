@@ -40,8 +40,8 @@ instance Show Term where
   show Err = "!"
   show (Var x) = x
   show (Int i) = show i
-  show (App (Lam x a) (App Fix (Lam x' b))) | x == x' = "@" ++ x ++ " = " ++ show b ++ "; " ++ show a
-  show (App a@(Lam _ _) b) = "(" ++ show a ++ ") " ++ show b
+  show (App (Lam x a) (App Fix (Lam x' b))) | x == x' = "#letrec " ++ x ++ " = " ++ show b ++ "; " ++ show a
+  show (App (Lam x a) b) = "#let " ++ x ++ " = " ++ show b ++ "; " ++ show a
   show (App a b@(App _ _)) = show a ++ " (" ++ show b ++ ")"
   show (App a b@(Lam _ _)) = show a ++ " (" ++ show b ++ ")"
   show (App a b) = show a ++ " " ++ show b
@@ -97,14 +97,23 @@ eq a b = app (const (Call "==")) [a, b]
 if' :: Expr -> Expr -> Expr -> Expr
 if' cond then' else' = app cond [then', else']
 
-let' :: [(Variable, Expr)] -> Expr -> Expr
-let' defs a ctx = do
+bind :: Variable -> Pattern
+bind = PAs PAny
+
+letVar :: (Variable, Expr) -> Expr -> Expr
+letVar (x, a) b = app (lam [x] b) [a]
+
+letRec :: (Variable, Expr) -> Expr -> Expr
+letRec (x, a) = letVar (x, app (const Fix) [lam [x] a])
+
+with :: [(Variable, Expr)] -> Expr -> Expr
+with defs a ctx = do
   let resolve :: [Variable] -> [(Variable, Term)]
       resolve [] = []
       resolve (x : xs) = case lookup x defs of
         Just b -> do
           let subdefs = filter (\(y, _) -> x /= y) defs
-          (x, App Fix (Lam x (let' subdefs b ctx))) : resolve xs
+          (x, App Fix (Lam x (with subdefs b ctx))) : resolve xs
         Nothing -> resolve xs
 
   freeVariables (a ctx)
@@ -124,13 +133,24 @@ match x cases = \ctx -> do
       let branches = map (\alt -> match "" (remaining (matchCtr x alt) cases)) alts
       lam [x] (app (var x) branches) ctx
     Nothing -> case cases of
-      (PAs p y : ps, a) : cases -> match x ((p : ps, let' [(y, var x)] a) : cases) ctx
+      (PAs p y : ps, a) : cases -> match x ((p : ps, letVar (y, var x) a) : cases) ctx
       (PInt i : ps, a) : cases -> do
         let cond = eq (var x) (int i)
         let then' = match "" [(ps, a)]
         let else' = app (match "" cases) [var x]
         lam [x] (if' cond then' else') ctx
       _ -> lam [x] (match "" (remaining (matchAny x) cases)) ctx
+
+bindings :: Pattern -> [String]
+bindings (PAs p x) = x : bindings p
+bindings (PCtr ctr (p : ps)) = bindings p ++ bindings (PCtr ctr ps)
+bindings _ = []
+
+unpack :: (Pattern, Expr) -> [(String, Expr)]
+unpack (p, a) = map (\x -> (x, app (match "" [([p], var x)]) [a])) (bindings p)
+
+let' :: [(Pattern, Expr)] -> Expr -> Expr
+let' defs = with (concatMap unpack defs)
 
 -- Helper functions
 freeVariables :: Term -> [String]
@@ -164,12 +184,11 @@ findAlts (_ : cases) ctx = findAlts cases ctx
 
 matchAny :: Variable -> Case -> Maybe Case
 matchAny _ (PAny : ps, a) = Just (ps, a)
-matchAny x (PAs p y : ps, a) = matchAny x (p : ps, let' [(y, var x)] a)
 matchAny _ _ = Nothing
 
 matchCtr :: Variable -> (Constructor, Int) -> Case -> Maybe Case
 matchCtr _ (_, n) (PAny : ps, a) = Just (replicate n PAny ++ ps, a)
-matchCtr x (ctr, n) (PAs p y : ps, a) = matchCtr x (ctr, n) (p : ps, let' [(y, var x)] a)
+matchCtr x (ctr, n) (PAs p y : ps, a) = matchCtr x (ctr, n) (p : ps, with [(y, var x)] a)
 matchCtr _ (ctr, _) (PCtr ctr' qs : ps, a) | ctr == ctr' = Just (qs ++ ps, a)
 matchCtr _ _ _ = Nothing
 

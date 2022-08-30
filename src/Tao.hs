@@ -45,42 +45,33 @@ comment = do
 
 pattern :: Parser Pattern
 pattern = do
+  p <-
+    oneOf
+      [ fmap (const PAny) (token (char '_')),
+        fmap (PAs PAny) variableName,
+        fmap PInt (token integer),
+        do
+          ctr <- token constructorName
+          ps <- zeroOrMore pattern
+          succeed (PCtr ctr ps),
+        do
+          _ <- token (char '(')
+          p <- token pattern
+          _ <- token (char ')')
+          succeed p
+      ]
   oneOf
-    [ fmap (const PAny) (char '_'),
-      fmap (PAs PAny) variableName,
-      fmap PInt integer,
-      do
-        ctr <- token constructorName
-        ps <- zeroOrMore (token pattern)
-        succeed (PCtr ctr ps),
-      do
-        _ <- token (char '(')
-        p <- token pattern
-        _ <- token (char ')')
-        succeed p
+    [ do _ <- token (char '@'); x <- token variableName; succeed (PAs p x),
+      succeed p
     ]
 
--- binding :: Parser Binding
--- binding = do
+-- def :: Parser (Pattern, Expr)
+-- def = do
 --   p <- token pattern
---   x <- oneOf [do _ <- token (char '@'); token variableName, succeed ""]
---   succeed (p, x)
-
-case' :: Char -> Parser Case
-case' delimiter = do
-  _ <- token (char delimiter)
-  ps <- oneOrMore (token pattern)
-  _ <- token (text "->")
-  expr <- expression
-  succeed (ps, expr)
-
-def :: Parser (Pattern, Expr)
-def = do
-  p <- token pattern
-  _ <- token (char '=')
-  expr <- token expression
-  _ <- token (char ';')
-  succeed (p, expr)
+--   _ <- token (char '=')
+--   expr <- token expression
+--   _ <- token (char ';')
+--   succeed (p, expr)
 
 definition :: Parser (Variable, Expr)
 definition = do
@@ -94,6 +85,14 @@ definition = do
   -- _ <- zeroOrMore (oneOf [char ' ', char '\t'])
   -- _ <- oneOf [char '\n', char ';']
   succeed (name, expr)
+
+case' :: Char -> Parser Case
+case' delimiter = do
+  _ <- token (char delimiter)
+  ps <- oneOrMore (token pattern)
+  _ <- token (text "->")
+  expr <- expression
+  succeed (ps, expr)
 
 expression :: Parser Expr
 expression = do
@@ -109,7 +108,7 @@ expression = do
       atom int integer,
       atom (const . Call) operator,
       atom (match "") cases,
-      prefix let' (oneOrMore definition),
+      prefix with (oneOrMore definition),
       prefix (const id) comment,
       inbetween (const id) (char '(') (char ')')
     ]

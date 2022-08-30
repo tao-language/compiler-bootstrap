@@ -27,27 +27,18 @@ taoTests = describe "--==☯ Tao language ☯==--" $ do
     parse "-- my comment" comment `shouldBe` Right "my comment"
     parse "--  my  comment  \nx" comment `shouldBe` Right " my  comment  "
 
-  -- it "☯ pattern" $ do
-  --   parse "_" pattern `shouldBe` Right PAny
-  --   parse "x" pattern `shouldBe` Right (PVar "x")
-  --   parse "42" pattern `shouldBe` Right (PInt 42)
-  --   parse "True" pattern `shouldBe` Right (PCtr "True" [])
-  --   parse "Cons 1 xs" pattern `shouldBe` Right (PCtr "Cons" [(PInt 1, ""), (PVar "xs", "")])
-  --   parse "(Cons 1 xs)" pattern `shouldBe` Right (PCtr "Cons" [(PInt 1, ""), (PVar "xs", "")])
-
-  -- it "☯ binding" $ do
-  --   parse "_" binding `shouldBe` Right (PAny, "")
-  --   parse "_" binding `shouldBe` Right (PAny, "")
-  --   parse "x" binding `shouldBe` Right (PVar "x", "")
-  --   parse "42" binding `shouldBe` Right (PInt 42, "")
-  --   parse "True" binding `shouldBe` Right (PCtr "True" [], "")
-  --   parse "_ @ x" binding `shouldBe` Right (PAny, "x")
-  --   parse "42 @ x" binding `shouldBe` Right (PInt 42, "x")
-  --   parse "True @ x" binding `shouldBe` Right (PCtr "True" [], "x")
+  it "☯ pattern" $ do
+    parse "_" pattern `shouldBe` Right PAny
+    parse "_ @ x" pattern `shouldBe` Right (PAs PAny "x")
+    parse "x" pattern `shouldBe` Right (PAs PAny "x")
+    parse "42" pattern `shouldBe` Right (PInt 42)
+    parse "True" pattern `shouldBe` Right (PCtr "True" [])
+    parse "Cons 1 xs" pattern `shouldBe` Right (PCtr "Cons" [PInt 1, PAs PAny "xs"])
+    parse "(Cons 1 xs)" pattern `shouldBe` Right (PCtr "Cons" [PInt 1, PAs PAny "xs"])
 
   -- it "☯ definition" $ do
   --   let parseDef src ctx = fmap (\(x, a) -> (x, a ctx)) (parse src definition)
-  --   parseDef "@x = 1;" empty `shouldBe` Right ("x", Int 1)
+  --   parseDef "x = 1" empty `shouldBe` Right ("x", Int 1)
   -- -- parseDef "x = 1\n" empty `shouldBe` Right ("x", Int 1)
 
   -- it "☯ case" $ do

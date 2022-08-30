@@ -24,13 +24,13 @@ coreTests = describe "--== Core language ==--" $ do
   it "☯ if" $ do
     if' (var "x") (var "y") (var "z") empty `shouldBe` App (App (Var "x") (Var "y")) (Var "z")
 
-  it "☯ let'" $ do
-    let' [] err empty `shouldBe` Err
-    let' [("x", int 1)] (var "y") empty `shouldBe` Var "y"
-    let' [("x", int 1)] (var "x") empty `shouldBe` App (Lam "x" (Var "x")) (App Fix (Lam "x" (Int 1)))
-    let' [("x", var "x")] (var "x") empty `shouldBe` App (Lam "x" (Var "x")) (App Fix (Lam "x" (Var "x")))
-    let' [("x", var "y"), ("y", int 1)] (var "x") empty `shouldBe` let' [("x", let' [("y", int 1)] (var "y"))] (var "x") empty
-    let' [("x", int 1), ("y", var "x")] (var "y") empty `shouldBe` let' [("y", let' [("x", int 1)] (var "x"))] (var "y") empty
+  it "☯ with" $ do
+    with [] err empty `shouldBe` Err
+    with [("x", int 1)] (var "y") empty `shouldBe` Var "y"
+    with [("x", int 1)] (var "x") empty `shouldBe` App (Lam "x" (Var "x")) (App Fix (Lam "x" (Int 1)))
+    with [("x", var "x")] (var "x") empty `shouldBe` App (Lam "x" (Var "x")) (App Fix (Lam "x" (Var "x")))
+    with [("x", var "y"), ("y", int 1)] (var "x") empty `shouldBe` with [("x", with [("y", int 1)] (var "y"))] (var "x") empty
+    with [("x", int 1), ("y", var "x")] (var "y") empty `shouldBe` with [("y", with [("x", int 1)] (var "x"))] (var "y") empty
 
   it "☯ match" $ do
     let ctx = defineType "T" [] [("A", 0), ("B", 1)] empty
@@ -38,12 +38,31 @@ coreTests = describe "--== Core language ==--" $ do
     match "" [([], int 1), ([], int 2)] ctx `shouldBe` Int 1
     match "" [([PAny], var "x")] ctx `shouldBe` Lam "%0" (Var "x")
     match "x" [([PAny], var "x")] ctx `shouldBe` Lam "x" (Var "x")
-    match "" [([PAs PAny "x"], var "x")] ctx `shouldBe` lam ["%0"] (let' [("x", var "%0")] (var "x")) empty
+    match "" [([bind "x"], var "x")] ctx `shouldBe` lam ["%0"] (letVar ("x", var "%0") (var "x")) empty
     match "" [([PInt 1], var "x")] ctx `shouldBe` lam ["%0"] (if' (eq (var "%0") (int 1)) (var "x") (app err [var "%0"])) empty
     match "" [([PInt 1], var "x"), ([PAny], var "y")] ctx `shouldBe` lam ["%0"] (if' (eq (var "%0") (int 1)) (var "x") (app (lam ["%0"] (var "y")) [var "%0"])) empty
     match "" [([PCtr "Unknown" []], var "x")] ctx `shouldBe` Lam "%0" Err
     match "" [([PCtr "A" []], var "x")] ctx `shouldBe` lam ["%0"] (app (var "%0") [var "x", err]) empty
     match "" [([PCtr "B" [PAny]], var "x")] ctx `shouldBe` lam ["%0"] (app (var "%0") [err, lam ["%0"] (var "x")]) empty
+
+  it "☯ bindings" $ do
+    bindings PAny `shouldBe` []
+    bindings (PAs PAny "x") `shouldBe` ["x"]
+    bindings (PInt 1) `shouldBe` []
+    bindings (PCtr "A" []) `shouldBe` []
+    bindings (PCtr "A" [PAs PAny "x", PAs PAny "y"]) `shouldBe` ["x", "y"]
+
+  it "☯ unpack" $ do
+    let unpack' def = fmap (\(p, a) -> (p, a empty)) (unpack def)
+    unpack' (PAny, int 1) `shouldBe` []
+    unpack' (bind "x", int 1) `shouldBe` [("x", (letVar ("%0", int 1) $ letVar ("x", var "%0") $ var "x") empty)]
+
+  it "☯ let'" $ do
+    let' [] err empty `shouldBe` Err
+    let' [(bind "x", int 1)] (var "y") empty `shouldBe` Var "y"
+    let' [(bind "x", int 1)] (var "x") empty `shouldBe` letRec ("x", letVar ("%0", int 1) $ letVar ("x", var "%0") $ var "x") (var "x") empty
+    let' [(bind "x", int 1), (bind "y", var "x")] (var "y") empty `shouldBe` letRec ("y", letRec ("x", letVar ("%0", int 1) $ letVar ("x", var "%0") (var "x")) (letVar ("%0", var "x") $ letVar ("y", var "%0") $ var "y")) (var "y") empty
+    let' [(bind "y", var "x"), (bind "x", int 1)] (var "y") empty `shouldBe` letRec ("y", letRec ("x", letVar ("%0", int 1) $ letVar ("x", var "%0") (var "x")) (letVar ("%0", var "x") $ letVar ("y", var "%0") $ var "y")) (var "y") empty
 
   it "☯ nameIndex" $ do
     nameIndex "" "" `shouldBe` Nothing
