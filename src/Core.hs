@@ -37,7 +37,7 @@ type Context = [(Constructor, [(Constructor, Int)])]
 type Expr = Context -> Term
 
 instance Show Term where
-  show Err = "!"
+  show Err = "#error"
   show (Var x) = x
   show (Int i) = show i
   show (App (Lam x a) (App Fix (Lam x' b))) | x == x' = "#letrec " ++ x ++ " = " ++ show b ++ "; " ++ show a
@@ -124,7 +124,7 @@ match :: String -> [Case] -> Expr
 match _ [] = err
 match _ (([], a) : _) = a
 match "" cases = \ctx -> do
-  let freeVars = map (\(_, a) -> freeVariables (a ctx)) cases |> foldl union []
+  let freeVars = concatMap (\(_, a) -> freeVariables (a ctx)) cases
   let x = newName freeVars "%"
   match x cases ctx
 match x cases = \ctx -> do
@@ -204,5 +204,4 @@ delete _ [] = []
 delete x (x' : xs) | x == x' = delete x xs
 delete x (y : xs) = y : delete x xs
 
--- TODO: union : [a] -> [a] -> [a]
 -- TODO: readInt : String -> Maybe Int
