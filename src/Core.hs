@@ -159,13 +159,13 @@ bindings (PAs p x) = x : bindings p
 bindings (PCtr ctr (p : ps)) = bindings p ++ bindings (PCtr ctr ps)
 bindings _ = []
 
-bindVar :: Pattern -> Expr -> String -> (String, Expr)
-bindVar PAny a x = (x, a)
-bindVar (PAs p x) a x' | x == x' = bindVar p a x
-bindVar p a x = (x, app (match "" [([p], var x)]) [a])
+bindVar :: (Pattern, Expr) -> String -> (String, Expr)
+bindVar (PAny, a) x = (x, a)
+bindVar (PAs p x, a) x' | x == x' = bindVar (p, a) x
+bindVar (p, a) x = (x, app (match "" [([p], var x)]) [a])
 
 unpack :: (Pattern, Expr) -> [(String, Expr)]
-unpack (p, a) = map (bindVar p a) (bindings p)
+unpack (p, a) = map (bindVar (p, a)) (bindings p)
 
 let' :: [(Pattern, Expr)] -> Expr -> Expr
 let' defs = with (concatMap unpack defs)
