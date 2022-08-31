@@ -63,11 +63,11 @@ coreTests = describe "--== Core language ==--" $ do
     bindings (PCtr "A" []) `shouldBe` []
     bindings (PCtr "A" [PAs PAny "x", PAs PAny "y"]) `shouldBe` ["x", "y"]
 
-  it "☯ define" $ do
-    let define' p a x = let (x', a') = define p a x in (x', a' empty)
-    define' PAny (var "y") "x" `shouldBe` ("x", Var "y")
-    define' (bind "x") (var "y") "x" `shouldBe` ("x", Var "y")
-    define' (bind "x") (var "y") "z" `shouldBe` ("z", letVar ("x", var "y") (var "z") empty)
+  it "☯ bindVar" $ do
+    let bindVar' p a x = let (x', a') = bindVar p a x in (x', a' empty)
+    bindVar' PAny (var "y") "x" `shouldBe` ("x", Var "y")
+    bindVar' (bind "x") (var "y") "x" `shouldBe` ("x", Var "y")
+    bindVar' (bind "x") (var "y") "z" `shouldBe` ("z", letVar ("x", var "y") (var "z") empty)
 
   it "☯ unpack" $ do
     let unpack' def = fmap (\(p, a) -> (p, a empty)) (unpack def)
