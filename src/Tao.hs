@@ -7,10 +7,35 @@ newtype Error
   = SyntaxError ParserError
   deriving (Eq, Show)
 
-fromText :: String -> Either Error Term
-fromText src = case parse src term of
-  Left err -> Left (SyntaxError err)
-  Right term -> Right term
+parse :: String -> Either Error Term
+parse src = do
+  let typeAlternative :: Parser (Constructor, Int)
+      typeAlternative = do
+        name <- token constructorName
+        arity <- token integer
+        succeed (name, arity)
+
+  let typeDefinition :: Parser (Context -> Context)
+      typeDefinition = do
+        name <- token typeName
+        let args = [] -- TODO
+        alts <- oneOrMore (token typeAlternative)
+        succeed (defineType name args alts)
+
+  let context :: Parser Context
+      context = do
+        defs <- zeroOrMore typeDefinition
+        succeed (foldr id empty defs)
+
+  let term :: Parser Term
+      term = do
+        ctx <- context
+        expr <- expression ""
+        succeed (expr ctx)
+
+  case Parser.parse src term of
+    Left err -> Left (SyntaxError err)
+    Right term -> Right term
 
 variableName :: Parser Variable
 variableName = do
@@ -48,7 +73,7 @@ pattern = do
   p <-
     oneOf
       [ fmap (const PAny) (token (char '_')),
-        fmap (PAs PAny) variableName,
+        fmap bind variableName,
         fmap PInt (token integer),
         do
           ctr <- token constructorName
@@ -65,52 +90,79 @@ pattern = do
       succeed p
     ]
 
--- def :: Parser (Pattern, Expr)
--- def = do
---   p <- token pattern
---   _ <- token (char '=')
---   expr <- token expression
---   _ <- token (char ';')
---   succeed (p, expr)
+blankLine :: Parser ()
+blankLine = do
+  _ <- zeroOrMore space
+  _ <- char '\n'
+  succeed ()
 
-definition :: Parser (Variable, Expr)
-definition = do
-  _ <- token (char '@')
-  name <- token variableName
+indentation :: String -> Parser ()
+indentation indent = do
+  _ <- zeroOrMore blankLine
+  oneOf
+    [ do _ <- text indent; succeed (),
+      do _ <- zeroOrMore space; endOfFile
+    ]
+
+continuation :: String -> Parser String
+continuation indent = do
+  let continue :: Parser String
+      continue = do
+        _ <- endOfLine
+        _ <- indentation indent
+        suffix <- oneOrMore space
+        succeed (indent ++ suffix)
+
+  oneOf [continue, succeed indent]
+
+lineBreak :: String -> Parser ()
+lineBreak indent =
+  oneOf
+    [ do _ <- token (char ';'); succeed (),
+      do _ <- endOfLine; indentation indent
+    ]
+
+definition :: String -> Parser (Pattern, Expr)
+definition indent = do
+  p <- token pattern
   _ <- token (char '=')
-  expr <- token expression
-  _ <- token (char ';')
-  -- TODO: support newlines and indentation aware parsing
-  -- expr <- expression
-  -- _ <- zeroOrMore (oneOf [char ' ', char '\t'])
-  -- _ <- oneOf [char '\n', char ';']
-  succeed (name, expr)
+  indent <- continuation indent
+  expr <- expression indent
+  _ <- lineBreak indent
+  succeed (p, expr)
 
-case' :: Char -> Parser Case
-case' delimiter = do
-  _ <- token (char delimiter)
+case' :: String -> Parser Case
+case' indent = do
+  _ <- token (char '|')
   ps <- oneOrMore (token pattern)
   _ <- token (text "->")
-  expr <- expression
+  indent <- continuation indent
+  expr <- expression indent
   succeed (ps, expr)
 
-expression :: Parser Expr
-expression = do
-  let cases :: Parser [Case]
-      cases = do
-        c <- token (case' '\\')
-        cs <- zeroOrMore (token (case' '|'))
-        succeed (c : cs)
+expression :: String -> Parser Expr
+expression indent = do
+  let definitions :: String -> Parser [(Pattern, Expr)]
+      definitions indent = do
+        def <- definition indent
+        defs <- zeroOrMore (definition indent)
+        succeed (def : defs)
+
+  -- let cases :: Parser [Case]
+  --     cases = do
+  --       c <- token (case' '\\')
+  --       cs <- zeroOrMore (token (case' '|'))
+  --       succeed (c : cs)
 
   withOperators
-    [ atom (const err) (char '_'),
+    [ prefix let' (definitions indent),
       atom var variableName,
       atom int integer,
       atom (const . Call) operator,
-      atom (match "") cases,
-      prefix with (oneOrMore definition),
+      -- atom (match "") cases,
       prefix (const id) comment,
-      inbetween (const id) (char '(') (char ')')
+      inbetween (const id) (char '(') (char ')'),
+      atom (const err) (text "#error")
     ]
     [ infixL 1 (const eq) (text "=="),
       infixL 2 (const add) (char '+'),
@@ -118,27 +170,3 @@ expression = do
       infixL 3 (const mul) (char '*'),
       infixL 4 (\_ a b -> app a [b]) (succeed ())
     ]
-
-typeAlternative :: Parser (Constructor, Int)
-typeAlternative = do
-  name <- token constructorName
-  arity <- token integer
-  succeed (name, arity)
-
-typeDefinition :: Parser (Context -> Context)
-typeDefinition = do
-  name <- token typeName
-  let args = [] -- TODO
-  alts <- oneOrMore (token typeAlternative)
-  succeed (defineType name args alts)
-
-context :: Parser Context
-context = do
-  defs <- zeroOrMore typeDefinition
-  succeed (foldr id empty defs)
-
-term :: Parser Term
-term = do
-  ctx <- context
-  expr <- expression
-  succeed (expr ctx)

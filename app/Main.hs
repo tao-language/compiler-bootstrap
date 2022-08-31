@@ -6,7 +6,7 @@ import Tao
 toTerms :: [String] -> Either Error [Term]
 toTerms [] = Right []
 toTerms (x : xs) = do
-  y <- fromText x
+  y <- parse x
   ys <- toTerms xs
   Right (y : ys)
 

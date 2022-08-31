@@ -1,84 +1,105 @@
 module TaoTests where
 
 import Core
-import Parser (parse)
+import Parser
 import Tao
 import Test.Hspec
 
 taoTests :: SpecWith ()
 taoTests = describe "--==☯ Tao language ☯==--" $ do
+  let parse' src parser = case Parser.parse src parser of
+        Right x -> Just x
+        Left _ -> Nothing
+
   it "☯ variableName" $ do
-    parse "a" variableName `shouldBe` Right "a"
-    parse "a1" variableName `shouldBe` Right "a1"
+    parse' "a" variableName `shouldBe` Just "a"
+    parse' "a1" variableName `shouldBe` Just "a1"
 
   it "☯ constructorName" $ do
-    parse "A" constructorName `shouldBe` Right "A"
-    parse "A1" constructorName `shouldBe` Right "A1"
+    parse' "A" constructorName `shouldBe` Just "A"
+    parse' "A1" constructorName `shouldBe` Just "A1"
 
   it "☯ operator" $ do
-    parse "( + )" operator `shouldBe` Right "+"
-    parse "(+)" operator `shouldBe` Right "+"
-    parse "(-)" operator `shouldBe` Right "-"
-    parse "(*)" operator `shouldBe` Right "*"
-    parse "(==)" operator `shouldBe` Right "=="
+    parse' "( + )" operator `shouldBe` Just "+"
+    parse' "(+)" operator `shouldBe` Just "+"
+    parse' "(-)" operator `shouldBe` Just "-"
+    parse' "(*)" operator `shouldBe` Just "*"
+    parse' "(==)" operator `shouldBe` Just "=="
 
   it "☯ comment" $ do
-    parse "--my comment" comment `shouldBe` Right "my comment"
-    parse "-- my comment" comment `shouldBe` Right "my comment"
-    parse "--  my  comment  \nx" comment `shouldBe` Right " my  comment  "
+    parse' "--my comment" comment `shouldBe` Just "my comment"
+    parse' "-- my comment" comment `shouldBe` Just "my comment"
+    parse' "--  my  comment  \nx" comment `shouldBe` Just " my  comment  "
 
   it "☯ pattern" $ do
-    parse "_" pattern `shouldBe` Right PAny
-    parse "_ @ x" pattern `shouldBe` Right (PAs PAny "x")
-    parse "x" pattern `shouldBe` Right (PAs PAny "x")
-    parse "42" pattern `shouldBe` Right (PInt 42)
-    parse "True" pattern `shouldBe` Right (PCtr "True" [])
-    parse "Cons 1 xs" pattern `shouldBe` Right (PCtr "Cons" [PInt 1, PAs PAny "xs"])
-    parse "(Cons 1 xs)" pattern `shouldBe` Right (PCtr "Cons" [PInt 1, PAs PAny "xs"])
+    parse' "_" pattern `shouldBe` Just PAny
+    parse' "_ @ x" pattern `shouldBe` Just (PAs PAny "x")
+    parse' "x" pattern `shouldBe` Just (PAs PAny "x")
+    parse' "42" pattern `shouldBe` Just (PInt 42)
+    parse' "True" pattern `shouldBe` Just (PCtr "True" [])
+    parse' "Cons 1 xs" pattern `shouldBe` Just (PCtr "Cons" [PInt 1, PAs PAny "xs"])
+    parse' "(Cons 1 xs)" pattern `shouldBe` Just (PCtr "Cons" [PInt 1, PAs PAny "xs"])
 
-  -- it "☯ definition" $ do
-  --   let parseDef src ctx = fmap (\(x, a) -> (x, a ctx)) (parse src definition)
-  --   parseDef "x = 1" empty `shouldBe` Right ("x", Int 1)
-  -- -- parseDef "x = 1\n" empty `shouldBe` Right ("x", Int 1)
+  it "☯ definition" $ do
+    let indent = "  "
+    let parseDef src = fmap (\(x, a) -> (x, a empty)) (parse' src (definition indent))
+    parseDef "x = 1;" `shouldBe` Just (bind "x", Int 1)
+    parseDef "x = 1\n" `shouldBe` Just (bind "x", Int 1)
+    parseDef "x = 1" `shouldBe` Just (bind "x", Int 1)
+    parseDef "x =\n  1" `shouldBe` Nothing
+    parseDef "x =\n   1" `shouldBe` Just (bind "x", Int 1)
+    parseDef "x =\n\n   1" `shouldBe` Just (bind "x", Int 1)
+    parseDef "x =\n     \n   1" `shouldBe` Just (bind "x", Int 1)
+  -- TODO: definition with arguments
 
-  -- it "☯ case" $ do
-  --   let parseCase src ctx = fmap (\(ps, a) -> (ps, a ctx)) (parse src (case' '|'))
-  --   parseCase "| x -> y" empty `shouldBe` Right ([(PVar "x", "")], Var "y")
-  --   parseCase "| x y -> z" empty `shouldBe` Right ([(PVar "x", ""), (PVar "y", "")], Var "z")
+  it "☯ case" $ do
+    let indent = "  "
+    let parseCase src = fmap (\(ps, a) -> (ps, a empty)) (parse' src (case' indent))
+    parseCase "| x -> y" `shouldBe` Just ([bind "x"], Var "y")
+    parseCase "| x ->\n  y" `shouldBe` Nothing
+    parseCase "| x ->\n   y" `shouldBe` Just ([bind "x"], Var "y")
+    parseCase "| x ->\n\n   y" `shouldBe` Just ([bind "x"], Var "y")
+    parseCase "| x ->\n     \n   y" `shouldBe` Just ([bind "x"], Var "y")
+    parseCase "| x y -> z" `shouldBe` Just ([bind "x", bind "y"], Var "z")
 
-  -- it "☯ expression" $ do
-  --   let parseExpr src ctx = fmap (\t -> t ctx) (parse src expression)
-  --   parseExpr "_" empty `shouldBe` Right Err
-  --   parseExpr "x" empty `shouldBe` Right (Var "x")
-  --   parseExpr "42" empty `shouldBe` Right (Int 42)
-  --   parseExpr "(+)" empty `shouldBe` Right (Call "+")
-  --   parseExpr "@x = 1; x" empty `shouldBe` Right (App (Lam "x" (Var "x")) (App Fix (Lam "x" (Int 1))))
-  --   -- parseExpr "x = 1\nx" empty `shouldBe` Right (Int 1)
-  --   -- parseExpr "\\ x -> y" empty `shouldBe` Right (Lam "%0" (Var "y"))
-  --   -- parseExpr "\\ x -> y | _ -> z" empty `shouldBe` Right (Lam "%0" (Var "y"))
-  --   -- parseExpr "\\ 1 -> y | x -> z" empty `shouldBe` Right (lam ["%0"] (app (eq (var "%0") (int 1)) [var "y", app (lam ["%0"] (var "z")) [var "%0"]]) empty)
-  --   parseExpr "-- comment\nx" empty `shouldBe` Right (Var "x") -- TODO: move comment into empty or definition
-  --   parseExpr "(x)" empty `shouldBe` Right (Var "x")
-  --   parseExpr "x + y" empty `shouldBe` Right (add (var "x") (var "y") empty)
-  --   parseExpr "x - y" empty `shouldBe` Right (sub (var "x") (var "y") empty)
-  --   parseExpr "x * y" empty `shouldBe` Right (mul (var "x") (var "y") empty)
-  --   parseExpr "x == y" empty `shouldBe` Right (eq (var "x") (var "y") empty)
+  it "☯ expression" $ do
+    let indent = "  "
+    let parseExpr src = fmap (\t -> t empty) (parse' src (expression indent))
+    parseExpr "x" `shouldBe` Just (Var "x")
+    parseExpr "42" `shouldBe` Just (Int 42)
+    parseExpr "(+)" `shouldBe` Just (Call "+")
+    parseExpr "x = 1\n y" `shouldBe` Just (Var "x")
+    parseExpr "x = 1\n  x" `shouldBe` Just (letRec ("x", letVar ("%0", int 1) $ letVar ("x", var "%0") $ var "x") (var "x") empty)
+    parseExpr "x = 1\n   y" `shouldBe` Just (Var "x")
+    parseExpr "x = 1\n  y = 2\n  x" `shouldBe` Just (letRec ("x", letVar ("%0", int 1) $ letVar ("x", var "%0") $ var "x") (var "x") empty)
+    parseExpr "x = 1; y = 2; x" `shouldBe` Just (letRec ("x", letVar ("%0", int 1) $ letVar ("x", var "%0") $ var "x") (var "x") empty)
 
-  it "☯ operator precedence" $ do
-    let parseExpr src ctx = fmap (\t -> t ctx) (parse src expression)
-    let (x, y, z) = (var "x", var "y", var "z")
-    parseExpr "x == y == z" empty `shouldBe` Right (eq (eq x y) z empty)
-    parseExpr "x == y + z" empty `shouldBe` Right (eq x (add y z) empty)
-    parseExpr "x + y == z" empty `shouldBe` Right (eq (add x y) z empty)
-    parseExpr "x + y + z" empty `shouldBe` Right (add (add x y) z empty)
-    parseExpr "x + y - z" empty `shouldBe` Right (sub (add x y) z empty)
-    parseExpr "x + y * z" empty `shouldBe` Right (add x (mul y z) empty)
-    parseExpr "x - y + z" empty `shouldBe` Right (add (sub x y) z empty)
-    parseExpr "x - y - z" empty `shouldBe` Right (sub (sub x y) z empty)
-    parseExpr "x - y * z" empty `shouldBe` Right (sub x (mul y z) empty)
-    parseExpr "x * y + z" empty `shouldBe` Right (add (mul x y) z empty)
-    parseExpr "x * y - z" empty `shouldBe` Right (sub (mul x y) z empty)
-    parseExpr "x * y * z" empty `shouldBe` Right (mul (mul x y) z empty)
-    parseExpr "x * y z" empty `shouldBe` Right (mul x (app y [z]) empty)
-    parseExpr "x y * z" empty `shouldBe` Right (mul (app x [y]) z empty)
-    parseExpr "x y z" empty `shouldBe` Right (app (app x [y]) [z] empty)
+--   -- parseExpr "\\ x -> y"  `shouldBe` Just (Lam "%0" (Var "y"))
+--   -- parseExpr "\\ x -> y | _ -> z"  `shouldBe` Just (Lam "%0" (Var "y"))
+--   -- parseExpr "\\ 1 -> y | x -> z"  `shouldBe` Just (lam ["%0"] (app (eq (var "%0") (int 1)) [var "y", app (lam ["%0"] (var "z")) [var "%0"]]) empty)
+--   parseExpr "#error" `shouldBe` Just Err
+--   parseExpr "-- comment\nx"  `shouldBe` Just (Var "x") -- TODO: move comment into empty or definition
+--   parseExpr "(x)"  `shouldBe` Just (Var "x")
+--   parseExpr "x + y"  `shouldBe` Just (add (var "x") (var "y") empty)
+--   parseExpr "x - y"  `shouldBe` Just (sub (var "x") (var "y") empty)
+--   parseExpr "x * y"  `shouldBe` Just (mul (var "x") (var "y") empty)
+--   parseExpr "x == y"  `shouldBe` Just (eq (var "x") (var "y") empty)
+
+-- it "☯ operator precedence" $ do
+--   let parseExpr src = fmap (\t -> t empty) (parse src (expression ""))
+--   let (x, y, z) = (var "x", var "y", var "z")
+--   parseExpr "x == y == z" `shouldBe` Right (eq (eq x y) z empty)
+--   parseExpr "x == y + z" `shouldBe` Right (eq x (add y z) empty)
+--   parseExpr "x + y == z" `shouldBe` Right (eq (add x y) z empty)
+--   parseExpr "x + y + z" `shouldBe` Right (add (add x y) z empty)
+--   parseExpr "x + y - z" `shouldBe` Right (sub (add x y) z empty)
+--   parseExpr "x + y * z" `shouldBe` Right (add x (mul y z) empty)
+--   parseExpr "x - y + z" `shouldBe` Right (add (sub x y) z empty)
+--   parseExpr "x - y - z" `shouldBe` Right (sub (sub x y) z empty)
+--   parseExpr "x - y * z" `shouldBe` Right (sub x (mul y z) empty)
+--   parseExpr "x * y + z" `shouldBe` Right (add (mul x y) z empty)
+--   parseExpr "x * y - z" `shouldBe` Right (sub (mul x y) z empty)
+--   parseExpr "x * y * z" `shouldBe` Right (mul (mul x y) z empty)
+--   parseExpr "x * y z" `shouldBe` Right (mul x (app y [z]) empty)
+--   parseExpr "x y * z" `shouldBe` Right (mul (app x [y]) z empty)
+--   parseExpr "x y z" `shouldBe` Right (app (app x [y]) [z] empty)
