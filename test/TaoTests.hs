@@ -54,7 +54,7 @@ taoTests = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ case" $ do
     let indent = "  "
-    let parseCase src = fmap (\(ps, a) -> (ps, a empty)) (parse' src (case' indent))
+    let parseCase src = fmap (\(ps, a) -> (ps, a empty)) (parse' src (case' indent '|'))
     parseCase "| x -> y" `shouldBe` Just ([bind "x"], Var "y")
     parseCase "| x ->\n  y" `shouldBe` Nothing
     parseCase "| x ->\n   y" `shouldBe` Just ([bind "x"], Var "y")
@@ -69,12 +69,12 @@ taoTests = describe "--==☯ Tao language ☯==--" $ do
     parseExpr "42" `shouldBe` Just (Int 42)
     parseExpr "(+)" `shouldBe` Just (Call "+")
     parseExpr "x = 1\n y" `shouldBe` Just (Var "x")
-    parseExpr "x = 1\n  x" `shouldBe` Just (letRec ("x", letVar ("%0", int 1) $ letVar ("x", var "%0") $ var "x") (var "x") empty)
+    parseExpr "x = 1\n  x" `shouldBe` Just (letRec ("x", int 1) (var "x") empty)
     parseExpr "x = 1\n   y" `shouldBe` Just (Var "x")
-    parseExpr "x = 1\n  y = 2\n  x" `shouldBe` Just (letRec ("x", letVar ("%0", int 1) $ letVar ("x", var "%0") $ var "x") (var "x") empty)
-    parseExpr "x = 1; y = 2; x" `shouldBe` Just (letRec ("x", letVar ("%0", int 1) $ letVar ("x", var "%0") $ var "x") (var "x") empty)
+    parseExpr "x = 1\n  y = 2\n  x" `shouldBe` Just (letRec ("x", int 1) (var "x") empty)
+    parseExpr "x = 1; y = 2; x" `shouldBe` Just (letRec ("x", int 1) (var "x") empty)
+    parseExpr "\\x -> y" `shouldBe` Just (Lam "x" (Var "y"))
 
---   -- parseExpr "\\ x -> y"  `shouldBe` Just (Lam "%0" (Var "y"))
 --   -- parseExpr "\\ x -> y | _ -> z"  `shouldBe` Just (Lam "%0" (Var "y"))
 --   -- parseExpr "\\ 1 -> y | x -> z"  `shouldBe` Just (lam ["%0"] (app (eq (var "%0") (int 1)) [var "y", app (lam ["%0"] (var "z")) [var "%0"]]) empty)
 --   parseExpr "#error" `shouldBe` Just Err

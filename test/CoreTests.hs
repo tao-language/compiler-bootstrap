@@ -32,13 +32,24 @@ coreTests = describe "--== Core language ==--" $ do
     with [("x", var "y"), ("y", int 1)] (var "x") empty `shouldBe` with [("x", with [("y", int 1)] (var "y"))] (var "x") empty
     with [("x", int 1), ("y", var "x")] (var "y") empty `shouldBe` with [("y", with [("x", int 1)] (var "x"))] (var "y") empty
 
+  it "☯ inferName" $ do
+    inferName "x" [] `shouldBe` "x"
+    inferName "" [([bind "x"], int 1)] `shouldBe` "x"
+    inferName "x" [([bind "x"], int 1)] `shouldBe` "x"
+    inferName "x" [([bind "y"], int 1)] `shouldBe` ""
+
+  it "☯ newName" $ do
+    newName "x" [] `shouldBe` "x0"
+    newName "x" ["x"] `shouldBe` "x1"
+    newName "x" ["x", "x1"] `shouldBe` "x2"
+
   it "☯ match" $ do
     let ctx = defineType "T" [] [("A", 0), ("B", 1)] empty
     match "" [] ctx `shouldBe` Err
     match "" [([], int 1), ([], int 2)] ctx `shouldBe` Int 1
     match "" [([PAny], var "x")] ctx `shouldBe` Lam "%0" (Var "x")
     match "x" [([PAny], var "x")] ctx `shouldBe` Lam "x" (Var "x")
-    match "" [([bind "x"], var "x")] ctx `shouldBe` lam ["%0"] (letVar ("x", var "%0") (var "x")) empty
+    match "" [([bind "x"], var "x")] ctx `shouldBe` Lam "x" (Var "x")
     match "" [([PInt 1], var "x")] ctx `shouldBe` lam ["%0"] (if' (eq (var "%0") (int 1)) (var "x") (app err [var "%0"])) empty
     match "" [([PInt 1], var "x"), ([PAny], var "y")] ctx `shouldBe` lam ["%0"] (if' (eq (var "%0") (int 1)) (var "x") (app (lam ["%0"] (var "y")) [var "%0"])) empty
     match "" [([PCtr "Unknown" []], var "x")] ctx `shouldBe` Lam "%0" Err
@@ -52,17 +63,23 @@ coreTests = describe "--== Core language ==--" $ do
     bindings (PCtr "A" []) `shouldBe` []
     bindings (PCtr "A" [PAs PAny "x", PAs PAny "y"]) `shouldBe` ["x", "y"]
 
+  it "☯ define" $ do
+    let define' p a x = let (x', a') = define p a x in (x', a' empty)
+    define' PAny (var "y") "x" `shouldBe` ("x", Var "y")
+    define' (bind "x") (var "y") "x" `shouldBe` ("x", Var "y")
+    define' (bind "x") (var "y") "z" `shouldBe` ("z", letVar ("x", var "y") (var "z") empty)
+
   it "☯ unpack" $ do
     let unpack' def = fmap (\(p, a) -> (p, a empty)) (unpack def)
     unpack' (PAny, int 1) `shouldBe` []
-    unpack' (bind "x", int 1) `shouldBe` [("x", (letVar ("%0", int 1) $ letVar ("x", var "%0") $ var "x") empty)]
+    unpack' (bind "x", int 1) `shouldBe` [("x", Int 1)]
 
   it "☯ let'" $ do
     let' [] err empty `shouldBe` Err
     let' [(bind "x", int 1)] (var "y") empty `shouldBe` Var "y"
-    let' [(bind "x", int 1)] (var "x") empty `shouldBe` letRec ("x", letVar ("%0", int 1) $ letVar ("x", var "%0") $ var "x") (var "x") empty
-    let' [(bind "x", int 1), (bind "y", var "x")] (var "y") empty `shouldBe` letRec ("y", letRec ("x", letVar ("%0", int 1) $ letVar ("x", var "%0") (var "x")) (letVar ("%0", var "x") $ letVar ("y", var "%0") $ var "y")) (var "y") empty
-    let' [(bind "y", var "x"), (bind "x", int 1)] (var "y") empty `shouldBe` letRec ("y", letRec ("x", letVar ("%0", int 1) $ letVar ("x", var "%0") (var "x")) (letVar ("%0", var "x") $ letVar ("y", var "%0") $ var "y")) (var "y") empty
+    let' [(bind "x", int 1)] (var "x") empty `shouldBe` letRec ("x", int 1) (var "x") empty
+    let' [(bind "x", int 1), (bind "y", var "x")] (var "y") empty `shouldBe` letRec ("y", letRec ("x", int 1) (var "x")) (var "y") empty
+    let' [(bind "y", var "x"), (bind "x", int 1)] (var "y") empty `shouldBe` letRec ("y", letRec ("x", int 1) (var "x")) (var "y") empty
 
   it "☯ nameIndex" $ do
     nameIndex "" "" `shouldBe` Nothing
@@ -88,8 +105,3 @@ coreTests = describe "--== Core language ==--" $ do
     freeVariables (Lam "x" (Var "x")) `shouldBe` []
     freeVariables (Lam "x" (Var "y")) `shouldBe` ["y"]
     freeVariables (Call "+") `shouldBe` []
-
-  it "☯ newName" $ do
-    newName [] "x" `shouldBe` "x0"
-    newName ["x"] "x" `shouldBe` "x1"
-    newName ["x", "x1"] "x" `shouldBe` "x2"

@@ -120,12 +120,24 @@ with defs a ctx = do
     |> resolve
     |> foldr (\(x, b) a -> App (Lam x a) b) (a ctx)
 
+inferName :: Variable -> [Case] -> Variable
+inferName "" ((PAs _ x : _, _) : cases) = inferName x cases
+inferName x ((PAs _ x' : _, _) : cases) | x == x' = inferName x' cases
+inferName _ ((PAs _ _ : _, _) : _) = ""
+inferName x _ = x
+
+newName :: String -> [String] -> String
+newName x existing = case lastNameIndex x existing of
+  Just i -> x ++ show (i + 1)
+  Nothing -> x ++ "0"
+
 match :: String -> [Case] -> Expr
 match _ [] = err
 match _ (([], a) : _) = a
 match "" cases = \ctx -> do
-  let freeVars = concatMap (\(_, a) -> freeVariables (a ctx)) cases
-  let x = newName freeVars "%"
+  let x = case inferName "" cases of
+        "" -> newName "%" (concatMap (\(_, a) -> freeVariables (a ctx)) cases)
+        x -> x
   match x cases ctx
 match x cases = \ctx -> do
   case findAlts cases ctx of
@@ -133,6 +145,7 @@ match x cases = \ctx -> do
       let branches = map (\alt -> match "" (remaining (matchCtr x alt) cases)) alts
       lam [x] (app (var x) branches) ctx
     Nothing -> case cases of
+      (PAs p x' : ps, a) : cases | x == x' -> match x ((p : ps, a) : cases) ctx
       (PAs p y : ps, a) : cases -> match x ((p : ps, letVar (y, var x) a) : cases) ctx
       (PInt i : ps, a) : cases -> do
         let cond = eq (var x) (int i)
@@ -146,8 +159,13 @@ bindings (PAs p x) = x : bindings p
 bindings (PCtr ctr (p : ps)) = bindings p ++ bindings (PCtr ctr ps)
 bindings _ = []
 
+define :: Pattern -> Expr -> String -> (String, Expr)
+define PAny a x = (x, a)
+define (PAs p x) a x' | x == x' = define p a x
+define p a x = (x, app (match "" [([p], var x)]) [a])
+
 unpack :: (Pattern, Expr) -> [(String, Expr)]
-unpack (p, a) = map (\x -> (x, app (match "" [([p], var x)]) [a])) (bindings p)
+unpack (p, a) = map (define p a) (bindings p)
 
 let' :: [(Pattern, Expr)] -> Expr -> Expr
 let' defs = with (concatMap unpack defs)
@@ -158,11 +176,6 @@ freeVariables (Var x) = [x]
 freeVariables (App a b) = freeVariables a `union` freeVariables b
 freeVariables (Lam x a) = delete x (freeVariables a)
 freeVariables _ = []
-
-newName :: [String] -> String -> String
-newName used x = case lastNameIndex x used of
-  Just i -> x ++ show (i + 1)
-  Nothing -> x ++ "0"
 
 nameIndex :: String -> String -> Maybe Int
 nameIndex "" x = readMaybe x

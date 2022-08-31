@@ -131,9 +131,9 @@ definition indent = do
   _ <- lineBreak indent
   succeed (p, expr)
 
-case' :: String -> Parser Case
-case' indent = do
-  _ <- token (char '|')
+case' :: String -> Char -> Parser Case
+case' indent delimiter = do
+  _ <- token (char delimiter)
   ps <- oneOrMore (token pattern)
   _ <- token (text "->")
   indent <- continuation indent
@@ -142,8 +142,8 @@ case' indent = do
 
 expression :: String -> Parser Expr
 expression indent = do
-  let definitions :: String -> Parser [(Pattern, Expr)]
-      definitions indent = do
+  let definitions :: Parser [(Pattern, Expr)]
+      definitions = do
         def <- definition indent
         defs <- zeroOrMore (definition indent)
         succeed (def : defs)
@@ -155,10 +155,11 @@ expression indent = do
   --       succeed (c : cs)
 
   withOperators
-    [ prefix let' (definitions indent),
+    [ prefix let' definitions,
       atom var variableName,
       atom int integer,
       atom (const . Call) operator,
+      atom (match "") (exactly 1 (case' indent '\\')),
       -- atom (match "") cases,
       prefix (const id) comment,
       inbetween (const id) (char '(') (char ')'),
