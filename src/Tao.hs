@@ -62,11 +62,15 @@ operator = do
   _ <- token (char ')')
   succeed op
 
-comment :: Parser String
-comment = do
+comment :: String -> Parser String
+comment indent = do
   _ <- text "--"
   _ <- zeroOrOne space
-  until' (== '\n') anyChar
+  text <- until' (== '\n') anyChar
+  -- text <- zeroOrMore (charIf (/= '\n') "")
+  _ <- endOfLine
+  _ <- indentation indent
+  succeed text
 
 pattern :: Parser Pattern
 pattern = do
@@ -115,10 +119,10 @@ continuation indent = do
 
   oneOf [continue, succeed indent]
 
-lineBreak :: String -> Parser ()
-lineBreak indent =
+lineBreak :: Char -> String -> Parser ()
+lineBreak delimiter indent =
   oneOf
-    [ do _ <- token (char ';'); succeed (),
+    [ do _ <- token (char delimiter); succeed (),
       do _ <- endOfLine; indentation indent
     ]
 
@@ -128,16 +132,16 @@ definition indent = do
   _ <- token (char '=')
   indent <- continuation indent
   expr <- expression indent
-  _ <- lineBreak indent
+  _ <- lineBreak ';' indent
   succeed (p, expr)
 
-case' :: String -> Char -> Parser Case
-case' indent delimiter = do
-  _ <- token (char delimiter)
+case' :: String -> Parser Case
+case' indent = do
   ps <- oneOrMore (token pattern)
   _ <- token (text "->")
-  indent <- continuation indent
-  expr <- expression indent
+  indent' <- continuation indent
+  expr <- expression indent'
+  _ <- lineBreak '|' indent
   succeed (ps, expr)
 
 expression :: String -> Parser Expr
@@ -148,26 +152,28 @@ expression indent = do
         defs <- zeroOrMore (definition indent)
         succeed (def : defs)
 
-  -- let cases :: Parser [Case]
-  --     cases = do
-  --       c <- token (case' '\\')
-  --       cs <- zeroOrMore (token (case' '|'))
-  --       succeed (c : cs)
+  let cases :: Parser [Case]
+      cases = do
+        c <- case' indent
+        cs <- zeroOrMore (case' indent)
+        succeed (c : cs)
 
+  -- TODO: make prefix and infix operators into functions instead of lists
+  -- TODO: make operators support indentations
+  -- TODO: make parentheses support indentations
   withOperators
-    [ prefix let' definitions,
-      atom var variableName,
-      atom int integer,
-      atom (const . Call) operator,
-      atom (match "") (exactly 1 (case' indent '\\')),
-      -- atom (match "") cases,
-      prefix (const id) comment,
-      inbetween (const id) (char '(') (char ')'),
-      atom (const err) (text "#error")
+    [ atom (const err) (text "#error"),
+      prefix let' definitions,
+      atom (match "") cases,
+      atom var (token variableName),
+      atom int (token integer),
+      atom (const . Call) (token operator),
+      prefix (const id) (comment indent),
+      inbetween (const id) (token (char '(')) (token (char ')'))
     ]
-    [ infixL 1 (const eq) (text "=="),
-      infixL 2 (const add) (char '+'),
-      infixL 2 (const sub) (char '-'),
-      infixL 3 (const mul) (char '*'),
+    [ infixL 1 (const eq) (token (text "==")),
+      infixL 2 (const add) (token (char '+')),
+      infixL 2 (const sub) (token (char '-')),
+      infixL 3 (const mul) (token (char '*')),
       infixL 4 (\_ a b -> app a [b]) (succeed ())
     ]
