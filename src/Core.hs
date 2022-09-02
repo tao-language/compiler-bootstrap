@@ -54,11 +54,6 @@ instance Show Term where
   show (Call op) = "&" ++ op
   show Fix = "#fix"
 
-(|>) :: a -> (a -> b) -> b
-(|>) x f = f x
-
-infixl 1 |>
-
 -- Context
 empty :: Context
 empty = []
@@ -106,19 +101,20 @@ letVar (x, a) b = app (lam [x] b) [a]
 letRec :: (Variable, Expr) -> Expr -> Expr
 letRec (x, a) = letVar (x, app (const Fix) [lam [x] a])
 
-with :: [(Variable, Expr)] -> Expr -> Expr
-with defs a ctx = do
+let' :: [(Variable, Expr)] -> Expr -> Expr
+let' defs a ctx = do
   let resolve :: [Variable] -> [(Variable, Term)]
       resolve [] = []
       resolve (x : xs) = case lookup x defs of
         Just b -> do
           let subdefs = filter (\(y, _) -> x /= y) defs
-          (x, App Fix (Lam x (with subdefs b ctx))) : resolve xs
+          (x, App Fix (Lam x (let' subdefs b ctx))) : resolve xs
         Nothing -> resolve xs
 
-  freeVariables (a ctx)
-    |> resolve
-    |> foldr (\(x, b) a -> App (Lam x a) b) (a ctx)
+  foldr
+    (\(x, b) a -> App (Lam x a) b)
+    (a ctx)
+    (resolve (freeVariables (a ctx)))
 
 inferName :: Variable -> [Case] -> Variable
 inferName "" ((PAs _ x : _, _) : cases) = inferName x cases
@@ -167,9 +163,6 @@ bindVar (p, a) x = (x, app (match "" [([p], var x)]) [a])
 unpack :: (Pattern, Expr) -> [(String, Expr)]
 unpack (p, a) = map (bindVar (p, a)) (bindings p)
 
-let' :: [(Pattern, Expr)] -> Expr -> Expr
-let' defs = with (concatMap unpack defs)
-
 -- Helper functions
 freeVariables :: Term -> [String]
 freeVariables (Var x) = [x]
@@ -201,7 +194,7 @@ matchAny _ _ = Nothing
 
 matchCtr :: Variable -> (Constructor, Int) -> Case -> Maybe Case
 matchCtr _ (_, n) (PAny : ps, a) = Just (replicate n PAny ++ ps, a)
-matchCtr x (ctr, n) (PAs p y : ps, a) = matchCtr x (ctr, n) (p : ps, with [(y, var x)] a)
+matchCtr x (ctr, n) (PAs p y : ps, a) = matchCtr x (ctr, n) (p : ps, letVar (y, var x) a)
 matchCtr _ (ctr, _) (PCtr ctr' qs : ps, a) | ctr == ctr' = Just (qs ++ ps, a)
 matchCtr _ _ _ = Nothing
 

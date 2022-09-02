@@ -24,13 +24,13 @@ coreTests = describe "--== Core language ==--" $ do
   it "☯ if" $ do
     if' (var "x") (var "y") (var "z") empty `shouldBe` App (App (Var "x") (Var "y")) (Var "z")
 
-  it "☯ with" $ do
-    with [] err empty `shouldBe` Err
-    with [("x", int 1)] (var "y") empty `shouldBe` Var "y"
-    with [("x", int 1)] (var "x") empty `shouldBe` App (Lam "x" (Var "x")) (App Fix (Lam "x" (Int 1)))
-    with [("x", var "x")] (var "x") empty `shouldBe` App (Lam "x" (Var "x")) (App Fix (Lam "x" (Var "x")))
-    with [("x", var "y"), ("y", int 1)] (var "x") empty `shouldBe` with [("x", with [("y", int 1)] (var "y"))] (var "x") empty
-    with [("x", int 1), ("y", var "x")] (var "y") empty `shouldBe` with [("y", with [("x", int 1)] (var "x"))] (var "y") empty
+  it "☯ let'" $ do
+    let' [] err empty `shouldBe` Err
+    let' [("x", int 1)] (var "y") empty `shouldBe` Var "y"
+    let' [("x", int 1)] (var "x") empty `shouldBe` App (Lam "x" (Var "x")) (App Fix (Lam "x" (Int 1)))
+    let' [("x", var "x")] (var "x") empty `shouldBe` App (Lam "x" (Var "x")) (App Fix (Lam "x" (Var "x")))
+    let' [("x", var "y"), ("y", int 1)] (var "x") empty `shouldBe` let' [("x", let' [("y", int 1)] (var "y"))] (var "x") empty
+    let' [("x", int 1), ("y", var "x")] (var "y") empty `shouldBe` let' [("y", let' [("x", int 1)] (var "x"))] (var "y") empty
 
   it "☯ inferName" $ do
     inferName "x" [] `shouldBe` "x"
@@ -73,13 +73,6 @@ coreTests = describe "--== Core language ==--" $ do
     let unpack' def = fmap (\(p, a) -> (p, a empty)) (unpack def)
     unpack' (PAny, int 1) `shouldBe` []
     unpack' (bind "x", int 1) `shouldBe` [("x", Int 1)]
-
-  it "☯ let'" $ do
-    let' [] err empty `shouldBe` Err
-    let' [(bind "x", int 1)] (var "y") empty `shouldBe` Var "y"
-    let' [(bind "x", int 1)] (var "x") empty `shouldBe` letRec ("x", int 1) (var "x") empty
-    let' [(bind "x", int 1), (bind "y", var "x")] (var "y") empty `shouldBe` letRec ("y", letRec ("x", int 1) (var "x")) (var "y") empty
-    let' [(bind "y", var "x"), (bind "x", int 1)] (var "y") empty `shouldBe` letRec ("y", letRec ("x", int 1) (var "x")) (var "y") empty
 
   it "☯ nameIndex" $ do
     nameIndex "" "" `shouldBe` Nothing

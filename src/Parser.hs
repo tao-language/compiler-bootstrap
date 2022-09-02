@@ -240,11 +240,11 @@ textCaseSensitive str =
 --   _ <- maybe' (char '\n')
 --   succeed (x, indent ++ newIndent)
 
-token :: Parser a -> Parser a
-token parser = do
-  x <- parser
-  _ <- zeroOrMore space
-  succeed x
+-- token :: Parser a -> Parser a
+-- token parser = do
+--   x <- parser
+--   _ <- zeroOrMore space
+--   succeed x
 
 -- TODO: line
 -- TODO: date

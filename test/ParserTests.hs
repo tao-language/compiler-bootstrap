@@ -173,15 +173,15 @@ parserTests = describe "--== Parser ==--" $ do
     --   parse' "a \nb" (oneOrMore $ tok "" letter) `shouldBe` Just [('a', ""), ('b', "")]
     --   parse' "a \n  b" (oneOrMore $ tok "" letter) `shouldBe` Just [('a', ""), ('b', "  ")]
 
-    it "☯ token" $ do
-      parse' "a" (oneOrMore (token letter)) `shouldBe` Just "a"
-      parse' "a b" (oneOrMore (token letter)) `shouldBe` Just "ab"
-      parse' "a\tb" (oneOrMore (token letter)) `shouldBe` Just "ab"
-      -- parse' "a\nb" (oneOrMore (token letter)) `shouldBe` Just "a"
-      -- parse' "a\n b" (oneOrMore (token letter)) `shouldBe` Just "ab"
-      -- parse' "a\n\n b" (oneOrMore (token letter)) `shouldBe` Just "ab"
-      -- parse' "a\n   \n b" (oneOrMore (token letter)) `shouldBe` Just "ab"
-      True `shouldBe` True
+    -- it "☯ token" $ do
+    --   parse' "a" (oneOrMore (token letter)) `shouldBe` Just "a"
+    --   parse' "a b" (oneOrMore (token letter)) `shouldBe` Just "ab"
+    --   parse' "a\tb" (oneOrMore (token letter)) `shouldBe` Just "ab"
+    --   -- parse' "a\nb" (oneOrMore (token letter)) `shouldBe` Just "a"
+    --   -- parse' "a\n b" (oneOrMore (token letter)) `shouldBe` Just "ab"
+    --   -- parse' "a\n\n b" (oneOrMore (token letter)) `shouldBe` Just "ab"
+    --   -- parse' "a\n   \n b" (oneOrMore (token letter)) `shouldBe` Just "ab"
+    --   True `shouldBe` True
 
     it "☯ withOperators" $ do
       let calculator =

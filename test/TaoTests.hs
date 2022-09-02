@@ -12,89 +12,177 @@ taoTests = describe "--==☯ Tao language ☯==--" $ do
         Left _ -> Nothing
 
   it "☯ variableName" $ do
+    parse' "" variableName `shouldBe` Nothing
     parse' "a" variableName `shouldBe` Just "a"
     parse' "a1" variableName `shouldBe` Just "a1"
 
   it "☯ constructorName" $ do
+    parse' "" constructorName `shouldBe` Nothing
     parse' "A" constructorName `shouldBe` Just "A"
     parse' "A1" constructorName `shouldBe` Just "A1"
 
-  it "☯ operator" $ do
-    parse' "( + )" operator `shouldBe` Just "+"
-    parse' "(+)" operator `shouldBe` Just "+"
-    parse' "(-)" operator `shouldBe` Just "-"
-    parse' "(*)" operator `shouldBe` Just "*"
-    parse' "(==)" operator `shouldBe` Just "=="
-
   it "☯ comment" $ do
-    let indent = "  "
-    let comment' src = parse' src (comment indent)
+    let comment' src = parse' src comment
+    comment' "" `shouldBe` Nothing
     comment' "--my comment" `shouldBe` Just "my comment"
     comment' "-- my comment" `shouldBe` Just "my comment"
-    comment' "--  my  comment  \n x" `shouldBe` Nothing
-    comment' "--  my  comment  \n  x" `shouldBe` Just " my  comment  "
-    comment' "--  my  comment  \n   x" `shouldBe` Just " my  comment  "
-  -- TODO: support multi-line comments
+    comment' "--   my  comment  " `shouldBe` Just "  my  comment  "
 
-  it "☯ pattern" $ do
-    parse' "_" pattern `shouldBe` Just PAny
-    parse' "_ @ x" pattern `shouldBe` Just (PAs PAny "x")
-    parse' "x" pattern `shouldBe` Just (PAs PAny "x")
-    parse' "42" pattern `shouldBe` Just (PInt 42)
-    parse' "True" pattern `shouldBe` Just (PCtr "True" [])
-    parse' "Cons 1 xs" pattern `shouldBe` Just (PCtr "Cons" [PInt 1, PAs PAny "xs"])
-    parse' "(Cons 1 xs)" pattern `shouldBe` Just (PCtr "Cons" [PInt 1, PAs PAny "xs"])
+  it "☯ emptyLine" $ do
+    let emptyLine' src = parse' src emptyLine
+    emptyLine' "" `shouldBe` Nothing
+    emptyLine' "\n" `shouldBe` Just ""
+    emptyLine' "  \n" `shouldBe` Just ""
+    emptyLine' "  --my comment\n" `shouldBe` Just "my comment"
+    emptyLine' "  -- my comment\n" `shouldBe` Just "my comment"
+    emptyLine' "  --   my  comment  \n" `shouldBe` Just "  my  comment  "
 
-  it "☯ definition" $ do
+  it "☯ newLine" $ do
     let indent = "  "
-    let definition' src = fmap (\(x, a) -> (x, a empty)) (parse' src (definition indent))
-    definition' "x = 1;" `shouldBe` Just (bind "x", Int 1)
-    definition' "x = 1\n" `shouldBe` Just (bind "x", Int 1)
-    definition' "x = 1" `shouldBe` Just (bind "x", Int 1)
-    definition' "x =\n  1" `shouldBe` Nothing
-    definition' "x =\n   1" `shouldBe` Just (bind "x", Int 1)
-    definition' "x =\n\n   1" `shouldBe` Just (bind "x", Int 1)
-    definition' "x =\n     \n   1" `shouldBe` Just (bind "x", Int 1)
-  -- TODO: definition with arguments
+    let newLine' src = parse' src (do _ <- newLine indent; letter)
+    newLine' "" `shouldBe` Nothing
+    newLine' "   " `shouldBe` Nothing
+    newLine' "\nx" `shouldBe` Nothing
+    newLine' "\n x" `shouldBe` Nothing
+    newLine' "\n  x" `shouldBe` Just 'x'
+    newLine' "\n   x" `shouldBe` Nothing
+    newLine' "\n\n   \n  x" `shouldBe` Just 'x'
+    newLine' "\n -- comment\n  x" `shouldBe` Just 'x'
 
-  it "☯ case" $ do
+  it "☯ continueLine" $ do
     let indent = "  "
-    let case_ src = fmap (\(ps, a) -> (ps, a empty)) (parse' src (case' indent))
-    case_ "x -> y" `shouldBe` Just ([bind "x"], Var "y")
-    case_ "x ->\n  y" `shouldBe` Nothing
-    case_ "x ->\n   y" `shouldBe` Just ([bind "x"], Var "y")
-    case_ "x ->\n\n   y" `shouldBe` Just ([bind "x"], Var "y")
-    case_ "x ->\n     \n   y" `shouldBe` Just ([bind "x"], Var "y")
-    case_ "x y -> z" `shouldBe` Just ([bind "x", bind "y"], Var "z")
+    let continueLine' src = parse' src (continueLine indent)
+    continueLine' "" `shouldBe` Just "  "
+    continueLine' "\n" `shouldBe` Just "  "
+    continueLine' "\n  " `shouldBe` Just "  "
+    continueLine' "\n   " `shouldBe` Just "   "
+    continueLine' "\n    " `shouldBe` Just "    "
 
   it "☯ expression" $ do
     let indent = "  "
     let expr src = fmap (\t -> t empty) (parse' src (expression indent))
+    expr "" `shouldBe` Nothing
     expr "#error" `shouldBe` Just Err
     expr "x" `shouldBe` Just (Var "x")
     expr "42" `shouldBe` Just (Int 42)
     expr "(+)" `shouldBe` Just (Call "+")
-    expr "x = 1\n y" `shouldBe` Just (Var "x")
+    expr "x = 1; x" `shouldBe` Just (letRec ("x", int 1) (var "x") empty)
     expr "x = 1\n  x" `shouldBe` Just (letRec ("x", int 1) (var "x") empty)
-    expr "x = 1\n   y" `shouldBe` Just (Var "x")
-    expr "x = 1\n  y = 2\n  x" `shouldBe` Just (letRec ("x", int 1) (var "x") empty)
     expr "x = 1; y = 2; x" `shouldBe` Just (letRec ("x", int 1) (var "x") empty)
     expr "x -> y" `shouldBe` Just (Lam "x" (Var "y"))
-    expr "1 -> y\n x -> z" `shouldBe` Just (Int 1)
-    expr "1 -> y\n  x -> z" `shouldBe` Just (lam ["%0"] (if' (eq (var "%0") (int 1)) (var "y") (letVar ("x", var "%0") (var "z"))) empty)
-    expr "1 -> y\n   x -> z" `shouldBe` Just (lam ["%0"] (if' (eq (var "%0") (int 1)) (var "y") (app err [var "%0"])) empty)
     expr "1 -> y | x -> z" `shouldBe` Just (lam ["%0"] (if' (eq (var "%0") (int 1)) (var "y") (letVar ("x", var "%0") (var "z"))) empty)
-    -- TODO: move comment into empty or definition
-    expr "-- comment\n x" `shouldBe` Nothing
-    expr "-- comment\n  x" `shouldBe` Just (Var "x")
-    expr "-- comment\n   x" `shouldBe` Nothing
-    -- End of TODO
+    expr "1 -> y\n  x -> z" `shouldBe` Just (lam ["%0"] (if' (eq (var "%0") (int 1)) (var "y") (letVar ("x", var "%0") (var "z"))) empty)
     expr "(x)" `shouldBe` Just (Var "x")
     expr "( x )" `shouldBe` Just (Var "x")
     expr "x == y" `shouldBe` Just (eq (var "x") (var "y") empty)
     expr "x + y" `shouldBe` Just (add (var "x") (var "y") empty)
     expr "x - y" `shouldBe` Just (sub (var "x") (var "y") empty)
     expr "x * y" `shouldBe` Just (mul (var "x") (var "y") empty)
+    True `shouldBe` True
+
+  it "☯ operator" $ do
+    let indent = "  "
+    let operator' src = parse' src (operator indent)
+    operator' "+" `shouldBe` Nothing
+    operator' "( + )" `shouldBe` Just "+"
+    operator' "(+)" `shouldBe` Just "+"
+    operator' "(-)" `shouldBe` Just "-"
+    operator' "(*)" `shouldBe` Just "*"
+    operator' "(==)" `shouldBe` Just "=="
+    operator' "( + )" `shouldBe` Just "+"
+    operator' "(\n+\n)" `shouldBe` Nothing
+    operator' "(\n  +\n  )" `shouldBe` Nothing
+    operator' "(\n   +\n  )" `shouldBe` Just "+"
+
+  it "☯ pattern" $ do
+    parse' "" pattern `shouldBe` Nothing
+    parse' "_" pattern `shouldBe` Just PAny
+    parse' "_ @ x" pattern `shouldBe` Just (bind "x")
+    parse' "x" pattern `shouldBe` Just (bind "x")
+    parse' "42" pattern `shouldBe` Just (PInt 42)
+    parse' "Nil" pattern `shouldBe` Just (PCtr "Nil" [])
+    parse' "Cons x xs" pattern `shouldBe` Just (PCtr "Cons" [])
+    parse' "(Cons x xs)" pattern `shouldBe` Just (PCtr "Cons" [bind "x", bind "xs"])
+
+  it "☯ defineRules" $ do
+    let indent = "  "
+    let ctx = defineType "T" [] [("A", 0), ("B", 0)] empty
+    let defineRules' src = fmap (\(x, a) -> (x, a ctx)) (parse' src (defineRules indent))
+    defineRules' "" `shouldBe` Nothing
+    defineRules' "x = y" `shouldBe` Just ("x", Var "y")
+    defineRules' "f _ = y" `shouldBe` Just ("f", Lam "%0" (Var "y"))
+    defineRules' "f x = y" `shouldBe` Just ("f", Lam "x" (Var "y"))
+    defineRules' "f x y = z" `shouldBe` Just ("f", Lam "x" (Lam "y" (Var "z")))
+    defineRules' "f A = x" `shouldBe` Just ("f", lam ["%0"] (app (var "%0") [var "x", err]) empty)
+    defineRules' "f A = x\n f B = y" `shouldBe` Just ("f", lam ["%0"] (app (var "%0") [var "x", err]) empty)
+    defineRules' "f A = x\n  f B = y" `shouldBe` Just ("f", lam ["%0"] (app (var "%0") [var "x", var "y"]) empty)
+    defineRules' "f A = x\n   f B = y" `shouldBe` Just ("f", lam ["%0"] (app (var "%0") [var "x", err]) empty)
+    defineRules' "f\n  x = y" `shouldBe` Nothing
+    defineRules' "f\n   x = y" `shouldBe` Just ("f", Lam "x" (Var "y"))
+    defineRules' "f x\n  = y" `shouldBe` Nothing
+    defineRules' "f x\n   = y" `shouldBe` Just ("f", Lam "x" (Var "y"))
+    defineRules' "f x =\n  y" `shouldBe` Nothing
+    defineRules' "f x =\n   y" `shouldBe` Just ("f", Lam "x" (Var "y"))
+    defineRules' "f\n   x\n   =\n   y" `shouldBe` Nothing
+    defineRules' "f\n   x\n   =\n    y" `shouldBe` Just ("f", Lam "x" (Var "y"))
+
+  it "☯ unpackPattern" $ do
+    let indent = "  "
+    let ctx = defineType "List" [] [("Nil", 0), ("Cons", 2)] empty
+    let unpackPattern' src = fmap (map (\(x, a) -> (x, a ctx))) (parse' src (unpackPattern indent))
+    unpackPattern' "" `shouldBe` Nothing
+    unpackPattern' "_ = y" `shouldBe` Just []
+    unpackPattern' "_ @ x = y" `shouldBe` Just [("x", Var "y")]
+    unpackPattern' "x = y" `shouldBe` Just [("x", Var "y")]
+    unpackPattern' "42 = y" `shouldBe` Just []
+    unpackPattern' "Nil = y" `shouldBe` Just []
+    unpackPattern' "(Cons x xs) = y"
+      `shouldBe` Just
+        [ ("x", letVar ("%0", var "y") (app (var "%0") [err, lam ["x", "xs"] (var "x")]) empty),
+          ("xs", letVar ("%0", var "y") (app (var "%0") [err, lam ["x", "xs"] (var "xs")]) empty)
+        ]
+    unpackPattern' "x\n  = y" `shouldBe` Nothing
+    unpackPattern' "x\n   = y" `shouldBe` Just [("x", Var "y")]
+    unpackPattern' "x =\n  y" `shouldBe` Nothing
+    unpackPattern' "x =\n   y" `shouldBe` Just [("x", Var "y")]
+    unpackPattern' "x\n   =\n   y" `shouldBe` Nothing
+    unpackPattern' "x\n   =\n    y" `shouldBe` Just [("x", Var "y")]
+
+  it "☯ definitions" $ do
+    let indent = "  "
+    let ctx = defineType "T" [] [("A", 0), ("B", 0)] empty
+    let definitions' src = fmap (map (\(x, a) -> (x, a ctx))) (parse' src (definitions indent))
+    definitions' "" `shouldBe` Nothing
+    definitions' "f x = y" `shouldBe` Just [("f", Lam "x" (Var "y"))]
+    definitions' "f x = y; _@g = z" `shouldBe` Just [("f", Lam "x" (Var "y")), ("g", Var "z")]
+    definitions' "f x = y\n _@g = z" `shouldBe` Just [("f", Lam "x" (Var "y"))]
+    definitions' "f x = y\n  _@g = z" `shouldBe` Just [("f", Lam "x" (Var "y")), ("g", Var "z")]
+    definitions' "f x = y\n   _@g = z" `shouldBe` Just [("f", Lam "x" (Var "y"))]
+
+  it "☯ case'" $ do
+    let indent = "  "
+    let case_ src = fmap (\(ps, a) -> (ps, a empty)) (parse' src (case' indent))
+    case_ "" `shouldBe` Nothing
+    case_ "x -> y" `shouldBe` Just ([bind "x"], Var "y")
+    case_ "x\n  -> y" `shouldBe` Nothing
+    case_ "x\n   -> y" `shouldBe` Just ([bind "x"], Var "y")
+    case_ "x ->\n  y" `shouldBe` Nothing
+    case_ "x ->\n   y" `shouldBe` Just ([bind "x"], Var "y")
+    case_ "x\n   ->\n   y" `shouldBe` Nothing
+    case_ "x\n   ->\n    y" `shouldBe` Just ([bind "x"], Var "y")
+    case_ "x y -> z" `shouldBe` Just ([bind "x", bind "y"], Var "z")
+
+  it "☯ cases" $ do
+    let indent = "  "
+    let cases' src = fmap (map (\(ps, a) -> (ps, a empty))) (parse' src (cases indent))
+    cases' "" `shouldBe` Nothing
+    cases' "x -> 1" `shouldBe` Just [([bind "x"], Int 1)]
+    cases' "x -> 1 | y -> 2" `shouldBe` Just [([bind "x"], Int 1), ([bind "y"], Int 2)]
+    cases' "x -> 1\n y -> 2" `shouldBe` Just [([bind "x"], Int 1)]
+    cases' "x -> 1\n  y -> 2" `shouldBe` Just [([bind "x"], Int 1), ([bind "y"], Int 2)]
+    cases' "x -> 1\n   y -> 2" `shouldBe` Just [([bind "x"], Int 1)]
+    cases' "x -> 1 | y -> 2\n  z -> 3" `shouldBe` Just [([bind "x"], Int 1), ([bind "y"], Int 2), ([bind "z"], Int 3)]
+    cases' "x -> 1\n  y -> 2 | z -> 3" `shouldBe` Just [([bind "x"], Int 1), ([bind "y"], Int 2), ([bind "z"], Int 3)]
 
   it "☯ operator precedence" $ do
     let expr src = fmap (\t -> t empty) (parse' src (expression ""))
