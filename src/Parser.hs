@@ -6,7 +6,6 @@ newtype Parser a = Parser (State -> Either ParserError (a, State))
 
 data State = State
   { source :: String,
-    indentation :: String,
     row :: Int,
     col :: Int
   }
@@ -46,7 +45,7 @@ instance Monad Parser where
 
 parse :: String -> Parser a -> Either ParserError a
 parse source (Parser p) = do
-  let state = State {source = source, indentation = "", row = 1, col = 1}
+  let state = State {source = source, row = 1, col = 1}
   fmap fst (p state)
 
 succeed :: a -> Parser a
@@ -100,7 +99,7 @@ charIf condition message = do
   succeed ch
 
 space :: Parser Char
-space = charIf Char.isSpace "a blank space"
+space = charIf (`elem` " \t\r\f\v") "a blank space"
 
 letter :: Parser Char
 letter = charIf Char.isLetter "a letter"
@@ -231,23 +230,21 @@ textCaseSensitive str =
   chain (fmap charCaseSensitive str)
     |> orElse (expected $ "the text '" <> str <> "' (case sensitive)")
 
-token :: Parser a -> Parser a
-token parser = do
-  -- let empty :: Parser Bool
-  --     empty = do
-  --       _ <- zeroOrMore (oneOf [char ' ', char '\t', char '\r'])
-  --       oneOf [fmap (const True) (char '\n'), succeed False]
-  -- -- TODO: checkIndent
-  -- let checkIndent :: a -> Parser a
-  --     checkIndent x = succeed x
-  -- x <- parser
-  -- newline <- empty
-  -- if newline
-  --   then checkIndent x
-  --   else succeed x
-  x <- parser
-  _ <- zeroOrMore space
-  succeed x
+-- tok :: String -> Parser a -> Parser (a, String)
+-- tok indent parser = do
+--   let blank = oneOf [char ' ', char '\t', char '\r']
+--   _ <- text indent
+--   newIndent <- zeroOrMore blank
+--   x <- parser
+--   _ <- zeroOrMore blank
+--   _ <- maybe' (char '\n')
+--   succeed (x, indent ++ newIndent)
+
+-- token :: Parser a -> Parser a
+-- token parser = do
+--   x <- parser
+--   _ <- zeroOrMore space
+--   succeed x
 
 -- TODO: line
 -- TODO: date
@@ -278,28 +275,27 @@ type Infix a = Int -> a -> Prefix a
 
 atom :: (a -> b) -> Parser a -> Prefix b
 atom f parser _ = do
-  x <- token parser
+  x <- parser
   succeed (f x)
 
 prefix :: (op -> a -> a) -> Parser op -> Prefix a
 prefix f op expr = do
-  op' <- token op
+  op' <- op
   y <- expr 0
   succeed (f op' y)
 
 inbetween :: (open -> a -> a) -> Parser open -> Parser close -> Prefix a
 inbetween f open close expr = do
-  open' <- token open
+  open' <- open
   y <- expr 0
-  _ <- zeroOrMore space -- allow the close delimiter to be "out of indentation"
-  _ <- token close
+  _ <- close
   succeed (f open' y)
 
 -- TODO: rename to infixLeft
 infixL :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
 infixL opPrec f op prec x expr = do
   _ <- assert (prec < opPrec) ("infixL " ++ show opPrec)
-  op' <- token op
+  op' <- op
   y <- expr opPrec
   succeed (f op' x y)
 
@@ -307,7 +303,7 @@ infixL opPrec f op prec x expr = do
 infixR :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
 infixR opPrec f op prec x expr = do
   _ <- assert (prec <= opPrec) ("infixR " ++ show opPrec)
-  op' <- token op
+  op' <- op
   y <- expr opPrec
   succeed (f op' x y)
 
@@ -324,8 +320,3 @@ withOperators prefix infix' =
           expr2 prec y
           |> orElse (succeed x)
    in expr 0
-
-indented :: Parser a -> Parser a
-indented parser = do
-  -- TODO: token should take care of both checking and bookkeeping of indentations
-  parser
