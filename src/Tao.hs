@@ -92,8 +92,8 @@ token parser = do
 delimiter :: String -> Parser a -> Parser [String]
 delimiter indent parser =
   oneOf
-    [ do _ <- token parser; succeed [],
-      newLine indent
+    [ newLine indent,
+      do _ <- token parser; succeed []
     ]
 
 expression :: String -> Parser Expr
