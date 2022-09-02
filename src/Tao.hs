@@ -89,12 +89,19 @@ token parser = do
   _ <- zeroOrMore space
   succeed x
 
+delimiter :: String -> Parser a -> Parser [String]
+delimiter indent parser =
+  oneOf
+    [ do _ <- token parser; succeed [],
+      newLine indent
+    ]
+
 expression :: String -> Parser Expr
 expression indent = do
   let define :: Parser Expr
       define = do
         defs <- definitions indent
-        _ <- oneOf [do _ <- newLine indent; succeed '\n', token (char ';')]
+        _ <- delimiter indent (char ';')
         expr <- expression indent
         succeed (let' defs expr)
 
@@ -178,10 +185,9 @@ unpackPattern indent = do
 
 definitions :: String -> Parser [(Variable, Expr)]
 definitions indent = do
-  let delimiter = oneOf [do _ <- newLine indent; succeed '\n', token (char ';')]
   let definition = oneOf [exactly 1 (defineRules indent), unpackPattern indent]
   def <- definition
-  defs <- zeroOrMore (do _ <- delimiter; definition)
+  defs <- zeroOrMore (do _ <- delimiter indent (char ';'); definition)
   succeed (concat (def : defs))
 
 case' :: String -> Parser Case
@@ -195,7 +201,6 @@ case' indent = do
 
 cases :: String -> Parser [Case]
 cases indent = do
-  let delimiter = oneOf [do _ <- newLine indent; succeed '\n', token (char '|')]
   c <- case' indent
-  cs <- zeroOrMore (do _ <- delimiter; case' indent)
+  cs <- zeroOrMore (do _ <- delimiter indent (char '|'); case' indent)
   succeed (c : cs)
