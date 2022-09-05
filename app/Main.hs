@@ -1,14 +1,14 @@
-import Core (Term (..))
+import Lambda (Term (..))
 import Reducer (evaluate)
 import qualified System.Environment
 import Tao
 
-toTerms :: [String] -> Either Error [Term]
-toTerms [] = Right []
-toTerms (x : xs) = do
-  y <- parse x
-  ys <- toTerms xs
-  Right (y : ys)
+-- toTerms :: [String] -> Either Error [Term]
+-- toTerms [] = Right []
+-- toTerms (x : xs) = do
+--   y <- parse x
+--   ys <- toTerms xs
+--   Right (y : ys)
 
 main :: IO ()
 main = do
@@ -16,8 +16,9 @@ main = do
   case args of
     (filename : args) -> do
       src <- readFile filename
-      case toTerms (src : args) of
-        Right (f : xs) -> print (evaluate (foldl App f xs))
-        Right [] -> print ""
-        Left err -> print ("❌ " ++ show err)
+      -- case toTerms (src : args) of
+      --   Right (f : xs) -> print (evaluate (foldl App f xs))
+      --   Right [] -> print ""
+      --   Left err -> print ("❌ " ++ show err)
+      print "TODO"
     _ -> putStrLn "🛑 Please give me a file to run."

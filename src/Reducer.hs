@@ -1,6 +1,6 @@
 module Reducer where
 
-import Core
+import Lambda
 
 substitute :: String -> Term -> Term -> Term
 substitute x a (Var x') | x == x' = a
@@ -10,7 +10,6 @@ substitute _ _ b = b
 
 reduce :: Term -> Term
 reduce (App a b) = case reduce a of
-  Err -> Err
   Lam x a -> reduce (substitute x b a)
   App (Call f) a -> case (f, reduce a, reduce b) of
     ("+", Int a, Int b) -> Int (a + b)

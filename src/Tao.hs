@@ -7,44 +7,38 @@ newtype Error
   = SyntaxError ParserError
   deriving (Eq, Show)
 
-parse :: String -> Either Error Term
-parse src = do
-  let typeAlternative :: Parser (Constructor, Int)
-      typeAlternative = do
-        name <- token constructorName
-        arity <- token integer
-        succeed (name, arity)
+-- parse :: String -> Either Error Expr
+-- parse src = do
+--   let typeAlternative :: Parser (String, Int)
+--       typeAlternative = do
+--         name <- token constructorName
+--         arity <- token integer
+--         succeed (name, arity)
 
-  let typeDefinition :: Parser (Context -> Context)
-      typeDefinition = do
-        name <- token typeName
-        let args = [] -- TODO
-        alts <- oneOrMore (token typeAlternative)
-        succeed (defineType name args alts)
+--   let typeDefinition :: Parser (Context -> Context)
+--       typeDefinition = do
+--         name <- token typeName
+--         let args = [] -- TODO
+--         alts <- oneOrMore (token typeAlternative)
+--         succeed (defineType name args alts)
 
-  let context :: Parser Context
-      context = do
-        defs <- zeroOrMore typeDefinition
-        succeed (foldr id empty defs)
+--   let context :: Parser Context
+--       context = do
+--         defs <- zeroOrMore typeDefinition
+--         succeed (foldr id empty defs)
 
-  let term :: Parser Term
-      term = do
-        ctx <- context
-        expr <- expression ""
-        succeed (expr ctx)
+--   case Parser.parse src expression of
+--     Left err -> Left (SyntaxError err)
+--     Right term -> Right term
 
-  case Parser.parse src term of
-    Left err -> Left (SyntaxError err)
-    Right term -> Right term
-
-variableName :: Parser Variable
+variableName :: Parser String
 variableName = do
   -- TODO: support `-` and other characters, maybe URL-like names
   c <- lowercase
   cs <- zeroOrMore (oneOf [alphanumeric, char '_'])
   succeed (c : cs)
 
-constructorName :: Parser Constructor
+constructorName :: Parser String
 constructorName = do
   -- TODO: support `-` and other characters, maybe URL-like names, or keep types CamelCase?
   c <- uppercase
@@ -96,34 +90,6 @@ delimiter indent parser =
       do _ <- token parser; succeed []
     ]
 
-expression :: String -> Parser Expr
-expression indent = do
-  let define :: Parser Expr
-      define = do
-        defs <- definitions indent
-        _ <- delimiter indent (char ';')
-        expr <- expression indent
-        succeed (let' defs expr)
-
-  -- TODO: make prefix and infix operators into functions instead of lists
-  -- TODO: make operators support newLines
-  -- TODO: make parentheses support newLines
-  withOperators
-    [ atom (const err) (text "#error"), -- TODO: keyword
-      atom (match "") (cases indent),
-      atom id define,
-      atom var (token variableName),
-      atom int (token integer),
-      atom (const . Call) (token (operator indent)),
-      inbetween (const id) (token (char '(')) (token (char ')'))
-    ]
-    [ infixL 1 (const eq) (token (text "==")),
-      infixL 2 (const add) (token (char '+')),
-      infixL 2 (const sub) (token (char '-')),
-      infixL 3 (const mul) (token (char '*')),
-      infixL 4 (\_ a b -> app a [b]) (succeed ())
-    ]
-
 operator :: String -> Parser String
 operator indent = do
   let ops = ["==", "+", "-", "*"]
@@ -136,59 +102,55 @@ operator indent = do
 
 pattern :: Parser Pattern
 pattern = do
-  p <-
-    oneOf
-      [ fmap (const PAny) (token (char '_')),
-        fmap bind (token variableName),
-        fmap PInt (token integer),
-        do
-          ctr <- token constructorName
-          succeed (PCtr ctr []),
-        do
-          let ctrWithArgs = do
-                ctr <- token constructorName
-                ps <- zeroOrMore pattern
-                succeed (PCtr ctr ps)
-          _ <- token (char '(')
-          p <- oneOf [ctrWithArgs, pattern]
-          _ <- token (char ')')
-          succeed p
-      ]
   oneOf
-    [ do _ <- token (char '@'); x <- token variableName; succeed (PAs p x),
-      succeed p
+    [ fmap (const PAny) (token (char '_')),
+      do
+        x <- token variableName
+        p <- oneOf [do _ <- token (char '@'); pattern, succeed PAny]
+        succeed (PAs p x),
+      fmap PInt (token integer),
+      do
+        ctr <- token constructorName
+        succeed (PCtr ctr []),
+      do
+        let ctrWithArgs = do
+              ctr <- token constructorName
+              ps <- zeroOrMore pattern
+              succeed (PCtr ctr ps)
+        _ <- token (char '(')
+        p <- oneOf [ctrWithArgs, pattern]
+        _ <- token (char ')')
+        succeed p
     ]
 
-defineRules :: String -> Parser (Variable, Expr)
-defineRules indent = do
-  let rule :: Parser ([Pattern], Expr)
-      rule = do
-        ps <- zeroOrMore (do _ <- continueLine indent; pattern)
-        indent <- continueLine indent
-        _ <- token (char '=')
-        indent <- continueLine indent
-        expr <- expression indent
-        succeed (ps, expr)
-  name <- token variableName
-  case' <- rule
-  cases <- zeroOrMore (do _ <- newLine indent; _ <- token (text name); rule)
-  succeed (name, match "" (case' : cases))
-
-unpackPattern :: String -> Parser [(Variable, Expr)]
-unpackPattern indent = do
-  p <- pattern
-  indent <- continueLine indent
-  _ <- token (char '=')
-  indent <- continueLine indent
-  expr <- expression indent
-  succeed (unpack (p, expr))
-
-definitions :: String -> Parser [(Variable, Expr)]
-definitions indent = do
+expression :: String -> Parser Expr
+expression indent = do
   let definition = oneOf [exactly 1 (defineRules indent), unpackPattern indent]
-  def <- definition
-  defs <- zeroOrMore (do _ <- delimiter indent (char ';'); definition)
-  succeed (concat (def : defs))
+  let define :: Parser Expr
+      define = do
+        def <- definition
+        defs <- zeroOrMore (do _ <- delimiter indent (char ';'); definition)
+        _ <- delimiter indent (char ';')
+        expr <- expression indent
+        succeed (Let (concat (def : defs)) expr)
+
+  -- TODO: make prefix and infix operators into functions instead of lists
+  -- TODO: make operators support newLines
+  -- TODO: make parentheses support newLines
+  withOperators
+    [ atom Cases (cases indent),
+      atom id define,
+      atom Var (token variableName),
+      atom Int (token integer),
+      atom Call (token (operator indent)),
+      inbetween (const id) (token (char '(')) (token (char ')'))
+    ]
+    [ infixL 1 (const eq) (token (text "==")),
+      infixL 2 (const add) (token (char '+')),
+      infixL 2 (const sub) (token (char '-')),
+      infixL 3 (const mul) (token (char '*')),
+      infixL 4 (\_ a b -> App a [b]) (succeed ())
+    ]
 
 case' :: String -> Parser Case
 case' indent = do
@@ -204,3 +166,27 @@ cases indent = do
   c <- case' indent
   cs <- zeroOrMore (do _ <- delimiter indent (char '|'); case' indent)
   succeed (c : cs)
+
+defineRules :: String -> Parser (String, Expr)
+defineRules indent = do
+  let rule :: Parser ([Pattern], Expr)
+      rule = do
+        ps <- zeroOrMore (do _ <- continueLine indent; pattern)
+        indent <- continueLine indent
+        _ <- token (char '=')
+        indent <- continueLine indent
+        expr <- expression indent
+        succeed (ps, expr)
+  name <- token variableName
+  case' <- rule
+  cases <- zeroOrMore (do _ <- newLine indent; _ <- token (text name); rule)
+  succeed (name, match [] (case' : cases))
+
+unpackPattern :: String -> Parser [(String, Expr)]
+unpackPattern indent = do
+  p <- pattern
+  indent <- continueLine indent
+  _ <- token (char '=')
+  indent <- continueLine indent
+  expr <- expression indent
+  succeed (unpack (p, expr))
