@@ -24,10 +24,10 @@ instance Show Term where
   show (App a b@(Lam _ _)) = show a ++ " (" ++ show b ++ ")"
   show (App a b) = show a ++ " " ++ show b
   show (Lam x a) = do
-    let vars :: Term -> [String] -> ([String], Term)
-        vars (Lam x a) xs = let (xs', a') = vars a xs in (x : xs', a')
-        vars a xs = (xs, a)
-    let (xs, a') = vars a []
+    let defs :: Term -> [String] -> ([String], Term)
+        defs (Lam x a) xs = let (xs', a') = defs a xs in (x : xs', a')
+        defs a xs = (xs, a)
+    let (xs, a') = defs a []
     "\\" ++ unwords (x : xs) ++ ". " ++ show a'
   show (Call op) = "&" ++ op
   show Fix = "#fix"

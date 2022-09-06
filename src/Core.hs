@@ -28,7 +28,7 @@ instance Show Expr where
   show (Var x) = x
   show (Int i) = show i
   show (Let [] b) = show b
-  show (Let ((x, a) : vars) b) = "#let " ++ x ++ " = " ++ show a ++ "; " ++ show (Let vars b)
+  show (Let ((x, a) : defs) b) = "#let " ++ x ++ " = " ++ show a ++ "; " ++ show (Let defs b)
   show (Cases cases) = do
     let showCase (ps, a) = unwords (map show ps) ++ " -> " ++ show a
     intercalate " | " (map showCase cases)
@@ -89,11 +89,11 @@ compile ctx (App a bs) = do
   a' <- compile ctx a
   bs' <- mapM (compile ctx) bs
   Just (L.app a' bs')
-compile ctx (Let vars b) = do
+compile ctx (Let defs b) = do
   let varToLambda (x, a) = do a' <- compile ctx a; Just (x, a')
-  vars' <- mapM varToLambda vars
+  defs' <- mapM varToLambda defs
   b' <- compile ctx b
-  Just (L.let' vars' b')
+  Just (L.let' defs' b')
 compile ctx (Cases cases) = compileCases ctx "" cases
 compile _ (Call f) = Just (L.Call f)
 
