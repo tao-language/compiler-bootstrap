@@ -13,7 +13,11 @@ data Term
   | Lam String Term
   | Call String
   | Fix
+  | Ann Term Type
+  | For String Type
   deriving (Eq)
+
+type Type = Term
 
 instance Show Term where
   show (Var x) = x
@@ -31,6 +35,8 @@ instance Show Term where
     "\\" ++ unwords (x : xs) ++ ". " ++ show a'
   show (Call op) = "&" ++ op
   show Fix = "#fix"
+  show (Ann a t) = show a ++ " : " ++ show t
+  show (For x t) = "@" ++ x ++ ". " ++ show t
 
 -- Syntax sugar
 app :: Term -> [Term] -> Term

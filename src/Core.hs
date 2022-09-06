@@ -1,6 +1,7 @@
 module Core where
 
 import Data.List (intercalate)
+import Data.Maybe (listToMaybe, mapMaybe)
 import qualified Lambda as L
 
 data Expr
@@ -10,13 +11,18 @@ data Expr
   | Let [(String, Expr)] Expr
   | Cases [Case]
   | Call String
+  | Ann Expr Type
+  | For [String] Type
   deriving (Eq)
+
+type Type = Expr
 
 data Pattern
   = PAny
   | PInt Int
-  | PAs Pattern String
   | PCtr String [Pattern]
+  | PAs Pattern String
+  | PAnn Pattern Pattern
   deriving (Eq)
 
 type Case = ([Pattern], Expr)
@@ -36,6 +42,9 @@ instance Show Expr where
   show (App a@(Cases _) bs) = "#match " ++ unwords (map show bs) ++ " | " ++ show a
   show (App a bs) = show a ++ " " ++ show bs
   show (Call f) = "#call " ++ f
+  show (Ann a t) = show a ++ " : " ++ show t
+  show (For [] t) = show t
+  show (For xs t) = "@" ++ unwords xs ++ ". " ++ show t
 
 instance Show Pattern where
   show PAny = "_"
@@ -44,6 +53,7 @@ instance Show Pattern where
   show (PAs p x) = x ++ "@" ++ show p
   show (PCtr ctr []) = ctr
   show (PCtr ctr ps) = "(" ++ ctr ++ " " ++ unwords (map show ps) ++ ")"
+  show (PAnn p t) = show p ++ " : " ++ show t
 
 -- Syntax sugar
 match :: [Expr] -> [Case] -> Expr
@@ -86,72 +96,86 @@ compile :: Context -> Expr -> Maybe L.Term
 compile _ (Var x) = Just (L.Var x)
 compile _ (Int i) = Just (L.Int i)
 compile ctx (App a bs) = do
+  let expandAnn (Ann a t) = [a, t]
+      expandAnn a = [a]
   a' <- compile ctx a
-  bs' <- mapM (compile ctx) bs
+  bs' <- mapM (compile ctx) (concatMap expandAnn bs)
   Just (L.app a' bs')
 compile ctx (Let defs b) = do
   let varToLambda (x, a) = do a' <- compile ctx a; Just (x, a')
   defs' <- mapM varToLambda defs
   b' <- compile ctx b
   Just (L.let' defs' b')
-compile ctx (Cases cases) = compileCases ctx "" cases
+compile ctx (Cases cases) = compileCases ctx cases
 compile _ (Call f) = Just (L.Call f)
+compile ctx (Ann a t) = do
+  a' <- compile ctx a
+  t' <- compile ctx t
+  Just (L.Ann a' t')
+compile ctx (For [] t) = compile ctx t
+compile ctx (For (x : xs) t) = do
+  t' <- compile ctx (For xs t)
+  Just (L.For x t')
 
-compileCases :: Context -> String -> [Case] -> Maybe L.Term
-compileCases _ _ [] = Nothing
-compileCases ctx _ (([], a) : _) = compile ctx a
-compileCases ctx "" cases = do
-  let x = case inferName "" cases of
-        "" -> do
-          let freeVars (_, a) = maybe [] L.freeVariables (compile ctx a)
-          L.newName "%" (concatMap freeVars cases)
+compileCases :: Context -> [Case] -> Maybe L.Term
+compileCases _ [] = Nothing
+compileCases ctx (([], a) : _) = compile ctx a
+compileCases ctx cases = do
+  let ps = mapMaybe (\(ps, _) -> listToMaybe ps) cases
+  let x = case inferName "" ps of
+        "" -> L.newName "%" (concatMap (\(_, a) -> maybe [] L.freeVariables (compile ctx a)) cases)
         x -> x
-  compileCases ctx x cases
-compileCases ctx x cases =
-  case findAlts ctx cases of
+  let isAnn (PAnn _ _) = True
+      isAnn _ = False
+  let expandAnn ([], a) = ([], a)
+      expandAnn (PAnn p t : ps, a) = (p : t : ps, a)
+      expandAnn (p : ps, a) = (p : PAny : ps, a)
+  let cases' = if any isAnn ps then map expandAnn cases else cases
+  case findAlts ctx ps of
     Just alts -> do
-      let compileAlt alt = compileCases ctx "" (remaining (matchCtr x alt) cases)
+      let compileAlt alt = compileCases ctx (mapMaybe (chompCtr x alt) cases')
       alts' <- mapM compileAlt alts
       Just (L.Lam x (L.app (L.Var x) alts'))
-    Nothing -> case cases of
-      (PAs p x' : ps, a) : cases | x == x' -> compileCases ctx x ((p : ps, a) : cases)
-      (PAs p y : ps, a) : cases -> compileCases ctx x ((p : ps, Let [(y, Var x)] a) : cases)
-      (PInt i : ps, a) : cases -> do
+    Nothing -> case cases' of
+      (PInt i : ps, a) : cases' -> do
         let cond = L.eq (L.Var x) (L.Int i)
-        then' <- compileCases ctx "" [(ps, a)]
-        else' <- compileCases ctx "" cases
-        Just (L.Lam x (L.app cond [then', L.App else' (L.Var x)]))
-      _ -> do
-        cases' <- compileCases ctx x (remaining (matchAny x) cases)
-        Just (L.Lam x cases')
+        then' <- compileCases ctx [(ps, a)]
+        else' <- compileCases ctx cases'
+        case else' of
+          L.Lam x' else' | x == x' -> Just (L.Lam x (L.app cond [then', else']))
+          _ -> Just (L.Lam x (L.app cond [then', L.App else' (L.Var x)]))
+      _ -> fmap (L.Lam x) (compileCases ctx (mapMaybe (chompDefault x) cases'))
 
 -- Helper functions
-inferName :: String -> [Case] -> String
-inferName "" ((PAs _ x : _, _) : cases) = inferName x cases
-inferName x ((PAs _ x' : _, _) : cases) | x == x' = inferName x' cases
-inferName _ ((PAs _ _ : _, _) : _) = ""
-inferName x _ = x
+inferName :: String -> [Pattern] -> String
+inferName x [] = x
+inferName "" (PAs _ x : ps) = inferName x ps
+inferName x (PAs _ x' : ps) | x == x' = inferName x' ps
+inferName _ (PAs _ _ : _) = ""
+inferName x (PAnn p _ : ps) = inferName x (p : ps)
+inferName x (_ : ps) = inferName x ps
 
-findAlts :: Context -> [([Pattern], Expr)] -> Maybe [(String, Int)]
+findAlts :: Context -> [Pattern] -> Maybe [(String, Int)]
 findAlts _ [] = Nothing
-findAlts ctx ((PCtr ctr _ : _, _) : _) = lookup ctr ctx
-findAlts ctx (_ : cases) = findAlts ctx cases
+findAlts ctx (PCtr ctr _ : _) = lookup ctr ctx
+findAlts ctx (PAs p _ : ps) = findAlts ctx (p : ps)
+findAlts ctx (PAnn p _ : ps) = findAlts ctx (p : ps)
+findAlts ctx (_ : ps) = findAlts ctx ps
 
-matchAny :: String -> Case -> Maybe Case
-matchAny _ (PAny : ps, a) = Just (ps, a)
-matchAny _ _ = Nothing
+chompDefault :: String -> Case -> Maybe Case
+chompDefault _ (PAny : ps, a) = Just (ps, a)
+chompDefault x (PAs p x' : ps, a) | x == x' = chompDefault x (p : ps, a)
+chompDefault x (PAs p y : ps, a) = chompDefault x (p : ps, Let [(y, Var x)] a)
+-- chompDefault x (PAnn p _ : ps, a) = chompDefault x (p : ps, a)
+chompDefault _ _ = Nothing
 
-matchCtr :: String -> (String, Int) -> Case -> Maybe Case
-matchCtr _ (_, n) (PAny : ps, a) = Just (replicate n PAny ++ ps, a)
-matchCtr x (ctr, n) (PAs p y : ps, a) = matchCtr x (ctr, n) (p : ps, Let [(y, Var x)] a)
-matchCtr _ (ctr, _) (PCtr ctr' qs : ps, a) | ctr == ctr' = Just (qs ++ ps, a)
-matchCtr _ _ _ = Nothing
-
-remaining :: (Case -> Maybe Case) -> [Case] -> [Case]
-remaining f (case' : cases) = case f case' of
-  Just case' -> case' : remaining f cases
-  Nothing -> remaining f cases
-remaining _ _ = []
+chompCtr :: String -> (String, Int) -> Case -> Maybe Case
+chompCtr _ (_, n) (PAny : ps, a) = Just (replicate n PAny ++ ps, a)
+chompCtr x (ctr, n) (PAs p x' : ps, a) | x == x' = chompCtr x (ctr, n) (p : ps, a)
+chompCtr x (ctr, n) (PAs p y : ps, a) = chompCtr x (ctr, n) (p : ps, Let [(y, Var x)] a)
+chompCtr _ (ctr, _) (PCtr ctr' qs : ps, a) | ctr == ctr' = Just (qs ++ ps, a)
+-- TODO: chompCtr PAnn
+chompCtr _ _ _ = Nothing
 
 bindings :: Pattern -> [String]
 bindings (PAs p x) = x : bindings p
