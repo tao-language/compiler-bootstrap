@@ -1,7 +1,6 @@
 module Core where
 
 import Data.List (intercalate)
-import Data.Maybe (fromMaybe)
 import qualified Lambda as L
 
 data Expr
@@ -29,14 +28,11 @@ instance Show Expr where
   show (Var x) = x
   show (Int i) = show i
   show (Let [] b) = show b
-  show (Let ((x, a) : vars) b) = x ++ " = " ++ show a ++ "; " ++ show (Let vars b)
+  show (Let ((x, a) : vars) b) = "#let " ++ x ++ " = " ++ show a ++ "; " ++ show (Let vars b)
   show (Cases cases) = do
     let showCase (ps, a) = unwords (map show ps) ++ " -> " ++ show a
     intercalate " | " (map showCase cases)
-  -- show (App (Lam x a) (App Fix (Lam x' b))) | x == x' = "#letrec " ++ x ++ " = " ++ show b ++ "; " ++ show a
-  -- show (App (Lam x a) b) = "#let " ++ x ++ " = " ++ show b ++ "; " ++ show a
-  -- show (App a b@(App _ _)) = show a ++ " (" ++ show b ++ ")"
-  -- show (App a b@(Lam _ _)) = show a ++ " (" ++ show b ++ ")"
+  -- TODO: show parentheses when necessary
   show (App a@(Cases _) bs) = "#match " ++ unwords (map show bs) ++ " | " ++ show a
   show (App a bs) = show a ++ " " ++ show bs
   show (Call f) = "#call " ++ f

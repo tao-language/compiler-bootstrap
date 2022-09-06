@@ -7,29 +7,13 @@ newtype Error
   = SyntaxError ParserError
   deriving (Eq, Show)
 
--- parse :: String -> Either Error Expr
--- parse src = do
---   let typeAlternative :: Parser (String, Int)
---       typeAlternative = do
---         name <- token constructorName
---         arity <- token integer
---         succeed (name, arity)
-
---   let typeDefinition :: Parser (Context -> Context)
---       typeDefinition = do
---         name <- token typeName
---         let args = [] -- TODO
---         alts <- oneOrMore (token typeAlternative)
---         succeed (defineType name args alts)
-
---   let context :: Parser Context
---       context = do
---         defs <- zeroOrMore typeDefinition
---         succeed (foldr id empty defs)
-
---   case Parser.parse src expression of
---     Left err -> Left (SyntaxError err)
---     Right term -> Right term
+parse :: [String] -> Either Error (Context, [Expr])
+parse [] = Right (empty, [])
+parse (src : srcs) = case Parser.parse src (expression "") of
+  Left err -> Left (SyntaxError err)
+  Right a -> do
+    (ctx, bs) <- Tao.parse srcs
+    Right (ctx, a : bs)
 
 variableName :: Parser String
 variableName = do

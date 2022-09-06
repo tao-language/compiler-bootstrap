@@ -29,7 +29,7 @@ instance Show Term where
         vars a xs = (xs, a)
     let (xs, a') = vars a []
     "\\" ++ unwords (x : xs) ++ ". " ++ show a'
-  show (Call op) = "&" ++ op
+  show (Call op) = "#call " ++ op
   show Fix = "#fix"
 
 -- Syntax sugar

@@ -1,14 +1,7 @@
-import Lambda (Term (..))
+import Core (Expr (..), compile)
 import Reducer (evaluate)
 import qualified System.Environment
-import Tao
-
--- toTerms :: [String] -> Either Error [Term]
--- toTerms [] = Right []
--- toTerms (x : xs) = do
---   y <- parse x
---   ys <- toTerms xs
---   Right (y : ys)
+import Tao (parse)
 
 main :: IO ()
 main = do
@@ -16,9 +9,10 @@ main = do
   case args of
     (filename : args) -> do
       src <- readFile filename
-      -- case toTerms (src : args) of
-      --   Right (f : xs) -> print (evaluate (foldl App f xs))
-      --   Right [] -> print ""
-      --   Left err -> print ("❌ " ++ show err)
-      print "TODO"
+      case parse (src : args) of
+        Right (ctx, f : xs) -> case compile ctx (App f xs) of
+          Just term -> print (evaluate term)
+          Nothing -> print "❌ error: not all patterns covered"
+        Right (_, []) -> print ""
+        Left err -> print ("❌ " ++ show err)
     _ -> putStrLn "🛑 Please give me a file to run."
