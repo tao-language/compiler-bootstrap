@@ -8,7 +8,7 @@ newtype Error
   deriving (Eq, Show)
 
 parse :: [String] -> Either Error (Context, [Expr])
-parse [] = Right (empty, [])
+parse [] = Right ([], [])
 parse (src : srcs) = case Parser.parse src (expression "") of
   Left err -> Left (SyntaxError err)
   Right a -> do

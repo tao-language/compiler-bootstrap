@@ -7,11 +7,13 @@ import qualified Lambda as L
 data Expr
   = Var String
   | Int Int
-  | App Expr [Expr]
   | Let [(String, Expr)] Expr
   | Cases [Case]
+  | App Expr [Expr]
   | Call String
   | Ann Expr Type
+  | IntT
+  | Fun Type Type
   | For [String] Type
   deriving (Eq)
 
@@ -43,6 +45,8 @@ instance Show Expr where
   show (App a bs) = show a ++ " " ++ show bs
   show (Call f) = "#call " ++ f
   show (Ann a t) = show a ++ " : " ++ show t
+  show IntT = "#Int"
+  show (Fun a b) = show a ++ " => " ++ show b
   show (For [] t) = show t
   show (For xs t) = "@" ++ unwords xs ++ ". " ++ show t
 
@@ -63,6 +67,9 @@ match args cases = App (Cases cases) args
 
 lambda :: [Pattern] -> Expr -> Expr
 lambda ps a = match [] [(ps, a)]
+
+fun :: [Type] -> Type -> Type
+fun ts t = foldr Fun t ts
 
 unpack :: (Pattern, Expr) -> [(String, Expr)]
 unpack (p, a) = do
@@ -85,9 +92,6 @@ eq :: Expr -> Expr -> Expr
 eq a b = App (Call "==") [a, b]
 
 -- Context
-empty :: Context
-empty = []
-
 defineType :: String -> [String] -> [(String, Int)] -> Context -> Context
 defineType _ _ alts ctx = map (\(ctr, _) -> (ctr, alts)) alts ++ ctx
 
@@ -95,27 +99,32 @@ defineType _ _ alts ctx = map (\(ctr, _) -> (ctr, alts)) alts ++ ctx
 compile :: Context -> Expr -> Maybe L.Term
 compile _ (Var x) = Just (L.Var x)
 compile _ (Int i) = Just (L.Int i)
+compile ctx (Let defs b) = do
+  let compileDef (x, a) = do a' <- compile ctx a; Just (x, a')
+  defs' <- mapM compileDef defs
+  b' <- compile ctx b
+  Just (L.let' defs' b')
+compile ctx (Cases cases) = compileCases ctx cases
 compile ctx (App a bs) = do
   let expandAnn (Ann a t) = [a, t]
       expandAnn a = [a]
   a' <- compile ctx a
   bs' <- mapM (compile ctx) (concatMap expandAnn bs)
   Just (L.app a' bs')
-compile ctx (Let defs b) = do
-  let varToLambda (x, a) = do a' <- compile ctx a; Just (x, a')
-  defs' <- mapM varToLambda defs
-  b' <- compile ctx b
-  Just (L.let' defs' b')
-compile ctx (Cases cases) = compileCases ctx cases
-compile _ (Call f) = Just (L.Call f)
+-- compile _ (Call f) = Just (L.Call f)
 compile ctx (Ann a t) = do
   a' <- compile ctx a
   t' <- compile ctx t
   Just (L.Ann a' t')
+compile _ IntT = Just L.IntT
+compile ctx (Fun a b) = do
+  a' <- compile ctx a
+  b' <- compile ctx b
+  Just (L.Fun a' b')
 compile ctx (For [] t) = compile ctx t
 compile ctx (For (x : xs) t) = do
   t' <- compile ctx (For xs t)
-  Just (L.For x t')
+  Just (L.Lam x t')
 
 compileCases :: Context -> [Case] -> Maybe L.Term
 compileCases _ [] = Nothing
@@ -123,7 +132,9 @@ compileCases ctx (([], a) : _) = compile ctx a
 compileCases ctx cases = do
   let ps = mapMaybe (\(ps, _) -> listToMaybe ps) cases
   let x = case inferName "" ps of
-        "" -> L.newName "%" (concatMap (\(_, a) -> maybe [] L.freeVariables (compile ctx a)) cases)
+        "" -> do
+          let names (_, a) = maybe [] L.freeVariables (compile ctx a)
+          L.newName ("%" : concatMap names cases) "%"
         x -> x
   let isAnn (PAnn _ _) = True
       isAnn _ = False

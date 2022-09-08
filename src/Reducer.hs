@@ -2,14 +2,9 @@ module Reducer where
 
 import Lambda
 
-substitute :: String -> Term -> Term -> Term
-substitute x a (Var x') | x == x' = a
-substitute x a (App b1 b2) = App (substitute x a b1) (substitute x a b2)
-substitute x a (Lam y b) | x /= y = Lam y (substitute x a b)
-substitute _ _ b = b
-
 reduce :: Term -> Term
 reduce (App a b) = case reduce a of
+  -- Lam x a -> reduce (substitute [(x, b)] a)
   Lam x a -> reduce (substitute x b a)
   App (Call f) a -> case (f, reduce a, reduce b) of
     ("+", Int a, Int b) -> Int (a + b)
