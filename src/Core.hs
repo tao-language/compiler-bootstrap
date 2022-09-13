@@ -111,7 +111,7 @@ compile ctx (App a bs) = do
   a' <- compile ctx a
   bs' <- mapM (compile ctx) (concatMap expandAnn bs)
   Just (L.app a' bs')
--- compile _ (Call f) = Just (L.Call f)
+compile _ (Call f) = Just (L.Call f)
 compile ctx (Ann a t) = do
   a' <- compile ctx a
   t' <- compile ctx t

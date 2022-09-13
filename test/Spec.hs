@@ -4,6 +4,7 @@ import ParserTests (parserTests)
 import ReducerTests (reducerTests)
 import TaoTests (taoTests)
 import Test.Hspec (hspec)
+import TypeInferenceTests (typeInferenceTests)
 
 main :: IO ()
 main = hspec $ do
@@ -12,3 +13,4 @@ main = hspec $ do
   coreTests
   taoTests
   reducerTests
+  typeInferenceTests

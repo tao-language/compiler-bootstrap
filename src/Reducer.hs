@@ -4,7 +4,6 @@ import Lambda
 
 reduce :: Term -> Term
 reduce (App a b) = case reduce a of
-  -- Lam x a -> reduce (substitute [(x, b)] a)
   Lam x a -> reduce (substitute x b a)
   App (Call f) a -> case (f, reduce a, reduce b) of
     ("+", Int a, Int b) -> Int (a + b)
