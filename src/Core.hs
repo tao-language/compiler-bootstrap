@@ -98,10 +98,9 @@ compile _ (Var x) = Just (L.Var x)
 compile _ (Int i) = Just (L.Int i)
 compile ctx (Let defs b) = do
   let compileDef (x, a) = do a' <- compile ctx a; Just (x, a')
-  defs' <- mapM compileDef defs
+  env <- mapM compileDef defs
   b' <- compile ctx b
-  -- Just (L.let' defs' b')
-  error "TODO: compile Let"
+  Just (L.let' env b')
 compile ctx (Cases cases) = compileCases ctx cases
 compile ctx (App a bs) = do
   let --expandAnn (Ann a t) = [a, t]
