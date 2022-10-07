@@ -5,26 +5,25 @@ import Data.Maybe (listToMaybe, mapMaybe)
 import qualified Lambda as L
 
 data Expr
-  = Var String
-  | Int Int
-  | Let [(String, Expr)] Expr
-  | Cases [Case]
-  | App Expr [Expr]
-  | Call String
-  | Ann Expr Type
-  | IntT
-  | Fun Type Type
-  | For [String] Type
+  = Var !String
+  | Int !Int
+  | Let ![(String, Expr)] !Expr
+  | Cases ![Case]
+  | App !Expr ![Expr]
+  | Call !String
+  | -- | Ann Expr Type
+    IntT
+  | Fun !Type !Type
   deriving (Eq)
 
 type Type = Expr
 
 data Pattern
   = PAny
-  | PInt Int
-  | PCtr String [Pattern]
-  | PAs Pattern String
-  | PAnn Pattern Pattern
+  | PInt !Int
+  | PCtr !String ![Pattern]
+  | PAs !Pattern !String
+  | PAnn !Pattern !Pattern
   deriving (Eq)
 
 type Case = ([Pattern], Expr)
@@ -44,11 +43,9 @@ instance Show Expr where
   show (App a@(Cases _) bs) = "#match " ++ unwords (map show bs) ++ " | " ++ show a
   show (App a bs) = show a ++ " " ++ show bs
   show (Call f) = "#call " ++ f
-  show (Ann a t) = show a ++ " : " ++ show t
+  -- show (Ann a t) = show a ++ " : " ++ show t
   show IntT = "#Int"
   show (Fun a b) = show a ++ " => " ++ show b
-  show (For [] t) = show t
-  show (For xs t) = "@" ++ unwords xs ++ ". " ++ show t
 
 instance Show Pattern where
   show PAny = "_"
@@ -96,37 +93,34 @@ defineType :: String -> [String] -> [(String, Int)] -> Context -> Context
 defineType _ _ alts ctx = map (\(ctr, _) -> (ctr, alts)) alts ++ ctx
 
 -- Compile to Lambda calculus
-compile :: Context -> Expr -> Maybe L.Term
+compile :: Context -> Expr -> Maybe L.Expr
 compile _ (Var x) = Just (L.Var x)
 compile _ (Int i) = Just (L.Int i)
 compile ctx (Let defs b) = do
   let compileDef (x, a) = do a' <- compile ctx a; Just (x, a')
   defs' <- mapM compileDef defs
   b' <- compile ctx b
-  Just (L.let' defs' b')
+  -- Just (L.let' defs' b')
+  error "TODO: compile Let"
 compile ctx (Cases cases) = compileCases ctx cases
 compile ctx (App a bs) = do
-  let expandAnn (Ann a t) = [a, t]
+  let --expandAnn (Ann a t) = [a, t]
       expandAnn a = [a]
   a' <- compile ctx a
   bs' <- mapM (compile ctx) (concatMap expandAnn bs)
   Just (L.app a' bs')
 compile _ (Call f) = Just (L.Call f)
-compile ctx (Ann a t) = do
-  a' <- compile ctx a
-  t' <- compile ctx t
-  Just (L.Ann a' t')
+-- compile ctx (Ann a t) = do
+--   a' <- compile ctx a
+--   t' <- compile ctx t
+--   Just (L.Ann a' t')
 compile _ IntT = Just L.IntT
 compile ctx (Fun a b) = do
   a' <- compile ctx a
   b' <- compile ctx b
   Just (L.Fun a' b')
-compile ctx (For [] t) = compile ctx t
-compile ctx (For (x : xs) t) = do
-  t' <- compile ctx (For xs t)
-  Just (L.Lam x t')
 
-compileCases :: Context -> [Case] -> Maybe L.Term
+compileCases :: Context -> [Case] -> Maybe L.Expr
 compileCases _ [] = Nothing
 compileCases ctx (([], a) : _) = compile ctx a
 compileCases ctx cases = do
@@ -146,16 +140,16 @@ compileCases ctx cases = do
     Just alts -> do
       let compileAlt alt = compileCases ctx (mapMaybe (chompCtr x alt) cases')
       alts' <- mapM compileAlt alts
-      Just (L.Lam x (L.app (L.Var x) alts'))
+      Just (L.Lam [] x (L.app (L.Var x) alts'))
     Nothing -> case cases' of
       (PInt i : ps, a) : cases' -> do
         let cond = L.eq (L.Var x) (L.Int i)
         then' <- compileCases ctx [(ps, a)]
         else' <- compileCases ctx cases'
         case else' of
-          L.Lam x' else' | x == x' -> Just (L.Lam x (L.app cond [then', else']))
-          _ -> Just (L.Lam x (L.app cond [then', L.App else' (L.Var x)]))
-      _ -> fmap (L.Lam x) (compileCases ctx (mapMaybe (chompDefault x) cases'))
+          L.Lam env x' else' | x == x' -> Just (L.Lam env x (L.app cond [then', else']))
+          _ -> Just (L.Lam [] x (L.app cond [then', L.App else' (L.Var x)]))
+      _ -> fmap (L.Lam [] x) (compileCases ctx (mapMaybe (chompDefault x) cases'))
 
 -- Helper functions
 inferName :: String -> [Pattern] -> String

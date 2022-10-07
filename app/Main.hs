@@ -1,5 +1,5 @@
 import Core (Expr (..), compile)
-import Reducer (evaluate)
+import Lambda (eval)
 import qualified System.Environment
 import Tao (parse)
 
@@ -11,7 +11,7 @@ main = do
       src <- readFile filename
       case parse (src : args) of
         Right (ctx, f : xs) -> case compile ctx (App f xs) of
-          Just term -> print (evaluate term)
+          Just expr -> print (eval expr [])
           Nothing -> print "❌ error: not all patterns covered"
         Right (_, []) -> print ""
         Left err -> print ("❌ " ++ show err)

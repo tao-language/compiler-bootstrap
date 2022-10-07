@@ -1,4 +1,4 @@
-name:                tao-compiler-bootstrap
+name:                compiler-bootstrap
 version:             0.1.0.0
 github:              "tao-language/compiler-bootstrap"
 license:             MIT
@@ -37,10 +37,10 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - tao-compiler-bootstrap
+    - compiler-bootstrap
 
 tests:
-  lamda-test:
+  tao-bootstrap-test:
     main:                Spec.hs
     source-dirs:         test
     ghc-options:
@@ -48,5 +48,5 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - tao-compiler-bootstrap
+    - compiler-bootstrap
     - hspec
