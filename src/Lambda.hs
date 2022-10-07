@@ -125,15 +125,15 @@ eval a env = case reduce a env of
 -- Type checking --
 occurs :: String -> Expr -> Bool
 occurs x (Var y) = x == y
-occurs x (Lam _ y a) | x /= y = occurs x a
+occurs x (Lam env y a) | x /= y && x `notElem` map fst env = occurs x a
 occurs x (App a b) = occurs x a || occurs x b
 occurs x (Fun a b) = occurs x a || occurs x b
-occurs x (Ann a (T xs b)) | x `notElem` xs = occurs x a || occurs x b
+-- occurs x (Ann a (T xs b)) | x `notElem` xs = occurs x a || occurs x b
 occurs _ _ = False
 
 substitute :: String -> Expr -> Expr -> Expr
 substitute x a (Var x') | x == x' = a
-substitute x a (Lam env y b) | x /= y = Lam env y (substitute x a b)
+substitute x a (Lam env y b) | x /= y && x `notElem` map fst env = Lam env y (substitute x a b)
 substitute x a (App b1 b2) = App (substitute x a b1) (substitute x a b2)
 substitute x a (Fun b1 b2) = Fun (substitute x a b1) (substitute x a b2)
 -- TODO: Ann
@@ -207,7 +207,7 @@ infer Fix env =
 -- Helper functions --
 freeVariables :: Expr -> [String]
 freeVariables (Var x) = [x]
-freeVariables (Lam _ x a) = delete x (freeVariables a)
+freeVariables (Lam env x a) = filter (\y -> y /= x && y `notElem` map fst env) (freeVariables a)
 freeVariables (App a b) = freeVariables a `union` freeVariables b
 freeVariables (Fun a b) = freeVariables a `union` freeVariables b
 -- TODO: Ann

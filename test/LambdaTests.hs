@@ -52,7 +52,8 @@ lambdaTests = describe "--== Lambda calculus ==--" $ do
     reduce (Var "z") env `shouldBe` z
     reduce (Lam [] "y" x) env `shouldBe` Lam env "y" x
     reduce (Lam [("x", Int 2)] "y" x) env `shouldBe` Lam (("x", Int 2) : env) "y" x
-    reduce (App (Lam [] "x" x) x) env `shouldBe` Int 1
+    reduce (App (lam ["x"] x) x) env `shouldBe` Int 1
+    reduce (App (lam ["x"] y) x) env `shouldBe` y
     reduce (App y x) env `shouldBe` App y (Int 1)
     -- reduce (App f x) env `shouldBe` Ann (App f (Int 1)) (T [] (Typ 42))
     reduce (Fun x y) env `shouldBe` Fun (Int 1) y
@@ -72,11 +73,6 @@ lambdaTests = describe "--== Lambda calculus ==--" $ do
     reduce (add x y) env `shouldBe` add (Int 1) y
 
   it "☯ eval" $ do
-    -- let (x, y, z) = (Var "x", Var "y", Var "z")
-    -- evaluate (App (Lam [] "x" y) z) `shouldBe` y
-    -- evaluate (App (Lam [] "x" x) z) `shouldBe` z
-    -- evaluate (App (Lam [] "x" (App x x)) z) `shouldBe` App z z
-    -- evaluate (App (Lam [] "x" (Lam [] "y" x)) z) `shouldBe` Lam [] "y" z
     eval (Lam [] "y" x) env `shouldBe` Lam [] "y" (Int 1)
     eval (Lam [("x", Int 2)] "y" x) env `shouldBe` Lam [] "y" (Int 2)
     eval (App Fix (Lam [] "f" x)) env `shouldBe` Int 1
@@ -84,8 +80,9 @@ lambdaTests = describe "--== Lambda calculus ==--" $ do
   it "☯ occurs" $ do
     occurs "x" x `shouldBe` True
     occurs "x" y `shouldBe` False
-    -- occurs "x" (Lam "x" x) `shouldBe` False
-    -- occurs "x" (Lam "y" x) `shouldBe` True
+    occurs "x" (Lam [] "x" x) `shouldBe` False
+    occurs "x" (Lam [] "y" x) `shouldBe` True
+    occurs "x" (Lam [("x", Int 1)] "y" x) `shouldBe` False
     occurs "x" (App x y) `shouldBe` True
     occurs "x" (App y x) `shouldBe` True
     -- occurs "x" (Ann x y) `shouldBe` True
@@ -96,8 +93,9 @@ lambdaTests = describe "--== Lambda calculus ==--" $ do
   it "☯ substitute" $ do
     substitute "x" y x `shouldBe` y
     substitute "x" y z `shouldBe` z
-    -- substitute "x" y (Lam "x" x) `shouldBe` Lam "x" x
-    -- substitute "x" y (Lam "z" x) `shouldBe` Lam "z" y
+    substitute "x" y (Lam [] "x" x) `shouldBe` Lam [] "x" x
+    substitute "x" y (Lam [] "z" x) `shouldBe` Lam [] "z" y
+    substitute "x" y (Lam [("x", Int 1)] "z" x) `shouldBe` Lam [("x", Int 1)] "z" x
     substitute "x" y (App x x) `shouldBe` App y y
     -- substitute "x" y (Ann x x) `shouldBe` Ann y y
     substitute "x" y (Fun x x) `shouldBe` Fun y y
@@ -151,8 +149,9 @@ lambdaTests = describe "--== Lambda calculus ==--" $ do
     freeVariables (Int 1) `shouldBe` []
     freeVariables (App x x) `shouldBe` ["x"]
     freeVariables (App x y) `shouldBe` ["x", "y"]
-    -- freeVariables (Lam "x" x) `shouldBe` []
-    -- freeVariables (Lam "x" y) `shouldBe` ["y"]
+    freeVariables (Lam [] "x" x) `shouldBe` []
+    freeVariables (Lam [] "x" y) `shouldBe` ["y"]
+    freeVariables (Lam [("y", Int 1)] "x" y) `shouldBe` []
     freeVariables (Call "+") `shouldBe` []
 
   it "☯ readNameIdx" $ do
