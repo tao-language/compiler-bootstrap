@@ -109,6 +109,7 @@ reduce (App a b) env = case (reduce a env, reduce b env) of
     ("*", Int a, Int b) -> Int (a * b)
     ("==", Int a, Int b) -> lam ["T", "F"] (if a == b then Var "T" else Var "F")
     (_, a, b) -> app (Call f) [a, b]
+  (Fix, f) -> reduce (App f (App Fix f)) env
   (a, b) -> App a b
 reduce (Fun a b) env = Fun (reduce a env) (reduce b env)
 reduce (Ann a typ) env = case reduce a env of
@@ -118,8 +119,7 @@ reduce a _ = a
 
 eval :: Expr -> Env -> Expr
 eval a env = case reduce a env of
-  Lam env x a -> Lam [] x (reduce a ((x, Var x) : env)) -- TODO: move to reduce?
-  App Fix f -> eval (App f (App Fix f)) env
+  Lam env x a -> Lam [] x (reduce a ((x, Var x) : env))
   a -> a
 
 -- Type checking --
