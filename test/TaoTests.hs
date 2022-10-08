@@ -95,9 +95,9 @@ taoTests = describe "--==☯ Tao language ☯==--" $ do
     expr "x = 1; y" `shouldBe` Just (Let [("x", Int 1)] y)
     expr "x = 1\n  y" `shouldBe` Just (Let [("x", Int 1)] y)
     expr "x@_ = 1; y" `shouldBe` Just (Let [("x", Int 1)] y)
-    expr "f x = 1; y" `shouldBe` Just (Let [("f", lambda [x_] (Int 1))] y)
-    expr "f x = 1; y@_ = 2; z" `shouldBe` Just (Let [("f", lambda [x_] (Int 1)), ("y", Int 2)] z)
-    expr "x -> y" `shouldBe` Just (lambda [x_] y)
+    expr "f x = 1; y" `shouldBe` Just (Let [("f", function [x_] (Int 1))] y)
+    expr "f x = 1; y@_ = 2; z" `shouldBe` Just (Let [("f", function [x_] (Int 1)), ("y", Int 2)] z)
+    expr "x -> y" `shouldBe` Just (function [x_] y)
     expr "1 -> y | x -> z" `shouldBe` Just (Cases [([PInt 1], y), ([x_], z)])
     expr "1 -> y\n  x -> z" `shouldBe` Just (Cases [([PInt 1], y), ([x_], z)])
     expr "(x)" `shouldBe` Just x
@@ -137,21 +137,21 @@ taoTests = describe "--==☯ Tao language ☯==--" $ do
     let defineRules' src = parse' src (defineRules indent)
     defineRules' "" `shouldBe` Nothing
     defineRules' "x = y" `shouldBe` Just ("x", y)
-    defineRules' "f _ = y" `shouldBe` Just ("f", lambda [PAny] y)
-    defineRules' "f x = y" `shouldBe` Just ("f", lambda [x_] y)
-    defineRules' "f x y = z" `shouldBe` Just ("f", lambda [x_, y_] z)
-    defineRules' "f A = x" `shouldBe` Just ("f", lambda [PCtr "A" []] x)
+    defineRules' "f _ = y" `shouldBe` Just ("f", function [PAny] y)
+    defineRules' "f x = y" `shouldBe` Just ("f", function [x_] y)
+    defineRules' "f x y = z" `shouldBe` Just ("f", function [x_, y_] z)
+    defineRules' "f A = x" `shouldBe` Just ("f", function [PCtr "A" []] x)
     defineRules' "f A = x\n f B = y" `shouldBe` Just ("f", Cases [([PCtr "A" []], x)])
     defineRules' "f A = x\n  f B = y" `shouldBe` Just ("f", Cases [([PCtr "A" []], x), ([PCtr "B" []], y)])
     defineRules' "f A = x\n   f B = y" `shouldBe` Just ("f", Cases [([PCtr "A" []], x)])
     defineRules' "f\n  x = y" `shouldBe` Nothing
-    defineRules' "f\n   x = y" `shouldBe` Just ("f", lambda [x_] y)
+    defineRules' "f\n   x = y" `shouldBe` Just ("f", function [x_] y)
     defineRules' "f x\n  = y" `shouldBe` Nothing
-    defineRules' "f x\n   = y" `shouldBe` Just ("f", lambda [x_] y)
+    defineRules' "f x\n   = y" `shouldBe` Just ("f", function [x_] y)
     defineRules' "f x =\n  y" `shouldBe` Nothing
-    defineRules' "f x =\n   y" `shouldBe` Just ("f", lambda [x_] y)
+    defineRules' "f x =\n   y" `shouldBe` Just ("f", function [x_] y)
     defineRules' "f\n   x\n   =\n   y" `shouldBe` Nothing
-    defineRules' "f\n   x\n   =\n    y" `shouldBe` Just ("f", lambda [x_] y)
+    defineRules' "f\n   x\n   =\n    y" `shouldBe` Just ("f", function [x_] y)
 
   it "☯ unpackPattern" $ do
     let indent = "  "

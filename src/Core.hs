@@ -5,15 +5,14 @@ import Data.Maybe (listToMaybe, mapMaybe)
 import qualified Lambda as L
 
 data Expr
-  = Var !String
+  = IntT
   | Int !Int
+  | Var !String
   | Let ![(String, Expr)] !Expr
   | Cases ![Case]
   | App !Expr ![Expr]
+  | Fun !Expr !Expr
   | Call !String
-  | -- | Ann Expr Type
-    IntT
-  | Fun !Type !Type
   deriving (Eq)
 
 type Type = Expr
@@ -62,8 +61,8 @@ match [] (([], a) : _) = a
 match [] cases = Cases cases
 match args cases = App (Cases cases) args
 
-lambda :: [Pattern] -> Expr -> Expr
-lambda ps a = match [] [(ps, a)]
+function :: [Pattern] -> Expr -> Expr
+function ps a = match [] [(ps, a)]
 
 fun :: [Type] -> Type -> Type
 fun ts t = foldr Fun t ts
