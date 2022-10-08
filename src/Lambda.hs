@@ -90,7 +90,7 @@ let' defs a = do
       resolve (x : xs) = case lookup x defs of
         Just b -> do
           let subdefs = filter (\(y, _) -> x /= y) defs
-          (x, App Fix (Lam [] x (let' subdefs b))) : resolve xs
+          (x, App Fix (Lam subdefs x b)) : resolve xs
         Nothing -> resolve xs
   foldr letVar a (resolve (freeVariables a))
 

@@ -41,7 +41,7 @@ lambdaTests = describe "--== Lambda calculus ==--" $ do
     let' [] x `shouldBe` x
     let' [("x", y)] z `shouldBe` z
     let' [("x", y)] x `shouldBe` letRec ("x", y) x
-    let' [("x", y), ("y", z)] x `shouldBe` letRec ("x", letRec ("y", z) y) x
+    let' [("x", y), ("y", z)] x `shouldBe` letVar ("x", app Fix [Lam [("y", z)] "x" y]) x
 
   it "☯ reduce" $ do
     reduce IntT env `shouldBe` IntT
