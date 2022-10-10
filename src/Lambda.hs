@@ -7,6 +7,7 @@ import Data.List (union)
 import Text.Read (readMaybe)
 
 -- Lambda calculus: https://www.cse.iitk.ac.in/users/ppk/teaching/cs653/notes/lectures/Lambda-calculus.lhs.pdf
+-- Closure calculus: https://youtu.be/ogXlQf8lDD4
 -- Type inference from scratch: https://youtu.be/ytPAlhnAKro
 -- Bidirectional type checking: https://youtu.be/utyBNDj7s2w
 
@@ -15,6 +16,12 @@ import Text.Read (readMaybe)
 -- Implementing dependent types: https://davidchristiansen.dk/tutorials/implementing-types-hs.pdf
 -- Complete and Easy: https://arxiv.org/pdf/1306.6032.pdf https://arxiv.org/abs/1306.6032
 
+-- TODO: Lambda: reduce recursive functions to normal form
+-- TODO: Core: support types and ADTs like Bool, Maybe, List, Vec, Tuples and Records
+-- TODO: Core: do-notation, monadas, effects, I/O
+-- TODO: Tao: support types (tagged unions, type alias)
+-- TODO: Tao: modules and stdlib (files, parser, compiler)
+-- TODO: self compiling compiler
 data Expr
   = IntT
   | Typ !Int
@@ -25,7 +32,7 @@ data Expr
   | Fun !Expr !Expr
   | Ann !Expr !Type
   | Call !String
-  | Fix
+  | Fix !String !Expr
   deriving (Eq, Show)
 
 data Type
@@ -77,22 +84,8 @@ mul a b = app (Call "*") [a, b]
 eq :: Expr -> Expr -> Expr
 eq a b = app (Call "==") [a, b]
 
-letVar :: (String, Expr) -> Expr -> Expr
-letVar (x, a) b = app (lam [x] b) [a]
-
-letRec :: (String, Expr) -> Expr -> Expr
-letRec (x, a) = letVar (x, app Fix [lam [x] a])
-
-let' :: [(String, Expr)] -> Expr -> Expr
-let' defs a = do
-  let resolve :: [String] -> [(String, Expr)]
-      resolve [] = []
-      resolve (x : xs) = case lookup x defs of
-        Just b -> do
-          let subdefs = filter (\(y, _) -> x /= y) defs
-          (x, App Fix (Lam subdefs x b)) : resolve xs
-        Nothing -> resolve xs
-  foldr letVar a (resolve (freeVariables a))
+let' :: Env -> Expr -> Expr
+let' env a = reduce a (map (\(x, b) -> (x, eval (Fix x b) env)) env)
 
 -- Evaluation --
 reduce :: Expr -> Env -> Expr
@@ -107,9 +100,10 @@ reduce (App a b) env = case (reduce a env, reduce b env) of
     ("+", Int a, Int b) -> Int (a + b)
     ("-", Int a, Int b) -> Int (a - b)
     ("*", Int a, Int b) -> Int (a * b)
-    ("==", Int a, Int b) -> lam ["T", "F"] (if a == b then Var "T" else Var "F")
+    ("==", Int a, Int b) | a == b -> lam ["T", "F"] (Var "T")
+    ("==", Int _, Int _) -> lam ["T", "F"] (Var "F")
     (_, a, b) -> app (Call f) [a, b]
-  (Fix, f) -> reduce (App f (App Fix f)) env
+  (Fix x a, b) -> reduce (App a b) ((x, Fix x a) : env)
   (a, b) -> App a b
 reduce (Fun a b) env = Fun (reduce a env) (reduce b env)
 reduce (Ann a typ) env = case reduce a env of
@@ -119,7 +113,11 @@ reduce a _ = a
 
 eval :: Expr -> Env -> Expr
 eval a env = case reduce a env of
-  Lam env x a -> Lam [] x (reduce a ((x, Var x) : env))
+  Lam env x a -> Lam [] x (eval a ((x, Var x) : env))
+  App a b -> App (eval a []) (eval b [])
+  Fix x a -> case eval a ((x, Var x) : env) of
+    a | x `occurs` a -> Fix x a
+    a -> a
   a -> a
 
 -- Type checking --
@@ -160,7 +158,7 @@ unify a b env = case (reduce a env, reduce b env) of
   (App a1 a2, App b1 b2) -> unify2 (a1, b1) (a2, b2) env
   -- TODO: Ann
   (Fun a1 a2, Fun b1 b2) -> unify2 (a1, b1) (a2, b2) env
-  (Fix, Fix) -> Just env
+  -- (Fix, Fix) -> Just env
   _typeMismatch -> Nothing
 
 unify2 :: (Expr, Expr) -> (Expr, Expr) -> Env -> Maybe Env
@@ -200,9 +198,7 @@ infer (Ann a typ) env = do
   env <- unify t ta env
   Just (reduce t env, env)
 infer (Call f) env = Just (instantiate (T [f] (Var f)) env)
-infer Fix env =
-  -- @a. (a -> a) -> a
-  let a = Var "a" in Just (instantiate (T ["a"] (Fun (Fun a a) a)) env)
+infer (Fix _ a) env = infer a env
 
 -- Helper functions --
 freeVariables :: Expr -> [String]

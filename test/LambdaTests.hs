@@ -31,17 +31,13 @@ lambdaTests = describe "--== Lambda calculus ==--" $ do
     mul x y `shouldBe` App (App (Call "*") x) y
     eq x y `shouldBe` App (App (Call "==") x) y
 
-  it "☯ letVar" $ do
-    letVar ("x", y) z `shouldBe` App (Lam [] "x" z) y
-
-  it "☯ letRec" $ do
-    letRec ("x", y) z `shouldBe` letVar ("x", App Fix (Lam [] "x" y)) z
-
   it "☯ let'" $ do
     let' [] x `shouldBe` x
     let' [("x", y)] z `shouldBe` z
-    let' [("x", y)] x `shouldBe` letRec ("x", y) x
-    let' [("x", y), ("y", z)] x `shouldBe` letVar ("x", app Fix [Lam [("y", z)] "x" y]) x
+    let' [("x", y)] x `shouldBe` y
+    let' [("x", x)] x `shouldBe` Fix "x" x
+    let' [("x", y), ("y", z)] x `shouldBe` z
+    let' [("x", z), ("y", x)] y `shouldBe` z
 
   it "☯ reduce" $ do
     reduce IntT env `shouldBe` IntT
@@ -54,6 +50,7 @@ lambdaTests = describe "--== Lambda calculus ==--" $ do
     reduce (Lam [("x", Int 2)] "y" x) env `shouldBe` Lam (("x", Int 2) : env) "y" x
     reduce (App (lam ["x"] x) x) env `shouldBe` Int 1
     reduce (App (lam ["x"] y) x) env `shouldBe` y
+    -- reduce (App Fix (Lam [] "f" x)) env `shouldBe` Fix
     reduce (App y x) env `shouldBe` App y (Int 1)
     -- reduce (App f x) env `shouldBe` Ann (App f (Int 1)) (T [] (Typ 42))
     reduce (Fun x y) env `shouldBe` Fun (Int 1) y
@@ -75,7 +72,9 @@ lambdaTests = describe "--== Lambda calculus ==--" $ do
   it "☯ eval" $ do
     eval (Lam [] "y" x) env `shouldBe` Lam [] "y" (Int 1)
     eval (Lam [("x", Int 2)] "y" x) env `shouldBe` Lam [] "y" (Int 2)
-    eval (App Fix (Lam [] "f" x)) env `shouldBe` Int 1
+    eval (App y x) env `shouldBe` App y (Int 1)
+    eval (Fix "y" x) env `shouldBe` Int 1
+    eval (Fix "x" x) env `shouldBe` Fix "x" x
 
   it "☯ occurs" $ do
     occurs "x" x `shouldBe` True
@@ -142,7 +141,7 @@ lambdaTests = describe "--== Lambda calculus ==--" $ do
     infer (Ann (Lam [] "a" a) (T [] (Fun IntT IntT))) env `shouldBe` Just (Fun IntT IntT, ("a", IntT) : ("a", a) : ("a", a) : env)
     infer (Call "a") env `shouldBe` Just (a, ("a", a) : env)
     infer (Call "x") env `shouldBe` Just (Var "x1", ("x1", Var "x1") : env)
-    infer Fix env `shouldBe` Just (Fun (Fun a a) a, ("a", a) : env)
+    infer (Fix "f" (Int 1)) env `shouldBe` Just (IntT, env)
 
   it "☯ freeVariables" $ do
     freeVariables x `shouldBe` ["x"]
