@@ -18,7 +18,6 @@ data Expr
   | Ctr !String !String
   | Match ![Case]
   | Let ![(String, Expr)] !Expr
-  | Eq !Expr !Expr
   deriving (Eq, Show)
 
 data Type
@@ -30,8 +29,8 @@ data Pattern
   | PVar !String
   | PAs !Pattern !String
   | PCtr !String ![Pattern]
+  | PIf !Pattern !Expr
   | PEq !Expr
-  -- TODO: add `PIf Pattern Expr` guard
   deriving (Eq, Show)
 
 type Alt = (String, [String])
@@ -141,7 +140,7 @@ inferName cases = do
   let infer' :: String -> [Case] -> String
       infer' x [] = x
       infer' "" ((PVar x : _, _) : cases) = infer' x cases
-      infer' x ((PVar x' : _, _) : cases) | x == x' = infer' x' cases
+      infer' x ((PVar x' : _, _) : cases) | x == x' = infer' x cases
       infer' _ ((PVar _ : _, _) : _) = ""
       infer' x ((PAs _ y : ps, a) : cases) = infer' x ((PVar y : ps, a) : cases)
       infer' x (_ : cases) = infer' x cases
@@ -178,12 +177,13 @@ findAlts env (_ : cases) = findAlts env cases
 
 collapse :: String -> Alt -> [Case] -> [Case]
 collapse _ _ [] = []
-collapse x alt ((PAny : ps, b) : cases) = (map (const PAny) (snd alt) ++ ps, b) : collapse x alt cases
-collapse x alt ((PAs p x' : ps, b) : cases) | x == x' = collapse x alt ((p : ps, b) : cases)
-collapse x alt ((PAs p y : ps, b) : cases) = collapse x alt ((p : ps, let' (y, Var x) b) : cases)
-collapse x alt ((PVar y : ps, b) : cases) = collapse x alt ((PAs PAny y : ps, b) : cases)
-collapse x alt ((PCtr ctr qs : ps, b) : cases) | fst alt == ctr = (qs ++ ps, b) : collapse x alt cases
-collapse x alt ((PEq a : ps, b) : cases) = [(ps, If (Eq (Var x) a) b (Match (collapse x alt cases)))]
+collapse x alt ((PAny : ps, a) : cases) = (map (const PAny) (snd alt) ++ ps, a) : collapse x alt cases
+collapse x alt ((PAs p x' : ps, a) : cases) | x == x' = collapse x alt ((p : ps, a) : cases)
+collapse x alt ((PAs p y : ps, a) : cases) = collapse x alt ((p : ps, let' (y, Var x) a) : cases)
+collapse x alt ((PVar y : ps, a) : cases) = collapse x alt ((PAs PAny y : ps, a) : cases)
+collapse x alt ((PCtr ctr qs : ps, a) : cases) | fst alt == ctr = (qs ++ ps, a) : collapse x alt cases
+collapse x alt ((PIf p cond : ps, a) : cases) = collapse x alt [(p : ps, If cond a (Match (collapse x alt cases)))]
+collapse x alt ((PEq expr : ps, a) : cases) = collapse x alt ((PIf PAny (eq (Var x) expr) : ps, a) : cases)
 collapse x alt (_ : cases) = collapse x alt cases
 
 compile :: Expr -> Either Error Core.Expr

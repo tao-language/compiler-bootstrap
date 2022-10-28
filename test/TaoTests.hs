@@ -106,7 +106,8 @@ taoTests = describe "--== Tao representation ==--" $ do
     collapse "x" alt [([PVar "y", z'], Int 1)] `shouldBe` [([PAny, z'], let' ("y", x) (Int 1))]
     collapse "x" alt [([PCtr "A" [y'], z'], Int 1)] `shouldBe` [([y', z'], Int 1)]
     collapse "x" alt [([PCtr "B" [y'], z'], Int 1)] `shouldBe` []
-    collapse "x" alt [([PEq (Int 0), z'], Int 1), ([y'], Int 2)] `shouldBe` [([z'], If (Eq x (Int 0)) (Int 1) (Match [([PAny], let' ("y", x) (Int 2))]))]
+    collapse "x" alt [([PIf PAny (Bool True), z'], Int 1), ([y'], Int 2)] `shouldBe` [([PAny, z'], If (Bool True) (Int 1) (Match [([PAny], let' ("y", x) (Int 2))]))]
+    collapse "x" alt [([PEq (Int 0), z'], Int 1), ([y'], Int 2)] `shouldBe` [([PAny, z'], If (eq x (Int 0)) (Int 1) (Match [([PAny], let' ("y", x) (Int 2))]))]
 
   it "☯ compile" $ do
     let f = Var "f"
@@ -120,7 +121,8 @@ taoTests = describe "--== Tao representation ==--" $ do
           ]
     compile IntT `shouldBe` Right C.IntT
     compile (Typ [("A", [])]) `shouldBe` Right (C.Typ [("A", [])])
-    -- TODO: Bool
+    compile (Bool True) `shouldBe` Right (C.Lam [] "T" (C.Lam [] "F" (C.Var "T")))
+    compile (Bool False) `shouldBe` Right (C.Lam [] "T" (C.Lam [] "F" (C.Var "F")))
     compile (Int 1) `shouldBe` Right (C.Int 1)
     compile (Var "x") `shouldBe` Right (C.Var "x")
     compile (Lam "x" x) `shouldBe` Right (C.Lam [] "x" (C.Var "x"))
@@ -133,7 +135,7 @@ taoTests = describe "--== Tao representation ==--" $ do
     compile (Let env y) `shouldBe` Right (C.Var "y")
     compile (Let env z) `shouldBe` Right (C.Var "z")
     compile (Let env f) `shouldBe` Right (C.Fix "f" (C.App (C.Var "f") C.IntT))
-    -- TODO: If
+    compile (Let env (If (Var "cond") (Var "then") (Var "else"))) `shouldBe` Right (C.App (C.App (C.Var "cond") (C.Var "then")) (C.Var "else"))
     compile (Let env (Ctr "X" "A")) `shouldBe` Left (UndefinedType "X")
     compile (Let env (Ctr "x" "A")) `shouldBe` Left (NotAType IntT)
     compile (Let env (Ctr "T" "X")) `shouldBe` Left (UndefinedCtr "X")
@@ -146,9 +148,7 @@ taoTests = describe "--== Tao representation ==--" $ do
     compile (Let env (Match [([PVar "y"], y)])) `shouldBe` compile (Lam "y" y)
     compile (Let env (Match [([PCtr "A" []], x), ([PAny], y)])) `shouldBe` compile (Lam "%1" (app (Var "%1") [x, lam ["%1", "%1"] y]))
     compile (Let env (Match [([PCtr "B" [x', y']], x), ([PAny], y)])) `shouldBe` compile (Lam "%1" (app (Var "%1") [y, lam ["x", "y"] x]))
-
--- compile (Let env (Match [([PEq (Int 0)], x)])) `shouldBe` compile (Lam "%1" x)
--- TODO: Eq
+    compile (Let env (Match [([PEq (Int 0)], x), ([PAny], y)])) `shouldBe` compile (Lam "%1" (If (eq (Var "%1") (Int 0)) x y))
 
 -- it "☯ bindings" $ do
 --   bindings PAny `shouldBe` []
