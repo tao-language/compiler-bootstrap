@@ -1,186 +1,215 @@
 module Core where
 
-import Data.List (intercalate)
-import Data.Maybe (listToMaybe, mapMaybe)
-import qualified Lambda as L
+-- TODO: import Prelude() -- don't import prelude
+-- TODO: {-# LANGUAGE NoImplicitPrelude #-}
 
+import Data.List (union)
+import Text.Read (readMaybe)
+
+-- Lambda calculus: https://www.cse.iitk.ac.in/users/ppk/teaching/cs653/notes/lectures/Lambda-calculus.lhs.pdf
+-- Closure calculus: https://youtu.be/ogXlQf8lDD4
+-- Type inference from scratch: https://youtu.be/ytPAlhnAKro
+-- Bidirectional type checking: https://youtu.be/utyBNDj7s2w
+
+-- The Little Typer: https://thelittletyper.com
+-- Epigram: http://www.e-pig.org/ http://www.e-pig.org/downloads/view.pdf
+-- Implementing dependent types: https://davidchristiansen.dk/tutorials/implementing-types-hs.pdf
+-- Complete and Easy: https://arxiv.org/pdf/1306.6032.pdf https://arxiv.org/abs/1306.6032
+
+-- TODO: Core: support types and ADTs like Bool, Maybe, List, Vec, Tuples and Records
+-- TODO: Core: do-notation, monadas, effects, I/O
+-- TODO: Tao: support types (tagged unions, type alias)
+-- TODO: Tao: modules and stdlib (files, parser, compiler)
+-- TODO: self compiling compiler
 data Expr
   = IntT
+  | Typ ![(String, [String])]
   | Int !Int
   | Var !String
-  | Let ![(String, Expr)] !Expr
-  | Cases ![Case]
-  | App !Expr ![Expr]
+  | Lam !Env !String !Expr
+  | App !Expr !Expr
   | Fun !Expr !Expr
+  | Ann !Expr !Type
   | Call !String
-  deriving (Eq)
+  | Fix !String !Expr
+  deriving (Eq, Show)
 
-type Type = Expr
+data Type
+  = T ![String] !Expr
+  deriving (Eq, Show)
 
 data Pattern
   = PAny
-  | PInt !Int
+  | PVar !String
   | PCtr !String ![Pattern]
-  | PAs !Pattern !String
-  | PAnn !Pattern !Pattern
-  deriving (Eq)
+  deriving (Eq, Show)
 
-type Case = ([Pattern], Expr)
+type Env = [(String, Expr)]
 
--- TODO: make Context opaque
-type Context = [(String, [(String, Int)])]
+-- instance Show Expr where
+--   show IntT = "#Int"
+--   show (Typ u) = "#Type{" ++ show u ++ "}"
+--   show (Int i) = show i
+--   show (Var x) = x
+--   show (Lam env x a) = do
+--     let vars :: Expr -> [String] -> ([String], Expr)
+--         vars (Lam env x a) xs = let (xs', a') = vars a xs in (x : xs', a')
+--         vars a xs = (xs, a)
+--     let (xs, a') = vars a []
+--     "\\" ++ unwords (x : xs) ++ ". " ++ show a'
+--   show (App (Lam env x a) (App Fix (Lam env' x' b))) | x == x' = "#letrec " ++ x ++ " = " ++ show b ++ "; " ++ show a
+--   show (App (Lam env x a) b) = "#let " ++ x ++ " = " ++ show b ++ "; " ++ show a
+--   show (App a b@App {}) = show a ++ " (" ++ show b ++ ")"
+--   show (App a b@Lam {}) = show a ++ " (" ++ show b ++ ")"
+--   show (App a b) = show a ++ " " ++ show b
+--   show (Call f) = "&" ++ f
+--   show Fix = "#fix"
+--   show (Fun a b) = show a ++ " => " ++ show b
 
-instance Show Expr where
-  show (Var x) = x
-  show (Int i) = show i
-  show (Let [] b) = show b
-  show (Let ((x, a) : defs) b) = "#let " ++ x ++ " = " ++ show a ++ "; " ++ show (Let defs b)
-  show (Cases cases) = do
-    let showCase (ps, a) = unwords (map show ps) ++ " -> " ++ show a
-    intercalate " | " (map showCase cases)
-  -- TODO: show parentheses when necessary
-  show (App a@(Cases _) bs) = "#match " ++ unwords (map show bs) ++ " | " ++ show a
-  show (App a bs) = show a ++ " " ++ show bs
-  show (Call f) = "#call " ++ f
-  -- show (Ann a t) = show a ++ " : " ++ show t
-  show IntT = "#Int"
-  show (Fun a b) = show a ++ " => " ++ show b
+-- TODO: remove! already covered in Tao
+let' :: Env -> Expr -> Expr
+let' env a = reduce a (map (\(x, b) -> (x, eval (Fix x b) env)) env)
 
-instance Show Pattern where
-  show PAny = "_"
-  show (PInt i) = show i
-  show (PAs PAny x) = x
-  show (PAs p x) = x ++ "@" ++ show p
-  show (PCtr ctr []) = ctr
-  show (PCtr ctr ps) = "(" ++ ctr ++ " " ++ unwords (map show ps) ++ ")"
-  show (PAnn p t) = show p ++ " : " ++ show t
+-- Evaluation --
+reduce :: Expr -> Env -> Expr
+reduce (Var x) env = case lookup x env of
+  Just (Var x') | x == x' -> Var x
+  Just a -> reduce a env
+  Nothing -> Var x
+reduce (Lam env x a) env' = Lam (env ++ env') x a
+reduce (App a b) env = case (reduce a env, reduce b env) of
+  (Lam env x a, b) -> reduce a ((x, b) : env)
+  (App (Call f) a, b) -> case (f, reduce a env, b) of
+    ("+", Int a, Int b) -> Int (a + b)
+    ("-", Int a, Int b) -> Int (a - b)
+    ("*", Int a, Int b) -> Int (a * b)
+    ("==", Int a, Int b) | a == b -> Lam [] "T" (Lam [] "F" (Var "T"))
+    ("==", Int _, Int _) -> Lam [] "T" (Lam [] "F" (Var "F"))
+    (_, a, b) -> App (App (Call f) a) b
+  (Fix x a, b) -> reduce (App a b) ((x, Fix x a) : env)
+  (a, b) -> App a b
+reduce (Fun a b) env = Fun (reduce a env) (reduce b env)
+reduce (Ann a _) env = reduce a env
+reduce a _ = a
 
--- Syntax sugar
-match :: [Expr] -> [Case] -> Expr
-match [] (([], a) : _) = a
-match [] cases = Cases cases
-match args cases = App (Cases cases) args
+eval :: Expr -> Env -> Expr
+eval a env = case reduce a env of
+  Lam env x a -> Lam [] x (eval a ((x, Var x) : env))
+  App a b -> App (eval a []) (eval b [])
+  Fix x a -> case eval a ((x, Var x) : env) of
+    Var x' | x == x' -> Var x
+    a | x `occurs` a -> Fix x a
+    a -> a
+  a -> a
 
-function :: [Pattern] -> Expr -> Expr
-function ps a = match [] [(ps, a)]
+-- Type checking --
+occurs :: String -> Expr -> Bool
+occurs x (Var y) = x == y
+occurs x (Lam env y a) | x /= y && x `notElem` map fst env = occurs x a
+occurs x (App a b) = occurs x a || occurs x b
+occurs x (Fun a b) = occurs x a || occurs x b
+-- TODO: Ann
+occurs _ _ = False
 
-fun :: [Type] -> Type -> Type
-fun ts t = foldr Fun t ts
+substitute :: String -> Expr -> Expr -> Expr
+substitute x a (Var x') | x == x' = a
+substitute x a (Lam env y b) | x /= y && x `notElem` map fst env = Lam env y (substitute x a b)
+substitute x a (App b1 b2) = App (substitute x a b1) (substitute x a b2)
+substitute x a (Fun b1 b2) = Fun (substitute x a b1) (substitute x a b2)
+-- TODO: Ann
+substitute _ _ b = b
 
-unpack :: (Pattern, Expr) -> [(String, Expr)]
-unpack (p, a) = do
-  let bind :: (Pattern, Expr) -> String -> (String, Expr)
-      bind (PAny, a) x = (x, a)
-      bind (PAs p x, a) x' | x == x' = bind (p, a) x
-      bind (p, a) x = (x, match [a] [([p], Var x)])
-  map (bind (p, a)) (bindings p)
+instantiate :: Type -> Env -> (Expr, Env)
+instantiate (T [] a) env = (a, env)
+instantiate (T (x : xs) a) env = do
+  let x' = newName (map fst env) x
+  let a' = substitute x (Var x') a
+  instantiate (T xs a') ((x', Var x') : env)
 
-add :: Expr -> Expr -> Expr
-add a b = App (Call "+") [a, b]
+unify :: Expr -> Expr -> Env -> Maybe Env
+unify a b env = case (reduce a env, reduce b env) of
+  (IntT, IntT) -> Just env
+  (Typ alts, Typ alts') | alts == alts' -> Just env
+  (Int i, Int i') | i == i' -> Just env
+  (Var x, Var x') | x == x' -> Just env
+  (Var x, b) | x `occurs` b -> Nothing
+  (Var x, b) -> Just ((x, b) : env)
+  (a, Var x) | x `occurs` a -> Nothing
+  (a, Var x) -> Just ((x, a) : env)
+  -- TODO: Lam (alpha equivalence?)
+  (App a1 a2, App b1 b2) -> unify2 (a1, b1) (a2, b2) env
+  (Fun a1 a2, Fun b1 b2) -> unify2 (a1, b1) (a2, b2) env
+  -- TODO: Ann
+  -- (Fix, Fix) -> Just env
+  _typeMismatch -> Nothing
 
-sub :: Expr -> Expr -> Expr
-sub a b = App (Call "-") [a, b]
+unify2 :: (Expr, Expr) -> (Expr, Expr) -> Env -> Maybe Env
+unify2 (a1, b1) (a2, b2) env = do
+  env <- unify a1 b1 env
+  unify a2 b2 env
 
-mul :: Expr -> Expr -> Expr
-mul a b = App (Call "*") [a, b]
+infer :: Expr -> Env -> Maybe (Expr, Env)
+infer IntT env = Just (Typ [], env)
+infer (Typ _) env = Just (Typ [], env)
+infer (Int _) env = Just (IntT, env)
+infer (Var x) env = case lookup x env of
+  Just (Ann (Var x') typ) | x == x' -> Just (instantiate typ env)
+  Just (Var x') | x == x' -> Just (Var x, env)
+  Just a -> infer a env
+  Nothing -> Nothing
+infer (Lam _ x a) env = do
+  let tx = newName (map fst env) x
+  (t2, env) <- infer a ((x, Var tx) : (tx, Var tx) : env)
+  (t1, env) <- infer (Var tx) env
+  Just (Fun t1 (reduce t2 env), env)
+infer (App a b) env = do
+  (ta, env) <- infer a env
+  (tb, env) <- infer b env
+  case ta of
+    Fun t1 t2 -> do
+      env <- unify t1 tb env
+      Just (reduce t2 env, env)
+    _notAFunction -> Nothing
+infer (Fun a b) env = do
+  _ <- infer a env
+  _ <- infer b env
+  Just (Typ [], env)
+infer (Ann a typ) env = do
+  let (t, env') = instantiate typ env
+  (ta, env) <- infer a env'
+  env <- unify t ta env
+  Just (reduce t env, env)
+infer (Call f) env = Just (instantiate (T [f] (Var f)) env)
+infer (Fix _ a) env = infer a env
 
-eq :: Expr -> Expr -> Expr
-eq a b = App (Call "==") [a, b]
+-- Helper functions --
+freeVariables :: Expr -> [String]
+freeVariables (Var x) = [x]
+freeVariables (Lam env x a) = filter (\y -> y /= x && y `notElem` map fst env) (freeVariables a)
+freeVariables (App a b) = freeVariables a `union` freeVariables b
+freeVariables (Fun a b) = freeVariables a `union` freeVariables b
+-- TODO: Ann
+freeVariables _ = []
 
--- Context
-defineType :: String -> [String] -> [(String, Int)] -> Context -> Context
-defineType _ _ alts ctx = map (\(ctr, _) -> (ctr, alts)) alts ++ ctx
+newName :: [String] -> String -> String
+newName existing x = case findNameIdx existing x of
+  Just i -> x ++ show (i + 1)
+  Nothing -> x
 
--- Compile to Lambda calculus
-compile :: Context -> Expr -> Maybe L.Expr
-compile _ (Var x) = Just (L.Var x)
-compile _ (Int i) = Just (L.Int i)
-compile ctx (Let defs b) = do
-  let compileDef (x, a) = do a' <- compile ctx a; Just (x, a')
-  env <- mapM compileDef defs
-  b' <- compile ctx b
-  Just (L.let' env b')
-compile ctx (Cases cases) = compileCases ctx cases
-compile ctx (App a bs) = do
-  let --expandAnn (Ann a t) = [a, t]
-      expandAnn a = [a]
-  a' <- compile ctx a
-  bs' <- mapM (compile ctx) (concatMap expandAnn bs)
-  Just (L.app a' bs')
-compile _ (Call f) = Just (L.Call f)
--- compile ctx (Ann a t) = do
---   a' <- compile ctx a
---   t' <- compile ctx t
---   Just (L.Ann a' t')
-compile _ IntT = Just L.IntT
-compile ctx (Fun a b) = do
-  a' <- compile ctx a
-  b' <- compile ctx b
-  Just (L.Fun a' b')
+readNameIdx :: String -> String -> Maybe Int
+readNameIdx "" x = readMaybe x
+readNameIdx (ch : prefix) (ch' : x) | ch == ch' = readNameIdx prefix x
+readNameIdx _ _ = Nothing
 
-compileCases :: Context -> [Case] -> Maybe L.Expr
-compileCases _ [] = Nothing
-compileCases ctx (([], a) : _) = compile ctx a
-compileCases ctx cases = do
-  let ps = mapMaybe (\(ps, _) -> listToMaybe ps) cases
-  let x = case inferName "" ps of
-        "" -> do
-          let names (_, a) = maybe [] L.freeVariables (compile ctx a)
-          L.newName ("%" : concatMap names cases) "%"
-        x -> x
-  let isAnn (PAnn _ _) = True
-      isAnn _ = False
-  let expandAnn ([], a) = ([], a)
-      expandAnn (PAnn p t : ps, a) = (p : t : ps, a)
-      expandAnn (p : ps, a) = (p : PAny : ps, a)
-  let cases' = if any isAnn ps then map expandAnn cases else cases
-  case findAlts ctx ps of
-    Just alts -> do
-      let compileAlt alt = compileCases ctx (mapMaybe (chompCtr x alt) cases')
-      alts' <- mapM compileAlt alts
-      Just (L.Lam [] x (L.app (L.Var x) alts'))
-    Nothing -> case cases' of
-      (PInt i : ps, a) : cases' -> do
-        let cond = L.eq (L.Var x) (L.Int i)
-        then' <- compileCases ctx [(ps, a)]
-        else' <- compileCases ctx cases'
-        case else' of
-          L.Lam env x' else' | x == x' -> Just (L.Lam env x (L.app cond [then', else']))
-          _ -> Just (L.Lam [] x (L.app cond [then', L.App else' (L.Var x)]))
-      _ -> fmap (L.Lam [] x) (compileCases ctx (mapMaybe (chompDefault x) cases'))
+findNameIdx :: [String] -> String -> Maybe Int
+findNameIdx [] _ = Nothing
+findNameIdx (x : xs) prefix = case findNameIdx xs prefix of
+  Just i -> case readNameIdx prefix x of
+    Just j -> Just (max i j)
+    Nothing -> Just i
+  Nothing -> if prefix == x then Just 0 else readNameIdx prefix x
 
--- Helper functions
-inferName :: String -> [Pattern] -> String
-inferName x [] = x
-inferName "" (PAs _ x : ps) = inferName x ps
-inferName x (PAs _ x' : ps) | x == x' = inferName x' ps
-inferName _ (PAs _ _ : _) = ""
-inferName x (PAnn p _ : ps) = inferName x (p : ps)
-inferName x (_ : ps) = inferName x ps
-
-findAlts :: Context -> [Pattern] -> Maybe [(String, Int)]
-findAlts _ [] = Nothing
-findAlts ctx (PCtr ctr _ : _) = lookup ctr ctx
-findAlts ctx (PAs p _ : ps) = findAlts ctx (p : ps)
-findAlts ctx (PAnn p _ : ps) = findAlts ctx (p : ps)
-findAlts ctx (_ : ps) = findAlts ctx ps
-
-chompDefault :: String -> Case -> Maybe Case
-chompDefault _ (PAny : ps, a) = Just (ps, a)
-chompDefault x (PAs p x' : ps, a) | x == x' = chompDefault x (p : ps, a)
-chompDefault x (PAs p y : ps, a) = chompDefault x (p : ps, Let [(y, Var x)] a)
--- chompDefault x (PAnn p _ : ps, a) = chompDefault x (p : ps, a)
-chompDefault _ _ = Nothing
-
-chompCtr :: String -> (String, Int) -> Case -> Maybe Case
-chompCtr _ (_, n) (PAny : ps, a) = Just (replicate n PAny ++ ps, a)
-chompCtr x (ctr, n) (PAs p x' : ps, a) | x == x' = chompCtr x (ctr, n) (p : ps, a)
-chompCtr x (ctr, n) (PAs p y : ps, a) = chompCtr x (ctr, n) (p : ps, Let [(y, Var x)] a)
-chompCtr _ (ctr, _) (PCtr ctr' qs : ps, a) | ctr == ctr' = Just (qs ++ ps, a)
--- TODO: chompCtr PAnn
-chompCtr _ _ _ = Nothing
-
-bindings :: Pattern -> [String]
-bindings (PAs p x) = x : bindings p
-bindings (PCtr ctr (p : ps)) = bindings p ++ bindings (PCtr ctr ps)
-bindings _ = []
+delete :: Eq a => a -> [a] -> [a]
+delete _ [] = []
+delete x (x' : xs) | x == x' = delete x xs
+delete x (y : xs) = y : delete x xs
