@@ -8,7 +8,7 @@ import Test.Hspec
 taoLangTests :: SpecWith ()
 taoLangTests = describe "--==☯ Tao language ☯==--" $ do
   let (x, y) = (Var "x", Var "y")
-  let (x_, y_) = (PAs PAny "x", PAs PAny "y")
+  let (x', y') = (PAs PAny "x", PAs PAny "y")
   let parse' src parser = case Parser.parse src parser of
         Right x -> Just x
         Left _ -> Nothing
@@ -78,12 +78,12 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     parse' "" pattern `shouldBe` Nothing
     parse' "_" pattern `shouldBe` Just PAny
     parse' "42" pattern `shouldBe` Just (PEq (Int 42))
-    parse' "x@_" pattern `shouldBe` Just x_
-    parse' "x" pattern `shouldBe` Just x_
+    parse' "x@_" pattern `shouldBe` Just x'
+    parse' "x" pattern `shouldBe` Just x'
     parse' "A" pattern `shouldBe` Just (PCtr "A" [])
     parse' "B x" pattern `shouldBe` Just (PCtr "B" [])
-    parse' "(B x)" pattern `shouldBe` Just (PCtr "B" [x_])
-    parse' "(C x y)" pattern `shouldBe` Just (PCtr "C" [x_, y_])
+    parse' "(B x)" pattern `shouldBe` Just (PCtr "B" [x'])
+    parse' "(C x y)" pattern `shouldBe` Just (PCtr "C" [x', y'])
 
   it "☯ expression" $ do
     let indent = "  "
@@ -92,14 +92,14 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     expr "x" `shouldBe` Just x
     expr "42" `shouldBe` Just (Int 42)
     expr "(+)" `shouldBe` Just (Call "+")
-    -- expr "x = 1; x" `shouldBe` Just (Int 1)
-    -- expr "x = 1\n  x" `shouldBe` Just (Int 1)
-    -- expr "x@_ = 1; y" `shouldBe` Just (Let [("x", Int 1)] y)
-    -- expr "f x = 1; y" `shouldBe` Just (Let [("f", function [x_] (Int 1))] y)
-    -- expr "f x = 1; y@_ = 2; z" `shouldBe` Just (Let [("f", function [x_] (Int 1)), ("y", Int 2)] z)
-    -- expr "x -> y" `shouldBe` Just (function [x_] y)
-    -- expr "1 -> y | x -> z" `shouldBe` Just (Cases [([PInt 1], y), ([x_], z)])
-    -- expr "1 -> y\n  x -> z" `shouldBe` Just (Cases [([PInt 1], y), ([x_], z)])
+    expr "x = 1; y" `shouldBe` Just (Let [("x", Match [([], Int 1)])] y)
+    expr "x = 1\n  y" `shouldBe` Just (Let [("x", Match [([], Int 1)])] y)
+    expr "x@_ = 1; y" `shouldBe` Just (Let [("x", App (Match [([x'], x)]) (Int 1))] y)
+    -- expr "f x = 1; y" `shouldBe` Just (Let [("f", function [x'] (Int 1))] y)
+    -- expr "f x = 1; y@_ = 2; z" `shouldBe` Just (Let [("f", function [x'] (Int 1)), ("y", Int 2)] z)
+    -- expr "x -> y" `shouldBe` Just (function [x'] y)
+    -- expr "1 -> y | x -> z" `shouldBe` Just (Cases [([PInt 1], y), ([x'], z)])
+    -- expr "1 -> y\n  x -> z" `shouldBe` Just (Cases [([PInt 1], y), ([x'], z)])
     expr "(x)" `shouldBe` Just x
     expr "( x )" `shouldBe` Just x
     expr "x == y" `shouldBe` Just (eq x y)
@@ -111,26 +111,26 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
   --   let indent = "  "
   --   let case_ src = parse' src (case' indent)
   --   case_ "" `shouldBe` Nothing
-  --   case_ "x -> y" `shouldBe` Just ([x_], y)
+  --   case_ "x -> y" `shouldBe` Just ([x'], y)
   --   case_ "x\n  -> y" `shouldBe` Nothing
-  --   case_ "x\n   -> y" `shouldBe` Just ([x_], y)
+  --   case_ "x\n   -> y" `shouldBe` Just ([x'], y)
   --   case_ "x ->\n  y" `shouldBe` Nothing
-  --   case_ "x ->\n   y" `shouldBe` Just ([x_], y)
+  --   case_ "x ->\n   y" `shouldBe` Just ([x'], y)
   --   case_ "x\n   ->\n   y" `shouldBe` Nothing
-  --   case_ "x\n   ->\n    y" `shouldBe` Just ([x_], y)
-  --   case_ "x y -> z" `shouldBe` Just ([x_, y_], z)
+  --   case_ "x\n   ->\n    y" `shouldBe` Just ([x'], y)
+  --   case_ "x y -> z" `shouldBe` Just ([x', y'], z)
 
   -- it "☯ cases" $ do
   --   let indent = "  "
   --   let cases' src = parse' src (cases indent)
   --   cases' "" `shouldBe` Nothing
-  --   cases' "x -> 1" `shouldBe` Just [([x_], Int 1)]
-  --   cases' "x -> 1 | y -> 2" `shouldBe` Just [([x_], Int 1), ([y_], Int 2)]
-  --   cases' "x -> 1\n y -> 2" `shouldBe` Just [([x_], Int 1)]
-  --   cases' "x -> 1\n  y -> 2" `shouldBe` Just [([x_], Int 1), ([y_], Int 2)]
-  --   cases' "x -> 1\n   y -> 2" `shouldBe` Just [([x_], Int 1)]
-  --   cases' "x -> 1 | y -> 2\n  z -> 3" `shouldBe` Just [([x_], Int 1), ([y_], Int 2), ([z_], Int 3)]
-  --   cases' "x -> 1\n  y -> 2 | z -> 3" `shouldBe` Just [([x_], Int 1), ([y_], Int 2), ([z_], Int 3)]
+  --   cases' "x -> 1" `shouldBe` Just [([x'], Int 1)]
+  --   cases' "x -> 1 | y -> 2" `shouldBe` Just [([x'], Int 1), ([y'], Int 2)]
+  --   cases' "x -> 1\n y -> 2" `shouldBe` Just [([x'], Int 1)]
+  --   cases' "x -> 1\n  y -> 2" `shouldBe` Just [([x'], Int 1), ([y'], Int 2)]
+  --   cases' "x -> 1\n   y -> 2" `shouldBe` Just [([x'], Int 1)]
+  --   cases' "x -> 1 | y -> 2\n  z -> 3" `shouldBe` Just [([x'], Int 1), ([y'], Int 2), ([z_], Int 3)]
+  --   cases' "x -> 1\n  y -> 2 | z -> 3" `shouldBe` Just [([x'], Int 1), ([y'], Int 2), ([z_], Int 3)]
 
   -- it "☯ defineRules" $ do
   --   let indent = "  "
@@ -138,20 +138,20 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
   --   defineRules' "" `shouldBe` Nothing
   --   defineRules' "x = y" `shouldBe` Just ("x", y)
   --   defineRules' "f _ = y" `shouldBe` Just ("f", function [PAny] y)
-  --   defineRules' "f x = y" `shouldBe` Just ("f", function [x_] y)
-  --   defineRules' "f x y = z" `shouldBe` Just ("f", function [x_, y_] z)
+  --   defineRules' "f x = y" `shouldBe` Just ("f", function [x'] y)
+  --   defineRules' "f x y = z" `shouldBe` Just ("f", function [x', y'] z)
   --   defineRules' "f A = x" `shouldBe` Just ("f", function [PCtr "A" []] x)
   --   defineRules' "f A = x\n f B = y" `shouldBe` Just ("f", Cases [([PCtr "A" []], x)])
   --   defineRules' "f A = x\n  f B = y" `shouldBe` Just ("f", Cases [([PCtr "A" []], x), ([PCtr "B" []], y)])
   --   defineRules' "f A = x\n   f B = y" `shouldBe` Just ("f", Cases [([PCtr "A" []], x)])
   --   defineRules' "f\n  x = y" `shouldBe` Nothing
-  --   defineRules' "f\n   x = y" `shouldBe` Just ("f", function [x_] y)
+  --   defineRules' "f\n   x = y" `shouldBe` Just ("f", function [x'] y)
   --   defineRules' "f x\n  = y" `shouldBe` Nothing
-  --   defineRules' "f x\n   = y" `shouldBe` Just ("f", function [x_] y)
+  --   defineRules' "f x\n   = y" `shouldBe` Just ("f", function [x'] y)
   --   defineRules' "f x =\n  y" `shouldBe` Nothing
-  --   defineRules' "f x =\n   y" `shouldBe` Just ("f", function [x_] y)
+  --   defineRules' "f x =\n   y" `shouldBe` Just ("f", function [x'] y)
   --   defineRules' "f\n   x\n   =\n   y" `shouldBe` Nothing
-  --   defineRules' "f\n   x\n   =\n    y" `shouldBe` Just ("f", function [x_] y)
+  --   defineRules' "f\n   x\n   =\n    y" `shouldBe` Just ("f", function [x'] y)
 
   -- it "☯ unpackPattern" $ do
   --   let indent = "  "
@@ -161,8 +161,8 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
   --   unpackPattern' "x = y" `shouldBe` Just [("x", y)]
   --   unpackPattern' "42 = y" `shouldBe` Just []
   --   unpackPattern' "A = y" `shouldBe` Just []
-  --   unpackPattern' "(B x) = y" `shouldBe` Just [("x", match [y] [([PCtr "B" [x_]], x)])]
-  --   unpackPattern' "(C x y) = z" `shouldBe` Just [("x", match [z] [([PCtr "C" [x_, y_]], x)]), ("y", match [z] [([PCtr "C" [x_, y_]], y)])]
+  --   unpackPattern' "(B x) = y" `shouldBe` Just [("x", match [y] [([PCtr "B" [x']], x)])]
+  --   unpackPattern' "(C x y) = z" `shouldBe` Just [("x", match [z] [([PCtr "C" [x', y']], x)]), ("y", match [z] [([PCtr "C" [x', y']], y)])]
   --   unpackPattern' "x\n  = y" `shouldBe` Nothing
   --   unpackPattern' "x\n   = y" `shouldBe` Just [("x", y)]
   --   unpackPattern' "x =\n  y" `shouldBe` Nothing

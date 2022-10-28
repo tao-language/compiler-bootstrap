@@ -26,7 +26,6 @@ data Type
 
 data Pattern
   = PAny
-  | PVar !String
   | PAs !Pattern !String
   | PCtr !String ![Pattern]
   | PIf !Pattern !Expr
@@ -100,19 +99,16 @@ mul a b = app (Call "*") [a, b]
 eq :: Expr -> Expr -> Expr
 eq a b = app (Call "==") [a, b]
 
-unpack :: (Pattern, Expr) -> [(String, Expr)]
--- unpack (p, a) = do
---   let bind :: (Pattern, Expr) -> String -> (String, Expr)
---       bind (PAny, a) x = (x, a)
---       bind (PAs p x, a) x' | x == x' = bind (p, a) x
---       bind (p, a) x = (x, match [a] [([p], Var x)])
---   map (bind (p, a)) (bindings p)
-unpack _ = []
+bindings :: Pattern -> [String]
+bindings PAny = []
+bindings (PAs p x) = x : bindings p
+bindings (PCtr _ []) = []
+bindings (PCtr ctr (p : ps)) = bindings p ++ bindings (PCtr ctr ps)
+bindings (PIf p _) = bindings p
+bindings (PEq _) = []
 
--- bindings :: Pattern -> [String]
--- bindings (PAs p x) = x : bindings p
--- bindings (PCtr ctr (p : ps)) = bindings p ++ bindings (PCtr ctr ps)
--- bindings _ = []
+unpack :: (Pattern, Expr) -> [(String, Expr)]
+unpack (p, a) = map (\x -> (x, App (Match [([p], Var x)]) a)) (bindings p)
 
 -- Context --
 -- defineType :: String -> [String] -> [TypeAlt] -> [TypeCtr] -> Env -> ([TypeCtr], Env)
@@ -139,10 +135,9 @@ inferName :: [Case] -> String
 inferName cases = do
   let infer' :: String -> [Case] -> String
       infer' x [] = x
-      infer' "" ((PVar x : _, _) : cases) = infer' x cases
-      infer' x ((PVar x' : _, _) : cases) | x == x' = infer' x cases
-      infer' _ ((PVar _ : _, _) : _) = ""
-      infer' x ((PAs _ y : ps, a) : cases) = infer' x ((PVar y : ps, a) : cases)
+      infer' "" ((PAs _ x : _, _) : cases) = infer' x cases
+      infer' x ((PAs _ x' : _, _) : cases) | x == x' = infer' x cases
+      infer' _ ((PAs _ _ : _, _) : _) = ""
       infer' x (_ : cases) = infer' x cases
   let freeVars :: Case -> [String]
       freeVars (_, a) = case compile a of
@@ -180,7 +175,6 @@ collapse _ _ [] = []
 collapse x alt ((PAny : ps, a) : cases) = (map (const PAny) (snd alt) ++ ps, a) : collapse x alt cases
 collapse x alt ((PAs p x' : ps, a) : cases) | x == x' = collapse x alt ((p : ps, a) : cases)
 collapse x alt ((PAs p y : ps, a) : cases) = collapse x alt ((p : ps, let' (y, Var x) a) : cases)
-collapse x alt ((PVar y : ps, a) : cases) = collapse x alt ((PAs PAny y : ps, a) : cases)
 collapse x alt ((PCtr ctr qs : ps, a) : cases) | fst alt == ctr = (qs ++ ps, a) : collapse x alt cases
 collapse x alt ((PIf p cond : ps, a) : cases) = collapse x alt [(p : ps, If cond a (Match (collapse x alt cases)))]
 collapse x alt ((PEq expr : ps, a) : cases) = collapse x alt ((PIf PAny (eq (Var x) expr) : ps, a) : cases)
