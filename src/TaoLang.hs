@@ -89,7 +89,7 @@ pattern = do
         x <- token variableName
         p <- oneOf [do _ <- token (char '@'); pattern, succeed PAny]
         succeed (PAs p x),
-      -- fmap PInt (token integer),
+      fmap (PEq . Int) (token integer),
       do
         ctr <- token constructorName
         succeed (PCtr ctr []),
@@ -119,7 +119,7 @@ expression indent = do
   -- TODO: make operators support newLines
   -- TODO: make parentheses support newLines
   withOperators
-    [ atom match (cases indent),
+    [ atom Match (cases indent),
       atom id define,
       atom Var (token variableName),
       atom Int (token integer),
@@ -161,7 +161,7 @@ defineRules indent = do
   name <- token variableName
   case' <- rule
   cases <- zeroOrMore (do _ <- newLine indent; _ <- token (text name); rule)
-  succeed (name, match (case' : cases))
+  succeed (name, Match (case' : cases))
 
 unpackPattern :: String -> Parser [(String, Expr)]
 unpackPattern indent = do

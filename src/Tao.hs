@@ -6,6 +6,7 @@ import Data.List (foldl')
 data Expr
   = IntT
   | Typ ![Alt]
+  | Bool !Bool
   | Int !Int
   | Var !String
   | Lam !String !Expr
@@ -13,9 +14,11 @@ data Expr
   | Fun !Expr !Expr
   | Ann !Expr !Type
   | Call !String
-  | Let !Env !Expr
+  | If !Expr !Expr !Expr
   | Ctr !String !String
-  | Match ![String] ![Case] !Expr
+  | Match ![Case]
+  | Let ![(String, Expr)] !Expr
+  | Eq !Expr !Expr
   deriving (Eq, Show)
 
 data Type
@@ -24,10 +27,10 @@ data Type
 
 data Pattern
   = PAny
-  | PInt !Int
   | PVar !String
   | PAs !Pattern !String
   | PCtr !String ![Pattern]
+  | PEq !Expr
   -- TODO: add `PIf Pattern Expr` guard
   deriving (Eq, Show)
 
@@ -38,11 +41,11 @@ type Case = ([Pattern], Expr)
 type Env = [(String, Expr)]
 
 data Error
-  = UndefinedVar !String
-  | UndefinedType !String
+  = UndefinedType !String
   | UndefinedCtr !String
   | NotAType !Expr
   | NotACtr !Expr
+  | NotAllCasesCovered
   | UnmatchedPatterns ![Pattern]
   | CaseTypeMismatch !String !String
   | CaseCtrArgsMismatch ![String] ![Pattern]
@@ -83,6 +86,9 @@ app = foldl' App
 fun :: [Expr] -> Expr -> Expr
 fun xs a = foldr Fun a xs
 
+let' :: (String, Expr) -> Expr -> Expr
+let' (x, a) b = App (Lam x b) a
+
 add :: Expr -> Expr -> Expr
 add a b = app (Call "+") [a, b]
 
@@ -95,15 +101,6 @@ mul a b = app (Call "*") [a, b]
 eq :: Expr -> Expr -> Expr
 eq a b = app (Call "==") [a, b]
 
--- let' :: [(Pattern, Expr)] -> Expr -> Expr
-
--- match :: [Case] -> Expr -> Expr
-match :: [Case] -> Expr
--- match (([], a) : _) = a
--- match cases = Cases cases
--- match args cases = App (Cases cases) args
-match _ = Var "TODO: match"
-
 unpack :: (Pattern, Expr) -> [(String, Expr)]
 -- unpack (p, a) = do
 --   let bind :: (Pattern, Expr) -> String -> (String, Expr)
@@ -113,61 +110,15 @@ unpack :: (Pattern, Expr) -> [(String, Expr)]
 --   map (bind (p, a)) (bindings p)
 unpack _ = []
 
+-- bindings :: Pattern -> [String]
+-- bindings (PAs p x) = x : bindings p
+-- bindings (PCtr ctr (p : ps)) = bindings p ++ bindings (PCtr ctr ps)
+-- bindings _ = []
+
 -- Context --
 -- defineType :: String -> [String] -> [TypeAlt] -> [TypeCtr] -> Env -> ([TypeCtr], Env)
 -- defineType name vars alts ctrs env = (map (\(ctr, _) -> (ctr, alts)) alts ++ ctrs, env)
 
-compile :: Env -> Expr -> Either Error Core.Expr
-compile _ IntT = Right Core.IntT
-compile _ (Typ alts) = Right (Core.Typ alts)
-compile _ (Int i) = Right (Core.Int i)
-compile env (Var x) = case lookup x env of
-  Just (Var x') | x == x' -> Right (Core.Var x)
-  Just a -> case compile ((x, Var x) : env) a of
-    Right a' | x `Core.occurs` a' -> Right (Core.Fix x a')
-    other -> other
-  Nothing -> Left (UndefinedVar x)
-compile env (Lam x a) = do
-  a' <- compile ((x, Var x) : env) a
-  Right (Core.Lam [] x a')
-compile env (App a b) = do
-  a' <- compile env a
-  b' <- compile env b
-  Right (Core.App a' b')
-compile env (Fun a b) = do
-  a' <- compile env a
-  b' <- compile env b
-  Right (Core.Fun a' b')
-compile env (Ann a (T xs t)) = do
-  a' <- compile env a
-  t' <- compile (map (\x -> (x, Var x)) xs ++ env) t
-  Right (Core.Ann a' (Core.T xs t'))
-compile _ (Call f) = Right (Core.Call f)
-compile env (Let defs a) = compile (defs ++ env) a
-compile env (Ctr tname cname) = do
-  alts <- typeAlts env tname
-  args <- altArgs alts cname
-  compile env (lam (args ++ map fst alts) (app (Var cname) (map Var args)))
-compile env (Match [] [] default') = compile env default'
-compile env (Match [] ((_, a) : _) _) = compile env a
-compile env (Match (x : xs) cases default') = case findAlts env cases of
-  Right [] -> do
-    let branch = Match xs (remaining (filterAny x) cases) default'
-    compile env (lam [x] branch)
-  Right alts -> do
-    let branch (ctr, ys) = Match (ys ++ xs) (remaining (filterCtr (ctr, ys) x) cases) default'
-    compile env (lam [x] (app (Var x) (map branch alts)))
-  Left err -> Left err
-
-compileEnv :: Env -> Either Error Core.Env
-compileEnv env = mapM (\(x, a) -> do a <- compile env a; Right (x, a)) env
-
-eval :: Env -> Expr -> Either Error Core.Expr
-eval env expr = do
-  expr' <- compile env expr
-  Right (Core.eval expr' [])
-
--- Helper functions
 ctrType :: Env -> String -> Either Error String
 ctrType env cname = case lookup cname env of
   Just (Ctr tname _) -> Right tname
@@ -185,50 +136,106 @@ altArgs args cname = case lookup cname args of
   Just args -> Right args
   Nothing -> Left (UndefinedCtr cname)
 
-validateCtrCases :: Env -> String -> [Case] -> Either Error ()
-validateCtrCases _ _ [] = Right ()
-validateCtrCases env tname ((PCtr cname ps : _, _) : cases) = do
+inferName :: [Case] -> String
+inferName cases = do
+  let infer' :: String -> [Case] -> String
+      infer' x [] = x
+      infer' "" ((PVar x : _, _) : cases) = infer' x cases
+      infer' x ((PVar x' : _, _) : cases) | x == x' = infer' x' cases
+      infer' _ ((PVar _ : _, _) : _) = ""
+      infer' x ((PAs _ y : ps, a) : cases) = infer' x ((PVar y : ps, a) : cases)
+      infer' x (_ : cases) = infer' x cases
+  let freeVars :: Case -> [String]
+      freeVars (_, a) = case compile a of
+        Right a' -> Core.freeVariables a'
+        Left _ -> []
+  case infer' "" cases of
+    "" -> Core.newName ("%" : concatMap freeVars cases) "%"
+    x -> x
+
+validateCases :: Env -> String -> [Case] -> Either Error ()
+validateCases _ _ [] = Right ()
+validateCases env tname ((PCtr cname ps : _, _) : cases) = do
   tname' <- ctrType env cname
   alts <- typeAlts env tname'
   args <- altArgs alts cname
   case () of
     () | tname /= tname' -> Left (CaseTypeMismatch tname tname')
     () | length args /= length ps -> Left (CaseCtrArgsMismatch args ps)
-    () -> validateCtrCases env tname cases
-validateCtrCases env tname ((PAs p _ : ps, a) : cases) = validateCtrCases env tname ((p : ps, a) : cases)
-validateCtrCases env tname (_ : cases) = validateCtrCases env tname cases
+    () -> validateCases env tname cases
+validateCases env tname ((PAs p _ : ps, a) : cases) = validateCases env tname ((p : ps, a) : cases)
+validateCases env tname (_ : cases) = validateCases env tname cases
 
 findAlts :: Env -> [Case] -> Either Error [Alt]
 findAlts _ [] = Right []
 findAlts env cases@((PCtr cname _ : _, _) : _) = do
   tname <- ctrType env cname
   alts <- typeAlts env tname
-  _ <- validateCtrCases env tname cases
+  _ <- validateCases env tname cases
   Right alts
 findAlts env ((PAs p _ : ps, a) : cases) = findAlts env ((p : ps, a) : cases)
 findAlts env (_ : cases) = findAlts env cases
 
-filterAny :: String -> Case -> Maybe Case
-filterAny _ (PAny : ps, a) = Just (ps, a)
-filterAny x (PVar y : ps, a) = filterAny x (PAs PAny y : ps, a)
-filterAny x (PAs p x' : ps, a) | x == x' = filterAny x (p : ps, a)
-filterAny x (PAs p y : ps, a) = filterAny x (p : ps, Let [(y, Var x)] a)
-filterAny _ _ = Nothing
+collapse :: String -> Alt -> [Case] -> [Case]
+collapse _ _ [] = []
+collapse x alt ((PAny : ps, b) : cases) = (map (const PAny) (snd alt) ++ ps, b) : collapse x alt cases
+collapse x alt ((PAs p x' : ps, b) : cases) | x == x' = collapse x alt ((p : ps, b) : cases)
+collapse x alt ((PAs p y : ps, b) : cases) = collapse x alt ((p : ps, let' (y, Var x) b) : cases)
+collapse x alt ((PVar y : ps, b) : cases) = collapse x alt ((PAs PAny y : ps, b) : cases)
+collapse x alt ((PCtr ctr qs : ps, b) : cases) | fst alt == ctr = (qs ++ ps, b) : collapse x alt cases
+collapse x alt ((PEq a : ps, b) : cases) = [(ps, If (Eq (Var x) a) b (Match (collapse x alt cases)))]
+collapse x alt (_ : cases) = collapse x alt cases
 
-filterCtr :: Alt -> String -> Case -> Maybe Case
-filterCtr (_, args) _ (PAny : ps, a) = Just (replicate (length args) PAny ++ ps, a)
-filterCtr alt x (PVar y : ps, a) = filterCtr alt x (PAs PAny y : ps, a)
-filterCtr alt x (PAs p y : ps, a) = filterCtr alt x (p : ps, Let [(y, Var x)] a)
-filterCtr (ctr, _) _ (PCtr ctr' qs : ps, a) | ctr == ctr' = Just (qs ++ ps, a)
-filterCtr _ _ _ = Nothing
+compile :: Expr -> Either Error Core.Expr
+compile (Let _ IntT) = Right Core.IntT
+compile (Let _ (Typ alts)) = Right (Core.Typ alts)
+compile (Let _ (Bool True)) = Right (Core.Lam [] "T" (Core.Lam [] "F" (Core.Var "T")))
+compile (Let _ (Bool False)) = Right (Core.Lam [] "T" (Core.Lam [] "F" (Core.Var "F")))
+compile (Let _ (Int i)) = Right (Core.Int i)
+compile (Let env (Var x)) = case lookup x env of
+  Just (Var x') | x == x' -> Right (Core.Var x)
+  Just a -> case compile (Let ((x, Var x) : env) a) of
+    Right a' | x `Core.occurs` a' -> Right (Core.Fix x a')
+    other -> other
+  Nothing -> Right (Core.Var x)
+compile (Let env (Lam x a)) = do
+  a' <- compile (Let ((x, Var x) : env) a)
+  Right (Core.Lam [] x a')
+compile (Let env (App a b)) = do
+  a' <- compile (Let env a)
+  b' <- compile (Let env b)
+  Right (Core.App a' b')
+compile (Let env (Fun a b)) = do
+  a' <- compile (Let env a)
+  b' <- compile (Let env b)
+  Right (Core.Fun a' b')
+compile (Let env (Ann a (T xs t))) = do
+  a' <- compile (Let env a)
+  t' <- compile (Let (map (\x -> (x, Var x)) xs ++ env) t)
+  Right (Core.Ann a' (Core.T xs t'))
+compile (Let _ (Call f)) = Right (Core.Call f)
+compile (Let env (If cond then_ else_)) = do
+  cond' <- compile (Let env cond)
+  then' <- compile (Let env then_)
+  else' <- compile (Let env else_)
+  Right (Core.App (Core.App cond' then') else')
+compile (Let env (Ctr tname cname)) = do
+  alts <- typeAlts env tname
+  args <- altArgs alts cname
+  let xs = map (Core.newName (map fst env)) args
+  compile (lam (xs ++ map fst alts) (app (Var cname) (map Var xs)))
+compile (Let _ (Match [])) = Left NotAllCasesCovered
+compile (Let _ (Match (([], a) : _))) = compile a
+compile (Let env (Match cases)) = do
+  let x = inferName cases
+  case findAlts env cases of
+    Right [] -> compile (lam [x] (Match (collapse x ("", []) cases)))
+    Right alts -> compile (lam [x] (app (Var x) (map (\alt -> Match (collapse x alt cases)) alts)))
+    Left err -> Left err
+compile (Let env (Let env' a)) = compile (Let (env ++ env') a)
+compile a = compile (Let [] a)
 
-remaining :: (Case -> Maybe Case) -> [Case] -> [Case]
-remaining f (case' : cases) = case f case' of
-  Just case' -> case' : remaining f cases
-  Nothing -> remaining f cases
-remaining _ _ = []
-
--- bindings :: Pattern -> [String]
--- bindings (PAs p x) = x : bindings p
--- bindings (PCtr ctr (p : ps)) = bindings p ++ bindings (PCtr ctr ps)
--- bindings _ = []
+eval :: Expr -> Either Error Core.Expr
+eval expr = do
+  expr' <- compile expr
+  Right (Core.eval expr' [])

@@ -77,8 +77,8 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
   it "☯ pattern" $ do
     parse' "" pattern `shouldBe` Nothing
     parse' "_" pattern `shouldBe` Just PAny
-    -- parse' "42" pattern `shouldBe` Just (PInt 42)
-    -- parse' "x@_" pattern `shouldBe` Just x_
+    parse' "42" pattern `shouldBe` Just (PEq (Int 42))
+    parse' "x@_" pattern `shouldBe` Just x_
     parse' "x" pattern `shouldBe` Just x_
     parse' "A" pattern `shouldBe` Just (PCtr "A" [])
     parse' "B x" pattern `shouldBe` Just (PCtr "B" [])

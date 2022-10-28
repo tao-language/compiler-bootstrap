@@ -9,9 +9,8 @@ taoTests = describe "--== Tao representation ==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (x', y', z') = (PVar "x", PVar "y", PVar "z")
 
-  -- TODO: syntax sugar
   it "☯ lam" $ do
-    lam [] x `shouldBe` Var "x"
+    lam [] x `shouldBe` x
     lam ["x"] y `shouldBe` Lam "x" y
     lam ["x", "y"] z `shouldBe` Lam "x" (Lam "y" z)
 
@@ -19,6 +18,14 @@ taoTests = describe "--== Tao representation ==--" $ do
     app x [] `shouldBe` x
     app x [y] `shouldBe` App x y
     app x [y, z] `shouldBe` App (App x y) z
+
+  it "☯ fun" $ do
+    fun [] x `shouldBe` x
+    fun [x] y `shouldBe` Fun x y
+    fun [x, y] z `shouldBe` Fun x (Fun y z)
+
+  it "☯ let'" $ do
+    let' ("x", y) z `shouldBe` App (Lam "x" z) y
 
   it "☯ built-in operators" $ do
     add x y `shouldBe` App (App (Call "+") x) y
@@ -47,25 +54,36 @@ taoTests = describe "--== Tao representation ==--" $ do
     altArgs alts "X" `shouldBe` Left (UndefinedCtr "X")
     altArgs alts "A" `shouldBe` Right ["x", "y"]
 
-  it "☯ validateCtrCases" $ do
+  it "☯ inferName" $ do
+    inferName [] `shouldBe` "%1"
+    inferName [([], Var "%42")] `shouldBe` "%43"
+    inferName [([PAny], Var "%42")] `shouldBe` "%43"
+    inferName [([x'], Var "%42")] `shouldBe` "x"
+    inferName [([x'], Var "%42"), ([y'], Int 2)] `shouldBe` "%43"
+    inferName [([PAs PAny "x"], Var "%42")] `shouldBe` "x"
+    inferName [([PAny, x'], Var "%42")] `shouldBe` "%43"
+    inferName [([PAny], Var "%42"), ([x'], x)] `shouldBe` "x"
+
+  it "☯ validateCases" $ do
     let env =
           [ ("T", Typ [("A", [])]),
             ("A", Ctr "T" "A"),
             ("U", Typ [("B", [])]),
             ("B", Ctr "U" "B")
           ]
-    validateCtrCases env "T" [] `shouldBe` Right ()
-    validateCtrCases env "T" [([], Int 1)] `shouldBe` Right ()
-    validateCtrCases env "T" [([PAny], Int 1)] `shouldBe` Right ()
-    validateCtrCases env "T" [([PVar "x"], Int 1)] `shouldBe` Right ()
-    validateCtrCases env "T" [([PCtr "X" []], Int 1)] `shouldBe` Left (UndefinedCtr "X")
-    validateCtrCases env "T" [([PCtr "T" []], Int 1)] `shouldBe` Left (NotACtr (Typ [("A", [])]))
-    validateCtrCases env "T" [([PCtr "A" []], Int 1)] `shouldBe` Right ()
-    validateCtrCases env "T" [([PCtr "B" []], Int 1)] `shouldBe` Left (CaseTypeMismatch "T" "U")
-    validateCtrCases env "T" [([PCtr "A" [x']], Int 1)] `shouldBe` Left (CaseCtrArgsMismatch [] [x'])
-    validateCtrCases env "T" [([PAs PAny "x"], Int 1)] `shouldBe` Right ()
-    validateCtrCases env "T" [([PAs (PCtr "X" []) "x"], Int 1)] `shouldBe` Left (UndefinedCtr "X")
-    validateCtrCases env "T" [([PAs (PCtr "A" []) "x"], Int 1)] `shouldBe` Right ()
+    validateCases env "T" [] `shouldBe` Right ()
+    validateCases env "T" [([], Int 1)] `shouldBe` Right ()
+    validateCases env "T" [([PAny], Int 1)] `shouldBe` Right ()
+    validateCases env "T" [([PVar "x"], Int 1)] `shouldBe` Right ()
+    validateCases env "T" [([PCtr "X" []], Int 1)] `shouldBe` Left (UndefinedCtr "X")
+    validateCases env "T" [([PCtr "T" []], Int 1)] `shouldBe` Left (NotACtr (Typ [("A", [])]))
+    validateCases env "T" [([PCtr "A" []], Int 1)] `shouldBe` Right ()
+    validateCases env "T" [([PCtr "B" []], Int 1)] `shouldBe` Left (CaseTypeMismatch "T" "U")
+    validateCases env "T" [([PCtr "A" [x']], Int 1)] `shouldBe` Left (CaseCtrArgsMismatch [] [x'])
+    validateCases env "T" [([PAs PAny "x"], Int 1)] `shouldBe` Right ()
+    validateCases env "T" [([PAs (PCtr "X" []) "x"], Int 1)] `shouldBe` Left (UndefinedCtr "X")
+    validateCases env "T" [([PAs (PCtr "A" []) "x"], Int 1)] `shouldBe` Right ()
+    validateCases env "T" [([PEq (Int 0)], Int 1)] `shouldBe` Right ()
 
   it "☯ findAlts" $ do
     let env = [("T", Typ [("A", [])]), ("A", Ctr "T" "A")]
@@ -76,83 +94,65 @@ taoTests = describe "--== Tao representation ==--" $ do
     findAlts env [([PVar "x"], Int 1)] `shouldBe` Right []
     findAlts env [([PCtr "A" []], Int 1)] `shouldBe` Right [("A", [])]
     findAlts env [([PAs (PCtr "A" []) "x"], Int 1)] `shouldBe` Right [("A", [])]
-    findAlts env [([PInt 0], Int 1)] `shouldBe` Right []
+    findAlts env [([PEq (Int 0)], Int 1)] `shouldBe` Right []
 
-  it "☯ filterAny" $ do
-    filterAny "x" ([], x) `shouldBe` Nothing
-    filterAny "x" ([PAny, y'], x) `shouldBe` Just ([y'], x)
-    filterAny "x" ([PAs PAny "x", y'], x) `shouldBe` Just ([y'], x)
-    filterAny "x" ([PAs PAny "y", z'], y) `shouldBe` Just ([z'], Let [("y", x)] y)
-    filterAny "x" ([PVar "y", z'], y) `shouldBe` Just ([z'], Let [("y", x)] y)
-    filterAny "x" ([PCtr "A" [], y'], x) `shouldBe` Nothing
-    filterAny "x" ([PInt 1, y'], x) `shouldBe` Nothing
-
-  -- it "☯ filterCtr" $ do
-  --   filterCtr ("A", ["x", "y"]) "z" ([], x) `shouldBe` Nothing
-  --   filterCtr ("A", ["x", "y"]) "z" ([PAny, y'], x) `shouldBe` Just ([PAny, PAny, x'], x)
-  --   filterCtr ("A", ["x", "y"]) "z" ([x', y'], x) `shouldBe` Just ([PAny, PAny, x'], x)
-
-  -- it "☯ chompDefault" $ do
-  --   chompDefault "x" ([PAny, y_], Int 0) `shouldBe` Just ([y_], Int 0)
-  --   chompDefault "x" ([PInt 0, y_], Int 0) `shouldBe` Nothing
-  --   chompDefault "x" ([PCtr "A" [], y_], Int 0) `shouldBe` Nothing
-  --   chompDefault "x" ([x_, y_], Int 0) `shouldBe` Just ([y_], Int 0)
-  --   chompDefault "x" ([y_, z_], Int 0) `shouldBe` Just ([z_], Let [("y", x)] (Int 0))
-  -- -- chompDefault "x" ([PAnn (y_) PAny, z_], Int 0) `shouldBe` Just ([z_], Let [("y", x)] (Int 0))
-
-  -- it "☯ chompCtr" $ do
-  --   chompCtr "x" ("A", 0) ([PAny, y_], Int 0) `shouldBe` Just ([y_], Int 0)
-  --   chompCtr "x" ("B", 1) ([PAny, y_], Int 0) `shouldBe` Just ([PAny, y_], Int 0)
-  --   chompCtr "x" ("A", 0) ([PInt 0, y_], Int 0) `shouldBe` Nothing
-  --   chompCtr "x" ("A", 0) ([PCtr "A" [], y_], Int 0) `shouldBe` Just ([y_], Int 0)
-  --   chompCtr "x" ("B", 1) ([PCtr "A" [], y_], Int 0) `shouldBe` Nothing
-  --   chompCtr "x" ("B", 1) ([PCtr "B" [y_], z_], Int 0) `shouldBe` Just ([y_, z_], Int 0)
-  --   chompCtr "x" ("A", 0) ([x_, y_], Int 0) `shouldBe` Just ([y_], Int 0)
-  --   chompCtr "x" ("A", 0) ([y_, z_], Int 0) `shouldBe` Just ([z_], Let [("y", x)] (Int 0))
-  -- -- chompCtr "x" ("A", 0) ([PAnn y_ PAny, z_], Int 0) `shouldBe` Just ([z_], Let [("y", x)] (Int 0))
-
-  -- it "☯ bindings" $ do
-  --   bindings PAny `shouldBe` []
-  --   bindings x_ `shouldBe` ["x"]
-  --   bindings (PInt 1) `shouldBe` []
-  --   bindings (PCtr "A" []) `shouldBe` []
-  --   bindings (PCtr "A" [x_, y_]) `shouldBe` ["x", "y"]
+  it "☯ collapse" $ do
+    let alt = ("A", ["y"])
+    collapse "x" alt [] `shouldBe` []
+    collapse "x" alt [([], Int 1)] `shouldBe` []
+    collapse "x" alt [([PAny, z'], Int 1)] `shouldBe` [([PAny, z'], Int 1)]
+    collapse "x" alt [([PAs PAny "x", z'], Int 1)] `shouldBe` [([PAny, z'], Int 1)]
+    collapse "x" alt [([PAs PAny "y", z'], Int 1)] `shouldBe` [([PAny, z'], let' ("y", x) (Int 1))]
+    collapse "x" alt [([PVar "y", z'], Int 1)] `shouldBe` [([PAny, z'], let' ("y", x) (Int 1))]
+    collapse "x" alt [([PCtr "A" [y'], z'], Int 1)] `shouldBe` [([y', z'], Int 1)]
+    collapse "x" alt [([PCtr "B" [y'], z'], Int 1)] `shouldBe` []
+    collapse "x" alt [([PEq (Int 0), z'], Int 1), ([y'], Int 2)] `shouldBe` [([z'], If (Eq x (Int 0)) (Int 1) (Match [([PAny], let' ("y", x) (Int 2))]))]
 
   it "☯ compile" $ do
+    let f = Var "f"
     let env =
           [ ("x", IntT),
             ("y", y),
             ("f", App (Var "f") (Var "x")),
-            ("T", Typ [("A", []), ("B", ["x", "y"])]),
+            ("T", Typ [("A", []), ("B", ["x", "xs"])]),
             ("A", Ctr "T" "A"),
             ("B", Ctr "T" "B")
           ]
-    compile env IntT `shouldBe` Right C.IntT
-    compile env (Typ [("A", [])]) `shouldBe` Right (C.Typ [("A", [])])
-    compile env (Int 1) `shouldBe` Right (C.Int 1)
-    compile env (Var "x") `shouldBe` Right C.IntT
-    compile env (Var "y") `shouldBe` Right (C.Var "y")
-    compile env (Var "z") `shouldBe` Left (UndefinedVar "z")
-    compile env (Var "f") `shouldBe` Right (C.Fix "f" (C.App (C.Var "f") C.IntT))
-    compile env (Lam "x" x) `shouldBe` Right (C.Lam [] "x" (C.Var "x"))
-    compile env (Lam "y" x) `shouldBe` Right (C.Lam [] "y" C.IntT)
-    compile env (App y x) `shouldBe` Right (C.App (C.Var "y") C.IntT)
-    compile env (Fun x y) `shouldBe` Right (C.Fun C.IntT (C.Var "y"))
-    compile env (Ann y (T [] x)) `shouldBe` Right (C.Ann (C.Var "y") (C.T [] C.IntT))
-    compile env (Ann y (T ["x"] x)) `shouldBe` Right (C.Ann (C.Var "y") (C.T ["x"] (C.Var "x")))
-    compile env (Call "f") `shouldBe` Right (C.Call "f")
-    compile env (Let [] x) `shouldBe` Right C.IntT
-    compile env (Let [("y", x)] y) `shouldBe` Right C.IntT
-    compile env (Let [("x", Int 1)] x) `shouldBe` Right (C.Int 1)
-    compile env (Ctr "X" "A") `shouldBe` Left (UndefinedType "X")
-    compile env (Ctr "x" "A") `shouldBe` Left (NotAType IntT)
-    compile env (Ctr "T" "X") `shouldBe` Left (UndefinedCtr "X")
-    compile env (Ctr "T" "A") `shouldBe` compile [] (lam ["A", "B"] (Var "A"))
-    compile env (Ctr "T" "B") `shouldBe` compile [] (lam ["x", "y", "A", "B"] (app (Var "B") [x, y]))
-    compile env (Match [] [] (Int 0)) `shouldBe` Right (C.Int 0)
-    compile env (Match [] [([], Int 1)] (Int 0)) `shouldBe` Right (C.Int 1)
-    compile env (Match ["x"] [] (Int 0)) `shouldBe` compile [] (Lam "x" (Int 0))
-    compile env (Match ["x"] [([PCtr "A" []], x)] (Int 0)) `shouldBe` compile [] (Lam "x" (app x [x, lam ["x", "y"] (Int 0)]))
-    compile env (Match ["x"] [([PCtr "B" [x', y']], x)] (Int 0)) `shouldBe` compile [] (Lam "x" (app x [Int 0, lam ["x", "y"] x]))
-    compile env (Match ["x"] [([PAs PAny "y"], y)] (Int 0)) `shouldBe` compile [] (Lam "x" x)
-    compile env (Match ["x"] [([y'], y)] (Int 0)) `shouldBe` compile [] (Lam "x" x)
+    compile IntT `shouldBe` Right C.IntT
+    compile (Typ [("A", [])]) `shouldBe` Right (C.Typ [("A", [])])
+    -- TODO: Bool
+    compile (Int 1) `shouldBe` Right (C.Int 1)
+    compile (Var "x") `shouldBe` Right (C.Var "x")
+    compile (Lam "x" x) `shouldBe` Right (C.Lam [] "x" (C.Var "x"))
+    compile (App x y) `shouldBe` Right (C.App (C.Var "x") (C.Var "y"))
+    compile (Fun x y) `shouldBe` Right (C.Fun (C.Var "x") (C.Var "y"))
+    compile (Ann x (T [] y)) `shouldBe` Right (C.Ann (C.Var "x") (C.T [] (C.Var "y")))
+    compile (Ann x (T ["y"] y)) `shouldBe` Right (C.Ann (C.Var "x") (C.T ["y"] (C.Var "y")))
+    compile (Call "f") `shouldBe` Right (C.Call "f")
+    compile (Let env x) `shouldBe` Right C.IntT
+    compile (Let env y) `shouldBe` Right (C.Var "y")
+    compile (Let env z) `shouldBe` Right (C.Var "z")
+    compile (Let env f) `shouldBe` Right (C.Fix "f" (C.App (C.Var "f") C.IntT))
+    -- TODO: If
+    compile (Let env (Ctr "X" "A")) `shouldBe` Left (UndefinedType "X")
+    compile (Let env (Ctr "x" "A")) `shouldBe` Left (NotAType IntT)
+    compile (Let env (Ctr "T" "X")) `shouldBe` Left (UndefinedCtr "X")
+    compile (Let env (Ctr "T" "A")) `shouldBe` compile (lam ["A", "B"] (Var "A"))
+    compile (Let env (Ctr "T" "B")) `shouldBe` compile (lam ["x1", "xs", "A", "B"] (app (Var "B") [Var "x1", Var "xs"]))
+    compile (Let env (Match [])) `shouldBe` Left NotAllCasesCovered
+    compile (Let env (Match [([], Int 1)])) `shouldBe` Right (C.Int 1)
+    compile (Let env (Match [([PAny], x)])) `shouldBe` compile (Lam "%1" x)
+    compile (Let env (Match [([PAs PAny "y"], y)])) `shouldBe` compile (Lam "y" y)
+    compile (Let env (Match [([PVar "y"], y)])) `shouldBe` compile (Lam "y" y)
+    compile (Let env (Match [([PCtr "A" []], x), ([PAny], y)])) `shouldBe` compile (Lam "%1" (app (Var "%1") [x, lam ["%1", "%1"] y]))
+    compile (Let env (Match [([PCtr "B" [x', y']], x), ([PAny], y)])) `shouldBe` compile (Lam "%1" (app (Var "%1") [y, lam ["x", "y"] x]))
+
+-- compile (Let env (Match [([PEq (Int 0)], x)])) `shouldBe` compile (Lam "%1" x)
+-- TODO: Eq
+
+-- it "☯ bindings" $ do
+--   bindings PAny `shouldBe` []
+--   bindings x_ `shouldBe` ["x"]
+--   bindings (PInt 1) `shouldBe` []
+--   bindings (PCtr "A" []) `shouldBe` []
+--   bindings (PCtr "A" [x_, y_]) `shouldBe` ["x", "y"]

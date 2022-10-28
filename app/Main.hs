@@ -10,7 +10,7 @@ main = do
       src <- readFile filename
       case parse (src : args) of
         Right [] -> print ""
-        Right (f : xs) -> case eval [] (app f xs) of
+        Right (f : xs) -> case eval (app f xs) of
           Right expr -> print expr
           Left err -> putStrLn ("❌ " ++ show err)
         Left err -> putStrLn ("❌ " ++ show err)
