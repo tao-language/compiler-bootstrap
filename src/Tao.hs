@@ -87,6 +87,9 @@ fun xs a = foldr Fun a xs
 let' :: (String, Expr) -> Expr -> Expr
 let' (x, a) b = App (Lam x b) a
 
+pvar :: String -> Pattern
+pvar = PAs PAny
+
 add :: Expr -> Expr -> Expr
 add a b = app (Call "+") [a, b]
 

@@ -27,6 +27,9 @@ taoTests = describe "--== Tao representation ==--" $ do
   it "☯ let'" $ do
     let' ("x", y) z `shouldBe` App (Lam "x" z) y
 
+  it "☯ pvar" $ do
+    pvar "x" `shouldBe` PAs PAny "x"
+
   it "☯ built-in operators" $ do
     add x y `shouldBe` App (App (Call "+") x) y
     sub x y `shouldBe` App (App (Call "-") x) y
