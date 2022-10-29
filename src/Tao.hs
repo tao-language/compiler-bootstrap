@@ -1,176 +1,238 @@
 module Tao where
 
-import Core
-import Parser
+import qualified Core
+import Data.List (foldl')
 
-newtype Error
-  = SyntaxError ParserError
+data Expr
+  = IntT
+  | Typ ![Alt]
+  | Bool !Bool
+  | Int !Int
+  | Var !String
+  | Lam !String !Expr
+  | App !Expr !Expr
+  | Fun !Expr !Expr
+  | Ann !Expr !Type
+  | Call !String
+  | If !Expr !Expr !Expr
+  | Ctr !String !String
+  | Match ![Case]
+  | Let ![(String, Expr)] !Expr
   deriving (Eq, Show)
 
-parse :: [String] -> Either Error (Context, [Expr])
-parse [] = Right (empty, [])
-parse (src : srcs) = case Parser.parse src (expression "") of
-  Left err -> Left (SyntaxError err)
-  Right a -> do
-    (ctx, bs) <- Tao.parse srcs
-    Right (ctx, a : bs)
+data Type
+  = T ![String] !Expr
+  deriving (Eq, Show)
 
-variableName :: Parser String
-variableName = do
-  -- TODO: support `-` and other characters, maybe URL-like names
-  c <- lowercase
-  cs <- zeroOrMore (oneOf [alphanumeric, char '_'])
-  succeed (c : cs)
+data Pattern
+  = PAny
+  | PAs !Pattern !String
+  | PCtr !String ![Pattern]
+  | PIf !Pattern !Expr
+  | PEq !Expr
+  deriving (Eq, Show)
 
-constructorName :: Parser String
-constructorName = do
-  -- TODO: support `-` and other characters, maybe URL-like names, or keep types CamelCase?
-  c <- uppercase
-  cs <- zeroOrMore (oneOf [alphanumeric, char '_'])
-  succeed (c : cs)
+type Alt = (String, [String])
 
-typeName :: Parser String
-typeName = constructorName
+type Case = ([Pattern], Expr)
 
-comment :: Parser String
-comment = do
-  -- TODO: support multi-line comments
-  _ <- text "--"
-  _ <- maybe' space
-  until' (== '\n') anyChar
+type Env = [(String, Expr)]
 
-emptyLine :: Parser String
-emptyLine = do
-  _ <- zeroOrMore space
-  comment' <- oneOf [comment, succeed ""]
-  _ <- char '\n'
-  succeed comment'
+data Error
+  = UndefinedType !String
+  | UndefinedCtr !String
+  | NotAType !Expr
+  | NotACtr !Expr
+  | NotAllCasesCovered
+  | UnmatchedPatterns ![Pattern]
+  | CaseTypeMismatch !String !String
+  | CaseCtrArgsMismatch ![String] ![Pattern]
+  deriving (Eq, Show)
 
-newLine :: String -> Parser [String]
-newLine indent = do
-  _ <- char '\n'
-  comments <- zeroOrMore emptyLine
-  _ <- text indent
-  succeed comments
+-- instance Show Expr where
+--   show (Var x) = x
+--   show (Int i) = show i
+--   show (Let [] b) = show b
+--   show (Let ((x, a) : defs) b) = "#let " ++ x ++ " = " ++ show a ++ "; " ++ show (Let defs b)
+--   show (Cases cases) = do
+--     let showCase (ps, a) = unwords (map show ps) ++ " -> " ++ show a
+--     intercalate " | " (map showCase cases)
+--   -- TODO: show parentheses when necessary
+--   show (App a@(Cases _) bs) = "#match " ++ unwords (map show bs) ++ " | " ++ show a
+--   show (App a bs) = show a ++ " " ++ show bs
+--   show (Call f) = "#call " ++ f
+--   -- show (Ann a t) = show a ++ " : " ++ show t
+--   show IntT = "#Int"
+--   show (Fun a b) = show a ++ " => " ++ show b
 
-continueLine :: String -> Parser String
-continueLine indent =
-  do
-    _ <- newLine indent
-    extra <- oneOrMore space
-    succeed (indent ++ extra)
-    |> orElse (succeed indent)
+-- instance Show Pattern where
+--   show PAny = "_"
+--   show (PInt i) = show i
+--   show (PAs PAny x) = x
+--   show (PAs p x) = x ++ "@" ++ show p
+--   show (PCtr ctr []) = ctr
+--   show (PCtr ctr ps) = "(" ++ ctr ++ " " ++ unwords (map show ps) ++ ")"
+--   show (PAnn p t) = show p ++ " : " ++ show t
 
-token :: Parser a -> Parser a
-token parser = do
-  x <- parser
-  _ <- zeroOrMore space
-  succeed x
+-- Syntax sugar
+lam :: [String] -> Expr -> Expr
+lam xs a = foldr Lam a xs
 
-delimiter :: String -> Parser a -> Parser [String]
-delimiter indent parser =
-  oneOf
-    [ newLine indent,
-      do _ <- token parser; succeed []
-    ]
+app :: Expr -> [Expr] -> Expr
+app = foldl' App
 
-operator :: String -> Parser String
-operator indent = do
-  let ops = ["==", "+", "-", "*"]
-  _ <- token (char '(')
-  _ <- continueLine indent
-  op <- token (oneOf (map text ops))
-  _ <- maybe' (newLine indent)
-  _ <- token (char ')')
-  succeed op
+fun :: [Expr] -> Expr -> Expr
+fun xs a = foldr Fun a xs
 
-pattern :: Parser Pattern
-pattern = do
-  oneOf
-    [ fmap (const PAny) (token (char '_')),
-      do
-        x <- token variableName
-        p <- oneOf [do _ <- token (char '@'); pattern, succeed PAny]
-        succeed (PAs p x),
-      fmap PInt (token integer),
-      do
-        ctr <- token constructorName
-        succeed (PCtr ctr []),
-      do
-        let ctrWithArgs = do
-              ctr <- token constructorName
-              ps <- zeroOrMore pattern
-              succeed (PCtr ctr ps)
-        _ <- token (char '(')
-        p <- oneOf [ctrWithArgs, pattern]
-        _ <- token (char ')')
-        succeed p
-    ]
+let' :: (String, Expr) -> Expr -> Expr
+let' (x, a) b = App (Lam x b) a
 
-expression :: String -> Parser Expr
-expression indent = do
-  let definition = oneOf [exactly 1 (defineRules indent), unpackPattern indent]
-  let define :: Parser Expr
-      define = do
-        def <- definition
-        defs <- zeroOrMore (do _ <- delimiter indent (char ';'); definition)
-        _ <- delimiter indent (char ';')
-        expr <- expression indent
-        succeed (Let (concat (def : defs)) expr)
+pvar :: String -> Pattern
+pvar = PAs PAny
 
-  -- TODO: make prefix and infix operators into functions instead of lists
-  -- TODO: make operators support newLines
-  -- TODO: make parentheses support newLines
-  withOperators
-    [ atom Cases (cases indent),
-      atom id define,
-      atom Var (token variableName),
-      atom Int (token integer),
-      atom Call (token (operator indent)),
-      inbetween (const id) (token (char '(')) (token (char ')'))
-    ]
-    [ infixL 1 (const eq) (token (text "==")),
-      infixL 2 (const add) (token (char '+')),
-      infixL 2 (const sub) (token (char '-')),
-      infixL 3 (const mul) (token (char '*')),
-      infixL 4 (\_ a b -> App a [b]) (succeed ())
-    ]
+add :: Expr -> Expr -> Expr
+add a b = app (Call "+") [a, b]
 
-case' :: String -> Parser Case
-case' indent = do
-  ps <- oneOrMore pattern
-  indent <- continueLine indent
-  _ <- token (text "->")
-  indent <- continueLine indent
-  expr <- expression indent
-  succeed (ps, expr)
+sub :: Expr -> Expr -> Expr
+sub a b = app (Call "-") [a, b]
 
-cases :: String -> Parser [Case]
-cases indent = do
-  c <- case' indent
-  cs <- zeroOrMore (do _ <- delimiter indent (char '|'); case' indent)
-  succeed (c : cs)
+mul :: Expr -> Expr -> Expr
+mul a b = app (Call "*") [a, b]
 
-defineRules :: String -> Parser (String, Expr)
-defineRules indent = do
-  let rule :: Parser ([Pattern], Expr)
-      rule = do
-        ps <- zeroOrMore (do _ <- continueLine indent; pattern)
-        indent <- continueLine indent
-        _ <- token (char '=')
-        indent <- continueLine indent
-        expr <- expression indent
-        succeed (ps, expr)
-  name <- token variableName
-  case' <- rule
-  cases <- zeroOrMore (do _ <- newLine indent; _ <- token (text name); rule)
-  succeed (name, match [] (case' : cases))
+eq :: Expr -> Expr -> Expr
+eq a b = app (Call "==") [a, b]
 
-unpackPattern :: String -> Parser [(String, Expr)]
-unpackPattern indent = do
-  p <- pattern
-  indent <- continueLine indent
-  _ <- token (char '=')
-  indent <- continueLine indent
-  expr <- expression indent
-  succeed (unpack (p, expr))
+bindings :: Pattern -> [String]
+bindings PAny = []
+bindings (PAs p x) = x : bindings p
+bindings (PCtr _ []) = []
+bindings (PCtr ctr (p : ps)) = bindings p ++ bindings (PCtr ctr ps)
+bindings (PIf p _) = bindings p
+bindings (PEq _) = []
+
+unpack :: (Pattern, Expr) -> [(String, Expr)]
+unpack (p, a) = map (\x -> (x, App (Match [([p], Var x)]) a)) (bindings p)
+
+-- Context --
+-- defineType :: String -> [String] -> [TypeAlt] -> [TypeCtr] -> Env -> ([TypeCtr], Env)
+-- defineType name vars alts ctrs env = (map (\(ctr, _) -> (ctr, alts)) alts ++ ctrs, env)
+
+ctrType :: Env -> String -> Either Error String
+ctrType env cname = case lookup cname env of
+  Just (Ctr tname _) -> Right tname
+  Just a -> Left (NotACtr a)
+  Nothing -> Left (UndefinedCtr cname)
+
+typeAlts :: Env -> String -> Either Error [Alt]
+typeAlts env tname = case lookup tname env of
+  Just (Typ alts) -> Right alts
+  Just a -> Left (NotAType a)
+  Nothing -> Left (UndefinedType tname)
+
+altArgs :: [Alt] -> String -> Either Error [String]
+altArgs args cname = case lookup cname args of
+  Just args -> Right args
+  Nothing -> Left (UndefinedCtr cname)
+
+inferName :: [Case] -> String
+inferName cases = do
+  let infer' :: String -> [Case] -> String
+      infer' x [] = x
+      infer' "" ((PAs _ x : _, _) : cases) = infer' x cases
+      infer' x ((PAs _ x' : _, _) : cases) | x == x' = infer' x cases
+      infer' _ ((PAs _ _ : _, _) : _) = ""
+      infer' x (_ : cases) = infer' x cases
+  let freeVars :: Case -> [String]
+      freeVars (_, a) = case compile a of
+        Right a' -> Core.freeVariables a'
+        Left _ -> []
+  case infer' "" cases of
+    "" -> Core.newName ("%" : concatMap freeVars cases) "%"
+    x -> x
+
+validateCases :: Env -> String -> [Case] -> Either Error ()
+validateCases _ _ [] = Right ()
+validateCases env tname ((PCtr cname ps : _, _) : cases) = do
+  tname' <- ctrType env cname
+  alts <- typeAlts env tname'
+  args <- altArgs alts cname
+  case () of
+    () | tname /= tname' -> Left (CaseTypeMismatch tname tname')
+    () | length args /= length ps -> Left (CaseCtrArgsMismatch args ps)
+    () -> validateCases env tname cases
+validateCases env tname ((PAs p _ : ps, a) : cases) = validateCases env tname ((p : ps, a) : cases)
+validateCases env tname (_ : cases) = validateCases env tname cases
+
+findAlts :: Env -> [Case] -> Either Error [Alt]
+findAlts _ [] = Right []
+findAlts env cases@((PCtr cname _ : _, _) : _) = do
+  tname <- ctrType env cname
+  alts <- typeAlts env tname
+  _ <- validateCases env tname cases
+  Right alts
+findAlts env ((PAs p _ : ps, a) : cases) = findAlts env ((p : ps, a) : cases)
+findAlts env (_ : cases) = findAlts env cases
+
+collapse :: String -> Alt -> [Case] -> [Case]
+collapse _ _ [] = []
+collapse x alt ((PAny : ps, a) : cases) = (map (const PAny) (snd alt) ++ ps, a) : collapse x alt cases
+collapse x alt ((PAs p x' : ps, a) : cases) | x == x' = collapse x alt ((p : ps, a) : cases)
+collapse x alt ((PAs p y : ps, a) : cases) = collapse x alt ((p : ps, let' (y, Var x) a) : cases)
+collapse x alt ((PCtr ctr qs : ps, a) : cases) | fst alt == ctr = (qs ++ ps, a) : collapse x alt cases
+collapse x alt ((PIf p cond : ps, a) : cases) = collapse x alt [(p : ps, If cond a (Match (collapse x alt cases)))]
+collapse x alt ((PEq expr : ps, a) : cases) = collapse x alt ((PIf PAny (eq (Var x) expr) : ps, a) : cases)
+collapse x alt (_ : cases) = collapse x alt cases
+
+compile :: Expr -> Either Error Core.Expr
+compile (Let _ IntT) = Right Core.IntT
+compile (Let _ (Typ alts)) = Right (Core.Typ alts)
+compile (Let _ (Bool True)) = Right (Core.Lam [] "T" (Core.Lam [] "F" (Core.Var "T")))
+compile (Let _ (Bool False)) = Right (Core.Lam [] "T" (Core.Lam [] "F" (Core.Var "F")))
+compile (Let _ (Int i)) = Right (Core.Int i)
+compile (Let env (Var x)) = case lookup x env of
+  Just (Var x') | x == x' -> Right (Core.Var x)
+  Just a -> case compile (Let ((x, Var x) : env) a) of
+    Right a' | x `Core.occurs` a' -> Right (Core.Fix x a')
+    other -> other
+  Nothing -> Right (Core.Var x)
+compile (Let env (Lam x a)) = do
+  a' <- compile (Let ((x, Var x) : env) a)
+  Right (Core.Lam [] x a')
+compile (Let env (App a b)) = do
+  a' <- compile (Let env a)
+  b' <- compile (Let env b)
+  Right (Core.App a' b')
+compile (Let env (Fun a b)) = do
+  a' <- compile (Let env a)
+  b' <- compile (Let env b)
+  Right (Core.Fun a' b')
+compile (Let env (Ann a (T xs t))) = do
+  a' <- compile (Let env a)
+  t' <- compile (Let (map (\x -> (x, Var x)) xs ++ env) t)
+  Right (Core.Ann a' (Core.T xs t'))
+compile (Let _ (Call f)) = Right (Core.Call f)
+compile (Let env (If cond then_ else_)) = do
+  cond' <- compile (Let env cond)
+  then' <- compile (Let env then_)
+  else' <- compile (Let env else_)
+  Right (Core.App (Core.App cond' then') else')
+compile (Let env (Ctr tname cname)) = do
+  alts <- typeAlts env tname
+  args <- altArgs alts cname
+  let xs = map (Core.newName (map fst env)) args
+  compile (lam (xs ++ map fst alts) (app (Var cname) (map Var xs)))
+compile (Let _ (Match [])) = Left NotAllCasesCovered
+compile (Let _ (Match (([], a) : _))) = compile a
+compile (Let env (Match cases)) = do
+  let x = inferName cases
+  case findAlts env cases of
+    Right [] -> compile (lam [x] (Match (collapse x ("", []) cases)))
+    Right alts -> compile (lam [x] (app (Var x) (map (\alt -> Match (collapse x alt cases)) alts)))
+    Left err -> Left err
+compile (Let env (Let env' a)) = compile (Let (env ++ env') a)
+compile a = compile (Let [] a)
+
+eval :: Expr -> Either Error Core.Expr
+eval expr = do
+  expr' <- compile expr
+  Right (Core.eval expr' [])

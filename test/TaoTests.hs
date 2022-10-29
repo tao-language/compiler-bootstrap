@@ -1,189 +1,165 @@
 module TaoTests where
 
-import Core
-import Parser
+import qualified Core as C
 import Tao
 import Test.Hspec
 
 taoTests :: SpecWith ()
-taoTests = describe "--==☯ Tao language ☯==--" $ do
+taoTests = describe "--== Tao representation ==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
-  let (x_, y_, z_) = (PAs PAny "x", PAs PAny "y", PAs PAny "z")
-  let parse' src parser = case Parser.parse src parser of
-        Right x -> Just x
-        Left _ -> Nothing
+  let (x', y', z') = (PAs PAny "x", PAs PAny "y", PAs PAny "z")
 
-  it "☯ variableName" $ do
-    parse' "" variableName `shouldBe` Nothing
-    parse' "a" variableName `shouldBe` Just "a"
-    parse' "a1" variableName `shouldBe` Just "a1"
+  it "☯ lam" $ do
+    lam [] x `shouldBe` x
+    lam ["x"] y `shouldBe` Lam "x" y
+    lam ["x", "y"] z `shouldBe` Lam "x" (Lam "y" z)
 
-  it "☯ constructorName" $ do
-    parse' "" constructorName `shouldBe` Nothing
-    parse' "A" constructorName `shouldBe` Just "A"
-    parse' "A1" constructorName `shouldBe` Just "A1"
+  it "☯ app" $ do
+    app x [] `shouldBe` x
+    app x [y] `shouldBe` App x y
+    app x [y, z] `shouldBe` App (App x y) z
 
-  it "☯ comment" $ do
-    let comment' src = parse' src comment
-    comment' "" `shouldBe` Nothing
-    comment' "--my comment" `shouldBe` Just "my comment"
-    comment' "-- my comment" `shouldBe` Just "my comment"
-    comment' "--   my  comment  " `shouldBe` Just "  my  comment  "
+  it "☯ fun" $ do
+    fun [] x `shouldBe` x
+    fun [x] y `shouldBe` Fun x y
+    fun [x, y] z `shouldBe` Fun x (Fun y z)
 
-  it "☯ emptyLine" $ do
-    let emptyLine' src = parse' src emptyLine
-    emptyLine' "" `shouldBe` Nothing
-    emptyLine' "\n" `shouldBe` Just ""
-    emptyLine' "  \n" `shouldBe` Just ""
-    emptyLine' "  --my comment\n" `shouldBe` Just "my comment"
-    emptyLine' "  -- my comment\n" `shouldBe` Just "my comment"
-    emptyLine' "  --   my  comment  \n" `shouldBe` Just "  my  comment  "
+  it "☯ let'" $ do
+    let' ("x", y) z `shouldBe` App (Lam "x" z) y
 
-  it "☯ newLine" $ do
-    let indent = "  "
-    let newLine' src = parse' src (do _ <- newLine indent; letter)
-    newLine' "" `shouldBe` Nothing
-    newLine' "   " `shouldBe` Nothing
-    newLine' "\nx" `shouldBe` Nothing
-    newLine' "\n x" `shouldBe` Nothing
-    newLine' "\n  x" `shouldBe` Just 'x'
-    newLine' "\n   x" `shouldBe` Nothing
-    newLine' "\n\n   \n  x" `shouldBe` Just 'x'
-    newLine' "\n -- comment\n  x" `shouldBe` Just 'x'
+  it "☯ pvar" $ do
+    pvar "x" `shouldBe` PAs PAny "x"
 
-  it "☯ continueLine" $ do
-    let indent = "  "
-    let continueLine' src = parse' src (continueLine indent)
-    continueLine' "" `shouldBe` Just "  "
-    continueLine' "\n" `shouldBe` Just "  "
-    continueLine' "\n  " `shouldBe` Just "  "
-    continueLine' "\n   " `shouldBe` Just "   "
-    continueLine' "\n    " `shouldBe` Just "    "
+  it "☯ built-in operators" $ do
+    add x y `shouldBe` App (App (Call "+") x) y
+    sub x y `shouldBe` App (App (Call "-") x) y
+    mul x y `shouldBe` App (App (Call "*") x) y
+    eq x y `shouldBe` App (App (Call "==") x) y
 
-  it "☯ operator" $ do
-    let indent = "  "
-    let operator' src = parse' src (operator indent)
-    operator' "+" `shouldBe` Nothing
-    operator' "( + )" `shouldBe` Just "+"
-    operator' "(+)" `shouldBe` Just "+"
-    operator' "(-)" `shouldBe` Just "-"
-    operator' "(*)" `shouldBe` Just "*"
-    operator' "(==)" `shouldBe` Just "=="
-    operator' "( + )" `shouldBe` Just "+"
-    operator' "(\n+\n)" `shouldBe` Nothing
-    operator' "(\n  +\n  )" `shouldBe` Nothing
-    operator' "(\n   +\n  )" `shouldBe` Just "+"
+  it "☯ bindings" $ do
+    bindings PAny `shouldBe` []
+    bindings (PAs y' "x") `shouldBe` ["x", "y"]
+    bindings (PCtr "A" []) `shouldBe` []
+    bindings (PCtr "A" [x', y']) `shouldBe` ["x", "y"]
+    bindings (PIf x' y) `shouldBe` ["x"]
+    bindings (PEq x) `shouldBe` []
 
-  it "☯ pattern" $ do
-    parse' "" pattern `shouldBe` Nothing
-    parse' "_" pattern `shouldBe` Just PAny
-    parse' "42" pattern `shouldBe` Just (PInt 42)
-    parse' "x@_" pattern `shouldBe` Just x_
-    parse' "x" pattern `shouldBe` Just x_
-    parse' "A" pattern `shouldBe` Just (PCtr "A" [])
-    parse' "B x" pattern `shouldBe` Just (PCtr "B" [])
-    parse' "(B x)" pattern `shouldBe` Just (PCtr "B" [x_])
-    parse' "(C x y)" pattern `shouldBe` Just (PCtr "C" [x_, y_])
+  it "☯ unpack" $ do
+    unpack (PAny, x) `shouldBe` []
+    unpack (PAs PAny "x", y) `shouldBe` [("x", App (Match [([x'], x)]) y)]
 
-  it "☯ expression" $ do
-    let indent = "  "
-    let expr src = parse' src (expression indent)
-    expr "" `shouldBe` Nothing
-    expr "x" `shouldBe` Just x
-    expr "42" `shouldBe` Just (Int 42)
-    expr "(+)" `shouldBe` Just (Call "+")
-    expr "x = 1; y" `shouldBe` Just (Let [("x", Int 1)] y)
-    expr "x = 1\n  y" `shouldBe` Just (Let [("x", Int 1)] y)
-    expr "x@_ = 1; y" `shouldBe` Just (Let [("x", Int 1)] y)
-    expr "f x = 1; y" `shouldBe` Just (Let [("f", lambda [x_] (Int 1))] y)
-    expr "f x = 1; y@_ = 2; z" `shouldBe` Just (Let [("f", lambda [x_] (Int 1)), ("y", Int 2)] z)
-    expr "x -> y" `shouldBe` Just (lambda [x_] y)
-    expr "1 -> y | x -> z" `shouldBe` Just (Cases [([PInt 1], y), ([x_], z)])
-    expr "1 -> y\n  x -> z" `shouldBe` Just (Cases [([PInt 1], y), ([x_], z)])
-    expr "(x)" `shouldBe` Just x
-    expr "( x )" `shouldBe` Just x
-    expr "x == y" `shouldBe` Just (eq x y)
-    expr "x + y" `shouldBe` Just (add x y)
-    expr "x - y" `shouldBe` Just (sub x y)
-    expr "x * y" `shouldBe` Just (mul x y)
+  it "☯ ctrType" $ do
+    let env = [("T", Typ [("A", [])]), ("A", Ctr "T" "A")]
+    ctrType env "X" `shouldBe` Left (UndefinedCtr "X")
+    ctrType env "T" `shouldBe` Left (NotACtr (Typ [("A", [])]))
+    ctrType env "A" `shouldBe` Right "T"
 
-  it "☯ case'" $ do
-    let indent = "  "
-    let case_ src = parse' src (case' indent)
-    case_ "" `shouldBe` Nothing
-    case_ "x -> y" `shouldBe` Just ([x_], y)
-    case_ "x\n  -> y" `shouldBe` Nothing
-    case_ "x\n   -> y" `shouldBe` Just ([x_], y)
-    case_ "x ->\n  y" `shouldBe` Nothing
-    case_ "x ->\n   y" `shouldBe` Just ([x_], y)
-    case_ "x\n   ->\n   y" `shouldBe` Nothing
-    case_ "x\n   ->\n    y" `shouldBe` Just ([x_], y)
-    case_ "x y -> z" `shouldBe` Just ([x_, y_], z)
+  it "☯ typeAlts" $ do
+    let env = [("T", Typ [("A", ["x", "y"])]), ("A", Ctr "T" "A")]
+    typeAlts env "X" `shouldBe` Left (UndefinedType "X")
+    typeAlts env "A" `shouldBe` Left (NotAType (Ctr "T" "A"))
+    typeAlts env "T" `shouldBe` Right [("A", ["x", "y"])]
 
-  it "☯ cases" $ do
-    let indent = "  "
-    let cases' src = parse' src (cases indent)
-    cases' "" `shouldBe` Nothing
-    cases' "x -> 1" `shouldBe` Just [([x_], Int 1)]
-    cases' "x -> 1 | y -> 2" `shouldBe` Just [([x_], Int 1), ([y_], Int 2)]
-    cases' "x -> 1\n y -> 2" `shouldBe` Just [([x_], Int 1)]
-    cases' "x -> 1\n  y -> 2" `shouldBe` Just [([x_], Int 1), ([y_], Int 2)]
-    cases' "x -> 1\n   y -> 2" `shouldBe` Just [([x_], Int 1)]
-    cases' "x -> 1 | y -> 2\n  z -> 3" `shouldBe` Just [([x_], Int 1), ([y_], Int 2), ([z_], Int 3)]
-    cases' "x -> 1\n  y -> 2 | z -> 3" `shouldBe` Just [([x_], Int 1), ([y_], Int 2), ([z_], Int 3)]
+  it "☯ altArgs" $ do
+    let alts = [("A", ["x", "y"])]
+    altArgs alts "X" `shouldBe` Left (UndefinedCtr "X")
+    altArgs alts "A" `shouldBe` Right ["x", "y"]
 
-  it "☯ defineRules" $ do
-    let indent = "  "
-    let defineRules' src = parse' src (defineRules indent)
-    defineRules' "" `shouldBe` Nothing
-    defineRules' "x = y" `shouldBe` Just ("x", y)
-    defineRules' "f _ = y" `shouldBe` Just ("f", lambda [PAny] y)
-    defineRules' "f x = y" `shouldBe` Just ("f", lambda [x_] y)
-    defineRules' "f x y = z" `shouldBe` Just ("f", lambda [x_, y_] z)
-    defineRules' "f A = x" `shouldBe` Just ("f", lambda [PCtr "A" []] x)
-    defineRules' "f A = x\n f B = y" `shouldBe` Just ("f", Cases [([PCtr "A" []], x)])
-    defineRules' "f A = x\n  f B = y" `shouldBe` Just ("f", Cases [([PCtr "A" []], x), ([PCtr "B" []], y)])
-    defineRules' "f A = x\n   f B = y" `shouldBe` Just ("f", Cases [([PCtr "A" []], x)])
-    defineRules' "f\n  x = y" `shouldBe` Nothing
-    defineRules' "f\n   x = y" `shouldBe` Just ("f", lambda [x_] y)
-    defineRules' "f x\n  = y" `shouldBe` Nothing
-    defineRules' "f x\n   = y" `shouldBe` Just ("f", lambda [x_] y)
-    defineRules' "f x =\n  y" `shouldBe` Nothing
-    defineRules' "f x =\n   y" `shouldBe` Just ("f", lambda [x_] y)
-    defineRules' "f\n   x\n   =\n   y" `shouldBe` Nothing
-    defineRules' "f\n   x\n   =\n    y" `shouldBe` Just ("f", lambda [x_] y)
+  it "☯ inferName" $ do
+    inferName [] `shouldBe` "%1"
+    inferName [([], Var "%42")] `shouldBe` "%43"
+    inferName [([PAny], Var "%42")] `shouldBe` "%43"
+    inferName [([x'], Var "%42")] `shouldBe` "x"
+    inferName [([x'], Var "%42"), ([y'], Int 2)] `shouldBe` "%43"
+    inferName [([PAs PAny "x"], Var "%42")] `shouldBe` "x"
+    inferName [([PAny, x'], Var "%42")] `shouldBe` "%43"
+    inferName [([PAny], Var "%42"), ([x'], x)] `shouldBe` "x"
 
-  it "☯ unpackPattern" $ do
-    let indent = "  "
-    let unpackPattern' src = parse' src (unpackPattern indent)
-    unpackPattern' "" `shouldBe` Nothing
-    unpackPattern' "_ = y" `shouldBe` Just []
-    unpackPattern' "x = y" `shouldBe` Just [("x", y)]
-    unpackPattern' "42 = y" `shouldBe` Just []
-    unpackPattern' "A = y" `shouldBe` Just []
-    unpackPattern' "(B x) = y" `shouldBe` Just [("x", match [y] [([PCtr "B" [x_]], x)])]
-    unpackPattern' "(C x y) = z" `shouldBe` Just [("x", match [z] [([PCtr "C" [x_, y_]], x)]), ("y", match [z] [([PCtr "C" [x_, y_]], y)])]
-    unpackPattern' "x\n  = y" `shouldBe` Nothing
-    unpackPattern' "x\n   = y" `shouldBe` Just [("x", y)]
-    unpackPattern' "x =\n  y" `shouldBe` Nothing
-    unpackPattern' "x =\n   y" `shouldBe` Just [("x", y)]
-    unpackPattern' "x\n   =\n   y" `shouldBe` Nothing
-    unpackPattern' "x\n   =\n    y" `shouldBe` Just [("x", y)]
+  it "☯ validateCases" $ do
+    let env =
+          [ ("T", Typ [("A", [])]),
+            ("A", Ctr "T" "A"),
+            ("U", Typ [("B", [])]),
+            ("B", Ctr "U" "B")
+          ]
+    validateCases env "T" [] `shouldBe` Right ()
+    validateCases env "T" [([], Int 1)] `shouldBe` Right ()
+    validateCases env "T" [([PAny], Int 1)] `shouldBe` Right ()
+    validateCases env "T" [([PCtr "X" []], Int 1)] `shouldBe` Left (UndefinedCtr "X")
+    validateCases env "T" [([PCtr "T" []], Int 1)] `shouldBe` Left (NotACtr (Typ [("A", [])]))
+    validateCases env "T" [([PCtr "A" []], Int 1)] `shouldBe` Right ()
+    validateCases env "T" [([PCtr "B" []], Int 1)] `shouldBe` Left (CaseTypeMismatch "T" "U")
+    validateCases env "T" [([PCtr "A" [x']], Int 1)] `shouldBe` Left (CaseCtrArgsMismatch [] [x'])
+    validateCases env "T" [([PAs PAny "x"], Int 1)] `shouldBe` Right ()
+    validateCases env "T" [([PAs (PCtr "X" []) "x"], Int 1)] `shouldBe` Left (UndefinedCtr "X")
+    validateCases env "T" [([PAs (PCtr "A" []) "x"], Int 1)] `shouldBe` Right ()
+    validateCases env "T" [([PEq (Int 0)], Int 1)] `shouldBe` Right ()
 
-  it "☯ operator precedence" $ do
-    let expr src = parse' src (expression "")
-    expr "x == y == z" `shouldBe` Just (eq (eq x y) z)
-    expr "x == y + z" `shouldBe` Just (eq x (add y z))
-    expr "x + y == z" `shouldBe` Just (eq (add x y) z)
-    expr "x + y + z" `shouldBe` Just (add (add x y) z)
-    expr "x + y - z" `shouldBe` Just (sub (add x y) z)
-    expr "x + y * z" `shouldBe` Just (add x (mul y z))
-    expr "x - y + z" `shouldBe` Just (add (sub x y) z)
-    expr "x - y - z" `shouldBe` Just (sub (sub x y) z)
-    expr "x - y * z" `shouldBe` Just (sub x (mul y z))
-    expr "x * y + z" `shouldBe` Just (add (mul x y) z)
-    expr "x * y - z" `shouldBe` Just (sub (mul x y) z)
-    expr "x * y * z" `shouldBe` Just (mul (mul x y) z)
-    expr "x * y z" `shouldBe` Just (mul x (App y [z]))
-    expr "x y * z" `shouldBe` Just (mul (App x [y]) z)
-    expr "x y z" `shouldBe` Just (App (App x [y]) [z])
+  it "☯ findAlts" $ do
+    let env = [("T", Typ [("A", [])]), ("A", Ctr "T" "A")]
+    findAlts env [] `shouldBe` Right []
+    findAlts env [([], Int 1)] `shouldBe` Right []
+    findAlts env [([PAny], Int 1)] `shouldBe` Right []
+    findAlts env [([PAs PAny "x"], Int 1)] `shouldBe` Right []
+    findAlts env [([PCtr "A" []], Int 1)] `shouldBe` Right [("A", [])]
+    findAlts env [([PAs (PCtr "A" []) "x"], Int 1)] `shouldBe` Right [("A", [])]
+    findAlts env [([PEq (Int 0)], Int 1)] `shouldBe` Right []
+
+  it "☯ collapse" $ do
+    let alt = ("A", ["y"])
+    collapse "x" alt [] `shouldBe` []
+    collapse "x" alt [([], Int 1)] `shouldBe` []
+    collapse "x" alt [([PAny, z'], Int 1)] `shouldBe` [([PAny, z'], Int 1)]
+    collapse "x" alt [([PAs PAny "x", z'], Int 1)] `shouldBe` [([PAny, z'], Int 1)]
+    collapse "x" alt [([PAs PAny "y", z'], Int 1)] `shouldBe` [([PAny, z'], let' ("y", x) (Int 1))]
+    collapse "x" alt [([PCtr "A" [y'], z'], Int 1)] `shouldBe` [([y', z'], Int 1)]
+    collapse "x" alt [([PCtr "B" [y'], z'], Int 1)] `shouldBe` []
+    collapse "x" alt [([PIf PAny (Bool True), z'], Int 1), ([y'], Int 2)] `shouldBe` [([PAny, z'], If (Bool True) (Int 1) (Match [([PAny], let' ("y", x) (Int 2))]))]
+    collapse "x" alt [([PEq (Int 0), z'], Int 1), ([y'], Int 2)] `shouldBe` [([PAny, z'], If (eq x (Int 0)) (Int 1) (Match [([PAny], let' ("y", x) (Int 2))]))]
+
+  it "☯ compile" $ do
+    let f = Var "f"
+    let env =
+          [ ("x", IntT),
+            ("y", y),
+            ("f", App (Var "f") (Var "x")),
+            ("T", Typ [("A", []), ("B", ["x", "xs"])]),
+            ("A", Ctr "T" "A"),
+            ("B", Ctr "T" "B")
+          ]
+    compile IntT `shouldBe` Right C.IntT
+    compile (Typ [("A", [])]) `shouldBe` Right (C.Typ [("A", [])])
+    compile (Bool True) `shouldBe` Right (C.Lam [] "T" (C.Lam [] "F" (C.Var "T")))
+    compile (Bool False) `shouldBe` Right (C.Lam [] "T" (C.Lam [] "F" (C.Var "F")))
+    compile (Int 1) `shouldBe` Right (C.Int 1)
+    compile (Var "x") `shouldBe` Right (C.Var "x")
+    compile (Lam "x" x) `shouldBe` Right (C.Lam [] "x" (C.Var "x"))
+    compile (App x y) `shouldBe` Right (C.App (C.Var "x") (C.Var "y"))
+    compile (Fun x y) `shouldBe` Right (C.Fun (C.Var "x") (C.Var "y"))
+    compile (Ann x (T [] y)) `shouldBe` Right (C.Ann (C.Var "x") (C.T [] (C.Var "y")))
+    compile (Ann x (T ["y"] y)) `shouldBe` Right (C.Ann (C.Var "x") (C.T ["y"] (C.Var "y")))
+    compile (Call "f") `shouldBe` Right (C.Call "f")
+    compile (Let env x) `shouldBe` Right C.IntT
+    compile (Let env y) `shouldBe` Right (C.Var "y")
+    compile (Let env z) `shouldBe` Right (C.Var "z")
+    compile (Let env f) `shouldBe` Right (C.Fix "f" (C.App (C.Var "f") C.IntT))
+    compile (Let env (If (Var "cond") (Var "then") (Var "else"))) `shouldBe` Right (C.App (C.App (C.Var "cond") (C.Var "then")) (C.Var "else"))
+    compile (Let env (Ctr "X" "A")) `shouldBe` Left (UndefinedType "X")
+    compile (Let env (Ctr "x" "A")) `shouldBe` Left (NotAType IntT)
+    compile (Let env (Ctr "T" "X")) `shouldBe` Left (UndefinedCtr "X")
+    compile (Let env (Ctr "T" "A")) `shouldBe` compile (lam ["A", "B"] (Var "A"))
+    compile (Let env (Ctr "T" "B")) `shouldBe` compile (lam ["x1", "xs", "A", "B"] (app (Var "B") [Var "x1", Var "xs"]))
+    compile (Let env (Match [])) `shouldBe` Left NotAllCasesCovered
+    compile (Let env (Match [([], Int 1)])) `shouldBe` Right (C.Int 1)
+    compile (Let env (Match [([PAny], x)])) `shouldBe` compile (Lam "%1" x)
+    compile (Let env (Match [([PAs PAny "y"], y)])) `shouldBe` compile (Lam "y" y)
+    compile (Let env (Match [([PCtr "A" []], x), ([PAny], y)])) `shouldBe` compile (Lam "%1" (app (Var "%1") [x, lam ["%1", "%1"] y]))
+    compile (Let env (Match [([PCtr "B" [x', y']], x), ([PAny], y)])) `shouldBe` compile (Lam "%1" (app (Var "%1") [y, lam ["x", "y"] x]))
+    compile (Let env (Match [([PEq (Int 0)], x), ([PAny], y)])) `shouldBe` compile (Lam "%1" (If (eq (Var "%1") (Int 0)) x y))
+
+-- it "☯ bindings" $ do
+--   bindings PAny `shouldBe` []
+--   bindings x_ `shouldBe` ["x"]
+--   bindings (PInt 1) `shouldBe` []
+--   bindings (PCtr "A" []) `shouldBe` []
+--   bindings (PCtr "A" [x_, y_]) `shouldBe` ["x", "y"]

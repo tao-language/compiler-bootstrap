@@ -1,7 +1,6 @@
-import Core (Expr (..), compile)
-import Reducer (evaluate)
 import qualified System.Environment
-import Tao (parse)
+import Tao (app, eval)
+import TaoLang (parse)
 
 main :: IO ()
 main = do
@@ -10,9 +9,9 @@ main = do
     (filename : args) -> do
       src <- readFile filename
       case parse (src : args) of
-        Right (ctx, f : xs) -> case compile ctx (App f xs) of
-          Just term -> print (evaluate term)
-          Nothing -> print "❌ error: not all patterns covered"
-        Right (_, []) -> print ""
-        Left err -> print ("❌ " ++ show err)
+        Right [] -> print ""
+        Right (f : xs) -> case eval (app f xs) of
+          Right expr -> print expr
+          Left err -> putStrLn ("❌ " ++ show err)
+        Left err -> putStrLn ("❌ " ++ show err)
     _ -> putStrLn "🛑 Please give me a file to run."
