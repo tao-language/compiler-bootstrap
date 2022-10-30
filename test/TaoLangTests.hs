@@ -64,15 +64,15 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     let indent = "  "
     let operator' src = parse' src (operator indent)
     operator' "+" `shouldBe` Nothing
-    operator' "( + )" `shouldBe` Just "+"
-    operator' "(+)" `shouldBe` Just "+"
-    operator' "(-)" `shouldBe` Just "-"
-    operator' "(*)" `shouldBe` Just "*"
-    operator' "(==)" `shouldBe` Just "=="
-    operator' "( + )" `shouldBe` Just "+"
+    operator' "( + )" `shouldBe` Just add'
+    operator' "(+)" `shouldBe` Just add'
+    operator' "(-)" `shouldBe` Just sub'
+    operator' "(*)" `shouldBe` Just mul'
+    operator' "(==)" `shouldBe` Just eq'
+    operator' "( + )" `shouldBe` Just add'
     operator' "(\n+\n)" `shouldBe` Nothing
     operator' "(\n  +\n  )" `shouldBe` Nothing
-    operator' "(\n   +\n  )" `shouldBe` Just "+"
+    operator' "(\n   +\n  )" `shouldBe` Just add'
 
   it "☯ pattern" $ do
     parse' "" pattern `shouldBe` Nothing
@@ -91,7 +91,7 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     expr "" `shouldBe` Nothing
     expr "x" `shouldBe` Just x
     expr "42" `shouldBe` Just (Int 42)
-    expr "(+)" `shouldBe` Just (Call "+")
+    expr "(+)" `shouldBe` Just add'
     expr "x = 1; y" `shouldBe` Just (Let [("x", Match [([], Int 1)])] y)
     expr "x = 1\n  y" `shouldBe` Just (Let [("x", Match [([], Int 1)])] y)
     expr "x@_ = 1; y" `shouldBe` Just (Let [("x", App (Match [([x'], x)]) (Int 1))] y)

@@ -4,7 +4,8 @@ import qualified Core
 import Data.List (foldl')
 
 data Expr
-  = IntT
+  = BoolT
+  | IntT
   | Typ ![Alt]
   | Bool !Bool
   | Int !Int
@@ -13,7 +14,7 @@ data Expr
   | App !Expr !Expr
   | Fun !Expr !Expr
   | Ann !Expr !Type
-  | Call !String
+  | Call !Core.Primitive !Type
   | If !Expr !Expr !Expr
   | Ctr !String !String
   | Match ![Case]
@@ -90,17 +91,29 @@ let' (x, a) b = App (Lam x b) a
 pvar :: String -> Pattern
 pvar = PAs PAny
 
+add' :: Expr
+add' = Call Core.Add (T ["a", "b"] (fun [Var "a", Var "a"] (Var "b")))
+
 add :: Expr -> Expr -> Expr
-add a b = app (Call "+") [a, b]
+add a b = app add' [a, b]
+
+sub' :: Expr
+sub' = Call Core.Sub (T ["a", "b"] (fun [Var "a", Var "a"] (Var "b")))
 
 sub :: Expr -> Expr -> Expr
-sub a b = app (Call "-") [a, b]
+sub a b = app sub' [a, b]
+
+mul' :: Expr
+mul' = Call Core.Mul (T ["a", "b"] (fun [Var "a", Var "a"] (Var "b")))
 
 mul :: Expr -> Expr -> Expr
-mul a b = app (Call "*") [a, b]
+mul a b = app mul' [a, b]
+
+eq' :: Expr
+eq' = Call Core.Eq (T ["a"] (fun [Var "a", Var "a"] BoolT))
 
 eq :: Expr -> Expr -> Expr
-eq a b = app (Call "==") [a, b]
+eq a b = app eq' [a, b]
 
 bindings :: Pattern -> [String]
 bindings PAny = []
@@ -184,10 +197,11 @@ collapse x alt ((PEq expr : ps, a) : cases) = collapse x alt ((PIf PAny (eq (Var
 collapse x alt (_ : cases) = collapse x alt cases
 
 compile :: Expr -> Either Error Core.Expr
+compile (Let _ BoolT) = compile (Typ [("True", []), ("False", [])])
 compile (Let _ IntT) = Right Core.IntT
 compile (Let _ (Typ alts)) = Right (Core.Typ alts)
-compile (Let _ (Bool True)) = Right (Core.Lam [] "T" (Core.Lam [] "F" (Core.Var "T")))
-compile (Let _ (Bool False)) = Right (Core.Lam [] "T" (Core.Lam [] "F" (Core.Var "F")))
+compile (Let _ (Bool True)) = compile (lam ["True", "False"] (Var "True"))
+compile (Let _ (Bool False)) = compile (lam ["True", "False"] (Var "False"))
 compile (Let _ (Int i)) = Right (Core.Int i)
 compile (Let env (Var x)) = case lookup x env of
   Just (Var x') | x == x' -> Right (Core.Var x)
@@ -210,7 +224,9 @@ compile (Let env (Ann a (T xs t))) = do
   a' <- compile (Let env a)
   t' <- compile (Let (map (\x -> (x, Var x)) xs ++ env) t)
   Right (Core.Ann a' (Core.T xs t'))
-compile (Let _ (Call f)) = Right (Core.Call f)
+compile (Let env (Call f (T xs t))) = do
+  t' <- compile (Let (map (\x -> (x, Var x)) xs ++ env) t)
+  Right (Core.Call f (Core.T xs t'))
 compile (Let env (If cond then_ else_)) = do
   cond' <- compile (Let env cond)
   then' <- compile (Let env then_)

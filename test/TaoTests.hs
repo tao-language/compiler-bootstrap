@@ -31,10 +31,10 @@ taoTests = describe "--== Tao representation ==--" $ do
     pvar "x" `shouldBe` PAs PAny "x"
 
   it "☯ built-in operators" $ do
-    add x y `shouldBe` App (App (Call "+") x) y
-    sub x y `shouldBe` App (App (Call "-") x) y
-    mul x y `shouldBe` App (App (Call "*") x) y
-    eq x y `shouldBe` App (App (Call "==") x) y
+    add x y `shouldBe` App (App add' x) y
+    sub x y `shouldBe` App (App sub' x) y
+    mul x y `shouldBe` App (App mul' x) y
+    eq x y `shouldBe` App (App eq' x) y
 
   it "☯ bindings" $ do
     bindings PAny `shouldBe` []
@@ -127,10 +127,11 @@ taoTests = describe "--== Tao representation ==--" $ do
             ("A", Ctr "T" "A"),
             ("B", Ctr "T" "B")
           ]
+    compile BoolT `shouldBe` Right (C.Typ [("True", []), ("False", [])])
     compile IntT `shouldBe` Right C.IntT
     compile (Typ [("A", [])]) `shouldBe` Right (C.Typ [("A", [])])
-    compile (Bool True) `shouldBe` Right (C.Lam [] "T" (C.Lam [] "F" (C.Var "T")))
-    compile (Bool False) `shouldBe` Right (C.Lam [] "T" (C.Lam [] "F" (C.Var "F")))
+    compile (Bool True) `shouldBe` compile (lam ["True", "False"] (Var "True"))
+    compile (Bool False) `shouldBe` compile (lam ["True", "False"] (Var "False"))
     compile (Int 1) `shouldBe` Right (C.Int 1)
     compile (Var "x") `shouldBe` Right (C.Var "x")
     compile (Lam "x" x) `shouldBe` Right (C.Lam [] "x" (C.Var "x"))
@@ -138,7 +139,7 @@ taoTests = describe "--== Tao representation ==--" $ do
     compile (Fun x y) `shouldBe` Right (C.Fun (C.Var "x") (C.Var "y"))
     compile (Ann x (T [] y)) `shouldBe` Right (C.Ann (C.Var "x") (C.T [] (C.Var "y")))
     compile (Ann x (T ["y"] y)) `shouldBe` Right (C.Ann (C.Var "x") (C.T ["y"] (C.Var "y")))
-    compile (Call "f") `shouldBe` Right (C.Call "f")
+    compile (Call C.Add (T ["y"] y)) `shouldBe` Right (C.Call C.Add (C.T ["y"] (C.Var "y")))
     compile (Let env x) `shouldBe` Right C.IntT
     compile (Let env y) `shouldBe` Right (C.Var "y")
     compile (Let env z) `shouldBe` Right (C.Var "z")

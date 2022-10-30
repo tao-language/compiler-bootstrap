@@ -16,6 +16,9 @@ import Text.Read (readMaybe)
 -- Implementing dependent types: https://davidchristiansen.dk/tutorials/implementing-types-hs.pdf
 -- Complete and Easy: https://arxiv.org/pdf/1306.6032.pdf https://arxiv.org/abs/1306.6032
 
+-- TODO: Main: load files as Env, command line arguments as Expr
+-- TODO: Main: typecheck and optimize code before running
+-- TODO: Core: type checking error messages
 -- TODO: Core: support types and ADTs like Bool, Maybe, List, Vec, Tuples and Records
 -- TODO: Core: do-notation, monadas, effects, I/O
 -- TODO: Tao: support types (tagged unions, type alias)
@@ -30,13 +33,21 @@ data Expr
   | App !Expr !Expr
   | Fun !Expr !Expr
   | Ann !Expr !Type
-  | Call !String
+  | Call !Primitive !Type
   | Fix !String !Expr
   deriving (Eq, Show)
 
 data Type
   = T ![String] !Expr
   deriving (Eq, Show)
+
+data Primitive
+  = Add
+  | Sub
+  | Mul
+  | Eq
+  | BuiltIn !String
+  deriving (Eq)
 
 data Pattern
   = PAny
@@ -66,6 +77,13 @@ type Env = [(String, Expr)]
 --   show Fix = "#fix"
 --   show (Fun a b) = show a ++ " => " ++ show b
 
+instance Show Primitive where
+  show Add = "+"
+  show Sub = "-"
+  show Mul = "*"
+  show Eq = "=="
+  show (BuiltIn f) = '@' : f
+
 -- TODO: remove! already covered in Tao
 let' :: Env -> Expr -> Expr
 let' env a = reduce a (map (\(x, b) -> (x, eval (Fix x b) env)) env)
@@ -79,13 +97,13 @@ reduce (Var x) env = case lookup x env of
 reduce (Lam env x a) env' = Lam (env ++ env') x a
 reduce (App a b) env = case (reduce a env, reduce b env) of
   (Lam env x a, b) -> reduce a ((x, b) : env)
-  (App (Call f) a, b) -> case (f, reduce a env, b) of
-    ("+", Int a, Int b) -> Int (a + b)
-    ("-", Int a, Int b) -> Int (a - b)
-    ("*", Int a, Int b) -> Int (a * b)
-    ("==", Int a, Int b) | a == b -> Lam [] "T" (Lam [] "F" (Var "T"))
-    ("==", Int _, Int _) -> Lam [] "T" (Lam [] "F" (Var "F"))
-    (_, a, b) -> App (App (Call f) a) b
+  (App (Call op typ) a, b) -> case (op, reduce a env, b) of
+    (Add, Int a, Int b) -> Int (a + b)
+    (Sub, Int a, Int b) -> Int (a - b)
+    (Mul, Int a, Int b) -> Int (a * b)
+    (Eq, Int a, Int b) | a == b -> Lam [] "T" (Lam [] "F" (Var "T"))
+    (Eq, Int _, Int _) -> Lam [] "T" (Lam [] "F" (Var "F"))
+    (_, a, b) -> App (App (Call op typ) a) b
   (Fix x a, b) -> reduce (App a b) ((x, Fix x a) : env)
   (a, b) -> App a b
 reduce (Fun a b) env = Fun (reduce a env) (reduce b env)
@@ -176,10 +194,12 @@ infer (Fun a b) env = do
   Just (Typ [], env)
 infer (Ann a typ) env = do
   let (t, env') = instantiate typ env
-  (ta, env) <- infer a env'
-  env <- unify t ta env
-  Just (reduce t env, env)
-infer (Call f) env = Just (instantiate (T [f] (Var f)) env)
+  (ta, env') <- infer a env'
+  env' <- unify t ta env'
+  Just (reduce t env', env')
+infer (Call _ typ) env = do
+  let (t, env') = instantiate typ env
+  Just (reduce t env, env')
 infer (Fix _ a) env = infer a env
 
 -- Helper functions --
