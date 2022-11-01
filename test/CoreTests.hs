@@ -5,59 +5,50 @@ import Test.Hspec
 
 coreTests :: SpecWith ()
 coreTests = describe "--== Core language ==--" $ do
-  let lam xs a = foldr (Lam []) a xs
-  let add a = App (App (Call Add (T ["add"] (Var "add"))) a)
-  let sub a = App (App (Call Sub (T ["sub"] (Var "sub"))) a)
-  let mul a = App (App (Call Mul (T ["mul"] (Var "mul"))) a)
-  let eq a = App (App (Call Eq (T ["eq"] (Var "eq"))) a)
-  let (a, b, f) = (Var "a", Var "b", Var "f")
+  let add a = App (App (Call Add (for ["add"] (Var "add"))) a)
+  let sub a = App (App (Call Sub (for ["sub"] (Var "sub"))) a)
+  let mul a = App (App (Call Mul (for ["mul"] (Var "mul"))) a)
+  let eq a = App (App (Call Eq (for ["eq"] (Var "eq"))) a)
+  let (a, b) = (Var "a", Var "b")
+  let (f, g) = (Var "f", Var "g")
   let (x, y, z) = (Var "x", Var "y", Var "z")
-
-  it "☯ let'" $ do
-    let' [] x `shouldBe` x
-    let' [("x", y)] z `shouldBe` z
-    let' [("x", y)] x `shouldBe` y
-    let' [("x", x)] x `shouldBe` x
-    let' [("x", Fun x x)] x `shouldBe` Fix "x" (Fun x x)
-    let' [("x", y), ("y", z)] x `shouldBe` z
-    let' [("x", z), ("y", x)] y `shouldBe` z
 
   it "☯ reduce" $ do
     let env = [("x", Int 1), ("y", y)]
-    reduce IntT env `shouldBe` IntT
-    reduce (Typ [("A", [])]) env `shouldBe` Typ [("A", [])]
-    reduce (Int 1) env `shouldBe` Int 1
-    reduce (Var "x") env `shouldBe` Int 1
-    reduce (Var "y") env `shouldBe` y
-    reduce (Var "z") env `shouldBe` z
-    reduce (Lam [] "y" x) env `shouldBe` Lam env "y" x
-    reduce (Lam [("x", Int 2)] "y" x) env `shouldBe` Lam (("x", Int 2) : env) "y" x
-    reduce (App (lam ["x"] x) x) env `shouldBe` Int 1
-    reduce (App (lam ["x"] y) x) env `shouldBe` y
-    reduce (App y x) env `shouldBe` App y (Int 1)
-    reduce (Fun x y) env `shouldBe` Fun (Int 1) y
-    reduce (Ann x (T ["x"] x)) env `shouldBe` Int 1
-    reduce (Fix "f" x) env `shouldBe` Fix "f" x
+    reduce env IntT `shouldBe` IntT
+    reduce env (Typ 1) `shouldBe` Typ 1
+    reduce env (Int 1) `shouldBe` Int 1
+    reduce env (Var "x") `shouldBe` Int 1
+    reduce env (Var "y") `shouldBe` y
+    reduce env (Var "z") `shouldBe` z
+    reduce env (Lam [] "y" x) `shouldBe` Lam env "y" x
+    reduce env (Lam [("x", Int 2)] "y" x) `shouldBe` Lam (("x", Int 2) : env) "y" x
+    reduce env (App (lam ["x"] x) x) `shouldBe` Int 1
+    reduce env (App (lam ["x"] y) x) `shouldBe` y
+    reduce env (App y x) `shouldBe` App y (Int 1)
+    reduce env (Fun x y) `shouldBe` Fun (Int 1) y
+    reduce env (Ann x (For "x" x)) `shouldBe` Int 1
+    reduce env (Fix "f" x) `shouldBe` Fix "f" x
 
   it "☯ Built-in functions" $ do
     let env = [("x", Int 1), ("y", Int 2), ("z", z)]
-    reduce (add x x) env `shouldBe` Int 2
-    reduce (sub x x) env `shouldBe` Int 0
-    reduce (mul x x) env `shouldBe` Int 1
-    reduce (eq x x) env `shouldBe` lam ["T", "F"] (Var "T")
-    reduce (eq x y) env `shouldBe` lam ["T", "F"] (Var "F")
-    reduce (add (add x x) (add x x)) env `shouldBe` Int 4
-    reduce (add (add x x) z) env `shouldBe` add (Int 2) z
-    reduce (add z (add x x)) env `shouldBe` add z (Int 2)
+    reduce env (add x x) `shouldBe` Int 2
+    reduce env (sub x x) `shouldBe` Int 0
+    reduce env (mul x x) `shouldBe` Int 1
+    reduce env (eq x x) `shouldBe` lam ["T", "F"] (Var "T")
+    reduce env (eq x y) `shouldBe` lam ["T", "F"] (Var "F")
+    reduce env (add (add x x) (add x x)) `shouldBe` Int 4
+    reduce env (add (add x x) z) `shouldBe` add (Int 2) z
+    reduce env (add z (add x x)) `shouldBe` add z (Int 2)
 
   it "☯ eval" $ do
     let env = [("x", Int 1), ("y", y)]
-    eval (Lam [] "y" x) env `shouldBe` Lam [] "y" (Int 1)
-    eval (Lam [("x", Int 2)] "y" x) env `shouldBe` Lam [] "y" (Int 2)
-    eval (App y x) env `shouldBe` App y (Int 1)
-    eval (Fix "x" x) env `shouldBe` x
-    eval (Fix "y" x) env `shouldBe` Int 1
-    eval (Fix "x" (Fun x x)) env `shouldBe` Fix "x" (Fun x x)
+    eval env (Lam [] "y" x) `shouldBe` Lam [] "y" (Int 1)
+    eval env (Lam [("x", Int 2)] "y" x) `shouldBe` Lam [] "y" (Int 2)
+    eval env (App y x) `shouldBe` App y (Int 1)
+    eval env (Fix "x" x) `shouldBe` x
+    eval env (Fix "y" x) `shouldBe` Int 1
+    eval env (Fix "x" (Fun x x)) `shouldBe` Fix "x" (Fun x x)
 
   it "☯ occurs" $ do
     occurs "x" x `shouldBe` True
@@ -80,49 +71,62 @@ coreTests = describe "--== Core language ==--" $ do
     substitute "x" y (Fun x x) `shouldBe` Fun y y
 
   it "☯ instantiate" $ do
-    instantiate (T [] IntT) [] `shouldBe` (IntT, [])
-    instantiate (T ["a"] a) [] `shouldBe` (a, [("a", a)])
-    instantiate (T ["a"] a) [("a", Int 1)] `shouldBe` (Var "a1", [("a1", Var "a1"), ("a", Int 1)])
-    instantiate (T ["a", "b"] (Fun a b)) [] `shouldBe` (Fun a b, [("b", b), ("a", a)])
+    let a1 = Var "a1"
+    instantiate [] IntT `shouldBe` (IntT, [])
+    instantiate [] (For "a" a) `shouldBe` (a, [("a", a)])
+    instantiate [("a", IntT)] (For "a" a) `shouldBe` (a1, [("a1", a1), ("a", IntT)])
+    instantiate [] (for ["a", "b"] (Fun a b)) `shouldBe` (Fun a b, [("b", b), ("a", a)])
 
   it "☯ unify" $ do
     let env = [("x", Int 1), ("y", y)]
-    unify IntT IntT env `shouldBe` Just env
-    unify (Typ []) (Typ []) env `shouldBe` Just env
-    unify (Typ []) (Typ [("A", [])]) env `shouldBe` Nothing
-    unify (Int 1) (Int 1) env `shouldBe` Just env
-    unify (Int 1) (Int 2) env `shouldBe` Nothing
-    unify (Var "y") (Var "y") env `shouldBe` Just env
-    unify (Var "x") (Int 1) env `shouldBe` Just env
-    unify (Var "x") (Int 2) env `shouldBe` Nothing
-    unify (Var "z") (Int 1) env `shouldBe` Just (("z", Int 1) : env)
-    unify (Int 1) (Var "x") env `shouldBe` Just env
-    unify (Int 2) (Var "x") env `shouldBe` Nothing
-    unify (Int 1) (Var "z") env `shouldBe` Just (("z", Int 1) : env)
-    unify (App z x) (App y x) env `shouldBe` Just (("z", y) : env)
-    unify (App y x) (App y z) env `shouldBe` Just (("z", Int 1) : env)
-    unify (Fun z x) (Fun y x) env `shouldBe` Just (("z", y) : env)
-    unify (Fun y x) (Fun y z) env `shouldBe` Just (("z", Int 1) : env)
+    unify env IntT IntT `shouldBe` Right env
+    unify env (Typ 0) (Typ 0) `shouldBe` Right env
+    unify env (Typ 0) (Typ 1) `shouldBe` Left (TypeMismatch (Typ 0) (Typ 1))
+    unify env (Int 1) (Int 1) `shouldBe` Right env
+    unify env (Int 1) (Int 2) `shouldBe` Left (TypeMismatch (Int 1) (Int 2))
+    unify env (Var "y") (Var "y") `shouldBe` Right env
+    unify env (Var "x") (Int 1) `shouldBe` Right env
+    unify env (Var "x") (Int 2) `shouldBe` Left (TypeMismatch (Int 1) (Int 2))
+    unify env (Var "z") (Int 1) `shouldBe` Right (("z", Int 1) : env)
+    unify env (Int 1) (Var "x") `shouldBe` Right env
+    unify env (Int 2) (Var "x") `shouldBe` Left (TypeMismatch (Int 2) (Int 1))
+    unify env (Int 1) (Var "z") `shouldBe` Right (("z", Int 1) : env)
+    unify env (App z x) (App y x) `shouldBe` Right (("z", y) : env)
+    unify env (App y x) (App y z) `shouldBe` Right (("z", Int 1) : env)
+    unify env (Fun z x) (Fun y x) `shouldBe` Right (("z", y) : env)
+    unify env (Fun y x) (Fun y z) `shouldBe` Right (("z", Int 1) : env)
 
   it "☯ infer" $ do
-    let env = [("x", Int 1), ("y", y), ("f", Ann f (T ["a"] (Fun IntT a)))]
-    infer IntT env `shouldBe` Just (Typ [], env)
-    infer (Typ [("A", [])]) env `shouldBe` Just (Typ [], env)
-    infer (Int 1) env `shouldBe` Just (IntT, env)
-    infer (Var "x") env `shouldBe` Just (IntT, env)
-    infer (Var "y") env `shouldBe` Just (y, env)
-    infer (Var "z") env `shouldBe` Nothing
-    infer (Var "f") env `shouldBe` Just (Fun IntT a, ("a", a) : env)
-    infer (Lam [] "a" x) env `shouldBe` Just (Fun a IntT, ("a", a) : ("a", a) : env)
-    infer (App x x) env `shouldBe` Nothing
-    infer (App f (Typ [])) env `shouldBe` Nothing
-    infer (App f (Int 1)) env `shouldBe` Just (a, ("a", a) : env)
-    infer (App (Lam [] "a" a) (Int 1)) env `shouldBe` Just (IntT, ("a", IntT) : ("a", a) : ("a", a) : env)
-    infer (Fun (Int 1) (Typ [("A", [])])) env `shouldBe` Just (Typ [], env)
-    infer (Fun (Var "z") (Typ [])) env `shouldBe` Nothing
-    infer (Fun (Typ []) (Var "z")) env `shouldBe` Nothing
-    infer (Call Add (T ["a"] a)) env `shouldBe` Just (a, ("a", a) : env)
-    infer (Fix "f" (Int 1)) env `shouldBe` Just (IntT, env)
+    let a1 = Var "a1"
+    let env =
+          [ ("x", Int 1),
+            ("y", y),
+            ("f", Ann f (For "a" $ Fun IntT a)),
+            -- ("g", Ann g (For "a" $ Fun a $ For "b" $ Fun b b))
+            ("g", Ann g (For "a" $ Fun a a))
+          ]
+    infer env IntT `shouldBe` Right (Typ 0, env)
+    infer env (Typ 1) `shouldBe` Right (Typ 2, env)
+    infer env (Int 1) `shouldBe` Right (IntT, env)
+    infer env (Var "x") `shouldBe` Right (IntT, env)
+    infer env (Var "y") `shouldBe` Right (y, env)
+    infer env (Var "z") `shouldBe` Left (UndefinedVar "z")
+    infer env (Var "f") `shouldBe` Right (Fun IntT a, ("a", a) : env)
+    infer env (Lam [] "a" a) `shouldBe` Right (Fun a1 a1, ("a1", a1) : ("a", Ann a a1) : env)
+    infer env (App x x) `shouldBe` Left (NotAFunction x IntT)
+    infer env (App f (Typ 0)) `shouldBe` Left (TypeMismatch IntT (Typ 1))
+    infer env (App f (Int 1)) `shouldBe` Right (a, ("a", a) : env)
+    infer env (App (Lam [] "a" a) (Int 1)) `shouldBe` Right (IntT, ("a1", IntT) : ("a1", a1) : ("a", Ann a a1) : env)
+    infer env (Fun (Int 1) (Typ 1)) `shouldBe` Right (Typ 0, env)
+    infer env (Fun (Var "z") (Typ 0)) `shouldBe` Left (UndefinedVar "z")
+    infer env (Fun (Typ 0) (Var "z")) `shouldBe` Left (UndefinedVar "z")
+    infer env (Ann x IntT) `shouldBe` Right (IntT, env)
+    infer env (Ann x (Int 0)) `shouldBe` Left (NotAType (Int 0) IntT)
+    infer env (Ann x (Typ 0)) `shouldBe` Left (TypeMismatch (Typ 0) IntT)
+    infer env (For "x" x) `shouldBe` Right (Typ 0, env)
+    infer env (For "x" z) `shouldBe` Left (UndefinedVar "z")
+    infer env (Fix "f" (Int 1)) `shouldBe` Right (IntT, env)
+    infer env (Call Add (For "a" a)) `shouldBe` Right (a, ("a", a) : env)
 
   it "☯ freeVariables" $ do
     freeVariables x `shouldBe` ["x"]
@@ -132,7 +136,7 @@ coreTests = describe "--== Core language ==--" $ do
     freeVariables (Lam [] "x" x) `shouldBe` []
     freeVariables (Lam [] "x" y) `shouldBe` ["y"]
     freeVariables (Lam [("y", Int 1)] "x" y) `shouldBe` []
-    freeVariables (Call Add (T ["y"] y)) `shouldBe` []
+    freeVariables (Call Add (For "y" y)) `shouldBe` []
 
   it "☯ readNameIdx" $ do
     readNameIdx "" "" `shouldBe` Nothing

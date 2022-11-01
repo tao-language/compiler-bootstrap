@@ -3,14 +3,25 @@ module TaoLang where
 import Parser
 import Tao
 
--- TODO: Return an Env
-parse :: [String] -> Either ParserError [Expr]
-parse [] = Right []
-parse (src : srcs) = case Parser.parse src (expression "") of
-  Left err -> Left err
-  Right a -> do
-    bs <- TaoLang.parse srcs
-    Right (a : bs)
+readExpr :: String -> IO Expr
+readExpr x = case parseExpr x of
+  Right exprs -> return exprs
+  Left err -> fail ("❌ " ++ show err)
+
+readDefinitions :: String -> IO Env
+readDefinitions filename = do
+  src <- readFile filename
+  case parseEnv src of
+    Right env -> return env
+    Left err -> fail ("❌ " ++ show err)
+
+-- readModule :: String -> IO [(String, Expr)]
+
+parseExpr :: String -> Either ParserError Expr
+parseExpr src = parse src (expression "")
+
+parseEnv :: String -> Either ParserError [(String, Expr)]
+parseEnv src = parse src (fmap concat (zeroOrMore (definition "")))
 
 variableName :: Parser String
 variableName = do
@@ -176,3 +187,9 @@ unpackPattern indent = do
   indent <- continueLine indent
   expr <- expression indent
   succeed (unpack (p, expr))
+
+definition :: String -> Parser [(String, Expr)]
+definition indent = do
+  defs <- oneOf [exactly 1 (defineRules indent), unpackPattern indent]
+  _ <- delimiter indent (char ';')
+  succeed defs
