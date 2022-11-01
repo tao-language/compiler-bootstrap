@@ -6,10 +6,10 @@ import Test.Hspec
 coreTests :: SpecWith ()
 coreTests = describe "--== Core language ==--" $ do
   let lam xs a = foldr (Lam []) a xs
-  let add a = App (App (Call "+") a)
-  let sub a = App (App (Call "-") a)
-  let mul a = App (App (Call "*") a)
-  let eq a = App (App (Call "==") a)
+  let add a = App (App (Call Add (T ["add"] (Var "add"))) a)
+  let sub a = App (App (Call Sub (T ["sub"] (Var "sub"))) a)
+  let mul a = App (App (Call Mul (T ["mul"] (Var "mul"))) a)
+  let eq a = App (App (Call Eq (T ["eq"] (Var "eq"))) a)
   let (a, b, f) = (Var "a", Var "b", Var "f")
   let (x, y, z) = (Var "x", Var "y", Var "z")
 
@@ -121,8 +121,7 @@ coreTests = describe "--== Core language ==--" $ do
     infer (Fun (Int 1) (Typ [("A", [])])) env `shouldBe` Just (Typ [], env)
     infer (Fun (Var "z") (Typ [])) env `shouldBe` Nothing
     infer (Fun (Typ []) (Var "z")) env `shouldBe` Nothing
-    infer (Call "a") env `shouldBe` Just (a, ("a", a) : env)
-    infer (Call "x") env `shouldBe` Just (Var "x1", ("x1", Var "x1") : env)
+    infer (Call Add (T ["a"] a)) env `shouldBe` Just (a, ("a", a) : env)
     infer (Fix "f" (Int 1)) env `shouldBe` Just (IntT, env)
 
   it "☯ freeVariables" $ do
@@ -133,7 +132,7 @@ coreTests = describe "--== Core language ==--" $ do
     freeVariables (Lam [] "x" x) `shouldBe` []
     freeVariables (Lam [] "x" y) `shouldBe` ["y"]
     freeVariables (Lam [("y", Int 1)] "x" y) `shouldBe` []
-    freeVariables (Call "+") `shouldBe` []
+    freeVariables (Call Add (T ["y"] y)) `shouldBe` []
 
   it "☯ readNameIdx" $ do
     readNameIdx "" "" `shouldBe` Nothing

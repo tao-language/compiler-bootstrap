@@ -71,12 +71,17 @@ delimiter indent parser =
       do _ <- token parser; succeed []
     ]
 
-operator :: String -> Parser String
+operator :: String -> Parser Expr
 operator indent = do
-  let ops = ["==", "+", "-", "*"]
+  let ops =
+        [ fmap (const eq') (text "=="),
+          fmap (const add') (text "+"),
+          fmap (const sub') (text "-"),
+          fmap (const mul') (text "*")
+        ]
   _ <- token (char '(')
   _ <- continueLine indent
-  op <- token (oneOf (map text ops))
+  op <- token (oneOf ops)
   _ <- maybe' (newLine indent)
   _ <- token (char ')')
   succeed op
@@ -123,14 +128,14 @@ expression indent = do
       atom id define,
       atom Var (token variableName),
       atom Int (token integer),
-      atom Call (token (operator indent)),
+      atom id (token (operator indent)),
       inbetween (const id) (token (char '(')) (token (char ')'))
     ]
     [ infixL 1 (const eq) (token (text "==")),
       infixL 2 (const add) (token (char '+')),
       infixL 2 (const sub) (token (char '-')),
       infixL 3 (const mul) (token (char '*')),
-      infixL 4 (\_ a b -> App a b) (succeed ())
+      infixL 4 (const App) (succeed ())
     ]
 
 case' :: String -> Parser Case
