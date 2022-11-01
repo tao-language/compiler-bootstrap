@@ -1,9 +1,11 @@
+{-# LANGUAGE InstanceSigs #-}
+
 module Core where
 
 -- TODO: import Prelude() -- don't import prelude
 -- TODO: {-# LANGUAGE NoImplicitPrelude #-}
 
-import Data.List (union)
+import Data.List (foldl', union)
 import Text.Read (readMaybe)
 
 -- Lambda calculus: https://www.cse.iitk.ac.in/users/ppk/teaching/cs653/notes/lectures/Lambda-calculus.lhs.pdf
@@ -16,30 +18,29 @@ import Text.Read (readMaybe)
 -- Implementing dependent types: https://davidchristiansen.dk/tutorials/implementing-types-hs.pdf
 -- Complete and Easy: https://arxiv.org/pdf/1306.6032.pdf https://arxiv.org/abs/1306.6032
 
--- TODO: Main: load files as Env, command line arguments as Expr
--- TODO: Main: typecheck and optimize code before running
+-- TODO: Tao: add UndefinedVar (?)
+-- TODO: Core: Match validation doesn't catch different number of patterns in rules
+-- TODO: TaoLang: parse type annotations
 -- TODO: Core: type checking error messages
 -- TODO: Core: support types and ADTs like Bool, Maybe, List, Vec, Tuples and Records
 -- TODO: Core: do-notation, monadas, effects, I/O
+-- TODO: Core: show and pretty formatting
 -- TODO: Tao: support types (tagged unions, type alias)
 -- TODO: Tao: modules and stdlib (files, parser, compiler)
 -- TODO: self compiling compiler
 data Expr
   = IntT
-  | Typ ![(String, [String])]
+  | Typ !Int
   | Int !Int
   | Var !String
   | Lam !Env !String !Expr
   | App !Expr !Expr
   | Fun !Expr !Expr
-  | Ann !Expr !Type
-  | Call !Primitive !Type
+  | Ann !Expr !Expr
+  | For !String !Expr
   | Fix !String !Expr
-  deriving (Eq, Show)
-
-data Type
-  = T ![String] !Expr
-  deriving (Eq, Show)
+  | Call !Primitive !Expr
+  deriving (Eq)
 
 data Primitive
   = Add
@@ -57,25 +58,45 @@ data Pattern
 
 type Env = [(String, Expr)]
 
--- instance Show Expr where
---   show IntT = "#Int"
---   show (Typ u) = "#Type{" ++ show u ++ "}"
---   show (Int i) = show i
---   show (Var x) = x
---   show (Lam env x a) = do
---     let vars :: Expr -> [String] -> ([String], Expr)
---         vars (Lam env x a) xs = let (xs', a') = vars a xs in (x : xs', a')
---         vars a xs = (xs, a)
---     let (xs, a') = vars a []
---     "\\" ++ unwords (x : xs) ++ ". " ++ show a'
---   show (App (Lam env x a) (App Fix (Lam env' x' b))) | x == x' = "#letrec " ++ x ++ " = " ++ show b ++ "; " ++ show a
---   show (App (Lam env x a) b) = "#let " ++ x ++ " = " ++ show b ++ "; " ++ show a
---   show (App a b@App {}) = show a ++ " (" ++ show b ++ ")"
---   show (App a b@Lam {}) = show a ++ " (" ++ show b ++ ")"
---   show (App a b) = show a ++ " " ++ show b
---   show (Call f) = "&" ++ f
---   show Fix = "#fix"
---   show (Fun a b) = show a ++ " => " ++ show b
+data TypeError
+  = UndefinedVar !String
+  | NotAFunction !Expr !Expr
+  | NotAType !Expr !Expr
+  | InfiniteType !String !Expr
+  | TypeMismatch !Expr !Expr
+  deriving (Eq, Show)
+
+instance Show Expr where
+  show IntT = "@Int"
+  show (Typ u) = "@Type[" ++ show u ++ "]"
+  show (Int i) = show i
+  show (Var x) = x
+  show (Lam _ x a) = do
+    -- TODO: show env
+    let vars :: Expr -> [String] -> ([String], Expr)
+        vars (Lam _ x a) xs = let (xs', a') = vars a xs in (x : xs', a')
+        vars a xs = (xs, a)
+    let (xs, a') = vars a []
+    "\\" ++ unwords (x : xs) ++ ". " ++ show a'
+  -- show (App (Lam env x a) (App Fix (Lam env' x' b))) | x == x' = "#letrec " ++ x ++ " = " ++ show b ++ "; " ++ show a
+  show (App (Lam [] x a) b) = "@let " ++ x ++ " = " ++ show b ++ "; " ++ show a
+  show (App a b@App {}) = show a ++ " (" ++ show b ++ ")"
+  show (App a b@Lam {}) = show a ++ " (" ++ show b ++ ")"
+  show (App a b) = show a ++ " " ++ show b
+  show (Fun a b) = show a ++ " => " ++ show b
+  show (Ann a t) = "(" ++ show a ++ " : " ++ show t ++ ")"
+  show (For x a) = do
+    let vars :: Expr -> [String] -> ([String], Expr)
+        vars (For x a) xs = let (xs', a') = vars a xs in (x : xs', a')
+        vars a xs = (xs, a)
+    let (xs, a') = vars a []
+    "@for " ++ unwords (x : xs) ++ ". " ++ show a'
+  show (Call Add _) = "(+)"
+  show (Call Sub _) = "(-)"
+  show (Call Mul _) = "(*)"
+  show (Call Eq _) = "(==)"
+  show (Call (BuiltIn f) t) = "@(" ++ f ++ " : " ++ show t ++ ")"
+  show (Fix x a) = "@fix " ++ show x ++ " (" ++ show a ++ ")"
 
 instance Show Primitive where
   show Add = "+"
@@ -84,37 +105,49 @@ instance Show Primitive where
   show Eq = "=="
   show (BuiltIn f) = '@' : f
 
--- TODO: remove! already covered in Tao
-let' :: Env -> Expr -> Expr
-let' env a = reduce a (map (\(x, b) -> (x, eval (Fix x b) env)) env)
+-- Syntax sugar --
+lam :: [String] -> Expr -> Expr
+lam xs a = foldr (Lam []) a xs
+
+app :: Expr -> [Expr] -> Expr
+app = foldl' App
+
+fun :: [Expr] -> Expr -> Expr
+fun xs a = foldr Fun a xs
+
+for :: [String] -> Expr -> Expr
+for xs a = foldr For a xs
+
+let' :: (String, Expr) -> Expr -> Expr
+let' (x, a) b = App (Lam [] x b) a
 
 -- Evaluation --
-reduce :: Expr -> Env -> Expr
-reduce (Var x) env = case lookup x env of
+reduce :: Env -> Expr -> Expr
+reduce env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Var x
-  Just a -> reduce a env
+  Just a -> reduce env a
   Nothing -> Var x
-reduce (Lam env x a) env' = Lam (env ++ env') x a
-reduce (App a b) env = case (reduce a env, reduce b env) of
-  (Lam env x a, b) -> reduce a ((x, b) : env)
-  (App (Call op typ) a, b) -> case (op, reduce a env, b) of
+reduce env (Lam env' x a) = Lam (env' ++ env) x a
+reduce env (App a b) = case (reduce env a, reduce env b) of
+  (Lam env x a, b) -> reduce ((x, b) : env) a
+  (App (Call op t) a, b) -> case (op, reduce env a, b) of
     (Add, Int a, Int b) -> Int (a + b)
     (Sub, Int a, Int b) -> Int (a - b)
     (Mul, Int a, Int b) -> Int (a * b)
     (Eq, Int a, Int b) | a == b -> Lam [] "T" (Lam [] "F" (Var "T"))
     (Eq, Int _, Int _) -> Lam [] "T" (Lam [] "F" (Var "F"))
-    (_, a, b) -> App (App (Call op typ) a) b
-  (Fix x a, b) -> reduce (App a b) ((x, Fix x a) : env)
+    (_, a, b) -> App (App (Call op t) a) b
+  (Fix x a, b) -> reduce ((x, Fix x a) : env) (App a b)
   (a, b) -> App a b
-reduce (Fun a b) env = Fun (reduce a env) (reduce b env)
-reduce (Ann a _) env = reduce a env
-reduce a _ = a
+reduce env (Fun a b) = Fun (reduce env a) (reduce env b)
+reduce env (Ann a _) = reduce env a
+reduce _ a = a
 
-eval :: Expr -> Env -> Expr
-eval a env = case reduce a env of
-  Lam env x a -> Lam [] x (eval a ((x, Var x) : env))
-  App a b -> App (eval a []) (eval b [])
-  Fix x a -> case eval a ((x, Var x) : env) of
+eval :: Env -> Expr -> Expr
+eval env a = case reduce env a of
+  Lam env x a -> Lam [] x (eval ((x, Var x) : env) a)
+  App a b -> App (eval [] a) (eval [] b)
+  Fix x a -> case eval ((x, Var x) : env) a of
     Var x' | x == x' -> Var x
     a | x `occurs` a -> Fix x a
     a -> a
@@ -127,6 +160,7 @@ occurs x (Lam env y a) | x /= y && x `notElem` map fst env = occurs x a
 occurs x (App a b) = occurs x a || occurs x b
 occurs x (Fun a b) = occurs x a || occurs x b
 -- TODO: Ann
+-- TODO: For
 occurs _ _ = False
 
 substitute :: String -> Expr -> Expr -> Expr
@@ -135,72 +169,77 @@ substitute x a (Lam env y b) | x /= y && x `notElem` map fst env = Lam env y (su
 substitute x a (App b1 b2) = App (substitute x a b1) (substitute x a b2)
 substitute x a (Fun b1 b2) = Fun (substitute x a b1) (substitute x a b2)
 -- TODO: Ann
+-- TODO: For
 substitute _ _ b = b
 
-instantiate :: Type -> Env -> (Expr, Env)
-instantiate (T [] a) env = (a, env)
-instantiate (T (x : xs) a) env = do
-  let x' = newName (map fst env) x
-  let a' = substitute x (Var x') a
-  instantiate (T xs a') ((x', Var x') : env)
+instantiate :: Env -> Expr -> (Expr, Env)
+instantiate env (For x t) = do
+  let y = newName (map fst env) x
+  instantiate ((y, Var y) : env) (substitute x (Var y) t)
+instantiate env t = (t, env)
 
-unify :: Expr -> Expr -> Env -> Maybe Env
-unify a b env = case (reduce a env, reduce b env) of
-  (IntT, IntT) -> Just env
-  (Typ alts, Typ alts') | alts == alts' -> Just env
-  (Int i, Int i') | i == i' -> Just env
-  (Var x, Var x') | x == x' -> Just env
-  (Var x, b) | x `occurs` b -> Nothing
-  (Var x, b) -> Just ((x, b) : env)
-  (a, Var x) | x `occurs` a -> Nothing
-  (a, Var x) -> Just ((x, a) : env)
+unify :: Env -> Expr -> Expr -> Either TypeError Env
+unify env a b = case (reduce env a, reduce env b) of
+  (Var x, Var x') | x == x' -> Right env
+  (Var x, b) | x `occurs` b -> Left (InfiniteType x b)
+  (Var x, b) -> Right ((x, b) : env)
+  (a, Var x) | x `occurs` a -> Left (InfiniteType x a)
+  (a, Var x) -> Right ((x, a) : env)
   -- TODO: Lam (alpha equivalence?)
-  (App a1 a2, App b1 b2) -> unify2 (a1, b1) (a2, b2) env
-  (Fun a1 a2, Fun b1 b2) -> unify2 (a1, b1) (a2, b2) env
+  (App a1 a2, App b1 b2) -> unify2 env (a1, b1) (a2, b2)
+  (Fun a1 a2, Fun b1 b2) -> unify2 env (a1, b1) (a2, b2)
   -- TODO: Ann
-  -- (Fix, Fix) -> Just env
-  _typeMismatch -> Nothing
+  -- TODO: For
+  -- (Fix, Fix) -> Right env
+  (a, a') | a == a' -> Right env
+  (a, b) -> Left (TypeMismatch a b)
 
-unify2 :: (Expr, Expr) -> (Expr, Expr) -> Env -> Maybe Env
-unify2 (a1, b1) (a2, b2) env = do
-  env <- unify a1 b1 env
-  unify a2 b2 env
+unify2 :: Env -> (Expr, Expr) -> (Expr, Expr) -> Either TypeError Env
+unify2 env (a1, b1) (a2, b2) = do
+  env <- unify env a1 b1
+  unify env a2 b2
 
-infer :: Expr -> Env -> Maybe (Expr, Env)
-infer IntT env = Just (Typ [], env)
-infer (Typ _) env = Just (Typ [], env)
-infer (Int _) env = Just (IntT, env)
-infer (Var x) env = case lookup x env of
-  Just (Ann (Var x') typ) | x == x' -> Just (instantiate typ env)
-  Just (Var x') | x == x' -> Just (Var x, env)
-  Just a -> infer a env
-  Nothing -> Nothing
-infer (Lam _ x a) env = do
-  let tx = newName (map fst env) x
-  (t2, env) <- infer a ((x, Var tx) : (tx, Var tx) : env)
-  (t1, env) <- infer (Var tx) env
-  Just (Fun t1 (reduce t2 env), env)
-infer (App a b) env = do
-  (ta, env) <- infer a env
-  (tb, env) <- infer b env
-  case ta of
-    Fun t1 t2 -> do
-      env <- unify t1 tb env
-      Just (reduce t2 env, env)
-    _notAFunction -> Nothing
-infer (Fun a b) env = do
-  _ <- infer a env
-  _ <- infer b env
-  Just (Typ [], env)
-infer (Ann a typ) env = do
-  let (t, env') = instantiate typ env
-  (ta, env') <- infer a env'
-  env' <- unify t ta env'
-  Just (reduce t env', env')
-infer (Call _ typ) env = do
-  let (t, env') = instantiate typ env
-  Just (reduce t env, env')
-infer (Fix _ a) env = infer a env
+infer :: Env -> Expr -> Either TypeError (Expr, Env)
+infer env IntT = Right (Typ 0, env)
+infer env (Typ u) = Right (Typ (u + 1), env)
+infer env (Int _) = Right (IntT, env)
+infer env (Var x) = case lookup x env of
+  Just (Ann (Var x') t) | x == x' -> Right (instantiate env t)
+  Just (Var x') | x == x' -> Right (Var x, env)
+  Just a -> infer env a
+  Nothing -> Left (UndefinedVar x)
+infer env (Lam env' x a) = do
+  let tx = newName (x : map fst env) x
+  (t2, env) <- infer ((tx, Var tx) : (x, Ann (Var x) (Var tx)) : env' ++ env) a
+  Right (Fun (reduce env (Var tx)) (reduce env t2), env)
+infer env (App a b) = do
+  (ta, env) <- infer env a
+  (tb, env) <- infer env b
+  case instantiate env ta of
+    (Fun t1 t2, env) -> do
+      env <- unify env t1 tb
+      Right (reduce env t2, env)
+    _notAFunction -> Left (NotAFunction a ta)
+infer env (Fun a b) = do
+  _ <- infer env a
+  _ <- infer env b
+  Right (Typ 0, env)
+infer env (Ann a t) = do
+  let (t', env') = instantiate env t
+  (k, env') <- infer env' t'
+  case k of
+    Typ _ -> do
+      (ta, env') <- infer env' a
+      env' <- unify env' t' ta
+      Right (reduce env' t', env')
+    k -> Left (NotAType t' k)
+infer env (For x a) = do
+  _ <- infer ((x, Var x) : env) a
+  Right (Typ 0, env)
+infer env (Fix x a) = infer ((x, Ann (Var x) (for ["a", "b"] (Fun (Var "a") (Var "b")))) : env) a
+infer env (Call _ t) = do
+  let (t', env') = instantiate env t
+  Right (reduce env t', env')
 
 -- Helper functions --
 freeVariables :: Expr -> [String]
@@ -209,6 +248,7 @@ freeVariables (Lam env x a) = filter (\y -> y /= x && y `notElem` map fst env) (
 freeVariables (App a b) = freeVariables a `union` freeVariables b
 freeVariables (Fun a b) = freeVariables a `union` freeVariables b
 -- TODO: Ann
+-- TODO: Fun
 freeVariables _ = []
 
 newName :: [String] -> String -> String
