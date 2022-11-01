@@ -125,7 +125,7 @@ coreTests = describe "--== Core language ==--" $ do
     infer env (Ann x (Typ 0)) `shouldBe` Left (TypeMismatch (Typ 0) IntT)
     infer env (For "x" x) `shouldBe` Right (Typ 0, env)
     infer env (For "x" z) `shouldBe` Left (UndefinedVar "z")
-    infer env (Fix "f" (Int 1)) `shouldBe` Right (IntT, env)
+    infer env (Fix "f" (Int 1)) `shouldBe` Right (IntT, ("f", Ann f (for ["a", "b"] (Fun a b))) : env)
     infer env (Call Add (For "a" a)) `shouldBe` Right (a, ("a", a) : env)
 
   it "☯ freeVariables" $ do
