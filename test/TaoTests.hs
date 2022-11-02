@@ -80,6 +80,14 @@ taoTests = describe "--== Tao representation ==--" $ do
     inferName [([PAny, x'], Var "%42")] `shouldBe` "%43"
     inferName [([PAny], Var "%42"), ([x'], x)] `shouldBe` "x"
 
+  it "☯ validatePatterns" $ do
+    validatePatterns [] `shouldBe` Right ()
+    validatePatterns [([], x)] `shouldBe` Right ()
+    validatePatterns [([], x), ([], y)] `shouldBe` Right ()
+    validatePatterns [([], x), ([y'], y)] `shouldBe` Left (CaseNumPatternsMismatch 0 1)
+    validatePatterns [([x'], x), ([], y)] `shouldBe` Left (CaseNumPatternsMismatch 1 0)
+    validatePatterns [([x'], x), ([y'], y)] `shouldBe` Right ()
+
   it "☯ validateCases" $ do
     let env =
           [ ("T", Typ "T" [("A", [])]),

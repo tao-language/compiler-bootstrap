@@ -22,10 +22,6 @@ data Expr
   | Let ![(String, Expr)] !Expr
   deriving (Eq, Show)
 
--- data Type
---   = T ![String] !Expr
---   deriving (Eq, Show)
-
 data Pattern
   = PAny
   | PAs !Pattern !String
@@ -46,6 +42,7 @@ data Error
   | NotAType !Expr
   | NotACtr !Expr
   | NotAllCasesCovered
+  | CaseNumPatternsMismatch !Int !Int
   | UnmatchedPatterns ![Pattern]
   | CaseTypeMismatch !String !String
   | CaseCtrArgsMismatch ![String] ![Pattern]
@@ -168,6 +165,15 @@ inferName cases = do
     "" -> Core.newName ("%" : concatMap freeVars cases) "%"
     x -> x
 
+validatePatterns :: [Case] -> Either Error ()
+validatePatterns [] = Right ()
+validatePatterns ((ps, _) : cases) = do
+  let validate :: Int -> [Case] -> Either Error ()
+      validate _ [] = Right ()
+      validate n ((ps, _) : _) | length ps /= n = Left (CaseNumPatternsMismatch n (length ps))
+      validate n (_ : cases) = validate n cases
+  validate (length ps) cases
+
 validateCases :: Env -> String -> [Case] -> Either Error ()
 validateCases _ _ [] = Right ()
 validateCases env tname ((PCtr cname ps : _, _) : cases) = do
@@ -204,7 +210,6 @@ collapse x alt (_ : cases) = collapse x alt cases
 compile :: Expr -> Either Error Core.Expr
 compile (Let _ BoolT) = compile (Typ "Bool" [("True", []), ("False", [])])
 compile (Let _ IntT) = Right Core.IntT
--- compile (Let _ (Typ _ alts)) = Right (Core.Typ (length alts))
 compile (Let _ (Typ x alts)) = compile (For x (fun (map (const (Var x)) alts) (Var x)))
 compile (Let _ (Bool True)) = compile (lam ["True", "False"] (Var "True"))
 compile (Let _ (Bool False)) = compile (lam ["True", "False"] (Var "False"))
@@ -249,6 +254,7 @@ compile (Let env (Ctr tname cname)) = do
 compile (Let _ (Match [])) = Left NotAllCasesCovered
 compile (Let _ (Match (([], a) : _))) = compile a
 compile (Let env (Match cases)) = do
+  _ <- validatePatterns cases
   let x = inferName cases
   case findAlts env cases of
     Right [] -> compile (lam [x] (Match (collapse x ("", []) cases)))
@@ -271,5 +277,3 @@ eval expr = do
   case Core.infer [] expr' of
     Right _ -> Right (Core.eval [] expr')
     Left err -> Left (TypeError err expr')
-
--- Right expr'

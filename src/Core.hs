@@ -18,7 +18,6 @@ import Text.Read (readMaybe)
 -- Implementing dependent types: https://davidchristiansen.dk/tutorials/implementing-types-hs.pdf
 -- Complete and Easy: https://arxiv.org/pdf/1306.6032.pdf https://arxiv.org/abs/1306.6032
 
--- TODO: Tao: Match validation doesn't catch different number of patterns in rules
 -- TODO: TaoLang: parse type annotations
 -- TODO: TaoLang: do-notation, monadas, effects, I/O
 -- TODO: TaoLang: tuples and records
