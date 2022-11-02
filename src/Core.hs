@@ -18,16 +18,16 @@ import Text.Read (readMaybe)
 -- Implementing dependent types: https://davidchristiansen.dk/tutorials/implementing-types-hs.pdf
 -- Complete and Easy: https://arxiv.org/pdf/1306.6032.pdf https://arxiv.org/abs/1306.6032
 
--- TODO: Tao: add UndefinedVar (?)
--- TODO: Core: Match validation doesn't catch different number of patterns in rules
+-- TODO: Tao: Match validation doesn't catch different number of patterns in rules
 -- TODO: TaoLang: parse type annotations
--- TODO: Core: type checking error messages
--- TODO: Core: support types and ADTs like Bool, Maybe, List, Vec, Tuples and Records
--- TODO: Core: do-notation, monadas, effects, I/O
--- TODO: Core: show and pretty formatting
--- TODO: Tao: support types (tagged unions, type alias)
+-- TODO: TaoLang: do-notation, monadas, effects, I/O
+-- TODO: TaoLang: tuples and records
+-- TODO: TaoLang: support types (tagged unions, type alias)
 -- TODO: Tao: modules and stdlib (files, parser, compiler)
+-- TODO: Tao: show and pretty formatting
 -- TODO: self compiling compiler
+-- TODO: Core: add source code locations
+-- TODO: Core: pretty print error messages
 data Expr
   = IntT
   | Typ !Int
@@ -66,6 +66,7 @@ data TypeError
   | TypeMismatch !Expr !Expr
   deriving (Eq, Show)
 
+-- TODO: clean up
 instance Show Expr where
   show IntT = "@Int"
   show (Typ u) = "@Type[" ++ show u ++ "]"
@@ -204,7 +205,7 @@ infer env IntT = Right (Typ 0, env)
 infer env (Typ u) = Right (Typ (u + 1), env)
 infer env (Int _) = Right (IntT, env)
 infer env (Var x) = case lookup x env of
-  Just (Ann (Var x') t) | x == x' -> Right (instantiate env t)
+  Just (Ann (Var x') t) | x == x' -> Right (t, env)
   Just (Var x') | x == x' -> Right (Var x, env)
   Just a -> infer env a
   Nothing -> Left (UndefinedVar x)
@@ -225,21 +226,18 @@ infer env (Fun a b) = do
   _ <- infer env b
   Right (Typ 0, env)
 infer env (Ann a t) = do
-  let (t', env') = instantiate env t
-  (k, env') <- infer env' t'
+  (k, env) <- infer env t
   case k of
     Typ _ -> do
-      (ta, env') <- infer env' a
-      env' <- unify env' t' ta
-      Right (reduce env' t', env')
-    k -> Left (NotAType t' k)
+      (ta, env) <- infer env a
+      env <- unify env t ta
+      Right (reduce env t, env)
+    k -> Left (NotAType t k)
 infer env (For x a) = do
   _ <- infer ((x, Var x) : env) a
   Right (Typ 0, env)
 infer env (Fix x a) = infer ((x, Ann (Var x) (for ["a", "b"] (Fun (Var "a") (Var "b")))) : env) a
-infer env (Call _ t) = do
-  let (t', env') = instantiate env t
-  Right (reduce env t', env')
+infer env (Call _ t) = Right (t, env)
 
 -- Helper functions --
 freeVariables :: Expr -> [String]
