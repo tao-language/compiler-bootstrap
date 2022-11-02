@@ -10,7 +10,7 @@ coreTests = describe "--== Core language ==--" $ do
   let mul a = App (App (Call Mul (for ["mul"] (Var "mul"))) a)
   let eq a = App (App (Call Eq (for ["eq"] (Var "eq"))) a)
   let (a, b) = (Var "a", Var "b")
-  let (f, g) = (Var "f", Var "g")
+  let f = Var "f"
   let (x, y, z) = (Var "x", Var "y", Var "z")
 
   it "☯ reduce" $ do
@@ -98,20 +98,14 @@ coreTests = describe "--== Core language ==--" $ do
 
   it "☯ infer" $ do
     let a1 = Var "a1"
-    let env =
-          [ ("x", Int 1),
-            ("y", y),
-            ("f", Ann f (For "a" $ Fun IntT a)),
-            -- ("g", Ann g (For "a" $ Fun a $ For "b" $ Fun b b))
-            ("g", Ann g (For "a" $ Fun a a))
-          ]
+    let env = [("x", Int 1), ("y", y), ("f", Ann f (For "a" $ Fun IntT a))]
     infer env IntT `shouldBe` Right (Typ 0, env)
     infer env (Typ 1) `shouldBe` Right (Typ 2, env)
     infer env (Int 1) `shouldBe` Right (IntT, env)
     infer env (Var "x") `shouldBe` Right (IntT, env)
     infer env (Var "y") `shouldBe` Right (y, env)
     infer env (Var "z") `shouldBe` Left (UndefinedVar "z")
-    infer env (Var "f") `shouldBe` Right (Fun IntT a, ("a", a) : env)
+    infer env (Var "f") `shouldBe` Right (For "a" (Fun IntT a), env)
     infer env (Lam [] "a" a) `shouldBe` Right (Fun a1 a1, ("a1", a1) : ("a", Ann a a1) : env)
     infer env (App x x) `shouldBe` Left (NotAFunction x IntT)
     infer env (App f (Typ 0)) `shouldBe` Left (TypeMismatch IntT (Typ 1))
@@ -126,7 +120,7 @@ coreTests = describe "--== Core language ==--" $ do
     infer env (For "x" x) `shouldBe` Right (Typ 0, env)
     infer env (For "x" z) `shouldBe` Left (UndefinedVar "z")
     infer env (Fix "f" (Int 1)) `shouldBe` Right (IntT, ("f", Ann f (for ["a", "b"] (Fun a b))) : env)
-    infer env (Call Add (For "a" a)) `shouldBe` Right (a, ("a", a) : env)
+    infer env (Call Add (For "a" a)) `shouldBe` Right (For "a" a, env)
 
   it "☯ freeVariables" $ do
     freeVariables x `shouldBe` ["x"]
