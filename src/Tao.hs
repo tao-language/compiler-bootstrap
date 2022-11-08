@@ -4,9 +4,7 @@ import qualified Core
 import Data.List (foldl')
 
 data Expr
-  = BoolT
-  | IntT
-  | Typ !String ![Alt]
+  = IntT
   | Bool !Bool
   | Int !Int
   | Var !String
@@ -15,11 +13,16 @@ data Expr
   | Fun !Expr !Expr
   | Ann !Expr !Expr
   | For !String !Expr
-  | Call !Core.Primitive !Expr
+  | TypeDef !String ![Alt]
   | If !Expr !Expr !Expr
   | Ctr !String !String
   | Match ![Case]
   | Let ![(String, Expr)] !Expr
+  | Call !String !Expr
+  | Add
+  | Sub
+  | Mul
+  | Eq
   deriving (Eq, Show)
 
 data Pattern
@@ -87,35 +90,23 @@ fun xs a = foldr Fun a xs
 for :: [String] -> Expr -> Expr
 for xs a = foldr For a xs
 
-let' :: (String, Expr) -> Expr -> Expr
-let' (x, a) b = App (Lam x b) a
+letVar :: (String, Expr) -> Expr -> Expr
+letVar (x, a) b = App (Lam x b) a
 
 pvar :: String -> Pattern
 pvar = PAs PAny
 
-add' :: Expr
-add' = Call Core.Add (for ["a", "b"] (fun [Var "a", Var "a"] (Var "b")))
-
 add :: Expr -> Expr -> Expr
-add a b = app add' [a, b]
-
-sub' :: Expr
-sub' = Call Core.Sub (for ["a", "b"] (fun [Var "a", Var "a"] (Var "b")))
+add a b = app Add [a, b]
 
 sub :: Expr -> Expr -> Expr
-sub a b = app sub' [a, b]
-
-mul' :: Expr
-mul' = Call Core.Mul (for ["a", "b"] (fun [Var "a", Var "a"] (Var "b")))
+sub a b = app Sub [a, b]
 
 mul :: Expr -> Expr -> Expr
-mul a b = app mul' [a, b]
-
-eq' :: Expr
-eq' = Call Core.Eq (For "a" (fun [Var "a", Var "a"] BoolT))
+mul a b = app Mul [a, b]
 
 eq :: Expr -> Expr -> Expr
-eq a b = app eq' [a, b]
+eq a b = app Eq [a, b]
 
 bindings :: Pattern -> [String]
 bindings PAny = []
@@ -140,7 +131,7 @@ ctrType env cname = case lookup cname env of
 
 typeAlts :: Env -> String -> Either Error [Alt]
 typeAlts env tname = case lookup tname env of
-  Just (Typ _ alts) -> Right alts
+  Just (TypeDef _ alts) -> Right alts
   Just a -> Left (NotAType a)
   Nothing -> Left (UndefinedType tname)
 
@@ -201,16 +192,15 @@ collapse :: String -> Alt -> [Case] -> [Case]
 collapse _ _ [] = []
 collapse x alt ((PAny : ps, a) : cases) = (map (const PAny) (snd alt) ++ ps, a) : collapse x alt cases
 collapse x alt ((PAs p x' : ps, a) : cases) | x == x' = collapse x alt ((p : ps, a) : cases)
-collapse x alt ((PAs p y : ps, a) : cases) = collapse x alt ((p : ps, let' (y, Var x) a) : cases)
+collapse x alt ((PAs p y : ps, a) : cases) = collapse x alt ((p : ps, letVar (y, Var x) a) : cases)
 collapse x alt ((PCtr ctr qs : ps, a) : cases) | fst alt == ctr = (qs ++ ps, a) : collapse x alt cases
 collapse x alt ((PIf p cond : ps, a) : cases) = collapse x alt [(p : ps, If cond a (Match (collapse x alt cases)))]
 collapse x alt ((PEq expr : ps, a) : cases) = collapse x alt ((PIf PAny (eq (Var x) expr) : ps, a) : cases)
 collapse x alt (_ : cases) = collapse x alt cases
 
 compile :: Expr -> Either Error Core.Expr
-compile (Let _ BoolT) = compile (Typ "Bool" [("True", []), ("False", [])])
 compile (Let _ IntT) = Right Core.IntT
-compile (Let _ (Typ x alts)) = compile (For x (fun (map (const (Var x)) alts) (Var x)))
+compile (Let _ (TypeDef x alts)) = compile (For x (fun (map (const (Var x)) alts) (Var x)))
 compile (Let _ (Bool True)) = compile (lam ["True", "False"] (Var "True"))
 compile (Let _ (Bool False)) = compile (lam ["True", "False"] (Var "False"))
 compile (Let _ (Int i)) = Right (Core.Int i)
@@ -238,9 +228,6 @@ compile (Let env (Ann a t)) = do
 compile (Let env (For x a)) = do
   a' <- compile (Let ((x, Var x) : env) a)
   Right (Core.For x a')
-compile (Let env (Call f t)) = do
-  t' <- compile (Let env t)
-  Right (Core.Call f t')
 compile (Let env (If cond then_ else_)) = do
   cond' <- compile (Let env cond)
   then' <- compile (Let env then_)
@@ -261,6 +248,13 @@ compile (Let env (Match cases)) = do
     Right alts -> compile (lam [x] (app (Var x) (map (\alt -> Match (collapse x alt cases)) alts)))
     Left err -> Left err
 compile (Let env (Let env' a)) = compile (Let (env ++ env') a)
+compile (Let env (Call f t)) = do
+  t' <- compile (Let env t)
+  Right (Core.Call f t')
+compile (Let _ Add) = Right Core.Add
+compile (Let _ Sub) = Right Core.Sub
+compile (Let _ Mul) = Right Core.Mul
+compile (Let _ Eq) = Right Core.Eq
 compile a = compile (Let [] a)
 
 compileEnv :: Env -> Either Error Core.Env
