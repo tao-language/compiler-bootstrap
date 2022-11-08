@@ -183,6 +183,14 @@ parserTests = describe "--== Parser ==--" $ do
     --   -- parse' "a\n   \n b" (oneOrMore (token letter)) `shouldBe` Just "ab"
     --   True `shouldBe` True
 
+    it "☯ collection" $ do
+      let collection' = collection (char '[') (char ']') (char ',') letter
+      parse' "" collection' `shouldBe` Nothing
+      parse' "[" collection' `shouldBe` Nothing
+      parse' "[]" collection' `shouldBe` Just ""
+      parse' "[a]" collection' `shouldBe` Just "a"
+      parse' "[a,b,c]" collection' `shouldBe` Just "abc"
+
     it "☯ withOperators" $ do
       let calculator =
             withOperators

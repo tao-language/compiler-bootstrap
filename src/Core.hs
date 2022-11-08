@@ -38,15 +38,11 @@ data Expr
   | Ann !Expr !Expr
   | For !String !Expr
   | Fix !String !Expr
-  | Call !Primitive !Expr
-  deriving (Eq)
-
-data Primitive
-  = Add
+  | Call !String !Expr
+  | Add
   | Sub
   | Mul
   | Eq
-  | BuiltIn !String
   deriving (Eq)
 
 data Pattern
@@ -91,19 +87,12 @@ instance Show Expr where
         vars a xs = (xs, a)
     let (xs, a') = vars a []
     "@for " ++ unwords (x : xs) ++ ". " ++ show a'
-  show (Call Add _) = "(+)"
-  show (Call Sub _) = "(-)"
-  show (Call Mul _) = "(*)"
-  show (Call Eq _) = "(==)"
-  show (Call (BuiltIn f) t) = "@(" ++ f ++ " : " ++ show t ++ ")"
   show (Fix x a) = "@fix " ++ show x ++ " (" ++ show a ++ ")"
-
-instance Show Primitive where
+  show (Call f t) = "@(" ++ f ++ " : " ++ show t ++ ")"
   show Add = "+"
   show Sub = "-"
   show Mul = "*"
   show Eq = "=="
-  show (BuiltIn f) = '@' : f
 
 -- Syntax sugar --
 lam :: [String] -> Expr -> Expr
@@ -121,6 +110,18 @@ for xs a = foldr For a xs
 let' :: (String, Expr) -> Expr -> Expr
 let' (x, a) b = App (Lam [] x b) a
 
+add :: Expr -> Expr -> Expr
+add a b = app Add [a, b]
+
+sub :: Expr -> Expr -> Expr
+sub a b = app Sub [a, b]
+
+mul :: Expr -> Expr -> Expr
+mul a b = app Mul [a, b]
+
+eq :: Expr -> Expr -> Expr
+eq a b = app Eq [a, b]
+
 -- Evaluation --
 reduce :: Env -> Expr -> Expr
 reduce env (Var x) = case lookup x env of
@@ -130,13 +131,13 @@ reduce env (Var x) = case lookup x env of
 reduce env (Lam env' x a) = Lam (env' ++ env) x a
 reduce env (App a b) = case (reduce env a, reduce env b) of
   (Lam env x a, b) -> reduce ((x, b) : env) a
-  (App (Call op t) a, b) -> case (op, reduce env a, b) of
+  (App op a, b) -> case (op, reduce env a, b) of
     (Add, Int a, Int b) -> Int (a + b)
     (Sub, Int a, Int b) -> Int (a - b)
     (Mul, Int a, Int b) -> Int (a * b)
     (Eq, Int a, Int b) | a == b -> Lam [] "T" (Lam [] "F" (Var "T"))
     (Eq, Int _, Int _) -> Lam [] "T" (Lam [] "F" (Var "F"))
-    (_, a, b) -> App (App (Call op t) a) b
+    (_, a, b) -> App (App op a) b
   (Fix x a, b) -> reduce ((x, Fix x a) : env) (App a b)
   (a, b) -> App a b
 reduce env (Fun a b) = Fun (reduce env a) (reduce env b)
@@ -159,8 +160,8 @@ occurs x (Var y) = x == y
 occurs x (Lam env y a) | x /= y && x `notElem` map fst env = occurs x a
 occurs x (App a b) = occurs x a || occurs x b
 occurs x (Fun a b) = occurs x a || occurs x b
--- TODO: Ann
--- TODO: For
+occurs x (Ann a _) = occurs x a
+occurs x (For y a) | x /= y = occurs x a
 occurs _ _ = False
 
 substitute :: String -> Expr -> Expr -> Expr
@@ -237,6 +238,10 @@ infer env (For x a) = do
   Right (Typ 0, env)
 infer env (Fix x a) = infer ((x, Ann (Var x) (for ["a", "b"] (Fun (Var "a") (Var "b")))) : env) a
 infer env (Call _ t) = Right (t, env)
+infer env Add = Right (For "a" (fun [Var "a", Var "a"] (Var "a")), env)
+infer env Sub = Right (For "a" (fun [Var "a", Var "a"] (Var "a")), env)
+infer env Mul = Right (For "a" (fun [Var "a", Var "a"] (Var "a")), env)
+infer env Eq = Right (For "a" (fun [Var "a", Var "a"] (For "b" (fun [Var "b", Var "b"] (Var "b")))), env)
 
 -- Helper functions --
 freeVariables :: Expr -> [String]

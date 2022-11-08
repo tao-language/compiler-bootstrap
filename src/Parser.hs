@@ -5,13 +5,13 @@ import qualified Data.Char as Char
 newtype Parser a = Parser (State -> Either ParserError (a, State))
 
 data State = State
-  { source :: String,
-    row :: Int,
-    col :: Int
+  { source :: !String,
+    row :: !Int,
+    col :: !Int
   }
   deriving (Eq, Show)
 
-data ParserError = ParserError String State
+data ParserError = ParserError !String !State
   deriving (Eq, Show)
 
 (|>) :: a -> (a -> b) -> b
@@ -229,6 +229,43 @@ textCaseSensitive :: String -> Parser String
 textCaseSensitive str =
   chain (fmap charCaseSensitive str)
     |> orElse (expected $ "the text '" <> str <> "' (case sensitive)")
+
+-- TODO: test
+followedBy :: Parser a -> Parser b -> Parser b
+followedBy (Parser lookahead) parser = do
+  x <- parser
+  Parser
+    ( \state -> case lookahead state of
+        Right _ -> Right (x, state)
+        Left err -> Left err
+    )
+
+-- TODO: test
+notFollowedBy :: Parser a -> Parser b -> Parser b
+notFollowedBy (Parser lookahead) parser = do
+  x <- parser
+  Parser
+    ( \state -> case lookahead state of
+        Right _ -> Left (ParserError "unexpected lookahead" state)
+        Left _ -> Right (x, state)
+    )
+
+split :: Parser delimiter -> Parser a -> Parser [a]
+split delimiter parser =
+  oneOf
+    [ do
+        x <- parser
+        xs <- zeroOrMore (do _ <- delimiter; parser)
+        succeed (x : xs),
+      succeed []
+    ]
+
+collection :: Parser open -> Parser close -> Parser delimiter -> Parser a -> Parser [a]
+collection open close delimiter parser = do
+  _ <- open
+  xs <- split delimiter parser
+  _ <- close
+  succeed xs
 
 -- tok :: String -> Parser a -> Parser (a, String)
 -- tok indent parser = do

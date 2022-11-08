@@ -29,17 +29,17 @@ taoTests = describe "--== Tao representation ==--" $ do
     for ["x"] y `shouldBe` For "x" y
     for ["x", "y"] z `shouldBe` For "x" (For "y" z)
 
-  it "☯ let'" $ do
-    let' ("x", y) z `shouldBe` App (Lam "x" z) y
+  it "☯ letVar" $ do
+    letVar ("x", y) z `shouldBe` App (Lam "x" z) y
 
   it "☯ pvar" $ do
     pvar "x" `shouldBe` PAs PAny "x"
 
   it "☯ built-in operators" $ do
-    add x y `shouldBe` App (App add' x) y
-    sub x y `shouldBe` App (App sub' x) y
-    mul x y `shouldBe` App (App mul' x) y
-    eq x y `shouldBe` App (App eq' x) y
+    add x y `shouldBe` App (App Add x) y
+    sub x y `shouldBe` App (App Sub x) y
+    mul x y `shouldBe` App (App Mul x) y
+    eq x y `shouldBe` App (App Eq x) y
 
   it "☯ bindings" $ do
     bindings PAny `shouldBe` []
@@ -54,13 +54,13 @@ taoTests = describe "--== Tao representation ==--" $ do
     unpack (PAs PAny "x", y) `shouldBe` [("x", App (Match [([x'], x)]) y)]
 
   it "☯ ctrType" $ do
-    let env = [("T", Typ "T" [("A", [])]), ("A", Ctr "T" "A")]
+    let env = [("T", TypeDef "T" [("A", [])]), ("A", Ctr "T" "A")]
     ctrType env "X" `shouldBe` Left (UndefinedCtr "X")
-    ctrType env "T" `shouldBe` Left (NotACtr (Typ "T" [("A", [])]))
+    ctrType env "T" `shouldBe` Left (NotACtr (TypeDef "T" [("A", [])]))
     ctrType env "A" `shouldBe` Right "T"
 
   it "☯ typeAlts" $ do
-    let env = [("T", Typ "T" [("A", ["x", "y"])]), ("A", Ctr "T" "A")]
+    let env = [("T", TypeDef "T" [("A", ["x", "y"])]), ("A", Ctr "T" "A")]
     typeAlts env "X" `shouldBe` Left (UndefinedType "X")
     typeAlts env "A" `shouldBe` Left (NotAType (Ctr "T" "A"))
     typeAlts env "T" `shouldBe` Right [("A", ["x", "y"])]
@@ -90,16 +90,16 @@ taoTests = describe "--== Tao representation ==--" $ do
 
   it "☯ validateCases" $ do
     let env =
-          [ ("T", Typ "T" [("A", [])]),
+          [ ("T", TypeDef "T" [("A", [])]),
             ("A", Ctr "T" "A"),
-            ("U", Typ "U" [("B", [])]),
+            ("U", TypeDef "U" [("B", [])]),
             ("B", Ctr "U" "B")
           ]
     validateCases env "T" [] `shouldBe` Right ()
     validateCases env "T" [([], Int 1)] `shouldBe` Right ()
     validateCases env "T" [([PAny], Int 1)] `shouldBe` Right ()
     validateCases env "T" [([PCtr "X" []], Int 1)] `shouldBe` Left (UndefinedCtr "X")
-    validateCases env "T" [([PCtr "T" []], Int 1)] `shouldBe` Left (NotACtr (Typ "T" [("A", [])]))
+    validateCases env "T" [([PCtr "T" []], Int 1)] `shouldBe` Left (NotACtr (TypeDef "T" [("A", [])]))
     validateCases env "T" [([PCtr "A" []], Int 1)] `shouldBe` Right ()
     validateCases env "T" [([PCtr "B" []], Int 1)] `shouldBe` Left (CaseTypeMismatch "T" "U")
     validateCases env "T" [([PCtr "A" [x']], Int 1)] `shouldBe` Left (CaseCtrArgsMismatch [] [x'])
@@ -109,7 +109,7 @@ taoTests = describe "--== Tao representation ==--" $ do
     validateCases env "T" [([PEq (Int 0)], Int 1)] `shouldBe` Right ()
 
   it "☯ findAlts" $ do
-    let env = [("T", Typ "T" [("A", [])]), ("A", Ctr "T" "A")]
+    let env = [("T", TypeDef "T" [("A", [])]), ("A", Ctr "T" "A")]
     findAlts env [] `shouldBe` Right []
     findAlts env [([], Int 1)] `shouldBe` Right []
     findAlts env [([PAny], Int 1)] `shouldBe` Right []
@@ -124,11 +124,11 @@ taoTests = describe "--== Tao representation ==--" $ do
     collapse "x" alt [([], Int 1)] `shouldBe` []
     collapse "x" alt [([PAny, z'], Int 1)] `shouldBe` [([PAny, z'], Int 1)]
     collapse "x" alt [([PAs PAny "x", z'], Int 1)] `shouldBe` [([PAny, z'], Int 1)]
-    collapse "x" alt [([PAs PAny "y", z'], Int 1)] `shouldBe` [([PAny, z'], let' ("y", x) (Int 1))]
+    collapse "x" alt [([PAs PAny "y", z'], Int 1)] `shouldBe` [([PAny, z'], letVar ("y", x) (Int 1))]
     collapse "x" alt [([PCtr "A" [y'], z'], Int 1)] `shouldBe` [([y', z'], Int 1)]
     collapse "x" alt [([PCtr "B" [y'], z'], Int 1)] `shouldBe` []
-    collapse "x" alt [([PIf PAny (Bool True), z'], Int 1), ([y'], Int 2)] `shouldBe` [([PAny, z'], If (Bool True) (Int 1) (Match [([PAny], let' ("y", x) (Int 2))]))]
-    collapse "x" alt [([PEq (Int 0), z'], Int 1), ([y'], Int 2)] `shouldBe` [([PAny, z'], If (eq x (Int 0)) (Int 1) (Match [([PAny], let' ("y", x) (Int 2))]))]
+    collapse "x" alt [([PIf PAny (Bool True), z'], Int 1), ([y'], Int 2)] `shouldBe` [([PAny, z'], If (Bool True) (Int 1) (Match [([PAny], letVar ("y", x) (Int 2))]))]
+    collapse "x" alt [([PEq (Int 0), z'], Int 1), ([y'], Int 2)] `shouldBe` [([PAny, z'], If (eq x (Int 0)) (Int 1) (Match [([PAny], letVar ("y", x) (Int 2))]))]
 
   it "☯ compile" $ do
     let f = Var "f"
@@ -136,13 +136,12 @@ taoTests = describe "--== Tao representation ==--" $ do
           [ ("x", IntT),
             ("y", y),
             ("f", App (Var "f") (Var "x")),
-            ("T", Typ "T" [("A", []), ("B", ["x", "xs"])]),
+            ("T", TypeDef "T" [("A", []), ("B", ["x", "xs"])]),
             ("A", Ctr "T" "A"),
             ("B", Ctr "T" "B")
           ]
-    compile BoolT `shouldBe` compile (Typ "Bool" [("True", []), ("False", [])])
     compile IntT `shouldBe` Right C.IntT
-    compile (Typ "T" [("A", [])]) `shouldBe` compile (For "T" (fun [Var "T"] (Var "T")))
+    compile (TypeDef "T" [("A", [])]) `shouldBe` compile (For "T" (fun [Var "T"] (Var "T")))
     compile (Bool True) `shouldBe` compile (lam ["True", "False"] (Var "True"))
     compile (Bool False) `shouldBe` compile (lam ["True", "False"] (Var "False"))
     compile (Int 1) `shouldBe` Right (C.Int 1)
@@ -152,7 +151,6 @@ taoTests = describe "--== Tao representation ==--" $ do
     compile (Fun x y) `shouldBe` Right (C.Fun (C.Var "x") (C.Var "y"))
     compile (Ann x y) `shouldBe` Right (C.Ann (C.Var "x") (C.Var "y"))
     compile (Ann x (For "y" y)) `shouldBe` Right (C.Ann (C.Var "x") (C.For "y" (C.Var "y")))
-    compile (Call C.Add (For "y" y)) `shouldBe` Right (C.Call C.Add (C.For "y" (C.Var "y")))
     compile (Let env (For "x" x)) `shouldBe` Right (C.For "x" (C.Var "x"))
     compile (Let env x) `shouldBe` Right C.IntT
     compile (Let env y) `shouldBe` Right (C.Var "y")
@@ -171,3 +169,8 @@ taoTests = describe "--== Tao representation ==--" $ do
     compile (Let env (Match [([PCtr "A" []], x), ([PAny], y)])) `shouldBe` compile (Lam "%1" (app (Var "%1") [x, lam ["%1", "%1"] y]))
     compile (Let env (Match [([PCtr "B" [x', y']], x), ([PAny], y)])) `shouldBe` compile (Lam "%1" (app (Var "%1") [y, lam ["x", "y"] x]))
     compile (Let env (Match [([PEq (Int 0)], x), ([PAny], y)])) `shouldBe` compile (Lam "%1" (If (eq (Var "%1") (Int 0)) x y))
+    compile (Call "f" (For "y" y)) `shouldBe` Right (C.Call "f" (C.For "y" (C.Var "y")))
+    compile Add `shouldBe` Right C.Add
+    compile Sub `shouldBe` Right C.Sub
+    compile Mul `shouldBe` Right C.Mul
+    compile Eq `shouldBe` Right C.Eq

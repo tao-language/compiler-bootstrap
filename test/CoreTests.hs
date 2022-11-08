@@ -5,10 +5,6 @@ import Test.Hspec
 
 coreTests :: SpecWith ()
 coreTests = describe "--== Core language ==--" $ do
-  let add a = App (App (Call Add (for ["add"] (Var "add"))) a)
-  let sub a = App (App (Call Sub (for ["sub"] (Var "sub"))) a)
-  let mul a = App (App (Call Mul (for ["mul"] (Var "mul"))) a)
-  let eq a = App (App (Call Eq (for ["eq"] (Var "eq"))) a)
   let (a, b) = (Var "a", Var "b")
   let f = Var "f"
   let (x, y, z) = (Var "x", Var "y", Var "z")
@@ -120,7 +116,9 @@ coreTests = describe "--== Core language ==--" $ do
     infer env (For "x" x) `shouldBe` Right (Typ 0, env)
     infer env (For "x" z) `shouldBe` Left (UndefinedVar "z")
     infer env (Fix "f" (Int 1)) `shouldBe` Right (IntT, ("f", Ann f (for ["a", "b"] (Fun a b))) : env)
-    infer env (Call Add (For "a" a)) `shouldBe` Right (For "a" a, env)
+    infer env (Call "f" (For "a" a)) `shouldBe` Right (For "a" a, env)
+  -- TODO: BuiltIn operators
+  -- infer env Add `shouldBe` Right (For "a" a, env)
 
   it "☯ freeVariables" $ do
     freeVariables x `shouldBe` ["x"]
@@ -130,7 +128,6 @@ coreTests = describe "--== Core language ==--" $ do
     freeVariables (Lam [] "x" x) `shouldBe` []
     freeVariables (Lam [] "x" y) `shouldBe` ["y"]
     freeVariables (Lam [("y", Int 1)] "x" y) `shouldBe` []
-    freeVariables (Call Add (For "y" y)) `shouldBe` []
 
   it "☯ readNameIdx" $ do
     readNameIdx "" "" `shouldBe` Nothing
