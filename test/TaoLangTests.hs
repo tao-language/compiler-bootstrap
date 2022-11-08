@@ -109,7 +109,7 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     expr "f x = 1; y@_ = 2; z" `shouldBe` Just (Let [("f", Match [([x'], Int 1)]), ("y", App (Match [([y'], y)]) (Int 2))] z)
     expr "\\x -> y" `shouldBe` Just (Match [([x'], y)])
     expr "\\1 -> y | x -> z" `shouldBe` Just (Match [([PEq (Int 1)], y), ([x'], z)])
-    expr "\\1 -> y\n  x -> z" `shouldBe` Just (Match [([PEq (Int 1)], y), ([x'], z)])
+    expr "\\1 -> y\n  | x -> z" `shouldBe` Just (Match [([PEq (Int 1)], y), ([x'], z)])
     expr "(x)" `shouldBe` Just x
     expr "( x )" `shouldBe` Just x
     expr "x -> y" `shouldBe` Just (Fun x y)
@@ -137,11 +137,11 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     match' "" `shouldBe` Nothing
     match' "\\x -> 1" `shouldBe` Just (Match [([x'], Int 1)])
     match' "\\x -> 1 | y -> 2" `shouldBe` Just (Match [([x'], Int 1), ([y'], Int 2)])
-    match' "\\x -> 1\n y -> 2" `shouldBe` Just (Match [([x'], Int 1)])
-    match' "\\x -> 1\n  y -> 2" `shouldBe` Just (Match [([x'], Int 1), ([y'], Int 2)])
-    match' "\\x -> 1\n   y -> 2" `shouldBe` Just (Match [([x'], Int 1)])
-    match' "\\x -> 1 | y -> 2\n  z -> 3" `shouldBe` Just (Match [([x'], Int 1), ([y'], Int 2), ([z'], Int 3)])
-    match' "\\x -> 1\n  y -> 2 | z -> 3" `shouldBe` Just (Match [([x'], Int 1), ([y'], Int 2), ([z'], Int 3)])
+    match' "\\x -> 1\n | y -> 2" `shouldBe` Just (Match [([x'], Int 1)])
+    match' "\\x -> 1\n  | y -> 2" `shouldBe` Just (Match [([x'], Int 1), ([y'], Int 2)])
+    match' "\\x -> 1\n   | y -> 2" `shouldBe` Just (Match [([x'], Int 1)])
+    match' "\\x -> 1 | y -> 2\n  | z -> 3" `shouldBe` Just (Match [([x'], Int 1), ([y'], Int 2), ([z'], Int 3)])
+    match' "\\x -> 1\n  | y -> 2 | z -> 3" `shouldBe` Just (Match [([x'], Int 1), ([y'], Int 2), ([z'], Int 3)])
 
   it "☯ rule" $ do
     let indent = "  "

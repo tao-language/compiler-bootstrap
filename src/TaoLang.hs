@@ -135,7 +135,7 @@ match :: String -> Parser Expr
 match indent = do
   _ <- token (char '\\')
   c <- case' indent
-  cs <- zeroOrMore (do _ <- delimiter indent (char '|'); case' indent)
+  cs <- zeroOrMore (do _ <- maybe' (newLine indent); _ <- token (char '|'); case' indent)
   succeed (Match (c : cs))
 
 rule :: String -> Parser ([Pattern], Expr)
