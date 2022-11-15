@@ -13,7 +13,7 @@ examplesTests = describe "--== Examples end-to-end ==--" $ do
         Right result -> Just result
         Left _ -> Nothing
 
-  describe "☯ loading" $ do
+  describe "☯ basic" $ do
     it "☯ loadExpr" $ do
       loadExpr "42" `shouldReturn` Int 42
 
@@ -34,11 +34,11 @@ examplesTests = describe "--== Examples end-to-end ==--" $ do
       loadEnv "x = 1\ny = 2" `shouldReturn` [("x", Int 1), ("y", Int 2)]
 
     it "☯ loadFile" $ do
-      loadFile "example/loading" "expr.tao" `shouldReturn` [("x", Int 42)]
-      loadFile "example/loading" "func.tao" `shouldReturn` [("id", Match [([x'], x)])]
+      loadFile "example/basic" "expr.tao" `shouldReturn` [("x", Int 42)]
+      loadFile "example/basic" "func.tao" `shouldReturn` [("id", Match [([x'], x)])]
 
     it "☯ loadModule" $ do
-      loadModule "example/loading" `shouldReturn` [("x", Int 42), ("id", Match [([x'], x)])]
+      loadModule "example/basic" `shouldReturn` [("x", Int 42), ("id", Match [([x'], x)])]
 
   describe "☯ syntax" $ do
     it "☯ atoms" $ do
