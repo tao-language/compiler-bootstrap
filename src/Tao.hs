@@ -1,10 +1,12 @@
 module Tao where
 
 import qualified Core
+import Data.Bifunctor (Bifunctor (second))
 import Data.List (foldl')
 
 data Expr
   = IntT
+  | Typ !Int
   | Bool !Bool
   | Int !Int
   | Var !String
@@ -19,6 +21,7 @@ data Expr
   | Match ![Case]
   | Let ![(String, Expr)] !Expr
   | Call !String !Expr
+  | TypeOf !Expr
   | Add
   | Sub
   | Mul
@@ -27,8 +30,10 @@ data Expr
 
 data Pattern
   = PAny
+  | PVar !String
   | PAs !Pattern !String
   | PCtr !String ![Pattern]
+  | PAnn !Pattern !Pattern
   | PIf !Pattern !Expr
   | PEq !Expr
   deriving (Eq, Show)
@@ -90,12 +95,6 @@ fun xs a = foldr Fun a xs
 for :: [String] -> Expr -> Expr
 for xs a = foldr For a xs
 
-letVar :: (String, Expr) -> Expr -> Expr
-letVar (x, a) b = App (Lam x b) a
-
-pvar :: String -> Pattern
-pvar = PAs PAny
-
 add :: Expr -> Expr -> Expr
 add a b = app Add [a, b]
 
@@ -110,9 +109,11 @@ eq a b = app Eq [a, b]
 
 bindings :: Pattern -> [String]
 bindings PAny = []
+bindings (PVar x) = [x]
 bindings (PAs p x) = x : bindings p
 bindings (PCtr _ []) = []
 bindings (PCtr ctr (p : ps)) = bindings p ++ bindings (PCtr ctr ps)
+bindings (PAnn p t) = bindings p ++ bindings t
 bindings (PIf p _) = bindings p
 bindings (PEq _) = []
 
@@ -144,12 +145,13 @@ inferName :: [Case] -> String
 inferName cases = do
   let infer' :: String -> [Case] -> String
       infer' x [] = x
-      infer' "" ((PAs _ x : _, _) : cases) = infer' x cases
-      infer' x ((PAs _ x' : _, _) : cases) | x == x' = infer' x cases
-      infer' _ ((PAs _ _ : _, _) : _) = ""
+      infer' "" ((PVar x : _, _) : cases) = infer' x cases
+      infer' x ((PVar x' : _, _) : cases) | x == x' = infer' x cases
+      infer' _ ((PVar _ : _, _) : _) = ""
+      infer' x ((PAs _ y : ps, a) : cases) = infer' x ((PVar y : ps, a) : cases)
       infer' x (_ : cases) = infer' x cases
   let freeVars :: Case -> [String]
-      freeVars (_, a) = case compile a of
+      freeVars (_, a) = case compile [] a of
         Right a' -> Core.freeVariables a'
         Left _ -> []
   case infer' "" cases of
@@ -191,83 +193,107 @@ findAlts env (_ : cases) = findAlts env cases
 collapse :: String -> Alt -> [Case] -> [Case]
 collapse _ _ [] = []
 collapse x alt ((PAny : ps, a) : cases) = (map (const PAny) (snd alt) ++ ps, a) : collapse x alt cases
+collapse x alt ((PVar y : ps, a) : cases) = collapse x alt ((PAs PAny y : ps, a) : cases)
 collapse x alt ((PAs p x' : ps, a) : cases) | x == x' = collapse x alt ((p : ps, a) : cases)
-collapse x alt ((PAs p y : ps, a) : cases) = collapse x alt ((p : ps, letVar (y, Var x) a) : cases)
+collapse x alt ((PAs p y : ps, a) : cases) = collapse x alt ((p : ps, Let [(y, Var x)] a) : cases)
 collapse x alt ((PCtr ctr qs : ps, a) : cases) | fst alt == ctr = (qs ++ ps, a) : collapse x alt cases
+collapse x alt ((PAnn p t : ps, a) : cases) = collapse x alt ((p : ps, App (Match [([t], a)]) (TypeOf a)) : cases)
 collapse x alt ((PIf p cond : ps, a) : cases) = collapse x alt [(p : ps, If cond a (Match (collapse x alt cases)))]
 collapse x alt ((PEq expr : ps, a) : cases) = collapse x alt ((PIf PAny (eq (Var x) expr) : ps, a) : cases)
 collapse x alt (_ : cases) = collapse x alt cases
 
-compile :: Expr -> Either Error Core.Expr
-compile (Let _ IntT) = Right Core.IntT
-compile (Let _ (TypeDef x alts)) = compile (For x (fun (map (const (Var x)) alts) (Var x)))
-compile (Let _ (Bool True)) = compile (lam ["True", "False"] (Var "True"))
-compile (Let _ (Bool False)) = compile (lam ["True", "False"] (Var "False"))
-compile (Let _ (Int i)) = Right (Core.Int i)
-compile (Let env (Var x)) = case lookup x env of
+fromCore :: Core.Expr -> Expr
+fromCore Core.IntT = IntT
+fromCore (Core.Typ u) = Typ u
+fromCore (Core.Int i) = Int i
+fromCore (Core.Var x) = Var x
+fromCore (Core.Lam env x a) = Let (map (second fromCore) env) (Lam x (fromCore a))
+fromCore (Core.App a b) = App (fromCore a) (fromCore b)
+fromCore (Core.Fun a b) = Fun (fromCore a) (fromCore b)
+fromCore (Core.Ann a t) = Ann (fromCore a) (fromCore t)
+fromCore (Core.For x a) = For x (fromCore a)
+fromCore (Core.Fix x a) = Let [(x, fromCore a)] (Var x)
+fromCore (Core.Call f t) = Call f (fromCore t)
+fromCore Core.Add = Add
+fromCore Core.Sub = Sub
+fromCore Core.Mul = Mul
+fromCore Core.Eq = Eq
+
+compile :: Env -> Expr -> Either Error Core.Expr
+compile _ IntT = Right Core.IntT
+compile _ (Typ u) = Right (Core.Typ u)
+compile _ (TypeDef x alts) = compile [] (For x (fun (map (const (Var x)) alts) (Var x)))
+compile _ (Bool True) = compile [] (lam ["True", "False"] (Var "True"))
+compile _ (Bool False) = compile [] (lam ["True", "False"] (Var "False"))
+compile _ (Int i) = Right (Core.Int i)
+compile env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Right (Core.Var x)
-  Just a -> case compile (Let ((x, Var x) : env) a) of
+  Just a -> case compile ((x, Var x) : env) a of
     Right a' | x `Core.occurs` a' -> Right (Core.Fix x a')
     other -> other
   Nothing -> Right (Core.Var x)
-compile (Let env (Lam x a)) = do
-  a' <- compile (Let ((x, Var x) : env) a)
+compile env (Lam x a) = do
+  a' <- compile ((x, Var x) : env) a
   Right (Core.Lam [] x a')
-compile (Let env (App a b)) = do
-  a' <- compile (Let env a)
-  b' <- compile (Let env b)
+compile env (App a b) = do
+  a' <- compile env a
+  b' <- compile env b
   Right (Core.App a' b')
-compile (Let env (Fun a b)) = do
-  a' <- compile (Let env a)
-  b' <- compile (Let env b)
+compile env (Fun a b) = do
+  a' <- compile env a
+  b' <- compile env b
   Right (Core.Fun a' b')
-compile (Let env (Ann a t)) = do
-  a' <- compile (Let env a)
-  t' <- compile (Let env t)
+compile env (Ann a t) = do
+  a' <- compile env a
+  t' <- compile env t
   Right (Core.Ann a' t')
-compile (Let env (For x a)) = do
-  a' <- compile (Let ((x, Var x) : env) a)
+compile env (For x a) = do
+  a' <- compile ((x, Var x) : env) a
   Right (Core.For x a')
-compile (Let env (If cond then_ else_)) = do
-  cond' <- compile (Let env cond)
-  then' <- compile (Let env then_)
-  else' <- compile (Let env else_)
+compile env (If cond then_ else_) = do
+  cond' <- compile env cond
+  then' <- compile env then_
+  else' <- compile env else_
   Right (Core.App (Core.App cond' then') else')
-compile (Let env (Ctr tname cname)) = do
+compile env (Ctr tname cname) = do
   alts <- typeAlts env tname
   args <- altArgs alts cname
   let xs = map (Core.newName (map fst env)) args
-  compile (lam (xs ++ map fst alts) (app (Var cname) (map Var xs)))
-compile (Let _ (Match [])) = Left NotAllCasesCovered
-compile (Let _ (Match (([], a) : _))) = compile a
-compile (Let env (Match cases)) = do
+  compile env (lam (xs ++ map fst alts) (app (Var cname) (map Var xs)))
+compile _ (Match []) = Left NotAllCasesCovered
+compile env (Match (([], a) : _)) = compile env a
+compile env (Match cases) = do
   _ <- validatePatterns cases
   let x = inferName cases
   case findAlts env cases of
-    Right [] -> compile (lam [x] (Match (collapse x ("", []) cases)))
-    Right alts -> compile (lam [x] (app (Var x) (map (\alt -> Match (collapse x alt cases)) alts)))
+    Right [] -> compile env (lam [x] (Match (collapse x ("", []) cases)))
+    Right alts -> compile env (lam [x] (app (Var x) (map (\alt -> Match (collapse x alt cases)) alts)))
     Left err -> Left err
-compile (Let env (Let env' a)) = compile (Let (env ++ env') a)
-compile (Let env (Call f t)) = do
-  t' <- compile (Let env t)
+compile env (Let env' a) = compile (env ++ env') a
+compile env (Call f t) = do
+  t' <- compile env t
   Right (Core.Call f t')
-compile (Let _ Add) = Right Core.Add
-compile (Let _ Sub) = Right Core.Sub
-compile (Let _ Mul) = Right Core.Mul
-compile (Let _ Eq) = Right Core.Eq
-compile a = compile (Let [] a)
+compile env (TypeOf a) = do
+  a' <- compile env a
+  case Core.infer [] a' of
+    Right (t, _) -> Right t
+    Left err -> Left (TypeError err a')
+compile _ Add = Right Core.Add
+compile _ Sub = Right Core.Sub
+compile _ Mul = Right Core.Mul
+compile _ Eq = Right Core.Eq
 
 compileEnv :: Env -> Either Error Core.Env
 compileEnv env = do
   let compileDef :: (String, Expr) -> Either Error (String, Core.Expr)
       compileDef (x, a) = do
-        a' <- compile (Let env a)
+        a' <- compile env a
         Right (x, Core.eval [] a')
   mapM compileDef env
 
 eval :: Expr -> Either Error Core.Expr
 eval expr = do
-  expr' <- compile expr
+  expr' <- compile [] expr
   case Core.infer [] expr' of
     Right _ -> Right (Core.eval [] expr')
     Left err -> Left (TypeError err expr')

@@ -8,7 +8,7 @@ import Test.Hspec
 taoLangTests :: SpecWith ()
 taoLangTests = describe "--==☯ Tao language ☯==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
-  let (x', y', z') = (pvar "x", pvar "y", pvar "z")
+  let (x', y', z') = (PAs PAny "x", PAs PAny "y", PAs PAny "z")
   let parse' src parser = case Parser.parse src parser of
         Right x -> Just x
         Left _ -> Nothing
