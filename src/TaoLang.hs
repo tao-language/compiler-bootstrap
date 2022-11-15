@@ -7,8 +7,18 @@ import System.FilePath ((</>))
 import Tao
 
 loadExpr :: String -> IO Expr
-loadExpr x = case parseExpr x of
+loadExpr text = case parseExpr text of
   Right exprs -> return exprs
+  Left err -> fail ("❌ " ++ show err)
+
+loadDef :: String -> IO Env
+loadDef text = case parseDef text of
+  Right def -> return def
+  Left err -> fail ("❌ " ++ show err)
+
+loadEnv :: String -> IO Env
+loadEnv text = case parseEnv text of
+  Right env -> return env
   Left err -> fail ("❌ " ++ show err)
 
 loadFile :: FilePath -> FilePath -> IO Env
@@ -24,9 +34,15 @@ loadModule moduleName = do
   fileDefs <- mapM (loadFile moduleName) files
   return (concat fileDefs)
 
+-- TODO: make sure there are no unparsed inputs
 parseExpr :: String -> Either ParserError Expr
 parseExpr src = parse src (expression "")
 
+-- TODO: make sure there are no unparsed inputs
+parseDef :: String -> Either ParserError [(String, Expr)]
+parseDef src = parse src (definition "")
+
+-- TODO: make sure there are no unparsed inputs
 parseEnv :: String -> Either ParserError [(String, Expr)]
 parseEnv src = parse src (fmap concat (zeroOrMore (definition "")))
 
@@ -71,24 +87,19 @@ newLine indent = do
 
 spaces :: String -> Parser String
 spaces indent =
-  do
-    _ <- newLine indent
-    extra <- oneOrMore space
-    succeed (indent ++ extra)
-    |> orElse (succeed indent)
+  oneOf
+    [ do
+        _ <- newLine indent
+        extra <- oneOrMore space
+        succeed (indent ++ extra),
+      succeed indent
+    ]
 
 token :: Parser a -> Parser a
 token parser = do
   x <- parser
   _ <- zeroOrMore space
   succeed x
-
-delimiter :: String -> Parser a -> Parser [String]
-delimiter indent parser =
-  oneOf
-    [ newLine indent,
-      do _ <- token parser; succeed []
-    ]
 
 operator :: String -> Parser Expr
 operator indent = do
@@ -105,14 +116,27 @@ operator indent = do
   _ <- token (char ')')
   succeed op
 
+annotatedExpr :: String -> Parser Expr
+annotatedExpr indent = do
+  _ <- token (char '(')
+  _ <- spaces indent
+  expr <- expression indent
+  _ <- token (char ':')
+  type' <- expression indent
+  _ <- maybe' (newLine indent)
+  _ <- token (char ')')
+  succeed (Ann expr type')
+
 pattern :: Parser Pattern
 pattern = do
   oneOf
     [ fmap (const PAny) (token (char '_')),
       do
         x <- token lowerName
-        p <- oneOf [do _ <- token (char '@'); pattern, succeed PAny]
-        succeed (PAs p x),
+        oneOf
+          [ do _ <- token (char '@'); p <- pattern; succeed (PAs p x),
+            succeed (PVar x)
+          ],
       fmap (PEq . Int) (token integer),
       do
         ctr <- token upperName
@@ -162,45 +186,38 @@ rules indent name = do
       cases <- zeroOrMore (do _ <- newLine indent; _ <- token (text name); rule indent)
       succeed (Match (case' : cases))
 
-define :: String -> Parser (String, Expr)
+define :: String -> Parser [(String, Expr)]
 define indent = do
-  name <- token lowerName
   oneOf
     [ do
-        _ <- token (char ':')
-        indent <- spaces indent
-        type' <- expression indent
-        indent <- spaces indent
-        _ <- token (char '=')
-        indent <- spaces indent
-        value <- expression indent
-        succeed (name, Ann value type'),
-      do
+        -- Typed definition
+        name <- token lowerName
         _ <- token (char ':')
         indent <- spaces indent
         type' <- expression indent
         _ <- newLine indent
         _ <- token (text name)
         value <- rules indent name
-        succeed (name, Ann value type'),
+        succeed [(name, Ann value type')],
       do
+        -- Untyped definition
+        name <- token lowerName
         value <- rules indent name
-        succeed (name, value)
+        succeed [(name, value)],
+      do
+        -- Pattern unpacking
+        p <- pattern
+        indent <- spaces indent
+        _ <- token (char '=')
+        indent <- spaces indent
+        expr <- expression indent
+        succeed (unpack (p, expr))
     ]
-
-unpack' :: String -> Parser [(String, Expr)]
-unpack' indent = do
-  p <- pattern
-  indent <- spaces indent
-  _ <- token (char '=')
-  indent <- spaces indent
-  expr <- expression indent
-  succeed (unpack (p, expr))
 
 definition :: String -> Parser [(String, Expr)]
 definition indent = do
-  defs <- oneOf [exactly 1 (define indent), unpack' indent]
-  _ <- delimiter indent (char ';')
+  defs <- define indent
+  _ <- oneOf [void (newLine indent), void (token (char ';')), endOfFile]
   succeed defs
 
 let' :: String -> Parser Expr
@@ -238,12 +255,13 @@ expression indent = do
   -- TODO: make operators support newLines
   -- TODO: make parentheses support newLines
   withOperators
-    [ atom id builtin,
+    [ atom Int (token integer),
+      atom id builtin,
       atom id (match indent),
       atom id (let' indent),
-      atom Var (token lowerName),
-      atom Int (token integer),
       atom id (token (operator indent)),
+      atom id (token (annotatedExpr indent)),
+      atom Var (token lowerName),
       inbetween (const id) (token (char '(')) (token (char ')'))
     ]
     [ infixR 1 (const Fun) (token (text "->")),

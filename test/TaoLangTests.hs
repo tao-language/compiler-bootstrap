@@ -8,7 +8,7 @@ import Test.Hspec
 taoLangTests :: SpecWith ()
 taoLangTests = describe "--==☯ Tao language ☯==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
-  let (x', y', z') = (PAs PAny "x", PAs PAny "y", PAs PAny "z")
+  let (x', y', z') = (PVar "x", PVar "y", PVar "z")
   let parse' src parser = case Parser.parse src parser of
         Right x -> Just x
         Left _ -> Nothing
@@ -78,8 +78,8 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     parse' "" pattern `shouldBe` Nothing
     parse' "_" pattern `shouldBe` Just PAny
     parse' "42" pattern `shouldBe` Just (PEq (Int 42))
-    parse' "x@_" pattern `shouldBe` Just x'
-    parse' "x" pattern `shouldBe` Just x'
+    parse' "x@_" pattern `shouldBe` Just (PAs PAny "x")
+    parse' "x" pattern `shouldBe` Just (PVar "x")
     parse' "A" pattern `shouldBe` Just (PCtr "A" [])
     parse' "B x" pattern `shouldBe` Just (PCtr "B" [])
     parse' "(B x)" pattern `shouldBe` Just (PCtr "B" [x'])
@@ -104,9 +104,9 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     expr "(+)" `shouldBe` Just Add
     expr "x = 1; y" `shouldBe` Just (Let [("x", Int 1)] y)
     expr "x = 1\n  y" `shouldBe` Just (Let [("x", Int 1)] y)
-    expr "x@_ = 1; y" `shouldBe` Just (Let [("x", App (Match [([x'], x)]) (Int 1))] y)
+    expr "x@_ = 1; y" `shouldBe` Just (Let [("x", App (Match [([PAs PAny "x"], x)]) (Int 1))] y)
     expr "f x = 1; y" `shouldBe` Just (Let [("f", Match [([x'], Int 1)])] y)
-    expr "f x = 1; y@_ = 2; z" `shouldBe` Just (Let [("f", Match [([x'], Int 1)]), ("y", App (Match [([y'], y)]) (Int 2))] z)
+    expr "f x = 1; y = 2; z" `shouldBe` Just (Let [("f", Match [([x'], Int 1)]), ("y", Int 2)] z)
     expr "\\x -> y" `shouldBe` Just (Match [([x'], y)])
     expr "\\1 -> y | x -> z" `shouldBe` Just (Match [([PEq (Int 1)], y), ([x'], z)])
     expr "\\1 -> y\n  | x -> z" `shouldBe` Just (Match [([PEq (Int 1)], y), ([x'], z)])
@@ -169,34 +169,21 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     let indent = "  "
     let define' src = parse' src (define indent)
     define' "" `shouldBe` Nothing
-    define' "x = y" `shouldBe` Just ("x", y)
-    define' "f _ = y" `shouldBe` Just ("f", Match [([PAny], y)])
-    define' "f x = y" `shouldBe` Just ("f", Match [([x'], y)])
-    define' "f x y = z" `shouldBe` Just ("f", Match [([x', y'], z)])
-    define' "f A = x" `shouldBe` Just ("f", Match [([PCtr "A" []], x)])
-    define' "f A = x\n  f B = y" `shouldBe` Just ("f", Match [([PCtr "A" []], x), ([PCtr "B" []], y)])
+    define' "x = y" `shouldBe` Just [("x", y)]
+    define' "f _ = y" `shouldBe` Just [("f", Match [([PAny], y)])]
+    define' "f x = y" `shouldBe` Just [("f", Match [([x'], y)])]
+    define' "f x y = z" `shouldBe` Just [("f", Match [([x', y'], z)])]
+    define' "f A = x" `shouldBe` Just [("f", Match [([PCtr "A" []], x)])]
+    define' "f A = x\n  f B = y" `shouldBe` Just [("f", Match [([PCtr "A" []], x), ([PCtr "B" []], y)])]
     define' "f\n  x = y" `shouldBe` Nothing
-    define' "f\n   x = y" `shouldBe` Just ("f", Match [([x'], y)])
-    define' "x : z = y" `shouldBe` Just ("x", Ann y z)
-    define' "x : z\n  x = y" `shouldBe` Just ("x", Ann y z)
-    define' "f : z\n  f A = x\n  f B = y" `shouldBe` Just ("f", Ann (Match [([PCtr "A" []], x), ([PCtr "B" []], y)]) z)
-
-  it "☯ unpack" $ do
-    let indent = "  "
-    let unpack_ src = parse' src (unpack' indent)
-    unpack_ "" `shouldBe` Nothing
-    unpack_ "_ = y" `shouldBe` Just []
-    unpack_ "x = y" `shouldBe` Just [("x", App (Match [([x'], x)]) y)]
-    unpack_ "42 = y" `shouldBe` Just []
-    unpack_ "A = y" `shouldBe` Just []
-    unpack_ "(B x) = y" `shouldBe` Just [("x", App (Match [([PCtr "B" [x']], x)]) y)]
-    unpack_ "(C x y) = z" `shouldBe` Just [("x", App (Match [([PCtr "C" [x', y']], x)]) z), ("y", App (Match [([PCtr "C" [x', y']], y)]) z)]
-    unpack_ "x\n  = y" `shouldBe` Nothing
-    unpack_ "x\n   = y" `shouldBe` Just [("x", App (Match [([x'], x)]) y)]
-    unpack_ "x =\n  y" `shouldBe` Nothing
-    unpack_ "x =\n   y" `shouldBe` Just [("x", App (Match [([x'], x)]) y)]
-    unpack_ "x\n   =\n   y" `shouldBe` Nothing
-    unpack_ "x\n   =\n    y" `shouldBe` Just [("x", App (Match [([x'], x)]) y)]
+    define' "f\n   x = y" `shouldBe` Just [("f", Match [([x'], y)])]
+    define' "x : z\n  x = y" `shouldBe` Just [("x", Ann y z)]
+    define' "f : z\n  f A = x\n  f B = y" `shouldBe` Just [("f", Ann (Match [([PCtr "A" []], x), ([PCtr "B" []], y)]) z)]
+    define' "_ = y" `shouldBe` Just []
+    define' "42 = y" `shouldBe` Just []
+    define' "A = y" `shouldBe` Just []
+    define' "(B x) = y" `shouldBe` Just [("x", App (Match [([PCtr "B" [x']], x)]) y)]
+    define' "(C x y) = z" `shouldBe` Just [("x", App (Match [([PCtr "C" [x', y']], x)]) z), ("y", App (Match [([PCtr "C" [x', y']], y)]) z)]
 
   it "☯ operator precedence" $ do
     let expr src = parse' src (expression "")
