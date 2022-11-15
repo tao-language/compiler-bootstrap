@@ -1,6 +1,6 @@
 import qualified System.Environment
-import Tao (Expr (..), app, eval)
-import TaoLang (readDefinitions, readExpr)
+import Tao (app, eval)
+import TaoLang (loadExpr, loadFile)
 
 -- TODO: Modules consist of all files in a directory
 -- tao --module=examples factorial 5
@@ -10,10 +10,10 @@ main = do
   cliArgs <- System.Environment.getArgs
   case cliArgs of
     filename : f : args -> do
-      env' <- readDefinitions filename
-      f' <- readExpr f
-      args' <- mapM readExpr args
-      case eval (Let env' (app f' args')) of
+      env' <- loadFile "." filename
+      f' <- loadExpr f
+      args' <- mapM loadExpr args
+      case eval env' (app f' args') of
         Right result -> print result
         Left err -> fail ("❌ " ++ show err)
     _ -> putStrLn "🛑 Please provide me with a filename and an expression."

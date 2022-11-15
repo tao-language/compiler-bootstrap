@@ -2,21 +2,27 @@ module TaoLang where
 
 import Control.Monad (void)
 import Parser
+import System.Directory
+import System.FilePath ((</>))
 import Tao
 
-readExpr :: String -> IO Expr
-readExpr x = case parseExpr x of
+loadExpr :: String -> IO Expr
+loadExpr x = case parseExpr x of
   Right exprs -> return exprs
   Left err -> fail ("❌ " ++ show err)
 
-readDefinitions :: String -> IO Env
-readDefinitions filename = do
-  src <- readFile filename
+loadFile :: FilePath -> FilePath -> IO Env
+loadFile moduleName fileName = do
+  src <- readFile (moduleName </> fileName)
   case parseEnv src of
     Right env -> return env
     Left err -> fail ("❌ " ++ show err)
 
--- readModule :: String -> IO [(String, Expr)]
+loadModule :: FilePath -> IO Env
+loadModule moduleName = do
+  files <- listDirectory moduleName
+  fileDefs <- mapM (loadFile moduleName) files
+  return (concat fileDefs)
 
 parseExpr :: String -> Either ParserError Expr
 parseExpr src = parse src (expression "")

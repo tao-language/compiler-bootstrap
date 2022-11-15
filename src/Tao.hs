@@ -291,9 +291,9 @@ compileEnv env = do
         Right (x, Core.eval [] a')
   mapM compileDef env
 
-eval :: Expr -> Either Error Core.Expr
-eval expr = do
-  expr' <- compile [] expr
+eval :: Env -> Expr -> Either Error Core.Expr
+eval env expr = do
+  expr' <- compile env expr
   case Core.infer [] expr' of
     Right _ -> Right (Core.eval [] expr')
     Left err -> Left (TypeError err expr')

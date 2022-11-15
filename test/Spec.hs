@@ -1,4 +1,5 @@
 import CoreTests (coreTests)
+import ExamplesTests (examplesTests)
 import ParserTests (parserTests)
 import TaoLangTests (taoLangTests)
 import TaoTests (taoTests)
@@ -10,3 +11,4 @@ main = hspec $ do
   coreTests
   taoTests
   taoLangTests
+  examplesTests
