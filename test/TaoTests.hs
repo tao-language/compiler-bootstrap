@@ -29,12 +29,6 @@ taoTests = describe "--== Tao representation ==--" $ do
     for ["x"] y `shouldBe` For "x" y
     for ["x", "y"] z `shouldBe` For "x" (For "y" z)
 
-  it "☯ letVar" $ do
-    letVar ("x", y) z `shouldBe` App (Lam "x" z) y
-
-  it "☯ pvar" $ do
-    pvar "x" `shouldBe` PAs PAny "x"
-
   it "☯ built-in operators" $ do
     add x y `shouldBe` App (App Add x) y
     sub x y `shouldBe` App (App Sub x) y
@@ -124,14 +118,14 @@ taoTests = describe "--== Tao representation ==--" $ do
     collapse "x" alt [([], Int 1)] `shouldBe` []
     collapse "x" alt [([PAny, z'], Int 1)] `shouldBe` [([PAny, z'], Int 1)]
     collapse "x" alt [([PAs PAny "x", z'], Int 1)] `shouldBe` [([PAny, z'], Int 1)]
-    collapse "x" alt [([PAs PAny "y", z'], Int 1)] `shouldBe` [([PAny, z'], letVar ("y", x) (Int 1))]
+    collapse "x" alt [([PAs PAny "y", z'], Int 1)] `shouldBe` [([PAny, z'], Let [("y", x)] (Int 1))]
     collapse "x" alt [([PCtr "A" [y'], z'], Int 1)] `shouldBe` [([y', z'], Int 1)]
     collapse "x" alt [([PCtr "B" [y'], z'], Int 1)] `shouldBe` []
-    collapse "x" alt [([PIf PAny (Bool True), z'], Int 1), ([y'], Int 2)] `shouldBe` [([PAny, z'], If (Bool True) (Int 1) (Match [([PAny], letVar ("y", x) (Int 2))]))]
-    collapse "x" alt [([PEq (Int 0), z'], Int 1), ([y'], Int 2)] `shouldBe` [([PAny, z'], If (eq x (Int 0)) (Int 1) (Match [([PAny], letVar ("y", x) (Int 2))]))]
+    collapse "x" alt [([PAnn x' y', z'], x)] `shouldBe` [([PAny, z'], App (Match [([y'], x)]) (TypeOf x))]
+    collapse "x" alt [([PIf PAny (Bool True), z'], Int 1), ([y'], Int 2)] `shouldBe` [([PAny, z'], If (Bool True) (Int 1) (Match [([PAny], Let [("y", x)] (Int 2))]))]
+    collapse "x" alt [([PEq (Int 0), z'], Int 1), ([y'], Int 2)] `shouldBe` [([PAny, z'], If (eq x (Int 0)) (Int 1) (Match [([PAny], Let [("y", x)] (Int 2))]))]
 
   it "☯ compile" $ do
-    let f = Var "f"
     let env =
           [ ("x", IntT),
             ("y", y),
@@ -140,37 +134,37 @@ taoTests = describe "--== Tao representation ==--" $ do
             ("A", Ctr "T" "A"),
             ("B", Ctr "T" "B")
           ]
-    compile IntT `shouldBe` Right C.IntT
-    compile (TypeDef "T" [("A", [])]) `shouldBe` compile (For "T" (fun [Var "T"] (Var "T")))
-    compile (Bool True) `shouldBe` compile (lam ["True", "False"] (Var "True"))
-    compile (Bool False) `shouldBe` compile (lam ["True", "False"] (Var "False"))
-    compile (Int 1) `shouldBe` Right (C.Int 1)
-    compile (Var "x") `shouldBe` Right (C.Var "x")
-    compile (Lam "x" x) `shouldBe` Right (C.Lam [] "x" (C.Var "x"))
-    compile (App x y) `shouldBe` Right (C.App (C.Var "x") (C.Var "y"))
-    compile (Fun x y) `shouldBe` Right (C.Fun (C.Var "x") (C.Var "y"))
-    compile (Ann x y) `shouldBe` Right (C.Ann (C.Var "x") (C.Var "y"))
-    compile (Ann x (For "y" y)) `shouldBe` Right (C.Ann (C.Var "x") (C.For "y" (C.Var "y")))
-    compile (Let env (For "x" x)) `shouldBe` Right (C.For "x" (C.Var "x"))
-    compile (Let env x) `shouldBe` Right C.IntT
-    compile (Let env y) `shouldBe` Right (C.Var "y")
-    compile (Let env z) `shouldBe` Right (C.Var "z")
-    compile (Let env f) `shouldBe` Right (C.Fix "f" (C.App (C.Var "f") C.IntT))
-    compile (Let env (If (Var "cond") (Var "then") (Var "else"))) `shouldBe` Right (C.App (C.App (C.Var "cond") (C.Var "then")) (C.Var "else"))
-    compile (Let env (Ctr "X" "A")) `shouldBe` Left (UndefinedType "X")
-    compile (Let env (Ctr "x" "A")) `shouldBe` Left (NotAType IntT)
-    compile (Let env (Ctr "T" "X")) `shouldBe` Left (UndefinedCtr "X")
-    compile (Let env (Ctr "T" "A")) `shouldBe` compile (lam ["A", "B"] (Var "A"))
-    compile (Let env (Ctr "T" "B")) `shouldBe` compile (lam ["x1", "xs", "A", "B"] (app (Var "B") [Var "x1", Var "xs"]))
-    compile (Let env (Match [])) `shouldBe` Left NotAllCasesCovered
-    compile (Let env (Match [([], Int 1)])) `shouldBe` Right (C.Int 1)
-    compile (Let env (Match [([PAny], x)])) `shouldBe` compile (Lam "%1" x)
-    compile (Let env (Match [([PAs PAny "y"], y)])) `shouldBe` compile (Lam "y" y)
-    compile (Let env (Match [([PCtr "A" []], x), ([PAny], y)])) `shouldBe` compile (Lam "%1" (app (Var "%1") [x, lam ["%1", "%1"] y]))
-    compile (Let env (Match [([PCtr "B" [x', y']], x), ([PAny], y)])) `shouldBe` compile (Lam "%1" (app (Var "%1") [y, lam ["x", "y"] x]))
-    compile (Let env (Match [([PEq (Int 0)], x), ([PAny], y)])) `shouldBe` compile (Lam "%1" (If (eq (Var "%1") (Int 0)) x y))
-    compile (Call "f" (For "y" y)) `shouldBe` Right (C.Call "f" (C.For "y" (C.Var "y")))
-    compile Add `shouldBe` Right C.Add
-    compile Sub `shouldBe` Right C.Sub
-    compile Mul `shouldBe` Right C.Mul
-    compile Eq `shouldBe` Right C.Eq
+    compile env IntT `shouldBe` Right C.IntT
+    compile env (TypeDef "T" [("A", [])]) `shouldBe` compile [] (For "T" (fun [Var "T"] (Var "T")))
+    compile env (Bool True) `shouldBe` compile [] (lam ["True", "False"] (Var "True"))
+    compile env (Bool False) `shouldBe` compile [] (lam ["True", "False"] (Var "False"))
+    compile env (Int 1) `shouldBe` Right (C.Int 1)
+    compile env (Var "x") `shouldBe` Right C.IntT
+    compile env (Var "y") `shouldBe` Right (C.Var "y")
+    compile env (Var "z") `shouldBe` Right (C.Var "z")
+    compile env (Var "f") `shouldBe` Right (C.Fix "f" (C.App (C.Var "f") C.IntT))
+    compile env (Lam "x" x) `shouldBe` Right (C.Lam [] "x" (C.Var "x"))
+    compile env (App y x) `shouldBe` Right (C.App (C.Var "y") C.IntT)
+    compile env (Fun x y) `shouldBe` Right (C.Fun C.IntT (C.Var "y"))
+    compile env (Ann x y) `shouldBe` Right (C.Ann C.IntT (C.Var "y"))
+    compile env (Ann x (For "y" y)) `shouldBe` Right (C.Ann C.IntT (C.For "y" (C.Var "y")))
+    compile env (For "x" x) `shouldBe` Right (C.For "x" (C.Var "x"))
+    compile env (If (Var "cond") (Var "then") (Var "else")) `shouldBe` Right (C.App (C.App (C.Var "cond") (C.Var "then")) (C.Var "else"))
+    compile env (Ctr "X" "A") `shouldBe` Left (UndefinedType "X")
+    compile env (Ctr "x" "A") `shouldBe` Left (NotAType IntT)
+    compile env (Ctr "T" "X") `shouldBe` Left (UndefinedCtr "X")
+    compile env (Ctr "T" "A") `shouldBe` compile [] (lam ["A", "B"] (Var "A"))
+    compile env (Ctr "T" "B") `shouldBe` compile [] (lam ["x1", "xs", "A", "B"] (app (Var "B") [Var "x1", Var "xs"]))
+    compile env (Match []) `shouldBe` Left NotAllCasesCovered
+    compile env (Match [([], Int 1)]) `shouldBe` Right (C.Int 1)
+    compile env (Match [([PAny], x)]) `shouldBe` compile [] (Lam "%1" IntT)
+    compile env (Match [([PAs PAny "y"], y)]) `shouldBe` compile [] (Lam "y" y)
+    compile env (Match [([PCtr "A" []], x), ([PAny], y)]) `shouldBe` compile [] (Lam "%1" (app (Var "%1") [IntT, lam ["%1", "%1"] y]))
+    compile env (Match [([PCtr "B" [x', y']], x), ([PAny], y)]) `shouldBe` compile [] (Lam "%1" (app (Var "%1") [y, lam ["x", "y"] x]))
+    compile env (Match [([PEq (Int 0)], x), ([PAny], y)]) `shouldBe` compile [] (Lam "%1" (If (eq (Var "%1") (Int 0)) IntT y))
+    compile env (Call "f" (For "y" y)) `shouldBe` Right (C.Call "f" (C.For "y" (C.Var "y")))
+    compile env (TypeOf (Int 1)) `shouldBe` Right C.IntT
+    compile env Add `shouldBe` Right C.Add
+    compile env Sub `shouldBe` Right C.Sub
+    compile env Mul `shouldBe` Right C.Mul
+    compile env Eq `shouldBe` Right C.Eq

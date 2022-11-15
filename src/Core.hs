@@ -18,6 +18,7 @@ import Text.Read (readMaybe)
 -- Implementing dependent types: https://davidchristiansen.dk/tutorials/implementing-types-hs.pdf
 -- Complete and Easy: https://arxiv.org/pdf/1306.6032.pdf https://arxiv.org/abs/1306.6032
 
+-- TODO: Tao: function/operator overloading via pattern matching
 -- TODO: TaoLang: do-notation, monadas, effects, I/O
 -- TODO: TaoLang: tuples and records
 -- TODO: TaoLang: support types (tagged unions, type alias)
@@ -44,12 +45,6 @@ data Expr
   | Eq
   deriving (Eq)
 
-data Pattern
-  = PAny
-  | PVar !String
-  | PCtr !String ![Pattern]
-  deriving (Eq, Show)
-
 type Env = [(String, Expr)]
 
 data TypeError
@@ -72,13 +67,13 @@ instance Show Expr where
         vars (Lam _ x a) xs = let (xs', a') = vars a xs in (x : xs', a')
         vars a xs = (xs, a)
     let (xs, a') = vars a []
-    "\\" ++ unwords (x : xs) ++ ". " ++ show a'
+    "\\" ++ unwords (x : xs) ++ " -> " ++ show a'
   -- show (App (Lam env x a) (App Fix (Lam env' x' b))) | x == x' = "#letrec " ++ x ++ " = " ++ show b ++ "; " ++ show a
   show (App (Lam [] x a) b) = "@let " ++ x ++ " = " ++ show b ++ "; " ++ show a
   show (App a b@App {}) = show a ++ " (" ++ show b ++ ")"
   show (App a b@Lam {}) = show a ++ " (" ++ show b ++ ")"
   show (App a b) = show a ++ " " ++ show b
-  show (Fun a b) = show a ++ " => " ++ show b
+  show (Fun a b) = show a ++ " -> " ++ show b
   show (Ann a t) = "(" ++ show a ++ " : " ++ show t ++ ")"
   show (For x a) = do
     let vars :: Expr -> [String] -> ([String], Expr)
