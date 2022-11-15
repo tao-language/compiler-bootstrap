@@ -20,6 +20,8 @@ description:         Please see the README on GitHub at <https://github.com/tao-
 dependencies:
 - base >= 4.7 && < 5
 - containers
+- directory
+- filepath
 
 library:
   source-dirs: src
