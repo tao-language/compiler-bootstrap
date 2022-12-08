@@ -1,6 +1,7 @@
 module TaoLang where
 
 import Control.Monad (void)
+import Data.List (sort)
 import Parser
 import System.Directory
 import System.FilePath ((</>))
@@ -36,7 +37,7 @@ loadFile moduleName fileName = do
 loadModule :: FilePath -> IO Env
 loadModule moduleName = do
   files <- listDirectory moduleName
-  fileDefs <- mapM (loadFile moduleName) files
+  fileDefs <- mapM (loadFile moduleName) (sort files)
   return (concat fileDefs)
 
 -- TODO: make sure there are no unparsed inputs
