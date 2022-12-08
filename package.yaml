@@ -22,6 +22,8 @@ dependencies:
 - containers
 - directory
 - filepath
+- flow
+- sort
 
 library:
   source-dirs: src
