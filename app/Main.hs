@@ -1,5 +1,5 @@
 import qualified System.Environment
-import Tao (app, eval, infer)
+import Tao (app, run)
 import TaoLang (loadExpr, loadModule)
 
 main :: IO ()
@@ -10,10 +10,9 @@ main = do
       env <- loadModule path
       f' <- loadExpr f
       args' <- mapM loadExpr args
-      let expr = app f' args'
-      case infer env expr of
-        Right (t, _) -> do
-          print t
-          print (eval env expr)
+      case run env (app f' args') of
+        Right (result, type') -> do
+          print type'
+          print result
         Left err -> fail ("❌ " ++ show err)
     _ -> putStrLn "🛑 Please provide me with a directory and an expression."
