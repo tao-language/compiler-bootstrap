@@ -7,8 +7,10 @@ import Test.Hspec
 taoTests :: SpecWith ()
 taoTests = describe "--== Tao representation ==--" $ do
   let (a, b) = (Var "a", Var "b")
+  let (f, g, p) = (Var "f", Var "g", Var "p")
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (x', y', z') = (PAs PAny "x", PAs PAny "y", PAs PAny "z")
+  let (xT, yT, gT) = (Var "xT", Var "yT", Var "gT")
 
   it "☯ forT" $ do
     forT [] x `shouldBe` x
@@ -91,13 +93,11 @@ taoTests = describe "--== Tao representation ==--" $ do
     unify env (FunT y x) (FunT y z) `shouldBe` Right (("z", Int 1) : env)
 
   it "☯ infer" $ do
-    let (f, g, p) = (Var "f", Var "g", Var "p")
-    let a1 = Var "a1"
     let env =
           [ ("x", Int 1),
             ("y", y),
             ("f", Ann f (ForT "a" $ FunT IntT a)),
-            ("g", App g x),
+            ("g", Lam "g" (Ann (App g (Int 1)) TypT)),
             ("p", Rec [("x", Int 1), ("y", Int 2)]),
             ( "T",
               SumT
@@ -148,19 +148,19 @@ taoTests = describe "--== Tao representation ==--" $ do
     infer env (Ctr "T" "A") `shouldBe` Right (forT ["a", "b"] (NamT "T" [a, b]), env)
     infer env (Ctr "T" "B") `shouldBe` Right (forT ["a", "b"] (funT [IntT, a] (NamT "T" [a, b])), env)
     infer env (Var "x") `shouldBe` Right (IntT, env)
-    infer env (Var "y") `shouldBe` Right (y, env)
+    infer env (Var "y") `shouldBe` Right (yT, ("y", Ann y yT) : ("yT", yT) : env)
     infer env (Var "z") `shouldBe` Left (UndefinedVar "z")
     infer env (Var "f") `shouldBe` Right (ForT "a" (FunT IntT a), env)
-    infer env (Var "g") `shouldBe` Right (b, ("a", IntT) : ("b", b) : ("a", a) : ("g", Ann g (forT ["a", "b"] (FunT a b))) : env)
+    infer env (Var "g") `shouldBe` Right (FunT (FunT IntT TypT) TypT, ("%1", TypT) : ("gT", FunT IntT (Var "%1")) : ("%1", Var "%1") : ("g", Ann g gT) : ("gT", gT) : ("g", g) : env)
     infer env (FunT (Int 1) TypT) `shouldBe` Right (TypT, env)
     infer env (FunT (Var "z") TypT) `shouldBe` Left (UndefinedVar "z")
     infer env (FunT TypT (Var "z")) `shouldBe` Left (UndefinedVar "z")
-    infer env (Lam "a" a) `shouldBe` Right (ForT "a1" (FunT a1 a1), env)
-    infer env (Lam "a" (Ann a IntT)) `shouldBe` Right (FunT IntT IntT, env)
-    infer env (App x x) `shouldBe` Left (NotAFunction x IntT)
-    infer env (App f TypT) `shouldBe` Left (TypeMismatch IntT TypT)
-    infer env (App f (Int 1)) `shouldBe` Right (a, ("a", a) : env)
-    infer env (App (Lam "a" a) (Int 1)) `shouldBe` Right (IntT, ("a1", IntT) : ("a1", a1) : env)
+    infer env (Lam "x" x) `shouldBe` Right (ForT "xT" (FunT xT xT), ("x", Ann x xT) : ("xT", xT) : ("x", x) : env)
+    infer env (Lam "x" (Ann x IntT)) `shouldBe` Right (FunT IntT IntT, ("xT", IntT) : ("x", Ann x xT) : ("xT", xT) : ("x", x) : env)
+    infer env (App x x) `shouldBe` Left (TypeMismatch (FunT IntT (Var "%1")) IntT)
+    infer env (App f TypT) `shouldBe` Left (TypeMismatch TypT IntT)
+    infer env (App f (Int 1)) `shouldBe` Right (a, ("%1", a) : ("a", a) : ("%1", Var "%1") : env)
+    infer env (App (Lam "x" x) (Int 1)) `shouldBe` Right (IntT, ("%1", IntT) : ("xT1", IntT) : ("xT1", Var "xT1") : ("%1", Var "%1") : ("x", Ann x xT) : ("xT", xT) : ("x", x) : env)
     infer env (Ann x IntT) `shouldBe` Right (IntT, env)
     infer env (Ann x (Int 0)) `shouldBe` Left (NotAType (Int 0) IntT)
     infer env (Ann x TypT) `shouldBe` Left (TypeMismatch TypT IntT)
@@ -171,7 +171,7 @@ taoTests = describe "--== Tao representation ==--" $ do
     infer env (If (Bool True) (Int 1) (Int 1)) `shouldBe` Right (IntT, env)
     infer env (Let [("y", Int 1)] x) `shouldBe` Right (IntT, ("y", Int 1) : env)
     infer env (Let [("y", Int 1)] y) `shouldBe` Right (IntT, ("y", Int 1) : env)
-    infer env (Match [([x'], x)]) `shouldBe` Right (ForT "x1" (FunT (Var "x1") (Var "x1")), env)
+    infer env (Match [([x'], x)]) `shouldBe` Right (ForT "xT" (FunT xT xT), ("x", Ann x xT) : ("xT", xT) : ("x", x) : env)
     infer env (TypeOf (Int 1)) `shouldBe` Right (TypT, env)
     infer env (Op (Call "f" (ForT "a" a))) `shouldBe` Right (ForT "a" a, env)
   -- TODO: Operators
@@ -298,8 +298,6 @@ taoTests = describe "--== Tao representation ==--" $ do
     collapseCases env [([PEq (Int 0)], x), ([y'], z)] `shouldBe` Right (Lam "y" (Match [([], If (eq y (Int 0)) x (Match [([], z)]))]))
 
   it "☯ compile" $ do
-    let (f, g, p) = (Var "f", Var "g", Var "p")
-    let (f', g') = (C.Var "f", C.Var "g")
     let env =
           [ ("x", Int 1),
             ("f", f),
@@ -334,13 +332,13 @@ taoTests = describe "--== Tao representation ==--" $ do
     compile env (Var "x") `shouldBe` C.Int 1
     compile env (Var "y") `shouldBe` C.Var "y"
     compile env (Var "f") `shouldBe` C.Var "f"
-    compile env (Var "g") `shouldBe` C.Fix "g" (C.App g' (C.Int 1))
+    compile env (Var "g") `shouldBe` C.Fix "g" (C.App (C.Var "g") (C.Int 1))
     compile env (ForT "x" x) `shouldBe` C.ForT "x" (C.Var "x")
     compile env (ForT "y" x) `shouldBe` C.ForT "y" (C.Int 1)
-    compile env (FunT f IntT) `shouldBe` C.FunT f' C.IntT
+    compile env (FunT f IntT) `shouldBe` C.FunT (C.Var "f") C.IntT
     compile env (Lam "x" x) `shouldBe` C.Lam [] "x" (C.Var "x")
     compile env (Lam "y" x) `shouldBe` C.Lam [] "y" (C.Int 1)
-    compile env (App f x) `shouldBe` C.App f' (C.Int 1)
+    compile env (App f x) `shouldBe` C.App (C.Var "f") (C.Int 1)
     compile env (Ann x IntT) `shouldBe` C.Int 1
     compile env (If y x z) `shouldBe` compile [] (app y [Int 1, z])
     compile env (Let [("x", Int 2)] x) `shouldBe` C.Int 2

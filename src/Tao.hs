@@ -60,7 +60,7 @@ data Operator
   | Mul
   | Eq
   | Call !String !Expr
-  deriving (Eq)
+  deriving (Eq, Show)
 
 type Env = [(String, Expr)]
 
@@ -85,7 +85,6 @@ data TypeError
   | InfiniteType !String !Expr
   | NamedTypeArgsMismatch ![(String, Expr)] ![Expr]
   | NotACtr !String !Expr
-  | NotAFunction !Expr !Expr
   | NotARecord !Expr !Expr
   | NotASumType !String !Expr
   | NotAType !Expr !Expr
@@ -98,12 +97,12 @@ data TypeError
   | UndefinedVar !String
   deriving (Eq, Show)
 
-instance Show Operator where
-  show Add = "+"
-  show Sub = "-"
-  show Mul = "*"
-  show Eq = "=="
-  show (Call f t) = "@(" ++ f ++ " : " ++ show t ++ ")"
+-- instance Show Operator where
+--   show Add = "+"
+--   show Sub = "-"
+--   show Mul = "*"
+--   show Eq = "=="
+--   show (Call f t) = "@(" ++ f ++ " : " ++ show t ++ ")"
 
 -- Syntax sugar --
 forT :: [String] -> Expr -> Expr
@@ -253,9 +252,13 @@ infer env (Ctr tname cname) = case lookup tname env of
   Just a -> Left (NotASumType tname a)
   Nothing -> Left (UndefinedType tname)
 infer env (Var x) = case lookup x env of
-  Just (Ann (Var x') t) | x == x' -> Right (t, env)
-  Just (Var x') | x == x' -> Right (Var x, env)
-  Just a | x `occurs` a -> infer ((x, Ann (Var x) (forT ["a", "b"] (FunT (Var "a") (Var "b")))) : env) a
+  Just (Ann (Var x') t) | x == x' -> Right (reduce env t, env)
+  Just (Var x') | x == x' -> do
+    let tx = newName (map fst env) (x ++ "T")
+    Right (Var tx, (x, Ann (Var x) (Var tx)) : (tx, Var tx) : env)
+  Just a | x `occurs` a -> do
+    (_, env) <- infer env (Lam x a)
+    infer env (Var x)
   Just a -> infer env a
   Nothing -> Left (UndefinedVar x)
 infer env (ForT x a) = do
@@ -266,19 +269,17 @@ infer env (FunT a b) = do
   _ <- infer env b
   Right (TypT, env)
 infer env (Lam x a) = do
-  let tx = newName (x : map fst env) x
-  (t2, env') <- infer ((x, Ann (Var x) (Var tx)) : env) a
-  case reduce env' (Var tx) of
-    Var tx -> Right (ForT tx (FunT (Var tx) t2), env)
+  (t2, env) <- infer ((x, Var x) : env) a
+  (t1, env) <- infer env (Var x)
+  case t1 of
+    Var x -> Right (ForT x (FunT t1 t2), env)
     t1 -> Right (FunT t1 t2, env)
 infer env (App a b) = do
   (ta, env) <- infer env a
   (tb, env) <- infer env b
-  case instantiate env ta of
-    (FunT t1 t2, env) -> do
-      env <- unify env t1 tb
-      Right (reduce env t2, env)
-    _notAFunction -> Left (NotAFunction a ta)
+  let tx = newName ("%" : map fst env) "%"
+  env <- unify ((tx, Var tx) : env) (FunT tb (Var tx)) ta
+  Right (reduce env (Var tx), env)
 infer env (Ann a t) = do
   (k, env) <- infer env t
   case k of
@@ -288,10 +289,12 @@ infer env (Ann a t) = do
       Right (reduce env t, env)
     k -> Left (NotAType t k)
 infer env (If cond then' else') = do
-  env <- unify env (TypeOf cond) BoolT
-  (t, env) <- infer env then'
-  env <- unify env t (TypeOf else')
-  Right (reduce env t, env)
+  (condT, env) <- infer env cond
+  (thenT, env) <- infer env then'
+  (elseT, env) <- infer env else'
+  env <- unify env condT BoolT
+  env <- unify env thenT elseT
+  Right (reduce env thenT, env)
 infer env (Let env' a) = infer (env' ++ env) a
 infer env (Match cases) = do
   a <- collapseCases env cases
@@ -533,3 +536,8 @@ reduce env a = compile env a |> Core.reduce [] |> decompile
 
 eval :: Env -> Expr -> Expr
 eval env a = compile env a |> Core.eval [] |> decompile
+
+run :: Env -> Expr -> Either TypeError (Expr, Expr)
+run env a = do
+  (t, _) <- infer env a
+  Right (eval env a, t)
