@@ -11,7 +11,7 @@ taoTests = describe "--== Tao representation ==--" $ do
   let (p, q) = (Var "p", Var "q")
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (x', y', z') = (PAs PAny "x", PAs PAny "y", PAs PAny "z")
-  let (xT, yT, gT) = (Var "xT", Var "yT", Var "gT")
+  let (xT, gT) = (Var "xT", Var "gT")
 
   it "☯ forT" $ do
     forT [] x `shouldBe` x
