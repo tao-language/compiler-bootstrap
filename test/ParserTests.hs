@@ -1,5 +1,6 @@
 module ParserTests where
 
+import Flow ((|>))
 import Parser
 import Test.Hspec (SpecWith, describe, it, shouldBe)
 
@@ -192,12 +193,11 @@ parserTests = describe "--== Parser ==--" $ do
       parse' "[a,b,c]" collection' `shouldBe` Just "abc"
 
     it "☯ withOperators" $ do
-      let calculator =
+      let neg = do _ <- char '-'; x <- calculator; succeed (- x)
+          paren = do _ <- char '('; x <- calculator; _ <- char ')'; succeed x
+          calculator =
             withOperators
-              [ prefix (\_ x -> - x) (char '-'),
-                atom id number,
-                inbetween (const id) (char '(') (char ')')
-              ]
+              (oneOf [neg, number, paren])
               [ infixL 1 (const (+)) (char '+'),
                 infixL 1 (const (-)) (char '-'),
                 infixL 2 (const (*)) (char '*'),

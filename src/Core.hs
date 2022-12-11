@@ -5,11 +5,8 @@ import Data.List (foldl', intercalate)
 data Term
   = Err
   | TypT
-  | BoolT
   | IntT
   | Int !Int
-  | TupT ![Term]
-  | RecT ![(String, Term)]
   | SumT ![(String, Term)] ![Alt]
   | NamT !String ![Term]
   | Var !String
@@ -37,14 +34,8 @@ type Alt = (String, ([String], Term))
 instance Show Term where
   show Err = "@error"
   show TypT = "@Type"
-  show BoolT = "@Bool"
   show IntT = "@Int"
   show (Int i) = show i
-  show (TupT items) =
-    "@Tuple (" ++ intercalate ", " (map show items) ++ ")"
-  show (RecT fields) = do
-    let showField (x, a) = x ++ " : " ++ show a
-    "@Record (" ++ intercalate ", " (map showField fields) ++ ")"
   show (SumT vars alts) = do
     let showVar (x, t) = "(" ++ x ++ " : " ++ show t ++ ")"
     let showAlt (c, ([], t)) = c ++ " : " ++ show t

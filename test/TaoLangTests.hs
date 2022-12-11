@@ -70,17 +70,17 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ tuple" $ do
     let tuple' src = parse' src (tuple "  ")
-    tuple' "()" `shouldBe` Just (Tup [])
+    tuple' "()" `shouldBe` Just []
     tuple' "(x)" `shouldBe` Nothing
-    tuple' "(x,)" `shouldBe` Just (Tup [x])
-    tuple' "(x, y)" `shouldBe` Just (Tup [x, y])
-    tuple' "(x, y,)" `shouldBe` Just (Tup [x, y])
+    tuple' "(x,)" `shouldBe` Just [x]
+    tuple' "(x, y)" `shouldBe` Just [x, y]
+    tuple' "(x, y,)" `shouldBe` Just [x, y]
 
   it "☯ record" $ do
     let record' src = parse' src (record "  ")
     record' "()" `shouldBe` Nothing
-    record' "(x = 1)" `shouldBe` Just (Rec [("x", Int 1)])
-    record' "(x = 1, y = 2)" `shouldBe` Just (Rec [("x", Int 1), ("y", Int 2)])
+    record' "(x = 1)" `shouldBe` Just [("x", Int 1)]
+    record' "(x = 1, y = 2)" `shouldBe` Just [("x", Int 1), ("y", Int 2)]
 
   it "☯ pattern" $ do
     let pattern' src = parse' src (pattern "  ")
@@ -110,9 +110,9 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
   it "☯ builtin" $ do
     let builtin' src = parse' src builtin
     builtin' "@" `shouldBe` Nothing
-    builtin' "@Int" `shouldBe` Just IntT
-    -- builtin' "@Type" `shouldBe` Just (TypeDef "Type" [])
-    builtin' "@func @Int" `shouldBe` Just (Op (Call "func" IntT))
+  -- builtin' "@Int" `shouldBe` Just IntT
+  -- builtin' "@Type" `shouldBe` Just (TypeDef "Type" [])
+  -- builtin' "@func @Int" `shouldBe` Just (Op (Call "func" IntT))
 
   it "☯ case'" $ do
     let case_ src = parse' src (case' "  ")
