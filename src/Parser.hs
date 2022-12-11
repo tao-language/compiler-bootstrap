@@ -1,6 +1,7 @@
 module Parser where
 
 import qualified Data.Char as Char
+import Flow ((|>))
 
 newtype Parser a = Parser (State -> Either ParserError (a, State))
 
@@ -13,11 +14,6 @@ data State = State
 
 data ParserError = ParserError !String !State
   deriving (Eq, Show)
-
-(|>) :: a -> (a -> b) -> b
-(|>) x f = f x
-
-infixl 1 |>
 
 instance Functor Parser where
   fmap f (Parser p) =
@@ -310,24 +306,6 @@ type Prefix a = (Int -> Parser a) -> Parser a
 
 type Infix a = Int -> a -> Prefix a
 
-atom :: (a -> b) -> Parser a -> Prefix b
-atom f parser _ = do
-  x <- parser
-  succeed (f x)
-
-prefix :: (op -> a -> a) -> Parser op -> Prefix a
-prefix f op expr = do
-  op' <- op
-  y <- expr 0
-  succeed (f op' y)
-
-inbetween :: (open -> a -> a) -> Parser open -> Parser close -> Prefix a
-inbetween f open close expr = do
-  open' <- open
-  y <- expr 0
-  _ <- close
-  succeed (f open' y)
-
 -- TODO: rename to infixLeft
 infixL :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
 infixL opPrec f op prec x expr = do
@@ -344,16 +322,15 @@ infixR opPrec f op prec x expr = do
   y <- expr opPrec
   succeed (f op' x y)
 
-withOperators :: [Prefix a] -> [Infix a] -> Parser a
-withOperators prefix infix' =
-  let unary f = oneOf (fmap (\op -> op f) prefix)
-      binary x f prec = oneOf (fmap (\op -> op x f prec) infix')
-      expr prec = do
-        x <- unary expr
+withOperators :: Parser a -> [Infix a] -> Parser a
+withOperators prefix infix' = do
+  let binary x f prec = oneOf (fmap (\op -> op x f prec) infix')
+  let expr prec = do
+        x <- prefix
         expr2 prec x
       expr2 prec x =
-        do
-          y <- binary prec x expr
-          expr2 prec y
-          |> orElse (succeed x)
-   in expr 0
+        oneOf
+          [ do y <- binary prec x expr; expr2 prec y,
+            succeed x
+          ]
+  expr 0

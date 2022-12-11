@@ -2,10 +2,16 @@ module TaoLang where
 
 import Control.Monad (void)
 import Data.List (sort)
+import Flow ((|>))
 import Parser
 import System.Directory
 import System.FilePath ((</>))
 import Tao
+
+data Error
+  = SyntaxError !ParserError
+  | TypeError !TypeError
+  deriving (Eq, Show)
 
 loadExpr :: String -> IO Expr
 loadExpr text = case parseExpr text of
@@ -40,21 +46,33 @@ loadModule moduleName = do
   fileDefs <- mapM (loadFile moduleName) (sort files)
   return (concat fileDefs)
 
--- TODO: make sure there are no unparsed inputs
-parseExpr :: String -> Either ParserError Expr
-parseExpr src = parse src (expression "")
+parse :: String -> Parser a -> Either Error a
+parse src parser = case Parser.parse src parser of
+  Right x -> Right x
+  Left err -> Left (SyntaxError err)
 
 -- TODO: make sure there are no unparsed inputs
-parseDef :: String -> Either ParserError Env
-parseDef src = parse src (definition "")
+parseExpr :: String -> Either Error Expr
+parseExpr src = TaoLang.parse src (expression "")
 
 -- TODO: make sure there are no unparsed inputs
-parseEnv :: String -> Either ParserError Env
-parseEnv src = parse src (fmap concat (zeroOrMore (definition "")))
+parseDef :: String -> Either Error Env
+parseDef src = TaoLang.parse src (definition "")
 
 -- TODO: make sure there are no unparsed inputs
-parseBlock :: String -> Either ParserError Expr
-parseBlock src = parse src (block "")
+parseEnv :: String -> Either Error Env
+parseEnv src = TaoLang.parse src (fmap concat (zeroOrMore (definition "")))
+
+-- TODO: make sure there are no unparsed inputs
+parseBlock :: String -> Either Error Expr
+parseBlock src = TaoLang.parse src (block "")
+
+run :: Env -> Expr -> Either Error (Expr, Expr)
+run env expr = case infer env expr of
+  Right (type', _) -> case canonicalize env (eval env expr) type' of
+    Right result -> Right (result, type')
+    Left err -> Left (TypeError err)
+  Left err -> Left (TypeError err)
 
 lowerName :: Parser String
 lowerName = do
@@ -69,10 +87,6 @@ upperName = do
   c <- uppercase
   cs <- zeroOrMore (oneOf [alphanumeric, char '_'])
   succeed (c : cs)
-
-keyword :: String -> Parser String
-keyword txt = do
-  token (text txt) |> notFollowedBy (oneOf [void letter, void number])
 
 comment :: Parser String
 comment = do
@@ -121,38 +135,38 @@ operator = do
         ]
   _ <- token (char '(')
   op <- token (oneOf ops)
-  _ <- token (char ')')
+  _ <- char ')'
   succeed op
 
 annotatedExpr :: String -> Parser Expr
 annotatedExpr indent = do
   _ <- token (char '(')
-  expr <- expression indent
+  expr <- token (expression indent)
   _ <- token (char ':')
-  type' <- expression indent
-  _ <- token (char ')')
+  type' <- token (expression indent)
+  _ <- char ')'
   succeed (Ann expr type')
 
-tuple :: String -> Parser Expr
+tuple :: String -> Parser [Expr]
 tuple indent = do
   _ <- token (char '(')
   items <-
     oneOf
       [ do
-          x <- expression indent
-          xs <- oneOrMore (do _ <- token (char ','); expression indent)
+          x <- token (expression indent)
+          xs <- oneOrMore (do _ <- token (char ','); token (expression indent))
           _ <- maybe' (token (char ','))
           succeed (x : xs),
         do
-          x <- expression indent
+          x <- token (expression indent)
           _ <- token (char ',')
           succeed [x],
         succeed []
       ]
-  _ <- token (char ')')
-  succeed (Tup items)
+  _ <- char ')'
+  succeed items
 
-record :: String -> Parser Expr
+record :: String -> Parser [(String, Expr)]
 record indent = do
   let item = do
         name <- token lowerName
@@ -161,62 +175,62 @@ record indent = do
         succeed (name, value)
   _ <- token (char '(')
   field <- item
-  fields <- zeroOrMore (do _ <- token (char ','); item)
+  fields <- zeroOrMore (do _ <- token (char ','); token item)
   _ <- maybe' (token (char ','))
-  _ <- token (char ')')
-  succeed (Rec (field : fields))
+  _ <- char ')'
+  succeed (field : fields)
 
 pattern :: String -> Parser Pattern
 pattern indent = do
   p <-
     oneOf
       [ -- Pattern wildcard: _
-        fmap (const PAny) (token (char '_')),
+        fmap (const PAny) (char '_'),
         -- Integer equality pattern
-        fmap (PEq . Int) (token integer),
+        fmap (PEq . Int) integer,
         do
           -- Variable equality pattern
           x <- lowerName
-          _ <- token (char '\'')
+          _ <- char '\''
           succeed (PEq (Var x)),
         do
           -- Named pattern: x@_
           x <- token lowerName
           _ <- token (char '@')
-          p <- pattern indent
+          p <- token (pattern indent)
           succeed (PAs p x),
         -- Variable pattern: x
-        fmap PVar (token lowerName),
+        fmap PVar lowerName,
         do
           -- Constructor 0-arity: Nil
-          ctr <- token upperName
+          ctr <- upperName
           succeed (PCtr ctr []),
         do
           -- Constructor n-arity: Cons x xs
           _ <- token (char '(')
           ctr <- token upperName
-          ps <- zeroOrMore (pattern indent)
-          _ <- token (char ')')
+          ps <- zeroOrMore (token (pattern indent))
+          _ <- char ')'
           succeed (PCtr ctr ps),
         do
           -- Tuple empty / unit pattern: ()
           _ <- token (char '(')
-          _ <- token (char ')')
+          _ <- char ')'
           succeed (PTup []),
         do
           -- Tuple pattern: (x, y)
           _ <- token (char '(')
-          p <- pattern indent
-          ps <- oneOrMore (do _ <- token (char ','); pattern indent)
+          p <- token (pattern indent)
+          ps <- oneOrMore (do _ <- token (char ','); token (pattern indent))
           _ <- maybe' (token (char ','))
-          _ <- token (char ')')
+          _ <- char ')'
           succeed (PTup (p : ps)),
         do
           -- Tuple singleton pattern: (x,)
           _ <- token (char '(')
-          p <- pattern indent
+          p <- token (pattern indent)
           _ <- token (char ',')
-          _ <- token (char ')')
+          _ <- char ')'
           succeed (PTup [p]),
         do
           -- Record pattern: (.x, y = _)
@@ -224,7 +238,7 @@ pattern indent = do
                 oneOf
                   [ do
                       _ <- token (char '.')
-                      x <- token lowerName
+                      x <- lowerName
                       succeed (x, PVar x),
                     do
                       x <- token lowerName
@@ -234,24 +248,25 @@ pattern indent = do
                   ]
           _ <- token (char '(')
           field <- item
-          fields <- zeroOrMore (do _ <- token (char ','); item)
+          fields <- zeroOrMore (do _ <- token (char ','); token item)
           _ <- maybe' (token (char ','))
-          _ <- token (char ')')
+          _ <- char ')'
           succeed (PRec (field : fields)),
         do
           _ <- token (char '(')
-          p <- pattern indent
+          p <- token (pattern indent)
           _ <- token (char ':')
-          t <- pattern indent
-          _ <- token (char ')')
+          t <- token (pattern indent)
+          _ <- char ')'
           succeed (PAnn p t),
         do
           -- Expression equality pattern
           _ <- token (char '(')
-          expr <- expression indent
-          _ <- token (char ')')
+          expr <- token (expression indent)
+          _ <- char ')'
           succeed (PEq expr)
       ]
+  _ <- zeroOrMore space
   oneOf
     [ do
         _ <- token (char '|')
@@ -262,7 +277,7 @@ pattern indent = do
 
 case' :: String -> Parser Case
 case' indent = do
-  ps <- oneOrMore (pattern indent)
+  ps <- oneOrMore (token (pattern indent))
   _ <- token (text "->")
   indent <- maybeNewLine indent
   expr <- block indent
@@ -272,12 +287,12 @@ match :: String -> Parser Expr
 match indent = do
   _ <- token (char '\\')
   c <- case' indent
-  cs <- zeroOrMore (do _ <- maybe' (newLine indent); _ <- token (char '|'); case' indent)
+  cs <- zeroOrMore (do _ <- zeroOrMore space; _ <- maybe' (newLine indent); _ <- token (char '|'); case' indent)
   succeed (Match (c : cs))
 
 rule :: String -> Parser ([Pattern], Expr)
 rule indent = do
-  ps <- zeroOrMore (pattern indent)
+  ps <- zeroOrMore (token (pattern indent))
   _ <- token (char '=')
   indent <- maybeNewLine indent
   expr <- block indent
@@ -299,7 +314,7 @@ define indent = do
         -- Typed one-line definition
         name <- token lowerName
         _ <- token (char ':')
-        type' <- expression indent
+        type' <- token (expression indent)
         _ <- token (char '=')
         _ <- maybeNewLine indent
         value <- block indent
@@ -308,7 +323,7 @@ define indent = do
         -- Typed definition
         name <- token lowerName
         _ <- token (char ':')
-        type' <- expression indent
+        type' <- token (expression indent)
         _ <- newLine indent
         _ <- token (text name)
         value <- rules indent name
@@ -320,7 +335,7 @@ define indent = do
         succeed [(name, value)],
       do
         -- Pattern unpacking
-        p <- pattern indent
+        p <- token (pattern indent)
         _ <- token (char '=')
         indent <- maybeNewLine indent
         value <- block indent
@@ -329,43 +344,76 @@ define indent = do
 
 definition :: String -> Parser [(String, Expr)]
 definition indent = do
-  defs <- define indent
+  defs <- token (define indent)
   _ <- oneOf [void (newLine indent), void (token (char ';')), endOfFile]
   succeed defs
 
 builtin :: Parser Expr
 builtin = do
   _ <- char '@'
-  oneOf
-    [ fmap (const IntT) (keyword "Int"),
-      do
-        name <- token lowerName
-        typ <- expression ""
-        succeed (Op (Call name typ))
-    ]
+  name <- token lowerName
+  typ <- expression ""
+  succeed (Op (Call name typ))
+
+parentheses :: String -> Parser Expr
+parentheses indent = do
+  _ <- token (char '(')
+  expr <- token (expression indent)
+  _ <- char ')'
+  succeed expr
 
 expression :: String -> Parser Expr
 expression indent = do
-  -- TODO: make prefix and infix operators into functions instead of lists
+  let keyword :: a -> String -> Parser a
+      keyword x txt = do
+        _ <- text txt |> notFollowedBy (oneOf [void letter, void number])
+        succeed x
+
+  let op parser = do
+        _ <- zeroOrMore space
+        x <- parser
+        _ <- zeroOrMore space
+        succeed x
+
+  let unaryTerms =
+        [ keyword Err "!error",
+          keyword TypT "Type",
+          keyword boolT "Bool",
+          keyword true "True",
+          keyword false "False",
+          keyword IntT "Int",
+          fmap Int integer,
+          fmap Op operator,
+          fmap Tup (tuple indent),
+          fmap Rec (record indent),
+          annotatedExpr indent,
+          match indent,
+          fmap Var lowerName,
+          builtin,
+          parentheses indent
+        ]
+
+  let unary :: Parser Expr
+      unary = do
+        a <- oneOf unaryTerms
+        oneOf
+          [ do
+              _ <- char '.'
+              x <- lowerName
+              succeed (Get a x),
+            succeed a
+          ]
+
   -- TODO: make operators support newLines
   -- TODO: make parentheses support newLines
   withOperators
-    [ atom Int (token integer),
-      atom id builtin,
-      atom id (match indent),
-      atom Op operator,
-      atom id (annotatedExpr indent),
-      atom id (tuple indent),
-      atom id (record indent),
-      atom Var (token lowerName),
-      inbetween (const id) (token (char '(')) (token (char ')'))
-    ]
-    [ infixR 1 (const FunT) (token (text "->")),
-      infixL 2 (const eq) (token (text "==")),
-      infixL 3 (const add) (token (char '+')),
-      infixL 3 (const sub) (token (char '-')),
-      infixL 4 (const mul) (token (char '*')),
-      infixL 5 (const App) (succeed ())
+    unary
+    [ infixR 1 (const FunT) (op (text "->")),
+      infixL 2 (const eq) (op (text "==")),
+      infixL 3 (const add) (op (char '+')),
+      infixL 3 (const sub) (op (char '-')),
+      infixL 4 (const mul) (op (char '*')),
+      infixL 5 (const App) (oneOrMore space)
     ]
 
 block :: String -> Parser Expr

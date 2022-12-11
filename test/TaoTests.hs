@@ -7,10 +7,11 @@ import Test.Hspec
 taoTests :: SpecWith ()
 taoTests = describe "--== Tao representation ==--" $ do
   let (a, b) = (Var "a", Var "b")
-  let (f, g, p) = (Var "f", Var "g", Var "p")
+  let (f, g) = (Var "f", Var "g")
+  let (p, q) = (Var "p", Var "q")
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (x', y', z') = (PAs PAny "x", PAs PAny "y", PAs PAny "z")
-  let (xT, yT, gT) = (Var "xT", Var "yT", Var "gT")
+  let (xT, gT) = (Var "xT", Var "gT")
 
   it "☯ forT" $ do
     forT [] x `shouldBe` x
@@ -27,10 +28,20 @@ taoTests = describe "--== Tao representation ==--" $ do
     lam ["x"] y `shouldBe` Lam "x" y
     lam ["x", "y"] z `shouldBe` Lam "x" (Lam "y" z)
 
+  it "☯ asLam" $ do
+    asLam x `shouldBe` ([], x)
+    asLam (Lam "x" y) `shouldBe` (["x"], y)
+    asLam (Lam "x" (Lam "y" z)) `shouldBe` (["x", "y"], z)
+
   it "☯ app" $ do
     app x [] `shouldBe` x
     app x [y] `shouldBe` App x y
     app x [y, z] `shouldBe` App (App x y) z
+
+  it "☯ asApp" $ do
+    asApp x `shouldBe` (x, [])
+    asApp (App x y) `shouldBe` (x, [y])
+    asApp (App (App x y) z) `shouldBe` (x, [y, z])
 
   it "☯ built-in operators" $ do
     add x y `shouldBe` App (App (Op Add) x) y
@@ -94,11 +105,13 @@ taoTests = describe "--== Tao representation ==--" $ do
 
   it "☯ infer" $ do
     let env =
-          [ ("x", Int 1),
+          [ ("Bool", boolTDef),
+            ("x", Int 1),
             ("y", y),
             ("f", Ann f (ForT "a" $ FunT IntT a)),
-            ("g", Lam "g" (Ann (App g (Int 1)) TypT)),
-            ("p", Rec [("x", Int 1), ("y", Int 2)]),
+            ("g", Lam "x" (Ann (App g (Int 1)) TypT)),
+            ("p", Rec [("y", Int 2), ("x", Int 1)]),
+            ("q", Ann q (RecT [("y", IntT), ("x", IntT)])),
             ( "T",
               SumT
                 [("a", a), ("b", IntT)]
@@ -110,25 +123,26 @@ taoTests = describe "--== Tao representation ==--" $ do
 
     infer env Err `shouldBe` Right (Err, env)
     infer env TypT `shouldBe` Right (TypT, env)
-    infer env BoolT `shouldBe` Right (TypT, env)
-    infer env (Bool True) `shouldBe` Right (BoolT, env)
     infer env IntT `shouldBe` Right (TypT, env)
     infer env (Int 1) `shouldBe` Right (IntT, env)
-    infer env (TupT [a]) `shouldBe` Left (UndefinedVar "a")
     infer env (TupT [IntT]) `shouldBe` Right (TypT, env)
     infer env (Tup [Int 1]) `shouldBe` Right (TupT [IntT], env)
-    infer env (RecT [("x", a)]) `shouldBe` Left (UndefinedVar "a")
     infer env (RecT [("x", IntT)]) `shouldBe` Right (TypT, env)
+    infer env (Rec [("x", a)]) `shouldBe` Left (UndefinedVar "a")
     infer env (Rec [("x", Int 1)]) `shouldBe` Right (RecT [("x", IntT)], env)
+    infer env (Var "p") `shouldBe` Right (RecT [("x", IntT), ("y", IntT)], env)
+    infer env (Var "q") `shouldBe` Right (RecT [("x", IntT), ("y", IntT)], env)
     infer env (Get x "x") `shouldBe` Left (NotARecord x IntT)
     infer env (Get p "x") `shouldBe` Right (IntT, env)
     infer env (Get p "y") `shouldBe` Right (IntT, env)
     infer env (Get p "z") `shouldBe` Left (UndefinedField "z" [("x", IntT), ("y", IntT)])
+    infer env (Get q "x") `shouldBe` Right (IntT, env)
     infer env (Set x []) `shouldBe` Left (NotARecord x IntT)
-    infer env (Set p []) `shouldBe` Right (RecT [("x", IntT), ("y", IntT)], env)
-    infer env (Set p [("x", Int 0)]) `shouldBe` Right (RecT [("x", IntT), ("y", IntT)], env)
-    infer env (Set p [("x", IntT)]) `shouldBe` Right (RecT [("x", TypT), ("y", IntT)], env)
-    infer env (Set p [("z", IntT)]) `shouldBe` Right (RecT [("x", IntT), ("y", IntT), ("z", TypT)], env)
+    infer env (Set p []) `shouldBe` Right (Rec [("x", IntT), ("y", IntT)], env)
+    infer env (Set p [("x", Int 0)]) `shouldBe` Right (Rec [("x", IntT), ("y", IntT)], env)
+    infer env (Set p [("x", IntT)]) `shouldBe` Right (Rec [("x", TypT), ("y", IntT)], env)
+    infer env (Set p [("z", IntT)]) `shouldBe` Right (Rec [("x", IntT), ("y", IntT), ("z", TypT)], env)
+    infer env (Set q [("z", IntT)]) `shouldBe` Right (Rec [("x", IntT), ("y", IntT), ("z", TypT)], env)
     infer env (SumT [] []) `shouldBe` Right (TypT, env)
     infer env (SumT [] [("X", ([], TypT))]) `shouldBe` Left (UndefinedCtr "X")
     infer env (SumT [] [("x", ([], TypT))]) `shouldBe` Left (NotACtr "x" (Int 1))
@@ -148,34 +162,34 @@ taoTests = describe "--== Tao representation ==--" $ do
     infer env (Ctr "T" "A") `shouldBe` Right (forT ["a", "b"] (NamT "T" [a, b]), env)
     infer env (Ctr "T" "B") `shouldBe` Right (forT ["a", "b"] (funT [IntT, a] (NamT "T" [a, b])), env)
     infer env (Var "x") `shouldBe` Right (IntT, env)
-    infer env (Var "y") `shouldBe` Right (yT, ("y", Ann y yT) : ("yT", yT) : env)
+    infer env (Var "y") `shouldBe` Right (y, env)
     infer env (Var "z") `shouldBe` Left (UndefinedVar "z")
     infer env (Var "f") `shouldBe` Right (ForT "a" (FunT IntT a), env)
-    infer env (Var "g") `shouldBe` Right (FunT (FunT IntT TypT) TypT, ("%1", TypT) : ("gT", FunT IntT (Var "%1")) : ("%1", Var "%1") : ("g", Ann g gT) : ("gT", gT) : ("g", g) : env)
+    infer env (Var "g") `shouldBe` Right (FunT IntT TypT, ("%1", TypT) : ("gT", FunT IntT (Var "%1")) : ("%1", Var "%1") : ("x", Ann x xT) : ("xT", xT) : ("g", Ann g gT) : ("gT", gT) : env)
     infer env (FunT (Int 1) TypT) `shouldBe` Right (TypT, env)
-    infer env (FunT (Var "z") TypT) `shouldBe` Left (UndefinedVar "z")
-    infer env (FunT TypT (Var "z")) `shouldBe` Left (UndefinedVar "z")
-    infer env (Lam "x" x) `shouldBe` Right (ForT "xT" (FunT xT xT), ("x", Ann x xT) : ("xT", xT) : ("x", x) : env)
-    infer env (Lam "x" (Ann x IntT)) `shouldBe` Right (FunT IntT IntT, ("xT", IntT) : ("x", Ann x xT) : ("xT", xT) : ("x", x) : env)
+    infer env (FunT z TypT) `shouldBe` Left (UndefinedVar "z")
+    infer env (FunT TypT z) `shouldBe` Left (UndefinedVar "z")
+    infer env (Lam "x" x) `shouldBe` Right (ForT "xT" (FunT xT xT), ("x", Ann x xT) : ("xT", xT) : env)
+    infer env (Lam "x" (Ann x IntT)) `shouldBe` Right (FunT IntT IntT, ("xT", IntT) : ("x", Ann x xT) : ("xT", xT) : env)
     infer env (App x x) `shouldBe` Left (TypeMismatch (FunT IntT (Var "%1")) IntT)
     infer env (App f TypT) `shouldBe` Left (TypeMismatch TypT IntT)
     infer env (App f (Int 1)) `shouldBe` Right (a, ("%1", a) : ("a", a) : ("%1", Var "%1") : env)
-    infer env (App (Lam "x" x) (Int 1)) `shouldBe` Right (IntT, ("%1", IntT) : ("xT1", IntT) : ("xT1", Var "xT1") : ("%1", Var "%1") : ("x", Ann x xT) : ("xT", xT) : ("x", x) : env)
+    infer env (App (Lam "x" x) (Int 1)) `shouldBe` Right (IntT, ("%1", IntT) : ("xT1", IntT) : ("xT1", Var "xT1") : ("%1", Var "%1") : ("x", Ann x xT) : ("xT", xT) : env)
     infer env (Ann x IntT) `shouldBe` Right (IntT, env)
-    infer env (Ann x (Int 0)) `shouldBe` Left (NotAType (Int 0) IntT)
+    infer env (Ann x (Int 0)) `shouldBe` Left (TypeMismatch (Int 0) IntT)
     infer env (Ann x TypT) `shouldBe` Left (TypeMismatch TypT IntT)
     infer env (ForT "x" x) `shouldBe` Right (TypT, env)
     infer env (ForT "x" z) `shouldBe` Left (UndefinedVar "z")
-    infer env (If (Int 0) (Int 1) (Int 2)) `shouldBe` Left (TypeMismatch IntT BoolT)
-    infer env (If (Bool True) (Int 1) TypT) `shouldBe` Left (TypeMismatch IntT TypT)
-    infer env (If (Bool True) (Int 1) (Int 1)) `shouldBe` Right (IntT, env)
+    infer env (If (Int 0) (Int 1) (Int 2)) `shouldBe` Left (TypeMismatch IntT boolT)
+    infer env (If true (Int 1) TypT) `shouldBe` Left (TypeMismatch IntT TypT)
+    infer env (If true (Int 1) (Int 1)) `shouldBe` Right (IntT, env)
     infer env (Let [("y", Int 1)] x) `shouldBe` Right (IntT, ("y", Int 1) : env)
     infer env (Let [("y", Int 1)] y) `shouldBe` Right (IntT, ("y", Int 1) : env)
-    infer env (Match [([x'], x)]) `shouldBe` Right (ForT "xT" (FunT xT xT), ("x", Ann x xT) : ("xT", xT) : ("x", x) : env)
+    infer env (Match [([x'], x)]) `shouldBe` Right (ForT "xT" (FunT xT xT), ("x", Ann x xT) : ("xT", xT) : env)
     infer env (TypeOf (Int 1)) `shouldBe` Right (TypT, env)
     infer env (Op (Call "f" (ForT "a" a))) `shouldBe` Right (ForT "a" a, env)
-  -- TODO: Operators
-  -- infer env Add `shouldBe` Right (ForT "a" a, env)
+  -- -- TODO: Operators
+  -- -- infer env Add `shouldBe` Right (ForT "a" a, env)
 
   it "☯ bindings" $ do
     bindings PAny `shouldBe` []
@@ -196,13 +210,10 @@ taoTests = describe "--== Tao representation ==--" $ do
   it "☯ freeVars" $ do
     freeVars Err `shouldBe` []
     freeVars TypT `shouldBe` []
-    freeVars BoolT `shouldBe` []
-    freeVars (Bool True) `shouldBe` []
     freeVars IntT `shouldBe` []
     freeVars (Int 1) `shouldBe` []
-    freeVars (TupT [x]) `shouldBe` ["x"]
     freeVars (Tup [x]) `shouldBe` ["x"]
-    freeVars (RecT [("a", x)]) `shouldBe` ["x"]
+    freeVars (Rec [("a", x)]) `shouldBe` ["x"]
     freeVars (Rec [("a", x)]) `shouldBe` ["x"]
     freeVars (Get x "a") `shouldBe` ["x"]
     freeVars (Set x [("a", y)]) `shouldBe` ["x", "y"]
@@ -278,7 +289,7 @@ taoTests = describe "--== Tao representation ==--" $ do
     collapse "x" alt [([PRec [("a", y')], z'], Int 1)] `shouldBe` [([z'], Let [("y", App (Match [([y'], y)]) (Get x "a"))] (Int 1))]
     collapse "x" alt [([PAnn x' y', z'], x)] `shouldBe` [([PAny, z'], App (Match [([y'], x)]) (TypeOf x))]
     collapse "x" alt [([PEq (Int 0), z'], Int 1), ([y'], Int 2)] `shouldBe` [([PAny, z'], If (eq x (Int 0)) (Int 1) (Match [([PAny], Let [("y", x)] (Int 2))]))]
-    collapse "x" alt [([PIf PAny (Bool True), z'], Int 1), ([y'], Int 2)] `shouldBe` [([PAny, z'], If (Bool True) (Int 1) (Match [([PAny], Let [("y", x)] (Int 2))]))]
+    collapse "x" alt [([PIf PAny true, z'], Int 1), ([y'], Int 2)] `shouldBe` [([PAny, z'], If true (Int 1) (Match [([PAny], Let [("y", x)] (Int 2))]))]
 
   it "☯ collapseCases" $ do
     let env =
@@ -301,30 +312,28 @@ taoTests = describe "--== Tao representation ==--" $ do
     let env =
           [ ("x", Int 1),
             ("f", f),
-            ("g", App g x),
+            ("g", Lam "y" (App g x)),
             ("p", Rec [("y", Int 2), ("x", Int 1)]),
+            ("q", Ann q (RecT [("y", IntT), ("x", IntT)])),
             ("T", SumT [("a", a)] [("A", ([], NamT "T" [a])), ("B", (["x", "y"], NamT "T" [IntT]))]),
             ("A", Ctr "T" "A"),
             ("B", Ctr "T" "B")
           ]
     compile env TypT `shouldBe` C.TypT
-    compile env BoolT `shouldBe` C.BoolT
-    compile env (Bool True) `shouldBe` compile [] (lam ["true", "false"] (Var "true"))
-    compile env (Bool False) `shouldBe` compile [] (lam ["true", "false"] (Var "false"))
     compile env IntT `shouldBe` C.IntT
     compile env (Int 1) `shouldBe` C.Int 1
-    compile env (TupT [IntT]) `shouldBe` C.TupT [C.IntT]
     compile env (Tup []) `shouldBe` C.lam ["()"] (C.Var "()")
     compile env (Tup [x, y]) `shouldBe` C.lam ["()"] (C.app (C.Var "()") [C.Int 1, C.Var "y"])
-    compile env (RecT [("a", IntT)]) `shouldBe` C.RecT [("a", C.IntT)]
     compile env (Rec []) `shouldBe` C.lam ["()"] (C.Var "()")
     compile env (Rec [("a", x), ("b", IntT)]) `shouldBe` C.lam ["()"] (C.app (C.Var "()") [C.Int 1, C.IntT])
     compile env (Rec [("b", IntT), ("a", x)]) `shouldBe` C.lam ["()"] (C.app (C.Var "()") [C.Int 1, C.IntT])
     compile env (Get p "x") `shouldBe` compile [] (App (Rec [("x", Int 1), ("y", Int 2)]) (lam ["x", "y"] x))
     compile env (Get p "y") `shouldBe` compile [] (App (Rec [("x", Int 1), ("y", Int 2)]) (lam ["x", "y"] y))
+    compile env (Get q "x") `shouldBe` compile [] (App q (lam ["x", "y"] x))
     compile env (Set p [("x", Int 0)]) `shouldBe` compile [] (App (Rec [("x", Int 1), ("y", Int 2)]) (lam ["x", "y"] (Rec [("x", Int 0), ("y", y)])))
     compile env (Set p [("y", Int 1), ("x", Int 2)]) `shouldBe` compile [] (App (Rec [("x", Int 1), ("y", Int 2)]) (lam ["x", "y"] (Rec [("x", Int 2), ("y", Int 1)])))
     compile env (Set p [("z", Int 3)]) `shouldBe` compile [] (App (Rec [("x", Int 1), ("y", Int 2)]) (lam ["x", "y"] (Rec [("x", x), ("y", y), ("z", Int 3)])))
+    compile env (Set q [("z", Int 3)]) `shouldBe` compile [] (App q (lam ["x", "y"] (Rec [("x", x), ("y", y), ("z", Int 3)])))
     compile env (SumT [("a", a)] [("A", ([""], TypT)), ("B", (["x"], TypT))]) `shouldBe` C.SumT [("a", C.Var "a")] [("A", ([""], C.TypT)), ("B", (["x"], C.TypT))]
     compile env (NamT "T" [IntT]) `shouldBe` C.NamT "T" [C.IntT]
     compile env (Ctr "T" "A") `shouldBe` C.lam ["A", "B"] (C.Var "A")
@@ -332,7 +341,7 @@ taoTests = describe "--== Tao representation ==--" $ do
     compile env (Var "x") `shouldBe` C.Int 1
     compile env (Var "y") `shouldBe` C.Var "y"
     compile env (Var "f") `shouldBe` C.Var "f"
-    compile env (Var "g") `shouldBe` C.Fix "g" (C.App (C.Var "g") (C.Int 1))
+    compile env (Var "g") `shouldBe` C.Fix "g" (C.Lam [] "y" (C.App (C.Var "g") (C.Int 1)))
     compile env (ForT "x" x) `shouldBe` C.ForT "x" (C.Var "x")
     compile env (ForT "y" x) `shouldBe` C.ForT "y" (C.Int 1)
     compile env (FunT f IntT) `shouldBe` C.FunT (C.Var "f") C.IntT
@@ -351,5 +360,44 @@ taoTests = describe "--== Tao representation ==--" $ do
     compile env (Op Eq) `shouldBe` C.Op C.Eq
     compile env (Op (Call "f" IntT)) `shouldBe` C.Op (C.Call "f" C.IntT)
 
--- it "☯ decompile" $ do
---   -- TODO
+  -- it "☯ decompile" $ do
+  --   True `shouldBe` True
+
+  it "☯ canonicalize" $ do
+    let env = []
+    let tuple items = Lam "()" (app (Var "()") items)
+    canonicalize env Err Err `shouldBe` Right Err
+    canonicalize env TypT TypT `shouldBe` Right TypT
+    canonicalize env TypT IntT `shouldBe` Left (TypeMismatch IntT TypT)
+    canonicalize env IntT TypT `shouldBe` Right IntT
+    canonicalize env (Int 1) IntT `shouldBe` Right (Int 1)
+    canonicalize env (tuple []) (TupT []) `shouldBe` Right (Tup [])
+    canonicalize env (tuple []) (TupT [IntT]) `shouldBe` Left (TypeMismatch (Tup []) (Tup [IntT]))
+    canonicalize env (tuple [Int 1]) (TupT []) `shouldBe` Left (TypeMismatch (Tup [IntT]) (Tup []))
+    canonicalize env (tuple [Int 1]) (TupT [TypT]) `shouldBe` Left (TypeMismatch IntT TypT)
+    canonicalize env (tuple [Int 1]) (TupT [IntT]) `shouldBe` Right (Tup [Int 1])
+    canonicalize env (tuple [Int 1, IntT]) (TupT [IntT, TypT]) `shouldBe` Right (Tup [Int 1, IntT])
+    canonicalize env (tuple []) (RecT []) `shouldBe` Right (Rec [])
+    canonicalize env (tuple []) (RecT [("x", IntT)]) `shouldBe` Left (TypeMismatch (Tup []) (Rec [("x", IntT)]))
+    canonicalize env (tuple [Int 1]) (RecT []) `shouldBe` Left (TypeMismatch (Tup [IntT]) (Rec []))
+    canonicalize env (tuple [Int 1]) (RecT [("x", TypT)]) `shouldBe` Left (TypeMismatch IntT TypT)
+    canonicalize env (tuple [Int 1]) (RecT [("x", IntT)]) `shouldBe` Right (Rec [("x", Int 1)])
+    canonicalize env (tuple [Int 1, IntT]) (RecT [("x", IntT), ("y", TypT)]) `shouldBe` Right (Rec [("x", Int 1), ("y", IntT)])
+    -- canonicalize env () IntT `shouldBe` Right (Rec [("x", Int 1), ("y", IntT)])
+    -- Get !Expr !String
+    -- Set !Expr ![(String, Expr)]
+    -- SumT ![(String, Expr)] ![Alt]
+    -- NamT !String ![Expr]
+    -- Ctr !String !String
+    -- Var !String
+    -- ForT !String !Expr
+    -- FunT !Expr !Expr
+    -- Lam !String !Expr
+    -- App !Expr !Expr
+    -- Ann !Expr !Expr
+    -- If !Expr !Expr !Expr
+    -- Let ![(String, Expr)] !Expr
+    -- Match ![Case]
+    -- TypeOf !Expr
+    -- Op !Operator
+    True `shouldBe` True
