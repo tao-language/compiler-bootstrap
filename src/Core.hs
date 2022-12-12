@@ -127,8 +127,8 @@ reduce env (App a b) = case (reduce env a, reduce env b) of
     (Add, Int a, Int b) -> Int (a + b)
     (Sub, Int a, Int b) -> Int (a - b)
     (Mul, Int a, Int b) -> Int (a * b)
-    (Eq, Int a, Int b) | a == b -> Lam [] "T" (Lam [] "F" (Var "T"))
-    (Eq, Int _, Int _) -> Lam [] "T" (Lam [] "F" (Var "F"))
+    (Eq, Int a, Int b) | a == b -> Lam [] "True" (Lam [] "False" (Var "True"))
+    (Eq, Int _, Int _) -> Lam [] "True" (Lam [] "False" (Var "False"))
     (_, a, b) -> App (App (Op op) a) b
   (Fix x a, b) -> reduce ((x, Fix x a) : env) (App a b)
   (a, b) -> App a b
