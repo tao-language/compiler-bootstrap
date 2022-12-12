@@ -160,20 +160,13 @@ eq :: Expr -> Expr -> Expr
 eq a b = app (Op Eq) [a, b]
 
 boolT :: Expr
-boolT = Var "Bool"
-
-boolTDef :: Expr
-boolTDef = SumT "Bool" [("True", ([], boolT)), ("False", ([], boolT))]
-
-true :: Expr
-true = Ctr "Bool" "True"
-
-false :: Expr
-false = Ctr "Bool" "False"
+boolT = SumT "Bool" [("True", ([], Var "Bool")), ("False", ([], Var "Bool"))]
 
 prelude :: Env
 prelude =
-  [ ("Bool", boolTDef)
+  [ ("Bool", boolT),
+    ("True", Ctr "Bool" "True"),
+    ("False", Ctr "Bool" "False")
   ]
 
 -- Fresh names --
@@ -277,7 +270,7 @@ infer env (SumT _ _) = Right (TypT, env)
 infer env (Ctr tname cname) = case lookup tname env of
   Just a -> case asLam a of
     -- TODO: check that tname matches
-    (xs, SumT _ alts) -> case lookup cname alts of
+    (xs, SumT tname alts) -> case lookup cname alts of
       Just (_, type') -> do
         (type', _) <- eval (map (\x -> (x, Var x)) xs ++ env) type'
         Right (type', env)
@@ -290,8 +283,8 @@ infer env (Var x) = case lookup x env of
     Right (t, env)
   Just (Var x') | x == x' -> Right (Var x, env)
   Just a | x `occurs` a -> do
-    (_, env) <- infer env (Lam x a)
-    infer env (Var x)
+    let xT = newName (map fst env) (x ++ "T")
+    infer ((x, Ann (Var x) (Var xT)) : (xT, Var xT) : env) a
   Just a -> infer env a
   Nothing -> Left (UndefinedVar x)
 infer env (ForT x a) = do
@@ -309,21 +302,22 @@ infer env (Lam x a) = do
     Var x -> Right (ForT x (FunT t1 t2), env)
     t1 -> Right (FunT t1 t2, env)
 infer env (App a b) = do
-  (ta, env) <- infer env a
   (tb, env) <- infer env b
+  (ta, env) <- infer env a
   let tx = newName ("%" : map fst env) "%"
   env <- unify ((tx, Var tx) : env) (FunT tb (Var tx)) ta
   (t, _) <- eval env (Var tx)
   Right (t, env)
 infer env (Ann a t) = do
   (ta, env) <- infer env a
-  env <- unify env t ta
+  env <- unify env ta t
+  (t, _) <- eval env t
   Right (t, env)
 infer env (If cond then' else') = do
   (condT, env) <- infer env cond
   (thenT, env) <- infer env then'
   (elseT, env) <- infer env else'
-  env <- unify env condT boolT
+  env <- unify env condT (Var "Bool")
   env <- unify env thenT elseT
   (t, _) <- eval env thenT
   Right (t, env)
@@ -566,8 +560,9 @@ reduce env expr = compile env expr |> Core.reduce [] |> decompile
 eval :: Env -> Expr -> Either TypeError (Expr, Expr)
 eval env expr = do
   (type', _) <- infer env expr
-  case compile env expr |> Core.eval [] |> decompile of
+  case reduce env expr of
     ForT x t -> do
+      (t, _) <- eval ((x, Var x) : env) t
       let (xs, funT) = asForT t
       case (x, asFunT funT) of
         ("()", (itemsT, Var "()")) | null xs -> Right (TupT itemsT, type')
@@ -575,9 +570,9 @@ eval env expr = do
         (x, (_, Var x')) | x == x' -> do
           let tdef = fromMaybe (ForT x t) (lookup x env)
           case asLam tdef of
-            (_, SumT tname alts) -> do
+            (xs, SumT tname alts) -> do
               let sumT = compile env (SumT tname alts) |> decompile
-              env' <- unify env (ForT x t) sumT
+              env' <- unify (map (\x -> (x, Var x)) xs ++ env) sumT (ForT x t)
               let evalAlt :: Alt -> Either TypeError Alt
                   evalAlt (cname, (xs, t)) = do
                     (t, _) <- eval ((tname, Var tname) : env') t

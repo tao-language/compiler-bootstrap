@@ -39,8 +39,8 @@ coreTests = describe "--== Core language ==--" $ do
     reduce env (add x x) `shouldBe` Int 2
     reduce env (sub x x) `shouldBe` Int 0
     reduce env (mul x x) `shouldBe` Int 1
-    reduce env (eq x x) `shouldBe` lam ["T", "F"] (Var "T")
-    reduce env (eq x y) `shouldBe` lam ["T", "F"] (Var "F")
+    reduce env (eq x x) `shouldBe` lam ["True", "False"] (Var "True")
+    reduce env (eq x y) `shouldBe` lam ["True", "False"] (Var "False")
     reduce env (add (add x x) (add x x)) `shouldBe` Int 4
     reduce env (add (add x x) z) `shouldBe` add (Int 2) z
     reduce env (add z (add x x)) `shouldBe` add z (Int 2)

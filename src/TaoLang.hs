@@ -376,9 +376,6 @@ expression indent = do
   let unaryTerms =
         [ keyword Err "!error",
           keyword TypT "Type",
-          keyword boolT "Bool",
-          keyword true "True",
-          keyword false "False",
           keyword IntT "Int",
           fmap Int integer,
           fmap Op operator,
