@@ -1,14 +1,12 @@
 module Core where
 
-import Data.List (foldl', intercalate)
+import Data.List (foldl')
 
 data Term
   = Err
   | TypT
   | IntT
   | Int !Int
-  | SumT ![(String, Term)] ![Alt]
-  | NamT !String ![Term]
   | Var !String
   | ForT !String !Term
   | FunT !Term !Term
@@ -36,13 +34,6 @@ instance Show Term where
   show TypT = "@Type"
   show IntT = "@Int"
   show (Int i) = show i
-  show (SumT vars alts) = do
-    let showVar (x, t) = "(" ++ x ++ " : " ++ show t ++ ")"
-    let showAlt (c, ([], t)) = c ++ " : " ++ show t
-        showAlt (c, (args, t)) = c ++ " " ++ unwords args ++ " : " ++ show t
-    "@Union (" ++ intercalate ", " (map showVar vars) ++ ") {" ++ intercalate " | " (map showAlt alts) ++ "}"
-  show (NamT name args) =
-    "@Named " ++ name ++ " (" ++ intercalate ", " (map show args) ++ ")"
   show (Var x) = x
   show (ForT x a) = do
     let vars :: Term -> [String] -> ([String], Term)
@@ -50,7 +41,15 @@ instance Show Term where
         vars a xs = (xs, a)
     let (xs, a') = vars a []
     "@for " ++ unwords (x : xs) ++ ". " ++ show a'
-  show (FunT a b) = show a ++ " -> " ++ show b
+  show (FunT a b) = do
+    let a' = case a of
+          FunT {} -> "(" ++ show a ++ ")"
+          Lam {} -> "(" ++ show a ++ ")"
+          a -> show a
+    let b' = case b of
+          Lam {} -> "(" ++ show b ++ ")"
+          b -> show b
+    a' ++ " -> " ++ b'
   show (Lam _ x a) = do
     -- TODO: show env
     let vars :: Term -> [String] -> ([String], Term)
@@ -119,6 +118,8 @@ reduce env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Var x
   Just a -> reduce env a
   Nothing -> Var x
+reduce env (ForT x a) = ForT x (reduce ((x, Var x) : env) a)
+reduce env (FunT a b) = FunT (reduce env a) (reduce env b)
 reduce env (Lam env' x a) = Lam (env' ++ env) x a
 reduce env (App a b) = case (reduce env a, reduce env b) of
   (Lam env x a, b) -> reduce ((x, b) : env) a
@@ -131,7 +132,6 @@ reduce env (App a b) = case (reduce env a, reduce env b) of
     (_, a, b) -> App (App (Op op) a) b
   (Fix x a, b) -> reduce ((x, Fix x a) : env) (App a b)
   (a, b) -> App a b
-reduce env (FunT a b) = FunT (reduce env a) (reduce env b)
 reduce _ a = a
 
 eval :: Env -> Term -> Term

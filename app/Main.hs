@@ -1,6 +1,6 @@
 import qualified System.Environment
 import Tao (app, prelude)
-import TaoLang (loadExpr, loadModule, run)
+import TaoLang (eval, loadExpr, loadModule)
 
 main :: IO ()
 main = do
@@ -10,7 +10,7 @@ main = do
       env <- loadModule path
       f' <- loadExpr f
       args' <- mapM loadExpr args
-      case run (env ++ prelude) (app f' args') of
+      case eval (env ++ prelude) (app f' args') of
         Right (result, type') -> do
           print type'
           print result
