@@ -7,6 +7,7 @@ import Test.Hspec
 examplesTests :: SpecWith ()
 examplesTests = describe "--== Examples end-to-end ==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
+  -- let (p, q) = (Var "p", Var "q")
   let (x', y', z') = (PVar "x", PVar "y", PVar "z")
 
   it "☯ loadExpr" $ do
@@ -39,47 +40,47 @@ examplesTests = describe "--== Examples end-to-end ==--" $ do
   it "☯ loadModule" $ do
     loadModule "example/basic" `shouldReturn` [("x", Int 42), ("id", Match [([x'], x)])]
 
-  it "☯ syntax" $ do
-    let env =
-          [ ("Bool", boolTDef),
-            ("True", true),
-            ("False", false),
-            ("p", Ann (Var "p") (Rec [("x", IntT), ("y", IntT)]))
-          ]
-    let run' src = do a <- parseBlock src; run env a
-    run' "!error" `shouldBe` Right (Err, Err)
-    run' "Type" `shouldBe` Right (TypT, TypT)
-    run' "Bool" `shouldBe` Right (boolT, TypT)
-    -- run' "True" `shouldBe` Right (true, boolT)
-    -- run' "False" `shouldBe` Right (false, boolT)
-    run' "Int" `shouldBe` Right (IntT, TypT)
-    run' "42" `shouldBe` Right (Int 42, IntT)
-  -- run' "()" `shouldBe` Right (Tup [], Tup [])
-  -- run' "(1,)" `shouldBe` Right (Tup [Int 1], Tup [IntT])
-  -- run' "(1, Int)" `shouldBe` Right (Tup [Int 1, IntT], Tup [IntT, TypT])
-  -- run' "(1, Int,)" `shouldBe` Right (Tup [Int 1, IntT], Tup [IntT, TypT])
-  -- run' "(x = 1)" `shouldBe` Right (Rec [("x", Int 1)], Rec [("x", IntT)])
-  -- run' "(x = 1,)" `shouldBe` Right (Rec [("x", Int 1)], Rec [("x", IntT)])
-  -- run' "(x = 1, y = 2)" `shouldBe` Right (Rec [("x", Int 1), ("y", Int 2)], Rec [("x", IntT), ("y", IntT)])
-  -- run' "(y = 2, x = 1,)" `shouldBe` Right (Rec [("x", Int 1), ("y", Int 2)], Rec [("x", IntT), ("y", IntT)])
-  -- run' "(x = 1).x" `shouldBe` Right (Int 1, IntT)
-  -- run' "p.x" `shouldBe` Right (Int 1, IntT)
+  -- it "☯ syntax" $ do
+  --   let env =
+  --         ("p", Rec [("y", Int 2), ("x", Int 1)]) :
+  --         ("q", Ann q (RecT [("y", IntT), ("x", IntT)])) :
+  --         prelude
+  --   let run' src = do a <- parseBlock src; run env a
+  --   run' "!error" `shouldBe` Right (Err, Err)
+  --   run' "Type" `shouldBe` Right (TypT, TypT)
+  --   run' "Bool" `shouldBe` Right (boolT, TypT)
+  --   -- run' "True" `shouldBe` Right (true, boolT)
+  --   -- run' "False" `shouldBe` Right (false, boolT)
+  --   run' "Int" `shouldBe` Right (IntT, TypT)
+  --   run' "42" `shouldBe` Right (Int 42, IntT)
+  -- -- run' "()" `shouldBe` Right (Tup [], Tup [])
+  -- -- run' "(1,)" `shouldBe` Right (Tup [Int 1], Tup [IntT])
+  -- -- run' "(1, Int)" `shouldBe` Right (Tup [Int 1, IntT], Tup [IntT, TypT])
+  -- -- run' "(1, Int,)" `shouldBe` Right (Tup [Int 1, IntT], Tup [IntT, TypT])
+  -- -- run' "(x = 1)" `shouldBe` Right (Rec [("x", Int 1)], Rec [("x", IntT)])
+  -- -- run' "(x = 1,)" `shouldBe` Right (Rec [("x", Int 1)], Rec [("x", IntT)])
+  -- -- run' "(x = 1, y = 2)" `shouldBe` Right (Rec [("x", Int 1), ("y", Int 2)], Rec [("x", IntT), ("y", IntT)])
+  -- -- run' "(y = 2, x = 1,)" `shouldBe` Right (Rec [("x", Int 1), ("y", Int 2)], Rec [("x", IntT), ("y", IntT)])
+  -- -- run' "(x = 1).x" `shouldBe` Right (Int 1, IntT)
+  -- -- run' "p.x" `shouldBe` Right (Int 1, IntT)
 
   it "☯ factorial" $ do
     env <- loadFile "example/e2e" "factorial.tao"
-    let factorial n = eval env (App (Var "factorial") (Int n))
-    factorial 0 `shouldBe` Int 1
-    factorial 1 `shouldBe` Int 1
-    factorial 5 `shouldBe` Int 120
-    eval env (Var "factorial") `shouldNotBe` Err
+    let f = Var "factorial"
+    let factorial n = Tao.eval (env ++ prelude) (App f (Int n))
+    factorial 0 `shouldBe` Right (Int 1, IntT)
+    factorial 1 `shouldBe` Right (Int 1, IntT)
+    factorial 5 `shouldBe` Right (Int 120, IntT)
+    fmap snd (Tao.eval (env ++ prelude) f) `shouldBe` Right (FunT IntT IntT)
 
   it "☯ fibonacci" $ do
     env <- loadFile "example/e2e" "fibonacci.tao"
-    let fibonacci n = eval env (App (Var "fibonacci") (Int n))
-    fibonacci 0 `shouldBe` Int 0
-    fibonacci 1 `shouldBe` Int 1
-    fibonacci 2 `shouldBe` Int 1
-    fibonacci 3 `shouldBe` Int 2
-    fibonacci 4 `shouldBe` Int 3
-    fibonacci 5 `shouldBe` Int 5
-    eval env (Var "fibonacci") `shouldNotBe` Err
+    let f = Var "fibonacci"
+    let fibonacci n = Tao.eval (env ++ prelude) (App f (Int n))
+    fibonacci 0 `shouldBe` Right (Int 0, IntT)
+    fibonacci 1 `shouldBe` Right (Int 1, IntT)
+    fibonacci 2 `shouldBe` Right (Int 1, IntT)
+    fibonacci 3 `shouldBe` Right (Int 2, IntT)
+    fibonacci 4 `shouldBe` Right (Int 3, IntT)
+    fibonacci 5 `shouldBe` Right (Int 5, IntT)
+    fmap snd (Tao.eval (env ++ prelude) f) `shouldBe` Right (FunT IntT IntT)

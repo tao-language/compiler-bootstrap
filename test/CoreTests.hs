@@ -26,7 +26,7 @@ coreTests = describe "--== Core language ==--" $ do
     reduce env (Var "x") `shouldBe` Int 1
     reduce env (Var "y") `shouldBe` y
     reduce env (Var "z") `shouldBe` z
-    reduce env (FunT x y) `shouldBe` FunT (Int 1) y
+    -- reduce env (FunT x y) `shouldBe` FunT (Int 1) y
     reduce env (Lam [] "y" x) `shouldBe` Lam env "y" x
     reduce env (Lam [("x", Int 2)] "y" x) `shouldBe` Lam (("x", Int 2) : env) "y" x
     reduce env (App (lam ["x"] x) x) `shouldBe` Int 1
@@ -45,11 +45,11 @@ coreTests = describe "--== Core language ==--" $ do
     reduce env (add (add x x) z) `shouldBe` add (Int 2) z
     reduce env (add z (add x x)) `shouldBe` add z (Int 2)
 
-  it "☯ eval" $ do
-    let env = [("x", Int 1), ("y", y)]
-    eval env (Lam [] "y" x) `shouldBe` Lam [] "y" (Int 1)
-    eval env (Lam [("x", Int 2)] "y" x) `shouldBe` Lam [] "y" (Int 2)
-    eval env (App y x) `shouldBe` App y (Int 1)
-    eval env (Fix "x" x) `shouldBe` x
-    eval env (Fix "y" x) `shouldBe` Int 1
-    eval env (Fix "x" (FunT x x)) `shouldBe` Fix "x" (FunT x x)
+-- it "☯ eval" $ do
+--   let env = [("x", Int 1), ("y", y)]
+--   eval env (Lam [] "y" x) `shouldBe` Lam [] "y" (Int 1)
+--   eval env (Lam [("x", Int 2)] "y" x) `shouldBe` Lam [] "y" (Int 2)
+--   eval env (App y x) `shouldBe` App y (Int 1)
+--   eval env (Fix "x" x) `shouldBe` x
+--   eval env (Fix "y" x) `shouldBe` Int 1
+--   eval env (Fix "x" (FunT x x)) `shouldBe` Fix "x" (FunT x x)

@@ -67,11 +67,9 @@ parseEnv src = TaoLang.parse src (fmap concat (zeroOrMore (definition "")))
 parseBlock :: String -> Either Error Expr
 parseBlock src = TaoLang.parse src (block "")
 
-run :: Env -> Expr -> Either Error (Expr, Expr)
-run env expr = case infer env expr of
-  Right (type', _) -> case canonicalize env (eval env expr) type' of
-    Right result -> Right (result, type')
-    Left err -> Left (TypeError err)
+eval :: Env -> Expr -> Either Error (Expr, Expr)
+eval env expr = case Tao.eval env expr of
+  Right (result, type') -> Right (result, type')
   Left err -> Left (TypeError err)
 
 lowerName :: Parser String
