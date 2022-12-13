@@ -37,7 +37,7 @@ data Expr
   | Rec ![(String, Expr)]
   | Get !Expr !String
   | Set !Expr ![(String, Expr)]
-  | SumT !String ![Alt]
+  | SumT ![Alt]
   | Ctr !String !String
   | Var !String
   | ForT !String !Expr
@@ -160,7 +160,7 @@ eq :: Expr -> Expr -> Expr
 eq a b = app (Op Eq) [a, b]
 
 boolT :: Expr
-boolT = SumT "Bool" [("True", ([], Var "Bool")), ("False", ([], Var "Bool"))]
+boolT = SumT [("True", ([], Var "Bool")), ("False", ([], Var "Bool"))]
 
 prelude :: Env
 prelude =
@@ -189,9 +189,46 @@ findNameIdx (x : xs) prefix = case findNameIdx xs prefix of
   Nothing -> if prefix == x then Just 0 else readNameIdx prefix x
 
 -- Type checking --
--- TODO: is this safe to do or should this be defined manually?
 occurs :: String -> Expr -> Bool
-occurs x a = compile [] a |> Core.occurs x
+occurs _ Err = False
+occurs _ TypT = False
+occurs _ IntT = False
+occurs _ (Int _) = False
+occurs x (TupT itemsT) = any (occurs x) itemsT
+occurs x (Tup items) = any (occurs x) items
+occurs x (RecT fieldsT) = any (snd .> occurs x) fieldsT
+occurs x (Rec fields) = any (snd .> occurs x) fields
+occurs x (Get a _) = occurs x a
+occurs x (Set a fields) = occurs x a || any (snd .> occurs x) fields
+occurs x (SumT alts) = any (snd .> snd .> occurs x) alts
+occurs _ (Ctr _ _) = False
+occurs x (Var y) = x == y
+occurs x (ForT y a) | x /= y = occurs x a
+occurs _ (ForT _ _) = False
+occurs x (FunT a b) = any (occurs x) [a, b]
+occurs x (Lam y a) | x /= y = occurs x a
+occurs _ (Lam _ _) = False
+occurs x (App a b) = any (occurs x) [a, b]
+occurs x (Ann a b) = any (occurs x) [a, b]
+occurs x (If cond then' else') = any (occurs x) [cond, then', else']
+occurs x (Let _ a) = occurs x a
+occurs x (Match cases) = any (occursCase x) cases
+occurs x (TypeOf a) = occurs x a
+occurs x (Op (Call _ t)) = occurs x t
+occurs _ (Op _) = False
+
+occursCase :: String -> Case -> Bool
+occursCase x ([], a) = occurs x a
+occursCase x (PAny : ps, a) = occursCase x (ps, a)
+occursCase x (PVar y : ps, a) = occursCase x (PAs PAny y : ps, a)
+occursCase x (PAs p y : ps, a) | x /= y = occursCase x (p : ps, a)
+occursCase _ (PAs _ _ : _, _) = False
+occursCase x (PCtr _ qs : ps, a) = occursCase x (qs ++ ps, a)
+occursCase x (PTup qs : ps, a) = occursCase x (qs ++ ps, a)
+occursCase x (PRec fieldsP : ps, a) = occursCase x (map snd fieldsP ++ ps, a)
+occursCase x (PAnn p t : ps, a) = occursCase x (p : t : ps, a)
+occursCase x (PEq b : ps, a) = occurs x b || occursCase x (ps, a)
+occursCase x (PIf p cond : ps, a) = occurs x cond || occursCase x (p : ps, a)
 
 substitute :: String -> Expr -> Expr -> Expr
 substitute x a b = decompile (compile [] (Let [(x, a)] b))
@@ -215,6 +252,8 @@ unify env a b = case (reduce env a, reduce env b) of
   (a, ForT x b) -> do
     let (b', env') = instantiate env (ForT x b)
     unify env' a b'
+  (FunT {}, TypT) -> Right env
+  (TypT, FunT {}) -> Right env
   (FunT a1 a2, FunT b1 b2) -> unify2 env (a1, b1) (a2, b2)
   (App a1 a2, App b1 b2) -> unify2 env (a1, b1) (a2, b2)
   (a, a') | a == a' -> Right env
@@ -266,14 +305,14 @@ infer env (Set a fields) = do
       let key (x, _) (y, _) = x == y
       Right (RecT (sortOn fst (unionBy key fieldsT' fieldsT)), env)
     t -> Left (NotARecord a t)
-infer env (SumT _ _) = Right (TypT, env)
+infer env (SumT _) = Right (TypT, env)
 infer env (Ctr tname cname) = case lookup tname env of
   Just a -> case asLam a of
-    -- TODO: check that tname matches
-    (xs, SumT tname alts) -> case lookup cname alts of
+    (xs, SumT alts) -> case lookup cname alts of
       Just (_, type') -> do
-        (type', _) <- eval (map (\x -> (x, Var x)) xs ++ env) type'
-        Right (type', env)
+        let env' = map (\x -> (x, Var x)) xs ++ env
+        (type', _) <- eval env' type'
+        Right (forT xs type', env)
       Nothing -> Left (CtrNotInSumType tname cname (map fst alts))
     _else -> Left (NotASumType tname a)
   Nothing -> Left (UndefinedType tname)
@@ -374,7 +413,7 @@ freeVars (RecT fieldsT) = concatMap (snd .> freeVars) fieldsT
 freeVars (Rec fields) = concatMap (snd .> freeVars) fields
 freeVars (Get a _) = freeVars a
 freeVars (Set a fields) = freeVars a `union` concatMap (snd .> freeVars) fields
-freeVars (SumT name alts) = delete name (concatMap (snd .> snd .> freeVars) alts)
+freeVars (SumT alts) = concatMap (snd .> snd .> freeVars) alts
 freeVars (Ctr _ _) = []
 freeVars (Var x) = [x]
 freeVars (ForT x a) = delete x (freeVars a)
@@ -423,7 +462,7 @@ ctrType env cname = case lookup cname env of
 typeAlts :: Env -> String -> Either TypeError [Alt]
 typeAlts env tname = case lookup tname env of
   Just a -> case asLam a of
-    (_, SumT _ alts) -> Right alts
+    (_, SumT alts) -> Right alts
     _else -> Left (NotASumType tname a)
   Nothing -> Left (UndefinedType tname)
 
@@ -497,12 +536,11 @@ compile env (Set a fields) = case infer env a of
     let setter = lam xs (Rec (map set ys))
     compile env (App a setter)
   _notARecord -> Core.Err
-compile _ (SumT name alts) = do
-  let branch :: Alt -> Expr
-      branch (_, (_, type')) = do
-        let (targs, _) = asFunT type'
-        funT targs (Var name)
-  compile [] (ForT name (funT (map branch alts) (Var name)))
+compile _ (SumT []) = Core.Err
+compile env (SumT ((cname, _) : _)) = case lookup cname env of
+  Just (Ctr tname _) -> case asLam (reduce env (Var tname)) of
+    (_, tdef) -> compile [] tdef
+  _else -> Core.Err
 compile env (Ctr tname cname) = do
   let alts = case typeAlts env tname of
         Right alts -> alts
@@ -512,9 +550,16 @@ compile env (Ctr tname cname) = do
   compile env (lam (xs ++ map fst alts) (app (Var cname) (map Var xs)))
 compile env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Core.Var x
-  Just a -> case compile ((x, Var x) : env) a of
-    Core.Lam env y a' | x `Core.occurs` a' -> Core.Fix x (Core.Lam env y a')
-    a' -> a'
+  Just a -> case asLam a of
+    (xs, SumT alts) -> do
+      let branch :: Alt -> Expr
+          branch (_, (_, type')) = do
+            let (targs, _) = asFunT type'
+            funT targs (Var x)
+      compile [] (lam xs (ForT x (funT (map branch alts) (Var x))))
+    _else -> case compile ((x, Var x) : env) a of
+      Core.Lam env y a' | x `Core.occurs` Core.Lam [] y a' -> Core.Fix x (Core.Lam env y a')
+      a' -> a'
   Nothing -> Core.Var x
 compile env (ForT x a) = Core.ForT x (compile ((x, Var x) : env) a)
 compile env (FunT a b) = Core.FunT (compile env a) (compile env b)
@@ -557,51 +602,61 @@ decompile (Core.Op (Core.Call f t)) = Op (Call f (decompile t))
 reduce :: Env -> Expr -> Expr
 reduce env expr = compile env expr |> Core.reduce [] |> decompile
 
+canonical :: Env -> Expr -> Expr -> Either TypeError (Expr, Expr)
+canonical _ (ForT "()" t) type' = do
+  let (xs, t') = asForT t
+  let itemsT = fst (asFunT t')
+  case xs of
+    [] -> Right (TupT itemsT, type')
+    xs -> Right (RecT (zip xs itemsT), type')
+canonical env (ForT x t) TypT = case asFunT t of
+  (_, Var tname) | x == tname -> do
+    let tdef = fromMaybe (ForT x t) (lookup x env)
+    case asLam tdef of
+      (xs, SumT alts) -> do
+        let env' = map (\x -> (x, Var x)) xs ++ env
+        let sumT = compile env' (SumT alts) |> decompile
+        env' <- unify env' sumT (ForT x t)
+        let evalAlt :: Alt -> Either TypeError Alt
+            evalAlt (cname, (xs, t)) = do
+              (t, _) <- eval ((x, Var x) : env') t
+              Right (cname, (xs, t))
+        alts' <- mapM evalAlt alts
+        Right (SumT alts', TypT)
+      _else -> Right (ForT x t, TypT)
+  _else -> Right (ForT x t, TypT)
+canonical _ (Lam "()" body) TypT = do
+  let itemsT = snd (asApp body)
+  Right (TupT itemsT, TypT)
+canonical _ (Lam "()" body) (TupT itemsT) = do
+  let items = snd (asApp body)
+  Right (Tup items, TupT itemsT)
+canonical _ (Lam "()" body) (RecT fieldsT) = do
+  let items = snd (asApp body)
+  Right (Rec (zip (map fst fieldsT) items), RecT fieldsT)
+canonical env expr type' = do
+  let (_, body) = asLam expr
+  let (_, funT) = asForT type'
+  case (fst (asApp body), snd (asFunT funT)) of
+    (Var cname, SumT _) -> case lookup cname env of
+      Just ctr@Ctr {} -> Right (ctr, type')
+      _else -> Right (expr, type')
+    _else -> Right (expr, type')
+
 eval :: Env -> Expr -> Either TypeError (Expr, Expr)
 eval env expr = do
   (type', _) <- infer env expr
   case reduce env expr of
     ForT x t -> do
       (t, _) <- eval ((x, Var x) : env) t
-      let (xs, funT) = asForT t
-      case (x, asFunT funT) of
-        ("()", (itemsT, Var "()")) | null xs -> Right (TupT itemsT, type')
-        ("()", (itemsT, Var "()")) -> Right (RecT (zip xs itemsT), type')
-        (x, (_, Var x')) | x == x' -> do
-          let tdef = fromMaybe (ForT x t) (lookup x env)
-          case asLam tdef of
-            (xs, SumT tname alts) -> do
-              let sumT = compile env (SumT tname alts) |> decompile
-              env' <- unify (map (\x -> (x, Var x)) xs ++ env) sumT (ForT x t)
-              let evalAlt :: Alt -> Either TypeError Alt
-                  evalAlt (cname, (xs, t)) = do
-                    (t, _) <- eval ((tname, Var tname) : env') t
-                    Right (cname, (xs, t))
-              alts' <- mapM evalAlt alts
-              Right (SumT tname alts', type')
-            _else -> Right (ForT x t, type')
-        _else -> Right (ForT x t, type')
+      canonical env (ForT x t) type'
     FunT a b -> do
       (a, _) <- eval env a
       (b, _) <- eval env b
-      Right (FunT a b, type')
+      canonical env (FunT a b) type'
     Lam x body -> do
-      (_, env') <- infer env (Lam x body)
-      (body, _) <- eval env' body
-      case (x, asFunT type') of
-        ("()", (_, TupT itemsT)) -> case asApp body of
-          (Var "()", items) -> Right (Tup items, TupT itemsT)
-          _else -> Right (Lam x body, type')
-        ("()", (_, RecT fieldsT)) -> case asApp body of
-          (Var "()", items) -> Right (Rec (zip (map fst fieldsT) items), RecT fieldsT)
-          _else -> Right (Lam x body, type')
-        (_, (_, SumT {})) -> do
-          case Lam x body |> asLam |> snd |> asApp of
-            (Var cname, _) -> case lookup cname env of
-              Just ctr@Ctr {} -> Right (ctr, type')
-              _else -> Right (Lam x body, type')
-            _else -> Right (Lam x body, type')
-        _else -> Right (Lam x body, type')
+      (body, _) <- eval ((x, Var x) : env) body
+      canonical env (Lam x body) type'
     App a b -> do
       (a, aT) <- eval env a
       (b, _) <- eval env b
@@ -615,4 +670,5 @@ eval env expr = do
               Right (Set a fields, type')
             _else -> Right (App a b, type')
         _else -> Right (App a b, type')
+    Op (Call f _) -> Right (Op (Call f type'), type')
     result -> Right (result, type')

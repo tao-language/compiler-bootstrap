@@ -1,7 +1,6 @@
 module TaoLangTests where
 
 import Parser
-import Tao
 import TaoLang
 import Test.Hspec
 
@@ -13,15 +12,10 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
         Right x -> Just x
         Left _ -> Nothing
 
-  it "☯ lowerName" $ do
-    parse' "" lowerName `shouldBe` Nothing
-    parse' "a" lowerName `shouldBe` Just "a"
-    parse' "a1" lowerName `shouldBe` Just "a1"
-
-  it "☯ upperName" $ do
-    parse' "" upperName `shouldBe` Nothing
-    parse' "A" upperName `shouldBe` Just "A"
-    parse' "A1" upperName `shouldBe` Just "A1"
+  it "☯ identifier" $ do
+    parse' "" (identifier lowercase) `shouldBe` Nothing
+    parse' "a" (identifier lowercase) `shouldBe` Just "a"
+    parse' "a1" (identifier lowercase) `shouldBe` Just "a1"
 
   it "☯ comment" $ do
     let comment' src = parse' src comment
@@ -77,42 +71,40 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     tuple' "(x, y,)" `shouldBe` Just [x, y]
 
   it "☯ record" $ do
-    let record' src = parse' src (record "  ")
+    let record' src = parse' src (record (char '=') "  ")
     record' "()" `shouldBe` Nothing
     record' "(x = 1)" `shouldBe` Just [("x", Int 1)]
     record' "(x = 1, y = 2)" `shouldBe` Just [("x", Int 1), ("y", Int 2)]
 
-  it "☯ pattern" $ do
-    let pattern' src = parse' src (pattern "  ")
-    pattern' "" `shouldBe` Nothing
-    pattern' "_" `shouldBe` Just PAny
-    pattern' "42" `shouldBe` Just (PEq (Int 42))
-    pattern' "x'" `shouldBe` Just (PEq x)
-    pattern' "x@_" `shouldBe` Just (PAs PAny "x")
-    pattern' "x" `shouldBe` Just (PVar "x")
-    pattern' "A" `shouldBe` Just (PCtr "A" [])
-    pattern' "B x" `shouldBe` Just (PCtr "B" [])
-    pattern' "(B x)" `shouldBe` Just (PCtr "B" [x'])
-    pattern' "(C x y)" `shouldBe` Just (PCtr "C" [x', y'])
-    pattern' "()" `shouldBe` Just (PTup [])
-    pattern' "(x,)" `shouldBe` Just (PTup [x'])
-    pattern' "(x, y)" `shouldBe` Just (PTup [x', y'])
-    pattern' "(x, y,)" `shouldBe` Just (PTup [x', y'])
-    pattern' "(.x)" `shouldBe` Just (PRec [("x", x')])
-    pattern' "(.x,)" `shouldBe` Just (PRec [("x", x')])
-    pattern' "(.x, y = _)" `shouldBe` Just (PRec [("x", x'), ("y", PAny)])
-    pattern' "(.x, y = _,)" `shouldBe` Just (PRec [("x", x'), ("y", PAny)])
-    pattern' "(x : y)" `shouldBe` Just (PAnn x' y')
-    pattern' "(x)" `shouldBe` Just (PEq x)
-    pattern' "(x + y)" `shouldBe` Just (PEq (add x y))
-    pattern' "x | y" `shouldBe` Just (PIf x' y)
+  it "☯ pattern'" $ do
+    let pattern_ src = parse' src (pattern' "  ")
+    pattern_ "" `shouldBe` Nothing
+    pattern_ "_" `shouldBe` Just PAny
+    pattern_ "42" `shouldBe` Just (PEq (Int 42))
+    pattern_ "x'" `shouldBe` Just (PEq x)
+    pattern_ "x@_" `shouldBe` Just (PAs PAny "x")
+    pattern_ "x" `shouldBe` Just (PVar "x")
+    pattern_ "A" `shouldBe` Just (PCtr "A" [])
+    pattern_ "B x" `shouldBe` Just (PCtr "B" [])
+    pattern_ "(B x)" `shouldBe` Just (PCtr "B" [x'])
+    pattern_ "(C x y)" `shouldBe` Just (PCtr "C" [x', y'])
+    pattern_ "()" `shouldBe` Just (PTup [])
+    pattern_ "(x,)" `shouldBe` Just (PTup [x'])
+    pattern_ "(x, y)" `shouldBe` Just (PTup [x', y'])
+    pattern_ "(x, y,)" `shouldBe` Just (PTup [x', y'])
+    pattern_ "(.x)" `shouldBe` Just (PRec [("x", x')])
+    pattern_ "(.x,)" `shouldBe` Just (PRec [("x", x')])
+    pattern_ "(.x, y = _)" `shouldBe` Just (PRec [("x", x'), ("y", PAny)])
+    pattern_ "(.x, y = _,)" `shouldBe` Just (PRec [("x", x'), ("y", PAny)])
+    pattern_ "(x : y)" `shouldBe` Just (PAnn x' y')
+    pattern_ "(x)" `shouldBe` Just (PEq x)
+    pattern_ "(x + y)" `shouldBe` Just (PEq (add x y))
+    pattern_ "x | y" `shouldBe` Just (PIf x' y)
 
   it "☯ builtin" $ do
     let builtin' src = parse' src builtin
     builtin' "@" `shouldBe` Nothing
-  -- builtin' "@Int" `shouldBe` Just IntT
-  -- builtin' "@Type" `shouldBe` Just (TypeDef "Type" [])
-  -- builtin' "@func @Int" `shouldBe` Just (Op (Call "func" IntT))
+    builtin' "@x Int" `shouldBe` Just (Op (Call "x" IntT))
 
   it "☯ case'" $ do
     let case_ src = parse' src (case' "  ")

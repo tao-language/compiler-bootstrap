@@ -1,4 +1,42 @@
-module TaoLang where
+module TaoLang
+  ( Tao.Expr (..),
+    Tao.Operator (..),
+    Tao.Pattern (..),
+    Tao.add,
+    Tao.eq,
+    Tao.mul,
+    Tao.prelude,
+    Tao.sub,
+    TaoLang.eval,
+    block,
+    builtin,
+    case',
+    comment,
+    define,
+    emptyLine,
+    expression,
+    identifier,
+    loadBlock,
+    loadDef,
+    loadEnv,
+    loadExpr,
+    loadFile,
+    loadModule,
+    match,
+    maybeNewLine,
+    newLine,
+    operator,
+    parseBlock,
+    parseDef,
+    parseEnv,
+    parseExpr,
+    pattern',
+    record,
+    rule,
+    rules,
+    tuple,
+  )
+where
 
 import Control.Monad (void)
 import Data.List (sort)
@@ -72,17 +110,10 @@ eval env expr = case Tao.eval env expr of
   Right (result, type') -> Right (result, type')
   Left err -> Left (TypeError err)
 
-lowerName :: Parser String
-lowerName = do
+identifier :: Parser Char -> Parser String
+identifier firstChar = do
   -- TODO: support `-` and other characters, maybe URL-like names
-  c <- lowercase
-  cs <- zeroOrMore (oneOf [alphanumeric, char '_'])
-  succeed (c : cs)
-
-upperName :: Parser String
-upperName = do
-  -- TODO: support `-` and other characters, maybe URL-like names, or keep types CamelCase?
-  c <- uppercase
+  c <- firstChar
   cs <- zeroOrMore (oneOf [alphanumeric, char '_'])
   succeed (c : cs)
 
@@ -164,22 +195,35 @@ tuple indent = do
   _ <- char ')'
   succeed items
 
-record :: String -> Parser [(String, Expr)]
-record indent = do
-  let item = do
-        name <- token lowerName
-        _ <- token (char '=')
-        value <- expression indent
-        succeed (name, value)
+field :: Parser delim -> String -> Parser (String, Expr)
+field delimiter indent = do
+  name <- token (identifier lowercase)
+  _ <- token delimiter
+  value <- expression indent
+  succeed (name, value)
+
+record :: Parser delim -> String -> Parser [(String, Expr)]
+record delimiter indent = do
   _ <- token (char '(')
-  field <- item
-  fields <- zeroOrMore (do _ <- token (char ','); token item)
+  field' <- field delimiter indent
+  fields <- zeroOrMore (do _ <- token (char ','); token (field delimiter indent))
   _ <- maybe' (token (char ','))
   _ <- char ')'
-  succeed (field : fields)
+  succeed (field' : fields)
 
-pattern :: String -> Parser Pattern
-pattern indent = do
+recordSet :: String -> Parser Expr
+recordSet indent = do
+  _ <- token (char '(')
+  expr <- token (expression indent)
+  _ <- token (char '|')
+  field' <- field (char '=') indent
+  fields <- zeroOrMore (do _ <- token (char ','); token (field (char '=') indent))
+  _ <- maybe' (token (char ','))
+  _ <- char ')'
+  succeed (Set expr (field' : fields))
+
+pattern' :: String -> Parser Pattern
+pattern' indent = do
   p <-
     oneOf
       [ -- Pattern wildcard: _
@@ -188,26 +232,26 @@ pattern indent = do
         fmap (PEq . Int) integer,
         do
           -- Variable equality pattern
-          x <- lowerName
+          x <- identifier lowercase
           _ <- char '\''
           succeed (PEq (Var x)),
         do
           -- Named pattern: x@_
-          x <- token lowerName
+          x <- token (identifier lowercase)
           _ <- token (char '@')
-          p <- token (pattern indent)
+          p <- token (pattern' indent)
           succeed (PAs p x),
         -- Variable pattern: x
-        fmap PVar lowerName,
+        fmap PVar (identifier lowercase),
         do
           -- Constructor 0-arity: Nil
-          ctr <- upperName
+          ctr <- identifier uppercase
           succeed (PCtr ctr []),
         do
           -- Constructor n-arity: Cons x xs
           _ <- token (char '(')
-          ctr <- token upperName
-          ps <- zeroOrMore (token (pattern indent))
+          ctr <- token (identifier uppercase)
+          ps <- zeroOrMore (token (pattern' indent))
           _ <- char ')'
           succeed (PCtr ctr ps),
         do
@@ -218,15 +262,15 @@ pattern indent = do
         do
           -- Tuple pattern: (x, y)
           _ <- token (char '(')
-          p <- token (pattern indent)
-          ps <- oneOrMore (do _ <- token (char ','); token (pattern indent))
+          p <- token (pattern' indent)
+          ps <- oneOrMore (do _ <- token (char ','); token (pattern' indent))
           _ <- maybe' (token (char ','))
           _ <- char ')'
           succeed (PTup (p : ps)),
         do
           -- Tuple singleton pattern: (x,)
           _ <- token (char '(')
-          p <- token (pattern indent)
+          p <- token (pattern' indent)
           _ <- token (char ',')
           _ <- char ')'
           succeed (PTup [p]),
@@ -236,12 +280,12 @@ pattern indent = do
                 oneOf
                   [ do
                       _ <- token (char '.')
-                      x <- lowerName
+                      x <- identifier lowercase
                       succeed (x, PVar x),
                     do
-                      x <- token lowerName
+                      x <- token (identifier lowercase)
                       _ <- token (char '=')
-                      p <- pattern indent
+                      p <- pattern' indent
                       succeed (x, p)
                   ]
           _ <- token (char '(')
@@ -252,9 +296,9 @@ pattern indent = do
           succeed (PRec (field : fields)),
         do
           _ <- token (char '(')
-          p <- token (pattern indent)
+          p <- token (pattern' indent)
           _ <- token (char ':')
-          t <- token (pattern indent)
+          t <- token (pattern' indent)
           _ <- char ')'
           succeed (PAnn p t),
         do
@@ -275,7 +319,7 @@ pattern indent = do
 
 case' :: String -> Parser Case
 case' indent = do
-  ps <- oneOrMore (token (pattern indent))
+  ps <- oneOrMore (token (pattern' indent))
   _ <- token (text "->")
   indent <- maybeNewLine indent
   expr <- block indent
@@ -290,7 +334,7 @@ match indent = do
 
 rule :: String -> Parser ([Pattern], Expr)
 rule indent = do
-  ps <- zeroOrMore (token (pattern indent))
+  ps <- zeroOrMore (token (pattern' indent))
   _ <- token (char '=')
   indent <- maybeNewLine indent
   expr <- block indent
@@ -310,7 +354,7 @@ define indent = do
   oneOf
     [ do
         -- Typed one-line definition
-        name <- token lowerName
+        name <- token (identifier lowercase)
         _ <- token (char ':')
         type' <- token (expression indent)
         _ <- token (char '=')
@@ -319,7 +363,7 @@ define indent = do
         succeed [(name, Ann value type')],
       do
         -- Typed definition
-        name <- token lowerName
+        name <- token (identifier lowercase)
         _ <- token (char ':')
         type' <- token (expression indent)
         _ <- newLine indent
@@ -328,12 +372,12 @@ define indent = do
         succeed [(name, Ann value type')],
       do
         -- Untyped definition
-        name <- token lowerName
+        name <- token (identifier lowercase)
         value <- rules indent name
         succeed [(name, value)],
       do
         -- Pattern unpacking
-        p <- token (pattern indent)
+        p <- token (pattern' indent)
         _ <- token (char '=')
         indent <- maybeNewLine indent
         value <- block indent
@@ -349,7 +393,7 @@ definition indent = do
 builtin :: Parser Expr
 builtin = do
   _ <- char '@'
-  name <- token lowerName
+  name <- token (identifier letter)
   typ <- expression ""
   succeed (Op (Call name typ))
 
@@ -379,11 +423,13 @@ expression indent = do
           keyword IntT "Int",
           fmap Int integer,
           fmap Op operator,
+          recordSet indent,
           fmap Tup (tuple indent),
-          fmap Rec (record indent),
+          fmap RecT (record (char ':') indent),
+          fmap Rec (record (char '=') indent),
           annotatedExpr indent,
           match indent,
-          fmap Var lowerName,
+          fmap Var (identifier letter),
           builtin,
           parentheses indent
         ]
@@ -394,7 +440,7 @@ expression indent = do
         oneOf
           [ do
               _ <- char '.'
-              x <- lowerName
+              x <- identifier lowercase
               succeed (Get a x),
             succeed a
           ]
