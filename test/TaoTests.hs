@@ -12,9 +12,9 @@ taoTests = describe "--== Tao representation ==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (x', y', z') = (PAs PAny "x", PAs PAny "y", PAs PAny "z")
   let (xT, yT) = (Var "xT", Var "yT")
-  let neverT = SumT "Never" []
-  let unitT = SumT "Unit" [("A", ([], Var "Unit"))]
-  let monadT = SumT "Monad" [("M", (["x"], FunT a (App (Var "Monad") a)))]
+  let neverT = SumT []
+  let unitT = SumT [("A", ([], Var "Unit"))]
+  let monadT = SumT [("M", (["x"], FunT a (App (Var "Monad") a)))]
   let prelude =
         [ ("Never", neverT),
           ("Unit", unitT),
@@ -156,7 +156,7 @@ taoTests = describe "--== Tao representation ==--" $ do
     infer env (Ctr "x" "A") `shouldBe` Left (NotASumType "x" (Int 1))
     infer env (Ctr "Unit" "X") `shouldBe` Left (CtrNotInSumType "Unit" "X" ["A"])
     infer' env (Ctr "Unit" "A") `shouldBe` Right unitT
-    infer' env (Ctr "Monad" "M") `shouldBe` Right (FunT a monadT)
+    infer' env (Ctr "Monad" "M") `shouldBe` Right (ForT "a" (FunT a monadT))
     infer env (Var "x") `shouldBe` Right (IntT, env)
     infer env (Var "y") `shouldBe` Right (y, env)
     infer env (Var "z") `shouldBe` Left (UndefinedVar "z")
@@ -215,8 +215,8 @@ taoTests = describe "--== Tao representation ==--" $ do
     freeVars (Rec [("a", x)]) `shouldBe` ["x"]
     freeVars (Get x "a") `shouldBe` ["x"]
     freeVars (Set x [("a", y)]) `shouldBe` ["x", "y"]
-    freeVars unitT `shouldBe` []
-    freeVars monadT `shouldBe` ["a"]
+    freeVars unitT `shouldBe` ["Unit"]
+    freeVars monadT `shouldBe` ["a", "Monad"]
     freeVars (Ctr "T" "A") `shouldBe` []
     freeVars (Var "x") `shouldBe` ["x"]
     freeVars (ForT "x" x) `shouldBe` []
@@ -337,10 +337,10 @@ taoTests = describe "--== Tao representation ==--" $ do
     compile env (Set p [("y", Int 1), ("x", Int 2)]) `shouldBe` compile [] (App (Rec [("x", Int 1), ("y", Int 2)]) (lam ["x", "y"] (Rec [("x", Int 2), ("y", Int 1)])))
     compile env (Set p [("z", Int 3)]) `shouldBe` compile [] (App (Rec [("x", Int 1), ("y", Int 2)]) (lam ["x", "y"] (Rec [("x", x), ("y", y), ("z", Int 3)])))
     compile env (Set q [("z", Int 3)]) `shouldBe` compile [] (App q (lam ["x", "y"] (Rec [("x", x), ("y", y), ("z", Int 3)])))
-    compile env neverT `shouldBe` compile [] (ForT "Never" (Var "Never"))
-    compile env unitT `shouldBe` compile [] (ForT "Unit" (funT [Var "Unit"] (Var "Unit")))
-    compile env boolT `shouldBe` compile [] (ForT "Bool" (funT [Var "Bool", Var "Bool"] (Var "Bool")))
-    compile env monadT `shouldBe` compile [] (ForT "Monad" (FunT (FunT a (Var "Monad")) (Var "Monad")))
+    compile env (Var "Never") `shouldBe` compile [] (ForT "Never" (Var "Never"))
+    compile env (Var "Unit") `shouldBe` compile [] (ForT "Unit" (funT [Var "Unit"] (Var "Unit")))
+    compile env (Var "Bool") `shouldBe` compile [] (ForT "Bool" (funT [Var "Bool", Var "Bool"] (Var "Bool")))
+    compile env (Var "Monad") `shouldBe` compile [] (Lam "a" (ForT "Monad" (FunT (FunT a (Var "Monad")) (Var "Monad"))))
     compile env (Ctr "Unit" "A") `shouldBe` C.lam ["A"] (C.Var "A")
     compile env (Ctr "Bool" "True") `shouldBe` C.lam ["True", "False"] (C.Var "True")
     compile env (Var "x") `shouldBe` C.Int 1
@@ -379,7 +379,7 @@ taoTests = describe "--== Tao representation ==--" $ do
     eval env Err `shouldBe` Right (Err, Err)
     eval env TypT `shouldBe` Right (TypT, TypT)
     eval env IntT `shouldBe` Right (IntT, TypT)
-    eval env (Int 1) `shouldBe` Right (Int 1, IntT)
+    eval env (Int 42) `shouldBe` Right (Int 42, IntT)
     eval env (TupT []) `shouldBe` Right (TupT [], TypT)
     eval env (TupT [yT]) `shouldBe` Right (TupT [IntT], TypT)
     eval env (Tup []) `shouldBe` Right (Tup [], TupT [])
@@ -400,14 +400,13 @@ taoTests = describe "--== Tao representation ==--" $ do
     eval env (Set q []) `shouldBe` Right (q, RecT [("x", IntT), ("y", IntT)])
     eval env (Set q [("x", IntT)]) `shouldBe` Right (Set q [("x", IntT)], RecT [("x", TypT), ("y", IntT)])
     eval env (Set q [("z", IntT)]) `shouldBe` Right (Set q [("z", IntT)], RecT [("x", IntT), ("y", IntT), ("z", TypT)])
-    eval env neverT `shouldBe` Right (neverT, TypT)
-    eval env unitT `shouldBe` Right (unitT, TypT)
-    eval env monadT `shouldBe` Left (UndefinedVar "a")
+    eval env (Var "Never") `shouldBe` Right (neverT, TypT)
+    eval env (Var "Unit") `shouldBe` Right (unitT, TypT)
     eval env (Var "Monad") `shouldBe` Right (Lam "a" monadT, ForT "aT" (FunT (Var "aT") TypT))
-    eval env (App (Var "Monad") IntT) `shouldBe` Right (SumT "Monad" [("M", (["x"], FunT IntT (App (Var "Monad") IntT)))], TypT)
+    eval env (App (Var "Monad") IntT) `shouldBe` Right (SumT [("M", (["x"], FunT IntT (App (Var "Monad") IntT)))], TypT)
     eval env (Ctr "Unit" "A") `shouldBe` Right (Ctr "Unit" "A", unitT)
     eval env (Ctr "Bool" "True") `shouldBe` Right (Ctr "Bool" "True", boolT)
-    eval env (Ctr "Monad" "M") `shouldBe` Right (Ctr "Monad" "M", FunT a monadT)
+    eval env (Ctr "Monad" "M") `shouldBe` Right (Ctr "Monad" "M", ForT "a" (FunT a monadT))
     eval env (Var "x") `shouldBe` Right (Int 1, IntT)
     eval env (ForT "x" (TupT [x, yT])) `shouldBe` Right (ForT "x" (TupT [x, IntT]), TypT)
     eval env (FunT (TupT []) (TupT [])) `shouldBe` Right (FunT (TupT []) (TupT []), TypT)
@@ -436,3 +435,4 @@ taoTests = describe "--== Tao representation ==--" $ do
     eval env (sub x x) `shouldBe` Right (Int 0, IntT)
     eval env (mul x x) `shouldBe` Right (Int 1, IntT)
     eval env (eq x x) `shouldBe` Right (Ctr "Bool" "True", boolT)
+    eval env (Op $ Call "f" (TupT [])) `shouldBe` Right (Op $ Call "f" (TupT []), TupT [])
