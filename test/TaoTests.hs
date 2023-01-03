@@ -407,6 +407,7 @@ taoTests = describe "--== Tao representation ==--" $ do
     eval env (Ctr "Unit" "A") `shouldBe` Right (Ctr "Unit" "A", unitT)
     eval env (Ctr "Bool" "True") `shouldBe` Right (Ctr "Bool" "True", boolT)
     eval env (Ctr "Monad" "M") `shouldBe` Right (Ctr "Monad" "M", ForT "a" (FunT a monadT))
+    eval env (Var "A") `shouldBe` Right (Ctr "Unit" "A", unitT)
     eval env (Var "x") `shouldBe` Right (Int 1, IntT)
     eval env (ForT "x" (TupT [x, yT])) `shouldBe` Right (ForT "x" (TupT [x, IntT]), TypT)
     eval env (FunT (TupT []) (TupT [])) `shouldBe` Right (FunT (TupT []) (TupT []), TypT)

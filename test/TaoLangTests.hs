@@ -153,6 +153,11 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     define' "x : z = y" `shouldBe` Just [("x", Ann y z)]
     define' "x : z\n  x = y" `shouldBe` Just [("x", Ann y z)]
     define' "f : z\n  f A = x\n  f B = y" `shouldBe` Just [("f", Ann (Match [([PCtr "A" []], x), ([PCtr "B" []], y)]) z)]
+    define' "T = A : T" `shouldBe` Just [("T", SumT [("A", ([], Var "T"))]), ("A", Ctr "T" "A")]
+    define' "T a b = A x y : a -> b -> T a b" `shouldBe` Just [("T", lam ["a", "b"] (SumT [("A", (["x", "y"], funT [Var "a", Var "b"] (app (Var "T") [Var "a", Var "b"])))])), ("A", Ctr "T" "A")]
+    define' "T = A" `shouldBe` Just [("T", SumT [("A", ([], Var "T"))]), ("A", Ctr "T" "A")]
+    define' "T a b = A x y" `shouldBe` Just [("T", lam ["a", "b"] (SumT [("A", (["x", "y"], forT ["xT", "yT"] (funT [Var "xT", Var "yT"] (app (Var "T") [Var "a", Var "b"]))))])), ("A", Ctr "T" "A")]
+    define' "T = A | B | C" `shouldBe` Just [("T", SumT [("A", ([], Var "T")), ("B", ([], Var "T")), ("C", ([], Var "T"))]), ("A", Ctr "T" "A"), ("B", Ctr "T" "B"), ("C", Ctr "T" "C")]
     define' "_ = y" `shouldBe` Just []
     define' "42 = y" `shouldBe` Just []
     define' "A = y" `shouldBe` Just []
@@ -199,11 +204,11 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ block" $ do
     let block' src = parse' src (block "  ")
-    block' "42" `shouldBe` Just (Int 42)
-    block' "x = 1; y" `shouldBe` Just (Let [("x", Int 1)] y)
-    block' "x = 1\n  y" `shouldBe` Just (Let [("x", Int 1)] y)
-    block' "x@_ = 1; y" `shouldBe` Just (Let [("x", App (Match [([PAs PAny "x"], x)]) (Int 1))] y)
-    block' "f x = 1; y" `shouldBe` Just (Let [("f", Match [([x'], Int 1)])] y)
-    block' "f x = 1; y = 2; z" `shouldBe` Just (Let [("f", Match [([x'], Int 1)]), ("y", Int 2)] z)
-    block' "x : z = y; 42" `shouldBe` Just (Let [("x", Ann y z)] (Int 42))
-    block' "x : z\n  x = y; 42" `shouldBe` Just (Let [("x", Ann y z)] (Int 42))
+    block' "42" `shouldBe` Just ([], Int 42)
+    block' "x = 1; y" `shouldBe` Just ([("x", Int 1)], y)
+    block' "x = 1\n  y" `shouldBe` Just ([("x", Int 1)], y)
+    block' "x@_ = 1; y" `shouldBe` Just ([("x", App (Match [([PAs PAny "x"], x)]) (Int 1))], y)
+    block' "f x = 1; y" `shouldBe` Just ([("f", Match [([x'], Int 1)])], y)
+    block' "f x = 1; y = 2; z" `shouldBe` Just ([("f", Match [([x'], Int 1)]), ("y", Int 2)], z)
+    block' "x : z = y; 42" `shouldBe` Just ([("x", Ann y z)], Int 42)
+    block' "x : z\n  x = y; 42" `shouldBe` Just ([("x", Ann y z)], Int 42)

@@ -144,8 +144,12 @@ asApp a = do
       asApp' fun args = (fun, args)
   asApp' a []
 
-let' :: (String, Expr) -> Expr -> Expr
-let' (x, a) b = App (Lam x b) a
+letVar :: (String, Expr) -> Expr -> Expr
+letVar (x, a) b = App (Lam x b) a
+
+let' :: [(String, Expr)] -> Expr -> Expr
+let' [] a = a
+let' env a = Let env a
 
 add :: Expr -> Expr -> Expr
 add a b = app (Op Add) [a, b]
@@ -174,6 +178,12 @@ newName :: [String] -> String -> String
 newName existing x = case findNameIdx existing x of
   Just i -> x ++ show (i + 1)
   Nothing -> x
+
+newNames :: [String] -> [String] -> [String]
+newNames _ [] = []
+newNames existing (x : xs) = do
+  let y = newName existing x
+  y : newNames (y : existing) xs
 
 readNameIdx :: String -> String -> Maybe Int
 readNameIdx "" x = readMaybe x
@@ -644,6 +654,7 @@ canonical env expr type' = do
     _else -> Right (expr, type')
 
 eval :: Env -> Expr -> Either TypeError (Expr, Expr)
+eval env (Let env' expr) = eval (env ++ env') expr
 eval env expr = do
   (type', _) <- infer env expr
   case reduce env expr of

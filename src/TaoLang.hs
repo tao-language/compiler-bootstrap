@@ -3,7 +3,12 @@ module TaoLang
     Tao.Operator (..),
     Tao.Pattern (..),
     Tao.add,
+    Tao.app,
     Tao.eq,
+    Tao.forT,
+    Tao.funT,
+    Tao.lam,
+    Tao.let',
     Tao.mul,
     Tao.prelude,
     Tao.sub,
@@ -66,9 +71,9 @@ loadEnv text = case parseEnv text of
   Right env -> return env
   Left err -> fail ("❌ " ++ show err)
 
-loadBlock :: String -> IO Expr
+loadBlock :: String -> IO (Env, Expr)
 loadBlock text = case parseBlock text of
-  Right expr -> return expr
+  Right (env, expr) -> return (env, expr)
   Left err -> fail ("❌ " ++ show err)
 
 loadFile :: FilePath -> FilePath -> IO Env
@@ -81,8 +86,8 @@ loadFile moduleName fileName = do
 loadModule :: FilePath -> IO Env
 loadModule moduleName = do
   files <- listDirectory moduleName
-  fileDefs <- mapM (loadFile moduleName) (sort files)
-  return (concat fileDefs)
+  defs <- mapM (loadFile moduleName) (sort files)
+  return (concat defs)
 
 parse :: String -> Parser a -> Either Error a
 parse src parser = case Parser.parse src parser of
@@ -102,7 +107,7 @@ parseEnv :: String -> Either Error Env
 parseEnv src = TaoLang.parse src (fmap concat (zeroOrMore (definition "")))
 
 -- TODO: make sure there are no unparsed inputs
-parseBlock :: String -> Either Error Expr
+parseBlock :: String -> Either Error (Env, Expr)
 parseBlock src = TaoLang.parse src (block "")
 
 eval :: Env -> Expr -> Either Error (Expr, Expr)
@@ -322,8 +327,8 @@ case' indent = do
   ps <- oneOrMore (token (pattern' indent))
   _ <- token (text "->")
   indent <- maybeNewLine indent
-  expr <- block indent
-  succeed (ps, expr)
+  (env, expr) <- block indent
+  succeed (ps, let' env expr)
 
 match :: String -> Parser Expr
 match indent = do
@@ -337,8 +342,8 @@ rule indent = do
   ps <- zeroOrMore (token (pattern' indent))
   _ <- token (char '=')
   indent <- maybeNewLine indent
-  expr <- block indent
-  succeed (ps, expr)
+  (env, expr) <- block indent
+  succeed (ps, let' env expr)
 
 rules :: String -> String -> Parser Expr
 rules indent name = do
@@ -348,6 +353,20 @@ rules indent name = do
     case' -> do
       cases <- zeroOrMore (do _ <- newLine indent; _ <- token (text name); rule indent)
       succeed (Match (case' : cases))
+
+ctrDef :: Expr -> String -> Parser (String, ([String], Expr))
+ctrDef type' indent = do
+  cname <- token (identifier uppercase)
+  xs <- zeroOrMore (token (identifier lowercase))
+  oneOf
+    [ do
+        _ <- token (char ':')
+        type' <- expression indent
+        succeed (cname, (xs, type')),
+      do
+        let xsT = newNames (xs ++ freeVars type') (map (++ "T") xs)
+        succeed (cname, (xs, forT xsT (funT (map Var xsT) type')))
+    ]
 
 define :: String -> Parser [(String, Expr)]
 define indent = do
@@ -359,8 +378,8 @@ define indent = do
         type' <- token (expression indent)
         _ <- token (char '=')
         _ <- maybeNewLine indent
-        value <- block indent
-        succeed [(name, Ann value type')],
+        (env, value) <- block indent
+        succeed [(name, Ann (let' env value) type')],
       do
         -- Typed definition
         name <- token (identifier lowercase)
@@ -376,12 +395,23 @@ define indent = do
         value <- rules indent name
         succeed [(name, value)],
       do
+        -- Tagged union type definition
+        tname <- token (identifier uppercase)
+        vars <- zeroOrMore (token (identifier lowercase))
+        let type' = app (Var tname) (map Var vars)
+        _ <- token (char '=')
+        def <- ctrDef type' indent
+        defs <- zeroOrMore (do _ <- zeroOrMore space; _ <- token (char '|'); ctrDef type' indent)
+        let defs' = def : defs
+        let ctr (cname, _) = (cname, Ctr tname cname)
+        succeed ((tname, lam vars (SumT defs')) : map ctr defs'),
+      do
         -- Pattern unpacking
         p <- token (pattern' indent)
         _ <- token (char '=')
         indent <- maybeNewLine indent
-        value <- block indent
-        succeed (unpack (p, value))
+        (env, value) <- block indent
+        succeed (unpack (p, let' env value))
     ]
 
 definition :: String -> Parser [(String, Expr)]
@@ -457,10 +487,8 @@ expression indent = do
       infixL 5 (const App) (oneOrMore space)
     ]
 
-block :: String -> Parser Expr
+block :: String -> Parser (Env, Expr)
 block indent = do
   defs <- zeroOrMore (definition indent)
   expr <- expression indent
-  case concat defs of
-    [] -> succeed expr
-    defs -> succeed (Let defs expr)
+  succeed (concat defs, expr)

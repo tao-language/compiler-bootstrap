@@ -28,8 +28,8 @@ examplesTests = describe "--== Examples end-to-end ==--" $ do
     loadEnv "x = 1\ny = 2" `shouldReturn` [("x", Int 1), ("y", Int 2)]
 
   it "☯ loadBlock" $ do
-    loadBlock "42" `shouldReturn` Int 42
-    loadBlock "x = 1; 42" `shouldReturn` Let [("x", Int 1)] (Int 42)
+    loadBlock "42" `shouldReturn` ([], Int 42)
+    loadBlock "x = 1; 42" `shouldReturn` ([("x", Int 1)], Int 42)
 
   it "☯ loadFile" $ do
     loadFile "example/basic" "expr.tao" `shouldReturn` [("x", Int 42)]
@@ -43,7 +43,7 @@ examplesTests = describe "--== Examples end-to-end ==--" $ do
           ("p", Rec [("y", Int 2), ("x", Int 1)]) :
           ("q", Ann (Var "q") (RecT [("y", IntT), ("x", IntT)])) :
           prelude
-    let eval src = do a <- parseBlock src; TaoLang.eval env a
+    let eval src = do (env', expr) <- parseBlock src; TaoLang.eval env (Let env' expr)
     eval "!error" `shouldBe` Right (Err, Err)
     eval "Type" `shouldBe` Right (TypT, TypT)
     eval "Int" `shouldBe` Right (IntT, TypT)
@@ -71,7 +71,18 @@ examplesTests = describe "--== Examples end-to-end ==--" $ do
     eval "(p | x = Int,)" `shouldBe` Right (Rec [("x", IntT), ("y", Int 2)], RecT [("x", TypT), ("y", IntT)])
     eval "(p | x = Int, y = 0)" `shouldBe` Right (Rec [("x", IntT), ("y", Int 0)], RecT [("x", TypT), ("y", IntT)])
     eval "(q | x = Int)" `shouldBe` Right (Set (Var "q") [("x", IntT)], RecT [("x", TypT), ("y", IntT)])
-  -- eval "| A" `shouldBe` Right (SumT "" [()], Err)
+    eval "T = A; A" `shouldBe` Right (Ctr "T" "A", SumT [("A", ([], Var "T"))])
+    eval "x = 1; x" `shouldBe` Right (Int 1, IntT)
+  -- TODO: ForT
+  -- TODO: FunT
+  -- TODO: Lam
+  -- TODO: App
+  -- TODO: Ann
+  -- TODO: If
+  -- TODO: Let
+  -- TODO: Match
+  -- TODO: TypeOf
+  -- TODO: Op
 
   it "☯ factorial" $ do
     env <- loadFile "example/e2e" "factorial.tao"
