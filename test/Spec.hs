@@ -1,4 +1,5 @@
 import Core2Tests (core2Tests)
+import Core3Tests (core3Tests)
 import CoreTests (coreTests)
 import ExamplesTests (examplesTests)
 import ParserTests (parserTests)
@@ -16,3 +17,4 @@ main = hspec $ do
   examplesTests
   core2Tests
   tao2Tests
+  core3Tests
