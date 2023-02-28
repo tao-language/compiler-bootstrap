@@ -5,7 +5,7 @@ import Parser
 import Test.Hspec (SpecWith, describe, it, shouldBe)
 
 parserTests :: SpecWith ()
-parserTests = describe "--== Parser ==--" $ do
+parserTests = describe "--==☯ Parser ☯==--" $ do
   let parse' :: String -> Parser a -> Maybe a
       parse' source parser = case parse source parser of
         Left (ParserError _ _) -> Nothing
@@ -185,31 +185,40 @@ parserTests = describe "--== Parser ==--" $ do
     --   True `shouldBe` True
 
     it "☯ collection" $ do
-      let collection' = collection (char '[') (char ']') (char ',') letter
+      let collection' = collection (char '[') letter (char ',') (char ']')
       parse' "" collection' `shouldBe` Nothing
       parse' "[" collection' `shouldBe` Nothing
       parse' "[]" collection' `shouldBe` Just ""
       parse' "[a]" collection' `shouldBe` Just "a"
+      parse' "[a,]" collection' `shouldBe` Just "a"
       parse' "[a,b,c]" collection' `shouldBe` Just "abc"
+      parse' "[a,b,c,]" collection' `shouldBe` Just "abc"
 
     it "☯ withOperators" $ do
-      let neg = do _ <- char '-'; x <- calculator; succeed (- x)
-          paren = do _ <- char '('; x <- calculator; _ <- char ')'; succeed x
-          calculator =
+      let calculator =
             withOperators
-              (oneOf [neg, number, paren])
-              [ infixL 1 (const (+)) (char '+'),
-                infixL 1 (const (-)) (char '-'),
-                infixL 2 (const (*)) (char '*'),
-                infixR 3 (const (**)) (char '^')
+              [ constant number,
+                prefix 4 (\x -> - x) (char '-'),
+                inbetween (char '(') (char ')')
               ]
+              [ infixL 1 (+) (char '+'),
+                infixL 1 (-) (char '-'),
+                infixL 2 (*) (char '*'),
+                infixR 3 (**) (char '^')
+              ]
+              0
+
       parse "1" calculator `shouldBe` Right 1.0
       parse "-1" calculator `shouldBe` Right (-1.0)
       parse "--1" calculator `shouldBe` Right 1.0
       parse "1+2" calculator `shouldBe` Right 3.0
+      parse "1-2" calculator `shouldBe` Right (-1.0)
+      parse "1*2" calculator `shouldBe` Right 2.0
+      parse "1**2" calculator `shouldBe` Right 1.0
+      parse "1+2+3" calculator `shouldBe` Right 6.0
       parse "1-2-3" calculator `shouldBe` Right (-4.0)
       parse "1+2*3" calculator `shouldBe` Right 7.0
       parse "3*2+1" calculator `shouldBe` Right 7.0
       parse "2^2^3" calculator `shouldBe` Right 256.0
-      -- parse "1+-2+3" calculator `shouldBe` Right 1.0
+      parse "1+-2+3" calculator `shouldBe` Right 2.0
       parse "(1+2)*3" calculator `shouldBe` Right 9.0

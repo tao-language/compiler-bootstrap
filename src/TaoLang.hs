@@ -1,49 +1,7 @@
-module TaoLang
-  ( Tao.Expr (..),
-    Tao.Operator (..),
-    Tao.Pattern (..),
-    Tao.add,
-    Tao.app,
-    Tao.eq,
-    Tao.forT,
-    Tao.funT,
-    Tao.lam,
-    Tao.let',
-    Tao.mul,
-    Tao.prelude,
-    Tao.sub,
-    TaoLang.eval,
-    block,
-    builtin,
-    case',
-    comment,
-    define,
-    emptyLine,
-    expression,
-    identifier,
-    loadBlock,
-    loadDef,
-    loadEnv,
-    loadExpr,
-    loadFile,
-    loadModule,
-    match,
-    maybeNewLine,
-    newLine,
-    operator,
-    parseBlock,
-    parseDef,
-    parseEnv,
-    parseExpr,
-    pattern',
-    record,
-    rule,
-    rules,
-    tuple,
-  )
-where
+module TaoLang where
 
 import Control.Monad (void)
+import qualified Core
 import Data.List (sort)
 import Flow ((|>))
 import Parser
@@ -51,444 +9,348 @@ import System.Directory
 import System.FilePath ((</>))
 import Tao
 
-data Error
-  = SyntaxError !ParserError
-  | TypeError !TypeError
-  deriving (Eq, Show)
+-- {- TODO:
+-- * Type definitions:
+--     type Bool = True | False
+--     type Vec n a
+--       = Nil : Vec 0 a
+--       | Cons a (Vec n a): Vec (n + 1) a
+-- * Parse until end of file on parseExpr, parseDefs, etc
+--   - Maybe get rid of `parse*` or `load*` (?)
+-- * AST type
+-- * Parse `Err` message
+-- -}
 
-loadExpr :: String -> IO Expr
-loadExpr text = case parseExpr text of
-  Right expr -> return expr
-  Left err -> fail ("❌ " ++ show err)
+-- data Error
+--   = SyntaxError !ParserError
+--   | TypeError !Core.TypeError
+--   deriving (Eq, Show)
 
-loadDef :: String -> IO Env
-loadDef text = case parseDef text of
-  Right env -> return env
-  Left err -> fail ("❌ " ++ show err)
+-- loadExpr :: String -> IO Expr
+-- loadExpr text = case parseExpr text of
+--   Right expr -> return expr
+--   Left err -> fail ("❌ " ++ show err)
 
-loadEnv :: String -> IO Env
-loadEnv text = case parseEnv text of
-  Right env -> return env
-  Left err -> fail ("❌ " ++ show err)
+-- loadDefinitions :: String -> IO [Definition]
+-- loadDefinitions text = case parseDefinitions text of
+--   Right defs -> return defs
+--   Left err -> fail ("❌ " ++ show err)
 
-loadBlock :: String -> IO (Env, Expr)
-loadBlock text = case parseBlock text of
-  Right (env, expr) -> return (env, expr)
-  Left err -> fail ("❌ " ++ show err)
+-- f :: Bool -> Int
+-- f True = 1
 
-loadFile :: FilePath -> FilePath -> IO Env
-loadFile moduleName fileName = do
-  src <- readFile (moduleName </> fileName)
-  case parseEnv src of
-    Right env -> return env
-    Left err -> fail ("❌ " ++ show err)
+-- loadBlock :: String -> IO ([Definition], Expr)
+-- loadBlock text = case parseBlock text of
+--   Right (env, expr) -> return (env, expr)
+--   Left err -> fail ("❌ " ++ show err)
 
-loadModule :: FilePath -> IO Env
-loadModule moduleName = do
-  files <- listDirectory moduleName
-  defs <- mapM (loadFile moduleName) (sort files)
-  return (concat defs)
+-- loadFile :: FilePath -> FilePath -> IO Env
+-- loadFile moduleName fileName = do
+--   src <- readFile (moduleName </> fileName)
+--   defs <- loadDefinitions src
+--   return (concatMap unpack defs)
 
-parse :: String -> Parser a -> Either Error a
-parse src parser = case Parser.parse src parser of
-  Right x -> Right x
-  Left err -> Left (SyntaxError err)
+-- loadModule :: FilePath -> IO Env
+-- loadModule moduleName = do
+--   files <- listDirectory moduleName
+--   envs <- mapM (loadFile moduleName) (sort files)
+--   return (concat envs)
 
--- TODO: make sure there are no unparsed inputs
-parseExpr :: String -> Either Error Expr
-parseExpr src = TaoLang.parse src (expression "")
+-- parse :: String -> Parser a -> Either Error a
+-- parse src parser = case Parser.parse src parser of
+--   Right x -> Right x
+--   Left err -> Left (SyntaxError err)
 
--- TODO: make sure there are no unparsed inputs
-parseDef :: String -> Either Error Env
-parseDef src = TaoLang.parse src (definition "")
+-- -- TODO: make sure there are no unparsed inputs
+-- parseExpr :: String -> Either Error Expr
+-- parseExpr src = TaoLang.parse src (expression 0 "")
 
--- TODO: make sure there are no unparsed inputs
-parseEnv :: String -> Either Error Env
-parseEnv src = TaoLang.parse src (fmap concat (zeroOrMore (definition "")))
+-- -- TODO: make sure there are no unparsed inputs
+-- parseDefinitions :: String -> Either Error [Definition]
+-- parseDefinitions src = TaoLang.parse src (zeroOrMore (definition ""))
 
--- TODO: make sure there are no unparsed inputs
-parseBlock :: String -> Either Error (Env, Expr)
-parseBlock src = TaoLang.parse src (block "")
+-- -- TODO: make sure there are no unparsed inputs
+-- parseBlock :: String -> Either Error ([Definition], Expr)
+-- parseBlock src = TaoLang.parse src (block "")
 
-eval :: Env -> Expr -> Either Error (Expr, Expr)
-eval env expr = case Tao.eval env expr of
-  Right (result, type') -> Right (result, type')
-  Left err -> Left (TypeError err)
+-- eval :: Env -> Expr -> Either Error (Expr, Type)
+-- eval env expr = case infer env expr of
+--   Right (type', _) -> Right (reduce env expr, type')
+--   Left err -> Left (TypeError err)
 
-identifier :: Parser Char -> Parser String
-identifier firstChar = do
-  -- TODO: support `-` and other characters, maybe URL-like names
-  c <- firstChar
-  cs <- zeroOrMore (oneOf [alphanumeric, char '_'])
-  succeed (c : cs)
+-- keyword :: a -> String -> Parser a
+-- keyword x txt = do
+--   _ <- text txt |> notFollowedBy (oneOf [void letter, void number, void (char '_'), void (char '\'')])
+--   succeed x
 
-comment :: Parser String
-comment = do
-  -- TODO: support multi-line comments
-  _ <- text "--"
-  _ <- maybe' space
-  until' (== '\n') anyChar
+-- identifier :: Parser Char -> Parser String
+-- identifier firstChar = do
+--   -- TODO: support `-` and other characters, maybe URL-like names
+--   maybeUnderscore <- maybe' (char '_')
+--   c1 <- firstChar
+--   cs <- zeroOrMore (oneOf [alphanumeric, char '_'])
+--   case maybeUnderscore of
+--     Just c0 -> succeed (c0 : c1 : cs)
+--     Nothing -> succeed (c1 : cs)
 
-emptyLine :: Parser String
-emptyLine = do
-  _ <- zeroOrMore space
-  comment' <- oneOf [comment, succeed ""]
-  _ <- char '\n'
-  succeed comment'
+-- comment :: Parser String
+-- comment = do
+--   -- TODO: support multi-line comments
+--   _ <- text "--"
+--   _ <- maybe' space
+--   until' (== '\n') anyChar
 
-newLine :: String -> Parser [String]
-newLine indent = do
-  _ <- char '\n'
-  comments <- zeroOrMore emptyLine
-  _ <- text indent
-  succeed comments
+-- emptyLine :: Parser String
+-- emptyLine = do
+--   _ <- zeroOrMore space
+--   comment' <- oneOf [comment, succeed ""]
+--   _ <- char '\n'
+--   succeed comment'
 
-maybeNewLine :: String -> Parser String
-maybeNewLine indent =
-  oneOf
-    [ do
-        _ <- newLine indent
-        extra <- oneOrMore space
-        succeed (indent ++ extra),
-      succeed indent
-    ]
+-- newLine :: String -> Parser [String]
+-- newLine indent = do
+--   _ <- char '\n'
+--   comments <- zeroOrMore emptyLine
+--   _ <- text indent
+--   succeed comments
 
-token :: Parser a -> Parser a
-token parser = do
-  x <- parser
-  _ <- zeroOrMore space
-  succeed x
+-- maybeNewLine :: String -> Parser String
+-- maybeNewLine indent =
+--   oneOf
+--     [ do
+--         _ <- newLine indent
+--         extra <- oneOrMore space
+--         succeed (indent ++ extra),
+--       succeed indent
+--     ]
 
-operator :: Parser Operator
-operator = do
-  let ops =
-        [ fmap (const Eq) (text "=="),
-          fmap (const Add) (text "+"),
-          fmap (const Sub) (text "-"),
-          fmap (const Mul) (text "*")
-        ]
-  _ <- token (char '(')
-  op <- token (oneOf ops)
-  _ <- char ')'
-  succeed op
+-- token :: Parser a -> Parser a
+-- token parser = do
+--   x <- parser
+--   _ <- zeroOrMore space
+--   succeed x
 
-annotatedExpr :: String -> Parser Expr
-annotatedExpr indent = do
-  _ <- token (char '(')
-  expr <- token (expression indent)
-  _ <- token (char ':')
-  type' <- token (expression indent)
-  _ <- char ')'
-  succeed (Ann expr type')
+-- err :: Parser Expr
+-- err = do
+--   _ <- token (keyword () "@error")
+--   succeed (Err "")
 
-tuple :: String -> Parser [Expr]
-tuple indent = do
-  _ <- token (char '(')
-  items <-
-    oneOf
-      [ do
-          x <- token (expression indent)
-          xs <- oneOrMore (do _ <- token (char ','); token (expression indent))
-          _ <- maybe' (token (char ','))
-          succeed (x : xs),
-        do
-          x <- token (expression indent)
-          _ <- token (char ',')
-          succeed [x],
-        succeed []
-      ]
-  _ <- char ')'
-  succeed items
+-- typT :: Parser Expr
+-- typT = token (keyword TypT "Type")
 
-field :: Parser delim -> String -> Parser (String, Expr)
-field delimiter indent = do
-  name <- token (identifier lowercase)
-  _ <- token delimiter
-  value <- expression indent
-  succeed (name, value)
+-- nilT :: Parser Expr
+-- nilT = token (keyword NilT "Nil")
 
-record :: Parser delim -> String -> Parser [(String, Expr)]
-record delimiter indent = do
-  _ <- token (char '(')
-  field' <- field delimiter indent
-  fields <- zeroOrMore (do _ <- token (char ','); token (field delimiter indent))
-  _ <- maybe' (token (char ','))
-  _ <- char ')'
-  succeed (field' : fields)
+-- nil :: Parser Expr
+-- nil = do
+--   _ <- token (char '(')
+--   _ <- token (char ')')
+--   succeed Nil
 
-recordSet :: String -> Parser Expr
-recordSet indent = do
-  _ <- token (char '(')
-  expr <- token (expression indent)
-  _ <- token (char '|')
-  field' <- field (char '=') indent
-  fields <- zeroOrMore (do _ <- token (char ','); token (field (char '=') indent))
-  _ <- maybe' (token (char ','))
-  _ <- char ')'
-  succeed (Set expr (field' : fields))
+-- intT :: Parser Expr
+-- intT = token (keyword IntT "Int")
 
-pattern' :: String -> Parser Pattern
-pattern' indent = do
-  p <-
-    oneOf
-      [ -- Pattern wildcard: _
-        fmap (const PAny) (char '_'),
-        -- Integer equality pattern
-        fmap (PEq . Int) integer,
-        do
-          -- Variable equality pattern
-          x <- identifier lowercase
-          _ <- char '\''
-          succeed (PEq (Var x)),
-        do
-          -- Named pattern: x@_
-          x <- token (identifier lowercase)
-          _ <- token (char '@')
-          p <- token (pattern' indent)
-          succeed (PAs p x),
-        -- Variable pattern: x
-        fmap PVar (identifier lowercase),
-        do
-          -- Constructor 0-arity: Nil
-          ctr <- identifier uppercase
-          succeed (PCtr ctr []),
-        do
-          -- Constructor n-arity: Cons x xs
-          _ <- token (char '(')
-          ctr <- token (identifier uppercase)
-          ps <- zeroOrMore (token (pattern' indent))
-          _ <- char ')'
-          succeed (PCtr ctr ps),
-        do
-          -- Tuple empty / unit pattern: ()
-          _ <- token (char '(')
-          _ <- char ')'
-          succeed (PTup []),
-        do
-          -- Tuple pattern: (x, y)
-          _ <- token (char '(')
-          p <- token (pattern' indent)
-          ps <- oneOrMore (do _ <- token (char ','); token (pattern' indent))
-          _ <- maybe' (token (char ','))
-          _ <- char ')'
-          succeed (PTup (p : ps)),
-        do
-          -- Tuple singleton pattern: (x,)
-          _ <- token (char '(')
-          p <- token (pattern' indent)
-          _ <- token (char ',')
-          _ <- char ')'
-          succeed (PTup [p]),
-        do
-          -- Record pattern: (.x, y = _)
-          let item =
-                oneOf
-                  [ do
-                      _ <- token (char '.')
-                      x <- identifier lowercase
-                      succeed (x, PVar x),
-                    do
-                      x <- token (identifier lowercase)
-                      _ <- token (char '=')
-                      p <- pattern' indent
-                      succeed (x, p)
-                  ]
-          _ <- token (char '(')
-          field <- item
-          fields <- zeroOrMore (do _ <- token (char ','); token item)
-          _ <- maybe' (token (char ','))
-          _ <- char ')'
-          succeed (PRec (field : fields)),
-        do
-          _ <- token (char '(')
-          p <- token (pattern' indent)
-          _ <- token (char ':')
-          t <- token (pattern' indent)
-          _ <- char ')'
-          succeed (PAnn p t),
-        do
-          -- Expression equality pattern
-          _ <- token (char '(')
-          expr <- token (expression indent)
-          _ <- char ')'
-          succeed (PEq expr)
-      ]
-  _ <- zeroOrMore space
-  oneOf
-    [ do
-        _ <- token (char '|')
-        cond <- expression indent
-        succeed (PIf p cond),
-      succeed p
-    ]
+-- int :: Parser Expr
+-- int = do
+--   i <- token integer
+--   succeed (Int i)
 
-case' :: String -> Parser Case
-case' indent = do
-  ps <- oneOrMore (token (pattern' indent))
-  _ <- token (text "->")
-  indent <- maybeNewLine indent
-  (env, expr) <- block indent
-  succeed (ps, let' env expr)
+-- numT :: Parser Expr
+-- numT = token (keyword NumT "Num")
 
-match :: String -> Parser Expr
-match indent = do
-  _ <- token (char '\\')
-  c <- case' indent
-  cs <- zeroOrMore (do _ <- zeroOrMore space; _ <- maybe' (newLine indent); _ <- token (char '|'); case' indent)
-  succeed (Match (c : cs))
+-- num :: Parser Expr
+-- num = do
+--   n <- token number
+--   succeed (Num n)
 
-rule :: String -> Parser ([Pattern], Expr)
-rule indent = do
-  ps <- zeroOrMore (token (pattern' indent))
-  _ <- token (char '=')
-  indent <- maybeNewLine indent
-  (env, expr) <- block indent
-  succeed (ps, let' env expr)
+-- ctr :: Parser Expr
+-- ctr = do
+--   tc <- identifier uppercase
+--   _ <- char '.'
+--   k <- token (identifier uppercase)
+--   succeed (Ctr tc k)
 
-rules :: String -> String -> Parser Expr
-rules indent name = do
-  case' <- rule indent
-  case case' of
-    ([], value) -> succeed value
-    case' -> do
-      cases <- zeroOrMore (do _ <- newLine indent; _ <- token (text name); rule indent)
-      succeed (Match (case' : cases))
+-- var :: Parser Expr
+-- var = do
+--   let reserved = ["as", "if", "then", "else"]
+--   x <- token (identifier letter)
+--   assert (x `notElem` reserved) "reserved keyword"
+--   succeed (Var x)
 
-ctrDef :: Expr -> String -> Parser (String, ([String], Expr))
-ctrDef type' indent = do
-  cname <- token (identifier uppercase)
-  xs <- zeroOrMore (token (identifier lowercase))
-  oneOf
-    [ do
-        _ <- token (char ':')
-        type' <- expression indent
-        succeed (cname, (xs, type')),
-      do
-        let xsT = newNames (xs ++ freeVars type') (map (++ "T") xs)
-        succeed (cname, (xs, forT xsT (funT (map Var xsT) type')))
-    ]
+-- term :: Parser Expr
+-- term = oneOf [err, typT, nilT, nil, intT, int, numT, num, ctr, var]
 
-define :: String -> Parser [(String, Expr)]
-define indent = do
-  oneOf
-    [ do
-        -- Typed one-line definition
-        name <- token (identifier lowercase)
-        _ <- token (char ':')
-        type' <- token (expression indent)
-        _ <- token (char '=')
-        _ <- maybeNewLine indent
-        (env, value) <- block indent
-        succeed [(name, Ann (let' env value) type')],
-      do
-        -- Typed definition
-        name <- token (identifier lowercase)
-        _ <- token (char ':')
-        type' <- token (expression indent)
-        _ <- newLine indent
-        _ <- token (text name)
-        value <- rules indent name
-        succeed [(name, Ann value type')],
-      do
-        -- Untyped definition
-        name <- token (identifier lowercase)
-        value <- rules indent name
-        succeed [(name, value)],
-      do
-        -- Tagged union type definition
-        tname <- token (identifier uppercase)
-        vars <- zeroOrMore (token (identifier lowercase))
-        let type' = app (Var tname) (map Var vars)
-        _ <- token (char '=')
-        def <- ctrDef type' indent
-        defs <- zeroOrMore (do _ <- zeroOrMore space; _ <- token (char '|'); ctrDef type' indent)
-        let defs' = def : defs
-        let ctr (cname, _) = (cname, Ctr tname cname)
-        succeed ((tname, lam vars (SumT defs')) : map ctr defs'),
-      do
-        -- Pattern unpacking
-        p <- token (pattern' indent)
-        _ <- token (char '=')
-        indent <- maybeNewLine indent
-        (env, value) <- block indent
-        succeed (unpack (p, let' env value))
-    ]
+-- for' :: Parser [String]
+-- for' = do
+--   _ <- token (keyword () "@forall")
+--   xs <- oneOrMore (token (identifier lowercase))
+--   _ <- token (char '.')
+--   succeed xs
 
-definition :: String -> Parser [(String, Expr)]
-definition indent = do
-  defs <- token (define indent)
-  _ <- oneOf [void (newLine indent), void (token (char ';')), endOfFile]
-  succeed defs
+-- sumT :: String -> Parser Expr
+-- sumT indent = do
+--   let alt :: Parser (String, Type)
+--       alt = do
+--         k <- token (identifier uppercase)
+--         _ <- token (char ':')
+--         t <- expression 0 indent
+--         succeed (k, t)
 
-builtin :: Parser Expr
-builtin = do
-  _ <- char '@'
-  name <- token (identifier letter)
-  typ <- expression ""
-  succeed (Op (Call name typ))
+--   _ <- token (keyword () "@type")
+--   ts <- token (identifier uppercase)
+--   alts <- collection (token (char '{')) alt (token (char ',')) (token (char '}'))
+--   succeed (SumT ts alts)
 
-parentheses :: String -> Parser Expr
-parentheses indent = do
-  _ <- token (char '(')
-  expr <- token (expression indent)
-  _ <- char ')'
-  succeed expr
+-- and_ :: String -> Parser Expr
+-- and_ indent = do
+--   items <-
+--     collection
+--       (token (char '('))
+--       (block indent)
+--       (token (char ','))
+--       (token (char ')'))
+--   succeed (and' (map (uncurry let') items))
 
-expression :: String -> Parser Expr
-expression indent = do
-  let keyword :: a -> String -> Parser a
-      keyword x txt = do
-        _ <- text txt |> notFollowedBy (oneOf [void letter, void number])
-        succeed x
+-- ifElse :: String -> Parser (Expr -> Expr)
+-- ifElse indent = do
+--   _ <- token (keyword () "if")
+--   cond <- expression 0 indent
+--   _ <- token (keyword () "then")
+--   then' <- expression 0 indent
+--   _ <- token (keyword () "else")
+--   succeed (IfElse cond then')
 
-  let op parser = do
-        _ <- zeroOrMore space
-        x <- parser
-        _ <- zeroOrMore space
-        succeed x
+-- lam' :: String -> Parser [Pattern]
+-- lam' indent = do
+--   _ <- token (char '\\')
+--   ps <- oneOrMore (pattern' 0 indent)
+--   _ <- token (text "->")
+--   succeed ps
 
-  let unaryTerms =
-        [ keyword Err "!error",
-          keyword TypT "Type",
-          keyword IntT "Int",
-          fmap Int integer,
-          fmap Op operator,
-          recordSet indent,
-          fmap Tup (tuple indent),
-          fmap RecT (record (char ':') indent),
-          fmap Rec (record (char '=') indent),
-          annotatedExpr indent,
-          match indent,
-          fmap Var (identifier letter),
-          builtin,
-          parentheses indent
-        ]
+-- expression :: Int -> String -> Parser Expr
+-- expression prec indent = do
+--   let operator op = token (text op)
+--   withOperators
+--     [ constant term,
+--       constant (sumT indent),
+--       constant (and_ indent),
+--       prefixOp 3 for for',
+--       prefixOp 3 lam (lam' indent),
+--       prefixOp 3 id (ifElse indent),
+--       prefix 8 TypeOf (token (keyword () "@typeOf"))
+--     ]
+--     [ infixR 1 Or (operator "|"),
+--       infixR 2 Ann (operator ":"),
+--       infixR 3 FunT (operator "->"),
+--       infixL 4 Lt (operator "<"),
+--       infixL 5 Add (operator "+"),
+--       infixL 5 Sub (operator "-"),
+--       infixL 6 Mul (operator "*"),
+--       infixL 7 App (succeed ())
+--     ]
+--     prec
 
-  let unary :: Parser Expr
-      unary = do
-        a <- oneOf unaryTerms
-        oneOf
-          [ do
-              _ <- char '.'
-              x <- identifier lowercase
-              succeed (Get a x),
-            succeed a
-          ]
+-- anyP :: Parser Pattern
+-- anyP = do
+--   _ <- token (keyword () "_")
+--   succeed AnyP
 
-  -- TODO: make operators support newLines
-  -- TODO: make parentheses support newLines
-  withOperators
-    unary
-    [ infixR 1 (const FunT) (op (text "->")),
-      infixL 2 (const eq) (op (text "==")),
-      infixL 3 (const add) (op (char '+')),
-      infixL 3 (const sub) (op (char '-')),
-      infixL 4 (const mul) (op (char '*')),
-      infixL 5 (const App) (oneOrMore space)
-    ]
+-- varP :: Parser Pattern
+-- varP = do
+--   x <- identifier lowercase
+--   oneOf
+--     [ do
+--         _ <- token (char '\'')
+--         succeed (EqP (Var x)),
+--       do
+--         _ <- zeroOrMore space
+--         succeed (VarP x)
+--     ]
 
-block :: String -> Parser (Env, Expr)
-block indent = do
-  defs <- zeroOrMore (definition indent)
-  expr <- expression indent
-  succeed (concat defs, expr)
+-- termP :: String -> Parser Pattern
+-- termP indent = oneOf [anyP, varP, fmap EqP term, andP' indent]
+
+-- asP :: Parser String
+-- asP = do
+--   _ <- token (keyword () "as")
+--   token (identifier lowercase)
+
+-- ifP :: String -> Parser Expr
+-- ifP indent = do
+--   _ <- token (keyword () "if")
+--   expression 2 indent
+
+-- andP' :: String -> Parser Pattern
+-- andP' indent = do
+--   ps <-
+--     collection
+--       (token (char '('))
+--       (pattern' 0 indent)
+--       (token (char ','))
+--       (token (char ')'))
+--   succeed (andP ps)
+
+-- pattern' :: Int -> String -> Parser Pattern
+-- pattern' prec indent = do
+--   let operator op = token (text op)
+--   withOperators
+--     [ constant (termP indent)
+--     ]
+--     [ infixR 1 OrP (operator "|"),
+--       infixR 2 AnnP (operator ":"),
+--       postfixOp 3 (flip AsP) asP,
+--       postfixOp 3 (flip IfP) (ifP indent),
+--       infixL 4 AppP (succeed ())
+--     ]
+--     prec
+
+-- definition :: String -> Parser Definition
+-- definition indent = do
+--   let typeAnnotation :: Parser (String, Type)
+--       typeAnnotation = do
+--         x <- token (identifier letter)
+--         _ <- token (char ':')
+--         t <- expression 0 indent
+--         succeed (x, t)
+
+--   let branch :: Parser ([Pattern], Expr)
+--       branch = do
+--         ps <- oneOrMore (termP indent)
+--         _ <- token (char '=')
+--         a <- expression 0 indent
+--         succeed (ps, a)
+
+--   let rules :: Parser (Pattern, Expr)
+--       rules = do
+--         x <- token (identifier letter)
+--         r <- branch
+--         rs <- zeroOrMore (do _ <- newLine indent; _ <- token (text x); branch)
+--         succeed (VarP x, Match (r : rs))
+
+--   let unpack :: Parser (Pattern, Expr)
+--       unpack = do
+--         p <- termP indent
+--         _ <- token (char '=')
+--         a <- expression 0 indent
+--         succeed (p, a)
+
+--   def <-
+--     oneOf
+--       [ do
+--           (x, t) <- typeAnnotation
+--           _ <- token (char '=')
+--           a <- expression 0 indent
+--           succeed ([(x, t)], VarP x, a),
+--         do
+--           types <- zeroOrMore (do ann <- typeAnnotation; _ <- newLine indent; succeed ann)
+--           (p, a) <- oneOf [rules, unpack]
+--           succeed (types, p, a)
+--       ]
+--   _ <- oneOf [void (newLine indent), void (token (char ';')), endOfFile]
+--   succeed def
+
+-- block :: String -> Parser ([Definition], Expr)
+-- block indent = do
+--   defs <- zeroOrMore (definition indent)
+--   a <- expression 0 indent
+--   succeed (defs, a)

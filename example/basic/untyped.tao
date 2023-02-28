@@ -1,0 +1,8 @@
+au = 0
+
+bu x = x
+
+cu 0 = 1
+cu x = x
+
+(du, eu) = (1, 2)

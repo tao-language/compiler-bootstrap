@@ -1,145 +1,347 @@
 module Core where
 
-import Data.List (foldl')
+import Data.Bifunctor (Bifunctor (second))
+import Data.List (foldl', union)
 
-data Term
-  = Err
-  | TypT
-  | IntT
+{- TODO:
+* Remove If (Case already covers it)
+* Function / operator overloading
+* Do notation
+  - Overload (<-) operator
+-}
+
+data Expr
+  = Nil
   | Int !Int
+  | Num !Double
+  | Ctr !Alt !Expr
   | Var !String
-  | ForT !String !Term
-  | FunT !Term !Term
-  | Lam !Env !String !Term
-  | App !Term !Term
-  | Fix !String !Term
-  | Op !Operator
-  deriving (Eq)
+  | Let !Env !Expr
+  | Lam !String !Expr
+  | App !Expr !Expr
+  | And !Expr !Expr
+  | Or !Expr !Expr
+  | Fst !Expr
+  | Snd !Expr
+  | If !Expr !Expr
+  | Case !Alt !String !Expr
+  | Fix !String !Expr
+  | Op !String !Expr
+  | Err !RuntimeError
+  deriving (Eq, Show)
 
-data Operator
-  = Add
+data Type
+  = NilT
+  | IntT
+  | NumT
+  | CtrT !Alt !Type
+  | VarT !String
+  | FunT !Type !Type
+  | AndT !Type !Type
+  | OrT !Type !Type
+  deriving (Eq, Show)
+
+data CtrArg
+  = T !Type
+  | E !Expr
+
+data BinaryOp
+  = Eq
+  | Lt
+  | Add
   | Sub
   | Mul
-  | Eq
-  | Call !String !Term
-  deriving (Eq)
+  deriving (Eq, Show)
 
-type Env = [(String, Term)]
+data TypeError
+  = RuntimeError !RuntimeError
+  | InfiniteType !String !Type
+  | TypeMismatch !Type !Type
+  | UndefinedAlt !Alt
+  | UndefinedOp !String
+  | UndefinedType !String
+  deriving (Eq, Show)
 
-type Alt = (String, ([String], Term))
+data RuntimeError
+  = Fail
+  | NoFstOf !Expr
+  | NoSndOf !Expr
+  | NotAFunction !Expr
+  | UndefinedVar !String
+  deriving (Eq, Show)
 
--- TODO: clean up
-instance Show Term where
-  show Err = "@error"
-  show TypT = "@Type"
-  show IntT = "@Int"
-  show (Int i) = show i
-  show (Var x) = x
-  show (ForT x a) = do
-    let vars :: Term -> [String] -> ([String], Term)
-        vars (ForT x a) xs = let (xs', a') = vars a xs in (x : xs', a')
-        vars a xs = (xs, a)
-    let (xs, a') = vars a []
-    "@for " ++ unwords (x : xs) ++ ". " ++ show a'
-  show (FunT a b) = do
-    let a' = case a of
-          FunT {} -> "(" ++ show a ++ ")"
-          Lam {} -> "(" ++ show a ++ ")"
-          a -> show a
-    let b' = case b of
-          Lam {} -> "(" ++ show b ++ ")"
-          b -> show b
-    a' ++ " -> " ++ b'
-  show (Lam _ x a) = do
-    -- TODO: show env
-    let vars :: Term -> [String] -> ([String], Term)
-        vars (Lam _ x a) xs = let (xs', a') = vars a xs in (x : xs', a')
-        vars a xs = (xs, a)
-    let (xs, a') = vars a []
-    "\\" ++ unwords (x : xs) ++ " -> " ++ show a'
-  show (App a b) = do
-    let a' = case a of
-          Lam {} -> "(" ++ show a ++ ")"
-          a -> show a
-    let b' = case b of
-          App {} -> "(" ++ show b ++ ")"
-          Lam {} -> "(" ++ show b ++ ")"
-          b -> show b
-    a' ++ " " ++ b'
-  show (Fix x a) = "@fix " ++ show x ++ " (" ++ show a ++ ")"
-  show (Op op) = show op
+type Alt = (String, String)
 
-instance Show Operator where
-  show Add = "+"
-  show Sub = "-"
-  show Mul = "*"
-  show Eq = "=="
-  show (Call f t) = "@(" ++ f ++ " : " ++ show t ++ ")"
+-- TODO: Substitution = Type -> Type
+type Substitution = [(String, Type)]
 
--- Syntax sugar --
-forT :: [String] -> Term -> Term
-forT xs a = foldr ForT a xs
+-- TODO: come up with a better name for this
+data Scheme = ForAll ![String] !Type
 
-funT :: [Term] -> Term -> Term
-funT xs a = foldr FunT a xs
+type Context = [(String, Scheme)]
 
-lam :: [String] -> Term -> Term
-lam xs a = foldr (Lam []) a xs
+type Ops = [(String, Expr -> Maybe Expr)]
 
-app :: Term -> [Term] -> Term
+type Env = [(String, Expr)]
+
+-- for :: [String] -> Expr -> Expr
+-- for xs expr = foldr For expr xs
+
+app :: Expr -> [Expr] -> Expr
 app = foldl' App
 
-let' :: (String, Term) -> Term -> Term
-let' (x, a) b = App (Lam [] x b) a
+lam :: [String] -> Expr -> Expr
+lam xs body = foldr Lam body xs
 
-add :: Term -> Term -> Term
-add a b = app (Op Add) [a, b]
+or' :: [Expr] -> Expr
+or' [] = Nil
+or' [a] = a
+or' (a : bs) = Or a (or' bs)
 
-sub :: Term -> Term -> Term
-sub a b = app (Op Sub) [a, b]
+if' :: Alt -> Expr -> Expr -> Expr -> Expr
+if' true cond then' else' =
+  App (Case true "" then' `Or` Lam "" else') cond
 
-mul :: Term -> Term -> Term
-mul a b = app (Op Mul) [a, b]
+funT :: [Type] -> Type -> Type
+funT args ret = foldr FunT ret args
 
-eq :: Term -> Term -> Term
-eq a b = app (Op Eq) [a, b]
+orT :: [Type] -> Type
+orT [] = NilT
+orT [a] = a
+orT (a : bs) = OrT a (orT bs)
 
--- Evaluation
-occurs :: String -> Term -> Bool
-occurs x (Var y) = x == y
-occurs x (Lam env y a) | x /= y && x `notElem` map fst env = occurs x a
-occurs x (App a b) = occurs x a || occurs x b
-occurs x (ForT y a) | x /= y = occurs x a
-occurs x (FunT a b) = x `occurs` a || x `occurs` b
-occurs _ _ = False
+get :: Eq k => k -> [(k, v)] -> Maybe v
+get _ [] = Nothing
+get x ((x', a) : _) | x == x' = Just a
+get x (_ : env) = get x env
 
-reduce :: Env -> Term -> Term
-reduce env (Var x) = case lookup x env of
+set :: Eq k => (k, v) -> [(k, v)] -> [(k, v)]
+set _ [] = []
+set (x, a) ((x', _) : env) | x == x' = (x, a) : env
+set (x, a) (def : env) = def : set (x, a) env
+
+pop :: Eq k => k -> [(k, v)] -> [(k, v)]
+pop _ [] = []
+pop x ((x', _) : env) | x == x' = env
+pop x (_ : env) = pop x env
+
+newName :: [String] -> String -> String
+newName existing x | x `elem` existing = newName existing (x ++ "'")
+newName _ x = x
+
+occurs :: String -> Type -> Bool
+occurs _ NilT = False
+occurs _ IntT = False
+occurs _ NumT = False
+occurs x (CtrT _ a) = occurs x a
+occurs x (VarT y) = x == y
+occurs x (FunT a b) = occurs x a || occurs x b
+occurs x (AndT a b) = occurs x a || occurs x b
+occurs x (OrT a b) = occurs x a || occurs x b
+
+-- TODO: pass Context as an input and return the Context
+--       with the applied substitution
+unify :: Type -> Type -> Either TypeError Substitution
+unify NilT NilT = Right []
+unify IntT IntT = Right []
+unify NumT NumT = Right []
+unify (CtrT alt1 a) (CtrT alt2 b) | alt1 == alt2 = unify a b
+unify (CtrT (t1, k1) _) (CtrT (t2, k2) _) | t1 == t2 && k1 /= k2 = Right []
+unify (VarT x) b | x `occurs` b = Left (InfiniteType x b)
+unify (VarT x) b = Right [(x, b)]
+unify a (VarT x) | x `occurs` a = Left (InfiniteType x a)
+unify a (VarT x) = Right [(x, a)]
+unify (FunT a1 a2) (FunT b1 b2) = do
+  s1 <- unify a1 b1
+  s2 <- unify (apply s1 a2) (apply s1 b2)
+  Right (s2 `compose` s1)
+unify (AndT a1 a2) (AndT b1 b2) = do
+  s1 <- unify a1 b1
+  s2 <- unify (apply s1 a2) (apply s1 b2)
+  Right (s2 `compose` s1)
+unify (OrT a1 a2) b = do
+  s1 <- unify a1 b
+  s2 <- unify (apply s1 a2) (apply s1 b)
+  Right (s2 `compose` s1)
+unify a (OrT b1 b2) = do
+  s1 <- unify a b1
+  s2 <- unify (apply s1 a) (apply s1 b2)
+  Right (s2 `compose` s1)
+unify a b = Left (TypeMismatch a b)
+
+reduce :: Ops -> Env -> Expr -> Expr
+reduce _ env (Ctr alt a) = Ctr alt (Let env a)
+reduce ops env (Var x) = case get x env of
   Just (Var x') | x == x' -> Var x
-  Just a -> reduce env a
-  Nothing -> Var x
-reduce env (ForT x a) = ForT x (reduce ((x, Var x) : env) a)
-reduce env (FunT a b) = FunT (reduce env a) (reduce env b)
-reduce env (Lam env' x a) = Lam (env' ++ env) x a
-reduce env (App a b) = case (reduce env a, reduce env b) of
-  (Lam env x a, b) -> reduce ((x, b) : env) a
-  (App (Op op) a, b) -> case (op, reduce env a, b) of
-    (Add, Int a, Int b) -> Int (a + b)
-    (Sub, Int a, Int b) -> Int (a - b)
-    (Mul, Int a, Int b) -> Int (a * b)
-    (Eq, Int a, Int b) | a == b -> Lam [] "True" (Lam [] "False" (Var "True"))
-    (Eq, Int _, Int _) -> Lam [] "True" (Lam [] "False" (Var "False"))
-    (_, a, b) -> App (App (Op op) a) b
-  (Fix x a, b) -> reduce ((x, Fix x a) : env) (App a b)
-  (a, b) -> App a b
-reduce _ a = a
+  Just a -> reduce ops [] a
+  Nothing -> Err (UndefinedVar x)
+reduce ops env (Let env' a) = reduce ops (env ++ env') a
+reduce _ env (Lam x a) = Lam x (Let env a)
+reduce ops env (App a b) = case (reduce ops env a, reduce ops env b) of
+  (Fix f a, b) -> reduce ops [(f, Fix f a)] (App a b)
+  (Lam x (Let env' a), b) -> reduce ops ((x, b) : env') a
+  (Or a1 a2, b) -> case reduce ops [] (App a1 b) of
+    Err Fail -> reduce ops [] (App a2 b)
+    c -> c
+  (Case alt x (Let env' a), Ctr alt' b) | alt == alt' -> do
+    reduce ops ((x, b) : env') a
+  (Case {}, _) -> Err Fail
+  (Err e, _) -> Err e
+  (a, _) -> Err (NotAFunction a)
+reduce _ env (And a b) = And (Let env a) (Let env b)
+reduce _ env (Or a b) = Or (Let env a) (Let env b)
+reduce ops env (Fst a) = case reduce ops env a of
+  Var x -> Fst (Var x)
+  And a _ -> reduce ops [] a
+  Or a _ -> reduce ops [] a
+  a -> Err (NoFstOf a)
+reduce ops env (Snd a) = case reduce ops env a of
+  Var x -> Snd (Var x)
+  And _ b -> reduce ops [] b
+  Or _ b -> reduce ops [] b
+  a -> Err (NoSndOf a)
+reduce ops env (If a b) = case reduce ops env a of
+  Nil -> reduce ops env b
+  Err e -> Err e
+  a -> If a (Let env b)
+reduce _ env (Case alt x b) = Case alt x (Let env b)
+reduce ops env (Op op a) = case get op ops of
+  Just f -> case eval ops env a of
+    Err e -> Err e
+    a -> case f a of
+      Just b -> b
+      Nothing -> Op op a
+  Nothing -> Op op (Let env a)
+reduce _ _ a = a
 
-eval :: Env -> Term -> Term
-eval env a = case reduce env a of
-  Lam env x a -> Lam [] x (eval ((x, Var x) : env) a)
-  App a b -> App (eval [] a) (eval [] b)
-  Fix x a -> case eval ((x, Var x) : env) a of
-    Var x' | x == x' -> Var x
-    a | x `occurs` a -> Fix x a
-    a -> a
+eval :: Ops -> Env -> Expr -> Expr
+eval ops env expr = case reduce ops env expr of
+  Ctr alt a -> Ctr alt (eval ops env a)
+  Lam x a -> Lam x (eval ops ((x, Var x) : env) a)
+  App a b -> App a (eval ops env b)
+  And a b -> And (eval ops env a) (eval ops env b)
+  Or a b -> Or (eval ops env a) (eval ops env b)
+  Case alt x a -> Case alt x (eval ops ((x, Var x) : env) a)
+  Fix x a -> Fix x (eval ops ((x, Var x) : env) a)
   a -> a
+
+-- https://youtu.be/ytPAlhnAKro
+-- https://github.com/kritzcreek/fby19
+-- https://github.com/kritzcreek/fby19/blob/master/src/Typechecker.hs
+infer :: Context -> Env -> Expr -> Either TypeError (Type, Substitution)
+infer _ _ Nil = Right (NilT, [])
+infer _ _ (Int _) = Right (IntT, [])
+infer _ _ (Num _) = Right (NumT, [])
+infer ctx env (Ctr (t, k) a) = case get t ctx of
+  Just scheme -> do
+    let tdef = instantiate (map fst ctx) scheme
+    case findAlt k tdef of
+      Just argT -> do
+        (ta, s1) <- infer ctx env a
+        s2 <- unify argT ta
+        Right (apply s2 tdef, s2 `compose` s1)
+      Nothing -> Left (UndefinedAlt (t, k))
+  Nothing -> Left (UndefinedType t)
+infer ctx env (Var x) = case get x ctx of
+  Just scheme -> Right (instantiate (map fst ctx) scheme, [])
+  Nothing -> case get x env of
+    Just (Var x') | x == x' -> do
+      let xT = newName (map fst ctx) (x ++ "T")
+      Right (instantiate (map fst ctx) (ForAll [xT] (VarT xT)), [])
+    Just a -> infer ctx [] a
+    Nothing -> Left (RuntimeError (UndefinedVar x))
+infer ctx env (Let env' a) = infer ctx (env ++ env') a
+infer ctx env (Lam x a) = do
+  let xT = newName (map fst ctx) (x ++ "T")
+  (ta, s) <- infer ((x, ForAll [xT] (VarT xT)) : ctx) env a
+  Right (FunT (apply s (VarT xT)) ta, s)
+infer ctx env (App a b) = do
+  let xT = newName (map fst ctx) "_app"
+  (funT, s1) <- infer ctx env a
+  (argT, s2) <- infer (applyContext s1 ctx) env b
+  s3 <- unify (apply s2 funT) (FunT argT (VarT xT))
+  Right (apply s3 (VarT xT), s3 `compose` s2 `compose` s1)
+infer ctx env (And a b) = do
+  (aT, s1) <- infer ctx env a
+  (bT, s2) <- infer (applyContext s1 ctx) env b
+  Right (AndT (apply s2 aT) bT, s2 `compose` s1)
+infer ctx env (Or a b) = do
+  (aT, s1) <- infer ctx env a
+  (bT, s2) <- infer (applyContext s1 ctx) env b
+  s3 <- unify (apply s2 aT) bT
+  Right (apply s3 bT, s3 `compose` s2 `compose` s1)
+infer ctx env (Fst a) = do
+  (ta, s) <- infer ctx env a
+  case ta of
+    AndT t _ -> Right (t, s)
+    OrT t _ -> Right (t, s)
+    _else -> Left (RuntimeError (NoFstOf a))
+infer ctx env (Snd a) = do
+  (ta, s) <- infer ctx env a
+  case ta of
+    AndT _ t -> Right (t, s)
+    OrT _ t -> Right (t, s)
+    _else -> Left (RuntimeError (NoSndOf a))
+infer ctx env (If a b) = do
+  (_, s1) <- infer ctx env a
+  (t, s2) <- infer (applyContext s1 ctx) env b
+  Right (t, s2 `compose` s1)
+infer ctx env (Case (t, k) x b) = case get t ctx of
+  Just scheme -> do
+    let tdef = instantiate (map fst ctx) scheme
+    case findAlt k tdef of
+      Just argT -> do
+        (tb, s) <- infer ((x, ForAll [] argT) : ctx) env b
+        Right (FunT (apply s tdef) tb, s)
+      Nothing -> Left (UndefinedAlt (t, k))
+  Nothing -> Left (UndefinedType t)
+infer ctx env (Fix x a) = do
+  let xT = newName (map fst env) (x ++ "T")
+  (_, s) <- infer ((x, ForAll [xT] (VarT xT)) : ctx) env a
+  Right (apply s (VarT xT), s)
+infer ctx env (Op op a) = case get op ctx of
+  Just scheme -> do
+    let xT = newName (map fst ctx) "_op"
+    let funT = instantiate (map fst ctx) scheme
+    (argT, s1) <- infer ctx env a
+    s2 <- unify (FunT argT (VarT xT)) (apply s1 funT)
+    Right (apply s2 (VarT xT), s2 `compose` s1)
+  Nothing -> Left (UndefinedOp op)
+infer _ _ (Err e) = Left (RuntimeError e)
+
+findAlt :: String -> Type -> Maybe Type
+findAlt k (CtrT (_, k') a) | k == k' = Just a
+findAlt k (OrT a b) = case findAlt k a of
+  Just args -> Just args
+  Nothing -> findAlt k b
+findAlt _ _ = Nothing
+
+apply :: Substitution -> Type -> Type
+apply _ NilT = NilT
+apply _ IntT = IntT
+apply _ NumT = NumT
+apply sub (CtrT alt a) = CtrT alt (apply sub a)
+apply sub (VarT x) = case get x sub of
+  Just (VarT x') | x == x' -> VarT x
+  Just a -> apply sub a
+  Nothing -> VarT x
+apply sub (FunT a b) = FunT (apply sub a) (apply sub b)
+apply sub (AndT a b) = AndT (apply sub a) (apply sub b)
+apply sub (OrT a b) = OrT (apply sub a) (apply sub b)
+
+applyScheme :: Substitution -> Scheme -> Scheme
+applyScheme sub (ForAll [] a) = ForAll [] (apply sub a)
+applyScheme sub (ForAll (x : xs) a) =
+  applyScheme (filter (\(y, _) -> x == y) sub) (ForAll xs a)
+
+applyContext :: Substitution -> Context -> Context
+applyContext sub = map (second (applyScheme sub))
+
+compose :: Substitution -> Substitution -> Substitution
+compose s1 s2 = map (second (apply s1)) s2 `union` s1
+
+instantiate :: [String] -> Scheme -> Type
+instantiate _ (ForAll [] t) = t
+instantiate names (ForAll (x : xs) t) = do
+  let y = newName names x
+  instantiate names (ForAll xs (apply [(x, VarT y)] t))

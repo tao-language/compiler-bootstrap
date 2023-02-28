@@ -199,11 +199,11 @@ foldR f final parser =
 integer :: Parser Int
 integer =
   do
-    digits <- oneOrMore digit
+    digits <- oneOrMore digit |> notFollowedBy (char '.')
     succeed (read digits)
     |> orElse (expected "an integer value like 123")
 
-number :: Parser Float
+number :: Parser Double
 number =
   do
     int <- oneOrMore digit
@@ -211,7 +211,7 @@ number =
       [ do
           _ <- char '.'
           fraction <- oneOrMore digit
-          succeed (read $ concat [int, ['.'], fraction]),
+          succeed (read $ concat [int, ".", fraction]),
         do succeed (read int)
       ]
     |> orElse (expected "a number like 123 or 3.14")
@@ -256,10 +256,11 @@ split delimiter parser =
       succeed []
     ]
 
-collection :: Parser open -> Parser close -> Parser delimiter -> Parser a -> Parser [a]
-collection open close delimiter parser = do
+collection :: Parser open -> Parser a -> Parser delimiter -> Parser close -> Parser [a]
+collection open parser delimiter close = do
   _ <- open
   xs <- split delimiter parser
+  _ <- maybe' delimiter
   _ <- close
   succeed xs
 
@@ -304,33 +305,71 @@ collection open close delimiter parser = do
 -- Operator precedence
 type Prefix a = (Int -> Parser a) -> Parser a
 
-type Infix a = Int -> a -> Prefix a
+type Infix a = a -> Int -> (Int -> Parser a) -> Parser a
 
--- TODO: rename to infixLeft
-infixL :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
-infixL opPrec f op prec x expr = do
-  _ <- assert (prec < opPrec) ("infixL " ++ show opPrec)
-  op' <- op
-  y <- expr opPrec
-  succeed (f op' x y)
+constant :: Parser a -> Prefix a
+constant parser _ = parser
 
--- TODO: rename to infixRight
-infixR :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
-infixR opPrec f op prec x expr = do
-  _ <- assert (prec <= opPrec) ("infixR " ++ show opPrec)
-  op' <- op
-  y <- expr opPrec
-  succeed (f op' x y)
+prefix :: Int -> (a -> a) -> Parser op -> Prefix a
+prefix prec f = prefixOp prec (\_ x -> f x)
 
-withOperators :: Parser a -> [Infix a] -> Parser a
-withOperators prefix infix' = do
-  let binary x f prec = oneOf (fmap (\op -> op x f prec) infix')
+prefixOp :: Int -> (op -> a -> a) -> Parser op -> Prefix a
+prefixOp prec f op expr = do
+  op <- op
+  x <- expr prec
+  succeed (f op x)
+
+inbetween :: Parser open -> Parser close -> Prefix a
+inbetween = inbetweenOp (\_ _ x -> x)
+
+inbetweenOp :: (open -> close -> a -> a) -> Parser open -> Parser close -> Prefix a
+inbetweenOp f open close expr = do
+  open <- open
+  x <- expr 0
+  close <- close
+  succeed (f open close x)
+
+infixL :: Int -> (a -> a -> a) -> Parser op -> Infix a
+infixL prec f = infixLOp prec (\_ x y -> f x y)
+
+infixLOp :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
+infixLOp prec f op x prec' expr = do
+  assert (prec > prec') ("infixLOp " ++ show prec)
+  op <- op
+  y <- expr prec
+  succeed (f op x y)
+
+infixR :: Int -> (a -> a -> a) -> Parser op -> Infix a
+infixR prec f = infixROp prec (\_ x y -> f x y)
+
+infixROp :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
+infixROp prec f op x prec' expr = do
+  assert (prec >= prec') ("infixROp " ++ show prec)
+  op <- op
+  y <- expr prec
+  succeed (f op x y)
+
+postfix :: Int -> (a -> a) -> Parser op -> Infix a
+postfix prec f = postfixOp prec (\_ x -> f x)
+
+postfixOp :: Int -> (op -> a -> a) -> Parser op -> Infix a
+postfixOp prec f op x prec' _ = do
+  assert (prec > prec') ("postfixOp " ++ show prec)
+  op <- op
+  succeed (f op x)
+
+withOperators :: [Prefix a] -> [Infix a] -> Int -> Parser a
+withOperators prefix infix' prec = do
   let expr prec = do
-        x <- prefix
-        expr2 prec x
-      expr2 prec x =
+        x <- oneOf (fmap (\op -> op expr) prefix)
+        binary prec x
+
+      binary prec x =
         oneOf
-          [ do y <- binary prec x expr; expr2 prec y,
+          [ do
+              y <- oneOf (fmap (\op -> op x prec expr) infix')
+              binary prec y,
             succeed x
           ]
-  expr 0
+
+  expr prec
