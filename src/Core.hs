@@ -4,6 +4,8 @@ import Data.Bifunctor (Bifunctor (second))
 import Data.List (foldl', union)
 
 {- TODO:
+* Add SumT for types of Ctr, and only expand it on unification
+
 * Function / operator overloading
 * Do notation
   - Overload (<-) operator
@@ -24,7 +26,7 @@ data Expr
   | Fst !Expr
   | Snd !Expr
   | Fix !String !Expr
-  | Op !String !Expr
+  | Op !String ![Expr]
   | Err !RuntimeError
   deriving (Eq, Show)
 
@@ -34,14 +36,16 @@ data Type
   | NumT
   | VarT !String
   | CtrT !Alt ![Type]
+  | SumT !String ![TypeArg] ![String]
   | FunT !Type !Type
   | AndT !Type !Type
   | OrT !Type !Type
   deriving (Eq, Show)
 
-data CtrArg
+data TypeArg
   = T !Type
   | E !Expr
+  deriving (Eq, Show)
 
 data BinaryOp
   = Eq
@@ -79,7 +83,7 @@ data Scheme = ForAll ![String] !Type
 
 type Context = [(String, Scheme)]
 
-type Ops = [(String, Expr -> Maybe Expr)]
+type Ops = [(String, [Expr] -> Maybe Expr)]
 
 type Env = [(String, Expr)]
 
@@ -133,8 +137,7 @@ occurs _ NilT = False
 occurs _ IntT = False
 occurs _ NumT = False
 occurs x (VarT y) = x == y
-occurs _ (CtrT _ []) = False
-occurs x (CtrT alt (a : bs)) = occurs x a || occurs x (CtrT alt bs)
+occurs x (CtrT _ args) = any (occurs x) args
 occurs x (FunT a b) = occurs x a || occurs x b
 occurs x (AndT a b) = occurs x a || occurs x b
 occurs x (OrT a b) = occurs x a || occurs x b
@@ -154,6 +157,11 @@ unify (CtrT alt args1) (CtrT alt' args2) | alt == alt' = do
     then unifyMany args1 args2
     else Left (CtrArgsMismatch alt args1 args2)
 unify (CtrT (t1, _) _) (CtrT (t2, _) _) | t1 == t2 = Right []
+-- unify (CtrT' alt args1 t1) (CtrT' alt' args2 t2) | alt == alt' = do
+--   if length args1 == length args2
+--     then unifyMany args1 args2
+--     else Left (CtrArgsMismatch alt args1 args2)
+-- unify (CtrT' (t1, _) _ _) (CtrT' (t2, _) _ _) | t1 == t2 = Right []
 unify (FunT a1 a2) (FunT b1 b2) = do
   s1 <- unify a1 b1
   s2 <- unify (apply s1 a2) (apply s1 b2)
@@ -212,24 +220,24 @@ reduce ops env (Snd a) = case reduce ops env a of
   And _ b -> reduce ops [] b
   Or _ b -> reduce ops [] b
   a -> Err (NoSndOf a)
-reduce ops env (Op op a) = case get op ops of
-  Just f -> case eval ops env a of
-    Err e -> Err e
+reduce ops env (Op op args) = case get op ops of
+  Just f -> case map (eval ops . Let env) args of
+    -- Err e -> Err e
     a -> case f a of
       Just b -> b
       Nothing -> Op op a
-  Nothing -> Op op (Let env a)
+  Nothing -> Op op (map (Let env) args)
 reduce _ _ a = a
 
-eval :: Ops -> Env -> Expr -> Expr
-eval ops env expr = case reduce ops env expr of
-  Ctr alt args -> Ctr alt (map (eval ops env) args)
-  Lam x a -> Lam x (eval ops ((x, Var x) : env) a)
-  Case alt xs a -> Case alt xs (eval ops (map (\x -> (x, Var x)) xs ++ env) a)
-  App a b -> App a (eval ops env b)
-  And a b -> And (eval ops env a) (eval ops env b)
-  Or a b -> Or (eval ops env a) (eval ops env b)
-  Fix x a -> Fix x (eval ops ((x, Var x) : env) a)
+eval :: Ops -> Expr -> Expr
+eval ops expr = case reduce ops [] expr of
+  Ctr alt args -> Ctr alt (map (eval ops) args)
+  Lam x a -> Lam x (eval ops (Let [(x, Var x)] a))
+  Case alt xs a -> Case alt xs (eval ops (Let (map (\x -> (x, Var x)) xs) a))
+  App a b -> App a (eval ops b)
+  And a b -> And (eval ops a) (eval ops b)
+  Or a b -> Or (eval ops a) (eval ops b)
+  Fix x a -> Fix x (eval ops (Let [(x, Var x)] a))
   a -> a
 
 -- https://youtu.be/ytPAlhnAKro
@@ -304,12 +312,13 @@ infer ctx env (Fix x a) = do
   let xT = newName (map fst env) (x ++ "T")
   (_, s) <- infer ((x, ForAll [xT] (VarT xT)) : ctx) env a
   Right (apply s (VarT xT), s)
-infer ctx env (Op op a) = case get op ctx of
+infer ctx env (Op op args) = case get op ctx of
   Just scheme -> do
     let xT = newName (map fst ctx) "_op"
-    let funT = instantiate (map fst ctx) scheme
-    (argT, s1) <- infer ctx env a
-    s2 <- unify (FunT argT (VarT xT)) (apply s1 funT)
+    let opT = instantiate (map fst ctx) scheme
+    (argsT, s1) <- inferMany ctx env args
+    -- TODO: when argsT==[], xT matches anything
+    s2 <- unify (funT argsT (VarT xT)) (apply s1 opT)
     Right (apply s2 (VarT xT), s2 `compose` s1)
   Nothing -> Left (UndefinedOp op)
 infer _ _ (Err e) = Left (RuntimeError e)

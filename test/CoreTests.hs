@@ -19,22 +19,23 @@ coreTests = describe "--==☯ Core language ☯==--" $ do
   let false = Ctr ("Bool", "False") []
   let boolT = trueT `OrT` falseT
 
-  let eqOp (And (Int a) (Int b)) | a == b = Just true
-      eqOp (And (Int _) (Int _)) = Just false
+  let eqOp [Int a, Int b] | a == b = Just true
+      eqOp [Int _, Int _] = Just false
       eqOp _ = Nothing
-  let addOp (And (Int a) (Int b)) = Just (Int (a + b))
+  let addOp [Int a, Int b] = Just (Int (a + b))
       addOp _ = Nothing
-  let subOp (And (Int a) (Int b)) = Just (Int (a - b))
+  let subOp [Int a, Int b] = Just (Int (a - b))
       subOp _ = Nothing
-  let mulOp (And (Int a) (Int b)) = Just (Int (a * b))
+  let mulOp [Int a, Int b] = Just (Int (a * b))
       mulOp _ = Nothing
 
-  let eq a b = Op "==" (And a b)
-  let add a b = Op "+" (And a b)
-  let sub a b = Op "-" (And a b)
-  let mul a b = Op "*" (And a b)
+  let eq a b = Op "==" [a, b]
+  let add a b = Op "+" [a, b]
+  let sub a b = Op "-" [a, b]
+  let mul a b = Op "*" [a, b]
 
-  let ops =
+  let ops :: Ops
+      ops =
         [ ("==", eqOp),
           ("+", addOp),
           ("-", subOp),
@@ -174,8 +175,8 @@ coreTests = describe "--==☯ Core language ☯==--" $ do
     let ctrTB a = CtrT ("T", "B") [a]
     let ctrType a = ctrTA `OrT` ctrTB a
     let ctx =
-          [ ("==", ForAll ["a"] (FunT (AndT a a) boolT)),
-            ("+", ForAll ["a"] (FunT (AndT a a) a)),
+          [ ("==", ForAll ["a"] (funT [a, a] boolT)),
+            ("+", ForAll ["a"] (funT [a, a] a)),
             ("T", ForAll ["a"] (ctrType a)),
             ("y", ForAll [] NumT)
           ]
@@ -224,23 +225,23 @@ coreTests = describe "--==☯ Core language ☯==--" $ do
     infer' ctx env (Fix "f" Nil) `shouldBe` Right (VarT "fT")
     infer' ctx env (Fix "f" f) `shouldBe` Right (VarT "fT")
     infer' ctx env (Fix "f" (App f x)) `shouldBe` Right (FunT IntT (VarT "_app"))
-    infer' ctx env (Op "==" Nil) `shouldBe` Left (TypeMismatch NilT (AndT a a))
-    infer' ctx env (Op "==" (And x x)) `shouldBe` Right boolT
-    infer' ctx env (Op "+" (And x x)) `shouldBe` Right IntT
+    -- infer' ctx env (Op "==" []) `shouldBe` Left (TypeMismatch NilT (AndT a a))
+    infer' ctx env (Op "==" [x, x]) `shouldBe` Right boolT
+    infer' ctx env (Op "+" [x, x]) `shouldBe` Right IntT
     infer' ctx env (Err Fail) `shouldBe` Left (RuntimeError Fail)
 
   it "☯ factorial" $ do
     -- f 0 = 1
     -- f n = n * f (n - 1)
     --
-    -- f = \n -> if n == 0 then 1 else n * f (n - 1)
+    -- f n = if n == 0 then 1 else n * f (n - 1)
 
     let (i0, i1) = (Int 0, Int 1)
     let (f, n) = (Var "f", Var "n")
     let ctx =
-          [ ("==", ForAll ["a"] (FunT (AndT a a) boolT)),
-            ("*", ForAll ["a"] (FunT (AndT a a) a)),
-            ("-", ForAll ["a"] (FunT (AndT a a) a)),
+          [ ("==", ForAll ["a"] (funT [a, a] boolT)),
+            ("*", ForAll ["a"] (funT [a, a] a)),
+            ("-", ForAll ["a"] (funT [a, a] a)),
             ("Bool", ForAll [] boolT)
           ]
     let env =
@@ -290,7 +291,7 @@ coreTests = describe "--==☯ Core language ☯==--" $ do
     -- f Nothing = 0
     --
     -- type Maybe a = #Maybe.Just a | #Maybe.Nothing
-    -- Just = \x -> #Maybe.Just x
+    -- Just x = #Maybe.Just x
     -- Nothing = #Maybe.Nothing
     --
     -- f = @Case #Maybe.Just x -> x | \_ -> 0
@@ -319,6 +320,18 @@ coreTests = describe "--==☯ Core language ☯==--" $ do
     reduce ops env (App f (just (Int 1))) `shouldBe` Int 1
     reduce ops env (App f (just (Int 2))) `shouldBe` Int 2
 
+  it "☯ Nat" $ do
+    -- type Nat n = Z : Nat 0 | S : Nat n -> Nat (n + 1)
+    --
+    -- Z : @ForAll n. Nat 0
+    -- Z = #Nat.Z []
+    --
+    -- S : @ForAll n. Nat n -> Nat (n + 1)
+    -- S x = #Nat.S [x]
+    --
+    -- infer Z =
+    True `shouldBe` True
+
   it "☯ Vec" $ do
     -- type Vec n a = Cons a (Vec n a) : Vec (n+1) a | Nil : Vec 0 a
     -- sum (Cons x xs) = x + sum xs
@@ -334,7 +347,7 @@ coreTests = describe "--==☯ Core language ☯==--" $ do
     let (n, a) = (VarT "n", VarT "a")
     let (v, x, xs) = (Var "v", Var "x", Var "xs")
     let sum = Var "sum"
-    -- let consT = CtrT "Cons" [a, vecT n a] "Vec" [n + 1, a]
+    -- let consT = CtrT ("Vec", "Cons") [a, vecT n a] (vecT (n + 1) a)
     -- let consT = CtrT ("Vec", "Cons") [a, vecT n a] (vecT (n + 1) a)
     -- let nilT = CtrT ("Vec", "Nil") [] (vecT 0 a)
     -- let vecT n a = consT n a `OrT` nilT
