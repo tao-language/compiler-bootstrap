@@ -11,28 +11,24 @@ coreTests = describe "--==☯ Core language ☯==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let a = VarT "a"
   let (xT, yT, zT) = (VarT "xT", VarT "yT", VarT "zT")
-  -- let (aT, bT) = (Var "aT", Var "bT")
 
-  let trueT = CtrT ("Bool", "True") []
-  let falseT = CtrT ("Bool", "False") []
   let true = Ctr ("Bool", "True") []
   let false = Ctr ("Bool", "False") []
-  let boolT = trueT `OrT` falseT
+  let boolT = SumT [("True", (0, TypT "Bool" [])), ("False", (0, TypT "Bool" []))]
 
-  let eqOp [Int a, Int b] | a == b = Just true
-      eqOp [Int _, Int _] = Just false
+  let eqOp (And (Int a) (Int b)) = Just (if a == b then true else false)
       eqOp _ = Nothing
-  let addOp [Int a, Int b] = Just (Int (a + b))
+  let addOp (And (Int a) (Int b)) = Just (Int (a + b))
       addOp _ = Nothing
-  let subOp [Int a, Int b] = Just (Int (a - b))
+  let subOp (And (Int a) (Int b)) = Just (Int (a - b))
       subOp _ = Nothing
-  let mulOp [Int a, Int b] = Just (Int (a * b))
+  let mulOp (And (Int a) (Int b)) = Just (Int (a * b))
       mulOp _ = Nothing
 
-  let eq a b = Op "==" [a, b]
-  let add a b = Op "+" [a, b]
-  let sub a b = Op "-" [a, b]
-  let mul a b = Op "*" [a, b]
+  let eq a b = Op "==" (And a b)
+  let add a b = Op "+" (And a b)
+  let sub a b = Op "-" (And a b)
+  let mul a b = Op "*" (And a b)
 
   let ops :: Ops
       ops =
@@ -40,6 +36,14 @@ coreTests = describe "--==☯ Core language ☯==--" $ do
           ("+", addOp),
           ("-", subOp),
           ("*", mulOp)
+        ]
+
+  let ctxOps :: Context
+      ctxOps =
+        [ ("==", ForAll ["a"] (FunT (AndT a a) (TypT "Bool" []))),
+          ("+", ForAll ["a"] (FunT (AndT a a) a)),
+          ("-", ForAll ["a"] (FunT (AndT a a) a)),
+          ("*", ForAll ["a"] (FunT (AndT a a) a))
         ]
 
   it "☯ lam" $ do
@@ -169,17 +173,10 @@ coreTests = describe "--==☯ Core language ☯==--" $ do
   it "☯ infer" $ do
     -- TODO: check output ctx
     let infer' ctx env a = fmap fst (infer ctx env a)
-    let ctrA = Ctr ("T", "A") []
-    let ctrB x = Ctr ("T", "B") [x]
-    let ctrTA = CtrT ("T", "A") []
-    let ctrTB a = CtrT ("T", "B") [a]
-    let ctrType a = ctrTA `OrT` ctrTB a
     let ctx =
-          [ ("==", ForAll ["a"] (funT [a, a] boolT)),
-            ("+", ForAll ["a"] (funT [a, a] a)),
-            ("T", ForAll ["a"] (ctrType a)),
-            ("y", ForAll [] NumT)
-          ]
+          ("T", ForAll ["a"] (SumT [("A", (0, TypT "T" [a])), ("B", (1, FunT a (TypT "T" [a])))])) :
+          ("y", ForAll [] NumT) :
+          ctxOps
     let env =
           [ ("x", Int 1),
             ("y", Num 1.1),
@@ -198,23 +195,23 @@ coreTests = describe "--==☯ Core language ☯==--" $ do
     infer' ctx env (Let [("w", Nil)] (Var "w")) `shouldBe` Right NilT
     infer' ctx env (Ctr ("X", "A") []) `shouldBe` Left (UndefinedType "X")
     infer' ctx env (Ctr ("T", "X") []) `shouldBe` Left (UndefinedAlt ("T", "X"))
-    infer' ctx env (Ctr ("T", "A") []) `shouldBe` Right (ctrType a)
-    infer' ctx env (Ctr ("T", "A") [Nil]) `shouldBe` Left (CtrArgsMismatch ("T", "A") [] [NilT])
-    infer' ctx env (Ctr ("T", "B") []) `shouldBe` Left (CtrArgsMismatch ("T", "B") [a] [])
-    infer' ctx env (Ctr ("T", "B") [Nil]) `shouldBe` Right (ctrType NilT)
-    infer' ctx env (Ctr ("T", "B") [z]) `shouldBe` Right (ctrType zT)
+    infer' ctx env (Ctr ("T", "A") []) `shouldBe` Right (TypT "T" [a])
+    infer' ctx env (Ctr ("T", "A") [Nil]) `shouldBe` Left (ArgsMismatch 0 [Nil])
+    infer' ctx env (Ctr ("T", "B") [Nil]) `shouldBe` Right (TypT "T" [NilT])
+    infer' ctx env (Ctr ("T", "B") []) `shouldBe` Left (ArgsMismatch 1 [])
+    infer' ctx env (Ctr ("T", "B") [z]) `shouldBe` Right (TypT "T" [zT])
     infer' ctx env (Lam "x" x) `shouldBe` Right (FunT xT xT)
     infer' ctx env (Lam "x" Nil) `shouldBe` Right (FunT xT NilT)
-    infer' ctx env (Case ("T", "A") [] x) `shouldBe` Right (FunT (ctrType a) IntT)
-    infer' ctx env (Case ("T", "A") ["x"] x) `shouldBe` Left (CtrArgsMismatch ("T", "A") [VarT "x"] [])
-    infer' ctx env (Case ("T", "B") [] x) `shouldBe` Left (CtrArgsMismatch ("T", "B") [] [a])
-    infer' ctx env (Case ("T", "B") ["x"] x) `shouldBe` Right (FunT (ctrType a) a)
+    infer' ctx env (Case ("T", "A") [] x) `shouldBe` Right (FunT (TypT "T" [a]) IntT)
+    infer' ctx env (Case ("T", "A") ["x"] x) `shouldBe` Left (ArgsMismatch 0 [x])
+    infer' ctx env (Case ("T", "B") [] x) `shouldBe` Left (ArgsMismatch 1 [])
+    infer' ctx env (Case ("T", "B") ["x"] x) `shouldBe` Right (FunT (TypT "T" [a]) a)
     infer' ctx env (App Nil x) `shouldBe` Left (TypeMismatch (FunT IntT (VarT "_app")) NilT)
     infer' ctx env (App f Nil) `shouldBe` Right NilT
     infer' ctx env (And x y) `shouldBe` Right (AndT IntT NumT)
     infer' ctx env (Or x y) `shouldBe` Left (TypeMismatch IntT NumT)
     infer' ctx env (Or x x) `shouldBe` Right IntT
-    infer' ctx env (Or ctrA (ctrB (Int 1))) `shouldBe` Right (ctrType IntT)
+    -- infer' ctx env (Or ctrA (ctrB (Int 1))) `shouldBe` Right (ctrType IntT)
     -- TODO: all cases of Or
     infer' ctx env (Fst Nil) `shouldBe` Left (RuntimeError $ NoFstOf Nil)
     infer' ctx env (Fst (And x y)) `shouldBe` Right IntT
@@ -225,9 +222,9 @@ coreTests = describe "--==☯ Core language ☯==--" $ do
     infer' ctx env (Fix "f" Nil) `shouldBe` Right (VarT "fT")
     infer' ctx env (Fix "f" f) `shouldBe` Right (VarT "fT")
     infer' ctx env (Fix "f" (App f x)) `shouldBe` Right (FunT IntT (VarT "_app"))
-    -- infer' ctx env (Op "==" []) `shouldBe` Left (TypeMismatch NilT (AndT a a))
-    infer' ctx env (Op "==" [x, x]) `shouldBe` Right boolT
-    infer' ctx env (Op "+" [x, x]) `shouldBe` Right IntT
+    infer' ctx env (Op "==" Nil) `shouldBe` Left (TypeMismatch NilT (AndT a a))
+    infer' ctx env (Op "==" (And x x)) `shouldBe` Right (TypT "Bool" [])
+    infer' ctx env (Op "+" (And x x)) `shouldBe` Right IntT
     infer' ctx env (Err Fail) `shouldBe` Left (RuntimeError Fail)
 
   it "☯ factorial" $ do
@@ -239,11 +236,7 @@ coreTests = describe "--==☯ Core language ☯==--" $ do
     let (i0, i1) = (Int 0, Int 1)
     let (f, n) = (Var "f", Var "n")
     let ctx =
-          [ ("==", ForAll ["a"] (funT [a, a] boolT)),
-            ("*", ForAll ["a"] (funT [a, a] a)),
-            ("-", ForAll ["a"] (funT [a, a] a)),
-            ("Bool", ForAll [] boolT)
-          ]
+          ("Bool", ForAll [] boolT) : ctxOps
     let env =
           [ ("f", Fix "f" $ Lam "n" $ if' ("Bool", "True") (eq n i0) i1 (n `mul` App f (n `sub` i1)))
           ]
@@ -277,10 +270,10 @@ coreTests = describe "--==☯ Core language ☯==--" $ do
           ]
 
     let infer' ctx env a = fmap fst (infer ctx env a)
-    infer' ctx env (Var "True") `shouldBe` Right boolT
-    infer' ctx env (Var "False") `shouldBe` Right boolT
-    infer' ctx env (Var "f") `shouldBe` Right (FunT boolT IntT)
-    infer' ctx env (App f Nil) `shouldBe` Left (TypeMismatch NilT trueT)
+    infer' ctx env (Var "True") `shouldBe` Right (TypT "Bool" [])
+    infer' ctx env (Var "False") `shouldBe` Right (TypT "Bool" [])
+    infer' ctx env (Var "f") `shouldBe` Right (FunT (TypT "Bool" []) IntT)
+    infer' ctx env (App f Nil) `shouldBe` Left (TypeMismatch NilT (TypT "Bool" []))
     infer' ctx env (App f true) `shouldBe` Right IntT
     reduce ops env (App f true) `shouldBe` Int 1
     reduce ops env (App f false) `shouldBe` Int 0
@@ -297,12 +290,9 @@ coreTests = describe "--==☯ Core language ☯==--" $ do
     -- f = @Case #Maybe.Just x -> x | \_ -> 0
 
     let i0 = Int 0
-    let justT a = CtrT ("Maybe", "Just") [a]
-    let nothingT = CtrT ("Maybe", "Nothing") []
-    let maybeT a = justT a `OrT` nothingT
     let just x = Ctr ("Maybe", "Just") [x]
     let nothing = Ctr ("Maybe", "Nothing") []
-    let ctx = [("Maybe", ForAll ["a"] $ maybeT a)]
+    let ctx = [("Maybe", ForAll ["a"] $ SumT [("Just", (1, FunT a (TypT "Maybe" [a]))), ("Nothing", (0, TypT "Maybe" [a]))])]
     let env =
           [ ("Just", Lam "x" (just x)),
             ("Nothing", nothing),
@@ -310,11 +300,11 @@ coreTests = describe "--==☯ Core language ☯==--" $ do
           ]
 
     let infer' ctx env a = fmap fst (infer ctx env a)
-    infer' ctx env nothing `shouldBe` Right (maybeT (VarT "a"))
-    infer' ctx env (Var "Just") `shouldBe` Right (FunT xT (maybeT xT))
-    infer' ctx env (just Nil) `shouldBe` Right (maybeT NilT)
-    infer' ctx env f `shouldBe` Right (FunT (maybeT IntT) IntT)
-    infer' ctx env (App f Nil) `shouldBe` Left (TypeMismatch NilT (justT IntT))
+    infer' ctx env nothing `shouldBe` Right (TypT "Maybe" [a])
+    infer' ctx env (Var "Just") `shouldBe` Right (FunT xT (TypT "Maybe" [xT]))
+    infer' ctx env (just Nil) `shouldBe` Right (TypT "Maybe" [NilT])
+    infer' ctx env f `shouldBe` Right (FunT (TypT "Maybe" [IntT]) IntT)
+    infer' ctx env (App f Nil) `shouldBe` Left (TypeMismatch NilT (TypT "Maybe" [IntT]))
     infer' ctx env (App f nothing) `shouldBe` Right IntT
     reduce ops env (App f nothing) `shouldBe` Int 0
     reduce ops env (App f (just (Int 1))) `shouldBe` Int 1

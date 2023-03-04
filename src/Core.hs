@@ -18,15 +18,15 @@ data Expr
   | Var !String
   | Let !Env !Expr
   | Ctr !Alt ![Expr]
-  | Lam !String !Expr
   | Case !Alt ![String] !Expr
+  | Lam !String !Expr
   | App !Expr !Expr
   | And !Expr !Expr
   | Or !Expr !Expr
   | Fst !Expr
   | Snd !Expr
   | Fix !String !Expr
-  | Op !String ![Expr]
+  | Op !String !Expr
   | Err !RuntimeError
   deriving (Eq, Show)
 
@@ -35,16 +35,12 @@ data Type
   | IntT
   | NumT
   | VarT !String
-  | CtrT !Alt ![Type]
-  | SumT !String ![TypeArg] ![String]
+  | TypT !String ![Type]
+  | SumT ![(String, (Int, Type))]
   | FunT !Type !Type
   | AndT !Type !Type
-  | OrT !Type !Type
-  deriving (Eq, Show)
-
-data TypeArg
-  = T !Type
-  | E !Expr
+  | OrT !Type !Type -- TODO: remove, superseded by SumT?
+  | ExprT !Expr
   deriving (Eq, Show)
 
 data BinaryOp
@@ -56,10 +52,11 @@ data BinaryOp
   deriving (Eq, Show)
 
 data TypeError
-  = RuntimeError !RuntimeError
+  = ArgsMismatch !Int ![Expr]
   | InfiniteType !String !Type
+  | NotASumType !String !Type
+  | RuntimeError !RuntimeError
   | TypeMismatch !Type !Type
-  | CtrArgsMismatch !Alt ![Type] ![Type]
   | UndefinedAlt !Alt
   | UndefinedOp !String
   | UndefinedType !String
@@ -83,7 +80,7 @@ data Scheme = ForAll ![String] !Type
 
 type Context = [(String, Scheme)]
 
-type Ops = [(String, [Expr] -> Maybe Expr)]
+type Ops = [(String, Expr -> Maybe Expr)]
 
 type Env = [(String, Expr)]
 
@@ -137,10 +134,12 @@ occurs _ NilT = False
 occurs _ IntT = False
 occurs _ NumT = False
 occurs x (VarT y) = x == y
-occurs x (CtrT _ args) = any (occurs x) args
+occurs x (TypT _ args) = any (occurs x) args
+occurs x (SumT alts) = any (occurs x . snd . snd) alts
 occurs x (FunT a b) = occurs x a || occurs x b
 occurs x (AndT a b) = occurs x a || occurs x b
 occurs x (OrT a b) = occurs x a || occurs x b
+occurs x (ExprT a) = error "TODO: occurs ExprT"
 
 -- TODO: pass Context as an input and return the Context
 --       with the applied substitution
@@ -152,16 +151,11 @@ unify (VarT x) b | x `occurs` b = Left (InfiniteType x b)
 unify (VarT x) b = Right [(x, b)]
 unify a (VarT x) | x `occurs` a = Left (InfiniteType x a)
 unify a (VarT x) = Right [(x, a)]
-unify (CtrT alt args1) (CtrT alt' args2) | alt == alt' = do
-  if length args1 == length args2
-    then unifyMany args1 args2
-    else Left (CtrArgsMismatch alt args1 args2)
-unify (CtrT (t1, _) _) (CtrT (t2, _) _) | t1 == t2 = Right []
--- unify (CtrT' alt args1 t1) (CtrT' alt' args2 t2) | alt == alt' = do
---   if length args1 == length args2
---     then unifyMany args1 args2
---     else Left (CtrArgsMismatch alt args1 args2)
--- unify (CtrT' (t1, _) _ _) (CtrT' (t2, _) _ _) | t1 == t2 = Right []
+unify (TypT t []) (TypT t' []) | t == t' = Right []
+unify (TypT t1 (a1 : bs1)) (TypT t2 (a2 : bs2)) = do
+  s1 <- unify a1 a2
+  s2 <- unify (TypT t1 (map (apply s1) bs1)) (TypT t2 (map (apply s1) bs2))
+  Right (s2 `compose` s1)
 unify (FunT a1 a2) (FunT b1 b2) = do
   s1 <- unify a1 b1
   s2 <- unify (apply s1 a2) (apply s1 b2)
@@ -180,14 +174,6 @@ unify a (OrT b1 b2) = do
   Right (s2 `compose` s1)
 unify a b = Left (TypeMismatch a b)
 
-unifyMany :: [Type] -> [Type] -> Either TypeError Substitution
-unifyMany [] _ = Right []
-unifyMany _ [] = Right []
-unifyMany (a1 : bs1) (a2 : bs2) = do
-  s1 <- unify a1 a2
-  s2 <- unifyMany (map (apply s1) bs1) (map (apply s1) bs2)
-  Right (s2 `compose` s1)
-
 reduce :: Ops -> Env -> Expr -> Expr
 reduce ops env (Var x) = case get x env of
   Just (Var x') | x == x' -> Var x
@@ -195,8 +181,8 @@ reduce ops env (Var x) = case get x env of
   Nothing -> Err (UndefinedVar x)
 reduce ops env (Let env' a) = reduce ops (env ++ env') a
 reduce _ env (Ctr alt args) = Ctr alt (map (Let env) args)
-reduce _ env (Lam x a) = Lam x (Let env a)
 reduce _ env (Case alt x b) = Case alt x (Let env b)
+reduce _ env (Lam x a) = Lam x (Let env a)
 reduce ops env (App a b) = case (reduce ops env a, reduce ops env b) of
   (Fix f a, b) -> reduce ops [(f, Fix f a)] (App a b)
   (Lam x (Let env' a), b) -> reduce ops ((x, b) : env') a
@@ -220,20 +206,20 @@ reduce ops env (Snd a) = case reduce ops env a of
   And _ b -> reduce ops [] b
   Or _ b -> reduce ops [] b
   a -> Err (NoSndOf a)
-reduce ops env (Op op args) = case get op ops of
-  Just f -> case map (eval ops . Let env) args of
-    -- Err e -> Err e
+reduce ops env (Op op a) = case get op ops of
+  Just f -> case eval ops (Let env a) of
+    Err e -> Err e
     a -> case f a of
       Just b -> b
       Nothing -> Op op a
-  Nothing -> Op op (map (Let env) args)
+  Nothing -> Op op (Let env a)
 reduce _ _ a = a
 
 eval :: Ops -> Expr -> Expr
 eval ops expr = case reduce ops [] expr of
   Ctr alt args -> Ctr alt (map (eval ops) args)
-  Lam x a -> Lam x (eval ops (Let [(x, Var x)] a))
   Case alt xs a -> Case alt xs (eval ops (Let (map (\x -> (x, Var x)) xs) a))
+  Lam x a -> Lam x (eval ops (Let [(x, Var x)] a))
   App a b -> App a (eval ops b)
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> Or (eval ops a) (eval ops b)
@@ -248,39 +234,49 @@ infer _ _ Nil = Right (NilT, [])
 infer _ _ (Int _) = Right (IntT, [])
 infer _ _ (Num _) = Right (NumT, [])
 infer ctx env (Var x) = case get x ctx of
-  Just scheme -> Right (instantiate (map fst ctx) scheme, [])
+  Just scheme -> do
+    let (_, tdef) = instantiate (map fst ctx) scheme
+    Right (tdef, [])
   Nothing -> case get x env of
     Just (Var x') | x == x' -> do
       let xT = newName (map fst ctx) (x ++ "T")
-      Right (instantiate (map fst ctx) (ForAll [xT] (VarT xT)), [])
+      let (_, tdef) = instantiate (map fst ctx) (ForAll [xT] (VarT xT))
+      Right (tdef, [])
     Just a -> infer ctx [] a
     Nothing -> Left (RuntimeError (UndefinedVar x))
+infer ctx env (Let env' a) = infer ctx (env ++ env') a
 infer ctx env (Ctr (t, k) args) = case get t ctx of
   Just scheme -> do
-    let tdef = instantiate (map fst ctx) scheme
-    case findAlt k tdef of
-      Just _ -> do
-        (argsT, s1) <- inferMany ctx env args
-        s2 <- unify tdef (CtrT (t, k) argsT)
-        Right (apply s2 tdef, s2 `compose` s1)
-      Nothing -> Left (UndefinedAlt (t, k))
+    (tdef, ctx) <- instantiate' ctx scheme
+    case tdef of
+      SumT alts -> case get k alts of
+        Just (arity, _) | length args /= arity -> Left (ArgsMismatch arity args)
+        Just (_, altT) -> do
+          let retT = newName (map fst ctx) (t ++ "." ++ k)
+          (argsT, s1) <- inferMany ctx env args
+          s2 <- unify (apply s1 altT) (funT argsT (VarT retT))
+          Right (apply s2 (VarT retT), s2 `compose` s1)
+        Nothing -> Left (UndefinedAlt (t, k))
+      tdef -> Left (NotASumType t tdef)
   Nothing -> Left (UndefinedType t)
-infer ctx env (Let env' a) = infer ctx (env ++ env') a
+infer ctx env (Case (t, k) xs body) = case get t ctx of
+  Just scheme -> do
+    (tdef, ctx) <- instantiate' ctx scheme
+    case tdef of
+      SumT alts -> case get k alts of
+        Just (arity, _) | length xs /= arity -> Left (ArgsMismatch arity (map Var xs))
+        Just (_, altT) -> do
+          let retT = newName (map fst ctx) (t ++ "." ++ k)
+          (bodyT, s1) <- infer (map (\x -> (x, ForAll [] (VarT x))) xs ++ ctx) env body
+          s2 <- unify (funT (map VarT xs) (VarT retT)) (apply s1 altT)
+          Right (FunT (apply (s2 `compose` s1) (VarT retT)) (apply s2 bodyT), s2 `compose` s1)
+        Nothing -> Left (UndefinedAlt (t, k))
+      tdef -> Left (NotASumType t tdef)
+  Nothing -> Left (UndefinedType t)
 infer ctx env (Lam x a) = do
   let xT = newName (map fst ctx) (x ++ "T")
   (ta, s) <- infer ((x, ForAll [xT] (VarT xT)) : ctx) env a
   Right (FunT (apply s (VarT xT)) ta, s)
-infer ctx env (Case (t, k) xs b) = case get t ctx of
-  Just scheme -> do
-    let tdef = instantiate (map fst ctx) scheme
-    case findAlt k tdef of
-      Just altArgs | length xs /= length altArgs -> Left (CtrArgsMismatch (t, k) (map VarT xs) altArgs)
-      Just altArgs -> do
-        let ctx' = zip xs (map (ForAll []) altArgs) ++ ctx
-        (tb, s) <- infer ctx' env b
-        Right (FunT (apply s tdef) tb, s)
-      Nothing -> Left (UndefinedAlt (t, k))
-  Nothing -> Left (UndefinedType t)
 infer ctx env (App a b) = do
   let xT = newName (map fst ctx) "_app"
   (funT, s1) <- infer ctx env a
@@ -312,13 +308,12 @@ infer ctx env (Fix x a) = do
   let xT = newName (map fst env) (x ++ "T")
   (_, s) <- infer ((x, ForAll [xT] (VarT xT)) : ctx) env a
   Right (apply s (VarT xT), s)
-infer ctx env (Op op args) = case get op ctx of
+infer ctx env (Op op a) = case get op ctx of
   Just scheme -> do
     let xT = newName (map fst ctx) "_op"
-    let opT = instantiate (map fst ctx) scheme
-    (argsT, s1) <- inferMany ctx env args
-    -- TODO: when argsT==[], xT matches anything
-    s2 <- unify (funT argsT (VarT xT)) (apply s1 opT)
+    let (_, opT) = instantiate (map fst ctx) scheme
+    (argT, s1) <- infer ctx env a
+    s2 <- unify (FunT argT (VarT xT)) (apply s1 opT)
     Right (apply s2 (VarT xT), s2 `compose` s1)
   Nothing -> Left (UndefinedOp op)
 infer _ _ (Err e) = Left (RuntimeError e)
@@ -330,25 +325,20 @@ inferMany ctx env (a : bs) = do
   (tbs, s2) <- inferMany (applyContext s1 ctx) env bs
   Right (apply s2 ta : tbs, s2 `compose` s1)
 
-findAlt :: String -> Type -> Maybe [Type]
-findAlt k (CtrT (_, k') args) | k == k' = Just args
-findAlt k (OrT a b) = case findAlt k a of
-  Just args -> Just args
-  Nothing -> findAlt k b
-findAlt _ _ = Nothing
-
 apply :: Substitution -> Type -> Type
 apply _ NilT = NilT
 apply _ IntT = IntT
 apply _ NumT = NumT
-apply sub (CtrT alt args) = CtrT alt (map (apply sub) args)
 apply sub (VarT x) = case get x sub of
   Just (VarT x') | x == x' -> VarT x
   Just a -> apply sub a
   Nothing -> VarT x
+apply sub (TypT t args) = TypT t (map (apply sub) args)
+apply sub (SumT alts) = SumT (map (second $ second $apply sub) alts)
 apply sub (FunT a b) = FunT (apply sub a) (apply sub b)
 apply sub (AndT a b) = AndT (apply sub a) (apply sub b)
 apply sub (OrT a b) = OrT (apply sub a) (apply sub b)
+apply sub (ExprT a) = error "TODO: apply ExprT"
 
 applyScheme :: Substitution -> Scheme -> Scheme
 applyScheme sub (ForAll [] a) = ForAll [] (apply sub a)
@@ -361,8 +351,16 @@ applyContext sub = map (second (applyScheme sub))
 compose :: Substitution -> Substitution -> Substitution
 compose s1 s2 = map (second (apply s1)) s2 `union` s1
 
-instantiate :: [String] -> Scheme -> Type
-instantiate _ (ForAll [] t) = t
+-- TODO: return a new context with the new names
+instantiate :: [String] -> Scheme -> ([String], Type)
+instantiate _ (ForAll [] t) = ([], t)
 instantiate names (ForAll (x : xs) t) = do
   let y = newName names x
-  instantiate names (ForAll xs (apply [(x, VarT y)] t))
+  let (ys, t') = instantiate names (ForAll xs (apply [(x, VarT y)] t))
+  (y : ys, t')
+
+instantiate' :: Context -> Scheme -> Either TypeError (Type, Context)
+instantiate' ctx (ForAll [] t) = Right (t, ctx)
+instantiate' ctx (ForAll (x : xs) t) = do
+  let y = newName (map fst ctx) x
+  instantiate' ((y, ForAll [] (VarT y)) : ctx) (ForAll xs (apply [(x, VarT y)] t))
