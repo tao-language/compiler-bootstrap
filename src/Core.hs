@@ -12,25 +12,13 @@ import Data.List (intercalate)
   - Overload (<-) operator
 -}
 
-data Literal
-  = IntT
+data Expr
+  = Typ
+  | IntT
   | Int !Int
   | NumT
   | Num !Double
   | Ctr !String
-  deriving (Eq)
-
-instance Show Literal where
-  show :: Literal -> String
-  show IntT = "@Int"
-  show (Int i) = show i
-  show NumT = "@Num"
-  show (Num n) = show n
-  show (Ctr k) = "#" ++ k
-
-data Expr
-  = Typ
-  | Lit !Literal
   | Var !String
   | Let !Env !Expr
   | Lam !String !Expr
@@ -55,7 +43,11 @@ showInfixR p q a op b = showParen' (p > q) (showPrec (q + 1) a ++ op ++ showPrec
 
 showPrec :: Int -> Expr -> String
 showPrec _ Typ = "@Type"
-showPrec _ (Lit k) = show k
+showPrec _ IntT = "@Int"
+showPrec _ (Int i) = show i
+showPrec _ NumT = "@Num"
+showPrec _ (Num n) = show n
+showPrec _ (Ctr k) = "#" ++ k
 showPrec _ (Var x) = x
 showPrec _ (Let env b) = do
   let showDef (x, a) = x ++ " = " ++ show a
@@ -101,21 +93,6 @@ data TypeError
   | EmptyCase
   deriving (Eq, Show)
 
-intT :: Expr
-intT = Lit IntT
-
-int :: Int -> Expr
-int = Lit . Int
-
-numT :: Expr
-numT = Lit NumT
-
-num :: Double -> Expr
-num = Lit . Num
-
-ctr :: String -> Expr
-ctr = Lit . Ctr
-
 fun :: [Type] -> Type -> Type
 fun bs ret = foldr Fun ret bs
 
@@ -137,7 +114,11 @@ set x y (kv : kvs) = kv : set x y kvs
 
 eval :: Ops -> Env -> Expr -> Expr
 eval _ _ Typ = Typ
-eval _ _ (Lit k) = Lit k
+eval _ _ IntT = IntT
+eval _ _ (Int i) = Int i
+eval _ _ NumT = NumT
+eval _ _ (Num n) = Num n
+eval _ _ (Ctr k) = Ctr k
 eval ops env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Var x
   Just a -> eval ops env a
@@ -167,7 +148,11 @@ solve ops ctx = eval ops (ctxEnv ctx)
 
 occurs :: String -> Expr -> Bool
 occurs _ Typ = False
-occurs _ (Lit _) = False
+occurs _ IntT = False
+occurs _ (Int _) = False
+occurs _ NumT = False
+occurs _ (Num _) = False
+occurs _ (Ctr _) = False
 occurs x (Var y) = x == y
 occurs x (Let env _) | x `elem` map fst env = False
 occurs x (Let _ a) = occurs x a
@@ -189,7 +174,11 @@ apply ops sub (Ann b (For xs t)) = do
 unify :: Ops -> Context -> Expr -> Expr -> Either TypeError Context
 unify ops ctx a b = case (solve ops ctx a, solve ops ctx b) of
   (Typ, Typ) -> Right ctx
-  (Lit k, Lit k') | k == k' -> Right ctx
+  (IntT, IntT) -> Right ctx
+  (Int i, Int i') | i == i' -> Right ctx
+  (NumT, NumT) -> Right ctx
+  (Num n, Num n') | n == n' -> Right ctx
+  (Ctr k, Ctr k') | k == k' -> Right ctx
   (Var x, Var x') | x == x' -> Right ctx
   (Var x, b) | x `occurs` b -> Left (InfiniteType x b)
   (Var x, b) ->
@@ -215,12 +204,12 @@ instantiate ops ctx (For (x : xs) a) = do
 
 inferType :: Ops -> Context -> Expr -> Either TypeError (Type, Context)
 inferType _ ctx Typ = Right (Typ, ctx)
-inferType _ ctx (Lit IntT) = Right (Typ, ctx)
-inferType _ ctx (Lit (Int _)) = Right (Lit IntT, ctx)
-inferType _ ctx (Lit NumT) = Right (Typ, ctx)
-inferType _ ctx (Lit (Num _)) = Right (Lit NumT, ctx)
-inferType ops ctx (Lit (Ctr k)) = case lookup k ctx of
-  Just (Ann (Lit (Ctr k')) scheme) | k == k' -> instantiate ops ctx scheme
+inferType _ ctx IntT = Right (Typ, ctx)
+inferType _ ctx (Int _) = Right (IntT, ctx)
+inferType _ ctx NumT = Right (Typ, ctx)
+inferType _ ctx (Num _) = Right (NumT, ctx)
+inferType ops ctx (Ctr k) = case lookup k ctx of
+  Just (Ann (Ctr k') scheme) | k == k' -> instantiate ops ctx scheme
   Just sym -> Left (InvalidCtr k sym)
   Nothing -> Left (UndefinedCtr k)
 inferType ops ctx (Var x) = case lookup x ctx of
@@ -252,7 +241,7 @@ inferType ops ctx (App a b) = do
     ta -> Left (NotAFunction a ta)
 inferType _ _ (Case []) = Left EmptyCase
 inferType ops ctx (Case [(alt, branch)]) = do
-  (altT, ctx) <- inferType ops ctx (ctr alt)
+  (altT, ctx) <- inferType ops ctx (Ctr alt)
   (branchT, ctx) <- inferType ops ctx branch
   inferTypeCase ops ctx altT branchT
 inferType ops ctx (Case (case' : cases)) = do
