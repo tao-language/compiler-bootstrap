@@ -80,12 +80,12 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer (Var "f") `shouldBe` Right (Fun intT numT, ctx)
     infer (Var "g") `shouldBe` Right (Fun x1 x1, ("x1", Val x1) : ctx)
     infer (Lam "x" x) `shouldBe` Right (Fun xT xT, ("xT", Val xT) : ("x", Ann x (For ["xT"] xT)) : ctx)
-    -- infer (Case []) `shouldBe` Left EmptyCase
-    -- infer (Case [("True", int 1)]) `shouldBe` Right (Fun (ctr "Bool") intT, ctx)
-    -- infer (Case [("True", int 1), ("False", int 2)]) `shouldBe` Right (Fun (ctr "Bool") intT, ctx)
-    -- infer (Case [("True", int 1), ("False", num 1.1)]) `shouldBe` Left (Mismatch intT numT)
-    -- infer (Case [("Just", Lam "x" x)]) `shouldBe` Right (Fun (App (ctr "Maybe") a) a, ctx)
-    -- infer (Case [("Just", Lam "x" x), ("Nothing", int 0)]) `shouldBe` Right (Fun (App (ctr "Maybe") intT) intT, ctx)
+    infer (Case []) `shouldBe` Left EmptyCase
+    infer (Case [("True", int 1)]) `shouldBe` Right (Fun (ctr "Bool") intT, ctx)
+    infer (Case [("True", int 1), ("False", int 2)]) `shouldBe` Right (Fun (ctr "Bool") intT, ctx)
+    infer (Case [("True", int 1), ("False", num 1.1)]) `shouldBe` Left (Mismatch intT numT)
+    infer (Case [("Just", Lam "x" x)]) `shouldBe` Right (Fun (App (ctr "Maybe") a) a, ("xT", Val a) : ("x", Ann x (For ["xT"] xT)) : ("a", Val a) : ctx)
+    infer (Case [("Just", Lam "x" x), ("Nothing", int 0)]) `shouldBe` Right (Fun (App (ctr "Maybe") intT) intT, ("a1", Val intT) : ("xT", Val intT) : ("x", Ann x (For ["xT"] xT)) : ("a", Val intT) : ctx)
     infer (Fun (int 1) (num 1.1)) `shouldBe` Left (Mismatch intT Typ)
     infer (Fun intT (num 1.1)) `shouldBe` Left (Mismatch numT Typ)
     infer (Fun intT numT) `shouldBe` Right (Typ, ctx)
