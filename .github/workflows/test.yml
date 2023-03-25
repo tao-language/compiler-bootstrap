@@ -20,9 +20,9 @@ jobs:
             ~/.stack
             .stack-work
           # Best effort for cache: tie it to Stack resolver and package config
-          key: ${{ matrix.os }}-stack-${{ hashFiles('stack.yaml.lock', 'package.yaml') }}
+          key: ubuntu-latest-stack-${{ hashFiles('stack.yaml.lock', 'package.yaml') }}
           restore-keys: |
-            ${{ matrix.os }}-stack
+            ubuntu-latest-stack
 
       - name: Run tests
         run: stack build --ghc-options="-Werror"
