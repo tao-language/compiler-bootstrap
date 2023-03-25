@@ -21,6 +21,7 @@ data Expr
   | Ctr !String
   | Var !String
   | Let !Env !Expr
+  | For !String !Expr
   | Lam !String !Expr
   | Fun !Type !Type
   | App !Expr !Expr
@@ -42,10 +43,10 @@ showInfixR :: Int -> Int -> Expr -> String -> Expr -> String
 showInfixR p q a op b = showParen' (p > q) (showPrec (q + 1) a ++ op ++ showPrec q b)
 
 showPrec :: Int -> Expr -> String
-showPrec _ Typ = "@Type"
-showPrec _ IntT = "@Int"
+showPrec _ Typ = "%Type"
+showPrec _ IntT = "%Int"
 showPrec _ (Int i) = show i
-showPrec _ NumT = "@Num"
+showPrec _ NumT = "%Num"
 showPrec _ (Num n) = show n
 showPrec _ (Ctr k) = "#" ++ k
 showPrec _ (Var x) = x
@@ -53,6 +54,7 @@ showPrec _ (Let env b) = do
   let showDef (x, a) = x ++ " = " ++ show a
   let x = "[" ++ intercalate "; " (map showDef env) ++ "]"
   show (App (Var x) b)
+showPrec p (For x a) = showPrefix p 1 ("@" ++ x ++ ". ") a
 showPrec p (Lam x a) = showPrefix p 1 ("\\" ++ x ++ " -> ") a
 showPrec p (Fun a b) = showInfixR p 1 a " -> " b
 showPrec p (App a b) = showInfixL p 2 a " " b
@@ -71,12 +73,9 @@ type Ops = [(String, [Expr] -> Maybe Expr)]
 
 type Env = [(String, Expr)]
 
-data Scheme = For ![String] !Type
-  deriving (Eq, Show)
-
 data Symbol
   = Val !Expr
-  | Ann !Expr !Scheme
+  | Ann !Expr !Type
   deriving (Eq, Show)
 
 type Context = [(String, Symbol)]
@@ -108,7 +107,7 @@ pop x ((x', _) : kvs) | x == x' = kvs
 pop x (_ : kvs) = pop x kvs
 
 set :: Eq k => k -> v -> [(k, v)] -> [(k, v)]
-set x y [] = [(x, y)]
+set _ _ [] = []
 set x y ((x', _) : kvs) | x == x' = (x, y) : kvs
 set x y (kv : kvs) = kv : set x y kvs
 
@@ -124,6 +123,7 @@ eval ops env (Var x) = case lookup x env of
   Just a -> eval ops env a
   Nothing -> Var x
 eval ops env (Let env' a) = eval ops (env ++ env') a
+eval ops env (For x a) = For x (eval ops ((x, Var x) : env) a)
 eval ops env (Lam x a) = Lam x (eval ops ((x, Var x) : env) a)
 eval ops env (Fun a b) = Fun (eval ops env a) (eval ops env b)
 eval ops env (App a b) = case (eval ops env a, eval ops env b) of
@@ -156,6 +156,8 @@ occurs _ (Ctr _) = False
 occurs x (Var y) = x == y
 occurs x (Let env _) | x `elem` map fst env = False
 occurs x (Let _ a) = occurs x a
+occurs x (For x' _) | x == x' = False
+occurs x (For _ a) = occurs x a
 occurs x (Lam x' _) | x == x' = False
 occurs x (Lam _ a) = occurs x a
 occurs x (Fun a b) = occurs x a || occurs x b
@@ -164,12 +166,8 @@ occurs x (Case cases) = any (occurs x . snd) cases
 occurs x (Op _ args) = any (occurs x) args
 
 apply :: Ops -> (String, Expr) -> Symbol -> Symbol
-apply ops sub (Val b) = Val (eval ops [sub] b)
-apply _ (x, _) (Ann b (For xs t)) | x `elem` xs = Ann b (For xs t)
-apply ops sub (Ann b (For xs t)) = do
-  let b' = eval ops [sub] b
-  let t' = eval ops (sub : map (\x -> (x, Var x)) xs) t
-  Ann b' (For xs t')
+apply ops sub (Val a) = Val (eval ops [sub] a)
+apply ops sub (Ann a t) = Ann (eval ops [sub] a) (eval ops [sub] t)
 
 unify :: Ops -> Context -> Expr -> Expr -> Either TypeError Context
 unify ops ctx a b = case (solve ops ctx a, solve ops ctx b) of
@@ -184,7 +182,9 @@ unify ops ctx a b = case (solve ops ctx a, solve ops ctx b) of
   (Var x, b) ->
     Right (set x (Val b) (map (second $ apply ops (x, b)) ctx))
   (a, Var y) -> unify ops ctx (Var y) a
+  -- TODO: For
   -- TODO: Lam
+  -- TODO: Case
   (Fun a1 a2, Fun b1 b2) -> do
     ctx <- unify ops ctx a1 b1
     unify ops ctx a2 b2
@@ -194,13 +194,12 @@ unify ops ctx a b = case (solve ops ctx a, solve ops ctx b) of
   -- TODO: Op
   (a, b) -> Left (Mismatch a b)
 
-instantiate :: Ops -> Context -> Scheme -> Either TypeError (Type, Context)
-instantiate ops ctx (For [] a) =
-  Right (solve ops ctx a, ctx)
-instantiate ops ctx (For (x : xs) a) = do
+instantiate :: Ops -> Context -> Type -> (Type, Context)
+instantiate ops ctx (For x a) = do
   let y = newName x (map fst ctx)
   let a' = eval ops [(x, Var y)] a
-  instantiate ops ((y, Val (Var y)) : ctx) (For xs a')
+  instantiate ops ((y, Val (Var y)) : ctx) a'
+instantiate ops ctx a = (solve ops ctx a, ctx)
 
 inferType :: Ops -> Context -> Expr -> Either TypeError (Type, Context)
 inferType _ ctx Typ = Right (Typ, ctx)
@@ -209,36 +208,41 @@ inferType _ ctx (Int _) = Right (IntT, ctx)
 inferType _ ctx NumT = Right (Typ, ctx)
 inferType _ ctx (Num _) = Right (NumT, ctx)
 inferType ops ctx (Ctr k) = case lookup k ctx of
-  Just (Ann (Ctr k') scheme) | k == k' -> instantiate ops ctx scheme
+  Just (Ann (Ctr k') t) | k == k' -> Right (solve ops ctx t, ctx)
   Just sym -> Left (InvalidCtr k sym)
   Nothing -> Left (UndefinedCtr k)
 inferType ops ctx (Var x) = case lookup x ctx of
-  Just (Val (Var x')) | x == x' -> do
-    let xT = newName (x ++ "T") (map fst ctx)
-    Right (Var xT, (x, Ann (Var x) (For [xT] (Var xT))) : ctx)
+  Just (Val (Var x')) | x == x' -> Right (Typ, ctx)
   Just (Val a) -> inferType ops ctx a
-  Just (Ann (Var x') scheme) | x == x' -> instantiate ops ctx scheme
-  Just (Ann a scheme) -> do
-    (t, ctx) <- instantiate ops ctx scheme
+  Just (Ann (Var x') t) | x == x' -> Right (solve ops ctx t, ctx)
+  Just (Ann a t) -> do
     ctx <- checkType ops ctx a t
     Right (solve ops ctx t, ctx)
   Nothing -> Left (UndefinedVar x)
 inferType ops ctx (Let env a) = inferType ops (ctx ++ map (second Val) env) a
+inferType ops ctx (For x a) = do
+  let xT = newName (x ++ "T") (map fst ctx)
+  (t, ctx) <- inferType ops ((xT, Val (Var xT)) : (x, Ann (Var x) (Var xT)) : ctx) a
+  case (t, pop x ctx) of
+    (Var xT', ctx) | xT == xT' -> Right (For xT $ Var xT, ctx)
+    (t, ctx) -> Right (t, ctx)
 inferType ops ctx (Lam x a) = do
-  let xT = x ++ "T"
-  (t2, ctx) <- inferType ops ((x, Ann (Var x) (For [xT] (Var xT))) : ctx) a
-  Right (Fun (solve ops ctx (Var xT)) t2, ctx)
+  let xT = newName (x ++ "T") (map fst ctx)
+  (t2, ctx) <- inferType ops ((xT, Val (Var xT)) : (x, Ann (Var x) (Var xT)) : ctx) a
+  case (solve ops ctx (Var xT), pop x ctx) of
+    (t1, ctx) | xT `occurs` t1 -> Right (For xT $ Fun t1 t2, ctx)
+    (t1, ctx) -> Right (Fun t1 t2, ctx)
 inferType ops ctx (Fun a b) = do
   ctx <- checkType ops ctx a Typ
   ctx <- checkType ops ctx b Typ
   Right (Typ, ctx)
 inferType ops ctx (App a b) = do
   (ta, ctx) <- inferType ops ctx a
-  case ta of
-    Fun t1 t2 -> do
+  case instantiate ops ctx ta of
+    (Fun t1 t2, ctx) -> do
       ctx <- checkType ops ctx b t1
       Right (solve ops ctx t2, ctx)
-    ta -> Left (NotAFunction a ta)
+    (ta, _) -> Left (NotAFunction a ta)
 inferType _ _ (Case []) = Left EmptyCase
 inferType ops ctx (Case [(alt, branch)]) = do
   (altT, ctx) <- inferType ops ctx (Ctr alt)
