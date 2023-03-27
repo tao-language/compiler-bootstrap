@@ -85,15 +85,12 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer (Var "f") `shouldBe` Right (Fun IntT NumT, ctx)
     infer (Var "g") `shouldBe` Right (For "a" $ Fun a a, ctx)
     -- TODO: Let
-    infer (For "x" IntT) `shouldBe` Right (Typ, ctx)
+    infer (For "x" (Int 1)) `shouldBe` Right (IntT, ctx)
     infer (For "x" x) `shouldBe` Right (For "xT" xT, ctx)
     infer (Lam "x" x) `shouldBe` Right (For "xT" $ Fun xT xT, ctx)
-    infer (Case []) `shouldBe` Left EmptyCase
-    infer (Case [("True", Int 1)]) `shouldBe` Right (Fun (Ctr "Bool") IntT, ctx)
-    infer (Case [("True", Int 1), ("False", Int 2)]) `shouldBe` Right (Fun (Ctr "Bool") IntT, ctx)
-    infer (Case [("True", Int 1), ("False", Num 1.1)]) `shouldBe` Left (Mismatch IntT NumT)
-    -- infer (Case [("Just", Lam "x" x)]) `shouldBe` Right (For "a" $ Fun (App (Ctr "Maybe") a) a, ctx)
-    -- infer (Case [("Just", Lam "x" x), ("Nothing", Int 0)]) `shouldBe` Right (Fun (App (Ctr "Maybe") IntT) IntT, ctx)
+    infer (Case "True" (Int 1)) `shouldBe` Right (Fun (Ctr "Bool") IntT, ctx)
+    infer (Case "Nothing" (Int 0)) `shouldBe` Right (For "a" $ Fun (App (Ctr "Maybe") a) IntT, ctx)
+    infer (Case "Just" (Lam "x" x)) `shouldBe` Right (For "a" $ Fun (App (Ctr "Maybe") a) a, ctx)
     infer (Fun (Int 1) (Num 1.1)) `shouldBe` Left (Mismatch IntT Typ)
     infer (Fun IntT (Num 1.1)) `shouldBe` Left (Mismatch NumT Typ)
     infer (Fun IntT NumT) `shouldBe` Right (Typ, ctx)
@@ -107,65 +104,47 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer (Op "op1" [Int 1]) `shouldBe` Right (NumT, ctx)
 
   it "☯ Bool" $ do
+    let f = Var "f"
     let ctx :: Context
         ctx =
-          [ -- Bool = True | False
-            ("Bool", Ann (Ctr "Bool") Typ),
+          [ ("Bool", Ann (Ctr "Bool") Typ),
+            ("False", Ann (Ctr "False") (Var "Bool")),
             ("True", Ann (Ctr "True") (Var "Bool")),
-            ("False", Ann (Ctr "False") (Var "Bool"))
-            -- f True = 1
-            -- f False = 0
-            -- ("f", Val (Case [("True", Int 1), ("False", Int 0)]))
+            ("f", Val (Case "False" (Int 0) `Or` Case "True" (Int 1)))
           ]
 
     let infer = inferType ops ctx
     infer (Var "Bool") `shouldBe` Right (Typ, ctx)
-    infer (Var "True") `shouldBe` Right (Ctr "Bool", ctx)
     infer (Var "False") `shouldBe` Right (Ctr "Bool", ctx)
+    infer (Var "True") `shouldBe` Right (Ctr "Bool", ctx)
 
     let eval' = eval ops (ctxEnv ctx)
-    eval' (Var "Bool") `shouldBe` Ctr "Bool"
-    eval' (Var "True") `shouldBe` Ctr "True"
-    eval' (Var "False") `shouldBe` Ctr "False"
+    eval' (App f $ Var "False") `shouldBe` Int 0
+    eval' (App f $ Var "True") `shouldBe` Int 1
+    eval' (App f $ Var "y") `shouldBe` App (Case "False" (Int 0)) (Var "y") `Or` App (Case "True" (Int 1)) (Var "y")
 
   it "☯ Maybe" $ do
-    {- Maybe a = Just a | Nothing
+    let (f, a) = (Var "f", Var "a")
+    let ctx :: Context
+        ctx =
+          [ ("Maybe", Ann (Ctr "Maybe") (Fun Typ Typ)),
+            ("Just", Ann (Ctr "Just") (For "a" $ Fun a (App (Var "Maybe") a))),
+            ("Nothing", Ann (Ctr "Nothing") (For "a" $ App (Var "Maybe") a)),
+            ("f", Val (Case "Nothing" (Int 0) `Or` Case "Just" (Lam "x" $ Var "x")))
+          ]
 
-    Maybe : (a : Typ) -> Type
-    Maybe a = #Maybe a
+    let infer = inferType ops ctx
+    infer (Var "Maybe") `shouldBe` Right (Fun Typ Typ, ctx)
+    infer (Var "Nothing") `shouldBe` Right (For "a" $ App (Ctr "Maybe") a, ctx)
+    infer (Var "Just") `shouldBe` Right (For "a" $ Fun a (App (Ctr "Maybe") a), ctx)
+    infer (App (Var "Maybe") IntT) `shouldBe` Right (Typ, ctx)
+    infer (App (Var "Just") (Int 1)) `shouldBe` Right (App (Ctr "Maybe") IntT, ("a", Val IntT) : ctx)
+    infer (App (Var "Nothing") IntT) `shouldBe` Left (NotAFunction (Var "Nothing") (App (Ctr "Maybe") a))
 
-    Just : (a : Typ) -> (x : a) -> Maybe a
-    Just a x = #Just x
-
-    Nothing : (a : Typ) -> Maybe a
-    Nothing a = #Nothing
-
-    f Nothing = 0
-    f (Just x) = x
-
-    f : Maybe Int -> Int
-    f = @case {Just -> \x -> x | Nothing -> 0}
-    -}
-
-    -- let a = Var "a"
-    -- let env =
-    --       [ ("Maybe", Lam "a" (App (Ctr "Maybe") a))
-    --       ]
-    -- let ctx =
-    --       [ ("Maybe", Fun ("a", Typ) Typ),
-    --         ("Just", Fun ("a", Typ) $ App (Ctr "Maybe") a),
-    --         ("Nothing", Fun ("a", Typ) $ App (Ctr "Maybe") a),
-    --         ("f", Fun ("", App (Ctr "Maybe") IntT) IntT)
-    --       ]
-
-    -- let infer = inferType ops env ctx
-    -- infer (Var "Maybe") `shouldBe` Right (Fun ("a", Typ) Typ)
-    -- infer (Var "Just") `shouldBe` Right (Fun ("a", Typ) $ App (Ctr "Maybe") a)
-    -- infer (Var "Nothing") `shouldBe` Right (Fun ("a", Typ) $ App (Ctr "Maybe") a)
-    -- infer (App (Var "Maybe") IntT) `shouldBe` Right Typ
-    -- infer (App (Var "Just") IntT) `shouldBe` Right (App (Ctr "Maybe") IntT)
-    -- infer (App (Var "Nothing") IntT) `shouldBe` Right (App (Ctr "Maybe") IntT)
-    True `shouldBe` True
+    let eval' = eval ops (ctxEnv ctx)
+    eval' (App f $ Var "Nothing") `shouldBe` Int 0
+    eval' (App f $ App (Var "Just") (Int 1)) `shouldBe` Int 1
+    eval' (App f $ Var "y") `shouldBe` App (Case "Nothing" (Int 0)) (Var "y") `Or` App (Case "Just" (Lam "x" $ Var "x")) (Var "y")
 
   it "☯ factorial" $ do
     -- fact = fix (Nat->Nat) (\(f:Nat->Nat)(n:Nat).ifz n then succ 0 else mul n (f (pred n)))
