@@ -49,7 +49,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     eval' (Ctr "A") `shouldBe` Ctr "A"
     eval' (Var "x") `shouldBe` Int 1
     eval' (Var "y") `shouldBe` Var "y"
-    eval' (Let [("x", Int 0)] x) `shouldBe` Int 1
+    eval' (Let [("x", Num 0.0)] x) `shouldBe` Int 1
     eval' (Let [("y", Int 0)] y) `shouldBe` Int 0
     eval' (For "x" x) `shouldBe` For "x" x
     eval' (For "y" x) `shouldBe` For "y" (Int 1)
@@ -86,7 +86,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ inferType" $ do
     let a = Var "a"
-    let (x, y) = (Var "x", Var "y")
+    let (x, y, z) = (Var "x", Var "y", Var "z")
     let xT = Var "xT"
     let (f, g) = (Var "f", Var "g")
     let ctx :: Context
@@ -126,12 +126,14 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer (Var "mismatch") `shouldBe` Left (Mismatch IntT NumT)
     infer (Var "match") `shouldBe` Right (IntT, ctx)
     infer (Var "typed") `shouldBe` Right (IntT, ctx)
-    -- infer (Var "free") `shouldBe` Right (Var "freeT", ("free", Ann (Var "free") (For "freeT" (Var "freeT"))) : ctx)
+    infer (Var "free") `shouldBe` Right (Var "freeT", ("freeT", Val (Var "freeT")) : ("free", Ann (Var "free") (Var "freeT")) : ctx)
     infer (Var "x") `shouldBe` Right (IntT, ctx)
     infer (Var "y") `shouldBe` Right (NumT, ctx)
+    infer (Var "z") `shouldBe` Left (UndefinedVar "z")
     infer (Var "f") `shouldBe` Right (Fun IntT NumT, ctx)
     infer (Var "g") `shouldBe` Right (For "a" $ Fun a a, ctx)
-    -- TODO: Let
+    infer (Let [("x", Num 0.0)] x) `shouldBe` Right (IntT, ctx ++ [("x", Val (Num 0.0))])
+    infer (Let [("z", Int 0)] z) `shouldBe` Right (IntT, ctx ++ [("z", Val (Int 0))])
     infer (For "x" (Int 1)) `shouldBe` Right (IntT, ctx)
     infer (For "x" x) `shouldBe` Right (For "xT" xT, ctx)
     infer (Lam "x" x) `shouldBe` Right (For "xT" $ Fun xT xT, ctx)
@@ -141,12 +143,12 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer (Fun (Int 1) (Num 1.1)) `shouldBe` Left (Mismatch IntT Typ)
     infer (Fun IntT (Num 1.1)) `shouldBe` Left (Mismatch NumT Typ)
     infer (Fun IntT NumT) `shouldBe` Right (Typ, ctx)
-    infer (App x y) `shouldBe` Left (NotAFunction x IntT)
+    infer (App x y) `shouldBe` Left (Mismatch (Fun NumT (Var "_app")) IntT)
     infer (App f y) `shouldBe` Left (Mismatch NumT IntT)
     infer (App f x) `shouldBe` Right (NumT, ctx)
-    infer (App g x) `shouldBe` Right (IntT, ("a", Val IntT) : ctx)
+    infer (App g x) `shouldBe` Right (IntT, ctx)
     infer (Op "op0" []) `shouldBe` Right (IntT, ctx)
-    infer (Op "op0" [Num 1.1]) `shouldBe` Left (NotAFunction (Var "op0") IntT)
+    infer (Op "op0" [Num 1.1]) `shouldBe` Left (Mismatch (Fun NumT (Var "_app")) IntT)
     infer (Op "op1" [Num 1.1]) `shouldBe` Left (Mismatch NumT IntT)
     infer (Op "op1" [Int 1]) `shouldBe` Right (NumT, ctx)
 
@@ -184,8 +186,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer (Var "Nothing") `shouldBe` Right (For "a" $ App (Ctr "Maybe") a, ctx)
     infer (Var "Just") `shouldBe` Right (For "a" $ Fun a (App (Ctr "Maybe") a), ctx)
     infer (App (Var "Maybe") IntT) `shouldBe` Right (Typ, ctx)
-    infer (App (Var "Just") (Int 1)) `shouldBe` Right (App (Ctr "Maybe") IntT, ("a", Val IntT) : ctx)
-    infer (App (Var "Nothing") IntT) `shouldBe` Left (NotAFunction (Var "Nothing") (App (Ctr "Maybe") a))
+    infer (App (Var "Just") (Int 1)) `shouldBe` Right (App (Ctr "Maybe") IntT, ctx)
 
     let eval' = eval ops (ctxEnv ctx)
     eval' (App f $ Var "Nothing") `shouldBe` Int 0
@@ -211,8 +212,9 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
             ("f", Val $ Lam "n" $ App (Case [("True", i1), ("False", n `mul` App f (n `sub` i1))]) (eq n i0))
           ]
 
-    -- let infer = inferType ops ctx
-    -- infer (Var "f") `shouldBe` Right (Typ, ctx)
+    let infer = inferType ops ctx
+    infer (Var "f") `shouldBe` Right (Fun IntT IntT, ctx)
+    infer (App f (Int 0)) `shouldBe` Right (IntT, ctx)
 
     let eval' = eval ops (ctxEnv ctx)
     eval' (App f (Int 0)) `shouldBe` Int 1

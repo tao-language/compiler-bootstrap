@@ -8,11 +8,10 @@ import Data.List (intercalate)
 
 {- TODO:
 
-Type inference on recursive functions
-
 Clean up code
 - Push and pop variables from scope (fresh variables)
 - Show Expr with precedence
+- The "_app" variable created on inferType for App
 
 Exhaustive pattern checks (warnings, not errors)
 - Use `Or` to express unions
@@ -247,8 +246,10 @@ inferType ops ctx (Ctr k) = case lookup k ctx of
 inferType ops ctx (Var x) = case lookup x ctx of
   Just (Val (Var x')) | x == x' -> do
     let xT = newName (x ++ "T") (map fst ctx)
-    Right (Var xT, (xT, Val Typ) : (x, Ann (Var x) (Var xT)) : ctx)
-  Just (Val a) -> inferType ops ((x, Val (Var x)) : ctx) a
+    Right (Var xT, (xT, Val (Var xT)) : (x, Ann (Var x) (Var xT)) : ctx)
+  Just (Val a) -> do
+    (t, ctx) <- inferType ops ((x, Val (Var x)) : ctx) a
+    Right (t, pop x ctx)
   Just (Ann (Var x') t) | x == x' -> Right (solve ops ctx t, ctx)
   Just (Ann a t) -> do
     ctx <- checkType ops ctx a t
@@ -286,7 +287,7 @@ inferType ops ctx (App a b) = do
   (ta, ctx) <- inferType ops ((xT, Val (Var xT)) : ctx) a
   (tb, ctx) <- inferType ops ctx b
   ctx <- unify ops ctx (Fun tb (Var xT)) ta
-  Right (solve ops ctx (Var xT), ctx)
+  Right (solve ops ctx (Var xT), pop xT ctx)
 inferType ops ctx (Op op args) = case lookup op ctx of
   Just (Ann _ t) -> do
     (t, ctx) <- inferType ops ((op, Ann (Var op) t) : ctx) (app (Var op) args)
@@ -311,11 +312,6 @@ inferBranch ops ctx (Fun alt1 alt2) (Fun br1 br2) = do
 inferBranch ops ctx altT branchT = Right (solve ops ctx (Fun altT branchT), ctx)
 
 checkType :: Ops -> Context -> Expr -> Type -> Either TypeError Context
-checkType _ ctx (Op _ []) _ = Right ctx
-checkType ops ctx (Op op (a : bs)) (Fun t1 t2) = do
-  ctx <- checkType ops ctx a t1
-  checkType ops ctx (Op op bs) t2
-checkType _ _ a@Op {} t = Left (NotAFunction a t)
 checkType ops ctx a t = do
   (ta, ctx) <- inferType ops ctx a
   unify ops ctx ta t
