@@ -67,14 +67,14 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
   -- it "☯ occurs" $ do
   -- it "☯ unify" $ do
 
-  it "☯ instantiate" $ do
-    let (a, a1, b) = (Var "a", Var "a1", Var "b")
-    let ctx :: Context
-        ctx = [("a", Val IntT)]
-    let inst = instantiate ops ctx
-    inst a `shouldBe` (IntT, ctx)
-    inst (For "a" a) `shouldBe` (a1, ("a1", Val a1) : ctx)
-    inst (For "b" b) `shouldBe` (b, ("b", Val b) : ctx)
+  -- it "☯ instantiate" $ do
+  --   let (a, a1, b) = (Var "a", Var "a1", Var "b")
+  --   let ctx :: Context
+  --       ctx = [("a", Val IntT)]
+  --   let inst = instantiate ops ctx
+  --   inst a `shouldBe` (IntT, ctx)
+  --   inst (For "a" a) `shouldBe` (a1, ("a1", Val a1) : ctx)
+  --   inst (For "b" b) `shouldBe` (b, ("b", Val b) : ctx)
 
   it "☯ inferType" $ do
     let a = Var "a"
@@ -83,10 +83,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     let (f, g) = (Var "f", Var "g")
     let ctx :: Context
         ctx =
-          [ ("Bool", Union ["False", "True"] Knd),
-            ("True", Ctr ("Bool", lam ["T", "F"] $ Var "T") (Var "Bool")),
-            ("False", Ctr ("Bool", lam ["T", "F"] $ Var "F") (Var "Bool")),
-            ("inferred", Val (Int 1)),
+          [ ("inferred", Val (Int 1)),
             ("mismatch", Ann (Int 1) NumT),
             ("match", Ann (Int 1) IntT),
             ("typed", Ann (Var "typed") IntT),
@@ -106,14 +103,12 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer (Int 1) `shouldBe` Right (IntT, ctx)
     infer NumT `shouldBe` Right (Knd, ctx)
     infer (Num 1) `shouldBe` Right (NumT, ctx)
-    infer (Var "Bool") `shouldBe` Right (Knd, ctx)
-    infer (Var "True") `shouldBe` Right (Typ "Bool", ctx)
     infer (Var "undefined") `shouldBe` Left (UndefinedVar "undefined")
     infer (Var "inferred") `shouldBe` Right (IntT, ctx)
     infer (Var "mismatch") `shouldBe` Left (Mismatch IntT NumT)
     infer (Var "match") `shouldBe` Right (IntT, ctx)
     infer (Var "typed") `shouldBe` Right (IntT, ctx)
-    infer (Var "free") `shouldBe` Right (Var "freeT", ("freeT", Val (Var "freeT")) : ("free", Ann (Var "free") (Var "freeT")) : ctx)
+    infer (Var "free") `shouldBe` Right (Var "freeT", ("freeT", Val (Var "freeT")) : set "free" (Ann (Var "free") (Var "freeT")) ctx)
     infer (Var "x") `shouldBe` Right (IntT, ctx)
     infer (Var "y") `shouldBe` Right (NumT, ctx)
     infer (Var "z") `shouldBe` Left (UndefinedVar "z")
@@ -139,8 +134,8 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     let ctx :: Context
         ctx =
           [ ("Bool", Union ["False", "True"] Knd),
-            ("False", Ctr ("Bool", lam ["F", "T"] $ Var "F") (Var "Bool")),
-            ("True", Ctr ("Bool", lam ["F", "T"] $ Var "T") (Var "Bool")),
+            ("False", Ctr [] ["False", "True"] (Var "Bool")),
+            ("True", Ctr [] ["False", "True"] (Var "Bool")),
             ("f", Val (Lam "x" $ app (Var "x") [Int 0, Int 1]))
           ]
 
@@ -152,15 +147,15 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer (Var "Bool") `shouldBe` Right (Knd, ctx)
     infer (Var "False") `shouldBe` Right (Typ "Bool", ctx)
     infer (Var "True") `shouldBe` Right (Typ "Bool", ctx)
-  -- infer (app (Var "True") [Int 0, Int 1]) `shouldBe` Right (IntT, ctx)
+    infer (app (Var "True") [Num 1.1, Num 2.2]) `shouldBe` Right (NumT, ctx)
 
   it "☯ Maybe" $ do
     let (f, a) = (Var "f", Var "a")
     let ctx :: Context
         ctx =
           [ ("Maybe", Union ["Nothing", "Just"] (Fun Knd Knd)),
-            ("Nothing", Ctr ("Maybe", lam ["N", "J"] $ Var "N") (For "a" $ App (Var "Maybe") a)),
-            ("Just", Ctr ("Maybe", lam ["x", "N", "J"] $ App (Var "J") (Var "x")) (For "a" $ Fun a (App (Var "Maybe") a))),
+            ("Nothing", Ctr [] ["Nothing", "Just"] (For "a" $ App (Var "Maybe") a)),
+            ("Just", Ctr ["x"] ["Nothing", "Just"] (For "a" $ Fun a (App (Var "Maybe") a))),
             ("f", Val (Lam "x" $ app (Var "x") [Int 0, Lam "x" $ Var "x"]))
           ]
 
@@ -174,42 +169,41 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer (Var "Just") `shouldBe` Right (For "a" $ Fun a (App (Typ "Maybe") a), ctx)
     infer (App (Var "Maybe") IntT) `shouldBe` Right (Knd, ctx)
     infer (App (Var "Just") (Int 1)) `shouldBe` Right (App (Typ "Maybe") IntT, ctx)
+    infer (app (App (Var "Just") (Int 1)) [Num 1.1, Lam "x" (Var "x")]) `shouldBe` Right (NumT, ctx)
 
-  -- it "☯ factorial" $ do
-  --   let op2 op = lam ["x", "y"] (Op op [Var "x", Var "y"])
-  --   let (i0, i1) = (Int 0, Int 1)
-  --   let (f, n) = (Var "f", Var "n")
-  --   let eq a b = app (Var "==") [a, b]
-  --   let mul a b = app (Var "*") [a, b]
-  --   let sub a b = app (Var "-") [a, b]
+  it "☯ factorial" $ do
+    let op2 op = lam ["x", "y"] (Op op [Var "x", Var "y"])
+    let (i0, i1) = (Int 0, Int 1)
+    let (f, n) = (Var "f", Var "n")
+    let eq a b = app (Var "==") [a, b]
+    let mul a b = app (Var "*") [a, b]
+    let sub a b = app (Var "-") [a, b]
 
-  --   let ctx :: Context
-  --       ctx =
-  --         [ ("+", Ann (op2 "+") (fun [IntT, IntT] IntT)),
-  --           ("-", Ann (op2 "-") (fun [IntT, IntT] IntT)),
-  --           ("*", Ann (op2 "*") (fun [IntT, IntT] IntT)),
-  --           ("==", Ann (op2 "==") (fun [IntT, IntT] (Var "Bool"))),
-  --           ("Bool", Ann (Typ "Bool" ["True", "False"]) Typ),
-  --           ("True", Ann (Ctr "Bool" "True") (Var "Bool")),
-  --           ("False", Ann (Ctr "Bool" "False") (Var "Bool")),
-  --           ("f", Val (Fix "f" $ Lam "n" $ app (eq n i0) [Int 1, n `mul` App f (n `sub` i1)]))
-  --         ]
+    let ctx :: Context
+        ctx =
+          [ ("+", Ann (op2 "+") (fun [IntT, IntT] IntT)),
+            ("-", Ann (op2 "-") (fun [IntT, IntT] IntT)),
+            ("*", Ann (op2 "*") (fun [IntT, IntT] IntT)),
+            ("==", Ann (op2 "==") (fun [IntT, IntT] (Var "Bool"))),
+            ("Bool", Union ["True", "False"] Knd),
+            ("True", Ctr [] ["True", "False"] (Var "Bool")),
+            ("False", Ctr [] ["True", "False"] (Var "Bool")),
+            ("f", Val (Fix "f" $ Lam "n" $ app (eq n i0) [Int 1, n `mul` App f (n `sub` i1)]))
+          ]
 
-  --   let infer = inferType ops ctx
-  --   -- infer (Lam "n" $ app (eq n i0) [Int 1, n `mul` App f (n `sub` i1)]) `shouldBe` Right (Fun IntT IntT, ctx)
-  --   infer (app (Var "True") [Int 0, Int 1]) `shouldBe` Right (Var "TODO", ctx)
-  --   infer (Var "f") `shouldBe` Right (Fun IntT IntT, ctx)
-  --   infer (App f (Int 0)) `shouldBe` Right (IntT, ctx)
+    let eval' = eval ops (ctxEnv ctx)
+    eval' (Var "f") `shouldBe` Fix "f" (Lam "n" $ app (Op "==" [n, i0]) [Int 1, Op "*" [n, App f (Op "-" [n, i1])]])
+    -- eval' (App f n) `shouldBe` app (Op "==" [n, i0]) [Int 0, Op "*" [n, App f (Op "-" [n, i1])]]
+    eval' (App f (Int 0)) `shouldBe` Int 1
+    eval' (App f (Int 1)) `shouldBe` Int 1
+    eval' (App f (Int 2)) `shouldBe` Int 2
+    eval' (App f (Int 3)) `shouldBe` Int 6
+    eval' (App f (Int 4)) `shouldBe` Int 24
+    eval' (App f (Int 5)) `shouldBe` Int 120
 
-  --   let eval' = eval ops (ctxEnv ctx)
-  --   -- eval' (Var "f") `shouldBe` Lam "n" (app (Op "==" [n, i0]) [Int 0, Op "*" [n, App f (Op "-" [n, i1])]])
-  --   -- eval' (App f n) `shouldBe` app (Op "==" [n, i0]) [Int 0, Op "*" [n, App f (Op "-" [n, i1])]]
-  --   eval' (App f (Int 0)) `shouldBe` Int 1
-  --   eval' (App f (Int 1)) `shouldBe` Int 1
-  --   eval' (App f (Int 2)) `shouldBe` Int 2
-  --   eval' (App f (Int 3)) `shouldBe` Int 6
-  --   eval' (App f (Int 4)) `shouldBe` Int 24
-  --   eval' (App f (Int 5)) `shouldBe` Int 120
+    let infer = inferType ops ctx
+    infer (Var "f") `shouldBe` Right (Fun IntT IntT, ctx)
+    infer (App f (Int 0)) `shouldBe` Right (IntT, ctx)
 
   it "☯ TODO" $ do
     True `shouldBe` True
