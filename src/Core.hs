@@ -4,9 +4,12 @@ module Core where
 
 import Data.Bifunctor (Bifunctor (second))
 import Data.Foldable (Foldable (foldl'))
-import Data.List (intercalate)
+import Data.List (delete, intercalate, union)
 
 {- TODO:
+
+- Make Op behave similarly to Ctr
+- Don't evaluate args in Op, but include an eval function
 
 Clean up code
 - Show Term with precedence
@@ -20,20 +23,18 @@ Do notation
 -}
 
 data Term
-  = Knd
+  = Typ
   | IntT
   | NumT
   | Int !Int
   | Num !Double
-  | Typ !String
-  | Ctr !String !Term
   | Var !String
+  | Let !Env !Term
   | Lam !String !Term
-  | Fix !String !Term
   | For !String !Term
   | Fun !Type !Type
   | App !Term !Term
-  | Case ![(String, Term)]
+  | Ctr !String !Int !Term
   | Op !String ![Term]
   deriving (Eq)
 
@@ -51,22 +52,20 @@ showInfixR :: Int -> Int -> Term -> String -> Term -> String
 showInfixR p q a op b = showParen' (p > q) (showPrec (q + 1) a ++ op ++ showPrec q b)
 
 showPrec :: Int -> Term -> String
-showPrec _ Knd = "%Type"
+showPrec _ Typ = "%Type"
 showPrec _ IntT = "%Int"
 showPrec _ (Int i) = show i
 showPrec _ NumT = "%Num"
 showPrec _ (Num n) = show n
-showPrec _ (Typ t) = "$" ++ t -- ++ " {" ++ intercalate " | " alts ++ "}"
-showPrec _ (Ctr k a) = "#" ++ k ++ " (" ++ show a ++ ")"
 showPrec _ (Var x) = x
-showPrec p (For x a) = showPrefix p 2 ("@" ++ x ++ ". ") a
+showPrec _ (Let env a) = do
+  let showDef (x, b) = x ++ " = " ++ show b
+  "@let {" ++ intercalate "; " (showDef <$> env) ++ "} " ++ show a
 showPrec p (Lam x a) = showPrefix p 2 ("\\" ++ x ++ " -> ") a
-showPrec p (Fix x a) = showPrefix p 2 ("%fix " ++ x ++ " -> ") a
-showPrec p (Case branches) = do
-  let showBranch (k, b) = k ++ " -> " ++ show b
-  "%case {" ++ intercalate " | " (showBranch <$> branches) ++ "}"
+showPrec p (For x a) = showPrefix p 2 ("@" ++ x ++ ". ") a
 showPrec p (Fun a b) = showInfixR p 2 a " -> " b
 showPrec p (App a b) = showInfixL p 3 a " " b
+showPrec _ (Ctr k n a) = "#" ++ k ++ "/" ++ show n ++ " {" ++ show a ++ "}"
 showPrec _ (Op op args) = "%" ++ op ++ " (" ++ intercalate ", " (show <$> args) ++ ")"
 
 instance Show Term where
@@ -82,8 +81,6 @@ type Env = [(String, Term)]
 data Symbol
   = Val !Term
   | Ann !Term !Type
-  | Union ![String] !Type
-  | Alt !(String, [String]) !Type
   deriving (Eq, Show)
 
 type Context = [(String, Symbol)]
@@ -96,10 +93,10 @@ data TypeError
   | InfiniteType !String !Term
   | InvalidCtr !String !Symbol
   | InvalidOp !String !Symbol
-  | Mismatch !Term !Term
+  | TypeMismatch !Term !Term
   | NotACtr !String !Symbol
   | NotAUnionType !String !Symbol
-  | NotAFunction !Term !Type
+  | NotAFunction !Type
   | RuntimeError
   | UndefinedCtr !String
   | UndefinedOp !String
@@ -132,205 +129,162 @@ set _ _ [] = []
 set x y ((x', _) : kvs) | x == x' = (x, y) : kvs
 set x y (kv : kvs) = kv : set x y kvs
 
-eval :: Ops -> Env -> Term -> Term
-eval _ _ Knd = Knd
-eval _ _ IntT = IntT
-eval _ _ NumT = NumT
-eval _ _ (Int i) = Int i
-eval _ _ (Num n) = Num n
-eval _ _ (Typ t) = Typ t
-eval ops env (Ctr k a) = Ctr k (eval ops env a)
-eval ops env (Var x) = case lookup x env of
+freeVars :: Term -> [String]
+freeVars Typ = []
+freeVars IntT = []
+freeVars (Int _) = []
+freeVars NumT = []
+freeVars (Num _) = []
+freeVars (Var x) = [x]
+freeVars (Let env a) = filter (`notElem` map fst env) (freeVars a)
+freeVars (Lam x a) = delete x (freeVars a)
+freeVars (For x a) = delete x (freeVars a)
+freeVars (Fun a b) = freeVars a `union` freeVars b
+freeVars (App a b) = freeVars a `union` freeVars b
+freeVars (Ctr k _ a) = delete k (freeVars a)
+freeVars (Op _ args) = foldr (union . freeVars) [] args
+
+occurs :: String -> Term -> Bool
+occurs x a = x `elem` freeVars a
+
+reduce :: Ops -> Env -> Term -> Term
+reduce _ _ Typ = Typ
+reduce _ _ IntT = IntT
+reduce _ _ NumT = NumT
+reduce _ _ (Int i) = Int i
+reduce _ _ (Num n) = Num n
+reduce ops env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Var x
-  Just a -> eval ops ((x, Var x) : env) a
+  Just (Let env a) -> reduce ops env a
+  Just a -> reduce ops env a
   Nothing -> Var x
-eval ops env (For x a) = For x (eval ops ((x, Var x) : env) a)
-eval ops env (Lam x a) = Lam x (eval ops ((x, Var x) : env) a)
-eval ops env (Fix x a) = Fix x (eval ops ((x, Var x) : env) a)
-eval ops env (Fun a b) = Fun (eval ops env a) (eval ops env b)
-eval ops env (App a b) = case (eval ops env a, eval ops env b) of
-  (Lam x a, b) -> eval ops ((x, b) : env) a
-  (Fix x a, b) -> eval ops ((x, Fix x a) : env) (App a b)
-  (Case branches, Ctr k b) -> case lookup k branches of
-    Just a -> eval ops env (App b a)
-    Nothing -> error ("case not covered: " ++ k)
-  (a, b) -> App a b
-eval ops env (Case branches) = Case (second (eval ops env) <$> branches)
-eval ops env (Op op args) = do
-  let args' = eval ops env <$> args
+reduce ops env (Let env' a) = reduce ops (env ++ env') a
+reduce _ env (Lam x a) = Lam x (Let env a)
+reduce _ env (For x a) = For x (Let env a)
+reduce _ env (Fun a b) = Fun (Let env a) (Let env b)
+reduce ops env (App a b) = case reduce ops env a of
+  Lam x (Let env' a) -> reduce ops ((x, Let env b) : env') a
+  Ctr _ 0 a -> reduce ops [] (App a (Let env b))
+  Ctr k n a -> Ctr k (n - 1) (App a (Let env b))
+  a -> App a (Let env b)
+reduce _ env (Ctr k n a) = Ctr k n (Let env a)
+reduce ops env (Op op args) = do
+  let args' = reduce ops env <$> args
   case lookup op ops of
     Just f -> case f args' of
-      Just a -> eval ops env a
+      Just a -> reduce ops env a
       Nothing -> Op op args'
     Nothing -> Op op args'
 
-untyped :: (String, Symbol) -> (String, Term)
-untyped (x, Val a) = (x, a)
-untyped (x, Ann a _) = (x, a)
-untyped (x, Union alts _) = (x, Typ x)
-untyped (x, Alt (_, args) _) = (x, lam args $ Ctr x (Lam x $ app (Var x) (Var <$> args)))
+eval :: Ops -> Env -> Term -> Term
+eval ops env term = case reduce ops env term of
+  Typ -> Typ
+  IntT -> IntT
+  NumT -> NumT
+  Int i -> Int i
+  Num n -> Num n
+  Var x -> Var x
+  Let _ _ -> error "unreachable"
+  Lam x a -> Lam x (eval ops [(x, Var x)] a)
+  For x a -> For x (eval ops [(x, Var x)] a)
+  Fun a b -> Fun (eval ops [] a) (eval ops [] b)
+  App a b -> App (eval ops [] a) (eval ops [] b)
+  Ctr k n a -> Ctr k n (eval ops [(k, Var k)] a)
+  Op op args -> Op op (eval ops [] <$> args)
 
-solve :: Ops -> Context -> Term -> Term
-solve ops ctx = eval ops (untyped <$> ctx)
+apply :: Ops -> Context -> Term -> Term
+apply ops ctx = do
+  let toEnv :: (String, Symbol) -> (String, Term)
+      toEnv (x, Val a) = (x, a)
+      toEnv (x, Ann a _) = (x, a)
+  eval ops (toEnv <$> ctx)
 
-occurs :: String -> Term -> Bool
-occurs _ Knd = False
-occurs _ IntT = False
-occurs _ (Int _) = False
-occurs _ NumT = False
-occurs _ (Num _) = False
-occurs _ (Typ _) = False
-occurs x (Ctr _ a) = occurs x a
-occurs x (Var y) = x == y
-occurs x (For x' _) | x == x' = False
-occurs x (For _ a) = occurs x a
-occurs x (Lam x' _) | x == x' = False
-occurs x (Lam _ a) = occurs x a
-occurs x (Fix x' _) | x == x' = False
-occurs x (Fix _ a) = occurs x a
-occurs x (Case branches) = any (occurs x . snd) branches
-occurs x (Fun a b) = occurs x a || occurs x b
-occurs x (App a b) = occurs x a || occurs x b
-occurs x (Op _ args) = any (occurs x) args
-
-apply :: Ops -> (String, Term) -> Symbol -> Symbol
-apply ops sub (Val a) = Val (eval ops [sub] a)
-apply ops sub (Ann a b) = Ann (eval ops [sub] a) (eval ops [sub] b)
-apply ops sub (Union alts b) = Union alts (eval ops [sub] b)
-apply ops sub (Alt alt b) = Alt alt (eval ops [sub] b)
-
-unify :: Ops -> Context -> Term -> Term -> Either TypeError (Term, Context)
-unify ops ctx a b = case (solve ops ctx a, solve ops ctx b) of
-  (Knd, Knd) -> Right (Knd, ctx)
-  (IntT, IntT) -> Right (IntT, ctx)
-  (Int i, Int i') | i == i' -> Right (Int i, ctx)
-  (NumT, NumT) -> Right (NumT, ctx)
-  (Num n, Num n') | n == n' -> Right (Num n, ctx)
-  (Typ t, Typ t') | t == t' -> Right (Typ t, ctx)
-  (Ctr k a, Ctr k' b) | k == k' -> do
-    (a, ctx) <- unify ops ctx a b
-    Right (Ctr k a, ctx)
-  (Var x, Var x') | x == x' -> Right (Var x, ctx)
+unify :: Ops -> Context -> Term -> Term -> Either TypeError Context
+unify ops ctx a b = case (apply ops ctx a, apply ops ctx b) of
+  (Typ, Typ) -> Right ctx
+  (IntT, IntT) -> Right ctx
+  (Int i, Int i') | i == i' -> Right ctx
+  (NumT, NumT) -> Right ctx
+  (Num n, Num n') | n == n' -> Right ctx
+  (Var x, Var x') | x == x' -> Right ctx
   (Var x, b) | x `occurs` b -> Left (InfiniteType x b)
-  (Var x, b) -> Right (b, set x (Val b) (second (apply ops (x, b)) <$> ctx))
+  (Var x, b) -> Right (set x (Val b) ctx)
   (a, Var y) -> unify ops ctx (Var y) a
   (For x a, b) -> do
-    (a, ctx) <- unify ops ((x, Val (Var x)) : ctx) a b
-    case (a, pop x ctx) of
-      (a, ctx) | x `occurs` a -> Right (For x a, ctx)
-      (a, ctx) -> Right (a, ctx)
+    ctx <- unify ops ((x, Val (Var x)) : ctx) a b
+    Right (pop x ctx)
   (a, For x b) -> do
-    (a, ctx) <- unify ops ((x, Val (Var x)) : ctx) a b
-    case (a, pop x ctx) of
-      (a, ctx) | x `occurs` a -> Right (For x a, ctx)
-      (a, ctx) -> Right (a, ctx)
+    ctx <- unify ops ((x, Val (Var x)) : ctx) a b
+    Right (pop x ctx)
   (Fun a1 b1, Fun a2 b2) -> do
-    (a, ctx) <- unify ops ctx a1 a2
-    (b, ctx) <- unify ops ctx b1 b2
-    Right (Fun (solve ops ctx a) b, ctx)
+    ctx <- unify ops ctx a1 a2
+    unify ops ctx b1 b2
   (App a1 b1, App a2 b2) -> do
-    (a, ctx) <- unify ops ctx a1 a2
-    (b, ctx) <- unify ops ctx b1 b2
-    Right (App (solve ops ctx a) b, ctx)
-  (a, b) -> Left (Mismatch a b)
+    ctx <- unify ops ctx a1 a2
+    unify ops ctx b1 b2
+  (Ctr k _ a, b) -> do
+    ctx <- unify ops ((k, Val (Var k)) : ctx) a b
+    Right (pop k ctx)
+  (a, Ctr k _ b) -> do
+    ctx <- unify ops ((k, Val (Var k)) : ctx) a b
+    Right (pop k ctx)
+  (a, b) -> Left (TypeMismatch a b)
 
-inferType :: Ops -> Context -> Term -> Either TypeError (Type, Context)
-inferType _ ctx Knd = Right (Knd, ctx)
-inferType _ ctx IntT = Right (Knd, ctx)
-inferType _ ctx (Int _) = Right (IntT, ctx)
-inferType _ ctx NumT = Right (Knd, ctx)
-inferType _ ctx (Num _) = Right (NumT, ctx)
-inferType _ _ (Typ t) = Left (MissingType t)
-inferType _ _ (Ctr k _) = Left (MissingType k)
-inferType ops ctx (Var x) = case lookup x ctx of
-  Just (Val (Var x')) | x == x' -> do
-    let xT = newName (x ++ "T") (map fst ctx)
-    Right (Var xT, (xT, Val (Var xT)) : set x (Ann (Var x) (Var xT)) ctx)
-  Just (Val a) -> inferType ops ctx a
-  Just (Ann (Var x') b) | x == x' -> Right (solve ops ctx b, ctx)
+infer :: Ops -> Context -> Term -> Either TypeError (Type, Context)
+infer _ ctx Typ = Right (Typ, ctx)
+infer _ ctx IntT = Right (Typ, ctx)
+infer _ ctx (Int _) = Right (IntT, ctx)
+infer _ ctx NumT = Right (Typ, ctx)
+infer _ ctx (Num _) = Right (NumT, ctx)
+infer ops ctx (Var x) = case lookup x ctx of
+  Just (Val (Var x')) | x == x' -> Right (Typ, ctx)
+  Just (Val a) -> infer ops ctx a
+  Just (Ann (Var x') b) | x == x' -> Right (apply ops ctx b, ctx)
   Just (Ann a b) -> do
     ctx <- checkType ops ctx a b
-    Right (solve ops ctx b, ctx)
-  Just (Union alts b) -> do
-    -- TODO: check alts
-    Right (solve ops ctx b, ctx)
-  Just (Alt (t, args) b) -> case lookup t ctx of
-    Just (Union alts _) | x `elem` alts -> do
-      -- TODO: type check against b
-      Right (solve ops ctx b, ctx)
-    Just (Union alts _) -> Left (CtrNotInType x t alts)
-    Just sym -> Left (NotAUnionType t sym)
-    Nothing -> Left (UndefinedType t)
+    Right (apply ops ctx b, ctx)
   Nothing -> Left (UndefinedVar x)
-inferType ops ctx (For x a) = do
-  (aT, ctx) <- inferType ops ((x, Val (Var x)) : ctx) a
-  case (aT, pop x ctx) of
-    (Var xT, ctx) -> Right (For xT $ Var xT, ctx)
-    (aT, ctx) -> Right (aT, ctx)
-inferType ops ctx (Lam x a) = do
-  (t2, ctx) <- inferType ops ((x, Val (Var x)) : ctx) a
-  (t1, ctx) <- inferType ops ctx (Var x)
+infer ops ctx (Let env a) = infer ops (ctx ++ map (second Val) env) a
+infer ops ctx (Lam x a) = do
+  let xT = newName (x ++ "T") (map fst ctx)
+  (t2, ctx) <- infer ops ((xT, Val (Var xT)) : (x, Ann (Var x) (Var xT)) : ctx) a
+  (t1, ctx) <- infer ops ctx (Var x)
   case (t1, pop x ctx) of
     (Var xT, ctx) -> Right (For xT $ Fun (Var xT) t2, ctx)
     (t1, ctx) -> Right (Fun t1 t2, ctx)
-inferType ops ctx (Fix x a) | x `occurs` a = do
-  (t, ctx) <- inferType ops ((x, Val (Var x)) : ctx) a
-  Right (t, pop x ctx)
-inferType ops ctx (Fix _ a) = inferType ops ctx a
-inferType ops ctx (Fun a b) = do
-  ctx <- checkType ops ctx a Knd
-  ctx <- checkType ops ctx b Knd
-  Right (Knd, ctx)
-inferType ops ctx (App a b) = do
-  (ta, ctx) <- inferType ops ctx a
-  case instantiate ctx ta of
-    (xs, Var y, ctx) -> do
-      let y' = newName y (map fst ctx)
-      Right (For y' $ Var y', foldr pop ctx xs)
-    (xs, Fun t1 t2, ctx) -> do
-      (tb, ctx) <- inferType ops ctx b
-      (_, ctx) <- unify ops ctx tb t1
-      Right (for xs $ solve ops ctx t2, foldr pop ctx xs)
-    (_, ta, _) -> Left (NotAFunction a ta)
-inferType _ _ (Case []) = Left EmptyCase
-inferType ops ctx (Case [(k, b)]) = case lookup k ctx of
-  Just (Alt (t, args) t1) -> do
-    -- TODO: clean up
-    (xs, a, b, ctx) <- expand ctx k args b
-    (t1, ctx) <- inferType ops ctx a
-    (t2, ctx) <- inferType ops ctx b
-    let (ys, t1', _) = instantiate ctx t1
-    Right (for ys $ solve ops ctx (Fun t1' t2), foldr pop ctx xs)
-  Just sym -> Left (NotACtr k sym)
-  Nothing -> Left (UndefinedCtr k)
-inferType ops ctx (Case (branch : branches)) = do
-  (a, ctx) <- inferType ops ctx (Case [branch])
-  (b, ctx) <- inferType ops ctx (Case branches)
-  unify ops ctx a b
-inferType ops ctx (Op op args) = case lookup op ctx of
+infer ops ctx (For x a) = do
+  let xT = newName (x ++ "T") (map fst ctx)
+  (aT, ctx) <- infer ops ((xT, Val (Var xT)) : (x, Ann (Var x) (Var xT)) : ctx) a
+  case (aT, pop x ctx) of
+    (Var xT, ctx) -> Right (For xT $ Var xT, ctx)
+    (aT, ctx) -> Right (aT, ctx)
+infer ops ctx (Fun a b) = do
+  ctx <- checkType ops ctx a Typ
+  ctx <- checkType ops ctx b Typ
+  Right (Typ, ctx)
+infer ops ctx (App a b) = do
+  let xT = newName "t" (map fst ctx)
+  ctx <- Right ((xT, Val (Var xT)) : ctx)
+  (ta, ctx) <- infer ops ctx a
+  (tb, ctx) <- infer ops ctx b
+  ctx <- unify ops ctx (Fun tb (Var xT)) ta
+  let t = apply ops ctx (Var xT)
+  Right (for (freeVars t) t, pop xT ctx)
+infer ops ctx (Ctr k _ a) = do
+  let xT = newName (k ++ "T") (map fst ctx)
+  (ta, ctx) <- infer ops ((xT, Val (Var xT)) : (k, Ann (Var k) (Var xT)) : ctx) a
+  Right (ta, pop k ctx)
+infer ops ctx (Op op args) = case lookup op ctx of
   Just (Ann _ b) -> do
-    (bT, ctx) <- inferType ops ((op, Ann (Var op) b) : ctx) (app (Var op) args)
+    (bT, ctx) <- infer ops ((op, Ann (Var op) b) : ctx) (app (Var op) args)
     Right (bT, pop op ctx)
   Just sym -> Left (InvalidOp op sym)
   Nothing -> Left (UndefinedOp op)
 
-expand :: Context -> String -> [String] -> Term -> Either TypeError ([String], Term, Term, Context)
-expand ctx k [] b = Right ([], Var k, b, ctx)
-expand ctx k (_ : xs) (Lam y b) = do
-  (ys, a, b, ctx) <- expand ctx k xs b
-  Right (y : ys, App a (Var y), b, (y, Val (Var y)) : ctx)
-expand _ k _ _ = Left (CaseTooFewArguments k)
-
-instantiate :: Context -> Type -> ([String], Type, Context)
-instantiate ctx (For x a) = case instantiate ctx a of
-  (xs, a, ctx) -> (x : xs, a, (x, Val (Var x)) : ctx)
-instantiate ctx a = ([], a, ctx)
-
 checkType :: Ops -> Context -> Term -> Type -> Either TypeError Context
 checkType ops ctx a b = do
-  (ta, ctx) <- inferType ops ctx a
-  (_, ctx) <- unify ops ctx ta b
-  Right ctx
+  (ta, ctx) <- infer ops ctx a
+  unify ops ctx ta b
 
 newName :: String -> [String] -> String
 newName x existing = do
