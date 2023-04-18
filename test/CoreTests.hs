@@ -30,18 +30,14 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
       eq [Int _, Int _] = Just (Var "False")
       eq _ = Nothing
 
+  let boolT = Ctr "Bool" 0 (For "a" $ fun [Var "a", Var "a"] (Var "a"))
+  let false = Ctr "False" 0 $ lam ["F", "T"] $ Var "F"
+  let true = Ctr "True" 0 $ lam ["F", "T"] $ Var "T"
   let boolCtx :: Context
       boolCtx =
-        [ ("Bool", Union ["False", "True"] Knd),
-          ("False", Alt ("Bool", []) (Var "Bool")),
-          ("True", Alt ("Bool", []) (Var "Bool"))
-        ]
-
-  let maybeCtx :: Context
-      maybeCtx =
-        [ ("Maybe", Union ["Nothing", "Just"] (Fun Knd Knd)),
-          ("Nothing", Alt ("Maybe", []) (For "a" $ App (Var "Maybe") (Var "a"))),
-          ("Just", Alt ("Maybe", ["x"]) (For "a" $ Fun (Var "a") (App (Var "Maybe") (Var "a"))))
+        [ ("Bool", Ann boolT Typ),
+          ("False", Ann false (Var "Bool")),
+          ("True", Ann true (Var "Bool"))
         ]
 
   let opsCtx :: Context
@@ -65,8 +61,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
           ]
 
     let eval' = eval ops env
-    eval' Knd `shouldBe` Knd
-    eval' (Typ "T") `shouldBe` Typ "T"
+    eval' Typ `shouldBe` Typ
     eval' IntT `shouldBe` IntT
     eval' NumT `shouldBe` NumT
     eval' (Int 1) `shouldBe` Int 1
@@ -91,11 +86,11 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
   -- it "☯ occurs" $ do
   -- it "☯ unify" $ do
 
-  it "☯ inferType" $ do
+  it "☯ infer" $ do
     let a = Var "a"
     let (x, y) = (Var "x", Var "y")
     let xT = Var "xT"
-    let (f, g, h) = (Var "f", Var "g", Var "h")
+    let (f, g) = (Var "f", Var "g")
     let ctx :: Context
         ctx =
           [ ("inferred", Val (Int 1)),
@@ -107,91 +102,136 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
             ("y", Val (Num 1.1)),
             ("f", Ann f (Fun IntT NumT)),
             ("g", Ann g (For "a" $ Fun a a)),
-            ("h", Val (Var "h")),
             ("op0", Ann (Var "op0") IntT),
             ("op1", Ann (Var "op1") (Fun IntT NumT))
           ]
 
-    let infer = inferType ops ctx
-    infer Knd `shouldBe` Right (Knd, ctx)
-    infer IntT `shouldBe` Right (Knd, ctx)
-    infer (Int 1) `shouldBe` Right (IntT, ctx)
-    infer NumT `shouldBe` Right (Knd, ctx)
-    infer (Num 1) `shouldBe` Right (NumT, ctx)
-    infer (Var "undefined") `shouldBe` Left (UndefinedVar "undefined")
-    infer (Var "inferred") `shouldBe` Right (IntT, ctx)
-    infer (Var "mismatch") `shouldBe` Left (Mismatch IntT NumT)
-    infer (Var "match") `shouldBe` Right (IntT, ctx)
-    infer (Var "typed") `shouldBe` Right (IntT, ctx)
-    infer (Var "free") `shouldBe` Right (Var "freeT", ("freeT", Val (Var "freeT")) : set "free" (Ann (Var "free") (Var "freeT")) ctx)
-    infer (Var "x") `shouldBe` Right (IntT, ctx)
-    infer (Var "y") `shouldBe` Right (NumT, ctx)
-    infer (Var "z") `shouldBe` Left (UndefinedVar "z")
-    infer (Var "f") `shouldBe` Right (Fun IntT NumT, ctx)
-    infer (Var "g") `shouldBe` Right (For "a" $ Fun a a, ctx)
-    infer (For "x" (Int 1)) `shouldBe` Right (IntT, ctx)
-    infer (For "x" x) `shouldBe` Right (For "xT" xT, ctx)
-    infer (Lam "x" x) `shouldBe` Right (For "xT" $ Fun xT xT, ctx)
-    infer (Fun (Int 1) (Num 1.1)) `shouldBe` Left (Mismatch IntT Knd)
-    infer (Fun IntT (Num 1.1)) `shouldBe` Left (Mismatch NumT Knd)
-    infer (Fun IntT NumT) `shouldBe` Right (Knd, ctx)
-    infer (App x y) `shouldBe` Left (NotAFunction x IntT)
-    infer (App f y) `shouldBe` Left (Mismatch NumT IntT)
-    infer (App f x) `shouldBe` Right (NumT, ctx)
-    infer (App g x) `shouldBe` Right (IntT, ctx)
-    infer (App h x) `shouldBe` Right (For "hT1" (Var "hT1"), ("hT", Val (Var "hT")) : set "h" (Ann (Var "h") (Var "hT")) ctx)
-    infer (Op "op0" []) `shouldBe` Right (IntT, ctx)
-    infer (Op "op0" [Num 1.1]) `shouldBe` Left (NotAFunction (Var "op0") IntT)
-    infer (Op "op1" [Num 1.1]) `shouldBe` Left (Mismatch NumT IntT)
-    infer (Op "op1" [Int 1]) `shouldBe` Right (NumT, ctx)
+    let infer' = infer ops ctx
+    infer' Typ `shouldBe` Right (Typ, ctx)
+    infer' IntT `shouldBe` Right (Typ, ctx)
+    infer' (Int 1) `shouldBe` Right (IntT, ctx)
+    infer' NumT `shouldBe` Right (Typ, ctx)
+    infer' (Num 1) `shouldBe` Right (NumT, ctx)
+    infer' (Var "undefined") `shouldBe` Left (UndefinedVar "undefined")
+    infer' (Var "inferred") `shouldBe` Right (IntT, ctx)
+    infer' (Var "mismatch") `shouldBe` Left (TypeMismatch IntT NumT)
+    infer' (Var "match") `shouldBe` Right (IntT, ctx)
+    infer' (Var "typed") `shouldBe` Right (IntT, ctx)
+    infer' (Var "free") `shouldBe` Right (Typ, ctx)
+    infer' (Var "x") `shouldBe` Right (IntT, ctx)
+    infer' (Var "y") `shouldBe` Right (NumT, ctx)
+    infer' (Var "z") `shouldBe` Left (UndefinedVar "z")
+    infer' (Var "f") `shouldBe` Right (Fun IntT NumT, ctx)
+    infer' (Var "g") `shouldBe` Right (For "a" $ Fun a a, ctx)
+    infer' (For "x" (Int 1)) `shouldBe` Right (IntT, ctx)
+    infer' (For "x" x) `shouldBe` Right (For "xT" xT, ctx)
+    infer' (Lam "x" x) `shouldBe` Right (For "xT" $ Fun xT xT, ctx)
+    infer' (Fun (Int 1) (Num 1.1)) `shouldBe` Left (TypeMismatch IntT Typ)
+    infer' (Fun IntT (Num 1.1)) `shouldBe` Left (TypeMismatch NumT Typ)
+    infer' (Fun IntT NumT) `shouldBe` Right (Typ, ctx)
+    infer' (App x y) `shouldBe` Left (TypeMismatch (Fun NumT (Var "t")) IntT)
+    infer' (App f y) `shouldBe` Left (TypeMismatch NumT IntT)
+    infer' (App f x) `shouldBe` Right (NumT, ctx)
+    infer' (App g x) `shouldBe` Right (IntT, ctx)
+    infer' (Op "op0" []) `shouldBe` Right (IntT, ctx)
+    infer' (Op "op0" [Num 1.1]) `shouldBe` Left (TypeMismatch (Fun NumT (Var "t")) IntT)
+    infer' (Op "op1" [Num 1.1]) `shouldBe` Left (TypeMismatch NumT IntT)
+    infer' (Op "op1" [Int 1]) `shouldBe` Right (NumT, ctx)
 
   it "☯ Bool" $ do
-    let f = Var "f"
-    let caseOf = App (Case [("False", Int 0), ("True", Int 1)])
-    let ctx :: Context
-        ctx =
-          ("f", Val (Lam "x" $ caseOf (Var "x"))) :
-          boolCtx
+    let ctx = boolCtx
 
-    let eval' = solve ops ctx
-    eval' (App f $ Var "False") `shouldBe` Int 0
-    eval' (App f $ Var "True") `shouldBe` Int 1
-    eval' (caseOf (Var "False")) `shouldBe` Int 0
-    eval' (caseOf (Var "True")) `shouldBe` Int 1
+    let eval' = apply ops ctx
+    eval' (app (Var "False") [Int 0, Int 1]) `shouldBe` Int 0
+    eval' (app (Var "True") [Int 0, Int 1]) `shouldBe` Int 1
 
-    let infer = inferType ops ctx
-    infer (Var "Bool") `shouldBe` Right (Knd, ctx)
-    infer (Var "False") `shouldBe` Right (Typ "Bool", ctx)
-    infer (Var "True") `shouldBe` Right (Typ "Bool", ctx)
-    infer (Case [("False", Int 0), ("True", Int 1)]) `shouldBe` Right (Fun (Typ "Bool") IntT, ctx)
-    infer (caseOf (Num 1.1)) `shouldBe` Left (Mismatch NumT (Typ "Bool"))
-    infer (caseOf (Var "True")) `shouldBe` Right (IntT, ctx)
+    let infer' = infer ops ctx
+    infer' (Var "Bool") `shouldBe` Right (Typ, ctx)
+    infer' (Var "False") `shouldBe` Right (boolT, ctx)
+    infer' (Var "True") `shouldBe` Right (boolT, ctx)
+    infer' (app (Var "False") [Int 0]) `shouldBe` Right (Fun IntT IntT, ctx)
+    infer' (app (Var "True") [Int 0, Int 1]) `shouldBe` Right (IntT, ctx)
 
   it "☯ Maybe" $ do
-    let (f, a) = (Var "f", Var "a")
-    let caseOf = App (Case [("Nothing", Int 0), ("Just", Lam "x" $ Var "x")])
+    let (a, b) = (Var "a", Var "b")
+    let maybeDef = Lam "a" $ For "b" $ fun [b, Fun a b] b
+    let nothingDef = lam ["N", "J"] $ Var "N"
+    let justDef = lam ["x", "N", "J"] $ App (Var "J") (Var "x")
+    let maybeT a = Ctr "Maybe" 0 (eval ops [] $ App maybeDef a)
+    let nothing = Ctr "Nothing" 0 (lam ["N", "J"] $ Var "N")
+    let just a = Ctr "Just" 0 (eval ops [] $ App justDef a)
     let ctx :: Context
         ctx =
-          ("f", Val (Lam "x" $ caseOf (Var "x"))) :
-          maybeCtx
+          [ ("Maybe", Ann (Ctr "Maybe" 1 maybeDef) (Fun Typ Typ)),
+            ("Nothing", Ann (Ctr "Nothing" 0 nothingDef) (For "a" $ App (Var "Maybe") a)),
+            ("Just", Ann (Ctr "Just" 1 justDef) (For "a" $ Fun a (App (Var "Maybe") a)))
+          ]
 
-    let eval' = solve ops ctx
-    eval' (App f $ Var "Nothing") `shouldBe` Int 0
-    eval' (App f $ App (Var "Just") (Int 1)) `shouldBe` Int 1
-    eval' (caseOf (Var "Nothing")) `shouldBe` Int 0
-    eval' (caseOf (App (Var "Just") (Int 1))) `shouldBe` Int 1
+    let eval' = apply ops ctx
+    eval' (Var "Nothing") `shouldBe` nothing
+    eval' (app (Var "Just") [Int 1]) `shouldBe` just (Int 1)
+    eval' (app (Var "Nothing") [Int 0, Lam "x" $ Var "x"]) `shouldBe` Int 0
+    eval' (app (Var "Just") [Int 1, Int 0, Lam "x" $ Var "x"]) `shouldBe` Int 1
 
-    let infer = inferType ops ctx
-    infer (Var "Maybe") `shouldBe` Right (Fun Knd Knd, ctx)
-    infer (Var "Nothing") `shouldBe` Right (For "a" $ App (Typ "Maybe") a, ctx)
-    infer (Var "Just") `shouldBe` Right (For "a" $ Fun a (App (Typ "Maybe") a), ctx)
-    infer (App (Var "Maybe") IntT) `shouldBe` Right (Knd, ctx)
-    infer (App (Var "Just") (Int 1)) `shouldBe` Right (App (Typ "Maybe") IntT, ctx)
-    infer (Case [("Nothing", Int 0)]) `shouldBe` Right (For "a" $ Fun (App (Typ "Maybe") a) IntT, ctx)
-    infer (Case [("Just", Lam "y" $ Var "y")]) `shouldBe` Right (For "a" $ Fun (App (Typ "Maybe") a) a, ctx)
-    infer (Case [("Nothing", Int 0), ("Just", Lam "x" $ Var "x")]) `shouldBe` Right (Fun (App (Typ "Maybe") IntT) IntT, ctx)
-    infer (caseOf (App (Var "Just") (Int 2))) `shouldBe` Right (IntT, ctx)
-    infer (caseOf (App (Var "Just") (Num 2.2))) `shouldBe` Left (Mismatch NumT IntT)
+    let infer' = infer ops ctx
+    infer' (Var "Maybe") `shouldBe` Right (Fun Typ Typ, ctx)
+    infer' (Var "Nothing") `shouldBe` Right (For "a" $ maybeT a, ctx)
+    infer' (Var "Just") `shouldBe` Right (For "a" $ Fun a (maybeT a), ctx)
+    infer' (app (Var "Maybe") [IntT]) `shouldBe` Right (Typ, ctx)
+    infer' (app (Var "Just") [Int 1]) `shouldBe` Right (maybeT IntT, ctx)
+    infer' (app (Var "Just") [Int 1, Int 0, Lam "x" $ Var "x"]) `shouldBe` Right (IntT, ctx)
+    infer' (app (Var "Just") [Num 1.1, Int 0, Lam "x" $ Var "x"]) `shouldBe` Left (TypeMismatch NumT IntT)
+
+  it "☯ Nat" $ do
+    let a = Var "a"
+    let natDef = For "a" $ fun [a, Fun (Var "Nat") a] a
+    let zeroDef = lam ["Z", "S"] (Var "Z")
+    let succDef = lam ["n", "Z", "S"] (app (Var "S") [Var "n"])
+    let ctx :: Context
+        ctx =
+          [ ("Nat", Ann (Ctr "Nat" 0 natDef) Typ),
+            ("Zero", Ann (Ctr "Zero" 0 zeroDef) (Var "Nat")),
+            ("Succ", Ann (Ctr "Succ" 1 succDef) (Fun (Var "Nat") (Var "Nat")))
+          ]
+
+    let eval' = apply ops ctx
+    eval' (app (Var "Zero") [Int 0, Lam "n" $ Int 1]) `shouldBe` Int 0
+    eval' (app (Var "Succ") [Var "Zero", Int 0, Lam "n" $ Int 1]) `shouldBe` Int 1
+
+    let infer' = infer ops ctx
+    infer' (Var "Nat") `shouldBe` Right (Typ, ctx)
+    infer' (Var "Zero") `shouldBe` Right (Ctr "Nat" 0 natDef, ctx)
+    infer' (Var "Succ") `shouldBe` Right (Fun (Ctr "Nat" 0 natDef) (Ctr "Nat" 0 natDef), ctx)
+    infer' (App (Var "Succ") (Var "Zero")) `shouldBe` Right (Ctr "Nat" 0 natDef, ctx)
+
+  it "☯ Vec" $ do
+    let (a, b) = (Var "a", Var "b")
+    let vecDef = lam ["n", "a"] (For "b" $ fun [b, fun [a, app (Var "Vec") [Var "n", a]] b] b)
+    let vecT n a = Ctr "Vec" 0 (eval ops [] $ app vecDef [n, a])
+    let nilDef = lam ["N", "C"] (Var "N")
+    let consDef = lam ["x", "xs", "N", "C"] (app (Var "C") [Var "x", Var "xs"])
+    let ctx :: Context
+        ctx =
+          [ ("Vec", Ann (Ctr "Vec" 2 vecDef) (fun [IntT, Typ] Typ)),
+            ("Nil", Ann (Ctr "Nil" 0 nilDef) (for ["a"] $ app (Var "Vec") [Int 0, Var "a"])),
+            ("Cons", Ann (Ctr "Cons" 2 consDef) (for ["n", "a"] $ fun [Var "a", app (Var "Vec") [Var "n", Var "a"]] (app (Var "Vec") [Op "+" [Var "n", Int 1], Var "a"])))
+          ]
+
+    let eval' = apply ops ctx
+    eval' (app (Var "Nil") [Int 0, lam ["x", "xs"] $ Var "x"]) `shouldBe` Int 0
+    eval' (app (Var "Cons") [Int 1, Var "Nil", Int 0, lam ["x", "xs"] $ Var "x"]) `shouldBe` Int 1
+
+    let infer' = infer ops ctx
+    infer' (Var "Vec") `shouldBe` Right (fun [IntT, Typ] Typ, ctx)
+    infer' (app (Var "Vec") [Int 0]) `shouldBe` Right (fun [Typ] Typ, ctx)
+    infer' (app (Var "Vec") [Int 0, NumT]) `shouldBe` Right (Typ, ctx)
+    infer' (app (Var "Nil") []) `shouldBe` Right (For "a" $ vecT (Int 0) a, ctx)
+    infer' (app (Var "Cons") []) `shouldBe` Right (for ["n", "a"] $ fun [a, vecT (Var "n") a] (vecT (Op "+" [Var "n", Int 1]) a), ctx)
+    infer' (app (Var "Cons") [Num 1.1]) `shouldBe` Right (For "n" $ fun [vecT (Var "n") NumT] (vecT (Op "+" [Var "n", Int 1]) NumT), ctx)
+    infer' (app (Var "Cons") [Num 1.1, Var "Nil"]) `shouldBe` Right (vecT (Int 1) NumT, ctx)
+    infer' (app (Var "Nil") [Int 0, lam ["y", "ys"] $ Var "y"]) `shouldBe` Right (IntT, ctx)
+    infer' (app (Var "Cons") [Int 1, Var "Nil", Int 0, lam ["y", "ys"] $ Var "y"]) `shouldBe` Right (IntT, ctx)
+    infer' (app (Var "Cons") [Num 1.1, Var "Nil", Int 0, lam ["y", "ys"] $ Var "y"]) `shouldBe` Left (TypeMismatch NumT IntT)
 
   it "☯ factorial" $ do
     let (i0, i1) = (Int 0, Int 1)
@@ -202,11 +242,11 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
 
     let ctx :: Context
         ctx =
-          ("f", Val (Fix "f" $ Lam "n" $ App (Case [("True", Int 1), ("False", n `mul` App f (n `sub` i1))]) (eq n i0))) :
+          ("f", Val $ Ctr "f" 0 $ Lam "n" $ app (eq n i0) [n `mul` App f (n `sub` i1), Int 1]) :
           boolCtx ++ opsCtx
 
-    let eval' = solve ops ctx
-    eval' (Var "f") `shouldBe` Fix "f" (Lam "n" $ App (Case [("True", Int 1), ("False", Op "*" [n, App f (Op "-" [n, i1])])]) (Op "==" [n, i0]))
+    let eval' = apply ops ctx
+    eval' (Var "f") `shouldBe` Ctr "f" 0 (Lam "n" $ app (Op "==" [n, i0]) [Op "*" [n, App f (Op "-" [n, i1])], Int 1])
     -- eval' (App f n) `shouldBe` app (Op "==" [n, i0]) [Int 0, Op "*" [n, App f (Op "-" [n, i1])]]
     eval' (App f (Int 0)) `shouldBe` Int 1
     eval' (App f (Int 1)) `shouldBe` Int 1
@@ -215,6 +255,10 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     eval' (App f (Int 4)) `shouldBe` Int 24
     eval' (App f (Int 5)) `shouldBe` Int 120
 
-    let infer = inferType ops ctx
-    infer (Var "f") `shouldBe` Right (Fun IntT IntT, ctx)
-    infer (App f (Int 0)) `shouldBe` Right (IntT, ctx)
+    let infer' = infer ops ctx
+    infer' (Lam "n" $ n `sub` i1) `shouldBe` Right (Fun IntT IntT, ctx)
+    infer' (Var "f") `shouldBe` Right (Fun IntT IntT, ctx)
+    infer' (App f (Int 0)) `shouldBe` Right (IntT, ctx)
+
+  it "☯ TODO" $ do
+    True `shouldBe` True
