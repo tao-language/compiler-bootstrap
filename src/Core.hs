@@ -89,24 +89,16 @@ data Symbol
 type Context = [(String, Symbol)]
 
 data TypeError
-  = EmptyCase
-  | CaseTooFewArguments !String
-  | FixNotInType !String !String ![String]
-  | MissingType !Term
-  | InfiniteType !String !Term
-  | InvalidFix !String !Symbol
+  = InfiniteType !String !Term
   | InvalidOp !String !Symbol
-  | TypeMismatch !Term !Term
-  | NotAFix !String !Symbol
-  | NotAUnionType !String !Symbol
-  | NotAFunction !Type
   | NotACtr !String !Symbol
-  | RuntimeError
-  | UndefinedFix !String
-  | UndefinedOp !String
-  | UndefinedVar !String
-  | UndefinedType !String
+  | NotAFunction !Type
+  | NotAUnionType !String !Symbol
+  | TypeMismatch !Term !Term
   | UndefinedCtr !String
+  | UndefinedOp !String
+  | UndefinedType !String
+  | UndefinedVar !String
   deriving (Eq, Show)
 
 lam :: [String] -> Term -> Term
