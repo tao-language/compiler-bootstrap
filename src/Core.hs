@@ -82,8 +82,8 @@ type Env = [(String, Term)]
 data Symbol
   = Val !Term
   | Ann !Term !Type
-  | Ctr !String !String ![(String, Type)] !Type
-  | Union ![(String, Type)] ![String]
+  | UnionType ![(String, Type)] ![String]
+  | UnionAlt !String ![(String, Type)] !Type
   deriving (Eq, Show)
 
 type Context = [(String, Symbol)]
@@ -91,13 +91,13 @@ type Context = [(String, Symbol)]
 data TypeError
   = InfiniteType !String !Term
   | InvalidOp !String !Symbol
-  | NotACtr !String !Symbol
   | NotAFunction !Type
+  | NotAUnionAlt !String !Symbol
   | NotAUnionType !String !Symbol
   | TypeMismatch !Term !Term
-  | UndefinedCtr !String
   | UndefinedOp !String
-  | UndefinedType !String
+  | UndefinedUnionAlt !String
+  | UndefinedUnionType !String
   | UndefinedVar !String
   deriving (Eq, Show)
 
@@ -198,15 +198,15 @@ eval ops env term = case reduce ops env term of
 symbolToTerm :: Context -> (String, Symbol) -> (String, Term)
 symbolToTerm _ (x, Val a) = (x, a)
 symbolToTerm _ (x, Ann a _) = (x, a)
-symbolToTerm ctx (_, Ctr t k args _) = do
+symbolToTerm ctx (k, UnionAlt t args _) = do
   let xs = fst <$> args
   let alts = case lookup t ctx of
-        Just (Union _ alts) -> alts
+        Just (UnionType _ alts) -> alts
         _else -> [k]
   (k, lam (xs ++ alts) (app (Var k) (Var <$> xs)))
-symbolToTerm _ (x, Union args _) = do
+symbolToTerm _ (t, UnionType args _) = do
   let xs = fst <$> args
-  (x, lam xs (Typ x (Var <$> xs)))
+  (t, lam xs (Typ t (Var <$> xs)))
 
 ctxToEnv :: Context -> Env
 ctxToEnv ctx = symbolToTerm ctx <$> ctx
@@ -270,15 +270,15 @@ expandType ops ctx t args = do
 
 findType :: Context -> String -> Either TypeError ([(String, Type)], [String])
 findType ctx t = case lookup t ctx of
-  Just (Union args alts) -> Right (args, alts)
+  Just (UnionType args alts) -> Right (args, alts)
   Just a -> Left (NotAUnionType t a)
-  Nothing -> Left (UndefinedType t)
+  Nothing -> Left (UndefinedUnionType t)
 
 findAlt :: Context -> String -> Either TypeError ([(String, Type)], Type)
 findAlt ctx k = case lookup k ctx of
-  Just (Ctr _ _ args retT) -> Right (args, retT)
-  Just a -> Left (NotACtr k a)
-  Nothing -> Left (UndefinedCtr k)
+  Just (UnionAlt _ args retT) -> Right (args, retT)
+  Just a -> Left (NotAUnionAlt k a)
+  Nothing -> Left (UndefinedUnionAlt k)
 
 infer :: Ops -> Context -> Term -> Either TypeError (Type, Context)
 infer _ ctx Knd = Right (Knd, ctx)
@@ -293,12 +293,12 @@ infer ops ctx (Var x) = case lookup x ctx of
   Just (Ann a b) -> do
     ctx <- checkType ops ctx a b
     Right (apply ops ctx b, ctx)
-  Just (Ctr t _ args retT) -> do
+  Just (UnionAlt t args retT) -> do
     -- TODO: check `alts`
     (typeArgs, alts) <- findType ctx t
     let altType = for (fst <$> typeArgs) (fun (snd <$> args) retT)
     Right (apply ops ctx altType, ctx)
-  Just (Union args alts) -> do
+  Just (UnionType args alts) -> do
     -- TODO: check `alts`
     Right (fun (snd <$> args) Knd, ctx)
   Nothing -> Left (UndefinedVar x)

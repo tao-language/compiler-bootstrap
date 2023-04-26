@@ -37,9 +37,9 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
   let boolT = Typ "Bool" []
   let boolCtx :: Context
       boolCtx =
-        [ ("Bool", Union [] ["False", "True"]),
-          ("False", Ctr "Bool" "False" [] (Var "Bool")),
-          ("True", Ctr "Bool" "True" [] (Var "Bool"))
+        [ ("Bool", UnionType [] ["False", "True"]),
+          ("False", UnionAlt "Bool" [] (Var "Bool")),
+          ("True", UnionAlt "Bool" [] (Var "Bool"))
         ]
 
   let opsCtx :: Context
@@ -159,9 +159,9 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     let maybeT a = Typ "Maybe" [a]
     let ctx :: Context
         ctx =
-          [ ("Maybe", Union [("a", Knd)] ["Nothing", "Just"]),
-            ("Nothing", Ctr "Maybe" "Nothing" [] (App (Var "Maybe") a)),
-            ("Just", Ctr "Maybe" "Just" [("x", a)] (App (Var "Maybe") a))
+          [ ("Maybe", UnionType [("a", Knd)] ["Nothing", "Just"]),
+            ("Nothing", UnionAlt "Maybe" [] (App (Var "Maybe") a)),
+            ("Just", UnionAlt "Maybe" [("x", a)] (App (Var "Maybe") a))
           ]
 
     let eval' = apply ops ctx
@@ -181,9 +181,9 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     let natT = Typ "Nat" []
     let ctx :: Context
         ctx =
-          [ ("Nat", Union [] ["Zero", "Succ"]),
-            ("Zero", Ctr "Nat" "Zero" [] (Var "Nat")),
-            ("Succ", Ctr "Nat" "Succ" [("n", Var "Nat")] (Var "Nat"))
+          [ ("Nat", UnionType [] ["Zero", "Succ"]),
+            ("Zero", UnionAlt "Nat" [] (Var "Nat")),
+            ("Succ", UnionAlt "Nat" [("n", Var "Nat")] (Var "Nat"))
           ]
 
     let eval' = apply ops ctx
@@ -201,9 +201,9 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     let vecT n' a' = Typ "Vec" [n', a']
     let ctx :: Context
         ctx =
-          [ ("Vec", Union [("n", IntT), ("a", Knd)] ["Nil", "Cons"]),
-            ("Nil", Ctr "Vec" "Nil" [] (app (Var "Vec") [Int 0, a])),
-            ("Cons", Ctr "Vec" "Cons" [("x", a), ("xs", app (Var "Vec") [n, a])] (app (Var "Vec") [Op "+" [n, Int 1], a]))
+          [ ("Vec", UnionType [("n", IntT), ("a", Knd)] ["Nil", "Cons"]),
+            ("Nil", UnionAlt "Vec" [] (app (Var "Vec") [Int 0, a])),
+            ("Cons", UnionAlt "Vec" [("x", a), ("xs", app (Var "Vec") [n, a])] (app (Var "Vec") [Op "+" [n, Int 1], a]))
           ]
 
     let eval' = apply ops ctx
