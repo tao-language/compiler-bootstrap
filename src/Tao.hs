@@ -79,11 +79,12 @@ for xs a = foldr For a xs
 app :: Expr -> [Expr] -> Expr
 app = foldl' App
 
-fun :: [Type] -> Type -> Type
-fun ts t = foldr Fun t ts
+fun :: [Expr] -> Expr -> Expr
+fun args b = foldr Fun b args
 
 lam :: [Pattern] -> Expr -> Expr
-lam ps a = Match [Case ps a]
+lam [] b = b
+lam ps b = Match [Case ps b]
 
 let' :: [(Pattern, Expr)] -> Expr -> Expr
 let' [] b = b
