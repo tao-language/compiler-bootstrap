@@ -60,9 +60,11 @@ showPrec p (Lam x a) = showPrefix p 2 ("\\" ++ x ++ " -> ") a
 showPrec p (For x a) = showPrefix p 2 ("@" ++ x ++ ". ") a
 showPrec p (Fun a b) = showInfixR p 2 a " -> " b
 showPrec p (App a b) = showInfixL p 3 a " " b
-showPrec _ (Let env a) = do
+showPrec p (Let [] a) = showPrec p a
+showPrec p (Let env a) = do
   let showDef (x, b) = x ++ " = " ++ show b
-  "@let {" ++ intercalate "; " (showDef <$> env) ++ "} " ++ show a
+  let defs = "@let {" ++ intercalate "; " (showDef <$> env) ++ "} "
+  showPrefix p 2 defs a
 showPrec _ (Fix x a) = "%fix " ++ x ++ " {" ++ show a ++ "}"
 showPrec _ (Typ t args) = "#" ++ t ++ " [" ++ intercalate ", " (show <$> args) ++ "]"
 showPrec _ (Op op args) = "%op " ++ op ++ " (" ++ intercalate ", " (show <$> args) ++ ")"
@@ -142,7 +144,8 @@ freeVars (Lam x a) = delete x (freeVars a)
 freeVars (For x a) = delete x (freeVars a)
 freeVars (Fun a b) = freeVars a `union` freeVars b
 freeVars (App a b) = freeVars a `union` freeVars b
-freeVars (Let env a) = filter (`notElem` map fst env) (freeVars a)
+freeVars (Let env a) =
+  filter (`notElem` map fst env) (foldr (union . freeVars . snd) (freeVars a) env)
 freeVars (Fix x a) = delete x (freeVars a)
 freeVars (Typ _ args) = foldr (union . freeVars) [] args
 freeVars (Op _ args) = foldr (union . freeVars) [] args
