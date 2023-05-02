@@ -6,95 +6,75 @@ import Test.Hspec (SpecWith, describe, it, shouldBe)
 
 taoTests :: SpecWith ()
 taoTests = describe "--==☯ Tao ☯==--" $ do
-  -- let (a, b) = (Var "a", Var "b")
-  -- let (a', b') = (VarP "a", VarP "b")
-  -- let (x, y, z) = (Var "x", Var "y", Var "z")
-  -- let (x', y', z') = (VarP "x", VarP "y", VarP "z")
+  let a = Var "a"
+  let (x, y, z) = (Var "x", Var "y", Var "z")
+  let (x', y') = (VarP "x", VarP "y")
 
-  -- it "☯ forT" $ do
-  --   for [] x `shouldBe` x
-  --   for ["x"] y `shouldBe` For "x" y
-  --   for ["x", "y"] z `shouldBe` For "x" (For "y" z)
+  it "☯ for" $ do
+    for [] x `shouldBe` x
+    for ["x"] y `shouldBe` For "x" y
+    for ["x", "y"] z `shouldBe` For "x" (For "y" z)
 
-  -- it "☯ funT" $ do
-  --   funT [] x `shouldBe` x
-  --   funT [x] y `shouldBe` FunT x y
-  --   funT [x, y] z `shouldBe` FunT x (FunT y z)
+  it "☯ fun" $ do
+    fun [] x `shouldBe` x
+    fun [x] y `shouldBe` Fun x y
+    fun [x, y] z `shouldBe` Fun x (Fun y z)
 
-  -- it "☯ app" $ do
-  --   app x [] `shouldBe` x
-  --   app x [y] `shouldBe` App x y
-  --   app x [y, z] `shouldBe` App (App x y) z
+  it "☯ app" $ do
+    app x [] `shouldBe` x
+    app x [y] `shouldBe` App x y
+    app x [y, z] `shouldBe` App (App x y) z
 
-  -- it "☯ lam" $ do
-  --   lam [] x `shouldBe` x
-  --   lam [x'] y `shouldBe` Lam x' y
-  --   lam [x', y'] z `shouldBe` Lam x' (Lam y' z)
+  it "☯ lam" $ do
+    lam [] x `shouldBe` x
+    lam [x'] y `shouldBe` Match [Case [x'] y]
+    lam [x', y'] z `shouldBe` Match [Case [x', y'] z]
 
-  -- it "☯ unpack" $ do
-  --   unpack ([], AnyP, a) `shouldBe` []
-  --   unpack ([], VarP "x", a) `shouldBe` [("x", a)]
-  --   unpack ([], AndP x' x', a) `shouldBe` [("x", Let ([], AndP x' x', a) x)]
-  --   unpack ([], AndP x' y', a) `shouldBe` [("x", Let ([], AndP x' y', a) x), ("y", Let ([], AndP x' y', a) y)]
-  --   unpack ([], OrP x' x', a) `shouldBe` [("x", Let ([], OrP x' x', a) x)]
-  --   unpack ([], OrP x' y', a) `shouldBe` [("x", Let ([], OrP x' y', a) x), ("y", Let ([], OrP x' y', a) y)]
-  --   unpack ([], AnnP x' x', a) `shouldBe` [("x", Let ([], AnnP x' x', a) x)]
-  --   unpack ([], AnnP x' y', a) `shouldBe` [("x", Let ([], AnnP x' y', a) x), ("y", Let ([], AnnP x' y', a) y)]
-  --   unpack ([], AppP x' x', a) `shouldBe` [("x", Let ([], AppP x' x', a) x)]
-  --   unpack ([], AppP x' y', a) `shouldBe` [("x", Let ([], AppP x' y', a) x), ("y", Let ([], AppP x' y', a) y)]
-  --   unpack ([], IfP x' y, a) `shouldBe` [("x", If y a)]
-  --   unpack ([], AsP x' "y", a) `shouldBe` [("y", a), ("x", a)]
-  --   unpack ([], EqP x, a) `shouldBe` []
+  it "☯ unpack" $ do
+    let ctx :: Context
+        ctx =
+          [ ("A", UnionAlt "T" [] (Var "T")),
+            ("B", UnionAlt "T" [("i", IntT), ("n", NumT)] (Var "T"))
+          ]
 
-  -- it "☯ compile" $ do
-  --   let env = [("x", Int 1), ("y", Ann y IntT), ("a", a), ("b", b)]
-  --   compile env (Err "e") `shouldBe` C.Err "e"
-  --   compile env TypT `shouldBe` C.TypT
-  --   compile env NilT `shouldBe` C.NilT
-  --   compile env Nil `shouldBe` C.Nil
-  --   compile env IntT `shouldBe` C.IntT
-  --   compile env (Int 1) `shouldBe` C.Int 1
-  --   compile env NumT `shouldBe` C.NumT
-  --   compile env (Num 1) `shouldBe` C.Num 1
-  --   compile env (Ctr "T" "A") `shouldBe` C.Ctr "T" "A"
-  --   compile env (Var "a") `shouldBe` C.Var "a"
-  --   compile env (Var "x") `shouldBe` C.Int 1
-  --   compile env (Var "y") `shouldBe` C.Ann (C.Var "y") C.IntT
-  --   compile env (Var "z") `shouldBe` C.Err "undefined variable: z"
-  --   compile env (For "x" x) `shouldBe` C.For "x" (C.Var "x")
-  --   compile env (For "y" x) `shouldBe` C.For "y" (C.Int 1)
-  --   compile env (FunT a b) `shouldBe` C.FunT (C.Var "a") (C.Var "b")
-  --   compile env (Lam x' x) `shouldBe` C.For "x" (C.Lam (C.Var "x") (C.Var "x"))
-  --   compile env (Lam (AndP x' y') x) `shouldBe` C.for ["x", "y"] (C.Lam (C.And (C.Var "x") (C.Var "y")) (C.Var "x"))
-  --   compile env (App a b) `shouldBe` C.App (C.Var "a") (C.Var "b")
-  --   compile env (And a b) `shouldBe` C.And (C.Var "a") (C.Var "b")
-  --   compile env (Or a b) `shouldBe` C.Or (C.Var "a") (C.Var "b")
-  --   compile env (If a b) `shouldBe` C.If (C.Var "a") (C.Var "b")
-  --   compile env (Ann a b) `shouldBe` C.Ann (C.Var "a") (C.For "b" (C.Var "b"))
-  --   compile env (SumT "T" [("A", a)]) `shouldBe` C.SumT "T" [("A", C.Var "a")]
-  --   compile env (Eq a b) `shouldBe` C.Eq (C.Var "a") (C.Var "b")
-  --   compile env (Lt a b) `shouldBe` C.Op2 C.Lt (C.Var "a") (C.Var "b")
-  --   compile env (Add a b) `shouldBe` C.Op2 C.Add (C.Var "a") (C.Var "b")
-  --   compile env (Sub a b) `shouldBe` C.Op2 C.Sub (C.Var "a") (C.Var "b")
-  --   compile env (Mul a b) `shouldBe` C.Op2 C.Mul (C.Var "a") (C.Var "b")
-  --   compile env (Let ([], x', Int 2) x) `shouldBe` C.Int 1
-  --   compile env (Let ([], z', Int 2) z) `shouldBe` C.Int 2
-  --   compile env (TypeOf x) `shouldBe` C.IntT
-  --   compile env (Match []) `shouldBe` C.Nil
-  --   compile env (Match [([], Int 1), ([], Int 2)]) `shouldBe` C.Or (C.Int 1) (C.Int 2)
-  --   compile env (Match [([x'], x), ([y'], x)]) `shouldBe` C.Or (C.For "x" (C.Lam (C.Var "x") (C.Var "x"))) (C.For "y" (C.Lam (C.Var "y") (C.Int 1)))
+    unpack ctx (AnyP, a) `shouldBe` Right []
+    unpack ctx (VarP "x", a) `shouldBe` Right [("x", a)]
+    unpack ctx (CtrP "A" [], a) `shouldBe` Right []
+    unpack ctx (CtrP "B" [x'], a) `shouldBe` Left (CtrArgsMismatch "B" ["i", "n"] [VarP "x"])
+    unpack ctx (CtrP "B" [x', y'], a) `shouldBe` Right [("x", Get "B" a "i"), ("y", Get "B" a "n")]
 
-  -- it "☯ compilePattern" $ do
-  --   let env = [("x", Int 1), ("y", Ann y IntT), ("a", a), ("b", b)]
-  --   compilePattern env AnyP `shouldBe` ([""], C.Var "")
-  --   compilePattern env (VarP "x") `shouldBe` (["x"], C.Var "x")
-  --   compilePattern env (AndP a' b') `shouldBe` (["a", "b"], C.And (C.Var "a") (C.Var "b"))
-  --   compilePattern env (OrP a' b') `shouldBe` (["a", "b"], C.Or (C.Var "a") (C.Var "b"))
-  --   compilePattern env (AnnP a' b') `shouldBe` (["a", "b"], C.Ann (C.Var "a") (C.Var "b"))
-  --   compilePattern env (AppP a' b') `shouldBe` (["a", "b"], C.App (C.Var "a") (C.Var "b"))
-  --   compilePattern env (IfP a' x) `shouldBe` (["a"], C.If (C.Int 1) (C.Var "a"))
-  --   compilePattern env (AsP a' "x") `shouldBe` (["x", "a"], C.Eq (C.Var "x") (C.Var "a"))
-  --   compilePattern env (EqP x) `shouldBe` ([], C.Int 1)
+  it "☯ compile" $ do
+    let ops = []
+    let ctx :: Context
+        ctx =
+          [ ("T", UnionType [] ["A", "B"]),
+            ("A", UnionAlt "T" [] (Var "T")),
+            ("B", UnionAlt "T" [("i", IntT), ("n", NumT)] (Var "T")),
+            ("U", UnionType [] ["C"]),
+            ("C", UnionAlt "U" [("i", IntT), ("n", NumT)] (Var "U"))
+          ]
 
-  it "☯ TODO" $ do
-    True `shouldBe` True
+    let compile' = compile ops ctx
+    compile' Knd `shouldBe` Right C.Knd
+    compile' IntT `shouldBe` Right C.IntT
+    compile' NumT `shouldBe` Right C.NumT
+    compile' (Int 1) `shouldBe` Right (C.Int 1)
+    compile' (Num 1) `shouldBe` Right (C.Num 1)
+    compile' (Var "x") `shouldBe` Right (C.Var "x")
+    compile' (For "x" y) `shouldBe` Right (C.For "x" (C.Var "y"))
+    compile' (Fun x y) `shouldBe` Right (C.Fun (C.Var "x") (C.Var "y"))
+    compile' (App x y) `shouldBe` Right (C.App (C.Var "x") (C.Var "y"))
+    compile' (Typ "Bool" []) `shouldBe` Right (C.Typ "Bool" [])
+    compile' (Typ "Maybe" [IntT]) `shouldBe` Right (C.Typ "Maybe" [C.IntT])
+    compile' (Ctr "A" []) `shouldBe` Right (C.lam ["A", "B"] (C.Var "A"))
+    compile' (Ctr "B" [x, y]) `shouldBe` Right (C.lam ["A", "B"] (C.app (C.Var "B") [C.Var "x", C.Var "y"]))
+    compile' (Get "A" x "a") `shouldBe` Left (UndefinedCtrField "A" "a")
+    compile' (Get "B" x "i") `shouldBe` Right (C.App (C.Var "x") (C.lam ["i", "n"] (C.Var "i")))
+    compile' (Get "B" x "n") `shouldBe` Right (C.App (C.Var "x") (C.lam ["i", "n"] (C.Var "n")))
+    compile' (Match []) `shouldBe` Left MissingCases
+    compile' (Match [Case [] (Int 1)]) `shouldBe` Right (C.Int 1)
+    compile' (Match [Case [VarP "x"] (Int 1)]) `shouldBe` Right (C.Lam "x" $ C.Int 1)
+    compile' (Match [Case [VarP "x"] (Int 1), Case [] (Int 2)]) `shouldBe` Left (MatchMissingArgs (Int 2))
+    compile' (Match [Case [CtrP "A" []] (Int 1)]) `shouldBe` Left MissingCases
+    compile' (Match [Case [CtrP "A" []] (Int 1), Case [VarP "x"] (Int 2)]) `shouldBe` Right (C.Lam "x" $ C.app (C.Var "x") [C.Int 1, C.lam ["_", "_"] $ C.Int 2])
+    compile' (Match [Case [CtrP "B" [VarP "a", VarP "b"]] (Int 1), Case [VarP "x"] (Int 2)]) `shouldBe` Right (C.Lam "x" $ C.app (C.Var "x") [C.Int 2, C.lam ["a", "b"] $ C.Int 1])

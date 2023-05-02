@@ -60,9 +60,11 @@ showPrec p (Lam x a) = showPrefix p 2 ("\\" ++ x ++ " -> ") a
 showPrec p (For x a) = showPrefix p 2 ("@" ++ x ++ ". ") a
 showPrec p (Fun a b) = showInfixR p 2 a " -> " b
 showPrec p (App a b) = showInfixL p 3 a " " b
-showPrec _ (Let env a) = do
+showPrec p (Let [] a) = showPrec p a
+showPrec p (Let env a) = do
   let showDef (x, b) = x ++ " = " ++ show b
-  "@let {" ++ intercalate "; " (showDef <$> env) ++ "} " ++ show a
+  let defs = "@let {" ++ intercalate "; " (showDef <$> env) ++ "} "
+  showPrefix p 2 defs a
 showPrec _ (Fix x a) = "%fix " ++ x ++ " {" ++ show a ++ "}"
 showPrec _ (Typ t args) = "#" ++ t ++ " [" ++ intercalate ", " (show <$> args) ++ "]"
 showPrec _ (Op op args) = "%op " ++ op ++ " (" ++ intercalate ", " (show <$> args) ++ ")"
@@ -82,8 +84,8 @@ type Env = [(String, Term)]
 data Symbol
   = Val !Term
   | Ann !Term !Type
-  | Ctr !String !String ![(String, Type)] !Type
-  | Union ![(String, Type)] ![String]
+  | UnionType ![(String, Type)] ![String]
+  | UnionAlt !String ![(String, Type)] !Type
   deriving (Eq, Show)
 
 type Context = [(String, Symbol)]
@@ -91,13 +93,13 @@ type Context = [(String, Symbol)]
 data TypeError
   = InfiniteType !String !Term
   | InvalidOp !String !Symbol
-  | NotACtr !String !Symbol
   | NotAFunction !Type
+  | NotAUnionAlt !String !Symbol
   | NotAUnionType !String !Symbol
   | TypeMismatch !Term !Term
-  | UndefinedCtr !String
   | UndefinedOp !String
-  | UndefinedType !String
+  | UndefinedUnionAlt !String
+  | UndefinedUnionType !String
   | UndefinedVar !String
   deriving (Eq, Show)
 
@@ -117,8 +119,9 @@ fun bs ret = foldr Fun ret bs
 app :: Term -> [Term] -> Term
 app = foldl' App
 
-let' :: (String, Term) -> Term -> Term
-let' (x, a) b = App (Lam x b) a
+let' :: Env -> Term -> Term
+let' [] a = a
+let' env a = Let env a
 
 pop :: Eq k => k -> [(k, v)] -> [(k, v)]
 pop _ [] = []
@@ -141,7 +144,8 @@ freeVars (Lam x a) = delete x (freeVars a)
 freeVars (For x a) = delete x (freeVars a)
 freeVars (Fun a b) = freeVars a `union` freeVars b
 freeVars (App a b) = freeVars a `union` freeVars b
-freeVars (Let env a) = filter (`notElem` map fst env) (freeVars a)
+freeVars (Let env a) =
+  filter (`notElem` map fst env) (foldr (union . freeVars . snd) (freeVars a) env)
 freeVars (Fix x a) = delete x (freeVars a)
 freeVars (Typ _ args) = foldr (union . freeVars) [] args
 freeVars (Op _ args) = foldr (union . freeVars) [] args
@@ -198,15 +202,15 @@ eval ops env term = case reduce ops env term of
 symbolToTerm :: Context -> (String, Symbol) -> (String, Term)
 symbolToTerm _ (x, Val a) = (x, a)
 symbolToTerm _ (x, Ann a _) = (x, a)
-symbolToTerm ctx (_, Ctr t k args _) = do
+symbolToTerm ctx (k, UnionAlt t args _) = do
   let xs = fst <$> args
   let alts = case lookup t ctx of
-        Just (Union _ alts) -> alts
+        Just (UnionType _ alts) -> alts
         _else -> [k]
   (k, lam (xs ++ alts) (app (Var k) (Var <$> xs)))
-symbolToTerm _ (x, Union args _) = do
+symbolToTerm _ (t, UnionType args _) = do
   let xs = fst <$> args
-  (x, lam xs (Typ x (Var <$> xs)))
+  (t, lam xs (Typ t (Var <$> xs)))
 
 ctxToEnv :: Context -> Env
 ctxToEnv ctx = symbolToTerm ctx <$> ctx
@@ -260,25 +264,25 @@ unifyMany ops ctx (a1 : bs1) (a2 : bs2) = do
 
 expandType :: Ops -> Context -> String -> [Term] -> Either TypeError (Term, Context)
 expandType ops ctx t args = do
-  (typeArgs, alts) <- findType ctx t
-  altDefs <- mapM (findAlt ctx) alts
-  let altArgs = (snd <$>) . fst <$> altDefs
+  (typeArgs, alts) <- findUnionType ctx t
+  altDefs <- mapM (findUnionAlt ctx) alts
+  let altArgs = map (\(args, _) -> snd <$> args) (snd <$> altDefs)
   let xs = fst <$> typeArgs
   let altTypes = map (\argsT -> fun argsT (Var t)) altArgs
   let body = lam xs (for [t] (fun altTypes (Var t)))
   Right (for xs $ apply ops ctx (app body args), ctx)
 
-findType :: Context -> String -> Either TypeError ([(String, Type)], [String])
-findType ctx t = case lookup t ctx of
-  Just (Union args alts) -> Right (args, alts)
+findUnionType :: Context -> String -> Either TypeError ([(String, Type)], [String])
+findUnionType ctx t = case lookup t ctx of
+  Just (UnionType args alts) -> Right (args, alts)
   Just a -> Left (NotAUnionType t a)
-  Nothing -> Left (UndefinedType t)
+  Nothing -> Left (UndefinedUnionType t)
 
-findAlt :: Context -> String -> Either TypeError ([(String, Type)], Type)
-findAlt ctx k = case lookup k ctx of
-  Just (Ctr _ _ args retT) -> Right (args, retT)
-  Just a -> Left (NotACtr k a)
-  Nothing -> Left (UndefinedCtr k)
+findUnionAlt :: Context -> String -> Either TypeError (String, ([(String, Type)], Type))
+findUnionAlt ctx k = case lookup k ctx of
+  Just (UnionAlt t args retT) -> Right (t, (args, retT))
+  Just a -> Left (NotAUnionAlt k a)
+  Nothing -> Left (UndefinedUnionAlt k)
 
 infer :: Ops -> Context -> Term -> Either TypeError (Type, Context)
 infer _ ctx Knd = Right (Knd, ctx)
@@ -293,12 +297,12 @@ infer ops ctx (Var x) = case lookup x ctx of
   Just (Ann a b) -> do
     ctx <- checkType ops ctx a b
     Right (apply ops ctx b, ctx)
-  Just (Ctr t _ args retT) -> do
+  Just (UnionAlt t args retT) -> do
     -- TODO: check `alts`
-    (typeArgs, alts) <- findType ctx t
+    (typeArgs, alts) <- findUnionType ctx t
     let altType = for (fst <$> typeArgs) (fun (snd <$> args) retT)
     Right (apply ops ctx altType, ctx)
-  Just (Union args alts) -> do
+  Just (UnionType args alts) -> do
     -- TODO: check `alts`
     Right (fun (snd <$> args) Knd, ctx)
   Nothing -> Left (UndefinedVar x)
