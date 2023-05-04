@@ -44,10 +44,10 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
 
   let opsCtx :: Context
       opsCtx =
-        [ ("+", Ann (op2 "+") (fun [IntT, IntT] IntT)),
-          ("-", Ann (op2 "-") (fun [IntT, IntT] IntT)),
-          ("*", Ann (op2 "*") (fun [IntT, IntT] IntT)),
-          ("==", Ann (op2 "==") (fun [IntT, IntT] (Var "Bool")))
+        [ ("+", Val $ Ann (op2 "+") (fun [IntT, IntT] IntT)),
+          ("-", Val $ Ann (op2 "-") (fun [IntT, IntT] IntT)),
+          ("*", Val $ Ann (op2 "*") (fun [IntT, IntT] IntT)),
+          ("==", Val $ Ann (op2 "==") (fun [IntT, IntT] (Var "Bool")))
         ]
         where
           op2 op = lam ["x", "y"] (Op op [Var "x", Var "y"])
@@ -96,16 +96,16 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     let ctx :: Context
         ctx =
           [ ("inferred", Val (Int 1)),
-            ("mismatch", Ann (Int 1) NumT),
-            ("match", Ann (Int 1) IntT),
-            ("typed", Ann (Var "typed") IntT),
+            ("mismatch", Val $ Ann (Int 1) NumT),
+            ("match", Val $ Ann (Int 1) IntT),
+            ("typed", Val $ Ann (Var "typed") IntT),
             ("free", Val (Var "free")),
             ("x", Val (Int 1)),
             ("y", Val (Num 1.1)),
-            ("f", Ann f (Fun IntT NumT)),
-            ("g", Ann g (For "a" $ Fun a a)),
-            ("op0", Ann (Var "op0") IntT),
-            ("op1", Ann (Var "op1") (Fun IntT NumT))
+            ("f", Val $ Ann f (Fun IntT NumT)),
+            ("g", Val $ Ann g (For "a" $ Fun a a)),
+            ("op0", Val $ Ann (Var "op0") IntT),
+            ("op1", Val $ Ann (Var "op1") (Fun IntT NumT))
           ]
 
     let infer' = infer ops ctx

@@ -12,7 +12,8 @@ data State = State
   }
   deriving (Eq, Show)
 
-data ParserError = ParserError !String !State
+data ParserError
+  = ParserError !String !State
   deriving (Eq, Show)
 
 instance Functor Parser where
@@ -39,10 +40,16 @@ instance Monad Parser where
       )
   return x = succeed x
 
-parse :: String -> Parser a -> Either ParserError a
-parse source (Parser p) = do
-  let state = State {source = source, row = 1, col = 1}
-  fmap fst (p state)
+parse :: Parser a -> String -> Either ParserError a
+parse parser source = do
+  (x, state) <- parseSome parser source
+  case state of
+    State {source = ""} -> Right x
+    State {source = remaining} -> Left (ParserError ("not parsed:\n" ++ remaining) state)
+
+parseSome :: Parser a -> String -> Either ParserError (a, State)
+parseSome (Parser p) source =
+  p State {source = source, row = 1, col = 1}
 
 succeed :: a -> Parser a
 succeed value = Parser (\state -> Right (value, state))
@@ -122,6 +129,13 @@ charCaseSensitive :: Char -> Parser Char
 charCaseSensitive c = charIf (== c) ("the character '" <> [c] <> "' (case sensitive)")
 
 -- Sequences
+chain :: [Parser a] -> Parser [a]
+chain [] = succeed []
+chain (p : ps) = do
+  x <- p
+  xs <- chain ps
+  succeed (x : xs)
+
 maybe' :: Parser a -> Parser (Maybe a)
 maybe' parser = fmap Just parser |> orElse (succeed Nothing)
 
@@ -135,13 +149,6 @@ oneOrMore :: Parser a -> Parser [a]
 oneOrMore parser = do
   x <- parser
   xs <- zeroOrMore parser
-  succeed (x : xs)
-
-chain :: [Parser a] -> Parser [a]
-chain [] = succeed []
-chain (p : ps) = do
-  x <- p
-  xs <- chain ps
   succeed (x : xs)
 
 exactly :: Int -> Parser a -> Parser [a]
@@ -226,7 +233,6 @@ textCaseSensitive str =
   chain (fmap charCaseSensitive str)
     |> orElse (expected $ "the text '" <> str <> "' (case sensitive)")
 
--- TODO: test
 followedBy :: Parser a -> Parser b -> Parser b
 followedBy (Parser lookahead) parser = do
   x <- parser
@@ -236,7 +242,6 @@ followedBy (Parser lookahead) parser = do
         Left err -> Left err
     )
 
--- TODO: test
 notFollowedBy :: Parser a -> Parser b -> Parser b
 notFollowedBy (Parser lookahead) parser = do
   x <- parser
@@ -255,6 +260,22 @@ split delimiter parser =
         succeed (x : xs),
       succeed []
     ]
+
+-- TODO
+getState :: Parser State
+getState = Parser (\state -> Right (state, state))
+
+subparser :: Parser delim -> Parser a -> Parser a
+subparser delim (Parser p) = do
+  before <- getState
+  _ <- zeroOrMore (do _ <- succeed () |> notFollowedBy delim; anyChar)
+  after <- getState
+  let len = length (source before) - length (source after)
+  Parser
+    ( \state -> do
+        (x, _) <- p before {source = take len (source before)}
+        Right (x, state)
+    )
 
 collection :: Parser open -> Parser a -> Parser delimiter -> Parser close -> Parser [a]
 collection open parser delimiter close = do

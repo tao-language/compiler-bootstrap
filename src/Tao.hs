@@ -1,14 +1,13 @@
-{-# LANGUAGE TupleSections #-}
-
 module Tao where
 
 import qualified Core as C
 import Data.Bifunctor (second)
-import Data.List (foldl', intercalate, union)
-import Data.Maybe (fromMaybe)
-import Flow ((|>))
+import Data.List (foldl')
 
 {- TODO
+
+Unify Context with Env
+Clean up compile* functions
 
 Patterns
 - `IfP !Pattern !Expr` -- pattern guard
@@ -25,18 +24,18 @@ data Expr
   | Num !Double
   | Var !String
   | For !String !Expr
-  | Fun !Type !Type
+  | Fun !Expr !Expr
   | App !Expr !Expr
+  | Ann !Expr !Type
   | Typ !String ![Expr]
   | Ctr !String ![Expr]
   | Get !String !Expr !String
   | Match ![Branch]
+  | Lam !Pattern !Expr
+  | Let ![Definition] !Expr
   | TypeOf !Expr
-  | Eq !Expr !Expr
-  | Lt !Expr !Expr
-  | Add !Expr !Expr
-  | Sub !Expr !Expr
-  | Mul !Expr !Expr
+  | Op1 !String !Expr
+  | Op2 !String !Expr !Expr
   | Op !String ![Expr]
   deriving (Eq, Show)
 
@@ -54,16 +53,18 @@ data Branch
 
 data Symbol
   = Val !Expr
-  | Ann !Expr !Type
   | UnionType ![(String, Type)] ![String]
   | UnionAlt !String ![(String, Type)] !Type
   deriving (Eq, Show)
 
 type Context = [(String, Symbol)]
 
+data Definition
+  = Def ![(String, Type)] !Pattern !Expr
+  deriving (Eq, Show)
+
 data CompileError
-  = CtrArgsMismatch !String ![String] ![Pattern]
-  | MatchMissingArgs !Expr
+  = MatchMissingArgs !Expr
   | MissingCases
   | NotAUnionAlt !String !Symbol
   | NotAUnionType !String !Symbol
@@ -72,6 +73,9 @@ data CompileError
   | UndefinedUnionAlt !String
   | UndefinedUnionType !String
   deriving (Eq, Show)
+
+lam :: [Pattern] -> Expr -> Expr
+lam ps a = foldr Lam a ps
 
 for :: [String] -> Expr -> Expr
 for xs a = foldr For a xs
@@ -82,24 +86,23 @@ app = foldl' App
 fun :: [Expr] -> Expr -> Expr
 fun args b = foldr Fun b args
 
-lam :: [Pattern] -> Expr -> Expr
-lam [] b = b
-lam ps b = Match [Case ps b]
+match :: Branch -> [Branch] -> Expr
+match (Case ps a) [] = lam ps a
+match branch branches = Match (branch : branches)
 
-let' :: [(Pattern, Expr)] -> Expr -> Expr
-let' [] b = b
-let' ((p, a) : defs) b = App (Match [Case [p] (let' defs b)]) a
+bindings :: Pattern -> [String]
+bindings AnyP = []
+bindings (VarP x) = [x]
+bindings (CtrP _ ps) = concatMap bindings ps
 
-unpack :: Context -> (Pattern, Expr) -> Either CompileError [(String, Expr)]
-unpack _ (AnyP, _) = Right []
-unpack _ (VarP x, a) = Right [(x, a)]
-unpack ctx (CtrP ctr ps, a) = do
-  (_, args, _) <- getUnionAlt ctx ctr
-  case fst <$> args of
-    xs | length ps /= length xs -> Left (CtrArgsMismatch ctr xs ps)
-    xs -> do
-      ctxs <- mapM (\(p, x) -> unpack ctx (p, Get ctr a x)) (zip ps xs)
-      Right (concat ctxs)
+unpack :: Definition -> [(String, Expr)]
+unpack (Def types p a) = do
+  let unpackVar x = do
+        let value = App (Match [Case [p] (Var x)]) a
+        case lookup x types of
+          Just type' -> (x, Ann value type')
+          Nothing -> (x, value)
+  unpackVar <$> bindings p
 
 getUnionType :: Context -> String -> Either CompileError ([(String, Type)], [String])
 getUnionType ctx t = case lookup t ctx of
@@ -150,7 +153,7 @@ matchArg ops ctx x (ctr, arity) (Case (AnyP : ps) b : branches) = do
 matchArg ops ctx x (ctr, arity) (Case (VarP y : ps) b : branches) = do
   matched <- matchArg ops ctx x (ctr, arity) branches
   varIsUsed <- occurs ops ctx y b
-  let body = if x /= y && varIsUsed then let' [(VarP y, Var x)] b else b
+  let body = if x /= y && varIsUsed then Let [Def [] (VarP y) (Var x)] b else b
   Right (Case (replicate arity AnyP ++ ps) body : matched)
 matchArg ops ctx x (ctr, arity) (Case (CtrP ctr' qs : ps) b : branches) | ctr == ctr' = do
   matched <- matchArg ops ctx x (ctr, arity) branches
@@ -176,6 +179,10 @@ compile ops ctx (App a b) = do
   a <- compile ops ctx a
   b <- compile ops ctx b
   Right (C.App a b)
+compile ops ctx (Ann a b) = do
+  a <- compile ops ctx a
+  b <- compile ops ctx b
+  Right (C.Ann a b)
 compile ops ctx (Typ t args) = do
   args <- mapM (compile ops ctx) args
   Right (C.Typ t args)
@@ -213,17 +220,23 @@ compile ops ctx (Match branches) = do
       matched <- matchArg ops ctx x ("", 0) branches
       body <- compile ops ctx (Match matched)
       Right (C.Lam x body)
+compile ops ctx (Lam p b) = compile ops ctx (Match [Case [p] b])
+compile ops ctx (Let [] b) = compile ops ctx b
+compile ops ctx (Let defs b) = do
+  env <- compileEnv ops ctx (concatMap unpack defs)
+  b <- compile ops ctx b
+  Right (C.Let env b)
 compile ops ctx (TypeOf a) = do
   (aT, _) <- infer ops ctx a
   compile ops ctx aT
-compile ops ctx (Eq a b) = compile ops ctx (Op "==" [a, b])
-compile ops ctx (Lt a b) = compile ops ctx (Op "<" [a, b])
-compile ops ctx (Add a b) = compile ops ctx (Op "+" [a, b])
-compile ops ctx (Sub a b) = compile ops ctx (Op "-" [a, b])
-compile ops ctx (Mul a b) = compile ops ctx (Op "*" [a, b])
+compile ops ctx (Op1 op a) = compile ops ctx (Op op [a])
+compile ops ctx (Op2 op a b) = compile ops ctx (Op op [a, b])
 compile ops ctx (Op op args) = do
   args <- mapM (compile ops ctx) args
   Right (C.Op op args)
+
+compileEnv :: C.Ops -> Context -> [(String, Expr)] -> Either CompileError C.Env
+compileEnv ops ctx = mapM (compileNamed ops ctx)
 
 compileCtx :: C.Ops -> Context -> Either CompileError C.Context
 compileCtx ops ctx = do
@@ -242,10 +255,6 @@ compileSym :: C.Ops -> Context -> Symbol -> Either CompileError C.Symbol
 compileSym ops ctx (Val a) = do
   a <- compile ops ctx a
   Right (C.Val a)
-compileSym ops ctx (Ann a b) = do
-  a <- compile ops ctx a
-  b <- compile ops ctx b
-  Right (C.Ann a b)
 compileSym ops ctx (UnionType args ctrs) = do
   args <- mapM (compileNamed ops ctx) args
   Right (C.UnionType args ctrs)
@@ -265,10 +274,11 @@ decompile (C.Lam x a) = lam [VarP x] (decompile a)
 decompile (C.For x a) = For x (decompile a)
 decompile (C.Fun a b) = Fun (decompile a) (decompile b)
 decompile (C.App a b) = App (decompile a) (decompile b)
+decompile (C.Ann a b) = Ann (decompile a) (decompile b)
 decompile (C.Let env b) = do
-  let decompileDef (x, a) = (VarP x, decompile a)
-  let' (decompileDef <$> env) (decompile b)
-decompile (C.Fix x a) = let' [(VarP x, decompile a)] (Var x)
+  let decompileDef (x, a) = Def [] (VarP x) (decompile a)
+  Let (decompileDef <$> env) (decompile b)
+decompile (C.Fix x a) = Let [Def [] (VarP x) (decompile a)] (Var x)
 decompile (C.Typ t args) = Typ t (decompile <$> args)
 decompile (C.Op op args) = Op op (decompile <$> args)
 
@@ -277,7 +287,6 @@ decompileNamed (x, a) = (x, decompile a)
 
 decompileSym :: C.Symbol -> Symbol
 decompileSym (C.Val a) = Val (decompile a)
-decompileSym (C.Ann a b) = Ann (decompile a) (decompile b)
 decompileSym (C.UnionType args ctrs) = UnionType (decompileNamed <$> args) ctrs
 decompileSym (C.UnionAlt t args a) = UnionAlt t (decompileNamed <$> args) (decompile a)
 

@@ -28,8 +28,9 @@ data Term
   | Var !String
   | Lam !String !Term
   | For !String !Term
-  | Fun !Type !Type
+  | Fun !Term !Term
   | App !Term !Term
+  | Ann !Term !Type
   | Let !Env !Term
   | Fix !String !Term
   | Typ !String ![Term]
@@ -60,6 +61,7 @@ showPrec p (Lam x a) = showPrefix p 2 ("\\" ++ x ++ " -> ") a
 showPrec p (For x a) = showPrefix p 2 ("@" ++ x ++ ". ") a
 showPrec p (Fun a b) = showInfixR p 2 a " -> " b
 showPrec p (App a b) = showInfixL p 3 a " " b
+showPrec p (Ann a b) = showInfixL p 1 a " : " b
 showPrec p (Let [] a) = showPrec p a
 showPrec p (Let env a) = do
   let showDef (x, b) = x ++ " = " ++ show b
@@ -83,7 +85,6 @@ type Env = [(String, Term)]
 
 data Symbol
   = Val !Term
-  | Ann !Term !Type
   | UnionType ![(String, Type)] ![String]
   | UnionAlt !String ![(String, Type)] !Type
   deriving (Eq, Show)
@@ -144,6 +145,7 @@ freeVars (Lam x a) = delete x (freeVars a)
 freeVars (For x a) = delete x (freeVars a)
 freeVars (Fun a b) = freeVars a `union` freeVars b
 freeVars (App a b) = freeVars a `union` freeVars b
+freeVars (Ann a b) = freeVars a `union` freeVars b
 freeVars (Let env a) =
   filter (`notElem` map fst env) (foldr (union . freeVars . snd) (freeVars a) env)
 freeVars (Fix x a) = delete x (freeVars a)
@@ -171,6 +173,7 @@ reduce ops env (App a b) = case reduce ops env a of
   Lam x (Let env' a) -> reduce ops ((x, Let env b) : env') a
   Fix _ a -> reduce ops [] (App a (Let env b))
   a -> App a (Let env b)
+reduce ops env (Ann a _) = reduce ops env a
 reduce ops env (Let env' a) = reduce ops (env ++ env') a
 reduce _ env (Fix x a) = Fix x (Let env a)
 reduce _ env (Typ t args) = Typ t (Let env <$> args)
@@ -192,6 +195,7 @@ eval ops env term = case reduce ops env term of
   For x a -> For x (eval ops [(x, Var x)] a)
   Fun a b -> Fun (eval ops [] a) (eval ops [] b)
   App a b -> App (eval ops [] a) (eval ops [] b)
+  Ann _ _ -> error "unreachable"
   Let _ _ -> error "unreachable"
   Fix x a -> case eval ops [(x, Var x)] a of
     a | x `occurs` a -> Fix x a
@@ -201,7 +205,6 @@ eval ops env term = case reduce ops env term of
 
 symbolToTerm :: Context -> (String, Symbol) -> (String, Term)
 symbolToTerm _ (x, Val a) = (x, a)
-symbolToTerm _ (x, Ann a _) = (x, a)
 symbolToTerm ctx (k, UnionAlt t args _) = do
   let xs = fst <$> args
   let alts = case lookup t ctx of
@@ -292,11 +295,11 @@ infer _ ctx NumT = Right (Knd, ctx)
 infer _ ctx (Num _) = Right (NumT, ctx)
 infer ops ctx (Var x) = case lookup x ctx of
   Just (Val (Var x')) | x == x' -> Right (Knd, ctx)
-  Just (Val a) -> infer ops ctx a
-  Just (Ann (Var x') b) | x == x' -> Right (apply ops ctx b, ctx)
-  Just (Ann a b) -> do
-    ctx <- checkType ops ctx a b
+  Just (Val (Ann (Var x') b)) | x == x' -> Right (apply ops ctx b, ctx)
+  Just (Val (Ann a b)) -> do
+    (_, ctx) <- checkType ops ctx a b
     Right (apply ops ctx b, ctx)
+  Just (Val a) -> infer ops ctx a
   Just (UnionAlt t args retT) -> do
     -- TODO: check `alts`
     (typeArgs, alts) <- findUnionType ctx t
@@ -308,16 +311,16 @@ infer ops ctx (Var x) = case lookup x ctx of
   Nothing -> Left (UndefinedVar x)
 infer ops ctx (Lam x a) = do
   let xT = newName (x ++ "T") (map fst ctx)
-  (t2, ctx) <- infer ops ((xT, Val (Var xT)) : (x, Ann (Var x) (Var xT)) : ctx) a
+  (t2, ctx) <- infer ops ((xT, Val (Var xT)) : (x, Val (Ann (Var x) (Var xT))) : ctx) a
   (t1, ctx) <- infer ops ctx (Var x)
   Right (for [xT] $ Fun t1 t2, pop x ctx)
 infer ops ctx (For x a) = do
   let xT = newName (x ++ "T") (map fst ctx)
-  (aT, ctx) <- infer ops ((xT, Val (Var xT)) : (x, Ann (Var x) (Var xT)) : ctx) a
+  (aT, ctx) <- infer ops ((xT, Val (Var xT)) : (x, Val (Ann (Var x) (Var xT))) : ctx) a
   Right (for [xT] aT, pop x ctx)
 infer ops ctx (Fun a b) = do
-  ctx <- checkType ops ctx a Knd
-  ctx <- checkType ops ctx b Knd
+  (_, ctx) <- checkType ops ctx a Knd
+  (_, ctx) <- checkType ops ctx b Knd
   Right (Knd, ctx)
 infer ops ctx (App a b) = do
   let xT = newName "t" (map fst ctx)
@@ -328,18 +331,19 @@ infer ops ctx (App a b) = do
   case (forFrom funT, pop xT ctx) of
     ((xs, Fun _ t), ctx) -> Right (for xs t, ctx)
     ((xs, t), _) -> Left (NotAFunction (for xs t))
+infer ops ctx (Ann a b) = checkType ops ctx a b
 infer ops ctx (Let env a) = infer ops (ctx ++ map (second Val) env) a
 infer ops ctx (Fix x a) = do
   let xT = newName (x ++ "T") (map fst ctx)
-  (ta, ctx) <- infer ops ((xT, Val (Var xT)) : (x, Ann (Var x) (Var xT)) : ctx) a
+  (ta, ctx) <- infer ops ((xT, Val (Var xT)) : (x, Val (Ann (Var x) (Var xT))) : ctx) a
   Right (ta, pop x ctx)
 infer ops ctx (Typ t args) = do
   -- TODO: check `t`
   (_, ctx) <- inferMany ops ctx args
   Right (Knd, ctx)
 infer ops ctx (Op op args) = case lookup op ctx of
-  Just (Ann _ b) -> do
-    (bT, ctx) <- infer ops ((op, Ann (Var op) b) : ctx) (app (Var op) args)
+  Just (Val (Ann _ b)) -> do
+    (bT, ctx) <- infer ops ((op, Val (Ann (Var op) b)) : ctx) (app (Var op) args)
     Right (bT, pop op ctx)
   Just sym -> Left (InvalidOp op sym)
   Nothing -> Left (UndefinedOp op)
@@ -351,11 +355,10 @@ inferMany ops ctx (a : bs) = do
   (ts, ctx) <- inferMany ops ctx bs
   Right (t : ts, ctx)
 
-checkType :: Ops -> Context -> Term -> Type -> Either TypeError Context
+checkType :: Ops -> Context -> Term -> Type -> Either TypeError (Type, Context)
 checkType ops ctx a b = do
   (ta, ctx) <- infer ops ctx a
-  (_, ctx) <- unify ops ctx ta b
-  Right ctx
+  unify ops ctx ta b
 
 newName :: String -> [String] -> String
 newName x existing = do

@@ -8,7 +8,7 @@ taoTests :: SpecWith ()
 taoTests = describe "--==☯ Tao ☯==--" $ do
   let a = Var "a"
   let (x, y, z) = (Var "x", Var "y", Var "z")
-  let (x', y') = (VarP "x", VarP "y")
+  let (x', y', z') = (VarP "x", VarP "y", VarP "z")
 
   it "☯ for" $ do
     for [] x `shouldBe` x
@@ -27,8 +27,8 @@ taoTests = describe "--==☯ Tao ☯==--" $ do
 
   it "☯ lam" $ do
     lam [] x `shouldBe` x
-    lam [x'] y `shouldBe` Match [Case [x'] y]
-    lam [x', y'] z `shouldBe` Match [Case [x', y'] z]
+    lam [x'] y `shouldBe` Lam x' y
+    lam [x', y'] z `shouldBe` Lam x' (Lam y' z)
 
   it "☯ unpack" $ do
     let ctx :: Context
@@ -37,11 +37,11 @@ taoTests = describe "--==☯ Tao ☯==--" $ do
             ("B", UnionAlt "T" [("i", IntT), ("n", NumT)] (Var "T"))
           ]
 
-    unpack ctx (AnyP, a) `shouldBe` Right []
-    unpack ctx (VarP "x", a) `shouldBe` Right [("x", a)]
-    unpack ctx (CtrP "A" [], a) `shouldBe` Right []
-    unpack ctx (CtrP "B" [x'], a) `shouldBe` Left (CtrArgsMismatch "B" ["i", "n"] [VarP "x"])
-    unpack ctx (CtrP "B" [x', y'], a) `shouldBe` Right [("x", Get "B" a "i"), ("y", Get "B" a "n")]
+    unpack (Def [] AnyP a) `shouldBe` []
+    unpack (Def [] (VarP "x") a) `shouldBe` [("x", App (Match [Case [x'] x]) a)]
+    unpack (Def [] (CtrP "A" []) a) `shouldBe` []
+    unpack (Def [] (CtrP "B" [x', AnyP]) a) `shouldBe` [("x", App (Match [Case [CtrP "B" [x', AnyP]] x]) a)]
+    unpack (Def [("x", IntT)] x' a) `shouldBe` [("x", Ann (App (Match [Case [x'] x]) a) IntT)]
 
   it "☯ compile" $ do
     let ops = []
@@ -76,5 +76,5 @@ taoTests = describe "--==☯ Tao ☯==--" $ do
     compile' (Match [Case [VarP "x"] (Int 1)]) `shouldBe` Right (C.Lam "x" $ C.Int 1)
     compile' (Match [Case [VarP "x"] (Int 1), Case [] (Int 2)]) `shouldBe` Left (MatchMissingArgs (Int 2))
     compile' (Match [Case [CtrP "A" []] (Int 1)]) `shouldBe` Left MissingCases
-    compile' (Match [Case [CtrP "A" []] (Int 1), Case [VarP "x"] (Int 2)]) `shouldBe` Right (C.Lam "x" $ C.app (C.Var "x") [C.Int 1, C.lam ["_", "_"] $ C.Int 2])
-    compile' (Match [Case [CtrP "B" [VarP "a", VarP "b"]] (Int 1), Case [VarP "x"] (Int 2)]) `shouldBe` Right (C.Lam "x" $ C.app (C.Var "x") [C.Int 2, C.lam ["a", "b"] $ C.Int 1])
+    compile' (Match [Case [CtrP "A" []] (Int 1), Case [x'] (Int 2)]) `shouldBe` Right (C.Lam "x" $ C.app (C.Var "x") [C.Int 1, C.lam ["_", "_"] $ C.Int 2])
+    compile' (Match [Case [CtrP "B" [x', y']] (Int 1), Case [z'] (Int 2)]) `shouldBe` Right (C.Lam "z" $ C.app (C.Var "z") [C.Int 2, C.lam ["x", "y"] $ C.Int 1])
