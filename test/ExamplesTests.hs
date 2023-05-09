@@ -4,6 +4,8 @@ import Tao
 import TaoLang
 import Test.Hspec
 
+-- TODO: rename to EndToEndTests
+
 examplesTests :: SpecWith ()
 examplesTests = describe "--==☯ Examples ☯==--" $ do
   -- let infer' env a = fmap fst (infer env a)
@@ -11,13 +13,13 @@ examplesTests = describe "--==☯ Examples ☯==--" $ do
   -- it "☯ factorial" $ do
   --   let f = Var "factorial"
   --   env <- loadFile "example/e2e" "factorial.tao"
-  --   infer' env f `shouldBe` Right (FunT IntT IntT)
-  --   reduce env (App f (Int 0)) `shouldBe` Int 1
-  --   reduce env (App f (Int 1)) `shouldBe` Int 1
-  --   reduce env (App f (Int 2)) `shouldBe` Int 2
-  --   reduce env (App f (Int 3)) `shouldBe` Int 6
-  --   reduce env (App f (Int 4)) `shouldBe` Int 24
-  --   reduce env (App f (Int 5)) `shouldBe` Int 120
+  --   -- infer' env f `shouldBe` Right (Fun IntT IntT)
+  --   eval env (App f (Int 0)) `shouldBe` Int 1
+  --   eval env (App f (Int 1)) `shouldBe` Int 1
+  --   eval env (App f (Int 2)) `shouldBe` Int 2
+  --   eval env (App f (Int 3)) `shouldBe` Int 6
+  --   eval env (App f (Int 4)) `shouldBe` Int 24
+  --   eval env (App f (Int 5)) `shouldBe` Int 120
 
   -- it "☯ fibonacci" $ do
   --   let f = Var "fibonacci"

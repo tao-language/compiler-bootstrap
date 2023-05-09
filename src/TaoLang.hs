@@ -1,8 +1,7 @@
 module TaoLang where
 
 import Control.Monad (void)
-import qualified Core
-import Data.List (intercalate, sort)
+import Data.List (intercalate)
 import Flow ((|>))
 import Parser
 import System.Directory
@@ -35,19 +34,17 @@ data Error
 --   Right defs -> return defs
 --   Left err -> fail ("❌ " ++ show err)
 
--- f :: Bool -> Int
--- f True = 1
-
 -- loadBlock :: String -> IO ([Definition], Expr)
 -- loadBlock text = case parseBlock text of
 --   Right (env, expr) -> return (env, expr)
 --   Left err -> fail ("❌ " ++ show err)
 
--- loadFile :: FilePath -> FilePath -> IO Env
--- loadFile moduleName fileName = do
---   src <- readFile (moduleName </> fileName)
---   defs <- loadDefinitions src
---   return (concatMap unpack defs)
+loadFile :: FilePath -> FilePath -> IO [Definition]
+loadFile moduleName fileName = do
+  src <- readFile (moduleName </> fileName)
+  case TaoLang.parse (zeroOrMore define) src of
+    Right defs -> return defs
+    Left err -> fail ("❌ " ++ show err)
 
 -- loadModule :: FilePath -> IO Env
 -- loadModule moduleName = do
@@ -162,6 +159,22 @@ pattern' =
     ]
 
 -- Expressions
+expressionToken :: Parser Expr
+expressionToken =
+  oneOf
+    [ keyword Knd "Type",
+      keyword IntT "Int",
+      keyword IntT "Num",
+      token $ Int <$> integer,
+      token $ Num <$> number,
+      Var <$> identifier letter,
+      do
+        _ <- token $ char '('
+        a <- expression 0
+        _ <- token $ char ')'
+        succeed a
+    ]
+
 expression :: Int -> Parser Expr
 expression prec = do
   let forall :: Parser [String]
@@ -186,17 +199,11 @@ expression prec = do
         succeed (Match (br : brs))
 
   withOperators
-    [ constant $ keyword Knd "Type",
-      constant $ keyword IntT "Int",
-      constant $ keyword IntT "Num",
-      constant $ token $ Int <$> integer,
-      constant $ token $ Num <$> number,
-      constant match,
+    [ constant match,
       prefixOp 0 Let (oneOrMore define),
       prefixOp 1 for forall,
       prefix 1 TypeOf (keyword () "@typeof"),
-      constant $ Var <$> identifier letter,
-      inbetween (token $ char '(') (token $ char ')')
+      constant expressionToken
     ]
     [ infixL 1 (Op2 "==") (token $ text "=="),
       infixR 2 Fun (token $text "->"),
@@ -231,6 +238,45 @@ definePattern types = do
   _ <- newLine
   succeed (Def types p a)
 
+defineType :: Parser Definition
+defineType = do
+  let typeArg :: Parser (String, Type)
+      typeArg =
+        oneOf
+          [ do
+              _ <- token $ char '('
+              x <- identifier lowercase
+              _ <- token $ char ':'
+              t <- expression 0
+              _ <- token $ char ')'
+              succeed (x, t),
+            do
+              x <- identifier lowercase
+              succeed (x, Knd)
+          ]
+
+  let alternative :: Type -> Parser (String, Type)
+      alternative defaultType = do
+        x <- identifier uppercase
+        oneOf
+          [ do
+              _ <- token $ char ':'
+              t <- expression 0
+              succeed (x, t),
+            do
+              args <- zeroOrMore expressionToken
+              succeed (x, fun args defaultType)
+          ]
+
+  name <- identifier uppercase
+  args <- zeroOrMore typeArg
+  let defaultType = app (Var name) (Var . fst <$> args)
+  _ <- token $ char '='
+  alt <- alternative defaultType
+  alts <- zeroOrMore (do _ <- token $ char '|'; alternative defaultType)
+  _ <- newLine
+  succeed (DefT name args (alt : alts))
+
 define :: Parser Definition
 define = do
   let typeDef :: Parser delim -> Parser (String, Type)
@@ -242,7 +288,8 @@ define = do
         succeed (x, t)
 
   oneOf
-    [ do
+    [ defineType,
+      do
         (x, t) <- typeDef (token $ char '=')
         a <- expression 0
         _ <- newLine

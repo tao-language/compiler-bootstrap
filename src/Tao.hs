@@ -6,7 +6,6 @@ import Data.List (foldl')
 
 {- TODO
 
-Unify Context with Env
 Clean up compile* functions
 
 Patterns
@@ -27,8 +26,8 @@ data Expr
   | Fun !Expr !Expr
   | App !Expr !Expr
   | Ann !Expr !Type
-  | Typ !String ![Expr]
-  | Ctr !String ![Expr]
+  | SumT !String ![(String, Expr)] ![(String, Type)]
+  | Ctr !String ![(String, Expr)]
   | Get !String !Expr !String
   | Match ![Branch]
   | Lam !Pattern !Expr
@@ -59,8 +58,11 @@ data Symbol
 
 type Context = [(String, Symbol)]
 
+type Env = [(String, Expr)]
+
 data Definition
   = Def ![(String, Type)] !Pattern !Expr
+  | DefT !String ![(String, Type)] ![(String, Type)]
   deriving (Eq, Show)
 
 data CompileError
@@ -95,7 +97,7 @@ bindings AnyP = []
 bindings (VarP x) = [x]
 bindings (CtrP _ ps) = concatMap bindings ps
 
-unpack :: Definition -> [(String, Expr)]
+unpack :: Definition -> Env
 unpack (Def types p a) = do
   let unpackVar x = do
         let value = App (Match [Case [p] (Var x)]) a
@@ -183,14 +185,16 @@ compile ops ctx (Ann a b) = do
   a <- compile ops ctx a
   b <- compile ops ctx b
   Right (C.Ann a b)
-compile ops ctx (Typ t args) = do
-  args <- mapM (compile ops ctx) args
-  Right (C.Typ t args)
+-- compile ops ctx (Typ t args) = do
+--   args <- mapM (compile ops ctx) args
+--   Right (C.Typ t args)
 compile ops ctx (Ctr ctr args) = do
   (t, _, _) <- getUnionAlt ctx ctr
   (_, ctrs) <- getUnionType ctx t
-  body <- compile ops ctx (app (Var ctr) args)
-  Right (C.lam ctrs body)
+  -- body <- compile ops ctx (app (Var ctr) (snd <$> args))
+  -- Right (C.lam ctrs body)
+  argValues <- mapM (compile ops ctx) (snd <$> args)
+  Right (C.Ctr ctr (zip (fst <$> args) argValues) ctrs)
 compile ops ctx (Get ctr a x) = do
   (_, args, _) <- getUnionAlt ctx ctr
   case fst <$> args of
@@ -227,41 +231,22 @@ compile ops ctx (Let defs b) = do
   b <- compile ops ctx b
   Right (C.Let env b)
 compile ops ctx (TypeOf a) = do
-  (aT, _) <- infer ops ctx a
-  compile ops ctx aT
+  -- (aT, _) <- infer ops ctx a
+  -- compile ops ctx aT
+  error "TODO: compile TypeOf"
 compile ops ctx (Op1 op a) = compile ops ctx (Op op [a])
 compile ops ctx (Op2 op a b) = compile ops ctx (Op op [a, b])
 compile ops ctx (Op op args) = do
   args <- mapM (compile ops ctx) args
   Right (C.Op op args)
 
-compileEnv :: C.Ops -> Context -> [(String, Expr)] -> Either CompileError C.Env
+compileEnv :: C.Ops -> Context -> Env -> Either CompileError C.Env
 compileEnv ops ctx = mapM (compileNamed ops ctx)
-
-compileCtx :: C.Ops -> Context -> Either CompileError C.Context
-compileCtx ops ctx = do
-  let compileDef :: (String, Symbol) -> Either CompileError (String, C.Symbol)
-      compileDef (x, sym) = do
-        sym <- compileSym ops ctx sym
-        Right (x, sym)
-  mapM compileDef ctx
 
 compileNamed :: C.Ops -> Context -> (String, Expr) -> Either CompileError (String, C.Term)
 compileNamed ops ctx (x, a) = do
   a <- compile ops ctx a
   Right (x, a)
-
-compileSym :: C.Ops -> Context -> Symbol -> Either CompileError C.Symbol
-compileSym ops ctx (Val a) = do
-  a <- compile ops ctx a
-  Right (C.Val a)
-compileSym ops ctx (UnionType args ctrs) = do
-  args <- mapM (compileNamed ops ctx) args
-  Right (C.UnionType args ctrs)
-compileSym ops ctx (UnionAlt t args a) = do
-  args <- mapM (compileNamed ops ctx) args
-  a <- compile ops ctx a
-  Right (C.UnionAlt t args a)
 
 decompile :: C.Term -> Expr
 decompile C.Knd = Knd
@@ -279,22 +264,11 @@ decompile (C.Let env b) = do
   let decompileDef (x, a) = Def [] (VarP x) (decompile a)
   Let (decompileDef <$> env) (decompile b)
 decompile (C.Fix x a) = Let [Def [] (VarP x) (decompile a)] (Var x)
-decompile (C.Typ t args) = Typ t (decompile <$> args)
+decompile (C.Ctr ctr args ctrs) = Ctr ctr (second decompile <$> args)
 decompile (C.Op op args) = Op op (decompile <$> args)
 
 decompileNamed :: (String, C.Term) -> (String, Expr)
 decompileNamed (x, a) = (x, decompile a)
-
-decompileSym :: C.Symbol -> Symbol
-decompileSym (C.Val a) = Val (decompile a)
-decompileSym (C.UnionType args ctrs) = UnionType (decompileNamed <$> args) ctrs
-decompileSym (C.UnionAlt t args a) = UnionAlt t (decompileNamed <$> args) (decompile a)
-
-decompileCtx :: C.Context -> Context
-decompileCtx ctx = do
-  let decompileDef :: (String, C.Symbol) -> (String, Symbol)
-      decompileDef (x, sym) = (x, decompileSym sym)
-  decompileDef <$> ctx
 
 freeVars :: C.Ops -> Context -> Expr -> Either CompileError [String]
 freeVars ops ctx a = do
@@ -305,11 +279,3 @@ occurs :: C.Ops -> Context -> String -> Expr -> Either CompileError Bool
 occurs ops ctx x a = do
   vars <- freeVars ops ctx a
   Right (x `elem` vars)
-
-infer :: C.Ops -> Context -> Expr -> Either CompileError (Type, Context)
-infer ops ctx a = do
-  a <- compile ops ctx a
-  ctx <- compileCtx ops ctx
-  case C.infer ops ctx a of
-    Right (b, ctx) -> Right (decompile b, decompileCtx ctx)
-    Left err -> Left (TypeError err)
