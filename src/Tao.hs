@@ -26,8 +26,8 @@ data Expr
   | Fun !Expr !Expr
   | App !Expr !Expr
   | Ann !Expr !Type
-  | SumT !String ![(String, Expr)] ![(String, Type)]
-  | Ctr !String ![(String, Expr)]
+  | SumT ![(String, Type)] ![String]
+  | Typ !String !String ![(String, Expr)]
   | Get !String !Expr !String
   | Match ![Branch]
   | Lam !Pattern !Expr
@@ -62,7 +62,7 @@ type Env = [(String, Expr)]
 
 data Definition
   = Def ![(String, Type)] !Pattern !Expr
-  | DefT !String ![(String, Type)] ![(String, Type)]
+  | DefT !String ![(String, Type)] ![(String, ([(String, Type)], Type))]
   deriving (Eq, Show)
 
 data CompileError
@@ -105,9 +105,16 @@ unpack (Def types p a) = do
           Just type' -> (x, Ann value type')
           Nothing -> (x, value)
   unpackVar <$> bindings p
+unpack (DefT typ args alts) = do
+  let unpackAlt (ctr, (ctrArgs, retT)) = do
+        let value = lam (VarP . fst <$> ctrArgs) (Typ typ ctr (map (\(x, _) -> (x, Var x)) ctrArgs))
+        let type' = for (fst <$> args) (fun (snd <$> ctrArgs) retT)
+        (ctr, Ann value type')
+  (typ, SumT args (fst <$> alts)) : map unpackAlt alts
 
 getUnionType :: Context -> String -> Either CompileError ([(String, Type)], [String])
 getUnionType ctx t = case lookup t ctx of
+  Just (Val (SumT args ctrs)) -> Right (args, ctrs)
   Just (UnionType args ks) -> Right (args, ks)
   Just a -> Left (NotAUnionType t a)
   Nothing -> Left (UndefinedUnionType t)
@@ -188,13 +195,13 @@ compile ops ctx (Ann a b) = do
 -- compile ops ctx (Typ t args) = do
 --   args <- mapM (compile ops ctx) args
 --   Right (C.Typ t args)
-compile ops ctx (Ctr ctr args) = do
-  (t, _, _) <- getUnionAlt ctx ctr
-  (_, ctrs) <- getUnionType ctx t
-  -- body <- compile ops ctx (app (Var ctr) (snd <$> args))
-  -- Right (C.lam ctrs body)
-  argValues <- mapM (compile ops ctx) (snd <$> args)
-  Right (C.Ctr ctr (zip (fst <$> args) argValues) ctrs)
+-- compile ops ctx (Typ typ ctr args) = do
+--   -- (t, _, _) <- getUnionAlt ctx ctr
+--   (_, ctrs) <- getUnionType ctx typ
+--   -- body <- compile ops ctx (app (Var ctr) (snd <$> args))
+--   -- Right (C.lam ctrs body)
+--   argValues <- mapM (compile ops ctx) (snd <$> args)
+--   Right (C.Typ ctr (zip (fst <$> args) argValues) ctrs)
 compile ops ctx (Get ctr a x) = do
   (_, args, _) <- getUnionAlt ctx ctr
   case fst <$> args of
@@ -264,7 +271,7 @@ decompile (C.Let env b) = do
   let decompileDef (x, a) = Def [] (VarP x) (decompile a)
   Let (decompileDef <$> env) (decompile b)
 decompile (C.Fix x a) = Let [Def [] (VarP x) (decompile a)] (Var x)
-decompile (C.Ctr ctr args ctrs) = Ctr ctr (second decompile <$> args)
+-- decompile (C.Typ ctr args ctrs) = Typ ctr (second decompile <$> args) ctrs
 decompile (C.Op op args) = Op op (decompile <$> args)
 
 decompileNamed :: (String, C.Term) -> (String, Expr)

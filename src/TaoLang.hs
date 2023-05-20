@@ -255,18 +255,27 @@ defineType = do
               succeed (x, Knd)
           ]
 
-  let alternative :: Type -> Parser (String, Type)
-      alternative defaultType = do
-        x <- identifier uppercase
+  let alternativeArg :: Parser (String, Type)
+      alternativeArg =
         oneOf
           [ do
+              _ <- token $ char '('
+              x <- identifier lowercase
               _ <- token $ char ':'
               t <- expression 0
+              _ <- token $ char ')'
               succeed (x, t),
             do
-              args <- zeroOrMore expressionToken
-              succeed (x, fun args defaultType)
+              t <- expressionToken
+              succeed ("", t)
           ]
+
+  let alternative :: Type -> Parser (String, ([(String, Type)], Type))
+      alternative defaultType = do
+        ctr <- identifier uppercase
+        args <- zeroOrMore alternativeArg
+        t <- oneOf [do _ <- token $ char ':'; expression 0, succeed defaultType]
+        succeed (ctr, (args, t))
 
   name <- identifier uppercase
   args <- zeroOrMore typeArg

@@ -32,16 +32,23 @@ taoTests = describe "--==☯ Tao ☯==--" $ do
 
   it "☯ unpack" $ do
     let (a, n) = (Var "a", Var "n")
-    let boolT = Var "Bool"
-    let maybeT a = App (Var "Maybe") a
-    let vecT n a = app (Var "Vec") [n, a]
     unpack (Def [] AnyP a) `shouldBe` []
     unpack (Def [] (VarP "x") a) `shouldBe` [("x", App (Match [Case [x'] x]) a)]
     unpack (Def [] (CtrP "A" []) a) `shouldBe` []
     unpack (Def [] (CtrP "B" [x', AnyP]) a) `shouldBe` [("x", App (Match [Case [CtrP "B" [x', AnyP]] x]) a)]
     unpack (Def [("x", IntT)] x' a) `shouldBe` [("x", Ann (App (Match [Case [x'] x]) a) IntT)]
-  -- unpack (DefT "Bool" [] [("True", boolT), ("False", boolT)]) `shouldBe` [("Bool", Typ "Bool" Knd [("True", Var "Bool"), ("False", Var "Bool")]), (), ()]
-  -- unpack (DefT "Maybe" [("a", Knd)] [("Just", Fun a (maybeT a)), ("Nothing", maybeT a)]) `shouldBe` [("Maybe", Ann (Lam (VarP "a") $ SumT "Maybe" [("a", a)] [("Just", Fun a (maybeT a)), ("Nothing", maybeT a)]) (Fun Knd Knd))]
+
+    -- let boolT = Var "Bool"
+    -- unpack (DefT "Bool" [] [("True", ([],boolT)), ("False", ([],boolT))]) `shouldBe` [("Bool", Typ "Bool" Knd [("True", Var "Bool"), ("False", Var "Bool")]), (), ()]
+
+    let maybeT a = App (Var "Maybe") a
+    let maybeDef = SumT [("a", Knd)] ["Just", "Nothing"]
+    let justDef = Ann (Lam (VarP "x") $ Typ "Maybe" "Just" [("x", x)]) (For "a" $ Fun a (maybeT a))
+    let nothingDef = Ann (Typ "Maybe" "Nothing" []) (For "a" $ maybeT a)
+    unpack (DefT "Maybe" [("a", Knd)] [("Just", ([("x", a)], maybeT a)), ("Nothing", ([], maybeT a))]) `shouldBe` [("Maybe", maybeDef), ("Just", justDef), ("Nothing", nothingDef)]
+
+    -- let vecT n a = app (Var "Vec") [n, a]
+    True `shouldBe` True
 
   it "☯ compile" $ do
     let ops = []
@@ -66,8 +73,8 @@ taoTests = describe "--==☯ Tao ☯==--" $ do
     compile' (App x y) `shouldBe` Right (C.App (C.Var "x") (C.Var "y"))
     -- compile' (Typ "Bool" []) `shouldBe` Right (C.Typ "Bool" [])
     -- compile' (Typ "Maybe" [IntT]) `shouldBe` Right (C.Typ "Maybe" [C.IntT])
-    compile' (Ctr "A" []) `shouldBe` Right (C.Ctr "A" [] ["A", "B"])
-    compile' (Ctr "B" [("a", x), ("b", y)]) `shouldBe` Right (C.Ctr "B" [("a", C.Var "x"), ("b", C.Var "y")] ["A", "B"])
+    -- compile' (Typ "T" "A" []) `shouldBe` Right (C.Typ "A" [] ["A", "B"])
+    -- compile' (Typ "T" "B" [("a", x), ("b", y)]) `shouldBe` Right (C.Typ "B" [("a", C.Var "x"), ("b", C.Var "y")] ["A", "B"])
     compile' (Get "A" x "a") `shouldBe` Left (UndefinedCtrField "A" "a")
     compile' (Get "B" x "i") `shouldBe` Right (C.App (C.Var "x") (C.lam ["i", "n"] (C.Var "i")))
     compile' (Get "B" x "n") `shouldBe` Right (C.App (C.Var "x") (C.lam ["i", "n"] (C.Var "n")))

@@ -260,12 +260,12 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     let maybeT a = App (Var "Maybe") a
     let vecT n a = app (Var "Vec") [n, a]
     let p = parse' defineType
-    p "Bool = True : Bool | False : Bool" `shouldBe` Right (DefT "Bool" [] [("True", boolT), ("False", boolT)], "")
-    p "Bool = True | False" `shouldBe` Right (DefT "Bool" [] [("True", boolT), ("False", boolT)], "")
-    p "Maybe (a : Type) = Just : a -> Maybe a | Nothing : Maybe a" `shouldBe` Right (DefT "Maybe" [("a", Knd)] [("Just", Fun a (maybeT a)), ("Nothing", maybeT a)], "")
-    p "Maybe a = Just a | Nothing" `shouldBe` Right (DefT "Maybe" [("a", Knd)] [("Just", Fun a (maybeT a)), ("Nothing", maybeT a)], "")
-    p "Vec (n : Int) (a : Type) = Cons : a -> Vec n a -> Vec (n + 1) a | Nil : Vec 0 a" `shouldBe` Right (DefT "Vec" [("n", IntT), ("a", Knd)] [("Cons", fun [a, vecT n a] (vecT (add n (Int 1)) a)), ("Nil", vecT (Int 0) a)], "")
-    p "Vec (n : Int) a = Cons : a -> Vec n a -> Vec (n + 1) a | Nil : Vec 0 a" `shouldBe` Right (DefT "Vec" [("n", IntT), ("a", Knd)] [("Cons", fun [a, vecT n a] (vecT (add n (Int 1)) a)), ("Nil", vecT (Int 0) a)], "")
+    p "Bool = True : Bool | False : Bool" `shouldBe` Right (DefT "Bool" [] [("True", ([], boolT)), ("False", ([], boolT))], "")
+    p "Bool = True | False" `shouldBe` Right (DefT "Bool" [] [("True", ([], boolT)), ("False", ([], boolT))], "")
+    p "Maybe (a : Type) = Just a : Maybe a | Nothing : Maybe a" `shouldBe` Right (DefT "Maybe" [("a", Knd)] [("Just", ([("", a)], maybeT a)), ("Nothing", ([], maybeT a))], "")
+    p "Maybe a = Just a | Nothing" `shouldBe` Right (DefT "Maybe" [("a", Knd)] [("Just", ([("", a)], maybeT a)), ("Nothing", ([], maybeT a))], "")
+    p "Vec (n : Int) (a : Type) = Cons a (Vec n a) : Vec (n + 1) a | Nil : Vec 0 a" `shouldBe` Right (DefT "Vec" [("n", IntT), ("a", Knd)] [("Cons", ([("", a), ("", vecT n a)], vecT (add n (Int 1)) a)), ("Nil", ([], vecT (Int 0) a))], "")
+    p "Vec (n : Int) a = Cons a (Vec n a) : Vec (n + 1) a | Nil : Vec 0 a" `shouldBe` Right (DefT "Vec" [("n", IntT), ("a", Knd)] [("Cons", ([("", a), ("", vecT n a)], vecT (add n (Int 1)) a)), ("Nil", ([], vecT (Int 0) a))], "")
 
   it "☯ define" $ do
     let p = parse' define
@@ -277,4 +277,4 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     p "x : a\nx = 1" `shouldBe` Right (Def [("x", a)] x' i1, "")
     p "x : a; y : b; A x y = 1" `shouldBe` Right (Def [("x", a), ("y", b)] (CtrP "A" [x', y']) i1, "")
     p "x : a\ny : b\nA x y = 1" `shouldBe` Right (Def [("x", a), ("y", b)] (CtrP "A" [x', y']) i1, "")
-    p "Bool = True | False" `shouldBe` Right (DefT "Bool" [] [("True", Var "Bool"), ("False", Var "Bool")], "")
+    p "Bool = True | False" `shouldBe` Right (DefT "Bool" [] [("True", ([], Var "Bool")), ("False", ([], Var "Bool"))], "")
