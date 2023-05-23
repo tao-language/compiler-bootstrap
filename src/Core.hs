@@ -43,7 +43,7 @@ data Term
   | Fix !String !Term
   | Ctr !String ![Term]
   | Typ !String ![(String, Term)] ![String]
-  | Case !String ![(String, Term)] !Term
+  | Case !Term ![(String, Term)]
   | Op !String ![Term]
   deriving (Eq)
 
@@ -87,9 +87,9 @@ showPrec p (Typ name args ctrs) = do
   -- let x = name ++ "[" ++ unwords (map fst args) ++ "]{" ++ intercalate "|" ctrs ++ "}"
   let x = name
   "%" ++ showPrec p (app (Var x) (map snd args))
-showPrec _ (Case x brs c) = do
+showPrec _ (Case a brs) = do
   let showBr (k, b) = k ++ " => " ++ show b
-  "@Case " ++ x ++ " {" ++ intercalate " | " (map showBr (brs ++ [("_", c)])) ++ "}"
+  "@Case " ++ show a ++ " {" ++ intercalate " | " (map showBr brs) ++ "}"
 showPrec p (Op op args) = showPrec p (app (Var ("@op[" ++ op ++ "]")) args)
 
 instance Show Term where
@@ -106,6 +106,7 @@ type Env = [(String, Term)]
 
 data TypeError
   = InfiniteType !String !Term
+  | EmptyCase
   | CtrNotInType !String ![(String, Type)]
   | MissingType !String !Term
   | TooManyArgs !Term ![Term]
@@ -138,6 +139,10 @@ asFor a = ([], a)
 fun :: [Type] -> Type -> Type
 fun bs ret = foldr Fun ret bs
 
+asFun :: Term -> ([Term], Term)
+asFun (Fun a b) = first (a :) (asFun b)
+asFun a = ([], a)
+
 app :: Term -> [Term] -> Term
 app = foldl' App
 
@@ -154,6 +159,12 @@ set :: Eq k => k -> v -> [(k, v)] -> [(k, v)]
 set _ _ [] = []
 set x y ((x', _) : kvs) | x == x' = (x, y) : kvs
 set x y (kv : kvs) = kv : set x y kvs
+
+pushVars :: [String] -> Env -> Env
+pushVars xs env = foldr (\x -> (:) (x, Var x)) env xs
+
+popVars :: [String] -> Env -> Env
+popVars xs env = foldl' (flip pop) env xs
 
 freeVars :: Term -> [String]
 freeVars Knd = []
@@ -172,7 +183,7 @@ freeVars (Let env a) =
 freeVars (Fix x a) = delete x (freeVars a)
 freeVars (Ctr _ args) = foldr (union . freeVars) [] args
 freeVars (Typ _ args _) = foldr (union . freeVars . snd) [] args
-freeVars (Case _ brs c) = foldr (union . freeVars . snd) (freeVars c) brs
+freeVars (Case a brs) = foldr (union . freeVars . snd) (freeVars a) brs
 freeVars (Op _ args) = foldr (union . freeVars) [] args
 
 occurs :: String -> Term -> Bool
@@ -195,18 +206,17 @@ reduce _ env (Fun a b) = Fun (Let env a) (Let env b)
 reduce ops env (App a b) = case reduce ops env a of
   Lam x (Let env' a) -> reduce ops ((x, Let env b) : env') a
   Fix _ a -> reduce ops [] (App a (Let env b))
-  Case x brs c -> case reduce ops env b of
-    Ctr k args -> case lookup k brs of
-      Just b -> reduce ops [] (app b args)
-      Nothing -> reduce ops [] c
-    b -> App (Case x brs c) b
   a -> App a (Let env b)
 reduce ops env (Ann a _) = reduce ops env a
 reduce ops env (Let env' a) = reduce ops (env ++ env') a
 reduce _ env (Fix x a) = Fix x (Let env a)
 reduce _ env (Ctr name args) = Ctr name (Let env <$> args)
 reduce _ env (Typ name args ctrs) = Typ name (second (Let env) <$> args) ctrs
-reduce _ env (Case x brs c) = Case x (second (Let env) <$> brs) (Let env c)
+reduce ops env (Case a brs) = case reduce ops env a of
+  Ctr k args -> case lookup k brs of
+    Just b -> reduce ops env (app b args)
+    Nothing -> error ("missing case: " ++ k)
+  a -> Case a (second (Let env) <$> brs)
 reduce ops env (Op op args) = do
   case (lookup op ops, eval ops env <$> args) of
     (Just f, args) -> case f args of
@@ -233,7 +243,7 @@ eval ops env term = case reduce ops env term of
     a -> a
   Ctr name args -> Ctr name (eval ops [] <$> args)
   Typ name args ctrs -> Typ name (second (eval ops []) <$> args) ctrs
-  Case x brs c -> Case x (second (eval ops []) <$> brs) (eval ops [] c)
+  Case a brs -> Case (eval ops [] a) (second (eval ops []) <$> brs)
   Op op args -> Op op (eval ops [] <$> args)
 
 -- TODO: move pattern matching into definition level.
@@ -353,32 +363,55 @@ infer ops env (Ctr k args) = do
 infer ops env (Typ name args alts) = do
   (_, t) <- findTyped ops env name
   inferApply ops env (name, t) (map snd args)
-infer ops env (Case x brs c) = do
-  (tname, targs, ctrs) <- case lookup x env of
-    Just a -> case asTypeDef a of
-      Just tdef -> Right tdef
-      Nothing -> Left (NotAUnionType a)
-    Nothing -> Left (UndefinedType x)
+infer ops env (Case a brs) = do
+  (tname, targs, ctrs) <- case map fst brs of
+    k : _ -> ctrTypeDef ops env k
+    [] -> Left EmptyCase
   let xs = map fst targs
   alts <- mapM (altBranchType ops env xs) ctrs
-  env <- Right (map (\x -> (x, Var x)) (xs ++ ctrs ++ [tname]) ++ env)
-  (tb, env) <- inferBranches ops env alts brs c
-  let ta = eval ops env (Typ tname targs ctrs)
-  Right (for xs (Fun ta tb), pop tname env)
+  env <- Right (pushVars xs env)
+  (_, env) <- infer ops env (Ann a (Typ tname targs ctrs))
+  env <- Right (pushVars (tname : ctrs) env)
+  (tb, env) <- inferBranches ops env alts brs
+  env <- Right (popVars (tname : ctrs) env)
+  env <- Right (popVars xs env)
+  Right (tb, env)
 infer ops env (Op op args) = do
   (_, t) <- findTyped ops env op
   inferApply ops env (op, t) args
+
+asTypeDef :: Term -> Either TypeError (String, [(String, Term)], [String])
+asTypeDef (Ann a _) = asTypeDef a
+asTypeDef (Lam _ a) = asTypeDef a
+asTypeDef (Typ name args ctrs) = Right (name, args, ctrs)
+asTypeDef a = Left (NotAUnionType a)
+
+ctrTypeDef :: Ops -> Env -> String -> Either TypeError (String, [(String, Term)], [String])
+ctrTypeDef ops env k = do
+  (_, ctrT) <- findTyped ops env k
+  case snd $ asFun $ snd $ asFor ctrT of
+    Typ tname _ _ -> case lookup tname env of
+      Just b -> asTypeDef b
+      Nothing -> Left (UndefinedType tname)
+    a -> Left (NotAUnionType a)
+
+asBranchType :: [String] -> Type -> Type -> Type
+asBranchType xs (For x a) c | x `elem` xs = asBranchType xs a c
+asBranchType xs (For x a) c = For x (asBranchType xs a c)
+asBranchType xs (Fun a b) c = Fun a (asBranchType xs b c)
+asBranchType _ _ c = c
 
 altBranchType :: Ops -> Env -> [String] -> String -> Either TypeError (String, Type)
 altBranchType ops env xs k = do
   (_, ctrT) <- findTyped ops env k
   Right (k, asBranchType xs ctrT (Var k))
 
-inferBranches :: Ops -> Env -> [(String, Type)] -> [(String, Term)] -> Term -> Either TypeError (Type, Env)
-inferBranches ops env _ [] c = infer ops env c
-inferBranches ops env alts (br : brs) c = do
+inferBranches :: Ops -> Env -> [(String, Type)] -> [(String, Term)] -> Either TypeError (Type, Env)
+inferBranches _ _ _ [] = Left EmptyCase
+inferBranches ops env alts [br] = inferBranch ops env alts br
+inferBranches ops env alts (br : brs) = do
   (t1, env) <- inferBranch ops env alts br
-  (t2, env) <- inferBranches ops env alts brs c
+  (t2, env) <- inferBranches ops env alts brs
   unify ops env t1 t2
 
 inferBranch :: Ops -> Env -> [(String, Type)] -> (String, Term) -> Either TypeError (Type, Env)
@@ -387,18 +420,6 @@ inferBranch ops env alts (k, a) = case lookup k alts of
     (_, env) <- infer ops env (Ann a t)
     Right (eval ops env (Var k), env)
   Nothing -> Left (CtrNotInType k alts)
-
-asBranchType :: [String] -> Type -> Type -> Type
-asBranchType xs (For x a) c | x `elem` xs = asBranchType xs a c
-asBranchType xs (For x a) c = For x (asBranchType xs a c)
-asBranchType xs (Fun a b) c = Fun a (asBranchType xs b c)
-asBranchType _ _ c = c
-
-asTypeDef :: Term -> Maybe (String, [(String, Term)], [String])
-asTypeDef (Ann a _) = asTypeDef a
-asTypeDef (Lam _ a) = asTypeDef a
-asTypeDef (Typ name args ctrs) = Just (name, args, ctrs)
-asTypeDef _ = Nothing
 
 inferApply :: Ops -> Env -> (String, Type) -> [Term] -> Either TypeError (Type, Env)
 inferApply ops env (x, t) args = do

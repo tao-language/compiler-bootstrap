@@ -131,25 +131,24 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
         ]
 
   it "☯ Bool" $ do
-    let jmp = Case "Bool" [("True", Int 1)] (Int 0)
+    let case' a = Case a [("True", Int 1), ("False", Int 0)]
     let env = boolenv
 
     let eval' = eval ops env
-    eval' (App jmp (Ctr "False" [])) `shouldBe` Int 0
-    eval' (App jmp (Ctr "True" [])) `shouldBe` Int 1
+    eval' (case' (Ctr "False" [])) `shouldBe` Int 0
+    eval' (case' (Ctr "True" [])) `shouldBe` Int 1
 
     let infer' = infer ops env
     infer' (Var "Bool") `shouldBe` Right (Knd, env)
     infer' (Var "False") `shouldBe` Right (boolT, env)
     infer' (Var "True") `shouldBe` Right (boolT, env)
-    infer' jmp `shouldBe` Right (Fun boolT IntT, env)
-    infer' (App jmp (Var "False")) `shouldBe` Right (IntT, env)
-    infer' (App jmp (Var "True")) `shouldBe` Right (IntT, env)
+    infer' (case' (Var "False")) `shouldBe` Right (IntT, env)
+    infer' (case' (Var "True")) `shouldBe` Right (IntT, env)
 
   it "☯ Maybe" $ do
     let a = Var "a"
     let maybeT a = Typ "Maybe" [("a", a)] ["Just", "Nothing"]
-    let jmp = Case "Maybe" [("Just", Lam "x" (Var "x"))] (Int 0)
+    let case' a = Case a [("Just", Lam "x" (Var "x")), ("Nothing", Int 0)]
     let env :: Env
         env =
           [ ("Maybe", Ann (Lam "a" $ maybeT a) (Fun Knd Knd)),
@@ -158,8 +157,8 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
           ]
 
     let eval' = eval ops env
-    eval' (App jmp (Ctr "Nothing" [])) `shouldBe` Int 0
-    eval' (App jmp (Ctr "Just" [Int 1])) `shouldBe` Int 1
+    eval' (case' (Ctr "Nothing" [])) `shouldBe` Int 0
+    eval' (case' (Ctr "Just" [Int 1])) `shouldBe` Int 1
 
     let infer' = infer ops env
     infer' (Var "Maybe") `shouldBe` Right (Fun Knd Knd, env)
@@ -167,14 +166,13 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer' (Var "Just") `shouldBe` Right (For "a" $ Fun a (maybeT a), env)
     infer' (app (Var "Maybe") [IntT]) `shouldBe` Right (Knd, env)
     infer' (app (Var "Just") [Int 1]) `shouldBe` Right (maybeT IntT, env)
-    infer' jmp `shouldBe` Right (Fun (maybeT IntT) IntT, env)
-    infer' (App jmp (Ctr "Nothing" [])) `shouldBe` Right (IntT, env)
-    infer' (App jmp (Ctr "Just" [Int 1])) `shouldBe` Right (IntT, env)
-    infer' (App jmp (Ctr "Just" [Num 1.1])) `shouldBe` Left (TypeMismatch NumT IntT)
+    infer' (case' (Ctr "Nothing" [])) `shouldBe` Right (IntT, env)
+    infer' (case' (Ctr "Just" [Int 1])) `shouldBe` Right (IntT, env)
+    infer' (case' (Ctr "Just" [Num 1.1])) `shouldBe` Left (TypeMismatch NumT IntT)
 
   it "☯ Nat" $ do
     let natT = Typ "Nat" [] ["Zero", "Succ"]
-    let jmp = Case "Nat" [("Succ", Lam "x" (Int 1))] (Int 0)
+    let case' a = Case a [("Succ", Lam "x" (Int 1)), ("Zero", Int 0)]
     let env :: Env
         env =
           [ ("Nat", Ann natT Knd),
@@ -183,8 +181,8 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
           ]
 
     let eval' = eval ops env
-    eval' (App jmp (Ctr "Zero" [])) `shouldBe` Int 0
-    eval' (App jmp (Ctr "Succ" [Var "Zero"])) `shouldBe` Int 1
+    eval' (case' (Ctr "Zero" [])) `shouldBe` Int 0
+    eval' (case' (Ctr "Succ" [Var "Zero"])) `shouldBe` Int 1
 
     let infer' = infer ops env
     infer' (Var "Nat") `shouldBe` Right (Knd, env)
@@ -193,13 +191,13 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer' (App (Var "Succ") (Var "Zero")) `shouldBe` Right (natT, env)
     infer' (Ctr "Succ" []) `shouldBe` Right (Fun natT natT, env)
     infer' (Ctr "Succ" [Var "Zero"]) `shouldBe` Right (natT, env)
-    infer' (App jmp (Ctr "Zero" [])) `shouldBe` Right (IntT, env)
-    infer' (App jmp (Ctr "Succ" [Var "Zero"])) `shouldBe` Right (IntT, env)
+    infer' (case' (Ctr "Zero" [])) `shouldBe` Right (IntT, env)
+    infer' (case' (Ctr "Succ" [Var "Zero"])) `shouldBe` Right (IntT, env)
 
   it "☯ Vec" $ do
     let (n, a) = (Var "n", Var "a")
     let vecT n a = Typ "Vec" [("n", n), ("a", a)] ["Cons", "Nil"]
-    let jmp = Case "Vec" [("Cons", lam ["x", "xs"] (Var "x"))] (Int 0)
+    let case' a = Case a [("Cons", lam ["x", "xs"] (Var "x")), ("Nil", Int 0)]
     let env :: Env
         env =
           [ ("Vec", Ann (lam ["n", "a"] (vecT n a)) (fun [IntT, Knd] Knd)),
@@ -208,9 +206,9 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
           ]
 
     let eval' = eval ops env
-    eval' (App jmp (Var "Nil")) `shouldBe` Int 0
-    eval' (App jmp (Ctr "Cons" [Int 1, Var "Nil"])) `shouldBe` Int 1
-    eval' (App jmp (Ctr "Cons" [Int 2, Var "Nil"])) `shouldBe` Int 2
+    eval' (case' (Var "Nil")) `shouldBe` Int 0
+    eval' (case' (Ctr "Cons" [Int 1, Var "Nil"])) `shouldBe` Int 1
+    eval' (case' (Ctr "Cons" [Int 2, Var "Nil"])) `shouldBe` Int 2
 
     let infer' = infer ops env
     infer' (app (Var "Vec") []) `shouldBe` Right (fun [IntT, Knd] Knd, env)
@@ -221,9 +219,8 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer' (Ctr "Cons" []) `shouldBe` Right (for ["n", "a"] $ fun [a, vecT n a] (vecT (Op "+" [n, Int 1]) a), env)
     infer' (Ctr "Cons" [Int 42]) `shouldBe` Right (For "n" $ fun [vecT n IntT] (vecT (Op "+" [n, Int 1]) IntT), env)
     infer' (Ctr "Cons" [Int 42, Var "Nil"]) `shouldBe` Right (vecT (Int 1) IntT, env)
-    infer' jmp `shouldBe` Right (For "n" $ Fun (vecT n IntT) IntT, env)
-    infer' (App jmp (Var "Nil")) `shouldBe` Right (IntT, env)
-    infer' (App jmp (Ctr "Cons" [Int 42, Var "Nil"])) `shouldBe` Right (IntT, env)
+    infer' (case' (Var "Nil")) `shouldBe` Right (IntT, env)
+    infer' (case' (Ctr "Cons" [Int 42, Var "Nil"])) `shouldBe` Right (IntT, env)
 
   it "☯ factorial" $ do
     let (i0, i1) = (Int 0, Int 1)
@@ -234,7 +231,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
 
     let env :: Env
         env =
-          ("f", Fix "f" $ Lam "n" $ App (Case "Bool" [("False", n `mul` App f (n `sub` i1))] i1) (eq n i0)) :
+          ("f", Fix "f" $ Lam "n" $ Case (eq n i0) [("True", i1), ("False", n `mul` App f (n `sub` i1))]) :
           ("+", Ann (op2 "+") (fun [IntT, IntT] IntT)) :
           ("-", Ann (op2 "-") (fun [IntT, IntT] IntT)) :
           ("*", Ann (op2 "*") (fun [IntT, IntT] IntT)) :
