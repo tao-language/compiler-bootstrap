@@ -131,7 +131,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
         ]
 
   it "☯ Bool" $ do
-    let jmp = Jmp "Bool" [("True", Int 1)] (Int 0)
+    let jmp = Case "Bool" [("True", Int 1)] (Int 0)
     let env = boolenv
 
     let eval' = eval ops env
@@ -149,7 +149,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ Maybe" $ do
     let a = Var "a"
     let maybeT a = Typ "Maybe" [("a", a)] ["Just", "Nothing"]
-    let jmp = Jmp "Maybe" [("Just", Lam "x" (Var "x"))] (Int 0)
+    let jmp = Case "Maybe" [("Just", Lam "x" (Var "x"))] (Int 0)
     let env :: Env
         env =
           [ ("Maybe", Ann (Lam "a" $ maybeT a) (Fun Knd Knd)),
@@ -174,7 +174,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ Nat" $ do
     let natT = Typ "Nat" [] ["Zero", "Succ"]
-    let jmp = Jmp "Nat" [("Succ", Lam "x" (Int 1))] (Int 0)
+    let jmp = Case "Nat" [("Succ", Lam "x" (Int 1))] (Int 0)
     let env :: Env
         env =
           [ ("Nat", Ann natT Knd),
@@ -199,7 +199,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ Vec" $ do
     let (n, a) = (Var "n", Var "a")
     let vecT n a = Typ "Vec" [("n", n), ("a", a)] ["Cons", "Nil"]
-    let jmp = Jmp "Vec" [("Cons", lam ["x", "xs"] (Var "x"))] (Int 0)
+    let jmp = Case "Vec" [("Cons", lam ["x", "xs"] (Var "x"))] (Int 0)
     let env :: Env
         env =
           [ ("Vec", Ann (lam ["n", "a"] (vecT n a)) (fun [IntT, Knd] Knd)),
@@ -234,7 +234,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
 
     let env :: Env
         env =
-          ("f", Fix "f" $ Lam "n" $ App (Jmp "Bool" [("False", n `mul` App f (n `sub` i1))] i1) (eq n i0)) :
+          ("f", Fix "f" $ Lam "n" $ App (Case "Bool" [("False", n `mul` App f (n `sub` i1))] i1) (eq n i0)) :
           ("+", Ann (op2 "+") (fun [IntT, IntT] IntT)) :
           ("-", Ann (op2 "-") (fun [IntT, IntT] IntT)) :
           ("*", Ann (op2 "*") (fun [IntT, IntT] IntT)) :

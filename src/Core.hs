@@ -43,7 +43,7 @@ data Term
   | Fix !String !Term
   | Ctr !String ![Term]
   | Typ !String ![(String, Term)] ![String]
-  | Jmp !String ![(String, Term)] !Term
+  | Case !String ![(String, Term)] !Term
   | Op !String ![Term]
   deriving (Eq)
 
@@ -87,9 +87,9 @@ showPrec p (Typ name args ctrs) = do
   -- let x = name ++ "[" ++ unwords (map fst args) ++ "]{" ++ intercalate "|" ctrs ++ "}"
   let x = name
   "%" ++ showPrec p (app (Var x) (map snd args))
-showPrec _ (Jmp x brs c) = do
+showPrec _ (Case x brs c) = do
   let showBr (k, b) = k ++ " => " ++ show b
-  "@Jmp " ++ x ++ " {" ++ intercalate " | " (map showBr (brs ++ [("_", c)])) ++ "}"
+  "@Case " ++ x ++ " {" ++ intercalate " | " (map showBr (brs ++ [("_", c)])) ++ "}"
 showPrec p (Op op args) = showPrec p (app (Var ("@op[" ++ op ++ "]")) args)
 
 instance Show Term where
@@ -172,7 +172,7 @@ freeVars (Let env a) =
 freeVars (Fix x a) = delete x (freeVars a)
 freeVars (Ctr _ args) = foldr (union . freeVars) [] args
 freeVars (Typ _ args _) = foldr (union . freeVars . snd) [] args
-freeVars (Jmp _ brs c) = foldr (union . freeVars . snd) (freeVars c) brs
+freeVars (Case _ brs c) = foldr (union . freeVars . snd) (freeVars c) brs
 freeVars (Op _ args) = foldr (union . freeVars) [] args
 
 occurs :: String -> Term -> Bool
@@ -195,18 +195,18 @@ reduce _ env (Fun a b) = Fun (Let env a) (Let env b)
 reduce ops env (App a b) = case reduce ops env a of
   Lam x (Let env' a) -> reduce ops ((x, Let env b) : env') a
   Fix _ a -> reduce ops [] (App a (Let env b))
-  Jmp x brs c -> case reduce ops env b of
+  Case x brs c -> case reduce ops env b of
     Ctr k args -> case lookup k brs of
       Just b -> reduce ops [] (app b args)
       Nothing -> reduce ops [] c
-    b -> App (Jmp x brs c) b
+    b -> App (Case x brs c) b
   a -> App a (Let env b)
 reduce ops env (Ann a _) = reduce ops env a
 reduce ops env (Let env' a) = reduce ops (env ++ env') a
 reduce _ env (Fix x a) = Fix x (Let env a)
 reduce _ env (Ctr name args) = Ctr name (Let env <$> args)
 reduce _ env (Typ name args ctrs) = Typ name (second (Let env) <$> args) ctrs
-reduce _ env (Jmp x brs c) = Jmp x (second (Let env) <$> brs) (Let env c)
+reduce _ env (Case x brs c) = Case x (second (Let env) <$> brs) (Let env c)
 reduce ops env (Op op args) = do
   case (lookup op ops, eval ops env <$> args) of
     (Just f, args) -> case f args of
@@ -233,7 +233,7 @@ eval ops env term = case reduce ops env term of
     a -> a
   Ctr name args -> Ctr name (eval ops [] <$> args)
   Typ name args ctrs -> Typ name (second (eval ops []) <$> args) ctrs
-  Jmp x brs c -> Jmp x (second (eval ops []) <$> brs) (eval ops [] c)
+  Case x brs c -> Case x (second (eval ops []) <$> brs) (eval ops [] c)
   Op op args -> Op op (eval ops [] <$> args)
 
 -- TODO: move pattern matching into definition level.
@@ -353,7 +353,7 @@ infer ops env (Ctr k args) = do
 infer ops env (Typ name args alts) = do
   (_, t) <- findTyped ops env name
   inferApply ops env (name, t) (map snd args)
-infer ops env (Jmp x brs c) = do
+infer ops env (Case x brs c) = do
   (tname, targs, ctrs) <- case lookup x env of
     Just a -> case asTypeDef a of
       Just tdef -> Right tdef
