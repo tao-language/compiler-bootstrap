@@ -44,6 +44,7 @@ data Term
   | Ctr !String ![Term]
   | Typ !String ![(String, Term)] ![String]
   | Case !Term ![(String, Term)]
+  | CaseInt !Term ![(Int, Term)] !Term
   | Op !String ![Term]
   deriving (Eq)
 
@@ -90,6 +91,9 @@ showPrec p (Typ name args ctrs) = do
 showPrec _ (Case a brs) = do
   let showBr (k, b) = k ++ " => " ++ show b
   "@Case " ++ show a ++ " {" ++ intercalate " | " (map showBr brs) ++ "}"
+showPrec _ (CaseInt a brs c) = do
+  let showBr (i, b) = show i ++ " => " ++ show b
+  "@Case " ++ show a ++ " {" ++ intercalate " | " (map showBr brs) ++ " | _ => " ++ show c ++ "}"
 showPrec p (Op op args) = showPrec p (app (Var ("@op[" ++ op ++ "]")) args)
 
 instance Show Term where
@@ -184,6 +188,7 @@ freeVars (Fix x a) = delete x (freeVars a)
 freeVars (Ctr _ args) = foldr (union . freeVars) [] args
 freeVars (Typ _ args _) = foldr (union . freeVars . snd) [] args
 freeVars (Case a brs) = foldr (union . freeVars . snd) (freeVars a) brs
+freeVars (CaseInt a brs c) = foldr (union . freeVars . snd) (freeVars a `union` freeVars c) brs
 freeVars (Op _ args) = foldr (union . freeVars) [] args
 
 occurs :: String -> Term -> Bool
@@ -217,6 +222,11 @@ reduce ops env (Case a brs) = case reduce ops env a of
     Just b -> reduce ops env (app b args)
     Nothing -> error ("missing case: " ++ k)
   a -> Case a (second (Let env) <$> brs)
+reduce ops env (CaseInt a brs c) = case reduce ops env a of
+  Int i -> case lookup i brs of
+    Just b -> reduce ops env b
+    Nothing -> reduce ops env c
+  a -> CaseInt a (second (Let env) <$> brs) (Let env c)
 reduce ops env (Op op args) = do
   case (lookup op ops, eval ops env <$> args) of
     (Just f, args) -> case f args of
@@ -244,6 +254,7 @@ eval ops env term = case reduce ops env term of
   Ctr name args -> Ctr name (eval ops [] <$> args)
   Typ name args ctrs -> Typ name (second (eval ops []) <$> args) ctrs
   Case a brs -> Case (eval ops [] a) (second (eval ops []) <$> brs)
+  CaseInt a brs c -> CaseInt (eval ops [] a) (second (eval ops []) <$> brs) (eval ops [] c)
   Op op args -> Op op (eval ops [] <$> args)
 
 -- TODO: move pattern matching into definition level.
@@ -376,6 +387,13 @@ infer ops env (Case a brs) = do
   env <- Right (popVars (tname : ctrs) env)
   env <- Right (popVars xs env)
   Right (tb, env)
+infer ops env (CaseInt a [] c) = do
+  (_, env) <- infer ops env a
+  infer ops env c
+infer ops env (CaseInt a ((_, b) : brs) c) = do
+  (t1, env) <- infer ops env b
+  (t2, env) <- infer ops env (CaseInt a brs c)
+  unify ops env t1 t2
 infer ops env (Op op args) = do
   (_, t) <- findTyped ops env op
   inferApply ops env (op, t) args
@@ -426,6 +444,13 @@ inferApply ops env (x, t) args = do
   env <- Right ((x, Ann (Var x) t) : env)
   (t, env) <- infer ops env (app (Var x) args)
   Right (t, pop x env)
+
+inferMany :: Ops -> Env -> [Term] -> Either TypeError ([Type], Env)
+inferMany _ env [] = Right ([], env)
+inferMany ops env (a : bs) = do
+  (t, env) <- infer ops env a
+  (ts, env) <- inferMany ops env bs
+  Right (t : ts, env)
 
 newName :: String -> [String] -> String
 newName x existing = do

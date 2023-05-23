@@ -231,7 +231,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
 
     let env :: Env
         env =
-          ("f", Fix "f" $ Lam "n" $ Case (eq n i0) [("True", i1), ("False", n `mul` App f (n `sub` i1))]) :
+          ("f", Fix "f" $ Lam "n" $ CaseInt n [(0, i1)] (n `mul` App f (n `sub` i1))) :
           ("+", Ann (op2 "+") (fun [IntT, IntT] IntT)) :
           ("-", Ann (op2 "-") (fun [IntT, IntT] IntT)) :
           ("*", Ann (op2 "*") (fun [IntT, IntT] IntT)) :
