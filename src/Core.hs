@@ -8,23 +8,14 @@ import Data.List (delete, intercalate, union)
 
 {- TODO:
 
-Clean up code
-- unify just return env
-- unify don't evaluate at the start
-- check just return env
+- Add Reflect
+- Clean up code
 - Consistency on variable names:
   * Expr: a, b, c
   * Type: t, t1, t2, ta, tb, tc
   * Var: x, y, z
 - Show Term with precedence
 - Remove unused errors
-
-Function / operator overloading
-- Via inferred type classes
-
-Do notation
-- Overload (<-) operator
-
 -}
 
 data Term
@@ -93,7 +84,7 @@ showPrec _ (Case a brs) = do
   "@Case " ++ show a ++ " {" ++ intercalate " | " (map showBr brs) ++ "}"
 showPrec _ (CaseInt a brs c) = do
   let showBr (i, b) = show i ++ " => " ++ show b
-  "@Case " ++ show a ++ " {" ++ intercalate " | " (map showBr brs) ++ " | _ => " ++ show c ++ "}"
+  "@CaseInt " ++ show a ++ " {" ++ intercalate " | " (map showBr brs) ++ " | _ => " ++ show c ++ "}"
 showPrec p (Op op args) = showPrec p (app (Var ("@op[" ++ op ++ "]")) args)
 
 instance Show Term where
@@ -257,43 +248,41 @@ eval ops env term = case reduce ops env term of
   CaseInt a brs c -> CaseInt (eval ops [] a) (second (eval ops []) <$> brs) (eval ops [] c)
   Op op args -> Op op (eval ops [] <$> args)
 
--- TODO: move pattern matching into definition level.
 unify :: Ops -> Env -> Term -> Term -> Either TypeError (Term, Env)
-unify ops env a b = case (a, b) of
-  (Knd, Knd) -> Right (Knd, env)
-  (IntT, IntT) -> Right (IntT, env)
-  (Int i, Int i') | i == i' -> Right (Int i, env)
-  (NumT, NumT) -> Right (NumT, env)
-  (Num n, Num n') | n == n' -> Right (Num n, env)
-  (Var x, Var x') | x == x' -> Right (Var x, env)
-  (Var x, b) | x `occurs` b -> Left (InfiniteType x b)
-  (Var x, b) -> do
-    let b' = eval ops env b
-    Right (b', set x b' env)
-  (a, Var y) -> unify ops env (Var y) a
-  (a, For x b) -> do
-    let y = newName x (map fst env)
-    (a, env) <- unify ops ((y, Var y) : env) a (eval ops [(x, Var y)] b)
-    Right (for [y] a, pop y env)
-  (For x a, b) -> do
-    let y = newName x (map fst env)
-    (a, env) <- unify ops ((y, Var y) : env) (eval ops [(x, Var y)] a) b
-    Right (for [y] a, pop y env)
-  (Fun a1 b1, Fun a2 b2) -> do
-    (a, env) <- unify ops env a1 a2
-    (b, env) <- unify ops env (eval ops env b1) (eval ops env b2)
-    Right (Fun (eval ops env a) b, env)
-  (App a1 b1, App a2 b2) -> do
-    (a, env) <- unify ops env a1 a2
-    (b, env) <- unify ops env (eval ops env b1) (eval ops env b2)
-    Right (App (eval ops env a) b, env)
-  (Typ name args ctrs, Typ name' args' ctrs') | name == name' && map fst args == map fst args' && ctrs == ctrs' -> do
-    (argsT, env) <- unifyMany ops env (map snd args) (map snd args')
-    Right (Typ name (zip (map fst args) argsT) ctrs, env)
-  (Op op args, Op op' args') | op == op' && length args == length args' -> do
-    (args, env) <- unifyMany ops env args args'
-    Right (Op op args, env)
-  (a, b) -> Left (TypeMismatch a b)
+unify _ env Knd Knd = Right (Knd, env)
+unify _ env IntT IntT = Right (IntT, env)
+unify _ env (Int i) (Int i') | i == i' = Right (Int i, env)
+unify _ env NumT NumT = Right (NumT, env)
+unify _ env (Num n) (Num n') | n == n' = Right (Num n, env)
+unify _ env (Var x) (Var x') | x == x' = Right (Var x, env)
+unify _ _ (Var x) b | x `occurs` b = Left (InfiniteType x b)
+unify ops env (Var x) b = do
+  let b' = eval ops env b
+  Right (b', set x b' env)
+unify ops env a (Var y) = unify ops env (Var y) a
+unify ops env a (For x b) = do
+  let y = newName x (map fst env)
+  (a, env) <- unify ops ((y, Var y) : env) a (eval ops [(x, Var y)] b)
+  Right (for [y] a, pop y env)
+unify ops env (For x a) b = do
+  let y = newName x (map fst env)
+  (a, env) <- unify ops ((y, Var y) : env) (eval ops [(x, Var y)] a) b
+  Right (for [y] a, pop y env)
+unify ops env (Fun a1 b1) (Fun a2 b2) = do
+  (a, env) <- unify ops env a1 a2
+  (b, env) <- unify ops env (eval ops env b1) (eval ops env b2)
+  Right (Fun (eval ops env a) b, env)
+unify ops env (App a1 b1) (App a2 b2) = do
+  (a, env) <- unify ops env a1 a2
+  (b, env) <- unify ops env (eval ops env b1) (eval ops env b2)
+  Right (App (eval ops env a) b, env)
+unify ops env (Typ name args ctrs) (Typ name' args' ctrs') | name == name' && map fst args == map fst args' && ctrs == ctrs' = do
+  (argsT, env) <- unifyMany ops env (map snd args) (map snd args')
+  Right (Typ name (zip (map fst args) argsT) ctrs, env)
+unify ops env (Op op args) (Op op' args') | op == op' && length args == length args' = do
+  (args, env) <- unifyMany ops env args args'
+  Right (Op op args, env)
+unify _ _ a b = Left (TypeMismatch a b)
 
 unifyMany :: Ops -> Env -> [Term] -> [Term] -> Either TypeError ([Term], Env)
 unifyMany _ env [] _ = Right ([], env)
@@ -383,10 +372,10 @@ infer ops env (Case a brs) = do
   env <- Right (pushVars xs env)
   (_, env) <- infer ops env (Ann a (Typ tname targs ctrs))
   env <- Right (pushVars (tname : ctrs) env)
-  (tb, env) <- inferBranches ops env alts brs
+  (t, env) <- inferBranches ops env alts brs
   env <- Right (popVars (tname : ctrs) env)
   env <- Right (popVars xs env)
-  Right (tb, env)
+  Right (t, env)
 infer ops env (CaseInt a [] c) = do
   (_, env) <- infer ops env a
   infer ops env c
@@ -397,6 +386,8 @@ infer ops env (CaseInt a ((_, b) : brs) c) = do
 infer ops env (Op op args) = do
   (_, t) <- findTyped ops env op
   inferApply ops env (op, t) args
+
+-- inferCaseTypBr :: Term ->
 
 asTypeDef :: Term -> Either TypeError (String, [(String, Term)], [String])
 asTypeDef (Ann a _) = asTypeDef a

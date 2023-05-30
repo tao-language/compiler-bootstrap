@@ -223,9 +223,8 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer' (case' (Ctr "Cons" [Int 42, Var "Nil"])) `shouldBe` Right (IntT, env)
 
   it "☯ factorial" $ do
-    let (i0, i1) = (Int 0, Int 1)
+    let i1 = Int 1
     let (f, n) = (Var "f", Var "n")
-    let eq a b = app (Var "==") [a, b]
     let mul a b = app (Var "*") [a, b]
     let sub a b = app (Var "-") [a, b]
 
