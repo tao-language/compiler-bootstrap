@@ -8,10 +8,9 @@ import Test.Hspec
 taoLangTests :: SpecWith ()
 taoLangTests = describe "--==☯ Tao language ☯==--" $ do
   let (a, b) = (Var "a", Var "b")
-  let (a', b') = (VarP "a", VarP "b")
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (x', y', z') = (VarP "x", VarP "y", VarP "z")
-  let (i1, i2, i3) = (Int 1, Int 2, Int 3)
+  let (i1, i2) = (Int 1, Int 2)
 
   let eq = Op2 "=="
   let lt = Op2 "<"
@@ -40,6 +39,17 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     p "a" `shouldBe` Right ("a", "")
     p "a1" `shouldBe` Right ("a1", "")
     p "_a1" `shouldBe` Right ("_a1", "")
+
+  it "☯ emptyLine" $ do
+    let p = parse' emptyLine
+    p "" `shouldBe` Left ""
+    p "  " `shouldBe` Left ""
+    p "\nabc" `shouldBe` Right ("", "abc")
+    p "  \nabc" `shouldBe` Right ("  ", "abc")
+    p " a \nbc" `shouldBe` Left "a "
+    p ";abc" `shouldBe` Right ("", "abc")
+    p "  ;abc" `shouldBe` Right ("  ", "abc")
+    p " a ;bc" `shouldBe` Left "a "
 
   it "☯ commentSingleLine" $ do
     let p = parse' commentSingleLine
@@ -74,14 +84,16 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ pattern" $ do
     let p = parse' pattern'
-    p "_" `shouldBe` Right (AnyP, "")
-    p "x" `shouldBe` Right (VarP "x", "")
-    p "A" `shouldBe` Right (CtrP "A" [], "")
-    p "B x y" `shouldBe` Right (CtrP "B" [x', y'], "")
-    p "(_)" `shouldBe` Right (AnyP, "")
-    p "(x)" `shouldBe` Right (VarP "x", "")
-    p "(A)" `shouldBe` Right (CtrP "A" [], "")
-    p "(B x y)" `shouldBe` Right (CtrP "B" [x', y'], "")
+    p "_ " `shouldBe` Right (AnyP, "")
+    p "1 " `shouldBe` Right (IntP 1, "")
+    p "x " `shouldBe` Right (VarP "x", "")
+    p "A " `shouldBe` Right (CtrP "A" [], "")
+    p "B x y " `shouldBe` Right (CtrP "B" [x', y'], "")
+    p "(_) " `shouldBe` Right (AnyP, "")
+    p "(1) " `shouldBe` Right (IntP 1, "")
+    p "(x) " `shouldBe` Right (VarP "x", "")
+    p "(A) " `shouldBe` Right (CtrP "A" [], "")
+    p "(B x y) " `shouldBe` Right (CtrP "B" [x', y'], "")
 
   it "☯ expression" $ do
     let p = parse' (expression 0)
@@ -93,9 +105,9 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     p "A" `shouldBe` Right (Var "A", "")
     p "@forall x. y" `shouldBe` Right (For "x" y, "")
     p "@forall x y. z" `shouldBe` Right (for ["x", "y"] z, "")
-    p "\\x = 1" `shouldBe` Right (Match [Case [x'] i1], "")
-    p "\\x y = 1" `shouldBe` Right (Match [Case [x', y'] i1], "")
-    p "\\x = 1 | y = 2" `shouldBe` Right (Match [Case [x'] i1, Case [y'] i2], "")
+    p "\\x = 1" `shouldBe` Right (Lam "x" i1, "")
+    p "\\x y = 1" `shouldBe` Right (lam ["x", "y"] i1, "")
+    p "\\x = 1 | y = 2" `shouldBe` Right (Match [Br [x'] i1, Br [y'] i2], "")
     p "x = 1; a" `shouldBe` Right (Let [Def [] x' i1] a, "")
     p "x = 1\na" `shouldBe` Right (Let [Def [] x' i1] a, "")
     p "x = 1; y = 2; a" `shouldBe` Right (Let [Def [] x' i1, Def [] y' i2] a, "")
@@ -109,6 +121,46 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     p "x * y" `shouldBe` Right (mul x y, "")
     p "x y" `shouldBe` Right (App x y, "")
     p "(x)" `shouldBe` Right (x, "")
+
+  it "☯ defineRules" $ do
+    let types = [("x", a)]
+    let p = parse' (defineRules types)
+    p "x = 1" `shouldBe` Right (Def types x' i1, "")
+    p "x y = 1" `shouldBe` Right (Def types x' (Lam "y" i1), "")
+    p "x y z = 1" `shouldBe` Right (Def types x' (lam ["y", "z"] i1), "")
+    p "x y = 1; x z = 2;" `shouldBe` Right (Def types x' (Match [Br [y'] i1, Br [z'] i2]), "")
+    p "x y = 1\nx z = 2\n" `shouldBe` Right (Def types x' (Match [Br [y'] i1, Br [z'] i2]), "")
+    p "x y = 1\n\nx z = 2\n\n" `shouldBe` Right (Def types x' (Match [Br [y'] i1, Br [z'] i2]), "")
+
+  it "☯ definePattern" $ do
+    let types = [("x", a)]
+    let p = parse' (definePattern types)
+    p "A x y = z" `shouldBe` Right (Def types (CtrP "A" [x', y']) z, "")
+
+  it "☯ defineType" $ do
+    let (a, n) = (Var "a", Var "n")
+    let boolT = Var "Bool"
+    let maybeT a = App (Var "Maybe") a
+    let vecT n a = app (Var "Vec") [n, a]
+    let p = parse' defineType
+    p "Bool = True : Bool | False : Bool" `shouldBe` Right (DefT "Bool" [] [("True", ([], boolT)), ("False", ([], boolT))], "")
+    p "Bool = True | False" `shouldBe` Right (DefT "Bool" [] [("True", ([], boolT)), ("False", ([], boolT))], "")
+    p "Maybe (a : Type) = Just a : Maybe a | Nothing : Maybe a" `shouldBe` Right (DefT "Maybe" [("a", Knd)] [("Just", ([("", a)], maybeT a)), ("Nothing", ([], maybeT a))], "")
+    p "Maybe a = Just a | Nothing" `shouldBe` Right (DefT "Maybe" [("a", Knd)] [("Just", ([("", a)], maybeT a)), ("Nothing", ([], maybeT a))], "")
+    p "Vec (n : Int) (a : Type) = Cons a (Vec n a) : Vec (n + 1) a | Nil : Vec 0 a" `shouldBe` Right (DefT "Vec" [("n", IntT), ("a", Knd)] [("Cons", ([("", a), ("", vecT n a)], vecT (add n (Int 1)) a)), ("Nil", ([], vecT (Int 0) a))], "")
+    p "Vec (n : Int) a = Cons a (Vec n a) : Vec (n + 1) a | Nil : Vec 0 a" `shouldBe` Right (DefT "Vec" [("n", IntT), ("a", Knd)] [("Cons", ([("", a), ("", vecT n a)], vecT (add n (Int 1)) a)), ("Nil", ([], vecT (Int 0) a))], "")
+
+  it "☯ define" $ do
+    let p = parse' define
+    p "x : a = 1" `shouldBe` Right (Def [("x", a)] x' i1, "")
+    p "x = 1" `shouldBe` Right (Def [] x' i1, "")
+    p "x y = 1" `shouldBe` Right (Def [] x' (Lam "y" i1), "")
+    p "A x y = 1" `shouldBe` Right (Def [] (CtrP "A" [x', y']) i1, "")
+    p "x : a; x = 1" `shouldBe` Right (Def [("x", a)] x' i1, "")
+    p "x : a\nx = 1" `shouldBe` Right (Def [("x", a)] x' i1, "")
+    p "x : a; y : b; A x y = 1" `shouldBe` Right (Def [("x", a), ("y", b)] (CtrP "A" [x', y']) i1, "")
+    p "x : a\ny : b\nA x y = 1" `shouldBe` Right (Def [("x", a), ("y", b)] (CtrP "A" [x', y']) i1, "")
+    p "Bool = True | False" `shouldBe` Right (DefT "Bool" [] [("True", ([], Var "Bool")), ("False", ([], Var "Bool"))], "")
 
   describe "☯ operator precedence" $ do
     it "☯ Let" $ do
@@ -239,42 +291,3 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
       p "x y - z" `shouldBe` Right (sub (App x y) z, "")
       p "x y * z" `shouldBe` Right (mul (App x y) z, "")
       p "x y z" `shouldBe` Right (App (App x y) z, "")
-
-  it "☯ defineRules" $ do
-    let types = [("x", a)]
-    let p = parse' (defineRules types)
-    p "x = 1" `shouldBe` Right (Def types x' i1, "")
-    p "x y = 1" `shouldBe` Right (Def types x' (Lam y' i1), "")
-    p "x y z = 1" `shouldBe` Right (Def types x' (lam [y', z'] i1), "")
-    p "x y = 1; x z = 2" `shouldBe` Right (Def types x' (Match [Case [y'] i1, Case [z'] i2]), "")
-    p "x y = 1\nx z = 2" `shouldBe` Right (Def types x' (Match [Case [y'] i1, Case [z'] i2]), "")
-
-  it "☯ definePattern" $ do
-    let types = [("x", a)]
-    let p = parse' (definePattern types)
-    p "A x y = z" `shouldBe` Right (Def types (CtrP "A" [x', y']) z, "")
-
-  it "☯ defineType" $ do
-    let (a, n) = (Var "a", Var "n")
-    let boolT = Var "Bool"
-    let maybeT a = App (Var "Maybe") a
-    let vecT n a = app (Var "Vec") [n, a]
-    let p = parse' defineType
-    p "Bool = True : Bool | False : Bool" `shouldBe` Right (DefT "Bool" [] [("True", ([], boolT)), ("False", ([], boolT))], "")
-    p "Bool = True | False" `shouldBe` Right (DefT "Bool" [] [("True", ([], boolT)), ("False", ([], boolT))], "")
-    p "Maybe (a : Type) = Just a : Maybe a | Nothing : Maybe a" `shouldBe` Right (DefT "Maybe" [("a", Knd)] [("Just", ([("", a)], maybeT a)), ("Nothing", ([], maybeT a))], "")
-    p "Maybe a = Just a | Nothing" `shouldBe` Right (DefT "Maybe" [("a", Knd)] [("Just", ([("", a)], maybeT a)), ("Nothing", ([], maybeT a))], "")
-    p "Vec (n : Int) (a : Type) = Cons a (Vec n a) : Vec (n + 1) a | Nil : Vec 0 a" `shouldBe` Right (DefT "Vec" [("n", IntT), ("a", Knd)] [("Cons", ([("", a), ("", vecT n a)], vecT (add n (Int 1)) a)), ("Nil", ([], vecT (Int 0) a))], "")
-    p "Vec (n : Int) a = Cons a (Vec n a) : Vec (n + 1) a | Nil : Vec 0 a" `shouldBe` Right (DefT "Vec" [("n", IntT), ("a", Knd)] [("Cons", ([("", a), ("", vecT n a)], vecT (add n (Int 1)) a)), ("Nil", ([], vecT (Int 0) a))], "")
-
-  it "☯ define" $ do
-    let p = parse' define
-    p "x : a = 1" `shouldBe` Right (Def [("x", a)] x' i1, "")
-    p "x = 1" `shouldBe` Right (Def [] x' i1, "")
-    p "x y = 1" `shouldBe` Right (Def [] x' (Lam y' i1), "")
-    p "A x y = 1" `shouldBe` Right (Def [] (CtrP "A" [x', y']) i1, "")
-    p "x : a; x = 1" `shouldBe` Right (Def [("x", a)] x' i1, "")
-    p "x : a\nx = 1" `shouldBe` Right (Def [("x", a)] x' i1, "")
-    p "x : a; y : b; A x y = 1" `shouldBe` Right (Def [("x", a), ("y", b)] (CtrP "A" [x', y']) i1, "")
-    p "x : a\ny : b\nA x y = 1" `shouldBe` Right (Def [("x", a), ("y", b)] (CtrP "A" [x', y']) i1, "")
-    p "Bool = True | False" `shouldBe` Right (DefT "Bool" [] [("True", ([], Var "Bool")), ("False", ([], Var "Bool"))], "")

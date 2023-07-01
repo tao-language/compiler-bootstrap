@@ -131,7 +131,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
         ]
 
   it "☯ Bool" $ do
-    let case' a = Case a [("True", Int 1), ("False", Int 0)]
+    let case' a = Case a [("True", Int 1)] (Int 0)
     let env = boolenv
 
     let eval' = eval ops env
@@ -148,7 +148,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ Maybe" $ do
     let a = Var "a"
     let maybeT a = Typ "Maybe" [("a", a)] ["Just", "Nothing"]
-    let case' a = Case a [("Just", Lam "x" (Var "x")), ("Nothing", Int 0)]
+    let case' a = Case a [("Just", Lam "x" (Var "x"))] (Int 0)
     let env :: Env
         env =
           [ ("Maybe", Ann (Lam "a" $ maybeT a) (Fun Knd Knd)),
@@ -172,7 +172,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ Nat" $ do
     let natT = Typ "Nat" [] ["Zero", "Succ"]
-    let case' a = Case a [("Succ", Lam "x" (Int 1)), ("Zero", Int 0)]
+    let case' a = Case a [("Succ", Lam "x" (Int 1))] (Int 0)
     let env :: Env
         env =
           [ ("Nat", Ann natT Knd),
@@ -197,7 +197,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ Vec" $ do
     let (n, a) = (Var "n", Var "a")
     let vecT n a = Typ "Vec" [("n", n), ("a", a)] ["Cons", "Nil"]
-    let case' a = Case a [("Cons", lam ["x", "xs"] (Var "x")), ("Nil", Int 0)]
+    let case' a = Case a [("Cons", lam ["x", "xs"] (Var "x"))] (Int 0)
     let env :: Env
         env =
           [ ("Vec", Ann (lam ["n", "a"] (vecT n a)) (fun [IntT, Knd] Knd)),
@@ -230,7 +230,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
 
     let env :: Env
         env =
-          ("f", Fix "f" $ Lam "n" $ CaseInt n [(0, i1)] (n `mul` App f (n `sub` i1))) :
+          ("f", Fix "f" $ Lam "n" (CaseI (Var "n") [(0, i1)] (n `mul` App f (n `sub` i1)))) :
           ("+", Ann (op2 "+") (fun [IntT, IntT] IntT)) :
           ("-", Ann (op2 "-") (fun [IntT, IntT] IntT)) :
           ("*", Ann (op2 "*") (fun [IntT, IntT] IntT)) :
@@ -252,3 +252,23 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     let infer' = infer ops env
     infer' (Var "f") `shouldBe` Right (Fun IntT IntT, env)
     infer' (App f (Int 0)) `shouldBe` Right (IntT, env)
+
+  it "☯ match" $ do
+    let (x, x1) = (Var "x", Var "x1")
+    let (x', y') = (VarP "x", VarP "y")
+    let (i1, i2) = (Int 1, Int 2)
+    match [] `shouldBe` Left EmptyCase
+    match [Br [] i1] `shouldBe` Right i1
+    match [Br [] i1, Br [] i2] `shouldBe` Right i1
+    match [Br [AnyP] i1, Br [AnyP] i2] `shouldBe` Right (Lam "_" i1)
+    match [Br [VarP "x"] i1, Br [AnyP] i2] `shouldBe` Right (Lam "x" i1)
+    match [Br [IntP 0] i1, Br [AnyP] i2] `shouldBe` Right (Lam "_" (CaseI (Var "_") [(0, i1)] i2))
+    match [Br [CtrP "A" []] i1, Br [AnyP] i2] `shouldBe` Right (Lam "_" $ Case (Var "_") [("A", i1)] i2)
+    match [Br [CtrP "B" [x'], y'] i1, Br [AnyP, AnyP] i2] `shouldBe` Right (Lam "_" $ Case (Var "_") [("B", lam ["x", "y"] i1)] (Lam "_" i2))
+
+    -- Name shadowing.
+    match [Br [AnyP] x, Br [VarP "x"] x] `shouldBe` Right (Lam "x1" x)
+    match [Br [VarP "x"] x, Br [AnyP] x] `shouldBe` Right (Lam "x1" $ Let [("x", x1)] x)
+
+-- -- match [Br [x'] i1, Br [x'] i2] `shouldBe` lam ["x"] i1
+-- -- match [Br [x'] i1, Br [] i2] `shouldBe` error "different number of patterns"

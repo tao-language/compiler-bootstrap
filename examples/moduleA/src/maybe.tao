@@ -1,0 +1,7 @@
+Maybe a
+    = Just a
+    | Nothing
+
+f : Maybe Int -> Int
+f (Just x) = x
+f Nothing = 0

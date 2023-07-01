@@ -39,11 +39,11 @@ data Error
 --   Right (env, expr) -> return (env, expr)
 --   Left err -> fail ("❌ " ++ show err)
 
-loadFile :: FilePath -> FilePath -> IO [Definition]
+loadFile :: FilePath -> FilePath -> IO Env
 loadFile moduleName fileName = do
   src <- readFile (moduleName </> fileName)
   case TaoLang.parse (zeroOrMore define) src of
-    Right defs -> return defs
+    Right defs -> return (concatMap unpack defs)
     Left err -> fail ("❌ " ++ show err)
 
 -- loadModule :: FilePath -> IO Env
@@ -91,9 +91,6 @@ keyword x txt = do
   _ <- token (text txt |> notFollowedBy (oneOf wordBreak))
   succeed x
 
-newLine :: Parser ()
-newLine = token $ oneOf [endOfLine, void $ char ';']
-
 identifier :: Parser Char -> Parser String
 identifier firstChar = do
   -- TODO: support `-` and other characters, maybe URL-like names
@@ -104,6 +101,19 @@ identifier firstChar = do
         Just c0 -> c0 : c1 : cs
         Nothing -> c1 : cs
   keyword x ""
+
+emptyLine :: Parser String
+emptyLine = do
+  let close = oneOf [char '\n', char ';']
+  line <- subparser close (zeroOrMore space)
+  _ <- close
+  succeed line
+
+newLine :: Parser ()
+newLine = do
+  _ <- token $ oneOf [void (char ';'), endOfLine]
+  _ <- zeroOrMore emptyLine
+  succeed ()
 
 commentSingleLine :: Parser String
 commentSingleLine = do
@@ -139,6 +149,7 @@ patternToken :: Parser Pattern
 patternToken = do
   oneOf
     [ keyword AnyP "_",
+      IntP <$> token integer,
       VarP <$> identifier lowercase,
       (`CtrP` []) <$> identifier uppercase,
       do
@@ -189,17 +200,17 @@ expression prec = do
         ps <- oneOrMore patternToken
         _ <- token $ char '='
         b <- expression prec
-        succeed (Case ps b)
+        succeed (Br ps b)
 
-  let match :: Parser Expr
-      match = do
+  let match' :: Parser Expr
+      match' = do
         _ <- token $ char '\\'
         br <- branch 0
         brs <- zeroOrMore (do _ <- token $ char '|'; branch 0)
-        succeed (Match (br : brs))
+        succeed (match (br : brs))
 
   withOperators
-    [ constant match,
+    [ constant match',
       prefixOp 0 Let (oneOrMore define),
       prefixOp 1 for forall,
       prefix 1 TypeOf (keyword () "@typeof"),
@@ -225,10 +236,10 @@ defineRules types = do
         _ <- token $ char '='
         a <- expression 0
         _ <- newLine
-        succeed (Case ps a)
+        succeed (Br ps a)
   b <- branch
   bs <- zeroOrMore (do _ <- keyword () x; branch)
-  succeed (Def types (VarP x) (match b bs))
+  succeed (Def types (VarP x) (match (b : bs)))
 
 definePattern :: [(String, Type)] -> Parser Definition
 definePattern types = do

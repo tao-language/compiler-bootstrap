@@ -8,18 +8,32 @@ import Test.Hspec
 
 examplesTests :: SpecWith ()
 examplesTests = describe "--==☯ Examples ☯==--" $ do
-  -- let infer' env a = fmap fst (infer env a)
+  let ops = []
 
-  -- it "☯ factorial" $ do
-  --   let f = Var "factorial"
-  --   env <- loadFile "example/e2e" "factorial.tao"
-  --   -- infer' env f `shouldBe` Right (Fun IntT IntT)
-  --   eval env (App f (Int 0)) `shouldBe` Int 1
-  --   eval env (App f (Int 1)) `shouldBe` Int 1
-  --   eval env (App f (Int 2)) `shouldBe` Int 2
-  --   eval env (App f (Int 3)) `shouldBe` Int 6
-  --   eval env (App f (Int 4)) `shouldBe` Int 24
-  --   eval env (App f (Int 5)) `shouldBe` Int 120
+  it "☯ definitions" $ do
+    {- examples/definitions.tao
+        x = 42
+        y = 3.14
+    -}
+    env <- loadFile "examples" "definitions.tao"
+    eval ops env (Var "x") `shouldBe` Right (Int 42, IntT)
+    eval ops env (Var "y") `shouldBe` Right (Num 3.14, NumT)
+
+  it "☯ factorial" $ do
+    {- examples/factorial.tao
+        factorial 0 = 1
+        factorial n = n * factorial (n - 1)
+    -}
+    let f = Var "factorial"
+    env <- loadFile "examples" "factorial.tao"
+    -- infer ops env f `shouldBe` Right (Fun IntT IntT, env)
+    -- eval env (App f (Int 0)) `shouldBe` Int 1
+    -- eval env (App f (Int 1)) `shouldBe` Int 1
+    -- eval env (App f (Int 2)) `shouldBe` Int 2
+    -- eval env (App f (Int 3)) `shouldBe` Int 6
+    -- eval env (App f (Int 4)) `shouldBe` Int 24
+    -- eval env (App f (Int 5)) `shouldBe` Int 120
+    True `shouldBe` True
 
   -- it "☯ fibonacci" $ do
   --   let f = Var "fibonacci"

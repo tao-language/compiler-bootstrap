@@ -3,56 +3,63 @@
 module Core where
 
 import Data.Bifunctor (Bifunctor (first, second))
-import Data.Foldable (Foldable (foldl'))
+import Data.Foldable (Foldable (foldl'), foldlM)
 import Data.List (delete, intercalate, union)
 
 {- TODO:
 
-- Add Reflect
+- Make Case and CaseInt into LamC and LamI
+- Move the Typ information into a Context used only on type inference
+  * Only include information necessary for evaluation
+  * Everything else should be part of the Context
+- Rework Op to not have to include an Ops dictionary at runtime
+- Add Records
 - Clean up code
+  * infer Case
 - Consistency on variable names:
   * Expr: a, b, c
   * Type: t, t1, t2, ta, tb, tc
   * Var: x, y, z
-- Show Term with precedence
+- Show Expr with precedence
 - Remove unused errors
+
 -}
 
-data Term
+data Expr
   = Knd
   | IntT
   | NumT
   | Int !Int
   | Num !Double
   | Var !String
-  | Lam !String !Term
-  | For !String !Term
-  | Fun !Term !Term
-  | App !Term !Term
-  | Ann !Term !Type
-  | Let !Env !Term
-  | Fix !String !Term
-  | Ctr !String ![Term]
-  | Typ !String ![(String, Term)] ![String]
-  | Case !Term ![(String, Term)]
-  | CaseInt !Term ![(Int, Term)] !Term
-  | Op !String ![Term]
+  | Lam !String !Expr
+  | CaseI !Expr ![(Int, Expr)] !Expr
+  | Case !Expr ![(String, Expr)] !Expr
+  | For !String !Expr
+  | Fun !Expr !Expr
+  | App !Expr !Expr
+  | Ann !Expr !Type
+  | Let !Env !Expr
+  | Fix !String !Expr
+  | Ctr !String ![Expr]
+  | Typ !String ![(String, Expr)] ![String]
+  | Op !String ![Expr]
   deriving (Eq)
 
 showParen' :: Bool -> String -> String
 showParen' True a = "(" ++ a ++ ")"
 showParen' False a = a
 
-showPrefix :: Int -> Int -> String -> Term -> String
+showPrefix :: Int -> Int -> String -> Expr -> String
 showPrefix p q op a = showParen' (p > q) (op ++ showPrec q a)
 
-showInfixL :: Int -> Int -> Term -> String -> Term -> String
+showInfixL :: Int -> Int -> Expr -> String -> Expr -> String
 showInfixL p q a op b = showParen' (p > q) (showPrec q a ++ op ++ showPrec (q + 1) b)
 
-showInfixR :: Int -> Int -> Term -> String -> Term -> String
+showInfixR :: Int -> Int -> Expr -> String -> Expr -> String
 showInfixR p q a op b = showParen' (p > q) (showPrec (q + 1) a ++ op ++ showPrec q b)
 
-showPrec :: Int -> Term -> String
+showPrec :: Int -> Expr -> String
 showPrec _ Knd = "@Type"
 showPrec _ IntT = "@Int"
 showPrec _ (Int i) = show i
@@ -79,69 +86,92 @@ showPrec p (Typ name args ctrs) = do
   -- let x = name ++ "[" ++ unwords (map fst args) ++ "]{" ++ intercalate "|" ctrs ++ "}"
   let x = name
   "%" ++ showPrec p (app (Var x) (map snd args))
-showPrec _ (Case a brs) = do
+showPrec _ (Case a brs c) = do
   let showBr (k, b) = k ++ " => " ++ show b
-  "@Case " ++ show a ++ " {" ++ intercalate " | " (map showBr brs) ++ "}"
-showPrec _ (CaseInt a brs c) = do
+  let cases = map showBr brs ++ [showBr ("_", c)]
+  "@LamC " ++ show a ++ " {" ++ intercalate " | " cases ++ "}"
+showPrec _ (CaseI a brs c) = do
   let showBr (i, b) = show i ++ " => " ++ show b
-  "@CaseInt " ++ show a ++ " {" ++ intercalate " | " (map showBr brs) ++ " | _ => " ++ show c ++ "}"
+  let cases = map showBr brs ++ [showBr ("_", c)]
+  "@LamI " ++ show a ++ " {" ++ intercalate " | " cases ++ "}"
 showPrec p (Op op args) = showPrec p (app (Var ("@op[" ++ op ++ "]")) args)
 
-instance Show Term where
-  show :: Term -> String
+instance Show Expr where
+  show :: Expr -> String
   show a = showPrec 0 a
 
-type Type = Term
+type Type = Expr
 
-type Operator = [Term] -> Maybe Term
+type Operator = [Expr] -> Maybe Expr
 
 type Ops = [(String, Operator)]
 
-type Env = [(String, Term)]
+type Env = [(String, Expr)]
+
+data Pattern
+  = AnyP
+  | VarP !String
+  | IntP !Int
+  | CtrP !String ![Pattern]
+  deriving (Eq, Show)
+
+data Branch
+  = Br ![Pattern] !Expr
+  deriving (Eq, Show)
+
+data MatchStep
+  = MatchEnd !Expr
+  | MatchAny ![Branch]
+  | MatchInt ![(Int, [Branch])] ![Branch]
+  | MatchCtr ![(String, (Int, [Branch]))] ![Branch]
+  deriving (Eq, Show)
 
 data TypeError
-  = InfiniteType !String !Term
+  = CtrNotInType !String ![(String, Type)]
   | EmptyCase
-  | CtrNotInType !String ![(String, Type)]
-  | MissingType !String !Term
-  | TooManyArgs !Term ![Term]
+  | InfiniteType !String !Expr
+  | MatchCtrArgsMismatch !Int ![Pattern]
+  | MatchMixIntCtrPatterns
+  | MatchNumPatternsMismatch
+  | MissingType !String !Expr
   | NotAFunction !Type
-  | NotAUnionAlt !String !Term
-  | NotAUnionType !Term
-  | TypeMismatch !Term !Term
-  | UndefinedOp !String
+  | NotAUnionAlt !String !Expr
+  | NotAUnionType !Expr
+  | TooManyArgs !Expr ![Expr]
+  | TypeMismatch !Expr !Expr
   | UndefinedCtr !String
+  | UndefinedOp !String
   | UndefinedType !String
   | UndefinedUnionAlt !String
   | UndefinedUnionType !String
   | UndefinedVar !String
   deriving (Eq, Show)
 
-lam :: [String] -> Term -> Term
+lam :: [String] -> Expr -> Expr
 lam xs a = foldr Lam a xs
 
-asLam :: Term -> ([String], Term)
+asLam :: Expr -> ([String], Expr)
 asLam (Lam x a) = first (x :) (asLam a)
 asLam a = ([], a)
 
-for :: [String] -> Term -> Term
+for :: [String] -> Expr -> Expr
 for xs a = foldr (\x a -> if x `occurs` a then For x a else a) a xs
 
-asFor :: Term -> ([String], Term)
+asFor :: Expr -> ([String], Expr)
 asFor (For x a) = first (x :) (asFor a)
 asFor a = ([], a)
 
 fun :: [Type] -> Type -> Type
 fun bs ret = foldr Fun ret bs
 
-asFun :: Term -> ([Term], Term)
+asFun :: Expr -> ([Expr], Expr)
 asFun (Fun a b) = first (a :) (asFun b)
 asFun a = ([], a)
 
-app :: Term -> [Term] -> Term
+app :: Expr -> [Expr] -> Expr
 app = foldl' App
 
-let' :: Env -> Term -> Term
+let' :: Env -> Expr -> Expr
 let' [] a = a
 let' env a = Let env a
 
@@ -161,11 +191,11 @@ pushVars xs env = foldr (\x -> (:) (x, Var x)) env xs
 popVars :: [String] -> Env -> Env
 popVars xs env = foldl' (flip pop) env xs
 
-freeVars :: Term -> [String]
+freeVars :: Expr -> [String]
 freeVars Knd = []
 freeVars IntT = []
-freeVars (Int _) = []
 freeVars NumT = []
+freeVars (Int _) = []
 freeVars (Num _) = []
 freeVars (Var x) = [x]
 freeVars (Lam x a) = delete x (freeVars a)
@@ -178,14 +208,14 @@ freeVars (Let env a) =
 freeVars (Fix x a) = delete x (freeVars a)
 freeVars (Ctr _ args) = foldr (union . freeVars) [] args
 freeVars (Typ _ args _) = foldr (union . freeVars . snd) [] args
-freeVars (Case a brs) = foldr (union . freeVars . snd) (freeVars a) brs
-freeVars (CaseInt a brs c) = foldr (union . freeVars . snd) (freeVars a `union` freeVars c) brs
+freeVars (Case a brs c) = foldr (union . freeVars . snd) (freeVars a `union` freeVars c) brs
+freeVars (CaseI a brs c) = foldr (union . freeVars . snd) (freeVars a `union` freeVars c) brs
 freeVars (Op _ args) = foldr (union . freeVars) [] args
 
-occurs :: String -> Term -> Bool
+occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
 
-reduce :: Ops -> Env -> Term -> Term
+reduce :: Ops -> Env -> Expr -> Expr
 reduce _ _ Knd = Knd
 reduce _ _ IntT = IntT
 reduce _ _ NumT = NumT
@@ -200,7 +230,7 @@ reduce _ env (Lam x a) = Lam x (Let env a)
 reduce _ env (For x a) = For x (Let env a)
 reduce _ env (Fun a b) = Fun (Let env a) (Let env b)
 reduce ops env (App a b) = case reduce ops env a of
-  Lam x (Let env' a) -> reduce ops ((x, Let env b) : env') a
+  Lam x a -> reduce ops [(x, Let env b)] a
   Fix _ a -> reduce ops [] (App a (Let env b))
   a -> App a (Let env b)
 reduce ops env (Ann a _) = reduce ops env a
@@ -208,16 +238,16 @@ reduce ops env (Let env' a) = reduce ops (env ++ env') a
 reduce _ env (Fix x a) = Fix x (Let env a)
 reduce _ env (Ctr name args) = Ctr name (Let env <$> args)
 reduce _ env (Typ name args ctrs) = Typ name (second (Let env) <$> args) ctrs
-reduce ops env (Case a brs) = case reduce ops env a of
-  Ctr k args -> case lookup k brs of
-    Just b -> reduce ops env (app b args)
-    Nothing -> error ("missing case: " ++ k)
-  a -> Case a (second (Let env) <$> brs)
-reduce ops env (CaseInt a brs c) = case reduce ops env a of
-  Int i -> case lookup i brs of
+reduce ops env (CaseI a cases c) = case reduce ops env a of
+  Int i -> case lookup i cases of
     Just b -> reduce ops env b
     Nothing -> reduce ops env c
-  a -> CaseInt a (second (Let env) <$> brs) (Let env c)
+  a -> CaseI a (second (Let env) <$> cases) (Let env c)
+reduce ops env (Case a cases c) = case reduce ops env a of
+  Ctr k args -> case lookup k cases of
+    Just b -> reduce ops env (app b args)
+    Nothing -> reduce ops env c
+  a -> Case a (second (Let env) <$> cases) (Let env c)
 reduce ops env (Op op args) = do
   case (lookup op ops, eval ops env <$> args) of
     (Just f, args) -> case f args of
@@ -225,7 +255,7 @@ reduce ops env (Op op args) = do
       Nothing -> Op op args
     (Nothing, args) -> Op op args
 
-eval :: Ops -> Env -> Term -> Term
+eval :: Ops -> Env -> Expr -> Expr
 eval ops env term = case reduce ops env term of
   Knd -> Knd
   IntT -> IntT
@@ -244,11 +274,11 @@ eval ops env term = case reduce ops env term of
     a -> a
   Ctr name args -> Ctr name (eval ops [] <$> args)
   Typ name args ctrs -> Typ name (second (eval ops []) <$> args) ctrs
-  Case a brs -> Case (eval ops [] a) (second (eval ops []) <$> brs)
-  CaseInt a brs c -> CaseInt (eval ops [] a) (second (eval ops []) <$> brs) (eval ops [] c)
+  CaseI a brs c -> CaseI (eval ops [] a) (second (eval ops []) <$> brs) (eval ops [] c)
+  Case a brs c -> Case (eval ops [] a) (second (eval ops []) <$> brs) (eval ops [] c)
   Op op args -> Op op (eval ops [] <$> args)
 
-unify :: Ops -> Env -> Term -> Term -> Either TypeError (Term, Env)
+unify :: Ops -> Env -> Expr -> Expr -> Either TypeError (Expr, Env)
 unify _ env Knd Knd = Right (Knd, env)
 unify _ env IntT IntT = Right (IntT, env)
 unify _ env (Int i) (Int i') | i == i' = Right (Int i, env)
@@ -284,7 +314,7 @@ unify ops env (Op op args) (Op op' args') | op == op' && length args == length a
   Right (Op op args, env)
 unify _ _ a b = Left (TypeMismatch a b)
 
-unifyMany :: Ops -> Env -> [Term] -> [Term] -> Either TypeError ([Term], Env)
+unifyMany :: Ops -> Env -> [Expr] -> [Expr] -> Either TypeError ([Expr], Env)
 unifyMany _ env [] _ = Right ([], env)
 unifyMany _ env _ [] = Right ([], env)
 unifyMany ops env (a1 : bs1) (a2 : bs2) = do
@@ -292,7 +322,7 @@ unifyMany ops env (a1 : bs1) (a2 : bs2) = do
   (bs, env) <- unifyMany ops env (eval ops env <$> bs1) (eval ops env <$> bs2)
   Right (eval ops env a : bs, env)
 
-expandType :: Ops -> Env -> String -> [(String, Term)] -> [(String, Type)] -> Type
+expandType :: Ops -> Env -> String -> [(String, Expr)] -> [(String, Type)] -> Type
 expandType ops env name args alts = do
   let x = newName ("$" ++ name) (foldr (union . freeVars . snd) [] alts)
   let branch :: Type -> Type
@@ -300,7 +330,7 @@ expandType ops env name args alts = do
       branch _ = Var x
   for (x : map fst args) (fun (branch . snd <$> alts) (Var x))
 
-findTyped :: Ops -> Env -> String -> Either TypeError (Term, Type)
+findTyped :: Ops -> Env -> String -> Either TypeError (Expr, Type)
 findTyped ops env x = case lookup x env of
   Just (Ann a t) -> Right (a, eval ops env t)
   Just a -> Left (MissingType x a)
@@ -313,7 +343,7 @@ instantiate ops env (For x t) = do
   (y : xs, t', env')
 instantiate ops env t = ([], eval ops env t, env)
 
-infer :: Ops -> Env -> Term -> Either TypeError (Type, Env)
+infer :: Ops -> Env -> Expr -> Either TypeError (Type, Env)
 infer _ env Knd = Right (Knd, env)
 infer _ env IntT = Right (Knd, env)
 infer _ env (Int _) = Right (IntT, env)
@@ -363,9 +393,9 @@ infer ops env (Ctr k args) = do
 infer ops env (Typ name args alts) = do
   (_, t) <- findTyped ops env name
   inferApply ops env (name, t) (map snd args)
-infer ops env (Case a brs) = do
+infer ops env (Case a brs c) = do
   (tname, targs, ctrs) <- case map fst brs of
-    k : _ -> ctrTypeDef ops env k
+    k : _ -> findCtrType ops env k
     [] -> Left EmptyCase
   let xs = map fst targs
   alts <- mapM (altBranchType ops env xs) ctrs
@@ -373,36 +403,47 @@ infer ops env (Case a brs) = do
   (_, env) <- infer ops env (Ann a (Typ tname targs ctrs))
   env <- Right (pushVars (tname : ctrs) env)
   (t, env) <- inferBranches ops env alts brs
+  (tc, env) <- infer ops env c
+  (t, env) <- unify ops env t tc
   env <- Right (popVars (tname : ctrs) env)
   env <- Right (popVars xs env)
   Right (t, env)
-infer ops env (CaseInt a [] c) = do
-  (_, env) <- infer ops env a
-  infer ops env c
-infer ops env (CaseInt a ((_, b) : brs) c) = do
-  (t1, env) <- infer ops env b
-  (t2, env) <- infer ops env (CaseInt a brs c)
-  unify ops env t1 t2
+infer ops env (CaseI a brs c) = do
+  (_, env) <- infer ops env (Ann a IntT)
+  (ts, env) <- inferMany ops env (map snd brs)
+  (t, env) <- infer ops env c
+  (t, env) <- foldlM (\(t, env) t' -> unify ops env t t') (t, env) ts
+  Right (t, env)
 infer ops env (Op op args) = do
   (_, t) <- findTyped ops env op
   inferApply ops env (op, t) args
 
--- inferCaseTypBr :: Term ->
+inferMany :: Ops -> Env -> [Expr] -> Either TypeError ([Type], Env)
+inferMany _ env [] = Right ([], env)
+inferMany ops env (a : bs) = do
+  (t, env) <- infer ops env a
+  (ts, env) <- inferMany ops env bs
+  Right (t : ts, env)
 
-asTypeDef :: Term -> Either TypeError (String, [(String, Term)], [String])
+asTypeDef :: Expr -> Either TypeError (String, [(String, Expr)], [String])
 asTypeDef (Ann a _) = asTypeDef a
 asTypeDef (Lam _ a) = asTypeDef a
 asTypeDef (Typ name args ctrs) = Right (name, args, ctrs)
 asTypeDef a = Left (NotAUnionType a)
 
-ctrTypeDef :: Ops -> Env -> String -> Either TypeError (String, [(String, Term)], [String])
-ctrTypeDef ops env k = do
+splitFun :: Type -> ([String], [Type], Type)
+splitFun (For x a) = let (xs, args, ret) = splitFun a in (x : xs, args, ret)
+splitFun (Fun a b) = let (xs, args, ret) = splitFun b in (xs, a : args, ret)
+splitFun a = ([], [], a)
+
+findCtrType :: Ops -> Env -> String -> Either TypeError (String, [(String, Expr)], [String])
+findCtrType ops env k = do
   (_, ctrT) <- findTyped ops env k
-  case snd $ asFun $ snd $ asFor ctrT of
-    Typ tname _ _ -> case lookup tname env of
+  case splitFun ctrT of
+    (_, _, Typ tname _ _) -> case lookup tname env of
       Just b -> asTypeDef b
       Nothing -> Left (UndefinedType tname)
-    a -> Left (NotAUnionType a)
+    (_, _, a) -> Left (NotAUnionType a)
 
 asBranchType :: [String] -> Type -> Type -> Type
 asBranchType xs (For x a) c | x `elem` xs = asBranchType xs a c
@@ -415,7 +456,7 @@ altBranchType ops env xs k = do
   (_, ctrT) <- findTyped ops env k
   Right (k, asBranchType xs ctrT (Var k))
 
-inferBranches :: Ops -> Env -> [(String, Type)] -> [(String, Term)] -> Either TypeError (Type, Env)
+inferBranches :: Ops -> Env -> [(String, Type)] -> [(String, Expr)] -> Either TypeError (Type, Env)
 inferBranches _ _ _ [] = Left EmptyCase
 inferBranches ops env alts [br] = inferBranch ops env alts br
 inferBranches ops env alts (br : brs) = do
@@ -423,27 +464,93 @@ inferBranches ops env alts (br : brs) = do
   (t2, env) <- inferBranches ops env alts brs
   unify ops env t1 t2
 
-inferBranch :: Ops -> Env -> [(String, Type)] -> (String, Term) -> Either TypeError (Type, Env)
+inferBranch :: Ops -> Env -> [(String, Type)] -> (String, Expr) -> Either TypeError (Type, Env)
 inferBranch ops env alts (k, a) = case lookup k alts of
   Just t -> do
     (_, env) <- infer ops env (Ann a t)
     Right (eval ops env (Var k), env)
   Nothing -> Left (CtrNotInType k alts)
 
-inferApply :: Ops -> Env -> (String, Type) -> [Term] -> Either TypeError (Type, Env)
+inferApply :: Ops -> Env -> (String, Type) -> [Expr] -> Either TypeError (Type, Env)
 inferApply ops env (x, t) args = do
   env <- Right ((x, Ann (Var x) t) : env)
   (t, env) <- infer ops env (app (Var x) args)
   Right (t, pop x env)
 
-inferMany :: Ops -> Env -> [Term] -> Either TypeError ([Type], Env)
-inferMany _ env [] = Right ([], env)
-inferMany ops env (a : bs) = do
-  (t, env) <- infer ops env a
-  (ts, env) <- inferMany ops env bs
-  Right (t : ts, env)
-
 newName :: String -> [String] -> String
 newName x existing = do
   let names = x : map ((x ++) . show) [(1 :: Int) ..]
   head $ filter (`notElem` existing) names
+
+-- Pattern matching
+match :: [Branch] -> Either TypeError Expr
+match brs = do
+  let x = newName (matchFirstName brs) (matchFreeVars brs)
+  step <- matchStep x brs
+  case step of
+    MatchEnd b -> Right b
+    MatchAny [] -> Left EmptyCase
+    MatchAny brs -> do
+      b <- match brs
+      Right (Lam x b)
+    MatchInt cases brs -> do
+      let matchCase (i, brs) = do
+            b <- match brs
+            Right (i, b)
+      cases <- mapM matchCase cases
+      b <- match brs
+      Right (Lam x (CaseI (Var x) cases b))
+    MatchCtr cases brs -> do
+      let matchCase (k, (_, brs)) = do
+            b <- match brs
+            Right (k, b)
+      cases <- mapM matchCase cases
+      b <- match brs
+      Right (Lam x (Case (Var x) cases b))
+
+matchFreeVars :: [Branch] -> [String]
+matchFreeVars [] = []
+matchFreeVars (Br [] a : brs) = freeVars a `union` matchFreeVars brs
+matchFreeVars (Br (AnyP : ps) a : brs) = matchFreeVars (Br ps a : brs)
+matchFreeVars (Br (VarP x : ps) a : brs) = matchFreeVars (Br ps (Lam x a) : brs)
+matchFreeVars (Br (IntP _ : ps) a : brs) = matchFreeVars (Br ps a : brs)
+matchFreeVars (Br (CtrP _ qs : ps) a : brs) = matchFreeVars (Br (qs ++ ps) a : brs)
+
+matchFirstName :: [Branch] -> String
+matchFirstName [] = "_"
+matchFirstName (Br (VarP x : _) _ : _) = x
+matchFirstName (Br _ _ : brs) = matchFirstName brs
+
+matchStep :: String -> [Branch] -> Either TypeError MatchStep
+matchStep _ [] = Right (MatchAny [])
+matchStep x (Br (VarP y : ps) b : brs) | x /= y = do
+  matchStep x (Br (AnyP : ps) (Let [(y, Var x)] b) : brs)
+matchStep x (br : brs) = do
+  step <- matchStep x brs
+  matchNext br step
+
+matchNext :: Branch -> MatchStep -> Either TypeError MatchStep
+matchNext (Br [] b) _ = Right (MatchEnd b)
+matchNext _ (MatchEnd _) = Left MatchNumPatternsMismatch
+matchNext (Br (AnyP : ps) b) (MatchAny brs) = do
+  Right (MatchAny (Br ps b : brs))
+matchNext (Br (AnyP : ps) b) (MatchInt cases brs) = do
+  let matchCase (i, brs) = (i, Br ps b : brs)
+  Right (MatchInt (map matchCase cases) (Br ps b : brs))
+matchNext (Br (AnyP : ps) b) (MatchCtr cases brs) = do
+  let matchCase (k, (n, brs)) = (k, (n, Br (replicate n AnyP ++ ps) b : brs))
+  Right (MatchCtr (map matchCase cases) (Br ps b : brs))
+matchNext (Br (VarP _ : ps) b) step = matchNext (Br (AnyP : ps) b) step
+matchNext (Br (IntP i : ps) b) (MatchAny brs) = do
+  matchNext (Br (IntP i : ps) b) (MatchInt [] brs)
+matchNext (Br (IntP i : ps) b) (MatchInt cases brs) = case lookup i cases of
+  Just brsI -> Right (MatchInt (set i (Br ps b : brsI) cases) brs)
+  Nothing -> Right (MatchInt ((i, [Br ps b]) : cases) brs)
+matchNext (Br (IntP _ : _) _) (MatchCtr _ _) = Left MatchMixIntCtrPatterns
+matchNext (Br (CtrP k qs : ps) b) (MatchAny brs) = do
+  matchNext (Br (CtrP k qs : ps) b) (MatchCtr [] brs)
+matchNext (Br (CtrP _ _ : _) _) (MatchInt _ _) = Left MatchMixIntCtrPatterns
+matchNext (Br (CtrP k qs : ps) b) (MatchCtr cases brs) = case lookup k cases of
+  Just (n, _) | length qs /= n -> Left (MatchCtrArgsMismatch n qs)
+  Just (n, brsK) -> Right (MatchCtr (set k (n, Br (qs ++ ps) b : brsK) cases) brs)
+  Nothing -> Right (MatchCtr ((k, (length qs, [Br (qs ++ ps) b])) : cases) brs)

@@ -1,5 +1,6 @@
 module Parser where
 
+import Control.Monad (void)
 import qualified Data.Char as Char
 import Flow ((|>))
 
@@ -82,7 +83,7 @@ endOfFile = do
   Parser eof
 
 endOfLine :: Parser ()
-endOfLine = oneOf [do _ <- char '\n'; succeed (), endOfFile]
+endOfLine = oneOf [void (char '\n'), endOfFile]
 
 -- Single characters
 
@@ -265,8 +266,8 @@ split delimiter parser =
 getState :: Parser State
 getState = Parser (\state -> Right (state, state))
 
-subparser :: Parser delim -> Parser a -> Parser a
-subparser delim (Parser p) = do
+subparserPartial :: Parser delim -> Parser a -> Parser a
+subparserPartial delim (Parser p) = do
   before <- getState
   _ <- zeroOrMore (do _ <- succeed () |> notFollowedBy delim; anyChar)
   after <- getState
@@ -276,6 +277,9 @@ subparser delim (Parser p) = do
         (x, _) <- p before {source = take len (source before)}
         Right (x, state)
     )
+
+subparser :: Parser delim -> Parser a -> Parser a
+subparser delim parser = subparserPartial delim (do x <- parser; _ <- endOfFile; succeed x)
 
 collection :: Parser open -> Parser a -> Parser delimiter -> Parser close -> Parser [a]
 collection open parser delimiter close = do
