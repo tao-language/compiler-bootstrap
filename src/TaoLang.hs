@@ -39,12 +39,12 @@ data Error
 --   Right (env, expr) -> return (env, expr)
 --   Left err -> fail ("❌ " ++ show err)
 
-loadFile :: FilePath -> FilePath -> IO Env
-loadFile moduleName fileName = do
-  src <- readFile (moduleName </> fileName)
-  case TaoLang.parse (zeroOrMore define) src of
-    Right defs -> return (concatMap unpack defs)
-    Left err -> fail ("❌ " ++ show err)
+-- loadFile :: FilePath -> FilePath -> IO Env
+-- loadFile moduleName fileName = do
+--   src <- readFile (moduleName </> fileName)
+--   case TaoLang.parse (zeroOrMore define) src of
+--     Right defs -> return (concatMap unpack defs)
+--     Left err -> fail ("❌ " ++ show err)
 
 -- loadModule :: FilePath -> IO Env
 -- loadModule moduleName = do
@@ -173,9 +173,9 @@ pattern' =
 expressionToken :: Parser Expr
 expressionToken =
   oneOf
-    [ keyword Knd "Type",
-      keyword IntT "Int",
-      keyword IntT "Num",
+    [ keyword (Var "Type") "Type",
+      keyword (Var "Int") "Int",
+      keyword (Var "Num") "Num",
       token $ Int <$> integer,
       token $ Num <$> number,
       Var <$> identifier letter,
@@ -211,91 +211,91 @@ expression prec = do
 
   withOperators
     [ constant match',
-      prefixOp 0 Let (oneOrMore define),
-      prefixOp 1 for forall,
-      prefix 1 TypeOf (keyword () "@typeof"),
+      -- prefixOp 0 Let (oneOrMore define),
+      -- prefixOp 1 for forall,
+      -- prefix 1 TypeOf (keyword () "@typeof"),
       constant expressionToken
     ]
-    [ infixL 1 (Op2 "==") (token $ text "=="),
+    [ infixL 1 (Op2 Eq) (token $ text "=="),
       infixR 2 Fun (token $text "->"),
-      infixL 3 (Op2 "<") (token $ text "<"),
-      infixL 4 (Op2 "+") (token $ text "+"),
-      infixL 4 (Op2 "-") (token $ text "-"),
-      infixL 5 (Op2 "*") (token $ text "*"),
+      infixL 3 (Op2 Lt) (token $ text "<"),
+      infixL 4 (Op2 Add) (token $ text "+"),
+      infixL 4 (Op2 Sub) (token $ text "-"),
+      infixL 5 (Op2 Mul) (token $ text "*"),
       infixL 6 App (succeed ())
     ]
     prec
 
--- Definitions
-defineRules :: [(String, Type)] -> Parser Definition
-defineRules types = do
-  x <- identifier lowercase
-  let branch :: Parser Branch
-      branch = do
-        ps <- zeroOrMore pattern'
-        _ <- token $ char '='
-        a <- expression 0
-        _ <- newLine
-        succeed (Br ps a)
-  b <- branch
-  bs <- zeroOrMore (do _ <- keyword () x; branch)
-  succeed (Def types (VarP x) (match (b : bs)))
+-- -- Definitions
+-- defineRules :: [(String, Type)] -> Parser Definition
+-- defineRules types = do
+--   x <- identifier lowercase
+--   let branch :: Parser Branch
+--       branch = do
+--         ps <- zeroOrMore pattern'
+--         _ <- token $ char '='
+--         a <- expression 0
+--         _ <- newLine
+--         succeed (Br ps a)
+--   b <- branch
+--   bs <- zeroOrMore (do _ <- keyword () x; branch)
+--   succeed (Def types (VarP x) (match (b : bs)))
 
-definePattern :: [(String, Type)] -> Parser Definition
-definePattern types = do
-  p <- pattern'
-  _ <- token $ char '='
-  a <- expression 0
-  _ <- newLine
-  succeed (Def types p a)
+-- definePattern :: [(String, Type)] -> Parser Definition
+-- definePattern types = do
+--   p <- pattern'
+--   _ <- token $ char '='
+--   a <- expression 0
+--   _ <- newLine
+--   succeed (Def types p a)
 
-defineType :: Parser Definition
-defineType = do
-  let typeArg :: Parser (String, Type)
-      typeArg =
-        oneOf
-          [ do
-              _ <- token $ char '('
-              x <- identifier lowercase
-              _ <- token $ char ':'
-              t <- expression 0
-              _ <- token $ char ')'
-              succeed (x, t),
-            do
-              x <- identifier lowercase
-              succeed (x, Knd)
-          ]
+-- defineType :: Parser Definition
+-- defineType = do
+--   let typeArg :: Parser (String, Type)
+--       typeArg =
+--         oneOf
+--           [ do
+--               _ <- token $ char '('
+--               x <- identifier lowercase
+--               _ <- token $ char ':'
+--               t <- expression 0
+--               _ <- token $ char ')'
+--               succeed (x, t),
+--             do
+--               x <- identifier lowercase
+--               succeed (x, Knd)
+--           ]
 
-  let alternativeArg :: Parser (String, Type)
-      alternativeArg =
-        oneOf
-          [ do
-              _ <- token $ char '('
-              x <- identifier lowercase
-              _ <- token $ char ':'
-              t <- expression 0
-              _ <- token $ char ')'
-              succeed (x, t),
-            do
-              t <- expressionToken
-              succeed ("", t)
-          ]
+--   let alternativeArg :: Parser (String, Type)
+--       alternativeArg =
+--         oneOf
+--           [ do
+--               _ <- token $ char '('
+--               x <- identifier lowercase
+--               _ <- token $ char ':'
+--               t <- expression 0
+--               _ <- token $ char ')'
+--               succeed (x, t),
+--             do
+--               t <- expressionToken
+--               succeed ("", t)
+--           ]
 
-  let alternative :: Type -> Parser (String, ([(String, Type)], Type))
-      alternative defaultType = do
-        ctr <- identifier uppercase
-        args <- zeroOrMore alternativeArg
-        t <- oneOf [do _ <- token $ char ':'; expression 0, succeed defaultType]
-        succeed (ctr, (args, t))
+--   let alternative :: Type -> Parser (String, ([(String, Type)], Type))
+--       alternative defaultType = do
+--         ctr <- identifier uppercase
+--         args <- zeroOrMore alternativeArg
+--         t <- oneOf [do _ <- token $ char ':'; expression 0, succeed defaultType]
+--         succeed (ctr, (args, t))
 
-  name <- identifier uppercase
-  args <- zeroOrMore typeArg
-  let defaultType = app (Var name) (Var . fst <$> args)
-  _ <- token $ char '='
-  alt <- alternative defaultType
-  alts <- zeroOrMore (do _ <- token $ char '|'; alternative defaultType)
-  _ <- newLine
-  succeed (DefT name args (alt : alts))
+--   name <- identifier uppercase
+--   args <- zeroOrMore typeArg
+--   let defaultType = app (Var name) (Var . fst <$> args)
+--   _ <- token $ char '='
+--   alt <- alternative defaultType
+--   alts <- zeroOrMore (do _ <- token $ char '|'; alternative defaultType)
+--   _ <- newLine
+--   succeed (DefT name args (alt : alts))
 
 define :: Parser Definition
 define = do
@@ -307,15 +307,16 @@ define = do
         _ <- delimiter
         succeed (x, t)
 
-  oneOf
-    [ defineType,
-      do
-        (x, t) <- typeDef (token $ char '=')
-        a <- expression 0
-        _ <- newLine
-        succeed (Def [(x, t)] (VarP x) a),
-      do
-        types <- zeroOrMore (typeDef newLine)
-        def <- oneOf [defineRules types, definePattern types]
-        succeed def
-    ]
+  -- oneOf
+  --   [ defineType,
+  --     do
+  --       (x, t) <- typeDef (token $ char '=')
+  --       a <- expression 0
+  --       _ <- newLine
+  --       succeed (Def [(x, t)] (VarP x) a),
+  --     do
+  --       types <- zeroOrMore (typeDef newLine)
+  --       def <- oneOf [defineRules types, definePattern types]
+  --       succeed def
+  --   ]
+  error "TODO"

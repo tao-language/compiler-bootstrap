@@ -15,20 +15,48 @@ taoTests = describe "--==☯ Tao ☯==--" $ do
     for ["x"] y `shouldBe` For "x" y
     for ["x", "y"] z `shouldBe` For "x" (For "y" z)
 
--- it "☯ fun" $ do
---   fun [] x `shouldBe` x
---   fun [x] y `shouldBe` Fun x y
---   fun [x, y] z `shouldBe` Fun x (Fun y z)
+  it "☯ fun" $ do
+    fun [] x `shouldBe` x
+    fun [x] y `shouldBe` Fun x y
+    fun [x, y] z `shouldBe` Fun x (Fun y z)
 
--- it "☯ app" $ do
---   app x [] `shouldBe` x
---   app x [y] `shouldBe` App x y
---   app x [y, z] `shouldBe` App (App x y) z
+  it "☯ app" $ do
+    app x [] `shouldBe` x
+    app x [y] `shouldBe` App x y
+    app x [y, z] `shouldBe` App (App x y) z
 
--- -- it "☯ lam" $ do
--- --   lam [] x `shouldBe` x
--- --   lam [x'] y `shouldBe` Lam x' y
--- --   lam [x', y'] z `shouldBe` Lam x' (Lam y' z)
+  -- it "☯ lam" $ do
+  --   lam [] x `shouldBe` x
+  --   lam [x'] y `shouldBe` Lam x' y
+  --   lam [x', y'] z `shouldBe` Lam x' (Lam y' z)
+
+  it "☯ compile" $ do
+    -- let ops = []
+    -- let env :: Env
+    --     env =
+    --       [ ("T", Typ "T" [] ["A", "B"]),
+    --         ("A", Ann (Ctr "A" []) (Var "T")),
+    --         ("B", Ann (lam ["i", "n"] $ Ctr "B" [Var "i", Var "n"]) (fun [IntT, NumT] (Var "T"))),
+    --         ("U", Typ "U" [] ["C"]),
+    --         ("C", Ann (lam ["i", "n"] $ Ctr "C" [Var "i", Var "n"]) (fun [IntT, NumT] (Var "U")))
+    --       ]
+
+    compile (Int 1) `shouldBe` Right (C.Int 1)
+    compile (Num 1) `shouldBe` Right (C.Num 1)
+    compile (Var "x") `shouldBe` Right (C.Var "x")
+    compile (For "x" y) `shouldBe` Right (C.For "x" (C.Var "y"))
+    compile (Fun x y) `shouldBe` Right (C.Fun (C.Var "x") (C.Var "y"))
+    compile (App x y) `shouldBe` Right (C.App (C.Var "x") (C.Var "y"))
+    compile (Ann x y) `shouldBe` Right (C.Ann (C.Var "x") (C.Var "y"))
+    compile (Let [("x", y)] z) `shouldBe` Right (C.Let [("x", C.Var "y")] (C.Var "z"))
+    compile (Ctr "A" []) `shouldBe` Right (C.Ctr "A" [])
+    compile (Ctr "B" [x, y]) `shouldBe` Right (C.Ctr "B" [C.Var "x", C.Var "y"])
+    compile (Case x [("A", y)] z) `shouldBe` Right (C.Case (C.Var "x") [("A", C.Var "y")] (C.Var "z"))
+    compile (CaseI x [(1, y)] z) `shouldBe` Right (C.CaseI (C.Var "x") [(1, C.Var "y")] (C.Var "z"))
+    compile (Match []) `shouldBe` Left (TypeError C.EmptyCase)
+    compile (Match [Br [] (Int 1)]) `shouldBe` Right (C.Int 1)
+    compile (Match [Br [VarP "x"] (Int 1)]) `shouldBe` Right (C.Lam "x" $ C.Int 1)
+    compile (Match [Br [VarP "x"] (Int 1), Br [] (Int 2)]) `shouldBe` Left (TypeError C.MatchNumPatternsMismatch)
 
 -- it "☯ unpack" $ do
 --   let (a, n) = (Var "a", Var "n")
@@ -84,41 +112,3 @@ taoTests = describe "--==☯ Tao ☯==--" $ do
 -- --   let expandUnionAlt' = expandUnionAlt [] env
 -- --   expandUnionAlt' "A" `shouldBe` Right ([], Typ "T" [] ["A", "B"])
 -- -- -- expandUnionAlt' "A" `shouldBe` Right ([IntT], Typ "T" [] ["A", "B"])
-
--- it "☯ compile" $ do
---   let ops = []
---   let env :: Env
---       env =
---         [ ("T", Typ "T" [] ["A", "B"]),
---           ("A", Ann (Ctr "A" []) (Var "T")),
---           ("B", Ann (lam ["i", "n"] $ Ctr "B" [Var "i", Var "n"]) (fun [IntT, NumT] (Var "T"))),
---           ("U", Typ "U" [] ["C"]),
---           ("C", Ann (lam ["i", "n"] $ Ctr "C" [Var "i", Var "n"]) (fun [IntT, NumT] (Var "U")))
---         ]
-
---   let compile' = compile ops env
---   compile' Knd `shouldBe` Right C.Knd
---   compile' IntT `shouldBe` Right C.IntT
---   compile' NumT `shouldBe` Right C.NumT
---   compile' (Int 1) `shouldBe` Right (C.Int 1)
---   compile' (Num 1) `shouldBe` Right (C.Num 1)
---   compile' (Var "x") `shouldBe` Right (C.Var "x")
---   compile' (For "x" y) `shouldBe` Right (C.For "x" (C.Var "y"))
---   compile' (Fun x y) `shouldBe` Right (C.Fun (C.Var "x") (C.Var "y"))
---   compile' (App x y) `shouldBe` Right (C.App (C.Var "x") (C.Var "y"))
---   -- TODO: Ctr
---   -- compile' (Typ "Bool" []) `shouldBe` Right (C.Typ "Bool" [])
---   -- compile' (Typ "Maybe" [IntT]) `shouldBe` Right (C.Typ "Maybe" [C.IntT])
---   -- compile' (Typ "T" "A" []) `shouldBe` Right (C.Typ "A" [] ["A", "B"])
---   -- compile' (Typ "T" "B" [("a", x), ("b", y)]) `shouldBe` Right (C.Typ "B" [("a", C.Var "x"), ("b", C.Var "y")] ["A", "B"])
---   -- compile' (Get "A" x "a") `shouldBe` Left (UndefinedCtrField "A" "a")
---   -- compile' (Get "B" x "i") `shouldBe` Right (C.App (C.Var "x") (C.lam ["i", "n"] (C.Var "i")))
---   -- compile' (Get "B" x "n") `shouldBe` Right (C.App (C.Var "x") (C.lam ["i", "n"] (C.Var "n")))
---   compile' (Match []) `shouldBe` Left EmptyMatch
---   compile' (Match [Br [] (Int 1)]) `shouldBe` Right (C.Int 1)
---   compile' (Match [Br [VarP "x"] (Int 1)]) `shouldBe` Right (C.Lam "x" $ C.Int 1)
---   compile' (Match [Br [VarP "x"] (Int 1), Br [] (Int 2)]) `shouldBe` Left (MatchMissingArgs (Int 2))
---   -- compile' (Match [Br [CtrP "A" []] (Int 1)]) `shouldBe` Left MissingBrs
---   -- compile' (Match [Br [CtrP "A" []] (Int 1), Br [x'] (Int 2)]) `shouldBe` Right (C.Lam "x" $ C.app (C.Var "x") [C.Int 1, C.lam ["_", "_"] $ C.Int 2])
---   -- compile' (Match [Br [CtrP "B" [x', y']] (Int 1), Br [z'] (Int 2)]) `shouldBe` Right (C.Lam "z" $ C.app (C.Var "z") [C.Int 2, C.lam ["x", "y"] $ C.Int 1])
---   True `shouldBe` True

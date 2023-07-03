@@ -22,7 +22,7 @@ import Data.List (delete, intercalate, union)
 -}
 
 data Expr
-  = Knd
+  = Typ
   | IntT
   | NumT
   | Int !Int
@@ -36,7 +36,6 @@ data Expr
   | Let !Env !Expr
   | Fix !String !Expr
   | Ctr !String ![Expr]
-  | Typ !String ![Expr]
   | Case !Expr ![(String, Expr)] !Expr
   | CaseI !Expr ![(Int, Expr)] !Expr
   | Op !String ![Expr]
@@ -56,7 +55,7 @@ showInfixR :: Int -> Int -> Expr -> String -> Expr -> String
 showInfixR p q a op b = showParen' (p > q) (showPrec (q + 1) a ++ op ++ showPrec q b)
 
 showPrec :: Int -> Expr -> String
-showPrec _ Knd = "@Type"
+showPrec _ Typ = "@Type"
 showPrec _ IntT = "@Int"
 showPrec _ (Int i) = show i
 showPrec _ NumT = "@Num"
@@ -78,10 +77,6 @@ showPrec p (Let env a) = do
   showPrefix p 2 defs a
 showPrec _ (Fix x a) = "@fix " ++ x ++ " {" ++ show a ++ "}"
 showPrec p (Ctr name args) = "#" ++ showPrec p (app (Var name) args)
-showPrec p (Typ name args) = do
-  -- let x = name ++ "[" ++ unwords (map fst args) ++ "]{" ++ intercalate "|" ctrs ++ "}"
-  let x = name
-  "%" ++ showPrec p (app (Var x) args)
 showPrec _ (Case a brs c) = do
   let showBr (k, b) = k ++ " => " ++ show b
   let cases = map showBr brs ++ [showBr ("_", c)]
@@ -196,7 +191,7 @@ popVars :: [String] -> Context -> Context
 popVars xs ctx = foldl' (flip pop) ctx xs
 
 freeVars :: Expr -> [String]
-freeVars Knd = []
+freeVars Typ = []
 freeVars IntT = []
 freeVars NumT = []
 freeVars (Int _) = []
@@ -211,7 +206,6 @@ freeVars (Let env a) =
   filter (`notElem` map fst env) (foldr (union . freeVars . snd) (freeVars a) env)
 freeVars (Fix x a) = delete x (freeVars a)
 freeVars (Ctr _ args) = foldr (union . freeVars) [] args
-freeVars (Typ _ args) = foldr (union . freeVars) [] args
 freeVars (Case a brs c) = foldr (union . freeVars . snd) (freeVars a `union` freeVars c) brs
 freeVars (CaseI a brs c) = foldr (union . freeVars . snd) (freeVars a `union` freeVars c) brs
 freeVars (Op _ args) = foldr (union . freeVars) [] args
@@ -220,7 +214,7 @@ occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
 
 reduce :: Ops -> Env -> Expr -> Expr
-reduce _ _ Knd = Knd
+reduce _ _ Typ = Typ
 reduce _ _ IntT = IntT
 reduce _ _ NumT = NumT
 reduce _ _ (Int i) = Int i
@@ -241,7 +235,6 @@ reduce ops env (Ann a _) = reduce ops env a
 reduce ops env (Let env' a) = reduce ops (env ++ env') a
 reduce _ env (Fix x a) = Fix x (Let env a)
 reduce _ env (Ctr name args) = Ctr name (Let env <$> args)
-reduce _ env (Typ name args) = Typ name (Let env <$> args)
 reduce ops env (CaseI a cases c) = case reduce ops env a of
   Int i -> case lookup i cases of
     Just b -> reduce ops env b
@@ -261,7 +254,7 @@ reduce ops env (Op op args) = do
 
 eval :: Ops -> Env -> Expr -> Expr
 eval ops env term = case reduce ops env term of
-  Knd -> Knd
+  Typ -> Typ
   IntT -> IntT
   NumT -> NumT
   Int i -> Int i
@@ -277,7 +270,6 @@ eval ops env term = case reduce ops env term of
     a | x `occurs` a -> Fix x a
     a -> a
   Ctr name args -> Ctr name (eval ops [] <$> args)
-  Typ name args -> Typ name (eval ops [] <$> args)
   CaseI a brs c -> CaseI (eval ops [] a) (second (eval ops []) <$> brs) (eval ops [] c)
   Case a brs c -> Case (eval ops [] a) (second (eval ops []) <$> brs) (eval ops [] c)
   Op op args -> Op op (eval ops [] <$> args)
@@ -287,13 +279,13 @@ envOf [] = []
 envOf ((x, Value a) : ctx) = (x, a) : envOf ctx
 envOf ((x, UnionType args _) : ctx) = do
   let xs = map fst args
-  (x, lam xs $ Typ x (map Var xs)) : envOf ctx
+  (x, lam xs $ Ctr x (map Var xs)) : envOf ctx
 envOf ((x, UnionAlt args _) : ctx) = do
   let xs = map fst args
   (x, lam xs $ Ctr x (map Var xs)) : envOf ctx
 
 unify :: Ops -> Context -> Expr -> Expr -> Either TypeError (Expr, Context)
-unify _ ctx Knd Knd = Right (Knd, ctx)
+unify _ ctx Typ Typ = Right (Typ, ctx)
 unify _ ctx IntT IntT = Right (IntT, ctx)
 unify _ ctx (Int i) (Int i') | i == i' = Right (Int i, ctx)
 unify _ ctx NumT NumT = Right (NumT, ctx)
@@ -320,9 +312,9 @@ unify ops ctx (App a1 b1) (App a2 b2) = do
   (a, ctx) <- unify ops ctx a1 a2
   (b, ctx) <- unify ops ctx (eval ops (envOf ctx) b1) (eval ops (envOf ctx) b2)
   Right (App (eval ops (envOf ctx) a) b, ctx)
-unify ops ctx (Typ name args) (Typ name' args') | name == name' && length args == length args' = do
+unify ops ctx (Ctr name args) (Ctr name' args') | name == name' && length args == length args' = do
   (argsT, ctx) <- unifyMany ops ctx args args'
-  Right (Typ name argsT, ctx)
+  Right (Ctr name argsT, ctx)
 unify ops ctx (Op op args) (Op op' args') | op == op' && length args == length args' = do
   (args, ctx) <- unifyMany ops ctx args args'
   Right (Op op args, ctx)
@@ -349,21 +341,21 @@ findUnionAlt ctx k = case lookup k ctx of
   Nothing -> Left (UndefinedType k)
 
 infer :: Ops -> Context -> Expr -> Either TypeError (Type, Context)
-infer _ ctx Knd = Right (Knd, ctx)
-infer _ ctx IntT = Right (Knd, ctx)
+infer _ ctx Typ = Right (Typ, ctx)
+infer _ ctx IntT = Right (Typ, ctx)
 infer _ ctx (Int _) = Right (IntT, ctx)
-infer _ ctx NumT = Right (Knd, ctx)
+infer _ ctx NumT = Right (Typ, ctx)
 infer _ ctx (Num _) = Right (NumT, ctx)
 infer ops ctx (Var x) = case lookup x ctx of
-  Just (Value (Var x')) | x == x' -> Right (Knd, ctx)
+  Just (Value (Var x')) | x == x' -> Right (Typ, ctx)
   Just (Value (Ann (Var x') t)) | x == x' -> Right (eval ops (envOf ctx) t, ctx)
   Just (Value a) -> infer ops ctx a
   Just (UnionType args ctrs) -> do
-    let t = fun (map snd args) Knd
+    let t = fun (map snd args) Typ
     Right (eval ops (envOf ctx) t, ctx)
   Just (UnionAlt args (tname, retArgs)) -> do
     (targs, ctrs) <- findUnionType ctx tname
-    let t = fun (map snd args) (Typ tname retArgs)
+    let t = fun (map snd args) (Ctr tname retArgs)
     Right (for (map fst targs) $ eval ops (envOf ctx) t, ctx)
   Nothing -> Left (UndefinedVar x)
 infer ops ctx (Lam x a) = do
@@ -378,9 +370,9 @@ infer ops ctx (For x a) = do
   (aT, ctx) <- infer ops ctx a
   Right (for [xT] aT, pop x ctx)
 infer ops ctx (Fun a b) = do
-  (_, ctx) <- infer ops ctx (Ann a Knd)
-  (_, ctx) <- infer ops ctx (Ann b Knd)
-  Right (Knd, ctx)
+  (_, ctx) <- infer ops ctx (Ann a Typ)
+  (_, ctx) <- infer ops ctx (Ann b Typ)
+  Right (Typ, ctx)
 infer ops ctx (App a b) = do
   (ta, ctx) <- infer ops ctx a
   (tb, ctx) <- infer ops ctx b
@@ -402,9 +394,6 @@ infer ops ctx (Fix x a) = do
 infer ops ctx (Ctr k args) = do
   (t, ctx) <- infer ops ctx (Var k)
   inferApply ops ctx (k, t) args
-infer ops ctx (Typ name args) = do
-  (t, ctx) <- infer ops ctx (Var name)
-  inferApply ops ctx (name, t) args
 infer _ _ (Case _ [] _) = Left EmptyCase
 infer ops ctx (Case a brs@((k, _) : _) c) = do
   (_, (tname, _)) <- findUnionAlt ctx k
@@ -412,7 +401,7 @@ infer ops ctx (Case a brs@((k, _) : _) c) = do
   let xs = map fst targs
   alts <- mapM (altBranchType ops ctx xs) ctrs
   ctx <- Right (pushVars xs ctx)
-  (_, ctx) <- infer ops ctx (Ann a (Typ tname (map Var xs)))
+  (_, ctx) <- infer ops ctx (Ann a (Ctr tname (map Var xs)))
   ctx <- Right (pushVars (tname : ctrs) ctx)
   (t, ctx) <- inferBranches ops ctx alts brs
   (tc, ctx) <- infer ops ctx c
@@ -447,7 +436,7 @@ asBranchType _ _ c = c
 altBranchType :: Ops -> Context -> [String] -> String -> Either TypeError (String, Type)
 altBranchType ops ctx xs k = do
   (args, (tname, targs)) <- findUnionAlt ctx k
-  let t = fun (map snd args) (Typ tname targs)
+  let t = fun (map snd args) (Ctr tname targs)
   Right (k, asBranchType xs t (Var k))
 
 inferBranches :: Ops -> Context -> [(String, Type)] -> [(String, Expr)] -> Either TypeError (Type, Context)
