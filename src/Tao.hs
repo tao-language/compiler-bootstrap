@@ -6,7 +6,7 @@ import Data.List (foldl')
 
 {- TODO
 
-Clean up compile* functions
+Clean up toCore* functions
 Infer type variables used in definitions (e.g. length of a vector)
 Records on inferred type variables for function overloading
 
@@ -81,6 +81,15 @@ data CompileError
   | UndefinedUnionType !String
   deriving (Eq, Show)
 
+nameType :: String
+nameType = "Type"
+
+nameIntType :: String
+nameIntType = "Int"
+
+nameNumType :: String
+nameNumType = "Num"
+
 lam :: [String] -> Expr -> Expr
 lam xs a = foldr Lam a xs
 
@@ -103,79 +112,103 @@ match (Br [] a : _) = a
 match [Br ps a] = lamP ps a
 match brs = Match brs
 
-compile :: Expr -> Either CompileError C.Expr
-compile (Int i) = Right (C.Int i)
-compile (Num n) = Right (C.Num n)
-compile (Var x) = Right (C.Var x)
-compile (Lam x a) = do
-  a <- compile a
+toCore :: Expr -> Either CompileError C.Expr
+toCore (Int i) = Right (C.Int i)
+toCore (Num n) = Right (C.Num n)
+toCore (Var x) = Right (C.Var x)
+toCore (Lam x a) = do
+  a <- toCore a
   Right (C.Lam x a)
-compile (For x a) = do
-  a <- compile a
+toCore (For x a) = do
+  a <- toCore a
   Right (C.For x a)
-compile (Fun a b) = do
-  a <- compile a
-  b <- compile b
+toCore (Fun a b) = do
+  a <- toCore a
+  b <- toCore b
   Right (C.Fun a b)
-compile (App a b) = do
-  a <- compile a
-  b <- compile b
+toCore (App a b) = do
+  a <- toCore a
+  b <- toCore b
   Right (C.App a b)
-compile (Ann a b) = do
-  a <- compile a
-  b <- compile b
+toCore (Ann a b) = do
+  a <- toCore a
+  b <- toCore b
   Right (C.Ann a b)
-compile (Let defs a) = do
-  defs <- mapM compileSecond defs
-  a <- compile a
+toCore (Let defs a) = do
+  defs <- mapM toCoreSecond defs
+  a <- toCore a
   Right (C.Let defs a)
-compile (Ctr k args) = do
-  args <- mapM compile args
+toCore (Ctr k args) = do
+  args <- mapM toCore args
   Right (C.Ctr k args)
-compile (Case a cases c) = do
-  a <- compile a
-  cases <- mapM compileSecond cases
-  c <- compile c
+toCore (Case a cases c) = do
+  a <- toCore a
+  cases <- mapM toCoreSecond cases
+  c <- toCore c
   Right (C.Case a cases c)
-compile (CaseI a cases c) = do
-  a <- compile a
-  cases <- mapM compileSecond cases
-  c <- compile c
+toCore (CaseI a cases c) = do
+  a <- toCore a
+  cases <- mapM toCoreSecond cases
+  c <- toCore c
   Right (C.CaseI a cases c)
-compile (Match branches) = do
-  branches <- mapM compileBranch branches
+toCore (Match branches) = do
+  branches <- mapM toCoreBranch branches
   case C.match branches of
     Right expr -> Right expr
     Left err -> Left (TypeError err)
-compile (Op op args) = do
-  args <- mapM compile args
+toCore (Op op args) = do
+  args <- mapM toCore args
   Right (C.Op op args)
-compile (Op2 op a b) = do
-  a <- compile a
-  b <- compile b
+toCore (Op2 op a b) = do
+  a <- toCore a
+  b <- toCore b
   Right (C.Op (show op) [a, b])
 
-compileSecond :: (a, Expr) -> Either CompileError (a, C.Expr)
-compileSecond (k, b) = do
-  b <- compile b
+toCoreSecond :: (a, Expr) -> Either CompileError (a, C.Expr)
+toCoreSecond (k, b) = do
+  b <- toCore b
   Right (k, b)
 
-compileBranch :: Branch -> Either CompileError C.Branch
-compileBranch (Br ps b) = do
-  b <- compile b
-  Right (C.Br (map compilePattern ps) b)
+toCoreBranch :: Branch -> Either CompileError C.Branch
+toCoreBranch (Br ps b) = do
+  b <- toCore b
+  Right (C.Br (map toCorePattern ps) b)
 
-compilePattern :: Pattern -> C.Pattern
-compilePattern AnyP = C.VarP ""
-compilePattern (VarP x) = C.VarP x
-compilePattern (IntP i) = C.IntP i
-compilePattern (CtrP k ps) = C.CtrP k (map compilePattern ps)
+toCorePattern :: Pattern -> C.Pattern
+toCorePattern AnyP = C.VarP ""
+toCorePattern (VarP x) = C.VarP x
+toCorePattern (IntP i) = C.IntP i
+toCorePattern (CtrP k ps) = C.CtrP k (map toCorePattern ps)
 
-bindings :: Pattern -> [String]
-bindings AnyP = []
-bindings (IntP _) = []
-bindings (VarP x) = [x]
-bindings (CtrP _ ps) = concatMap bindings ps
+fromCore :: C.Expr -> Expr
+fromCore C.Typ = Var nameType
+fromCore C.IntT = Var nameIntType
+fromCore C.NumT = Var nameNumType
+fromCore (C.Int i) = Int i
+fromCore (C.Num n) = Num n
+fromCore (C.Var x) = Var x
+fromCore (C.Lam x a) = Lam x (fromCore a)
+fromCore (C.For x a) = For x (fromCore a)
+fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
+fromCore (C.App a b) = App (fromCore a) (fromCore b)
+fromCore (C.Ann a b) = Ann (fromCore a) (fromCore b)
+fromCore (C.Let defs a) = Let (map (second fromCore) defs) (fromCore a)
+fromCore (C.Fix x a) = Let [(x, fromCore a)] (Var x)
+fromCore (C.Ctr k args) = Ctr k (map fromCore args)
+fromCore (C.Case a cases c) = Case (fromCore a) (map (second fromCore) cases) (fromCore c)
+fromCore (C.CaseI a cases c) = CaseI (fromCore a) (map (second fromCore) cases) (fromCore c)
+fromCore (C.Op "==" [a, b]) = Op2 Eq (fromCore a) (fromCore b)
+fromCore (C.Op "<" [a, b]) = Op2 Lt (fromCore a) (fromCore b)
+fromCore (C.Op "+" [a, b]) = Op2 Add (fromCore a) (fromCore b)
+fromCore (C.Op "-" [a, b]) = Op2 Sub (fromCore a) (fromCore b)
+fromCore (C.Op "*" [a, b]) = Op2 Mul (fromCore a) (fromCore b)
+fromCore (C.Op op args) = Op op (map fromCore args)
+
+-- bindings :: Pattern -> [String]
+-- bindings AnyP = []
+-- bindings (IntP _) = []
+-- bindings (VarP x) = [x]
+-- bindings (CtrP _ ps) = concatMap bindings ps
 
 -- unpack :: Definition -> Env
 -- unpack (Def types p a) = do
@@ -195,70 +228,70 @@ bindings (CtrP _ ps) = concatMap bindings ps
 
 -- findTyped :: C.Ops -> Env -> String -> Either CompileError (Expr, Type)
 -- findTyped ops env x = do
---   env <- compileEnv ops env env
+--   env <- toCoreEnv ops env env
 --   case C.findTyped ops env x of
---     Right (a, t) -> Right (decompile a, decompile t)
+--     Right (a, t) -> Right (detoCore a, detoCore t)
 --     Left err -> Left (TypeError err)
 
 -- expandUnionAlt :: C.Ops -> Env -> String -> Either CompileError ([Type], Type)
 -- expandUnionAlt ops env k = do
---   env <- compileEnv ops env env
+--   env <- toCoreEnv ops env env
 --   case C.findTyped ops env k of
 --     Right (_, ctrT) -> do
 --       let (_, argsT, retT) = C.splitFun ctrT
---       Right (map decompile argsT, decompile retT)
+--       Right (map detoCore argsT, detoCore retT)
 --     Left err -> Left (TypeError err)
 
 -- expandUnionType :: C.Ops -> Env -> String -> Either CompileError ([(String, Type)], [(String, ([Type], Type))])
 -- expandUnionType ops env t = do
 --   (_, typeArgs, ctrs) <- case lookup t env of
 --     Just a -> do
---       term <- compile ops env a
+--       term <- toCore ops env a
 --       case C.asTypeDef term of
---         Right (t, args, ctrs) -> Right (t, map (second decompile) args, ctrs)
+--         Right (t, args, ctrs) -> Right (t, map (second detoCore) args, ctrs)
 --         Left err -> Left (TypeError err)
 --     Nothing -> Left (UndefinedUnionType t)
 --   altArgs <- mapM (expandUnionAlt ops env) ctrs
 --   Right (typeArgs, zip ctrs altArgs)
 
--- compileEnv :: C.Ops -> Env -> Env -> Either CompileError C.Env
--- compileEnv ops env = mapM (compileNamed ops env)
+-- toCoreEnv :: C.Ops -> Env -> Env -> Either CompileError C.Env
+-- toCoreEnv ops env = mapM (toCoreNamed ops env)
 
--- compileNamed :: C.Ops -> Env -> (String, Expr) -> Either CompileError (String, C.Expr)
--- compileNamed ops env (x, a) = do
---   -- a <- compile ops ((x, Var x) : env) a
---   a <- compile ops env a
+-- toCoreNamed :: C.Ops -> Env -> (String, Expr) -> Either CompileError (String, C.Expr)
+-- toCoreNamed ops env (x, a) = do
+--   -- a <- toCore ops ((x, Var x) : env) a
+--   a <- toCore ops env a
 --   Right (x, a)
 
--- decompile :: C.Expr -> Expr
--- decompile C.Knd = Knd
--- decompile C.IntT = IntT
--- decompile C.NumT = NumT
--- decompile (C.Int i) = Int i
--- decompile (C.Num n) = Num n
--- decompile (C.Var x) = Var x
--- decompile (C.Lam x a) = Lam x (decompile a)
--- decompile (C.For x a) = For x (decompile a)
--- decompile (C.Fun a b) = Fun (decompile a) (decompile b)
--- decompile (C.App a b) = App (decompile a) (decompile b)
--- decompile (C.Ann a b) = Ann (decompile a) (decompile b)
--- decompile (C.Let env b) = do
---   let decompileDef (x, a) = Def [] (VarP x) (decompile a)
---   Let (decompileDef <$> env) (decompile b)
--- decompile (C.Fix x a) = letVar (x, decompile a) (Var x)
--- decompile (C.Ctr k args) = Ctr k (map decompile args)
--- decompile (C.Typ t args ctrs) = Typ t (map (second decompile) args) ctrs
--- decompile (C.Op op args) = Op op (decompile <$> args)
+-- detoCore :: C.Expr -> Expr
+-- detoCore C.Knd = Knd
+-- detoCore C.IntT = IntT
+-- detoCore C.NumT = NumT
+-- detoCore (C.Int i) = Int i
+-- detoCore (C.Num n) = Num n
+-- detoCore (C.Var x) = Var x
+-- detoCore (C.Lam x a) = Lam x (detoCore a)
+-- detoCore (C.For x a) = For x (detoCore a)
+-- detoCore (C.Fun a b) = Fun (detoCore a) (detoCore b)
+-- detoCore (C.App a b) = App (detoCore a) (detoCore b)
+-- detoCore (C.Ann a b) = Ann (detoCore a) (detoCore b)
+-- detoCore (C.Let env b) = do
+--   let detoCoreDef (x, a) = Def [] (VarP x) (detoCore a)
+--   Let (detoCoreDef <$> env) (detoCore b)
+-- detoCore (C.Fix x a) = letVar (x, detoCore a) (Var x)
+-- detoCore (C.Ctr k args) = Ctr k (map detoCore args)
+-- detoCore (C.Typ t args ctrs) = Typ t (map (second detoCore) args) ctrs
+-- detoCore (C.Op op args) = Op op (detoCore <$> args)
 
--- decompileNamed :: (String, C.Expr) -> (String, Expr)
--- decompileNamed (x, a) = (x, decompile a)
+-- detoCoreNamed :: (String, C.Expr) -> (String, Expr)
+-- detoCoreNamed (x, a) = (x, detoCore a)
 
--- decompileEnv :: C.Env -> Env
--- decompileEnv = map decompileNamed
+-- detoCoreEnv :: C.Env -> Env
+-- detoCoreEnv = map detoCoreNamed
 
 -- freeVars :: C.Ops -> Env -> Expr -> Either CompileError [String]
 -- freeVars ops env a = do
---   a <- compile ops env a
+--   a <- toCore ops env a
 --   Right (C.freeVars a)
 
 -- occurs :: C.Ops -> Env -> String -> Expr -> Either CompileError Bool
@@ -268,16 +301,16 @@ bindings (CtrP _ ps) = concatMap bindings ps
 
 -- infer :: C.Ops -> Env -> Expr -> Either CompileError (Type, Env)
 -- infer ops env expr = do
---   term <- compile ops env expr
---   env <- compileEnv ops env env
+--   term <- toCore ops env expr
+--   env <- toCoreEnv ops env env
 --   case C.infer ops env term of
---     Right (type', env) -> Right (decompile type', decompileEnv env)
+--     Right (type', env) -> Right (detoCore type', detoCoreEnv env)
 --     Left err -> Left (TypeError err)
 
 -- eval :: C.Ops -> Env -> Expr -> Either CompileError (Expr, Type)
 -- eval ops env expr = do
---   term <- compile ops env expr
---   env <- compileEnv ops env env
+--   term <- toCore ops env expr
+--   env <- toCoreEnv ops env env
 --   case C.infer ops env term of
---     Right (type', _) -> Right (decompile (C.eval ops env term), decompile type')
+--     Right (type', _) -> Right (detoCore (C.eval ops env term), detoCore type')
 --     Left err -> Left (TypeError err)

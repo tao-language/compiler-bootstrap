@@ -30,33 +30,23 @@ taoTests = describe "--==☯ Tao ☯==--" $ do
   --   lam [x'] y `shouldBe` Lam x' y
   --   lam [x', y'] z `shouldBe` Lam x' (Lam y' z)
 
-  it "☯ compile" $ do
-    -- let ops = []
-    -- let env :: Env
-    --     env =
-    --       [ ("T", Typ "T" [] ["A", "B"]),
-    --         ("A", Ann (Ctr "A" []) (Var "T")),
-    --         ("B", Ann (lam ["i", "n"] $ Ctr "B" [Var "i", Var "n"]) (fun [IntT, NumT] (Var "T"))),
-    --         ("U", Typ "U" [] ["C"]),
-    --         ("C", Ann (lam ["i", "n"] $ Ctr "C" [Var "i", Var "n"]) (fun [IntT, NumT] (Var "U")))
-    --       ]
-
-    compile (Int 1) `shouldBe` Right (C.Int 1)
-    compile (Num 1) `shouldBe` Right (C.Num 1)
-    compile (Var "x") `shouldBe` Right (C.Var "x")
-    compile (For "x" y) `shouldBe` Right (C.For "x" (C.Var "y"))
-    compile (Fun x y) `shouldBe` Right (C.Fun (C.Var "x") (C.Var "y"))
-    compile (App x y) `shouldBe` Right (C.App (C.Var "x") (C.Var "y"))
-    compile (Ann x y) `shouldBe` Right (C.Ann (C.Var "x") (C.Var "y"))
-    compile (Let [("x", y)] z) `shouldBe` Right (C.Let [("x", C.Var "y")] (C.Var "z"))
-    compile (Ctr "A" []) `shouldBe` Right (C.Ctr "A" [])
-    compile (Ctr "B" [x, y]) `shouldBe` Right (C.Ctr "B" [C.Var "x", C.Var "y"])
-    compile (Case x [("A", y)] z) `shouldBe` Right (C.Case (C.Var "x") [("A", C.Var "y")] (C.Var "z"))
-    compile (CaseI x [(1, y)] z) `shouldBe` Right (C.CaseI (C.Var "x") [(1, C.Var "y")] (C.Var "z"))
-    compile (Match []) `shouldBe` Left (TypeError C.EmptyCase)
-    compile (Match [Br [] (Int 1)]) `shouldBe` Right (C.Int 1)
-    compile (Match [Br [VarP "x"] (Int 1)]) `shouldBe` Right (C.Lam "x" $ C.Int 1)
-    compile (Match [Br [VarP "x"] (Int 1), Br [] (Int 2)]) `shouldBe` Left (TypeError C.MatchNumPatternsMismatch)
+  it "☯ toCore" $ do
+    toCore (Int 1) `shouldBe` Right (C.Int 1)
+    toCore (Num 1) `shouldBe` Right (C.Num 1)
+    toCore (Var "x") `shouldBe` Right (C.Var "x")
+    toCore (For "x" y) `shouldBe` Right (C.For "x" (C.Var "y"))
+    toCore (Fun x y) `shouldBe` Right (C.Fun (C.Var "x") (C.Var "y"))
+    toCore (App x y) `shouldBe` Right (C.App (C.Var "x") (C.Var "y"))
+    toCore (Ann x y) `shouldBe` Right (C.Ann (C.Var "x") (C.Var "y"))
+    toCore (Let [("x", y)] z) `shouldBe` Right (C.Let [("x", C.Var "y")] (C.Var "z"))
+    toCore (Ctr "A" []) `shouldBe` Right (C.Ctr "A" [])
+    toCore (Ctr "B" [x, y]) `shouldBe` Right (C.Ctr "B" [C.Var "x", C.Var "y"])
+    toCore (Case x [("A", y)] z) `shouldBe` Right (C.Case (C.Var "x") [("A", C.Var "y")] (C.Var "z"))
+    toCore (CaseI x [(1, y)] z) `shouldBe` Right (C.CaseI (C.Var "x") [(1, C.Var "y")] (C.Var "z"))
+    toCore (Match []) `shouldBe` Left (TypeError C.EmptyCase)
+    toCore (Match [Br [] (Int 1)]) `shouldBe` Right (C.Int 1)
+    toCore (Match [Br [VarP "x"] (Int 1)]) `shouldBe` Right (C.Lam "x" $ C.Int 1)
+    toCore (Match [Br [VarP "x"] (Int 1), Br [] (Int 2)]) `shouldBe` Left (TypeError C.MatchNumPatternsMismatch)
 
 -- it "☯ unpack" $ do
 --   let (a, n) = (Var "a", Var "n")
@@ -88,19 +78,19 @@ taoTests = describe "--==☯ Tao ☯==--" $ do
 --   findPatternsType' [] `shouldBe` Right Nothing
 --   findPatternsType' [[CtrP "A" []]] `shouldBe` Right (Just "T")
 
--- it "☯ compileEnv" $ do
+-- it "☯ toCoreEnv" $ do
 --   let env =
 --         [ ("T", Typ "T" [] ["A", "B"]),
 --           ("A", Ann (Ctr "A" []) (Var "T")),
 --           ("B", Ann (Lam "x" $ Ctr "B" [Var "x"]) (Fun IntT (Var "T")))
 --         ]
 
---   let compileEnv' env = compileEnv [] env env
---   compileEnv' [] `shouldBe` Right []
---   compileEnv' [("T", Typ "T" [] ["A"])] `shouldBe` Right [("T", C.Typ "T" [] ["A"])]
---   -- compileEnv' [("B", Ann (Lam (VarP "x") $ Ctr "B" [Var "x"]) (Fun IntT (Var "T")))] `shouldBe` Right [("T", C.Typ "T" [] ["A"])]
---   -- compileEnv' [("B", (Lam (VarP "x") $ Ctr "B" [Var "x"]))] `shouldBe` Right [("T", C.Typ "T" [] ["A"])]
---   compileEnv' [("B", Ctr "B" [Var "x"])] `shouldBe` Right [("B", C.Ctr "B" [C.Var "x"])]
+--   let toCoreEnv' env = toCoreEnv [] env env
+--   toCoreEnv' [] `shouldBe` Right []
+--   toCoreEnv' [("T", Typ "T" [] ["A"])] `shouldBe` Right [("T", C.Typ "T" [] ["A"])]
+--   -- toCoreEnv' [("B", Ann (Lam (VarP "x") $ Ctr "B" [Var "x"]) (Fun IntT (Var "T")))] `shouldBe` Right [("T", C.Typ "T" [] ["A"])]
+--   -- toCoreEnv' [("B", (Lam (VarP "x") $ Ctr "B" [Var "x"]))] `shouldBe` Right [("T", C.Typ "T" [] ["A"])]
+--   toCoreEnv' [("B", Ctr "B" [Var "x"])] `shouldBe` Right [("B", C.Ctr "B" [C.Var "x"])]
 
 -- -- it "☯ expandUnionAlt" $ do
 -- --   let env =
