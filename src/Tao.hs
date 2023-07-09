@@ -26,7 +26,7 @@ data Expr
   | Fun !Expr !Expr
   | App !Expr !Expr
   | Ann !Expr !Type
-  | Let !Env !Expr
+  | Let ![Definition] !Expr
   | Ctr !String ![Expr]
   | Case !Expr ![(String, Expr)] !Expr
   | CaseI !Expr ![(Int, Expr)] !Expr
@@ -66,10 +66,17 @@ data Branch
 type Env = [(String, Expr)]
 
 data Definition
-  = Value !String !(Maybe Type) !Expr
+  = Untyped !String !Expr
+  | Typed !String !Type !Expr
   | Unpack !Pattern ![(String, Type)] !Expr
-  | UnionType !String ![(String, Type)] ![(String, Type)]
   deriving (Eq, Show)
+
+data ContextDefinition
+  = UnionType !String ![(String, Type)] ![(String, Type)]
+  | Value !Definition
+  deriving (Eq, Show)
+
+type Context = [ContextDefinition]
 
 data CompileError
   = EmptyMatch
@@ -135,9 +142,9 @@ toCore (Ann a b) = do
   b <- toCore b
   Right (C.Ann a b)
 toCore (Let defs a) = do
-  defs <- mapM toCoreSecond defs
+  defs <- mapM toCoreDefs defs
   a <- toCore a
-  Right (C.Let defs a)
+  Right (C.Let (concat defs) a)
 toCore (Ctr k args) = do
   args <- mapM toCore args
   Right (C.Ctr k args)
@@ -169,6 +176,28 @@ toCoreSecond (k, b) = do
   b <- toCore b
   Right (k, b)
 
+toCoreDefs :: Definition -> Either CompileError C.Env
+toCoreDefs (Untyped x a) = do
+  a <- toCore a
+  Right [(x, a)]
+toCoreDefs (Typed x t a) = do
+  t <- toCore t
+  a <- toCore a
+  Right [(x, C.Ann a t)]
+toCoreDefs (Unpack p ts a) = do
+  let unpackVar x = do
+        let value = App (match [Br [p] (Var x)]) a
+        case lookup x ts of
+          Just type' -> (x, Ann value type')
+          Nothing -> (x, value)
+  mapM (toCoreSecond . unpackVar) (bindings p)
+
+bindings :: Pattern -> [String]
+bindings AnyP = []
+bindings (IntP _) = []
+bindings (VarP x) = [x]
+bindings (CtrP _ ps) = concatMap bindings ps
+
 toCoreBranch :: Branch -> Either CompileError C.Branch
 toCoreBranch (Br ps b) = do
   b <- toCore b
@@ -192,8 +221,8 @@ fromCore (C.For x a) = For x (fromCore a)
 fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
 fromCore (C.App a b) = App (fromCore a) (fromCore b)
 fromCore (C.Ann a b) = Ann (fromCore a) (fromCore b)
-fromCore (C.Let defs a) = Let (map (second fromCore) defs) (fromCore a)
-fromCore (C.Fix x a) = Let [(x, fromCore a)] (Var x)
+fromCore (C.Let defs a) = Let (map (\(x, b) -> Untyped x (fromCore b)) defs) (fromCore a)
+fromCore (C.Fix x a) = Let [Untyped x (fromCore a)] (Var x)
 fromCore (C.Ctr k args) = Ctr k (map fromCore args)
 fromCore (C.Case a cases c) = Case (fromCore a) (map (second fromCore) cases) (fromCore c)
 fromCore (C.CaseI a cases c) = CaseI (fromCore a) (map (second fromCore) cases) (fromCore c)
@@ -203,114 +232,3 @@ fromCore (C.Op "+" [a, b]) = Op2 Add (fromCore a) (fromCore b)
 fromCore (C.Op "-" [a, b]) = Op2 Sub (fromCore a) (fromCore b)
 fromCore (C.Op "*" [a, b]) = Op2 Mul (fromCore a) (fromCore b)
 fromCore (C.Op op args) = Op op (map fromCore args)
-
--- bindings :: Pattern -> [String]
--- bindings AnyP = []
--- bindings (IntP _) = []
--- bindings (VarP x) = [x]
--- bindings (CtrP _ ps) = concatMap bindings ps
-
--- unpack :: Definition -> Env
--- unpack (Def types p a) = do
---   let unpackVar x = do
---         let value = App (match [Br [p] (Var x)]) a
---         case lookup x types of
---           Just type' -> (x, Ann value type')
---           Nothing -> (x, value)
---   unpackVar <$> bindings p
-
--- unpack (DefT t args alts) = do
---   let unpackAlt (ctr, (ctrArgs, retT)) = do
---         let value = lam (map fst ctrArgs) (Ctr ctr (map (Var . fst) ctrArgs))
---         let type' = for (map fst args) (fun (snd <$> ctrArgs) retT)
---         (ctr, Ann value type')
---   (t, Typ t args (fst <$> alts)) : map unpackAlt alts
-
--- findTyped :: C.Ops -> Env -> String -> Either CompileError (Expr, Type)
--- findTyped ops env x = do
---   env <- toCoreEnv ops env env
---   case C.findTyped ops env x of
---     Right (a, t) -> Right (detoCore a, detoCore t)
---     Left err -> Left (TypeError err)
-
--- expandUnionAlt :: C.Ops -> Env -> String -> Either CompileError ([Type], Type)
--- expandUnionAlt ops env k = do
---   env <- toCoreEnv ops env env
---   case C.findTyped ops env k of
---     Right (_, ctrT) -> do
---       let (_, argsT, retT) = C.splitFun ctrT
---       Right (map detoCore argsT, detoCore retT)
---     Left err -> Left (TypeError err)
-
--- expandUnionType :: C.Ops -> Env -> String -> Either CompileError ([(String, Type)], [(String, ([Type], Type))])
--- expandUnionType ops env t = do
---   (_, typeArgs, ctrs) <- case lookup t env of
---     Just a -> do
---       term <- toCore ops env a
---       case C.asTypeDef term of
---         Right (t, args, ctrs) -> Right (t, map (second detoCore) args, ctrs)
---         Left err -> Left (TypeError err)
---     Nothing -> Left (UndefinedUnionType t)
---   altArgs <- mapM (expandUnionAlt ops env) ctrs
---   Right (typeArgs, zip ctrs altArgs)
-
--- toCoreEnv :: C.Ops -> Env -> Env -> Either CompileError C.Env
--- toCoreEnv ops env = mapM (toCoreNamed ops env)
-
--- toCoreNamed :: C.Ops -> Env -> (String, Expr) -> Either CompileError (String, C.Expr)
--- toCoreNamed ops env (x, a) = do
---   -- a <- toCore ops ((x, Var x) : env) a
---   a <- toCore ops env a
---   Right (x, a)
-
--- detoCore :: C.Expr -> Expr
--- detoCore C.Knd = Knd
--- detoCore C.IntT = IntT
--- detoCore C.NumT = NumT
--- detoCore (C.Int i) = Int i
--- detoCore (C.Num n) = Num n
--- detoCore (C.Var x) = Var x
--- detoCore (C.Lam x a) = Lam x (detoCore a)
--- detoCore (C.For x a) = For x (detoCore a)
--- detoCore (C.Fun a b) = Fun (detoCore a) (detoCore b)
--- detoCore (C.App a b) = App (detoCore a) (detoCore b)
--- detoCore (C.Ann a b) = Ann (detoCore a) (detoCore b)
--- detoCore (C.Let env b) = do
---   let detoCoreDef (x, a) = Def [] (VarP x) (detoCore a)
---   Let (detoCoreDef <$> env) (detoCore b)
--- detoCore (C.Fix x a) = letVar (x, detoCore a) (Var x)
--- detoCore (C.Ctr k args) = Ctr k (map detoCore args)
--- detoCore (C.Typ t args ctrs) = Typ t (map (second detoCore) args) ctrs
--- detoCore (C.Op op args) = Op op (detoCore <$> args)
-
--- detoCoreNamed :: (String, C.Expr) -> (String, Expr)
--- detoCoreNamed (x, a) = (x, detoCore a)
-
--- detoCoreEnv :: C.Env -> Env
--- detoCoreEnv = map detoCoreNamed
-
--- freeVars :: C.Ops -> Env -> Expr -> Either CompileError [String]
--- freeVars ops env a = do
---   a <- toCore ops env a
---   Right (C.freeVars a)
-
--- occurs :: C.Ops -> Env -> String -> Expr -> Either CompileError Bool
--- occurs ops env x a = do
---   vars <- freeVars ops env a
---   Right (x `elem` vars)
-
--- infer :: C.Ops -> Env -> Expr -> Either CompileError (Type, Env)
--- infer ops env expr = do
---   term <- toCore ops env expr
---   env <- toCoreEnv ops env env
---   case C.infer ops env term of
---     Right (type', env) -> Right (detoCore type', detoCoreEnv env)
---     Left err -> Left (TypeError err)
-
--- eval :: C.Ops -> Env -> Expr -> Either CompileError (Expr, Type)
--- eval ops env expr = do
---   term <- toCore ops env expr
---   env <- toCoreEnv ops env env
---   case C.infer ops env term of
---     Right (type', _) -> Right (detoCore (C.eval ops env term), detoCore type')
---     Left err -> Left (TypeError err)

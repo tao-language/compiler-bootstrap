@@ -10,13 +10,40 @@ import Tao
 
 {-- TODO:
 * Type definitions:
-    type Bool = True | False
-    type Vec n a
-        = Nil : Vec 0 a
-        | Cons a (Vec n a): Vec (n + 1) a
-* Parse until end of file on parseExpr, parseDefs, etc
-    - Maybe get rid of `parse*` or `load*` (?)
-* AST type
+    Bool = True | False
+    Vec n a =
+      | Nil : Vec 0 a
+      | Cons a (Vec n a): Vec (n + 1) a
+
+* Syntax sugar (https://en.wikibooks.org/wiki/Haskell/Syntactic_sugar)
+  - Do notation
+  - Where definitions
+  - Case and Match
+  - Infix operators (x `op` y)
+  - Partial operators (+ x) (y -)
+  - IfElse
+  - Char
+  - Maybe
+  - Tuple
+  - Record
+  - List
+  - String
+  - Set
+  - Dict
+  - Vector
+  - Matrix
+  - Tensor
+  - List sequence [1..n] [1..] [1, 3..]
+  - List comprehension
+  - Unnamed Union types
+  - Unnamed Record types
+
+* Documentation
+  - Markdown description
+  - Arguments
+  - Return
+  - Examples (tested)
+  - Only documented functions/types are public
 --}
 
 data Error
@@ -42,7 +69,7 @@ data Error
 -- loadFile :: FilePath -> FilePath -> IO Env
 -- loadFile moduleName fileName = do
 --   src <- readFile (moduleName </> fileName)
---   case TaoLang.parse (zeroOrMore define) src of
+--   case TaoLang.parse (zeroOrMore definition) src of
 --     Right defs -> return (concatMap unpack defs)
 --     Left err -> fail ("❌ " ++ show err)
 
@@ -173,10 +200,7 @@ pattern' =
 expressionToken :: Parser Expr
 expressionToken =
   oneOf
-    [ keyword (Var "Type") "Type",
-      keyword (Var "Int") "Int",
-      keyword (Var "Num") "Num",
-      token $ Int <$> integer,
+    [ token $ Int <$> integer,
       token $ Num <$> number,
       Var <$> identifier letter,
       do
@@ -211,9 +235,8 @@ expression prec = do
 
   withOperators
     [ constant match',
-      -- prefixOp 0 Let (oneOrMore define),
-      -- prefixOp 1 for forall,
-      -- prefix 1 TypeOf (keyword () "@typeof"),
+      prefixOp 0 Let (oneOrMore definition),
+      prefixOp 1 for forall,
       constant expressionToken
     ]
     [ infixL 1 (Op2 Eq) (token $ text "=="),
@@ -226,97 +249,110 @@ expression prec = do
     ]
     prec
 
--- -- Definitions
--- defineRules :: [(String, Type)] -> Parser Definition
--- defineRules types = do
---   x <- identifier lowercase
---   let branch :: Parser Branch
---       branch = do
---         ps <- zeroOrMore pattern'
---         _ <- token $ char '='
---         a <- expression 0
---         _ <- newLine
---         succeed (Br ps a)
---   b <- branch
---   bs <- zeroOrMore (do _ <- keyword () x; branch)
---   succeed (Def types (VarP x) (match (b : bs)))
+-- Definitions
+typeAnnotation :: Parser (String, Type)
+typeAnnotation = do
+  x <- identifier lowercase
+  _ <- token $ char ':'
+  t <- expression 0
+  succeed (x, t)
 
--- definePattern :: [(String, Type)] -> Parser Definition
--- definePattern types = do
---   p <- pattern'
---   _ <- token $ char '='
---   a <- expression 0
---   _ <- newLine
---   succeed (Def types p a)
+typedVariableDefinition :: Parser Definition
+typedVariableDefinition = do
+  (x, t) <- typeAnnotation
+  _ <- token $ char '='
+  a <- expression 0
+  _ <- newLine
+  succeed (Typed x t a)
 
--- defineType :: Parser Definition
--- defineType = do
---   let typeArg :: Parser (String, Type)
---       typeArg =
---         oneOf
---           [ do
---               _ <- token $ char '('
---               x <- identifier lowercase
---               _ <- token $ char ':'
---               t <- expression 0
---               _ <- token $ char ')'
---               succeed (x, t),
---             do
---               x <- identifier lowercase
---               succeed (x, Knd)
---           ]
+rulesDefinition :: Parser Definition
+rulesDefinition = do
+  let branch :: Parser Branch
+      branch = do
+        ps <- zeroOrMore pattern'
+        _ <- token $ char '='
+        a <- expression 0
+        _ <- newLine
+        succeed (Br ps a)
 
---   let alternativeArg :: Parser (String, Type)
---       alternativeArg =
---         oneOf
---           [ do
---               _ <- token $ char '('
---               x <- identifier lowercase
---               _ <- token $ char ':'
---               t <- expression 0
---               _ <- token $ char ')'
---               succeed (x, t),
---             do
---               t <- expressionToken
---               succeed ("", t)
---           ]
+  maybeType <- maybe' typeAnnotation
+  case maybeType of
+    Just (x, t) -> do
+      _ <- newLine
+      _ <- keyword () x
+      b <- branch
+      bs <- zeroOrMore (do _ <- keyword () x; branch)
+      succeed (Typed x t (match (b : bs)))
+    Nothing -> do
+      x <- identifier lowercase
+      b <- branch
+      bs <- zeroOrMore (do _ <- keyword () x; branch)
+      succeed (Untyped x (match (b : bs)))
 
---   let alternative :: Type -> Parser (String, ([(String, Type)], Type))
---       alternative defaultType = do
---         ctr <- identifier uppercase
---         args <- zeroOrMore alternativeArg
---         t <- oneOf [do _ <- token $ char ':'; expression 0, succeed defaultType]
---         succeed (ctr, (args, t))
+unpackDefinition :: Parser Definition
+unpackDefinition = do
+  types <- zeroOrMore (do ann <- typeAnnotation; _ <- newLine; succeed ann)
+  p <- pattern'
+  _ <- token $ char '='
+  a <- expression 0
+  _ <- newLine
+  succeed (Unpack p types a)
 
---   name <- identifier uppercase
---   args <- zeroOrMore typeArg
---   let defaultType = app (Var name) (Var . fst <$> args)
---   _ <- token $ char '='
---   alt <- alternative defaultType
---   alts <- zeroOrMore (do _ <- token $ char '|'; alternative defaultType)
---   _ <- newLine
---   succeed (DefT name args (alt : alts))
+definition :: Parser Definition
+definition =
+  oneOf
+    [ typedVariableDefinition,
+      rulesDefinition,
+      unpackDefinition
+    ]
 
-define :: Parser Definition
-define = do
-  let typeDef :: Parser delim -> Parser (String, Type)
-      typeDef delimiter = do
-        x <- identifier lowercase
-        _ <- token $ char ':'
-        t <- expression 0
-        _ <- delimiter
-        succeed (x, t)
+unionTypeDefinition :: Parser ContextDefinition
+unionTypeDefinition = do
+  let argument :: Parser (String, Type)
+      argument =
+        oneOf
+          [ do
+              _ <- token $ char '('
+              arg <- typeAnnotation
+              _ <- token $ char ')'
+              succeed arg,
+            do
+              x <- identifier lowercase
+              succeed (x, Var nameType)
+          ]
 
-  -- oneOf
-  --   [ defineType,
-  --     do
-  --       (x, t) <- typeDef (token $ char '=')
-  --       a <- expression 0
-  --       _ <- newLine
-  --       succeed (Def [(x, t)] (VarP x) a),
-  --     do
-  --       types <- zeroOrMore (typeDef newLine)
-  --       def <- oneOf [defineRules types, definePattern types]
-  --       succeed def
-  --   ]
-  error "TODO"
+  let alternative :: Type -> Parser (String, Type)
+      alternative defaultType = do
+        name <- identifier uppercase
+        args <- zeroOrMore expressionToken
+        oneOf
+          [ do
+              _ <- token $ char ':'
+              t <- expression 1
+              succeed (name, fun args t),
+            succeed (name, fun args defaultType)
+          ]
+
+  _ <- keyword () "type"
+  name <- identifier uppercase
+  args <- zeroOrMore argument
+  _ <- token $ char '='
+  let defaultType = app (Var name) (map (Var . fst) args)
+  oneOf
+    [ do
+        alt <- alternative defaultType
+        alts <- zeroOrMore (do _ <- token $ char '|'; alternative defaultType)
+        succeed (UnionType name args (alt : alts)),
+      do
+        _ <- keyword () "_"
+        succeed (UnionType name args [])
+    ]
+
+contextDefinition :: Parser ContextDefinition
+contextDefinition =
+  oneOf
+    [ unionTypeDefinition,
+      do
+        def <- definition
+        succeed (Value def)
+    ]

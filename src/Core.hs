@@ -16,7 +16,6 @@ import Data.List (delete, intercalate, union)
   * Expr: a, b, c
   * Type: t, t1, t2, ta, tb, tc
   * Var: x, y, z
-- Show Expr with precedence
 - Remove unused errors
 
 -}

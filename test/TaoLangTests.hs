@@ -97,22 +97,22 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ expression" $ do
     let p = parse' (expression 0)
-    -- p "Type" `shouldBe` Right (Knd, "")
-    -- p "Int" `shouldBe` Right (IntT, "")
+    p "Type" `shouldBe` Right (Var "Type", "")
+    p "Int" `shouldBe` Right (Var "Int", "")
+    p "Num" `shouldBe` Right (Var "Num", "")
     p "42" `shouldBe` Right (Int 42, "")
     p "3.14" `shouldBe` Right (Num 3.14, "")
     p "x" `shouldBe` Right (Var "x", "")
     p "A" `shouldBe` Right (Var "A", "")
-    -- p "@forall x. y" `shouldBe` Right (For "x" y, "")
-    -- p "@forall x y. z" `shouldBe` Right (for ["x", "y"] z, "")
+    p "@forall x. y" `shouldBe` Right (For "x" y, "")
+    p "@forall x y. z" `shouldBe` Right (for ["x", "y"] z, "")
     p "\\x = 1" `shouldBe` Right (Lam "x" i1, "")
     p "\\x y = 1" `shouldBe` Right (lam ["x", "y"] i1, "")
     p "\\x = 1 | y = 2" `shouldBe` Right (Match [Br [x'] i1, Br [y'] i2], "")
-    -- p "x = 1; a" `shouldBe` Right (Let [Def [] x' i1] a, "")
-    -- p "x = 1\na" `shouldBe` Right (Let [Def [] x' i1] a, "")
-    -- p "x = 1; y = 2; a" `shouldBe` Right (Let [Def [] x' i1, Def [] y' i2] a, "")
-    -- p "x = 1\ny = 2\na" `shouldBe` Right (Let [Def [] x' i1, Def [] y' i2] a, "")
-    -- p "@typeof x" `shouldBe` Right (TypeOf x, "")
+    p "x = 1; a" `shouldBe` Right (Let [Untyped "x" i1] a, "")
+    p "x = 1\na" `shouldBe` Right (Let [Untyped "x" i1] a, "")
+    p "x = 1; y = 2; a" `shouldBe` Right (Let [Untyped "x" i1, Untyped "y" i2] a, "")
+    p "x = 1\ny = 2\na" `shouldBe` Right (Let [Untyped "x" i1, Untyped "y" i2] a, "")
     p "x -> y" `shouldBe` Right (Fun x y, "")
     p "x == y" `shouldBe` Right (eq x y, "")
     p "x < y" `shouldBe` Right (lt x y, "")
@@ -122,91 +122,101 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     p "x y" `shouldBe` Right (App x y, "")
     p "(x)" `shouldBe` Right (x, "")
 
-  -- it "☯ defineRules" $ do
-  --   let types = [("x", a)]
-  --   let p = parse' (defineRules types)
-  --   p "x = 1" `shouldBe` Right (Def types x' i1, "")
-  --   p "x y = 1" `shouldBe` Right (Def types x' (Lam "y" i1), "")
-  --   p "x y z = 1" `shouldBe` Right (Def types x' (lam ["y", "z"] i1), "")
-  --   p "x y = 1; x z = 2;" `shouldBe` Right (Def types x' (Match [Br [y'] i1, Br [z'] i2]), "")
-  --   p "x y = 1\nx z = 2\n" `shouldBe` Right (Def types x' (Match [Br [y'] i1, Br [z'] i2]), "")
-  --   p "x y = 1\n\nx z = 2\n\n" `shouldBe` Right (Def types x' (Match [Br [y'] i1, Br [z'] i2]), "")
+  it "☯ definition" $ do
+    let p = parse' definition
 
-  -- it "☯ definePattern" $ do
-  --   let types = [("x", a)]
-  --   let p = parse' (definePattern types)
-  --   p "A x y = z" `shouldBe` Right (Def types (CtrP "A" [x', y']) z, "")
+    -- Untyped rules
+    p "x = 1" `shouldBe` Right (Untyped "x" i1, "")
+    p "x y = 1" `shouldBe` Right (Untyped "x" (Lam "y" i1), "")
+    p "x y z = 1" `shouldBe` Right (Untyped "x" (lam ["y", "z"] i1), "")
+    p "x y = 1; x z = 2;" `shouldBe` Right (Untyped "x" (Match [Br [y'] i1, Br [z'] i2]), "")
+    p "x y = 1\nx z = 2\n" `shouldBe` Right (Untyped "x" (Match [Br [y'] i1, Br [z'] i2]), "")
+    p "x y = 1\n\nx z = 2\n\n" `shouldBe` Right (Untyped "x" (Match [Br [y'] i1, Br [z'] i2]), "")
 
-  -- it "☯ defineType" $ do
-  --   let (a, n) = (Var "a", Var "n")
-  --   let boolT = Var "Bool"
-  --   let maybeT a = App (Var "Maybe") a
-  --   let vecT n a = app (Var "Vec") [n, a]
-  --   let p = parse' defineType
-  --   p "Bool = True : Bool | False : Bool" `shouldBe` Right (DefT "Bool" [] [("True", ([], boolT)), ("False", ([], boolT))], "")
-  --   p "Bool = True | False" `shouldBe` Right (DefT "Bool" [] [("True", ([], boolT)), ("False", ([], boolT))], "")
-  --   p "Maybe (a : Type) = Just a : Maybe a | Nothing : Maybe a" `shouldBe` Right (DefT "Maybe" [("a", Knd)] [("Just", ([("", a)], maybeT a)), ("Nothing", ([], maybeT a))], "")
-  --   p "Maybe a = Just a | Nothing" `shouldBe` Right (DefT "Maybe" [("a", Knd)] [("Just", ([("", a)], maybeT a)), ("Nothing", ([], maybeT a))], "")
-  --   p "Vec (n : Int) (a : Type) = Cons a (Vec n a) : Vec (n + 1) a | Nil : Vec 0 a" `shouldBe` Right (DefT "Vec" [("n", IntT), ("a", Knd)] [("Cons", ([("", a), ("", vecT n a)], vecT (add n (Int 1)) a)), ("Nil", ([], vecT (Int 0) a))], "")
-  --   p "Vec (n : Int) a = Cons a (Vec n a) : Vec (n + 1) a | Nil : Vec 0 a" `shouldBe` Right (DefT "Vec" [("n", IntT), ("a", Knd)] [("Cons", ([("", a), ("", vecT n a)], vecT (add n (Int 1)) a)), ("Nil", ([], vecT (Int 0) a))], "")
+    -- Typed rules
+    p "x : Int; x = 1" `shouldBe` Right (Typed "x" (Var "Int") i1, "")
+    p "x : Int\nx = 1" `shouldBe` Right (Typed "x" (Var "Int") i1, "")
+    p "x : a -> Int; x y = 1" `shouldBe` Right (Typed "x" (Fun (Var "a") (Var "Int")) (Lam "y" i1), "")
+    p "x : a -> Int\nx y = 1" `shouldBe` Right (Typed "x" (Fun (Var "a") (Var "Int")) (Lam "y" i1), "")
+    p "x : a -> b -> Int; x y z = 1" `shouldBe` Right (Typed "x" (fun [Var "a", Var "b"] (Var "Int")) (lam ["y", "z"] i1), "")
+    p "x : a -> b -> Int\nx y z = 1" `shouldBe` Right (Typed "x" (fun [Var "a", Var "b"] (Var "Int")) (lam ["y", "z"] i1), "")
+    p "x : a -> b -> Int; x y = 1; x z = 2;" `shouldBe` Right (Typed "x" (fun [Var "a", Var "b"] (Var "Int")) (Match [Br [y'] i1, Br [z'] i2]), "")
+    p "x : a -> b -> Int\nx y = 1\nx z = 2\n" `shouldBe` Right (Typed "x" (fun [Var "a", Var "b"] (Var "Int")) (Match [Br [y'] i1, Br [z'] i2]), "")
+    p "x : a -> Int; x y = 1; x z = 2;" `shouldBe` Right (Typed "x" (Fun (Var "a") (Var "Int")) (Match [Br [y'] i1, Br [z'] i2]), "")
+    p "x : a -> Int\nx y = 1\nx z = 2\n" `shouldBe` Right (Typed "x" (Fun (Var "a") (Var "Int")) (Match [Br [y'] i1, Br [z'] i2]), "")
+    p "x : a -> Int\n\nx y = 1\n\nx z = 2\n\n" `shouldBe` Right (Typed "x" (Fun (Var "a") (Var "Int")) (Match [Br [y'] i1, Br [z'] i2]), "")
 
-  -- it "☯ define" $ do
-  --   let p = parse' define
-  --   p "x : a = 1" `shouldBe` Right (Def [("x", a)] x' i1, "")
-  --   p "x = 1" `shouldBe` Right (Def [] x' i1, "")
-  --   p "x y = 1" `shouldBe` Right (Def [] x' (Lam "y" i1), "")
-  --   p "A x y = 1" `shouldBe` Right (Def [] (CtrP "A" [x', y']) i1, "")
-  --   p "x : a; x = 1" `shouldBe` Right (Def [("x", a)] x' i1, "")
-  --   p "x : a\nx = 1" `shouldBe` Right (Def [("x", a)] x' i1, "")
-  --   p "x : a; y : b; A x y = 1" `shouldBe` Right (Def [("x", a), ("y", b)] (CtrP "A" [x', y']) i1, "")
-  --   p "x : a\ny : b\nA x y = 1" `shouldBe` Right (Def [("x", a), ("y", b)] (CtrP "A" [x', y']) i1, "")
-  --   p "Bool = True | False" `shouldBe` Right (DefT "Bool" [] [("True", ([], Var "Bool")), ("False", ([], Var "Bool"))], "")
+    -- Typed variable
+    p "x : Int = 1" `shouldBe` Right (Typed "x" (Var "Int") i1, "")
+
+    -- Pattern unpack
+    p "A x y = z" `shouldBe` Right (Unpack (CtrP "A" [x', y']) [] z, "")
+    p "x : a; y : b; A x y = z" `shouldBe` Right (Unpack (CtrP "A" [x', y']) [("x", Var "a"), ("y", Var "b")] z, "")
+    p "x : a\ny : b\nA x y = z\n" `shouldBe` Right (Unpack (CtrP "A" [x', y']) [("x", Var "a"), ("y", Var "b")] z, "")
+
+  it "☯ unionTypeDefinition" $ do
+    let p = parse' unionTypeDefinition
+
+    -- Simple definition
+    p "type T = _" `shouldBe` Right (UnionType "T" [] [], "")
+    p "type T = A" `shouldBe` Right (UnionType "T" [] [("A", Var "T")], "")
+
+    -- Constructor arguments
+    p "type T = A a" `shouldBe` Right (UnionType "T" [] [("A", Fun (Var "a") (Var "T"))], "")
+    p "type T = A a b" `shouldBe` Right (UnionType "T" [] [("A", fun [Var "a", Var "b"] (Var "T"))], "")
+
+    -- Arguments
+    p "type T a = A" `shouldBe` Right (UnionType "T" [("a", Var "Type")] [("A", App (Var "T") (Var "a"))], "")
+    p "type T a b = A" `shouldBe` Right (UnionType "T" [("a", Var "Type"), ("b", Var "Type")] [("A", app (Var "T") [Var "a", Var "b"])], "")
+
+    -- Typed arguments
+    p "type T (a : Int) = A" `shouldBe` Right (UnionType "T" [("a", Var "Int")] [("A", App (Var "T") (Var "a"))], "")
+
+    -- Typed constructors
+    p "type T = A : U" `shouldBe` Right (UnionType "T" [] [("A", Var "U")], "")
+
+    -- Multiple constructors
+    p "type T = A | B" `shouldBe` Right (UnionType "T" [] [("A", Var "T"), ("B", Var "T")], "")
+
+    -- End-to-end
+    p "type Bool = True | False" `shouldBe` Right (UnionType "Bool" [] [("True", Var "Bool"), ("False", Var "Bool")], "")
+    p "type Maybe a = Just a | Nothing" `shouldBe` Right (UnionType "Maybe" [("a", Var "Type")] [("Just", Fun (Var "a") (App (Var "Maybe") (Var "a"))), ("Nothing", App (Var "Maybe") (Var "a"))], "")
+    p "type Vec (n : Int) a = Cons a (Vec n a) : Vec (n + 1) a | Nil : Vec 0 a" `shouldBe` Right (UnionType "Vec" [("n", Var "Int"), ("a", Var "Type")] [("Cons", fun [Var "a", app (Var "Vec") [Var "n", Var "a"]] (app (Var "Vec") [Op2 Add (Var "n") (Int 1), Var "a"])), ("Nil", app (Var "Vec") [Int 0, Var "a"])], "")
+
+  it "☯ contextDefinition" $ do
+    let p = parse' contextDefinition
+    p "type T = _" `shouldBe` Right (UnionType "T" [] [], "")
+    p "x = 1" `shouldBe` Right (Value (Untyped "x" (Int 1)), "")
 
   describe "☯ operator precedence" $ do
-    -- it "☯ Let" $ do
-    --   let p = parse' (expression 0)
-    --   p "x = 1; y = 2; z" `shouldBe` Right (Let [Def [] x' i1, Def [] y' i2] z, "")
-    --   -- p "x = 1; @forall y. z" `shouldBe` Right (Let [Def [] x' i1] (For "y" z), "")
-    --   p "x = 1; @typeof y" `shouldBe` Right (Let [Def [] x' i1] (TypeOf y), "")
-    --   p "x = 1; y == z" `shouldBe` Right (Let [Def [] x' i1] (eq y z), "")
-    --   p "x = 1; y -> z" `shouldBe` Right (Let [Def [] x' i1] (Fun y z), "")
-    --   p "x = 1; y < z" `shouldBe` Right (Let [Def [] x' i1] (lt y z), "")
-    --   p "x = 1; y + z" `shouldBe` Right (Let [Def [] x' i1] (add y z), "")
-    --   p "x = 1; y - z" `shouldBe` Right (Let [Def [] x' i1] (sub y z), "")
-    --   p "x = 1; y * z" `shouldBe` Right (Let [Def [] x' i1] (mul y z), "")
-    --   p "x = 1; y z" `shouldBe` Right (Let [Def [] x' i1] (App y z), "")
+    it "☯ Let" $ do
+      let p = parse' (expression 0)
+      p "x = 1; y = 2; z" `shouldBe` Right (Let [Untyped "x" i1, Untyped "y" i2] z, "")
+      p "x = 1; @forall y. z" `shouldBe` Right (Let [Untyped "x" i1] (For "y" z), "")
+      p "x = 1; y == z" `shouldBe` Right (Let [Untyped "x" i1] (eq y z), "")
+      p "x = 1; y -> z" `shouldBe` Right (Let [Untyped "x" i1] (Fun y z), "")
+      p "x = 1; y < z" `shouldBe` Right (Let [Untyped "x" i1] (lt y z), "")
+      p "x = 1; y + z" `shouldBe` Right (Let [Untyped "x" i1] (add y z), "")
+      p "x = 1; y - z" `shouldBe` Right (Let [Untyped "x" i1] (sub y z), "")
+      p "x = 1; y * z" `shouldBe` Right (Let [Untyped "x" i1] (mul y z), "")
+      p "x = 1; y z" `shouldBe` Right (Let [Untyped "x" i1] (App y z), "")
 
-    -- it "☯ For" $ do
-    --   let p = parse' (expression 0)
-    --   p "@forall x. y = 1; z" `shouldBe` Right (For "x" (Let [Def [] y' i1] z), "")
-    --   p "@forall x. @forall y. z" `shouldBe` Right (For "x" (For "y" z), "")
-    --   p "@forall x. @typeof y" `shouldBe` Right (For "x" (TypeOf y), "")
-    --   p "@forall x. y == z" `shouldBe` Right (eq (For "x" y) z, "")
-    --   p "@forall x. y -> z" `shouldBe` Right (For "x" (Fun y z), "")
-    --   p "@forall x. y < z" `shouldBe` Right (For "x" (lt y z), "")
-    --   p "@forall x. y + z" `shouldBe` Right (For "x" (add y z), "")
-    --   p "@forall x. y - z" `shouldBe` Right (For "x" (sub y z), "")
-    --   p "@forall x. y * z" `shouldBe` Right (For "x" (mul y z), "")
-    --   p "@forall x. y z" `shouldBe` Right (For "x" (App y z), "")
-
-    -- it "☯ TypeOf" $ do
-    --   let p = parse' (expression 0)
-    --   -- p "@typeof x = 1; y" `shouldBe` Right (TypeOf (Let [Def [] x' i1] y), "")
-    --   -- p "@typeof @forall x. y" `shouldBe` Right (TypeOf (For "x" y), "")
-    --   p "@typeof @typeof x" `shouldBe` Right (TypeOf (TypeOf x), "")
-    --   p "@typeof x == y" `shouldBe` Right (eq (TypeOf x) y, "")
-    --   p "@typeof x -> y" `shouldBe` Right (TypeOf (Fun x y), "")
-    --   p "@typeof x < y" `shouldBe` Right (TypeOf (lt x y), "")
-    --   p "@typeof x + y" `shouldBe` Right (TypeOf (add x y), "")
-    --   p "@typeof x - y" `shouldBe` Right (TypeOf (sub x y), "")
-    --   p "@typeof x * y" `shouldBe` Right (TypeOf (mul x y), "")
-    --   p "@typeof x y" `shouldBe` Right (TypeOf (App x y), "")
+    it "☯ For" $ do
+      let p = parse' (expression 0)
+      p "@forall x. y = 1; z" `shouldBe` Right (For "x" (Let [Untyped "y" i1] z), "")
+      p "@forall x. @forall y. z" `shouldBe` Right (For "x" (For "y" z), "")
+      p "@forall x. y == z" `shouldBe` Right (eq (For "x" y) z, "")
+      p "@forall x. y -> z" `shouldBe` Right (For "x" (Fun y z), "")
+      p "@forall x. y < z" `shouldBe` Right (For "x" (lt y z), "")
+      p "@forall x. y + z" `shouldBe` Right (For "x" (add y z), "")
+      p "@forall x. y - z" `shouldBe` Right (For "x" (sub y z), "")
+      p "@forall x. y * z" `shouldBe` Right (For "x" (mul y z), "")
+      p "@forall x. y z" `shouldBe` Right (For "x" (App y z), "")
 
     it "☯ Eq (==)" $ do
       let p = parse' (expression 0)
-      -- p "x == y = 1; z" `shouldBe` Right (eq x (Let [Def [] y' i1] z), "")
-      -- p "x == @forall y. z" `shouldBe` Right (eq x (For "y" z), "")
-      -- p "x == @typeof y" `shouldBe` Right (eq x (TypeOf y), "")
+      p "x == y = 1; z" `shouldBe` Right (eq x (Let [Untyped "y" i1] z), "")
+      p "x == @forall y. z" `shouldBe` Right (eq x (For "y" z), "")
       p "x == y == z" `shouldBe` Right (eq (eq x y) z, "")
       p "x == y -> z" `shouldBe` Right (eq x (Fun y z), "")
       p "x == y < z" `shouldBe` Right (eq x (lt y z), "")
@@ -217,9 +227,8 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
 
     it "☯ Fun (->)" $ do
       let p = parse' (expression 0)
-      -- p "x -> y = 1; z" `shouldBe` Right (Fun x (Let [Def [] y' i1] z), "")
-      -- p "x -> @forall y. z" `shouldBe` Right (Fun x (For "y" z), "")
-      -- p "x -> @typeof y" `shouldBe` Right (Fun x (TypeOf y), "")
+      p "x -> y = 1; z" `shouldBe` Right (Fun x (Let [Untyped "y" i1] z), "")
+      p "x -> @forall y. z" `shouldBe` Right (Fun x (For "y" z), "")
       p "x -> y == z" `shouldBe` Right (eq (Fun x y) z, "")
       p "x -> y -> z" `shouldBe` Right (Fun x (Fun y z), "")
       p "x -> y < z" `shouldBe` Right (Fun x (lt y z), "")
@@ -230,9 +239,8 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
 
     it "☯ Lt (<)" $ do
       let p = parse' (expression 0)
-      -- p "x < y = 1; z" `shouldBe` Right (lt x (Let [Def [] y' i1] z), "")
-      -- p "x < @forall y. z" `shouldBe` Right (lt x (For "y" z), "")
-      -- p "x < @typeof y" `shouldBe` Right (lt x (TypeOf y), "")
+      p "x < y = 1; z" `shouldBe` Right (lt x (Let [Untyped "y" i1] z), "")
+      p "x < @forall y. z" `shouldBe` Right (lt x (For "y" z), "")
       p "x < y == z" `shouldBe` Right (eq (lt x y) z, "")
       p "x < y -> z" `shouldBe` Right (Fun (lt x y) z, "")
       p "x < y < z" `shouldBe` Right (lt (lt x y) z, "")
@@ -243,9 +251,8 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
 
     it "☯ Add (+)" $ do
       let p = parse' (expression 0)
-      -- p "x + y = 1; z" `shouldBe` Right (add x (Let [Def [] y' i1] z), "")
-      -- p "x + @forall y. z" `shouldBe` Right (add x (For "y" z), "")
-      -- p "x + @typeof y" `shouldBe` Right (add x (TypeOf y), "")
+      p "x + y = 1; z" `shouldBe` Right (add x (Let [Untyped "y" i1] z), "")
+      p "x + @forall y. z" `shouldBe` Right (add x (For "y" z), "")
       p "x + y == z" `shouldBe` Right (eq (add x y) z, "")
       p "x + y -> z" `shouldBe` Right (Fun (add x y) z, "")
       p "x + y < z" `shouldBe` Right (lt (add x y) z, "")
@@ -256,9 +263,8 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
 
     it "☯ Sub (-)" $ do
       let p = parse' (expression 0)
-      -- p "x - y = 1; z" `shouldBe` Right (sub x (Let [Def [] y' i1] z), "")
-      -- p "x - @forall y. z" `shouldBe` Right (sub x (For "y" z), "")
-      -- p "x - @typeof y" `shouldBe` Right (sub x (TypeOf y), "")
+      p "x - y = 1; z" `shouldBe` Right (sub x (Let [Untyped "y" i1] z), "")
+      p "x - @forall y. z" `shouldBe` Right (sub x (For "y" z), "")
       p "x - y == z" `shouldBe` Right (eq (sub x y) z, "")
       p "x - y -> z" `shouldBe` Right (Fun (sub x y) z, "")
       p "x - y < z" `shouldBe` Right (lt (sub x y) z, "")
@@ -269,9 +275,8 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
 
     it "☯ Mul (*)" $ do
       let p = parse' (expression 0)
-      -- p "x * y = 1; z" `shouldBe` Right (mul x (Let [Def [] y' i1] z), "")
-      -- p "x * @forall y. z" `shouldBe` Right (mul x (For "y" z), "")
-      -- p "x * @typeof y" `shouldBe` Right (mul x (TypeOf y), "")
+      p "x * y = 1; z" `shouldBe` Right (mul x (Let [Untyped "y" i1] z), "")
+      p "x * @forall y. z" `shouldBe` Right (mul x (For "y" z), "")
       p "x * y == z" `shouldBe` Right (eq (mul x y) z, "")
       p "x * y -> z" `shouldBe` Right (Fun (mul x y) z, "")
       p "x * y < z" `shouldBe` Right (lt (mul x y) z, "")
@@ -282,8 +287,7 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
 
     it "☯ App" $ do
       let p = parse' (expression 0)
-      -- p "x @forall y. z" `shouldBe` Right (App x (For "y" z), "")
-      -- p "x @typeof y" `shouldBe` Right (App x (TypeOf y), "")
+      p "x @forall y. z" `shouldBe` Right (App x (For "y" z), "")
       p "x y == z" `shouldBe` Right (eq (App x y) z, "")
       p "x y -> z" `shouldBe` Right (Fun (App x y) z, "")
       p "x y < z" `shouldBe` Right (lt (App x y) z, "")
