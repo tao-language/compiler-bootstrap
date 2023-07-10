@@ -97,6 +97,24 @@ nameIntType = "Int"
 nameNumType :: String
 nameNumType = "Num"
 
+ops :: C.Ops
+ops =
+  [ ("+", add),
+    ("-", sub),
+    ("*", mul),
+    ("==", eq)
+  ]
+  where
+    add [C.Int a, C.Int b] = Just (C.Int (a + b))
+    add _ = Nothing
+    sub [C.Int a, C.Int b] = Just (C.Int (a - b))
+    sub _ = Nothing
+    mul [C.Int a, C.Int b] = Just (C.Int (a * b))
+    mul _ = Nothing
+    eq [C.Int a, C.Int b] | a == b = Just (C.Var "True")
+    eq [C.Int _, C.Int _] = Just (C.Var "False")
+    eq _ = Nothing
+
 lam :: [String] -> Expr -> Expr
 lam xs a = foldr Lam a xs
 
@@ -209,6 +227,21 @@ toCorePattern (VarP x) = C.VarP x
 toCorePattern (IntP i) = C.IntP i
 toCorePattern (CtrP k ps) = C.CtrP k (map toCorePattern ps)
 
+toCoreSymbols :: ContextDefinition -> Either CompileError C.Context
+toCoreSymbols (UnionType name args alts) = error "TODO"
+toCoreSymbols (Value (Untyped x a)) = do
+  a <- toCore a
+  Right [(x, C.Value a)]
+toCoreSymbols (Value (Typed x t a)) = error "TODO"
+toCoreSymbols (Value (Unpack p types a)) = error "TODO"
+
+toCoreContext :: Context -> Either CompileError C.Context
+toCoreContext [] = Right []
+toCoreContext (def : ctx) = do
+  defs <- toCoreSymbols def
+  ctx <- toCoreContext ctx
+  Right (defs ++ ctx)
+
 fromCore :: C.Expr -> Expr
 fromCore C.Typ = Var nameType
 fromCore C.IntT = Var nameIntType
@@ -232,3 +265,19 @@ fromCore (C.Op "+" [a, b]) = Op2 Add (fromCore a) (fromCore b)
 fromCore (C.Op "-" [a, b]) = Op2 Sub (fromCore a) (fromCore b)
 fromCore (C.Op "*" [a, b]) = Op2 Mul (fromCore a) (fromCore b)
 fromCore (C.Op op args) = Op op (map fromCore args)
+
+eval :: Context -> Expr -> Either CompileError (Expr, Type)
+eval ctx a = do
+  t <- infer ctx a
+  ctx <- toCoreContext ctx
+  a <- toCore a
+  let b = C.eval ops (C.envOf ctx) a
+  Right (fromCore b, t)
+
+infer :: Context -> Expr -> Either CompileError Type
+infer ctx a = do
+  ctx <- toCoreContext ctx
+  a <- toCore a
+  case C.infer ops ctx a of
+    Right (t, _) -> Right (fromCore t)
+    Left err -> Left (TypeError err)

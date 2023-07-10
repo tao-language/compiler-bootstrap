@@ -9,12 +9,6 @@ import System.FilePath ((</>))
 import Tao
 
 {-- TODO:
-* Type definitions:
-    Bool = True | False
-    Vec n a =
-      | Nil : Vec 0 a
-      | Cons a (Vec n a): Vec (n + 1) a
-
 * Syntax sugar (https://en.wikibooks.org/wiki/Haskell/Syntactic_sugar)
   - Do notation
   - Where definitions
@@ -66,12 +60,12 @@ data Error
 --   Right (env, expr) -> return (env, expr)
 --   Left err -> fail ("❌ " ++ show err)
 
--- loadFile :: FilePath -> FilePath -> IO Env
--- loadFile moduleName fileName = do
---   src <- readFile (moduleName </> fileName)
---   case TaoLang.parse (zeroOrMore definition) src of
---     Right defs -> return (concatMap unpack defs)
---     Left err -> fail ("❌ " ++ show err)
+loadFile :: FilePath -> FilePath -> IO Context
+loadFile moduleName fileName = do
+  src <- readFile (moduleName </> fileName)
+  case TaoLang.parse context src of
+    Right ctx -> return ctx
+    Left err -> fail ("❌ " ++ show err)
 
 -- loadModule :: FilePath -> IO Env
 -- loadModule moduleName = do
@@ -356,3 +350,6 @@ contextDefinition =
         def <- definition
         succeed (Value def)
     ]
+
+context :: Parser Context
+context = zeroOrMore contextDefinition

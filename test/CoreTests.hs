@@ -15,10 +15,6 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
 
       add :: Operator
       add [Int a, Int b] = Just (Int (a + b))
-      add [Op "+" [a, Int b1], Int b2] = Just (Op "+" [a, Int (b1 + b2)])
-      add [Op "+" [Int b1, a], Int b2] = Just (Op "+" [a, Int (b1 + b2)])
-      add [Int b1, Op "+" [a, Int b2]] = Just (Op "+" [a, Int (b1 + b2)])
-      add [Int b1, Op "+" [Int b2, a]] = Just (Op "+" [a, Int (b1 + b2)])
       add _ = Nothing
 
       sub :: Operator
