@@ -106,7 +106,7 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     p "A" `shouldBe` Right (Var "A", "")
     p "@forall x. y" `shouldBe` Right (For "x" y, "")
     p "@forall x y. z" `shouldBe` Right (for ["x", "y"] z, "")
-    p "\\x = 1" `shouldBe` Right (Lam "x" i1, "")
+    p "\\x = 1" `shouldBe` Right (lam ["x"] i1, "")
     p "\\x y = 1" `shouldBe` Right (lam ["x", "y"] i1, "")
     p "\\x = 1 | y = 2" `shouldBe` Right (Match [Br [x'] i1, Br [y'] i2], "")
     p "x = 1; a" `shouldBe` Right (Let [Untyped "x" i1] a, "")
@@ -127,7 +127,7 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
 
     -- Untyped rules
     p "x = 1" `shouldBe` Right (Untyped "x" i1, "")
-    p "x y = 1" `shouldBe` Right (Untyped "x" (Lam "y" i1), "")
+    p "x y = 1" `shouldBe` Right (Untyped "x" (lam ["y"] i1), "")
     p "x y z = 1" `shouldBe` Right (Untyped "x" (lam ["y", "z"] i1), "")
     p "x y = 1; x z = 2;" `shouldBe` Right (Untyped "x" (Match [Br [y'] i1, Br [z'] i2]), "")
     p "x y = 1\nx z = 2\n" `shouldBe` Right (Untyped "x" (Match [Br [y'] i1, Br [z'] i2]), "")
@@ -136,8 +136,8 @@ taoLangTests = describe "--==☯ Tao language ☯==--" $ do
     -- Typed rules
     p "x : Int; x = 1" `shouldBe` Right (Typed "x" (Var "Int") i1, "")
     p "x : Int\nx = 1" `shouldBe` Right (Typed "x" (Var "Int") i1, "")
-    p "x : a -> Int; x y = 1" `shouldBe` Right (Typed "x" (Fun (Var "a") (Var "Int")) (Lam "y" i1), "")
-    p "x : a -> Int\nx y = 1" `shouldBe` Right (Typed "x" (Fun (Var "a") (Var "Int")) (Lam "y" i1), "")
+    p "x : a -> Int; x y = 1" `shouldBe` Right (Typed "x" (Fun (Var "a") (Var "Int")) (lam ["y"] i1), "")
+    p "x : a -> Int\nx y = 1" `shouldBe` Right (Typed "x" (Fun (Var "a") (Var "Int")) (lam ["y"] i1), "")
     p "x : a -> b -> Int; x y z = 1" `shouldBe` Right (Typed "x" (fun [Var "a", Var "b"] (Var "Int")) (lam ["y", "z"] i1), "")
     p "x : a -> b -> Int\nx y z = 1" `shouldBe` Right (Typed "x" (fun [Var "a", Var "b"] (Var "Int")) (lam ["y", "z"] i1), "")
     p "x : a -> b -> Int; x y = 1; x z = 2;" `shouldBe` Right (Typed "x" (fun [Var "a", Var "b"] (Var "Int")) (Match [Br [y'] i1, Br [z'] i2]), "")

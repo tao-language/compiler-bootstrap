@@ -64,7 +64,36 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     eval' (Op "==" [x, Int 2]) `shouldBe` Var "False"
 
   -- it "☯ occurs" $ do
-  -- it "☯ unify" $ do
+  it "☯ subtype" $ do
+    let (x, y) = (Var "x", Var "y")
+    let ctx :: Context
+        ctx =
+          [ ("x", Value x),
+            ("y", Value y)
+          ]
+
+    let subtype' = subtype ops ctx
+    subtype' Typ Typ `shouldBe` Right (Typ, ctx)
+    subtype' IntT Typ `shouldBe` Left (TypeMismatch IntT Typ)
+    subtype' IntT IntT `shouldBe` Right (IntT, ctx)
+    subtype' NumT NumT `shouldBe` Right (NumT, ctx)
+    subtype' (Int 1) (Int 1) `shouldBe` Right (Int 1, ctx)
+    subtype' (Num 1.1) (Num 1.1) `shouldBe` Right (Num 1.1, ctx)
+    subtype' (Var "x") (Var "x") `shouldBe` Right (Var "x", ctx)
+    subtype' (Var "x") IntT `shouldBe` Right (IntT, set "x" (Value IntT) ctx)
+    subtype' IntT (Var "x") `shouldBe` Right (IntT, set "x" (Value IntT) ctx)
+    -- TODO: For
+    -- TODO: Fun
+    -- TODO: App
+    -- TODO: Ctr
+    subtype' IntT (Or x y) `shouldBe` Right (IntT, set "x" (Value IntT) $ set "y" (Value IntT) ctx)
+    subtype' IntT (Or x NumT) `shouldBe` Right (IntT, set "x" (Value IntT) ctx)
+    subtype' IntT (Or NumT y) `shouldBe` Right (IntT, set "y" (Value IntT) ctx)
+    subtype' (Or x y) IntT `shouldBe` Right (IntT, set "x" (Value IntT) $ set "y" (Value IntT) ctx)
+    subtype' (Or x NumT) IntT `shouldBe` Left (TypeMismatch NumT IntT)
+    subtype' (Or NumT y) IntT `shouldBe` Left (TypeMismatch NumT IntT)
+    -- TODO: Op
+    True `shouldBe` True
 
   it "☯ infer" $ do
     let a = Var "a"
@@ -264,3 +293,33 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     -- Name shadowing.
     match [Br [y'] x, Br [x'] x] `shouldBe` Right (Lam "y" x)
     match [Br [x'] x, Br [y'] x] `shouldBe` Right (Lam "x1" $ Let [("x", x1)] x)
+
+  it "☯ typedExpr" $ do
+    let (x, y) = (Var "x", Var "y")
+    let (a, b) = (Var "a", Var "b")
+    let ctx :: Context
+        ctx =
+          [ ("y", Value $ Int 1),
+            ("b", Value IntT)
+          ]
+
+    let typedExpr' = typedExpr ops ctx
+    typedExpr' Typ `shouldBe` Right Typ
+    typedExpr' IntT `shouldBe` Right IntT
+    typedExpr' NumT `shouldBe` Right NumT
+    typedExpr' (Int 1) `shouldBe` Right (Int 1)
+    typedExpr' (Num 1.1) `shouldBe` Right (Num 1.1)
+    typedExpr' (Var "x") `shouldBe` Right (Var "x")
+    typedExpr' (Lam "x" x) `shouldBe` Right (lam ["", "x"] x)
+    typedExpr' (For "x" x) `shouldBe` Right (For "x" x)
+    typedExpr' (Fun x y) `shouldBe` Right (fun [Typ, x] y)
+    typedExpr' (App x y) `shouldBe` Right (app x [IntT, y])
+    typedExpr' (Ann x y) `shouldBe` Right (Ann x y)
+    -- typedExpr' (Ann (Lam "x" y) (For "a" (Fun a b))) `shouldBe` Right (Ann x y)
+    -- TODO: Let
+    -- TODO: Fix
+    -- TODO: Ctr
+    -- TODO: Case
+    -- TODO: CaseI
+    -- TODO: Op
+    True `shouldBe` True

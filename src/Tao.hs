@@ -2,7 +2,8 @@ module Tao where
 
 import qualified Core as C
 import Data.Bifunctor (second)
-import Data.List (foldl')
+import Data.Char (isUpper)
+import Data.List (delete, foldl', union)
 
 {- TODO
 
@@ -21,7 +22,6 @@ data Expr
   = Int !Int
   | Num !Double
   | Var !String
-  | Lam !String !Expr
   | For !String !Expr
   | Fun !Expr !Expr
   | App !Expr !Expr
@@ -62,8 +62,6 @@ type Type = Expr
 data Branch
   = Br ![Pattern] !Expr
   deriving (Eq, Show)
-
-type Env = [(String, Expr)]
 
 data Definition
   = Untyped !String !Expr
@@ -116,12 +114,7 @@ ops =
     eq _ = Nothing
 
 lam :: [String] -> Expr -> Expr
-lam xs a = foldr Lam a xs
-
-lamP :: [Pattern] -> Expr -> Expr
-lamP [] a = a
-lamP (VarP x : ps) a = Lam x (lamP ps a)
-lamP ps a = Match [Br ps a]
+lam xs a = Match [Br (map VarP xs) a]
 
 for :: [String] -> Expr -> Expr
 for xs a = foldr For a xs
@@ -129,21 +122,39 @@ for xs a = foldr For a xs
 app :: Expr -> [Expr] -> Expr
 app = foldl' App
 
+asApp :: Expr -> (Expr, [Expr])
+asApp (App a b) = second (++ [b]) (asApp a)
+asApp a = (a, [])
+
 fun :: [Expr] -> Expr -> Expr
 fun args b = foldr Fun b args
 
 match :: [Branch] -> Expr
 match (Br [] a : _) = a
-match [Br ps a] = lamP ps a
 match brs = Match brs
+
+typeVars :: Type -> [String]
+typeVars (Var (ch : _)) | isUpper ch = []
+typeVars (Var x) = [x]
+typeVars (For x a) = x : typeVars a
+typeVars (Fun a b) = typeVars a `union` typeVars b
+typeVars (App a b) = foldr (union . typeVars) [] (snd (asApp (App a b)))
+typeVars (Ann a _) = typeVars a
+typeVars (Let [] a) = typeVars a
+typeVars (Let ((Untyped x _) : defs) a) = delete x (typeVars (Let defs a))
+typeVars (Let ((Typed x _ _) : defs) a) = delete x (typeVars (Let defs a))
+typeVars (Ctr _ args) = foldr (union . typeVars) [] args
+typeVars (Op _ args) = foldr (union . typeVars) [] args
+typeVars (Op2 _ a b) = typeVars a `union` typeVars b
+typeVars _ = []
 
 toCore :: Expr -> Either CompileError C.Expr
 toCore (Int i) = Right (C.Int i)
 toCore (Num n) = Right (C.Num n)
+toCore (Var "Type") = Right C.Typ
+toCore (Var "Int") = Right C.IntT
+toCore (Var "Num") = Right C.NumT
 toCore (Var x) = Right (C.Var x)
-toCore (Lam x a) = do
-  a <- toCore a
-  Right (C.Lam x a)
 toCore (For x a) = do
   a <- toCore a
   Right (C.For x a)
@@ -227,20 +238,17 @@ toCorePattern (VarP x) = C.VarP x
 toCorePattern (IntP i) = C.IntP i
 toCorePattern (CtrP k ps) = C.CtrP k (map toCorePattern ps)
 
-toCoreSymbols :: ContextDefinition -> Either CompileError C.Context
-toCoreSymbols (UnionType name args alts) = error "TODO"
-toCoreSymbols (Value (Untyped x a)) = do
-  a <- toCore a
-  Right [(x, C.Value a)]
-toCoreSymbols (Value (Typed x t a)) = error "TODO"
-toCoreSymbols (Value (Unpack p types a)) = error "TODO"
+toCoreSymbols :: Definition -> Either CompileError C.Context
+toCoreSymbols (Untyped x a) = Right []
+toCoreSymbols (Typed x t a) = Right []
+toCoreSymbols (Unpack p ts a) = Right []
 
-toCoreContext :: Context -> Either CompileError C.Context
+toCoreContext :: [Definition] -> Either CompileError C.Context
 toCoreContext [] = Right []
-toCoreContext (def : ctx) = do
-  defs <- toCoreSymbols def
-  ctx <- toCoreContext ctx
-  Right (defs ++ ctx)
+toCoreContext (def : defs) = do
+  ctx1 <- toCoreSymbols def
+  ctx2 <- toCoreContext defs
+  Right (ctx1 ++ ctx2)
 
 fromCore :: C.Expr -> Expr
 fromCore C.Typ = Var nameType
@@ -249,7 +257,7 @@ fromCore C.NumT = Var nameNumType
 fromCore (C.Int i) = Int i
 fromCore (C.Num n) = Num n
 fromCore (C.Var x) = Var x
-fromCore (C.Lam x a) = Lam x (fromCore a)
+fromCore (C.Lam x a) = lam [x] (fromCore a)
 fromCore (C.For x a) = For x (fromCore a)
 fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
 fromCore (C.App a b) = App (fromCore a) (fromCore b)
@@ -266,18 +274,12 @@ fromCore (C.Op "-" [a, b]) = Op2 Sub (fromCore a) (fromCore b)
 fromCore (C.Op "*" [a, b]) = Op2 Mul (fromCore a) (fromCore b)
 fromCore (C.Op op args) = Op op (map fromCore args)
 
-eval :: Context -> Expr -> Either CompileError (Expr, Type)
-eval ctx a = do
-  t <- infer ctx a
-  ctx <- toCoreContext ctx
-  a <- toCore a
-  let b = C.eval ops (C.envOf ctx) a
-  Right (fromCore b, t)
-
-infer :: Context -> Expr -> Either CompileError Type
-infer ctx a = do
-  ctx <- toCoreContext ctx
+eval :: [Definition] -> Expr -> Either CompileError (Expr, Type)
+eval defs a = do
+  ctx <- toCoreContext defs
   a <- toCore a
   case C.infer ops ctx a of
-    Right (t, _) -> Right (fromCore t)
+    Right (t, _) -> do
+      let b = C.eval ops (C.envOf ctx) a
+      Right (fromCore b, fromCore t)
     Left err -> Left (TypeError err)

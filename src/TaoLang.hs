@@ -27,7 +27,7 @@ import Tao
   - Vector
   - Matrix
   - Tensor
-  - List sequence [1..n] [1..] [1, 3..]
+  - List sequence [1..n] [1..] [1, 3..] ['a'..'z']
   - List comprehension
   - Unnamed Union types
   - Unnamed Record types
@@ -44,21 +44,6 @@ data Error
   = SyntaxError !ParserError
   | CompileError !Tao.CompileError
   deriving (Eq, Show)
-
--- loadExpr :: String -> IO Expr
--- loadExpr text = case parseExpr text of
---   Right expr -> return expr
---   Left err -> fail ("❌ " ++ show err)
-
--- loadDefinitions :: String -> IO [Definition]
--- loadDefinitions text = case parseDefinitions text of
---   Right defs -> return defs
---   Left err -> fail ("❌ " ++ show err)
-
--- loadBlock :: String -> IO ([Definition], Expr)
--- loadBlock text = case parseBlock text of
---   Right (env, expr) -> return (env, expr)
---   Left err -> fail ("❌ " ++ show err)
 
 loadFile :: FilePath -> FilePath -> IO Context
 loadFile moduleName fileName = do
@@ -82,23 +67,6 @@ parseSome :: Parser a -> String -> Either Error (a, State)
 parseSome parser src = case Parser.parseSome parser src of
   Right (x, state) -> Right (x, state)
   Left err -> Left (SyntaxError err)
-
--- -- TODO: make sure there are no unparsed inputs
--- parseExpr :: String -> Either Error Expr
--- parseExpr src = TaoLang.parse src (expression 0 "")
-
--- -- TODO: make sure there are no unparsed inputs
--- parseDefinitions :: String -> Either Error [Definition]
--- parseDefinitions src = TaoLang.parse src (zeroOrMore (definition ""))
-
--- -- TODO: make sure there are no unparsed inputs
--- parseBlock :: String -> Either Error ([Definition], Expr)
--- parseBlock src = TaoLang.parse src (block "")
-
--- eval :: Env -> Expr -> Either Error (Expr, Type)
--- eval env expr = case infer env expr of
---   Right (type', _) -> Right (reduce env expr, type')
---   Left err -> Left (TypeError err)
 
 -- Parsers
 keyword :: a -> String -> Parser a
