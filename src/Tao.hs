@@ -151,7 +151,7 @@ typeVars _ = []
 toCore :: Expr -> Either CompileError C.Expr
 toCore (Int i) = Right (C.Int i)
 toCore (Num n) = Right (C.Num n)
-toCore (Var "Type") = Right C.Typ
+toCore (Var "Type") = Right C.Knd
 toCore (Var "Int") = Right C.IntT
 toCore (Var "Num") = Right C.NumT
 toCore (Var x) = Right (C.Var x)
@@ -176,22 +176,22 @@ toCore (Let defs a) = do
   Right (C.Let (concat defs) a)
 toCore (Ctr k args) = do
   args <- mapM toCore args
-  Right (C.Ctr k args)
-toCore (Case a cases c) = do
-  a <- toCore a
-  cases <- mapM toCoreSecond cases
-  c <- toCore c
-  Right (C.Case a cases c)
-toCore (CaseI a cases c) = do
-  a <- toCore a
-  cases <- mapM toCoreSecond cases
-  c <- toCore c
-  Right (C.CaseI a cases c)
-toCore (Match branches) = do
-  branches <- mapM toCoreBranch branches
-  case C.match branches of
-    Right expr -> Right expr
-    Left err -> Left (TypeError err)
+  Right (C.Ctr "TODO" k args)
+-- toCore (Case a cases c) = do
+--   a <- toCore a
+--   cases <- mapM toCoreSecond cases
+--   c <- toCore c
+--   Right (C.Case a cases c)
+-- toCore (CaseI a cases c) = do
+--   a <- toCore a
+--   cases <- mapM toCoreSecond cases
+--   c <- toCore c
+--   Right (C.CaseI a cases c)
+-- toCore (Match branches) = do
+--   branches <- mapM toCoreBranch branches
+--   case C.match branches of
+--     Right expr -> Right expr
+--     Left err -> Left (TypeError err)
 toCore (Op op args) = do
   args <- mapM toCore args
   Right (C.Op op args)
@@ -236,14 +236,14 @@ toCorePattern :: Pattern -> C.Pattern
 toCorePattern AnyP = C.VarP ""
 toCorePattern (VarP x) = C.VarP x
 toCorePattern (IntP i) = C.IntP i
-toCorePattern (CtrP k ps) = C.CtrP k (map toCorePattern ps)
+toCorePattern (CtrP k ps) = C.CtrP "TODO" k (map toCorePattern ps)
 
-toCoreSymbols :: Definition -> Either CompileError C.Context
+toCoreSymbols :: Definition -> Either CompileError C.Env
 toCoreSymbols (Untyped x a) = Right []
 toCoreSymbols (Typed x t a) = Right []
 toCoreSymbols (Unpack p ts a) = Right []
 
-toCoreContext :: [Definition] -> Either CompileError C.Context
+toCoreContext :: [Definition] -> Either CompileError C.Env
 toCoreContext [] = Right []
 toCoreContext (def : defs) = do
   ctx1 <- toCoreSymbols def
@@ -251,22 +251,22 @@ toCoreContext (def : defs) = do
   Right (ctx1 ++ ctx2)
 
 fromCore :: C.Expr -> Expr
-fromCore C.Typ = Var nameType
+fromCore C.Knd = Var nameType
 fromCore C.IntT = Var nameIntType
 fromCore C.NumT = Var nameNumType
 fromCore (C.Int i) = Int i
 fromCore (C.Num n) = Num n
 fromCore (C.Var x) = Var x
-fromCore (C.Lam x a) = lam [x] (fromCore a)
+-- TODO: Lam
 fromCore (C.For x a) = For x (fromCore a)
 fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
 fromCore (C.App a b) = App (fromCore a) (fromCore b)
 fromCore (C.Ann a b) = Ann (fromCore a) (fromCore b)
 fromCore (C.Let defs a) = Let (map (\(x, b) -> Untyped x (fromCore b)) defs) (fromCore a)
 fromCore (C.Fix x a) = Let [Untyped x (fromCore a)] (Var x)
-fromCore (C.Ctr k args) = Ctr k (map fromCore args)
-fromCore (C.Case a cases c) = Case (fromCore a) (map (second fromCore) cases) (fromCore c)
-fromCore (C.CaseI a cases c) = CaseI (fromCore a) (map (second fromCore) cases) (fromCore c)
+fromCore (C.Ctr tx k args) = Ctr k (map fromCore args)
+-- fromCore (C.Case a cases c) = Case (fromCore a) (map (second fromCore) cases) (fromCore c)
+-- fromCore (C.CaseI a cases c) = CaseI (fromCore a) (map (second fromCore) cases) (fromCore c)
 fromCore (C.Op "==" [a, b]) = Op2 Eq (fromCore a) (fromCore b)
 fromCore (C.Op "<" [a, b]) = Op2 Lt (fromCore a) (fromCore b)
 fromCore (C.Op "+" [a, b]) = Op2 Add (fromCore a) (fromCore b)
@@ -280,6 +280,6 @@ eval defs a = do
   a <- toCore a
   case C.infer ops ctx a of
     Right (t, _) -> do
-      let b = C.eval ops (C.envOf ctx) a
+      let b = C.eval ops ctx a
       Right (fromCore b, fromCore t)
     Left err -> Left (TypeError err)
