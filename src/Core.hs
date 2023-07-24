@@ -28,12 +28,11 @@ data Expr
   | Num !Double
   | Var !String
   | Ctr !String !String ![Expr]
-  | Typ !String ![Expr] ![(String, Type)]
+  | Typ !String ![(String, Expr)] ![(String, Type)]
   | Lam !Pattern !Expr
-  | For !String !Expr
   | Fun !Expr !Expr
   | App !Expr !Expr
-  | Ann !Expr !Type
+  | Ann !Expr !TypeScheme
   | Or !Expr !Expr
   | Let !Env !Expr
   | Fix !String !Expr
@@ -66,18 +65,16 @@ showPrec _ (Var x@('_' : _)) = x
 showPrec _ (Var x@(ch : _)) | isLetter ch = x
 showPrec _ (Var x) = "${" ++ x ++ "}"
 showPrec p (Ctr tx k args) = "#" ++ showPrec p (app (Var (tx ++ "." ++ k)) args)
-showPrec _ (Typ name args alts) = do
-  let showAlt (k, ts) = "#" ++ show (App (Var k) ts)
-  "%(" ++ unwords (name : map show args) ++ " { " ++ intercalate " | " (map showAlt alts) ++ " })"
+showPrec p (Typ name args alts) = do
+  -- let showAlt (k, ts) = "#" ++ show (App (Var k) ts)
+  -- "%(" ++ unwords (name : map show args) ++ " { " ++ intercalate " | " (map showAlt alts) ++ " })"
+  showPrec p (app (Var name) (map snd args))
 showPrec p (Lam q a) = do
   let (ps, a') = asLam (Lam q a)
   showPrefix p 2 ("\\" ++ unwords (map show ps) ++ ". ") a'
-showPrec p (For x a) = do
-  let (xs, a') = asFor (For x a)
-  showPrefix p 2 ("@for " ++ unwords xs ++ ". ") a'
 showPrec p (Fun a b) = showInfixR p 2 a " -> " b
 showPrec p (App a b) = showInfixL p 3 a " " b
-showPrec p (Ann a b) = showInfixL p 1 a " : " b
+showPrec p (Ann a typ) = show a ++ " : " ++ show typ
 showPrec p (Let [] a) = showPrec p a
 showPrec p (Let env a) = do
   let showDef (x, b) = x ++ " = " ++ show b
@@ -92,6 +89,16 @@ instance Show Expr where
   show a = showPrec 0 a
 
 type Type = Expr
+
+data TypeScheme
+  = For ![String] !Type
+  deriving (Eq)
+
+instance Show TypeScheme where
+  show (For [] a) = show a
+  show (For xs a) = "@forall " ++ unwords xs ++ ". " ++ show a
+
+type Substitution = [(String, Type)]
 
 type Operator = [Expr] -> Maybe Expr
 
@@ -153,13 +160,9 @@ asLam :: Expr -> ([Pattern], Expr)
 asLam (Lam p a) = first (p :) (asLam a)
 asLam a = ([], a)
 
-for :: [String] -> Expr -> Expr
-for xs a = foldr (\x a -> if x `occurs` a then For x a else a) a xs
-
-asFor :: Expr -> ([String], Expr)
-asFor (For x a) = first (x :) (asFor a)
-asFor (Fun a b) = second (Fun a) (asFor b)
-asFor a = ([], a)
+asApp :: Expr -> (Expr, [Expr])
+asApp (App a b) = second (++ [b]) (asApp a)
+asApp a = (a, [])
 
 fun :: [Type] -> Type -> Type
 fun bs ret = foldr Fun ret bs
@@ -191,16 +194,13 @@ set x y ((x', _) : kvs) | x == x' = (x, y) : kvs
 set x y (kv : kvs) = kv : set x y kvs
 
 pushAll :: [(String, Expr)] -> Env -> Env
-pushAll syms env = foldr (:) env syms
+pushAll vars env = foldr (:) env vars
 
 popAll :: [String] -> Env -> Env
 popAll xs env = foldl' (flip pop) env xs
 
 pushVars :: [String] -> Env -> Env
-pushVars xs env = foldr (\x -> (:) (x, Var x)) env xs
-
-popVars :: [String] -> Env -> Env
-popVars xs env = foldl' (flip pop) env xs
+pushVars xs = pushAll (map (\x -> (x, Var x)) xs)
 
 freeVars :: Expr -> [String]
 freeVars Err = []
@@ -211,12 +211,11 @@ freeVars (Int _) = []
 freeVars (Num _) = []
 freeVars (Var x) = [x]
 freeVars (Ctr _ _ args) = foldr (union . freeVars) [] args
-freeVars (Typ _ args alts) = foldr (union . freeVars) [] args
+freeVars (Typ _ args _) = foldr (union . freeVars . snd) [] args
 freeVars (Lam p a) = filter (`notElem` freeVarsP p) (freeVars a)
-freeVars (For x a) = delete x (freeVars a)
 freeVars (Fun a b) = freeVars a `union` freeVars b
 freeVars (App a b) = freeVars a `union` freeVars b
-freeVars (Ann a b) = freeVars a `union` freeVars b
+freeVars (Ann a (For xs b)) = freeVars a `union` filter (`notElem` xs) (freeVars b)
 freeVars (Let env a) =
   filter (`notElem` map fst env) (foldr (union . freeVars . snd) (freeVars a) env)
 freeVars (Fix x a) = delete x (freeVars a)
@@ -244,9 +243,8 @@ reduce ops env (Var x) = case lookup x env of
   Just a -> reduce ops env a
   Nothing -> Var x
 reduce _ env (Ctr tx k args) = Ctr tx k (Let env <$> args)
-reduce _ env (Typ name args alts) = Typ name (Let env <$> args) (second (Let env) <$> alts)
+reduce _ env (Typ name args alts) = Typ name (second (Let env) <$> args) alts
 reduce _ env (Lam p a) = Lam p (Let env a)
-reduce _ env (For x a) = For x (Let env a)
 reduce _ env (Fun a b) = Fun (Let env a) (Let env b)
 reduce ops env (App a b) = case reduce ops env a of
   Err -> Err
@@ -287,9 +285,8 @@ eval ops env term = case reduce ops env term of
   Num n -> Num n
   Var x -> Var x
   Ctr tx k args -> Ctr tx k (eval ops [] <$> args)
-  Typ name args alts -> Typ name (eval ops [] <$> args) (second (eval ops [(name, Var name)]) <$> alts)
+  Typ name args alts -> Typ name (second (eval ops []) <$> args) alts
   Lam p a -> Lam p (eval ops (map (\x -> (x, Var x)) (freeVarsP p)) a)
-  For x a -> for [x] (eval ops [(x, Var x)] a)
   Fun a b -> Fun (eval ops [] a) (eval ops [] b)
   App a b -> App (eval ops [] a) (eval ops [] b)
   Ann _ _ -> error "unreachable"
@@ -300,198 +297,195 @@ eval ops env term = case reduce ops env term of
     a -> a
   Op op args -> Op op (eval ops [] <$> args)
 
-subtype :: Ops -> Env -> Type -> Type -> Either TypeError (Type, Env)
-subtype ops env a b = case (a, b) of
-  (Knd, Knd) -> Right (Knd, env)
-  (IntT, IntT) -> Right (IntT, env)
-  (NumT, NumT) -> Right (NumT, env)
-  (Int _, IntT) -> Right (IntT, env)
-  (Int i, Int i') | i == i' -> Right (Int i, env)
-  (Num _, NumT) -> Right (NumT, env)
-  (Num n, Num n') | n == n' -> Right (Num n, env)
-  (Var x, Var x') | x == x' -> Right (Var x, env)
-  (a, Var x) | x `occurs` a -> Left (InfiniteType x a)
-  (a, Var x) -> Right (apply env a, set x (apply env a) env)
-  (Var x, b) -> subtype ops env b (Var x)
-  (Ctr tx k args, Ctr tx' k' args') | tx == tx' && k == k' && length args == length args' -> do
-    (argsT, env) <- subtypeAll ops env args args'
-    Right (Ctr tx k argsT, env)
-  (Ctr tx k args, Typ tx' targs alts) | tx == tx' -> case lookup k alts of
-    Just altType -> do
-      (_, env) <- subtypeAll ops env args (fst (asFun altType))
-      Right (Typ tx' targs alts, env)
-    Nothing -> Left (CtrNotInType k alts)
-  (Typ tx targs alts, Typ tx' targs' alts') | tx == tx' && length targs == length targs' && map fst alts == map fst alts' -> do
-    (targs, env) <- subtypeAll ops env targs targs'
-    -- TODO: check alts
-    Right (Typ tx targs alts, env)
-  (a, For x b) -> do
-    let y = newName x (map fst env)
-    (a, env) <- subtype ops ((y, Var y) : env) a (substitute x y b)
-    Right (for [y] a, pop y env)
-  (For x a, b) -> do
-    let y = newName x (map fst env)
-    (a, env) <- subtype ops ((y, Var y) : env) (substitute x y a) b
-    Right (for [y] a, pop y env)
-  (Fun a1 b1, Fun a2 b2) -> do
-    (a, env) <- subtype ops env a1 a2
-    (b, env) <- subtype ops env (apply env b2) (apply env b1)
-    Right (Fun (apply env a) b, env)
-  (App a1 b1, App a2 b2) -> do
-    (a, env) <- subtype ops env a1 a2
-    (b, env) <- subtype ops env (apply env b1) (apply env b2)
-    Right (App (apply env a) b, env)
-  (a, Or b1 b2) -> case subtype ops env a b1 of
-    Right (a, env) -> case subtype ops env a (apply env b2) of
-      Right (b, env) -> case unify env a (apply env b) of
-        Right (c, env) -> Right (c, env)
-        Left _ -> Right (Or (apply env a) b, env)
-      Left _ -> Right (a, env)
-    Left _ -> subtype ops env a b2
-  (Or a1 a2, b) -> do
-    (a1, env) <- subtype ops env a1 b
-    (a2, env) <- subtype ops env (apply env a2) (apply env b)
-    case unify env a1 a2 of
-      Right (a, env) -> Right (a, env)
-      Left _ -> Right (Or (apply env a1) a2, env)
-  (Op op args, Op op' args') | op == op' && length args == length args' -> do
-    (args, env) <- subtypeAll ops env args args'
-    Right (Op op args, env)
-  (a, b) -> Left (TypeMismatch a b)
-  where
-    apply env = eval ops env
-    substitute x y = eval ops [(x, Var y)]
-    unify env a b = case subtype ops env b a of
-      Right (c, env) -> Right (c, env)
-      Left _ -> subtype ops env a b
+subtype :: Type -> Type -> Either TypeError (Type, [(String, Expr)])
+subtype Knd Knd = Right (Knd, [])
+subtype IntT IntT = Right (IntT, [])
+subtype NumT NumT = Right (NumT, [])
+subtype (Int _) IntT = Right (IntT, [])
+subtype (Int i) (Int i') | i == i' = Right (Int i, [])
+subtype (Num _) NumT = Right (NumT, [])
+subtype (Num n) (Num n') | n == n' = Right (Num n, [])
+subtype (Var x) (Var x') | x == x' = Right (Var x, [])
+subtype a (Var x) | x `occurs` a = Left (InfiniteType x a)
+subtype a (Var x) = Right (a, [(x, a)])
+subtype (Var x) b = subtype b (Var x)
+subtype (Ctr tx k args) (Ctr tx' k' args') | tx == tx' && k == k' && length args == length args' = do
+  (argsT, s) <- subtypeAll args args'
+  Right (Ctr tx k argsT, s)
+subtype (Ctr tx k args) (Typ tx' targs alts) | tx == tx' = case lookup k alts of
+  Just altType -> do
+    let (altArgs, altReturn) = asFun altType
+    let (typeName, typeArgs) = asApp altReturn
+    -- TODO: check typeName
+    (_, s1) <- subtypeAll args altArgs
+    (typArgs, s2) <- subtypeAll (map (apply s1) typeArgs) (map snd targs)
+    Right (Typ tx (zip (map fst targs) typArgs) alts, s2 `compose` s1)
+  Nothing -> Left (CtrNotInType k alts)
+subtype (Typ tx targs alts) (Typ tx' targs' alts') | tx == tx' && map fst targs == map fst targs' && alts == alts' = do
+  (argsT, s) <- subtypeAll (map snd targs) (map snd targs')
+  Right (Typ tx (zip (map fst targs) argsT) alts, s)
+subtype (Fun a1 b1) (Fun a2 b2) = do
+  (a, s1) <- subtype a1 a2
+  (b, s2) <- subtype (apply s1 b2) (apply s1 b1)
+  Right (Fun (apply s2 a) b, s2 `compose` s1)
+subtype (App a1 b1) (App a2 b2) = do
+  (a, s1) <- subtype a1 a2
+  (b, s2) <- subtype (apply s1 b1) (apply s1 b2)
+  Right (App (apply s2 a) b, s2 `compose` s1)
+subtype a (Or b1 b2) = case subtype a b1 of
+  Right (a, s1) -> case subtype a (apply s1 b2) of
+    Right (b, s2) -> case unify (apply s2 a) b of
+      Right (c, s3) -> Right (c, s3 `compose` s2 `compose` s1)
+      Left _ -> Right (Or (apply s2 a) b, s2 `compose` s1)
+    Left _ -> Right (a, s1)
+  Left _ -> subtype a b2
+subtype (Or a1 a2) b = do
+  (a1, s1) <- subtype a1 b
+  (a2, s2) <- subtype (apply s1 a2) (apply s1 b)
+  case unify (apply s2 a1) a2 of
+    Right (a, s3) -> Right (a, s3 `compose` s2 `compose` s1)
+    Left _ -> Right (Or (apply s2 a1) a2, s2 `compose` s1)
+subtype (Op op args) (Op op' args') | op == op' && length args == length args' = do
+  (args, s) <- subtypeAll args args'
+  Right (Op op args, s)
+subtype a b = Left (TypeMismatch a b)
 
-subtypeAll :: Ops -> Env -> [Expr] -> [Expr] -> Either TypeError ([Expr], Env)
-subtypeAll _ env [] _ = Right ([], env)
-subtypeAll _ env _ [] = Right ([], env)
-subtypeAll ops env (a1 : bs1) (a2 : bs2) = do
-  (a, env) <- subtype ops env a1 a2
-  (bs, env) <- subtypeAll ops env (apply env <$> bs1) (apply env <$> bs2)
-  Right (apply env a : bs, env)
-  where
-    apply env = eval ops env
+subtypeAll :: [Expr] -> [Expr] -> Either TypeError ([Expr], Env)
+subtypeAll [] _ = Right ([], [])
+subtypeAll _ [] = Right ([], [])
+subtypeAll (a1 : bs1) (a2 : bs2) = do
+  (a, s1) <- subtype a1 a2
+  (bs, s2) <- subtypeAll (apply s1 <$> bs1) (apply s1 <$> bs2)
+  Right (apply s2 a : bs, s2 `compose` s1)
+
+apply :: Substitution -> Expr -> Expr
+apply = eval []
+
+applyEnv :: Substitution -> Env -> Env
+applyEnv _ [] = []
+applyEnv s ((x, Ann a (For xs b)) : env) = do
+  let typ = For xs (apply (foldr pop s xs) b)
+  (x, Ann a typ) : applyEnv s env
+applyEnv s (def : env) = def : applyEnv s env
+
+compose :: Substitution -> Substitution -> Substitution
+compose s1 s2 = map (second (apply s1)) s2 `union` s1
+
+unify :: Type -> Type -> Either TypeError (Type, Substitution)
+unify a b = case subtype b a of
+  Right (c, s) -> Right (c, s)
+  Left _ -> subtype a b
 
 findUnionType :: Env -> String -> Either TypeError (Env, [(String, Type)])
 findUnionType env tx = case lookup tx env of
   Just (Ann a _) -> findUnionType ((tx, a) : env) tx
-  Just a -> do
-    let varName (VarP x) = x
-        varName _ = ""
-    let (xs, tdef) = first (map varName) (asLam a)
-    case tdef of
-      Typ _ args alts -> Right (zip xs args, alts)
-      a -> Left (NotAUnionType tx a)
+  Just a -> case snd (asLam a) of
+    Typ _ args alts -> Right (args, alts)
+    a -> Left (NotAUnionType tx a)
   Nothing -> Left (UndefinedType tx)
 
-infer :: Ops -> Env -> Expr -> Either TypeError (Type, Env)
-infer ops env expr = case expr of
-  Err -> Left RuntimeError
-  Knd -> Right (Knd, env)
-  IntT -> Right (Knd, env)
-  Int _ -> Right (IntT, env)
-  NumT -> Right (Knd, env)
-  Num _ -> Right (NumT, env)
-  Var x -> case lookup x env of
-    Just (Var x') | x == x' -> Right (Knd, env)
-    Just (Ann (Var x') t) | x == x' -> Right (apply env t, env)
-    Just a -> infer ops env a
-    Nothing -> Left (UndefinedVar x)
-  Ctr tx k args -> do
-    (vars, alts) <- findUnionType env tx
-    let xs = map fst vars
-    case lookup k alts of
-      Just t -> do
-        (t, env) <- inferApply ops (pushAll vars env) (k, t) args
-        case (args, popAll xs env) of
-          ([], env) -> Right (for xs t, env)
-          (_, env) -> Right (t, env)
-      Nothing -> Left (CtrNotInType k alts)
-  Typ name args alts -> do
-    -- TODO: check that type exists
-    -- TODO: check args
-    -- TODO: check alts
-    Right (Knd, env)
-  Lam (IntP i) a -> do
-    (t2, env) <- infer ops env a
-    Right (Fun (Int i) t2, env)
-  Lam (VarP x) a -> do
-    let xT = newName (x ++ "T") (map fst env)
-    env <- Right ((xT, Var xT) : (x, Ann (Var x) (Var xT)) : env)
-    (t2, env) <- infer ops env a
-    (t1, env) <- infer ops env (Var x)
-    case (eval ops env (Var xT), pop x env) of
-      (Var xT, env) -> Right (For xT $ Fun t1 t2, env)
-      (_, env) -> Right (Fun t1 t2, env)
-  Lam (CtrP tx k ps) a -> do
-    (t, env) <- infer ops env (lam ps a)
-    (xs, (ts, t2)) <- Right (second asFun (asFor t))
-    (ts1, ts2) <- Right (splitAt (length ps) ts)
-    (vars, alts) <- findUnionType env tx
-    case lookup k alts of
-      Just altType -> do
-        env <- Right (pushAll (map (\x -> (x, Var x)) xs) env)
-        (_, env) <- subtypeAll ops env (fst (asFun altType)) ts1
-        let ys = [x | Var x <- map (eval ops env . Var) xs]
-        Right (for ys $ eval ops env (Fun (Ctr tx k ts1) (fun ts2 t2)), popAll xs env)
-      Nothing -> Left (CtrNotInType k alts)
-  For x a -> do
-    let xT = newName (x ++ "T") (map fst env)
-    env <- Right ((xT, Var xT) : (x, Ann (Var x) (Var xT)) : env)
-    (aT, env) <- infer ops env a
-    Right (for [xT] aT, pop x env)
-  Fun a b -> do
-    (_, env) <- infer ops env a
-    (_, env) <- infer ops env b
-    Right (Knd, env)
-  App a b -> do
-    (ta, env) <- infer ops env a
-    (tb, env) <- infer ops env b
-    let x = newName "t" (map fst env)
-    env <- Right ((x, Var x) : env)
-    (t, env) <- subtype ops env ta (Fun tb (Var x))
-    case asFor t of
-      (xs, Fun _ t) -> Right (for xs t, pop x env)
-      _else -> error "unreachable"
-  Ann a t -> do
-    (ta, env) <- infer ops env a
-    subtype ops env ta (apply env t)
-  Let defs a -> infer ops (env ++ defs) a
-  Fix x a -> do
-    let xT = newName (x ++ "T") (map fst env)
-    env <- Right ((xT, Var xT) : (x, Ann (Var x) (Var xT)) : env)
-    (ta, env) <- infer ops env a
-    Right (ta, pop x env)
-  Or a b -> do
-    (ta, env) <- infer ops env a
-    (tb, env) <- infer ops env b
-    case subtype ops env tb ta of
-      Right (t, env) -> Right (t, env)
-      Left _ -> case subtype ops env ta tb of
-        Right (t, env) -> Right (t, env)
-        Left _ -> Right (Or ta tb, env)
-  Op op args -> case lookup op env of
-    Just (Ann a t) -> inferApply ops env (op, t) args
-    Just a -> Left (MissingType op a)
-    Nothing -> Left (UndefinedVar op)
-  where
-    apply env = eval ops env
+-- https://youtu.be/ytPAlhnAKro
+infer :: Ops -> Env -> Expr -> Either TypeError (Type, Substitution)
+infer _ _ Err = Left RuntimeError
+infer _ _ Knd = Right (Knd, [])
+infer _ _ IntT = Right (Knd, [])
+infer _ _ (Int _) = Right (IntT, [])
+infer _ _ NumT = Right (Knd, [])
+infer _ _ (Num _) = Right (NumT, [])
+infer ops env (Var x) = case lookup x env of
+  Just (Var x') | x == x' -> Right (Knd, [])
+  Just (Ann (Var x') (For xs b)) | x == x' -> do
+    Right (eval ops (pushVars xs env) b, [])
+  Just a -> infer ops env a
+  Nothing -> Left (UndefinedVar x)
+infer ops env (Ctr tx k args) = do
+  (vars, alts) <- findUnionType env tx
+  let xs = map fst vars
+  case lookup k alts of
+    Just t -> inferApply ops (pushAll vars env) (k, For xs t) args
+    Nothing -> Left (CtrNotInType k alts)
+infer ops env (Typ name args alts) = do
+  -- TODO: check that type exists
+  -- TODO: check args
+  -- TODO: check alts
+  Right (Knd, [])
+infer ops env (Lam (IntP i) a) = do
+  (t2, s) <- infer ops env a
+  Right (Fun (Int i) t2, s)
+infer ops env (Lam (VarP x) a) = do
+  let xT = newName (x ++ "T") (map fst env)
+  let env' = (x, Ann (Var x) (For [] (Var xT))) : env
+  ((t2, t1), s) <- infer2 ops env' a (Var x)
+  Right (Fun t1 t2, s)
+infer ops env (Lam (CtrP tx k ps) a) = do
+  (typeWithArgs, s1) <- infer ops env (lam ps a)
+  let (argTypes, returnType) = asFun typeWithArgs
+  let (ctrArgTypes, returnTypeArgs) = splitAt (length ps) argTypes
+  (vars, alts) <- findUnionType env tx
+  case lookup k alts of
+    Just altType -> do
+      (ctrArgTypes, s2) <- subtypeAll ctrArgTypes (fst (asFun altType))
+      let t1 = Ctr tx k ctrArgTypes
+      let t2 = fun returnTypeArgs returnType
+      Right (eval ops env (Fun t1 (apply s2 t2)), s2 `compose` s1)
+    Nothing -> Left (CtrNotInType k alts)
+infer ops env (Fun a b) = do
+  (_, s) <- infer2 ops env a b
+  Right (Knd, s)
+infer ops env (App a b) = do
+  let returnType :: Type -> Type -> Either TypeError (Type, Substitution)
+      returnType (Fun t1 t2) tb = do
+        (_, s) <- subtype t1 tb
+        Right (apply s t2, s)
+      returnType (Or t1 t2) tb = do
+        (t1, s1) <- returnType t1 tb
+        (t2, s2) <- returnType (apply s1 t2) (apply s1 tb)
+        (t, s3) <- unify (apply s2 t1) t2
+        Right (t, s3 `compose` s2 `compose` s1)
+      returnType t _ = Left (NotAFunction t)
+  ((ta, tb), s1) <- infer2 ops env a b
+  (t, s2) <- returnType ta tb
+  Right (eval ops env t, s2 `compose` s1)
+infer ops env (Ann a (For xs b)) = do
+  (ta, s1) <- infer ops env a
+  let env' = applyEnv s1 env
+  (t, s2) <- subtype ta (eval ops (pushVars xs env') b)
+  Right (t, s2 `compose` s1)
+infer ops env (Let defs a) = infer ops (env ++ defs) a
+infer ops env (Fix x a) = do
+  let x1 = newName (x ++ "T1") (map fst env)
+  let x2 = newName (x ++ "T2") (x1 : map fst env)
+  let env' = (x, Ann (Var x) (For [x1, x2] (Fun (Var x1) (Var x2)))) : env
+  infer ops env' a
+infer ops env (Or a b) = do
+  ((ta, tb), s1) <- infer2 ops env a b
+  case subtype tb ta of
+    Right (t, s2) -> Right (t, s2 `compose` s1)
+    Left _ -> case subtype ta tb of
+      Right (t, s2) -> Right (t, s2 `compose` s1)
+      Left _ -> Right (Or ta tb, s1)
+infer ops env (Op op args) = case lookup op env of
+  Just (Ann a typ) -> inferApply ops env (op, typ) args
+  Just a -> Left (MissingType op a)
+  Nothing -> Left (UndefinedVar op)
+
+infer2 :: Ops -> Env -> Expr -> Expr -> Either TypeError ((Type, Type), Substitution)
+infer2 ops env a b = do
+  (ta, s1) <- infer ops env a
+  (tb, s2) <- infer ops (applyEnv s1 env) b
+  Right ((apply s2 ta, tb), s2 `compose` s1)
 
 inferAll :: Ops -> Env -> [Expr] -> Either TypeError ([Type], Env)
 inferAll _ env [] = Right ([], env)
 inferAll ops env (a : bs) = do
-  (t, env) <- infer ops env a
-  (ts, env) <- inferAll ops env bs
-  Right (t : ts, env)
+  (t, s1) <- infer ops env a
+  (ts, s2) <- inferAll ops (applyEnv s1 env) bs
+  Right (apply s2 t : ts, s2 `compose` s1)
 
-inferApply :: Ops -> Env -> (String, Type) -> [Expr] -> Either TypeError (Type, Env)
-inferApply ops env (x, t) args = do
-  env <- Right ((x, Ann (Var x) t) : env)
-  (t, env) <- infer ops env (app (Var x) args)
-  Right (t, pop x env)
+inferApply :: Ops -> Env -> (String, TypeScheme) -> [Expr] -> Either TypeError (Type, Env)
+inferApply ops env (x, typ) args = do
+  let env' = (x, Ann (Var x) typ) : env
+  infer ops env' (app (Var x) args)
 
 newName :: String -> [String] -> String
 newName x existing = do

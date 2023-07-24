@@ -155,9 +155,9 @@ toCore (Var "Type") = Right C.Knd
 toCore (Var "Int") = Right C.IntT
 toCore (Var "Num") = Right C.NumT
 toCore (Var x) = Right (C.Var x)
-toCore (For x a) = do
-  a <- toCore a
-  Right (C.For x a)
+-- toCore (For x a) = do
+--   a <- toCore a
+--   Right (C.For x a)
 toCore (Fun a b) = do
   a <- toCore a
   b <- toCore b
@@ -166,10 +166,10 @@ toCore (App a b) = do
   a <- toCore a
   b <- toCore b
   Right (C.App a b)
-toCore (Ann a b) = do
-  a <- toCore a
-  b <- toCore b
-  Right (C.Ann a b)
+-- toCore (Ann a b) = do
+--   a <- toCore a
+--   b <- toCore b
+--   Right (C.Ann a b)
 toCore (Let defs a) = do
   defs <- mapM toCoreDefs defs
   a <- toCore a
@@ -209,10 +209,10 @@ toCoreDefs :: Definition -> Either CompileError C.Env
 toCoreDefs (Untyped x a) = do
   a <- toCore a
   Right [(x, a)]
-toCoreDefs (Typed x t a) = do
-  t <- toCore t
-  a <- toCore a
-  Right [(x, C.Ann a t)]
+-- toCoreDefs (Typed x t a) = do
+--   t <- toCore t
+--   a <- toCore a
+--   Right [(x, C.Ann a t)]
 toCoreDefs (Unpack p ts a) = do
   let unpackVar x = do
         let value = App (match [Br [p] (Var x)]) a
@@ -258,10 +258,10 @@ fromCore (C.Int i) = Int i
 fromCore (C.Num n) = Num n
 fromCore (C.Var x) = Var x
 -- TODO: Lam
-fromCore (C.For x a) = For x (fromCore a)
+-- fromCore (C.For x a) = For x (fromCore a)
 fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
 fromCore (C.App a b) = App (fromCore a) (fromCore b)
-fromCore (C.Ann a b) = Ann (fromCore a) (fromCore b)
+-- fromCore (C.Ann a b) = Ann (fromCore a) (fromCore b)
 fromCore (C.Let defs a) = Let (map (\(x, b) -> Untyped x (fromCore b)) defs) (fromCore a)
 fromCore (C.Fix x a) = Let [Untyped x (fromCore a)] (Var x)
 fromCore (C.Ctr tx k args) = Ctr k (map fromCore args)
