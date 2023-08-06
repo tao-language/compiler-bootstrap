@@ -95,24 +95,6 @@ nameIntType = "Int"
 nameNumType :: String
 nameNumType = "Num"
 
-ops :: C.Ops
-ops =
-  [ ("+", add),
-    ("-", sub),
-    ("*", mul),
-    ("==", eq)
-  ]
-  where
-    add [C.Int a, C.Int b] = Just (C.Int (a + b))
-    add _ = Nothing
-    sub [C.Int a, C.Int b] = Just (C.Int (a - b))
-    sub _ = Nothing
-    mul [C.Int a, C.Int b] = Just (C.Int (a * b))
-    mul _ = Nothing
-    eq [C.Int a, C.Int b] | a == b = Just (C.Var "True")
-    eq [C.Int _, C.Int _] = Just (C.Var "False")
-    eq _ = Nothing
-
 lam :: [String] -> Expr -> Expr
 lam xs a = Match [Br (map VarP xs) a]
 
@@ -177,6 +159,7 @@ toCore (Let defs a) = do
 toCore (Ctr k args) = do
   args <- mapM toCore args
   Right (C.Ctr "TODO" k args)
+
 -- toCore (Case a cases c) = do
 --   a <- toCore a
 --   cases <- mapM toCoreSecond cases
@@ -192,13 +175,13 @@ toCore (Ctr k args) = do
 --   case C.match branches of
 --     Right expr -> Right expr
 --     Left err -> Left (TypeError err)
-toCore (Op op args) = do
-  args <- mapM toCore args
-  Right (C.Op op args)
-toCore (Op2 op a b) = do
-  a <- toCore a
-  b <- toCore b
-  Right (C.Op (show op) [a, b])
+-- toCore (Op op args) = do
+--   args <- mapM toCore args
+--   Right (C.Op op args)
+-- toCore (Op2 op a b) = do
+--   a <- toCore a
+--   b <- toCore b
+--   Right (C.Op (show op) [a, b])
 
 toCoreSecond :: (a, Expr) -> Either CompileError (a, C.Expr)
 toCoreSecond (k, b) = do
@@ -227,16 +210,16 @@ bindings (IntP _) = []
 bindings (VarP x) = [x]
 bindings (CtrP _ ps) = concatMap bindings ps
 
-toCoreBranch :: Branch -> Either CompileError C.Branch
-toCoreBranch (Br ps b) = do
-  b <- toCore b
-  Right (C.Br (map toCorePattern ps) b)
+-- toCoreBranch :: Branch -> Either CompileError C.Branch
+-- toCoreBranch (Br ps b) = do
+--   b <- toCore b
+--   Right (C.Br (map toCorePattern ps) b)
 
-toCorePattern :: Pattern -> C.Pattern
-toCorePattern AnyP = C.VarP ""
-toCorePattern (VarP x) = C.VarP x
-toCorePattern (IntP i) = C.IntP i
-toCorePattern (CtrP k ps) = C.CtrP "TODO" k (map toCorePattern ps)
+-- toCorePattern :: Pattern -> C.Pattern
+-- toCorePattern AnyP = C.VarP ""
+-- toCorePattern (VarP x) = C.VarP x
+-- toCorePattern (IntP i) = C.IntP i
+-- toCorePattern (CtrP k ps) = C.CtrP "TODO" k (map toCorePattern ps)
 
 toCoreSymbols :: Definition -> Either CompileError C.Env
 toCoreSymbols (Untyped x a) = Right []
@@ -265,21 +248,22 @@ fromCore (C.App a b) = App (fromCore a) (fromCore b)
 fromCore (C.Let defs a) = Let (map (\(x, b) -> Untyped x (fromCore b)) defs) (fromCore a)
 fromCore (C.Fix x a) = Let [Untyped x (fromCore a)] (Var x)
 fromCore (C.Ctr tx k args) = Ctr k (map fromCore args)
+
 -- fromCore (C.Case a cases c) = Case (fromCore a) (map (second fromCore) cases) (fromCore c)
 -- fromCore (C.CaseI a cases c) = CaseI (fromCore a) (map (second fromCore) cases) (fromCore c)
-fromCore (C.Op "==" [a, b]) = Op2 Eq (fromCore a) (fromCore b)
-fromCore (C.Op "<" [a, b]) = Op2 Lt (fromCore a) (fromCore b)
-fromCore (C.Op "+" [a, b]) = Op2 Add (fromCore a) (fromCore b)
-fromCore (C.Op "-" [a, b]) = Op2 Sub (fromCore a) (fromCore b)
-fromCore (C.Op "*" [a, b]) = Op2 Mul (fromCore a) (fromCore b)
-fromCore (C.Op op args) = Op op (map fromCore args)
+-- fromCore (C.Op "==" [a, b]) = Op2 Eq (fromCore a) (fromCore b)
+-- fromCore (C.Op "<" [a, b]) = Op2 Lt (fromCore a) (fromCore b)
+-- fromCore (C.Op "+" [a, b]) = Op2 Add (fromCore a) (fromCore b)
+-- fromCore (C.Op "-" [a, b]) = Op2 Sub (fromCore a) (fromCore b)
+-- fromCore (C.Op "*" [a, b]) = Op2 Mul (fromCore a) (fromCore b)
+-- fromCore (C.Op op args) = Op op (map fromCore args)
 
 eval :: [Definition] -> Expr -> Either CompileError (Expr, Type)
 eval defs a = do
   ctx <- toCoreContext defs
   a <- toCore a
-  case C.infer ops ctx a of
+  case C.infer ctx a of
     Right (t, _) -> do
-      let b = C.eval ops ctx a
+      let b = C.eval ctx a
       Right (fromCore b, fromCore t)
     Left err -> Left (TypeError err)
