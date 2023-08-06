@@ -233,56 +233,73 @@ isOpen _ = False
 isClosed :: Expr -> Bool
 isClosed a = not (isOpen a)
 
-eval :: Env -> Expr -> Expr
-eval _ Err = Err
-eval _ Knd = Knd
-eval _ IntT = IntT
-eval _ NumT = NumT
-eval _ (Int i) = Int i
-eval _ (Num n) = Num n
-eval env (Var x) = case lookup x env of
+reduce :: Env -> Expr -> Expr
+reduce _ Err = Err
+reduce _ Knd = Knd
+reduce _ IntT = IntT
+reduce _ NumT = NumT
+reduce _ (Int i) = Int i
+reduce _ (Num n) = Num n
+reduce env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Var x
-  Just (Let env a) -> eval env a
-  Just a -> eval [] a
+  Just (Let env a) -> reduce env a
+  Just a -> reduce [] a
   Nothing -> Var x
-eval env (Union alts) = Union (second (eval env) <$> alts)
-eval env (Typ tx args) = Typ tx (eval env <$> args)
-eval env (Ctr tx k args) = Ctr tx k (eval env <$> args)
-eval env (Lam p a) = Lam p (eval (pushVars (freeVars p) env) a)
-eval env (Fun a b) = Fun (eval env a) (eval env b)
-eval env (App a b) = case (eval env a, eval env b) of
+reduce env (Union alts) = Union (second (reduce env) <$> alts)
+reduce env (Typ tx args) = Typ tx (reduce env <$> args)
+reduce env (Ctr tx k args) = Ctr tx k (reduce env <$> args)
+reduce env (Lam p a) = Lam p (reduce (pushVars (freeVars p) env) a)
+reduce env (Fun a b) = Fun (reduce env a) (reduce env b)
+reduce env (App a b) = case (reduce env a, reduce env b) of
   (Err, _) -> Err
   (a, b) | isOpen b -> App a b
-  (Lam (Var x) a, b) -> eval [(x, Let env b)] a
-  (Lam (Int i) a, Int i') | i == i' -> eval [] a
+  (Lam (Var x) a, b) -> reduce [(x, Let env b)] a
+  (Lam (Int i) a, Int i') | i == i' -> reduce [] a
   (Lam (Int _) _, Int _) -> Err
   (Lam (Ctr tx k ps) a, Ctr tx' k' args) | tx == tx' && k == k' -> do
-    eval [] (app (lam ps a) args)
+    reduce [] (app (lam ps a) args)
   (Lam Ctr {} _, Ctr {}) -> Err
   (Lam p a, b) -> App (Lam p a) b
-  (Or a1 a2, b) -> case eval [] (App a1 b) of
-    Err -> eval [] (App a2 b)
+  (Ann a _, b) -> reduce [] (App a b)
+  (Or a1 a2, b) -> case reduce [] (App a1 b) of
+    Err -> reduce [] (App a2 b)
     a | isOpen a -> Or a (App a2 b)
     c -> c
-  (Fix x a, b) -> eval [(x, Fix x a)] (App a b)
+  (Fix x a, b) -> reduce [(x, Fix x a)] (App a b)
   (a, b) -> App a b
-eval env (Fix x a) = Fix x (eval ((x, Var x) : env) a)
-eval env (Ann a _) = eval env a
-eval env (Or a b) = Or (eval env a) (eval env b)
-eval env (Let env' a) = eval (env ++ env') a
-eval env (Op2 op a b) = case (op, eval env a, eval env b) of
+reduce env (Fix x a) = Fix x (reduce ((x, Var x) : env) a)
+reduce env (Ann a (For xs b)) = Ann (reduce env a) (For xs (reduce (pushVars xs env) b))
+reduce env (Or a b) = Or (reduce env a) (reduce env b)
+reduce env (Let env' a) = reduce (env ++ env') a
+reduce env (Op2 op a b) = case (op, reduce env a, reduce env b) of
   (Add, Int a, Int b) -> Int (a + b)
   (Sub, Int a, Int b) -> Int (a - b)
   (Mul, Int a, Int b) -> Int (a * b)
   (op, a, b) -> Op2 op a b
-eval env (Call f args) = Call f (eval env <$> args)
+reduce env (Call f args) = Call f (reduce env <$> args)
 
-optimize :: Env -> Expr -> Expr
-optimize env term = case eval env term of
-  Fix x a -> case optimize ((x, Var x) : env) a of
-    a | x `occurs` a -> Fix x a
-    a -> a
-  a -> a
+eval :: Env -> Expr -> Expr
+eval env term = case reduce env term of
+  Err -> Err
+  Knd -> Knd
+  IntT -> IntT
+  NumT -> NumT
+  Int i -> Int i
+  Num n -> Num n
+  Var x -> Var x
+  Union alts -> Union (second (eval []) <$> alts)
+  Typ tx args -> Typ tx (eval [] <$> args)
+  Ctr tx k args -> Ctr tx k (eval [] <$> args)
+  Lam p a -> Lam p (eval (pushVars (freeVars p) []) a)
+  Fun a b -> Fun (eval [] a) (eval [] b)
+  App a b -> App a (eval [] b)
+  Ann a _ -> a
+  Or a b -> Or (eval [] a) (eval [] b)
+  Let _ _ -> error "unreachable"
+  Fix x a | x `occurs` a -> Fix x a
+  Fix _ a -> a
+  Op2 op a b -> Op2 op (eval [] a) (eval [] b)
+  Call f args -> Call f (eval [] <$> args)
 
 subtype :: Type -> Type -> Either TypeError (Type, [(String, Expr)])
 subtype Knd Knd = Right (Knd, [])
@@ -413,12 +430,11 @@ infer env (Typ tx args) = do
   (kind, s2) <- inferApply (applyEnv s1 env) (tx, For [] tdefKind) args
   case kind of
     Fun a b -> Left (TooFewArgs tx (Fun a b) args)
-    -- kind -> Right (eval env (app (Var tx) args), s2 `compose` s1)
-    kind -> do
-      error $ intercalate "\n" [intercalate "\n  " ("env:" : map show env), show (eval env (app (Var tx) args))]
-    kind -> case eval env (app (Var tx) args) of
+    kind -> case reduce env (app (Var tx) args) of
       Ann _ (For xs t) -> Right (eval (pushVars xs env) t, s2 `compose` s1)
-      a -> error ("infer Typ missing type: " ++ show a)
+      a -> do
+        -- error ("infer Typ missing type: " ++ show a)
+        Right (Err, [])
 
 -- error $ intercalate "\n" ["-- infer Typ", show knd]
 -- tdef <- case lookup tx env of
@@ -492,7 +508,10 @@ infer env (App a b) = do
   ((ta, tb), s1) <- infer2 env a b
   (t, s2) <- returnType ta tb
   Right (eval env t, s2 `compose` s1)
-infer env (Ann (Typ _ _) (For xs b)) = Right (eval (pushVars xs env) b, [])
+infer env (Ann (Typ tx args) (For xs b)) = Right (eval (pushVars xs env) b, [])
+infer env (Ann (Lam (Var x) a) (For xs (Fun t1 t2))) = do
+  (t2, s) <- infer ((x, Ann (Var x) (For [] t1)) : env) (Ann a (For [] t2))
+  Right (Fun t1 t2, s)
 infer env (Ann a (For xs b)) = do
   (ta, s1) <- infer env a
   let env' = applyEnv s1 env

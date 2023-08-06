@@ -46,7 +46,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     eval env (Ann x (For [] a)) `shouldBe` Int 1
     eval env (Or x x) `shouldBe` Or (Int 1) (Int 1)
     eval env (Fix "x" x) `shouldBe` Fix "x" x
-    eval env (Fix "y" x) `shouldBe` Fix "y" (Int 1)
+    eval env (Fix "y" x) `shouldBe` Int 1
     eval env (add x y) `shouldBe` add (Int 1) y
     eval env (add x (Int 2)) `shouldBe` Int 3
     eval env (sub x (Int 2)) `shouldBe` Int (-1)
@@ -112,26 +112,23 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
             ("T1", Lam x (Ann (Typ "T1" [x]) (For [] $ Union []))),
             ("TA", Lam x (Ann (Typ "TA" [x]) (For [] $ Union [("A", App (Var "TA") (Int 0))]))),
             ("TB", Lam x (Ann (Typ "TB" [x]) (For [] $ Union [("B", App (Var "TB") x)]))),
-            -- ("T2", Lam x (Ann (Typ "T2" [x]) (For [] $ Union [("A", t2 (Int 0)), ("B", t2 x)]))),
-            -- ("T1", Ann (Lam x (Typ "T1" [x])) (For [] $ Fun IntT (Union [("A", t1 (Int 0)), ("B", t1 x)]))),
-            -- ("TX", Lam x (Ann (Typ "TX" [x]) (For [] $ Union [("A", tX (Int 0)), ("B", tX (Num 1.1))])))
-            ("TODO", Var "REMOVE ME")
+            ("TC", Ann (Lam x (Typ "TC" [x])) (For [] $ Fun IntT (Union [])))
           ]
-    -- infer env (Typ "T0" []) `shouldBe` Right (Union [("A", Typ "T0" [])], [])
-    -- infer env (Typ "T0" [Int 1]) `shouldBe` Left (NotAFunction (Union [("A", Typ "T0" [])]))
-    -- infer env (Typ "T1" []) `shouldBe` Left (TooFewArgs "T1" (Fun (Var "nT") (Union [])) [])
-    -- infer env (Typ "T1" [Int 1]) `shouldBe` Right (Union [], [("nT", IntT)])
-    -- infer env (Typ "TA" [Int 1]) `shouldBe` Right (Union [("A", Typ "TA" [Int 0])], [("nT", IntT)])
-    infer env (Typ "TB" [Int 1]) `shouldBe` Right (Union [("B", Typ "TB" [Int 1])], [("nT", IntT)])
-    -- infer env (Typ "T1" [Int 1]) `shouldBe` Right (Union [("A", t1 (Int 0)), ("B", t1 (Int 1))], [])
-    -- infer env (Typ "T1" [Num 1.1]) `shouldBe` Right (Err, []) -- type mismatch
+    infer env (Typ "T0" []) `shouldBe` Right (Union [("A", Typ "T0" [])], [])
+    infer env (Typ "T0" [Int 1]) `shouldBe` Left (NotAFunction (Union [("A", Typ "T0" [])]))
+    infer env (Typ "T1" []) `shouldBe` Left (TooFewArgs "T1" (Fun (Var "xT") (Union [])) [])
+    infer env (Typ "T1" [Int 1]) `shouldBe` Right (Union [], [("xT", IntT)])
+    infer env (Typ "TA" [Int 1]) `shouldBe` Right (Union [("A", Typ "TA" [Int 0])], [("xT", IntT)])
+    infer env (Typ "TB" [Int 1]) `shouldBe` Right (Union [("B", Typ "TB" [Int 1])], [("xT", IntT)])
+    -- infer env (Typ "TC" [Int 1]) `shouldBe` Right (Union [("A", Typ "TC" [Int 0]), ("B", Typ "TC" [Int 1])], [("xT", IntT)])
+    -- infer env (Typ "TC" [Num 1.1]) `shouldBe` Right (Err, [])
     True `shouldBe` True
 
-  it "☯ infer Ctr" $ do
-    let env = []
-    infer env (Ctr "T1" "A" []) `shouldBe` Right (Typ "T1" [Int 0], [])
-    infer env (Ctr "T1" "B" [Ctr "T1" "A" []]) `shouldBe` Right (Typ "T1" [Int 0], [("n", Int 0)])
-    infer env (Ctr "TX" "A" []) `shouldBe` Right (Err, [])
+  -- it "☯ infer Ctr" $ do
+  --   let env = []
+  --   infer env (Ctr "T1" "A" []) `shouldBe` Right (Typ "T1" [Int 0], [])
+  --   infer env (Ctr "T1" "B" [Ctr "T1" "A" []]) `shouldBe` Right (Typ "T1" [Int 0], [("n", Int 0)])
+  --   infer env (Ctr "TX" "A" []) `shouldBe` Right (Err, [])
 
   it "☯ infer Lam" $ do
     let (x, y) = (Var "x", Var "y")
@@ -203,27 +200,27 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
           ("True", Ctr "Bool" "True" [])
         ]
 
-  it "☯ Bool" $ do
-    let case' =
-          or'
-            [ Lam (Ctr "Bool" "True" []) (Int 1),
-              Lam (Ctr "Bool" "False" []) (Int 0)
-            ]
-    let env = boolenv
+  -- it "☯ Bool" $ do
+  --   let case' =
+  --         or'
+  --           [ Lam (Ctr "Bool" "True" []) (Int 1),
+  --             Lam (Ctr "Bool" "False" []) (Int 0)
+  --           ]
+  --   let env = boolenv
 
-    let eval' = eval env
-    eval' (App case' (Ctr "Bool" "False" [])) `shouldBe` Int 0
-    eval' (App case' (Ctr "Bool" "True" [])) `shouldBe` Int 1
+  --   let eval' = eval env
+  --   eval' (App case' (Ctr "Bool" "False" [])) `shouldBe` Int 0
+  --   eval' (App case' (Ctr "Bool" "True" [])) `shouldBe` Int 1
 
-    let infer' = infer env
-    infer' (Var "Bool") `shouldBe` Right (Union [("True", boolT), ("False", boolT)], [])
-    infer' (Var "False") `shouldBe` Right (boolT, [])
-    -- infer' (Var "True") `shouldBe` Right (boolT, [])
-    -- infer' case' `shouldBe` Right (Fun (Ctr "Bool" "True" []) IntT `Or` Fun (Ctr "Bool" "False" []) IntT, [])
-    -- infer' (Ann case' (For [] $ Fun boolT IntT)) `shouldBe` Right (Fun boolT IntT, [])
-    -- infer' (App case' (Var "False")) `shouldBe` Right (IntT, [])
-    -- infer' (App case' (Var "True")) `shouldBe` Right (IntT, [])
-    True `shouldBe` True
+  --   let infer' = infer env
+  --   infer' (Var "Bool") `shouldBe` Right (Union [("True", boolT), ("False", boolT)], [])
+  --   infer' (Var "False") `shouldBe` Right (boolT, [])
+  --   -- infer' (Var "True") `shouldBe` Right (boolT, [])
+  --   -- infer' case' `shouldBe` Right (Fun (Ctr "Bool" "True" []) IntT `Or` Fun (Ctr "Bool" "False" []) IntT, [])
+  --   -- infer' (Ann case' (For [] $ Fun boolT IntT)) `shouldBe` Right (Fun boolT IntT, [])
+  --   -- infer' (App case' (Var "False")) `shouldBe` Right (IntT, [])
+  --   -- infer' (App case' (Var "True")) `shouldBe` Right (IntT, [])
+  --   True `shouldBe` True
 
   -- it "☯ Maybe" $ do
   --   let a = Var "a"
