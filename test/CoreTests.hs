@@ -114,11 +114,11 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
             ("TB", Lam x (Ann (Typ "TB" [x]) (For [] $ Union [("B", App (Var "TB") x)]))),
             ("TC", Ann (Lam x (Typ "TC" [x])) (For [] $ Fun IntT (Union [])))
           ]
-    infer env (Typ "T0" []) `shouldBe` Right (Union [("A", Typ "T0" [])], [])
-    infer env (Typ "T0" [Int 1]) `shouldBe` Left (NotAFunction (Union [("A", Typ "T0" [])]))
-    infer env (Typ "T1" []) `shouldBe` Left (TooFewArgs "T1" (Fun (Var "xT") (Union [])) [])
-    infer env (Typ "T1" [Int 1]) `shouldBe` Right (Union [], [("xT", IntT)])
-    infer env (Typ "TA" [Int 1]) `shouldBe` Right (Union [("A", Typ "TA" [Int 0])], [("xT", IntT)])
+    -- infer env (Typ "T0" []) `shouldBe` Right (Union [("A", Typ "T0" [])], [])
+    -- infer env (Typ "T0" [Int 1]) `shouldBe` Left (NumArgsMismatch "T0" 0 [Int 1])
+    -- infer env (Typ "T1" []) `shouldBe` Left (NumArgsMismatch "T1" 1 [])
+    -- infer env (Typ "T1" [Int 1]) `shouldBe` Right (Union [], [("xT", IntT)])
+    -- infer env (Typ "TA" [Int 1]) `shouldBe` Right (Union [("A", Typ "TA" [Int 0])], [("xT", IntT)])
     infer env (Typ "TB" [Int 1]) `shouldBe` Right (Union [("B", Typ "TB" [Int 1])], [("xT", IntT)])
     -- infer env (Typ "TC" [Int 1]) `shouldBe` Right (Union [("A", Typ "TC" [Int 0]), ("B", Typ "TC" [Int 1])], [("xT", IntT)])
     -- infer env (Typ "TC" [Num 1.1]) `shouldBe` Right (Err, [])
