@@ -43,7 +43,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     eval env (App (Lam (Int 2) a) x) `shouldBe` Err
     eval env (App (Lam (Ctr "T" "A" []) a) (Ctr "T" "A" [])) `shouldBe` IntT
     eval env (App (Lam (Ctr "T" "A" []) a) (Ctr "T" "B" [])) `shouldBe` Err
-    eval env (Ann x (For [] a)) `shouldBe` Int 1
+    eval env (Ann x a) `shouldBe` Int 1
     eval env (Or x x) `shouldBe` Or (Int 1) (Int 1)
     eval env (Fix "x" x) `shouldBe` Fix "x" x
     eval env (Fix "y" x) `shouldBe` Int 1
@@ -88,9 +88,9 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ infer Var" $ do
     let env =
           [ ("inferred", Int 1),
-            ("mismatch", Ann (Int 1) (For [] NumT)),
-            ("match", Ann (Int 1) (For [] IntT)),
-            ("typed", Ann (Var "typed") (For [] IntT)),
+            ("mismatch", Ann (Int 1) NumT),
+            ("match", Ann (Int 1) IntT),
+            ("typed", Ann (Var "typed") IntT),
             ("free", Var "free")
           ]
     infer env (Var "undefined") `shouldBe` Left (UndefinedVar "undefined")
@@ -98,7 +98,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer env (Var "mismatch") `shouldBe` Left (TypeMismatch IntT NumT)
     infer env (Var "match") `shouldBe` Right (IntT, [])
     infer env (Var "typed") `shouldBe` Right (IntT, [])
-    infer env (Var "free") `shouldBe` Right (Var "freeT", [("free", Ann (Var "free") (For [] (Var "freeT")))])
+    infer env (Var "free") `shouldBe` Right (Var "freeT", [("free", Ann (Var "free") (Var "freeT"))])
 
   it "☯ infer Union" $ do
     let env = []
@@ -108,11 +108,11 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ infer Typ" $ do
     let x = Var "x"
     let env =
-          [ ("T0", Ann (Typ "T0" []) (For [] $ Union [("A", Var "T0")])),
-            ("T1", Lam x (Ann (Typ "T1" [x]) (For [] $ Union []))),
-            ("TA", Lam x (Ann (Typ "TA" [x]) (For [] $ Union [("A", App (Var "TA") (Int 0))]))),
-            ("TB", Lam x (Ann (Typ "TB" [x]) (For [] $ Union [("B", App (Var "TB") x)]))),
-            ("TC", Ann (Lam x (Typ "TC" [x])) (For [] $ Fun IntT (Union [])))
+          [ ("T0", Ann (Typ "T0" []) (Union [("A", Var "T0")])),
+            ("T1", Lam x (Ann (Typ "T1" [x]) (Union []))),
+            ("TA", Lam x (Ann (Typ "TA" [x]) (Union [("A", App (Var "TA") (Int 0))]))),
+            ("TB", Lam x (Ann (Typ "TB" [x]) (Union [("B", App (Var "TB") x)]))),
+            ("TC", Ann (Lam x (Typ "TC" [x])) (Fun IntT (Union [])))
           ]
     infer env (Typ "T0" []) `shouldBe` Right (Union [("A", Typ "T0" [])], [])
     infer env (Typ "T0" [Int 1]) `shouldBe` Left (NumArgsMismatch "T0" 0 [Int 1])
@@ -136,9 +136,9 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
           [ ("x", Int 1),
             ("y", Num 1.1)
           ]
-    infer env (Lam (Int 1) y) `shouldBe` Right (Fun (Ann (Int 1) (For [] IntT)) NumT, [])
-    infer env (Lam (Var "x") y) `shouldBe` Right (Fun (Ann x (For [] xT)) NumT, [])
-    infer env (Lam (Var "x") x) `shouldBe` Right (Fun (Ann x (For [] xT)) xT, [])
+    infer env (Lam (Int 1) y) `shouldBe` Right (Fun (Ann (Int 1) IntT) NumT, [])
+    infer env (Lam (Var "x") y) `shouldBe` Right (Fun (Ann x xT) NumT, [])
+    infer env (Lam (Var "x") x) `shouldBe` Right (Fun (Ann x xT) xT, [])
     -- infer env (Lam (Ctr "T1" "A" []) y) `shouldBe` Right (Fun (typ (Int 0)) NumT, [])
     -- infer env (Lam (Ctr "T1" "B" [Ctr "T1" "A" []]) y) `shouldBe` Right (Fun (typ (Int 1)) NumT, [("n", Int 1)])
     -- infer env (Lam (Ctr "T1" "B" [y]) y) `shouldBe` Right (Fun (typ y) yT, [("n", yT)])
@@ -152,8 +152,8 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     let env =
           [ ("x", Int 1),
             ("y", Num 1.1),
-            ("f", Ann (Var "f") (For [] $ Fun IntT NumT)),
-            ("g", Ann (Var "g") (For ["a"] $ Fun (Var "a") (Var "a")))
+            ("f", Ann (Var "f") (Fun IntT NumT)),
+            ("g", Ann (Var "g") (For "a" $ Fun (Var "a") (Var "a")))
           ]
     infer env (App (Var "x") (Var "y")) `shouldBe` Left (NotAFunction IntT)
     infer env (App (Var "f") (Var "y")) `shouldBe` Left (TypeMismatch IntT NumT)
@@ -163,8 +163,8 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ infer Ann" $ do
     let env = []
     -- TODO: Typ
-    -- infer env (Ann (Lam (Ctr "T1" "B" [y]) y) (For [] $ Fun (typ IntT) IntT)) `shouldBe` Right (Fun (typ IntT) IntT, [("n", IntT), ("yT", IntT)])
-    -- infer env (Ann (Lam (Ctr "T1" "B" [y]) y) (For [] $ Fun (typ NumT) IntT)) `shouldBe` Left (TypeMismatch IntT NumT)
+    -- infer env (Ann (Lam (Ctr "T1" "B" [y]) y) (Fun (typ IntT) IntT)) `shouldBe` Right (Fun (typ IntT) IntT, [("n", IntT), ("yT", IntT)])
+    -- infer env (Ann (Lam (Ctr "T1" "B" [y]) y) (Fun (typ NumT) IntT)) `shouldBe` Left (TypeMismatch IntT NumT)
     True `shouldBe` True
 
   it "☯ infer Ann" $ do
@@ -194,7 +194,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
   let boolT = Typ "Bool" []
   let boolenv :: Env
       boolenv =
-        [ ("Bool", Ann boolT (For [] $ Union [("True", Var "Bool"), ("False", Var "Bool")])),
+        [ ("Bool", Ann boolT (Union [("True", Var "Bool"), ("False", Var "Bool")])),
           ("False", Ctr "Bool" "False" []),
           ("True", Ctr "Bool" "True" [])
         ]
@@ -216,7 +216,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
   --   infer' (Var "False") `shouldBe` Right (boolT, [])
   --   -- infer' (Var "True") `shouldBe` Right (boolT, [])
   --   -- infer' case' `shouldBe` Right (Fun (Ctr "Bool" "True" []) IntT `Or` Fun (Ctr "Bool" "False" []) IntT, [])
-  --   -- infer' (Ann case' (For [] $ Fun boolT IntT)) `shouldBe` Right (Fun boolT IntT, [])
+  --   -- infer' (Ann case' (Fun boolT IntT)) `shouldBe` Right (Fun boolT IntT, [])
   --   -- infer' (App case' (Var "False")) `shouldBe` Right (IntT, [])
   --   -- infer' (App case' (Var "True")) `shouldBe` Right (IntT, [])
   --   True `shouldBe` True
@@ -232,7 +232,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
   --           ]
   --   let env :: Env
   --       env =
-  --         [ ("Maybe", Ann (Lam (Var "a") (maybeT a)) (For [] $ Fun Knd Knd)),
+  --         [ ("Maybe", Ann (Lam (Var "a") (maybeT a)) (Fun Knd Knd)),
   --           ("Just", Lam (Var "x") (Ctr "Maybe" "Just" [Var "x"])),
   --           ("Nothing", Ctr "Maybe" "Nothing" [])
   --         ]
@@ -248,8 +248,8 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
   --   infer' (app (Var "Just") []) `shouldBe` Right (Fun a (maybeT a), [("xT", a)])
   --   infer' (app (Var "Just") [Int 1]) `shouldBe` Right (maybeT IntT, [("xT", IntT), ("a", IntT)])
   --   infer' case' `shouldBe` Right (Fun (Ctr "Maybe" "Just" [xT]) xT `Or` Fun (Ctr "Maybe" "Nothing" []) IntT, [("a", xT)])
-  --   infer' (Ann case' (For [] $ Fun (maybeT IntT) IntT)) `shouldBe` Right (Fun (maybeT IntT) IntT, [("a", IntT), ("xT", IntT)])
-  --   infer' (Ann case' (For [] $ Fun (maybeT NumT) IntT)) `shouldBe` Left (TypeMismatch IntT NumT)
+  --   infer' (Ann case' (Fun (maybeT IntT) IntT)) `shouldBe` Right (Fun (maybeT IntT) IntT, [("a", IntT), ("xT", IntT)])
+  --   infer' (Ann case' (Fun (maybeT NumT) IntT)) `shouldBe` Left (TypeMismatch IntT NumT)
   --   infer' (App case' (Ctr "Maybe" "Nothing" [])) `shouldBe` Right (IntT, [("a", IntT), ("xT", IntT)])
   --   infer' (App case' (Ctr "Maybe" "Just" [Int 1])) `shouldBe` Right (IntT, [("a", IntT), ("a", IntT), ("xT", IntT)])
   --   infer' (App case' (Ctr "Maybe" "Just" [Num 1.1])) `shouldBe` Left (TypeMismatch NumT IntT)
@@ -293,7 +293,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
   --           ]
   --   let env :: Env
   --       env =
-  --         [ ("Vec", Ann (lam [Var "n", Var "a"] (vecT n a)) (For [] $ fun [IntT, Knd] Knd)),
+  --         [ ("Vec", Ann (lam [Var "n", Var "a"] (vecT n a)) (fun [IntT, Knd] Knd)),
   --           ("Cons", lam [Var "x", Var "xs"] (Ctr "Vec" "Cons" [Var "x", Var "xs"])),
   --           ("Nil", Ctr "Vec" "Nil" [])
   --         ]
