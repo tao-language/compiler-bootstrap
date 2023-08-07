@@ -8,9 +8,6 @@ import Data.Foldable (Foldable (foldl'))
 import Data.List (delete, intercalate, union)
 
 {- TODO:
-- Adding ((x, Var x) : env) to `eval Var` stopped recursion evaluating types,
-  can this be used instead of `Fix`?
-
 - Add Records
 - Clean up code
   * infer Case
@@ -33,7 +30,7 @@ data Expr
   | Typ !String ![Expr]
   | Ctr !String !String ![Expr]
   | Lam !Pattern !Expr
-  | Fun !Type !Type
+  | Fun !Expr !Type
   | App !Expr !Expr
   | Ann !Expr !TypeScheme
   | Or !Expr !Expr
@@ -90,7 +87,6 @@ showPrec p (Union alts) = do
 showPrec p (Lam q a) = do
   let (ps, a') = asLam (Lam q a)
   showPrefix p 2 ("\\" ++ unwords (map show ps) ++ ". ") a'
-showPrec p (Ann a typ) = show a ++ " : " ++ show typ
 showPrec p (Let [] a) = showPrec p a
 showPrec p (Let env a) = do
   let showDef (x, b) = x ++ " = " ++ show b
@@ -98,11 +94,13 @@ showPrec p (Let env a) = do
   showPrefix p 2 defs a
 showPrec _ (Fix x a) = "@fix " ++ x ++ " (" ++ show a ++ ")"
 showPrec p (Or a b) = showInfixR p 1 a " | " b
-showPrec p (Fun a b) = showInfixR p 2 a " -> " b
-showPrec p (Op2 Add a b) = showInfixL p 3 a " + " b
-showPrec p (Op2 Sub a b) = showInfixL p 3 a " - " b
-showPrec p (Op2 Mul a b) = showInfixL p 4 a " * " b
-showPrec p (App a b) = showInfixL p 5 a " " b
+showPrec p (Ann a (For [] b)) = showInfixL p 2 a " : " b
+showPrec p (Ann a (For xs b)) = showInfixL p 2 a (" : $" ++ unwords xs ++ ". ") b
+showPrec p (Fun a b) = showInfixR p 3 a " -> " b
+showPrec p (Op2 Add a b) = showInfixL p 4 a " + " b
+showPrec p (Op2 Sub a b) = showInfixL p 4 a " - " b
+showPrec p (Op2 Mul a b) = showInfixL p 5 a " * " b
+showPrec p (App a b) = showInfixL p 6 a " " b
 showPrec p (Call f args) = showPrec p (app (Var ("@call " ++ f)) args)
 
 data TypeScheme
@@ -252,6 +250,7 @@ reduce env (Union alts) = Union (second (reduce env) <$> alts)
 reduce env (Typ tx args) = Typ tx (reduce env <$> args)
 reduce env (Ctr tx k args) = Ctr tx k (reduce env <$> args)
 reduce env (Lam p a) = Lam p (reduce (pushVars (freeVars p) env) a)
+reduce env (Fun (Ann p (For xs a)) b) = Fun (Ann p (For xs (reduce env a))) (reduce env b)
 reduce env (Fun a b) = Fun (reduce env a) (reduce env b)
 reduce env (App a b) = case (reduce env a, reduce env b) of
   (Err, _) -> Err
@@ -295,6 +294,7 @@ eval env term = case reduce env term of
   Typ tx args -> Typ tx (eval [] <$> args)
   Ctr tx k args -> Ctr tx k (eval [] <$> args)
   Lam p a -> Lam p (eval (pushVars (freeVars p) []) a)
+  Fun (Ann p (For xs a)) b -> Fun (Ann p (For xs (reduce env a))) (reduce env b)
   Fun a b -> Fun (eval [] a) (eval [] b)
   App a b -> App a (eval [] b)
   Ann a _ -> a
@@ -334,6 +334,8 @@ subtype (App a1 b1) (App a2 b2) = do
   (a, s1) <- subtype a1 a2
   (b, s2) <- subtype (apply s1 b1) (apply s1 b2)
   Right (App (apply s2 a) b, s2 `compose` s1)
+subtype (Ann _ (For _ a)) b = subtype a b
+subtype a (Ann _ (For _ b)) = subtype a b
 subtype a (Or b1 b2) = case subtype a b1 of
   Right (a, s1) -> case subtype a (apply s1 b2) of
     Right (b, s2) -> case unify (apply s2 a) b of
@@ -434,6 +436,9 @@ infer env (Fun a b) = do
   Right (Knd, s)
 infer env (App a b) = do
   let returnType :: Type -> Type -> Either TypeError (Type, Substitution)
+      returnType (Fun (Ann p (For xs t1)) t2) tb = do
+        (_, s) <- subtype t1 tb
+        Right (eval (pushVars xs env) (App (Lam p (apply s t2)) b), s)
       returnType (Fun t1 t2) tb = do
         (_, s) <- subtype t1 tb
         Right (apply s t2, s)
@@ -478,7 +483,7 @@ check env (Lam p a) t = case t of
   Fun t1 t2 -> do
     (t1, s1) <- check env p t1
     (t2, s2) <- check env a t2
-    Right (Fun t1 t2, s2 `compose` s1)
+    Right (Fun (Ann p (For [] t1)) t2, s2 `compose` s1)
   t -> error ("check Lam: not a Fun: " ++ show t)
 check env a t = do
   (ta, s1) <- infer env a

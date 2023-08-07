@@ -114,11 +114,11 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
             ("TB", Lam x (Ann (Typ "TB" [x]) (For [] $ Union [("B", App (Var "TB") x)]))),
             ("TC", Ann (Lam x (Typ "TC" [x])) (For [] $ Fun IntT (Union [])))
           ]
-    -- infer env (Typ "T0" []) `shouldBe` Right (Union [("A", Typ "T0" [])], [])
-    -- infer env (Typ "T0" [Int 1]) `shouldBe` Left (NumArgsMismatch "T0" 0 [Int 1])
-    -- infer env (Typ "T1" []) `shouldBe` Left (NumArgsMismatch "T1" 1 [])
-    -- infer env (Typ "T1" [Int 1]) `shouldBe` Right (Union [], [("xT", IntT)])
-    -- infer env (Typ "TA" [Int 1]) `shouldBe` Right (Union [("A", Typ "TA" [Int 0])], [("xT", IntT)])
+    infer env (Typ "T0" []) `shouldBe` Right (Union [("A", Typ "T0" [])], [])
+    infer env (Typ "T0" [Int 1]) `shouldBe` Left (NumArgsMismatch "T0" 0 [Int 1])
+    infer env (Typ "T1" []) `shouldBe` Left (NumArgsMismatch "T1" 1 [])
+    infer env (Typ "T1" [Int 1]) `shouldBe` Right (Union [], [("xT", IntT)])
+    infer env (Typ "TA" [Int 1]) `shouldBe` Right (Union [("A", Typ "TA" [Int 0])], [("xT", IntT)])
     infer env (Typ "TB" [Int 1]) `shouldBe` Right (Union [("B", Typ "TB" [Int 1])], [("xT", IntT)])
     -- infer env (Typ "TC" [Int 1]) `shouldBe` Right (Union [("A", Typ "TC" [Int 0]), ("B", Typ "TC" [Int 1])], [("xT", IntT)])
     -- infer env (Typ "TC" [Num 1.1]) `shouldBe` Right (Err, [])
@@ -137,9 +137,9 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
           [ ("x", Int 1),
             ("y", Num 1.1)
           ]
-    infer env (Lam (Int 1) y) `shouldBe` Right (Fun IntT NumT, [])
-    infer env (Lam (Var "x") y) `shouldBe` Right (Fun xT NumT, [])
-    infer env (Lam (Var "x") x) `shouldBe` Right (Fun xT xT, [])
+    infer env (Lam (Int 1) y) `shouldBe` Right (Fun (Ann (Int 1) (For [] IntT)) NumT, [])
+    infer env (Lam (Var "x") y) `shouldBe` Right (Fun (Ann x (For [] xT)) NumT, [])
+    infer env (Lam (Var "x") x) `shouldBe` Right (Fun (Ann x (For [] xT)) xT, [])
     -- infer env (Lam (Ctr "T1" "A" []) y) `shouldBe` Right (Fun (typ (Int 0)) NumT, [])
     -- infer env (Lam (Ctr "T1" "B" [Ctr "T1" "A" []]) y) `shouldBe` Right (Fun (typ (Int 1)) NumT, [("n", Int 1)])
     -- infer env (Lam (Ctr "T1" "B" [y]) y) `shouldBe` Right (Fun (typ y) yT, [("n", yT)])
