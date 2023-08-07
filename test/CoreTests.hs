@@ -98,7 +98,7 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer env (Var "mismatch") `shouldBe` Left (TypeMismatch IntT NumT)
     infer env (Var "match") `shouldBe` Right (IntT, [])
     infer env (Var "typed") `shouldBe` Right (IntT, [])
-    infer env (Var "free") `shouldBe` Right (Knd, [])
+    infer env (Var "free") `shouldBe` Right (Var "freeT", [("free", Ann (Var "free") (For [] (Var "freeT")))])
 
   it "☯ infer Union" $ do
     let env = []
@@ -120,15 +120,14 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer env (Typ "T1" [Int 1]) `shouldBe` Right (Union [], [("xT", IntT)])
     infer env (Typ "TA" [Int 1]) `shouldBe` Right (Union [("A", Typ "TA" [Int 0])], [("xT", IntT)])
     infer env (Typ "TB" [Int 1]) `shouldBe` Right (Union [("B", Typ "TB" [Int 1])], [("xT", IntT)])
-    -- infer env (Typ "TC" [Int 1]) `shouldBe` Right (Union [("A", Typ "TC" [Int 0]), ("B", Typ "TC" [Int 1])], [("xT", IntT)])
-    -- infer env (Typ "TC" [Num 1.1]) `shouldBe` Right (Err, [])
-    True `shouldBe` True
+    infer env (Typ "TC" [Int 1]) `shouldBe` Right (Union [], [])
+    infer env (Typ "TC" [Num 1.1]) `shouldBe` Left (TypeMismatch IntT NumT)
 
-  -- it "☯ infer Ctr" $ do
-  --   let env = []
-  --   infer env (Ctr "T1" "A" []) `shouldBe` Right (Typ "T1" [Int 0], [])
-  --   infer env (Ctr "T1" "B" [Ctr "T1" "A" []]) `shouldBe` Right (Typ "T1" [Int 0], [("n", Int 0)])
-  --   infer env (Ctr "TX" "A" []) `shouldBe` Right (Err, [])
+  it "☯ infer Ctr" $ do
+    let env = []
+    infer env (Ctr "T1" "A" []) `shouldBe` Right (Typ "T1" [Int 0], [])
+    infer env (Ctr "T1" "B" [Ctr "T1" "A" []]) `shouldBe` Right (Typ "T1" [Int 0], [("n", Int 0)])
+    infer env (Ctr "TX" "A" []) `shouldBe` Right (Err, [])
 
   it "☯ infer Lam" $ do
     let (x, y) = (Var "x", Var "y")

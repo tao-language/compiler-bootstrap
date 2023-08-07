@@ -408,14 +408,15 @@ infer _ (Int _) = Right (IntT, [])
 infer _ NumT = Right (Knd, [])
 infer _ (Num _) = Right (NumT, [])
 infer env (Var x) = case lookup x env of
-  Just (Var x') | x == x' -> Right (Knd, [])
+  Just (Var x') | x == x' -> do
+    let xT = newName (x ++ "T") (map fst env)
+    Right (Var xT, [(x, Ann (Var x) (For [] (Var xT)))])
   Just (Ann (Var x') typ) | x == x' -> Right (instantiate (map fst env) typ)
   Just a -> infer env a
   Nothing -> Left (UndefinedVar x)
 infer env (Union alts) = do
-  -- (_, s) <- inferAll env (map snd alts)
-  -- Right (Knd, s)
-  Right (Knd, [])
+  (_, s) <- inferAll env (map snd alts)
+  Right (Knd, s)
 infer env (Typ tx args) = do
   (kind, s) <- infer env (Var tx)
   case length (fst (asFun kind)) of
@@ -428,9 +429,8 @@ infer env (Lam p a) = do
   let xs = freeVars p
   let ts = newNames (map (++ "T") xs) (map fst env)
   let env' = zipWith (\x xT -> (x, Ann (Var x) (For [] (Var xT)))) xs ts ++ env
-  ((t1, t2), s1) <- infer2 env' p a
-  (t, s2) <- check (applyEnv s1 env') (Lam p a) (Fun t1 t2)
-  Right (t, s2 `compose` s1)
+  ((t1, t2), s) <- infer2 env' p a
+  Right (Fun (Ann p (For [] t1)) t2, s)
 infer env (Fun a b) = do
   (_, s) <- infer2 env a b
   Right (Knd, s)
@@ -481,14 +481,21 @@ check env (Typ tx args) t = do
   Right (eval env t, [])
 check env (Lam p a) t = case t of
   Fun t1 t2 -> do
-    (t1, s1) <- check env p t1
-    (t2, s2) <- check env a t2
-    Right (Fun (Ann p (For [] t1)) t2, s2 `compose` s1)
+    let xs = freeVars p
+    let env' = pushVars xs env
+    ((t1, t2), s) <- check2 env' (p, t1) (a, t2)
+    Right (Fun (Ann p (For [] t1)) t2, s)
   t -> error ("check Lam: not a Fun: " ++ show t)
 check env a t = do
   (ta, s1) <- infer env a
   (t, s2) <- subtype ta (eval env t)
   Right (t, s2 `compose` s1)
+
+check2 :: Env -> (Expr, Type) -> (Expr, Type) -> Either TypeError ((Type, Type), Substitution)
+check2 env (a, ta) (b, tb) = do
+  (ta, s1) <- check env a ta
+  (tb, s2) <- check (applyEnv s1 env) b (apply s1 tb)
+  Right ((apply s1 ta, tb), s2 `compose` s1)
 
 infer2 :: Env -> Expr -> Expr -> Either TypeError ((Type, Type), Substitution)
 infer2 env a b = do
