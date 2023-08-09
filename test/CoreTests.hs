@@ -250,13 +250,12 @@ coreTests = describe "--==☯️ Core language ☯️==--" $ do
     infer env (app (Var "Nothing") []) `shouldBe` Right (Typ "Maybe" [a], [])
     infer env (app (Var "Just") []) `shouldBe` Right (Fun (x, a) (Typ "Maybe" [a]), [("xT", a)])
     infer env (app (Var "Just") [Int 1]) `shouldBe` Right (Typ "Maybe" [IntT], [("xT", IntT), ("a", IntT)])
-    -- infer env case' `shouldBe` Right (Fun (Ctr "Maybe" "Just" [x] `Or` Ctr "Maybe" "Nothing" [], Typ "Maybe" [IntT]) IntT, [("xT", IntT)])
-    -- infer env (Ann case' (Fun (x, Typ "Maybe" [IntT]) IntT)) `shouldBe` Right (Fun (x, Typ "Maybe" [IntT]) IntT, [("xT", IntT), ("xT", IntT), ("a", IntT)])
-    -- infer env (Ann case' (Fun (x, Typ "Maybe" [NumT]) IntT)) `shouldBe` Left (TypeMismatch IntT NumT)
-    -- infer env (App case' (Ctr "Maybe" "Nothing" [])) `shouldBe` Right (IntT, [("a", IntT), ("xT", IntT)])
-    -- infer env (App case' (Ctr "Maybe" "Just" [Int 1])) `shouldBe` Right (IntT, [("a", IntT), ("a", IntT), ("xT", IntT)])
-    -- infer env (App case' (Ctr "Maybe" "Just" [Num 1.1])) `shouldBe` Left (TypeMismatch NumT IntT)
-    True `shouldBe` True
+    infer env case' `shouldBe` Right (Fun (Ctr "Maybe" "Just" [x] `Or` Ctr "Maybe" "Nothing" [], Typ "Maybe" [IntT]) IntT, [("xT", IntT), ("a", IntT)])
+    infer env (Ann case' (Fun (x, Typ "Maybe" [IntT]) IntT)) `shouldBe` Right (Fun (Ctr "Maybe" "Just" [x] `Or` Ctr "Maybe" "Nothing" [], Typ "Maybe" [IntT]) IntT, [("xT", IntT), ("a", IntT)])
+    infer env (Ann case' (Fun (x, Typ "Maybe" [NumT]) IntT)) `shouldBe` Left (TypeMismatch IntT NumT)
+    infer env (App case' (Ctr "Maybe" "Nothing" [])) `shouldBe` Right (IntT, [("xT", IntT), ("a", IntT)])
+    infer env (App case' (Ctr "Maybe" "Just" [Int 1])) `shouldBe` Right (IntT, [("xT", IntT), ("a", IntT)])
+    infer env (App case' (Ctr "Maybe" "Just" [Num 1.1])) `shouldBe` Left (TypeMismatch IntT NumT)
 
   -- it "☯ Nat" $ do
   --   let natT = Typ "Nat" [] [("Succ", Fun (Var "Nat") (Var "Nat")), ("Zero", Var "Nat")]

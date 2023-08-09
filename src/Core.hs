@@ -369,7 +369,7 @@ subtypeAll (a1 : bs1) (a2 : bs2) = do
 
 apply :: Substitution -> Env -> Env
 apply _ [] = []
-apply s ((x, Ann a b) : env) = (x, Ann a (eval (pop x s) b)) : apply s env
+apply s ((x, Ann a b) : env) = (x, Ann a (eval s b)) : apply s env
 apply s (def : env) = def : apply s env
 
 compose :: Substitution -> Substitution -> Substitution
@@ -416,7 +416,7 @@ infer env (Ctr tx k args) = do
   case snd (asFun tdef) of
     Union alts -> case lookup k alts of
       Just altType -> do
-        (t, s2) <- inferApply env (k, altType) args
+        (t, s2) <- inferApply (apply s1 env) (k, eval s1 altType) args
         Right (t, s2 `compose` s1)
       Nothing -> Left (UndefinedUnionAlt k)
     t -> Left (NotAUnionType tx t)
@@ -431,7 +431,7 @@ infer env (Fun (p, a) b) = do
   Right (Knd, s)
 infer env (App a b) = do
   ((ta, tb), s1) <- infer2 env a b
-  (t, s2) <- inferApplyReturn env ta (b, tb)
+  (t, s2) <- inferApplyReturn (apply s1 env) ta (b, tb)
   Right (eval env t, s2 `compose` s1)
 infer env (Ann a typ) = do
   (t, defs) <- Right (instantiate (map fst env) typ)
@@ -440,12 +440,6 @@ infer env (For x a) = infer ((x, Var x) : env) a
 infer env (Let defs a) = infer (env ++ defs) a
 infer env (Fix x a) = infer ((x, Var x) : env) a
 infer env (Or a b) = do
-  -- ((ta, tb), s1) <- infer2 env a b
-  -- case subtype tb ta of
-  --   Right (t, s2) -> Right (t, s2 `compose` s1)
-  --   Left _ -> case subtype ta tb of
-  --     Right (t, s2) -> Right (t, s2 `compose` s1)
-  --     Left _ -> Right (Or ta tb, s1)
   (ta, s1) <- infer env a
   (t, s2) <- check (apply s1 env) b ta
   Right (t, s2 `compose` s1)
@@ -477,7 +471,7 @@ check2 :: Env -> (Expr, Type) -> (Expr, Type) -> Either TypeError ((Type, Type),
 check2 env (a, ta) (b, tb) = do
   (ta, s1) <- check env a ta
   (tb, s2) <- check (apply s1 env) b (eval s1 tb)
-  Right ((eval s1 ta, tb), s2 `compose` s1)
+  Right ((eval s2 ta, tb), s2 `compose` s1)
 
 infer2 :: Env -> Expr -> Expr -> Either TypeError ((Type, Type), Substitution)
 infer2 env a b = do
