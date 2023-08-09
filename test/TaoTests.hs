@@ -38,7 +38,7 @@ taoTests = describe "--==☯ Tao ☯==--" $ do
     toCore (Num 1) `shouldBe` Right (C.Num 1)
     toCore (Var "x") `shouldBe` Right (C.Var "x")
     -- toCore (For "x" y) `shouldBe` Right (C.For "x" (C.Var "y"))
-    toCore (Fun x y) `shouldBe` Right (C.Fun (C.Var "x") (C.Var "y"))
+    -- toCore (Fun x y) `shouldBe` Right (C.Fun (C.Var "x") (C.Var "y"))
     toCore (App x y) `shouldBe` Right (C.App (C.Var "x") (C.Var "y"))
     -- toCore (Ann x y) `shouldBe` Right (C.Ann (C.Var "x") (C.Var "y"))
     toCore (Let [Untyped "x" y] z) `shouldBe` Right (C.Let [("x", C.Var "y")] (C.Var "z"))

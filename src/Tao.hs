@@ -140,10 +140,10 @@ toCore (Var x) = Right (C.Var x)
 -- toCore (For x a) = do
 --   a <- toCore a
 --   Right (C.For x a)
-toCore (Fun a b) = do
-  a <- toCore a
-  b <- toCore b
-  Right (C.Fun a b)
+-- toCore (Fun a b) = do
+--   a <- toCore a
+--   b <- toCore b
+--   Right (C.Fun a b)
 toCore (App a b) = do
   a <- toCore a
   b <- toCore b
@@ -242,7 +242,7 @@ fromCore (C.Num n) = Num n
 fromCore (C.Var x) = Var x
 -- TODO: Lam
 -- fromCore (C.For x a) = For x (fromCore a)
-fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
+-- fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
 fromCore (C.App a b) = App (fromCore a) (fromCore b)
 -- fromCore (C.Ann a b) = Ann (fromCore a) (fromCore b)
 fromCore (C.Let defs a) = Let (map (\(x, b) -> Untyped x (fromCore b)) defs) (fromCore a)
