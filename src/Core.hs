@@ -274,7 +274,7 @@ reduce env (App a b) = case (reduce env a, reduce env b) of
   (a, b) -> App a b
 reduce env (Fix x a) = Fix x (reduce ((x, Var x) : env) a)
 reduce env (Ann a _) = reduce env a
-reduce env (For x a) = reduce ((x, Var x) : env) a
+reduce env (For x a) = For x (reduce ((x, Var x) : env) a)
 reduce env (Or a b) = Or (reduce env a) (reduce env b)
 reduce env (Let env' a) = reduce (env ++ env') a
 reduce env (Op2 op a b) = case (op, reduce env a, reduce env b) of
@@ -309,14 +309,10 @@ eval env term = case reduce env term of
   Op2 op a b -> Op2 op (eval [] a) (eval [] b)
   Call f args -> Call f (eval [] <$> args)
 
-subtype :: Type -> Type -> Either TypeError (Type, [(String, Expr)])
+subtype :: Type -> Type -> Either TypeError (Type, Substitution)
 subtype Knd Knd = Right (Knd, [])
 subtype IntT IntT = Right (IntT, [])
 subtype NumT NumT = Right (NumT, [])
--- subtype (Int _) IntT = Right (IntT, [])
-subtype (Int i) (Int i') | i == i' = Right (Int i, [])
-subtype (Num _) NumT = Right (NumT, [])
-subtype (Num n) (Num n') | n == n' = Right (Num n, [])
 subtype (Var x) (Var x') | x == x' = Right (Var x, [])
 subtype a (Var x) | x `occurs` a = Left (InfiniteType x a)
 subtype a (Var x) = Right (a, [(x, a)])
@@ -327,37 +323,41 @@ subtype (Ctr tx k args) (Ctr tx' k' args') | tx == tx' && k == k' && length args
 subtype (Typ tx args) (Typ tx' args') | tx == tx' && length args == length args' = do
   (args, s) <- subtypeAll args args'
   Right (Typ tx args, s)
-subtype (Union alts) (Union alts') | map fst alts == map fst alts' = do
+subtype (Union alts) (Union alts') | alts == alts' = do
   (altTypes, s) <- subtypeAll (map snd alts) (map snd alts')
   Right (Union (zip (map fst alts) altTypes), s)
 subtype (Fun (p1, a1) b1) (Fun (p2, a2) b2) = do
-  -- TODO: CHECK p1 and p2
-  (a, s1) <- subtype a1 a2
-  (b, s2) <- subtype (eval s1 b2) (eval s1 b1)
-  Right (Fun (p1, eval s2 a) b, s2 `compose` s1)
+  ((a, b), s) <- subtype2 (a1, a2) (b2, b1)
+  Right (Fun (Or p1 p2, a) b, s)
 subtype (App a1 b1) (App a2 b2) = do
-  (a, s1) <- subtype a1 a2
-  (b, s2) <- subtype (eval s1 b1) (eval s1 b2)
-  Right (App (eval s2 a) b, s2 `compose` s1)
+  ((a, b), s) <- subtype2 (a1, a2) (b1, b2)
+  Right (App a b, s)
 subtype (Ann _ a) b = subtype a b
 subtype a (Ann _ b) = subtype a b
 subtype a (Or b1 b2) = case subtype a b1 of
   Right (a, s1) -> case subtype a (eval s1 b2) of
-    Right (b, s2) -> case unify (eval s2 a) b of
-      Right (c, s3) -> Right (c, s3 `compose` s2 `compose` s1)
-      Left _ -> Right (Or (eval s2 a) b, s2 `compose` s1)
+    Right (b, s2) -> Right (Or (eval s2 a) b, s2 `compose` s1)
     Left _ -> Right (a, s1)
   Left _ -> subtype a b2
 subtype (Or a1 a2) b = do
-  (a1, s1) <- subtype a1 b
-  (a2, s2) <- subtype (eval s1 a2) (eval s1 b)
-  case unify (eval s2 a1) a2 of
-    Right (a, s3) -> Right (a, s3 `compose` s2 `compose` s1)
-    Left _ -> Right (Or (eval s2 a1) a2, s2 `compose` s1)
+  ((a1, a2), s1) <- subtype2 (a1, b) (a2, b)
+  case subtype a1 a2 of
+    Right (a, s2) -> Right (a, s2 `compose` s1)
+    Left _ -> Right (Or a1 a2, s1)
 subtype (Call f args) (Call f' args') | f == f' && length args == length args' = do
   (args, s) <- subtypeAll args args'
   Right (Call f args, s)
+-- subtype (Int i) (Int i') | i == i' = Right (Int i, [])
+-- subtype (Int i) Op2 {} = Right (Int i, [])
+-- subtype (Num n) (Num n') | n == n' = Right (Num n, [])
+-- subtype (Num n) Op2 {} = Right (Num n, [])
 subtype a b = Left (TypeMismatch a b)
+
+subtype2 :: (Type, Type) -> (Type, Type) -> Either TypeError ((Type, Type), Substitution)
+subtype2 (a1, a2) (b1, b2) = do
+  (a, s1) <- subtype a1 a2
+  (b, s2) <- subtype (eval s1 b1) (eval s1 b2)
+  Right ((eval s2 a, b), s2 `compose` s1)
 
 subtypeAll :: [Expr] -> [Expr] -> Either TypeError ([Expr], Env)
 subtypeAll [] _ = Right ([], [])
@@ -374,11 +374,6 @@ apply s (def : env) = def : apply s env
 
 compose :: Substitution -> Substitution -> Substitution
 compose s1 s2 = map (second (eval s1)) s2 `union` s1
-
-unify :: Type -> Type -> Either TypeError (Type, Substitution)
-unify a b = case subtype b a of
-  Right (c, s) -> Right (c, s)
-  Left _ -> subtype a b
 
 instantiate :: [String] -> Type -> (Type, Env)
 instantiate existing (For x t) = do
@@ -416,7 +411,8 @@ infer env (Ctr tx k args) = do
   case snd (asFun tdef) of
     Union alts -> case lookup k alts of
       Just altType -> do
-        (t, s2) <- inferApply (apply s1 env) (k, eval s1 altType) args
+        -- let altType' = eval (apply s1 env) altType
+        (t, s2) <- inferApply (apply s1 env) (k, altType) args
         Right (t, s2 `compose` s1)
       Nothing -> Left (UndefinedUnionAlt k)
     t -> Left (NotAUnionType tx t)
@@ -440,8 +436,10 @@ infer env (For x a) = infer ((x, Var x) : env) a
 infer env (Let defs a) = infer (env ++ defs) a
 infer env (Fix x a) = infer ((x, Var x) : env) a
 infer env (Or a b) = do
-  (ta, s1) <- infer env a
-  (t, s2) <- check (apply s1 env) b ta
+  ((ta, tb), s1) <- infer2 env a b
+  (t, s2) <- subtype ta tb
+  -- (ta, s1) <- infer env a
+  -- (t, s2) <- check (apply s1 env) b ta
   Right (t, s2 `compose` s1)
 infer env (Call f args) = case lookup f env of
   Just (Ann a typ) -> inferApply env (f, typ) args
@@ -449,19 +447,19 @@ infer env (Call f args) = case lookup f env of
   Nothing -> Left (UndefinedVar f)
 infer env (Op2 op a b) = do
   ((ta, tb), s1) <- infer2 env a b
-  (t, s2) <- unify ta tb
+  (t, s2) <- subtype ta tb
   Right (t, s2 `compose` s1)
 
 check :: Env -> Expr -> Type -> Either TypeError (Type, Substitution)
 check env (Typ tx args) t = do
   Right (eval env t, [])
-check env (Lam p a) t = case t of
-  Fun (q, t1) t2 -> do
-    let xs = freeVars p
-    let env' = pushVars xs env
-    ((t1, t2), s) <- check2 env' (p, t1) (a, t2)
-    Right (Fun (Or q p, t1) t2, s)
-  t -> error ("check Lam: not a Fun: " ++ show t)
+-- check env (Lam p a) t = case t of
+--   Fun (q, t1) t2 -> do
+--     let xs = freeVars p
+--     let env' = pushVars xs env
+--     ((t1, t2), s) <- check2 env' (p, t1) (a, t2)
+--     Right (Fun (Or q p, t1) t2, s)
+--   t -> error ("check Lam: not a Fun: " ++ show t)
 check env a t = do
   (ta, s1) <- infer env a
   (t, s2) <- subtype ta (eval env t)
@@ -501,7 +499,7 @@ inferApplyReturn env (Fun (p, t1) t2) (b, tb) = do
 inferApplyReturn env (Or t1 t2) (b, tb) = do
   (t1, s1) <- inferApplyReturn env t1 (b, tb)
   (t2, s2) <- inferApplyReturn (apply s1 env) (eval s1 t2) (b, eval s1 tb)
-  (t, s3) <- unify (eval s2 t1) t2
+  (t, s3) <- subtype (eval s2 t1) t2
   Right (t, s3 `compose` s2 `compose` s1)
 inferApplyReturn _ t _ = Left (NotAFunction t)
 
