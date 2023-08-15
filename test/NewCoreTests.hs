@@ -203,9 +203,13 @@ eval env (Op2 op a b) = case (op, eval env a, eval env b) of
 eval _ Err = Err
 
 -- Type inference
+subst :: Substitution -> Expr -> Expr
+subst s (Ann a (For xs b)) = Ann (subst s a) (For xs (eval (pushVars xs s) b))
+subst _ a = a
+
 apply :: Substitution -> Env -> Env
 apply _ [] = []
-apply s ((x, Ann a (For xs b)) : env) = (x, Ann a (For xs (eval (pushVars xs s) b))) : apply s env
+apply s ((x, Ann a ty) : env) = (x, subst s (Ann a ty)) : apply s env
 apply s ((x, a) : env) = case lookup x s of
   Just b -> (x, b) : apply s env
   Nothing -> (x, a) : apply s env
@@ -223,8 +227,6 @@ instantiate existing (For (x : xs) a) = do
 subtype :: Expr -> Expr -> Either TypeError (Expr, Substitution)
 subtype Knd Knd = Right (Knd, [])
 subtype IntT IntT = Right (IntT, [])
-subtype (Int i) (Int i') | i == i' = Right (Int i, [])
-subtype (Ctr k) (Ctr k') | k == k' = Right (Ctr k, [])
 subtype (Typ t) (Typ t') | t == t' = Right (Typ t, [])
 subtype (Var x) (Var x') | x == x' = Right (Var x, [])
 subtype (Var x) b | x `occurs` b = Left (InfiniteType x b)
@@ -238,9 +240,17 @@ subtype (App a1 b1) (App a2 b2) = do
   Right (App a b, s)
 -- Ann !Expr !Type
 -- Or !Expr !Expr
--- Op2 !BinaryOp !Expr !Expr
+subtype a@Int {} b@Int {} | a == b = Right (a, [])
+subtype a@Int {} b@Int {} = Right (Or a b, [])
+subtype a@Int {} b@(Op2 op _ _) | op `elem` intOps = Right (Or a b, [])
+subtype a@(Op2 op _ _) b@(Op2 op' _ _) | op `elem` intOps && op' `elem` intOps = case (a, b) of
+  (a, b) | a == b -> Right (a, [])
+  (a, b) -> Right (Or a b, [])
 subtype Err Err = Right (Err, [])
 subtype a b = Left (TypeMismatch a b)
+
+intOps :: [BinaryOp]
+intOps = [Add, Sub, Mul]
 
 subtype2 :: (Expr, Expr) -> (Expr, Expr) -> Either TypeError ((Expr, Expr), Substitution)
 subtype2 (a1, a2) (b1, b2) = do
@@ -290,9 +300,10 @@ infer env (App a b) = do
     (Var x', s) | x == x' -> Right (Var x, [(x, Var x)] `union` s)
     (t, s) -> Right (t, s)
 infer env (Ann a ty) = do
-  let (t, s1) = instantiate (map fst env) ty
-  (ta, s2) <- infer (apply s1 env) a
-  subtype ta (eval (apply s2 env) t)
+  (ta, s1) <- infer env a
+  let (t, s2) = instantiate (map fst (apply s1 env)) ty
+  (t, s3) <- subtype (eval s2 ta) t
+  Right (t, s3 `compose` s2 `compose` s1)
 -- Or !Expr !Expr
 -- Fix !String !Expr
 -- Op2 !BinaryOp !Expr !Expr
@@ -491,6 +502,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     it "☯ infer Ann" $ do
       infer [] (Ann (Int 1) (For [] IntT)) `shouldBe` Right (IntT, [])
       infer [] (Ann (Int 1) (For [] Knd)) `shouldBe` Left (TypeMismatch IntT Knd)
+      infer [] (Ann (Int 1) (For ["a"] a)) `shouldBe` Right (IntT, [("a", IntT)])
 
     it "☯ infer Lam" $ do
       let (t, xT) = (Var "t", Var "xT")
@@ -531,19 +543,42 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     True `shouldBe` True
 
   it "☯ Nat" $ do
+    let i0 = Int 0
+    let (n, n1) = (Var "n", Var "n1")
+    let nat n = App (Typ "Nat") n
+    let env =
+          [ ("Nat", Ann (Typ "Nat") (For [] (Fun IntT Knd))),
+            ("Zero", Ann (Ctr "Zero") (For [] (nat i0))),
+            ("Succ", Ann (Ctr "Succ") (For ["n"] (Fun (nat n) (nat (add n i1)))))
+          ]
+
+    let num :: Int -> Expr
+        num 0 = Ctr "Zero"
+        num n = App (Ctr "Succ") (num (n - 1))
+    infer env (num 0) `shouldBe` Right (nat i0, [])
+    infer env (num 1) `shouldBe` Right (nat i1, [("n", i0), ("t", nat i1)])
+    -- infer env (num 2) `shouldBe` Right (nat i2, [("n", i0), ("t", nat i1)])
     True `shouldBe` True
 
   it "☯ Vec" $ do
     let i0 = Int 0
-    let (n, a) = (Var "n", Var "a")
-    let vec n a = app (Var "Vec") [n, a]
+    let (n, n1) = (Var "n", Var "n1")
+    let vec n a = app (Typ "Vec") [n, a]
     let env =
-          [ ("Vec", Ann (Typ "Vec") (For ["n", "a"] (Fun IntT Knd))),
+          [ ("Vec", Ann (Typ "Vec") (For [] (fun [IntT, Knd] Knd))),
+            ("Nil", Ann (Ctr "Nil") (For ["a"] (vec i0 a))),
             ("Cons", Ann (Ctr "Cons") (For ["n", "a"] (fun [a, vec n a] (vec (add n i1) a)))),
-            ("Nil", Ann (Ctr "Nil") (For ["a"] (vec i0 a)))
+            ("n", Knd)
           ]
 
-    let cons x xs = app (Var "Cons") [x, xs]
-    let nil = Var "Nil"
-    infer env nil `shouldBe` Right (app (Typ "Vec") [i0, a], [])
+    let cons x xs = app (Ctr "Cons") [x, xs]
+    let nil = Ctr "Nil"
+    -- infer env nil `shouldBe` Right (vec i0 a, [("a", a)])
+    -- infer env (Var "Cons") `shouldBe` Right (fun [a, vec n1 a] (vec (add n1 i1) a), [("n1", n1), ("a", a)])
+    -- infer env (cons (Int 42) nil) `shouldBe` Right (vec i1 IntT, [("n1", i0), ("a", IntT), ("t", vec i1 IntT)])
+
+    let list [] = nil
+        list (x : xs) = cons x (list xs)
+    -- infer env (list [Int 42]) `shouldBe` Right (vec i1 IntT, [("n1", i0), ("a", IntT), ("t", vec i1 IntT)])
+    -- infer env (list [Int 42, Int 9]) `shouldBe` Right (vec i2 IntT, [("n1", i0), ("a", IntT), ("t", vec i1 IntT)])
     True `shouldBe` True
