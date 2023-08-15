@@ -1,6 +1,6 @@
 module NewCoreTests where
 
-import Data.List (delete, union)
+import Data.List (delete, intercalate, union)
 import Test.Hspec
 
 -- https://simon.peytonjones.org/verse-calculus
@@ -23,8 +23,7 @@ data Expr
   deriving (Eq, Show)
 
 data Pattern
-  = AnyP
-  | KndP
+  = KndP
   | IntTP
   | IntP !Int
   | CtrP !String
@@ -56,7 +55,10 @@ data TypeError
   | UndefinedTyp !String
   | InconsistentCtr !String !String
   | InconsistentTyp !String !String
+  | InfiniteType !String !Expr
   | MissingType !String
+  | NotAFunction !Expr !Expr
+  | TypeMismatch !Expr !Expr
   deriving (Eq, Show)
 
 -- Syntax sugar
@@ -105,6 +107,17 @@ popAll xs env = foldl (flip pop) env xs
 pushVars :: [String] -> Env -> Env
 pushVars xs = pushAll (map (\x -> (x, Var x)) xs)
 
+patternValue :: Pattern -> Expr
+patternValue KndP = Knd
+patternValue IntTP = IntT
+patternValue (IntP i) = Int i
+patternValue (CtrP k) = Ctr k
+patternValue (TypP t) = Typ t
+patternValue (VarP x) = Var x
+patternValue (FunP p q) = Fun (patternValue p) (patternValue q)
+patternValue (AppP p q) = App (patternValue p) (patternValue q)
+patternValue ErrP = Err
+
 freeVars :: Expr -> [String]
 freeVars Knd = []
 freeVars IntT = []
@@ -113,7 +126,7 @@ freeVars (Var x) = [x]
 freeVars (Ctr _) = []
 freeVars (Typ _) = []
 freeVars (Fun a b) = freeVars a `union` freeVars b
-freeVars (Lam p a) = filter (`notElem` freeVarsP p) (freeVars a)
+freeVars (Lam p a) = filter (`notElem` freeVars (patternValue p)) (freeVars a)
 freeVars (Ann a _) = freeVars a
 freeVars (App a b) = freeVars a `union` freeVars b
 freeVars (Or a b) = freeVars a `union` freeVars b
@@ -121,20 +134,11 @@ freeVars (Fix x a) = delete x (freeVars a)
 freeVars (Op2 _ a b) = freeVars a `union` freeVars b
 freeVars Err = []
 
-freeVarsP :: Pattern -> [String]
-freeVarsP AnyP = []
-freeVarsP KndP = []
-freeVarsP IntTP = []
-freeVarsP (IntP _) = []
-freeVarsP (VarP x) = [x]
-freeVarsP (CtrP _) = []
-freeVarsP (TypP _) = []
-freeVarsP (AppP p q) = freeVarsP p `union` freeVarsP q
-freeVarsP (FunP p q) = freeVarsP p `union` freeVarsP q
-freeVarsP ErrP = []
+occurs :: String -> Expr -> Bool
+occurs x a = x `elem` freeVars a
 
-freshName :: [String] -> String -> String
-freshName existing x = do
+newName :: [String] -> String -> String
+newName existing x = do
   head
     [ name
       | i <- [(0 :: Int) ..],
@@ -147,21 +151,6 @@ isClosed = null . freeVars
 
 isOpen :: Expr -> Bool
 isOpen = not . isClosed
-
-instantiate :: [String] -> Type -> (Expr, Substitution)
-instantiate _ (For [] a) = (a, [])
-instantiate existing (For (x : xs) a) = do
-  let y = freshName existing x
-  let (b, s) = instantiate (y : existing) (For xs a)
-  (eval [(x, Var y)] b, (y, Var y) : s)
-
-apply :: Substitution -> Env -> Env
-apply _ [] = []
-apply s ((x, Ann a (For xs b)) : env) = (x, Ann a (For xs (eval s b))) : apply s env
-apply s (def : env) = def : apply s env
-
-compose :: Substitution -> Substitution -> Substitution
-compose s1 s2 = apply s1 s2 `union` s1
 
 -- Evaluation
 eval :: Env -> Expr -> Expr
@@ -176,9 +165,10 @@ eval env (Var x) = case lookup x env of
   Just a -> eval env a
   Nothing -> Var x
 eval env (Fun a b) = Fun (eval env a) (eval env b)
-eval env (Lam p b) = Lam p (eval (pushVars (freeVarsP p) env) b)
+eval env (Lam p b) = do
+  let xs = freeVars (patternValue p)
+  Lam p (eval (pushVars xs env) b)
 eval env (App a b) = case (eval env a, eval env b) of
-  (Lam AnyP a, _) -> a
   (Lam KndP a, Knd) -> a
   (Lam IntTP a, IntT) -> a
   (Lam (IntP i) a, Int i') | i == i' -> a
@@ -213,6 +203,51 @@ eval env (Op2 op a b) = case (op, eval env a, eval env b) of
 eval _ Err = Err
 
 -- Type inference
+apply :: Substitution -> Env -> Env
+apply _ [] = []
+apply s ((x, Ann a (For xs b)) : env) = (x, Ann a (For xs (eval (pushVars xs s) b))) : apply s env
+apply s ((x, a) : env) = case lookup x s of
+  Just b -> (x, b) : apply s env
+  Nothing -> (x, a) : apply s env
+
+compose :: Substitution -> Substitution -> Substitution
+compose s1 s2 = apply s1 s2 `union` s1
+
+instantiate :: [String] -> Type -> (Expr, Substitution)
+instantiate _ (For [] a) = (a, [])
+instantiate existing (For (x : xs) a) = do
+  let y = newName existing x
+  let (b, s) = instantiate (y : existing) (For xs a)
+  (eval [(x, Var y)] b, [(y, Var y)] `union` s)
+
+subtype :: Expr -> Expr -> Either TypeError (Expr, Substitution)
+subtype Knd Knd = Right (Knd, [])
+subtype IntT IntT = Right (IntT, [])
+subtype (Int i) (Int i') | i == i' = Right (Int i, [])
+subtype (Ctr k) (Ctr k') | k == k' = Right (Ctr k, [])
+subtype (Typ t) (Typ t') | t == t' = Right (Typ t, [])
+subtype (Var x) (Var x') | x == x' = Right (Var x, [])
+subtype (Var x) b | x `occurs` b = Left (InfiniteType x b)
+subtype (Var x) b = Right (b, [(x, b)])
+subtype a (Var x) = subtype (Var x) a
+subtype (Fun a1 b1) (Fun a2 b2) = do
+  ((a, b), s) <- subtype2 (a1, a2) (b2, b1)
+  Right (Fun a b, s)
+subtype (App a1 b1) (App a2 b2) = do
+  ((a, b), s) <- subtype2 (a1, a2) (b1, b2)
+  Right (App a b, s)
+-- Ann !Expr !Type
+-- Or !Expr !Expr
+-- Op2 !BinaryOp !Expr !Expr
+subtype Err Err = Right (Err, [])
+subtype a b = Left (TypeMismatch a b)
+
+subtype2 :: (Expr, Expr) -> (Expr, Expr) -> Either TypeError ((Expr, Expr), Substitution)
+subtype2 (a1, a2) (b1, b2) = do
+  (a, s1) <- subtype a1 a2
+  (b, s2) <- subtype (eval s1 b1) (eval s1 b2)
+  Right ((a, b), s2 `compose` s1)
+
 infer :: Env -> Expr -> Either TypeError (Expr, Substitution)
 infer _ Knd = Right (Knd, [])
 infer _ IntT = Right (Knd, [])
@@ -233,7 +268,7 @@ infer env (Typ t) = case lookup t env of
   Nothing -> Left (UndefinedTyp t)
 infer env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> do
-    let xT = freshName (map fst env) (x ++ "T")
+    let xT = newName (map fst env) (x ++ "T")
     Right (Var xT, [(xT, Var xT), (x, Ann (Var x) (For [] (Var xT)))])
   Just (Ann (Var x') ty) | x == x' -> do
     let (t, s) = instantiate (map fst env) ty
@@ -243,9 +278,21 @@ infer env (Var x) = case lookup x env of
 infer env (Fun a b) = do
   (_, s) <- infer2 env a b
   Right (Knd, s)
--- Lam !Pattern !Expr
--- App !Expr !Expr
--- Ann !Expr !Type
+infer env (Lam p b) = do
+  let a = patternValue p
+  ((t1, t2), s) <- infer2 (pushVars (freeVars a) env) a b
+  Right (Fun t1 t2, s)
+infer env (App a b) = do
+  ((ta, tb), s1) <- infer2 env a b
+  let x = newName (map fst (apply s1 env)) "t"
+  (_, s2) <- subtype ta (Fun tb (Var x))
+  case (eval s2 (Var x), s2 `compose` s1) of
+    (Var x', s) | x == x' -> Right (Var x, [(x, Var x)] `union` s)
+    (t, s) -> Right (t, s)
+infer env (Ann a ty) = do
+  let (t, s1) = instantiate (map fst env) ty
+  (ta, s2) <- infer (apply s1 env) a
+  subtype ta (eval (apply s2 env) t)
 -- Or !Expr !Expr
 -- Fix !String !Expr
 -- Op2 !BinaryOp !Expr !Expr
@@ -260,7 +307,7 @@ infer2 env a b = do
 
 -- inferApp :: Env -> (String, Type) -> [Expr] -> Either TypeError (Expr, Substitution)
 -- inferApp env (x, ty) args = do
---   let y = freshName (map fst env) x
+--   let y = newName (map fst env) x
 --   let env' = (y, Ann (Var y) ty) : env
 --   infer env' (app (Var y) args)
 
@@ -271,11 +318,13 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (f, g, h) = (Var "f", Var "g", Var "h")
 
-  let factorial f = Fix "f" (Lam (IntP 0) i1 `Or` Lam (VarP "x") (x `mul` App (Var f) (x `sub` i1)))
+  let (x', y', z') = (VarP "x", VarP "y", VarP "z")
+
+  let factorial f = Fix "f" (Lam (IntP 0) i1 `Or` Lam x' (x `mul` App (Var f) (x `sub` i1)))
 
   it "☯ syntax sugar" $ do
     let' [] x `shouldBe` x
-    let' [(VarP "y", z)] x `shouldBe` App (Lam (VarP "y") x) z
+    let' [(y', z)] x `shouldBe` App (Lam y' x) z
 
     or' [] `shouldBe` Err
     or' [x] `shouldBe` x
@@ -283,7 +332,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     or' [x, y, z] `shouldBe` Or x (Or y z)
 
     lam [] x `shouldBe` x
-    lam [VarP "y"] x `shouldBe` Lam (VarP "y") x
+    lam [y'] x `shouldBe` Lam y' x
 
     app x [] `shouldBe` x
     app x [y, z] `shouldBe` App (App x y) z
@@ -319,8 +368,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
     it "☯ eval Lam" $ do
       let env = [("x", Int 1)]
-      eval env (Lam (VarP "x") x) `shouldBe` Lam (VarP "x") x
-      eval env (Lam (VarP "y") x) `shouldBe` Lam (VarP "y") (Int 1)
+      eval env (Lam x' x) `shouldBe` Lam x' x
+      eval env (Lam y' x) `shouldBe` Lam y' (Int 1)
 
     it "☯ eval Or" $ do
       let env = [("x", i1), ("y", i2), ("z", i3)]
@@ -333,7 +382,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     it "☯ eval App" $ do
       let env = [("x", Int 1), ("f", g), ("g", g), ("h", h)]
       eval env (App (Var "f") Knd) `shouldBe` App g Knd
-      eval env (App (Lam AnyP x) y) `shouldBe` Int 1
       eval env (App (Lam KndP x) y) `shouldBe` App (Lam KndP (Int 1)) y
       eval env (App (Lam KndP x) Knd) `shouldBe` Int 1
       eval env (App (Lam KndP x) IntT) `shouldBe` Err
@@ -346,17 +394,17 @@ run = describe "--==☯️ Core language ☯️==--" $ do
       eval env (App (Lam (CtrP "A") x) (Ctr "B")) `shouldBe` Err
       eval env (App (Lam (TypP "T") x) (Typ "T")) `shouldBe` Int 1
       eval env (App (Lam (TypP "T") x) (Typ "U")) `shouldBe` Err
-      eval env (App (Lam (AppP (CtrP "B") (VarP "x")) x) (App (Ctr "B") Knd)) `shouldBe` Knd
-      eval env (App (Lam (AppP (TypP "U") (VarP "x")) x) (App (Typ "U") Knd)) `shouldBe` Knd
-      eval env (App (Lam (FunP KndP (VarP "x")) x) (Fun IntT Knd)) `shouldBe` Err
-      eval env (App (Lam (FunP IntTP (VarP "x")) x) (Fun IntT Knd)) `shouldBe` Knd
+      eval env (App (Lam (AppP (CtrP "B") x') x) (App (Ctr "B") Knd)) `shouldBe` Knd
+      eval env (App (Lam (AppP (TypP "U") x') x) (App (Typ "U") Knd)) `shouldBe` Knd
+      eval env (App (Lam (FunP KndP x') x) (Fun IntT Knd)) `shouldBe` Err
+      eval env (App (Lam (FunP IntTP x') x) (Fun IntT Knd)) `shouldBe` Knd
       eval env (App (Lam ErrP x) Knd) `shouldBe` Err
       eval env (App (Lam ErrP x) Err) `shouldBe` Int 1
       eval env (App (Or Err Err) Knd) `shouldBe` Err
       eval env (App (Or Err f) Knd) `shouldBe` App g Knd
       eval env (App (Or f Err) Knd) `shouldBe` App g Knd
       eval env (App (Or f h) Knd) `shouldBe` App g Knd
-      eval env (App (Fix "f" (Lam (VarP "x") (App h f))) Knd) `shouldBe` App h (Fix "f" (Lam (VarP "x") (App h f)))
+      eval env (App (Fix "f" (Lam x' (App h f))) Knd) `shouldBe` App h (Fix "f" (Lam x' (App h f)))
       eval env (App Err Knd) `shouldBe` Err
       eval env (App Err Knd) `shouldBe` Err
 
@@ -440,14 +488,32 @@ run = describe "--==☯️ Core language ☯️==--" $ do
       infer env (Fun a y) `shouldBe` Left (UndefinedVar "y")
       infer env (Fun a b) `shouldBe` Right (Knd, [("aT", aT), ("a", Ann a (For [] aT))])
 
+    it "☯ infer Ann" $ do
+      infer [] (Ann (Int 1) (For [] IntT)) `shouldBe` Right (IntT, [])
+      infer [] (Ann (Int 1) (For [] Knd)) `shouldBe` Left (TypeMismatch IntT Knd)
+
     it "☯ infer Lam" $ do
-      True `shouldBe` True
+      let (t, xT) = (Var "t", Var "xT")
+      let env =
+            [ ("A", Ann (Ctr "A") (For ["a"] a)),
+              ("T", Ann (Typ "T") (For ["b"] b)),
+              ("x", Int 1)
+            ]
+      infer env (Lam KndP x) `shouldBe` Right (Fun Knd IntT, [])
+      infer env (Lam IntTP x) `shouldBe` Right (Fun Knd IntT, [])
+      infer env (Lam IntTP x) `shouldBe` Right (Fun Knd IntT, [])
+      infer env (Lam (CtrP "A") x) `shouldBe` Right (Fun a IntT, [("a", a)])
+      infer env (Lam (TypP "T") x) `shouldBe` Right (Fun b IntT, [("b", b)])
+      infer env (Lam (VarP "x") x) `shouldBe` Right (Fun xT xT, [("xT", xT), ("x", Ann x (For [] xT))])
+      infer env (Lam (FunP x' IntTP) x) `shouldBe` Right (Fun Knd xT, [("xT", xT), ("x", Ann x (For [] xT))])
+      infer env (Lam (AppP x' IntTP) x) `shouldBe` Right (Fun t (Fun Knd t), [("t", t), ("xT", Fun Knd t), ("x", Ann x (For [] (Fun Knd t)))])
 
     it "☯ infer App" $ do
-      True `shouldBe` True
-
-    it "☯ infer Ann" $ do
-      True `shouldBe` True
+      let t = Var "t"
+      let env = [("x", Int 1), ("y", y), ("f", Ann (Var "f") (For [] $ Fun IntT Knd))]
+      infer env (App (Var "f") x) `shouldBe` Right (Knd, [("t", Knd)])
+      infer env (App (Lam y' y) x) `shouldBe` Right (IntT, [("yT", IntT), ("y", Ann y (For [] IntT)), ("t", IntT)])
+      infer env (App y x) `shouldBe` Right (t, [("t", t), ("yT", Fun IntT t), ("y", Ann y (For [] (Fun IntT t)))])
 
     it "☯ infer Or" $ do
       True `shouldBe` True
@@ -468,4 +534,16 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     True `shouldBe` True
 
   it "☯ Vec" $ do
+    let i0 = Int 0
+    let (n, a) = (Var "n", Var "a")
+    let vec n a = app (Var "Vec") [n, a]
+    let env =
+          [ ("Vec", Ann (Typ "Vec") (For ["n", "a"] (Fun IntT Knd))),
+            ("Cons", Ann (Ctr "Cons") (For ["n", "a"] (fun [a, vec n a] (vec (add n i1) a)))),
+            ("Nil", Ann (Ctr "Nil") (For ["a"] (vec i0 a)))
+          ]
+
+    let cons x xs = app (Var "Cons") [x, xs]
+    let nil = Var "Nil"
+    infer env nil `shouldBe` Right (app (Typ "Vec") [i0, a], [])
     True `shouldBe` True
