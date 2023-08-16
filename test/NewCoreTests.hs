@@ -1,6 +1,6 @@
 module NewCoreTests where
 
-import Data.List (delete, intercalate, union)
+import Data.List (delete, union)
 import Test.Hspec
 
 -- https://simon.peytonjones.org/verse-calculus
@@ -20,7 +20,23 @@ data Expr
   | Fix !String !Expr
   | Op2 !BinaryOp !Expr !Expr
   | Err
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show Expr where
+  show Knd = "@Type"
+  show IntT = "@Int"
+  show (Int i) = show i
+  show (Ctr k) = "#" ++ k
+  show (Typ t) = "%" ++ t
+  show (Var x) = x
+  show (Fun a b) = "(" ++ show a ++ " -> " ++ show b ++ ")"
+  show (Lam p b) = "(\\" ++ show p ++ ". " ++ show b ++ ")"
+  show (App a b) = "(" ++ show a ++ " " ++ show b ++ ")"
+  show (Ann a ty) = "(" ++ show a ++ " : " ++ show ty ++ ")"
+  show (Or a b) = "(" ++ show a ++ " | " ++ show b ++ ")"
+  show (Fix x a) = "(@fix " ++ x ++ " " ++ show a ++ ")"
+  show (Op2 op a b) = "(" ++ show a ++ " " ++ show op ++ " " ++ show b ++ ")"
+  show Err = "@error"
 
 data Pattern
   = KndP
@@ -32,18 +48,31 @@ data Pattern
   | FunP !Pattern !Pattern
   | AppP !Pattern !Pattern
   | ErrP
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show Pattern where
+  show p = show (patternValue p)
 
 data Type
   = For ![String] !Expr
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show Type where
+  show (For [] t) = show t
+  show (For xs t) = "@for " ++ unwords xs ++ ". " ++ show t
 
 data BinaryOp
   = Add
   | Sub
   | Mul
   | Gt
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show BinaryOp where
+  show Add = "+"
+  show Sub = "+"
+  show Mul = "+"
+  show Gt = ">"
 
 type Env = [(String, Expr)]
 
@@ -203,16 +232,16 @@ eval env (Op2 op a b) = case (op, eval env a, eval env b) of
 eval _ Err = Err
 
 -- Type inference
-subst :: Substitution -> Expr -> Expr
-subst s (Ann a (For xs b)) = Ann (subst s a) (For xs (eval (pushVars xs s) b))
-subst _ a = a
-
 apply :: Substitution -> Env -> Env
-apply _ [] = []
-apply s ((x, Ann a ty) : env) = (x, subst s (Ann a ty)) : apply s env
-apply s ((x, a) : env) = case lookup x s of
-  Just b -> (x, b) : apply s env
-  Nothing -> (x, a) : apply s env
+apply s env = do
+  let apply' [] = []
+      apply' ((x, Ann a (For xs t)) : env) = do
+        let t' = eval (pushVars xs s) t
+        (x, Ann a (For xs t')) : apply' env
+      apply' ((x, a) : env) = case lookup x s of
+        Just b -> (x, b) : apply s env
+        Nothing -> (x, a) : apply s env
+  s `union` apply' env
 
 compose :: Substitution -> Substitution -> Substitution
 compose s1 s2 = apply s1 s2 `union` s1
@@ -292,6 +321,13 @@ infer env (Lam p b) = do
   let a = patternValue p
   ((t1, t2), s) <- infer2 (pushVars (freeVars a) env) a b
   Right (Fun t1 t2, s)
+infer env (App a b@(App (Ctr "Succ") _)) = do
+  ((ta, tb), s1) <- infer2 env a b
+  let x = newName (map fst (apply s1 env)) "t"
+  (_, s2) <- subtype ta (Fun tb (Var x))
+  case (eval s2 (Var x), s2 `compose` s1) of
+    (Var x', s) | x == x' -> Right (Var x, [(x, Var x)] `union` s)
+    (t, s) -> Right (t, s)
 infer env (App a b) = do
   ((ta, tb), s1) <- infer2 env a b
   let x = newName (map fst (apply s1 env)) "t"
@@ -311,16 +347,14 @@ infer _ Err = Right (Err, [])
 infer _ _ = error "TODO"
 
 infer2 :: Env -> Expr -> Expr -> Either TypeError ((Expr, Expr), Substitution)
+infer2 env a@(Ctr "Succ") b@(App _ _) = do
+  (ta, s1) <- infer env a
+  (tb, s2) <- infer (apply s1 env) b
+  Right ((eval s2 ta, tb), s2 `compose` s1)
 infer2 env a b = do
   (ta, s1) <- infer env a
   (tb, s2) <- infer (apply s1 env) b
   Right ((eval s2 ta, tb), s2 `compose` s1)
-
--- inferApp :: Env -> (String, Type) -> [Expr] -> Either TypeError (Expr, Substitution)
--- inferApp env (x, ty) args = do
---   let y = newName (map fst env) x
---   let env' = (y, Ann (Var y) ty) : env
---   infer env' (app (Var y) args)
 
 run :: SpecWith ()
 run = describe "--==☯️ Core language ☯️==--" $ do
@@ -524,7 +558,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
       let t = Var "t"
       let env = [("x", Int 1), ("y", y), ("f", Ann (Var "f") (For [] $ Fun IntT Knd))]
       infer env (App (Var "f") x) `shouldBe` Right (Knd, [("t", Knd)])
-      infer env (App (Lam y' y) x) `shouldBe` Right (IntT, [("yT", IntT), ("y", Ann y (For [] IntT)), ("t", IntT)])
+      infer env (App (Lam y' y) x) `shouldBe` Right (IntT, [("t", IntT), ("yT", IntT), ("y", Ann y (For [] IntT))])
       infer env (App y x) `shouldBe` Right (t, [("t", t), ("yT", Fun IntT t), ("y", Ann y (For [] (Fun IntT t)))])
 
     it "☯ infer Or" $ do
@@ -556,29 +590,22 @@ run = describe "--==☯️ Core language ☯️==--" $ do
         num 0 = Ctr "Zero"
         num n = App (Ctr "Succ") (num (n - 1))
     infer env (num 0) `shouldBe` Right (nat i0, [])
-    infer env (num 1) `shouldBe` Right (nat i1, [("n", i0), ("t", nat i1)])
-    -- infer env (num 2) `shouldBe` Right (nat i2, [("n", i0), ("t", nat i1)])
-    True `shouldBe` True
+    infer env (num 1) `shouldBe` Right (nat i1, [("t", nat i1), ("n", i0)])
+    infer env (num 2) `shouldBe` Right (nat i2, [("t1", nat i2), ("n", i1), ("t", nat i1), ("n1", i0)])
 
   it "☯ Vec" $ do
     let i0 = Int 0
     let (n, n1) = (Var "n", Var "n1")
+    let (a, a1) = (Var "a", Var "a1")
     let vec n a = app (Typ "Vec") [n, a]
     let env =
           [ ("Vec", Ann (Typ "Vec") (For [] (fun [IntT, Knd] Knd))),
             ("Nil", Ann (Ctr "Nil") (For ["a"] (vec i0 a))),
-            ("Cons", Ann (Ctr "Cons") (For ["n", "a"] (fun [a, vec n a] (vec (add n i1) a)))),
-            ("n", Knd)
+            ("Cons", Ann (Ctr "Cons") (For ["n", "a"] (fun [a, vec n a] (vec (add n i1) a))))
           ]
 
-    let cons x xs = app (Ctr "Cons") [x, xs]
-    let nil = Ctr "Nil"
-    -- infer env nil `shouldBe` Right (vec i0 a, [("a", a)])
-    -- infer env (Var "Cons") `shouldBe` Right (fun [a, vec n1 a] (vec (add n1 i1) a), [("n1", n1), ("a", a)])
-    -- infer env (cons (Int 42) nil) `shouldBe` Right (vec i1 IntT, [("n1", i0), ("a", IntT), ("t", vec i1 IntT)])
-
-    let list [] = nil
-        list (x : xs) = cons x (list xs)
-    -- infer env (list [Int 42]) `shouldBe` Right (vec i1 IntT, [("n1", i0), ("a", IntT), ("t", vec i1 IntT)])
-    -- infer env (list [Int 42, Int 9]) `shouldBe` Right (vec i2 IntT, [("n1", i0), ("a", IntT), ("t", vec i1 IntT)])
-    True `shouldBe` True
+    let list [] = Ctr "Nil"
+        list (x : xs) = app (Ctr "Cons") [x, list xs]
+    infer env (list []) `shouldBe` Right (vec i0 a, [("a", a)])
+    infer env (list [Int 42]) `shouldBe` Right (vec i1 IntT, [("t1", vec i1 IntT), ("a1", IntT), ("n", i0), ("t", Fun (vec n IntT) (vec (add n i1) IntT)), ("a", IntT)])
+    fmap fst (infer env (list [Int 42, Int 9])) `shouldBe` Right (vec i2 IntT)
