@@ -5,6 +5,8 @@ import Test.Hspec
 
 -- https://simon.peytonjones.org/verse-calculus
 -- https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadt-pldi.pdf
+-- https://youtu.be/ytPAlhnAKro
+-- https://www.youtube.com/live/utyBNDj7s2w
 data Expr
   = Knd
   | IntT
@@ -193,10 +195,15 @@ eval env (Var x) = case lookup x env of
   Just (Ann (Var x') _) | x == x' -> Var x
   Just a -> eval env a
   Nothing -> Var x
-eval env (Fun a b) = Fun (eval env a) (eval env b)
+eval env (Fun a b) = case (eval env a, eval env b) of
+  (Or a1 a2, b) -> Or (Fun a1 b) (Fun a2 b)
+  (a, Or b1 b2) -> Or (Fun a b1) (Fun a b2)
+  (a, b) -> Fun a b
 eval env (Lam p b) = do
   let xs = freeVars (patternValue p)
-  Lam p (eval (pushVars xs env) b)
+  case eval (pushVars xs env) b of
+    Or b1 b2 -> Or (Lam p b1) (Lam p b2)
+    b -> Lam p b
 eval env (App a b) = case (eval env a, eval env b) of
   (Lam KndP a, Knd) -> a
   (Lam IntTP a, IntT) -> a
@@ -225,6 +232,8 @@ eval env (Or a b) = case (eval env a, eval env b) of
   (a, b) -> Or a b
 eval env (Fix x a) = Fix x (eval ((x, Var x) : env) a)
 eval env (Op2 op a b) = case (op, eval env a, eval env b) of
+  (op, Or a1 a2, b) -> eval [] (Or (Op2 op a1 b) (Op2 op a2 b))
+  (op, a, Or b1 b2) -> eval [] (Or (Op2 op a b1) (Op2 op a b2))
   (Add, Int a, Int b) -> Int (a + b)
   (Sub, Int a, Int b) -> Int (a - b)
   (Mul, Int a, Int b) -> Int (a * b)
@@ -321,13 +330,6 @@ infer env (Lam p b) = do
   let a = patternValue p
   ((t1, t2), s) <- infer2 (pushVars (freeVars a) env) a b
   Right (Fun t1 t2, s)
-infer env (App a b@(App (Ctr "Succ") _)) = do
-  ((ta, tb), s1) <- infer2 env a b
-  let x = newName (map fst (apply s1 env)) "t"
-  (_, s2) <- subtype ta (Fun tb (Var x))
-  case (eval s2 (Var x), s2 `compose` s1) of
-    (Var x', s) | x == x' -> Right (Var x, [(x, Var x)] `union` s)
-    (t, s) -> Right (t, s)
 infer env (App a b) = do
   ((ta, tb), s1) <- infer2 env a b
   let x = newName (map fst (apply s1 env)) "t"
@@ -410,11 +412,14 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     it "☯ eval Fun" $ do
       let env = [("x", Int 1), ("y", IntT)]
       eval env (Fun x y) `shouldBe` Fun (Int 1) IntT
+      eval env (Fun (Or x y) z) `shouldBe` Or (Fun (Int 1) z) (Fun IntT z)
+      eval env (Fun x (Or y z)) `shouldBe` Or (Fun (Int 1) IntT) (Fun (Int 1) z)
 
     it "☯ eval Lam" $ do
       let env = [("x", Int 1)]
       eval env (Lam x' x) `shouldBe` Lam x' x
       eval env (Lam y' x) `shouldBe` Lam y' (Int 1)
+      eval env (Lam x' (Or x y)) `shouldBe` Or (Lam x' x) (Lam x' y)
 
     it "☯ eval Or" $ do
       let env = [("x", i1), ("y", i2), ("z", i3)]
