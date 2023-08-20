@@ -3,10 +3,26 @@ module NewCoreTests where
 import Data.List (delete, union)
 import Test.Hspec
 
+{- TODO:
+- Literal types -- (1 : 1), (x : Int), (x + 1 : Int)
+- Type aliases
+
+Vec n a
+  = Cons : a -> Vec n a -> Vec (n + 1) a
+  | Nil : Vec 0 a
+
+Vec = Vec : Int -> Type -> Type
+
+Vec = @alias Vec (Cons | Nothing) : Int -> Type -> Type
+Cons = #Cons : @for n a. a -> Vec n a -> Vec (n + 1) a
+Nil = #Nil : @for a. Vec 0 a
+-}
+
 -- https://simon.peytonjones.org/verse-calculus
 -- https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadt-pldi.pdf
 -- https://youtu.be/ytPAlhnAKro
 -- https://www.youtube.com/live/utyBNDj7s2w
+-- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
 data Expr
   = Knd
   | IntT
