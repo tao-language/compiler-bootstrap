@@ -13,7 +13,7 @@ Vec n a
 
 Vec = Vec : Int -> Type -> Type
 
-Vec = @alias Vec (Cons | Nothing) : Int -> Type -> Type
+Vec = \n a. @alias Vec (Cons a () | Nothing) : Int -> Type -> Type
 Cons = #Cons : @for n a. a -> Vec n a -> Vec (n + 1) a
 Nil = #Nil : @for a. Vec 0 a
 -}
@@ -83,14 +83,12 @@ data BinaryOp
   = Add
   | Sub
   | Mul
-  | Gt
   deriving (Eq)
 
 instance Show BinaryOp where
   show Add = "+"
-  show Sub = "+"
-  show Mul = "+"
-  show Gt = ">"
+  show Sub = "-"
+  show Mul = "*"
 
 type Env = [(String, Expr)]
 
@@ -123,9 +121,6 @@ sub = Op2 Sub
 
 mul :: Expr -> Expr -> Expr
 mul = Op2 Mul
-
-gt :: Expr -> Expr -> Expr
-gt = Op2 Gt
 
 let' :: [(Pattern, Expr)] -> Expr -> Expr
 let' [] b = b
@@ -358,11 +353,24 @@ infer env (Ann a ty) = do
   let (t, s2) = instantiate (map fst (apply s1 env)) ty
   (t, s3) <- subtype (eval s2 ta) t
   Right (t, s3 `compose` s2 `compose` s1)
--- Or !Expr !Expr
--- Fix !String !Expr
--- Op2 !BinaryOp !Expr !Expr
+infer env (Or a b) = do
+  ((ta, tb), s1) <- infer2 env a b
+  case subtype ta tb of
+    Right (t, s2) -> Right (t, s2 `compose` s1)
+    Left _ -> case subtype tb ta of
+      Right (t, s2) -> Right (t, s2 `compose` s1)
+      Left _ -> Right (Or ta tb, s1)
+infer env (Fix x a) = infer ((x, Var x) : env) a
+infer env (Op2 Add a b) = do
+  (_, s) <- infer2 env (Ann a (For [] IntT)) (Ann b (For [] IntT))
+  Right (IntT, s)
+infer env (Op2 Sub a b) = do
+  (_, s) <- infer2 env (Ann a (For [] IntT)) (Ann b (For [] IntT))
+  Right (IntT, s)
+infer env (Op2 Mul a b) = do
+  (_, s) <- infer2 env (Ann a (For [] IntT)) (Ann b (For [] IntT))
+  Right (IntT, s)
 infer _ Err = Right (Err, [])
-infer _ _ = error "TODO"
 
 infer2 :: Env -> Expr -> Expr -> Either TypeError ((Expr, Expr), Substitution)
 infer2 env a@(Ctr "Succ") b@(App _ _) = do
@@ -590,6 +598,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
     it "☯ infer Op2" $ do
       True `shouldBe` True
+
+  it "☯ infer factorial" $ do
+    let env = [("f", factorial "f")]
+    infer env (Var "f") `shouldBe` Right (Fun IntT IntT, [("t", IntT), ("fT", Fun IntT (Var "t")), ("f", Ann f (For [] (Fun IntT IntT))), ("xT", IntT), ("x", Ann x (For [] IntT))])
 
   it "☯ Bool" $ do
     True `shouldBe` True
