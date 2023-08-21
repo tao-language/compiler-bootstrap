@@ -1,16 +1,15 @@
--- import CoreTests (coreTests)
+import qualified CoreTests
 -- import ExamplesTests (examplesTests)
-import qualified NewCoreTests as CoreTests
--- import ParserTests (parserTests)
+import qualified ParserTests
 -- import TaoLangTests (taoLangTests)
 -- import TaoTests (taoTests)
 import Test.Hspec (hspec)
 
 main :: IO ()
 main = hspec $ do
-  -- parserTests
-  -- coreTests
-  -- taoTests
-  -- taoLangTests
-  -- examplesTests
+  ParserTests.run
   CoreTests.run
+
+-- taoTests
+-- taoLangTests
+-- examplesTests

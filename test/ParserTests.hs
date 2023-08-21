@@ -4,8 +4,8 @@ import Flow ((|>))
 import Parser
 import Test.Hspec (SpecWith, describe, it, shouldBe)
 
-parserTests :: SpecWith ()
-parserTests = describe "--==☯ Parser ☯==--" $ do
+run :: SpecWith ()
+run = describe "--==☯ Parser ☯==--" $ do
   let parse' :: Parser a -> String -> Maybe (a, String)
       parse' parser source = case parseSome parser source of
         Right (x, State {source = remaining}) -> Just (x, remaining)
