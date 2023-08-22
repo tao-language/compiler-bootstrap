@@ -1,281 +1,178 @@
 module Tao where
 
 import qualified Core as C
-import Data.Bifunctor (second)
-import Data.Char (isUpper)
-import Data.List (delete, foldl', union)
+import qualified Parser as P
 
-{-
-Syntax sugar (https://en.wikibooks.org/wiki/Haskell/Syntactic_sugar)
-  - Do notation
-  - Where definitions
-  - Case and Match
-  - Infix operators (x `op` y)
-  - Partial operators (+ x) (y -)
-  - IfElse
-  - Char
-  - Maybe
-  - Tuple
-  - Record
-  - List
-  - String
-  - Set
-  - Dict
-  - Vector
-  - Matrix
-  - Tensor
-  - List sequence [1..n] [1..] [1, 3..] ['a'..'z']
-  - List comprehension
-  - Unnamed Union types
-  - Unnamed Record types
--}
+data Expr
+  = -- Core expressions
+    Err
+  | Int !Int
+  | Num !Double
+  | Var !String
+  | Fun !Expr !Expr
+  | Match ![([Pattern], Expr)]
+  | App !Expr !Expr
+  | Ann !Expr !Type
+  | Or !Expr !Expr
+  | AddI !Expr !Expr
+  | SubI !Expr !Expr
+  | MulI !Expr !Expr
+  | -- Syntax sugar
+    Char !Int
+  | Maybe !Expr
+  | Tuple ![Expr]
+  | Record ![(String, Expr)]
+  | Text !String
+  | List ![Expr]
+  | Set ![Expr]
+  | Dict ![(Expr, Expr)]
+  | From !Expr
+  | Until !Expr
+  | Range !Expr !Expr
+  | Let !(Pattern, Expr) !Expr
+  | Do !(Pattern, Expr) !Expr
+  | IfElse !Expr !Expr !Expr
+  -- TODO: Vector, Matrix, Tensor, List comprehension
+  deriving (Eq, Show)
 
--- data Expr
---   = Int !Int
---   | Num !Double
---   | Var !String
---   | For !String !Expr
---   | Fun !Expr !Expr
---   | App !Expr !Expr
---   | Ann !Expr !Type
---   | Let ![Definition] !Expr
---   | Ctr !String ![Expr]
---   | Case !Expr ![(String, Expr)] !Expr
---   | CaseI !Expr ![(Int, Expr)] !Expr
---   | Match ![Branch]
---   | Op !String ![Expr]
---   | Op2 !BinaryOp !Expr !Expr
---   deriving (Eq, Show)
+data Pattern
+  = ErrP
+  | KndP
+  | IntTP
+  | IntP !Int
+  | CtrP !String
+  | TypP !String
+  | VarP !String
+  | FunP !Pattern !Pattern
+  | AppP !Pattern !Pattern
+  deriving (Eq, Show)
 
--- data BinaryOp
---   = Eq
---   | Lt
---   | Add
---   | Sub
---   | Mul
---   deriving (Eq)
+data Type
+  = For ![String] !Expr
+  deriving (Eq, Show)
 
--- instance Show BinaryOp where
---   show Eq = "=="
---   show Lt = "<"
---   show Add = "+"
---   show Sub = "-"
---   show Mul = "*"
+type Env = [(String, Expr)]
 
--- data Pattern
---   = AnyP
---   | VarP !String
---   | IntP !Int
---   | CtrP !String ![Pattern]
---   deriving (Eq, Show)
+data CompileError
+  = TypeError !C.TypeError
+  | SyntaxError !P.SyntaxError
+  deriving (Eq, Show)
 
--- type Type = Expr
+nameType :: String
+nameType = "Type"
 
--- data Branch
---   = Br ![Pattern] !Expr
---   deriving (Eq, Show)
+nameIntType :: String
+nameIntType = "Integer"
 
--- data Definition
---   = Untyped !String !Expr
---   | Typed !String !Type !Expr
---   | Unpack !Pattern ![(String, Type)] !Expr
---   deriving (Eq, Show)
+nameNumType :: String
+nameNumType = "Number"
 
--- data ContextDefinition
---   = UnionType !String ![(String, Type)] ![(String, Type)]
---   | Value !Definition
---   deriving (Eq, Show)
+-- Syntax sugar
+fun :: [Expr] -> Expr -> Expr
+fun bs b = foldr Fun b bs
 
--- type Context = [ContextDefinition]
+lam :: [Pattern] -> Expr -> Expr
+lam [] a = a
+lam ps a = Match [(ps, a)]
 
--- data CompileError
---   = EmptyMatch
---   | MatchMissingArgs !Expr
---   | NotAUnionAlt !String !Expr
---   | TypeError !C.TypeError
---   | UndefinedCtrField !String !String
---   | UndefinedUnionAlt !String
---   | UndefinedUnionType !String
---   deriving (Eq, Show)
+app :: Expr -> [Expr] -> Expr
+app = foldl App
 
--- nameType :: String
--- nameType = "Type"
+or' :: [Expr] -> Expr
+or' [] = Err
+or' [a] = a
+or' (a : bs) = Or a (or' bs)
 
--- nameIntType :: String
--- nameIntType = "Int"
+-- Evaluation
+eval :: Env -> Expr -> Expr
+eval env a = fromCore (C.eval (toCoreEnv env) (toCore a))
 
--- nameNumType :: String
--- nameNumType = "Num"
+-- Type inference
+infer :: Env -> Expr -> Either CompileError Type
+infer env a = case C.infer (toCoreEnv env) (toCore a) of
+  Right (t', _) -> Right (For (C.freeVars t') (fromCore t'))
+  Left err -> Left (TypeError err)
 
--- lam :: [String] -> Expr -> Expr
--- lam xs a = Match [Br (map VarP xs) a]
+-- Compile to core
+toCore :: Expr -> C.Expr
+toCore Err = C.Err
+toCore (Int i) = C.Int i
+toCore (Num n) = C.Num n
+toCore (Var x) | x == nameType = C.Knd
+toCore (Var x) | x == nameIntType = C.IntT
+toCore (Var x) | x == nameNumType = C.NumT
+toCore (Var x) = C.Var x
+toCore (Fun a b) = C.Fun (toCore a) (toCore b)
+toCore (Match brs) = do
+  let toCoreBr (ps, b) = C.lam (map toCoreP ps) (toCore b)
+  C.or' (map toCoreBr brs)
+toCore (App a b) = C.App (toCore a) (toCore b)
+toCore (Ann a (For xs t)) = C.Ann (toCore a) (C.For xs (toCore t))
+toCore (Or a b) = C.Or (toCore a) (toCore b)
+toCore (AddI a b) = C.Op2 C.AddI (toCore a) (toCore b)
+toCore (SubI a b) = C.Op2 C.SubI (toCore a) (toCore b)
+toCore (MulI a b) = C.Op2 C.MulI (toCore a) (toCore b)
+-- Char !Int
+-- Maybe !Expr
+-- Tuple ![Expr]
+-- Record ![(String, Expr)]
+-- Text !String
+-- List ![Expr]
+-- Set ![Expr]
+-- Dict ![(Expr, Expr)]
+-- From !Expr
+-- Until !Expr
+-- Range !Expr !Expr
+-- Let !(Pattern, Expr) !Expr
+-- Do !(Pattern, Expr) !Expr
+-- IfElse !Expr !Expr !Expr
+toCore a = error ("TODO: " ++ show a)
 
--- for :: [String] -> Expr -> Expr
--- for xs a = foldr For a xs
+toCoreP :: Pattern -> C.Pattern
+toCoreP ErrP = C.ErrP
+toCoreP KndP = C.KndP
+toCoreP IntTP = C.IntTP
+toCoreP (IntP i) = C.IntP i
+toCoreP (CtrP k) = C.CtrP k
+toCoreP (TypP t) = C.TypP t
+toCoreP (VarP x) = C.VarP x
+toCoreP (FunP p q) = C.FunP (toCoreP p) (toCoreP q)
+toCoreP (AppP p q) = C.AppP (toCoreP p) (toCoreP q)
 
--- app :: Expr -> [Expr] -> Expr
--- app = foldl' App
+toCoreEnv :: Env -> C.Env
+toCoreEnv env = error "TODO: toCoreEnv"
 
--- asApp :: Expr -> (Expr, [Expr])
--- asApp (App a b) = second (++ [b]) (asApp a)
--- asApp a = (a, [])
+-- Decompile from core
+fromCore :: C.Expr -> Expr
+fromCore C.Err = Err
+fromCore C.Knd = Var nameType
+fromCore C.IntT = Var nameIntType
+fromCore C.NumT = Var nameNumType
+fromCore (C.Int i) = Int i
+fromCore (C.Num n) = Num n
+fromCore (C.Ctr k) = Var k
+fromCore (C.Typ t) = Var t
+fromCore (C.Var x) = Var x
+fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
+fromCore (C.Lam p b) = Match [([fromCoreP p], fromCore b)]
+fromCore (C.App a b) = App (fromCore a) (fromCore b)
+fromCore (C.Ann a (C.For xs t)) = Ann (fromCore a) (For xs (fromCore t))
+fromCore (C.Or a b) = Or (fromCore a) (fromCore b)
+fromCore (C.Fix x a) = Let (VarP x, fromCore a) (Var x)
+fromCore (C.Op2 C.AddI a b) = AddI (fromCore a) (fromCore b)
+fromCore (C.Op2 C.SubI a b) = SubI (fromCore a) (fromCore b)
+fromCore (C.Op2 C.MulI a b) = MulI (fromCore a) (fromCore b)
 
--- fun :: [Expr] -> Expr -> Expr
--- fun args b = foldr Fun b args
+fromCoreP :: C.Pattern -> Pattern
+fromCoreP C.ErrP = ErrP
+fromCoreP C.KndP = KndP
+fromCoreP C.IntTP = IntTP
+fromCoreP (C.IntP i) = IntP i
+fromCoreP (C.CtrP k) = CtrP k
+fromCoreP (C.TypP t) = TypP t
+fromCoreP (C.VarP x) = VarP x
+fromCoreP (C.FunP p q) = FunP (fromCoreP p) (fromCoreP q)
+fromCoreP (C.AppP p q) = AppP (fromCoreP p) (fromCoreP q)
 
--- match :: [Branch] -> Expr
--- match (Br [] a : _) = a
--- match brs = Match brs
-
--- typeVars :: Type -> [String]
--- typeVars (Var (ch : _)) | isUpper ch = []
--- typeVars (Var x) = [x]
--- typeVars (For x a) = x : typeVars a
--- typeVars (Fun a b) = typeVars a `union` typeVars b
--- typeVars (App a b) = foldr (union . typeVars) [] (snd (asApp (App a b)))
--- typeVars (Ann a _) = typeVars a
--- typeVars (Let [] a) = typeVars a
--- typeVars (Let ((Untyped x _) : defs) a) = delete x (typeVars (Let defs a))
--- typeVars (Let ((Typed x _ _) : defs) a) = delete x (typeVars (Let defs a))
--- typeVars (Ctr _ args) = foldr (union . typeVars) [] args
--- typeVars (Op _ args) = foldr (union . typeVars) [] args
--- typeVars (Op2 _ a b) = typeVars a `union` typeVars b
--- typeVars _ = []
-
--- toCore :: Expr -> Either CompileError C.Expr
--- toCore (Int i) = Right (C.Int i)
--- toCore (Num n) = Right (C.Num n)
--- toCore (Var "Type") = Right C.Knd
--- toCore (Var "Int") = Right C.IntT
--- toCore (Var "Num") = Right C.NumT
--- toCore (Var x) = Right (C.Var x)
--- -- toCore (For x a) = do
--- --   a <- toCore a
--- --   Right (C.For x a)
--- -- toCore (Fun a b) = do
--- --   a <- toCore a
--- --   b <- toCore b
--- --   Right (C.Fun a b)
--- toCore (App a b) = do
---   a <- toCore a
---   b <- toCore b
---   Right (C.App a b)
--- -- toCore (Ann a b) = do
--- --   a <- toCore a
--- --   b <- toCore b
--- --   Right (C.Ann a b)
--- toCore (Let defs a) = do
---   defs <- mapM toCoreDefs defs
---   a <- toCore a
---   Right (C.Let (concat defs) a)
--- toCore (Ctr k args) = do
---   args <- mapM toCore args
---   Right (C.Ctr "TODO" k args)
-
--- -- toCore (Case a cases c) = do
--- --   a <- toCore a
--- --   cases <- mapM toCoreSecond cases
--- --   c <- toCore c
--- --   Right (C.Case a cases c)
--- -- toCore (CaseI a cases c) = do
--- --   a <- toCore a
--- --   cases <- mapM toCoreSecond cases
--- --   c <- toCore c
--- --   Right (C.CaseI a cases c)
--- -- toCore (Match branches) = do
--- --   branches <- mapM toCoreBranch branches
--- --   case C.match branches of
--- --     Right expr -> Right expr
--- --     Left err -> Left (TypeError err)
--- -- toCore (Op op args) = do
--- --   args <- mapM toCore args
--- --   Right (C.Op op args)
--- -- toCore (Op2 op a b) = do
--- --   a <- toCore a
--- --   b <- toCore b
--- --   Right (C.Op (show op) [a, b])
-
--- toCoreSecond :: (a, Expr) -> Either CompileError (a, C.Expr)
--- toCoreSecond (k, b) = do
---   b <- toCore b
---   Right (k, b)
-
--- toCoreDefs :: Definition -> Either CompileError C.Env
--- toCoreDefs (Untyped x a) = do
---   a <- toCore a
---   Right [(x, a)]
--- -- toCoreDefs (Typed x t a) = do
--- --   t <- toCore t
--- --   a <- toCore a
--- --   Right [(x, C.Ann a t)]
--- toCoreDefs (Unpack p ts a) = do
---   let unpackVar x = do
---         let value = App (match [Br [p] (Var x)]) a
---         case lookup x ts of
---           Just type' -> (x, Ann value type')
---           Nothing -> (x, value)
---   mapM (toCoreSecond . unpackVar) (bindings p)
-
--- bindings :: Pattern -> [String]
--- bindings AnyP = []
--- bindings (IntP _) = []
--- bindings (VarP x) = [x]
--- bindings (CtrP _ ps) = concatMap bindings ps
-
--- -- toCoreBranch :: Branch -> Either CompileError C.Branch
--- -- toCoreBranch (Br ps b) = do
--- --   b <- toCore b
--- --   Right (C.Br (map toCorePattern ps) b)
-
--- -- toCorePattern :: Pattern -> C.Pattern
--- -- toCorePattern AnyP = C.VarP ""
--- -- toCorePattern (VarP x) = C.VarP x
--- -- toCorePattern (IntP i) = C.IntP i
--- -- toCorePattern (CtrP k ps) = C.CtrP "TODO" k (map toCorePattern ps)
-
--- toCoreSymbols :: Definition -> Either CompileError C.Env
--- toCoreSymbols (Untyped x a) = Right []
--- toCoreSymbols (Typed x t a) = Right []
--- toCoreSymbols (Unpack p ts a) = Right []
-
--- toCoreContext :: [Definition] -> Either CompileError C.Env
--- toCoreContext [] = Right []
--- toCoreContext (def : defs) = do
---   ctx1 <- toCoreSymbols def
---   ctx2 <- toCoreContext defs
---   Right (ctx1 ++ ctx2)
-
--- fromCore :: C.Expr -> Expr
--- fromCore C.Knd = Var nameType
--- fromCore C.IntT = Var nameIntType
--- fromCore C.NumT = Var nameNumType
--- fromCore (C.Int i) = Int i
--- fromCore (C.Num n) = Num n
--- fromCore (C.Var x) = Var x
--- -- TODO: Lam
--- -- fromCore (C.For x a) = For x (fromCore a)
--- -- fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
--- fromCore (C.App a b) = App (fromCore a) (fromCore b)
--- -- fromCore (C.Ann a b) = Ann (fromCore a) (fromCore b)
--- fromCore (C.Let defs a) = Let (map (\(x, b) -> Untyped x (fromCore b)) defs) (fromCore a)
--- fromCore (C.Fix x a) = Let [Untyped x (fromCore a)] (Var x)
--- fromCore (C.Ctr tx k args) = Ctr k (map fromCore args)
-
--- -- fromCore (C.Case a cases c) = Case (fromCore a) (map (second fromCore) cases) (fromCore c)
--- -- fromCore (C.CaseI a cases c) = CaseI (fromCore a) (map (second fromCore) cases) (fromCore c)
--- -- fromCore (C.Op "==" [a, b]) = Op2 Eq (fromCore a) (fromCore b)
--- -- fromCore (C.Op "<" [a, b]) = Op2 Lt (fromCore a) (fromCore b)
--- -- fromCore (C.Op "+" [a, b]) = Op2 Add (fromCore a) (fromCore b)
--- -- fromCore (C.Op "-" [a, b]) = Op2 Sub (fromCore a) (fromCore b)
--- -- fromCore (C.Op "*" [a, b]) = Op2 Mul (fromCore a) (fromCore b)
--- -- fromCore (C.Op op args) = Op op (map fromCore args)
-
--- eval :: [Definition] -> Expr -> Either CompileError (Expr, Type)
--- eval defs a = do
---   ctx <- toCoreContext defs
---   a <- toCore a
---   case C.infer ctx a of
---     Right (t, _) -> do
---       let b = C.eval ctx a
---       Right (fromCore b, fromCore t)
---     Left err -> Left (TypeError err)
+fromCoreEnv :: C.Env -> Env
+fromCoreEnv env = error "TODO: toCoreEnv"

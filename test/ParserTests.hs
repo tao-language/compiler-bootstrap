@@ -9,7 +9,7 @@ run = describe "--==☯ Parser ☯==--" $ do
   let parse' :: Parser a -> String -> Maybe (a, String)
       parse' parser source = case parseSome parser source of
         Right (x, State {source = remaining}) -> Just (x, remaining)
-        Left (ParserError _ _) -> Nothing
+        Left (SyntaxError _ _) -> Nothing
 
   describe "☯ Control flow" $ do
     it "☯ succeed" $ do

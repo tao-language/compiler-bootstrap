@@ -4,7 +4,7 @@ import Control.Monad (void)
 import qualified Data.Char as Char
 import Flow ((|>))
 
-newtype Parser a = Parser (State -> Either ParserError (a, State))
+newtype Parser a = Parser (State -> Either SyntaxError (a, State))
 
 data State = State
   { source :: !String,
@@ -13,8 +13,8 @@ data State = State
   }
   deriving (Eq, Show)
 
-data ParserError
-  = ParserError !String !State
+data SyntaxError
+  = SyntaxError !String !State
   deriving (Eq, Show)
 
 instance Functor Parser where
@@ -41,14 +41,14 @@ instance Monad Parser where
       )
   return x = succeed x
 
-parse :: Parser a -> String -> Either ParserError a
+parse :: Parser a -> String -> Either SyntaxError a
 parse parser source = do
   (x, state) <- parseSome parser source
   case state of
     State {source = ""} -> Right x
-    State {source = remaining} -> Left (ParserError ("not parsed:\n" ++ remaining) state)
+    State {source = remaining} -> Left (SyntaxError ("not parsed:\n" ++ remaining) state)
 
-parseSome :: Parser a -> String -> Either ParserError (a, State)
+parseSome :: Parser a -> String -> Either SyntaxError (a, State)
 parseSome (Parser p) source =
   p State {source = source, row = 1, col = 1}
 
@@ -56,7 +56,7 @@ succeed :: a -> Parser a
 succeed value = Parser (\state -> Right (value, state))
 
 expected :: String -> Parser a
-expected message = Parser (Left . ParserError message)
+expected message = Parser (Left . SyntaxError message)
 
 assert :: Bool -> String -> Parser ()
 assert check message = if check then succeed () else expected message
@@ -76,10 +76,10 @@ oneOf (p : ps) = p |> orElse (oneOf ps)
 
 endOfFile :: Parser ()
 endOfFile = do
-  let eof :: State -> Either ParserError ((), State)
+  let eof :: State -> Either SyntaxError ((), State)
       eof state = case source state of
         "" -> Right ((), state)
-        _ -> Left (ParserError "end of file" state)
+        _ -> Left (SyntaxError "end of file" state)
   Parser eof
 
 endOfLine :: Parser ()
@@ -89,11 +89,11 @@ endOfLine = oneOf [void (char '\n'), endOfFile]
 
 anyChar :: Parser Char
 anyChar = do
-  let advance :: State -> Either ParserError (Char, State)
+  let advance :: State -> Either SyntaxError (Char, State)
       advance state = case source state of
         '\n' : source -> Right ('\n', state {source = source, row = row state + 1, col = 1})
         ch : source -> Right (ch, state {source = source, col = col state + 1})
-        "" -> Left (ParserError "a character" state)
+        "" -> Left (SyntaxError "a character" state)
   Parser advance
 
 charIf :: (Char -> Bool) -> String -> Parser Char
@@ -248,7 +248,7 @@ notFollowedBy (Parser lookahead) parser = do
   x <- parser
   Parser
     ( \state -> case lookahead state of
-        Right _ -> Left (ParserError "unexpected lookahead" state)
+        Right _ -> Left (SyntaxError "unexpected lookahead" state)
         Left _ -> Right (x, state)
     )
 

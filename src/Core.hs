@@ -8,7 +8,8 @@ import Data.List (delete, union)
 -- https://www.youtube.com/live/utyBNDj7s2w
 -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
 data Expr
-  = Knd
+  = Err
+  | Knd
   | IntT
   | NumT
   | Int !Int
@@ -23,10 +24,10 @@ data Expr
   | Or !Expr !Expr
   | Fix !String !Expr
   | Op2 !BinaryOp !Expr !Expr
-  | Err
   deriving (Eq)
 
 instance Show Expr where
+  show Err = "@err"
   show Knd = "@Type"
   show IntT = "@Int"
   show NumT = "@Num"
@@ -42,10 +43,10 @@ instance Show Expr where
   show (Or a b) = "(" ++ show a ++ " | " ++ show b ++ ")"
   show (Fix x a) = "(@fix " ++ x ++ " " ++ show a ++ ")"
   show (Op2 op a b) = "(" ++ show op ++ " " ++ show a ++ " " ++ show b ++ ")"
-  show Err = "@err"
 
 data Pattern
-  = KndP
+  = ErrP
+  | KndP
   | IntTP
   | IntP !Int
   | CtrP !String
@@ -53,7 +54,6 @@ data Pattern
   | VarP !String
   | FunP !Pattern !Pattern
   | AppP !Pattern !Pattern
-  | ErrP
   deriving (Eq)
 
 instance Show Pattern where
@@ -149,6 +149,7 @@ patternValue (AppP p q) = App (patternValue p) (patternValue q)
 patternValue ErrP = Err
 
 freeVars :: Expr -> [String]
+freeVars Err = []
 freeVars Knd = []
 freeVars IntT = []
 freeVars NumT = []
@@ -164,7 +165,6 @@ freeVars (App a b) = freeVars a `union` freeVars b
 freeVars (Or a b) = freeVars a `union` freeVars b
 freeVars (Fix x a) = delete x (freeVars a)
 freeVars (Op2 _ a b) = freeVars a `union` freeVars b
-freeVars Err = []
 
 occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
@@ -186,6 +186,7 @@ isOpen = not . isClosed
 
 -- Evaluation
 eval :: Env -> Expr -> Expr
+eval _ Err = Err
 eval _ Knd = Knd
 eval _ IntT = IntT
 eval _ NumT = NumT
@@ -241,7 +242,6 @@ eval env (Op2 op a b) = case (op, eval env a, eval env b) of
   (SubI, Int a, Int b) -> Int (a - b)
   (MulI, Int a, Int b) -> Int (a * b)
   (op, a, b) -> Op2 op a b
-eval _ Err = Err
 
 -- Type inference
 apply :: Substitution -> Env -> Env
@@ -265,6 +265,7 @@ instantiate existing (For (x : xs) a) = do
   (eval [(x, Var y)] b, [(y, Var y)] `union` s)
 
 unify :: Expr -> Expr -> Either TypeError (Expr, Substitution)
+unify Err Err = Right (Err, [])
 unify Knd Knd = Right (Knd, [])
 unify IntT IntT = Right (IntT, [])
 unify (Typ t) (Typ t') | t == t' = Right (Typ t, [])
@@ -279,7 +280,6 @@ unify (App a1 b1) (App a2 b2) = do
   ((a, b), s) <- unify2 (a1, a2) (b1, b2)
   Right (App a b, s)
 -- Or !Expr !Expr
-unify Err Err = Right (Err, [])
 unify a b = Left (TypeMismatch a b)
 
 unify2 :: (Expr, Expr) -> (Expr, Expr) -> Either TypeError ((Expr, Expr), Substitution)
@@ -289,6 +289,7 @@ unify2 (a1, a2) (b1, b2) = do
   Right ((a, b), s2 `compose` s1)
 
 infer :: Env -> Expr -> Either TypeError (Expr, Substitution)
+infer _ Err = Right (Err, [])
 infer _ Knd = Right (Knd, [])
 infer _ IntT = Right (Knd, [])
 infer _ NumT = Right (Knd, [])
@@ -352,7 +353,6 @@ infer env (Op2 SubI a b) = do
 infer env (Op2 MulI a b) = do
   (_, s) <- infer2 env (Ann a (For [] IntT)) (Ann b (For [] IntT))
   Right (IntT, s)
-infer _ Err = Right (Err, [])
 
 infer2 :: Env -> Expr -> Expr -> Either TypeError ((Expr, Expr), Substitution)
 infer2 env a b = do
