@@ -11,7 +11,7 @@ run = describe "--==☯ Tao ☯==--" $ do
   let (a, b, c) = (Var "a", Var "b", Var "c")
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
-  let (_x, _y) = (VarP "x", VarP "y")
+  let (_x, _y) = (PVar "x", PVar "y")
   -- let (_x', _y') = (C.VarP "x", C.VarP "y")
 
   it "☯ fun" $ do
@@ -39,13 +39,13 @@ run = describe "--==☯ Tao ☯==--" $ do
   --   True `shouldBe` True
 
   it "☯ toCore" $ do
-    toCore Err `shouldBe` C.Err
+    toCore Err `shouldBe` C.Err C.Tup
     toCore (Int 1) `shouldBe` C.Int 1
     toCore (Num 1.1) `shouldBe` C.Num 1.1
     -- TODO: Knd, IntT, NumT
     toCore (Var "x") `shouldBe` C.Var "x"
     toCore (Fun x y) `shouldBe` C.Fun x' y'
-    toCore (Match []) `shouldBe` C.Err
+    toCore (Match []) `shouldBe` C.Err C.Tup
     -- toCore (Match [([_x], x)]) `shouldBe` C.Lam _x' x'
     -- toCore (Match [([_x, _y], x)]) `shouldBe` C.lam [_x', _y'] x'
     -- toCore (Match [([_x], x), ([_y], y)]) `shouldBe` C.Or (C.Lam _x' x') (C.Lam _y' y')
@@ -72,16 +72,18 @@ run = describe "--==☯ Tao ☯==--" $ do
 
   it "☯ overload" $ do
     let addOverloads =
-          [ ([IsIntP "x", IsIntP "y"], Add x y),
-            ([IsIntP "x", IsNumP "y"], Add (Int2Num x) y),
-            ([CtrP "A", CtrP "B"], Ctr "C")
+          [ ([PVar "x", PVar "y"], IsInt x `And` IsInt y `And` Add x y),
+            ([PVar "x", PVar "y"], IsInt x `And` IsNum y `And` Add (Int2Num x) y),
+            ([PCtr "A", PCtr "B"], Ctr "C")
           ]
 
     let env = [("+", Match addOverloads)]
     let add a b = app (Var "+") [a, b]
-    -- eval env (App (Var "+") (Int 1)) `shouldBe` Int 3
+    -- toCore (Match addOverloads) `shouldBe` C.Tup
+    -- eval' env (Var "+") `shouldBe` C.Tup
+
     -- eval env (add (Int 1) (Int 2)) `shouldBe` Int 3
-    -- eval env (add (Int 1) (Num 2.2)) `shouldBe` Num 3.2
+    -- eval' env (add (Int 1) (Num 2.2)) `shouldBe` C.Num 3.2
     -- eval env (add (Num 1.1) (Int 2)) `shouldBe` Err
     -- eval env (add (Ctr "A") (Ctr "B")) `shouldBe` Ctr "C"
     True `shouldBe` True

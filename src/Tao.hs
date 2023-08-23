@@ -20,9 +20,12 @@ data Expr
   | App !Expr !Expr
   | Ann !Expr !Type
   | Or !Expr !Expr
+  | And !Expr !Expr
   | Add !Expr !Expr
   | Sub !Expr !Expr
   | Mul !Expr !Expr
+  | IsInt !Expr
+  | IsNum !Expr
   | Int2Num !Expr
   | -- Syntax sugar
     Match ![([Pattern], Expr)]
@@ -44,18 +47,19 @@ data Expr
   deriving (Eq, Show)
 
 data Pattern
-  = AnyP
-  | ErrP
-  | KndP
-  | IntTP
-  | IntP !Int
-  | CtrP !String
-  | TypP !String
-  | VarP !String
-  | IsIntP !String
-  | IsNumP !String
-  | FunP !Pattern !Pattern
-  | AppP !Pattern !Pattern
+  = PErr
+  | PKnd
+  | PIntT
+  | PNumT
+  | PInt !Int
+  | PNum !Double
+  | PCtr !String
+  | PTyp !String
+  | PVar !String
+  | PIsInt !String
+  | PIsVar !String
+  | PFun !Pattern !Pattern
+  | PApp !Pattern !Pattern
   deriving (Eq, Show)
 
 data Type
@@ -95,15 +99,18 @@ prelude =
 eval :: Env -> Expr -> Expr
 eval env a = fromCore (C.eval (toCoreEnv env) (toCore a))
 
+eval' :: Env -> Expr -> C.Expr
+eval' env a = C.eval (toCoreEnv env) (toCore a)
+
 -- Type inference
 infer :: Env -> Expr -> Either CompileError Type
 infer env a = case C.infer (toCoreEnv env) (toCore a) of
   Right (t', _) -> Right (For (C.freeVars t') (fromCore t'))
   Left err -> Left (TypeError err)
 
--- Compile to core
+-- Sugar / desugar
 toCore :: Expr -> C.Expr
-toCore Err = C.Err
+toCore Err = C.Err C.Tup
 toCore Knd = C.Knd
 toCore IntT = C.IntT
 toCore NumT = C.NumT
@@ -113,26 +120,38 @@ toCore (Ctr k) = C.Ctr k
 toCore (Typ t) = C.Typ t
 toCore (Var x) = C.Var x
 toCore (Fun a b) = C.Fun (toCore a) (toCore b)
-toCore (Lam AnyP b) = C.lamAny (toCore b)
-toCore (Lam ErrP b) = C.lamEq C.Err (toCore b)
-toCore (Lam KndP b) = C.lamEq C.Knd (toCore b)
-toCore (Lam IntTP b) = C.lamEq C.IntT (toCore b)
-toCore (Lam (IntP i) b) = C.lamEq (C.Int i) (toCore b)
-toCore (Lam (CtrP k) b) = C.lamEq (C.Ctr k) (toCore b)
-toCore (Lam (TypP t) b) = C.lamEq (C.Typ t) (toCore b)
-toCore (Lam (VarP x) b) = C.Lam x (toCore b)
-toCore (Lam (IsIntP x) b) = C.lamInt x (toCore b)
-toCore (Lam (IsNumP x) b) = C.lamNum x (toCore b)
-toCore (Lam (FunP p q) b) = toCore (Lam p (Lam q b))
--- FunP !Pattern !Pattern
--- AppP !Pattern !Pattern
+toCore (Lam PErr b) = do
+  let b' = toCore b
+  let x = C.newName (C.freeVars b') "err"
+  C.Lam (C.PVar x) b'
+-- PKnd
+-- PIntT
+-- PNumT
+-- PInt !Int
+-- PNum !Double
+toCore (Lam (PCtr k) b) = do
+  let b' = toCore b
+  let x = C.newName (C.freeVars b') k
+  C.Lam (C.PVar x) (C.And (C.eq (C.Var x) (C.Ctr k)) b')
+-- PTyp !String
+toCore (Lam (PVar x) b) = C.Lam (C.PVar x) (toCore b)
+toCore (Lam (PIsInt x) b) = C.Lam (C.PVar x) (C.And (C.isInt (C.Var x)) (toCore b))
+-- PIsNum !String
+-- PFun !Pattern !Pattern
+-- PApp !Pattern !Pattern
+-- toCore (Lam p b) = do
+--   let b' = toCore b
+--   C.Lam (toCoreP (C.freeVars b') p) b'
 toCore (App a b) = C.App (toCore a) (toCore b)
 toCore (Ann a (For xs t)) = C.Ann (toCore a) (C.For xs (toCore t))
 toCore (Or a b) = C.Or (toCore a) (toCore b)
-toCore (Add a b) = C.Op2 C.Add (toCore a) (toCore b)
-toCore (Sub a b) = C.Op2 C.Sub (toCore a) (toCore b)
-toCore (Mul a b) = C.Op2 C.Mul (toCore a) (toCore b)
-toCore (Int2Num a) = C.Op1 C.Int2Num (toCore a)
+toCore (And a b) = C.And (toCore a) (toCore b)
+toCore (Add a b) = C.add (toCore a) (toCore b)
+toCore (Sub a b) = C.sub (toCore a) (toCore b)
+toCore (Mul a b) = C.mul (toCore a) (toCore b)
+toCore (IsInt a) = C.isInt (toCore a)
+toCore (IsNum a) = C.isInt (toCore a)
+toCore (Int2Num a) = C.int2Num (toCore a)
 toCore (Match brs) = C.or' (map (\(ps, b) -> toCore (lam ps b)) brs)
 -- Let !(Pattern, Expr) !Expr
 -- Do !(Pattern, Expr) !Expr
@@ -150,25 +169,8 @@ toCore (Match brs) = C.or' (map (\(ps, b) -> toCore (lam ps b)) brs)
 -- IfElse !Expr !Expr !Expr
 toCore a = error ("TODO toCore: " ++ show a)
 
--- toCoreP :: Pattern -> C.Pattern
--- toCoreP ErrP = C.ErrP
--- toCoreP KndP = C.KndP
--- toCoreP IntTP = C.IntTP
--- toCoreP (IntP i) = C.IntP i
--- toCoreP (CtrP k) = C.CtrP k
--- toCoreP (CtrIntP x) = C.CtrIntP x
--- toCoreP (CtrNumP x) = C.CtrNumP x
--- toCoreP (TypP t) = C.TypP t
--- toCoreP (VarP x) = C.VarP x
--- toCoreP (FunP p q) = C.FunP (toCoreP p) (toCoreP q)
--- toCoreP (AppP p q) = C.AppP (toCoreP p) (toCoreP q)
-
-toCoreEnv :: Env -> C.Env
-toCoreEnv = map (second toCore)
-
--- Decompile from core
 fromCore :: C.Expr -> Expr
-fromCore C.Err = Err
+fromCore (C.Err a) = Err
 fromCore C.Knd = Knd
 fromCore C.IntT = IntT
 fromCore C.NumT = NumT
@@ -178,29 +180,44 @@ fromCore (C.Ctr k) = Ctr k
 fromCore (C.Typ t) = Typ t
 fromCore (C.Var x) = Var x
 fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
-fromCore (C.Lam x b) = Lam (VarP x) (fromCore b)
+fromCore (C.Lam p b) = Lam (fromCoreP p) (fromCore b)
 fromCore (C.App a b) = App (fromCore a) (fromCore b)
 fromCore (C.Ann a (C.For xs t)) = Ann (fromCore a) (For xs (fromCore t))
 fromCore (C.Or a b) = Or (fromCore a) (fromCore b)
-fromCore (C.Fix x a) = Let (VarP x, fromCore a) (Var x)
+fromCore (C.And a b) = And (fromCore a) (fromCore b)
+fromCore (C.Fix x a) = Let (PVar x, fromCore a) (Var x)
 fromCore (C.Op2 C.Add a b) = Add (fromCore a) (fromCore b)
 fromCore (C.Op2 C.Sub a b) = Sub (fromCore a) (fromCore b)
 fromCore (C.Op2 C.Mul a b) = Mul (fromCore a) (fromCore b)
 fromCore (C.Op1 C.Int2Num a) = Int2Num (fromCore a)
 fromCore a = error ("TODO fromCore: " ++ show a)
 
--- fromCoreP :: C.Pattern -> Pattern
--- fromCoreP C.ErrP = ErrP
--- fromCoreP C.KndP = KndP
--- fromCoreP C.IntTP = IntTP
--- fromCoreP (C.IntP i) = IntP i
--- fromCoreP (C.CtrP k) = CtrP k
--- fromCoreP (C.CtrIntP x) = CtrIntP x
--- fromCoreP (C.CtrNumP x) = CtrNumP x
--- fromCoreP (C.TypP t) = TypP t
--- fromCoreP (C.VarP x) = VarP x
--- fromCoreP (C.FunP p q) = FunP (fromCoreP p) (fromCoreP q)
--- fromCoreP (C.AppP p q) = AppP (fromCoreP p) (fromCoreP q)
+-- toCoreP :: [String] -> Pattern -> C.Pattern
+-- toCoreP existing PErr = C.PVar (C.newName existing "err")
+-- toCoreP existing PKnd = C.PVar (C.newName existing "knd")
+-- toCoreP existing PIntT = C.PVar (C.newName existing "intT")
+-- toCoreP existing PNumT = C.PVar (C.newName existing "numT")
+-- toCoreP existing (PInt i) = C.PVar (C.newName existing "int")
+-- toCoreP existing (PNum n) = C.PVar (C.newName existing "num")
+-- toCoreP existing (PCtr k) = C.PVar (C.newName existing "ctr")
+-- toCoreP existing (PTyp t) = C.PVar (C.newName existing "typ")
+-- toCoreP existing (PVar x) = C.PVar x
+-- toCoreP existing (PFun p q) = do
+--   let p' = toCoreP existing p
+--   let q' = toCoreP (C.freeVars (C.patternExpr p') ++ existing) q
+--   C.PFun p' q'
+-- toCoreP existing (PApp p q) = do
+--   let p' = toCoreP existing p
+--   let q' = toCoreP (C.freeVars (C.patternExpr p') ++ existing) q
+--   C.PApp p' q'
+
+fromCoreP :: C.Pattern -> Pattern
+fromCoreP (C.PVar x) = PVar x
+fromCoreP (C.PFun p q) = PFun (fromCoreP p) (fromCoreP q)
+fromCoreP (C.PApp p q) = PApp (fromCoreP p) (fromCoreP q)
+
+toCoreEnv :: Env -> C.Env
+toCoreEnv = map (second toCore)
 
 fromCoreEnv :: C.Env -> Env
 fromCoreEnv = map (second fromCore)
