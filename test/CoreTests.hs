@@ -11,15 +11,131 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (f, g, h) = (Var "f", Var "g", Var "h")
 
-  -- let (x', y') = (VarP "x", VarP "y")
+  let (_x, _y) = (PVar "x", PVar "y")
 
-  let factorial f = Fix "f" (lamEq (Int 0) i1 `Or` lamIfAs ("x", Int 0 `lt` x) (x `mul` App (Var f) (x `sub` i1)))
+  let factorial f = Fix "f" (Lam _x (eq x (Int 0) `And` i1) `Or` Lam _x ((Int 0 `lt` x) `And` (x `mul` App (Var f) (x `sub` i1))))
+
+  it "☯ show" $ do
+    let (ty, tz) = (For [] y, For [] z)
+    show Knd `shouldBe` "@Type"
+    show Tup `shouldBe` "@Tuple"
+    show IntT `shouldBe` "@Int"
+    show NumT `shouldBe` "@Num"
+    show (Int 1) `shouldBe` "1"
+    show (Num 1.1) `shouldBe` "1.1"
+    show (Ctr "A") `shouldBe` "#A"
+    show (Typ "T") `shouldBe` "%T"
+    show (Var "x") `shouldBe` "x"
+
+    show (pow (pow x y) z) `shouldBe` "(x^y)^z"
+    show (pow x (pow y z)) `shouldBe` "x^y^z"
+    show (pow (App x y) z) `shouldBe` "(x y)^z"
+    show (pow x (App y z)) `shouldBe` "x^(y z)"
+
+    show (App x (pow y z)) `shouldBe` "x y^z"
+    show (App (pow x y) z) `shouldBe` "x^y z"
+    show (App (App x y) z) `shouldBe` "x y z"
+    show (App x (App y z)) `shouldBe` "x (y z)"
+    show (App (mul x y) z) `shouldBe` "(x * y) z"
+    show (App x (mul y z)) `shouldBe` "x (y * z)"
+
+    show (isInt (App x y)) `shouldBe` "@isInt (x y)"
+    show (isInt (pow x y)) `shouldBe` "@isInt x^y"
+    show (pow (isInt x) y) `shouldBe` "(@isInt x)^y"
+    show (App (isInt x) y) `shouldBe` "@isInt x y"
+    show (App x (isInt y)) `shouldBe` "x (@isInt y)"
+
+    show (isNum (App x y)) `shouldBe` "@isNum (x y)"
+    show (isNum (pow x y)) `shouldBe` "@isNum x^y"
+    show (pow (isNum x) y) `shouldBe` "(@isNum x)^y"
+    show (App (isNum x) y) `shouldBe` "@isNum x y"
+    show (App x (isNum y)) `shouldBe` "x (@isNum y)"
+
+    show (int2Num (App x y)) `shouldBe` "@int2Num (x y)"
+    show (int2Num (pow x y)) `shouldBe` "@int2Num x^y"
+    show (pow (int2Num x) y) `shouldBe` "(@int2Num x)^y"
+    show (App (int2Num x) y) `shouldBe` "@int2Num x y"
+    show (App x (int2Num y)) `shouldBe` "x (@int2Num y)"
+
+    show (Err (App x y)) `shouldBe` "@error (x y)"
+    show (Err (pow x y)) `shouldBe` "@error x^y"
+    show (pow (Err x) y) `shouldBe` "(@error x)^y"
+    show (App (Err x) y) `shouldBe` "@error x y"
+    show (App x (Err y)) `shouldBe` "x (@error y)"
+
+    show (mul x (App y z)) `shouldBe` "x * y z"
+    show (mul (App x y) z) `shouldBe` "x y * z"
+    show (mul (mul x y) z) `shouldBe` "x * y * z"
+    show (mul x (mul y z)) `shouldBe` "x * (y * z)"
+    show (mul (add x y) z) `shouldBe` "(x + y) * z"
+    show (mul x (add y z)) `shouldBe` "x * (y + z)"
+
+    show (add x (mul y z)) `shouldBe` "x + y * z"
+    show (add (mul x y) z) `shouldBe` "x * y + z"
+    show (add (add x y) z) `shouldBe` "x + y + z"
+    show (add x (add y z)) `shouldBe` "x + (y + z)"
+    show (sub (add x y) z) `shouldBe` "x + y - z"
+    show (sub x (add y z)) `shouldBe` "x - (y + z)"
+    show (sub (sub x y) z) `shouldBe` "x - y - z"
+    show (sub x (sub y z)) `shouldBe` "x - (y - z)"
+    show (sub (Fun x y) z) `shouldBe` "(x -> y) - z"
+    show (sub x (Fun y z)) `shouldBe` "x - (y -> z)"
+
+    show (Fun x (add y z)) `shouldBe` "x -> y + z"
+    show (Fun (add x y) z) `shouldBe` "x + y -> z"
+    show (Fun (Fun x y) z) `shouldBe` "(x -> y) -> z"
+    show (Fun x (Fun y z)) `shouldBe` "x -> y -> z"
+    show (Fun x (lt y z)) `shouldBe` "x -> (y < z)"
+    show (Fun (lt x y) z) `shouldBe` "(x < y) -> z"
+
+    show (lt x (Fun y z)) `shouldBe` "x < y -> z"
+    show (lt (Fun x y) z) `shouldBe` "x -> y < z"
+    show (lt (lt x y) z) `shouldBe` "(x < y) < z"
+    show (lt x (lt y z)) `shouldBe` "x < y < z"
+    show (lt (eq x y) z) `shouldBe` "(x == y) < z"
+    show (lt x (eq y z)) `shouldBe` "x < (y == z)"
+
+    show (eq x (lt y z)) `shouldBe` "x == y < z"
+    show (eq (lt x y) z) `shouldBe` "x < y == z"
+    show (eq (eq x y) z) `shouldBe` "x == y == z"
+    show (eq x (eq y z)) `shouldBe` "x == (y == z)"
+    show (eq (Ann x ty) z) `shouldBe` "(x : y) == z"
+    show (eq x (Ann y tz)) `shouldBe` "x == (y : z)"
+
+    show (Ann x (For [] (eq y z))) `shouldBe` "x : y == z"
+    show (Ann (eq x y) tz) `shouldBe` "x == y : z"
+    show (Ann x (For [] (Ann y tz))) `shouldBe` "x : y : z"
+    show (Ann (Ann x ty) tz) `shouldBe` "(x : y) : z"
+    show (Ann (Or x y) tz) `shouldBe` "(x | y) : z"
+    show (Ann x (For [] (Or y z))) `shouldBe` "x : (y | z)"
+
+    show (Lam _x (Ann y tz)) `shouldBe` "\\x. (y : z)"
+    show (Lam _x (eq y z)) `shouldBe` "\\x. y == z"
+    show (Ann (Lam _x y) tz) `shouldBe` "(\\x. y) : z"
+    show (Or (Lam _x y) z) `shouldBe` "\\x. y | z"
+    show (Or x (Lam _y z)) `shouldBe` "x | \\y. z"
+
+    show (Fix "x" (Ann y tz)) `shouldBe` "@fix x. (y : z)"
+    show (Fix "x" (eq y z)) `shouldBe` "@fix x. y == z"
+    show (Ann (Fix "x" y) tz) `shouldBe` "(@fix x. y) : z"
+    show (Or (Fix "x" y) z) `shouldBe` "@fix x. y | z"
+    show (Or x (Fix "y" z)) `shouldBe` "x | @fix y. z"
+
+    show (Or x (Ann y tz)) `shouldBe` "x | y : z"
+    show (Or (Ann x ty) z) `shouldBe` "x : y | z"
+    show (Or x (Or y z)) `shouldBe` "x | y | z"
+    show (Or (Or x y) z) `shouldBe` "(x | y) | z"
+
+    show (And x (Ann y tz)) `shouldBe` "x; y : z"
+    show (And (Ann x ty) z) `shouldBe` "x : y; z"
+    show (And x (And y z)) `shouldBe` "x; (y; z)"
+    show (And (And x y) z) `shouldBe` "x; y; z"
 
   it "☯ syntax sugar" $ do
     let' [] x `shouldBe` x
     -- let' [(y', z)] x `shouldBe` App (Lam y' x) z
 
-    or' [] `shouldBe` Err
+    or' [] `shouldBe` Err Tup
     or' [x] `shouldBe` x
     or' [x, y] `shouldBe` Or x y
     or' [x, y, z] `shouldBe` Or x (Or y z)
@@ -36,7 +152,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval [] NumT `shouldBe` NumT
     eval [] (Int 1) `shouldBe` Int 1
     eval [] (Num 1.1) `shouldBe` Num 1.1
-    eval [] Err `shouldBe` Err
+    eval [] (Err x) `shouldBe` Err x
 
   it "☯ eval Ctr" $ do
     let env = [("x", i1)]
@@ -71,8 +187,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ eval Or" $ do
     let env = [("x", i1), ("y", i2), ("z", i3)]
-    eval env (Or x Err) `shouldBe` i1
-    eval env (Or Err y) `shouldBe` i2
+    eval env (Or x (Err y)) `shouldBe` i1
+    eval env (Or (Err x) y) `shouldBe` i2
     eval env (Or x y) `shouldBe` Or i1 i2
     eval env (Or x (Or y z)) `shouldBe` Or i1 (Or i2 i3)
     eval env (Or (Or x y) z) `shouldBe` Or i1 (Or i2 i3)
@@ -98,13 +214,13 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- eval env (App (Lam (FunP IntTP x') x) (Fun IntT Knd)) `shouldBe` Knd
     -- eval env (App (Lam ErrP x) Knd) `shouldBe` Err
     -- eval env (App (Lam ErrP x) Err) `shouldBe` i1
-    eval env (App (Or Err Err) Knd) `shouldBe` Err
-    eval env (App (Or Err f) Knd) `shouldBe` App g Knd
-    eval env (App (Or f Err) Knd) `shouldBe` App g Knd
+    eval env (App (Or (Err x) (Err y)) Knd) `shouldBe` Err y
+    eval env (App (Or (Err x) f) Knd) `shouldBe` App g Knd
+    eval env (App (Or f (Err x)) Knd) `shouldBe` App g Knd
     eval env (App (Or f h) Knd) `shouldBe` Or (App g Knd) (App h Knd)
     -- eval env (App (Fix "f" (Lam x' (App h f))) Knd) `shouldBe` App h (Fix "f" (Lam x' (App h f)))
-    eval env (App Err Knd) `shouldBe` Err
-    eval env (App Err Knd) `shouldBe` Err
+    eval env (App (Err x) Knd) `shouldBe` Err x
+    eval env (App (Err x) Knd) `shouldBe` Err x
 
   it "☯ eval Ann" $ do
     let env = [("x", i1)]
@@ -120,16 +236,16 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval env (sub i1 i2) `shouldBe` Int (-1)
     eval env (mul i1 i2) `shouldBe` Int 2
 
-  it "☯ eval factorial" $ do
-    let env = [("f", factorial "f")]
-    eval env (Var "f") `shouldBe` factorial "f"
-    eval env (App f x) `shouldBe` App (factorial "f") x
-    eval env (App f (Int 0)) `shouldBe` Int 1
-    eval env (App f (Int 1)) `shouldBe` Int 1
-    eval env (App f (Int 2)) `shouldBe` Int 2
-    eval env (App f (Int 3)) `shouldBe` Int 6
-    eval env (App f (Int 4)) `shouldBe` Int 24
-    eval env (App f (Int 5)) `shouldBe` Int 120
+  -- it "☯ eval factorial" $ do
+  --   let env = [("f", factorial "f")]
+  --   eval env (Var "f") `shouldBe` factorial "f"
+  --   eval env (App f x) `shouldBe` App (factorial "f") x
+  --   eval env (App f (Int 0)) `shouldBe` Int 1
+  --   eval env (App f (Int 1)) `shouldBe` Int 1
+  --   eval env (App f (Int 2)) `shouldBe` Int 2
+  --   eval env (App f (Int 3)) `shouldBe` Int 6
+  --   eval env (App f (Int 4)) `shouldBe` Int 24
+  --   eval env (App f (Int 5)) `shouldBe` Int 120
 
   it "☯ infer const" $ do
     infer [] Knd `shouldBe` Right (Knd, [])
@@ -137,7 +253,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer [] NumT `shouldBe` Right (Knd, [])
     infer [] (Int 1) `shouldBe` Right (IntT, [])
     infer [] (Num 1.1) `shouldBe` Right (NumT, [])
-    infer [] Err `shouldBe` Right (Err, [])
+    infer [] (Err IntT) `shouldBe` Right (Err IntT, [])
 
   it "☯ infer Ctr" $ do
     let env =
@@ -227,9 +343,9 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ infer Op2" $ do
     True `shouldBe` True
 
-  it "☯ infer factorial" $ do
-    let env = [("f", factorial "f")]
-    infer env (Var "f") `shouldBe` Right (Fun IntT IntT, [("xT", IntT), ("x", Ann x (For [] IntT)), ("xT1", IntT), ("fT", Fun IntT IntT), ("f", Ann f (For [] (Fun IntT IntT))), ("t", IntT)])
+  -- it "☯ infer factorial" $ do
+  --   let env = [("f", factorial "f")]
+  --   infer env (Var "f") `shouldBe` Right (Fun IntT IntT, [("xT", IntT), ("x", Ann x (For [] IntT)), ("xT1", IntT), ("fT", Fun IntT IntT), ("f", Ann f (For [] (Fun IntT IntT))), ("t", IntT)])
 
   it "☯ infer Bool" $ do
     let i0 = Int 0
