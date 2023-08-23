@@ -72,18 +72,14 @@ run = describe "--==☯ Tao ☯==--" $ do
 
   it "☯ overload" $ do
     let addOverloads =
-          [ ([PVar "x", PVar "y"], IsInt x `And` IsInt y `And` Add x y),
-            ([PVar "x", PVar "y"], IsInt x `And` IsNum y `And` Add (Int2Num x) y),
+          [ ([PIsInt "x", PIsInt "y"], Add x y),
+            ([PIsInt "x", PIsNum "y"], Add (Int2Num x) y),
             ([PCtr "A", PCtr "B"], Ctr "C")
           ]
 
     let env = [("+", Match addOverloads)]
     let add a b = app (Var "+") [a, b]
-    -- toCore (Match addOverloads) `shouldBe` C.Tup
-    -- eval' env (Var "+") `shouldBe` C.Tup
-
-    -- eval env (add (Int 1) (Int 2)) `shouldBe` Int 3
-    -- eval' env (add (Int 1) (Num 2.2)) `shouldBe` C.Num 3.2
-    -- eval env (add (Num 1.1) (Int 2)) `shouldBe` Err
-    -- eval env (add (Ctr "A") (Ctr "B")) `shouldBe` Ctr "C"
-    True `shouldBe` True
+    eval env (add (Int 1) (Int 2)) `shouldBe` Int 3
+    eval' env (add (Int 1) (Num 2.2)) `shouldBe` C.Num 3.2
+    eval env (add (Num 1.1) (Int 2)) `shouldBe` Err
+    eval env (add (Ctr "A") (Ctr "B")) `shouldBe` Ctr "C"

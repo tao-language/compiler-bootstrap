@@ -31,8 +31,8 @@ data Expr
 
 data Pattern
   = PVar !String
-  | PFun !Pattern !Pattern
-  | PApp !Pattern !Pattern
+  | PFun !String !String
+  | PApp !String !String
   deriving (Eq)
 
 data Type
@@ -94,7 +94,10 @@ instance Show Expr where
     Op2 Lt a b -> infixR 4 a " < " b
     Op2 Eq a b -> infixL 3 a " == " b
     Ann a (For xs b) -> infixR 2 a (" : " ++ for xs) b
-    Lam p b -> prefix 2 ("\\" ++ show p ++ ". ") b
+    Lam p b -> do
+      let (ps, b') = asLam b
+      let args = app (patternExpr p) (map patternExpr ps)
+      prefix 2 ("\\" ++ show args ++ ". ") b'
     Fix x a -> prefix 2 ("@fix " ++ x ++ ". ") a
     Or a b -> infixR 1 a " | " b
     And a b -> infixL 1 a "; " b
@@ -132,6 +135,10 @@ fun bs b = foldr Fun b bs
 
 lam :: [Pattern] -> Expr -> Expr
 lam ps b = foldr Lam b ps
+
+asLam :: Expr -> ([Pattern], Expr)
+asLam (Lam p a) = let (ps, b) = asLam a in (p : ps, b)
+asLam a = ([], a)
 
 add :: Expr -> Expr -> Expr
 add = Op2 Add
@@ -212,8 +219,8 @@ freeVars (Op1 _ a) = freeVars a
 
 patternExpr :: Pattern -> Expr
 patternExpr (PVar x) = Var x
-patternExpr (PFun a b) = Fun (patternExpr a) (patternExpr b)
-patternExpr (PApp a b) = App (patternExpr a) (patternExpr b)
+patternExpr (PFun x y) = Fun (Var x) (Var y)
+patternExpr (PApp x y) = App (Var x) (Var y)
 
 occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
@@ -264,8 +271,8 @@ eval env (App a b) = case (eval env a, eval env b) of
   (a@App {}, b) -> App a b
   (a, b) | isOpen b -> App a b
   (Lam (PVar x) a, b) -> eval [(x, b)] a
-  (Lam (PFun p q) a, Fun b1 b2) -> eval [] (app (lam [p, q] a) [b1, b2])
-  (Lam (PApp p q) a, App b1 b2) -> eval [] (app (lam [p, q] a) [b1, b2])
+  (Lam (PFun x y) a, Fun b1 b2) -> eval [] (let' [(PVar x, b1), (PVar y, b2)] a)
+  (Lam (PApp x y) a, App b1 b2) -> eval [] (let' [(PVar x, b1), (PVar y, b2)] a)
   (Or a1 a2, b) -> eval [] (Or (App a1 b) (App a2 b))
   (Fix x a, b) -> eval [(x, Fix x a)] (App a b)
   (a, b) -> Err (App a b)

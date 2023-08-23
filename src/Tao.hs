@@ -57,7 +57,7 @@ data Pattern
   | PTyp !String
   | PVar !String
   | PIsInt !String
-  | PIsVar !String
+  | PIsNum !String
   | PFun !Pattern !Pattern
   | PApp !Pattern !Pattern
   deriving (Eq, Show)
@@ -82,6 +82,10 @@ lam ps b = foldr Lam b ps
 
 app :: Expr -> [Expr] -> Expr
 app = foldl App
+
+let' :: [(Pattern, Expr)] -> Expr -> Expr
+let' [] b = b
+let' ((p, a) : defs) b = App (Lam p (let' defs b)) a
 
 or' :: [Expr] -> Expr
 or' [] = Err
@@ -136,9 +140,17 @@ toCore (Lam (PCtr k) b) = do
 -- PTyp !String
 toCore (Lam (PVar x) b) = C.Lam (C.PVar x) (toCore b)
 toCore (Lam (PIsInt x) b) = C.Lam (C.PVar x) (C.And (C.isInt (C.Var x)) (toCore b))
--- PIsNum !String
--- PFun !Pattern !Pattern
--- PApp !Pattern !Pattern
+toCore (Lam (PIsNum x) b) = C.Lam (C.PVar x) (C.And (C.isNum (C.Var x)) (toCore b))
+toCore (Lam (PFun p q) b) = do
+  let b' = toCore b
+  let x = C.newName (C.freeVars b') "a"
+  let y = C.newName (x : C.freeVars b') "b"
+  C.Lam (C.PFun x y) (toCore (let' [(p, Var x), (q, Var y)] b))
+toCore (Lam (PApp p q) b) = do
+  let b' = toCore b
+  let x = C.newName (C.freeVars b') "f"
+  let y = C.newName (x : C.freeVars b') "x"
+  C.Lam (C.PApp x y) (toCore (let' [(p, Var x), (q, Var y)] b))
 -- toCore (Lam p b) = do
 --   let b' = toCore b
 --   C.Lam (toCoreP (C.freeVars b') p) b'
@@ -150,7 +162,7 @@ toCore (Add a b) = C.add (toCore a) (toCore b)
 toCore (Sub a b) = C.sub (toCore a) (toCore b)
 toCore (Mul a b) = C.mul (toCore a) (toCore b)
 toCore (IsInt a) = C.isInt (toCore a)
-toCore (IsNum a) = C.isInt (toCore a)
+toCore (IsNum a) = C.isNum (toCore a)
 toCore (Int2Num a) = C.int2Num (toCore a)
 toCore (Match brs) = C.or' (map (\(ps, b) -> toCore (lam ps b)) brs)
 -- Let !(Pattern, Expr) !Expr
@@ -180,7 +192,7 @@ fromCore (C.Ctr k) = Ctr k
 fromCore (C.Typ t) = Typ t
 fromCore (C.Var x) = Var x
 fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
-fromCore (C.Lam p b) = Lam (fromCoreP p) (fromCore b)
+-- fromCore (C.Lam p b) = Lam (fromCoreP p) (fromCore b)
 fromCore (C.App a b) = App (fromCore a) (fromCore b)
 fromCore (C.Ann a (C.For xs t)) = Ann (fromCore a) (For xs (fromCore t))
 fromCore (C.Or a b) = Or (fromCore a) (fromCore b)
@@ -211,10 +223,10 @@ fromCore a = error ("TODO fromCore: " ++ show a)
 --   let q' = toCoreP (C.freeVars (C.patternExpr p') ++ existing) q
 --   C.PApp p' q'
 
-fromCoreP :: C.Pattern -> Pattern
-fromCoreP (C.PVar x) = PVar x
-fromCoreP (C.PFun p q) = PFun (fromCoreP p) (fromCoreP q)
-fromCoreP (C.PApp p q) = PApp (fromCoreP p) (fromCoreP q)
+-- fromCoreP :: C.Pattern -> Pattern
+-- fromCoreP (C.PVar x) = PVar x
+-- fromCoreP (C.PFun p q) = PFun (fromCoreP p) (fromCoreP q)
+-- fromCoreP (C.PApp p q) = PApp (fromCoreP p) (fromCoreP q)
 
 toCoreEnv :: Env -> C.Env
 toCoreEnv = map (second toCore)
