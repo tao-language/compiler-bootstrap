@@ -11,14 +11,14 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (f, g, h) = (Var "f", Var "g", Var "h")
 
-  let (_x, _y) = (PVar "x", PVar "y")
+  let (_x, _y) = (PAny "x", PAny "y")
 
   let factorial f = Fix "f" (Lam _x (eq x (Int 0) `And` i1) `Or` Lam _x ((Int 0 `lt` x) `And` (x `mul` App (Var f) (x `sub` i1))))
 
   it "☯ show" $ do
     let (ty, tz) = (For [] y, For [] z)
+    show Err `shouldBe` "@error"
     show Knd `shouldBe` "@Type"
-    show Tup `shouldBe` "@Tuple"
     show IntT `shouldBe` "@Int"
     show NumT `shouldBe` "@Num"
     show (Int 1) `shouldBe` "1"
@@ -39,29 +39,23 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     show (App (mul x y) z) `shouldBe` "(x * y) z"
     show (App x (mul y z)) `shouldBe` "x (y * z)"
 
-    show (isInt (App x y)) `shouldBe` "@isInt (x y)"
-    show (isInt (pow x y)) `shouldBe` "@isInt x^y"
-    show (pow (isInt x) y) `shouldBe` "(@isInt x)^y"
-    show (App (isInt x) y) `shouldBe` "@isInt x y"
-    show (App x (isInt y)) `shouldBe` "x (@isInt y)"
+    -- show (isInt (App x y)) `shouldBe` "@isInt (x y)"
+    -- show (isInt (pow x y)) `shouldBe` "@isInt x^y"
+    -- show (pow (isInt x) y) `shouldBe` "(@isInt x)^y"
+    -- show (App (isInt x) y) `shouldBe` "@isInt x y"
+    -- show (App x (isInt y)) `shouldBe` "x (@isInt y)"
 
-    show (isNum (App x y)) `shouldBe` "@isNum (x y)"
-    show (isNum (pow x y)) `shouldBe` "@isNum x^y"
-    show (pow (isNum x) y) `shouldBe` "(@isNum x)^y"
-    show (App (isNum x) y) `shouldBe` "@isNum x y"
-    show (App x (isNum y)) `shouldBe` "x (@isNum y)"
+    -- show (isNum (App x y)) `shouldBe` "@isNum (x y)"
+    -- show (isNum (pow x y)) `shouldBe` "@isNum x^y"
+    -- show (pow (isNum x) y) `shouldBe` "(@isNum x)^y"
+    -- show (App (isNum x) y) `shouldBe` "@isNum x y"
+    -- show (App x (isNum y)) `shouldBe` "x (@isNum y)"
 
     show (int2Num (App x y)) `shouldBe` "@int2Num (x y)"
     show (int2Num (pow x y)) `shouldBe` "@int2Num x^y"
     show (pow (int2Num x) y) `shouldBe` "(@int2Num x)^y"
     show (App (int2Num x) y) `shouldBe` "@int2Num x y"
     show (App x (int2Num y)) `shouldBe` "x (@int2Num y)"
-
-    show (Err (App x y)) `shouldBe` "@error (x y)"
-    show (Err (pow x y)) `shouldBe` "@error x^y"
-    show (pow (Err x) y) `shouldBe` "(@error x)^y"
-    show (App (Err x) y) `shouldBe` "@error x y"
-    show (App x (Err y)) `shouldBe` "x (@error y)"
 
     show (mul x (App y z)) `shouldBe` "x * y z"
     show (mul (App x y) z) `shouldBe` "x y * z"
@@ -135,7 +129,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let' [] x `shouldBe` x
     -- let' [(y', z)] x `shouldBe` App (Lam y' x) z
 
-    or' [] `shouldBe` Err Tup
+    or' [] `shouldBe` Err
     or' [x] `shouldBe` x
     or' [x, y] `shouldBe` Or x y
     or' [x, y, z] `shouldBe` Or x (Or y z)
@@ -147,12 +141,12 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     app x [y, z] `shouldBe` App (App x y) z
 
   it "☯ eval const" $ do
+    eval [] Err `shouldBe` Err
     eval [] Knd `shouldBe` Knd
     eval [] IntT `shouldBe` IntT
     eval [] NumT `shouldBe` NumT
     eval [] (Int 1) `shouldBe` Int 1
     eval [] (Num 1.1) `shouldBe` Num 1.1
-    eval [] (Err x) `shouldBe` Err x
 
   it "☯ eval Ctr" $ do
     let env = [("x", i1)]
@@ -187,8 +181,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ eval Or" $ do
     let env = [("x", i1), ("y", i2), ("z", i3)]
-    eval env (Or x (Err y)) `shouldBe` i1
-    eval env (Or (Err x) y) `shouldBe` i2
+    eval env (Or x Err) `shouldBe` i1
+    eval env (Or Err y) `shouldBe` i2
     eval env (Or x y) `shouldBe` Or i1 i2
     eval env (Or x (Or y z)) `shouldBe` Or i1 (Or i2 i3)
     eval env (Or (Or x y) z) `shouldBe` Or i1 (Or i2 i3)
@@ -214,13 +208,13 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- eval env (App (Lam (FunP IntTP x') x) (Fun IntT Knd)) `shouldBe` Knd
     -- eval env (App (Lam ErrP x) Knd) `shouldBe` Err
     -- eval env (App (Lam ErrP x) Err) `shouldBe` i1
-    eval env (App (Or (Err x) (Err y)) Knd) `shouldBe` Err y
-    eval env (App (Or (Err x) f) Knd) `shouldBe` App g Knd
-    eval env (App (Or f (Err x)) Knd) `shouldBe` App g Knd
+    eval env (App (Or Err Err) Knd) `shouldBe` Err
+    eval env (App (Or Err f) Knd) `shouldBe` App g Knd
+    eval env (App (Or f Err) Knd) `shouldBe` App g Knd
     eval env (App (Or f h) Knd) `shouldBe` Or (App g Knd) (App h Knd)
     -- eval env (App (Fix "f" (Lam x' (App h f))) Knd) `shouldBe` App h (Fix "f" (Lam x' (App h f)))
-    eval env (App (Err x) Knd) `shouldBe` Err x
-    eval env (App (Err x) Knd) `shouldBe` Err x
+    eval env (App Err Knd) `shouldBe` Err
+    eval env (App Err Knd) `shouldBe` Err
 
   it "☯ eval Ann" $ do
     let env = [("x", i1)]
@@ -248,12 +242,12 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   --   eval env (App f (Int 5)) `shouldBe` Int 120
 
   it "☯ infer const" $ do
+    infer [] Err `shouldBe` Right (Err, [])
     infer [] Knd `shouldBe` Right (Knd, [])
     infer [] IntT `shouldBe` Right (Knd, [])
     infer [] NumT `shouldBe` Right (Knd, [])
     infer [] (Int 1) `shouldBe` Right (IntT, [])
     infer [] (Num 1.1) `shouldBe` Right (NumT, [])
-    infer [] (Err IntT) `shouldBe` Right (Err IntT, [])
 
   it "☯ infer Ctr" $ do
     let env =
@@ -382,3 +376,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' (list [Int 42]) `shouldBe` Right (vec i1 IntT)
     infer' (list [Int 42, Int 9]) `shouldBe` Right (vec i2 IntT)
     infer' (list [Int 42, Knd]) `shouldBe` Left (TypeMismatch Knd IntT)
+
+-- it "☯ runtimeChecks" $ do
+--   let env = []
+--   runtimeChecks env (Lam )

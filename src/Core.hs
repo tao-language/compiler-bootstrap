@@ -9,7 +9,6 @@ import Data.List (delete, union)
 -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
 data Expr
   = Knd
-  | Tup
   | IntT
   | NumT
   | Int !Int
@@ -26,13 +25,17 @@ data Expr
   | Fix !String !Expr
   | Op2 !BinaryOp !Expr !Expr
   | Op1 !UnaryOp !Expr
-  | Err !Expr
+  | Err
   deriving (Eq)
 
 data Pattern
-  = PVar !String
-  | PFun !String !String
-  | PApp !String !String
+  = PAny !String
+  | PInt !String
+  | PNum !String
+  | PIf !String !Expr
+  | PFun !Pattern !Pattern
+  | PApp !Pattern !Pattern
+  | PErr
   deriving (Eq)
 
 data Type
@@ -49,9 +52,7 @@ data BinaryOp
   deriving (Eq)
 
 data UnaryOp
-  = IsInt
-  | IsNum
-  | Int2Num
+  = Int2Num
   deriving (Eq)
 
 type Env = [(String, Expr)]
@@ -72,8 +73,8 @@ data TypeError
 
 instance Show Expr where
   showsPrec p expr = case expr of
+    Err -> atom 11 "@error"
     Knd -> atom 11 "@Type"
-    Tup -> atom 11 "@Tuple"
     IntT -> atom 11 "@Int"
     NumT -> atom 11 "@Num"
     Int i -> atom 11 (show i)
@@ -83,10 +84,7 @@ instance Show Expr where
     Var x -> atom 11 x
     Op2 Pow a b -> infixR 10 a "^" b
     App a b -> infixL 8 a " " b
-    Op1 IsInt a -> prefix 8 "@isInt " a
-    Op1 IsNum a -> prefix 8 "@isNum " a
     Op1 Int2Num a -> prefix 8 "@int2Num " a
-    Err a -> prefix 8 "@error " a
     Op2 Mul a b -> infixL 7 a " * " b
     Op2 Add a b -> infixL 6 a " + " b
     Op2 Sub a b -> infixL 6 a " - " b
@@ -96,7 +94,7 @@ instance Show Expr where
     Ann a (For xs b) -> infixR 2 a (" : " ++ for xs) b
     Lam p b -> do
       let (ps, b') = asLam b
-      let args = app (patternExpr p) (map patternExpr ps)
+      let args = app (exprP p) (map exprP ps)
       prefix 2 ("\\" ++ show args ++ ". ") b'
     Fix x a -> prefix 2 ("@fix " ++ x ++ ". ") a
     Or a b -> infixR 1 a " | " b
@@ -110,24 +108,11 @@ instance Show Expr where
       for xs = "@for " ++ unwords xs ++ ". "
 
 instance Show Pattern where
-  show = show . patternExpr
+  show = show . exprP
 
 instance Show Type where
   show (For [] t) = show t
   show (For xs t) = "@for " ++ unwords xs ++ ". " ++ show t
-
-instance Show BinaryOp where
-  show Add = "+"
-  show Sub = "-"
-  show Mul = "*"
-  show Pow = "^"
-  show Eq = "=="
-  show Lt = "<"
-
-instance Show UnaryOp where
-  show IsInt = "@isInt"
-  show IsNum = "@isNum"
-  show Int2Num = "@int2Num"
 
 -- Syntax sugar
 fun :: [Expr] -> Expr -> Expr
@@ -158,12 +143,6 @@ eq = Op2 Eq
 lt :: Expr -> Expr -> Expr
 lt = Op2 Lt
 
-isInt :: Expr -> Expr
-isInt = Op1 IsInt
-
-isNum :: Expr -> Expr
-isNum = Op1 IsNum
-
 int2Num :: Expr -> Expr
 int2Num = Op1 Int2Num
 
@@ -172,7 +151,7 @@ let' [] b = b
 let' ((p, a) : defs) b = App (Lam p (let' defs b)) a
 
 or' :: [Expr] -> Expr
-or' [] = Err Tup
+or' [] = Err
 or' [a] = a
 or' (a : bs) = Or a (or' bs)
 
@@ -195,9 +174,8 @@ pushVars :: [String] -> Env -> Env
 pushVars xs = pushAll (map (\x -> (x, Var x)) xs)
 
 freeVars :: Expr -> [String]
-freeVars (Err a) = freeVars a
+freeVars Err = []
 freeVars Knd = []
-freeVars Tup = []
 freeVars IntT = []
 freeVars NumT = []
 freeVars (Int _) = []
@@ -206,9 +184,7 @@ freeVars (Var x) = [x]
 freeVars (Ctr _) = []
 freeVars (Typ _) = []
 freeVars (Fun a b) = freeVars a `union` freeVars b
-freeVars (Lam p a) = do
-  let xs = freeVars (patternExpr p)
-  filter (`notElem` xs) (freeVars a)
+freeVars (Lam p a) = filter (`notElem` freeVarsP p) (freeVars a)
 freeVars (App a b) = freeVars a `union` freeVars b
 freeVars (Ann a _) = freeVars a
 freeVars (Or a b) = freeVars a `union` freeVars b
@@ -217,10 +193,17 @@ freeVars (Fix x a) = delete x (freeVars a)
 freeVars (Op2 _ a b) = freeVars a `union` freeVars b
 freeVars (Op1 _ a) = freeVars a
 
-patternExpr :: Pattern -> Expr
-patternExpr (PVar x) = Var x
-patternExpr (PFun x y) = Fun (Var x) (Var y)
-patternExpr (PApp x y) = App (Var x) (Var y)
+freeVarsP :: Pattern -> [String]
+freeVarsP = freeVars . exprP
+
+exprP :: Pattern -> Expr
+exprP (PInt x) = Ann (Var x) (For [] IntT)
+exprP (PNum x) = Ann (Var x) (For [] NumT)
+exprP (PAny x) = Var x
+exprP (PIf x a) = And a (Var x)
+exprP (PFun p q) = Fun (exprP p) (exprP q)
+exprP (PApp p q) = App (exprP p) (exprP q)
+exprP PErr = Err
 
 occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
@@ -242,11 +225,10 @@ isOpen = not . isClosed
 
 -- Evaluation
 eval :: Env -> Expr -> Expr
-eval _ (Err a) = Err a
+eval _ Err = Err
 eval _ Knd = Knd
 eval _ IntT = IntT
 eval _ NumT = NumT
-eval _ Tup = Tup
 eval _ (Int i) = Int i
 eval _ (Num n) = Num n
 eval _ (Ctr k) = Ctr k
@@ -260,30 +242,32 @@ eval env (Fun a b) = case (eval env a, eval env b) of
   (Or a1 a2, b) -> Or (Fun a1 b) (Fun a2 b)
   (a, Or b1 b2) -> Or (Fun a b1) (Fun a b2)
   (a, b) -> Fun a b
-eval env (Lam p b) = case eval (pushVars (freeVars (patternExpr p)) env) b of
+eval env (Lam p b) = case eval (pushVars (freeVarsP p) env) b of
   Or b1 b2 -> Or (Lam p b1) (Lam p b2)
   b -> Lam p b
 eval env (App a b) = case (eval env a, eval env b) of
-  (Err a, _) -> Err a
-  (a@Ctr {}, b) -> App a b
-  (a@Typ {}, b) -> App a b
-  (a@Var {}, b) -> App a b
-  (a@App {}, b) -> App a b
+  (Err, _) -> Err
   (a, b) | isOpen b -> App a b
-  (Lam (PVar x) a, b) -> eval [(x, b)] a
-  (Lam (PFun x y) a, Fun b1 b2) -> eval [] (let' [(PVar x, b1), (PVar y, b2)] a)
-  (Lam (PApp x y) a, App b1 b2) -> eval [] (let' [(PVar x, b1), (PVar y, b2)] a)
+  (Lam p a, b) -> case (p, b) of
+    (PAny x, b) -> eval [(x, b)] a
+    (PInt x, Int b) -> eval [(x, Int b)] a
+    (PNum x, Num b) -> eval [(x, Num b)] a
+    (PIf x c, b) -> eval [(x, b)] (And c a)
+    (PFun p q, Fun b1 b2) -> eval [] (let' [(p, b1), (q, b2)] a)
+    (PApp p q, App b1 b2) -> eval [] (let' [(p, b1), (q, b2)] a)
+    (PErr, Err) -> eval [] a
+    _else -> Err
   (Or a1 a2, b) -> eval [] (Or (App a1 b) (App a2 b))
   (Fix x a, b) -> eval [(x, Fix x a)] (App a b)
-  (a, b) -> Err (App a b)
+  (a, b) -> App a b
 eval env (Ann a _) = eval env a
 eval env (Or a b) = case (eval env a, eval env b) of
-  (Err _, b) -> b
-  (a, Err _) -> a
+  (Err, b) -> b
+  (a, Err) -> a
   (Or a1 a2, b) -> Or a1 (Or a2 b)
   (a, b) -> Or a b
 eval env (And a b) = case eval env a of
-  Err a -> Err a
+  Err -> Err
   a | isClosed a -> eval env b
   a -> And a (eval env b)
 eval env (Fix x a) = Fix x (eval ((x, Var x) : env) a)
@@ -299,9 +283,7 @@ eval env (Op2 op a b) = case (eval env a, eval env b) of
     (Mul, Num a, Num b) -> Num (a * b)
     (Pow, Int a, Int b) -> Int (a ^ b)
     (Pow, Num a, Num b) -> Num (a ** b)
-    (Eq, Err _, Err _) -> Tup
     (Eq, Knd, Knd) -> Knd
-    (Eq, Tup, Tup) -> Tup
     (Eq, IntT, IntT) -> IntT
     (Eq, NumT, NumT) -> NumT
     (Eq, Int a, Int b) | a == b -> Int a
@@ -315,15 +297,13 @@ eval env (Op2 op a b) = case (eval env a, eval env b) of
     (Lt, Num a, Num b) | a < b -> Num a
     (Lt, Ctr a, Ctr b) | a < b -> Ctr a
     (Lt, Typ a, Typ b) | a < b -> Typ a
-    (op, a, b) -> Err (Op2 op a b)
+    _else -> Err
   (a, b) -> Op2 op a b
 eval env (Op1 op a) = case eval env a of
   Or a1 a2 -> eval [] (Or (Op1 op a1) (Op1 op a2))
   a | isClosed a -> case (op, a) of
-    (IsInt, Int a) -> Int a
-    (IsNum, Num a) -> Num a
     (Int2Num, Int a) -> Num (fromIntegral a)
-    (op, a) -> Err (Op1 op a)
+    _else -> Err
   a -> Op1 op a
 
 -- Type inference
@@ -345,9 +325,6 @@ instantiate existing (For (x : xs) a) = do
   (eval [(x, Var y)] b, [(y, Var y)] `union` s)
 
 unify :: Expr -> Expr -> Either TypeError (Expr, Substitution)
-unify (Err a) (Err b) = do
-  (a, s) <- unify a b
-  Right (Err a, s)
 unify Knd Knd = Right (Knd, [])
 unify IntT IntT = Right (IntT, [])
 unify (Typ t) (Typ t') | t == t' = Right (Typ t, [])
@@ -376,9 +353,8 @@ unify2 (a1, a2) (b1, b2) = do
   Right ((a, b), s2 `compose` s1)
 
 infer :: Env -> Expr -> Either TypeError (Expr, Substitution)
-infer _ (Err a) = Right (Err a, [])
+infer _ Err = Right (Err, [])
 infer _ Knd = Right (Knd, [])
-infer _ Tup = error "TODO: infer Tup"
 infer _ IntT = Right (Knd, [])
 infer _ NumT = Right (Knd, [])
 infer _ (Int _) = Right (IntT, [])
@@ -410,7 +386,7 @@ infer env (Fun a b) = do
   (_, s) <- infer2 env a b
   Right (Knd, s)
 infer env (Lam p b) = do
-  let a = patternExpr p
+  let a = exprP p
   ((t1, t2), s) <- infer2 (pushVars (freeVars a) env) a b
   Right (Fun t1 t2, s)
 infer env (App a b) = do
@@ -461,8 +437,6 @@ infer env (Op2 op a b) = case op of
     (t, s2) <- unify ta tb
     Right (t, s2 `compose` s1)
 infer env (Op1 op a) = case op of
-  IsInt -> infer env (Ann a (For [] IntT))
-  IsNum -> infer env (Ann a (For [] NumT))
   Int2Num -> do
     (_, s) <- infer env (Ann a (For [] IntT))
     Right (NumT, s)
@@ -472,3 +446,9 @@ infer2 env a b = do
   (ta, s1) <- infer env a
   (tb, s2) <- infer (s1 ++ apply s1 env) b
   Right ((eval s2 ta, tb), s2 `compose` s1)
+
+-- Runtime checks
+
+-- Optimize
+optimize :: Expr -> Expr
+optimize a = a

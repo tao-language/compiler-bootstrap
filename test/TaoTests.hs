@@ -39,13 +39,13 @@ run = describe "--==☯ Tao ☯==--" $ do
   --   True `shouldBe` True
 
   it "☯ toCore" $ do
-    toCore Err `shouldBe` C.Err C.Tup
+    toCore Err `shouldBe` C.Err
     toCore (Int 1) `shouldBe` C.Int 1
     toCore (Num 1.1) `shouldBe` C.Num 1.1
     -- TODO: Knd, IntT, NumT
     toCore (Var "x") `shouldBe` C.Var "x"
     toCore (Fun x y) `shouldBe` C.Fun x' y'
-    toCore (Match []) `shouldBe` C.Err C.Tup
+    toCore (Match []) `shouldBe` C.Err
     -- toCore (Match [([_x], x)]) `shouldBe` C.Lam _x' x'
     -- toCore (Match [([_x, _y], x)]) `shouldBe` C.lam [_x', _y'] x'
     -- toCore (Match [([_x], x), ([_y], y)]) `shouldBe` C.Or (C.Lam _x' x') (C.Lam _y' y')
@@ -72,9 +72,9 @@ run = describe "--==☯ Tao ☯==--" $ do
 
   it "☯ overload" $ do
     let addOverloads =
-          [ ([PIsInt "x", PIsInt "y"], Add x y),
-            ([PIsInt "x", PIsNum "y"], Add (Int2Num x) y),
-            ([PCtr "A", PCtr "B"], Ctr "C")
+          [ ([PInt "x", PInt "y"], Add x y),
+            ([PInt "x", PNum "y"], Add (Int2Num x) y),
+            ([PIfCtr "A", PIfCtr "B"], Ctr "C")
           ]
 
     let env = [("+", Match addOverloads)]
