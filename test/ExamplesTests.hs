@@ -1,38 +1,34 @@
 module ExamplesTests where
 
+import qualified Core as C
 import Tao
-import TaoLang
 import Test.Hspec
 
--- TODO: rename to EndToEndTests
+run :: SpecWith ()
+run = describe "--==☯ Examples ☯==--" $ do
+  it "☯ factorial" $ do
+    {-
+      factorial 0 = 1
+      factorial n = n * factorial (n - 1)
+    -}
+    let (i0, i1) = (Int 0, Int 1)
+    let (f, n) = (Var "f", Var "n")
+    let factorial =
+          [ ([PIfInt 0], i1),
+            ([PVar "n"], n `Mul` App f (n `Sub` i1))
+          ]
+    let env = [("f", Match factorial)]
 
-examplesTests :: SpecWith ()
-examplesTests = describe "--==☯ Examples ☯==--" $ do
-  -- it "☯ definitions" $ do
-  --   {- examples/definitions.tao
-  --       x = 42
-  --       y = 3.14
-  --   -}
-  --   ctx <- loadFile "examples" "definitions.tao"
-  --   -- eval ctx (Var "x") `shouldBe` Right (Int 42, Var "Int")
-  --   -- eval ctx (Var "y") `shouldBe` Right (Num 3.14, Var "Num")
-  --   True `shouldBe` True
-
-  -- it "☯ factorial" $ do
-  --   {- examples/factorial.tao
-  --       factorial 0 = 1
-  --       factorial n = n * factorial (n - 1)
-  --   -}
-  --   let f = Var "factorial"
-  --   ctx <- loadFile "examples" "factorial.tao"
-  --   -- infer ctx f `shouldBe` Right (Fun (Var "Int") (Var "Int"))
-  --   -- eval ctx (App f (Int 0)) `shouldBe` Right (Int 1, Var "Int")
-  --   -- eval ctx (App f (Int 1)) `shouldBe` Int 1
-  --   -- eval ctx (App f (Int 2)) `shouldBe` Int 2
-  --   -- eval ctx (App f (Int 3)) `shouldBe` Int 6
-  --   -- eval ctx (App f (Int 4)) `shouldBe` Int 24
-  --   -- eval ctx (App f (Int 5)) `shouldBe` Int 120
-  --   True `shouldBe` True
+    -- eval' env (Var "f") `shouldBe` C.Err
+    -- ctx <- loadFile "examples" "factorial.tao"
+    -- infer ctx f `shouldBe` Right (Fun (Var "Int") (Var "Int"))
+    -- eval ctx (App f (Int 0)) `shouldBe` Right (Int 1, Var "Int")
+    -- eval ctx (App f (Int 1)) `shouldBe` Int 1
+    -- eval ctx (App f (Int 2)) `shouldBe` Int 2
+    -- eval ctx (App f (Int 3)) `shouldBe` Int 6
+    -- eval ctx (App f (Int 4)) `shouldBe` Int 24
+    -- eval ctx (App f (Int 5)) `shouldBe` Int 120
+    True `shouldBe` True
 
   -- -- it "☯ fibonacci" $ do
   -- --   let f = Var "fibonacci"

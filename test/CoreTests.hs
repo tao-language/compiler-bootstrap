@@ -11,7 +11,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (f, g, h) = (Var "f", Var "g", Var "h")
 
-  let (_x, _y) = (PAny "x", PAny "y")
+  let (_x, _y) = (PVar "x", PVar "y")
 
   let factorial f = Fix "f" (Lam _x (eq x (Int 0) `And` i1) `Or` Lam _x ((Int 0 `lt` x) `And` (x `mul` App (Var f) (x `sub` i1))))
 

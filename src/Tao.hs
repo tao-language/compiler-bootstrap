@@ -47,9 +47,9 @@ data Expr
 
 data Pattern
   = PAny
+  | PVar !String
   | PInt !String
   | PNum !String
-  | PVar !String
   | PIf !String !Expr
   | PIfEq !Expr
   | PIfKnd
@@ -114,6 +114,13 @@ infer env a = case C.infer (toCoreEnv env) (toCore a) of
   Right (t', _) -> Right (For (C.freeVars t') (fromCore t'))
   Left err -> Left (TypeError err)
 
+-- compile :: Env -> C.Env
+-- compile =
+--  toCore
+--  infer
+--  embed types
+--  optimize
+
 -- Sugar / desugar
 toCore :: Expr -> C.Expr
 toCore Err = C.Err
@@ -157,10 +164,10 @@ toCore (Match brs) = C.or' (map (\(ps, b) -> toCore (lam ps b)) brs)
 toCore a = error ("TODO toCore: " ++ show a)
 
 toCoreP :: String -> Pattern -> C.Pattern
-toCoreP x PAny = C.PAny x
+toCoreP x PAny = C.PVar x
+toCoreP _ (PVar x) = C.PVar x
 toCoreP _ (PInt x) = C.PInt x
 toCoreP _ (PNum x) = C.PNum x
-toCoreP _ (PVar x) = C.PAny x
 toCoreP _ (PIf x a) = C.PIf x (toCore a)
 toCoreP x (PIfEq a) = toCoreP x (PIf x (Eq (Var x) a))
 toCoreP x PIfKnd = toCoreP x (PIfEq Knd)
@@ -185,20 +192,36 @@ fromCore (C.Ctr k) = Ctr k
 fromCore (C.Typ t) = Typ t
 fromCore (C.Var x) = Var x
 fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
--- fromCore (C.Lam p b) = Lam (fromCoreP p) (fromCore b)
+fromCore (C.Lam p b) = Lam (fromCoreP p) (fromCore b)
 fromCore (C.App a b) = App (fromCore a) (fromCore b)
 fromCore (C.Ann a (C.For xs t)) = Ann (fromCore a) (For xs (fromCore t))
 fromCore (C.Or a b) = Or (fromCore a) (fromCore b)
 fromCore (C.And a b) = And (fromCore a) (fromCore b)
-fromCore (C.Fix x a) = Let (PVar x, fromCore a) (Var x)
+fromCore (C.Fix x a) | x `C.occurs` a = Let (PVar x, fromCore a) (Var x)
+fromCore (C.Fix _ a) = fromCore a
 fromCore (C.Op2 C.Add a b) = Add (fromCore a) (fromCore b)
 fromCore (C.Op2 C.Sub a b) = Sub (fromCore a) (fromCore b)
 fromCore (C.Op2 C.Mul a b) = Mul (fromCore a) (fromCore b)
+fromCore (C.Op2 C.Eq a b) = Eq (fromCore a) (fromCore b)
 fromCore (C.Op1 C.Int2Num a) = Int2Num (fromCore a)
 fromCore a = error ("TODO fromCore: " ++ show a)
 
+fromCoreP :: C.Pattern -> Pattern
+fromCoreP (C.PVar x) = PVar x
+fromCoreP (C.PInt x) = PInt x
+fromCoreP (C.PNum x) = PNum x
+fromCoreP (C.PIf x a) = PIf x (fromCore a)
+fromCoreP (C.PFun a b) = PFun (fromCoreP a) (fromCoreP b)
+fromCoreP (C.PApp a b) = PApp (fromCoreP a) (fromCoreP b)
+fromCoreP C.PErr = PErr
+
+toCoreDef :: (String, Expr) -> (String, C.Expr)
+toCoreDef (x, a) = case toCore a of
+  a | x `C.occurs` a -> (x, C.Fix x a)
+  a -> (x, a)
+
 toCoreEnv :: Env -> C.Env
-toCoreEnv = map (second toCore)
+toCoreEnv = map toCoreDef
 
 fromCoreEnv :: C.Env -> Env
 fromCoreEnv = map (second fromCore)

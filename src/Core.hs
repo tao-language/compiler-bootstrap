@@ -29,7 +29,7 @@ data Expr
   deriving (Eq)
 
 data Pattern
-  = PAny !String
+  = PVar !String
   | PInt !String
   | PNum !String
   | PIf !String !Expr
@@ -94,8 +94,7 @@ instance Show Expr where
     Ann a (For xs b) -> infixR 2 a (" : " ++ for xs) b
     Lam p b -> do
       let (ps, b') = asLam b
-      let args = app (exprP p) (map exprP ps)
-      prefix 2 ("\\" ++ show args ++ ". ") b'
+      prefix 2 ("\\" ++ show (foldr PApp p ps) ++ ". ") b'
     Fix x a -> prefix 2 ("@fix " ++ x ++ ". ") a
     Or a b -> infixR 1 a " | " b
     And a b -> infixL 1 a "; " b
@@ -108,7 +107,18 @@ instance Show Expr where
       for xs = "@for " ++ unwords xs ++ ". "
 
 instance Show Pattern where
-  show = show . exprP
+  showsPrec p pattern = case pattern of
+    PErr -> atom 5 (show Err)
+    PVar x -> atom 5 x
+    PApp p q -> infixL 4 p " " q
+    PFun p q -> infixR 3 p " -> " q
+    PIf x a -> infixL 2 (Var x) " @if " a
+    PInt x -> infixR 1 (Var x) " : " IntT
+    PNum x -> infixR 1 (Var x) " : " NumT
+    where
+      atom n k = showParen (p > n) $ showString k
+      infixL n a op b = showParen (p > n) $ showsPrec n a . showString op . showsPrec (n + 1) b
+      infixR n a op b = showParen (p > n) $ showsPrec (n + 1) a . showString op . showsPrec n b
 
 instance Show Type where
   show (For [] t) = show t
@@ -199,7 +209,7 @@ freeVarsP = freeVars . exprP
 exprP :: Pattern -> Expr
 exprP (PInt x) = Ann (Var x) (For [] IntT)
 exprP (PNum x) = Ann (Var x) (For [] NumT)
-exprP (PAny x) = Var x
+exprP (PVar x) = Var x
 exprP (PIf x a) = And a (Var x)
 exprP (PFun p q) = Fun (exprP p) (exprP q)
 exprP (PApp p q) = App (exprP p) (exprP q)
@@ -249,7 +259,7 @@ eval env (App a b) = case (eval env a, eval env b) of
   (Err, _) -> Err
   (a, b) | isOpen b -> App a b
   (Lam p a, b) -> case (p, b) of
-    (PAny x, b) -> eval [(x, b)] a
+    (PVar x, b) -> eval [(x, b)] a
     (PInt x, Int b) -> eval [(x, Int b)] a
     (PNum x, Num b) -> eval [(x, Num b)] a
     (PIf x c, b) -> eval [(x, b)] (And c a)
