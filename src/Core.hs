@@ -1,6 +1,6 @@
 module Core where
 
-import Data.List (delete, union)
+import Data.List (delete, intercalate, union)
 
 -- https://simon.peytonjones.org/verse-calculus
 -- https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadt-pldi.pdf
@@ -14,7 +14,7 @@ data Expr
   | Int !Int
   | Num !Double
   | Ctr !String
-  | Typ !String
+  | Typ !String ![String]
   | Var !String
   | Fun !Expr !Expr
   | Lam !Pattern !Expr
@@ -80,7 +80,7 @@ instance Show Expr where
     Int i -> atom 11 (show i)
     Num n -> atom 11 (show n)
     Ctr k -> atom 11 ("#" ++ k)
-    Typ t -> atom 11 ("%" ++ t)
+    Typ t ks -> atom 11 ("%" ++ t ++ " {" ++ intercalate " | " ks ++ "}")
     Var x -> atom 11 x
     Op2 Pow a b -> infixR 10 a "^" b
     App a b -> infixL 8 a " " b
@@ -192,7 +192,7 @@ freeVars (Int _) = []
 freeVars (Num _) = []
 freeVars (Var x) = [x]
 freeVars (Ctr _) = []
-freeVars (Typ _) = []
+freeVars (Typ _ _) = []
 freeVars (Fun a b) = freeVars a `union` freeVars b
 freeVars (Lam p a) = filter (`notElem` freeVarsP p) (freeVars a)
 freeVars (App a b) = freeVars a `union` freeVars b
@@ -242,7 +242,7 @@ eval _ NumT = NumT
 eval _ (Int i) = Int i
 eval _ (Num n) = Num n
 eval _ (Ctr k) = Ctr k
-eval _ (Typ t) = Typ t
+eval _ (Typ t ks) = Typ t ks
 eval env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Var x
   Just (Ann (Var x') _) | x == x' -> Var x
@@ -299,14 +299,14 @@ eval env (Op2 op a b) = case (eval env a, eval env b) of
     (Eq, Int a, Int b) | a == b -> Int a
     (Eq, Num a, Num b) | a == b -> Num a
     (Eq, Ctr a, Ctr b) | a == b -> Ctr a
-    (Eq, Typ a, Typ b) | a == b -> Typ a
+    (Eq, Typ a ks, Typ b ks') | a == b && ks == ks' -> Typ a ks
     (Eq, Var a, Var b) | a == b -> Var a
     (Eq, Fun a1 a2, Fun b1 b2) -> And (eq a1 b1) (eq a2 b2)
     (Eq, App a1 a2, App b1 b2) -> And (eq a1 b1) (eq a2 b2)
     (Lt, Int a, Int b) | a < b -> Int a
     (Lt, Num a, Num b) | a < b -> Num a
     (Lt, Ctr a, Ctr b) | a < b -> Ctr a
-    (Lt, Typ a, Typ b) | a < b -> Typ a
+    (Lt, Typ a ks, Typ b _) | a < b -> Typ a ks
     _else -> Err
   (a, b) -> Op2 op a b
 eval env (Op1 op a) = case eval env a of
@@ -337,7 +337,7 @@ instantiate existing (For (x : xs) a) = do
 unify :: Expr -> Expr -> Either TypeError (Expr, Substitution)
 unify Knd Knd = Right (Knd, [])
 unify IntT IntT = Right (IntT, [])
-unify (Typ t) (Typ t') | t == t' = Right (Typ t, [])
+unify (Typ t ks) (Typ t' ks') | t == t' && ks == ks' = Right (Typ t ks, [])
 unify (Var x) (Var x') | x == x' = Right (Var x, [])
 unify (Var x) b | x `occurs` b = Left (InfiniteType x b)
 unify (Var x) b = Right (b, [(x, b)])
@@ -376,11 +376,11 @@ infer env (Ctr k) = case lookup k env of
   Just (Ann (Ctr k') _) -> Left (InconsistentCtr k k')
   Just _ -> Left (MissingType k)
   Nothing -> Left (UndefinedCtr k)
-infer env (Typ t) = case lookup t env of
-  Just (Ann (Typ t') ty) | t == t' -> do
+infer env (Typ t _) = case lookup t env of
+  Just (Ann (Typ t' _) ty) | t == t' -> do
     let (t, s) = instantiate (map fst env) ty
     Right (eval (s ++ apply s env) t, s)
-  Just (Ann (Typ t') _) -> Left (InconsistentTyp t t')
+  Just (Ann (Typ t' _) _) -> Left (InconsistentTyp t t')
   Just _ -> Left (MissingType t)
   Nothing -> Left (UndefinedTyp t)
 infer env (Var x) = case lookup x env of
@@ -457,7 +457,12 @@ infer2 env a b = do
   (tb, s2) <- infer (s1 ++ apply s1 env) b
   Right ((eval s2 ta, tb), s2 `compose` s1)
 
--- Runtime checks
+-- Specialize patterns with types
+specialize :: Pattern -> Expr -> Pattern
+specialize (PVar x) IntT = PInt x
+specialize (PVar x) NumT = PNum x
+-- specialize (PVar x) (Typ t ks) =
+specialize p _ = p
 
 -- Optimize
 optimize :: Expr -> Expr
