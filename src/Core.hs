@@ -13,7 +13,7 @@ data Expr
   | NumT
   | Int !Int
   | Num !Double
-  | Ctr !String
+  | Ctr !String !String ![Expr]
   | Typ !String ![String]
   | Var !String
   | Fun !Expr !Expr
@@ -21,7 +21,7 @@ data Expr
   | App !Expr !Expr
   | Ann !Expr !Type
   | Or !Expr !Expr
-  | And !Expr !Expr
+  | If !Expr !Expr
   | Fix !String !Expr
   | Op2 !BinaryOp !Expr !Expr
   | Op1 !UnaryOp !Expr
@@ -30,9 +30,8 @@ data Expr
 
 data Pattern
   = PVar !String
-  | PInt !String
-  | PNum !String
-  | PIf !String !Expr
+  | PIf !Pattern !Expr
+  | PAnn !Pattern !Expr
   | PFun !Pattern !Pattern
   | PApp !Pattern !Pattern
   | PErr
@@ -79,7 +78,8 @@ instance Show Expr where
     NumT -> atom 11 "@Num"
     Int i -> atom 11 (show i)
     Num n -> atom 11 (show n)
-    Ctr k -> atom 11 ("#" ++ k)
+    Ctr t k [] -> atom 11 ("#" ++ t ++ "." ++ k)
+    Ctr t k args -> showsPrec p (app (Ctr t k []) args)
     Typ t ks -> atom 11 ("%" ++ t ++ " {" ++ intercalate " | " ks ++ "}")
     Var x -> atom 11 x
     Op2 Pow a b -> infixR 10 a "^" b
@@ -97,7 +97,7 @@ instance Show Expr where
       prefix 2 ("\\" ++ show (foldr PApp p ps) ++ ". ") b'
     Fix x a -> prefix 2 ("@fix " ++ x ++ ". ") a
     Or a b -> infixR 1 a " | " b
-    And a b -> infixL 1 a "; " b
+    If a b -> infixR 1 a " @if " b
     where
       atom n k = showParen (p > n) $ showString k
       prefix n k a = showParen (p > n) $ showString k . showsPrec (n + 1) a
@@ -107,18 +107,7 @@ instance Show Expr where
       for xs = "@for " ++ unwords xs ++ ". "
 
 instance Show Pattern where
-  showsPrec p pattern = case pattern of
-    PErr -> atom 5 (show Err)
-    PVar x -> atom 5 x
-    PApp p q -> infixL 4 p " " q
-    PFun p q -> infixR 3 p " -> " q
-    PIf x a -> infixL 2 (Var x) " @if " a
-    PInt x -> infixR 1 (Var x) " : " IntT
-    PNum x -> infixR 1 (Var x) " : " NumT
-    where
-      atom n k = showParen (p > n) $ showString k
-      infixL n a op b = showParen (p > n) $ showsPrec n a . showString op . showsPrec (n + 1) b
-      infixR n a op b = showParen (p > n) $ showsPrec (n + 1) a . showString op . showsPrec n b
+  show = show . exprP
 
 instance Show Type where
   show (For [] t) = show t
@@ -127,6 +116,10 @@ instance Show Type where
 -- Syntax sugar
 fun :: [Expr] -> Expr -> Expr
 fun bs b = foldr Fun b bs
+
+asFun :: Expr -> ([Expr], Expr)
+asFun (Fun a1 a2) = let (bs, b) = asFun a2 in (a1 : bs, b)
+asFun a = ([], a)
 
 lam :: [Pattern] -> Expr -> Expr
 lam ps b = foldr Lam b ps
@@ -168,6 +161,10 @@ or' (a : bs) = Or a (or' bs)
 app :: Expr -> [Expr] -> Expr
 app = foldl App
 
+asApp :: Expr -> (Expr, [Expr])
+asApp (App a b) = let (a', bs) = asApp a in (a', bs ++ [b])
+asApp a = (a, [])
+
 -- Helper functions
 pop :: Eq k => k -> [(k, v)] -> [(k, v)]
 pop _ [] = []
@@ -191,14 +188,14 @@ freeVars NumT = []
 freeVars (Int _) = []
 freeVars (Num _) = []
 freeVars (Var x) = [x]
-freeVars (Ctr _) = []
+freeVars (Ctr _ _ args) = foldr (union . freeVars) [] args
 freeVars (Typ _ _) = []
 freeVars (Fun a b) = freeVars a `union` freeVars b
 freeVars (Lam p a) = filter (`notElem` freeVarsP p) (freeVars a)
 freeVars (App a b) = freeVars a `union` freeVars b
 freeVars (Ann a _) = freeVars a
 freeVars (Or a b) = freeVars a `union` freeVars b
-freeVars (And a b) = freeVars a `union` freeVars b
+freeVars (If a b) = freeVars a `union` freeVars b
 freeVars (Fix x a) = delete x (freeVars a)
 freeVars (Op2 _ a b) = freeVars a `union` freeVars b
 freeVars (Op1 _ a) = freeVars a
@@ -206,26 +203,27 @@ freeVars (Op1 _ a) = freeVars a
 freeVarsP :: Pattern -> [String]
 freeVarsP = freeVars . exprP
 
+occurs :: String -> Expr -> Bool
+occurs x a = x `elem` freeVars a
+
 exprP :: Pattern -> Expr
-exprP (PInt x) = Ann (Var x) (For [] IntT)
-exprP (PNum x) = Ann (Var x) (For [] NumT)
 exprP (PVar x) = Var x
-exprP (PIf x a) = And a (Var x)
+exprP (PIf p a) = If (exprP p) a
+exprP (PAnn p a) = Ann (exprP p) (For [] a)
 exprP (PFun p q) = Fun (exprP p) (exprP q)
 exprP (PApp p q) = App (exprP p) (exprP q)
 exprP PErr = Err
 
-occurs :: String -> Expr -> Bool
-occurs x a = x `elem` freeVars a
-
 newName :: [String] -> String -> String
-newName existing x = do
-  head
-    [ name
-      | i <- [(0 :: Int) ..],
-        let name = if i == 0 then x else x ++ show i,
-        name `notElem` existing
-    ]
+newName existing x = head (newNames existing x)
+
+newNames :: [String] -> String -> [String]
+newNames existing x =
+  [ name
+    | i <- [(0 :: Int) ..],
+      let name = if i == 0 then x else x ++ show i,
+      name `notElem` existing
+  ]
 
 isClosed :: Expr -> Bool
 isClosed = null . freeVars
@@ -241,7 +239,7 @@ eval _ IntT = IntT
 eval _ NumT = NumT
 eval _ (Int i) = Int i
 eval _ (Num n) = Num n
-eval _ (Ctr k) = Ctr k
+eval env (Ctr t k args) = Ctr t k (eval env <$> args)
 eval _ (Typ t ks) = Typ t ks
 eval env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Var x
@@ -259,13 +257,18 @@ eval env (App a b) = case (eval env a, eval env b) of
   (Err, _) -> Err
   (a, b) | isOpen b -> App a b
   (Lam p a, b) -> case (p, b) of
-    (PVar x, b) -> eval [(x, b)] a
-    (PInt x, Int b) -> eval [(x, Int b)] a
-    (PNum x, Num b) -> eval [(x, Num b)] a
-    (PIf x c, b) -> eval [(x, b)] (And c a)
+    (PVar x, _) -> eval [(x, b)] a
+    -- (PInt x, Int _) -> eval [(x, b)] a
+    -- (PNum x, Num _) -> eval [(x, b)] a
+    -- (PTyp x t, Ctr t' _) | t == t' -> eval [(x, b)] a
+    -- (PTyp t, App b _) -> eval [] (App (Lam (PTyp t) a) b)
+    -- (PAs p x, b) -> eval [(x, b)] (App (Lam p a) b)
+    (PAnn p IntT, Int _) -> eval [] (App (Lam p a) b)
+    (PAnn p NumT, Num _) -> eval [] (App (Lam p a) b)
+    (PIf p c, b) -> eval [] (App (Lam p (a `If` c)) b)
     (PFun p q, Fun b1 b2) -> eval [] (let' [(p, b1), (q, b2)] a)
     (PApp p q, App b1 b2) -> eval [] (let' [(p, b1), (q, b2)] a)
-    (PErr, Err) -> eval [] a
+    (PErr, Err) -> a
     _else -> Err
   (Or a1 a2, b) -> eval [] (Or (App a1 b) (App a2 b))
   (Fix x a, b) -> eval [(x, Fix x a)] (App a b)
@@ -276,10 +279,10 @@ eval env (Or a b) = case (eval env a, eval env b) of
   (a, Err) -> a
   (Or a1 a2, b) -> Or a1 (Or a2 b)
   (a, b) -> Or a b
-eval env (And a b) = case eval env a of
+eval env (If a b) = case eval env b of
   Err -> Err
-  a | isClosed a -> eval env b
-  a -> And a (eval env b)
+  b | isClosed b -> eval env a
+  b -> If (eval env a) b
 eval env (Fix x a) = Fix x (eval ((x, Var x) : env) a)
 eval env (Op2 op a b) = case (eval env a, eval env b) of
   (Or a1 a2, b) -> eval [] (Or (Op2 op a1 b) (Op2 op a2 b))
@@ -298,14 +301,16 @@ eval env (Op2 op a b) = case (eval env a, eval env b) of
     (Eq, NumT, NumT) -> NumT
     (Eq, Int a, Int b) | a == b -> Int a
     (Eq, Num a, Num b) | a == b -> Num a
-    (Eq, Ctr a, Ctr b) | a == b -> Ctr a
+    (Eq, Ctr t k [], Ctr t' k' []) | t == t' && k == k' -> Ctr t k []
+    (Eq, Ctr t k (a : bs), Ctr t' k' (a' : bs')) -> eval [] (eq (Ctr t k bs) (Ctr t' k' bs') `If` eq a a')
     (Eq, Typ a ks, Typ b ks') | a == b && ks == ks' -> Typ a ks
     (Eq, Var a, Var b) | a == b -> Var a
-    (Eq, Fun a1 a2, Fun b1 b2) -> And (eq a1 b1) (eq a2 b2)
-    (Eq, App a1 a2, App b1 b2) -> And (eq a1 b1) (eq a2 b2)
+    (Eq, Fun a1 a2, Fun b1 b2) -> If (eq a1 b1) (eq a2 b2)
+    (Eq, App a1 a2, App b1 b2) -> If (eq a1 b1) (eq a2 b2)
     (Lt, Int a, Int b) | a < b -> Int a
     (Lt, Num a, Num b) | a < b -> Num a
-    (Lt, Ctr a, Ctr b) | a < b -> Ctr a
+    (Lt, Ctr t k [], Ctr t' k' []) | t ++ "." ++ k < t' ++ "." ++ k' -> Ctr t k []
+    (Lt, Ctr t k (a : bs), Ctr t' k' (a' : bs')) -> eval [] (lt (Ctr t k bs) (Ctr t' k' bs') `If` lt a a')
     (Lt, Typ a ks, Typ b _) | a < b -> Typ a ks
     _else -> Err
   (a, b) -> Op2 op a b
@@ -369,13 +374,14 @@ infer _ IntT = Right (Knd, [])
 infer _ NumT = Right (Knd, [])
 infer _ (Int _) = Right (IntT, [])
 infer _ (Num _) = Right (NumT, [])
-infer env (Ctr k) = case lookup k env of
-  Just (Ann (Ctr k') ty) | k == k' -> do
+infer env (Ctr t k []) = case lookup k env of
+  Just (Ann (Ctr t' k' []) ty) | t == t' && k == k' -> do
     let (t, s) = instantiate (map fst env) ty
     Right (eval (s ++ apply s env) t, s)
-  Just (Ann (Ctr k') _) -> Left (InconsistentCtr k k')
+  Just (Ann (Ctr t' k' _) _) -> Left (InconsistentCtr k k')
   Just _ -> Left (MissingType k)
   Nothing -> Left (UndefinedCtr k)
+infer env (Ctr t k args) = infer env (app (Ctr t k []) args)
 infer env (Typ t _) = case lookup t env of
   Just (Ann (Typ t' _) ty) | t == t' -> do
     let (t, s) = instantiate (map fst env) ty
@@ -417,7 +423,7 @@ infer env (Or a b) = do
   case unify ta tb of
     Right (t, s2) -> Right (t, s2 `compose` s1)
     Left _ -> Right (Or ta tb, s1)
-infer env (And a b) = do
+infer env (If a b) = do
   ((_, tb), s) <- infer2 env a b
   Right (tb, s)
 infer env (Fix x a) = infer ((x, Var x) : env) a
@@ -457,12 +463,12 @@ infer2 env a b = do
   (tb, s2) <- infer (s1 ++ apply s1 env) b
   Right ((eval s2 ta, tb), s2 `compose` s1)
 
--- Specialize patterns with types
-specialize :: Pattern -> Expr -> Pattern
-specialize (PVar x) IntT = PInt x
-specialize (PVar x) NumT = PNum x
--- specialize (PVar x) (Typ t ks) =
-specialize p _ = p
+-- -- Typed
+-- typedP :: Pattern -> Expr -> Pattern
+-- typedP (PVar x) IntT = PInt x
+-- typedP (PVar x) NumT = PNum x
+-- -- typedP (PVar x) (Typ t ks) =
+-- typedP p _ = p
 
 -- Optimize
 optimize :: Expr -> Expr

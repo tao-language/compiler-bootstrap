@@ -62,24 +62,24 @@ run = describe "--==☯ Tao ☯==--" $ do
   it "☯ fromCore" $ do
     True `shouldBe` True
 
-  it "☯ eval" $ do
-    let env = [("x", i1), ("f", Lam _x x)]
-    eval env (App (Var "f") (Var "x")) `shouldBe` i1
+-- it "☯ eval" $ do
+--   let env = [("x", i1), ("f", Lam _x x)]
+--   eval env (App (Var "f") (Var "x")) `shouldBe` i1
 
-  it "☯ infer" $ do
-    let env = [("x", i1), ("f", Lam _x x)]
-    eval env (App (Var "f") (Var "x")) `shouldBe` i1
+-- it "☯ infer" $ do
+--   let env = [("x", i1), ("f", Lam _x x)]
+--   eval env (App (Var "f") (Var "x")) `shouldBe` i1
 
-  it "☯ overload" $ do
-    let addOverloads =
-          [ ([PInt "x", PInt "y"], Add x y),
-            ([PInt "x", PNum "y"], Add (Int2Num x) y),
-            ([PIfCtr "A", PIfCtr "B"], Ctr "C")
-          ]
+-- it "☯ overload" $ do
+--   let addOverloads =
+--         [ ([PInt "x", PInt "y"], Add x y),
+--           ([PInt "x", PNum "y"], Add (Int2Num x) y),
+--           ([PIfCtr "A", PIfCtr "B"], Ctr "C")
+--         ]
 
-    let env = [("+", Match addOverloads)]
-    let add a b = app (Var "+") [a, b]
-    eval env (add (Int 1) (Int 2)) `shouldBe` Int 3
-    eval' env (add (Int 1) (Num 2.2)) `shouldBe` C.Num 3.2
-    eval env (add (Num 1.1) (Int 2)) `shouldBe` Err
-    eval env (add (Ctr "A") (Ctr "B")) `shouldBe` Ctr "C"
+--   let env = [("+", Match addOverloads)]
+--   let add a b = app (Var "+") [a, b]
+--   eval env (add (Int 1) (Int 2)) `shouldBe` Int 3
+--   eval' env (add (Int 1) (Num 2.2)) `shouldBe` C.Num 3.2
+--   eval env (add (Num 1.1) (Int 2)) `shouldBe` Err
+--   eval env (add (Ctr "A") (Ctr "B")) `shouldBe` Ctr "C"

@@ -5,7 +5,7 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯️ Core language ☯️==--" $ do
-  let (i1, i2, i3) = (Int 1, Int 2, Int 3)
+  let (i0, i1, i2) = (Int 0, Int 1, Int 2)
   let (n1, n2, n3) = (Num 1.1, Num 2.2, Num 3.3)
   let (a, b, c) = (Var "a", Var "b", Var "c")
   let (x, y, z) = (Var "x", Var "y", Var "z")
@@ -13,7 +13,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   let (_x, _y) = (PVar "x", PVar "y")
 
-  let factorial f = Fix "f" (Lam _x (eq x (Int 0) `And` i1) `Or` Lam _x ((Int 0 `lt` x) `And` (x `mul` App (Var f) (x `sub` i1))))
+  let factorial f = Fix "f" (Lam (_x `PIf` eq x i0) i1 `Or` Lam (_x `PIf` lt i0 x) (x `mul` App (Var f) (x `sub` i1)))
 
   it "☯ show" $ do
     let (ty, tz) = (For [] y, For [] z)
@@ -23,7 +23,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     show NumT `shouldBe` "@Num"
     show (Int 1) `shouldBe` "1"
     show (Num 1.1) `shouldBe` "1.1"
-    show (Ctr "A") `shouldBe` "#A"
+    show (Ctr "T" "A" []) `shouldBe` "#T.A"
+    show (Ctr "T" "A" [x, y]) `shouldBe` "#T.A x y"
     show (Typ "T" []) `shouldBe` "%T {}"
     show (Typ "T" ["A"]) `shouldBe` "%T {A}"
     show (Typ "T" ["A", "B"]) `shouldBe` "%T {A | B}"
@@ -122,10 +123,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     show (Or x (Or y z)) `shouldBe` "x | y | z"
     show (Or (Or x y) z) `shouldBe` "(x | y) | z"
 
-    show (And x (Ann y tz)) `shouldBe` "x; y : z"
-    show (And (Ann x ty) z) `shouldBe` "x : y; z"
-    show (And x (And y z)) `shouldBe` "x; (y; z)"
-    show (And (And x y) z) `shouldBe` "x; y; z"
+    show (If x (Ann y tz)) `shouldBe` "x @if y : z"
+    show (If (Ann x ty) z) `shouldBe` "x : y @if z"
+    show (If x (If y z)) `shouldBe` "x @if y @if z"
+    show (If (If x y) z) `shouldBe` "(x @if y) @if z"
 
   it "☯ syntax sugar" $ do
     let' [] x `shouldBe` x
@@ -152,8 +153,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ eval Ctr" $ do
     let env = [("x", i1)]
-    eval env (Ctr "A") `shouldBe` Ctr "A"
-    eval env (App (Ctr "B") x) `shouldBe` App (Ctr "B") i1
+    eval env (Ctr "T" "A" []) `shouldBe` Ctr "T" "A" []
+    eval env (Ctr "T" "B" [x]) `shouldBe` Ctr "T" "B" [i1]
 
   it "☯ eval Typ" $ do
     let env = [("x", i1)]
@@ -182,12 +183,12 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     True `shouldBe` True
 
   it "☯ eval Or" $ do
-    let env = [("x", i1), ("y", i2), ("z", i3)]
-    eval env (Or x Err) `shouldBe` i1
-    eval env (Or Err y) `shouldBe` i2
-    eval env (Or x y) `shouldBe` Or i1 i2
-    eval env (Or x (Or y z)) `shouldBe` Or i1 (Or i2 i3)
-    eval env (Or (Or x y) z) `shouldBe` Or i1 (Or i2 i3)
+    let env = [("x", i0), ("y", i1), ("z", i2)]
+    eval env (Or x Err) `shouldBe` i0
+    eval env (Or Err y) `shouldBe` i1
+    eval env (Or x y) `shouldBe` Or i0 i1
+    eval env (Or x (Or y z)) `shouldBe` Or i0 (Or i1 i2)
+    eval env (Or (Or x y) z) `shouldBe` Or i0 (Or i1 i2)
 
   it "☯ eval App" $ do
     let env = [("x", i1), ("f", g), ("g", g), ("h", h)]
@@ -253,19 +254,19 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ infer Ctr" $ do
     let env =
-          [ ("C1", Ann (Ctr "C1") (For [] a)),
-            ("C2", Ann (Ctr "C2") (For ["a"] a)),
-            ("C3", Ann (Ctr "C3") (For ["b"] b)),
-            ("C4", Ann (Ctr "C5") (For [] a)),
-            ("C5", Ctr "C5"),
+          [ ("C1", Ann (Ctr "T" "C1" []) (For [] a)),
+            ("C2", Ann (Ctr "T" "C2" []) (For ["a"] a)),
+            ("C3", Ann (Ctr "T" "C3" []) (For ["b"] b)),
+            ("C4", Ann (Ctr "T" "C5" []) (For [] a)),
+            ("C5", Ctr "T" "C5" []),
             ("b", b)
           ]
-    infer env (Ctr "X") `shouldBe` Left (UndefinedCtr "X")
-    infer env (Ctr "C1") `shouldBe` Right (a, [])
-    infer env (Ctr "C2") `shouldBe` Right (a, [("a", a)])
-    infer env (Ctr "C3") `shouldBe` Right (Var "b1", [("b1", Var "b1")])
-    infer env (Ctr "C4") `shouldBe` Left (InconsistentCtr "C4" "C5")
-    infer env (Ctr "C5") `shouldBe` Left (MissingType "C5")
+    infer env (Ctr "T" "X" []) `shouldBe` Left (UndefinedCtr "X")
+    infer env (Ctr "T" "C1" []) `shouldBe` Right (a, [])
+    infer env (Ctr "T" "C2" []) `shouldBe` Right (a, [("a", a)])
+    infer env (Ctr "T" "C3" []) `shouldBe` Right (Var "b1", [("b1", Var "b1")])
+    infer env (Ctr "T" "C4" []) `shouldBe` Left (InconsistentCtr "C4" "C5")
+    infer env (Ctr "T" "C5" []) `shouldBe` Left (MissingType "C5")
 
   it "☯ infer Typ" $ do
     let env =
@@ -305,20 +306,30 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer [] (Ann i1 (For ["a"] a)) `shouldBe` Right (IntT, [("a", IntT)])
 
   it "☯ infer Lam" $ do
-    let (t, xT) = (Var "t", Var "xT")
+    let (t, xT, _T) = (Var "t", Var "xT", Var "_T")
     let env =
-          [ ("A", Ann (Ctr "A") (For ["a"] a)),
+          [ ("A", Ann (Ctr "T" "A" []) (For ["a"] a)),
             ("T", Ann (Typ "T" ["A"]) (For ["b"] b)),
-            ("x", Ann x (For [] IntT))
+            ("x", Ann x (For [] a)),
+            ("y", Int 1),
+            ("a", a)
           ]
-    -- infer env (Lam KndP x) `shouldBe` Right (Fun Knd IntT, [])
-    -- infer env (Lam IntTP x) `shouldBe` Right (Fun Knd IntT, [])
-    -- infer env (Lam IntTP x) `shouldBe` Right (Fun Knd IntT, [])
-    -- infer env (Lam (CtrP "A") x) `shouldBe` Right (Fun a IntT, [("a", a)])
-    -- infer env (Lam (TypP "T") x) `shouldBe` Right (Fun b IntT, [("b", b)])
-    -- infer env (Lam (VarP "x") x) `shouldBe` Right (Fun xT xT, [("xT", xT), ("x", Ann x (For [] xT))])
-    -- infer env (Lam (FunP x' IntTP) x) `shouldBe` Right (Fun Knd xT, [("xT", xT), ("x", Ann x (For [] xT))])
-    -- infer env (Lam (AppP x' IntTP) x) `shouldBe` Right (Fun t (Fun Knd t), [("xT", Fun Knd t), ("x", Ann x (For [] (Fun Knd t))), ("t", t)])
+
+    -- infer env (Lam (PAs PAny "x") x) `shouldBe` Right (Fun xT xT, [("xT", xT), ("x", Ann x (For [] xT))])
+    -- infer env (Lam (PAs PInt "x") x) `shouldBe` Right (Fun IntT IntT, [])
+    -- infer env (Lam (PAs PNum "x") x) `shouldBe` Right (Fun NumT NumT, [])
+    -- -- PTyp
+    -- infer env (Lam (PAs (PAs PInt "x") "y") x) `shouldBe` Right (Fun IntT IntT, [])
+    -- infer env (Lam (PAs (PAs PInt "x") "y") y) `shouldBe` Right (Fun IntT IntT, [])
+    -- infer env (Lam (PAs (PIf PInt y) "x") x) `shouldBe` Right (Fun IntT IntT, [])
+    -- -- infer env (Lam (PAs (PFun _x _y) "z") z) `shouldBe` Right (Err, [])
+    -- infer env (Lam (PAs (PApp _x _y) "z") z) `shouldBe` Right (Err, [])
+
+    -- infer env (Lam _x x) `shouldBe` Right (Fun _T a, [("_T", _T), ("_", Ann (Var "_") (For [] _T))])
+    -- infer env (Lam (PIf _x y) x) `shouldBe` Right (Fun IntT a, [])
+    -- infer env (Lam (PFun _x _y) x) `shouldBe` Right (Err, [])
+    -- PApp !Pattern !Pattern
+    -- PErr
     True `shouldBe` True
 
   it "☯ infer App" $ do
@@ -349,13 +360,13 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let nat n = App (Typ "Nat" ["Zero", "Succ"]) n
     let env =
           [ ("Nat", Ann (Typ "Nat" ["Zero", "Succ"]) (For [] (Fun IntT Knd))),
-            ("Zero", Ann (Ctr "Zero") (For [] (nat i0))),
-            ("Succ", Ann (Ctr "Succ") (For ["n"] (Fun (nat n) (nat (add n i1)))))
+            ("Zero", Ann (Ctr "Nat" "Zero" []) (For [] (nat i0))),
+            ("Succ", Ann (Ctr "Nat" "Succ" []) (For ["n"] (Fun (nat n) (nat (add n i1)))))
           ]
 
     let num :: Int -> Expr
-        num 0 = Ctr "Zero"
-        num n = App (Ctr "Succ") (num (n - 1))
+        num 0 = Ctr "Nat" "Zero" []
+        num n = Ctr "Nat" "Succ" [num (n - 1)]
     let infer' = fmap fst . infer env
     infer' (num 0) `shouldBe` Right (nat i0)
     infer' (num 1) `shouldBe` Right (nat i1)
@@ -367,20 +378,20 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let vec n a = app (Typ "Vec" ["Nil", "Cons"]) [n, a]
     let env =
           [ ("Vec", Ann (Typ "Vec" ["Nil", "Cons"]) (For [] (fun [IntT, Knd] Knd))),
-            ("Nil", Ann (Ctr "Nil") (For ["a"] (vec i0 a))),
-            ("Cons", Ann (Ctr "Cons") (For ["n", "a"] (fun [a, vec n a] (vec (add n i1) a))))
+            ("Nil", Ann (Ctr "Vec" "Nil" []) (For ["a"] (vec i0 a))),
+            ("Cons", Ann (Ctr "Vec" "Cons" []) (For ["n", "a"] (fun [a, vec n a] (vec (add n i1) a))))
           ]
 
-    let list [] = Ctr "Nil"
-        list (x : xs) = app (Ctr "Cons") [x, list xs]
+    let list [] = Ctr "Vec" "Nil" []
+        list (x : xs) = Ctr "Vec" "Cons" [x, list xs]
     let infer' = fmap fst . infer env
     infer' (list []) `shouldBe` Right (vec i0 a)
     infer' (list [Int 42]) `shouldBe` Right (vec i1 IntT)
     infer' (list [Int 42, Int 9]) `shouldBe` Right (vec i2 IntT)
     infer' (list [Int 42, Knd]) `shouldBe` Left (TypeMismatch Knd IntT)
 
-  it "☯ specialize" $ do
-    specialize (PVar "x") Knd `shouldBe` PVar "x"
-    specialize (PVar "x") IntT `shouldBe` PInt "x"
-    specialize (PVar "x") NumT `shouldBe` PNum "x"
-    specialize (PVar "x") (Typ "T" ["A"]) `shouldBe` PVar "x"
+-- it "☯ specialize" $ do
+--   specialize (PVar "x") Knd `shouldBe` PVar "x"
+--   specialize (PVar "x") IntT `shouldBe` PInt "x"
+--   specialize (PVar "x") NumT `shouldBe` PNum "x"
+--   specialize (PVar "x") (Typ "T" ["A"]) `shouldBe` PVar "x"

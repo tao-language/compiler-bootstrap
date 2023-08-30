@@ -20,7 +20,7 @@ data Expr
   | App !Expr !Expr
   | Ann !Expr !Type
   | Or !Expr !Expr
-  | And !Expr !Expr
+  | If !Expr !Expr
   | Add !Expr !Expr
   | Sub !Expr !Expr
   | Mul !Expr !Expr
@@ -129,7 +129,7 @@ toCore IntT = C.IntT
 toCore NumT = C.NumT
 toCore (Int i) = C.Int i
 toCore (Num n) = C.Num n
-toCore (Ctr k) = C.Ctr k
+-- toCore (Ctr k) = C.Ctr k
 toCore (Typ t) = C.Typ t []
 toCore (Var x) = C.Var x
 toCore (Fun a b) = C.Fun (toCore a) (toCore b)
@@ -140,7 +140,7 @@ toCore (Lam p b) = do
 toCore (App a b) = C.App (toCore a) (toCore b)
 toCore (Ann a (For xs t)) = C.Ann (toCore a) (C.For xs (toCore t))
 toCore (Or a b) = C.Or (toCore a) (toCore b)
-toCore (And a b) = C.And (toCore a) (toCore b)
+toCore (If a b) = C.If (toCore a) (toCore b)
 toCore (Add a b) = C.add (toCore a) (toCore b)
 toCore (Sub a b) = C.sub (toCore a) (toCore b)
 toCore (Mul a b) = C.mul (toCore a) (toCore b)
@@ -164,11 +164,11 @@ toCore (Match brs) = C.or' (map (\(ps, b) -> toCore (lam ps b)) brs)
 toCore a = error ("TODO toCore: " ++ show a)
 
 toCoreP :: String -> Pattern -> C.Pattern
-toCoreP x PAny = C.PVar x
-toCoreP _ (PVar x) = C.PVar x
-toCoreP _ (PInt x) = C.PInt x
-toCoreP _ (PNum x) = C.PNum x
-toCoreP _ (PIf x a) = C.PIf x (toCore a)
+-- toCoreP x PAny = C.PAny
+-- toCoreP _ (PVar x) = C.PAs C.PAny x
+-- toCoreP _ (PInt x) = C.PInt x
+-- toCoreP _ (PNum x) = C.PNum x
+-- toCoreP _ (PIf x a) = C.PIf x (toCore a)
 toCoreP x (PIfEq a) = toCoreP x (PIf x (Eq (Var x) a))
 toCoreP x PIfKnd = toCoreP x (PIfEq Knd)
 toCoreP x PIfIntT = toCoreP x (PIfEq IntT)
@@ -188,7 +188,7 @@ fromCore C.IntT = IntT
 fromCore C.NumT = NumT
 fromCore (C.Int i) = Int i
 fromCore (C.Num n) = Num n
-fromCore (C.Ctr k) = Ctr k
+-- fromCore (C.Ctr k) = Ctr k
 fromCore (C.Typ t ks) = Typ t
 fromCore (C.Var x) = Var x
 fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
@@ -196,7 +196,7 @@ fromCore (C.Lam p b) = Lam (fromCoreP p) (fromCore b)
 fromCore (C.App a b) = App (fromCore a) (fromCore b)
 fromCore (C.Ann a (C.For xs t)) = Ann (fromCore a) (For xs (fromCore t))
 fromCore (C.Or a b) = Or (fromCore a) (fromCore b)
-fromCore (C.And a b) = And (fromCore a) (fromCore b)
+fromCore (C.If a b) = If (fromCore a) (fromCore b)
 fromCore (C.Fix x a) | x `C.occurs` a = Let (PVar x, fromCore a) (Var x)
 fromCore (C.Fix _ a) = fromCore a
 fromCore (C.Op2 C.Add a b) = Add (fromCore a) (fromCore b)
@@ -207,10 +207,11 @@ fromCore (C.Op1 C.Int2Num a) = Int2Num (fromCore a)
 fromCore a = error ("TODO fromCore: " ++ show a)
 
 fromCoreP :: C.Pattern -> Pattern
-fromCoreP (C.PVar x) = PVar x
-fromCoreP (C.PInt x) = PInt x
-fromCoreP (C.PNum x) = PNum x
-fromCoreP (C.PIf x a) = PIf x (fromCore a)
+-- fromCoreP C.PAny = PAny
+-- fromCoreP C.PInt = PInt x
+-- fromCoreP C.PNum = PNum x
+-- fromCoreP (C.PAs C.PAny x) = PVar x
+-- fromCoreP (C.PIf x a) = PIf x (fromCore a)
 fromCoreP (C.PFun a b) = PFun (fromCoreP a) (fromCoreP b)
 fromCoreP (C.PApp a b) = PApp (fromCoreP a) (fromCoreP b)
 fromCoreP C.PErr = PErr
