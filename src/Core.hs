@@ -13,7 +13,8 @@ data Expr
   | NumT
   | Int !Int
   | Num !Double
-  | Tag !String
+  | Typ !String
+  | Ctr !String !String
   | Var !String
   | Fun !Expr !Expr
   | Lam !Pattern !Expr
@@ -29,7 +30,8 @@ data Expr
 
 data Pattern
   = PVar !String
-  | PIf !Pattern !Expr
+  | PInt !String
+  | PNum !String
   | PAnn !Pattern !Expr
   | PFun !Pattern !Pattern
   | PApp !Pattern !Pattern
@@ -77,7 +79,8 @@ instance Show Expr where
     NumT -> atom 11 "@Num"
     Int i -> atom 11 (show i)
     Num n -> atom 11 (show n)
-    Tag k -> atom 11 ("$" ++ k)
+    Typ t -> atom 11 ("$" ++ t)
+    Ctr t k -> atom 11 ("$" ++ t ++ "." ++ k)
     Var x -> atom 11 x
     Op2 Pow a b -> infixR 10 a "^" b
     App a b -> infixL 8 a " " b
@@ -185,7 +188,8 @@ freeVars NumT = []
 freeVars (Int _) = []
 freeVars (Num _) = []
 freeVars (Var x) = [x]
-freeVars (Tag _) = []
+freeVars (Typ _) = []
+freeVars (Ctr _ _) = []
 freeVars (Fun a b) = freeVars a `union` freeVars b
 freeVars (Lam p a) = filter (`notElem` freeVarsP p) (freeVars a)
 freeVars (App a b) = freeVars a `union` freeVars b
@@ -204,7 +208,8 @@ occurs x a = x `elem` freeVars a
 
 exprP :: Pattern -> Expr
 exprP (PVar x) = Var x
-exprP (PIf p a) = If (exprP p) a
+exprP (PInt x) = Ann (Var x) (For [] IntT)
+exprP (PNum x) = Ann (Var x) (For [] NumT)
 exprP (PAnn p a) = Ann (exprP p) (For [] a)
 exprP (PFun p q) = Fun (exprP p) (exprP q)
 exprP (PApp p q) = App (exprP p) (exprP q)
@@ -235,7 +240,8 @@ eval _ IntT = IntT
 eval _ NumT = NumT
 eval _ (Int i) = Int i
 eval _ (Num n) = Num n
-eval _ (Tag k) = Tag k
+eval _ (Typ t) = Typ t
+eval _ (Ctr t k) = Ctr t k
 eval env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Var x
   Just (Ann (Var x') _) | x == x' -> Var x
@@ -253,14 +259,8 @@ eval env (App a b) = case (eval env a, eval env b) of
   (a, b) | isOpen b -> App a b
   (Lam p a, b) -> case (p, b) of
     (PVar x, _) -> eval [(x, b)] a
-    -- (PInt x, Int _) -> eval [(x, b)] a
-    -- (PNum x, Num _) -> eval [(x, b)] a
-    -- (PTyp x t, Ctr t' _) | t == t' -> eval [(x, b)] a
-    -- (PTyp t, App b _) -> eval [] (App (Lam (PTyp t) a) b)
-    -- (PAs p x, b) -> eval [(x, b)] (App (Lam p a) b)
-    (PAnn p IntT, Int _) -> eval [] (App (Lam p a) b)
-    (PAnn p NumT, Num _) -> eval [] (App (Lam p a) b)
-    (PIf p c, b) -> eval [] (App (Lam p (a `If` c)) b)
+    (PInt x, Int _) -> eval [(x, b)] a
+    (PNum x, Num _) -> eval [(x, b)] a
     (PFun p q, Fun b1 b2) -> eval [] (let' [(p, b1), (q, b2)] a)
     (PApp p q, App b1 b2) -> eval [] (let' [(p, b1), (q, b2)] a)
     (PErr, Err) -> a
@@ -296,13 +296,11 @@ eval env (Op2 op a b) = case (eval env a, eval env b) of
     (Eq, NumT, NumT) -> NumT
     (Eq, Int a, Int b) | a == b -> Int a
     (Eq, Num a, Num b) | a == b -> Num a
-    (Eq, Tag k, Tag k') | k == k' -> Tag k
     (Eq, Var a, Var b) | a == b -> Var a
     (Eq, Fun a1 a2, Fun b1 b2) -> If (eq a1 b1) (eq a2 b2)
     (Eq, App a1 a2, App b1 b2) -> If (eq a1 b1) (eq a2 b2)
     (Lt, Int a, Int b) | a < b -> Int a
     (Lt, Num a, Num b) | a < b -> Num a
-    (Lt, Tag k, Tag k') | k == k' -> Tag k
     _else -> Err
   (a, b) -> Op2 op a b
 eval env (Op1 op a) = case eval env a of
@@ -333,7 +331,7 @@ instantiate existing (For (x : xs) a) = do
 unify :: Expr -> Expr -> Either TypeError (Expr, Substitution)
 unify Knd Knd = Right (Knd, [])
 unify IntT IntT = Right (IntT, [])
-unify (Tag k) (Tag k') | k == k' = Right (Tag k, [])
+unify (Typ t) (Typ t') | t == t' = Right (Typ t, [])
 unify (Var x) (Var x') | x == x' = Right (Var x, [])
 unify (Var x) b | x `occurs` b = Left (InfiniteType x b)
 unify (Var x) b = Right (b, [(x, b)])
@@ -365,15 +363,18 @@ infer _ IntT = Right (Knd, [])
 infer _ NumT = Right (Knd, [])
 infer _ (Int _) = Right (IntT, [])
 infer _ (Num _) = Right (NumT, [])
-infer env (Tag k) = case lookup k env of
-  Just (Tag k') | k == k' -> Right (Tag k, [])
+infer env (Typ t) = case lookup t env of
+  Just (Typ t') | t == t' -> Right (Knd, [])
   Just a -> infer env a
-  Nothing -> Right (Tag k, [])
+  Nothing -> Right (Knd, [])
+infer env (Ctr t k) = case lookup k env of
+  Just (Ctr t k') | k == k' -> Right (Typ t, [])
+  Just a -> infer env a
+  Nothing -> Right (Typ t, [])
 infer env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> do
     let xT = newName (map fst env) (x ++ "T")
     Right (Var xT, [(xT, Var xT), (x, Ann (Var x) (For [] (Var xT)))])
-  Just (Tag k) -> Right (Tag k, [])
   Just (Ann (Var x') ty) | x == x' -> do
     let (t, s) = instantiate (map fst env) ty
     Right (eval (s ++ apply s env) t, s)
@@ -394,7 +395,10 @@ infer env (App a b) = do
   case eval s (Var x) of
     Var x' | x == x' -> Right (Var x, [(x, Var x)] `compose` s)
     t -> Right (t, s)
-infer env (Ann (Tag _) ty) = do
+infer env (Ann (Typ _) ty) = do
+  let (t, s) = instantiate (map fst env) ty
+  Right (eval (s ++ apply s env) t, s)
+infer env (Ann (Ctr _ _) ty) = do
   let (t, s) = instantiate (map fst env) ty
   Right (eval (s ++ apply s env) t, s)
 infer env (Ann a ty) = do
