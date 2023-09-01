@@ -32,7 +32,7 @@ data Pattern
   = PVar !String
   | PInt !String
   | PNum !String
-  | PAnn !Pattern !Expr
+  | PTyp !String
   | PFun !Pattern !Pattern
   | PApp !Pattern !Pattern
   | PErr
@@ -97,7 +97,7 @@ instance Show Expr where
       prefix 2 ("\\" ++ show (foldr PApp p ps) ++ ". ") b'
     Fix x a -> prefix 2 ("@fix " ++ x ++ ". ") a
     Or a b -> infixR 1 a " | " b
-    If a b -> infixR 1 a " @if " b
+    If a b -> infixR 1 a "; " b
     where
       atom n k = showParen (p > n) $ showString k
       prefix n k a = showParen (p > n) $ showString k . showsPrec (n + 1) a
@@ -210,7 +210,7 @@ exprP :: Pattern -> Expr
 exprP (PVar x) = Var x
 exprP (PInt x) = Ann (Var x) (For [] IntT)
 exprP (PNum x) = Ann (Var x) (For [] NumT)
-exprP (PAnn p a) = Ann (exprP p) (For [] a)
+exprP (PTyp t) = Typ t
 exprP (PFun p q) = Fun (exprP p) (exprP q)
 exprP (PApp p q) = App (exprP p) (exprP q)
 exprP PErr = Err
@@ -261,6 +261,8 @@ eval env (App a b) = case (eval env a, eval env b) of
     (PVar x, _) -> eval [(x, b)] a
     (PInt x, Int _) -> eval [(x, b)] a
     (PNum x, Num _) -> eval [(x, b)] a
+    (PTyp t, Ctr t' _) | t == t' -> eval [] a
+    (PTyp t, App b _) -> eval [] (App (Lam (PTyp t) a) b)
     (PFun p q, Fun b1 b2) -> eval [] (let' [(p, b1), (q, b2)] a)
     (PApp p q, App b1 b2) -> eval [] (let' [(p, b1), (q, b2)] a)
     (PErr, Err) -> a
@@ -268,16 +270,22 @@ eval env (App a b) = case (eval env a, eval env b) of
   (Or a1 a2, b) -> eval [] (Or (App a1 b) (App a2 b))
   (Fix x a, b) -> eval [(x, Fix x a)] (App a b)
   (a, b) -> App a b
+eval env (Ann (Lam p b) (For xs (Fun t1 t2))) = case (p, t1) of
+  (PVar x, IntT) -> Lam (PInt x) (eval env (Ann b (For xs t2)))
+  (PVar x, NumT) -> Lam (PNum x) (eval env (Ann b (For xs t2)))
+  (PVar x, Typ t) -> Lam (PNum x) (let' [(PTyp t, Var x)] (eval env (Ann b (For xs t2))))
+  (PVar _, App t1 _) -> eval env (Ann (Lam p b) (For xs (Fun t1 t2)))
+  (p, _) -> eval env (Lam p b)
 eval env (Ann a _) = eval env a
 eval env (Or a b) = case (eval env a, eval env b) of
   (Err, b) -> b
   (a, Err) -> a
   (Or a1 a2, b) -> Or a1 (Or a2 b)
   (a, b) -> Or a b
-eval env (If a b) = case eval env b of
+eval env (If a b) = case eval env a of
   Err -> Err
-  b | isClosed b -> eval env a
-  b -> If (eval env a) b
+  a | isClosed a -> eval env b
+  a -> If a (eval env b)
 eval env (Fix x a) = Fix x (eval ((x, Var x) : env) a)
 eval env (Op2 op a b) = case (eval env a, eval env b) of
   (Or a1 a2, b) -> eval [] (Or (Op2 op a1 b) (Op2 op a2 b))

@@ -16,8 +16,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let factorial f = Fix f (or' branches)
         where
           branches =
-            [ Lam _x (i1 `If` eq x i0),
-              Lam _x ((x `mul` App (Var f) (x `sub` i1)) `If` lt i0 x)
+            [ Lam _x (If (eq x i0) i1),
+              Lam _x (If (lt i0 x) (x `mul` App (Var f) (x `sub` i1)))
             ]
 
   it "☯ show" $ do
@@ -125,10 +125,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     show (Or x (Or y z)) `shouldBe` "x | y | z"
     show (Or (Or x y) z) `shouldBe` "(x | y) | z"
 
-    show (If x (Ann y tz)) `shouldBe` "x @if y : z"
-    show (If (Ann x ty) z) `shouldBe` "x : y @if z"
-    show (If x (If y z)) `shouldBe` "x @if y @if z"
-    show (If (If x y) z) `shouldBe` "(x @if y) @if z"
+    show (If x (Ann y tz)) `shouldBe` "x; y : z"
+    show (If (Ann x ty) z) `shouldBe` "x : y; z"
+    show (If x (If y z)) `shouldBe` "x; y; z"
+    show (If (If x y) z) `shouldBe` "(x; y); z"
 
   it "☯ syntax sugar" $ do
     let' [] x `shouldBe` x
@@ -246,12 +246,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer [] (Int 1) `shouldBe` Right (IntT, [])
     infer [] (Num 1.1) `shouldBe` Right (NumT, [])
 
-  -- it "☯ infer Tag" $ do
-  --   let env = [("A", Tag "A"), ("B", Ann (Tag "B") (For [] IntT))]
-  --   infer env (Tag "A") `shouldBe` Right (Tag "A", [])
-  --   infer env (Tag "B") `shouldBe` Right (IntT, [])
-  --   infer env (Tag "C") `shouldBe` Right (Tag "C", [])
-
   it "☯ infer Var" $ do
     let (a1, yT) = (Var "a1", Var "yT")
     let env = [("x", i1), ("y", y), ("b", Ann b (For [] IntT)), ("a", b), ("c", Ann c (For ["a"] a))]
@@ -284,7 +278,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
           ]
     infer env (Lam (PVar "x") x) `shouldBe` Right (Fun xT xT, [("xT", xT), ("x", Ann x $ For [] xT)])
     -- infer env (Lam (PIf _x (eq x (Int 1))) x) `shouldBe` Right (Fun IntT IntT, [("xT", IntT), ("x", Ann x $ For [] IntT)])
-    -- PAnn !Pattern !Expr
     -- PFun !Pattern !Pattern
     -- PApp !Pattern !Pattern
     -- PErr
