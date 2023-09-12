@@ -28,8 +28,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     show NumT `shouldBe` "@Num"
     show (Int 1) `shouldBe` "1"
     show (Num 1.1) `shouldBe` "1.1"
-    show (Typ "T") `shouldBe` "$T"
-    show (Ctr "T" "A") `shouldBe` "$T.A"
+    -- show (Typ "T") `shouldBe` "$T"
+    -- show (Ctr "T" "A") `shouldBe` "$T.A"
     show (Var "x") `shouldBe` "x"
 
     show (pow (pow x y) z) `shouldBe` "(x^y)^z"
@@ -152,8 +152,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval [] NumT `shouldBe` NumT
     eval [] (Int 1) `shouldBe` Int 1
     eval [] (Num 1.1) `shouldBe` Num 1.1
-    eval [] (Typ "T") `shouldBe` Typ "T"
-    eval [] (Ctr "T" "A") `shouldBe` Ctr "T" "A"
+  -- eval [] (Typ "T") `shouldBe` Typ "T"
+  -- eval [] (Ctr "T" "A") `shouldBe` Ctr "T" "A"
 
   it "☯ eval Var" $ do
     let env = [("x", i1), ("y", y), ("b", Ann b (For [] IntT)), ("a", b), ("c", Ann c (For ["a"] a))]
@@ -266,8 +266,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer [] (Ann i1 (For [] IntT)) `shouldBe` Right (IntT, [])
     infer [] (Ann i1 (For [] Knd)) `shouldBe` Left (TypeMismatch IntT Knd)
     infer [] (Ann i1 (For ["a"] a)) `shouldBe` Right (IntT, [("a", IntT)])
-    infer [] (Ann (Typ "T") (For [] IntT)) `shouldBe` Right (IntT, [])
-    infer [] (Ann (Ctr "T" "A") (For [] IntT)) `shouldBe` Right (IntT, [])
+  -- infer [] (Ann (Typ "T") (For [] IntT)) `shouldBe` Right (IntT, [])
+  -- infer [] (Ann (Ctr "T" "A") (For [] IntT)) `shouldBe` Right (IntT, [])
 
   it "☯ infer Lam" $ do
     let (t, xT, _T) = (Var "t", Var "xT", Var "_T")
@@ -290,7 +290,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
             ("y", y),
             ("f", Ann (Var "f") (For [] $ Fun IntT Knd))
           ]
-    infer env (App (Var "f") x) `shouldBe` Right (Knd, [("t", Knd)])
+    infer env (App (Var "f") x) `shouldBe` Right (Knd, [])
     -- infer env (App (Lam y' y) x) `shouldBe` Right (IntT, [("yT", IntT), ("y", Ann y (For [] IntT)), ("t", IntT)])
     infer env (App y x) `shouldBe` Right (t, [("yT", Fun IntT t), ("y", Ann y (For [] (Fun IntT t))), ("t", t)])
 
@@ -305,42 +305,84 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ infer Op2" $ do
     True `shouldBe` True
 
-  -- it "☯ infer factorial" $ do
-  --   let env = [("f", factorial "f")]
-  --   infer env (Var "f") `shouldBe` Right (Fun IntT IntT, [("xT", IntT), ("x", Ann x (For [] IntT)), ("xT1", IntT), ("fT", Fun IntT IntT), ("f", Ann f (For [] (Fun IntT IntT))), ("t", IntT)])
+  it "☯ infer factorial" $ do
+    let env = [("f", factorial "f")]
+    infer env (Var "f") `shouldBe` Right (Fun IntT IntT, [("xT", IntT), ("x", Ann x (For [] IntT)), ("xT1", IntT), ("fT", Fun IntT IntT), ("f", Ann f (For [] (Fun IntT IntT))), ("t", IntT)])
 
-  it "☯ infer Nat" $ do
-    let i0 = Int 0
-    let n = Var "n"
-    let nat = App (Typ "Nat")
-    let env =
-          [ ("Nat", Ann (Typ "Nat") $ For ["n"] $ Fun n (or' [Ctr "Nat" "Zero", App (Ctr "Nat" "Succ") n])),
-            ("Zero", Ann (Ctr "Nat" "Zero") $ For [] $ nat i0),
-            ("Succ", Ann (Ctr "Nat" "Succ") $ For ["n"] $ Fun (nat n) (nat (add n i1)))
-          ]
+  -- it "☯ infer Bool" $ do
+  --   let env = [("Bool", or' [Tag "True", Tag "False"])]
 
-    let num :: Int -> Expr
-        num 0 = Ctr "Nat" "Zero"
-        num n = App (Ctr "Nat" "Succ") (num (n - 1))
+  --   eval env (Tag "True") `shouldBe` Tag "True"
+  --   eval env (Tag "Bool") `shouldBe` Or (Tag "True") (Tag "False")
+
+  --   let infer' = fmap fst . infer env
+  --   infer' (Tag "True") `shouldBe` Right (Var "true")
+  --   infer' (Tag "Bool") `shouldBe` Right (Or (Tag "True") (Tag "False"))
+  --   infer' (Ann (Tag "True") (For [] $ Tag "Bool")) `shouldBe` Right (Tag "True")
+  --   infer' (Ann (Tag "False") (For [] $ Tag "Bool")) `shouldBe` Right (Tag "False")
+  --   infer' (Ann (Tag "X") (For [] $ Tag "Bool")) `shouldBe` Left (TypeMismatch (Tag "X") (Tag "False"))
+
+  it "☯ infer Maybe" $ do
+    let (_a, a) = (PVar "a", Var "a")
+    let maybe = App (Tag "Maybe")
+    let just = App (Tag "Just")
+    let nothing = Tag "Nothing"
+    let env = [("Maybe", Lam _a (or' [Ctr "Just" $ Fun a (maybe a), Ctr "Nothing" (maybe a)]))]
+
     let infer' = fmap fst . infer env
-    infer' (num 0) `shouldBe` Right (nat i0)
-    infer' (num 1) `shouldBe` Right (nat i1)
-    infer' (num 2) `shouldBe` Right (nat i2)
+    infer' (Tag "Nothing") `shouldBe` Right (Ctr "Nothing" (Var "nothing"))
+    infer' (Tag "Just") `shouldBe` Right (Ctr "Just" (Var "just"))
+    infer' (just i1) `shouldBe` Right (Ctr "Just" (Fun IntT (Var "just")))
+    infer' (Ann nothing (For [] $ maybe IntT)) `shouldBe` Right (maybe IntT)
+    infer' (Ann (just i1) (For [] $ maybe IntT)) `shouldBe` Right (maybe IntT)
+    infer' (Ann (just i1) (For [] $ maybe NumT)) `shouldBe` Left (TypeMismatch IntT NumT)
 
-  it "☯ infer Vec" $ do
-    let i0 = Int 0
-    let (n, a) = (Var "n", Var "a")
-    let vec n a = app (Typ "Vec") [n, a]
-    let env =
-          [ ("Vec", Ann (Typ "Vec") $ For ["n", "a"] $ fun [n, a] (or' [Ctr "Vec" "Nil", app (Ctr "Vec" "Cons") [IntT, Knd]])),
-            ("Nil", Ann (Ctr "Vec" "Nil") $ For ["a"] $ vec i0 a),
-            ("Cons", Ann (Ctr "Vec" "Cons") $ For ["n", "a"] $ fun [a, vec n a] (vec (add n i1) a))
-          ]
+  -- it "☯ infer Vec" $ do
+  --   let (_n, _a) = (PVar "n", PVar "a")
+  --   let (n, a) = (Var "n", Var "a")
+  --   let vec n a = app (Tag "Vec") [n, a]
+  --   let nil = Tag "Nil"
+  --   let cons x xs = app (Tag "Cons") [x, xs]
+  --   let env = [("Vec", lam [_n, _a] (or' [Ctr "Cons" $ fun [a, vec n a] (vec (add n i1) a), Ctr "Nil" $ vec i0 a]))]
 
-    let list [] = Ctr "Vec" "Nil"
-        list (x : xs) = app (Ctr "Vec" "Cons") [x, list xs]
-    let infer' = fmap fst . infer env
-    infer' (list []) `shouldBe` Right (vec i0 a)
-    infer' (list [Int 42]) `shouldBe` Right (vec i1 IntT)
-    infer' (list [Int 42, Int 9]) `shouldBe` Right (vec i2 IntT)
-    infer' (list [Int 42, Knd]) `shouldBe` Left (TypeMismatch Knd IntT)
+  --   let infer' = fmap fst . infer env
+  --   infer' (Ann nil (For [] $ vec i0 IntT)) `shouldBe` Right (vec i0 IntT)
+  --   infer' (Ann nil (For [] $ vec i1 IntT)) `shouldBe` Right (vec i0 IntT)
+  --   infer' (Ann (cons i0 nil) (For [] $ vec i1 IntT)) `shouldBe` Right (vec i0 IntT)
+
+  -- it "☯ infer Nat" $ do
+  --   let n = Var "n"
+  --   let nat = App (Typ "Nat")
+  --   let env =
+  --         [ ("Nat", Ann (Typ "Nat") $ For ["n"] $ Fun n (or' [Ctr "Nat" "Zero", App (Ctr "Nat" "Succ") n])),
+  --           ("Zero", Ann (Ctr "Nat" "Zero") $ For [] $ nat i0),
+  --           ("Succ", Ann (Ctr "Nat" "Succ") $ For ["n"] $ Fun (nat n) (nat (add n i1)))
+  --         ]
+
+  --   let num :: Int -> Expr
+  --       num 0 = Ctr "Nat" "Zero"
+  --       num n = App (Ctr "Nat" "Succ") (num (n - 1))
+  --   let infer' = fmap fst . infer env
+  --   infer' (num 0) `shouldBe` Right (nat i0)
+  --   infer' (num 1) `shouldBe` Right (nat i1)
+  --   infer' (num 2) `shouldBe` Right (nat i2)
+
+  -- it "☯ infer Vec" $ do
+  --   let (n, a) = (Var "n", Var "a")
+  --   let vec n a = app (Typ "Vec") [n, a]
+  --   let env =
+  --         [ ("Vec", Ann (Typ "Vec") $ For ["n", "a"] $ fun [n, a] (or' [Ctr "Vec" "Nil", app (Ctr "Vec" "Cons") [IntT, Knd]])),
+  --           ("Nil", Ann (Ctr "Vec" "Nil") $ For ["a"] $ vec i0 a),
+  --           ("Cons", Ann (Ctr "Vec" "Cons") $ For ["n", "a"] $ fun [a, vec n a] (vec (add n i1) a))
+  --         ]
+
+  --   let list [] = Ctr "Vec" "Nil"
+  --       list (x : xs) = app (Ctr "Vec" "Cons") [x, list xs]
+  --   let infer' = fmap fst . infer env
+  --   infer' (list []) `shouldBe` Right (vec i0 a)
+  --   infer' (list [Int 42]) `shouldBe` Right (vec i1 IntT)
+  --   infer' (list [Int 42, Int 9]) `shouldBe` Right (vec i2 IntT)
+  --   infer' (list [Int 42, Knd]) `shouldBe` Left (TypeMismatch Knd IntT)
+
+  it "☯ TODO" $ do
+    True `shouldBe` True
