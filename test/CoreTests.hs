@@ -356,7 +356,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' (Ann nil (For [] $ vec i0 NumT)) `shouldBe` Right (vec i0 NumT)
     infer' (Ann nil (For [] $ vec i1 NumT)) `shouldBe` Left (TypeMismatch i0 i1)
     infer' (Ann (cons (Num 1.1) nil) (For [] $ vec i1 NumT)) `shouldBe` Right (vec i1 NumT)
-    -- infer' (Ann (cons (Num 1.1) $ cons (Num 2.2) nil) (For [] $ vec i1 NumT)) `shouldBe` Right (vec i2 NumT)
+    -- infer' (Ann (cons (Num 1.1) $ cons (Num 2.2) nil) (For [] $ vec i0 NumT)) `shouldBe` Right (vec i2 NumT)
+    -- infer' (Ann (cons (Num 1.1) $ cons (Num 2.2) nil) (For [] $ vec i2 NumT)) `shouldBe` Right (vec i2 NumT)
     True `shouldBe` True
 
   -- it "☯ infer Nat" $ do

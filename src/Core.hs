@@ -458,6 +458,7 @@ infer env (App a b) = do
       Right (eval s2 t2, s2 `compose` s1)
     ta -> Left (NotAFunction a ta)
 infer env (Ann a ty) = do
+  -- error "infer Ann: check when type variables are instantiated, they might shadow other type variables which makes 'Vec 2 a' fail"
   let (t, vars) = instantiate (map fst env) ty
   let ctrs = constructors (eval (apply vars env) t)
   (ta, s1) <- infer (vars ++ ctrs ++ env) (eval ctrs a)
