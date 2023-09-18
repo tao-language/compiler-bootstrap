@@ -42,7 +42,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     toCore Err `shouldBe` C.Err
     toCore (Int 1) `shouldBe` C.Int 1
     toCore (Num 1.1) `shouldBe` C.Num 1.1
-    -- TODO: Knd, IntT, NumT
+    -- TODO: Typ, IntT, NumT
     toCore (Var "x") `shouldBe` C.Var "x"
     toCore (Fun x y) `shouldBe` C.Fun x' y'
     toCore (Match []) `shouldBe` C.Err
@@ -71,14 +71,14 @@ run = describe "--==☯ Tao ☯==--" $ do
   --   eval env (App (Var "f") (Var "x")) `shouldBe` i1
 
   it "☯ overload" $ do
-    let addOverloads =
-          [ ([PInt "x", PInt "y"], Add x y),
-            ([PInt "x", PNum "y"], Add (Int2Num x) y),
-            ([PIfCtr "A", PIfCtr "B"], Ctr "C")
-          ]
+    -- let addOverloads =
+    --       [ ([PInt "x", PInt "y"], Add x y),
+    --         ([PInt "x", PNum "y"], Add (Int2Num x) y),
+    --         ([PIfCtr "A", PIfCtr "B"], Ctr "C")
+    --       ]
 
-    let env = [("+", Match addOverloads)]
-    let add a b = app (Var "+") [a, b]
+    -- let env = [("+", Match addOverloads)]
+    -- let add a b = app (Var "+") [a, b]
     -- eval env (add (Int 1) (Int 2)) `shouldBe` Int 3
     -- eval' env (add (Int 1) (Num 2.2)) `shouldBe` C.Num 3.2
     -- eval env (add (Num 1.1) (Int 2)) `shouldBe` Err

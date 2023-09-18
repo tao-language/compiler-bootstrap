@@ -11,13 +11,12 @@ import Data.List (delete, intercalate, union)
 -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
 
 data Expr
-  = Knd
+  = Typ
   | IntT
   | NumT
   | Int !Int
   | Num !Double
   | Tag !String
-  | Rec ![(String, Expr)]
   | Var !String
   | Fun !Expr !Expr
   | Lam !String !Expr
@@ -26,6 +25,7 @@ data Expr
   | Or !Expr !Expr
   | If !Expr !Expr
   | Fix !String !Expr
+  | Rec ![(String, Expr)]
   | Op2 !BinaryOp !Expr !Expr
   | Op1 !UnaryOp !Expr
   | Err
@@ -67,7 +67,7 @@ data TypeError
 instance Show Expr where
   showsPrec p expr = case expr of
     Err -> atom 11 "@error"
-    Knd -> atom 11 "@Type"
+    Typ -> atom 11 "@Type"
     IntT -> atom 11 "@Int"
     NumT -> atom 11 "@Num"
     Int i -> atom 11 (show i)
@@ -180,7 +180,7 @@ pushVars xs = pushAll (map (\x -> (x, Var x)) xs)
 
 freeVars :: Expr -> [String]
 freeVars Err = []
-freeVars Knd = []
+freeVars Typ = []
 freeVars IntT = []
 freeVars NumT = []
 freeVars (Int _) = []
@@ -222,7 +222,7 @@ isOpen = not . isClosed
 -- Evaluation
 eval :: Env -> Expr -> Expr
 eval _ Err = Err
-eval _ Knd = Knd
+eval _ Typ = Typ
 eval _ IntT = IntT
 eval _ NumT = NumT
 eval _ (Int i) = Int i
@@ -276,7 +276,7 @@ eval env (Op2 op a b) = case (eval env a, eval env b) of
     (Mul, Num a, Num b) -> Num (a * b)
     (Pow, Int a, Int b) -> Int (a ^ b)
     (Pow, Num a, Num b) -> Num (a ** b)
-    (Eq, Knd, Knd) -> Knd
+    (Eq, Typ, Typ) -> Typ
     (Eq, IntT, IntT) -> IntT
     (Eq, NumT, NumT) -> NumT
     (Eq, Int a, Int b) | a == b -> Int a
@@ -314,7 +314,7 @@ instantiate existing (For (x : xs) a) = do
   (eval [(x, Var y)] b, [(y, Var y)] `union` s)
 
 unify :: Expr -> Expr -> Either TypeError (Expr, Substitution)
-unify Knd Knd = Right (Knd, [])
+unify Typ Typ = Right (Typ, [])
 unify IntT IntT = Right (IntT, [])
 unify NumT NumT = Right (NumT, [])
 unify (Int i) (Int i') | i == i' = Right (Int i, [])
@@ -382,9 +382,9 @@ listAlts _ = []
 
 infer :: Env -> Expr -> Either TypeError (Expr, Substitution)
 infer _ Err = Right (Err, [])
-infer _ Knd = Right (Knd, [])
-infer _ IntT = Right (Knd, [])
-infer _ NumT = Right (Knd, [])
+infer _ Typ = Right (Typ, [])
+infer _ IntT = Right (Typ, [])
+infer _ NumT = Right (Typ, [])
 infer _ (Int _) = Right (IntT, [])
 infer _ (Num _) = Right (NumT, [])
 infer env (Tag k) = case lookup k env of
@@ -406,7 +406,7 @@ infer env (Var x) = case lookup x env of
   Nothing -> Left (UndefinedVar x)
 infer env (Fun a b) = do
   (_, s) <- infer2 env a b
-  Right (Knd, s)
+  Right (Typ, s)
 infer env (Lam x b) = do
   ((t1, t2), s) <- infer2 ((x, Var x) : env) (Var x) b
   Right (Fun t1 t2, s)

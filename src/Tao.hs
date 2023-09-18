@@ -5,15 +5,12 @@ import Data.Bifunctor (Bifunctor (second))
 import qualified Parser as P
 
 data Expr
-  = -- Core expressions
-    Err
-  | Knd
+  = Typ
   | IntT
   | NumT
   | Int !Int
   | Num !Double
-  | Ctr !String
-  | Typ !String
+  | Tag !String
   | Var !String
   | Fun !Expr !Expr
   | Lam !Pattern !Expr
@@ -21,11 +18,17 @@ data Expr
   | Ann !Expr !Type
   | Or !Expr !Expr
   | If !Expr !Expr
+  | Fix !String !Expr
+  | Rec ![(String, Expr)]
   | Add !Expr !Expr
   | Sub !Expr !Expr
   | Mul !Expr !Expr
+  | Pow !Expr !Expr
   | Eq !Expr !Expr
+  | Lt !Expr !Expr
+  | Gt !Expr !Expr
   | Int2Num !Expr
+  | Err
   | -- Syntax sugar
     Match ![([Pattern], Expr)]
   | Let !(Pattern, Expr) !Expr
@@ -48,17 +51,6 @@ data Expr
 data Pattern
   = PAny
   | PVar !String
-  | PInt !String
-  | PNum !String
-  | PIf !String !Expr
-  | PIfEq !Expr
-  | PIfKnd
-  | PIfIntT
-  | PIfNumT
-  | PIfInt !Int
-  | PIfNum !Double
-  | PIfCtr !String
-  | PIfTyp !String
   | PFun !Pattern !Pattern
   | PApp !Pattern !Pattern
   | PErr
@@ -94,13 +86,6 @@ or' [] = Err
 or' [a] = a
 or' (a : bs) = Or a (or' bs)
 
-prelude :: Env
-prelude =
-  [ ("Type", Typ "Type"),
-    ("Integer", Typ "Integer"),
-    ("Number", Var "Number")
-  ]
-
 -- Evaluation
 eval :: Env -> Expr -> Expr
 eval env a = fromCore (C.eval (toCoreEnv env) (toCore a))
@@ -124,7 +109,7 @@ infer env a = case C.infer (toCoreEnv env) (toCore a) of
 -- Sugar / desugar
 toCore :: Expr -> C.Expr
 toCore Err = C.Err
-toCore Knd = C.Knd
+toCore Typ = C.Typ
 toCore IntT = C.IntT
 toCore NumT = C.NumT
 toCore (Int i) = C.Int i
@@ -170,7 +155,7 @@ toCore a = error ("TODO toCore: " ++ show a)
 -- -- toCoreP _ (PNum x) = C.PNum x
 -- -- toCoreP _ (PIf x a) = C.PIf x (toCore a)
 -- toCoreP x (PIfEq a) = toCoreP x (PIf x (Eq (Var x) a))
--- toCoreP x PIfKnd = toCoreP x (PIfEq Knd)
+-- toCoreP x PIfTyp = toCoreP x (PIfEq Typ)
 -- toCoreP x PIfIntT = toCoreP x (PIfEq IntT)
 -- toCoreP x PIfNumT = toCoreP x (PIfEq NumT)
 -- toCoreP x (PIfInt i) = toCoreP x (PIfEq (Int i))
@@ -183,7 +168,7 @@ toCore a = error ("TODO toCore: " ++ show a)
 
 fromCore :: C.Expr -> Expr
 fromCore C.Err = Err
-fromCore C.Knd = Knd
+fromCore C.Typ = Typ
 fromCore C.IntT = IntT
 fromCore C.NumT = NumT
 fromCore (C.Int i) = Int i
