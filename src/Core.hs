@@ -1,5 +1,6 @@
 module Core where
 
+import Data.Bifunctor (Bifunctor (second))
 import Data.Char (isAlphaNum, isLower, isUpper, toLower)
 import Data.List (delete, intercalate, union)
 
@@ -8,6 +9,8 @@ import Data.List (delete, intercalate, union)
 -- https://youtu.be/ytPAlhnAKro -- https://github.com/kritzcreek/fby19
 -- https://www.youtube.com/live/utyBNDj7s2w
 -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
+
+-- TODO:
 data Expr
   = Knd
   | IntT
@@ -16,6 +19,7 @@ data Expr
   | Num !Double
   | Tag !String
   | Als !Expr !Expr
+  | Rec ![(String, Expr)]
   | Var !String
   | Fun !Expr !Expr
   | Lam !Pattern !Expr
@@ -82,6 +86,9 @@ instance Show Expr where
     Tag k | isTagName k -> atom 11 k
     Tag k -> atom 11 ("(@tag '" ++ k ++ "')")
     Als a b -> atom 11 ("(@alias " ++ show a ++ " ~= " ++ show b ++ ")")
+    Rec fields -> do
+      let showField (x, a) = x ++ ": " ++ show a
+      atom 11 ("{" ++ intercalate ", " (map showField fields) ++ "}")
     Var x | isVarName x -> atom 11 x
     Var x -> atom 11 ("(@var '" ++ x ++ "')")
     Op2 Pow a b -> infixR 10 a "^" b
@@ -193,9 +200,11 @@ freeVars IntT = []
 freeVars NumT = []
 freeVars (Int _) = []
 freeVars (Num _) = []
-freeVars (Var x) = [x]
 freeVars (Tag _) = []
 freeVars (Als a b) = freeVars a `union` freeVars b
+freeVars (Rec []) = []
+freeVars (Rec ((_, a) : fields)) = freeVars a `union` freeVars (Rec fields)
+freeVars (Var x) = [x]
 freeVars (Fun a b) = freeVars a `union` freeVars b
 freeVars (Lam p a) = filter (`notElem` freeVarsP p) (freeVars a)
 freeVars (App a b) = freeVars a `union` freeVars b
@@ -247,13 +256,10 @@ eval _ (Int i) = Int i
 eval _ (Num n) = Num n
 eval env (Tag k) = case lookup k env of
   Just (Tag k') | k == k' -> Tag k
-  -- Just (Ann (Tag k') ty) | k == k' -> Ann (Tag k) ty
   Just a -> eval ((k, Tag k) : env) a
   Nothing -> Tag k
--- eval env (Als a b) = case asApp a of
---   (Tag k, _) -> Als (eval env a) (eval ((k, Tag k) : env) b)
---   _else -> Als (eval env a) (eval env b)
 eval env (Als a b) = Als (eval env a) (eval env b)
+eval env (Rec fields) = Rec (map (second (eval env)) fields)
 eval env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Var x
   Just (Tag k) -> Tag k
@@ -372,6 +378,9 @@ unify a (Als b1 b2) = do
   (c, s2) <- unify c (eval s1 b1)
   Right (c, s2 `compose` s1)
 unify (Als a1 a2) b = unify b (Als a1 a2)
+unify (Rec fields) (Rec fields') = do
+  (fields, s) <- unifyFields fields fields'
+  Right (Rec fields, s)
 unify (Var x) (Var x') | x == x' = Right (Var x, [])
 unify (Var x) b | x `occurs` b = Left (InfiniteType x b)
 unify (Var x) b = Right (b, [(x, b)])
@@ -404,6 +413,15 @@ unify2 (a1, a2) (b1, b2) = do
   (b, s2) <- unify (eval s1 b1) (eval s1 b2)
   Right ((a, b), s2 `compose` s1)
 
+unifyFields :: [(String, Expr)] -> [(String, Expr)] -> Either TypeError ([(String, Expr)], Substitution)
+unifyFields [] _ = Right ([], [])
+unifyFields ((x, a) : fields) fields' = case lookup x fields' of
+  Just b -> do
+    (fields, s1) <- unifyFields fields fields'
+    (c, s2) <- unify (eval s1 a) (eval s1 b)
+    Right ((x, c) : fields, s2 `compose` s1)
+  Nothing -> unifyFields fields fields'
+
 constructors :: Expr -> Env
 constructors (Ann (Tag k) ty) = [(k, Ann (Tag k) ty)]
 constructors (Als a b) = case asApp a of
@@ -428,6 +446,9 @@ infer env (Als a b) = do
   (_, s1) <- infer env b
   (ta, s2) <- infer (apply s1 env) a
   Right (ta, s2 `compose` s1)
+infer env (Rec fields) = do
+  (fieldsT, s) <- inferFields env fields
+  Right (Rec fieldsT, s)
 infer env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> do
     let xT = newName (map fst env) (x ++ "T")
@@ -458,10 +479,9 @@ infer env (App a b) = do
       Right (eval s2 t2, s2 `compose` s1)
     ta -> Left (NotAFunction a ta)
 infer env (Ann a ty) = do
-  -- error "infer Ann: check when type variables are instantiated, they might shadow other type variables which makes 'Vec 2 a' fail"
   let (t, vars) = instantiate (map fst env) ty
   let ctrs = constructors (eval (apply vars env) t)
-  (ta, s1) <- infer (vars ++ ctrs ++ env) (eval ctrs a)
+  (ta, s1) <- infer (apply vars (ctrs ++ env)) (eval ctrs a)
   (t, s2) <- unify ta (eval s1 t)
   Right (t, s2 `compose` s1)
 infer env (Or a b) = do
@@ -508,6 +528,13 @@ infer2 env a b = do
   (ta, s1) <- infer env a
   (tb, s2) <- infer (s1 ++ apply s1 env) b
   Right ((eval s2 ta, tb), s2 `compose` s1)
+
+inferFields :: Env -> [(String, Expr)] -> Either TypeError ([(String, Expr)], Substitution)
+inferFields _ [] = Right ([], [])
+inferFields env ((x, a) : fields) = do
+  (fieldsT, s1) <- inferFields env fields
+  (ta, s2) <- infer (apply s1 env) a
+  Right ((x, ta) : fieldsT, s2 `compose` s1)
 
 -- -- Typed
 -- typedP :: Pattern -> Expr -> Pattern

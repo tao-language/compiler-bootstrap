@@ -323,7 +323,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   --   infer' (Ann (Tag "X") (For [] $ Tag "Bool")) `shouldBe` Left (TypeMismatch (Tag "X") (Tag "False"))
 
   it "☯ infer Maybe" $ do
-    let (__, _a, a) = (PVar "_", PVar "a", Var "a")
+    let (_a, a) = (PVar "a", Var "a")
     let maybe = App (Tag "Maybe")
     let just = App (Tag "Just")
     let nothing = Tag "Nothing"
@@ -356,9 +356,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' (Ann nil (For [] $ vec i0 NumT)) `shouldBe` Right (vec i0 NumT)
     infer' (Ann nil (For [] $ vec i1 NumT)) `shouldBe` Left (TypeMismatch i0 i1)
     infer' (Ann (cons (Num 1.1) nil) (For [] $ vec i1 NumT)) `shouldBe` Right (vec i1 NumT)
-    -- infer' (Ann (cons (Num 1.1) $ cons (Num 2.2) nil) (For [] $ vec i0 NumT)) `shouldBe` Right (vec i2 NumT)
-    -- infer' (Ann (cons (Num 1.1) $ cons (Num 2.2) nil) (For [] $ vec i2 NumT)) `shouldBe` Right (vec i2 NumT)
-    True `shouldBe` True
+    infer' (Ann (cons (Num 1.1) $ cons (Num 2.2) nil) (For [] $ vec i0 NumT)) `shouldBe` Left (TypeMismatch i2 i0)
+    infer' (Ann (cons (Num 1.1) $ cons (Num 2.2) nil) (For [] $ vec i2 NumT)) `shouldBe` Right (vec i2 NumT)
 
   -- it "☯ infer Nat" $ do
   --   let n = Var "n"
