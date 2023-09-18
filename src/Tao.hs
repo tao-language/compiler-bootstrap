@@ -133,10 +133,10 @@ toCore (Num n) = C.Num n
 -- toCore (Typ t) = C.Typ t []
 toCore (Var x) = C.Var x
 toCore (Fun a b) = C.Fun (toCore a) (toCore b)
-toCore (Lam p b) = do
-  let b' = toCore b
-  let x = C.newName (C.freeVars b') "_"
-  C.Lam (toCoreP x p) b'
+-- toCore (Lam p b) = do
+--   let b' = toCore b
+--   let x = C.newName (C.freeVars b') "_"
+--   C.Lam (toCoreP x p) b'
 toCore (App a b) = C.App (toCore a) (toCore b)
 toCore (Ann a (For xs t)) = C.Ann (toCore a) (C.For xs (toCore t))
 toCore (Or a b) = C.Or (toCore a) (toCore b)
@@ -163,23 +163,23 @@ toCore (Match brs) = C.or' (map (\(ps, b) -> toCore (lam ps b)) brs)
 -- IfElse !Expr !Expr !Expr
 toCore a = error ("TODO toCore: " ++ show a)
 
-toCoreP :: String -> Pattern -> C.Pattern
--- toCoreP x PAny = C.PAny
--- toCoreP _ (PVar x) = C.PAs C.PAny x
--- toCoreP _ (PInt x) = C.PInt x
--- toCoreP _ (PNum x) = C.PNum x
--- toCoreP _ (PIf x a) = C.PIf x (toCore a)
-toCoreP x (PIfEq a) = toCoreP x (PIf x (Eq (Var x) a))
-toCoreP x PIfKnd = toCoreP x (PIfEq Knd)
-toCoreP x PIfIntT = toCoreP x (PIfEq IntT)
-toCoreP x PIfNumT = toCoreP x (PIfEq NumT)
-toCoreP x (PIfInt i) = toCoreP x (PIfEq (Int i))
-toCoreP x (PIfNum n) = toCoreP x (PIfEq (Num n))
-toCoreP x (PIfCtr k) = toCoreP x (PIfEq (Ctr k))
-toCoreP x (PIfTyp t) = toCoreP x (PIfEq (Typ t))
-toCoreP x (PFun p q) = C.PFun (toCoreP x p) (toCoreP x q)
-toCoreP x (PApp p q) = C.PApp (toCoreP x p) (toCoreP x q)
-toCoreP _ PErr = C.PErr
+-- toCoreP :: String -> Pattern -> C.Pattern
+-- -- toCoreP x PAny = C.PAny
+-- -- toCoreP _ (PVar x) = C.PAs C.PAny x
+-- -- toCoreP _ (PInt x) = C.PInt x
+-- -- toCoreP _ (PNum x) = C.PNum x
+-- -- toCoreP _ (PIf x a) = C.PIf x (toCore a)
+-- toCoreP x (PIfEq a) = toCoreP x (PIf x (Eq (Var x) a))
+-- toCoreP x PIfKnd = toCoreP x (PIfEq Knd)
+-- toCoreP x PIfIntT = toCoreP x (PIfEq IntT)
+-- toCoreP x PIfNumT = toCoreP x (PIfEq NumT)
+-- toCoreP x (PIfInt i) = toCoreP x (PIfEq (Int i))
+-- toCoreP x (PIfNum n) = toCoreP x (PIfEq (Num n))
+-- toCoreP x (PIfCtr k) = toCoreP x (PIfEq (Ctr k))
+-- toCoreP x (PIfTyp t) = toCoreP x (PIfEq (Typ t))
+-- toCoreP x (PFun p q) = C.PFun (toCoreP x p) (toCoreP x q)
+-- toCoreP x (PApp p q) = C.PApp (toCoreP x p) (toCoreP x q)
+-- toCoreP _ PErr = C.PErr
 
 fromCore :: C.Expr -> Expr
 fromCore C.Err = Err
@@ -192,7 +192,7 @@ fromCore (C.Num n) = Num n
 -- fromCore (C.Typ t ks) = Typ t
 fromCore (C.Var x) = Var x
 fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
-fromCore (C.Lam p b) = Lam (fromCoreP p) (fromCore b)
+fromCore (C.Lam x b) = Lam (PVar x) (fromCore b)
 fromCore (C.App a b) = App (fromCore a) (fromCore b)
 fromCore (C.Ann a (C.For xs t)) = Ann (fromCore a) (For xs (fromCore t))
 fromCore (C.Or a b) = Or (fromCore a) (fromCore b)
@@ -206,15 +206,15 @@ fromCore (C.Op2 C.Eq a b) = Eq (fromCore a) (fromCore b)
 fromCore (C.Op1 C.Int2Num a) = Int2Num (fromCore a)
 fromCore a = error ("TODO fromCore: " ++ show a)
 
-fromCoreP :: C.Pattern -> Pattern
--- fromCoreP C.PAny = PAny
--- fromCoreP C.PInt = PInt x
--- fromCoreP C.PNum = PNum x
--- fromCoreP (C.PAs C.PAny x) = PVar x
--- fromCoreP (C.PIf x a) = PIf x (fromCore a)
-fromCoreP (C.PFun a b) = PFun (fromCoreP a) (fromCoreP b)
-fromCoreP (C.PApp a b) = PApp (fromCoreP a) (fromCoreP b)
-fromCoreP C.PErr = PErr
+-- fromCoreP :: C.Pattern -> Pattern
+-- -- fromCoreP C.PAny = PAny
+-- -- fromCoreP C.PInt = PInt x
+-- -- fromCoreP C.PNum = PNum x
+-- -- fromCoreP (C.PAs C.PAny x) = PVar x
+-- -- fromCoreP (C.PIf x a) = PIf x (fromCore a)
+-- fromCoreP (C.PFun a b) = PFun (fromCoreP a) (fromCoreP b)
+-- fromCoreP (C.PApp a b) = PApp (fromCoreP a) (fromCoreP b)
+-- fromCoreP C.PErr = PErr
 
 toCoreDef :: (String, Expr) -> (String, C.Expr)
 toCoreDef (x, a) = case toCore a of

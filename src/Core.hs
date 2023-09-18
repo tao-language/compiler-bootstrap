@@ -20,7 +20,7 @@ data Expr
   | Rec ![(String, Expr)]
   | Var !String
   | Fun !Expr !Expr
-  | Lam !Pattern !Expr
+  | Lam !String !Expr
   | App !Expr !Expr
   | Ann !Expr !Type
   | Or !Expr !Expr
@@ -29,15 +29,6 @@ data Expr
   | Op2 !BinaryOp !Expr !Expr
   | Op1 !UnaryOp !Expr
   | Err
-  deriving (Eq)
-
-data Pattern
-  = PVar !String
-  | PInt !String
-  | PNum !String
-  | PFun !Pattern !Pattern
-  | PApp !Pattern !Pattern
-  | PErr
   deriving (Eq)
 
 data Type
@@ -98,9 +89,9 @@ instance Show Expr where
     Op2 Lt a b -> infixR 4 a " < " b
     Op2 Eq a b -> infixL 3 a " == " b
     Ann a (For xs b) -> infixR 2 a (" : " ++ for xs) b
-    Lam p b -> do
-      let (ps, b') = asLam b
-      prefix 2 ("\\" ++ show (foldr PApp p ps) ++ ". ") b'
+    Lam x b -> do
+      let (xs, b') = asLam (Lam x b)
+      prefix 2 ("\\" ++ unwords xs ++ ". ") b'
     Fix x a -> prefix 2 ("@fix " ++ x ++ ". ") a
     Or a b -> infixR 1 a " | " b
     If a b -> infixR 1 a "; " b
@@ -116,9 +107,6 @@ instance Show Expr where
       isTagName (x : xs) = isUpper x && all isAlphaNum xs
       isTagName [] = False
 
-instance Show Pattern where
-  show = show . exprP
-
 instance Show Type where
   show (For [] t) = show t
   show (For xs t) = "@for " ++ unwords xs ++ ". " ++ show t
@@ -131,11 +119,11 @@ asFun :: Expr -> ([Expr], Expr)
 asFun (Fun a1 a2) = let (bs, b) = asFun a2 in (a1 : bs, b)
 asFun a = ([], a)
 
-lam :: [Pattern] -> Expr -> Expr
-lam ps b = foldr Lam b ps
+lam :: [String] -> Expr -> Expr
+lam xs b = foldr Lam b xs
 
-asLam :: Expr -> ([Pattern], Expr)
-asLam (Lam p a) = let (ps, b) = asLam a in (p : ps, b)
+asLam :: Expr -> ([String], Expr)
+asLam (Lam x a) = let (xs, b) = asLam a in (x : xs, b)
 asLam a = ([], a)
 
 add :: Expr -> Expr -> Expr
@@ -159,9 +147,9 @@ lt = Op2 Lt
 int2Num :: Expr -> Expr
 int2Num = Op1 Int2Num
 
-let' :: [(Pattern, Expr)] -> Expr -> Expr
+let' :: [(String, Expr)] -> Expr -> Expr
 let' [] b = b
-let' ((p, a) : defs) b = App (Lam p (let' defs b)) a
+let' ((x, a) : defs) b = App (Lam x (let' defs b)) a
 
 or' :: [Expr] -> Expr
 or' [] = Err
@@ -202,7 +190,7 @@ freeVars (Rec []) = []
 freeVars (Rec ((_, a) : fields)) = freeVars a `union` freeVars (Rec fields)
 freeVars (Var x) = [x]
 freeVars (Fun a b) = freeVars a `union` freeVars b
-freeVars (Lam p a) = filter (`notElem` freeVarsP p) (freeVars a)
+freeVars (Lam x a) = delete x (freeVars a)
 freeVars (App a b) = freeVars a `union` freeVars b
 freeVars (Ann a _) = freeVars a
 freeVars (Or a b) = freeVars a `union` freeVars b
@@ -211,19 +199,8 @@ freeVars (Fix x a) = delete x (freeVars a)
 freeVars (Op2 _ a b) = freeVars a `union` freeVars b
 freeVars (Op1 _ a) = freeVars a
 
-freeVarsP :: Pattern -> [String]
-freeVarsP = freeVars . exprP
-
 occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
-
-exprP :: Pattern -> Expr
-exprP (PVar x) = Var x
-exprP (PInt x) = Ann (Var x) (For [] IntT)
-exprP (PNum x) = Ann (Var x) (For [] NumT)
-exprP (PFun p q) = Fun (exprP p) (exprP q)
-exprP (PApp p q) = App (exprP p) (exprP q)
-exprP PErr = Err
 
 newName :: [String] -> String -> String
 newName existing x = head (newNames existing x)
@@ -265,27 +242,16 @@ eval env (Fun a b) = case (eval env a, eval env b) of
   (Or a1 a2, b) -> Or (Fun a1 b) (Fun a2 b)
   (a, Or b1 b2) -> Or (Fun a b1) (Fun a b2)
   (a, b) -> Fun a b
-eval env (Lam p b) = case eval (pushVars (freeVarsP p) env) b of
-  Or b1 b2 -> Or (Lam p b1) (Lam p b2)
-  b -> Lam p b
+eval env (Lam x b) = case eval ((x, Var x) : env) b of
+  Or b1 b2 -> Or (Lam x b1) (Lam x b2)
+  b -> Lam x b
 eval env (App a b) = case (eval env a, eval env b) of
   (Err, _) -> Err
-  (Lam (PVar x) a, b) -> eval [(x, b)] a
+  (Lam x a, b) -> eval [(x, b)] a
   (a, b) | isOpen b -> App a b
-  (Lam (PInt x) a, Int _) -> eval [(x, b)] a
-  (Lam (PNum x) a, Num _) -> eval [(x, b)] a
-  (Lam (PFun p q) a, Fun b1 b2) -> eval [] (let' [(p, b1), (q, b2)] a)
-  (Lam (PApp p q) a, Fun b1 b2) -> eval [] (let' [(p, b1), (q, b2)] a)
-  (Lam PErr a, Err) -> a
-  (Lam _ _, _) -> Err
   (Or a1 a2, b) -> eval [] (Or (App a1 b) (App a2 b))
   (Fix x a, b) -> eval [(x, Fix x a)] (App a b)
   (a, b) -> App a b
--- eval env (Ann (Lam p b) (For xs (Fun t1 t2))) = case (p, t1) of
---   (PVar x, IntT) -> Lam (PInt x) (eval env (Ann b (For xs t2)))
---   (PVar x, NumT) -> Lam (PNum x) (eval env (Ann b (For xs t2)))
---   (PVar _, App t1 _) -> eval env (Ann (Lam p b) (For xs (Fun t1 t2)))
---   (p, _) -> eval env (Lam p b)
 eval env (Ann (Tag k) (For xs a)) = Ann (Tag k) (For xs (eval (pushVars xs env) a))
 eval env (Ann a _) = eval env a
 eval env (Or a b) = case (eval env a, eval env b) of
@@ -441,9 +407,8 @@ infer env (Var x) = case lookup x env of
 infer env (Fun a b) = do
   (_, s) <- infer2 env a b
   Right (Knd, s)
-infer env (Lam p b) = do
-  let a = exprP p
-  ((t1, t2), s) <- infer2 (pushVars (freeVars a) env) a b
+infer env (Lam x b) = do
+  ((t1, t2), s) <- infer2 ((x, Var x) : env) (Var x) b
   Right (Fun t1 t2, s)
 infer env (App a b) = do
   ((ta, tb), s1) <- infer2 env a b
