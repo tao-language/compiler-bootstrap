@@ -327,12 +327,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let maybe = App (Tag "Maybe")
     let just = App (Tag "Just")
     let nothing = Tag "Nothing"
-    let env = [("Maybe", Lam _a $ Als (maybe a) (or' [Ann (Tag "Nothing") (For ["n", "a"] $ maybe a), Ann (Tag "Just") (For ["n", "a"] $ Fun a (maybe a))]))]
+    let env = [("Maybe", Lam _a $ or' [Ann (Tag "Nothing") (For ["n", "a"] $ maybe a), Ann (Tag "Just") (For ["n", "a"] $ Fun a (maybe a))])]
 
     unify nothing (Ann (Tag "Nothing") (For ["a"] $ maybe a)) `shouldBe` Right (maybe a, [("a", a)])
-    unify nothing (Als (maybe IntT) (Ann (Tag "Nothing") (For ["a"] $ maybe a))) `shouldBe` Right (maybe IntT, [("a", IntT)])
     unify (just IntT) (Ann (Tag "Just") (For ["a"] $ Fun a (maybe a))) `shouldBe` Right (maybe IntT, [("a", IntT)])
-    unify (just IntT) (Als (maybe IntT) (Ann (Tag "Just") (For ["a"] $ Fun a (maybe a)))) `shouldBe` Right (maybe IntT, [("a", IntT)])
 
     let infer' = fmap fst . infer env
     infer' (Tag "Nothing") `shouldBe` Right (Tag "Nothing")
@@ -350,9 +348,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let cons x xs = app (Tag "Cons") [x, xs]
     let nilType = For ["a"] (vec i0 a)
     let consType = For ["n", "a"] (fun [a, vec n a] (vec (add n i1) a))
-    let env = [("Vec", lam [_n, _a] (Als (vec n a) $ or' [Ann (Tag "Nil") nilType, Ann (Tag "Cons") consType]))]
+    let env = [("Vec", lam [_n, _a] (or' [Ann (Tag "Nil") nilType, Ann (Tag "Cons") consType]))]
 
     let infer' = fmap fst . infer env
+    infer' nil `shouldBe` Right nil
+    infer' (cons (Num 1.1) nil) `shouldBe` Right (cons NumT nil)
     infer' (Ann nil (For [] $ vec i0 NumT)) `shouldBe` Right (vec i0 NumT)
     infer' (Ann nil (For [] $ vec i1 NumT)) `shouldBe` Left (TypeMismatch i0 i1)
     infer' (Ann (cons (Num 1.1) nil) (For [] $ vec i1 NumT)) `shouldBe` Right (vec i1 NumT)

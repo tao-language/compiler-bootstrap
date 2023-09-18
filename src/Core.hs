@@ -10,7 +10,6 @@ import Data.List (delete, intercalate, union)
 -- https://www.youtube.com/live/utyBNDj7s2w
 -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
 
--- TODO:
 data Expr
   = Knd
   | IntT
@@ -18,7 +17,6 @@ data Expr
   | Int !Int
   | Num !Double
   | Tag !String
-  | Als !Expr !Expr
   | Rec ![(String, Expr)]
   | Var !String
   | Fun !Expr !Expr
@@ -85,7 +83,6 @@ instance Show Expr where
     Num n -> atom 11 (show n)
     Tag k | isTagName k -> atom 11 k
     Tag k -> atom 11 ("(@tag '" ++ k ++ "')")
-    Als a b -> atom 11 ("(@alias " ++ show a ++ " ~= " ++ show b ++ ")")
     Rec fields -> do
       let showField (x, a) = x ++ ": " ++ show a
       atom 11 ("{" ++ intercalate ", " (map showField fields) ++ "}")
@@ -201,7 +198,6 @@ freeVars NumT = []
 freeVars (Int _) = []
 freeVars (Num _) = []
 freeVars (Tag _) = []
-freeVars (Als a b) = freeVars a `union` freeVars b
 freeVars (Rec []) = []
 freeVars (Rec ((_, a) : fields)) = freeVars a `union` freeVars (Rec fields)
 freeVars (Var x) = [x]
@@ -258,7 +254,6 @@ eval env (Tag k) = case lookup k env of
   Just (Tag k') | k == k' -> Tag k
   Just a -> eval ((k, Tag k) : env) a
   Nothing -> Tag k
-eval env (Als a b) = Als (eval env a) (eval env b)
 eval env (Rec fields) = Rec (map (second (eval env)) fields)
 eval env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Var x
@@ -370,16 +365,8 @@ unify a (Ann (Tag k) ty@(For (_ : _) _)) = do
   (c, s) <- unify a (Ann (Tag k) (For [] b))
   Right (c, s `compose` vars)
 unify (Ann (Tag k) ty@(For (_ : _) _)) b = unify b (Ann (Tag k) ty)
-unify (Als a1 b1) (Als a2 b2) = do
-  ((a, b), s) <- unify2 (a1, a2) (b1, b2)
-  Right (Als a b, s)
-unify a (Als b1 b2) = do
-  (c, s1) <- unify a b2
-  (c, s2) <- unify c (eval s1 b1)
-  Right (c, s2 `compose` s1)
-unify (Als a1 a2) b = unify b (Als a1 a2)
 unify (Rec fields) (Rec fields') = do
-  (fields, s) <- unifyFields fields fields'
+  (fields, s) <- unifyRec fields fields'
   Right (Rec fields, s)
 unify (Var x) (Var x') | x == x' = Right (Var x, [])
 unify (Var x) b | x `occurs` b = Left (InfiniteType x b)
@@ -413,22 +400,19 @@ unify2 (a1, a2) (b1, b2) = do
   (b, s2) <- unify (eval s1 b1) (eval s1 b2)
   Right ((a, b), s2 `compose` s1)
 
-unifyFields :: [(String, Expr)] -> [(String, Expr)] -> Either TypeError ([(String, Expr)], Substitution)
-unifyFields [] _ = Right ([], [])
-unifyFields ((x, a) : fields) fields' = case lookup x fields' of
+unifyRec :: [(String, Expr)] -> [(String, Expr)] -> Either TypeError ([(String, Expr)], Substitution)
+unifyRec [] _ = Right ([], [])
+unifyRec ((x, a) : fields) fields' = case lookup x fields' of
   Just b -> do
-    (fields, s1) <- unifyFields fields fields'
+    (fields, s1) <- unifyRec fields fields'
     (c, s2) <- unify (eval s1 a) (eval s1 b)
     Right ((x, c) : fields, s2 `compose` s1)
-  Nothing -> unifyFields fields fields'
+  Nothing -> unifyRec fields fields'
 
-constructors :: Expr -> Env
-constructors (Ann (Tag k) ty) = [(k, Ann (Tag k) ty)]
-constructors (Als a b) = case asApp a of
-  (Tag k, _) -> (k, Tag k) : constructors b
-  _ -> constructors b
-constructors (Or a b) = constructors a ++ constructors b
-constructors _ = []
+listAlts :: Expr -> Env
+listAlts (Ann (Tag k) ty) = [(k, Ann (Tag k) ty)]
+listAlts (Or a b) = listAlts a ++ listAlts b
+listAlts _ = []
 
 infer :: Env -> Expr -> Either TypeError (Expr, Substitution)
 infer _ Err = Right (Err, [])
@@ -442,12 +426,8 @@ infer env (Tag k) = case lookup k env of
   Just (Ann (Tag k') ty) | k == k' -> Right (instantiate (map fst env) ty)
   Just a -> infer env a
   Nothing -> Right (Tag k, [])
-infer env (Als a b) = do
-  (_, s1) <- infer env b
-  (ta, s2) <- infer (apply s1 env) a
-  Right (ta, s2 `compose` s1)
 infer env (Rec fields) = do
-  (fieldsT, s) <- inferFields env fields
+  (fieldsT, s) <- inferRec env fields
   Right (Rec fieldsT, s)
 infer env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> do
@@ -480,8 +460,8 @@ infer env (App a b) = do
     ta -> Left (NotAFunction a ta)
 infer env (Ann a ty) = do
   let (t, vars) = instantiate (map fst env) ty
-  let ctrs = constructors (eval (apply vars env) t)
-  (ta, s1) <- infer (apply vars (ctrs ++ env)) (eval ctrs a)
+  let alts = listAlts (eval (apply vars env) t)
+  (ta, s1) <- infer (apply vars (alts ++ env)) (eval alts a)
   (t, s2) <- unify ta (eval s1 t)
   Right (t, s2 `compose` s1)
 infer env (Or a b) = do
@@ -529,10 +509,10 @@ infer2 env a b = do
   (tb, s2) <- infer (s1 ++ apply s1 env) b
   Right ((eval s2 ta, tb), s2 `compose` s1)
 
-inferFields :: Env -> [(String, Expr)] -> Either TypeError ([(String, Expr)], Substitution)
-inferFields _ [] = Right ([], [])
-inferFields env ((x, a) : fields) = do
-  (fieldsT, s1) <- inferFields env fields
+inferRec :: Env -> [(String, Expr)] -> Either TypeError ([(String, Expr)], Substitution)
+inferRec _ [] = Right ([], [])
+inferRec env ((x, a) : fields) = do
+  (fieldsT, s1) <- inferRec env fields
   (ta, s2) <- infer (apply s1 env) a
   Right ((x, ta) : fieldsT, s2 `compose` s1)
 
