@@ -3,7 +3,8 @@ module TaoLang where
 import Control.Monad (void)
 import Data.List (intercalate)
 import Flow ((|>))
-import Parser
+import Parser (Parser)
+import qualified Parser as P
 import System.Directory
 import System.FilePath ((</>))
 import Tao
@@ -40,17 +41,12 @@ import Tao
   - Only documented functions/types are public
 --}
 
--- data Error
---   = SyntaxError !ParserError
---   | CompileError !Tao.CompileError
---   deriving (Eq, Show)
-
--- loadFile :: FilePath -> FilePath -> IO Context
--- loadFile moduleName fileName = do
---   src <- readFile (moduleName </> fileName)
---   case TaoLang.parse context src of
---     Right ctx -> return ctx
---     Left err -> fail ("❌ " ++ show err)
+loadFile :: FilePath -> FilePath -> IO Env
+loadFile moduleName fileName = do
+  src <- readFile (moduleName </> fileName)
+  case TaoLang.parse (P.zeroOrMore definition) src of
+    Right ctx -> return ctx
+    Left err -> fail ("❌ " ++ show err)
 
 -- -- loadModule :: FilePath -> IO Env
 -- -- loadModule moduleName = do
@@ -58,51 +54,57 @@ import Tao
 -- --   envs <- mapM (loadFile moduleName) (sort files)
 -- --   return (concat envs)
 
--- parse :: Parser a -> String -> Either Error a
--- parse parser src = case Parser.parse parser src of
---   Right x -> Right x
---   Left err -> Left (SyntaxError err)
+parse :: Parser a -> String -> Either CompileError a
+parse parser src = case P.parse parser src of
+  Right x -> Right x
+  Left err -> Left (SyntaxError err)
 
 -- parseSome :: Parser a -> String -> Either Error (a, State)
 -- parseSome parser src = case Parser.parseSome parser src of
 --   Right (x, state) -> Right (x, state)
 --   Left err -> Left (SyntaxError err)
 
--- -- Parsers
--- keyword :: a -> String -> Parser a
--- keyword x txt = do
---   let wordBreak =
---         [ void letter,
---           void number,
---           void $ char '_',
---           void $ char '\''
---         ]
---   _ <- token (text txt |> notFollowedBy (oneOf wordBreak))
---   succeed x
+-- Parsers
+token :: Parser a -> Parser a
+token parser = do
+  x <- parser
+  _ <- P.zeroOrMore P.space
+  P.succeed x
 
--- identifier :: Parser Char -> Parser String
--- identifier firstChar = do
---   -- TODO: support `-` and other characters, maybe URL-like names
---   maybeUnderscore <- maybe' (char '_')
---   c1 <- firstChar
---   cs <- zeroOrMore (oneOf [alphanumeric, char '_'])
---   let x = case maybeUnderscore of
---         Just c0 -> c0 : c1 : cs
---         Nothing -> c1 : cs
---   keyword x ""
+emptyLine :: Parser String
+emptyLine = do
+  let close = P.oneOf [P.char '\n', P.char ';']
+  line <- P.subparser close (P.zeroOrMore P.space)
+  _ <- close
+  P.succeed line
 
--- emptyLine :: Parser String
--- emptyLine = do
---   let close = oneOf [char '\n', char ';']
---   line <- subparser close (zeroOrMore space)
---   _ <- close
---   succeed line
+newLine :: Parser ()
+newLine = do
+  _ <- token $ P.oneOf [void (P.char ';'), P.endOfLine]
+  _ <- P.zeroOrMore emptyLine
+  P.succeed ()
 
--- newLine :: Parser ()
--- newLine = do
---   _ <- token $ oneOf [void (char ';'), endOfLine]
---   _ <- zeroOrMore emptyLine
---   succeed ()
+keyword :: a -> String -> Parser a
+keyword x txt = do
+  let wordBreak =
+        [ void P.letter,
+          void P.number,
+          void $ P.char '_',
+          void $ P.char '\''
+        ]
+  _ <- token (P.text txt |> P.notFollowedBy (P.oneOf wordBreak))
+  P.succeed x
+
+identifier :: Parser Char -> Parser String
+identifier firstChar = do
+  -- TODO: support `-` and other characters, maybe URL-like names
+  maybeUnderscore <- P.maybe' (P.char '_')
+  c1 <- firstChar
+  cs <- P.zeroOrMore (P.oneOf [P.alphanumeric, P.char '_'])
+  let x = case maybeUnderscore of
+        Just c0 -> c0 : c1 : cs
+        Nothing -> c1 : cs
+  keyword x ""
 
 -- commentSingleLine :: Parser String
 -- commentSingleLine = do
@@ -127,97 +129,90 @@ import Tao
 --   texts <- zeroOrMore (oneOf [commentSingleLine, commentMultiLine])
 --   succeed (intercalate "\n" texts)
 
--- token :: Parser a -> Parser a
--- token parser = do
---   x <- parser
---   _ <- zeroOrMore space
---   succeed x
+-- Patterns
+patternToken :: Parser Pattern
+patternToken = do
+  P.oneOf
+    [ keyword PAny "_",
+      PInt <$> token P.integer,
+      PVar <$> identifier P.lowercase,
+      PTag <$> identifier P.uppercase,
+      do
+        _ <- token $ P.char '('
+        p <- pattern' 0
+        _ <- token $ P.char ')'
+        P.succeed p
+    ]
 
--- -- Patterns
--- patternToken :: Parser Pattern
--- patternToken = do
---   oneOf
---     [ keyword AnyP "_",
---       IntP <$> token integer,
---       VarP <$> identifier lowercase,
---       (`CtrP` []) <$> identifier uppercase,
---       do
---         _ <- token $ char '('
---         p <- pattern'
---         _ <- token $ char ')'
---         succeed p
---     ]
+pattern' :: Int -> Parser Pattern
+pattern' prec = do
+  P.withOperators
+    [P.constant patternToken]
+    [P.infixL 6 PApp (P.succeed ())]
+    prec
 
--- pattern' :: Parser Pattern
--- pattern' =
---   oneOf
---     [ do
---         ctr <- identifier uppercase
---         ps <- oneOrMore patternToken
---         succeed (CtrP ctr ps),
---       patternToken
---     ]
+-- Expressions
+expressionToken :: Parser Expr
+expressionToken =
+  P.oneOf
+    [ token $ Int <$> P.integer,
+      token $ Num <$> P.number,
+      Var <$> identifier P.letter,
+      do
+        _ <- token $ P.char '('
+        a <- expression 0
+        _ <- token $ P.char ')'
+        P.succeed a
+    ]
 
--- -- Expressions
--- expressionToken :: Parser Expr
--- expressionToken =
---   oneOf
---     [ token $ Int <$> integer,
---       token $ Num <$> number,
---       Var <$> identifier letter,
---       do
---         _ <- token $ char '('
---         a <- expression 0
---         _ <- token $ char ')'
---         succeed a
---     ]
+expression :: Int -> Parser Expr
+expression prec = do
+  let branch :: Int -> Parser ([Pattern], Expr)
+      branch prec = do
+        ps <- P.oneOrMore patternToken
+        _ <- token $ P.char '='
+        b <- expression prec
+        P.succeed (ps, b)
 
--- expression :: Int -> Parser Expr
--- expression prec = do
---   let forall :: Parser [String]
---       forall = do
---         _ <- keyword () "@forall"
---         xs <- oneOrMore $ identifier lowercase
---         _ <- token $ char '.'
---         succeed xs
+  let match' :: Parser Expr
+      match' = do
+        _ <- token $ P.char '\\'
+        br <- branch 0
+        brs <- P.zeroOrMore (do _ <- token $ P.char '|'; branch 0)
+        P.succeed (Match (br : brs))
 
---   let branch :: Int -> Parser Branch
---       branch prec = do
---         ps <- oneOrMore patternToken
---         _ <- token $ char '='
---         b <- expression prec
---         succeed (Br ps b)
+  P.withOperators
+    [ P.constant match',
+      P.prefixOp 0 Let (P.oneOrMore definition),
+      P.constant expressionToken
+    ]
+    [ P.infixL 1 Eq (token $ P.text "=="),
+      P.infixR 2 (App . App Fun) (token $ P.text "->"),
+      P.infixL 3 Lt (token $ P.text "<"),
+      P.infixL 4 Add (token $ P.text "+"),
+      P.infixL 4 Sub (token $ P.text "-"),
+      P.infixL 5 Mul (token $ P.text "*"),
+      P.infixL 6 App (P.succeed ())
+    ]
+    prec
 
---   let match' :: Parser Expr
---       match' = do
---         _ <- token $ char '\\'
---         br <- branch 0
---         brs <- zeroOrMore (do _ <- token $ char '|'; branch 0)
---         succeed (match (br : brs))
+-- Definitions
+definition :: Parser (Pattern, Expr)
+definition =
+  P.oneOf
+    [ -- unionTypeDefinition,
+      -- typedVariableDefinition,
+      rulesDefinition
+      -- , unpackDefinition
+    ]
 
---   withOperators
---     [ constant match',
---       prefixOp 0 Let (oneOrMore definition),
---       prefixOp 1 for forall,
---       constant expressionToken
---     ]
---     [ infixL 1 (Op2 Eq) (token $ text "=="),
---       infixR 2 Fun (token $text "->"),
---       infixL 3 (Op2 Lt) (token $ text "<"),
---       infixL 4 (Op2 Add) (token $ text "+"),
---       infixL 4 (Op2 Sub) (token $ text "-"),
---       infixL 5 (Op2 Mul) (token $ text "*"),
---       infixL 6 App (succeed ())
---     ]
---     prec
-
--- -- Definitions
--- typeAnnotation :: Parser (String, Type)
--- typeAnnotation = do
---   x <- identifier lowercase
---   _ <- token $ char ':'
---   t <- expression 0
---   succeed (x, t)
+typeAnnotation :: Parser (String, Type)
+typeAnnotation = do
+  x <- identifier P.lowercase
+  _ <- token $ P.char ':'
+  xs <- P.oneOf [P.succeed []]
+  t <- expression 0
+  P.succeed (x, For xs t)
 
 -- typedVariableDefinition :: Parser Definition
 -- typedVariableDefinition = do
@@ -227,29 +222,29 @@ import Tao
 --   _ <- newLine
 --   succeed (Typed x t a)
 
--- rulesDefinition :: Parser Definition
--- rulesDefinition = do
---   let branch :: Parser Branch
---       branch = do
---         ps <- zeroOrMore pattern'
---         _ <- token $ char '='
---         a <- expression 0
---         _ <- newLine
---         succeed (Br ps a)
+rulesDefinition :: Parser (Pattern, Expr)
+rulesDefinition = do
+  let branch :: Parser ([Pattern], Expr)
+      branch = do
+        ps <- P.zeroOrMore patternToken
+        _ <- token $ P.char '='
+        a <- expression 0
+        _ <- newLine
+        P.succeed (ps, a)
 
---   maybeType <- maybe' typeAnnotation
---   case maybeType of
---     Just (x, t) -> do
---       _ <- newLine
---       _ <- keyword () x
---       b <- branch
---       bs <- zeroOrMore (do _ <- keyword () x; branch)
---       succeed (Typed x t (match (b : bs)))
---     Nothing -> do
---       x <- identifier lowercase
---       b <- branch
---       bs <- zeroOrMore (do _ <- keyword () x; branch)
---       succeed (Untyped x (match (b : bs)))
+  maybeType <- P.maybe' typeAnnotation
+  case maybeType of
+    Just (x, ty) -> do
+      _ <- newLine
+      _ <- keyword () x
+      b <- branch
+      bs <- P.zeroOrMore (do _ <- keyword () x; branch)
+      P.succeed (PVar x, Ann (Match (b : bs)) ty)
+    Nothing -> do
+      x <- identifier P.lowercase
+      b <- branch
+      bs <- P.zeroOrMore (do _ <- keyword () x; branch)
+      P.succeed (PVar x, Match (b : bs))
 
 -- unpackDefinition :: Parser Definition
 -- unpackDefinition = do
@@ -309,15 +304,3 @@ import Tao
 --         _ <- keyword () "_"
 --         succeed (UnionType name args [])
 --     ]
-
--- contextDefinition :: Parser ContextDefinition
--- contextDefinition =
---   oneOf
---     [ unionTypeDefinition,
---       do
---         def <- definition
---         succeed (Value def)
---     ]
-
--- context :: Parser Context
--- context = zeroOrMore contextDefinition

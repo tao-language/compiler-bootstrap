@@ -16,8 +16,8 @@ run = describe "--==☯ Tao ☯==--" $ do
 
   it "☯ fun" $ do
     fun [] x `shouldBe` x
-    fun [x] y `shouldBe` Fun x y
-    fun [x, y] z `shouldBe` Fun x (Fun y z)
+    fun [x] y `shouldBe` App (App Fun x) y
+    fun [x, y] z `shouldBe` App (App Fun x) (App (App Fun y) z)
 
   it "☯ lam" $ do
     lam [] x `shouldBe` x
@@ -38,26 +38,49 @@ run = describe "--==☯ Tao ☯==--" $ do
   -- it "☯ toCoreP" $ do
   --   True `shouldBe` True
 
-  it "☯ toCore" $ do
+  it "☯ toCore basic" $ do
     toCore Err `shouldBe` C.Err
+    toCore Typ `shouldBe` C.Typ
+    toCore Fun `shouldBe` C.Fun
+    toCore IntT `shouldBe` C.IntT
+    toCore NumT `shouldBe` C.NumT
     toCore (Int 1) `shouldBe` C.Int 1
     toCore (Num 1.1) `shouldBe` C.Num 1.1
-    -- TODO: Typ, IntT, NumT
+    toCore (Tag "A") `shouldBe` C.Tag "A"
     toCore (Var "x") `shouldBe` C.Var "x"
-    toCore (Fun x y) `shouldBe` C.Fun x' y'
-    toCore (Match []) `shouldBe` C.Err
-    -- toCore (Match [([_x], x)]) `shouldBe` C.Lam _x' x'
-    -- toCore (Match [([_x, _y], x)]) `shouldBe` C.lam [_x', _y'] x'
-    -- toCore (Match [([_x], x), ([_y], y)]) `shouldBe` C.Or (C.Lam _x' x') (C.Lam _y' y')
     toCore (App x y) `shouldBe` C.App x' y'
     toCore (Ann x (For ["x", "y"] z)) `shouldBe` C.Ann x' (C.For ["x", "y"] z')
     toCore (Or x y) `shouldBe` C.Or x' y'
+    toCore (If x y) `shouldBe` C.If x' y'
+    toCore (Rec []) `shouldBe` C.Rec []
+    toCore (Rec [("a", x), ("b", y)]) `shouldBe` C.Rec [("a", x'), ("b", y')]
     toCore (Add x y) `shouldBe` C.add x' y'
     toCore (Sub x y) `shouldBe` C.sub x' y'
     toCore (Mul x y) `shouldBe` C.mul x' y'
+    toCore (Pow x y) `shouldBe` C.pow x' y'
+    toCore (Eq x y) `shouldBe` C.eq x' y'
+    toCore (Lt x y) `shouldBe` C.lt x' y'
+    toCore (Gt x y) `shouldBe` C.gt x' y'
+    toCore (Int2Num x) `shouldBe` C.int2Num x'
 
-  -- it "☯ fromCoreP" $ do
-  --   True `shouldBe` True
+  it "☯ toCore pattern matching" $ do
+    toCore (Lam PAny y) `shouldBe` C.Lam "_" y'
+    toCore (Lam PAny (Var "_")) `shouldBe` C.Lam "_1" (C.Var "_")
+    toCore (Lam PAny (Lam PAny y)) `shouldBe` C.Lam "_" (C.Lam "_" y')
+    toCore (Lam PTyp y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") C.Typ) y')
+    toCore (Lam PFun y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") C.Fun) y')
+    toCore (Lam PIntT y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") C.IntT) y')
+    toCore (Lam PNumT y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") C.NumT) y')
+    toCore (Lam (PInt 0) y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") (C.Int 0)) y')
+    toCore (Lam (PVar "x") y) `shouldBe` C.Lam "x" y'
+    toCore (Lam (PApp _x _y) z) `shouldBe` C.Lam "$1" (C.let' [("x", C.Fst (C.Var "$1")), ("y", C.Snd (C.Var "$1"))] z')
+
+  it "☯ toCore syntax sugar" $ do
+    toCore (Match []) `shouldBe` C.Err
+    -- toCore (Match [([_x], x)]) `shouldBe` C.Lam "x" x'
+    -- toCore (Match [([_x, _y], x)]) `shouldBe` C.lam [_x', _y'] x'
+    -- toCore (Match [([_x], x), ([_y], y)]) `shouldBe` C.Or (C.Lam _x' x') (C.Lam _y' y')
+    True `shouldBe` True
 
   it "☯ fromCore" $ do
     True `shouldBe` True

@@ -6,20 +6,21 @@ import qualified Parser as P
 
 data Expr
   = Typ
+  | Fun
   | IntT
   | NumT
   | Int !Int
   | Num !Double
   | Tag !String
   | Var !String
-  | Fun !Expr !Expr
   | Lam !Pattern !Expr
   | App !Expr !Expr
   | Ann !Expr !Type
   | Or !Expr !Expr
   | If !Expr !Expr
-  | Fix !String !Expr
   | Rec ![(String, Expr)]
+  | Fst !Expr
+  | Snd !Expr
   | Add !Expr !Expr
   | Sub !Expr !Expr
   | Mul !Expr !Expr
@@ -31,7 +32,7 @@ data Expr
   | Err
   | -- Syntax sugar
     Match ![([Pattern], Expr)]
-  | Let !(Pattern, Expr) !Expr
+  | Let ![(Pattern, Expr)] !Expr
   | Do !(Pattern, Expr) !Expr
   | Char !Int
   | Maybe !Expr
@@ -50,17 +51,22 @@ data Expr
 
 data Pattern
   = PAny
+  | PTyp
+  | PFun
+  | PIntT
+  | PNumT
+  | PInt !Int
+  | PTag !String
+  | PIfEq !Expr
   | PVar !String
-  | PFun !Pattern !Pattern
   | PApp !Pattern !Pattern
-  | PErr
   deriving (Eq, Show)
 
 data Type
   = For ![String] !Expr
   deriving (Eq, Show)
 
-type Env = [(String, Expr)]
+type Env = [(Pattern, Expr)]
 
 data CompileError
   = TypeError !C.TypeError
@@ -69,7 +75,7 @@ data CompileError
 
 -- Syntax sugar
 fun :: [Expr] -> Expr -> Expr
-fun bs b = foldr Fun b bs
+fun bs b = foldr (App . App Fun) b bs
 
 lam :: [Pattern] -> Expr -> Expr
 lam ps b = foldr Lam b ps
@@ -77,27 +83,23 @@ lam ps b = foldr Lam b ps
 app :: Expr -> [Expr] -> Expr
 app = foldl App
 
-let' :: [(Pattern, Expr)] -> Expr -> Expr
-let' [] b = b
-let' ((p, a) : defs) b = App (Lam p (let' defs b)) a
-
 or' :: [Expr] -> Expr
 or' [] = Err
 or' [a] = a
 or' (a : bs) = Or a (or' bs)
 
--- Evaluation
-eval :: Env -> Expr -> Expr
-eval env a = fromCore (C.eval (toCoreEnv env) (toCore a))
+-- -- Evaluation
+-- eval :: Env -> Expr -> Expr
+-- eval env a = fromCore (C.eval (toCoreEnv env) (toCore a))
 
-eval' :: Env -> Expr -> C.Expr
-eval' env a = C.eval (toCoreEnv env) (toCore a)
+-- eval' :: Env -> Expr -> C.Expr
+-- eval' env a = C.eval (toCoreEnv env) (toCore a)
 
--- Type inference
-infer :: Env -> Expr -> Either CompileError Type
-infer env a = case C.infer (toCoreEnv env) (toCore a) of
-  Right (t', _) -> Right (For (C.freeVars t') (fromCore t'))
-  Left err -> Left (TypeError err)
+-- -- Type inference
+-- infer :: Env -> Expr -> Either CompileError Type
+-- infer env a = case C.infer (toCoreEnv env) (toCore a) of
+--   Right (t', _) -> Right (For (C.freeVars t') (fromCore t'))
+--   Left err -> Left (TypeError err)
 
 -- compile :: Env -> C.Env
 -- compile =
@@ -110,29 +112,51 @@ infer env a = case C.infer (toCoreEnv env) (toCore a) of
 toCore :: Expr -> C.Expr
 toCore Err = C.Err
 toCore Typ = C.Typ
+toCore Fun = C.Fun
 toCore IntT = C.IntT
 toCore NumT = C.NumT
 toCore (Int i) = C.Int i
 toCore (Num n) = C.Num n
--- toCore (Ctr k) = C.Ctr k
--- toCore (Typ t) = C.Typ t []
+toCore (Tag k) = C.Tag k
 toCore (Var x) = C.Var x
-toCore (Fun a b) = C.Fun (toCore a) (toCore b)
--- toCore (Lam p b) = do
---   let b' = toCore b
---   let x = C.newName (C.freeVars b') "_"
---   C.Lam (toCoreP x p) b'
 toCore (App a b) = C.App (toCore a) (toCore b)
 toCore (Ann a (For xs t)) = C.Ann (toCore a) (C.For xs (toCore t))
 toCore (Or a b) = C.Or (toCore a) (toCore b)
 toCore (If a b) = C.If (toCore a) (toCore b)
+toCore (Rec fields) = C.Rec (toCoreRec fields)
+toCore (Fst a) = C.Fst (toCore a)
+toCore (Snd a) = C.Snd (toCore a)
 toCore (Add a b) = C.add (toCore a) (toCore b)
 toCore (Sub a b) = C.sub (toCore a) (toCore b)
 toCore (Mul a b) = C.mul (toCore a) (toCore b)
+toCore (Pow a b) = C.pow (toCore a) (toCore b)
 toCore (Eq a b) = C.eq (toCore a) (toCore b)
+toCore (Lt a b) = C.lt (toCore a) (toCore b)
+toCore (Gt a b) = C.gt (toCore a) (toCore b)
 toCore (Int2Num a) = C.int2Num (toCore a)
+toCore (Lam p b) = case p of
+  PAny -> do
+    let b' = toCore b
+    let x = C.newName (C.freeVars b') "_"
+    C.Lam x b'
+  PTyp -> toCore (Lam (PIfEq Typ) b)
+  PFun -> toCore (Lam (PIfEq Fun) b)
+  PIntT -> toCore (Lam (PIfEq IntT) b)
+  PNumT -> toCore (Lam (PIfEq NumT) b)
+  PInt i -> toCore (Lam (PIfEq (Int i)) b)
+  PTag k -> toCore (Lam (PIfEq (Tag k)) b)
+  PIfEq a -> do
+    let b' = toCore b
+    let x = C.newName ("$" : C.freeVars b') "$"
+    C.Lam x (C.If (C.eq (C.Var x) (toCore a)) b')
+  PVar x -> C.Lam x (toCore b)
+  PApp p q -> do
+    let b' = toCore b
+    let x = C.newName ("$" : C.freeVars b') "$"
+    toCore (Lam (PVar x) (Let [(p, Fst (Var x)), (q, Snd (Var x))] b))
+toCore (Let [] b) = toCore b
+toCore (Let ((p, a) : defs) b) = toCore (App (Lam p (Let defs b)) a)
 toCore (Match brs) = C.or' (map (\(ps, b) -> toCore (lam ps b)) brs)
--- Let !(Pattern, Expr) !Expr
 -- Do !(Pattern, Expr) !Expr
 -- Char !Int
 -- Maybe !Expr
@@ -148,23 +172,26 @@ toCore (Match brs) = C.or' (map (\(ps, b) -> toCore (lam ps b)) brs)
 -- IfElse !Expr !Expr !Expr
 toCore a = error ("TODO toCore: " ++ show a)
 
--- toCoreP :: String -> Pattern -> C.Pattern
--- -- toCoreP x PAny = C.PAny
--- -- toCoreP _ (PVar x) = C.PAs C.PAny x
--- -- toCoreP _ (PInt x) = C.PInt x
--- -- toCoreP _ (PNum x) = C.PNum x
--- -- toCoreP _ (PIf x a) = C.PIf x (toCore a)
--- toCoreP x (PIfEq a) = toCoreP x (PIf x (Eq (Var x) a))
--- toCoreP x PIfTyp = toCoreP x (PIfEq Typ)
--- toCoreP x PIfIntT = toCoreP x (PIfEq IntT)
--- toCoreP x PIfNumT = toCoreP x (PIfEq NumT)
--- toCoreP x (PIfInt i) = toCoreP x (PIfEq (Int i))
--- toCoreP x (PIfNum n) = toCoreP x (PIfEq (Num n))
--- toCoreP x (PIfCtr k) = toCoreP x (PIfEq (Ctr k))
--- toCoreP x (PIfTyp t) = toCoreP x (PIfEq (Typ t))
--- toCoreP x (PFun p q) = C.PFun (toCoreP x p) (toCoreP x q)
--- toCoreP x (PApp p q) = C.PApp (toCoreP x p) (toCoreP x q)
--- toCoreP _ PErr = C.PErr
+toCoreRec :: [(String, Expr)] -> [(String, C.Expr)]
+toCoreRec [] = []
+toCoreRec ((x, a) : fields) = (x, toCore a) : toCoreRec fields
+
+toCoreDef :: (Pattern, Expr) -> C.Env
+toCoreDef (PAny, _) = []
+toCoreDef (PTyp, _) = []
+toCoreDef (PFun, _) = []
+toCoreDef (PIntT, _) = []
+toCoreDef (PNumT, _) = []
+toCoreDef (PInt _, _) = []
+toCoreDef (PTag _, _) = []
+toCoreDef (PIfEq _, _) = []
+toCoreDef (PVar x, a) = case toCore a of
+  a | x `C.occurs` a -> [(x, C.Fix x a)]
+  a -> [(x, a)]
+toCoreDef (PApp p q, a) = toCoreDef (p, Fst a) ++ toCoreDef (q, Snd a)
+
+toCoreEnv :: Env -> C.Env
+toCoreEnv = concatMap toCoreDef
 
 fromCore :: C.Expr -> Expr
 fromCore C.Err = Err
@@ -176,13 +203,13 @@ fromCore (C.Num n) = Num n
 -- fromCore (C.Ctr k) = Ctr k
 -- fromCore (C.Typ t ks) = Typ t
 fromCore (C.Var x) = Var x
-fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
+-- fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
 fromCore (C.Lam x b) = Lam (PVar x) (fromCore b)
 fromCore (C.App a b) = App (fromCore a) (fromCore b)
 fromCore (C.Ann a (C.For xs t)) = Ann (fromCore a) (For xs (fromCore t))
 fromCore (C.Or a b) = Or (fromCore a) (fromCore b)
 fromCore (C.If a b) = If (fromCore a) (fromCore b)
-fromCore (C.Fix x a) | x `C.occurs` a = Let (PVar x, fromCore a) (Var x)
+fromCore (C.Fix x a) | x `C.occurs` a = Let [(PVar x, fromCore a)] (Var x)
 fromCore (C.Fix _ a) = fromCore a
 fromCore (C.Op2 C.Add a b) = Add (fromCore a) (fromCore b)
 fromCore (C.Op2 C.Sub a b) = Sub (fromCore a) (fromCore b)
@@ -191,23 +218,8 @@ fromCore (C.Op2 C.Eq a b) = Eq (fromCore a) (fromCore b)
 fromCore (C.Op1 C.Int2Num a) = Int2Num (fromCore a)
 fromCore a = error ("TODO fromCore: " ++ show a)
 
--- fromCoreP :: C.Pattern -> Pattern
--- -- fromCoreP C.PAny = PAny
--- -- fromCoreP C.PInt = PInt x
--- -- fromCoreP C.PNum = PNum x
--- -- fromCoreP (C.PAs C.PAny x) = PVar x
--- -- fromCoreP (C.PIf x a) = PIf x (fromCore a)
--- fromCoreP (C.PFun a b) = PFun (fromCoreP a) (fromCoreP b)
--- fromCoreP (C.PApp a b) = PApp (fromCoreP a) (fromCoreP b)
--- fromCoreP C.PErr = PErr
-
-toCoreDef :: (String, Expr) -> (String, C.Expr)
-toCoreDef (x, a) = case toCore a of
-  a | x `C.occurs` a -> (x, C.Fix x a)
-  a -> (x, a)
-
-toCoreEnv :: Env -> C.Env
-toCoreEnv = map toCoreDef
+fromCoreDef :: (String, C.Expr) -> (Pattern, Expr)
+fromCoreDef (x, a) = (PVar x, fromCore a)
 
 fromCoreEnv :: C.Env -> Env
-fromCoreEnv = map (second fromCore)
+fromCoreEnv = map fromCoreDef

@@ -14,8 +14,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     let (i0, i1) = (Int 0, Int 1)
     let (f, n) = (Var "f", Var "n")
     let factorial =
-          [ ([PVar "n"], If (Eq n i0) i1),
-            ([PVar "n"], If (Gt n i0) (n `Mul` App f (n `Sub` i1)))
+          [ ([PInt 0], i1),
+            ([PVar "n"], If (Gt n i0) $ n `Mul` App f (n `Sub` i1))
           ]
     let env = [("f", Match factorial)]
 
