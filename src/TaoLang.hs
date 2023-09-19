@@ -59,10 +59,10 @@ parse parser src = case P.parse parser src of
   Right x -> Right x
   Left err -> Left (SyntaxError err)
 
--- parseSome :: Parser a -> String -> Either Error (a, State)
--- parseSome parser src = case Parser.parseSome parser src of
---   Right (x, state) -> Right (x, state)
---   Left err -> Left (SyntaxError err)
+parseSome :: Parser a -> String -> Either CompileError (a, P.State)
+parseSome parser src = case P.parseSome parser src of
+  Right (x, state) -> Right (x, state)
+  Left err -> Left (SyntaxError err)
 
 -- Parsers
 token :: Parser a -> Parser a
@@ -106,28 +106,28 @@ identifier firstChar = do
         Nothing -> c1 : cs
   keyword x ""
 
--- commentSingleLine :: Parser String
--- commentSingleLine = do
---   let open = do _ <- text "--"; maybe' space
---   let close = newLine
---   _ <- open
---   txt <- subparser close (zeroOrMore anyChar)
---   _ <- close
---   succeed txt
+commentSingleLine :: Parser String
+commentSingleLine = do
+  let open = do _ <- P.text "--"; P.maybe' P.space
+  let close = newLine
+  _ <- open
+  txt <- P.subparser close (P.zeroOrMore P.anyChar)
+  _ <- close
+  P.succeed txt
 
--- commentMultiLine :: Parser String
--- commentMultiLine = do
---   let open = do _ <- text "{--"; maybe' space
---   let close = do _ <- maybe' space; _ <- text "--}"; maybe' newLine
---   _ <- open
---   txt <- subparser close (zeroOrMore anyChar)
---   _ <- close
---   succeed txt
+commentMultiLine :: Parser String
+commentMultiLine = do
+  let open = do _ <- P.text "{--"; P.maybe' P.space
+  let close = do _ <- P.maybe' P.space; _ <- P.text "--}"; P.maybe' newLine
+  _ <- open
+  txt <- P.subparser close (P.zeroOrMore P.anyChar)
+  _ <- close
+  P.succeed txt
 
--- comments :: Parser String
--- comments = do
---   texts <- zeroOrMore (oneOf [commentSingleLine, commentMultiLine])
---   succeed (intercalate "\n" texts)
+comments :: Parser String
+comments = do
+  texts <- P.zeroOrMore (P.oneOf [commentSingleLine, commentMultiLine])
+  P.succeed (intercalate "\n" texts)
 
 -- Patterns
 patternToken :: Parser Pattern
@@ -179,7 +179,7 @@ expression prec = do
         _ <- token $ P.char '\\'
         br <- branch 0
         brs <- P.zeroOrMore (do _ <- token $ P.char '|'; branch 0)
-        P.succeed (Match (br : brs))
+        P.succeed (match (br : brs))
 
   P.withOperators
     [ P.constant match',
@@ -192,7 +192,8 @@ expression prec = do
       P.infixL 4 Add (token $ P.text "+"),
       P.infixL 4 Sub (token $ P.text "-"),
       P.infixL 5 Mul (token $ P.text "*"),
-      P.infixL 6 App (P.succeed ())
+      P.infixL 6 Pow (token $ P.text "^"),
+      P.infixL 7 App (P.succeed ())
     ]
     prec
 
@@ -239,12 +240,12 @@ rulesDefinition = do
       _ <- keyword () x
       b <- branch
       bs <- P.zeroOrMore (do _ <- keyword () x; branch)
-      P.succeed (PVar x, Ann (Match (b : bs)) ty)
+      P.succeed (PVar x, Ann (match (b : bs)) ty)
     Nothing -> do
       x <- identifier P.lowercase
       b <- branch
       bs <- P.zeroOrMore (do _ <- keyword () x; branch)
-      P.succeed (PVar x, Match (b : bs))
+      P.succeed (PVar x, match (b : bs))
 
 -- unpackDefinition :: Parser Definition
 -- unpackDefinition = do

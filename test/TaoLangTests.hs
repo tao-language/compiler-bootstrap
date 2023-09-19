@@ -5,122 +5,115 @@ import Tao
 import TaoLang
 import Test.Hspec
 
-taoLangTests :: SpecWith ()
-taoLangTests = describe "--==☯ Tao language ☯==--" $ do
-  -- let (a, b) = (Var "a", Var "b")
-  -- let (x, y, z) = (Var "x", Var "y", Var "z")
-  -- let (x', y', z') = (VarP "x", VarP "y", VarP "z")
-  -- let (i1, i2) = (Int 1, Int 2)
+run :: SpecWith ()
+run = describe "--==☯ Tao language ☯==--" $ do
+  let (a, b) = (Var "a", Var "b")
+  let (x, y, z) = (Var "x", Var "y", Var "z")
+  let (_x, _y, _z) = (PVar "x", PVar "y", PVar "z")
+  let (i1, i2) = (Int 1, Int 2)
 
-  -- let eq = Op2 Eq
-  -- let lt = Op2 Lt
-  -- let add = Op2 Add
-  -- let sub = Op2 Sub
-  -- let mul = Op2 Mul
+  let parse' parser src = case parseSome parser src of
+        Right (x, P.State {P.source = remaining}) ->
+          Right (x, remaining)
+        Left (SyntaxError (P.SyntaxError _ P.State {P.source = remaining})) ->
+          Left remaining
+        Left (TypeError err) -> Left (show err)
 
-  -- let parse' parser src = case parseSome parser src of
-  --       Right (x, P.State {P.source = remaining}) ->
-  --         Right (x, remaining)
-  --       Left (SyntaxError (P.ParserError _ P.State {P.source = remaining})) ->
-  --         Left remaining
-  --       Left (CompileError err) -> Left (show err)
+  it "☯ token" $ do
+    let p = parse' (P.zeroOrMore (token P.letter))
+    p "abc.d" `shouldBe` Right ("abc", ".d")
+    p "a b c . d" `shouldBe` Right ("abc", ". d")
 
-  -- it "☯ keyword" $ do
-  --   let p = parse' (keyword True "A")
-  --   p "A" `shouldBe` Right (True, "")
-  --   p "ABC" `shouldBe` Left "BC"
-  --   p "A2" `shouldBe` Left "2"
-  --   p "A_" `shouldBe` Left "_"
-  --   p "A'" `shouldBe` Left "'"
+  it "☯ emptyLine" $ do
+    let p = parse' emptyLine
+    p "" `shouldBe` Left ""
+    p "  " `shouldBe` Left ""
+    p "\nabc" `shouldBe` Right ("", "abc")
+    p "  \nabc" `shouldBe` Right ("  ", "abc")
+    p " a \nbc" `shouldBe` Left "a "
+    p ";abc" `shouldBe` Right ("", "abc")
+    p "  ;abc" `shouldBe` Right ("  ", "abc")
+    p " a ;bc" `shouldBe` Left "a "
 
-  -- it "☯ identifier" $ do
-  --   let p = parse' (identifier P.lowercase)
-  --   p "" `shouldBe` Left ""
-  --   p "a" `shouldBe` Right ("a", "")
-  --   p "a1" `shouldBe` Right ("a1", "")
-  --   p "_a1" `shouldBe` Right ("_a1", "")
+  it "☯ keyword" $ do
+    let p = parse' (keyword True "A")
+    p "A" `shouldBe` Right (True, "")
+    p "ABC" `shouldBe` Left "BC"
+    p "A2" `shouldBe` Left "2"
+    p "A_" `shouldBe` Left "_"
+    p "A'" `shouldBe` Left "'"
 
-  -- it "☯ emptyLine" $ do
-  --   let p = parse' emptyLine
-  --   p "" `shouldBe` Left ""
-  --   p "  " `shouldBe` Left ""
-  --   p "\nabc" `shouldBe` Right ("", "abc")
-  --   p "  \nabc" `shouldBe` Right ("  ", "abc")
-  --   p " a \nbc" `shouldBe` Left "a "
-  --   p ";abc" `shouldBe` Right ("", "abc")
-  --   p "  ;abc" `shouldBe` Right ("  ", "abc")
-  --   p " a ;bc" `shouldBe` Left "a "
+  it "☯ identifier" $ do
+    let p = parse' (identifier P.lowercase)
+    p "" `shouldBe` Left ""
+    p "a" `shouldBe` Right ("a", "")
+    p "a1" `shouldBe` Right ("a1", "")
+    p "_a1" `shouldBe` Right ("_a1", "")
 
-  -- it "☯ commentSingleLine" $ do
-  --   let p = parse' commentSingleLine
-  --   p "" `shouldBe` Left ""
-  --   p "--" `shouldBe` Right ("", "")
-  --   p "--abc" `shouldBe` Right ("abc", "")
-  --   p "-- abc " `shouldBe` Right ("abc ", "")
-  --   p "--  abc  " `shouldBe` Right (" abc  ", "")
-  --   p "-- abc\ndef" `shouldBe` Right ("abc", "def")
+  it "☯ commentSingleLine" $ do
+    let p = parse' commentSingleLine
+    p "" `shouldBe` Left ""
+    p "--" `shouldBe` Right ("", "")
+    p "--abc" `shouldBe` Right ("abc", "")
+    p "-- abc " `shouldBe` Right ("abc ", "")
+    p "--  abc  " `shouldBe` Right (" abc  ", "")
+    p "-- abc\ndef" `shouldBe` Right ("abc", "def")
 
-  -- it "☯ commentMultiLine" $ do
-  --   let p = parse' commentMultiLine
-  --   p "" `shouldBe` Left ""
-  --   p "{----}" `shouldBe` Right ("", "")
-  --   p "{--abc--}" `shouldBe` Right ("abc", "")
-  --   p "{-- abc --}" `shouldBe` Right ("abc", "")
-  --   p "{--  abc  --}" `shouldBe` Right (" abc ", "")
-  --   p "{-- abc\ndef --}" `shouldBe` Right ("abc\ndef", "")
+  it "☯ commentMultiLine" $ do
+    let p = parse' commentMultiLine
+    p "" `shouldBe` Left ""
+    p "{----}" `shouldBe` Right ("", "")
+    p "{--abc--}" `shouldBe` Right ("abc", "")
+    p "{-- abc --}" `shouldBe` Right ("abc", "")
+    p "{--  abc  --}" `shouldBe` Right (" abc ", "")
+    p "{-- abc\ndef --}" `shouldBe` Right ("abc\ndef", "")
 
-  -- it "☯ comments" $ do
-  --   let p = parse' comments
-  --   p "" `shouldBe` Right ("", "")
-  --   p "-- a" `shouldBe` Right ("a", "")
-  --   p "-- a\n-- b" `shouldBe` Right ("a\nb", "")
-  --   p "-- a\n{-- b --}" `shouldBe` Right ("a\nb", "")
-  --   p "{-- a --}\n-- b" `shouldBe` Right ("a\nb", "")
+  it "☯ comments" $ do
+    let p = parse' comments
+    p "" `shouldBe` Right ("", "")
+    p "-- a" `shouldBe` Right ("a", "")
+    p "-- a\n-- b" `shouldBe` Right ("a\nb", "")
+    p "-- a\n{-- b --}" `shouldBe` Right ("a\nb", "")
+    p "{-- a --}\n-- b" `shouldBe` Right ("a\nb", "")
 
-  -- it "☯ token" $ do
-  --   let p = parse' (P.zeroOrMore (token P.letter))
-  --   p "abc.d" `shouldBe` Right ("abc", ".d")
-  --   p "a b c . d" `shouldBe` Right ("abc", ". d")
+  it "☯ pattern" $ do
+    let p = parse' (pattern' 0)
+    p "_ " `shouldBe` Right (PAny, "")
+    p "1 " `shouldBe` Right (PInt 1, "")
+    p "x " `shouldBe` Right (PVar "x", "")
+    p "A " `shouldBe` Right (PTag "A", "")
+    p "B x y " `shouldBe` Right (PApp (PApp (PTag "B") _x) _y, "")
+    p "(_) " `shouldBe` Right (PAny, "")
+    p "(1) " `shouldBe` Right (PInt 1, "")
+    p "(x) " `shouldBe` Right (PVar "x", "")
+    p "(A) " `shouldBe` Right (PTag "A", "")
+    p "(B x y) " `shouldBe` Right (PApp (PApp (PTag "B") _x) _y, "")
 
-  -- it "☯ pattern" $ do
-  --   let p = parse' pattern'
-  --   p "_ " `shouldBe` Right (AnyP, "")
-  --   p "1 " `shouldBe` Right (IntP 1, "")
-  --   p "x " `shouldBe` Right (VarP "x", "")
-  --   p "A " `shouldBe` Right (CtrP "A" [], "")
-  --   p "B x y " `shouldBe` Right (CtrP "B" [x', y'], "")
-  --   p "(_) " `shouldBe` Right (AnyP, "")
-  --   p "(1) " `shouldBe` Right (IntP 1, "")
-  --   p "(x) " `shouldBe` Right (VarP "x", "")
-  --   p "(A) " `shouldBe` Right (CtrP "A" [], "")
-  --   p "(B x y) " `shouldBe` Right (CtrP "B" [x', y'], "")
-
-  -- it "☯ expression" $ do
-  --   let p = parse' (expression 0)
-  --   p "Type" `shouldBe` Right (Var "Type", "")
-  --   p "Int" `shouldBe` Right (Var "Int", "")
-  --   p "Num" `shouldBe` Right (Var "Num", "")
-  --   p "42" `shouldBe` Right (Int 42, "")
-  --   p "3.14" `shouldBe` Right (Num 3.14, "")
-  --   p "x" `shouldBe` Right (Var "x", "")
-  --   p "A" `shouldBe` Right (Var "A", "")
-  --   p "@forall x. y" `shouldBe` Right (For "x" y, "")
-  --   p "@forall x y. z" `shouldBe` Right (for ["x", "y"] z, "")
-  --   p "\\x = 1" `shouldBe` Right (lam ["x"] i1, "")
-  --   p "\\x y = 1" `shouldBe` Right (lam ["x", "y"] i1, "")
-  --   p "\\x = 1 | y = 2" `shouldBe` Right (Match [Br [x'] i1, Br [y'] i2], "")
-  --   p "x = 1; a" `shouldBe` Right (Let [Untyped "x" i1] a, "")
-  --   p "x = 1\na" `shouldBe` Right (Let [Untyped "x" i1] a, "")
-  --   p "x = 1; y = 2; a" `shouldBe` Right (Let [Untyped "x" i1, Untyped "y" i2] a, "")
-  --   p "x = 1\ny = 2\na" `shouldBe` Right (Let [Untyped "x" i1, Untyped "y" i2] a, "")
-  --   p "x -> y" `shouldBe` Right (Fun x y, "")
-  --   p "x == y" `shouldBe` Right (eq x y, "")
-  --   p "x < y" `shouldBe` Right (lt x y, "")
-  --   p "x + y" `shouldBe` Right (add x y, "")
-  --   p "x - y" `shouldBe` Right (sub x y, "")
-  --   p "x * y" `shouldBe` Right (mul x y, "")
-  --   p "x y" `shouldBe` Right (App x y, "")
-  --   p "(x)" `shouldBe` Right (x, "")
+  it "☯ expression" $ do
+    let p = parse' (expression 0)
+    p "Type" `shouldBe` Right (Var "Type", "")
+    p "Int" `shouldBe` Right (Var "Int", "")
+    p "Num" `shouldBe` Right (Var "Num", "")
+    p "42" `shouldBe` Right (Int 42, "")
+    p "3.14" `shouldBe` Right (Num 3.14, "")
+    p "x" `shouldBe` Right (Var "x", "")
+    p "A" `shouldBe` Right (Var "A", "")
+    p "\\x = 1" `shouldBe` Right (lam [_x] i1, "")
+    p "\\x y = 1" `shouldBe` Right (lam [_x, _y] i1, "")
+    p "\\x = 1 | y = 2" `shouldBe` Right (Match [([_x], i1), ([_y], i2)], "")
+    p "x = 1; a" `shouldBe` Right (Let [(_x, i1)] a, "")
+    p "x = 1\na" `shouldBe` Right (Let [(_x, i1)] a, "")
+    p "x = 1; y = 2; a" `shouldBe` Right (Let [(_x, i1), (_y, i2)] a, "")
+    p "x = 1\ny = 2\na" `shouldBe` Right (Let [(_x, i1), (_y, i2)] a, "")
+    p "x -> y" `shouldBe` Right (fun [x] y, "")
+    p "x == y" `shouldBe` Right (Eq x y, "")
+    p "x < y" `shouldBe` Right (Lt x y, "")
+    p "x + y" `shouldBe` Right (Add x y, "")
+    p "x - y" `shouldBe` Right (Sub x y, "")
+    p "x * y" `shouldBe` Right (Mul x y, "")
+    p "x ^ y" `shouldBe` Right (Pow x y, "")
+    p "x y" `shouldBe` Right (App x y, "")
+    p "(x)" `shouldBe` Right (x, "")
 
   -- it "☯ definition" $ do
   --   let p = parse' definition

@@ -88,6 +88,11 @@ or' [] = Err
 or' [a] = a
 or' (a : bs) = Or a (or' bs)
 
+match :: [([Pattern], Expr)] -> Expr
+match [] = Err
+match [(ps, b)] = lam ps b
+match brs = Match brs
+
 -- -- Evaluation
 -- eval :: Env -> Expr -> Expr
 -- eval env a = fromCore (C.eval (toCoreEnv env) (toCore a))
