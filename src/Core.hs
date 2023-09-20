@@ -28,8 +28,8 @@ data Expr
   | Snd !Expr
   | Fix !String !Expr
   | Rec ![(String, Expr)]
-  | Op2 !BinaryOp !Expr !Expr
-  | Op1 !UnaryOp !Expr
+  | Op2 !BinaryOp
+  | Op1 !UnaryOp
   | Err
   deriving (Eq)
 
@@ -73,6 +73,8 @@ instance Show Expr where
     Fun -> atom 11 "(->)"
     IntT -> atom 11 "@Int"
     NumT -> atom 11 "@Num"
+    Op1 Int2Num -> atom 11 (show Int2Num)
+    Op2 op -> atom 11 ("(" ++ show op ++ ")")
     Int i -> atom 11 (show i)
     Num n -> atom 11 (show n)
     Tag k | isTagName k -> atom 11 k
@@ -82,17 +84,16 @@ instance Show Expr where
       atom 11 ("{" ++ intercalate ", " (map showField fields) ++ "}")
     Var x | isVarName x -> atom 11 x
     Var x -> atom 11 ("(@var '" ++ x ++ "')")
-    Op2 Pow a b -> infixR 10 a "^" b
+    App (App (Op2 Pow) a) b -> infixR 10 a (show Pow) b
     Fst a -> prefix 8 "@fst " a
     Snd a -> prefix 8 "@snd " a
-    Op1 Int2Num a -> prefix 8 "@int2Num " a
-    Op2 Mul a b -> infixL 7 a " * " b
-    Op2 Add a b -> infixL 6 a " + " b
-    Op2 Sub a b -> infixL 6 a " - " b
+    App (App (Op2 Mul) a) b -> infixL 7 a (op2 Mul) b
+    App (App (Op2 Add) a) b -> infixL 6 a (op2 Add) b
+    App (App (Op2 Sub) a) b -> infixL 6 a (op2 Sub) b
     App (App Fun a) b -> infixR 5 a " -> " b
+    App (App (Op2 Lt) a) b -> infixR 4 a (op2 Lt) b
+    App (App (Op2 Eq) a) b -> infixL 3 a (op2 Eq) b
     App a b -> infixL 8 a " " b
-    Op2 Lt a b -> infixR 4 a " < " b
-    Op2 Eq a b -> infixL 3 a " == " b
     Ann a (For xs b) -> infixR 2 a (" : " ++ for xs) b
     Lam x b -> do
       let (xs, b') = asLam (Lam x b)
@@ -112,10 +113,23 @@ instance Show Expr where
       isVarName [] = False
       isTagName (x : xs) = isUpper x && all isAlphaNum xs
       isTagName [] = False
+      op2 op = " " ++ show op ++ " "
+      op1 op = show op ++ " "
 
 instance Show Type where
   show (For [] t) = show t
   show (For xs t) = "@for " ++ unwords xs ++ ". " ++ show t
+
+instance Show BinaryOp where
+  show Add = "+"
+  show Sub = "-"
+  show Mul = "*"
+  show Pow = "^"
+  show Eq = "=="
+  show Lt = "<"
+
+instance Show UnaryOp where
+  show Int2Num = "@int2num"
 
 -- Syntax sugar
 fun :: [Expr] -> Expr -> Expr
@@ -133,28 +147,28 @@ asLam (Lam x a) = let (xs, b) = asLam a in (x : xs, b)
 asLam a = ([], a)
 
 add :: Expr -> Expr -> Expr
-add = Op2 Add
+add = App . App (Op2 Add)
 
 sub :: Expr -> Expr -> Expr
-sub = Op2 Sub
+sub = App . App (Op2 Sub)
 
 mul :: Expr -> Expr -> Expr
-mul = Op2 Mul
+mul = App . App (Op2 Mul)
 
 pow :: Expr -> Expr -> Expr
-pow = Op2 Pow
+pow = App . App (Op2 Pow)
 
 eq :: Expr -> Expr -> Expr
-eq = Op2 Eq
+eq = App . App (Op2 Eq)
 
 lt :: Expr -> Expr -> Expr
-lt = Op2 Lt
+lt = App . App (Op2 Lt)
 
 gt :: Expr -> Expr -> Expr
-gt a b = Op2 Lt b a
+gt a b = (App . App (Op2 Lt)) b a
 
-int2Num :: Expr -> Expr
-int2Num = Op1 Int2Num
+int2num :: Expr -> Expr
+int2num = App (Op1 Int2Num)
 
 let' :: [(String, Expr)] -> Expr -> Expr
 let' [] b = b
@@ -207,8 +221,8 @@ freeVars (If a b) = freeVars a `union` freeVars b
 freeVars (Fst a) = freeVars a
 freeVars (Snd a) = freeVars a
 freeVars (Fix x a) = delete x (freeVars a)
-freeVars (Op2 _ a b) = freeVars a `union` freeVars b
-freeVars (Op1 _ a) = freeVars a
+freeVars (Op2 _) = []
+freeVars (Op1 _) = []
 
 occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
@@ -251,18 +265,40 @@ eval env (Var x) = case lookup x env of
   Just a -> eval env a
   Nothing -> Var x
 eval env (Lam x b) = case eval ((x, Var x) : env) b of
-  -- Or b1 b2 -> Or (Lam x b1) (Lam x b2)
   b -> Lam x b
 eval env (App a b) = case (eval env a, eval env b) of
   (Err, _) -> Err
   (Lam x a, b) -> eval [(x, b)] a
   (a, b) | isOpen b -> App a b
-  -- (Or a1 a2, b) -> eval [] (Or (App a1 b) (App a2 b))
   (Or a1 a2, b) -> case eval [] (App a1 b) of
     Err -> eval [] (App a2 b)
     a | isClosed a -> a
     a -> Or a (App a2 b)
   (Fix x a, b) -> eval [(x, Fix x a)] (App a b)
+  (Op1 op, b) | isClosed b -> case (op, b) of
+    (Int2Num, Int b) -> Num (fromIntegral b)
+    _else -> Err
+  (App (Op2 op) a, b) | isClosed a && isClosed b -> case (op, a, b) of
+    (Add, Int a, Int b) -> Int (a + b)
+    (Add, Num a, Num b) -> Num (a + b)
+    (Sub, Int a, Int b) -> Int (a - b)
+    (Sub, Num a, Num b) -> Num (a - b)
+    (Mul, Int a, Int b) -> Int (a * b)
+    (Mul, Num a, Num b) -> Num (a * b)
+    (Pow, Int a, Int b) -> Int (a ^ b)
+    (Pow, Num a, Num b) -> Num (a ** b)
+    (Eq, Typ, Typ) -> Typ
+    (Eq, IntT, IntT) -> IntT
+    (Eq, NumT, NumT) -> NumT
+    (Eq, Int a, Int b) | a == b -> Int a
+    (Eq, Num a, Num b) | a == b -> Num a
+    (Eq, Var a, Var b) | a == b -> Var a
+    (Eq, App a1 a2, App b1 b2) -> If (eq a1 b1) (eq a2 b2)
+    (Eq, Op2 a, Op2 b) | a == b -> Op2 a
+    (Eq, Op1 a, Op1 b) | a == b -> Op1 a
+    (Lt, Int a, Int b) | a < b -> Int a
+    (Lt, Num a, Num b) | a < b -> Num a
+    _else -> Err
   (a, b) -> App a b
 eval env (Ann (Tag k) (For xs a)) = Ann (Tag k) (For xs (eval (pushVars xs env) a))
 eval env (Ann a _) = eval env a
@@ -282,36 +318,8 @@ eval env (Snd a) = case eval env a of
   App a b | isClosed b -> b
   a -> Fst a
 eval env (Fix x a) = Fix x (eval ((x, Var x) : env) a)
-eval env (Op2 op a b) = case (eval env a, eval env b) of
-  (Or a1 a2, b) -> eval [] (Or (Op2 op a1 b) (Op2 op a2 b))
-  (a, Or b1 b2) -> eval [] (Or (Op2 op a b1) (Op2 op a b2))
-  (a, b) | isClosed a && isClosed b -> case (op, a, b) of
-    (Add, Int a, Int b) -> Int (a + b)
-    (Add, Num a, Num b) -> Num (a + b)
-    (Sub, Int a, Int b) -> Int (a - b)
-    (Sub, Num a, Num b) -> Num (a - b)
-    (Mul, Int a, Int b) -> Int (a * b)
-    (Mul, Num a, Num b) -> Num (a * b)
-    (Pow, Int a, Int b) -> Int (a ^ b)
-    (Pow, Num a, Num b) -> Num (a ** b)
-    (Eq, Typ, Typ) -> Typ
-    (Eq, Fun, Fun) -> Fun
-    (Eq, IntT, IntT) -> IntT
-    (Eq, NumT, NumT) -> NumT
-    (Eq, Int a, Int b) | a == b -> Int a
-    (Eq, Num a, Num b) | a == b -> Num a
-    (Eq, Var a, Var b) | a == b -> Var a
-    (Eq, App a1 a2, App b1 b2) -> If (eq a1 b1) (eq a2 b2)
-    (Lt, Int a, Int b) | a < b -> Int a
-    (Lt, Num a, Num b) | a < b -> Num a
-    _else -> Err
-  (a, b) -> Op2 op a b
-eval env (Op1 op a) = case eval env a of
-  Or a1 a2 -> eval [] (Or (Op1 op a1) (Op1 op a2))
-  a | isClosed a -> case (op, a) of
-    (Int2Num, Int a) -> Num (fromIntegral a)
-    _else -> Err
-  a -> Op1 op a
+eval _ (Op1 op) = Op1 op
+eval _ (Op2 op) = Op2 op
 
 -- Type inference
 apply :: Substitution -> Env -> Env
@@ -368,12 +376,8 @@ unify a (Or b1 b2) = case unify a b1 of
     Left (TypeMismatch a b2) -> Left (TypeMismatch a (Or b1 b2))
     result -> result
 unify (Or a1 a2) b = unify b (Or a1 a2)
-unify (Op2 op a1 b1) (Op2 op' a2 b2) | op == op' = do
-  ((a, b), s) <- unify2 (a1, a2) (b1, b2)
-  Right (Op2 op a b, s)
-unify (Op1 op a) (Op1 op' b) | op == op' = do
-  (c, s) <- unify a b
-  Right (Op1 op c, s)
+unify (Op1 a) (Op1 b) | a == b = Right (Op1 a, [])
+unify (Op2 a) (Op2 b) | a == b = Right (Op2 a, [])
 unify a b = Left (TypeMismatch a b)
 
 unify2 :: (Expr, Expr) -> (Expr, Expr) -> Either TypeError ((Expr, Expr), Substitution)
@@ -454,35 +458,15 @@ infer env (If a b) = do
 infer env (Fst a) = error "TODO: infer Fst"
 infer env (Snd a) = error "TODO: infer Snd"
 infer env (Fix x a) = infer ((x, Var x) : env) a
-infer env (Op2 op a b) = case op of
-  Add -> do
-    ((ta, tb), s1) <- infer2 env (Ann a (For [] IntT)) b
-    (t, s2) <- unify ta tb
-    Right (t, s2 `compose` s1)
-  Sub -> do
-    ((ta, tb), s1) <- infer2 env (Ann a (For [] IntT)) b
-    (t, s2) <- unify ta tb
-    Right (t, s2 `compose` s1)
-  Mul -> do
-    ((ta, tb), s1) <- infer2 env (Ann a (For [] IntT)) b
-    (t, s2) <- unify ta tb
-    Right (t, s2 `compose` s1)
-  Pow -> do
-    ((ta, tb), s1) <- infer2 env (Ann a (For [] IntT)) b
-    (t, s2) <- unify ta tb
-    Right (t, s2 `compose` s1)
-  Eq -> do
-    ((ta, tb), s1) <- infer2 env a b
-    (t, s2) <- unify ta tb
-    Right (t, s2 `compose` s1)
-  Lt -> do
-    ((ta, tb), s1) <- infer2 env a b
-    (t, s2) <- unify ta tb
-    Right (t, s2 `compose` s1)
-infer env (Op1 op a) = case op of
-  Int2Num -> do
-    (_, s) <- infer env (Ann a (For [] IntT))
-    Right (NumT, s)
+infer env (Op1 op) = case op of
+  Int2Num -> Right (fun [IntT, IntT] IntT, [])
+infer env (Op2 op) = case op of
+  Add -> Right (fun [IntT, IntT] IntT, [])
+  Sub -> Right (fun [IntT, IntT] IntT, [])
+  Mul -> Right (fun [IntT, IntT] IntT, [])
+  Pow -> Right (fun [IntT, IntT] IntT, [])
+  Eq -> Right (instantiate (map fst env) (For ["eq"] (fun [Var "eq", Var "eq"] (Var "eq"))))
+  Lt -> Right (instantiate (map fst env) (For ["lt"] (fun [Var "lt", Var "lt"] (Var "lt"))))
 
 infer2 :: Env -> Expr -> Expr -> Either TypeError ((Expr, Expr), Substitution)
 infer2 env a b = do

@@ -54,11 +54,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- show (App (isNum x) y) `shouldBe` "@isNum x y"
     -- show (App x (isNum y)) `shouldBe` "x (@isNum y)"
 
-    show (int2Num (App x y)) `shouldBe` "@int2Num (x y)"
-    show (int2Num (pow x y)) `shouldBe` "@int2Num x^y"
-    show (pow (int2Num x) y) `shouldBe` "(@int2Num x)^y"
-    show (App (int2Num x) y) `shouldBe` "@int2Num x y"
-    show (App x (int2Num y)) `shouldBe` "x (@int2Num y)"
+    show (int2num (App x y)) `shouldBe` "@int2num (x y)"
+    show (int2num (pow x y)) `shouldBe` "@int2num x^y"
+    show (pow (int2num x) y) `shouldBe` "(@int2num x)^y"
+    show (App (int2num x) y) `shouldBe` "@int2num x y"
+    show (App x (int2num y)) `shouldBe` "x (@int2num y)"
 
     show (mul x (App y z)) `shouldBe` "x * y z"
     show (mul (App x y) z) `shouldBe` "x y * z"
@@ -287,7 +287,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ infer factorial" $ do
     let env = [("f", factorial "f")]
-    infer env (Var "f") `shouldBe` Right (fun [IntT] IntT, [("xT", IntT), ("x", Ann x (For [] IntT)), ("xT1", IntT), ("fT", fun [IntT] IntT), ("f", Ann f (For [] (fun [IntT] IntT))), ("t", IntT)])
+    infer env (Var "f") `shouldBe` Right (fun [IntT] IntT, [("xT", IntT), ("x", Ann x (For [] IntT)), ("eq", IntT), ("xT1", IntT), ("fT", fun [IntT] IntT), ("f", Ann f (For [] (fun [IntT] IntT))), ("t", IntT)])
 
   -- it "☯ infer Bool" $ do
   --   let env = [("Bool", or' [Tag "True", Tag "False"])]

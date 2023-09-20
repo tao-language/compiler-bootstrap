@@ -135,7 +135,7 @@ toCore (Pow a b) = C.pow (toCore a) (toCore b)
 toCore (Eq a b) = C.eq (toCore a) (toCore b)
 toCore (Lt a b) = C.lt (toCore a) (toCore b)
 toCore (Gt a b) = C.gt (toCore a) (toCore b)
-toCore (Int2Num a) = C.int2Num (toCore a)
+toCore (Int2Num a) = C.int2num (toCore a)
 toCore (Lam p b) = case p of
   PAny -> do
     let b' = toCore b
@@ -213,11 +213,11 @@ fromCore (C.Or a b) = Or (fromCore a) (fromCore b)
 fromCore (C.If a b) = If (fromCore a) (fromCore b)
 fromCore (C.Fix x a) | x `C.occurs` a = Let [(PVar x, fromCore a)] (Var x)
 fromCore (C.Fix _ a) = fromCore a
-fromCore (C.Op2 C.Add a b) = Add (fromCore a) (fromCore b)
-fromCore (C.Op2 C.Sub a b) = Sub (fromCore a) (fromCore b)
-fromCore (C.Op2 C.Mul a b) = Mul (fromCore a) (fromCore b)
-fromCore (C.Op2 C.Eq a b) = Eq (fromCore a) (fromCore b)
-fromCore (C.Op1 C.Int2Num a) = Int2Num (fromCore a)
+-- fromCore (C.Op2 C.Add a b) = Add (fromCore a) (fromCore b)
+-- fromCore (C.Op2 C.Sub a b) = Sub (fromCore a) (fromCore b)
+-- fromCore (C.Op2 C.Mul a b) = Mul (fromCore a) (fromCore b)
+-- fromCore (C.Op2 C.Eq a b) = Eq (fromCore a) (fromCore b)
+-- fromCore (C.Op1 C.Int2Num a) = Int2Num (fromCore a)
 fromCore a = error ("TODO fromCore: " ++ show a)
 
 fromCoreDef :: (String, C.Expr) -> Definition

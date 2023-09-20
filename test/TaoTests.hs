@@ -61,7 +61,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     toCore (Eq x y) `shouldBe` C.eq x' y'
     toCore (Lt x y) `shouldBe` C.lt x' y'
     toCore (Gt x y) `shouldBe` C.gt x' y'
-    toCore (Int2Num x) `shouldBe` C.int2Num x'
+    toCore (Int2Num x) `shouldBe` C.int2num x'
 
   it "☯ toCore pattern matching" $ do
     toCore (Lam PAny y) `shouldBe` C.Lam "_" y'
