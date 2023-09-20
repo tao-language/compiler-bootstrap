@@ -2,6 +2,7 @@ module ExamplesTests where
 
 import qualified Core as C
 import Tao
+import TaoLang
 import Test.Hspec
 
 run :: SpecWith ()
@@ -11,13 +12,16 @@ run = describe "--==☯ Examples ☯==--" $ do
       factorial 0 = 1
       factorial n = n * factorial (n - 1)
     -}
-    let (i0, i1) = (Int 0, Int 1)
-    let (f, n) = (Var "f", Var "n")
-    let factorial =
-          [ ([PInt 0], i1),
-            ([PVar "n"], If (Gt n i0) $ n `Mul` App f (n `Sub` i1))
-          ]
-    let env = [("f", Match factorial)]
+    -- let (i0, i1) = (Int 0, Int 1)
+    -- let (f, n) = (Var "f", Var "n")
+    -- let factorial =
+    --       [ ([PInt 0], i1),
+    --         ([PVar "n"], If (Gt n i0) $ n `Mul` App f (n `Sub` i1))
+    --       ]
+    -- let env = [("f", Match factorial)]
+
+    env <- loadFile "examples/basic" "factorial.tao"
+    -- error $ show env
 
     -- eval' env (Var "f") `shouldBe` C.Err
     -- ctx <- loadFile "examples" "factorial.tao"

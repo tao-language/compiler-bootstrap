@@ -251,13 +251,17 @@ eval env (Var x) = case lookup x env of
   Just a -> eval env a
   Nothing -> Var x
 eval env (Lam x b) = case eval ((x, Var x) : env) b of
-  Or b1 b2 -> Or (Lam x b1) (Lam x b2)
+  -- Or b1 b2 -> Or (Lam x b1) (Lam x b2)
   b -> Lam x b
 eval env (App a b) = case (eval env a, eval env b) of
   (Err, _) -> Err
   (Lam x a, b) -> eval [(x, b)] a
   (a, b) | isOpen b -> App a b
-  (Or a1 a2, b) -> eval [] (Or (App a1 b) (App a2 b))
+  -- (Or a1 a2, b) -> eval [] (Or (App a1 b) (App a2 b))
+  (Or a1 a2, b) -> case eval [] (App a1 b) of
+    Err -> eval [] (App a2 b)
+    a | isClosed a -> a
+    a -> Or a (App a2 b)
   (Fix x a, b) -> eval [(x, Fix x a)] (App a b)
   (a, b) -> App a b
 eval env (Ann (Tag k) (For xs a)) = Ann (Tag k) (For xs (eval (pushVars xs env) a))
@@ -436,7 +440,7 @@ infer env (App a b) = do
 infer env (Ann a ty) = do
   let (t, vars) = instantiate (map fst env) ty
   let alts = listAlts (eval (apply vars env) t)
-  (ta, s1) <- infer (apply vars (alts ++ env)) (eval alts a)
+  (ta, s1) <- infer (apply vars (alts ++ env)) a
   (t, s2) <- unify ta (eval s1 t)
   Right (t, s2 `compose` s1)
 infer env (Or a b) = do
