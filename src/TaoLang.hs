@@ -41,7 +41,7 @@ import Tao
   - Only documented functions/types are public
 --}
 
-loadFile :: FilePath -> FilePath -> IO Env
+loadFile :: FilePath -> FilePath -> IO [Definition]
 loadFile moduleName fileName = do
   src <- readFile (moduleName </> fileName)
   case TaoLang.parse (P.zeroOrMore definition) src of
@@ -198,13 +198,13 @@ expression prec = do
     prec
 
 -- Definitions
-definition :: Parser (Pattern, Expr)
+definition :: Parser Definition
 definition =
   P.oneOf
     [ -- unionTypeDefinition,
       -- typedVariableDefinition,
-      typedRulesDef,
-      untypedRulesDef
+      typedDef,
+      untypedDef
       -- , unpackDefinition
     ]
 
@@ -240,8 +240,8 @@ branch = do
   _ <- newLine
   P.succeed (ps, a)
 
-typedRulesDef :: Parser (Pattern, Expr)
-typedRulesDef = do
+typedDef :: Parser Definition
+typedDef = do
   x <- identifier P.lowercase
   ty <- typeAnnotation
   _ <- newLine
@@ -250,8 +250,8 @@ typedRulesDef = do
   bs <- P.zeroOrMore (do _ <- keyword () x; branch)
   P.succeed (PVar x, Ann (match (b : bs)) ty)
 
-untypedRulesDef :: Parser (Pattern, Expr)
-untypedRulesDef = do
+untypedDef :: Parser Definition
+untypedDef = do
   x <- identifier P.lowercase
   b <- branch
   bs <- P.zeroOrMore (do _ <- keyword () x; branch)

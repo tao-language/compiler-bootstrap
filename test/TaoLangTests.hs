@@ -122,8 +122,8 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p ": @a. b" `shouldBe` Right (For ["a"] b, "")
     p ": @a b. c" `shouldBe` Right (For ["a", "b"] c, "")
 
-  it "☯ untypedRulesDef" $ do
-    let p = parse' untypedRulesDef
+  it "☯ untypedDef" $ do
+    let p = parse' untypedDef
     p "x = 1" `shouldBe` Right ((_x, i1), "")
     p "x y = 1" `shouldBe` Right ((_x, Lam _y i1), "")
     p "x y z = 1" `shouldBe` Right ((_x, lam [_y, _z] i1), "")
@@ -131,8 +131,8 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "x y = 1\nx z = 2\n" `shouldBe` Right ((_x, Match [([_y], i1), ([_z], i2)]), "")
     p "x y = 1\n\nx z = 2\n\n" `shouldBe` Right ((_x, Match [([_y], i1), ([_z], i2)]), "")
 
-  it "☯ typedRulesDef" $ do
-    let p = parse' typedRulesDef
+  it "☯ typedDef" $ do
+    let p = parse' typedDef
     p "x : Int; x = 1" `shouldBe` Right ((_x, Ann i1 (For [] intT)), "")
     p "x : Int\nx = 1" `shouldBe` Right ((_x, Ann i1 (For [] intT)), "")
     p "x : a -> Int; x y = 1" `shouldBe` Right ((_x, Ann (Lam _y i1) (For [] $ fun [a] intT)), "")

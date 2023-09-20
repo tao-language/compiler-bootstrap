@@ -66,7 +66,7 @@ data Type
   = For ![String] !Expr
   deriving (Eq, Show)
 
-type Env = [(Pattern, Expr)]
+type Definition = (Pattern, Expr)
 
 data CompileError
   = TypeError !C.TypeError
@@ -93,18 +93,15 @@ match [] = Err
 match [(ps, b)] = lam ps b
 match brs = Match brs
 
--- -- Evaluation
--- eval :: Env -> Expr -> Expr
--- eval env a = fromCore (C.eval (toCoreEnv env) (toCore a))
+-- Evaluation
+eval :: C.Env -> C.Expr -> C.Expr
+eval = C.eval
 
--- eval' :: Env -> Expr -> C.Expr
--- eval' env a = C.eval (toCoreEnv env) (toCore a)
-
--- -- Type inference
--- infer :: Env -> Expr -> Either CompileError Type
--- infer env a = case C.infer (toCoreEnv env) (toCore a) of
---   Right (t', _) -> Right (For (C.freeVars t') (fromCore t'))
---   Left err -> Left (TypeError err)
+-- Type inference
+infer :: C.Env -> C.Expr -> Either CompileError C.Expr
+infer env a = case C.infer env a of
+  Right (t', _) -> Right t'
+  Left err -> Left (TypeError err)
 
 -- compile :: Env -> C.Env
 -- compile =
@@ -181,7 +178,7 @@ toCoreRec :: [(String, Expr)] -> [(String, C.Expr)]
 toCoreRec [] = []
 toCoreRec ((x, a) : fields) = (x, toCore a) : toCoreRec fields
 
-toCoreDef :: (Pattern, Expr) -> C.Env
+toCoreDef :: Definition -> C.Env
 toCoreDef (PAny, _) = []
 toCoreDef (PTyp, _) = []
 toCoreDef (PFun, _) = []
@@ -195,7 +192,7 @@ toCoreDef (PVar x, a) = case toCore a of
   a -> [(x, a)]
 toCoreDef (PApp p q, a) = toCoreDef (p, Fst a) ++ toCoreDef (q, Snd a)
 
-toCoreEnv :: Env -> C.Env
+toCoreEnv :: [Definition] -> C.Env
 toCoreEnv = concatMap toCoreDef
 
 fromCore :: C.Expr -> Expr
@@ -223,8 +220,8 @@ fromCore (C.Op2 C.Eq a b) = Eq (fromCore a) (fromCore b)
 fromCore (C.Op1 C.Int2Num a) = Int2Num (fromCore a)
 fromCore a = error ("TODO fromCore: " ++ show a)
 
-fromCoreDef :: (String, C.Expr) -> (Pattern, Expr)
+fromCoreDef :: (String, C.Expr) -> Definition
 fromCoreDef (x, a) = (PVar x, fromCore a)
 
-fromCoreEnv :: C.Env -> Env
+fromCoreEnv :: C.Env -> [Definition]
 fromCoreEnv = map fromCoreDef

@@ -7,32 +7,26 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do
+  let eval' env a = eval (toCoreEnv env) (toCore a)
+  let infer' env a = infer (toCoreEnv env) (toCore a)
+
   it "☯ factorial" $ do
     {-
       factorial 0 = 1
       factorial n = n * factorial (n - 1)
     -}
-    -- let (i0, i1) = (Int 0, Int 1)
-    -- let (f, n) = (Var "f", Var "n")
-    -- let factorial =
-    --       [ ([PInt 0], i1),
-    --         ([PVar "n"], If (Gt n i0) $ n `Mul` App f (n `Sub` i1))
-    --       ]
-    -- let env = [("f", Match factorial)]
-
     env <- loadFile "examples/basic" "factorial.tao"
-    -- error $ show env
 
-    -- eval' env (Var "f") `shouldBe` C.Err
-    -- ctx <- loadFile "examples" "factorial.tao"
-    -- infer ctx f `shouldBe` Right (Fun (Var "Int") (Var "Int"))
-    -- eval ctx (App f (Int 0)) `shouldBe` Right (Int 1, Var "Int")
-    -- eval ctx (App f (Int 1)) `shouldBe` Int 1
-    -- eval ctx (App f (Int 2)) `shouldBe` Int 2
-    -- eval ctx (App f (Int 3)) `shouldBe` Int 6
-    -- eval ctx (App f (Int 4)) `shouldBe` Int 24
-    -- eval ctx (App f (Int 5)) `shouldBe` Int 120
-    True `shouldBe` True
+    let f = Var "factorial"
+    infer' env f `shouldBe` Right (C.fun [C.IntT] C.IntT)
+    infer' env (App f (Int 0)) `shouldBe` Right C.IntT
+
+    eval' env (App f (Int 0)) `shouldBe` C.Int 1
+    eval' env (App f (Int 1)) `shouldBe` C.Int 1
+    eval' env (App f (Int 2)) `shouldBe` C.Int 2
+    eval' env (App f (Int 3)) `shouldBe` C.Int 6
+    eval' env (App f (Int 4)) `shouldBe` C.Int 24
+    eval' env (App f (Int 5)) `shouldBe` C.Int 120
 
   -- -- it "☯ fibonacci" $ do
   -- --   let f = Var "fibonacci"
