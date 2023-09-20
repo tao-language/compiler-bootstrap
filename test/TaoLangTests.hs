@@ -7,7 +7,8 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Tao language ☯==--" $ do
-  let (a, b) = (Var "a", Var "b")
+  let intT = Var "Int"
+  let (a, b, c) = (Var "a", Var "b", Var "c")
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (_x, _y, _z) = (PVar "x", PVar "y", PVar "z")
   let (i1, i2) = (Int 1, Int 2)
@@ -115,29 +116,37 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "x y" `shouldBe` Right (App x y, "")
     p "(x)" `shouldBe` Right (x, "")
 
+  it "☯ typeAnnotation" $ do
+    let p = parse' typeAnnotation
+    p ": a" `shouldBe` Right (For [] a, "")
+    p ": @a. b" `shouldBe` Right (For ["a"] b, "")
+    p ": @a b. c" `shouldBe` Right (For ["a", "b"] c, "")
+
+  it "☯ untypedRulesDef" $ do
+    let p = parse' untypedRulesDef
+    p "x = 1" `shouldBe` Right ((_x, i1), "")
+    p "x y = 1" `shouldBe` Right ((_x, Lam _y i1), "")
+    p "x y z = 1" `shouldBe` Right ((_x, lam [_y, _z] i1), "")
+    p "x y = 1; x z = 2;" `shouldBe` Right ((_x, Match [([_y], i1), ([_z], i2)]), "")
+    p "x y = 1\nx z = 2\n" `shouldBe` Right ((_x, Match [([_y], i1), ([_z], i2)]), "")
+    p "x y = 1\n\nx z = 2\n\n" `shouldBe` Right ((_x, Match [([_y], i1), ([_z], i2)]), "")
+
+  it "☯ typedRulesDef" $ do
+    let p = parse' typedRulesDef
+    p "x : Int; x = 1" `shouldBe` Right ((_x, Ann i1 (For [] intT)), "")
+    p "x : Int\nx = 1" `shouldBe` Right ((_x, Ann i1 (For [] intT)), "")
+    p "x : a -> Int; x y = 1" `shouldBe` Right ((_x, Ann (Lam _y i1) (For [] $ fun [a] intT)), "")
+    p "x : a -> Int\nx y = 1" `shouldBe` Right ((_x, Ann (Lam _y i1) (For [] $ fun [a] intT)), "")
+    p "x : a -> b -> Int; x y z = 1" `shouldBe` Right ((_x, Ann (lam [_y, _z] i1) (For [] $ fun [a, b] intT)), "")
+    p "x : a -> b -> Int\nx y z = 1" `shouldBe` Right ((_x, Ann (lam [_y, _z] i1) (For [] $ fun [a, b] intT)), "")
+    p "x : a -> b -> Int; x y = 1; x z = 2;" `shouldBe` Right ((_x, Ann (Match [([_y], i1), ([_z], i2)]) (For [] $ fun [a, b] intT)), "")
+    p "x : a -> b -> Int\nx y = 1\nx z = 2\n" `shouldBe` Right ((_x, Ann (Match [([_y], i1), ([_z], i2)]) (For [] $ fun [a, b] intT)), "")
+    p "x : a -> Int; x y = 1; x z = 2;" `shouldBe` Right ((_x, Ann (Match [([_y], i1), ([_z], i2)]) (For [] $ fun [a] intT)), "")
+    p "x : a -> Int\nx y = 1\nx z = 2\n" `shouldBe` Right ((_x, Ann (Match [([_y], i1), ([_z], i2)]) (For [] $ fun [a] intT)), "")
+    p "x : a -> Int\n\nx y = 1\n\nx z = 2\n\n" `shouldBe` Right ((_x, Ann (Match [([_y], i1), ([_z], i2)]) (For [] $ fun [a] intT)), "")
+
   -- it "☯ definition" $ do
   --   let p = parse' definition
-
-  --   -- Untyped rules
-  --   p "x = 1" `shouldBe` Right (Untyped "x" i1, "")
-  --   p "x y = 1" `shouldBe` Right (Untyped "x" (lam ["y"] i1), "")
-  --   p "x y z = 1" `shouldBe` Right (Untyped "x" (lam ["y", "z"] i1), "")
-  --   p "x y = 1; x z = 2;" `shouldBe` Right (Untyped "x" (Match [Br [y'] i1, Br [z'] i2]), "")
-  --   p "x y = 1\nx z = 2\n" `shouldBe` Right (Untyped "x" (Match [Br [y'] i1, Br [z'] i2]), "")
-  --   p "x y = 1\n\nx z = 2\n\n" `shouldBe` Right (Untyped "x" (Match [Br [y'] i1, Br [z'] i2]), "")
-
-  --   -- Typed rules
-  --   p "x : Int; x = 1" `shouldBe` Right (Typed "x" (Var "Int") i1, "")
-  --   p "x : Int\nx = 1" `shouldBe` Right (Typed "x" (Var "Int") i1, "")
-  --   p "x : a -> Int; x y = 1" `shouldBe` Right (Typed "x" (Fun (Var "a") (Var "Int")) (lam ["y"] i1), "")
-  --   p "x : a -> Int\nx y = 1" `shouldBe` Right (Typed "x" (Fun (Var "a") (Var "Int")) (lam ["y"] i1), "")
-  --   p "x : a -> b -> Int; x y z = 1" `shouldBe` Right (Typed "x" (fun [Var "a", Var "b"] (Var "Int")) (lam ["y", "z"] i1), "")
-  --   p "x : a -> b -> Int\nx y z = 1" `shouldBe` Right (Typed "x" (fun [Var "a", Var "b"] (Var "Int")) (lam ["y", "z"] i1), "")
-  --   p "x : a -> b -> Int; x y = 1; x z = 2;" `shouldBe` Right (Typed "x" (fun [Var "a", Var "b"] (Var "Int")) (Match [Br [y'] i1, Br [z'] i2]), "")
-  --   p "x : a -> b -> Int\nx y = 1\nx z = 2\n" `shouldBe` Right (Typed "x" (fun [Var "a", Var "b"] (Var "Int")) (Match [Br [y'] i1, Br [z'] i2]), "")
-  --   p "x : a -> Int; x y = 1; x z = 2;" `shouldBe` Right (Typed "x" (Fun (Var "a") (Var "Int")) (Match [Br [y'] i1, Br [z'] i2]), "")
-  --   p "x : a -> Int\nx y = 1\nx z = 2\n" `shouldBe` Right (Typed "x" (Fun (Var "a") (Var "Int")) (Match [Br [y'] i1, Br [z'] i2]), "")
-  --   p "x : a -> Int\n\nx y = 1\n\nx z = 2\n\n" `shouldBe` Right (Typed "x" (Fun (Var "a") (Var "Int")) (Match [Br [y'] i1, Br [z'] i2]), "")
 
   --   -- Typed variable
   --   p "x : Int = 1" `shouldBe` Right (Typed "x" (Var "Int") i1, "")

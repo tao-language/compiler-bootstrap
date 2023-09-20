@@ -203,17 +203,26 @@ definition =
   P.oneOf
     [ -- unionTypeDefinition,
       -- typedVariableDefinition,
-      rulesDefinition
+      typedRulesDef,
+      untypedRulesDef
       -- , unpackDefinition
     ]
 
-typeAnnotation :: Parser (String, Type)
+typeAnnotation :: Parser Type
 typeAnnotation = do
-  x <- identifier P.lowercase
   _ <- token $ P.char ':'
-  xs <- P.oneOf [P.succeed []]
+  xs <-
+    P.oneOf
+      [ do
+          _ <- token $ P.char '@'
+          x <- identifier P.lowercase
+          xs <- P.zeroOrMore (identifier P.lowercase)
+          _ <- token $ P.char '.'
+          P.succeed (x : xs),
+        P.succeed []
+      ]
   t <- expression 0
-  P.succeed (x, For xs t)
+  P.succeed (For xs t)
 
 -- typedVariableDefinition :: Parser Definition
 -- typedVariableDefinition = do
@@ -223,29 +232,30 @@ typeAnnotation = do
 --   _ <- newLine
 --   succeed (Typed x t a)
 
-rulesDefinition :: Parser (Pattern, Expr)
-rulesDefinition = do
-  let branch :: Parser ([Pattern], Expr)
-      branch = do
-        ps <- P.zeroOrMore patternToken
-        _ <- token $ P.char '='
-        a <- expression 0
-        _ <- newLine
-        P.succeed (ps, a)
+branch :: Parser ([Pattern], Expr)
+branch = do
+  ps <- P.zeroOrMore patternToken
+  _ <- token $ P.char '='
+  a <- expression 0
+  _ <- newLine
+  P.succeed (ps, a)
 
-  maybeType <- P.maybe' typeAnnotation
-  case maybeType of
-    Just (x, ty) -> do
-      _ <- newLine
-      _ <- keyword () x
-      b <- branch
-      bs <- P.zeroOrMore (do _ <- keyword () x; branch)
-      P.succeed (PVar x, Ann (match (b : bs)) ty)
-    Nothing -> do
-      x <- identifier P.lowercase
-      b <- branch
-      bs <- P.zeroOrMore (do _ <- keyword () x; branch)
-      P.succeed (PVar x, match (b : bs))
+typedRulesDef :: Parser (Pattern, Expr)
+typedRulesDef = do
+  x <- identifier P.lowercase
+  ty <- typeAnnotation
+  _ <- newLine
+  _ <- keyword () x
+  b <- branch
+  bs <- P.zeroOrMore (do _ <- keyword () x; branch)
+  P.succeed (PVar x, Ann (match (b : bs)) ty)
+
+untypedRulesDef :: Parser (Pattern, Expr)
+untypedRulesDef = do
+  x <- identifier P.lowercase
+  b <- branch
+  bs <- P.zeroOrMore (do _ <- keyword () x; branch)
+  P.succeed (PVar x, match (b : bs))
 
 -- unpackDefinition :: Parser Definition
 -- unpackDefinition = do
