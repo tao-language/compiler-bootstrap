@@ -7,18 +7,24 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Tao language ☯==--" $ do
-  let intT = Var "Int"
   let (a, b, c) = (Var "a", Var "b", Var "c")
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (_x, _y, _z) = (PVar "x", PVar "y", PVar "z")
-  let (i1, i2) = (Int 1, Int 2)
+  let (i0, i1, i2) = (Int 0, Int 1, Int 2)
 
-  let parse' parser src = case parseSome parser src of
+  let parse' :: P.Parser a -> String -> Either String (a, String)
+      parse' parser src = case parseSome parser src of
         Right (x, P.State {P.source = remaining}) ->
           Right (x, remaining)
         Left (SyntaxError (P.SyntaxError _ P.State {P.source = remaining})) ->
           Left remaining
         Left (TypeError err) -> Left (show err)
+
+  let parseAll :: P.Parser a -> String -> Either String a
+      parseAll p src = case parse' p src of
+        Right (x, "") -> Right x
+        Right (_, remaining) -> Left remaining
+        Left remaining -> Left remaining
 
   it "☯ token" $ do
     let p = parse' (P.zeroOrMore (token P.letter))
@@ -91,70 +97,77 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "(B x y) " `shouldBe` Right (PApp (PApp (PTag "B") _x) _y, "")
 
   it "☯ expression" $ do
-    let p = parse' (expression 0)
-    p "Type" `shouldBe` Right (Var "Type", "")
-    p "Int" `shouldBe` Right (Var "Int", "")
-    p "Num" `shouldBe` Right (Var "Num", "")
-    p "42" `shouldBe` Right (Int 42, "")
-    p "3.14" `shouldBe` Right (Num 3.14, "")
-    p "x" `shouldBe` Right (Var "x", "")
-    p "A" `shouldBe` Right (Var "A", "")
-    p "\\x = 1" `shouldBe` Right (lam [_x] i1, "")
-    p "\\x y = 1" `shouldBe` Right (lam [_x, _y] i1, "")
-    p "\\x = 1 | y = 2" `shouldBe` Right (Match [([_x], i1), ([_y], i2)], "")
-    p "x = 1; a" `shouldBe` Right (Let [(_x, i1)] a, "")
-    p "x = 1\na" `shouldBe` Right (Let [(_x, i1)] a, "")
-    p "x = 1; y = 2; a" `shouldBe` Right (Let [(_x, i1), (_y, i2)] a, "")
-    p "x = 1\ny = 2\na" `shouldBe` Right (Let [(_x, i1), (_y, i2)] a, "")
-    p "x -> y" `shouldBe` Right (fun [x] y, "")
-    p "x == y" `shouldBe` Right (Eq x y, "")
-    p "x < y" `shouldBe` Right (Lt x y, "")
-    p "x + y" `shouldBe` Right (Add x y, "")
-    p "x - y" `shouldBe` Right (Sub x y, "")
-    p "x * y" `shouldBe` Right (Mul x y, "")
-    p "x ^ y" `shouldBe` Right (Pow x y, "")
-    p "x y" `shouldBe` Right (App x y, "")
-    p "(x)" `shouldBe` Right (x, "")
+    let p = parseAll (expression 0)
+    p "Type" `shouldBe` Right Typ
+    p "Int" `shouldBe` Right IntT
+    p "Num" `shouldBe` Right NumT
+    p "42" `shouldBe` Right (Int 42)
+    p "3.14" `shouldBe` Right (Num 3.14)
+    p "A" `shouldBe` Right (Tag "A")
+    p "x" `shouldBe` Right (Var "x")
+    p "\\x = 1" `shouldBe` Right (lam [_x] i1)
+    p "\\x y = 1" `shouldBe` Right (lam [_x, _y] i1)
+    p "x | y" `shouldBe` Right (Or x y)
+    p "x ? y" `shouldBe` Right (If x y)
+    p "x : a" `shouldBe` Right (Ann x (For [] a))
+    p "x -> y" `shouldBe` Right (fun [x] y)
+    p "x == y" `shouldBe` Right (Eq x y)
+    p "x < y" `shouldBe` Right (Lt x y)
+    p "x + y" `shouldBe` Right (Add x y)
+    p "x - y" `shouldBe` Right (Sub x y)
+    p "x * y" `shouldBe` Right (Mul x y)
+    p "x ^ y" `shouldBe` Right (Pow x y)
+    p "x y" `shouldBe` Right (App x y)
+    p "x = 1; a" `shouldBe` Right (Let [([], _x, i1)] a)
+    p "\\x = 0 | y = 1" `shouldBe` Right (Match [([_x], i0), ([_y], i1)])
+    p "\\x = 0 | y = 1 | z = 2" `shouldBe` Right (Match [([_x], i0), ([_y], i1), ([_z], i2)])
+    p "(x)" `shouldBe` Right x
 
   it "☯ typeAnnotation" $ do
-    let p = parse' typeAnnotation
-    p ": a" `shouldBe` Right (For [] a, "")
-    p ": @a. b" `shouldBe` Right (For ["a"] b, "")
-    p ": @a b. c" `shouldBe` Right (For ["a", "b"] c, "")
+    let p = parseAll typeAnnotation
+    p "x : a" `shouldBe` Right ("x", For [] a)
+    p "x : @a. b" `shouldBe` Right ("x", For ["a"] b)
+    p "x : @a b. c" `shouldBe` Right ("x", For ["a", "b"] c)
 
   it "☯ untypedDef" $ do
-    let p = parse' untypedDef
-    p "x = 1" `shouldBe` Right ((_x, i1), "")
-    p "x y = 1" `shouldBe` Right ((_x, Lam _y i1), "")
-    p "x y z = 1" `shouldBe` Right ((_x, lam [_y, _z] i1), "")
-    p "x y = 1; x z = 2;" `shouldBe` Right ((_x, Match [([_y], i1), ([_z], i2)]), "")
-    p "x y = 1\nx z = 2\n" `shouldBe` Right ((_x, Match [([_y], i1), ([_z], i2)]), "")
-    p "x y = 1\n\nx z = 2\n\n" `shouldBe` Right ((_x, Match [([_y], i1), ([_z], i2)]), "")
+    let p = parseAll untypedDef
+    p "x = 1" `shouldBe` Right ([], _x, i1)
+    p "x y = 1" `shouldBe` Right ([], _x, Lam _y i1)
+    p "x y z = 1" `shouldBe` Right ([], _x, lam [_y, _z] i1)
+    p "x y = 1; x z = 2;" `shouldBe` Right ([], _x, Match [([_y], i1), ([_z], i2)])
+    p "x y = 1\nx z = 2\n" `shouldBe` Right ([], _x, Match [([_y], i1), ([_z], i2)])
+    p "x y = 1\n\nx z = 2\n\n" `shouldBe` Right ([], _x, Match [([_y], i1), ([_z], i2)])
+
+  it "☯ typedVarDef" $ do
+    let p = parseAll typedVarDef
+    p "x : Int = 1" `shouldBe` Right ([("x", For [] IntT)], _x, i1)
 
   it "☯ typedDef" $ do
-    let p = parse' typedDef
-    p "x : Int; x = 1" `shouldBe` Right ((_x, Ann i1 (For [] intT)), "")
-    p "x : Int\nx = 1" `shouldBe` Right ((_x, Ann i1 (For [] intT)), "")
-    p "x : a -> Int; x y = 1" `shouldBe` Right ((_x, Ann (Lam _y i1) (For [] $ fun [a] intT)), "")
-    p "x : a -> Int\nx y = 1" `shouldBe` Right ((_x, Ann (Lam _y i1) (For [] $ fun [a] intT)), "")
-    p "x : a -> b -> Int; x y z = 1" `shouldBe` Right ((_x, Ann (lam [_y, _z] i1) (For [] $ fun [a, b] intT)), "")
-    p "x : a -> b -> Int\nx y z = 1" `shouldBe` Right ((_x, Ann (lam [_y, _z] i1) (For [] $ fun [a, b] intT)), "")
-    p "x : a -> b -> Int; x y = 1; x z = 2;" `shouldBe` Right ((_x, Ann (Match [([_y], i1), ([_z], i2)]) (For [] $ fun [a, b] intT)), "")
-    p "x : a -> b -> Int\nx y = 1\nx z = 2\n" `shouldBe` Right ((_x, Ann (Match [([_y], i1), ([_z], i2)]) (For [] $ fun [a, b] intT)), "")
-    p "x : a -> Int; x y = 1; x z = 2;" `shouldBe` Right ((_x, Ann (Match [([_y], i1), ([_z], i2)]) (For [] $ fun [a] intT)), "")
-    p "x : a -> Int\nx y = 1\nx z = 2\n" `shouldBe` Right ((_x, Ann (Match [([_y], i1), ([_z], i2)]) (For [] $ fun [a] intT)), "")
-    p "x : a -> Int\n\nx y = 1\n\nx z = 2\n\n" `shouldBe` Right ((_x, Ann (Match [([_y], i1), ([_z], i2)]) (For [] $ fun [a] intT)), "")
+    let p = parseAll typedDef
+    p "x : Int; x = 1" `shouldBe` Right ([("x", For [] IntT)], _x, i1)
+    p "x : Int\nx = 1" `shouldBe` Right ([("x", For [] IntT)], _x, i1)
+    p "x : a -> Int; x y = 1" `shouldBe` Right ([("x", For [] $ fun [a] IntT)], _x, Lam _y i1)
+    p "x : a -> Int\nx y = 1" `shouldBe` Right ([("x", For [] $ fun [a] IntT)], _x, Lam _y i1)
+    p "x : a -> b -> Int; x y z = 1" `shouldBe` Right ([("x", For [] $ fun [a, b] IntT)], _x, lam [_y, _z] i1)
+    p "x : a -> b -> Int\nx y z = 1" `shouldBe` Right ([("x", For [] $ fun [a, b] IntT)], _x, lam [_y, _z] i1)
+    p "x : a -> b -> Int; x y = 1; x z = 2;" `shouldBe` Right ([("x", For [] $ fun [a, b] IntT)], _x, Match [([_y], i1), ([_z], i2)])
+    p "x : a -> b -> Int\nx y = 1\nx z = 2\n" `shouldBe` Right ([("x", For [] $ fun [a, b] IntT)], _x, Match [([_y], i1), ([_z], i2)])
+    p "x : a -> Int; x y = 1; x z = 2;" `shouldBe` Right ([("x", For [] $ fun [a] IntT)], _x, Match [([_y], i1), ([_z], i2)])
+    p "x : a -> Int\nx y = 1\nx z = 2\n" `shouldBe` Right ([("x", For [] $ fun [a] IntT)], _x, Match [([_y], i1), ([_z], i2)])
+    p "x : a -> Int\n\nx y = 1\n\nx z = 2\n\n" `shouldBe` Right ([("x", For [] $ fun [a] IntT)], _x, Match [([_y], i1), ([_z], i2)])
 
-  -- it "☯ definition" $ do
-  --   let p = parse' definition
+  it "☯ unpackDef" $ do
+    let p = parseAll unpackDef
+    p "A x y = z" `shouldBe` Right ([], pApp (PTag "A") [_x, _y], z)
+    p "x : a; y : b; A x y = z" `shouldBe` Right ([("x", For [] a), ("y", For [] b)], pApp (PTag "A") [_x, _y], z)
+    p "x : a\ny : b\nA x y = z\n" `shouldBe` Right ([("x", For [] a), ("y", For [] b)], pApp (PTag "A") [_x, _y], z)
 
-  --   -- Typed variable
-  --   p "x : Int = 1" `shouldBe` Right (Typed "x" (Var "Int") i1, "")
-
-  --   -- Pattern unpack
-  --   p "A x y = z" `shouldBe` Right (Unpack (CtrP "A" [x', y']) [] z, "")
-  --   p "x : a; y : b; A x y = z" `shouldBe` Right (Unpack (CtrP "A" [x', y']) [("x", Var "a"), ("y", Var "b")] z, "")
-  --   p "x : a\ny : b\nA x y = z\n" `shouldBe` Right (Unpack (CtrP "A" [x', y']) [("x", Var "a"), ("y", Var "b")] z, "")
+  it "☯ definition" $ do
+    let p = parseAll definition
+    p "x = 1" `shouldBe` Right ([], _x, i1)
+    p "x : Int = 1" `shouldBe` Right ([("x", For [] IntT)], _x, i1)
+    p "x : Int; x = 1" `shouldBe` Right ([("x", For [] IntT)], _x, i1)
+    p "A x y = z" `shouldBe` Right ([], pApp (PTag "A") [_x, _y], z)
 
   -- it "☯ unionTypeDefinition" $ do
   --   let p = parse' unionTypeDefinition

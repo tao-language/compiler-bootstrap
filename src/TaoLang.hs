@@ -157,7 +157,11 @@ expressionToken =
   P.oneOf
     [ token $ Int <$> P.integer,
       token $ Num <$> P.number,
-      Var <$> identifier P.letter,
+      keyword Typ "Type",
+      keyword IntT "Int",
+      keyword NumT "Num",
+      Var <$> identifier P.lowercase,
+      Tag <$> identifier P.uppercase,
       do
         _ <- token $ P.char '('
         a <- expression 0
@@ -167,49 +171,59 @@ expressionToken =
 
 expression :: Int -> Parser Expr
 expression prec = do
-  let branch :: Int -> Parser ([Pattern], Expr)
-      branch prec = do
-        ps <- P.oneOrMore patternToken
-        _ <- token $ P.char '='
-        b <- expression prec
-        P.succeed (ps, b)
+  let matchBranch :: Int -> Parser ([Pattern], Expr)
+      matchBranch prec = do
+        _ <- token $ P.char '|'
+        p <- patternToken
+        (ps, b) <- branch prec
+        P.succeed (p : ps, b)
 
-  let match' :: Parser Expr
-      match' = do
+  let match' :: Int -> Parser Expr
+      match' prec = do
         _ <- token $ P.char '\\'
-        br <- branch 0
-        brs <- P.zeroOrMore (do _ <- token $ P.char '|'; branch 0)
+        br <- branch prec
+        brs <- P.zeroOrMore (matchBranch prec)
         P.succeed (match (br : brs))
 
   P.withOperators
-    [ P.constant match',
+    [ P.constant (match' 2),
       P.prefixOp 0 Let (P.oneOrMore definition),
       P.constant expressionToken
     ]
-    [ P.infixL 1 Eq (token $ P.text "=="),
-      P.infixR 2 (App . App Fun) (token $ P.text "->"),
-      P.infixL 3 Lt (token $ P.text "<"),
-      P.infixL 4 Add (token $ P.text "+"),
-      P.infixL 4 Sub (token $ P.text "-"),
-      P.infixL 5 Mul (token $ P.text "*"),
-      P.infixL 6 Pow (token $ P.text "^"),
-      P.infixL 7 App (P.succeed ())
+    [ P.infixR 1 Or (token $ P.text "|"),
+      P.infixR 1 If (token $ P.text "?"),
+      P.infixR 2 (\a b -> Ann a (For [] b)) (token $ P.text ":"),
+      P.infixL 3 Eq (token $ P.text "=="),
+      P.infixL 4 Lt (token $ P.text "<"),
+      P.infixR 5 (App . App Fun) (token $ P.text "->"),
+      P.infixL 6 Add (token $ P.text "+"),
+      P.infixL 6 Sub (token $ P.text "-"),
+      P.infixL 7 Mul (token $ P.text "*"),
+      P.infixL 8 App (P.succeed ()),
+      P.infixL 10 Pow (token $ P.text "^")
     ]
     prec
+
+branch :: Int -> Parser ([Pattern], Expr)
+branch prec = do
+  ps <- P.zeroOrMore patternToken
+  _ <- token $ P.char '='
+  b <- expression prec
+  P.succeed (ps, b)
 
 -- Definitions
 definition :: Parser Definition
 definition =
   P.oneOf
-    [ -- unionTypeDefinition,
-      -- typedVariableDefinition,
+    [ untypedDef,
+      typedVarDef,
       typedDef,
-      untypedDef
-      -- , unpackDefinition
+      unpackDef
     ]
 
-typeAnnotation :: Parser Type
+typeAnnotation :: Parser (String, Type)
 typeAnnotation = do
+  x <- identifier P.lowercase
   _ <- token $ P.char ':'
   xs <-
     P.oneOf
@@ -222,57 +236,49 @@ typeAnnotation = do
         P.succeed []
       ]
   t <- expression 0
-  P.succeed (For xs t)
+  P.succeed (x, For xs t)
 
--- typedVariableDefinition :: Parser Definition
--- typedVariableDefinition = do
---   (x, t) <- typeAnnotation
---   _ <- token $ char '='
---   a <- expression 0
---   _ <- newLine
---   succeed (Typed x t a)
-
-branch :: Parser ([Pattern], Expr)
-branch = do
-  ps <- P.zeroOrMore patternToken
-  _ <- token $ P.char '='
-  a <- expression 0
-  _ <- newLine
-  P.succeed (ps, a)
-
-typedDef :: Parser Definition
-typedDef = do
-  x <- identifier P.lowercase
-  ty <- typeAnnotation
-  _ <- newLine
+rule :: String -> Parser ([Pattern], Expr)
+rule x = do
   _ <- keyword () x
-  b <- branch
-  bs <- P.zeroOrMore (do _ <- keyword () x; branch)
-  P.succeed (PVar x, Ann (match (b : bs)) ty)
+  br <- branch 0
+  _ <- newLine
+  P.succeed br
 
 untypedDef :: Parser Definition
 untypedDef = do
   x <- identifier P.lowercase
-  b <- branch
-  bs <- P.zeroOrMore (do _ <- keyword () x; branch)
-  P.succeed (PVar x, match (b : bs))
+  b <- branch 0
+  _ <- newLine
+  bs <- P.zeroOrMore (rule x)
+  P.succeed ([], PVar x, match (b : bs))
 
--- unpackDefinition :: Parser Definition
--- unpackDefinition = do
---   types <- zeroOrMore (do ann <- typeAnnotation; _ <- newLine; succeed ann)
---   p <- pattern'
---   _ <- token $ char '='
---   a <- expression 0
---   _ <- newLine
---   succeed (Unpack p types a)
+typedDef :: Parser Definition
+typedDef = do
+  (x, ty) <- typeAnnotation
+  _ <- newLine
+  _ <- keyword () x
+  b <- branch 0
+  _ <- newLine
+  bs <- P.zeroOrMore (rule x)
+  P.succeed ([(x, ty)], PVar x, match (b : bs))
 
--- definition :: Parser Definition
--- definition =
---   oneOf
---     [ typedVariableDefinition,
---       rulesDefinition,
---       unpackDefinition
---     ]
+typedVarDef :: Parser Definition
+typedVarDef = do
+  (x, ty) <- typeAnnotation
+  _ <- token $ P.char '='
+  a <- expression 0
+  _ <- newLine
+  P.succeed ([(x, ty)], PVar x, a)
+
+unpackDef :: Parser Definition
+unpackDef = do
+  types <- P.zeroOrMore (do ann <- typeAnnotation; _ <- newLine; P.succeed ann)
+  p <- pattern' 0
+  _ <- token $ P.char '='
+  a <- expression 0
+  _ <- newLine
+  P.succeed (types, p, a)
 
 -- unionTypeDefinition :: Parser ContextDefinition
 -- unionTypeDefinition = do

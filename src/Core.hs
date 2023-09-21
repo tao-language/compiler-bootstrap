@@ -68,39 +68,39 @@ data TypeError
 
 instance Show Expr where
   showsPrec p expr = case expr of
-    Err -> atom 11 "@err"
-    Typ -> atom 11 "@Type"
-    Fun -> atom 11 "(->)"
-    IntT -> atom 11 "@Int"
-    NumT -> atom 11 "@Num"
-    Op1 Int2Num -> atom 11 (show Int2Num)
-    Op2 op -> atom 11 ("(" ++ show op ++ ")")
-    Int i -> atom 11 (show i)
-    Num n -> atom 11 (show n)
-    Tag k | isTagName k -> atom 11 k
-    Tag k -> atom 11 ("(@tag '" ++ k ++ "')")
-    Rec fields -> do
-      let showField (x, a) = x ++ ": " ++ show a
-      atom 11 ("{" ++ intercalate ", " (map showField fields) ++ "}")
-    Var x | isVarName x -> atom 11 x
-    Var x -> atom 11 ("(@var '" ++ x ++ "')")
-    App (App (Op2 Pow) a) b -> infixR 10 a (show Pow) b
-    Fst a -> prefix 8 "@fst " a
-    Snd a -> prefix 8 "@snd " a
-    App (App (Op2 Mul) a) b -> infixL 7 a (op2 Mul) b
-    App (App (Op2 Add) a) b -> infixL 6 a (op2 Add) b
-    App (App (Op2 Sub) a) b -> infixL 6 a (op2 Sub) b
-    App (App Fun a) b -> infixR 5 a " -> " b
-    App (App (Op2 Lt) a) b -> infixR 4 a (op2 Lt) b
-    App (App (Op2 Eq) a) b -> infixL 3 a (op2 Eq) b
-    App a b -> infixL 8 a " " b
+    Or a b -> infixR 1 a " | " b
+    If a b -> infixR 1 a " ? " b
     Ann a (For xs b) -> infixR 2 a (" : " ++ for xs) b
     Lam x b -> do
       let (xs, b') = asLam (Lam x b)
       prefix 2 ("\\" ++ unwords xs ++ ". ") b'
     Fix x a -> prefix 2 ("@fix " ++ x ++ ". ") a
-    Or a b -> infixR 1 a " | " b
-    If a b -> infixR 1 a "; " b
+    App (App (Op2 Eq) a) b -> infixL 3 a (op2 Eq) b
+    App (App (Op2 Lt) a) b -> infixR 4 a (op2 Lt) b
+    App (App Fun a) b -> infixR 5 a " -> " b
+    App (App (Op2 Add) a) b -> infixL 6 a (op2 Add) b
+    App (App (Op2 Sub) a) b -> infixL 6 a (op2 Sub) b
+    App (App (Op2 Mul) a) b -> infixL 7 a (op2 Mul) b
+    Fst a -> prefix 8 "@fst " a
+    Snd a -> prefix 8 "@snd " a
+    App (App (Op2 Pow) a) b -> infixR 10 a (show Pow) b
+    App a b -> infixL 8 a " " b
+    Err -> atom 11 "@err"
+    Typ -> atom 11 "@Type"
+    Fun -> atom 11 "(->)"
+    IntT -> atom 11 "@Int"
+    NumT -> atom 11 "@Num"
+    Int i -> atom 11 (show i)
+    Num n -> atom 11 (show n)
+    Tag k | isTagName k -> atom 11 k
+    Tag k -> atom 11 ("(@tag '" ++ k ++ "')")
+    Var x | isVarName x -> atom 11 x
+    Var x -> atom 11 ("(@var '" ++ x ++ "')")
+    Op1 Int2Num -> atom 11 (show Int2Num)
+    Op2 op -> atom 11 ("(" ++ show op ++ ")")
+    Rec fields -> do
+      let showField (x, a) = x ++ ": " ++ show a
+      atom 11 ("{" ++ intercalate ", " (map showField fields) ++ "}")
     where
       atom n k = showParen (p > n) $ showString k
       prefix n k a = showParen (p > n) $ showString k . showsPrec (n + 1) a

@@ -123,10 +123,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     show (Or x (Or y z)) `shouldBe` "x | y | z"
     show (Or (Or x y) z) `shouldBe` "(x | y) | z"
 
-    show (If x (Ann y tz)) `shouldBe` "x; y : z"
-    show (If (Ann x ty) z) `shouldBe` "x : y; z"
-    show (If x (If y z)) `shouldBe` "x; y; z"
-    show (If (If x y) z) `shouldBe` "(x; y); z"
+    show (If x (Ann y tz)) `shouldBe` "x ? y : z"
+    show (If (Ann x ty) z) `shouldBe` "x : y ? z"
+    show (If x (If y z)) `shouldBe` "x ? y ? z"
+    show (If (If x y) z) `shouldBe` "(x ? y) ? z"
 
   it "☯ syntax sugar" $ do
     let' [] x `shouldBe` x

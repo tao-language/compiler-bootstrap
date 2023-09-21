@@ -32,7 +32,7 @@ data Expr
   | Err
   | -- Syntax sugar
     Match ![([Pattern], Expr)]
-  | Let ![(Pattern, Expr)] !Expr
+  | Let ![Definition] !Expr
   | Do !(Pattern, Expr) !Expr
   | Char !Int
   | Maybe !Expr
@@ -66,7 +66,7 @@ data Type
   = For ![String] !Expr
   deriving (Eq, Show)
 
-type Definition = (Pattern, Expr)
+type Definition = ([(String, Type)], Pattern, Expr)
 
 data CompileError
   = TypeError !C.TypeError
@@ -92,6 +92,9 @@ match :: [([Pattern], Expr)] -> Expr
 match [] = Err
 match [(ps, b)] = lam ps b
 match brs = Match brs
+
+pApp :: Pattern -> [Pattern] -> Pattern
+pApp = foldl PApp
 
 -- Evaluation
 eval :: C.Env -> C.Expr -> C.Expr
@@ -155,9 +158,9 @@ toCore (Lam p b) = case p of
   PApp p q -> do
     let b' = toCore b
     let x = C.newName ("$" : C.freeVars b') "$"
-    toCore (Lam (PVar x) (Let [(p, Fst (Var x)), (q, Snd (Var x))] b))
+    toCore (Lam (PVar x) (Let [([], p, Fst (Var x)), ([], q, Snd (Var x))] b))
 toCore (Let [] b) = toCore b
-toCore (Let ((p, a) : defs) b) = toCore (App (Lam p (Let defs b)) a)
+toCore (Let (([], p, a) : defs) b) = toCore (App (Lam p (Let defs b)) a)
 toCore (Match brs) = C.or' (map (\(ps, b) -> toCore (lam ps b)) brs)
 -- Do !(Pattern, Expr) !Expr
 -- Char !Int
@@ -179,18 +182,18 @@ toCoreRec [] = []
 toCoreRec ((x, a) : fields) = (x, toCore a) : toCoreRec fields
 
 toCoreDef :: Definition -> C.Env
-toCoreDef (PAny, _) = []
-toCoreDef (PTyp, _) = []
-toCoreDef (PFun, _) = []
-toCoreDef (PIntT, _) = []
-toCoreDef (PNumT, _) = []
-toCoreDef (PInt _, _) = []
-toCoreDef (PTag _, _) = []
-toCoreDef (PIfEq _, _) = []
-toCoreDef (PVar x, a) = case toCore a of
+toCoreDef (_, PAny, _) = []
+toCoreDef (_, PTyp, _) = []
+toCoreDef (_, PFun, _) = []
+toCoreDef (_, PIntT, _) = []
+toCoreDef (_, PNumT, _) = []
+toCoreDef (_, PInt _, _) = []
+toCoreDef (_, PTag _, _) = []
+toCoreDef (_, PIfEq _, _) = []
+toCoreDef (types, PVar x, a) = case toCore a of
   a | x `C.occurs` a -> [(x, C.Fix x a)]
   a -> [(x, a)]
-toCoreDef (PApp p q, a) = toCoreDef (p, Fst a) ++ toCoreDef (q, Snd a)
+toCoreDef (types, PApp p q, a) = toCoreDef (types, p, Fst a) ++ toCoreDef (types, q, Snd a)
 
 toCoreEnv :: [Definition] -> C.Env
 toCoreEnv = concatMap toCoreDef
@@ -211,7 +214,7 @@ fromCore (C.App a b) = App (fromCore a) (fromCore b)
 fromCore (C.Ann a (C.For xs t)) = Ann (fromCore a) (For xs (fromCore t))
 fromCore (C.Or a b) = Or (fromCore a) (fromCore b)
 fromCore (C.If a b) = If (fromCore a) (fromCore b)
-fromCore (C.Fix x a) | x `C.occurs` a = Let [(PVar x, fromCore a)] (Var x)
+fromCore (C.Fix x a) | x `C.occurs` a = Let [([], PVar x, fromCore a)] (Var x)
 fromCore (C.Fix _ a) = fromCore a
 -- fromCore (C.Op2 C.Add a b) = Add (fromCore a) (fromCore b)
 -- fromCore (C.Op2 C.Sub a b) = Sub (fromCore a) (fromCore b)
@@ -221,7 +224,7 @@ fromCore (C.Fix _ a) = fromCore a
 fromCore a = error ("TODO fromCore: " ++ show a)
 
 fromCoreDef :: (String, C.Expr) -> Definition
-fromCoreDef (x, a) = (PVar x, fromCore a)
+fromCoreDef (x, a) = ([], PVar x, fromCore a)
 
 fromCoreEnv :: C.Env -> [Definition]
 fromCoreEnv = map fromCoreDef
