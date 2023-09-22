@@ -169,34 +169,17 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "x : Int; x = 1" `shouldBe` Right ([("x", For [] IntT)], _x, i1)
     p "A x y = z" `shouldBe` Right ([], pApp (PTag "A") [_x, _y], z)
 
-  -- it "☯ unionTypeDefinition" $ do
-  --   let p = parse' unionTypeDefinition
+  it "☯ definition types" $ do
+    let p = parseAll definition
+    let (_n, _a) = (PVar "n", PVar "a")
+    p "Bool = True | False" `shouldBe` Right ([], PTag "Bool", or' [Tag "True", Tag "False"])
+    p "Maybe a = Just a | Nothing" `shouldBe` Right ([], PApp (PTag "Maybe") _a, or' [App (Tag "Just") a, Tag "Nothing"])
 
-  --   -- Simple definition
-  --   p "type T = _" `shouldBe` Right (UnionType "T" [] [], "")
-  --   p "type T = A" `shouldBe` Right (UnionType "T" [] [("A", Var "T")], "")
-
-  --   -- Constructor arguments
-  --   p "type T = A a" `shouldBe` Right (UnionType "T" [] [("A", Fun (Var "a") (Var "T"))], "")
-  --   p "type T = A a b" `shouldBe` Right (UnionType "T" [] [("A", fun [Var "a", Var "b"] (Var "T"))], "")
-
-  --   -- Arguments
-  --   p "type T a = A" `shouldBe` Right (UnionType "T" [("a", Var "Type")] [("A", App (Var "T") (Var "a"))], "")
-  --   p "type T a b = A" `shouldBe` Right (UnionType "T" [("a", Var "Type"), ("b", Var "Type")] [("A", app (Var "T") [Var "a", Var "b"])], "")
-
-  --   -- Typed arguments
-  --   p "type T (a : Int) = A" `shouldBe` Right (UnionType "T" [("a", Var "Int")] [("A", App (Var "T") (Var "a"))], "")
-
-  --   -- Typed constructors
-  --   p "type T = A : U" `shouldBe` Right (UnionType "T" [] [("A", Var "U")], "")
-
-  --   -- Multiple constructors
-  --   p "type T = A | B" `shouldBe` Right (UnionType "T" [] [("A", Var "T"), ("B", Var "T")], "")
-
-  --   -- End-to-end
-  --   p "type Bool = True | False" `shouldBe` Right (UnionType "Bool" [] [("True", Var "Bool"), ("False", Var "Bool")], "")
-  --   p "type Maybe a = Just a | Nothing" `shouldBe` Right (UnionType "Maybe" [("a", Var "Type")] [("Just", Fun (Var "a") (App (Var "Maybe") (Var "a"))), ("Nothing", App (Var "Maybe") (Var "a"))], "")
-  --   p "type Vec (n : Int) a = Cons a (Vec n a) : Vec (n + 1) a | Nil : Vec 0 a" `shouldBe` Right (UnionType "Vec" [("n", Var "Int"), ("a", Var "Type")] [("Cons", fun [Var "a", app (Var "Vec") [Var "n", Var "a"]] (app (Var "Vec") [Op2 Add (Var "n") (Int 1), Var "a"])), ("Nil", app (Var "Vec") [Int 0, Var "a"])], "")
+    let n = Var "n"
+    let vec n a = app (Tag "Vec") [n, a]
+    let (cons, consTy) = (Tag "Cons", For [] (fun [a, vec n a] (vec (Add n i1) a)))
+    let (nil, nilTy) = (Tag "Nil", For [] (vec i0 a))
+    p "Vec n a = Cons : a -> Vec n a -> Vec (n + 1) a | Nil : Vec 0 a" `shouldBe` Right ([], pApp (PTag "Vec") [_n, _a], or' [Ann cons consTy, Ann nil nilTy])
 
   -- it "☯ contextDefinition" $ do
   --   let p = parse' contextDefinition
