@@ -28,8 +28,8 @@ data Expr
   | Snd !Expr
   | Fix !String !Expr
   | Rec ![(String, Expr)]
-  | Op2 !BinaryOp
   | Op1 !UnaryOp
+  | Op2 !BinaryOp
   | Err
   deriving (Eq)
 
@@ -98,9 +98,9 @@ instance Show Expr where
     Var x -> atom 11 ("(@var '" ++ x ++ "')")
     Op1 Int2Num -> atom 11 (show Int2Num)
     Op2 op -> atom 11 ("(" ++ show op ++ ")")
-    Rec fields -> do
+    Rec kvs -> do
       let showField (x, a) = x ++ ": " ++ show a
-      atom 11 ("{" ++ intercalate ", " (map showField fields) ++ "}")
+      atom 11 ("{" ++ intercalate ", " (map showField kvs) ++ "}")
     where
       atom n k = showParen (p > n) $ showString k
       prefix n k a = showParen (p > n) $ showString k . showsPrec (n + 1) a
@@ -211,7 +211,7 @@ freeVars (Int _) = []
 freeVars (Num _) = []
 freeVars (Tag _) = []
 freeVars (Rec []) = []
-freeVars (Rec ((_, a) : fields)) = freeVars a `union` freeVars (Rec fields)
+freeVars (Rec ((_, a) : kvs)) = freeVars a `union` freeVars (Rec kvs)
 freeVars (Var x) = [x]
 freeVars (Lam x a) = delete x (freeVars a)
 freeVars (App a b) = freeVars a `union` freeVars b
@@ -257,7 +257,7 @@ eval env (Tag k) = case lookup k env of
   Just (Tag k') | k == k' -> Tag k
   Just a -> eval ((k, Tag k) : env) a
   Nothing -> Tag k
-eval env (Rec fields) = Rec (map (second (eval env)) fields)
+eval env (Rec kvs) = Rec (map (second (eval env)) kvs)
 eval env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Var x
   Just (Tag k) -> Tag k
@@ -269,12 +269,12 @@ eval env (Lam x b) = case eval ((x, Var x) : env) b of
 eval env (App a b) = case (eval env a, eval env b) of
   (Err, _) -> Err
   (Lam x a, b) -> eval [(x, b)] a
-  (a, b) | isOpen b -> App a b
   (Or a1 a2, b) -> case eval [] (App a1 b) of
     Err -> eval [] (App a2 b)
-    a | isClosed a -> a
-    a -> Or a (App a2 b)
-  (Fix x a, b) -> eval [(x, Fix x a)] (App a b)
+    Lam x a -> Or (Lam x a) (App a2 b)
+    a | isOpen a -> Or a (App a2 b)
+    a -> a
+  (Fix x a, b) | isClosed b -> eval [(x, Fix x a)] (App a b)
   (Op1 op, b) | isClosed b -> case (op, b) of
     (Int2Num, Int b) -> Num (fromIntegral b)
     _else -> Err
@@ -300,8 +300,31 @@ eval env (App a b) = case (eval env a, eval env b) of
     (Lt, Num a, Num b) | a < b -> Num a
     _else -> Err
   (a, b) -> App a b
-eval env (Ann (Tag k) (For xs a)) = Ann (Tag k) (For xs (eval (pushVars xs env) a))
-eval env (Ann a _) = eval env a
+eval env (Ann a (For xs t)) = case (eval env a, eval (pushVars xs env) t) of
+  (a, Or t1 t2) -> eval [] (Or (Ann a (For xs t1)) (Ann a (For xs t2)))
+  (Typ, Typ) -> Typ
+  (Fun, Fun) -> Fun
+  (IntT, Typ) -> IntT
+  (NumT, Typ) -> NumT
+  (Int i, IntT) -> Int i
+  (Num n, NumT) -> Num n
+  (Tag k, t) -> Ann (Tag k) (For xs t)
+  (Var x, t) -> Ann (Var x) (For xs t)
+  (Lam x b, App (App Fun t1) t2) -> Lam x (If (Ann (Var x) (For xs t1)) (eval [] $ Ann b (For xs t2)))
+  (App a b, App t1 t2) -> eval [] (App (Ann a (For xs t1)) (Ann b (For xs t2)))
+  (App a b, t) -> Ann (App a b) (For xs t)
+  (Ann a ty, t) -> Ann (Ann a ty) (For xs t)
+  (Or a b, t) -> eval [] (Or (Ann a (For xs t)) (Ann b (For xs t)))
+  (If a b, t) -> If a (eval [] $ Ann b (For xs t))
+  (Fst a, t) -> error "TODO: eval Ann Fst"
+  (Snd a, t) -> error "TODO: eval Ann Snd"
+  (Fix x a, t) -> eval ((x, Var x) : env) (Ann a (For xs t))
+  (Rec kvs, Rec kvsT) -> error "TODO: eval Ann Rec"
+  (Op1 op, App (App Fun _) _) -> Ann (Op1 op) (For xs t)
+  (Op2 op, App (App (App Fun _) _) _) -> Ann (Op2 op) (For xs t)
+  (_, _) -> Err
+-- eval env (Ann (Tag k) (For xs a)) = Ann (Tag k) (For xs (eval (pushVars xs env) a))
+-- eval env (Ann a _) = eval env a
 eval env (Or a b) = case (eval env a, eval env b) of
   (Err, b) -> b
   (a, Err) -> a
@@ -358,9 +381,9 @@ unify a (Ann (Tag k) ty@(For (_ : _) _)) = do
   (c, s) <- unify a (Ann (Tag k) (For [] b))
   Right (c, s `compose` vars)
 unify (Ann (Tag k) ty@(For (_ : _) _)) b = unify b (Ann (Tag k) ty)
-unify (Rec fields) (Rec fields') = do
-  (fields, s) <- unifyRec fields fields'
-  Right (Rec fields, s)
+unify (Rec kvs) (Rec kvs') = do
+  (kvs, s) <- unifyRec kvs kvs'
+  Right (Rec kvs, s)
 unify (Var x) (Var x') | x == x' = Right (Var x, [])
 unify (Var x) b | x `occurs` b = Left (InfiniteType x b)
 unify (Var x) b = Right (b, [(x, b)])
@@ -388,12 +411,12 @@ unify2 (a1, a2) (b1, b2) = do
 
 unifyRec :: [(String, Expr)] -> [(String, Expr)] -> Either TypeError ([(String, Expr)], Substitution)
 unifyRec [] _ = Right ([], [])
-unifyRec ((x, a) : fields) fields' = case lookup x fields' of
+unifyRec ((x, a) : kvs) kvs' = case lookup x kvs' of
   Just b -> do
-    (fields, s1) <- unifyRec fields fields'
+    (kvs, s1) <- unifyRec kvs kvs'
     (c, s2) <- unify (eval s1 a) (eval s1 b)
-    Right ((x, c) : fields, s2 `compose` s1)
-  Nothing -> unifyRec fields fields'
+    Right ((x, c) : kvs, s2 `compose` s1)
+  Nothing -> unifyRec kvs kvs'
 
 listAlts :: Expr -> Env
 listAlts (Ann (Tag k) ty) = [(k, Ann (Tag k) ty)]
@@ -413,9 +436,9 @@ infer env (Tag k) = case lookup k env of
   Just (Ann (Tag k') ty) | k == k' -> Right (instantiate (map fst env) ty)
   Just a -> infer env a
   Nothing -> Right (Tag k, [])
-infer env (Rec fields) = do
-  (fieldsT, s) <- inferRec env fields
-  Right (Rec fieldsT, s)
+infer env (Rec kvs) = do
+  (kvsT, s) <- inferRec env kvs
+  Right (Rec kvsT, s)
 infer env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> do
     let xT = newName (map fst env) (x ++ "T")
@@ -476,10 +499,10 @@ infer2 env a b = do
 
 inferRec :: Env -> [(String, Expr)] -> Either TypeError ([(String, Expr)], Substitution)
 inferRec _ [] = Right ([], [])
-inferRec env ((x, a) : fields) = do
-  (fieldsT, s1) <- inferRec env fields
+inferRec env ((x, a) : kvs) = do
+  (kvsT, s1) <- inferRec env kvs
   (ta, s2) <- infer (apply s1 env) a
-  Right ((x, ta) : fieldsT, s2 `compose` s1)
+  Right ((x, ta) : kvsT, s2 `compose` s1)
 
 -- -- Typed
 -- typedP :: Pattern -> Expr -> Pattern

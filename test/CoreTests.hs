@@ -162,10 +162,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ eval Lam" $ do
     let env = [("x", i1)]
-    -- eval env (Lam x' x) `shouldBe` Lam x' x
-    -- eval env (Lam y' x) `shouldBe` Lam y' i1
-    -- eval env (Lam x' (Or x y)) `shouldBe` Or (Lam x' x) (Lam x' y)
-    True `shouldBe` True
+    eval env (Lam "x" x) `shouldBe` Lam "x" x
+    eval env (Lam "y" x) `shouldBe` Lam "y" i1
 
   it "☯ eval Or" $ do
     let env = [("x", i0), ("y", i1), ("z", i2)]
@@ -178,24 +176,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ eval App" $ do
     let env = [("x", i1), ("f", g), ("g", g), ("h", h)]
     eval env (App (Var "f") Typ) `shouldBe` App g Typ
-    -- eval env (App (Lam TypP x) y) `shouldBe` App (Lam TypP i1) y
-    -- eval env (App (Lam TypP x) Typ) `shouldBe` i1
-    -- eval env (App (Lam TypP x) IntT) `shouldBe` Err
-    -- eval env (App (Lam IntTP x) IntT) `shouldBe` i1
-    -- eval env (App (Lam (IntP 1) x) i1) `shouldBe` i1
-    -- eval env (App (Lam (IntP 1) x) i2) `shouldBe` Err
-    -- eval env (App (Lam (VarP "x") x) Typ) `shouldBe` Typ
-    -- eval env (App (Lam (VarP "y") x) Typ) `shouldBe` i1
-    -- eval env (App (Lam (CtrP "A") x) (Ctr "A")) `shouldBe` i1
-    -- eval env (App (Lam (CtrP "A") x) (Ctr "B")) `shouldBe` Err
-    -- eval env (App (Lam (TypP "T") x) (Typ "T")) `shouldBe` i1
-    -- eval env (App (Lam (TypP "T") x) (Typ "U")) `shouldBe` Err
-    -- eval env (App (Lam (AppP (CtrP "B") x') x) (App (Ctr "B") Typ)) `shouldBe` Typ
-    -- eval env (App (Lam (AppP (TypP "U") x') x) (App (Typ "U") Typ)) `shouldBe` Typ
-    -- eval env (App (Lam (FunP TypP x') x) (Fun IntT Typ)) `shouldBe` Err
-    -- eval env (App (Lam (FunP IntTP x') x) (Fun IntT Typ)) `shouldBe` Typ
-    -- eval env (App (Lam ErrP x) Typ) `shouldBe` Err
-    -- eval env (App (Lam ErrP x) Err) `shouldBe` i1
     eval env (App (Or Err Err) Typ) `shouldBe` Err
     eval env (App (Or Err f) Typ) `shouldBe` App g Typ
     eval env (App (Or f Err) Typ) `shouldBe` App g Typ
@@ -336,39 +316,12 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' (Ann (cons (Num 1.1) $ cons (Num 2.2) nil) (For [] $ vec i0 NumT)) `shouldBe` Left (TypeMismatch i2 i0)
     infer' (Ann (cons (Num 1.1) $ cons (Num 2.2) nil) (For [] $ vec i2 NumT)) `shouldBe` Right (vec i2 NumT)
 
-  -- it "☯ infer Nat" $ do
-  --   let n = Var "n"
-  --   let nat = App (Typ "Nat")
-  --   let env =
-  --         [ ("Nat", Ann (Typ "Nat") $ For ["n"] $ Fun n (or' [Ctr "Nat" "Zero", App (Ctr "Nat" "Succ") n])),
-  --           ("Zero", Ann (Ctr "Nat" "Zero") $ For [] $ nat i0),
-  --           ("Succ", Ann (Ctr "Nat" "Succ") $ For ["n"] $ Fun (nat n) (nat (add n i1)))
-  --         ]
-
-  --   let num :: Int -> Expr
-  --       num 0 = Ctr "Nat" "Zero"
-  --       num n = App (Ctr "Nat" "Succ") (num (n - 1))
-  --   let infer' = fmap fst . infer env
-  --   infer' (num 0) `shouldBe` Right (nat i0)
-  --   infer' (num 1) `shouldBe` Right (nat i1)
-  --   infer' (num 2) `shouldBe` Right (nat i2)
-
-  -- it "☯ infer Vec" $ do
-  --   let (n, a) = (Var "n", Var "a")
-  --   let vec n a = app (Typ "Vec") [n, a]
-  --   let env =
-  --         [ ("Vec", Ann (Typ "Vec") $ For ["n", "a"] $ fun [n, a] (or' [Ctr "Vec" "Nil", app (Ctr "Vec" "Cons") [IntT, Typ]])),
-  --           ("Nil", Ann (Ctr "Vec" "Nil") $ For ["a"] $ vec i0 a),
-  --           ("Cons", Ann (Ctr "Vec" "Cons") $ For ["n", "a"] $ fun [a, vec n a] (vec (add n i1) a))
-  --         ]
-
-  --   let list [] = Ctr "Vec" "Nil"
-  --       list (x : xs) = app (Ctr "Vec" "Cons") [x, list xs]
-  --   let infer' = fmap fst . infer env
-  --   infer' (list []) `shouldBe` Right (vec i0 a)
-  --   infer' (list [Int 42]) `shouldBe` Right (vec i1 IntT)
-  --   infer' (list [Int 42, Int 9]) `shouldBe` Right (vec i2 IntT)
-  --   infer' (list [Int 42, Typ]) `shouldBe` Left (TypeMismatch Typ IntT)
-
-  it "☯ TODO" $ do
-    True `shouldBe` True
+  it "☯ overload" $ do
+    let overloads =
+          [ Ann (lam ["x", "y"] $ add x y) (For [] (fun [IntT, IntT] IntT)),
+            Ann (lam ["x", "y"] $ add (int2num x) y) (For [] (fun [IntT, NumT] NumT))
+          ]
+    let env = [("+", or' overloads)]
+    eval env (app (Var "+") [Int 1, Int 2]) `shouldBe` Int 3
+    eval env (app (Var "+") [Int 1, Num 2.2]) `shouldBe` Num 3.2
+    eval env (app (Var "+") [Num 1.1, Int 2]) `shouldBe` Err
