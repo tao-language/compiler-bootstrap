@@ -195,7 +195,7 @@ expression prec = do
       P.infixR 2 (\a b -> Ann a (For [] b)) (token $ P.text ":"),
       P.infixL 3 Eq (token $ P.text "=="),
       P.infixL 4 Lt (token $ P.text "<"),
-      P.infixR 5 (App . App Fun) (token $ P.text "->"),
+      P.infixR 5 Fun (token $ P.text "->"),
       P.infixL 6 Add (token $ P.text "+"),
       P.infixL 6 Sub (token $ P.text "-"),
       P.infixL 7 Mul (token $ P.text "*"),

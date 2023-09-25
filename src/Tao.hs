@@ -6,7 +6,6 @@ import qualified Parser as P
 
 data Expr
   = Typ
-  | Fun
   | IntT
   | NumT
   | Int !Int
@@ -14,6 +13,7 @@ data Expr
   | Tag !String
   | Var !String
   | Lam !Pattern !Expr
+  | Fun !Expr !Expr
   | App !Expr !Expr
   | Ann !Expr !Type
   | Or !Expr !Expr
@@ -52,7 +52,6 @@ data Expr
 data Pattern
   = PAny
   | PTyp
-  | PFun
   | PIntT
   | PNumT
   | PInt !Int
@@ -60,6 +59,7 @@ data Pattern
   | PIfEq !Expr
   | PVar !String
   | PApp !Pattern !Pattern
+  | PFun !Pattern !Pattern
   deriving (Eq, Show)
 
 data Type
@@ -75,7 +75,7 @@ data CompileError
 
 -- Syntax sugar
 fun :: [Expr] -> Expr -> Expr
-fun bs b = foldr (App . App Fun) b bs
+fun bs b = foldr Fun b bs
 
 lam :: [Pattern] -> Expr -> Expr
 lam ps b = foldr Lam b ps
@@ -117,13 +117,13 @@ infer env a = case C.infer env a of
 toCore :: Expr -> C.Expr
 toCore Err = C.Err
 toCore Typ = C.Typ
-toCore Fun = C.Fun
 toCore IntT = C.IntT
 toCore NumT = C.NumT
 toCore (Int i) = C.Int i
 toCore (Num n) = C.Num n
 toCore (Tag k) = C.Tag k
 toCore (Var x) = C.Var x
+toCore (Fun a b) = C.Fun (toCore a) (toCore b)
 toCore (App a b) = C.App (toCore a) (toCore b)
 toCore (Ann a (For xs t)) = C.Ann (toCore a) (C.For xs (toCore t))
 toCore (Or a b) = C.Or (toCore a) (toCore b)
@@ -145,7 +145,6 @@ toCore (Lam p b) = case p of
     let x = C.newName (C.freeVars b') "_"
     C.Lam x b'
   PTyp -> toCore (Lam (PIfEq Typ) b)
-  PFun -> toCore (Lam (PIfEq Fun) b)
   PIntT -> toCore (Lam (PIfEq IntT) b)
   PNumT -> toCore (Lam (PIfEq NumT) b)
   PInt i -> toCore (Lam (PIfEq (Int i)) b)
@@ -184,7 +183,6 @@ toCoreRec ((x, a) : fields) = (x, toCore a) : toCoreRec fields
 toCoreDef :: Definition -> C.Env
 toCoreDef (_, PAny, _) = []
 toCoreDef (_, PTyp, _) = []
-toCoreDef (_, PFun, _) = []
 toCoreDef (_, PIntT, _) = []
 toCoreDef (_, PNumT, _) = []
 toCoreDef (_, PInt _, _) = []

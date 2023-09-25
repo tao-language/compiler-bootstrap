@@ -16,8 +16,8 @@ run = describe "--==☯ Tao ☯==--" $ do
 
   it "☯ fun" $ do
     fun [] x `shouldBe` x
-    fun [x] y `shouldBe` App (App Fun x) y
-    fun [x, y] z `shouldBe` App (App Fun x) (App (App Fun y) z)
+    fun [x] y `shouldBe` Fun x y
+    fun [x, y] z `shouldBe` Fun x (Fun y z)
 
   it "☯ lam" $ do
     lam [] x `shouldBe` x
@@ -41,13 +41,13 @@ run = describe "--==☯ Tao ☯==--" $ do
   it "☯ toCore basic" $ do
     toCore Err `shouldBe` C.Err
     toCore Typ `shouldBe` C.Typ
-    toCore Fun `shouldBe` C.Fun
     toCore IntT `shouldBe` C.IntT
     toCore NumT `shouldBe` C.NumT
     toCore (Int 1) `shouldBe` C.Int 1
     toCore (Num 1.1) `shouldBe` C.Num 1.1
     toCore (Tag "A") `shouldBe` C.Tag "A"
     toCore (Var "x") `shouldBe` C.Var "x"
+    toCore (Fun x y) `shouldBe` C.Fun x' y'
     toCore (App x y) `shouldBe` C.App x' y'
     toCore (Ann x (For ["x", "y"] z)) `shouldBe` C.Ann x' (C.For ["x", "y"] z')
     toCore (Or x y) `shouldBe` C.Or x' y'
@@ -68,7 +68,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     toCore (Lam PAny (Var "_")) `shouldBe` C.Lam "_1" (C.Var "_")
     toCore (Lam PAny (Lam PAny y)) `shouldBe` C.Lam "_" (C.Lam "_" y')
     toCore (Lam PTyp y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") C.Typ) y')
-    toCore (Lam PFun y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") C.Fun) y')
+    -- toCore (Lam PFun y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") C.Fun) y')
     toCore (Lam PIntT y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") C.IntT) y')
     toCore (Lam PNumT y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") C.NumT) y')
     toCore (Lam (PInt 0) y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") (C.Int 0)) y')
