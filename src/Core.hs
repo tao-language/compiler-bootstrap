@@ -19,17 +19,17 @@ data Expr
   | Tag !String
   | Var !String
   | Lam !String !Expr
+  | Fix !String !Expr
   | Fun !Expr !Expr
-  | App !Expr !Expr
-  | Ann !Expr !Type
   | Or !Expr !Expr
   | If !Expr !Expr
+  | App !Expr !Expr
   | Fst !Expr
   | Snd !Expr
-  | Fix !String !Expr
-  | Rec ![(String, Expr)]
   | Op1 !UnaryOp !Expr
   | Op2 !BinaryOp !Expr !Expr
+  | Rec ![(String, Expr)]
+  | Ann !Expr !Type
   | Err
   deriving (Eq)
 
@@ -168,6 +168,9 @@ gt a b = Op2 Lt b a
 int2num :: Expr -> Expr
 int2num = Op1 Int2Num
 
+ann :: Expr -> Expr -> Expr
+ann a t = Ann a (For [] t)
+
 let' :: [(String, Expr)] -> Expr -> Expr
 let' [] b = b
 let' ((x, a) : defs) b = App (Lam x (let' defs b)) a
@@ -281,21 +284,23 @@ eval env (Ann a (For xs t)) = case (eval env a, eval (pushVars xs env) t) of
   (Int i, IntT) -> Int i
   (Num n, NumT) -> Num n
   (Tag k, Tag k') | k == k' -> Tag k
-  (Tag _, Tag _) -> Err
+  (Tag k, Ann (Tag k') ty) | k == k' -> Ann (Tag k) ty
+  (Tag _, Ann (Tag _) _) -> Err
   (Tag k, t) -> Ann (Tag k) (For xs t)
   (Var x, t) -> Ann (Var x) (For xs t)
-  (Lam x b, Fun t1 t2) -> Lam x (If (Ann (Var x) (For xs t1)) (eval [] $ Ann b (For xs t2)))
+  (Lam x b, Fun t1 t2) -> Ann (Lam x b) (For xs (Fun t1 t2))
+  -- (Fix x a, t) -> eval ((x, Var x) : env) (Ann a (For xs t))
+  -- Fun
+  -- (Or a b, t) -> eval [] (Or (Ann a (For xs t)) (Ann b (For xs t)))
+  -- (If a b, t) -> If a (eval [] $ Ann b (For xs t))
   (App a b, App t1 t2) -> eval [] (App (Ann a (For xs t1)) (Ann b (For xs t2)))
   (App a b, t) -> Ann (App a b) (For xs t)
-  (Ann a ty, t) -> Ann (Ann a ty) (For xs t)
-  (Or a b, t) -> eval [] (Or (Ann a (For xs t)) (Ann b (For xs t)))
-  (If a b, t) -> If a (eval [] $ Ann b (For xs t))
   (Fst a, t) -> error "TODO: eval Ann Fst"
   (Snd a, t) -> error "TODO: eval Ann Snd"
-  (Fix x a, t) -> eval ((x, Var x) : env) (Ann a (For xs t))
-  (Rec kvs, Rec kvsT) -> error "TODO: eval Ann Rec"
   (Op1 op a, _) -> Ann (Op1 op a) (For xs t)
   (Op2 op a b, _) -> Ann (Op2 op a b) (For xs t)
+  (Rec kvs, Rec kvsT) -> error "TODO: eval Ann Rec"
+  (Ann a ty, t) -> eval [] (If (Ann a ty) (Ann a (For xs t)))
   (_, _) -> Err
 eval env (Or a b) = case (eval env a, eval env b) of
   (Err, b) -> b
