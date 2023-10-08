@@ -69,7 +69,7 @@ data Type
 type Definition = ([(String, Type)], Pattern, Expr)
 
 data CompileError
-  = TypeError !C.Error
+  = TypeError ![C.Error]
   | SyntaxError !P.SyntaxError
   deriving (Eq, Show)
 
