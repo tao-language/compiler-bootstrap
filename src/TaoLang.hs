@@ -157,7 +157,7 @@ expressionToken =
   P.oneOf
     [ token $ Int <$> P.integer,
       token $ Num <$> P.number,
-      keyword Typ "Type",
+      keyword Knd "Type",
       keyword IntT "Int",
       keyword NumT "Num",
       Var <$> identifier P.lowercase,

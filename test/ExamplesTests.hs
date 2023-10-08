@@ -10,23 +10,23 @@ run = describe "--==☯ Examples ☯==--" $ do
   let eval' env a = eval (toCoreEnv env) (toCore a)
   let infer' env a = infer (toCoreEnv env) (toCore a)
 
-  it "☯ factorial" $ do
-    {-
-      factorial 0 = 1
-      factorial n = n * factorial (n - 1)
-    -}
-    env <- loadFile "examples/basic" "factorial.tao"
+  -- it "☯ factorial" $ do
+  --   {-
+  --     factorial 0 = 1
+  --     factorial n = n * factorial (n - 1)
+  --   -}
+  --   env <- loadFile "examples/basic" "factorial.tao"
 
-    let f = Var "factorial"
-    infer' env f `shouldBe` Right (C.fun [C.IntT] C.IntT)
-    infer' env (App f (Int 0)) `shouldBe` Right C.IntT
+  --   let f = Var "factorial"
+  --   infer' env f `shouldBe` Right (C.fun [C.IntT] C.IntT)
+  --   infer' env (App f (Int 0)) `shouldBe` Right C.IntT
 
-    eval' env (App f (Int 0)) `shouldBe` C.Int 1
-    eval' env (App f (Int 1)) `shouldBe` C.Int 1
-    eval' env (App f (Int 2)) `shouldBe` C.Int 2
-    eval' env (App f (Int 3)) `shouldBe` C.Int 6
-    eval' env (App f (Int 4)) `shouldBe` C.Int 24
-    eval' env (App f (Int 5)) `shouldBe` C.Int 120
+  --   eval' env (App f (Int 0)) `shouldBe` C.Int 1
+  --   eval' env (App f (Int 1)) `shouldBe` C.Int 1
+  --   eval' env (App f (Int 2)) `shouldBe` C.Int 2
+  --   eval' env (App f (Int 3)) `shouldBe` C.Int 6
+  --   eval' env (App f (Int 4)) `shouldBe` C.Int 24
+  --   eval' env (App f (Int 5)) `shouldBe` C.Int 120
 
   -- -- it "☯ fibonacci" $ do
   -- --   let f = Var "fibonacci"

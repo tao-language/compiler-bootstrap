@@ -98,7 +98,7 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ expression" $ do
     let p = parseAll (expression 0)
-    p "Type" `shouldBe` Right Typ
+    p "Type" `shouldBe` Right Knd
     p "Int" `shouldBe` Right IntT
     p "Num" `shouldBe` Right NumT
     p "42" `shouldBe` Right (Int 42)

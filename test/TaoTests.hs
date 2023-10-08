@@ -39,8 +39,8 @@ run = describe "--==☯ Tao ☯==--" $ do
   --   True `shouldBe` True
 
   it "☯ toCore basic" $ do
-    toCore Err `shouldBe` C.Err
-    toCore Typ `shouldBe` C.Typ
+    toCore Err `shouldBe` C.Err []
+    toCore Knd `shouldBe` C.Knd
     toCore IntT `shouldBe` C.IntT
     toCore NumT `shouldBe` C.NumT
     toCore (Int 1) `shouldBe` C.Int 1
@@ -54,7 +54,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     toCore (If x y) `shouldBe` C.If x' y'
     toCore (Rec []) `shouldBe` C.Rec []
     toCore (Rec [("a", x), ("b", y)]) `shouldBe` C.Rec [("a", x'), ("b", y')]
-    toCore (Add x y) `shouldBe` C.add x' y'
+    toCore (Add x y) `shouldBe` C.addI x' y'
     toCore (Sub x y) `shouldBe` C.sub x' y'
     toCore (Mul x y) `shouldBe` C.mul x' y'
     toCore (Pow x y) `shouldBe` C.pow x' y'
@@ -67,7 +67,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     toCore (Lam PAny y) `shouldBe` C.Lam "_" y'
     toCore (Lam PAny (Var "_")) `shouldBe` C.Lam "_1" (C.Var "_")
     toCore (Lam PAny (Lam PAny y)) `shouldBe` C.Lam "_" (C.Lam "_" y')
-    toCore (Lam PTyp y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") C.Typ) y')
+    toCore (Lam PTyp y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") C.Knd) y')
     -- toCore (Lam PFun y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") C.Fun) y')
     toCore (Lam PIntT y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") C.IntT) y')
     toCore (Lam PNumT y) `shouldBe` C.Lam "$1" (C.If (C.eq (C.Var "$1") C.NumT) y')
@@ -76,7 +76,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     toCore (Lam (PApp _x _y) z) `shouldBe` C.Lam "$1" (C.let' [("x", C.Fst (C.Var "$1")), ("y", C.Snd (C.Var "$1"))] z')
 
   it "☯ toCore syntax sugar" $ do
-    toCore (Match []) `shouldBe` C.Err
+    toCore (Match []) `shouldBe` C.Err []
     -- toCore (Match [([_x], x)]) `shouldBe` C.Lam "x" x'
     -- toCore (Match [([_x, _y], x)]) `shouldBe` C.lam [_x', _y'] x'
     -- toCore (Match [([_x], x), ([_y], y)]) `shouldBe` C.Or (C.Lam _x' x') (C.Lam _y' y')

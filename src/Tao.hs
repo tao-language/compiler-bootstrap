@@ -5,7 +5,7 @@ import Data.Bifunctor (Bifunctor (second))
 import qualified Parser as P
 
 data Expr
-  = Typ
+  = Knd
   | IntT
   | NumT
   | Int !Int
@@ -69,7 +69,7 @@ data Type
 type Definition = ([(String, Type)], Pattern, Expr)
 
 data CompileError
-  = TypeError !C.TypeError
+  = TypeError !C.Error
   | SyntaxError !P.SyntaxError
   deriving (Eq, Show)
 
@@ -115,8 +115,8 @@ infer env a = case C.infer env a of
 
 -- Sugar / desugar
 toCore :: Expr -> C.Expr
-toCore Err = C.Err
-toCore Typ = C.Typ
+toCore Err = C.Err []
+toCore Knd = C.Knd
 toCore IntT = C.IntT
 toCore NumT = C.NumT
 toCore (Int i) = C.Int i
@@ -131,7 +131,7 @@ toCore (If a b) = C.If (toCore a) (toCore b)
 toCore (Rec fields) = C.Rec (toCoreRec fields)
 toCore (Fst a) = C.Fst (toCore a)
 toCore (Snd a) = C.Snd (toCore a)
-toCore (Add a b) = C.add (toCore a) (toCore b)
+toCore (Add a b) = C.addI (toCore a) (toCore b)
 toCore (Sub a b) = C.sub (toCore a) (toCore b)
 toCore (Mul a b) = C.mul (toCore a) (toCore b)
 toCore (Pow a b) = C.pow (toCore a) (toCore b)
@@ -144,7 +144,7 @@ toCore (Lam p b) = case p of
     let b' = toCore b
     let x = C.newName (C.freeVars b') "_"
     C.Lam x b'
-  PTyp -> toCore (Lam (PIfEq Typ) b)
+  PTyp -> toCore (Lam (PIfEq Knd) b)
   PIntT -> toCore (Lam (PIfEq IntT) b)
   PNumT -> toCore (Lam (PIfEq NumT) b)
   PInt i -> toCore (Lam (PIfEq (Int i)) b)
@@ -197,14 +197,13 @@ toCoreEnv :: [Definition] -> C.Env
 toCoreEnv = concatMap toCoreDef
 
 fromCore :: C.Expr -> Expr
-fromCore C.Err = Err
-fromCore C.Typ = Typ
+fromCore C.Knd = Knd
 fromCore C.IntT = IntT
 fromCore C.NumT = NumT
 fromCore (C.Int i) = Int i
 fromCore (C.Num n) = Num n
 -- fromCore (C.Ctr k) = Ctr k
--- fromCore (C.Typ t ks) = Typ t
+-- fromCore (C.Knd t ks) = Knd t
 fromCore (C.Var x) = Var x
 -- fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
 fromCore (C.Lam x b) = Lam (PVar x) (fromCore b)
@@ -219,6 +218,7 @@ fromCore (C.Fix _ a) = fromCore a
 -- fromCore (C.Op2 C.Mul a b) = Mul (fromCore a) (fromCore b)
 -- fromCore (C.Op2 C.Eq a b) = Eq (fromCore a) (fromCore b)
 -- fromCore (C.Op1 C.Int2Num a) = Int2Num (fromCore a)
+fromCore (C.Err stack) = Err
 fromCore a = error ("TODO fromCore: " ++ show a)
 
 fromCoreDef :: (String, C.Expr) -> Definition
