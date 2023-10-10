@@ -1,6 +1,5 @@
 module PrettyPrintTests where
 
-import Debug.Trace
 import PrettyPrint
 import Test.Hspec
 
@@ -26,17 +25,18 @@ run = describe "--==☯ Pretty print ☯==--" $ do
                 ]
             ]
 
-    let pretty :: Tree -> Doc
-        pretty (Node s []) = [Text s]
-        pretty (Node s ts) =
+    let layout :: Tree -> Doc
+        layout (Node s []) = [Text s]
+        layout (Node s ts) =
           [ Text s,
             Text " [",
-            Indent "  " (SoftBreak "" : join [Text ",", SoftBreak " "] (map pretty ts)),
-            SoftBreak "",
+            group
+              [ Indent "  " (break' : join [Text ",", space] items),
+                trailing [Text ","]
+              ],
             Text "]"
           ]
+          where
+            items = map layout ts
 
-    let w = 15
-    Debug.Trace.traceM ('\n' : render w 0 "" (pretty tree))
-    render w 0 "" (pretty tree) `shouldBe` ""
-    True `shouldBe` True
+    pretty 18 (layout tree) `shouldBe` "aaa [\n  bbbbb [ccc, dd],\n  eee,\n  ffff [\n    gg, hhh, ii,\n  ],\n]"
