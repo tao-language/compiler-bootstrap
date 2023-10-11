@@ -2,15 +2,15 @@ module TaoLang where
 
 import Control.Monad (void)
 import Data.List (intercalate)
+import Error
 import Flow ((|>))
 import Parser (Parser)
 import qualified Parser as P
-import System.Directory
-import System.FilePath ((</>))
+import System.Exit
 import Tao
 
 {-- TODO:
-* Syntax sugar (https://en.wikibooks.org/wiki/Haskell/Syntactic_sugar)
+\* Syntax sugar (https://en.wikibooks.org/wiki/Haskell/Syntactic_sugar)
   - Do notation
   - Where definitions
   - Case and Match
@@ -33,7 +33,7 @@ import Tao
   - Unnamed Union types
   - Unnamed Record types
 
-* Documentation
+\* Documentation
   - Markdown description
   - Arguments
   - Return
@@ -41,28 +41,22 @@ import Tao
   - Only documented functions/types are public
 --}
 
-loadFile :: FilePath -> FilePath -> IO [Definition]
-loadFile moduleName fileName = do
-  src <- readFile (moduleName </> fileName)
-  case TaoLang.parse (P.zeroOrMore definition) src of
-    Right ctx -> return ctx
-    Left err -> fail ("❌ " ++ show err)
+loadFile :: String -> IO [Definition]
+loadFile filename = do
+  src <- readFile filename
+  case parse filename (P.zeroOrMore definition) src of
+    Right (ctx, P.State {P.source = ""}) -> return ctx
+    Right (ctx, state) -> do
+      let (P.Parser p) = definition
+      case p state of
+        Right (ctx, state) -> error "unknown error"
+        Left err -> System.Exit.die (show err)
+    Left err -> System.Exit.die (show err)
 
--- -- loadModule :: FilePath -> IO Env
--- -- loadModule moduleName = do
--- --   files <- listDirectory moduleName
--- --   envs <- mapM (loadFile moduleName) (sort files)
--- --   return (concat envs)
-
-parse :: Parser a -> String -> Either CompileError a
-parse parser src = case P.parse parser src of
-  Right x -> Right x
-  Left err -> Left (SyntaxError err)
-
-parseSome :: Parser a -> String -> Either CompileError (a, P.State)
-parseSome parser src = case P.parseSome parser src of
+parse :: String -> Parser a -> String -> Either Error (a, P.State)
+parse name parser src = case P.parse name parser src of
   Right (x, state) -> Right (x, state)
-  Left err -> Left (SyntaxError err)
+  Left err -> error ("TODO: parse error: " ++ show err) -- Left (SyntaxError err)
 
 -- Parsers
 token :: Parser a -> Parser a
@@ -130,36 +124,29 @@ comments = do
   P.succeed (intercalate "\n" texts)
 
 -- Patterns
-patternToken :: Parser Pattern
-patternToken = do
+patternAtom :: Parser Pattern
+patternAtom = do
   P.oneOf
     [ keyword PAny "_",
       PInt <$> token P.integer,
       PVar <$> identifier P.lowercase,
-      PTag <$> identifier P.uppercase,
+      -- PTag <$> identifier P.uppercase,
       do
         _ <- token $ P.char '('
-        p <- pattern' 0
+        p <- pattern'
         _ <- token $ P.char ')'
         P.succeed p
     ]
 
-pattern' :: Int -> Parser Pattern
-pattern' prec = do
-  P.withOperators
-    [P.constant patternToken]
-    [P.infixL 6 PApp (P.succeed ())]
-    prec
+pattern' :: Parser Pattern
+pattern' = patternAtom -- TODO
 
 -- Expressions
-expressionToken :: Parser Expr
-expressionToken =
+expressionAtom :: Parser Expression
+expressionAtom =
   P.oneOf
     [ token $ Int <$> P.integer,
       token $ Num <$> P.number,
-      keyword Knd "Type",
-      keyword IntT "Int",
-      keyword NumT "Num",
       Var <$> identifier P.lowercase,
       Tag <$> identifier P.uppercase,
       do
@@ -169,26 +156,26 @@ expressionToken =
         P.succeed a
     ]
 
-expression :: Int -> Parser Expr
+expression :: Int -> Parser Expression
 expression prec = do
-  let matchBranch :: Int -> Parser ([Pattern], Expr)
+  let matchBranch :: Int -> Parser ([Pattern], Expression)
       matchBranch prec = do
         _ <- token $ P.char '|'
-        p <- patternToken
+        p <- patternAtom
         (ps, b) <- branch prec
         P.succeed (p : ps, b)
 
-  let match' :: Int -> Parser Expr
-      match' prec = do
+  let match :: Int -> Parser Expression
+      match prec = do
         _ <- token $ P.char '\\'
         br <- branch prec
         brs <- P.zeroOrMore (matchBranch prec)
-        P.succeed (match (br : brs))
+        P.succeed (Match (br : brs))
 
   P.withOperators
-    [ P.constant (match' 2),
+    [ P.constant (match 2),
       P.prefixOp 0 Let (P.oneOrMore definition),
-      P.constant expressionToken
+      P.constant expressionAtom
     ]
     [ P.infixR 1 Or (token $ P.text "|"),
       P.infixR 1 If (token $ P.text "?"),
@@ -204,13 +191,6 @@ expression prec = do
     ]
     prec
 
-branch :: Int -> Parser ([Pattern], Expr)
-branch prec = do
-  ps <- P.zeroOrMore patternToken
-  _ <- token $ P.char '='
-  b <- expression prec
-  P.succeed (ps, b)
-
 -- Definitions
 definition :: Parser Definition
 definition =
@@ -220,6 +200,65 @@ definition =
       typedDef,
       unpackDef
     ]
+
+untypedDef :: Parser Definition
+untypedDef = do
+  x <- identifier P.lowercase
+  a <- branches 0 x
+  P.succeed
+    ( Def
+        { docs = Nothing,
+          type' = Nothing,
+          name = x,
+          value = a
+        }
+    )
+
+typedDef :: Parser Definition
+typedDef = do
+  (x, ty) <- typeAnnotation
+  _ <- newLine
+  _ <- keyword () x
+  a <- branches 0 x
+  P.succeed
+    ( Def
+        { docs = Nothing,
+          type' = Just ty,
+          name = x,
+          value = a
+        }
+    )
+
+typedVarDef :: Parser Definition
+typedVarDef = do
+  (x, ty) <- typeAnnotation
+  _ <- token $ P.char '='
+  a <- expression 0
+  _ <- newLine
+  P.succeed
+    ( Def
+        { docs = Nothing,
+          type' = Just ty,
+          name = x,
+          value = a
+        }
+    )
+
+unpackDef :: Parser Definition
+unpackDef = do
+  types <- P.zeroOrMore (do ann <- typeAnnotation; _ <- newLine; P.succeed ann)
+  p <- pattern'
+  _ <- token $ P.char '='
+  a <- expression 0
+  _ <- newLine
+  P.succeed
+    ( Unpack
+        { docs = Nothing,
+          types = types,
+          pattern = p,
+          value = a
+        }
+    )
 
 typeAnnotation :: Parser (String, Type)
 typeAnnotation = do
@@ -238,86 +277,23 @@ typeAnnotation = do
   t <- expression 0
   P.succeed (x, For xs t)
 
-rule :: String -> Parser ([Pattern], Expr)
-rule x = do
+branch :: Int -> Parser ([Pattern], Expression)
+branch prec = do
+  ps <- P.zeroOrMore patternAtom
+  _ <- token $ P.char '='
+  b <- expression prec
+  P.succeed (ps, b)
+
+branches :: Int -> String -> Parser Expression
+branches prec x = do
+  br <- branch prec
+  _ <- newLine
+  brs <- P.zeroOrMore (rule prec x)
+  P.succeed (Match (br : brs))
+
+rule :: Int -> String -> Parser ([Pattern], Expression)
+rule prec x = do
   _ <- keyword () x
-  br <- branch 0
+  br <- branch prec
   _ <- newLine
   P.succeed br
-
-untypedDef :: Parser Definition
-untypedDef = do
-  x <- identifier P.lowercase
-  b <- branch 0
-  _ <- newLine
-  bs <- P.zeroOrMore (rule x)
-  P.succeed ([], PVar x, match (b : bs))
-
-typedDef :: Parser Definition
-typedDef = do
-  (x, ty) <- typeAnnotation
-  _ <- newLine
-  _ <- keyword () x
-  b <- branch 0
-  _ <- newLine
-  bs <- P.zeroOrMore (rule x)
-  P.succeed ([(x, ty)], PVar x, match (b : bs))
-
-typedVarDef :: Parser Definition
-typedVarDef = do
-  (x, ty) <- typeAnnotation
-  _ <- token $ P.char '='
-  a <- expression 0
-  _ <- newLine
-  P.succeed ([(x, ty)], PVar x, a)
-
-unpackDef :: Parser Definition
-unpackDef = do
-  types <- P.zeroOrMore (do ann <- typeAnnotation; _ <- newLine; P.succeed ann)
-  p <- pattern' 0
-  _ <- token $ P.char '='
-  a <- expression 0
-  _ <- newLine
-  P.succeed (types, p, a)
-
--- unionTypeDefinition :: Parser ContextDefinition
--- unionTypeDefinition = do
---   let argument :: Parser (String, Type)
---       argument =
---         oneOf
---           [ do
---               _ <- token $ char '('
---               arg <- typeAnnotation
---               _ <- token $ char ')'
---               succeed arg,
---             do
---               x <- identifier lowercase
---               succeed (x, Var nameType)
---           ]
-
---   let alternative :: Type -> Parser (String, Type)
---       alternative defaultType = do
---         name <- identifier uppercase
---         args <- zeroOrMore expressionToken
---         oneOf
---           [ do
---               _ <- token $ char ':'
---               t <- expression 1
---               succeed (name, fun args t),
---             succeed (name, fun args defaultType)
---           ]
-
---   _ <- keyword () "type"
---   name <- identifier uppercase
---   args <- zeroOrMore argument
---   _ <- token $ char '='
---   let defaultType = app (Var name) (map (Var . fst) args)
---   oneOf
---     [ do
---         alt <- alternative defaultType
---         alts <- zeroOrMore (do _ <- token $ char '|'; alternative defaultType)
---         succeed (UnionType name args (alt : alts)),
---       do
---         _ <- keyword () "_"
---         succeed (UnionType name args [])
---     ]

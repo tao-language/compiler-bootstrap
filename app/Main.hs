@@ -1,20 +1,22 @@
 import qualified System.Environment
-
--- import Tao (app, let')
--- import TaoLang (eval, loadExpr, loadModule)
+import TaoLang (loadFile)
 
 main :: IO ()
 main = do
-  -- cliArgs <- System.Environment.getArgs
-  -- case cliArgs of
-  --   path : f : args -> do
-  --     env <- loadModule path
-  --     f' <- loadExpr f
-  --     args' <- mapM loadExpr args
-  --     case eval env (app f' args') of
-  --       Right (result, type') -> do
-  --         print type'
-  --         print result
-  --       Left err -> fail ("❌ " ++ show err)
-  --   _ -> putStrLn "🛑 Please provide me with a directory and an expression."
-  putStrLn "TODO"
+  cliArgs <- System.Environment.getArgs
+  case cliArgs of
+    filename : args -> run filename args
+    _ -> putStrLn "🛑 Please give me a file to run."
+
+run :: String -> [String] -> IO ()
+run filename args = do
+  defs <- loadFile filename
+  -- env <- loadModule path
+  -- f' <- loadExpr f
+  -- args' <- mapM loadExpr args
+  -- case eval env (app f' args') of
+  --   Right (result, type') -> do
+  --     print type'
+  --     print result
+  --   Left err -> fail ("❌ " ++ show err)
+  putStrLn ("🔴 TODO: filename=" ++ show filename ++ " args=" ++ show args)

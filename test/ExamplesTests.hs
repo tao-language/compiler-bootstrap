@@ -7,8 +7,8 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do
-  let eval' env a = eval (toCoreEnv env) (toCore a)
-  let infer' env a = infer (toCoreEnv env) (toCore a)
+  -- let eval' env a = eval (toCoreEnv env) (toCore a)
+  -- let infer' env a = infer (toCoreEnv env) (toCore a)
 
   -- it "☯ factorial" $ do
   --   {-

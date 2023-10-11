@@ -7,23 +7,23 @@ import Test.Hspec (SpecWith, describe, it, shouldBe)
 run :: SpecWith ()
 run = describe "--==☯ Parser ☯==--" $ do
   let parse' :: Parser a -> String -> Maybe (a, String)
-      parse' parser source = case parseSome parser source of
+      parse' parser source = case parse "test" parser source of
         Right (x, State {source = remaining}) -> Just (x, remaining)
-        Left (SyntaxError _ _) -> Nothing
+        Left _ -> Nothing
 
   describe "☯ Control flow" $ do
     it "☯ succeed" $ do
       parse' (succeed True) "abc" `shouldBe` Just (True, "abc")
 
-    it "☯ expected" $ do
-      parse' (expected "something" :: Parser ()) "abc" `shouldBe` Nothing
+    it "☯ fail'" $ do
+      parse' (fail' :: Parser ()) "abc" `shouldBe` Nothing
 
     it "☯ fmap" $ do
       parse' (fmap not (succeed True)) "abc" `shouldBe` Just (False, "abc")
 
     it "☯ orElse" $ do
       parse' (succeed True |> orElse (succeed False)) "abc" `shouldBe` Just (True, "abc")
-      parse' (expected "something" |> orElse (succeed False)) "abc" `shouldBe` Just (False, "abc")
+      parse' (fail' |> orElse (succeed False)) "abc" `shouldBe` Just (False, "abc")
 
     it "☯ oneOf" $ do
       parse' (oneOf [] :: Parser ()) "abc" `shouldBe` Nothing
@@ -273,7 +273,7 @@ run = describe "--==☯ Parser ☯==--" $ do
       let calculator =
             withOperators
               [ constant number,
-                prefix 4 (\x -> - x) (char '-'),
+                prefix 4 (\x -> -x) (char '-'),
                 inbetween (char '(') (char ')')
               ]
               [ infixL 1 (+) (char '+'),
