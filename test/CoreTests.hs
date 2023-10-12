@@ -10,13 +10,14 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let (a, b, c) = (Var "a", Var "b", Var "c")
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (f, g, h) = (Var "f", Var "g", Var "h")
+  let (_x, _y, _z) = (PVar "x", PVar "y", PVar "z")
   let err = Err []
 
   let factorial f = Fix f (or' branches)
         where
           branches =
-            [ Lam "x" (If (eq x i0) i1),
-              Lam "x" (x `mul` App (Var f) (x `sub` i1))
+            [ Lam _x (If (eq x i0) i1),
+              Lam _x (x `mul` App (Var f) (x `sub` i1))
             ]
 
   it "☯ show" $ do
@@ -107,11 +108,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     show (Ann (Or x y) tz) `shouldBe` "(x | y) : z"
     show (Ann x (For [] (Or y z))) `shouldBe` "x : (y | z)"
 
-    show (Lam "x" (Ann y tz)) `shouldBe` "\\x. (y : z)"
-    show (Lam "x" (eq y z)) `shouldBe` "\\x. y == z"
-    show (Ann (Lam "x" y) tz) `shouldBe` "(\\x. y) : z"
-    show (Or (Lam "x" y) z) `shouldBe` "\\x. y | z"
-    show (Or x (Lam "y" z)) `shouldBe` "x | \\y. z"
+    show (Lam _x (Ann y tz)) `shouldBe` "\\x. (y : z)"
+    show (Lam _x (eq y z)) `shouldBe` "\\x. y == z"
+    show (Ann (Lam _x y) tz) `shouldBe` "(\\x. y) : z"
+    show (Or (Lam _x y) z) `shouldBe` "\\x. y | z"
+    show (Or x (Lam _y z)) `shouldBe` "x | \\y. z"
 
     show (Fix "x" (Ann y tz)) `shouldBe` "@fix x. (y : z)"
     show (Fix "x" (eq y z)) `shouldBe` "@fix x. y == z"
@@ -124,10 +125,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     show (Or x (Or y z)) `shouldBe` "x | y | z"
     show (Or (Or x y) z) `shouldBe` "(x | y) | z"
 
-    show (If x (Ann y tz)) `shouldBe` "x ? y : z"
-    show (If (Ann x ty) z) `shouldBe` "x : y ? z"
-    show (If x (If y z)) `shouldBe` "x ? y ? z"
-    show (If (If x y) z) `shouldBe` "(x ? y) ? z"
+  -- show (If x (Ann y tz)) `shouldBe` "x ? y : z"
+  -- show (If (Ann x ty) z) `shouldBe` "x : y ? z"
+  -- show (If x (If y z)) `shouldBe` "x ? y ? z"
+  -- show (If (If x y) z) `shouldBe` "(x ? y) ? z"
 
   it "☯ syntax sugar" $ do
     let' [] x `shouldBe` x
@@ -162,8 +163,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ eval Lam" $ do
     let env = [("x", i1)]
-    eval env (Lam "x" x) `shouldBe` Lam "x" x
-    eval env (Lam "y" x) `shouldBe` Lam "y" i1
+    eval env (Lam _x x) `shouldBe` Lam _x x
+    eval env (Lam _y x) `shouldBe` Lam _y i1
 
   it "☯ eval Fun" $ do
     let env = [("x", i1), ("y", i2)]
@@ -300,7 +301,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
             ("y", Int 1),
             ("a", a)
           ]
-    infer env (Lam "x" x) `shouldBe` Right (fun [xT] xT, [("xT", xT), ("x", Ann x $ For [] xT)])
+    infer env (Lam _x x) `shouldBe` Right (fun [xT] xT, [("xT", xT), ("x", Ann x $ For [] xT)])
 
   it "☯ infer Fun" $ do
     let env = [("a", Int 1), ("b", Num 1.1)]
@@ -314,7 +315,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
             ("f", Ann (Var "f") (For [] $ fun [IntT] Knd))
           ]
     infer env (App (Var "f") x) `shouldBe` Right (Knd, [])
-    infer env (App (Lam "y" y) x) `shouldBe` Right (IntT, [("yT", IntT), ("y", Ann y (For [] IntT))])
+    infer env (App (Lam _y y) x) `shouldBe` Right (IntT, [("yT", IntT), ("y", Ann y (For [] IntT))])
     infer env (App y x) `shouldBe` Right (t, [("yT", fun [IntT] t), ("y", Ann y (For [] (fun [IntT] t))), ("t", t)])
 
   it "☯ infer Or" $ do
@@ -356,7 +357,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let (nothing, nothingType) = (Tag "Nothing", For ["a"] $ maybe a)
     let (just, justType) = (App (Tag "Just"), For ["a"] $ Fun a (maybe a))
     let maybeType a = Typ "Maybe" [a] [("Nothing", nothingType), ("Just", justType)]
-    let env = [("Maybe", Lam "a" $ maybeType a)]
+    let env = [("Maybe", Lam (PVar "a") $ maybeType a)]
 
     -- unify nothing (Ann (Tag "Nothing") nothingType) `shouldBe` Right (maybe a, [("a", a)])
     -- unify nothing (ann (maybe IntT) (Ann (Tag "Nothing") nothingType)) `shouldBe` Right (maybe IntT, [])
@@ -377,7 +378,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let (nil, nilType) = (Tag "Nil", For ["a"] (vec i0 a))
     let (cons, consType) = (\x xs -> app (Tag "Cons") [x, xs], For ["n", "a"] (fun [a, vec n a] (vec (addI n i1) a)))
     let vecType n a = Typ "Vec" [n, a] [("Nil", nilType), ("Cons", consType)]
-    let env = [("Vec", lam ["n", "a"] $ vecType n a)]
+    let env = [("Vec", lam [PVar "n", PVar "a"] $ vecType n a)]
 
     let infer' = fmap fst . infer env
     infer' nil `shouldBe` Right nil
@@ -391,11 +392,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ overload" $ do
     let m = App (Tag "M")
     let overloads =
-          [ ann (lam ["x", "y"] $ addI x y) (fun [IntT, IntT] IntT),
-            ann (lam ["x", "y"] $ addN (int2num x) y) (fun [IntT, NumT] NumT),
-            ann (lam ["x", "y"] $ Tag "C") (fun [Tag "T", Tag "T"] (Tag "T")),
-            ann (lam ["x", "y"] $ Tag "Z") (fun [Tag "U", Tag "U"] (Tag "U")),
-            Ann (lam ["x", "y"] $ Tag "N") (For ["a"] $ fun [m a, m a] (m a))
+          [ ann (lam [_x, _y] $ addI x y) (fun [IntT, IntT] IntT),
+            ann (lam [_x, _y] $ addN (int2num x) y) (fun [IntT, NumT] NumT),
+            ann (lam [_x, _y] $ Tag "C") (fun [Tag "T", Tag "T"] (Tag "T")),
+            ann (lam [_x, _y] $ Tag "Z") (fun [Tag "U", Tag "U"] (Tag "U")),
+            Ann (lam [_x, _y] $ Tag "N") (For ["a"] $ fun [m a, m a] (m a))
           ]
 
     let typeU = Typ "U" [] [("X", For [] (Tag "U")), ("Y", For [] (Tag "U")), ("Z", For [] (Tag "U"))]
@@ -404,7 +405,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
           [ ("+", or' overloads),
             ("T", or' [Tag "A", Tag "B", Tag "C"]),
             ("U", typeU),
-            ("M", Lam "a" $ typeM a)
+            ("M", Lam _x $ typeM x)
           ]
 
     let eval' a = case eval env a of
