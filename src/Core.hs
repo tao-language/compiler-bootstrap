@@ -35,7 +35,6 @@ data Expr
   | Fix !String !Expr
   | Fun !Expr !Expr
   | Or !Expr !Expr
-  | If !Expr !Expr -- TODO: REMOVE
   | App !Expr !Expr
   | Rec ![(String, Expr)]
   | Typ !String ![Expr] ![(String, Type)]
@@ -82,18 +81,18 @@ type Env = [(String, Expr)]
 type Substitution = [(String, Expr)]
 
 data Error
-  = UndefinedVar !String
-  | InfiniteType !String !Expr
+  = InfiniteType !String !Expr
   | NotAFunction !Expr !Expr
-  | TypeMismatch !Expr !Expr
   | Op1Error !UnaryOp !Expr
   | Op2Error !BinaryOp !Expr !Expr
+  | PatternMatchError !Pattern !Expr
+  | TypeMismatch !Expr !Expr
+  | UndefinedVar !String
   deriving (Eq, Show)
 
 instance Show Expr where
   showsPrec p expr = case expr of
     Or a b -> infixR 1 a " | " b
-    If a b -> infixR 1 a " ? " b
     Ann a (For xs b) -> infixR 2 a (" : " ++ for xs) b
     Lam p b -> do
       let (ps, b') = asLam (Lam p b)
@@ -249,7 +248,6 @@ freeVars (Lam p a) = filter (`notElem` freeVarsP p) (freeVars a)
 freeVars (Fix x a) = delete x (freeVars a)
 freeVars (Fun a b) = freeVars a `union` freeVars b
 freeVars (Or a b) = freeVars a `union` freeVars b
-freeVars (If a b) = freeVars a `union` freeVars b
 freeVars (App a b) = freeVars a `union` freeVars b
 freeVars (Rec []) = []
 freeVars (Rec ((_, a) : kvs)) = freeVars a `union` freeVars (Rec kvs)
@@ -317,12 +315,21 @@ eval env (Lam p b) = Lam p (eval (pushVars (freeVarsP p) env) b)
 eval env (Fix x a) = Fix x (eval ((x, Var x) : env) a)
 eval env (Fun a b) = Fun (eval env a) (eval env b)
 eval env (App a b) = case (eval env a, eval env b) of
-  (Err err1, Err err2) -> Err (err1 ++ err2)
-  (Err err, _) -> Err err
-  (_, Err err) -> Err err
   (Lam p a, b) -> case (p, b) of
     (PKnd, Knd) -> a
+    (PIntT, IntT) -> a
+    (PNumT, NumT) -> a
+    (PInt i, Int i') | i == i' -> a
+    (PTag k, Tag k') | k == k' -> a
     (PVar x, b) -> eval [(x, b)] a
+    (PAnn p ty, b) -> error "TODO: eval App Lam PAnn"
+    (PFun p q, Fun b1 b2) -> app (lam [p, q] a) [b1, b2]
+    (PApp p q, App b1 b2) -> app (lam [p, q] a) [b1, b2]
+    (PRec [], Rec _) -> a
+    (PErr, Err _) -> a
+    (p, b) -> Err [PatternMatchError p b]
+  (Err err, _) -> Err err
+  (_, Err err) -> Err err
   (Ann a (For xs (Fun t1 t2)), b) -> case infer env (Ann b (For xs t1)) of
     Right (_, s) -> annotated (eval s (App a b)) (For (filter (`notElem` map fst s) xs) (eval s t2))
     Left err -> Err err
@@ -343,10 +350,6 @@ eval env (Or a b) = case (eval env a, eval env b) of
   (a, Err _) -> a
   (Or a1 a2, b) -> Or a1 (Or a2 b)
   (a, b) -> Or a b
-eval env (If a b) = case eval env a of
-  Err err -> Err err
-  a | isClosed a -> eval env b
-  a -> If a (eval env b)
 eval env (Rec kvs) = Rec (map (second (eval env)) kvs)
 eval env (Typ k args alts) = do
   let evalAlt (For xs t) = For xs (eval ((k, Tag k) : pushVars xs env) t)
@@ -378,7 +381,7 @@ evalOp2 Eq NumT NumT = NumT
 evalOp2 Eq (Int a) (Int b) | a == b = Int a
 evalOp2 Eq (Num a) (Num b) | a == b = Num a
 evalOp2 Eq (Var a) (Var b) | a == b = Var a
-evalOp2 Eq (App a1 a2) (App b1 b2) = If (eq a1 b1) (eq a2 b2)
+-- evalOp2 Eq (App a1 a2) (App b1 b2) = If (eq a1 b1) (eq a2 b2)
 evalOp2 Lt (Int a) (Int b) | a < b = Int a
 evalOp2 Lt (Num a) (Num b) | a < b = Num a
 evalOp2 op a b = Err [Op2Error op a b]
@@ -519,9 +522,6 @@ infer env (Or a b) = do
   case unify ta tb of
     Right (t, s2) -> Right (t, s2 `compose` s1)
     Left _ -> Right (Or ta tb, s1)
-infer env (If a b) = do
-  ((_, tb), s) <- infer2 env a b
-  Right (tb, s)
 infer env (App a b) = do
   ((ta, tb), s1) <- infer2 env a b
   case ta of

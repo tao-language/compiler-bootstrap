@@ -16,8 +16,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let factorial f = Fix f (or' branches)
         where
           branches =
-            [ Lam _x (If (eq x i0) i1),
-              Lam _x (x `mul` App (Var f) (x `sub` i1))
+            [ Lam (PInt 0) i1,
+              Lam (PVar "x") (x `mul` App (Var f) (x `sub` i1))
             ]
 
   it "☯ show" $ do
@@ -331,7 +331,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ infer factorial" $ do
     let env = [("f", factorial "f")]
-    infer env (Var "f") `shouldBe` Right (fun [IntT] IntT, [("xT", IntT), ("x", Ann x (For [] IntT)), ("xT1", IntT), ("fT", fun [IntT] IntT), ("f", Ann f (For [] (fun [IntT] IntT))), ("t", IntT)])
+    infer env (Var "f") `shouldBe` Right (fun [IntT] IntT, [("xT", IntT), ("x", Ann x (For [] IntT)), ("fT", fun [IntT] IntT), ("f", Ann f (For [] (fun [IntT] IntT))), ("t", IntT)])
 
   it "☯ infer Union" $ do
     let env = [("T", or' [Tag "A", Tag "B"])]
