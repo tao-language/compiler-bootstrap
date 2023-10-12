@@ -1,4 +1,10 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+
 module Tao where
+
+import Parser (Span (..))
 
 {- TODO: syntax sugar
 - Match
@@ -29,19 +35,19 @@ data Expression
   | Num !Double
   | Tag !String
   | Var !String
-  | Ann !Expression !Type
-  | Fun !Expression !Expression
-  | Match ![([Pattern], Expression)]
-  | Let ![Definition] !Expression
-  | App !Expression !Expression
-  | Or !Expression !Expression
-  | If !Expression !Expression
-  | Eq !Expression !Expression
-  | Lt !Expression !Expression
-  | Add !Expression !Expression
-  | Sub !Expression !Expression
-  | Mul !Expression !Expression
-  | Pow !Expression !Expression
+  | Ann !(Token Expression) !Type
+  | Fun !(Token Expression) !(Token Expression)
+  | Match ![([Pattern], Token Expression)]
+  | Let ![Definition] !(Token Expression)
+  | App !(Token Expression) !(Token Expression)
+  | Or !(Token Expression) !(Token Expression)
+  | If !(Token Expression) !(Token Expression)
+  | Eq !(Token Expression) !(Token Expression)
+  | Lt !(Token Expression) !(Token Expression)
+  | Add !(Token Expression) !(Token Expression)
+  | Sub !(Token Expression) !(Token Expression)
+  | Mul !(Token Expression) !(Token Expression)
+  | Pow !(Token Expression) !(Token Expression)
   deriving (Eq, Show)
 
 data Pattern
@@ -51,38 +57,48 @@ data Pattern
   deriving (Eq, Show)
 
 data Type
-  = For ![String] !Expression
+  = For ![String] !(Token Expression)
   deriving (Eq, Show)
 
 data Definition
   = Def
-      { docs :: Maybe DocString,
-        type' :: Maybe Type,
+      { type' :: Maybe Type,
         name :: String,
-        value :: Expression
+        expr :: Token Expression
       }
   | Unpack
-      { docs :: Maybe DocString,
-        types :: [(String, Type)],
+      { types :: [(String, Type)],
         pattern :: Pattern,
-        value :: Expression
+        expr :: Token Expression
       }
   deriving (Eq, Show)
 
+data Token a = Token
+  { span :: Span,
+    docs :: DocString,
+    comments :: [String],
+    commentsTrailing :: String,
+    value :: a
+  }
+  deriving (Eq, Show)
+
 data DocString = DocString
-  { description :: String,
-    args :: [(String, String)],
-    returns :: String,
-    public :: Bool
+  { public :: Bool,
+    description :: String
+  }
+  deriving (Eq, Show)
+
+data SourceFile = SourceFile
+  { imports :: [String],
+    definitions :: [Definition],
+    expressions :: [Token Expression]
   }
   deriving (Eq, Show)
 
 data Module = Module
-  { imports :: [String],
-    definitions :: [Definition],
-    expressions :: [Expression]
+  {
   }
   deriving (Eq, Show)
 
-app :: Expression -> [Expression] -> Expression
-app = foldl App
+-- app :: Token Expression -> [Token Expression] -> Token Expression
+-- app = foldl App

@@ -1,23 +1,38 @@
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 module Parser where
 
 import Control.Monad (void)
 import qualified Data.Char as Char
-import Data.List (intercalate)
+import Debug.Trace
 import Flow ((|>))
 
 newtype Parser a = Parser (State -> Either State (a, State))
 
 data State = State
+  { source :: !String,
+    name :: !String,
+    pos :: Position
+  }
+  deriving (Eq, Show)
+
+data Span = Span
   { name :: !String,
-    source :: !String,
-    row :: !Int,
+    start :: Position,
+    end :: Position
+  }
+  deriving (Eq, Show)
+
+data Position = Pos
+  { row :: !Int,
     col :: !Int
   }
   deriving (Eq, Show)
 
 instance Functor Parser where
+  fmap :: (a -> b) -> Parser a -> Parser b
   fmap f (Parser p) =
     Parser
       ( \state -> do
@@ -48,8 +63,10 @@ instance Monad Parser where
   return = pure
 
 parse :: String -> Parser a -> String -> Either State (a, State)
-parse name (Parser p) source =
-  p State {name = name, source = source, row = 1, col = 1}
+parse name (Parser p) source = do
+  let pos = Pos {row = 1, col = 1}
+  let state = State {source = source, name = name, pos = pos}
+  p state
 
 succeed :: a -> Parser a
 succeed value = Parser (\state -> Right (value, state))
@@ -74,25 +91,29 @@ oneOf [] = fail'
 oneOf (p : ps) = p |> orElse (oneOf ps)
 
 endOfFile :: Parser ()
-endOfFile = do
-  let eof :: State -> Either State ((), State)
-      eof state = case source state of
+endOfFile =
+  Parser
+    ( \state -> case source state of
         "" -> Right ((), state)
         _ -> Left state
-  Parser eof
+    )
 
 endOfLine :: Parser ()
-endOfLine = oneOf [void (char '\n'), endOfFile]
+endOfLine = oneOf [void $ char '\n', endOfFile]
 
 -- Single characters
 anyChar :: Parser Char
-anyChar = do
-  let advance :: State -> Either State (Char, State)
-      advance state = case source state of
-        '\n' : source -> Right ('\n', state {source = source, row = row state + 1, col = 1})
-        ch : source -> Right (ch, state {source = source, col = col state + 1})
+anyChar =
+  Parser
+    ( \state -> case source state of
+        '\n' : source -> do
+          let pos = Pos {row = state.pos.row + 1, col = 1}
+          Right ('\n', state {source = source, pos = pos})
+        ch : source -> do
+          let pos = state.pos {col = state.pos.col + 1}
+          Right (ch, state {source = source, pos = pos})
         "" -> Left state
-  Parser advance
+    )
 
 charIf :: (Char -> Bool) -> Parser Char
 charIf condition = do
@@ -101,7 +122,10 @@ charIf condition = do
   succeed ch
 
 space :: Parser Char
-space = charIf (`elem` " \t\r\f\v")
+space = charIf (`elem` " \t")
+
+whitespace :: Parser Char
+whitespace = charIf (`elem` " \t\n\r\f\v")
 
 letter :: Parser Char
 letter = charIf Char.isLetter
@@ -123,6 +147,9 @@ punctuation = charIf Char.isPunctuation
 
 char :: Char -> Parser Char
 char c = charIf (\ch -> Char.toLower c == Char.toLower ch)
+
+charExcept :: [Char] -> Parser Char
+charExcept notAllowed = charIf (`notElem` notAllowed)
 
 charCaseSensitive :: Char -> Parser Char
 charCaseSensitive c = charIf (== c)
@@ -203,33 +230,50 @@ foldR f final parser =
 
 -- Common
 integer :: Parser Int
-integer =
-  do
-    digits <- oneOrMore digit |> notFollowedBy (char '.')
-    succeed (read digits)
-    |> orElse fail'
+integer = do
+  digits <- oneOrMore digit |> notFollowedBy (char '.')
+  succeed (read digits)
 
 number :: Parser Double
-number =
-  do
-    int <- oneOrMore digit
-    oneOf
-      [ do
-          _ <- char '.'
-          fraction <- oneOrMore digit
-          succeed (read $ concat [int, ".", fraction]),
-        do succeed (read int)
-      ]
+number = do
+  int <- oneOrMore digit
+  oneOf
+    [ do
+        _ <- char '.'
+        fraction <- oneOrMore digit
+        succeed (read $ concat [int, ".", fraction]),
+      do succeed (read int)
+    ]
 
 text :: String -> Parser String
-text str =
-  chain (fmap char str)
-    |> orElse fail'
+text str = chain (fmap char str)
 
 textCaseSensitive :: String -> Parser String
-textCaseSensitive str =
-  chain (fmap charCaseSensitive str)
-    |> orElse fail'
+textCaseSensitive str = chain (fmap charCaseSensitive str)
+
+textUntil :: Parser end -> Parser String
+textUntil delim =
+  oneOf
+    [ do
+        _ <- delim
+        succeed "",
+      do
+        c <- anyChar
+        cs <- textUntil delim
+        succeed (c : cs)
+    ]
+
+wordChar :: Parser Char
+wordChar = oneOf [letter, digit, char '_']
+
+wordEnd :: Parser ()
+wordEnd = oneOf [succeed () |> notFollowedBy wordChar, endOfFile]
+
+word :: String -> Parser String
+word txt = do
+  x <- text txt
+  _ <- wordEnd
+  succeed x
 
 followedBy :: Parser a -> Parser b -> Parser b
 followedBy (Parser lookahead) parser = do
@@ -237,7 +281,7 @@ followedBy (Parser lookahead) parser = do
   Parser
     ( \state -> case lookahead state of
         Right _ -> Right (x, state)
-        Left err -> Left err
+        Left _ -> Left state
     )
 
 notFollowedBy :: Parser a -> Parser b -> Parser b

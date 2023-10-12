@@ -1,3 +1,5 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+
 module ParserTests where
 
 import Flow ((|>))
@@ -54,10 +56,6 @@ run = describe "--==☯ Parser ☯==--" $ do
       let p = parse' space
       p " bc" `shouldBe` Just (' ', "bc")
       p "\tbc" `shouldBe` Just ('\t', "bc")
-      -- p "\nbc" `shouldBe` Just ('\n', "bc")
-      p "\rbc" `shouldBe` Just ('\r', "bc")
-      p "\fbc" `shouldBe` Just ('\f', "bc")
-      p "\vbc" `shouldBe` Just ('\v', "bc")
       p "abc" `shouldBe` Nothing
 
     it "☯ letter" $ do
@@ -251,6 +249,17 @@ run = describe "--==☯ Parser ☯==--" $ do
     --   -- p "a\n\n b" (oneOrMore (token letter)) `shouldBe` Just "ab"
     --   -- p "a\n   \n b" (oneOrMore (token letter)) `shouldBe` Just "ab"
     --   True `shouldBe` True
+
+    it "☯ getState" $ do
+      let parser = do
+            s1 <- getState
+            x <- text "abc"
+            s2 <- getState
+            succeed (s1, x, s2)
+      let p = parse' parser
+      let s1 = State {source = "abcdef", name = "test", pos = Pos {row = 1, col = 1}}
+      let s2 = State {source = "def", name = "test", pos = Pos {row = 1, col = 4}}
+      p "abcdef" `shouldBe` Just ((s1, "abc", s2), "def")
 
     it "☯ subparser" $ do
       let p = parse' (subparser (text "--}") (zeroOrMore anyChar))

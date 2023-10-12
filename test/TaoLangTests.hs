@@ -1,6 +1,11 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+
 module TaoLangTests where
 
 import Error
+import Parser (Parser, Position (..), Span (..))
 import qualified Parser as P
 import Tao
 import TaoLang
@@ -8,24 +13,76 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Tao language ☯==--" $ do
-  -- let (a, b, c) = (Var "a", Var "b", Var "c")
-  -- let (x, y, z) = (Var "x", Var "y", Var "z")
-  -- let (_x, _y, _z) = (PVar "x", PVar "y", PVar "z")
-  -- let (i0, i1, i2) = (Int 0, Int 1, Int 2)
+  let parse' :: Parser a -> String -> Either String (a, String)
+      parse' parser src = case P.parse "test" parser src of
+        Right (x, P.State {P.source = remaining}) ->
+          Right (x, remaining)
+        Left (P.State {P.source = remaining}) ->
+          Left remaining
 
-  -- let parse' :: P.Parser a -> String -> Either String (a, String)
-  --     parse' parser src = case parse "test" parser src of
-  --       Right (x, P.State {P.source = remaining}) ->
-  --         Right (x, remaining)
-  --       -- Left (SyntaxError P.State {P.source = remaining}) ->
-  --       --   Left remaining
-  --       Left (TypeError err) -> Left (show err)
+  let parseToken :: Parser (Token a) -> String -> Either String (a, String)
+      parseToken parser src = do
+        (tok, txt) <- parse' parser src
+        Right (tok.value, txt)
 
-  -- let parseAll :: P.Parser a -> String -> Either String a
-  --     parseAll p src = case parse' p src of
-  --       Right (x, "") -> Right x
-  --       Right (_, remaining) -> Left remaining
-  --       Left remaining -> Left remaining
+  it "☯ token simple" $ do
+    let p = parse' $ token (P.text "abc")
+    let result (r1, c1) (r2, c2) =
+          Token
+            { span = P.Span {name = "test", start = P.Pos {row = r1, col = c1}, end = P.Pos {row = r2, col = c2}},
+              docs = DocString {public = False, description = ""},
+              comments = [],
+              commentsTrailing = "",
+              value = "abc"
+            }
+    p "abcdef" `shouldBe` Right (result (1, 1) (1, 4), "def")
+    p "abc   def" `shouldBe` Right (result (1, 1) (1, 4), "def")
+
+  it "☯ token comments" $ do
+    let p = parse' $ token (P.text "abc")
+    let result (r1, c1) (r2, c2) =
+          Token
+            { span = P.Span {name = "test", start = P.Pos {row = r1, col = c1}, end = P.Pos {row = r2, col = c2}},
+              docs = DocString {public = False, description = ""},
+              comments = ["A", "B"],
+              commentsTrailing = "",
+              value = "abc"
+            }
+    p "#A\n#B\nabcdef" `shouldBe` Right (result (3, 1) (3, 4), "def")
+    p "# A \n \n \n  #  B  \n  abc  def" `shouldBe` Right (result (5, 3) (5, 6), "def")
+
+  it "☯ token comments (trailing)" $ do
+    let p = parse' $ token (P.text "abc")
+    let result (r1, c1) (r2, c2) =
+          Token
+            { span = P.Span {name = "test", start = P.Pos {row = r1, col = c1}, end = P.Pos {row = r2, col = c2}},
+              docs = DocString {public = False, description = ""},
+              comments = [],
+              commentsTrailing = "comment",
+              value = "abc"
+            }
+    p "abc#comment" `shouldBe` Right (result (1, 1) (1, 4), "")
+    p "abc  #  comment  " `shouldBe` Right (result (1, 1) (1, 4), "")
+
+  it "☯ token docstrings" $ do
+    let p = parse' $ token (P.text "abc")
+    let result public docs (r1, c1) (r2, c2) =
+          Token
+            { span = P.Span {name = "test", start = P.Pos {row = r1, col = c1}, end = P.Pos {row = r2, col = c2}},
+              docs = DocString {public = public, description = docs},
+              comments = [],
+              commentsTrailing = "",
+              value = "abc"
+            }
+    p "---\n---\nabc" `shouldBe` Right (result True "" (3, 1) (3, 4), "")
+    p "---\ndocs\n---\nabc" `shouldBe` Right (result True "docs" (4, 1) (4, 4), "")
+    p "---  \n  docs  \n  ---  \nabc" `shouldBe` Right (result True "docs" (4, 1) (4, 4), "")
+    p "---  private  \nA\nB\n\nC\n  ---  \nabc" `shouldBe` Right (result False "A\nB\n\nC" (7, 1) (7, 4), "")
+
+  it "☯ patternAtom" $ do
+    let p = parseToken patternAtom
+    p "_ abc" `shouldBe` Right (PAny, "abc")
+    p "42 abc" `shouldBe` Right (PInt 42, "abc")
 
   -- it "☯ token" $ do
   --   let p = parse' (P.zeroOrMore (token P.letter))

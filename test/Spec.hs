@@ -2,9 +2,10 @@ module Main where
 
 import qualified CoreTests
 -- import qualified ExamplesTests
+
 import qualified ParserTests
 import qualified PrettyPrintTests
--- import qualified TaoLangTests
+import qualified TaoLangTests
 import qualified TaoTests
 import Test.Hspec (hspec)
 
@@ -14,6 +15,6 @@ main = hspec $ do
   PrettyPrintTests.run
   CoreTests.run
   TaoTests.run
+  TaoLangTests.run
 
--- TaoLangTests.run
 -- ExamplesTests.run
