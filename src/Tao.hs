@@ -30,49 +30,6 @@ import Parser (Span (..))
 - Dict comprehension
 -}
 
-data Expression
-  = Int !Int
-  | Num !Double
-  | Tag !String
-  | Var !String
-  | Ann !(Token Expression) !Type
-  | Fun !(Token Expression) !(Token Expression)
-  | Match ![([Pattern], Token Expression)]
-  | Let ![Definition] !(Token Expression)
-  | App !(Token Expression) !(Token Expression)
-  | Or !(Token Expression) !(Token Expression)
-  | If !(Token Expression) !(Token Expression)
-  | Eq !(Token Expression) !(Token Expression)
-  | Lt !(Token Expression) !(Token Expression)
-  | Add !(Token Expression) !(Token Expression)
-  | Sub !(Token Expression) !(Token Expression)
-  | Mul !(Token Expression) !(Token Expression)
-  | Pow !(Token Expression) !(Token Expression)
-  deriving (Eq, Show)
-
-data Pattern
-  = PAny
-  | PInt !Int
-  | PVar !String
-  deriving (Eq, Show)
-
-data Type
-  = For ![String] !(Token Expression)
-  deriving (Eq, Show)
-
-data Definition
-  = Def
-      { type' :: Maybe Type,
-        name :: String,
-        expr :: Token Expression
-      }
-  | Unpack
-      { types :: [(String, Type)],
-        pattern :: Pattern,
-        expr :: Token Expression
-      }
-  deriving (Eq, Show)
-
 data Token a = Token
   { span :: Span,
     docs :: DocString,
@@ -86,6 +43,49 @@ data DocString = DocString
   { public :: Bool,
     description :: String
   }
+  deriving (Eq, Show)
+
+data Expression
+  = Int !(Token Int)
+  | Num !(Token Double)
+  | Tag !(Token String)
+  | Var !(Token String)
+  | Ann !(Token Expression) !(Token Type)
+  | Fun !(Token Expression) !(Token Expression)
+  | Match ![([Token Pattern], Token Expression)]
+  | Let ![Token Definition] !(Token Expression)
+  | App !(Token Expression) !(Token Expression)
+  | Or !(Token Expression) !(Token Expression)
+  | If !(Token Expression) !(Token Expression)
+  | Eq !(Token Expression) !(Token Expression)
+  | Lt !(Token Expression) !(Token Expression)
+  | Add !(Token Expression) !(Token Expression)
+  | Sub !(Token Expression) !(Token Expression)
+  | Mul !(Token Expression) !(Token Expression)
+  | Pow !(Token Expression) !(Token Expression)
+  deriving (Eq, Show)
+
+data Pattern
+  = PAny !(Token ())
+  | PInt !(Token Int)
+  | PVar !(Token String)
+  deriving (Eq, Show)
+
+data Type
+  = For ![Token String] !(Token Expression)
+  deriving (Eq, Show)
+
+data Definition
+  = Def
+      { type' :: Maybe (Token Type),
+        name :: Token String,
+        expr :: Token Expression
+      }
+  | Unpack
+      { types :: [(Token String, Token Type)],
+        pattern :: Token Pattern,
+        expr :: Token Expression
+      }
   deriving (Eq, Show)
 
 data SourceFile = SourceFile
