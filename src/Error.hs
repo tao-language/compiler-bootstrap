@@ -6,7 +6,7 @@
 module Error where
 
 import Data.List (intercalate)
-import Parser (Position (..), State (..))
+import Parser (State (..))
 
 -- https://package.elm-lang.org/packages/elm-in-elm/compiler/latest/Elm.Compiler.Error
 -- https://github.com/elm-in-elm/compiler/blob/master/src/Elm/Compiler/Error.elm
@@ -43,7 +43,3 @@ instance Show Error where
 
 -- instance Show SyntaxError where
 --   show
-
-sourceLocation :: State -> String
-sourceLocation (State {name, pos}) =
-  intercalate ":" [name, show pos.row, show pos.col]

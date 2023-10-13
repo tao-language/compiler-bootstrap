@@ -10,7 +10,7 @@ import Data.List (dropWhileEnd, intercalate)
 import Debug.Trace
 import Error
 import Flow ((|>))
-import Parser (Parser, Position (..), Span (..))
+import Parser (Parser)
 import qualified Parser as P
 import System.Exit
 import Tao
@@ -83,7 +83,8 @@ token parser = do
   trailingComment <- P.oneOf [comment, P.succeed ""]
   P.succeed
     Token
-      { span = Span {name = s1.name, start = s1.pos, end = s2.pos},
+      { start = Pos {row = s1.row, col = s1.col},
+        end = Pos {row = s2.row, col = s2.col},
         docs = docs,
         comments = comments,
         commentsTrailing = trailingComment,
@@ -136,8 +137,8 @@ tagName = error "TODO"
 patternAtom :: Parser (Token Pattern)
 patternAtom = do
   let atoms =
-        [ PAny <$ P.word "_",
-          PInt <$> P.integer
+        [ PAny <$> token (void (P.word "_")),
+          PInt <$> token P.integer
           -- PVar <$> identifier P.lowercase,
           -- PTag <$> identifier P.uppercase,
           -- do

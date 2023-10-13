@@ -6,27 +6,13 @@ module Parser where
 
 import Control.Monad (void)
 import qualified Data.Char as Char
-import Debug.Trace
 import Flow ((|>))
 
 newtype Parser a = Parser (State -> Either State (a, State))
 
 data State = State
   { source :: !String,
-    name :: !String,
-    pos :: Position
-  }
-  deriving (Eq, Show)
-
-data Span = Span
-  { name :: !String,
-    start :: Position,
-    end :: Position
-  }
-  deriving (Eq, Show)
-
-data Position = Pos
-  { row :: !Int,
+    row :: !Int,
     col :: !Int
   }
   deriving (Eq, Show)
@@ -62,10 +48,9 @@ instance Monad Parser where
   return :: a -> Parser a
   return = pure
 
-parse :: String -> Parser a -> String -> Either State (a, State)
-parse name (Parser p) source = do
-  let pos = Pos {row = 1, col = 1}
-  let state = State {source = source, name = name, pos = pos}
+parse :: Parser a -> String -> Either State (a, State)
+parse (Parser p) source = do
+  let state = State {source = source, row = 1, col = 1}
   p state
 
 succeed :: a -> Parser a
@@ -106,12 +91,8 @@ anyChar :: Parser Char
 anyChar =
   Parser
     ( \state -> case source state of
-        '\n' : source -> do
-          let pos = Pos {row = state.pos.row + 1, col = 1}
-          Right ('\n', state {source = source, pos = pos})
-        ch : source -> do
-          let pos = state.pos {col = state.pos.col + 1}
-          Right (ch, state {source = source, pos = pos})
+        '\n' : source -> Right ('\n', state {source = source, row = state.row + 1, col = 1})
+        ch : source -> Right (ch, state {source = source, col = state.col + 1})
         "" -> Left state
     )
 

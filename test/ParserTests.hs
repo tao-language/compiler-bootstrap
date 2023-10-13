@@ -9,7 +9,7 @@ import Test.Hspec (SpecWith, describe, it, shouldBe)
 run :: SpecWith ()
 run = describe "--==☯ Parser ☯==--" $ do
   let parse' :: Parser a -> String -> Maybe (a, String)
-      parse' parser source = case parse "test" parser source of
+      parse' parser source = case parse parser source of
         Right (x, State {source = remaining}) -> Just (x, remaining)
         Left _ -> Nothing
 
@@ -257,8 +257,8 @@ run = describe "--==☯ Parser ☯==--" $ do
             s2 <- getState
             succeed (s1, x, s2)
       let p = parse' parser
-      let s1 = State {source = "abcdef", name = "test", pos = Pos {row = 1, col = 1}}
-      let s2 = State {source = "def", name = "test", pos = Pos {row = 1, col = 4}}
+      let s1 = State {source = "abcdef", row = 1, col = 1}
+      let s2 = State {source = "def", row = 1, col = 4}
       p "abcdef" `shouldBe` Just ((s1, "abc", s2), "def")
 
     it "☯ subparser" $ do

@@ -4,8 +4,6 @@
 
 module Tao where
 
-import Parser (Span (..))
-
 {- TODO: syntax sugar
 - Match
 - Let
@@ -31,17 +29,29 @@ import Parser (Span (..))
 -}
 
 data Token a = Token
-  { span :: Span,
-    docs :: DocString,
-    comments :: [String],
-    commentsTrailing :: String,
+  { start :: !Pos,
+    end :: !Pos,
+    docs :: !DocString,
+    comments :: ![String],
+    commentsTrailing :: !String,
     value :: a
   }
   deriving (Eq, Show)
 
+data Pos = Pos
+  { row :: !Int,
+    col :: !Int
+  }
+  deriving (Eq, Show)
+
+-- newToken :: a -> Token a
+-- newToken x = Token {
+--   span = Span {name = "", }
+-- }
+
 data DocString = DocString
-  { public :: Bool,
-    description :: String
+  { public :: !Bool,
+    description :: !String
   }
   deriving (Eq, Show)
 
@@ -77,21 +87,21 @@ data Type
 
 data Definition
   = Def
-      { type' :: Maybe (Token Type),
-        name :: Token String,
-        expr :: Token Expression
+      { type' :: !(Maybe (Token Type)),
+        name :: !(Token String),
+        expr :: !(Token Expression)
       }
   | Unpack
-      { types :: [(Token String, Token Type)],
-        pattern :: Token Pattern,
-        expr :: Token Expression
+      { types :: ![(Token String, Token Type)],
+        pattern :: !(Token Pattern),
+        expr :: !(Token Expression)
       }
   deriving (Eq, Show)
 
 data SourceFile = SourceFile
-  { imports :: [String],
-    definitions :: [Definition],
-    expressions :: [Token Expression]
+  { imports :: ![String],
+    definitions :: ![Definition],
+    expressions :: ![Token Expression]
   }
   deriving (Eq, Show)
 
