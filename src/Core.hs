@@ -40,7 +40,7 @@ data Expr
   | Typ !String ![Expr] ![(String, Type)]
   | Op1 !UnaryOp !Expr
   | Op2 !BinaryOp !Expr !Expr
-  | Err ![Error]
+  | Err !Error
   deriving (Eq)
 
 data Pattern
@@ -54,7 +54,6 @@ data Pattern
   | PFun !Pattern !Pattern
   | PApp !Pattern !Pattern
   | PRec ![(String, Pattern)]
-  | PErr
   deriving (Eq)
 
 data Type
@@ -80,8 +79,8 @@ type Env = [(String, Expr)]
 type Substitution = [(String, Expr)]
 
 data Error
-  = InfiniteType !String !Expr
-  | NotAFunction !Expr !Expr
+  = NotAFunction !Expr !Expr
+  | OccursError !String !Expr
   | Op1Error !UnaryOp !Expr
   | Op2Error !BinaryOp !Expr !Expr
   | PatternMatchError !Pattern !Expr
@@ -212,7 +211,7 @@ let' [] b = b
 let' ((p, a) : defs) b = App (Lam p (let' defs b)) a
 
 or' :: [Expr] -> Expr
-or' [] = Err []
+or' [] = error "`or'` must have at least one expression"
 or' [a] = a
 or' (a : bs) = Or a (or' bs)
 
@@ -274,7 +273,6 @@ patternExpr (PAnn p ty) = Ann (patternExpr p) ty
 patternExpr (PFun p q) = Fun (patternExpr p) (patternExpr q)
 patternExpr (PApp p q) = App (patternExpr p) (patternExpr q)
 patternExpr (PRec kvs) = Rec (map (second patternExpr) kvs)
-patternExpr PErr = Err []
 
 occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
@@ -329,8 +327,7 @@ eval env (App a b) = case (eval env a, eval env b) of
     (PFun p q, Fun b1 b2) -> app (lam [p, q] a) [b1, b2]
     (PApp p q, App b1 b2) -> app (lam [p, q] a) [b1, b2]
     (PRec [], Rec _) -> a
-    (PErr, Err _) -> a
-    (p, b) -> Err [PatternMatchError p b]
+    (p, b) -> Err (PatternMatchError p b)
   (Err err, _) -> Err err
   (_, Err err) -> Err err
   (Ann a (For xs (Fun t1 t2)), b) -> case infer env (Ann b (For xs t1)) of
@@ -348,7 +345,6 @@ eval env (Ann a (For xs t)) = case infer env (Ann a (For xs t)) of
   Right (t, s) -> annotated (eval (s ++ env) a) (For (filter (`notElem` map fst s) xs) t)
   Left err -> Err err
 eval env (Or a b) = case (eval env a, eval env b) of
-  (Err err1, Err err2) -> Err (err1 ++ err2)
   (Err _, b) -> b
   (a, Err _) -> a
   (Or a1 a2, b) -> Or a1 (Or a2 b)
@@ -367,7 +363,7 @@ eval _ (Err err) = Err err
 
 evalOp1 :: UnaryOp -> Expr -> Expr
 evalOp1 Int2Num (Int b) = Num (fromIntegral b)
-evalOp1 op a = Err [Op1Error op a]
+evalOp1 op a = Err (Op1Error op a)
 
 evalOp2 :: BinaryOp -> Expr -> Expr -> Expr
 evalOp2 AddI (Int a) (Int b) = Int (a + b)
@@ -387,7 +383,7 @@ evalOp2 Eq (Var a) (Var b) | a == b = Var a
 -- evalOp2 Eq (App a1 a2) (App b1 b2) = If (eq a1 b1) (eq a2 b2)
 evalOp2 Lt (Int a) (Int b) | a < b = Int a
 evalOp2 Lt (Num a) (Num b) | a < b = Num a
-evalOp2 op a b = Err [Op2Error op a b]
+evalOp2 op a b = Err (Op2Error op a b)
 
 annotated :: Expr -> Type -> Expr
 annotated (Tag k) (For _ (Tag k')) | k == k' = Tag k
@@ -397,7 +393,7 @@ annotated a@Lam {} ty = Ann a ty
 annotated a@App {} ty = Ann a ty
 annotated a _ = a
 
-unify :: Expr -> Expr -> Either [Error] (Expr, Substitution)
+unify :: Expr -> Expr -> Either Error (Expr, Substitution)
 unify Knd Knd = Right (Knd, [])
 unify IntT IntT = Right (IntT, [])
 unify NumT NumT = Right (NumT, [])
@@ -405,9 +401,13 @@ unify (Int i) (Int i') | i == i' = Right (Int i, [])
 unify (Num n) (Num n') | n == n' = Right (Num n, [])
 unify (Tag k) (Tag k') | k == k' = Right (Tag k, [])
 unify (Var x) (Var x') | x == x' = Right (Var x, [])
-unify (Var x) b | x `occurs` b = Left [InfiniteType x b]
+unify (Var x) b | x `occurs` b = Left (OccursError x b)
 unify (Var x) b = Right (b, [(x, b)])
 unify a (Var x) = unify (Var x) a
+unify (Fun a1 a2) b@Tag {} = unify a2 (App b a1)
+unify (Fun a1 a2) b@App {} = unify a2 (App b a1)
+unify a@Tag {} (Fun b1 b2) = unify (App a b1) b2
+unify a@App {} (Fun b1 b2) = unify (App a b1) b2
 -- Ann !Expr !Type
 unify (Fun a1 b1) (Fun a2 b2) = do
   ((ta, tb), s) <- unify2 (a1, a2) (b1, b2)
@@ -416,16 +416,12 @@ unify a (Or b1 b2) = case unify a b1 of
   Right (a, s1) -> case unify a b2 of
     Right (a, s2) -> Right (a, s2 `compose` s1)
     Left _ -> Right (a, s1)
-  Left err1 -> case unify a b2 of
-    Right (a, s) -> Right (a, s)
-    Left err2 -> Left (err1 ++ err2)
+  Left _ -> unify a b2
 unify (Or a1 a2) b = case unify a1 b of
   Right (b, s1) -> case unify a2 b of
     Right (b, s2) -> Right (b, s2 `compose` s1)
     Left _ -> Right (b, s1)
-  Left err1 -> case unify a2 b of
-    Right (a, s) -> Right (a, s)
-    Left err2 -> Left (err1 ++ err2)
+  Left _ -> unify a2 b
 unify (App a1 b1) (App a2 b2) = do
   ((ta, tb), s) <- unify2 (a1, a2) (b1, b2)
   Right (App ta tb, s)
@@ -438,21 +434,21 @@ unify (Op2 op a1 b1) (Op2 op' a2 b2) | op == op' = do
 unify (Rec kvs) (Rec kvs') = do
   (kvs, s) <- unifyRec kvs kvs'
   Right (Rec kvs, s)
-unify a (Typ k args alts) = case unify a (app (Tag k) args) of
-  Right (_, s) -> Right (Typ k args alts, s)
-  Left err -> Left (TypeMismatch a (Typ k args alts) : err)
-unify (Typ k args alts) b = case unify (app (Tag k) args) b of
-  Right (_, s) -> Right (Typ k args alts, s)
-  Left err -> Left (TypeMismatch (Typ k args alts) b : err)
-unify a b = Left [TypeMismatch a b]
+unify a (Typ k args alts) = do
+  (_, s) <- unify a (app (Tag k) args)
+  Right (Typ k args alts, s)
+unify (Typ k args alts) b = do
+  (_, s) <- unify (app (Tag k) args) b
+  Right (Typ k args alts, s)
+unify a b = Left (TypeMismatch a b)
 
-unify2 :: (Expr, Expr) -> (Expr, Expr) -> Either [Error] ((Expr, Expr), Substitution)
+unify2 :: (Expr, Expr) -> (Expr, Expr) -> Either Error ((Expr, Expr), Substitution)
 unify2 (a1, a2) (b1, b2) = do
   (ta, s1) <- unify a1 a2
   (tb, s2) <- unify (eval s1 b1) (eval s1 b2)
   Right ((eval s2 ta, tb), s2 `compose` s1)
 
-unifyAll :: [Expr] -> [Expr] -> Either [Error] ([Expr], Substitution)
+unifyAll :: [Expr] -> [Expr] -> Either Error ([Expr], Substitution)
 unifyAll [] _ = Right ([], [])
 unifyAll _ [] = Right ([], [])
 unifyAll (a1 : bs1) (a2 : bs2) = do
@@ -460,7 +456,7 @@ unifyAll (a1 : bs1) (a2 : bs2) = do
   (a, s2) <- unify (eval s1 a1) (eval s1 a2)
   Right (a : map (eval s2) bs, s2 `compose` s1)
 
-unifyRec :: [(String, Expr)] -> [(String, Expr)] -> Either [Error] ([(String, Expr)], Substitution)
+unifyRec :: [(String, Expr)] -> [(String, Expr)] -> Either Error ([(String, Expr)], Substitution)
 unifyRec [] _ = Right ([], [])
 unifyRec ((x, a) : kvs) kvs' = case lookup x kvs' of
   Just b -> do
@@ -472,7 +468,7 @@ unifyRec ((x, a) : kvs) kvs' = case lookup x kvs' of
 print' :: (Show a, Show b, Show c, Applicative f) => a -> b -> c -> f ()
 print' msg x y = traceM (show msg ++ "\t  " ++ show x ++ "  ~~>  " ++ show y)
 
-infer :: Env -> Expr -> Either [Error] (Expr, Substitution)
+infer :: Env -> Expr -> Either Error (Expr, Substitution)
 infer _ Knd = Right (Knd, [])
 infer _ IntT = Right (Knd, [])
 infer _ NumT = Right (Knd, [])
@@ -489,7 +485,7 @@ infer env (Var x) = case lookup x env of
     Right (Var y, [(y, Var y), (x, Ann (Var x) (For [] (Var y)))])
   Just (Ann (Var x') ty) | x == x' -> Right (instantiate (map fst env) ty)
   Just a -> infer env a
-  Nothing -> Left [UndefinedVar x]
+  Nothing -> Left (UndefinedVar x)
 infer env (Ann a ty) = do
   -- TODO: SIMPLIFY
   -- let (t, vars) = instantiate (map fst env) ty
@@ -504,7 +500,7 @@ infer env (Ann a ty) = do
       Right (Fun t1 t2, s)
     (a, Typ k args alts) -> do
       let ctrs = map (\(k, ty) -> (k, Ann (Tag k) ty)) alts
-      (ta, s1) <- infer (vars ++ ctrs ++ env) a
+      (ta, s1) <- infer ((k, Tag k) : vars ++ ctrs ++ env) a
       (t, s2) <- unify ta (Typ k args alts)
       Right (t, s2 `compose` s1)
     (a, t) -> do
@@ -525,23 +521,10 @@ infer env (Or a b) = do
     Right (t, s2) -> Right (t, s2 `compose` s1)
     Left _ -> Right (Or ta tb, s1)
 infer env (App a b) = do
-  -- TODO: SIMPLIFY
-  -- ((ta, tb), s1) <- infer2 env a b
-  -- let x = newName (map fst (s1 ++ env)) "t"
-  -- (_, s2) <- unify (Fun tb (Var x)) ta
-  -- Right (eval (env `compose` s2) (Var x), s2 `compose` s1 `compose` [(x, Var x)])
   ((ta, tb), s1) <- infer2 env a b
-  case ta of
-    Var x -> do
-      let y = newName (map fst (s1 ++ env)) "t"
-      (_, s2) <- unify (Fun tb (Var y)) (Var x)
-      Right (Var y, [(y, Var y)] `compose` s2 `compose` s1)
-    Tag _ -> Right (App ta tb, s1)
-    Fun t1 t2 -> do
-      (_, s2) <- unify tb t1
-      Right (eval s2 t2, s2 `compose` s1)
-    App _ _ -> Right (App ta tb, s1)
-    ta -> Left [NotAFunction a ta]
+  let x = newName (map fst (s1 ++ env)) "t"
+  (_, s2) <- unify (Fun tb (Var x)) ta
+  Right (eval (env `compose` s2) (Var x), s2 `compose` s1 `compose` [(x, Var x)])
 infer env (Rec kvs) = do
   (kvsT, s) <- inferRec env kvs
   Right (Rec kvsT, s)
@@ -553,32 +536,32 @@ infer env (Op1 op a) = inferOp1 env op a
 infer env (Op2 op a b) = inferOp2 env op a b
 infer _ (Err err) = Right (Err err, [])
 
-infer2 :: Env -> Expr -> Expr -> Either [Error] ((Expr, Expr), Substitution)
+infer2 :: Env -> Expr -> Expr -> Either Error ((Expr, Expr), Substitution)
 infer2 env a b = do
   (ta, s1) <- infer env a
   (tb, s2) <- infer (env `compose` s1) b
   Right ((eval s2 ta, tb), s2 `compose` s1)
 
-inferAll :: Env -> [Expr] -> Either [Error] ([Expr], Substitution)
+inferAll :: Env -> [Expr] -> Either Error ([Expr], Substitution)
 inferAll _ [] = Right ([], [])
 inferAll env (a : bs) = do
   (ta, s1) <- infer env a
   (tbs, s2) <- inferAll (env `compose` s1) bs
   Right (eval s2 ta : tbs, s2 `compose` s1)
 
-inferRec :: Env -> [(String, Expr)] -> Either [Error] ([(String, Expr)], Substitution)
+inferRec :: Env -> [(String, Expr)] -> Either Error ([(String, Expr)], Substitution)
 inferRec _ [] = Right ([], [])
 inferRec env ((x, a) : kvs) = do
   (kvsT, s1) <- inferRec env kvs
   (ta, s2) <- infer (env `compose` s1) a
   Right ((x, ta) : kvsT, s2 `compose` s1)
 
-inferOp1 :: Env -> UnaryOp -> Expr -> Either [Error] (Expr, Substitution)
+inferOp1 :: Env -> UnaryOp -> Expr -> Either Error (Expr, Substitution)
 inferOp1 env Int2Num a = do
   (_, s) <- infer env (ann a IntT)
   Right (NumT, s)
 
-inferOp2 :: Env -> BinaryOp -> Expr -> Expr -> Either [Error] (Expr, Substitution)
+inferOp2 :: Env -> BinaryOp -> Expr -> Expr -> Either Error (Expr, Substitution)
 inferOp2 env AddI a b = do
   (_, s) <- infer2 env (ann a IntT) (ann b IntT)
   Right (IntT, s)
