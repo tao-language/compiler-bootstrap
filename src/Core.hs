@@ -540,7 +540,7 @@ infer env (Rec kvs) = do
   Right (Rec kvsT, s)
 infer env (Typ _ args alts) = do
   (_, s1) <- inferAll env args
-  (_, s2) <- inferAll (apply s1 env) (map (\(k, For xs t) -> Ann (Tag k) (For xs (eval (pushVars xs s1) t))) alts)
+  (_, s2) <- inferAll (env `compose` s1) (map (\(k, For xs t) -> Ann (Tag k) (For xs (eval (pushVars xs s1) t))) alts)
   Right (Knd, s2 `compose` s1)
 infer env (Op1 op a) = inferOp1 env op a
 infer env (Op2 op a b) = inferOp2 env op a b
@@ -549,21 +549,21 @@ infer _ (Err err) = Right (Err err, [])
 infer2 :: Env -> Expr -> Expr -> Either [Error] ((Expr, Expr), Substitution)
 infer2 env a b = do
   (ta, s1) <- infer env a
-  (tb, s2) <- infer (s1 ++ apply s1 env) b
+  (tb, s2) <- infer (env `compose` s1) b
   Right ((eval s2 ta, tb), s2 `compose` s1)
 
 inferAll :: Env -> [Expr] -> Either [Error] ([Expr], Substitution)
 inferAll _ [] = Right ([], [])
 inferAll env (a : bs) = do
   (ta, s1) <- infer env a
-  (tbs, s2) <- inferAll (apply s1 env) bs
+  (tbs, s2) <- inferAll (env `compose` s1) bs
   Right (eval s2 ta : tbs, s2 `compose` s1)
 
 inferRec :: Env -> [(String, Expr)] -> Either [Error] ([(String, Expr)], Substitution)
 inferRec _ [] = Right ([], [])
 inferRec env ((x, a) : kvs) = do
   (kvsT, s1) <- inferRec env kvs
-  (ta, s2) <- infer (apply s1 env) a
+  (ta, s2) <- infer (env `compose` s1) a
   Right ((x, ta) : kvsT, s2 `compose` s1)
 
 inferOp1 :: Env -> UnaryOp -> Expr -> Either [Error] (Expr, Substitution)
@@ -589,23 +589,23 @@ inferOp2 env Pow a b = do
   Right (IntT, s)
 inferOp2 env Eq a b = do
   (ta, s1) <- infer env a
-  (t, s2) <- infer (apply s1 env) (ann b ta)
+  (t, s2) <- infer (env `compose` s1) (ann b ta)
   Right (t, s2 `compose` s1)
 inferOp2 env Lt a b = do
   (ta, s1) <- infer env a
-  (t, s2) <- infer (apply s1 env) (ann b ta)
+  (t, s2) <- infer (env `compose` s1) (ann b ta)
   Right (t, s2 `compose` s1)
 
 -- Type inference
-apply :: Substitution -> Env -> Env
-apply _ [] = []
-apply s ((x, Ann a (For xs t)) : env) = do
-  let t' = eval (pushVars xs s) t
-  (x, Ann (eval s a) (For xs t')) : apply s env
-apply s ((x, a) : env) = (x, eval s a) : apply s env
-
 compose :: Substitution -> Substitution -> Substitution
 compose s1 s2 = apply s1 s2 `union` s1
+  where
+    apply :: Substitution -> Env -> Env
+    apply _ [] = []
+    apply s ((x, Ann a (For xs t)) : env) = do
+      let t' = eval (pushVars xs s) t
+      (x, Ann (eval s a) (For xs t')) : apply s env
+    apply s ((x, a) : env) = (x, eval s a) : apply s env
 
 instantiate :: [String] -> Type -> (Expr, Substitution)
 instantiate _ (For [] a) = (a, [])
