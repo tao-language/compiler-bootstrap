@@ -40,8 +40,7 @@ data Expr
   | Typ !String ![Expr] ![(String, Type)]
   | Op1 !UnaryOp !Expr
   | Op2 !BinaryOp !Expr !Expr
-  | -- | Infer !Expr
-    Err ![Error]
+  | Err ![Error]
   deriving (Eq)
 
 data Pattern
@@ -91,6 +90,7 @@ data Error
   deriving (Eq, Show)
 
 instance Show Expr where
+  showsPrec :: Int -> Expr -> ShowS
   showsPrec p expr = case expr of
     Or a b -> infixR 1 a " | " b
     Ann a (For xs b) -> infixR 2 a (" : " ++ for xs) b
@@ -144,10 +144,12 @@ instance Show Pattern where
   show p = show (patternExpr p)
 
 instance Show Type where
+  show :: Type -> String
   show (For [] t) = show t
   show (For xs t) = "@for " ++ unwords xs ++ ". " ++ show t
 
 instance Show BinaryOp where
+  show :: BinaryOp -> String
   show AddI = "+"
   show AddN = "+"
   show Sub = "-"
@@ -157,6 +159,7 @@ instance Show BinaryOp where
   show Lt = "<"
 
 instance Show UnaryOp where
+  show :: UnaryOp -> String
   show Int2Num = "@int2num"
 
 -- Syntax sugar
@@ -406,8 +409,6 @@ unify (Var x) b | x `occurs` b = Left [InfiniteType x b]
 unify (Var x) b = Right (b, [(x, b)])
 unify a (Var x) = unify (Var x) a
 -- Ann !Expr !Type
--- Lam' !String !Expr
--- Fix !String !Expr
 unify (Fun a1 b1) (Fun a2 b2) = do
   ((ta, tb), s) <- unify2 (a1, a2) (b1, b2)
   Right (Fun ta tb, s)
@@ -425,12 +426,9 @@ unify (Or a1 a2) b = case unify a1 b of
   Left err1 -> case unify a2 b of
     Right (a, s) -> Right (a, s)
     Left err2 -> Left (err1 ++ err2)
--- If !Expr !Expr
 unify (App a1 b1) (App a2 b2) = do
   ((ta, tb), s) <- unify2 (a1, a2) (b1, b2)
   Right (App ta tb, s)
--- Fst !Expr
--- Snd !Expr
 unify (Op1 op a) (Op1 op' b) | op == op' = do
   (a, s) <- unify a b
   Right (Op1 op a, s)
@@ -440,7 +438,6 @@ unify (Op2 op a1 b1) (Op2 op' a2 b2) | op == op' = do
 unify (Rec kvs) (Rec kvs') = do
   (kvs, s) <- unifyRec kvs kvs'
   Right (Rec kvs, s)
--- Ann !Expr !Type
 unify a (Typ k args alts) = case unify a (app (Tag k) args) of
   Right (_, s) -> Right (Typ k args alts, s)
   Left err -> Left (TypeMismatch a (Typ k args alts) : err)
@@ -494,6 +491,11 @@ infer env (Var x) = case lookup x env of
   Just a -> infer env a
   Nothing -> Left [UndefinedVar x]
 infer env (Ann a ty) = do
+  -- TODO: SIMPLIFY
+  -- let (t, vars) = instantiate (map fst env) ty
+  -- (ta, s1) <- infer (env `compose` vars) a
+  -- (t', s2) <- unify ta (eval (env `compose` s1) t)
+  -- Right (t', s2 `compose` s1 `compose` vars)
   let (t, vars) = instantiate (map fst env) ty
   case (a, eval env t) of
     (Lam p b, Fun t1 t2) -> do
@@ -523,6 +525,11 @@ infer env (Or a b) = do
     Right (t, s2) -> Right (t, s2 `compose` s1)
     Left _ -> Right (Or ta tb, s1)
 infer env (App a b) = do
+  -- TODO: SIMPLIFY
+  -- ((ta, tb), s1) <- infer2 env a b
+  -- let x = newName (map fst (s1 ++ env)) "t"
+  -- (_, s2) <- unify (Fun tb (Var x)) ta
+  -- Right (eval (env `compose` s2) (Var x), s2 `compose` s1 `compose` [(x, Var x)])
   ((ta, tb), s1) <- infer2 env a b
   case ta of
     Var x -> do
