@@ -124,118 +124,51 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "Int abc" `shouldBe` Right (tok1 IntTP (1, 1) (1, 4), "abc")
     p "Num abc" `shouldBe` Right (tok1 NumTP (1, 1) (1, 4), "abc")
     p "42 abc" `shouldBe` Right (tok1 (IntP 42) (1, 1) (1, 3), "abc")
-    p "A abc" `shouldBe` Right (tok1 (TagP "A") (1, 1) (1, 2), "abc")
-    p "x abc" `shouldBe` Right (tok1 (VarP "x") (1, 1) (1, 2), "abc")
+    p "Tag abc" `shouldBe` Right (tok1 (TagP "Tag") (1, 1) (1, 4), "abc")
+    p "var abc" `shouldBe` Right (tok1 (VarP "var") (1, 1) (1, 4), "abc")
     p "{} abc" `shouldBe` Right (tok1 (RecP []) (1, 1) (1, 3), "abc")
     p "{x} abc" `shouldBe` Right (tok1 (RecP [(tok1 "x" (1, 2) (1, 3), tok1 (VarP "x") (1, 2) (1, 3))]) (1, 1) (1, 4), "abc")
     p "{x: y} abc" `shouldBe` Right (tok1 (RecP [(tok1 "x" (1, 2) (1, 3), tok1 (VarP "y") (1, 5) (1, 6))]) (1, 1) (1, 7), "abc")
-    p "x->y" `shouldBe` Right (tok1 (VarP "x") (1, 1) (1, 2), "->y")
-    p "(x->y) abc" `shouldBe` Right (tok2 FunP (VarP "x") (VarP "y") (1, 2) (1, 3) (1, 5) (1, 6), "abc")
+    p "x y" `shouldBe` Right (tok1 (VarP "x") (1, 1) (1, 2), "y")
+    p "(x y) abc" `shouldBe` Right (tok2 AppP (VarP "x") (VarP "y") (1, 2) (1, 3) (1, 4) (1, 5), "abc")
 
   it "☯ pattern'" $ do
     let (x, y) = (VarP "x", VarP "y")
     let p = parse' pattern'
-    p "x->y" `shouldBe` Right (tok2 FunP x y (1, 1) (1, 2) (1, 4) (1, 5), "")
-    p "x \n -> \n y" `shouldBe` Right (tok2 FunP x y (1, 1) (1, 2) (3, 2) (3, 3), "")
     p "x y" `shouldBe` Right (tok2 AppP x y (1, 1) (1, 2) (1, 3) (1, 4), "")
     p "x \n y" `shouldBe` Right (tok2 AppP x y (1, 1) (1, 2) (2, 2) (2, 3), "")
+    p "x->y" `shouldBe` Right (tok2 FunP x y (1, 1) (1, 2) (1, 4) (1, 5), "")
+    p "x \n -> \n y" `shouldBe` Right (tok2 FunP x y (1, 1) (1, 2) (3, 2) (3, 3), "")
 
-  -- it "☯ token" $ do
-  --   let p = parse' (P.zeroOrMore (token P.letter))
-  --   p "abc.d" `shouldBe` Right ("abc", ".d")
-  --   p "a b c . d" `shouldBe` Right ("abc", ". d")
+  -- TODO: it "☯ operator precedence" $ do
 
-  -- it "☯ emptyLine" $ do
-  --   let p = parse' emptyLine
-  --   p "" `shouldBe` Left ""
-  --   p "  " `shouldBe` Left ""
-  --   p "\nabc" `shouldBe` Right ("", "abc")
-  --   p "  \nabc" `shouldBe` Right ("  ", "abc")
-  --   p " a \nbc" `shouldBe` Left "a "
-  --   p ";abc" `shouldBe` Right ("", "abc")
-  --   p "  ;abc" `shouldBe` Right ("  ", "abc")
-  --   p " a ;bc" `shouldBe` Left "a "
+  it "☯ expressionAtom" $ do
+    let p = parse' expressionAtom
+    p "Type abc" `shouldBe` Right (tok1 Knd (1, 1) (1, 5), "abc")
+    p "Int abc" `shouldBe` Right (tok1 IntT (1, 1) (1, 4), "abc")
+    p "Num abc" `shouldBe` Right (tok1 NumT (1, 1) (1, 4), "abc")
+    p "42 abc" `shouldBe` Right (tok1 (Int 42) (1, 1) (1, 3), "abc")
+    p "3.14 abc" `shouldBe` Right (tok1 (Num 3.14) (1, 1) (1, 5), "abc")
+    p "Tag abc" `shouldBe` Right (tok1 (Tag "Tag") (1, 1) (1, 4), "abc")
+    p "var abc" `shouldBe` Right (tok1 (Var "var") (1, 1) (1, 4), "abc")
+    p "x y" `shouldBe` Right (tok1 (Var "x") (1, 1) (1, 2), "y")
+    p "(x y) abc" `shouldBe` Right (tok2 App (Var "x") (Var "y") (1, 2) (1, 3) (1, 4) (1, 5), "abc")
 
-  -- it "☯ keyword" $ do
-  --   let p = parse' (keyword True "A")
-  --   p "A" `shouldBe` Right (True, "")
-  --   p "ABC" `shouldBe` Left "BC"
-  --   p "A2" `shouldBe` Left "2"
-  --   p "A_" `shouldBe` Left "_"
-  --   p "A'" `shouldBe` Left "'"
-
-  -- it "☯ identifier" $ do
-  --   let p = parse' (identifier P.lowercase)
-  --   p "" `shouldBe` Left ""
-  --   p "a" `shouldBe` Right ("a", "")
-  --   p "a1" `shouldBe` Right ("a1", "")
-  --   p "_a1" `shouldBe` Right ("_a1", "")
-
-  -- it "☯ commentSingleLine" $ do
-  --   let p = parse' commentSingleLine
-  --   p "" `shouldBe` Left ""
-  --   p "--" `shouldBe` Right ("", "")
-  --   p "--abc" `shouldBe` Right ("abc", "")
-  --   p "-- abc " `shouldBe` Right ("abc ", "")
-  --   p "--  abc  " `shouldBe` Right (" abc  ", "")
-  --   p "-- abc\ndef" `shouldBe` Right ("abc", "def")
-
-  -- it "☯ commentMultiLine" $ do
-  --   let p = parse' commentMultiLine
-  --   p "" `shouldBe` Left ""
-  --   p "{----}" `shouldBe` Right ("", "")
-  --   p "{--abc--}" `shouldBe` Right ("abc", "")
-  --   p "{-- abc --}" `shouldBe` Right ("abc", "")
-  --   p "{--  abc  --}" `shouldBe` Right (" abc ", "")
-  --   p "{-- abc\ndef --}" `shouldBe` Right ("abc\ndef", "")
-
-  -- it "☯ comments" $ do
-  --   let p = parse' comments
-  --   p "" `shouldBe` Right ("", "")
-  --   p "-- a" `shouldBe` Right ("a", "")
-  --   p "-- a\n-- b" `shouldBe` Right ("a\nb", "")
-  --   p "-- a\n{-- b --}" `shouldBe` Right ("a\nb", "")
-  --   p "{-- a --}\n-- b" `shouldBe` Right ("a\nb", "")
-
-  -- it "☯ pattern" $ do
-  --   let p = parse' (pattern' 0)
-  --   p "_ " `shouldBe` Right (AnyP, "")
-  --   p "1 " `shouldBe` Right (PInt 1, "")
-  --   p "x " `shouldBe` Right (PVar "x", "")
-  --   p "A " `shouldBe` Right (PTag "A", "")
-  --   p "B x y " `shouldBe` Right (PApp (PApp (PTag "B") _x) _y, "")
-  --   p "(_) " `shouldBe` Right (AnyP, "")
-  --   p "(1) " `shouldBe` Right (PInt 1, "")
-  --   p "(x) " `shouldBe` Right (PVar "x", "")
-  --   p "(A) " `shouldBe` Right (PTag "A", "")
-  --   p "(B x y) " `shouldBe` Right (PApp (PApp (PTag "B") _x) _y, "")
-
-  -- it "☯ expression" $ do
-  --   let p = parseAll (expression 0)
-  --   p "Type" `shouldBe` Right Knd
-  --   p "Int" `shouldBe` Right IntT
-  --   p "Num" `shouldBe` Right NumT
-  --   p "42" `shouldBe` Right (Int 42)
-  --   p "3.14" `shouldBe` Right (Num 3.14)
-  --   p "A" `shouldBe` Right (Tag "A")
-  --   p "x" `shouldBe` Right (Var "x")
-  --   p "\\x = 1" `shouldBe` Right (lam [_x] i1)
-  --   p "\\x y = 1" `shouldBe` Right (lam [_x, _y] i1)
-  --   p "x | y" `shouldBe` Right (Or x y)
-  --   p "x ? y" `shouldBe` Right (If x y)
-  --   p "x : a" `shouldBe` Right (Ann x (For [] a))
-  --   p "x -> y" `shouldBe` Right (fun [x] y)
-  --   p "x == y" `shouldBe` Right (Eq x y)
-  --   p "x < y" `shouldBe` Right (Lt x y)
-  --   p "x + y" `shouldBe` Right (Add x y)
-  --   p "x - y" `shouldBe` Right (Sub x y)
-  --   p "x * y" `shouldBe` Right (Mul x y)
-  --   p "x ^ y" `shouldBe` Right (Pow x y)
-  --   p "x y" `shouldBe` Right (App x y)
-  --   p "x = 1; a" `shouldBe` Right (Let [([], _x, i1)] a)
-  --   p "\\x = 0 | y = 1" `shouldBe` Right (Match [([_x], i0), ([_y], i1)])
-  --   p "\\x = 0 | y = 1 | z = 2" `shouldBe` Right (Match [([_x], i0), ([_y], i1), ([_z], i2)])
-  --   p "(x)" `shouldBe` Right x
+  it "☯ expression" $ do
+    let (x, y) = (Var "x", Var "y")
+    let p = parse' expression
+    -- TODO: Match
+    -- TODO: Let
+    p "x | y" `shouldBe` Right (tok2 Or x y (1, 1) (1, 2) (1, 5) (1, 6), "")
+    p "x : y" `shouldBe` Right (tok2 ann x y (1, 1) (1, 2) (1, 5) (1, 6), "")
+    p "x == y" `shouldBe` Right (tok2 Eq x y (1, 1) (1, 2) (1, 6) (1, 7), "")
+    p "x < y" `shouldBe` Right (tok2 Lt x y (1, 1) (1, 2) (1, 5) (1, 6), "")
+    p "x -> y" `shouldBe` Right (tok2 Fun x y (1, 1) (1, 2) (1, 6) (1, 7), "")
+    p "x + y" `shouldBe` Right (tok2 Add x y (1, 1) (1, 2) (1, 5) (1, 6), "")
+    p "x - y" `shouldBe` Right (tok2 Sub x y (1, 1) (1, 2) (1, 5) (1, 6), "")
+    p "x * y" `shouldBe` Right (tok2 Mul x y (1, 1) (1, 2) (1, 5) (1, 6), "")
+    p "x y" `shouldBe` Right (tok2 App x y (1, 1) (1, 2) (1, 3) (1, 4), "")
+    p "x ^ y" `shouldBe` Right (tok2 Pow x y (1, 1) (1, 2) (1, 5) (1, 6), "")
 
   -- it "☯ typeAnnotation" $ do
   --   let p = parseAll typeAnnotation
