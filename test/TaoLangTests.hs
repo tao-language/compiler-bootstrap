@@ -151,6 +151,8 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "3.14 abc" `shouldBe` Right (tok1 (Num 3.14) (1, 1) (1, 5), "abc")
     p "Tag abc" `shouldBe` Right (tok1 (Tag "Tag") (1, 1) (1, 4), "abc")
     p "var abc" `shouldBe` Right (tok1 (Var "var") (1, 1) (1, 4), "abc")
+    p "x y" `shouldBe` Right (tok1 (Var "x") (1, 1) (1, 2), "y")
+    p "(x y) abc" `shouldBe` Right (tok2 App (Var "x") (Var "y") (1, 2) (1, 3) (1, 4) (1, 5), "abc")
 
   it "☯ expression" $ do
     let (x, y) = (Var "x", Var "y")
@@ -158,7 +160,7 @@ run = describe "--==☯ Tao language ☯==--" $ do
     -- TODO: Match
     -- TODO: Let
     p "x | y" `shouldBe` Right (tok2 Or x y (1, 1) (1, 2) (1, 5) (1, 6), "")
-    -- TODO: Ann
+    p "x : y" `shouldBe` Right (tok2 ann x y (1, 1) (1, 2) (1, 5) (1, 6), "")
     p "x == y" `shouldBe` Right (tok2 Eq x y (1, 1) (1, 2) (1, 6) (1, 7), "")
     p "x < y" `shouldBe` Right (tok2 Lt x y (1, 1) (1, 2) (1, 5) (1, 6), "")
     p "x -> y" `shouldBe` Right (tok2 Fun x y (1, 1) (1, 2) (1, 6) (1, 7), "")

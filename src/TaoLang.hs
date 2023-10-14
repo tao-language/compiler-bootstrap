@@ -181,13 +181,13 @@ patternAtom :: Parser Pattern
 patternAtom = do
   let field :: Parser (Name, Pattern)
       field = do
-        x <- token identifier
+        name <- token identifier
         p <-
           P.oneOf
             [ do _ <- operator ":"; pattern',
-              P.succeed (fmap (const (VarP x.value)) x)
+              P.succeed (fmap (const (VarP name.value)) name)
             ]
-        P.succeed (x, p)
+        P.succeed (name, p)
   let atoms :: [Parser PatternAtom]
       atoms =
         [ AnyP <$ P.word "_",
@@ -237,14 +237,21 @@ expressionAtom = do
           Int <$> P.integer,
           Num <$> P.number
         ]
-  token (P.oneOf atoms)
+  P.oneOf
+    [ token (P.oneOf atoms),
+      do
+        a <- inbetween "(" ")" expression
+        _ <- P.spaces
+        P.succeed a
+    ]
 
 expression :: Parser Expression
 expression = do
   P.withOperators
-    [P.atom expressionAtom]
+    [ P.atom expressionAtom
+    ]
     [ P.infixR 1 (op Or) (operator "|"),
-      -- TODO: Ann 2
+      P.suffixOp 2 annOp typeAnnotation,
       P.infixR 3 (op Eq) (operator "=="),
       P.infixR 4 (op Lt) (operator "<"),
       P.infixR 5 (op Fun) (operator "->"),
@@ -258,6 +265,19 @@ expression = do
   where
     op :: (Token a -> Token a -> a) -> Token a -> Token a -> Token a
     op f p q = p {value = f p q, end = q.end}
+
+    annOp :: Type -> Expression -> Expression
+    annOp (For xs t) a = op (\a t -> Ann a (For xs t)) a t
+
+typeAnnotation :: Parser Type
+typeAnnotation = do
+  _ <- P.char ':'
+  _ <- P.whitespaces
+  t <- expression
+  P.succeed (For [] t)
+
+-- TODO: Ann 2
+--       P.infixR 2 (\a b -> Ann a (For [] b)) (token $ P.text ":"),
 
 -- expression :: Int -> Parser Expression
 -- expression prec = do

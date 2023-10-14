@@ -144,3 +144,6 @@ data ExpressionAtom
 data Type
   = For ![Name] !Expression
   deriving (Eq, Show)
+
+ann :: Expression -> Expression -> ExpressionAtom
+ann a t = Ann a (For [] t)

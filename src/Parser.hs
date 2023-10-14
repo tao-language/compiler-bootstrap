@@ -366,11 +366,11 @@ infixROp prec f op x prec' expr = do
   y <- expr prec
   succeed (f op x y)
 
-postfix :: Int -> (a -> a) -> Parser op -> Infix a
-postfix prec f = postfixOp prec (\_ x -> f x)
+suffix :: Int -> (a -> a) -> Parser op -> Infix a
+suffix prec f = suffixOp prec (\_ x -> f x)
 
-postfixOp :: Int -> (op -> a -> a) -> Parser op -> Infix a
-postfixOp prec f op x prec' _ = do
+suffixOp :: Int -> (op -> a -> a) -> Parser op -> Infix a
+suffixOp prec f op x prec' _ = do
   assert (prec > prec')
   op <- op
   succeed (f op x)
