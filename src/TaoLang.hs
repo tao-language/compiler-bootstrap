@@ -119,6 +119,13 @@ delimited delim parser =
       P.succeed []
     ]
 
+operator :: String -> Parser ()
+operator name = do
+  _ <- P.whitespaces
+  _ <- P.text name
+  _ <- P.whitespaces
+  P.succeed ()
+
 -- Concrete Syntax Tree tokens
 token :: Parser a -> Parser (Token a)
 token parser = do
@@ -215,20 +222,25 @@ pattern' =
     tok :: (Pattern -> Pattern -> PatternAtom) -> Pattern -> Pattern -> Pattern
     tok f p q = p {value = f p q, end = q.end}
 
-operator :: String -> Parser ()
-operator name = do
-  _ <- P.whitespaces
-  _ <- P.text name
-  _ <- P.whitespaces
-  P.succeed ()
-
 -- Expressions
 expressionAtom :: Parser Expression
-expressionAtom =
-  P.oneOf
-    [ token $ Int <$> P.integer,
-      token $ Num <$> P.number
-    ]
+expressionAtom = do
+  let atoms =
+        [ do
+            name <- identifier
+            case name of
+              "Type" -> P.succeed Knd
+              "Int" -> P.succeed IntT
+              "Num" -> P.succeed NumT
+              _ | startsWithUpper name -> P.succeed (Tag name)
+              _ -> P.succeed (Var name),
+          Int <$> P.integer,
+          Num <$> P.number
+        ]
+  token (P.oneOf atoms)
+
+-- expression :: Parser Expression
+-- expression
 
 -- expression :: Int -> Parser Expression
 -- expression prec = do

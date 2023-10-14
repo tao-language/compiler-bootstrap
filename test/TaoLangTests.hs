@@ -124,8 +124,8 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "Int abc" `shouldBe` Right (tok1 IntTP (1, 1) (1, 4), "abc")
     p "Num abc" `shouldBe` Right (tok1 NumTP (1, 1) (1, 4), "abc")
     p "42 abc" `shouldBe` Right (tok1 (IntP 42) (1, 1) (1, 3), "abc")
-    p "A abc" `shouldBe` Right (tok1 (TagP "A") (1, 1) (1, 2), "abc")
-    p "x abc" `shouldBe` Right (tok1 (VarP "x") (1, 1) (1, 2), "abc")
+    p "Tag abc" `shouldBe` Right (tok1 (TagP "Tag") (1, 1) (1, 4), "abc")
+    p "var abc" `shouldBe` Right (tok1 (VarP "var") (1, 1) (1, 4), "abc")
     p "{} abc" `shouldBe` Right (tok1 (RecP []) (1, 1) (1, 3), "abc")
     p "{x} abc" `shouldBe` Right (tok1 (RecP [(tok1 "x" (1, 2) (1, 3), tok1 (VarP "x") (1, 2) (1, 3))]) (1, 1) (1, 4), "abc")
     p "{x: y} abc" `shouldBe` Right (tok1 (RecP [(tok1 "x" (1, 2) (1, 3), tok1 (VarP "y") (1, 5) (1, 6))]) (1, 1) (1, 7), "abc")
@@ -142,8 +142,15 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   -- TODO: it "☯ operator precedence" $ do
 
-  -- it "☯ expressionAtom" $ do
-  --   let p = parse' (expression 0)
+  it "☯ expressionAtom" $ do
+    let p = parse' expressionAtom
+    p "Type abc" `shouldBe` Right (tok1 Knd (1, 1) (1, 5), "abc")
+    p "Int abc" `shouldBe` Right (tok1 IntT (1, 1) (1, 4), "abc")
+    p "Num abc" `shouldBe` Right (tok1 NumT (1, 1) (1, 4), "abc")
+    p "42 abc" `shouldBe` Right (tok1 (Int 42) (1, 1) (1, 3), "abc")
+    p "3.14 abc" `shouldBe` Right (tok1 (Num 3.14) (1, 1) (1, 5), "abc")
+    p "Tag abc" `shouldBe` Right (tok1 (Tag "Tag") (1, 1) (1, 4), "abc")
+    p "var abc" `shouldBe` Right (tok1 (Var "var") (1, 1) (1, 4), "abc")
 
   -- it "☯ expression" $ do
   --   let p = parse' (expression 0)
