@@ -273,8 +273,18 @@ typeAnnotation :: Parser Type
 typeAnnotation = do
   _ <- P.char ':'
   _ <- P.whitespaces
+  xs <-
+    P.oneOf
+      [ do
+          _ <- P.char '@'
+          xs <- P.oneOrMore (do _ <- P.whitespaces; token identifier)
+          _ <- P.char '.'
+          _ <- P.whitespaces
+          P.succeed xs,
+        P.succeed []
+      ]
   t <- expression
-  P.succeed (For [] t)
+  P.succeed (For xs t)
 
 -- TODO: Ann 2
 --       P.infixR 2 (\a b -> Ann a (For [] b)) (token $ P.text ":"),
