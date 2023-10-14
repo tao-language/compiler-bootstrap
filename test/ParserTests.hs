@@ -1,29 +1,31 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+
 module ParserTests where
 
 import Flow ((|>))
 import Parser
 import Test.Hspec (SpecWith, describe, it, shouldBe)
 
-parserTests :: SpecWith ()
-parserTests = describe "--==☯ Parser ☯==--" $ do
+run :: SpecWith ()
+run = describe "--==☯ Parser ☯==--" $ do
   let parse' :: Parser a -> String -> Maybe (a, String)
-      parse' parser source = case parseSome parser source of
+      parse' parser source = case parse parser source of
         Right (x, State {source = remaining}) -> Just (x, remaining)
-        Left (ParserError _ _) -> Nothing
+        Left _ -> Nothing
 
   describe "☯ Control flow" $ do
     it "☯ succeed" $ do
       parse' (succeed True) "abc" `shouldBe` Just (True, "abc")
 
-    it "☯ expected" $ do
-      parse' (expected "something" :: Parser ()) "abc" `shouldBe` Nothing
+    it "☯ fail'" $ do
+      parse' (fail' :: Parser ()) "abc" `shouldBe` Nothing
 
     it "☯ fmap" $ do
       parse' (fmap not (succeed True)) "abc" `shouldBe` Just (False, "abc")
 
     it "☯ orElse" $ do
       parse' (succeed True |> orElse (succeed False)) "abc" `shouldBe` Just (True, "abc")
-      parse' (expected "something" |> orElse (succeed False)) "abc" `shouldBe` Just (False, "abc")
+      parse' (fail' |> orElse (succeed False)) "abc" `shouldBe` Just (False, "abc")
 
     it "☯ oneOf" $ do
       parse' (oneOf [] :: Parser ()) "abc" `shouldBe` Nothing
@@ -54,10 +56,6 @@ parserTests = describe "--==☯ Parser ☯==--" $ do
       let p = parse' space
       p " bc" `shouldBe` Just (' ', "bc")
       p "\tbc" `shouldBe` Just ('\t', "bc")
-      -- p "\nbc" `shouldBe` Just ('\n', "bc")
-      p "\rbc" `shouldBe` Just ('\r', "bc")
-      p "\fbc" `shouldBe` Just ('\f', "bc")
-      p "\vbc" `shouldBe` Just ('\v', "bc")
       p "abc" `shouldBe` Nothing
 
     it "☯ letter" $ do
@@ -130,17 +128,17 @@ parserTests = describe "--==☯ Parser ☯==--" $ do
 
     it "☯ zeroOrOne" $ do
       let p = parse' (zeroOrOne letter)
-      p "abc" `shouldBe` Just ("a", "bc")
-      p "ab" `shouldBe` Just ("a", "b")
-      p "a" `shouldBe` Just ("a", "")
-      p "" `shouldBe` Just ("", "")
+      p "abc." `shouldBe` Just ("a", "bc.")
+      p "ab." `shouldBe` Just ("a", "b.")
+      p "a." `shouldBe` Just ("a", ".")
+      p "." `shouldBe` Just ("", ".")
 
     it "☯ zeroOrMore" $ do
       let p = parse' (zeroOrMore letter)
-      p "abc" `shouldBe` Just ("abc", "")
-      p "ab" `shouldBe` Just ("ab", "")
-      p "a" `shouldBe` Just ("a", "")
-      p "" `shouldBe` Just ("", "")
+      p "abc." `shouldBe` Just ("abc", ".")
+      p "ab." `shouldBe` Just ("ab", ".")
+      p "a." `shouldBe` Just ("a", ".")
+      p "." `shouldBe` Just ("", ".")
 
     it "☯ oneOrMore" $ do
       let p = parse' (oneOrMore letter)
@@ -252,6 +250,17 @@ parserTests = describe "--==☯ Parser ☯==--" $ do
     --   -- p "a\n   \n b" (oneOrMore (token letter)) `shouldBe` Just "ab"
     --   True `shouldBe` True
 
+    it "☯ getState" $ do
+      let parser = do
+            s1 <- getState
+            x <- text "abc"
+            s2 <- getState
+            succeed (s1, x, s2)
+      let p = parse' parser
+      let s1 = State {source = "abcdef", row = 1, col = 1}
+      let s2 = State {source = "def", row = 1, col = 4}
+      p "abcdef" `shouldBe` Just ((s1, "abc", s2), "def")
+
     it "☯ subparser" $ do
       let p = parse' (subparser (text "--}") (zeroOrMore anyChar))
       p "--}abc" `shouldBe` Just ("", "--}abc")
@@ -259,21 +268,11 @@ parserTests = describe "--==☯ Parser ☯==--" $ do
       p "ab--}c" `shouldBe` Just ("ab", "--}c")
       p "abc--}" `shouldBe` Just ("abc", "--}")
 
-    it "☯ collection" $ do
-      let p = parse' (collection (char '[') letter (char ',') (char ']'))
-      p "" `shouldBe` Nothing
-      p "[" `shouldBe` Nothing
-      p "[]" `shouldBe` Just ("", "")
-      p "[a]" `shouldBe` Just ("a", "")
-      p "[a,]" `shouldBe` Just ("a", "")
-      p "[a,b,c]" `shouldBe` Just ("abc", "")
-      p "[a,b,c,]" `shouldBe` Just ("abc", "")
-
     it "☯ withOperators" $ do
       let calculator =
             withOperators
-              [ constant number,
-                prefix 4 (\x -> - x) (char '-'),
+              [ atom number,
+                prefix 4 (\x -> -x) (char '-'),
                 inbetween (char '(') (char ')')
               ]
               [ infixL 1 (+) (char '+'),
