@@ -50,7 +50,6 @@ data Pattern
   | PInt !Int
   | PTag !String
   | PVar !String
-  | PAnn !Pattern !Type
   | PFun !Pattern !Pattern
   | PApp !Pattern !Pattern
   | PRec ![(String, Pattern)]
@@ -269,7 +268,6 @@ patternExpr PNumT = NumT
 patternExpr (PInt i) = Int i
 patternExpr (PTag k) = Tag k
 patternExpr (PVar x) = Var x
-patternExpr (PAnn p ty) = Ann (patternExpr p) ty
 patternExpr (PFun p q) = Fun (patternExpr p) (patternExpr q)
 patternExpr (PApp p q) = App (patternExpr p) (patternExpr q)
 patternExpr (PRec kvs) = Rec (map (second patternExpr) kvs)
@@ -323,7 +321,6 @@ eval env (App a b) = case (eval env a, eval env b) of
     (PInt i, Int i') | i == i' -> a
     (PTag k, Tag k') | k == k' -> a
     (PVar x, b) -> eval [(x, b)] a
-    (PAnn p ty, b) -> error "TODO: eval App Lam PAnn"
     (PFun p q, Fun b1 b2) -> app (lam [p, q] a) [b1, b2]
     (PApp p q, App b1 b2) -> app (lam [p, q] a) [b1, b2]
     (PRec [], Rec _) -> a

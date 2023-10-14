@@ -1,4 +1,5 @@
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
@@ -29,25 +30,38 @@ module Tao where
 -}
 
 data Token a = Token
-  { start :: !Pos,
-    end :: !Pos,
+  { value :: a,
+    start :: !(Int, Int),
+    end :: !(Int, Int),
     docs :: !DocString,
     comments :: ![String],
-    commentsTrailing :: !String,
-    value :: a
+    commentsTrailing :: !String
   }
   deriving (Eq, Show)
 
-data Pos = Pos
-  { row :: !Int,
-    col :: !Int
-  }
-  deriving (Eq, Show)
+tok :: a -> Token a
+tok x =
+  Token
+    { value = x,
+      start = (1, 1),
+      end = (1, 1),
+      docs = newDocString,
+      comments = [],
+      commentsTrailing = ""
+    }
 
--- newToken :: a -> Token a
--- newToken x = Token {
---   span = Span {name = "", }
--- }
+instance Functor Token where
+  fmap :: (a -> b) -> Token a -> Token b
+  -- fmap f x = x {value = VarP x.value}  -- but GHC complains it's ambiguous
+  fmap f x =
+    Token
+      { value = f x.value,
+        start = x.start,
+        end = x.end,
+        docs = x.docs,
+        comments = x.comments,
+        commentsTrailing = x.commentsTrailing
+      }
 
 data DocString = DocString
   { public :: !Bool,
@@ -55,46 +69,19 @@ data DocString = DocString
   }
   deriving (Eq, Show)
 
-data Expression
-  = Int !(Token Int)
-  | Num !(Token Double)
-  | Tag !(Token String)
-  | Var !(Token String)
-  | Ann !(Token Expression) !(Token Type)
-  | Fun !(Token Expression) !(Token Expression)
-  | Match ![([Token Pattern], Token Expression)]
-  | Let ![Token Definition] !(Token Expression)
-  | App !(Token Expression) !(Token Expression)
-  | Or !(Token Expression) !(Token Expression)
-  | If !(Token Expression) !(Token Expression)
-  | Eq !(Token Expression) !(Token Expression)
-  | Lt !(Token Expression) !(Token Expression)
-  | Add !(Token Expression) !(Token Expression)
-  | Sub !(Token Expression) !(Token Expression)
-  | Mul !(Token Expression) !(Token Expression)
-  | Pow !(Token Expression) !(Token Expression)
-  deriving (Eq, Show)
-
-data Pattern
-  = PAny !(Token ())
-  | PInt !(Token Int)
-  | PVar !(Token String)
-  deriving (Eq, Show)
-
-data Type
-  = For ![Token String] !(Token Expression)
-  deriving (Eq, Show)
+newDocString :: DocString
+newDocString = DocString {public = False, description = ""}
 
 data Definition
   = Def
       { type' :: !(Maybe (Token Type)),
         name :: !(Token String),
-        expr :: !(Token Expression)
+        value :: !(Token Expression)
       }
   | Unpack
       { types :: ![(Token String, Token Type)],
         pattern :: !(Token Pattern),
-        expr :: !(Token Expression)
+        value :: !(Token Expression)
       }
   deriving (Eq, Show)
 
@@ -110,5 +97,46 @@ data Module = Module
   }
   deriving (Eq, Show)
 
--- app :: Token Expression -> [Token Expression] -> Token Expression
--- app = foldl App
+type Name = Token String
+
+type Pattern = Token PatternAtom
+
+data PatternAtom
+  = AnyP
+  | KndP
+  | IntTP
+  | NumTP
+  | IntP !Int
+  | TagP !String
+  | VarP !String
+  | FunP !Pattern !Pattern
+  | AppP !Pattern !Pattern
+  | RecP ![(Name, Pattern)]
+  deriving (Eq, Show)
+
+type Expression = Token ExpressionAtom
+
+data ExpressionAtom
+  = Int !Int
+  | Num !Double
+  | Tag !String
+  | Var !String
+  | Ann !Expression !Type
+  | Fun !Expression !Expression
+  | Rec ![(Name, Expression)]
+  | Match ![([Pattern], Expression)]
+  | Let ![Definition] !Expression
+  | App !Expression !Expression
+  | Or !Expression !Expression
+  | If !Expression !Expression
+  | Eq !Expression !Expression
+  | Lt !Expression !Expression
+  | Add !Expression !Expression
+  | Sub !Expression !Expression
+  | Mul !Expression !Expression
+  | Pow !Expression !Expression
+  deriving (Eq, Show)
+
+data Type
+  = For ![Name] !Expression
+  deriving (Eq, Show)

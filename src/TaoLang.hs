@@ -5,7 +5,7 @@
 module TaoLang where
 
 import Control.Monad (void)
-import Data.Char (isSpace)
+import Data.Char (isSpace, isUpper)
 import Data.List (dropWhileEnd, intercalate)
 import Debug.Trace
 import Error
@@ -71,6 +71,54 @@ parseDefinition src = error "TODO: parseDefinition"
 parseFile :: String -> Either Error (Token SourceFile)
 parseFile src = error "TODO: parseFile"
 
+-- Utilities
+startsWithUpper :: String -> Bool
+startsWithUpper (c : _) | isUpper c = True
+startsWithUpper _ = False
+
+identifier :: Parser String
+identifier = do
+  c <- P.letter
+  cs <- P.zeroOrMore (P.oneOf validChars)
+  P.succeed (c : cs)
+  where
+    validChars =
+      [ P.letter,
+        P.digit,
+        P.char '_',
+        P.char '-' |> P.notFollowedBy (P.char '>')
+      ]
+
+lineBreak :: Parser ()
+lineBreak = do
+  _ <- P.endOfLine
+  _ <- P.whitespaces
+  P.succeed ()
+
+inbetween :: String -> String -> Parser a -> Parser a
+inbetween open close parser = do
+  _ <- P.text open
+  _ <- P.whitespaces
+  x <- parser
+  _ <- P.whitespaces
+  _ <- P.text close
+  P.succeed x
+
+collection :: String -> String -> String -> Parser a -> Parser [a]
+collection open delim close parser =
+  inbetween open close (delimited delim parser)
+
+delimited :: String -> Parser a -> Parser [a]
+delimited delim parser =
+  P.oneOf
+    [ do
+        x <- parser
+        xs <- P.zeroOrMore (do _ <- operator delim; parser)
+        _ <- P.maybe' (operator delim)
+        P.succeed (x : xs),
+      P.succeed []
+    ]
+
 -- Concrete Syntax Tree tokens
 token :: Parser a -> Parser (Token a)
 token parser = do
@@ -79,12 +127,12 @@ token parser = do
   s1 <- P.getState
   x <- parser
   s2 <- P.getState
-  _ <- P.zeroOrMore P.space
+  _ <- P.spaces
   trailingComment <- P.oneOf [comment, P.succeed ""]
   P.succeed
     Token
-      { start = Pos {row = s1.row, col = s1.col},
-        end = Pos {row = s2.row, col = s2.col},
+      { start = (s1.row, s1.col),
+        end = (s2.row, s2.col),
         docs = docs,
         comments = comments,
         commentsTrailing = trailingComment,
@@ -94,7 +142,7 @@ token parser = do
 comment :: Parser String
 comment = do
   _ <- P.char '#'
-  _ <- P.zeroOrMore P.space
+  _ <- P.spaces
   txt <- P.textUntil lineBreak
   P.succeed (dropWhileEnd isSpace txt)
 
@@ -102,55 +150,77 @@ docString :: Parser DocString
 docString = do
   let delimiter = P.text "---"
   _ <- delimiter
-  _ <- P.zeroOrMore P.space
+  _ <- P.spaces
   public <-
     P.oneOf
       [ False <$ P.word "private",
         True <$ P.word "public",
         P.succeed True
       ]
-  _ <- P.zeroOrMore P.space
+  _ <- P.spaces
   docs <- P.textUntil (lineDelimiter delimiter)
   P.succeed DocString {public = public, description = dropWhileEnd isSpace $ dropWhile isSpace docs}
-
-lineBreak :: Parser ()
-lineBreak = do
-  _ <- P.endOfLine
-  _ <- P.zeroOrMore P.whitespace
-  P.succeed ()
-
-lineDelimiter :: Parser delim -> Parser ()
-lineDelimiter delimiter = do
-  _ <- lineBreak
-  _ <- delimiter
-  _ <- P.zeroOrMore P.space
-  _ <- lineBreak
-  P.succeed ()
-
-variableName :: Parser String
-variableName = error "TODO"
-
-tagName :: Parser String
-tagName = error "TODO"
+  where
+    lineDelimiter :: Parser delim -> Parser ()
+    lineDelimiter delimiter = do
+      _ <- lineBreak
+      _ <- delimiter
+      _ <- P.spaces
+      _ <- lineBreak
+      P.succeed ()
 
 -- Patterns
-patternAtom :: Parser (Token Pattern)
+patternAtom :: Parser Pattern
 patternAtom = do
-  let atoms =
-        [ PAny <$> token (void (P.word "_")),
-          PInt <$> token P.integer
-          -- PVar <$> identifier P.lowercase,
-          -- PTag <$> identifier P.uppercase,
-          -- do
-          --   _ <- token $ P.char '('
-          --   p <- pattern'
-          --   _ <- token $ P.char ')'
-          --   P.succeed p
+  let field :: Parser (Name, Pattern)
+      field = do
+        x <- token identifier
+        p <-
+          P.oneOf
+            [ do _ <- operator ":"; pattern',
+              P.succeed (fmap (const (VarP x.value)) x)
+            ]
+        P.succeed (x, p)
+  let atoms :: [Parser PatternAtom]
+      atoms =
+        [ AnyP <$ P.word "_",
+          do
+            name <- identifier
+            case name of
+              "Type" -> P.succeed KndP
+              "Int" -> P.succeed IntTP
+              "Num" -> P.succeed NumTP
+              _ | startsWithUpper name -> P.succeed (TagP name)
+              _ -> P.succeed (VarP name),
+          IntP <$> P.integer,
+          RecP <$> collection "{" ":" "}" field
         ]
-  token (P.oneOf atoms)
+  P.oneOf
+    [ token (P.oneOf atoms),
+      do
+        p <- inbetween "(" ")" pattern'
+        _ <- P.spaces
+        P.succeed p
+    ]
 
--- pattern' :: Parser (Token Pattern)
--- pattern' = patternAtom -- TODO
+pattern' :: Parser Pattern
+pattern' =
+  P.withOperators
+    [P.atom patternAtom]
+    [ P.infixR 1 (tok FunP) (operator "->"),
+      P.infixL 2 (tok AppP) P.whitespaces
+    ]
+    0
+  where
+    tok :: (Pattern -> Pattern -> PatternAtom) -> Pattern -> Pattern -> Pattern
+    tok f p q = p {value = f p q, end = q.end}
+
+operator :: String -> Parser ()
+operator name = do
+  _ <- P.whitespaces
+  _ <- P.text name
+  _ <- P.whitespaces
+  P.succeed ()
 
 -- -- Expressions
 -- expressionAtom :: Parser Expression
@@ -184,9 +254,9 @@ patternAtom = do
 --         P.succeed (Match (br : brs))
 
 --   P.withOperators
---     [ P.constant (match 2),
+--     [ P.atom (match 2),
 --       P.prefixOp 0 Let (P.oneOrMore definition),
---       P.constant expressionAtom
+--       P.atom expressionAtom
 --     ]
 --     [ P.infixR 1 Or (token $ P.text "|"),
 --       P.infixR 1 If (token $ P.text "?"),
@@ -339,13 +409,13 @@ definition =
 -- token :: Parser a -> Parser a
 -- token parser = do
 --   x <- parser
---   _ <- P.zeroOrMore P.space
+--   _ <- P.spaces
 --   P.succeed x
 
 -- emptyLine :: Parser Error String
 -- emptyLine = do
 --   let close = P.oneOf [P.char '\n', P.char ';']
---   line <- P.subparser close (P.zeroOrMore P.space)
+--   line <- P.subparser close (P.spaces)
 --   _ <- close
 --   P.succeed line
 

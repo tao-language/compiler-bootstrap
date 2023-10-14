@@ -78,7 +78,7 @@ oneOf (p : ps) = p |> orElse (oneOf ps)
 endOfFile :: Parser ()
 endOfFile =
   Parser
-    ( \state -> case source state of
+    ( \state -> case state.source of
         "" -> Right ((), state)
         _ -> Left state
     )
@@ -87,26 +87,30 @@ endOfLine :: Parser ()
 endOfLine = oneOf [void $ char '\n', endOfFile]
 
 -- Single characters
-anyChar :: Parser Char
-anyChar =
+charIf :: (Char -> Bool) -> Parser Char
+charIf condition =
   Parser
-    ( \state -> case source state of
-        '\n' : source -> Right ('\n', state {source = source, row = state.row + 1, col = 1})
-        ch : source -> Right (ch, state {source = source, col = state.col + 1})
+    ( \state -> case state.source of
+        c : _ | not (condition c) -> Left state
+        '\n' : src -> Right ('\n', state {source = src, row = state.row + 1, col = 1})
+        c : src -> Right (c, state {source = src, col = state.col + 1})
         "" -> Left state
     )
 
-charIf :: (Char -> Bool) -> Parser Char
-charIf condition = do
-  ch <- anyChar
-  _ <- assert (condition ch)
-  succeed ch
+anyChar :: Parser Char
+anyChar = charIf (const True)
 
 space :: Parser Char
 space = charIf (`elem` " \t")
 
+spaces :: Parser String
+spaces = zeroOrMore space
+
 whitespace :: Parser Char
 whitespace = charIf (`elem` " \t\n\r\f\v")
+
+whitespaces :: Parser String
+whitespaces = zeroOrMore whitespace
 
 letter :: Parser Char
 letter = charIf Char.isLetter
@@ -248,7 +252,7 @@ wordChar :: Parser Char
 wordChar = oneOf [letter, digit, char '_']
 
 wordEnd :: Parser ()
-wordEnd = oneOf [succeed () |> notFollowedBy wordChar, endOfFile]
+wordEnd = oneOf [succeed () |> notFollowedBy wordChar]
 
 word :: String -> Parser String
 word txt = do
@@ -274,16 +278,6 @@ notFollowedBy (Parser lookahead) parser = do
         Left _ -> Right (x, state)
     )
 
-split :: Parser delimiter -> Parser a -> Parser [a]
-split delimiter parser =
-  oneOf
-    [ do
-        x <- parser
-        xs <- zeroOrMore (do _ <- delimiter; parser)
-        succeed (x : xs),
-      succeed []
-    ]
-
 -- TODO
 getState :: Parser State
 getState = Parser (\state -> Right (state, state))
@@ -293,39 +287,15 @@ subparserPartial delim (Parser p) = do
   before <- getState
   _ <- zeroOrMore (do _ <- succeed () |> notFollowedBy delim; anyChar)
   after <- getState
-  let len = length (source before) - length (source after)
+  let len = length before.source - length after.source
   Parser
     ( \state -> do
-        (x, _) <- p before {source = take len (source before)}
+        (x, _) <- p before {source = take len before.source}
         Right (x, state)
     )
 
 subparser :: Parser delim -> Parser a -> Parser a
 subparser delim parser = subparserPartial delim (do x <- parser; _ <- endOfFile; succeed x)
-
-collection :: Parser open -> Parser a -> Parser delimiter -> Parser close -> Parser [a]
-collection open parser delimiter close = do
-  _ <- open
-  xs <- split delimiter parser
-  _ <- maybe' delimiter
-  _ <- close
-  succeed xs
-
--- tok :: String -> Parser a -> Parser (a, String)
--- tok indent parser = do
---   let blank = oneOf [char ' ', char '\t', char '\r']
---   _ <- text indent
---   newIndent <- zeroOrMore blank
---   x <- parser
---   _ <- zeroOrMore blank
---   _ <- maybe' (char '\n')
---   succeed (x, indent ++ newIndent)
-
--- token :: Parser a -> Parser a
--- token parser = do
---   x <- parser
---   _ <- zeroOrMore space
---   succeed x
 
 -- TODO: line
 -- TODO: date
@@ -354,8 +324,8 @@ type Prefix a = (Int -> Parser a) -> Parser a
 
 type Infix a = a -> Int -> (Int -> Parser a) -> Parser a
 
-constant :: Parser a -> Prefix a
-constant parser _ = parser
+atom :: Parser a -> Prefix a
+atom parser _ = parser
 
 prefix :: Int -> (a -> a) -> Parser op -> Prefix a
 prefix prec f = prefixOp prec (\_ x -> f x)

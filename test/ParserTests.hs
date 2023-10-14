@@ -128,17 +128,17 @@ run = describe "--==☯ Parser ☯==--" $ do
 
     it "☯ zeroOrOne" $ do
       let p = parse' (zeroOrOne letter)
-      p "abc" `shouldBe` Just ("a", "bc")
-      p "ab" `shouldBe` Just ("a", "b")
-      p "a" `shouldBe` Just ("a", "")
-      p "" `shouldBe` Just ("", "")
+      p "abc." `shouldBe` Just ("a", "bc.")
+      p "ab." `shouldBe` Just ("a", "b.")
+      p "a." `shouldBe` Just ("a", ".")
+      p "." `shouldBe` Just ("", ".")
 
     it "☯ zeroOrMore" $ do
       let p = parse' (zeroOrMore letter)
-      p "abc" `shouldBe` Just ("abc", "")
-      p "ab" `shouldBe` Just ("ab", "")
-      p "a" `shouldBe` Just ("a", "")
-      p "" `shouldBe` Just ("", "")
+      p "abc." `shouldBe` Just ("abc", ".")
+      p "ab." `shouldBe` Just ("ab", ".")
+      p "a." `shouldBe` Just ("a", ".")
+      p "." `shouldBe` Just ("", ".")
 
     it "☯ oneOrMore" $ do
       let p = parse' (oneOrMore letter)
@@ -268,20 +268,10 @@ run = describe "--==☯ Parser ☯==--" $ do
       p "ab--}c" `shouldBe` Just ("ab", "--}c")
       p "abc--}" `shouldBe` Just ("abc", "--}")
 
-    it "☯ collection" $ do
-      let p = parse' (collection (char '[') letter (char ',') (char ']'))
-      p "" `shouldBe` Nothing
-      p "[" `shouldBe` Nothing
-      p "[]" `shouldBe` Just ("", "")
-      p "[a]" `shouldBe` Just ("a", "")
-      p "[a,]" `shouldBe` Just ("a", "")
-      p "[a,b,c]" `shouldBe` Just ("abc", "")
-      p "[a,b,c,]" `shouldBe` Just ("abc", "")
-
     it "☯ withOperators" $ do
       let calculator =
             withOperators
-              [ constant number,
+              [ atom number,
                 prefix 4 (\x -> -x) (char '-'),
                 inbetween (char '(') (char ')')
               ]

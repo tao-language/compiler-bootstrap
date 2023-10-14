@@ -12,24 +12,59 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Tao language ☯==--" $ do
+  let tok1 :: a -> (Int, Int) -> (Int, Int) -> Token a
+      tok1 x start end = (tok x) {start = start, end = end}
+  let tok2 :: (Token a -> Token a -> a) -> a -> a -> (Int, Int) -> (Int, Int) -> (Int, Int) -> (Int, Int) -> Token a
+      tok2 f x y start1 end1 start2 end2 = tok1 (f (tok1 x start1 end1) (tok1 y start2 end2)) start1 end2
+
   let parse' :: Parser a -> String -> Either String (a, String)
       parse' parser src = case P.parse parser src of
-        Right (x, P.State {P.source = remaining}) ->
-          Right (x, remaining)
-        Left (P.State {P.source = remaining}) ->
-          Left remaining
+        Right (x, P.State {P.source = remaining}) -> Right (x, remaining)
+        Left (P.State {P.source = remaining}) -> Left remaining
 
-  let parseToken :: Parser (Token a) -> String -> Either String (a, String)
-      parseToken parser src = do
-        (tok, txt) <- parse' parser src
-        Right (tok.value, txt)
+  it "☯ identifier" $ do
+    let p = parse' identifier
+    p "" `shouldBe` Left ""
+    p "a" `shouldBe` Right ("a", "")
+    p "A" `shouldBe` Right ("A", "")
+    p "9" `shouldBe` Left "9" -- cannot start with number
+    p "-" `shouldBe` Left "-" -- cannot start with dash
+    p "_" `shouldBe` Left "_" -- cannot start with underscore
+    p "ab" `shouldBe` Right ("ab", "")
+    p "aB" `shouldBe` Right ("aB", "")
+    p "a9" `shouldBe` Right ("a9", "")
+    p "a-" `shouldBe` Right ("a-", "")
+    p "a_" `shouldBe` Right ("a_", "")
+    p "CamelCaseName" `shouldBe` Right ("CamelCaseName", "")
+    p "snake_case_name" `shouldBe` Right ("snake_case_name", "")
+    p "dash-case-name" `shouldBe` Right ("dash-case-name", "")
+    p "dash-case-name-1" `shouldBe` Right ("dash-case-name-1", "")
+    p "dash-case-name - 1" `shouldBe` Right ("dash-case-name", " - 1")
+    p "a->" `shouldBe` Right ("a", "->")
+
+  it "☯ inbetween" $ do
+    let p = parse' (inbetween "(" ")" (P.zeroOrMore P.letter))
+    p "" `shouldBe` Left ""
+    p "()" `shouldBe` Right ("", "")
+    p "(abc)" `shouldBe` Right ("abc", "")
+    p "( \n abc \n )  \ndef" `shouldBe` Right ("abc", "  \ndef")
+
+  it "☯ collection" $ do
+    let p = parse' $ collection "[" "," "]" P.letter
+    p "[] ." `shouldBe` Right ("", " .")
+    p "[,]" `shouldBe` Left ",]"
+    p "[a]" `shouldBe` Right ("a", "")
+    p "[a,]" `shouldBe` Right ("a", "")
+    p "[a, b]" `shouldBe` Right ("ab", "")
+    p "[a, b,]" `shouldBe` Right ("ab", "")
+    p "[ \n a \n , \n b \n , \n ]" `shouldBe` Right ("ab", "")
 
   it "☯ token simple" $ do
     let p = parse' $ token (P.text "abc")
-    let result (r1, c1) (r2, c2) =
+    let result start end =
           Token
-            { start = Pos {row = r1, col = c1},
-              end = Pos {row = r2, col = c2},
+            { start = start,
+              end = end,
               docs = DocString {public = False, description = ""},
               comments = [],
               commentsTrailing = "",
@@ -40,24 +75,24 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ token comments" $ do
     let p = parse' $ token (P.text "abc")
-    let result (r1, c1) (r2, c2) =
+    let result start end =
           Token
-            { start = Pos {row = r1, col = c1},
-              end = Pos {row = r2, col = c2},
+            { start = start,
+              end = end,
               docs = DocString {public = False, description = ""},
               comments = ["A", "B"],
               commentsTrailing = "",
               value = "abc"
             }
-    p "#A\n#B\nabcdef" `shouldBe` Right (result (3, 1) (3, 4), "def")
+    p "#A\n#B\nabc def" `shouldBe` Right (result (3, 1) (3, 4), "def")
     p "# A \n \n \n  #  B  \n  abc  def" `shouldBe` Right (result (5, 3) (5, 6), "def")
 
   it "☯ token comments (trailing)" $ do
     let p = parse' $ token (P.text "abc")
-    let result (r1, c1) (r2, c2) =
+    let result start end =
           Token
-            { start = Pos {row = r1, col = c1},
-              end = Pos {row = r2, col = c2},
+            { start = start,
+              end = end,
               docs = DocString {public = False, description = ""},
               comments = [],
               commentsTrailing = "comment",
@@ -68,10 +103,10 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ token docstrings" $ do
     let p = parse' $ token (P.text "abc")
-    let result public docs (r1, c1) (r2, c2) =
+    let result public docs start end =
           Token
-            { start = Pos {row = r1, col = c1},
-              end = Pos {row = r2, col = c2},
+            { start = start,
+              end = end,
               docs = DocString {public = public, description = docs},
               comments = [],
               commentsTrailing = "",
@@ -83,10 +118,27 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "---  private  \nA\nB\n\nC\n  ---  \nabc" `shouldBe` Right (result False "A\nB\n\nC" (7, 1) (7, 4), "")
 
   it "☯ patternAtom" $ do
-    let p = parseToken patternAtom
-    -- p "_ abc" `shouldBe` Right (PAny (newToken), "abc")
-    -- p "42 abc" `shouldBe` Right (PInt 42, "abc")
-    True `shouldBe` True
+    let p = parse' patternAtom
+    p "_ abc" `shouldBe` Right (tok1 AnyP (1, 1) (1, 2), "abc")
+    p "Type abc" `shouldBe` Right (tok1 KndP (1, 1) (1, 5), "abc")
+    p "Int abc" `shouldBe` Right (tok1 IntTP (1, 1) (1, 4), "abc")
+    p "Num abc" `shouldBe` Right (tok1 NumTP (1, 1) (1, 4), "abc")
+    p "42 abc" `shouldBe` Right (tok1 (IntP 42) (1, 1) (1, 3), "abc")
+    p "A abc" `shouldBe` Right (tok1 (TagP "A") (1, 1) (1, 2), "abc")
+    p "x abc" `shouldBe` Right (tok1 (VarP "x") (1, 1) (1, 2), "abc")
+    p "{} abc" `shouldBe` Right (tok1 (RecP []) (1, 1) (1, 3), "abc")
+    p "{x} abc" `shouldBe` Right (tok1 (RecP [(tok1 "x" (1, 2) (1, 3), tok1 (VarP "x") (1, 2) (1, 3))]) (1, 1) (1, 4), "abc")
+    p "{x: y} abc" `shouldBe` Right (tok1 (RecP [(tok1 "x" (1, 2) (1, 3), tok1 (VarP "y") (1, 5) (1, 6))]) (1, 1) (1, 7), "abc")
+    p "x->y" `shouldBe` Right (tok1 (VarP "x") (1, 1) (1, 2), "->y")
+    p "(x->y) abc" `shouldBe` Right (tok2 FunP (VarP "x") (VarP "y") (1, 2) (1, 3) (1, 5) (1, 6), "abc")
+
+  it "☯ pattern'" $ do
+    let (x, y) = (VarP "x", VarP "y")
+    let p = parse' pattern'
+    p "x->y" `shouldBe` Right (tok2 FunP x y (1, 1) (1, 2) (1, 4) (1, 5), "")
+    p "x \n -> \n y" `shouldBe` Right (tok2 FunP x y (1, 1) (1, 2) (3, 2) (3, 3), "")
+    p "x y" `shouldBe` Right (tok2 AppP x y (1, 1) (1, 2) (1, 3) (1, 4), "")
+    p "x \n y" `shouldBe` Right (tok2 AppP x y (1, 1) (1, 2) (2, 2) (2, 3), "")
 
   -- it "☯ token" $ do
   --   let p = parse' (P.zeroOrMore (token P.letter))
@@ -147,12 +199,12 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   -- it "☯ pattern" $ do
   --   let p = parse' (pattern' 0)
-  --   p "_ " `shouldBe` Right (PAny, "")
+  --   p "_ " `shouldBe` Right (AnyP, "")
   --   p "1 " `shouldBe` Right (PInt 1, "")
   --   p "x " `shouldBe` Right (PVar "x", "")
   --   p "A " `shouldBe` Right (PTag "A", "")
   --   p "B x y " `shouldBe` Right (PApp (PApp (PTag "B") _x) _y, "")
-  --   p "(_) " `shouldBe` Right (PAny, "")
+  --   p "(_) " `shouldBe` Right (AnyP, "")
   --   p "(1) " `shouldBe` Right (PInt 1, "")
   --   p "(x) " `shouldBe` Right (PVar "x", "")
   --   p "(A) " `shouldBe` Right (PTag "A", "")
