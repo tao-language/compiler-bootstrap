@@ -130,19 +130,17 @@ operator name = do
 token :: Parser a -> Parser (Token a)
 token parser = do
   comments <- P.zeroOrMore comment
-  docs <- P.oneOf [docString, P.succeed DocString {public = False, description = ""}]
   s1 <- P.getState
   x <- parser
   s2 <- P.getState
-  _ <- P.spaces
+  _ <- P.whitespaces
   trailingComment <- P.oneOf [comment, P.succeed ""]
   P.succeed
     Token
       { start = (s1.row, s1.col),
         end = (s2.row, s2.col),
-        docs = docs,
         comments = comments,
-        commentsTrailing = trailingComment,
+        trailingComment = trailingComment,
         value = x
       }
 
@@ -153,6 +151,7 @@ comment = do
   txt <- P.textUntil lineBreak
   P.succeed (dropWhileEnd isSpace txt)
 
+-- docs <- P.oneOf [docString, P.succeed DocString {public = False, description = ""}]
 docString :: Parser DocString
 docString = do
   let delimiter = P.text "---"
@@ -215,7 +214,7 @@ pattern' =
   P.withOperators
     [P.atom patternAtom]
     [ P.infixR 1 (op FunP) (operator "->"),
-      P.infixL 2 (op AppP) P.whitespaces
+      P.infixL 2 (op AppP) (P.succeed ())
     ]
     0
   where
@@ -248,7 +247,8 @@ expressionAtom = do
 expression :: Parser Expression
 expression = do
   P.withOperators
-    [ P.atom expressionAtom
+    [ P.atom expressionAtom,
+      P.prefixOp 2 lamOp lamPatterns
     ]
     [ P.infixR 1 (op Or) (operator "|"),
       P.suffixOp 2 annOp typeAnnotation,
@@ -258,81 +258,52 @@ expression = do
       P.infixR 6 (op Add) (operator "+"),
       P.infixR 6 (op Sub) (operator "-"),
       P.infixR 7 (op Mul) (operator "*"),
-      P.infixR 8 (op App) P.whitespaces,
+      P.infixR 8 (op App) (P.succeed ()),
       P.infixR 9 (op Pow) (operator "^")
     ]
     0
   where
     op :: (Token a -> Token a -> a) -> Token a -> Token a -> Token a
-    op f p q = p {value = f p q, end = q.end}
+    op f p q = f p q <$ p {end = q.end}
+
+    lamOp :: [Pattern] -> Expression -> Expression
+    lamOp [] b = b
+    lamOp (p : ps) b = Lam (p : ps) b <$ b {start = p.start}
+
+    lamPatterns :: Parser [Pattern]
+    lamPatterns = do
+      _ <- operator "\\"
+      ps <- P.oneOrMore patternAtom
+      _ <- operator "="
+      P.succeed ps
 
     annOp :: Type -> Expression -> Expression
     annOp (For xs t) a = op (\a t -> Ann a (For xs t)) a t
 
 typeAnnotation :: Parser Type
 typeAnnotation = do
-  _ <- P.char ':'
-  _ <- P.whitespaces
+  _ <- operator ":"
   xs <-
     P.oneOf
       [ do
-          _ <- P.char '@'
-          xs <- P.oneOrMore (do _ <- P.whitespaces; token identifier)
-          _ <- P.char '.'
-          _ <- P.whitespaces
+          _ <- operator "@"
+          xs <- P.oneOrMore (token identifier)
+          _ <- operator "."
           P.succeed xs,
         P.succeed []
       ]
   t <- expression
   P.succeed (For xs t)
 
--- TODO: Ann 2
---       P.infixR 2 (\a b -> Ann a (For [] b)) (token $ P.text ":"),
-
--- expression :: Int -> Parser Expression
--- expression prec = do
---   let matchBranch :: Int -> Parser ([Pattern], Expression)
---       matchBranch prec = do
---         _ <- token $ P.char '|'
---         p <- patternAtom
---         (ps, b) <- branch prec
---         P.succeed (p : ps, b)
-
---   let match :: Int -> Parser Expression
---       match prec = do
---         _ <- token $ P.char '\\'
---         br <- branch prec
---         brs <- P.zeroOrMore (matchBranch prec)
---         P.succeed (Match (br : brs))
-
---   P.withOperators
---     [ P.atom (match 2),
---       P.prefixOp 0 Let (P.oneOrMore definition),
---       P.atom expressionAtom
---     ]
---     [ P.infixR 1 Or (token $ P.text "|"),
---       P.infixR 1 If (token $ P.text "?"),
---       P.infixR 2 (\a b -> Ann a (For [] b)) (token $ P.text ":"),
---       P.infixL 3 Eq (token $ P.text "=="),
---       P.infixL 4 Lt (token $ P.text "<"),
---       P.infixR 5 Fun (token $ P.text "->"),
---       P.infixL 6 Add (token $ P.text "+"),
---       P.infixL 6 Sub (token $ P.text "-"),
---       P.infixL 7 Mul (token $ P.text "*"),
---       P.infixL 8 App (P.succeed ()),
---       P.infixL 10 Pow (token $ P.text "^")
---     ]
---     prec
-
 -- Definitions
 definition :: Parser Definition
-definition =
-  P.oneOf
-    -- untypedDef
-    -- typedVarDef,
-    -- typedDef,
-    -- unpackDef
-    []
+definition = P.oneOf [rulesDef, unpackDef]
+
+rulesDef :: Parser Definition
+rulesDef = error "TODO: rulesDef"
+
+unpackDef :: Parser Definition
+unpackDef = error "TODO: unpackDef"
 
 -- untypedDef :: Parser Definition
 -- untypedDef = do

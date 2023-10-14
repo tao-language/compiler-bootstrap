@@ -20,6 +20,12 @@ run = describe "--==☯ Tao language ☯==--" $ do
         let a = tok1 x start1 end1
         let b = tok1 y start2 end2
         tok1 (f a b) start1 end2
+  let tokLam :: [(PatternAtom, (Int, Int), (Int, Int))] -> ExpressionAtom -> (Int, Int) -> (Int, Int) -> Expression
+      tokLam [] _ _ _ = error "Lam must have at least one pattern"
+      tokLam ps@((_, start1, _) : _) b start2 end2 = do
+        let ps' = map (\(p, start, end) -> tok1 p start end) ps
+        let b' = tok1 b start2 end2
+        tok1 (Lam ps' b') start1 end2
   let tokAnn :: ExpressionAtom -> (Int, Int) -> (Int, Int) -> [(String, (Int, Int), (Int, Int))] -> ExpressionAtom -> (Int, Int) -> (Int, Int) -> Expression
       tokAnn a start1 end1 xs t start2 end2 = do
         let a' = tok1 a start1 end1
@@ -75,9 +81,8 @@ run = describe "--==☯ Tao language ☯==--" $ do
           Token
             { start = start,
               end = end,
-              docs = DocString {public = False, description = ""},
               comments = [],
-              commentsTrailing = "",
+              trailingComment = "",
               value = "abc"
             }
     p "abcdef" `shouldBe` Right (result (1, 1) (1, 4), "def")
@@ -89,9 +94,8 @@ run = describe "--==☯ Tao language ☯==--" $ do
           Token
             { start = start,
               end = end,
-              docs = DocString {public = False, description = ""},
               comments = ["A", "B"],
-              commentsTrailing = "",
+              trailingComment = "",
               value = "abc"
             }
     p "#A\n#B\nabc def" `shouldBe` Right (result (3, 1) (3, 4), "def")
@@ -103,29 +107,28 @@ run = describe "--==☯ Tao language ☯==--" $ do
           Token
             { start = start,
               end = end,
-              docs = DocString {public = False, description = ""},
               comments = [],
-              commentsTrailing = "comment",
+              trailingComment = "comment",
               value = "abc"
             }
     p "abc#comment" `shouldBe` Right (result (1, 1) (1, 4), "")
     p "abc  #  comment  " `shouldBe` Right (result (1, 1) (1, 4), "")
 
-  it "☯ token docstrings" $ do
-    let p = parse' $ token (P.text "abc")
-    let result public docs start end =
-          Token
-            { start = start,
-              end = end,
-              docs = DocString {public = public, description = docs},
-              comments = [],
-              commentsTrailing = "",
-              value = "abc"
-            }
-    p "---\n---\nabc" `shouldBe` Right (result True "" (3, 1) (3, 4), "")
-    p "---\ndocs\n---\nabc" `shouldBe` Right (result True "docs" (4, 1) (4, 4), "")
-    p "---  \n  docs  \n  ---  \nabc" `shouldBe` Right (result True "docs" (4, 1) (4, 4), "")
-    p "---  private  \nA\nB\n\nC\n  ---  \nabc" `shouldBe` Right (result False "A\nB\n\nC" (7, 1) (7, 4), "")
+  -- it "☯ token docstrings" $ do
+  --   let p = parse' $ token (P.text "abc")
+  --   let result public docs start end =
+  --         Token
+  --           { start = start,
+  --             end = end,
+  --             docs = DocString {public = public, description = docs},
+  --             comments = [],
+  --             trailingComment = "",
+  --             value = "abc"
+  --           }
+  --   p "---\n---\nabc" `shouldBe` Right (result True "" (3, 1) (3, 4), "")
+  --   p "---\ndocs\n---\nabc" `shouldBe` Right (result True "docs" (4, 1) (4, 4), "")
+  --   p "---  \n  docs  \n  ---  \nabc" `shouldBe` Right (result True "docs" (4, 1) (4, 4), "")
+  --   p "---  private  \nA\nB\n\nC\n  ---  \nabc" `shouldBe` Right (result False "A\nB\n\nC" (7, 1) (7, 4), "")
 
   it "☯ patternAtom" $ do
     let p = parse' patternAtom
@@ -165,10 +168,13 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "(x y) abc" `shouldBe` Right (tok2 App (Var "x") (1, 2) (1, 3) (Var "y") (1, 4) (1, 5), "abc")
 
   it "☯ expression" $ do
-    let (x, y) = (Var "x", Var "y")
+    let (x, y, z) = (Var "x", Var "y", Var "z")
+    let (x', y') = (VarP "x", VarP "y")
     let p = parse' expression
-    -- TODO: Match
-    -- TODO: Let
+    p "\\=y" `shouldBe` Left "\\=y"
+    p "\\x=y" `shouldBe` Right (tokLam [(x', (1, 2), (1, 3))] y (1, 4) (1, 5), "")
+    p "\\ \n x \n = \n y" `shouldBe` Right (tokLam [(x', (2, 2), (2, 3))] y (4, 2) (4, 3), "")
+    p "\\x y = z" `shouldBe` Right (tokLam [(x', (1, 2), (1, 3)), (y', (1, 4), (1, 5))] z (1, 8) (1, 9), "")
     p "x | y" `shouldBe` Right (tok2 Or x (1, 1) (1, 2) y (1, 5) (1, 6), "")
     p "x : y" `shouldBe` Right (tokAnn x (1, 1) (1, 2) [] y (1, 5) (1, 6), "")
     p "x : @a. y" `shouldBe` Right (tokAnn x (1, 1) (1, 2) [("a", (1, 6), (1, 7))] y (1, 9) (1, 10), "")

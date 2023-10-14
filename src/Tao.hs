@@ -33,9 +33,8 @@ data Token a = Token
   { value :: a,
     start :: !(Int, Int),
     end :: !(Int, Int),
-    docs :: !DocString,
     comments :: ![String],
-    commentsTrailing :: !String
+    trailingComment :: !String
   }
   deriving (Eq, Show)
 
@@ -45,9 +44,8 @@ tok x =
     { value = x,
       start = (1, 1),
       end = (1, 1),
-      docs = newDocString,
       comments = [],
-      commentsTrailing = ""
+      trailingComment = ""
     }
 
 instance Functor Token where
@@ -59,9 +57,8 @@ instance Functor Token where
       { value = f x.value,
         start = x.start,
         end = x.end,
-        docs = x.docs,
         comments = x.comments,
-        commentsTrailing = x.commentsTrailing
+        trailingComment = x.trailingComment
       }
 
 data DocString = DocString
@@ -75,12 +72,14 @@ newDocString = DocString {public = False, description = ""}
 
 data Definition
   = Def
-      { type' :: !(Maybe (Token Type)),
+      { docs :: DocString,
+        type' :: !(Maybe (Token Type)),
         name :: !(Token String),
         value :: !(Token Expression)
       }
   | Unpack
-      { types :: ![(Token String, Token Type)],
+      { docs :: DocString,
+        types :: ![(Token String, Token Type)],
         pattern :: !(Token Pattern),
         value :: !(Token Expression)
       }
@@ -126,7 +125,7 @@ data ExpressionAtom
   | Tag !String
   | Var !String
   | Ann !Expression !Type
-  | Match ![([Pattern], Expression)]
+  | Lam ![Pattern] !Expression
   | Let ![Definition] !Expression
   | Fun !Expression !Expression
   | Or !Expression !Expression
