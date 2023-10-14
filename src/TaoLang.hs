@@ -222,20 +222,13 @@ operator name = do
   _ <- P.whitespaces
   P.succeed ()
 
--- -- Expressions
--- expressionAtom :: Parser Expression
--- expressionAtom =
---   P.oneOf
---     [ token $ Int <$> P.integer,
---       token $ Num <$> P.number,
---       Var <$> identifier P.lowercase,
---       Tag <$> identifier P.uppercase,
---       do
---         _ <- token $ P.char '('
---         a <- expression 0
---         _ <- token $ P.char ')'
---         P.succeed a
---     ]
+-- Expressions
+expressionAtom :: Parser Expression
+expressionAtom =
+  P.oneOf
+    [ token $ Int <$> P.integer,
+      token $ Num <$> P.number
+    ]
 
 -- expression :: Int -> Parser Expression
 -- expression prec = do

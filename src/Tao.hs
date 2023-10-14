@@ -52,7 +52,8 @@ tok x =
 
 instance Functor Token where
   fmap :: (a -> b) -> Token a -> Token b
-  -- fmap f x = x {value = VarP x.value}  -- but GHC complains it's ambiguous
+  -- fmap f x = x {value = VarP x.value}
+  -- But GHC complains it's ambiguous! So the verbose way it is
   fmap f x =
     Token
       { value = f x.value,
@@ -117,18 +118,21 @@ data PatternAtom
 type Expression = Token ExpressionAtom
 
 data ExpressionAtom
-  = Int !Int
+  = Knd
+  | IntT
+  | NumT
+  | Int !Int
   | Num !Double
   | Tag !String
   | Var !String
   | Ann !Expression !Type
-  | Fun !Expression !Expression
-  | Rec ![(Name, Expression)]
   | Match ![([Pattern], Expression)]
   | Let ![Definition] !Expression
-  | App !Expression !Expression
+  | Fun !Expression !Expression
   | Or !Expression !Expression
-  | If !Expression !Expression
+  | App !Expression !Expression
+  | Rec ![(Name, Expression)]
+  | Typ !Name ![Expression] ![(Name, Type)]
   | Eq !Expression !Expression
   | Lt !Expression !Expression
   | Add !Expression !Expression
