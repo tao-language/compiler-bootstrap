@@ -152,8 +152,21 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "Tag abc" `shouldBe` Right (tok1 (Tag "Tag") (1, 1) (1, 4), "abc")
     p "var abc" `shouldBe` Right (tok1 (Var "var") (1, 1) (1, 4), "abc")
 
-  -- it "☯ expression" $ do
-  --   let p = parse' (expression 0)
+  it "☯ expression" $ do
+    let (x, y) = (Var "x", Var "y")
+    let p = parse' expression
+    -- TODO: Match
+    -- TODO: Let
+    p "x | y" `shouldBe` Right (tok2 Or x y (1, 1) (1, 2) (1, 5) (1, 6), "")
+    -- TODO: Ann
+    p "x == y" `shouldBe` Right (tok2 Eq x y (1, 1) (1, 2) (1, 6) (1, 7), "")
+    p "x < y" `shouldBe` Right (tok2 Lt x y (1, 1) (1, 2) (1, 5) (1, 6), "")
+    p "x -> y" `shouldBe` Right (tok2 Fun x y (1, 1) (1, 2) (1, 6) (1, 7), "")
+    p "x + y" `shouldBe` Right (tok2 Add x y (1, 1) (1, 2) (1, 5) (1, 6), "")
+    p "x - y" `shouldBe` Right (tok2 Sub x y (1, 1) (1, 2) (1, 5) (1, 6), "")
+    p "x * y" `shouldBe` Right (tok2 Mul x y (1, 1) (1, 2) (1, 5) (1, 6), "")
+    p "x y" `shouldBe` Right (tok2 App x y (1, 1) (1, 2) (1, 3) (1, 4), "")
+    p "x ^ y" `shouldBe` Right (tok2 Pow x y (1, 1) (1, 2) (1, 5) (1, 6), "")
 
   -- it "☯ typeAnnotation" $ do
   --   let p = parseAll typeAnnotation

@@ -214,13 +214,13 @@ pattern' :: Parser Pattern
 pattern' =
   P.withOperators
     [P.atom patternAtom]
-    [ P.infixR 1 (tok FunP) (operator "->"),
-      P.infixL 2 (tok AppP) P.whitespaces
+    [ P.infixR 1 (op FunP) (operator "->"),
+      P.infixL 2 (op AppP) P.whitespaces
     ]
     0
   where
-    tok :: (Pattern -> Pattern -> PatternAtom) -> Pattern -> Pattern -> Pattern
-    tok f p q = p {value = f p q, end = q.end}
+    op :: (Token a -> Token a -> a) -> Token a -> Token a -> Token a
+    op f p q = p {value = f p q, end = q.end}
 
 -- Expressions
 expressionAtom :: Parser Expression
@@ -239,8 +239,25 @@ expressionAtom = do
         ]
   token (P.oneOf atoms)
 
--- expression :: Parser Expression
--- expression
+expression :: Parser Expression
+expression = do
+  P.withOperators
+    [P.atom expressionAtom]
+    [ P.infixR 1 (op Or) (operator "|"),
+      -- TODO: Ann 2
+      P.infixR 3 (op Eq) (operator "=="),
+      P.infixR 4 (op Lt) (operator "<"),
+      P.infixR 5 (op Fun) (operator "->"),
+      P.infixR 6 (op Add) (operator "+"),
+      P.infixR 6 (op Sub) (operator "-"),
+      P.infixR 7 (op Mul) (operator "*"),
+      P.infixR 8 (op App) P.whitespaces,
+      P.infixR 9 (op Pow) (operator "^")
+    ]
+    0
+  where
+    op :: (Token a -> Token a -> a) -> Token a -> Token a -> Token a
+    op f p q = p {value = f p q, end = q.end}
 
 -- expression :: Int -> Parser Expression
 -- expression prec = do
