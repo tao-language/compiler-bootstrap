@@ -183,7 +183,7 @@ pattern' delim = do
     0
 
 patternAtom :: Parser Pattern
-patternAtom = do
+patternAtom =
   P.oneOf
     [ AnyP <$> operator (P.text "_"),
       patternName,
@@ -236,7 +236,88 @@ patternTuple = do
     ]
 
 -- Expressions
--- expression :: Parser Expression
+expression :: Parser appDelim -> Parser Expression
+expression delim = do
+  let op = operator . P.text
+  let lambdaPatterns = do
+        _ <- P.char '\\'
+        ps <- P.oneOrMore (do _ <- P.whitespaces; patternAtom)
+        _ <- op "="
+        P.succeed ps
+  P.withOperators
+    [ P.atom expressionAtom,
+      P.prefixOp 2 Lambda lambdaPatterns
+      -- TODO: block
+    ]
+    -- [ P.infixR 1 (merge Or) (operator "|"),
+    --   P.suffixOp 2 ann typeAnnotation,
+    --   P.infixR 3 (merge Eq) (operator "=="),
+    --   P.infixR 4 (merge Lt) (operator "<"),
+    --   P.infixR 5 (merge Fun) (operator "->"),
+    --   P.infixR 6 (merge Add) (operator "+"),
+    --   P.infixR 6 (merge Sub) (operator "-"),
+    --   P.infixR 7 (merge Mul) (operator "*"),
+    --   P.infixR 8 (merge App) (P.succeed ()),
+    --   P.infixR 9 (merge Pow) (operator "^")
+    [ P.infixROp 1 Fun (op "->"),
+      P.infixLOp 2 App (token $ void delim)
+    ]
+    0
+
+expressionAtom :: Parser Expression
+expressionAtom =
+  P.oneOf
+    [ expressionName,
+      Int <$> token P.integer,
+      Num <$> token P.number,
+      expressionTuple,
+      expressionRecord
+    ]
+
+expressionName :: Parser Expression
+expressionName = do
+  name <- token identifier
+  case name.value of
+    "Type" -> P.succeed (Knd $ void name)
+    "Int" -> P.succeed (IntT $ void name)
+    "Num" -> P.succeed (NumT $ void name)
+    x | startsWithUpper x -> P.succeed (Tag name)
+    _ -> P.succeed (Var name)
+
+expressionTuple :: Parser Expression
+expressionTuple = do
+  let item = expression P.whitespaces
+  P.oneOf
+    [ do
+        -- One-item tuple: (x,)
+        (open, item, close) <- inbetween "(" ")" (do p <- item; _ <- P.char ','; P.succeed p)
+        P.succeed (Tuple open [item] close),
+      do
+        (open, items, close) <- collection "(" "," ")" item
+        case items of
+          -- Parenthesized non-tuple: (x)
+          [item] -> P.succeed item
+          -- General case tuples: () (x, y, ...)
+          _ -> P.succeed (Tuple open items close)
+    ]
+
+expressionRecordField :: Parser (Token String, Expression)
+expressionRecordField = do
+  name <- token identifier
+  _ <- operator (P.text ":")
+  value <- expression P.whitespaces
+  P.succeed (name, value)
+
+expressionRecord :: Parser Expression
+expressionRecord = do
+  (open, fields, close) <- collection "{" "," "}" expressionRecordField
+  P.succeed (Record open fields close)
+
+expressionBlock :: Parser Expression
+expressionBlock =
+  -- TODO: zero or more definition --> Let
+  expression (P.succeed ())
+
 -- expressionAtom :: Parser Expression
 -- expressionAtom = do
 --   let atoms =
@@ -318,11 +399,6 @@ patternTuple = do
 --   -- =
 --   -- block
 --   error "TODO: branch"
-
--- block :: Parser Expression
--- block =
---   -- TODO: zero or more definition --> Let
---   expression
 
 -- -- Definitions
 -- definition :: Parser Definition

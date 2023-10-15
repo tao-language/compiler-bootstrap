@@ -98,6 +98,13 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "Tag abc" `shouldBe` Right (TagP $ tok "Tag" 1 1, "abc")
     p "var abc" `shouldBe` Right (VarP $ tok "var" 1 1, "abc")
 
+  it "☯ patternTuple" $ do
+    let p = parse' patternTuple
+    p "() abc" `shouldBe` Right (TupleP (tok' 1 1) [] (tok' 1 2), "abc")
+    p "(x) abc" `shouldBe` Right (VarP $ tok "x" 1 2, "abc")
+    p "(x,) abc" `shouldBe` Right (TupleP (tok' 1 1) [VarP $ tok "x" 1 2] (tok' 1 4), "abc")
+    p "(x, y) abc" `shouldBe` Right (TupleP (tok' 1 1) [VarP $ tok "x" 1 2, VarP $ tok "y" 1 5] (tok' 1 6), "abc")
+
   it "☯ patternRecordField" $ do
     let p = parse' patternRecordField
     p "x" `shouldBe` Right ((tok "x" 1 1, VarP (tok "x" 1 1)), "")
@@ -112,28 +119,59 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "{x: y} abc" `shouldBe` Right (RecordP (tok' 1 1) [(tok "x" 1 2, VarP $ tok "y" 1 5)] (tok' 1 6), "abc")
     p "{x: y, z} abc" `shouldBe` Right (RecordP (tok' 1 1) [(tok "x" 1 2, VarP $ tok "y" 1 5), (tok "z" 1 8, VarP $ tok "z" 1 8)] (tok' 1 9), "abc")
 
-  it "☯ patternTuple" $ do
-    let p = parse' patternTuple
-    p "() abc" `shouldBe` Right (TupleP (tok' 1 1) [] (tok' 1 2), "abc")
-    p "(x) abc" `shouldBe` Right (VarP $ tok "x" 1 2, "abc")
-    p "(x,) abc" `shouldBe` Right (TupleP (tok' 1 1) [VarP $ tok "x" 1 2] (tok' 1 4), "abc")
-    p "(x, y) abc" `shouldBe` Right (TupleP (tok' 1 1) [VarP $ tok "x" 1 2, VarP $ tok "y" 1 5] (tok' 1 6), "abc")
-
   it "☯ pattern'" $ do
     let p = parse' (pattern' $ P.succeed ())
     p "_" `shouldBe` Right (AnyP $ tok' 1 1, "")
     p "x" `shouldBe` Right (VarP $ tok "x" 1 1, "")
     p "42" `shouldBe` Right (IntP $ tok 42 1 1, "")
-    p "{}" `shouldBe` Right (RecordP (tok' 1 1) [] (tok' 1 2), "")
     p "()" `shouldBe` Right (TupleP (tok' 1 1) [] (tok' 1 2), "")
+    p "{}" `shouldBe` Right (RecordP (tok' 1 1) [] (tok' 1 2), "")
     p "x->y" `shouldBe` Right (FunP (VarP $ tok "x" 1 1) (tok' 1 2) (VarP $ tok "y" 1 4), "")
     p "x y" `shouldBe` Right (AppP (VarP $ tok "x" 1 1) (tok' 1 3) (VarP $ tok "y" 1 3), "")
     p "x\ny" `shouldBe` Right (VarP $ tok "x" 1 1, "\ny")
     p "(x\ny)" `shouldBe` Right (AppP (VarP $ tok "x" 1 2) (tok' 1 3) (VarP $ tok "y" 2 1), "")
 
-  -- it "☯ expression'" $ do
-  --   let p = parse' (expression' $ P.succeed ())
-  --   p "Type" `shouldBe` Right (Knd $ tok' 1 1, "")
+  it "☯ expressionName" $ do
+    let p = parse' expressionName
+    p "Type abc" `shouldBe` Right (Knd $ tok' 1 1, "abc")
+    p "Int abc" `shouldBe` Right (IntT $ tok' 1 1, "abc")
+    p "Num abc" `shouldBe` Right (NumT $ tok' 1 1, "abc")
+    p "Tag abc" `shouldBe` Right (Tag $ tok "Tag" 1 1, "abc")
+    p "var abc" `shouldBe` Right (Var $ tok "var" 1 1, "abc")
+
+  it "☯ expressionTuple" $ do
+    let p = parse' expressionTuple
+    p "() abc" `shouldBe` Right (Tuple (tok' 1 1) [] (tok' 1 2), "abc")
+    p "(x) abc" `shouldBe` Right (Var $ tok "x" 1 2, "abc")
+    p "(x,) abc" `shouldBe` Right (Tuple (tok' 1 1) [Var $ tok "x" 1 2] (tok' 1 4), "abc")
+    p "(x, y) abc" `shouldBe` Right (Tuple (tok' 1 1) [Var $ tok "x" 1 2, Var $ tok "y" 1 5] (tok' 1 6), "abc")
+
+  it "☯ expressionRecordField" $ do
+    let p = parse' expressionRecordField
+    p "x" `shouldBe` Left ""
+    p "x:y" `shouldBe` Right ((tok "x" 1 1, Var (tok "y" 1 3)), "")
+    p "x \n : \n y" `shouldBe` Right ((tok "x" 1 1, Var (tok "y" 3 2)), "")
+
+  it "☯ expressionRecord" $ do
+    let p = parse' expressionRecord
+    p "{} abc" `shouldBe` Right (Record (tok' 1 1) [] (tok' 1 2), "abc")
+    p "{x: y} abc" `shouldBe` Right (Record (tok' 1 1) [(tok "x" 1 2, Var $ tok "y" 1 5)] (tok' 1 6), "abc")
+    p "{x: y, z: w} abc" `shouldBe` Right (Record (tok' 1 1) [(tok "x" 1 2, Var $ tok "y" 1 5), (tok "z" 1 8, Var $ tok "w" 1 11)] (tok' 1 12), "abc")
+
+  it "☯ expression'" $ do
+    let p = parse' (expression $ P.succeed ())
+    p "Type" `shouldBe` Right (Knd $ tok' 1 1, "")
+    p "Int" `shouldBe` Right (IntT $ tok' 1 1, "")
+    p "Num" `shouldBe` Right (NumT $ tok' 1 1, "")
+    p "Tag" `shouldBe` Right (Tag $ tok "Tag" 1 1, "")
+    p "var" `shouldBe` Right (Var $ tok "var" 1 1, "")
+    p "42" `shouldBe` Right (Int $ tok 42 1 1, "")
+    p "3.14" `shouldBe` Right (Num $ tok 3.14 1 1, "")
+    p "()" `shouldBe` Right (Tuple (tok' 1 1) [] (tok' 1 2), "")
+    p "{}" `shouldBe` Right (Record (tok' 1 1) [] (tok' 1 2), "")
+    p "\\x=y" `shouldBe` Right (Lambda [VarP $ tok "x" 1 2] (Var $ tok "y" 1 4), "")
+    p "\\x y = z" `shouldBe` Right (Lambda [VarP $ tok "x" 1 2, VarP $ tok "y" 1 4] (Var $ tok "z" 1 8), "")
+    p "\\x\ny\n=\nz" `shouldBe` Right (Lambda [VarP $ tok "x" 1 2, VarP $ tok "y" 2 1] (Var $ tok "z" 4 1), "")
 
   -- TODO: it "☯ operator precedence" $ do
 

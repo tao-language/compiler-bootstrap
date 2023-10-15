@@ -85,20 +85,20 @@ data Expression
   | Num !(Token Double)
   | Tag !(Token String)
   | Var !(Token String)
-  | Ann !Expression !Type
-  | Lam ![Pattern] !Expression
-  | Rec ![(Token String, Expression)]
-  | Typ !(Token String) ![Expression] ![(Token String, Type)]
+  | Lambda ![Pattern] !Expression
+  | Tuple !Token' ![Expression] !Token'
+  | Record !Token' ![(Token String, Expression)] !Token'
   | Block ![Definition] !Expression
-  | App !Expression !Expression
-  | Fun !Expression !Expression
-  | Or !Expression !Expression
-  | Eq !Expression !Expression
-  | Lt !Expression !Expression
-  | Add !Expression !Expression
-  | Sub !Expression !Expression
-  | Mul !Expression !Expression
-  | Pow !Expression !Expression
+  | App !Expression !Token' !Expression
+  | Fun !Expression !Token' !Expression
+  | Or !Expression !Token' !Expression
+  | Eq !Expression !Token' !Expression
+  | Lt !Expression !Token' !Expression
+  | Add !Expression !Token' !Expression
+  | Sub !Expression !Token' !Expression
+  | Mul !Expression !Token' !Expression
+  | Pow !Expression !Token' !Expression
+  | Ann !Expression !Token' !Type
   deriving (Eq, Show)
 
 data Type
@@ -128,6 +128,7 @@ data Definition
     --       pattern :: !(Token Pattern),
     --       value :: !(Token Expression)
     --     }
+    -- | TypeDef !(Token String) ![Expression] ![(Token String, Type)]
     TODODef
   deriving (Eq, Show)
 
