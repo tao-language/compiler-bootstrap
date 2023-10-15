@@ -244,13 +244,28 @@ expression delim = do
         ps <- P.oneOrMore (do _ <- P.whitespaces; patternAtom)
         _ <- op "="
         P.succeed ps
+  let typeAnn :: Parser appDelim -> Parser Type
+      typeAnn delim = do
+        _ <- operator (P.text ":")
+        xs <-
+          P.oneOf
+            [ do
+                _ <- operator (P.text "@")
+                xs <- P.oneOrMore (token identifier)
+                _ <- operator (P.text ".")
+                P.succeed xs,
+              P.succeed []
+            ]
+        t <- expression delim
+        P.succeed (For xs t)
+
   P.withOperators
     [ P.atom expressionAtom,
       P.prefixOp 2 Lambda lambdaPatterns
       -- TODO: block
     ]
     [ P.infixROp 1 Or (op "|"),
-      -- P.suffixOp 2 ann typeAnnotation,
+      P.suffixOp 2 Ann (typeAnn delim),
       P.infixROp 3 Eq (op "=="),
       P.infixROp 4 Lt (op "<"),
       P.infixROp 5 Fun (op "->"),
@@ -315,81 +330,6 @@ expressionBlock :: Parser Expression
 expressionBlock =
   -- TODO: zero or more definition --> Let
   expression (P.succeed ())
-
--- expressionAtom :: Parser Expression
--- expressionAtom = do
---   let atoms =
---         [ do
---             name <- identifier
---             case name of
---               "Type" -> P.succeed Knd
---               "Int" -> P.succeed IntT
---               "Num" -> P.succeed NumT
---               _ | startsWithUpper name -> P.succeed (Tag name)
---               _ -> P.succeed (Var name),
---           Int <$> P.integer,
---           Num <$> P.number
---         ]
---   P.oneOf
---     [ token (P.oneOf atoms),
---       do
---         a <- inbetween "(" ")" expression
---         _ <- P.spaces
---         P.succeed a
---     ]
-
--- expression :: Parser Expression
--- expression = do
---   P.withOperators
---     [ P.atom expressionAtom
---     -- , P.prefixOp 2 lamOp lamPatterns
---     ]
---     [ P.infixR 1 (merge Or) (operator "|"),
---       P.suffixOp 2 ann typeAnnotation,
---       P.infixR 3 (merge Eq) (operator "=="),
---       P.infixR 4 (merge Lt) (operator "<"),
---       P.infixR 5 (merge Fun) (operator "->"),
---       P.infixR 6 (merge Add) (operator "+"),
---       P.infixR 6 (merge Sub) (operator "-"),
---       P.infixR 7 (merge Mul) (operator "*"),
---       P.infixR 8 (merge App) (P.succeed ()),
---       P.infixR 9 (merge Pow) (operator "^")
---     ]
---     0
-
--- where
---   lamOp :: [Pattern] -> Expression -> Expression
---   lamOp [] b = b
---   lamOp (p : ps) b = Lam (p : ps) b <$ b {start = p.start}
-
---   lamPatterns :: Parser [Pattern]
---   lamPatterns = do
---     _ <- operator "\\"
---     ps <- P.oneOrMore patternAtom
---     _ <- operator "="
---     P.succeed ps
-
--- typeAnnotation :: Parser Type
--- typeAnnotation = do
---   _ <- operator ":"
---   xs <-
---     P.oneOf
---       [ do
---           _ <- operator "@"
---           xs <- P.oneOrMore (token identifier)
---           _ <- operator "."
---           P.succeed xs,
---         P.succeed []
---       ]
---   t <- expression
---   P.succeed (For xs t)
-
--- lambda :: Parser Expression
--- lambda =
---   -- \
---   -- pattern
---   -- branch
---   error "TODO: lambda"
 
 -- branch :: Parser ([Pattern], Expression)
 -- branch =

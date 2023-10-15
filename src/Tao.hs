@@ -98,7 +98,7 @@ data Expression
   | Sub !Expression !Token' !Expression
   | Mul !Expression !Token' !Expression
   | Pow !Expression !Token' !Expression
-  | Ann !Expression !Token' !Type
+  | Ann !Expression !Type
   deriving (Eq, Show)
 
 data Type
