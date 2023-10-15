@@ -172,13 +172,13 @@ docString = do
       P.succeed ()
 
 -- Patterns
-pattern' :: Parser Token' -> Parser Pattern
-pattern' appOp = do
+pattern' :: Parser appDelim -> Parser Pattern
+pattern' delim = do
   let op = operator . P.text
   P.withOperators
     [P.atom patternAtom]
     [ P.infixROp 1 FunP (op "->"),
-      P.infixLOp 2 AppP appOp
+      P.infixLOp 2 AppP (token $ void delim)
     ]
     0
 
@@ -202,13 +202,13 @@ patternName = do
     x | startsWithUpper x -> P.succeed (TagP name)
     _ -> P.succeed (VarP name)
 
-patternRecordField :: Parser (TokenStr, Pattern)
+patternRecordField :: Parser (Token String, Pattern)
 patternRecordField = do
   name <- token identifier
   P.oneOf
     [ do
         _ <- operator (P.text ":")
-        p <- pattern' (operator P.whitespaces)
+        p <- pattern' P.whitespaces
         P.succeed (name, p),
       P.succeed (name, VarP name)
     ]
@@ -220,7 +220,7 @@ patternRecord = do
 
 patternTuple :: Parser Pattern
 patternTuple = do
-  let item = pattern' (operator P.whitespaces)
+  let item = pattern' P.whitespaces
   P.oneOf
     [ do
         -- One-item tuple: (x,)
@@ -229,13 +229,14 @@ patternTuple = do
       do
         (open, items, close) <- collection "(" "," ")" item
         case items of
-          -- Parenthesized item: (x)
+          -- Parenthesized non-tuple: (x)
           [item] -> P.succeed item
           -- General case tuples: () (x, y, ...)
           _ -> P.succeed (TupleP open items close)
     ]
 
--- -- Expressions
+-- Expressions
+-- expression :: Parser Expression
 -- expressionAtom :: Parser Expression
 -- expressionAtom = do
 --   let atoms =

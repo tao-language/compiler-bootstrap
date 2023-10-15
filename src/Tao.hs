@@ -40,10 +40,6 @@ data Token a = Token
 
 type Token' = Token ()
 
-type TokenStr = Token String
-
-type TokenInt = Token Int
-
 newToken :: a -> Token a
 newToken x =
   Token
@@ -72,47 +68,42 @@ data Pattern
   | KndP !Token'
   | IntTP !Token'
   | NumTP !Token'
-  | IntP !TokenInt
-  | TagP !TokenStr
-  | VarP !TokenStr
+  | IntP !(Token Int)
+  | TagP !(Token String)
+  | VarP !(Token String)
   | TupleP !Token' ![Pattern] !Token'
-  | RecordP !Token' ![(TokenStr, Pattern)] !Token'
+  | RecordP !Token' ![(Token String, Pattern)] !Token'
   | FunP !Pattern !Token' !Pattern
   | AppP !Pattern !Token' !Pattern
   deriving (Eq, Show)
 
--- type Expression = Token ExpressionAtom
+data Expression
+  = Knd !Token'
+  | IntT !Token'
+  | NumT !Token'
+  | Int !(Token Int)
+  | Num !(Token Double)
+  | Tag !(Token String)
+  | Var !(Token String)
+  | Ann !Expression !Type
+  | Lam ![Pattern] !Expression
+  | Rec ![(Token String, Expression)]
+  | Typ !(Token String) ![Expression] ![(Token String, Type)]
+  | Block ![Definition] !Expression
+  | App !Expression !Expression
+  | Fun !Expression !Expression
+  | Or !Expression !Expression
+  | Eq !Expression !Expression
+  | Lt !Expression !Expression
+  | Add !Expression !Expression
+  | Sub !Expression !Expression
+  | Mul !Expression !Expression
+  | Pow !Expression !Expression
+  deriving (Eq, Show)
 
--- data ExpressionAtom
---   = Knd
---   | IntT
---   | NumT
---   | Int !Int
---   | Num !Double
---   | Tag !String
---   | Var !String
---   | Ann !Expression !Type
---   | Lam ![Pattern] !Expression
---   | Let ![Definition] !Expression
---   | Fun !Expression !Expression
---   | Or !Expression !Expression
---   | App !Expression !Expression
---   | Rec ![(Name, Expression)]
---   | Typ !Name ![Expression] ![(Name, Type)]
---   | Eq !Expression !Expression
---   | Lt !Expression !Expression
---   | Add !Expression !Expression
---   | Sub !Expression !Expression
---   | Mul !Expression !Expression
---   | Pow !Expression !Expression
---   deriving (Eq, Show)
-
--- data Type
---   = For ![Name] !Expression
---   deriving (Eq, Show)
-
--- ann :: Expression -> Expression -> ExpressionAtom
--- ann a t = Ann a (For [] t)
+data Type
+  = For ![Token String] !Expression
+  deriving (Eq, Show)
 
 data DocString = DocString
   { public :: !Bool,
@@ -123,20 +114,22 @@ data DocString = DocString
 newDocString :: DocString
 newDocString = DocString {public = False, description = ""}
 
--- data Definition
---   = Def
---       { docs :: DocString,
---         type' :: !(Maybe (Token Type)),
---         name :: !(Token String),
---         value :: !(Token Expression)
---       }
---   | Unpack
---       { docs :: DocString,
---         types :: ![(Token String, Token Type)],
---         pattern :: !(Token Pattern),
---         value :: !(Token Expression)
---       }
---   deriving (Eq, Show)
+data Definition
+  = -- = Def
+    --     { docs :: DocString,
+    --       type' :: !(Maybe (Token Type)),
+    --       name :: !(Token String),
+    --       value :: !(Token Expression)
+    --     }
+
+    -- | Unpack
+    --     { docs :: DocString,
+    --       types :: ![(Token String, Token Type)],
+    --       pattern :: !(Token Pattern),
+    --       value :: !(Token Expression)
+    --     }
+    TODODef
+  deriving (Eq, Show)
 
 data SourceFile = SourceFile
   { imports :: ![String]
@@ -149,5 +142,3 @@ data Module = Module
   {
   }
   deriving (Eq, Show)
-
-type Name = Token String
