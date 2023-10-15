@@ -12,29 +12,10 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Tao language ☯==--" $ do
-  let tok1 :: a -> Int -> Int -> Token a
-      tok1 x start end =
-        (tok x) {start = start, end = end}
+  let tok :: a -> Int -> Int -> Token a
+      tok x row col = (newToken x) {row = row, col = col}
   let tok' :: Int -> Int -> Token'
-      tok' = tok1 ()
-  let tokVarP = tok1 . VarP
-  -- let tok2 :: (Token a -> Token a -> a) -> (a, Int, Int) -> (a, Int, Int) -> Token a
-  --     tok2 f x start1 end1 y start2 end2 = do
-  --       let a = tok1 x start1 end1
-  --       let b = tok1 y start2 end2
-  --       tok1 (f a b) start1 end2
-  -- let tokLam :: [(PatternAtom, (Int, Int), (Int, Int))] -> ExpressionAtom -> (Int, Int) -> (Int, Int) -> Expression
-  --     tokLam [] _ _ _ = error "Lam must have at least one pattern"
-  --     tokLam ps@((_, start1, _) : _) b start2 end2 = do
-  --       let ps' = map (\(p, start, end) -> tok1 p start end) ps
-  --       let b' = tok1 b start2 end2
-  --       tok1 (Lam ps' b') start1 end2
-  -- let tokAnn :: ExpressionAtom -> (Int, Int) -> (Int, Int) -> [(String, (Int, Int), (Int, Int))] -> ExpressionAtom -> (Int, Int) -> (Int, Int) -> Expression
-  --     tokAnn a start1 end1 xs t start2 end2 = do
-  --       let a' = tok1 a start1 end1
-  --       let xs' = map (\(x, start, end) -> tok1 x start end) xs
-  --       let t' = tok1 t start2 end2
-  --       tok1 (Ann a' (For xs' t')) start1 end2
+      tok' = tok ()
 
   let parse' :: Parser a -> String -> Either String (a, String)
       parse' parser src = case P.parse parser src of
@@ -80,42 +61,18 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ token simple" $ do
     let p = parse' $ token (P.text "abc")
-    let result start end =
-          Token
-            { start = start,
-              end = end,
-              comments = [],
-              trailingComments = [],
-              value = "abc"
-            }
-    p "abcdef" `shouldBe` Right (result 0 3, "def")
-    p "abc   def" `shouldBe` Right (result 0 3, "def")
+    p "abcdef" `shouldBe` Right (tok "abc" 1 1, "def")
+    p "abc   def" `shouldBe` Right (tok "abc" 1 1, "def")
 
   it "☯ token comments" $ do
     let p = parse' $ token (P.text "abc")
-    let result start end =
-          Token
-            { start = start,
-              end = end,
-              comments = ["A", "B"],
-              trailingComments = [],
-              value = "abc"
-            }
-    p "#A\n#B\nabc def" `shouldBe` Right (result 6 9, "def")
-    p "# A \n \n \n  #  B  \n  abc  def" `shouldBe` Right (result 20 23, "def")
+    p "#A\n#B\nabc def" `shouldBe` Right ((tok "abc" 3 1) {comments = ["A", "B"]}, "def")
+    p "# A \n \n \n  #  B  \n  abc  def" `shouldBe` Right ((tok "abc" 5 3) {comments = ["A", "B"]}, "def")
 
   it "☯ token comments (trailing)" $ do
     let p = parse' $ token (P.text "abc")
-    let result start end =
-          Token
-            { start = start,
-              end = end,
-              comments = [],
-              trailingComments = ["comment"],
-              value = "abc"
-            }
-    p "abc#comment" `shouldBe` Right (result 0 3, "")
-    p "abc  #  comment  " `shouldBe` Right (result 0 3, "")
+    p "abc#comment" `shouldBe` Right ((tok "abc" 1 1) {trailingComments = ["comment"]}, "")
+    p "abc  #  comment  " `shouldBe` Right ((tok "abc" 1 1) {trailingComments = ["comment"]}, "")
 
   -- it "☯ token docstrings" $ do
   --   let p = parse' $ token (P.text "abc")
@@ -135,63 +92,48 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ patternName" $ do
     let p = parse' patternName
-    p "Type abc" `shouldBe` Right (KndP $ tok' 0 4, "abc")
-    p "Int abc" `shouldBe` Right (IntTP $ tok' 0 3, "abc")
-    p "Num abc" `shouldBe` Right (NumTP $ tok' 0 3, "abc")
-    p "Tag abc" `shouldBe` Right (TagP $ tok1 "Tag" 0 3, "abc")
-    p "var abc" `shouldBe` Right (VarP $ tok1 "var" 0 3, "abc")
+    p "Type abc" `shouldBe` Right (KndP $ tok' 1 1, "abc")
+    p "Int abc" `shouldBe` Right (IntTP $ tok' 1 1, "abc")
+    p "Num abc" `shouldBe` Right (NumTP $ tok' 1 1, "abc")
+    p "Tag abc" `shouldBe` Right (TagP $ tok "Tag" 1 1, "abc")
+    p "var abc" `shouldBe` Right (VarP $ tok "var" 1 1, "abc")
 
   it "☯ patternRecordField" $ do
     let p = parse' patternRecordField
-    p "x" `shouldBe` Right ((tok1 "x" 0 1, tok' 0 1, VarP (tok1 "x" 0 1)), "")
-    p "x:y" `shouldBe` Right ((tok1 "x" 0 1, tok' 1 2, VarP (tok1 "y" 2 3)), "")
-    p "x \n : \n y" `shouldBe` Right ((tok1 "x" 0 1, tok' 4 5, VarP (tok1 "y" 8 9)), "")
+    p "x" `shouldBe` Right ((tok "x" 1 1, VarP (tok "x" 1 1)), "")
+    p "x:y" `shouldBe` Right ((tok "x" 1 1, VarP (tok "y" 1 3)), "")
+    p "x \n : \n y" `shouldBe` Right ((tok "x" 1 1, VarP (tok "y" 3 2)), "")
 
   it "☯ patternRecord" $ do
     let p = parse' patternRecord
-    p "{} abc" `shouldBe` Right (RecordP (tok' 0 1) [] (tok' 1 2), "abc")
-    p "{x} abc" `shouldBe` Right (RecordP (tok' 0 1) [tok1 (tok1 "x" 1 2, tok' 1 2, VarP $ tok1 "x" 1 2) 1 2] (tok' 2 3), "abc")
-    p "{x,} abc" `shouldBe` Right (RecordP (tok' 0 1) [tok1 (tok1 "x" 1 2, tok' 1 2, VarP $ tok1 "x" 1 2) 1 2] (tok' 3 4), "abc")
-    p "{x: y} abc" `shouldBe` Right (RecordP (tok' 0 1) [tok1 (tok1 "x" 1 2, tok' 2 3, VarP $ tok1 "y" 4 5) 1 5] (tok' 5 6), "abc")
-    p "{x: y, z} abc" `shouldBe` Right (RecordP (tok' 0 1) [tok1 (tok1 "x" 1 2, tok' 2 3, VarP $ tok1 "y" 4 5) 1 5, tok1 (tok1 "z" 7 8, tok' 7 8, VarP $ tok1 "z" 7 8) 7 8] (tok' 8 9), "abc")
+    p "{} abc" `shouldBe` Right (RecordP (tok' 1 1) [] (tok' 1 2), "abc")
+    p "{x} abc" `shouldBe` Right (RecordP (tok' 1 1) [(tok "x" 1 2, VarP $ tok "x" 1 2)] (tok' 1 3), "abc")
+    p "{x,} abc" `shouldBe` Right (RecordP (tok' 1 1) [(tok "x" 1 2, VarP $ tok "x" 1 2)] (tok' 1 4), "abc")
+    p "{x: y} abc" `shouldBe` Right (RecordP (tok' 1 1) [(tok "x" 1 2, VarP $ tok "y" 1 5)] (tok' 1 6), "abc")
+    p "{x: y, z} abc" `shouldBe` Right (RecordP (tok' 1 1) [(tok "x" 1 2, VarP $ tok "y" 1 5), (tok "z" 1 8, VarP $ tok "z" 1 8)] (tok' 1 9), "abc")
 
   it "☯ patternTuple" $ do
     let p = parse' patternTuple
-    -- p "() abc" `shouldBe` Right (TupleP (tok' 0 1) [] (tok' 1 2), "abc")
-    -- p "{x} abc" `shouldBe` Right (tok1 (RecP [(tok1 "x" (1, 2) (1, 3), tok1 (VarP "x") (1, 2) (1, 3))]) (1, 1) (1, 4), "abc")
-    -- p "{x: y} abc" `shouldBe` Right (tok1 (RecP [(tok1 "x" (1, 2) (1, 3), tok1 (VarP "y") (1, 5) (1, 6))]) (1, 1) (1, 7), "abc")
-    True `shouldBe` True
+    p "() abc" `shouldBe` Right (TupleP (tok' 1 1) [] (tok' 1 2), "abc")
+    p "(x) abc" `shouldBe` Right (VarP $ tok "x" 1 2, "abc")
+    p "(x,) abc" `shouldBe` Right (TupleP (tok' 1 1) [VarP $ tok "x" 1 2] (tok' 1 4), "abc")
+    p "(x, y) abc" `shouldBe` Right (TupleP (tok' 1 1) [VarP $ tok "x" 1 2, VarP $ tok "y" 1 5] (tok' 1 6), "abc")
 
   it "☯ patternAtom" $ do
     let p = parse' patternAtom
-    p "_ abc" `shouldBe` Right (AnyP $ tok' 0 1, "abc")
-    p "x abc" `shouldBe` Right (VarP $ tok1 "x" 0 1, "abc")
-    p "42 abc" `shouldBe` Right (IntP $ tok1 42 0 2, "abc")
-    p "{} abc" `shouldBe` Right (RecordP (tok' 0 1) [] (tok' 1 2), "abc")
-  --   p "() abc" `shouldBe` Right (TupleP (tok' 0 1) [] (tok' 1 2), "abc")
-  --   p "(x y) abc" `shouldBe` Right (AppP (x 0 0) (tok' (0, 0)) (y 0 0), "abc")
-
-  -- it "☯ patternAtom" $ do
-  --   let p = parse' patternAtom
-  --   p "_ abc" `shouldBe` Right (tok1 AnyP (1, 1) (1, 2), "abc")
-  --   p "Type abc" `shouldBe` Right (tok1 KndP (1, 1) (1, 5), "abc")
-  --   p "Int abc" `shouldBe` Right (tok1 IntTP (1, 1) (1, 4), "abc")
-  --   p "Num abc" `shouldBe` Right (tok1 NumTP (1, 1) (1, 4), "abc")
-  --   p "42 abc" `shouldBe` Right (tok1 (IntP 42) (1, 1) (1, 3), "abc")
-  --   p "Tag abc" `shouldBe` Right (tok1 (TagP "Tag") (1, 1) (1, 4), "abc")
-  --   p "var abc" `shouldBe` Right (tok1 (VarP "var") (1, 1) (1, 4), "abc")
-  --   p "{} abc" `shouldBe` Right (tok1 (RecP []) (1, 1) (1, 3), "abc")
-  --   p "{x} abc" `shouldBe` Right (tok1 (RecP [(tok1 "x" (1, 2) (1, 3), tok1 (VarP "x") (1, 2) (1, 3))]) (1, 1) (1, 4), "abc")
-  --   p "{x: y} abc" `shouldBe` Right (tok1 (RecP [(tok1 "x" (1, 2) (1, 3), tok1 (VarP "y") (1, 5) (1, 6))]) (1, 1) (1, 7), "abc")
-  --   p "x y" `shouldBe` Right (tok1 (VarP "x") (1, 1) (1, 2), "y")
-  --   p "(x y) abc" `shouldBe` Right (tok2 AppP (VarP "x") (1, 2) (1, 3) (VarP "y") (1, 4) (1, 5), "abc")
-  --   p "(x \n y) abc" `shouldBe` Right (tok2 AppP (VarP "x") (1, 2) (1, 3) (VarP "y") (2, 2) (2, 3), "abc")
+    p "_ abc" `shouldBe` Right (AnyP $ tok' 1 1, "abc")
+    p "x abc" `shouldBe` Right (VarP $ tok "x" 1 1, "abc")
+    p "42 abc" `shouldBe` Right (IntP $ tok 42 1 1, "abc")
+    p "{} abc" `shouldBe` Right (RecordP (tok' 1 1) [] (tok' 1 2), "abc")
+    p "() abc" `shouldBe` Right (TupleP (tok' 1 1) [] (tok' 1 2), "abc")
+    p "(x y) abc" `shouldBe` Right (AppP (VarP $ tok "x" 1 2) (tok' 1 4) (VarP $ tok "y" 1 4), "abc")
+    p "(x \n y) abc" `shouldBe` Right (AppP (VarP $ tok "x" 1 2) (tok' 2 2) (VarP $ tok "y" 2 2), "abc")
 
   -- it "☯ pattern'" $ do
   --   let (x, y) = (VarP "x", VarP "y")
   --   let p = parse' pattern'
   --   p "x y" `shouldBe` Right (tok2 AppP x (1, 1) (1, 2) y (1, 3) (1, 4), "")
-  --   p "x \n y" `shouldBe` Right (tok1 x (1, 1) (1, 2), "\n y")
+  --   p "x \n y" `shouldBe` Right (tok x (1, 1) (1, 2), "\n y")
   --   p "x->y" `shouldBe` Right (tok2 FunP x (1, 1) (1, 2) y (1, 4) (1, 5), "")
   --   p "x \n -> \n y" `shouldBe` Right (tok2 FunP x (1, 1) (1, 2) y (3, 2) (3, 3), "")
 
@@ -199,14 +141,14 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   -- it "☯ expressionAtom" $ do
   --   let p = parse' expressionAtom
-  --   p "Type abc" `shouldBe` Right (tok1 Knd (1, 1) (1, 5), "abc")
-  --   p "Int abc" `shouldBe` Right (tok1 IntT (1, 1) (1, 4), "abc")
-  --   p "Num abc" `shouldBe` Right (tok1 NumT (1, 1) (1, 4), "abc")
-  --   p "42 abc" `shouldBe` Right (tok1 (Int 42) (1, 1) (1, 3), "abc")
-  --   p "3.14 abc" `shouldBe` Right (tok1 (Num 3.14) (1, 1) (1, 5), "abc")
-  --   p "Tag abc" `shouldBe` Right (tok1 (Tag "Tag") (1, 1) (1, 4), "abc")
-  --   p "var abc" `shouldBe` Right (tok1 (Var "var") (1, 1) (1, 4), "abc")
-  --   p "x y" `shouldBe` Right (tok1 (Var "x") (1, 1) (1, 2), "y")
+  --   p "Type abc" `shouldBe` Right (tok Knd (1, 1) (1, 5), "abc")
+  --   p "Int abc" `shouldBe` Right (tok IntT (1, 1) (1, 4), "abc")
+  --   p "Num abc" `shouldBe` Right (tok NumT (1, 1) (1, 4), "abc")
+  --   p "42 abc" `shouldBe` Right (tok (Int 42) (1, 1) (1, 3), "abc")
+  --   p "3.14 abc" `shouldBe` Right (tok (Num 3.14) (1, 1) (1, 5), "abc")
+  --   p "Tag abc" `shouldBe` Right (tok (Tag "Tag") (1, 1) (1, 4), "abc")
+  --   p "var abc" `shouldBe` Right (tok (Var "var") (1, 1) (1, 4), "abc")
+  --   p "x y" `shouldBe` Right (tok (Var "x") (1, 1) (1, 2), "y")
   --   p "(x y) abc" `shouldBe` Right (tok2 App (Var "x") (1, 2) (1, 3) (Var "y") (1, 4) (1, 5), "abc")
 
   -- it "☯ expression" $ do

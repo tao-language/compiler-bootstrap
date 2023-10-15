@@ -31,8 +31,8 @@ module Tao where
 
 data Token a = Token
   { value :: a,
-    start :: !Int,
-    end :: !Int,
+    row :: !Int,
+    col :: !Int,
     comments :: ![String],
     trailingComments :: ![String]
   }
@@ -44,12 +44,12 @@ type TokenStr = Token String
 
 type TokenInt = Token Int
 
-tok :: a -> Token a
-tok x =
+newToken :: a -> Token a
+newToken x =
   Token
     { value = x,
-      start = 0,
-      end = 0,
+      row = 1,
+      col = 1,
       comments = [],
       trailingComments = []
     }
@@ -61,8 +61,8 @@ instance Functor Token where
   fmap f x =
     Token
       { value = f x.value,
-        start = x.start,
-        end = x.end,
+        row = x.row,
+        col = x.col,
         comments = x.comments,
         trailingComments = x.trailingComments
       }
@@ -75,8 +75,8 @@ data Pattern
   | IntP !TokenInt
   | TagP !TokenStr
   | VarP !TokenStr
-  | TupleP !Token' ![Token Pattern] !Token'
-  | RecordP !Token' ![Token (TokenStr, Token', Pattern)] !Token'
+  | TupleP !Token' ![Pattern] !Token'
+  | RecordP !Token' ![(TokenStr, Pattern)] !Token'
   | FunP !Pattern !Token' !Pattern
   | AppP !Pattern !Token' !Pattern
   deriving (Eq, Show)

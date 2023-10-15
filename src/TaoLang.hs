@@ -104,15 +104,15 @@ inbetween open close parser = do
   close <- token (void $ P.text close)
   P.succeed (open, x, close)
 
-collection :: String -> String -> String -> Parser a -> Parser (Token', [Token a], Token')
+collection :: String -> String -> String -> Parser a -> Parser (Token', [a], Token')
 collection open delim close parser = do
   inbetween open close (P.oneOf [delimited delim parser, P.succeed []])
 
-delimited :: String -> Parser a -> Parser [Token a]
+delimited :: String -> Parser a -> Parser [a]
 delimited delim parser = do
   let delim' = operator (P.text delim)
-  x <- token parser
-  xs <- P.zeroOrMore (do _ <- delim'; token parser)
+  x <- parser
+  xs <- P.zeroOrMore (do _ <- delim'; parser)
   _ <- P.maybe' delim'
   P.succeed (x : xs)
 
@@ -127,16 +127,15 @@ operator op = do
 token :: Parser a -> Parser (Token a)
 token parser = do
   comments <- P.zeroOrMore comment
-  s1 <- P.getState
+  state <- P.getState
   x <- parser
-  s2 <- P.getState
   _ <- P.spaces
   trailingComments <- P.zeroOrOne comment
   P.succeed
     Token
       { value = x,
-        start = s1.index,
-        end = s2.index,
+        row = state.row,
+        col = state.col,
         comments = comments,
         trailingComments = trailingComments
       }
@@ -173,14 +172,24 @@ docString = do
       P.succeed ()
 
 -- Patterns
+pattern' :: Parser Token' -> Parser Pattern
+pattern' appOp = do
+  let op = operator . P.text
+  P.withOperators
+    [P.atom patternAtom]
+    [ P.infixROp 1 FunP (op "->"),
+      P.infixLOp 2 AppP appOp
+    ]
+    0
+
 patternAtom :: Parser Pattern
 patternAtom = do
   P.oneOf
     [ AnyP <$> operator (P.text "_"),
       patternName,
       IntP <$> token P.integer,
-      patternRecord
-      -- , patternTuple
+      patternRecord,
+      patternTuple
     ]
 
 patternName :: Parser Pattern
@@ -193,15 +202,15 @@ patternName = do
     x | startsWithUpper x -> P.succeed (TagP name)
     _ -> P.succeed (VarP name)
 
-patternRecordField :: Parser (TokenStr, Token', Pattern)
+patternRecordField :: Parser (TokenStr, Pattern)
 patternRecordField = do
   name <- token identifier
   P.oneOf
     [ do
-        op <- operator (P.text ":")
+        _ <- operator (P.text ":")
         p <- pattern' (operator P.whitespaces)
-        P.succeed (name, op, p),
-      P.succeed (name, void name, VarP name)
+        P.succeed (name, p),
+      P.succeed (name, VarP name)
     ]
 
 patternRecord :: Parser Pattern
@@ -211,17 +220,20 @@ patternRecord = do
 
 patternTuple :: Parser Pattern
 patternTuple = do
-  error "TODO"
-
-pattern' :: Parser Token' -> Parser Pattern
-pattern' appOp = do
-  let op = operator . P.text
-  P.withOperators
-    [P.atom patternAtom]
-    [ P.infixROp 1 FunP (op "->"),
-      P.infixLOp 2 AppP appOp
+  let item = pattern' (operator P.whitespaces)
+  P.oneOf
+    [ do
+        -- One-item tuple: (x,)
+        (open, item, close) <- inbetween "(" ")" (do p <- item; _ <- P.char ','; P.succeed p)
+        P.succeed (TupleP open [item] close),
+      do
+        (open, items, close) <- collection "(" "," ")" item
+        case items of
+          -- Parenthesized item: (x)
+          [item] -> P.succeed item
+          -- General case tuples: () (x, y, ...)
+          _ -> P.succeed (TupleP open items close)
     ]
-    0
 
 -- -- Expressions
 -- expressionAtom :: Parser Expression
