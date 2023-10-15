@@ -172,6 +172,18 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "\\x=y" `shouldBe` Right (Lambda [VarP $ tok "x" 1 2] (Var $ tok "y" 1 4), "")
     p "\\x y = z" `shouldBe` Right (Lambda [VarP $ tok "x" 1 2, VarP $ tok "y" 1 4] (Var $ tok "z" 1 8), "")
     p "\\x\ny\n=\nz" `shouldBe` Right (Lambda [VarP $ tok "x" 1 2, VarP $ tok "y" 2 1] (Var $ tok "z" 4 1), "")
+    p "x |  y" `shouldBe` Right (Or (Var $ tok "x" 1 1) (tok' 1 3) (Var $ tok "y" 1 6), "")
+    -- p "x :  y" `shouldBe` Right (Or (Var $ tok "x" 1 1) (tok' 1 3) (Var $ tok "y" 1 6), "")
+    p "x == y" `shouldBe` Right (Eq (Var $ tok "x" 1 1) (tok' 1 3) (Var $ tok "y" 1 6), "")
+    p "x <  y" `shouldBe` Right (Lt (Var $ tok "x" 1 1) (tok' 1 3) (Var $ tok "y" 1 6), "")
+    p "x -> y" `shouldBe` Right (Fun (Var $ tok "x" 1 1) (tok' 1 3) (Var $ tok "y" 1 6), "")
+    p "x +  y" `shouldBe` Right (Add (Var $ tok "x" 1 1) (tok' 1 3) (Var $ tok "y" 1 6), "")
+    p "x -  y" `shouldBe` Right (Sub (Var $ tok "x" 1 1) (tok' 1 3) (Var $ tok "y" 1 6), "")
+    p "x *  y" `shouldBe` Right (Mul (Var $ tok "x" 1 1) (tok' 1 3) (Var $ tok "y" 1 6), "")
+    p "x    y" `shouldBe` Right (App (Var $ tok "x" 1 1) (tok' 1 6) (Var $ tok "y" 1 6), "")
+    p "x ^  y" `shouldBe` Right (Pow (Var $ tok "x" 1 1) (tok' 1 3) (Var $ tok "y" 1 6), "")
+    p "x\ny" `shouldBe` Right (Var $ tok "x" 1 1, "\ny")
+    p "(x\ny)" `shouldBe` Right (App (Var $ tok "x" 1 2) (tok' 1 3) (Var $ tok "y" 2 1), "")
 
   -- TODO: it "☯ operator precedence" $ do
 

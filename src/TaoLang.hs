@@ -249,18 +249,16 @@ expression delim = do
       P.prefixOp 2 Lambda lambdaPatterns
       -- TODO: block
     ]
-    -- [ P.infixR 1 (merge Or) (operator "|"),
-    --   P.suffixOp 2 ann typeAnnotation,
-    --   P.infixR 3 (merge Eq) (operator "=="),
-    --   P.infixR 4 (merge Lt) (operator "<"),
-    --   P.infixR 5 (merge Fun) (operator "->"),
-    --   P.infixR 6 (merge Add) (operator "+"),
-    --   P.infixR 6 (merge Sub) (operator "-"),
-    --   P.infixR 7 (merge Mul) (operator "*"),
-    --   P.infixR 8 (merge App) (P.succeed ()),
-    --   P.infixR 9 (merge Pow) (operator "^")
-    [ P.infixROp 1 Fun (op "->"),
-      P.infixLOp 2 App (token $ void delim)
+    [ P.infixROp 1 Or (op "|"),
+      -- P.suffixOp 2 ann typeAnnotation,
+      P.infixROp 3 Eq (op "=="),
+      P.infixROp 4 Lt (op "<"),
+      P.infixROp 5 Fun (op "->"),
+      P.infixROp 6 Add (op "+"),
+      P.infixROp 6 Sub (op "-"),
+      P.infixROp 7 Mul (op "*"),
+      P.infixLOp 8 App (token $ void delim),
+      P.infixROp 9 Pow (op "^")
     ]
     0
 
