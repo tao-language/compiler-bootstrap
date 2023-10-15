@@ -257,8 +257,8 @@ run = describe "--==☯ Parser ☯==--" $ do
             s2 <- getState
             succeed (s1, x, s2)
       let p = parse' parser
-      let s1 = State {source = "abcdef", row = 1, col = 1}
-      let s2 = State {source = "def", row = 1, col = 4}
+      let s1 = State {source = "abcdef", index = 0, row = 1, col = 1}
+      let s2 = State {source = "def", index = 3, row = 1, col = 4}
       p "abcdef" `shouldBe` Just ((s1, "abc", s2), "def")
 
     it "☯ subparser" $ do

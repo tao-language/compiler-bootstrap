@@ -47,7 +47,7 @@ import Tao
   - Only documented functions/types are public
 --}
 
-loadFile :: String -> IO (Token SourceFile)
+loadFile :: String -> IO SourceFile
 loadFile filename = do
   -- src <- readFile filename
   -- case P.parse name (P.zeroOrMore definition) src of
@@ -62,14 +62,14 @@ loadFile filename = do
 
 -- TODO: loadModule :: String -> IO (Token Module)
 
-parseExpression :: String -> Either Error (Token Expression)
-parseExpression src = error "TODO: parseExpression"
+-- parseExpression :: String -> Either Error (Token Expression)
+-- parseExpression src = error "TODO: parseExpression"
 
-parseDefinition :: String -> Either Error (Token Definition)
-parseDefinition src = error "TODO: parseDefinition"
+-- parseDefinition :: String -> Either Error (Token Definition)
+-- parseDefinition src = error "TODO: parseDefinition"
 
-parseFile :: String -> Either Error (Token SourceFile)
-parseFile src = error "TODO: parseFile"
+-- parseFile :: String -> Either Error (Token SourceFile)
+-- parseFile src = error "TODO: parseFile"
 
 -- Utilities
 startsWithUpper :: String -> Bool
@@ -95,36 +95,33 @@ lineBreak = do
   _ <- P.whitespaces
   P.succeed ()
 
-inbetween :: String -> String -> Parser a -> Parser a
+inbetween :: String -> String -> Parser a -> Parser (Token', a, Token')
 inbetween open close parser = do
-  _ <- P.text open
+  open <- token (void $ P.text open)
   _ <- P.whitespaces
   x <- parser
   _ <- P.whitespaces
-  _ <- P.text close
-  P.succeed x
+  close <- token (void $ P.text close)
+  P.succeed (open, x, close)
 
-collection :: String -> String -> String -> Parser a -> Parser [a]
-collection open delim close parser =
-  inbetween open close (delimited delim parser)
+collection :: String -> String -> String -> Parser a -> Parser (Token', [Token a], Token')
+collection open delim close parser = do
+  inbetween open close (P.oneOf [delimited delim parser, P.succeed []])
 
-delimited :: String -> Parser a -> Parser [a]
-delimited delim parser =
-  P.oneOf
-    [ do
-        x <- parser
-        xs <- P.zeroOrMore (do _ <- operator delim; parser)
-        _ <- P.maybe' (operator delim)
-        P.succeed (x : xs),
-      P.succeed []
-    ]
+delimited :: String -> Parser a -> Parser [Token a]
+delimited delim parser = do
+  let delim' = operator (P.text delim)
+  x <- token parser
+  xs <- P.zeroOrMore (do _ <- delim'; token parser)
+  _ <- P.maybe' delim'
+  P.succeed (x : xs)
 
-operator :: String -> Parser ()
-operator name = do
+operator :: Parser op -> Parser Token'
+operator op = do
   _ <- P.whitespaces
-  _ <- P.text name
+  tok <- token op
   _ <- P.whitespaces
-  P.succeed ()
+  P.succeed (void tok)
 
 -- Concrete Syntax Tree tokens
 token :: Parser a -> Parser (Token a)
@@ -133,15 +130,15 @@ token parser = do
   s1 <- P.getState
   x <- parser
   s2 <- P.getState
-  _ <- P.whitespaces
-  trailingComment <- P.oneOf [comment, P.succeed ""]
+  _ <- P.spaces
+  trailingComments <- P.zeroOrOne comment
   P.succeed
     Token
-      { start = (s1.row, s1.col),
-        end = (s2.row, s2.col),
+      { value = x,
+        start = s1.index,
+        end = s2.index,
         comments = comments,
-        trailingComment = trailingComment,
-        value = x
+        trailingComments = trailingComments
       }
 
 comment :: Parser String
@@ -178,132 +175,154 @@ docString = do
 -- Patterns
 patternAtom :: Parser Pattern
 patternAtom = do
-  let field :: Parser (Name, Pattern)
-      field = do
-        name <- token identifier
-        p <-
-          P.oneOf
-            [ do _ <- operator ":"; pattern',
-              P.succeed (fmap (const (VarP name.value)) name)
-            ]
-        P.succeed (name, p)
-  let atoms :: [Parser PatternAtom]
-      atoms =
-        [ AnyP <$ P.word "_",
-          do
-            name <- identifier
-            case name of
-              "Type" -> P.succeed KndP
-              "Int" -> P.succeed IntTP
-              "Num" -> P.succeed NumTP
-              _ | startsWithUpper name -> P.succeed (TagP name)
-              _ -> P.succeed (VarP name),
-          IntP <$> P.integer,
-          RecP <$> collection "{" ":" "}" field
-        ]
   P.oneOf
-    [ token (P.oneOf atoms),
-      do
-        p <- inbetween "(" ")" pattern'
-        _ <- P.spaces
-        P.succeed p
+    [ AnyP <$> operator (P.text "_"),
+      patternName,
+      IntP <$> token P.integer,
+      patternRecord
+      -- , patternTuple
     ]
 
-pattern' :: Parser Pattern
-pattern' =
+patternName :: Parser Pattern
+patternName = do
+  name <- token identifier
+  case name.value of
+    "Type" -> P.succeed (KndP $ void name)
+    "Int" -> P.succeed (IntTP $ void name)
+    "Num" -> P.succeed (NumTP $ void name)
+    x | startsWithUpper x -> P.succeed (TagP name)
+    _ -> P.succeed (VarP name)
+
+patternRecordField :: Parser (TokenStr, Token', Pattern)
+patternRecordField = do
+  name <- token identifier
+  P.oneOf
+    [ do
+        op <- operator (P.text ":")
+        p <- pattern' (operator P.whitespaces)
+        P.succeed (name, op, p),
+      P.succeed (name, void name, VarP name)
+    ]
+
+patternRecord :: Parser Pattern
+patternRecord = do
+  (open, fields, close) <- collection "{" "," "}" patternRecordField
+  P.succeed (RecordP open fields close)
+
+patternTuple :: Parser Pattern
+patternTuple = do
+  error "TODO"
+
+pattern' :: Parser Token' -> Parser Pattern
+pattern' appOp = do
+  let op = operator . P.text
   P.withOperators
     [P.atom patternAtom]
-    [ P.infixR 1 (op FunP) (operator "->"),
-      P.infixL 2 (op AppP) (P.succeed ())
+    [ P.infixROp 1 FunP (op "->"),
+      P.infixLOp 2 AppP appOp
     ]
     0
-  where
-    op :: (Token a -> Token a -> a) -> Token a -> Token a -> Token a
-    op f p q = p {value = f p q, end = q.end}
 
--- Expressions
-expressionAtom :: Parser Expression
-expressionAtom = do
-  let atoms =
-        [ do
-            name <- identifier
-            case name of
-              "Type" -> P.succeed Knd
-              "Int" -> P.succeed IntT
-              "Num" -> P.succeed NumT
-              _ | startsWithUpper name -> P.succeed (Tag name)
-              _ -> P.succeed (Var name),
-          Int <$> P.integer,
-          Num <$> P.number
-        ]
-  P.oneOf
-    [ token (P.oneOf atoms),
-      do
-        a <- inbetween "(" ")" expression
-        _ <- P.spaces
-        P.succeed a
-    ]
+-- -- Expressions
+-- expressionAtom :: Parser Expression
+-- expressionAtom = do
+--   let atoms =
+--         [ do
+--             name <- identifier
+--             case name of
+--               "Type" -> P.succeed Knd
+--               "Int" -> P.succeed IntT
+--               "Num" -> P.succeed NumT
+--               _ | startsWithUpper name -> P.succeed (Tag name)
+--               _ -> P.succeed (Var name),
+--           Int <$> P.integer,
+--           Num <$> P.number
+--         ]
+--   P.oneOf
+--     [ token (P.oneOf atoms),
+--       do
+--         a <- inbetween "(" ")" expression
+--         _ <- P.spaces
+--         P.succeed a
+--     ]
 
-expression :: Parser Expression
-expression = do
-  P.withOperators
-    [ P.atom expressionAtom,
-      P.prefixOp 2 lamOp lamPatterns
-    ]
-    [ P.infixR 1 (op Or) (operator "|"),
-      P.suffixOp 2 annOp typeAnnotation,
-      P.infixR 3 (op Eq) (operator "=="),
-      P.infixR 4 (op Lt) (operator "<"),
-      P.infixR 5 (op Fun) (operator "->"),
-      P.infixR 6 (op Add) (operator "+"),
-      P.infixR 6 (op Sub) (operator "-"),
-      P.infixR 7 (op Mul) (operator "*"),
-      P.infixR 8 (op App) (P.succeed ()),
-      P.infixR 9 (op Pow) (operator "^")
-    ]
-    0
-  where
-    op :: (Token a -> Token a -> a) -> Token a -> Token a -> Token a
-    op f p q = f p q <$ p {end = q.end}
+-- expression :: Parser Expression
+-- expression = do
+--   P.withOperators
+--     [ P.atom expressionAtom
+--     -- , P.prefixOp 2 lamOp lamPatterns
+--     ]
+--     [ P.infixR 1 (merge Or) (operator "|"),
+--       P.suffixOp 2 ann typeAnnotation,
+--       P.infixR 3 (merge Eq) (operator "=="),
+--       P.infixR 4 (merge Lt) (operator "<"),
+--       P.infixR 5 (merge Fun) (operator "->"),
+--       P.infixR 6 (merge Add) (operator "+"),
+--       P.infixR 6 (merge Sub) (operator "-"),
+--       P.infixR 7 (merge Mul) (operator "*"),
+--       P.infixR 8 (merge App) (P.succeed ()),
+--       P.infixR 9 (merge Pow) (operator "^")
+--     ]
+--     0
 
-    lamOp :: [Pattern] -> Expression -> Expression
-    lamOp [] b = b
-    lamOp (p : ps) b = Lam (p : ps) b <$ b {start = p.start}
+-- where
+--   lamOp :: [Pattern] -> Expression -> Expression
+--   lamOp [] b = b
+--   lamOp (p : ps) b = Lam (p : ps) b <$ b {start = p.start}
 
-    lamPatterns :: Parser [Pattern]
-    lamPatterns = do
-      _ <- operator "\\"
-      ps <- P.oneOrMore patternAtom
-      _ <- operator "="
-      P.succeed ps
+--   lamPatterns :: Parser [Pattern]
+--   lamPatterns = do
+--     _ <- operator "\\"
+--     ps <- P.oneOrMore patternAtom
+--     _ <- operator "="
+--     P.succeed ps
 
-    annOp :: Type -> Expression -> Expression
-    annOp (For xs t) a = op (\a t -> Ann a (For xs t)) a t
+-- typeAnnotation :: Parser Type
+-- typeAnnotation = do
+--   _ <- operator ":"
+--   xs <-
+--     P.oneOf
+--       [ do
+--           _ <- operator "@"
+--           xs <- P.oneOrMore (token identifier)
+--           _ <- operator "."
+--           P.succeed xs,
+--         P.succeed []
+--       ]
+--   t <- expression
+--   P.succeed (For xs t)
 
-typeAnnotation :: Parser Type
-typeAnnotation = do
-  _ <- operator ":"
-  xs <-
-    P.oneOf
-      [ do
-          _ <- operator "@"
-          xs <- P.oneOrMore (token identifier)
-          _ <- operator "."
-          P.succeed xs,
-        P.succeed []
-      ]
-  t <- expression
-  P.succeed (For xs t)
+-- lambda :: Parser Expression
+-- lambda =
+--   -- \
+--   -- pattern
+--   -- branch
+--   error "TODO: lambda"
 
--- Definitions
-definition :: Parser Definition
-definition = P.oneOf [rulesDef, unpackDef]
+-- branch :: Parser ([Pattern], Expression)
+-- branch =
+--   -- zeroOrMore pattern
+--   -- =
+--   -- block
+--   error "TODO: branch"
 
-rulesDef :: Parser Definition
-rulesDef = error "TODO: rulesDef"
+-- block :: Parser Expression
+-- block =
+--   -- TODO: zero or more definition --> Let
+--   expression
 
-unpackDef :: Parser Definition
-unpackDef = error "TODO: unpackDef"
+-- -- Definitions
+-- definition :: Parser Definition
+-- definition = P.oneOf [rulesDef, unpackDef]
+
+-- rulesDef :: Parser Definition
+-- rulesDef =
+--   -- x
+--   -- maybe typeAnnotation
+--   error "TODO: rulesDef"
+
+-- unpackDef :: Parser Definition
+-- unpackDef = error "TODO: unpackDef"
 
 -- untypedDef :: Parser Definition
 -- untypedDef = do

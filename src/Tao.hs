@@ -31,21 +31,27 @@ module Tao where
 
 data Token a = Token
   { value :: a,
-    start :: !(Int, Int),
-    end :: !(Int, Int),
+    start :: !Int,
+    end :: !Int,
     comments :: ![String],
-    trailingComment :: !String
+    trailingComments :: ![String]
   }
   deriving (Eq, Show)
+
+type Token' = Token ()
+
+type TokenStr = Token String
+
+type TokenInt = Token Int
 
 tok :: a -> Token a
 tok x =
   Token
     { value = x,
-      start = (1, 1),
-      end = (1, 1),
+      start = 0,
+      end = 0,
       comments = [],
-      trailingComment = ""
+      trailingComments = []
     }
 
 instance Functor Token where
@@ -58,8 +64,55 @@ instance Functor Token where
         start = x.start,
         end = x.end,
         comments = x.comments,
-        trailingComment = x.trailingComment
+        trailingComments = x.trailingComments
       }
+
+data Pattern
+  = AnyP !Token'
+  | KndP !Token'
+  | IntTP !Token'
+  | NumTP !Token'
+  | IntP !TokenInt
+  | TagP !TokenStr
+  | VarP !TokenStr
+  | TupleP !Token' ![Token Pattern] !Token'
+  | RecordP !Token' ![Token (TokenStr, Token', Pattern)] !Token'
+  | FunP !Pattern !Token' !Pattern
+  | AppP !Pattern !Token' !Pattern
+  deriving (Eq, Show)
+
+-- type Expression = Token ExpressionAtom
+
+-- data ExpressionAtom
+--   = Knd
+--   | IntT
+--   | NumT
+--   | Int !Int
+--   | Num !Double
+--   | Tag !String
+--   | Var !String
+--   | Ann !Expression !Type
+--   | Lam ![Pattern] !Expression
+--   | Let ![Definition] !Expression
+--   | Fun !Expression !Expression
+--   | Or !Expression !Expression
+--   | App !Expression !Expression
+--   | Rec ![(Name, Expression)]
+--   | Typ !Name ![Expression] ![(Name, Type)]
+--   | Eq !Expression !Expression
+--   | Lt !Expression !Expression
+--   | Add !Expression !Expression
+--   | Sub !Expression !Expression
+--   | Mul !Expression !Expression
+--   | Pow !Expression !Expression
+--   deriving (Eq, Show)
+
+-- data Type
+--   = For ![Name] !Expression
+--   deriving (Eq, Show)
+
+-- ann :: Expression -> Expression -> ExpressionAtom
+-- ann a t = Ann a (For [] t)
 
 data DocString = DocString
   { public :: !Bool,
@@ -70,25 +123,25 @@ data DocString = DocString
 newDocString :: DocString
 newDocString = DocString {public = False, description = ""}
 
-data Definition
-  = Def
-      { docs :: DocString,
-        type' :: !(Maybe (Token Type)),
-        name :: !(Token String),
-        value :: !(Token Expression)
-      }
-  | Unpack
-      { docs :: DocString,
-        types :: ![(Token String, Token Type)],
-        pattern :: !(Token Pattern),
-        value :: !(Token Expression)
-      }
-  deriving (Eq, Show)
+-- data Definition
+--   = Def
+--       { docs :: DocString,
+--         type' :: !(Maybe (Token Type)),
+--         name :: !(Token String),
+--         value :: !(Token Expression)
+--       }
+--   | Unpack
+--       { docs :: DocString,
+--         types :: ![(Token String, Token Type)],
+--         pattern :: !(Token Pattern),
+--         value :: !(Token Expression)
+--       }
+--   deriving (Eq, Show)
 
 data SourceFile = SourceFile
-  { imports :: ![String],
-    definitions :: ![Definition],
-    expressions :: ![Token Expression]
+  { imports :: ![String]
+  -- , definitions :: ![Definition]
+  -- , expressions :: ![Token Expression]
   }
   deriving (Eq, Show)
 
@@ -98,51 +151,3 @@ data Module = Module
   deriving (Eq, Show)
 
 type Name = Token String
-
-type Pattern = Token PatternAtom
-
-data PatternAtom
-  = AnyP
-  | KndP
-  | IntTP
-  | NumTP
-  | IntP !Int
-  | TagP !String
-  | VarP !String
-  | FunP !Pattern !Pattern
-  | AppP !Pattern !Pattern
-  | RecP ![(Name, Pattern)]
-  deriving (Eq, Show)
-
-type Expression = Token ExpressionAtom
-
-data ExpressionAtom
-  = Knd
-  | IntT
-  | NumT
-  | Int !Int
-  | Num !Double
-  | Tag !String
-  | Var !String
-  | Ann !Expression !Type
-  | Lam ![Pattern] !Expression
-  | Let ![Definition] !Expression
-  | Fun !Expression !Expression
-  | Or !Expression !Expression
-  | App !Expression !Expression
-  | Rec ![(Name, Expression)]
-  | Typ !Name ![Expression] ![(Name, Type)]
-  | Eq !Expression !Expression
-  | Lt !Expression !Expression
-  | Add !Expression !Expression
-  | Sub !Expression !Expression
-  | Mul !Expression !Expression
-  | Pow !Expression !Expression
-  deriving (Eq, Show)
-
-data Type
-  = For ![Name] !Expression
-  deriving (Eq, Show)
-
-ann :: Expression -> Expression -> ExpressionAtom
-ann a t = Ann a (For [] t)

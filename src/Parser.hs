@@ -12,6 +12,7 @@ newtype Parser a = Parser (State -> Either State (a, State))
 
 data State = State
   { source :: !String,
+    index :: !Int,
     row :: !Int,
     col :: !Int
   }
@@ -50,7 +51,7 @@ instance Monad Parser where
 
 parse :: Parser a -> String -> Either State (a, State)
 parse (Parser p) source = do
-  let state = State {source = source, row = 1, col = 1}
+  let state = State {source = source, index = 0, row = 1, col = 1}
   p state
 
 succeed :: a -> Parser a
@@ -92,8 +93,8 @@ charIf condition =
   Parser
     ( \state -> case state.source of
         c : _ | not (condition c) -> Left state
-        '\n' : src -> Right ('\n', state {source = src, row = state.row + 1, col = 1})
-        c : src -> Right (c, state {source = src, col = state.col + 1})
+        '\n' : src -> Right ('\n', state {source = src, index = state.index + 1, row = state.row + 1, col = 1})
+        c : src -> Right (c, state {source = src, index = state.index + 1, col = state.col + 1})
         "" -> Left state
     )
 
@@ -347,33 +348,33 @@ inbetweenOp f open close expr = do
   succeed (f open close x)
 
 infixL :: Int -> (a -> a -> a) -> Parser op -> Infix a
-infixL prec f = infixLOp prec (\_ x y -> f x y)
+infixL prec f = infixLOp prec (\x _ y -> f x y)
 
-infixLOp :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
+infixLOp :: Int -> (a -> op -> a -> a) -> Parser op -> Infix a
 infixLOp prec f op x prec' expr = do
   assert (prec > prec')
   op <- op
   y <- expr prec
-  succeed (f op x y)
+  succeed (f x op y)
 
 infixR :: Int -> (a -> a -> a) -> Parser op -> Infix a
-infixR prec f = infixROp prec (\_ x y -> f x y)
+infixR prec f = infixROp prec (\x _ y -> f x y)
 
-infixROp :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
+infixROp :: Int -> (a -> op -> a -> a) -> Parser op -> Infix a
 infixROp prec f op x prec' expr = do
   assert (prec >= prec')
   op <- op
   y <- expr prec
-  succeed (f op x y)
+  succeed (f x op y)
 
 suffix :: Int -> (a -> a) -> Parser op -> Infix a
-suffix prec f = suffixOp prec (\_ x -> f x)
+suffix prec f = suffixOp prec (\x _ -> f x)
 
-suffixOp :: Int -> (op -> a -> a) -> Parser op -> Infix a
+suffixOp :: Int -> (a -> op -> a) -> Parser op -> Infix a
 suffixOp prec f op x prec' _ = do
   assert (prec > prec')
   op <- op
-  succeed (f op x)
+  succeed (f x op)
 
 withOperators :: [Prefix a] -> [Infix a] -> Int -> Parser a
 withOperators prefix infix' prec = do
