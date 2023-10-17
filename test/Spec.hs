@@ -3,6 +3,7 @@ module Main where
 import qualified CoreTests
 -- import qualified ExamplesTests
 
+import qualified OperatorPrecedenceTests
 import qualified ParserTests
 import qualified PrettyPrintTests
 import qualified TaoLangTests
@@ -16,5 +17,6 @@ main = hspec $ do
   CoreTests.run
   TaoTests.run
   TaoLangTests.run
+  OperatorPrecedenceTests.run
 
 -- ExamplesTests.run

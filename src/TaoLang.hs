@@ -147,10 +147,9 @@ comment = do
   txt <- P.textUntil lineBreak
   P.succeed (dropWhileEnd isSpace txt)
 
-docString :: Parser DocString
-docString = do
-  let delimiter = P.text "---"
-  _ <- delimiter
+docString :: Parser String -> Parser DocString
+docString delimiter = do
+  delim <- delimiter
   _ <- P.spaces
   public <-
     P.oneOf
@@ -159,13 +158,13 @@ docString = do
         P.succeed True
       ]
   _ <- P.spaces
-  docs <- P.textUntil (lineDelimiter delimiter)
+  docs <- P.textUntil (closeDelimiter delim)
   P.succeed DocString {public = public, description = dropWhileEnd isSpace $ dropWhile isSpace docs}
   where
-    lineDelimiter :: Parser delim -> Parser ()
-    lineDelimiter delimiter = do
+    closeDelimiter :: String -> Parser ()
+    closeDelimiter delim = do
       _ <- lineBreak
-      _ <- delimiter
+      _ <- P.text delim
       _ <- P.spaces
       _ <- lineBreak
       P.succeed ()
@@ -349,7 +348,7 @@ letDef = do
         _ <- P.word name
         _ <- P.whitespaces
         branch
-  docs <- P.maybe' docString
+  docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
   name <- token identifier
   (type', rules) <-
     P.oneOf
@@ -386,162 +385,44 @@ test :: Parser Definition
 -- 2
 test = error "TODO: test"
 
--- untypedDef :: Parser Definition
--- untypedDef = do
---   x <- identifier P.lowercase
---   a <- branches 0 x
---   P.succeed
---     ( Def
---         { docs = Nothing,
---           type' = Nothing,
---           name = x,
---           value = a
---         }
---     )
+-- Module
+sourceFile :: Parser SourceFile
+sourceFile = do
+  docs <- P.maybe' (docString (P.atLeast 3 $ P.char '='))
+  imports <- P.zeroOrMore (token import')
+  definitions <- P.zeroOrMore definition
+  P.succeed
+    SourceFile
+      { docs = docs,
+        imports = imports,
+        definitions = definitions
+      }
 
--- typedDef :: Parser Error Definition
--- typedDef = do
---   (x, ty) <- typeAnnotation
---   _ <- newLine
---   _ <- keyword () x
---   a <- branches 0 x
---   P.succeed
---     ( Def
---         { docs = Nothing,
---           type' = Just ty,
---           name = x,
---           value = a
---         }
---     )
-
--- typedVarDef :: Parser Error Definition
--- typedVarDef = do
---   (x, ty) <- typeAnnotation
---   _ <- token $ P.char '='
---   a <- expression 0
---   _ <- newLine
---   P.succeed
---     ( Def
---         { docs = Nothing,
---           type' = Just ty,
---           name = x,
---           value = a
---         }
---     )
-
--- unpackDef :: Parser Error Definition
--- unpackDef = do
---   types <- P.zeroOrMore (do ann <- typeAnnotation; _ <- newLine; P.succeed ann)
---   p <- pattern'
---   _ <- token $ P.char '='
---   a <- expression 0
---   _ <- newLine
---   P.succeed
---     ( Unpack
---         { docs = Nothing,
---           types = types,
---           pattern = p,
---           value = a
---         }
---     )
-
--- typeAnnotation :: Parser Error (String, Type)
--- typeAnnotation = do
---   x <- identifier P.lowercase
---   _ <- token $ P.char ':'
---   xs <-
---     P.oneOf
---       [ do
---           _ <- token $ P.char '@'
---           x <- identifier P.lowercase
---           xs <- P.zeroOrMore (identifier P.lowercase)
---           _ <- token $ P.char '.'
---           P.succeed (x : xs),
---         P.succeed []
---       ]
---   t <- expression 0
---   P.succeed (x, For xs t)
-
--- branches :: Int -> String -> Parser Expression
--- branches prec x = do
---   br <- branch prec
---   _ <- newLine
---   brs <- P.zeroOrMore (rule prec x)
---   P.succeed (Match (br : brs))
-
--- branch :: Int -> Parser ([Pattern], Expression)
--- branch prec = do
---   ps <- P.zeroOrMore patternAtom
---   _ <- token $ P.char '='
---   b <- expression prec
---   P.succeed (ps, b)
-
--- rule :: Int -> String -> Parser ([Pattern], Expression)
--- rule prec x = do
---   _ <- keyword x
---   br <- branch prec
---   _ <- newLine
---   P.succeed br
-
--- Utils
--- newLine :: Parser ()
--- newLine = do
---   _ <- token $ P.oneOrMore $ P.oneOf [void (P.char ';'), void P.space, P.endOfLine]
---   P.succeed ()
-
--- keyword :: String -> Parser String
--- keyword txt = do
---   let wordBreak =
---         [ void P.letter,
---           void P.number,
---           void $ P.char '_',
---           void $ P.char '\''
---         ]
---   token (P.text txt |> P.notFollowedBy (P.oneOf wordBreak))
-
--- identifier :: Parser Char -> Parser String
--- identifier firstChar = do
---   -- TODO: support `-` and other characters, maybe URL-like names
---   maybeUnderscore <- P.maybe' (P.char '_')
---   c1 <- firstChar
---   cs <- P.zeroOrMore (P.oneOf [P.alphanumeric, P.char '_'])
---   let x = case maybeUnderscore of
---         Just c0 -> c0 : c1 : cs
---         Nothing -> c1 : cs
---   keyword x
-
--- token :: Parser a -> Parser a
--- token parser = do
---   x <- parser
---   _ <- P.spaces
---   P.succeed x
-
--- emptyLine :: Parser Error String
--- emptyLine = do
---   let close = P.oneOf [P.char '\n', P.char ';']
---   line <- P.subparser close (P.spaces)
---   _ <- close
---   P.succeed line
-
--- commentSingleLine :: Parser Error String
--- commentSingleLine = do
---   let open = do _ <- P.text "--"; P.maybe' P.space
---   let close = newLine
---   _ <- open
---   txt <- P.subparser close (P.zeroOrMore P.anyChar)
---   _ <- close
---   P.succeed txt
-
--- commentMultiLine :: Parser Error String
--- commentMultiLine = do
---   let open = do _ <- P.text "{--"; P.maybe' P.space
---   let close = do _ <- P.maybe' P.space; _ <- P.text "--}"; P.maybe' newLine
---   _ <- open
---   txt <- P.subparser close (P.zeroOrMore P.anyChar)
---   _ <- close
---   P.succeed txt
-
--- comments :: Parser Error String
--- comments = do
---   texts <- P.zeroOrMore (P.oneOf [commentSingleLine, commentMultiLine])
---   P.succeed (intercalate "\n" texts)
+import' :: Parser Import
+import' = do
+  _ <- P.word "import"
+  _ <- P.spaces
+  dirName <- token (concat <$> P.zeroOrMore (P.concat [identifier, P.text "/"]))
+  modName <- token identifier
+  name <-
+    P.oneOf
+      [ do
+          _ <- P.word "as"
+          _ <- P.spaces
+          name <- token identifier
+          P.succeed name,
+        P.succeed modName
+      ]
+  _ <- P.spaces
+  exposing <-
+    P.oneOf
+      [ fmap (\(_, xs, _) -> xs) (collection "(" "," ")" (token identifier)),
+        P.succeed []
+      ]
+  _ <- lineBreak
+  P.succeed
+    Import
+      { path = fmap (++ modName.value) dirName,
+        name = name,
+        exposing = exposing
+      }

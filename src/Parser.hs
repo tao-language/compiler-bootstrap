@@ -148,6 +148,9 @@ chain (p : ps) = do
   xs <- chain ps
   succeed (x : xs)
 
+concat :: [Parser [a]] -> Parser [a]
+concat parsers = fmap Prelude.concat (chain parsers)
+
 maybe' :: Parser a -> Parser (Maybe a)
 maybe' parser = fmap Just parser |> orElse (succeed Nothing)
 
@@ -225,9 +228,8 @@ number = do
   int <- oneOrMore digit
   oneOf
     [ do
-        _ <- char '.'
-        fraction <- oneOrMore digit
-        succeed (read $ concat [int, ".", fraction]),
+        fraction <- Parser.concat [text ".", oneOrMore digit]
+        succeed (read (int ++ fraction)),
       do succeed (read int)
     ]
 

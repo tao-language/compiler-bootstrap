@@ -133,21 +133,29 @@ data Definition
         args :: ![Expression],
         alts :: !(Token String, Type)
       }
-  | Test
-      { description :: !String,
+  | Run
+      { comments :: ![String],
         value :: !Expression,
-        expected :: !Expression
+        expected :: !(Maybe Expression)
       }
   deriving (Eq, Show)
 
+data Import = Import
+  { path :: !(Token String),
+    name :: !(Token String),
+    exposing :: ![Token String]
+  }
+  deriving (Eq, Show)
+
 data SourceFile = SourceFile
-  { imports :: ![String]
-  -- , definitions :: ![Definition]
-  -- , expressions :: ![Token Expression]
+  { docs :: !(Maybe DocString),
+    imports :: ![Token Import],
+    definitions :: ![Definition]
   }
   deriving (Eq, Show)
 
 data Module = Module
-  {
+  { name :: !String,
+    files :: ![(String, SourceFile)]
   }
   deriving (Eq, Show)
