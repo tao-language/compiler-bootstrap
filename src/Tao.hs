@@ -115,21 +115,29 @@ newDocString :: DocString
 newDocString = DocString {public = False, description = ""}
 
 data Definition
-  = -- = Def
-    --     { docs :: DocString,
-    --       type' :: !(Maybe (Token Type)),
-    --       name :: !(Token String),
-    --       value :: !(Token Expression)
-    --     }
-
-    -- | Unpack
-    --     { docs :: DocString,
-    --       types :: ![(Token String, Token Type)],
-    --       pattern :: !(Token Pattern),
-    --       value :: !(Token Expression)
-    --     }
-    -- | TypeDef !(Token String) ![Expression] ![(Token String, Type)]
-    TODODef
+  = LetDef
+      { docs :: !(Maybe DocString),
+        name :: !(Token String),
+        type' :: !(Maybe Type),
+        rules :: ![([Pattern], Expression)]
+      }
+  | Unpack
+      { docs :: !(Maybe DocString),
+        types :: ![(Token String, Type)],
+        pattern :: !Pattern,
+        value :: !Expression
+      }
+  | TypeDef
+      { docs :: !(Maybe DocString),
+        name :: !(Token String),
+        args :: ![Expression],
+        alts :: !(Token String, Type)
+      }
+  | Test
+      { description :: !String,
+        value :: !Expression,
+        expected :: !Expression
+      }
   deriving (Eq, Show)
 
 data SourceFile = SourceFile

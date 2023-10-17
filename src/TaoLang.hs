@@ -147,7 +147,6 @@ comment = do
   txt <- P.textUntil lineBreak
   P.succeed (dropWhileEnd isSpace txt)
 
--- docs <- P.oneOf [docString, P.succeed DocString {public = False, description = ""}]
 docString :: Parser DocString
 docString = do
   let delimiter = P.text "---"
@@ -244,20 +243,6 @@ expression delim = do
         ps <- P.oneOrMore (do _ <- P.whitespaces; patternAtom)
         _ <- op "="
         P.succeed ps
-  let typeAnn :: Parser appDelim -> Parser Type
-      typeAnn delim = do
-        _ <- operator (P.text ":")
-        xs <-
-          P.oneOf
-            [ do
-                _ <- operator (P.text "@")
-                xs <- P.oneOrMore (token identifier)
-                _ <- operator (P.text ".")
-                P.succeed xs,
-              P.succeed []
-            ]
-        t <- expression delim
-        P.succeed (For xs t)
 
   P.withOperators
     [ P.atom expressionAtom,
@@ -265,7 +250,7 @@ expression delim = do
       -- TODO: block
     ]
     [ P.infixROp 1 Or (op "|"),
-      P.suffixOp 2 Ann (typeAnn delim),
+      P.suffixOp 2 Ann (typeAnnotation delim),
       P.infixROp 3 Eq (op "=="),
       P.infixROp 4 Lt (op "<"),
       P.infixROp 5 Fun (op "->"),
@@ -326,30 +311,80 @@ expressionRecord = do
   (open, fields, close) <- collection "{" "," "}" expressionRecordField
   P.succeed (Record open fields close)
 
-expressionBlock :: Parser Expression
-expressionBlock =
-  -- TODO: zero or more definition --> Let
-  expression (P.succeed ())
+-- expressionBlock :: Parser Expression
+-- expressionBlock =
+--   -- TODO: zero or more definition --> Let
+--   expression (P.succeed ())
 
--- branch :: Parser ([Pattern], Expression)
--- branch =
---   -- zeroOrMore pattern
---   -- =
---   -- block
---   error "TODO: branch"
+typeAnnotation :: Parser appDelim -> Parser Type
+typeAnnotation delim = do
+  _ <- operator (P.text ":")
+  xs <-
+    P.oneOf
+      [ do
+          _ <- operator (P.text "@")
+          xs <- P.oneOrMore (token identifier)
+          _ <- operator (P.text ".")
+          P.succeed xs,
+        P.succeed []
+      ]
+  t <- expression delim
+  P.succeed (For xs t)
 
--- -- Definitions
--- definition :: Parser Definition
--- definition = P.oneOf [rulesDef, unpackDef]
+-- Definitions
+definition :: Parser Definition
+definition = P.oneOf [letDef] -- , unpackDef, typeDef, test]
 
--- rulesDef :: Parser Definition
--- rulesDef =
---   -- x
---   -- maybe typeAnnotation
---   error "TODO: rulesDef"
+letDef :: Parser Definition
+letDef = do
+  let branch :: Parser ([Pattern], Expression)
+      branch = do
+        ps <- P.zeroOrMore patternAtom
+        _ <- operator (P.char '=')
+        b <- expression (P.succeed ())
+        _ <- lineBreak
+        P.succeed (ps, b)
+  let ruleEntry :: String -> Parser ([Pattern], Expression)
+      ruleEntry name = do
+        _ <- P.word name
+        _ <- P.whitespaces
+        branch
+  docs <- P.maybe' docString
+  name <- token identifier
+  (type', rules) <-
+    P.oneOf
+      [ do
+          -- x : Int = 42
+          type' <- typeAnnotation (P.succeed ())
+          rule <- branch
+          P.succeed (Just type', [rule]),
+        do
+          -- f : Int -> Int
+          -- f x = 42
+          type' <- typeAnnotation (P.succeed ())
+          _ <- lineBreak
+          rules <- P.oneOrMore (ruleEntry name.value)
+          P.succeed (Just type', rules),
+        do
+          -- f x = 42
+          rule <- branch
+          rules <- P.zeroOrMore (ruleEntry name.value)
+          P.succeed (Nothing, rule : rules)
+      ]
+  P.succeed LetDef {docs = docs, name = name, type' = type', rules = rules}
 
--- unpackDef :: Parser Definition
--- unpackDef = error "TODO: unpackDef"
+unpackDef :: Parser Definition
+-- (x, y) = z
+unpackDef = error "TODO: unpackDef"
+
+typeDef :: Parser Definition
+-- type Bool = True | False
+typeDef = error "TODO: typeDef"
+
+test :: Parser Definition
+-- > 1 + 1
+-- 2
+test = error "TODO: test"
 
 -- untypedDef :: Parser Definition
 -- untypedDef = do

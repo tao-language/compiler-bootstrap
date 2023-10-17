@@ -5,7 +5,6 @@ module Core where
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (isAlphaNum, isLower, isUpper, toLower)
 import Data.List (delete, intercalate, union)
-import Debug.Trace
 
 -- https://simon.peytonjones.org/verse-calculus
 -- https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadt-pldi.pdf
@@ -461,9 +460,6 @@ unifyRec ((x, a) : kvs) kvs' = case lookup x kvs' of
     (t, s2) <- unify (eval s1 a) (eval s1 b)
     Right ((x, t) : kvs, s2 `compose` s1)
   Nothing -> unifyRec kvs kvs'
-
-print' :: (Show a, Show b, Show c, Applicative f) => a -> b -> c -> f ()
-print' msg x y = traceM (show msg ++ "\t  " ++ show x ++ "  ~~>  " ++ show y)
 
 infer :: Env -> Expr -> Either Error (Expr, Substitution)
 infer _ Knd = Right (Knd, [])

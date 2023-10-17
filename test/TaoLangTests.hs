@@ -1,6 +1,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# OPTIONS_GHC -Wno-incomplete-record-updates #-}
 
 module TaoLangTests where
 
@@ -187,46 +188,17 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "x\ny" `shouldBe` Right (Var $ tok "x" 1 1, "\ny")
     p "(x\ny)" `shouldBe` Right (App (Var $ tok "x" 1 2) (tok' 1 3) (Var $ tok "y" 2 1), "")
 
-  -- TODO: it "☯ operator precedence" $ do
+  it "☯ letDef" $ do
+    let def = LetDef {docs = Nothing, name = tok "" 1 1, type' = Nothing, rules = []}
+    let p = parse' letDef
+    p "x = 42" `shouldBe` Right (def {name = tok "x" 1 1, rules = [([], Int $ tok 42 1 5)]}, "")
+    p "x : Int = 42" `shouldBe` Right (def {name = tok "x" 1 1, type' = Just (For [] $ IntT $ tok' 1 5), rules = [([], Int $ tok 42 1 11)]}, "")
+    p "x : Int\nx = 42" `shouldBe` Right (def {name = tok "x" 1 1, type' = Just (For [] $ IntT $ tok' 1 5), rules = [([], Int $ tok 42 2 5)]}, "")
+    p "f x = 1\nf y = 2" `shouldBe` Right (def {name = tok "f" 1 1, type' = Nothing, rules = [([VarP $ tok "x" 1 3], Int $ tok 1 1 7), ([VarP $ tok "y" 2 3], Int $ tok 2 2 7)]}, "")
 
-  -- it "☯ expressionAtom" $ do
-  --   let p = parse' expressionAtom
-  --   p "Type abc" `shouldBe` Right (tok Knd (1, 1) (1, 5), "abc")
-  --   p "Int abc" `shouldBe` Right (tok IntT (1, 1) (1, 4), "abc")
-  --   p "Num abc" `shouldBe` Right (tok NumT (1, 1) (1, 4), "abc")
-  --   p "42 abc" `shouldBe` Right (tok (Int 42) (1, 1) (1, 3), "abc")
-  --   p "3.14 abc" `shouldBe` Right (tok (Num 3.14) (1, 1) (1, 5), "abc")
-  --   p "Tag abc" `shouldBe` Right (tok (Tag "Tag") (1, 1) (1, 4), "abc")
-  --   p "var abc" `shouldBe` Right (tok (Var "var") (1, 1) (1, 4), "abc")
-  --   p "x y" `shouldBe` Right (tok (Var "x") (1, 1) (1, 2), "y")
-  --   p "(x y) abc" `shouldBe` Right (tok2 App (Var "x") (1, 2) (1, 3) (Var "y") (1, 4) (1, 5), "abc")
-
-  -- it "☯ expression" $ do
-  --   let (x, y, z) = (Var "x", Var "y", Var "z")
-  --   -- let (x', y') = (VarP "x", VarP "y")
-  --   let p = parse' expression
-  --   p "\\=y" `shouldBe` Left "\\=y"
-  --   -- p "\\x=y" `shouldBe` Right (tokLam [(x', (1, 2), (1, 3))] y (1, 4) (1, 5), "")
-  --   -- p "\\ \n x \n = \n y" `shouldBe` Right (tokLam [(x', (2, 2), (2, 3))] y (4, 2) (4, 3), "")
-  --   -- p "\\x y = z" `shouldBe` Right (tokLam [(x', (1, 2), (1, 3)), (y', (1, 4), (1, 5))] z (1, 8) (1, 9), "")
-  --   p "x | y" `shouldBe` Right (tok2 Or x (1, 1) (1, 2) y (1, 5) (1, 6), "")
-  --   p "x : y" `shouldBe` Right (tokAnn x (1, 1) (1, 2) [] y (1, 5) (1, 6), "")
-  --   p "x : @a. y" `shouldBe` Right (tokAnn x (1, 1) (1, 2) [("a", (1, 6), (1, 7))] y (1, 9) (1, 10), "")
-  --   p "x : @a b. y" `shouldBe` Right (tokAnn x (1, 1) (1, 2) [("a", (1, 6), (1, 7)), ("b", (1, 8), (1, 9))] y (1, 11) (1, 12), "")
-  --   p "x == y" `shouldBe` Right (tok2 Eq x (1, 1) (1, 2) y (1, 6) (1, 7), "")
-  --   p "x < y" `shouldBe` Right (tok2 Lt x (1, 1) (1, 2) y (1, 5) (1, 6), "")
-  --   p "x -> y" `shouldBe` Right (tok2 Fun x (1, 1) (1, 2) y (1, 6) (1, 7), "")
-  --   p "x + y" `shouldBe` Right (tok2 Add x (1, 1) (1, 2) y (1, 5) (1, 6), "")
-  --   p "x - y" `shouldBe` Right (tok2 Sub x (1, 1) (1, 2) y (1, 5) (1, 6), "")
-  --   p "x * y" `shouldBe` Right (tok2 Mul x (1, 1) (1, 2) y (1, 5) (1, 6), "")
-  --   p "x y" `shouldBe` Right (tok2 App x (1, 1) (1, 2) y (1, 3) (1, 4), "")
-  --   p "x ^ y" `shouldBe` Right (tok2 Pow x (1, 1) (1, 2) y (1, 5) (1, 6), "")
-
-  -- it "☯ typeAnnotation" $ do
-  --   let p = parseAll typeAnnotation
-  --   p "x : a" `shouldBe` Right ("x", For [] a)
-  --   p "x : @a. b" `shouldBe` Right ("x", For ["a"] b)
-  --   p "x : @a b. c" `shouldBe` Right ("x", For ["a", "b"] c)
+  it "☯ definition" $ do
+    let p = parse' definition
+    p "x = 42" `shouldBe` Right (LetDef {docs = Nothing, name = tok "x" 1 1, type' = Nothing, rules = [([], Int $ tok 42 1 5)]}, "")
 
   -- it "☯ untypedDef" $ do
   --   let p = parseAll untypedDef
