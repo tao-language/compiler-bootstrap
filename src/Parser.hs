@@ -1,269 +1,305 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE TupleSections #-}
 
 module Parser where
 
+-- https://eyalkalderon.com/blog/nom-error-recovery/
+-- https://arxiv.org/pdf/1806.11150.pdf
+
 import Control.Monad (void)
+import Data.Bifunctor (Bifunctor (first))
 import qualified Data.Char as Char
 import Flow ((|>))
 
-newtype Parser a = Parser (State -> Either State (a, State))
+newtype Parser err a = Parser (State err -> Either (State err) (a, State err))
 
-data State = State
-  { source :: !String,
+data State err = State
+  { remaining :: !String,
     index :: !Int,
     row :: !Int,
-    col :: !Int
+    col :: !Int,
+    errors :: ![err]
   }
   deriving (Eq, Show)
 
-instance Functor Parser where
-  fmap :: (a -> b) -> Parser a -> Parser b
+instance Functor (Parser err) where
+  fmap :: (a -> b) -> Parser err a -> Parser err b
   fmap f (Parser p) =
     Parser
-      ( \state -> do
-          (x, state) <- p state
-          Right (f x, state)
+      ( \state -> case p state of
+          Right (x, state) -> Right (f x, state)
+          Left state -> Left state
       )
 
-instance Applicative Parser where
-  pure :: a -> Parser a
-  pure = succeed
+instance Applicative (Parser err) where
+  pure :: a -> Parser err a
+  pure = ok
 
-  (<*>) :: Parser (a -> b) -> Parser a -> Parser b
+  (<*>) :: Parser err (a -> b) -> Parser err a -> Parser err b
   parserF <*> parser = do
     f <- parserF
     fmap f parser
 
-instance Monad Parser where
-  (>>=) :: Parser a -> (a -> Parser b) -> Parser b
+instance Monad (Parser err) where
+  (>>=) :: Parser err a -> (a -> Parser err b) -> Parser err b
   Parser p >>= f =
     Parser
-      ( \state -> do
-          (x, state) <- p state
-          let (Parser p') = f x
-          p' state
+      ( \state -> case p state of
+          Right (x, state) -> apply (f x) state
+          Left state -> Left state
       )
 
-  return :: a -> Parser a
+  return :: a -> Parser err a
   return = pure
 
-parse :: Parser a -> String -> Either State (a, State)
-parse (Parser p) source = do
-  let state = State {source = source, index = 0, row = 1, col = 1}
-  p state
+apply :: Parser err a -> State err -> Either (State err) (a, State err)
+apply (Parser p) = p
 
-succeed :: a -> Parser a
-succeed value = Parser (\state -> Right (value, state))
+parse :: Parser err a -> String -> Either (State err) (a, State err)
+parse (Parser p) remaining =
+  p State {remaining = remaining, index = 0, row = 1, col = 1, errors = []}
 
-fail' :: Parser a
+ok :: a -> Parser err a
+ok x = Parser (\state -> Right (x, state))
+
+fail' :: Parser err a
 fail' = Parser Left
 
-assert :: Bool -> Parser ()
-assert check = if check then succeed () else fail'
+assert :: Bool -> Parser err ()
+assert True = ok ()
+assert False = fail'
 
-orElse :: Parser a -> Parser a -> Parser a
-orElse (Parser else') (Parser p) = do
+if' :: (a -> Bool) -> Parser err a -> Parser err a
+if' check (Parser p) =
   Parser
-    ( \state ->
-        case p state of
-          Left _ -> else' state
-          x -> x
+    ( \state -> case p state of
+        Right (x, state) | check x -> Right (x, state)
+        Right _ -> Left state
+        Left state -> Left state
     )
 
-oneOf :: [Parser a] -> Parser a
-oneOf [] = fail'
-oneOf (p : ps) = p |> orElse (oneOf ps)
+oneOf :: [Parser err a] -> Parser err a -> Parser err a
+oneOf ps = choose (map (,ok) ps)
 
-endOfFile :: Parser ()
+choose :: [(Parser err a, a -> Parser err b)] -> Parser err b -> Parser err b
+choose [] else' = else'
+choose ((Parser p, branch) : branches) else' =
+  Parser
+    ( \state -> case p state of
+        Right (x, state) -> apply (branch x) state
+        Left state -> apply (choose branches else') state
+    )
+
+getState :: Parser err (State err)
+getState = Parser (\state -> Right (state, state))
+
+-- Error handling
+expect :: err -> Parser err a -> Parser err a
+expect err (Parser p) =
+  Parser
+    ( \state -> case p state of
+        Right (x, state) -> Right (x, state)
+        Left state -> Left state {errors = err : state.errors}
+    )
+
+skipTo :: Parser err delim -> Parser err String
+skipTo delim =
+  oneOf
+    ["" <$ delim]
+    ( do
+        c <- anyChar
+        cs <- skipTo delim
+        ok (c : cs)
+    )
+
+try :: Parser err a -> Parser err b -> Parser err (Either b a)
+try parser else' = oneOf [Right <$> parser] (Left <$> else')
+
+-- Single characters
+anyChar :: Parser err Char
+anyChar =
+  Parser
+    ( \state -> case state.remaining of
+        '\n' : src -> Right ('\n', state {remaining = src, index = state.index + 1, row = state.row + 1, col = 1})
+        c : src -> Right (c, state {remaining = src, index = state.index + 1, col = state.col + 1})
+        "" -> Left state
+    )
+
+char :: Char -> Parser err Char
+char c = if' (== c) anyChar
+
+charNoCase :: Char -> Parser err Char
+charNoCase c = if' (\c' -> Char.toLower c == Char.toLower c') anyChar
+
+letter :: Parser err Char
+letter = if' Char.isLetter anyChar
+
+lowercase :: Parser err Char
+lowercase = if' Char.isLower anyChar
+
+uppercase :: Parser err Char
+uppercase = if' Char.isUpper anyChar
+
+digit :: Parser err Char
+digit = if' Char.isDigit anyChar
+
+alphanumeric :: Parser err Char
+alphanumeric = if' Char.isAlphaNum anyChar
+
+punctuation :: Parser err Char
+punctuation = if' Char.isPunctuation anyChar
+
+space :: Parser err Char
+space = if' (`elem` " \t") anyChar
+
+spaces :: Parser err String
+spaces = zeroOrMore space
+
+whitespace :: Parser err Char
+whitespace = if' (`elem` " \t\n\r\f\v") anyChar
+
+whitespaces :: Parser err String
+whitespaces = zeroOrMore whitespace
+
+paddedL :: Parser err padding -> Parser err a -> Parser err a
+paddedL padding parser = do
+  _ <- padding
+  parser
+
+paddedR :: Parser err padding -> Parser err a -> Parser err a
+paddedR padding parser = do
+  x <- parser
+  _ <- padding
+  ok x
+
+padded :: Parser err padding -> Parser err a -> Parser err a
+padded padding parser = do
+  _ <- padding
+  x <- parser
+  _ <- padding
+  ok x
+
+endOfFile :: Parser err ()
 endOfFile =
   Parser
-    ( \state -> case state.source of
+    ( \state -> case state.remaining of
         "" -> Right ((), state)
         _ -> Left state
     )
 
-endOfLine :: Parser ()
-endOfLine = oneOf [void $ char '\n', endOfFile]
-
--- Single characters
-charIf :: (Char -> Bool) -> Parser Char
-charIf condition =
-  Parser
-    ( \state -> case state.source of
-        c : _ | not (condition c) -> Left state
-        '\n' : src -> Right ('\n', state {source = src, index = state.index + 1, row = state.row + 1, col = 1})
-        c : src -> Right (c, state {source = src, index = state.index + 1, col = state.col + 1})
-        "" -> Left state
-    )
-
-anyChar :: Parser Char
-anyChar = charIf (const True)
-
-space :: Parser Char
-space = charIf (`elem` " \t")
-
-spaces :: Parser String
-spaces = zeroOrMore space
-
-whitespace :: Parser Char
-whitespace = charIf (`elem` " \t\n\r\f\v")
-
-whitespaces :: Parser String
-whitespaces = zeroOrMore whitespace
-
-letter :: Parser Char
-letter = charIf Char.isLetter
-
-lowercase :: Parser Char
-lowercase = charIf Char.isLower
-
-uppercase :: Parser Char
-uppercase = charIf Char.isUpper
-
-digit :: Parser Char
-digit = charIf Char.isDigit
-
-alphanumeric :: Parser Char
-alphanumeric = charIf Char.isAlphaNum
-
-punctuation :: Parser Char
-punctuation = charIf Char.isPunctuation
-
-char :: Char -> Parser Char
-char c = charIf (\ch -> Char.toLower c == Char.toLower ch)
-
-charExcept :: [Char] -> Parser Char
-charExcept notAllowed = charIf (`notElem` notAllowed)
-
-charCaseSensitive :: Char -> Parser Char
-charCaseSensitive c = charIf (== c)
+endOfLine :: Parser err ()
+endOfLine = oneOf [endOfFile] (void $ if' (== '\n') anyChar)
 
 -- Sequences
-chain :: [Parser a] -> Parser [a]
-chain [] = succeed []
+chain :: [Parser err a] -> Parser err [a]
+chain [] = ok []
 chain (p : ps) = do
   x <- p
   xs <- chain ps
-  succeed (x : xs)
+  ok (x : xs)
 
-concat :: [Parser [a]] -> Parser [a]
+text :: String -> Parser err String
+text str = chain (fmap char str)
+
+textNoCase :: String -> Parser err String
+textNoCase str = chain (fmap charNoCase str)
+
+concat :: [Parser err [a]] -> Parser err [a]
 concat parsers = fmap Prelude.concat (chain parsers)
 
-maybe' :: Parser a -> Parser (Maybe a)
-maybe' parser = fmap Just parser |> orElse (succeed Nothing)
+maybe' :: Parser err a -> Parser err (Maybe a)
+maybe' parser = oneOf [fmap Just parser] (ok Nothing)
 
-zeroOrOne :: Parser a -> Parser [a]
-zeroOrOne parser = fmap (: []) parser |> orElse (succeed [])
+zeroOrOne :: Parser err a -> Parser err [a]
+zeroOrOne parser = oneOf [fmap (: []) parser] (ok [])
 
-zeroOrMore :: Parser a -> Parser [a]
+zeroOrMore :: Parser err a -> Parser err [a]
 zeroOrMore = foldR (:) []
 
-oneOrMore :: Parser a -> Parser [a]
+oneOrMore :: Parser err a -> Parser err [a]
 oneOrMore parser = do
   x <- parser
   xs <- zeroOrMore parser
-  succeed (x : xs)
+  ok (x : xs)
 
-exactly :: Int -> Parser a -> Parser [a]
+exactly :: Int -> Parser err a -> Parser err [a]
 exactly n parser = chain (replicate n parser)
 
-atLeast :: Int -> Parser a -> Parser [a]
+atLeast :: Int -> Parser err a -> Parser err [a]
 atLeast min parser | min <= 0 = zeroOrMore parser
 atLeast min parser = do
   x <- parser
   xs <- atLeast (min - 1) parser
-  succeed (x : xs)
+  ok (x : xs)
 
-atMost :: Int -> Parser a -> Parser [a]
-atMost max _ | max <= 0 = succeed []
+atMost :: Int -> Parser err a -> Parser err [a]
+atMost max _ | max <= 0 = ok []
 atMost max parser =
-  do
-    x <- parser
-    xs <- atMost (max - 1) parser
-    succeed (x : xs)
-    |> orElse (succeed [])
+  oneOf
+    [ do
+        x <- parser
+        xs <- atMost (max - 1) parser
+        ok (x : xs)
+    ]
+    (ok [])
 
-between :: Int -> Int -> Parser a -> Parser [a]
+between :: Int -> Int -> Parser err a -> Parser err [a]
 between min max parser | min <= 0 = atMost max parser
 between min max parser = do
   x <- parser
   xs <- between (min - 1) (max - 1) parser
-  succeed (x : xs)
+  ok (x : xs)
 
--- TODO: split :: Parser delim -> Parser a -> Parser [a]
-until' :: (a -> Bool) -> Parser a -> Parser [a]
-until' done parser =
-  do
-    x <- parser
-    _ <- assert (not (done x))
-    xs <- until' done parser
-    succeed (x : xs)
-    |> orElse (succeed [])
-
-foldL :: (b -> a -> b) -> b -> Parser a -> Parser b
-foldL f initial parser =
-  do
-    x <- parser
-    foldL f (f initial x) parser
-    |> orElse (succeed initial)
-
-foldR :: (a -> b -> b) -> b -> Parser a -> Parser b
+foldR :: (a -> b -> b) -> b -> Parser err a -> Parser err b
 foldR f final parser =
-  do
-    x <- parser
-    y <- foldR f final parser
-    succeed (f x y)
-    |> orElse (succeed final)
+  oneOf
+    [ do
+        x <- parser
+        y <- foldR f final parser
+        ok (f x y)
+    ]
+    (ok final)
+
+foldL :: (b -> a -> b) -> b -> Parser err a -> Parser err b
+foldL f initial parser =
+  oneOf
+    [ do
+        x <- parser
+        foldL f (f initial x) parser
+    ]
+    (ok initial)
 
 -- Common
-integer :: Parser Int
+integer :: Parser err Int
 integer = do
   digits <- oneOrMore digit |> notFollowedBy (char '.')
-  succeed (read digits)
+  ok (read digits)
 
-number :: Parser Double
+number :: Parser err Double
 number = do
   int <- oneOrMore digit
   oneOf
     [ do
         fraction <- Parser.concat [text ".", oneOrMore digit]
-        succeed (read (int ++ fraction)),
-      do succeed (read int)
+        ok (read (int ++ fraction))
     ]
+    (ok (read int))
 
-text :: String -> Parser String
-text str = chain (fmap char str)
+wordChar :: Parser err Char
+wordChar = oneOf [letter, digit] (char '_')
 
-textCaseSensitive :: String -> Parser String
-textCaseSensitive str = chain (fmap charCaseSensitive str)
+wordEnd :: Parser err ()
+wordEnd = notFollowedBy wordChar (ok ())
 
-textUntil :: Parser end -> Parser String
-textUntil delim =
-  oneOf
-    [ do
-        _ <- delim
-        succeed "",
-      do
-        c <- anyChar
-        cs <- textUntil delim
-        succeed (c : cs)
-    ]
-
-wordChar :: Parser Char
-wordChar = oneOf [letter, digit, char '_']
-
-wordEnd :: Parser ()
-wordEnd = oneOf [succeed () |> notFollowedBy wordChar]
-
-word :: String -> Parser String
+word :: String -> Parser err String
 word txt = do
   x <- text txt
   _ <- wordEnd
-  succeed x
+  ok x
 
-followedBy :: Parser a -> Parser b -> Parser b
+followedBy :: Parser err a -> Parser err b -> Parser err b
 followedBy (Parser lookahead) parser = do
   x <- parser
   Parser
@@ -272,7 +308,7 @@ followedBy (Parser lookahead) parser = do
         Left _ -> Left state
     )
 
-notFollowedBy :: Parser a -> Parser b -> Parser b
+notFollowedBy :: Parser err a -> Parser err b -> Parser err b
 notFollowedBy (Parser lookahead) parser = do
   x <- parser
   Parser
@@ -281,24 +317,20 @@ notFollowedBy (Parser lookahead) parser = do
         Left _ -> Right (x, state)
     )
 
--- TODO
-getState :: Parser State
-getState = Parser (\state -> Right (state, state))
-
-subparserPartial :: Parser delim -> Parser a -> Parser a
+subparserPartial :: Parser err delim -> Parser err a -> Parser err a
 subparserPartial delim (Parser p) = do
   before <- getState
-  _ <- zeroOrMore (do _ <- succeed () |> notFollowedBy delim; anyChar)
+  _ <- zeroOrMore (do _ <- ok () |> notFollowedBy delim; anyChar)
   after <- getState
-  let len = length before.source - length after.source
+  let len = length before.remaining - length after.remaining
   Parser
     ( \state -> do
-        (x, _) <- p before {source = take len before.source}
+        (x, _) <- p before {remaining = take len before.remaining}
         Right (x, state)
     )
 
-subparser :: Parser delim -> Parser a -> Parser a
-subparser delim parser = subparserPartial delim (do x <- parser; _ <- endOfFile; succeed x)
+subparser :: Parser err delim -> Parser err a -> Parser err a
+subparser delim parser = subparserPartial delim (do x <- parser; _ <- endOfFile; ok x)
 
 -- TODO: line
 -- TODO: date
@@ -318,78 +350,44 @@ subparser delim parser = subparserPartial delim (do x <- parser; _ <- endOfFile;
 -- TODO: intExp
 -- TODO: numberExp
 -- TODO: quotedText
--- TODO: collection : ([a] -> b) -> Parser open -> Parser a -> Parser delim -> Parser close -> Parser b
+-- TODO: collection : ([a] -> b) -> Parser open -> Parser err a -> Parser delim -> Parser close -> Parser err b
 -- TODO: comment
 -- TODO: multiLineComment
 
 -- Operator precedence
-type Prefix a = (Int -> Parser a) -> Parser a
+-- https://github.com/zesterer/chumsky/blob/main/src/pratt.rs
+data Operator err op a
+  = Prefix !Int !(Parser err op) !(op -> a -> a)
+  | Postfix !Int !(Parser err op) !(op -> a -> a)
+  | InfixL !Int !(Parser err op) !(op -> a -> a -> a)
+  | InfixR !Int !(Parser err op) !(op -> a -> a -> a)
 
-type Infix a = a -> Int -> (Int -> Parser a) -> Parser a
+operators :: Int -> [Operator err op a] -> Parser err a -> Parser err a
+operators prec ops atom = do
+  x <- unary prec ops atom
+  binary prec ops atom x
 
-atom :: Parser a -> Prefix a
-atom parser _ = parser
+unary :: Int -> [Operator err op a] -> Parser err a -> Parser err a
+unary prec ops atom = do
+  let unary' (Prefix prec' op f) | prec <= prec' = do
+        op <- op
+        x <- operators prec' ops atom
+        ok (f op x)
+      unary' _ = fail'
+  oneOf (map unary' ops) atom
 
-prefix :: Int -> (a -> a) -> Parser op -> Prefix a
-prefix prec f = prefixOp prec (\_ x -> f x)
-
-prefixOp :: Int -> (op -> a -> a) -> Parser op -> Prefix a
-prefixOp prec f op expr = do
-  op <- op
-  x <- expr prec
-  succeed (f op x)
-
-inbetween :: Parser open -> Parser close -> Prefix a
-inbetween = inbetweenOp (\_ _ x -> x)
-
-inbetweenOp :: (open -> close -> a -> a) -> Parser open -> Parser close -> Prefix a
-inbetweenOp f open close expr = do
-  open <- open
-  x <- expr 0
-  close <- close
-  succeed (f open close x)
-
-infixL :: Int -> (a -> a -> a) -> Parser op -> Infix a
-infixL prec f = infixLOp prec (\x _ y -> f x y)
-
-infixLOp :: Int -> (a -> op -> a -> a) -> Parser op -> Infix a
-infixLOp prec f op x prec' expr = do
-  assert (prec > prec')
-  op <- op
-  y <- expr prec
-  succeed (f x op y)
-
-infixR :: Int -> (a -> a -> a) -> Parser op -> Infix a
-infixR prec f = infixROp prec (\x _ y -> f x y)
-
-infixROp :: Int -> (a -> op -> a -> a) -> Parser op -> Infix a
-infixROp prec f op x prec' expr = do
-  assert (prec >= prec')
-  op <- op
-  y <- expr prec
-  succeed (f x op y)
-
-suffix :: Int -> (a -> a) -> Parser op -> Infix a
-suffix prec f = suffixOp prec (\x _ -> f x)
-
-suffixOp :: Int -> (a -> op -> a) -> Parser op -> Infix a
-suffixOp prec f op x prec' _ = do
-  assert (prec > prec')
-  op <- op
-  succeed (f x op)
-
-withOperators :: [Prefix a] -> [Infix a] -> Int -> Parser a
-withOperators prefix infix' prec = do
-  let expr prec = do
-        x <- oneOf (fmap (\op -> op expr) prefix)
-        binary prec x
-
-      binary prec x =
-        oneOf
-          [ do
-              y <- oneOf (fmap (\op -> op x prec expr) infix')
-              binary prec y,
-            succeed x
-          ]
-
-  expr prec
+binary :: Int -> [Operator err op a] -> Parser err a -> a -> Parser err a
+binary prec ops atom x = do
+  let binary' (Postfix prec' op f) | prec < prec' = do
+        op <- op
+        ok (f op x)
+      binary' (InfixL prec' op f) | prec < prec' = do
+        op <- op
+        y <- operators prec' ops atom
+        binary prec ops atom (f op x y)
+      binary' (InfixR prec' op f) | prec <= prec' = do
+        op <- op
+        y <- operators prec' ops atom
+        binary prec ops atom (f op x y)
+      binary' _ = fail'
+  oneOf (map binary' ops) (ok x)
