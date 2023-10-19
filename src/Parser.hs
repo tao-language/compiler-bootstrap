@@ -175,10 +175,13 @@ paddedR padding parser = do
   ok x
 
 padded :: Parser err padding -> Parser err a -> Parser err a
-padded padding parser = do
-  _ <- padding
+padded padding = inbetween padding padding
+
+inbetween :: Parser err start -> Parser err end -> Parser err a -> Parser err a
+inbetween start end parser = do
+  _ <- start
   x <- parser
-  _ <- padding
+  _ <- end
   ok x
 
 endOfFile :: Parser err ()

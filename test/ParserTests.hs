@@ -22,6 +22,7 @@ data Expr -- for `operators`
   | Mul !Expr !Expr
   | Sub !Expr !Expr
   | Pow !Expr !Expr
+  | Paren !Expr
   deriving (Eq)
 
 instance Show Expr where
@@ -34,6 +35,7 @@ instance Show Expr where
   show (Sub x y) = "(" ++ show x ++ " - " ++ show y ++ ")"
   show (Mul x y) = "(" ++ show x ++ " * " ++ show y ++ ")"
   show (Pow x y) = "(" ++ show x ++ " ^ " ++ show y ++ ")"
+  show (Paren x) = "(" ++ show x ++ ")"
 
 run :: SpecWith ()
 run = describe "--==☯ Parser ☯==--" $ do
@@ -318,7 +320,7 @@ run = describe "--==☯ Parser ☯==--" $ do
 
   it "☯ operators" $ do
     let op x = padded whitespaces (text x)
-    let ops =
+        ops =
           [ InfixL 1 (op "+") (const Add),
             InfixL 1 (op "-") (const Sub),
             InfixL 2 (op "*") (const Mul),
@@ -327,7 +329,11 @@ run = describe "--==☯ Parser ☯==--" $ do
             Postfix 5 (op "!") (const Factorial),
             Prefix 5 (op "@") (const At)
           ]
-    let atom = Var <$> oneOrMore letter
+        atom =
+          oneOf
+            [Paren <$> inbetween (op "(") (op ")") expr]
+            (Var <$> oneOrMore letter)
+        expr = operators 0 ops atom
 
     let p = parseShow (operators 0 ops atom)
     -- Unary operators
@@ -355,3 +361,4 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "x * y ^ z" `shouldBe` Just "(x * (y ^ z))"
     p "x ^ y * z" `shouldBe` Just "((x ^ y) * z)"
     p "x ^ y ^ z" `shouldBe` Just "(x ^ (y ^ z))"
+    p "(x ^ y) ^ z" `shouldBe` Just "((x ^ y) ^ z)"
