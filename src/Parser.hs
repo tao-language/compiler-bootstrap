@@ -359,38 +359,61 @@ subparser delim parser = subparserPartial delim (do x <- parser; _ <- endOfFile;
 
 -- Operator precedence
 -- https://github.com/zesterer/chumsky/blob/main/src/pratt.rs
-data Operator err op a
-  = Prefix !Int !(Parser err op) !(op -> a -> a)
-  | Postfix !Int !(Parser err op) !(op -> a -> a)
-  | InfixL !Int !(Parser err op) !(op -> a -> a -> a)
-  | InfixR !Int !(Parser err op) !(op -> a -> a -> a)
+data Operator err a
+  = Prefix !Int !(Parser err a -> Parser err a)
+  | InfixL !Int !(a -> Parser err a -> Parser err a)
+  | InfixR !Int !(a -> Parser err a -> Parser err a)
 
-operators :: Int -> [Operator err op a] -> Parser err a -> Parser err a
+prefix :: Int -> Parser err op -> (op -> a -> a) -> Operator err a
+prefix prec op f = do
+  let parser expr = do
+        op <- op
+        x <- expr
+        ok (f op x)
+  Prefix prec parser
+
+postfix :: Int -> Parser err op -> (op -> a -> a) -> Operator err a
+postfix prec op f = do
+  let parser x _ = do
+        op <- op
+        ok (f op x)
+  InfixL prec parser
+
+infixL :: Int -> Parser err op -> (op -> a -> a -> a) -> Operator err a
+infixL prec op f = do
+  let parser x expr = do
+        op <- op
+        y <- expr
+        ok (f op x y)
+  InfixL prec parser
+
+infixR :: Int -> Parser err op -> (op -> a -> a -> a) -> Operator err a
+infixR prec op f = do
+  let parser x expr = do
+        op <- op
+        y <- expr
+        ok (f op x y)
+  InfixR prec parser
+
+operators :: Int -> [Operator err a] -> Parser err a -> Parser err a
 operators prec ops atom = do
   x <- unary prec ops atom
   binary prec ops atom x
 
-unary :: Int -> [Operator err op a] -> Parser err a -> Parser err a
+unary :: Int -> [Operator err a] -> Parser err a -> Parser err a
 unary prec ops atom = do
-  let toUnary (Prefix prec' op f) | prec <= prec' = do
-        op <- op
-        x <- operators prec' ops atom
-        ok (f op x)
+  let toUnary (Prefix prec' f) | prec <= prec' = do
+        f (operators prec' ops atom)
       toUnary _ = fail'
   oneOf (map toUnary ops) atom
 
-binary :: Int -> [Operator err op a] -> Parser err a -> a -> Parser err a
+binary :: Int -> [Operator err a] -> Parser err a -> a -> Parser err a
 binary prec ops atom x = do
-  let toBinary (Postfix prec' op f) | prec < prec' = do
-        op <- op
-        ok (f op x)
-      toBinary (InfixL prec' op f) | prec < prec' = do
-        op <- op
-        y <- operators prec' ops atom
-        binary prec ops atom (f op x y)
-      toBinary (InfixR prec' op f) | prec <= prec' = do
-        op <- op
-        y <- operators prec' ops atom
-        binary prec ops atom (f op x y)
+  let toBinary (InfixL prec' f) | prec < prec' = do
+        y <- f x (operators prec' ops atom)
+        binary prec ops atom y
+      toBinary (InfixR prec' f) | prec <= prec' = do
+        y <- f x (operators prec' ops atom)
+        binary prec ops atom y
       toBinary _ = fail'
   oneOf (map toBinary ops) (ok x)
