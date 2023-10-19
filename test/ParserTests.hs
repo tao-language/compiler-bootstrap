@@ -22,7 +22,6 @@ data Expr -- for `operators`
   | Mul !Expr !Expr
   | Sub !Expr !Expr
   | Pow !Expr !Expr
-  | Paren !Expr
   deriving (Eq)
 
 instance Show Expr where
@@ -35,7 +34,6 @@ instance Show Expr where
   show (Sub x y) = "(" ++ show x ++ " - " ++ show y ++ ")"
   show (Mul x y) = "(" ++ show x ++ " * " ++ show y ++ ")"
   show (Pow x y) = "(" ++ show x ++ " ^ " ++ show y ++ ")"
-  show (Paren x) = "(" ++ show x ++ ")"
 
 run :: SpecWith ()
 run = describe "--==☯ Parser ☯==--" $ do
@@ -331,11 +329,11 @@ run = describe "--==☯ Parser ☯==--" $ do
           ]
         atom =
           oneOf
-            [Paren <$> inbetween (op "(") (op ")") expr]
+            [inbetween (op "(") (op ")") expr]
             (Var <$> oneOrMore letter)
         expr = operators 0 ops atom
 
-    let p = parseShow (operators 0 ops atom)
+    let p = parseShow expr
     -- Unary operators
     p "x" `shouldBe` Just "x"
     p "-x" `shouldBe` Just "(-x)"

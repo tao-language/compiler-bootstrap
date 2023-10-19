@@ -372,25 +372,25 @@ operators prec ops atom = do
 
 unary :: Int -> [Operator err op a] -> Parser err a -> Parser err a
 unary prec ops atom = do
-  let unary' (Prefix prec' op f) | prec <= prec' = do
+  let toUnary (Prefix prec' op f) | prec <= prec' = do
         op <- op
         x <- operators prec' ops atom
         ok (f op x)
-      unary' _ = fail'
-  oneOf (map unary' ops) atom
+      toUnary _ = fail'
+  oneOf (map toUnary ops) atom
 
 binary :: Int -> [Operator err op a] -> Parser err a -> a -> Parser err a
 binary prec ops atom x = do
-  let binary' (Postfix prec' op f) | prec < prec' = do
+  let toBinary (Postfix prec' op f) | prec < prec' = do
         op <- op
         ok (f op x)
-      binary' (InfixL prec' op f) | prec < prec' = do
+      toBinary (InfixL prec' op f) | prec < prec' = do
         op <- op
         y <- operators prec' ops atom
         binary prec ops atom (f op x y)
-      binary' (InfixR prec' op f) | prec <= prec' = do
+      toBinary (InfixR prec' op f) | prec <= prec' = do
         op <- op
         y <- operators prec' ops atom
         binary prec ops atom (f op x y)
-      binary' _ = fail'
-  oneOf (map binary' ops) (ok x)
+      toBinary _ = fail'
+  oneOf (map toBinary ops) (ok x)
