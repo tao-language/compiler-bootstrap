@@ -73,8 +73,8 @@ data Pattern
   | VarP !(Token String)
   | TupleP !Token' ![Pattern] !Token'
   | RecordP !Token' ![(Token String, Pattern)] !Token'
-  | FunP !Pattern !Token' !Pattern
-  | AppP !Pattern !Token' !Pattern
+  | FunP !Token' !Pattern !Pattern
+  | AppP !Token' !Pattern !Pattern
   deriving (Eq, Show)
 
 data Expression
@@ -89,15 +89,15 @@ data Expression
   | Tuple !Token' ![Expression] !Token'
   | Record !Token' ![(Token String, Expression)] !Token'
   | Block ![Definition] !Expression
-  | App !Expression !Token' !Expression
-  | Fun !Expression !Token' !Expression
-  | Or !Expression !Token' !Expression
-  | Eq !Expression !Token' !Expression
-  | Lt !Expression !Token' !Expression
-  | Add !Expression !Token' !Expression
-  | Sub !Expression !Token' !Expression
-  | Mul !Expression !Token' !Expression
-  | Pow !Expression !Token' !Expression
+  | App !Token' !Expression !Expression
+  | Fun !Token' !Expression !Expression
+  | Or !Token' !Expression !Expression
+  | Eq !Token' !Expression !Expression
+  | Lt !Token' !Expression !Expression
+  | Add !Token' !Expression !Expression
+  | Sub !Token' !Expression !Expression
+  | Mul !Token' !Expression !Expression
+  | Pow !Token' !Expression !Expression
   | Ann !Expression !Type
   deriving (Eq, Show)
 

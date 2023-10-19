@@ -319,13 +319,13 @@ run = describe "--==☯ Parser ☯==--" $ do
   it "☯ operators" $ do
     let op x = padded whitespaces (text x)
         ops =
-          [ infixL 1 (op "+") (const Add),
-            infixL 1 (op "-") (const Sub),
-            infixL 2 (op "*") (const Mul),
-            prefix 3 (op "-") (const Neg),
-            infixR 4 (op "^") (const Pow),
-            postfix 5 (op "!") (const Factorial),
-            prefix 5 (op "@") (const At)
+          [ infixL 1 (const Add) (op "+"),
+            infixL 1 (const Sub) (op "-"),
+            infixL 2 (const Mul) (op "*"),
+            prefix 3 (const Neg) (op "-"),
+            infixR 4 (const Pow) (op "^"),
+            suffix 5 (const Factorial) (op "!"),
+            prefix 5 (const At) (op "@")
           ]
         atom =
           oneOf

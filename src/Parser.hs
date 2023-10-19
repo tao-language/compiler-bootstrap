@@ -364,31 +364,31 @@ data Operator err a
   | InfixL !Int !(a -> Parser err a -> Parser err a)
   | InfixR !Int !(a -> Parser err a -> Parser err a)
 
-prefix :: Int -> Parser err op -> (op -> a -> a) -> Operator err a
-prefix prec op f = do
+prefix :: Int -> (op -> a -> a) -> Parser err op -> Operator err a
+prefix prec f op = do
   let parser expr = do
         op <- op
         x <- expr
         ok (f op x)
   Prefix prec parser
 
-postfix :: Int -> Parser err op -> (op -> a -> a) -> Operator err a
-postfix prec op f = do
+suffix :: Int -> (op -> a -> a) -> Parser err op -> Operator err a
+suffix prec f op = do
   let parser x _ = do
         op <- op
         ok (f op x)
   InfixL prec parser
 
-infixL :: Int -> Parser err op -> (op -> a -> a -> a) -> Operator err a
-infixL prec op f = do
+infixL :: Int -> (op -> a -> a -> a) -> Parser err op -> Operator err a
+infixL prec f op = do
   let parser x expr = do
         op <- op
         y <- expr
         ok (f op x y)
   InfixL prec parser
 
-infixR :: Int -> Parser err op -> (op -> a -> a -> a) -> Operator err a
-infixR prec op f = do
+infixR :: Int -> (op -> a -> a -> a) -> Parser err op -> Operator err a
+infixR prec f op = do
   let parser x expr = do
         op <- op
         y <- expr
