@@ -171,17 +171,17 @@ op txt = do
 pattern' :: TaoParser appDelim -> TaoParser Pattern
 pattern' delim = do
   let ops =
-        [ P.infixR 1 FunP (op "->"),
-          P.infixL 2 AppP (token $ void delim)
+        [ P.infixR 1 PFun (op "->"),
+          P.infixL 2 PApp (token $ void delim)
         ]
   P.operators 0 ops patternAtom
 
 patternAtom :: TaoParser Pattern
 patternAtom =
   P.oneOf
-    [ AnyP <$> op "_",
+    [ PAny <$> op "_",
       patternName,
-      IntP <$> token P.integer,
+      PInt <$> token P.integer,
       patternRecord,
       patternTuple
     ]
@@ -190,11 +190,11 @@ patternName :: TaoParser Pattern
 patternName = do
   name <- token identifier
   case name.value of
-    "Type" -> P.ok (KndP $ void name)
-    "Int" -> P.ok (IntTP $ void name)
-    "Num" -> P.ok (NumTP $ void name)
-    x | startsWithUpper x -> P.ok (TagP name)
-    _ -> P.ok (VarP name)
+    "Type" -> P.ok (PKnd $ void name)
+    "Int" -> P.ok (PIntT $ void name)
+    "Num" -> P.ok (PNumT $ void name)
+    x | startsWithUpper x -> P.ok (PTag name)
+    _ -> P.ok (PVar name)
 
 patternRecordField :: TaoParser (Token String, Pattern)
 patternRecordField = do
@@ -204,13 +204,13 @@ patternRecordField = do
         _ <- op ":"
         p <- pattern' P.whitespaces
         P.ok (name, p),
-      P.ok (name, VarP name)
+      P.ok (name, PVar name)
     ]
 
 patternRecord :: TaoParser Pattern
 patternRecord = do
   (open, fields, close) <- collection "{" "," "}" patternRecordField
-  P.ok (RecordP open fields close)
+  P.ok (PRecord open fields close)
 
 patternTuple :: TaoParser Pattern
 patternTuple = do
@@ -219,14 +219,14 @@ patternTuple = do
     [ do
         -- One-item tuple: (x,)
         (open, item, close) <- inbetween "(" ")" (P.paddedR (op ",") item)
-        P.ok (TupleP open [item] close),
+        P.ok (PTuple open [item] close),
       do
         (open, items, close) <- collection "(" "," ")" item
         case items of
           -- Parenthesized non-tuple: (x)
           [item] -> P.ok item
           -- General case tuples: () (x, y, ...)
-          _ -> P.ok (TupleP open items close)
+          _ -> P.ok (PTuple open items close)
     ]
 
 -- Expressions

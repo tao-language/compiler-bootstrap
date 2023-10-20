@@ -91,44 +91,44 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ patternName" $ do
     let p = parse' patternName
-    p "Type abc" `shouldBe` Right (KndP $ tok' 1 1 4, "abc")
-    p "Int abc" `shouldBe` Right (IntTP $ tok' 1 1 3, "abc")
-    p "Num abc" `shouldBe` Right (NumTP $ tok' 1 1 3, "abc")
-    p "Tag abc" `shouldBe` Right (TagP $ tok "Tag" 1 1 3, "abc")
-    p "var abc" `shouldBe` Right (VarP $ tok "var" 1 1 3, "abc")
+    p "Type abc" `shouldBe` Right (PKnd $ tok' 1 1 4, "abc")
+    p "Int abc" `shouldBe` Right (PIntT $ tok' 1 1 3, "abc")
+    p "Num abc" `shouldBe` Right (PNumT $ tok' 1 1 3, "abc")
+    p "Tag abc" `shouldBe` Right (PTag $ tok "Tag" 1 1 3, "abc")
+    p "var abc" `shouldBe` Right (PVar $ tok "var" 1 1 3, "abc")
 
   it "☯ patternTuple" $ do
     let p = parse' patternTuple
-    p "() abc" `shouldBe` Right (TupleP (tok' 1 1 1) [] (tok' 1 2 1), "abc")
-    p "(x) abc" `shouldBe` Right (VarP $ tok "x" 1 2 1, "abc")
-    p "(x,) abc" `shouldBe` Right (TupleP (tok' 1 1 1) [VarP $ tok "x" 1 2 1] (tok' 1 4 1), "abc")
-    p "(x, y) abc" `shouldBe` Right (TupleP (tok' 1 1 1) [VarP $ tok "x" 1 2 1, VarP $ tok "y" 1 5 1] (tok' 1 6 1), "abc")
+    p "() abc" `shouldBe` Right (PTuple (tok' 1 1 1) [] (tok' 1 2 1), "abc")
+    p "(x) abc" `shouldBe` Right (PVar $ tok "x" 1 2 1, "abc")
+    p "(x,) abc" `shouldBe` Right (PTuple (tok' 1 1 1) [PVar $ tok "x" 1 2 1] (tok' 1 4 1), "abc")
+    p "(x, y) abc" `shouldBe` Right (PTuple (tok' 1 1 1) [PVar $ tok "x" 1 2 1, PVar $ tok "y" 1 5 1] (tok' 1 6 1), "abc")
 
   it "☯ patternRecordField" $ do
     let p = parse' patternRecordField
-    p "x" `shouldBe` Right ((tok "x" 1 1 1, VarP (tok "x" 1 1 1)), "")
-    p "x:y" `shouldBe` Right ((tok "x" 1 1 1, VarP (tok "y" 1 3 1)), "")
-    p "x \n : \n y" `shouldBe` Right ((tok "x" 1 1 1, VarP (tok "y" 3 2 1)), "")
+    p "x" `shouldBe` Right ((tok "x" 1 1 1, PVar (tok "x" 1 1 1)), "")
+    p "x:y" `shouldBe` Right ((tok "x" 1 1 1, PVar (tok "y" 1 3 1)), "")
+    p "x \n : \n y" `shouldBe` Right ((tok "x" 1 1 1, PVar (tok "y" 3 2 1)), "")
 
   it "☯ patternRecord" $ do
     let p = parse' patternRecord
-    p "{} abc" `shouldBe` Right (RecordP (tok' 1 1 1) [] (tok' 1 2 1), "abc")
-    p "{x} abc" `shouldBe` Right (RecordP (tok' 1 1 1) [(tok "x" 1 2 1, VarP $ tok "x" 1 2 1)] (tok' 1 3 1), "abc")
-    p "{x,} abc" `shouldBe` Right (RecordP (tok' 1 1 1) [(tok "x" 1 2 1, VarP $ tok "x" 1 2 1)] (tok' 1 4 1), "abc")
-    p "{x: y} abc" `shouldBe` Right (RecordP (tok' 1 1 1) [(tok "x" 1 2 1, VarP $ tok "y" 1 5 1)] (tok' 1 6 1), "abc")
-    p "{x: y, z} abc" `shouldBe` Right (RecordP (tok' 1 1 1) [(tok "x" 1 2 1, VarP $ tok "y" 1 5 1), (tok "z" 1 8 1, VarP $ tok "z" 1 8 1)] (tok' 1 9 1), "abc")
+    p "{} abc" `shouldBe` Right (PRecord (tok' 1 1 1) [] (tok' 1 2 1), "abc")
+    p "{x} abc" `shouldBe` Right (PRecord (tok' 1 1 1) [(tok "x" 1 2 1, PVar $ tok "x" 1 2 1)] (tok' 1 3 1), "abc")
+    p "{x,} abc" `shouldBe` Right (PRecord (tok' 1 1 1) [(tok "x" 1 2 1, PVar $ tok "x" 1 2 1)] (tok' 1 4 1), "abc")
+    p "{x: y} abc" `shouldBe` Right (PRecord (tok' 1 1 1) [(tok "x" 1 2 1, PVar $ tok "y" 1 5 1)] (tok' 1 6 1), "abc")
+    p "{x: y, z} abc" `shouldBe` Right (PRecord (tok' 1 1 1) [(tok "x" 1 2 1, PVar $ tok "y" 1 5 1), (tok "z" 1 8 1, PVar $ tok "z" 1 8 1)] (tok' 1 9 1), "abc")
 
   it "☯ pattern'" $ do
     let p = parse' (pattern' $ P.ok ())
-    p "_" `shouldBe` Right (AnyP $ tok' 1 1 1, "")
-    p "x" `shouldBe` Right (VarP $ tok "x" 1 1 1, "")
-    p "42" `shouldBe` Right (IntP $ tok 42 1 1 2, "")
-    p "()" `shouldBe` Right (TupleP (tok' 1 1 1) [] (tok' 1 2 1), "")
-    p "{}" `shouldBe` Right (RecordP (tok' 1 1 1) [] (tok' 1 2 1), "")
-    p "x->y" `shouldBe` Right (FunP (tok' 1 2 2) (VarP $ tok "x" 1 1 1) (VarP $ tok "y" 1 4 1), "")
-    p "x y" `shouldBe` Right (AppP (tok' 1 3 0) (VarP $ tok "x" 1 1 1) (VarP $ tok "y" 1 3 1), "")
-    p "x\ny" `shouldBe` Right (VarP $ tok "x" 1 1 1, "\ny")
-    p "(x\ny)" `shouldBe` Right (AppP (tok' 1 3 1) (VarP $ tok "x" 1 2 1) (VarP $ tok "y" 2 1 1), "")
+    p "_" `shouldBe` Right (PAny $ tok' 1 1 1, "")
+    p "x" `shouldBe` Right (PVar $ tok "x" 1 1 1, "")
+    p "42" `shouldBe` Right (PInt $ tok 42 1 1 2, "")
+    p "()" `shouldBe` Right (PTuple (tok' 1 1 1) [] (tok' 1 2 1), "")
+    p "{}" `shouldBe` Right (PRecord (tok' 1 1 1) [] (tok' 1 2 1), "")
+    p "x->y" `shouldBe` Right (PFun (tok' 1 2 2) (PVar $ tok "x" 1 1 1) (PVar $ tok "y" 1 4 1), "")
+    p "x y" `shouldBe` Right (PApp (tok' 1 3 0) (PVar $ tok "x" 1 1 1) (PVar $ tok "y" 1 3 1), "")
+    p "x\ny" `shouldBe` Right (PVar $ tok "x" 1 1 1, "\ny")
+    p "(x\ny)" `shouldBe` Right (PApp (tok' 1 3 1) (PVar $ tok "x" 1 2 1) (PVar $ tok "y" 2 1 1), "")
 
   -- Error reporting
   -- p "%" `shouldBe` Left ([SyntaxError PatternError "test" 1 1], "%")
@@ -172,9 +172,9 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "3.14" `shouldBe` Right (Num $ tok 3.14 1 1 4, "")
     p "()" `shouldBe` Right (Tuple (tok' 1 1 1) [] (tok' 1 2 1), "")
     p "{}" `shouldBe` Right (Record (tok' 1 1 1) [] (tok' 1 2 1), "")
-    p "\\x=y" `shouldBe` Right (Lambda [VarP $ tok "x" 1 2 1] (Var $ tok "y" 1 4 1), "")
-    p "\\x y = z" `shouldBe` Right (Lambda [VarP $ tok "x" 1 2 1, VarP $ tok "y" 1 4 1] (Var $ tok "z" 1 8 1), "")
-    p "\\x\ny\n=\nz" `shouldBe` Right (Lambda [VarP $ tok "x" 1 2 1, VarP $ tok "y" 2 1 1] (Var $ tok "z" 4 1 1), "")
+    p "\\x=y" `shouldBe` Right (Lambda [PVar $ tok "x" 1 2 1] (Var $ tok "y" 1 4 1), "")
+    p "\\x y = z" `shouldBe` Right (Lambda [PVar $ tok "x" 1 2 1, PVar $ tok "y" 1 4 1] (Var $ tok "z" 1 8 1), "")
+    p "\\x\ny\n=\nz" `shouldBe` Right (Lambda [PVar $ tok "x" 1 2 1, PVar $ tok "y" 2 1 1] (Var $ tok "z" 4 1 1), "")
     p "x |  y" `shouldBe` Right (Or (tok' 1 3 1) (Var $ tok "x" 1 1 1) (Var $ tok "y" 1 6 1), "")
     p "x :  y" `shouldBe` Right (Ann (Var $ tok "x" 1 1 1) (For [] $ Var $ tok "y" 1 6 1), "")
     p "x : @a. y" `shouldBe` Right (Ann (Var $ tok "x" 1 1 1) (For [tok "a" 1 6 1] $ Var $ tok "y" 1 9 1), "")
@@ -196,7 +196,7 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "x = 42" `shouldBe` Right (def {rules = [([], Int $ tok 42 1 5 2)]}, "")
     p "x : Int = 42" `shouldBe` Right (def {type' = Just (For [] $ IntT $ tok' 1 5 3), rules = [([], Int $ tok 42 1 11 2)]}, "")
     p "x : Int\nx = 42" `shouldBe` Right (def {type' = Just (For [] $ IntT $ tok' 1 5 3), rules = [([], Int $ tok 42 2 5 2)]}, "")
-    p "x y = 1\nx z = 2" `shouldBe` Right (def {rules = [([VarP $ tok "y" 1 3 1], Int $ tok 1 1 7 1), ([VarP $ tok "z" 2 3 1], Int $ tok 2 2 7 1)]}, "")
+    p "x y = 1\nx z = 2" `shouldBe` Right (def {rules = [([PVar $ tok "y" 1 3 1], Int $ tok 1 1 7 1), ([PVar $ tok "z" 2 3 1], Int $ tok 2 2 7 1)]}, "")
 
   -- it "☯ unpackDef" $ do
   -- it "☯ typeDef" $ do

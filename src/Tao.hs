@@ -48,8 +48,8 @@ newToken x =
   Token
     { value = x,
       path = "",
-      row = 1,
-      col = 1,
+      row = 0,
+      col = 0,
       len = 0,
       comments = [],
       trailingComments = []
@@ -71,23 +71,24 @@ instance Functor Token where
       }
 
 data Pattern
-  = AnyP !Token'
-  | KndP !Token'
-  | IntTP !Token'
-  | NumTP !Token'
-  | IntP !(Token Int)
-  | TagP !(Token String)
-  | VarP !(Token String)
-  | TupleP !Token' ![Pattern] !Token'
-  | RecordP !Token' ![(Token String, Pattern)] !Token'
-  | FunP !Token' !Pattern !Pattern
-  | AppP !Token' !Pattern !Pattern
-  | SyntaxErrorP !SyntaxErrorP
+  = PAny !Token'
+  | PKnd !Token'
+  | PIntT !Token'
+  | PNumT !Token'
+  | PInt !(Token Int)
+  | PTag !(Token String)
+  | PVar !(Token String)
+  | PTuple !Token' ![Pattern] !Token'
+  | PRecord !Token' ![(Token String, Pattern)] !Token'
+  | PFun !Token' !Pattern !Pattern
+  | PApp !Token' !Pattern !Pattern
+  | PSyntaxError !SyntaxErrorP
   deriving (Eq, Show)
 
 data SyntaxErrorP
-  = TuplePError !(Token String)
-  | RecordPError !(Token String)
+  = PTupleError !(Token String)
+  | PRecordError !(Token String)
+  | PRecordFieldError !(Token String)
   deriving (Eq, Show)
 
 data Expression
