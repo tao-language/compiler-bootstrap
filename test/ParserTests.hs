@@ -11,7 +11,7 @@ import Flow ((|>))
 import Parser
 import Test.Hspec (SpecWith, describe, it, shouldBe)
 
-type Error = String
+type Context = String
 
 data Expr -- for `operators`
   = Var !String
@@ -37,15 +37,15 @@ instance Show Expr where
 
 run :: SpecWith ()
 run = describe "--==☯ Parser ☯==--" $ do
-  let parse' :: Parser Error a -> String -> Either String (a, String)
+  let parse' :: Parser Context a -> String -> Either String (a, String)
       parse' parser txt = case parse "test" parser txt of
         Right (x, state) -> Right (x, state.remaining)
         Left state -> Left state.remaining
-  let parseErrors :: Parser Error a -> String -> (Maybe a, [Error], String)
+  let parseErrors :: Parser Context a -> String -> (Maybe a, [Context], String)
       parseErrors parser txt = case parse "test" parser txt of
-        Right (x, state) -> (Just x, state.errors, state.remaining)
-        Left state -> (Nothing, state.errors, state.remaining)
-  let parseShow :: (Show a) => Parser Error a -> String -> Maybe String
+        Right (x, state) -> (Just x, state.context, state.remaining)
+        Left state -> (Nothing, state.context, state.remaining)
+  let parseShow :: (Show a) => Parser Context a -> String -> Maybe String
       parseShow parser txt = case parse "test" parser txt of
         Right (x, _) -> Just (show x)
         Left _ -> Nothing
@@ -55,7 +55,7 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "a" `shouldBe` Right (True, "a")
 
   it "☯ fail'" $ do
-    let p = parse' (fail' :: Parser Error ())
+    let p = parse' (fail' :: Parser Context ())
     p "a" `shouldBe` Left "a"
 
   it "☯ anyChar" $ do
@@ -72,7 +72,7 @@ run = describe "--==☯ Parser ☯==--" $ do
           s2 <- getState
           ok (s1, s2)
     let p = parse' parser
-    let s1 = State {remaining = "abc", name = "test", row = 1, col = 1, index = 0, errors = []}
+    let s1 = State {remaining = "abc", name = "test", row = 1, col = 1, index = 0, context = []}
     let s2 = s1 {remaining = "bc", index = 1, col = 2}
     p "abc" `shouldBe` Right ((s1, s2), "bc")
 
@@ -265,10 +265,10 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "a" `shouldBe` Right ("a", "")
     p "" `shouldBe` Left ""
 
-  it "☯ expect" $ do
-    let p = parseErrors (expect "a letter" letter)
+  it "☯ scope" $ do
+    let p = parseErrors (scope "letter" letter)
     p "abc" `shouldBe` (Just 'a', [], "bc")
-    p "_bc" `shouldBe` (Nothing, ["a letter"], "_bc")
+    p "_bc" `shouldBe` (Nothing, ["letter"], "_bc")
 
   it "☯ skipTo" $ do
     let p = parse' (skipTo (char '.'))
@@ -280,7 +280,7 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "abc" `shouldBe` Left "abc"
 
   it "☯ try" $ do
-    let p = parseErrors (try (do x <- expect "letters" $ oneOrMore letter; _ <- expect "dot" $ char '.'; ok x) (expect "failed dot" $ skipTo (char '.')))
+    let p = parseErrors (try (do x <- scope "letters" $ oneOrMore letter; _ <- scope "dot" $ char '.'; ok x) (scope "failed dot" $ skipTo (char '.')))
     p ".abc" `shouldBe` (Just $ Left "", ["letters"], "abc")
     p "_.abc" `shouldBe` (Just $ Left "_", ["letters"], "abc")
     p "a_.bc" `shouldBe` (Just $ Left "a_", ["dot"], "bc")
