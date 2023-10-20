@@ -166,3 +166,7 @@ data Module = Module
     files :: ![(String, SourceFile)]
   }
   deriving (Eq, Show)
+
+data ParserContext
+  = CDefinition
+  deriving (Eq, Show)

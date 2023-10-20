@@ -12,10 +12,6 @@ import qualified Parser as P
 import System.Exit
 import Tao
 
-data ParserContext
-  = Name
-  deriving (Eq, Show)
-
 type TaoParser a = P.Parser ParserContext a
 
 {-- TODO:
@@ -55,7 +51,10 @@ loadFile filename = do
   src <- readFile filename
   case P.parse filename sourceFile src of
     Right (file, _) -> return file
-    Left state -> System.Exit.die $ "error: " ++ show state.remaining
+    Left P.State {name, row, col, context} -> do
+      putStrLn $ intercalate ":" [name, show row, show col]
+      print context
+      System.Exit.die "Syntax error"
 
 -- TODO: loadModule :: String -> IO (Token Module)
 
@@ -324,7 +323,9 @@ typeAnnotation delim = do
 
 -- Definitions
 definition :: TaoParser Definition
-definition = P.oneOf [letDef] -- , unpackDef, typeDef, test]
+definition =
+  P.scope CDefinition $
+    P.oneOf [letDef] -- , unpackDef, typeDef, test]
 
 letDef :: TaoParser Definition
 letDef = do
@@ -384,7 +385,7 @@ sourceFile = do
   imports <- P.zeroOrMore import'
   definitions <- P.zeroOrMore definition
   _ <- P.whitespaces
-  _ <- P.endOfFile
+  _ <- P.scope CDefinition P.endOfFile
   P.ok
     SourceFile
       { docs = docs,

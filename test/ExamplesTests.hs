@@ -15,7 +15,7 @@ run = describe "--==☯ Examples ☯==--" $ do
       factorial 0 = 1
       factorial n = n * factorial (n - 1)
     -}
-    -- file <- loadFile "examples/files/factorial.tao"
+    file <- loadFile "examples/basic/factorial.tao"
 
     -- let f = Var "factorial"
     -- infer' env f `shouldBe` Right (C.fun [C.IntT] C.IntT)

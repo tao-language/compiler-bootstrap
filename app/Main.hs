@@ -10,7 +10,7 @@ main = do
 
 run :: String -> [String] -> IO ()
 run filename args = do
-  -- defs <- loadFile filename
+  defs <- loadFile filename
   -- env <- loadModule path
   -- f' <- loadExpr f
   -- args' <- mapM loadExpr args
