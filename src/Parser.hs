@@ -80,16 +80,16 @@ if' check (Parser p) =
         Left state -> Left state
     )
 
-oneOf :: [Parser err a] -> Parser err a -> Parser err a
+oneOf :: [Parser err a] -> Parser err a
 oneOf ps = choose (map (,ok) ps)
 
-choose :: [(Parser err a, a -> Parser err b)] -> Parser err b -> Parser err b
-choose [] else' = else'
-choose ((Parser p, branch) : branches) else' =
+choose :: [(Parser err a, a -> Parser err b)] -> Parser err b
+choose [] = fail'
+choose ((Parser p, branch) : branches) =
   Parser
     ( \state -> case p state of
         Right (x, state) -> apply (branch x) state
-        Left state -> apply (choose branches else') state
+        Left state -> apply (choose branches) state
     )
 
 getState :: Parser err (State err)
@@ -107,15 +107,15 @@ expect err (Parser p) =
 skipTo :: Parser err delim -> Parser err String
 skipTo delim =
   oneOf
-    ["" <$ delim]
-    ( do
+    [ "" <$ delim,
+      do
         c <- anyChar
         cs <- skipTo delim
         ok (c : cs)
-    )
+    ]
 
 try :: Parser err a -> Parser err b -> Parser err (Either b a)
-try parser else' = oneOf [Right <$> parser] (Left <$> else')
+try parser else' = oneOf [Right <$> parser, Left <$> else']
 
 -- Single characters
 anyChar :: Parser err Char
@@ -193,7 +193,7 @@ endOfFile =
     )
 
 endOfLine :: Parser err ()
-endOfLine = oneOf [endOfFile] (void $ if' (== '\n') anyChar)
+endOfLine = oneOf [void $ if' (== '\n') anyChar, endOfFile]
 
 -- Sequences
 chain :: [Parser err a] -> Parser err [a]
@@ -213,10 +213,10 @@ concat :: [Parser err [a]] -> Parser err [a]
 concat parsers = fmap Prelude.concat (chain parsers)
 
 maybe' :: Parser err a -> Parser err (Maybe a)
-maybe' parser = oneOf [fmap Just parser] (ok Nothing)
+maybe' parser = oneOf [fmap Just parser, ok Nothing]
 
 zeroOrOne :: Parser err a -> Parser err [a]
-zeroOrOne parser = oneOf [fmap (: []) parser] (ok [])
+zeroOrOne parser = oneOf [fmap (: []) parser, ok []]
 
 zeroOrMore :: Parser err a -> Parser err [a]
 zeroOrMore = foldR (:) []
@@ -244,9 +244,9 @@ atMost max parser =
     [ do
         x <- parser
         xs <- atMost (max - 1) parser
-        ok (x : xs)
+        ok (x : xs),
+      ok []
     ]
-    (ok [])
 
 between :: Int -> Int -> Parser err a -> Parser err [a]
 between min max parser | min <= 0 = atMost max parser
@@ -261,18 +261,18 @@ foldR f final parser =
     [ do
         x <- parser
         y <- foldR f final parser
-        ok (f x y)
+        ok (f x y),
+      ok final
     ]
-    (ok final)
 
 foldL :: (b -> a -> b) -> b -> Parser err a -> Parser err b
 foldL f initial parser =
   oneOf
     [ do
         x <- parser
-        foldL f (f initial x) parser
+        foldL f (f initial x) parser,
+      ok initial
     ]
-    (ok initial)
 
 -- Common
 integer :: Parser err Int
@@ -286,12 +286,12 @@ number = do
   oneOf
     [ do
         fraction <- Parser.concat [text ".", oneOrMore digit]
-        ok (read (int ++ fraction))
+        ok (read (int ++ fraction)),
+      ok (read int)
     ]
-    (ok (read int))
 
 wordChar :: Parser err Char
-wordChar = oneOf [letter, digit] (char '_')
+wordChar = oneOf [letter, digit, char '_']
 
 wordEnd :: Parser err ()
 wordEnd = notFollowedBy wordChar (ok ())
@@ -405,7 +405,7 @@ unary prec ops atom = do
   let toUnary (Prefix prec' f) | prec <= prec' = do
         f (operators prec' ops atom)
       toUnary _ = fail'
-  oneOf (map toUnary ops) atom
+  oneOf (map toUnary ops ++ [atom])
 
 binary :: Int -> [Operator err a] -> Parser err a -> a -> Parser err a
 binary prec ops atom x = do
@@ -416,4 +416,4 @@ binary prec ops atom x = do
         y <- f x (operators prec' ops atom)
         binary prec ops atom y
       toBinary _ = fail'
-  oneOf (map toBinary ops) (ok x)
+  oneOf (map toBinary ops ++ [ok x])

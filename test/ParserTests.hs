@@ -158,7 +158,7 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "abc" `shouldBe` Left "abc"
 
   it "☯ choose" $ do
-    let p = parse' (choose [(char 'a', const $ char 'b'), (char 'A', const $ char 'B')] (char '_'))
+    let p = parse' (choose [(char 'a', const $ char 'b'), (char 'A', const $ char 'B'), (ok '\0', const $ char '_')])
     p "abc" `shouldBe` Right ('b', "c")
     p "aBc" `shouldBe` Left "Bc"
     p "Abc" `shouldBe` Left "bc"
@@ -166,7 +166,7 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "0bc" `shouldBe` Left "0bc"
 
   it "☯ oneOf" $ do
-    let p = parse' (oneOf [char 'a'] (char 'A'))
+    let p = parse' (oneOf [char 'a', char 'A'])
     p "abc" `shouldBe` Right ('a', "bc")
     p "Abc" `shouldBe` Right ('A', "bc")
     p "0bc" `shouldBe` Left "0bc"
@@ -329,8 +329,9 @@ run = describe "--==☯ Parser ☯==--" $ do
           ]
         atom =
           oneOf
-            [inbetween (op "(") (op ")") expr]
-            (Var <$> oneOrMore letter)
+            [ inbetween (op "(") (op ")") expr,
+              Var <$> oneOrMore letter
+            ]
         expr = operators 0 ops atom
 
     let p = parseShow expr
