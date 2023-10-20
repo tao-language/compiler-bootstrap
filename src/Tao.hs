@@ -82,13 +82,6 @@ data Pattern
   | PRecord !Token' ![(Token String, Pattern)] !Token'
   | PFun !Token' !Pattern !Pattern
   | PApp !Token' !Pattern !Pattern
-  | PSyntaxError !SyntaxErrorP
-  deriving (Eq, Show)
-
-data SyntaxErrorP
-  = PTupleError !(Token String)
-  | PRecordError !(Token String)
-  | PRecordFieldError !(Token String)
   deriving (Eq, Show)
 
 data Expression
@@ -113,11 +106,6 @@ data Expression
   | Mul !Token' !Expression !Expression
   | Pow !Token' !Expression !Expression
   | Ann !Expression !Type
-  | SyntaxError !SyntaxErrorToken !(Token String)
-  deriving (Eq, Show)
-
-data SyntaxErrorToken
-  = RecordError
   deriving (Eq, Show)
 
 data Type
