@@ -7,7 +7,6 @@ module TaoLang where
 import Control.Monad (void)
 import Data.Char (isSpace, isUpper)
 import Data.List (dropWhileEnd, intercalate)
-import Debug.Trace
 import Error
 import Flow ((|>))
 import Parser (Parser)
@@ -73,12 +72,13 @@ startsWithUpper _ = False
 identifier :: Parser Error String
 identifier = do
   let validChars =
-        [ P.digit,
+        [ P.letter,
+          P.digit,
           P.char '_',
           P.char '-' |> P.notFollowedBy (P.char '>')
         ]
   c <- P.letter
-  cs <- P.zeroOrMore (P.oneOf validChars P.letter)
+  cs <- P.zeroOrMore (P.oneOf validChars)
   P.ok (c : cs)
 
 lineBreak :: Parser Error ()
@@ -89,45 +89,39 @@ lineBreak = do
 
 inbetween :: String -> String -> Parser Error a -> Parser Error (Token', a, Token')
 inbetween open close parser = do
-  open <- token (void $ P.text open)
+  open <- token (P.text open)
   _ <- P.whitespaces
   x <- parser
   _ <- P.whitespaces
-  close <- token (void $ P.text close)
-  P.ok (open, x, close)
+  close <- token (P.text close)
+  P.ok (void open, x, void close)
 
 collection :: String -> String -> String -> Parser Error a -> Parser Error (Token', [a], Token')
 collection open delim close parser = do
-  inbetween open close (P.oneOf [delimited delim parser] (P.ok []))
+  inbetween open close (P.oneOf [delimited delim parser, P.ok []])
 
 delimited :: String -> Parser Error a -> Parser Error [a]
 delimited delim parser = do
-  let delim' = operator (P.text delim)
   x <- parser
-  xs <- P.zeroOrMore (do _ <- delim'; parser)
-  _ <- P.maybe' delim'
+  xs <- P.zeroOrMore (P.paddedL (op delim) parser)
+  _ <- P.maybe' (op delim)
   P.ok (x : xs)
-
-operator :: Parser Error op -> Parser Error Token'
-operator op = do
-  _ <- P.whitespaces
-  tok <- token op
-  _ <- P.whitespaces
-  P.ok (void tok)
 
 -- Concrete Syntax Tree tokens
 token :: Parser Error a -> Parser Error (Token a)
 token parser = do
   comments <- P.zeroOrMore comment
-  state <- P.getState
+  state1 <- P.getState
   x <- parser
+  state2 <- P.getState
   _ <- P.spaces
   trailingComments <- P.zeroOrOne comment
   P.ok
     Token
       { value = x,
-        row = state.row,
-        col = state.col,
+        row = state1.row,
+        col = state1.col,
+        len = state2.index - state1.index,
         comments = comments,
         trailingComments = trailingComments
       }
@@ -146,9 +140,9 @@ docString delimiter = do
   public <-
     P.oneOf
       [ False <$ P.word "private",
-        True <$ P.word "public"
+        True <$ P.word "public",
+        P.ok True
       ]
-      (P.ok True)
   _ <- P.spaces
   docs <- P.skipTo (closeDelimiter delim)
   P.ok DocString {public = public, description = dropWhileEnd isSpace $ dropWhile isSpace docs}
@@ -161,7 +155,6 @@ docString delimiter = do
       _ <- lineBreak
       P.ok ()
 
--- Patterns
 op :: String -> Parser Error Token'
 op txt = do
   _ <- P.whitespaces
@@ -169,6 +162,7 @@ op txt = do
   _ <- P.whitespaces
   P.ok (void tok)
 
+-- Patterns
 pattern' :: Parser Error appDelim -> Parser Error Pattern
 pattern' delim = do
   let ops =
@@ -180,12 +174,12 @@ pattern' delim = do
 patternAtom :: Parser Error Pattern
 patternAtom =
   P.oneOf
-    [ AnyP <$> operator (P.text "_"),
+    [ AnyP <$> op "_",
+      patternName,
       IntP <$> token P.integer,
       patternRecord,
       patternTuple
     ]
-    patternName
 
 patternName :: Parser Error Pattern
 patternName = do
@@ -202,11 +196,11 @@ patternRecordField = do
   name <- token identifier
   P.oneOf
     [ do
-        _ <- operator (P.text ":")
+        _ <- op ":"
         p <- pattern' P.whitespaces
-        P.ok (name, p)
+        P.ok (name, p),
+      P.ok (name, VarP name)
     ]
-    (P.ok (name, VarP name))
 
 patternRecord :: Parser Error Pattern
 patternRecord = do
@@ -219,17 +213,16 @@ patternTuple = do
   P.oneOf
     [ do
         -- One-item tuple: (x,)
-        (open, item, close) <- inbetween "(" ")" (do p <- item; _ <- P.char ','; P.ok p)
-        P.ok (TupleP open [item] close)
-    ]
-    ( do
+        (open, item, close) <- inbetween "(" ")" (P.paddedR (op ",") item)
+        P.ok (TupleP open [item] close),
+      do
         (open, items, close) <- collection "(" "," ")" item
         case items of
           -- Parenthesized non-tuple: (x)
           [item] -> P.ok item
           -- General case tuples: () (x, y, ...)
           _ -> P.ok (TupleP open items close)
-    )
+    ]
 
 -- Expressions
 expression :: Parser Error appDelim -> Parser Error Expression
@@ -258,12 +251,12 @@ expression delim = do
 expressionAtom :: Parser Error Expression
 expressionAtom =
   P.oneOf
-    [ Int <$> token P.integer,
+    [ expressionName,
+      Int <$> token P.integer,
       Num <$> token P.number,
       expressionTuple,
       expressionRecord
     ]
-    expressionName
 
 expressionName :: Parser Error Expression
 expressionName = do
@@ -282,21 +275,20 @@ expressionTuple = do
     [ do
         -- One-item tuple: (x,)
         (open, item, close) <- inbetween "(" ")" (do p <- item; _ <- P.char ','; P.ok p)
-        P.ok (Tuple open [item] close)
-    ]
-    ( do
+        P.ok (Tuple open [item] close),
+      do
         (open, items, close) <- collection "(" "," ")" item
         case items of
           -- Parenthesized non-tuple: (x)
           [item] -> P.ok item
           -- General case tuples: () (x, y, ...)
           _ -> P.ok (Tuple open items close)
-    )
+    ]
 
 expressionRecordField :: Parser Error (Token String, Expression)
 expressionRecordField = do
   name <- token identifier
-  _ <- operator (P.text ":")
+  _ <- op ":"
   value <- expression P.whitespaces
   P.ok (name, value)
 
@@ -312,29 +304,29 @@ expressionRecord = do
 
 typeAnnotation :: Parser Error appDelim -> Parser Error Type
 typeAnnotation delim = do
-  _ <- operator (P.text ":")
+  _ <- op ":"
   xs <-
     P.oneOf
       [ do
-          _ <- operator (P.text "@")
+          _ <- op "@"
           xs <- P.oneOrMore (token identifier)
-          _ <- operator (P.text ".")
-          P.ok xs
+          _ <- op "."
+          P.ok xs,
+        P.ok []
       ]
-      (P.ok [])
   t <- expression delim
   P.ok (For xs t)
 
 -- Definitions
 definition :: Parser Error Definition
-definition = P.oneOf [] letDef -- , unpackDef, typeDef, test]
+definition = P.oneOf [letDef] -- , unpackDef, typeDef, test]
 
 letDef :: Parser Error Definition
 letDef = do
   let branch :: Parser Error ([Pattern], Expression)
       branch = do
         ps <- P.zeroOrMore patternAtom
-        _ <- operator (P.char '=')
+        _ <- op "="
         b <- expression (P.ok ())
         _ <- lineBreak
         P.ok (ps, b)
@@ -358,14 +350,13 @@ letDef = do
           type' <- typeAnnotation (P.ok ())
           _ <- lineBreak
           rules <- P.oneOrMore (ruleEntry name.value)
-          P.ok (Just type', rules)
-      ]
-      ( do
+          P.ok (Just type', rules),
+        do
           -- f x = 42
           rule <- branch
           rules <- P.zeroOrMore (ruleEntry name.value)
           P.ok (Nothing, rule : rules)
-      )
+      ]
   P.ok LetDef {docs = docs, name = name, type' = type', rules = rules}
 
 unpackDef :: Parser Error Definition
@@ -385,7 +376,7 @@ test = error "TODO: test"
 sourceFile :: Parser Error SourceFile
 sourceFile = do
   docs <- P.maybe' (docString (P.atLeast 3 $ P.char '='))
-  imports <- P.zeroOrMore (token import')
+  imports <- P.zeroOrMore import'
   definitions <- P.zeroOrMore definition
   _ <- P.whitespaces
   _ <- P.endOfFile
@@ -399,7 +390,7 @@ sourceFile = do
 import' :: Parser Error Import
 import' = do
   _ <- P.word "import"
-  _ <- P.spaces
+  _ <- P.oneOrMore P.space
   dirName <- token (concat <$> P.zeroOrMore (P.concat [identifier, P.text "/"]))
   modName <- token identifier
   name <-
@@ -408,19 +399,19 @@ import' = do
           _ <- P.word "as"
           _ <- P.spaces
           name <- token identifier
-          P.ok name
+          P.ok name,
+        P.ok modName
       ]
-      (P.ok modName)
   _ <- P.spaces
   exposing <-
     P.oneOf
-      [ fmap (\(_, xs, _) -> xs) (collection "(" "," ")" (token identifier))
+      [ fmap (\(_, xs, _) -> xs) (collection "(" "," ")" (token identifier)),
+        P.ok []
       ]
-      (P.ok [])
   _ <- lineBreak
   P.ok
     Import
-      { path = fmap (++ modName.value) dirName,
+      { path = (fmap (++ modName.value) dirName) {len = dirName.len + modName.len},
         name = name,
         exposing = exposing
       }

@@ -2,6 +2,7 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Tao where
 
@@ -33,6 +34,7 @@ data Token a = Token
   { value :: a,
     row :: !Int,
     col :: !Int,
+    len :: !Int,
     comments :: ![String],
     trailingComments :: ![String]
   }
@@ -46,6 +48,7 @@ newToken x =
     { value = x,
       row = 1,
       col = 1,
+      len = 0,
       comments = [],
       trailingComments = []
     }
@@ -59,6 +62,7 @@ instance Functor Token where
       { value = f x.value,
         row = x.row,
         col = x.col,
+        len = x.len,
         comments = x.comments,
         trailingComments = x.trailingComments
       }
@@ -134,7 +138,7 @@ data Definition
         alts :: !(Token String, Type)
       }
   | Run
-      { comments :: ![String],
+      { description :: !String,
         value :: !Expression,
         expected :: !(Maybe Expression)
       }
@@ -149,7 +153,7 @@ data Import = Import
 
 data SourceFile = SourceFile
   { docs :: !(Maybe DocString),
-    imports :: ![Token Import],
+    imports :: ![Import],
     definitions :: ![Definition]
   }
   deriving (Eq, Show)
