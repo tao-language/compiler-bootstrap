@@ -277,16 +277,16 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "a.bc" `shouldBe` Right ("a", "bc")
     p "ab.c" `shouldBe` Right ("ab", "c")
     p "abc." `shouldBe` Right ("abc", "")
-    p "abc" `shouldBe` Left ""
+    p "abc" `shouldBe` Left "abc"
 
   it "☯ try" $ do
     let p = parseErrors (try (do x <- expect "letters" $ oneOrMore letter; _ <- expect "dot" $ char '.'; ok x) (expect "failed dot" $ skipTo (char '.')))
     p ".abc" `shouldBe` (Just $ Left "", ["letters"], "abc")
     p "_.abc" `shouldBe` (Just $ Left "_", ["letters"], "abc")
-    p "a_.bc" `shouldBe` (Just $ Left "_", ["dot"], "bc")
+    p "a_.bc" `shouldBe` (Just $ Left "a_", ["dot"], "bc")
     p "ab.c" `shouldBe` (Just $ Right "ab", [], "c")
     p "abc." `shouldBe` (Just $ Right "abc", [], "")
-    p "abc" `shouldBe` (Nothing, ["failed dot", "dot"], "")
+    p "abc" `shouldBe` (Nothing, ["failed dot", "dot"], "abc")
 
   it "☯ integer" $ do
     let p = parse' integer

@@ -89,7 +89,7 @@ choose ((Parser p, branch) : branches) =
   Parser
     ( \state -> case p state of
         Right (x, state) -> apply (branch x) state
-        Left state -> apply (choose branches) state
+        Left _ -> apply (choose branches) state
     )
 
 getState :: Parser err (State err)
@@ -115,7 +115,12 @@ skipTo delim =
     ]
 
 try :: Parser err a -> Parser err b -> Parser err (Either b a)
-try parser else' = oneOf [Right <$> parser, Left <$> else']
+try (Parser p) else' =
+  Parser
+    ( \state -> case p state of
+        Right (x, state) -> apply (ok (Right x)) state
+        Left state' -> apply (Left <$> else') state {errors = state'.errors}
+    )
 
 -- Single characters
 anyChar :: Parser err Char
