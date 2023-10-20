@@ -302,11 +302,11 @@ run = describe "--==☯ Parser ☯==--" $ do
   it "☯ followedBy" $ do
     let p = parse' (letter |> followedBy (char 'b'))
     p "abc" `shouldBe` Right ('a', "bc")
-    p "a_c" `shouldBe` Left "_c"
+    p "a_c" `shouldBe` Left "a_c"
 
   it "☯ notFollowedBy" $ do
     let p = parse' (letter |> notFollowedBy (char 'b'))
-    p "abc" `shouldBe` Left "bc"
+    p "abc" `shouldBe` Left "abc"
     p "a_c" `shouldBe` Right ('a', "_c")
 
   it "☯ subparser" $ do

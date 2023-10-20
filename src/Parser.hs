@@ -304,19 +304,21 @@ word txt = do
 
 followedBy :: Parser err a -> Parser err b -> Parser err b
 followedBy (Parser lookahead) parser = do
+  state0 <- getState
   x <- parser
   Parser
     ( \state -> case lookahead state of
         Right _ -> Right (x, state)
-        Left _ -> Left state
+        Left _ -> Left state0
     )
 
 notFollowedBy :: Parser err a -> Parser err b -> Parser err b
 notFollowedBy (Parser lookahead) parser = do
+  state0 <- getState
   x <- parser
   Parser
     ( \state -> case lookahead state of
-        Right _ -> Left state
+        Right _ -> Left state0
         Left _ -> Right (x, state)
     )
 
