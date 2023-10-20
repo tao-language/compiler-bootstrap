@@ -32,6 +32,7 @@ module Tao where
 
 data Token a = Token
   { value :: a,
+    path :: !String,
     row :: !Int,
     col :: !Int,
     len :: !Int,
@@ -46,6 +47,7 @@ newToken :: a -> Token a
 newToken x =
   Token
     { value = x,
+      path = "",
       row = 1,
       col = 1,
       len = 0,
@@ -60,6 +62,7 @@ instance Functor Token where
   fmap f x =
     Token
       { value = f x.value,
+        path = x.path,
         row = x.row,
         col = x.col,
         len = x.len,
@@ -79,6 +82,12 @@ data Pattern
   | RecordP !Token' ![(Token String, Pattern)] !Token'
   | FunP !Token' !Pattern !Pattern
   | AppP !Token' !Pattern !Pattern
+  | SyntaxErrorP !SyntaxErrorP
+  deriving (Eq, Show)
+
+data SyntaxErrorP
+  = TuplePError !(Token String)
+  | RecordPError !(Token String)
   deriving (Eq, Show)
 
 data Expression
@@ -103,6 +112,11 @@ data Expression
   | Mul !Token' !Expression !Expression
   | Pow !Token' !Expression !Expression
   | Ann !Expression !Type
+  | SyntaxError !SyntaxErrorToken !(Token String)
+  deriving (Eq, Show)
+
+data SyntaxErrorToken
+  = RecordError
   deriving (Eq, Show)
 
 data Type

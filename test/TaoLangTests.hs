@@ -7,7 +7,6 @@
 module TaoLangTests where
 
 import Error
-import Parser (Parser)
 import qualified Parser as P
 import Tao
 import TaoLang
@@ -16,23 +15,27 @@ import Test.Hspec
 run :: SpecWith ()
 run = describe "--==☯ Tao language ☯==--" $ do
   let tok :: a -> Int -> Int -> Int -> Token a
-      tok x row col len = (newToken x) {row = row, col = col, len = len}
+      tok x row col len = (newToken x) {path = "test", row = row, col = col, len = len}
   let tok' :: Int -> Int -> Int -> Token'
       tok' = tok ()
 
-  let parse' :: TaoParser a -> String -> Either ([SyntaxError], String) (a, String)
+  let parse' :: TaoParser a -> String -> Either ([ParserContext], String) (a, String)
       parse' parser src = case P.parse "test" parser src of
         Right (x, P.State {remaining}) -> Right (x, remaining)
-        Left P.State {remaining, errors} -> Left (errors, remaining)
+        Left P.State {context, remaining} -> Left (context, remaining)
 
   it "☯ identifier" $ do
     let p = parse' identifier
-    p "" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "")
+    -- p "" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "")
+    p "" `shouldBe` Left ([], "")
     p "a" `shouldBe` Right ("a", "")
     p "A" `shouldBe` Right ("A", "")
-    p "9" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "9") -- cannot start with number
-    p "-" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "-") -- cannot start with dash
-    p "_" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "_") -- cannot start with underscore
+    -- p "9" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "9") -- cannot start with number
+    -- p "-" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "-") -- cannot start with dash
+    -- p "_" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "_") -- cannot start with underscore
+    p "9" `shouldBe` Left ([], "9") -- cannot start with number
+    p "-" `shouldBe` Left ([], "-") -- cannot start with dash
+    p "_" `shouldBe` Left ([], "_") -- cannot start with underscore
     p "ab" `shouldBe` Right ("ab", "")
     p "aB" `shouldBe` Right ("aB", "")
     p "a9" `shouldBe` Right ("a9", "")
@@ -127,9 +130,9 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "x\ny" `shouldBe` Right (VarP $ tok "x" 1 1 1, "\ny")
     p "(x\ny)" `shouldBe` Right (AppP (tok' 1 3 1) (VarP $ tok "x" 1 2 1) (VarP $ tok "y" 2 1 1), "")
 
-    -- Error reporting
-    -- p "x %" `shouldBe` Left ([SyntaxError PatternError "test" 1 1], "%")
-    p "%" `shouldBe` Left ([SyntaxError PatternError "test" 1 1], "%")
+  -- Error reporting
+  -- p "%" `shouldBe` Left ([SyntaxError PatternError "test" 1 1], "%")
+  -- p "x %" `shouldBe` Left ([SyntaxError PatternError "test" 1 1], "%")
 
   it "☯ expressionName" $ do
     let p = parse' expressionName

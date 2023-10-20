@@ -7,13 +7,16 @@ module TaoLang where
 import Control.Monad (void)
 import Data.Char (isSpace, isUpper)
 import Data.List (dropWhileEnd, intercalate)
-import Error
 import Flow ((|>))
 import qualified Parser as P
 import System.Exit
 import Tao
 
-type TaoParser a = P.Parser SyntaxError a
+data ParserContext
+  = Name
+  deriving (Eq, Show)
+
+type TaoParser a = P.Parser ParserContext a
 
 {-- TODO:
 \* Token sugar (https://en.wikibooks.org/wiki/Haskell/Syntactic_sugar)
@@ -70,18 +73,6 @@ startsWithUpper :: String -> Bool
 startsWithUpper (c : _) | isUpper c = True
 startsWithUpper _ = False
 
-expect :: SyntaxErrorToken -> TaoParser a -> TaoParser a
-expect err parser = do
-  state <- P.getState
-  let syntaxError =
-        SyntaxError
-          { expected = err,
-            name = state.name,
-            row = state.row,
-            col = state.col
-          }
-  P.expect syntaxError parser
-
 identifier :: TaoParser String
 identifier = do
   let validChars =
@@ -90,10 +81,9 @@ identifier = do
           P.char '_',
           P.char '-' |> P.notFollowedBy (P.char '>')
         ]
-  expect NameError $ do
-    c <- P.letter
-    cs <- P.zeroOrMore (P.oneOf validChars)
-    P.ok (c : cs)
+  c <- P.letter
+  cs <- P.zeroOrMore (P.oneOf validChars)
+  P.ok (c : cs)
 
 lineBreak :: TaoParser ()
 lineBreak = do
@@ -133,6 +123,7 @@ token parser = do
   P.ok
     Token
       { value = x,
+        path = state1.name,
         row = state1.row,
         col = state1.col,
         len = state2.index - state1.index,
@@ -183,8 +174,7 @@ pattern' delim = do
         [ P.infixR 1 FunP (op "->"),
           P.infixL 2 AppP (token $ void delim)
         ]
-  expect PatternError $ do
-    P.operators 0 ops patternAtom
+  P.operators 0 ops patternAtom
 
 patternAtom :: TaoParser Pattern
 patternAtom =
