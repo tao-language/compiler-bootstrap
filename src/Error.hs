@@ -11,15 +11,24 @@ import Parser (State (..))
 -- https://package.elm-lang.org/packages/elm-in-elm/compiler/latest/Elm.Compiler.Error
 -- https://github.com/elm-in-elm/compiler/blob/master/src/Elm/Compiler/Error.elm
 data Error
-  = SyntaxError !SyntaxError
+  = ParserError ![SyntaxError]
   | DesugarError !DesugarError
   | TypeError !TypeError
   | EmitError !EmitError
   deriving (Eq)
 
-data SyntaxError
+data SyntaxError = SyntaxError
+  { expected :: !SyntaxErrorToken,
+    name :: !String,
+    row :: !Int,
+    col :: !Int
+  }
+  deriving (Eq, Show)
+
+data SyntaxErrorToken
   = DefinitionError
-  | IdentifierError
+  | NameError
+  | PatternError
   deriving (Eq, Show)
 
 data DesugarError
@@ -36,7 +45,11 @@ data EmitError
 
 instance Show Error where
   show :: Error -> String
-  show (SyntaxError err) = show err
+  show (ParserError stack) =
+    (show . intercalate "\n")
+      [ "Syntax error",
+        show stack
+      ]
   show (DesugarError err) = show err
   show (TypeError err) = show err
   show (EmitError err) = show err

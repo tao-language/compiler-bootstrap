@@ -20,19 +20,19 @@ run = describe "--==☯ Tao language ☯==--" $ do
   let tok' :: Int -> Int -> Int -> Token'
       tok' = tok ()
 
-  let parse' :: Parser Error a -> String -> Either String (a, String)
-      parse' parser src = case P.parse parser src of
-        Right (x, P.State {P.remaining = remaining}) -> Right (x, remaining)
-        Left (P.State {P.remaining = remaining}) -> Left remaining
+  let parse' :: TaoParser a -> String -> Either ([SyntaxError], String) (a, String)
+      parse' parser src = case P.parse "test" parser src of
+        Right (x, P.State {remaining}) -> Right (x, remaining)
+        Left P.State {remaining, errors} -> Left (errors, remaining)
 
   it "☯ identifier" $ do
     let p = parse' identifier
-    p "" `shouldBe` Left ""
+    p "" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "")
     p "a" `shouldBe` Right ("a", "")
     p "A" `shouldBe` Right ("A", "")
-    p "9" `shouldBe` Left "9" -- cannot start with number
-    p "-" `shouldBe` Left "-" -- cannot start with dash
-    p "_" `shouldBe` Left "_" -- cannot start with underscore
+    p "9" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "9") -- cannot start with number
+    p "-" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "-") -- cannot start with dash
+    p "_" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "_") -- cannot start with underscore
     p "ab" `shouldBe` Right ("ab", "")
     p "aB" `shouldBe` Right ("aB", "")
     p "a9" `shouldBe` Right ("a9", "")
@@ -47,7 +47,7 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ inbetween" $ do
     let p = parse' (inbetween "(" ")" (P.zeroOrMore P.letter))
-    p "" `shouldBe` Left ""
+    p "" `shouldBe` Left ([], "")
     p "()" `shouldBe` Right ((tok' 1 1 1, "", tok' 1 2 1), "")
     p "(abc)" `shouldBe` Right ((tok' 1 1 1, "abc", tok' 1 5 1), "")
     p "( \n abc \n )  \ndef" `shouldBe` Right ((tok' 1 1 1, "abc", tok' 3 2 1), "\ndef")
@@ -55,7 +55,7 @@ run = describe "--==☯ Tao language ☯==--" $ do
   it "☯ collection" $ do
     let p = parse' $ collection "[" "," "]" P.letter
     p "[] ." `shouldBe` Right ((tok' 1 1 1, "", tok' 1 2 1), ".")
-    p "[,]" `shouldBe` Left ",]"
+    p "[,]" `shouldBe` Left ([], ",]")
     p "[a]" `shouldBe` Right ((tok' 1 1 1, "a", tok' 1 3 1), "")
     p "[a,]" `shouldBe` Right ((tok' 1 1 1, "a", tok' 1 4 1), "")
     p "[a, b]" `shouldBe` Right ((tok' 1 1 1, "ab", tok' 1 6 1), "")
@@ -66,6 +66,7 @@ run = describe "--==☯ Tao language ☯==--" $ do
     let p = parse' $ token (P.text "abc")
     p "abcdef" `shouldBe` Right (tok "abc" 1 1 3, "def")
     p "abc   def" `shouldBe` Right (tok "abc" 1 1 3, "def")
+    p "abc \n  def" `shouldBe` Right (tok "abc" 1 1 3, "\n  def")
 
   it "☯ token comments" $ do
     let p = parse' $ token (P.text "abc")
@@ -126,6 +127,10 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "x\ny" `shouldBe` Right (VarP $ tok "x" 1 1 1, "\ny")
     p "(x\ny)" `shouldBe` Right (AppP (tok' 1 3 1) (VarP $ tok "x" 1 2 1) (VarP $ tok "y" 2 1 1), "")
 
+    -- Error reporting
+    -- p "x %" `shouldBe` Left ([SyntaxError PatternError "test" 1 1], "%")
+    p "%" `shouldBe` Left ([SyntaxError PatternError "test" 1 1], "%")
+
   it "☯ expressionName" $ do
     let p = parse' expressionName
     p "Type abc" `shouldBe` Right (Knd $ tok' 1 1 4, "abc")
@@ -143,7 +148,7 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ expressionRecordField" $ do
     let p = parse' expressionRecordField
-    p "x" `shouldBe` Left ""
+    p "x" `shouldBe` Left ([], "")
     p "x:y" `shouldBe` Right ((tok "x" 1 1 1, Var (tok "y" 1 3 1)), "")
     p "x \n : \n y" `shouldBe` Right ((tok "x" 1 1 1, Var (tok "y" 3 2 1)), "")
 

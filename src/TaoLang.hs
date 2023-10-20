@@ -9,10 +9,11 @@ import Data.Char (isSpace, isUpper)
 import Data.List (dropWhileEnd, intercalate)
 import Error
 import Flow ((|>))
-import Parser (Parser)
 import qualified Parser as P
 import System.Exit
 import Tao
+
+type TaoParser a = P.Parser SyntaxError a
 
 {-- TODO:
 \* Token sugar (https://en.wikibooks.org/wiki/Haskell/Syntactic_sugar)
@@ -49,19 +50,19 @@ import Tao
 loadFile :: String -> IO SourceFile
 loadFile filename = do
   src <- readFile filename
-  case P.parse sourceFile src of
+  case P.parse filename sourceFile src of
     Right (file, _) -> return file
     Left state -> System.Exit.die $ "error: " ++ show state.remaining
 
 -- TODO: loadModule :: String -> IO (Token Module)
 
--- parseExpression :: String -> Either Error (Token Expression)
+-- parseExpression :: String -> Either SyntaxError (Token Expression)
 -- parseExpression src = error "TODO: parseExpression"
 
--- parseDefinition :: String -> Either Error (Token Definition)
+-- parseDefinition :: String -> Either SyntaxError (Token Definition)
 -- parseDefinition src = error "TODO: parseDefinition"
 
--- parseFile :: String -> Either Error (Token SourceFile)
+-- parseFile :: String -> Either SyntaxError (Token SourceFile)
 -- parseFile src = error "TODO: parseFile"
 
 -- Utilities
@@ -69,7 +70,19 @@ startsWithUpper :: String -> Bool
 startsWithUpper (c : _) | isUpper c = True
 startsWithUpper _ = False
 
-identifier :: Parser Error String
+expect :: SyntaxErrorToken -> TaoParser a -> TaoParser a
+expect err parser = do
+  state <- P.getState
+  let syntaxError =
+        SyntaxError
+          { expected = err,
+            name = state.name,
+            row = state.row,
+            col = state.col
+          }
+  P.expect syntaxError parser
+
+identifier :: TaoParser String
 identifier = do
   let validChars =
         [ P.letter,
@@ -77,17 +90,18 @@ identifier = do
           P.char '_',
           P.char '-' |> P.notFollowedBy (P.char '>')
         ]
-  c <- P.letter
-  cs <- P.zeroOrMore (P.oneOf validChars)
-  P.ok (c : cs)
+  expect NameError $ do
+    c <- P.letter
+    cs <- P.zeroOrMore (P.oneOf validChars)
+    P.ok (c : cs)
 
-lineBreak :: Parser Error ()
+lineBreak :: TaoParser ()
 lineBreak = do
   _ <- P.endOfLine
   _ <- P.whitespaces
   P.ok ()
 
-inbetween :: String -> String -> Parser Error a -> Parser Error (Token', a, Token')
+inbetween :: String -> String -> TaoParser a -> TaoParser (Token', a, Token')
 inbetween open close parser = do
   open <- token (P.text open)
   _ <- P.whitespaces
@@ -96,11 +110,11 @@ inbetween open close parser = do
   close <- token (P.text close)
   P.ok (void open, x, void close)
 
-collection :: String -> String -> String -> Parser Error a -> Parser Error (Token', [a], Token')
+collection :: String -> String -> String -> TaoParser a -> TaoParser (Token', [a], Token')
 collection open delim close parser = do
   inbetween open close (P.oneOf [delimited delim parser, P.ok []])
 
-delimited :: String -> Parser Error a -> Parser Error [a]
+delimited :: String -> TaoParser a -> TaoParser [a]
 delimited delim parser = do
   x <- parser
   xs <- P.zeroOrMore (P.paddedL (op delim) parser)
@@ -108,7 +122,7 @@ delimited delim parser = do
   P.ok (x : xs)
 
 -- Concrete Syntax Tree tokens
-token :: Parser Error a -> Parser Error (Token a)
+token :: TaoParser a -> TaoParser (Token a)
 token parser = do
   comments <- P.zeroOrMore comment
   state1 <- P.getState
@@ -126,14 +140,14 @@ token parser = do
         trailingComments = trailingComments
       }
 
-comment :: Parser Error String
+comment :: TaoParser String
 comment = do
   _ <- P.char '#'
   _ <- P.spaces
   txt <- P.skipTo lineBreak
   P.ok (dropWhileEnd isSpace txt)
 
-docString :: Parser Error String -> Parser Error DocString
+docString :: TaoParser String -> TaoParser DocString
 docString delimiter = do
   delim <- delimiter
   _ <- P.spaces
@@ -147,7 +161,7 @@ docString delimiter = do
   docs <- P.skipTo (closeDelimiter delim)
   P.ok DocString {public = public, description = dropWhileEnd isSpace $ dropWhile isSpace docs}
   where
-    closeDelimiter :: String -> Parser Error ()
+    closeDelimiter :: String -> TaoParser ()
     closeDelimiter delim = do
       _ <- lineBreak
       _ <- P.text delim
@@ -155,7 +169,7 @@ docString delimiter = do
       _ <- lineBreak
       P.ok ()
 
-op :: String -> Parser Error Token'
+op :: String -> TaoParser Token'
 op txt = do
   _ <- P.whitespaces
   tok <- token (P.text txt)
@@ -163,15 +177,16 @@ op txt = do
   P.ok (void tok)
 
 -- Patterns
-pattern' :: Parser Error appDelim -> Parser Error Pattern
+pattern' :: TaoParser appDelim -> TaoParser Pattern
 pattern' delim = do
   let ops =
         [ P.infixR 1 FunP (op "->"),
           P.infixL 2 AppP (token $ void delim)
         ]
-  P.operators 0 ops patternAtom
+  expect PatternError $ do
+    P.operators 0 ops patternAtom
 
-patternAtom :: Parser Error Pattern
+patternAtom :: TaoParser Pattern
 patternAtom =
   P.oneOf
     [ AnyP <$> op "_",
@@ -181,7 +196,7 @@ patternAtom =
       patternTuple
     ]
 
-patternName :: Parser Error Pattern
+patternName :: TaoParser Pattern
 patternName = do
   name <- token identifier
   case name.value of
@@ -191,7 +206,7 @@ patternName = do
     x | startsWithUpper x -> P.ok (TagP name)
     _ -> P.ok (VarP name)
 
-patternRecordField :: Parser Error (Token String, Pattern)
+patternRecordField :: TaoParser (Token String, Pattern)
 patternRecordField = do
   name <- token identifier
   P.oneOf
@@ -202,12 +217,12 @@ patternRecordField = do
       P.ok (name, VarP name)
     ]
 
-patternRecord :: Parser Error Pattern
+patternRecord :: TaoParser Pattern
 patternRecord = do
   (open, fields, close) <- collection "{" "," "}" patternRecordField
   P.ok (RecordP open fields close)
 
-patternTuple :: Parser Error Pattern
+patternTuple :: TaoParser Pattern
 patternTuple = do
   let item = pattern' P.whitespaces
   P.oneOf
@@ -225,7 +240,7 @@ patternTuple = do
     ]
 
 -- Expressions
-expression :: Parser Error appDelim -> Parser Error Expression
+expression :: TaoParser appDelim -> TaoParser Expression
 expression delim = do
   let lambdaPatterns = do
         _ <- P.char '\\'
@@ -248,7 +263,7 @@ expression delim = do
 
   P.operators 0 ops expressionAtom
 
-expressionAtom :: Parser Error Expression
+expressionAtom :: TaoParser Expression
 expressionAtom =
   P.oneOf
     [ expressionName,
@@ -258,7 +273,7 @@ expressionAtom =
       expressionRecord
     ]
 
-expressionName :: Parser Error Expression
+expressionName :: TaoParser Expression
 expressionName = do
   name <- token identifier
   case name.value of
@@ -268,7 +283,7 @@ expressionName = do
     x | startsWithUpper x -> P.ok (Tag name)
     _ -> P.ok (Var name)
 
-expressionTuple :: Parser Error Expression
+expressionTuple :: TaoParser Expression
 expressionTuple = do
   let item = expression P.whitespaces
   P.oneOf
@@ -285,14 +300,14 @@ expressionTuple = do
           _ -> P.ok (Tuple open items close)
     ]
 
-expressionRecordField :: Parser Error (Token String, Expression)
+expressionRecordField :: TaoParser (Token String, Expression)
 expressionRecordField = do
   name <- token identifier
   _ <- op ":"
   value <- expression P.whitespaces
   P.ok (name, value)
 
-expressionRecord :: Parser Error Expression
+expressionRecord :: TaoParser Expression
 expressionRecord = do
   (open, fields, close) <- collection "{" "," "}" expressionRecordField
   P.ok (Record open fields close)
@@ -302,7 +317,7 @@ expressionRecord = do
 --   -- TODO: zero or more definition --> Let
 --   expression (P.ok ())
 
-typeAnnotation :: Parser Error appDelim -> Parser Error Type
+typeAnnotation :: TaoParser appDelim -> TaoParser Type
 typeAnnotation delim = do
   _ <- op ":"
   xs <-
@@ -318,19 +333,19 @@ typeAnnotation delim = do
   P.ok (For xs t)
 
 -- Definitions
-definition :: Parser Error Definition
+definition :: TaoParser Definition
 definition = P.oneOf [letDef] -- , unpackDef, typeDef, test]
 
-letDef :: Parser Error Definition
+letDef :: TaoParser Definition
 letDef = do
-  let branch :: Parser Error ([Pattern], Expression)
+  let branch :: TaoParser ([Pattern], Expression)
       branch = do
         ps <- P.zeroOrMore patternAtom
         _ <- op "="
         b <- expression (P.ok ())
         _ <- lineBreak
         P.ok (ps, b)
-  let ruleEntry :: String -> Parser Error ([Pattern], Expression)
+  let ruleEntry :: String -> TaoParser ([Pattern], Expression)
       ruleEntry name = do
         _ <- P.word name
         _ <- P.whitespaces
@@ -359,21 +374,21 @@ letDef = do
       ]
   P.ok LetDef {docs = docs, name = name, type' = type', rules = rules}
 
-unpackDef :: Parser Error Definition
+unpackDef :: TaoParser Definition
 -- (x, y) = z
 unpackDef = error "TODO: unpackDef"
 
-typeDef :: Parser Error Definition
+typeDef :: TaoParser Definition
 -- type Bool = True | False
 typeDef = error "TODO: typeDef"
 
-test :: Parser Error Definition
+test :: TaoParser Definition
 -- > 1 + 1
 -- 2
 test = error "TODO: test"
 
 -- Module
-sourceFile :: Parser Error SourceFile
+sourceFile :: TaoParser SourceFile
 sourceFile = do
   docs <- P.maybe' (docString (P.atLeast 3 $ P.char '='))
   imports <- P.zeroOrMore import'
@@ -387,7 +402,7 @@ sourceFile = do
         definitions = definitions
       }
 
-import' :: Parser Error Import
+import' :: TaoParser Import
 import' = do
   _ <- P.word "import"
   _ <- P.oneOrMore P.space

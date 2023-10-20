@@ -9,7 +9,6 @@ module Parser where
 -- https://arxiv.org/pdf/1806.11150.pdf
 
 import Control.Monad (void)
-import Data.Bifunctor (Bifunctor (first))
 import qualified Data.Char as Char
 import Flow ((|>))
 
@@ -17,9 +16,10 @@ newtype Parser err a = Parser (State err -> Either (State err) (a, State err))
 
 data State err = State
   { remaining :: !String,
-    index :: !Int,
+    name :: !String,
     row :: !Int,
     col :: !Int,
+    index :: !Int,
     errors :: ![err]
   }
   deriving (Eq, Show)
@@ -57,9 +57,9 @@ instance Monad (Parser err) where
 apply :: Parser err a -> State err -> Either (State err) (a, State err)
 apply (Parser p) = p
 
-parse :: Parser err a -> String -> Either (State err) (a, State err)
-parse (Parser p) remaining =
-  p State {remaining = remaining, index = 0, row = 1, col = 1, errors = []}
+parse :: String -> Parser err a -> String -> Either (State err) (a, State err)
+parse name (Parser p) remaining =
+  p State {remaining = remaining, name = name, row = 1, col = 1, index = 0, errors = []}
 
 ok :: a -> Parser err a
 ok x = Parser (\state -> Right (x, state))
