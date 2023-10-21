@@ -39,6 +39,7 @@ data Expr
   | Typ !String ![Expr] ![(String, Type)]
   | Op1 !UnaryOp !Expr
   | Op2 !BinaryOp !Expr !Expr
+  | Src !(String, Int, Int) !Expr
   | Err !Error
   deriving (Eq)
 
@@ -121,6 +122,7 @@ instance Show Expr where
     Typ k args alts -> do
       let showAlt (k, ty) = show (Ann (Tag k) ty)
       atom 11 ("(@type " ++ show (app (Tag k) args) ++ " = {" ++ intercalate " | " (map showAlt alts) ++ "})")
+    Src _ a -> showsPrec p a
     where
       atom n k = showParen (p > n) $ showString k
       prefix n k a = showParen (p > n) $ showString k . showsPrec (n + 1) a
@@ -255,6 +257,7 @@ freeVars (Typ _ [] _) = []
 freeVars (Typ k (a : bs) _) = freeVars a `union` freeVars (Typ k bs [])
 freeVars (Op1 _ a) = freeVars a
 freeVars (Op2 _ a b) = freeVars a `union` freeVars b
+freeVars (Src _ a) = freeVars a
 freeVars (Err _) = []
 
 freeVarsP :: Pattern -> [String]
@@ -355,6 +358,7 @@ eval env (Op1 op a) = case (op, eval env a) of
 eval env (Op2 op a b) = case (op, eval env a, eval env b) of
   (op, a, b) | isOpen a || isOpen b -> Op2 op a b
   (op, a, b) -> evalOp2 op a b
+eval env (Src src a) = Src src (eval env a)
 eval _ (Err err) = Err err
 
 evalOp1 :: UnaryOp -> Expr -> Expr
@@ -527,6 +531,7 @@ infer env (Typ _ args alts) = do
   Right (Knd, s2 `compose` s1)
 infer env (Op1 op a) = inferOp1 env op a
 infer env (Op2 op a b) = inferOp2 env op a b
+infer env (Src _ a) = infer env a
 infer _ (Err err) = Right (Err err, [])
 
 infer2 :: Env -> Expr -> Expr -> Either Error ((Expr, Expr), Substitution)
