@@ -16,7 +16,7 @@ newtype Parser ctx a = Parser (State ctx -> Either (State ctx) (a, State ctx))
 
 data State ctx = State
   { remaining :: !String,
-    name :: !String,
+    source :: !String,
     row :: !Int,
     col :: !Int,
     index :: !Int,
@@ -58,8 +58,8 @@ apply :: Parser ctx a -> State ctx -> Either (State ctx) (a, State ctx)
 apply (Parser p) = p
 
 parse :: String -> Parser ctx a -> String -> Either (State ctx) (a, State ctx)
-parse name (Parser p) remaining =
-  p State {remaining = remaining, name = name, row = 1, col = 1, index = 0, context = []}
+parse source (Parser p) remaining =
+  p State {remaining = remaining, source = source, row = 1, col = 1, index = 0, context = []}
 
 ok :: a -> Parser ctx a
 ok x = Parser (\state -> Right (x, state))

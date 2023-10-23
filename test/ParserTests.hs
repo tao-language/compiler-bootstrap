@@ -72,7 +72,7 @@ run = describe "--==☯ Parser ☯==--" $ do
           s2 <- getState
           ok (s1, s2)
     let p = parse' parser
-    let s1 = State {remaining = "abc", name = "test", row = 1, col = 1, index = 0, context = []}
+    let s1 = State {remaining = "abc", source = "test", row = 1, col = 1, index = 0, context = []}
     let s2 = s1 {remaining = "bc", index = 1, col = 2}
     p "abc" `shouldBe` Right ((s1, s2), "bc")
 

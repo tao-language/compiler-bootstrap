@@ -6,6 +6,8 @@
 
 module Tao where
 
+import qualified Core as C
+
 {- TODO: syntax sugar
 - Match
 - Let
@@ -30,86 +32,48 @@ module Tao where
 - Dict comprehension
 -}
 
-data Token a = Token
-  { value :: a,
-    path :: !String,
-    row :: !Int,
-    col :: !Int,
-    len :: !Int,
-    comments :: ![String],
-    trailingComments :: ![String]
-  }
-  deriving (Eq, Show)
-
-type Token' = Token ()
-
-newToken :: a -> Token a
-newToken x =
-  Token
-    { value = x,
-      path = "",
-      row = 0,
-      col = 0,
-      len = 0,
-      comments = [],
-      trailingComments = []
-    }
-
-instance Functor Token where
-  fmap :: (a -> b) -> Token a -> Token b
-  -- fmap f x = x {value = VarP x.value}
-  -- But GHC complains it's ambiguous! So the verbose way it is
-  fmap f x =
-    Token
-      { value = f x.value,
-        path = x.path,
-        row = x.row,
-        col = x.col,
-        len = x.len,
-        comments = x.comments,
-        trailingComments = x.trailingComments
-      }
-
 data Pattern
-  = PAny !Token'
-  | PKnd !Token'
-  | PIntT !Token'
-  | PNumT !Token'
-  | PInt !(Token Int)
-  | PTag !(Token String)
-  | PVar !(Token String)
-  | PTuple !Token' ![Pattern] !Token'
-  | PRecord !Token' ![(Token String, Pattern)] !Token'
-  | PFun !Token' !Pattern !Pattern
-  | PApp !Token' !Pattern !Pattern
+  = PAny
+  | PKnd
+  | PIntT
+  | PNumT
+  | PInt !Int
+  | PTag !String
+  | PVar !String
+  | PTuple ![Pattern]
+  | PRecord ![(String, Pattern)]
+  | PFun !Pattern !Pattern
+  | PApp !Pattern !Pattern
+  | PMeta ![C.Metadata] !Pattern
   deriving (Eq, Show)
 
 data Expression
-  = Knd !Token'
-  | IntT !Token'
-  | NumT !Token'
-  | Int !(Token Int)
-  | Num !(Token Double)
-  | Tag !(Token String)
-  | Var !(Token String)
+  = Knd
+  | IntT
+  | NumT
+  | Int !Int
+  | Num !Double
+  | Tag !String
+  | Var !String
   | Lambda ![Pattern] !Expression
-  | Tuple !Token' ![Expression] !Token'
-  | Record !Token' ![(Token String, Expression)] !Token'
+  | Tuple ![Expression]
+  | Record ![(String, Expression)]
   | Block ![Definition] !Expression
-  | App !Token' !Expression !Expression
-  | Fun !Token' !Expression !Expression
-  | Or !Token' !Expression !Expression
-  | Eq !Token' !Expression !Expression
-  | Lt !Token' !Expression !Expression
-  | Add !Token' !Expression !Expression
-  | Sub !Token' !Expression !Expression
-  | Mul !Token' !Expression !Expression
-  | Pow !Token' !Expression !Expression
+  | App !Expression !Expression
+  | Fun !Expression !Expression
+  | Or !Expression !Expression
+  | Eq !Expression !Expression
+  | Lt !Expression !Expression
+  | Add !Expression !Expression
+  | Sub !Expression !Expression
+  | Mul !Expression !Expression
+  | Pow !Expression !Expression
   | Ann !Expression !Type
+  | Meta ![C.Metadata] !Expression
   deriving (Eq, Show)
 
 data Type
-  = For ![Token String] !Expression
+  = For ![String] !Expression
   deriving (Eq, Show)
 
 data DocString = DocString
@@ -124,21 +88,21 @@ newDocString = DocString {public = False, description = ""}
 data Definition
   = LetDef
       { docs :: !(Maybe DocString),
-        name :: !(Token String),
+        name :: !String,
         type' :: !(Maybe Type),
         rules :: ![([Pattern], Expression)]
       }
   | Unpack
       { docs :: !(Maybe DocString),
-        types :: ![(Token String, Type)],
+        types :: ![(String, Type)],
         pattern :: !Pattern,
         value :: !Expression
       }
   | TypeDef
       { docs :: !(Maybe DocString),
-        name :: !(Token String),
+        name :: !String,
         args :: ![Expression],
-        alts :: !(Token String, Type)
+        alts :: !(String, Type)
       }
   | Run
       { description :: !String,
@@ -148,9 +112,9 @@ data Definition
   deriving (Eq, Show)
 
 data Import = Import
-  { path :: !(Token String),
-    name :: !(Token String),
-    exposing :: ![Token String]
+  { path :: !String,
+    name :: !String,
+    exposing :: ![String]
   }
   deriving (Eq, Show)
 
@@ -170,3 +134,9 @@ data Module = Module
 data ParserContext
   = CDefinition
   deriving (Eq, Show)
+
+ann :: Expression -> Expression -> Expression
+ann a t = Ann a (For [] t)
+
+-- toCore :: Expression -> C.Expr
+-- toCore (Knd tok) = C.Src (tok.path, tok.row, tok.col) C.Knd

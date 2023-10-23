@@ -39,7 +39,7 @@ data Expr
   | Typ !String ![Expr] ![(String, Type)]
   | Op1 !UnaryOp !Expr
   | Op2 !BinaryOp !Expr !Expr
-  | Meta !Metadata !Expr
+  | Meta ![Metadata] !Expr
   | Err !Error
   deriving (Eq)
 
