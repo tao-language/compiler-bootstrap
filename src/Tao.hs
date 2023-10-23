@@ -90,24 +90,28 @@ data Definition
       { docs :: !(Maybe DocString),
         name :: !String,
         type' :: !(Maybe Type),
-        rules :: ![([Pattern], Expression)]
+        rules :: ![([Pattern], Expression)],
+        meta :: [C.Metadata]
       }
   | Unpack
       { docs :: !(Maybe DocString),
         types :: ![(String, Type)],
         pattern :: !Pattern,
-        value :: !Expression
+        value :: !Expression,
+        meta :: [C.Metadata]
       }
   | TypeDef
       { docs :: !(Maybe DocString),
         name :: !String,
         args :: ![Expression],
-        alts :: !(String, Type)
+        alts :: !(String, Type),
+        meta :: [C.Metadata]
       }
   | Prompt
       { description :: !String,
         expression :: !Expression,
-        result :: !(Maybe Expression)
+        result :: !(Maybe Expression),
+        meta :: [C.Metadata]
       }
   deriving (Eq, Show)
 

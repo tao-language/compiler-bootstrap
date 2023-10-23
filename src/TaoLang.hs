@@ -10,7 +10,6 @@ import Data.Char (isSpace, isUpper)
 import Data.List (dropWhileEnd, intercalate)
 import Flow ((|>))
 import qualified Parser as P
-import System.Exit
 import Tao
 
 type TaoParser a = P.Parser ParserContext a
@@ -333,9 +332,7 @@ typeAnnotation delim = do
 definition :: TaoParser Definition
 definition =
   (P.scope CDefinition . P.oneOf)
-    [ letDef
-    -- , unpackDef, typeDef, test]
-    ]
+    [letDef, unpackDef, typeDef, prompt]
 
 letDef :: TaoParser Definition
 letDef = do
@@ -352,7 +349,7 @@ letDef = do
         _ <- P.whitespaces
         branch
   docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
-  name <- identifier
+  (meta, name) <- metadata identifier
   (type', rules) <-
     P.oneOf
       [ do
@@ -373,24 +370,24 @@ letDef = do
           rules <- P.zeroOrMore (ruleDef name)
           P.ok (Nothing, rule : rules)
       ]
-  P.ok LetDef {docs = docs, name = name, type' = type', rules = rules}
+  P.ok LetDef {docs = docs, name = name, type' = type', rules = rules, meta = meta}
 
 unpackDef :: TaoParser Definition
 -- (x, y) = z
-unpackDef = error "TODO: unpackDef"
+unpackDef = P.fail' -- TODO
 
 typeDef :: TaoParser Definition
 -- type Bool = True | False
-typeDef = error "TODO: typeDef"
+typeDef = P.fail' -- TODO
 
-test :: TaoParser Definition
+prompt :: TaoParser Definition
 -- > 1 + 1
 -- 2
-test = error "TODO: test"
+prompt = P.fail' -- TODO
 
 -- Module
-sourceFile :: TaoParser Source
-sourceFile = do
+source :: TaoParser Source
+source = do
   docs <- P.maybe' (docString (P.atLeast 3 $ P.char '='))
   imports <- P.zeroOrMore import'
   definitions <- P.zeroOrMore definition

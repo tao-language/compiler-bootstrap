@@ -15,16 +15,16 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Tao language ☯==--" $ do
-  let source = "test"
+  let sourceName = "test"
 
   let parse' :: TaoParser a -> String -> Either ([ParserContext], String) (a, String)
-      parse' parser src = case P.parse source parser src of
+      parse' parser src = case P.parse sourceName parser src of
         Right (x, P.State {remaining}) -> Right (x, remaining)
         Left P.State {context, remaining} -> Left (context, remaining)
 
-  let loc row col = Meta [Location source row col]
+  let loc row col = Meta [Location sourceName row col]
   let var row col = loc row col . Var
-  let ploc row col = PMeta [Location source row col]
+  let ploc row col = PMeta [Location sourceName row col]
   let pvar row col = ploc row col . PVar
 
   it "☯ identifier" $ do
@@ -77,20 +77,20 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "---  private  \nA\nB\n\nC\n  ---  \nabc" `shouldBe` Right (docs False "A\nB\n\nC", "abc")
 
   it "☯ metadata location" $ do
-    let meta row col x = ([Location source row col], x)
+    let meta row col x = ([Location sourceName row col], x)
     let p = parse' $ metadata (P.text "abc")
     p "abcdef" `shouldBe` Right (meta 1 1 "abc", "def")
     p "abc   def" `shouldBe` Right (meta 1 1 "abc", "   def")
     p "abc \n  def" `shouldBe` Right (meta 1 1 "abc", " \n  def")
 
   it "☯ metadata comments" $ do
-    let meta row col comments x = ([Location source row col, Comments comments], x)
+    let meta row col comments x = ([Location sourceName row col, Comments comments], x)
     let p = parse' $ metadata (P.text "abc")
     p "#A\n#B\nabc def" `shouldBe` Right (meta 3 1 ["A", "B"] "abc", " def")
     p "# A \n \n \n  #  B  \n  abc  def" `shouldBe` Right (meta 5 3 ["A", "B"] "abc", "  def")
 
   it "☯ metadata comments (trailing)" $ do
-    let meta row col comment x = ([Location source row col, TrailingComment comment], x)
+    let meta row col comment x = ([Location sourceName row col, TrailingComment comment], x)
     let p = parse' $ metadata (P.text "abc")
     p "abc#comment" `shouldBe` Right (meta 1 1 "comment" "abc", "")
     p "abc#  comment  " `shouldBe` Right (meta 1 1 "comment" "abc", "")
@@ -193,7 +193,7 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ letDef" $ do
     let p = parse' letDef
-    let def = LetDef {docs = Nothing, name = "x", type' = Nothing, rules = []}
+    let def = LetDef {docs = Nothing, name = "x", type' = Nothing, rules = [], meta = [Location sourceName 1 1]}
     p "x = y" `shouldBe` Right (def {rules = [([], var 1 5 "y")]}, "")
     p "x : Int = y" `shouldBe` Right (def {type' = Just (For [] $ loc 1 5 IntT), rules = [([], var 1 11 "y")]}, "")
     p "x : Int\nx = y" `shouldBe` Right (def {type' = Just (For [] $ loc 1 5 IntT), rules = [([], var 2 5 "y")]}, "")
@@ -205,7 +205,7 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ definition" $ do
     let p = parse' definition
-    p "x = y" `shouldBe` Right (LetDef {docs = Nothing, name = "x", type' = Nothing, rules = [([], var 1 5 "y")]}, "")
+    p "x = y" `shouldBe` Right (LetDef {docs = Nothing, name = "x", type' = Nothing, rules = [([], var 1 5 "y")], meta = [Location sourceName 1 1]}, "")
 
   it "☯ import'" $ do
     let p = parse' import'
@@ -215,11 +215,11 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "import mod as m ()" `shouldBe` Right (Import "mod" "m" [], "")
     p "import mod as m (a, b)" `shouldBe` Right (Import "mod" "m" ["a", "b"], "")
 
-  it "☯ sourceFile" $ do
-    let p = parse' sourceFile
+  it "☯ source" $ do
+    let p = parse' source
     let docs = Just DocString {public = True, description = "docs"}
-    p "===\ndocs\n===" `shouldBe` Right (SourceFile {docs = docs, imports = [], definitions = []}, "")
+    p "===\ndocs\n===" `shouldBe` Right (Source {docs = docs, imports = [], definitions = []}, "")
     let imports = [Import "mod" "mod" []]
-    p "===\ndocs\n===\nimport mod" `shouldBe` Right (SourceFile {docs = docs, imports = imports, definitions = []}, "")
-    let defs = [LetDef {docs = Nothing, name = "x", type' = Nothing, rules = [([], var 5 5 "y")]}]
-    p "===\ndocs\n===\nimport mod\nx = y" `shouldBe` Right (SourceFile {docs = docs, imports = imports, definitions = defs}, "")
+    p "===\ndocs\n===\nimport mod" `shouldBe` Right (Source {docs = docs, imports = imports, definitions = []}, "")
+    let defs = [LetDef {docs = Nothing, name = "x", type' = Nothing, rules = [([], var 5 5 "y")], meta = [Location sourceName 5 1]}]
+    p "===\ndocs\n===\nimport mod\nx = y" `shouldBe` Right (Source {docs = docs, imports = imports, definitions = defs}, "")
