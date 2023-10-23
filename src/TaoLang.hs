@@ -47,7 +47,7 @@ type TaoParser a = P.Parser ParserContext a
   - Only documented functions/types are public
 --}
 
-loadFile :: String -> IO SourceFile
+loadFile :: String -> IO Source
 loadFile filename = do
   src <- readFile filename
   -- case P.parse filename sourceFile src of
@@ -66,7 +66,7 @@ loadFile filename = do
 -- parseDefinition :: String -> Either SyntaxError Definition
 -- parseDefinition src = error "TODO: parseDefinition"
 
--- parseFile :: String -> Either SyntaxError SourceFile
+-- parseFile :: String -> Either SyntaxError Source
 -- parseFile src = error "TODO: parseFile"
 
 -- Utilities
@@ -332,47 +332,48 @@ typeAnnotation delim = do
 -- Definitions
 definition :: TaoParser Definition
 definition =
-  P.scope CDefinition $
-    -- P.oneOf [letDef] -- , unpackDef, typeDef, test]
-    error "TODO"
+  (P.scope CDefinition . P.oneOf)
+    [ letDef
+    -- , unpackDef, typeDef, test]
+    ]
 
--- letDef :: TaoParser Definition
--- letDef = do
---   let branch :: TaoParser ([Pattern], Expression)
---       branch = do
---         ps <- P.zeroOrMore patternAtom
---         _ <- op "="
---         b <- expression (P.ok ())
---         _ <- lineBreak
---         P.ok (ps, b)
---   let ruleEntry :: String -> TaoParser ([Pattern], Expression)
---       ruleEntry name = do
---         _ <- P.word name
---         _ <- P.whitespaces
---         branch
---   docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
---   name <- token identifier
---   (type', rules) <-
---     P.oneOf
---       [ do
---           -- x : Int = 42
---           type' <- typeAnnotation (P.ok ())
---           rule <- branch
---           P.ok (Just type', [rule]),
---         do
---           -- f : Int -> Int
---           -- f x = 42
---           type' <- typeAnnotation (P.ok ())
---           _ <- lineBreak
---           rules <- P.oneOrMore (ruleEntry name.value)
---           P.ok (Just type', rules),
---         do
---           -- f x = 42
---           rule <- branch
---           rules <- P.zeroOrMore (ruleEntry name.value)
---           P.ok (Nothing, rule : rules)
---       ]
---   P.ok LetDef {docs = docs, name = name, type' = type', rules = rules}
+letDef :: TaoParser Definition
+letDef = do
+  let branch :: TaoParser ([Pattern], Expression)
+      branch = do
+        ps <- P.zeroOrMore patternAtom
+        _ <- op "="
+        b <- expression (P.ok ())
+        _ <- lineBreak
+        P.ok (ps, b)
+  let ruleDef :: String -> TaoParser ([Pattern], Expression)
+      ruleDef name = do
+        _ <- P.word name
+        _ <- P.whitespaces
+        branch
+  docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
+  name <- identifier
+  (type', rules) <-
+    P.oneOf
+      [ do
+          -- x : Int = 42
+          type' <- typeAnnotation (P.ok ())
+          rule <- branch
+          P.ok (Just type', [rule]),
+        do
+          -- f : Int -> Int
+          -- f x = 42
+          type' <- typeAnnotation (P.ok ())
+          _ <- lineBreak
+          rules <- P.oneOrMore (ruleDef name)
+          P.ok (Just type', rules),
+        do
+          -- f x = 42
+          rule <- branch
+          rules <- P.zeroOrMore (ruleDef name)
+          P.ok (Nothing, rule : rules)
+      ]
+  P.ok LetDef {docs = docs, name = name, type' = type', rules = rules}
 
 unpackDef :: TaoParser Definition
 -- (x, y) = z
@@ -388,45 +389,45 @@ test :: TaoParser Definition
 test = error "TODO: test"
 
 -- Module
--- sourceFile :: TaoParser SourceFile
--- sourceFile = do
---   docs <- P.maybe' (docString (P.atLeast 3 $ P.char '='))
---   imports <- P.zeroOrMore import'
---   definitions <- P.zeroOrMore definition
---   _ <- P.whitespaces
---   _ <- P.scope CDefinition P.endOfFile
---   P.ok
---     SourceFile
---       { docs = docs,
---         imports = imports,
---         definitions = definitions
---       }
+sourceFile :: TaoParser Source
+sourceFile = do
+  docs <- P.maybe' (docString (P.atLeast 3 $ P.char '='))
+  imports <- P.zeroOrMore import'
+  definitions <- P.zeroOrMore definition
+  _ <- P.whitespaces
+  _ <- P.scope CDefinition P.endOfFile
+  P.ok
+    Source
+      { docs = docs,
+        imports = imports,
+        definitions = definitions
+      }
 
--- import' :: TaoParser Import
--- import' = do
---   _ <- P.word "import"
---   _ <- P.oneOrMore P.space
---   dirName <- token (concat <$> P.zeroOrMore (P.concat [identifier, P.text "/"]))
---   modName <- token identifier
---   name <-
---     P.oneOf
---       [ do
---           _ <- P.word "as"
---           _ <- P.spaces
---           name <- token identifier
---           P.ok name,
---         P.ok modName
---       ]
---   _ <- P.spaces
---   exposing <-
---     P.oneOf
---       [ fmap (\(_, xs, _) -> xs) (collection "(" "," ")" (token identifier)),
---         P.ok []
---       ]
---   _ <- lineBreak
---   P.ok
---     Import
---       { path = (fmap (++ modName.value) dirName),
---         name = name,
---         exposing = exposing
---       }
+import' :: TaoParser Import
+import' = do
+  _ <- P.word "import"
+  _ <- P.oneOrMore P.space
+  dirName <- concat <$> P.zeroOrMore (P.concat [identifier, P.text "/"])
+  modName <- identifier
+  name <-
+    P.oneOf
+      [ do
+          _ <- P.word "as"
+          _ <- P.spaces
+          name <- identifier
+          P.ok name,
+        P.ok modName
+      ]
+  _ <- P.spaces
+  exposing <-
+    P.oneOf
+      [ collection "(" "," ")" identifier,
+        P.ok []
+      ]
+  _ <- lineBreak
+  P.ok
+    Import
+      { path = dirName ++ modName,
+        name = name,
+        exposing = exposing
+      }

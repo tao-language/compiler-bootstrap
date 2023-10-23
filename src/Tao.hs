@@ -104,10 +104,10 @@ data Definition
         args :: ![Expression],
         alts :: !(String, Type)
       }
-  | Run
+  | Prompt
       { description :: !String,
-        value :: !Expression,
-        expected :: !(Maybe Expression)
+        expression :: !Expression,
+        result :: !(Maybe Expression)
       }
   deriving (Eq, Show)
 
@@ -118,7 +118,7 @@ data Import = Import
   }
   deriving (Eq, Show)
 
-data SourceFile = SourceFile
+data Source = Source
   { docs :: !(Maybe DocString),
     imports :: ![Import],
     definitions :: ![Definition]
@@ -127,7 +127,7 @@ data SourceFile = SourceFile
 
 data Module = Module
   { name :: !String,
-    files :: ![(String, SourceFile)]
+    files :: ![(String, Source)]
   }
   deriving (Eq, Show)
 

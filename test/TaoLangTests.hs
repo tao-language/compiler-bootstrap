@@ -191,39 +191,35 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "x\ny" `shouldBe` Right (loc 1 1 $ Var "x", "\ny")
     p "(x\ny)" `shouldBe` Right (loc 1 1 $ App (var 1 2 "x") (var 2 1 "y"), "")
 
-  -- it "☯ letDef" $ do
-  --   let p = parse' letDef
-  --   let def = LetDef {docs = Nothing, name = tok "x" 1 1 1, type' = Nothing, rules = []}
-  --   p "x = 42" `shouldBe` Right (def {rules = [([], Int $ tok 42 1 5 2)]}, "")
-  --   p "x : Int = 42" `shouldBe` Right (def {type' = Just (For [] $ IntT $ tok' 1 5 3), rules = [([], Int $ tok 42 1 11 2)]}, "")
-  --   p "x : Int\nx = 42" `shouldBe` Right (def {type' = Just (For [] $ IntT $ tok' 1 5 3), rules = [([], Int $ tok 42 2 5 2)]}, "")
-  --   p "x y = 1\nx z = 2" `shouldBe` Right (def {rules = [([PVar $ tok "y" 1 3 1], Int $ tok 1 1 7 1), ([PVar $ tok "z" 2 3 1], Int $ tok 2 2 7 1)]}, "")
+  it "☯ letDef" $ do
+    let p = parse' letDef
+    let def = LetDef {docs = Nothing, name = "x", type' = Nothing, rules = []}
+    p "x = y" `shouldBe` Right (def {rules = [([], var 1 5 "y")]}, "")
+    p "x : Int = y" `shouldBe` Right (def {type' = Just (For [] $ loc 1 5 IntT), rules = [([], var 1 11 "y")]}, "")
+    p "x : Int\nx = y" `shouldBe` Right (def {type' = Just (For [] $ loc 1 5 IntT), rules = [([], var 2 5 "y")]}, "")
+    p "x p = y\nx q = z" `shouldBe` Right (def {rules = [([pvar 1 3 "p"], var 1 7 "y"), ([pvar 2 3 "q"], var 2 7 "z")]}, "")
 
   -- -- it "☯ unpackDef" $ do
   -- -- it "☯ typeDef" $ do
   -- -- it "☯ test" $ do
 
-  -- it "☯ definition" $ do
-  --   let p = parse' definition
-  --   p "x = 42" `shouldBe` Right (LetDef {docs = Nothing, name = tok "x" 1 1 1, type' = Nothing, rules = [([], Int $ tok 42 1 5 2)]}, "")
+  it "☯ definition" $ do
+    let p = parse' definition
+    p "x = y" `shouldBe` Right (LetDef {docs = Nothing, name = "x", type' = Nothing, rules = [([], var 1 5 "y")]}, "")
 
-  -- it "☯ import'" $ do
-  --   let p = parse' import'
-  --   let imp = Import {path = tok "" 1 1 0, name = tok "" 1 1 0, exposing = []}
-  --   p "import mod" `shouldBe` Right (imp {path = tok "mod" 1 8 3, name = tok "mod" 1 8 3}, "")
-  --   p "import dir/to/mod" `shouldBe` Right (imp {path = tok "dir/to/mod" 1 8 10, name = tok "mod" 1 15 3}, "")
-  --   p "import mod as m" `shouldBe` Right (imp {path = tok "mod" 1 8 3, name = tok "m" 1 15 1}, "")
-  --   p "import mod as m ()" `shouldBe` Right (imp {path = tok "mod" 1 8 3, name = tok "m" 1 15 1}, "")
-  --   p "import mod as m (a, b)" `shouldBe` Right (imp {path = tok "mod" 1 8 3, name = tok "m" 1 15 1, exposing = [tok "a" 1 18 1, tok "b" 1 21 1]}, "")
+  it "☯ import'" $ do
+    let p = parse' import'
+    p "import mod" `shouldBe` Right (Import "mod" "mod" [], "")
+    p "import dir/to/mod" `shouldBe` Right (Import "dir/to/mod" "mod" [], "")
+    p "import mod as m" `shouldBe` Right (Import "mod" "m" [], "")
+    p "import mod as m ()" `shouldBe` Right (Import "mod" "m" [], "")
+    p "import mod as m (a, b)" `shouldBe` Right (Import "mod" "m" ["a", "b"], "")
 
-  -- it "☯ sourceFile" $ do
-  --   let p = parse' sourceFile
-  --   let docs = Just DocString {public = True, description = "docs"}
-  --   p "===\ndocs\n===" `shouldBe` Right (SourceFile {docs = docs, imports = [], definitions = []}, "")
-  --   let imports = [Import {path = tok "mod" 4 8 3, name = tok "mod" 4 8 3, exposing = []}]
-  --   p "===\ndocs\n===\nimport mod" `shouldBe` Right (SourceFile {docs = docs, imports = imports, definitions = []}, "")
-  --   let defs = [LetDef {docs = Nothing, name = tok "x" 5 1 1, type' = Nothing, rules = [([], Int $ tok 42 5 5 2)]}]
-  --   p "===\ndocs\n===\nimport mod\nx = 42" `shouldBe` Right (SourceFile {docs = docs, imports = imports, definitions = defs}, "")
-
-  it "☯ TODO" $ do
-    True `shouldBe` True
+  it "☯ sourceFile" $ do
+    let p = parse' sourceFile
+    let docs = Just DocString {public = True, description = "docs"}
+    p "===\ndocs\n===" `shouldBe` Right (SourceFile {docs = docs, imports = [], definitions = []}, "")
+    let imports = [Import "mod" "mod" []]
+    p "===\ndocs\n===\nimport mod" `shouldBe` Right (SourceFile {docs = docs, imports = imports, definitions = []}, "")
+    let defs = [LetDef {docs = Nothing, name = "x", type' = Nothing, rules = [([], var 5 5 "y")]}]
+    p "===\ndocs\n===\nimport mod\nx = y" `shouldBe` Right (SourceFile {docs = docs, imports = imports, definitions = defs}, "")
