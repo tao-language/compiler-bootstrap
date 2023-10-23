@@ -47,7 +47,7 @@ data Pattern
   | PMeta ![C.Metadata] !Pattern
   deriving (Eq, Show)
 
-data Expression
+data Expr
   = Knd
   | IntT
   | NumT
@@ -55,25 +55,25 @@ data Expression
   | Num !Double
   | Tag !String
   | Var !String
-  | Lambda ![Pattern] !Expression
-  | Tuple ![Expression]
-  | Record ![(String, Expression)]
-  | Block ![Definition] !Expression
-  | App !Expression !Expression
-  | Fun !Expression !Expression
-  | Or !Expression !Expression
-  | Eq !Expression !Expression
-  | Lt !Expression !Expression
-  | Add !Expression !Expression
-  | Sub !Expression !Expression
-  | Mul !Expression !Expression
-  | Pow !Expression !Expression
-  | Ann !Expression !Type
-  | Meta ![C.Metadata] !Expression
+  | Lam !Pattern !Expr
+  | Tuple ![Expr]
+  | Record ![(String, Expr)]
+  | Block ![Definition] !Expr
+  | App !Expr !Expr
+  | Fun !Expr !Expr
+  | Or !Expr !Expr
+  | Eq !Expr !Expr
+  | Lt !Expr !Expr
+  | Add !Expr !Expr
+  | Sub !Expr !Expr
+  | Mul !Expr !Expr
+  | Pow !Expr !Expr
+  | Ann !Expr !Type
+  | Meta ![C.Metadata] !Expr
   deriving (Eq, Show)
 
 data Type
-  = For ![String] !Expression
+  = For ![String] !Expr
   deriving (Eq, Show)
 
 data DocString = DocString
@@ -90,27 +90,27 @@ data Definition
       { docs :: !(Maybe DocString),
         name :: !String,
         type' :: !(Maybe Type),
-        rules :: ![([Pattern], Expression)],
+        rules :: ![([Pattern], Expr)],
         meta :: [C.Metadata]
       }
   | Unpack
       { docs :: !(Maybe DocString),
         types :: ![(String, Type)],
         pattern :: !Pattern,
-        value :: !Expression,
+        value :: !Expr,
         meta :: [C.Metadata]
       }
   | TypeDef
       { docs :: !(Maybe DocString),
         name :: !String,
-        args :: ![Expression],
+        args :: ![Expr],
         alts :: !(String, Type),
         meta :: [C.Metadata]
       }
   | Prompt
       { description :: !String,
-        expression :: !Expression,
-        result :: !(Maybe Expression),
+        expression :: !Expr,
+        result :: !(Maybe Expr),
         meta :: [C.Metadata]
       }
   deriving (Eq, Show)
@@ -139,8 +139,14 @@ data ParserContext
   = CDefinition
   deriving (Eq, Show)
 
-ann :: Expression -> Expression -> Expression
+fun :: [Expr] -> Expr -> Expr
+fun bs b = foldr Fun b bs
+
+lam :: [Pattern] -> Expr -> Expr
+lam ps b = foldr Lam b ps
+
+ann :: Expr -> Expr -> Expr
 ann a t = Ann a (For [] t)
 
--- toCore :: Expression -> C.Expr
+-- toCore :: Expr -> C.Expr
 -- toCore (Knd tok) = C.Src (tok.path, tok.row, tok.col) C.Knd

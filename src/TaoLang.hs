@@ -59,8 +59,8 @@ loadFile filename = do
 
 -- TODO: loadModule :: String -> IO Module
 
--- parseExpression :: String -> Either SyntaxError Expression
--- parseExpression src = error "TODO: parseExpression"
+-- parseExpr :: String -> Either SyntaxError Expr
+-- parseExpr src = error "TODO: parseExpr"
 
 -- parseDefinition :: String -> Either SyntaxError Definition
 -- parseDefinition src = error "TODO: parseDefinition"
@@ -230,19 +230,19 @@ patternTuple = do
           _ -> P.ok (PTuple items)
     ]
 
--- Expressions
-expression :: TaoParser appDelim -> TaoParser Expression
+-- Exprs
+expression :: TaoParser appDelim -> TaoParser Expr
 expression delim = do
   let meta f m a b = Meta m (f a b)
-  let lambdaPatterns = do
+  let lamPatterns = do
         (meta, _) <- metadata (P.char '\\')
         ps <- P.oneOrMore (P.paddedL P.whitespaces patternAtom)
         _ <- op "="
         P.ok (meta, ps)
-  let metaLam (m, ps) b = Meta m (Lambda ps b)
+  let metaLam (m, ps) b = Meta m (lam ps b)
   let ops =
         [ P.infixR 1 (meta Or) (op "|"),
-          P.prefix 2 metaLam lambdaPatterns,
+          P.prefix 2 metaLam lamPatterns,
           P.suffix 2 (flip Ann) (typeAnnotation delim),
           P.infixR 3 (meta Eq) (op "=="),
           P.infixR 4 (meta Lt) (op "<"),
@@ -256,7 +256,7 @@ expression delim = do
 
   P.operators 0 ops expressionAtom
 
-expressionAtom :: TaoParser Expression
+expressionAtom :: TaoParser Expr
 expressionAtom = do
   (meta, a) <-
     (metadata . P.oneOf)
@@ -268,7 +268,7 @@ expressionAtom = do
       ]
   P.ok (Meta meta a)
 
-expressionName :: TaoParser Expression
+expressionName :: TaoParser Expr
 expressionName = do
   name <- identifier
   case name of
@@ -278,7 +278,7 @@ expressionName = do
     x | startsWithUpper x -> P.ok (Tag name)
     _ -> P.ok (Var name)
 
-expressionTuple :: TaoParser Expression
+expressionTuple :: TaoParser Expr
 expressionTuple = do
   let item = expression P.whitespaces
   P.oneOf
@@ -296,19 +296,19 @@ expressionTuple = do
           _ -> P.ok (Tuple items)
     ]
 
-expressionRecordField :: TaoParser (String, Expression)
+expressionRecordField :: TaoParser (String, Expr)
 expressionRecordField = do
   name <- identifier
   _ <- op ":"
   value <- expression P.whitespaces
   P.ok (name, value)
 
-expressionRecord :: TaoParser Expression
+expressionRecord :: TaoParser Expr
 expressionRecord = do
   fields <- collection "{" "," "}" expressionRecordField
   P.ok (Record fields)
 
--- expressionBlock :: Parser Expression
+-- expressionBlock :: Parser Expr
 -- expressionBlock =
 --   -- TODO: zero or more definition --> Let
 --   expression (P.ok ())
@@ -336,14 +336,14 @@ definition =
 
 letDef :: TaoParser Definition
 letDef = do
-  let branch :: TaoParser ([Pattern], Expression)
+  let branch :: TaoParser ([Pattern], Expr)
       branch = do
         ps <- P.zeroOrMore patternAtom
         _ <- op "="
         b <- expression (P.ok ())
         _ <- lineBreak
         P.ok (ps, b)
-  let ruleDef :: String -> TaoParser ([Pattern], Expression)
+  let ruleDef :: String -> TaoParser ([Pattern], Expr)
       ruleDef name = do
         _ <- P.word name
         _ <- P.whitespaces
