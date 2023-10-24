@@ -17,7 +17,7 @@ type TaoParser a = P.Parser ParserContext a
 {-- TODO:
 \* Token sugar (https://en.wikibooks.org/wiki/Haskell/Syntactic_sugar)
   - Do notation
-  - Where definitions
+  - Where statements
   - Case and Match
   - Infix operators (x `op` y)
   - Partial operators (+ x) (y -)
@@ -46,27 +46,22 @@ type TaoParser a = P.Parser ParserContext a
   - Only documented functions/types are public
 --}
 
-loadFile :: String -> IO Source
-loadFile filename = do
+-- TODO: load all imports here (all IO operations)
+loadModule :: String -> IO Module
+loadModule filename = do
   src <- readFile filename
-  -- case P.parse filename sourceFile src of
-  --   Right (file, _) -> return file
-  --   Left P.State {source, row, col, context} -> do
-  --     putStrLn $ intercalate ":" [source, show row, show col]
-  --     print context
-  --     System.Exit.die "Syntax error"
-  error "TODO"
-
--- TODO: loadModule :: String -> IO Module
+  case P.parse filename (module' filename) src of
+    Right (mod, _) -> return mod
+    Left P.State {name, row, col, context} -> do
+      putStrLn $ intercalate ":" [name, show row, show col]
+      print context
+      error "Syntax error"
 
 -- parseExpr :: String -> Either SyntaxError Expr
 -- parseExpr src = error "TODO: parseExpr"
 
--- parseDefinition :: String -> Either SyntaxError Definition
--- parseDefinition src = error "TODO: parseDefinition"
-
--- parseFile :: String -> Either SyntaxError Source
--- parseFile src = error "TODO: parseFile"
+-- parseStatement :: String -> Either SyntaxError Statement
+-- parseStatement src = error "TODO: parseStatement"
 
 -- Utilities
 startsWithUpper :: String -> Bool
@@ -83,7 +78,6 @@ identifier = do
         ]
   c <- P.letter
   cs <- P.zeroOrMore (P.oneOf validChars)
-  _ <- P.spaces
   P.ok (c : cs)
 
 lineBreak :: TaoParser ()
@@ -99,7 +93,6 @@ inbetween open close parser = do
   x <- parser
   _ <- P.whitespaces
   _ <- P.text close
-  _ <- P.spaces
   P.ok x
 
 collection :: String -> String -> String -> TaoParser a -> TaoParser [a]
@@ -118,7 +111,7 @@ comment :: TaoParser String
 comment = do
   _ <- P.char '#'
   _ <- P.spaces
-  txt <- P.skipTo lineBreak
+  txt <- P.skipToAfter lineBreak
   P.ok (dropWhileEnd isSpace txt)
 
 docString :: TaoParser String -> TaoParser DocString
@@ -132,7 +125,7 @@ docString delimiter = do
         P.ok True
       ]
   _ <- P.spaces
-  docs <- P.skipTo (closeDelimiter delim)
+  docs <- P.skipToAfter (closeDelimiter delim)
   P.ok DocString {public = public, description = dropWhileEnd isSpace $ dropWhile isSpace docs}
   where
     closeDelimiter :: String -> TaoParser ()
@@ -151,11 +144,12 @@ metadata parser = do
     comments -> P.ok [Comments comments]
   state <- P.getState
   x <- parser
+  _ <- P.spaces
   trailingComment <- P.maybe' comment
   meta <- case trailingComment of
     Nothing -> P.ok meta
     Just comment -> P.ok (TrailingComment comment : meta)
-  P.ok (Location state.source state.row state.col : meta, x)
+  P.ok (Location state.name state.row state.col : meta, x)
 
 op :: String -> TaoParser [Metadata]
 op txt = do
@@ -310,7 +304,7 @@ expressionRecord = do
 
 -- expressionBlock :: Parser Expr
 -- expressionBlock =
---   -- TODO: zero or more definition --> Let
+--   -- TODO: zero or more statement --> Let
 --   expression (P.ok ())
 
 typeAnnotation :: TaoParser appDelim -> TaoParser Type
@@ -319,8 +313,8 @@ typeAnnotation delim = do
   xs <-
     P.oneOf
       [ do
-          _ <- op "@"
-          xs <- P.oneOrMore identifier
+          _ <- P.char '@'
+          xs <- P.oneOrMore (P.paddedL P.whitespaces identifier)
           _ <- op "."
           P.ok xs,
         P.ok []
@@ -328,13 +322,13 @@ typeAnnotation delim = do
   t <- expression delim
   P.ok (For xs t)
 
--- Definitions
-definition :: TaoParser Definition
-definition =
-  (P.scope CDefinition . P.oneOf)
-    [letDef, unpackDef, typeDef, prompt]
+-- Statements
+statement :: TaoParser Statement
+statement =
+  (P.scope CStatement . P.oneOf)
+    [letDef, unpackDef, typeDef, import', prompt]
 
-letDef :: TaoParser Definition
+letDef :: TaoParser Statement
 letDef = do
   let branch :: TaoParser ([Pattern], Expr)
       branch = do
@@ -372,50 +366,30 @@ letDef = do
       ]
   P.ok LetDef {docs = docs, name = name, type' = type', rules = rules, meta = meta}
 
-unpackDef :: TaoParser Definition
+unpackDef :: TaoParser Statement
 -- (x, y) = z
 unpackDef = P.fail' -- TODO
 
-typeDef :: TaoParser Definition
+typeDef :: TaoParser Statement
 -- type Bool = True | False
 typeDef = P.fail' -- TODO
 
-prompt :: TaoParser Definition
--- > 1 + 1
--- 2
-prompt = P.fail' -- TODO
-
--- Module
-source :: TaoParser Source
-source = do
-  docs <- P.maybe' (docString (P.atLeast 3 $ P.char '='))
-  imports <- P.zeroOrMore import'
-  definitions <- P.zeroOrMore definition
-  _ <- P.whitespaces
-  _ <- P.scope CDefinition P.endOfFile
-  P.ok
-    Source
-      { docs = docs,
-        imports = imports,
-        definitions = definitions
-      }
-
-import' :: TaoParser Import
+import' :: TaoParser Statement
 import' = do
-  _ <- P.word "import"
-  _ <- P.oneOrMore P.space
+  (meta, _) <- metadata (P.word "import")
   dirName <- concat <$> P.zeroOrMore (P.concat [identifier, P.text "/"])
   modName <- identifier
+  _ <- P.spaces
   name <-
     P.oneOf
       [ do
           _ <- P.word "as"
           _ <- P.spaces
           name <- identifier
+          _ <- P.spaces
           P.ok name,
         P.ok modName
       ]
-  _ <- P.spaces
   exposing <-
     P.oneOf
       [ collection "(" "," ")" identifier,
@@ -426,5 +400,20 @@ import' = do
     Import
       { path = dirName ++ modName,
         name = name,
-        exposing = exposing
+        exposing = exposing,
+        meta = meta
       }
+
+prompt :: TaoParser Statement
+-- > 1 + 1
+-- 2
+prompt = P.fail' -- TODO
+
+-- Module
+module' :: String -> TaoParser Module
+module' name = do
+  docs <- P.maybe' (docString (P.atLeast 3 $ P.char '='))
+  body <- P.zeroOrMore statement
+  _ <- P.whitespaces
+  _ <- P.scope CEndOfFile P.endOfFile
+  P.ok Module {name = name, docs = docs, body = body}

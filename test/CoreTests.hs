@@ -65,22 +65,22 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- show (mul (App x y) z) `shouldBe` "x y * z"
     -- show (mul (mul x y) z) `shouldBe` "x * y * z"
     -- show (mul x (mul y z)) `shouldBe` "x * (y * z)"
-    -- show (mul (addI x y) z) `shouldBe` "(x + y) * z"
-    -- show (mul x (addI y z)) `shouldBe` "x * (y + z)"
+    -- show (mul (add x y) z) `shouldBe` "(x + y) * z"
+    -- show (mul x (add y z)) `shouldBe` "x * (y + z)"
 
-    -- show (addI x (mul y z)) `shouldBe` "x + y * z"
-    -- show (addI (mul x y) z) `shouldBe` "x * y + z"
-    -- show (addI (addI x y) z) `shouldBe` "x + y + z"
-    -- show (addI x (addI y z)) `shouldBe` "x + (y + z)"
-    -- show (sub (addI x y) z) `shouldBe` "x + y - z"
-    -- show (sub x (addI y z)) `shouldBe` "x - (y + z)"
+    -- show (add x (mul y z)) `shouldBe` "x + y * z"
+    -- show (add (mul x y) z) `shouldBe` "x * y + z"
+    -- show (add (add x y) z) `shouldBe` "x + y + z"
+    -- show (add x (add y z)) `shouldBe` "x + (y + z)"
+    -- show (sub (add x y) z) `shouldBe` "x + y - z"
+    -- show (sub x (add y z)) `shouldBe` "x - (y + z)"
     -- show (sub (sub x y) z) `shouldBe` "x - y - z"
     -- show (sub x (sub y z)) `shouldBe` "x - (y - z)"
     -- show (sub (fun [x] y) z) `shouldBe` "(x -> y) - z"
     -- show (sub x (fun [y] z)) `shouldBe` "x - (y -> z)"
 
-    -- show (fun [x] (addI y z)) `shouldBe` "x -> y + z"
-    -- show (fun [addI x y] z) `shouldBe` "x + y -> z"
+    -- show (fun [x] (add y z)) `shouldBe` "x -> y + z"
+    -- show (fun [add x y] z) `shouldBe` "x + y -> z"
     show (fun [fun [x] y] z) `shouldBe` "(x -> y) -> z"
     show (fun [x] (fun [y] z)) `shouldBe` "x -> y -> z"
     show (fun [x] (lt y z)) `shouldBe` "x -> (y < z)"
@@ -227,11 +227,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ eval Op2" $ do
     let env = []
-    eval env (addI x y) `shouldBe` addI x y
-    eval env (addI x i2) `shouldBe` addI x i2
-    eval env (addI i1 y) `shouldBe` addI i1 y
+    eval env (add x y) `shouldBe` add x y
+    eval env (add x i2) `shouldBe` add x i2
+    eval env (add i1 y) `shouldBe` add i1 y
 
-    eval env (addI i1 i2) `shouldBe` Int 3
+    eval env (add i1 i2) `shouldBe` Int 3
     eval env (sub i1 i2) `shouldBe` Int (-1)
     eval env (mul i1 i2) `shouldBe` Int 2
 
@@ -377,7 +377,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let (n, a) = (Var "n", Var "a")
     let vec n a = app (Tag "Vec") [n, a]
     let (nil, nilType) = (Tag "Nil", For ["a"] (vec i0 a))
-    let (cons, consType) = (\x xs -> app (Tag "Cons") [x, xs], For ["n", "a"] (fun [a, vec n a] (vec (addI n i1) a)))
+    let (cons, consType) = (\x xs -> app (Tag "Cons") [x, xs], For ["n", "a"] (fun [a, vec n a] (vec (add n i1) a)))
     let vecType n a = Typ "Vec" [n, a] [("Nil", nilType), ("Cons", consType)]
     let env = [("Vec", lam [PVar "n", PVar "a"] $ vecType n a)]
 
@@ -393,8 +393,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ overload" $ do
     let m = App (Tag "M")
     let overloads =
-          [ ann (lam [_x, _y] $ addI x y) (fun [IntT, IntT] IntT),
-            ann (lam [_x, _y] $ addN (int2num x) y) (fun [IntT, NumT] NumT),
+          [ ann (lam [_x, _y] $ add x y) (fun [IntT, IntT] IntT),
+            ann (lam [_x, _y] $ add (int2num x) y) (fun [IntT, NumT] NumT),
             ann (lam [_x, _y] $ Tag "C") (fun [Tag "T", Tag "T"] (Tag "T")),
             ann (lam [_x, _y] $ Tag "Z") (fun [Tag "U", Tag "U"] (Tag "U")),
             Ann (lam [_x, _y] $ Tag "N") (For ["a"] $ fun [m a, m a] (m a))
@@ -409,7 +409,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
             ("M", Lam _x $ typeM x)
           ]
 
-    let eval' a = eval env a
+    let eval' = eval env
     eval' (app (Var "+") [Int 1, Int 2]) `shouldBe` Int 3
     eval' (app (Var "+") [Int 1, Num 2.2]) `shouldBe` Num 3.2
     -- eval' (app (Var "+") [Num 1.1, Int 2]) `shouldBe` err

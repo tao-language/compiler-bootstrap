@@ -1,3 +1,5 @@
+import Data.List (isSuffixOf)
+import qualified Python
 import qualified System.Environment
 import TaoLang
 
@@ -5,12 +7,19 @@ main :: IO ()
 main = do
   cliArgs <- System.Environment.getArgs
   case cliArgs of
+    "build-py" : filename : args | ".tao" `isSuffixOf` filename -> buildPy filename args
     filename : args -> run filename args
     _ -> putStrLn "🛑 Please give me a file to run."
 
+buildPy :: String -> [String] -> IO ()
+buildPy filename args = do
+  mod <- loadModule filename
+  let pyMod = Python.module' mod
+  print pyMod
+
 run :: String -> [String] -> IO ()
 run filename args = do
-  defs <- loadFile filename
+  mod <- loadModule filename
   -- env <- loadModule path
   -- f' <- loadExpr f
   -- args' <- mapM loadExpr args
@@ -19,4 +28,4 @@ run filename args = do
   --     print type'
   --     print result
   --   Left err -> fail ("❌ " ++ show err)
-  putStrLn ("🔴 TODO: filename=" ++ show filename ++ " args=" ++ show args)
+  putStrLn ("🔴 TODO run: filename=" ++ show filename ++ " args=" ++ show args)

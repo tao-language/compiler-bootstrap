@@ -48,7 +48,7 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "snake_case_name" `shouldBe` Right ("snake_case_name", "")
     p "dash-case-name" `shouldBe` Right ("dash-case-name", "")
     p "dash-case-name-1" `shouldBe` Right ("dash-case-name-1", "")
-    p "dash-case-name - 1" `shouldBe` Right ("dash-case-name", "- 1")
+    p "dash-case-name - 1" `shouldBe` Right ("dash-case-name", " - 1")
     p "a->" `shouldBe` Right ("a", "->")
 
   it "☯ inbetween" $ do
@@ -56,11 +56,11 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "" `shouldBe` Left ([], "")
     p "()" `shouldBe` Right ("", "")
     p "(abc)" `shouldBe` Right ("abc", "")
-    p "( \n abc \n )  \ndef" `shouldBe` Right ("abc", "\ndef")
+    p "( \n abc \n )  \ndef" `shouldBe` Right ("abc", "  \ndef")
 
   it "☯ collection" $ do
     let p = parse' $ collection "[" "," "]" P.letter
-    p "[] ." `shouldBe` Right ("", ".")
+    p "[] ." `shouldBe` Right ("", " .")
     p "[,]" `shouldBe` Left ([], ",]")
     p "[a]" `shouldBe` Right ("a", "")
     p "[a,]" `shouldBe` Right ("a", "")
@@ -80,14 +80,14 @@ run = describe "--==☯ Tao language ☯==--" $ do
     let meta row col x = ([Location sourceName row col], x)
     let p = parse' $ metadata (P.text "abc")
     p "abcdef" `shouldBe` Right (meta 1 1 "abc", "def")
-    p "abc   def" `shouldBe` Right (meta 1 1 "abc", "   def")
-    p "abc \n  def" `shouldBe` Right (meta 1 1 "abc", " \n  def")
+    p "abc   def" `shouldBe` Right (meta 1 1 "abc", "def")
+    p "abc \n  def" `shouldBe` Right (meta 1 1 "abc", "\n  def")
 
   it "☯ metadata comments" $ do
     let meta row col comments x = ([Location sourceName row col, Comments comments], x)
     let p = parse' $ metadata (P.text "abc")
-    p "#A\n#B\nabc def" `shouldBe` Right (meta 3 1 ["A", "B"] "abc", " def")
-    p "# A \n \n \n  #  B  \n  abc  def" `shouldBe` Right (meta 5 3 ["A", "B"] "abc", "  def")
+    p "#A\n#B\nabc def" `shouldBe` Right (meta 3 1 ["A", "B"] "abc", "def")
+    p "# A \n \n \n  #  B  \n  abc  def" `shouldBe` Right (meta 5 3 ["A", "B"] "abc", "def")
 
   it "☯ metadata comments (trailing)" $ do
     let meta row col comment x = ([Location sourceName row col, TrailingComment comment], x)
@@ -97,18 +97,18 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ patternName" $ do
     let p = parse' patternName
-    p "Type abc" `shouldBe` Right (PKnd, "abc")
-    p "Int abc" `shouldBe` Right (PIntT, "abc")
-    p "Num abc" `shouldBe` Right (PNumT, "abc")
-    p "Tag abc" `shouldBe` Right (PTag "Tag", "abc")
-    p "var abc" `shouldBe` Right (PVar "var", "abc")
+    p "Type abc" `shouldBe` Right (PKnd, " abc")
+    p "Int abc" `shouldBe` Right (PIntT, " abc")
+    p "Num abc" `shouldBe` Right (PNumT, " abc")
+    p "Tag abc" `shouldBe` Right (PTag "Tag", " abc")
+    p "var abc" `shouldBe` Right (PVar "var", " abc")
 
   it "☯ patternTuple" $ do
     let p = parse' patternTuple
-    p "() abc" `shouldBe` Right (PTuple [], "abc")
-    p "(x) abc" `shouldBe` Right (PVar "x", "abc")
-    p "(x,) abc" `shouldBe` Right (PTuple [pvar 1 2 "x"], "abc")
-    p "(x, y) abc" `shouldBe` Right (PTuple [pvar 1 2 "x", pvar 1 5 "y"], "abc")
+    p "() abc" `shouldBe` Right (PTuple [], " abc")
+    p "(x) abc" `shouldBe` Right (PVar "x", " abc")
+    p "(x,) abc" `shouldBe` Right (PTuple [pvar 1 2 "x"], " abc")
+    p "(x, y) abc" `shouldBe` Right (PTuple [pvar 1 2 "x", pvar 1 5 "y"], " abc")
 
   it "☯ patternRecordField" $ do
     let p = parse' patternRecordField
@@ -118,11 +118,11 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ patternRecord" $ do
     let p = parse' patternRecord
-    p "{} abc" `shouldBe` Right (PRecord [], "abc")
-    p "{x} abc" `shouldBe` Right (PRecord [("x", pvar 1 2 "x")], "abc")
-    p "{x,} abc" `shouldBe` Right (PRecord [("x", pvar 1 2 "x")], "abc")
-    p "{x: y} abc" `shouldBe` Right (PRecord [("x", pvar 1 5 "y")], "abc")
-    p "{x: y, z} abc" `shouldBe` Right (PRecord [("x", pvar 1 5 "y"), ("z", pvar 1 8 "z")], "abc")
+    p "{} abc" `shouldBe` Right (PRecord [], " abc")
+    p "{x} abc" `shouldBe` Right (PRecord [("x", pvar 1 2 "x")], " abc")
+    p "{x,} abc" `shouldBe` Right (PRecord [("x", pvar 1 2 "x")], " abc")
+    p "{x: y} abc" `shouldBe` Right (PRecord [("x", pvar 1 5 "y")], " abc")
+    p "{x: y, z} abc" `shouldBe` Right (PRecord [("x", pvar 1 5 "y"), ("z", pvar 1 8 "z")], " abc")
 
   it "☯ pattern'" $ do
     let p = parse' (pattern' $ P.ok ())
@@ -138,18 +138,18 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ expressionName" $ do
     let p = parse' expressionName
-    p "Type abc" `shouldBe` Right (Knd, "abc")
-    p "Int abc" `shouldBe` Right (IntT, "abc")
-    p "Num abc" `shouldBe` Right (NumT, "abc")
-    p "Tag abc" `shouldBe` Right (Tag "Tag", "abc")
-    p "var abc" `shouldBe` Right (Var "var", "abc")
+    p "Type abc" `shouldBe` Right (Knd, " abc")
+    p "Int abc" `shouldBe` Right (IntT, " abc")
+    p "Num abc" `shouldBe` Right (NumT, " abc")
+    p "Tag abc" `shouldBe` Right (Tag "Tag", " abc")
+    p "var abc" `shouldBe` Right (Var "var", " abc")
 
   it "☯ expressionTuple" $ do
     let p = parse' expressionTuple
-    p "() abc" `shouldBe` Right (Tuple [], "abc")
-    p "(x) abc" `shouldBe` Right (Var "x", "abc")
-    p "(x,) abc" `shouldBe` Right (Tuple [var 1 2 "x"], "abc")
-    p "(x, y) abc" `shouldBe` Right (Tuple [var 1 2 "x", var 1 5 "y"], "abc")
+    p "() abc" `shouldBe` Right (Tuple [], " abc")
+    p "(x) abc" `shouldBe` Right (Var "x", " abc")
+    p "(x,) abc" `shouldBe` Right (Tuple [var 1 2 "x"], " abc")
+    p "(x, y) abc" `shouldBe` Right (Tuple [var 1 2 "x", var 1 5 "y"], " abc")
 
   it "☯ expressionRecordField" $ do
     let p = parse' expressionRecordField
@@ -159,9 +159,9 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ expressionRecord" $ do
     let p = parse' expressionRecord
-    p "{} abc" `shouldBe` Right (Record [], "abc")
-    p "{x: y} abc" `shouldBe` Right (Record [("x", var 1 5 "y")], "abc")
-    p "{x: y, z: w} abc" `shouldBe` Right (Record [("x", var 1 5 "y"), ("z", var 1 11 "w")], "abc")
+    p "{} abc" `shouldBe` Right (Record [], " abc")
+    p "{x: y} abc" `shouldBe` Right (Record [("x", var 1 5 "y")], " abc")
+    p "{x: y, z: w} abc" `shouldBe` Right (Record [("x", var 1 5 "y"), ("z", var 1 11 "w")], " abc")
 
   it "☯ expression'" $ do
     let p = parse' (expression $ P.ok ())
@@ -203,23 +203,21 @@ run = describe "--==☯ Tao language ☯==--" $ do
   -- -- it "☯ typeDef" $ do
   -- -- it "☯ test" $ do
 
-  it "☯ definition" $ do
-    let p = parse' definition
+  it "☯ statement" $ do
+    let p = parse' statement
     p "x = y" `shouldBe` Right (LetDef {docs = Nothing, name = "x", type' = Nothing, rules = [([], var 1 5 "y")], meta = [Location sourceName 1 1]}, "")
 
   it "☯ import'" $ do
     let p = parse' import'
-    p "import mod" `shouldBe` Right (Import "mod" "mod" [], "")
-    p "import dir/to/mod" `shouldBe` Right (Import "dir/to/mod" "mod" [], "")
-    p "import mod as m" `shouldBe` Right (Import "mod" "m" [], "")
-    p "import mod as m ()" `shouldBe` Right (Import "mod" "m" [], "")
-    p "import mod as m (a, b)" `shouldBe` Right (Import "mod" "m" ["a", "b"], "")
+    p "import mod" `shouldBe` Right (Import "mod" "mod" [] [Location "test" 1 1], "")
+    p "import dir/to/mod" `shouldBe` Right (Import "dir/to/mod" "mod" [] [Location "test" 1 1], "")
+    p "import mod as m" `shouldBe` Right (Import "mod" "m" [] [Location "test" 1 1], "")
+    p "import mod as m ()" `shouldBe` Right (Import "mod" "m" [] [Location "test" 1 1], "")
+    p "import mod as m (a, b)" `shouldBe` Right (Import "mod" "m" ["a", "b"] [Location "test" 1 1], "")
 
-  it "☯ source" $ do
-    let p = parse' source
+  it "☯ module'" $ do
+    let p = parse' (module' "mod")
     let docs = Just DocString {public = True, description = "docs"}
-    p "===\ndocs\n===" `shouldBe` Right (Source {docs = docs, imports = [], definitions = []}, "")
-    let imports = [Import "mod" "mod" []]
-    p "===\ndocs\n===\nimport mod" `shouldBe` Right (Source {docs = docs, imports = imports, definitions = []}, "")
-    let defs = [LetDef {docs = Nothing, name = "x", type' = Nothing, rules = [([], var 5 5 "y")], meta = [Location sourceName 5 1]}]
-    p "===\ndocs\n===\nimport mod\nx = y" `shouldBe` Right (Source {docs = docs, imports = imports, definitions = defs}, "")
+    p "===\ndocs\n===" `shouldBe` Right (Module {name = "mod", docs = docs, body = []}, "")
+    let defs = [LetDef {docs = Nothing, name = "x", type' = Nothing, rules = [([], var 4 5 "y")], meta = [Location sourceName 4 1]}]
+    p "===\ndocs\n===\nx = y" `shouldBe` Right (Module {name = "mod", docs = docs, body = defs}, "")

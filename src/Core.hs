@@ -53,6 +53,7 @@ data Pattern
   | PFun !Pattern !Pattern
   | PApp !Pattern !Pattern
   | PRec ![(String, Pattern)]
+  | PMeta ![Metadata] !Pattern
   deriving (Eq)
 
 data Type
@@ -60,8 +61,7 @@ data Type
   deriving (Eq)
 
 data BinaryOp
-  = AddI
-  | AddN
+  = Add
   | Sub
   | Mul
   | Pow
@@ -105,8 +105,7 @@ instance Show Expr where
     Op2 Eq a b -> infixL 3 a (op2 Eq) b
     Op2 Lt a b -> infixR 4 a (op2 Lt) b
     Fun a b -> infixR 5 a " -> " b
-    Op2 AddI a b -> infixL 6 a (op2 AddI) b
-    Op2 AddN a b -> infixL 6 a (op2 AddN) b
+    Op2 Add a b -> infixL 6 a (op2 Add) b
     Op2 Sub a b -> infixL 6 a (op2 Sub) b
     Op2 Mul a b -> infixL 7 a (op2 Mul) b
     Err err -> prefix 8 "@error " err
@@ -155,8 +154,7 @@ instance Show Type where
 
 instance Show BinaryOp where
   show :: BinaryOp -> String
-  show AddI = "+"
-  show AddN = "+"
+  show Add = "+"
   show Sub = "-"
   show Mul = "*"
   show Pow = "^"
@@ -182,11 +180,8 @@ asLam :: Expr -> ([Pattern], Expr)
 asLam (Lam p a) = let (ps, b) = asLam a in (p : ps, b)
 asLam a = ([], a)
 
-addI :: Expr -> Expr -> Expr
-addI = Op2 AddI
-
-addN :: Expr -> Expr -> Expr
-addN = Op2 AddN
+add :: Expr -> Expr -> Expr
+add = Op2 Add
 
 sub :: Expr -> Expr -> Expr
 sub = Op2 Sub
@@ -279,6 +274,7 @@ patternExpr (PVar x) = Var x
 patternExpr (PFun p q) = Fun (patternExpr p) (patternExpr q)
 patternExpr (PApp p q) = App (patternExpr p) (patternExpr q)
 patternExpr (PRec kvs) = Rec (map (second patternExpr) kvs)
+patternExpr (PMeta m p) = Meta m (patternExpr p)
 
 occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
@@ -372,8 +368,8 @@ evalOp1 Int2Num (Int b) = Num (fromIntegral b)
 evalOp1 op a = Err (Op1Error op a)
 
 evalOp2 :: BinaryOp -> Expr -> Expr -> Expr
-evalOp2 AddI (Int a) (Int b) = Int (a + b)
-evalOp2 AddN (Num a) (Num b) = Num (a + b)
+evalOp2 Add (Int a) (Int b) = Int (a + b)
+evalOp2 Add (Num a) (Num b) = Num (a + b)
 evalOp2 Sub (Int a) (Int b) = Int (a - b)
 evalOp2 Sub (Num a) (Num b) = Num (a - b)
 evalOp2 Mul (Int a) (Int b) = Int (a * b)
@@ -566,12 +562,10 @@ inferOp1 env Int2Num a = do
   Right (NumT, s)
 
 inferOp2 :: Env -> BinaryOp -> Expr -> Expr -> Either Error (Expr, Substitution)
-inferOp2 env AddI a b = do
-  (_, s) <- infer2 env (ann a IntT) (ann b IntT)
-  Right (IntT, s)
-inferOp2 env AddN a b = do
-  (_, s) <- infer2 env (ann a NumT) (ann b NumT)
-  Right (NumT, s)
+inferOp2 env Add a b = do
+  (t, s1) <- infer env (ann a (Or IntT NumT))
+  (t, s2) <- infer (s1 `compose` env) (ann b t)
+  Right (t, s2 `compose` s1)
 inferOp2 env Sub a b = do
   (_, s) <- infer2 env (ann a IntT) (ann b IntT)
   Right (IntT, s)

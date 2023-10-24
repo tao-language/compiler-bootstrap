@@ -16,7 +16,7 @@ newtype Parser ctx a = Parser (State ctx -> Either (State ctx) (a, State ctx))
 
 data State ctx = State
   { remaining :: !String,
-    source :: !String,
+    name :: !String,
     row :: !Int,
     col :: !Int,
     index :: !Int,
@@ -58,8 +58,8 @@ apply :: Parser ctx a -> State ctx -> Either (State ctx) (a, State ctx)
 apply (Parser p) = p
 
 parse :: String -> Parser ctx a -> String -> Either (State ctx) (a, State ctx)
-parse source (Parser p) remaining =
-  p State {remaining = remaining, source = source, row = 1, col = 1, index = 0, context = []}
+parse name (Parser p) remaining =
+  p State {remaining = remaining, name = name, row = 1, col = 1, index = 0, context = []}
 
 ok :: a -> Parser ctx a
 ok x = Parser (\state -> Right (x, state))
@@ -104,15 +104,18 @@ scope ctx (Parser p) =
         Left state -> Left state {context = ctx : state.context}
     )
 
-skipTo :: Parser ctx delim -> Parser ctx String
-skipTo delim =
+skipToAfter :: Parser ctx delim -> Parser ctx String
+skipToAfter delim =
   oneOf
     [ "" <$ delim,
       do
         c <- anyChar
-        cs <- skipTo delim
+        cs <- skipToAfter delim
         ok (c : cs)
     ]
+
+skipToBefore :: Parser ctx delim -> Parser ctx String
+skipToBefore delim = skipToAfter (ok () |> notFollowedBy delim)
 
 try :: Parser ctx a -> Parser ctx b -> Parser ctx (Either b a)
 try (Parser p) else' =

@@ -72,7 +72,7 @@ run = describe "--==☯ Parser ☯==--" $ do
           s2 <- getState
           ok (s1, s2)
     let p = parse' parser
-    let s1 = State {remaining = "abc", source = "test", row = 1, col = 1, index = 0, context = []}
+    let s1 = State {remaining = "abc", name = "test", row = 1, col = 1, index = 0, context = []}
     let s2 = s1 {remaining = "bc", index = 1, col = 2}
     p "abc" `shouldBe` Right ((s1, s2), "bc")
 
@@ -270,8 +270,8 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "abc" `shouldBe` (Just 'a', [], "bc")
     p "_bc" `shouldBe` (Nothing, ["letter"], "_bc")
 
-  it "☯ skipTo" $ do
-    let p = parse' (skipTo (char '.'))
+  it "☯ skipToAfter" $ do
+    let p = parse' (skipToAfter (char '.'))
     p "" `shouldBe` Left ""
     p ".abc" `shouldBe` Right ("", "abc")
     p "a.bc" `shouldBe` Right ("a", "bc")
@@ -280,7 +280,7 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "abc" `shouldBe` Left "abc"
 
   it "☯ try" $ do
-    let p = parseErrors (try (do x <- scope "letters" $ oneOrMore letter; _ <- scope "dot" $ char '.'; ok x) (scope "failed dot" $ skipTo (char '.')))
+    let p = parseErrors (try (do x <- scope "letters" $ oneOrMore letter; _ <- scope "dot" $ char '.'; ok x) (scope "failed dot" $ skipToAfter (char '.')))
     p ".abc" `shouldBe` (Just $ Left "", ["letters"], "abc")
     p "_.abc" `shouldBe` (Just $ Left "_", ["letters"], "abc")
     p "a_.bc" `shouldBe` (Just $ Left "a_", ["dot"], "bc")
