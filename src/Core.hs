@@ -3,7 +3,7 @@
 module Core where
 
 import Data.Bifunctor (Bifunctor (second))
-import Data.Char (isAlphaNum, isLower, isUpper, toLower)
+import Data.Char (isAlphaNum, isLower, isUpper)
 import Data.List (delete, intercalate, union)
 
 -- https://simon.peytonjones.org/verse-calculus
@@ -20,6 +20,23 @@ import Data.List (delete, intercalate, union)
   Maybe just add back Pattern to avoid "invalid" patterns
 - Remove If
 -}
+
+data Module = Module
+  { name :: String,
+    -- docs :: Maybe DocString,
+    env :: Env,
+    run :: [Expr]
+  }
+  deriving (Eq, Show)
+
+data DocString = DocString
+  { public :: Bool,
+    description :: String
+  }
+  deriving (Eq, Show)
+
+newDocString :: DocString
+newDocString = DocString {public = False, description = ""}
 
 data Expr
   = Knd

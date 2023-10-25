@@ -1,6 +1,7 @@
 import Data.List (isSuffixOf)
 import qualified Python
 import qualified System.Environment
+import qualified Tao
 import TaoLang
 
 main :: IO ()
@@ -13,8 +14,8 @@ main = do
 
 buildPy :: String -> [String] -> IO ()
 buildPy filename args = do
-  mod <- loadModule filename
-  let pyMod = Python.module' mod
+  taoMod <- loadModule filename
+  let pyMod = Python.module' taoMod
   print pyMod
 
 run :: String -> [String] -> IO ()

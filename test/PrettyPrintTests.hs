@@ -25,7 +25,7 @@ run = describe "--==☯ Pretty print ☯==--" $ do
                 ]
             ]
 
-    let layout :: Tree -> Doc
+    let layout :: Tree -> Layout
         layout (Node s []) = [Text s]
         layout (Node s ts) =
           [ Text s,

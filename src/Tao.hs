@@ -6,6 +6,7 @@
 
 module Tao where
 
+import Core (DocString (..), Metadata (..))
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
 
@@ -45,7 +46,7 @@ data Pattern
   | PRecord ![(String, Pattern)]
   | PFun !Pattern !Pattern
   | PApp !Pattern !Pattern
-  | PMeta ![C.Metadata] !Pattern
+  | PMeta ![Metadata] !Pattern
   deriving (Eq, Show)
 
 data Expr
@@ -59,6 +60,7 @@ data Expr
   | Lam !Pattern !Expr
   | Tuple ![Expr]
   | Record ![(String, Expr)]
+  | Match ![([Pattern], Expr)]
   | Block ![Statement] !Expr
   | App !Expr !Expr
   | Fun !Expr !Expr
@@ -70,55 +72,47 @@ data Expr
   | Mul !Expr !Expr
   | Pow !Expr !Expr
   | Ann !Expr !Type
-  | Meta ![C.Metadata] !Expr
+  | Meta ![Metadata] !Expr
+  | Err
   deriving (Eq, Show)
 
 data Type
   = For ![String] !Expr
   deriving (Eq, Show)
 
-data DocString = DocString
-  { public :: Bool,
-    description :: String
-  }
-  deriving (Eq, Show)
-
-newDocString :: DocString
-newDocString = DocString {public = False, description = ""}
-
 data Statement
   = LetDef
       { docs :: Maybe DocString,
         name :: String,
         type' :: Maybe Type,
-        rules :: [([Pattern], Expr)],
-        meta :: [C.Metadata]
+        value :: Expr,
+        meta :: [Metadata]
       }
   | Unpack
       { docs :: Maybe DocString,
         types :: [(String, Type)],
         pattern :: Pattern,
         value :: Expr,
-        meta :: [C.Metadata]
+        meta :: [Metadata]
       }
   | TypeDef
       { docs :: Maybe DocString,
         name :: String,
         args :: [Expr],
         alts :: (String, Type),
-        meta :: [C.Metadata]
+        meta :: [Metadata]
       }
   | Import
       { path :: String,
         name :: String,
         exposing :: [String],
-        meta :: [C.Metadata]
+        meta :: [Metadata]
       }
   | Prompt
       { description :: String,
         expression :: Expr,
         result :: Maybe Expr,
-        meta :: [C.Metadata]
+        meta :: [Metadata]
       }
   deriving (Eq, Show)
 
@@ -138,6 +132,10 @@ data ParserContext
 fun :: [Expr] -> Expr -> Expr
 fun bs b = foldr Fun b bs
 
+splitFun :: Expr -> ([Expr], Expr)
+splitFun (Fun a1 a2) = let (bs, b) = splitFun a2 in (a1 : bs, b)
+splitFun a = ([], a)
+
 lam :: [Pattern] -> Expr -> Expr
 lam ps b = foldr Lam b ps
 
@@ -149,6 +147,93 @@ ann a t = Ann a (For [] t)
 
 pApp :: Pattern -> [Pattern] -> Pattern
 pApp = foldl PApp
+
+match :: [([Pattern], Expr)] -> Expr
+match [] = Err -- NotImplementedError or some sort of "hole"
+match (([], b) : _) = b
+match [(ps, b)] = lam ps b
+match rules = Match rules
+
+matchArgs :: String -> [([Pattern], Expr)] -> [String]
+matchArgs _ [] = []
+matchArgs x rules@((ps, _) : _) = do
+  let freeVars = C.freeVars (toCore $ match rules)
+  take (length ps) (C.newNames (x : freeVars) x)
+
+toCoreModule :: Module -> C.Module
+toCoreModule Module {name, docs, body} =
+  C.Module
+    { name = name,
+      -- docs :: Maybe DocString,
+      env = concatMap toCoreDefs body,
+      run = concatMap toCoreRun body
+    }
+
+toCoreDefs :: Statement -> C.Env
+toCoreDefs LetDef {docs, name, type', value, meta} = []
+--     { docs :: Maybe DocString,
+--       name :: String,
+--       type' :: Maybe Type,
+--       rules :: [([Pattern], Expr)],
+--       meta :: [Metadata]
+toCoreDefs Unpack {docs, types, pattern, value, meta} = []
+--     { docs :: Maybe DocString,
+--       types :: [(String, Type)],
+--       pattern :: Pattern,
+--       value :: Expr,
+--       meta :: [Metadata]
+toCoreDefs TypeDef {docs, name, args, alts, meta} = []
+--     { docs :: Maybe DocString,
+--       name :: String,
+--       args :: [Expr],
+--       alts :: (String, Type),
+--       meta :: [Metadata]
+toCoreDefs Import {path, name, exposing, meta} = []
+--     { path :: String,
+--       name :: String,
+--       exposing :: [String],
+--       meta :: [Metadata]
+toCoreDefs Prompt {description, expression, result, meta} = []
+
+--     { description :: String,
+--       expression :: Expr,
+--       result :: Maybe Expr,
+--       meta :: [Metadata]
+
+toCoreRun :: Statement -> [C.Expr]
+toCoreRun LetDef {docs, name, type', value, meta} = []
+--     { docs :: Maybe DocString,
+--       name :: String,
+--       type' :: Maybe Type,
+--       rules :: [([Pattern], Expr)],
+--       meta :: [Metadata]
+toCoreRun Unpack {docs, types, pattern, value, meta} = []
+--     { docs :: Maybe DocString,
+--       types :: [(String, Type)],
+--       pattern :: Pattern,
+--       value :: Expr,
+--       meta :: [Metadata]
+--     }
+toCoreRun TypeDef {docs, name, args, alts, meta} = []
+--     { docs :: Maybe DocString,
+--       name :: String,
+--       args :: [Expr],
+--       alts :: (String, Type),
+--       meta :: [Metadata]
+--     }
+toCoreRun Import {path, name, exposing, meta} = []
+--     { path :: String,
+--       name :: String,
+--       exposing :: [String],
+--       meta :: [Metadata]
+--     }
+toCoreRun Prompt {description, expression, result, meta} = []
+
+--     { description :: String,
+--       expression :: Expr,
+--       result :: Maybe Expr,
+--       meta :: [Metadata]
+--     }
 
 toCoreP :: [String] -> Pattern -> C.Pattern
 toCoreP fvs PAny = C.PVar (C.newName fvs "_")

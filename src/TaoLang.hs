@@ -5,7 +5,7 @@
 module TaoLang where
 
 import Control.Monad (void)
-import Core (Metadata (..))
+import Core (DocString (..), Metadata (..))
 import Data.Char (isSpace, isUpper)
 import Data.List (dropWhileEnd, intercalate)
 import Flow ((|>))
@@ -364,7 +364,7 @@ letDef = do
           rules <- P.zeroOrMore (ruleDef name)
           P.ok (Nothing, rule : rules)
       ]
-  P.ok LetDef {docs = docs, name = name, type' = type', rules = rules, meta = meta}
+  P.ok LetDef {docs = docs, name = name, type' = type', value = match rules, meta = meta}
 
 unpackDef :: TaoParser Statement
 -- (x, y) = z

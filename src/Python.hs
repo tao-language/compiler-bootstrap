@@ -2,12 +2,13 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
 module Python where
 
-import Core (Metadata (..))
-import Tao (DocString (..))
+import Core (DocString (..), Metadata (..))
+import qualified Core as C
 import qualified Tao
 
 -- https://docs.python.org/3/library/ast.html
@@ -25,8 +26,7 @@ data Module = Module
 -- https://docs.python.org/3/library/ast.html#expressions
 data Expr
   = None -- None
-  | True -- True
-  | False -- True
+  | Bool !Bool -- True
   | Integer !Int -- 42
   | Float !Double -- 3.14
   | Imaginary !Double -- 3.14j
@@ -37,6 +37,8 @@ data Expr
   | Bytes !String -- b'hello'
   | String !String -- 'Hello'
   | FString ![FormattedValue] -- f"hello {x}"
+  | Name !String -- x
+  | Starred !Expr -- _, *x = _
   | UnaryOp !UnaryOp !Expr -- not x
   | BinOp !Expr !BinOp !Expr -- x + y
   | BoolOp !Expr !BoolOp !Expr -- x and y
@@ -150,8 +152,9 @@ data Statement
         async :: Bool
       }
   | FunctionDef
-      { name :: String,
-        args :: [(String, Maybe Expr, Maybe Expr)], -- arg: Type = default
+      { docs :: Maybe DocString,
+        name :: String,
+        args :: [(String, Maybe Expr, Maybe Expr)],
         body :: [Statement],
         decorators :: [Expr],
         returns :: Maybe Expr,
@@ -193,6 +196,12 @@ data TypeParam
   | ParamSpec !String -- T[**ts]
   deriving (Eq, Show)
 
+call :: Expr -> [Expr] -> Expr
+call f xs = Call f xs []
+
+raise :: Expr -> Statement
+raise x = Raise x Nothing
+
 module' :: Tao.Module -> Python.Module
 module' mod = do
   Module
@@ -202,13 +211,24 @@ module' mod = do
     }
 
 statement :: Tao.Statement -> Python.Statement
-statement (Tao.LetDef {docs, name, type', rules, meta}) =
-  error "TODO: LetDef"
-statement (Tao.Unpack {docs, types, pattern, value, meta}) =
+statement (Tao.LetDef {docs, name, type' = Nothing, value, meta}) = do
+  FunctionDef
+    { docs = docs,
+      name = name,
+      args = map (,Nothing,Nothing) [],
+      body = [raise (call (Name "NotImplementedError") [Name name])],
+      decorators = [],
+      returns = Nothing,
+      typeParams = [],
+      async = False
+    }
+statement (Tao.LetDef {docs, name, type' = Just (Tao.For xs t), value, meta}) = do
+  error "TODO: LetDef typed"
+statement (Tao.Unpack {docs, types, pattern, value, meta}) = do
   error "TODO: Unpack"
-statement (Tao.TypeDef {docs, name, args, alts, meta}) =
+statement (Tao.TypeDef {docs, name, args, alts, meta}) = do
   error "TODO: TypeDef"
-statement (Tao.Import {path, name, exposing, meta}) =
+statement (Tao.Import {path, name, exposing, meta}) = do
   error "TODO: TypeDef"
-statement (Tao.Prompt {description, expression, result, meta}) =
+statement (Tao.Prompt {description, expression, result, meta}) = do
   error "TODO: Prompt"

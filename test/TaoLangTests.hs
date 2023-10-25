@@ -6,7 +6,7 @@
 
 module TaoLangTests where
 
-import Core (Metadata (..))
+import Core (DocString (..), Metadata (..))
 import Error
 import qualified Parser as P
 import Tao
@@ -193,11 +193,11 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ letDef" $ do
     let p = parse' letDef
-    let def = LetDef {docs = Nothing, name = "x", type' = Nothing, rules = [], meta = [Location sourceName 1 1]}
-    p "x = y" `shouldBe` Right (def {rules = [([], var 1 5 "y")]}, "")
-    p "x : Int = y" `shouldBe` Right (def {type' = Just (For [] $ loc 1 5 IntT), rules = [([], var 1 11 "y")]}, "")
-    p "x : Int\nx = y" `shouldBe` Right (def {type' = Just (For [] $ loc 1 5 IntT), rules = [([], var 2 5 "y")]}, "")
-    p "x p = y\nx q = z" `shouldBe` Right (def {rules = [([pvar 1 3 "p"], var 1 7 "y"), ([pvar 2 3 "q"], var 2 7 "z")]}, "")
+    let def = LetDef {docs = Nothing, name = "x", type' = Nothing, value = Err, meta = [Location sourceName 1 1]}
+    p "x = y" `shouldBe` Right (def {value = var 1 5 "y"}, "")
+    p "x : Int = y" `shouldBe` Right (def {type' = Just (For [] $ loc 1 5 IntT), value = var 1 11 "y"}, "")
+    p "x : Int\nx = y" `shouldBe` Right (def {type' = Just (For [] $ loc 1 5 IntT), value = var 2 5 "y"}, "")
+    p "x p = y\nx q = z" `shouldBe` Right (def {value = Match [([pvar 1 3 "p"], var 1 7 "y"), ([pvar 2 3 "q"], var 2 7 "z")]}, "")
 
   -- -- it "☯ unpackDef" $ do
   -- -- it "☯ typeDef" $ do
@@ -205,7 +205,7 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ statement" $ do
     let p = parse' statement
-    p "x = y" `shouldBe` Right (LetDef {docs = Nothing, name = "x", type' = Nothing, rules = [([], var 1 5 "y")], meta = [Location sourceName 1 1]}, "")
+    p "x = y" `shouldBe` Right (LetDef {docs = Nothing, name = "x", type' = Nothing, value = var 1 5 "y", meta = [Location sourceName 1 1]}, "")
 
   it "☯ import'" $ do
     let p = parse' import'
@@ -219,5 +219,5 @@ run = describe "--==☯ Tao language ☯==--" $ do
     let p = parse' (module' "mod")
     let docs = Just DocString {public = True, description = "docs"}
     p "===\ndocs\n===" `shouldBe` Right (Module {name = "mod", docs = docs, body = []}, "")
-    let defs = [LetDef {docs = Nothing, name = "x", type' = Nothing, rules = [([], var 4 5 "y")], meta = [Location sourceName 4 1]}]
+    let defs = [LetDef {docs = Nothing, name = "x", type' = Nothing, value = var 4 5 "y", meta = [Location sourceName 4 1]}]
     p "===\ndocs\n===\nx = y" `shouldBe` Right (Module {name = "mod", docs = docs, body = defs}, "")
