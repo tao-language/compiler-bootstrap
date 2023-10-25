@@ -42,39 +42,39 @@ data Expr
   = Knd
   | IntT
   | NumT
-  | Int !Int
-  | Num !Double
-  | Tag !String
-  | Var !String
-  | Ann !Expr !Type
-  | Lam !Pattern !Expr
-  | Fix !String !Expr
-  | Fun !Expr !Expr
-  | Or !Expr !Expr
-  | App !Expr !Expr
-  | Rec ![(String, Expr)]
-  | Typ !String ![Expr] ![(String, Type)]
-  | Op1 !UnaryOp !Expr
-  | Op2 !BinaryOp !Expr !Expr
-  | Meta ![Metadata] !Expr
-  | Err !Error
+  | Int Int
+  | Num Double
+  | Tag String
+  | Var String
+  | Ann Expr Type
+  | Lam Pattern Expr
+  | Fix String Expr
+  | Fun Expr Expr
+  | Or Expr Expr
+  | App Expr Expr
+  | Rec [(String, Expr)]
+  | Typ String [Expr] [(String, Type)]
+  | Op1 UnaryOp Expr
+  | Op2 BinaryOp Expr Expr
+  | Meta [Metadata] Expr
+  | Err Error
   deriving (Eq)
 
 data Pattern
   = PKnd
   | PIntT
   | PNumT
-  | PInt !Int
-  | PTag !String
-  | PVar !String
-  | PFun !Pattern !Pattern
-  | PApp !Pattern !Pattern
-  | PRec ![(String, Pattern)]
-  | PMeta ![Metadata] !Pattern
+  | PInt Int
+  | PTag String
+  | PVar String
+  | PFun Pattern Pattern
+  | PApp Pattern Pattern
+  | PRec [(String, Pattern)]
+  | PMeta [Metadata] Pattern
   deriving (Eq)
 
 data Type
-  = For ![String] !Expr
+  = For [String] Expr
   deriving (Eq)
 
 data BinaryOp
@@ -91,9 +91,9 @@ data UnaryOp
   deriving (Eq)
 
 data Metadata
-  = Location !String !Int !Int
-  | Comments ![String]
-  | TrailingComment !String
+  = Location String Int Int
+  | Comments [String]
+  | TrailingComment String
   deriving (Eq, Show)
 
 type Env = [(String, Expr)]
@@ -101,13 +101,13 @@ type Env = [(String, Expr)]
 type Substitution = [(String, Expr)]
 
 data Error
-  = NotAFunction !Expr !Expr
-  | OccursError !String !Expr
-  | Op1Error !UnaryOp !Expr
-  | Op2Error !BinaryOp !Expr !Expr
-  | PatternMatchError !Pattern !Expr
-  | TypeMismatch !Expr !Expr
-  | UndefinedVar !String
+  = NotAFunction Expr Expr
+  | OccursError String Expr
+  | Op1Error UnaryOp Expr
+  | Op2Error BinaryOp Expr Expr
+  | PatternMatchError Pattern Expr
+  | TypeMismatch Expr Expr
+  | UndefinedVar String
   deriving (Eq, Show)
 
 instance Show Expr where
@@ -427,7 +427,7 @@ unify (Fun a1 a2) b@Tag {} = unify a2 (App b a1)
 unify (Fun a1 a2) b@App {} = unify a2 (App b a1)
 unify a@Tag {} (Fun b1 b2) = unify (App a b1) b2
 unify a@App {} (Fun b1 b2) = unify (App a b1) b2
--- Ann !Expr !Type
+-- Ann Expr Type
 unify (Fun a1 b1) (Fun a2 b2) = do
   ((ta, tb), s) <- unify2 (a1, a2) (b1, b2)
   Right (Fun ta tb, s)

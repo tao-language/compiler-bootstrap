@@ -39,45 +39,45 @@ data Pattern
   | PKnd
   | PIntT
   | PNumT
-  | PInt !Int
-  | PTag !String
-  | PVar !String
-  | PTuple ![Pattern]
-  | PRecord ![(String, Pattern)]
-  | PFun !Pattern !Pattern
-  | PApp !Pattern !Pattern
-  | PMeta ![Metadata] !Pattern
+  | PInt Int
+  | PTag String
+  | PVar String
+  | PTuple [Pattern]
+  | PRecord [(String, Pattern)]
+  | PFun Pattern Pattern
+  | PApp Pattern Pattern
+  | PMeta [Metadata] Pattern
   deriving (Eq, Show)
 
 data Expr
   = Knd
   | IntT
   | NumT
-  | Int !Int
-  | Num !Double
-  | Tag !String
-  | Var !String
-  | Lam !Pattern !Expr
-  | Tuple ![Expr]
-  | Record ![(String, Expr)]
-  | Match ![([Pattern], Expr)]
-  | Block ![Statement] !Expr
-  | App !Expr !Expr
-  | Fun !Expr !Expr
-  | Or !Expr !Expr
-  | Eq !Expr !Expr
-  | Lt !Expr !Expr
-  | Add !Expr !Expr
-  | Sub !Expr !Expr
-  | Mul !Expr !Expr
-  | Pow !Expr !Expr
-  | Ann !Expr !Type
-  | Meta ![Metadata] !Expr
+  | Int Int
+  | Num Double
+  | Tag String
+  | Var String
+  | Lam Pattern Expr
+  | Tuple [Expr]
+  | Record [(String, Expr)]
+  | Match [([Pattern], Expr)]
+  | Block [Statement] Expr
+  | App Expr Expr
+  | Fun Expr Expr
+  | Or Expr Expr
+  | Eq Expr Expr
+  | Lt Expr Expr
+  | Add Expr Expr
+  | Sub Expr Expr
+  | Mul Expr Expr
+  | Pow Expr Expr
+  | Ann Expr Type
+  | Meta [Metadata] Expr
   | Err
   deriving (Eq, Show)
 
 data Type
-  = For ![String] !Expr
+  = For [String] Expr
   deriving (Eq, Show)
 
 data Statement

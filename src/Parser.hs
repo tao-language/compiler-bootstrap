@@ -15,12 +15,12 @@ import Flow ((|>))
 newtype Parser ctx a = Parser (State ctx -> Either (State ctx) (a, State ctx))
 
 data State ctx = State
-  { remaining :: !String,
-    name :: !String,
-    row :: !Int,
-    col :: !Int,
-    index :: !Int,
-    context :: ![ctx]
+  { remaining :: String,
+    name :: String,
+    row :: Int,
+    col :: Int,
+    index :: Int,
+    context :: [ctx]
   }
   deriving (Eq, Show)
 
@@ -370,9 +370,9 @@ subparser delim parser = subparserPartial delim (do x <- parser; _ <- endOfFile;
 -- Operator precedence
 -- https://github.com/zesterer/chumsky/blob/main/src/pratt.rs
 data Operator ctx a
-  = Prefix !Int !(Parser ctx a -> Parser ctx a)
-  | InfixL !Int !(a -> Parser ctx a -> Parser ctx a)
-  | InfixR !Int !(a -> Parser ctx a -> Parser ctx a)
+  = Prefix Int (Parser ctx a -> Parser ctx a)
+  | InfixL Int (a -> Parser ctx a -> Parser ctx a)
+  | InfixR Int (a -> Parser ctx a -> Parser ctx a)
 
 prefix :: Int -> (op -> a -> a) -> Parser ctx op -> Operator ctx a
 prefix prec f op = do
