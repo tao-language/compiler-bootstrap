@@ -30,13 +30,12 @@ run = describe "--==☯ Pretty print ☯==--" $ do
         layout (Node s ts) =
           [ Text s,
             Text " [",
-            group
-              [ Indent "  " (break' : join [Text ",", space] items),
-                trailing [Text ","]
-              ],
+            Or
+              (join [Text ", "] items)
+              [Indent "  " (NewLine : join [Text ",", NewLine] items), Text ",", NewLine],
             Text "]"
           ]
           where
             items = map layout ts
 
-    pretty 18 (layout tree) `shouldBe` "aaa [\n  bbbbb [ccc, dd],\n  eee,\n  ffff [\n    gg, hhh, ii,\n  ],\n]"
+    pretty 19 (layout tree) `shouldBe` "aaa [\n  bbbbb [ccc, dd],\n  eee,\n  ffff [\n    gg,\n    hhh,\n    ii,\n  ],\n]"
