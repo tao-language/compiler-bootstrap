@@ -14,10 +14,7 @@ data Segment
 pretty :: Int -> Layout -> String
 pretty width = render width 0 ""
 
--- Syntax sugar
-group :: Layout -> Segment
-group = Indent ""
-
+-- Common
 join :: Layout -> [Layout] -> Layout
 join _ [] = []
 join _ [x] = x
