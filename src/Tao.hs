@@ -132,10 +132,6 @@ data ParserContext
 fun :: [Expr] -> Expr -> Expr
 fun bs b = foldr Fun b bs
 
-splitFun :: Expr -> ([Expr], Expr)
-splitFun (Fun a1 a2) = let (bs, b) = splitFun a2 in (a1 : bs, b)
-splitFun a = ([], a)
-
 lam :: [Pattern] -> Expr -> Expr
 lam ps b = foldr Lam b ps
 
@@ -147,6 +143,15 @@ ann a t = Ann a (For [] t)
 
 pApp :: Pattern -> [Pattern] -> Pattern
 pApp = foldl PApp
+
+asFun :: Expr -> ([Expr], Expr)
+asFun (Fun a1 a2) = let (bs, b) = asFun a2 in (a1 : bs, b)
+asFun (Meta _ a) = asFun a
+asFun a = ([], a)
+
+asApp :: Expr -> (Expr, [Expr])
+asApp (App a b) = let (a', bs) = asApp a in (a', bs ++ [b])
+asApp a = (a, [])
 
 match :: [([Pattern], Expr)] -> Expr
 match [] = Err -- NotImplementedError or some sort of "hole"
@@ -263,6 +268,8 @@ toCore (Lam p b) = do
 toCore (Tuple items) = toCore (app (Tag "()") items)
 toCore (Record fields) = C.Rec (second toCore <$> fields)
 toCore (Block defs b) = error "TODO: toCore Block"
+toCore (Match []) = error "TODO: toCore Match []"
+toCore (Match ((ps, b) : rules)) = toCore (lam ps b `Or` match rules)
 toCore (App a b) = C.App (toCore a) (toCore b)
 toCore (Fun a b) = C.Fun (toCore a) (toCore b)
 toCore (Or a b) = C.Or (toCore a) (toCore b)
@@ -274,3 +281,4 @@ toCore (Mul a b) = C.mul (toCore a) (toCore b)
 toCore (Pow a b) = C.pow (toCore a) (toCore b)
 toCore (Ann a (For xs t)) = C.Ann (toCore a) (C.For xs $ toCore t)
 toCore (Meta m a) = C.Meta m (toCore a)
+toCore (Err) = error "TODO: toCore Err"

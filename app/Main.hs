@@ -1,4 +1,12 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE NoFieldSelectors #-}
+
 import Data.List (isSuffixOf)
+import PrettyPrint (pretty)
 import qualified Python
 import qualified System.Environment
 import qualified Tao
@@ -15,8 +23,11 @@ main = do
 buildPy :: String -> [String] -> IO ()
 buildPy filename args = do
   taoMod <- loadModule filename
-  let pyMod = Python.module' taoMod
-  print pyMod
+  let pyMod = Python.emit taoMod
+  let pyFile = pretty 80 "    " (Python.layoutModule pyMod)
+  putStrLn "#!/usr/bin/env python3"
+  putStrLn ""
+  putStrLn pyFile
 
 run :: String -> [String] -> IO ()
 run filename args = do

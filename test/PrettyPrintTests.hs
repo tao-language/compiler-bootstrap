@@ -9,7 +9,7 @@ run :: SpecWith ()
 run = describe "--==☯ Pretty print ☯==--" $ do
   it "☯ join" $ do
     let layout = join [Text ","] [[Text "a"], [Text "b", Text "c"], [Text "d"]]
-    pretty 0 layout `shouldBe` "a,bc,d"
+    pretty 0 "" layout `shouldBe` "a,bc,d"
 
   it "☯ Binary tree" $ do
     let tree =
@@ -36,11 +36,11 @@ run = describe "--==☯ Pretty print ☯==--" $ do
             Text " [",
             Or
               (join [Text ", "] items)
-              [Indent "  " (NewLine : join [Text ",", NewLine] items), Text ",", NewLine],
+              [Indent (NewLine : join [Text ",", NewLine] items), Text ",", NewLine],
             Text
               "]"
           ]
           where
             items = map layout ts
 
-    pretty 19 (layout tree) `shouldBe` "aaa [\n  bbbbb [ccc, dd],\n  eee,\n  ffff [\n    gg,\n    hhh,\n    ii,\n  ],\n]"
+    pretty 19 "  " (layout tree) `shouldBe` "aaa [\n  bbbbb [ccc, dd],\n  eee,\n  ffff [\n    gg,\n    hhh,\n    ii,\n  ],\n]"
