@@ -83,6 +83,7 @@ data Type
 data Statement
   = LetDef
       { docs :: Maybe DocString,
+        examples :: [(Expr, Expr)],
         name :: String,
         type' :: Maybe Type,
         value :: Expr,
@@ -90,6 +91,7 @@ data Statement
       }
   | Unpack
       { docs :: Maybe DocString,
+        examples :: [(Expr, Expr)],
         types :: [(String, Type)],
         pattern :: Pattern,
         value :: Expr,
@@ -97,6 +99,7 @@ data Statement
       }
   | TypeDef
       { docs :: Maybe DocString,
+        examples :: [(Expr, Expr)],
         name :: String,
         args :: [Expr],
         alts :: (String, Type),
@@ -125,8 +128,16 @@ data Module = Module
   deriving (Eq, Show)
 
 data ParserContext
-  = CStatement
-  | CEndOfFile
+  = COperator String
+  | CLetDef String
+  | CPAny
+  | CRecordField String
+  | CDocString
+  | CExpression
+  | CLetDefTyped
+  | CLetDefTypedVar
+  | CLetDefUntyped
+  | CTODO -- TODO: REMOVE THIS
   deriving (Eq, Show)
 
 fun :: [Expr] -> Expr -> Expr

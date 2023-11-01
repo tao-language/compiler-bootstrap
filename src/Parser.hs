@@ -61,6 +61,14 @@ parse :: String -> Parser ctx a -> String -> Either (State ctx) (a, State ctx)
 parse name (Parser p) remaining =
   p State {remaining = remaining, name = name, row = 1, col = 1, index = 0, context = []}
 
+parseFrom :: (Int, Int) -> String -> Parser ctx a -> Parser ctx a
+parseFrom (row, col) remaining (Parser p) =
+  Parser
+    ( \state -> case p state {row = row, col = col, remaining = remaining} of
+        Right (x, _) -> Right (x, state)
+        Left state -> Left state
+    )
+
 ok :: a -> Parser ctx a
 ok x = Parser (\state -> Right (x, state))
 
@@ -81,27 +89,25 @@ if' check (Parser p) =
     )
 
 oneOf :: [Parser ctx a] -> Parser ctx a
-oneOf ps = choose (map (,ok) ps)
-
-choose :: [(Parser ctx a, a -> Parser ctx b)] -> Parser ctx b
-choose [] = fail'
-choose ((Parser p, branch) : branches) =
+oneOf [] = fail'
+oneOf (Parser p : choices) =
   Parser
-    ( \state -> case p state of
-        Right (x, state) -> apply (branch x) state
-        Left _ -> apply (choose branches) state
+    ( \state1 -> case p state1 {context = []} of
+        Right (x, state2) -> Right (x, state2 {context = state2.context ++ state1.context})
+        Left State {context = []} -> apply (oneOf choices) state1
+        Left state2 -> Left state2 {context = state2.context ++ state1.context}
     )
 
 getState :: Parser ctx (State ctx)
 getState = Parser (\state -> Right (state, state))
 
 -- Error handling
-scope :: ctx -> Parser ctx a -> Parser ctx a
-scope ctx (Parser p) =
+commit :: (a -> ctx) -> Parser ctx a -> Parser ctx a
+commit f (Parser p) =
   Parser
-    ( \state -> case p state of
-        Right (x, state) -> Right (x, state)
-        Left state -> Left state {context = ctx : state.context}
+    ( \state1 -> case p state1 of
+        Right (x, state) -> Right (x, state {context = f x : state.context})
+        Left state -> Left state
     )
 
 skipToAfter :: Parser ctx delim -> Parser ctx String

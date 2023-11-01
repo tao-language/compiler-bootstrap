@@ -163,6 +163,7 @@ data Statement
       }
   | FunctionDef
       { docs :: Maybe DocString,
+        examples :: [(Expr, Expr)],
         name :: String,
         args :: [(String, Maybe Expr, Maybe Expr)],
         body :: [Statement],
@@ -295,10 +296,12 @@ emitStmt def@(Tao.LetDef {value = Tao.Match cases, meta}) = do
       returns <- emitExpr retT
       return (map TypeVar xs, map Just argTypes, Just returns)
     Nothing -> return ([], map (const Nothing) argNames, Nothing)
+  examples <- emitExamples def.examples
   cases' <- emitMatchCases cases
   return
     FunctionDef
       { docs = def.docs,
+        examples = examples,
         name = def.name,
         args = zipWith (\x t -> (x, t, Nothing)) argNames argTypes,
         body = [Match (Tuple $ map Name argNames) cases'],
@@ -317,6 +320,19 @@ emitStmt (Tao.Import {path, name, exposing, meta}) = do
   error "TODO: TypeDef"
 emitStmt (Tao.Prompt {description, expression, result, meta}) = do
   error "TODO: Prompt"
+
+emitExample :: (Tao.Expr, Tao.Expr) -> Emit (Expr, Expr)
+emitExample (prompt, result) = do
+  prompt <- emitExpr prompt
+  result <- emitExpr result
+  return (prompt, result)
+
+emitExamples :: [(Tao.Expr, Tao.Expr)] -> Emit [(Expr, Expr)]
+emitExamples [] = return []
+emitExamples (example : examples) = do
+  example <- emitExample example
+  examples <- emitExamples examples
+  return (example : examples)
 
 emitMatchCase :: ([Tao.Pattern], Tao.Expr) -> Emit (Pattern, Maybe Expr, [Statement])
 emitMatchCase (ps, b) = do
@@ -402,7 +418,7 @@ emitExprs (a : bs) = do
 --- Pretty printing layouts ---
 
 layoutModule :: Module -> PP.Layout
-layoutModule Module {body} = PP.join [PP.NewLine] (map layoutStmt body)
+layoutModule Module {body} = PP.join [PP.Text "\n"] (map layoutStmt body)
 
 layoutStmt :: Statement -> PP.Layout
 layoutStmt (Import name alias) = case alias of
@@ -412,15 +428,14 @@ layoutStmt def@FunctionDef {} = do
   PP.Text ("def " ++ def.name)
     : layoutTuple (map layoutFunctionArg def.args)
     ++ maybe [] (\t -> PP.Text " -> " : layoutExpr t) def.returns
-    ++ [PP.Text ":", PP.Indent (PP.NewLine : concatMap layoutStmt def.body)]
+    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : maybe [] (layoutDocString def.examples) def.docs ++ concatMap layoutStmt def.body)]
 layoutStmt (Return expr) =
   [ PP.Text "return ",
     PP.Or
       (layoutExpr expr)
       [ PP.Text "(",
-        PP.Indent (PP.NewLine : layoutExpr expr),
-        PP.NewLine,
-        PP.Text ")"
+        PP.Indent (PP.Text "\n" : layoutExpr expr),
+        PP.Text "\n)"
       ]
   ]
 layoutStmt (Match arg cases) = do
@@ -430,18 +445,32 @@ layoutStmt (Match arg cases) = do
         PP.Text "case "
           : layoutPattern pat
           ++ maybe [] (\e -> PP.Text " if " : layoutExpr e) guard
-          ++ [PP.Text ":", PP.Indent (PP.NewLine : concatMap layoutStmt body), PP.NewLine]
+          ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layoutStmt body), PP.Text "\n"]
   let layoutCase (MatchSequence [pat], guard, body) = layoutCase' (pat, guard, body)
       layoutCase (pat, guard, body) = layoutCase' (pat, guard, body)
   PP.Text "match "
     : layoutArg arg
-    ++ [PP.Text ":", PP.Indent (PP.NewLine : concatMap layoutCase cases)]
+    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layoutCase cases)]
 layoutStmt (Raise exc from) =
   PP.Text "raise "
     : layoutExpr exc
     ++ maybe [] (\a -> PP.Text " from " : layoutExpr a) from
-    ++ [PP.NewLine]
+    ++ [PP.Text "\n"]
 layoutStmt stmt = error $ "TODO: layoutStmt: " ++ show stmt
+
+layoutDocString :: [(Expr, Expr)] -> DocString -> PP.Layout
+layoutDocString examples docs = do
+  [PP.Text $ "'''" ++ docs.description ++ "\n"]
+    ++ concatMap layoutExample examples
+    ++ [PP.Text "'''\n"]
+
+layoutExample :: (Expr, Expr) -> PP.Layout
+layoutExample (prompt, result) =
+  PP.Text ">>> "
+    : layoutExpr prompt
+    ++ [PP.Text "\n"]
+    ++ layoutExpr result
+    ++ [PP.Text "\n"]
 
 layoutPattern :: Pattern -> PP.Layout
 layoutPattern (MatchValue expr) = layoutExpr expr
@@ -453,7 +482,9 @@ layoutPattern (MatchAs maybePattern name) = case maybePattern of
   Just pat -> layoutPattern pat ++ [PP.Text $ " as " ++ name]
   Nothing -> [PP.Text name]
 layoutPattern (MatchOr pats) = PP.join [PP.Text " | "] (map layoutPattern pats)
-layoutPattern (MatchMeta _ pat) = layoutPattern pat
+layoutPattern (MatchMeta [] pat) = layoutPattern pat
+layoutPattern (MatchMeta (m : meta) pat) = case m of
+  _ -> layoutPattern (MatchMeta meta pat)
 layoutPattern pat = error $ "TODO: layoutPattern: " ++ show pat
 
 layoutExpr :: Expr -> PP.Layout
@@ -480,7 +511,9 @@ layoutExpr (BinOp a op b) = do
   -- TODO: remove redundant parentheses
   -- TODO: break long lines
   PP.Text "(" : layoutExpr a ++ [PP.Text $ showOp op] ++ layoutExpr b ++ [PP.Text ")"]
-layoutExpr (Meta _ a) = layoutExpr a
+layoutExpr (Meta [] a) = layoutExpr a
+layoutExpr (Meta (m : meta) a) = case m of
+  _ -> layoutExpr a
 layoutExpr a = error $ "TODO: layoutExpr: " ++ show a
 
 layoutFunctionArg :: (String, Maybe Expr, Maybe Expr) -> PP.Layout
@@ -501,6 +534,6 @@ layoutCollection open delim close items =
   [ PP.Text open,
     PP.Or
       (PP.join [PP.Text $ delim ++ " "] items)
-      [PP.Indent (PP.NewLine : PP.join [PP.Text ",", PP.NewLine] items), PP.Text ",", PP.NewLine],
+      [PP.Indent (PP.Text "\n" : PP.join [PP.Text ",\n"] items), PP.Text ",\n"],
     PP.Text close
   ]

@@ -157,14 +157,6 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "\vbc" `shouldBe` Right ('\v', "bc")
     p "abc" `shouldBe` Left "abc"
 
-  it "☯ choose" $ do
-    let p = parse' (choose [(char 'a', const $ char 'b'), (char 'A', const $ char 'B'), (ok '\0', const $ char '_')])
-    p "abc" `shouldBe` Right ('b', "c")
-    p "aBc" `shouldBe` Left "Bc"
-    p "Abc" `shouldBe` Left "bc"
-    p "ABc" `shouldBe` Right ('B', "c")
-    p "0bc" `shouldBe` Left "0bc"
-
   it "☯ oneOf" $ do
     let p = parse' (oneOf [char 'a', char 'A'])
     p "abc" `shouldBe` Right ('a', "bc")
@@ -265,10 +257,29 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "a" `shouldBe` Right ("a", "")
     p "" `shouldBe` Left ""
 
-  it "☯ scope" $ do
-    let p = parseErrors (scope "letter" letter)
-    p "abc" `shouldBe` (Just 'a', [], "bc")
-    p "_bc" `shouldBe` (Nothing, ["letter"], "_bc")
+  it "☯ commit" $ do
+    let p = parseErrors (commit (const "letter") letter)
+    p "" `shouldBe` (Nothing, [], "")
+    p "abc" `shouldBe` (Just 'a', ["letter"], "bc")
+    p "123" `shouldBe` (Nothing, [], "123")
+
+  it "☯ LL(k) parser" $ do
+    let letters = do
+          x <- commit (const "letter") letter
+          xs <- commit (const "letters") (oneOrMore letter)
+          return (x : xs)
+    let digits = do
+          x <- commit (const "digit") digit
+          xs <- commit (const "digits") (oneOrMore digit)
+          return (x : xs)
+    let p = parseErrors (do _ <- commit (const "init") (return ()); oneOf [letters, digits])
+    p "" `shouldBe` (Nothing, ["init"], "")
+    p "a" `shouldBe` (Nothing, ["letter", "init"], "")
+    p "a2" `shouldBe` (Nothing, ["letter", "init"], "2")
+    p "ab" `shouldBe` (Just "ab", ["letters", "letter", "init"], "")
+    p "1" `shouldBe` (Nothing, ["digit", "init"], "")
+    p "1b" `shouldBe` (Nothing, ["digit", "init"], "b")
+    p "12" `shouldBe` (Just "12", ["digits", "digit", "init"], "")
 
   it "☯ skipToAfter" $ do
     let p = parse' (skipToAfter (char '.'))
@@ -278,15 +289,6 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "ab.c" `shouldBe` Right ("ab", "c")
     p "abc." `shouldBe` Right ("abc", "")
     p "abc" `shouldBe` Left "abc"
-
-  it "☯ try" $ do
-    let p = parseErrors (try (do x <- scope "letters" $ oneOrMore letter; _ <- scope "dot" $ char '.'; ok x) (scope "failed dot" $ skipToAfter (char '.')))
-    p ".abc" `shouldBe` (Just $ Left "", ["letters"], "abc")
-    p "_.abc" `shouldBe` (Just $ Left "_", ["letters"], "abc")
-    p "a_.bc" `shouldBe` (Just $ Left "a_", ["dot"], "bc")
-    p "ab.c" `shouldBe` (Just $ Right "ab", [], "c")
-    p "abc." `shouldBe` (Just $ Right "abc", [], "")
-    p "abc" `shouldBe` (Nothing, ["failed dot", "dot"], "abc")
 
   it "☯ integer" $ do
     let p = parse' integer

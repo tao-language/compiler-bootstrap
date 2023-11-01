@@ -92,8 +92,8 @@ data UnaryOp
 
 data Metadata
   = Location String Int Int
-  | Comments [String]
-  | TrailingComment String
+  | Comments [(Int, Int, String)]
+  | TrailingComment (Int, Int, String)
   deriving (Eq, Show)
 
 type Env = [(String, Expr)]

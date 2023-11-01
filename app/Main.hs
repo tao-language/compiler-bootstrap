@@ -25,8 +25,6 @@ buildPy filename args = do
   taoMod <- loadModule filename
   let pyMod = Python.emit taoMod
   let pyFile = pretty 80 "    " (Python.layoutModule pyMod)
-  putStrLn "#!/usr/bin/env python3"
-  putStrLn ""
   putStrLn pyFile
 
 run :: String -> [String] -> IO ()
