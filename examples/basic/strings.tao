@@ -1,0 +1,40 @@
+# Characters
+> 'c'
+> ['S', 't', 'r', 'i', 'n', 'g']
+
+# String syntax sugar
+> "String"
+
+# String interpolation
+> name = "World"
+> "Hello $name"
+> "Hello $(name)"
+
+# Raw strings
+> r"Hello\nWorld"
+
+# Escape characters
+> "Hello \$name"
+> "Hello \"World\""
+> "Hello\nWorld"
+> "Hello\tWorld"
+> "Hello\rWorld"
+
+# Octal values
+> "\o07\o16"
+> o"0716"
+
+# Hex values
+> "\x0f\x1E"
+> x"0f1E"
+
+# Multi-line strings
+> """
+| Hello
+| World
+| """
+
+> """"
+| Hello
+| World
+| """"
