@@ -1,5 +1,24 @@
+# Simple types
+
+type Void
+
 type Bool = True | False
 
-type Maybe a
-  = Just a
-  | Nothing
+boolToInt : Bool -> Int
+boolToInt True = 1
+boolToInt False = 0
+
+> boolToInt False  # 0
+> boolToInt True   # 1
+
+type Color rgb
+  = Red   : Color 0xFF0000
+  | Green : Color 0x00FF00
+  | Blue  : Color 0x0000FF
+
+colorToInt : Color rgb -> Int
+colorToInt _ = rgb
+
+> colorToInt Blue   # 255
+> colorToInt Green  # 65280
+> colorToInt Red    # 16711680
