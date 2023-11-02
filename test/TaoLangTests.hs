@@ -22,9 +22,9 @@ run = describe "--==☯ Tao language ☯==--" $ do
         Right (x, P.State {remaining}) -> Right (x, remaining)
         Left P.State {context, remaining} -> Left (context, remaining)
 
-  let loc row col = Meta [Location sourceName row col]
+  let loc row col = Meta [Location sourceName (row, col)]
   let var row col = loc row col . Var
-  let ploc row col = PMeta [Location sourceName row col]
+  let ploc row col = PMeta [Location sourceName (row, col)]
   let pvar row col = ploc row col . PVar
 
   it "☯ identifier" $ do
@@ -106,9 +106,14 @@ run = describe "--==☯ Tao language ☯==--" $ do
   it "☯ patternTuple" $ do
     let p = parse' patternTuple
     p "() abc" `shouldBe` Right (PTuple [], " abc")
-    p "(x) abc" `shouldBe` Right (PVar "x", " abc")
+    p "(x) abc" `shouldBe` Right (pvar 1 2 "x", " abc")
     p "(x,) abc" `shouldBe` Right (PTuple [pvar 1 2 "x"], " abc")
     p "(x, y) abc" `shouldBe` Right (PTuple [pvar 1 2 "x", pvar 1 5 "y"], " abc")
+    -- Error handling
+    p "(%) abc" `shouldBe` Right (PMeta [SyntaxError "test" (1, 2) (1, 3) "%"] PErr, " abc")
+    p "(%, y) abc" `shouldBe` Right (PTuple [PMeta [SyntaxError "test" (1, 2) (1, 3) "%"] PErr, pvar 1 5 "y"], " abc")
+    p "(x, %) abc" `shouldBe` Right (PTuple [pvar 1 2 "x", PMeta [SyntaxError "test" (1, 5) (1, 6) "%"] PErr], " abc")
+    p "(x, %,) abc" `shouldBe` Right (PTuple [pvar 1 2 "x", PMeta [SyntaxError "test" (1, 5) (1, 6) "%"] PErr], " abc")
 
   it "☯ patternRecordField" $ do
     let p = parse' patternRecordField
@@ -131,7 +136,7 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "42" `shouldBe` Right (ploc 1 1 $ PInt 42, "")
     p "()" `shouldBe` Right (ploc 1 1 $ PTuple [], "")
     p "{}" `shouldBe` Right (ploc 1 1 $ PRecord [], "")
-    p "x->" `shouldBe` Right (PMeta [Location "test" 1 1] (PVar "x"), "->")
+    p "x->" `shouldBe` Right (ploc 1 1 $ PVar "x", "->")
     p "x->y" `shouldBe` Right (ploc 1 2 $ PFun (pvar 1 1 "x") (pvar 1 4 "y"), "")
     p "x y" `shouldBe` Right (PApp (pvar 1 1 "x") (pvar 1 3 "y"), "")
     p "x\ny" `shouldBe` Right (ploc 1 1 $ PVar "x", "\ny")
@@ -210,11 +215,11 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ import'" $ do
     let p = parse' import'
-    p "import mod" `shouldBe` Right (Import "mod" "mod" [] [Location "test" 1 1], "")
-    p "import dir/to/mod" `shouldBe` Right (Import "dir/to/mod" "mod" [] [Location "test" 1 1], "")
-    p "import mod as m" `shouldBe` Right (Import "mod" "m" [] [Location "test" 1 1], "")
-    p "import mod as m ()" `shouldBe` Right (Import "mod" "m" [] [Location "test" 1 1], "")
-    p "import mod as m (a, b)" `shouldBe` Right (Import "mod" "m" ["a", "b"] [Location "test" 1 1], "")
+    p "import mod" `shouldBe` Right (Import "mod" "mod" [] [Location "test" (1, 1)], "")
+    p "import dir/to/mod" `shouldBe` Right (Import "dir/to/mod" "mod" [] [Location "test" (1, 1)], "")
+    p "import mod as m" `shouldBe` Right (Import "mod" "m" [] [Location "test" (1, 1)], "")
+    p "import mod as m ()" `shouldBe` Right (Import "mod" "m" [] [Location "test" (1, 1)], "")
+    p "import mod as m (a, b)" `shouldBe` Right (Import "mod" "m" ["a", "b"] [Location "test" (1, 1)], "")
 
   it "☯ module'" $ do
     let p = parse' (module' "mod")

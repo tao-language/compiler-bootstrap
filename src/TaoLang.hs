@@ -46,13 +46,16 @@ type TaoParser a = P.Parser ParserContext a
   - Only documented functions/types are public
 --}
 
+keywords :: [String]
+keywords = ["type"]
+
 -- TODO: load all imports here (all IO operations)
 loadModule :: String -> IO Module
 loadModule filename = do
   src <- readFile filename
   case P.parse filename (module' filename) src of
     Right (mod, _) -> return mod
-    Left P.State {name, row, col, context} -> do
+    Left P.State {name, pos = (row, col), context} -> do
       putStrLn $ intercalate ":" [name, show row, show col]
       print context
       error "Syntax error"
@@ -74,12 +77,14 @@ identifier = do
         [ P.letter,
           P.digit,
           P.char '_',
-          P.char '-' |> P.notFollowedBy (P.char '>')
+          P.paddedR (P.lookaheadNot $ P.char '>') (P.char '-')
         ]
   c <- P.letter
   cs <- P.zeroOrMore (P.oneOf validChars)
   _ <- P.spaces
-  return (c : cs)
+  case c : cs of
+    name | name `elem` keywords -> P.fail'
+    name -> return name
 
 lineBreak :: TaoParser ()
 lineBreak = do
@@ -108,18 +113,19 @@ delimited delim parser = do
   _ <- P.maybe' delimiter
   return (x : xs)
 
--- Concrete Syntax Tree tokens
-comment :: TaoParser (Int, Int, String)
+-- Concrete Syntax Tree
+comment :: TaoParser ((Int, Int), String)
 comment = do
   _ <- P.char '#'
   _ <- P.spaces
   state <- P.getState
-  txt <- P.skipToAfter lineBreak
-  return (state.row, state.col, dropWhileEnd isSpace txt)
+  txt <- P.skipTo lineBreak
+  return (state.pos, dropWhileEnd isSpace txt)
 
 docString :: TaoParser String -> TaoParser DocString
 docString delimiter = do
-  delim <- P.commit (const CDocString) delimiter
+  delim <- delimiter
+  P.commit CDocString
   _ <- P.spaces
   public <-
     P.oneOf
@@ -128,7 +134,7 @@ docString delimiter = do
         return True
       ]
   _ <- P.spaces
-  docs <- P.skipToAfter (closeDelimiter delim)
+  docs <- P.skipTo (closeDelimiter delim)
   return DocString {public = public, description = dropWhileEnd isSpace $ dropWhile isSpace docs}
   where
     closeDelimiter :: String -> TaoParser ()
@@ -144,7 +150,7 @@ location parser = do
   state <- P.getState
   x <- parser
   _ <- P.spaces
-  return (Location state.name state.row state.col, x)
+  return (Location state.name state.pos, x)
 
 op :: String -> TaoParser [Metadata]
 op txt = do
@@ -152,6 +158,14 @@ op txt = do
   (loc, _) <- location (P.text txt)
   _ <- P.whitespaces
   return [loc]
+
+syntaxError :: [TaoParser until] -> TaoParser Metadata
+syntaxError until = do
+  state1 <- P.getState
+  c <- P.anyChar
+  cs <- P.skipTo (P.lookahead $ P.oneOf until)
+  state2 <- P.getState
+  return (SyntaxError state1.name state1.pos state2.pos (c : cs))
 
 -- Patterns
 pattern' :: TaoParser appDelim -> TaoParser Pattern
@@ -167,7 +181,7 @@ patternAtom :: TaoParser Pattern
 patternAtom = do
   (loc, p) <-
     (location . P.oneOf)
-      [ PAny <$ P.commit (const CPAny) (P.word "_"),
+      [ PAny <$ P.word "_",
         patternName,
         PInt <$> P.integer,
         patternRecord,
@@ -185,9 +199,46 @@ patternName = do
     x | startsWithUpper x -> return (PTag name)
     _ -> return (PVar name)
 
+patternTuple :: TaoParser Pattern
+patternTuple = do
+  let item =
+        P.oneOf
+          [ pattern' P.whitespaces,
+            do
+              err <- syntaxError [P.char ',', P.char ')']
+              return (PMeta [err] PErr)
+          ]
+  _ <- P.char '('
+  P.commit CParentheses
+  _ <- P.whitespaces
+  P.oneOf
+    [ do
+        -- Empty tuple: ()
+        _ <- P.char ')'
+        return (PTuple []),
+      do
+        x <- item
+        P.oneOf
+          [ do
+              -- Parenthesized expression: (x)
+              _ <- P.char ')'
+              return x,
+            do
+              -- Tuple: (x,) (x, y) (x, y,)
+              xs <- P.zeroOrMore $ do
+                _ <- P.char ','
+                _ <- P.whitespaces
+                item
+              _ <- P.maybe' (P.paddedR P.whitespaces $ P.char ',')
+              _ <- P.char ')'
+              return (PTuple (x : xs))
+          ]
+    ]
+
 patternRecordField :: TaoParser (String, Pattern)
 patternRecordField = do
-  (loc, x) <- location $ P.commit CRecordField identifier
+  (loc, x) <- location identifier
+  P.commit (CRecordField x)
   _ <- P.whitespaces
   P.oneOf
     [ do
@@ -202,25 +253,6 @@ patternRecord :: TaoParser Pattern
 patternRecord = do
   fields <- collection "{" "," "}" patternRecordField
   return (PRecord fields)
-
-patternTuple :: TaoParser Pattern
-patternTuple = do
-  let comma = P.paddedR P.whitespaces (P.char ',')
-  let item = pattern' P.whitespaces
-  P.oneOf
-    [ do
-        -- One-item tuple: (x,)
-        item <- inbetween "(" ")" (P.paddedR comma item)
-        return (PTuple [item]),
-      do
-        items <- collection "(" "," ")" item
-        case items of
-          -- Parenthesized non-tuple: (x)
-          [PMeta _ item] -> return item -- discard nested metadata (redundant)
-          [item] -> return item
-          -- General case tuples: () (x, y, ...)
-          _ -> return (PTuple items)
-    ]
 
 -- Exprs
 expression :: TaoParser appDelim -> TaoParser Expr
@@ -251,7 +283,7 @@ expression delim = do
   expr <- P.operators 0 ops expressionAtom
   trailingComment <- P.maybe' comment
   case trailingComment of
-    Just comment -> return (Meta [Comments comments, TrailingComment comment] expr)
+    Just (pos, comment) -> return (Meta [Comments comments, TrailingComment pos comment] expr)
     Nothing -> return expr
 
 expressionAtom :: TaoParser Expr
@@ -296,7 +328,8 @@ expressionTuple = do
 
 expressionRecordField :: TaoParser (String, Expr)
 expressionRecordField = do
-  name <- P.commit CRecordField identifier
+  name <- identifier
+  P.commit (CRecordField name)
   _ <- P.whitespaces
   _ <- P.char ':'
   _ <- P.whitespaces
@@ -333,11 +366,11 @@ typeAnnotation delim = do
 statement :: TaoParser Statement
 statement =
   P.oneOf
-    [ letDef
-    -- ,unpackDef
-    -- ,typeDef
-    -- ,import'
-    -- ,prompt
+    [ letDef,
+      -- ,unpackDef
+      typeDef
+      -- ,import'
+      -- ,prompt
     ]
 
 letDef :: TaoParser Statement
@@ -363,25 +396,26 @@ letDef = do
     P.oneOf
       [ do
           type' <- typeAnnotation (return ())
+          P.commit (CLetDefTyped name)
           P.oneOf
             [ do
                 -- x : Int = 42
-                _ <- P.commit (const CLetDefTypedVar) (P.char '=')
+                _ <- P.char '='
+                P.commit (CLetDefTypedVar name)
                 _ <- P.whitespaces
                 value <- expression (return ())
                 _ <- lineBreak
                 return (Just type', [([], value)]),
               do
                 -- f : Int -> Int
-                _ <- P.commit (const CLetDefTyped) (return ())
                 _ <- lineBreak
                 rules <- P.oneOrMore (ruleDef name)
                 return (Just type', rules)
             ],
         do
           -- f x = 42
-          _ <- P.commit (const CLetDefUntyped) (return ())
           rule <- branch
+          P.commit (CLetDefUntyped name)
           rules <- P.zeroOrMore (ruleDef name)
           return (Nothing, rule : rules)
       ]
@@ -401,8 +435,8 @@ example = do
   _ <- P.spaces
   prompt <- expression (return ())
   case prompt of
-    _ | Just (prompt, (row, col, comment)) <- getTrailingComment prompt -> do
-      result <- P.parseFrom (row, col) comment (expression $ return ())
+    _ | Just (prompt, (pos, comment)) <- getTrailingComment prompt -> do
+      result <- P.parseFrom pos comment (expression $ return ())
       return (prompt, result)
     prompt -> do
       _ <- lineBreak
@@ -410,9 +444,9 @@ example = do
       _ <- lineBreak
       return (prompt, result)
 
-getTrailingComment :: Expr -> Maybe (Expr, (Int, Int, String))
+getTrailingComment :: Expr -> Maybe (Expr, ((Int, Int), String))
 getTrailingComment (Meta [] a) = getTrailingComment a
-getTrailingComment (Meta (TrailingComment comment : _) a) = Just (a, comment)
+getTrailingComment (Meta (TrailingComment pos comment : _) a) = Just (a, (pos, comment))
 getTrailingComment (Meta (_ : meta) a) = getTrailingComment (Meta meta a)
 getTrailingComment _ = Nothing
 
@@ -422,7 +456,39 @@ unpackDef = P.fail' -- TODO
 
 typeDef :: TaoParser Statement
 -- type Bool = True | False
-typeDef = P.fail' -- TODO
+typeDef = do
+  docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
+  examples <- P.zeroOrMore example
+  _ <- P.word "type"
+  P.commit CTypeDef
+  _ <- P.whitespaces
+  name <- identifier
+  P.oneOf
+    [ do
+        _ <- P.char '='
+        _ <- P.whitespaces
+        _ <- lineBreak
+        return
+          TypeDef
+            { docs = docs,
+              examples = examples,
+              name = name,
+              args = [],
+              alts = [],
+              meta = []
+            },
+      do
+        _ <- lineBreak
+        return
+          TypeDef
+            { docs = docs,
+              examples = examples,
+              name = name,
+              args = [],
+              alts = [],
+              meta = []
+            }
+    ]
 
 prompt :: TaoParser Statement
 -- > 1 + 1

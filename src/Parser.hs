@@ -17,8 +17,7 @@ newtype Parser ctx a = Parser (State ctx -> Either (State ctx) (a, State ctx))
 data State ctx = State
   { remaining :: String,
     name :: String,
-    row :: Int,
-    col :: Int,
+    pos :: (Int, Int),
     index :: Int,
     context :: [ctx]
   }
@@ -59,12 +58,12 @@ apply (Parser p) = p
 
 parse :: String -> Parser ctx a -> String -> Either (State ctx) (a, State ctx)
 parse name (Parser p) remaining =
-  p State {remaining = remaining, name = name, row = 1, col = 1, index = 0, context = []}
+  p State {remaining = remaining, name = name, pos = (1, 1), index = 0, context = []}
 
 parseFrom :: (Int, Int) -> String -> Parser ctx a -> Parser ctx a
-parseFrom (row, col) remaining (Parser p) =
+parseFrom pos remaining (Parser p) =
   Parser
-    ( \state -> case p state {row = row, col = col, remaining = remaining} of
+    ( \state -> case p state {pos = pos, remaining = remaining} of
         Right (x, _) -> Right (x, state)
         Left state -> Left state
     )
@@ -93,7 +92,7 @@ oneOf [] = fail'
 oneOf (Parser p : choices) =
   Parser
     ( \state1 -> case p state1 {context = []} of
-        Right (x, state2) -> Right (x, state2 {context = state2.context ++ state1.context})
+        Right (x, state2) -> Right (x, state2 {context = state1.context})
         Left State {context = []} -> apply (oneOf choices) state1
         Left state2 -> Left state2 {context = state2.context ++ state1.context}
     )
@@ -102,26 +101,18 @@ getState :: Parser ctx (State ctx)
 getState = Parser (\state -> Right (state, state))
 
 -- Error handling
-commit :: (a -> ctx) -> Parser ctx a -> Parser ctx a
-commit f (Parser p) =
-  Parser
-    ( \state1 -> case p state1 of
-        Right (x, state) -> Right (x, state {context = f x : state.context})
-        Left state -> Left state
-    )
+commit :: ctx -> Parser ctx ()
+commit ctx = Parser (\state -> Right ((), state {context = ctx : state.context}))
 
-skipToAfter :: Parser ctx delim -> Parser ctx String
-skipToAfter delim =
+skipTo :: Parser ctx delim -> Parser ctx String
+skipTo delim =
   oneOf
     [ "" <$ delim,
       do
         c <- anyChar
-        cs <- skipToAfter delim
+        cs <- skipTo delim
         ok (c : cs)
     ]
-
-skipToBefore :: Parser ctx delim -> Parser ctx String
-skipToBefore delim = skipToAfter (ok () |> notFollowedBy delim)
 
 try :: Parser ctx a -> Parser ctx b -> Parser ctx (Either b a)
 try (Parser p) else' =
@@ -135,10 +126,12 @@ try (Parser p) else' =
 anyChar :: Parser ctx Char
 anyChar =
   Parser
-    ( \state -> case state.remaining of
-        '\n' : src -> Right ('\n', state {remaining = src, index = state.index + 1, row = state.row + 1, col = 1})
-        c : src -> Right (c, state {remaining = src, index = state.index + 1, col = state.col + 1})
-        "" -> Left state
+    ( \state -> do
+        let (row, col) = state.pos
+        case state.remaining of
+          '\n' : src -> Right ('\n', state {remaining = src, index = state.index + 1, pos = (row + 1, 1)})
+          c : src -> Right (c, state {remaining = src, index = state.index + 1, pos = (row, col + 1)})
+          "" -> Left state
     )
 
 char :: Char -> Parser ctx Char
@@ -291,7 +284,8 @@ foldL f initial parser =
 -- Common
 integer :: Parser ctx Int
 integer = do
-  digits <- oneOrMore digit |> notFollowedBy (char '.')
+  digits <- oneOrMore digit
+  lookaheadNot (char '.')
   ok (read digits)
 
 number :: Parser ctx Double
@@ -308,7 +302,7 @@ wordChar :: Parser ctx Char
 wordChar = oneOf [letter, digit, char '_']
 
 wordEnd :: Parser ctx ()
-wordEnd = notFollowedBy wordChar (ok ())
+wordEnd = lookaheadNot wordChar
 
 word :: String -> Parser ctx String
 word txt = do
@@ -316,30 +310,26 @@ word txt = do
   _ <- wordEnd
   ok x
 
-followedBy :: Parser ctx a -> Parser ctx b -> Parser ctx b
-followedBy (Parser lookahead) parser = do
-  state0 <- getState
-  x <- parser
+lookahead :: Parser ctx a -> Parser ctx ()
+lookahead (Parser p) =
   Parser
-    ( \state -> case lookahead state of
-        Right _ -> Right (x, state)
-        Left _ -> Left state0
+    ( \state -> case p state of
+        Right _ -> Right ((), state)
+        Left _ -> Left state
     )
 
-notFollowedBy :: Parser ctx a -> Parser ctx b -> Parser ctx b
-notFollowedBy (Parser lookahead) parser = do
-  state0 <- getState
-  x <- parser
+lookaheadNot :: Parser ctx a -> Parser ctx ()
+lookaheadNot (Parser p) =
   Parser
-    ( \state -> case lookahead state of
-        Right _ -> Left state0
-        Left _ -> Right (x, state)
+    ( \state -> case p state of
+        Right _ -> Left state
+        Left _ -> Right ((), state)
     )
 
 subparserPartial :: Parser ctx delim -> Parser ctx a -> Parser ctx a
 subparserPartial delim (Parser p) = do
   before <- getState
-  _ <- zeroOrMore (do _ <- ok () |> notFollowedBy delim; anyChar)
+  _ <- zeroOrMore (do _ <- lookaheadNot delim; anyChar)
   after <- getState
   let len = length before.remaining - length after.remaining
   Parser

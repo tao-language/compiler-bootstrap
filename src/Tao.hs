@@ -47,6 +47,7 @@ data Pattern
   | PFun Pattern Pattern
   | PApp Pattern Pattern
   | PMeta [Metadata] Pattern
+  | PErr
   deriving (Eq, Show)
 
 data Expr
@@ -102,7 +103,7 @@ data Statement
         examples :: [(Expr, Expr)],
         name :: String,
         args :: [Expr],
-        alts :: (String, Type),
+        alts :: [(String, Type)],
         meta :: [Metadata]
       }
   | Import
@@ -130,13 +131,16 @@ data Module = Module
 data ParserContext
   = COperator String
   | CLetDef String
+  | CParentheses
+  | CTuple
   | CPAny
   | CRecordField String
   | CDocString
   | CExpression
-  | CLetDefTyped
-  | CLetDefTypedVar
-  | CLetDefUntyped
+  | CLetDefTyped String
+  | CLetDefTypedVar String
+  | CLetDefUntyped String
+  | CTypeDef
   | CTODO -- TODO: REMOVE THIS
   deriving (Eq, Show)
 

@@ -57,7 +57,7 @@ data Expr
   | Op1 UnaryOp Expr
   | Op2 BinaryOp Expr Expr
   | Meta [Metadata] Expr
-  | Err Error
+  | Err
   deriving (Eq)
 
 data Pattern
@@ -91,9 +91,10 @@ data UnaryOp
   deriving (Eq)
 
 data Metadata
-  = Location String Int Int
-  | Comments [(Int, Int, String)]
-  | TrailingComment (Int, Int, String)
+  = Location String (Int, Int)
+  | Comments [((Int, Int), String)]
+  | TrailingComment (Int, Int) String
+  | SyntaxError String (Int, Int) (Int, Int) String
   deriving (Eq, Show)
 
 type Env = [(String, Expr)]
@@ -125,7 +126,6 @@ instance Show Expr where
     Op2 Add a b -> infixL 6 a (op2 Add) b
     Op2 Sub a b -> infixL 6 a (op2 Sub) b
     Op2 Mul a b -> infixL 7 a (op2 Mul) b
-    Err err -> prefix 8 "@error " err
     Op1 Int2Num a -> prefix 8 (op1 Int2Num) a
     Op2 Pow a b -> infixR 10 a (show Pow) b
     App a b -> infixL 8 a " " b
@@ -138,6 +138,7 @@ instance Show Expr where
     Tag k -> atom 11 ("(@tag '" ++ k ++ "')")
     Var x | isVarName x -> atom 11 x
     Var x -> atom 11 ("(@var '" ++ x ++ "')")
+    Err -> atom 11 "@error"
     Rec kvs -> do
       let showField (x, a) = x ++ ": " ++ show a
       atom 11 ("{" ++ intercalate ", " (map showField kvs) ++ "}")
@@ -276,7 +277,7 @@ freeVars (Typ k (a : bs) _) = freeVars a `union` freeVars (Typ k bs [])
 freeVars (Op1 _ a) = freeVars a
 freeVars (Op2 _ a b) = freeVars a `union` freeVars b
 freeVars (Meta _ a) = freeVars a
-freeVars (Err _) = []
+freeVars Err = []
 
 freeVarsP :: Pattern -> [String]
 freeVarsP = freeVars . patternExpr
@@ -345,14 +346,13 @@ eval env (App a b) = case (eval env a, eval env b) of
     (PFun p q, Fun b1 b2) -> app (lam [p, q] a) [b1, b2]
     (PApp p q, App b1 b2) -> app (lam [p, q] a) [b1, b2]
     (PRec [], Rec _) -> a
-    (p, b) -> Err (PatternMatchError p b)
-  (Err err, _) -> Err err
-  (_, Err err) -> Err err
+    (p, b) -> Err
+  (Err, _) -> Err
   (Ann a (For xs (Fun t1 t2)), b) -> case infer env (Ann b (For xs t1)) of
     Right (_, s) -> annotated (eval s (App a b)) (For (filter (`notElem` map fst s) xs) (eval s t2))
-    Left err -> Err err
+    Left err -> Err
   (Or a1 a2, b) -> case eval [] (App a1 b) of
-    Err _ -> eval [] (App a2 b)
+    Err -> eval [] (App a2 b)
     Lam p a -> Or (Lam p a) (App a2 b)
     Ann a (For xs (Fun t1 t2)) -> Or (Ann a (For xs (Fun t1 t2))) (App a2 b)
     a | isOpen a -> Or a (App a2 b)
@@ -361,10 +361,10 @@ eval env (App a b) = case (eval env a, eval env b) of
   (a, b) -> App a b
 eval env (Ann a (For xs t)) = case infer env (Ann a (For xs t)) of
   Right (t, s) -> annotated (eval (s ++ env) a) (For (filter (`notElem` map fst s) xs) t)
-  Left err -> Err err
+  Left err -> Err
 eval env (Or a b) = case (eval env a, eval env b) of
-  (Err _, b) -> b
-  (a, Err _) -> a
+  (Err, b) -> b
+  (a, Err) -> a
   (Or a1 a2, b) -> Or a1 (Or a2 b)
   (a, b) -> Or a b
 eval env (Rec kvs) = Rec (map (second (eval env)) kvs)
@@ -378,11 +378,11 @@ eval env (Op2 op a b) = case (op, eval env a, eval env b) of
   (op, a, b) | isOpen a || isOpen b -> Op2 op a b
   (op, a, b) -> evalOp2 op a b
 eval env (Meta meta a) = Meta meta (eval env a)
-eval _ (Err err) = Err err
+eval _ Err = Err
 
 evalOp1 :: UnaryOp -> Expr -> Expr
 evalOp1 Int2Num (Int b) = Num (fromIntegral b)
-evalOp1 op a = Err (Op1Error op a)
+evalOp1 op a = Err
 
 evalOp2 :: BinaryOp -> Expr -> Expr -> Expr
 evalOp2 Add (Int a) (Int b) = Int (a + b)
@@ -402,7 +402,7 @@ evalOp2 Eq (Var a) (Var b) | a == b = Var a
 -- evalOp2 Eq (App a1 a2) (App b1 b2) = If (eq a1 b1) (eq a2 b2)
 evalOp2 Lt (Int a) (Int b) | a < b = Int a
 evalOp2 Lt (Num a) (Num b) | a < b = Num a
-evalOp2 op a b = Err (Op2Error op a b)
+evalOp2 op a b = Err
 
 annotated :: Expr -> Type -> Expr
 annotated (Tag k) (For _ (Tag k')) | k == k' = Tag k
@@ -551,7 +551,7 @@ infer env (Typ _ args alts) = do
 infer env (Op1 op a) = inferOp1 env op a
 infer env (Op2 op a b) = inferOp2 env op a b
 infer env (Meta _ a) = infer env a
-infer _ (Err err) = Right (Err err, [])
+infer _ Err = Right (Err, [])
 
 infer2 :: Env -> Expr -> Expr -> Either Error ((Expr, Expr), Substitution)
 infer2 env a b = do

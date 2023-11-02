@@ -72,8 +72,8 @@ run = describe "--==☯ Parser ☯==--" $ do
           s2 <- getState
           ok (s1, s2)
     let p = parse' parser
-    let s1 = State {remaining = "abc", name = "test", row = 1, col = 1, index = 0, context = []}
-    let s2 = s1 {remaining = "bc", index = 1, col = 2}
+    let s1 = State {remaining = "abc", name = "test", pos = (1, 1), index = 0, context = []}
+    let s2 = s1 {remaining = "bc", index = 1, pos = (1, 2)}
     p "abc" `shouldBe` Right ((s1, s2), "bc")
 
   it "☯ if'" $ do
@@ -258,31 +258,39 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "" `shouldBe` Left ""
 
   it "☯ commit" $ do
-    let p = parseErrors (commit (const "letter") letter)
+    let parser = do
+          x <- letter
+          commit "letter"
+          return x
+    let p = parseErrors parser
     p "" `shouldBe` (Nothing, [], "")
     p "abc" `shouldBe` (Just 'a', ["letter"], "bc")
     p "123" `shouldBe` (Nothing, [], "123")
 
   it "☯ LL(k) parser" $ do
     let letters = do
-          x <- commit (const "letter") letter
-          xs <- commit (const "letters") (oneOrMore letter)
+          x <- letter
+          commit "letter"
+          xs <- oneOrMore letter
+          commit "letters"
           return (x : xs)
     let digits = do
-          x <- commit (const "digit") digit
-          xs <- commit (const "digits") (oneOrMore digit)
+          x <- digit
+          commit "digit"
+          xs <- oneOrMore digit
+          commit "digits"
           return (x : xs)
-    let p = parseErrors (do _ <- commit (const "init") (return ()); oneOf [letters, digits])
+    let p = parseErrors (do _ <- commit "init"; oneOf [letters, digits])
     p "" `shouldBe` (Nothing, ["init"], "")
     p "a" `shouldBe` (Nothing, ["letter", "init"], "")
     p "a2" `shouldBe` (Nothing, ["letter", "init"], "2")
-    p "ab" `shouldBe` (Just "ab", ["letters", "letter", "init"], "")
+    p "ab" `shouldBe` (Just "ab", ["init"], "")
     p "1" `shouldBe` (Nothing, ["digit", "init"], "")
     p "1b" `shouldBe` (Nothing, ["digit", "init"], "b")
-    p "12" `shouldBe` (Just "12", ["digits", "digit", "init"], "")
+    p "12" `shouldBe` (Just "12", ["init"], "")
 
-  it "☯ skipToAfter" $ do
-    let p = parse' (skipToAfter (char '.'))
+  it "☯ skipTo" $ do
+    let p = parse' (skipTo (char '.'))
     p "" `shouldBe` Left ""
     p ".abc" `shouldBe` Right ("", "abc")
     p "a.bc" `shouldBe` Right ("a", "bc")
@@ -301,15 +309,15 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "3" `shouldBe` Right (3.0, "")
     p "a" `shouldBe` Left "a"
 
-  it "☯ followedBy" $ do
-    let p = parse' (letter |> followedBy (char 'b'))
-    p "abc" `shouldBe` Right ('a', "bc")
-    p "a_c" `shouldBe` Left "a_c"
+  it "☯ lookahead" $ do
+    let p = parse' (lookahead letter)
+    p "abc" `shouldBe` Right ((), "abc")
+    p "123" `shouldBe` Left "123"
 
-  it "☯ notFollowedBy" $ do
-    let p = parse' (letter |> notFollowedBy (char 'b'))
+  it "☯ lookaheadNot" $ do
+    let p = parse' (lookaheadNot letter)
     p "abc" `shouldBe` Left "abc"
-    p "a_c" `shouldBe` Right ('a', "_c")
+    p "123" `shouldBe` Right ((), "123")
 
   it "☯ subparser" $ do
     let p = parse' (subparser (text "--}") (zeroOrMore anyChar))
