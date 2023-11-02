@@ -159,14 +159,6 @@ op txt = do
   _ <- P.whitespaces
   return [loc]
 
-syntaxError :: [TaoParser until] -> TaoParser Metadata
-syntaxError until = do
-  state1 <- P.getState
-  c <- P.anyChar
-  cs <- P.skipTo (P.lookahead $ P.oneOf until)
-  state2 <- P.getState
-  return (SyntaxError state1.name state1.pos state2.pos (c : cs))
-
 -- Patterns
 pattern' :: TaoParser appDelim -> TaoParser Pattern
 pattern' delim = do
@@ -205,8 +197,8 @@ patternTuple = do
         P.oneOf
           [ pattern' P.whitespaces,
             do
-              err <- syntaxError [P.char ',', P.char ')']
-              return (PMeta [err] PErr)
+              (state, len) <- P.recover [P.char ',', P.char ')']
+              return (PMeta [SyntaxError state.name state.pos (take len state.remaining)] PErr)
           ]
   _ <- P.char '('
   P.commit CParentheses

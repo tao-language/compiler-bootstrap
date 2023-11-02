@@ -94,7 +94,7 @@ data Metadata
   = Location String (Int, Int)
   | Comments [((Int, Int), String)]
   | TrailingComment (Int, Int) String
-  | SyntaxError String (Int, Int) (Int, Int) String
+  | SyntaxError String (Int, Int) String
   deriving (Eq, Show)
 
 type Env = [(String, Expr)]

@@ -110,10 +110,10 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "(x,) abc" `shouldBe` Right (PTuple [pvar 1 2 "x"], " abc")
     p "(x, y) abc" `shouldBe` Right (PTuple [pvar 1 2 "x", pvar 1 5 "y"], " abc")
     -- Error handling
-    p "(%) abc" `shouldBe` Right (PMeta [SyntaxError "test" (1, 2) (1, 3) "%"] PErr, " abc")
-    p "(%, y) abc" `shouldBe` Right (PTuple [PMeta [SyntaxError "test" (1, 2) (1, 3) "%"] PErr, pvar 1 5 "y"], " abc")
-    p "(x, %) abc" `shouldBe` Right (PTuple [pvar 1 2 "x", PMeta [SyntaxError "test" (1, 5) (1, 6) "%"] PErr], " abc")
-    p "(x, %,) abc" `shouldBe` Right (PTuple [pvar 1 2 "x", PMeta [SyntaxError "test" (1, 5) (1, 6) "%"] PErr], " abc")
+    p "(%) abc" `shouldBe` Right (PMeta [SyntaxError "test" (1, 2) "%"] PErr, " abc")
+    p "(%, y) abc" `shouldBe` Right (PTuple [PMeta [SyntaxError "test" (1, 2) "%"] PErr, pvar 1 5 "y"], " abc")
+    p "(x, %) abc" `shouldBe` Right (PTuple [pvar 1 2 "x", PMeta [SyntaxError "test" (1, 5) "%"] PErr], " abc")
+    p "(x, %,) abc" `shouldBe` Right (PTuple [pvar 1 2 "x", PMeta [SyntaxError "test" (1, 5) "%"] PErr], " abc")
 
   it "☯ patternRecordField" $ do
     let p = parse' patternRecordField
@@ -197,13 +197,13 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "x\ny" `shouldBe` Right (loc 1 1 $ Var "x", "\ny")
     p "(x\ny)" `shouldBe` Right (loc 1 1 $ App (var 1 2 "x") (var 2 1 "y"), "")
 
-  -- it "☯ letDef" $ do
-  --   let p = parse' letDef
-  --   let def = LetDef {docs = Nothing, name = "x", type' = Nothing, value = Err, meta = [Location sourceName 1 1]}
-  --   p "x = y" `shouldBe` Right (def {value = var 1 5 "y"}, "")
-  --   p "x : Int = y" `shouldBe` Right (def {type' = Just (For [] $ loc 1 5 IntT), value = var 1 11 "y"}, "")
-  --   p "x : Int\nx = y" `shouldBe` Right (def {type' = Just (For [] $ loc 1 5 IntT), value = var 2 5 "y"}, "")
-  --   p "x p = y\nx q = z" `shouldBe` Right (def {value = Match [([pvar 1 3 "p"], var 1 7 "y"), ([pvar 2 3 "q"], var 2 7 "z")]}, "")
+  it "☯ letDef" $ do
+    let p = parse' letDef
+    let def = LetDef {docs = Nothing, examples = [], name = "x", type' = Nothing, value = Err, meta = [Location sourceName (1, 1)]}
+    p "x = y" `shouldBe` Right (def {value = var 1 5 "y"}, "")
+    p "x : Int = y" `shouldBe` Right (def {type' = Just (For [] $ loc 1 5 IntT), value = var 1 11 "y"}, "")
+    p "x : Int\nx = y" `shouldBe` Right (def {type' = Just (For [] $ loc 1 5 IntT), value = var 2 5 "y"}, "")
+    p "x p = y\nx q = z" `shouldBe` Right (def {value = Match [([pvar 1 3 "p"], var 1 7 "y"), ([pvar 2 3 "q"], var 2 7 "z")]}, "")
 
   -- -- it "☯ unpackDef" $ do
   -- -- it "☯ typeDef" $ do

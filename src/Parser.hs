@@ -114,6 +114,14 @@ skipTo delim =
         ok (c : cs)
     ]
 
+recover :: [Parser ctx until] -> Parser ctx (State ctx, Int)
+recover until = do
+  state1 <- getState
+  _ <- anyChar
+  _ <- skipTo (lookahead $ oneOf until)
+  state2 <- getState
+  return (state1, state2.index - state1.index)
+
 try :: Parser ctx a -> Parser ctx b -> Parser ctx (Either b a)
 try (Parser p) else' =
   Parser
