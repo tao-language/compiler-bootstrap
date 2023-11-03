@@ -6,7 +6,8 @@
 
 module TaoLangTests where
 
-import Core (DocString (..), Metadata (..))
+import Core (Comment (..), DocString (..), Metadata (..), newDocString)
+import Data.List (intercalate)
 import Error
 import qualified Parser as P
 import Tao
@@ -22,10 +23,9 @@ run = describe "--==☯ Tao language ☯==--" $ do
         Right (x, P.State {remaining}) -> Right (x, remaining)
         Left P.State {context, remaining} -> Left (context, remaining)
 
-  let loc row col = Meta [Location sourceName (row, col)]
-  let var row col = loc row col . Var
-  let ploc row col = PMeta [Location sourceName (row, col)]
-  let pvar row col = ploc row col . PVar
+  let loc row col = Location sourceName (row, col)
+  let var row col x = Meta [loc row col] (Var x)
+  let pvar row col x = PMeta [loc row col] (PVar x)
 
   it "☯ identifier" $ do
     let p = parse' identifier
@@ -69,12 +69,32 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "[ \n a \n , \n b \n , \n ]" `shouldBe` Right ("ab", "")
 
   it "☯ docString" $ do
-    let docs public description = DocString {public = public, description = description}
     let p = parse' $ docString (P.text "---")
-    p "---\n---\nabc" `shouldBe` Right (docs True "", "abc")
-    p "---\ndocs\n---\nabc" `shouldBe` Right (docs True "docs", "abc")
-    p "---  \n  docs  \n  ---  \nabc" `shouldBe` Right (docs True "docs", "abc")
-    p "---  private  \nA\nB\n\nC\n  ---  \nabc" `shouldBe` Right (docs False "A\nB\n\nC", "abc")
+    p "---\n---\nabc" `shouldBe` Right (newDocString {public = True, meta = [loc 1 1]}, "abc")
+    p "---\ndocs\n---\nabc" `shouldBe` Right (newDocString {public = True, description = "docs", meta = [loc 1 1]}, "abc")
+    p "---  \n  docs  \n  ---  \nabc" `shouldBe` Right (newDocString {public = True, description = "docs", meta = [loc 1 1]}, "abc")
+    p "---  private  \nA\nB\n\nC\n  ---  \nabc" `shouldBe` Right (newDocString {public = False, description = "A\nB\n\nC", meta = [loc 1 1]}, "abc")
+    let src =
+          [ "# A",
+            "--- # B",
+            "Docs",
+            "--- # C",
+            "# end"
+          ]
+    p (intercalate "\n" src)
+      `shouldBe` Right
+        ( newDocString
+            { public = True,
+              description = "Docs",
+              meta =
+                [ loc 2 1,
+                  Comments [Comment (1, 3) "A"],
+                  TrailingComment (Comment (2, 7) "B"),
+                  TrailingComment (Comment (4, 7) "C")
+                ]
+            },
+          "# end"
+        )
 
   -- it "☯ metadata location" $ do
   --   let meta row col x = ([Location sourceName row col], x)
@@ -131,16 +151,16 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ pattern'" $ do
     let p = parse' (pattern' $ P.ok ())
-    p "_" `shouldBe` Right (ploc 1 1 PAny, "")
-    p "x" `shouldBe` Right (ploc 1 1 $ PVar "x", "")
-    p "42" `shouldBe` Right (ploc 1 1 $ PInt 42, "")
-    p "()" `shouldBe` Right (ploc 1 1 $ PTuple [], "")
-    p "{}" `shouldBe` Right (ploc 1 1 $ PRecord [], "")
-    p "x->" `shouldBe` Right (ploc 1 1 $ PVar "x", "->")
-    p "x->y" `shouldBe` Right (ploc 1 2 $ PFun (pvar 1 1 "x") (pvar 1 4 "y"), "")
+    p "_" `shouldBe` Right (PMeta [loc 1 1] PAny, "")
+    p "x" `shouldBe` Right (PMeta [loc 1 1] $ PVar "x", "")
+    p "42" `shouldBe` Right (PMeta [loc 1 1] $ PInt 42, "")
+    p "()" `shouldBe` Right (PMeta [loc 1 1] $ PTuple [], "")
+    p "{}" `shouldBe` Right (PMeta [loc 1 1] $ PRecord [], "")
+    p "x->" `shouldBe` Right (PMeta [loc 1 1] $ PVar "x", "->")
+    p "x->y" `shouldBe` Right (PMeta [loc 1 2] $ PFun (pvar 1 1 "x") (pvar 1 4 "y"), "")
     p "x y" `shouldBe` Right (PApp (pvar 1 1 "x") (pvar 1 3 "y"), "")
-    p "x\ny" `shouldBe` Right (ploc 1 1 $ PVar "x", "\ny")
-    p "(x\ny)" `shouldBe` Right (ploc 1 1 $ PApp (pvar 1 2 "x") (pvar 2 1 "y"), "")
+    p "x\ny" `shouldBe` Right (PMeta [loc 1 1] $ PVar "x", "\ny")
+    p "(x\ny)" `shouldBe` Right (PMeta [loc 1 1] $ PApp (pvar 1 2 "x") (pvar 2 1 "y"), "")
 
   it "☯ expressionName" $ do
     let p = parse' expressionName
@@ -171,39 +191,60 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ expression'" $ do
     let p = parse' (expression $ P.ok ())
-    p "Type" `shouldBe` Right (loc 1 1 Knd, "")
-    p "Int" `shouldBe` Right (loc 1 1 IntT, "")
-    p "Num" `shouldBe` Right (loc 1 1 NumT, "")
-    p "Tag" `shouldBe` Right (loc 1 1 $ Tag "Tag", "")
-    p "var" `shouldBe` Right (loc 1 1 $ Var "var", "")
-    p "42" `shouldBe` Right (loc 1 1 $ Int 42, "")
-    p "3.14" `shouldBe` Right (loc 1 1 $ Num 3.14, "")
-    p "()" `shouldBe` Right (loc 1 1 $ Tuple [], "")
-    p "{}" `shouldBe` Right (loc 1 1 $ Record [], "")
-    p "\\x=y" `shouldBe` Right (loc 1 1 $ lam [pvar 1 2 "x"] (var 1 4 "y"), "")
-    p "\\x\ny\n=\nz" `shouldBe` Right (loc 1 1 $ lam [pvar 1 2 "x", pvar 2 1 "y"] (var 4 1 "z"), "")
-    p "x |  y" `shouldBe` Right (loc 1 3 $ Or (var 1 1 "x") (var 1 6 "y"), "")
+    p "Type" `shouldBe` Right (Meta [loc 1 1] Knd, "")
+    p "Int" `shouldBe` Right (Meta [loc 1 1] IntT, "")
+    p "Num" `shouldBe` Right (Meta [loc 1 1] NumT, "")
+    p "Tag" `shouldBe` Right (Meta [loc 1 1] $ Tag "Tag", "")
+    p "var" `shouldBe` Right (Meta [loc 1 1] $ Var "var", "")
+    p "42" `shouldBe` Right (Meta [loc 1 1] $ Int 42, "")
+    p "3.14" `shouldBe` Right (Meta [loc 1 1] $ Num 3.14, "")
+    p "()" `shouldBe` Right (Meta [loc 1 1] $ Tuple [], "")
+    p "{}" `shouldBe` Right (Meta [loc 1 1] $ Record [], "")
+    p "\\x=y" `shouldBe` Right (Meta [loc 1 1] $ lam [pvar 1 2 "x"] (var 1 4 "y"), "")
+    p "\\x\ny\n=\nz" `shouldBe` Right (Meta [loc 1 1] $ lam [pvar 1 2 "x", pvar 2 1 "y"] (var 4 1 "z"), "")
+    p "x |  y" `shouldBe` Right (Meta [loc 1 3] $ Or (var 1 1 "x") (var 1 6 "y"), "")
     p "x :  y" `shouldBe` Right (ann (var 1 1 "x") (var 1 6 "y"), "")
     p "x : @a. y" `shouldBe` Right (Ann (var 1 1 "x") (For ["a"] $ var 1 9 "y"), "")
     p "x : @a b. y" `shouldBe` Right (Ann (var 1 1 "x") (For ["a", "b"] $ var 1 11 "y"), "")
-    p "x == y" `shouldBe` Right (loc 1 3 $ Eq (var 1 1 "x") (var 1 6 "y"), "")
-    p "x <  y" `shouldBe` Right (loc 1 3 $ Lt (var 1 1 "x") (var 1 6 "y"), "")
-    p "x -> y" `shouldBe` Right (loc 1 3 $ Fun (var 1 1 "x") (var 1 6 "y"), "")
-    p "x +  y" `shouldBe` Right (loc 1 3 $ Add (var 1 1 "x") (var 1 6 "y"), "")
-    p "x -  y" `shouldBe` Right (loc 1 3 $ Sub (var 1 1 "x") (var 1 6 "y"), "")
-    p "x *  y" `shouldBe` Right (loc 1 3 $ Mul (var 1 1 "x") (var 1 6 "y"), "")
+    p "x == y" `shouldBe` Right (Meta [loc 1 3] $ Eq (var 1 1 "x") (var 1 6 "y"), "")
+    p "x <  y" `shouldBe` Right (Meta [loc 1 3] $ Lt (var 1 1 "x") (var 1 6 "y"), "")
+    p "x -> y" `shouldBe` Right (Meta [loc 1 3] $ Fun (var 1 1 "x") (var 1 6 "y"), "")
+    p "x +  y" `shouldBe` Right (Meta [loc 1 3] $ Add (var 1 1 "x") (var 1 6 "y"), "")
+    p "x -  y" `shouldBe` Right (Meta [loc 1 3] $ Sub (var 1 1 "x") (var 1 6 "y"), "")
+    p "x *  y" `shouldBe` Right (Meta [loc 1 3] $ Mul (var 1 1 "x") (var 1 6 "y"), "")
     p "x    y" `shouldBe` Right (App (var 1 1 "x") (var 1 6 "y"), "")
-    p "x ^  y" `shouldBe` Right (loc 1 3 $ Pow (var 1 1 "x") (var 1 6 "y"), "")
-    p "x\ny" `shouldBe` Right (loc 1 1 $ Var "x", "\ny")
-    p "(x\ny)" `shouldBe` Right (loc 1 1 $ App (var 1 2 "x") (var 2 1 "y"), "")
+    p "x ^  y" `shouldBe` Right (Meta [loc 1 3] $ Pow (var 1 1 "x") (var 1 6 "y"), "")
+    p "x\ny" `shouldBe` Right (Meta [loc 1 1] $ Var "x", "\ny")
+    p "(x\ny)" `shouldBe` Right (Meta [loc 1 1] $ App (var 1 2 "x") (var 2 1 "y"), "")
 
   it "☯ letDef" $ do
     let p = parse' letDef
-    let def = LetDef {docs = Nothing, examples = [], name = "x", type' = Nothing, value = Err, meta = [Location sourceName (1, 1)]}
+    let def = LetDef {docs = Nothing, name = "x", type' = Nothing, value = Err, meta = [Location sourceName (1, 1)]}
     p "x = y" `shouldBe` Right (def {value = var 1 5 "y"}, "")
-    p "x : Int = y" `shouldBe` Right (def {type' = Just (For [] $ loc 1 5 IntT), value = var 1 11 "y"}, "")
-    p "x : Int\nx = y" `shouldBe` Right (def {type' = Just (For [] $ loc 1 5 IntT), value = var 2 5 "y"}, "")
+    p "x : a = y" `shouldBe` Right (def {type' = Just (For [] $ var 1 5 "a"), value = var 1 9 "y"}, "")
+    p "x : a\nx = y" `shouldBe` Right (def {type' = Just (For [] $ var 1 5 "a"), value = var 2 5 "y"}, "")
     p "x p = y\nx q = z" `shouldBe` Right (def {value = Match [([pvar 1 3 "p"], var 1 7 "y"), ([pvar 2 3 "q"], var 2 7 "z")]}, "")
+    let src =
+          [ "---",
+            "---",
+            "# A",
+            "x = y",
+            "# end"
+          ]
+    p (intercalate "\n" src)
+      `shouldBe` Right
+        ( LetDef
+            { docs = Just newDocString {public = True, meta = [loc 1 1]},
+              name = "x",
+              type' = Nothing,
+              value = var 4 5 "y",
+              meta =
+                [ loc 4 1,
+                  Comments [Comment (3, 3) "A"]
+                ]
+            },
+          "# end"
+        )
 
   -- -- it "☯ unpackDef" $ do
   -- -- it "☯ typeDef" $ do
@@ -223,7 +264,7 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ module'" $ do
     let p = parse' (module' "mod")
-    let docs = Just DocString {public = True, description = "docs"}
+    let docs = Just newDocString {public = True, description = "docs", meta = [loc 1 1]}
     p "===\ndocs\n===" `shouldBe` Right (Module {name = "mod", docs = docs, body = []}, "")
     -- let defs = [LetDef {docs = Nothing, name = "x", type' = Nothing, value = var 4 5 "y", meta = [Location sourceName 4 1]}]
     -- p "===\ndocs\n===\nx = y" `shouldBe` Right (Module {name = "mod", docs = docs, body = defs}, "")

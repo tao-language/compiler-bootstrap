@@ -163,7 +163,6 @@ data Statement
       }
   | FunctionDef
       { docs :: Maybe DocString,
-        examples :: [(Expr, Expr)],
         name :: String,
         args :: [(String, Maybe Expr, Maybe Expr)],
         body :: [Statement],
@@ -296,12 +295,10 @@ emitStmt def@(Tao.LetDef {value = Tao.Match cases, meta}) = do
       returns <- emitExpr retT
       return (map TypeVar xs, map Just argTypes, Just returns)
     Nothing -> return ([], map (const Nothing) argNames, Nothing)
-  examples <- emitExamples def.examples
   cases' <- emitMatchCases cases
   return
     FunctionDef
       { docs = def.docs,
-        examples = examples,
         name = def.name,
         args = zipWith (\x t -> (x, t, Nothing)) argNames argTypes,
         body = [Match (Tuple $ map Name argNames) cases'],
@@ -428,7 +425,7 @@ layoutStmt def@FunctionDef {} = do
   PP.Text ("def " ++ def.name)
     : layoutTuple (map layoutFunctionArg def.args)
     ++ maybe [] (\t -> PP.Text " -> " : layoutExpr t) def.returns
-    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : maybe [] (layoutDocString def.examples) def.docs ++ concatMap layoutStmt def.body)]
+    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : maybe [] layoutDocString def.docs ++ concatMap layoutStmt def.body)]
 layoutStmt (Return expr) =
   [ PP.Text "return ",
     PP.Or
@@ -458,10 +455,9 @@ layoutStmt (Raise exc from) =
     ++ [PP.Text "\n"]
 layoutStmt stmt = error $ "TODO: layoutStmt: " ++ show stmt
 
-layoutDocString :: [(Expr, Expr)] -> DocString -> PP.Layout
-layoutDocString examples docs = do
+layoutDocString :: DocString -> PP.Layout
+layoutDocString docs = do
   [PP.Text $ "'''" ++ docs.description ++ "\n"]
-    ++ concatMap layoutExample examples
     ++ [PP.Text "'''\n"]
 
 layoutExample :: (Expr, Expr) -> PP.Layout

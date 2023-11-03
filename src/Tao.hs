@@ -84,7 +84,6 @@ data Type
 data Statement
   = LetDef
       { docs :: Maybe DocString,
-        examples :: [(Expr, Expr)],
         name :: String,
         type' :: Maybe Type,
         value :: Expr,
@@ -92,7 +91,6 @@ data Statement
       }
   | Unpack
       { docs :: Maybe DocString,
-        examples :: [(Expr, Expr)],
         types :: [(String, Type)],
         pattern :: Pattern,
         value :: Expr,
@@ -100,7 +98,6 @@ data Statement
       }
   | TypeDef
       { docs :: Maybe DocString,
-        examples :: [(Expr, Expr)],
         name :: String,
         args :: [Expr],
         alts :: [(String, Type)],
@@ -130,7 +127,7 @@ data Module = Module
 
 data ParserContext
   = COperator String
-  | CLetDef String
+  | CLetDef
   | CParentheses
   | CTuple
   | CPAny

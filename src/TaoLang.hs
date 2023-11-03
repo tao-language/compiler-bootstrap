@@ -5,7 +5,7 @@
 module TaoLang where
 
 import Control.Monad (void)
-import Core (DocString (..), Metadata (..))
+import Core (Comment (..), DocString (..), Metadata (..))
 import Data.Char (isSpace, isUpper)
 import Data.List (dropWhileEnd, intercalate)
 import Flow ((|>))
@@ -114,17 +114,22 @@ delimited delim parser = do
   return (x : xs)
 
 -- Concrete Syntax Tree
-comment :: TaoParser ((Int, Int), String)
+comment :: TaoParser Comment
 comment = do
   _ <- P.char '#'
   _ <- P.spaces
   state <- P.getState
   txt <- P.skipTo lineBreak
-  return (state.pos, dropWhileEnd isSpace txt)
+  return (Comment state.pos (dropWhileEnd isSpace txt))
 
 docString :: TaoParser String -> TaoParser DocString
 docString delimiter = do
-  delim <- delimiter
+  comments <- P.zeroOrMore comment
+  (loc, delim) <- location delimiter
+  let meta = [loc]
+  meta <- case comments of
+    [] -> return meta
+    comments -> return (meta ++ [Comments comments])
   P.commit CDocString
   _ <- P.spaces
   public <-
@@ -134,16 +139,26 @@ docString delimiter = do
         return True
       ]
   _ <- P.spaces
-  docs <- P.skipTo (closeDelimiter delim)
-  return DocString {public = public, description = dropWhileEnd isSpace $ dropWhile isSpace docs}
-  where
-    closeDelimiter :: String -> TaoParser ()
-    closeDelimiter delim = do
-      _ <- lineBreak
-      _ <- P.text delim
-      _ <- P.spaces
-      _ <- lineBreak
-      return ()
+  trailingComment1 <- P.maybe' comment
+  meta <- case trailingComment1 of
+    Nothing -> return meta
+    Just comment -> return (meta ++ [TrailingComment comment])
+  docs <- P.zeroOrMore $ do
+    P.lookaheadNot (do lineBreak; P.text delim)
+    P.anyChar
+  lineBreak
+  _ <- P.text delim
+  _ <- P.spaces
+  trailingComment2 <- P.oneOf [Just <$> comment, Nothing <$ lineBreak]
+  meta <- case trailingComment2 of
+    Nothing -> return meta
+    Just comment -> return (meta ++ [TrailingComment comment])
+  return
+    DocString
+      { public = public,
+        description = dropWhileEnd isSpace $ dropWhile isSpace docs,
+        meta = meta
+      }
 
 location :: TaoParser a -> TaoParser (Metadata, a)
 location parser = do
@@ -275,7 +290,7 @@ expression delim = do
   expr <- P.operators 0 ops expressionAtom
   trailingComment <- P.maybe' comment
   case trailingComment of
-    Just (pos, comment) -> return (Meta [Comments comments, TrailingComment pos comment] expr)
+    Just comment -> return (Meta [Comments comments, TrailingComment comment] expr)
     Nothing -> return expr
 
 expressionAtom :: TaoParser Expr
@@ -371,6 +386,7 @@ letDef = do
       branch = do
         ps <- P.zeroOrMore patternAtom
         _ <- P.char '='
+        P.commit CLetDef
         _ <- P.whitespaces
         b <- expression (return ())
         _ <- lineBreak
@@ -381,9 +397,12 @@ letDef = do
         _ <- P.whitespaces
         branch
   docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
-  examples <- P.zeroOrMore example
-  -- comments <- P.zeroOrMore comment
-  (meta, name) <- location identifier
+  comments <- P.zeroOrMore comment
+  (loc, name) <- location identifier
+  let meta = [loc]
+  meta <- case comments of
+    [] -> return meta
+    comments -> return (meta ++ [Comments comments])
   (type', rules) <-
     P.oneOf
       [ do
@@ -407,18 +426,16 @@ letDef = do
         do
           -- f x = 42
           rule <- branch
-          P.commit (CLetDefUntyped name)
           rules <- P.zeroOrMore (ruleDef name)
           return (Nothing, rule : rules)
       ]
   return
     LetDef
       { docs = docs,
-        examples = examples,
         name = name,
         type' = type',
         value = match rules,
-        meta = [meta]
+        meta = meta
       }
 
 example :: TaoParser (Expr, Expr)
@@ -427,7 +444,7 @@ example = do
   _ <- P.spaces
   prompt <- expression (return ())
   case prompt of
-    _ | Just (prompt, (pos, comment)) <- getTrailingComment prompt -> do
+    _ | Just (prompt, Comment pos comment) <- getTrailingComment prompt -> do
       result <- P.parseFrom pos comment (expression $ return ())
       return (prompt, result)
     prompt -> do
@@ -436,9 +453,9 @@ example = do
       _ <- lineBreak
       return (prompt, result)
 
-getTrailingComment :: Expr -> Maybe (Expr, ((Int, Int), String))
+getTrailingComment :: Expr -> Maybe (Expr, Comment)
 getTrailingComment (Meta [] a) = getTrailingComment a
-getTrailingComment (Meta (TrailingComment pos comment : _) a) = Just (a, (pos, comment))
+getTrailingComment (Meta (TrailingComment comment : _) a) = Just (a, comment)
 getTrailingComment (Meta (_ : meta) a) = getTrailingComment (Meta meta a)
 getTrailingComment _ = Nothing
 
@@ -450,7 +467,6 @@ typeDef :: TaoParser Statement
 -- type Bool = True | False
 typeDef = do
   docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
-  examples <- P.zeroOrMore example
   _ <- P.word "type"
   P.commit CTypeDef
   _ <- P.whitespaces
@@ -463,7 +479,6 @@ typeDef = do
         return
           TypeDef
             { docs = docs,
-              examples = examples,
               name = name,
               args = [],
               alts = [],
@@ -474,7 +489,6 @@ typeDef = do
         return
           TypeDef
             { docs = docs,
-              examples = examples,
               name = name,
               args = [],
               alts = [],

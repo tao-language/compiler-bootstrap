@@ -31,12 +31,18 @@ data Module = Module
 
 data DocString = DocString
   { public :: Bool,
-    description :: String
+    description :: String,
+    meta :: [Metadata]
   }
   deriving (Eq, Show)
 
 newDocString :: DocString
-newDocString = DocString {public = False, description = ""}
+newDocString =
+  DocString
+    { public = True,
+      description = "",
+      meta = []
+    }
 
 data Expr
   = Knd
@@ -90,10 +96,14 @@ data UnaryOp
   = Int2Num
   deriving (Eq)
 
+data Comment
+  = Comment (Int, Int) String
+  deriving (Eq, Show)
+
 data Metadata
   = Location String (Int, Int)
-  | Comments [((Int, Int), String)]
-  | TrailingComment (Int, Int) String
+  | Comments [Comment]
+  | TrailingComment Comment
   | SyntaxError String (Int, Int) String
   deriving (Eq, Show)
 
