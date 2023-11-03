@@ -288,10 +288,10 @@ expression delim = do
         ]
   comments <- P.zeroOrMore comment
   expr <- P.operators 0 ops expressionAtom
-  trailingComment <- P.maybe' comment
-  case trailingComment of
-    Just comment -> return (Meta [Comments comments, TrailingComment comment] expr)
-    Nothing -> return expr
+  case (comments, expr) of
+    ([], expr) -> return expr
+    (comments, Meta meta expr) -> return (Meta (meta ++ [Comments comments]) expr)
+    (comments, expr) -> return (Meta [Comments comments] expr)
 
 expressionAtom :: TaoParser Expr
 expressionAtom = do

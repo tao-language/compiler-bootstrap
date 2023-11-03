@@ -216,6 +216,16 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "x ^  y" `shouldBe` Right (Meta [loc 1 3] $ Pow (var 1 1 "x") (var 1 6 "y"), "")
     p "x\ny" `shouldBe` Right (Meta [loc 1 1] $ Var "x", "\ny")
     p "(x\ny)" `shouldBe` Right (Meta [loc 1 1] $ App (var 1 2 "x") (var 2 1 "y"), "")
+    let src =
+          [ "# A",
+            "x",
+            "# end"
+          ]
+    p (intercalate "\n" src)
+      `shouldBe` Right
+        ( Meta [loc 2 1, Comments [Comment (1, 3) "A"]] (Var "x"),
+          "\n# end"
+        )
 
   it "☯ letDef" $ do
     let p = parse' letDef
