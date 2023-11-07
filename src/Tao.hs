@@ -6,7 +6,7 @@
 
 module Tao where
 
-import Core (DocString (..), Metadata (..))
+import Core (DocString (..), Error (..), Metadata (..))
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
 
@@ -47,7 +47,7 @@ data Pattern
   | PFun Pattern Pattern
   | PApp Pattern Pattern
   | PMeta [Metadata] Pattern
-  | PErr
+  | PErr Error
   deriving (Eq, Show)
 
 data Expr
@@ -74,7 +74,7 @@ data Expr
   | Pow Expr Expr
   | Ann Expr Type
   | Meta [Metadata] Expr
-  | Err
+  | Err Error
   deriving (Eq, Show)
 
 data Type
@@ -166,7 +166,7 @@ asApp (App a b) = let (a', bs) = asApp a in (a', bs ++ [b])
 asApp a = (a, [])
 
 match :: [([Pattern], Expr)] -> Expr
-match [] = Err -- NotImplementedError or some sort of "hole"
+match [] = Err NotImplementedError
 match (([], b) : _) = b
 match [(ps, b)] = lam ps b
 match rules = Match rules
@@ -293,4 +293,4 @@ toCore (Mul a b) = C.mul (toCore a) (toCore b)
 toCore (Pow a b) = C.pow (toCore a) (toCore b)
 toCore (Ann a (For xs t)) = C.Ann (toCore a) (C.For xs $ toCore t)
 toCore (Meta m a) = C.Meta m (toCore a)
-toCore (Err) = error "TODO: toCore Err"
+toCore (Err e) = C.Err e

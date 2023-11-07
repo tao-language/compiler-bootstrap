@@ -5,7 +5,7 @@
 module TaoLang where
 
 import Control.Monad (void)
-import Core (Comment (..), DocString (..), Metadata (..))
+import Core (Comment (..), DocString (..), Error (..), Metadata (..))
 import Data.Char (isSpace, isUpper)
 import Data.List (dropWhileEnd, intercalate)
 import Flow ((|>))
@@ -213,7 +213,7 @@ patternTuple = do
           [ pattern' P.whitespaces,
             do
               (state, len) <- P.recover [P.char ',', P.char ')']
-              return (PMeta [SyntaxError state.name state.pos (take len state.remaining)] PErr)
+              return (PErr (SyntaxError state.name state.pos (take len state.remaining)))
           ]
   _ <- P.char '('
   P.commit CParentheses

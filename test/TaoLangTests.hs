@@ -6,7 +6,7 @@
 
 module TaoLangTests where
 
-import Core (Comment (..), DocString (..), Metadata (..), newDocString)
+import Core (Comment (..), DocString (..), Error (..), Metadata (..), newDocString)
 import Data.List (intercalate)
 import Error
 import qualified Parser as P
@@ -130,10 +130,10 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "(x,) abc" `shouldBe` Right (PTuple [pvar 1 2 "x"], " abc")
     p "(x, y) abc" `shouldBe` Right (PTuple [pvar 1 2 "x", pvar 1 5 "y"], " abc")
     -- Error handling
-    p "(%) abc" `shouldBe` Right (PMeta [SyntaxError "test" (1, 2) "%"] PErr, " abc")
-    p "(%, y) abc" `shouldBe` Right (PTuple [PMeta [SyntaxError "test" (1, 2) "%"] PErr, pvar 1 5 "y"], " abc")
-    p "(x, %) abc" `shouldBe` Right (PTuple [pvar 1 2 "x", PMeta [SyntaxError "test" (1, 5) "%"] PErr], " abc")
-    p "(x, %,) abc" `shouldBe` Right (PTuple [pvar 1 2 "x", PMeta [SyntaxError "test" (1, 5) "%"] PErr], " abc")
+    p "(%) abc" `shouldBe` Right (PErr $ SyntaxError "test" (1, 2) "%", " abc")
+    p "(%, y) abc" `shouldBe` Right (PTuple [PErr $ SyntaxError "test" (1, 2) "%", pvar 1 5 "y"], " abc")
+    p "(x, %) abc" `shouldBe` Right (PTuple [pvar 1 2 "x", PErr $ SyntaxError "test" (1, 5) "%"], " abc")
+    p "(x, %,) abc" `shouldBe` Right (PTuple [pvar 1 2 "x", PErr $ SyntaxError "test" (1, 5) "%"], " abc")
 
   it "☯ patternRecordField" $ do
     let p = parse' patternRecordField
@@ -229,7 +229,7 @@ run = describe "--==☯ Tao language ☯==--" $ do
 
   it "☯ letDef" $ do
     let p = parse' letDef
-    let def = LetDef {docs = Nothing, name = "x", type' = Nothing, value = Err, meta = [Location sourceName (1, 1)]}
+    let def = LetDef {docs = Nothing, name = "x", type' = Nothing, value = Err NotImplementedError, meta = [Location sourceName (1, 1)]}
     p "x = y" `shouldBe` Right (def {value = var 1 5 "y"}, "")
     p "x : a = y" `shouldBe` Right (def {type' = Just (For [] $ var 1 5 "a"), value = var 1 9 "y"}, "")
     p "x : a\nx = y" `shouldBe` Right (def {type' = Just (For [] $ var 1 5 "a"), value = var 2 5 "y"}, "")
