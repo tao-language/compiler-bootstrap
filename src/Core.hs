@@ -461,13 +461,9 @@ unify (Op2 op a1 b1) (Op2 op' a2 b2) | op == op' = do
   let ((a, b), s) = unify2 (a1, a2) (b1, b2)
   (Op2 op a b, s)
 unify (Rec kvs) (Rec kvs') = first Rec (unifyRec kvs kvs')
-unify (Typ k alts) Knd = (Knd, [])
-unify (App a _) Knd = unify a Knd
 unify (Typ k alts) b = case unify (Tag k) b of
   (Err e, s) -> (Err e, s)
   (_, s) -> (Typ k alts, s)
-unify Knd (Typ k alts) = (Knd, [])
-unify Knd (App b _) = unify Knd b
 unify a (Typ k alts) = case unify a (Tag k) of
   (Err e, s) -> (Err e, s)
   (_, s) -> (Typ k alts, s)
@@ -506,18 +502,19 @@ infer _ (Int _) = (IntT, [])
 infer _ (Num _) = (NumT, [])
 infer env (Tag k) = case lookup k env of
   Just (Tag k') | k == k' -> (Tag k, [])
-  Just (Ann (Tag k') ty) | k == k' -> instantiate (map fst env) ty
+  Just (Ann (Tag k') ty) | k == k' -> instantiate env ty
+  Just (Ann (Typ k' _) ty) | k == k' -> instantiate env ty
   Just a -> infer env a
   Nothing -> (Tag k, [])
 infer env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> do
     let y = newName (map fst env) (x ++ "T")
     (Var y, [(y, Var y), (x, Ann (Var x) (For [] (Var y)))])
-  Just (Ann (Var x') ty) | x == x' -> instantiate (map fst env) ty
+  Just (Ann (Var x') ty) | x == x' -> instantiate env ty
   Just a -> infer env a
   Nothing -> (Err (UndefinedVar x), [])
 infer env (Ann a ty) = do
-  let (t, vars) = instantiate (map fst env) ty
+  let (t, vars) = instantiate env ty
   let (ta, s1) = infer (vars ++ env) a
   let (t', s2) = unify ta (eval (env `compose` s1) t)
   (eval env t', s2 `compose` s1 `compose` vars)
@@ -611,9 +608,9 @@ compose s1 s2 = apply s1 s2 `union` s1
       (x, Ann (eval s a) (For xs t')) : apply s env
     apply s ((x, a) : env) = (x, eval s a) : apply s env
 
-instantiate :: [String] -> Type -> (Expr, Substitution)
-instantiate _ (For [] a) = (a, [])
-instantiate names (For (x : xs) a) = do
-  let y = newName names x
-  let (b, s) = instantiate names (For xs $ eval [(x, Var y)] a)
+instantiate :: Env -> Type -> (Expr, Substitution)
+instantiate env (For [] a) = (eval env a, [])
+instantiate env (For (x : xs) a) = do
+  let y = newName (map fst env) x
+  let (b, s) = instantiate env (For xs $ eval [(x, Var y)] a)
   (b, [(y, Var y)] `union` s)

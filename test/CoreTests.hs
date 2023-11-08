@@ -352,8 +352,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
           ]
 
     let infer' = fst . infer env
-    infer' (Tag "True") `shouldBe` bool
     infer' (Tag "Bool") `shouldBe` Knd
+    infer' (Tag "True") `shouldBe` boolType
     infer' (ann true bool) `shouldBe` boolType
     infer' (ann false (Tag "X")) `shouldBe` Err (TypeMismatch bool (Tag "X"))
     infer' (ann (Tag "X") bool) `shouldBe` Err (TypeMismatch (Tag "X") bool)
@@ -362,15 +362,15 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let (maybe, just, nothing) = (Tag "Maybe", Tag "Just", Tag "Nothing")
     let maybeType = Typ "Maybe" ["Just", "Nothing"]
     let env =
-          [ ("Maybe", Ann (Lam (PVar "a") $ App maybeType a) (For ["a"] $ Fun a Knd)),
+          [ ("Maybe", Ann maybeType (For ["a"] $ Fun a Knd)),
             ("Just", Ann (Tag "Just") (For ["a"] $ Fun a (App maybe a))),
             ("Nothing", Ann (Tag "Nothing") (For ["a"] $ App maybe a))
           ]
 
     let infer' = fst . infer env
-    infer' (Tag "Nothing") `shouldBe` App maybe a
-    infer' (Tag "Just") `shouldBe` Fun a (App maybe a)
     infer' (Tag "Maybe") `shouldBe` Fun a Knd
+    infer' (Tag "Nothing") `shouldBe` App maybeType a
+    infer' (Tag "Just") `shouldBe` Fun a (App maybeType a)
     infer' (App just i1) `shouldBe` App maybeType IntT
     infer' (ann nothing (App maybe IntT)) `shouldBe` App maybeType IntT
     infer' (ann (App just i1) (App maybe IntT)) `shouldBe` App maybeType IntT
@@ -382,20 +382,18 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let (vec, cons, nil) = (Tag "Vec", Tag "Cons", Tag "Nil")
     let vecType = Typ "Vec" ["Cons", "Nil"]
     let env =
-          [ ("Vec", Ann (lam [PVar "n", PVar "a"] $ app vecType [n, a]) (For ["n", "a"] $ fun [n, a] Knd)),
+          [ ("Vec", ann vecType (fun [IntT, Knd] Knd)),
             ("Cons", Ann cons (For ["n", "a"] $ fun [a, app vec [n, a]] $ app vec [add n i1, a])),
             ("Nil", Ann nil (For ["n", "a"] $ app vec [n, a]))
           ]
 
     let infer' = fst . infer env
-    -- infer' (app vecType [n, a]) `shouldBe` Knd
-
-    infer' nil `shouldBe` app vec [n, a]
-    infer' cons `shouldBe` fun [a, app vec [n, a]] (app vec [add n i1, a])
-    -- infer' vec `shouldBe` fun [n, a] Knd
-    -- infer' (app cons [Num 1.1, nil]) `shouldBe` x
-    -- infer' (ann nil (vec i0 NumT)) `shouldBe` vecType i0 NumT
-    -- infer' (ann nil (vec i1 NumT)) `shouldBe` Err (TypeMismatch i0 i1)
+    infer' vec `shouldBe` fun [IntT, Knd] Knd
+    infer' nil `shouldBe` app vecType [n, a]
+    infer' cons `shouldBe` fun [a, app vecType [n, a]] (app vecType [add n i1, a])
+    infer' (app cons [Num 1.1, nil]) `shouldBe` app vecType [add n i1, NumT]
+    infer' (ann nil (app vec [i0, NumT])) `shouldBe` app vecType [i0, NumT]
+    -- infer' (ann nil (app vec [i1, NumT])) `shouldBe` Err (TypeMismatch i0 i1)
     -- infer' (ann (cons (Num 1.1) nil) (vec i1 NumT)) `shouldBe` vecType i1 NumT
     -- infer' (ann (cons (Num 1.1) $ cons (Num 2.2) nil) (vec i0 NumT)) `shouldBe` Err (TypeMismatch i2 i0)
     -- infer' (ann (cons (Num 1.1) $ cons (Num 2.2) nil) (vec i2 NumT)) `shouldBe` vecType i2 NumT
