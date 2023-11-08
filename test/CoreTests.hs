@@ -384,20 +384,21 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let env =
           [ ("Vec", ann vecType (fun [IntT, Knd] Knd)),
             ("Cons", Ann cons (For ["n", "a"] $ fun [a, app vec [n, a]] $ app vec [add n i1, a])),
-            ("Nil", Ann nil (For ["n", "a"] $ app vec [n, a]))
+            ("Nil", Ann nil (For ["a"] $ app vec [i0, a]))
           ]
 
     let infer' = fst . infer env
     infer' vec `shouldBe` fun [IntT, Knd] Knd
-    infer' nil `shouldBe` app vecType [n, a]
+    infer' nil `shouldBe` app vecType [i0, a]
     infer' cons `shouldBe` fun [a, app vecType [n, a]] (app vecType [add n i1, a])
-    infer' (app cons [Num 1.1, nil]) `shouldBe` app vecType [add n i1, NumT]
+    infer' (app cons [Num 1.1, nil]) `shouldBe` app vecType [i1, NumT]
+    infer' (app cons [Num 1.1, app cons [Num 2.2, nil]]) `shouldBe` app vecType [i2, NumT]
     infer' (ann nil (app vec [i0, NumT])) `shouldBe` app vecType [i0, NumT]
-    -- infer' (ann nil (app vec [i1, NumT])) `shouldBe` Err (TypeMismatch i0 i1)
-    -- infer' (ann (cons (Num 1.1) nil) (vec i1 NumT)) `shouldBe` vecType i1 NumT
-    -- infer' (ann (cons (Num 1.1) $ cons (Num 2.2) nil) (vec i0 NumT)) `shouldBe` Err (TypeMismatch i2 i0)
-    -- infer' (ann (cons (Num 1.1) $ cons (Num 2.2) nil) (vec i2 NumT)) `shouldBe` vecType i2 NumT
-    True `shouldBe` True
+    infer' (ann nil (app vec [i1, NumT])) `shouldBe` app vecType [Err (TypeMismatch i0 i1), NumT]
+    infer' (ann (app cons [Num 1.1, nil]) (app vec [i1, NumT])) `shouldBe` app vecType [i1, NumT]
+    infer' (ann (app cons [Num 1.1, app cons [Num 2.2, nil]]) (app vec [i0, NumT])) `shouldBe` app vecType [Err (TypeMismatch i2 i0), NumT]
+    infer' (ann (app cons [Num 1.1, app cons [Num 2.2, nil]]) (app vec [i2, IntT])) `shouldBe` app vecType [i2, Err (TypeMismatch NumT IntT)]
+    infer' (ann (app cons [Num 1.1, app cons [Num 2.2, nil]]) (app vec [i2, NumT])) `shouldBe` app vecType [i2, NumT]
 
   it "☯ overload" $ do
     -- let m = App (Tag "M")
