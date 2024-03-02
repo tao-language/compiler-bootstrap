@@ -167,131 +167,130 @@ location parser = do
   _ <- P.spaces
   return (Location state.name state.pos, x)
 
-op :: String -> TaoParser [Metadata]
+op :: String -> TaoParser Metadata
 op txt = do
   _ <- P.whitespaces
   (loc, _) <- location (P.text txt)
   _ <- P.whitespaces
-  return [loc]
+  return loc
 
--- Patterns
-pattern' :: TaoParser appDelim -> TaoParser Pattern
-pattern' delim = do
-  let meta f m p q = PMeta m (f p q)
-  let ops =
-        [ P.infixR 1 (meta PFun) (op "->"),
-          P.infixL 2 (const PApp) (void delim)
-        ]
-  P.operators 0 ops patternAtom
+-- -- Patterns
+-- pattern' :: TaoParser appDelim -> TaoParser Pattern
+-- pattern' delim = do
+--   let meta f m p q = PMeta m (f p q)
+--   let ops =
+--         [ P.infixR 1 (meta PFun) (op "->"),
+--           P.infixL 2 (const PApp) (void delim)
+--         ]
+--   P.operators 0 ops patternAtom
 
-patternAtom :: TaoParser Pattern
-patternAtom = do
-  (loc, p) <-
-    (location . P.oneOf)
-      [ PAny <$ P.word "_",
-        patternName,
-        PInt <$> P.integer,
-        patternRecord,
-        patternTuple
-      ]
-  return (PMeta [loc] p)
+-- patternAtom :: TaoParser Pattern
+-- patternAtom = do
+--   (loc, p) <-
+--     (location . P.oneOf)
+--       [ PAny <$ P.word "_",
+--         patternName,
+--         PInt <$> P.integer,
+--         patternRecord,
+--         patternTuple
+--       ]
+--   return (PMeta [loc] p)
 
-patternName :: TaoParser Pattern
-patternName = do
-  name <- identifier
-  case name of
-    "Type" -> return PKnd
-    "Int" -> return PIntT
-    "Num" -> return PNumT
-    x | startsWithUpper x -> return (PTag name)
-    _ -> return (PVar name)
+-- patternName :: TaoParser Pattern
+-- patternName = do
+--   name <- identifier
+--   case name of
+--     "Type" -> return PKnd
+--     "Int" -> return PIntT
+--     "Num" -> return PNumT
+--     x | startsWithUpper x -> return (PTag name)
+--     _ -> return (PVar name)
 
-patternTuple :: TaoParser Pattern
-patternTuple = do
-  let item =
-        P.oneOf
-          [ pattern' P.whitespaces,
-            do
-              (state, len) <- P.recover [P.char ',', P.char ')']
-              return (PErr (SyntaxError state.name state.pos (take len state.remaining)))
-          ]
-  _ <- P.char '('
-  P.commit CParentheses
-  _ <- P.whitespaces
-  P.oneOf
-    [ do
-        -- Empty tuple: ()
-        _ <- P.char ')'
-        return (PTuple []),
-      do
-        x <- item
-        P.oneOf
-          [ do
-              -- Parenthesized expression: (x)
-              _ <- P.char ')'
-              return x,
-            do
-              -- Tuple: (x,) (x, y) (x, y,)
-              xs <- P.zeroOrMore $ do
-                _ <- P.char ','
-                _ <- P.whitespaces
-                item
-              _ <- P.maybe' (P.paddedR P.whitespaces $ P.char ',')
-              _ <- P.char ')'
-              return (PTuple (x : xs))
-          ]
-    ]
+-- patternTuple :: TaoParser Pattern
+-- patternTuple = do
+--   let item =
+--         P.oneOf
+--           [ pattern' P.whitespaces,
+--             do
+--               (state, len) <- P.recover [P.char ',', P.char ')']
+--               return (PErr (SyntaxError state.name state.pos (take len state.remaining)))
+--           ]
+--   _ <- P.char '('
+--   P.commit CParentheses
+--   _ <- P.whitespaces
+--   P.oneOf
+--     [ do
+--         -- Empty tuple: ()
+--         _ <- P.char ')'
+--         return (PTuple []),
+--       do
+--         x <- item
+--         P.oneOf
+--           [ do
+--               -- Parenthesized expression: (x)
+--               _ <- P.char ')'
+--               return x,
+--             do
+--               -- Tuple: (x,) (x, y) (x, y,)
+--               xs <- P.zeroOrMore $ do
+--                 _ <- P.char ','
+--                 _ <- P.whitespaces
+--                 item
+--               _ <- P.maybe' (P.paddedR P.whitespaces $ P.char ',')
+--               _ <- P.char ')'
+--               return (PTuple (x : xs))
+--           ]
+--     ]
 
-patternRecordField :: TaoParser (String, Pattern)
-patternRecordField = do
-  (loc, x) <- location identifier
-  P.commit (CRecordField x)
-  _ <- P.whitespaces
-  P.oneOf
-    [ do
-        _ <- P.char ':'
-        _ <- P.whitespaces
-        p <- pattern' P.whitespaces
-        return (x, p),
-      return (x, PMeta [loc] (PVar x))
-    ]
+-- patternRecordField :: TaoParser (String, Pattern)
+-- patternRecordField = do
+--   (loc, x) <- location identifier
+--   P.commit (CRecordField x)
+--   _ <- P.whitespaces
+--   P.oneOf
+--     [ do
+--         _ <- P.char ':'
+--         _ <- P.whitespaces
+--         p <- pattern' P.whitespaces
+--         return (x, p),
+--       return (x, PMeta [loc] (PVar x))
+--     ]
 
-patternRecord :: TaoParser Pattern
-patternRecord = do
-  fields <- collection "{" "," "}" patternRecordField
-  return (PRecord fields)
+-- patternRecord :: TaoParser Pattern
+-- patternRecord = do
+--   fields <- collection "{" "," "}" patternRecordField
+--   return (PRecord fields)
 
 -- Exprs
 expression :: TaoParser appDelim -> TaoParser Expr
 expression delim = do
-  let meta f m a b = Meta m (f a b)
-  let lamPatterns = do
-        (loc, _) <- location (P.char '\\')
-        ps <- P.oneOrMore (P.paddedL P.whitespaces patternAtom)
-        _ <- P.whitespaces
-        _ <- P.char '='
-        _ <- P.whitespaces
-        return ([loc], ps)
-  let metaLam (m, ps) b = Meta m (lam ps b)
+  let metaOp f m a b = Meta m (f a b)
+  -- let lamPatterns = do
+  --       (loc, _) <- location (P.char '\\')
+  --       ps <- P.oneOrMore (P.paddedL P.whitespaces patternAtom)
+  --       _ <- P.whitespaces
+  --       _ <- P.char '='
+  --       _ <- P.whitespaces
+  --       return ([loc], ps)
+  -- let metaLam (m, ps) b = Meta m (lam ps b)
   let ops =
-        [ P.infixR 1 (meta Or) (op "|"),
-          P.prefix 2 metaLam lamPatterns,
+        [ P.infixR 1 (metaOp Or) (op "|"),
+          -- P.prefix 2 metaLam lamPatterns,
           P.suffix 2 (flip Ann) (typeAnnotation delim),
-          P.infixR 3 (meta Eq) (op "=="),
-          P.infixR 4 (meta Lt) (op "<"),
-          P.infixR 5 (meta Fun) (op "->"),
-          P.infixR 6 (meta Add) (op "+"),
-          P.infixR 6 (meta Sub) (op "-"),
-          P.infixR 7 (meta Mul) (op "*"),
+          P.infixR 3 (metaOp Eq) (op "=="),
+          P.infixR 4 (metaOp Lt) (op "<"),
+          P.infixR 5 (metaOp Fun) (op "->"),
+          P.infixR 6 (metaOp Add) (op "+"),
+          P.infixR 6 (metaOp Sub) (op "-"),
+          P.infixR 7 (metaOp Mul) (op "*"),
           P.infixL 8 (const App) (void delim),
-          P.infixR 9 (meta Pow) (op "^")
+          P.infixR 9 (metaOp Pow) (op "^")
         ]
   comments <- P.zeroOrMore comment
   expr <- P.operators 0 ops expressionAtom
   case (comments, expr) of
     ([], expr) -> return expr
-    (comments, Meta meta expr) -> return (Meta (meta ++ [Comments comments]) expr)
-    (comments, expr) -> return (Meta [Comments comments] expr)
+    (comments, expr) -> return (Meta (Comments comments) expr)
 
 expressionAtom :: TaoParser Expr
 expressionAtom = do
@@ -303,7 +302,7 @@ expressionAtom = do
         expressionTuple,
         expressionRecord
       ]
-  return (Meta [loc] a)
+  return (Meta loc a)
 
 expressionName :: TaoParser Expr
 expressionName = do
@@ -377,123 +376,123 @@ typeAnnotation delim = do
 statement :: TaoParser Statement
 statement =
   P.oneOf
-    [ letDef',
-      -- ,unpackDef
-      letTrait',
+    [ -- letDef',
+      -- unpackDef,
+      -- letTrait',
       letType',
       parseImport,
       prompt'
     ]
 
-branch :: TaoParser ([Pattern], Expr)
-branch = do
-  ps <- P.zeroOrMore patternAtom
-  _ <- P.char '='
-  P.commit CLetDef
-  _ <- P.whitespaces
-  b <- expression (return ())
-  _ <- lineBreak
-  return (ps, b)
+-- branch :: TaoParser ([Pattern], Expr)
+-- branch = do
+--   ps <- P.zeroOrMore patternAtom
+--   _ <- P.char '='
+--   P.commit CLetDef
+--   _ <- P.whitespaces
+--   b <- expression (return ())
+--   _ <- lineBreak
+--   return (ps, b)
 
-ruleDef :: TaoParser name -> TaoParser ([Pattern], Expr)
-ruleDef name = do
-  _ <- name
-  _ <- P.whitespaces
-  branch
+-- ruleDef :: TaoParser name -> TaoParser ([Pattern], Expr)
+-- ruleDef name = do
+--   _ <- name
+--   _ <- P.whitespaces
+--   branch
 
-letDef' :: TaoParser Statement
-letDef' = do
-  docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
-  comments <- P.zeroOrMore comment
-  (loc, name) <- location identifier
-  let meta = [loc]
-  meta <- case comments of
-    [] -> return meta
-    comments -> return (meta ++ [Comments comments])
-  (type', rules) <-
-    P.oneOf
-      [ do
-          type' <- typeAnnotation (return ())
-          P.commit (CLetDefTyped name)
-          P.oneOf
-            [ do
-                -- x : Int = 42
-                _ <- P.char '='
-                P.commit (CLetDefTypedVar name)
-                _ <- P.whitespaces
-                value <- expression (return ())
-                _ <- lineBreak
-                return (Just type', [([], value)]),
-              do
-                -- f : Int -> Int
-                _ <- lineBreak
-                rules <- P.oneOrMore (ruleDef (P.word name))
-                return (Just type', rules)
-            ],
-        do
-          -- f x = 42
-          rule <- branch
-          rules <- P.zeroOrMore (ruleDef (P.word name))
-          return (Nothing, rule : rules)
-      ]
-  return
-    LetDef
-      { docs = docs,
-        name = name,
-        type' = type',
-        value = lamMatch rules
-      }
+-- letDef' :: TaoParser Statement
+-- letDef' = do
+--   docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
+--   comments <- P.zeroOrMore comment
+--   (loc, name) <- location identifier
+--   let meta = [loc]
+--   meta <- case comments of
+--     [] -> return meta
+--     comments -> return (meta ++ [Comments comments])
+--   (type', rules) <-
+--     P.oneOf
+--       [ do
+--           type' <- typeAnnotation (return ())
+--           P.commit (CLetDefTyped name)
+--           P.oneOf
+--             [ do
+--                 -- x : Int = 42
+--                 _ <- P.char '='
+--                 P.commit (CLetDefTypedVar name)
+--                 _ <- P.whitespaces
+--                 value <- expression (return ())
+--                 _ <- lineBreak
+--                 return (Just type', [([], value)]),
+--               do
+--                 -- f : Int -> Int
+--                 _ <- lineBreak
+--                 rules <- P.oneOrMore (ruleDef (P.word name))
+--                 return (Just type', rules)
+--             ],
+--         do
+--           -- f x = 42
+--           rule <- branch
+--           rules <- P.zeroOrMore (ruleDef (P.word name))
+--           return (Nothing, rule : rules)
+--       ]
+--   return
+--     LetDef
+--       { docs = docs,
+--         name = name,
+--         type' = type',
+--         value = lamMatch rules
+--       }
 
-letTrait' :: TaoParser Statement
-letTrait' = do
-  docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
-  comments <- P.zeroOrMore comment
-  (loc, _) <- location (P.char '.')
-  P.commit CTrait
-  let meta = [loc]
-  meta <- case comments of
-    [] -> return meta
-    comments -> return (meta ++ [Comments comments])
-  name <- identifier
-  _ <- P.char ':'
-  _ <- P.whitespaces
-  typeVars <-
-    P.oneOf
-      [ do
-          _ <- P.char '@'
-          xs <- P.oneOrMore (P.paddedL P.whitespaces identifier)
-          _ <- op "."
-          return xs,
-        return []
-      ]
-  self <- pattern' P.whitespaces
-  _ <- P.text "=>"
-  _ <- P.whitespaces
-  returns <- expression (return ())
-  _ <- lineBreak
-  rules <- (P.oneOrMore . ruleDef) $ do
-    _ <- P.char '.'
-    _ <- P.whitespaces
-    P.word name
-  return
-    LetTrait
-      { docs = docs,
-        name = name,
-        typeVars = typeVars,
-        self = self,
-        returns = Just returns,
-        value = lamMatch rules
-      }
+-- letTrait' :: TaoParser Statement
+-- letTrait' = do
+--   docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
+--   comments <- P.zeroOrMore comment
+--   (loc, _) <- location (P.char '.')
+--   P.commit CTrait
+--   let meta = [loc]
+--   meta <- case comments of
+--     [] -> return meta
+--     comments -> return (meta ++ [Comments comments])
+--   name <- identifier
+--   _ <- P.char ':'
+--   _ <- P.whitespaces
+--   typeVars <-
+--     P.oneOf
+--       [ do
+--           _ <- P.char '@'
+--           xs <- P.oneOrMore (P.paddedL P.whitespaces identifier)
+--           _ <- op "."
+--           return xs,
+--         return []
+--       ]
+--   self <- pattern' P.whitespaces
+--   _ <- P.text "=>"
+--   _ <- P.whitespaces
+--   returns <- expression (return ())
+--   _ <- lineBreak
+--   rules <- (P.oneOrMore . ruleDef) $ do
+--     _ <- P.char '.'
+--     _ <- P.whitespaces
+--     P.word name
+--   return
+--     LetTrait
+--       { docs = docs,
+--         name = name,
+--         typeVars = typeVars,
+--         self = self,
+--         returns = Just returns,
+--         value = lamMatch rules
+--       }
 
 prompt' :: TaoParser Statement
 prompt' = do
   comments <- P.zeroOrMore comment
   (loc, _) <- location (P.char '>')
   P.commit CPrompt
-  let meta = [loc]
-  meta <- case comments of
-    [] -> return meta
-    comments -> return (meta ++ [Comments comments])
+  let m = [loc]
+  m <- case comments of
+    [] -> return m
+    comments -> return (m ++ [Comments comments])
   _ <- P.spaces
   expr <- expression (return ())
   (expr, result) <- case expr of
@@ -509,12 +508,10 @@ prompt' = do
             return (expr, Just result),
           return (expr, Nothing)
         ]
-  return Prompt {expression = Meta meta expr, result = result}
+  return Prompt {expression = meta m expr, result = result}
 
 getTrailingComment :: Expr -> Maybe (Expr, Comment)
-getTrailingComment (Meta [] a) = getTrailingComment a
-getTrailingComment (Meta (TrailingComment comment : _) a) = Just (a, comment)
-getTrailingComment (Meta (_ : meta) a) = getTrailingComment (Meta meta a)
+getTrailingComment (Meta (TrailingComment comment) a) = Just (a, comment)
 getTrailingComment _ = Nothing
 
 unpackDef :: TaoParser Statement
@@ -529,27 +526,28 @@ letType' = do
   _ <- P.whitespaces
   name <- identifier
   P.oneOf
-    [ do
-        _ <- P.char '='
-        _ <- P.whitespaces
-        _ <- lineBreak
-        return
-          LetType
-            { docs = docs,
-              name = name,
-              args = [],
-              alts = []
-            },
-      do
-        _ <- lineBreak
-        return
-          LetType
-            { docs = docs,
-              name = name,
-              args = [],
-              alts = []
-            }
-    ]
+    []
+
+-- do
+--   _ <- P.char '='
+--   _ <- P.whitespaces
+--   _ <- lineBreak
+--   return
+--     LetType
+--       { docs = docs,
+--         name = name,
+--         args = [],
+--         alts = []
+--       },
+-- do
+--   _ <- lineBreak
+--   return
+--     LetType
+--       { docs = docs,
+--         name = name,
+--         args = [],
+--         alts = []
+--       }
 
 parseImport :: TaoParser Statement
 parseImport = do

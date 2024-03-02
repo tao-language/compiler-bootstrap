@@ -16,16 +16,16 @@ main :: IO ()
 main = do
   cliArgs <- System.Environment.getArgs
   case cliArgs of
-    "build-py" : filename : args | ".tao" `isSuffixOf` filename -> buildPy filename args
+    -- "build-py" : filename : args | ".tao" `isSuffixOf` filename -> buildPy filename args
     filename : args -> run filename args
     _ -> putStrLn "🛑 Please give me a file to run."
 
-buildPy :: String -> [String] -> IO ()
-buildPy filename args = do
-  taoMod <- loadModule filename
-  let pyMod = Python.emit taoMod
-  let pyFile = pretty 80 "    " (Python.layoutModule pyMod)
-  putStrLn pyFile
+-- buildPy :: String -> [String] -> IO ()
+-- buildPy filename args = do
+--   taoMod <- loadModule filename
+--   let pyMod = Python.emit taoMod
+--   let pyFile = pretty 80 "    " (Python.layoutModule pyMod)
+--   putStrLn pyFile
 
 run :: String -> [String] -> IO ()
 run filename args = do
