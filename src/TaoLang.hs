@@ -5,7 +5,7 @@
 module TaoLang where
 
 import Control.Monad (void)
-import Core (Comment (..), DocString (..), Error (..), Metadata (..))
+import Core (Comment (..), Error (..), Metadata (..))
 import Data.Char (isSpace, isUpper)
 import Data.List (dropWhileEnd, intercalate)
 import Flow ((|>))
@@ -353,10 +353,8 @@ expressionRecord = do
 --   -- TODO: zero or more statement --> Let
 --   expression (return ())
 
-typeAnnotation :: TaoParser appDelim -> TaoParser Type
-typeAnnotation delim = do
-  _ <- P.char ':'
-  _ <- P.whitespaces
+type' :: TaoParser appDelim -> TaoParser Type
+type' delim = do
   xs <-
     P.oneOf
       [ do
@@ -369,33 +367,42 @@ typeAnnotation delim = do
   t <- expression delim
   return (For xs t)
 
+typeAnnotation :: TaoParser appDelim -> TaoParser Type
+typeAnnotation delim = do
+  _ <- P.char ':'
+  _ <- P.whitespaces
+  type' delim
+
 -- Statements
 statement :: TaoParser Statement
 statement =
   P.oneOf
-    [ letDef,
+    [ letDef',
       -- ,unpackDef
-      typeDef
-      -- ,import'
-      -- ,prompt
+      letTrait',
+      letType',
+      parseImport,
+      prompt'
     ]
 
-letDef :: TaoParser Statement
-letDef = do
-  let branch :: TaoParser ([Pattern], Expr)
-      branch = do
-        ps <- P.zeroOrMore patternAtom
-        _ <- P.char '='
-        P.commit CLetDef
-        _ <- P.whitespaces
-        b <- expression (return ())
-        _ <- lineBreak
-        return (ps, b)
-  let ruleDef :: String -> TaoParser ([Pattern], Expr)
-      ruleDef name = do
-        _ <- P.word name
-        _ <- P.whitespaces
-        branch
+branch :: TaoParser ([Pattern], Expr)
+branch = do
+  ps <- P.zeroOrMore patternAtom
+  _ <- P.char '='
+  P.commit CLetDef
+  _ <- P.whitespaces
+  b <- expression (return ())
+  _ <- lineBreak
+  return (ps, b)
+
+ruleDef :: TaoParser name -> TaoParser ([Pattern], Expr)
+ruleDef name = do
+  _ <- name
+  _ <- P.whitespaces
+  branch
+
+letDef' :: TaoParser Statement
+letDef' = do
   docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
   comments <- P.zeroOrMore comment
   (loc, name) <- location identifier
@@ -420,13 +427,13 @@ letDef = do
               do
                 -- f : Int -> Int
                 _ <- lineBreak
-                rules <- P.oneOrMore (ruleDef name)
+                rules <- P.oneOrMore (ruleDef (P.word name))
                 return (Just type', rules)
             ],
         do
           -- f x = 42
           rule <- branch
-          rules <- P.zeroOrMore (ruleDef name)
+          rules <- P.zeroOrMore (ruleDef (P.word name))
           return (Nothing, rule : rules)
       ]
   return
@@ -434,24 +441,75 @@ letDef = do
       { docs = docs,
         name = name,
         type' = type',
-        value = match rules,
-        meta = meta
+        value = lamMatch rules
       }
 
-example :: TaoParser (Expr, Expr)
-example = do
-  _ <- P.char '>'
+letTrait' :: TaoParser Statement
+letTrait' = do
+  docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
+  comments <- P.zeroOrMore comment
+  (loc, _) <- location (P.char '.')
+  P.commit CTrait
+  let meta = [loc]
+  meta <- case comments of
+    [] -> return meta
+    comments -> return (meta ++ [Comments comments])
+  name <- identifier
+  _ <- P.char ':'
+  _ <- P.whitespaces
+  typeVars <-
+    P.oneOf
+      [ do
+          _ <- P.char '@'
+          xs <- P.oneOrMore (P.paddedL P.whitespaces identifier)
+          _ <- op "."
+          return xs,
+        return []
+      ]
+  self <- pattern' P.whitespaces
+  _ <- P.text "=>"
+  _ <- P.whitespaces
+  returns <- expression (return ())
+  _ <- lineBreak
+  rules <- (P.oneOrMore . ruleDef) $ do
+    _ <- P.char '.'
+    _ <- P.whitespaces
+    P.word name
+  return
+    LetTrait
+      { docs = docs,
+        name = name,
+        typeVars = typeVars,
+        self = self,
+        returns = Just returns,
+        value = lamMatch rules
+      }
+
+prompt' :: TaoParser Statement
+prompt' = do
+  comments <- P.zeroOrMore comment
+  (loc, _) <- location (P.char '>')
+  P.commit CPrompt
+  let meta = [loc]
+  meta <- case comments of
+    [] -> return meta
+    comments -> return (meta ++ [Comments comments])
   _ <- P.spaces
-  prompt <- expression (return ())
-  case prompt of
-    _ | Just (prompt, Comment pos comment) <- getTrailingComment prompt -> do
+  expr <- expression (return ())
+  (expr, result) <- case expr of
+    _ | Just (expr, Comment pos comment) <- getTrailingComment expr -> do
       result <- P.parseFrom pos comment (expression $ return ())
-      return (prompt, result)
-    prompt -> do
-      _ <- lineBreak
-      result <- expression (return ())
-      _ <- lineBreak
-      return (prompt, result)
+      return (expr, Just result)
+    expr ->
+      P.oneOf
+        [ do
+            _ <- lineBreak
+            result <- expression (return ())
+            _ <- lineBreak
+            return (expr, Just result),
+          return (expr, Nothing)
+        ]
+  return Prompt {expression = Meta meta expr, result = result}
 
 getTrailingComment :: Expr -> Maybe (Expr, Comment)
 getTrailingComment (Meta [] a) = getTrailingComment a
@@ -463,12 +521,11 @@ unpackDef :: TaoParser Statement
 -- (x, y) = z
 unpackDef = P.fail' -- TODO
 
-typeDef :: TaoParser Statement
--- type Bool = True | False
-typeDef = do
+letType' :: TaoParser Statement
+letType' = do
   docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
   _ <- P.word "type"
-  P.commit CTypeDef
+  P.commit CLetType
   _ <- P.whitespaces
   name <- identifier
   P.oneOf
@@ -477,45 +534,36 @@ typeDef = do
         _ <- P.whitespaces
         _ <- lineBreak
         return
-          TypeDef
+          LetType
             { docs = docs,
               name = name,
               args = [],
-              alts = [],
-              meta = []
+              alts = []
             },
       do
         _ <- lineBreak
         return
-          TypeDef
+          LetType
             { docs = docs,
               name = name,
               args = [],
-              alts = [],
-              meta = []
+              alts = []
             }
     ]
 
-prompt :: TaoParser Statement
--- > 1 + 1
-prompt = P.fail' -- TODO
-
-import' :: TaoParser Statement
-import' = do
+parseImport :: TaoParser Statement
+parseImport = do
   (loc, _) <- location (P.word "import")
   dirName <- concat <$> P.zeroOrMore (P.concat [identifier, P.text "/"])
   modName <- identifier
   _ <- P.spaces
-  name <-
-    P.oneOf
-      [ do
-          _ <- P.word "as"
-          _ <- P.spaces
-          name <- identifier
-          _ <- P.spaces
-          return name,
-        return modName
-      ]
+  alias <-
+    P.maybe' $ do
+      _ <- P.word "as"
+      _ <- P.spaces
+      name <- identifier
+      _ <- P.spaces
+      return name
   exposing <-
     P.oneOf
       [ collection "(" "," ")" identifier,
@@ -525,9 +573,8 @@ import' = do
   return
     Import
       { path = dirName ++ modName,
-        name = name,
-        exposing = exposing,
-        meta = [loc]
+        alias = alias,
+        exposing = exposing
       }
 
 -- Module
@@ -537,10 +584,10 @@ module' name = do
   P.oneOf
     [ do
         _ <- P.endOfFile
-        return Module {name = name, docs = docs, body = []},
+        return Module {name = name, docs = docs, stmts = []},
       do
-        body <- P.oneOrMore statement
+        stmts <- P.oneOrMore statement
         _ <- P.whitespaces
         _ <- P.endOfFile
-        return Module {name = name, docs = docs, body = body}
+        return Module {name = name, docs = docs, stmts = stmts}
     ]

@@ -132,7 +132,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   -- show (If (If x y) z) `shouldBe` "(x ? y) ? z"
 
   it "☯ syntax sugar" $ do
-    let' [] x `shouldBe` x
+    -- let' [] x `shouldBe` x
     -- let' [(y', z)] x `shouldBe` App (Lam y' x) z
 
     -- or' [] `shouldBe` err
@@ -216,7 +216,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- Snd
     -- Op1
     -- Op2
-    -- Rec
     -- eval env (ann (ann i1 IntT) IntT) `shouldBe` i1
     -- eval env (ann (ann i1 NumT) IntT) `shouldBe` err
     -- eval env (ann (ann i1 IntT) NumT) `shouldBe` err
@@ -234,6 +233,18 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval env (add i1 i2) `shouldBe` Int 3
     eval env (sub i1 i2) `shouldBe` Int (-1)
     eval env (mul i1 i2) `shouldBe` Int 2
+
+  it "☯ eval let'" $ do
+    let env = [("x", i1)]
+    eval env (let' (_x, x) x) `shouldBe` i1
+    eval env (let' (_x, y) x) `shouldBe` y
+    eval env (let' (_x, y) z) `shouldBe` z
+
+  it "☯ eval lets" $ do
+    eval [] (lets [(_x, i1), (_y, x)] x) `shouldBe` i1
+    eval [] (lets [(_x, i1), (_y, x)] y) `shouldBe` i1
+    eval [] (lets [(_x, y), (_y, i1)] x) `shouldBe` y
+    eval [] (lets [(_x, y), (_y, i1)] y) `shouldBe` i1
 
   it "☯ eval factorial" $ do
     let env = [("f", factorial "f")]
@@ -268,7 +279,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- Snd !Expr
     -- Op1 !UnaryOp !Expr
     -- Op2 !BinaryOp !Expr !Expr
-    -- Rec ![(String, Expr)]
     -- Err !Error
     True `shouldBe` True
 

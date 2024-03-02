@@ -35,7 +35,6 @@ data Expr
   | Fun Expr Expr
   | Or Expr Expr
   | App Expr Expr
-  | Rec [(String, Expr)]
   | Typ String [String]
   | Op1 UnaryOp Expr
   | Op2 BinaryOp Expr Expr
@@ -52,7 +51,6 @@ data Pattern
   | PVar String
   | PFun Pattern Pattern
   | PApp Pattern Pattern
-  | PRec [(String, Pattern)]
   | PMeta [Metadata] Pattern
   deriving (Eq)
 
@@ -73,29 +71,6 @@ data UnaryOp
   = Int2Num
   deriving (Eq)
 
-data Module = Module
-  { name :: String,
-    -- docs :: Maybe DocString,
-    env :: Env,
-    run :: [Expr]
-  }
-  deriving (Eq, Show)
-
-data DocString = DocString
-  { public :: Bool,
-    description :: String,
-    meta :: [Metadata]
-  }
-  deriving (Eq, Show)
-
-newDocString :: DocString
-newDocString =
-  DocString
-    { public = True,
-      description = "",
-      meta = []
-    }
-
 data Error
   = SyntaxError String (Int, Int) String
   | NotImplementedError
@@ -107,19 +82,16 @@ data Error
     OccursError String Expr
   | TypeMismatch Expr Expr
   | UndefinedVar String
-  deriving
-    ( Eq,
-      Show
-    )
-
-data Comment
-  = Comment (Int, Int) String
   deriving (Eq, Show)
 
 data Metadata
   = Location String (Int, Int)
   | Comments [Comment]
   | TrailingComment Comment
+  deriving (Eq, Show)
+
+data Comment
+  = Comment (Int, Int) String
   deriving (Eq, Show)
 
 type Env = [(String, Expr)]
@@ -129,6 +101,7 @@ type Substitution = [(String, Expr)]
 instance Show Expr where
   showsPrec :: Int -> Expr -> ShowS
   showsPrec p expr = case expr of
+    App (Lam p b) a -> prefix 1 (show p ++ " = " ++ show a ++ "; ") b
     Or a b -> infixR 1 a " | " b
     Ann a (For xs b) -> infixR 2 a (" : " ++ for xs) b
     Lam p b -> do
@@ -154,9 +127,6 @@ instance Show Expr where
     Tag k -> atom 11 ("(@tag '" ++ k ++ "')")
     Var x | isVarName x -> atom 11 x
     Var x -> atom 11 ("(@var '" ++ x ++ "')")
-    Rec kvs -> do
-      let showField (x, a) = x ++ ": " ++ show a
-      atom 11 ("{" ++ intercalate ", " (map showField kvs) ++ "}")
     Typ k alts -> atom 11 (show (Tag k) ++ "[" ++ intercalate "|" alts ++ "]")
     Meta _ a -> showsPrec p a
     where
@@ -238,9 +208,11 @@ int2num = Op1 Int2Num
 ann :: Expr -> Expr -> Expr
 ann a t = Ann a (For [] t)
 
-let' :: [(Pattern, Expr)] -> Expr -> Expr
-let' [] b = b
-let' ((p, a) : defs) b = App (Lam p (let' defs b)) a
+let' :: (Pattern, Expr) -> Expr -> Expr
+let' (p, a) b = App (Lam p b) a
+
+lets :: [(Pattern, Expr)] -> Expr -> Expr
+lets defs b = foldr let' b defs
 
 or' :: [Expr] -> Expr
 or' [] = error "`or'` must have at least one expression"
@@ -283,8 +255,6 @@ freeVars (Fix x a) = delete x (freeVars a)
 freeVars (Fun a b) = freeVars a `union` freeVars b
 freeVars (Or a b) = freeVars a `union` freeVars b
 freeVars (App a b) = freeVars a `union` freeVars b
-freeVars (Rec []) = []
-freeVars (Rec ((_, a) : kvs)) = freeVars a `union` freeVars (Rec kvs)
 freeVars (Typ _ _) = []
 freeVars (Op1 _ a) = freeVars a
 freeVars (Op2 _ a b) = freeVars a `union` freeVars b
@@ -303,7 +273,6 @@ patternExpr (PTag k) = Tag k
 patternExpr (PVar x) = Var x
 patternExpr (PFun p q) = Fun (patternExpr p) (patternExpr q)
 patternExpr (PApp p q) = App (patternExpr p) (patternExpr q)
-patternExpr (PRec kvs) = Rec (map (second patternExpr) kvs)
 patternExpr (PMeta m p) = Meta m (patternExpr p)
 
 occurs :: String -> Expr -> Bool
@@ -357,7 +326,6 @@ eval env (App a b) = case (eval env a, eval env b) of
     (PVar x, b) -> eval [(x, b)] a
     (PFun p q, Fun b1 b2) -> app (lam [p, q] a) [b1, b2]
     (PApp p q, App b1 b2) -> app (lam [p, q] a) [b1, b2]
-    (PRec [], Rec _) -> a
     (p, b) -> Err (PatternMatchError p b)
   (Err e, _) -> Err e
   -- (Ann a (For xs (Fun t1 t2)), b) -> case infer env (Ann b (For xs t1)) of
@@ -380,7 +348,6 @@ eval env (Or a b) = case (eval env a, eval env b) of
   (a, Err _) -> a
   (Or a1 a2, b) -> Or a1 (Or a2 b)
   (a, b) -> Or a b
-eval env (Rec kvs) = Rec (map (second (eval env)) kvs)
 eval env (Typ k alts) = Typ k alts
 eval env (Op1 op a) = case (op, eval env a) of
   (op, a) | isOpen a -> Op1 op a
@@ -460,7 +427,6 @@ unify (Op1 op a) (Op1 op' b) | op == op' = do
 unify (Op2 op a1 b1) (Op2 op' a2 b2) | op == op' = do
   let ((a, b), s) = unify2 (a1, a2) (b1, b2)
   (Op2 op a b, s)
-unify (Rec kvs) (Rec kvs') = first Rec (unifyRec kvs kvs')
 unify (Typ k alts) b = case unify (Tag k) b of
   (Err e, s) -> (Err e, s)
   (_, s) -> (Typ k alts, s)
@@ -484,15 +450,6 @@ unifyAll (a1 : bs1) (a2 : bs2) = do
   let (bs, s1) = unifyAll bs1 bs2
   let (a, s2) = unify (eval s1 a1) (eval s1 a2)
   (a : map (eval s2) bs, s2 `compose` s1)
-
-unifyRec :: [(String, Expr)] -> [(String, Expr)] -> ([(String, Expr)], Substitution)
-unifyRec [] _ = ([], [])
-unifyRec ((x, a) : kvs) kvs' = case lookup x kvs' of
-  Just b -> do
-    let (kvs, s1) = unifyRec kvs kvs'
-    let (t, s2) = unify (eval s1 a) (eval s1 b)
-    ((x, t) : kvs, s2 `compose` s1)
-  Nothing -> unifyRec kvs kvs'
 
 infer :: Env -> Expr -> (Expr, Substitution)
 infer _ Knd = (Knd, [])
@@ -537,9 +494,6 @@ infer env (App a b) = do
   case unify (Fun tb (Var x)) ta of
     (Err e, s2) -> (Err e, s2 `compose` s1)
     (_, s2) -> (eval (env `compose` s2) (Var x), s2 `compose` s1 `compose` [(x, Var x)])
-infer env (Rec kvs) = do
-  let (kvsT, s) = inferRec env kvs
-  (Rec kvsT, s)
 infer env (Typ k alts) = (Typ k alts, [])
 infer env (Op1 op a) = inferOp1 env op a
 infer env (Op2 op a b) = inferOp2 env op a b
@@ -558,13 +512,6 @@ inferAll env (a : bs) = do
   let (ta, s1) = infer env a
   let (tbs, s2) = inferAll (env `compose` s1) bs
   (eval s2 ta : tbs, s2 `compose` s1)
-
-inferRec :: Env -> [(String, Expr)] -> ([(String, Expr)], Substitution)
-inferRec _ [] = ([], [])
-inferRec env ((x, a) : kvs) = do
-  let (kvsT, s1) = inferRec env kvs
-  let (ta, s2) = infer (env `compose` s1) a
-  ((x, ta) : kvsT, s2 `compose` s1)
 
 inferOp1 :: Env -> UnaryOp -> Expr -> (Expr, Substitution)
 inferOp1 env Int2Num a = do

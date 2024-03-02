@@ -10,11 +10,14 @@
 
 module Python where
 
-import Core (DocString (..), Metadata (..))
+import Core (Metadata (..))
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (first))
+import Data.Foldable (foldlM, foldrM)
 import Data.List (intercalate, union)
+import PrettyPrint (Layout)
 import qualified PrettyPrint as PP
+import Tao (DocString (..))
 import qualified Tao
 
 -- TODO: abstract into an `Imperative` language
@@ -30,6 +33,14 @@ data Module = Module
     body :: [Statement]
   }
   deriving (Eq, Show)
+
+newModule :: String -> [Statement] -> Module
+newModule name body =
+  Module
+    { name = name,
+      docs = Nothing,
+      body = body
+    }
 
 --- Expressions ---
 -- https://docs.python.org/3/library/ast.html#expressions
@@ -132,13 +143,13 @@ data Statement
   | ImportFrom String [(String, Maybe String)] -- from mod import x, y as z
   | Break -- break
   | Continue -- continue
-  | Match Expr [(Pattern, Maybe Expr, [Statement])]
-  | Return Expr
-  | Yield Expr
-  | YieldFrom Expr
-  | Global [String]
-  | Nonlocal [String]
-  | Await Expr
+  | Match Expr [(Pattern, Maybe Expr, [Statement])] -- match x: case p: y; ...
+  | Return Expr -- return x
+  | Yield Expr -- yield x
+  | YieldFrom Expr -- yield from x
+  | Global [String] -- global x
+  | Nonlocal [String] -- nonlocal x
+  | Await Expr -- await x
   | If
       { test :: Expr,
         body :: [Statement],
@@ -186,6 +197,29 @@ data Statement
       }
   deriving (Eq, Show)
 
+newFunctionDef :: String -> [(String, Maybe Expr, Maybe Expr)] -> [Statement] -> Statement
+newFunctionDef name args body =
+  FunctionDef
+    { docs = Nothing,
+      name = name,
+      args = args,
+      body = body,
+      decorators = [],
+      returns = Nothing,
+      typeParams = [],
+      async = False
+    }
+
+newClassDef :: String -> [TypeParam] -> [Statement] -> Statement
+newClassDef name args body =
+  ClassDef
+    { name = name,
+      bases = [],
+      body = body,
+      decorators = [],
+      typeParams = args
+    }
+
 --- Pattern Matching ---
 -- https://docs.python.org/3/library/ast.html#pattern-matching
 data Pattern
@@ -210,8 +244,7 @@ data TypeParam
 newtype Emit a = Emit (Context -> (a, Context))
 
 data Context = Context
-  { imports :: [String],
-    globals :: [Statement],
+  { globals :: [Statement],
     locals :: [Statement],
     names :: [String]
   }
@@ -220,8 +253,7 @@ data Context = Context
 newContext :: Context
 newContext =
   Context
-    { imports = [],
-      globals = [],
+    { globals = [],
       locals = [],
       names = []
     }
@@ -248,20 +280,33 @@ instance Monad Emit where
           apply (f x) ctx'
       )
 
-apply :: Emit a -> Context -> (a, Context)
-apply (Emit e) = e
-
-addImport :: String -> Emit ()
-addImport imp =
-  Emit (\ctx -> ((), ctx {imports = ctx.imports `union` [imp]}))
+addUnique :: (Eq a) => a -> [a] -> [a]
+addUnique x [] = [x]
+addUnique x (x' : ys) | x == x' = x : ys
+addUnique x (y : ys) = y : addUnique x ys
 
 addGlobal :: Statement -> Emit ()
-addGlobal stmt =
-  Emit (\ctx -> ((), ctx {globals = ctx.globals ++ [stmt]}))
+addGlobal stmt = Emit (\ctx -> ((), ctx {globals = addUnique stmt ctx.globals}))
+
+addGlobals :: [Statement] -> Emit ()
+addGlobals [] = return ()
+addGlobals (stmt : stmts) = do
+  addGlobals stmts
+  addGlobal stmt
+  return ()
 
 addLocal :: Statement -> Emit ()
-addLocal stmt =
-  Emit (\ctx -> ((), ctx {locals = ctx.locals ++ [stmt]}))
+addLocal stmt = Emit (\ctx -> ((), ctx {locals = addUnique stmt ctx.locals}))
+
+addLocals :: [Statement] -> Emit ()
+addLocals [] = return ()
+addLocals (stmt : stmts) = do
+  addLocals stmts
+  addLocal stmt
+  return ()
+
+apply :: Emit a -> Context -> (a, Context)
+apply (Emit e) = e
 
 --- Syntax sugar ---
 
@@ -276,141 +321,229 @@ raise x = Raise x Nothing
 
 --- Tao to Python ---
 
+-- TODO: move to Target.hs
+data Target stmt expr = Target
+  { requires :: [String],
+    header :: String,
+    footer :: String,
+    extern :: [(String, TargetDef stmt expr)]
+  }
+  deriving (Eq, Show)
+
+data TargetDef stmt expr = TargetDef
+  { globals :: [stmt],
+    locals :: [stmt],
+    expr :: expr
+  }
+  deriving (Eq, Show)
+
+targetDef :: expr -> TargetDef stmt expr
+targetDef expr = TargetDef {globals = [], locals = [], expr = expr}
+
+type PyTarget = Target Statement Expr
+
+builtins :: PyTarget
+builtins =
+  Target
+    { requires = [],
+      header = "",
+      footer = "",
+      extern =
+        [ ("True", targetDef $ Bool True),
+          ("False", targetDef $ Bool False)
+        ]
+    }
+
 emit :: Tao.Module -> Module
 emit mod = do
-  let (body, ctx) = apply (emitStmts mod.body) newContext
+  let initialCtx = newContext -- TODO: {env = moduleToCore mod}
+  let (body, ctx) = apply (emitStmts builtins mod.stmts) initialCtx
   Module
     { name = mod.name,
       docs = mod.docs,
-      body = map import' ctx.imports ++ ctx.globals ++ ctx.locals ++ body
+      body = ctx.globals ++ ctx.locals ++ body
     }
 
-emitStmt :: Tao.Statement -> Emit Statement
-emitStmt def@(Tao.LetDef {value = Tao.Match cases, meta}) = do
-  let argNames = Tao.matchArgs "arg" cases
-  (typeParams, argTypes, returns) <- case def.type' of
+emitStmt :: PyTarget -> Tao.Statement -> [Tao.Statement] -> Emit [Statement]
+emitStmt target Tao.LetDef {docs, type', name, value = Tao.LamMatch cases} stmts = do
+  let argNames = Tao.lamMatchArgs "arg" cases
+  (typeParams, argTypes, returns) <- case type' of
     Just (Tao.For xs t) -> do
       let (argsT, retT) = Tao.asFun t
-      argTypes <- emitExprs argsT
-      returns <- emitExpr retT
+      argTypes <- emitExprs target argsT
+      returns <- emitExpr target retT
       return (map TypeVar xs, map Just argTypes, Just returns)
     Nothing -> return ([], map (const Nothing) argNames, Nothing)
-  cases' <- emitMatchCases cases
+  cases' <- emitMatchCases target cases
   return
-    FunctionDef
-      { docs = def.docs,
-        name = def.name,
-        args = zipWith (\x t -> (x, t, Nothing)) argNames argTypes,
-        body = [Match (Tuple $ map Name argNames) cases'],
-        decorators = [],
-        returns = returns,
-        typeParams = typeParams,
-        async = False
-      }
-emitStmt (Tao.LetDef {docs, name, type', value, meta}) = do
-  error "TODO: LetDef"
-emitStmt (Tao.Unpack {docs, types, pattern, value, meta}) = do
-  error "TODO: Unpack"
-emitStmt (Tao.TypeDef {docs, name, args, alts, meta}) = do
-  error "TODO: TypeDef"
-emitStmt (Tao.Import {path, name, exposing, meta}) = do
-  error "TODO: TypeDef"
-emitStmt (Tao.Prompt {description, expression, result, meta}) = do
-  error "TODO: Prompt"
+    [ FunctionDef
+        { docs = docs,
+          name = name,
+          args = zipWith (\x t -> (x, t, Nothing)) argNames argTypes,
+          body = [Match (Tuple $ map Name argNames) cases'],
+          decorators = [],
+          returns = returns,
+          typeParams = typeParams,
+          async = False
+        }
+    ]
+emitStmt target Tao.LetDef {type', name, value} stmts = do
+  value <- emitExpr target value
+  case type' of
+    -- Just type' -> do
+    --   type' <- emitType type'
+    --   return [AnnAssign (Name name) type' (Just value)]
+    Nothing -> return [Assign [Name name] value]
+emitStmt target Tao.LetPat {docs, types, pattern, value} stmts = do
+  error "TODO: LetPat"
+emitStmt target Tao.LetType {docs, name, args, alts} stmts = do
+  addGlobal (ImportFrom "dataclasses" [("dataclass", Nothing)])
+  typeParams <- return [] -- TODO: args
+  -- let asdf = Tao.findTraits
+  body <- emitClassDefs target name stmts
+  return
+    [ ClassDef
+        { name = name,
+          bases = [],
+          body = body,
+          decorators = [Name "dataclass"],
+          typeParams = typeParams
+        }
+    ]
+emitStmt target Tao.LetTrait {} stmts = return []
+emitStmt target Tao.Unbox {} stmts = do
+  error "TODO: Unbox"
+emitStmt target Tao.Import {path, alias, exposing} stmts = case alias of
+  Just name -> return [Import path (Just name)]
+  Nothing -> return [Import path Nothing]
+emitStmt target Tao.Prompt {} stmts = return []
 
-emitExample :: (Tao.Expr, Tao.Expr) -> Emit (Expr, Expr)
-emitExample (prompt, result) = do
-  prompt <- emitExpr prompt
-  result <- emitExpr result
+-- selfPattern :: String -> [Expr] -> Tao.Pattern
+-- selfPattern k args = Tao.pApp (Tao.PTag k) args
+
+emitClassDef :: PyTarget -> String -> Tao.Statement -> Emit [Statement]
+emitClassDef target name trait@Tao.LetTrait {} = do
+  -- self :: Pattern,
+  -- returns :: Maybe Expr,
+  value <- emitExpr target trait.value
+  return
+    [ FunctionDef
+        { docs = trait.docs,
+          name = trait.name,
+          args = [],
+          body = [Return value],
+          decorators = [],
+          returns = Nothing,
+          typeParams = map TypeVar trait.typeVars,
+          async = False
+        }
+    ]
+emitClassDef _ _ _ = return []
+
+emitClassDefs :: PyTarget -> String -> [Tao.Statement] -> Emit [Statement]
+emitClassDefs _ _ [] = return []
+emitClassDefs target name (stmt : stmts) = do
+  stmts1 <- emitClassDef target name stmt
+  stmts2 <- emitClassDefs target name stmts
+  return (stmts1 ++ stmts2)
+
+emitStmts :: PyTarget -> [Tao.Statement] -> Emit [Statement]
+emitStmts _ [] = return []
+emitStmts target (stmt : stmts) = do
+  stmts1 <- emitStmt target stmt stmts
+  stmts2 <- emitStmts target stmts
+  return (stmts1 ++ stmts2)
+
+emitExpr :: PyTarget -> Tao.Expr -> Emit Python.Expr
+emitExpr _ Tao.IntT = return (Name "int")
+emitExpr _ (Tao.Int i) = return (Integer i)
+emitExpr target (Tao.Tag k) = emitExpr target (Tao.Var k)
+emitExpr target (Tao.Var x) = case lookup x target.extern of
+  Just def -> do
+    addGlobals def.globals
+    addLocals def.locals
+    return def.expr -- TODO: manage globals + locals
+  Nothing -> return (Name x)
+emitExpr target (Tao.App a b) = do
+  let (func, args) = Tao.asApp (Tao.App a b)
+  func <- emitExpr target func
+  args <- emitExprs target args
+  return (call func args)
+emitExpr target (Tao.Sub a b) = do
+  a <- emitExpr target a
+  b <- emitExpr target b
+  return (BinOp a Sub b)
+emitExpr target (Tao.Mul a b) = do
+  a <- emitExpr target a
+  b <- emitExpr target b
+  return (BinOp a Mult b)
+emitExpr target (Tao.Meta m a) = do
+  a' <- emitExpr target a
+  return (Meta m a')
+emitExpr _ a = error $ "TODO: expr " ++ show a
+
+emitExprs :: PyTarget -> [Tao.Expr] -> Emit [Expr]
+emitExprs _ [] = return []
+emitExprs target (a : bs) = do
+  a' <- emitExpr target a
+  bs' <- emitExprs target bs
+  return (a' : bs')
+
+emitExample :: PyTarget -> (Tao.Expr, Tao.Expr) -> Emit (Expr, Expr)
+emitExample target (prompt, result) = do
+  prompt <- emitExpr target prompt
+  result <- emitExpr target result
   return (prompt, result)
 
-emitExamples :: [(Tao.Expr, Tao.Expr)] -> Emit [(Expr, Expr)]
-emitExamples [] = return []
-emitExamples (example : examples) = do
-  example <- emitExample example
-  examples <- emitExamples examples
+emitExamples :: PyTarget -> [(Tao.Expr, Tao.Expr)] -> Emit [(Expr, Expr)]
+emitExamples _ [] = return []
+emitExamples target (example : examples) = do
+  example <- emitExample target example
+  examples <- emitExamples target examples
   return (example : examples)
 
-emitMatchCase :: ([Tao.Pattern], Tao.Expr) -> Emit (Pattern, Maybe Expr, [Statement])
-emitMatchCase (ps, b) = do
-  pats <- emitPatterns ps
-  body <- emitBody b
+emitMatchCase :: PyTarget -> ([Tao.Pattern], Tao.Expr) -> Emit (Pattern, Maybe Expr, [Statement])
+emitMatchCase target (ps, b) = do
+  pats <- emitPatterns target ps
+  body <- emitBody target b
   return (MatchSequence pats, Nothing, body)
 
-emitMatchCases :: [([Tao.Pattern], Tao.Expr)] -> Emit [(Pattern, Maybe Expr, [Statement])]
-emitMatchCases [] = return []
-emitMatchCases (case' : cases) = do
-  case' <- emitMatchCase case'
-  cases <- emitMatchCases cases
+emitMatchCases :: PyTarget -> [([Tao.Pattern], Tao.Expr)] -> Emit [(Pattern, Maybe Expr, [Statement])]
+emitMatchCases _ [] = return []
+emitMatchCases target (case' : cases) = do
+  case' <- emitMatchCase target case'
+  cases <- emitMatchCases target cases
   return (case' : cases)
 
-emitPattern :: Tao.Pattern -> Emit Pattern
+emitPattern :: PyTarget -> Tao.Pattern -> Emit Pattern
 -- PAny
 -- PKnd
 -- PIntT
 -- PNumT
-emitPattern (Tao.PInt i) = return (MatchValue (Integer i))
+emitPattern _ (Tao.PInt i) = return (MatchValue (Integer i))
 -- PTag String
-emitPattern (Tao.PVar x) = return (MatchAs Nothing x)
+emitPattern _ (Tao.PVar x) = return (MatchAs Nothing x)
 -- PTuple [Pattern]
 -- PRecord [(String, Pattern)]
 -- PFun Pattern Pattern
 -- PApp Pattern Pattern
-emitPattern (Tao.PMeta m p) = do
-  pat <- emitPattern p
+emitPattern target (Tao.PMeta m p) = do
+  pat <- emitPattern target p
   return (MatchMeta m pat)
-emitPattern p = error $ "TODO: emitPattern " ++ show p
+emitPattern _ p = error $ "TODO: emitPattern " ++ show p
 
-emitPatterns :: [Tao.Pattern] -> Emit [Pattern]
-emitPatterns [] = return []
-emitPatterns (p : ps) = do
-  p <- emitPattern p
-  ps <- emitPatterns ps
+emitPatterns :: PyTarget -> [Tao.Pattern] -> Emit [Pattern]
+emitPatterns _ [] = return []
+emitPatterns target (p : ps) = do
+  p <- emitPattern target p
+  ps <- emitPatterns target ps
   return (p : ps)
 
-emitStmts :: [Tao.Statement] -> Emit [Statement]
-emitStmts [] = return []
-emitStmts (stmt : stmts) = do
-  stmt' <- emitStmt stmt
-  stmts' <- emitStmts stmts
-  return (stmt' : stmts')
-
-emitBody :: Tao.Expr -> Emit [Statement]
-emitBody a =
-  Emit
-    ( \ctx -> do
-        let (expr, ctx') = apply (emitExpr a) ctx {locals = []}
-        (ctx'.locals ++ [Return expr], ctx' {locals = ctx.locals})
-    )
-
-emitExpr :: Tao.Expr -> Emit Expr
-emitExpr Tao.IntT = return (Name "int")
-emitExpr (Tao.Int i) = return (Integer i)
-emitExpr (Tao.Var x) = return (Name x)
-emitExpr (Tao.App a b) = do
-  let (func, args) = Tao.asApp (Tao.App a b)
-  func <- emitExpr func
-  args <- emitExprs args
-  return (call func args)
-emitExpr (Tao.Sub a b) = do
-  a <- emitExpr a
-  b <- emitExpr b
-  return (BinOp a Sub b)
-emitExpr (Tao.Mul a b) = do
-  a <- emitExpr a
-  b <- emitExpr b
-  return (BinOp a Mult b)
-emitExpr (Tao.Meta m a) = do
-  a' <- emitExpr a
-  return (Meta m a')
-emitExpr a = error $ "TODO: expr " ++ show a
-
-emitExprs :: [Tao.Expr] -> Emit [Expr]
-emitExprs [] = return []
-emitExprs (a : bs) = do
-  a' <- emitExpr a
-  bs' <- emitExprs bs
-  return (a' : bs')
+emitBody :: PyTarget -> Tao.Expr -> Emit [Statement]
+emitBody target a = Emit $
+  \ctx -> do
+    let (expr, ctx') = apply (emitExpr target a) ctx {locals = []}
+    (ctx'.locals ++ [Return expr], ctx' {locals = ctx.locals})
 
 --- Pretty printing layouts ---
 
@@ -426,6 +559,12 @@ layoutStmt def@FunctionDef {} = do
     : layoutTuple (map layoutFunctionArg def.args)
     ++ maybe [] (\t -> PP.Text " -> " : layoutExpr t) def.returns
     ++ [PP.Text ":", PP.Indent (PP.Text "\n" : maybe [] layoutDocString def.docs ++ concatMap layoutStmt def.body)]
+layoutStmt def@ClassDef {} = do
+  PP.Text ("class " ++ def.name)
+    : case def.bases of
+      [] -> []
+      bases -> layoutTuple (map layoutExpr bases)
+    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layoutStmt def.body)]
 layoutStmt (Return expr) =
   [ PP.Text "return ",
     PP.Or
@@ -457,8 +596,7 @@ layoutStmt stmt = error $ "TODO: layoutStmt: " ++ show stmt
 
 layoutDocString :: DocString -> PP.Layout
 layoutDocString docs = do
-  [PP.Text $ "'''" ++ docs.description ++ "\n"]
-    ++ [PP.Text "'''\n"]
+  [PP.Text ("'''" ++ docs.description ++ "\n"), PP.Text "'''\n"]
 
 layoutExample :: (Expr, Expr) -> PP.Layout
 layoutExample (prompt, result) =

@@ -6,7 +6,7 @@
 
 module TaoLangTests where
 
-import Core (Comment (..), DocString (..), Error (..), Metadata (..), newDocString)
+import Core (Comment (..), Error (..), Metadata (..))
 import Data.List (intercalate)
 import Error
 import qualified Parser as P
@@ -227,13 +227,19 @@ run = describe "--==☯ Tao language ☯==--" $ do
           "\n# end"
         )
 
-  it "☯ letDef" $ do
-    let p = parse' letDef
-    let def = LetDef {docs = Nothing, name = "x", type' = Nothing, value = Err NotImplementedError, meta = [Location sourceName (1, 1)]}
+  it "☯ letDef'" $ do
+    let p = parse' letDef'
+    let def =
+          LetDef
+            { docs = Nothing,
+              name = "x",
+              type' = Nothing,
+              value = Err NotImplementedError
+            }
     p "x = y" `shouldBe` Right (def {value = var 1 5 "y"}, "")
     p "x : a = y" `shouldBe` Right (def {type' = Just (For [] $ var 1 5 "a"), value = var 1 9 "y"}, "")
     p "x : a\nx = y" `shouldBe` Right (def {type' = Just (For [] $ var 1 5 "a"), value = var 2 5 "y"}, "")
-    p "x p = y\nx q = z" `shouldBe` Right (def {value = Match [([pvar 1 3 "p"], var 1 7 "y"), ([pvar 2 3 "q"], var 2 7 "z")]}, "")
+    p "x p = y\nx q = z" `shouldBe` Right (def {value = LamMatch [([pvar 1 3 "p"], var 1 7 "y"), ([pvar 2 3 "q"], var 2 7 "z")]}, "")
     let src =
           [ "---",
             "---",
@@ -247,35 +253,47 @@ run = describe "--==☯ Tao language ☯==--" $ do
             { docs = Just newDocString {public = True, meta = [loc 1 1]},
               name = "x",
               type' = Nothing,
-              value = var 4 5 "y",
-              meta =
-                [ loc 4 1,
-                  Comments [Comment (3, 3) "A"]
-                ]
+              value = var 4 5 "y"
             },
           "# end"
         )
 
-  -- -- it "☯ unpackDef" $ do
-  -- -- it "☯ typeDef" $ do
-  -- -- it "☯ test" $ do
+  -- it "☯ unpackDef" $ do
+
+  it "☯ letTrait'" $ do
+    let p = parse' letTrait'
+    p ".x : a => b\n.x y = z"
+      `shouldBe` Right
+        ( LetTrait
+            { docs = Nothing,
+              name = "x",
+              typeVars = [],
+              self = PMeta [loc 1 6] (PVar "a"),
+              returns = Just $ Meta [loc 1 11] (Var "b"),
+              value = Lam (PMeta [loc 2 4] (PVar "y")) $ Meta [loc 2 8] (Var "z")
+            },
+          ""
+        )
+
+  -- it "☯ letType'" $ do
+  -- it "☯ test" $ do
 
   -- it "☯ statement" $ do
   --   let p = parse' statement
   --   p "x = y" `shouldBe` Right (LetDef {docs = Nothing, name = "x", type' = Nothing, value = var 1 5 "y", meta = [Location sourceName 1 1]}, "")
 
-  it "☯ import'" $ do
-    let p = parse' import'
-    p "import mod" `shouldBe` Right (Import "mod" "mod" [] [Location "test" (1, 1)], "")
-    p "import dir/to/mod" `shouldBe` Right (Import "dir/to/mod" "mod" [] [Location "test" (1, 1)], "")
-    p "import mod as m" `shouldBe` Right (Import "mod" "m" [] [Location "test" (1, 1)], "")
-    p "import mod as m ()" `shouldBe` Right (Import "mod" "m" [] [Location "test" (1, 1)], "")
-    p "import mod as m (a, b)" `shouldBe` Right (Import "mod" "m" ["a", "b"] [Location "test" (1, 1)], "")
+  it "☯ parseImport" $ do
+    let p = parse' parseImport
+    p "import mod" `shouldBe` Right (Import "mod" Nothing [], "")
+    p "import dir/to/mod" `shouldBe` Right (Import "dir/to/mod" Nothing [], "")
+    p "import mod as m" `shouldBe` Right (Import "mod" (Just "m") [], "")
+    p "import mod as m ()" `shouldBe` Right (Import "mod" (Just "m") [], "")
+    p "import mod as m (a, b)" `shouldBe` Right (Import "mod" (Just "m") ["a", "b"], "")
 
   it "☯ module'" $ do
     let p = parse' (module' "mod")
     let docs = Just newDocString {public = True, description = "docs", meta = [loc 1 1]}
-    p "===\ndocs\n===" `shouldBe` Right (Module {name = "mod", docs = docs, body = []}, "")
+    p "===\ndocs\n===" `shouldBe` Right (Module {name = "mod", docs = docs, stmts = []}, "")
     -- let defs = [LetDef {docs = Nothing, name = "x", type' = Nothing, value = var 4 5 "y", meta = [Location sourceName 4 1]}]
     -- p "===\ndocs\n===\nx = y" `shouldBe` Right (Module {name = "mod", docs = docs, body = defs}, "")
     True `shouldBe` True
