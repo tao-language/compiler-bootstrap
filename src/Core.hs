@@ -12,15 +12,7 @@ import Data.List (delete, intercalate, union)
 -- https://www.youtube.com/live/utyBNDj7s2w
 -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
 
-{- TODO:
-- Add `TypeOf Expr` as infer, `TypeOf (Var x)` == `TypeOf (Var x)`
-- Add `Let Expr Expr Expr` as unify, Let (Var x) a b == let x = a in b
-  To support pattern matching
-  Maybe instead change Fun' to Fun' Expr Expr
-  Maybe just add back Pattern to avoid "invalid" patterns
-- Remove If
--}
-
+-- TODO: remove Typ
 data Expr
   = Knd
   | IntT
@@ -49,6 +41,7 @@ data BinaryOp
   | Pow
   | Eq
   | Lt
+  | Gt
   deriving (Eq)
 
 data UnaryOp
@@ -56,8 +49,8 @@ data UnaryOp
   deriving (Eq)
 
 data Error
-  = SyntaxError String (Int, Int) String
-  | NotImplementedError
+  = NotImplementedError
+  | SyntaxError String (Int, Int) String
   | -- Runtime errors
     PatternMatchError Expr Expr
   | Op1Error UnaryOp Expr
@@ -70,12 +63,6 @@ data Error
 
 data Metadata
   = Location String (Int, Int)
-  | Comments [Comment]
-  | TrailingComment Comment
-  deriving (Eq, Show)
-
-data Comment
-  = Comment (Int, Int) String
   deriving (Eq, Show)
 
 type Env = [(String, Expr)]
@@ -90,6 +77,7 @@ instance Show Expr where
     Ann a b -> infixR 2 a " : " b
     Op2 Eq a b -> infixL 3 a (op2 Eq) b
     Op2 Lt a b -> infixR 4 a (op2 Lt) b
+    Op2 Gt a b -> infixR 4 a (op2 Gt) b
     For x a -> prefix 2 ("@" ++ x ++ ". ") a
     Fix x a -> prefix 2 ("$fix " ++ x ++ ". ") a
     Fun p b -> infixR 5 p " -> " b
@@ -109,7 +97,7 @@ instance Show Expr where
     Tag k -> atom 11 ("($tag '" ++ k ++ "')")
     Var x | isVarName x -> atom 11 x
     Var x -> atom 11 ("($var '" ++ x ++ "')")
-    Typ k alts -> atom 11 (show (Tag k) ++ "[" ++ intercalate "|" alts ++ "]")
+    Typ k alts -> atom 11 ("$type " ++ show (Tag k) ++ "[" ++ intercalate "|" alts ++ "]")
     Meta _ a -> showsPrec p a
     where
       atom n k = showParen (p > n) $ showString k
@@ -134,6 +122,7 @@ instance Show BinaryOp where
   show Pow = "^"
   show Eq = "=="
   show Lt = "<"
+  show Gt = ">"
 
 instance Show UnaryOp where
   show :: UnaryOp -> String
@@ -178,7 +167,7 @@ lt :: Expr -> Expr -> Expr
 lt = Op2 Lt
 
 gt :: Expr -> Expr -> Expr
-gt a b = Op2 Lt b a
+gt = Op2 Gt
 
 int2num :: Expr -> Expr
 int2num = Op1 Int2Num
@@ -266,7 +255,7 @@ eval _ (Num n) = Num n
 eval env (Tag k) = case lookup k env of
   Just (Tag k') | k == k' -> Tag k
   Just (Ann (Tag k) ty) -> Ann (Tag k) ty
-  Just a -> eval env a
+  Just a -> eval ((k, Tag k) : env) a
   Nothing -> Tag k
 eval env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Var x
@@ -291,19 +280,12 @@ eval env (App a b) = case (eval env a, eval env b) of
     (App p q, App b1 b2) -> app (fun [p, q] a) [b1, b2]
     (p, b) -> Err (PatternMatchError p b)
   (Err e, _) -> Err e
-  -- (Ann a (For xs (Fun t1 t2)), b) -> case infer env (Ann b (For xs t1)) of
-  --   Right (_, s) -> annotated (eval s (App a b)) (For (filter (`notElem` map fst s) xs) (eval s t2))
-  --   Left err -> Err
   (Or a1 a2, b) -> case eval [] (App a1 b) of
     Err _ -> eval [] (App a2 b)
     Fun p a -> Or (Fun p a) (App a2 b)
-    -- Ann a (For xs (Fun t1 t2)) -> Or (Ann a (For xs (Fun t1 t2))) (App a2 b)
     a | isOpen a -> Or a (App a2 b)
     a -> a
   (a, b) -> App a b
--- eval env (Ann a (For xs t)) = case infer env (Ann a (For xs t)) of
---   Right (t, s) -> annotated (eval (s ++ env) a) (For (filter (`notElem` map fst s) xs) t)
---   Left err -> Err
 eval env (Ann a _) = eval env a
 eval env (Or a b) = case (eval env a, eval env b) of
   (Err _, b) -> b
@@ -339,18 +321,9 @@ evalOp2 Eq NumT NumT = NumT
 evalOp2 Eq (Int a) (Int b) | a == b = Int a
 evalOp2 Eq (Num a) (Num b) | a == b = Num a
 evalOp2 Eq (Var a) (Var b) | a == b = Var a
--- evalOp2 Eq (App a1 a2) (App b1 b2) = If (eq a1 b1) (eq a2 b2)
 evalOp2 Lt (Int a) (Int b) | a < b = Int a
 evalOp2 Lt (Num a) (Num b) | a < b = Num a
 evalOp2 op a b = Err (Op2Error op a b)
-
--- annotated :: Expr -> Type -> Expr
--- annotated (Tag k) (For _ (Tag k')) | k == k' = Tag k
--- annotated a@Tag {} ty = Ann a ty
--- annotated a@Var {} ty = Ann a ty
--- annotated a@Fun {} ty = Ann a ty
--- annotated a@App {} ty = Ann a ty
--- annotated a _ = a
 
 unify :: Expr -> Expr -> (Expr, Substitution)
 unify Knd Knd = (Knd, [])

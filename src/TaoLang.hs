@@ -5,7 +5,7 @@
 module TaoLang where
 
 import Control.Monad (void)
-import Core (Comment (..), Error (..), Metadata (..))
+import Core (Error (..), Metadata (..))
 import Data.Char (isSpace, isUpper)
 import Data.List (dropWhileEnd, intercalate)
 import Flow ((|>))
@@ -49,17 +49,6 @@ type TaoParser a = P.Parser ParserContext a
 keywords :: [String]
 keywords = ["type"]
 
--- TODO: load all imports here (all IO operations)
-loadModule :: String -> IO Module
-loadModule filename = do
-  src <- readFile filename
-  case P.parse filename (module' filename) src of
-    Right (mod, _) -> return mod
-    Left P.State {name, pos = (row, col), context} -> do
-      putStrLn $ intercalate ":" [name, show row, show col]
-      print context
-      error "Syntax error"
-
 -- parseExpr :: String -> Either SyntaxError Expr
 -- parseExpr src = error "TODO: parseExpr"
 
@@ -86,11 +75,11 @@ identifier = do
     name | name `elem` keywords -> P.fail'
     name -> return name
 
-lineBreak :: TaoParser ()
+lineBreak :: TaoParser String
 lineBreak = do
-  _ <- P.endOfLine
+  comment <- P.oneOf ["" <$ P.endOfLine, "" <$ P.char ';', fmap snd commentSingleLine]
   _ <- P.whitespaces
-  return ()
+  return comment
 
 inbetween :: String -> String -> TaoParser a -> TaoParser a
 inbetween open close parser = do
@@ -114,51 +103,61 @@ delimited delim parser = do
   return (x : xs)
 
 -- Concrete Syntax Tree
-comment :: TaoParser Comment
-comment = do
-  _ <- P.char '#'
-  _ <- P.spaces
-  state <- P.getState
-  txt <- P.skipTo lineBreak
-  return (Comment state.pos (dropWhileEnd isSpace txt))
+comment :: TaoParser ([Metadata], String)
+comment = P.oneOf [commentMultiLine, commentSingleLine]
 
-docString :: TaoParser String -> TaoParser DocString
+commentSingleLine :: TaoParser ([Metadata], String)
+commentSingleLine = do
+  state <- P.getState
+  _ <- P.char '#'
+  P.commit CComment
+  _ <- P.spaces
+  line <- P.skipTo P.endOfLine
+  return ([Location state.name state.pos], dropWhileEnd isSpace line)
+
+commentMultiLine :: TaoParser ([Metadata], String)
+commentMultiLine = do
+  state <- P.getState
+  delim <- P.chain [P.text "#--", P.zeroOrMore (P.char '-')]
+  P.commit CCommentMultiLine
+  _ <- P.spaces
+  line <- P.skipTo lineBreak
+  error "TODO: commentMultiLine"
+  return ([Location state.name state.pos], dropWhileEnd isSpace line)
+
+docString :: TaoParser String -> TaoParser ([Metadata], String)
 docString delimiter = do
-  comments <- P.zeroOrMore comment
-  (loc, delim) <- location delimiter
-  let meta = [loc]
-  meta <- case comments of
-    [] -> return meta
-    comments -> return (meta ++ [Comments comments])
-  P.commit CDocString
-  _ <- P.spaces
-  public <-
-    P.oneOf
-      [ False <$ P.word "private",
-        True <$ P.word "public",
-        return True
-      ]
-  _ <- P.spaces
-  trailingComment1 <- P.maybe' comment
-  meta <- case trailingComment1 of
-    Nothing -> return meta
-    Just comment -> return (meta ++ [TrailingComment comment])
-  docs <- P.zeroOrMore $ do
-    P.lookaheadNot (do lineBreak; P.text delim)
-    P.anyChar
-  lineBreak
-  _ <- P.text delim
-  _ <- P.spaces
-  trailingComment2 <- P.oneOf [Just <$> comment, Nothing <$ lineBreak]
-  meta <- case trailingComment2 of
-    Nothing -> return meta
-    Just comment -> return (meta ++ [TrailingComment comment])
-  return
-    DocString
-      { public = public,
-        description = dropWhileEnd isSpace $ dropWhile isSpace docs,
-        meta = meta
-      }
+  -- comments <- P.zeroOrMore comment
+  -- (loc, delim) <- location delimiter
+  -- let meta = [loc]
+  -- meta <- case comments of
+  --   [] -> return meta
+  --   comments -> return (meta ++ [Comments comments])
+  -- P.commit CDocString
+  -- _ <- P.spaces
+  -- public <-
+  --   P.oneOf
+  --     [ False <$ P.word "private",
+  --       True <$ P.word "public",
+  --       return True
+  --     ]
+  -- _ <- P.spaces
+  -- trailingComment1 <- P.maybe' comment
+  -- meta <- case trailingComment1 of
+  --   Nothing -> return meta
+  --   Just (m, comment) -> return (meta ++ [TrailingComment m comment])
+  -- docs <- P.zeroOrMore $ do
+  --   P.lookaheadNot (do lineBreak; P.text delim)
+  --   P.anyChar
+  -- lineBreak
+  -- _ <- P.text delim
+  -- _ <- P.spaces
+  -- trailingComment2 <- P.oneOf [Just <$> comment, Nothing <$ lineBreak]
+  -- meta <- case trailingComment2 of
+  --   Nothing -> return meta
+  --   Just comment -> return (meta ++ [TrailingComment comment])
+  -- return (meta, dropWhileEnd isSpace $ dropWhile isSpace docs)
+  error "TODO: DocString"
 
 location :: TaoParser a -> TaoParser (Metadata, a)
 location parser = do
@@ -169,128 +168,34 @@ location parser = do
 
 op :: String -> TaoParser Metadata
 op txt = do
-  _ <- P.whitespaces
+  _ <- P.spaces
   (loc, _) <- location (P.text txt)
-  _ <- P.whitespaces
+  _ <- P.spaces
   return loc
 
--- -- Patterns
--- pattern' :: TaoParser appDelim -> TaoParser Pattern
--- pattern' delim = do
---   let meta f m p q = PMeta m (f p q)
---   let ops =
---         [ P.infixR 1 (meta PFun) (op "->"),
---           P.infixL 2 (const PApp) (void delim)
---         ]
---   P.operators 0 ops patternAtom
-
--- patternAtom :: TaoParser Pattern
--- patternAtom = do
---   (loc, p) <-
---     (location . P.oneOf)
---       [ PAny <$ P.word "_",
---         patternName,
---         PInt <$> P.integer,
---         patternRecord,
---         patternTuple
---       ]
---   return (PMeta [loc] p)
-
--- patternName :: TaoParser Pattern
--- patternName = do
---   name <- identifier
---   case name of
---     "Type" -> return PKnd
---     "Int" -> return PIntT
---     "Num" -> return PNumT
---     x | startsWithUpper x -> return (PTag name)
---     _ -> return (PVar name)
-
--- patternTuple :: TaoParser Pattern
--- patternTuple = do
---   let item =
---         P.oneOf
---           [ pattern' P.whitespaces,
---             do
---               (state, len) <- P.recover [P.char ',', P.char ')']
---               return (PErr (SyntaxError state.name state.pos (take len state.remaining)))
---           ]
---   _ <- P.char '('
---   P.commit CParentheses
---   _ <- P.whitespaces
---   P.oneOf
---     [ do
---         -- Empty tuple: ()
---         _ <- P.char ')'
---         return (PTuple []),
---       do
---         x <- item
---         P.oneOf
---           [ do
---               -- Parenthesized expression: (x)
---               _ <- P.char ')'
---               return x,
---             do
---               -- Tuple: (x,) (x, y) (x, y,)
---               xs <- P.zeroOrMore $ do
---                 _ <- P.char ','
---                 _ <- P.whitespaces
---                 item
---               _ <- P.maybe' (P.paddedR P.whitespaces $ P.char ',')
---               _ <- P.char ')'
---               return (PTuple (x : xs))
---           ]
---     ]
-
--- patternRecordField :: TaoParser (String, Pattern)
--- patternRecordField = do
---   (loc, x) <- location identifier
---   P.commit (CRecordField x)
---   _ <- P.whitespaces
---   P.oneOf
---     [ do
---         _ <- P.char ':'
---         _ <- P.whitespaces
---         p <- pattern' P.whitespaces
---         return (x, p),
---       return (x, PMeta [loc] (PVar x))
---     ]
-
--- patternRecord :: TaoParser Pattern
--- patternRecord = do
---   fields <- collection "{" "," "}" patternRecordField
---   return (PRecord fields)
-
--- Exprs
+-- Expressions
 expression :: TaoParser appDelim -> TaoParser Expr
 expression delim = do
   let metaOp f m a b = Meta m (f a b)
-  -- let lamPatterns = do
-  --       (loc, _) <- location (P.char '\\')
-  --       ps <- P.oneOrMore (P.paddedL P.whitespaces patternAtom)
-  --       _ <- P.whitespaces
-  --       _ <- P.char '='
-  --       _ <- P.whitespaces
-  --       return ([loc], ps)
-  -- let metaLam (m, ps) b = Meta m (lam ps b)
+  let typeAnnotation = do
+        _ <- P.char ':'
+        _ <- P.whitespaces
+        type' delim
   let ops =
         [ P.infixR 1 (metaOp Or) (op "|"),
           -- P.prefix 2 metaLam lamPatterns,
-          P.suffix 2 (flip Ann) (typeAnnotation delim),
-          P.infixR 3 (metaOp Eq) (op "=="),
-          P.infixR 4 (metaOp Lt) (op "<"),
+          P.suffix 2 (flip Ann) typeAnnotation,
+          P.infixR 3 (metaOp eq) (op "=="),
+          P.infixR 4 (metaOp lt) (op "<"),
+          P.infixR 4 (metaOp gt) (op ">"),
           P.infixR 5 (metaOp Fun) (op "->"),
-          P.infixR 6 (metaOp Add) (op "+"),
-          P.infixR 6 (metaOp Sub) (op "-"),
-          P.infixR 7 (metaOp Mul) (op "*"),
+          P.infixR 6 (metaOp add) (op "+"),
+          P.infixR 6 (metaOp sub) (op "-"),
+          P.infixR 7 (metaOp mul) (op "*"),
           P.infixL 8 (const App) (void delim),
-          P.infixR 9 (metaOp Pow) (op "^")
+          P.infixR 9 (metaOp pow) (op "^")
         ]
-  comments <- P.zeroOrMore comment
-  expr <- P.operators 0 ops expressionAtom
-  case (comments, expr) of
-    ([], expr) -> return expr
-    (comments, expr) -> return (Meta (Comments comments) expr)
+  P.operators 0 ops expressionAtom
 
 expressionAtom :: TaoParser Expr
 expressionAtom = do
@@ -366,226 +271,99 @@ type' delim = do
   t <- expression delim
   return (For xs t)
 
-typeAnnotation :: TaoParser appDelim -> TaoParser Type
-typeAnnotation delim = do
-  _ <- P.char ':'
-  _ <- P.whitespaces
-  type' delim
-
 -- Statements
 statement :: TaoParser Statement
 statement =
   P.oneOf
-    [ -- letDef',
-      -- unpackDef,
-      -- letTrait',
-      letType',
-      parseImport,
-      prompt'
+    [ fmap (\(ts, p, a) -> Def ts p a) definition,
+      import',
+      test,
+      fmap (uncurry Comment) comment
     ]
 
--- branch :: TaoParser ([Pattern], Expr)
--- branch = do
---   ps <- P.zeroOrMore patternAtom
---   _ <- P.char '='
---   P.commit CLetDef
---   _ <- P.whitespaces
---   b <- expression (return ())
---   _ <- lineBreak
---   return (ps, b)
-
--- ruleDef :: TaoParser name -> TaoParser ([Pattern], Expr)
--- ruleDef name = do
---   _ <- name
---   _ <- P.whitespaces
---   branch
-
--- letDef' :: TaoParser Statement
--- letDef' = do
---   docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
---   comments <- P.zeroOrMore comment
---   (loc, name) <- location identifier
---   let meta = [loc]
---   meta <- case comments of
---     [] -> return meta
---     comments -> return (meta ++ [Comments comments])
---   (type', rules) <-
---     P.oneOf
---       [ do
---           type' <- typeAnnotation (return ())
---           P.commit (CLetDefTyped name)
---           P.oneOf
---             [ do
---                 -- x : Int = 42
---                 _ <- P.char '='
---                 P.commit (CLetDefTypedVar name)
---                 _ <- P.whitespaces
---                 value <- expression (return ())
---                 _ <- lineBreak
---                 return (Just type', [([], value)]),
---               do
---                 -- f : Int -> Int
---                 _ <- lineBreak
---                 rules <- P.oneOrMore (ruleDef (P.word name))
---                 return (Just type', rules)
---             ],
---         do
---           -- f x = 42
---           rule <- branch
---           rules <- P.zeroOrMore (ruleDef (P.word name))
---           return (Nothing, rule : rules)
---       ]
---   return
---     LetDef
---       { docs = docs,
---         name = name,
---         type' = type',
---         value = lamMatch rules
---       }
-
--- letTrait' :: TaoParser Statement
--- letTrait' = do
---   docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
---   comments <- P.zeroOrMore comment
---   (loc, _) <- location (P.char '.')
---   P.commit CTrait
---   let meta = [loc]
---   meta <- case comments of
---     [] -> return meta
---     comments -> return (meta ++ [Comments comments])
---   name <- identifier
---   _ <- P.char ':'
---   _ <- P.whitespaces
---   typeVars <-
---     P.oneOf
---       [ do
---           _ <- P.char '@'
---           xs <- P.oneOrMore (P.paddedL P.whitespaces identifier)
---           _ <- op "."
---           return xs,
---         return []
---       ]
---   self <- pattern' P.whitespaces
---   _ <- P.text "=>"
---   _ <- P.whitespaces
---   returns <- expression (return ())
---   _ <- lineBreak
---   rules <- (P.oneOrMore . ruleDef) $ do
---     _ <- P.char '.'
---     _ <- P.whitespaces
---     P.word name
---   return
---     LetTrait
---       { docs = docs,
---         name = name,
---         typeVars = typeVars,
---         self = self,
---         returns = Just returns,
---         value = lamMatch rules
---       }
-
-prompt' :: TaoParser Statement
-prompt' = do
-  comments <- P.zeroOrMore comment
-  (loc, _) <- location (P.char '>')
-  P.commit CPrompt
-  let m = [loc]
-  m <- case comments of
-    [] -> return m
-    comments -> return (m ++ [Comments comments])
-  _ <- P.spaces
-  expr <- expression (return ())
-  (expr, result) <- case expr of
-    _ | Just (expr, Comment pos comment) <- getTrailingComment expr -> do
-      result <- P.parseFrom pos comment (expression $ return ())
-      return (expr, Just result)
-    expr ->
-      P.oneOf
-        [ do
-            _ <- lineBreak
-            result <- expression (return ())
-            _ <- lineBreak
-            return (expr, Just result),
-          return (expr, Nothing)
-        ]
-  return Prompt {expression = meta m expr, result = result}
-
-getTrailingComment :: Expr -> Maybe (Expr, Comment)
-getTrailingComment (Meta (TrailingComment comment) a) = Just (a, comment)
-getTrailingComment _ = Nothing
-
-unpackDef :: TaoParser Statement
--- (x, y) = z
-unpackDef = P.fail' -- TODO
-
-letType' :: TaoParser Statement
-letType' = do
-  docs <- P.maybe' (docString (P.atLeast 3 $ P.char '-'))
-  _ <- P.word "type"
-  P.commit CLetType
+definition :: TaoParser ([(String, Type)], Expr, Expr)
+definition = do
+  let annotation = do
+        x <- identifier
+        _ <- P.spaces
+        _ <- P.char ':'
+        _ <- P.spaces
+        ty <- type' P.spaces
+        _ <- lineBreak
+        return (x, ty)
+  types <- P.zeroOrMore annotation
+  pattern' <- expression P.spaces
   _ <- P.whitespaces
-  name <- identifier
-  P.oneOf
-    []
+  _ <- P.char '='
+  P.commit CDefinition
+  _ <- P.whitespaces
+  value <- expression P.spaces
+  _ <- lineBreak
+  return (types, pattern', value)
 
--- do
---   _ <- P.char '='
---   _ <- P.whitespaces
---   _ <- lineBreak
---   return
---     LetType
---       { docs = docs,
---         name = name,
---         args = [],
---         alts = []
---       },
--- do
---   _ <- lineBreak
---   return
---     LetType
---       { docs = docs,
---         name = name,
---         args = [],
---         alts = []
---       }
-
-parseImport :: TaoParser Statement
-parseImport = do
+import' :: TaoParser Statement
+import' = do
   (loc, _) <- location (P.word "import")
+  P.commit CImport
   dirName <- concat <$> P.zeroOrMore (P.concat [identifier, P.text "/"])
   modName <- identifier
+  let name = dirName ++ modName
   _ <- P.spaces
   alias <-
-    P.maybe' $ do
-      _ <- P.word "as"
-      _ <- P.spaces
-      name <- identifier
-      _ <- P.spaces
-      return name
+    P.oneOf
+      [ do
+          _ <- P.word "as"
+          _ <- P.spaces
+          name <- identifier
+          _ <- P.spaces
+          return name,
+        return name
+      ]
   exposing <-
     P.oneOf
       [ collection "(" "," ")" identifier,
         return []
       ]
   _ <- lineBreak
-  return
-    Import
-      { path = dirName ++ modName,
-        alias = alias,
-        exposing = exposing
-      }
+  return (Import name alias exposing)
+
+test :: TaoParser Statement
+test = do
+  _ <- P.char '>'
+  _ <- P.oneOrMore P.space
+  P.commit CTest
+  expr <- expression P.spaces
+  _ <- lineBreak
+  result <-
+    P.oneOf
+      [ do
+          result <- expression P.spaces
+          _ <- lineBreak
+          return result,
+        case expr of
+          Ann a _ -> return a
+          _ -> return (Tag "True")
+      ]
+  return (Test expr result)
 
 -- Module
-module' :: String -> TaoParser Module
-module' name = do
-  docs <- P.maybe' (docString (P.atLeast 3 $ P.char '='))
-  P.oneOf
-    [ do
-        _ <- P.endOfFile
-        return Module {name = name, docs = docs, stmts = []},
-      do
-        stmts <- P.oneOrMore statement
-        _ <- P.whitespaces
-        _ <- P.endOfFile
-        return Module {name = name, docs = docs, stmts = stmts}
-    ]
+module' :: TaoParser [Statement]
+module' = do
+  P.commit CModule
+  stmts <- P.zeroOrMore statement
+  _ <- P.whitespaces
+  _ <- P.endOfFile
+  return stmts
+
+-- Package
+package :: String -> Package -> IO Package
+package filename pkg | filename `elem` map fst pkg.modules = return pkg
+package filename pkg = do
+  src <- readFile filename
+  case P.parse filename module' src of
+    Right (mod, _) -> return (pkg {modules = (filename, mod) : pkg.modules})
+    Left P.State {name, pos = (row, col), context} -> do
+      let loc = intercalate ":" [name, show row, show col]
+      putStrLn loc
+      print context
+      error ("🛑 " ++ loc ++ ": syntax error")

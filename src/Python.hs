@@ -17,7 +17,6 @@ import Data.Foldable (foldlM, foldrM)
 import Data.List (intercalate, union)
 import PrettyPrint (Layout)
 import qualified PrettyPrint as PP
-import Tao (DocString (..))
 import qualified Tao
 
 -- TODO: abstract into an `Imperative` language
@@ -29,7 +28,6 @@ import qualified Tao
 -- https://docs.python.org/3/library/ast.html#ast.Module
 data Module = Module
   { name :: String,
-    docs :: Maybe DocString,
     body :: [Statement]
   }
   deriving (Eq, Show)
@@ -38,7 +36,6 @@ newModule :: String -> [Statement] -> Module
 newModule name body =
   Module
     { name = name,
-      docs = Nothing,
       body = body
     }
 
@@ -173,8 +170,7 @@ data Statement
         async :: Bool
       }
   | FunctionDef
-      { docs :: Maybe DocString,
-        name :: String,
+      { name :: String,
         args :: [(String, Maybe Expr, Maybe Expr)],
         body :: [Statement],
         decorators :: [Expr],
@@ -200,8 +196,7 @@ data Statement
 newFunctionDef :: String -> [(String, Maybe Expr, Maybe Expr)] -> [Statement] -> Statement
 newFunctionDef name args body =
   FunctionDef
-    { docs = Nothing,
-      name = name,
+    { name = name,
       args = args,
       body = body,
       decorators = [],
@@ -469,11 +464,11 @@ emitExpr target (Tao.App a b) = do
   func <- emitExpr target func
   args <- emitExprs target args
   return (call func args)
-emitExpr target (Tao.Sub a b) = do
+emitExpr target (Tao.Op2 C.Sub a b) = do
   a <- emitExpr target a
   b <- emitExpr target b
   return (BinOp a Sub b)
-emitExpr target (Tao.Mul a b) = do
+emitExpr target (Tao.Op2 C.Mul a b) = do
   a <- emitExpr target a
   b <- emitExpr target b
   return (BinOp a Mult b)
@@ -558,7 +553,8 @@ layoutStmt def@FunctionDef {} = do
   PP.Text ("def " ++ def.name)
     : layoutTuple (map layoutFunctionArg def.args)
     ++ maybe [] (\t -> PP.Text " -> " : layoutExpr t) def.returns
-    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : maybe [] layoutDocString def.docs ++ concatMap layoutStmt def.body)]
+    -- ++ [PP.Text ":", PP.Indent (PP.Text "\n" : maybe [] layoutDocString def.docs ++ concatMap layoutStmt def.body)]
+    ++ [PP.Text ":\n"]
 layoutStmt def@ClassDef {} = do
   PP.Text ("class " ++ def.name)
     : case def.bases of
@@ -594,9 +590,9 @@ layoutStmt (Raise exc from) =
     ++ [PP.Text "\n"]
 layoutStmt stmt = error $ "TODO: layoutStmt: " ++ show stmt
 
-layoutDocString :: DocString -> PP.Layout
-layoutDocString docs = do
-  [PP.Text ("'''" ++ docs.description ++ "\n"), PP.Text "'''\n"]
+-- layoutDocString :: DocString -> PP.Layout
+-- layoutDocString docs = do
+--   [PP.Text ("'''" ++ docs.description ++ "\n"), PP.Text "'''\n"]
 
 layoutExample :: (Expr, Expr) -> PP.Layout
 layoutExample (prompt, result) =

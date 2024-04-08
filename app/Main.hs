@@ -29,7 +29,7 @@ main = do
 
 run :: String -> [String] -> IO ()
 run filename args = do
-  mod <- loadModule filename
+  -- mod <- loadModule filename
   -- env <- loadModule path
   -- f' <- loadExpr f
   -- args' <- mapM loadExpr args

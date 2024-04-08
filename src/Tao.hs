@@ -6,7 +6,7 @@
 
 module Tao where
 
-import Core (Comment (..), Env, Error (..), Metadata (..))
+import Core (BinaryOp (..), Env, Error (..), Metadata (..))
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
 import Flow ((|>))
@@ -35,22 +35,6 @@ import Flow ((|>))
 - Dict comprehension
 -}
 
--- data Pattern
---   = PAny
---   | PKnd
---   | PIntT
---   | PNumT
---   | PInt Int
---   | PTag String
---   | PVar String
---   | PTuple [Pattern]
---   | PRecord [(String, Pattern)]
---   | PFun Pattern Pattern
---   | PApp Pattern Pattern
---   | PMeta [Metadata] Pattern
---   | PErr Error
---   deriving (Eq, Show)
-
 data Expr
   = Knd
   | IntT
@@ -62,17 +46,11 @@ data Expr
   | Tuple [Expr]
   | Record [(String, Expr)]
   | Trait Expr String
-  | Lam Expr Expr
-  | Block [Statement] Expr
-  | App Expr Expr
   | Fun Expr Expr
+  | App Expr Expr
+  | Let ([(String, Type)], Expr, Expr) Expr
   | Or Expr Expr
-  | Eq Expr Expr
-  | Lt Expr Expr
-  | Add Expr Expr
-  | Sub Expr Expr
-  | Mul Expr Expr
-  | Pow Expr Expr
+  | Op2 BinaryOp Expr Expr
   | Ann Expr Type
   | Meta Metadata Expr
   | Err Error
@@ -83,104 +61,27 @@ data Type
   deriving (Eq, Show)
 
 data Statement
-  = LetDef
-      { docs :: Maybe DocString,
-        types :: Maybe Expr,
-        binding :: Expr,
-        value :: Expr
-      }
-  | Import
-      { path :: String,
-        alias :: Maybe String,
-        exposing :: [String]
-      }
-  | Prompt
-      { expression :: Expr,
-        result :: Maybe Expr
-      }
+  = Def [(String, Type)] Expr Expr
+  | Import String String [String] -- import module as alias (a, b, c)
+  | Test Expr Expr
+  | DocString [Metadata] String
+  | Comment [Metadata] String
   deriving (Eq, Show)
 
--- letDef :: String -> Expr -> Statement
--- letDef name value =
---   LetDef
---     { docs = Nothing,
---       type' = Nothing,
---       name = name,
---       value = value
---     }
-
--- letTrait :: Pattern -> String -> Expr -> Statement
--- letTrait self name value =
---   LetTrait
---     { docs = Nothing,
---       name = name,
---       typeVars = [],
---       self = self,
---       returns = Nothing,
---       value = value
---     }
-
--- letType :: String -> [Expr] -> [(String, Type)] -> Statement
--- letType name args alts =
---   LetType
---     { docs = Nothing,
---       name = name,
---       args = args,
---       alts = alts
---     }
-
--- unbox :: Pattern -> Expr -> Statement
--- unbox pattern value =
---   Unbox
---     { docs = Nothing,
---       types = [],
---       pattern = pattern,
---       value = value
---     }
-
-import' :: String -> Statement
-import' path =
-  Import
-    { path = path,
-      alias = Nothing,
-      exposing = []
-    }
-
-prompt :: Expr -> Statement
-prompt expr =
-  Prompt
-    { expression = expr,
-      result = Nothing
-    }
-
--- TODO: remove imports, handle them at `loadModule`
-data Module = Module
+data Package = Package
   { name :: String,
-    docs :: Maybe DocString,
-    stmts :: [Statement]
+    modules :: [(String, [Statement])]
   }
   deriving (Eq, Show)
-
-newModule :: Module
-newModule = Module {name = "", docs = Nothing, stmts = []}
-
-data DocString = DocString
-  { public :: Bool,
-    description :: String,
-    meta :: [Metadata]
-  }
-  deriving (Eq, Show)
-
-newDocString :: DocString
-newDocString =
-  DocString
-    { public = True,
-      description = "",
-      meta = []
-    }
 
 data ParserContext
-  = CDocString
+  = CModule
+  | CDefinition
+  | CImport
+  | CTest
+  | CComment
+  | CCommentMultiLine
+  | CDocString
   | CExpression
   | CLetDef
   | CLetDefTyped String
@@ -189,7 +90,6 @@ data ParserContext
   | COperator String
   | CPAny
   | CParentheses
-  | CPrompt
   | CRecordField String
   | CTrait
   | CTuple
@@ -199,9 +99,6 @@ data ParserContext
 
 fun :: [Expr] -> Expr -> Expr
 fun bs b = foldr Fun b bs
-
--- lam :: [Pattern] -> Expr -> Expr
--- lam ps b = foldr Lam b ps
 
 app :: Expr -> [Expr] -> Expr
 app = foldl App
@@ -214,8 +111,26 @@ or' [] = error "`or'` must have at least one expression"
 or' [a] = a
 or' (a : bs) = Or a (or' bs)
 
--- pApp :: Pattern -> [Pattern] -> Pattern
--- pApp = foldl PApp
+add :: Expr -> Expr -> Expr
+add = Op2 Add
+
+sub :: Expr -> Expr -> Expr
+sub = Op2 Sub
+
+mul :: Expr -> Expr -> Expr
+mul = Op2 Mul
+
+pow :: Expr -> Expr -> Expr
+pow = Op2 Pow
+
+eq :: Expr -> Expr -> Expr
+eq = Op2 Eq
+
+lt :: Expr -> Expr -> Expr
+lt = Op2 Lt
+
+gt :: Expr -> Expr -> Expr
+gt a b = Op2 Gt b a
 
 asFun :: Expr -> ([Expr], Expr)
 asFun (Fun a1 a2) = let (bs, b) = asFun a2 in (a1 : bs, b)
@@ -228,39 +143,6 @@ asApp a = (a, [])
 
 meta :: [Metadata] -> Expr -> Expr
 meta ms b = foldr Meta b ms
-
--- let' :: (Pattern, Expr) -> Expr -> Expr
--- let' (p, a) b = App (Lam p b) a
-
--- lets :: [(Pattern, Expr)] -> Expr -> Expr
--- lets defs b = foldr let' b defs
-
--- lamMatch :: [([Pattern], Expr)] -> Expr
--- lamMatch [] = Err NotImplementedError
--- lamMatch (([], b) : _) = b
--- lamMatch [(ps, b)] = lam ps b
--- lamMatch rules = LamMatch rules
-
--- lamMatchArgs :: String -> [([Pattern], Expr)] -> [String]
--- lamMatchArgs _ [] = []
--- lamMatchArgs x rules@((ps, _) : _) = do
---   let freeVars = C.freeVars (toCore [] $ lamMatch rules)
---   take (length ps) (C.newNames (x : freeVars) x)
-
--- toCoreP :: [String] -> Pattern -> C.Pattern
--- toCoreP fvs PAny = C.PVar (C.newName fvs "_")
--- toCoreP _ PKnd = C.PKnd
--- toCoreP _ PIntT = C.PIntT
--- toCoreP _ PNumT = C.PNumT
--- toCoreP _ (PInt i) = C.PInt i
--- toCoreP _ (PTag k) = C.PTag k
--- toCoreP _ (PVar x) = C.PVar x
--- toCoreP fvs (PTuple ps) = toCoreP fvs (pApp (PTag "()") ps)
--- -- toCoreP fvs (PRecord fields) = C.PRec (second (toCoreP fvs) <$> fields)
--- toCoreP fvs (PFun p q) = C.PFun (toCoreP fvs p) (toCoreP fvs q)
--- toCoreP fvs (PApp p q) = C.PApp (toCoreP fvs p) (toCoreP fvs q)
--- toCoreP fvs (PMeta m p) = C.PMeta m (toCoreP fvs p)
--- toCoreP fvs a = error $ "TODO: toCoreP " ++ show a
 
 toCore :: Env -> Expr -> C.Expr
 toCore _ Knd = C.Knd
@@ -277,7 +159,7 @@ toCore _ (Var x) = C.Var x
 -- toCore env (Match args rules) = toCore env (app (LamMatch rules) args)
 toCore env (Tuple items) = toCore env (app (Tag "()") items)
 -- toCore (Record fields) = C.Rec (second toCore <$> fields)
-toCore env (Block defs b) = error "TODO: toCore Block"
+-- toCore env (Block defs b) = error "TODO: toCore Block"
 toCore env (Trait a x) = do
   let a' = toCore env a
   let (ta, _) = C.infer [] a'
@@ -285,28 +167,11 @@ toCore env (Trait a x) = do
 toCore env (App a b) = C.App (toCore env a) (toCore env b)
 -- toCore env (Fun a b) = C.Fun (toCore env a) (toCore env b)
 toCore env (Or a b) = C.Or (toCore env a) (toCore env b)
-toCore env (Eq a b) = C.eq (toCore env a) (toCore env b)
-toCore env (Lt a b) = C.lt (toCore env a) (toCore env b)
-toCore env (Add a b) = C.add (toCore env a) (toCore env b)
-toCore env (Sub a b) = C.sub (toCore env a) (toCore env b)
-toCore env (Mul a b) = C.mul (toCore env a) (toCore env b)
-toCore env (Pow a b) = C.pow (toCore env a) (toCore env b)
+toCore env (Op2 op a b) = C.Op2 op (toCore env a) (toCore env b)
 -- toCore env (Ann a (For xs t)) = C.Ann (toCore env a) (C.For xs $ toCore env t)
 toCore env (Meta m a) = C.Meta m (toCore env a)
 toCore env (Err e) = C.Err e
 toCore env a = error $ "TODO: toCore " ++ show a
-
--- fromCoreP :: C.Pattern -> Pattern
--- -- PKnd
--- fromCoreP C.PIntT = PIntT
--- -- PNumT
--- -- PInt Int
--- -- PTag String
--- fromCoreP (C.PVar x) = PVar x
--- -- PFun Pattern Pattern
--- -- PApp Pattern Pattern
--- -- PMeta [Metadata] Pattern
--- fromCoreP p = error $ "TODO: fromCoreP " ++ show p
 
 fromCore :: C.Expr -> Expr
 -- fromCore (Knd) = _
@@ -330,158 +195,35 @@ fromCore (C.Meta meta a) = Meta meta (fromCore a)
 fromCore (C.Err e) = Err e
 fromCore a = error $ "fromCore: not implemented: " ++ show a
 
--- matches :: Pattern -> Pattern -> Bool
--- matches PAny _ = True
--- matches PKnd PKnd = True
--- matches PIntT PIntT = True
--- matches PNumT PNumT = True
--- matches (PInt i) (PInt i') = i == i'
--- matches (PTag k) (PTag k') = k == k'
--- matches (PVar _) (PVar _) = True
--- --  PTuple [Pattern]
--- --  PRecord [(String, Pattern)]
--- matches (PFun p q) (PFun p' q') = matches p p' && matches q q'
--- matches (PApp p q) (PApp p' q') = matches p p' && matches q q'
--- --  PMeta [Metadata] Pattern
--- --  PErr Error
--- matches _ _ = False
+dropMetadata :: Expr -> Expr
+dropMetadata Knd = Knd
+dropMetadata IntT = IntT
+dropMetadata NumT = NumT
+dropMetadata (Int i) = Int i
+dropMetadata (Num n) = Num n
+dropMetadata (Tag k) = Tag k
+dropMetadata (Var x) = Var x
+dropMetadata (Tuple items) = Tuple (map dropMetadata items)
+dropMetadata (Record fields) = Record (map (second dropMetadata) fields)
+dropMetadata (Trait a k) = Trait (dropMetadata a) k
+dropMetadata (Fun a b) = Fun (dropMetadata a) (dropMetadata b)
+dropMetadata (App a b) = App (dropMetadata a) (dropMetadata b)
+dropMetadata (Let (types, p, a) b) = Let (map (second (\(For xs t) -> For xs (dropMetadata t))) types, dropMetadata p, dropMetadata a) (dropMetadata b)
+dropMetadata (Or a b) = Or (dropMetadata a) (dropMetadata b)
+dropMetadata (Op2 op a b) = Op2 op (dropMetadata a) (dropMetadata b)
+dropMetadata (Ann a (For xs t)) = Ann (dropMetadata a) (For xs (dropMetadata t))
+dropMetadata (Meta _ a) = dropMetadata a
+dropMetadata (Err err) = Err err
 
--- findTraits :: Pattern -> [Statement] -> [Statement]
--- findTraits _ [] = []
--- findTraits p (stmt@LetTrait {self} : stmts) | matches p self = stmt : findTraits p stmts
--- findTraits p (_ : stmts) = findTraits p stmts
+dropMetadataStmt :: Statement -> Statement
+dropMetadataStmt (Def types p a) = Def (map (second (\(For xs t) -> For xs (dropMetadata t))) types) (dropMetadata p) (dropMetadata a)
+dropMetadataStmt (Import name alias vars) = Import name alias vars
+dropMetadataStmt (Test a b) = Test (dropMetadata a) (dropMetadata b)
+dropMetadataStmt (DocString _ txt) = DocString [] txt
+dropMetadataStmt (Comment _ txt) = Comment [] txt
 
--- define :: ([(Pattern, Expr)], Expr) -> Statement -> ([(Pattern, Expr)], Expr)
--- define (defs, expr) LetDef {type', name, value} = case type' of
---   Just typ -> ((PVar name, Ann value typ) : defs, expr)
---   Nothing -> ((PVar name, value) : defs, expr)
--- define (defs, expr) LetPat {types, pattern, value} =
---   ((pattern, value) : defs, expr)
--- -- define (defs, expr) LetTrait {name, typeVars, self, returns, value} = case returns of
--- --   Just returns -> ((PVar name, Lam self $ ann value returns) : defs, expr)
--- --   Nothing -> ((PVar name, Lam self value) : defs, expr)
--- -- define (defs, expr) Unbox {types, pattern, value} = do
--- --   (defs, App (Trait value "*=") (Lam pattern expr))
--- -- define (defs, expr) Import {path, name, exposing} = do
--- --   define (defs, expr) (unbox)
--- -- define' Import {path, name, exposing, meta} expr = do
--- --   let import' =
--- --         Unbox
--- --           { docs = Nothing,
--- --             types = [],
--- --             pattern = PVar name,
--- --             value = app (Var "import-module") [Var path],
--- --             meta = meta
--- --           }
--- --   define' import' expr
--- -- \| LetType
--- --     { docs :: Maybe DocString,
--- --       name :: String,
--- --       args :: [Expr],
--- --       alts :: [(String, Type)],
--- --       meta :: [Metadata]
--- --     }
--- -- \| Prompt
--- --     { expression :: Expr,
--- --       result :: Maybe Expr,
--- --       meta :: [Metadata]
--- --     }
--- define (defs, expr) stmt = error $ "TODO: define'" ++ show stmt
+dropMetadataModule :: (String, [Statement]) -> (String, [Statement])
+dropMetadataModule (name, stmts) = (name, map dropMetadataStmt stmts)
 
--- moduleToCore :: Module -> C.Env
--- moduleToCore Module {stmts} = foldl stmtToCore [] stmts
-
--- toEnv :: [(Pattern, Expr)] -> Env
--- toEnv [] = []
--- -- PAny
--- -- PKnd
--- -- PIntT
--- -- PNumT
--- -- PInt Int
--- -- PTag String
--- toEnv ((PVar x, a) : defs) = (x, toCore [] a) : toEnv defs
--- -- PTuple [Pattern]
--- -- PRecord [(String, Pattern)]
--- -- PFun Pattern Pattern
--- -- PApp Pattern Pattern
--- -- PMeta [Metadata] Pattern
--- -- PErr Error
--- toEnv ((p, a) : defs) = error $ "TODO: toEnv " ++ show p
-
--- eval :: Module -> Expr -> Expr
--- eval mod expr = do
---   let (defs, expr') = foldl define ([], expr) mod.stmts
---   let env = toEnv defs
---   toCore env expr'
---     |> C.eval env
---     |> fromCore
-
--- stmtToCore :: C.Env -> Statement -> C.Env
--- stmtToCore env LetDef {type', name, value, meta} = case type' of
---   Just typ -> (name, toCore $ Ann (Meta meta value) typ) : env
---   Nothing -> (name, toCore $ Meta meta value) : env
--- -- stmtToCore LetPat {types, pattern, value, meta} env = (pattern, value) : env
--- --    TODO: list all names, then stmtToCore each with LetDef
--- stmtToCore env Trait {name, self, returns, value, meta} = do
---   let impl = toCore $ Meta meta $ Lam self (Ann value returns)
---   case lookup name env of
---     Just def -> (name, def `C.Or` impl) : env
---     Nothing -> (name, impl) : env
--- -- stmtToCore' Unbox {types, pattern, value, meta} expr = do
--- --   app (Var "*=") [Lam pattern expr, value]
--- -- stmtToCore' Import {path, name, exposing, meta} expr = do
--- --   let import' =
--- --         Unbox
--- --           { docs = Nothing,
--- --             types = [],
--- --             pattern = PVar name,
--- --             value = app (Var "import-module") [Var path],
--- --             meta = meta
--- --           }
--- --   stmtToCore' import' expr
--- -- \| LetType
--- --     { docs :: Maybe DocString,
--- --       name :: String,
--- --       args :: [Expr],
--- --       alts :: [(String, Type)],
--- --       meta :: [Metadata]
--- --     }
--- -- \| Prompt
--- --     { expression :: Expr,
--- --       result :: Maybe Expr,
--- --       meta :: [Metadata]
--- --     }
--- stmtToCore env stmt = error $ "TODO: stmtToCore'" ++ show stmt
-
--- define' :: Statement -> Expr -> Expr
--- define' LetDef {type', name, value, meta} expr = case type' of
---   Just typ -> let' (PVar name, Ann value typ) expr
---   Nothing -> let' (PVar name, value) expr
--- define' LetPat {types, pattern, value, meta} expr = do
---   let' (pattern, value) expr
--- define' Trait {typeVars, self, returns, value, meta} expr = error "TODO"
--- define' Unbox {types, pattern, value, meta} expr = do
---   app (Var "*=") [Lam pattern expr, value]
--- define' Import {path, name, exposing, meta} expr = do
---   let import' =
---         Unbox
---           { docs = Nothing,
---             types = [],
---             pattern = PVar name,
---             value = app (Var "import-module") [Var path],
---             meta = meta
---           }
---   define' import' expr
--- -- \| LetType
--- --     { docs :: Maybe DocString,
--- --       name :: String,
--- --       args :: [Expr],
--- --       alts :: [(String, Type)],
--- --       meta :: [Metadata]
--- --     }
--- -- \| Prompt
--- --     { expression :: Expr,
--- --       result :: Maybe Expr,
--- --       meta :: [Metadata]
--- --     }
--- define' stmt expr = error $ "TODO: define'" ++ show stmt
+dropMetadataPackage :: Package -> Package
+dropMetadataPackage pkg = pkg {modules = map dropMetadataModule pkg.modules}

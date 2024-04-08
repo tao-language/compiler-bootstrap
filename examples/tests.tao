@@ -1,0 +1,15 @@
+x = 42
+
+# Prompt-like example.
+> x
+42
+
+# Single line prompt example.
+> x; 42
+
+# Assertions.
+> x == 42  # checks for True if no explicit result
+> x > 0
+
+# Type assertion.
+> x : Int
