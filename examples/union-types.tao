@@ -1,0 +1,13 @@
+type Bool = True | False
+
+type Maybe a =
+  | Just a
+  | Nothing
+
+to-int : Maybe Int
+to-int =
+  | Just x -> x
+  | Nothing -> 0
+
+> to-int (Just 42) == 42
+> to-int Nothing == 0

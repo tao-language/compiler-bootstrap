@@ -233,16 +233,16 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "x : a\nx = y" `shouldBe` Right (([("x", For [] $ var 1 5 "a")], var 2 1 "x", var 2 5 "y"), "")
     p "x : a; y : b; x = y" `shouldBe` Right (([("x", For [] $ var 1 5 "a"), ("y", For [] $ var 1 12 "b")], var 1 15 "x", var 1 19 "y"), "")
 
-  it "☯ import'" $ do
-    let p = parse' import'
+  it "☯ importStmt" $ do
+    let p = parse' importStmt
     p "import mod" `shouldBe` Right (Import "mod" "mod" [], "")
     p "import dir/to/mod" `shouldBe` Right (Import "dir/to/mod" "dir/to/mod" [], "")
     p "import mod as m" `shouldBe` Right (Import "mod" "m" [], "")
     p "import mod as m ()" `shouldBe` Right (Import "mod" "m" [], "")
     p "import mod as m (a, b)" `shouldBe` Right (Import "mod" "m" ["a", "b"], "")
 
-  it "☯ test" $ do
-    let p = parse' test
+  it "☯ testStmt" $ do
+    let p = parse' testStmt
     p "> x; y" `shouldBe` Right (Test (var 1 3 "x") (var 1 6 "y"), "")
     p "> x\ny" `shouldBe` Right (Test (var 1 3 "x") (var 2 1 "y"), "")
     p "> x : a" `shouldBe` Right (Test (Ann (var 1 3 "x") (For [] $ var 1 7 "a")) (var 1 3 "x"), "")
@@ -254,7 +254,6 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "x" `shouldBe` Left ([CModule], "x")
     p "import m" `shouldBe` Right ([Import "m" "m" []], "")
 
-  -- TODO: move this into ExamplesTests.hs
   it "☯ package" $ do
     -- Skip modules that are already in the package.
     let pkg = Package {name = "pkg", modules = [("mod", [])]}

@@ -15,6 +15,8 @@ import Tao
 type TaoParser a = P.Parser ParserContext a
 
 {-- TODO:
+- Use trailing comments from `lineBreak`
+
 \* Token sugar (https://en.wikibooks.org/wiki/Haskell/Syntactic_sugar)
   - Do notation
   - Where statements
@@ -252,11 +254,6 @@ expressionRecord = do
   fields <- collection "{" "," "}" expressionRecordField
   return (Record fields)
 
--- expressionBlock :: Parser Expr
--- expressionBlock =
---   -- TODO: zero or more statement --> Let
---   expression (return ())
-
 type' :: TaoParser appDelim -> TaoParser Type
 type' delim = do
   xs <-
@@ -276,8 +273,8 @@ statement :: TaoParser Statement
 statement =
   P.oneOf
     [ fmap (\(ts, p, a) -> Def ts p a) definition,
-      import',
-      test,
+      importStmt,
+      testStmt,
       fmap (uncurry Comment) comment
     ]
 
@@ -301,8 +298,8 @@ definition = do
   _ <- lineBreak
   return (types, pattern', value)
 
-import' :: TaoParser Statement
-import' = do
+importStmt :: TaoParser Statement
+importStmt = do
   (loc, _) <- location (P.word "import")
   P.commit CImport
   dirName <- concat <$> P.zeroOrMore (P.concat [identifier, P.text "/"])
@@ -327,8 +324,8 @@ import' = do
   _ <- lineBreak
   return (Import name alias exposing)
 
-test :: TaoParser Statement
-test = do
+testStmt :: TaoParser Statement
+testStmt = do
   _ <- P.char '>'
   _ <- P.oneOrMore P.space
   P.commit CTest
@@ -361,7 +358,9 @@ package filename pkg | filename `elem` map fst pkg.modules = return pkg
 package filename pkg = do
   src <- readFile filename
   case P.parse filename module' src of
-    Right (mod, _) -> return (pkg {modules = (filename, mod) : pkg.modules})
+    Right (mod, _) -> do
+      -- TODO: evaluate the module statements
+      return (pkg {modules = (filename, mod) : pkg.modules})
     Left P.State {name, pos = (row, col), context} -> do
       let loc = intercalate ":" [name, show row, show col]
       putStrLn loc

@@ -21,15 +21,15 @@ data Expr
   | Num Double
   | Tag String
   | Var String
-  | Ann Expr Expr
   | For String Expr
   | Fix String Expr
   | Fun Expr Expr
-  | Or Expr Expr
   | App Expr Expr
-  | Typ String [String]
+  | Or Expr Expr
+  | Ann Expr Expr
   | Op1 UnaryOp Expr
   | Op2 BinaryOp Expr Expr
+  | Typ String [String]
   | Meta Metadata Expr
   | Err Error
   deriving (Eq)
@@ -143,6 +143,10 @@ fun ps b = foldr Fun b ps
 lam :: [Expr] -> Expr -> Expr
 -- TODO: use freeVars of ps
 lam ps b = for (bindings (fun ps b)) (fun ps b)
+
+asFor :: Expr -> ([String], Expr)
+asFor (For x a) = let (xs, b) = asFor a in (x : xs, b)
+asFor a = ([], a)
 
 asFun :: Expr -> ([Expr], Expr)
 asFun (Fun p a) = let (ps, b) = asFun a in (p : ps, b)

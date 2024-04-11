@@ -6,6 +6,7 @@
 
 module TaoTests where
 
+import Core (Error (..))
 import qualified Core as C
 import Tao
 import Test.Hspec
@@ -28,13 +29,50 @@ run = describe "--==☯ Tao ☯==--" $ do
     toCore env (Num 3.14) `shouldBe` C.Num 3.14
     toCore env (Tag "A") `shouldBe` C.Tag "A"
     toCore env (Var "x") `shouldBe` C.Var "x"
+    toCore env (Tuple []) `shouldBe` C.Tag "()"
+    toCore env (Tuple [x, y]) `shouldBe` C.app (C.Tag "()") [C.Var "x", C.Var "y"]
+    toCore env (Record []) `shouldBe` C.Tag "()"
+    toCore env (Record [("a", x), ("b", y)]) `shouldBe` C.app (C.Tag "()") [C.Var "x", C.Var "y"]
+    toCore env (Trait (Int 1) "a") `shouldBe` C.app (C.Var "a") [C.IntT, C.Int 1]
+    toCore env (Trait (Num 1.1) "a") `shouldBe` C.app (C.Var "a") [C.NumT, C.Num 1.1]
+    toCore env (Trait x "a") `shouldBe` C.app (C.Var "a") [C.Err $ C.UndefinedVar "x", C.Var "x"]
+    toCore env (Fun x y) `shouldBe` C.Fun (C.Var "x") (C.Var "y")
+    toCore env (App x y) `shouldBe` C.App (C.Var "x") (C.Var "y")
+    toCore env (Or x y) `shouldBe` C.Or (C.Var "x") (C.Var "y")
+    toCore env (Ann x (For [] y)) `shouldBe` C.Ann (C.Var "x") (C.Var "y")
+    toCore env (Ann x (For ["a"] y)) `shouldBe` C.Ann (C.Var "x") (C.For "a" (C.Var "y"))
+    toCore env (Op1 C.Int2Num x) `shouldBe` C.Op1 C.Int2Num (C.Var "x")
+    toCore env (Op2 C.Add x y) `shouldBe` C.Op2 C.Add (C.Var "x") (C.Var "y")
+    toCore env (Typ "T" ["A", "B"]) `shouldBe` C.Typ "T" ["A", "B"]
+    toCore env (Let ([], x, y) z) `shouldBe` C.let' (C.Var "x", C.Var "y") (C.Var "z")
+    toCore env (Let ([("x", For [] IntT)], x, y) z) `shouldBe` C.let' (C.Ann (C.Var "x") C.IntT, C.Var "y") (C.Var "z")
+    toCore env (Let ([], Ann x (For [] IntT), y) z) `shouldBe` C.let' (C.Ann (C.Var "x") C.IntT, C.Var "y") (C.Var "z")
+    toCore env (Meta (C.Location "src" (1, 2)) x) `shouldBe` C.Meta (C.Location "src" (1, 2)) (C.Var "x")
+    toCore env (Err C.NotImplementedError) `shouldBe` C.Err C.NotImplementedError
 
-  -- it "☯ stmtToCore" $ do
-  --   -- stmtToCore [] (newLetDef {name = "x"}) `shouldBe` []
-  --   True `shouldBe` True
-
-  -- it "☯ moduleToCore" $ do
-  --   True `shouldBe` True
+  it "☯ fromCore" $ do
+    fromCore C.Knd `shouldBe` Knd
+    fromCore C.IntT `shouldBe` IntT
+    fromCore C.NumT `shouldBe` NumT
+    fromCore (C.Int 42) `shouldBe` Int 42
+    fromCore (C.Num 3.14) `shouldBe` Num 3.14
+    fromCore (C.Tag "A") `shouldBe` Tag "A"
+    fromCore (C.Var "x") `shouldBe` Var "x"
+    fromCore (C.For "a" (C.Var "x")) `shouldBe` Var "x"
+    fromCore (C.Fix "x" (C.Var "x")) `shouldBe` Var "x"
+    fromCore (C.Fun (C.Var "x") (C.Var "y")) `shouldBe` Fun x y
+    fromCore (C.App (C.Var "x") (C.Var "y")) `shouldBe` App x y
+    fromCore (C.Or (C.Var "x") (C.Var "y")) `shouldBe` Or x y
+    fromCore (C.Ann (C.Var "x") (C.Var "y")) `shouldBe` Ann x (For [] y)
+    fromCore (C.Ann (C.Var "x") (C.For "a" $ C.Var "y")) `shouldBe` Ann x (For ["a"] y)
+    fromCore (C.Op1 C.Int2Num (C.Var "x")) `shouldBe` Op1 C.Int2Num x
+    fromCore (C.Op2 C.Add (C.Var "x") (C.Var "y")) `shouldBe` Op2 C.Add x y
+    fromCore (C.Typ "T" ["A", "B"]) `shouldBe` Typ "T" ["A", "B"]
+    -- Let
+    -- Let typed
+    -- Let recursive
+    fromCore (C.Meta (C.Location "src" (1, 2)) (C.Var "x")) `shouldBe` Meta (C.Location "src" (1, 2)) x
+    fromCore (C.Err NotImplementedError) `shouldBe` Err NotImplementedError
 
   it "☯ eval" $ do
     -- let eval' stmts = eval (newModule {stmts = stmts})

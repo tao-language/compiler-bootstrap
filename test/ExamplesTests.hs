@@ -65,10 +65,82 @@ run = describe "--==☯ Examples ☯==--" $ do
             Test x (Int 42),
             comment "Single line prompt example.",
             Test x (Int 42),
-            comment "Assertions.",
-            Test (x `eq` Int 42) (Tag "True"),
-            Test (x `gt` Int 0) (Tag "True"),
-            comment "Type assertion.",
+            comment "Assertions, check for True if no explicit result.",
+            Test (Tag "True") (Tag "True"),
+            comment "Type assertion, just check the type.",
             Test (Ann x (For [] IntT)) x
           ]
     package' name `shouldReturn` [(name, stmts)]
+
+-- it "☯ tests-failure" $ do
+--   let name = "examples/tests-failure.tao"
+--   let stmts = []
+--   package' name `shouldReturn` [(name, stmts)]
+
+-- it "☯ arithmetic" $ do
+--   let name = "examples/arithmetic.tao"
+--   let stmts = []
+--   package' name `shouldReturn` [(name, stmts)]
+
+-- it "☯ arithmetic-sugar" $ do
+--   let name = "examples/arithmetic-sugar.tao"
+--   let stmts = []
+--   package' name `shouldReturn` [(name, stmts)]
+
+-- it "☯ arithmetic-division-by-zero" $ do
+--   let name = "examples/arithmetic-division-by-zero.tao"
+--   let stmts = []
+--   package' name `shouldReturn` [(name, stmts)]
+
+-- it "☯ comparison" $ do
+--   let name = "examples/comparison.tao"
+--   let stmts = []
+--   package' name `shouldReturn` [(name, stmts)]
+
+-- it "☯ functions" $ do
+--   let name = "examples/functions.tao"
+--   let stmts = []
+--   package' name `shouldReturn` [(name, stmts)]
+
+-- it "☯ functions-lambda" $ do
+--   let name = "examples/functions-lambda.tao"
+--   let stmts = []
+--   package' name `shouldReturn` [(name, stmts)]
+
+-- it "☯ functions-application" $ do
+--   let name = "examples/functions-application.tao"
+--   let stmts = []
+--   package' name `shouldReturn` [(name, stmts)]
+
+-- it "☯ pattern-matching" $ do
+--   let name = "examples/pattern-matching.tao"
+--   let stmts = []
+--   package' name `shouldReturn` [(name, stmts)]
+
+-- it "☯ union-types" $ do
+--   let name = "examples/union-types.tao"
+--   let stmts = []
+--   package' name `shouldReturn` [(name, stmts)]
+
+-- it "☯ tuples" $ do
+--   let name = "examples/tuples.tao"
+--   let stmts = []
+--   package' name `shouldReturn` [(name, stmts)]
+
+-- it "☯ records" $ do
+--   let name = "examples/records.tao"
+--   let stmts = []
+--   package' name `shouldReturn` [(name, stmts)]
+
+-- it "☯ literals-numbers" $ do
+--   let name = "examples/literals-numbers.tao"
+--   let stmts = []
+--   package' name `shouldReturn` [(name, stmts)]
+
+-- # targets.py
+-- def now():
+--   return datetime.now()
+
+-- # targets.py.yaml
+-- exclude
+-- rename

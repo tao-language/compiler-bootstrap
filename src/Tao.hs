@@ -6,7 +6,7 @@
 
 module Tao where
 
-import Core (BinaryOp (..), Env, Error (..), Metadata (..))
+import Core (BinaryOp (..), Env, Error (..), Metadata (..), UnaryOp (..))
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
 import Flow ((|>))
@@ -48,10 +48,12 @@ data Expr
   | Trait Expr String
   | Fun Expr Expr
   | App Expr Expr
-  | Let ([(String, Type)], Expr, Expr) Expr
   | Or Expr Expr
-  | Op2 BinaryOp Expr Expr
   | Ann Expr Type
+  | Op1 UnaryOp Expr
+  | Op2 BinaryOp Expr Expr
+  | Typ String [String]
+  | Let ([(String, Type)], Expr, Expr) Expr
   | Meta Metadata Expr
   | Err Error
   deriving (Eq, Show)
@@ -73,6 +75,13 @@ data Package = Package
     modules :: [(String, [Statement])]
   }
   deriving (Eq, Show)
+
+data TestFailure = TestFailure
+  { name :: String,
+    expr :: Expr,
+    expected :: Expr,
+    actual :: Expr
+  }
 
 data ParserContext
   = CModule
@@ -144,6 +153,27 @@ asApp a = (a, [])
 meta :: [Metadata] -> Expr -> Expr
 meta ms b = foldr Meta b ms
 
+replace :: (String, Expr) -> Expr -> Expr
+replace _ Knd = Knd
+replace _ IntT = IntT
+replace _ NumT = NumT
+replace _ (Int i) = Int i
+replace _ (Num n) = Num n
+replace _ (Tag k) = Tag k
+replace (x, a) (Var x') | x == x' = a
+replace _ (Var x) = Var x
+replace s (Tuple items) = Tuple (replace s <$> items)
+replace s (Record fields) = Record (map (second (replace s)) fields)
+replace s (Trait a x) = Trait (replace s a) x
+replace s (Fun a b) = Fun (replace s a) (replace s b)
+replace s (App a b) = App (replace s a) (replace s b)
+replace s (Or a b) = Or (replace s a) (replace s b)
+replace s (Let (ts, p, a) b) = Let (ts, replace s p, replace s a) (replace s b)
+replace s (Op2 op a b) = Op2 op (replace s a) (replace s b)
+replace s (Ann a (For xs t)) = Ann (replace s a) (For xs (replace s t))
+replace s (Meta m a) = Meta m (replace s a)
+replace _ (Err err) = Err err
+
 toCore :: Env -> Expr -> C.Expr
 toCore _ Knd = C.Knd
 toCore _ IntT = C.IntT
@@ -152,48 +182,45 @@ toCore _ (Int i) = C.Int i
 toCore _ (Num n) = C.Num n
 toCore _ (Tag k) = C.Tag k
 toCore _ (Var x) = C.Var x
--- toCore env (Lam p b) = do
---   let b' = toCore env b
---   C.Lam (toCoreP (C.freeVars b') p) b'
--- toCore env (LamMatch rules) = toCore env (or' $ map (uncurry lam) rules)
--- toCore env (Match args rules) = toCore env (app (LamMatch rules) args)
 toCore env (Tuple items) = toCore env (app (Tag "()") items)
--- toCore (Record fields) = C.Rec (second toCore <$> fields)
--- toCore env (Block defs b) = error "TODO: toCore Block"
+toCore env (Record fields) = toCore env (Tuple $ map snd fields)
 toCore env (Trait a x) = do
   let a' = toCore env a
   let (ta, _) = C.infer [] a'
   C.app (C.Var x) [ta, a']
+toCore env (Fun a b) = C.Fun (toCore env a) (toCore env b)
 toCore env (App a b) = C.App (toCore env a) (toCore env b)
--- toCore env (Fun a b) = C.Fun (toCore env a) (toCore env b)
 toCore env (Or a b) = C.Or (toCore env a) (toCore env b)
+toCore env (Ann a (For xs t)) = C.Ann (toCore env a) (C.for xs $ toCore env t)
+toCore env (Op1 op a) = C.Op1 op (toCore env a)
 toCore env (Op2 op a b) = C.Op2 op (toCore env a) (toCore env b)
--- toCore env (Ann a (For xs t)) = C.Ann (toCore env a) (C.For xs $ toCore env t)
+toCore _ (Typ k alts) = C.Typ k alts
+toCore env (Let ([], p, a) b) = C.let' (toCore env p, toCore env a) (toCore env b)
+toCore env (Let ((x, ty) : ts, p, a) b) = toCore env (Let (ts, replace (x, Ann (Var x) ty) p, a) b)
 toCore env (Meta m a) = C.Meta m (toCore env a)
-toCore env (Err e) = C.Err e
-toCore env a = error $ "TODO: toCore " ++ show a
+toCore _ (Err e) = C.Err e
 
 fromCore :: C.Expr -> Expr
--- fromCore (Knd) = _
+fromCore C.Knd = Knd
 fromCore C.IntT = IntT
--- fromCore (NumT) = _
+fromCore C.NumT = NumT
 fromCore (C.Int i) = Int i
--- fromCore (Num Double) = _
--- fromCore (Tag String) = _
+fromCore (C.Num n) = Num n
+fromCore (C.Tag k) = Tag k
 fromCore (C.Var x) = Var x
--- fromCore (Ann Expr Type) = _
--- fromCore (C.Lam p b) = Lam (fromCoreP p) (fromCore b)
--- fromCore (Fix String Expr) = _
--- fromCore (Fun Expr Expr) = _
--- fromCore (Or Expr Expr) = _
+fromCore (C.Ann a b) = do
+  let (xs, b') = C.asFor b
+  Ann (fromCore a) (For xs $ fromCore b')
+fromCore (C.For _ a) = fromCore a
+fromCore (C.Fix _ a) = fromCore a
+fromCore (C.Fun a b) = Fun (fromCore a) (fromCore b)
 fromCore (C.App a b) = App (fromCore a) (fromCore b)
--- fromCore (Typ String [String]) = _
--- fromCore (Op1 UnaryOp Expr) = _
--- fromCore (Op2 BinaryOp Expr Expr) = _
+fromCore (C.Or a b) = Or (fromCore a) (fromCore b)
+fromCore (C.Op1 op a) = Op1 op (fromCore a)
+fromCore (C.Op2 op a b) = Op2 op (fromCore a) (fromCore b)
+fromCore (C.Typ k alts) = Typ k alts
 fromCore (C.Meta meta a) = Meta meta (fromCore a)
--- fromCore (Err Error) = _
 fromCore (C.Err e) = Err e
-fromCore a = error $ "fromCore: not implemented: " ++ show a
 
 dropMetadata :: Expr -> Expr
 dropMetadata Knd = Knd
@@ -208,8 +235,8 @@ dropMetadata (Record fields) = Record (map (second dropMetadata) fields)
 dropMetadata (Trait a k) = Trait (dropMetadata a) k
 dropMetadata (Fun a b) = Fun (dropMetadata a) (dropMetadata b)
 dropMetadata (App a b) = App (dropMetadata a) (dropMetadata b)
-dropMetadata (Let (types, p, a) b) = Let (map (second (\(For xs t) -> For xs (dropMetadata t))) types, dropMetadata p, dropMetadata a) (dropMetadata b)
 dropMetadata (Or a b) = Or (dropMetadata a) (dropMetadata b)
+dropMetadata (Let (types, p, a) b) = Let (map (second (\(For xs t) -> For xs (dropMetadata t))) types, dropMetadata p, dropMetadata a) (dropMetadata b)
 dropMetadata (Op2 op a b) = Op2 op (dropMetadata a) (dropMetadata b)
 dropMetadata (Ann a (For xs t)) = Ann (dropMetadata a) (For xs (dropMetadata t))
 dropMetadata (Meta _ a) = dropMetadata a
@@ -227,3 +254,26 @@ dropMetadataModule (name, stmts) = (name, map dropMetadataStmt stmts)
 
 dropMetadataPackage :: Package -> Package
 dropMetadataPackage pkg = pkg {modules = map dropMetadataModule pkg.modules}
+
+checkTypesPackage :: Package -> Either Error ()
+checkTypesPackage = error "TODO: checkTypesPackage"
+
+checkExhaustivePatternsPackage :: Package -> Either Error ()
+checkExhaustivePatternsPackage pkg = error "TODO: checkExhaustivePatternsPackage"
+
+checkRedundantPatternsPackage :: Package -> Either Error ()
+checkRedundantPatternsPackage pkg = error "TODO: checkRedundantPatternsPackage"
+
+run :: Package -> Expr -> Expr
+run = error "TODO: run"
+
+test :: Package -> Either Error [TestFailure]
+test pkg = error "TODO: test"
+
+data Target a = Target
+  {
+  }
+  deriving (Eq, Show)
+
+build :: Package -> Target a -> a
+build pkg = error "TODO: build"
