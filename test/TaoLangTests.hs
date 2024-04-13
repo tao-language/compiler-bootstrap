@@ -248,17 +248,17 @@ run = describe "--==☯ Tao language ☯==--" $ do
     p "> x : a" `shouldBe` Right (Test (Ann (var 1 3 "x") (For [] $ var 1 7 "a")) (var 1 3 "x"), "")
     p "> x" `shouldBe` Right (Test (var 1 3 "x") (Tag "True"), "")
 
-  it "☯ module'" $ do
-    let p = parse' module'
+  it "☯ file" $ do
+    let p = parse' file
     p "" `shouldBe` Right ([], "")
-    p "x" `shouldBe` Left ([CModule], "x")
+    p "x" `shouldBe` Left ([CFile], "x")
     p "import m" `shouldBe` Right ([Import "m" "m" []], "")
 
-  it "☯ package" $ do
+  it "☯ module'" $ do
     -- Skip modules that are already in the package.
-    let pkg = Package {name = "pkg", modules = [("mod", [])]}
-    package "mod" pkg `shouldReturn` pkg
+    let mod = Module {name = "mod", files = [("my-file", [])]}
+    package "my-file" mod `shouldReturn` mod
 
     -- Parse new modules.
-    let pkg = Package {name = "pkg", modules = []}
-    package "examples/empty.tao" pkg `shouldReturn` pkg {modules = [("examples/empty.tao", [])]}
+    let mod = Module {name = "mod", files = []}
+    package "examples/empty.tao" mod `shouldReturn` mod {files = [("examples/empty.tao", [])]}

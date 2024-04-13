@@ -343,24 +343,24 @@ testStmt = do
       ]
   return (Test expr result)
 
--- Module
-module' :: TaoParser [Statement]
-module' = do
-  P.commit CModule
+-- File
+file :: TaoParser [Statement]
+file = do
+  P.commit CFile
   stmts <- P.zeroOrMore statement
   _ <- P.whitespaces
   _ <- P.endOfFile
   return stmts
 
 -- Package
-package :: String -> Package -> IO Package
-package filename pkg | filename `elem` map fst pkg.modules = return pkg
-package filename pkg = do
+package :: String -> Module -> IO Module
+package filename mod | filename `elem` map fst mod.files = return mod
+package filename mod = do
   src <- readFile filename
-  case P.parse filename module' src of
-    Right (mod, _) -> do
+  case P.parse filename file src of
+    Right (f, _) -> do
       -- TODO: evaluate the module statements
-      return (pkg {modules = (filename, mod) : pkg.modules})
+      return (mod {files = (filename, f) : mod.files})
     Left P.State {name, pos = (row, col), context} -> do
       let loc = intercalate ":" [name, show row, show col]
       putStrLn loc

@@ -74,6 +74,9 @@ run = describe "--==☯ Tao ☯==--" $ do
     fromCore (C.Meta (C.Location "src" (1, 2)) (C.Var "x")) `shouldBe` Meta (C.Location "src" (1, 2)) x
     fromCore (C.Err NotImplementedError) `shouldBe` Err NotImplementedError
 
+  it "☯ checkTypes" $ do
+    True `shouldBe` True
+
   it "☯ eval" $ do
     -- let eval' stmts = eval (newModule {stmts = stmts})
     -- eval' [] x `shouldBe` x

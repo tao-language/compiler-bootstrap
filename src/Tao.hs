@@ -70,9 +70,11 @@ data Statement
   | Comment [Metadata] String
   deriving (Eq, Show)
 
-data Package = Package
+type File = [Statement]
+
+data Module = Module
   { name :: String,
-    modules :: [(String, [Statement])]
+    files :: [(String, [Statement])]
   }
   deriving (Eq, Show)
 
@@ -82,9 +84,10 @@ data TestFailure = TestFailure
     expected :: Expr,
     actual :: Expr
   }
+  deriving (Eq, Show)
 
 data ParserContext
-  = CModule
+  = CFile
   | CDefinition
   | CImport
   | CTest
@@ -221,59 +224,3 @@ fromCore (C.Op2 op a b) = Op2 op (fromCore a) (fromCore b)
 fromCore (C.Typ k alts) = Typ k alts
 fromCore (C.Meta meta a) = Meta meta (fromCore a)
 fromCore (C.Err e) = Err e
-
-dropMetadata :: Expr -> Expr
-dropMetadata Knd = Knd
-dropMetadata IntT = IntT
-dropMetadata NumT = NumT
-dropMetadata (Int i) = Int i
-dropMetadata (Num n) = Num n
-dropMetadata (Tag k) = Tag k
-dropMetadata (Var x) = Var x
-dropMetadata (Tuple items) = Tuple (map dropMetadata items)
-dropMetadata (Record fields) = Record (map (second dropMetadata) fields)
-dropMetadata (Trait a k) = Trait (dropMetadata a) k
-dropMetadata (Fun a b) = Fun (dropMetadata a) (dropMetadata b)
-dropMetadata (App a b) = App (dropMetadata a) (dropMetadata b)
-dropMetadata (Or a b) = Or (dropMetadata a) (dropMetadata b)
-dropMetadata (Let (types, p, a) b) = Let (map (second (\(For xs t) -> For xs (dropMetadata t))) types, dropMetadata p, dropMetadata a) (dropMetadata b)
-dropMetadata (Op2 op a b) = Op2 op (dropMetadata a) (dropMetadata b)
-dropMetadata (Ann a (For xs t)) = Ann (dropMetadata a) (For xs (dropMetadata t))
-dropMetadata (Meta _ a) = dropMetadata a
-dropMetadata (Err err) = Err err
-
-dropMetadataStmt :: Statement -> Statement
-dropMetadataStmt (Def types p a) = Def (map (second (\(For xs t) -> For xs (dropMetadata t))) types) (dropMetadata p) (dropMetadata a)
-dropMetadataStmt (Import name alias vars) = Import name alias vars
-dropMetadataStmt (Test a b) = Test (dropMetadata a) (dropMetadata b)
-dropMetadataStmt (DocString _ txt) = DocString [] txt
-dropMetadataStmt (Comment _ txt) = Comment [] txt
-
-dropMetadataModule :: (String, [Statement]) -> (String, [Statement])
-dropMetadataModule (name, stmts) = (name, map dropMetadataStmt stmts)
-
-dropMetadataPackage :: Package -> Package
-dropMetadataPackage pkg = pkg {modules = map dropMetadataModule pkg.modules}
-
-checkTypesPackage :: Package -> Either Error ()
-checkTypesPackage = error "TODO: checkTypesPackage"
-
-checkExhaustivePatternsPackage :: Package -> Either Error ()
-checkExhaustivePatternsPackage pkg = error "TODO: checkExhaustivePatternsPackage"
-
-checkRedundantPatternsPackage :: Package -> Either Error ()
-checkRedundantPatternsPackage pkg = error "TODO: checkRedundantPatternsPackage"
-
-run :: Package -> Expr -> Expr
-run = error "TODO: run"
-
-test :: Package -> Either Error [TestFailure]
-test pkg = error "TODO: test"
-
-data Target a = Target
-  {
-  }
-  deriving (Eq, Show)
-
-build :: Package -> Target a -> a
-build pkg = error "TODO: build"
