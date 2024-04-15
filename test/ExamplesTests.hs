@@ -6,31 +6,31 @@
 
 module ExamplesTests where
 
-import Core (Metadata (..))
+import Core
 import Data.Bifunctor (second)
 import Tao
-import TaoLang
+import TaoParser
 import Test.Hspec
 
-package' :: String -> IO [(String, [Statement])]
-package' name = do
-  mod <- package name (Module {name = name, files = []})
+moduleFiles :: String -> IO [TaoFile]
+moduleFiles name = do
+  mod <- parseModule name (TaoModule {name = name, files = []})
   return mod.files
 
 run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do
-  let comment = Comment []
-  let (x, y) = (Var "x", Var "y")
+  let comment = TaoComment []
+  let (x, y) = (TaoVar "x", TaoVar "y")
 
   it "☯ empty" $ do
     let name = "examples/empty.tao"
     let stmts = []
-    package' name `shouldReturn` [(name, stmts)]
+    moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ comments" $ do
 --   let name = "examples/comments.tao"
 --   let stmts = [comment "A line starting with '#' is a comment."]
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ comments-multiline" $ do
 --   let pkg = Package {name = "pkg", modules = []}
@@ -45,7 +45,7 @@ run = describe "--==☯ Examples ☯==--" $ do
 --           Def [] x (Int 42),
 --           Def [] y (Num 3.14)
 --         ]
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ variables-typed" $ do
 --   let name = "examples/variables-typed.tao"
@@ -55,7 +55,7 @@ run = describe "--==☯ Examples ☯==--" $ do
 --           comment "The type annotation can also live in its own line.",
 --           Def [("y", For [] NumT)] y (Num 3.14)
 --         ]
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ tests" $ do
 --   let name = "examples/tests.tao"
@@ -70,72 +70,72 @@ run = describe "--==☯ Examples ☯==--" $ do
 --           comment "Type assertion, just check the type.",
 --           Test (Ann x (For [] IntT)) x
 --         ]
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ tests-failure" $ do
 --   let name = "examples/tests-failure.tao"
 --   let stmts = []
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ arithmetic" $ do
 --   let name = "examples/arithmetic.tao"
 --   let stmts = []
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ arithmetic-sugar" $ do
 --   let name = "examples/arithmetic-sugar.tao"
 --   let stmts = []
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ arithmetic-division-by-zero" $ do
 --   let name = "examples/arithmetic-division-by-zero.tao"
 --   let stmts = []
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ comparison" $ do
 --   let name = "examples/comparison.tao"
 --   let stmts = []
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ functions" $ do
 --   let name = "examples/functions.tao"
 --   let stmts = []
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ functions-lambda" $ do
 --   let name = "examples/functions-lambda.tao"
 --   let stmts = []
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ functions-application" $ do
 --   let name = "examples/functions-application.tao"
 --   let stmts = []
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ pattern-matching" $ do
 --   let name = "examples/pattern-matching.tao"
 --   let stmts = []
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ union-types" $ do
 --   let name = "examples/union-types.tao"
 --   let stmts = []
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ tuples" $ do
 --   let name = "examples/tuples.tao"
 --   let stmts = []
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ records" $ do
 --   let name = "examples/records.tao"
 --   let stmts = []
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- it "☯ literals-numbers" $ do
 --   let name = "examples/literals-numbers.tao"
 --   let stmts = []
---   package' name `shouldReturn` [(name, stmts)]
+--   moduleFiles name `shouldReturn` [(name, stmts)]
 
 -- # targets.py
 -- def now():

@@ -10,7 +10,6 @@ import PrettyPrint (pretty)
 import qualified Python
 import qualified System.Environment
 import qualified Tao
-import TaoLang
 
 main :: IO ()
 main = do

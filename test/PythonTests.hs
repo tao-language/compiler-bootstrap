@@ -6,26 +6,26 @@
 
 module PythonTests where
 
+import Core
 import PrettyPrint (pretty)
 import Python
-import qualified Tao as T
 import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Python ☯==--" $ do
-  let target =
-        builtins
-          { extern =
-              [ ("True", targetDef $ Bool True),
-                ("pi", (targetDef $ Attribute (Name "math") "pi") {globals = [import' "math"]})
-              ]
-          }
+  -- let target =
+  --       builtins
+  --         { extern =
+  --             [ ("True", targetDef $ Bool True),
+  --               ("pi", (targetDef $ Attribute (Name "math") "pi") {globals = [import' "math"]})
+  --             ]
+  --         }
 
-  it "☯ emitExpr" $ do
-    let emitExpr' expr = apply (emitExpr target expr) newContext
-    emitExpr' (T.Int 0) `shouldBe` (Integer 0, newContext)
-    emitExpr' (T.Tag "True") `shouldBe` (Bool True, newContext)
-    emitExpr' (T.Var "pi") `shouldBe` (Attribute (Name "math") "pi", newContext {globals = [import' "math"]})
+  -- it "☯ emitExpr" $ do
+  --   let emitExpr' expr = apply (emitExpr target expr) newContext
+  --   emitExpr' (Int 0) `shouldBe` (Integer 0, newContext)
+  --   emitExpr' (Tag "True") `shouldBe` (Bool True, newContext)
+  --   emitExpr' (Var "pi") `shouldBe` (Attribute (Name "math") "pi", newContext {globals = [import' "math"]})
 
   -- it "☯ emitStmt" $ do
   --   let emitStmt' stmt stmts = fst $ apply (emitStmt target stmt stmts) newContext

@@ -8,7 +8,6 @@ module OperatorPrecedenceTests where
 import Parser (Parser)
 import qualified Parser as P
 import Tao
-import TaoLang
 import Test.Hspec
 
 run :: SpecWith ()

@@ -12,25 +12,30 @@ import Data.List (delete, intercalate, union)
 -- https://www.youtube.com/live/utyBNDj7s2w
 -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
 
+-- TODO: Tag String [Term]
+-- TODO: Alias Term Term
+-- TODO: Meta (Union [String]) (Tag k)
 -- TODO: remove Typ
-data Expr
+data Term
   = Knd
   | IntT
   | NumT
   | Int Int
   | Num Double
-  | Tag String
   | Var String
-  | For String Expr
-  | Fix String Expr
-  | Fun Expr Expr
-  | App Expr Expr
-  | Or Expr Expr
-  | Ann Expr Expr
-  | Op1 UnaryOp Expr
-  | Op2 BinaryOp Expr Expr
+  | Tag String
+  | Tup [Term]
+  | Rec [(String, Term)]
+  | For String Term
+  | Fix String Term
+  | Fun Term Term
+  | App Term Term
+  | Or Term Term
+  | Ann Term Term
+  | Op1 UnaryOp Term
+  | Op2 BinaryOp Term Term
   | Typ String [String]
-  | Meta Metadata Expr
+  | Meta Metadata Term
   | Err Error
   deriving (Eq)
 
@@ -52,12 +57,12 @@ data Error
   = NotImplementedError
   | SyntaxError String (Int, Int) String
   | -- Runtime errors
-    PatternMatchError Expr Expr
-  | Op1Error UnaryOp Expr
-  | Op2Error BinaryOp Expr Expr
+    PatternMatchError Term Term
+  | Op1Error UnaryOp Term
+  | Op2Error BinaryOp Term Term
   | -- Type errors
-    OccursError String Expr
-  | TypeMismatch Expr Expr
+    OccursError String Term
+  | TypeMismatch Term Term
   | UndefinedVar String
   deriving (Eq, Show)
 
@@ -65,12 +70,12 @@ data Metadata
   = Location String (Int, Int)
   deriving (Eq, Show)
 
-type Env = [(String, Expr)]
+type Env = [(String, Term)]
 
-type Substitution = [(String, Expr)]
+type Substitution = [(String, Term)]
 
-instance Show Expr where
-  showsPrec :: Int -> Expr -> ShowS
+instance Show Term where
+  showsPrec :: Int -> Term -> ShowS
   showsPrec p expr = case expr of
     App (Fun p b) a -> prefix 1 (show p ++ " = " ++ show a ++ "; ") b
     Or a b -> infixR 1 a " | " b
@@ -129,70 +134,74 @@ instance Show UnaryOp where
   show Int2Num = "@int2num"
 
 -- Syntax sugar
-bindings :: Expr -> [String]
+bindings :: Term -> [String]
 bindings (For x a) = [x] `union` bindings a
 bindings (Fun a b) = freeVars a `union` bindings b
 bindings _ = []
 
-for :: [String] -> Expr -> Expr
+for :: [String] -> Term -> Term
 for xs a = foldr For a xs
 
-fun :: [Expr] -> Expr -> Expr
+fun :: [Term] -> Term -> Term
 fun ps b = foldr Fun b ps
 
-lam :: [Expr] -> Expr -> Expr
+lam :: [Term] -> Term -> Term
 -- TODO: use freeVars of ps
 lam ps b = for (bindings (fun ps b)) (fun ps b)
 
-asFor :: Expr -> ([String], Expr)
+asFor :: Term -> ([String], Term)
 asFor (For x a) = let (xs, b) = asFor a in (x : xs, b)
 asFor a = ([], a)
 
-asFun :: Expr -> ([Expr], Expr)
+asFun :: Term -> ([Term], Term)
 asFun (Fun p a) = let (ps, b) = asFun a in (p : ps, b)
 asFun a = ([], a)
 
-add :: Expr -> Expr -> Expr
+add :: Term -> Term -> Term
 add = Op2 Add
 
-sub :: Expr -> Expr -> Expr
+sub :: Term -> Term -> Term
 sub = Op2 Sub
 
-mul :: Expr -> Expr -> Expr
+mul :: Term -> Term -> Term
 mul = Op2 Mul
 
-pow :: Expr -> Expr -> Expr
+pow :: Term -> Term -> Term
 pow = Op2 Pow
 
-eq :: Expr -> Expr -> Expr
+eq :: Term -> Term -> Term
 eq = Op2 Eq
 
-lt :: Expr -> Expr -> Expr
+lt :: Term -> Term -> Term
 lt = Op2 Lt
 
-gt :: Expr -> Expr -> Expr
+gt :: Term -> Term -> Term
 gt = Op2 Gt
 
-int2num :: Expr -> Expr
+int2num :: Term -> Term
 int2num = Op1 Int2Num
 
-let' :: (Expr, Expr) -> Expr -> Expr
+let' :: (Term, Term) -> Term -> Term
 let' (p, a) b = App (lam [p] b) a
 
-lets :: [(Expr, Expr)] -> Expr -> Expr
+lets :: [(Term, Term)] -> Term -> Term
 lets defs b = foldr let' b defs
 
-or' :: [Expr] -> Expr
+or' :: [Term] -> Term
 or' [] = error "`or'` must have at least one expression"
 or' [a] = a
 or' (a : bs) = Or a (or' bs)
 
-app :: Expr -> [Expr] -> Expr
+app :: Term -> [Term] -> Term
 app = foldl App
 
-asApp :: Expr -> (Expr, [Expr])
+asApp :: Term -> (Term, [Term])
 asApp (App a b) = let (a', bs) = asApp a in (a', bs ++ [b])
 asApp a = (a, [])
+
+meta :: [Metadata] -> Term -> Term
+meta [] a = a
+meta (m : ms) a = Meta m (meta ms a)
 
 -- Helper functions
 pop :: (Eq k) => k -> [(k, v)] -> [(k, v)]
@@ -200,7 +209,7 @@ pop _ [] = []
 pop x ((x', _) : kvs) | x == x' = kvs
 pop x (_ : kvs) = pop x kvs
 
-pushAll :: [(String, Expr)] -> Env -> Env
+pushAll :: [(String, Term)] -> Env -> Env
 pushAll vars env = foldr (:) env vars
 
 popAll :: [String] -> Env -> Env
@@ -209,7 +218,7 @@ popAll xs env = foldl (flip pop) env xs
 pushVars :: [String] -> Env -> Env
 pushVars xs = pushAll (map (\x -> (x, Var x)) xs)
 
-freeVars :: Expr -> [String]
+freeVars :: Term -> [String]
 freeVars Knd = []
 freeVars IntT = []
 freeVars NumT = []
@@ -229,7 +238,7 @@ freeVars (Op2 _ a b) = freeVars a `union` freeVars b
 freeVars (Meta _ a) = freeVars a
 freeVars (Err _) = []
 
-occurs :: String -> Expr -> Bool
+occurs :: String -> Term -> Bool
 occurs x a = x `elem` freeVars a
 
 newName :: [String] -> String -> String
@@ -243,14 +252,14 @@ newNames existing x =
       name `notElem` existing
   ]
 
-isClosed :: Expr -> Bool
+isClosed :: Term -> Bool
 isClosed = null . freeVars
 
-isOpen :: Expr -> Bool
+isOpen :: Term -> Bool
 isOpen = not . isClosed
 
 -- Evaluation
-eval :: Env -> Expr -> Expr
+eval :: Env -> Term -> Term
 eval _ Knd = Knd
 eval _ IntT = IntT
 eval _ NumT = NumT
@@ -306,11 +315,11 @@ eval env (Op2 op a b) = case (op, eval env a, eval env b) of
 eval env (Meta meta a) = Meta meta (eval env a)
 eval _ (Err e) = Err e
 
-evalOp1 :: UnaryOp -> Expr -> Expr
+evalOp1 :: UnaryOp -> Term -> Term
 evalOp1 Int2Num (Int b) = Num (fromIntegral b)
 evalOp1 op a = Err (Op1Error op a)
 
-evalOp2 :: BinaryOp -> Expr -> Expr -> Expr
+evalOp2 :: BinaryOp -> Term -> Term -> Term
 evalOp2 Add (Int a) (Int b) = Int (a + b)
 evalOp2 Add (Num a) (Num b) = Num (a + b)
 evalOp2 Sub (Int a) (Int b) = Int (a - b)
@@ -329,7 +338,7 @@ evalOp2 Lt (Int a) (Int b) | a < b = Int a
 evalOp2 Lt (Num a) (Num b) | a < b = Num a
 evalOp2 op a b = Err (Op2Error op a b)
 
-unify :: Expr -> Expr -> (Expr, Substitution)
+unify :: Term -> Term -> (Term, Substitution)
 unify Knd Knd = (Knd, [])
 unify IntT IntT = (IntT, [])
 unify NumT NumT = (NumT, [])
@@ -376,13 +385,13 @@ unify (Meta _ a) b = unify a b
 unify a (Meta _ b) = unify a b
 unify a b = (Err (TypeMismatch a b), [])
 
-unify2 :: (Expr, Expr) -> (Expr, Expr) -> ((Expr, Expr), Substitution)
+unify2 :: (Term, Term) -> (Term, Term) -> ((Term, Term), Substitution)
 unify2 (a1, a2) (b1, b2) = do
   let (ta, s1) = unify a1 a2
   let (tb, s2) = unify (eval s1 b1) (eval s1 b2)
   ((eval s2 ta, tb), s2 `compose` s1)
 
-unifyAll :: [Expr] -> [Expr] -> ([Expr], Substitution)
+unifyAll :: [Term] -> [Term] -> ([Term], Substitution)
 unifyAll [] _ = ([], [])
 unifyAll _ [] = ([], [])
 unifyAll (a1 : bs1) (a2 : bs2) = do
@@ -390,7 +399,7 @@ unifyAll (a1 : bs1) (a2 : bs2) = do
   let (a, s2) = unify (eval s1 a1) (eval s1 a2)
   (a : map (eval s2) bs, s2 `compose` s1)
 
-infer :: Env -> Expr -> (Expr, Substitution)
+infer :: Env -> Term -> (Term, Substitution)
 infer _ Knd = (Knd, [])
 infer _ IntT = (Knd, [])
 infer _ NumT = (Knd, [])
@@ -436,25 +445,25 @@ infer env (Op2 op a b) = inferOp2 env op a b
 infer env (Meta _ a) = infer env a
 infer _ (Err e) = (Err e, [])
 
-infer2 :: Env -> Expr -> Expr -> ((Expr, Expr), Substitution)
+infer2 :: Env -> Term -> Term -> ((Term, Term), Substitution)
 infer2 env a b = do
   let (ta, s1) = infer env a
   let (tb, s2) = infer (env `compose` s1) b
   ((eval s2 ta, tb), s2 `compose` s1)
 
-inferAll :: Env -> [Expr] -> ([Expr], Substitution)
+inferAll :: Env -> [Term] -> ([Term], Substitution)
 inferAll _ [] = ([], [])
 inferAll env (a : bs) = do
   let (ta, s1) = infer env a
   let (tbs, s2) = inferAll (env `compose` s1) bs
   (eval s2 ta : tbs, s2 `compose` s1)
 
-inferOp1 :: Env -> UnaryOp -> Expr -> (Expr, Substitution)
+inferOp1 :: Env -> UnaryOp -> Term -> (Term, Substitution)
 inferOp1 env Int2Num a = do
   let (_, s) = infer env (Ann a IntT)
   (NumT, s)
 
-inferOp2 :: Env -> BinaryOp -> Expr -> Expr -> (Expr, Substitution)
+inferOp2 :: Env -> BinaryOp -> Term -> Term -> (Term, Substitution)
 inferOp2 env Add a b = do
   let (ta, s1) = infer env (Ann a IntT)
   let (t, s2) = infer (s1 `compose` env) (Ann b ta)
@@ -490,7 +499,7 @@ compose s1 s2 = apply s1 s2 `union` s1
       (x, Ann (eval s a) (eval s t)) : apply s env
     apply s ((x, a) : env) = (x, eval s a) : apply s env
 
-instantiate :: Env -> Expr -> (Expr, Substitution)
+instantiate :: Env -> Term -> (Term, Substitution)
 instantiate env (For x a) = do
   let y = newName (map fst env) x
   let (b, s) = instantiate env (eval [(x, Var y)] a)
