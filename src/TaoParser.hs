@@ -150,14 +150,9 @@ parseOp txt = do
 parseExpr :: TaoParser appDelim -> TaoParser TaoExpr
 parseExpr delim = do
   let metaOp f m a b = TaoMeta m (f a b)
-  let typeAnnotation = do
-        _ <- P.char ':'
-        _ <- P.whitespaces
-        parseType delim
   let ops =
         [ P.infixR 1 (metaOp TaoOr) (parseOp "|"),
-          -- P.prefix 2 metaLam lamPatterns,
-          P.suffix 2 (flip TaoAnn) typeAnnotation,
+          P.infixR 2 (metaOp TaoAnn) (parseOp ":"),
           P.infixR 3 (metaOp taoEq) (parseOp "=="),
           P.infixR 4 (metaOp taoLt) (parseOp "<"),
           P.infixR 4 (metaOp taoGt) (parseOp ">"),
@@ -189,7 +184,9 @@ parseName = do
     "Type" -> return TaoKind
     "Int" -> return TaoIntType
     "Num" -> return TaoNumType
-    x | startsWithUpper x -> return (TaoTag name)
+    x | startsWithUpper x -> do
+      args <- P.zeroOrMore parseExprAtom
+      return (TaoTag name args)
     _ -> return (TaoVar name)
 
 parseTuple :: TaoParser TaoExpr
@@ -225,20 +222,6 @@ parseRecord = do
   fields <- parseCollection "{" "," "}" parseRecordField
   return (TaoRecord fields)
 
-parseType :: TaoParser appDelim -> TaoParser TaoExpr
-parseType delim = do
-  xs <-
-    P.oneOf
-      [ do
-          _ <- P.char '@'
-          xs <- P.oneOrMore (P.paddedL P.whitespaces parseIdentifier)
-          _ <- parseOp "."
-          return xs,
-        return []
-      ]
-  t <- parseExpr delim
-  return (taoForAll xs t)
-
 -- Statements
 parseStmt :: TaoParser TaoStmt
 parseStmt =
@@ -256,7 +239,7 @@ parseDefinition = do
         _ <- P.spaces
         _ <- P.char ':'
         _ <- P.spaces
-        ty <- parseType P.spaces
+        ty <- parseExpr P.spaces
         _ <- parseLineBreak
         return (x, ty)
   types <- P.zeroOrMore annotation
@@ -302,15 +285,18 @@ parseTest = do
   P.commit CTest
   expr <- parseExpr P.spaces
   _ <- parseLineBreak
+  let typeAssertion (TaoAnn a _) = Just a
+      typeAssertion (TaoMeta _ a) = typeAssertion a
+      typeAssertion _ = Nothing
   result <-
     P.oneOf
       [ do
           result <- parseExpr P.spaces
           _ <- parseLineBreak
           return result,
-        case expr of
-          TaoAnn a _ -> return a
-          _ -> return (TaoTag "True")
+        case typeAssertion expr of
+          Just a -> return a
+          Nothing -> return (TaoTag "True" [])
       ]
   return (TaoTest expr result)
 

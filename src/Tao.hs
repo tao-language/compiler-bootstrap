@@ -15,10 +15,9 @@ data TaoExpr
   | TaoInt Int
   | TaoNum Double
   | TaoVar String
-  | TaoTag String
+  | TaoTag String [TaoExpr]
   | TaoTuple [TaoExpr]
   | TaoRecord [(String, TaoExpr)]
-  | TaoForAll String TaoExpr
   | TaoFun TaoExpr TaoExpr
   | TaoApp TaoExpr TaoExpr
   | TaoOr TaoExpr TaoExpr
@@ -45,9 +44,6 @@ data TaoModule = TaoModule
   }
   deriving (Eq, Show)
 
-taoForAll :: [String] -> TaoExpr -> TaoExpr
-taoForAll xs a = foldr TaoForAll a xs
-
 taoAdd :: TaoExpr -> TaoExpr -> TaoExpr
 taoAdd = TaoOp2 Add
 
@@ -70,5 +66,4 @@ taoGt :: TaoExpr -> TaoExpr -> TaoExpr
 taoGt = TaoOp2 Gt
 
 taoMeta :: [Metadata] -> TaoExpr -> TaoExpr
-taoMeta [] a = a
-taoMeta (m : ms) a = TaoMeta m (taoMeta ms a)
+taoMeta ms a = foldr TaoMeta a ms

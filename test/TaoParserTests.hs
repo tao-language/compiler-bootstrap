@@ -122,11 +122,12 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseName" $ do
     let p = parse' parseName
-    p "Type abc" `shouldBe` Right (TaoKind, "abc")
-    p "Int abc" `shouldBe` Right (TaoIntType, "abc")
-    p "Num abc" `shouldBe` Right (TaoNumType, "abc")
-    p "var abc" `shouldBe` Right (TaoVar "var", "abc")
-    p "Tag abc" `shouldBe` Right (TaoTag "Tag", "abc")
+    p "Type x y;" `shouldBe` Right (TaoKind, "x y;")
+    p "Int x y;" `shouldBe` Right (TaoIntType, "x y;")
+    p "Num x y;" `shouldBe` Right (TaoNumType, "x y;")
+    p "var x y;" `shouldBe` Right (TaoVar "var", "x y;")
+    p "Tag;" `shouldBe` Right (TaoTag "Tag" [], ";")
+    p "Tag x y;" `shouldBe` Right (TaoTag "Tag" [var 1 5 "x", var 1 7 "y"], ";")
 
   it "☯ parseTuple" $ do
     let p = parse' parseTuple
@@ -154,14 +155,12 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "Num" `shouldBe` Right (taoMeta [loc 1 1] TaoNumType, "")
     p "42" `shouldBe` Right (taoMeta [loc 1 1] $ TaoInt 42, "")
     p "3.14" `shouldBe` Right (taoMeta [loc 1 1] $ TaoNum 3.14, "")
-    p "Tag" `shouldBe` Right (taoMeta [loc 1 1] $ TaoTag "Tag", "")
     p "var" `shouldBe` Right (taoMeta [loc 1 1] $ TaoVar "var", "")
+    p "Tag" `shouldBe` Right (taoMeta [loc 1 1] $ TaoTag "Tag" [], "")
     p "()" `shouldBe` Right (taoMeta [loc 1 1] $ TaoTuple [], "")
     p "{}" `shouldBe` Right (taoMeta [loc 1 1] $ TaoRecord [], "")
     p "x |  y" `shouldBe` Right (taoMeta [loc 1 3] $ TaoOr (var 1 1 "x") (var 1 6 "y"), "")
-    p "x :  y" `shouldBe` Right (TaoAnn (var 1 1 "x") (var 1 6 "y"), "")
-    p "x : @a. y" `shouldBe` Right (TaoAnn (var 1 1 "x") (TaoForAll "a" $ var 1 9 "y"), "")
-    p "x : @a b. y" `shouldBe` Right (TaoAnn (var 1 1 "x") (taoForAll ["a", "b"] $ var 1 11 "y"), "")
+    p "x :  y" `shouldBe` Right (taoMeta [loc 1 3] $ TaoAnn (var 1 1 "x") (var 1 6 "y"), "")
     p "x == y" `shouldBe` Right (taoMeta [loc 1 3] $ taoEq (var 1 1 "x") (var 1 6 "y"), "")
     p "x <  y" `shouldBe` Right (taoMeta [loc 1 3] $ taoLt (var 1 1 "x") (var 1 6 "y"), "")
     p "x -> y" `shouldBe` Right (taoMeta [loc 1 3] $ TaoFun (var 1 1 "x") (var 1 6 "y"), "")
@@ -180,7 +179,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "x = y\n" `shouldBe` Right (([], var 1 1 "x", var 1 5 "y"), "")
     p "x =\ny" `shouldBe` Right (([], var 1 1 "x", var 2 1 "y"), "")
     p "x\n= y" `shouldBe` Right (([], var 1 1 "x", var 2 3 "y"), "")
-    p "x : a = y" `shouldBe` Right (([], TaoAnn (var 1 1 "x") (var 1 5 "a"), var 1 9 "y"), "")
+    p "x : a = y" `shouldBe` Right (([], taoMeta [loc 1 3] $ TaoAnn (var 1 1 "x") (var 1 5 "a"), var 1 9 "y"), "")
     p "x : a; x = y" `shouldBe` Right (([("x", var 1 5 "a")], var 1 8 "x", var 1 12 "y"), "")
     p "x : a\nx = y" `shouldBe` Right (([("x", var 1 5 "a")], var 2 1 "x", var 2 5 "y"), "")
     p "x : a; y : b; x = y" `shouldBe` Right (([("x", var 1 5 "a"), ("y", var 1 12 "b")], var 1 15 "x", var 1 19 "y"), "")
@@ -197,8 +196,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     let p = parse' parseTest
     p "> x; y" `shouldBe` Right (TaoTest (var 1 3 "x") (var 1 6 "y"), "")
     p "> x\ny" `shouldBe` Right (TaoTest (var 1 3 "x") (var 2 1 "y"), "")
-    p "> x : a" `shouldBe` Right (TaoTest (TaoAnn (var 1 3 "x") (var 1 7 "a")) (var 1 3 "x"), "")
-    p "> x" `shouldBe` Right (TaoTest (var 1 3 "x") (TaoTag "True"), "")
+    p "> x : a" `shouldBe` Right (TaoTest (taoMeta [loc 1 5] $ TaoAnn (var 1 3 "x") (var 1 7 "a")) (var 1 3 "x"), "")
+    p "> x" `shouldBe` Right (TaoTest (var 1 3 "x") (TaoTag "True" []), "")
 
   it "☯ parseFile" $ do
     let p = parse' (parseFile "my-file.tao")
