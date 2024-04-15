@@ -22,26 +22,11 @@ data ParserContext
   | CDefinition
   | CImport
   | CTest
-  | CparseComment
-  | CparseCommentMultiLine
+  | CComment
+  | CCommentMultiLine
   | CDocString
-  | CExpression
-  | CLetDef
-  | CLetDefTyped String
-  | CLetDefTypedVar String
-  | CLetDefUntyped String
-  | COperator String
-  | CPAny
-  | CParentheses
   | CRecordField String
-  | CTrait
-  | CTuple
-  | CLetType
-  | CTODO -- TODO: REMOVE THIS
   deriving (Eq, Show)
-
-keywords :: [String]
-keywords = ["type"]
 
 -- Utilities
 startsWithUpper :: String -> Bool
@@ -50,6 +35,7 @@ startsWithUpper _ = False
 
 parseIdentifier :: TaoParser String
 parseIdentifier = do
+  let keywords = ["type"]
   let validChars =
         [ P.letter,
           P.digit,
@@ -98,7 +84,7 @@ parseCommentSingleLine :: TaoParser ([Metadata], String)
 parseCommentSingleLine = do
   state <- P.getState
   _ <- P.char '#'
-  P.commit CparseComment
+  P.commit CComment
   _ <- P.spaces
   line <- P.skipTo P.endOfLine
   return ([Location state.name state.pos], dropWhileEnd isSpace line)
@@ -107,7 +93,7 @@ parseCommentMultiLine :: TaoParser ([Metadata], String)
 parseCommentMultiLine = do
   state <- P.getState
   delim <- P.chain [P.text "#--", P.zeroOrMore (P.char '-')]
-  P.commit CparseCommentMultiLine
+  P.commit CCommentMultiLine
   _ <- P.spaces
   line <- P.skipTo parseLineBreak
   error "TODO: parseCommentMultiLine"

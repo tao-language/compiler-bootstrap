@@ -15,7 +15,6 @@ import Data.List (delete, intercalate, union)
 -- TODO: Tag String [Term]
 -- TODO: Alias Term Term
 -- TODO: Meta (Union [String]) (Tag k)
--- TODO: remove Typ
 data Term
   = Knd
   | IntT
@@ -34,7 +33,6 @@ data Term
   | Ann Term Term
   | Op1 UnaryOp Term
   | Op2 BinaryOp Term Term
-  | Typ String [String]
   | Meta Metadata Term
   | Err Error
   deriving (Eq)
@@ -102,7 +100,6 @@ instance Show Term where
     Tag k -> atom 11 ("($tag '" ++ k ++ "')")
     Var x | isVarName x -> atom 11 x
     Var x -> atom 11 ("($var '" ++ x ++ "')")
-    Typ k alts -> atom 11 ("$type " ++ show (Tag k) ++ "[" ++ intercalate "|" alts ++ "]")
     Meta _ a -> showsPrec p a
     where
       atom n k = showParen (p > n) $ showString k
@@ -232,7 +229,6 @@ freeVars (Fix x a) = delete x (freeVars a)
 freeVars (Fun a b) = freeVars a `union` freeVars b
 freeVars (Or a b) = freeVars a `union` freeVars b
 freeVars (App a b) = freeVars a `union` freeVars b
-freeVars (Typ _ _) = []
 freeVars (Op1 _ a) = freeVars a
 freeVars (Op2 _ a b) = freeVars a `union` freeVars b
 freeVars (Meta _ a) = freeVars a
@@ -305,7 +301,6 @@ eval env (Or a b) = case (eval env a, eval env b) of
   (a, Err _) -> a
   (Or a1 a2, b) -> Or a1 (Or a2 b)
   (a, b) -> Or a b
-eval env (Typ k alts) = Typ k alts
 eval env (Op1 op a) = case (op, eval env a) of
   (op, a) | isOpen a -> Op1 op a
   (op, a) -> evalOp1 op a
@@ -375,12 +370,6 @@ unify (Op1 op a) (Op1 op' b) | op == op' = do
 unify (Op2 op a1 b1) (Op2 op' a2 b2) | op == op' = do
   let ((a, b), s) = unify2 (a1, a2) (b1, b2)
   (Op2 op a b, s)
-unify (Typ k alts) b = case unify (Tag k) b of
-  (Err e, s) -> (Err e, s)
-  (_, s) -> (Typ k alts, s)
-unify a (Typ k alts) = case unify a (Tag k) of
-  (Err e, s) -> (Err e, s)
-  (_, s) -> (Typ k alts, s)
 unify (Meta _ a) b = unify a b
 unify a (Meta _ b) = unify a b
 unify a b = (Err (TypeMismatch a b), [])
@@ -408,7 +397,6 @@ infer _ (Num _) = (NumT, [])
 infer env (Tag k) = case lookup k env of
   Just (Tag k') | k == k' -> (Tag k, [])
   Just (Ann (Tag k') ty) | k == k' -> instantiate env ty
-  Just (Ann (Typ k' _) ty) | k == k' -> instantiate env ty
   Just a -> infer env a
   Nothing -> (Tag k, [])
 infer env (Var x) = case lookup x env of
@@ -439,7 +427,6 @@ infer env (App a b) = do
   case unify (Fun tb (Var x)) ta of
     (Err e, s2) -> (Err e, s2 `compose` s1)
     (_, s2) -> (eval (env `compose` s2) (Var x), s2 `compose` s1 `compose` [(x, Var x)])
-infer env (Typ k alts) = (Typ k alts, [])
 infer env (Op1 op a) = inferOp1 env op a
 infer env (Op2 op a b) = inferOp2 env op a b
 infer env (Meta _ a) = infer env a

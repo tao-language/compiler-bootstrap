@@ -347,87 +347,52 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ infer Bool" $ do
     let (bool, true, false) = (Tag "Bool", Tag "True", Tag "False")
-    let boolType = Typ "Bool" ["True", "False"]
     let env =
-          [ ("Bool", Ann boolType Knd),
+          [ ("Bool", bool),
             ("True", Ann true bool),
             ("False", Ann false bool)
           ]
 
     let infer' = fst . infer env
-    infer' (Tag "Bool") `shouldBe` Knd
-    infer' (Tag "True") `shouldBe` boolType
-    infer' (Ann true bool) `shouldBe` boolType
+    infer' (Tag "True") `shouldBe` bool
+    infer' (Ann true bool) `shouldBe` bool
     infer' (Ann false (Tag "X")) `shouldBe` Err (TypeMismatch bool (Tag "X"))
     infer' (Ann (Tag "X") bool) `shouldBe` Err (TypeMismatch (Tag "X") bool)
 
   it "☯ infer Maybe" $ do
     let (maybe, just, nothing) = (Tag "Maybe", Tag "Just", Tag "Nothing")
-    let maybeType = Typ "Maybe" ["Just", "Nothing"]
     let env =
-          [ ("Maybe", Ann maybeType (for ["a"] $ Fun a Knd)),
+          [ ("Maybe", maybe),
             ("Just", Ann (Tag "Just") (for ["a"] $ Fun a (App maybe a))),
             ("Nothing", Ann (Tag "Nothing") (for ["a"] $ App maybe a))
           ]
 
     let infer' = fst . infer env
-    infer' (Tag "Maybe") `shouldBe` Fun a Knd
-    infer' (Tag "Nothing") `shouldBe` App maybeType a
-    infer' (Tag "Just") `shouldBe` Fun a (App maybeType a)
-    infer' (App just i1) `shouldBe` App maybeType IntT
-    infer' (Ann nothing (App maybe IntT)) `shouldBe` App maybeType IntT
-    infer' (Ann (App just i1) (App maybe IntT)) `shouldBe` App maybeType IntT
-    infer' (Ann (App just i1) (App maybe NumT)) `shouldBe` App maybeType (Err (TypeMismatch IntT NumT))
-    infer' (Ann (Tag "X") (App maybe IntT)) `shouldBe` Err (TypeMismatch (Tag "X") (App maybeType IntT))
+    infer' (Tag "Nothing") `shouldBe` App maybe a
+    infer' (Tag "Just") `shouldBe` Fun a (App maybe a)
+    infer' (App just i1) `shouldBe` App maybe IntT
+    infer' (Ann nothing (App maybe IntT)) `shouldBe` App maybe IntT
+    infer' (Ann (App just i1) (App maybe IntT)) `shouldBe` App maybe IntT
+    infer' (Ann (App just i1) (App maybe NumT)) `shouldBe` App maybe (Err (TypeMismatch IntT NumT))
+    infer' (Ann (Tag "X") (App maybe IntT)) `shouldBe` Err (TypeMismatch (Tag "X") (App maybe IntT))
 
   it "☯ infer Vec" $ do
     let (n, a) = (Var "n", Var "a")
     let (vec, cons, nil) = (Tag "Vec", Tag "Cons", Tag "Nil")
-    let vecType = Typ "Vec" ["Cons", "Nil"]
     let env =
-          [ ("Vec", Ann vecType (fun [IntT, Knd] Knd)),
+          [ ("Vec", vec),
             ("Cons", Ann cons (for ["n", "a"] $ fun [a, app vec [n, a]] $ app vec [add n i1, a])),
             ("Nil", Ann nil (for ["a"] $ app vec [i0, a]))
           ]
 
     let infer' = fst . infer env
-    infer' vec `shouldBe` fun [IntT, Knd] Knd
-    infer' nil `shouldBe` app vecType [i0, a]
-    infer' cons `shouldBe` fun [a, app vecType [n, a]] (app vecType [add n i1, a])
-    infer' (app cons [Num 1.1, nil]) `shouldBe` app vecType [i1, NumT]
-    infer' (app cons [Num 1.1, app cons [Num 2.2, nil]]) `shouldBe` app vecType [i2, NumT]
-    infer' (Ann nil (app vec [i0, NumT])) `shouldBe` app vecType [i0, NumT]
-    infer' (Ann nil (app vec [i1, NumT])) `shouldBe` app vecType [Err (TypeMismatch i0 i1), NumT]
-    infer' (Ann (app cons [Num 1.1, nil]) (app vec [i1, NumT])) `shouldBe` app vecType [i1, NumT]
-    infer' (Ann (app cons [Num 1.1, app cons [Num 2.2, nil]]) (app vec [i0, NumT])) `shouldBe` app vecType [Err (TypeMismatch i2 i0), NumT]
-    infer' (Ann (app cons [Num 1.1, app cons [Num 2.2, nil]]) (app vec [i2, IntT])) `shouldBe` app vecType [i2, Err (TypeMismatch NumT IntT)]
-    infer' (Ann (app cons [Num 1.1, app cons [Num 2.2, nil]]) (app vec [i2, NumT])) `shouldBe` app vecType [i2, NumT]
-
-  it "☯ overload" $ do
-    -- let m = App (Tag "M")
-    -- let overloads =
-    --       [ ann (lam [_x, _y] $ add x y) (fun [IntT, IntT] IntT),
-    --         ann (lam [_x, _y] $ add (int2num x) y) (fun [IntT, NumT] NumT),
-    --         ann (lam [_x, _y] $ Tag "C") (fun [Tag "T", Tag "T"] (Tag "T")),
-    --         ann (lam [_x, _y] $ Tag "Z") (fun [Tag "U", Tag "U"] (Tag "U")),
-    --         Ann (lam [_x, _y] $ Tag "N") (for ["a"] $ fun [m a, m a] (m a))
-    --       ]
-
-    -- let typeU = Typ "U" [] [("X", for [] (Tag "U")), ("Y", for [] (Tag "U")), ("Z", for [] (Tag "U"))]
-    -- let typeM x = Typ "M" [x] [("N", for ["a"] $ App (Tag "M") a), ("J", for ["a"] $ Fun a (App (Tag "M") a))]
-    -- let env =
-    --       [ ("+", or' overloads),
-    --         ("T", or' [Tag "A", Tag "B", Tag "C"]),
-    --         ("U", typeU),
-    --         ("M", Fun _x $ typeM x)
-    --       ]
-
-    -- let eval' = eval env
-    -- eval' (app (Var "+") [Int 1, Int 2]) `shouldBe` Int 3
-    -- eval' (app (Var "+") [Int 1, Num 2.2]) `shouldBe` Num 3.2
-    -- -- eval' (app (Var "+") [Num 1.1, Int 2]) `shouldBe` err
-    -- eval' (app (Var "+") [Tag "A", Tag "B"]) `shouldBe` Tag "C"
-    -- eval' (app (Var "+") [Tag "X", Tag "Y"]) `shouldBe` ann (Tag "Z") typeU
-    -- eval' (app (Var "+") [Tag "N", Tag "N"]) `shouldBe` Ann (Tag "N") (for ["a"] $ typeM a)
-    -- eval' (app (Var "+") [App (Tag "J") i1, Tag "N"]) `shouldBe` ann (Tag "N") (typeM IntT)
-    True `shouldBe` True
+    infer' nil `shouldBe` app vec [i0, a]
+    infer' cons `shouldBe` fun [a, app vec [n, a]] (app vec [add n i1, a])
+    infer' (app cons [Num 1.1, nil]) `shouldBe` app vec [i1, NumT]
+    infer' (app cons [Num 1.1, app cons [Num 2.2, nil]]) `shouldBe` app vec [i2, NumT]
+    infer' (Ann nil (app vec [i0, NumT])) `shouldBe` app vec [i0, NumT]
+    infer' (Ann nil (app vec [i1, NumT])) `shouldBe` app vec [Err (TypeMismatch i0 i1), NumT]
+    infer' (Ann (app cons [Num 1.1, nil]) (app vec [i1, NumT])) `shouldBe` app vec [i1, NumT]
+    infer' (Ann (app cons [Num 1.1, app cons [Num 2.2, nil]]) (app vec [i0, NumT])) `shouldBe` app vec [Err (TypeMismatch i2 i0), NumT]
+    infer' (Ann (app cons [Num 1.1, app cons [Num 2.2, nil]]) (app vec [i2, IntT])) `shouldBe` app vec [i2, Err (TypeMismatch NumT IntT)]
+    infer' (Ann (app cons [Num 1.1, app cons [Num 2.2, nil]]) (app vec [i2, NumT])) `shouldBe` app vec [i2, NumT]
