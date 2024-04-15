@@ -6,13 +6,7 @@
 
 module Tao where
 
-import Control.Monad (void)
 import Core
-import Data.Bifunctor (Bifunctor (second))
-import Data.Char (isSpace, isUpper)
-import Data.List (dropWhileEnd, intercalate)
-import Flow ((|>))
-import qualified Parser as P
 
 data TaoExpr
   = TaoKind
@@ -31,7 +25,6 @@ data TaoExpr
   | TaoAnn TaoExpr TaoExpr
   | TaoOp1 UnaryOp TaoExpr
   | TaoOp2 BinaryOp TaoExpr TaoExpr
-  | TaoTyp String [String]
   | TaoMeta Metadata TaoExpr
   | TaoErr Error
   deriving (Eq, Show)

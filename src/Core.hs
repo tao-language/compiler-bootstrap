@@ -2,7 +2,7 @@
 
 module Core where
 
-import Data.Bifunctor (Bifunctor (first, second))
+import Data.Bifunctor (Bifunctor (second))
 import Data.Char (isAlphaNum, isLower, isUpper)
 import Data.List (delete, intercalate, union)
 
@@ -12,9 +12,6 @@ import Data.List (delete, intercalate, union)
 -- https://www.youtube.com/live/utyBNDj7s2w
 -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
 
--- TODO: Tag String [Term]
--- TODO: Alias Term Term
--- TODO: Meta (Union [String]) (Tag k)
 data Term
   = Knd
   | IntT
@@ -96,10 +93,14 @@ instance Show Term where
     NumT -> atom 11 "$Num"
     Int i -> atom 11 (show i)
     Num n -> atom 11 (show n)
-    Tag k | isTagName k -> atom 11 k
-    Tag k -> atom 11 ("($tag '" ++ k ++ "')")
     Var x | isVarName x -> atom 11 x
     Var x -> atom 11 ("($var '" ++ x ++ "')")
+    Tag k | isTagName k -> atom 11 k
+    Tag k -> atom 11 ("($tag '" ++ k ++ "')")
+    Tup items -> atom 11 ("(" ++ intercalate ", " (map show items) ++ ")")
+    Rec fields -> do
+      let showField (k, v) = k ++ ": " ++ show v
+      atom 11 ("{" ++ intercalate ", " (map showField fields) ++ "}")
     Meta _ a -> showsPrec p a
     where
       atom n k = showParen (p > n) $ showString k
@@ -197,8 +198,7 @@ asApp (App a b) = let (a', bs) = asApp a in (a', bs ++ [b])
 asApp a = (a, [])
 
 meta :: [Metadata] -> Term -> Term
-meta [] a = a
-meta (m : ms) a = Meta m (meta ms a)
+meta ms a = foldr Meta a ms
 
 -- Helper functions
 pop :: (Eq k) => k -> [(k, v)] -> [(k, v)]
@@ -221,8 +221,12 @@ freeVars IntT = []
 freeVars NumT = []
 freeVars (Int _) = []
 freeVars (Num _) = []
-freeVars (Tag _) = []
 freeVars (Var x) = [x]
+freeVars (Tag _) = []
+freeVars (Tup []) = []
+freeVars (Tup (a : items)) = freeVars a `union` freeVars (Tup items)
+freeVars (Rec []) = []
+freeVars (Rec ((_, a) : fields)) = freeVars a `union` freeVars (Rec fields)
 freeVars (Ann a _) = freeVars a
 freeVars (For x a) = delete x (freeVars a)
 freeVars (Fix x a) = delete x (freeVars a)
@@ -261,17 +265,19 @@ eval _ IntT = IntT
 eval _ NumT = NumT
 eval _ (Int i) = Int i
 eval _ (Num n) = Num n
-eval env (Tag k) = case lookup k env of
-  Just (Tag k') | k == k' -> Tag k
-  Just (Ann (Tag k) ty) -> Ann (Tag k) ty
-  Just a -> eval ((k, Tag k) : env) a
-  Nothing -> Tag k
 eval env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Var x
   Just (Tag k) -> Tag k
   Just (Ann (Var x') _) | x == x' -> Var x
   Just a -> eval env a
   Nothing -> Var x
+eval env (Tag k) = case lookup k env of
+  Just (Tag k') | k == k' -> Tag k
+  Just (Ann (Tag k) ty) -> Ann (Tag k) ty
+  Just a -> eval ((k, Tag k) : env) a
+  Nothing -> Tag k
+eval env (Tup items) = Tup (map (eval env) items)
+eval env (Rec fields) = Rec (map (second $ eval env) fields)
 eval env (For x a) = For x (eval ((x, Var x) : env) a)
 eval env (Fix x a) = Fix x (eval ((x, Var x) : env) a)
 eval env (Fun p b) = Fun (eval env p) (eval env b)
@@ -283,8 +289,8 @@ eval env (App a b) = case (eval env a, eval env b) of
     (IntT, IntT) -> a
     (NumT, NumT) -> a
     (Int i, Int i') | i == i' -> a
-    (Tag k, Tag k') | k == k' -> a
     (Var x, b) -> eval [(x, b)] a
+    (Tag k, Tag k') | k == k' -> a
     (Fun p q, Fun b1 b2) -> app (fun [p, q] a) [b1, b2]
     (App p q, App b1 b2) -> app (fun [p, q] a) [b1, b2]
     (p, b) -> Err (PatternMatchError p b)
@@ -339,8 +345,8 @@ unify IntT IntT = (IntT, [])
 unify NumT NumT = (NumT, [])
 unify (Int i) (Int i') | i == i' = (Int i, [])
 unify (Num n) (Num n') | n == n' = (Num n, [])
-unify (Tag k) (Tag k') | k == k' = (Tag k, [])
 unify (Var x) (Var x') | x == x' = (Var x, [])
+unify (Tag k) (Tag k') | k == k' = (Tag k, [])
 unify (Var x) b | x `occurs` b = (Err (OccursError x b), [])
 unify (Var x) b = (b, [(x, b)])
 unify a (Var x) = unify (Var x) a
@@ -394,11 +400,6 @@ infer _ IntT = (Knd, [])
 infer _ NumT = (Knd, [])
 infer _ (Int _) = (IntT, [])
 infer _ (Num _) = (NumT, [])
-infer env (Tag k) = case lookup k env of
-  Just (Tag k') | k == k' -> (Tag k, [])
-  Just (Ann (Tag k') ty) | k == k' -> instantiate env ty
-  Just a -> infer env a
-  Nothing -> (Tag k, [])
 infer env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> do
     let y = newName (map fst env) (x ++ "T")
@@ -406,6 +407,17 @@ infer env (Var x) = case lookup x env of
   Just (Ann (Var x') ty) | x == x' -> instantiate env ty
   Just a -> infer env a
   Nothing -> (Err (UndefinedVar x), [])
+infer env (Tag k) = case lookup k env of
+  Just (Tag k') | k == k' -> (Tag k, [])
+  Just (Ann (Tag k') ty) | k == k' -> instantiate env ty
+  Just a -> infer env a
+  Nothing -> (Tag k, [])
+infer env (Tup items) = do
+  let (ts, s) = inferAll env items
+  (Tup ts, s)
+infer env (Rec fields) = do
+  let (ts, s) = inferAll env (map snd fields)
+  (Rec (zip (map fst fields) ts), s)
 infer env (Ann a ty) = do
   let (t, vars) = instantiate env ty
   let (ta, s1) = infer (vars ++ env) a
@@ -472,6 +484,10 @@ inferOp2 env Eq a b = do
   let (t, s2) = infer (env `compose` s1) (Ann b ta)
   (t, s2 `compose` s1)
 inferOp2 env Lt a b = do
+  let (ta, s1) = infer env a
+  let (t, s2) = infer (env `compose` s1) (Ann b ta)
+  (t, s2 `compose` s1)
+inferOp2 env Gt a b = do
   let (ta, s1) = infer env a
   let (t, s2) = infer (env `compose` s1) (Ann b ta)
   (t, s2 `compose` s1)
