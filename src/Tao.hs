@@ -15,6 +15,7 @@ data Expr
   | Tag String [Expr]
   | Tuple [Expr]
   | Record [(String, Expr)]
+  | Trait Expr String
   | Fun Expr Expr
   | App Expr Expr
   | Or Expr Expr
@@ -76,7 +77,23 @@ toCore _ (Tag "Type" []) = C.Knd
 toCore _ (Tag "Int" []) = C.IntT
 toCore _ (Tag "Num" []) = C.NumT
 toCore env (Tag k args) = C.app (C.Tag k) (toCore env <$> args)
-toCore _ _ = error "TODO: toCore"
+toCore env (Tuple items) = toCore env (Tag "()" items)
+toCore env (Record fields) = do
+  let toCoreField (k, v) = (k, toCore env v)
+  C.Rec (toCoreField <$> fields)
+toCore env (Trait a x) = do
+  let a' = toCore env a
+  let (t, _) = C.infer env a'
+  C.app (C.Var x) [t, a']
+toCore env (Fun a b) = C.Fun (toCore env a) (toCore env b)
+toCore env (App a b) = C.App (toCore env a) (toCore env b)
+toCore env (Or a b) = C.Or (toCore env a) (toCore env b)
+toCore env (Ann a b) = C.Ann (toCore env a) (toCore env b)
+toCore env (Op1 op a) = C.Op1 op (toCore env a)
+toCore env (Op2 op a b) = C.Op2 op (toCore env a) (toCore env b)
+toCore env (Meta m a) = C.Meta m (toCore env a)
+toCore _ (Err err) = C.Err err
+toCore _ a = error $ "TODO: toCore " ++ show a
 
 fromCore :: C.Term -> Expr
 fromCore _ = error "TODO: fromCore"

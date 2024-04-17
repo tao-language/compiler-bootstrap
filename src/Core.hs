@@ -20,7 +20,6 @@ data Term
   | Num Double
   | Var String
   | Tag String
-  | Tup [Term]
   | Rec [(String, Term)]
   | For String Term
   | Fix String Term
@@ -49,7 +48,7 @@ data UnaryOp
   deriving (Eq)
 
 data Error
-  = TODOError String
+  = TODO String
   | SyntaxError String (Int, Int) String
   | -- Runtime errors
     PatternMatchError Term Term
@@ -97,7 +96,6 @@ instance Show Term where
     Var x -> atom 11 ("($var '" ++ x ++ "')")
     Tag k | isTagName k -> atom 11 k
     Tag k -> atom 11 ("($tag '" ++ k ++ "')")
-    Tup items -> atom 11 ("(" ++ intercalate ", " (map show items) ++ ")")
     Rec fields -> do
       let showField (k, v) = k ++ ": " ++ show v
       atom 11 ("{" ++ intercalate ", " (map showField fields) ++ "}")
@@ -223,8 +221,6 @@ freeVars (Int _) = []
 freeVars (Num _) = []
 freeVars (Var x) = [x]
 freeVars (Tag _) = []
-freeVars (Tup []) = []
-freeVars (Tup (a : items)) = freeVars a `union` freeVars (Tup items)
 freeVars (Rec []) = []
 freeVars (Rec ((_, a) : fields)) = freeVars a `union` freeVars (Rec fields)
 freeVars (Ann a _) = freeVars a
@@ -276,7 +272,6 @@ eval env (Tag k) = case lookup k env of
   Just (Ann (Tag k) ty) -> Ann (Tag k) ty
   Just a -> eval ((k, Tag k) : env) a
   Nothing -> Tag k
-eval env (Tup items) = Tup (map (eval env) items)
 eval env (Rec fields) = Rec (map (second $ eval env) fields)
 eval env (For x a) = For x (eval ((x, Var x) : env) a)
 eval env (Fix x a) = Fix x (eval ((x, Var x) : env) a)
@@ -412,9 +407,6 @@ infer env (Tag k) = case lookup k env of
   Just (Ann (Tag k') ty) | k == k' -> instantiate env ty
   Just a -> infer env a
   Nothing -> (Tag k, [])
-infer env (Tup items) = do
-  let (ts, s) = inferAll env items
-  (Tup ts, s)
 infer env (Rec fields) = do
   let (ts, s) = inferAll env (map snd fields)
   (Rec (zip (map fst fields) ts), s)

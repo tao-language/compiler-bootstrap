@@ -13,8 +13,8 @@ import TaoParser
 import Test.Hspec
 
 run :: SpecWith ()
-run = describe "--==☯ Parser ☯==--" $ do
-  let sourceName = "test"
+run = describe "--==☯ TaoParser ☯==--" $ do
+  let sourceName = "TaoParserTests"
   let loc row col = C.Location sourceName (row, col)
   let expr row col = taoMeta [loc row col]
   let var row col x = expr row col (Var x)
