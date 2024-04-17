@@ -7,7 +7,7 @@
 module TaoParser where
 
 import Control.Monad (void)
-import Core
+import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (isSpace, isUpper)
 import Data.List (dropWhileEnd, intercalate)
@@ -15,7 +15,7 @@ import Flow ((|>))
 import qualified Parser as P
 import Tao
 
-type TaoParser a = P.Parser ParserContext a
+type Parser a = P.Parser ParserContext a
 
 data ParserContext
   = CFile
@@ -33,7 +33,7 @@ startsWithUpper :: String -> Bool
 startsWithUpper (c : _) | isUpper c = True
 startsWithUpper _ = False
 
-parseIdentifier :: TaoParser String
+parseIdentifier :: Parser String
 parseIdentifier = do
   let keywords = ["type"]
   let validChars =
@@ -49,13 +49,13 @@ parseIdentifier = do
     name | name `elem` keywords -> P.fail'
     name -> return name
 
-parseLineBreak :: TaoParser String
+parseLineBreak :: Parser String
 parseLineBreak = do
   parseComment <- P.oneOf ["" <$ P.endOfLine, "" <$ P.char ';', fmap snd parseCommentSingleLine]
   _ <- P.whitespaces
   return parseComment
 
-parseInbetween :: String -> String -> TaoParser a -> TaoParser a
+parseInbetween :: String -> String -> Parser a -> Parser a
 parseInbetween open close parser = do
   _ <- P.text open
   _ <- P.whitespaces
@@ -64,11 +64,11 @@ parseInbetween open close parser = do
   _ <- P.text close
   return x
 
-parseCollection :: String -> String -> String -> TaoParser a -> TaoParser [a]
+parseCollection :: String -> String -> String -> Parser a -> Parser [a]
 parseCollection open delim close parser = do
   parseInbetween open close (P.oneOf [parseDelimited delim parser, return []])
 
-parseDelimited :: String -> TaoParser a -> TaoParser [a]
+parseDelimited :: String -> Parser a -> Parser [a]
 parseDelimited delim parser = do
   let delimiter = P.paddedR P.whitespaces (P.text delim)
   x <- parser
@@ -77,19 +77,19 @@ parseDelimited delim parser = do
   return (x : xs)
 
 -- Concrete Syntax Tree
-parseComment :: TaoParser ([Metadata], String)
+parseComment :: Parser ([C.Metadata], String)
 parseComment = P.oneOf [parseCommentMultiLine, parseCommentSingleLine]
 
-parseCommentSingleLine :: TaoParser ([Metadata], String)
+parseCommentSingleLine :: Parser ([C.Metadata], String)
 parseCommentSingleLine = do
   state <- P.getState
   _ <- P.char '#'
   P.commit CComment
   _ <- P.spaces
   line <- P.skipTo P.endOfLine
-  return ([Location state.name state.pos], dropWhileEnd isSpace line)
+  return ([C.Location state.name state.pos], dropWhileEnd isSpace line)
 
-parseCommentMultiLine :: TaoParser ([Metadata], String)
+parseCommentMultiLine :: Parser ([C.Metadata], String)
 parseCommentMultiLine = do
   state <- P.getState
   delim <- P.chain [P.text "#--", P.zeroOrMore (P.char '-')]
@@ -97,9 +97,9 @@ parseCommentMultiLine = do
   _ <- P.spaces
   line <- P.skipTo parseLineBreak
   error "TODO: parseCommentMultiLine"
-  return ([Location state.name state.pos], dropWhileEnd isSpace line)
+  return ([C.Location state.name state.pos], dropWhileEnd isSpace line)
 
-parseDocString :: TaoParser String -> TaoParser ([Metadata], String)
+parseDocString :: Parser String -> Parser ([C.Metadata], String)
 parseDocString delimiter = do
   -- parseComments <- P.zeroOrMore parseComment
   -- (loc, delim) <- parseLocation delimiter
@@ -131,80 +131,80 @@ parseDocString delimiter = do
   --   Nothing -> return meta
   --   Just parseComment -> return (meta ++ [TrailingparseComment parseComment])
   -- return (meta, dropWhileEnd isSpace $ dropWhile isSpace docs)
-  error "TODO: TaoDocString"
+  error "TODO: DocString"
 
-parseLocation :: TaoParser a -> TaoParser (Metadata, a)
+parseLocation :: Parser a -> Parser (C.Metadata, a)
 parseLocation parser = do
   state <- P.getState
   x <- parser
   _ <- P.spaces
-  return (Location state.name state.pos, x)
+  return (C.Location state.name state.pos, x)
 
-parseOp :: String -> TaoParser Metadata
+parseOp :: String -> Parser C.Metadata
 parseOp txt = do
   _ <- P.spaces
   (loc, _) <- parseLocation (P.text txt)
   _ <- P.spaces
   return loc
 
-parseExpr :: TaoParser appDelim -> TaoParser TaoExpr
+parseExpr :: Parser appDelim -> Parser Expr
 parseExpr delim = do
-  let metaOp f m a b = TaoMeta m (f a b)
+  let metaOp f m a b = Meta m (f a b)
   let ops =
-        [ P.infixR 1 (metaOp TaoOr) (parseOp "|"),
-          P.infixR 2 (metaOp TaoAnn) (parseOp ":"),
+        [ P.infixR 1 (metaOp Or) (parseOp "|"),
+          P.infixR 2 (metaOp Ann) (parseOp ":"),
           P.infixR 3 (metaOp taoEq) (parseOp "=="),
           P.infixR 4 (metaOp taoLt) (parseOp "<"),
           P.infixR 4 (metaOp taoGt) (parseOp ">"),
-          P.infixR 5 (metaOp TaoFun) (parseOp "->"),
+          P.infixR 5 (metaOp Fun) (parseOp "->"),
           P.infixR 6 (metaOp taoAdd) (parseOp "+"),
           P.infixR 6 (metaOp taoSub) (parseOp "-"),
           P.infixR 7 (metaOp taoMul) (parseOp "*"),
-          P.infixL 8 (const TaoApp) (void delim),
+          P.infixL 8 (const App) (void delim),
           P.infixR 9 (metaOp taoPow) (parseOp "^")
         ]
   P.operators 0 ops parseExprAtom
 
-parseExprAtom :: TaoParser TaoExpr
+parseExprAtom :: Parser Expr
 parseExprAtom = do
   (loc, a) <-
     (parseLocation . P.oneOf)
       [ parseName,
-        TaoInt <$> P.integer,
-        TaoNum <$> P.number,
+        Int <$> P.integer,
+        Num <$> P.number,
         parseTuple,
         parseRecord
       ]
-  return (TaoMeta loc a)
+  return (Meta loc a)
 
-parseName :: TaoParser TaoExpr
+parseName :: Parser Expr
 parseName = do
   name <- parseIdentifier
   case name of
     x | startsWithUpper x -> do
       args <- P.zeroOrMore parseExprAtom
-      return (TaoTag name args)
-    _ -> return (TaoVar name)
+      return (Tag name args)
+    _ -> return (Var name)
 
-parseTuple :: TaoParser TaoExpr
+parseTuple :: Parser Expr
 parseTuple = do
   let item = parseExpr P.whitespaces
   P.oneOf
     [ do
         -- One-item tuple: (x,)
         item <- parseInbetween "(" ")" (do p <- item; _ <- P.char ','; return p)
-        return (TaoTuple [item]),
+        return (Tuple [item]),
       do
         items <- parseCollection "(" "," ")" item
         case items of
           -- Parenthesized non-tuple: (x)
-          [TaoMeta _ item] -> return item -- discard nested metadata (redundant)
+          [Meta _ item] -> return item -- discard nested metadata (redundant)
           [item] -> return item
           -- General case tuples: () (x, y, ...)
-          _ -> return (TaoTuple items)
+          _ -> return (Tuple items)
     ]
 
-parseRecordField :: TaoParser (String, TaoExpr)
+parseRecordField :: Parser (String, Expr)
 parseRecordField = do
   name <- parseIdentifier
   P.commit (CRecordField name)
@@ -214,23 +214,23 @@ parseRecordField = do
   value <- parseExpr P.whitespaces
   return (name, value)
 
-parseRecord :: TaoParser TaoExpr
+parseRecord :: Parser Expr
 parseRecord = do
   fields <- parseCollection "{" "," "}" parseRecordField
-  return (TaoRecord fields)
+  return (Record fields)
 
 -- Statements
-parseStmt :: TaoParser TaoStmt
+parseStmt :: Parser Stmt
 parseStmt =
   P.oneOf
-    [ fmap (uncurry TaoDef) parseDefinition,
-      fmap (uncurry TaoTypeAnn) parseTypeAnnotation,
+    [ fmap (uncurry Def) parseDefinition,
+      fmap (uncurry TypeAnn) parseTypeAnnotation,
       parseImport,
       parseTest,
-      fmap (uncurry TaoComment) parseComment
+      fmap (uncurry Comment) parseComment
     ]
 
-parseDefinition :: TaoParser (TaoExpr, TaoExpr)
+parseDefinition :: Parser (Expr, Expr)
 parseDefinition = do
   pattern' <- parseExpr P.spaces
   _ <- P.whitespaces
@@ -241,7 +241,7 @@ parseDefinition = do
   _ <- parseLineBreak
   return (pattern', value)
 
-parseTypeAnnotation :: TaoParser (String, TaoExpr)
+parseTypeAnnotation :: Parser (String, Expr)
 parseTypeAnnotation = do
   x <- parseIdentifier
   _ <- P.spaces
@@ -251,7 +251,7 @@ parseTypeAnnotation = do
   _ <- parseLineBreak
   return (x, ty)
 
-parseImport :: TaoParser TaoStmt
+parseImport :: Parser Stmt
 parseImport = do
   (loc, _) <- parseLocation (P.word "import")
   P.commit CImport
@@ -275,17 +275,17 @@ parseImport = do
         return []
       ]
   _ <- parseLineBreak
-  return (TaoImport name alias exposing)
+  return (Import name alias exposing)
 
-parseTest :: TaoParser TaoStmt
+parseTest :: Parser Stmt
 parseTest = do
   _ <- P.char '>'
   _ <- P.oneOrMore P.space
   P.commit CTest
   expr <- parseExpr P.spaces
   _ <- parseLineBreak
-  let typeAssertion (TaoAnn a _) = Just a
-      typeAssertion (TaoMeta _ a) = typeAssertion a
+  let typeAssertion (Ann a _) = Just a
+      typeAssertion (Meta _ a) = typeAssertion a
       typeAssertion _ = Nothing
   result <-
     P.oneOf
@@ -295,12 +295,12 @@ parseTest = do
           return result,
         case typeAssertion expr of
           Just a -> return a
-          Nothing -> return (TaoTag "True" [])
+          Nothing -> return (Tag "True" [])
       ]
-  return (TaoTest expr result)
+  return (Test expr result)
 
 -- File
-parseFile :: String -> TaoParser TaoFile
+parseFile :: String -> Parser File
 parseFile name = do
   P.commit CFile
   stmts <- P.zeroOrMore parseStmt
@@ -308,7 +308,7 @@ parseFile name = do
   _ <- P.endOfFile
   return (name, stmts)
 
-parseModule :: String -> TaoModule -> IO TaoModule
+parseModule :: String -> Module -> IO Module
 parseModule filename mod | filename `elem` map fst mod.files = return mod
 parseModule filename mod = do
   src <- readFile filename

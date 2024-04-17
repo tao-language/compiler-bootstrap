@@ -6,47 +6,47 @@
 
 module Check where
 
-import Core
+import qualified Core as C
 import Flow ((|>))
 import Tao
 
 data Message
   = MissingCases
   | UnreachableCase
-  | Error Error
+  | Error C.Error
   deriving (Eq, Show)
 
 data TestFailure = TestFailure
   { name :: String,
-    expr :: TaoExpr,
-    expected :: TaoExpr,
-    actual :: TaoExpr
+    expr :: Expr,
+    expected :: Expr,
+    actual :: Expr
   }
   deriving (Eq, Show)
 
-checkTypes :: TaoModule -> [Message]
-checkTypes TaoModule {files} = concatMap checkTypesFile files
+checkTypes :: Module -> [Message]
+checkTypes Module {files} = concatMap checkTypesFile files
 
-checkTypesFile :: (String, [TaoStmt]) -> [Message]
+checkTypesFile :: (String, [Stmt]) -> [Message]
 checkTypesFile (_, stmts) = concatMap checkTypesStmt stmts
 
-checkTypesStmt :: TaoStmt -> [Message]
+checkTypesStmt :: Stmt -> [Message]
 checkTypesStmt stmt = error "TODO: checkTypesStmt"
 
-checkTypesExpr :: TaoExpr -> [Message]
+checkTypesExpr :: Expr -> [Message]
 checkTypesExpr expr = error "TODO: checkTypesExpr"
 
-checkMissingCases :: TaoModule -> [Message]
-checkMissingCases mod = error "TODO: checkMissingCasesTaoModule"
+checkMissingCases :: Module -> [Message]
+checkMissingCases mod = error "TODO: checkMissingCasesModule"
 
-checkUnreachableCases :: TaoModule -> [Message]
-checkUnreachableCases mod = error "TODO: checkUnreachableCasesTaoModule"
+checkUnreachableCases :: Module -> [Message]
+checkUnreachableCases mod = error "TODO: checkUnreachableCasesModule"
 
-check :: TaoModule -> [Message]
+check :: Module -> [Message]
 check mod = error "TODO: check"
 
-run :: TaoModule -> TaoExpr -> TaoExpr
+run :: Module -> Expr -> Expr
 run = error "TODO: run"
 
-test :: TaoModule -> Either Error [TestFailure]
+test :: Module -> Either C.Error [TestFailure]
 test mod = error "TODO: test"

@@ -6,21 +6,21 @@
 
 module ExamplesTests where
 
-import Core
+import qualified Core as C
 import Data.Bifunctor (second)
 import Tao
 import TaoParser
 import Test.Hspec
 
-moduleFiles :: String -> IO [TaoFile]
+moduleFiles :: String -> IO [File]
 moduleFiles name = do
-  mod <- parseModule name (TaoModule {name = name, files = []})
+  mod <- parseModule name (Module {name = name, files = []})
   return mod.files
 
 run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do
-  let comment = TaoComment []
-  let (x, y) = (TaoVar "x", TaoVar "y")
+  let comment = Comment []
+  let (x, y) = (Var "x", Var "y")
 
   it "☯ empty" $ do
     let name = "examples/empty.tao"

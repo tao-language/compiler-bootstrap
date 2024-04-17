@@ -6,92 +6,92 @@
 
 module Tao where
 
-import Core
+import qualified Core as C
 
-data TaoExpr
-  = TaoInt Int
-  | TaoNum Double
-  | TaoVar String
-  | TaoTag String [TaoExpr]
-  | TaoTuple [TaoExpr]
-  | TaoRecord [(String, TaoExpr)]
-  | TaoFun TaoExpr TaoExpr
-  | TaoApp TaoExpr TaoExpr
-  | TaoOr TaoExpr TaoExpr
-  | TaoAnn TaoExpr TaoExpr
-  | TaoOp1 UnaryOp TaoExpr
-  | TaoOp2 BinaryOp TaoExpr TaoExpr
-  | TaoLet (TaoExpr, TaoExpr) TaoExpr
-  | TaoMeta Metadata TaoExpr
-  | TaoErr Error
+data Expr
+  = Int Int
+  | Num Double
+  | Var String
+  | Tag String [Expr]
+  | Tuple [Expr]
+  | Record [(String, Expr)]
+  | Fun Expr Expr
+  | App Expr Expr
+  | Or Expr Expr
+  | Ann Expr Expr
+  | Op1 C.UnaryOp Expr
+  | Op2 C.BinaryOp Expr Expr
+  | Let (Expr, Expr) Expr
+  | Meta C.Metadata Expr
+  | Err C.Error
   deriving (Eq, Show)
 
-data TaoStmt
-  = TaoDef TaoExpr TaoExpr
-  | TaoTypeAnn String TaoExpr
-  | TaoImport String String [String] -- import module as alias (a, b, c)
-  | TaoTest TaoExpr TaoExpr
-  | TaoDocString [Metadata] String
-  | TaoComment [Metadata] String
+data Stmt
+  = Def Expr Expr
+  | TypeAnn String Expr
+  | Import String String [String] -- import module as alias (a, b, c)
+  | Test Expr Expr
+  | DocString [C.Metadata] String
+  | Comment [C.Metadata] String
   deriving (Eq, Show)
 
-type TaoFile = (String, [TaoStmt])
+type File = (String, [Stmt])
 
-data TaoModule = TaoModule
+data Module = Module
   { name :: String,
-    files :: [TaoFile]
+    files :: [File]
   }
   deriving (Eq, Show)
 
-taoAdd :: TaoExpr -> TaoExpr -> TaoExpr
-taoAdd = TaoOp2 Add
+taoAdd :: Expr -> Expr -> Expr
+taoAdd = Op2 C.Add
 
-taoSub :: TaoExpr -> TaoExpr -> TaoExpr
-taoSub = TaoOp2 Sub
+taoSub :: Expr -> Expr -> Expr
+taoSub = Op2 C.Sub
 
-taoMul :: TaoExpr -> TaoExpr -> TaoExpr
-taoMul = TaoOp2 Mul
+taoMul :: Expr -> Expr -> Expr
+taoMul = Op2 C.Mul
 
-taoPow :: TaoExpr -> TaoExpr -> TaoExpr
-taoPow = TaoOp2 Pow
+taoPow :: Expr -> Expr -> Expr
+taoPow = Op2 C.Pow
 
-taoEq :: TaoExpr -> TaoExpr -> TaoExpr
-taoEq = TaoOp2 Eq
+taoEq :: Expr -> Expr -> Expr
+taoEq = Op2 C.Eq
 
-taoLt :: TaoExpr -> TaoExpr -> TaoExpr
-taoLt = TaoOp2 Lt
+taoLt :: Expr -> Expr -> Expr
+taoLt = Op2 C.Lt
 
-taoGt :: TaoExpr -> TaoExpr -> TaoExpr
-taoGt = TaoOp2 Gt
+taoGt :: Expr -> Expr -> Expr
+taoGt = Op2 C.Gt
 
-taoMeta :: [Metadata] -> TaoExpr -> TaoExpr
-taoMeta ms a = foldr TaoMeta a ms
+taoMeta :: [C.Metadata] -> Expr -> Expr
+taoMeta ms a = foldr Meta a ms
 
 -- To/from Core
-exprToCore :: Env -> TaoExpr -> Term
-exprToCore _ (TaoInt i) = Int i
-exprToCore _ (TaoNum n) = Num n
-exprToCore _ (TaoVar x) = Var x
-exprToCore env (TaoTag "Type" []) = Knd
-exprToCore env (TaoTag "Int" []) = IntT
-exprToCore env (TaoTag "Num" []) = NumT
-exprToCore env (TaoTag k args) = app (Tag k) (exprToCore env <$> args)
-exprToCore _ _ = error "TODO: exprToCore"
+toCore :: C.Env -> Expr -> C.Term
+toCore _ (Int i) = C.Int i
+toCore _ (Num n) = C.Num n
+toCore _ (Var x) = C.Var x
+toCore _ (Tag "Type" []) = C.Knd
+toCore _ (Tag "Int" []) = C.IntT
+toCore _ (Tag "Num" []) = C.NumT
+toCore env (Tag k args) = C.app (C.Tag k) (toCore env <$> args)
+toCore _ _ = error "TODO: toCore"
 
-exprFromCore :: Term -> TaoExpr
-exprFromCore _ = error "TODO: exprFromCore"
+fromCore :: C.Term -> Expr
+fromCore _ = error "TODO: fromCore"
 
-moduleToCore :: TaoModule -> Env
-moduleToCore TaoModule {files} = error "TODO: moduleToCore"
+toEnv :: Module -> C.Env
+toEnv Module {files} = error "TODO: toEnv"
 
-moduleFromCore :: String -> Env -> TaoModule
-moduleFromCore name _ = error "TODO: moduleFromCore"
+fromEnv :: String -> C.Env -> Module
+fromEnv name _ = error "TODO: fromEnv"
 
-unpackStmt :: TaoStmt -> [(String, TaoExpr)]
+unpackStmt :: Stmt -> [(String, Expr)]
 unpackStmt _ = error "TODO: unpackStmt"
 
-unpackFile :: TaoFile -> [(String, TaoExpr)]
+unpackFile :: File -> [(String, Expr)]
 unpackFile _ = error "TODO: unpackFile"
 
-unpackModule :: TaoModule -> [(String, TaoExpr)]
+unpackModule :: Module -> [(String, Expr)]
 unpackModule _ = error "TODO: unpackModule"
