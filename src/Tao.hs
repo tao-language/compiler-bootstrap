@@ -9,10 +9,7 @@ module Tao where
 import Core
 
 data TaoExpr
-  = TaoKind
-  | TaoIntType
-  | TaoNumType
-  | TaoInt Int
+  = TaoInt Int
   | TaoNum Double
   | TaoVar String
   | TaoTag String [TaoExpr]
@@ -24,12 +21,14 @@ data TaoExpr
   | TaoAnn TaoExpr TaoExpr
   | TaoOp1 UnaryOp TaoExpr
   | TaoOp2 BinaryOp TaoExpr TaoExpr
+  | TaoLet (TaoExpr, TaoExpr) TaoExpr
   | TaoMeta Metadata TaoExpr
   | TaoErr Error
   deriving (Eq, Show)
 
 data TaoStmt
-  = TaoDef [(String, TaoExpr)] TaoExpr TaoExpr
+  = TaoDef TaoExpr TaoExpr
+  | TaoTypeAnn String TaoExpr
   | TaoImport String String [String] -- import module as alias (a, b, c)
   | TaoTest TaoExpr TaoExpr
   | TaoDocString [Metadata] String
@@ -67,3 +66,32 @@ taoGt = TaoOp2 Gt
 
 taoMeta :: [Metadata] -> TaoExpr -> TaoExpr
 taoMeta ms a = foldr TaoMeta a ms
+
+-- To/from Core
+exprToCore :: Env -> TaoExpr -> Term
+exprToCore _ (TaoInt i) = Int i
+exprToCore _ (TaoNum n) = Num n
+exprToCore _ (TaoVar x) = Var x
+exprToCore env (TaoTag "Type" []) = Knd
+exprToCore env (TaoTag "Int" []) = IntT
+exprToCore env (TaoTag "Num" []) = NumT
+exprToCore env (TaoTag k args) = app (Tag k) (exprToCore env <$> args)
+exprToCore _ _ = error "TODO: exprToCore"
+
+exprFromCore :: Term -> TaoExpr
+exprFromCore _ = error "TODO: exprFromCore"
+
+moduleToCore :: TaoModule -> Env
+moduleToCore TaoModule {files} = error "TODO: moduleToCore"
+
+moduleFromCore :: String -> Env -> TaoModule
+moduleFromCore name _ = error "TODO: moduleFromCore"
+
+unpackStmt :: TaoStmt -> [(String, TaoExpr)]
+unpackStmt _ = error "TODO: unpackStmt"
+
+unpackFile :: TaoFile -> [(String, TaoExpr)]
+unpackFile _ = error "TODO: unpackFile"
+
+unpackModule :: TaoModule -> [(String, TaoExpr)]
+unpackModule _ = error "TODO: unpackModule"

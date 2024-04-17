@@ -6,7 +6,7 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯️ Core language ☯️==--" $ do
-  let err = Err NotImplementedError
+  let err = Err (TODOError "TODO")
   let (i0, i1, i2) = (Int 0, Int 1, Int 2)
   let (n1, n2, n3) = (Num 1.1, Num 2.2, Num 3.3)
   let (a, b, c) = (Var "a", Var "b", Var "c")
@@ -22,7 +22,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ show" $ do
     let (ty, tz) = (for [] y, for [] z)
-    show err `shouldBe` "$error NotImplementedError"
+    show err `shouldBe` "$error TODOError \"TODO\""
     show Knd `shouldBe` "$Type"
     show IntT `shouldBe` "$Int"
     show NumT `shouldBe` "$Num"

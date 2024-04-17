@@ -181,9 +181,6 @@ parseName :: TaoParser TaoExpr
 parseName = do
   name <- parseIdentifier
   case name of
-    "Type" -> return TaoKind
-    "Int" -> return TaoIntType
-    "Num" -> return TaoNumType
     x | startsWithUpper x -> do
       args <- P.zeroOrMore parseExprAtom
       return (TaoTag name args)
@@ -226,23 +223,15 @@ parseRecord = do
 parseStmt :: TaoParser TaoStmt
 parseStmt =
   P.oneOf
-    [ fmap (\(ts, p, a) -> TaoDef ts p a) parseDefinition,
+    [ fmap (uncurry TaoDef) parseDefinition,
+      fmap (uncurry TaoTypeAnn) parseTypeAnnotation,
       parseImport,
       parseTest,
       fmap (uncurry TaoComment) parseComment
     ]
 
-parseDefinition :: TaoParser ([(String, TaoExpr)], TaoExpr, TaoExpr)
+parseDefinition :: TaoParser (TaoExpr, TaoExpr)
 parseDefinition = do
-  let annotation = do
-        x <- parseIdentifier
-        _ <- P.spaces
-        _ <- P.char ':'
-        _ <- P.spaces
-        ty <- parseExpr P.spaces
-        _ <- parseLineBreak
-        return (x, ty)
-  types <- P.zeroOrMore annotation
   pattern' <- parseExpr P.spaces
   _ <- P.whitespaces
   _ <- P.char '='
@@ -250,7 +239,17 @@ parseDefinition = do
   _ <- P.whitespaces
   value <- parseExpr P.spaces
   _ <- parseLineBreak
-  return (types, pattern', value)
+  return (pattern', value)
+
+parseTypeAnnotation :: TaoParser (String, TaoExpr)
+parseTypeAnnotation = do
+  x <- parseIdentifier
+  _ <- P.spaces
+  _ <- P.char ':'
+  _ <- P.spaces
+  ty <- parseExpr P.spaces
+  _ <- parseLineBreak
+  return (x, ty)
 
 parseImport :: TaoParser TaoStmt
 parseImport = do

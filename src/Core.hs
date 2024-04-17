@@ -49,7 +49,7 @@ data UnaryOp
   deriving (Eq)
 
 data Error
-  = NotImplementedError
+  = TODOError String
   | SyntaxError String (Int, Int) String
   | -- Runtime errors
     PatternMatchError Term Term
