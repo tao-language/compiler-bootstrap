@@ -7,7 +7,6 @@
 module Check where
 
 import qualified Core as C
-import Flow ((|>))
 import Tao
 
 data Message
@@ -25,10 +24,10 @@ data TestFailure = TestFailure
   deriving (Eq, Show)
 
 checkTypes :: Module -> [Message]
-checkTypes Module {files} = concatMap checkTypesFile files
+checkTypes mod = concatMap checkTypesFile mod.files
 
-checkTypesFile :: (String, [Stmt]) -> [Message]
-checkTypesFile (_, stmts) = concatMap checkTypesStmt stmts
+checkTypesFile :: File -> [Message]
+checkTypesFile file = concatMap checkTypesStmt file.stmts
 
 checkTypesStmt :: Stmt -> [Message]
 checkTypesStmt stmt = error "TODO: checkTypesStmt"

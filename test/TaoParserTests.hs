@@ -16,7 +16,7 @@ run :: SpecWith ()
 run = describe "--==☯ TaoParser ☯==--" $ do
   let sourceName = "TaoParserTests"
   let loc row col = C.Location sourceName (row, col)
-  let expr row col = taoMeta [loc row col]
+  let expr row col = meta [loc row col]
   let var row col x = expr row col (Var x)
 
   let parse' :: Parser a -> String -> Either ([ParserContext], String) (a, String)
@@ -75,10 +75,10 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   -- it "☯ docString" $ do
   --   let p = parse' $ docString (P.text "---")
-  --   p "---\n---\nabc" `shouldBe` Right (newDocString {public = True, taoMeta = [loc 1 1]}, "abc")
-  --   p "---\ndocs\n---\nabc" `shouldBe` Right (newDocString {public = True, description = "docs", taoMeta = [loc 1 1]}, "abc")
-  --   p "---  \n  docs  \n  ---  \nabc" `shouldBe` Right (newDocString {public = True, description = "docs", taoMeta = [loc 1 1]}, "abc")
-  --   p "---  private  \nA\nB\n\nC\n  ---  \nabc" `shouldBe` Right (newDocString {public = False, description = "A\nB\n\nC", taoMeta = [loc 1 1]}, "abc")
+  --   p "---\n---\nabc" `shouldBe` Right (newDocString {public = True, meta = [loc 1 1]}, "abc")
+  --   p "---\ndocs\n---\nabc" `shouldBe` Right (newDocString {public = True, description = "docs", meta = [loc 1 1]}, "abc")
+  --   p "---  \n  docs  \n  ---  \nabc" `shouldBe` Right (newDocString {public = True, description = "docs", meta = [loc 1 1]}, "abc")
+  --   p "---  private  \nA\nB\n\nC\n  ---  \nabc" `shouldBe` Right (newDocString {public = False, description = "A\nB\n\nC", meta = [loc 1 1]}, "abc")
   --   let src =
   --         [ "# A",
   --           "--- # B",
@@ -91,7 +91,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   --       ( newDocString
   --           { public = True,
   --             description = "Docs",
-  --             taoMeta =
+  --             meta =
   --               [ loc 2 1,
   --                 parseComments [parseComment (1, 3) "A"],
   --                 TrailingparseComment (parseComment (2, 7) "B"),
@@ -101,24 +101,24 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   --         "# end"
   --       )
 
-  -- it "☯ taoMetadata parseLocation" $ do
-  --   let taoMeta row col x = ([parseLocation sourceName row col], x)
-  --   let p = parse' $ taoMetadata (P.text "abc")
-  --   p "abcdef" `shouldBe` Right (taoMeta 1 1 "abc", "def")
-  --   p "abc   def" `shouldBe` Right (taoMeta 1 1 "abc", "def")
-  --   p "abc \n  def" `shouldBe` Right (taoMeta 1 1 "abc", "\n  def")
+  -- it "☯ metadata parseLocation" $ do
+  --   let meta row col x = ([parseLocation sourceName row col], x)
+  --   let p = parse' $ metadata (P.text "abc")
+  --   p "abcdef" `shouldBe` Right (meta 1 1 "abc", "def")
+  --   p "abc   def" `shouldBe` Right (meta 1 1 "abc", "def")
+  --   p "abc \n  def" `shouldBe` Right (meta 1 1 "abc", "\n  def")
 
-  -- it "☯ taoMetadata parseComments" $ do
-  --   let taoMeta row col parseComments x = ([parseLocation sourceName row col, parseComments parseComments], x)
-  --   let p = parse' $ taoMetadata (P.text "abc")
-  --   p "#A\n#B\nabc def" `shouldBe` Right (taoMeta 3 1 ["A", "B"] "abc", "def")
-  --   p "# A \n \n \n  #  B  \n  abc  def" `shouldBe` Right (taoMeta 5 3 ["A", "B"] "abc", "def")
+  -- it "☯ metadata parseComments" $ do
+  --   let meta row col parseComments x = ([parseLocation sourceName row col, parseComments parseComments], x)
+  --   let p = parse' $ metadata (P.text "abc")
+  --   p "#A\n#B\nabc def" `shouldBe` Right (meta 3 1 ["A", "B"] "abc", "def")
+  --   p "# A \n \n \n  #  B  \n  abc  def" `shouldBe` Right (meta 5 3 ["A", "B"] "abc", "def")
 
-  -- it "☯ taoMetadata parseComments (trailing)" $ do
-  --   let taoMeta row col parseComment x = ([parseLocation sourceName row col, TrailingparseComment parseComment], x)
-  --   let p = parse' $ taoMetadata (P.text "abc")
-  --   p "abc#parseComment" `shouldBe` Right (taoMeta 1 1 "parseComment" "abc", "")
-  --   p "abc#  parseComment  " `shouldBe` Right (taoMeta 1 1 "parseComment" "abc", "")
+  -- it "☯ metadata parseComments (trailing)" $ do
+  --   let meta row col parseComment x = ([parseLocation sourceName row col, TrailingparseComment parseComment], x)
+  --   let p = parse' $ metadata (P.text "abc")
+  --   p "abc#parseComment" `shouldBe` Right (meta 1 1 "parseComment" "abc", "")
+  --   p "abc#  parseComment  " `shouldBe` Right (meta 1 1 "parseComment" "abc", "")
 
   it "☯ parseName" $ do
     let p = parse' parseName
@@ -147,27 +147,27 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseExpr'" $ do
     let p = parse' (parseExpr $ P.ok ())
-    p "Type" `shouldBe` Right (taoMeta [loc 1 1] $ Tag "Type" [], "")
-    p "Int" `shouldBe` Right (taoMeta [loc 1 1] $ Tag "Int" [], "")
-    p "Num" `shouldBe` Right (taoMeta [loc 1 1] $ Tag "Num" [], "")
-    p "42" `shouldBe` Right (taoMeta [loc 1 1] $ Int 42, "")
-    p "3.14" `shouldBe` Right (taoMeta [loc 1 1] $ Num 3.14, "")
-    p "var" `shouldBe` Right (taoMeta [loc 1 1] $ Var "var", "")
-    p "Tag" `shouldBe` Right (taoMeta [loc 1 1] $ Tag "Tag" [], "")
-    p "()" `shouldBe` Right (taoMeta [loc 1 1] $ Tuple [], "")
-    p "{}" `shouldBe` Right (taoMeta [loc 1 1] $ Record [], "")
-    p "x |  y" `shouldBe` Right (taoMeta [loc 1 3] $ Or (var 1 1 "x") (var 1 6 "y"), "")
-    p "x :  y" `shouldBe` Right (taoMeta [loc 1 3] $ Ann (var 1 1 "x") (var 1 6 "y"), "")
-    p "x == y" `shouldBe` Right (taoMeta [loc 1 3] $ taoEq (var 1 1 "x") (var 1 6 "y"), "")
-    p "x <  y" `shouldBe` Right (taoMeta [loc 1 3] $ taoLt (var 1 1 "x") (var 1 6 "y"), "")
-    p "x -> y" `shouldBe` Right (taoMeta [loc 1 3] $ Fun (var 1 1 "x") (var 1 6 "y"), "")
-    p "x +  y" `shouldBe` Right (taoMeta [loc 1 3] $ taoAdd (var 1 1 "x") (var 1 6 "y"), "")
-    p "x -  y" `shouldBe` Right (taoMeta [loc 1 3] $ taoSub (var 1 1 "x") (var 1 6 "y"), "")
-    p "x *  y" `shouldBe` Right (taoMeta [loc 1 3] $ taoMul (var 1 1 "x") (var 1 6 "y"), "")
+    p "Type" `shouldBe` Right (meta [loc 1 1] $ Tag "Type" [], "")
+    p "Int" `shouldBe` Right (meta [loc 1 1] $ Tag "Int" [], "")
+    p "Num" `shouldBe` Right (meta [loc 1 1] $ Tag "Num" [], "")
+    p "42" `shouldBe` Right (meta [loc 1 1] $ Int 42, "")
+    p "3.14" `shouldBe` Right (meta [loc 1 1] $ Num 3.14, "")
+    p "var" `shouldBe` Right (meta [loc 1 1] $ Var "var", "")
+    p "Tag" `shouldBe` Right (meta [loc 1 1] $ Tag "Tag" [], "")
+    p "()" `shouldBe` Right (meta [loc 1 1] $ Tuple [], "")
+    p "{}" `shouldBe` Right (meta [loc 1 1] $ Record [], "")
+    p "x |  y" `shouldBe` Right (meta [loc 1 3] $ Or (var 1 1 "x") (var 1 6 "y"), "")
+    p "x :  y" `shouldBe` Right (meta [loc 1 3] $ Ann (var 1 1 "x") (var 1 6 "y"), "")
+    p "x == y" `shouldBe` Right (meta [loc 1 3] $ eq (var 1 1 "x") (var 1 6 "y"), "")
+    p "x <  y" `shouldBe` Right (meta [loc 1 3] $ lt (var 1 1 "x") (var 1 6 "y"), "")
+    p "x -> y" `shouldBe` Right (meta [loc 1 3] $ Fun (var 1 1 "x") (var 1 6 "y"), "")
+    p "x +  y" `shouldBe` Right (meta [loc 1 3] $ add (var 1 1 "x") (var 1 6 "y"), "")
+    p "x -  y" `shouldBe` Right (meta [loc 1 3] $ sub (var 1 1 "x") (var 1 6 "y"), "")
+    p "x *  y" `shouldBe` Right (meta [loc 1 3] $ mul (var 1 1 "x") (var 1 6 "y"), "")
     p "x    y" `shouldBe` Right (App (var 1 1 "x") (var 1 6 "y"), "")
-    p "x ^  y" `shouldBe` Right (taoMeta [loc 1 3] $ taoPow (var 1 1 "x") (var 1 6 "y"), "")
-    p "x\ny" `shouldBe` Right (taoMeta [loc 1 1] $ Var "x", "\ny")
-    p "(x\ny)" `shouldBe` Right (taoMeta [loc 1 1] $ App (var 1 2 "x") (var 2 1 "y"), "")
+    p "x ^  y" `shouldBe` Right (meta [loc 1 3] $ pow (var 1 1 "x") (var 1 6 "y"), "")
+    p "x\ny" `shouldBe` Right (meta [loc 1 1] $ Var "x", "\ny")
+    p "(x\ny)" `shouldBe` Right (meta [loc 1 1] $ App (var 1 2 "x") (var 2 1 "y"), "")
 
   it "☯ parseDefinition" $ do
     let p = parse' parseDefinition
@@ -176,7 +176,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "x = y\n" `shouldBe` Right ((var 1 1 "x", var 1 5 "y"), "")
     p "x =\ny" `shouldBe` Right ((var 1 1 "x", var 2 1 "y"), "")
     p "x\n= y" `shouldBe` Right ((var 1 1 "x", var 2 3 "y"), "")
-    p "x : a = y" `shouldBe` Right ((taoMeta [loc 1 3] $ Ann (var 1 1 "x") (var 1 5 "a"), var 1 9 "y"), "")
+    p "x : a = y" `shouldBe` Right ((meta [loc 1 3] $ Ann (var 1 1 "x") (var 1 5 "a"), var 1 9 "y"), "")
 
   it "☯ parseTypeAnnotation" $ do
     let p = parse' parseTypeAnnotation
@@ -196,7 +196,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     let p = parse' parseTest
     p "> x; y" `shouldBe` Right (Test (var 1 3 "x") (var 1 6 "y"), "")
     p "> x\ny" `shouldBe` Right (Test (var 1 3 "x") (var 2 1 "y"), "")
-    p "> x : a" `shouldBe` Right (Test (taoMeta [loc 1 5] $ Ann (var 1 3 "x") (var 1 7 "a")) (var 1 3 "x"), "")
+    p "> x : a" `shouldBe` Right (Test (meta [loc 1 5] $ Ann (var 1 3 "x") (var 1 7 "a")) (var 1 3 "x"), "")
     p "> x" `shouldBe` Right (Test (var 1 3 "x") (Tag "True" []), "")
 
   it "☯ parseStmt" $ do
@@ -208,15 +208,15 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseFile" $ do
     let p = parse' (parseFile "my-file.tao")
-    p "" `shouldBe` Right (("my-file.tao", []), "")
+    p "" `shouldBe` Right (File "my-file.tao" [], "")
     p "x" `shouldBe` Left ([CFile], "x")
-    p "import m" `shouldBe` Right (("my-file.tao", [Import "m" "m" []]), "")
+    p "import m" `shouldBe` Right (File "my-file.tao" [Import "m" "m" []], "")
 
   it "☯ parseModule'" $ do
     -- Skip modules that are already in the package.
-    let mod = Module {name = "mod", files = [("my-file", [])]}
+    let mod = Module {name = "mod", files = [File "my-file" []]}
     parseModule "my-file" mod `shouldReturn` mod
 
     -- Parse new modules.
     let mod = Module {name = "mod", files = []}
-    parseModule "examples/empty.tao" mod `shouldReturn` mod {files = [("examples/empty.tao", [])]}
+    parseModule "examples/empty.tao" mod `shouldReturn` mod {files = [File "examples/empty.tao" []]}

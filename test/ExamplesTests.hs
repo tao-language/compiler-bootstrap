@@ -25,7 +25,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   it "☯ empty" $ do
     let name = "examples/empty.tao"
     let stmts = []
-    moduleFiles name `shouldReturn` [(name, stmts)]
+    moduleFiles name `shouldReturn` [File name stmts]
 
 -- it "☯ comments" $ do
 --   let name = "examples/comments.tao"

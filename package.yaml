@@ -22,7 +22,6 @@ dependencies:
 - containers
 - directory
 - filepath
-- flow
 - sort
 
 library:

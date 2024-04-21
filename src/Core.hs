@@ -12,6 +12,7 @@ import Data.List (delete, intercalate, union)
 -- https://www.youtube.com/live/utyBNDj7s2w
 -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
 
+-- TODO: replace operators with Target or Builtin terms
 data Term
   = Knd
   | IntT
@@ -41,6 +42,7 @@ data BinaryOp
   | Eq
   | Lt
   | Gt
+  | Bnd
   deriving (Eq)
 
 data UnaryOp
@@ -85,20 +87,21 @@ instance Show Term where
     Op2 Mul a b -> infixL 7 a (op2 Mul) b
     Op1 Int2Num a -> prefix 8 (op1 Int2Num) a
     Op2 Pow a b -> infixR 10 a (show Pow) b
+    Op2 Bnd a b -> infixR 11 a (op2 Mul) b
     App a b -> infixL 8 a " " b
     Err err -> prefix 0 "$error " err
-    Knd -> atom 11 "$Type"
-    IntT -> atom 11 "$Int"
-    NumT -> atom 11 "$Num"
-    Int i -> atom 11 (show i)
-    Num n -> atom 11 (show n)
-    Var x | isVarName x -> atom 11 x
-    Var x -> atom 11 ("($var '" ++ x ++ "')")
-    Tag k | isTagName k -> atom 11 k
-    Tag k -> atom 11 ("($tag '" ++ k ++ "')")
+    Knd -> atom 12 "$Type"
+    IntT -> atom 12 "$Int"
+    NumT -> atom 12 "$Num"
+    Int i -> atom 12 (show i)
+    Num n -> atom 12 (show n)
+    Var x | isVarName x -> atom 12 x
+    Var x -> atom 12 ("($var '" ++ x ++ "')")
+    Tag k | isTagName k -> atom 12 k
+    Tag k -> atom 12 ("($tag '" ++ k ++ "')")
     Rec fields -> do
       let showField (k, v) = k ++ ": " ++ show v
-      atom 11 ("{" ++ intercalate ", " (map showField fields) ++ "}")
+      atom 12 ("{" ++ intercalate ", " (map showField fields) ++ "}")
     Meta _ a -> showsPrec p a
     where
       atom n k = showParen (p > n) $ showString k
@@ -124,6 +127,7 @@ instance Show BinaryOp where
   show Eq = "=="
   show Lt = "<"
   show Gt = ">"
+  show Bnd = "<-"
 
 instance Show UnaryOp where
   show :: UnaryOp -> String
@@ -194,6 +198,10 @@ app = foldl App
 asApp :: Term -> (Term, [Term])
 asApp (App a b) = let (a', bs) = asApp a in (a', bs ++ [b])
 asApp a = (a, [])
+
+list :: Term -> Term -> [Term] -> Term
+list _ nil [] = nil
+list cons nil (a : bs) = app cons [a, list cons nil bs]
 
 meta :: [Metadata] -> Term -> Term
 meta ms a = foldr Meta a ms

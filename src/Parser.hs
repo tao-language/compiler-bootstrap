@@ -10,7 +10,6 @@ module Parser where
 
 import Control.Monad (void)
 import qualified Data.Char as Char
-import Flow ((|>))
 
 newtype Parser ctx a = Parser (State ctx -> Either (State ctx) (a, State ctx))
 

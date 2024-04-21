@@ -7,7 +7,6 @@
 module ParserTests where
 
 import qualified Data.Char as Char
-import Flow ((|>))
 import Parser
 import Test.Hspec (SpecWith, describe, it, shouldBe)
 

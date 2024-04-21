@@ -10,8 +10,8 @@ import Control.Monad (void)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (isSpace, isUpper)
+import Data.Function ((&))
 import Data.List (dropWhileEnd, intercalate)
-import Flow ((|>))
 import qualified Parser as P
 import Tao
 
@@ -153,15 +153,15 @@ parseExpr delim = do
   let ops =
         [ P.infixR 1 (metaOp Or) (parseOp "|"),
           P.infixR 2 (metaOp Ann) (parseOp ":"),
-          P.infixR 3 (metaOp taoEq) (parseOp "=="),
-          P.infixR 4 (metaOp taoLt) (parseOp "<"),
-          P.infixR 4 (metaOp taoGt) (parseOp ">"),
+          P.infixR 3 (metaOp eq) (parseOp "=="),
+          P.infixR 4 (metaOp lt) (parseOp "<"),
+          P.infixR 4 (metaOp gt) (parseOp ">"),
           P.infixR 5 (metaOp Fun) (parseOp "->"),
-          P.infixR 6 (metaOp taoAdd) (parseOp "+"),
-          P.infixR 6 (metaOp taoSub) (parseOp "-"),
-          P.infixR 7 (metaOp taoMul) (parseOp "*"),
+          P.infixR 6 (metaOp add) (parseOp "+"),
+          P.infixR 6 (metaOp sub) (parseOp "-"),
+          P.infixR 7 (metaOp mul) (parseOp "*"),
           P.infixL 8 (const App) (void delim),
-          P.infixR 9 (metaOp taoPow) (parseOp "^")
+          P.infixR 9 (metaOp pow) (parseOp "^")
         ]
   P.operators 0 ops parseExprAtom
 
@@ -306,10 +306,10 @@ parseFile name = do
   stmts <- P.zeroOrMore parseStmt
   _ <- P.whitespaces
   _ <- P.endOfFile
-  return (name, stmts)
+  return (File name stmts)
 
 parseModule :: String -> Module -> IO Module
-parseModule filename mod | filename `elem` map fst mod.files = return mod
+parseModule filename mod | filename `elem` map (\f -> f.name) mod.files = return mod
 parseModule filename mod = do
   src <- readFile filename
   case P.parse filename (parseFile filename) src of
