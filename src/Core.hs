@@ -268,6 +268,26 @@ isClosed = null . freeVars
 isOpen :: Term -> Bool
 isOpen = not . isClosed
 
+errors :: Term -> [Error]
+errors Knd = []
+errors IntT = []
+errors NumT = []
+errors (Int _) = []
+errors (Num _) = []
+errors (Var _) = []
+errors (Tag _) = []
+errors (Rec fields) = foldr ((\a errs -> errors a ++ errs) . snd) [] fields
+errors (For _ a) = errors a
+errors (Fix _ a) = errors a
+errors (Fun a b) = errors a ++ errors b
+errors (App a b) = errors a ++ errors b
+errors (Or a b) = errors a ++ errors b
+errors (Ann a b) = errors a ++ errors b
+errors (Op1 _ a) = errors a
+errors (Op2 _ a b) = errors a ++ errors b
+errors (Meta _ a) = errors a
+errors (Err err) = [err]
+
 -- Evaluation
 eval :: Env -> Term -> Term
 eval _ Knd = Knd
@@ -442,9 +462,11 @@ infer env (Or a b) = do
 infer env (App a b) = do
   let ((ta, tb), s1) = infer2 env a b
   let x = newName (map fst (s1 ++ env)) "t"
-  case unify (Fun tb (Var x)) ta of
-    (Err e, s2) -> (Err e, s2 `compose` s1)
-    (_, s2) -> (eval (env `compose` s2) (Var x), s2 `compose` s1 `compose` [(x, Var x)])
+  let (t, s2) = unify (Fun tb (Var x)) ta
+  case errors t of
+    -- TODO: return all errors
+    err : errs -> (Err err, s2 `compose` s1)
+    [] -> (eval (env `compose` s2) (Var x), s2 `compose` s1 `compose` [(x, Var x)])
 infer env (Op1 op a) = inferOp1 env op a
 infer env (Op2 op a b) = inferOp2 env op a b
 infer env (Meta _ a) = infer env a
@@ -498,7 +520,6 @@ inferOp2 env Gt a b = do
   let (t, s2) = infer (env `compose` s1) (Ann b ta)
   (t, s2 `compose` s1)
 
--- Type inference
 compose :: Substitution -> Substitution -> Substitution
 compose s1 s2 = apply s1 s2 `union` s1
   where
@@ -514,3 +535,12 @@ instantiate env (For x a) = do
   let (b, s) = instantiate env (eval [(x, Var y)] a)
   (b, [(y, Var y)] `union` s)
 instantiate env a = (eval env a, [])
+
+annotate :: Env -> Env
+annotate env = do
+  let ann (x, a) = do
+        let (t, _) = infer env a
+        case a of
+          (Ann a _) -> (x, Ann a t)
+          a -> (x, Ann a t)
+  map ann env
