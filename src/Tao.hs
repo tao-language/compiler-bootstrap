@@ -164,7 +164,7 @@ liftExpr (C.Rec fields) = do
   let liftField (x, a) = (x, liftExpr a)
   Record (map liftField fields)
 liftExpr (C.For _ a) = liftExpr a
--- liftExpr (C.Fix String Term) = _
+liftExpr (C.Fix _ a) = liftExpr a
 liftExpr (C.Fun a b) = Fun (liftExpr a) (liftExpr b)
 liftExpr (C.App a b) = case asApp (App (liftExpr a) (liftExpr b)) of
   (Tag k args, args') -> Tag k (args ++ args')
@@ -179,11 +179,10 @@ liftExpr (C.Op1 op a) = Op1 op (liftExpr a)
 liftExpr (C.Op2 op a b) = Op2 op (liftExpr a) (liftExpr b)
 liftExpr (C.Meta m a) = Meta m (liftExpr a)
 liftExpr (C.Err err) = Err err
-liftExpr a = error $ "TODO: liftExpr " ++ show a
 
 stmtDefs :: Stmt -> [(String, Expr)]
 stmtDefs (Def (Var x) b) = [(x, b)]
-stmtDefs (Def (Trait (Ann a t) x) b) = [(x, fun [t, a] b)]
+stmtDefs (Def (Trait (Ann a t) x) b) = [('.' : x, fun [t, a] b)]
 stmtDefs (Def (Trait a x) b) = stmtDefs (Def (Trait (Ann a Any) x) b)
 stmtDefs (Def (App a1 a2) b) = stmtDefs (Def a1 (Fun a2 b))
 stmtDefs (Def (Ann a t) b) = stmtDefs (Def a (Ann b t))

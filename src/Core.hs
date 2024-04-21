@@ -139,6 +139,9 @@ bindings (For x a) = [x] `union` bindings a
 bindings (Fun a b) = freeVars a `union` bindings b
 bindings _ = []
 
+fix :: [String] -> Term -> Term
+fix xs a = foldr Fix a xs
+
 for :: [String] -> Term -> Term
 for xs a = foldr For a xs
 
@@ -182,7 +185,10 @@ int2num :: Term -> Term
 int2num = Op1 Int2Num
 
 let' :: (Term, Term) -> Term -> Term
-let' (p, a) b = App (lam [p] b) a
+let' (Var x, Var x') b | x == x' = b
+let' (p, a) b = do
+  let xs = filter (`occurs` a) (freeVars p)
+  App (lam [p] b) (fix xs a)
 
 lets :: [(Term, Term)] -> Term -> Term
 lets defs b = foldr let' b defs
