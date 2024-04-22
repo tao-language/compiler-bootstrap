@@ -31,6 +31,12 @@ ghc-options:
   - -Wall
   - -Wno-name-shadowing
   - -j8
+  - -XDuplicateRecordFields
+  - -XInstanceSigs
+  - -XNamedFieldPuns
+  - -XOverloadedRecordDot
+  - -XNoFieldSelectors
+
 
 executables:
   tao-bootstrap:

@@ -1,6 +1,5 @@
 module Main where
 
-import qualified CheckTests
 import qualified CoreTests
 import qualified ExamplesTests
 import qualified OperatorPrecedenceTests
@@ -18,7 +17,6 @@ main = hspec $ do
   CoreTests.run
   TaoTests.run
   TaoParserTests.run
-  CheckTests.run
   OperatorPrecedenceTests.run
   ExamplesTests.run
   PythonTests.run

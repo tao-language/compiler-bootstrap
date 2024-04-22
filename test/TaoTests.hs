@@ -1,9 +1,3 @@
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE NoFieldSelectors #-}
-
 module TaoTests where
 
 import qualified Core as C
@@ -12,7 +6,6 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ TaoTests ☯==--" $ do
-  let err = C.TODO "error"
   let loc = C.Location "TaoTests" (1, 2)
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
@@ -105,8 +98,8 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     liftExpr term `shouldBe` expr
 
     let expr = Trait x "y"
-    let term = C.app (C.Var ".y") [C.Err (C.UndefinedVar "x"), C.Var "x"]
-    lowerExpr [] expr `shouldBe` term
+    let term = C.app (C.Var ".y") [C.Err, C.Var "x"]
+    lowerExpr [] expr `shouldBe` C.Err
     liftExpr term `shouldBe` expr
 
   it "☯ lower/lift ListNil" $ do
@@ -212,8 +205,8 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     liftExpr term `shouldBe` expr
 
   it "☯ lower/lift Err" $ do
-    let expr = Err err
-    let term = C.Err err
+    let expr = Err
+    let term = C.Err
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
@@ -245,7 +238,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     stmtDefs (Def (Op1 C.Int2Num x) z) `shouldBe` []
     stmtDefs (Def (Op2 C.Add x y) z) `shouldBe` []
     stmtDefs (Def (Meta loc x) z) `shouldBe` [("x", Meta loc z)]
-    stmtDefs (Def (Err err) y) `shouldBe` []
+    stmtDefs (Def Err y) `shouldBe` []
 
   it "☯ lowerModule" $ do
     let mod defs = Module {name = "lowerModule", files = [File "f" defs]}
@@ -278,17 +271,17 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     eval mod (Fun x y) `shouldBe` Fun (Int 42) y
     eval mod (App (Tag "A" []) x) `shouldBe` Tag "A" [Int 42]
     eval mod (App f (Int 1)) `shouldBe` Int 2
-    eval mod (App f (Int 2)) `shouldBe` Err (C.PatternMatchError (C.Int 1) (C.Int 2))
+    eval mod (App f (Int 2)) `shouldBe` Err
     -- eval mod (Let (Expr, Expr) Expr) `shouldBe` Any
     -- eval mod (Bind (Expr, Expr) Expr) `shouldBe` Any
     -- eval mod (TypeDef String [Expr] Expr) `shouldBe` Any
     -- eval mod (MatchFun [Expr]) `shouldBe` Any
     -- eval mod (Match [Expr] [Expr]) `shouldBe` Any
-    eval mod (Or x (Err err)) `shouldBe` Int 42
-    eval mod (Or (Err err) x) `shouldBe` Int 42
-    eval mod (Or (Err err) (Err err)) `shouldBe` Err err
+    eval mod (Or x Err) `shouldBe` Int 42
+    eval mod (Or Err x) `shouldBe` Int 42
+    eval mod (Or Err Err) `shouldBe` Err
     eval mod (Ann x IntType) `shouldBe` Int 42
     eval mod (Op1 C.Int2Num x) `shouldBe` Num 42.0
     eval mod (Op2 C.Add x (Int 1)) `shouldBe` Int 43
     eval mod (Meta loc x) `shouldBe` Meta loc (Int 42)
-    eval mod (Err err) `shouldBe` Err err
+    eval mod Err `shouldBe` Err

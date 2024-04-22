@@ -1,8 +1,3 @@
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedRecordDot #-}
-{-# OPTIONS_GHC -Wno-incomplete-record-updates #-}
-
 module OperatorPrecedenceTests where
 
 import Parser (Parser)

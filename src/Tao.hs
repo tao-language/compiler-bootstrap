@@ -1,9 +1,3 @@
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE NoFieldSelectors #-}
-
 module Tao where
 
 -- TODO: maybe use terms like "lower" and "lift" for conversions to/from core
@@ -39,7 +33,7 @@ data Expr
   | Op1 C.UnaryOp Expr
   | Op2 C.BinaryOp Expr Expr
   | Meta C.Metadata Expr
-  | Err C.Error
+  | Err
   deriving (Eq, Show)
 
 data Stmt
@@ -126,8 +120,9 @@ lowerExpr defs (Record fields) = do
 lowerExpr defs (Trait a x) = do
   let a' = lowerExpr defs a
   let env = map (second (lowerExpr defs)) defs
-  let (t, _) = C.infer env a'
-  C.app (C.Var $ '.' : x) [t, a']
+  case C.infer env a' of
+    Left _ -> C.Err
+    Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
 lowerExpr _ ListNil = C.Tag "[]"
 lowerExpr _ ListCons = C.Tag "[..]"
 lowerExpr _ TextNil = C.Tag "\"\""
@@ -144,7 +139,7 @@ lowerExpr defs (Ann a b) = C.Ann (lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (Op1 op a) = C.Op1 op (lowerExpr defs a)
 lowerExpr defs (Op2 op a b) = C.Op2 op (lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (Meta m a) = C.Meta m (lowerExpr defs a)
-lowerExpr _ (Err err) = C.Err err
+lowerExpr _ Err = C.Err
 
 liftExpr :: C.Term -> Expr
 liftExpr C.Knd = Kind
@@ -178,7 +173,7 @@ liftExpr (C.Ann a b) = Ann (liftExpr a) (liftExpr b)
 liftExpr (C.Op1 op a) = Op1 op (liftExpr a)
 liftExpr (C.Op2 op a b) = Op2 op (liftExpr a) (liftExpr b)
 liftExpr (C.Meta m a) = Meta m (liftExpr a)
-liftExpr (C.Err err) = Err err
+liftExpr C.Err = Err
 
 stmtDefs :: Stmt -> [(String, Expr)]
 stmtDefs (Def (Var x) b) = [(x, b)]
