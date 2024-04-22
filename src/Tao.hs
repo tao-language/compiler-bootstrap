@@ -7,7 +7,7 @@ import Data.Function ((&))
 
 data Expr
   = Any
-  | Kind
+  | Type [String]
   | IntType
   | NumType
   | Int Int
@@ -106,7 +106,7 @@ freeVars expr = C.freeVars (lowerExpr [] expr) & filter (/= "_")
 -- Core conversions
 lowerExpr :: [(String, Expr)] -> Expr -> C.Term
 lowerExpr _ Any = C.Var "_"
-lowerExpr _ Kind = C.Knd
+lowerExpr _ (Type alts) = C.Typ alts
 lowerExpr _ IntType = C.IntT
 lowerExpr _ NumType = C.NumT
 lowerExpr _ (Int i) = C.Int i
@@ -142,7 +142,7 @@ lowerExpr defs (Meta m a) = C.Meta m (lowerExpr defs a)
 lowerExpr _ Err = C.Err
 
 liftExpr :: C.Term -> Expr
-liftExpr C.Knd = Kind
+liftExpr (C.Typ alts) = Type alts
 liftExpr C.IntT = IntType
 liftExpr C.NumT = NumType
 liftExpr (C.Int i) = Int i

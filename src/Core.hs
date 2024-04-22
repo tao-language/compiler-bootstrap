@@ -12,7 +12,7 @@ import Data.List (delete, intercalate, union)
 
 -- TODO: replace operators with Target or Builtin terms
 data Term
-  = Knd
+  = Typ [String]
   | IntT
   | NumT
   | Int Int
@@ -104,7 +104,7 @@ instance Show Term where
     Op2 Bnd a b -> infixR 11 a (op2 Mul) b
     App a b -> infixL 8 a " " b
     Err -> atom 12 "$error"
-    Knd -> atom 12 "$Type"
+    Typ alts -> atom 12 ("$Type[" ++ intercalate " | " alts ++ "]")
     IntT -> atom 12 "$Int"
     NumT -> atom 12 "$Num"
     Int i -> atom 12 (show i)
@@ -242,7 +242,7 @@ pushVars :: [String] -> Env -> Env
 pushVars xs = pushAll (map (\x -> (x, Var x)) xs)
 
 freeVars :: Term -> [String]
-freeVars Knd = []
+freeVars (Typ _) = []
 freeVars IntT = []
 freeVars NumT = []
 freeVars (Int _) = []
@@ -284,7 +284,7 @@ isOpen = not . isClosed
 
 -- Evaluation
 eval :: Env -> Term -> Term
-eval _ Knd = Knd
+eval _ (Typ alts) = Typ alts
 eval _ IntT = IntT
 eval _ NumT = NumT
 eval _ (Int i) = Int i
@@ -308,7 +308,7 @@ eval env (App a b) = case (eval env a, eval env b) of
   (For x a, b) -> eval [(x, Var x)] (App a b)
   (Fix x a, b) | isClosed b -> eval [(x, Fix x a)] (App a b)
   (Fun p a, b) -> case (p, b) of
-    (Knd, Knd) -> a
+    (Typ alts, Typ alts') | alts == alts' -> a
     (IntT, IntT) -> a
     (NumT, NumT) -> a
     (Int i, Int i') | i == i' -> a
@@ -352,7 +352,7 @@ evalOp2 Mul (Int a) (Int b) = Int (a * b)
 evalOp2 Mul (Num a) (Num b) = Num (a * b)
 evalOp2 Pow (Int a) (Int b) = Int (a ^ b)
 evalOp2 Pow (Num a) (Num b) = Num (a ** b)
-evalOp2 Eq Knd Knd = Knd
+evalOp2 Eq (Typ alts) (Typ alts') | alts == alts' = Typ alts
 evalOp2 Eq IntT IntT = IntT
 evalOp2 Eq NumT NumT = NumT
 evalOp2 Eq (Int a) (Int b) | a == b = Int a
@@ -363,7 +363,7 @@ evalOp2 Lt (Num a) (Num b) | a < b = Num a
 evalOp2 _ _ _ = Err
 
 unify :: Term -> Term -> Either TypeError (Term, Substitution)
-unify Knd Knd = Right (Knd, [])
+unify (Typ alts) (Typ alts') | alts == alts' = Right (Typ alts, [])
 unify IntT IntT = Right (IntT, [])
 unify NumT NumT = Right (NumT, [])
 unify (Int i) (Int i') | i == i' = Right (Int i, [])
@@ -410,9 +410,9 @@ unify2 (a1, a2) (b1, b2) = do
   Right ((eval s2 ta, tb), s2 `compose` s1)
 
 infer :: Env -> Term -> Either TypeError (Term, Substitution)
-infer _ Knd = Right (Knd, [])
-infer _ IntT = Right (Knd, [])
-infer _ NumT = Right (Knd, [])
+infer _ (Typ _) = Right (Typ [], [])
+infer _ IntT = Right (Typ [], [])
+infer _ NumT = Right (Typ [], [])
 infer _ (Int _) = Right (IntT, [])
 infer _ (Num _) = Right (NumT, [])
 infer env (Var x) = case lookup x env of

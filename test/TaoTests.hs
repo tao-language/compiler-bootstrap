@@ -17,9 +17,9 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
-  it "☯ lower/lift Kind" $ do
-    let expr = Kind
-    let term = C.Knd
+  it "☯ lower/lift Type" $ do
+    let expr = Type ["A"]
+    let term = C.Typ ["A"]
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
@@ -254,7 +254,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     let mod = Module {name = "run", files = [File "f" defs]}
 
     eval mod Any `shouldBe` Any
-    eval mod Kind `shouldBe` Kind
+    eval mod (Type ["A"]) `shouldBe` Type ["A"]
     eval mod IntType `shouldBe` IntType
     eval mod (Int 42) `shouldBe` Int 42
     eval mod (Num 3.14) `shouldBe` Num 3.14
