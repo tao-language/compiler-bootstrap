@@ -1,10 +1,3 @@
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE NoFieldSelectors #-}
-
 import Data.List (isSuffixOf)
 import PrettyPrint (pretty)
 import qualified Python
