@@ -1,3 +1,0 @@
-# If the result doesn't match, it's a failure.
-> 42
-0

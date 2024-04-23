@@ -222,16 +222,16 @@ run mod expr = do
   liftExpr (C.eval env term)
 
 data TestError
-  = TestEqError Expr Expr
+  = TestEqError Expr Expr Expr
   deriving (Eq, Show)
 
 testEq :: [(String, Expr)] -> (Expr, Expr) -> [TestError]
-testEq defs (a, b) = do
+testEq defs (expr, result) = do
   let env = lowerDefs defs
-  let actual = C.eval env (lowerExpr defs a)
-  let expected = C.eval env (lowerExpr defs b)
+  let actual = C.eval env (lowerExpr defs expr)
+  let expected = C.eval env (lowerExpr defs result)
   case C.eval [] (actual `C.eq` expected) of
-    C.Err -> [TestEqError (liftExpr actual) (liftExpr expected)]
+    C.Err -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
     _ -> []
 
 test :: Module -> [TestError]

@@ -326,7 +326,7 @@ eval env (Op1 op a) = case (op, eval env a) of
 eval env (Op2 op a b) = case (op, eval env a, eval env b) of
   (op, a, b) | isOpen a || isOpen b -> Op2 op a b
   (op, a, b) -> evalOp2 op a b
-eval env (Meta meta a) = Meta meta (eval env a)
+eval env (Meta _ a) = eval env a
 eval _ Err = Err
 
 evalOp1 :: UnaryOp -> Term -> Term
@@ -343,6 +343,7 @@ evalOp2 Mul (Num a) (Num b) = Num (a * b)
 evalOp2 Pow (Int a) (Int b) = Int (a ^ b)
 evalOp2 Pow (Num a) (Num b) = Num (a ** b)
 evalOp2 Eq (Typ alts) (Typ alts') | alts == alts' = Typ alts
+evalOp2 Eq (Tag k) (Tag k') | k == k' = Tag k
 evalOp2 Eq IntT IntT = IntT
 evalOp2 Eq NumT NumT = NumT
 evalOp2 Eq (Int a) (Int b) | a == b = Int a

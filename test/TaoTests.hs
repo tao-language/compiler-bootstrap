@@ -284,7 +284,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     run mod (Ann x IntType) `shouldBe` Int 42
     run mod (Op1 C.Int2Num x) `shouldBe` Num 42.0
     run mod (Op2 C.Add x (Int 1)) `shouldBe` Int 43
-    run mod (Meta loc x) `shouldBe` Meta loc (Int 42)
+    run mod (Meta loc x) `shouldBe` Int 42
     run mod Err `shouldBe` Err
 
   it "☯ test" $ do
@@ -294,4 +294,4 @@ run = describe "--==☯ TaoTests ☯==--" $ do
             Def y (Int 2)
           ]
     let mod = Module {name = "test", files = [File "f" defs]}
-    test mod `shouldBe` [TestEqError (Int 1) (Int 2)]
+    test mod `shouldBe` [TestEqError x (Int 1) (Int 2)]

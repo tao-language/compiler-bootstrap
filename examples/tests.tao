@@ -1,3 +1,4 @@
+# Module definition.
 x = 42
 
 # Prompt-like example.
@@ -12,3 +13,7 @@ x = 42
 
 # Type assertion, just check the type.
 > x : Int
+
+# Test failure
+> x  # expected 42
+0
