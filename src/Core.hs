@@ -61,7 +61,6 @@ type Substitution = [(String, Term)]
 data Error
   = TypeError TypeError
   | PatternError PatternError
-  | TestError TestError
   deriving (Eq, Show)
 
 data TypeError
@@ -73,15 +72,6 @@ data TypeError
 data PatternError
   = MissingCases [Term]
   | UnreachableCase Term
-  deriving (Eq, Show)
-
-data TestError
-  = TestEqError Term Term
-  | TestNeError Term Term
-  | TestLtError Term Term
-  | TestLeError Term Term
-  | TestGtError Term Term
-  | TestGeError Term Term
   deriving (Eq, Show)
 
 instance Show Term where

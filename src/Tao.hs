@@ -175,6 +175,14 @@ liftExpr (C.Op2 op a b) = Op2 op (liftExpr a) (liftExpr b)
 liftExpr (C.Meta m a) = Meta m (liftExpr a)
 liftExpr C.Err = Err
 
+lowerModule :: Module -> C.Env
+lowerModule mod = do
+  let defs = moduleDefs mod
+  map (second (lowerExpr defs)) defs
+
+liftModule :: String -> C.Env -> Module
+liftModule name _ = error "TODO: liftModule"
+
 stmtDefs :: Stmt -> [(String, Expr)]
 stmtDefs (Def (Var x) b) = [(x, b)]
 stmtDefs (Def (Trait (Ann a t) x) b) = [('.' : x, fun [t, a] b)]
@@ -193,16 +201,37 @@ fileDefs file = concatMap stmtDefs file.stmts
 moduleDefs :: Module -> [(String, Expr)]
 moduleDefs mod = concatMap fileDefs mod.files
 
-lowerModule :: Module -> C.Env
-lowerModule mod = do
-  let defs = moduleDefs mod
-  map (second (lowerExpr defs)) defs
+stmtTests :: Stmt -> [(Expr, Expr)]
+stmtTests (Test a b) = [(a, b)]
+stmtTests _ = []
 
-liftModule :: String -> C.Env -> Module
-liftModule name _ = error "TODO: liftModule"
+fileTests :: File -> [(Expr, Expr)]
+fileTests file = concatMap stmtTests file.stmts
 
-eval :: Module -> Expr -> Expr
-eval mod expr = do
+moduleTests :: Module -> [(Expr, Expr)]
+moduleTests mod = concatMap fileTests mod.files
+
+run :: Module -> Expr -> Expr
+run mod expr = do
   let env = lowerModule mod
   let term = lowerExpr (moduleDefs mod) expr
   liftExpr (C.eval env term)
+
+data TestError
+  = TestEqError Expr Expr
+  deriving (Eq, Show)
+
+testEq :: [(String, Expr)] -> (Expr, Expr) -> [TestError]
+testEq defs (a, b) = do
+  let env = map (second (lowerExpr defs)) defs
+  let actual = C.eval env (lowerExpr defs a)
+  let expected = C.eval env (lowerExpr defs b)
+  case C.eval [] (actual `C.eq` expected) of
+    C.Err -> [TestEqError (liftExpr actual) (liftExpr expected)]
+    _ -> []
+
+test :: Module -> [TestError]
+test mod = do
+  let defs = moduleDefs mod
+  let tests = moduleTests mod
+  concatMap (testEq defs) tests

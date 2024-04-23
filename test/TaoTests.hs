@@ -6,6 +6,7 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ TaoTests ☯==--" $ do
+  let run = Tao.run
   let loc = C.Location "TaoTests" (1, 2)
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
@@ -245,7 +246,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lowerModule (mod []) `shouldBe` []
     lowerModule (mod [Def x y]) `shouldBe` [("x", y')]
 
-  it "☯ eval" $ do
+  it "☯ run" $ do
     let defs =
           [ Def x (Int 42),
             Def (Trait (Ann Any IntType) "y") (Num 3.14),
@@ -253,35 +254,44 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           ]
     let mod = Module {name = "run", files = [File "f" defs]}
 
-    eval mod Any `shouldBe` Any
-    eval mod (Type ["A"]) `shouldBe` Type ["A"]
-    eval mod IntType `shouldBe` IntType
-    eval mod (Int 42) `shouldBe` Int 42
-    eval mod (Num 3.14) `shouldBe` Num 3.14
-    eval mod (Var "x") `shouldBe` Int 42
-    eval mod (Var "y") `shouldBe` Var "y"
-    eval mod (Tag "A" [x]) `shouldBe` Tag "A" [Int 42]
-    eval mod (Tuple [x]) `shouldBe` Tuple [Int 42]
-    eval mod (Record [("a", x)]) `shouldBe` Record [("a", Int 42)]
-    eval mod (Trait x "y") `shouldBe` Num 3.14
-    eval mod ListNil `shouldBe` ListNil
-    eval mod ListCons `shouldBe` ListCons
-    eval mod TextNil `shouldBe` TextNil
-    eval mod TextCons `shouldBe` TextCons
-    eval mod (Fun x y) `shouldBe` Fun (Int 42) y
-    eval mod (App (Tag "A" []) x) `shouldBe` Tag "A" [Int 42]
-    eval mod (App f (Int 1)) `shouldBe` Int 2
-    eval mod (App f (Int 2)) `shouldBe` Err
-    -- eval mod (Let (Expr, Expr) Expr) `shouldBe` Any
-    -- eval mod (Bind (Expr, Expr) Expr) `shouldBe` Any
-    -- eval mod (TypeDef String [Expr] Expr) `shouldBe` Any
-    -- eval mod (MatchFun [Expr]) `shouldBe` Any
-    -- eval mod (Match [Expr] [Expr]) `shouldBe` Any
-    eval mod (Or x Err) `shouldBe` Int 42
-    eval mod (Or Err x) `shouldBe` Int 42
-    eval mod (Or Err Err) `shouldBe` Err
-    eval mod (Ann x IntType) `shouldBe` Int 42
-    eval mod (Op1 C.Int2Num x) `shouldBe` Num 42.0
-    eval mod (Op2 C.Add x (Int 1)) `shouldBe` Int 43
-    eval mod (Meta loc x) `shouldBe` Meta loc (Int 42)
-    eval mod Err `shouldBe` Err
+    run mod Any `shouldBe` Any
+    run mod (Type ["A"]) `shouldBe` Type ["A"]
+    run mod IntType `shouldBe` IntType
+    run mod (Int 42) `shouldBe` Int 42
+    run mod (Num 3.14) `shouldBe` Num 3.14
+    run mod (Var "x") `shouldBe` Int 42
+    run mod (Var "y") `shouldBe` Var "y"
+    run mod (Tag "A" [x]) `shouldBe` Tag "A" [Int 42]
+    run mod (Tuple [x]) `shouldBe` Tuple [Int 42]
+    run mod (Record [("a", x)]) `shouldBe` Record [("a", Int 42)]
+    run mod (Trait x "y") `shouldBe` Num 3.14
+    run mod ListNil `shouldBe` ListNil
+    run mod ListCons `shouldBe` ListCons
+    run mod TextNil `shouldBe` TextNil
+    run mod TextCons `shouldBe` TextCons
+    run mod (Fun x y) `shouldBe` Fun (Int 42) y
+    run mod (App (Tag "A" []) x) `shouldBe` Tag "A" [Int 42]
+    run mod (App f (Int 1)) `shouldBe` Int 2
+    run mod (App f (Int 2)) `shouldBe` Err
+    -- run mod (Let (Expr, Expr) Expr) `shouldBe` Any
+    -- run mod (Bind (Expr, Expr) Expr) `shouldBe` Any
+    -- run mod (TypeDef String [Expr] Expr) `shouldBe` Any
+    -- run mod (MatchFun [Expr]) `shouldBe` Any
+    -- run mod (Match [Expr] [Expr]) `shouldBe` Any
+    run mod (Or x Err) `shouldBe` Int 42
+    run mod (Or Err x) `shouldBe` Int 42
+    run mod (Or Err Err) `shouldBe` Err
+    run mod (Ann x IntType) `shouldBe` Int 42
+    run mod (Op1 C.Int2Num x) `shouldBe` Num 42.0
+    run mod (Op2 C.Add x (Int 1)) `shouldBe` Int 43
+    run mod (Meta loc x) `shouldBe` Meta loc (Int 42)
+    run mod Err `shouldBe` Err
+
+  it "☯ test" $ do
+    let defs =
+          [ Def x (Int 1),
+            Test x y,
+            Def y (Int 2)
+          ]
+    let mod = Module {name = "test", files = [File "f" defs]}
+    test mod `shouldBe` [TestEqError (Int 1) (Int 2)]
