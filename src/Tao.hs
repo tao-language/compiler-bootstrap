@@ -119,7 +119,7 @@ lowerExpr defs (Record fields) = do
   C.Rec (map lowerField fields)
 lowerExpr defs (Trait a x) = do
   let a' = lowerExpr defs a
-  let env = map (second (lowerExpr defs)) defs
+  let env = lowerDefs defs
   case C.infer env a' of
     Left _ -> C.Err
     Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
@@ -175,10 +175,14 @@ liftExpr (C.Op2 op a b) = Op2 op (liftExpr a) (liftExpr b)
 liftExpr (C.Meta m a) = Meta m (liftExpr a)
 liftExpr C.Err = Err
 
+lowerDefs :: [(String, Expr)] -> C.Env
+lowerDefs defs = map (second (lowerExpr defs)) defs
+
+liftDefs :: C.Env -> [(String, Expr)]
+liftDefs env = error "TODO: liftDefs"
+
 lowerModule :: Module -> C.Env
-lowerModule mod = do
-  let defs = moduleDefs mod
-  map (second (lowerExpr defs)) defs
+lowerModule mod = lowerDefs (moduleDefs mod)
 
 liftModule :: String -> C.Env -> Module
 liftModule name _ = error "TODO: liftModule"
@@ -223,7 +227,7 @@ data TestError
 
 testEq :: [(String, Expr)] -> (Expr, Expr) -> [TestError]
 testEq defs (a, b) = do
-  let env = map (second (lowerExpr defs)) defs
+  let env = lowerDefs defs
   let actual = C.eval env (lowerExpr defs a)
   let expected = C.eval env (lowerExpr defs b)
   case C.eval [] (actual `C.eq` expected) of
@@ -233,5 +237,4 @@ testEq defs (a, b) = do
 test :: Module -> [TestError]
 test mod = do
   let defs = moduleDefs mod
-  let tests = moduleTests mod
-  concatMap (testEq defs) tests
+  concatMap (testEq defs) (moduleTests mod)
