@@ -1,0 +1,10 @@
+#-- This is a multi-line comment
+They start with '#' followed by at least two '-'s.
+and end with the same number of '#'s.
+
+#--- You can also have nested multi-line comments
+Useful for commenting large chunks in a file
+when there are already comments present.
+#--- Close the nested comment
+
+#-- Close the parent comment

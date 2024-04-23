@@ -1,0 +1,6 @@
+# A typed variable definition.
+x : Int = 42
+
+# The type annotation can also live in its own line.
+y : Num
+y = 3.14

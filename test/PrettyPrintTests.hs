@@ -7,6 +7,10 @@ data Tree = Node !String ![Tree]
 
 run :: SpecWith ()
 run = describe "--==☯ Pretty print ☯==--" $ do
+  it "☯ join" $ do
+    let layout = join [Text ","] [[Text "a"], [Text "b", Text "c"], [Text "d"]]
+    pretty 0 "" layout `shouldBe` "a,bc,d"
+
   it "☯ Binary tree" $ do
     let tree =
           Node
@@ -25,18 +29,18 @@ run = describe "--==☯ Pretty print ☯==--" $ do
                 ]
             ]
 
-    let layout :: Tree -> Doc
+    let layout :: Tree -> Layout
         layout (Node s []) = [Text s]
         layout (Node s ts) =
           [ Text s,
             Text " [",
-            group
-              [ Indent "  " (break' : join [Text ",", space] items),
-                trailing [Text ","]
-              ],
-            Text "]"
+            Or
+              (join [Text ", "] items)
+              [Indent (Text "\n" : join [Text ",\n"] items), Text ",\n"],
+            Text
+              "]"
           ]
           where
             items = map layout ts
 
-    pretty 18 (layout tree) `shouldBe` "aaa [\n  bbbbb [ccc, dd],\n  eee,\n  ffff [\n    gg, hhh, ii,\n  ],\n]"
+    pretty 19 "  " (layout tree) `shouldBe` "aaa [\n  bbbbb [ccc, dd],\n  eee,\n  ffff [\n    gg,\n    hhh,\n    ii,\n  ],\n]"

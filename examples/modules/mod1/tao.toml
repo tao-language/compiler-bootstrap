@@ -1,4 +1,0 @@
-[module]
-requires = [
-    "tao-language:compiler-bootstrap/example/moduleB"
-]

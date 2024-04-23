@@ -1,299 +1,366 @@
-{-# LANGUAGE DuplicateRecordFields #-}
-
 module ParserTests where
 
-import Flow ((|>))
+import qualified Data.Char as Char
 import Parser
 import Test.Hspec (SpecWith, describe, it, shouldBe)
 
+type Context = String
+
+data Expr -- for `operators`
+  = Var !String
+  | Neg !Expr
+  | At !Expr
+  | Factorial !Expr
+  | Add !Expr !Expr
+  | Mul !Expr !Expr
+  | Sub !Expr !Expr
+  | Pow !Expr !Expr
+  deriving (Eq)
+
+instance Show Expr where
+  show :: Expr -> String
+  show (Var x) = x
+  show (Neg x) = "(-" ++ show x ++ ")"
+  show (At x) = "(@" ++ show x ++ ")"
+  show (Factorial x) = "(" ++ show x ++ "!)"
+  show (Add x y) = "(" ++ show x ++ " + " ++ show y ++ ")"
+  show (Sub x y) = "(" ++ show x ++ " - " ++ show y ++ ")"
+  show (Mul x y) = "(" ++ show x ++ " * " ++ show y ++ ")"
+  show (Pow x y) = "(" ++ show x ++ " ^ " ++ show y ++ ")"
+
 run :: SpecWith ()
 run = describe "--==☯ Parser ☯==--" $ do
-  let parse' :: Parser a -> String -> Maybe (a, String)
-      parse' parser source = case parse parser source of
-        Right (x, State {source = remaining}) -> Just (x, remaining)
+  let parse' :: Parser Context a -> String -> Either String (a, String)
+      parse' parser txt = case parse "test" parser txt of
+        Right (x, state) -> Right (x, state.remaining)
+        Left state -> Left state.remaining
+  let parseErrors :: Parser Context a -> String -> (Maybe a, [Context], String)
+      parseErrors parser txt = case parse "test" parser txt of
+        Right (x, state) -> (Just x, state.context, state.remaining)
+        Left state -> (Nothing, state.context, state.remaining)
+  let parseShow :: (Show a) => Parser Context a -> String -> Maybe String
+      parseShow parser txt = case parse "test" parser txt of
+        Right (x, _) -> Just (show x)
         Left _ -> Nothing
 
-  describe "☯ Control flow" $ do
-    it "☯ succeed" $ do
-      parse' (succeed True) "abc" `shouldBe` Just (True, "abc")
+  it "☯ ok" $ do
+    let p = parse' (ok True)
+    p "a" `shouldBe` Right (True, "a")
 
-    it "☯ fail'" $ do
-      parse' (fail' :: Parser ()) "abc" `shouldBe` Nothing
+  it "☯ fail'" $ do
+    let p = parse' (fail' :: Parser Context ())
+    p "a" `shouldBe` Left "a"
 
-    it "☯ fmap" $ do
-      parse' (fmap not (succeed True)) "abc" `shouldBe` Just (False, "abc")
+  it "☯ anyChar" $ do
+    let p = parse' anyChar
+    p "" `shouldBe` Left ""
+    p "abc" `shouldBe` Right ('a', "bc")
+    p "1bc" `shouldBe` Right ('1', "bc")
+    p "_bc" `shouldBe` Right ('_', "bc")
 
-    it "☯ orElse" $ do
-      parse' (succeed True |> orElse (succeed False)) "abc" `shouldBe` Just (True, "abc")
-      parse' (fail' |> orElse (succeed False)) "abc" `shouldBe` Just (False, "abc")
+  it "☯ getState" $ do
+    let parser = do
+          s1 <- getState
+          _ <- anyChar
+          s2 <- getState
+          ok (s1, s2)
+    let p = parse' parser
+    let s1 = State {remaining = "abc", name = "test", pos = (1, 1), index = 0, context = []}
+    let s2 = s1 {remaining = "bc", index = 1, pos = (1, 2)}
+    p "abc" `shouldBe` Right ((s1, s2), "bc")
 
-    it "☯ oneOf" $ do
-      parse' (oneOf [] :: Parser ()) "abc" `shouldBe` Nothing
-      parse' (oneOf [char 'a']) "abc" `shouldBe` Just ('a', "bc")
-      parse' (oneOf [char 'b', char 'a']) "abc" `shouldBe` Just ('a', "bc")
+  it "☯ if'" $ do
+    let p = parse' (if' (== 'a') anyChar)
+    p "a" `shouldBe` Right ('a', "")
+    p "b" `shouldBe` Left "b"
 
-    it "☯ endOfFile" $ do
-      let p = parse' endOfFile
-      p "" `shouldBe` Just ((), "")
-      p "\nabc" `shouldBe` Nothing
-      p "abc" `shouldBe` Nothing
+  it "☯ char" $ do
+    let p = parse' (char 'a')
+    p "abc" `shouldBe` Right ('a', "bc")
+    p "Abc" `shouldBe` Left "Abc"
+    p "0bc" `shouldBe` Left "0bc"
+    p ".bc" `shouldBe` Left ".bc"
 
-    it "☯ endOfLine" $ do
-      let p = parse' endOfLine
-      p "" `shouldBe` Just ((), "")
-      p "\nabc" `shouldBe` Just ((), "abc")
-      p "abc" `shouldBe` Nothing
+  it "☯ charNoCase" $ do
+    let p = parse' (charNoCase 'a')
+    p "abc" `shouldBe` Right ('a', "bc")
+    p "Abc" `shouldBe` Right ('A', "bc")
+    p "0bc" `shouldBe` Left "0bc"
+    p ".bc" `shouldBe` Left ".bc"
 
-  describe "☯ Single characters" $ do
-    it "☯ anyChar" $ do
-      let p = parse' anyChar
-      p "abc" `shouldBe` Just ('a', "bc")
-      p "1bc" `shouldBe` Just ('1', "bc")
-      p "_bc" `shouldBe` Just ('_', "bc")
-      p "" `shouldBe` Nothing
+  it "☯ letter" $ do
+    let p = parse' letter
+    p "abc" `shouldBe` Right ('a', "bc")
+    p "Abc" `shouldBe` Right ('A', "bc")
+    p "0bc" `shouldBe` Left "0bc"
+    p ".bc" `shouldBe` Left ".bc"
 
-    it "☯ space" $ do
-      let p = parse' space
-      p " bc" `shouldBe` Just (' ', "bc")
-      p "\tbc" `shouldBe` Just ('\t', "bc")
-      p "abc" `shouldBe` Nothing
+  it "☯ lowercase" $ do
+    let p = parse' lowercase
+    p "abc" `shouldBe` Right ('a', "bc")
+    p "Abc" `shouldBe` Left "Abc"
+    p "0bc" `shouldBe` Left "0bc"
+    p ".bc" `shouldBe` Left ".bc"
 
-    it "☯ letter" $ do
-      let p = parse' letter
-      p "abc" `shouldBe` Just ('a', "bc")
-      p "Abc" `shouldBe` Just ('A', "bc")
-      p "0bc" `shouldBe` Nothing
-      p ".bc" `shouldBe` Nothing
+  it "☯ uppercase" $ do
+    let p = parse' uppercase
+    p "abc" `shouldBe` Left "abc"
+    p "Abc" `shouldBe` Right ('A', "bc")
+    p "0bc" `shouldBe` Left "0bc"
+    p ".bc" `shouldBe` Left ".bc"
 
-    it "☯ lowercase" $ do
-      let p = parse' lowercase
-      p "abc" `shouldBe` Just ('a', "bc")
-      p "Abc" `shouldBe` Nothing
-      p "0bc" `shouldBe` Nothing
-      p ".bc" `shouldBe` Nothing
+  it "☯ digit" $ do
+    let p = parse' digit
+    p "abc" `shouldBe` Left "abc"
+    p "Abc" `shouldBe` Left "Abc"
+    p "0bc" `shouldBe` Right ('0', "bc")
+    p ".bc" `shouldBe` Left ".bc"
 
-    it "☯ uppercase" $ do
-      let p = parse' uppercase
-      p "abc" `shouldBe` Nothing
-      p "Abc" `shouldBe` Just ('A', "bc")
-      p "0bc" `shouldBe` Nothing
-      p ".bc" `shouldBe` Nothing
+  it "☯ alphanumeric" $ do
+    let p = parse' alphanumeric
+    p "abc" `shouldBe` Right ('a', "bc")
+    p "Abc" `shouldBe` Right ('A', "bc")
+    p "0bc" `shouldBe` Right ('0', "bc")
+    p ".bc" `shouldBe` Left ".bc"
 
-    it "☯ digit" $ do
-      let p = parse' digit
-      p "abc" `shouldBe` Nothing
-      p "Abc" `shouldBe` Nothing
-      p "0bc" `shouldBe` Just ('0', "bc")
-      p ".bc" `shouldBe` Nothing
+  it "☯ punctuation" $ do
+    let p = parse' punctuation
+    p "abc" `shouldBe` Left "abc"
+    p "Abc" `shouldBe` Left "Abc"
+    p "0bc" `shouldBe` Left "0bc"
+    p ".bc" `shouldBe` Right ('.', "bc")
 
-    it "☯ alphanumeric" $ do
-      let p = parse' alphanumeric
-      p "abc" `shouldBe` Just ('a', "bc")
-      p "Abc" `shouldBe` Just ('A', "bc")
-      p "0bc" `shouldBe` Just ('0', "bc")
-      p ".bc" `shouldBe` Nothing
+  it "☯ space" $ do
+    let p = parse' space
+    p " bc" `shouldBe` Right (' ', "bc")
+    p "\tbc" `shouldBe` Right ('\t', "bc")
+    p "\nbc" `shouldBe` Left "\nbc"
+    p "\rbc" `shouldBe` Left "\rbc"
+    p "\fbc" `shouldBe` Left "\fbc"
+    p "\vbc" `shouldBe` Left "\vbc"
+    p "abc" `shouldBe` Left "abc"
 
-    it "☯ punctuation" $ do
-      let p = parse' punctuation
-      p "abc" `shouldBe` Nothing
-      p "Abc" `shouldBe` Nothing
-      p "0bc" `shouldBe` Nothing
-      p ".bc" `shouldBe` Just ('.', "bc")
+  it "☯ whitespace" $ do
+    let p = parse' whitespace
+    p " bc" `shouldBe` Right (' ', "bc")
+    p "\tbc" `shouldBe` Right ('\t', "bc")
+    p "\nbc" `shouldBe` Right ('\n', "bc")
+    p "\rbc" `shouldBe` Right ('\r', "bc")
+    p "\fbc" `shouldBe` Right ('\f', "bc")
+    p "\vbc" `shouldBe` Right ('\v', "bc")
+    p "abc" `shouldBe` Left "abc"
 
-    it "☯ char" $ do
-      let p = parse' (char 'a')
-      p "abc" `shouldBe` Just ('a', "bc")
-      p "Abc" `shouldBe` Just ('A', "bc")
-      p "0bc" `shouldBe` Nothing
-      p ".bc" `shouldBe` Nothing
+  it "☯ oneOf" $ do
+    let p = parse' (oneOf [char 'a', char 'A'])
+    p "abc" `shouldBe` Right ('a', "bc")
+    p "Abc" `shouldBe` Right ('A', "bc")
+    p "0bc" `shouldBe` Left "0bc"
 
-    it "☯ charCaseSensitive" $ do
-      let p = parse' (charCaseSensitive 'a')
-      p "abc" `shouldBe` Just ('a', "bc")
-      p "Abc" `shouldBe` Nothing
-      p "0bc" `shouldBe` Nothing
-      p ".bc" `shouldBe` Nothing
+  it "☯ endOfFile" $ do
+    let p = parse' endOfFile
+    p "" `shouldBe` Right ((), "")
+    p "\nabc" `shouldBe` Left "\nabc"
+    p "abc" `shouldBe` Left "abc"
 
-  describe "☯ Sequences" $ do
-    it "☯ chain" $ do
-      let p = parse' (chain [char '_', letter, digit])
-      p "_A5." `shouldBe` Just ("_A5", ".")
+  it "☯ endOfLine" $ do
+    let p = parse' endOfLine
+    p "" `shouldBe` Right ((), "")
+    p "\nabc" `shouldBe` Right ((), "abc")
+    p "abc" `shouldBe` Left "abc"
 
-    it "☯ maybe'" $ do
-      let p = parse' (maybe' letter)
-      p "abc" `shouldBe` Just (Just 'a', "bc")
-      p "ab" `shouldBe` Just (Just 'a', "b")
-      p "a" `shouldBe` Just (Just 'a', "")
-      p "" `shouldBe` Just (Nothing, "")
+  it "☯ chain" $ do
+    let p = parse' (chain [char 'a', char 'b'])
+    p "abc" `shouldBe` Right ("ab", "c")
 
-    it "☯ zeroOrOne" $ do
-      let p = parse' (zeroOrOne letter)
-      p "abc." `shouldBe` Just ("a", "bc.")
-      p "ab." `shouldBe` Just ("a", "b.")
-      p "a." `shouldBe` Just ("a", ".")
-      p "." `shouldBe` Just ("", ".")
+  it "☯ text" $ do
+    let p = parse' (text "hello")
+    p "hello!" `shouldBe` Right ("hello", "!")
+    p "Hello!" `shouldBe` Left "Hello!"
+    p "h" `shouldBe` Left ""
 
-    it "☯ zeroOrMore" $ do
-      let p = parse' (zeroOrMore letter)
-      p "abc." `shouldBe` Just ("abc", ".")
-      p "ab." `shouldBe` Just ("ab", ".")
-      p "a." `shouldBe` Just ("a", ".")
-      p "." `shouldBe` Just ("", ".")
+  it "☯ textNoCase" $ do
+    let p = parse' (textNoCase "hello")
+    p "hello!" `shouldBe` Right ("hello", "!")
+    p "Hello!" `shouldBe` Right ("Hello", "!")
+    p "h" `shouldBe` Left ""
 
-    it "☯ oneOrMore" $ do
-      let p = parse' (oneOrMore letter)
-      p "abc" `shouldBe` Just ("abc", "")
-      p "ab" `shouldBe` Just ("ab", "")
-      p "a" `shouldBe` Just ("a", "")
-      p "" `shouldBe` Nothing
+  it "☯ maybe'" $ do
+    let p = parse' (maybe' letter)
+    p "abc" `shouldBe` Right (Just 'a', "bc")
+    p "ab" `shouldBe` Right (Just 'a', "b")
+    p "a" `shouldBe` Right (Just 'a', "")
+    p "" `shouldBe` Right (Nothing, "")
 
-    it "☯ exactly" $ do
-      let p = parse' (exactly 2 letter)
-      p "abc" `shouldBe` Just ("ab", "c")
-      p "ab" `shouldBe` Just ("ab", "")
-      p "a" `shouldBe` Nothing
-      p "" `shouldBe` Nothing
+  it "☯ zeroOrOne" $ do
+    let p = parse' (zeroOrOne letter)
+    p "abc." `shouldBe` Right ("a", "bc.")
+    p "ab." `shouldBe` Right ("a", "b.")
+    p "a." `shouldBe` Right ("a", ".")
+    p "." `shouldBe` Right ("", ".")
 
-    it "☯ atLeast" $ do
-      let p = parse' (atLeast 2 letter)
-      p "abc" `shouldBe` Just ("abc", "")
-      p "ab" `shouldBe` Just ("ab", "")
-      p "a" `shouldBe` Nothing
-      p "" `shouldBe` Nothing
+  it "☯ foldR" $ do
+    let p = parse' (foldR (:) "" letter)
+    p "" `shouldBe` Right ("", "")
+    p "abc" `shouldBe` Right ("abc", "")
 
-    it "☯ atMost" $ do
-      let p = parse' (atMost 2 letter)
-      p "abc" `shouldBe` Just ("ab", "c")
-      p "ab" `shouldBe` Just ("ab", "")
-      p "a" `shouldBe` Just ("a", "")
-      p "" `shouldBe` Just ("", "")
+  it "☯ foldL" $ do
+    let p = parse' (foldL (flip (:)) "" letter)
+    p "" `shouldBe` Right ("", "")
+    p "abc" `shouldBe` Right ("cba", "")
 
-    it "☯ between" $ do
-      let p = parse' (between 1 2 letter)
-      p "abc" `shouldBe` Just ("ab", "c")
-      p "ab" `shouldBe` Just ("ab", "")
-      p "a" `shouldBe` Just ("a", "")
-      p "" `shouldBe` Nothing
+  it "☯ zeroOrMore" $ do
+    let p = parse' (zeroOrMore letter)
+    p "abc." `shouldBe` Right ("abc", ".")
+    p "ab." `shouldBe` Right ("ab", ".")
+    p "a." `shouldBe` Right ("a", ".")
+    p "." `shouldBe` Right ("", ".")
 
-    -- it "☯ split" $ do
-    --   p "" (split (char ',') letter) `shouldBe` Just []
-    --   p "a,b,c" (split (char ',') letter) `shouldBe` Just ['a', 'b', 'c']
+  it "☯ oneOrMore" $ do
+    let p = parse' (oneOrMore letter)
+    p "abc" `shouldBe` Right ("abc", "")
+    p "ab" `shouldBe` Right ("ab", "")
+    p "a" `shouldBe` Right ("a", "")
+    p "" `shouldBe` Left ""
 
-    it "☯ until" $ do
-      let p = parse' (until' (== 'c') letter)
-      p "abc" `shouldBe` Just ("ab", "c")
-      p "ab1" `shouldBe` Just ("ab", "1")
-      p "ab" `shouldBe` Just ("ab", "")
-      p "" `shouldBe` Just ("", "")
+  it "☯ exactly" $ do
+    let p = parse' (exactly 2 letter)
+    p "abc" `shouldBe` Right ("ab", "c")
+    p "ab" `shouldBe` Right ("ab", "")
+    p "a" `shouldBe` Left ""
+    p "" `shouldBe` Left ""
 
-    it "☯ foldL" $ do
-      let p = parse' (foldL (flip (:)) "" letter)
-      p "" `shouldBe` Just ("", "")
-      p "abc" `shouldBe` Just ("cba", "")
+  it "☯ atLeast" $ do
+    let p = parse' (atLeast 2 letter)
+    p "abc" `shouldBe` Right ("abc", "")
+    p "ab" `shouldBe` Right ("ab", "")
+    p "a" `shouldBe` Left ""
+    p "" `shouldBe` Left ""
 
-    it "☯ foldR" $ do
-      let p = parse' (foldR (:) "" letter)
-      p "" `shouldBe` Just ("", "")
-      p "abc" `shouldBe` Just ("abc", "")
+  it "☯ atMost" $ do
+    let p = parse' (atMost 2 letter)
+    p "abc" `shouldBe` Right ("ab", "c")
+    p "ab" `shouldBe` Right ("ab", "")
+    p "a" `shouldBe` Right ("a", "")
+    p "" `shouldBe` Right ("", "")
 
-  describe "☯ Common" $ do
-    it "☯ integer" $ do
-      let p = parse' integer
-      p "11" `shouldBe` Just (11, "")
-      p "a" `shouldBe` Nothing
+  it "☯ between" $ do
+    let p = parse' (between 1 2 letter)
+    p "abc" `shouldBe` Right ("ab", "c")
+    p "ab" `shouldBe` Right ("ab", "")
+    p "a" `shouldBe` Right ("a", "")
+    p "" `shouldBe` Left ""
 
-    it "☯ number" $ do
-      let p = parse' number
-      p "3.14" `shouldBe` Just (3.14, "")
-      p "3" `shouldBe` Just (3.0, "")
-      p "a" `shouldBe` Nothing
+  it "☯ commit" $ do
+    let parser = do
+          x <- letter
+          commit "letter"
+          return x
+    let p = parseErrors parser
+    p "" `shouldBe` (Nothing, [], "")
+    p "abc" `shouldBe` (Just 'a', ["letter"], "bc")
+    p "123" `shouldBe` (Nothing, [], "123")
 
-    it "☯ text" $ do
-      let p = parse' (text "hello")
-      p "hello!" `shouldBe` Just ("hello", "!")
-      p "Hello!" `shouldBe` Just ("Hello", "!")
-      p "H" `shouldBe` Nothing
+  it "☯ LL(k) parser" $ do
+    let letters = do
+          x <- letter
+          commit "letter"
+          xs <- oneOrMore letter
+          commit "letters"
+          return (x : xs)
+    let digits = do
+          x <- digit
+          commit "digit"
+          xs <- oneOrMore digit
+          commit "digits"
+          return (x : xs)
+    let p = parseErrors (do _ <- commit "init"; oneOf [letters, digits])
+    p "" `shouldBe` (Nothing, ["init"], "")
+    p "a" `shouldBe` (Nothing, ["letter", "init"], "")
+    p "a2" `shouldBe` (Nothing, ["letter", "init"], "2")
+    p "ab" `shouldBe` (Just "ab", ["init"], "")
+    p "1" `shouldBe` (Nothing, ["digit", "init"], "")
+    p "1b" `shouldBe` (Nothing, ["digit", "init"], "b")
+    p "12" `shouldBe` (Just "12", ["init"], "")
 
-    it "☯ textCaseSensitive" $ do
-      let p = parse' (textCaseSensitive "hello")
-      p "hello!" `shouldBe` Just ("hello", "!")
-      p "Hello!" `shouldBe` Nothing
-      p "H" `shouldBe` Nothing
+  it "☯ skipTo" $ do
+    let p = parse' (skipTo (char '.'))
+    p "" `shouldBe` Left ""
+    p ".abc" `shouldBe` Right ("", "abc")
+    p "a.bc" `shouldBe` Right ("a", "bc")
+    p "ab.c" `shouldBe` Right ("ab", "c")
+    p "abc." `shouldBe` Right ("abc", "")
+    p "abc" `shouldBe` Left "abc"
 
-    it "☯ followedBy" $ do
-      let p = parse' (letter |> followedBy (char 'b'))
-      p "abc" `shouldBe` Just ('a', "bc")
-      p "a_c" `shouldBe` Nothing
+  it "☯ integer" $ do
+    let p = parse' integer
+    p "42" `shouldBe` Right (42, "")
+    p "a" `shouldBe` Left "a"
 
-    it "☯ notFollowedBy" $ do
-      let p = parse' (letter |> notFollowedBy (char 'b'))
-      p "abc" `shouldBe` Nothing
-      p "a_c" `shouldBe` Just ('a', "_c")
+  it "☯ number" $ do
+    let p = parse' number
+    p "3.14" `shouldBe` Right (3.14, "")
+    p "3" `shouldBe` Right (3.0, "")
+    p "a" `shouldBe` Left "a"
 
-    -- it "☯ tok (TODO: rename to token)" $ do
-    --   p "a" (oneOrMore $ tok "" letter) `shouldBe` Just [('a', "")]
-    --   p "a" (oneOrMore $ tok " " letter) `shouldBe` Nothing
-    --   p " a" (oneOrMore $ tok " " letter) `shouldBe` Just [('a', " ")]
-    --   p "  a" (oneOrMore $ tok " " letter) `shouldBe` Just [('a', "  ")]
-    --   p "ab" (oneOrMore $ tok "" letter) `shouldBe` Just [('a', ""), ('b', "")]
-    --   p "a b" (oneOrMore $ tok "" letter) `shouldBe` Just [('a', ""), ('b', "")]
-    --   p "a \nb" (oneOrMore $ tok "" letter) `shouldBe` Just [('a', ""), ('b', "")]
-    --   p "a \n  b" (oneOrMore $ tok "" letter) `shouldBe` Just [('a', ""), ('b', "  ")]
+  it "☯ lookahead" $ do
+    let p = parse' (lookahead letter)
+    p "abc" `shouldBe` Right ((), "abc")
+    p "123" `shouldBe` Left "123"
 
-    -- it "☯ token" $ do
-    --   p "a" (oneOrMore (token letter)) `shouldBe` Just "a"
-    --   p "a b" (oneOrMore (token letter)) `shouldBe` Just "ab"
-    --   p "a\tb" (oneOrMore (token letter)) `shouldBe` Just "ab"
-    --   -- p "a\nb" (oneOrMore (token letter)) `shouldBe` Just "a"
-    --   -- p "a\n b" (oneOrMore (token letter)) `shouldBe` Just "ab"
-    --   -- p "a\n\n b" (oneOrMore (token letter)) `shouldBe` Just "ab"
-    --   -- p "a\n   \n b" (oneOrMore (token letter)) `shouldBe` Just "ab"
-    --   True `shouldBe` True
+  it "☯ lookaheadNot" $ do
+    let p = parse' (lookaheadNot letter)
+    p "abc" `shouldBe` Left "abc"
+    p "123" `shouldBe` Right ((), "123")
 
-    it "☯ getState" $ do
-      let parser = do
-            s1 <- getState
-            x <- text "abc"
-            s2 <- getState
-            succeed (s1, x, s2)
-      let p = parse' parser
-      let s1 = State {source = "abcdef", row = 1, col = 1}
-      let s2 = State {source = "def", row = 1, col = 4}
-      p "abcdef" `shouldBe` Just ((s1, "abc", s2), "def")
+  it "☯ subparser" $ do
+    let p = parse' (subparser (text "--}") (zeroOrMore anyChar))
+    p "--}abc" `shouldBe` Right ("", "--}abc")
+    p "a--}bc" `shouldBe` Right ("a", "--}bc")
+    p "ab--}c" `shouldBe` Right ("ab", "--}c")
+    p "abc--}" `shouldBe` Right ("abc", "--}")
 
-    it "☯ subparser" $ do
-      let p = parse' (subparser (text "--}") (zeroOrMore anyChar))
-      p "--}abc" `shouldBe` Just ("", "--}abc")
-      p "a--}bc" `shouldBe` Just ("a", "--}bc")
-      p "ab--}c" `shouldBe` Just ("ab", "--}c")
-      p "abc--}" `shouldBe` Just ("abc", "--}")
+  it "☯ operators" $ do
+    let op x = padded whitespaces (text x)
+        ops =
+          [ infixL 1 (const Add) (op "+"),
+            infixL 1 (const Sub) (op "-"),
+            infixL 2 (const Mul) (op "*"),
+            prefix 3 (const Neg) (op "-"),
+            infixR 4 (const Pow) (op "^"),
+            suffix 5 (const Factorial) (op "!"),
+            prefix 5 (const At) (op "@")
+          ]
+        atom =
+          oneOf
+            [ inbetween (op "(") (op ")") expr,
+              Var <$> oneOrMore letter
+            ]
+        expr = operators 0 ops atom
 
-    it "☯ withOperators" $ do
-      let calculator =
-            withOperators
-              [ atom number,
-                prefix 4 (\x -> -x) (char '-'),
-                inbetween (char '(') (char ')')
-              ]
-              [ infixL 1 (+) (char '+'),
-                infixL 1 (-) (char '-'),
-                infixL 2 (*) (char '*'),
-                infixR 3 (**) (char '^')
-              ]
-              0
+    let p = parseShow expr
+    -- Unary operators
+    p "x" `shouldBe` Just "x"
+    p "-x" `shouldBe` Just "(-x)"
+    p "x!" `shouldBe` Just "(x!)"
+    p "-x!" `shouldBe` Just "(-(x!))"
+    p "@x!" `shouldBe` Just "((@x)!)"
+    p "--x" `shouldBe` Just "(-(-x))"
+    p "-@x" `shouldBe` Just "(-(@x))"
+    p "@-x" `shouldBe` Nothing
 
-      let p = parse' calculator
-      p "1" `shouldBe` Just (1.0, "")
-      p "-1" `shouldBe` Just (-1.0, "")
-      p "--1" `shouldBe` Just (1.0, "")
-      p "1+2" `shouldBe` Just (3.0, "")
-      p "1-2" `shouldBe` Just (-1.0, "")
-      p "1*2" `shouldBe` Just (2.0, "")
-      p "1^2" `shouldBe` Just (1.0, "")
-      p "1+2+3" `shouldBe` Just (6.0, "")
-      p "1-2-3" `shouldBe` Just (-4.0, "")
-      p "1+2*3" `shouldBe` Just (7.0, "")
-      p "3*2+1" `shouldBe` Just (7.0, "")
-      p "2^2^3" `shouldBe` Just (256.0, "")
-      p "1+-2+3" `shouldBe` Just (2.0, "")
-      p "(1+2)*3" `shouldBe` Just (9.0, "")
+    -- Binary operators
+    p "x + y" `shouldBe` Just "(x + y)"
+    p "x - y" `shouldBe` Just "(x - y)"
+    p "x * y" `shouldBe` Just "(x * y)"
+    p "x ^ y" `shouldBe` Just "(x ^ y)"
+    p "-x - -y" `shouldBe` Just "((-x) - (-y))"
+    p "x + y + z" `shouldBe` Just "((x + y) + z)"
+    p "x + y - z" `shouldBe` Just "((x + y) - z)"
+    p "x - y + z" `shouldBe` Just "((x - y) + z)"
+    p "x + y * z" `shouldBe` Just "(x + (y * z))"
+    p "x * y + z" `shouldBe` Just "((x * y) + z)"
+    p "x * y * z" `shouldBe` Just "((x * y) * z)"
+    p "x * y ^ z" `shouldBe` Just "(x * (y ^ z))"
+    p "x ^ y * z" `shouldBe` Just "((x ^ y) * z)"
+    p "x ^ y ^ z" `shouldBe` Just "(x ^ (y ^ z))"
+    p "(x ^ y) ^ z" `shouldBe` Just "((x ^ y) ^ z)"

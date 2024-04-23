@@ -1,0 +1,33 @@
+p1 = {x: 1}
+
+type Point2 = {x: Num, y: Num} 
+
+> Point2 {x: 1, y: 2}
+{x: 1.0, y: 2.0}
+
+> Point2 1 {y: 2}
+{x: 1.0, y: 2.0}
+
+> Point2 1 2
+{x: 1.0, y: 2.0}
+
+type Point3 = {
+  x: Num
+  y: Num
+  z: Num
+}
+
+> Point3 {
+    z: 3
+    y: 2
+    x: 1
+  }
+{x: 1.0, y: 2.0, z: 3.0}
+
+> Point3 1 {z: 3, y: 2}
+{x: 1.0, y: 2.0, z: 3.0}
+
+> Point3 1 2 {z: 3}
+{x: 1.0, y: 2.0, z: 3.0}
+
+
