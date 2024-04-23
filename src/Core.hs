@@ -40,7 +40,6 @@ data BinaryOp
   | Eq
   | Lt
   | Gt
-  | Bnd
   deriving (Eq)
 
 data UnaryOp
@@ -83,7 +82,9 @@ instance Show Term where
     Op2 Eq a b -> infixL 3 a (op2 Eq) b
     Op2 Lt a b -> infixR 4 a (op2 Lt) b
     Op2 Gt a b -> infixR 4 a (op2 Gt) b
-    For x a -> prefix 2 ("@" ++ x ++ ". ") a
+    For x a -> do
+      let (xs, a') = asFor (For x a)
+      prefix 2 ("@" ++ unwords xs ++ ". ") a'
     Fix x a -> prefix 2 ("$fix " ++ x ++ ". ") a
     Fun p b -> infixR 5 p " -> " b
     Op2 Add a b -> infixL 6 a (op2 Add) b
@@ -91,7 +92,6 @@ instance Show Term where
     Op2 Mul a b -> infixL 7 a (op2 Mul) b
     Op1 Int2Num a -> prefix 8 (op1 Int2Num) a
     Op2 Pow a b -> infixR 10 a (show Pow) b
-    Op2 Bnd a b -> infixR 11 a (op2 Mul) b
     App a b -> infixL 8 a " " b
     Err -> atom 12 "$error"
     Typ alts -> atom 12 ("$Type[" ++ intercalate " | " alts ++ "]")
@@ -112,8 +112,6 @@ instance Show Term where
       prefix n k a = showParen (p > n) $ showString k . showsPrec (n + 1) a
       infixL n a op b = showParen (p > n) $ showsPrec n a . showString op . showsPrec (n + 1) b
       infixR n a op b = showParen (p > n) $ showsPrec (n + 1) a . showString op . showsPrec n b
-      for [] = ""
-      for xs = "@for " ++ unwords xs ++ ". "
       isVarName ('$' : xs) = all isAlphaNum xs
       isVarName (x : xs) = isLower x && all isAlphaNum xs
       isVarName [] = False
@@ -131,7 +129,6 @@ instance Show BinaryOp where
   show Eq = "=="
   show Lt = "<"
   show Gt = ">"
-  show Bnd = "<-"
 
 instance Show UnaryOp where
   show :: UnaryOp -> String
@@ -149,20 +146,20 @@ fix xs a = foldr Fix a xs
 for :: [String] -> Term -> Term
 for xs a = foldr For a xs
 
-fun :: [Term] -> Term -> Term
-fun ps b = foldr Fun b ps
-
-lam :: [Term] -> Term -> Term
--- TODO: use freeVars of ps
-lam ps b = for (bindings (fun ps b)) (fun ps b)
-
 asFor :: Term -> ([String], Term)
 asFor (For x a) = let (xs, b) = asFor a in (x : xs, b)
 asFor a = ([], a)
 
+fun :: [Term] -> Term -> Term
+fun ps b = foldr Fun b ps
+
 asFun :: Term -> ([Term], Term)
 asFun (Fun p a) = let (ps, b) = asFun a in (p : ps, b)
 asFun a = ([], a)
+
+lam :: [Term] -> Term -> Term
+-- TODO: use freeVars of ps
+lam ps b = for (bindings (fun ps b)) (fun ps b)
 
 add :: Term -> Term -> Term
 add = Op2 Add
