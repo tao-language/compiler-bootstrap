@@ -37,7 +37,6 @@ ghc-options:
   - -XOverloadedRecordDot
   - -XNoFieldSelectors
 
-
 executables:
   tao-bootstrap:
     main:                Main.hs
