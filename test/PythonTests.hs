@@ -1,19 +1,63 @@
 module PythonTests where
 
-import Core
 import PrettyPrint (pretty)
 import Python
+import Tao
 import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Python ☯==--" $ do
-  -- let target =
-  --       builtins
-  --         { extern =
-  --             [ ("True", targetDef $ Bool True),
-  --               ("pi", (targetDef $ Attribute (Name "math") "pi") {globals = [import' "math"]})
-  --             ]
-  --         }
+  let (x, y, z) = (Var "x", Var "y", Var "z")
+  let (x', y', z') = (PyName "x", PyName "y", PyName "z")
+  let (a', b') = (PyName "a", PyName "b")
+
+  it "☯ buildExpr" $ do
+    let ctx = PyCtx {globals = [], locals = []}
+    buildExpr ctx Any `shouldBe` (ctx, PyName "_")
+    buildExpr ctx IntType `shouldBe` (ctx, PyName "int")
+    buildExpr ctx NumType `shouldBe` (ctx, PyName "float")
+    buildExpr ctx (Int 42) `shouldBe` (ctx, PyInteger 42)
+    buildExpr ctx (Num 3.14) `shouldBe` (ctx, PyFloat 3.14)
+    buildExpr ctx (Var "x") `shouldBe` (ctx, PyName "x")
+    buildExpr ctx (Tag "A" []) `shouldBe` (ctx, pyCall (PyName "A") [])
+    buildExpr ctx (Tag "A" [x, y]) `shouldBe` (ctx, pyCall (PyName "A") [x', y'])
+    buildExpr ctx (Tuple []) `shouldBe` (ctx, PyTuple [])
+    buildExpr ctx (Tuple [x, y]) `shouldBe` (ctx, PyTuple [x', y'])
+    -- buildExpr ctx (Record []) `shouldBe` (ctx, PyDict [])
+    -- buildExpr ctx (Record [("a", x), ("b", y)]) `shouldBe` (ctx, PyDict [(a', x'), (b', y')])
+    -- buildExpr ctx (Trait x "y") `shouldBe` (ctx, pyCall (PyAttribute x' "y") [])
+    -- buildExpr ctx ListNil `shouldBe` (ctx, pyCall (PyName "_ListNil") [])
+    -- buildExpr ctx ListCons `shouldBe` (ctx, pyCall (PyName "_ListCons") [])
+    -- buildExpr ctx TextNil `shouldBe` (ctx, pyCall (PyName "_TextNil") [])
+    -- buildExpr ctx TextCons `shouldBe` (ctx, pyCall (PyName "_TextCons") [])
+    -- buildExpr ctx (Type []) `shouldBe` (ctx, pyCall (PyName "Type") [PyList []])
+    -- buildExpr ctx (Type ["A", "B"]) `shouldBe` (ctx, pyCall (PyName "Type") [PyList [PyName "A", PyName "B"]])
+    -- buildExpr ctx (Fun x y) `shouldBe`
+    -- Fun Expr Expr
+    -- App Expr Expr
+    -- Let (Expr, Expr) Expr
+    -- Bind (Expr, Expr) Expr
+    -- TypeDef String [Expr] Expr
+    -- MatchFun [Expr]
+    -- Match [Expr] [Expr]
+    -- Or Expr Expr
+    -- Ann Expr Expr
+    -- Op1 C.UnaryOp Expr
+    -- Op2 C.BinaryOp Expr Expr
+    -- Meta C.Metadata Expr
+    -- Err
+    True `shouldBe` True
+
+  it "☯ buildStmt" $ do
+    let ctx = PyCtx {globals = [], locals = []}
+    buildStmt ctx (Def x y) `shouldBe` ctx {locals = [PyAssign [x'] y']}
+    -- Def Expr Expr
+    -- TypeAnn String Expr
+    -- Import String String [String] -- import module as alias (a, b, c)
+    -- Test Expr Expr
+    -- DocString [C.Metadata] String
+    -- Comment [C.Metadata] String
+    True `shouldBe` True
 
   -- it "☯ emitExpr" $ do
   --   let emitExpr' expr = apply (emitExpr target expr) newContext

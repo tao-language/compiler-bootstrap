@@ -7,7 +7,6 @@ import Data.Function ((&))
 
 data Expr
   = Any
-  | Type [String]
   | IntType
   | NumType
   | Int Int
@@ -21,6 +20,7 @@ data Expr
   | ListCons
   | TextNil
   | TextCons
+  | Type [String]
   | Fun Expr Expr
   | App Expr Expr
   | Let (Expr, Expr) Expr

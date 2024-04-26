@@ -1,6 +1,6 @@
 module Python where
 
-import Core
+import qualified Core as C
 import Data.Bifunctor (Bifunctor (first))
 import Data.Foldable (foldlM, foldrM)
 import Data.List (intercalate, union)
@@ -17,11 +17,11 @@ import Tao
 -- https://docs.python.org/3/library/ast.html#ast.Module
 data PyModule = PyModule
   { name :: String,
-    body :: [PyStatement]
+    body :: [PyStmt]
   }
   deriving (Eq, Show)
 
-newModule :: String -> [PyStatement] -> PyModule
+newModule :: String -> [PyStmt] -> PyModule
 newModule name body =
   PyModule
     { name = name,
@@ -60,7 +60,7 @@ data PyExpr
   | PySetComp PyExpr PyExpr PyExpr [PyExpr] -- {x for x in xs (if y)*}
   | PyGeneratorExp PyExpr PyExpr PyExpr [PyExpr] -- (x for x in xs (if y)*)
   | PyDictComp PyExpr PyExpr PyExpr [PyExpr] -- {x: x for x in xs (if y)*}
-  | PyMeta [Metadata] PyExpr
+  | PyMeta C.Metadata PyExpr
   deriving (Eq, Show)
 
 -- https://docs.python.org/3/library/ast.html#ast.FormattedValue
@@ -116,7 +116,7 @@ data PyCompare
 
 --- Statements ---
 -- https://docs.python.org/3/library/ast.html#statements
-data PyStatement
+data PyStmt
   = PyAssign [PyExpr] PyExpr -- x = y = z
   | PyAnnAssign PyExpr PyExpr (Maybe PyExpr) -- x: T = y
   | PyAugAssign PyExpr PyBinOp PyExpr -- x += y
@@ -129,7 +129,7 @@ data PyStatement
   | PyImportFrom String [(String, Maybe String)] -- from mod import x, y as z
   | PyBreak -- break
   | PyContinue -- continue
-  | PyMatch PyExpr [(PyPattern, Maybe PyExpr, [PyStatement])] -- match x: case p: y; ...
+  | PyMatch PyExpr [(PyPattern, Maybe PyExpr, [PyStmt])] -- match x: case p: y; ...
   | PyReturn PyExpr -- return x
   | PyYield PyExpr -- yield x
   | PyYieldFrom PyExpr -- yield from x
@@ -138,30 +138,30 @@ data PyStatement
   | PyAwait PyExpr -- await x
   | PyIf
       { test :: PyExpr,
-        body :: [PyStatement],
-        orelse :: [PyStatement]
+        body :: [PyStmt],
+        orelse :: [PyStmt]
       }
   | PyFor
       { target :: PyExpr,
         iter :: PyExpr,
-        body :: [PyStatement],
-        orelse :: [PyStatement],
+        body :: [PyStmt],
+        orelse :: [PyStmt],
         async :: Bool
       }
   | PyWhile
       { test :: PyExpr,
-        body :: [PyStatement],
-        orelse :: [PyStatement]
+        body :: [PyStmt],
+        orelse :: [PyStmt]
       }
   | PyWith
       { items :: [(PyExpr, Maybe PyExpr)],
-        body :: [PyStatement],
+        body :: [PyStmt],
         async :: Bool
       }
   | PyFunctionDef
       { name :: String,
         args :: [(String, Maybe PyExpr, Maybe PyExpr)],
-        body :: [PyStatement],
+        body :: [PyStmt],
         decorators :: [PyExpr],
         returns :: Maybe PyExpr,
         typeParams :: [PyTypeParam],
@@ -170,19 +170,19 @@ data PyStatement
   | PyClassDef
       { name :: String,
         bases :: [PyExpr],
-        body :: [PyStatement],
+        body :: [PyStmt],
         decorators :: [PyExpr],
         typeParams :: [PyTypeParam]
       }
   | PyTry
-      { body :: [PyStatement],
+      { body :: [PyStmt],
         handlers :: [(Maybe PyExpr, String, PyExpr)],
-        else' :: [PyStatement],
-        finally :: [PyStatement]
+        else' :: [PyStmt],
+        finally :: [PyStmt]
       }
   deriving (Eq, Show)
 
-newPyFunctionDef :: String -> [(String, Maybe PyExpr, Maybe PyExpr)] -> [PyStatement] -> PyStatement
+newPyFunctionDef :: String -> [(String, Maybe PyExpr, Maybe PyExpr)] -> [PyStmt] -> PyStmt
 newPyFunctionDef name args body =
   PyFunctionDef
     { name = name,
@@ -194,7 +194,7 @@ newPyFunctionDef name args body =
       async = False
     }
 
-newPyClassDef :: String -> [PyTypeParam] -> [PyStatement] -> PyStatement
+newPyClassDef :: String -> [PyTypeParam] -> [PyStmt] -> PyStmt
 newPyClassDef name args body =
   PyClassDef
     { name = name,
@@ -214,7 +214,7 @@ data PyPattern
   | PyMatchClass String [PyPattern] [(String, PyPattern)] -- ClassName(p, x=q)
   | PyMatchAs (Maybe PyPattern) String -- case p as x
   | PyMatchOr [PyPattern] -- case p | q
-  | PyMatchMeta [Metadata] PyPattern
+  | PyMatchMeta C.Metadata PyPattern
   deriving (Eq, Show)
 
 --- Type parameters ---
@@ -235,11 +235,85 @@ addUnique x (y : ys) = y : addUnique x ys
 pyCall :: PyExpr -> [PyExpr] -> PyExpr
 pyCall f xs = PyCall f xs []
 
-pyImport :: String -> PyStatement
+pyImport :: String -> PyStmt
 pyImport name = PyImport name Nothing
 
-pyRaise :: PyExpr -> PyStatement
+pyRaise :: PyExpr -> PyStmt
 pyRaise x = PyRaise x Nothing
+
+--- Build target ---
+data PyTarget = PyTarget
+  { version :: (Int, Int),
+    matchStmt :: Bool
+  }
+  deriving (Eq, Show)
+
+data PyCtx = PyCtx
+  { globals :: [PyStmt],
+    locals :: [PyStmt]
+  }
+  deriving (Eq, Show)
+
+build :: Module -> [PyModule]
+build mod = error "TODO: build"
+
+buildFile :: File -> PyModule
+buildFile file = error "TODO: buildFile"
+
+buildStmt :: PyCtx -> Stmt -> PyCtx
+buildStmt ctx (Def p a) = do
+  let (ctx', a') = buildExpr ctx a
+  case p of
+    Var x -> ctx' {locals = PyAssign [PyName x] a' : ctx.locals}
+    p -> error $ "TODO: buildStmt " ++ show p
+-- TypeAnn String Expr
+-- Import String String [String] -- import module as alias (a, b, c)
+-- Test Expr Expr
+-- DocString [C.Metadata] String
+-- Comment [C.Metadata] String
+buildStmt ctx stmt = error "TODO: buildStmt"
+
+buildExpr :: PyCtx -> Expr -> (PyCtx, PyExpr)
+buildExpr ctx Any = (ctx, PyName "_")
+buildExpr ctx IntType = (ctx, PyName "int")
+buildExpr ctx NumType = (ctx, PyName "float")
+buildExpr ctx (Int i) = (ctx, PyInteger i)
+buildExpr ctx (Num n) = (ctx, PyFloat n)
+buildExpr ctx (Var x) = (ctx, PyName x)
+buildExpr ctx (Tag k args) = do
+  let (ctx', args') = buildExprAll ctx args
+  (ctx', pyCall (PyName k) args')
+buildExpr ctx (Tuple items) = do
+  let (ctx', items') = buildExprAll ctx items
+  (ctx', PyTuple items')
+-- buildExpr ctx (Record [(String, Expr)]) = _
+-- buildExpr ctx (Trait Expr String) = _
+-- buildExpr ctx ListNil = _
+-- buildExpr ctx ListCons = _
+-- buildExpr ctx TextNil = _
+-- buildExpr ctx TextCons = _
+-- buildExpr ctx (Type alts) = _
+-- buildExpr ctx (Fun Expr Expr) = _
+-- buildExpr ctx (App Expr Expr) = _
+-- buildExpr ctx (Let (Expr, Expr) Expr) = _
+-- buildExpr ctx (Bind (Expr, Expr) Expr) = _
+-- buildExpr ctx (TypeDef String [Expr] Expr) = _
+-- buildExpr ctx (MatchFun [Expr]) = _
+-- buildExpr ctx (Match [Expr] [Expr]) = _
+-- buildExpr ctx (Or Expr Expr) = _
+-- buildExpr ctx (Ann Expr Expr) = _
+-- buildExpr ctx (Op1 C.UnaryOp Expr) = _
+-- buildExpr ctx (Op2 C.BinaryOp Expr Expr) = _
+-- buildExpr ctx (Meta C.Metadata Expr) = _
+-- buildExpr ctx Err = _
+buildExpr ctx expr = error $ "TODO: buildExpr " ++ show expr
+
+buildExprAll :: PyCtx -> [Expr] -> (PyCtx, [PyExpr])
+buildExprAll ctx [] = (ctx, [])
+buildExprAll ctx (a : bs) = do
+  let (ctx1, a') = buildExpr ctx a
+  let (ctx2, bs') = buildExprAll ctx1 bs
+  (ctx2, a' : bs')
 
 -- emitExpr :: PyTarget -> Expression -> Emit PyExpr
 -- emitExpr _ IntT = return (Name "int")
@@ -326,7 +400,7 @@ pyRaise x = PyRaise x Nothing
 --   ps <- emitPatterns target ps
 --   return (p : ps)
 
--- emitBody :: PyTarget -> Term -> Emit [PyStatement]
+-- emitBody :: PyTarget -> Term -> Emit [PyStmt]
 -- emitBody target a = Emit $
 --   \ctx -> do
 --     let (expr, ctx') = apply (emitExpr target a) ctx {locals = []}
@@ -337,7 +411,7 @@ pyRaise x = PyRaise x Nothing
 layoutModule :: PyModule -> PP.Layout
 layoutModule PyModule {body} = PP.join [PP.Text "\n"] (map layoutStmt body)
 
-layoutStmt :: PyStatement -> PP.Layout
+layoutStmt :: PyStmt -> PP.Layout
 layoutStmt (PyImport name alias) = case alias of
   Just alias -> [PP.Text $ "import " ++ name ++ " as " ++ alias]
   Nothing -> [PP.Text $ "import " ++ name]
@@ -404,9 +478,7 @@ layoutPattern (PyMatchAs maybePattern name) = case maybePattern of
   Just pat -> layoutPattern pat ++ [PP.Text $ " as " ++ name]
   Nothing -> [PP.Text name]
 layoutPattern (PyMatchOr pats) = PP.join [PP.Text " | "] (map layoutPattern pats)
-layoutPattern (PyMatchMeta [] pat) = layoutPattern pat
-layoutPattern (PyMatchMeta (m : meta) pat) = case m of
-  _ -> layoutPattern (PyMatchMeta meta pat)
+layoutPattern (PyMatchMeta _ pat) = layoutPattern pat
 layoutPattern pat = error $ "TODO: layoutPattern: " ++ show pat
 
 layoutExpr :: PyExpr -> PP.Layout
@@ -433,9 +505,7 @@ layoutExpr (PyBinOp a op b) = do
   -- TODO: remove redundant parentheses
   -- TODO: break long lines
   PP.Text "(" : layoutExpr a ++ [PP.Text $ showOp op] ++ layoutExpr b ++ [PP.Text ")"]
-layoutExpr (PyMeta [] a) = layoutExpr a
-layoutExpr (PyMeta (m : meta) a) = case m of
-  _ -> layoutExpr a
+layoutExpr (PyMeta _ a) = layoutExpr a
 layoutExpr a = error $ "TODO: layoutExpr: " ++ show a
 
 layoutFunctionArg :: (String, Maybe PyExpr, Maybe PyExpr) -> PP.Layout

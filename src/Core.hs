@@ -12,14 +12,14 @@ import Data.List (delete, intercalate, union)
 
 -- TODO: replace operators with Target or Builtin terms
 data Term
-  = Typ [String]
-  | IntT
+  = IntT
   | NumT
   | Int Int
   | Num Double
   | Var String
   | Tag String
   | Rec [(String, Term)]
+  | Typ [String]
   | For String Term
   | Fix String Term
   | Fun Term Term
