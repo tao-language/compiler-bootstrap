@@ -50,7 +50,7 @@ run = describe "--==☯ Python ☯==--" $ do
 
   it "☯ buildStmt" $ do
     let ctx = PyCtx {globals = [], locals = []}
-    buildStmt ctx (Def x y) `shouldBe` ctx {locals = [PyAssign [x'] y']}
+    buildStmt ctx (Def (DefName "x" Any) [] y) `shouldBe` ctx {locals = [PyAssign [x'] y']}
     -- Def Expr Expr
     -- TypeAnn String Expr
     -- Import String String [String] -- import module as alias (a, b, c)

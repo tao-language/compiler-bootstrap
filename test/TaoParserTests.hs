@@ -165,12 +165,12 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseDefinition" $ do
     let p = parse' parseDefinition
-    p "x = y" `shouldBe` Right ((var 1 1 "x", var 1 5 "y"), "")
-    p "x = y;" `shouldBe` Right ((var 1 1 "x", var 1 5 "y"), "")
-    p "x = y\n" `shouldBe` Right ((var 1 1 "x", var 1 5 "y"), "")
-    p "x =\ny" `shouldBe` Right ((var 1 1 "x", var 2 1 "y"), "")
-    p "x\n= y" `shouldBe` Right ((var 1 1 "x", var 2 3 "y"), "")
-    p "x : a = y" `shouldBe` Right ((meta [loc 1 3] $ Ann (var 1 1 "x") (var 1 5 "a"), var 1 9 "y"), "")
+    p "x = y" `shouldBe` Right ((DefName "x" Any, [], var 1 5 "y"), "")
+    p "x = y;" `shouldBe` Right ((DefName "x" Any, [], var 1 5 "y"), "")
+    p "x = y\n" `shouldBe` Right ((DefName "x" Any, [], var 1 5 "y"), "")
+    p "x =\ny" `shouldBe` Right ((DefName "x" Any, [], var 2 1 "y"), "")
+    p "x\n= y" `shouldBe` Right ((DefName "x" Any, [], var 2 3 "y"), "")
+    p "x : a = y" `shouldBe` Right ((DefName "x" (var 1 5 "a"), [], var 1 9 "y"), "")
 
   it "☯ parseTypeAnnotation" $ do
     let p = parse' parseTypeAnnotation
@@ -195,8 +195,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseStmt" $ do
     let p = parse' parseStmt
-    p "x = y" `shouldBe` Right (Def (var 1 1 "x") (var 1 5 "y"), "")
-    p "x : a" `shouldBe` Right (TypeAnn "x" (var 1 5 "a"), "")
+    p "x = y" `shouldBe` Right (Def (DefName "x" Any) [] (var 1 5 "y"), "")
     p "import mod" `shouldBe` Right (Import "mod" "mod" [], "")
     p "> x; y" `shouldBe` Right (Test (var 1 3 "x") (var 1 6 "y"), "")
 

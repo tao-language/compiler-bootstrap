@@ -217,23 +217,39 @@ parseRecord = do
 parseStmt :: Parser Stmt
 parseStmt =
   P.oneOf
-    [ fmap (uncurry Def) parseDefinition,
-      fmap (uncurry TypeAnn) parseTypeAnnotation,
+    [ fmap (\(def, args, value) -> Def def args value) parseDefinition,
       parseImport,
       parseTest,
       fmap (uncurry Comment) parseComment
     ]
 
-parseDefinition :: Parser (Expr, Expr)
+parseDefinition :: Parser (Definition, [Expr], Expr)
 parseDefinition = do
-  pattern' <- parseExpr P.spaces
+  ts <- P.zeroOrMore parseTypeAnnotation
+  def <- do
+    name <- parseIdentifier
+    _ <- P.whitespaces
+    case name of
+      x | startsWithUpper x -> return (DefUnpack x ts)
+      x -> case lookup x ts of
+        Just t -> return (DefName x t)
+        Nothing ->
+          P.oneOf
+            [ do
+                _ <- P.char ':'
+                _ <- P.spaces
+                t <- parseExpr P.spaces
+                return (DefName x t),
+              return (DefName x Any)
+            ]
+  args <- P.zeroOrMore parseExprAtom
   _ <- P.whitespaces
   _ <- P.char '='
   P.commit CDefinition
   _ <- P.whitespaces
   value <- parseExpr P.spaces
   _ <- parseLineBreak
-  return (pattern', value)
+  return (def, args, value)
 
 parseTypeAnnotation :: Parser (String, Expr)
 parseTypeAnnotation = do

@@ -254,18 +254,17 @@ data PyCtx = PyCtx
   }
   deriving (Eq, Show)
 
-build :: Module -> [PyModule]
+build :: Module -> IO String
 build mod = error "TODO: build"
 
 buildFile :: File -> PyModule
 buildFile file = error "TODO: buildFile"
 
 buildStmt :: PyCtx -> Stmt -> PyCtx
-buildStmt ctx (Def p a) = do
+buildStmt ctx (Def (DefName x type') args a) = do
   let (ctx', a') = buildExpr ctx a
-  case p of
-    Var x -> ctx' {locals = PyAssign [PyName x] a' : ctx.locals}
-    p -> error $ "TODO: buildStmt " ++ show p
+  case (asFun type', args) of
+    (([], Any), []) -> ctx' {locals = PyAssign [PyName x] a' : ctx.locals}
 -- TypeAnn String Expr
 -- Import String String [String] -- import module as alias (a, b, c)
 -- Test Expr Expr

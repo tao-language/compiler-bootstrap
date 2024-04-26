@@ -23,7 +23,7 @@ data Expr
   | Type [String]
   | Fun Expr Expr
   | App Expr Expr
-  | Let (Expr, Expr) Expr
+  | Let Definition Expr
   | Bind (Expr, Expr) Expr
   | TypeDef String [Expr] Expr
   | MatchFun [Expr]
@@ -36,9 +36,14 @@ data Expr
   | Err
   deriving (Eq, Show)
 
+data Definition
+  = DefName String Expr
+  | DefUnpack String [(String, Expr)]
+  | DefTrait (Expr, Expr) String
+  deriving (Eq, Show)
+
 data Stmt
-  = Def Expr Expr
-  | TypeAnn String Expr
+  = Def Definition [Expr] Expr
   | Import String String [String] -- import module as alias (a, b, c)
   | Test Expr Expr
   | DocString [C.Metadata] String
@@ -64,6 +69,10 @@ or' (a : bs) = Or a (or' bs)
 
 fun :: [Expr] -> Expr -> Expr
 fun ps b = foldr Fun b ps
+
+asFun :: Expr -> ([Expr], Expr)
+asFun (Fun p a) = let (ps, b) = asFun a in (p : ps, b)
+asFun a = ([], a)
 
 app :: Expr -> [Expr] -> Expr
 app = foldl App
@@ -129,7 +138,7 @@ lowerExpr _ TextNil = C.Tag "\"\""
 lowerExpr _ TextCons = C.Tag "\"..\""
 lowerExpr defs (Fun a b) = C.Fun (lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (App a b) = C.App (lowerExpr defs a) (lowerExpr defs b)
-lowerExpr defs (Let (p, a) b) = C.let' (lowerExpr defs p, lowerExpr defs a) (lowerExpr defs b)
+-- lowerExpr defs (Let (p, a) b) = C.let' (lowerExpr defs p, lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (Bind (p, a) b) = lowerExpr defs (App (Trait a "<-") (Fun p b))
 -- TODO: TypeDef
 lowerExpr defs (MatchFun cases) = lowerExpr defs (or' cases)
@@ -165,7 +174,7 @@ liftExpr (C.App a b) = case asApp (App (liftExpr a) (liftExpr b)) of
   (Tag k args, args') -> Tag k (args ++ args')
   (Tuple args, args') -> Tuple (args ++ args')
   (Var ('.' : x), _ : a : args) -> app (Trait a x) args
-  (Fun p a, [b]) -> Let (p, b) a
+  -- (Fun p a, [b]) -> Let (p, b) a
   (Trait a "<-", [Fun p b]) -> Bind (p, a) b
   (a, args) -> app a args
 liftExpr (C.Or a b) = Or (liftExpr a) (liftExpr b)
@@ -188,15 +197,16 @@ liftModule :: String -> C.Env -> Module
 liftModule name _ = error "TODO: liftModule"
 
 stmtDefs :: Stmt -> [(String, Expr)]
-stmtDefs (Def (Var x) b) = [(x, b)]
-stmtDefs (Def (Trait (Ann a t) x) b) = [('.' : x, fun [t, a] b)]
-stmtDefs (Def (Trait a x) b) = stmtDefs (Def (Trait (Ann a Any) x) b)
-stmtDefs (Def (App a1 a2) b) = stmtDefs (Def a1 (Fun a2 b))
-stmtDefs (Def (Ann a t) b) = stmtDefs (Def a (Ann b t))
-stmtDefs (Def Op1 {} _) = []
-stmtDefs (Def Op2 {} _) = []
-stmtDefs (Def (Meta m a) b) = stmtDefs (Def a (Meta m b))
-stmtDefs (Def p b) = map (\x -> (x, Match [b] [Fun p (Var x)])) (freeVars p)
+stmtDefs (Def (DefUnpack k ts) args b) = do
+  let def x = Match [b] [Fun (Tag k args) (Var x)]
+  let typedDef x = case lookup x ts of
+        Just t -> (x, Ann (def x) t)
+        Nothing -> (x, def x)
+  map typedDef (freeVars (Tuple args))
+stmtDefs (Def def (a : args) b) = stmtDefs (Def def args (Fun a b))
+stmtDefs (Def (DefName x Any) [] b) = [(x, b)]
+stmtDefs (Def (DefName x t) [] b) = [(x, Ann b t)]
+stmtDefs (Def (DefTrait (t, a) x) [] b) = [('.' : x, fun [t, a] b)]
 stmtDefs _ = []
 
 fileDefs :: File -> [(String, Expr)]
