@@ -249,16 +249,18 @@ data PyTarget = PyTarget
   deriving (Eq, Show)
 
 data PyCtx = PyCtx
-  { globals :: [PyStmt],
-    locals :: [PyStmt]
+  { imports :: [(String, String)],
+    globals :: [PyStmt],
+    locals :: [PyStmt],
+    nameIndex :: Int
   }
   deriving (Eq, Show)
 
-build :: Module -> IO String
-build mod = error "TODO: build"
+build :: Package -> IO String
+build pkg = error "TODO: build"
 
-buildFile :: File -> PyModule
-buildFile file = error "TODO: buildFile"
+buildModule :: Module -> PyModule
+buildModule mod = error "TODO: buildFile"
 
 buildStmt :: PyCtx -> Stmt -> PyCtx
 buildStmt ctx (Def (DefName x type') args a) = do

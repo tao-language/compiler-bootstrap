@@ -7,12 +7,12 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Python ☯==--" $ do
+  let ctx = PyCtx {imports = [], globals = [], locals = [], nameIndex = 0}
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (x', y', z') = (PyName "x", PyName "y", PyName "z")
   let (a', b') = (PyName "a", PyName "b")
 
   it "☯ buildExpr" $ do
-    let ctx = PyCtx {globals = [], locals = []}
     buildExpr ctx Any `shouldBe` (ctx, PyName "_")
     buildExpr ctx IntType `shouldBe` (ctx, PyName "int")
     buildExpr ctx NumType `shouldBe` (ctx, PyName "float")
@@ -49,7 +49,6 @@ run = describe "--==☯ Python ☯==--" $ do
     True `shouldBe` True
 
   it "☯ buildStmt" $ do
-    let ctx = PyCtx {globals = [], locals = []}
     buildStmt ctx (Def (DefName "x" Any) [] y) `shouldBe` ctx {locals = [PyAssign [x'] y']}
     -- Def Expr Expr
     -- TypeAnn String Expr

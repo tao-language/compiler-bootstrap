@@ -199,17 +199,17 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "import mod" `shouldBe` Right (Import "mod" "mod" [], "")
     p "> x; y" `shouldBe` Right (Test (var 1 3 "x") (var 1 6 "y"), "")
 
-  it "☯ parseFile" $ do
-    let p = parse' (parseFile "my-file.tao")
-    p "" `shouldBe` Right (File "my-file.tao" [], "")
-    p "x" `shouldBe` Left ([CFile], "x")
-    p "import m" `shouldBe` Right (File "my-file.tao" [Import "m" "m" []], "")
+  it "☯ parseModule" $ do
+    let p = parse' (parseModule "my-file.tao")
+    p "" `shouldBe` Right (Module "my-file.tao" [], "")
+    p "x" `shouldBe` Left ([CModule], "x")
+    p "import m" `shouldBe` Right (Module "my-file.tao" [Import "m" "m" []], "")
 
-  it "☯ parseModule'" $ do
+  it "☯ parsePackage'" $ do
     -- Skip modules that are already in the package.
-    let mod = Module {name = "mod", files = [File "my-file" []]}
-    parseModule "my-file" mod `shouldReturn` mod
+    let pkg = Package {name = "pkg", modules = [Module "my-file" []]}
+    parsePackage "my-file" pkg `shouldReturn` pkg
 
     -- Parse new modules.
-    let mod = Module {name = "mod", files = []}
-    parseModule "examples/empty.tao" mod `shouldReturn` mod {files = [File "examples/empty.tao" []]}
+    let pkg = Package {name = "pkg", modules = []}
+    parsePackage "examples/empty.tao" pkg `shouldReturn` pkg {modules = [Module "examples/empty.tao" []]}

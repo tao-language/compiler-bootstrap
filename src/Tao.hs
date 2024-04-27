@@ -44,21 +44,21 @@ data Definition
 
 data Stmt
   = Def Definition [Expr] Expr
-  | Import String String [String] -- import module as alias (a, b, c)
+  | Import String String [String] -- import package as alias (a, b, c)
   | Test Expr Expr
   | DocString [C.Metadata] String
   | Comment [C.Metadata] String
   deriving (Eq, Show)
 
-data File = File
+data Module = Module
   { name :: String,
     stmts :: [Stmt]
   }
   deriving (Eq, Show)
 
-data Module = Module
+data Package = Package
   { name :: String,
-    files :: [File]
+    modules :: [Module]
   }
   deriving (Eq, Show)
 
@@ -190,11 +190,11 @@ lowerDefs defs = map (second (lowerExpr defs)) defs
 liftDefs :: C.Env -> [(String, Expr)]
 liftDefs env = error "TODO: liftDefs"
 
-lowerModule :: Module -> C.Env
-lowerModule mod = lowerDefs (moduleDefs mod)
+lowerPackage :: Package -> C.Env
+lowerPackage pkg = lowerDefs (packageDefs pkg)
 
-liftModule :: String -> C.Env -> Module
-liftModule name _ = error "TODO: liftModule"
+liftPackage :: String -> C.Env -> Package
+liftPackage name _ = error "TODO: liftPackage"
 
 stmtDefs :: Stmt -> [(String, Expr)]
 stmtDefs (Def (DefUnpack k ts) args b) = do
@@ -209,26 +209,26 @@ stmtDefs (Def (DefName x t) [] b) = [(x, Ann b t)]
 stmtDefs (Def (DefTrait (t, a) x) [] b) = [('.' : x, fun [t, a] b)]
 stmtDefs _ = []
 
-fileDefs :: File -> [(String, Expr)]
-fileDefs file = concatMap stmtDefs file.stmts
-
 moduleDefs :: Module -> [(String, Expr)]
-moduleDefs mod = concatMap fileDefs mod.files
+moduleDefs mod = concatMap stmtDefs mod.stmts
+
+packageDefs :: Package -> [(String, Expr)]
+packageDefs pkg = concatMap moduleDefs pkg.modules
 
 stmtTests :: Stmt -> [(Expr, Expr)]
 stmtTests (Test a b) = [(a, b)]
 stmtTests _ = []
 
-fileTests :: File -> [(Expr, Expr)]
-fileTests file = concatMap stmtTests file.stmts
-
 moduleTests :: Module -> [(Expr, Expr)]
-moduleTests mod = concatMap fileTests mod.files
+moduleTests mod = concatMap stmtTests mod.stmts
 
-run :: Module -> Expr -> Expr
-run mod expr = do
-  let env = lowerModule mod
-  let term = lowerExpr (moduleDefs mod) expr
+packageTests :: Package -> [(Expr, Expr)]
+packageTests pkg = concatMap moduleTests pkg.modules
+
+run :: Package -> Expr -> Expr
+run pkg expr = do
+  let env = lowerPackage pkg
+  let term = lowerExpr (packageDefs pkg) expr
   liftExpr (C.eval env term)
 
 data TestError
@@ -244,7 +244,7 @@ testEq defs (expr, result) = do
     C.Err -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
     _ -> []
 
-test :: Module -> [TestError]
-test mod = do
-  let defs = moduleDefs mod
-  concatMap (testEq defs) (moduleTests mod)
+test :: Package -> [TestError]
+test pkg = do
+  let defs = packageDefs pkg
+  concatMap (testEq defs) (packageTests pkg)

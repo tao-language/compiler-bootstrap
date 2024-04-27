@@ -8,8 +8,8 @@ import Test.Hspec
 
 test' :: String -> IO [TestError]
 test' name = do
-  mod <- parseModule name (Module {name = name, files = []})
-  return (test mod)
+  pkg <- parsePackage name (Package {name = name, modules = []})
+  return (test pkg)
 
 run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do

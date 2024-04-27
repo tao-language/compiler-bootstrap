@@ -242,10 +242,10 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     -- stmtDefs (Def Err y) `shouldBe` []
     True `shouldBe` True
 
-  -- it "☯ lowerModule" $ do
-  --   let mod defs = Module {name = "lowerModule", files = [File "f" defs]}
-  --   lowerModule (mod []) `shouldBe` []
-  --   lowerModule (mod [Def (DefName "x" [] y)]) `shouldBe` [("x", y')]
+  -- it "☯ lowerPackage" $ do
+  --   let mod defs = Package {name = "lowerPackage", modules = [Module "f" defs]}
+  --   lowerPackage (mod []) `shouldBe` []
+  --   lowerPackage (mod [Def (DefName "x" [] y)]) `shouldBe` [("x", y')]
 
   -- it "☯ run" $ do
   --   let defs =
@@ -253,7 +253,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --           Def (DefTrait (Ann Any IntType) "y" [] (Num 3.14)),
   --           Def (DefName "f" [Int 1] (Int 2))
   --         ]
-  --   let mod = Module {name = "run", files = [File "f" defs]}
+  --   let mod = Package {name = "run", modules = [Module "f" defs]}
 
   --   run mod Any `shouldBe` Any
   --   run mod (Type ["A"]) `shouldBe` Type ["A"]
@@ -294,5 +294,5 @@ run = describe "--==☯ TaoTests ☯==--" $ do
             Test x y,
             Def (DefName "y" Any) [] (Int 2)
           ]
-    let mod = Module {name = "test", files = [File "f" defs]}
+    let mod = Package {name = "test", modules = [Module "f" defs]}
     test mod `shouldBe` [TestEqError x (Int 1) (Int 2)]

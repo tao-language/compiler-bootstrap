@@ -12,7 +12,7 @@ import Tao
 type Parser a = P.Parser ParserContext a
 
 data ParserContext
-  = CFile
+  = CModule
   | CDefinition
   | CImport
   | CTest
@@ -309,23 +309,22 @@ parseTest = do
       ]
   return (Test expr result)
 
--- File
-parseFile :: String -> Parser File
-parseFile name = do
-  P.commit CFile
+parseModule :: String -> Parser Module
+parseModule name = do
+  P.commit CModule
   stmts <- P.zeroOrMore parseStmt
   _ <- P.whitespaces
   _ <- P.endOfFile
-  return (File name stmts)
+  return (Module name stmts)
 
-parseModule :: String -> Module -> IO Module
-parseModule filename mod | filename `elem` map (\f -> f.name) mod.files = return mod
-parseModule filename mod = do
+parsePackage :: String -> Package -> IO Package
+parsePackage filename pkg | filename `elem` map (\f -> f.name) pkg.modules = return pkg
+parsePackage filename pkg = do
   src <- readFile filename
-  case P.parse filename (parseFile filename) src of
+  case P.parse filename (parseModule filename) src of
     Right (f, _) -> do
       -- TODO: evaluate the module statements
-      return (mod {files = f : mod.files})
+      return (pkg {modules = f : pkg.modules})
     Left P.State {name, pos = (row, col), context} -> do
       let loc = intercalate ":" [name, show row, show col]
       putStrLn loc
