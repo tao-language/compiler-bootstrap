@@ -249,8 +249,7 @@ data PyTarget = PyTarget
   deriving (Eq, Show)
 
 data PyCtx = PyCtx
-  { imports :: [(String, String)],
-    globals :: [PyStmt],
+  { globals :: [PyStmt],
     locals :: [PyStmt],
     nameIndex :: Int
   }
@@ -260,19 +259,57 @@ build :: Package -> IO String
 build pkg = error "TODO: build"
 
 buildModule :: Module -> PyModule
-buildModule mod = error "TODO: buildFile"
+buildModule mod = do
+  let initialCtx = PyCtx {globals = [], locals = [], nameIndex = 0}
+  let ctx = foldr buildStmt initialCtx mod.stmts
+  PyModule {name = mod.name, body = ctx.globals ++ ctx.locals}
 
-buildStmt :: PyCtx -> Stmt -> PyCtx
-buildStmt ctx (Def (DefName x type') args a) = do
+addGlobal :: PyStmt -> PyCtx -> PyCtx
+addGlobal stmt ctx = ctx {globals = ctx.globals ++ [stmt]}
+
+addLocal :: PyStmt -> PyCtx -> PyCtx
+addLocal stmt ctx = ctx {locals = ctx.locals ++ [stmt]}
+
+stmtNames :: PyStmt -> [String]
+stmtNames (PyAssign [] _) = []
+stmtNames (PyAssign (var : vars) value) = case var of
+  PyName x -> x : stmtNames (PyAssign vars value)
+  _ -> stmtNames (PyAssign vars value)
+stmtNames (PyAnnAssign var _ _) = case var of
+  PyName x -> [x]
+  _ -> []
+stmtNames (PyTypeAlias x _ _) = [x]
+stmtNames (PyImport name maybeAlias) = case maybeAlias of
+  Just alias -> [alias]
+  Nothing -> [name]
+stmtNames (PyImportFrom _ exposed) = do
+  let exposedNames (_, Just alias) = [alias]
+      exposedNames (name, Nothing) = [name]
+  concatMap exposedNames exposed
+stmtNames (PyGlobal names) = names
+stmtNames (PyNonlocal names) = names
+stmtNames (PyFunctionDef {name}) = [name]
+stmtNames (PyClassDef {name}) = [name]
+stmtNames _ = []
+
+ctxNames :: PyCtx -> [String]
+ctxNames ctx = concatMap stmtNames (ctx.globals ++ ctx.locals)
+
+newName :: PyCtx -> (String, PyCtx)
+newName ctx = do
+  case ('_' : show ctx.nameIndex, ctx {nameIndex = ctx.nameIndex + 1}) of
+    (name, ctx') | name `elem` ctxNames ctx -> newName ctx'
+    (name, ctx') -> (name, ctx')
+
+buildStmt :: Stmt -> PyCtx -> PyCtx
+buildStmt (Def (DefName x type') args a) ctx = do
   let (ctx', a') = buildExpr ctx a
   case (asFun type', args) of
     (([], Any), []) -> ctx' {locals = PyAssign [PyName x] a' : ctx.locals}
 -- TypeAnn String Expr
 -- Import String String [String] -- import module as alias (a, b, c)
 -- Test Expr Expr
--- DocString [C.Metadata] String
--- Comment [C.Metadata] String
-buildStmt ctx stmt = error "TODO: buildStmt"
+buildStmt stmt ctx = error "TODO: buildStmt"
 
 buildExpr :: PyCtx -> Expr -> (PyCtx, PyExpr)
 buildExpr ctx Any = (ctx, PyName "_")

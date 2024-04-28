@@ -7,7 +7,7 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Python ☯==--" $ do
-  let ctx = PyCtx {imports = [], globals = [], locals = [], nameIndex = 0}
+  let ctx = PyCtx {globals = [], locals = [], nameIndex = 0}
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (x', y', z') = (PyName "x", PyName "y", PyName "z")
   let (a', b') = (PyName "a", PyName "b")
@@ -49,7 +49,7 @@ run = describe "--==☯ Python ☯==--" $ do
     True `shouldBe` True
 
   it "☯ buildStmt" $ do
-    buildStmt ctx (Def (DefName "x" Any) [] y) `shouldBe` ctx {locals = [PyAssign [x'] y']}
+    buildStmt (Def (DefName "x" Any) [] y) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}
     -- Def Expr Expr
     -- TypeAnn String Expr
     -- Import String String [String] -- import module as alias (a, b, c)
@@ -57,6 +57,17 @@ run = describe "--==☯ Python ☯==--" $ do
     -- DocString [C.Metadata] String
     -- Comment [C.Metadata] String
     True `shouldBe` True
+
+  it "☯ buildModule" $ do
+    let stmts =
+          [ Def (DefName "x" Any) [] (Int 1),
+            Def (DefName "y" Any) [] (Int 2)
+          ]
+    let pyStmts =
+          [ PyAssign [x'] (PyInteger 1),
+            PyAssign [y'] (PyInteger 2)
+          ]
+    buildModule (Module {name = "mod", stmts = stmts}) `shouldBe` PyModule {name = "mod", body = pyStmts}
 
   -- it "☯ emitExpr" $ do
   --   let emitExpr' expr = apply (emitExpr target expr) newContext

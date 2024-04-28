@@ -48,6 +48,7 @@ data UnaryOp
 
 data Metadata
   = Location String (Int, Int)
+  | Comment String
   deriving (Eq, Show)
 
 type Env = [(String, Term)]

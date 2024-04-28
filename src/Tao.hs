@@ -46,8 +46,7 @@ data Stmt
   = Def Definition [Expr] Expr
   | Import String String [String] -- import package as alias (a, b, c)
   | Test Expr Expr
-  | DocString [C.Metadata] String
-  | Comment [C.Metadata] String
+  | MetaStmt C.Metadata Stmt
   deriving (Eq, Show)
 
 data Module = Module
@@ -207,17 +206,19 @@ stmtDefs (Def def (a : args) b) = stmtDefs (Def def args (Fun a b))
 stmtDefs (Def (DefName x Any) [] b) = [(x, b)]
 stmtDefs (Def (DefName x t) [] b) = [(x, Ann b t)]
 stmtDefs (Def (DefTrait (t, a) x) [] b) = [('.' : x, fun [t, a] b)]
+stmtDefs (MetaStmt _ stmt) = stmtDefs stmt
 stmtDefs _ = []
+
+stmtTests :: Stmt -> [(Expr, Expr)]
+stmtTests (Test a b) = [(a, b)]
+stmtTests (MetaStmt _ stmt) = stmtTests stmt
+stmtTests _ = []
 
 moduleDefs :: Module -> [(String, Expr)]
 moduleDefs mod = concatMap stmtDefs mod.stmts
 
 packageDefs :: Package -> [(String, Expr)]
 packageDefs pkg = concatMap moduleDefs pkg.modules
-
-stmtTests :: Stmt -> [(Expr, Expr)]
-stmtTests (Test a b) = [(a, b)]
-stmtTests _ = []
 
 moduleTests :: Module -> [(Expr, Expr)]
 moduleTests mod = concatMap stmtTests mod.stmts

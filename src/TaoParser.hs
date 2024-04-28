@@ -45,9 +45,9 @@ parseIdentifier = do
 
 parseLineBreak :: Parser String
 parseLineBreak = do
-  parseComment <- P.oneOf ["" <$ P.endOfLine, "" <$ P.char ';', fmap snd parseCommentSingleLine]
+  comment <- P.oneOf ["" <$ P.endOfLine, "" <$ P.char ';', parseCommentSingleLine]
   _ <- P.whitespaces
-  return parseComment
+  return comment
 
 parseInbetween :: String -> String -> Parser a -> Parser a
 parseInbetween open close parser = do
@@ -71,27 +71,25 @@ parseDelimited delim parser = do
   return (x : xs)
 
 -- Concrete Syntax Tree
-parseComment :: Parser ([C.Metadata], String)
+parseComment :: Parser String
 parseComment = P.oneOf [parseCommentMultiLine, parseCommentSingleLine]
 
-parseCommentSingleLine :: Parser ([C.Metadata], String)
+parseCommentSingleLine :: Parser String
 parseCommentSingleLine = do
-  state <- P.getState
   _ <- P.char '#'
   P.commit CComment
   _ <- P.spaces
   line <- P.skipTo P.endOfLine
-  return ([C.Location state.name state.pos], dropWhileEnd isSpace line)
+  return (dropWhileEnd isSpace line)
 
-parseCommentMultiLine :: Parser ([C.Metadata], String)
+parseCommentMultiLine :: Parser String
 parseCommentMultiLine = do
-  state <- P.getState
   delim <- P.chain [P.text "#--", P.zeroOrMore (P.char '-')]
   P.commit CCommentMultiLine
   _ <- P.spaces
   line <- P.skipTo parseLineBreak
   error "TODO: parseCommentMultiLine"
-  return ([C.Location state.name state.pos], dropWhileEnd isSpace line)
+  return (dropWhileEnd isSpace line)
 
 parseDocString :: Parser String -> Parser ([C.Metadata], String)
 parseDocString delimiter = do
@@ -215,13 +213,15 @@ parseRecord = do
 
 -- Statements
 parseStmt :: Parser Stmt
-parseStmt =
-  P.oneOf
-    [ fmap (\(def, args, value) -> Def def args value) parseDefinition,
-      parseImport,
-      parseTest,
-      fmap (uncurry Comment) parseComment
-    ]
+parseStmt = do
+  comments <- P.zeroOrMore parseComment
+  stmt <-
+    P.oneOf
+      [ fmap (\(def, args, value) -> Def def args value) parseDefinition,
+        parseImport,
+        parseTest
+      ]
+  return (foldr (MetaStmt . C.Comment) stmt comments)
 
 parseDefinition :: Parser (Definition, [Expr], Expr)
 parseDefinition = do
@@ -314,6 +314,7 @@ parseModule name = do
   P.commit CModule
   stmts <- P.zeroOrMore parseStmt
   _ <- P.whitespaces
+  comments <- P.zeroOrMore parseComment
   _ <- P.endOfFile
   return (Module name stmts)
 
