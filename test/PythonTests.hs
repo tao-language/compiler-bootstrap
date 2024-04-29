@@ -2,6 +2,7 @@ module PythonTests where
 
 import PrettyPrint (pretty)
 import Python
+import System.FilePath ((</>))
 import Tao
 import Test.Hspec
 
@@ -72,8 +73,10 @@ run = describe "--==☯ Python ☯==--" $ do
     let modules = [Module {name = "mod", stmts = stmts}]
     let pkg = Package {name = "pyPkg", modules = modules}
 
-    build "build" pkg `shouldReturn` "build/python/pyPkg"
-    True `shouldBe` True
+    let buildPath = "build"
+    let pyPkgName = buildPath </> "python/pyPkg"
+    build buildPath pkg `shouldReturn` pyPkgName
+    readFile (pyPkgName </> "mod.py") `shouldReturn` "x = 1"
 
   -- it "☯ emitStmt" $ do
   --   let emitStmt' stmt stmts = fst $ apply (emitStmt target stmt stmts) newContext
