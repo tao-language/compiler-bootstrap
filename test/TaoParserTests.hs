@@ -184,7 +184,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "import dir/to/mod" `shouldBe` Right (Import "dir/to/mod" "dir/to/mod" [], "")
     p "import mod as m" `shouldBe` Right (Import "mod" "m" [], "")
     p "import mod as m ()" `shouldBe` Right (Import "mod" "m" [], "")
-    p "import mod as m (a, b)" `shouldBe` Right (Import "mod" "m" ["a", "b"], "")
+    p "import mod as m (a, b as c)" `shouldBe` Right (Import "mod" "m" [("a", "a"), ("b", "c")], "")
 
   it "☯ parseTest" $ do
     let p = parse' parseTest

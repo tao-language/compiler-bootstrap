@@ -43,8 +43,8 @@ data Definition
   deriving (Eq, Show)
 
 data Stmt
-  = Def Definition [Expr] Expr
-  | Import String String [String] -- import package as alias (a, b, c)
+  = Import String String [(String, String)] -- import package as alias (a, b, c)
+  | Def Definition [Expr] Expr
   | Test Expr Expr
   | MetaStmt C.Metadata Stmt
   deriving (Eq, Show)

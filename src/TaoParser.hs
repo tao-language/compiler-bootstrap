@@ -281,7 +281,18 @@ parseImport = do
       ]
   exposing <-
     P.oneOf
-      [ parseCollection "(" "," ")" parseIdentifier,
+      [ do
+          let parseExpose = do
+                name <- parseIdentifier
+                P.oneOf
+                  [ do
+                      _ <- P.word "as"
+                      _ <- P.spaces
+                      alias <- parseIdentifier
+                      return (name, alias),
+                    return (name, name)
+                  ]
+          parseCollection "(" "," ")" parseExpose,
         return []
       ]
   _ <- parseLineBreak

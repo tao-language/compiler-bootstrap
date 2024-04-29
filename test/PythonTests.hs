@@ -48,15 +48,13 @@ run = describe "--==☯ Python ☯==--" $ do
     -- Err
     True `shouldBe` True
 
-  it "☯ buildStmt" $ do
+  it "☯ buildStmt Import" $ do
+    buildStmt (Import "mod" "mod" []) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing]}
+    buildStmt (Import "mod" "alias" []) ctx `shouldBe` ctx {globals = [PyImport "mod" (Just "alias")]}
+    buildStmt (Import "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing, PyImportFrom "mod" [("a", Nothing), ("b", Just "c")]]}
+
+  it "☯ buildStmt Def" $ do
     buildStmt (Def (DefName "x" Any) [] y) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}
-    -- Def Expr Expr
-    -- TypeAnn String Expr
-    -- Import String String [String] -- import module as alias (a, b, c)
-    -- Test Expr Expr
-    -- DocString [C.Metadata] String
-    -- Comment [C.Metadata] String
-    True `shouldBe` True
 
   it "☯ buildModule" $ do
     let stmts =
@@ -68,12 +66,6 @@ run = describe "--==☯ Python ☯==--" $ do
             PyAssign [y'] (PyInteger 2)
           ]
     buildModule (Module {name = "mod", stmts = stmts}) `shouldBe` PyModule {name = "mod", body = pyStmts}
-
-  -- it "☯ emitExpr" $ do
-  --   let emitExpr' expr = apply (emitExpr target expr) newContext
-  --   emitExpr' (Int 0) `shouldBe` (Integer 0, newContext)
-  --   emitExpr' (Tag "True") `shouldBe` (Bool True, newContext)
-  --   emitExpr' (Var "pi") `shouldBe` (Attribute (Name "math") "pi", newContext {globals = [import' "math"]})
 
   -- it "☯ emitStmt" $ do
   --   let emitStmt' stmt stmts = fst $ apply (emitStmt target stmt stmts) newContext

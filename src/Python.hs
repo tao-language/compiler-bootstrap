@@ -3,6 +3,7 @@ module Python where
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (first))
 import Data.Foldable (foldlM, foldrM)
+import Data.Function ((&))
 import Data.List (intercalate, union)
 import PrettyPrint (Layout)
 import qualified PrettyPrint as PP
@@ -265,6 +266,10 @@ buildModule mod = do
   PyModule {name = mod.name, body = ctx.globals ++ ctx.locals}
 
 addGlobal :: PyStmt -> PyCtx -> PyCtx
+addGlobal stmt@PyImport {} ctx | stmt `elem` ctx.globals = ctx
+addGlobal stmt@PyImport {} ctx = ctx {globals = stmt : ctx.globals}
+addGlobal stmt@PyImportFrom {} ctx | stmt `elem` ctx.globals = ctx
+addGlobal stmt@PyImportFrom {} ctx = ctx {globals = stmt : ctx.globals}
 addGlobal stmt ctx = ctx {globals = ctx.globals ++ [stmt]}
 
 addLocal :: PyStmt -> PyCtx -> PyCtx
@@ -302,13 +307,24 @@ newName ctx = do
     (name, ctx') -> (name, ctx')
 
 buildStmt :: Stmt -> PyCtx -> PyCtx
+buildStmt (Import name alias exposed) ctx = case exposed of
+  [] | name == alias -> addGlobal (PyImport name Nothing) ctx
+  [] -> addGlobal (PyImport name (Just alias)) ctx
+  exposed -> do
+    let pyExpose (name, alias) | name == alias = (name, Nothing)
+        pyExpose (name, alias) = (name, Just alias)
+    ctx
+      & addGlobal (PyImportFrom name (map pyExpose exposed))
+      & buildStmt (Import name alias [])
 buildStmt (Def (DefName x type') args a) ctx = do
   let (ctx', a') = buildExpr ctx a
   case (asFun type', args) of
     (([], Any), []) -> ctx' {locals = PyAssign [PyName x] a' : ctx.locals}
--- TypeAnn String Expr
--- Import String String [String] -- import module as alias (a, b, c)
+-- Def (DefName String Expr)
+-- Def (DefUnpack String [(String, Expr)])
+-- Def (DefTrait (Expr, Expr) String)
 -- Test Expr Expr
+-- MetaStmt C.Metadata Stmt
 buildStmt stmt ctx = error "TODO: buildStmt"
 
 buildExpr :: PyCtx -> Expr -> (PyCtx, PyExpr)
