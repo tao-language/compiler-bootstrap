@@ -6,3 +6,6 @@
 *.cabal
 *~
 stack.yaml.lock
+
+# Tao builds
+build/

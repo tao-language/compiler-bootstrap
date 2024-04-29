@@ -1,5 +1,6 @@
 module Python where
 
+import Control.Monad (when)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (first))
 import Data.Foldable (foldlM, foldrM)
@@ -7,6 +8,8 @@ import Data.Function ((&))
 import Data.List (intercalate, union)
 import PrettyPrint (Layout)
 import qualified PrettyPrint as PP
+import System.Directory (createDirectory, doesPathExist, removeDirectoryRecursive)
+import System.FilePath ((</>))
 import Tao
 
 -- TODO: abstract into an `Imperative` language
@@ -256,15 +259,6 @@ data PyCtx = PyCtx
   }
   deriving (Eq, Show)
 
-build :: Package -> IO String
-build pkg = error "TODO: build"
-
-buildModule :: Module -> PyModule
-buildModule mod = do
-  let initialCtx = PyCtx {globals = [], locals = [], nameIndex = 0}
-  let ctx = foldr buildStmt initialCtx mod.stmts
-  PyModule {name = mod.name, body = ctx.globals ++ ctx.locals}
-
 addGlobal :: PyStmt -> PyCtx -> PyCtx
 addGlobal stmt ctx = ctx {globals = ctx.globals ++ [stmt]}
 
@@ -302,18 +296,41 @@ newName ctx = do
     (name, ctx') | name `elem` ctxNames ctx -> newName ctx'
     (name, ctx') -> (name, ctx')
 
-buildStmt :: Stmt -> PyCtx -> PyCtx
-buildStmt (Import name alias exposed) ctx = case exposed of
+build :: String -> Package -> IO String
+build outputPath pkg = do
+  let buildPath = outputPath </> "python" </> pkg.name
+  exists <- doesPathExist buildPath
+  when exists (removeDirectoryRecursive buildPath)
+  createDirectory buildPath
+  files <- mapM (buildModule buildPath) pkg.modules
+  return buildPath
+
+buildModule :: String -> Module -> IO String
+buildModule outputPath mod = do
+  let filePath = outputPath </> mod.name ++ ".py"
+  let layout = layoutModule (pyModule mod)
+  let contents = PP.pretty 80 "    " layout
+  writeFile filePath contents
+  return filePath
+
+pyModule :: Module -> PyModule
+pyModule mod = do
+  let initialCtx = PyCtx {globals = [], locals = [], nameIndex = 0}
+  let ctx = foldr pyStmt initialCtx mod.stmts
+  PyModule {name = mod.name, body = ctx.globals ++ ctx.locals}
+
+pyStmt :: Stmt -> PyCtx -> PyCtx
+pyStmt (Import name alias exposed) ctx = case exposed of
   [] | name == alias -> addGlobal (PyImport name Nothing) ctx
   [] -> addGlobal (PyImport name (Just alias)) ctx
   exposed -> do
     let pyExpose (name, alias) | name == alias = (name, Nothing)
         pyExpose (name, alias) = (name, Just alias)
     ctx
-      & buildStmt (Import name alias [])
+      & pyStmt (Import name alias [])
       & addGlobal (PyImportFrom name (map pyExpose exposed))
-buildStmt (Def (DefName x type') args a) ctx = do
-  let (ctx', a') = buildExpr ctx a
+pyStmt (Def (DefName x type') args a) ctx = do
+  let (ctx', a') = pyExpr ctx a
   case (asFun type', args) of
     (([], Any), []) -> ctx' {locals = PyAssign [PyName x] a' : ctx.locals}
 -- Def (DefName String Expr)
@@ -321,48 +338,48 @@ buildStmt (Def (DefName x type') args a) ctx = do
 -- Def (DefTrait (Expr, Expr) String)
 -- Test Expr Expr
 -- MetaStmt C.Metadata Stmt
-buildStmt stmt ctx = error "TODO: buildStmt"
+pyStmt stmt ctx = error "TODO: pyStmt"
 
-buildExpr :: PyCtx -> Expr -> (PyCtx, PyExpr)
-buildExpr ctx Any = (ctx, PyName "_")
-buildExpr ctx IntType = (ctx, PyName "int")
-buildExpr ctx NumType = (ctx, PyName "float")
-buildExpr ctx (Int i) = (ctx, PyInteger i)
-buildExpr ctx (Num n) = (ctx, PyFloat n)
-buildExpr ctx (Var x) = (ctx, PyName x)
-buildExpr ctx (Tag k args) = do
-  let (ctx', args') = buildExprAll ctx args
+pyExpr :: PyCtx -> Expr -> (PyCtx, PyExpr)
+pyExpr ctx Any = (ctx, PyName "_")
+pyExpr ctx IntType = (ctx, PyName "int")
+pyExpr ctx NumType = (ctx, PyName "float")
+pyExpr ctx (Int i) = (ctx, PyInteger i)
+pyExpr ctx (Num n) = (ctx, PyFloat n)
+pyExpr ctx (Var x) = (ctx, PyName x)
+pyExpr ctx (Tag k args) = do
+  let (ctx', args') = pyExprAll ctx args
   (ctx', pyCall (PyName k) args')
-buildExpr ctx (Tuple items) = do
-  let (ctx', items') = buildExprAll ctx items
+pyExpr ctx (Tuple items) = do
+  let (ctx', items') = pyExprAll ctx items
   (ctx', PyTuple items')
--- buildExpr ctx (Record [(String, Expr)]) = _
--- buildExpr ctx (Trait Expr String) = _
--- buildExpr ctx ListNil = _
--- buildExpr ctx ListCons = _
--- buildExpr ctx TextNil = _
--- buildExpr ctx TextCons = _
--- buildExpr ctx (Type alts) = _
--- buildExpr ctx (Fun Expr Expr) = _
--- buildExpr ctx (App Expr Expr) = _
--- buildExpr ctx (Let (Expr, Expr) Expr) = _
--- buildExpr ctx (Bind (Expr, Expr) Expr) = _
--- buildExpr ctx (TypeDef String [Expr] Expr) = _
--- buildExpr ctx (MatchFun [Expr]) = _
--- buildExpr ctx (Match [Expr] [Expr]) = _
--- buildExpr ctx (Or Expr Expr) = _
--- buildExpr ctx (Ann Expr Expr) = _
--- buildExpr ctx (Op1 C.UnaryOp Expr) = _
--- buildExpr ctx (Op2 C.BinaryOp Expr Expr) = _
--- buildExpr ctx (Meta C.Metadata Expr) = _
--- buildExpr ctx Err = _
-buildExpr ctx expr = error $ "TODO: buildExpr " ++ show expr
+-- pyExpr ctx (Record [(String, Expr)]) = _
+-- pyExpr ctx (Trait Expr String) = _
+-- pyExpr ctx ListNil = _
+-- pyExpr ctx ListCons = _
+-- pyExpr ctx TextNil = _
+-- pyExpr ctx TextCons = _
+-- pyExpr ctx (Type alts) = _
+-- pyExpr ctx (Fun Expr Expr) = _
+-- pyExpr ctx (App Expr Expr) = _
+-- pyExpr ctx (Let (Expr, Expr) Expr) = _
+-- pyExpr ctx (Bind (Expr, Expr) Expr) = _
+-- pyExpr ctx (TypeDef String [Expr] Expr) = _
+-- pyExpr ctx (MatchFun [Expr]) = _
+-- pyExpr ctx (Match [Expr] [Expr]) = _
+-- pyExpr ctx (Or Expr Expr) = _
+-- pyExpr ctx (Ann Expr Expr) = _
+-- pyExpr ctx (Op1 C.UnaryOp Expr) = _
+-- pyExpr ctx (Op2 C.BinaryOp Expr Expr) = _
+-- pyExpr ctx (Meta C.Metadata Expr) = _
+-- pyExpr ctx Err = _
+pyExpr ctx expr = error $ "TODO: pyExpr " ++ show expr
 
-buildExprAll :: PyCtx -> [Expr] -> (PyCtx, [PyExpr])
-buildExprAll ctx [] = (ctx, [])
-buildExprAll ctx (a : bs) = do
-  let (ctx1, a') = buildExpr ctx a
-  let (ctx2, bs') = buildExprAll ctx1 bs
+pyExprAll :: PyCtx -> [Expr] -> (PyCtx, [PyExpr])
+pyExprAll ctx [] = (ctx, [])
+pyExprAll ctx (a : bs) = do
+  let (ctx1, a') = pyExpr ctx a
+  let (ctx2, bs') = pyExprAll ctx1 bs
   (ctx2, a' : bs')
 
 -- emitExpr :: PyTarget -> Expression -> Emit PyExpr
@@ -462,6 +479,8 @@ layoutModule :: PyModule -> PP.Layout
 layoutModule PyModule {body} = PP.join [PP.Text "\n"] (map layoutStmt body)
 
 layoutStmt :: PyStmt -> PP.Layout
+layoutStmt (PyAssign [] y) = layoutExpr y
+layoutStmt (PyAssign (x : xs) y) = layoutExpr x ++ (PP.Text " = " : layoutStmt (PyAssign xs y))
 layoutStmt (PyImport name alias) = case alias of
   Just alias -> [PP.Text $ "import " ++ name ++ " as " ++ alias]
   Nothing -> [PP.Text $ "import " ++ name]
