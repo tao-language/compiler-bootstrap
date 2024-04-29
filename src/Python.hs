@@ -266,10 +266,6 @@ buildModule mod = do
   PyModule {name = mod.name, body = ctx.globals ++ ctx.locals}
 
 addGlobal :: PyStmt -> PyCtx -> PyCtx
-addGlobal stmt@PyImport {} ctx | stmt `elem` ctx.globals = ctx
-addGlobal stmt@PyImport {} ctx = ctx {globals = stmt : ctx.globals}
-addGlobal stmt@PyImportFrom {} ctx | stmt `elem` ctx.globals = ctx
-addGlobal stmt@PyImportFrom {} ctx = ctx {globals = stmt : ctx.globals}
 addGlobal stmt ctx = ctx {globals = ctx.globals ++ [stmt]}
 
 addLocal :: PyStmt -> PyCtx -> PyCtx
@@ -314,8 +310,8 @@ buildStmt (Import name alias exposed) ctx = case exposed of
     let pyExpose (name, alias) | name == alias = (name, Nothing)
         pyExpose (name, alias) = (name, Just alias)
     ctx
-      & addGlobal (PyImportFrom name (map pyExpose exposed))
       & buildStmt (Import name alias [])
+      & addGlobal (PyImportFrom name (map pyExpose exposed))
 buildStmt (Def (DefName x type') args a) ctx = do
   let (ctx', a') = buildExpr ctx a
   case (asFun type', args) of
