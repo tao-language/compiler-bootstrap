@@ -8,7 +8,7 @@ import Test.Hspec
 
 test' :: String -> IO [TestError]
 test' name = do
-  pkg <- parsePackage name (Package {name = name, modules = []})
+  pkg <- parseFile "examples" name (Package {name = name, modules = []})
   return (test pkg)
 
 run :: SpecWith ()
@@ -16,76 +16,76 @@ run = describe "--==☯ Examples ☯==--" $ do
   let loc name pos = Meta (C.Location name pos)
   let (x, y, z) = (Var "x", Var "y", Var "z")
 
-  let name = "examples/empty.tao"
+  let name = "empty.tao"
   it ("☯ " ++ name) $ do
     test' name `shouldReturn` []
 
-  let name = "examples/comments.tao"
+  let name = "comments.tao"
   it ("☯ " ++ name) $ do
-    test' "examples/comments.tao" `shouldReturn` []
+    test' "comments.tao" `shouldReturn` []
 
-  -- let name = "examples/comments-multiline.tao"
+  -- let name = "comments-multiline.tao"
   -- it ("☯ " ++ name) $ do
-  --   test' "examples/comments-multiline.tao" `shouldReturn` []
+  --   test' "comments-multiline.tao" `shouldReturn` []
 
-  let name = "examples/variables.tao"
+  let name = "variables.tao"
   it ("☯ " ++ name) $ do
     test' name `shouldReturn` []
 
-  let name = "examples/variables-typed.tao"
+  let name = "variables-typed.tao"
   it ("☯ " ++ name) $ do
     test' name `shouldReturn` []
 
-  let name = "examples/tests.tao"
+  let name = "tests.tao"
   it ("☯ " ++ name) $ do
-    let name = "examples/tests.tao"
+    let name = "tests.tao"
     test' name `shouldReturn` [TestEqError (loc name (18, 3) x) (Int 42) (Int 0)]
 
-  -- let name = "examples/arithmetic.tao"
+  -- let name = "arithmetic.tao"
   -- it ("☯ " ++ name) $ do
   --   test' name `shouldReturn` []
 
-  -- let name = "examples/arithmetic-sugar.tao"
+  -- let name = "arithmetic-sugar.tao"
   -- it ("☯ " ++ name) $ do
   --   test' name `shouldReturn` []
 
-  -- let name = "examples/arithmetic-division-by-zero.tao"
+  -- let name = "arithmetic-division-by-zero.tao"
   -- it ("☯ " ++ name) $ do
   --   test' name `shouldReturn` []
 
-  -- let name = "examples/comparison.tao"
+  -- let name = "comparison.tao"
   -- it ("☯ " ++ name) $ do
   --   test' name `shouldReturn` []
 
-  -- let name = "examples/functions.tao"
+  -- let name = "functions.tao"
   -- it ("☯ " ++ name) $ do
   --   test' name `shouldReturn` []
 
-  -- let name = "examples/functions-lambda.tao"
+  -- let name = "functions-lambda.tao"
   -- it ("☯ " ++ name) $ do
   --   test' name `shouldReturn` []
 
-  -- let name = "examples/functions-application.tao"
+  -- let name = "functions-application.tao"
   -- it ("☯ " ++ name) $ do
   --   test' name `shouldReturn` []
 
-  -- let name = "examples/pattern-matching.tao"
+  -- let name = "pattern-matching.tao"
   -- it ("☯ " ++ name) $ do
   --   test' name `shouldReturn` []
 
-  -- let name = "examples/union-types.tao"
+  -- let name = "union-types.tao"
   -- it ("☯ " ++ name) $ do
   --   test' name `shouldReturn` []
 
-  -- let name = "examples/tuples.tao"
+  -- let name = "tuples.tao"
   -- it ("☯ " ++ name) $ do
   --   test' name `shouldReturn` []
 
-  -- let name = "examples/records.tao"
+  -- let name = "records.tao"
   -- it ("☯ " ++ name) $ do
   --   test' name `shouldReturn` []
 
-  -- let name = "examples/literals-numbers.tao"
+  -- let name = "literals-numbers.tao"
   -- it ("☯ " ++ name) $ do
   --   test' name `shouldReturn` []
 

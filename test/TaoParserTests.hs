@@ -205,11 +205,12 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "x" `shouldBe` Left ([CModule], "x")
     p "import m" `shouldBe` Right (Module "my-file.tao" [Import "m" "m" []], "")
 
-  it "☯ parsePackage'" $ do
+  it "☯ parsePackage' exists" $ do
     -- Skip modules that are already in the package.
     let pkg = Package {name = "pkg", modules = [Module "my-file" []]}
-    parsePackage "my-file" pkg `shouldReturn` pkg
+    parseFile "base-path" "my-file" pkg `shouldReturn` pkg
 
+  it "☯ parsePackage' load" $ do
     -- Parse new modules.
     let pkg = Package {name = "pkg", modules = []}
-    parsePackage "examples/empty.tao" pkg `shouldReturn` pkg {modules = [Module "examples/empty.tao" []]}
+    parseFile "examples" "empty.tao" pkg `shouldReturn` pkg {modules = [Module "empty" []]}

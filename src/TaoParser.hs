@@ -1,12 +1,14 @@
 module TaoParser where
 
-import Control.Monad (void)
+import Control.Monad (foldM, void)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (isSpace, isUpper)
 import Data.Function ((&))
 import Data.List (dropWhileEnd, intercalate)
 import qualified Parser as P
+import System.Directory (doesDirectoryExist, findFiles, listDirectory)
+import System.FilePath (dropExtension, (</>))
 import Tao
 
 type Parser a = P.Parser ParserContext a
@@ -329,11 +331,12 @@ parseModule name = do
   _ <- P.endOfFile
   return (Module name stmts)
 
-parsePackage :: String -> Package -> IO Package
-parsePackage filename pkg | filename `elem` map (\f -> f.name) pkg.modules = return pkg
-parsePackage filename pkg = do
-  src <- readFile filename
-  case P.parse filename (parseModule filename) src of
+parseFile :: FilePath -> FilePath -> Package -> IO Package
+parseFile _ filename pkg | filename `elem` map (\f -> f.name) pkg.modules = return pkg
+parseFile base filename pkg = do
+  src <- readFile (base </> filename)
+  let name = dropExtension filename
+  case P.parse filename (parseModule name) src of
     Right (f, _) -> do
       -- TODO: evaluate the module statements
       return (pkg {modules = f : pkg.modules})
@@ -342,3 +345,19 @@ parsePackage filename pkg = do
       putStrLn loc
       print context
       error ("🛑 " ++ loc ++ ": syntax error")
+
+parsePackage :: String -> Package -> IO Package
+parsePackage base pkg = do
+  files <- walkDirectory base ""
+  foldM (flip (parseFile base)) pkg files
+
+walkDirectory :: FilePath -> FilePath -> IO [FilePath]
+walkDirectory base path = do
+  let walk path = do
+        isDir <- doesDirectoryExist (base </> path)
+        if isDir
+          then walkDirectory base path
+          else return [path]
+  paths <- listDirectory (base </> path)
+  files <- mapM walk paths
+  return (map (path </>) (concat files))

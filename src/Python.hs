@@ -1,6 +1,6 @@
 module Python where
 
-import Control.Monad (when)
+import Control.Monad (unless, when)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (first))
 import Data.Foldable (foldlM, foldrM)
@@ -8,8 +8,8 @@ import Data.Function ((&))
 import Data.List (intercalate, union)
 import PrettyPrint (Layout)
 import qualified PrettyPrint as PP
-import System.Directory (createDirectory, doesPathExist, removeDirectoryRecursive)
-import System.FilePath ((</>))
+import System.Directory (createDirectory, createDirectoryIfMissing, doesPathExist, removeDirectoryRecursive)
+import System.FilePath (splitPath, takeDirectory, (</>))
 import Tao
 
 -- TODO: abstract into an `Imperative` language
@@ -297,40 +297,72 @@ newName ctx = do
     (name, ctx') -> (name, ctx')
 
 build :: String -> Package -> IO String
-build outputPath pkg = do
-  let buildPath = outputPath </> "python" </> pkg.name
-  exists <- doesPathExist buildPath
-  when exists (removeDirectoryRecursive buildPath)
-  createDirectory buildPath
-  files <- mapM (buildModule buildPath) pkg.modules
-  return buildPath
+build buildPath pkg = do
+  let pkgPath = buildPath </> "python" </> pkg.name
+  let srcPath = pkgPath </> "src"
+  let testsPath = pkgPath </> "tests"
+  let docsPath = pkgPath </> "docs"
+
+  -- Initialize build path
+  pkgPathExists <- doesPathExist pkgPath
+  when pkgPathExists (removeDirectoryRecursive pkgPath)
+  createDirectoryIfMissing True pkgPath
+
+  -- Create source files
+  files <- mapM (buildModule srcPath) pkg.modules
+  -- TODO: add __init__.py files on every subdirectory
+
+  -- TODO: Create tests
+  createDirectory testsPath
+
+  -- TODO: Create docs
+  createDirectory docsPath
+
+  -- TODO: create pyproject.toml
+  -- TODO: create README.md
+  -- TODO: create LICENSE
+
+  return pkgPath
+
+initDir :: String -> [String] -> IO ()
+initDir base dirs = do
+  exists <- doesPathExist base
+  unless exists $ do
+    createDirectory base
+    writeFile (base </> "__init__.py") ""
+    case dirs of
+      [] -> return ()
+      (dir : subdirs) -> initDir (base </> dir) subdirs
 
 buildModule :: String -> Module -> IO String
-buildModule outputPath mod = do
-  let filePath = outputPath </> mod.name ++ ".py"
-  let layout = layoutModule (pyModule mod)
-  let contents = PP.pretty 80 "    " layout
-  writeFile filePath contents
+buildModule buildPath mod = do
+  -- Initialize the file path recursively.
+  let filePath = buildPath </> mod.name ++ ".py"
+  initDir buildPath (splitPath $ takeDirectory mod.name)
+
+  -- Write the source file contents.
+  let layout = layoutModule (emitModule mod)
+  writeFile filePath (PP.pretty 80 "    " layout)
   return filePath
 
-pyModule :: Module -> PyModule
-pyModule mod = do
+emitModule :: Module -> PyModule
+emitModule mod = do
   let initialCtx = PyCtx {globals = [], locals = [], nameIndex = 0}
-  let ctx = foldr pyStmt initialCtx mod.stmts
+  let ctx = foldr emitStmt initialCtx mod.stmts
   PyModule {name = mod.name, body = ctx.globals ++ ctx.locals}
 
-pyStmt :: Stmt -> PyCtx -> PyCtx
-pyStmt (Import name alias exposed) ctx = case exposed of
+emitStmt :: Stmt -> PyCtx -> PyCtx
+emitStmt (Import name alias exposed) ctx = case exposed of
   [] | name == alias -> addGlobal (PyImport name Nothing) ctx
   [] -> addGlobal (PyImport name (Just alias)) ctx
   exposed -> do
     let pyExpose (name, alias) | name == alias = (name, Nothing)
         pyExpose (name, alias) = (name, Just alias)
     ctx
-      & pyStmt (Import name alias [])
+      & emitStmt (Import name alias [])
       & addGlobal (PyImportFrom name (map pyExpose exposed))
-pyStmt (Def (DefName x type') args a) ctx = do
-  let (ctx', a') = pyExpr ctx a
+emitStmt (Def (DefName x type') args a) ctx = do
+  let (ctx', a') = emitExpr ctx a
   case (asFun type', args) of
     (([], Any), []) -> ctx' {locals = PyAssign [PyName x] a' : ctx.locals}
 -- Def (DefName String Expr)
@@ -338,48 +370,50 @@ pyStmt (Def (DefName x type') args a) ctx = do
 -- Def (DefTrait (Expr, Expr) String)
 -- Test Expr Expr
 -- MetaStmt C.Metadata Stmt
-pyStmt stmt ctx = error "TODO: pyStmt"
+emitStmt stmt ctx = error "TODO: emitStmt"
 
-pyExpr :: PyCtx -> Expr -> (PyCtx, PyExpr)
-pyExpr ctx Any = (ctx, PyName "_")
-pyExpr ctx IntType = (ctx, PyName "int")
-pyExpr ctx NumType = (ctx, PyName "float")
-pyExpr ctx (Int i) = (ctx, PyInteger i)
-pyExpr ctx (Num n) = (ctx, PyFloat n)
-pyExpr ctx (Var x) = (ctx, PyName x)
-pyExpr ctx (Tag k args) = do
-  let (ctx', args') = pyExprAll ctx args
+emitExpr :: PyCtx -> Expr -> (PyCtx, PyExpr)
+emitExpr ctx Any = (ctx, PyName "_")
+emitExpr ctx IntType = (ctx, PyName "int")
+emitExpr ctx NumType = (ctx, PyName "float")
+emitExpr ctx (Int i) = (ctx, PyInteger i)
+emitExpr ctx (Num n) = (ctx, PyFloat n)
+emitExpr ctx (Var x) = (ctx, PyName x)
+emitExpr ctx (Tag k args) = do
+  let (ctx', args') = emitExprAll ctx args
   (ctx', pyCall (PyName k) args')
-pyExpr ctx (Tuple items) = do
-  let (ctx', items') = pyExprAll ctx items
+emitExpr ctx (Tuple items) = do
+  let (ctx', items') = emitExprAll ctx items
   (ctx', PyTuple items')
--- pyExpr ctx (Record [(String, Expr)]) = _
--- pyExpr ctx (Trait Expr String) = _
--- pyExpr ctx ListNil = _
--- pyExpr ctx ListCons = _
--- pyExpr ctx TextNil = _
--- pyExpr ctx TextCons = _
--- pyExpr ctx (Type alts) = _
--- pyExpr ctx (Fun Expr Expr) = _
--- pyExpr ctx (App Expr Expr) = _
--- pyExpr ctx (Let (Expr, Expr) Expr) = _
--- pyExpr ctx (Bind (Expr, Expr) Expr) = _
--- pyExpr ctx (TypeDef String [Expr] Expr) = _
--- pyExpr ctx (MatchFun [Expr]) = _
--- pyExpr ctx (Match [Expr] [Expr]) = _
--- pyExpr ctx (Or Expr Expr) = _
--- pyExpr ctx (Ann Expr Expr) = _
--- pyExpr ctx (Op1 C.UnaryOp Expr) = _
--- pyExpr ctx (Op2 C.BinaryOp Expr Expr) = _
--- pyExpr ctx (Meta C.Metadata Expr) = _
--- pyExpr ctx Err = _
-pyExpr ctx expr = error $ "TODO: pyExpr " ++ show expr
+-- emitExpr ctx (Record [(String, Expr)]) = _
+-- emitExpr ctx (Trait Expr String) = _
+-- emitExpr ctx ListNil = _
+-- emitExpr ctx ListCons = _
+-- emitExpr ctx TextNil = _
+-- emitExpr ctx TextCons = _
+-- emitExpr ctx (Type alts) = _
+-- emitExpr ctx (Fun Expr Expr) = _
+-- emitExpr ctx (App Expr Expr) = _
+-- emitExpr ctx (Let (Expr, Expr) Expr) = _
+-- emitExpr ctx (Bind (Expr, Expr) Expr) = _
+-- emitExpr ctx (TypeDef String [Expr] Expr) = _
+-- emitExpr ctx (MatchFun [Expr]) = _
+-- emitExpr ctx (Match [Expr] [Expr]) = _
+-- emitExpr ctx (Or Expr Expr) = _
+-- emitExpr ctx (Ann Expr Expr) = _
+-- emitExpr ctx (Op1 C.UnaryOp Expr) = _
+-- emitExpr ctx (Op2 C.BinaryOp Expr Expr) = _
+emitExpr ctx (Meta m a) = do
+  let (ctx', a') = emitExpr ctx a
+  (ctx', PyMeta m a')
+-- emitExpr ctx Err = _
+emitExpr ctx expr = error $ "TODO: emitExpr " ++ show expr
 
-pyExprAll :: PyCtx -> [Expr] -> (PyCtx, [PyExpr])
-pyExprAll ctx [] = (ctx, [])
-pyExprAll ctx (a : bs) = do
-  let (ctx1, a') = pyExpr ctx a
-  let (ctx2, bs') = pyExprAll ctx1 bs
+emitExprAll :: PyCtx -> [Expr] -> (PyCtx, [PyExpr])
+emitExprAll ctx [] = (ctx, [])
+emitExprAll ctx (a : bs) = do
+  let (ctx1, a') = emitExpr ctx a
+  let (ctx2, bs') = emitExprAll ctx1 bs
   (ctx2, a' : bs')
 
 -- emitExpr :: PyTarget -> Expression -> Emit PyExpr
