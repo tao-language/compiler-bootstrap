@@ -6,6 +6,8 @@ import Data.Bifunctor (Bifunctor (first))
 import Data.Foldable (foldlM, foldrM)
 import Data.Function ((&))
 import Data.List (intercalate, union)
+import Data.Maybe (fromMaybe)
+import qualified Debug.Trace as Debug
 import PrettyPrint (Layout)
 import qualified PrettyPrint as PP
 import System.Directory (createDirectory, createDirectoryIfMissing, doesPathExist, removeDirectoryRecursive)
@@ -297,8 +299,8 @@ newName ctx = do
     (name, ctx') -> (name, ctx')
 
 build :: String -> Package -> IO String
-build buildPath pkg = do
-  let pkgPath = buildPath </> "python" </> pkg.name
+build base pkg = do
+  let pkgPath = base </> "python" </> pkg.name
   let srcPath = pkgPath </> "src"
   let testsPath = pkgPath </> "tests"
   let docsPath = pkgPath </> "docs"
@@ -310,7 +312,6 @@ build buildPath pkg = do
 
   -- Create source files
   files <- mapM (buildModule srcPath) pkg.modules
-  -- TODO: add __init__.py files on every subdirectory
 
   -- TODO: Create tests
   createDirectory testsPath
@@ -324,26 +325,26 @@ build buildPath pkg = do
 
   return pkgPath
 
-initDir :: String -> [String] -> IO ()
-initDir base dirs = do
+buildDir :: String -> [String] -> IO ()
+buildDir base dirs = do
   exists <- doesPathExist base
   unless exists $ do
-    createDirectory base
+    createDirectoryIfMissing True base
     writeFile (base </> "__init__.py") ""
-    case dirs of
-      [] -> return ()
-      (dir : subdirs) -> initDir (base </> dir) subdirs
+  case dirs of
+    [] -> return ()
+    (dir : subdirs) -> buildDir (base </> dir) subdirs
 
 buildModule :: String -> Module -> IO String
-buildModule buildPath mod = do
+buildModule base mod = do
   -- Initialize the file path recursively.
-  let filePath = buildPath </> mod.name ++ ".py"
-  initDir buildPath (splitPath $ takeDirectory mod.name)
+  let filename = mod.name ++ ".py"
+  buildDir base (splitPath $ takeDirectory mod.name)
 
   -- Write the source file contents.
   let layout = layoutModule (emitModule mod)
-  writeFile filePath (PP.pretty 80 "    " layout)
-  return filePath
+  writeFile (base </> filename) (PP.pretty 80 "    " layout)
+  return filename
 
 emitModule :: Module -> PyModule
 emitModule mod = do
@@ -361,16 +362,17 @@ emitStmt (Import name alias exposed) ctx = case exposed of
     ctx
       & emitStmt (Import name alias [])
       & addGlobal (PyImportFrom name (map pyExpose exposed))
-emitStmt (Def (DefName x type') args a) ctx = do
+emitStmt (Def (DefName ts x args a)) ctx = do
   let (ctx', a') = emitExpr ctx a
+  let type' = fromMaybe Any (lookup x ts)
   case (asFun type', args) of
     (([], Any), []) -> ctx' {locals = PyAssign [PyName x] a' : ctx.locals}
 -- Def (DefName String Expr)
 -- Def (DefUnpack String [(String, Expr)])
 -- Def (DefTrait (Expr, Expr) String)
--- Test Expr Expr
+emitStmt (Test _ _) ctx = ctx
 -- MetaStmt C.Metadata Stmt
-emitStmt stmt ctx = error "TODO: emitStmt"
+emitStmt stmt ctx = error $ "TODO: emitStmt " ++ show stmt
 
 emitExpr :: PyCtx -> Expr -> (PyCtx, PyExpr)
 emitExpr ctx Any = (ctx, PyName "_")
@@ -402,12 +404,27 @@ emitExpr ctx (Tuple items) = do
 -- emitExpr ctx (Or Expr Expr) = _
 -- emitExpr ctx (Ann Expr Expr) = _
 -- emitExpr ctx (Op1 C.UnaryOp Expr) = _
--- emitExpr ctx (Op2 C.BinaryOp Expr Expr) = _
+emitExpr ctx (Op2 op a b) = do
+  let (ctx', (a', b')) = emitExpr2 ctx (a, b)
+  case op of
+    C.Add -> (ctx', PyBinOp a' PyAdd b')
+    C.Sub -> (ctx', PyBinOp a' PySub b')
+    C.Mul -> (ctx', PyBinOp a' PyMult b')
+    C.Pow -> (ctx', PyBinOp a' PyPow b')
+    C.Eq -> (ctx', PyCompare a' PyEq b')
+    C.Lt -> (ctx', PyCompare a' PyLt b')
+    C.Gt -> (ctx', PyCompare a' PyGt b')
 emitExpr ctx (Meta m a) = do
   let (ctx', a') = emitExpr ctx a
   (ctx', PyMeta m a')
 -- emitExpr ctx Err = _
 emitExpr ctx expr = error $ "TODO: emitExpr " ++ show expr
+
+emitExpr2 :: PyCtx -> (Expr, Expr) -> (PyCtx, (PyExpr, PyExpr))
+emitExpr2 ctx (a, b) = do
+  let (ctx1, a') = emitExpr ctx a
+  let (ctx2, b') = emitExpr ctx1 b
+  (ctx2, (a', b'))
 
 emitExprAll :: PyCtx -> [Expr] -> (PyCtx, [PyExpr])
 emitExprAll ctx [] = (ctx, [])
@@ -416,96 +433,8 @@ emitExprAll ctx (a : bs) = do
   let (ctx2, bs') = emitExprAll ctx1 bs
   (ctx2, a' : bs')
 
--- emitExpr :: PyTarget -> Expression -> Emit PyExpr
--- emitExpr _ IntT = return (Name "int")
--- emitExpr _ (Int i) = return (PyInteger i)
--- emitExpr target (Tag k) = emitExpr target (Var k)
--- emitExpr target (Var x) = case lookup x target.extern of
---   Just def -> do
---     addGlobals def.globals
---     addLocals def.locals
---     return def.expr -- TODO: manage globals + locals
---   Nothing -> return (Name x)
--- emitExpr target (App a b) = do
---   let (func, args) = asApp (App a b)
---   func <- emitExpr target func
---   args <- emitExprs target args
---   return (call func args)
--- emitExpr target (Op2 Sub a b) = do
---   a <- emitExpr target a
---   b <- emitExpr target b
---   return (BinOp a Sub b)
--- emitExpr target (Op2 Mul a b) = do
---   a <- emitExpr target a
---   b <- emitExpr target b
---   return (BinOp a Mult b)
--- -- emitExpr target (Tao.Meta m a) = do
--- --   a' <- emitExpr target a
--- --   return (Meta m a')
--- emitExpr _ a = error $ "TODO: expr " ++ show a
-
--- emitExprs :: PyTarget -> [Term] -> Emit [PyExpr]
--- emitExprs _ [] = return []
--- emitExprs target (a : bs) = do
---   a' <- emitExpr target a
---   bs' <- emitExprs target bs
---   return (a' : bs')
-
--- emitExample :: PyTarget -> (Term, Term) -> Emit (PyExpr, PyExpr)
--- emitExample target (prompt, result) = do
---   prompt <- emitExpr target prompt
---   result <- emitExpr target result
---   return (prompt, result)
-
--- emitExamples :: PyTarget -> [(Term, Term)] -> Emit [(PyExpr, PyExpr)]
--- emitExamples _ [] = return []
--- emitExamples target (example : examples) = do
---   example <- emitExample target example
---   examples <- emitExamples target examples
---   return (example : examples)
-
--- emitMatchCase :: PyTarget -> ([Tao.Pattern], Term) -> Emit (Pattern, Maybe PyExpr, [Statement])
--- emitMatchCase target (ps, b) = do
---   pats <- emitPatterns target ps
---   body <- emitBody target b
---   return (MatchSequence pats, Nothing, body)
-
--- emitMatchCases :: PyTarget -> [([Tao.Pattern], Term)] -> Emit [(Pattern, Maybe PyExpr, [Statement])]
--- emitMatchCases _ [] = return []
--- emitMatchCases target (case' : cases) = do
---   case' <- emitMatchCase target case'
---   cases <- emitMatchCases target cases
---   return (case' : cases)
-
--- emitPattern :: PyTarget -> Tao.Pattern -> Emit Pattern
--- -- PAny
--- -- PKnd
--- -- PIntT
--- -- PNumT
--- emitPattern _ (Tao.PInt i) = return (MatchValue (PyInteger i))
--- -- PTag String
--- emitPattern _ (Tao.PVar x) = return (MatchAs Nothing x)
--- -- PTuple [Pattern]
--- -- PRecord [(String, Pattern)]
--- -- PFun Pattern Pattern
--- -- PApp Pattern Pattern
--- emitPattern target (Tao.PMeta m p) = do
---   pat <- emitPattern target p
---   return (MatchMeta m pat)
--- emitPattern _ p = error $ "TODO: emitPattern " ++ show p
-
--- emitPatterns :: PyTarget -> [Tao.Pattern] -> Emit [Pattern]
--- emitPatterns _ [] = return []
--- emitPatterns target (p : ps) = do
---   p <- emitPattern target p
---   ps <- emitPatterns target ps
---   return (p : ps)
-
--- emitBody :: PyTarget -> Term -> Emit [PyStmt]
--- emitBody target a = Emit $
---   \ctx -> do
---     let (expr, ctx') = apply (emitExpr target a) ctx {locals = []}
---     (ctx'.locals ++ [Return expr], ctx' {locals = ctx.locals})
+-- rename :: [String] -> String -> String
+-- rename existing name =
 
 --- Pretty printing layouts ---
 
@@ -518,6 +447,10 @@ layoutStmt (PyAssign (x : xs) y) = layoutExpr x ++ (PP.Text " = " : layoutStmt (
 layoutStmt (PyImport name alias) = case alias of
   Just alias -> [PP.Text $ "import " ++ name ++ " as " ++ alias]
   Nothing -> [PP.Text $ "import " ++ name]
+layoutStmt (PyImportFrom name exposed) = do
+  let layoutExpose (name, Nothing) = name
+      layoutExpose (name, Just alias) = name ++ " as " ++ alias
+  [PP.Text $ "from " ++ name ++ " import " ++ intercalate ", " (map layoutExpose exposed)]
 layoutStmt def@PyFunctionDef {} = do
   PP.Text ("def " ++ def.name)
     : layoutTuple (map layoutFunctionArg def.args)

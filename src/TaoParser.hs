@@ -219,39 +219,47 @@ parseStmt = do
   comments <- P.zeroOrMore parseComment
   stmt <-
     P.oneOf
-      [ fmap (\(def, args, value) -> Def def args value) parseDefinition,
+      [ fmap Def parseDefinition,
         parseImport,
         parseTest
       ]
   return (foldr (MetaStmt . C.Comment) stmt comments)
 
-parseDefinition :: Parser (Definition, [Expr], Expr)
-parseDefinition = do
-  ts <- P.zeroOrMore parseTypeAnnotation
-  def <- do
-    name <- parseIdentifier
-    _ <- P.whitespaces
-    case name of
-      x | startsWithUpper x -> return (DefUnpack x ts)
-      x -> case lookup x ts of
-        Just t -> return (DefName x t)
-        Nothing ->
-          P.oneOf
-            [ do
-                _ <- P.char ':'
-                _ <- P.spaces
-                t <- parseExpr P.spaces
-                return (DefName x t),
-              return (DefName x Any)
-            ]
-  args <- P.zeroOrMore parseExprAtom
+parseNameDef :: [(String, Expr)] -> Parser Definition
+parseNameDef ts = do
+  x <- parseIdentifier
+  ts <-
+    P.oneOf
+      [ do
+          _ <- P.char ':'
+          _ <- P.whitespaces
+          t <- parseExpr P.space
+          return ((x, t) : ts),
+        return ts
+      ]
   _ <- P.whitespaces
   _ <- P.char '='
-  P.commit CDefinition
   _ <- P.whitespaces
-  value <- parseExpr P.spaces
+  value <- parseExpr P.space
+  return (DefName ts x [] value)
+
+parseUnpackDef :: [(String, Expr)] -> Parser Definition
+parseUnpackDef ts = P.fail'
+
+parseTraitDef :: [(String, Expr)] -> Parser Definition
+parseTraitDef ts = P.fail'
+
+parseDefinition :: Parser Definition
+parseDefinition = do
+  ts <- P.zeroOrMore parseTypeAnnotation
+  def <-
+    P.oneOf
+      [ parseNameDef ts,
+        parseUnpackDef ts,
+        parseTraitDef ts
+      ]
   _ <- parseLineBreak
-  return (def, args, value)
+  return def
 
 parseTypeAnnotation :: Parser (String, Expr)
 parseTypeAnnotation = do

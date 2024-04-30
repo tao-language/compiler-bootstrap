@@ -290,9 +290,9 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ test" $ do
     let defs =
-          [ Def (DefName "x" Any) [] (Int 1),
+          [ Def (DefName [] "x" [] (Int 1)),
             Test x y,
-            Def (DefName "y" Any) [] (Int 2)
+            Def (DefName [] "y" [] (Int 2))
           ]
     let mod = Package {name = "test", modules = [Module "f" defs]}
     test mod `shouldBe` [TestEqError x (Int 1) (Int 2)]

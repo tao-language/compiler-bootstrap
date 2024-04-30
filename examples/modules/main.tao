@@ -1,0 +1,6 @@
+import submodule/simple (x)
+
+y = x + 2
+
+> y
+42

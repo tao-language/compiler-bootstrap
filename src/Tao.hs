@@ -37,14 +37,14 @@ data Expr
   deriving (Eq, Show)
 
 data Definition
-  = DefName String Expr
-  | DefUnpack String [(String, Expr)]
-  | DefTrait (Expr, Expr) String
+  = DefName [(String, Expr)] String [Expr] Expr
+  | DefUnpack [(String, Expr)] String [Expr] Expr
+  | DefTrait [(String, Expr)] (Expr, Expr) String [Expr] Expr
   deriving (Eq, Show)
 
 data Stmt
   = Import String String [(String, String)] -- import package as alias (a, b, c)
-  | Def Definition [Expr] Expr
+  | Def Definition
   | Test Expr Expr
   | MetaStmt C.Metadata Stmt
   deriving (Eq, Show)
@@ -196,16 +196,21 @@ liftPackage :: String -> C.Env -> Package
 liftPackage name _ = error "TODO: liftPackage"
 
 stmtDefs :: Stmt -> [(String, Expr)]
-stmtDefs (Def (DefUnpack k ts) args b) = do
+-- DefName String Expr [Expr] Expr
+-- DefUnpack String [(String, Expr)] [Expr] Expr
+-- DefTrait (Expr, Expr) String [Expr] Expr
+stmtDefs (Def (DefName ts x (a : args) b)) = stmtDefs (Def (DefName ts x args (Fun a b)))
+stmtDefs (Def (DefName ts x [] b)) = case lookup x ts of
+  Just t -> [(x, Ann b t)]
+  Nothing -> [(x, b)]
+stmtDefs (Def (DefUnpack ts k args b)) = do
   let def x = Match [b] [Fun (Tag k args) (Var x)]
   let typedDef x = case lookup x ts of
         Just t -> (x, Ann (def x) t)
         Nothing -> (x, def x)
   map typedDef (freeVars (Tuple args))
-stmtDefs (Def def (a : args) b) = stmtDefs (Def def args (Fun a b))
-stmtDefs (Def (DefName x Any) [] b) = [(x, b)]
-stmtDefs (Def (DefName x t) [] b) = [(x, Ann b t)]
-stmtDefs (Def (DefTrait (t, a) x) [] b) = [('.' : x, fun [t, a] b)]
+stmtDefs (Def (DefTrait ts self x (a : args) b)) = stmtDefs (Def (DefTrait ts self x args (Fun a b)))
+stmtDefs (Def (DefTrait ts (t, a) x [] b)) = [('.' : x, fun [t, a] b)]
 stmtDefs (MetaStmt _ stmt) = stmtDefs stmt
 stmtDefs _ = []
 
