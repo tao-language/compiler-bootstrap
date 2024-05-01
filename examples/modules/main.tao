@@ -1,6 +1,4 @@
-import submodule/simple (x)
+x = 1
 
-y = x + 2
-
-> y
-42
+> x
+1

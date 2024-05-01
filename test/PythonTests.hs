@@ -73,8 +73,7 @@ run = describe "--==☯ Python ☯==--" $ do
     pkg <- parsePackage "examples/modules" (Package {name = "pkg", modules = []})
     let pkgPath = "build" </> "python" </> "pkg"
     build "build" pkg `shouldReturn` pkgPath
-    -- readFile (pkgPath </> "src" </> "__init__.py") `shouldReturn` ""
-    -- readFile (pkgPath </> "src" </> "main.py") `shouldReturn` "import submodule.simple\nfrom submodule.simple import x\ny = x + 2"
-    -- readFile (pkgPath </> "src" </> "submodule" </> "__init__.py") `shouldReturn` ""
-    -- readFile (pkgPath </> "src" </> "submodule" </> "simple.py") `shouldReturn` "x = 40"
-    True `shouldBe` True
+    readFile (pkgPath </> "src" </> "__init__.py") `shouldReturn` ""
+    readFile (pkgPath </> "src" </> "main.py") `shouldReturn` "x = 1"
+    readFile (pkgPath </> "src" </> "submodule" </> "__init__.py") `shouldReturn` ""
+    readFile (pkgPath </> "src" </> "submodule" </> "simple.py") `shouldReturn` "y = 2"

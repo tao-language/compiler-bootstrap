@@ -196,9 +196,6 @@ liftPackage :: String -> C.Env -> Package
 liftPackage name _ = error "TODO: liftPackage"
 
 stmtDefs :: Stmt -> [(String, Expr)]
--- DefName String Expr [Expr] Expr
--- DefUnpack String [(String, Expr)] [Expr] Expr
--- DefTrait (Expr, Expr) String [Expr] Expr
 stmtDefs (Def (DefName ts x (a : args) b)) = stmtDefs (Def (DefName ts x args (Fun a b)))
 stmtDefs (Def (DefName ts x [] b)) = case lookup x ts of
   Just t -> [(x, Ann b t)]
