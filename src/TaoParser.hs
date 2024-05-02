@@ -5,7 +5,7 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (isSpace, isUpper)
 import Data.Function ((&))
-import Data.List (dropWhileEnd, intercalate)
+import Data.List (dropWhileEnd, intercalate, sort)
 import qualified Parser as P
 import System.Directory (doesDirectoryExist, doesFileExist, findFiles, listDirectory)
 import System.FilePath (dropExtension, splitDirectories, splitFileName, splitPath, takeBaseName, takeFileName, (</>))
@@ -378,5 +378,5 @@ walkDirectory base path = do
           then walkDirectory base path
           else return [path]
   paths <- listDirectory (base </> path)
-  files <- mapM walk paths
+  files <- mapM walk (sort paths)
   return (map (path </>) (concat files))

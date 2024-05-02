@@ -1,9 +1,12 @@
 module PythonTests where
 
+import GHC.IO.Exception (ExitCode (..))
+import GHC.IO.Handle (hGetContents)
 import PrettyPrint (pretty)
 import Python
-import System.Directory (doesDirectoryExist)
+import System.Directory (doesDirectoryExist, doesFileExist, withCurrentDirectory)
 import System.FilePath ((</>))
+import System.Process (CreateProcess (std_err, std_out), StdStream (CreatePipe), createProcess, cwd, proc, waitForProcess)
 import Tao
 import TaoParser (parsePackage)
 import Test.Hspec
@@ -74,7 +77,7 @@ run = describe "--==☯ Python ☯==--" $ do
   it "☯ build" $ do
     pkg <- parsePackage "examples/simple"
     pkg.name `shouldBe` "simple"
-    map (\m -> (m.path, m.name)) pkg.modules `shouldBe` [([], "main"), (["submodule"], "subfile")]
+    map (\m -> (m.path, m.name)) pkg.modules `shouldBe` [(["submodule"], "subfile"), ([], "main")]
 
     -- Check package
     build options "build" pkg `shouldReturn` "build/python"
@@ -90,6 +93,26 @@ run = describe "--==☯ Python ☯==--" $ do
     readFile "build/python/simple/submodule/subfile.py" `shouldReturn` "y = 2"
 
     -- Check tests
+    doesFileExist "build/python/test/__init__.py" `shouldReturn` True
+    doesFileExist "build/python/test/test_main.py" `shouldReturn` True
+    doesFileExist "build/python/test/submodule/__init__.py" `shouldReturn` True
+    doesFileExist "build/python/test/submodule/test_subfile.py" `shouldReturn` True
+    (_, Just stdout, Just stderr, p) <-
+      createProcess
+        (proc "python" ["-m", "unittest", "-v"])
+          { cwd = Just "build/python",
+            std_out = CreatePipe,
+            std_err = CreatePipe
+          }
+    exitCode <- waitForProcess p
+    case exitCode of
+      ExitSuccess -> return ()
+      ExitFailure _ -> do
+        out <- hGetContents stdout
+        err <- hGetContents stderr
+        putStrLn out
+        putStrLn err
+        exitCode `shouldBe` ExitSuccess
 
     -- Check docs
 
