@@ -6,15 +6,13 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Setup Haskell
-        uses: haskell-actions/setup@v2
+      - uses: haskell-actions/setup@v2
         with: 
           enable-stack: true
 
-      - name: Cache build
-        uses: actions/cache@v2
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.stack
@@ -24,8 +22,7 @@ jobs:
           restore-keys: |
             ubuntu-latest-stack
 
-      - name: Run tests
-        run: stack build --ghc-options="-Werror"
+      - run: stack build --ghc-options="-Werror"
 
   test:
     strategy:
@@ -35,15 +32,15 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Setup Haskell
-        uses: haskell-actions/setup@v2
+      - uses: haskell-actions/setup@v2
         with: 
           enable-stack: true
 
-      - name: Cache build
-        uses: actions/cache@v2
+      - uses: actions/setup-python@v5
+
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.stack
@@ -53,5 +50,4 @@ jobs:
           restore-keys: |
             ${{ matrix.os }}-stack
 
-      - name: Run tests
-        run: stack test
+      - run: stack test

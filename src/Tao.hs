@@ -7,7 +7,6 @@ import Data.Function ((&))
 
 data Expr
   = Any
-  | Type [String]
   | IntType
   | NumType
   | Int Int
@@ -21,9 +20,10 @@ data Expr
   | ListCons
   | TextNil
   | TextCons
+  | Type [String]
   | Fun Expr Expr
   | App Expr Expr
-  | Let (Expr, Expr) Expr
+  | Let Definition Expr
   | Bind (Expr, Expr) Expr
   | TypeDef String [Expr] Expr
   | MatchFun [Expr]
@@ -36,24 +36,29 @@ data Expr
   | Err
   deriving (Eq, Show)
 
-data Stmt
-  = Def Expr Expr
-  | TypeAnn String Expr
-  | Import String String [String] -- import module as alias (a, b, c)
-  | Test Expr Expr
-  | DocString [C.Metadata] String
-  | Comment [C.Metadata] String
+data Definition
+  = DefName [(String, Expr)] String [Expr] Expr
+  | DefUnpack [(String, Expr)] String [Expr] Expr
+  | DefTrait [(String, Expr)] (Expr, Expr) String [Expr] Expr
   deriving (Eq, Show)
 
-data File = File
-  { name :: String,
+data Stmt
+  = Import [String] String String [(String, String)] -- import path/package as alias (a, b, c)
+  | Def Definition
+  | Test Expr Expr
+  | MetaStmt C.Metadata Stmt
+  deriving (Eq, Show)
+
+data Module = Module
+  { path :: [String],
+    name :: String,
     stmts :: [Stmt]
   }
   deriving (Eq, Show)
 
-data Module = Module
+data Package = Package
   { name :: String,
-    files :: [File]
+    modules :: [Module]
   }
   deriving (Eq, Show)
 
@@ -64,6 +69,10 @@ or' (a : bs) = Or a (or' bs)
 
 fun :: [Expr] -> Expr -> Expr
 fun ps b = foldr Fun b ps
+
+asFun :: Expr -> ([Expr], Expr)
+asFun (Fun p a) = let (ps, b) = asFun a in (p : ps, b)
+asFun a = ([], a)
 
 app :: Expr -> [Expr] -> Expr
 app = foldl App
@@ -129,7 +138,7 @@ lowerExpr _ TextNil = C.Tag "\"\""
 lowerExpr _ TextCons = C.Tag "\"..\""
 lowerExpr defs (Fun a b) = C.Fun (lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (App a b) = C.App (lowerExpr defs a) (lowerExpr defs b)
-lowerExpr defs (Let (p, a) b) = C.let' (lowerExpr defs p, lowerExpr defs a) (lowerExpr defs b)
+-- lowerExpr defs (Let (p, a) b) = C.let' (lowerExpr defs p, lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (Bind (p, a) b) = lowerExpr defs (App (Trait a "<-") (Fun p b))
 -- TODO: TypeDef
 lowerExpr defs (MatchFun cases) = lowerExpr defs (or' cases)
@@ -165,7 +174,7 @@ liftExpr (C.App a b) = case asApp (App (liftExpr a) (liftExpr b)) of
   (Tag k args, args') -> Tag k (args ++ args')
   (Tuple args, args') -> Tuple (args ++ args')
   (Var ('.' : x), _ : a : args) -> app (Trait a x) args
-  (Fun p a, [b]) -> Let (p, b) a
+  -- (Fun p a, [b]) -> Let (p, b) a
   (Trait a "<-", [Fun p b]) -> Bind (p, a) b
   (a, args) -> app a args
 liftExpr (C.Or a b) = Or (liftExpr a) (liftExpr b)
@@ -181,44 +190,49 @@ lowerDefs defs = map (second (lowerExpr defs)) defs
 liftDefs :: C.Env -> [(String, Expr)]
 liftDefs env = error "TODO: liftDefs"
 
-lowerModule :: Module -> C.Env
-lowerModule mod = lowerDefs (moduleDefs mod)
+lowerPackage :: Package -> C.Env
+lowerPackage pkg = lowerDefs (packageDefs pkg)
 
-liftModule :: String -> C.Env -> Module
-liftModule name _ = error "TODO: liftModule"
+liftPackage :: String -> C.Env -> Package
+liftPackage name _ = error "TODO: liftPackage"
 
 stmtDefs :: Stmt -> [(String, Expr)]
-stmtDefs (Def (Var x) b) = [(x, b)]
-stmtDefs (Def (Trait (Ann a t) x) b) = [('.' : x, fun [t, a] b)]
-stmtDefs (Def (Trait a x) b) = stmtDefs (Def (Trait (Ann a Any) x) b)
-stmtDefs (Def (App a1 a2) b) = stmtDefs (Def a1 (Fun a2 b))
-stmtDefs (Def (Ann a t) b) = stmtDefs (Def a (Ann b t))
-stmtDefs (Def Op1 {} _) = []
-stmtDefs (Def Op2 {} _) = []
-stmtDefs (Def (Meta m a) b) = stmtDefs (Def a (Meta m b))
-stmtDefs (Def p b) = map (\x -> (x, Match [b] [Fun p (Var x)])) (freeVars p)
+stmtDefs (Def (DefName ts x (a : args) b)) = stmtDefs (Def (DefName ts x args (Fun a b)))
+stmtDefs (Def (DefName ts x [] b)) = case lookup x ts of
+  Just t -> [(x, Ann b t)]
+  Nothing -> [(x, b)]
+stmtDefs (Def (DefUnpack ts k args b)) = do
+  let def x = Match [b] [Fun (Tag k args) (Var x)]
+  let typedDef x = case lookup x ts of
+        Just t -> (x, Ann (def x) t)
+        Nothing -> (x, def x)
+  map typedDef (freeVars (Tuple args))
+stmtDefs (Def (DefTrait ts self x (a : args) b)) = stmtDefs (Def (DefTrait ts self x args (Fun a b)))
+stmtDefs (Def (DefTrait ts (t, a) x [] b)) = [('.' : x, fun [t, a] b)]
+stmtDefs (MetaStmt _ stmt) = stmtDefs stmt
 stmtDefs _ = []
-
-fileDefs :: File -> [(String, Expr)]
-fileDefs file = concatMap stmtDefs file.stmts
-
-moduleDefs :: Module -> [(String, Expr)]
-moduleDefs mod = concatMap fileDefs mod.files
 
 stmtTests :: Stmt -> [(Expr, Expr)]
 stmtTests (Test a b) = [(a, b)]
+stmtTests (MetaStmt _ stmt) = stmtTests stmt
 stmtTests _ = []
 
-fileTests :: File -> [(Expr, Expr)]
-fileTests file = concatMap stmtTests file.stmts
+moduleDefs :: Module -> [(String, Expr)]
+moduleDefs mod = concatMap stmtDefs mod.stmts
+
+packageDefs :: Package -> [(String, Expr)]
+packageDefs pkg = concatMap moduleDefs pkg.modules
 
 moduleTests :: Module -> [(Expr, Expr)]
-moduleTests mod = concatMap fileTests mod.files
+moduleTests mod = concatMap stmtTests mod.stmts
 
-run :: Module -> Expr -> Expr
-run mod expr = do
-  let env = lowerModule mod
-  let term = lowerExpr (moduleDefs mod) expr
+packageTests :: Package -> [(Expr, Expr)]
+packageTests pkg = concatMap moduleTests pkg.modules
+
+run :: Package -> Expr -> Expr
+run pkg expr = do
+  let env = lowerPackage pkg
+  let term = lowerExpr (packageDefs pkg) expr
   liftExpr (C.eval env term)
 
 data TestError
@@ -234,7 +248,22 @@ testEq defs (expr, result) = do
     C.Err -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
     _ -> []
 
-test :: Module -> [TestError]
-test mod = do
-  let defs = moduleDefs mod
-  concatMap (testEq defs) (moduleTests mod)
+test :: Package -> [TestError]
+test pkg = do
+  let defs = packageDefs pkg
+  concatMap (testEq defs) (packageTests pkg)
+
+nameSplit :: String -> [String]
+nameSplit name = []
+
+nameCamelCaseUpper :: String -> String
+nameCamelCaseUpper name = name
+
+nameCamelCaseLower :: String -> String
+nameCamelCaseLower name = name
+
+nameSnakeCase :: String -> String
+nameSnakeCase name = name
+
+nameDashCase :: String -> String
+nameDashCase name = name

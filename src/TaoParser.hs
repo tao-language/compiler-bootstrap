@@ -1,18 +1,20 @@
 module TaoParser where
 
-import Control.Monad (void)
+import Control.Monad (foldM, void)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (isSpace, isUpper)
 import Data.Function ((&))
-import Data.List (dropWhileEnd, intercalate)
+import Data.List (dropWhileEnd, intercalate, sort)
 import qualified Parser as P
+import System.Directory (doesDirectoryExist, doesFileExist, findFiles, listDirectory)
+import System.FilePath (dropExtension, splitDirectories, splitFileName, splitPath, takeBaseName, takeFileName, (</>))
 import Tao
 
 type Parser a = P.Parser ParserContext a
 
 data ParserContext
-  = CFile
+  = CModule
   | CDefinition
   | CImport
   | CTest
@@ -45,9 +47,9 @@ parseIdentifier = do
 
 parseLineBreak :: Parser String
 parseLineBreak = do
-  parseComment <- P.oneOf ["" <$ P.endOfLine, "" <$ P.char ';', fmap snd parseCommentSingleLine]
+  comment <- P.oneOf ["" <$ P.endOfLine, "" <$ P.char ';', parseCommentSingleLine]
   _ <- P.whitespaces
-  return parseComment
+  return comment
 
 parseInbetween :: String -> String -> Parser a -> Parser a
 parseInbetween open close parser = do
@@ -71,27 +73,25 @@ parseDelimited delim parser = do
   return (x : xs)
 
 -- Concrete Syntax Tree
-parseComment :: Parser ([C.Metadata], String)
+parseComment :: Parser String
 parseComment = P.oneOf [parseCommentMultiLine, parseCommentSingleLine]
 
-parseCommentSingleLine :: Parser ([C.Metadata], String)
+parseCommentSingleLine :: Parser String
 parseCommentSingleLine = do
-  state <- P.getState
   _ <- P.char '#'
   P.commit CComment
   _ <- P.spaces
   line <- P.skipTo P.endOfLine
-  return ([C.Location state.name state.pos], dropWhileEnd isSpace line)
+  return (dropWhileEnd isSpace line)
 
-parseCommentMultiLine :: Parser ([C.Metadata], String)
+parseCommentMultiLine :: Parser String
 parseCommentMultiLine = do
-  state <- P.getState
   delim <- P.chain [P.text "#--", P.zeroOrMore (P.char '-')]
   P.commit CCommentMultiLine
   _ <- P.spaces
   line <- P.skipTo parseLineBreak
   error "TODO: parseCommentMultiLine"
-  return ([C.Location state.name state.pos], dropWhileEnd isSpace line)
+  return (dropWhileEnd isSpace line)
 
 parseDocString :: Parser String -> Parser ([C.Metadata], String)
 parseDocString delimiter = do
@@ -215,25 +215,51 @@ parseRecord = do
 
 -- Statements
 parseStmt :: Parser Stmt
-parseStmt =
-  P.oneOf
-    [ fmap (uncurry Def) parseDefinition,
-      fmap (uncurry TypeAnn) parseTypeAnnotation,
-      parseImport,
-      parseTest,
-      fmap (uncurry Comment) parseComment
-    ]
+parseStmt = do
+  comments <- P.zeroOrMore parseComment
+  stmt <-
+    P.oneOf
+      [ fmap Def parseDefinition,
+        parseImport,
+        parseTest
+      ]
+  return (foldr (MetaStmt . C.Comment) stmt comments)
 
-parseDefinition :: Parser (Expr, Expr)
-parseDefinition = do
-  pattern' <- parseExpr P.spaces
+parseNameDef :: [(String, Expr)] -> Parser Definition
+parseNameDef ts = do
+  x <- parseIdentifier
+  ts <-
+    P.oneOf
+      [ do
+          _ <- P.char ':'
+          _ <- P.whitespaces
+          t <- parseExpr P.space
+          return ((x, t) : ts),
+        return ts
+      ]
   _ <- P.whitespaces
   _ <- P.char '='
-  P.commit CDefinition
   _ <- P.whitespaces
-  value <- parseExpr P.spaces
+  value <- parseExpr P.space
+  return (DefName ts x [] value)
+
+parseUnpackDef :: [(String, Expr)] -> Parser Definition
+parseUnpackDef ts = P.fail'
+
+parseTraitDef :: [(String, Expr)] -> Parser Definition
+parseTraitDef ts = P.fail'
+
+parseDefinition :: Parser Definition
+parseDefinition = do
+  ts <- P.zeroOrMore parseTypeAnnotation
+  def <-
+    P.oneOf
+      [ parseNameDef ts,
+        parseUnpackDef ts,
+        parseTraitDef ts
+      ]
   _ <- parseLineBreak
-  return (pattern', value)
+  return def
 
 parseTypeAnnotation :: Parser (String, Expr)
 parseTypeAnnotation = do
@@ -249,9 +275,12 @@ parseImport :: Parser Stmt
 parseImport = do
   (loc, _) <- parseLocation (P.word "import")
   P.commit CImport
-  dirName <- concat <$> P.zeroOrMore (P.concat [parseIdentifier, P.text "/"])
-  modName <- parseIdentifier
-  let name = dirName ++ modName
+  let parsePath = do
+        path <- parseIdentifier
+        _ <- P.char '/'
+        return path
+  path <- P.zeroOrMore parsePath
+  name <- parseIdentifier
   _ <- P.spaces
   alias <-
     P.oneOf
@@ -265,11 +294,22 @@ parseImport = do
       ]
   exposing <-
     P.oneOf
-      [ parseCollection "(" "," ")" parseIdentifier,
+      [ do
+          let parseExpose = do
+                name <- parseIdentifier
+                P.oneOf
+                  [ do
+                      _ <- P.word "as"
+                      _ <- P.spaces
+                      alias <- parseIdentifier
+                      return (name, alias),
+                    return (name, name)
+                  ]
+          parseCollection "(" "," ")" parseExpose,
         return []
       ]
   _ <- parseLineBreak
-  return (Import name alias exposing)
+  return (Import path name alias exposing)
 
 parseTest :: Parser Stmt
 parseTest = do
@@ -293,25 +333,50 @@ parseTest = do
       ]
   return (Test expr result)
 
--- File
-parseFile :: String -> Parser File
-parseFile name = do
-  P.commit CFile
+parseModule :: [FilePath] -> String -> Parser Module
+parseModule path name = do
+  P.commit CModule
   stmts <- P.zeroOrMore parseStmt
   _ <- P.whitespaces
+  comments <- P.zeroOrMore parseComment
   _ <- P.endOfFile
-  return (File name stmts)
+  return (Module path name stmts)
 
-parseModule :: String -> Module -> IO Module
-parseModule filename mod | filename `elem` map (\f -> f.name) mod.files = return mod
-parseModule filename mod = do
-  src <- readFile filename
-  case P.parse filename (parseFile filename) src of
+parseFile :: FilePath -> FilePath -> Package -> IO Package
+parseFile _ filename pkg | filename `elem` map (\f -> f.name) pkg.modules = return pkg
+parseFile base filename pkg = do
+  src <- readFile (base </> filename)
+  let (dir, name) = splitFileName (dropExtension filename)
+  let path = splitDirectories dir & filter (/= ".")
+  case P.parse filename (parseModule path name) src of
     Right (f, _) -> do
       -- TODO: evaluate the module statements
-      return (mod {files = f : mod.files})
+      return (pkg {modules = f : pkg.modules})
     Left P.State {name, pos = (row, col), context} -> do
       let loc = intercalate ":" [name, show row, show col]
       putStrLn loc
       print context
       error ("🛑 " ++ loc ++ ": syntax error")
+
+parsePackage :: FilePath -> IO Package
+parsePackage path = do
+  let pkg = Package {name = takeBaseName path, modules = []}
+  isFile <- doesFileExist path
+  case (isFile, path) of
+    (True, path) -> do
+      let (base, filename) = splitFileName path
+      parseFile base filename pkg
+    (False, base) -> do
+      files <- walkDirectory base ""
+      foldM (flip (parseFile base)) pkg files
+
+walkDirectory :: FilePath -> FilePath -> IO [FilePath]
+walkDirectory base path = do
+  let walk path = do
+        isDir <- doesDirectoryExist (base </> path)
+        if isDir
+          then walkDirectory base path
+          else return [path]
+  paths <- listDirectory (base </> path)
+  files <- mapM walk (sort paths)
+  return (map (path </>) (concat files))
