@@ -529,7 +529,20 @@ pyPretty :: BuildOptions -> PP.Layout -> String
 pyPretty options = PP.pretty options.maxLineLength options.indent
 
 layoutModule :: PyModule -> PP.Layout
-layoutModule PyModule {body} = concatMap layoutStmt body
+layoutModule PyModule {body = []} = []
+layoutModule PyModule {body = stmt : stmts} = layoutBlock stmt stmts
+
+layoutBlock :: PyStmt -> [PyStmt] -> PP.Layout
+layoutBlock a [] = layoutStmt a
+layoutBlock a (b : stmts) | isImport a && isImport b = layoutStmt a ++ layoutBlock b stmts
+layoutBlock a (b : stmts) | isImport a = layoutStmt a ++ PP.Text "\n" : layoutBlock b stmts
+layoutBlock a (b : stmts) | isImport b = layoutStmt a ++ PP.Text "\n" : layoutBlock b stmts
+layoutBlock a (b : stmts) = layoutStmt a ++ layoutBlock b stmts
+
+isImport :: PyStmt -> Bool
+isImport PyImport {} = True
+isImport PyImportFrom {} = True
+isImport _ = False
 
 layoutStmt :: PyStmt -> PP.Layout
 layoutStmt (PyAssign [] y) = layoutExpr y
