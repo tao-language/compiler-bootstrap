@@ -34,8 +34,9 @@ ghc-options:
   - -XDuplicateRecordFields
   - -XInstanceSigs
   - -XNamedFieldPuns
-  - -XOverloadedRecordDot
   - -XNoFieldSelectors
+  - -XOverloadedRecordDot
+  - -XTupleSections
 
 executables:
   tao-bootstrap:

@@ -2,6 +2,7 @@ module PythonTests where
 
 import PrettyPrint (pretty)
 import Python
+import System.Directory (doesDirectoryExist)
 import System.FilePath ((</>))
 import Tao
 import TaoParser (parsePackage)
@@ -9,22 +10,23 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Python ☯==--" $ do
+  let options = defaultBuildOptions
   let ctx = PyCtx {globals = [], locals = [], nameIndex = 0}
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (x', y', z') = (PyName "x", PyName "y", PyName "z")
   let (a', b') = (PyName "a", PyName "b")
 
   it "☯ emitExpr" $ do
-    emitExpr ctx Any `shouldBe` (ctx, PyName "_")
-    emitExpr ctx IntType `shouldBe` (ctx, PyName "int")
-    emitExpr ctx NumType `shouldBe` (ctx, PyName "float")
-    emitExpr ctx (Int 42) `shouldBe` (ctx, PyInteger 42)
-    emitExpr ctx (Num 3.14) `shouldBe` (ctx, PyFloat 3.14)
-    emitExpr ctx (Var "x") `shouldBe` (ctx, PyName "x")
-    emitExpr ctx (Tag "A" []) `shouldBe` (ctx, pyCall (PyName "A") [])
-    emitExpr ctx (Tag "A" [x, y]) `shouldBe` (ctx, pyCall (PyName "A") [x', y'])
-    emitExpr ctx (Tuple []) `shouldBe` (ctx, PyTuple [])
-    emitExpr ctx (Tuple [x, y]) `shouldBe` (ctx, PyTuple [x', y'])
+    emitExpr options ctx Any `shouldBe` (ctx, PyName "_")
+    emitExpr options ctx IntType `shouldBe` (ctx, PyName "int")
+    emitExpr options ctx NumType `shouldBe` (ctx, PyName "float")
+    emitExpr options ctx (Int 42) `shouldBe` (ctx, PyInteger 42)
+    emitExpr options ctx (Num 3.14) `shouldBe` (ctx, PyFloat 3.14)
+    emitExpr options ctx (Var "x") `shouldBe` (ctx, PyName "x")
+    emitExpr options ctx (Tag "A" []) `shouldBe` (ctx, pyCall (PyName "A") [])
+    emitExpr options ctx (Tag "A" [x, y]) `shouldBe` (ctx, pyCall (PyName "A") [x', y'])
+    emitExpr options ctx (Tuple []) `shouldBe` (ctx, PyTuple [])
+    emitExpr options ctx (Tuple [x, y]) `shouldBe` (ctx, PyTuple [x', y'])
     -- emitExpr ctx (Record []) `shouldBe` (ctx, PyDict [])
     -- emitExpr ctx (Record [("a", x), ("b", y)]) `shouldBe` (ctx, PyDict [(a', x'), (b', y')])
     -- emitExpr ctx (Trait x "y") `shouldBe` (ctx, pyCall (PyAttribute x' "y") [])
@@ -51,12 +53,12 @@ run = describe "--==☯ Python ☯==--" $ do
     True `shouldBe` True
 
   it "☯ emitStmt Import" $ do
-    emitStmt (Import "mod" "mod" []) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing]}
-    emitStmt (Import "mod" "alias" []) ctx `shouldBe` ctx {globals = [PyImport "mod" (Just "alias")]}
-    emitStmt (Import "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing, PyImportFrom "mod" [("a", Nothing), ("b", Just "c")]]}
+    emitStmt options (Import [] "mod" "mod" []) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing]}
+    emitStmt options (Import [] "mod" "alias" []) ctx `shouldBe` ctx {globals = [PyImport "mod" (Just "alias")]}
+    emitStmt options (Import [] "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing, PyImportFrom "mod" [("a", Nothing), ("b", Just "c")]]}
 
   it "☯ emitStmt Def" $ do
-    emitStmt (Def (DefName [] "x" [] y)) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}
+    emitStmt options (Def (DefName [] "x" [] y)) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}
 
   it "☯ emitModule" $ do
     let stmts =
@@ -67,13 +69,28 @@ run = describe "--==☯ Python ☯==--" $ do
           [ PyAssign [x'] (PyInteger 1),
             PyAssign [y'] (PyInteger 2)
           ]
-    emitModule (Module {name = "mod", stmts = stmts}) `shouldBe` PyModule {name = "mod", body = emitStmts}
+    emitModule options (Module [] "mod" stmts) `shouldBe` PyModule {name = "mod", body = emitStmts}
 
   it "☯ build" $ do
-    pkg <- parsePackage "examples/modules" (Package {name = "pkg", modules = []})
-    let pkgPath = "build" </> "python" </> "pkg"
-    build "build" pkg `shouldReturn` pkgPath
-    readFile (pkgPath </> "src" </> "__init__.py") `shouldReturn` ""
-    readFile (pkgPath </> "src" </> "main.py") `shouldReturn` "x = 1"
-    readFile (pkgPath </> "src" </> "submodule" </> "__init__.py") `shouldReturn` ""
-    readFile (pkgPath </> "src" </> "submodule" </> "simple.py") `shouldReturn` "y = 2"
+    pkg <- parsePackage "examples/simple"
+    pkg.name `shouldBe` "simple"
+    map (\m -> (m.path, m.name)) pkg.modules `shouldBe` [([], "main"), (["submodule"], "subfile")]
+
+    -- Check package
+    build options "build" pkg `shouldReturn` "build/python"
+    doesDirectoryExist "build/python" `shouldReturn` True
+    -- TODO: add pyproject.toml
+    -- TODO: add README.md
+    -- TODO: add LICENSE
+
+    -- Check source files
+    readFile "build/python/simple/__init__.py" `shouldReturn` ""
+    readFile "build/python/simple/main.py" `shouldReturn` "x = 1"
+    readFile "build/python/simple/submodule/__init__.py" `shouldReturn` ""
+    readFile "build/python/simple/submodule/subfile.py" `shouldReturn` "y = 2"
+
+    -- Check tests
+
+    -- Check docs
+
+    True `shouldBe` True

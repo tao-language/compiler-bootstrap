@@ -2,6 +2,7 @@ module TaoParserTests where
 
 import qualified Core as C
 import qualified Parser as P
+import System.Directory (withCurrentDirectory)
 import Tao
 import TaoParser
 import Test.Hspec
@@ -180,11 +181,11 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseImport" $ do
     let p = parse' parseImport
-    p "import mod" `shouldBe` Right (Import "mod" "mod" [], "")
-    p "import dir/to/mod" `shouldBe` Right (Import "dir/to/mod" "dir/to/mod" [], "")
-    p "import mod as m" `shouldBe` Right (Import "mod" "m" [], "")
-    p "import mod as m ()" `shouldBe` Right (Import "mod" "m" [], "")
-    p "import mod as m (a, b as c)" `shouldBe` Right (Import "mod" "m" [("a", "a"), ("b", "c")], "")
+    p "import mod" `shouldBe` Right (Import [] "mod" "mod" [], "")
+    p "import path/to/mod" `shouldBe` Right (Import ["path", "to"] "mod" "mod" [], "")
+    p "import mod as m" `shouldBe` Right (Import [] "mod" "m" [], "")
+    p "import mod as m ()" `shouldBe` Right (Import [] "mod" "m" [], "")
+    p "import mod as m (a, b as c)" `shouldBe` Right (Import [] "mod" "m" [("a", "a"), ("b", "c")], "")
 
   it "☯ parseTest" $ do
     let p = parse' parseTest
@@ -196,21 +197,29 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   it "☯ parseStmt" $ do
     let p = parse' parseStmt
     p "x = y" `shouldBe` Right (Def (DefName [] "x" [] (var 1 5 "y")), "")
-    p "import mod" `shouldBe` Right (Import "mod" "mod" [], "")
+    p "import mod" `shouldBe` Right (Import [] "mod" "mod" [], "")
     p "> x; y" `shouldBe` Right (Test (var 1 3 "x") (var 1 6 "y"), "")
 
   it "☯ parseModule" $ do
-    let p = parse' (parseModule "my-file.tao")
-    p "" `shouldBe` Right (Module "my-file.tao" [], "")
+    let p = parse' (parseModule ["path"] "my-file.tao")
+    p "" `shouldBe` Right (Module ["path"] "my-file.tao" [], "")
     p "x" `shouldBe` Left ([CModule], "x")
-    p "import m" `shouldBe` Right (Module "my-file.tao" [Import "m" "m" []], "")
+    p "import m" `shouldBe` Right (Module ["path"] "my-file.tao" [Import [] "m" "m" []], "")
 
-  it "☯ parsePackage' exists" $ do
-    -- Skip modules that are already in the package.
-    let pkg = Package {name = "pkg", modules = [Module "my-file" []]}
+  it "☯ parseFile exists" $ do
+    let pkg = Package {name = "pkg", modules = [Module [] "my-file" []]}
     parseFile "base-path" "my-file" pkg `shouldReturn` pkg
 
-  it "☯ parsePackage' load" $ do
-    -- Parse new modules.
+  it "☯ parseFile load" $ do
     let pkg = Package {name = "pkg", modules = []}
-    parseFile "examples" "empty.tao" pkg `shouldReturn` pkg {modules = [Module "empty" []]}
+    parseFile "examples" "empty.tao" pkg `shouldReturn` pkg {modules = [Module [] "empty" []]}
+
+  it "☯ parsePackage directory" $ do
+    let expected = Package {name = "empty", modules = [Module [] "empty-file" []]}
+    parsePackage "examples/empty" `shouldReturn` expected
+    withCurrentDirectory "examples" (parsePackage "empty") `shouldReturn` expected
+
+  it "☯ parsePackage file" $ do
+    let expected = Package {name = "empty", modules = [Module [] "empty" []]}
+    parsePackage "examples/empty.tao" `shouldReturn` expected
+    withCurrentDirectory "examples" (parsePackage "empty.tao") `shouldReturn` expected

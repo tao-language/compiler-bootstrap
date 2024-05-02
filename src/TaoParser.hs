@@ -7,8 +7,8 @@ import Data.Char (isSpace, isUpper)
 import Data.Function ((&))
 import Data.List (dropWhileEnd, intercalate)
 import qualified Parser as P
-import System.Directory (doesDirectoryExist, findFiles, listDirectory)
-import System.FilePath (dropExtension, (</>))
+import System.Directory (doesDirectoryExist, doesFileExist, findFiles, listDirectory)
+import System.FilePath (dropExtension, splitDirectories, splitFileName, splitPath, takeBaseName, takeFileName, (</>))
 import Tao
 
 type Parser a = P.Parser ParserContext a
@@ -275,9 +275,12 @@ parseImport :: Parser Stmt
 parseImport = do
   (loc, _) <- parseLocation (P.word "import")
   P.commit CImport
-  dirName <- concat <$> P.zeroOrMore (P.concat [parseIdentifier, P.text "/"])
-  modName <- parseIdentifier
-  let name = dirName ++ modName
+  let parsePath = do
+        path <- parseIdentifier
+        _ <- P.char '/'
+        return path
+  path <- P.zeroOrMore parsePath
+  name <- parseIdentifier
   _ <- P.spaces
   alias <-
     P.oneOf
@@ -306,7 +309,7 @@ parseImport = do
         return []
       ]
   _ <- parseLineBreak
-  return (Import name alias exposing)
+  return (Import path name alias exposing)
 
 parseTest :: Parser Stmt
 parseTest = do
@@ -330,21 +333,22 @@ parseTest = do
       ]
   return (Test expr result)
 
-parseModule :: String -> Parser Module
-parseModule name = do
+parseModule :: [FilePath] -> String -> Parser Module
+parseModule path name = do
   P.commit CModule
   stmts <- P.zeroOrMore parseStmt
   _ <- P.whitespaces
   comments <- P.zeroOrMore parseComment
   _ <- P.endOfFile
-  return (Module name stmts)
+  return (Module path name stmts)
 
 parseFile :: FilePath -> FilePath -> Package -> IO Package
 parseFile _ filename pkg | filename `elem` map (\f -> f.name) pkg.modules = return pkg
 parseFile base filename pkg = do
   src <- readFile (base </> filename)
-  let name = dropExtension filename
-  case P.parse filename (parseModule name) src of
+  let (dir, name) = splitFileName (dropExtension filename)
+  let path = splitDirectories dir & filter (/= ".")
+  case P.parse filename (parseModule path name) src of
     Right (f, _) -> do
       -- TODO: evaluate the module statements
       return (pkg {modules = f : pkg.modules})
@@ -354,10 +358,17 @@ parseFile base filename pkg = do
       print context
       error ("🛑 " ++ loc ++ ": syntax error")
 
-parsePackage :: String -> Package -> IO Package
-parsePackage base pkg = do
-  files <- walkDirectory base ""
-  foldM (flip (parseFile base)) pkg files
+parsePackage :: FilePath -> IO Package
+parsePackage path = do
+  let pkg = Package {name = takeBaseName path, modules = []}
+  isFile <- doesFileExist path
+  case (isFile, path) of
+    (True, path) -> do
+      let (base, filename) = splitFileName path
+      parseFile base filename pkg
+    (False, base) -> do
+      files <- walkDirectory base ""
+      foldM (flip (parseFile base)) pkg files
 
 walkDirectory :: FilePath -> FilePath -> IO [FilePath]
 walkDirectory base path = do

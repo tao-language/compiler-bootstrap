@@ -43,14 +43,15 @@ data Definition
   deriving (Eq, Show)
 
 data Stmt
-  = Import String String [(String, String)] -- import package as alias (a, b, c)
+  = Import [String] String String [(String, String)] -- import path/package as alias (a, b, c)
   | Def Definition
   | Test Expr Expr
   | MetaStmt C.Metadata Stmt
   deriving (Eq, Show)
 
 data Module = Module
-  { name :: String,
+  { path :: [String],
+    name :: String,
     stmts :: [Stmt]
   }
   deriving (Eq, Show)
@@ -251,3 +252,18 @@ test :: Package -> [TestError]
 test pkg = do
   let defs = packageDefs pkg
   concatMap (testEq defs) (packageTests pkg)
+
+nameSplit :: String -> [String]
+nameSplit name = []
+
+nameCamelCaseUpper :: String -> String
+nameCamelCaseUpper name = name
+
+nameCamelCaseLower :: String -> String
+nameCamelCaseLower name = name
+
+nameSnakeCase :: String -> String
+nameSnakeCase name = name
+
+nameDashCase :: String -> String
+nameDashCase name = name
