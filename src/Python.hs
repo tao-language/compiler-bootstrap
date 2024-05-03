@@ -529,51 +529,38 @@ pyPretty :: BuildOptions -> PP.Layout -> String
 pyPretty options = PP.pretty options.maxLineLength options.indent
 
 layoutModule :: PyModule -> PP.Layout
-layoutModule PyModule {body = []} = []
-layoutModule PyModule {body = stmt : stmts} = layoutBlock stmt stmts
-
-layoutBlock :: PyStmt -> [PyStmt] -> PP.Layout
-layoutBlock a [] = layoutStmt a
-layoutBlock a (b : stmts) | isImport a && isImport b = layoutStmt a ++ layoutBlock b stmts
-layoutBlock a (b : stmts) | isImport a = layoutStmt a ++ PP.Text "\n" : layoutBlock b stmts
-layoutBlock a (b : stmts) | isImport b = layoutStmt a ++ PP.Text "\n" : layoutBlock b stmts
-layoutBlock a (b : stmts) = layoutStmt a ++ layoutBlock b stmts
-
-isImport :: PyStmt -> Bool
-isImport PyImport {} = True
-isImport PyImportFrom {} = True
-isImport _ = False
+layoutModule PyModule {body} = PP.join [PP.Text "\n"] (map layoutStmt body)
 
 layoutStmt :: PyStmt -> PP.Layout
 layoutStmt (PyAssign [] y) = layoutExpr y
 layoutStmt (PyAssign (x : xs) y) = layoutExpr x ++ (PP.Text " = " : layoutStmt (PyAssign xs y))
 layoutStmt (PyImport name alias) = case alias of
-  Just alias -> [PP.Text $ "import " ++ name ++ " as " ++ alias ++ "\n"]
-  Nothing -> [PP.Text $ "import " ++ name ++ "\n"]
+  Just alias -> [PP.Text $ "import " ++ name ++ " as " ++ alias]
+  Nothing -> [PP.Text $ "import " ++ name]
 layoutStmt (PyImportFrom name exposed) = do
   let layoutExpose (name, Nothing) = name
       layoutExpose (name, Just alias) = name ++ " as " ++ alias
-  [PP.Text $ "from " ++ name ++ " import " ++ intercalate ", " (map layoutExpose exposed) ++ "\n"]
+  [PP.Text $ "from " ++ name ++ " import " ++ intercalate ", " (map layoutExpose exposed)]
 layoutStmt PyIf {test, body, orelse = []} = do
   PP.Text "if "
     : layoutExpr test
-    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layoutStmt body), PP.Text "\n"]
+    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layoutStmt body)]
 layoutStmt PyIf {test, body, orelse} = do
   layoutStmt PyIf {test = test, body = body, orelse = []}
-    ++ [PP.Text "else:", PP.Indent (PP.Text "\n" : concatMap layoutStmt orelse), PP.Text "\n"]
+    ++ [PP.Text "\nelse:", PP.Indent (PP.Text "\n" : concatMap layoutStmt orelse)]
 layoutStmt def@PyFunctionDef {} = do
   let body = if null def.body then [PyPass] else def.body
   PP.Text ("def " ++ def.name)
     : layoutTuple (map layoutFunctionArg def.args)
     ++ maybe [] (\t -> PP.Text " -> " : layoutExpr t) def.returns
-    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layoutStmt body), PP.Text "\n"]
+    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layoutStmt body)]
 layoutStmt def@PyClassDef {} = do
   let body = if null def.body then [PyPass] else def.body
   PP.Text ("class " ++ def.name)
     : case def.bases of
       [] -> []
       bases -> layoutTuple (map layoutExpr bases)
-    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layoutStmt body), PP.Text "\n"]
+    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layoutStmt body)]
 layoutStmt (PyReturn expr) =
   [ PP.Text "return ",
     PP.Or
@@ -600,7 +587,6 @@ layoutStmt (PyRaise exc from) =
   PP.Text "raise "
     : layoutExpr exc
     ++ maybe [] (\a -> PP.Text " from " : layoutExpr a) from
-    ++ [PP.Text "\n"]
 layoutStmt PyPass = [PP.Text "pass"]
 layoutStmt stmt = error $ "TODO: layoutStmt: " ++ show stmt
 

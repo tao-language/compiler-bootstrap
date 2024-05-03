@@ -3,7 +3,10 @@ module Tao where
 -- TODO: maybe use terms like "lower" and "lift" for conversions to/from core
 import qualified Core as C
 import Data.Bifunctor (second)
+import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
+import Data.List (intercalate)
+import Data.List.Split (split, splitOneOf, splitWhen, whenElt)
 
 data Expr
   = Any
@@ -254,16 +257,41 @@ test pkg = do
   concatMap (testEq defs) (packageTests pkg)
 
 nameSplit :: String -> [String]
-nameSplit name = []
+nameSplit name =
+  splitWhen (not . isAlphaNum) name
+    & filter (/= "")
+    & concatMap splitCamelCase
+    & map (map toLower)
+
+splitCamelCase :: String -> [String]
+splitCamelCase [] = []
+splitCamelCase (x : xs) = case splitCamelCase xs of
+  [] -> [[x]]
+  part : parts -> case part of
+    (y : z : _) | isUpper x && isUpper y && isLower z -> split
+    (y : _) | isUpper x || isLower y -> cat
+    _ -> split
+    where
+      split = [x] : part : parts
+      cat = (x : part) : parts
+
+capitalize :: String -> String
+capitalize "" = ""
+capitalize (x : xs) = toUpper x : xs
 
 nameCamelCaseUpper :: String -> String
-nameCamelCaseUpper name = name
+nameCamelCaseUpper name =
+  nameSplit name
+    & map capitalize
+    & intercalate ""
 
 nameCamelCaseLower :: String -> String
-nameCamelCaseLower name = name
+nameCamelCaseLower name = case nameSplit name of
+  [] -> ""
+  (x : xs) -> intercalate "" (x : map capitalize xs)
 
 nameSnakeCase :: String -> String
-nameSnakeCase name = name
+nameSnakeCase name = nameSplit name & intercalate "_"
 
 nameDashCase :: String -> String
-nameDashCase name = name
+nameDashCase name = nameSplit name & intercalate "-"

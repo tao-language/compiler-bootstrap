@@ -296,3 +296,33 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           ]
     let mod = Package {name = "test", modules = [Module [] "f" defs]}
     test mod `shouldBe` [TestEqError x (Int 1) (Int 2)]
+
+  it "☯ splitCamelCase" $ do
+    splitCamelCase "" `shouldBe` []
+    splitCamelCase "Camel" `shouldBe` ["Camel"]
+    splitCamelCase "CamelCase" `shouldBe` ["Camel", "Case"]
+    splitCamelCase "CamelCaseABC" `shouldBe` ["Camel", "Case", "ABC"]
+    splitCamelCase "CamelABCCase" `shouldBe` ["Camel", "ABC", "Case"]
+    splitCamelCase "ABCCamelCase" `shouldBe` ["ABC", "Camel", "Case"]
+
+  it "☯ nameSplit" $ do
+    nameSplit "" `shouldBe` []
+    nameSplit "camelCase" `shouldBe` ["camel", "case"]
+    nameSplit "CamelCase" `shouldBe` ["camel", "case"]
+    nameSplit "snake_case" `shouldBe` ["snake", "case"]
+    nameSplit "dash-case" `shouldBe` ["dash", "case"]
+    nameSplit "dot.name" `shouldBe` ["dot", "name"]
+    nameSplit "/path/name" `shouldBe` ["path", "name"]
+    nameSplit "multisymbol/.name" `shouldBe` ["multisymbol", "name"]
+
+  it "☯ nameCamelCaseUpper" $ do
+    nameCamelCaseUpper "my-name" `shouldBe` "MyName"
+
+  it "☯ nameCamelCaseLower" $ do
+    nameCamelCaseLower "my-name" `shouldBe` "myName"
+
+  it "☯ nameSnakeCase" $ do
+    nameSnakeCase "my-name" `shouldBe` "my_name"
+
+  it "☯ nameDashCase" $ do
+    nameDashCase "my_name" `shouldBe` "my-name"

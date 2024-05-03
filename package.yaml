@@ -24,6 +24,7 @@ dependencies:
 - filepath
 - process
 - sort
+- split
 
 library:
   source-dirs: src
