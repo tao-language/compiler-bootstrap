@@ -60,6 +60,9 @@ run = describe "--==☯ Python ☯==--" $ do
     emitStmt options (Import [] "mod" "alias" []) ctx `shouldBe` ctx {globals = [PyImport "mod" (Just "alias")]}
     emitStmt options (Import [] "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing, PyImportFrom "mod" [("a", Nothing), ("b", Just "c")]]}
 
+  it "☯ emitStmt Import rename" $ do
+    emitStmt options (Import [] "if" "if" []) ctx `shouldBe` ctx {globals = [PyImport "if_" Nothing]}
+
   it "☯ emitStmt Def" $ do
     emitStmt options (Def (DefName [] "x" [] y)) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}
 

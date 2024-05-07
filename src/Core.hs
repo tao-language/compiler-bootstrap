@@ -514,3 +514,9 @@ checkTypes env = do
         Right _ -> []
         Left err -> [err]
   concatMap checkDef env
+
+rename :: ([String] -> String -> String) -> [String] -> Env -> Env
+rename _ _ [] = []
+rename f names ((x, a) : env) = do
+  let y = f (names ++ map fst env) x
+  (y, eval [(x, Var y)] a) : rename f (y : names) env

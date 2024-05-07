@@ -231,6 +231,135 @@ data PyTypeParam
   | PyParamSpec String -- T[**ts]
   deriving (Eq, Show)
 
+data BuildOptions = BuildOptions
+  { version :: (Int, Int),
+    testPath :: FilePath,
+    docsPath :: FilePath,
+    testingFramework :: TestingFramework,
+    maxLineLength :: Int,
+    indent :: String
+  }
+  deriving (Eq, Show)
+
+-- Taken from help("keywords") in Python 3.12 REPL
+keywords :: [String]
+keywords =
+  [ "False",
+    "None",
+    "True",
+    "and",
+    "as",
+    "assert",
+    "async",
+    "await",
+    "break",
+    "class",
+    "continue",
+    "def",
+    "del",
+    "elif",
+    "else",
+    "except",
+    "finally",
+    "for",
+    "from",
+    "global",
+    "if",
+    "import",
+    "in",
+    "is",
+    "lambda",
+    "nonlocal",
+    "not",
+    "or",
+    "pass",
+    "raise",
+    "return",
+    "try",
+    "while",
+    "with",
+    "yield"
+  ]
+
+-- https://docs.python.org/3/library/functions.html
+builtinFunctions :: [String]
+builtinFunctions =
+  [ "__import__",
+    "abs",
+    "aiter",
+    "all",
+    "anext",
+    "any",
+    "ascii",
+    "bin",
+    "bool",
+    "breakpoint",
+    "bytearray",
+    "bytes",
+    "callable",
+    "chr",
+    "classmethod",
+    "compile",
+    "complex",
+    "delattr",
+    "dict",
+    "dir",
+    "divmod",
+    "enumerate",
+    "eval",
+    "exec",
+    "filter",
+    "float",
+    "format",
+    "frozenset",
+    "getattr",
+    "globals",
+    "hasattr",
+    "hash",
+    "help",
+    "hex",
+    "id",
+    "input",
+    "int",
+    "isinstance",
+    "issubclass",
+    "iter",
+    "len",
+    "list",
+    "locals",
+    "map",
+    "max",
+    "memoryview",
+    "min",
+    "next",
+    "object",
+    "oct",
+    "open",
+    "ord",
+    "pow",
+    "print",
+    "property",
+    "range",
+    "repr",
+    "reversed",
+    "round",
+    "set",
+    "setattr",
+    "slice",
+    "sorted",
+    "staticmethod",
+    "str",
+    "sum",
+    "super",
+    "tuple",
+    "type",
+    "vars",
+    "zip"
+  ]
+
+reservedNames :: [String]
+reservedNames = keywords ++ builtinFunctions
+
 addUnique :: (Eq a) => a -> [a] -> [a]
 addUnique x [] = [x]
 addUnique x (x' : ys) | x == x' = x : ys
@@ -248,17 +377,6 @@ pyRaise :: PyExpr -> PyStmt
 pyRaise x = PyRaise x Nothing
 
 --- Build target ---
-data BuildOptions = BuildOptions
-  { version :: (Int, Int),
-    srcPath :: FilePath,
-    testPath :: FilePath,
-    docsPath :: FilePath,
-    testingFramework :: TestingFramework,
-    maxLineLength :: Int,
-    indent :: String
-  }
-  deriving (Eq, Show)
-
 defaultBuildOptions :: BuildOptions
 defaultBuildOptions =
   BuildOptions
@@ -520,9 +638,6 @@ emitExprAll options ctx (a : bs) = do
   let (ctx1, a') = emitExpr options ctx a
   let (ctx2, bs') = emitExprAll options ctx1 bs
   (ctx2, a' : bs')
-
--- rename :: [String] -> String -> String
--- rename existing name =
 
 --- Pretty printing layouts ---
 pyPretty :: BuildOptions -> PP.Layout -> String

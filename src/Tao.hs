@@ -5,7 +5,7 @@ import qualified Core as C
 import Data.Bifunctor (second)
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
-import Data.List (intercalate)
+import Data.List (intercalate, union)
 import Data.List.Split (split, splitOneOf, splitWhen, whenElt)
 
 data Expr
@@ -295,3 +295,9 @@ nameSnakeCase name = nameSplit name & intercalate "_"
 
 nameDashCase :: String -> String
 nameDashCase name = nameSplit name & intercalate "-"
+
+rename :: ([String] -> String -> String) -> Package -> Package
+rename f pkg =
+  lowerPackage pkg
+    & C.rename f []
+    & liftPackage pkg.name
