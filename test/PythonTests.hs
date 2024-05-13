@@ -21,13 +21,12 @@ run = describe "--==☯ Python ☯==--" $ do
 
   it "☯ emitExpr" $ do
     emitExpr options ctx Any `shouldBe` (ctx, PyName "_")
-    emitExpr options ctx IntType `shouldBe` (ctx, PyName "int")
-    emitExpr options ctx NumType `shouldBe` (ctx, PyName "float")
     emitExpr options ctx (Int 42) `shouldBe` (ctx, PyInteger 42)
     emitExpr options ctx (Num 3.14) `shouldBe` (ctx, PyFloat 3.14)
     emitExpr options ctx (Var "x") `shouldBe` (ctx, PyName "x")
-    emitExpr options ctx (Tag "A" []) `shouldBe` (ctx, pyCall (PyName "A") [])
-    emitExpr options ctx (Tag "A" [x, y]) `shouldBe` (ctx, pyCall (PyName "A") [x', y'])
+    emitExpr options ctx (Tag "Int") `shouldBe` (ctx, PyName "int")
+    emitExpr options ctx (Tag "Num") `shouldBe` (ctx, PyName "float")
+    emitExpr options ctx (Tag "A") `shouldBe` (ctx, pyCall (PyName "A") [])
     emitExpr options ctx (Tuple []) `shouldBe` (ctx, PyTuple [])
     emitExpr options ctx (Tuple [x, y]) `shouldBe` (ctx, PyTuple [x', y'])
     -- emitExpr ctx (Record []) `shouldBe` (ctx, PyDict [])
@@ -60,16 +59,13 @@ run = describe "--==☯ Python ☯==--" $ do
     emitStmt options (Import [] "mod" "alias" []) ctx `shouldBe` ctx {globals = [PyImport "mod" (Just "alias")]}
     emitStmt options (Import [] "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing, PyImportFrom "mod" [("a", Nothing), ("b", Just "c")]]}
 
-  it "☯ emitStmt Import rename" $ do
-    emitStmt options (Import [] "if" "if" []) ctx `shouldBe` ctx {globals = [PyImport "if_" Nothing]}
-
   it "☯ emitStmt Def" $ do
-    emitStmt options (Def (DefName [] "x" [] y)) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}
+    emitStmt options (Def (NameDef [] "x" [] y)) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}
 
   it "☯ emitModule" $ do
     let stmts =
-          [ Def (DefName [] "x" [] (Int 1)),
-            Def (DefName [] "y" [] (Int 2))
+          [ Def (NameDef [] "x" [] (Int 1)),
+            Def (NameDef [] "y" [] (Int 2))
           ]
     let emitStmts =
           [ PyAssign [x'] (PyInteger 1),
@@ -116,7 +112,3 @@ run = describe "--==☯ Python ☯==--" $ do
         putStrLn out
         putStrLn err
         exitCode `shouldBe` ExitSuccess
-
-    -- Check docs
-
-    True `shouldBe` True

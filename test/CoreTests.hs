@@ -380,14 +380,14 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ rename simple" $ do
     let env = [("A", x), ("B", y)]
-    let f xs x = case map toLower x of
-          y | y `elem` xs -> f xs (y ++ "_")
+    let f t xs x = case map toLower x of
+          y | y `elem` xs -> f t xs (y ++ "_")
           y -> y
-    rename f [] env `shouldBe` [("a", x), ("b", y)]
+    rename f [] env env `shouldBe` [("a", x), ("b", y)]
 
   it "☯ rename name clashes" $ do
     let env = [("a_", x), ("A", y), ("a", z)]
-    let f xs x = case map toLower x of
-          y | y `elem` xs -> f xs (y ++ "_")
+    let f t xs x = case map toLower x of
+          y | y `elem` xs -> f t xs (y ++ "_")
           y -> y
-    rename f [] env `shouldBe` [("a_", x), ("a__", y), ("a", z)]
+    rename f [] env env `shouldBe` [("a_", x), ("a__", y), ("a", z)]

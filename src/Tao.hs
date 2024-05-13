@@ -2,7 +2,7 @@ module Tao where
 
 -- TODO: maybe use terms like "lower" and "lift" for conversions to/from core
 import qualified Core as C
-import Data.Bifunctor (second)
+import Data.Bifunctor (Bifunctor (bimap, first), second)
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
 import Data.List (intercalate, union)
@@ -10,25 +10,18 @@ import Data.List.Split (split, splitOneOf, splitWhen, whenElt)
 
 data Expr
   = Any
-  | IntType
-  | NumType
   | Int Int
   | Num Double
   | Var String
-  | Tag String [Expr]
+  | Tag String
+  | Type [String]
   | Tuple [Expr]
   | Record [(String, Expr)]
   | Trait Expr String
-  | ListNil
-  | ListCons
-  | TextNil
-  | TextCons
-  | Type [String]
   | Fun Expr Expr
   | App Expr Expr
   | Let Definition Expr
   | Bind (Expr, Expr) Expr
-  | TypeDef String [Expr] Expr
   | MatchFun [Expr]
   | Match [Expr] [Expr]
   | Or Expr Expr
@@ -40,9 +33,10 @@ data Expr
   deriving (Eq, Show)
 
 data Definition
-  = DefName [(String, Expr)] String [Expr] Expr
-  | DefUnpack [(String, Expr)] String [Expr] Expr
-  | DefTrait [(String, Expr)] (Expr, Expr) String [Expr] Expr
+  = NameDef [(String, Expr)] String [Expr] Expr
+  | UnpackDef [(String, Expr)] String [Expr] Expr
+  | TraitDef [(String, Expr)] (Expr, Expr) String [Expr] Expr
+  -- TODO: TypeDef
   deriving (Eq, Show)
 
 data Stmt
@@ -64,6 +58,9 @@ data Package = Package
     modules :: [Module]
   }
   deriving (Eq, Show)
+
+tag :: String -> [Expr] -> Expr
+tag k = app (Tag k)
 
 or' :: [Expr] -> Expr
 or' [] = error "`or'` must have at least one expression"
@@ -108,9 +105,28 @@ gt = Op2 C.Gt
 meta :: [C.Metadata] -> Expr -> Expr
 meta ms a = foldr Meta a ms
 
+isTypeDef :: Expr -> Bool
+isTypeDef (Type _) = True
+isTypeDef (Fun _ b) = isTypeDef b
+isTypeDef (App a _) = isTypeDef a
+isTypeDef (Ann a _) = isTypeDef a
+isTypeDef _ = False
+
+isTagDef :: Expr -> Bool
+isTagDef (Tag _) = True
+isTagDef (Fun _ b) = isTagDef b
+isTagDef (App a _) = isTagDef a
+isTagDef (Ann a _) = isTagDef a
+isTagDef _ = False
+
+isFunctionDef :: Expr -> Bool
+isFunctionDef (Fun _ _) = True
+isFunctionDef (Ann a _) = isFunctionDef a
+isFunctionDef _ = False
+
 list :: [Expr] -> Expr
-list [] = ListNil
-list (a : bs) = app ListCons [a, list bs]
+list [] = Tag "[]"
+list (a : bs) = app (Tag "[..]") [a, list bs]
 
 freeVars :: Expr -> [String]
 freeVars expr = C.freeVars (lowerExpr [] expr) & filter (/= "_")
@@ -118,14 +134,14 @@ freeVars expr = C.freeVars (lowerExpr [] expr) & filter (/= "_")
 -- Core conversions
 lowerExpr :: [(String, Expr)] -> Expr -> C.Term
 lowerExpr _ Any = C.Var "_"
-lowerExpr _ (Type alts) = C.Typ alts
-lowerExpr _ IntType = C.IntT
-lowerExpr _ NumType = C.NumT
 lowerExpr _ (Int i) = C.Int i
 lowerExpr _ (Num n) = C.Num n
 lowerExpr _ (Var x) = C.Var x
-lowerExpr defs (Tag k args) = C.app (C.Tag k) (map (lowerExpr defs) args)
-lowerExpr defs (Tuple items) = lowerExpr defs (Tag "()" items)
+lowerExpr _ (Tag "Int") = C.IntT
+lowerExpr _ (Tag "Num") = C.NumT
+lowerExpr _ (Tag k) = C.Tag k
+lowerExpr _ (Type alts) = C.Typ alts
+lowerExpr defs (Tuple items) = lowerExpr defs (tag "()" items)
 lowerExpr defs (Record fields) = do
   let lowerField (k, v) = (k, lowerExpr defs v)
   C.Rec (map lowerField fields)
@@ -135,15 +151,10 @@ lowerExpr defs (Trait a x) = do
   case C.infer env a' of
     Left _ -> C.Err
     Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
-lowerExpr _ ListNil = C.Tag "[]"
-lowerExpr _ ListCons = C.Tag "[..]"
-lowerExpr _ TextNil = C.Tag "\"\""
-lowerExpr _ TextCons = C.Tag "\"..\""
 lowerExpr defs (Fun a b) = C.Fun (lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (App a b) = C.App (lowerExpr defs a) (lowerExpr defs b)
 -- lowerExpr defs (Let (p, a) b) = C.let' (lowerExpr defs p, lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (Bind (p, a) b) = lowerExpr defs (App (Trait a "<-") (Fun p b))
--- TODO: TypeDef
 lowerExpr defs (MatchFun cases) = lowerExpr defs (or' cases)
 lowerExpr defs (Match args cases) = lowerExpr defs (app (MatchFun cases) args)
 lowerExpr defs (Or a b) = C.Or (lowerExpr defs a) (lowerExpr defs b)
@@ -154,19 +165,15 @@ lowerExpr defs (Meta m a) = C.Meta m (lowerExpr defs a)
 lowerExpr _ Err = C.Err
 
 liftExpr :: C.Term -> Expr
-liftExpr (C.Typ alts) = Type alts
-liftExpr C.IntT = IntType
-liftExpr C.NumT = NumType
+liftExpr C.IntT = Tag "Int"
+liftExpr C.NumT = Tag "Num"
 liftExpr (C.Int i) = Int i
 liftExpr (C.Num n) = Num n
 liftExpr (C.Var "_") = Any
 liftExpr (C.Var x) = Var x
 liftExpr (C.Tag "()") = Tuple []
-liftExpr (C.Tag "[]") = ListNil
-liftExpr (C.Tag "[..]") = ListCons
-liftExpr (C.Tag "\"\"") = TextNil
-liftExpr (C.Tag "\"..\"") = TextCons
-liftExpr (C.Tag k) = Tag k []
+liftExpr (C.Tag k) = Tag k
+liftExpr (C.Typ alts) = Type alts
 liftExpr (C.Rec fields) = do
   let liftField (x, a) = (x, liftExpr a)
   Record (map liftField fields)
@@ -174,7 +181,6 @@ liftExpr (C.For _ a) = liftExpr a
 liftExpr (C.Fix _ a) = liftExpr a
 liftExpr (C.Fun a b) = Fun (liftExpr a) (liftExpr b)
 liftExpr (C.App a b) = case asApp (App (liftExpr a) (liftExpr b)) of
-  (Tag k args, args') -> Tag k (args ++ args')
   (Tuple args, args') -> Tuple (args ++ args')
   (Var ('.' : x), _ : a : args) -> app (Trait a x) args
   -- (Fun p a, [b]) -> Let (p, b) a
@@ -200,18 +206,18 @@ liftPackage :: String -> C.Env -> Package
 liftPackage name _ = error "TODO: liftPackage"
 
 stmtDefs :: Stmt -> [(String, Expr)]
-stmtDefs (Def (DefName ts x (a : args) b)) = stmtDefs (Def (DefName ts x args (Fun a b)))
-stmtDefs (Def (DefName ts x [] b)) = case lookup x ts of
+stmtDefs (Def (NameDef ts x (a : args) b)) = stmtDefs (Def (NameDef ts x args (Fun a b)))
+stmtDefs (Def (NameDef ts x [] b)) = case lookup x ts of
   Just t -> [(x, Ann b t)]
   Nothing -> [(x, b)]
-stmtDefs (Def (DefUnpack ts k args b)) = do
-  let def x = Match [b] [Fun (Tag k args) (Var x)]
+stmtDefs (Def (UnpackDef ts k args b)) = do
+  let def x = Match [b] [Fun (tag k args) (Var x)]
   let typedDef x = case lookup x ts of
         Just t -> (x, Ann (def x) t)
         Nothing -> (x, def x)
   map typedDef (freeVars (Tuple args))
-stmtDefs (Def (DefTrait ts self x (a : args) b)) = stmtDefs (Def (DefTrait ts self x args (Fun a b)))
-stmtDefs (Def (DefTrait ts (t, a) x [] b)) = [('.' : x, fun [t, a] b)]
+stmtDefs (Def (TraitDef ts self x (a : args) b)) = stmtDefs (Def (TraitDef ts self x args (Fun a b)))
+stmtDefs (Def (TraitDef ts (t, a) x [] b)) = [('.' : x, fun [t, a] b)]
 stmtDefs (MetaStmt _ stmt) = stmtDefs stmt
 stmtDefs _ = []
 
@@ -221,10 +227,16 @@ stmtTests (MetaStmt _ stmt) = stmtTests stmt
 stmtTests _ = []
 
 moduleDefs :: Module -> [(String, Expr)]
-moduleDefs mod = concatMap stmtDefs mod.stmts
+moduleDefs mod = do
+  -- let prefix = intercalate "/" mod.path ++ "/" ++ mod.name ++ ":"
+  -- renameDefs (prefix ++) (concatMap stmtDefs mod.stmts)
+  concatMap stmtDefs mod.stmts
 
 packageDefs :: Package -> [(String, Expr)]
-packageDefs pkg = concatMap moduleDefs pkg.modules
+packageDefs pkg = do
+  -- let prefix = pkg.name ++ "!"
+  -- renameDefs (prefix ++) (concatMap moduleDefs pkg.modules)
+  concatMap moduleDefs pkg.modules
 
 moduleTests :: Module -> [(Expr, Expr)]
 moduleTests mod = concatMap stmtTests mod.stmts
@@ -296,8 +308,92 @@ nameSnakeCase name = nameSplit name & intercalate "_"
 nameDashCase :: String -> String
 nameDashCase name = nameSplit name & intercalate "-"
 
-rename :: ([String] -> String -> String) -> Package -> Package
-rename f pkg =
-  lowerPackage pkg
-    & C.rename f []
-    & liftPackage pkg.name
+instance Apply String where
+  apply :: (Expr -> Expr) -> String -> String
+  apply f x = case f (Var x) of
+    Var y -> y
+    _ -> x
+
+class Apply a where
+  apply :: (Expr -> Expr) -> a -> a
+
+instance Apply Expr where
+  apply :: (Expr -> Expr) -> Expr -> Expr
+  apply _ Any = Any
+  apply _ (Int i) = Int i
+  apply _ (Num n) = Num n
+  apply _ (Var x) = Var x
+  apply f (Tag k) = Tag k
+  apply _ (Type alts) = Type alts
+  apply f (Tuple args) = Tuple (map (apply f) args)
+  apply f (Record fields) = Record (map (second $ apply f) fields)
+  apply f (Trait a x) = Trait (apply f a) x
+  apply f (Fun a b) = Fun (apply f a) (apply f b)
+  apply f (App a b) = App (apply f a) (apply f b)
+  apply f (Let def a) = Let (apply f def) (apply f a)
+  apply f (Bind (a, b) c) = Bind (apply f a, apply f b) (apply f c)
+  apply f (MatchFun cases) = MatchFun (map (apply f) cases)
+  apply f (Match args cases) = Match (map (apply f) args) (map (apply f) cases)
+  apply f (Or a b) = Or (apply f a) (apply f b)
+  apply f (Ann a b) = Ann (apply f a) (apply f b)
+  apply f (Op1 op a) = Op1 op (apply f a)
+  apply f (Op2 op a b) = Op2 op (apply f a) (apply f b)
+  apply f (Meta m a) = Meta m (apply f a)
+  apply _ Err = Err
+
+instance Apply Definition where
+  apply :: (Expr -> Expr) -> Definition -> Definition
+  apply f (NameDef ts x args val) = do
+    let ts' = map (bimap (apply f) (apply f)) ts
+    let x' = apply f x
+    let args' = map (apply f) args
+    NameDef ts' x' args' (f val)
+  apply f (UnpackDef ts k args val) = do
+    let ts' = map (bimap (apply f) (apply f)) ts
+    let args' = map (apply f) args
+    UnpackDef ts' k args' (f val)
+  apply f (TraitDef ts (t, a) x args val) = do
+    let ts' = map (bimap (apply f) (apply f)) ts
+    let x' = apply f x
+    let args' = map (apply f) args
+    TraitDef ts' (f t, f a) x' args' (f val)
+
+instance Apply Stmt where
+  apply :: (Expr -> Expr) -> Stmt -> Stmt
+  apply _ stmt@Import {} = stmt
+  apply f (Def def) = Def (apply f def)
+  apply f (Test a b) = Test (apply f a) (apply f b)
+  apply f (MetaStmt m a) = MetaStmt m (apply f a)
+
+class Rename a where
+  rename :: (Expr -> String -> String) -> [(String, Expr)] -> a -> a
+
+instance Rename String where
+  rename :: (Expr -> String -> String) -> [(String, Expr)] -> String -> String
+  rename sub defs x = do
+    let type' = case C.infer (lowerDefs defs) (C.Var x) of
+          Left _ -> Err
+          Right (t, _) -> liftExpr t
+    sub type' x
+
+instance Rename Expr where
+  rename :: (Expr -> String -> String) -> [(String, Expr)] -> Expr -> Expr
+  rename sub defs (Var x) = Var (rename sub defs x)
+  rename sub defs (Tag k) = Tag (rename sub defs k)
+  rename sub defs (Type alts) = Type (map (rename sub defs) alts)
+  rename sub defs (Trait a x) = Trait (rename sub defs a) (rename sub defs x)
+  rename sub defs expr = apply (rename sub defs) expr
+
+instance Rename Stmt where
+  rename :: (Expr -> String -> String) -> [(String, Expr)] -> Stmt -> Stmt
+  rename sub defs = apply (rename sub defs)
+
+instance Rename Module where
+  rename :: (Expr -> String -> String) -> [(String, Expr)] -> Module -> Module
+  rename sub defs mod = mod {stmts = map (rename sub defs) mod.stmts}
+
+instance Rename Package where
+  rename :: (Expr -> String -> String) -> [(String, Expr)] -> Package -> Package
+  rename sub defs pkg = do
+    let defs' = packageDefs pkg ++ defs
+    pkg {modules = map (rename sub defs') pkg.modules}

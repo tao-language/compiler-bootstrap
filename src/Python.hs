@@ -437,10 +437,24 @@ newName ctx = do
     (name, ctx') | name `elem` ctxNames ctx -> newName ctx'
     (name, ctx') -> (name, ctx')
 
+rename :: Expr -> String -> String
+rename a name
+  | isTagDef a = nameCamelCaseUpper name
+  | isTypeDef a = nameCamelCaseUpper name
+  | otherwise = nameSnakeCase name
+
+validNameStmt :: Stmt -> Package -> Package
+validNameStmt stmt pkg = pkg
+
+validNameModule :: Module -> Package -> Package
+validNameModule mod pkg = foldr validNameStmt pkg mod.stmts
+
 build :: BuildOptions -> FilePath -> Package -> IO FilePath
 build options base pkg = do
+  let pyPkg = foldr validNameModule pkg pkg.modules
+
   let pkgPath = base </> "python"
-  let srcPath = pkgPath </> pkg.name
+  let srcPath = pkgPath </> pyPkg.name
   let testPath = pkgPath </> options.testPath
   let docsPath = pkgPath </> options.docsPath
 
@@ -450,11 +464,11 @@ build options base pkg = do
   createDirectoryIfMissing True pkgPath
 
   -- Create source files
-  files <- mapM (buildModule options srcPath) pkg.modules
+  files <- mapM (buildModule options srcPath) pyPkg.modules
 
   createDirectory testPath
   writeFile (testPath </> "__init__.py") ""
-  files <- mapM (buildTests options pkg.name testPath) pkg.modules
+  files <- mapM (buildTests options pyPkg.name testPath) pyPkg.modules
 
   -- TODO: Create docs
   createDirectory docsPath
@@ -552,12 +566,12 @@ emitImport options (Import path name alias exposed) ctx = case exposed of
 emitImport _ _ ctx = ctx
 
 emitDef :: BuildOptions -> Stmt -> PyCtx -> PyCtx
-emitDef options (Def (DefName ts x args a)) ctx = do
+emitDef options (Def (NameDef ts x args a)) ctx = do
   let (ctx', a') = emitExpr options ctx a
   let type' = fromMaybe Any (lookup x ts)
   case (asFun type', args) of
     (([], Any), []) -> ctx' {locals = PyAssign [PyName x] a' : ctx.locals}
--- Def (DefName String Expr)
+-- Def (NameDef String Expr)
 -- Def (DefUnpack String [(String, Expr)])
 -- Def (DefTrait (Expr, Expr) String)
 emitDef _ _ ctx = ctx
@@ -582,14 +596,13 @@ emitTest _ _ ctx = ctx
 
 emitExpr :: BuildOptions -> PyCtx -> Expr -> (PyCtx, PyExpr)
 emitExpr _ ctx Any = (ctx, PyName "_")
-emitExpr _ ctx IntType = (ctx, PyName "int")
-emitExpr _ ctx NumType = (ctx, PyName "float")
 emitExpr _ ctx (Int i) = (ctx, PyInteger i)
 emitExpr _ ctx (Num n) = (ctx, PyFloat n)
 emitExpr _ ctx (Var x) = (ctx, PyName x)
-emitExpr options ctx (Tag k args) = do
-  let (ctx', args') = emitExprAll options ctx args
-  (ctx', pyCall (PyName k) args')
+emitExpr _ ctx (Tag "Int") = (ctx, PyName "int")
+emitExpr _ ctx (Tag "Num") = (ctx, PyName "float")
+emitExpr _ ctx (Tag k) = do
+  (ctx, pyCall (PyName k) [])
 emitExpr options ctx (Tuple items) = do
   let (ctx', items') = emitExprAll options ctx items
   (ctx', PyTuple items')
