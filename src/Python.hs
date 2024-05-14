@@ -11,7 +11,7 @@ import qualified Debug.Trace as Debug
 import PrettyPrint (Layout)
 import qualified PrettyPrint as PP
 import System.Directory (createDirectory, createDirectoryIfMissing, doesPathExist, removeDirectoryRecursive)
-import System.FilePath (joinPath, splitFileName, splitPath, takeDirectory, (</>))
+import System.FilePath (joinPath, splitDirectories, splitFileName, splitPath, takeDirectory, takeFileName, (</>))
 import Tao
 
 -- TODO: abstract into an `Imperative` language
@@ -492,7 +492,7 @@ buildDir base dirs = do
 buildModule :: BuildOptions -> FilePath -> Module -> IO FilePath
 buildModule options base mod = do
   -- Initialize the file path recursively.
-  let filename = joinPath mod.path </> mod.name ++ ".py"
+  let filename = mod.name ++ ".py"
   buildDir base (splitPath $ takeDirectory filename)
 
   -- Write the source file contents.
@@ -503,7 +503,8 @@ buildModule options base mod = do
 buildTests :: BuildOptions -> String -> FilePath -> Module -> IO FilePath
 buildTests options pkg base mod = do
   -- Initialize the file path recursively.
-  let filename = joinPath mod.path </> "test_" ++ mod.name ++ ".py"
+  let (dir, name) = splitFileName mod.name
+  let filename = dir </> "test_" ++ name ++ ".py"
   buildDir base (splitPath $ takeDirectory filename)
 
   -- Write the test file contents.
@@ -523,7 +524,8 @@ emitModuleTests options pkg mod = do
   let importFramework = case options.testingFramework of
         UnitTest -> [PyImport "unittest" Nothing]
         PyTest -> error "TODO: emitTests PyTest"
-  let importPath = intercalate "." (pkg : mod.path ++ [mod.name])
+  let path = splitDirectories mod.name & filter (/= ".")
+  let importPath = intercalate "." (pkg : path)
   let importModule = [PyImportFrom importPath (map (,Nothing) names)]
   let imports = importFramework ++ importModule
   -- TODO: include imports from the Module itself
@@ -531,7 +533,7 @@ emitModuleTests options pkg mod = do
   let ctx1 = foldr (emitTest options) ctx0 mod.stmts
   let testClass =
         PyClassDef
-          { name = "Test" ++ mod.name,
+          { name = "Test" ++ nameCamelCaseUpper (takeFileName mod.name),
             bases = [PyAttribute (PyName "unittest") "TestCase"],
             body = ctx1.locals,
             decorators = [],
@@ -554,14 +556,14 @@ emitStmt options stmt ctx = case stmt of
   MetaStmt _ stmt -> emitStmt options stmt ctx
 
 emitImport :: BuildOptions -> Stmt -> PyCtx -> PyCtx
-emitImport options (Import path name alias exposed) ctx = case exposed of
+emitImport options (Import name alias exposed) ctx = case exposed of
   [] | name == alias -> addGlobal (PyImport name Nothing) ctx
   [] -> addGlobal (PyImport name (Just alias)) ctx
   exposed -> do
     let pyExpose (name, alias) | name == alias = (name, Nothing)
         pyExpose (name, alias) = (name, Just alias)
     ctx
-      & emitStmt options (Import path name alias [])
+      & emitStmt options (Import name alias [])
       & addGlobal (PyImportFrom name (map pyExpose exposed))
 emitImport _ _ ctx = ctx
 

@@ -308,7 +308,7 @@ parseImport = do
         return []
       ]
   _ <- parseLineBreak
-  return (Import path name alias exposing)
+  return (Import (intercalate "/" (path ++ [name])) alias exposing)
 
 parseTest :: Parser Stmt
 parseTest = do
@@ -332,22 +332,20 @@ parseTest = do
       ]
   return (Test expr result)
 
-parseModule :: [FilePath] -> String -> Parser Module
-parseModule path name = do
+parseModule :: String -> Parser Module
+parseModule name = do
   P.commit CModule
   stmts <- P.zeroOrMore parseStmt
   _ <- P.whitespaces
   comments <- P.zeroOrMore parseComment
   _ <- P.endOfFile
-  return (Module path name stmts)
+  return (Module name stmts)
 
 parseFile :: FilePath -> FilePath -> Package -> IO Package
 parseFile _ filename pkg | filename `elem` map (\f -> f.name) pkg.modules = return pkg
 parseFile base filename pkg = do
   src <- readFile (base </> filename)
-  let (dir, name) = splitFileName (dropExtension filename)
-  let path = splitDirectories dir & filter (/= ".")
-  case P.parse filename (parseModule path name) src of
+  case P.parse filename (parseModule (dropExtension filename)) src of
     Right (f, _) -> do
       -- TODO: evaluate the module statements
       return (pkg {modules = f : pkg.modules})

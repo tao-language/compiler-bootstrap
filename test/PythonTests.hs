@@ -55,9 +55,9 @@ run = describe "--==☯ Python ☯==--" $ do
     True `shouldBe` True
 
   it "☯ emitStmt Import" $ do
-    emitStmt options (Import [] "mod" "mod" []) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing]}
-    emitStmt options (Import [] "mod" "alias" []) ctx `shouldBe` ctx {globals = [PyImport "mod" (Just "alias")]}
-    emitStmt options (Import [] "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing, PyImportFrom "mod" [("a", Nothing), ("b", Just "c")]]}
+    emitStmt options (Import "mod" "mod" []) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing]}
+    emitStmt options (Import "mod" "alias" []) ctx `shouldBe` ctx {globals = [PyImport "mod" (Just "alias")]}
+    emitStmt options (Import "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing, PyImportFrom "mod" [("a", Nothing), ("b", Just "c")]]}
 
   it "☯ emitStmt Def" $ do
     emitStmt options (Def (NameDef [] "x" [] y)) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}
@@ -71,12 +71,12 @@ run = describe "--==☯ Python ☯==--" $ do
           [ PyAssign [x'] (PyInteger 1),
             PyAssign [y'] (PyInteger 2)
           ]
-    emitModule options (Module [] "mod" stmts) `shouldBe` PyModule {name = "mod", body = emitStmts}
+    emitModule options (Module "mod" stmts) `shouldBe` PyModule {name = "mod", body = emitStmts}
 
   it "☯ build" $ do
     pkg <- parsePackage "examples/simple"
     pkg.name `shouldBe` "simple"
-    map (\m -> (m.path, m.name)) pkg.modules `shouldBe` [(["submodule"], "subfile"), ([], "main")]
+    map (\m -> m.name) pkg.modules `shouldBe` ["submodule/subfile", "main"]
 
     -- Check package
     build options "build" pkg `shouldReturn` "build/python"
