@@ -39,7 +39,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "tests.tao"
   it ("☯ " ++ name) $ do
     let name = "tests.tao"
-    test' name `shouldReturn` [TestEqError (loc name (18, 3) x) (Int 42) (Int 0)]
+    test' name `shouldReturn` [TestEqError (loc name (18, 3) (Var "tests.tao:tests#x")) (Int 42) (Int 0)]
 
   -- let name = "arithmetic.tao"
   -- it ("☯ " ++ name) $ do

@@ -214,21 +214,23 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     True `shouldBe` True
 
   it "☯ moduleDefs" $ do
-    let stmts =
-          [ Def (NameDef [] "x" [] y),
-            Def (NameDef [] "y" [] z)
-          ]
-    let mod = Module "mod" stmts
-    moduleDefs mod `shouldBe` [("x", y), ("y", z)]
+    let defs stmts = do
+          let mod = Module "mod" stmts
+          moduleDefs "pkg" mod
+    defs [] `shouldBe` []
+    defs [Import "mod2" "m2" []] `shouldBe` []
+    defs [Import "mod2" "m2" [("x", "y")]] `shouldBe` [("pkg:mod#y", Var "pkg:mod2#x")]
+    defs [Import "pkg2:mod2" "m2" [("x", "y")]] `shouldBe` [("pkg:mod#y", Var "pkg2:mod2#x")]
+    defs [defName "x" y] `shouldBe` [("pkg:mod#x", Var "y")]
+    defs [defName "x" y, defName "y" z] `shouldBe` [("pkg:mod#x", Var "pkg:mod#y"), ("pkg:mod#y", Var "z")]
 
   it "☯ packageDefs" $ do
-    let stmts =
-          [ Def (NameDef [] "x" [] y),
-            Def (NameDef [] "y" [] z)
-          ]
-    let mod = Module "mod" stmts
-    let pkg = Package "pkg" [mod]
-    packageDefs pkg `shouldBe` [("x", y), ("y", z)]
+    let defs stmts = do
+          let mod = Module "mod" stmts
+          let pkg = Package "pkg" [mod]
+          packageDefs pkg
+    defs [] `shouldBe` []
+    defs [defName "x" y] `shouldBe` [("pkg:mod#x", Var "y")]
 
   -- it "☯ lowerPackage" $ do
   --   let mod defs = Package {name = "lowerPackage", modules = [Module "f" defs]}
@@ -278,21 +280,21 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ packageTests" $ do
     let defs =
-          [ Def (NameDef [] "x" [] (Int 1)),
+          [ defName "x" (Int 1),
             Test x y,
-            Def (NameDef [] "y" [] (Int 2))
+            defName "y" (Int 2)
           ]
     let mod = Package {name = "pkg", modules = [Module "mod" defs]}
-    packageTests mod `shouldBe` [(x, y)]
+    packageTests mod `shouldBe` [(Var "pkg:mod#x", Var "pkg:mod#y")]
 
   it "☯ test" $ do
     let defs =
-          [ Def (NameDef [] "x" [] (Int 1)),
+          [ defName "x" (Int 1),
             Test x y,
-            Def (NameDef [] "y" [] (Int 2))
+            defName "y" (Int 2)
           ]
     let mod = Package {name = "pkg", modules = [Module "mod" defs]}
-    test mod `shouldBe` [TestEqError x (Int 1) (Int 2)]
+    test mod `shouldBe` [TestEqError (Var "pkg:mod#x") (Int 1) (Int 2)]
 
   it "☯ splitCamelCase" $ do
     splitCamelCase "" `shouldBe` []

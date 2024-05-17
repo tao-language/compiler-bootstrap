@@ -437,21 +437,22 @@ newName ctx = do
     (name, ctx') | name `elem` ctxNames ctx -> newName ctx'
     (name, ctx') -> (name, ctx')
 
-rename :: Expr -> String -> String
-rename a name
+pyRenameExpr :: Expr -> String -> String
+pyRenameExpr a name
   | isTagDef a = nameCamelCaseUpper name
   | isTypeDef a = nameCamelCaseUpper name
   | otherwise = nameSnakeCase name
 
-validNameStmt :: Stmt -> Package -> Package
-validNameStmt stmt pkg = pkg
+-- pyRenameStmt ::
 
-validNameModule :: Module -> Package -> Package
-validNameModule mod pkg = foldr validNameStmt pkg mod.stmts
+pyNamePackage :: (String, Expr) -> Package -> Package
+pyNamePackage (name, value) pkg = do
+  -- let asdf = concatMap (\m -> moduleDefs m) pkg.modules
+  pkg
 
 build :: BuildOptions -> FilePath -> Package -> IO FilePath
 build options base pkg = do
-  let pyPkg = foldr validNameModule pkg pkg.modules
+  let pyPkg = foldr pyNamePackage pkg (packageDefs pkg)
 
   let pkgPath = base </> "python"
   let srcPath = pkgPath </> pyPkg.name
@@ -520,7 +521,7 @@ emitModule options mod = do
 
 emitModuleTests :: BuildOptions -> String -> Module -> PyModule
 emitModuleTests options pkg mod = do
-  let names = map fst (concatMap stmtDefs mod.stmts)
+  let names = map fst (concatMap (stmtDefs pkg) mod.stmts)
   let importFramework = case options.testingFramework of
         UnitTest -> [PyImport "unittest" Nothing]
         PyTest -> error "TODO: emitTests PyTest"

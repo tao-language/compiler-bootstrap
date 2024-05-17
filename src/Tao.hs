@@ -6,7 +6,8 @@ import Data.Bifunctor (Bifunctor (bimap, first), second)
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
 import Data.List (intercalate, union)
-import Data.List.Split (split, splitOneOf, splitWhen, whenElt)
+import Data.List.Split (split, splitOn, splitOneOf, splitWhen, whenElt)
+import Data.Maybe (fromMaybe)
 
 data Expr
   = Any
@@ -103,6 +104,9 @@ gt = Op2 C.Gt
 
 meta :: [C.Metadata] -> Expr -> Expr
 meta ms a = foldr Meta a ms
+
+defName :: String -> Expr -> Stmt
+defName name value = Def (NameDef [] name [] value)
 
 isTypeDef :: Expr -> Bool
 isTypeDef (Type _) = True
@@ -204,44 +208,62 @@ lowerPackage pkg = lowerDefs (packageDefs pkg)
 liftPackage :: String -> C.Env -> Package
 liftPackage name _ = error "TODO: liftPackage"
 
-stmtDefs :: Stmt -> [(String, Expr)]
-stmtDefs (Def (NameDef ts x (a : args) b)) = stmtDefs (Def (NameDef ts x args (Fun a b)))
-stmtDefs (Def (NameDef ts x [] b)) = case lookup x ts of
+takePackageName :: String -> Maybe String
+takePackageName name = case break (== ':') name of
+  (_, "") -> Nothing
+  (pkgName, _) -> Just pkgName
+
+stmtDefs :: String -> Stmt -> [(String, Expr)]
+stmtDefs pkgName (Import path alias exposed) = case exposed of
+  (x, y) : exposed -> do
+    let fullName = case path of
+          path | ':' `elem` path -> path ++ "#" ++ x
+          path -> pkgName ++ ":" ++ path ++ "#" ++ x
+    let def = (y, Var fullName)
+    def : stmtDefs pkgName (Import path alias exposed)
+  [] -> [] -- TODO: import module "Record"
+stmtDefs pkgName (Def (NameDef ts x (a : args) b)) = stmtDefs pkgName (Def (NameDef ts x args (Fun a b)))
+stmtDefs _ (Def (NameDef ts x [] b)) = case lookup x ts of
   Just t -> [(x, Ann b t)]
   Nothing -> [(x, b)]
-stmtDefs (Def (UnpackDef ts k args b)) = do
+stmtDefs _ (Def (UnpackDef ts k args b)) = do
   let def x = Match [b] [Fun (tag k args) (Var x)]
   let typedDef x = case lookup x ts of
         Just t -> (x, Ann (def x) t)
         Nothing -> (x, def x)
   map typedDef (freeVars (Tuple args))
-stmtDefs (Def (TraitDef ts self x (a : args) b)) = stmtDefs (Def (TraitDef ts self x args (Fun a b)))
-stmtDefs (Def (TraitDef ts (t, a) x [] b)) = [('.' : x, fun [t, a] b)]
-stmtDefs (MetaStmt _ stmt) = stmtDefs stmt
-stmtDefs _ = []
+stmtDefs pkgName (Def (TraitDef ts self x (a : args) b)) = stmtDefs pkgName (Def (TraitDef ts self x args (Fun a b)))
+stmtDefs _ (Def (TraitDef ts (t, a) x [] b)) = [('.' : x, fun [t, a] b)]
+stmtDefs pkgName (MetaStmt _ stmt) = stmtDefs pkgName stmt
+stmtDefs _ _ = []
 
 stmtTests :: Stmt -> [(Expr, Expr)]
 stmtTests (Test a b) = [(a, b)]
 stmtTests (MetaStmt _ stmt) = stmtTests stmt
 stmtTests _ = []
 
-moduleDefs :: Module -> [(String, Expr)]
-moduleDefs mod = do
-  -- let prefix = intercalate "/" mod.path ++ "/" ++ mod.name ++ ":"
-  -- renameDefs (prefix ++) (concatMap stmtDefs mod.stmts)
-  concatMap stmtDefs mod.stmts
+moduleFullNames :: String -> Module -> [(String, String)]
+moduleFullNames pkgName mod = do
+  let defs = concatMap (stmtDefs pkgName) mod.stmts
+  map (\(x, _) -> (x, pkgName ++ ":" ++ mod.name ++ "#" ++ x)) defs
+
+moduleDefs :: String -> Module -> [(String, Expr)]
+moduleDefs pkgName mod = do
+  let defs = concatMap (stmtDefs pkgName) mod.stmts
+  let subs = moduleFullNames pkgName mod
+  substitute subs defs
 
 packageDefs :: Package -> [(String, Expr)]
-packageDefs pkg = do
-  -- let prefix = pkg.name ++ "!"
-  -- renameDefs (prefix ++) (concatMap moduleDefs pkg.modules)
-  concatMap moduleDefs pkg.modules
+packageDefs pkg = concatMap (moduleDefs pkg.name) pkg.modules
 
-moduleTests :: Module -> [(Expr, Expr)]
-moduleTests mod = concatMap stmtTests mod.stmts
+moduleTests :: String -> Module -> [(Expr, Expr)]
+moduleTests pkgName mod = do
+  let tests = concatMap stmtTests mod.stmts
+  let subs = moduleFullNames pkgName mod
+  map (bimap (substitute subs) (substitute subs)) tests
 
 packageTests :: Package -> [(Expr, Expr)]
-packageTests pkg = concatMap moduleTests pkg.modules
+packageTests pkg = concatMap (moduleTests pkg.name) pkg.modules
 
 run :: Package -> Expr -> Expr
 run pkg expr = do
@@ -260,6 +282,7 @@ testEq defs (expr, result) = do
   let expected = C.eval env (lowerExpr defs result)
   case C.eval [] (actual `C.eq` expected) of
     C.Err -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
+    C.Op2 C.Eq _ _ -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
     _ -> []
 
 test :: Package -> [TestError]
@@ -307,23 +330,30 @@ nameSnakeCase name = nameSplit name & intercalate "_"
 nameDashCase :: String -> String
 nameDashCase name = nameSplit name & intercalate "-"
 
--- instance Apply String where
---   apply :: (Expr -> Expr) -> String -> String
---   apply f x = case f (Var x) of
---     Var y -> y
---     _ -> x
+isImported :: String -> Stmt -> Bool
+isImported x (Import _ alias exposed) = x == alias || x `elem` map fst exposed
+isImported _ _ = False
+
+defined :: Stmt -> [String]
+defined (Import _ alias exposed) = alias : map snd exposed
+defined (Def def) = case def of
+  NameDef _ x _ _ -> [x]
+  UnpackDef _ _ args _ -> foldr (union . freeVars) [] args
+  TraitDef _ _ x _ _ -> [x]
+defined (Test _ _) = []
+defined (MetaStmt _ a) = defined a
 
 class Apply a where
   apply :: (Expr -> Expr) -> a -> a
 
 instance Apply Expr where
   apply :: (Expr -> Expr) -> Expr -> Expr
-  apply _ Any = Any
-  apply _ (Int i) = Int i
-  apply _ (Num n) = Num n
-  apply _ (Var x) = Var x
-  apply _ (Tag k) = Tag k
-  apply _ (Type alts) = Type alts
+  apply f Any = f Any
+  apply f (Int i) = f (Int i)
+  apply f (Num n) = f (Num n)
+  apply f (Var x) = f (Var x)
+  apply f (Tag k) = f (Tag k)
+  apply f (Type alts) = f (Type alts)
   apply f (Tuple args) = Tuple (map (apply f) args)
   apply f (Record fields) = Record (map (second $ apply f) fields)
   apply f (Trait a x) = Trait (apply f a) x
@@ -338,7 +368,7 @@ instance Apply Expr where
   apply f (Op1 op a) = Op1 op (apply f a)
   apply f (Op2 op a b) = Op2 op (apply f a) (apply f b)
   apply f (Meta m a) = Meta m (apply f a)
-  apply _ Err = Err
+  apply f Err = f Err
 
 instance Apply Definition where
   apply :: (Expr -> Expr) -> Definition -> Definition
@@ -362,10 +392,6 @@ instance Apply Stmt where
   apply f (Test a b) = Test (apply f a) (apply f b)
   apply f (MetaStmt m a) = MetaStmt m (apply f a)
 
-isImported :: String -> Stmt -> Bool
-isImported x (Import _ alias exposed) = x == alias || x `elem` map fst exposed
-isImported _ _ = False
-
 class Rename a where
   rename :: FilePath -> String -> String -> a -> a
 
@@ -373,15 +399,6 @@ instance Rename Package where
   rename :: FilePath -> String -> String -> Package -> Package
   rename path old new pkg =
     pkg {modules = map (rename path old new) pkg.modules}
-
-defined :: Stmt -> [String]
-defined (Import _ alias exposed) = alias : map snd exposed
-defined (Def def) = case def of
-  NameDef _ x _ _ -> [x]
-  UnpackDef _ _ args _ -> foldr (union . freeVars) [] args
-  TraitDef _ _ x _ _ -> [x]
-defined (Test _ _) = []
-defined (MetaStmt _ a) = defined a
 
 instance Rename Module where
   rename :: FilePath -> String -> String -> Module -> Module
@@ -418,16 +435,30 @@ renameImported path old new (Import name alias exposed) = do
   rename path old new (Import name alias' exposed')
 renameImported path old new stmt = rename path old new stmt
 
+instance Rename (String, Expr) where
+  rename :: FilePath -> String -> String -> (String, Expr) -> (String, Expr)
+  rename path old new (name, value) =
+    (rename path old new name, rename path old new value)
+
+instance Rename [(String, Expr)] where
+  rename :: FilePath -> String -> String -> [(String, Expr)] -> [(String, Expr)]
+  rename path old new defs =
+    foldr (\_ defs -> map (rename path old new) defs) defs defs
+
 instance Rename Stmt where
   rename :: FilePath -> String -> String -> Stmt -> Stmt
   rename path old new = apply (rename path old new)
 
 instance Rename Expr where
   rename :: FilePath -> String -> String -> Expr -> Expr
+  rename _ _ _ Any = Any
+  rename _ _ _ (Int i) = Int i
+  rename _ _ _ (Num n) = Num n
   rename path old new (Var x) = Var (rename path old new x)
   rename path old new (Tag k) = Tag (rename path old new k)
   rename path old new (Type alts) = Type (map (rename path old new) alts)
   rename path old new (Trait a x) = Trait (rename path old new a) (rename path old new x)
+  rename _ _ _ Err = Err
   rename path old new expr = apply (rename path old new) expr
 
 instance Rename String where
@@ -435,3 +466,6 @@ instance Rename String where
   rename _ old new str
     | str == old = new
     | otherwise = str
+
+substitute :: (Rename a) => [(String, String)] -> a -> a
+substitute subs a = foldr (uncurry (rename "")) a subs
