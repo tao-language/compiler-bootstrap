@@ -403,11 +403,9 @@ instance Rename Package where
 instance Rename Module where
   rename :: FilePath -> String -> String -> Module -> Module
   rename path old new mod | mod.name == path = do
-    let new' = C.newName (concatMap defined mod.stmts) new
-    mod {stmts = map (renameDefined path old new') mod.stmts}
+    mod {stmts = map (renameDefined path old new) mod.stmts}
   rename path old new mod | any (isImported old) mod.stmts = do
-    let new' = C.newName (concatMap defined mod.stmts) new
-    mod {stmts = map (renameImported path old new') mod.stmts}
+    mod {stmts = map (renameImported path old new) mod.stmts}
   rename _ _ _ mod = mod
 
 renameDefined :: FilePath -> String -> String -> Stmt -> Stmt
@@ -469,3 +467,28 @@ instance Rename String where
 
 substitute :: (Rename a) => [(String, String)] -> a -> a
 substitute subs a = foldr (uncurry (rename "")) a subs
+
+refactorName :: ([String] -> Expr -> String -> String) -> Package -> Package
+refactorName f pkg = do
+  let refactor :: Module -> Package -> Package
+      refactor mod pkg = do
+        let defs = concatMap (stmtDefs pkg.name) mod.stmts
+        foldr (\(x, a) -> rename mod.name x (f (map fst defs) a x)) pkg defs
+  foldr refactor pkg pkg.modules
+
+class RefactorModuleName a where
+  refactorModuleName :: (FilePath -> FilePath) -> a -> a
+
+instance RefactorModuleName Package where
+  refactorModuleName :: (FilePath -> FilePath) -> Package -> Package
+  refactorModuleName f pkg = pkg {modules = map (refactorModuleName f) pkg.modules}
+
+instance RefactorModuleName Module where
+  refactorModuleName :: (FilePath -> FilePath) -> Module -> Module
+  refactorModuleName f mod = mod {name = f mod.name, stmts = mod.stmts}
+
+replace :: (Eq a) => a -> a -> [a] -> [a]
+replace x y (x' : xs)
+  | x == x' = y : replace x y xs
+  | otherwise = x' : replace x y xs
+replace _ _ [] = []

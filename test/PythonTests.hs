@@ -76,7 +76,7 @@ run = describe "--==☯ Python ☯==--" $ do
   it "☯ build" $ do
     pkg <- parsePackage "examples/simple"
     pkg.name `shouldBe` "simple"
-    map (\m -> m.name) pkg.modules `shouldBe` ["submodule/subfile", "main"]
+    map (\m -> m.name) pkg.modules `shouldBe` ["my-submodule/my-subfile", "main"]
 
     -- Check package
     build options "build" pkg `shouldReturn` "build/python"
@@ -88,14 +88,14 @@ run = describe "--==☯ Python ☯==--" $ do
     -- Check source files
     readFile "build/python/simple/__init__.py" `shouldReturn` ""
     readFile "build/python/simple/main.py" `shouldReturn` "x = 1"
-    readFile "build/python/simple/submodule/__init__.py" `shouldReturn` ""
-    readFile "build/python/simple/submodule/subfile.py" `shouldReturn` "y = 2"
+    readFile "build/python/simple/my_submodule/__init__.py" `shouldReturn` ""
+    readFile "build/python/simple/my_submodule/my_subfile.py" `shouldReturn` "my_value = 42"
 
     -- Check tests
     doesFileExist "build/python/test/__init__.py" `shouldReturn` True
     doesFileExist "build/python/test/test_main.py" `shouldReturn` True
-    doesFileExist "build/python/test/submodule/__init__.py" `shouldReturn` True
-    doesFileExist "build/python/test/submodule/test_subfile.py" `shouldReturn` True
+    doesFileExist "build/python/test/my_submodule/__init__.py" `shouldReturn` True
+    doesFileExist "build/python/test/my_submodule/test_my_subfile.py" `shouldReturn` True
     (_, Just stdout, Just stderr, p) <-
       createProcess
         (proc "python" ["-m", "unittest", "-v"])

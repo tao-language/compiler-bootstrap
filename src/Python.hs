@@ -437,22 +437,17 @@ newName ctx = do
     (name, ctx') | name `elem` ctxNames ctx -> newName ctx'
     (name, ctx') -> (name, ctx')
 
-pyRenameExpr :: Expr -> String -> String
-pyRenameExpr a name
+pyName :: [String] -> Expr -> String -> String
+pyName existing a name
   | isTagDef a = nameCamelCaseUpper name
   | isTypeDef a = nameCamelCaseUpper name
   | otherwise = nameSnakeCase name
 
--- pyRenameStmt ::
-
-pyNamePackage :: (String, Expr) -> Package -> Package
-pyNamePackage (name, value) pkg = do
-  -- let asdf = concatMap (\m -> moduleDefs m) pkg.modules
-  pkg
-
 build :: BuildOptions -> FilePath -> Package -> IO FilePath
 build options base pkg = do
-  let pyPkg = foldr pyNamePackage pkg (packageDefs pkg)
+  let pyPkg =
+        refactorName pyName pkg
+          & refactorModuleName (replace '-' '_')
 
   let pkgPath = base </> "python"
   let srcPath = pkgPath </> pyPkg.name

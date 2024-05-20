@@ -1,0 +1,4 @@
+my-value = 42
+
+> my-value
+42
