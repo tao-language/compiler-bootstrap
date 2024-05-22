@@ -447,7 +447,8 @@ build :: BuildOptions -> FilePath -> Package -> IO FilePath
 build options base pkg = do
   let pyPkg =
         refactorName pyName pkg
-          & refactorModuleName (replace '-' '_')
+          & refactorModuleName (replace '/' '.' . replace '-' '_')
+          & refactorModuleAlias nameSnakeCase
 
   let pkgPath = base </> "python"
   let srcPath = pkgPath </> pyPkg.name
@@ -460,7 +461,7 @@ build options base pkg = do
   createDirectoryIfMissing True pkgPath
 
   -- Create source files
-  files <- mapM (buildModule options srcPath) pyPkg.modules
+  files <- mapM (buildModule options pyPkg.name srcPath) pyPkg.modules
 
   createDirectory testPath
   writeFile (testPath </> "__init__.py") ""
@@ -469,7 +470,8 @@ build options base pkg = do
   -- TODO: Create docs
   createDirectory docsPath
 
-  -- TODO: create pyproject.toml
+  -- Create pyproject.toml
+  writeFile (pkgPath </> "pyproject.toml") ""
   -- TODO: create README.md
   -- TODO: create LICENSE
 
@@ -485,21 +487,21 @@ buildDir base dirs = do
     [] -> return ()
     (dir : subdirs) -> buildDir (base </> dir) subdirs
 
-buildModule :: BuildOptions -> FilePath -> Module -> IO FilePath
-buildModule options base mod = do
+buildModule :: BuildOptions -> String -> FilePath -> Module -> IO FilePath
+buildModule options pkgName base mod = do
   -- Initialize the file path recursively.
-  let filename = mod.name ++ ".py"
+  let filename = replace '.' '/' mod.name ++ ".py"
   buildDir base (splitPath $ takeDirectory filename)
 
   -- Write the source file contents.
-  let layout = layoutModule (emitModule options mod)
+  let layout = layoutModule (emitModule options pkgName mod)
   writeFile (base </> filename) (pyPretty options layout)
   return filename
 
 buildTests :: BuildOptions -> String -> FilePath -> Module -> IO FilePath
 buildTests options pkg base mod = do
   -- Initialize the file path recursively.
-  let (dir, name) = splitFileName mod.name
+  let (dir, name) = splitFileName (replace '.' '/' mod.name)
   let filename = dir </> "test_" ++ name ++ ".py"
   buildDir base (splitPath $ takeDirectory filename)
 
@@ -508,25 +510,25 @@ buildTests options pkg base mod = do
   writeFile (base </> filename) (pyPretty options layout)
   return filename
 
-emitModule :: BuildOptions -> Module -> PyModule
-emitModule options mod = do
+emitModule :: BuildOptions -> String -> Module -> PyModule
+emitModule options pkgName mod = do
   let ctx0 = PyCtx {globals = [], locals = [], nameIndex = 0}
-  let ctx = foldr (emitStmt options) ctx0 mod.stmts
+  let ctx = foldr (emitStmt options pkgName) ctx0 mod.stmts
   PyModule {name = mod.name, body = ctx.globals ++ ctx.locals}
 
 emitModuleTests :: BuildOptions -> String -> Module -> PyModule
-emitModuleTests options pkg mod = do
-  let names = map fst (concatMap (stmtDefs pkg) mod.stmts)
+emitModuleTests options pkgName mod = do
+  let names = map fst (concatMap (stmtDefs pkgName) mod.stmts)
   let importFramework = case options.testingFramework of
-        UnitTest -> [PyImport "unittest" Nothing]
+        UnitTest -> PyImport "unittest" Nothing
         PyTest -> error "TODO: emitTests PyTest"
   let path = splitDirectories mod.name & filter (/= ".")
-  let importPath = intercalate "." (pkg : path)
-  let importModule = [PyImportFrom importPath (map (,Nothing) names)]
-  let imports = importFramework ++ importModule
+  let importPath = intercalate "." (pkgName : path)
+  let importModule = PyImportFrom importPath (map (,Nothing) names)
+  let imports = [importFramework, importModule]
   -- TODO: include imports from the Module itself
   let ctx0 = PyCtx {globals = imports, locals = [], nameIndex = 0}
-  let ctx1 = foldr (emitTest options) ctx0 mod.stmts
+  let ctx1 = foldr (emitTest options pkgName) ctx0 mod.stmts
   let testClass =
         PyClassDef
           { name = "Test" ++ nameCamelCaseUpper (takeFileName mod.name),
@@ -544,24 +546,24 @@ emitModuleTests options pkg mod = do
   let ctx = ctx1 & addGlobal testClass & addGlobal entrypoint
   PyModule {name = "test_" ++ mod.name, body = ctx.globals}
 
-emitStmt :: BuildOptions -> Stmt -> PyCtx -> PyCtx
-emitStmt options stmt ctx = case stmt of
-  Import {} -> emitImport options stmt ctx
+emitStmt :: BuildOptions -> String -> Stmt -> PyCtx -> PyCtx
+emitStmt options pkgName stmt ctx = case stmt of
+  Import {} -> emitImport options pkgName stmt ctx
   Def {} -> emitDef options stmt ctx
   Test {} -> ctx
-  MetaStmt _ stmt -> emitStmt options stmt ctx
+  MetaStmt _ stmt -> emitStmt options pkgName stmt ctx
 
-emitImport :: BuildOptions -> Stmt -> PyCtx -> PyCtx
-emitImport options (Import name alias exposed) ctx = case exposed of
-  [] | name == alias -> addGlobal (PyImport name Nothing) ctx
-  [] -> addGlobal (PyImport name (Just alias)) ctx
+emitImport :: BuildOptions -> String -> Stmt -> PyCtx -> PyCtx
+emitImport options pkgName (Import name alias exposed) ctx = case exposed of
+  [] | name == alias -> addGlobal (PyImport (pkgName ++ "." ++ name) Nothing) ctx
+  [] -> addGlobal (PyImport (pkgName ++ "." ++ name) (Just alias)) ctx
   exposed -> do
     let pyExpose (name, alias) | name == alias = (name, Nothing)
         pyExpose (name, alias) = (name, Just alias)
     ctx
-      & emitStmt options (Import name alias [])
-      & addGlobal (PyImportFrom name (map pyExpose exposed))
-emitImport _ _ ctx = ctx
+      & emitStmt options pkgName (Import name alias [])
+      & addGlobal (PyImportFrom (pkgName ++ "." ++ name) (map pyExpose exposed))
+emitImport _ _ _ ctx = ctx
 
 emitDef :: BuildOptions -> Stmt -> PyCtx -> PyCtx
 emitDef options (Def (NameDef ts x args a)) ctx = do
@@ -574,23 +576,25 @@ emitDef options (Def (NameDef ts x args a)) ctx = do
 -- Def (DefTrait (Expr, Expr) String)
 emitDef _ _ ctx = ctx
 
-emitTest :: BuildOptions -> Stmt -> PyCtx -> PyCtx
-emitTest options (Test a b) ctx = do
-  let (ctx', (a', b')) = emitExpr2 options ctx (a, b)
-  let assertEqual x y =
-        pyCall (PyAttribute (PyName "self") "assertEqual") [x, y]
-  let testDef =
-        PyFunctionDef
-          { name = "test",
-            args = [("self", Nothing, Nothing)],
-            body = [PyAssign [] (assertEqual a' b')],
-            decorators = [],
-            returns = Nothing,
-            typeParams = [],
-            async = False
-          }
-  addLocal testDef ctx
-emitTest _ _ ctx = ctx
+emitTest :: BuildOptions -> String -> Stmt -> PyCtx -> PyCtx
+emitTest options pkgName stmt ctx = case stmt of
+  Import {} -> emitImport options pkgName stmt ctx
+  Test a b -> do
+    let (ctx', (a', b')) = emitExpr2 options ctx (a, b)
+    let assertEqual x y =
+          pyCall (PyAttribute (PyName "self") "assertEqual") [x, y]
+    let testDef =
+          PyFunctionDef
+            { name = "test_" ++ nameSnakeCase (show (dropMeta a)),
+              args = [("self", Nothing, Nothing)],
+              body = [PyAssign [] (assertEqual a' b')],
+              decorators = [],
+              returns = Nothing,
+              typeParams = [],
+              async = False
+            }
+    addLocal testDef ctx
+  _ -> ctx
 
 emitExpr :: BuildOptions -> PyCtx -> Expr -> (PyCtx, PyExpr)
 emitExpr _ ctx Any = (ctx, PyName "_")
@@ -605,11 +609,9 @@ emitExpr options ctx (Tuple items) = do
   let (ctx', items') = emitExprAll options ctx items
   (ctx', PyTuple items')
 -- emitExpr options ctx (Record [(String, Expr)]) = _
--- emitExpr options ctx (Trait Expr String) = _
--- emitExpr options ctx ListNil = _
--- emitExpr options ctx ListCons = _
--- emitExpr options ctx TextNil = _
--- emitExpr options ctx TextCons = _
+emitExpr options ctx (Trait a x) = do
+  let (ctx', a') = emitExpr options ctx a
+  (ctx', PyAttribute a' x)
 -- emitExpr options ctx (Type alts) = _
 -- emitExpr options ctx (Fun Expr Expr) = _
 -- emitExpr options ctx (App Expr Expr) = _
@@ -655,7 +657,10 @@ pyPretty :: BuildOptions -> PP.Layout -> String
 pyPretty options = PP.pretty options.maxLineLength options.indent
 
 layoutModule :: PyModule -> PP.Layout
-layoutModule PyModule {body} = PP.join [PP.Text "\n"] (map layoutStmt body)
+layoutModule PyModule {body} = layoutBlock body
+
+layoutBlock :: [PyStmt] -> PP.Layout
+layoutBlock stmts = PP.join [PP.Text "\n"] (map layoutStmt stmts)
 
 layoutStmt :: PyStmt -> PP.Layout
 layoutStmt (PyAssign [] y) = layoutExpr y
@@ -670,23 +675,23 @@ layoutStmt (PyImportFrom name exposed) = do
 layoutStmt PyIf {test, body, orelse = []} = do
   PP.Text "if "
     : layoutExpr test
-    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layoutStmt body)]
+    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : layoutBlock body)]
 layoutStmt PyIf {test, body, orelse} = do
   layoutStmt PyIf {test = test, body = body, orelse = []}
-    ++ [PP.Text "\nelse:", PP.Indent (PP.Text "\n" : concatMap layoutStmt orelse)]
+    ++ [PP.Text "\nelse:", PP.Indent (PP.Text "\n" : layoutBlock orelse)]
 layoutStmt def@PyFunctionDef {} = do
   let body = if null def.body then [PyPass] else def.body
   PP.Text ("def " ++ def.name)
     : layoutTuple (map layoutFunctionArg def.args)
     ++ maybe [] (\t -> PP.Text " -> " : layoutExpr t) def.returns
-    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layoutStmt body)]
+    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : layoutBlock body)]
 layoutStmt def@PyClassDef {} = do
   let body = if null def.body then [PyPass] else def.body
   PP.Text ("class " ++ def.name)
     : case def.bases of
       [] -> []
       bases -> layoutTuple (map layoutExpr bases)
-    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layoutStmt body)]
+    ++ [PP.Text ":", PP.Indent (PP.Text "\n" : layoutBlock body)]
 layoutStmt (PyReturn expr) =
   [ PP.Text "return ",
     PP.Or

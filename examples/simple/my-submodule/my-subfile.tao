@@ -1,4 +1,4 @@
-my-value = 42
+x = 42
 
-> my-value
+> x
 42

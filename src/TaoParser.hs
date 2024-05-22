@@ -169,7 +169,12 @@ parseExprAtom = do
         parseTuple,
         parseRecord
       ]
-  return (Meta loc a)
+  P.oneOf
+    [ do
+        _ <- P.char '.'
+        Meta loc . Trait a <$> parseIdentifier,
+      return (Meta loc a)
+    ]
 
 parseName :: Parser Expr
 parseName = do

@@ -1,4 +1,12 @@
-x = 1
+import my-submodule/my-subfile (x)
+
+> my-subfile.x
+42
 
 > x
-1
+42
+
+my-var = 5
+
+> my-var
+5

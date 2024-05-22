@@ -445,7 +445,10 @@ instance Rename [(String, Expr)] where
 
 instance Rename Stmt where
   rename :: FilePath -> String -> String -> Stmt -> Stmt
-  rename path old new = apply (rename path old new)
+  rename path old new (Import name alias exposed) = do
+    let rename' = rename path old new
+    Import name (rename' alias) (map (bimap rename' rename') exposed)
+  rename path old new stmt = apply (rename path old new) stmt
 
 instance Rename Expr where
   rename :: FilePath -> String -> String -> Expr -> Expr
@@ -485,10 +488,52 @@ instance RefactorModuleName Package where
 
 instance RefactorModuleName Module where
   refactorModuleName :: (FilePath -> FilePath) -> Module -> Module
-  refactorModuleName f mod = mod {name = f mod.name, stmts = mod.stmts}
+  refactorModuleName f mod = mod {name = f mod.name, stmts = map (refactorModuleName f) mod.stmts}
+
+instance RefactorModuleName Stmt where
+  refactorModuleName :: (FilePath -> FilePath) -> Stmt -> Stmt
+  refactorModuleName f (Import path alias exposed) = Import (f path) alias exposed
+  refactorModuleName _ stmt = stmt
+
+class RefactorModuleAlias a where
+  refactorModuleAlias :: (FilePath -> FilePath) -> a -> a
+
+instance RefactorModuleAlias Package where
+  refactorModuleAlias :: (FilePath -> FilePath) -> Package -> Package
+  refactorModuleAlias f pkg = pkg {modules = map (refactorModuleAlias f) pkg.modules}
+
+instance RefactorModuleAlias Module where
+  refactorModuleAlias :: (FilePath -> FilePath) -> Module -> Module
+  refactorModuleAlias f mod = do
+    let names = concatMap importAlias mod.stmts
+    let refactor stmt = foldr (\x -> rename "" x (f x)) stmt names
+    mod {name = mod.name, stmts = map refactor mod.stmts}
+
+importAlias :: Stmt -> [String]
+importAlias (Import _ alias _) = [alias]
+importAlias _ = []
 
 replace :: (Eq a) => a -> a -> [a] -> [a]
 replace x y (x' : xs)
   | x == x' = y : replace x y xs
   | otherwise = x' : replace x y xs
 replace _ _ [] = []
+
+isAtom :: Expr -> Bool
+isAtom Any = True
+isAtom (Int _) = True
+isAtom (Num _) = True
+isAtom (Var _) = True
+isAtom (Tag _) = True
+isAtom (Type _) = True
+isAtom Err = True
+isAtom _ = False
+
+class DropMeta a where
+  dropMeta :: a -> a
+
+instance DropMeta Expr where
+  dropMeta :: Expr -> Expr
+  dropMeta (Meta _ a) = dropMeta a
+  dropMeta a | isAtom a = a
+  dropMeta a = apply dropMeta a

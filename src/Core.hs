@@ -113,11 +113,15 @@ instance Show Term where
       prefix n k a = showParen (p > n) $ showString k . showsPrec (n + 1) a
       infixL n a op b = showParen (p > n) $ showsPrec n a . showString op . showsPrec (n + 1) b
       infixR n a op b = showParen (p > n) $ showsPrec (n + 1) a . showString op . showsPrec n b
-      isVarName ('$' : xs) = all isAlphaNum xs
-      isVarName (x : xs) = isLower x && all isAlphaNum xs
+      isVarName ('$' : xs) = all isNameChar xs
+      isVarName ('_' : xs) = all isNameChar xs
+      isVarName (x : xs) = isLower x && all isNameChar xs
       isVarName [] = False
-      isTagName (x : xs) = isUpper x && all isAlphaNum xs
+      isTagName (x : xs) = isUpper x && all isNameChar xs
       isTagName [] = False
+      isNameChar '-' = True
+      isNameChar '_' = True
+      isNameChar c = isAlphaNum c
       op2 op = " " ++ show op ++ " "
       op1 op = show op ++ " "
 

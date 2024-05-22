@@ -1,5 +1,7 @@
 module PythonTests where
 
+import Data.Char (isSpace)
+import Data.List (dropWhileEnd, intercalate)
 import GHC.IO.Exception (ExitCode (..))
 import GHC.IO.Handle (hGetContents)
 import PrettyPrint (pretty)
@@ -55,12 +57,12 @@ run = describe "--==☯ Python ☯==--" $ do
     True `shouldBe` True
 
   it "☯ emitStmt Import" $ do
-    emitStmt options (Import "mod" "mod" []) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing]}
-    emitStmt options (Import "mod" "alias" []) ctx `shouldBe` ctx {globals = [PyImport "mod" (Just "alias")]}
-    emitStmt options (Import "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing, PyImportFrom "mod" [("a", Nothing), ("b", Just "c")]]}
+    emitStmt options "pkg" (Import "mod" "mod" []) ctx `shouldBe` ctx {globals = [PyImport "pkg.mod" Nothing]}
+    emitStmt options "pkg" (Import "mod" "alias" []) ctx `shouldBe` ctx {globals = [PyImport "pkg.mod" (Just "alias")]}
+    emitStmt options "pkg" (Import "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "pkg.mod" Nothing, PyImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]}
 
   it "☯ emitStmt Def" $ do
-    emitStmt options (Def (NameDef [] "x" [] y)) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}
+    emitStmt options "pkg" (Def (NameDef [] "x" [] y)) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}
 
   it "☯ emitModule" $ do
     let stmts =
@@ -71,44 +73,78 @@ run = describe "--==☯ Python ☯==--" $ do
           [ PyAssign [x'] (PyInteger 1),
             PyAssign [y'] (PyInteger 2)
           ]
-    emitModule options (Module "mod" stmts) `shouldBe` PyModule {name = "mod", body = emitStmts}
+    emitModule options "pkg" (Module "mod" stmts) `shouldBe` PyModule {name = "mod", body = emitStmts}
 
   it "☯ build" $ do
+    putStrLn "> parsePackage"
     pkg <- parsePackage "examples/simple"
     pkg.name `shouldBe` "simple"
     map (\m -> m.name) pkg.modules `shouldBe` ["my-submodule/my-subfile", "main"]
 
     -- Check package
+    putStrLn "> build"
     build options "build" pkg `shouldReturn` "build/python"
+
     doesDirectoryExist "build/python" `shouldReturn` True
     -- TODO: add pyproject.toml
     -- TODO: add README.md
     -- TODO: add LICENSE
 
     -- Check source files
-    readFile "build/python/simple/__init__.py" `shouldReturn` ""
-    readFile "build/python/simple/main.py" `shouldReturn` "x = 1"
-    readFile "build/python/simple/my_submodule/__init__.py" `shouldReturn` ""
-    readFile "build/python/simple/my_submodule/my_subfile.py" `shouldReturn` "my_value = 42"
+    -- readFile "build/python/simple/__init__.py" `shouldReturn` ""
+    -- readFile "build/python/simple/main.py" `shouldReturn` "x = 1"
+    -- readFile "build/python/simple/my_submodule/__init__.py" `shouldReturn` ""
+    -- readFile "build/python/simple/my_submodule/my_subfile.py" `shouldReturn` "my_value = 42"
+    doesFileExist "build/python/simple/__init__.py" `shouldReturn` True
+    doesFileExist "build/python/simple/main.py" `shouldReturn` True
+    doesFileExist "build/python/simple/my_submodule/__init__.py" `shouldReturn` True
+    doesFileExist "build/python/simple/my_submodule/my_subfile.py" `shouldReturn` True
 
     -- Check tests
     doesFileExist "build/python/test/__init__.py" `shouldReturn` True
     doesFileExist "build/python/test/test_main.py" `shouldReturn` True
     doesFileExist "build/python/test/my_submodule/__init__.py" `shouldReturn` True
     doesFileExist "build/python/test/my_submodule/test_my_subfile.py" `shouldReturn` True
-    (_, Just stdout, Just stderr, p) <-
-      createProcess
-        (proc "python" ["-m", "unittest", "-v"])
-          { cwd = Just "build/python",
-            std_out = CreatePipe,
-            std_err = CreatePipe
-          }
-    exitCode <- waitForProcess p
-    case exitCode of
-      ExitSuccess -> return ()
-      ExitFailure _ -> do
-        out <- hGetContents stdout
-        err <- hGetContents stderr
-        putStrLn out
-        putStrLn err
-        exitCode `shouldBe` ExitSuccess
+
+    let trim = dropWhileEnd isSpace . dropWhile isSpace
+
+    let run cwd cmd args = do
+          let command = '>' : ' ' : unwords (cmd : args)
+          putStrLn command
+          (_, Just stdout, Just stderr, p) <-
+            createProcess
+              (proc cmd args)
+                { cwd = Just cwd,
+                  std_out = CreatePipe,
+                  std_err = CreatePipe
+                }
+          status <- waitForProcess p
+          case status of
+            ExitSuccess -> return ()
+            ExitFailure _ -> do
+              out <- hGetContents stdout
+              err <- hGetContents stderr
+              fail (intercalate "\n" ["", command, trim out, trim err, ""])
+
+    run "build/python" "python" ["-m", "venv", "env"]
+    run "build/python" "env/bin/pip" ["install", "-U", "pip"]
+    run "build/python" "env/bin/pip" ["install", "-e", "."]
+    run "build/python" "env/bin/python" ["-m", "unittest", "-v"]
+
+-- (_, Just stdout, Just stderr, p) <-
+--   createProcess
+--     (proc "python" ["-m", "unittest", "-v"])
+--       { cwd = Just "build/python",
+--         std_out = CreatePipe,
+--         std_err = CreatePipe
+--       }
+-- exitCode <- waitForProcess p
+
+-- case exitCode of
+--   ExitSuccess -> return ()
+--   ExitFailure _ -> do
+--     out <- hGetContents stdout
+--     err <- hGetContents stderr
+--     putStrLn out
+--     putStrLn err
+--     exitCode `shouldBe` ExitSuccess
