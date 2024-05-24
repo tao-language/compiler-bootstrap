@@ -136,7 +136,7 @@ freeVars :: Expr -> [String]
 freeVars expr = C.freeVars (lowerExpr [] expr) & filter (/= "_")
 
 -- Core conversions
-lowerExpr :: [(String, Expr)] -> Expr -> C.Term
+lowerExpr :: [(String, Expr)] -> Expr -> C.Expr
 lowerExpr _ Any = C.Var "_"
 lowerExpr _ (Int i) = C.Int i
 lowerExpr _ (Num n) = C.Num n
@@ -168,7 +168,7 @@ lowerExpr defs (Op2 op a b) = C.Op2 op (lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (Meta m a) = C.Meta m (lowerExpr defs a)
 lowerExpr _ Err = C.Err
 
-liftExpr :: C.Term -> Expr
+liftExpr :: C.Expr -> Expr
 liftExpr C.IntT = Tag "Int"
 liftExpr C.NumT = Tag "Num"
 liftExpr (C.Int i) = Int i

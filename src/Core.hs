@@ -11,7 +11,7 @@ import Data.List (delete, intercalate, union)
 -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
 
 -- TODO: replace operators with Target or Builtin terms
-data Term
+data Expr
   = IntT
   | NumT
   | Int Int
@@ -19,16 +19,16 @@ data Term
   | Var String
   | Tag String
   | Typ [String]
-  | Rec [(String, Term)]
-  | For String Term
-  | Fix String Term
-  | Fun Term Term
-  | App Term Term
-  | Or Term Term
-  | Ann Term Term
-  | Op1 UnaryOp Term
-  | Op2 BinaryOp Term Term
-  | Meta Metadata Term
+  | Rec [(String, Expr)]
+  | For String Expr
+  | Fix String Expr
+  | Fun Expr Expr
+  | App Expr Expr
+  | Or Expr Expr
+  | Ann Expr Expr
+  | Op1 UnaryOp Expr
+  | Op2 BinaryOp Expr Expr
+  | Meta Metadata Expr
   | Err
   deriving (Eq)
 
@@ -51,9 +51,9 @@ data Metadata
   | Comment String
   deriving (Eq, Show)
 
-type Env = [(String, Term)]
+type Env = [(String, Expr)]
 
-type Substitution = [(String, Term)]
+type Substitution = [(String, Expr)]
 
 -- https://package.elm-lang.org/packages/elm-in-elm/compiler/latest/Elm.Compiler.Error
 -- https://github.com/elm-in-elm/compiler/blob/master/src/Elm/Compiler/Error.elm
@@ -64,18 +64,18 @@ data Error
   deriving (Eq, Show)
 
 data TypeError
-  = OccursError String Term
-  | TypeMismatch Term Term
+  = OccursError String Expr
+  | TypeMismatch Expr Expr
   | UndefinedVar String
   deriving (Eq, Show)
 
 data PatternError
-  = MissingCases [Term]
-  | UnreachableCase Term
+  = MissingCases [Expr]
+  | UnreachableCase Expr
   deriving (Eq, Show)
 
-instance Show Term where
-  showsPrec :: Int -> Term -> ShowS
+instance Show Expr where
+  showsPrec :: Int -> Expr -> ShowS
   showsPrec p expr = case expr of
     App (Fun p b) a -> prefix 1 (show p ++ " = " ++ show a ++ "; ") b
     Or a b -> infixR 1 a " | " b
@@ -140,82 +140,82 @@ instance Show UnaryOp where
   show Int2Num = "@int2num"
 
 -- Syntax sugar
-bindings :: Term -> [String]
+bindings :: Expr -> [String]
 bindings (For x a) = [x] `union` bindings a
 bindings (Fun a b) = freeVars a `union` bindings b
 bindings _ = []
 
-fix :: [String] -> Term -> Term
+fix :: [String] -> Expr -> Expr
 fix xs a = foldr Fix a xs
 
-for :: [String] -> Term -> Term
+for :: [String] -> Expr -> Expr
 for xs a = foldr For a xs
 
-asFor :: Term -> ([String], Term)
+asFor :: Expr -> ([String], Expr)
 asFor (For x a) = let (xs, b) = asFor a in (x : xs, b)
 asFor a = ([], a)
 
-fun :: [Term] -> Term -> Term
+fun :: [Expr] -> Expr -> Expr
 fun ps b = foldr Fun b ps
 
-asFun :: Term -> ([Term], Term)
+asFun :: Expr -> ([Expr], Expr)
 asFun (Fun p a) = let (ps, b) = asFun a in (p : ps, b)
 asFun a = ([], a)
 
-lam :: [Term] -> Term -> Term
+lam :: [Expr] -> Expr -> Expr
 -- TODO: use freeVars of ps
 lam ps b = for (bindings (fun ps b)) (fun ps b)
 
-add :: Term -> Term -> Term
+add :: Expr -> Expr -> Expr
 add = Op2 Add
 
-sub :: Term -> Term -> Term
+sub :: Expr -> Expr -> Expr
 sub = Op2 Sub
 
-mul :: Term -> Term -> Term
+mul :: Expr -> Expr -> Expr
 mul = Op2 Mul
 
-pow :: Term -> Term -> Term
+pow :: Expr -> Expr -> Expr
 pow = Op2 Pow
 
-eq :: Term -> Term -> Term
+eq :: Expr -> Expr -> Expr
 eq = Op2 Eq
 
-lt :: Term -> Term -> Term
+lt :: Expr -> Expr -> Expr
 lt = Op2 Lt
 
-gt :: Term -> Term -> Term
+gt :: Expr -> Expr -> Expr
 gt = Op2 Gt
 
-int2num :: Term -> Term
+int2num :: Expr -> Expr
 int2num = Op1 Int2Num
 
-let' :: (Term, Term) -> Term -> Term
+let' :: (Expr, Expr) -> Expr -> Expr
 let' (Var x, Var x') b | x == x' = b
 let' (p, a) b = do
   let xs = filter (`occurs` a) (freeVars p)
   App (lam [p] b) (fix xs a)
 
-lets :: [(Term, Term)] -> Term -> Term
+lets :: [(Expr, Expr)] -> Expr -> Expr
 lets defs b = foldr let' b defs
 
-or' :: [Term] -> Term
+or' :: [Expr] -> Expr
 or' [] = error "`or'` must have at least one expression"
 or' [a] = a
 or' (a : bs) = Or a (or' bs)
 
-app :: Term -> [Term] -> Term
+app :: Expr -> [Expr] -> Expr
 app = foldl App
 
-asApp :: Term -> (Term, [Term])
+asApp :: Expr -> (Expr, [Expr])
 asApp (App a b) = let (a', bs) = asApp a in (a', bs ++ [b])
 asApp a = (a, [])
 
-list :: Term -> Term -> [Term] -> Term
+list :: Expr -> Expr -> [Expr] -> Expr
 list _ nil [] = nil
 list cons nil (a : bs) = app cons [a, list cons nil bs]
 
-meta :: [Metadata] -> Term -> Term
+meta :: [Metadata] -> Expr -> Expr
 meta ms a = foldr Meta a ms
 
 -- Helper functions
@@ -224,7 +224,7 @@ pop _ [] = []
 pop x ((x', _) : kvs) | x == x' = kvs
 pop x (_ : kvs) = pop x kvs
 
-pushAll :: [(String, Term)] -> Env -> Env
+pushAll :: [(String, Expr)] -> Env -> Env
 pushAll vars env = foldr (:) env vars
 
 popAll :: [String] -> Env -> Env
@@ -233,7 +233,7 @@ popAll xs env = foldl (flip pop) env xs
 pushVars :: [String] -> Env -> Env
 pushVars xs = pushAll (map (\x -> (x, Var x)) xs)
 
-freeVars :: Term -> [String]
+freeVars :: Expr -> [String]
 freeVars IntT = []
 freeVars NumT = []
 freeVars (Int _) = []
@@ -254,7 +254,7 @@ freeVars (Op2 _ a b) = freeVars a `union` freeVars b
 freeVars (Meta _ a) = freeVars a
 freeVars Err = []
 
-occurs :: String -> Term -> Bool
+occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
 
 newName :: [String] -> String -> String
@@ -268,14 +268,14 @@ newNames existing x =
       name `notElem` existing
   ]
 
-isClosed :: Term -> Bool
+isClosed :: Expr -> Bool
 isClosed = null . freeVars
 
-isOpen :: Term -> Bool
+isOpen :: Expr -> Bool
 isOpen = not . isClosed
 
 -- Evaluation
-eval :: Env -> Term -> Term
+eval :: Env -> Expr -> Expr
 eval _ IntT = IntT
 eval _ NumT = NumT
 eval _ (Int i) = Int i
@@ -331,11 +331,11 @@ eval env (Op2 op a b) = case (op, eval env a, eval env b) of
 eval env (Meta _ a) = eval env a
 eval _ Err = Err
 
-evalOp1 :: UnaryOp -> Term -> Term
+evalOp1 :: UnaryOp -> Expr -> Expr
 evalOp1 Int2Num (Int b) = Num (fromIntegral b)
 evalOp1 _ _ = Err
 
-evalOp2 :: BinaryOp -> Term -> Term -> Term
+evalOp2 :: BinaryOp -> Expr -> Expr -> Expr
 evalOp2 Add (Int a) (Int b) = Int (a + b)
 evalOp2 Add (Num a) (Num b) = Num (a + b)
 evalOp2 Sub (Int a) (Int b) = Int (a - b)
@@ -355,7 +355,7 @@ evalOp2 Lt (Int a) (Int b) | a < b = Int a
 evalOp2 Lt (Num a) (Num b) | a < b = Num a
 evalOp2 _ _ _ = Err
 
-unify :: Term -> Term -> Either TypeError (Term, Substitution)
+unify :: Expr -> Expr -> Either TypeError (Expr, Substitution)
 unify IntT IntT = Right (IntT, [])
 unify NumT NumT = Right (NumT, [])
 unify (Int i) (Int i') | i == i' = Right (Int i, [])
@@ -396,13 +396,13 @@ unify (Meta _ a) b = unify a b
 unify a (Meta _ b) = unify a b
 unify a b = Left (TypeMismatch a b)
 
-unify2 :: (Term, Term) -> (Term, Term) -> Either TypeError ((Term, Term), Substitution)
+unify2 :: (Expr, Expr) -> (Expr, Expr) -> Either TypeError ((Expr, Expr), Substitution)
 unify2 (a1, a2) (b1, b2) = do
   (ta, s1) <- unify a1 a2
   (tb, s2) <- unify (eval s1 b1) (eval s1 b2)
   Right ((eval s2 ta, tb), s2 `compose` s1)
 
-infer :: Env -> Term -> Either TypeError (Term, Substitution)
+infer :: Env -> Expr -> Either TypeError (Expr, Substitution)
 infer _ IntT = Right (Typ [], [])
 infer _ NumT = Right (Typ [], [])
 infer _ (Int _) = Right (IntT, [])
@@ -448,25 +448,25 @@ infer env (Op2 op a b) = inferOp2 env op a b
 infer env (Meta _ a) = infer env a
 infer _ Err = Right (Err, []) -- TODO: error?
 
-infer2 :: Env -> Term -> Term -> Either TypeError ((Term, Term), Substitution)
+infer2 :: Env -> Expr -> Expr -> Either TypeError ((Expr, Expr), Substitution)
 infer2 env a b = do
   (ta, s1) <- infer env a
   (tb, s2) <- infer (env `compose` s1) b
   Right ((eval s2 ta, tb), s2 `compose` s1)
 
-inferAll :: Env -> [Term] -> Either TypeError ([Term], Substitution)
+inferAll :: Env -> [Expr] -> Either TypeError ([Expr], Substitution)
 inferAll _ [] = Right ([], [])
 inferAll env (a : bs) = do
   (ta, s1) <- infer env a
   (tbs, s2) <- inferAll (env `compose` s1) bs
   Right (eval s2 ta : tbs, s2 `compose` s1)
 
-inferOp1 :: Env -> UnaryOp -> Term -> Either TypeError (Term, Substitution)
+inferOp1 :: Env -> UnaryOp -> Expr -> Either TypeError (Expr, Substitution)
 inferOp1 env Int2Num a = do
   (_, s) <- infer env (Ann a IntT)
   Right (NumT, s)
 
-inferOp2 :: Env -> BinaryOp -> Term -> Term -> Either TypeError (Term, Substitution)
+inferOp2 :: Env -> BinaryOp -> Expr -> Expr -> Either TypeError (Expr, Substitution)
 inferOp2 env Add a b = do
   (ta, s1) <- infer env (Ann a IntT)
   (t, s2) <- infer (s1 `compose` env) (Ann b ta)
@@ -505,7 +505,7 @@ compose s1 s2 = apply s1 s2 `union` s1
       (x, Ann (eval s a) (eval s t)) : apply s env
     apply s ((x, a) : env) = (x, eval s a) : apply s env
 
-instantiate :: Env -> Term -> (Term, Substitution)
+instantiate :: Env -> Expr -> (Expr, Substitution)
 instantiate env (For x a) = do
   let y = newName (map fst env) x
   let (b, s) = instantiate env (eval [(x, Var y)] a)
@@ -519,7 +519,7 @@ checkTypes env = do
         Left err -> [err]
   concatMap checkDef env
 
-rename :: (Term -> [String] -> String -> String) -> [String] -> Env -> Env -> Env
+rename :: (Expr -> [String] -> String -> String) -> [String] -> Env -> Env -> Env
 rename _ _ _ [] = []
 rename f names env ((x, a) : env') = do
   let t = case infer env a of

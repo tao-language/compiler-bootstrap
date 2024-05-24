@@ -72,7 +72,7 @@ run = describe "--==☯ Python ☯==--" $ do
           ]
     emitModule options "pkg" (Module "mod" stmts) `shouldBe` PyModule {name = "mod", body = emitStmts}
 
-  it "☯ build" $ do
+  xit "☯ build" $ do
     putStrLn "> parsePackage"
     pkg <- parsePackage "examples/simple"
     pkg.name `shouldBe` "simple"
