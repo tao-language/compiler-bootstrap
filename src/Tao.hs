@@ -20,6 +20,7 @@ data Expr
   | Record [(String, Expr)]
   | Trait Expr String
   | Fun Expr Expr
+  | Lam String Expr
   | App Expr Expr
   | Let Definition Expr
   | Bind (Expr, Expr) Expr
@@ -34,7 +35,7 @@ data Expr
   deriving (Eq, Show)
 
 data Definition
-  = NameDef [(String, Expr)] String [Expr] Expr
+  = NameDef [(String, Expr)] String [String] Expr
   | UnpackDef [(String, Expr)] String [Expr] Expr
   | TraitDef [(String, Expr)] (Expr, Expr) String [Expr] Expr
   -- TODO: TypeDef
@@ -222,7 +223,7 @@ stmtDefs pkgName (Import path alias exposed) = case exposed of
     let def = (y, Var fullName)
     def : stmtDefs pkgName (Import path alias exposed)
   [] -> [] -- TODO: import module "Record"
-stmtDefs pkgName (Def (NameDef ts x (a : args) b)) = stmtDefs pkgName (Def (NameDef ts x args (Fun a b)))
+stmtDefs pkgName (Def (NameDef ts x (y : ys) b)) = stmtDefs pkgName (Def (NameDef ts x ys (Fun (Var y) b)))
 stmtDefs _ (Def (NameDef ts x [] b)) = case lookup x ts of
   Just t -> [(x, Ann b t)]
   Nothing -> [(x, b)]
@@ -348,34 +349,33 @@ class Apply a where
 
 instance Apply Expr where
   apply :: (Expr -> Expr) -> Expr -> Expr
-  apply f Any = f Any
-  apply f (Int i) = f (Int i)
-  apply f (Num n) = f (Num n)
-  apply f (Var x) = f (Var x)
-  apply f (Tag k) = f (Tag k)
-  apply f (Type alts) = f (Type alts)
-  apply f (Tuple args) = Tuple (map (apply f) args)
-  apply f (Record fields) = Record (map (second $ apply f) fields)
-  apply f (Trait a x) = Trait (apply f a) x
-  apply f (Fun a b) = Fun (apply f a) (apply f b)
-  apply f (App a b) = App (apply f a) (apply f b)
-  apply f (Let def a) = Let (apply f def) (apply f a)
-  apply f (Bind (a, b) c) = Bind (apply f a, apply f b) (apply f c)
-  apply f (MatchFun cases) = MatchFun (map (apply f) cases)
-  apply f (Match args cases) = Match (map (apply f) args) (map (apply f) cases)
-  apply f (Or a b) = Or (apply f a) (apply f b)
-  apply f (Ann a b) = Ann (apply f a) (apply f b)
-  apply f (Op1 op a) = Op1 op (apply f a)
-  apply f (Op2 op a b) = Op2 op (apply f a) (apply f b)
-  apply f (Meta m a) = Meta m (apply f a)
-  apply f Err = f Err
+  apply _ Any = Any
+  apply _ (Int i) = Int i
+  apply _ (Num n) = Num n
+  apply _ (Var x) = Var x
+  apply _ (Tag k) = Tag k
+  apply _ (Type alts) = (Type alts)
+  apply f (Tuple args) = Tuple (map f args)
+  apply f (Record fields) = Record (map (second f) fields)
+  apply f (Trait a x) = Trait (f a) x
+  apply f (Fun a b) = Fun (f a) (f b)
+  apply f (App a b) = App (f a) (f b)
+  apply f (Let def a) = Let (apply f def) (f a)
+  apply f (Bind (a, b) c) = Bind (f a, f b) (f c)
+  apply f (MatchFun cases) = MatchFun (map f cases)
+  apply f (Match args cases) = Match (map f args) (map f cases)
+  apply f (Or a b) = Or (f a) (f b)
+  apply f (Ann a b) = Ann (f a) (f b)
+  apply f (Op1 op a) = Op1 op (f a)
+  apply f (Op2 op a b) = Op2 op (f a) (f b)
+  apply f (Meta m a) = Meta m (f a)
+  apply _ Err = Err
 
 instance Apply Definition where
   apply :: (Expr -> Expr) -> Definition -> Definition
   apply f (NameDef ts x args val) = do
     let ts' = map (second $ apply f) ts
-    let args' = map (apply f) args
-    NameDef ts' x args' (f val)
+    NameDef ts' x args (f val)
   apply f (UnpackDef ts k args val) = do
     let ts' = map (second $ apply f) ts
     let args' = map (apply f) args
@@ -519,21 +519,10 @@ replace x y (x' : xs)
   | otherwise = x' : replace x y xs
 replace _ _ [] = []
 
-isAtom :: Expr -> Bool
-isAtom Any = True
-isAtom (Int _) = True
-isAtom (Num _) = True
-isAtom (Var _) = True
-isAtom (Tag _) = True
-isAtom (Type _) = True
-isAtom Err = True
-isAtom _ = False
-
 class DropMeta a where
   dropMeta :: a -> a
 
 instance DropMeta Expr where
   dropMeta :: Expr -> Expr
-  dropMeta (Meta _ a) = dropMeta a
-  dropMeta a | isAtom a = a
+  dropMeta (Meta _ a) = apply dropMeta a
   dropMeta a = apply dropMeta a

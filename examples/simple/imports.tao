@@ -1,0 +1,7 @@
+import sub-module/sub-file (x)
+
+> sub-file.x
+42
+
+> x
+42

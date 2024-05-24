@@ -232,20 +232,24 @@ parseStmt = do
 parseNameDef :: [(String, Expr)] -> Parser Definition
 parseNameDef ts = do
   x <- parseIdentifier
-  ts <-
-    P.oneOf
-      [ do
-          _ <- P.char ':'
-          _ <- P.whitespaces
-          t <- parseExpr P.space
-          return ((x, t) : ts),
-        return ts
-      ]
-  _ <- P.whitespaces
-  _ <- P.char '='
-  _ <- P.whitespaces
-  value <- parseExpr P.space
-  return (NameDef ts x [] value)
+  P.oneOf
+    [ do
+        _ <- P.char ':'
+        _ <- P.whitespaces
+        t <- parseExpr P.space
+        _ <- P.whitespaces
+        _ <- P.char '='
+        _ <- P.whitespaces
+        value <- parseExpr P.space
+        return (NameDef ((x, t) : ts) x [] value),
+      do
+        args <- P.zeroOrMore parseIdentifier
+        _ <- P.whitespaces
+        _ <- P.char '='
+        _ <- P.whitespaces
+        value <- parseExpr P.space
+        return (NameDef ts x args value)
+    ]
 
 parseUnpackDef :: [(String, Expr)] -> Parser Definition
 parseUnpackDef ts = P.fail'

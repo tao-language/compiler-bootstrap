@@ -1,14 +1,11 @@
 module PythonTests where
 
-import Data.Char (isSpace)
-import Data.List (dropWhileEnd, intercalate)
-import GHC.IO.Exception (ExitCode (..))
-import GHC.IO.Handle (hGetContents)
-import PrettyPrint (pretty)
+import Control.Monad (forM)
+import Data.List (sort)
 import Python
-import System.Directory (doesDirectoryExist, doesFileExist, withCurrentDirectory)
+import qualified Subprocess
+import System.Directory (doesDirectoryExist, doesFileExist, getDirectoryContents, withCurrentDirectory)
 import System.FilePath ((</>))
-import System.Process (CreateProcess (std_err, std_out), StdStream (CreatePipe), createProcess, cwd, proc, waitForProcess)
 import Tao
 import TaoParser (parsePackage)
 import Test.Hspec
@@ -79,72 +76,52 @@ run = describe "--==☯ Python ☯==--" $ do
     putStrLn "> parsePackage"
     pkg <- parsePackage "examples/simple"
     pkg.name `shouldBe` "simple"
-    map (\m -> m.name) pkg.modules `shouldBe` ["my-submodule/my-subfile", "main"]
-
-    -- Check package
     putStrLn "> build"
     build options "build" pkg `shouldReturn` "build/python"
 
-    doesDirectoryExist "build/python" `shouldReturn` True
-    -- TODO: add pyproject.toml
-    -- TODO: add README.md
-    -- TODO: add LICENSE
+    let taoModules =
+          [ "def-function",
+            "def-variable",
+            "empty",
+            "imports",
+            "sub-module/sub-file"
+          ]
+    -- sort (map (\m -> m.name) pkg.modules) `shouldBe` taoModules
 
-    -- Check source files
-    -- readFile "build/python/simple/__init__.py" `shouldReturn` ""
-    -- readFile "build/python/simple/main.py" `shouldReturn` "x = 1"
-    -- readFile "build/python/simple/my_submodule/__init__.py" `shouldReturn` ""
-    -- readFile "build/python/simple/my_submodule/my_subfile.py" `shouldReturn` "my_value = 42"
-    doesFileExist "build/python/simple/__init__.py" `shouldReturn` True
-    doesFileExist "build/python/simple/main.py" `shouldReturn` True
-    doesFileExist "build/python/simple/my_submodule/__init__.py" `shouldReturn` True
-    doesFileExist "build/python/simple/my_submodule/my_subfile.py" `shouldReturn` True
+    let pythonFiles =
+          [ "build/python/pyproject.toml",
+            "build/python/simple/__init__.py",
+            "build/python/simple/def_function.py",
+            "build/python/simple/def_variable.py",
+            "build/python/simple/empty.py",
+            "build/python/simple/imports.py",
+            "build/python/simple/sub_module/__init__.py",
+            "build/python/simple/sub_module/sub_file.py",
+            "build/python/test/__init__.py",
+            "build/python/test/sub_module/__init__.py",
+            "build/python/test/sub_module/test_sub_file.py",
+            "build/python/test/test_def_function.py",
+            "build/python/test/test_def_variable.py",
+            "build/python/test/test_empty.py",
+            "build/python/test/test_imports.py"
+          ]
+    -- fmap sort (getRecursiveContents "build/python") `shouldReturn` pythonFiles
 
-    -- Check tests
-    doesFileExist "build/python/test/__init__.py" `shouldReturn` True
-    doesFileExist "build/python/test/test_main.py" `shouldReturn` True
-    doesFileExist "build/python/test/my_submodule/__init__.py" `shouldReturn` True
-    doesFileExist "build/python/test/my_submodule/test_my_subfile.py" `shouldReturn` True
+    -- Run generated tests
+    Subprocess.run "build/python" "python" ["-m", "venv", "env"]
+    Subprocess.run "build/python" "env/bin/pip" ["install", "-U", "pip"]
+    Subprocess.run "build/python" "env/bin/pip" ["install", "-e", "."]
+    Subprocess.run "build/python" "env/bin/python" ["-m", "unittest", "-v"]
 
-    let trim = dropWhileEnd isSpace . dropWhile isSpace
-
-    let run cwd cmd args = do
-          let command = '>' : ' ' : unwords (cmd : args)
-          putStrLn command
-          (_, Just stdout, Just stderr, p) <-
-            createProcess
-              (proc cmd args)
-                { cwd = Just cwd,
-                  std_out = CreatePipe,
-                  std_err = CreatePipe
-                }
-          status <- waitForProcess p
-          case status of
-            ExitSuccess -> return ()
-            ExitFailure _ -> do
-              out <- hGetContents stdout
-              err <- hGetContents stderr
-              fail (intercalate "\n" ["", command, trim out, trim err, ""])
-
-    run "build/python" "python" ["-m", "venv", "env"]
-    run "build/python" "env/bin/pip" ["install", "-U", "pip"]
-    run "build/python" "env/bin/pip" ["install", "-e", "."]
-    run "build/python" "env/bin/python" ["-m", "unittest", "-v"]
-
--- (_, Just stdout, Just stderr, p) <-
---   createProcess
---     (proc "python" ["-m", "unittest", "-v"])
---       { cwd = Just "build/python",
---         std_out = CreatePipe,
---         std_err = CreatePipe
---       }
--- exitCode <- waitForProcess p
-
--- case exitCode of
---   ExitSuccess -> return ()
---   ExitFailure _ -> do
---     out <- hGetContents stdout
---     err <- hGetContents stderr
---     putStrLn out
---     putStrLn err
---     exitCode `shouldBe` ExitSuccess
+-- https://book.realworldhaskell.org/read/io-case-study-a-library-for-searching-the-filesystem.html
+getRecursiveContents :: FilePath -> IO [FilePath]
+getRecursiveContents topdir = do
+  names <- getDirectoryContents topdir
+  let properNames = filter (`notElem` [".", ".."]) names
+  paths <- forM properNames $ \name -> do
+    let path = topdir </> name
+    isDirectory <- doesDirectoryExist path
+    if isDirectory
+      then getRecursiveContents path
+      else return [path]
+  return (concat paths)

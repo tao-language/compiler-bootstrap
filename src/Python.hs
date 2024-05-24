@@ -460,6 +460,11 @@ build options base pkg = do
   when pkgPathExists (removeDirectoryRecursive pkgPath)
   createDirectoryIfMissing True pkgPath
 
+  -- Create pyproject.toml
+  writeFile (pkgPath </> "pyproject.toml") ""
+  -- TODO: create README.md
+  -- TODO: create LICENSE
+
   -- Create source files
   files <- mapM (buildModule options pyPkg.name srcPath) pyPkg.modules
 
@@ -469,11 +474,6 @@ build options base pkg = do
 
   -- TODO: Create docs
   createDirectory docsPath
-
-  -- Create pyproject.toml
-  writeFile (pkgPath </> "pyproject.toml") ""
-  -- TODO: create README.md
-  -- TODO: create LICENSE
 
   return pkgPath
 
@@ -518,14 +518,16 @@ emitModule options pkgName mod = do
 
 emitModuleTests :: BuildOptions -> String -> Module -> PyModule
 emitModuleTests options pkgName mod = do
-  let names = map fst (concatMap (stmtDefs pkgName) mod.stmts)
   let importFramework = case options.testingFramework of
         UnitTest -> PyImport "unittest" Nothing
         PyTest -> error "TODO: emitTests PyTest"
   let path = splitDirectories mod.name & filter (/= ".")
   let importPath = intercalate "." (pkgName : path)
-  let importModule = PyImportFrom importPath (map (,Nothing) names)
-  let imports = [importFramework, importModule]
+  let imports = case map fst (concatMap (stmtDefs pkgName) mod.stmts) of
+        [] -> [importFramework]
+        names -> do
+          let importModule = PyImportFrom importPath (map (,Nothing) names)
+          [importFramework, importModule]
   -- TODO: include imports from the Module itself
   let ctx0 = PyCtx {globals = imports, locals = [], nameIndex = 0}
   let ctx1 = foldr (emitTest options pkgName) ctx0 mod.stmts
@@ -565,12 +567,34 @@ emitImport options pkgName (Import name alias exposed) ctx = case exposed of
       & addGlobal (PyImportFrom (pkgName ++ "." ++ name) (map pyExpose exposed))
 emitImport _ _ _ ctx = ctx
 
+emitArgs :: [String] -> [PyExpr] -> [(String, Maybe PyExpr, Maybe PyExpr)]
+emitArgs [] _ = []
+emitArgs (x : xs) [] = (x, Nothing, Nothing) : emitArgs xs []
+emitArgs (x : xs) (t : ts) = (x, Just t, Nothing) : emitArgs xs ts
+
 emitDef :: BuildOptions -> Stmt -> PyCtx -> PyCtx
 emitDef options (Def (NameDef ts x args a)) ctx = do
-  let (ctx', a') = emitExpr options ctx a
+  let (ctx1, a') = emitExpr options ctx a
   let type' = fromMaybe Any (lookup x ts)
   case (asFun type', args) of
-    (([], Any), []) -> ctx' {locals = PyAssign [PyName x] a' : ctx.locals}
+    (([], Any), []) -> ctx1 {locals = PyAssign [PyName x] a' : ctx1.locals}
+    (([], t), []) -> do
+      let (ctx2, t') = emitExpr options ctx1 t
+      ctx2 {locals = PyAnnAssign (PyName x) t' (Just a') : ctx2.locals}
+    ((ts, t), args) -> do
+      let (ctx2, ts') = emitExprAll options ctx1 ts
+      let (ctx3, t') = emitExpr options ctx2 t
+      let def =
+            PyFunctionDef
+              { name = x,
+                args = emitArgs args ts',
+                body = [PyReturn a'],
+                decorators = [],
+                returns = if t == Any then Nothing else Just t',
+                typeParams = [],
+                async = False
+              }
+      ctx3 {locals = def : ctx3.locals}
 -- Def (NameDef String Expr)
 -- Def (DefUnpack String [(String, Expr)])
 -- Def (DefTrait (Expr, Expr) String)
@@ -596,6 +620,9 @@ emitTest options pkgName stmt ctx = case stmt of
     addLocal testDef ctx
   _ -> ctx
 
+emitType :: BuildOptions -> PyCtx -> Expr -> (PyCtx, PyExpr)
+emitType options ctx a = emitExpr options ctx a
+
 emitExpr :: BuildOptions -> PyCtx -> Expr -> (PyCtx, PyExpr)
 emitExpr _ ctx Any = (ctx, PyName "_")
 emitExpr _ ctx (Int i) = (ctx, PyInteger i)
@@ -613,8 +640,15 @@ emitExpr options ctx (Trait a x) = do
   let (ctx', a') = emitExpr options ctx a
   (ctx', PyAttribute a' x)
 -- emitExpr options ctx (Type alts) = _
--- emitExpr options ctx (Fun Expr Expr) = _
--- emitExpr options ctx (App Expr Expr) = _
+emitExpr options ctx (Fun a b) = do
+  let (ctx', (a', b')) = emitExpr2 options ctx (a, b)
+  -- (ctx', PyLambda)
+  error "TODO: emitExpr Fun"
+emitExpr options ctx (App a b) = do
+  let (fn, args) = asApp (App a b)
+  let (ctx1, fn') = emitExpr options ctx fn
+  let (ctx2, args') = emitExprAll options ctx1 args
+  (ctx2, pyCall fn' args')
 -- emitExpr options ctx (Let (Expr, Expr) Expr) = _
 -- emitExpr options ctx (Bind (Expr, Expr) Expr) = _
 -- emitExpr options ctx (TypeDef String [Expr] Expr) = _
@@ -663,8 +697,12 @@ layoutBlock :: [PyStmt] -> PP.Layout
 layoutBlock stmts = PP.join [PP.Text "\n"] (map layoutStmt stmts)
 
 layoutStmt :: PyStmt -> PP.Layout
-layoutStmt (PyAssign [] y) = layoutExpr y
-layoutStmt (PyAssign (x : xs) y) = layoutExpr x ++ (PP.Text " = " : layoutStmt (PyAssign xs y))
+layoutStmt (PyAssign xs y) = case xs of
+  [] -> layoutExpr y
+  x : xs -> layoutExpr x ++ (PP.Text " = " : layoutStmt (PyAssign xs y))
+layoutStmt (PyAnnAssign a t maybeValue) = case maybeValue of
+  Just b -> layoutExpr a ++ (PP.Text ": " : layoutExpr t) ++ (PP.Text " = " : layoutExpr b)
+  Nothing -> layoutExpr a ++ (PP.Text ": " : layoutExpr t)
 layoutStmt (PyImport name alias) = case alias of
   Just alias -> [PP.Text $ "import " ++ name ++ " as " ++ alias]
   Nothing -> [PP.Text $ "import " ++ name]

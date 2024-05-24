@@ -1,0 +1,12 @@
+untyped = 42
+> untyped
+42
+
+typed-inline : Int = 42
+> typed-inline
+42
+
+typed-annotation : Int
+typed-annotation = 42
+> typed-annotation
+42
