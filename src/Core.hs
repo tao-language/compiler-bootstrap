@@ -22,6 +22,7 @@ data Expr
   | For String Expr
   | Fix String Expr
   | Fun Expr Expr
+  | Lam [(Pattern, Expr)]
   | App Expr Expr
   | Or Expr Expr
   | Ann Expr Expr
@@ -30,6 +31,18 @@ data Expr
   | Meta Metadata Expr
   | Err
   deriving (Eq)
+
+data Pattern
+  = PIntT
+  | PNumT
+  | PInt Int
+  | PNum Double
+  | PVar String
+  | PTag String
+  | PTyp [String]
+  | PFun Pattern Pattern
+  | PErr
+  deriving (Eq, Show)
 
 data BinaryOp
   = Add
