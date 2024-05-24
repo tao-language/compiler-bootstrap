@@ -71,16 +71,16 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
-  it "☯ lower/lift Record" $ do
-    let expr = Record []
-    let term = C.Rec []
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+  -- it "☯ lower/lift Record" $ do
+  --   let expr = Record []
+  --   let term = C.Rec []
+  --   lowerExpr [] expr `shouldBe` term
+  --   liftExpr term `shouldBe` expr
 
-    let expr = Record [("a", x), ("b", y)]
-    let term = C.Rec [("a", x'), ("b", y')]
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+  --   let expr = Record [("a", x), ("b", y)]
+  --   let term = C.Rec [("a", x'), ("b", y')]
+  --   lowerExpr [] expr `shouldBe` term
+  --   liftExpr term `shouldBe` expr
 
   it "☯ lower/lift Trait" $ do
     let expr = Trait (Int 1) "y"

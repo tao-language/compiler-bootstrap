@@ -19,7 +19,6 @@ data Expr
   | Var String
   | Tag String
   | Typ [String]
-  | Rec [(String, Expr)]
   | For String Expr
   | Fix String Expr
   | Fun Expr Expr
@@ -104,9 +103,6 @@ instance Show Expr where
     Var x -> atom 12 ("($var '" ++ x ++ "')")
     Tag k | isTagName k -> atom 12 k
     Tag k -> atom 12 ("($tag '" ++ k ++ "')")
-    Rec fields -> do
-      let showField (k, v) = k ++ ": " ++ show v
-      atom 12 ("{" ++ intercalate ", " (map showField fields) ++ "}")
     Meta _ a -> showsPrec p a
     where
       atom n k = showParen (p > n) $ showString k
@@ -241,8 +237,6 @@ freeVars (Num _) = []
 freeVars (Var x) = [x]
 freeVars (Tag _) = []
 freeVars (Typ _) = []
-freeVars (Rec []) = []
-freeVars (Rec ((_, a) : fields)) = freeVars a `union` freeVars (Rec fields)
 freeVars (Ann a _) = freeVars a
 freeVars (For x a) = delete x (freeVars a)
 freeVars (Fix x a) = delete x (freeVars a)
@@ -292,7 +286,6 @@ eval env (Tag k) = case lookup k env of
   Just a -> eval ((k, Tag k) : env) a
   Nothing -> Tag k
 eval _ (Typ alts) = Typ alts
-eval env (Rec fields) = Rec (map (second $ eval env) fields)
 eval env (For x a) = For x (eval ((x, Var x) : env) a)
 eval env (Fix x a) = Fix x (eval ((x, Var x) : env) a)
 eval env (Fun p b) = Fun (eval env p) (eval env b)
@@ -420,9 +413,6 @@ infer env (Tag k) = case lookup k env of
   Just a -> infer env a
   Nothing -> Right (Tag k, [])
 infer _ (Typ _) = Right (Typ [], [])
-infer env (Rec fields) = do
-  (ts, s) <- inferAll env (map snd fields)
-  Right (Rec (zip (map fst fields) ts), s)
 infer env (Ann a ty) = do
   let (t, vars) = instantiate env ty
   (ta, s1) <- infer (vars ++ env) a

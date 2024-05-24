@@ -146,9 +146,9 @@ lowerExpr _ (Tag "Num") = C.NumT
 lowerExpr _ (Tag k) = C.Tag k
 lowerExpr _ (Type alts) = C.Typ alts
 lowerExpr defs (Tuple items) = lowerExpr defs (tag "()" items)
-lowerExpr defs (Record fields) = do
-  let lowerField (k, v) = (k, lowerExpr defs v)
-  C.Rec (map lowerField fields)
+-- lowerExpr defs (Record fields) = do
+--   let lowerField (k, v) = (k, lowerExpr defs v)
+--   C.Rec (map lowerField fields)
 lowerExpr defs (Trait a x) = do
   let a' = lowerExpr defs a
   let env = lowerDefs defs
@@ -178,9 +178,6 @@ liftExpr (C.Var x) = Var x
 liftExpr (C.Tag "()") = Tuple []
 liftExpr (C.Tag k) = Tag k
 liftExpr (C.Typ alts) = Type alts
-liftExpr (C.Rec fields) = do
-  let liftField (x, a) = (x, liftExpr a)
-  Record (map liftField fields)
 liftExpr (C.For _ a) = liftExpr a
 liftExpr (C.Fix _ a) = liftExpr a
 liftExpr (C.Fun a b) = Fun (liftExpr a) (liftExpr b)
