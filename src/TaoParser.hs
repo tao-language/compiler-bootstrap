@@ -169,15 +169,19 @@ parseExprAtom = do
         parseTuple,
         parseRecord
       ]
-  return (Meta loc a)
+  P.oneOf
+    [ do
+        _ <- P.char '.'
+        Meta loc . Trait a <$> parseIdentifier,
+      return (Meta loc a)
+    ]
 
 parseName :: Parser Expr
 parseName = do
   name <- parseIdentifier
   case name of
     x | startsWithUpper x -> do
-      args <- P.zeroOrMore parseExprAtom
-      return (Tag name args)
+      return (Tag name)
     _ -> return (Var name)
 
 parseTuple :: Parser Expr
@@ -228,20 +232,24 @@ parseStmt = do
 parseNameDef :: [(String, Expr)] -> Parser Definition
 parseNameDef ts = do
   x <- parseIdentifier
-  ts <-
-    P.oneOf
-      [ do
-          _ <- P.char ':'
-          _ <- P.whitespaces
-          t <- parseExpr P.space
-          return ((x, t) : ts),
-        return ts
-      ]
-  _ <- P.whitespaces
-  _ <- P.char '='
-  _ <- P.whitespaces
-  value <- parseExpr P.space
-  return (DefName ts x [] value)
+  P.oneOf
+    [ do
+        _ <- P.char ':'
+        _ <- P.whitespaces
+        t <- parseExpr P.space
+        _ <- P.whitespaces
+        _ <- P.char '='
+        _ <- P.whitespaces
+        value <- parseExpr P.space
+        return (NameDef ((x, t) : ts) x [] value),
+      do
+        args <- P.zeroOrMore parseIdentifier
+        _ <- P.whitespaces
+        _ <- P.char '='
+        _ <- P.whitespaces
+        value <- parseExpr P.space
+        return (NameDef ts x args value)
+    ]
 
 parseUnpackDef :: [(String, Expr)] -> Parser Definition
 parseUnpackDef ts = P.fail'
@@ -309,7 +317,7 @@ parseImport = do
         return []
       ]
   _ <- parseLineBreak
-  return (Import path name alias exposing)
+  return (Import (intercalate "/" (path ++ [name])) alias exposing)
 
 parseTest :: Parser Stmt
 parseTest = do
@@ -329,26 +337,24 @@ parseTest = do
           return result,
         case typeAssertion expr of
           Just a -> return a
-          Nothing -> return (Tag "True" [])
+          Nothing -> return (Tag "True")
       ]
   return (Test expr result)
 
-parseModule :: [FilePath] -> String -> Parser Module
-parseModule path name = do
+parseModule :: String -> Parser Module
+parseModule name = do
   P.commit CModule
   stmts <- P.zeroOrMore parseStmt
   _ <- P.whitespaces
   comments <- P.zeroOrMore parseComment
   _ <- P.endOfFile
-  return (Module path name stmts)
+  return (Module name stmts)
 
 parseFile :: FilePath -> FilePath -> Package -> IO Package
 parseFile _ filename pkg | filename `elem` map (\f -> f.name) pkg.modules = return pkg
 parseFile base filename pkg = do
   src <- readFile (base </> filename)
-  let (dir, name) = splitFileName (dropExtension filename)
-  let path = splitDirectories dir & filter (/= ".")
-  case P.parse filename (parseModule path name) src of
+  case P.parse filename (parseModule (dropExtension filename)) src of
     Right (f, _) -> do
       -- TODO: evaluate the module statements
       return (pkg {modules = f : pkg.modules})

@@ -25,13 +25,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     liftExpr term `shouldBe` expr
 
   it "☯ lower/lift IntType" $ do
-    let expr = IntType
+    let expr = Tag "Int"
     let term = C.IntT
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
   it "☯ lower/lift NumType" $ do
-    let expr = NumType
+    let expr = Tag "Num"
     let term = C.NumT
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
@@ -55,13 +55,8 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     liftExpr term `shouldBe` expr
 
   it "☯ lower/lift Tag" $ do
-    let expr = Tag "A" []
+    let expr = Tag "A"
     let term = C.Tag "A"
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
-
-    let expr = Tag "A" [x, y]
-    let term = C.app (C.Tag "A") [x', y']
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
@@ -101,30 +96,6 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     let expr = Trait x "y"
     let term = C.app (C.Var ".y") [C.Err, C.Var "x"]
     lowerExpr [] expr `shouldBe` C.Err
-    liftExpr term `shouldBe` expr
-
-  it "☯ lower/lift ListNil" $ do
-    let expr = ListNil
-    let term = C.Tag "[]"
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
-
-  it "☯ lower/lift ListCons" $ do
-    let expr = ListCons
-    let term = C.Tag "[..]"
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
-
-  it "☯ lower/lift TextNil" $ do
-    let expr = TextNil
-    let term = C.Tag "\"\""
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
-
-  it "☯ lower/lift TextCons" $ do
-    let expr = TextCons
-    let term = C.Tag "\"..\""
-    lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
   it "☯ lower/lift Fun" $ do
@@ -242,16 +213,35 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     -- stmtDefs (Def Err y) `shouldBe` []
     True `shouldBe` True
 
+  it "☯ moduleDefs" $ do
+    let defs stmts = do
+          let mod = Module "mod" stmts
+          moduleDefs "pkg" mod
+    defs [] `shouldBe` []
+    defs [Import "mod2" "m2" []] `shouldBe` []
+    defs [Import "mod2" "m2" [("x", "y")]] `shouldBe` [("pkg:mod#y", Var "pkg:mod2#x")]
+    defs [Import "pkg2:mod2" "m2" [("x", "y")]] `shouldBe` [("pkg:mod#y", Var "pkg2:mod2#x")]
+    defs [defName "x" y] `shouldBe` [("pkg:mod#x", Var "y")]
+    defs [defName "x" y, defName "y" z] `shouldBe` [("pkg:mod#x", Var "pkg:mod#y"), ("pkg:mod#y", Var "z")]
+
+  it "☯ packageDefs" $ do
+    let defs stmts = do
+          let mod = Module "mod" stmts
+          let pkg = Package "pkg" [mod]
+          packageDefs pkg
+    defs [] `shouldBe` []
+    defs [defName "x" y] `shouldBe` [("pkg:mod#x", Var "y")]
+
   -- it "☯ lowerPackage" $ do
   --   let mod defs = Package {name = "lowerPackage", modules = [Module "f" defs]}
   --   lowerPackage (mod []) `shouldBe` []
-  --   lowerPackage (mod [Def (DefName "x" [] y)]) `shouldBe` [("x", y')]
+  --   lowerPackage (mod [Def (NameDef "x" [] y)]) `shouldBe` [("x", y')]
 
   -- it "☯ run" $ do
   --   let defs =
-  --         [ Def (DefName "x" [] (Int 42)),
+  --         [ Def (NameDef "x" [] (Int 42)),
   --           Def (DefTrait (Ann Any IntType) "y" [] (Num 3.14)),
-  --           Def (DefName "f" [Int 1] (Int 2))
+  --           Def (NameDef "f" [Int 1] (Int 2))
   --         ]
   --   let mod = Package {name = "run", modules = [Module "f" defs]}
 
@@ -288,11 +278,86 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   run mod (Meta loc x) `shouldBe` Int 42
   --   run mod Err `shouldBe` Err
 
+  it "☯ packageTests" $ do
+    let defs =
+          [ defName "x" (Int 1),
+            Test x y,
+            defName "y" (Int 2)
+          ]
+    let mod = Package {name = "pkg", modules = [Module "mod" defs]}
+    packageTests mod `shouldBe` [(Var "pkg:mod#x", Var "pkg:mod#y")]
+
   it "☯ test" $ do
     let defs =
-          [ Def (DefName [] "x" [] (Int 1)),
+          [ defName "x" (Int 1),
             Test x y,
-            Def (DefName [] "y" [] (Int 2))
+            defName "y" (Int 2)
           ]
-    let mod = Package {name = "test", modules = [Module [] "f" defs]}
-    test mod `shouldBe` [TestEqError x (Int 1) (Int 2)]
+    let mod = Package {name = "pkg", modules = [Module "mod" defs]}
+    test mod `shouldBe` [TestEqError (Var "pkg:mod#x") (Int 1) (Int 2)]
+
+  it "☯ splitCamelCase" $ do
+    splitCamelCase "" `shouldBe` []
+    splitCamelCase "Camel" `shouldBe` ["Camel"]
+    splitCamelCase "CamelCase" `shouldBe` ["Camel", "Case"]
+    splitCamelCase "CamelCaseABC" `shouldBe` ["Camel", "Case", "ABC"]
+    splitCamelCase "CamelABCCase" `shouldBe` ["Camel", "ABC", "Case"]
+    splitCamelCase "ABCCamelCase" `shouldBe` ["ABC", "Camel", "Case"]
+
+  it "☯ nameSplit" $ do
+    nameSplit "" `shouldBe` []
+    nameSplit "camelCase" `shouldBe` ["camel", "case"]
+    nameSplit "CamelCase" `shouldBe` ["camel", "case"]
+    nameSplit "snake_case" `shouldBe` ["snake", "case"]
+    nameSplit "dash-case" `shouldBe` ["dash", "case"]
+    nameSplit "dot.name" `shouldBe` ["dot", "name"]
+    nameSplit "/path/name" `shouldBe` ["path", "name"]
+    nameSplit "multisymbol/.name" `shouldBe` ["multisymbol", "name"]
+
+  it "☯ nameCamelCaseUpper" $ do
+    nameCamelCaseUpper "my-name" `shouldBe` "MyName"
+
+  it "☯ nameCamelCaseLower" $ do
+    nameCamelCaseLower "my-name" `shouldBe` "myName"
+
+  it "☯ nameSnakeCase" $ do
+    nameSnakeCase "my-name" `shouldBe` "my_name"
+
+  it "☯ nameDashCase" $ do
+    nameDashCase "my_name" `shouldBe` "my-name"
+
+  -- it "☯ rename Expr" $ do
+  --   let f _ "x" = "y"
+  --       f _ x = x
+  --   rename f [] Any `shouldBe` Any
+  --   rename f [] x `shouldBe` y
+  --   rename f [] z `shouldBe` z
+
+  -- it "☯ rename Module" $ do
+  --   let mod1 x = Module "mod1" [Def (NameDef [] x [] z)]
+  --   let mod2 x = Module "mod2" [Import "path/mod1" "mod1" [(x, x)], Test (Var x) z]
+  --   let sub "x" = "y"
+  --       sub z = z
+  --   -- rename [] "mod1" sub [mod1 "x", mod2 "x"] `shouldBe` [mod1 "x", mod2 "x"]
+  --   -- rename ["path"] "mod1" sub [mod1 "x", mod2 "x"] `shouldBe` [mod1 "y", mod2 "y"]
+  --   True `shouldBe` True
+
+  it "☯ renameExpr" $ do
+    True `shouldBe` True
+
+  it "☯ renameStmt" $ do
+    True `shouldBe` True
+
+  it "☯ renameImport" $ do
+    True `shouldBe` True
+
+  it "☯ renameModule" $ do
+    True `shouldBe` True
+
+  it "☯ rename Package" $ do
+    let m1 x = Module "m1" [Def (NameDef [] x [] $ Int 42), Def (NameDef [] "y" [] $ Var x)]
+    let m2 _ = Module "m2" [Def (NameDef [] "x" [] $ Int 42), Def (NameDef [] "y" [] $ Var "x")]
+    let m3 x = Module "m3" [Import "m1" x [], Def (NameDef [] "y" [] $ Var x)]
+    let m4 x = Module "m4" [Import "m1" "m" [(x, x)], Def (NameDef [] "y" [] $ Var x)]
+    let pkg = Package "pkg" [m1 "x", m2 "x", m3 "x", m4 "x"]
+    rename "m1" "x" "z" pkg `shouldBe` pkg {modules = [m1 "z", m2 "z", m3 "z", m4 "z"]}

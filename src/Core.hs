@@ -18,8 +18,8 @@ data Term
   | Num Double
   | Var String
   | Tag String
-  | Rec [(String, Term)]
   | Typ [String]
+  | Rec [(String, Term)]
   | For String Term
   | Fix String Term
   | Fun Term Term
@@ -113,11 +113,15 @@ instance Show Term where
       prefix n k a = showParen (p > n) $ showString k . showsPrec (n + 1) a
       infixL n a op b = showParen (p > n) $ showsPrec n a . showString op . showsPrec (n + 1) b
       infixR n a op b = showParen (p > n) $ showsPrec (n + 1) a . showString op . showsPrec n b
-      isVarName ('$' : xs) = all isAlphaNum xs
-      isVarName (x : xs) = isLower x && all isAlphaNum xs
+      isVarName ('$' : xs) = all isNameChar xs
+      isVarName ('_' : xs) = all isNameChar xs
+      isVarName (x : xs) = isLower x && all isNameChar xs
       isVarName [] = False
-      isTagName (x : xs) = isUpper x && all isAlphaNum xs
+      isTagName (x : xs) = isUpper x && all isNameChar xs
       isTagName [] = False
+      isNameChar '-' = True
+      isNameChar '_' = True
+      isNameChar c = isAlphaNum c
       op2 op = " " ++ show op ++ " "
       op1 op = show op ++ " "
 
@@ -230,13 +234,13 @@ pushVars :: [String] -> Env -> Env
 pushVars xs = pushAll (map (\x -> (x, Var x)) xs)
 
 freeVars :: Term -> [String]
-freeVars (Typ _) = []
 freeVars IntT = []
 freeVars NumT = []
 freeVars (Int _) = []
 freeVars (Num _) = []
 freeVars (Var x) = [x]
 freeVars (Tag _) = []
+freeVars (Typ _) = []
 freeVars (Rec []) = []
 freeVars (Rec ((_, a) : fields)) = freeVars a `union` freeVars (Rec fields)
 freeVars (Ann a _) = freeVars a
@@ -272,7 +276,6 @@ isOpen = not . isClosed
 
 -- Evaluation
 eval :: Env -> Term -> Term
-eval _ (Typ alts) = Typ alts
 eval _ IntT = IntT
 eval _ NumT = NumT
 eval _ (Int i) = Int i
@@ -288,6 +291,7 @@ eval env (Tag k) = case lookup k env of
   Just (Ann (Tag k) ty) -> Ann (Tag k) ty
   Just a -> eval ((k, Tag k) : env) a
   Nothing -> Tag k
+eval _ (Typ alts) = Typ alts
 eval env (Rec fields) = Rec (map (second $ eval env) fields)
 eval env (For x a) = For x (eval ((x, Var x) : env) a)
 eval env (Fix x a) = Fix x (eval ((x, Var x) : env) a)
@@ -340,8 +344,8 @@ evalOp2 Mul (Int a) (Int b) = Int (a * b)
 evalOp2 Mul (Num a) (Num b) = Num (a * b)
 evalOp2 Pow (Int a) (Int b) = Int (a ^ b)
 evalOp2 Pow (Num a) (Num b) = Num (a ** b)
-evalOp2 Eq (Typ alts) (Typ alts') | alts == alts' = Typ alts
 evalOp2 Eq (Tag k) (Tag k') | k == k' = Tag k
+evalOp2 Eq (Typ alts) (Typ alts') | alts == alts' = Typ alts
 evalOp2 Eq IntT IntT = IntT
 evalOp2 Eq NumT NumT = NumT
 evalOp2 Eq (Int a) (Int b) | a == b = Int a
@@ -352,13 +356,13 @@ evalOp2 Lt (Num a) (Num b) | a < b = Num a
 evalOp2 _ _ _ = Err
 
 unify :: Term -> Term -> Either TypeError (Term, Substitution)
-unify (Typ alts) (Typ alts') | alts == alts' = Right (Typ alts, [])
 unify IntT IntT = Right (IntT, [])
 unify NumT NumT = Right (NumT, [])
 unify (Int i) (Int i') | i == i' = Right (Int i, [])
 unify (Num n) (Num n') | n == n' = Right (Num n, [])
 unify (Var x) (Var x') | x == x' = Right (Var x, [])
 unify (Tag k) (Tag k') | k == k' = Right (Tag k, [])
+unify (Typ alts) (Typ alts') | alts == alts' = Right (Typ alts, [])
 unify (Var x) b | x `occurs` b = Left (OccursError x b)
 unify (Var x) b = Right (b, [(x, b)])
 unify a (Var x) = unify (Var x) a
@@ -399,7 +403,6 @@ unify2 (a1, a2) (b1, b2) = do
   Right ((eval s2 ta, tb), s2 `compose` s1)
 
 infer :: Env -> Term -> Either TypeError (Term, Substitution)
-infer _ (Typ _) = Right (Typ [], [])
 infer _ IntT = Right (Typ [], [])
 infer _ NumT = Right (Typ [], [])
 infer _ (Int _) = Right (IntT, [])
@@ -416,6 +419,7 @@ infer env (Tag k) = case lookup k env of
   Just (Ann (Tag k') ty) | k == k' -> Right (instantiate env ty)
   Just a -> infer env a
   Nothing -> Right (Tag k, [])
+infer _ (Typ _) = Right (Typ [], [])
 infer env (Rec fields) = do
   (ts, s) <- inferAll env (map snd fields)
   Right (Rec (zip (map fst fields) ts), s)
@@ -514,3 +518,12 @@ checkTypes env = do
         Right _ -> []
         Left err -> [err]
   concatMap checkDef env
+
+rename :: (Term -> [String] -> String -> String) -> [String] -> Env -> Env -> Env
+rename _ _ _ [] = []
+rename f names env ((x, a) : env') = do
+  let t = case infer env a of
+        Right (t, _) -> t
+        Left _ -> Err
+  let y = f t (names ++ map fst env') x
+  (y, eval [(x, Var y)] a) : rename f (y : names) env env'

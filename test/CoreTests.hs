@@ -2,6 +2,7 @@ module CoreTests where
 
 import Core
 import Data.Bifunctor (Bifunctor (first))
+import Data.Char (toLower)
 import Test.Hspec
 
 run :: SpecWith ()
@@ -376,3 +377,17 @@ run = describe "--==☯️ Core language ☯️==--" $ do
             ("z", App f (Tag "A"))
           ]
     checkTypes env `shouldBe` [TypeMismatch IntT NumT, TypeMismatch (Tag "A") IntT]
+
+  it "☯ rename simple" $ do
+    let env = [("A", x), ("B", y)]
+    let f t xs x = case map toLower x of
+          y | y `elem` xs -> f t xs (y ++ "_")
+          y -> y
+    rename f [] env env `shouldBe` [("a", x), ("b", y)]
+
+  it "☯ rename name clashes" $ do
+    let env = [("a_", x), ("A", y), ("a", z)]
+    let f t xs x = case map toLower x of
+          y | y `elem` xs -> f t xs (y ++ "_")
+          y -> y
+    rename f [] env env `shouldBe` [("a_", x), ("a__", y), ("a", z)]

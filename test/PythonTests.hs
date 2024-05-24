@@ -1,12 +1,11 @@
 module PythonTests where
 
-import GHC.IO.Exception (ExitCode (..))
-import GHC.IO.Handle (hGetContents)
-import PrettyPrint (pretty)
+import Control.Monad (forM)
+import Data.List (sort)
 import Python
-import System.Directory (doesDirectoryExist, doesFileExist, withCurrentDirectory)
+import qualified Subprocess
+import System.Directory (doesDirectoryExist, doesFileExist, getDirectoryContents, withCurrentDirectory)
 import System.FilePath ((</>))
-import System.Process (CreateProcess (std_err, std_out), StdStream (CreatePipe), createProcess, cwd, proc, waitForProcess)
 import Tao
 import TaoParser (parsePackage)
 import Test.Hspec
@@ -21,13 +20,12 @@ run = describe "--==☯ Python ☯==--" $ do
 
   it "☯ emitExpr" $ do
     emitExpr options ctx Any `shouldBe` (ctx, PyName "_")
-    emitExpr options ctx IntType `shouldBe` (ctx, PyName "int")
-    emitExpr options ctx NumType `shouldBe` (ctx, PyName "float")
     emitExpr options ctx (Int 42) `shouldBe` (ctx, PyInteger 42)
     emitExpr options ctx (Num 3.14) `shouldBe` (ctx, PyFloat 3.14)
     emitExpr options ctx (Var "x") `shouldBe` (ctx, PyName "x")
-    emitExpr options ctx (Tag "A" []) `shouldBe` (ctx, pyCall (PyName "A") [])
-    emitExpr options ctx (Tag "A" [x, y]) `shouldBe` (ctx, pyCall (PyName "A") [x', y'])
+    emitExpr options ctx (Tag "Int") `shouldBe` (ctx, PyName "int")
+    emitExpr options ctx (Tag "Num") `shouldBe` (ctx, PyName "float")
+    emitExpr options ctx (Tag "A") `shouldBe` (ctx, pyCall (PyName "A") [])
     emitExpr options ctx (Tuple []) `shouldBe` (ctx, PyTuple [])
     emitExpr options ctx (Tuple [x, y]) `shouldBe` (ctx, PyTuple [x', y'])
     -- emitExpr ctx (Record []) `shouldBe` (ctx, PyDict [])
@@ -56,64 +54,74 @@ run = describe "--==☯ Python ☯==--" $ do
     True `shouldBe` True
 
   it "☯ emitStmt Import" $ do
-    emitStmt options (Import [] "mod" "mod" []) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing]}
-    emitStmt options (Import [] "mod" "alias" []) ctx `shouldBe` ctx {globals = [PyImport "mod" (Just "alias")]}
-    emitStmt options (Import [] "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "mod" Nothing, PyImportFrom "mod" [("a", Nothing), ("b", Just "c")]]}
+    emitStmt options "pkg" (Import "mod" "mod" []) ctx `shouldBe` ctx {globals = [PyImport "pkg.mod" Nothing]}
+    emitStmt options "pkg" (Import "mod" "alias" []) ctx `shouldBe` ctx {globals = [PyImport "pkg.mod" (Just "alias")]}
+    emitStmt options "pkg" (Import "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "pkg.mod" Nothing, PyImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]}
 
   it "☯ emitStmt Def" $ do
-    emitStmt options (Def (DefName [] "x" [] y)) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}
+    emitStmt options "pkg" (Def (NameDef [] "x" [] y)) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}
 
   it "☯ emitModule" $ do
     let stmts =
-          [ Def (DefName [] "x" [] (Int 1)),
-            Def (DefName [] "y" [] (Int 2))
+          [ Def (NameDef [] "x" [] (Int 1)),
+            Def (NameDef [] "y" [] (Int 2))
           ]
     let emitStmts =
           [ PyAssign [x'] (PyInteger 1),
             PyAssign [y'] (PyInteger 2)
           ]
-    emitModule options (Module [] "mod" stmts) `shouldBe` PyModule {name = "mod", body = emitStmts}
+    emitModule options "pkg" (Module "mod" stmts) `shouldBe` PyModule {name = "mod", body = emitStmts}
 
   it "☯ build" $ do
+    putStrLn "> parsePackage"
     pkg <- parsePackage "examples/simple"
     pkg.name `shouldBe` "simple"
-    map (\m -> (m.path, m.name)) pkg.modules `shouldBe` [(["submodule"], "subfile"), ([], "main")]
-
-    -- Check package
+    putStrLn "> build"
     build options "build" pkg `shouldReturn` "build/python"
-    doesDirectoryExist "build/python" `shouldReturn` True
-    -- TODO: add pyproject.toml
-    -- TODO: add README.md
-    -- TODO: add LICENSE
 
-    -- Check source files
-    readFile "build/python/simple/__init__.py" `shouldReturn` ""
-    readFile "build/python/simple/main.py" `shouldReturn` "x = 1"
-    readFile "build/python/simple/submodule/__init__.py" `shouldReturn` ""
-    readFile "build/python/simple/submodule/subfile.py" `shouldReturn` "y = 2"
+    let taoModules =
+          [ "def-function",
+            "def-variable",
+            "empty",
+            "imports",
+            "sub-module/sub-file"
+          ]
+    -- sort (map (\m -> m.name) pkg.modules) `shouldBe` taoModules
 
-    -- Check tests
-    doesFileExist "build/python/test/__init__.py" `shouldReturn` True
-    doesFileExist "build/python/test/test_main.py" `shouldReturn` True
-    doesFileExist "build/python/test/submodule/__init__.py" `shouldReturn` True
-    doesFileExist "build/python/test/submodule/test_subfile.py" `shouldReturn` True
-    (_, Just stdout, Just stderr, p) <-
-      createProcess
-        (proc "python" ["-m", "unittest", "-v"])
-          { cwd = Just "build/python",
-            std_out = CreatePipe,
-            std_err = CreatePipe
-          }
-    exitCode <- waitForProcess p
-    case exitCode of
-      ExitSuccess -> return ()
-      ExitFailure _ -> do
-        out <- hGetContents stdout
-        err <- hGetContents stderr
-        putStrLn out
-        putStrLn err
-        exitCode `shouldBe` ExitSuccess
+    let pythonFiles =
+          [ "build/python/pyproject.toml",
+            "build/python/simple/__init__.py",
+            "build/python/simple/def_function.py",
+            "build/python/simple/def_variable.py",
+            "build/python/simple/empty.py",
+            "build/python/simple/imports.py",
+            "build/python/simple/sub_module/__init__.py",
+            "build/python/simple/sub_module/sub_file.py",
+            "build/python/test/__init__.py",
+            "build/python/test/sub_module/__init__.py",
+            "build/python/test/sub_module/test_sub_file.py",
+            "build/python/test/test_def_function.py",
+            "build/python/test/test_def_variable.py",
+            "build/python/test/test_empty.py",
+            "build/python/test/test_imports.py"
+          ]
+    -- fmap sort (getRecursiveContents "build/python") `shouldReturn` pythonFiles
 
-    -- Check docs
+    -- Run generated tests
+    Subprocess.run "build/python" "python" ["-m", "venv", "env"]
+    Subprocess.run "build/python" "env/bin/pip" ["install", "-U", "pip"]
+    Subprocess.run "build/python" "env/bin/pip" ["install", "-e", "."]
+    Subprocess.run "build/python" "env/bin/python" ["-m", "unittest", "-v"]
 
-    True `shouldBe` True
+-- https://book.realworldhaskell.org/read/io-case-study-a-library-for-searching-the-filesystem.html
+getRecursiveContents :: FilePath -> IO [FilePath]
+getRecursiveContents topdir = do
+  names <- getDirectoryContents topdir
+  let properNames = filter (`notElem` [".", ".."]) names
+  paths <- forM properNames $ \name -> do
+    let path = topdir </> name
+    isDirectory <- doesDirectoryExist path
+    if isDirectory
+      then getRecursiveContents path
+      else return [path]
+  return (concat paths)

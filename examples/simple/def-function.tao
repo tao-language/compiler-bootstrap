@@ -1,0 +1,16 @@
+untyped x = x + 1
+
+> untyped 1
+2
+
+> untyped 2
+3
+
+# typed : Int -> Int
+typed x = x + 1
+
+> typed 1
+2
+
+> typed 2
+3

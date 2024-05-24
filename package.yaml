@@ -24,6 +24,7 @@ dependencies:
 - filepath
 - process
 - sort
+- split
 
 library:
   source-dirs: src
@@ -33,11 +34,14 @@ ghc-options:
   - -Wno-name-shadowing
   - -j8
   - -XDuplicateRecordFields
+  - -XFlexibleInstances
   - -XInstanceSigs
+  - -XMultiParamTypeClasses
   - -XNamedFieldPuns
   - -XNoFieldSelectors
   - -XOverloadedRecordDot
   - -XTupleSections
+  - -XTypeSynonymInstances
 
 executables:
   tao-bootstrap:
