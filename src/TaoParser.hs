@@ -181,7 +181,8 @@ parseName = do
   name <- parseIdentifier
   case name of
     x | startsWithUpper x -> do
-      return (Tag name)
+      args <- P.zeroOrMore parseExprAtom
+      return (Tag name args)
     _ -> return (Var name)
 
 parseTuple :: Parser Expr
@@ -337,7 +338,7 @@ parseTest = do
           return result,
         case typeAssertion expr of
           Just a -> return a
-          Nothing -> return (Tag "True")
+          Nothing -> return (Tag "True" [])
       ]
   return (Test expr result)
 

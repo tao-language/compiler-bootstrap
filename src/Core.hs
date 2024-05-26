@@ -17,12 +17,12 @@ data Expr
   | Int Int
   | Num Double
   | Var String
-  | Tag String
   | Typ [String]
+  | Tag String [Expr]
   | For String Expr
   | Fix String Expr
   | Fun Expr Expr
-  | Lam [(Pattern, Expr)]
+  | Lam [Case]
   | App Expr Expr
   | Or Expr Expr
   | Ann Expr Expr
@@ -32,14 +32,20 @@ data Expr
   | Err
   deriving (Eq)
 
+data Case
+  = Case [Pattern] Expr
+  | CaseIf [Pattern] Expr Expr
+  deriving (Eq, Show)
+
 data Pattern
-  = PIntT
+  = PAny
+  | PIntT
   | PNumT
   | PInt Int
   | PNum Double
   | PVar String
-  | PTag String
   | PTyp [String]
+  | PTag String [Pattern]
   | PFun Pattern Pattern
   | PErr
   deriving (Eq, Show)
@@ -114,8 +120,9 @@ instance Show Expr where
     Num n -> atom 12 (show n)
     Var x | isVarName x -> atom 12 x
     Var x -> atom 12 ("($var '" ++ x ++ "')")
-    Tag k | isTagName k -> atom 12 k
-    Tag k -> atom 12 ("($tag '" ++ k ++ "')")
+    Tag k [] | isTagName k -> atom 12 k
+    Tag k [] -> atom 12 ("($tag '" ++ k ++ "')")
+    Tag k args -> showsPrec p (app (Tag k []) args)
     Meta _ a -> showsPrec p a
     Lam [] -> showsPrec p Err
     Lam cases -> error "TODO: show Lam"
@@ -250,8 +257,8 @@ freeVars NumT = []
 freeVars (Int _) = []
 freeVars (Num _) = []
 freeVars (Var x) = [x]
-freeVars (Tag _) = []
 freeVars (Typ _) = []
+freeVars (Tag _ args) = foldr (union . freeVars) [] args
 freeVars (Ann a _) = freeVars a
 freeVars (For x a) = delete x (freeVars a)
 freeVars (Fix x a) = delete x (freeVars a)
@@ -291,15 +298,15 @@ eval _ (Int i) = Int i
 eval _ (Num n) = Num n
 eval env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Var x
-  Just (Tag k) -> Tag k
+  Just (Tag k []) -> Tag k []
   Just (Ann (Var x') _) | x == x' -> Var x
   Just a -> eval env a
   Nothing -> Var x
-eval env (Tag k) = case lookup k env of
-  Just (Tag k') | k == k' -> Tag k
-  Just (Ann (Tag k) ty) -> Ann (Tag k) ty
-  Just a -> eval ((k, Tag k) : env) a
-  Nothing -> Tag k
+eval env (Tag k args) = case lookup k env of
+  Just (Tag k' []) | k == k' -> Tag k (map (eval env) args)
+  Just (Ann (Tag k []) ty) -> Ann (Tag k (map (eval env) args)) ty
+  Just a -> eval ((k, Tag k []) : env) a
+  Nothing -> Tag k (map (eval env) args)
 eval _ (Typ alts) = Typ alts
 eval env (For x a) = For x (eval ((x, Var x) : env) a)
 eval env (Fix x a) = Fix x (eval ((x, Var x) : env) a)
@@ -313,7 +320,7 @@ eval env (App a b) = case (eval env a, eval env b) of
     (NumT, NumT) -> a
     (Int i, Int i') | i == i' -> a
     (Var x, b) -> eval [(x, b)] a
-    (Tag k, Tag k') | k == k' -> a
+    (Tag k [], Tag k' []) | k == k' -> a
     (Fun p q, Fun b1 b2) -> app (fun [p, q] a) [b1, b2]
     (App p q, App b1 b2) -> app (fun [p, q] a) [b1, b2]
     _ -> Err
@@ -352,7 +359,7 @@ evalOp2 Mul (Int a) (Int b) = Int (a * b)
 evalOp2 Mul (Num a) (Num b) = Num (a * b)
 evalOp2 Pow (Int a) (Int b) = Int (a ^ b)
 evalOp2 Pow (Num a) (Num b) = Num (a ** b)
-evalOp2 Eq (Tag k) (Tag k') | k == k' = Tag k
+evalOp2 Eq (Tag k []) (Tag k' []) | k == k' = Tag k []
 evalOp2 Eq (Typ alts) (Typ alts') | alts == alts' = Typ alts
 evalOp2 Eq IntT IntT = IntT
 evalOp2 Eq NumT NumT = NumT
@@ -369,8 +376,11 @@ unify NumT NumT = Right (NumT, [])
 unify (Int i) (Int i') | i == i' = Right (Int i, [])
 unify (Num n) (Num n') | n == n' = Right (Num n, [])
 unify (Var x) (Var x') | x == x' = Right (Var x, [])
-unify (Tag k) (Tag k') | k == k' = Right (Tag k, [])
 unify (Typ alts) (Typ alts') | alts == alts' = Right (Typ alts, [])
+unify (Tag k []) (Tag k' []) | k == k' = Right (Tag k [], [])
+unify (Tag k args) (Tag k' args') | k == k' && length args == length args' = do
+  (args, s) <- unifyAll args args'
+  Right (Tag k args, s)
 unify (Var x) b | x `occurs` b = Left (OccursError x b)
 unify (Var x) b = Right (b, [(x, b)])
 unify a (Var x) = unify (Var x) a
@@ -410,6 +420,13 @@ unify2 (a1, a2) (b1, b2) = do
   (tb, s2) <- unify (eval s1 b1) (eval s1 b2)
   Right ((eval s2 ta, tb), s2 `compose` s1)
 
+unifyAll :: [Expr] -> [Expr] -> Either TypeError ([Expr], Substitution)
+unifyAll (a : bs) (a' : bs') = do
+  (ta, s1) <- unify a a'
+  (tbs, s2) <- unifyAll bs bs'
+  Right (ta : tbs, s2 `compose` s1)
+unifyAll _ _ = Right ([], [])
+
 infer :: Env -> Expr -> Either TypeError (Expr, Substitution)
 infer _ IntT = Right (Typ [], [])
 infer _ NumT = Right (Typ [], [])
@@ -422,12 +439,13 @@ infer env (Var x) = case lookup x env of
   Just (Ann (Var x') ty) | x == x' -> Right (instantiate env ty)
   Just a -> infer env a
   Nothing -> Left (UndefinedVar x)
-infer env (Tag k) = case lookup k env of
-  Just (Tag k') | k == k' -> Right (Tag k, [])
-  Just (Ann (Tag k') ty) | k == k' -> Right (instantiate env ty)
-  Just a -> infer env a
-  Nothing -> Right (Tag k, [])
 infer _ (Typ _) = Right (Typ [], [])
+infer env (Tag k []) = case lookup k env of
+  Just (Tag k' []) | k == k' -> Right (Tag k [], [])
+  Just (Ann (Tag k' []) ty) | k == k' -> Right (instantiate env ty)
+  Just a -> infer env a
+  Nothing -> Right (Tag k [], [])
+infer env (Tag k args) = infer env (app (Tag k []) args)
 infer env (Ann a ty) = do
   let (t, vars) = instantiate env ty
   (ta, s1) <- infer (vars ++ env) a

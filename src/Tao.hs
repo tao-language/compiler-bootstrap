@@ -14,8 +14,8 @@ data Expr
   | Int Int
   | Num Double
   | Var String
-  | Tag String
   | Type [String]
+  | Tag String [Expr]
   | Tuple [Expr]
   | Record [(String, Expr)]
   | Trait Expr String
@@ -59,9 +59,6 @@ data Package = Package
     modules :: [Module]
   }
   deriving (Eq, Show)
-
-tag :: String -> [Expr] -> Expr
-tag k = app (Tag k)
 
 or' :: [Expr] -> Expr
 or' [] = error "`or'` must have at least one expression"
@@ -119,7 +116,7 @@ isTypeDef (Ann a _) = isTypeDef a
 isTypeDef _ = False
 
 isTagDef :: Expr -> Bool
-isTagDef (Tag _) = True
+isTagDef (Tag _ _) = True
 isTagDef (Fun _ b) = isTagDef b
 isTagDef (App a _) = isTagDef a
 isTagDef (Ann a _) = isTagDef a
@@ -131,8 +128,8 @@ isFunctionDef (Ann a _) = isFunctionDef a
 isFunctionDef _ = False
 
 list :: [Expr] -> Expr
-list [] = Tag "[]"
-list (a : bs) = app (Tag "[..]") [a, list bs]
+list [] = Tag "[]" []
+list (a : bs) = Tag "[..]" [a, list bs]
 
 freeVars :: Expr -> [String]
 freeVars expr = C.freeVars (lowerExpr [] expr) & filter (/= "_")
@@ -143,11 +140,11 @@ lowerExpr _ Any = C.Var "_"
 lowerExpr _ (Int i) = C.Int i
 lowerExpr _ (Num n) = C.Num n
 lowerExpr _ (Var x) = C.Var x
-lowerExpr _ (Tag "Int") = C.IntT
-lowerExpr _ (Tag "Num") = C.NumT
-lowerExpr _ (Tag k) = C.Tag k
+lowerExpr _ (Tag "Int" []) = C.IntT
+lowerExpr _ (Tag "Num" []) = C.NumT
 lowerExpr _ (Type alts) = C.Typ alts
-lowerExpr defs (Tuple items) = lowerExpr defs (tag "()" items)
+lowerExpr defs (Tag k args) = C.Tag k (map (lowerExpr defs) args)
+lowerExpr defs (Tuple items) = lowerExpr defs (Tag "()" items)
 -- lowerExpr defs (Record fields) = do
 --   let lowerField (k, v) = (k, lowerExpr defs v)
 --   C.Rec (map lowerField fields)
@@ -171,14 +168,14 @@ lowerExpr defs (Meta m a) = C.Meta m (lowerExpr defs a)
 lowerExpr _ Err = C.Err
 
 liftExpr :: C.Expr -> Expr
-liftExpr C.IntT = Tag "Int"
-liftExpr C.NumT = Tag "Num"
+liftExpr C.IntT = Tag "Int" []
+liftExpr C.NumT = Tag "Num" []
 liftExpr (C.Int i) = Int i
 liftExpr (C.Num n) = Num n
 liftExpr (C.Var "_") = Any
 liftExpr (C.Var x) = Var x
-liftExpr (C.Tag "()") = Tuple []
-liftExpr (C.Tag k) = Tag k
+liftExpr (C.Tag "()" args) = Tuple (map liftExpr args)
+liftExpr (C.Tag k args) = Tag k (map liftExpr args)
 liftExpr (C.Typ alts) = Type alts
 liftExpr (C.For _ a) = liftExpr a
 liftExpr (C.Fix _ a) = liftExpr a
@@ -227,7 +224,7 @@ stmtDefs _ (Def (NameDef ts x [] b)) = case lookup x ts of
   Just t -> [(x, Ann b t)]
   Nothing -> [(x, b)]
 stmtDefs _ (Def (UnpackDef ts k args b)) = do
-  let def x = Match [b] [Fun (tag k args) (Var x)]
+  let def x = Match [b] [Fun (Tag k args) (Var x)]
   let typedDef x = case lookup x ts of
         Just t -> (x, Ann (def x) t)
         Nothing -> (x, def x)
@@ -352,8 +349,8 @@ instance Apply Expr where
   apply _ (Int i) = Int i
   apply _ (Num n) = Num n
   apply _ (Var x) = Var x
-  apply _ (Tag k) = Tag k
-  apply _ (Type alts) = (Type alts)
+  apply _ (Type alts) = Type alts
+  apply f (Tag k args) = Tag k (map f args)
   apply f (Tuple args) = Tuple (map f args)
   apply f (Record fields) = Record (map (second f) fields)
   apply f (Trait a x) = Trait (f a) x
@@ -455,8 +452,8 @@ instance Rename Expr where
   rename _ _ _ (Int i) = Int i
   rename _ _ _ (Num n) = Num n
   rename path old new (Var x) = Var (rename path old new x)
-  rename path old new (Tag k) = Tag (rename path old new k)
   rename path old new (Type alts) = Type (map (rename path old new) alts)
+  rename path old new (Tag k args) = Tag (rename path old new k) (map (rename path old new) args)
   rename path old new (Trait a x) = Trait (rename path old new a) (rename path old new x)
   rename _ _ _ Err = Err
   rename path old new expr = apply (rename path old new) expr

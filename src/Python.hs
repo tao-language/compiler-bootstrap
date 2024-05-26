@@ -627,55 +627,56 @@ emitType :: BuildOptions -> PyCtx -> Expr -> (PyCtx, PyExpr)
 emitType options ctx a = emitExpr options ctx a
 
 emitExpr :: BuildOptions -> PyCtx -> Expr -> (PyCtx, PyExpr)
-emitExpr _ ctx Any = (ctx, PyName "_")
-emitExpr _ ctx (Int i) = (ctx, PyInteger i)
-emitExpr _ ctx (Num n) = (ctx, PyFloat n)
-emitExpr _ ctx (Var x) = (ctx, PyName x)
-emitExpr _ ctx (Tag "Int") = (ctx, PyName "int")
-emitExpr _ ctx (Tag "Num") = (ctx, PyName "float")
-emitExpr _ ctx (Tag k) = do
-  (ctx, pyCall (PyName k) [])
-emitExpr options ctx (Tuple items) = do
-  let (ctx', items') = emitExprAll options ctx items
-  (ctx', PyTuple items')
--- emitExpr options ctx (Record [(String, Expr)]) = _
-emitExpr options ctx (Trait a x) = do
-  let (ctx', a') = emitExpr options ctx a
-  (ctx', PyAttribute a' x)
--- emitExpr options ctx (Type alts) = _
-emitExpr options ctx (Fun a b) = do
-  let (ctx', (a', b')) = emitExpr2 options ctx (a, b)
-  -- (ctx', PyLambda)
-  -- (ctx', PyName "TODO")
+emitExpr _ ctx0 Any = (ctx0, PyName "_")
+emitExpr _ ctx0 (Int i) = (ctx0, PyInteger i)
+emitExpr _ ctx0 (Num n) = (ctx0, PyFloat n)
+emitExpr _ ctx0 (Var x) = (ctx0, PyName x)
+emitExpr _ ctx0 (Tag "Int" []) = (ctx0, PyName "int")
+emitExpr _ ctx0 (Tag "Num" []) = (ctx0, PyName "float")
+emitExpr options ctx0 (Tag k args) = do
+  let (ctx1, args') = emitExprAll options ctx0 args
+  (ctx1, pyCall (PyName k) args')
+emitExpr options ctx0 (Tuple items) = do
+  let (ctx1, items') = emitExprAll options ctx0 items
+  (ctx1, PyTuple items')
+-- emitExpr options ctx0 (Record [(String, Expr)]) = _
+emitExpr options ctx0 (Trait a x) = do
+  let (ctx1, a') = emitExpr options ctx0 a
+  (ctx1, PyAttribute a' x)
+-- emitExpr options ctx0 (Type alts) = _
+emitExpr options ctx0 (Fun a b) = do
+  let (ctx1, (a', b')) = emitExpr2 options ctx0 (a, b)
+  -- (ctx1, PyLambda)
+  -- (ctx1, PyName "TODO")
   error $ "TODO: emitExpr " ++ show (Fun a b)
-emitExpr options ctx (App a b) = do
+emitExpr options ctx0 (App a b) = do
   let (fn, args) = asApp (App a b)
-  let (ctx1, fn') = emitExpr options ctx fn
+  let (ctx1, fn') = emitExpr options ctx0 fn
   let (ctx2, args') = emitExprAll options ctx1 args
   (ctx2, pyCall fn' args')
--- emitExpr options ctx (Let (Expr, Expr) Expr) = _
--- emitExpr options ctx (Bind (Expr, Expr) Expr) = _
--- emitExpr options ctx (TypeDef String [Expr] Expr) = _
--- emitExpr options ctx (MatchFun [Expr]) = _
--- emitExpr options ctx (Match [Expr] [Expr]) = _
--- emitExpr options ctx (Or Expr Expr) = _
--- emitExpr options ctx (Ann Expr Expr) = _
--- emitExpr options ctx (Op1 C.UnaryOp Expr) = _
-emitExpr options ctx (Op2 op a b) = do
-  let (ctx', (a', b')) = emitExpr2 options ctx (a, b)
+-- emitExpr options ctx0 (Let (Expr, Expr) Expr) = _
+-- emitExpr options ctx0 (Bind (Expr, Expr) Expr) = _
+-- emitExpr options ctx0 (TypeDef String [Expr] Expr) = _
+-- emitExpr options ctx0 (MatchFun [Expr]) = _
+-- emitExpr options ctx0 (Match [Expr] [Expr]) = _
+-- emitExpr options ctx0 (Or Expr Expr) = _
+-- emitExpr options ctx0 (Ann Expr Expr) = _
+-- emitExpr options ctx0 (Op1 C.UnaryOp Expr) = _
+emitExpr options ctx0 (Op2 op a b) = do
+  let (ctx1, (a', b')) = emitExpr2 options ctx0 (a, b)
   case op of
-    C.Add -> (ctx', PyBinOp a' PyAdd b')
-    C.Sub -> (ctx', PyBinOp a' PySub b')
-    C.Mul -> (ctx', PyBinOp a' PyMult b')
-    C.Pow -> (ctx', PyBinOp a' PyPow b')
-    C.Eq -> (ctx', PyCompare a' PyEq b')
-    C.Lt -> (ctx', PyCompare a' PyLt b')
-    C.Gt -> (ctx', PyCompare a' PyGt b')
-emitExpr options ctx (Meta m a) = do
-  let (ctx', a') = emitExpr options ctx a
-  (ctx', PyMeta m a')
--- emitExpr ctx Err = _
-emitExpr _ ctx expr = error $ "TODO: emitExpr " ++ show expr
+    C.Add -> (ctx1, PyBinOp a' PyAdd b')
+    C.Sub -> (ctx1, PyBinOp a' PySub b')
+    C.Mul -> (ctx1, PyBinOp a' PyMult b')
+    C.Pow -> (ctx1, PyBinOp a' PyPow b')
+    C.Eq -> (ctx1, PyCompare a' PyEq b')
+    C.Lt -> (ctx1, PyCompare a' PyLt b')
+    C.Gt -> (ctx1, PyCompare a' PyGt b')
+emitExpr options ctx0 (Meta m a) = do
+  let (ctx1, a') = emitExpr options ctx0 a
+  (ctx1, PyMeta m a')
+-- emitExpr ctx0 Err = _
+emitExpr _ ctx0 expr = error $ "TODO: emitExpr " ++ show expr
 
 emitExpr2 :: BuildOptions -> PyCtx -> (Expr, Expr) -> (PyCtx, (PyExpr, PyExpr))
 emitExpr2 options ctx (a, b) = do

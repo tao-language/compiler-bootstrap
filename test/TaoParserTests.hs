@@ -117,8 +117,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseName" $ do
     let p = parse' parseName
-    p "var abc" `shouldBe` Right (Var "var", "abc")
-    p "Tag abc" `shouldBe` Right (Tag "Tag", "abc")
+    p "var x y;" `shouldBe` Right (Var "var", "x y;")
+    p "Tag x y;" `shouldBe` Right (Tag "Tag" [var 1 5 "x", var 1 7 "y"], ";")
 
   it "☯ parseTuple" $ do
     let p = parse' parseTuple
@@ -141,13 +141,13 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseExpr'" $ do
     let p = parse' (parseExpr $ P.ok ())
-    p "Type" `shouldBe` Right (meta [loc 1 1] $ Tag "Type", "")
-    p "Int" `shouldBe` Right (meta [loc 1 1] $ Tag "Int", "")
-    p "Num" `shouldBe` Right (meta [loc 1 1] $ Tag "Num", "")
+    p "Type" `shouldBe` Right (meta [loc 1 1] $ Tag "Type" [], "")
+    p "Int" `shouldBe` Right (meta [loc 1 1] $ Tag "Int" [], "")
+    p "Num" `shouldBe` Right (meta [loc 1 1] $ Tag "Num" [], "")
     p "42" `shouldBe` Right (meta [loc 1 1] $ Int 42, "")
     p "3.14" `shouldBe` Right (meta [loc 1 1] $ Num 3.14, "")
     p "var" `shouldBe` Right (meta [loc 1 1] $ Var "var", "")
-    p "Tag" `shouldBe` Right (meta [loc 1 1] $ Tag "Tag", "")
+    p "Tag" `shouldBe` Right (meta [loc 1 1] $ Tag "Tag" [], "")
     p "()" `shouldBe` Right (meta [loc 1 1] $ Tuple [], "")
     p "{}" `shouldBe` Right (meta [loc 1 1] $ Record [], "")
     p "x |  y" `shouldBe` Right (meta [loc 1 3] $ Or (var 1 1 "x") (var 1 6 "y"), "")
@@ -191,7 +191,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "> x; y" `shouldBe` Right (Test (var 1 3 "x") (var 1 6 "y"), "")
     p "> x\ny" `shouldBe` Right (Test (var 1 3 "x") (var 2 1 "y"), "")
     p "> x : a" `shouldBe` Right (Test (meta [loc 1 5] $ Ann (var 1 3 "x") (var 1 7 "a")) (var 1 3 "x"), "")
-    p "> x" `shouldBe` Right (Test (var 1 3 "x") (Tag "True"), "")
+    p "> x" `shouldBe` Right (Test (var 1 3 "x") (Tag "True" []), "")
 
   it "☯ parseStmt" $ do
     let p = parse' parseStmt

@@ -25,13 +25,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     liftExpr term `shouldBe` expr
 
   it "☯ lower/lift IntType" $ do
-    let expr = Tag "Int"
+    let expr = Tag "Int" []
     let term = C.IntT
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
   it "☯ lower/lift NumType" $ do
-    let expr = Tag "Num"
+    let expr = Tag "Num" []
     let term = C.NumT
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
@@ -55,19 +55,19 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     liftExpr term `shouldBe` expr
 
   it "☯ lower/lift Tag" $ do
-    let expr = Tag "A"
-    let term = C.Tag "A"
+    let expr = Tag "A" []
+    let term = C.Tag "A" []
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
   it "☯ lower/lift Tuple" $ do
     let expr = Tuple []
-    let term = C.Tag "()"
+    let term = C.Tag "()" []
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
     let expr = Tuple [x, y]
-    let term = C.app (C.Tag "()") [x', y']
+    let term = C.Tag "()" [x', y']
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
