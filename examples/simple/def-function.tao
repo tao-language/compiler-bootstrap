@@ -6,7 +6,7 @@ untyped x = x + 1
 > untyped 2
 3
 
-# typed : Int -> Int
+typed : Int -> Int
 typed x = x + 1
 
 > typed 1

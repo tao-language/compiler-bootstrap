@@ -73,6 +73,7 @@ fun ps b = foldr Fun b ps
 
 asFun :: Expr -> ([Expr], Expr)
 asFun (Fun p a) = let (ps, b) = asFun a in (p : ps, b)
+asFun (Meta _ a) = asFun a
 asFun a = ([], a)
 
 app :: Expr -> [Expr] -> Expr
@@ -80,6 +81,7 @@ app = foldl App
 
 asApp :: Expr -> (Expr, [Expr])
 asApp (App a b) = let (a', bs) = asApp a in (a', bs ++ [b])
+asApp (Meta _ a) = asApp a
 asApp a = (a, [])
 
 add :: Expr -> Expr -> Expr

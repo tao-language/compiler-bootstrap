@@ -117,6 +117,8 @@ instance Show Expr where
     Tag k | isTagName k -> atom 12 k
     Tag k -> atom 12 ("($tag '" ++ k ++ "')")
     Meta _ a -> showsPrec p a
+    Lam [] -> showsPrec p Err
+    Lam cases -> error "TODO: show Lam"
     where
       atom n k = showParen (p > n) $ showString k
       prefix n k a = showParen (p > n) $ showString k . showsPrec (n + 1) a

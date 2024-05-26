@@ -1,3 +1,6 @@
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Use tuple-section" #-}
 module Python where
 
 import Control.Monad (unless, when)
@@ -573,32 +576,32 @@ emitArgs (x : xs) [] = (x, Nothing, Nothing) : emitArgs xs []
 emitArgs (x : xs) (t : ts) = (x, Just t, Nothing) : emitArgs xs ts
 
 emitDef :: BuildOptions -> Stmt -> PyCtx -> PyCtx
-emitDef options (Def (NameDef ts x args a)) ctx = do
-  let (ctx1, a') = emitExpr options ctx a
-  let type' = fromMaybe Any (lookup x ts)
-  case (asFun type', args) of
-    (([], Any), []) -> ctx1 {locals = PyAssign [PyName x] a' : ctx1.locals}
-    (([], t), []) -> do
-      let (ctx2, t') = emitExpr options ctx1 t
-      ctx2 {locals = PyAnnAssign (PyName x) t' (Just a') : ctx2.locals}
-    ((ts, t), args) -> do
-      let (ctx2, ts') = emitExprAll options ctx1 ts
-      let (ctx3, t') = emitExpr options ctx2 t
-      let def =
-            PyFunctionDef
-              { name = x,
-                args = emitArgs args ts',
-                body = [PyReturn a'],
-                decorators = [],
-                returns = if t == Any then Nothing else Just t',
-                typeParams = [],
-                async = False
-              }
-      ctx3 {locals = def : ctx3.locals}
--- Def (NameDef String Expr)
--- Def (DefUnpack String [(String, Expr)])
--- Def (DefTrait (Expr, Expr) String)
-emitDef _ _ ctx = ctx
+emitDef options (Def def) ctx = case def of
+  NameDef ts x args a -> do
+    let (ctx1, a') = emitExpr options ctx a
+    let type' = fromMaybe Any (lookup x ts)
+    case (asFun type', args) of
+      (([], Any), []) -> do
+        let def = PyAssign [PyName x] a'
+        ctx1 {locals = def : ctx1.locals}
+      (([], t), []) -> do
+        let (ctx2, t') = emitExpr options ctx1 t
+        let def = PyAnnAssign (PyName x) t' (Just a')
+        ctx2 {locals = def : ctx2.locals}
+      ((ts, t), args) -> do
+        let (ctx2, ts') = emitExprAll options ctx1 ts
+        let (ctx3, t') = emitExpr options ctx2 t
+        let def =
+              PyFunctionDef
+                { name = x,
+                  args = emitArgs args ts',
+                  body = [PyReturn a'],
+                  decorators = [],
+                  returns = if t == Any then Nothing else Just t',
+                  typeParams = [],
+                  async = False
+                }
+        ctx3 {locals = def : ctx3.locals}
 
 emitTest :: BuildOptions -> String -> Stmt -> PyCtx -> PyCtx
 emitTest options pkgName stmt ctx = case stmt of
@@ -643,7 +646,8 @@ emitExpr options ctx (Trait a x) = do
 emitExpr options ctx (Fun a b) = do
   let (ctx', (a', b')) = emitExpr2 options ctx (a, b)
   -- (ctx', PyLambda)
-  error "TODO: emitExpr Fun"
+  -- (ctx', PyName "TODO")
+  error $ "TODO: emitExpr " ++ show (Fun a b)
 emitExpr options ctx (App a b) = do
   let (fn, args) = asApp (App a b)
   let (ctx1, fn') = emitExpr options ctx fn

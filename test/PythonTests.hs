@@ -72,39 +72,39 @@ run = describe "--==☯ Python ☯==--" $ do
           ]
     emitModule options "pkg" (Module "mod" stmts) `shouldBe` PyModule {name = "mod", body = emitStmts}
 
-  xit "☯ build" $ do
+  it "☯ build" $ do
     putStrLn "> parsePackage"
     pkg <- parsePackage "examples/simple"
     pkg.name `shouldBe` "simple"
     putStrLn "> build"
     build options "build" pkg `shouldReturn` "build/python"
 
-    let taoModules =
-          [ "def-function",
-            "def-variable",
-            "empty",
-            "imports",
-            "sub-module/sub-file"
-          ]
+    -- let taoModules =
+    --       [ "def-function",
+    --         "def-variable",
+    --         "empty",
+    --         "imports",
+    --         "sub-module/sub-file"
+    --       ]
     -- sort (map (\m -> m.name) pkg.modules) `shouldBe` taoModules
 
-    let pythonFiles =
-          [ "build/python/pyproject.toml",
-            "build/python/simple/__init__.py",
-            "build/python/simple/def_function.py",
-            "build/python/simple/def_variable.py",
-            "build/python/simple/empty.py",
-            "build/python/simple/imports.py",
-            "build/python/simple/sub_module/__init__.py",
-            "build/python/simple/sub_module/sub_file.py",
-            "build/python/test/__init__.py",
-            "build/python/test/sub_module/__init__.py",
-            "build/python/test/sub_module/test_sub_file.py",
-            "build/python/test/test_def_function.py",
-            "build/python/test/test_def_variable.py",
-            "build/python/test/test_empty.py",
-            "build/python/test/test_imports.py"
-          ]
+    -- let pythonFiles =
+    --       [ "build/python/pyproject.toml",
+    --         "build/python/simple/__init__.py",
+    --         "build/python/simple/def_function.py",
+    --         "build/python/simple/def_variable.py",
+    --         "build/python/simple/empty.py",
+    --         "build/python/simple/imports.py",
+    --         "build/python/simple/sub_module/__init__.py",
+    --         "build/python/simple/sub_module/sub_file.py",
+    --         "build/python/test/__init__.py",
+    --         "build/python/test/sub_module/__init__.py",
+    --         "build/python/test/sub_module/test_sub_file.py",
+    --         "build/python/test/test_def_function.py",
+    --         "build/python/test/test_def_variable.py",
+    --         "build/python/test/test_empty.py",
+    --         "build/python/test/test_imports.py"
+    --       ]
     -- fmap sort (getRecursiveContents "build/python") `shouldReturn` pythonFiles
 
     -- Run generated tests
