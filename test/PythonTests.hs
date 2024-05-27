@@ -19,7 +19,6 @@ run = describe "--==☯ Python ☯==--" $ do
   let (a', b') = (PyName "a", PyName "b")
 
   it "☯ emitExpr" $ do
-    emitExpr options ctx Any `shouldBe` (ctx, PyName "_")
     emitExpr options ctx (Int 42) `shouldBe` (ctx, PyInteger 42)
     emitExpr options ctx (Num 3.14) `shouldBe` (ctx, PyFloat 3.14)
     emitExpr options ctx (Var "x") `shouldBe` (ctx, PyName "x")
@@ -55,9 +54,10 @@ run = describe "--==☯ Python ☯==--" $ do
     True `shouldBe` True
 
   it "☯ emitStmt Import" $ do
-    emitStmt options "pkg" (Import "mod" "mod" []) ctx `shouldBe` ctx {globals = [PyImport "pkg.mod" Nothing]}
-    emitStmt options "pkg" (Import "mod" "alias" []) ctx `shouldBe` ctx {globals = [PyImport "pkg.mod" (Just "alias")]}
-    emitStmt options "pkg" (Import "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "pkg.mod" Nothing, PyImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]}
+    emitStmt options "pkg" (Import "" "mod" "mod" []) ctx `shouldBe` ctx {globals = [PyImport "pkg.mod" Nothing]}
+    emitStmt options "pkg" (Import "" "mod" "alias" []) ctx `shouldBe` ctx {globals = [PyImport "pkg.mod" (Just "alias")]}
+    emitStmt options "pkg" (Import "" "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "pkg.mod" Nothing, PyImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]}
+    emitStmt options "pkg" (Import "pkg2" "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "pkg2.mod" Nothing, PyImportFrom "pkg2.mod" [("a", Nothing), ("b", Just "c")]]}
 
   it "☯ emitStmt Def" $ do
     emitStmt options "pkg" (Def (NameDef [] "x" [] y)) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}

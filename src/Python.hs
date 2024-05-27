@@ -559,15 +559,17 @@ emitStmt options pkgName stmt ctx = case stmt of
   MetaStmt _ stmt -> emitStmt options pkgName stmt ctx
 
 emitImport :: BuildOptions -> String -> Stmt -> PyCtx -> PyCtx
-emitImport options pkgName (Import name alias exposed) ctx = case exposed of
-  [] | name == alias -> addGlobal (PyImport (pkgName ++ "." ++ name) Nothing) ctx
-  [] -> addGlobal (PyImport (pkgName ++ "." ++ name) (Just alias)) ctx
+emitImport options pkgName (Import "" name alias exposed) ctx =
+  emitImport options pkgName (Import pkgName name alias exposed) ctx
+emitImport options _ (Import pkg name alias exposed) ctx = case exposed of
+  [] | name == alias -> addGlobal (PyImport (pkg ++ "." ++ name) Nothing) ctx
+  [] -> addGlobal (PyImport (pkg ++ "." ++ name) (Just alias)) ctx
   exposed -> do
     let pyExpose (name, alias) | name == alias = (name, Nothing)
         pyExpose (name, alias) = (name, Just alias)
     ctx
-      & emitStmt options pkgName (Import name alias [])
-      & addGlobal (PyImportFrom (pkgName ++ "." ++ name) (map pyExpose exposed))
+      & emitStmt options pkg (Import pkg name alias [])
+      & addGlobal (PyImportFrom (pkg ++ "." ++ name) (map pyExpose exposed))
 emitImport _ _ _ ctx = ctx
 
 emitArgs :: [String] -> [PyExpr] -> [(String, Maybe PyExpr, Maybe PyExpr)]
@@ -579,9 +581,9 @@ emitDef :: BuildOptions -> Stmt -> PyCtx -> PyCtx
 emitDef options (Def def) ctx = case def of
   NameDef ts x args a -> do
     let (ctx1, a') = emitExpr options ctx a
-    let type' = fromMaybe Any (lookup x ts)
+    let type' = fromMaybe Err (lookup x ts)
     case (asFun type', args) of
-      (([], Any), []) -> do
+      (([], Err), []) -> do
         let def = PyAssign [PyName x] a'
         ctx1 {locals = def : ctx1.locals}
       (([], t), []) -> do
@@ -597,7 +599,7 @@ emitDef options (Def def) ctx = case def of
                   args = emitArgs args ts',
                   body = [PyReturn a'],
                   decorators = [],
-                  returns = if t == Any then Nothing else Just t',
+                  returns = if t == Err then Nothing else Just t',
                   typeParams = [],
                   async = False
                 }
@@ -627,7 +629,6 @@ emitType :: BuildOptions -> PyCtx -> Expr -> (PyCtx, PyExpr)
 emitType options ctx a = emitExpr options ctx a
 
 emitExpr :: BuildOptions -> PyCtx -> Expr -> (PyCtx, PyExpr)
-emitExpr _ ctx0 Any = (ctx0, PyName "_")
 emitExpr _ ctx0 (Int i) = (ctx0, PyInteger i)
 emitExpr _ ctx0 (Num n) = (ctx0, PyFloat n)
 emitExpr _ ctx0 (Var x) = (ctx0, PyName x)
@@ -675,8 +676,7 @@ emitExpr options ctx0 (Op2 op a b) = do
 emitExpr options ctx0 (Meta m a) = do
   let (ctx1, a') = emitExpr options ctx0 a
   (ctx1, PyMeta m a')
--- emitExpr ctx0 Err = _
-emitExpr _ ctx0 expr = error $ "TODO: emitExpr " ++ show expr
+emitExpr _ ctx0 Err = (ctx0, pyCall (PyName "RuntimeError") [])
 
 emitExpr2 :: BuildOptions -> PyCtx -> (Expr, Expr) -> (PyCtx, (PyExpr, PyExpr))
 emitExpr2 options ctx (a, b) = do

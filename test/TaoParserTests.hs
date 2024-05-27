@@ -180,11 +180,12 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseImport" $ do
     let p = parse' parseImport
-    p "import mod" `shouldBe` Right (Import "mod" "mod" [], "")
-    p "import path/to/mod" `shouldBe` Right (Import "path/to/mod" "mod" [], "")
-    p "import mod as m" `shouldBe` Right (Import "mod" "m" [], "")
-    p "import mod as m ()" `shouldBe` Right (Import "mod" "m" [], "")
-    p "import mod as m (a, b as c)" `shouldBe` Right (Import "mod" "m" [("a", "a"), ("b", "c")], "")
+    p "import mod" `shouldBe` Right (Import "" "mod" "mod" [], "")
+    p "import path/to/mod" `shouldBe` Right (Import "" "path/to/mod" "mod" [], "")
+    p "import mod as m" `shouldBe` Right (Import "" "mod" "m" [], "")
+    p "import mod as m ()" `shouldBe` Right (Import "" "mod" "m" [], "")
+    p "import mod as m (a, b as c)" `shouldBe` Right (Import "" "mod" "m" [("a", "a"), ("b", "c")], "")
+    p "import pkg:mod" `shouldBe` Right (Import "pkg" "mod" "mod" [], "")
 
   it "☯ parseTest" $ do
     let p = parse' parseTest
@@ -196,14 +197,14 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   it "☯ parseStmt" $ do
     let p = parse' parseStmt
     p "x = y" `shouldBe` Right (Def (NameDef [] "x" [] (var 1 5 "y")), "")
-    p "import mod" `shouldBe` Right (Import "mod" "mod" [], "")
+    p "import mod" `shouldBe` Right (Import "" "mod" "mod" [], "")
     p "> x; y" `shouldBe` Right (Test (var 1 3 "x") (var 1 6 "y"), "")
 
   it "☯ parseModule" $ do
     let p = parse' (parseModule "path/my-file.tao")
     p "" `shouldBe` Right (Module "path/my-file.tao" [], "")
     p "x" `shouldBe` Left ([CModule], "x")
-    p "import m" `shouldBe` Right (Module "path/my-file.tao" [Import "m" "m" []], "")
+    p "import m" `shouldBe` Right (Module "path/my-file.tao" [Import "" "m" "m" []], "")
 
   it "☯ parseFile exists" $ do
     let pkg = Package {name = "pkg", modules = [Module "my-file" []]}

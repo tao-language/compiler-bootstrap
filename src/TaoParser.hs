@@ -288,6 +288,14 @@ parseImport = do
         path <- parseIdentifier
         _ <- P.char '/'
         return path
+  pkg <-
+    P.oneOf
+      [ do
+          pkg <- parseIdentifier
+          _ <- P.text ":"
+          return pkg,
+        return ""
+      ]
   path <- P.zeroOrMore parsePath
   name <- parseIdentifier
   _ <- P.spaces
@@ -318,7 +326,7 @@ parseImport = do
         return []
       ]
   _ <- parseLineBreak
-  return (Import (intercalate "/" (path ++ [name])) alias exposing)
+  return (Import pkg (intercalate "/" (path ++ [name])) alias exposing)
 
 parseTest :: Parser Stmt
 parseTest = do

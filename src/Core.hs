@@ -34,7 +34,6 @@ data Expr
 
 data Case
   = Case [Pattern] Expr
-  | CaseIf [Pattern] Expr Expr
   deriving (Eq, Show)
 
 data Pattern
@@ -47,6 +46,7 @@ data Pattern
   | PTyp [String]
   | PTag String [Pattern]
   | PFun Pattern Pattern
+  | PEq Expr
   | PErr
   deriving (Eq, Show)
 
@@ -251,24 +251,42 @@ popAll xs env = foldl (flip pop) env xs
 pushVars :: [String] -> Env -> Env
 pushVars xs = pushAll (map (\x -> (x, Var x)) xs)
 
-freeVars :: Expr -> [String]
-freeVars IntT = []
-freeVars NumT = []
-freeVars (Int _) = []
-freeVars (Num _) = []
-freeVars (Var x) = [x]
-freeVars (Typ _) = []
-freeVars (Tag _ args) = foldr (union . freeVars) [] args
-freeVars (Ann a _) = freeVars a
-freeVars (For x a) = delete x (freeVars a)
-freeVars (Fix x a) = delete x (freeVars a)
-freeVars (Fun a b) = freeVars a `union` freeVars b
-freeVars (Or a b) = freeVars a `union` freeVars b
-freeVars (App a b) = freeVars a `union` freeVars b
-freeVars (Op1 _ a) = freeVars a
-freeVars (Op2 _ a b) = freeVars a `union` freeVars b
-freeVars (Meta _ a) = freeVars a
-freeVars Err = []
+class FreeVars a where
+  freeVars :: a -> [String]
+
+instance FreeVars Expr where
+  freeVars :: Expr -> [String]
+  freeVars IntT = []
+  freeVars NumT = []
+  freeVars (Int _) = []
+  freeVars (Num _) = []
+  freeVars (Var x) = [x]
+  freeVars (Typ _) = []
+  freeVars (Tag _ args) = foldr (union . freeVars) [] args
+  freeVars (Ann a _) = freeVars a
+  freeVars (For x a) = delete x (freeVars a)
+  freeVars (Fix x a) = delete x (freeVars a)
+  freeVars (Fun a b) = freeVars a `union` freeVars b
+  freeVars (Or a b) = freeVars a `union` freeVars b
+  freeVars (App a b) = freeVars a `union` freeVars b
+  freeVars (Op1 _ a) = freeVars a
+  freeVars (Op2 _ a b) = freeVars a `union` freeVars b
+  freeVars (Meta _ a) = freeVars a
+  freeVars Err = []
+
+instance FreeVars Pattern where
+  freeVars :: Pattern -> [String]
+  freeVars PAny = []
+  freeVars PIntT = []
+  freeVars PNumT = []
+  freeVars (PInt _) = []
+  freeVars (PNum _) = []
+  freeVars (PVar x) = [x]
+  freeVars (PTyp _) = []
+  freeVars (PTag _ ps) = foldr (union . freeVars) [] ps
+  freeVars (PFun p q) = freeVars p `union` freeVars q
+  freeVars (PEq a) = freeVars a
+  freeVars PErr = []
 
 occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
