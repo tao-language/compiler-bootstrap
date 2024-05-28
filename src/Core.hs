@@ -95,7 +95,7 @@ data PatternError
 instance Show Expr where
   showsPrec :: Int -> Expr -> ShowS
   showsPrec p expr = case expr of
-    App (Fun p b) a -> prefix 1 (show p ++ " = " ++ show a ++ "; ") b
+    App (Lam [Case p b]) a -> prefix 1 (show p ++ " = " ++ show a ++ "; ") b
     Or a b -> infixR 1 a " | " b
     Ann a b -> infixR 2 a " : " b
     Op2 Eq a b -> infixL 3 a (op2 Eq) b
@@ -125,7 +125,9 @@ instance Show Expr where
     Tag k args -> showsPrec p (app (Tag k []) args)
     Meta _ a -> showsPrec p a
     Lam [] -> showsPrec p Err
-    Lam cases -> error "TODO: show Lam"
+    Lam cases -> do
+      let showCase (Case p b) = " | " ++ show p ++ " -> " ++ show b
+      atom 12 (intercalate "" (map showCase cases))
     where
       atom n k = showParen (p > n) $ showString k
       prefix n k a = showParen (p > n) $ showString k . showsPrec (n + 1) a
@@ -158,11 +160,6 @@ instance Show UnaryOp where
   show Int2Num = "@int2num"
 
 -- Syntax sugar
-bindings :: Expr -> [String]
-bindings (For x a) = [x] `union` bindings a
-bindings (Fun a b) = freeVars a `union` bindings b
-bindings _ = []
-
 fix :: [String] -> Expr -> Expr
 fix xs a = foldr Fix a xs
 
@@ -174,15 +171,11 @@ asFor (For x a) = let (xs, b) = asFor a in (x : xs, b)
 asFor a = ([], a)
 
 fun :: [Expr] -> Expr -> Expr
-fun ps b = foldr Fun b ps
+fun args ret = foldr Fun ret args
 
 asFun :: Expr -> ([Expr], Expr)
-asFun (Fun p a) = let (ps, b) = asFun a in (p : ps, b)
+asFun (Fun arg ret) = let (args, ret') = asFun ret in (arg : args, ret')
 asFun a = ([], a)
-
-lam :: [Expr] -> Expr -> Expr
--- TODO: use freeVars of ps
-lam ps b = for (bindings (fun ps b)) (fun ps b)
 
 add :: Expr -> Expr -> Expr
 add = Op2 Add
@@ -208,13 +201,16 @@ gt = Op2 Gt
 int2num :: Expr -> Expr
 int2num = Op1 Int2Num
 
-let' :: (Expr, Expr) -> Expr -> Expr
-let' (Var x, Var x') b | x == x' = b
+lam :: [Pattern] -> Expr -> Expr
+lam ps b = Lam [Case ps b]
+
+let' :: (Pattern, Expr) -> Expr -> Expr
+let' (PVar x, Var x') b | x == x' = b
 let' (p, a) b = do
   let xs = filter (`occurs` a) (freeVars p)
   App (lam [p] b) (fix xs a)
 
-lets :: [(Expr, Expr)] -> Expr -> Expr
+lets :: [(Pattern, Expr)] -> Expr -> Expr
 lets defs b = foldr let' b defs
 
 or' :: [Expr] -> Expr
@@ -267,6 +263,7 @@ instance FreeVars Expr where
   freeVars (For x a) = delete x (freeVars a)
   freeVars (Fix x a) = delete x (freeVars a)
   freeVars (Fun a b) = freeVars a `union` freeVars b
+  freeVars (Lam cases) = foldr (union . freeVars) [] cases
   freeVars (Or a b) = freeVars a `union` freeVars b
   freeVars (App a b) = freeVars a `union` freeVars b
   freeVars (Op1 _ a) = freeVars a
@@ -276,17 +273,24 @@ instance FreeVars Expr where
 
 instance FreeVars Pattern where
   freeVars :: Pattern -> [String]
-  freeVars PAny = []
-  freeVars PIntT = []
-  freeVars PNumT = []
-  freeVars (PInt _) = []
-  freeVars (PNum _) = []
-  freeVars (PVar x) = [x]
-  freeVars (PTyp _) = []
-  freeVars (PTag _ ps) = foldr (union . freeVars) [] ps
-  freeVars (PFun p q) = freeVars p `union` freeVars q
-  freeVars (PEq a) = freeVars a
-  freeVars PErr = []
+  freeVars = freeVars . patternToExpr
+
+instance FreeVars Case where
+  freeVars :: Case -> [String]
+  freeVars (Case ps b) = foldr (union . freeVars) [] ps `union` freeVars b
+
+patternToExpr :: Pattern -> Expr
+patternToExpr PAny = For "_" (Var "_")
+patternToExpr PIntT = IntT
+patternToExpr PNumT = NumT
+patternToExpr (PInt i) = Int i
+patternToExpr (PNum n) = Num n
+patternToExpr (PVar x) = Var x
+patternToExpr (PTyp alts) = Typ alts
+patternToExpr (PTag k ps) = Tag k (map patternToExpr ps)
+patternToExpr (PFun p q) = Fun (patternToExpr p) (patternToExpr q)
+patternToExpr (PEq a) = a
+patternToExpr PErr = Err
 
 occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
@@ -328,21 +332,27 @@ eval env (Tag k args) = case lookup k env of
 eval _ (Typ alts) = Typ alts
 eval env (For x a) = For x (eval ((x, Var x) : env) a)
 eval env (Fix x a) = Fix x (eval ((x, Var x) : env) a)
-eval env (Fun p b) = Fun (eval env p) (eval env b)
+eval env (Fun a b) = Fun (eval env a) (eval env b)
+eval _ (Lam []) = Err
+eval env (Lam (Case [] a : _)) = eval env a
+eval env (Lam cases) = do
+  let evalCase (Case ps b) = do
+        let xs = foldr (union . freeVars) [] ps
+        Case ps (eval (pushVars xs env) b)
+  Lam (map evalCase cases)
 eval env (App a b) = case (eval env a, eval env b) of
   (For x a, b) -> eval [(x, Var x)] (App a b)
   (Fix x a, b) | isClosed b -> eval [(x, Fix x a)] (App a b)
-  (Fun p a, b) -> case (p, b) of
-    (Typ alts, Typ alts') | alts == alts' -> a
-    (IntT, IntT) -> a
-    (NumT, NumT) -> a
-    (Int i, Int i') | i == i' -> a
-    (Var x, b) -> eval [(x, b)] a
-    (Tag k [], Tag k' []) | k == k' -> a
-    (Fun p q, Fun b1 b2) -> app (fun [p, q] a) [b1, b2]
-    (App p q, App b1 b2) -> app (fun [p, q] a) [b1, b2]
-    _ -> Err
   (Err, _) -> Err
+  (Lam (Case (p : ps) a : cases), b) -> case (p, b) of
+    (PIntT, IntT) -> eval [] (lam ps a)
+    (PNumT, NumT) -> eval [] (lam ps a)
+    (PInt i, Int i') | i == i' -> eval [] (lam ps a)
+    (PNum n, Num n') | n == n' -> eval [] (lam ps a)
+    (PVar x, b) -> eval [(x, b)] (lam ps a)
+    (PTyp alts, Typ alts') | alts == alts' -> eval [] (lam ps a)
+    (PTag k qs, Tag k' args) | k == k' -> eval [] (app (lam (qs ++ ps) a) args)
+    _ -> eval [] (App (Lam cases) b)
   (Or a1 a2, b) -> case eval [] (App a1 b) of
     Err -> eval [] (App a2 b)
     Fun p a -> Or (Fun p a) (App a2 b)
@@ -390,7 +400,11 @@ evalOp2 _ _ _ = Err
 
 unify :: Expr -> Expr -> Either TypeError (Expr, Substitution)
 unify IntT IntT = Right (IntT, [])
+unify (Int _) IntT = Right (IntT, [])
+unify IntT (Int _) = Right (IntT, [])
 unify NumT NumT = Right (NumT, [])
+unify (Num _) NumT = Right (NumT, [])
+unify NumT (Num _) = Right (NumT, [])
 unify (Int i) (Int i') | i == i' = Right (Int i, [])
 unify (Num n) (Num n') | n == n' = Right (Num n, [])
 unify (Var x) (Var x') | x == x' = Right (Var x, [])
@@ -448,8 +462,8 @@ unifyAll _ _ = Right ([], [])
 infer :: Env -> Expr -> Either TypeError (Expr, Substitution)
 infer _ IntT = Right (Typ [], [])
 infer _ NumT = Right (Typ [], [])
-infer _ (Int _) = Right (IntT, [])
-infer _ (Num _) = Right (NumT, [])
+infer _ (Int i) = Right (Int i `Or` IntT, [])
+infer _ (Num n) = Right (Num n `Or` NumT, [])
 infer env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> do
     let y = newName (map fst env) (x ++ "T")
@@ -474,6 +488,9 @@ infer env (Fix x a) = infer ((x, Var x) : env) a
 infer env (Fun a b) = do
   ((ta, tb), s) <- infer2 env a b
   Right (Fun ta tb, s)
+infer env (Lam cases) = do
+  (ts, s) <- inferCases env cases
+  Right (or' ts, s)
 infer env (Or a b) = do
   ((ta, tb), s1) <- infer2 env a b
   case unify ta tb of
@@ -489,6 +506,19 @@ infer env (Op2 op a b) = inferOp2 env op a b
 infer env (Meta _ a) = infer env a
 infer _ Err = Right (Err, []) -- TODO: error?
 
+inferCase :: Env -> Case -> Either TypeError (Expr, Substitution)
+inferCase env (Case ps b) = do
+  let xs = foldr (union . freeVars) [] ps
+  let args = map patternToExpr ps
+  infer (pushVars xs env) (fun args b)
+
+inferCases :: Env -> [Case] -> Either TypeError ([Expr], Substitution)
+inferCases _ [] = Right ([], [])
+inferCases env (case' : cases) = do
+  (t, s1) <- inferCase env case'
+  (ts, s2) <- inferCases (env `compose` s1) cases
+  Right (eval s2 t : ts, s2 `compose` s1)
+
 infer2 :: Env -> Expr -> Expr -> Either TypeError ((Expr, Expr), Substitution)
 infer2 env a b = do
   (ta, s1) <- infer env a
@@ -498,9 +528,9 @@ infer2 env a b = do
 inferAll :: Env -> [Expr] -> Either TypeError ([Expr], Substitution)
 inferAll _ [] = Right ([], [])
 inferAll env (a : bs) = do
-  (ta, s1) <- infer env a
-  (tbs, s2) <- inferAll (env `compose` s1) bs
-  Right (eval s2 ta : tbs, s2 `compose` s1)
+  (t, s1) <- infer env a
+  (ts, s2) <- inferAll (env `compose` s1) bs
+  Right (eval s2 t : ts, s2 `compose` s1)
 
 inferOp1 :: Env -> UnaryOp -> Expr -> Either TypeError (Expr, Substitution)
 inferOp1 env Int2Num a = do

@@ -78,12 +78,12 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower/lift Trait" $ do
     let expr = Trait (Int 1) "y"
-    let term = C.app (C.Var ".y") [C.IntT, C.Int 1]
+    let term = C.app (C.Var ".y") [C.Int 1 `C.Or` C.IntT, C.Int 1]
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
     let expr = Trait x "y"
-    let term = C.app (C.Var ".y") [C.IntT, x']
+    let term = C.app (C.Var ".y") [C.Int 1 `C.Or` C.IntT, x']
     lowerExpr [("x", Int 1)] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
@@ -118,7 +118,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower/lift Bind" $ do
     let expr = Bind (x, y) z
-    let term = C.app (C.Var ".<-") [C.IntT, y', C.Fun x' z']
+    let term = C.app (C.Var ".<-") [C.Int 1 `C.Or` C.IntT, y', C.Fun x' z']
     lowerExpr [("y", Int 1)] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 

@@ -2,12 +2,11 @@ module Tao where
 
 -- TODO: maybe use terms like "lower" and "lift" for conversions to/from core
 import qualified Core as C
-import Data.Bifunctor (Bifunctor (bimap, first), second)
+import Data.Bifunctor (Bifunctor (bimap), second)
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
-import Data.List (intercalate, union)
-import Data.List.Split (split, splitOn, splitOneOf, splitWhen, whenElt)
-import Data.Maybe (fromMaybe)
+import Data.List (intercalate)
+import Data.List.Split (splitWhen)
 
 data Expr
   = Int Int
