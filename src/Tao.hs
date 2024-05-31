@@ -5,7 +5,7 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap), second)
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
-import Data.List (intercalate)
+import Data.List (intercalate, union)
 import Data.List.Split (splitWhen)
 
 data Expr
@@ -21,7 +21,8 @@ data Expr
   | App Expr Expr
   | Let Definition Expr
   | Bind (Expr, Expr) Expr
-  | Match [Expr] [Case]
+  | Match [Case]
+  | If Expr Expr Expr
   | Or Expr Expr
   | Ann Expr Expr
   | Op1 C.UnaryOp Expr
@@ -31,8 +32,7 @@ data Expr
   deriving (Eq, Show)
 
 data Case
-  = Case [Pattern] Expr
-  | CaseIf [Pattern] Expr Expr
+  = Case [Pattern] (Maybe Expr) Expr
   deriving (Eq, Show)
 
 data Pattern
@@ -41,24 +41,25 @@ data Pattern
   | PNum Double
   | PVar String
   | PType [String]
+  | PTuple [Pattern]
   | PTag String [Pattern]
   | PFun Pattern Pattern
   | POr [Pattern]
   | PEq Expr
+  | PMeta C.Metadata Pattern
   | PErr
   deriving (Eq, Show)
 
 data Definition
-  = NameDef [(String, Expr)] String [String] Expr
-  | UnpackDef [(String, Expr)] Pattern Expr
-  | TraitDef [(String, Expr)] (Expr, Expr) String [Expr] Expr
+  = Def [(String, Expr)] Pattern Expr
+  | TraitDef [(String, Expr)] (Expr, Expr) String Expr
   -- TODO: TypeDef
   deriving (Eq, Show)
 
 data Stmt
   = Import String String String [(String, String)] -- import pkg:path/package as alias (a, b, c)
-  | Def Definition
-  | Test Expr Expr
+  | Define Definition
+  | Test Expr Pattern
   | MetaStmt C.Metadata Stmt
   deriving (Eq, Show)
 
@@ -74,6 +75,10 @@ data Package = Package
   }
   deriving (Eq, Show)
 
+data TestError
+  = TestEqError Expr Expr Pattern
+  deriving (Eq, Show)
+
 intT :: Expr
 intT = Tag "Int" []
 
@@ -85,6 +90,20 @@ numT = Tag "Num" []
 
 pNumT :: Pattern
 pNumT = PTag "Num" []
+
+lam :: [Pattern] -> Expr -> Expr
+lam ps b = match [Case ps Nothing b]
+
+match :: [Case] -> Expr
+match [] = Err
+match (Case [] Nothing b : _) = b
+match cases = Match cases
+
+matchArgs :: [Expr] -> [Case] -> Expr
+matchArgs args cases = app (match cases) args
+
+let' :: Pattern -> Expr -> Expr -> Expr
+let' p a = Let (Def [] p a)
 
 or' :: [Expr] -> Expr
 or' [] = error "`or'` must have at least one expression"
@@ -101,11 +120,6 @@ asFun a = ([], a)
 
 app :: Expr -> [Expr] -> Expr
 app = foldl App
-
-asApp :: Expr -> (Expr, [Expr])
-asApp (App a b) = let (a', bs) = asApp a in (a', bs ++ [b])
-asApp (Meta _ a) = asApp a
-asApp a = (a, [])
 
 add :: Expr -> Expr -> Expr
 add = Op2 C.Add
@@ -131,8 +145,31 @@ gt = Op2 C.Gt
 meta :: [C.Metadata] -> Expr -> Expr
 meta ms a = foldr Meta a ms
 
-defName :: String -> Expr -> Stmt
-defName name value = Def (NameDef [] name [] value)
+var :: String -> Expr -> Stmt
+var name value = Define (Def [] (PVar name) value)
+
+fn :: String -> [Pattern] -> Expr -> Stmt
+fn name args value = Define (Def [] (PVar name) (lam args value))
+
+asApp :: Expr -> (Expr, [Expr])
+asApp (App a b) = let (a', bs) = asApp a in (a', bs ++ [b])
+asApp (Meta _ a) = asApp a
+asApp a = (a, [])
+
+asLambda :: String -> Expr -> ([String], Expr)
+asLambda _ (Match []) = ([], Err)
+asLambda _ (Match (Case [] Nothing a : _)) = ([], a)
+asLambda prefix (Match cases) = do
+  let branches = map caseSplit cases
+  let (x, cases') = case patternsName (map fst branches) of
+        Just x -> (x, map snd branches)
+        Nothing -> do
+          --   let x = C.newName (foldr (union . freeVars) [] cases) prefix
+          --   (x, matchArgs [Var x] cases)
+          error $ "TODO: asLambda " ++ show cases
+  let (xs, b) = asLambda prefix (Match cases')
+  (x : xs, b)
+asLambda _ a = ([], a)
 
 isTypeDef :: Expr -> Bool
 isTypeDef (Type _) = True
@@ -157,16 +194,33 @@ list :: [Expr] -> Expr
 list [] = Tag "[]" []
 list (a : bs) = Tag "[..]" [a, list bs]
 
+toExpr :: Pattern -> Expr
+toExpr PAny = error "TODO: toExpr PAny"
+toExpr (PInt i) = Int i
+toExpr (PNum n) = Num n
+toExpr (PVar x) = Var x
+toExpr (PType alts) = Type alts
+toExpr (PTag k ps) = Tag k (map toExpr ps)
+toExpr (PFun p q) = Fun (toExpr p) (toExpr q)
+toExpr (POr ps) = or' (map toExpr ps)
+toExpr (PEq a) = a
+toExpr (PMeta m p) = Meta m (toExpr p)
+toExpr PErr = Err
+
 class FreeVars a where
   freeVars :: a -> [String]
 
 instance FreeVars Expr where
   freeVars :: Expr -> [String]
-  freeVars a = C.freeVars (lowerExpr [] a) & filter (/= "_")
+  freeVars a = C.freeVars (lowerExpr [] a)
 
 instance FreeVars Pattern where
   freeVars :: Pattern -> [String]
-  freeVars p = C.freeVars (lowerPattern [] p) & filter (/= "_")
+  freeVars p = C.freeVars (lowerPattern [] p)
+
+instance FreeVars Case where
+  freeVars :: Case -> [String]
+  freeVars case' = C.freeVars (lowerCase [] case')
 
 -- Core conversions
 lowerExpr :: [(String, Expr)] -> Expr -> C.Expr
@@ -190,15 +244,21 @@ lowerExpr defs (Trait a x) = do
     Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
 lowerExpr defs (Fun a b) = C.Fun (lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (App a b) = C.App (lowerExpr defs a) (lowerExpr defs b)
--- lowerExpr defs (Let (p, a) b) = C.let' (lowerExpr defs p, lowerExpr defs a) (lowerExpr defs b)
+lowerExpr defs (Let def b) = case def of
+  Def ts p a -> lowerExpr defs (matchArgs [a] [Case [p] Nothing b])
 lowerExpr defs (Bind (p, a) b) = lowerExpr defs (App (Trait a "<-") (Fun p b))
--- lowerExpr defs (Match args cases) = TODO
+lowerExpr defs (Match cases) = C.Lam (map (lowerCase defs) cases)
 lowerExpr defs (Or a b) = C.Or (lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (Ann a b) = C.Ann (lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (Op1 op a) = C.Op1 op (lowerExpr defs a)
 lowerExpr defs (Op2 op a b) = C.Op2 op (lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (Meta m a) = C.Meta m (lowerExpr defs a)
 lowerExpr _ Err = C.Err
+lowerExpr _ a = error $ "TODO: lowerExpr " ++ show a
+
+lowerCase :: [(String, Expr)] -> Case -> C.Case
+lowerCase defs (Case ps cond b) =
+  C.Case (map (lowerPattern defs) ps) (lowerExpr defs b)
 
 liftExpr :: C.Expr -> Expr
 liftExpr C.IntT = intT
@@ -225,6 +285,7 @@ liftExpr (C.Op1 op a) = Op1 op (liftExpr a)
 liftExpr (C.Op2 op a b) = Op2 op (liftExpr a) (liftExpr b)
 liftExpr (C.Meta m a) = Meta m (liftExpr a)
 liftExpr C.Err = Err
+liftExpr a = error $ "TODO: liftExpr " ++ show a
 
 lowerPattern :: [(String, Expr)] -> Pattern -> C.Pattern
 lowerPattern _ PAny = C.PAny
@@ -239,7 +300,9 @@ lowerPattern defs (PTag k ps)
 lowerPattern defs (PFun p q) = C.PFun (lowerPattern defs p) (lowerPattern defs q)
 lowerPattern defs (POr ps) = error "TODO"
 lowerPattern defs (PEq a) = C.PEq (lowerExpr defs a)
+lowerPattern defs (PMeta m p) = C.PMeta m (lowerPattern defs p)
 lowerPattern _ PErr = C.PErr
+lowerPattern _ p = error $ "TODO: lowerPattern " ++ show p
 
 lowerDefs :: [(String, Expr)] -> C.Env
 lowerDefs defs = map (second (lowerExpr defs)) defs
@@ -266,23 +329,25 @@ stmtDefs pkgName (Import pkg path alias exposed) = case exposed of
     let def = (y, Var fullName)
     def : stmtDefs pkgName (Import pkg path alias exposed)
   [] -> [] -- TODO: import module "Record"
-stmtDefs pkgName (Def (NameDef ts x (y : ys) b)) = stmtDefs pkgName (Def (NameDef ts x ys (Fun (Var y) b)))
-stmtDefs _ (Def (NameDef ts x [] b)) = case lookup x ts of
+stmtDefs _ (Define def) = definitionDefs def
+stmtDefs pkgName (MetaStmt _ stmt) = stmtDefs pkgName stmt
+stmtDefs _ _ = []
+
+definitionDefs :: Definition -> [(String, Expr)]
+definitionDefs (Def ts (PVar x) b) = case lookup x ts of
   Just t -> [(x, Ann b t)]
   Nothing -> [(x, b)]
-stmtDefs _ (Def (UnpackDef ts p b)) = do
-  let def x = Match [b] [Case [p] (Var x)]
+definitionDefs (Def ts p b) = do
+  let def x = let' p b (Var x)
   let typedDef x = case lookup x ts of
         Just t -> (x, Ann (def x) t)
         Nothing -> (x, def x)
   map typedDef (freeVars p)
-stmtDefs pkgName (Def (TraitDef ts self x (a : args) b)) = stmtDefs pkgName (Def (TraitDef ts self x args (Fun a b)))
-stmtDefs _ (Def (TraitDef ts (t, a) x [] b)) = [('.' : x, fun [t, a] b)]
-stmtDefs pkgName (MetaStmt _ stmt) = stmtDefs pkgName stmt
-stmtDefs _ _ = []
+definitionDefs (TraitDef ts (t, a) x b) =
+  [('.' : x, fun [t, a] b)]
 
-stmtTests :: Stmt -> [(Expr, Expr)]
-stmtTests (Test a b) = [(a, b)]
+stmtTests :: Stmt -> [(Expr, Pattern)]
+stmtTests (Test expr expected) = [(expr, expected)]
 stmtTests (MetaStmt _ stmt) = stmtTests stmt
 stmtTests _ = []
 
@@ -300,13 +365,13 @@ moduleDefs pkgName mod = do
 packageDefs :: Package -> [(String, Expr)]
 packageDefs pkg = concatMap (moduleDefs pkg.name) pkg.modules
 
-moduleTests :: String -> Module -> [(Expr, Expr)]
+moduleTests :: String -> Module -> [(Expr, Pattern)]
 moduleTests pkgName mod = do
   let tests = concatMap stmtTests mod.stmts
   let subs = moduleFullNames pkgName mod
   map (bimap (substitute subs) (substitute subs)) tests
 
-packageTests :: Package -> [(Expr, Expr)]
+packageTests :: Package -> [(Expr, Pattern)]
 packageTests pkg = concatMap (moduleTests pkg.name) pkg.modules
 
 run :: Package -> Expr -> Expr
@@ -315,19 +380,26 @@ run pkg expr = do
   let term = lowerExpr (packageDefs pkg) expr
   liftExpr (C.eval env term)
 
-data TestError
-  = TestEqError Expr Expr Expr
-  deriving (Eq, Show)
-
-testEq :: [(String, Expr)] -> (Expr, Expr) -> [TestError]
-testEq defs (expr, result) = do
+testEq :: [(String, Expr)] -> (Expr, Pattern) -> [TestError]
+testEq defs (expr, expected) = do
+  -- let env = lowerDefs defs
+  -- let actual = C.eval env (lowerExpr defs expr)
+  -- let expected = C.eval env (lowerExpr defs result)
+  -- case C.eval [] (actual `C.eq` expected) of
+  --   C.Err -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
+  --   C.Op2 C.Eq _ _ -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
+  --   _ -> []
   let env = lowerDefs defs
-  let actual = C.eval env (lowerExpr defs expr)
-  let expected = C.eval env (lowerExpr defs result)
-  case C.eval [] (actual `C.eq` expected) of
-    C.Err -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
-    C.Op2 C.Eq _ _ -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
-    _ -> []
+  let unitTest = lowerExpr defs (let' expected expr (Tuple []))
+  let passed = case C.eval env unitTest of
+        C.Err -> False
+        C.Op2 C.Eq _ _ -> False
+        _ -> True
+  if passed
+    then []
+    else do
+      let actual = lowerExpr defs expr & C.eval env & liftExpr
+      [TestEqError expr actual expected]
 
 test :: Package -> [TestError]
 test pkg = do
@@ -380,10 +452,9 @@ isImported _ _ = False
 
 defined :: Stmt -> [String]
 defined (Import _ _ alias exposed) = alias : map snd exposed
-defined (Def def) = case def of
-  NameDef _ x _ _ -> [x]
-  UnpackDef _ p _ -> freeVars p
-  TraitDef _ _ x _ _ -> [x]
+defined (Define def) = case def of
+  Def _ p _ -> freeVars p
+  TraitDef _ _ x _ -> [x]
 defined (Test _ _) = []
 defined (MetaStmt _ a) = defined a
 
@@ -404,7 +475,7 @@ instance Apply Expr where
   apply f (App a b) = App (f a) (f b)
   apply f (Let def a) = Let (apply f def) (f a)
   apply f (Bind (a, b) c) = Bind (f a, f b) (f c)
-  apply f (Match args cases) = Match (map f args) (map (apply f) cases)
+  apply f (Match cases) = Match (map (apply f) cases)
   apply f (Or a b) = Or (f a) (f b)
   apply f (Ann a b) = Ann (f a) (f b)
   apply f (Op1 op a) = Op1 op (f a)
@@ -423,31 +494,26 @@ instance Apply Pattern where
   apply f (PFun p q) = PFun (apply f p) (apply f q)
   apply f (POr ps) = POr (map (apply f) ps)
   apply f (PEq a) = PEq (f a)
+  apply f (PMeta m p) = PMeta m (apply f p)
   apply _ PErr = PErr
 
 instance Apply Case where
   apply :: (Expr -> Expr) -> Case -> Case
-  apply f (Case ps b) = Case (map (apply f) ps) (f b)
-  apply f (CaseIf ps a b) = CaseIf (map (apply f) ps) (f a) (f b)
+  apply f (Case ps cond b) = Case (map (apply f) ps) (fmap f cond) (f b)
 
 instance Apply Definition where
   apply :: (Expr -> Expr) -> Definition -> Definition
-  apply f (NameDef ts x args val) = do
-    let ts' = map (second $ apply f) ts
-    NameDef ts' x args (f val)
-  apply f (UnpackDef ts p val) = do
-    let ts' = map (second $ apply f) ts
-    let p' = apply f p
-    UnpackDef ts' p' (f val)
-  apply f (TraitDef ts (t, a) x args val) = do
-    let ts' = map (second $ apply f) ts
-    let args' = map (apply f) args
-    TraitDef ts' (f t, f a) x args' (f val)
+  apply f (Def ts p val) = do
+    let ts' = map (second f) ts
+    Def ts' (apply f p) (f val)
+  apply f (TraitDef ts (t, a) x val) = do
+    let ts' = map (second f) ts
+    TraitDef ts' (f t, f a) x (f val)
 
 instance Apply Stmt where
   apply :: (Expr -> Expr) -> Stmt -> Stmt
   apply _ stmt@Import {} = stmt
-  apply f (Def def) = Def (apply f def)
+  apply f (Define def) = Define (apply f def)
   apply f (Test a b) = Test (apply f a) (apply f b)
   apply f (MetaStmt m a) = MetaStmt m (apply f a)
 
@@ -467,22 +533,21 @@ instance Rename Module where
     mod {stmts = map (renameImported path old new) mod.stmts}
   rename _ _ _ mod = mod
 
+instance Rename Definition where
+  rename :: FilePath -> String -> String -> Definition -> Definition
+  rename path old new (Def ts p val) = do
+    let ts' = map (bimap (rename path old new) (rename path old new)) ts
+    let p' = rename path old new p
+    let val' = rename path old new val
+    Def ts' p' val'
+  rename path old new (TraitDef ts (t, a) x val) = do
+    let ts' = map (bimap (rename path old new) (rename path old new)) ts
+    let x' = rename path old new x
+    let val' = rename path old new val
+    TraitDef ts' (t, a) x' val'
+
 renameDefined :: FilePath -> String -> String -> Stmt -> Stmt
-renameDefined path old new (Def def) = do
-  let def' = case def of
-        NameDef ts x args val -> do
-          let ts' = map (bimap (rename path old new) (rename path old new)) ts
-          let x' = rename path old new x
-          NameDef ts' x' args val
-        UnpackDef ts p val -> do
-          let ts' = map (bimap (rename path old new) (rename path old new)) ts
-          let p' = rename path old new p
-          UnpackDef ts' p' val
-        TraitDef ts (t, a) x args val -> do
-          let ts' = map (bimap (rename path old new) (rename path old new)) ts
-          let x' = rename path old new x
-          TraitDef ts' (t, a) x' args val
-  rename path old new (Def def')
+renameDefined path old new (Define def) = Define (rename path old new def)
 renameDefined path old new stmt = rename path old new stmt
 
 renameImported :: FilePath -> String -> String -> Stmt -> Stmt
@@ -515,6 +580,9 @@ instance Rename Expr where
   rename path old new (Type alts) = Type (map (rename path old new) alts)
   rename path old new (Tag k args) = Tag (rename path old new k) (map (rename path old new) args)
   rename path old new (Trait a x) = Trait (rename path old new a) (rename path old new x)
+  rename path old new (Let def a) = Let (rename path old new def) (rename path old new a)
+  rename path old new (Match cases) = Match (map (rename path old new) cases)
+  rename path old new (Meta m a) = Meta m (rename path old new a)
   rename path old new expr = apply (rename path old new) expr
 
 instance Rename Pattern where
@@ -522,7 +590,13 @@ instance Rename Pattern where
   rename path old new (PVar x) = PVar (rename path old new x)
   rename path old new (PType alts) = PType (map (rename path old new) alts)
   rename path old new (PTag k ps) = PTag (rename path old new k) (map (rename path old new) ps)
+  rename path old new (PMeta m p) = PMeta m (rename path old new p)
   rename path old new p = apply (rename path old new) p
+
+instance Rename Case where
+  rename :: FilePath -> String -> String -> Case -> Case
+  rename path old new (Case ps cond b) =
+    Case (map (rename path old new) ps) (fmap (rename path old new) cond) (rename path old new b)
 
 instance Rename String where
   rename :: FilePath -> String -> String -> String -> String
@@ -586,5 +660,47 @@ class DropMeta a where
 
 instance DropMeta Expr where
   dropMeta :: Expr -> Expr
-  dropMeta (Meta _ a) = apply dropMeta a
+  dropMeta (Meta _ a) = dropMeta a
   dropMeta a = apply dropMeta a
+
+instance DropMeta Pattern where
+  dropMeta :: Pattern -> Pattern
+  dropMeta (PMeta _ p) = dropMeta p
+  dropMeta a = apply dropMeta a
+
+instance DropMeta Definition where
+  dropMeta :: Definition -> Definition
+  dropMeta (Def ts p b) = do
+    let ts' = map (second dropMeta) ts
+    Def ts' (dropMeta p) (dropMeta b)
+  dropMeta (TraitDef ts (t, a) x b) = do
+    let ts' = map (second dropMeta) ts
+    TraitDef ts' (dropMeta t, dropMeta a) x (dropMeta b)
+
+instance DropMeta Stmt where
+  dropMeta :: Stmt -> Stmt
+  dropMeta stmt@Import {} = stmt
+  dropMeta (Define def) = Define (dropMeta def)
+  dropMeta (Test a b) = Test (dropMeta a) (dropMeta b)
+  dropMeta (MetaStmt _ stmt) = dropMeta stmt
+
+instance DropMeta Module where
+  dropMeta :: Module -> Module
+  dropMeta mod = mod {stmts = map dropMeta mod.stmts}
+
+instance DropMeta Package where
+  dropMeta :: Package -> Package
+  dropMeta pkg = pkg {modules = map dropMeta pkg.modules}
+
+caseSplit :: Case -> (Pattern, Case)
+caseSplit (Case [] cond a) = (PAny, Case [] cond a)
+caseSplit (Case (p : ps) cond a) = (p, Case ps cond a)
+
+patternsName :: [Pattern] -> Maybe String
+patternsName [] = Nothing
+patternsName (p : ps) = case p of
+  PVar x -> case patternsName ps of
+    Just y | x /= y -> Nothing
+    _ -> Just x
+  PMeta _ p -> patternsName (p : ps)
+  _ -> patternsName ps

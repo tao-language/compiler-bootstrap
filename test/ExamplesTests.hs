@@ -2,6 +2,7 @@ module ExamplesTests where
 
 import qualified Core as C
 import Data.Bifunctor (second)
+import Data.List (intercalate)
 import Tao
 import TaoParser
 import Test.Hspec
@@ -14,6 +15,7 @@ test' name = do
 run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do
   let loc name pos = Meta (C.Location name pos)
+  let ploc name pos = PMeta (C.Location name pos)
   let (x, y, z) = (Var "x", Var "y", Var "z")
 
   let name = "empty.tao"
@@ -39,7 +41,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "tests.tao"
   it ("☯ " ++ name) $ do
     let name = "tests.tao"
-    test' name `shouldReturn` [TestEqError (loc name (18, 3) (Var "tests.tao:tests#x")) (Int 42) (Int 0)]
+    test' name `shouldReturn` [TestEqError (loc name (18, 3) (Var "tests.tao:tests#x")) (Int 42) (ploc "tests.tao" (19, 1) $ PInt 0)]
 
   -- let name = "arithmetic.tao"
   -- it ("☯ " ++ name) $ do

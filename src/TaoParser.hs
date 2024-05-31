@@ -163,7 +163,13 @@ parseExprAtom :: Parser Expr
 parseExprAtom = do
   (loc, a) <-
     (parseLocation . P.oneOf)
-      [ parseName,
+      [ do
+          name <- parseIdentifier
+          case name of
+            x | startsWithUpper x -> do
+              args <- P.zeroOrMore parseExprAtom
+              return (Tag name args)
+            _ -> return (Var name),
         Int <$> P.integer,
         Num <$> P.number,
         parseTuple,
@@ -176,14 +182,23 @@ parseExprAtom = do
       return (Meta loc a)
     ]
 
-parseName :: Parser Expr
-parseName = do
-  name <- parseIdentifier
-  case name of
-    x | startsWithUpper x -> do
-      args <- P.zeroOrMore parseExprAtom
-      return (Tag name args)
-    _ -> return (Var name)
+parsePatternAtom :: Parser Pattern
+parsePatternAtom = do
+  (loc, a) <-
+    (parseLocation . P.oneOf)
+      [ do
+          name <- parseIdentifier
+          case name of
+            x | startsWithUpper x -> do
+              args <- P.zeroOrMore parsePatternAtom
+              return (PTag name args)
+            _ -> return (PVar name),
+        PInt <$> P.integer,
+        PNum <$> P.number
+        -- , parseTuple
+        -- , parseRecord
+      ]
+  return (PMeta loc a)
 
 parseTuple :: Parser Expr
 parseTuple = do
@@ -224,48 +239,44 @@ parseStmt = do
   comments <- P.zeroOrMore parseComment
   stmt <-
     P.oneOf
-      [ fmap Def parseDefinition,
+      [ fmap Define parseDefinition,
         parseImport,
         parseTest
       ]
   return (foldr (MetaStmt . C.Comment) stmt comments)
 
-parseNameDef :: [(String, Expr)] -> Parser Definition
-parseNameDef ts = do
-  x <- parseIdentifier
-  P.oneOf
-    [ do
-        _ <- P.char ':'
-        _ <- P.whitespaces
-        t <- parseExpr P.space
-        _ <- P.whitespaces
-        _ <- P.char '='
-        _ <- P.whitespaces
-        value <- parseExpr P.space
-        return (NameDef ((x, t) : ts) x [] value),
-      do
-        args <- P.zeroOrMore parseIdentifier
-        _ <- P.whitespaces
-        _ <- P.char '='
-        _ <- P.whitespaces
-        value <- parseExpr P.space
-        return (NameDef ts x args value)
-    ]
+parseTypedDef :: Parser Definition
+parseTypedDef = do
+  (loc, x) <- parseLocation parseIdentifier
+  _ <- P.char ':'
+  _ <- P.whitespaces
+  ty <- parseExpr P.spaces
+  _ <- P.char '='
+  _ <- P.whitespaces
+  value <- parseExpr P.spaces
+  return (Def [(x, ty)] (PMeta loc (PVar x)) value)
 
-parseUnpackDef :: [(String, Expr)] -> Parser Definition
-parseUnpackDef ts = P.fail'
+parseDef :: Parser Definition
+parseDef = do
+  ts <- P.zeroOrMore parseTypeAnnotation
+  p <- parsePatternAtom
+  ps <- P.zeroOrMore parsePatternAtom
+  _ <- P.whitespaces
+  _ <- P.char '='
+  _ <- P.whitespaces
+  value <- parseExpr P.spaces
+  return (Def ts p (lam ps value))
 
-parseTraitDef :: [(String, Expr)] -> Parser Definition
-parseTraitDef ts = P.fail'
+parseTraitDef :: Parser Definition
+parseTraitDef = P.fail'
 
 parseDefinition :: Parser Definition
 parseDefinition = do
-  ts <- P.zeroOrMore parseTypeAnnotation
   def <-
     P.oneOf
-      [ parseNameDef ts,
-        parseUnpackDef ts,
-        parseTraitDef ts
+      [ parseTypedDef,
+        parseDef,
+        parseTraitDef
       ]
   _ <- parseLineBreak
   return def
@@ -328,25 +339,25 @@ parseImport = do
   _ <- parseLineBreak
   return (Import pkg (intercalate "/" (path ++ [name])) alias exposing)
 
-parseTest :: Parser Stmt
+parseTest :: P.Parser ParserContext Stmt
 parseTest = do
   _ <- P.char '>'
   _ <- P.oneOrMore P.space
   P.commit CTest
   expr <- parseExpr P.spaces
   _ <- parseLineBreak
-  let typeAssertion (Ann a _) = Just a
+  let typeAssertion (Ann _ _) = True
       typeAssertion (Meta _ a) = typeAssertion a
-      typeAssertion _ = Nothing
+      typeAssertion _ = False
   result <-
     P.oneOf
       [ do
-          result <- parseExpr P.spaces
+          result <- parsePatternAtom
           _ <- parseLineBreak
           return result,
-        case typeAssertion expr of
-          Just a -> return a
-          Nothing -> return (Tag "True" [])
+        if typeAssertion expr
+          then return PAny
+          else return (PTag "True" [])
       ]
   return (Test expr result)
 

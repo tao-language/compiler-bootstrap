@@ -434,11 +434,11 @@ stmtNames _ = []
 ctxNames :: PyCtx -> [String]
 ctxNames ctx = concatMap stmtNames (ctx.globals ++ ctx.locals)
 
-newName :: PyCtx -> (String, PyCtx)
-newName ctx = do
-  case ('_' : show ctx.nameIndex, ctx {nameIndex = ctx.nameIndex + 1}) of
-    (name, ctx') | name `elem` ctxNames ctx -> newName ctx'
-    (name, ctx') -> (name, ctx')
+newName :: PyCtx -> String -> (PyCtx, String)
+newName ctx prefix = do
+  case (ctx {nameIndex = ctx.nameIndex + 1}, prefix ++ show ctx.nameIndex) of
+    (ctx', name) | name `elem` ctxNames ctx -> newName ctx' prefix
+    (ctx', name) -> (ctx', name)
 
 pyName :: [String] -> Expr -> String -> String
 pyName existing a name
@@ -554,7 +554,7 @@ emitModuleTests options pkgName mod = do
 emitStmt :: BuildOptions -> String -> Stmt -> PyCtx -> PyCtx
 emitStmt options pkgName stmt ctx = case stmt of
   Import {} -> emitImport options pkgName stmt ctx
-  Def {} -> emitDef options stmt ctx
+  Define {} -> emitDef options stmt ctx
   Test {} -> ctx
   MetaStmt _ stmt -> emitStmt options pkgName stmt ctx
 
@@ -578,38 +578,69 @@ emitArgs (x : xs) [] = (x, Nothing, Nothing) : emitArgs xs []
 emitArgs (x : xs) (t : ts) = (x, Just t, Nothing) : emitArgs xs ts
 
 emitDef :: BuildOptions -> Stmt -> PyCtx -> PyCtx
-emitDef options (Def def) ctx = case def of
-  NameDef ts x args a -> do
-    let (ctx1, a') = emitExpr options ctx a
-    let type' = fromMaybe Err (lookup x ts)
-    case (asFun type', args) of
-      (([], Err), []) -> do
-        let def = PyAssign [PyName x] a'
-        ctx1 {locals = def : ctx1.locals}
-      (([], t), []) -> do
-        let (ctx2, t') = emitExpr options ctx1 t
-        let def = PyAnnAssign (PyName x) t' (Just a')
-        ctx2 {locals = def : ctx2.locals}
-      ((ts, t), args) -> do
-        let (ctx2, ts') = emitExprAll options ctx1 ts
-        let (ctx3, t') = emitExpr options ctx2 t
-        let def =
-              PyFunctionDef
-                { name = x,
-                  args = emitArgs args ts',
-                  body = [PyReturn a'],
-                  decorators = [],
-                  returns = if t == Err then Nothing else Just t',
-                  typeParams = [],
-                  async = False
-                }
-        ctx3 {locals = def : ctx3.locals}
+emitDef options (Define def) ctx0 = case def of
+  Def ts (PVar x) value -> case (fmap asFun (lookup x ts), asLambda "_" value) of
+    (Just ([], t), ([], value)) -> do
+      -- Typed variable definition
+      let (ctx1, value') = emitExpr options ctx0 value
+      let (ctx2, t') = emitExpr options ctx1 t
+      let def = PyAnnAssign (PyName x) t' (Just value')
+      ctx2 {locals = def : ctx2.locals}
+    (Nothing, ([], value)) -> do
+      -- Untyped variable definition
+      let (ctx1, value') = emitExpr options ctx0 value
+      let def = PyAssign [PyName x] value'
+      ctx1 {locals = def : ctx1.locals}
+    (Just (ts, t), (xs, value)) -> do
+      -- Typed function definition
+      let (ctx1, ts') = emitExprAll options ctx0 ts
+      let (ctx2, t') = emitExpr options ctx1 t
+      let (ctx3, value') = emitExpr options ctx2 value
+      let def =
+            PyFunctionDef
+              { name = x,
+                args = emitArgs xs ts',
+                body = [PyReturn value'],
+                decorators = [],
+                returns = Just t',
+                typeParams = [],
+                async = False
+              }
+      ctx3 {locals = def : ctx3.locals}
+    (Nothing, (xs, value)) -> do
+      -- Untyped function definition
+      let (ctx1, value') = emitExpr options ctx0 value
+      let def =
+            PyFunctionDef
+              { name = x,
+                args = emitArgs xs [],
+                body = [PyReturn value'],
+                decorators = [],
+                returns = Nothing,
+                typeParams = [],
+                async = False
+              }
+      ctx1 {locals = def : ctx1.locals}
+  Def ts (PMeta _ p) value -> emitDef options (Define (Def ts p value)) ctx0
+  -- Def ts p a -> case p of
+  --   PAny -> ctx0
+  --   PInt _ -> ctx0
+  --   PNum _ -> ctx0
+  --   PVar x -> error "TODO: variable"
+  --   PType _ -> ctx0
+  --   PTag k ps -> error "TODO: unpack"
+  --   PFun p q -> error "TODO: special case for Tag"
+  --   POr ps -> error "TODO: multiple definitions ?"
+  --   PEq a -> error "TODO: compile time error"
+  --   PMeta _ p -> emitDef options (Define (Def ts p a)) ctx0
+  --   PErr -> error "TODO: runtime error ?"
+  Def ts p a -> error $ "TODO: emitDef " ++ show (Def ts p a)
 
 emitTest :: BuildOptions -> String -> Stmt -> PyCtx -> PyCtx
-emitTest options pkgName stmt ctx = case stmt of
-  Import {} -> emitImport options pkgName stmt ctx
+emitTest options pkgName stmt ctx0 = case stmt of
+  Import {} -> emitImport options pkgName stmt ctx0
   Test a b -> do
-    let (ctx', (a', b')) = emitExpr2 options ctx (a, b)
+    let (ctx1, (a', b')) = emitExpr2 options ctx0 (a, toExpr b)
     let assertEqual x y =
           pyCall (PyAttribute (PyName "self") "assertEqual") [x, y]
     let testDef =
@@ -622,11 +653,8 @@ emitTest options pkgName stmt ctx = case stmt of
               typeParams = [],
               async = False
             }
-    addLocal testDef ctx
-  _ -> ctx
-
-emitType :: BuildOptions -> PyCtx -> Expr -> (PyCtx, PyExpr)
-emitType options ctx a = emitExpr options ctx a
+    addLocal testDef ctx1
+  _ -> ctx0
 
 emitExpr :: BuildOptions -> PyCtx -> Expr -> (PyCtx, PyExpr)
 emitExpr _ ctx0 (Int i) = (ctx0, PyInteger i)
@@ -647,8 +675,6 @@ emitExpr options ctx0 (Trait a x) = do
 -- emitExpr options ctx0 (Type alts) = _
 emitExpr options ctx0 (Fun a b) = do
   let (ctx1, (a', b')) = emitExpr2 options ctx0 (a, b)
-  -- (ctx1, PyLambda)
-  -- (ctx1, PyName "TODO")
   error $ "TODO: emitExpr " ++ show (Fun a b)
 emitExpr options ctx0 (App a b) = do
   let (fn, args) = asApp (App a b)
@@ -658,8 +684,15 @@ emitExpr options ctx0 (App a b) = do
 -- emitExpr options ctx0 (Let (Expr, Expr) Expr) = _
 -- emitExpr options ctx0 (Bind (Expr, Expr) Expr) = _
 -- emitExpr options ctx0 (TypeDef String [Expr] Expr) = _
--- emitExpr options ctx0 (MatchFun [Expr]) = _
--- emitExpr options ctx0 (Match [Expr] [Expr]) = _
+emitExpr options ctx0 (Match cases) = do
+  let (xs, a) = asLambda "_" (Match cases)
+  let (ctx1, a') = emitExpr options ctx0 a
+  (ctx1, PyLambda xs a')
+-- let (x, ctx1) = newName ctx0
+-- let (ctx2, arg') = emitExpr options ctx1 arg
+-- let cases = []
+-- let ctx3 = addLocal (PyMatch arg' cases) ctx2
+-- (ctx3, PyName x)
 -- emitExpr options ctx0 (Or Expr Expr) = _
 -- emitExpr options ctx0 (Ann Expr Expr) = _
 -- emitExpr options ctx0 (Op1 C.UnaryOp Expr) = _
@@ -677,6 +710,7 @@ emitExpr options ctx0 (Meta m a) = do
   let (ctx1, a') = emitExpr options ctx0 a
   (ctx1, PyMeta m a')
 emitExpr _ ctx0 Err = (ctx0, pyCall (PyName "RuntimeError") [])
+emitExpr _ _ expr = error $ "TODO: emitExpr " ++ show expr
 
 emitExpr2 :: BuildOptions -> PyCtx -> (Expr, Expr) -> (PyCtx, (PyExpr, PyExpr))
 emitExpr2 options ctx (a, b) = do
@@ -800,6 +834,11 @@ layoutExpr (PyTuple items) = layoutTuple (map layoutExpr items)
 layoutExpr (PyCall func args kwargs) = do
   let kwarg (x, a) = PP.Text (x ++ "=") : layoutExpr a
   layoutExpr func ++ layoutTuple (map layoutExpr args ++ map kwarg kwargs)
+layoutExpr (PyLambda [] a) = PP.Text "lambda: " : layoutExpr a
+layoutExpr (PyLambda xs a) =
+  PP.Text "lambda "
+    : PP.join [PP.Text ", "] (map (\x -> [PP.Text x]) xs)
+    ++ (PP.Text ": " : layoutExpr a)
 layoutExpr (PyAttribute a x) = layoutExpr a ++ [PP.Text $ '.' : x]
 -- TODO: remove redundant parentheses
 -- TODO: break long lines

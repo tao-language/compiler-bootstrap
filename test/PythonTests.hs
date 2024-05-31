@@ -60,12 +60,12 @@ run = describe "--==☯ Python ☯==--" $ do
     emitStmt options "pkg" (Import "pkg2" "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "pkg2.mod" Nothing, PyImportFrom "pkg2.mod" [("a", Nothing), ("b", Just "c")]]}
 
   it "☯ emitStmt Def" $ do
-    emitStmt options "pkg" (Def (NameDef [] "x" [] y)) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}
+    emitStmt options "pkg" (var "x" y) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}
 
   it "☯ emitModule" $ do
     let stmts =
-          [ Def (NameDef [] "x" [] (Int 1)),
-            Def (NameDef [] "y" [] (Int 2))
+          [ var "x" (Int 1),
+            var "y" (Int 2)
           ]
     let emitStmts =
           [ PyAssign [x'] (PyInteger 1),
@@ -109,11 +109,10 @@ run = describe "--==☯ Python ☯==--" $ do
     -- fmap sort (getRecursiveContents "build/python") `shouldReturn` pythonFiles
 
     -- Run generated tests
-    -- Subprocess.run "build/python" "python" ["-m", "venv", "env"]
-    -- Subprocess.run "build/python" "env/bin/pip" ["install", "-U", "pip"]
-    -- Subprocess.run "build/python" "env/bin/pip" ["install", "-e", "."]
-    -- Subprocess.run "build/python" "env/bin/python" ["-m", "unittest", "-v"]
-    True `shouldBe` True
+    Subprocess.run "build/python" "python" ["-m", "venv", "env"]
+    Subprocess.run "build/python" "env/bin/pip" ["install", "-U", "pip"]
+    Subprocess.run "build/python" "env/bin/pip" ["install", "-e", "."]
+    Subprocess.run "build/python" "env/bin/python" ["-m", "unittest", "-v"]
 
 -- https://book.realworldhaskell.org/read/io-case-study-a-library-for-searching-the-filesystem.html
 getRecursiveContents :: FilePath -> IO [FilePath]

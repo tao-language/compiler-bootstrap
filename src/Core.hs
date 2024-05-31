@@ -34,7 +34,7 @@ data Expr
 
 data Case
   = Case [Pattern] Expr
-  deriving (Eq, Show)
+  deriving (Eq)
 
 data Pattern
   = PAny
@@ -47,8 +47,9 @@ data Pattern
   | PTag String [Pattern]
   | PFun Pattern Pattern
   | PEq Expr
+  | PMeta Metadata Pattern
   | PErr
-  deriving (Eq, Show)
+  deriving (Eq)
 
 data BinaryOp
   = Add
@@ -95,7 +96,7 @@ data PatternError
 instance Show Expr where
   showsPrec :: Int -> Expr -> ShowS
   showsPrec p expr = case expr of
-    App (Lam [Case p b]) a -> prefix 1 (show p ++ " = " ++ show a ++ "; ") b
+    -- App (Lam [Case [p] b]) a -> prefix 1 (show p ++ " = " ++ show a ++ "; ") b
     Or a b -> infixR 1 a " | " b
     Ann a b -> infixR 2 a " : " b
     Op2 Eq a b -> infixL 3 a (op2 Eq) b
@@ -125,9 +126,7 @@ instance Show Expr where
     Tag k args -> showsPrec p (app (Tag k []) args)
     Meta _ a -> showsPrec p a
     Lam [] -> showsPrec p Err
-    Lam cases -> do
-      let showCase (Case p b) = " | " ++ show p ++ " -> " ++ show b
-      atom 12 (intercalate "" (map showCase cases))
+    Lam cases -> atom 1 (unwords (map show cases))
     where
       atom n k = showParen (p > n) $ showString k
       prefix n k a = showParen (p > n) $ showString k . showsPrec (n + 1) a
@@ -144,6 +143,14 @@ instance Show Expr where
       isNameChar c = isAlphaNum c
       op2 op = " " ++ show op ++ " "
       op1 op = show op ++ " "
+
+instance Show Pattern where
+  show :: Pattern -> String
+  show = show . toExpr
+
+instance Show Case where
+  show :: Case -> String
+  show (Case p b) = "| " ++ show p ++ " -> " ++ show b
 
 instance Show BinaryOp where
   show :: BinaryOp -> String
@@ -273,24 +280,25 @@ instance FreeVars Expr where
 
 instance FreeVars Pattern where
   freeVars :: Pattern -> [String]
-  freeVars = freeVars . patternToExpr
+  freeVars = freeVars . toExpr
 
 instance FreeVars Case where
   freeVars :: Case -> [String]
   freeVars (Case ps b) = foldr (union . freeVars) [] ps `union` freeVars b
 
-patternToExpr :: Pattern -> Expr
-patternToExpr PAny = For "_" (Var "_")
-patternToExpr PIntT = IntT
-patternToExpr PNumT = NumT
-patternToExpr (PInt i) = Int i
-patternToExpr (PNum n) = Num n
-patternToExpr (PVar x) = Var x
-patternToExpr (PTyp alts) = Typ alts
-patternToExpr (PTag k ps) = Tag k (map patternToExpr ps)
-patternToExpr (PFun p q) = Fun (patternToExpr p) (patternToExpr q)
-patternToExpr (PEq a) = a
-patternToExpr PErr = Err
+toExpr :: Pattern -> Expr
+toExpr PAny = For "_" (Var "_")
+toExpr PIntT = IntT
+toExpr PNumT = NumT
+toExpr (PInt i) = Int i
+toExpr (PNum n) = Num n
+toExpr (PVar x) = Var x
+toExpr (PTyp alts) = Typ alts
+toExpr (PTag k ps) = Tag k (map toExpr ps)
+toExpr (PFun p q) = Fun (toExpr p) (toExpr q)
+toExpr (PEq a) = a
+toExpr (PMeta m p) = Meta m (toExpr p)
+toExpr PErr = Err
 
 occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
@@ -344,15 +352,9 @@ eval env (App a b) = case (eval env a, eval env b) of
   (For x a, b) -> eval [(x, Var x)] (App a b)
   (Fix x a, b) | isClosed b -> eval [(x, Fix x a)] (App a b)
   (Err, _) -> Err
-  (Lam (Case (p : ps) a : cases), b) -> case (p, b) of
-    (PIntT, IntT) -> eval [] (lam ps a)
-    (PNumT, NumT) -> eval [] (lam ps a)
-    (PInt i, Int i') | i == i' -> eval [] (lam ps a)
-    (PNum n, Num n') | n == n' -> eval [] (lam ps a)
-    (PVar x, b) -> eval [(x, b)] (lam ps a)
-    (PTyp alts, Typ alts') | alts == alts' -> eval [] (lam ps a)
-    (PTag k qs, Tag k' args) | k == k' -> eval [] (app (lam (qs ++ ps) a) args)
-    _ -> eval [] (App (Lam cases) b)
+  (Lam (Case (p : ps) a : cases), b) -> case match p b of
+    Just bindings -> eval bindings (lam ps a)
+    Nothing -> eval [] (App (Lam cases) b)
   (Or a1 a2, b) -> case eval [] (App a1 b) of
     Err -> eval [] (App a2 b)
     Fun p a -> Or (Fun p a) (App a2 b)
@@ -397,6 +399,34 @@ evalOp2 Eq (Var a) (Var b) | a == b = Var a
 evalOp2 Lt (Int a) (Int b) | a < b = Int a
 evalOp2 Lt (Num a) (Num b) | a < b = Num a
 evalOp2 _ _ _ = Err
+
+match :: Pattern -> Expr -> Maybe [(String, Expr)]
+match PAny _ = Just []
+match PIntT IntT = Just []
+match PNumT NumT = Just []
+match (PInt i) (Int i') | i == i' = Just []
+match (PNum n) (Num n') | n == n' = Just []
+match (PVar x) b = Just [(x, b)]
+match (PTyp alts) (Typ alts') | alts == alts' = Just []
+match (PTag k ps) (Tag k' args) | k == k' = matchAll ps args
+match (PFun p q) (Fun a b) = match2 (p, a) (q, b)
+match (PMeta _ p) b = match p b
+match PErr Err = Just []
+match _ _ = Nothing
+
+match2 :: (Pattern, Expr) -> (Pattern, Expr) -> Maybe [(String, Expr)]
+match2 (p, a) (q, b) = do
+  env1 <- match p a
+  env2 <- match q b
+  Just (env1 ++ env2)
+
+matchAll :: [Pattern] -> [Expr] -> Maybe [(String, Expr)]
+matchAll [] [] = Just []
+matchAll (p : ps) (a : bs) = do
+  env1 <- match p a
+  env2 <- matchAll ps bs
+  Just (env1 ++ env2)
+matchAll _ _ = Nothing
 
 unify :: Expr -> Expr -> Either TypeError (Expr, Substitution)
 unify IntT IntT = Right (IntT, [])
@@ -509,7 +539,7 @@ infer _ Err = Right (Err, []) -- TODO: error?
 inferCase :: Env -> Case -> Either TypeError (Expr, Substitution)
 inferCase env (Case ps b) = do
   let xs = foldr (union . freeVars) [] ps
-  let args = map patternToExpr ps
+  let args = map toExpr ps
   infer (pushVars xs env) (fun args b)
 
 inferCases :: Env -> [Case] -> Either TypeError ([Expr], Substitution)

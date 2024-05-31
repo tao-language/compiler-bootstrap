@@ -215,8 +215,8 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     defs [Import "" "mod2" "m2" []] `shouldBe` []
     defs [Import "" "mod2" "m2" [("x", "y")]] `shouldBe` [("pkg:mod#y", Var "pkg:mod2#x")]
     defs [Import "pkg2" "mod2" "m2" [("x", "y")]] `shouldBe` [("pkg:mod#y", Var "pkg2:mod2#x")]
-    defs [defName "x" y] `shouldBe` [("pkg:mod#x", Var "y")]
-    defs [defName "x" y, defName "y" z] `shouldBe` [("pkg:mod#x", Var "pkg:mod#y"), ("pkg:mod#y", Var "z")]
+    defs [var "x" y] `shouldBe` [("pkg:mod#x", Var "y")]
+    defs [var "x" y, var "y" z] `shouldBe` [("pkg:mod#x", Var "pkg:mod#y"), ("pkg:mod#y", Var "z")]
 
   it "☯ packageDefs" $ do
     let defs stmts = do
@@ -224,7 +224,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           let pkg = Package "pkg" [mod]
           packageDefs pkg
     defs [] `shouldBe` []
-    defs [defName "x" y] `shouldBe` [("pkg:mod#x", Var "y")]
+    defs [var "x" y] `shouldBe` [("pkg:mod#x", Var "y")]
 
   -- it "☯ lowerPackage" $ do
   --   let mod defs = Package {name = "lowerPackage", modules = [Module "f" defs]}
@@ -274,21 +274,19 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ packageTests" $ do
     let defs =
-          [ defName "x" (Int 1),
-            Test x y,
-            defName "y" (Int 2)
+          [ var "x" (Int 1),
+            Test x (PInt 2)
           ]
     let mod = Package {name = "pkg", modules = [Module "mod" defs]}
-    packageTests mod `shouldBe` [(Var "pkg:mod#x", Var "pkg:mod#y")]
+    packageTests mod `shouldBe` [(Var "pkg:mod#x", PInt 2)]
 
   it "☯ test" $ do
     let defs =
-          [ defName "x" (Int 1),
-            Test x y,
-            defName "y" (Int 2)
+          [ var "x" (Int 1),
+            Test x (PInt 2)
           ]
     let mod = Package {name = "pkg", modules = [Module "mod" defs]}
-    test mod `shouldBe` [TestEqError (Var "pkg:mod#x") (Int 1) (Int 2)]
+    test mod `shouldBe` [TestEqError (Var "pkg:mod#x") (Int 1) (PInt 2)]
 
   it "☯ splitCamelCase" $ do
     splitCamelCase "" `shouldBe` []
@@ -349,9 +347,10 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     True `shouldBe` True
 
   it "☯ rename Package" $ do
-    let m1 x = Module "m1" [Def (NameDef [] x [] $ Int 42), Def (NameDef [] "y" [] $ Var x)]
-    let m2 _ = Module "m2" [Def (NameDef [] "x" [] $ Int 42), Def (NameDef [] "y" [] $ Var "x")]
-    let m3 x = Module "m3" [Import "pkg" "m1" x [], Def (NameDef [] "y" [] $ Var x)]
-    let m4 x = Module "m4" [Import "pkg" "m1" "m" [(x, x)], Def (NameDef [] "y" [] $ Var x)]
+    let (x', y') = (PVar "x", PVar "y")
+    let m1 x = Module "m1" [Define (Def [] (PVar x) $ Int 42), Define (Def [] y' (Var x))]
+    let m2 _ = Module "m2" [Define (Def [] x' $ Int 42), Define (Def [] y' x)]
+    let m3 x = Module "m3" [Import "pkg" "m1" x [], Define (Def [] y' (Var x))]
+    let m4 x = Module "m4" [Import "pkg" "m1" "m" [(x, x)], Define (Def [] y' (Var x))]
     let pkg = Package "pkg" [m1 "x", m2 "x", m3 "x", m4 "x"]
     rename "m1" "x" "z" pkg `shouldBe` pkg {modules = [m1 "z", m2 "z", m3 "z", m4 "z"]}
