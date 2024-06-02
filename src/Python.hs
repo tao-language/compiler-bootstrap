@@ -497,9 +497,105 @@ buildModule options pkgName base mod = do
   buildDir base (splitPath $ takeDirectory filename)
 
   -- Write the source file contents.
-  let layout = layoutModule (emitModule options pkgName mod)
-  writeFile (base </> filename) (pyPretty options layout)
+  -- let layout = layoutModule (emitModule options pkgName mod)
+  -- writeFile (base </> filename) (pyPretty options layout)
+  let mod' = mod {stmts = filter (not . isTest) mod.stmts}
+  writeFile (base </> filename) (codegen options mod')
   return filename
+
+isTest :: Stmt -> Bool
+isTest (Test _ _) = True
+isTest _ = False
+
+isDefine :: Stmt -> Bool
+isDefine (Define _) = True
+isDefine _ = False
+
+-- TODO: rename to Emit
+class Codegen a where
+  codegen :: BuildOptions -> a -> String
+
+instance Codegen Module where
+  codegen :: BuildOptions -> Module -> String
+  codegen options module' = do
+    intercalate "\n" (map (codegen options) module'.stmts)
+
+instance Codegen Stmt where
+  codegen :: BuildOptions -> Stmt -> String
+  codegen options (Import pkg path alias exposed) = case exposed of
+    [] | path == alias -> do
+      template
+        "import {{module}}"
+        [("module", pkg ++ "." ++ path)]
+    exposed -> do
+      let codegenExposed (name, alias) | name == alias = name
+          codegenExposed (name, alias) = name ++ " as " ++ alias
+      template
+        "from {{module}} import ({{names}})"
+        [ ("module", pkg ++ "." ++ path),
+          ("names", intercalate ", " (map codegenExposed exposed))
+        ]
+  codegen options (Define def) = codegen options def
+  codegen options stmt = error $ "TODO: codegen " ++ show stmt
+
+instance Codegen Definition where
+  codegen :: BuildOptions -> Definition -> String
+  codegen options (Def ts (PVar x) b) = case (lookup x ts, asLambda "_" b) of
+    (Nothing, ([], b)) -> do
+      template
+        "{{name}} = {{value}}"
+        [ ("name", x),
+          ("value", codegen options b)
+        ]
+    (Just t, ([], b)) -> do
+      template
+        "{{name}}: {{type}} = {{value}}"
+        [ ("name", x),
+          ("type", codegen options t),
+          ("value", codegen options b)
+        ]
+    (Nothing, (xs, b)) -> do
+      template
+        "def {{name}}({{args}}):\n\
+        \    return {{body}}"
+        [ ("name", x),
+          ("args", intercalate ", " xs),
+          ("body", codegen options b)
+        ]
+    (Just t, (xs, b)) -> do
+      let (ts, ret) = asFun t
+      let args = zipWith (\x t -> x ++ ": " ++ codegen options t) xs ts
+      template
+        "def {{name}}({{args}}) -> {{ret}}:\n\
+        \    return {{body}}"
+        [ ("name", x),
+          ("args", intercalate ", " args),
+          ("ret", codegen options ret),
+          ("body", codegen options b)
+        ]
+  codegen options (Def ts (PMeta _ p) b) = codegen options (Define (Def ts p b))
+  codegen options def = do
+    error $ "TODO: codegen " ++ show def
+
+instance Codegen Expr where
+  codegen :: BuildOptions -> Expr -> String
+  codegen _ (Int i) = show i
+  codegen _ (Var x) = x
+  codegen _ (Tag k args) = case (k, args) of
+    ("Int", []) -> "int"
+    (k, args) -> k
+  codegen options (Op2 op a b) = do
+    let a' = codegen options a
+    let b' = codegen options b
+    case op of
+      C.Add -> "(" ++ a' ++ " + " ++ b' ++ ")"
+  codegen options (Meta _ a) = codegen options a
+  codegen options expr = error $ "TODO: codegen " ++ show expr
+
+template :: String -> [(String, String)] -> String
+template text [] = text
+template text ((x, value) : vars) =
+  template (replaceString ("{{" ++ x ++ "}}") value text) vars
 
 buildTests :: BuildOptions -> String -> FilePath -> Module -> IO FilePath
 buildTests options pkg base mod = do
@@ -516,7 +612,7 @@ buildTests options pkg base mod = do
 emitModule :: BuildOptions -> String -> Module -> PyModule
 emitModule options pkgName mod = do
   let ctx0 = PyCtx {globals = [], locals = [], nameIndex = 0}
-  let ctx = foldr (emitStmt options pkgName) ctx0 mod.stmts
+  let ctx = foldr (emitStmt options pkgName) ctx0 (filter (not . isTest) mod.stmts)
   PyModule {name = mod.name, body = ctx.globals ++ ctx.locals}
 
 emitModuleTests :: BuildOptions -> String -> Module -> PyModule
