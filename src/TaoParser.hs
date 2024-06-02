@@ -220,13 +220,23 @@ parseTuple = do
 
 parseRecordField :: Parser (String, Expr)
 parseRecordField = do
-  name <- parseIdentifier
+  (loc, name) <- parseLocation parseIdentifier
   P.commit (CRecordField name)
-  _ <- P.whitespaces
-  _ <- P.char ':'
-  _ <- P.whitespaces
-  value <- parseExpr P.whitespaces
-  return (name, value)
+  maybeType <- P.maybe' $ do
+    _ <- P.whitespaces
+    _ <- P.char ':'
+    _ <- P.whitespaces
+    parseExpr P.whitespaces
+  maybeValue <- P.maybe' $ do
+    _ <- P.whitespaces
+    _ <- P.char '='
+    _ <- P.whitespaces
+    parseExpr P.whitespaces
+  case (maybeValue, maybeType) of
+    (Just value, Just type') -> return (name, Ann value type')
+    (Just value, Nothing) -> return (name, value)
+    (Nothing, Just type') -> return (name, Ann (Meta loc (Var name)) type')
+    (Nothing, Nothing) -> return (name, Meta loc (Var name))
 
 parseRecord :: Parser Expr
 parseRecord = do

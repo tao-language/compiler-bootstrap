@@ -131,15 +131,19 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseRecordField" $ do
     let p = parse' parseRecordField
-    p "x" `shouldBe` Left ([CRecordField "x"], "")
-    p "x:y" `shouldBe` Right (("x", var 1 3 "y"), "")
-    p "x \n : \n y" `shouldBe` Right (("x", var 3 2 "y"), "")
+    p "x" `shouldBe` Right (("x", var 1 1 "x"), "")
+    p "x=y" `shouldBe` Right (("x", var 1 3 "y"), "")
+    p "x:y" `shouldBe` Right (("x", Ann (var 1 1 "x") (var 1 3 "y")), "")
+    p "x:y=z" `shouldBe` Right (("x", Ann (var 1 5 "z") (var 1 3 "y")), "")
+    p "x \n = \n y" `shouldBe` Right (("x", var 3 2 "y"), "")
+    p "x \n : \n y" `shouldBe` Right (("x", Ann (var 1 1 "x") (var 3 2 "y")), "")
+    p "x \n : \n y \n = z" `shouldBe` Right (("x", Ann (var 4 4 "z") (var 3 2 "y")), "")
 
   it "☯ parseRecord" $ do
     let p = parse' parseRecord
     p "{} abc" `shouldBe` Right (Record [], " abc")
-    p "{x: y} abc" `shouldBe` Right (Record [("x", var 1 5 "y")], " abc")
-    p "{x: y, z: w} abc" `shouldBe` Right (Record [("x", var 1 5 "y"), ("z", var 1 11 "w")], " abc")
+    p "{x} abc" `shouldBe` Right (Record [("x", var 1 2 "x")], " abc")
+    p "{x, y} abc" `shouldBe` Right (Record [("x", var 1 2 "x"), ("y", var 1 5 "y")], " abc")
 
   it "☯ parseExpr'" $ do
     let p = parse' (parseExpr $ P.ok ())

@@ -5,7 +5,7 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap), second)
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
-import Data.List (intercalate, union)
+import Data.List (intercalate, isPrefixOf, union)
 import Data.List.Split (splitWhen)
 
 data Expr
@@ -654,6 +654,12 @@ replace x y (x' : xs)
   | x == x' = y : replace x y xs
   | otherwise = x' : replace x y xs
 replace _ _ [] = []
+
+replaceString :: String -> String -> String -> String
+replaceString _ _ "" = ""
+replaceString old new text | old `isPrefixOf` text = do
+  new ++ replaceString old new (drop (length old) text)
+replaceString old new (c : text) = c : replaceString old new text
 
 class DropMeta a where
   dropMeta :: a -> a
