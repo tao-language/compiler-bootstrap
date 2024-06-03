@@ -2,5 +2,8 @@ int-to-bool =
   | 0 -> False
   | _ -> True
 
-> int-to-bool 0 == False
-> int-to-bool 1 == True
+> int-to-bool 0
+False
+
+> int-to-bool 1
+True

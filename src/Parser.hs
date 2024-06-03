@@ -137,10 +137,13 @@ anyChar =
     )
 
 char :: Char -> Parser ctx Char
-char c = if' (== c) anyChar
+char c = charIf (== c)
 
 charNoCase :: Char -> Parser ctx Char
 charNoCase c = if' (\c' -> Char.toLower c == Char.toLower c') anyChar
+
+charIf :: (Char -> Bool) -> Parser ctx Char
+charIf f = if' f anyChar
 
 letter :: Parser ctx Char
 letter = if' Char.isLetter anyChar

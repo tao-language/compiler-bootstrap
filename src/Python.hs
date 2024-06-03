@@ -589,6 +589,8 @@ instance Codegen Expr where
     let b' = codegen options b
     case op of
       C.Add -> "(" ++ a' ++ " + " ++ b' ++ ")"
+      C.Eq -> "(" ++ a' ++ " == " ++ b' ++ ")"
+      op -> error $ "TODO: codegen " ++ show op
   codegen options (Meta _ a) = codegen options a
   codegen options expr = error $ "TODO: codegen " ++ show expr
 
@@ -780,8 +782,8 @@ emitExpr options ctx0 (App a b) = do
 -- emitExpr options ctx0 (Let (Expr, Expr) Expr) = _
 -- emitExpr options ctx0 (Bind (Expr, Expr) Expr) = _
 -- emitExpr options ctx0 (TypeDef String [Expr] Expr) = _
-emitExpr options ctx0 (Match cases) = do
-  let (xs, a) = asLambda "_" (Match cases)
+emitExpr options ctx0 (Match [] cases) = do
+  let (xs, a) = asLambda "_" (Match [] cases)
   let (ctx1, a') = emitExpr options ctx0 a
   (ctx1, PyLambda xs a')
 -- let (x, ctx1) = newName ctx0

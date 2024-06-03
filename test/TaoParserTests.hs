@@ -145,8 +145,42 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "{x} abc" `shouldBe` Right (Record [("x", var 1 2 "x")], " abc")
     p "{x, y} abc" `shouldBe` Right (Record [("x", var 1 2 "x"), ("y", var 1 5 "y")], " abc")
 
-  it "☯ parseExpr'" $ do
-    let p = parse' (parseExpr $ P.ok ())
+  it "☯ parsePattern" $ do
+    let p = parse' parsePattern
+    p "_ y" `shouldBe` Right (pat 1 1 PAny, "y")
+    p "42 y" `shouldBe` Right (pat 1 1 (PInt 42), "y")
+    p "3.14 y" `shouldBe` Right (pat 1 1 (PNum 3.14), "y")
+    p "x y" `shouldBe` Right (pvar 1 1 "x", "y")
+    -- PType [String]
+    -- PTuple [Pattern]
+    -- PRecord [(String, Pattern)]
+    -- PTag String [Pattern]
+    -- PFun Pattern Pattern
+    -- POr [Pattern]
+    -- PEq Expr
+    -- PMeta C.Metadata Pattern
+    -- PErr
+    True `shouldBe` True
+
+  it "☯ parseCase" $ do
+    let p = parse' parseCase
+    p "%" `shouldBe` Left ([], "%")
+    p "| %" `shouldBe` Left ([CCase], "%")
+    p "| -> y;" `shouldBe` Left ([CCase], "-> y;")
+    p "| x -> y;" `shouldBe` Right (Case [pvar 1 3 "x"] Nothing (var 1 8 "y"), "")
+    p "| x, y -> z;" `shouldBe` Right (Case [pvar 1 3 "x", pvar 1 6 "y"] Nothing (var 1 11 "z"), "")
+    p "| x if y -> z;" `shouldBe` Right (Case [pvar 1 3 "x"] (Just $ var 1 8 "y") (var 1 13 "z"), "")
+
+  it "☯ parseMatch" $ do
+    let p = parse' parseMatch
+    p "match" `shouldBe` Left ([CMatch], "")
+    p "match; | x -> y" `shouldBe` Left ([CMatch], "; | x -> y")
+    p "match a\n| x -> y" `shouldBe` Right (Match [var 1 7 "a"] [Case [pvar 2 3 "x"] Nothing (var 2 8 "y")], "")
+    p "match a, b\n| x -> y" `shouldBe` Right (Match [var 1 7 "a", var 1 10 "b"] [Case [pvar 2 3 "x"] Nothing (var 2 8 "y")], "")
+    p "match a\n| x -> y\n| a -> b" `shouldBe` Right (Match [var 1 7 "a"] [Case [pvar 2 3 "x"] Nothing (var 2 8 "y"), Case [pvar 3 3 "a"] Nothing (var 3 8 "b")], "")
+
+  it "☯ parseExpr" $ do
+    let p = parse' (parseExpr 0 P.spaces)
     p "Type" `shouldBe` Right (meta [loc 1 1] $ Tag "Type" [], "")
     p "Int" `shouldBe` Right (meta [loc 1 1] $ Tag "Int" [], "")
     p "Num" `shouldBe` Right (meta [loc 1 1] $ Tag "Num" [], "")
@@ -154,6 +188,9 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "3.14" `shouldBe` Right (meta [loc 1 1] $ Num 3.14, "")
     p "var" `shouldBe` Right (meta [loc 1 1] $ Var "var", "")
     p "Tag" `shouldBe` Right (meta [loc 1 1] $ Tag "Tag" [], "")
+    p "| x -> y" `shouldBe` Right (meta [loc 1 1] $ Match [] [Case [pvar 1 3 "x"] Nothing (var 1 8 "y")], "")
+    p "| x -> y\n| a -> b" `shouldBe` Right (meta [loc 1 1] $ Match [] [Case [pvar 1 3 "x"] Nothing (var 1 8 "y"), Case [pvar 2 3 "a"] Nothing (var 2 8 "b")], "")
+    p "match a\n| x -> y" `shouldBe` Right (meta [loc 1 1] $ Match [var 1 7 "a"] [Case [pvar 2 3 "x"] Nothing (var 2 8 "y")], "")
     p "()" `shouldBe` Right (meta [loc 1 1] $ Tuple [], "")
     p "{}" `shouldBe` Right (meta [loc 1 1] $ Record [], "")
     p "x |  y" `shouldBe` Right (meta [loc 1 3] $ Or (var 1 1 "x") (var 1 6 "y"), "")

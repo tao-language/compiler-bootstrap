@@ -21,7 +21,7 @@ data Expr
   | App Expr Expr
   | Let Definition Expr
   | Bind (Expr, Expr) Expr
-  | Match [Case]
+  | Match [Expr] [Case]
   | If Expr Expr Expr
   | Or Expr Expr
   | Ann Expr Expr
@@ -42,6 +42,7 @@ data Pattern
   | PVar String
   | PType [String]
   | PTuple [Pattern]
+  | PRecord [(String, Pattern)]
   | PTag String [Pattern]
   | PFun Pattern Pattern
   | POr [Pattern]
@@ -92,15 +93,12 @@ pNumT :: Pattern
 pNumT = PTag "Num" []
 
 lam :: [Pattern] -> Expr -> Expr
-lam ps b = match [Case ps Nothing b]
+lam ps b = match [] [Case ps Nothing b]
 
-match :: [Case] -> Expr
-match [] = Err
-match (Case [] Nothing b : _) = b
-match cases = Match cases
-
-matchArgs :: [Expr] -> [Case] -> Expr
-matchArgs args cases = app (match cases) args
+match :: [Expr] -> [Case] -> Expr
+match _ [] = Err
+match [] (Case [] Nothing b : _) = b
+match args cases = Match args cases
 
 let' :: Pattern -> Expr -> Expr -> Expr
 let' p a = Let (Def [] p a)
@@ -157,9 +155,9 @@ asApp (Meta _ a) = asApp a
 asApp a = (a, [])
 
 asLambda :: String -> Expr -> ([String], Expr)
-asLambda _ (Match []) = ([], Err)
-asLambda _ (Match (Case [] Nothing a : _)) = ([], a)
-asLambda prefix (Match cases) = do
+asLambda _ (Match _ []) = ([], Err)
+asLambda _ (Match [] (Case [] Nothing a : _)) = ([], a)
+asLambda prefix (Match [] cases) = do
   let branches = map caseSplit cases
   let (x, cases') = case patternsName (map fst branches) of
         Just x -> (x, map snd branches)
@@ -167,7 +165,7 @@ asLambda prefix (Match cases) = do
           --   let x = C.newName (foldr (union . freeVars) [] cases) prefix
           --   (x, matchArgs [Var x] cases)
           error $ "TODO: asLambda " ++ show cases
-  let (xs, b) = asLambda prefix (Match cases')
+  let (xs, b) = asLambda prefix (Match [] cases')
   (x : xs, b)
 asLambda _ a = ([], a)
 
@@ -245,9 +243,9 @@ lowerExpr defs (Trait a x) = do
 lowerExpr defs (Fun a b) = C.Fun (lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (App a b) = C.App (lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (Let def b) = case def of
-  Def ts p a -> lowerExpr defs (matchArgs [a] [Case [p] Nothing b])
+  Def ts p a -> lowerExpr defs (match [a] [Case [p] Nothing b])
 lowerExpr defs (Bind (p, a) b) = lowerExpr defs (App (Trait a "<-") (Fun p b))
-lowerExpr defs (Match cases) = C.Lam (map (lowerCase defs) cases)
+lowerExpr defs (Match args cases) = C.app (C.Lam (map (lowerCase defs) cases)) (map (lowerExpr defs) args)
 lowerExpr defs (Or a b) = C.Or (lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (Ann a b) = C.Ann (lowerExpr defs a) (lowerExpr defs b)
 lowerExpr defs (Op1 op a) = C.Op1 op (lowerExpr defs a)
@@ -475,7 +473,7 @@ instance Apply Expr where
   apply f (App a b) = App (f a) (f b)
   apply f (Let def a) = Let (apply f def) (f a)
   apply f (Bind (a, b) c) = Bind (f a, f b) (f c)
-  apply f (Match cases) = Match (map (apply f) cases)
+  apply f (Match args cases) = Match (map f args) (map (apply f) cases)
   apply f (Or a b) = Or (f a) (f b)
   apply f (Ann a b) = Ann (f a) (f b)
   apply f (Op1 op a) = Op1 op (f a)
@@ -581,7 +579,7 @@ instance Rename Expr where
   rename path old new (Tag k args) = Tag (rename path old new k) (map (rename path old new) args)
   rename path old new (Trait a x) = Trait (rename path old new a) (rename path old new x)
   rename path old new (Let def a) = Let (rename path old new def) (rename path old new a)
-  rename path old new (Match cases) = Match (map (rename path old new) cases)
+  rename path old new (Match args cases) = Match (map (rename path old new) args) (map (rename path old new) cases)
   rename path old new (Meta m a) = Meta m (rename path old new a)
   rename path old new expr = apply (rename path old new) expr
 

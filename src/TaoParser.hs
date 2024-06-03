@@ -22,7 +22,15 @@ data ParserContext
   | CCommentMultiLine
   | CDocString
   | CRecordField String
+  | CCase
+  | CMatch
   deriving (Eq, Show)
+
+keywords :: [String]
+keywords =
+  [ "match",
+    "type"
+  ]
 
 -- Utilities
 startsWithUpper :: String -> Bool
@@ -31,7 +39,6 @@ startsWithUpper _ = False
 
 parseIdentifier :: Parser String
 parseIdentifier = do
-  let keywords = ["type"]
   let validChars =
         [ P.letter,
           P.digit,
@@ -47,7 +54,13 @@ parseIdentifier = do
 
 parseLineBreak :: Parser String
 parseLineBreak = do
-  comment <- P.oneOf ["" <$ P.endOfLine, "" <$ P.char ';', parseCommentSingleLine]
+  comment <-
+    P.oneOf
+      [ "" <$ P.endOfLine,
+        "" <$ P.char ';',
+        "" <$ P.lookahead (P.charIf (`elem` [')', '}', ']'])),
+        parseCommentSingleLine
+      ]
   _ <- P.whitespaces
   return comment
 
@@ -141,24 +154,6 @@ parseOp txt = do
   _ <- P.spaces
   return loc
 
-parseExpr :: Parser appDelim -> Parser Expr
-parseExpr delim = do
-  let metaOp f m a b = Meta m (f a b)
-  let ops =
-        [ P.infixR 1 (metaOp Or) (parseOp "|"),
-          P.infixR 2 (metaOp Ann) (parseOp ":"),
-          P.infixR 3 (metaOp eq) (parseOp "=="),
-          P.infixR 4 (metaOp lt) (parseOp "<"),
-          P.infixR 4 (metaOp gt) (parseOp ">"),
-          P.infixR 5 (metaOp Fun) (parseOp "->"),
-          P.infixR 6 (metaOp add) (parseOp "+"),
-          P.infixR 6 (metaOp sub) (parseOp "-"),
-          P.infixR 7 (metaOp mul) (parseOp "*"),
-          P.infixL 8 (const App) (void delim),
-          P.infixR 9 (metaOp pow) (parseOp "^")
-        ]
-  P.operators 0 ops parseExprAtom
-
 parseExprAtom :: Parser Expr
 parseExprAtom = do
   (loc, a) <-
@@ -173,7 +168,9 @@ parseExprAtom = do
         Int <$> P.integer,
         Num <$> P.number,
         parseTuple,
-        parseRecord
+        parseRecord,
+        parseMatch,
+        match [] <$> P.oneOrMore parseCase
       ]
   P.oneOf
     [ do
@@ -182,27 +179,27 @@ parseExprAtom = do
       return (Meta loc a)
     ]
 
-parsePatternAtom :: Parser Pattern
-parsePatternAtom = do
-  (loc, a) <-
-    (parseLocation . P.oneOf)
-      [ do
-          name <- parseIdentifier
-          case name of
-            x | startsWithUpper x -> do
-              args <- P.zeroOrMore parsePatternAtom
-              return (PTag name args)
-            _ -> return (PVar name),
-        PInt <$> P.integer,
-        PNum <$> P.number
-        -- , parseTuple
-        -- , parseRecord
-      ]
-  return (PMeta loc a)
+parseExpr :: Int -> Parser appDelim -> Parser Expr
+parseExpr prec delim = do
+  let metaOp f m a b = Meta m (f a b)
+  let ops =
+        [ P.infixR 1 (metaOp Or) (parseOp "|"),
+          P.infixR 2 (metaOp Ann) (parseOp ":"),
+          P.infixR 3 (metaOp eq) (parseOp "=="),
+          P.infixR 4 (metaOp lt) (parseOp "<"),
+          P.infixR 4 (metaOp gt) (parseOp ">"),
+          P.infixR 5 (metaOp Fun) (parseOp "->"),
+          P.infixR 6 (metaOp add) (parseOp "+"),
+          P.infixR 6 (metaOp sub) (parseOp "-"),
+          P.infixR 7 (metaOp mul) (parseOp "*"),
+          P.infixL 8 (const App) (void delim),
+          P.infixR 9 (metaOp pow) (parseOp "^")
+        ]
+  P.operators prec ops parseExprAtom
 
 parseTuple :: Parser Expr
 parseTuple = do
-  let item = parseExpr P.whitespaces
+  let item = parseExpr 0 P.whitespaces
   P.oneOf
     [ do
         -- One-item tuple: (x,)
@@ -226,12 +223,12 @@ parseRecordField = do
     _ <- P.whitespaces
     _ <- P.char ':'
     _ <- P.whitespaces
-    parseExpr P.whitespaces
+    parseExpr 0 P.whitespaces
   maybeValue <- P.maybe' $ do
     _ <- P.whitespaces
     _ <- P.char '='
     _ <- P.whitespaces
-    parseExpr P.whitespaces
+    parseExpr 0 P.whitespaces
   case (maybeValue, maybeType) of
     (Just value, Just type') -> return (name, Ann value type')
     (Just value, Nothing) -> return (name, value)
@@ -242,6 +239,61 @@ parseRecord :: Parser Expr
 parseRecord = do
   fields <- parseCollection "{" "," "}" parseRecordField
   return (Record fields)
+
+parsePattern :: Parser Pattern
+parsePattern = do
+  (loc, a) <-
+    (parseLocation . P.oneOf)
+      [ PAny <$ P.char '_',
+        do
+          name <- parseIdentifier
+          case name of
+            x | startsWithUpper x -> do
+              args <- P.zeroOrMore parsePattern
+              return (PTag name args)
+            _ -> return (PVar name),
+        PInt <$> P.integer,
+        PNum <$> P.number
+        -- , parseTuple
+        -- , parseRecord
+      ]
+  return (PMeta loc a)
+
+parseCase :: Parser Case
+parseCase = do
+  _ <- P.char '|'
+  P.commit CCase
+  _ <- P.whitespaces
+  p <- parsePattern
+  ps <- P.zeroOrMore $ do
+    _ <- P.char ','
+    _ <- P.whitespaces
+    parsePattern
+  guard <- P.maybe' $ do
+    _ <- P.word "if"
+    _ <- P.whitespaces
+    parseExpr 6 P.whitespaces
+  _ <- P.text "->"
+  _ <- P.whitespaces
+  a <- parseExpr 0 P.spaces
+  _ <- parseLineBreak
+  return (Case (p : ps) guard a)
+
+parseMatch :: Parser Expr
+parseMatch = do
+  _ <- P.word "match"
+  P.commit CMatch
+  _ <- P.spaces
+  args <- do
+    arg <- parseExpr 0 P.spaces
+    args <- P.zeroOrMore $ do
+      _ <- P.char ','
+      _ <- P.spaces
+      parseExpr 0 P.spaces
+    return (arg : args)
+  _ <- parseLineBreak
+  cases <- P.oneOrMore parseCase
+  return (match args cases)
 
 -- Statements
 parseStmt :: Parser Stmt
@@ -260,21 +312,21 @@ parseTypedDef = do
   (loc, x) <- parseLocation parseIdentifier
   _ <- P.char ':'
   _ <- P.whitespaces
-  ty <- parseExpr P.spaces
+  ty <- parseExpr 0 P.spaces
   _ <- P.char '='
   _ <- P.whitespaces
-  value <- parseExpr P.spaces
+  value <- parseExpr 0 P.spaces
   return (Def [(x, ty)] (PMeta loc (PVar x)) value)
 
 parseDef :: Parser Definition
 parseDef = do
   ts <- P.zeroOrMore parseTypeAnnotation
-  p <- parsePatternAtom
-  ps <- P.zeroOrMore parsePatternAtom
+  p <- parsePattern
+  ps <- P.zeroOrMore parsePattern
   _ <- P.whitespaces
   _ <- P.char '='
   _ <- P.whitespaces
-  value <- parseExpr P.spaces
+  value <- parseExpr 0 P.spaces
   return (Def ts p (lam ps value))
 
 parseTraitDef :: Parser Definition
@@ -297,7 +349,7 @@ parseTypeAnnotation = do
   _ <- P.spaces
   _ <- P.char ':'
   _ <- P.spaces
-  ty <- parseExpr P.spaces
+  ty <- parseExpr 0 P.spaces
   _ <- parseLineBreak
   return (x, ty)
 
@@ -354,7 +406,7 @@ parseTest = do
   _ <- P.char '>'
   _ <- P.oneOrMore P.space
   P.commit CTest
-  expr <- parseExpr P.spaces
+  expr <- parseExpr 0 P.spaces
   _ <- parseLineBreak
   let typeAssertion (Ann _ _) = True
       typeAssertion (Meta _ a) = typeAssertion a
@@ -362,7 +414,7 @@ parseTest = do
   result <-
     P.oneOf
       [ do
-          result <- parsePatternAtom
+          result <- parsePattern
           _ <- parseLineBreak
           return result,
         if typeAssertion expr
@@ -380,6 +432,18 @@ parseModule name = do
   _ <- P.endOfFile
   return (Module name stmts)
 
+pad :: Int -> String -> String
+pad = padWith ' '
+
+padWith :: Char -> Int -> String -> String
+padWith fill n text = replicate (n - length text) fill ++ text
+
+slice :: Int -> Int -> [a] -> [a]
+slice start end xs =
+  xs
+    & drop (start - 1)
+    & take (end - start)
+
 parseFile :: FilePath -> FilePath -> Package -> IO Package
 parseFile _ filename pkg | filename `elem` map (\f -> f.name) pkg.modules = return pkg
 parseFile base filename pkg = do
@@ -389,10 +453,35 @@ parseFile base filename pkg = do
       -- TODO: evaluate the module statements
       return (pkg {modules = f : pkg.modules})
     Left P.State {name, pos = (row, col), context} -> do
-      let loc = intercalate ":" [name, show row, show col]
-      putStrLn loc
-      print context
-      error ("🛑 " ++ loc ++ ": syntax error")
+      let loc = base </> intercalate ":" [name, show row, show col]
+      (error . intercalate "\n")
+        [ "🛑 " ++ loc ++ ": syntax error " ++ show context,
+          "",
+          showSnippet (row, col) 3 3 src,
+          ""
+        ]
+
+showSnippet :: (Int, Int) -> Int -> Int -> String -> String
+showSnippet (row, col) before after src = do
+  let divider = "| "
+  let rowMark = "* "
+  let colMark = "^"
+  let padding = max (length $ show (row - before)) (length $ show (row + after))
+  let showLine i line = pad (padding + length rowMark) (show i) ++ divider ++ line
+  let linesBefore =
+        lines src
+          & slice (row - before) row
+          & zipWith showLine [max 0 (row - before) ..]
+  let highlight =
+        lines src
+          & slice row (row + 1)
+          & map (\line -> pad padding (rowMark ++ show row) ++ divider ++ line)
+          & (++ [replicate (col + padding + length divider + 1) ' ' ++ colMark])
+  let linesAfter =
+        lines src
+          & slice (row + 1) (row + after + 1)
+          & zipWith showLine [row + 1 ..]
+  intercalate "\n" (linesBefore ++ highlight ++ linesAfter)
 
 parsePackage :: FilePath -> IO Package
 parsePackage path = do
