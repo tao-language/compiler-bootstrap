@@ -5,7 +5,7 @@ module Python where
 
 import Control.Monad (unless, when)
 import qualified Core as C
-import Data.Bifunctor (Bifunctor (first))
+import Data.Bifunctor (Bifunctor (first, second))
 import Data.Foldable (foldlM, foldrM)
 import Data.Function ((&))
 import Data.List (intercalate, union)
@@ -500,7 +500,8 @@ buildModule options pkgName base mod = do
   -- let layout = layoutModule (emitModule options pkgName mod)
   -- writeFile (base </> filename) (pyPretty options layout)
   let mod' = mod {stmts = filter (not . isTest) mod.stmts}
-  writeFile (base </> filename) (codegen options mod')
+  let (stmts, _) = emit options mod'
+  writeFile (base </> filename) (intercalate "\n" stmts)
   return filename
 
 isTest :: Stmt -> Bool
@@ -512,92 +513,211 @@ isDefine (Define _) = True
 isDefine _ = False
 
 -- TODO: rename to Emit
-class Codegen a where
-  codegen :: BuildOptions -> a -> String
+class Emit a where
+  emit :: BuildOptions -> a -> ([String], String)
 
-instance Codegen Module where
-  codegen :: BuildOptions -> Module -> String
-  codegen options module' = do
-    intercalate "\n" (map (codegen options) module'.stmts)
+instance Emit Module where
+  emit :: BuildOptions -> Module -> ([String], String)
+  emit options module' = do
+    let stmts = concatMap (fst . emit options) module'.stmts
+    (stmts, "")
 
-instance Codegen Stmt where
-  codegen :: BuildOptions -> Stmt -> String
-  codegen options (Import pkg path alias exposed) = case exposed of
+instance Emit Stmt where
+  emit :: BuildOptions -> Stmt -> ([String], String)
+  emit options (Import pkg path alias exposed) = case exposed of
     [] | path == alias -> do
-      template
-        "import {{module}}"
-        [("module", pkg ++ "." ++ path)]
+      let stmt = "import " ++ pkg ++ "." ++ path
+      ([stmt], "")
     exposed -> do
-      let codegenExposed (name, alias) | name == alias = name
-          codegenExposed (name, alias) = name ++ " as " ++ alias
-      template
-        "from {{module}} import ({{names}})"
-        [ ("module", pkg ++ "." ++ path),
-          ("names", intercalate ", " (map codegenExposed exposed))
-        ]
-  codegen options (Define def) = codegen options def
-  codegen options stmt = error $ "TODO: codegen " ++ show stmt
+      let emitExposed (name, alias) | name == alias = name
+          emitExposed (name, alias) = name ++ " as " ++ alias
+      let stmt = "from " ++ pkg ++ "." ++ path ++ " import " ++ intercalate ", " (map emitExposed exposed)
+      ([stmt], "")
+  emit options (Define def) = do
+    let (stmts, def') = emit options def
+    (stmts ++ [def'], "")
+  emit options stmt = error $ "TODO: emit " ++ show stmt
 
-instance Codegen Definition where
-  codegen :: BuildOptions -> Definition -> String
-  codegen options (Def ts (PVar x) b) = case (lookup x ts, asLambda "_" b) of
+instance Emit Definition where
+  emit :: BuildOptions -> Definition -> ([String], String)
+  emit options (Def ts (PVar x) b) = case (lookup x ts, asLambda "_" b) of
     (Nothing, ([], b)) -> do
-      template
-        "{{name}} = {{value}}"
-        [ ("name", x),
-          ("value", codegen options b)
-        ]
+      let (stmts, b') = emit options b
+      let py =
+            template
+              "{{name}} = {{value}}"
+              [("name", [x]), ("value", [b'])]
+      (stmts, py)
     (Just t, ([], b)) -> do
-      template
-        "{{name}}: {{type}} = {{value}}"
-        [ ("name", x),
-          ("type", codegen options t),
-          ("value", codegen options b)
-        ]
+      let (stmts1, t') = emit options t
+      let (stmts2, b') = emit options b
+      let py =
+            template
+              "{{name}}: {{type}} = {{value}}"
+              [ ("name", [x]),
+                ("type", [t']),
+                ("value", [b'])
+              ]
+      (stmts1 ++ stmts2, py)
     (Nothing, (xs, b)) -> do
-      template
-        "def {{name}}({{args}}):\n\
-        \    return {{body}}"
-        [ ("name", x),
-          ("args", intercalate ", " xs),
-          ("body", codegen options b)
-        ]
+      let (stmts, b') = emit options b
+      let py =
+            template
+              "def {{name}}({{args}}):\n\
+              \    return {{body}}"
+              [ ("name", [x]),
+                ("args", [intercalate ", " xs]),
+                ("body", [b'])
+              ]
+      (stmts, py)
     (Just t, (xs, b)) -> do
+      let emitArg :: (String, Expr) -> ([String], [String]) -> ([String], [String])
+          emitArg (x, t) (stmts, args) = do
+            let (stmts', t') = emit options t
+            (stmts' ++ stmts, (x ++ ": " ++ t') : args)
       let (ts, ret) = asFun t
-      let args = zipWith (\x t -> x ++ ": " ++ codegen options t) xs ts
-      template
-        "def {{name}}({{args}}) -> {{ret}}:\n\
-        \    return {{body}}"
-        [ ("name", x),
-          ("args", intercalate ", " args),
-          ("ret", codegen options ret),
-          ("body", codegen options b)
-        ]
-  codegen options (Def ts (PMeta _ p) b) = codegen options (Define (Def ts p b))
-  codegen options def = do
-    error $ "TODO: codegen " ++ show def
+      let (stmts1, args) = foldr emitArg ([], []) (zip xs ts)
+      let (stmts2, (ret', b')) = emit2 options ret b
+      let py =
+            template
+              "def {{name}}({{args}}) -> {{ret}}:\n\
+              \    return {{body}}"
+              [ ("name", [x]),
+                ("args", [intercalate ", " args]),
+                ("ret", [ret']),
+                ("body", [b'])
+              ]
+      (stmts1 ++ stmts2, py)
+  emit options (Def ts (PMeta _ p) b) = emit options (Define (Def ts p b))
+  emit options def = do
+    error $ "TODO: emit " ++ show def
 
-instance Codegen Expr where
-  codegen :: BuildOptions -> Expr -> String
-  codegen _ (Int i) = show i
-  codegen _ (Var x) = x
-  codegen _ (Tag k args) = case (k, args) of
-    ("Int", []) -> "int"
-    (k, args) -> k
-  codegen options (Op2 op a b) = do
-    let a' = codegen options a
-    let b' = codegen options b
-    case op of
-      C.Add -> "(" ++ a' ++ " + " ++ b' ++ ")"
-      C.Eq -> "(" ++ a' ++ " == " ++ b' ++ ")"
-      op -> error $ "TODO: codegen " ++ show op
-  codegen options (Meta _ a) = codegen options a
-  codegen options expr = error $ "TODO: codegen " ++ show expr
+instance Emit Expr where
+  emit :: BuildOptions -> Expr -> ([String], String)
+  emit _ (Int i) = ([], show i)
+  emit _ (Num n) = ([], show n)
+  emit _ (Var x) = ([], x)
+  -- Type [String]
+  emit _ (Tag k args) = case (k, args) of
+    ("Int", []) -> ([], "int")
+    (k, []) -> ([], k)
+  -- Tuple [Expr]
+  -- Record [(String, Expr)]
+  -- Trait Expr String
+  -- Fun Expr Expr
+  -- App Expr Expr
+  -- Let Definition Expr
+  -- Bind (Expr, Expr) Expr
+  emit options (Match [] cases) = do
+    let (xs, b) = asLambda "_arg" (Match [] cases)
+    let (stmts, b') = emit options b
+    case xs of
+      [] -> do
+        let py =
+              template
+                "lambda: {{body}}"
+                [("body", [b'])]
+        (stmts, py)
+      xs -> do
+        let py =
+              template
+                "lambda {{args}}: {{body}}"
+                [ ("args", [intercalate ", " xs]),
+                  ("body", [b'])
+                ]
+        (stmts, py)
+  emit options (Match [arg] cases) = do
+    let (stmts1, arg') = emit options arg
+    let (stmts2, cases') = emitAll options cases
+    let py =
+          template
+            "match {{arg}}:\n\
+            \    {{cases}}"
+            [ ("arg", [arg']),
+              ("cases", cases')
+            ]
+    (stmts1 ++ stmts2, py)
+  -- If Expr Expr Expr
+  -- Or Expr Expr
+  -- Ann Expr Expr
+  -- Op1 C.UnaryOp Expr
+  emit options (Op2 op a b) = do
+    let (stmts, (a', b')) = emit2 options a b
+    (stmts, "(" ++ a' ++ " " ++ show op ++ " " ++ b' ++ ")")
+  emit options (Meta _ a) = emit options a
+  -- Err
+  emit options expr = error $ "TODO: emit " ++ show (dropMeta expr)
 
-template :: String -> [(String, String)] -> String
+instance Emit Case where
+  emit :: BuildOptions -> Case -> ([String], String)
+  emit options (Case [p] guard b) = do
+    let (stmts1, (p', b')) = emit2 options p b
+    case guard of
+      Just cond -> do
+        error $ "TODO: emit [p] " ++ show (Case [p] guard b)
+      Nothing -> do
+        let py =
+              template
+                "case {{pattern}}:\n\
+                \    {{body}}"
+                [ ("pattern", [p']),
+                  ("body", [b'])
+                ]
+        (stmts1, py)
+  emit options (Case ps guard b) = do
+    error $ "TODO: emit ps " ++ show (Case ps guard b)
+
+instance Emit Pattern where
+  emit :: BuildOptions -> Pattern -> ([String], String)
+  emit _ PAny = ([], "_")
+  emit _ (PInt i) = ([], show i)
+  -- PNum Double
+  emit _ (PVar x) = ([], show x)
+  -- PNum Double
+  -- PType [String]
+  -- PTuple [Pattern]
+  -- PRecord [(String, Pattern)]
+  -- PTag String [Pattern]
+  -- PFun Pattern Pattern
+  -- POr [Pattern]
+  -- PEq Expr
+  emit options (PMeta _ p) = emit options p
+  -- PErr
+  emit options p = error $ "TODO: emit " ++ show p
+
+emit2 :: (Emit a) => (Emit b) => BuildOptions -> a -> b -> ([String], (String, String))
+emit2 options x y = do
+  let (stmts1, x') = emit options x
+  let (stmts2, y') = emit options y
+  (stmts1 ++ stmts2, (x', y'))
+
+emitAll :: (Emit a) => BuildOptions -> [a] -> ([String], [String])
+emitAll _ [] = ([], [])
+emitAll options (x : xs) = do
+  let (stmts1, x') = emit options x
+  let (stmts2, xs') = emitAll options xs
+  (stmts1 ++ stmts2, x' : xs')
+
+template :: String -> [(String, [String])] -> String
 template text [] = text
-template text ((x, value) : vars) =
-  template (replaceString ("{{" ++ x ++ "}}") value text) vars
+template text (var : vars) = do
+  templateApply (lines text) (first templateVar var)
+    & intercalate "\n"
+    & \txt -> template txt vars
+
+templateApply :: [String] -> (String, [String]) -> [String]
+templateApply [] _ = []
+templateApply (line : lines) (x, ys)
+  | x `in'` line = templateSubstitute line (x, ys) ++ templateApply lines (x, ys)
+  | otherwise = line : templateApply lines (x, ys)
+
+templateSubstitute :: String -> (String, [String]) -> [String]
+templateSubstitute _ (_, []) = []
+templateSubstitute line (x, y : ys) = do
+  replaceString x y line : templateSubstitute line (x, ys)
+
+templateVar :: String -> String
+templateVar x = "{{" ++ x ++ "}}"
 
 buildTests :: BuildOptions -> String -> FilePath -> Module -> IO FilePath
 buildTests options pkg base mod = do

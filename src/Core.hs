@@ -304,10 +304,17 @@ occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
 
 newName :: [String] -> String -> String
-newName existing x = head (newNames existing x)
+newName existing x = head (newNamesStream existing x)
 
-newNames :: [String] -> String -> [String]
-newNames existing x =
+newNames :: [String] -> [String] -> [String]
+newNames _ [] = []
+newNames existing (x : xs) = do
+  let y = newName existing x
+  let ys = newNames (y : existing) xs
+  y : ys
+
+newNamesStream :: [String] -> String -> [String]
+newNamesStream existing x =
   [ name
     | i <- [(0 :: Int) ..],
       let name = if i == 0 then x else x ++ show i,

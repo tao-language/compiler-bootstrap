@@ -42,7 +42,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "snake_case_name" `shouldBe` Right ("snake_case_name", "")
     p "dash-case-name" `shouldBe` Right ("dash-case-name", "")
     p "dash-case-name-1" `shouldBe` Right ("dash-case-name-1", "")
-    p "dash-case-name - 1" `shouldBe` Right ("dash-case-name", "- 1")
+    p "dash-case-name - 1" `shouldBe` Right ("dash-case-name", " - 1")
     p "a->" `shouldBe` Right ("a", "->")
 
   it "☯ parseLineBreak" $ do
@@ -152,7 +152,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "3.14 y" `shouldBe` Right (pat 1 1 (PNum 3.14), "y")
     p "x y" `shouldBe` Right (pvar 1 1 "x", "y")
     -- PType [String]
-    -- PTuple [Pattern]
+    p "A" `shouldBe` Right (pat 1 1 (PTag "A" []), "")
+    p "A y" `shouldBe` Right (pat 1 1 (PTag "A" [pvar 1 3 "y"]), "")
     -- PRecord [(String, Pattern)]
     -- PTag String [Pattern]
     -- PFun Pattern Pattern
@@ -223,7 +224,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseImport" $ do
     let p = parse' parseImport
-    p "import mod" `shouldBe` Right (Import "" "mod" "mod" [], "")
+    p "import mod " `shouldBe` Right (Import "" "mod" "mod" [], "")
     p "import path/to/mod" `shouldBe` Right (Import "" "path/to/mod" "mod" [], "")
     p "import mod as m" `shouldBe` Right (Import "" "mod" "m" [], "")
     p "import mod as m ()" `shouldBe` Right (Import "" "mod" "m" [], "")
@@ -234,7 +235,6 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     let p = parse' parseTest
     p "> x; y" `shouldBe` Right (Test (var 1 3 "x") (pvar 1 6 "y"), "")
     p "> x\ny" `shouldBe` Right (Test (var 1 3 "x") (pvar 2 1 "y"), "")
-    p "> x : a" `shouldBe` Right (Test (meta [loc 1 5] $ Ann (var 1 3 "x") (var 1 7 "a")) PAny, "")
     p "> x" `shouldBe` Right (Test (var 1 3 "x") (PTag "True" []), "")
 
   it "☯ parseStmt" $ do

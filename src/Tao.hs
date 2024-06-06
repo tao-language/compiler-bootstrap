@@ -21,6 +21,7 @@ data Expr
   | App Expr Expr
   | Let Definition Expr
   | Bind (Expr, Expr) Expr
+  | Lambda [String] Expr
   | Match [Expr] [Case]
   | If Expr Expr Expr
   | Or Expr Expr
@@ -92,8 +93,11 @@ numT = Tag "Num" []
 pNumT :: Pattern
 pNumT = PTag "Num" []
 
-lam :: [Pattern] -> Expr -> Expr
-lam ps b = match [] [Case ps Nothing b]
+lambda :: [String] -> [Case] -> Expr
+lambda xs cases = Lambda xs (Match (map Var xs) cases)
+
+match0 :: [Pattern] -> Expr -> Expr
+match0 ps b = match [] [Case ps Nothing b]
 
 match :: [Expr] -> [Case] -> Expr
 match _ [] = Err
@@ -147,7 +151,7 @@ var :: String -> Expr -> Stmt
 var name value = Define (Def [] (PVar name) value)
 
 fn :: String -> [Pattern] -> Expr -> Stmt
-fn name args value = Define (Def [] (PVar name) (lam args value))
+fn name args value = Define (Def [] (PVar name) (match0 args value))
 
 asApp :: Expr -> (Expr, [Expr])
 asApp (App a b) = let (a', bs) = asApp a in (a', bs ++ [b])
@@ -155,18 +159,11 @@ asApp (Meta _ a) = asApp a
 asApp a = (a, [])
 
 asLambda :: String -> Expr -> ([String], Expr)
+asLambda _ (Lambda xs b) = (xs, b)
 asLambda _ (Match _ []) = ([], Err)
-asLambda _ (Match [] (Case [] Nothing a : _)) = ([], a)
-asLambda prefix (Match [] cases) = do
-  let branches = map caseSplit cases
-  let (x, cases') = case patternsName (map fst branches) of
-        Just x -> (x, map snd branches)
-        Nothing -> do
-          --   let x = C.newName (foldr (union . freeVars) [] cases) prefix
-          --   (x, matchArgs [Var x] cases)
-          error $ "TODO: asLambda " ++ show cases
-  let (xs, b) = asLambda prefix (Match [] cases')
-  (x : xs, b)
+asLambda prefix (Match [] cases@(Case ps _ _ : _)) = do
+  let xs = C.newNames (prefix : freeVars (Match [] cases)) (replicate (length ps) prefix)
+  asLambda prefix (lambda xs cases)
 asLambda _ a = ([], a)
 
 isTypeDef :: Expr -> Bool
@@ -659,18 +656,28 @@ replaceString old new text | old `isPrefixOf` text = do
   new ++ replaceString old new (drop (length old) text)
 replaceString old new (c : text) = c : replaceString old new text
 
+in' :: String -> String -> Bool
+in' _ "" = False
+in' substring string | substring `isPrefixOf` string = True
+in' substring (_ : string) = in' substring string
+
 class DropMeta a where
   dropMeta :: a -> a
 
 instance DropMeta Expr where
   dropMeta :: Expr -> Expr
   dropMeta (Meta _ a) = dropMeta a
+  dropMeta (Match args cases) = Match (map dropMeta args) (map dropMeta cases)
   dropMeta a = apply dropMeta a
 
 instance DropMeta Pattern where
   dropMeta :: Pattern -> Pattern
   dropMeta (PMeta _ p) = dropMeta p
   dropMeta a = apply dropMeta a
+
+instance DropMeta Case where
+  dropMeta :: Case -> Case
+  dropMeta (Case ps guard a) = Case (map dropMeta ps) (fmap dropMeta guard) (dropMeta a)
 
 instance DropMeta Definition where
   dropMeta :: Definition -> Definition
