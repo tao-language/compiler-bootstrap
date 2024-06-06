@@ -1,5 +1,7 @@
 # ☯ Tao compiler bootstrap
 
+> This is outdated.
+
 Compiler bootstrap for the Tao language.
 
 ## Before you begin
