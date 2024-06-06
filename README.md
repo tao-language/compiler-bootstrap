@@ -1,6 +1,6 @@
 # ☯ Tao compiler bootstrap
 
-> This is outdated.
+> This is outdated, some commands may not work.
 
 Compiler bootstrap for the Tao language.
 
