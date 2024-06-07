@@ -91,6 +91,7 @@ parseCommentSingleLine = do
   P.commit CComment
   _ <- P.spaces
   line <- P.skipTo P.endOfLine
+  _ <- P.whitespaces
   return (dropWhileEnd isSpace line)
 
 parseCommentMultiLine :: Parser String
