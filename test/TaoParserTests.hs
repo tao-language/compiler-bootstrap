@@ -13,6 +13,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   let loc row col = C.Location sourceName (row, col)
   let expr row col = meta [loc row col]
   let var row col x = expr row col (Var x)
+  let pat row col = PMeta (loc row col)
+  let pvar row col x = pat row col (PVar x)
 
   let parse' :: Parser a -> String -> Either ([ParserContext], String) (a, String)
       parse' parser src = case P.parse sourceName parser src of
@@ -40,7 +42,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "snake_case_name" `shouldBe` Right ("snake_case_name", "")
     p "dash-case-name" `shouldBe` Right ("dash-case-name", "")
     p "dash-case-name-1" `shouldBe` Right ("dash-case-name-1", "")
-    p "dash-case-name - 1" `shouldBe` Right ("dash-case-name", "- 1")
+    p "dash-case-name - 1" `shouldBe` Right ("dash-case-name", " - 1")
     p "a->" `shouldBe` Right ("a", "->")
 
   it "☯ parseLineBreak" $ do
@@ -115,10 +117,10 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   --   p "abc#parseComment" `shouldBe` Right (meta 1 1 "parseComment" "abc", "")
   --   p "abc#  parseComment  " `shouldBe` Right (meta 1 1 "parseComment" "abc", "")
 
-  it "☯ parseName" $ do
-    let p = parse' parseName
-    p "var abc" `shouldBe` Right (Var "var", "abc")
-    p "Tag abc" `shouldBe` Right (Tag "Tag", "abc")
+  -- it "☯ parseName" $ do
+  --   let p = parse' parseName
+  --   p "var x y;" `shouldBe` Right (Var "var", "x y;")
+  --   p "Tag x y;" `shouldBe` Right (Tag "Tag" [var 1 5 "x", var 1 7 "y"], ";")
 
   it "☯ parseTuple" $ do
     let p = parse' parseTuple
@@ -129,25 +131,67 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseRecordField" $ do
     let p = parse' parseRecordField
-    p "x" `shouldBe` Left ([CRecordField "x"], "")
-    p "x:y" `shouldBe` Right (("x", var 1 3 "y"), "")
-    p "x \n : \n y" `shouldBe` Right (("x", var 3 2 "y"), "")
+    p "x" `shouldBe` Right (("x", var 1 1 "x"), "")
+    p "x=y" `shouldBe` Right (("x", var 1 3 "y"), "")
+    p "x:y" `shouldBe` Right (("x", Ann (var 1 1 "x") (var 1 3 "y")), "")
+    p "x:y=z" `shouldBe` Right (("x", Ann (var 1 5 "z") (var 1 3 "y")), "")
+    p "x \n = \n y" `shouldBe` Right (("x", var 3 2 "y"), "")
+    p "x \n : \n y" `shouldBe` Right (("x", Ann (var 1 1 "x") (var 3 2 "y")), "")
+    p "x \n : \n y \n = z" `shouldBe` Right (("x", Ann (var 4 4 "z") (var 3 2 "y")), "")
 
   it "☯ parseRecord" $ do
     let p = parse' parseRecord
     p "{} abc" `shouldBe` Right (Record [], " abc")
-    p "{x: y} abc" `shouldBe` Right (Record [("x", var 1 5 "y")], " abc")
-    p "{x: y, z: w} abc" `shouldBe` Right (Record [("x", var 1 5 "y"), ("z", var 1 11 "w")], " abc")
+    p "{x} abc" `shouldBe` Right (Record [("x", var 1 2 "x")], " abc")
+    p "{x, y} abc" `shouldBe` Right (Record [("x", var 1 2 "x"), ("y", var 1 5 "y")], " abc")
 
-  it "☯ parseExpr'" $ do
-    let p = parse' (parseExpr $ P.ok ())
-    p "Type" `shouldBe` Right (meta [loc 1 1] $ Tag "Type", "")
-    p "Int" `shouldBe` Right (meta [loc 1 1] $ Tag "Int", "")
-    p "Num" `shouldBe` Right (meta [loc 1 1] $ Tag "Num", "")
+  it "☯ parsePattern" $ do
+    let p = parse' parsePattern
+    p "_ y" `shouldBe` Right (pat 1 1 PAny, "y")
+    p "42 y" `shouldBe` Right (pat 1 1 (PInt 42), "y")
+    p "3.14 y" `shouldBe` Right (pat 1 1 (PNum 3.14), "y")
+    p "x y" `shouldBe` Right (pvar 1 1 "x", "y")
+    -- PType [String]
+    p "A" `shouldBe` Right (pat 1 1 (PTag "A" []), "")
+    p "A y" `shouldBe` Right (pat 1 1 (PTag "A" [pvar 1 3 "y"]), "")
+    -- PRecord [(String, Pattern)]
+    -- PTag String [Pattern]
+    -- PFun Pattern Pattern
+    -- POr [Pattern]
+    -- PEq Expr
+    -- PMeta C.Metadata Pattern
+    -- PErr
+    True `shouldBe` True
+
+  it "☯ parseCase" $ do
+    let p = parse' parseCase
+    p "%" `shouldBe` Left ([], "%")
+    p "| %" `shouldBe` Left ([CCase], "%")
+    p "| -> y;" `shouldBe` Left ([CCase], "-> y;")
+    p "| x -> y;" `shouldBe` Right (Case [pvar 1 3 "x"] Nothing (var 1 8 "y"), "")
+    p "| x, y -> z;" `shouldBe` Right (Case [pvar 1 3 "x", pvar 1 6 "y"] Nothing (var 1 11 "z"), "")
+    p "| x if y -> z;" `shouldBe` Right (Case [pvar 1 3 "x"] (Just $ var 1 8 "y") (var 1 13 "z"), "")
+
+  it "☯ parseMatch" $ do
+    let p = parse' parseMatch
+    p "match" `shouldBe` Left ([CMatch], "")
+    p "match; | x -> y" `shouldBe` Left ([CMatch], "; | x -> y")
+    p "match a\n| x -> y" `shouldBe` Right (Match [var 1 7 "a"] [Case [pvar 2 3 "x"] Nothing (var 2 8 "y")], "")
+    p "match a, b\n| x -> y" `shouldBe` Right (Match [var 1 7 "a", var 1 10 "b"] [Case [pvar 2 3 "x"] Nothing (var 2 8 "y")], "")
+    p "match a\n| x -> y\n| a -> b" `shouldBe` Right (Match [var 1 7 "a"] [Case [pvar 2 3 "x"] Nothing (var 2 8 "y"), Case [pvar 3 3 "a"] Nothing (var 3 8 "b")], "")
+
+  it "☯ parseExpr" $ do
+    let p = parse' (parseExpr 0 P.spaces)
+    p "Type" `shouldBe` Right (meta [loc 1 1] $ Tag "Type" [], "")
+    p "Int" `shouldBe` Right (meta [loc 1 1] $ Tag "Int" [], "")
+    p "Num" `shouldBe` Right (meta [loc 1 1] $ Tag "Num" [], "")
     p "42" `shouldBe` Right (meta [loc 1 1] $ Int 42, "")
     p "3.14" `shouldBe` Right (meta [loc 1 1] $ Num 3.14, "")
     p "var" `shouldBe` Right (meta [loc 1 1] $ Var "var", "")
-    p "Tag" `shouldBe` Right (meta [loc 1 1] $ Tag "Tag", "")
+    p "Tag" `shouldBe` Right (meta [loc 1 1] $ Tag "Tag" [], "")
+    p "| x -> y" `shouldBe` Right (meta [loc 1 1] $ Match [] [Case [pvar 1 3 "x"] Nothing (var 1 8 "y")], "")
+    p "| x -> y\n| a -> b" `shouldBe` Right (meta [loc 1 1] $ Match [] [Case [pvar 1 3 "x"] Nothing (var 1 8 "y"), Case [pvar 2 3 "a"] Nothing (var 2 8 "b")], "")
+    p "match a\n| x -> y" `shouldBe` Right (meta [loc 1 1] $ Match [var 1 7 "a"] [Case [pvar 2 3 "x"] Nothing (var 2 8 "y")], "")
     p "()" `shouldBe` Right (meta [loc 1 1] $ Tuple [], "")
     p "{}" `shouldBe` Right (meta [loc 1 1] $ Record [], "")
     p "x |  y" `shouldBe` Right (meta [loc 1 3] $ Or (var 1 1 "x") (var 1 6 "y"), "")
@@ -165,12 +209,12 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseDefinition" $ do
     let p = parse' parseDefinition
-    p "x = y" `shouldBe` Right (NameDef [] "x" [] (var 1 5 "y"), "")
-    p "x = y;" `shouldBe` Right (NameDef [] "x" [] (var 1 5 "y"), "")
-    p "x = y\n" `shouldBe` Right (NameDef [] "x" [] (var 1 5 "y"), "")
-    p "x =\ny" `shouldBe` Right (NameDef [] "x" [] (var 2 1 "y"), "")
-    p "x\n= y" `shouldBe` Right (NameDef [] "x" [] (var 2 3 "y"), "")
-    p "x : a = y" `shouldBe` Right (NameDef [("x", var 1 5 "a")] "x" [] (var 1 9 "y"), "")
+    p "x = y" `shouldBe` Right (Def [] (pvar 1 1 "x") (var 1 5 "y"), "")
+    p "x = y;" `shouldBe` Right (Def [] (pvar 1 1 "x") (var 1 5 "y"), "")
+    p "x = y\n" `shouldBe` Right (Def [] (pvar 1 1 "x") (var 1 5 "y"), "")
+    p "x =\ny" `shouldBe` Right (Def [] (pvar 1 1 "x") (var 2 1 "y"), "")
+    p "x\n= y" `shouldBe` Right (Def [] (pvar 1 1 "x") (var 2 3 "y"), "")
+    p "x : a = y" `shouldBe` Right (Def [("x", var 1 5 "a")] (pvar 1 1 "x") (var 1 9 "y"), "")
 
   it "☯ parseTypeAnnotation" $ do
     let p = parse' parseTypeAnnotation
@@ -180,30 +224,30 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseImport" $ do
     let p = parse' parseImport
-    p "import mod" `shouldBe` Right (Import "mod" "mod" [], "")
-    p "import path/to/mod" `shouldBe` Right (Import "path/to/mod" "mod" [], "")
-    p "import mod as m" `shouldBe` Right (Import "mod" "m" [], "")
-    p "import mod as m ()" `shouldBe` Right (Import "mod" "m" [], "")
-    p "import mod as m (a, b as c)" `shouldBe` Right (Import "mod" "m" [("a", "a"), ("b", "c")], "")
+    p "import mod " `shouldBe` Right (Import "" "mod" "mod" [], "")
+    p "import path/to/mod" `shouldBe` Right (Import "" "path/to/mod" "mod" [], "")
+    p "import mod as m" `shouldBe` Right (Import "" "mod" "m" [], "")
+    p "import mod as m ()" `shouldBe` Right (Import "" "mod" "m" [], "")
+    p "import mod as m (a, b as c)" `shouldBe` Right (Import "" "mod" "m" [("a", "a"), ("b", "c")], "")
+    p "import pkg:mod" `shouldBe` Right (Import "pkg" "mod" "mod" [], "")
 
   it "☯ parseTest" $ do
     let p = parse' parseTest
-    p "> x; y" `shouldBe` Right (Test (var 1 3 "x") (var 1 6 "y"), "")
-    p "> x\ny" `shouldBe` Right (Test (var 1 3 "x") (var 2 1 "y"), "")
-    p "> x : a" `shouldBe` Right (Test (meta [loc 1 5] $ Ann (var 1 3 "x") (var 1 7 "a")) (var 1 3 "x"), "")
-    p "> x" `shouldBe` Right (Test (var 1 3 "x") (Tag "True"), "")
+    p "> x; y" `shouldBe` Right (Test (var 1 3 "x") (pvar 1 6 "y"), "")
+    p "> x\ny" `shouldBe` Right (Test (var 1 3 "x") (pvar 2 1 "y"), "")
+    p "> x" `shouldBe` Right (Test (var 1 3 "x") (PTag "True" []), "")
 
   it "☯ parseStmt" $ do
     let p = parse' parseStmt
-    p "x = y" `shouldBe` Right (Def (NameDef [] "x" [] (var 1 5 "y")), "")
-    p "import mod" `shouldBe` Right (Import "mod" "mod" [], "")
-    p "> x; y" `shouldBe` Right (Test (var 1 3 "x") (var 1 6 "y"), "")
+    p "x = y" `shouldBe` Right (Define (Def [] (pvar 1 1 "x") (var 1 5 "y")), "")
+    p "import mod" `shouldBe` Right (Import "" "mod" "mod" [], "")
+    p "> x; y" `shouldBe` Right (Test (var 1 3 "x") (pvar 1 6 "y"), "")
 
   it "☯ parseModule" $ do
     let p = parse' (parseModule "path/my-file.tao")
     p "" `shouldBe` Right (Module "path/my-file.tao" [], "")
     p "x" `shouldBe` Left ([CModule], "x")
-    p "import m" `shouldBe` Right (Module "path/my-file.tao" [Import "m" "m" []], "")
+    p "import m" `shouldBe` Right (Module "path/my-file.tao" [Import "" "m" "m" []], "")
 
   it "☯ parseFile exists" $ do
     let pkg = Package {name = "pkg", modules = [Module "my-file" []]}

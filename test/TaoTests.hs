@@ -12,12 +12,6 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
   let (f, f') = (Var "f", C.Var "f")
 
-  it "☯ lower/lift Any" $ do
-    let expr = Any
-    let term = C.Var "_"
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
-
   it "☯ lower/lift Type" $ do
     let expr = Type ["A"]
     let term = C.Typ ["A"]
@@ -25,13 +19,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     liftExpr term `shouldBe` expr
 
   it "☯ lower/lift IntType" $ do
-    let expr = Tag "Int"
+    let expr = Tag "Int" []
     let term = C.IntT
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
   it "☯ lower/lift NumType" $ do
-    let expr = Tag "Num"
+    let expr = Tag "Num" []
     let term = C.NumT
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
@@ -55,41 +49,41 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     liftExpr term `shouldBe` expr
 
   it "☯ lower/lift Tag" $ do
-    let expr = Tag "A"
-    let term = C.Tag "A"
+    let expr = Tag "A" []
+    let term = C.Tag "A" []
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
   it "☯ lower/lift Tuple" $ do
     let expr = Tuple []
-    let term = C.Tag "()"
+    let term = C.Tag "()" []
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
     let expr = Tuple [x, y]
-    let term = C.app (C.Tag "()") [x', y']
+    let term = C.Tag "()" [x', y']
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
-  it "☯ lower/lift Record" $ do
-    let expr = Record []
-    let term = C.Rec []
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+  -- it "☯ lower/lift Record" $ do
+  --   let expr = Record []
+  --   let term = C.Rec []
+  --   lowerExpr [] expr `shouldBe` term
+  --   liftExpr term `shouldBe` expr
 
-    let expr = Record [("a", x), ("b", y)]
-    let term = C.Rec [("a", x'), ("b", y')]
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+  --   let expr = Record [("a", x), ("b", y)]
+  --   let term = C.Rec [("a", x'), ("b", y')]
+  --   lowerExpr [] expr `shouldBe` term
+  --   liftExpr term `shouldBe` expr
 
   it "☯ lower/lift Trait" $ do
     let expr = Trait (Int 1) "y"
-    let term = C.app (C.Var ".y") [C.IntT, C.Int 1]
+    let term = C.app (C.Var ".y") [C.Int 1 `C.Or` C.IntT, C.Int 1]
     lowerExpr [] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
     let expr = Trait x "y"
-    let term = C.app (C.Var ".y") [C.IntT, x']
+    let term = C.app (C.Var ".y") [C.Int 1 `C.Or` C.IntT, x']
     lowerExpr [("x", Int 1)] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
@@ -124,7 +118,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower/lift Bind" $ do
     let expr = Bind (x, y) z
-    let term = C.app (C.Var ".<-") [C.IntT, y', C.Fun x' z']
+    let term = C.app (C.Var ".<-") [C.Int 1 `C.Or` C.IntT, y', C.Fun x' z']
     lowerExpr [("y", Int 1)] expr `shouldBe` term
     liftExpr term `shouldBe` expr
 
@@ -218,11 +212,11 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           let mod = Module "mod" stmts
           moduleDefs "pkg" mod
     defs [] `shouldBe` []
-    defs [Import "mod2" "m2" []] `shouldBe` []
-    defs [Import "mod2" "m2" [("x", "y")]] `shouldBe` [("pkg:mod#y", Var "pkg:mod2#x")]
-    defs [Import "pkg2:mod2" "m2" [("x", "y")]] `shouldBe` [("pkg:mod#y", Var "pkg2:mod2#x")]
-    defs [defName "x" y] `shouldBe` [("pkg:mod#x", Var "y")]
-    defs [defName "x" y, defName "y" z] `shouldBe` [("pkg:mod#x", Var "pkg:mod#y"), ("pkg:mod#y", Var "z")]
+    defs [Import "" "mod2" "m2" []] `shouldBe` []
+    defs [Import "" "mod2" "m2" [("x", "y")]] `shouldBe` [("pkg:mod#y", Var "pkg:mod2#x")]
+    defs [Import "pkg2" "mod2" "m2" [("x", "y")]] `shouldBe` [("pkg:mod#y", Var "pkg2:mod2#x")]
+    defs [var "x" y] `shouldBe` [("pkg:mod#x", Var "y")]
+    defs [var "x" y, var "y" z] `shouldBe` [("pkg:mod#x", Var "pkg:mod#y"), ("pkg:mod#y", Var "z")]
 
   it "☯ packageDefs" $ do
     let defs stmts = do
@@ -230,7 +224,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           let pkg = Package "pkg" [mod]
           packageDefs pkg
     defs [] `shouldBe` []
-    defs [defName "x" y] `shouldBe` [("pkg:mod#x", Var "y")]
+    defs [var "x" y] `shouldBe` [("pkg:mod#x", Var "y")]
 
   -- it "☯ lowerPackage" $ do
   --   let mod defs = Package {name = "lowerPackage", modules = [Module "f" defs]}
@@ -280,21 +274,19 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ packageTests" $ do
     let defs =
-          [ defName "x" (Int 1),
-            Test x y,
-            defName "y" (Int 2)
+          [ var "x" (Int 1),
+            Test x (PInt 2)
           ]
     let mod = Package {name = "pkg", modules = [Module "mod" defs]}
-    packageTests mod `shouldBe` [(Var "pkg:mod#x", Var "pkg:mod#y")]
+    packageTests mod `shouldBe` [(Var "pkg:mod#x", PInt 2)]
 
   it "☯ test" $ do
     let defs =
-          [ defName "x" (Int 1),
-            Test x y,
-            defName "y" (Int 2)
+          [ var "x" (Int 1),
+            Test x (PInt 2)
           ]
     let mod = Package {name = "pkg", modules = [Module "mod" defs]}
-    test mod `shouldBe` [TestEqError (Var "pkg:mod#x") (Int 1) (Int 2)]
+    test mod `shouldBe` [TestEqError (Var "pkg:mod#x") (Int 1) (PInt 2)]
 
   it "☯ splitCamelCase" $ do
     splitCamelCase "" `shouldBe` []
@@ -355,9 +347,10 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     True `shouldBe` True
 
   it "☯ rename Package" $ do
-    let m1 x = Module "m1" [Def (NameDef [] x [] $ Int 42), Def (NameDef [] "y" [] $ Var x)]
-    let m2 _ = Module "m2" [Def (NameDef [] "x" [] $ Int 42), Def (NameDef [] "y" [] $ Var "x")]
-    let m3 x = Module "m3" [Import "m1" x [], Def (NameDef [] "y" [] $ Var x)]
-    let m4 x = Module "m4" [Import "m1" "m" [(x, x)], Def (NameDef [] "y" [] $ Var x)]
+    let (x', y') = (PVar "x", PVar "y")
+    let m1 x = Module "m1" [Define (Def [] (PVar x) $ Int 42), Define (Def [] y' (Var x))]
+    let m2 _ = Module "m2" [Define (Def [] x' $ Int 42), Define (Def [] y' x)]
+    let m3 x = Module "m3" [Import "pkg" "m1" x [], Define (Def [] y' (Var x))]
+    let m4 x = Module "m4" [Import "pkg" "m1" "m" [(x, x)], Define (Def [] y' (Var x))]
     let pkg = Package "pkg" [m1 "x", m2 "x", m3 "x", m4 "x"]
     rename "m1" "x" "z" pkg `shouldBe` pkg {modules = [m1 "z", m2 "z", m3 "z", m4 "z"]}

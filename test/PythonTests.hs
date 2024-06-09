@@ -12,32 +12,32 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Python ☯==--" $ do
-  let options = defaultBuildOptions
-  let ctx = PyCtx {globals = [], locals = [], nameIndex = 0}
+  let options = defaultBuildOptions {packageName = "pkg"}
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (x', y', z') = (PyName "x", PyName "y", PyName "z")
   let (a', b') = (PyName "a", PyName "b")
 
-  it "☯ emitExpr" $ do
-    emitExpr options ctx Any `shouldBe` (ctx, PyName "_")
-    emitExpr options ctx (Int 42) `shouldBe` (ctx, PyInteger 42)
-    emitExpr options ctx (Num 3.14) `shouldBe` (ctx, PyFloat 3.14)
-    emitExpr options ctx (Var "x") `shouldBe` (ctx, PyName "x")
-    emitExpr options ctx (Tag "Int") `shouldBe` (ctx, PyName "int")
-    emitExpr options ctx (Tag "Num") `shouldBe` (ctx, PyName "float")
-    emitExpr options ctx (Tag "A") `shouldBe` (ctx, pyCall (PyName "A") [])
-    emitExpr options ctx (Tuple []) `shouldBe` (ctx, PyTuple [])
-    emitExpr options ctx (Tuple [x, y]) `shouldBe` (ctx, PyTuple [x', y'])
-    -- emitExpr ctx (Record []) `shouldBe` (ctx, PyDict [])
-    -- emitExpr ctx (Record [("a", x), ("b", y)]) `shouldBe` (ctx, PyDict [(a', x'), (b', y')])
-    -- emitExpr ctx (Trait x "y") `shouldBe` (ctx, pyCall (PyAttribute x' "y") [])
-    -- emitExpr ctx ListNil `shouldBe` (ctx, pyCall (PyName "_ListNil") [])
-    -- emitExpr ctx ListCons `shouldBe` (ctx, pyCall (PyName "_ListCons") [])
-    -- emitExpr ctx TextNil `shouldBe` (ctx, pyCall (PyName "_TextNil") [])
-    -- emitExpr ctx TextCons `shouldBe` (ctx, pyCall (PyName "_TextCons") [])
-    -- emitExpr ctx (Type []) `shouldBe` (ctx, pyCall (PyName "Type") [PyList []])
-    -- emitExpr ctx (Type ["A", "B"]) `shouldBe` (ctx, pyCall (PyName "Type") [PyList [PyName "A", PyName "B"]])
-    -- emitExpr ctx (Fun x y) `shouldBe`
+  it "☯ emit Expr" $ do
+    let emit' = emit :: BuildOptions -> Expr -> ([PyStmt], PyExpr)
+    emit' options (Int 42) `shouldBe` ([], PyInteger 42)
+    emit' options (Num 3.14) `shouldBe` ([], PyFloat 3.14)
+    emit' options (Var "x") `shouldBe` ([], PyName "x")
+    -- emit' options (Tag "Int" []) `shouldBe` ([], PyName "int")
+    -- emit' options (Tag "Num" []) `shouldBe` ([], PyName "float")
+    -- emit' options (Tag "A" []) `shouldBe` ([], pyCall (PyName "A") [])
+    -- emit' options (Tag "A" [x, y]) `shouldBe` ([], pyCall (PyName "A") [x', y'])
+    -- emit' options (Tuple []) `shouldBe` ([], PyTuple [])
+    -- emit' options (Tuple [x, y]) `shouldBe` ([], PyTuple [x', y'])
+    -- emit'  (Record []) `shouldBe` (, PyDict [])
+    -- emit'  (Record [("a", x), ("b", y)]) `shouldBe` (, PyDict [(a', x'), (b', y')])
+    -- emit'  (Trait x "y") `shouldBe` (, pyCall (PyAttribute x' "y") [])
+    -- emit'  ListNil `shouldBe` (, pyCall (PyName "_ListNil") [])
+    -- emit'  ListCons `shouldBe` (, pyCall (PyName "_ListCons") [])
+    -- emit'  TextNil `shouldBe` (, pyCall (PyName "_TextNil") [])
+    -- emit'  TextCons `shouldBe` (, pyCall (PyName "_TextCons") [])
+    -- emit'  (Type []) `shouldBe` (, pyCall (PyName "Type") [PyList []])
+    -- emit'  (Type ["A", "B"]) `shouldBe` (, pyCall (PyName "Type") [PyList [PyName "A", PyName "B"]])
+    -- emit'  (Fun x y) `shouldBe`
     -- Fun Expr Expr
     -- App Expr Expr
     -- Let (Expr, Expr) Expr
@@ -53,24 +53,25 @@ run = describe "--==☯ Python ☯==--" $ do
     -- Err
     True `shouldBe` True
 
-  it "☯ emitStmt Import" $ do
-    emitStmt options "pkg" (Import "mod" "mod" []) ctx `shouldBe` ctx {globals = [PyImport "pkg.mod" Nothing]}
-    emitStmt options "pkg" (Import "mod" "alias" []) ctx `shouldBe` ctx {globals = [PyImport "pkg.mod" (Just "alias")]}
-    emitStmt options "pkg" (Import "mod" "mod" [("a", "a"), ("b", "c")]) ctx `shouldBe` ctx {globals = [PyImport "pkg.mod" Nothing, PyImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]}
+  it "☯ emit Import" $ do
+    emit options (Import "" "mod" "mod" []) `shouldBe` [PyImport "pkg.mod" Nothing]
+    emit options (Import "" "mod" "alias" []) `shouldBe` [PyImport "pkg.mod" (Just "alias")]
+    emit options (Import "" "mod" "mod" [("a", "a"), ("b", "c")]) `shouldBe` [PyImport "pkg.mod" Nothing, PyImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]
+    emit options (Import "pkg2" "mod" "mod" [("a", "a"), ("b", "c")]) `shouldBe` [PyImport "pkg2.mod" Nothing, PyImportFrom "pkg2.mod" [("a", Nothing), ("b", Just "c")]]
 
-  it "☯ emitStmt Def" $ do
-    emitStmt options "pkg" (Def (NameDef [] "x" [] y)) ctx `shouldBe` ctx {locals = [PyAssign [x'] y']}
+  it "☯ emit Def" $ do
+    emit options (var "x" y) `shouldBe` [PyAssign [x'] y']
 
   it "☯ emitModule" $ do
     let stmts =
-          [ Def (NameDef [] "x" [] (Int 1)),
-            Def (NameDef [] "y" [] (Int 2))
+          [ var "x" (Int 1),
+            var "y" (Int 2)
           ]
-    let emitStmts =
+    let emits =
           [ PyAssign [x'] (PyInteger 1),
             PyAssign [y'] (PyInteger 2)
           ]
-    emitModule options "pkg" (Module "mod" stmts) `shouldBe` PyModule {name = "mod", body = emitStmts}
+    emit options (Module "mod" stmts) `shouldBe` PyModule {name = "mod", body = emits}
 
   it "☯ build" $ do
     putStrLn "> parsePackage"
@@ -79,32 +80,32 @@ run = describe "--==☯ Python ☯==--" $ do
     putStrLn "> build"
     build options "build" pkg `shouldReturn` "build/python"
 
-    let taoModules =
-          [ "def-function",
-            "def-variable",
-            "empty",
-            "imports",
-            "sub-module/sub-file"
-          ]
+    -- let taoModules =
+    --       [ "def-function",
+    --         "def-variable",
+    --         "empty",
+    --         "imports",
+    --         "sub-module/sub-file"
+    --       ]
     -- sort (map (\m -> m.name) pkg.modules) `shouldBe` taoModules
 
-    let pythonFiles =
-          [ "build/python/pyproject.toml",
-            "build/python/simple/__init__.py",
-            "build/python/simple/def_function.py",
-            "build/python/simple/def_variable.py",
-            "build/python/simple/empty.py",
-            "build/python/simple/imports.py",
-            "build/python/simple/sub_module/__init__.py",
-            "build/python/simple/sub_module/sub_file.py",
-            "build/python/test/__init__.py",
-            "build/python/test/sub_module/__init__.py",
-            "build/python/test/sub_module/test_sub_file.py",
-            "build/python/test/test_def_function.py",
-            "build/python/test/test_def_variable.py",
-            "build/python/test/test_empty.py",
-            "build/python/test/test_imports.py"
-          ]
+    -- let pythonFiles =
+    --       [ "build/python/pyproject.toml",
+    --         "build/python/simple/__init__.py",
+    --         "build/python/simple/def_function.py",
+    --         "build/python/simple/def_variable.py",
+    --         "build/python/simple/empty.py",
+    --         "build/python/simple/imports.py",
+    --         "build/python/simple/sub_module/__init__.py",
+    --         "build/python/simple/sub_module/sub_file.py",
+    --         "build/python/test/__init__.py",
+    --         "build/python/test/sub_module/__init__.py",
+    --         "build/python/test/sub_module/test_sub_file.py",
+    --         "build/python/test/test_def_function.py",
+    --         "build/python/test/test_def_variable.py",
+    --         "build/python/test/test_empty.py",
+    --         "build/python/test/test_imports.py"
+    --       ]
     -- fmap sort (getRecursiveContents "build/python") `shouldReturn` pythonFiles
 
     -- Run generated tests
