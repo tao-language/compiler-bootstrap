@@ -381,6 +381,7 @@ defaultBuildOptions :: BuildOptions
 defaultBuildOptions =
   BuildOptions
     { version = (3, 12),
+      packageName = "",
       testingFramework = UnitTest,
       testPath = "test",
       docsPath = "docs",
@@ -488,72 +489,56 @@ buildTests options pkgName base mod = do
   buildDir base (splitPath $ takeDirectory filename)
 
   -- Write the test file contents.
-  let mod' = mod {stmts = filter (not . isDefine) mod.stmts}
   let options' = options {packageName = pkgName}
   writeFile (base </> filename) $
-    (emit options' mod' :: PyModule)
+    buildModuleTests options' mod
       & layout
       & pyPretty options'
   return filename
 
--- emitModuleTests :: BuildOptions -> String -> Module -> PyModule
--- emitModuleTests options pkgName mod = do
---   let importFramework = case options.testingFramework of
---         UnitTest -> PyImport "unittest" Nothing
---         PyTest -> error "TODO: emitTests PyTest"
---   let path = splitDirectories mod.name & filter (/= ".")
---   let importPath = intercalate "." (pkgName : path)
---   let imports = case map fst (concatMap (stmtDefs pkgName) mod.stmts) of
---         [] -> [importFramework]
---         names -> do
---           let importModule = PyImportFrom importPath (map (,Nothing) names)
---           [importFramework, importModule]
---   -- TODO: include imports from the Module itself
---   let ctx0 = PyCtx {globals = imports, locals = [], nameIndex = 0}
---   let ctx1 = foldr (emitTest options pkgName) ctx0 mod.stmts
---   let testClass =
---         PyClassDef
---           { name = "Test" ++ nameCamelCaseUpper (takeFileName mod.name),
---             bases = [PyAttribute (PyName "unittest") "TestCase"],
---             body = ctx1.locals,
---             decorators = [],
---             typeParams = []
---           }
---   let entrypoint =
---         PyIf
---           { test = PyCompare (PyName "__name__") PyEq (PyString "__main__"),
---             body = [PyAssign [] (pyCall (PyAttribute (PyName "unittest") "main") [])],
---             orelse = []
---           }
---   let ctx = ctx1 & addGlobal testClass & addGlobal entrypoint
---   PyModule {name = "test_" ++ mod.name, body = ctx.globals}
+buildModuleTests :: BuildOptions -> Module -> PyModule
+buildModuleTests options mod = do
+  let importFramework = case options.testingFramework of
+        UnitTest -> PyImport "unittest" Nothing
+        PyTest -> error "TODO: emitTests PyTest"
+  let path = splitDirectories mod.name & filter (/= ".")
+  let importPath = intercalate "." (options.packageName : path)
+  let importDefs = case map fst (concatMap (stmtDefs options.packageName) mod.stmts) of
+        [] -> [importFramework]
+        names -> do
+          let importModule = PyImportFrom importPath (map (,Nothing) names)
+          [importFramework, importModule]
+  let imports = emit options (filter isImport mod.stmts)
+  let testClass =
+        PyClassDef
+          { name = "Test" ++ nameCamelCaseUpper (takeFileName mod.name),
+            bases = [PyAttribute (PyName "unittest") "TestCase"],
+            body = emit options (filter isTest mod.stmts),
+            decorators = [],
+            typeParams = []
+          }
+  let entrypoint =
+        PyIf
+          { test = PyCompare (PyName "__name__") PyEq (PyString "__main__"),
+            body = [PyAssign [] (pyCall (PyAttribute (PyName "unittest") "main") [])],
+            orelse = []
+          }
+  let stmts =
+        (importFramework : importDefs ++ imports)
+          ++ [testClass]
+          ++ [entrypoint]
+  PyModule {name = "test_" ++ mod.name, body = stmts}
 
--- emitTest :: BuildOptions -> String -> Stmt -> PyCtx -> PyCtx
--- emitTest options pkgName stmt ctx0 = case stmt of
---   Import {} -> emitImport options pkgName stmt ctx0
---   Test a b -> do
---     let (ctx1, (a', b')) = emitExpr2 options ctx0 (a, toExpr b)
---     let assertEqual x y =
---           pyCall (PyAttribute (PyName "self") "assertEqual") [x, y]
---     let testDef =
---           PyFunctionDef
---             { name = "test_" ++ nameSnakeCase (show (dropMeta a)),
---               args = [("self", Nothing, Nothing)],
---               body = [PyAssign [] (assertEqual a' b')],
---               decorators = [],
---               returns = Nothing,
---               typeParams = [],
---               async = False
---             }
---     addLocal testDef ctx1
---   _ -> ctx0
+isImport :: Stmt -> Bool
+isImport Import {} = True
+isImport _ = False
 
 isTest :: Stmt -> Bool
-isTest (Test _ _) = True
+isTest Test {} = True
 isTest _ = False
 
 isDefine :: Stmt -> Bool
-isDefine (Define _) = True
+isDefine Define {} = True
 isDefine _ = False
 
 -- TODO: rename to Emit
@@ -586,6 +571,20 @@ instance Emit Stmt [PyStmt] where
         let stmts = emit options (Import pkg' path alias [])
         stmts ++ [PyImportFrom (pkg' ++ "." ++ path) (map expose exposed)]
   emit options (Define def) = emit options def
+  emit options (Test a p) = do
+    let (stmts1, a') = emit options a
+    let (stmts2, b') = emit options (toExpr p) -- TODO: do a match instead
+    let def =
+          PyFunctionDef
+            { name = "test_" ++ nameSnakeCase (show (dropMeta a)),
+              args = [("self", Nothing, Nothing)],
+              body = [PyAssign [] (pyCall (PyAttribute (PyName "self") "assertEqual") [a', b'])],
+              decorators = [],
+              returns = Nothing,
+              typeParams = [],
+              async = False
+            }
+    stmts1 ++ stmts2 ++ [def]
   emit options stmt = error $ "TODO: emit " ++ show stmt
 
 instance Emit Definition [PyStmt] where
@@ -644,14 +643,23 @@ instance Emit Expr ([PyStmt], PyExpr) where
   -- Type [String]
   emit options (Tag k args) = case (k, args) of
     ("Int", []) -> ([], PyName "int")
+    ("True", []) -> ([], PyName "True")
+    ("False", []) -> ([], PyName "False")
+    ("Nothing", []) -> ([], PyName "None")
     (k, args) -> do
       let (stmts, args') = emit options args
       (stmts, pyCall (PyName k) args')
   -- Tuple [Expr]
   -- Record [(String, Expr)]
-  -- Trait Expr String
+  emit options (Trait a x) = do
+    let (stmts, a') = emit options a
+    (stmts, PyAttribute a' x)
   -- Fun Expr Expr
-  -- App Expr Expr
+  emit options (App a b) = do
+    let (f, args) = asApp (App a b)
+    let (stmts1, f') = emit options f
+    let (stmts2, args') = emit options args
+    (stmts1 ++ stmts2, pyCall f' args')
   -- Let Definition Expr
   -- Bind (Expr, Expr) Expr
   emit options (Match [] cases) = do

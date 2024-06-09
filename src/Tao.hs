@@ -164,6 +164,7 @@ asLambda _ (Match _ []) = ([], Err)
 asLambda prefix (Match [] cases@(Case ps _ _ : _)) = do
   let xs = C.newNames (prefix : freeVars (Match [] cases)) (replicate (length ps) prefix)
   asLambda prefix (lambda xs cases)
+asLambda prefix (Meta _ a) = asLambda prefix a
 asLambda _ a = ([], a)
 
 isTypeDef :: Expr -> Bool
