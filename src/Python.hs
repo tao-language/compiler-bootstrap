@@ -635,6 +635,59 @@ instance Emit Definition [PyStmt] where
   emit options (Def ts (PMeta _ p) b) = emit options (Define (Def ts p b))
   emit options def = error $ "TODO: emit " ++ show def
 
+-- instance Emit (Expr, PyExpr -> PyStmt) [PyStmt] where
+--   emit :: BuildOptions -> (Expr, PyExpr -> PyStmt) -> [PyStmt]
+--   emit options (a, f) = case a of
+--     Int i -> [f (PyInteger i)]
+--     Num n -> [f (PyFloat n)]
+--     Var x -> [f (PyName x)]
+--     -- Type [String]
+--     Tag k args -> case (k, args) of
+--       ("Int", []) -> [f (PyName "int")]
+--       ("True", []) -> [f (PyName "True")]
+--       ("False", []) -> [f (PyName "False")]
+--       ("Nothing", []) -> [f (PyName "None")]
+--       (k, args) -> do
+--         let (stmts, args') = emit options args
+--         (stmts, pyCall (PyName k) args')
+--     -- -- Tuple [Expr]
+--     -- -- Record [(String, Expr)]
+--     -- emit options (Trait a x) = do
+--     --   let (stmts, a') = emit options a
+--     --   (stmts, PyAttribute a' x)
+--     -- -- Fun Expr Expr
+--     -- emit options (App a b) = do
+--     --   let (f, args) = asApp (App a b)
+--     --   let (stmts1, f') = emit options f
+--     --   let (stmts2, args') = emit options args
+--     --   (stmts1 ++ stmts2, pyCall f' args')
+--     -- -- Let Definition Expr
+--     -- -- Bind (Expr, Expr) Expr
+--     -- emit options (Match [] cases) = do
+--     --   let (xs, b) = asLambda "_arg" (Match [] cases)
+--     --   let (stmts, b') = emit options b
+--     --   let expr = PyLambda xs b'
+--     --   (stmts, expr)
+--     -- emit options (Match [arg] cases) = do
+--     --   let (stmts1, arg') = emit options arg
+--     --   let (stmts2, cases') = emit options cases
+--     --   -- TODO: instead of creating a new variable, pass a (Expr -> Stmt) and return directly
+--     --   let x = C.newName (concatMap stmtNames $ stmts1 ++ stmts2) "_match"
+--     --   let stmt = PyMatch arg' (cases' x)
+--     --   let expr = PyName x
+--     --   (stmts1 ++ stmts2 ++ [stmt], expr)
+--     -- -- -- If Expr Expr Expr
+--     -- -- -- Or Expr Expr
+--     -- -- -- Ann Expr Expr
+--     -- -- -- Op1 C.UnaryOp Expr
+--     -- emit options (Op2 op a b) = do
+--     --   let (stmts1, a') = emit options a
+--     --   let (stmts2, b') = emit options b
+--     --   (stmts1 ++ stmts2, PyBinOp a' (emit options op) b')
+--     -- emit options (Meta _ a) = emit options a
+--     -- -- -- Err
+--     a -> error $ "TODO: emit " ++ show a
+
 instance Emit Expr ([PyStmt], PyExpr) where
   emit :: BuildOptions -> Expr -> ([PyStmt], PyExpr)
   emit _ (Int i) = ([], PyInteger i)
@@ -670,6 +723,7 @@ instance Emit Expr ([PyStmt], PyExpr) where
   emit options (Match [arg] cases) = do
     let (stmts1, arg') = emit options arg
     let (stmts2, cases') = emit options cases
+    -- TODO: instead of creating a new variable, pass a (Expr -> Stmt) and return directly
     let x = C.newName (concatMap stmtNames $ stmts1 ++ stmts2) "_match"
     let stmt = PyMatch arg' (cases' x)
     let expr = PyName x

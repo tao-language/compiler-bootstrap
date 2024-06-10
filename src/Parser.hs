@@ -375,6 +375,13 @@ data Operator ctx a
   | InfixL Int (a -> Parser ctx a -> Parser ctx a)
   | InfixR Int (a -> Parser ctx a -> Parser ctx a)
 
+atom :: Int -> (a -> b) -> Parser ctx a -> Operator ctx b
+atom prec f p = do
+  let parser _ = do
+        x <- p
+        ok (f x)
+  Prefix prec parser
+
 prefix :: Int -> (op -> a -> a) -> Parser ctx op -> Operator ctx a
 prefix prec f op = do
   let parser expr = do
