@@ -28,8 +28,10 @@ data ParserContext
 
 keywords :: [String]
 keywords =
-  [ "match",
-    "type"
+  [ "type",
+    "if",
+    "else",
+    "match"
   ]
 
 -- Utilities
@@ -137,8 +139,7 @@ parseExprAtom = do
         Num <$> P.number,
         parseTuple,
         parseRecord,
-        parseMatch,
-        match [] <$> P.oneOrMore parseCase
+        parseMatch
       ]
   a <-
     P.oneOf
@@ -154,7 +155,8 @@ parseExpr :: Int -> Parser appDelim -> Parser Expr
 parseExpr prec delim = do
   let metaOp f m a b = Meta m (f a b)
   let ops =
-        [ P.infixR 1 (metaOp Or) (parseOp "|"),
+        [ P.atom 0 (match []) (P.oneOrMore parseCase),
+          P.infixR 1 (metaOp Or) (parseOp "|"),
           P.infixR 2 (metaOp Ann) (parseOp ":"),
           P.infixR 3 (metaOp eq) (parseOp "=="),
           P.infixR 4 (metaOp lt) (parseOp "<"),
@@ -214,9 +216,6 @@ parseRecord = do
 
 parseCase :: Parser Case
 parseCase = do
-  _ <- P.char '|'
-  P.commit CCase
-  _ <- P.whitespaces
   p <- parsePattern
   ps <- P.zeroOrMore $ do
     _ <- P.char ','
@@ -225,8 +224,9 @@ parseCase = do
   guard <- P.maybe' $ do
     _ <- P.word "if"
     _ <- P.whitespaces
-    parseExpr 6 P.whitespaces
-  _ <- P.text "->"
+    parseExpr 1 P.whitespaces
+  _ <- P.text "=>"
+  P.commit CCase
   _ <- P.whitespaces
   a <- parseExpr 0 P.spaces
   _ <- parseLineBreak
