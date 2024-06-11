@@ -30,18 +30,20 @@ run = describe "--==☯ Examples ☯==--" $ do
   -- it ("☯ " ++ name) $ do
   --   test' "comments-multiline.tao" `shouldReturn` []
 
-  let name = "variables.tao"
+  let name = "def-variable.tao"
   it ("☯ " ++ name) $ do
     test' name `shouldReturn` []
 
-  let name = "variables-typed.tao"
+  let name = "def-function.tao"
   it ("☯ " ++ name) $ do
     test' name `shouldReturn` []
 
-  let name = "tests.tao"
+  let name = "test-errors.tao"
   it ("☯ " ++ name) $ do
-    let name = "tests.tao"
-    test' name `shouldReturn` [TestEqError (loc name (15, 3) (Var "tests.tao:tests#x")) (Int 42) (ploc "tests.tao" (16, 1) $ PInt 0)]
+    let name = "test-errors.tao"
+    let m row col = loc name (row, col)
+    let pm row col = ploc name (row, col)
+    test' name `shouldReturn` [TestEqError (m 3 3 $ Var "test-errors.tao:test-errors#x") (Int 42) (pm 4 1 $ PInt 0)]
 
   -- let name = "arithmetic.tao"
   -- it ("☯ " ++ name) $ do
