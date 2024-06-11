@@ -3,6 +3,7 @@ module ExamplesTests where
 import qualified Core as C
 import Data.Bifunctor (second)
 import Data.List (intercalate)
+import System.FilePath (dropExtension)
 import Tao
 import TaoParser
 import Test.Hspec
@@ -16,6 +17,8 @@ run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do
   let loc name pos = Meta (C.Location name pos)
   let ploc name pos = PMeta (C.Location name pos)
+  let var package filename pos x =
+        loc filename pos (Var $ package ++ ":" ++ dropExtension filename ++ "#" ++ x)
   let (x, y, z) = (Var "x", Var "y", Var "z")
 
   let name = "empty.tao"
@@ -38,12 +41,14 @@ run = describe "--==☯ Examples ☯==--" $ do
   it ("☯ " ++ name) $ do
     test' name `shouldReturn` []
 
-  let name = "test-errors.tao"
+  let name = "errors"
   it ("☯ " ++ name) $ do
-    let name = "test-errors.tao"
-    let m row col = loc name (row, col)
-    let pm row col = ploc name (row, col)
-    test' name `shouldReturn` [TestEqError (m 3 3 $ Var "test-errors.tao:test-errors#x") (Int 42) (pm 4 1 $ PInt 0)]
+    pkg <- parsePackage ("examples/" ++ name)
+    let expected =
+          [ let file = "wrong-result.tao"
+             in TestEqError (var name file (3, 3) "x") (Int 42) (ploc file (4, 1) $ PInt 0)
+          ]
+    test pkg `shouldBe` expected
 
   -- let name = "arithmetic.tao"
   -- it ("☯ " ++ name) $ do

@@ -257,7 +257,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     parseFile "examples" "empty.tao" pkg `shouldReturn` pkg {modules = [Module "empty" []]}
 
   it "☯ parsePackage directory" $ do
-    let expected = Package {name = "empty", modules = []}
+    let expected = Package {name = "empty", modules = [Module "empty-file" []]}
     parsePackage "examples/empty" `shouldReturn` expected
     withCurrentDirectory "examples" (parsePackage "empty") `shouldReturn` expected
 

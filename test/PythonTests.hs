@@ -4,7 +4,7 @@ import Control.Monad (forM)
 import Data.List (sort)
 import Python
 import qualified Subprocess
-import System.Directory (doesDirectoryExist, doesFileExist, getDirectoryContents, removeFile, withCurrentDirectory)
+import System.Directory (doesDirectoryExist, doesFileExist, getDirectoryContents, removeDirectoryRecursive, removeFile, withCurrentDirectory)
 import System.FilePath ((</>))
 import Tao
 import TaoParser (parsePackage)
@@ -118,9 +118,9 @@ run = describe "--==☯ Python ☯==--" $ do
       `shouldThrow` anyException
 
     -- Remove the failing tests, and it should pass now.
-    let failingTestFile = "build/python/test/test_test_errors.py"
-    putStrLn ("> rm " ++ failingTestFile)
-    removeFile failingTestFile
+    let failingTestsDir = "build/python/test/errors/"
+    putStrLn ("> rm -r " ++ failingTestsDir)
+    removeDirectoryRecursive failingTestsDir
     Subprocess.run "build/python" "env/bin/python" ["-m", "unittest", "-v"]
 
 -- https://book.realworldhaskell.org/read/io-case-study-a-library-for-searching-the-filesystem.html
