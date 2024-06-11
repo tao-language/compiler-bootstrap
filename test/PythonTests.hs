@@ -4,7 +4,7 @@ import Control.Monad (forM)
 import Data.List (sort)
 import Python
 import qualified Subprocess
-import System.Directory (doesDirectoryExist, doesFileExist, getDirectoryContents, withCurrentDirectory)
+import System.Directory (doesDirectoryExist, doesFileExist, getDirectoryContents, removeFile, withCurrentDirectory)
 import System.FilePath ((</>))
 import Tao
 import TaoParser (parsePackage)
@@ -75,8 +75,8 @@ run = describe "--==☯ Python ☯==--" $ do
 
   it "☯ build" $ do
     putStrLn "> parsePackage"
-    pkg <- parsePackage "examples/simple"
-    pkg.name `shouldBe` "simple"
+    pkg <- parsePackage "examples"
+    pkg.name `shouldBe` "examples"
     putStrLn "> build"
     build options "build" pkg `shouldReturn` "build/python"
 
@@ -108,10 +108,19 @@ run = describe "--==☯ Python ☯==--" $ do
     --       ]
     -- fmap sort (getRecursiveContents "build/python") `shouldReturn` pythonFiles
 
-    -- Run generated tests
+    -- Setup the Python project.
     Subprocess.run "build/python" "python" ["-m", "venv", "env"]
     Subprocess.run "build/python" "env/bin/pip" ["install", "-U", "pip"]
     Subprocess.run "build/python" "env/bin/pip" ["install", "-e", "."]
+
+    -- Run the tests, we expect a test failure.
+    Subprocess.run "build/python" "env/bin/python" ["-m", "unittest", "-v"]
+      `shouldThrow` anyException
+
+    -- Remove the failing tests, and it should pass now.
+    let failingTestFile = "build/python/test/test_test_errors.py"
+    putStrLn ("> rm " ++ failingTestFile)
+    removeFile failingTestFile
     Subprocess.run "build/python" "env/bin/python" ["-m", "unittest", "-v"]
 
 -- https://book.realworldhaskell.org/read/io-case-study-a-library-for-searching-the-filesystem.html

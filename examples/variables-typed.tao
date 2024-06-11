@@ -1,6 +1,0 @@
-# A typed variable definition.
-y : Num
-y = 3.14
-
-# Types can also be in the same line.
-x : Int = 42

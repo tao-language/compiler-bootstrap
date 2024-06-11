@@ -1,1 +1,3 @@
-# A line starting with '#' is a comment.
+# Comments start with '#' and continue until the end of the line.
+
+# Comments allow to explain things, but won't have any effects.
