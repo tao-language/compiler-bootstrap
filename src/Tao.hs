@@ -329,10 +329,30 @@ stmtTests (Test expr expected) = [(expr, expected)]
 stmtTests (MetaStmt _ stmt) = stmtTests stmt
 stmtTests _ = []
 
+fullName :: String -> String -> String -> String
+fullName pkg mod name = pkg ++ ":" ++ mod ++ "." ++ name
+
 moduleFullNames :: String -> Module -> [(String, String)]
 moduleFullNames pkgName mod = do
   let ctx = concatMap (getContext pkgName) mod.stmts
-  map (\(x, _) -> (x, pkgName ++ ":" ++ mod.name ++ "#" ++ x)) ctx
+  map (\(x, _) -> (x, fullName pkgName mod.name x)) ctx
+
+fullyQualifiedPackage :: Package -> Package
+fullyQualifiedPackage pkg = do
+  pkg {modules = map (fullyQualifiedModule pkg.name) pkg.modules}
+
+fullyQualifiedModule :: String -> Module -> Module
+fullyQualifiedModule pkg mod = do
+  let subs = moduleFullNames pkg mod
+  mod {stmts = map (fullyQualifiedStmt pkg subs) mod.stmts}
+
+fullyQualifiedStmt :: String -> [(String, String)] -> Stmt -> Stmt
+fullyQualifiedStmt pkg subs (Import "" mod alias exposed) =
+  fullyQualifiedStmt pkg subs (Import pkg mod alias exposed)
+fullyQualifiedStmt pkg subs (Import pkg' mod alias exposed) = do
+  let stmt = Import pkg' mod (fullName pkg mod alias) exposed
+  substitute subs stmt
+fullyQualifiedStmt _ subs stmt = substitute subs stmt
 
 class GetContext a where
   getContext :: String -> a -> Context
@@ -342,10 +362,9 @@ instance GetContext Stmt where
   getContext pkgName (Import pkg path alias exposed) = case exposed of
     (x, y) : exposed -> do
       let pkg' = if pkg == "" then pkgName else pkg
-      let fullName = pkg' ++ ":" ++ path ++ "#" ++ x
-      let def = (y, Var fullName)
+      let def = (y, Var (fullName pkg' path x))
       def : getContext pkgName (Import pkg path alias exposed)
-    [] -> [] -- TODO: import module "Record"
+    [] -> [(alias, Tag (fullName pkg path alias) [])]
   getContext pkgName (Define def) = getContext pkgName def
   getContext pkgName (MetaStmt _ stmt) = getContext pkgName stmt
   getContext _ _ = []
@@ -586,15 +605,17 @@ instance Rename Stmt where
   rename :: FilePath -> String -> String -> Stmt -> Stmt
   rename path old new (Import pkg name alias exposed) = do
     let rename' = rename path old new
-    Import pkg name (rename' alias) (map (bimap rename' rename') exposed)
-  rename path old new stmt = apply (rename path old new) stmt
+    Import pkg name (rename' alias) (map (second rename') exposed)
+  rename path old new (Define def) = Define (rename path old new def)
+  rename path old new (Test a b) = Test (rename path old new a) (rename path old new b)
+  rename path old new (MetaStmt m stmt) = MetaStmt m (rename path old new stmt)
 
 instance Rename Expr where
   rename :: FilePath -> String -> String -> Expr -> Expr
   rename path old new (Var x) = Var (rename path old new x)
   rename path old new (Type alts) = Type (map (rename path old new) alts)
   rename path old new (Tag k args) = Tag (rename path old new k) (map (rename path old new) args)
-  rename path old new (Trait a x) = Trait (rename path old new a) (rename path old new x)
+  rename path old new (Trait a x) = Trait (rename path old new a) x
   rename path old new (Let def a) = Let (rename path old new def) (rename path old new a)
   rename path old new (Match args cases) = Match (map (rename path old new) args) (map (rename path old new) cases)
   rename path old new (Meta m a) = Meta m (rename path old new a)
