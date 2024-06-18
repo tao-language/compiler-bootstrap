@@ -123,9 +123,9 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   --   p "Tag x y;" `shouldBe` Right (Tag "Tag" [var 1 5 "x", var 1 7 "y"], ";")
 
   it "☯ parseTuple" $ do
-    let p = parse' parseTuple
+    let p = parse' (parseTuple Tuple (parseExpr 0 P.whitespaces))
     p "() abc" `shouldBe` Right (Tuple [], " abc")
-    p "(x) abc" `shouldBe` Right (Var "x", " abc")
+    p "(x) abc" `shouldBe` Right (var 1 2 "x", " abc")
     p "(x,) abc" `shouldBe` Right (Tuple [var 1 2 "x"], " abc")
     p "(x, y) abc" `shouldBe` Right (Tuple [var 1 2 "x", var 1 5 "y"], " abc")
 

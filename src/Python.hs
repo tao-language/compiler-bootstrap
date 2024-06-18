@@ -585,7 +585,7 @@ instance Emit Stmt [PyStmt] where
               async = False
             }
     stmts1 ++ stmts2 ++ [def]
-  emit options stmt = error $ "TODO: emit " ++ show stmt
+  emit options (MetaStmt _ stmt) = emit options stmt
 
 instance Emit Definition [PyStmt] where
   emit :: BuildOptions -> Definition -> [PyStmt]
@@ -649,11 +649,26 @@ instance Emit Expr ([PyStmt], PyExpr) where
     (k, args) -> do
       let (stmts, args') = emit options args
       (stmts, pyCall (PyName k) args')
-  -- Tuple [Expr]
-  -- Record [(String, Expr)]
+  emit options (Tuple items) = do
+    let (stmts, items') = emit options items
+    (stmts, PyTuple items')
+  emit options (Record fields) = do
+    let emitFields :: [(String, Expr)] -> ([PyStmt], [(PyExpr, PyExpr)])
+        emitFields [] = ([], [])
+        emitFields ((x, a) : fields) = do
+          let (stmts1, field') = do
+                let (stmts, a') = emit options a
+                (stmts, (PyString x, a'))
+          let (stmts2, fields') = emitFields fields
+          (stmts1 ++ stmts2, field' : fields')
+    let (stmts, fields') = emitFields fields
+    (stmts, PyDict fields')
   emit options (Trait a x) = do
     let (stmts, a') = emit options a
     (stmts, PyAttribute a' x)
+  emit _ (TraitFun x) = do
+    let a = "_"
+    ([], PyLambda [a] (PyAttribute (PyName a) x))
   -- Fun Expr Expr
   emit options (App a b) = do
     let (f, args) = asApp (App a b)
@@ -683,7 +698,7 @@ instance Emit Expr ([PyStmt], PyExpr) where
     let (stmts2, b') = emit options b
     (stmts1 ++ stmts2, PyBinOp a' (emit options op) b')
   emit options (Meta _ a) = emit options a
-  -- -- Err
+  -- Err
   emit options expr = error $ "TODO: emit " ++ show (dropMeta expr)
 
 instance Emit C.BinaryOp PyBinOp where
@@ -842,6 +857,9 @@ instance Layout PyExpr where
     s -> error $ "TODO: layout PyString with quotes: " ++ show s
   layout (PyName x) = [PP.Text x]
   layout (PyTuple items) = layoutCollection "(" "," ")" (map layout items)
+  layout (PyDict items) = do
+    let layoutField (a, b) = layout a ++ PP.Text ": " : layout b
+    layoutCollection "{" "," "}" (map layoutField items)
   layout (PyCall func args kwargs) = do
     let kwarg (x, a) = PP.Text (x ++ "=") : layout a
     layout func ++ layoutCollection "(" "," ")" (map layout args ++ map kwarg kwargs)
@@ -851,6 +869,7 @@ instance Layout PyExpr where
       : PP.join [PP.Text ", "] (map (\x -> [PP.Text x]) xs)
       ++ (PP.Text ": " : layout a)
   layout (PyAttribute a x) = layout a ++ [PP.Text $ '.' : x]
+  layout (PySubscript a b) = layout a ++ PP.Text "[" : layout b ++ [PP.Text "]"]
   -- TODO: remove redundant parentheses
   -- TODO: break long lines
   layout (PyBinOp a op b) = do

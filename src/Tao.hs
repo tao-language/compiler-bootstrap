@@ -17,6 +17,7 @@ data Expr
   | Tuple [Expr]
   | Record [(String, Expr)]
   | Trait Expr String
+  | TraitFun String
   | Fun Expr Expr
   | App Expr Expr
   | Let Definition Expr
@@ -196,6 +197,8 @@ toExpr (PInt i) = Int i
 toExpr (PNum n) = Num n
 toExpr (PVar x) = Var x
 toExpr (PType alts) = Type alts
+toExpr (PTuple ps) = Tuple (map toExpr ps)
+toExpr (PRecord fields) = Record (map (second toExpr) fields)
 toExpr (PTag k ps) = Tag k (map toExpr ps)
 toExpr (PFun p q) = Fun (toExpr p) (toExpr q)
 toExpr (POr ps) = or' (map toExpr ps)
@@ -467,6 +470,7 @@ instance Apply Expr where
   apply f (Tuple args) = Tuple (map f args)
   apply f (Record fields) = Record (map (second f) fields)
   apply f (Trait a x) = Trait (f a) x
+  apply _ (TraitFun x) = TraitFun x
   apply f (Fun a b) = Fun (f a) (f b)
   apply f (App a b) = App (f a) (f b)
   apply f (Let def a) = Let (apply f def) (f a)
@@ -478,6 +482,7 @@ instance Apply Expr where
   apply f (Op2 op a b) = Op2 op (f a) (f b)
   apply f (Meta m a) = Meta m (f a)
   apply _ Err = Err
+  apply _ a = error $ "TODO: apply " ++ show a
 
 instance Apply Pattern where
   apply :: (Expr -> Expr) -> Pattern -> Pattern
@@ -486,6 +491,8 @@ instance Apply Pattern where
   apply _ (PNum n) = PNum n
   apply _ (PVar x) = PVar x
   apply _ (PType alts) = PType alts
+  apply f (PTuple ps) = PTuple (map (apply f) ps)
+  apply f (PRecord fields) = PRecord (map (second $ apply f) fields)
   apply f (PTag k ps) = PTag k (map (apply f) ps)
   apply f (PFun p q) = PFun (apply f p) (apply f q)
   apply f (POr ps) = POr (map (apply f) ps)

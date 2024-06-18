@@ -135,9 +135,16 @@ parseExprAtom = do
               args <- P.zeroOrMore parseExprAtom
               return (Tag name args)
             _ -> return (Var name),
+        do
+          _ <- P.char '.'
+          TraitFun <$> parseIdentifier,
         Int <$> P.integer,
         Num <$> P.number,
-        parseTuple,
+        do
+          a <- parseTuple Tuple (parseExpr 0 P.whitespaces)
+          case a of
+            Meta _ a -> return a
+            a -> return a,
         parseRecord,
         parseMatch
       ]
@@ -170,22 +177,20 @@ parseExpr prec delim = do
         ]
   P.operators prec ops parseExprAtom
 
-parseTuple :: Parser Expr
-parseTuple = do
-  let item = parseExpr 0 P.whitespaces
+parseTuple :: ([a] -> a) -> Parser a -> Parser a
+parseTuple tup item = do
   P.oneOf
     [ do
         -- One-item tuple: (x,)
         item <- parseInbetween "(" ")" (do p <- item; _ <- P.char ','; return p)
-        return (Tuple [item]),
+        return (tup [item]),
       do
         items <- parseCollection "(" "," ")" item
         case items of
           -- Parenthesized non-tuple: (x)
-          [Meta _ item] -> return item -- discard nested metadata (redundant)
           [item] -> return item
           -- General case tuples: () (x, y, ...)
-          _ -> return (Tuple items)
+          _ -> return (tup items)
     ]
 
 parseRecordField :: Parser (String, Expr)
@@ -265,9 +270,13 @@ parsePattern = do
               return (PTag name ps)
             _ -> return (PVar name),
         PInt <$> P.integer,
-        PNum <$> P.number
-        -- , parseTuple
-        -- , parseRecord
+        PNum <$> P.number,
+        do
+          p <- parseTuple PTuple parsePattern
+          case p of
+            PMeta _ p -> return p
+            p -> return p
+            -- , parseRecord
       ]
   _ <- P.spaces
   return (PMeta loc a)
