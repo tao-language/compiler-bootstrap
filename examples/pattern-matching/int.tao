@@ -1,0 +1,9 @@
+f =
+  0 => False
+  _ => True
+
+> f 0
+False
+
+> f 42 
+True
