@@ -503,7 +503,7 @@ buildModuleTests options mod = do
         PyTest -> error "TODO: emitTests PyTest"
   let path = splitDirectories mod.name & filter (/= ".")
   let importPath = intercalate "." (options.packageName : path)
-  let importDefs = case map fst (concatMap (stmtDefs options.packageName) mod.stmts) of
+  let importDefs = case map fst (concatMap (getContext options.packageName) mod.stmts) of
         [] -> [importFramework]
         names -> do
           let importModule = PyImportFrom importPath (map (,Nothing) names)

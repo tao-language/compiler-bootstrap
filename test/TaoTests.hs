@@ -15,166 +15,166 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ lower/lift Type" $ do
     let expr = Type ["A"]
     let term = C.Typ ["A"]
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   it "☯ lower/lift IntType" $ do
     let expr = Tag "Int" []
     let term = C.IntT
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   it "☯ lower/lift NumType" $ do
     let expr = Tag "Num" []
     let term = C.NumT
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   it "☯ lower/lift Int" $ do
     let expr = Int 42
     let term = C.Int 42
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   it "☯ lower/lift Num" $ do
     let expr = Num 3.14
     let term = C.Num 3.14
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   it "☯ lower/lift Var" $ do
     let expr = Var "x"
     let term = C.Var "x"
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   it "☯ lower/lift Tag" $ do
     let expr = Tag "A" []
     let term = C.Tag "A" []
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   it "☯ lower/lift Tuple" $ do
     let expr = Tuple []
     let term = C.Tag "()" []
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
     let expr = Tuple [x, y]
     let term = C.Tag "()" [x', y']
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   -- it "☯ lower/lift Record" $ do
   --   let expr = Record []
   --   let term = C.Rec []
-  --   lowerExpr [] expr `shouldBe` term
-  --   liftExpr term `shouldBe` expr
+  --   lower [] expr `shouldBe` term
+  --   lift term `shouldBe` expr
 
   --   let expr = Record [("a", x), ("b", y)]
   --   let term = C.Rec [("a", x'), ("b", y')]
-  --   lowerExpr [] expr `shouldBe` term
-  --   liftExpr term `shouldBe` expr
+  --   lower [] expr `shouldBe` term
+  --   lift term `shouldBe` expr
 
   it "☯ lower/lift Trait" $ do
     let expr = Trait (Int 1) "y"
     let term = C.app (C.Var ".y") [C.Int 1 `C.Or` C.IntT, C.Int 1]
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
     let expr = Trait x "y"
     let term = C.app (C.Var ".y") [C.Int 1 `C.Or` C.IntT, x']
-    lowerExpr [("x", Int 1)] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [("x", Int 1)] expr `shouldBe` term
+    lift term `shouldBe` expr
 
     let expr = Trait x "y"
     let term = C.app (C.Var ".y") [C.Err, C.Var "x"]
-    lowerExpr [] expr `shouldBe` C.Err
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` C.Err
+    lift term `shouldBe` expr
 
   it "☯ lower/lift Fun" $ do
     let expr = Fun x y
     let term = C.Fun x' y'
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   it "☯ lower/lift App" $ do
     let expr = App x y
     let term = C.App x' y'
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   -- it "☯ lower/lift Let" $ do
   --   let expr = Let (x, y) z
   --   let term = C.let' (x', y') z'
-  --   lowerExpr [] expr `shouldBe` term
-  --   liftExpr term `shouldBe` expr
+  --   lower [] expr `shouldBe` term
+  --   lift term `shouldBe` expr
 
   -- it "☯ lower/lift Let recursive" $ do
   --   let expr = Let (f, App f x) z
   --   let term = C.let' (f', C.Fix "f" $ C.App f' x') z'
-  --   lowerExpr [] expr `shouldBe` term
-  --   liftExpr term `shouldBe` expr
+  --   lower [] expr `shouldBe` term
+  --   lift term `shouldBe` expr
 
   it "☯ lower/lift Bind" $ do
     let expr = Bind (x, y) z
     let term = C.app (C.Var ".<-") [C.Int 1 `C.Or` C.IntT, y', C.Fun x' z']
-    lowerExpr [("y", Int 1)] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [("y", Int 1)] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   -- it "☯ lower/lift TypeDef" $ do
   --   let expr = TODO
   --   let term = TODO
-  --   lowerExpr [] expr `shouldBe` term
-  --   liftExpr term `shouldBe` expr
+  --   lower [] expr `shouldBe` term
+  --   lift term `shouldBe` expr
 
   -- it "☯ lower/lift MatchFun" $ do
   --   let expr = TODO
   --   let term = TODO
-  --   lowerExpr [] expr `shouldBe` term
-  --   liftExpr term `shouldBe` expr
+  --   lower [] expr `shouldBe` term
+  --   lift term `shouldBe` expr
 
   -- it "☯ lower/lift Match" $ do
   --   let expr = TODO
   --   let term = TODO
-  --   lowerExpr [] expr `shouldBe` term
-  --   liftExpr term `shouldBe` expr
+  --   lower [] expr `shouldBe` term
+  --   lift term `shouldBe` expr
 
   it "☯ lower/lift Or" $ do
     let expr = Or x y
     let term = C.Or x' y'
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   it "☯ lower/lift Ann" $ do
     let expr = Ann x y
     let term = C.Ann x' y'
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   it "☯ lower/lift Op1" $ do
     let expr = Op1 C.Int2Num x
     let term = C.Op1 C.Int2Num x'
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   it "☯ lower/lift Op2" $ do
     let expr = Op2 C.Add x y
     let term = C.Op2 C.Add x' y'
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   it "☯ lower/lift Meta" $ do
     let expr = Meta loc x
     let term = C.Meta loc x'
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   it "☯ lower/lift Err" $ do
     let expr = Err
     let term = C.Err
-    lowerExpr [] expr `shouldBe` term
-    liftExpr term `shouldBe` expr
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` expr
 
   it "☯ stmtDefs" $ do
     -- stmtDefs (Def (Int 42) z) `shouldBe` []
@@ -207,10 +207,10 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     -- stmtDefs (Def Err y) `shouldBe` []
     True `shouldBe` True
 
-  it "☯ moduleDefs" $ do
+  it "☯ getContext Module" $ do
     let defs stmts = do
           let mod = Module "mod" stmts
-          moduleDefs "pkg" mod
+          getContext "pkg" mod
     defs [] `shouldBe` []
     defs [Import "" "mod2" "m2" []] `shouldBe` []
     defs [Import "" "mod2" "m2" [("x", "y")]] `shouldBe` [("pkg:mod#y", Var "pkg:mod2#x")]
@@ -218,11 +218,11 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     defs [var "x" y] `shouldBe` [("pkg:mod#x", Var "y")]
     defs [var "x" y, var "y" z] `shouldBe` [("pkg:mod#x", Var "pkg:mod#y"), ("pkg:mod#y", Var "z")]
 
-  it "☯ packageDefs" $ do
+  it "☯ getContext Package" $ do
     let defs stmts = do
           let mod = Module "mod" stmts
           let pkg = Package "pkg" [mod]
-          packageDefs pkg
+          getContext pkg.name pkg
     defs [] `shouldBe` []
     defs [var "x" y] `shouldBe` [("pkg:mod#x", Var "y")]
 
