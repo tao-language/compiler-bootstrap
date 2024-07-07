@@ -425,7 +425,8 @@ pyName existing a name
 build :: BuildOptions -> FilePath -> Package -> IO FilePath
 build options base pkg = do
   let pyPkg =
-        refactorName pyName pkg
+        link () pkg
+          & refactorName pyName
           & refactorModuleName (replace '/' '.' . replace '-' '_')
           & refactorModuleAlias nameSnakeCase
 
@@ -501,13 +502,14 @@ buildModuleTests options mod = do
   let importFramework = case options.testingFramework of
         UnitTest -> PyImport "unittest" Nothing
         PyTest -> error "TODO: emitTests PyTest"
-  let path = splitDirectories mod.name & filter (/= ".")
-  let importPath = intercalate "." (options.packageName : path)
-  let importDefs = case map fst (concatMap (getContext options.packageName) mod.stmts) of
-        [] -> [importFramework]
-        names -> do
-          let importModule = PyImportFrom importPath (map (,Nothing) names)
-          [importFramework, importModule]
+  -- let path = splitDirectories mod.name & filter (/= ".")
+  -- let importPath = intercalate "." (options.packageName : path)
+  -- let importDefs = case map fst (concatMap getContext mod.stmts) of
+  --       [] -> [importFramework]
+  --       names -> do
+  --         let importModule = PyImportFrom importPath (map (,Nothing) names)
+  --         [importFramework, importModule]
+  -- let importDefs = [importFramework]
   let imports = emit options (filter isImport mod.stmts)
   let testClass =
         PyClassDef
@@ -524,7 +526,7 @@ buildModuleTests options mod = do
             orelse = []
           }
   let stmts =
-        (importFramework : importDefs ++ imports)
+        (importFramework : imports)
           ++ [testClass]
           ++ [entrypoint]
   PyModule {name = "test_" ++ mod.name, body = stmts}
@@ -560,16 +562,17 @@ instance Emit [Stmt] [PyStmt] where
 instance Emit Stmt [PyStmt] where
   emit :: BuildOptions -> Stmt -> [PyStmt]
   emit options (Import pkg path alias exposed) = do
-    let pkg' = if pkg == "" then options.packageName else pkg
+    -- let alias' = if path == alias then Nothing else Just alias
+    -- [PyImport (pkg ++ "." ++ path) Nothing]
     case exposed of
       [] -> do
         let alias' = if path == alias then Nothing else Just alias
-        [PyImport (pkg' ++ "." ++ path) alias']
+        [PyImport (pkg ++ "." ++ path) alias']
       exposed -> do
         let expose (name, alias) | name == alias = (name, Nothing)
             expose (name, alias) = (name, Just alias)
-        let stmts = emit options (Import pkg' path alias [])
-        stmts ++ [PyImportFrom (pkg' ++ "." ++ path) (map expose exposed)]
+        let stmts = emit options (Import pkg path alias [])
+        stmts ++ [PyImportFrom (pkg ++ "." ++ path) (map expose exposed)]
   emit options (Define def) = emit options def
   emit options (Test a p) = do
     let (stmts1, a') = emit options a

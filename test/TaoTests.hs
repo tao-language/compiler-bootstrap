@@ -209,25 +209,6 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     -- stmtDefs (Def Err y) `shouldBe` []
     True `shouldBe` True
 
-  it "☯ getContext Module" $ do
-    let defs stmts = do
-          let mod = Module "mod" stmts
-          getContext "pkg" mod
-    defs [] `shouldBe` []
-    defs [Import "" "mod2" "m2" []] `shouldBe` []
-    defs [Import "" "mod2" "m2" [("x", "y")]] `shouldBe` [("pkg:mod.y", Var "pkg:mod2.x")]
-    defs [Import "pkg2" "mod2" "m2" [("x", "y")]] `shouldBe` [("pkg:mod.y", Var "pkg2:mod2.x")]
-    defs [var "x" y] `shouldBe` [("pkg:mod.x", Var "y")]
-    defs [var "x" y, var "y" z] `shouldBe` [("pkg:mod.x", Var "pkg:mod.y"), ("pkg:mod.y", Var "z")]
-
-  it "☯ getContext Package" $ do
-    let defs stmts = do
-          let mod = Module "mod" stmts
-          let pkg = Package "pkg" [mod]
-          getContext pkg.name pkg
-    defs [] `shouldBe` []
-    defs [var "x" y] `shouldBe` [("pkg:mod.x", Var "y")]
-
   -- it "☯ lowerPackage" $ do
   --   let mod defs = Package {name = "lowerPackage", modules = [Module "f" defs]}
   --   lowerPackage (mod []) `shouldBe` []
@@ -280,7 +261,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
             Test x (PInt 2)
           ]
     let mod = Package {name = "pkg", modules = [Module "mod" defs]}
-    packageTests mod `shouldBe` [(Var "pkg:mod.x", PInt 2)]
+    packageTests mod `shouldBe` [(x, PInt 2)]
 
   it "☯ test" $ do
     let defs =
@@ -349,38 +330,58 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     True `shouldBe` True
 
   it "☯ rename Package" $ do
-    let m1 x = Module "m1" [Define (Def [] xP $ Int 42), Define (Def [] yP (Var x))]
+    let m1 x = Module "m1" [Define (Def [] (PVar x) $ Int 42), Define (Def [] yP (Var x))]
     let m2 _ = Module "m2" [Define (Def [] xP $ Int 42), Define (Def [] yP x)]
     let m3 x = Module "m3" [Import "pkg" "m1" x [], Define (Def [] yP (Var x))]
     let m4 x = Module "m4" [Import "pkg" "m1" "m" [(x, x)], Define (Def [] yP (Var x))]
     let pkg = Package "pkg" [m1 "x", m2 "x", m3 "x", m4 "x"]
     rename "m1" "x" "z" pkg `shouldBe` pkg {modules = [m1 "z", m2 "z", m3 "z", m4 "z"]}
 
-  it "☯ fullyQualifiedStmt" $ do
-    let f = fullyQualifiedStmt "p" [("x", "y")]
-    f (Import "" "x" "x" [("x", "x")]) `shouldBe` Import "p" "x" "p:x.x" [("x", "y")]
-    f (Import "pkg" "x" "x" [("x", "x")]) `shouldBe` Import "pkg" "x" "p:x.x" [("x", "y")]
+  it "☯ link Stmt" $ do
+    let f = link ("p", [("x", "y")])
+    f (Import "" "x" "x" [("x", "x")]) `shouldBe` Import "p" "x" "y" [("x", "y")]
+    f (Import "pkg" "x" "x" [("x", "x")]) `shouldBe` Import "pkg" "x" "y" [("x", "y")]
     f (Define (Def [("x", x)] xP x)) `shouldBe` Define (Def [("y", y)] yP y)
     f (Test x xP) `shouldBe` Test y yP
     f (MetaStmt loc (Test x xP)) `shouldBe` MetaStmt loc (Test y yP)
 
-  it "☯ fullyQualifiedModule" $ do
+  it "☯ link Module" $ do
     let f stmts = do
-          let mod = fullyQualifiedModule "pkg" (Module "mod" stmts)
+          let mod = link "pkg" (Module "mod" stmts)
           mod.stmts
-    f [] `shouldBe` []
-    f [Import "" "m" "n" [("x", "x")]] `shouldBe` [Import "pkg" "m" "pkg:m.n" [("x", "pkg:mod.x")]]
+    -- f [] `shouldBe` []
+    f [Import "p" "m" "n" [("x", "x")]] `shouldBe` [Import "p" "m" "pkg:mod.n" [("x", "pkg:mod.x")]]
+    f [Import "" "m" "n" [("x", "x")]] `shouldBe` [Import "pkg" "m" "pkg:mod.n" [("x", "pkg:mod.x")]]
     f [var "x" y] `shouldBe` [var "pkg:mod.x" y]
-    f [Import "" "m" "n" [("x", "y")], var "x" y] `shouldBe` [Import "pkg" "m" "pkg:m.n" [("x", "pkg:mod.y")], var "pkg:mod.x" (Var "pkg:mod.y")]
-    f [Import "" "m" "n" [("x", "y")], var "x" (Trait (Var "n") "y")] `shouldBe` [Import "pkg" "m" "pkg:m.n" [("x", "pkg:mod.y")], var "pkg:mod.x" (Trait (Var "pkg:mod.n") "y")]
+    f [Import "p" "m" "n" [("x", "y")], var "x" y] `shouldBe` [Import "p" "m" "pkg:mod.n" [("x", "pkg:mod.y")], var "pkg:mod.x" (Var "pkg:mod.y")]
+    f [Import "p" "m" "n" [("x", "y")], var "x" (Trait (Var "n") "y")] `shouldBe` [Import "p" "m" "pkg:mod.n" [("x", "pkg:mod.y")], var "pkg:mod.x" (Trait (Var "pkg:mod.n") "y")]
 
--- it "☯ fullyQualifiedPackage" $ do
---   let f stmts = do
---         let mod = Module "mod" stmts
---         let pkg = fullyQualified (Package "pkg" [mod])
---         concatMap (\mod -> mod.stmts) pkg.modules
---   f [] `shouldBe` []
---   f [Import "" "mod2" "m2" [("x", "y")]] `shouldBe` [Import "pkg" "mod2" "m2" [("x", "y")]]
---   f [Import "pkg2" "mod2" "m2" [("x", "y")]] `shouldBe` [Import "pkg2" "mod2" "m2" [("x", "y")]]
---   f [var "x" y] `shouldBe` [var "x" y]
---   f [var "x" y, var "y" z] `shouldBe` [] -- [("pkg:mod.x", Var "pkg:mod.y"), ("pkg:mod.y", Var "z")]
+  -- TODO: separate getContext from fullyQualified
+
+  -- it "☯ fullyQualifiedPackage" $ do
+  --   let f stmts = do
+  --         let mod = Module "mod" stmts
+  --         let pkg = fullyQualified (Package "pkg" [mod])
+  --         concatMap (\mod -> mod.stmts) pkg.modules
+  --   f [] `shouldBe` []
+  --   f [Import "" "mod2" "m2" [("x", "y")]] `shouldBe` [Import "pkg" "mod2" "m2" [("x", "y")]]
+  --   f [Import "pkg2" "mod2" "m2" [("x", "y")]] `shouldBe` [Import "pkg2" "mod2" "m2" [("x", "y")]]
+  --   f [var "x" y] `shouldBe` [var "x" y]
+  --   f [var "x" y, var "y" z] `shouldBe` [] -- [("pkg:mod.x", Var "pkg:mod.y"), ("pkg:mod.y", Var "z")]
+
+  it "☯ getContext Module" $ do
+    let defs stmts = do
+          let mod = Module "mod" stmts
+          getContext mod
+    defs [] `shouldBe` []
+    defs [Import "pkg" "mod2" "m2" []] `shouldBe` [("m2", Tag "m2" [])]
+    defs [Import "pkg" "mod2" "m2" [("x", "y")]] `shouldBe` [("y", Var "pkg:mod2.x"), ("m2", Tag "m2" [])]
+    defs [var "x" y] `shouldBe` [("x", y)]
+
+  it "☯ getContext Package" $ do
+    let defs stmts = do
+          let mod = Module "mod" stmts
+          let pkg = Package "pkg" [mod]
+          getContext pkg
+    defs [] `shouldBe` []
+    defs [Import "pkg" "mod2" "m2" [("x", "y")]] `shouldBe` [("y", Var "pkg:mod2.x"), ("m2", Tag "m2" [])]
