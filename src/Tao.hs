@@ -330,7 +330,26 @@ stmtTests (MetaStmt _ stmt) = stmtTests stmt
 stmtTests _ = []
 
 fullName :: String -> String -> String -> String
-fullName pkg mod name = pkg ++ ":" ++ mod ++ "." ++ name
+fullName pkg mod "" = '@' : pkg ++ ":" ++ mod
+fullName pkg mod name = '@' : pkg ++ ":" ++ mod ++ "." ++ name
+
+class FullNames a b where
+  fullNames :: a -> b -> [(String, String)]
+
+instance FullNames (String, String) Stmt where
+  fullNames :: (String, String) -> Stmt -> [(String, String)]
+  fullNames (pkg, mod) (Import "" mod' alias existing) = fullNames (pkg, mod) (Import pkg mod' alias existing)
+  fullNames _ (Import pkg' mod' alias []) = [(alias, fullName pkg' mod' "")]
+  fullNames (pkg, mod) (Import pkg' mod' alias ((x, y) : existing)) =
+    (y, fullName pkg' mod' x) : fullNames (pkg, mod) (Import pkg' mod' alias existing)
+  fullNames (pkg, mod) (Define def) =
+    map (\(x, _) -> (x, fullName pkg mod x)) (getContext def)
+  fullNames _ (Test _ _) = []
+  fullNames (pkg, mod) (MetaStmt _ stmt) = fullNames (pkg, mod) stmt
+
+instance FullNames String Module where
+  fullNames :: String -> Module -> [(String, String)]
+  fullNames pkg mod = concatMap (fullNames (pkg, mod.name)) mod.stmts
 
 moduleFullNames :: String -> Module -> [(String, String)]
 moduleFullNames pkgName mod = do
@@ -348,7 +367,7 @@ instance Link () Package where
 instance Link String Module where
   link :: String -> Module -> Module
   link pkg mod = do
-    let subs = moduleFullNames pkg mod
+    let subs = fullNames pkg mod
     mod {stmts = map (link (pkg, subs)) mod.stmts}
 
 instance Link (String, [(String, String)]) Stmt where
@@ -367,12 +386,12 @@ instance GetContext Stmt where
   getContext :: Stmt -> Context
   getContext (Import pkg path alias exposed) = case exposed of
     (x, y) : exposed -> do
-      let def = (y, Var (fullName pkg path x))
+      let def = (y, Var x)
       def : getContext (Import pkg path alias exposed)
     [] -> [(alias, Tag alias [])]
   getContext (Define def) = getContext def
+  getContext (Test _ _) = []
   getContext (MetaStmt _ stmt) = getContext stmt
-  getContext _ = []
 
 instance GetContext Definition where
   getContext :: Definition -> Context
