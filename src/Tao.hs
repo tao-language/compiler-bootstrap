@@ -330,18 +330,20 @@ stmtTests (MetaStmt _ stmt) = stmtTests stmt
 stmtTests _ = []
 
 fullName :: String -> String -> String -> String
-fullName pkg mod "" = '@' : pkg ++ ":" ++ mod
-fullName pkg mod name = '@' : pkg ++ ":" ++ mod ++ "." ++ name
+fullName pkg mod "" = '@' : pkg ++ "." ++ mod
+fullName pkg mod name = fullName pkg mod "" ++ '.' : name
 
 class FullNames a b where
   fullNames :: a -> b -> [(String, String)]
 
 instance FullNames (String, String) Stmt where
   fullNames :: (String, String) -> Stmt -> [(String, String)]
-  fullNames (pkg, mod) (Import "" mod' alias existing) = fullNames (pkg, mod) (Import pkg mod' alias existing)
-  fullNames _ (Import pkg' mod' alias []) = [(alias, fullName pkg' mod' "")]
+  fullNames (pkg, mod) (Import "" mod' alias existing) =
+    fullNames (pkg, mod) (Import pkg mod' alias existing)
+  fullNames (pkg, mod) (Import pkg' mod' alias []) =
+    [(alias, fullName pkg' mod' "")]
   fullNames (pkg, mod) (Import pkg' mod' alias ((x, y) : existing)) =
-    (y, fullName pkg' mod' x) : fullNames (pkg, mod) (Import pkg' mod' alias existing)
+    (y, fullName pkg mod x) : fullNames (pkg, mod) (Import pkg' mod' alias existing)
   fullNames (pkg, mod) (Define def) =
     map (\(x, _) -> (x, fullName pkg mod x)) (getContext def)
   fullNames _ (Test _ _) = []
@@ -355,6 +357,24 @@ moduleFullNames :: String -> Module -> [(String, String)]
 moduleFullNames pkgName mod = do
   let ctx = concatMap getContext mod.stmts
   map (\(x, _) -> (x, fullName pkgName mod.name x)) ctx
+
+splitWith :: (Char -> Bool) -> String -> [String]
+splitWith f text = case dropWhile f text of
+  "" -> []
+  text -> do
+    let (word, remaining) = break f text
+    word : splitWith f remaining
+
+split :: Char -> String -> [String]
+split delim = splitWith (== delim)
+
+splitIdentifier :: String -> (String, String, String)
+splitIdentifier ('@' : identifier) = case split '.' identifier of
+  [] -> ("", "", "")
+  [pkg] -> (pkg, "", "")
+  [pkg, mod] -> (pkg, mod, "")
+  pkg : mod : name : _ -> (pkg, mod, name)
+splitIdentifier name = ("", "", name)
 
 class Link a b where
   link :: a -> b -> b
@@ -388,7 +408,7 @@ instance GetContext Stmt where
     (x, y) : exposed -> do
       let def = (y, Var x)
       def : getContext (Import pkg path alias exposed)
-    [] -> [(alias, Tag alias [])]
+    [] -> []
   getContext (Define def) = getContext def
   getContext (Test _ _) = []
   getContext (MetaStmt _ stmt) = getContext stmt
@@ -572,103 +592,90 @@ instance Apply Stmt where
   apply f (MetaStmt m a) = MetaStmt m (apply f a)
 
 class Rename a where
-  rename :: FilePath -> String -> String -> a -> a
+  rename :: String -> String -> a -> a
 
 instance Rename Package where
-  rename :: FilePath -> String -> String -> Package -> Package
-  rename path old new pkg =
-    pkg {modules = map (rename path old new) pkg.modules}
+  rename :: String -> String -> Package -> Package
+  rename old new pkg =
+    pkg {modules = map (rename old new) pkg.modules}
 
 instance Rename Module where
-  rename :: FilePath -> String -> String -> Module -> Module
-  rename path old new mod | mod.name == path = do
-    mod {stmts = map (renameDefined path old new) mod.stmts}
-  rename path old new mod | any (isImported old) mod.stmts = do
-    mod {stmts = map (renameImported path old new) mod.stmts}
-  rename _ _ _ mod = mod
-
-instance Rename Definition where
-  rename :: FilePath -> String -> String -> Definition -> Definition
-  rename path old new (Def ts p val) = do
-    let ts' = map (bimap (rename path old new) (rename path old new)) ts
-    let p' = rename path old new p
-    let val' = rename path old new val
-    Def ts' p' val'
-  rename path old new (TraitDef ts (t, a) x val) = do
-    let ts' = map (bimap (rename path old new) (rename path old new)) ts
-    let x' = rename path old new x
-    let val' = rename path old new val
-    TraitDef ts' (t, a) x' val'
-
-renameDefined :: FilePath -> String -> String -> Stmt -> Stmt
-renameDefined path old new (Define def) = Define (rename path old new def)
-renameDefined path old new stmt = rename path old new stmt
-
-renameImported :: FilePath -> String -> String -> Stmt -> Stmt
-renameImported path old new (Import pkg name alias exposed) = do
-  let alias' = rename path old new alias
-  let exposed' = map (bimap (rename path old new) (rename path old new)) exposed
-  rename path old new (Import pkg name alias' exposed')
-renameImported path old new stmt = rename path old new stmt
-
-instance Rename (String, Expr) where
-  rename :: FilePath -> String -> String -> (String, Expr) -> (String, Expr)
-  rename path old new (name, value) =
-    (rename path old new name, rename path old new value)
-
-instance Rename Context where
-  rename :: FilePath -> String -> String -> Context -> Context
-  rename path old new ctx =
-    foldr (\_ ctx -> map (rename path old new) ctx) ctx ctx
+  rename :: String -> String -> Module -> Module
+  rename old new mod =
+    mod {stmts = map (rename old new) mod.stmts}
 
 instance Rename Stmt where
-  rename :: FilePath -> String -> String -> Stmt -> Stmt
-  rename path old new (Import pkg name alias exposed) = do
-    let rename' = rename path old new
-    Import pkg name (rename' alias) (map (second rename') exposed)
-  rename path old new (Define def) = Define (rename path old new def)
-  rename path old new (Test a b) = Test (rename path old new a) (rename path old new b)
-  rename path old new (MetaStmt m stmt) = MetaStmt m (rename path old new stmt)
+  rename :: String -> String -> Stmt -> Stmt
+  rename old new (Import pkg name alias exposed) = do
+    let alias' = rename old new alias
+    let exposed' = map (bimap (rename old new) (rename old new)) exposed
+    Import pkg name alias' exposed'
+  rename old new (Define def) = Define (rename old new def)
+  rename old new (Test a b) = Test (rename old new a) (rename old new b)
+  rename old new (MetaStmt m stmt) = MetaStmt m (rename old new stmt)
+
+instance Rename Definition where
+  rename :: String -> String -> Definition -> Definition
+  rename old new (Def ts p val) = do
+    let ts' = map (bimap (rename old new) (rename old new)) ts
+    let p' = rename old new p
+    let val' = rename old new val
+    Def ts' p' val'
+  rename old new (TraitDef ts (t, a) x val) = do
+    let ts' = map (bimap (rename old new) (rename old new)) ts
+    let x' = rename old new x
+    let val' = rename old new val
+    TraitDef ts' (t, a) x' val'
+
+instance Rename (String, Expr) where
+  rename :: String -> String -> (String, Expr) -> (String, Expr)
+  rename old new (name, value) =
+    (rename old new name, rename old new value)
+
+instance Rename Context where
+  rename :: String -> String -> Context -> Context
+  rename old new ctx =
+    foldr (\_ ctx -> map (rename old new) ctx) ctx ctx
 
 instance Rename Expr where
-  rename :: FilePath -> String -> String -> Expr -> Expr
-  rename path old new (Var x) = Var (rename path old new x)
-  rename path old new (Type alts) = Type (map (rename path old new) alts)
-  rename path old new (Tag k args) = Tag (rename path old new k) (map (rename path old new) args)
-  rename path old new (Trait a x) = Trait (rename path old new a) x
-  rename path old new (Let def a) = Let (rename path old new def) (rename path old new a)
-  rename path old new (Match args cases) = Match (map (rename path old new) args) (map (rename path old new) cases)
-  rename path old new (Meta m a) = Meta m (rename path old new a)
-  rename path old new expr = apply (rename path old new) expr
+  rename :: String -> String -> Expr -> Expr
+  rename old new (Var x) = Var (rename old new x)
+  rename old new (Type alts) = Type (map (rename old new) alts)
+  rename old new (Tag k args) = Tag (rename old new k) (map (rename old new) args)
+  rename old new (Trait a x) = Trait (rename old new a) x
+  rename old new (Let def a) = Let (rename old new def) (rename old new a)
+  rename old new (Match args cases) = Match (map (rename old new) args) (map (rename old new) cases)
+  rename old new (Meta m a) = Meta m (rename old new a)
+  rename old new expr = apply (rename old new) expr
 
 instance Rename Pattern where
-  rename :: FilePath -> String -> String -> Pattern -> Pattern
-  rename path old new (PVar x) = PVar (rename path old new x)
-  rename path old new (PType alts) = PType (map (rename path old new) alts)
-  rename path old new (PTag k ps) = PTag (rename path old new k) (map (rename path old new) ps)
-  rename path old new (PMeta m p) = PMeta m (rename path old new p)
-  rename path old new p = apply (rename path old new) p
+  rename :: String -> String -> Pattern -> Pattern
+  rename old new (PVar x) = PVar (rename old new x)
+  rename old new (PType alts) = PType (map (rename old new) alts)
+  rename old new (PTag k ps) = PTag (rename old new k) (map (rename old new) ps)
+  rename old new (PMeta m p) = PMeta m (rename old new p)
+  rename old new p = apply (rename old new) p
 
 instance Rename Case where
-  rename :: FilePath -> String -> String -> Case -> Case
-  rename path old new (Case ps cond b) =
-    Case (map (rename path old new) ps) (fmap (rename path old new) cond) (rename path old new b)
+  rename :: String -> String -> Case -> Case
+  rename old new (Case ps cond b) =
+    Case (map (rename old new) ps) (fmap (rename old new) cond) (rename old new b)
 
 instance Rename String where
-  rename :: FilePath -> String -> String -> String -> String
-  rename _ old new str
+  rename :: String -> String -> String -> String
+  rename old new str
     | str == old = new
     | otherwise = str
 
 substitute :: (Rename a) => [(String, String)] -> a -> a
-substitute subs a = foldr (uncurry (rename "")) a subs
+substitute subs a = foldr (uncurry rename) a subs
 
 refactorName :: ([String] -> Expr -> String -> String) -> Package -> Package
 refactorName f pkg = do
   let refactor :: Module -> Package -> Package
       refactor mod pkg = do
         let ctx = concatMap getContext mod.stmts
-        foldr (\(x, a) -> rename mod.name x (f (map fst ctx) a x)) pkg ctx
+        foldr (\(x, a) -> rename x (f (map fst ctx) a x)) pkg ctx
   foldr refactor pkg pkg.modules
 
 class RefactorModuleName a where
@@ -698,7 +705,7 @@ instance RefactorModuleAlias Module where
   refactorModuleAlias :: (FilePath -> FilePath) -> Module -> Module
   refactorModuleAlias f mod = do
     let names = concatMap importAlias mod.stmts
-    let refactor stmt = foldr (\x -> rename "" x (f x)) stmt names
+    let refactor stmt = foldr (\x -> rename x (f x)) stmt names
     mod {name = mod.name, stmts = map refactor mod.stmts}
 
 importAlias :: Stmt -> [String]

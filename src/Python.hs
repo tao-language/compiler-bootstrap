@@ -235,7 +235,6 @@ data BuildOptions = BuildOptions
     packageName :: String,
     testPath :: FilePath,
     docsPath :: FilePath,
-    testingFramework :: TestingFramework,
     maxLineLength :: Int,
     indent :: String
   }
@@ -382,17 +381,11 @@ defaultBuildOptions =
   BuildOptions
     { version = (3, 12),
       packageName = "",
-      testingFramework = UnitTest,
       testPath = "test",
       docsPath = "docs",
       maxLineLength = 79,
       indent = "    "
     }
-
-data TestingFramework
-  = UnitTest
-  | PyTest
-  deriving (Eq, Show)
 
 stmtNames :: PyStmt -> [String]
 stmtNames (PyAssign [] _) = []
@@ -417,10 +410,12 @@ stmtNames (PyClassDef {name}) = [name]
 stmtNames _ = []
 
 pyName :: [String] -> Expr -> String -> String
-pyName existing a name
-  | isTagDef a = nameCamelCaseUpper name
-  | isTypeDef a = nameCamelCaseUpper name
-  | otherwise = nameSnakeCase name
+pyName existing expr identifier = do
+  let (_, _, name) = splitIdentifier identifier
+  case name of
+    name | isTagDef expr -> nameCamelCaseUpper name
+    name | isTypeDef expr -> nameCamelCaseUpper name
+    name -> nameSnakeCase name
 
 build :: BuildOptions -> FilePath -> Package -> IO FilePath
 build options base pkg = do
@@ -499,36 +494,29 @@ buildTests options pkgName base mod = do
 
 buildModuleTests :: BuildOptions -> Module -> PyModule
 buildModuleTests options mod = do
-  let importFramework = case options.testingFramework of
-        UnitTest -> PyImport "unittest" Nothing
-        PyTest -> error "TODO: emitTests PyTest"
-  -- let path = splitDirectories mod.name & filter (/= ".")
-  -- let importPath = intercalate "." (options.packageName : path)
-  -- let importDefs = case map fst (concatMap getContext mod.stmts) of
-  --       [] -> [importFramework]
-  --       names -> do
-  --         let importModule = PyImportFrom importPath (map (,Nothing) names)
-  --         [importFramework, importModule]
-  -- let importDefs = [importFramework]
-  let imports = emit options (filter isImport mod.stmts)
-  let testClass =
-        PyClassDef
-          { name = "Test" ++ nameCamelCaseUpper (takeFileName mod.name),
-            bases = [PyAttribute (PyName "unittest") "TestCase"],
-            body = emit options (filter isTest mod.stmts),
-            decorators = [],
-            typeParams = []
-          }
-  let entrypoint =
-        PyIf
-          { test = PyCompare (PyName "__name__") PyEq (PyString "__main__"),
-            body = [PyAssign [] (pyCall (PyAttribute (PyName "unittest") "main") [])],
-            orelse = []
-          }
+  let path = splitDirectories mod.name & filter (/= ".")
+  let importPath = intercalate "." (options.packageName : path)
+  let importNames = case map fst (concatMap getContext mod.stmts) of
+        [] -> []
+        names -> [PyImportFrom importPath (map (,Nothing) names)]
   let stmts =
-        (importFramework : imports)
-          ++ [testClass]
-          ++ [entrypoint]
+        PyImport "unittest" Nothing
+          : PyImport importPath Nothing
+          : importNames
+          ++ emit options (filter isImport mod.stmts)
+          ++ [ PyClassDef
+                 { name = "Test" ++ nameCamelCaseUpper (takeFileName mod.name),
+                   bases = [PyAttribute (PyName "unittest") "TestCase"],
+                   body = emit options (filter isTest mod.stmts),
+                   decorators = [],
+                   typeParams = []
+                 },
+               PyIf
+                 { test = PyCompare (PyName "__name__") PyEq (PyString "__main__"),
+                   body = [PyAssign [] (pyCall (PyAttribute (PyName "unittest") "main") [])],
+                   orelse = []
+                 }
+             ]
   PyModule {name = "test_" ++ mod.name, body = stmts}
 
 isImport :: Stmt -> Bool
@@ -562,17 +550,16 @@ instance Emit [Stmt] [PyStmt] where
 instance Emit Stmt [PyStmt] where
   emit :: BuildOptions -> Stmt -> [PyStmt]
   emit options (Import pkg path alias exposed) = do
-    -- let alias' = if path == alias then Nothing else Just alias
-    -- [PyImport (pkg ++ "." ++ path) Nothing]
+    let mod = pkg ++ "." ++ path
     case exposed of
       [] -> do
-        let alias' = if path == alias then Nothing else Just alias
-        [PyImport (pkg ++ "." ++ path) alias']
+        let alias' = if '@' : mod == alias then Nothing else Just alias
+        [PyImport mod alias']
       exposed -> do
-        let expose (name, alias) | name == alias = (name, Nothing)
-            expose (name, alias) = (name, Just alias)
+        let expose (x, x') | x == x' = (x, Nothing)
+            expose (x, y) = (x, Just y)
         let stmts = emit options (Import pkg path alias [])
-        stmts ++ [PyImportFrom (pkg ++ "." ++ path) (map expose exposed)]
+        stmts ++ [PyImportFrom mod (map expose exposed)]
   emit options (Define def) = emit options def
   emit options (Test a p) = do
     let (stmts1, a') = emit options a

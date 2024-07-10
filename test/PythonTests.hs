@@ -54,9 +54,9 @@ run = describe "--==☯ Python ☯==--" $ do
     True `shouldBe` True
 
   it "☯ emit Import" $ do
-    emit options (Import "pkg" "mod" "mod" []) `shouldBe` [PyImport "pkg.mod" Nothing]
+    emit options (Import "pkg" "mod" "@pkg.mod" []) `shouldBe` [PyImport "pkg.mod" Nothing]
     emit options (Import "pkg" "mod" "alias" []) `shouldBe` [PyImport "pkg.mod" (Just "alias")]
-    emit options (Import "pkg" "mod" "mod" [("a", "a"), ("b", "c")]) `shouldBe` [PyImport "pkg.mod" Nothing, PyImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]
+    emit options (Import "pkg" "mod" "@pkg.mod" [("a", "a"), ("b", "c")]) `shouldBe` [PyImport "pkg.mod" Nothing, PyImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]
 
   it "☯ emit Def" $ do
     emit options (var "x" y) `shouldBe` [PyAssign [x'] y']
