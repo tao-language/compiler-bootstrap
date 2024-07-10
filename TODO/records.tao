@@ -1,0 +1,15 @@
+p = {x = 10, y = 20}
+
+# Property-like access
+> p.x
+10
+
+> p.y
+20
+
+# Trait-like access
+> .x p
+10
+
+> .y p
+20

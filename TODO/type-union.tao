@@ -1,0 +1,9 @@
+type MyType
+  | A
+  | B Int Int
+
+> A
+A
+
+> B 1 2
+B 1 2
