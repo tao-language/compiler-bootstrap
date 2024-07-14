@@ -33,6 +33,14 @@ newModule name body =
       body = body
     }
 
+data PyPackage
+  = PyPackage
+  { name :: String,
+    src :: [PyModule],
+    test :: [PyModule]
+  }
+  deriving (Eq, Show)
+
 --- Expressions ---
 -- https://docs.python.org/3/library/ast.html#expressions
 data PyExpr
@@ -535,6 +543,19 @@ isDefine _ = False
 class Emit a b where
   emit :: BuildOptions -> a -> b
 
+instance Emit Package PyPackage where
+  emit :: BuildOptions -> Package -> PyPackage
+  emit options pkg = do
+    PyPackage
+      { name = nameDashCase pkg.name,
+        src = [],
+        test = []
+      }
+
+instance Emit (Module, Context) PyModule where
+  emit :: BuildOptions -> (Module, Context) -> PyModule
+  emit options (mod, ctx) = error "TODO: emit Module"
+
 instance Emit Module PyModule where
   emit :: BuildOptions -> Module -> PyModule
   emit options mod = do
@@ -546,6 +567,150 @@ instance Emit [Stmt] [PyStmt] where
   emit _ [] = []
   emit options (stmt : stmts) = do
     emit options stmt ++ emit options stmts
+
+instance Emit (Stmt, Context) [PyStmt] where
+  emit :: BuildOptions -> (Stmt, Context) -> [PyStmt]
+  emit options (Import pkg path alias exposed, ctx) = do
+    let mod = pkg ++ "." ++ path
+    case exposed of
+      [] -> do
+        let alias' = if '@' : mod == alias then Nothing else Just alias
+        [PyImport mod alias']
+      exposed -> do
+        let expose (x, x') | x == x' = (x, Nothing)
+            expose (x, y) = (x, Just y)
+        let stmts = emit options (Import pkg path alias [], ctx)
+        stmts ++ [PyImportFrom mod (map expose exposed)]
+  emit options (Define def, ctx) = emit options (def, ctx)
+  emit options (Test a p, ctx) = do
+    let (stmts1, a') = emit options a
+    let (stmts2, b') = emit options (toExpr p) -- TODO: do a match instead
+    let def =
+          PyFunctionDef
+            { name = "test_" ++ nameSnakeCase (show (dropMeta a)),
+              args = [("self", Nothing, Nothing)],
+              body = [PyAssign [] (pyCall (PyAttribute (PyName "self") "assertEqual") [a', b'])],
+              decorators = [],
+              returns = Nothing,
+              typeParams = [],
+              async = False
+            }
+    stmts1 ++ stmts2 ++ [def]
+  emit options (MetaStmt _ stmt, ctx) = emit options stmt
+
+instance Emit (Definition, Context) [PyStmt] where
+  emit :: BuildOptions -> (Definition, Context) -> [PyStmt]
+  emit options (Def ts (PVar x) b, ctx) = case (lookup x ts, asLambda "_" b) of
+    (Nothing, ([], b)) -> do
+      let (stmts, b') = emit options b
+      let def = PyAssign [PyName x] b'
+      stmts ++ [def]
+    (Just t, ([], b)) -> do
+      let (stmts1, t') = emit options t
+      let (stmts2, b') = emit options b
+      let def = PyAnnAssign (PyName x) t' (Just b')
+      stmts1 ++ stmts2 ++ [def]
+    (Nothing, (xs, b)) -> do
+      let (body, b') = emit options b
+      let def =
+            PyFunctionDef
+              { name = x,
+                args = map (,Nothing,Nothing) xs,
+                body = body ++ [PyReturn b'],
+                decorators = [],
+                returns = Nothing,
+                typeParams = [],
+                async = False
+              }
+      [def]
+    (Just t, (xs, b)) -> do
+      let emitArg :: (String, Expr) -> ([PyStmt], [(String, Maybe PyExpr, Maybe PyExpr)]) -> ([PyStmt], [(String, Maybe PyExpr, Maybe PyExpr)])
+          emitArg (x, t) (stmts, args) = do
+            let (stmts', t') = emit options t
+            (stmts' ++ stmts, (x, Just t', Nothing) : args)
+      let (ts, ret) = asFun t
+      let (stmts1, args) = foldr emitArg ([], []) (zip xs ts)
+      let (stmts2, ret') = emit options ret
+      let (body, b') = emit options b
+      let def =
+            PyFunctionDef
+              { name = x,
+                args = args,
+                body = body ++ [PyReturn b'],
+                decorators = [],
+                returns = Just ret',
+                typeParams = [],
+                async = False
+              }
+      stmts1 ++ stmts2 ++ [def]
+  emit options (Def ts (PMeta _ p) b, ctx) = emit options (Define (Def ts p b))
+  emit options def = error $ "TODO: emit " ++ show def
+
+instance Emit (Expr, Expr) ([PyStmt], PyExpr) where
+  emit :: BuildOptions -> (Expr, Expr) -> ([PyStmt], PyExpr)
+  emit _ (Int i, _) = ([], PyInteger i)
+  emit _ (Num n, _) = ([], PyFloat n)
+  emit _ (Var x, _) = ([], PyName x)
+  -- Type [String]
+  emit options (Tag k args, typ) = case (k, args) of
+    ("Int", []) -> ([], PyName "int")
+    ("True", []) -> ([], PyName "True")
+    ("False", []) -> ([], PyName "False")
+    ("Nothing", []) -> ([], PyName "None")
+    (k, args) -> do
+      let (stmts, args') = emit options args
+      (stmts, pyCall (PyName k) args')
+  emit options (Tuple items, typ) = do
+    let (stmts, items') = emit options items
+    (stmts, PyTuple items')
+  emit options (Record fields, typ) = do
+    let emitFields :: [(String, Expr)] -> ([PyStmt], [(PyExpr, PyExpr)])
+        emitFields [] = ([], [])
+        emitFields ((x, a) : fields) = do
+          let (stmts1, field') = do
+                let (stmts, a') = emit options a
+                (stmts, (PyString x, a'))
+          let (stmts2, fields') = emitFields fields
+          (stmts1 ++ stmts2, field' : fields')
+    let (stmts, fields') = emitFields fields
+    (stmts, PyDict fields')
+  emit options (Trait a x, typ) = do
+    let (stmts, a') = emit options a
+    (stmts, PyAttribute a' x)
+  emit _ (TraitFun x, typ) = do
+    let a = "_"
+    ([], PyLambda [a] (PyAttribute (PyName a) x))
+  -- Fun Expr Expr
+  emit options (App a b, typ) = do
+    let (f, args) = asApp (App a b)
+    let (stmts1, f') = emit options f
+    let (stmts2, args') = emit options args
+    (stmts1 ++ stmts2, pyCall f' args')
+  -- Let Definition Expr
+  -- Bind (Expr, Expr) Expr
+  emit options (Match [] cases, typ) = do
+    let (xs, b) = asLambda "_arg" (Match [] cases)
+    let (stmts, b') = emit options b
+    let expr = PyLambda xs b'
+    (stmts, expr)
+  emit options (Match [arg] cases, typ) = do
+    let (stmts1, arg') = emit options arg
+    let (stmts2, cases') = emit options cases
+    let x = C.newName (concatMap stmtNames $ stmts1 ++ stmts2) "_match"
+    let stmt = PyMatch arg' (cases' x)
+    let expr = PyName x
+    (stmts1 ++ stmts2 ++ [stmt], expr)
+  -- If Expr Expr Expr
+  -- Or Expr Expr
+  -- Ann Expr Expr
+  -- Op1 C.UnaryOp Expr
+  emit options (Op2 op a b, typ) = do
+    let (stmts1, a') = emit options a
+    let (stmts2, b') = emit options b
+    (stmts1 ++ stmts2, PyBinOp a' (emit options op) b')
+  emit options (Meta _ a, typ) = emit options a
+  -- Err
+  emit options (expr, typ) = error $ "TODO: emit " ++ show (dropMeta (Ann expr typ))
 
 instance Emit Stmt [PyStmt] where
   emit :: BuildOptions -> Stmt -> [PyStmt]

@@ -61,16 +61,31 @@ run = describe "--==☯ Python ☯==--" $ do
   it "☯ emit Def" $ do
     emit options (var "x" y) `shouldBe` [PyAssign [x'] y']
 
-  it "☯ emitModule" $ do
+  -- it "☯ emit Stmt" $ do
+
+  it "☯ emit Module" $ do
+    let ctx = []
     let stmts =
           [ var "x" (Int 1),
             var "y" (Int 2)
           ]
-    let emits =
+    let expected =
           [ PyAssign [x'] (PyInteger 1),
             PyAssign [y'] (PyInteger 2)
           ]
-    emit options (Module "mod" stmts) `shouldBe` PyModule {name = "mod", body = emits}
+    emit options (Module "mod" stmts, ctx :: Context) `shouldBe` PyModule {name = "mod", body = expected}
+
+  it "☯ emit Package" $ do
+    let stmts =
+          [ var "x" (Int 1),
+            var "y" (Int 2)
+          ]
+    let pySrc =
+          [ PyAssign [x'] (PyInteger 1),
+            PyAssign [y'] (PyInteger 2)
+          ]
+    let pyTest = []
+    emit options (Package "my_pkg" [Module "my-mod" stmts]) `shouldBe` PyPackage "my-pkg" [PyModule "my_mod" pySrc] [PyModule "my_mod_test" pyTest]
 
   it "☯ build" $ do
     putStrLn "> parsePackage"
