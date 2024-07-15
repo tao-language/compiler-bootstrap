@@ -265,6 +265,12 @@ instance Lower Expr C.Expr where
   lower _ Err = C.Err
   lower _ a = error $ "TODO: lower " ++ show a
 
+infer :: Context -> Expr -> Expr
+infer ctx expr = do
+  case C.infer (lower ctx ctx) (lower ctx expr) of
+    Left _ -> Err
+    Right (t, _) -> lift t
+
 instance Lift C.Expr Expr where
   lift :: C.Expr -> Expr
   lift C.IntT = intT
