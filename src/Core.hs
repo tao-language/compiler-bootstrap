@@ -556,15 +556,12 @@ infer env (Var x) = case lookup x env of
   Just a -> infer env a
   Nothing -> Left (UndefinedVar x)
 infer _ (Typ _) = Right (Typ [], [])
--- infer env (Tag k []) = case lookup k env of
---   Just (Tag k' []) | k == k' -> Right (Tag k [], [])
---   Just (Ann (Tag k' []) ty) | k == k' -> Right (instantiate env ty)
---   Just a -> infer env a
---   Nothing -> Right (Tag k [], [])
--- infer env (Tag k args) = infer env (app (Tag k []) args)
-infer env (Tag k args) = do
-  (ts, s) <- inferArgs env args
-  Right (Tag k ts, s)
+infer env (Tag k []) = case lookup k env of
+  Just (Tag k' []) | k == k' -> Right (Tag k [], [])
+  Just (Ann (Tag k' []) ty) | k == k' -> Right (instantiate env ty)
+  Just a -> infer env a
+  Nothing -> Right (Tag k [], [])
+infer env (Tag k args) = infer env (app (Tag k []) (map snd args))
 infer env (Ann a ty) = do
   let (t, vars) = instantiate env ty
   (ta, s1) <- infer (vars ++ env) a

@@ -658,6 +658,8 @@ instance Emit (Expr, Context) ([PyStmt], PyExpr) where
     ("", args) | all ((== "") . fst) args -> do
       let (stmts, items) = emit options (map snd args, ctx)
       (stmts, PyTuple items)
+    ("", args) | any ((== "") . fst) args -> do
+      error "TODO: emit record with missing fields"
     ("", args) -> do
       let (stmts, items) = emit options (args, ctx)
       (stmts, PyDict (map (first PyString) items))
