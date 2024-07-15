@@ -18,20 +18,20 @@ run = describe "--==☯ Python ☯==--" $ do
   let (a', b') = (PyName "a", PyName "b")
 
   it "☯ emit Expr" $ do
-    let emit' :: (Expr, Context) -> ([PyStmt], PyExpr)
-        emit' (expr, ctx) = emit options (expr, ctx)
-    emit' (Int 42, []) `shouldBe` ([], PyInteger 42)
-    emit' (Num 3.14, []) `shouldBe` ([], PyFloat 3.14)
-    emit' (Var "x", []) `shouldBe` ([], PyName "x")
-    emit' (Tag "Int" [], []) `shouldBe` ([], PyName "int")
-    emit' (Tag "Num" [], []) `shouldBe` ([], PyName "float")
-    emit' (Tag "A" [], []) `shouldBe` ([], pyCall (PyName "A") [])
-    emit' (Tag "A" [x, y], []) `shouldBe` ([], pyCall (PyName "A") [x', y'])
-    emit' (Tuple [], []) `shouldBe` ([], PyTuple [])
-    emit' (Tuple [x, y], []) `shouldBe` ([], PyTuple [x', y'])
-    emit' (Record [], []) `shouldBe` ([], PyDict [])
-    emit' (Record [("a", x), ("b", y)], []) `shouldBe` ([], PyDict [(PyString "a", x'), (PyString "b", y')])
-    emit' (Trait x "y", []) `shouldBe` ([], PyAttribute x' "y")
+    let emit' :: Expr -> ([PyStmt], PyExpr)
+        emit' expr = emit options (expr, [] :: Context)
+    emit' (Int 42) `shouldBe` ([], PyInteger 42)
+    emit' (Num 3.14) `shouldBe` ([], PyFloat 3.14)
+    emit' (Var "x") `shouldBe` ([], PyName "x")
+    emit' (Tag "Int" []) `shouldBe` ([], PyName "int")
+    emit' (Tag "Num" []) `shouldBe` ([], PyName "float")
+    emit' (Tag "A" []) `shouldBe` ([], pyCall (PyName "A") [])
+    emit' (Tag "A" [x, y]) `shouldBe` ([], pyCall (PyName "A") [x', y'])
+    emit' (Tuple []) `shouldBe` ([], PyTuple [])
+    emit' (Tuple [x, y]) `shouldBe` ([], PyTuple [x', y'])
+    emit' (Record []) `shouldBe` ([], PyDict [])
+    emit' (Record [("a", x), ("b", y)]) `shouldBe` ([], PyDict [(PyString "a", x'), (PyString "b", y')])
+    emit' (Trait x "y") `shouldBe` ([], PyAttribute x' "y")
     -- emit' (Type [], []) `shouldBe` ([], pyCall (PyName "Type") [PyList []])
     -- emit' (Type ["A", "B"]) `shouldBe` (, pyCall (PyName "Type") [PyList [PyName "A", PyName "B"]])
     -- emit' (Fun x y) `shouldBe`
@@ -50,21 +50,24 @@ run = describe "--==☯ Python ☯==--" $ do
     -- Err
     True `shouldBe` True
 
-  it "☯ emit Import" $ do
-    let emit' :: (Stmt, Context) -> [PyStmt]
-        emit' (stmt, ctx) = emit options (stmt, ctx)
-    emit' (Import "pkg" "mod" "@pkg.mod" [], []) `shouldBe` [PyImport "pkg.mod" Nothing]
-    emit' (Import "pkg" "mod" "alias" [], []) `shouldBe` [PyImport "pkg.mod" (Just "alias")]
-    emit' (Import "pkg" "mod" "@pkg.mod" [("a", "a"), ("b", "c")], []) `shouldBe` [PyImport "pkg.mod" Nothing, PyImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]
-
   it "☯ emit Stmt" $ do
-    let emit' :: (Stmt, Context) -> [PyStmt]
-        emit' (stmt, ctx) = emit options (stmt, ctx)
-    emit' (var "x" y, []) `shouldBe` [PyAssign [x'] y']
+    let emit' :: Stmt -> [PyStmt]
+        emit' stmt = emit options (stmt, [] :: Context)
+    emit' (Import "pkg" "mod" "@pkg.mod" []) `shouldBe` [PyImport "pkg.mod" Nothing]
+    emit' (Import "pkg" "mod" "alias" []) `shouldBe` [PyImport "pkg.mod" (Just "alias")]
+    emit' (Import "pkg" "mod" "@pkg.mod" [("a", "a"), ("b", "c")]) `shouldBe` [PyImport "pkg.mod" Nothing, PyImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]
+    emit' (var "x" y) `shouldBe` [PyAssign [x'] y']
+
+  it "☯ emit [Stmt]" $ do
+    let emit' :: [Stmt] -> [PyStmt]
+        emit' stmts = emit options (stmts, [] :: Context)
+    let stmts =
+          []
+    True `shouldBe` True
 
   it "☯ emit Module" $ do
-    let emit' :: (Module, Context) -> PyModule
-        emit' (mod, ctx) = emit options (mod, ctx)
+    let emit' :: Module -> PyModule
+        emit' mod = emit options (mod, [] :: Context)
     let stmts =
           [ var "x" (Int 1),
             var "y" (Int 2)
@@ -73,7 +76,7 @@ run = describe "--==☯ Python ☯==--" $ do
           [ PyAssign [x'] (PyInteger 1),
             PyAssign [y'] (PyInteger 2)
           ]
-    emit' (Module "mod" stmts, []) `shouldBe` PyModule {name = "mod", body = expected}
+    emit' (Module "mod" stmts) `shouldBe` PyModule {name = "mod", body = expected}
 
   it "☯ emit Package" $ do
     let stmts =
