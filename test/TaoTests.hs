@@ -57,13 +57,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lift term `shouldBe` expr
 
   it "☯ lower/lift Tuple" $ do
-    let expr = Tuple []
-    let term = C.Tag "()" []
+    let expr = tuple []
+    let term = C.Tag "" []
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
-    let expr = Tuple [x, y]
-    let term = C.Tag "()" [x', y']
+    let expr = tuple [x, y]
+    let term = C.tag "" [x', y']
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 

@@ -655,23 +655,29 @@ instance Emit (Expr, Context) ([PyStmt], PyExpr) where
     ("True", []) -> ([], PyName "True")
     ("False", []) -> ([], PyName "False")
     ("Nothing", []) -> ([], PyName "None")
+    ("", args) | all ((== "") . fst) args -> do
+      let (stmts, items) = emit options (map snd args, ctx)
+      (stmts, PyTuple items)
+    ("", args) -> do
+      let (stmts, items) = emit options (args, ctx)
+      (stmts, PyDict (map (first PyString) items))
     (k, args) -> do
-      let (stmts, args') = emit options (args, ctx)
+      let (stmts, args') = emit options (map snd args, ctx)
       (stmts, pyCall (PyName k) args')
-  emit options (Tuple items, ctx) = do
-    let (stmts, items') = emit options (items, ctx)
-    (stmts, PyTuple items')
-  emit options (Record fields, ctx) = do
-    let emitFields :: [(String, Expr)] -> ([PyStmt], [(PyExpr, PyExpr)])
-        emitFields [] = ([], [])
-        emitFields ((x, a) : fields) = do
-          let (stmts1, field') = do
-                let (stmts, a') = emit options (a, ctx)
-                (stmts, (PyString x, a'))
-          let (stmts2, fields') = emitFields fields
-          (stmts1 ++ stmts2, field' : fields')
-    let (stmts, fields') = emitFields fields
-    (stmts, PyDict fields')
+  -- emit options (Tuple items, ctx) = do
+  --   let (stmts, items') = emit options (items, ctx)
+  --   (stmts, PyTuple items')
+  -- emit options (Record fields, ctx) = do
+  --   let emitFields :: [(String, Expr)] -> ([PyStmt], [(PyExpr, PyExpr)])
+  --       emitFields [] = ([], [])
+  --       emitFields ((x, a) : fields) = do
+  --         let (stmts1, field') = do
+  --               let (stmts, a') = emit options (a, ctx)
+  --               (stmts, (PyString x, a'))
+  --         let (stmts2, fields') = emitFields fields
+  --         (stmts1 ++ stmts2, field' : fields')
+  --   let (stmts, fields') = emitFields fields
+  --   (stmts, PyDict fields')
   emit options (Trait a x, ctx) = do
     let (stmts, a') = emit options (a, ctx)
     (stmts, PyAttribute a' x)
@@ -712,11 +718,18 @@ instance Emit (Expr, Context) ([PyStmt], PyExpr) where
 
 instance Emit ([Expr], Context) ([PyStmt], [PyExpr]) where
   emit :: BuildOptions -> ([Expr], Context) -> ([PyStmt], [PyExpr])
+  emit options (items, ctx) = do
+    let items' :: [(String, PyExpr)]
+        (stmts, items') = emit options (map ("",) items, ctx)
+    (stmts, map snd items')
+
+instance Emit ([(String, Expr)], Context) ([PyStmt], [(String, PyExpr)]) where
+  emit :: BuildOptions -> ([(String, Expr)], Context) -> ([PyStmt], [(String, PyExpr)])
   emit _ ([], _) = ([], [])
-  emit options (a : bs, ctx) = do
+  emit options ((x, a) : args, ctx) = do
     let (stmts1, a') = emit options (a, ctx)
-    let (stmts2, bs') = emit options (bs, ctx)
-    (stmts1 ++ stmts2, a' : bs')
+    let (stmts2, args') = emit options (args, ctx)
+    (stmts1 ++ stmts2, (x, a') : args')
 
 instance Emit (Case, Context) ([PyStmt], String -> (PyPattern, Maybe PyExpr, [PyStmt])) where
   emit :: BuildOptions -> (Case, Context) -> ([PyStmt], String -> (PyPattern, Maybe PyExpr, [PyStmt]))

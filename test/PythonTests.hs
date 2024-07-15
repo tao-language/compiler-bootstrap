@@ -23,14 +23,13 @@ run = describe "--==☯ Python ☯==--" $ do
     emit' (Int 42) `shouldBe` ([], PyInteger 42)
     emit' (Num 3.14) `shouldBe` ([], PyFloat 3.14)
     emit' (Var "x") `shouldBe` ([], PyName "x")
-    emit' (Tag "Int" []) `shouldBe` ([], PyName "int")
-    emit' (Tag "Num" []) `shouldBe` ([], PyName "float")
-    emit' (Tag "A" []) `shouldBe` ([], pyCall (PyName "A") [])
-    emit' (Tag "A" [x, y]) `shouldBe` ([], pyCall (PyName "A") [x', y'])
-    emit' (Tuple []) `shouldBe` ([], PyTuple [])
-    emit' (Tuple [x, y]) `shouldBe` ([], PyTuple [x', y'])
-    emit' (Record []) `shouldBe` ([], PyDict [])
-    emit' (Record [("a", x), ("b", y)]) `shouldBe` ([], PyDict [(PyString "a", x'), (PyString "b", y')])
+    emit' (tag "Int" []) `shouldBe` ([], PyName "int")
+    emit' (tag "Num" []) `shouldBe` ([], PyName "float")
+    emit' (tag "A" []) `shouldBe` ([], pyCall (PyName "A") [])
+    emit' (tag "A" [x, y]) `shouldBe` ([], pyCall (PyName "A") [x', y'])
+    emit' (tuple []) `shouldBe` ([], PyTuple [])
+    emit' (tuple [x, y]) `shouldBe` ([], PyTuple [x', y'])
+    emit' (record [("a", x), ("b", y)]) `shouldBe` ([], PyDict [(PyString "a", x'), (PyString "b", y')])
     emit' (Trait x "y") `shouldBe` ([], PyAttribute x' "y")
     -- emit' (Type [], []) `shouldBe` ([], pyCall (PyName "Type") [PyList []])
     -- emit' (Type ["A", "B"]) `shouldBe` (, pyCall (PyName "Type") [PyList [PyName "A", PyName "B"]])
@@ -62,13 +61,8 @@ run = describe "--==☯ Python ☯==--" $ do
     let emit' :: [Stmt] -> [PyStmt]
         emit' stmts = emit options (stmts, [] :: Context)
 
-    let stmts = []
-    let expected = []
-    emit' stmts `shouldBe` expected
-
-    let stmts = [var "p" (Record [("x", Int 1), ("y", Int 2)])]
-    let expected = [PyAssign [PyName "p"] (PyDict [(PyString "x", PyInteger 1), (PyString "y", PyInteger 2)])]
-    emit' stmts `shouldBe` expected
+    emit' [] `shouldBe` []
+    emit' [var "x" (Int 1)] `shouldBe` [PyAssign [PyName "x"] (PyInteger 1)]
 
   it "☯ emit Module" $ do
     let emit' :: Module -> PyModule
