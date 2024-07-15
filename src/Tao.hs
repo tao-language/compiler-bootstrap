@@ -155,6 +155,9 @@ meta ms a = foldr Meta a ms
 var :: String -> Expr -> Stmt
 var name value = Define (Def [] (PVar name) value)
 
+varT :: String -> Expr -> Expr -> Stmt
+varT name typ value = Define (Def [(name, typ)] (PVar name) value)
+
 fn :: String -> [Pattern] -> Expr -> Stmt
 fn name args value = Define (Def [] (PVar name) (match0 args value))
 

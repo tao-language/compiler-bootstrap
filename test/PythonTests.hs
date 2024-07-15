@@ -61,9 +61,14 @@ run = describe "--==☯ Python ☯==--" $ do
   it "☯ emit [Stmt]" $ do
     let emit' :: [Stmt] -> [PyStmt]
         emit' stmts = emit options (stmts, [] :: Context)
-    let stmts =
-          []
-    True `shouldBe` True
+
+    let stmts = []
+    let expected = []
+    emit' stmts `shouldBe` expected
+
+    let stmts = [var "p" (Record [("x", Int 1), ("y", Int 2)])]
+    let expected = [PyAssign [PyName "p"] (PyDict [(PyString "x", PyInteger 1), (PyString "y", PyInteger 2)])]
+    emit' stmts `shouldBe` expected
 
   it "☯ emit Module" $ do
     let emit' :: Module -> PyModule
