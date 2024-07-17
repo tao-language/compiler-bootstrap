@@ -19,7 +19,7 @@ run = describe "--==☯ Python ☯==--" $ do
 
   it "☯ emit Expr" $ do
     let emit' :: Expr -> ([PyStmt], PyExpr)
-        emit' expr = emit options (expr, [] :: Context)
+        emit' = emit options
     emit' (Int 42) `shouldBe` ([], PyInteger 42)
     emit' (Num 3.14) `shouldBe` ([], PyFloat 3.14)
     emit' (Var "x") `shouldBe` ([], PyName "x")
@@ -50,10 +50,8 @@ run = describe "--==☯ Python ☯==--" $ do
     True `shouldBe` True
 
   it "☯ emit Stmt" $ do
-    let ctx :: Context
-        ctx = []
     let emit' :: Stmt -> [PyStmt]
-        emit' stmt = emit options (stmt, ctx)
+        emit' = emit options
     emit' (Import "pkg" "mod" "@pkg.mod" []) `shouldBe` [PyImport "pkg.mod" Nothing]
     emit' (Import "pkg" "mod" "alias" []) `shouldBe` [PyImport "pkg.mod" (Just "alias")]
     emit' (Import "pkg" "mod" "@pkg.mod" [("a", "a"), ("b", "c")]) `shouldBe` [PyImport "pkg.mod" Nothing, PyImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]
@@ -65,14 +63,13 @@ run = describe "--==☯ Python ☯==--" $ do
 
   it "☯ emit [Stmt]" $ do
     let emit' :: [Stmt] -> [PyStmt]
-        emit' stmts = emit options (stmts, [] :: Context)
-
+        emit' = emit options
     emit' [] `shouldBe` []
     emit' [var "x" (Int 1)] `shouldBe` [PyAssign [PyName "x"] (PyInteger 1)]
 
   it "☯ emit Module" $ do
     let emit' :: Module -> PyModule
-        emit' mod = emit options (mod, [] :: Context)
+        emit' = emit options
     let stmts =
           [ var "x" (Int 1),
             var "y" (Int 2)
