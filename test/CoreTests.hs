@@ -185,8 +185,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval env (App (lam [PNumT] x) IntT) `shouldBe` Err
     eval env (App (lam [PNumT] x) NumT) `shouldBe` Int 1
     eval env (App (lam [PVar "x"] x) IntT) `shouldBe` IntT
-    eval env (App (lam [ptag "A" []] x) (tag "A" [])) `shouldBe` Int 1
-    eval env (App (lam [ptag "A" [x']] x) (tag "A" [IntT])) `shouldBe` IntT
+    eval env (App (lam [PTag "A" []] x) (Tag "A" [])) `shouldBe` Int 1
+    eval env (App (lam [PTag "A" [x']] x) (Tag "A" [IntT])) `shouldBe` IntT
     eval env (app (lam [PIntT, PNumT] x) [IntT, NumT]) `shouldBe` Int 1
     eval env (App Err IntT) `shouldBe` Err
     eval env (App Err IntT) `shouldBe` Err
@@ -295,15 +295,15 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer env (Ann (Var "f") (Fun IntT IntT)) `shouldBe` Right (Fun IntT IntT, [("xT", IntT), ("x", Ann x IntT), ("t", IntT), ("fT", fun [IntT] IntT), ("f", Ann f (fun [IntT] IntT))])
 
   it "☯ infer Union" $ do
-    let env = [("T", or' [tag "A" [], tag "B" []])]
-    infer env (tag "T" []) `shouldBe` Right (or' [tag "A" [], tag "B" []], [])
-    infer env (Ann (tag "A" []) (tag "A" [])) `shouldBe` Right (tag "A" [], [])
-    infer env (Ann (tag "A" []) (tag "T" [])) `shouldBe` Right (tag "A" [], [])
-    infer env (Ann (tag "B" []) (tag "T" [])) `shouldBe` Right (tag "B" [], [])
-    infer env (Ann (tag "C" []) (tag "T" [])) `shouldBe` Left (TypeMismatch (tag "C" []) (tag "B" []))
+    let env = [("T", or' [Tag "A" [], Tag "B" []])]
+    infer env (Tag "T" []) `shouldBe` Right (or' [Tag "A" [], Tag "B" []], [])
+    infer env (Ann (Tag "A" []) (Tag "A" [])) `shouldBe` Right (Tag "A" [], [])
+    infer env (Ann (Tag "A" []) (Tag "T" [])) `shouldBe` Right (Tag "A" [], [])
+    infer env (Ann (Tag "B" []) (Tag "T" [])) `shouldBe` Right (Tag "B" [], [])
+    infer env (Ann (Tag "C" []) (Tag "T" [])) `shouldBe` Left (TypeMismatch (Tag "C" []) (Tag "B" []))
 
   it "☯ infer Bool" $ do
-    let (bool, true, false) = (tag "Bool" [], tag "True" [], tag "False" [])
+    let (bool, true, false) = (Tag "Bool" [], Tag "True" [], Tag "False" [])
     let env =
           [ ("Bool", bool),
             ("True", Ann true bool),
@@ -311,40 +311,40 @@ run = describe "--==☯️ Core language ☯️==--" $ do
           ]
 
     let infer' a = fmap fst (infer env a)
-    infer' (tag "True" []) `shouldBe` Right bool
+    infer' (Tag "True" []) `shouldBe` Right bool
     infer' (Ann true bool) `shouldBe` Right bool
-    infer' (Ann false (tag "X" [])) `shouldBe` Left (TypeMismatch bool (tag "X" []))
-    infer' (Ann (tag "X" []) bool) `shouldBe` Left (TypeMismatch (tag "X" []) bool)
+    infer' (Ann false (Tag "X" [])) `shouldBe` Left (TypeMismatch bool (Tag "X" []))
+    infer' (Ann (Tag "X" []) bool) `shouldBe` Left (TypeMismatch (Tag "X" []) bool)
 
   it "☯ infer Maybe" $ do
-    let (maybe, just, nothing) = (\a -> tag "Maybe" [a], \a -> tag "Just" [a], tag "Nothing" [])
+    let (maybe, just, nothing) = (\a -> Tag "Maybe" [a], \a -> Tag "Just" [a], Tag "Nothing" [])
     let env =
-          [ ("Maybe", tag "Maybe" []),
-            ("Just", Ann (tag "Just" []) (for ["a"] $ Fun a (maybe a))),
-            ("Nothing", Ann (tag "Nothing" []) (for ["a"] $ maybe a))
+          [ ("Maybe", Tag "Maybe" []),
+            ("Just", Ann (Tag "Just" []) (for ["a"] $ Fun a (maybe a))),
+            ("Nothing", Ann (Tag "Nothing" []) (for ["a"] $ maybe a))
           ]
 
     let infer' a = fmap fst (infer env a)
-    infer' (tag "Nothing" []) `shouldBe` Right (maybe a)
-    infer' (tag "Just" []) `shouldBe` Right (Fun a (maybe a))
+    infer' (Tag "Nothing" []) `shouldBe` Right (maybe a)
+    infer' (Tag "Just" []) `shouldBe` Right (Fun a (maybe a))
     infer' (just i1) `shouldBe` Right (maybe (Int 1 `Or` IntT))
     infer' (Ann nothing (maybe IntT)) `shouldBe` Right (maybe IntT)
     infer' (Ann (just i1) (maybe IntT)) `shouldBe` Right (maybe IntT)
     infer' (Ann (just i1) (maybe NumT)) `shouldBe` Left (TypeMismatch IntT NumT)
-    infer' (Ann (tag "X" []) (maybe IntT)) `shouldBe` Left (TypeMismatch (tag "X" []) (maybe IntT))
+    infer' (Ann (Tag "X" []) (maybe IntT)) `shouldBe` Left (TypeMismatch (Tag "X" []) (maybe IntT))
 
   it "☯ infer Vec" $ do
     let (n, a) = (Var "n", Var "a")
-    let (vec, cons, nil) = (tag "Vec", tag "Cons", tag "Nil" [])
+    let (vec, cons, nil) = (Tag "Vec", Tag "Cons", Tag "Nil" [])
     let env =
-          [ ("Vec", tag "Vec" []),
-            ("Cons", Ann (tag "Cons" []) (for ["n", "a"] $ fun [a, vec [n, a]] $ vec [add n i1, a])),
-            ("Nil", Ann (tag "Nil" []) (for ["a"] $ vec [i0, a]))
+          [ ("Vec", Tag "Vec" []),
+            ("Cons", Ann (Tag "Cons" []) (for ["n", "a"] $ fun [a, vec [n, a]] $ vec [add n i1, a])),
+            ("Nil", Ann (Tag "Nil" []) (for ["a"] $ vec [i0, a]))
           ]
 
     let infer' a = fmap fst (infer env a)
-    infer' (tag "Nil" []) `shouldBe` Right (vec [i0, a])
-    infer' (tag "Cons" []) `shouldBe` Right (fun [a, vec [n, a]] (vec [add n i1, a]))
+    infer' (Tag "Nil" []) `shouldBe` Right (vec [i0, a])
+    infer' (Tag "Cons" []) `shouldBe` Right (fun [a, vec [n, a]] (vec [add n i1, a]))
     infer' (cons [Num 1.1, nil]) `shouldBe` Right (vec [i1, Num 1.1 `Or` NumT])
     infer' (cons [Num 1.1, cons [Num 2.2, nil]]) `shouldBe` Right (vec [i2, Num 1.1 `Or` NumT])
     infer' (Ann nil (vec [i0, NumT])) `shouldBe` Right (vec [i0, NumT])
@@ -359,9 +359,9 @@ run = describe "--==☯️ Core language ☯️==--" $ do
           [ ("f", Ann f (Fun IntT NumT)),
             ("x", Ann (Int 42) NumT),
             ("y", App f (Int 42)),
-            ("z", App f (tag "A" []))
+            ("z", App f (Tag "A" []))
           ]
-    checkTypes env `shouldBe` [TypeMismatch IntT NumT, TypeMismatch (tag "A" []) IntT]
+    checkTypes env `shouldBe` [TypeMismatch IntT NumT, TypeMismatch (Tag "A" []) IntT]
 
   it "☯ rename simple" $ do
     let env = [("A", x), ("B", y)]

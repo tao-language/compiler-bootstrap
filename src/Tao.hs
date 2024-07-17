@@ -255,7 +255,7 @@ instance Lower Expr C.Expr where
   lower ctx (Tag k args)
     | Tag k args == intT = C.IntT
     | Tag k args == numT = C.NumT
-    | otherwise = C.Tag k (map (second $ lower ctx) args)
+    | otherwise = C.Tag k (map (lower ctx . snd) args)
   lower ctx (Trait a x) = do
     let a' = lower ctx a
     let env = lower ctx ctx
@@ -289,7 +289,7 @@ instance Lift C.Expr Expr where
   lift (C.Int i) = Int i
   lift (C.Num n) = Num n
   lift (C.Var x) = Var x
-  lift (C.Tag k args) = Tag k (map (second lift) args)
+  lift (C.Tag k args) = Tag k (map (\a -> ("", lift a)) args)
   lift (C.Typ alts) = Type alts
   lift (C.For _ a) = lift a
   lift (C.Fix _ a) = lift a
@@ -323,7 +323,7 @@ instance Lower Pattern C.Pattern where
   lower ctx (PTag k ps)
     | PTag k ps == pIntT = C.PIntT
     | PTag k ps == pNumT = C.PNumT
-    | otherwise = C.PTag k (map (second $ lower ctx) ps)
+    | otherwise = C.PTag k (map (lower ctx . snd) ps)
   lower ctx (PFun p q) = C.PFun (lower ctx p) (lower ctx q)
   lower ctx (POr ps) = error "TODO"
   lower ctx (PEq a) = C.PEq (lower ctx a)

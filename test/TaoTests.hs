@@ -63,7 +63,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lift term `shouldBe` expr
 
     let expr = tuple [x, y]
-    let term = C.tag "" [x', y']
+    let term = C.Tag "" [x', y']
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
