@@ -29,6 +29,7 @@ run = describe "--==☯ Python ☯==--" $ do
     emit' (tag "A" [x, y]) `shouldBe` ([], pyCall (PyName "A") [x', y'])
     emit' (tuple []) `shouldBe` ([], PyTuple [])
     emit' (tuple [x, y]) `shouldBe` ([], PyTuple [x', y'])
+    emit' (record [("", x), ("b", y)]) `shouldBe` ([], PyTuple [x', y'])
     emit' (record [("a", x), ("b", y)]) `shouldBe` ([], PyDict [(PyString "a", x'), (PyString "b", y')])
     emit' (Trait x "y") `shouldBe` ([], PyAttribute x' "y")
     -- emit' (Type [], []) `shouldBe` ([], pyCall (PyName "Type") [PyList []])

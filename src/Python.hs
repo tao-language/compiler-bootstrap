@@ -653,11 +653,9 @@ instance Emit Expr ([PyStmt], PyExpr) where
     ("True", []) -> ([], PyName "True")
     ("False", []) -> ([], PyName "False")
     ("Nothing", []) -> ([], PyName "None")
-    ("", args) | all ((== "") . fst) args -> do
+    ("", args) | null args || any ((== "") . fst) args -> do
       let (stmts, items) = emit options (map snd args)
       (stmts, PyTuple items)
-    -- ("", args) | any ((== "") . fst) args -> do
-    --   error "TODO: emit record with missing fields"
     ("", args) -> do
       let (stmts, items) = emit options args
       (stmts, PyDict (map (first PyString) items))
@@ -666,20 +664,6 @@ instance Emit Expr ([PyStmt], PyExpr) where
       let (stmts1, posArgs') = emit options (map snd posArgs)
       let (stmts2, kwArgs') = emit options kwArgs
       (stmts1 ++ stmts2, PyCall (PyName k) posArgs' kwArgs')
-  -- emit options (Tuple items, ctx) = do
-  --   let (stmts, items') = emit options (items, ctx)
-  --   (stmts, PyTuple items')
-  -- emit options (Record fields, ctx) = do
-  --   let emitFields :: [(String, Expr)] -> ([PyStmt], [(PyExpr, PyExpr)])
-  --       emitFields [] = ([], [])
-  --       emitFields ((x, a) : fields) = do
-  --         let (stmts1, field') = do
-  --               let (stmts, a') = emit options (a, ctx)
-  --               (stmts, (PyString x, a'))
-  --         let (stmts2, fields') = emitFields fields
-  --         (stmts1 ++ stmts2, field' : fields')
-  --   let (stmts, fields') = emitFields fields
-  --   (stmts, PyDict fields')
   emit options (Trait a x) = do
     let (stmts, a') = emit options a
     (stmts, PyAttribute a' x)
