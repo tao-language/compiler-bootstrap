@@ -101,7 +101,7 @@ instance Show Expr where
   showsPrec p expr = case expr of
     -- App (Lam [Case [p] b]) a -> prefix 1 (show p ++ " = " ++ show a ++ "; ") b
     Or a b -> infixR 1 a " | " b
-    And a b -> infixR 1 a ", " b
+    And a b -> infixR 1 a "·" b
     Ann a b -> infixR 2 a " : " b
     Op2 Eq a b -> infixL 3 a (op2 Eq) b
     Op2 Lt a b -> infixR 4 a (op2 Lt) b
@@ -233,14 +233,17 @@ app = foldl App
 
 and' :: [Expr] -> Expr
 and' [] = Err
+and' [p] = p
 and' (a : bs) = And a (and' bs)
 
 pand :: [Pattern] -> Pattern
 pand [] = PErr
+pand [p] = p
 pand (p : qs) = PAnd p (pand qs)
 
 or' :: [Expr] -> Expr
 or' [] = Err
+or' [a] = a
 or' (a : bs) = Or a (or' bs)
 
 asApp :: Expr -> (Expr, [Expr])
@@ -484,11 +487,19 @@ unify (Fun a1 b1) (Fun a2 b2) = do
   ((ta, tb), s) <- unify2 (a1, a2) (b1, b2)
   Right (Fun ta tb, s)
 unify (Or a1 a2) b = case unify a1 b of
-  Right (a, s) -> Right (a, s)
   Left _ -> unify a2 b
+  Right (a, s1) -> case unify a2 b of
+    Left _ -> Right (a, s1)
+    Right (b, s2) -> case unify (eval s2 a) b of
+      Left _ -> Right (Or (eval s2 a) b, s2 `compose` s1)
+      Right (c, s3) -> Right (c, s3 `compose` s2 `compose` s1)
 unify a (Or b1 b2) = case unify a b1 of
-  Right (a, s) -> Right (a, s)
   Left _ -> unify a b2
+  Right (a, s1) -> case unify a b2 of
+    Left _ -> Right (a, s1)
+    Right (b, s2) -> case unify (eval s2 a) b of
+      Left _ -> Right (Or (eval s2 a) b, s2 `compose` s1)
+      Right (c, s3) -> Right (c, s3 `compose` s2 `compose` s1)
 unify (App a1 b1) (App a2 b2) = do
   ((ta, tb), s) <- unify2 (a1, a2) (b1, b2)
   Right (App ta tb, s)
@@ -553,8 +564,10 @@ infer env (And a b) = do
   ((ta, tb), s) <- infer2 env a b
   Right (And ta tb, s)
 infer env (Or a b) = do
-  ((ta, tb), s) <- infer2 env a b
-  Right (Or ta tb, s)
+  ((ta, tb), s1) <- infer2 env a b
+  case unify ta tb of
+    Left _ -> Right (Or ta tb, s1)
+    Right (t, s2) -> Right (t, s2 `compose` s1)
 infer env (Ann a ty) = do
   let (t, vars) = instantiate env ty
   (ta, s1) <- infer (vars ++ env) a
@@ -660,7 +673,7 @@ instantiate env (For x a) = do
   let y = newName (map fst env) x
   let (b, s) = instantiate env (eval [(x, Var y)] a)
   (b, [(y, Var y)] `union` s)
-instantiate env a = (eval env a, [])
+instantiate env a = (eval [] a, [])
 
 checkTypes :: Env -> [TypeError]
 checkTypes env = do
