@@ -241,46 +241,39 @@ instance FreeVars Case where
   freeVars case' = C.freeVars (lower [] case' :: C.Case)
 
 class Lower a b where
-  lower :: Context -> a -> b
+  lower :: C.Env -> a -> b
 
 class Lift a b where
   lift :: a -> b
 
 instance Lower Expr C.Expr where
-  lower :: Context -> Expr -> C.Expr
+  lower :: C.Env -> Expr -> C.Expr
   lower _ (Int i) = C.Int i
   lower _ (Num n) = C.Num n
   lower _ (Var x) = C.Var x
   lower _ (Type alts) = C.Typ alts
-  lower ctx (Tag k args)
+  lower env (Tag k args)
     | Tag k args == intT = C.IntT
     | Tag k args == numT = C.NumT
-    | otherwise = C.Tag k (map (lower ctx . snd) args)
-  lower ctx (Trait a x) = do
-    let a' = lower ctx a
-    let env = lower ctx ctx
+    | otherwise = C.Tag k (map (lower env . snd) args)
+  lower env (Trait a x) = do
+    let a' = lower env a
     case C.infer env a' of
       Left _ -> C.Err
       Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
-  lower ctx (Fun a b) = C.Fun (lower ctx a) (lower ctx b)
-  lower ctx (App a b) = C.App (lower ctx a) (lower ctx b)
-  lower ctx (Let def b) = case def of
-    Def ts p a -> lower ctx (match [a] [Case [p] Nothing b])
-  lower ctx (Bind (p, a) b) = lower ctx (App (Trait a "<-") (Fun p b))
-  lower ctx (Match args cases) = C.app (C.Lam (map (lower ctx) cases)) (map (lower ctx) args)
-  lower ctx (Or a b) = C.Or (lower ctx a) (lower ctx b)
-  lower ctx (Ann a b) = C.Ann (lower ctx a) (lower ctx b)
-  lower ctx (Op1 op a) = C.Op1 op (lower ctx a)
-  lower ctx (Op2 op a b) = C.Op2 op (lower ctx a) (lower ctx b)
-  lower ctx (Meta m a) = C.Meta m (lower ctx a)
+  lower env (Fun a b) = C.Fun (lower env a) (lower env b)
+  lower env (App a b) = C.App (lower env a) (lower env b)
+  lower env (Let def b) = case def of
+    Def ts p a -> lower env (match [a] [Case [p] Nothing b])
+  lower env (Bind (p, a) b) = lower env (App (Trait a "<-") (Fun p b))
+  lower env (Match args cases) = C.app (C.Lam (map (lower env) cases)) (map (lower env) args)
+  lower env (Or a b) = C.Or (lower env a) (lower env b)
+  lower env (Ann a b) = C.Ann (lower env a) (lower env b)
+  lower env (Op1 op a) = C.Op1 op (lower env a)
+  lower env (Op2 op a b) = C.Op2 op (lower env a) (lower env b)
+  lower env (Meta m a) = C.Meta m (lower env a)
   lower _ Err = C.Err
   lower _ a = error $ "TODO: lower " ++ show a
-
-infer :: Context -> Expr -> Expr
-infer ctx expr = do
-  case C.infer (lower ctx ctx) (lower ctx expr) of
-    Left _ -> Err
-    Right (t, _) -> lift t
 
 instance Lift C.Expr Expr where
   lift :: C.Expr -> Expr
@@ -309,35 +302,35 @@ instance Lift C.Expr Expr where
   lift a = error $ "TODO: lift " ++ show a
 
 instance Lower Case C.Case where
-  lower :: Context -> Case -> C.Case
-  lower ctx (Case ps cond b) =
-    C.Case (map (lower ctx) ps) (lower ctx b)
+  lower :: C.Env -> Case -> C.Case
+  lower env (Case ps cond b) =
+    C.Case (map (lower env) ps) (lower env b)
 
 instance Lower Pattern C.Pattern where
-  lower :: Context -> Pattern -> C.Pattern
+  lower :: C.Env -> Pattern -> C.Pattern
   lower _ PAny = C.PAny
   lower _ (PInt i) = C.PInt i
   lower _ (PNum n) = C.PNum n
   lower _ (PVar x) = C.PVar x
   lower _ (PType alts) = C.PTyp alts
-  lower ctx (PTag k ps)
+  lower env (PTag k ps)
     | PTag k ps == pIntT = C.PIntT
     | PTag k ps == pNumT = C.PNumT
-    | otherwise = C.PTag k (map (lower ctx . snd) ps)
-  lower ctx (PFun p q) = C.PFun (lower ctx p) (lower ctx q)
-  lower ctx (POr ps) = error "TODO"
-  lower ctx (PEq a) = C.PEq (lower ctx a)
-  lower ctx (PMeta m p) = C.PMeta m (lower ctx p)
+    | otherwise = C.PTag k (map (lower env . snd) ps)
+  lower env (PFun p q) = C.PFun (lower env p) (lower env q)
+  lower env (POr ps) = error "TODO"
+  lower env (PEq a) = C.PEq (lower env a)
+  lower env (PMeta m p) = C.PMeta m (lower env p)
   lower _ PErr = C.PErr
   lower _ p = error $ "TODO: lower " ++ show p
 
 instance Lower Context C.Env where
-  lower :: Context -> Context -> C.Env
+  lower :: C.Env -> Context -> C.Env
   lower ctx = map (second (lower ctx))
 
 instance Lower Package C.Env where
-  lower :: Context -> Package -> C.Env
-  lower ctx pkg = lower ctx (getContext pkg)
+  lower :: C.Env -> Package -> C.Env
+  lower env pkg = lower env (getContext pkg)
 
 stmtTests :: Stmt -> [(Expr, Pattern)]
 stmtTests (Test expr expected) = [(expr, expected)]
@@ -459,13 +452,12 @@ packageTests pkg = concatMap moduleTests pkg.modules
 run :: Package -> Expr -> Expr
 run pkg expr = do
   let pkg' = link () pkg
-  let ctx = getContext pkg'
-  let env = lower ctx pkg'
-  let term = lower (getContext pkg') expr
+  let env = lower [] pkg'
+  let term = lower env expr
   lift (C.eval env term)
 
-testEq :: Context -> (Expr, Pattern) -> [TestError]
-testEq ctx (expr, expected) = do
+testEq :: C.Env -> (Expr, Pattern) -> [TestError]
+testEq env (expr, expected) = do
   -- let env = lower ctx
   -- let actual = C.eval env (lower ctx expr)
   -- let expected = C.eval env (lower ctx result)
@@ -473,8 +465,7 @@ testEq ctx (expr, expected) = do
   --   C.Err -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
   --   C.Op2 C.Eq _ _ -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
   --   _ -> []
-  let env = lower ctx ctx
-  let unitTest = lower ctx (let' expected expr (tuple []))
+  let unitTest = lower env (let' expected expr (tuple []))
   let passed = case C.eval env unitTest of
         C.Err -> False
         C.Op2 C.Eq _ _ -> False
@@ -482,14 +473,14 @@ testEq ctx (expr, expected) = do
   if passed
     then []
     else do
-      let actual = lower ctx expr & C.eval env & lift
+      let actual = lower env expr & C.eval env & lift
       [TestEqError expr actual expected]
 
 test :: Package -> [TestError]
 test pkg = do
   let pkg' = link () pkg
-  let ctx = getContext pkg'
-  concatMap (testEq ctx) (packageTests pkg')
+  let env = lower [] pkg'
+  concatMap (testEq env) (packageTests pkg')
 
 nameSplit :: String -> [String]
 nameSplit name =
