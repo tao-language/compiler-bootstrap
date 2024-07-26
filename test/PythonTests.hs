@@ -18,26 +18,23 @@ run = describe "--==☯ Python ☯==--" $ do
   let (a', b') = (PyName "a", PyName "b")
 
   it "☯ emit Expr" $ do
-    let emit' = emit :: BuildOptions -> Expr -> ([PyStmt], PyExpr)
-    emit' options (Int 42) `shouldBe` ([], PyInteger 42)
-    emit' options (Num 3.14) `shouldBe` ([], PyFloat 3.14)
-    emit' options (Var "x") `shouldBe` ([], PyName "x")
-    -- emit' options (Tag "Int" []) `shouldBe` ([], PyName "int")
-    -- emit' options (Tag "Num" []) `shouldBe` ([], PyName "float")
-    -- emit' options (Tag "A" []) `shouldBe` ([], pyCall (PyName "A") [])
-    -- emit' options (Tag "A" [x, y]) `shouldBe` ([], pyCall (PyName "A") [x', y'])
-    -- emit' options (Tuple []) `shouldBe` ([], PyTuple [])
-    -- emit' options (Tuple [x, y]) `shouldBe` ([], PyTuple [x', y'])
-    -- emit'  (Record []) `shouldBe` (, PyDict [])
-    -- emit'  (Record [("a", x), ("b", y)]) `shouldBe` (, PyDict [(a', x'), (b', y')])
-    -- emit'  (Trait x "y") `shouldBe` (, pyCall (PyAttribute x' "y") [])
-    -- emit'  ListNil `shouldBe` (, pyCall (PyName "_ListNil") [])
-    -- emit'  ListCons `shouldBe` (, pyCall (PyName "_ListCons") [])
-    -- emit'  TextNil `shouldBe` (, pyCall (PyName "_TextNil") [])
-    -- emit'  TextCons `shouldBe` (, pyCall (PyName "_TextCons") [])
-    -- emit'  (Type []) `shouldBe` (, pyCall (PyName "Type") [PyList []])
-    -- emit'  (Type ["A", "B"]) `shouldBe` (, pyCall (PyName "Type") [PyList [PyName "A", PyName "B"]])
-    -- emit'  (Fun x y) `shouldBe`
+    let emit' :: Expr -> ([PyStmt], PyExpr)
+        emit' = emit options
+    emit' (Int 42) `shouldBe` ([], PyInteger 42)
+    emit' (Num 3.14) `shouldBe` ([], PyFloat 3.14)
+    emit' (Var "x") `shouldBe` ([], PyName "x")
+    emit' (tag "Int" []) `shouldBe` ([], PyName "int")
+    emit' (tag "Num" []) `shouldBe` ([], PyName "float")
+    emit' (tag "A" []) `shouldBe` ([], pyCall (PyName "A") [])
+    emit' (tag "A" [x, y]) `shouldBe` ([], pyCall (PyName "A") [x', y'])
+    emit' (tuple []) `shouldBe` ([], PyTuple [])
+    emit' (tuple [x, y]) `shouldBe` ([], PyTuple [x', y'])
+    emit' (record [("", x), ("b", y)]) `shouldBe` ([], PyTuple [x', y'])
+    emit' (record [("a", x), ("b", y)]) `shouldBe` ([], PyDict [(PyString "a", x'), (PyString "b", y')])
+    emit' (Trait x "y") `shouldBe` ([], PyAttribute x' "y")
+    -- emit' (Type [], []) `shouldBe` ([], pyCall (PyName "Type") [PyList []])
+    -- emit' (Type ["A", "B"]) `shouldBe` (, pyCall (PyName "Type") [PyList [PyName "A", PyName "B"]])
+    -- emit' (Fun x y) `shouldBe`
     -- Fun Expr Expr
     -- App Expr Expr
     -- Let (Expr, Expr) Expr
@@ -53,24 +50,49 @@ run = describe "--==☯ Python ☯==--" $ do
     -- Err
     True `shouldBe` True
 
-  it "☯ emit Import" $ do
-    emit options (Import "pkg" "mod" "@pkg.mod" []) `shouldBe` [PyImport "pkg.mod" Nothing]
-    emit options (Import "pkg" "mod" "alias" []) `shouldBe` [PyImport "pkg.mod" (Just "alias")]
-    emit options (Import "pkg" "mod" "@pkg.mod" [("a", "a"), ("b", "c")]) `shouldBe` [PyImport "pkg.mod" Nothing, PyImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]
+  it "☯ emit Stmt" $ do
+    let emit' :: Stmt -> [PyStmt]
+        emit' = emit options
+    emit' (Import "pkg" "mod" "@pkg.mod" []) `shouldBe` [PyImport "pkg.mod" Nothing]
+    emit' (Import "pkg" "mod" "alias" []) `shouldBe` [PyImport "pkg.mod" (Just "alias")]
+    emit' (Import "pkg" "mod" "@pkg.mod" [("a", "a"), ("b", "c")]) `shouldBe` [PyImport "pkg.mod" Nothing, PyImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]
+    emit' (var "x" y) `shouldBe` [PyAssign [x'] y']
+    emit' (var "a" (Tag "Point" [("", Int 1), ("y", Int 2)])) `shouldBe` [PyAssign [a'] (PyCall (PyName "Point") [PyInteger 1] [("y", PyInteger 2)])]
+    -- emit' (var "a" (Tag "Point" [("y", Int 2), ("", Int 1)])) `shouldBe` [PyAssign [a'] (PyCall (PyName "Point") [] [("x", PyInteger 1), ("y", PyInteger 2)])]
+    -- emit' (varT "a" (Var "Point") (record [("y", Int 2), ("", Int 1)])) `shouldBe` [PyAssign [a'] (PyCall (PyName "Point") [] [("x", PyInteger 1), ("y", PyInteger 2)])]
+    True `shouldBe` True
 
-  it "☯ emit Def" $ do
-    emit options (var "x" y) `shouldBe` [PyAssign [x'] y']
+  it "☯ emit [Stmt]" $ do
+    let emit' :: [Stmt] -> [PyStmt]
+        emit' = emit options
+    emit' [] `shouldBe` []
+    emit' [var "x" (Int 1)] `shouldBe` [PyAssign [PyName "x"] (PyInteger 1)]
 
-  it "☯ emitModule" $ do
+  it "☯ emit Module" $ do
+    let emit' :: Module -> PyModule
+        emit' = emit options
     let stmts =
           [ var "x" (Int 1),
             var "y" (Int 2)
           ]
-    let emits =
+    let expected =
           [ PyAssign [x'] (PyInteger 1),
             PyAssign [y'] (PyInteger 2)
           ]
-    emit options (Module "mod" stmts) `shouldBe` PyModule {name = "mod", body = emits}
+    emit' (Module "mod" stmts) `shouldBe` PyModule {name = "mod", body = expected}
+
+  it "☯ emit Package" $ do
+    let stmts =
+          [ var "x" (Int 1),
+            var "y" (Int 2)
+          ]
+    let pySrc =
+          [ PyAssign [x'] (PyInteger 1),
+            PyAssign [y'] (PyInteger 2)
+          ]
+    let pyTest = []
+    -- emit options (Package "my_pkg" [Module "my-mod" stmts]) `shouldBe` PyPackage "my-pkg" [PyModule "my_mod" pySrc] [PyModule "my_mod_test" pyTest]
+    True `shouldBe` True
 
   it "☯ build" $ do
     putStrLn "> parsePackage"

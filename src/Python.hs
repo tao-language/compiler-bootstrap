@@ -33,6 +33,14 @@ newModule name body =
       body = body
     }
 
+data PyPackage
+  = PyPackage
+  { name :: String,
+    src :: [PyModule],
+    test :: [PyModule]
+  }
+  deriving (Eq, Show)
+
 --- Expressions ---
 -- https://docs.python.org/3/library/ast.html#expressions
 data PyExpr
@@ -535,17 +543,20 @@ isDefine _ = False
 class Emit a b where
   emit :: BuildOptions -> a -> b
 
+instance Emit Package PyPackage where
+  emit :: BuildOptions -> Package -> PyPackage
+  emit options pkg = do
+    PyPackage
+      { name = nameDashCase pkg.name,
+        src = [],
+        test = []
+      }
+
 instance Emit Module PyModule where
   emit :: BuildOptions -> Module -> PyModule
   emit options mod = do
     let stmts = emit options (filter (not . isTest) mod.stmts)
     PyModule {name = mod.name, body = stmts}
-
-instance Emit [Stmt] [PyStmt] where
-  emit :: BuildOptions -> [Stmt] -> [PyStmt]
-  emit _ [] = []
-  emit options (stmt : stmts) = do
-    emit options stmt ++ emit options stmts
 
 instance Emit Stmt [PyStmt] where
   emit :: BuildOptions -> Stmt -> [PyStmt]
@@ -576,6 +587,11 @@ instance Emit Stmt [PyStmt] where
             }
     stmts1 ++ stmts2 ++ [def]
   emit options (MetaStmt _ stmt) = emit options stmt
+
+instance Emit [Stmt] [PyStmt] where
+  emit :: BuildOptions -> [Stmt] -> [PyStmt]
+  emit _ [] = []
+  emit options (stmt : stmts) = emit options stmt ++ emit options stmts
 
 instance Emit Definition [PyStmt] where
   emit :: BuildOptions -> Definition -> [PyStmt]
@@ -633,26 +649,21 @@ instance Emit Expr ([PyStmt], PyExpr) where
   -- Type [String]
   emit options (Tag k args) = case (k, args) of
     ("Int", []) -> ([], PyName "int")
+    ("Num", []) -> ([], PyName "float")
     ("True", []) -> ([], PyName "True")
     ("False", []) -> ([], PyName "False")
     ("Nothing", []) -> ([], PyName "None")
+    ("", args) | null args || any ((== "") . fst) args -> do
+      let (stmts, items) = emit options (map snd args)
+      (stmts, PyTuple items)
+    ("", args) -> do
+      let (stmts, items) = emit options args
+      (stmts, PyDict (map (first PyString) items))
     (k, args) -> do
-      let (stmts, args') = emit options args
-      (stmts, pyCall (PyName k) args')
-  emit options (Tuple items) = do
-    let (stmts, items') = emit options items
-    (stmts, PyTuple items')
-  emit options (Record fields) = do
-    let emitFields :: [(String, Expr)] -> ([PyStmt], [(PyExpr, PyExpr)])
-        emitFields [] = ([], [])
-        emitFields ((x, a) : fields) = do
-          let (stmts1, field') = do
-                let (stmts, a') = emit options a
-                (stmts, (PyString x, a'))
-          let (stmts2, fields') = emitFields fields
-          (stmts1 ++ stmts2, field' : fields')
-    let (stmts, fields') = emitFields fields
-    (stmts, PyDict fields')
+      let (posArgs, kwArgs) = span ((== "") . fst) args
+      let (stmts1, posArgs') = emit options (map snd posArgs)
+      let (stmts2, kwArgs') = emit options kwArgs
+      (stmts1 ++ stmts2, PyCall (PyName k) posArgs' kwArgs')
   emit options (Trait a x) = do
     let (stmts, a') = emit options a
     (stmts, PyAttribute a' x)
@@ -691,21 +702,20 @@ instance Emit Expr ([PyStmt], PyExpr) where
   -- Err
   emit options expr = error $ "TODO: emit " ++ show (dropMeta expr)
 
-instance Emit C.BinaryOp PyBinOp where
-  emit :: BuildOptions -> C.BinaryOp -> PyBinOp
-  emit _ C.Add = PyAdd
-  emit _ C.Sub = PySub
-  emit _ C.Mul = PyMult
-  emit _ C.Pow = PyPow
-  emit _ op = error $ "TODO: emit " ++ show op
-
 instance Emit [Expr] ([PyStmt], [PyExpr]) where
   emit :: BuildOptions -> [Expr] -> ([PyStmt], [PyExpr])
+  emit options items = do
+    let items' :: [(String, PyExpr)]
+        (stmts, items') = emit options (map ("",) items)
+    (stmts, map snd items')
+
+instance Emit [(String, Expr)] ([PyStmt], [(String, PyExpr)]) where
+  emit :: BuildOptions -> [(String, Expr)] -> ([PyStmt], [(String, PyExpr)])
   emit _ [] = ([], [])
-  emit options (a : bs) = do
+  emit options ((x, a) : args) = do
     let (stmts1, a') = emit options a
-    let (stmts2, bs') = emit options bs
-    (stmts1 ++ stmts2, a' : bs')
+    let (stmts2, args') = emit options args
+    (stmts1 ++ stmts2, (x, a') : args')
 
 instance Emit Case ([PyStmt], String -> (PyPattern, Maybe PyExpr, [PyStmt])) where
   emit :: BuildOptions -> Case -> ([PyStmt], String -> (PyPattern, Maybe PyExpr, [PyStmt]))
@@ -744,6 +754,14 @@ instance Emit Pattern ([PyStmt], PyPattern) where
   emit options (PMeta _ p) = emit options p
   -- -- PErr
   emit options p = error $ "TODO: emit " ++ show p
+
+instance Emit C.BinaryOp PyBinOp where
+  emit :: BuildOptions -> C.BinaryOp -> PyBinOp
+  emit _ C.Add = PyAdd
+  emit _ C.Sub = PySub
+  emit _ C.Mul = PyMult
+  emit _ C.Pow = PyPow
+  emit _ op = error $ "TODO: emit " ++ show op
 
 --- Pretty printing layouts ---
 pyPretty :: BuildOptions -> PP.Layout -> String

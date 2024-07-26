@@ -133,7 +133,7 @@ parseExprAtom = do
             x | startsWithUpper x -> do
               _ <- P.spaces
               args <- P.zeroOrMore parseExprAtom
-              return (Tag name args)
+              return (tag name args)
             _ -> return (Var name),
         do
           _ <- P.char '.'
@@ -141,7 +141,7 @@ parseExprAtom = do
         Int <$> P.integer,
         Num <$> P.number,
         do
-          a <- parseTuple Tuple (parseExpr 0 P.whitespaces)
+          a <- parseTuple tuple (parseExpr 0 P.whitespaces)
           case a of
             Meta _ a -> return a
             a -> return a,
@@ -217,7 +217,7 @@ parseRecordField = do
 parseRecord :: Parser Expr
 parseRecord = do
   fields <- parseCollection "{" "," "}" parseRecordField
-  return (Record fields)
+  return (record fields)
 
 parseCase :: Parser Case
 parseCase = do
@@ -267,12 +267,12 @@ parsePattern = do
             x | startsWithUpper x -> do
               _ <- P.spaces
               ps <- P.zeroOrMore parsePattern
-              return (PTag name ps)
+              return (pTag name ps)
             _ -> return (PVar name),
         PInt <$> P.integer,
         PNum <$> P.number,
         do
-          p <- parseTuple PTuple parsePattern
+          p <- parseTuple pTuple parsePattern
           case p of
             PMeta _ p -> return p
             p -> return p

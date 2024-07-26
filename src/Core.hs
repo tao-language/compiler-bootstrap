@@ -86,6 +86,7 @@ data TypeError
   = OccursError String Expr
   | TypeMismatch Expr Expr
   | UndefinedVar String
+  | UndefinedField String [(String, Expr)]
   deriving (Eq, Show)
 
 data PatternError
@@ -121,9 +122,7 @@ instance Show Expr where
     Num n -> atom 12 (show n)
     Var x | isVarName x -> atom 12 x
     Var x -> atom 12 ("($var '" ++ x ++ "')")
-    Tag k [] | isTagName k -> atom 12 k
-    Tag k [] -> atom 12 ("($tag '" ++ k ++ "')")
-    Tag k args -> showsPrec p (app (Tag k []) args)
+    Tag k args -> atom 12 (k ++ "(" ++ intercalate ", " (map show args) ++ ")")
     Meta _ a -> showsPrec p a
     Lam [] -> showsPrec p Err
     Lam cases -> atom 1 (unwords (map show cases))
@@ -167,6 +166,12 @@ instance Show UnaryOp where
   show Int2Num = "@int2num"
 
 -- Syntax sugar
+tuple :: [Expr] -> Expr
+tuple = Tag ""
+
+ptuple :: [Pattern] -> Pattern
+ptuple = PTag ""
+
 fix :: [String] -> Expr -> Expr
 fix xs a = foldr Fix a xs
 
@@ -435,6 +440,17 @@ matchAll (p : ps) (a : bs) = do
   Just (env1 ++ env2)
 matchAll _ _ = Nothing
 
+-- matchArgs :: [(String, Pattern)] -> [(String, Expr)] -> Maybe [(String, Expr)]
+-- matchArgs [] _ = Just []
+-- matchArgs (("", p) : ps) ((_, a) : args) = do
+--   env1 <- match p a
+--   env2 <- matchArgs ps args
+--   Just (env1 ++ env2)
+-- matchArgs ((x, p) : ps) args = case lookup x args of
+--   Just a ->
+--     matchArgs (("", p) : ps) ((x, a) : filter (\(x', _) -> x /= x') args)
+--   Nothing -> Nothing
+
 unify :: Expr -> Expr -> Either TypeError (Expr, Substitution)
 unify IntT IntT = Right (IntT, [])
 unify (Int _) IntT = Right (IntT, [])
@@ -447,7 +463,7 @@ unify (Num n) (Num n') | n == n' = Right (Num n, [])
 unify (Var x) (Var x') | x == x' = Right (Var x, [])
 unify (Typ alts) (Typ alts') | alts == alts' = Right (Typ alts, [])
 unify (Tag k []) (Tag k' []) | k == k' = Right (Tag k [], [])
-unify (Tag k args) (Tag k' args') | k == k' && length args == length args' = do
+unify (Tag k args) (Tag k' args') | k == k' = do
   (args, s) <- unifyAll args args'
   Right (Tag k args, s)
 unify (Var x) b | x `occurs` b = Left (OccursError x b)
@@ -495,6 +511,22 @@ unifyAll (a : bs) (a' : bs') = do
   (tbs, s2) <- unifyAll bs bs'
   Right (ta : tbs, s2 `compose` s1)
 unifyAll _ _ = Right ([], [])
+
+unifyArgs :: [(String, Expr)] -> [(String, Expr)] -> Either TypeError ([(String, Expr)], Substitution)
+unifyArgs (("", a) : args1) ((x, b) : args2) = do
+  (ta, s1) <- unify a b
+  (ts, s2) <- unifyArgs args1 args2
+  Right ((x, ta) : ts, s2 `compose` s1)
+unifyArgs ((x, a) : args1) (("", b) : args2) = do
+  (ta, s1) <- unify a b
+  (ts, s2) <- unifyArgs args1 args2
+  Right ((x, ta) : ts, s2 `compose` s1)
+unifyArgs ((x, a) : args1) args2 = case lookup x args2 of
+  Just b ->
+    unifyArgs (("", a) : args1) ((x, b) : filter (\(y, _) -> x /= y) args2)
+  Nothing -> Left (UndefinedField x args2)
+unifyArgs [] ((y, _) : _) = Left (UndefinedField y [])
+unifyArgs [] [] = Right ([], [])
 
 infer :: Env -> Expr -> Either TypeError (Expr, Substitution)
 infer _ IntT = Right (Typ [], [])
@@ -562,12 +594,19 @@ infer2 env a b = do
   (tb, s2) <- infer (env `compose` s1) b
   Right ((eval s2 ta, tb), s2 `compose` s1)
 
-inferAll :: Env -> [Expr] -> Either TypeError ([Expr], Substitution)
-inferAll _ [] = Right ([], [])
-inferAll env (a : bs) = do
-  (t, s1) <- infer env a
-  (ts, s2) <- inferAll (env `compose` s1) bs
-  Right (eval s2 t : ts, s2 `compose` s1)
+inferArgs :: Env -> [(String, Expr)] -> Either TypeError ([(String, Expr)], Substitution)
+inferArgs _ [] = Right ([], [])
+inferArgs env ((x, a) : args) = do
+  (ta, s1) <- infer env a
+  (ts, s2) <- inferArgs (env `compose` s1) args
+  Right ((x, eval s2 ta) : ts, s2 `compose` s1)
+
+-- inferAll :: Env -> [Expr] -> Either TypeError ([Expr], Substitution)
+-- inferAll _ [] = Right ([], [])
+-- inferAll env (a : bs) = do
+--   (t, s1) <- infer env a
+--   (ts, s2) <- inferAll (env `compose` s1) bs
+--   Right (eval s2 t : ts, s2 `compose` s1)
 
 inferOp1 :: Env -> UnaryOp -> Expr -> Either TypeError (Expr, Substitution)
 inferOp1 env Int2Num a = do
