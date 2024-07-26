@@ -15,8 +15,8 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   let (f, f') = (Var "f", C.Var "f")
 
   it "☯ lower/lift Type" $ do
-    let expr = Type ["A"]
-    let term = C.Typ ["A"]
+    let expr = Tag "Type" []
+    let term = C.Knd
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
@@ -52,18 +52,18 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower/lift Tag" $ do
     let expr = Tag "A" []
-    let term = C.Tag "A" []
+    let term = C.Tag "A" 
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
   it "☯ lower/lift Tuple" $ do
     let expr = tuple []
-    let term = C.Tag "" []
+    let term = C.Tag "" 
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
     let expr = tuple [x, y]
-    let term = C.Tag "" [x', y']
+    let term = C.tag "" [x', y']
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
