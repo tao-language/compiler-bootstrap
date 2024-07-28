@@ -229,7 +229,7 @@ instance FreeVars Pattern where
 
 instance FreeVars Case where
   freeVars :: Case -> [String]
-  freeVars case' = C.freeVars (lower [] case' :: C.Case)
+  freeVars case' = C.freeVars (lower [] case' :: C.Expr)
 
 class Lower a b where
   lower :: C.Env -> a -> b
@@ -250,14 +250,14 @@ instance Lower Expr C.Expr where
     let a' = lower env a
     case C.infer env a' of
       Left _ -> C.Err
-      Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
+      Right (t, _) -> C.call (C.Var $ '.' : x) [t, a']
   lower env (Fun a b) = C.Fun (lower env a) (lower env b)
   lower env (App a b) = C.App (lower env a) (lower env b)
   lower env (Or a b) = C.Or (lower env a) (lower env b)
   lower env (Let def b) = case def of
     Def ts p a -> lower env (match [a] [Case [p] Nothing b])
   lower env (Bind (p, a) b) = lower env (App (Trait a "<-") (Fun p b))
-  lower env (Match args cases) = C.app (C.Lam (map (lower env) cases)) (map (lower env) args)
+  lower env (Match args cases) = C.call (C.or' (map (lower env) cases)) (map (lower env) args)
   lower env (Ann a b) = C.Ann (lower env a) (lower env b)
   lower env (Op1 op a) = C.Op1 op (lower env a)
   lower env (Op2 op a b) = C.Op2 op (lower env a) (lower env b)
@@ -290,10 +290,10 @@ instance Lift C.Expr Expr where
   lift C.Err = Err
   lift a = error $ "TODO: lift " ++ show a
 
-instance Lower Case C.Case where
-  lower :: C.Env -> Case -> C.Case
+instance Lower Case C.Expr where
+  lower :: C.Env -> Case -> C.Expr
   lower env (Case ps cond b) =
-    C.Case (map (lower env) ps) (lower env b)
+    C.lam (map (lower env) ps) (lower env b)
 
 instance Lower Pattern C.Pattern where
   lower :: C.Env -> Pattern -> C.Pattern

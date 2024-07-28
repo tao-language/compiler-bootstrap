@@ -52,13 +52,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower/lift Tag" $ do
     let expr = Tag "A" []
-    let term = C.Tag "A" 
+    let term = C.Tag "A"
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
   it "☯ lower/lift Tuple" $ do
     let expr = tuple []
-    let term = C.Tag "" 
+    let term = C.Tag ""
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
@@ -80,17 +80,17 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower/lift Trait" $ do
     let expr = Trait (Int 1) "y"
-    let term = C.app (C.Var ".y") [C.Int 1 `C.Or` C.IntT, C.Int 1]
+    let term = C.call (C.Var ".y") [C.Int 1 `C.Or` C.IntT, C.Int 1]
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
     let expr = Trait x "y"
-    let term = C.app (C.Var ".y") [C.Int 1 `C.Or` C.IntT, x']
+    let term = C.call (C.Var ".y") [C.Int 1 `C.Or` C.IntT, x']
     lower [("x", C.Int 1)] expr `shouldBe` term
     lift term `shouldBe` expr
 
     let expr = Trait x "y"
-    let term = C.app (C.Var ".y") [C.Err, C.Var "x"]
+    let term = C.call (C.Var ".y") [C.Err, C.Var "x"]
     lower [] expr `shouldBe` C.Err
     lift term `shouldBe` expr
 
@@ -120,7 +120,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower/lift Bind" $ do
     let expr = Bind (x, y) z
-    let term = C.app (C.Var ".<-") [C.Int 1 `C.Or` C.IntT, y', C.Fun x' z']
+    let term = C.call (C.Var ".<-") [C.Int 1 `C.Or` C.IntT, y', C.Fun x' z']
     lower [("y", C.Int 1)] expr `shouldBe` term
     lift term `shouldBe` expr
 
