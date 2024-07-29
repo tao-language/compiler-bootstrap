@@ -80,6 +80,9 @@ data TestError
   = TestEqError Expr Expr Pattern
   deriving (Eq, Show)
 
+kind :: Expr
+kind = Tag "Type" []
+
 intT :: Expr
 intT = Tag "Int" []
 
@@ -168,6 +171,13 @@ varT name typ value = Define (Def [(name, typ)] (PVar name) value)
 fn :: String -> [Pattern] -> Expr -> Stmt
 fn name args value = Define (Def [] (PVar name) (match0 args value))
 
+call :: Expr -> [Expr] -> Expr
+call = foldl App
+
+callOf :: Expr -> (Expr, [Expr])
+callOf (App a b) = let (a', bs) = callOf a in (a', bs ++ [b])
+callOf a = (a, [])
+
 asApp :: Expr -> (Expr, [Expr])
 asApp (App a b) = let (a', bs) = asApp a in (a', bs ++ [b])
 asApp (Meta _ a) = asApp a
@@ -243,6 +253,7 @@ instance Lower Expr C.Expr where
   lower _ (Num n) = C.Num n
   lower _ (Var x) = C.Var x
   lower env (Tag k args)
+    | Tag k args == kind = C.Knd
     | Tag k args == intT = C.IntT
     | Tag k args == numT = C.NumT
     | otherwise = C.tag k (map (lower env . snd) args)
@@ -267,6 +278,7 @@ instance Lower Expr C.Expr where
 
 instance Lift C.Expr Expr where
   lift :: C.Expr -> Expr
+  lift C.Knd = kind
   lift C.IntT = intT
   lift C.NumT = numT
   lift (C.Int i) = Int i
@@ -276,10 +288,9 @@ instance Lift C.Expr Expr where
   lift (C.For _ a) = lift a
   lift (C.Fix _ a) = lift a
   lift (C.Fun a b) = Fun (lift a) (lift b)
-  lift (C.App a b) = case asApp (App (lift a) (lift b)) of
-    -- (Tuple args, args') -> Tuple (args ++ args')
+  lift (C.App a b) = case callOf (App (lift a) (lift b)) of
     (Var ('.' : x), _ : a : args) -> app (Trait a x) args
-    -- (Fun p a, [b]) -> Let (p, b) a
+    (Tag k args, args') -> Tag k (args ++ map ("",) args')
     (Trait a "<-", [Fun p b]) -> Bind (p, a) b
     (a, args) -> app a args
   lift (C.Or a b) = Or (lift a) (lift b)
