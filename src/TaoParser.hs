@@ -160,20 +160,20 @@ parseExprAtom = do
 
 parseExpr :: Int -> Parser appDelim -> Parser Expr
 parseExpr prec delim = do
-  let metaOp f m a b = Meta m (f a b)
+  let binary op m a b = Meta m (op a b)
   let ops =
         [ P.atom 0 (match []) (P.oneOrMore parseCase),
-          P.infixR 1 (metaOp Or) (parseOp "|"),
-          P.infixR 2 (metaOp Ann) (parseOp ":"),
-          P.infixR 3 (metaOp eq) (parseOp "=="),
-          P.infixR 4 (metaOp lt) (parseOp "<"),
-          P.infixR 4 (metaOp gt) (parseOp ">"),
-          P.infixR 5 (metaOp Fun) (parseOp "->"),
-          P.infixR 6 (metaOp add) (parseOp "+"),
-          P.infixR 6 (metaOp sub) (parseOp "-"),
-          P.infixR 7 (metaOp mul) (parseOp "*"),
+          P.infixR 1 (binary Or) (parseOp "|"),
+          P.infixR 2 (binary Ann) (parseOp ":"),
+          P.infixR 3 (binary eq) (parseOp "=="),
+          P.infixR 4 (binary lt) (parseOp "<"),
+          P.infixR 4 (binary gt) (parseOp ">"),
+          P.infixR 5 (binary Fun) (parseOp "->"),
+          P.infixR 6 (binary add) (parseOp "+"),
+          P.infixR 6 (binary sub) (parseOp "-"),
+          P.infixR 7 (binary mul) (parseOp "*"),
           P.infixL 8 (const App) (void delim),
-          P.infixR 9 (metaOp pow) (parseOp "^")
+          P.infixR 9 (binary pow) (parseOp "^")
         ]
   P.operators prec ops parseExprAtom
 

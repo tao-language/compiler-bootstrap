@@ -12,18 +12,17 @@ data Expr
   = Int Int
   | Num Double
   | Var String
-  | Type [String]
   | Tag String [(String, Expr)]
   | Trait Expr String
   | TraitFun String
   | Fun Expr Expr
   | App Expr Expr
+  | Or Expr Expr
   | Let Definition Expr
   | Bind (Expr, Expr) Expr
   | Lambda [String] Expr
   | Match [Expr] [Case]
   | If Expr Expr Expr
-  | Or Expr Expr
   | Ann Expr Expr
   | Op1 C.UnaryOp Expr
   | Op2 C.BinaryOp Expr Expr
@@ -40,10 +39,9 @@ data Pattern
   | PInt Int
   | PNum Double
   | PVar String
-  | PType [String]
   | PTag String [(String, Pattern)]
   | PFun Pattern Pattern
-  | POr [Pattern]
+  | POr Pattern Pattern
   | PEq Expr
   | PMeta C.Metadata Pattern
   | PErr
@@ -81,6 +79,9 @@ type Context = [(String, Expr)]
 data TestError
   = TestEqError Expr Expr Pattern
   deriving (Eq, Show)
+
+kind :: Expr
+kind = Tag "Type" []
 
 intT :: Expr
 intT = Tag "Int" []
@@ -126,11 +127,6 @@ match args cases = Match args cases
 let' :: Pattern -> Expr -> Expr -> Expr
 let' p a = Let (Def [] p a)
 
-or' :: [Expr] -> Expr
-or' [] = error "`or'` must have at least one expression"
-or' [a] = a
-or' (a : bs) = Or a (or' bs)
-
 fun :: [Expr] -> Expr -> Expr
 fun ps b = foldr Fun b ps
 
@@ -175,6 +171,13 @@ varT name typ value = Define (Def [(name, typ)] (PVar name) value)
 fn :: String -> [Pattern] -> Expr -> Stmt
 fn name args value = Define (Def [] (PVar name) (match0 args value))
 
+call :: Expr -> [Expr] -> Expr
+call = foldl App
+
+callOf :: Expr -> (Expr, [Expr])
+callOf (App a b) = let (a', bs) = callOf a in (a', bs ++ [b])
+callOf a = (a, [])
+
 asApp :: Expr -> (Expr, [Expr])
 asApp (App a b) = let (a', bs) = asApp a in (a', bs ++ [b])
 asApp (Meta _ a) = asApp a
@@ -190,7 +193,6 @@ asLambda prefix (Meta _ a) = asLambda prefix a
 asLambda _ a = ([], a)
 
 isTypeDef :: Expr -> Bool
-isTypeDef (Type _) = True
 isTypeDef (Fun _ b) = isTypeDef b
 isTypeDef (App a _) = isTypeDef a
 isTypeDef (Ann a _) = isTypeDef a
@@ -217,10 +219,9 @@ toExpr PAny = error "TODO: toExpr PAny"
 toExpr (PInt i) = Int i
 toExpr (PNum n) = Num n
 toExpr (PVar x) = Var x
-toExpr (PType alts) = Type alts
 toExpr (PTag k ps) = Tag k (map (second toExpr) ps)
 toExpr (PFun p q) = Fun (toExpr p) (toExpr q)
-toExpr (POr ps) = or' (map toExpr ps)
+toExpr (POr p q) = Or (toExpr p) (toExpr q)
 toExpr (PEq a) = a
 toExpr (PMeta m p) = Meta m (toExpr p)
 toExpr PErr = Err
@@ -238,7 +239,7 @@ instance FreeVars Pattern where
 
 instance FreeVars Case where
   freeVars :: Case -> [String]
-  freeVars case' = C.freeVars (lower [] case' :: C.Case)
+  freeVars case' = C.freeVars (lower [] case' :: C.Expr)
 
 class Lower a b where
   lower :: C.Env -> a -> b
@@ -251,23 +252,23 @@ instance Lower Expr C.Expr where
   lower _ (Int i) = C.Int i
   lower _ (Num n) = C.Num n
   lower _ (Var x) = C.Var x
-  lower _ (Type alts) = C.Typ alts
   lower env (Tag k args)
+    | Tag k args == kind = C.Knd
     | Tag k args == intT = C.IntT
     | Tag k args == numT = C.NumT
-    | otherwise = C.Tag k (map (lower env . snd) args)
+    | otherwise = C.tag k (map (lower env . snd) args)
   lower env (Trait a x) = do
     let a' = lower env a
     case C.infer env a' of
       Left _ -> C.Err
-      Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
+      Right (t, _) -> C.call (C.Var $ '.' : x) [t, a']
   lower env (Fun a b) = C.Fun (lower env a) (lower env b)
   lower env (App a b) = C.App (lower env a) (lower env b)
+  lower env (Or a b) = C.Or (lower env a) (lower env b)
   lower env (Let def b) = case def of
     Def ts p a -> lower env (match [a] [Case [p] Nothing b])
   lower env (Bind (p, a) b) = lower env (App (Trait a "<-") (Fun p b))
-  lower env (Match args cases) = C.app (C.Lam (map (lower env) cases)) (map (lower env) args)
-  lower env (Or a b) = C.Or (lower env a) (lower env b)
+  lower env (Match args cases) = C.call (C.or' (map (lower env) cases)) (map (lower env) args)
   lower env (Ann a b) = C.Ann (lower env a) (lower env b)
   lower env (Op1 op a) = C.Op1 op (lower env a)
   lower env (Op2 op a b) = C.Op2 op (lower env a) (lower env b)
@@ -277,20 +278,19 @@ instance Lower Expr C.Expr where
 
 instance Lift C.Expr Expr where
   lift :: C.Expr -> Expr
+  lift C.Knd = kind
   lift C.IntT = intT
   lift C.NumT = numT
   lift (C.Int i) = Int i
   lift (C.Num n) = Num n
   lift (C.Var x) = Var x
-  lift (C.Tag k args) = Tag k (map (\a -> ("", lift a)) args)
-  lift (C.Typ alts) = Type alts
+  lift (C.Tag k) = Tag k []
   lift (C.For _ a) = lift a
   lift (C.Fix _ a) = lift a
   lift (C.Fun a b) = Fun (lift a) (lift b)
-  lift (C.App a b) = case asApp (App (lift a) (lift b)) of
-    -- (Tuple args, args') -> Tuple (args ++ args')
+  lift (C.App a b) = case callOf (App (lift a) (lift b)) of
     (Var ('.' : x), _ : a : args) -> app (Trait a x) args
-    -- (Fun p a, [b]) -> Let (p, b) a
+    (Tag k args, args') -> Tag k (args ++ map ("",) args')
     (Trait a "<-", [Fun p b]) -> Bind (p, a) b
     (a, args) -> app a args
   lift (C.Or a b) = Or (lift a) (lift b)
@@ -301,10 +301,10 @@ instance Lift C.Expr Expr where
   lift C.Err = Err
   lift a = error $ "TODO: lift " ++ show a
 
-instance Lower Case C.Case where
-  lower :: C.Env -> Case -> C.Case
+instance Lower Case C.Expr where
+  lower :: C.Env -> Case -> C.Expr
   lower env (Case ps cond b) =
-    C.Case (map (lower env) ps) (lower env b)
+    C.lam (map (lower env) ps) (lower env b)
 
 instance Lower Pattern C.Pattern where
   lower :: C.Env -> Pattern -> C.Pattern
@@ -312,13 +312,12 @@ instance Lower Pattern C.Pattern where
   lower _ (PInt i) = C.PInt i
   lower _ (PNum n) = C.PNum n
   lower _ (PVar x) = C.PVar x
-  lower _ (PType alts) = C.PTyp alts
   lower env (PTag k ps)
     | PTag k ps == pIntT = C.PIntT
     | PTag k ps == pNumT = C.PNumT
-    | otherwise = C.PTag k (map (lower env . snd) ps)
+    | otherwise = C.ptag k (map (lower env . snd) ps)
   lower env (PFun p q) = C.PFun (lower env p) (lower env q)
-  lower env (POr ps) = error "TODO"
+  lower env (POr p q) = error "TODO"
   lower env (PEq a) = C.PEq (lower env a)
   lower env (PMeta m p) = C.PMeta m (lower env p)
   lower _ PErr = C.PErr
@@ -542,16 +541,15 @@ instance Apply Expr where
   apply _ (Int i) = Int i
   apply _ (Num n) = Num n
   apply _ (Var x) = Var x
-  apply _ (Type alts) = Type alts
   apply f (Tag k args) = Tag k (map (second f) args)
   apply f (Trait a x) = Trait (f a) x
   apply _ (TraitFun x) = TraitFun x
   apply f (Fun a b) = Fun (f a) (f b)
   apply f (App a b) = App (f a) (f b)
+  apply f (Or a b) = Or (f a) (f b)
   apply f (Let def a) = Let (apply f def) (f a)
   apply f (Bind (a, b) c) = Bind (f a, f b) (f c)
   apply f (Match args cases) = Match (map f args) (map (apply f) cases)
-  apply f (Or a b) = Or (f a) (f b)
   apply f (Ann a b) = Ann (f a) (f b)
   apply f (Op1 op a) = Op1 op (f a)
   apply f (Op2 op a b) = Op2 op (f a) (f b)
@@ -565,10 +563,9 @@ instance Apply Pattern where
   apply _ (PInt i) = PInt i
   apply _ (PNum n) = PNum n
   apply _ (PVar x) = PVar x
-  apply _ (PType alts) = PType alts
   apply f (PTag k ps) = PTag k (map (second $ apply f) ps)
   apply f (PFun p q) = PFun (apply f p) (apply f q)
-  apply f (POr ps) = POr (map (apply f) ps)
+  apply f (POr p q) = POr (apply f p) (apply f q)
   apply f (PEq a) = PEq (f a)
   apply f (PMeta m p) = PMeta m (apply f p)
   apply _ PErr = PErr
@@ -642,7 +639,6 @@ instance Rename Context where
 instance Rename Expr where
   rename :: String -> String -> Expr -> Expr
   rename old new (Var x) = Var (rename old new x)
-  rename old new (Type alts) = Type (map (rename old new) alts)
   rename old new (Tag k args) = Tag (rename old new k) (map (rename old new) args)
   rename old new (Trait a x) = Trait (rename old new a) x
   rename old new (Let def a) = Let (rename old new def) (rename old new a)
@@ -653,7 +649,6 @@ instance Rename Expr where
 instance Rename Pattern where
   rename :: String -> String -> Pattern -> Pattern
   rename old new (PVar x) = PVar (rename old new x)
-  rename old new (PType alts) = PType (map (rename old new) alts)
   rename old new (PTag k ps) = PTag (rename old new k) (map (second $ rename old new) ps)
   rename old new (PMeta m p) = PMeta m (rename old new p)
   rename old new p = apply (rename old new) p
