@@ -154,15 +154,9 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
-  it "☯ lower/lift Op1" $ do
-    let expr = Op1 C.Int2Num x
-    let term = C.Op1 C.Int2Num x'
-    lower [] expr `shouldBe` term
-    lift term `shouldBe` expr
-
-  it "☯ lower/lift Op2" $ do
-    let expr = Op2 C.Add x y
-    let term = C.Op2 C.Add x' y'
+  it "☯ lower/lift Op" $ do
+    let expr = Op "+" [x, y]
+    let term = C.Op "+" [x', y']
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 

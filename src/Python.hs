@@ -595,7 +595,7 @@ instance Emit [Stmt] [PyStmt] where
 
 instance Emit Definition [PyStmt] where
   emit :: BuildOptions -> Definition -> [PyStmt]
-  emit options (Def ts (PVar x) b) = case (lookup x ts, asLambda "_" b) of
+  emit options (Def ts (PVar x) b) = case (lookup x ts, lambdaOf "_" b) of
     (Nothing, ([], b)) -> do
       let (stmts, b') = emit options b
       let def = PyAssign [PyName x] b'
@@ -672,14 +672,14 @@ instance Emit Expr ([PyStmt], PyExpr) where
     ([], PyLambda [a] (PyAttribute (PyName a) x))
   -- Fun Expr Expr
   emit options (App a b) = do
-    let (f, args) = asApp (App a b)
+    let (f, args) = appOf (App a b)
     let (stmts1, f') = emit options f
     let (stmts2, args') = emit options args
     (stmts1 ++ stmts2, pyCall f' args')
   -- Let Definition Expr
   -- Bind (Expr, Expr) Expr
   emit options (Match [] cases) = do
-    let (xs, b) = asLambda "_arg" (Match [] cases)
+    let (xs, b) = lambdaOf "_arg" (Match [] cases)
     let (stmts, b') = emit options b
     let expr = PyLambda xs b'
     (stmts, expr)
@@ -694,10 +694,18 @@ instance Emit Expr ([PyStmt], PyExpr) where
   -- Or Expr Expr
   -- Ann Expr Expr
   -- Op1 C.UnaryOp Expr
-  emit options (Op2 op a b) = do
-    let (stmts1, a') = emit options a
-    let (stmts2, b') = emit options b
-    (stmts1 ++ stmts2, PyBinOp a' (emit options op) b')
+  emit options (Op op args) = case (op, args) of
+    ("+", [a, b]) -> emitBinOp PyAdd a b
+    ("-", [a, b]) -> emitBinOp PySub a b
+    ("*", [a, b]) -> emitBinOp PyMult a b
+    ("^", [a, b]) -> emitBinOp PyPow a b
+    _ -> error $ "TODO: emit Op " ++ show (Op op args)
+    where
+      emitBinOp :: PyBinOp -> Expr -> Expr -> ([PyStmt], PyExpr)
+      emitBinOp op a b = do
+        let (stmts1, a') = emit options a
+        let (stmts2, b') = emit options b
+        (stmts1 ++ stmts2, PyBinOp a' op b')
   emit options (Meta _ a) = emit options a
   -- Err
   emit options expr = error $ "TODO: emit " ++ show (dropMeta expr)
@@ -754,14 +762,6 @@ instance Emit Pattern ([PyStmt], PyPattern) where
   emit options (PMeta _ p) = emit options p
   -- -- PErr
   emit options p = error $ "TODO: emit " ++ show p
-
-instance Emit C.BinaryOp PyBinOp where
-  emit :: BuildOptions -> C.BinaryOp -> PyBinOp
-  emit _ C.Add = PyAdd
-  emit _ C.Sub = PySub
-  emit _ C.Mul = PyMult
-  emit _ C.Pow = PyPow
-  emit _ op = error $ "TODO: emit " ++ show op
 
 --- Pretty printing layouts ---
 pyPretty :: BuildOptions -> PP.Layout -> String
