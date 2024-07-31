@@ -26,28 +26,26 @@ run = describe "--==☯ thon ☯==--" $ do
     emit' (T.tag "Type" []) `shouldBe` ([], Name "type")
     emit' (T.tag "Int" []) `shouldBe` ([], Name "int")
     emit' (T.tag "Num" []) `shouldBe` ([], Name "float")
-    emit' (T.tag "A" []) `shouldBe` ([], call (Name "A") [])
-    emit' (T.tag "A" [x, y]) `shouldBe` ([], call (Name "A") [x', y'])
+    emit' (T.tag "A" []) `shouldBe` ([], call "A" [])
+    emit' (T.tag "A" [x, y]) `shouldBe` ([], call "A" [x', y'])
     emit' (T.tuple []) `shouldBe` ([], Tuple [])
     emit' (T.tuple [x, y]) `shouldBe` ([], Tuple [x', y'])
     emit' (T.record [("", x), ("b", y)]) `shouldBe` ([], Tuple [x', y'])
-    emit' (T.record [("a", x), ("b", y)]) `shouldBe` ([], Dict [(String "a", x'), (String "b", y')])
+    emit' (T.record [("a", x), ("b", y)]) `shouldBe` ([], dict [("a", x'), ("b", y')])
     emit' (T.Trait x "y") `shouldBe` ([], Attribute x' "y")
     emit' (T.TraitFun "x") `shouldBe` ([], Lambda ["_"] (Attribute (Name "_") "x"))
     emit' (T.Fun x y) `shouldBe` ([], callable [x'] y')
     emit' (T.fun [x, y] z) `shouldBe` ([], callable [x', y'] z')
-    emit' (T.App x y) `shouldBe` ([], call x' [y'])
-    emit' (T.app x [y, z]) `shouldBe` ([], call x' [y', z'])
-    -- App Expr Expr
-    -- Let (Expr, Expr) Expr
+    emit' (T.App x y) `shouldBe` ([], call "x" [y'])
+    emit' (T.app x [y, z]) `shouldBe` ([], call "x" [y', z'])
+    emit' (T.Or x y) `shouldBe` ([], bitOr x' y')
+    emit' (T.Let (T.Def [] (T.PVar "x") y) z) `shouldBe` ([assign "x" y'], z')
     -- Bind (Expr, Expr) Expr
-    -- TypeDef String [Expr] Expr
-    -- MatchFun [Expr]
-    -- Match [Expr] [Expr]
-    -- Or Expr Expr
+    -- Lambda [String] Expr
+    -- Match [Expr] [Case]
+    -- If Expr Expr Expr
     -- Ann Expr Expr
-    -- Op1 C.UnaryOp Expr
-    -- Op2 C.BinaryOp Expr Expr
+    -- Op String [Expr]
     -- Meta C.Metadata Expr
     -- Err
     True `shouldBe` True

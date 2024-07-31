@@ -76,13 +76,6 @@ data Expr
   | Meta C.Metadata Expr
   deriving (Eq, Show)
 
-float :: Expr
-float = Name "float"
-
-callable :: [Expr] -> Expr -> Expr
-callable args ret =
-  Subscript (Name "Callable") (Tuple [List args, ret])
-
 -- https://docs.python.org/3/library/ast.html#ast.FormattedValue
 data FormattedValue
   = Str String
@@ -381,11 +374,30 @@ addUnique x (y : ys) = y : addUnique x ys
 
 --- Syntax sugar ---
 
-call :: Expr -> [Expr] -> Expr
-call f xs = Call f xs []
+int :: Expr
+int = Name "int"
+
+float :: Expr
+float = Name "float"
+
+call :: String -> [Expr] -> Expr
+call f args = Call (Name f) args []
+
+dict :: [(String, Expr)] -> Expr
+dict fields = Dict (map (first String) fields)
+
+callable :: [Expr] -> Expr -> Expr
+callable args ret =
+  Subscript (Name "Callable") (Tuple [List args, ret])
+
+bitOr :: Expr -> Expr -> Expr
+bitOr a = BinOp a BitOr
 
 import' :: String -> Stmt
 import' name = Import name Nothing
+
+assign :: String -> Expr -> Stmt
+assign name = Assign [Name name]
 
 raise :: Expr -> Stmt
 raise x = Raise x Nothing
@@ -528,7 +540,7 @@ buildModuleTests options mod = do
                  },
                If
                  { test = Compare (Name "__name__") Eq (String "__main__"),
-                   body = [Assign [] (call (Attribute (Name "unittest") "main") [])],
+                   body = [Assign [] (Call (Attribute (Name "unittest") "main") [] [])],
                    orelse = []
                  }
              ]
@@ -574,7 +586,7 @@ instance Emit T.Stmt [Stmt] where
           FunctionDef
             { name = "test_" ++ T.nameSnakeCase (show (T.dropMeta a)),
               args = [("self", Nothing, Nothing)],
-              body = [Assign [] (call (Attribute (Name "self") "assertEqual") [a', b'])],
+              body = [Assign [] (Call (Attribute (Name "self") "assertEqual") [a', b'] [])],
               decorators = [],
               returns = Nothing,
               typeParams = [],
@@ -674,8 +686,15 @@ instance Emit T.Expr ([Stmt], Expr) where
     let (f, args) = T.appOf (T.App a b)
     let (stmts1, f') = emit options f
     let (stmts2, args') = emit options args
-    (stmts1 ++ stmts2, call f' args')
-  -- Let Definition Expr
+    (stmts1 ++ stmts2, Call f' args' [])
+  emit options (T.Or a b) = do
+    let (stmts1, a') = emit options a
+    let (stmts2, b') = emit options b
+    (stmts1 ++ stmts2, bitOr a' b')
+  emit options (T.Let def b) = do
+    let stmts1 = emit options def
+    let (stmts2, b') = emit options b
+    (stmts1 ++ stmts2, b')
   -- Bind (Expr, Expr) Expr
   emit options (T.Match [] cases) = do
     let (xs, b) = T.lambdaOf "_arg" (T.Match [] cases)
