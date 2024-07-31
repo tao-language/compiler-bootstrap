@@ -24,8 +24,7 @@ data Expr
   | Match [Expr] [Case]
   | If Expr Expr Expr
   | Ann Expr Expr
-  | Op1 C.UnaryOp Expr
-  | Op2 C.BinaryOp Expr Expr
+  | Op String [Expr]
   | Meta C.Metadata Expr
   | Err
   deriving (Eq, Show)
@@ -135,29 +134,29 @@ asFun (Fun p a) = let (ps, b) = asFun a in (p : ps, b)
 asFun (Meta _ a) = asFun a
 asFun a = ([], a)
 
-app :: Expr -> [Expr] -> Expr
-app = foldl App
-
 add :: Expr -> Expr -> Expr
-add = Op2 C.Add
+add a b = Op "+" [a, b]
 
 sub :: Expr -> Expr -> Expr
-sub = Op2 C.Sub
+sub a b = Op "-" [a, b]
 
 mul :: Expr -> Expr -> Expr
-mul = Op2 C.Mul
+mul a b = Op "*" [a, b]
 
 pow :: Expr -> Expr -> Expr
-pow = Op2 C.Pow
+pow a b = Op "^" [a, b]
 
 eq :: Expr -> Expr -> Expr
-eq = Op2 C.Eq
+eq a b = Op "==" [a, b]
 
 lt :: Expr -> Expr -> Expr
-lt = Op2 C.Lt
+lt a b = Op "<" [a, b]
 
 gt :: Expr -> Expr -> Expr
-gt = Op2 C.Gt
+gt a b = Op ">" [a, b]
+
+int2num :: Expr -> Expr
+int2num a = Op "$i2n" [a]
 
 meta :: [C.Metadata] -> Expr -> Expr
 meta ms a = foldr Meta a ms
@@ -171,6 +170,18 @@ varT name typ value = Define (Def [(name, typ)] (PVar name) value)
 fn :: String -> [Pattern] -> Expr -> Stmt
 fn name args value = Define (Def [] (PVar name) (match0 args value))
 
+app3 :: Expr -> Expr -> Expr -> Expr
+app3 a b c = app [a, b, c]
+
+app :: [Expr] -> Expr
+app [] = Err
+app (a : bs) = call a bs
+
+appOf :: Expr -> (Expr, [Expr])
+appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
+appOf (Meta _ a) = appOf a
+appOf a = (a, [])
+
 call :: Expr -> [Expr] -> Expr
 call = foldl App
 
@@ -178,19 +189,14 @@ callOf :: Expr -> (Expr, [Expr])
 callOf (App a b) = let (a', bs) = callOf a in (a', bs ++ [b])
 callOf a = (a, [])
 
-asApp :: Expr -> (Expr, [Expr])
-asApp (App a b) = let (a', bs) = asApp a in (a', bs ++ [b])
-asApp (Meta _ a) = asApp a
-asApp a = (a, [])
-
-asLambda :: String -> Expr -> ([String], Expr)
-asLambda _ (Lambda xs b) = (xs, b)
-asLambda _ (Match _ []) = ([], Err)
-asLambda prefix (Match [] cases@(Case ps _ _ : _)) = do
+lambdaOf :: String -> Expr -> ([String], Expr)
+lambdaOf _ (Lambda xs b) = (xs, b)
+lambdaOf _ (Match _ []) = ([], Err)
+lambdaOf prefix (Match [] cases@(Case ps _ _ : _)) = do
   let xs = C.newNames (prefix : freeVars (Match [] cases)) (replicate (length ps) prefix)
-  asLambda prefix (lambda xs cases)
-asLambda prefix (Meta _ a) = asLambda prefix a
-asLambda _ a = ([], a)
+  lambdaOf prefix (lambda xs cases)
+lambdaOf prefix (Meta _ a) = lambdaOf prefix a
+lambdaOf _ a = ([], a)
 
 isTypeDef :: Expr -> Bool
 isTypeDef (Fun _ b) = isTypeDef b
@@ -270,8 +276,7 @@ instance Lower Expr C.Expr where
   lower env (Bind (p, a) b) = lower env (App (Trait a "<-") (Fun p b))
   lower env (Match args cases) = C.call (C.or' (map (lower env) cases)) (map (lower env) args)
   lower env (Ann a b) = C.Ann (lower env a) (lower env b)
-  lower env (Op1 op a) = C.Op1 op (lower env a)
-  lower env (Op2 op a b) = C.Op2 op (lower env a) (lower env b)
+  lower env (Op op args) = C.Op op (map (lower env) args)
   lower env (Meta m a) = C.Meta m (lower env a)
   lower _ Err = C.Err
   lower _ a = error $ "TODO: lower " ++ show a
@@ -289,14 +294,13 @@ instance Lift C.Expr Expr where
   lift (C.Fix _ a) = lift a
   lift (C.Fun a b) = Fun (lift a) (lift b)
   lift (C.App a b) = case callOf (App (lift a) (lift b)) of
-    (Var ('.' : x), _ : a : args) -> app (Trait a x) args
+    (Var ('.' : x), _ : a : args) -> call (Trait a x) args
     (Tag k args, args') -> Tag k (args ++ map ("",) args')
     (Trait a "<-", [Fun p b]) -> Bind (p, a) b
-    (a, args) -> app a args
+    (a, args) -> call a args
   lift (C.Or a b) = Or (lift a) (lift b)
   lift (C.Ann a b) = Ann (lift a) (lift b)
-  lift (C.Op1 op a) = Op1 op (lift a)
-  lift (C.Op2 op a b) = Op2 op (lift a) (lift b)
+  lift (C.Op op args) = Op op (map lift args)
   lift (C.Meta m a) = Meta m (lift a)
   lift C.Err = Err
   lift a = error $ "TODO: lift " ++ show a
@@ -467,7 +471,7 @@ testEq env (expr, expected) = do
   let unitTest = lower env (let' expected expr (tuple []))
   let passed = case C.eval env unitTest of
         C.Err -> False
-        C.Op2 C.Eq _ _ -> False
+        -- C.Op2 C.Eq _ _ -> False
         _ -> True
   if passed
     then []
@@ -551,8 +555,7 @@ instance Apply Expr where
   apply f (Bind (a, b) c) = Bind (f a, f b) (f c)
   apply f (Match args cases) = Match (map f args) (map (apply f) cases)
   apply f (Ann a b) = Ann (f a) (f b)
-  apply f (Op1 op a) = Op1 op (f a)
-  apply f (Op2 op a b) = Op2 op (f a) (f b)
+  apply f (Op op args) = Op op (map (apply f) args)
   apply f (Meta m a) = Meta m (f a)
   apply _ Err = Err
   apply _ a = error $ "TODO: apply " ++ show a

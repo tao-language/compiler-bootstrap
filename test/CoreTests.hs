@@ -54,11 +54,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- show (App (isNum x) y) `shouldBe` "@isNum x y"
     -- show (App x (isNum y)) `shouldBe` "x (@isNum y)"
 
-    show (int2num (App x y)) `shouldBe` "@int2num (x y)"
-    show (int2num (pow x y)) `shouldBe` "@int2num x^y"
-    show (pow (int2num x) y) `shouldBe` "(@int2num x)^y"
-    show (App (int2num x) y) `shouldBe` "@int2num x y"
-    show (App x (int2num y)) `shouldBe` "x (@int2num y)"
+    show (int2num (App x y)) `shouldBe` "$i2n (x y)"
+    show (int2num (pow x y)) `shouldBe` "$i2n x^y"
+    show (pow (int2num x) y) `shouldBe` "($i2n x)^y"
+    show (App (int2num x) y) `shouldBe` "$i2n x y"
+    show (App x (int2num y)) `shouldBe` "x ($i2n y)"
 
     -- show (mul x (App y z)) `shouldBe` "x * y z"
     -- show (mul (App x y) z) `shouldBe` "x y * z"
@@ -181,7 +181,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let env = [("x", i1)]
     eval env (Ann x IntT) `shouldBe` Int 1
 
-  it "☯ eval Op2" $ do
+  it "☯ eval Op" $ do
     let env = []
     eval env (add x y) `shouldBe` add x y
     eval env (add x i2) `shouldBe` add x i2
@@ -284,7 +284,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ infer factorial" $ do
     let env = [("f", factorial "f")]
-    infer env (Var "f") `shouldBe` Right (Fun IntT IntT, [("xT", IntT), ("x", Ann x IntT), ("f", Ann f (fun [IntT] IntT))])
+    infer env (Var "f") `shouldBe` Right (Fun (intT 0) (intT 1), [("xT", intT 0), ("x", Ann x (intT 0)), ("*T", intT 1), ("*", Ann (Op "*" []) (intT 1))])
     infer env (Ann (Var "f") (Fun IntT IntT)) `shouldBe` Right (Fun IntT IntT, [("x", Ann x IntT)])
 
   -- it "☯ infer Bool" $ do
