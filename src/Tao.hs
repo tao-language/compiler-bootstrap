@@ -129,10 +129,10 @@ let' p a = Let (Def [] p a)
 fun :: [Expr] -> Expr -> Expr
 fun ps b = foldr Fun b ps
 
-asFun :: Expr -> ([Expr], Expr)
-asFun (Fun p a) = let (ps, b) = asFun a in (p : ps, b)
-asFun (Meta _ a) = asFun a
-asFun a = ([], a)
+funOf :: Expr -> ([Expr], Expr)
+funOf (Fun p a) = let (ps, b) = funOf a in (p : ps, b)
+funOf (Meta _ a) = funOf a
+funOf a = ([], a)
 
 add :: Expr -> Expr -> Expr
 add a b = Op "+" [a, b]
@@ -197,6 +197,18 @@ lambdaOf prefix (Match [] cases@(Case ps _ _ : _)) = do
   lambdaOf prefix (lambda xs cases)
 lambdaOf prefix (Meta _ a) = lambdaOf prefix a
 lambdaOf _ a = ([], a)
+
+isImport :: Stmt -> Bool
+isImport Import {} = True
+isImport _ = False
+
+isTest :: Stmt -> Bool
+isTest Test {} = True
+isTest _ = False
+
+isDefine :: Stmt -> Bool
+isDefine Define {} = True
+isDefine _ = False
 
 isTypeDef :: Expr -> Bool
 isTypeDef (Fun _ b) = isTypeDef b
