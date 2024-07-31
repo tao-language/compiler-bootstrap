@@ -36,7 +36,8 @@ run = describe "--==☯ thon ☯==--" $ do
     emit' (T.TraitFun "x") `shouldBe` ([], Lambda ["_"] (Attribute (Name "_") "x"))
     emit' (T.Fun x y) `shouldBe` ([], callable [x'] y')
     emit' (T.fun [x, y] z) `shouldBe` ([], callable [x', y'] z')
-    -- emit' (App x y) `shouldBe` ([], call)
+    emit' (T.App x y) `shouldBe` ([], call x' [y'])
+    emit' (T.app x [y, z]) `shouldBe` ([], call x' [y', z'])
     -- App Expr Expr
     -- Let (Expr, Expr) Expr
     -- Bind (Expr, Expr) Expr

@@ -170,24 +170,13 @@ varT name typ value = Define (Def [(name, typ)] (PVar name) value)
 fn :: String -> [Pattern] -> Expr -> Stmt
 fn name args value = Define (Def [] (PVar name) (match0 args value))
 
-app3 :: Expr -> Expr -> Expr -> Expr
-app3 a b c = app [a, b, c]
-
-app :: [Expr] -> Expr
-app [] = Err
-app (a : bs) = call a bs
+app :: Expr -> [Expr] -> Expr
+app = foldl App
 
 appOf :: Expr -> (Expr, [Expr])
 appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
 appOf (Meta _ a) = appOf a
 appOf a = (a, [])
-
-call :: Expr -> [Expr] -> Expr
-call = foldl App
-
-callOf :: Expr -> (Expr, [Expr])
-callOf (App a b) = let (a', bs) = callOf a in (a', bs ++ [b])
-callOf a = (a, [])
 
 lambdaOf :: String -> Expr -> ([String], Expr)
 lambdaOf _ (Lambda xs b) = (xs, b)
@@ -305,11 +294,11 @@ instance Lift C.Expr Expr where
   lift (C.For _ a) = lift a
   lift (C.Fix _ a) = lift a
   lift (C.Fun a b) = Fun (lift a) (lift b)
-  lift (C.App a b) = case callOf (App (lift a) (lift b)) of
-    (Var ('.' : x), _ : a : args) -> call (Trait a x) args
+  lift (C.App a b) = case appOf (App (lift a) (lift b)) of
+    (Var ('.' : x), _ : a : args) -> app (Trait a x) args
     (Tag k args, args') -> Tag k (args ++ map ("",) args')
     (Trait a "<-", [Fun p b]) -> Bind (p, a) b
-    (a, args) -> call a args
+    (a, args) -> app a args
   lift (C.Or a b) = Or (lift a) (lift b)
   lift (C.Ann a b) = Ann (lift a) (lift b)
   lift (C.Op op args) = Op op (map lift args)
