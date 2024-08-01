@@ -695,19 +695,22 @@ instance Emit T.Expr ([Stmt], Expr) where
     let stmts1 = emit options def
     let (stmts2, b') = emit options b
     (stmts1 ++ stmts2, b')
-  -- Bind (Expr, Expr) Expr
-  emit options (T.Match [] cases) = do
-    let (xs, b) = T.lambdaOf "_arg" (T.Match [] cases)
-    let (stmts, b') = emit options b
-    let expr = Lambda xs b'
-    (stmts, expr)
-  emit options (T.Match [arg] cases) = do
-    let (stmts1, arg') = emit options arg
-    let (stmts2, cases') = emit options cases
-    let x = C.newName (concatMap stmtNames $ stmts1 ++ stmts2) "_match"
-    let stmt = Match arg' (cases' x)
-    let expr = Name x
-    (stmts1 ++ stmts2 ++ [stmt], expr)
+  emit options (T.Bind (p, a) b) = do
+    let stmts1 = emit options (T.Def [] p (T.Meta C.Unwrap a))
+    let (stmts2, b') = emit options b
+    (stmts1 ++ stmts2, b')
+  -- emit options (T.Match cases) = do
+  --   let (xs, b) = T.lambdaOf "_arg" (T.Match cases)
+  --   let (stmts, b') = emit options b
+  --   let expr = Lambda xs b'
+  --   (stmts, expr)
+  -- emit options (T.Match [arg] cases) = do
+  --   let (stmts1, arg') = emit options arg
+  --   let (stmts2, cases') = emit options cases
+  --   let x = C.newName (concatMap stmtNames $ stmts1 ++ stmts2) "_match"
+  --   let stmt = Match arg' (cases' x)
+  --   let expr = Name x
+  --   (stmts1 ++ stmts2 ++ [stmt], expr)
   -- If Expr Expr Expr
   -- Or Expr Expr
   -- Ann Expr Expr
@@ -724,6 +727,9 @@ instance Emit T.Expr ([Stmt], Expr) where
         let (stmts1, a') = emit options a
         let (stmts2, b') = emit options b
         (stmts1 ++ stmts2, BinOp a' op b')
+  emit options (T.Meta C.Unwrap a) = do
+    let (stmts, a') = emit options a
+    (stmts, Call a' [] [])
   emit options (T.Meta _ a) = emit options a
   -- Err
   emit options expr = error $ "TODO: emit " ++ show (T.dropMeta expr)
@@ -745,16 +751,12 @@ instance Emit [(String, T.Expr)] ([Stmt], [(String, Expr)]) where
 
 instance Emit T.Case ([Stmt], String -> (Pattern, Maybe Expr, [Stmt])) where
   emit :: BuildOptions -> T.Case -> ([Stmt], String -> (Pattern, Maybe Expr, [Stmt]))
-  emit options (T.Case [p] guard b) = do
+  emit options (T.Case [p] b) = do
     let (stmts, p') = emit options p
     let (body, b') = emit options b
-    case guard of
-      Just cond -> do
-        error $ "TODO: emit [p] " ++ show (T.Case [p] guard b)
-      Nothing -> do
-        let case' x = (p', Nothing, body ++ [Assign [Name x] b'])
-        (stmts, case')
-  emit options (T.Case ps guard b) = error $ "TODO: emit ps " ++ show (T.Case ps guard b)
+    let case' x = (p', Nothing, body ++ [Assign [Name x] b'])
+    (stmts, case')
+  emit options (T.CaseIf ps guard b) = error $ "TODO: emit ps " ++ show (T.CaseIf ps guard b)
 
 instance Emit [T.Case] ([Stmt], String -> [(Pattern, Maybe Expr, [Stmt])]) where
   emit :: BuildOptions -> [T.Case] -> ([Stmt], String -> [(Pattern, Maybe Expr, [Stmt])])

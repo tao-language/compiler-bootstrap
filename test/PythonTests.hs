@@ -14,6 +14,7 @@ run :: SpecWith ()
 run = describe "--==☯ thon ☯==--" $ do
   let options = defaultBuildOptions {packageName = "pkg"}
   let (x, y, z) = (T.Var "x", T.Var "y", T.Var "z")
+  let (xP, yP, zP) = (T.PVar "x", T.PVar "y", T.PVar "z")
   let (x', y', z') = (Name "x", Name "y", Name "z")
   let (a', b') = (Name "a", Name "b")
 
@@ -39,8 +40,8 @@ run = describe "--==☯ thon ☯==--" $ do
     emit' (T.App x y) `shouldBe` ([], call "x" [y'])
     emit' (T.app x [y, z]) `shouldBe` ([], call "x" [y', z'])
     emit' (T.Or x y) `shouldBe` ([], bitOr x' y')
-    emit' (T.Let (T.Def [] (T.PVar "x") y) z) `shouldBe` ([assign "x" y'], z')
-    -- Bind (Expr, Expr) Expr
+    emit' (T.let' xP y z) `shouldBe` ([assign "x" y'], z')
+    emit' (T.Bind (xP, y) z) `shouldBe` ([assign "x" (call "y" [])], z')
     -- Lambda [String] Expr
     -- Match [Expr] [Case]
     -- If Expr Expr Expr

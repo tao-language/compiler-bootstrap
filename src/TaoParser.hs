@@ -236,7 +236,9 @@ parseCase = do
   a <- parseExpr 0 P.spaces
   _ <- parseLineBreak
   _ <- P.spaces
-  return (Case (p : ps) guard a)
+  case guard of
+    Just guard -> return (CaseIf (p : ps) guard a)
+    Nothing -> return (Case (p : ps) a)
 
 parseMatch :: Parser Expr
 parseMatch = do

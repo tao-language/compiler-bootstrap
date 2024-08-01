@@ -51,6 +51,7 @@ data Pattern
 data Metadata
   = Location String (Int, Int)
   | Comment String
+  | Unwrap
   deriving (Eq, Show)
 
 type Env = [(String, Expr)]
