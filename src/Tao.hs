@@ -32,7 +32,8 @@ data Expr
   deriving (Eq, Show)
 
 data Case
-  = Case [Pattern] (Maybe Expr) Expr
+  = Case [Pattern] Expr
+  | CaseIf [Pattern] Expr Expr
   deriving (Eq, Show)
 
 data Pattern
@@ -217,6 +218,18 @@ appOf :: Expr -> (Expr, [Expr])
 appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
 appOf (Meta _ a) = appOf a
 appOf a = (a, [])
+
+isImport :: Stmt -> Bool
+isImport Import {} = True
+isImport _ = False
+
+isTest :: Stmt -> Bool
+isTest Test {} = True
+isTest _ = False
+
+isDefine :: Stmt -> Bool
+isDefine Define {} = True
+isDefine _ = False
 
 isImport :: Stmt -> Bool
 isImport Import {} = True

@@ -167,17 +167,23 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     let p = parse' parseCase
     p "%" `shouldBe` Left ([], "%")
     p "=> y;" `shouldBe` Left ([], "=> y;")
-    p "x => y;" `shouldBe` Right (Case [pvar 1 1 "x"] Nothing (var 1 6 "y"), "")
-    p "x, y => z;" `shouldBe` Right (Case [pvar 1 1 "x", pvar 1 4 "y"] Nothing (var 1 9 "z"), "")
-    p "x if y => z;" `shouldBe` Right (Case [pvar 1 1 "x"] (Just $ var 1 6 "y") (var 1 11 "z"), "")
+    p "x => y;" `shouldBe` Right (Case [pvar 1 1 "x"] (var 1 6 "y"), "")
+    p "x, y => z;" `shouldBe` Right (Case [pvar 1 1 "x", pvar 1 4 "y"] (var 1 9 "z"), "")
+    p "x if y => z;" `shouldBe` Right (CaseIf [pvar 1 1 "x"] (var 1 6 "y") (var 1 11 "z"), "")
 
   it "☯ parseMatch" $ do
     let p = parse' parseMatch
     p "match" `shouldBe` Left ([CMatch], "")
     p "match; x => y" `shouldBe` Left ([CMatch], "; x => y")
+<<<<<<< HEAD
     p "match a\nx => y" `shouldBe` Right (match [var 1 7 "a"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y")], "")
     p "match a, b\nx => y" `shouldBe` Right (match [var 1 7 "a", var 1 10 "b"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y")], "")
     p "match a\nx => y\na => b" `shouldBe` Right (match [var 1 7 "a"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y"), Case [pvar 3 1 "a"] Nothing (var 3 6 "b")], "")
+=======
+    p "match a\nx => y" `shouldBe` Right (match [var 1 7 "a"] [Case [pvar 2 1 "x"] (var 2 6 "y")], "")
+    p "match a, b\nx => y" `shouldBe` Right (match [var 1 7 "a", var 1 10 "b"] [Case [pvar 2 1 "x"] (var 2 6 "y")], "")
+    p "match a\nx => y\na => b" `shouldBe` Right (match [var 1 7 "a"] [Case [pvar 2 1 "x"] (var 2 6 "y"), Case [pvar 3 1 "a"] (var 3 6 "b")], "")
+>>>>>>> 895c80b739f94511cbbb954e206ff1d7fc525e7a
 
   it "☯ parseExpr" $ do
     let p = parse' (parseExpr 0 P.spaces)
@@ -188,9 +194,15 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "3.14" `shouldBe` Right (meta [loc 1 1] $ Num 3.14, "")
     p "var" `shouldBe` Right (meta [loc 1 1] $ Var "var", "")
     p "Tag" `shouldBe` Right (meta [loc 1 1] $ Tag "Tag" [], "")
+<<<<<<< HEAD
     p "x => y" `shouldBe` Right (match [] [Case [pvar 1 1 "x"] Nothing (var 1 6 "y")], "")
     p "x => y\na => b" `shouldBe` Right (match [] [Case [pvar 1 1 "x"] Nothing (var 1 6 "y"), Case [pvar 2 1 "a"] Nothing (var 2 6 "b")], "")
     p "match a\nx => y" `shouldBe` Right (meta [loc 1 1] $ match [var 1 7 "a"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y")], "")
+=======
+    p "x => y" `shouldBe` Right (Match [Case [pvar 1 1 "x"] (var 1 6 "y")], "")
+    p "x => y\na => b" `shouldBe` Right (Match [Case [pvar 1 1 "x"] (var 1 6 "y"), Case [pvar 2 1 "a"] (var 2 6 "b")], "")
+    p "match a\nx => y" `shouldBe` Right (meta [loc 1 1] $ match [var 1 7 "a"] [Case [pvar 2 1 "x"] (var 2 6 "y")], "")
+>>>>>>> 895c80b739f94511cbbb954e206ff1d7fc525e7a
     p "()" `shouldBe` Right (meta [loc 1 1] $ tuple [], "")
     p "{}" `shouldBe` Right (meta [loc 1 1] $ record [], "")
     p "x |  y" `shouldBe` Right (meta [loc 1 3] $ Or (var 1 1 "x") (var 1 6 "y"), "")
