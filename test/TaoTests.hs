@@ -11,6 +11,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (xP, yP, zP) = (PVar "x", PVar "y", PVar "z")
   let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
+  let (xP', yP', zP') = (C.PVar "x", C.PVar "y", C.PVar "z")
   let (a, a') = (Var "a", C.Var "a")
   let (f, f') = (Var "f", C.Var "f")
 
@@ -119,8 +120,8 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   lift term `shouldBe` expr
 
   it "☯ lower/lift Bind" $ do
-    let expr = Bind (x, y) z
-    let term = C.call (C.Var ".<-") [C.Int 1 `C.Or` C.IntT, y', C.Fun x' z']
+    let expr = Bind (xP, y) z
+    let term = C.call (C.Var ".<-") [C.Int 1 `C.Or` C.IntT, y', C.Lam xP' z']
     lower [("y", C.Int 1)] expr `shouldBe` term
     lift term `shouldBe` expr
 

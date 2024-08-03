@@ -6,92 +6,93 @@ import Python
 import qualified Subprocess
 import System.Directory (doesDirectoryExist, doesFileExist, getDirectoryContents, removeDirectoryRecursive, removeFile, withCurrentDirectory)
 import System.FilePath ((</>))
-import Tao
+import qualified Tao as T
 import TaoParser (parsePackage)
 import Test.Hspec
 
 run :: SpecWith ()
-run = describe "--==☯ Python ☯==--" $ do
+run = describe "--==☯ thon ☯==--" $ do
   let options = defaultBuildOptions {packageName = "pkg"}
-  let (x, y, z) = (Var "x", Var "y", Var "z")
-  let (x', y', z') = (PyName "x", PyName "y", PyName "z")
-  let (a', b') = (PyName "a", PyName "b")
+  let (x, y, z) = (T.Var "x", T.Var "y", T.Var "z")
+  let (xP, yP, zP) = (T.PVar "x", T.PVar "y", T.PVar "z")
+  let (x', y', z') = (Name "x", Name "y", Name "z")
+  let (a', b') = (Name "a", Name "b")
 
   it "☯ emit Expr" $ do
-    let emit' :: Expr -> ([PyStmt], PyExpr)
+    let emit' :: T.Expr -> ([Stmt], Expr)
         emit' = emit options
-    emit' (Int 42) `shouldBe` ([], PyInteger 42)
-    emit' (Num 3.14) `shouldBe` ([], PyFloat 3.14)
-    emit' (Var "x") `shouldBe` ([], PyName "x")
-    emit' (tag "Int" []) `shouldBe` ([], PyName "int")
-    emit' (tag "Num" []) `shouldBe` ([], PyName "float")
-    emit' (tag "A" []) `shouldBe` ([], pyCall (PyName "A") [])
-    emit' (tag "A" [x, y]) `shouldBe` ([], pyCall (PyName "A") [x', y'])
-    emit' (tuple []) `shouldBe` ([], PyTuple [])
-    emit' (tuple [x, y]) `shouldBe` ([], PyTuple [x', y'])
-    emit' (record [("", x), ("b", y)]) `shouldBe` ([], PyTuple [x', y'])
-    emit' (record [("a", x), ("b", y)]) `shouldBe` ([], PyDict [(PyString "a", x'), (PyString "b", y')])
-    emit' (Trait x "y") `shouldBe` ([], PyAttribute x' "y")
-    -- emit' (Type [], []) `shouldBe` ([], pyCall (PyName "Type") [PyList []])
-    -- emit' (Type ["A", "B"]) `shouldBe` (, pyCall (PyName "Type") [PyList [PyName "A", PyName "B"]])
-    -- emit' (Fun x y) `shouldBe`
-    -- Fun Expr Expr
-    -- App Expr Expr
-    -- Let (Expr, Expr) Expr
-    -- Bind (Expr, Expr) Expr
-    -- TypeDef String [Expr] Expr
-    -- MatchFun [Expr]
-    -- Match [Expr] [Expr]
-    -- Or Expr Expr
+    emit' (T.Int 42) `shouldBe` ([], Integer 42)
+    emit' (T.Num 3.14) `shouldBe` ([], Float 3.14)
+    emit' (T.Var "x") `shouldBe` ([], Name "x")
+    emit' (T.tag "Type" []) `shouldBe` ([], Name "type")
+    emit' (T.tag "Int" []) `shouldBe` ([], Name "int")
+    emit' (T.tag "Num" []) `shouldBe` ([], Name "float")
+    emit' (T.tag "A" []) `shouldBe` ([], call "A" [])
+    emit' (T.tag "A" [x, y]) `shouldBe` ([], call "A" [x', y'])
+    emit' (T.tuple []) `shouldBe` ([], Tuple [])
+    emit' (T.tuple [x, y]) `shouldBe` ([], Tuple [x', y'])
+    emit' (T.record [("", x), ("b", y)]) `shouldBe` ([], Tuple [x', y'])
+    emit' (T.record [("a", x), ("b", y)]) `shouldBe` ([], dict [("a", x'), ("b", y')])
+    emit' (T.Trait x "y") `shouldBe` ([], Attribute x' "y")
+    emit' (T.TraitFun "x") `shouldBe` ([], Lambda ["_"] (Attribute (Name "_") "x"))
+    emit' (T.Fun x y) `shouldBe` ([], callable [x'] y')
+    emit' (T.fun [x, y] z) `shouldBe` ([], callable [x', y'] z')
+    emit' (T.App x y) `shouldBe` ([], call "x" [y'])
+    emit' (T.app x [y, z]) `shouldBe` ([], call "x" [y', z'])
+    emit' (T.Or x y) `shouldBe` ([], bitOr x' y')
+    emit' (T.let' xP y z) `shouldBe` ([assign "x" y'], z')
+    emit' (T.Bind (xP, y) z) `shouldBe` ([assign "x" (call "y" [])], z')
+    -- Lambda [String] Expr
+    -- Match [Expr] [Case]
+    -- If Expr Expr Expr
     -- Ann Expr Expr
-    -- Op1 C.UnaryOp Expr
-    -- Op2 C.BinaryOp Expr Expr
+    -- Op String [Expr]
     -- Meta C.Metadata Expr
     -- Err
     True `shouldBe` True
 
   it "☯ emit Stmt" $ do
-    let emit' :: Stmt -> [PyStmt]
+    let emit' :: T.Stmt -> [Stmt]
         emit' = emit options
-    emit' (Import "pkg" "mod" "@pkg.mod" []) `shouldBe` [PyImport "pkg.mod" Nothing]
-    emit' (Import "pkg" "mod" "alias" []) `shouldBe` [PyImport "pkg.mod" (Just "alias")]
-    emit' (Import "pkg" "mod" "@pkg.mod" [("a", "a"), ("b", "c")]) `shouldBe` [PyImport "pkg.mod" Nothing, PyImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]
-    emit' (var "x" y) `shouldBe` [PyAssign [x'] y']
-    emit' (var "a" (Tag "Point" [("", Int 1), ("y", Int 2)])) `shouldBe` [PyAssign [a'] (PyCall (PyName "Point") [PyInteger 1] [("y", PyInteger 2)])]
-    -- emit' (var "a" (Tag "Point" [("y", Int 2), ("", Int 1)])) `shouldBe` [PyAssign [a'] (PyCall (PyName "Point") [] [("x", PyInteger 1), ("y", PyInteger 2)])]
-    -- emit' (varT "a" (Var "Point") (record [("y", Int 2), ("", Int 1)])) `shouldBe` [PyAssign [a'] (PyCall (PyName "Point") [] [("x", PyInteger 1), ("y", PyInteger 2)])]
+    emit' (T.Import "pkg" "mod" "@pkg.mod" []) `shouldBe` [Import "pkg.mod" Nothing]
+    emit' (T.Import "pkg" "mod" "alias" []) `shouldBe` [Import "pkg.mod" (Just "alias")]
+    emit' (T.Import "pkg" "mod" "@pkg.mod" [("a", "a"), ("b", "c")]) `shouldBe` [Import "pkg.mod" Nothing, ImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]
+    emit' (T.var "x" y) `shouldBe` [Assign [x'] y']
+    emit' (T.var "a" (T.Tag "Point" [("", T.Int 1), ("y", T.Int 2)])) `shouldBe` [Assign [a'] (Call (Name "Point") [Integer 1] [("y", Integer 2)])]
+    -- emit' (var "a" (Tag "Point" [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]
+    -- emit' (varT "a" (Var "Point") (record [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]
     True `shouldBe` True
 
   it "☯ emit [Stmt]" $ do
-    let emit' :: [Stmt] -> [PyStmt]
+    let emit' :: [T.Stmt] -> [Stmt]
         emit' = emit options
     emit' [] `shouldBe` []
-    emit' [var "x" (Int 1)] `shouldBe` [PyAssign [PyName "x"] (PyInteger 1)]
+    emit' [T.var "x" (T.Int 1)] `shouldBe` [Assign [Name "x"] (Integer 1)]
 
   it "☯ emit Module" $ do
-    let emit' :: Module -> PyModule
+    let emit' :: T.Module -> Module
         emit' = emit options
     let stmts =
-          [ var "x" (Int 1),
-            var "y" (Int 2)
+          [ T.var "x" (T.Int 1),
+            T.var "y" (T.Int 2)
           ]
     let expected =
-          [ PyAssign [x'] (PyInteger 1),
-            PyAssign [y'] (PyInteger 2)
+          [ Assign [x'] (Integer 1),
+            Assign [y'] (Integer 2)
           ]
-    emit' (Module "mod" stmts) `shouldBe` PyModule {name = "mod", body = expected}
+    emit' (T.Module "mod" stmts) `shouldBe` Module {name = "mod", body = expected}
 
   it "☯ emit Package" $ do
     let stmts =
-          [ var "x" (Int 1),
-            var "y" (Int 2)
+          [ T.var "x" (T.Int 1),
+            T.var "y" (T.Int 2)
           ]
     let pySrc =
-          [ PyAssign [x'] (PyInteger 1),
-            PyAssign [y'] (PyInteger 2)
+          [ Assign [x'] (Integer 1),
+            Assign [y'] (Integer 2)
           ]
     let pyTest = []
-    -- emit options (Package "my_pkg" [Module "my-mod" stmts]) `shouldBe` PyPackage "my-pkg" [PyModule "my_mod" pySrc] [PyModule "my_mod_test" pyTest]
+    -- emit options (Package "my_pkg" [Module "my-mod" stmts]) `shouldBe` Package "my-pkg" [Module "my_mod" pySrc] [Module "my_mod_test" pyTest]
     True `shouldBe` True
 
   it "☯ build" $ do
@@ -129,7 +130,7 @@ run = describe "--==☯ Python ☯==--" $ do
     --       ]
     -- fmap sort (getRecursiveContents "build/python") `shouldReturn` pythonFiles
 
-    -- Setup the Python project.
+    -- Setup the thon project.
     Subprocess.run "build/python" "python" ["-m", "venv", "env"]
     Subprocess.run "build/python" "env/bin/pip" ["install", "-U", "pip"]
     Subprocess.run "build/python" "env/bin/pip" ["install", "-e", "."]
