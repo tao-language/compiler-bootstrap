@@ -137,11 +137,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower/lift Bind" $ do
     let expr = Bind (xP, y) z
-<<<<<<< HEAD
     let term = C.app (C.Var ".<-") [C.Int 1 `C.Or` C.IntT, y', C.Lam xP' z']
-=======
-    let term = C.call (C.Var ".<-") [C.Int 1 `C.Or` C.IntT, y', C.Lam xP' z']
->>>>>>> 895c80b739f94511cbbb954e206ff1d7fc525e7a
     lower [("y", C.Int 1)] expr `shouldBe` term
     lift term `shouldBe` expr
 
