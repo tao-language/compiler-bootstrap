@@ -175,9 +175,9 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     let p = parse' parseMatch
     p "match" `shouldBe` Left ([CMatch], "")
     p "match; x => y" `shouldBe` Left ([CMatch], "; x => y")
-    p "match a\nx => y" `shouldBe` Right (Match [var 1 7 "a"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y")], "")
-    p "match a, b\nx => y" `shouldBe` Right (Match [var 1 7 "a", var 1 10 "b"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y")], "")
-    p "match a\nx => y\na => b" `shouldBe` Right (Match [var 1 7 "a"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y"), Case [pvar 3 1 "a"] Nothing (var 3 6 "b")], "")
+    p "match a\nx => y" `shouldBe` Right (match [var 1 7 "a"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y")], "")
+    p "match a, b\nx => y" `shouldBe` Right (match [var 1 7 "a", var 1 10 "b"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y")], "")
+    p "match a\nx => y\na => b" `shouldBe` Right (match [var 1 7 "a"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y"), Case [pvar 3 1 "a"] Nothing (var 3 6 "b")], "")
 
   it "☯ parseExpr" $ do
     let p = parse' (parseExpr 0 P.spaces)
@@ -188,9 +188,9 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "3.14" `shouldBe` Right (meta [loc 1 1] $ Num 3.14, "")
     p "var" `shouldBe` Right (meta [loc 1 1] $ Var "var", "")
     p "Tag" `shouldBe` Right (meta [loc 1 1] $ Tag "Tag" [], "")
-    p "x => y" `shouldBe` Right (Match [] [Case [pvar 1 1 "x"] Nothing (var 1 6 "y")], "")
-    p "x => y\na => b" `shouldBe` Right (Match [] [Case [pvar 1 1 "x"] Nothing (var 1 6 "y"), Case [pvar 2 1 "a"] Nothing (var 2 6 "b")], "")
-    p "match a\nx => y" `shouldBe` Right (meta [loc 1 1] $ Match [var 1 7 "a"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y")], "")
+    p "x => y" `shouldBe` Right (match [] [Case [pvar 1 1 "x"] Nothing (var 1 6 "y")], "")
+    p "x => y\na => b" `shouldBe` Right (match [] [Case [pvar 1 1 "x"] Nothing (var 1 6 "y"), Case [pvar 2 1 "a"] Nothing (var 2 6 "b")], "")
+    p "match a\nx => y" `shouldBe` Right (meta [loc 1 1] $ match [var 1 7 "a"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y")], "")
     p "()" `shouldBe` Right (meta [loc 1 1] $ tuple [], "")
     p "{}" `shouldBe` Right (meta [loc 1 1] $ record [], "")
     p "x |  y" `shouldBe` Right (meta [loc 1 3] $ Or (var 1 1 "x") (var 1 6 "y"), "")

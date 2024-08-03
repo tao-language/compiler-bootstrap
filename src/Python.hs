@@ -11,7 +11,7 @@ import qualified Debug.Trace as Debug
 import qualified PrettyPrint as PP
 import System.Directory (createDirectory, createDirectoryIfMissing, doesPathExist, removeDirectoryRecursive)
 import System.FilePath (joinPath, splitDirectories, splitFileName, splitPath, takeDirectory, takeFileName, (</>))
-import Tao
+import qualified Tao as T
 
 -- TODO: abstract into an `Imperative` language
 -- https://en.wikipedia.org/wiki/Imperative_programming
@@ -20,184 +20,184 @@ import Tao
 -- https://docs.python.org/3/reference/grammar.html
 
 -- https://docs.python.org/3/library/ast.html#ast.Module
-data PyModule = PyModule
+data Module = Module
   { name :: String,
-    body :: [PyStmt]
+    body :: [Stmt]
   }
   deriving (Eq, Show)
 
-newModule :: String -> [PyStmt] -> PyModule
+newModule :: String -> [Stmt] -> Module
 newModule name body =
-  PyModule
+  Module
     { name = name,
       body = body
     }
 
-data PyPackage
-  = PyPackage
+data Package
+  = Package
   { name :: String,
-    src :: [PyModule],
-    test :: [PyModule]
+    src :: [Module],
+    test :: [Module]
   }
   deriving (Eq, Show)
 
 --- Expressions ---
 -- https://docs.python.org/3/library/ast.html#expressions
-data PyExpr
-  = PyNone -- PyNone
-  | PyBool Bool -- True
-  | PyInteger Int -- 42
-  | PyFloat Double -- 3.14
-  | PyImaginary Double -- 3.14j
-  | PyList [PyExpr] -- [x, y, z]
-  | PyTuple [PyExpr] -- (x, y, z)
-  | PySet [PyExpr] -- {x, y, z}
-  | PyDict [(PyExpr, PyExpr)] -- {x: 1, y: 2, z: 3}
-  | PyBytes String -- b'hello'
-  | PyString String -- 'Hello'
-  | PyFString [PyFormattedValue] -- f"hello {x}"
-  | PyName String -- x
-  | PyStarred PyExpr -- _, *x = _
-  | PyUnaryOp PyUnaryOp PyExpr -- not x
-  | PyBinOp PyExpr PyBinOp PyExpr -- x + y
-  | PyBoolOp PyExpr PyBoolOp PyExpr -- x and y
-  | PyCompare PyExpr PyCompare PyExpr -- x == y
-  | PyLambda [String] PyExpr -- lambda x, y: z
-  | PyCall PyExpr [PyExpr] [(String, PyExpr)] -- func(*args, **kwargs)
-  | PyIfExp PyExpr PyExpr PyExpr -- a if b else c
-  | PyAttribute PyExpr String -- x.y
-  | PyNamedExpr PyExpr PyExpr -- x := y
-  | PySubscript PyExpr PyExpr -- x[y]
-  | PySlice PyExpr PyExpr -- x:y
-  | PyListComp PyExpr PyExpr PyExpr [PyExpr] -- [x for x in xs (if y)*]
-  | PySetComp PyExpr PyExpr PyExpr [PyExpr] -- {x for x in xs (if y)*}
-  | PyGeneratorExp PyExpr PyExpr PyExpr [PyExpr] -- (x for x in xs (if y)*)
-  | PyDictComp PyExpr PyExpr PyExpr [PyExpr] -- {x: x for x in xs (if y)*}
-  | PyMeta C.Metadata PyExpr
+data Expr
+  = None -- None
+  | Bool Bool -- True
+  | Integer Int -- 42
+  | Float Double -- 3.14
+  | Imaginary Double -- 3.14j
+  | List [Expr] -- [x, y, z]
+  | Tuple [Expr] -- (x, y, z)
+  | Set [Expr] -- {x, y, z}
+  | Dict [(Expr, Expr)] -- {x: 1, y: 2, z: 3}
+  | Bytes String -- b'hello'
+  | String String -- 'Hello'
+  | FString [FormattedValue] -- f"hello {x}"
+  | Name String -- x
+  | Starred Expr -- _, *x = _
+  | UnaryOp UnaryOp Expr -- not x
+  | BinOp Expr BinOp Expr -- x + y
+  | BoolOp Expr BoolOp Expr -- x and y
+  | Compare Expr Compare Expr -- x == y
+  | Lambda [String] Expr -- lambda x, y: z
+  | Call Expr [Expr] [(String, Expr)] -- func(*args, **kwargs)
+  | IfExp Expr Expr Expr -- a if b else c
+  | Attribute Expr String -- x.y
+  | NamedExpr Expr Expr -- x := y
+  | Subscript Expr Expr -- x[y]
+  | Slice Expr Expr -- x:y
+  | ListComp Expr Expr Expr [Expr] -- [x for x in xs (if y)*]
+  | SetComp Expr Expr Expr [Expr] -- {x for x in xs (if y)*}
+  | GeneratorExp Expr Expr Expr [Expr] -- (x for x in xs (if y)*)
+  | DictComp Expr Expr Expr [Expr] -- {x: x for x in xs (if y)*}
+  | Meta C.Metadata Expr
   deriving (Eq, Show)
 
 -- https://docs.python.org/3/library/ast.html#ast.FormattedValue
-data PyFormattedValue
-  = PyStr String
-  | PyVal PyExpr
+data FormattedValue
+  = Str String
+  | Val Expr
   deriving (Eq, Show)
 
 -- https://docs.python.org/3/library/ast.html#ast.UnaryOp
-data PyUnaryOp
-  = PyUAdd -- +x
-  | PyUSub -- -x
-  | PyNot -- not x
-  | PyInvert -- ~x
+data UnaryOp
+  = UAdd -- +x
+  | USub -- -x
+  | Not -- not x
+  | Invert -- ~x
   deriving (Eq, Show)
 
 -- https://docs.python.org/3/library/ast.html#ast.BinOp
-data PyBinOp
-  = PyAdd -- x + y
-  | PySub -- x - y
-  | PyMult -- x * y
-  | PyDiv -- x / y
-  | PyFloorDiv -- x // y
-  | PyMod -- x % y
-  | PyPow -- x ** y
-  | PyLShift -- x << y
-  | PyRShift -- x >> y
-  | PyBitOr -- x | y
-  | PyBitXor -- x ^ y
-  | PyBitAnd -- x & y
-  | PyMatMult -- x @ y
+data BinOp
+  = Add -- x + y
+  | Sub -- x - y
+  | Mult -- x * y
+  | Div -- x / y
+  | FloorDiv -- x // y
+  | Mod -- x % y
+  | Pow -- x ** y
+  | LShift -- x << y
+  | RShift -- x >> y
+  | BitOr -- x | y
+  | BitXor -- x ^ y
+  | BitAnd -- x & y
+  | MatMult -- x @ y
   deriving (Eq, Show)
 
 -- https://docs.python.org/3/library/ast.html#ast.BoolOp
-data PyBoolOp
-  = PyAnd -- x and y
-  | PyOr -- x or y
+data BoolOp
+  = And -- x and y
+  | Or -- x or y
   deriving (Eq, Show)
 
 -- https://docs.python.org/3/library/ast.html#ast.Compare
-data PyCompare
-  = PyEq -- x == y
-  | PyNotEq -- x = y
-  | PyLt -- x < y
-  | PyLtE -- x <= y
-  | PyGt -- x > y
-  | PyGtE -- x >= y
-  | PyIs -- x is y
-  | PyIsNot -- x is not y
-  | PyIn -- x in y
-  | PyNotIn -- x not in y
+data Compare
+  = Eq -- x == y
+  | NotEq -- x = y
+  | Lt -- x < y
+  | LtE -- x <= y
+  | Gt -- x > y
+  | GtE -- x >= y
+  | Is -- x is y
+  | IsNot -- x is not y
+  | In -- x in y
+  | NotIn -- x not in y
   deriving (Eq, Show)
 
 --- Statements ---
 -- https://docs.python.org/3/library/ast.html#statements
-data PyStmt
-  = PyAssign [PyExpr] PyExpr -- x = y = z
-  | PyAnnAssign PyExpr PyExpr (Maybe PyExpr) -- x: T = y
-  | PyAugAssign PyExpr PyBinOp PyExpr -- x += y
-  | PyRaise PyExpr (Maybe PyExpr) -- raise x [from y]
-  | PyAssert PyExpr PyExpr -- assert x, y
-  | PyDelete [PyExpr] -- del x, y
-  | PyPass -- pass
-  | PyTypeAlias String [PyTypeParam] PyExpr -- type Alias = int
-  | PyImport String (Maybe String) -- import mod [as m]
-  | PyImportFrom String [(String, Maybe String)] -- from mod import x, y as z
-  | PyBreak -- break
-  | PyContinue -- continue
-  | PyMatch PyExpr [(PyPattern, Maybe PyExpr, [PyStmt])] -- match x: case p: y; ...
-  | PyReturn PyExpr -- return x
-  | PyYield PyExpr -- yield x
-  | PyYieldFrom PyExpr -- yield from x
-  | PyGlobal [String] -- global x
-  | PyNonlocal [String] -- nonlocal x
-  | PyAwait PyExpr -- await x
-  | PyIf
-      { test :: PyExpr,
-        body :: [PyStmt],
-        orelse :: [PyStmt]
+data Stmt
+  = Assign [Expr] Expr -- x = y = z
+  | AnnAssign Expr Expr (Maybe Expr) -- x: T = y
+  | AugAssign Expr BinOp Expr -- x += y
+  | Raise Expr (Maybe Expr) -- raise x [from y]
+  | Assert Expr Expr -- assert x, y
+  | Delete [Expr] -- del x, y
+  | Pass -- pass
+  | TypeAlias String [TypeParam] Expr -- type Alias = int
+  | Import String (Maybe String) -- import mod [as m]
+  | ImportFrom String [(String, Maybe String)] -- from mod import x, y as z
+  | Break -- break
+  | Continue -- continue
+  | Match Expr [(Pattern, Maybe Expr, [Stmt])] -- match x: case p: y; ...
+  | Return Expr -- return x
+  | Yield Expr -- yield x
+  | YieldFrom Expr -- yield from x
+  | Global [String] -- global x
+  | Nonlocal [String] -- nonlocal x
+  | Await Expr -- await x
+  | If
+      { test :: Expr,
+        body :: [Stmt],
+        orelse :: [Stmt]
       }
-  | PyFor
-      { target :: PyExpr,
-        iter :: PyExpr,
-        body :: [PyStmt],
-        orelse :: [PyStmt],
+  | For
+      { target :: Expr,
+        iter :: Expr,
+        body :: [Stmt],
+        orelse :: [Stmt],
         async :: Bool
       }
-  | PyWhile
-      { test :: PyExpr,
-        body :: [PyStmt],
-        orelse :: [PyStmt]
+  | While
+      { test :: Expr,
+        body :: [Stmt],
+        orelse :: [Stmt]
       }
-  | PyWith
-      { items :: [(PyExpr, Maybe PyExpr)],
-        body :: [PyStmt],
+  | With
+      { items :: [(Expr, Maybe Expr)],
+        body :: [Stmt],
         async :: Bool
       }
-  | PyFunctionDef
+  | FunctionDef
       { name :: String,
-        args :: [(String, Maybe PyExpr, Maybe PyExpr)],
-        body :: [PyStmt],
-        decorators :: [PyExpr],
-        returns :: Maybe PyExpr,
-        typeParams :: [PyTypeParam],
+        args :: [(String, Maybe Expr, Maybe Expr)],
+        body :: [Stmt],
+        decorators :: [Expr],
+        returns :: Maybe Expr,
+        typeParams :: [TypeParam],
         async :: Bool
       }
-  | PyClassDef
+  | ClassDef
       { name :: String,
-        bases :: [PyExpr],
-        body :: [PyStmt],
-        decorators :: [PyExpr],
-        typeParams :: [PyTypeParam]
+        bases :: [Expr],
+        body :: [Stmt],
+        decorators :: [Expr],
+        typeParams :: [TypeParam]
       }
-  | PyTry
-      { body :: [PyStmt],
-        handlers :: [(Maybe PyExpr, String, PyExpr)],
-        else' :: [PyStmt],
-        finally :: [PyStmt]
+  | Try
+      { body :: [Stmt],
+        handlers :: [(Maybe Expr, String, Expr)],
+        else' :: [Stmt],
+        finally :: [Stmt]
       }
   deriving (Eq, Show)
 
-newPyFunctionDef :: String -> [(String, Maybe PyExpr, Maybe PyExpr)] -> [PyStmt] -> PyStmt
-newPyFunctionDef name args body =
-  PyFunctionDef
+newFunctionDef :: String -> [(String, Maybe Expr, Maybe Expr)] -> [Stmt] -> Stmt
+newFunctionDef name args body =
+  FunctionDef
     { name = name,
       args = args,
       body = body,
@@ -207,9 +207,9 @@ newPyFunctionDef name args body =
       async = False
     }
 
-newPyClassDef :: String -> [PyTypeParam] -> [PyStmt] -> PyStmt
-newPyClassDef name args body =
-  PyClassDef
+newClassDef :: String -> [TypeParam] -> [Stmt] -> Stmt
+newClassDef name args body =
+  ClassDef
     { name = name,
       bases = [],
       body = body,
@@ -219,23 +219,23 @@ newPyClassDef name args body =
 
 --- Pattern Matching ---
 -- https://docs.python.org/3/library/ast.html#pattern-matching
-data PyPattern
-  = PyMatchValue PyExpr -- case 1
-  | PyMatchSequence [PyPattern] -- case [p, q]
-  | PyMatchStar String -- case [p, *ps]
-  | PyMatchMapping [(String, PyPattern)] (Maybe String) -- case {p: q, [, **kvs]}
-  | PyMatchClass String [PyPattern] [(String, PyPattern)] -- ClassName(p, x=q)
-  | PyMatchAs (Maybe PyPattern) String -- case p as x
-  | PyMatchOr [PyPattern] -- case p | q
-  | PyMatchMeta C.Metadata PyPattern
+data Pattern
+  = MatchValue Expr -- case 1
+  | MatchSequence [Pattern] -- case [p, q]
+  | MatchStar String -- case [p, *ps]
+  | MatchMapping [(String, Pattern)] (Maybe String) -- case {p: q, [, **kvs]}
+  | MatchClass String [Pattern] [(String, Pattern)] -- ClassName(p, x=q)
+  | MatchAs (Maybe Pattern) String -- case p as x
+  | MatchOr [Pattern] -- case p | q
+  | MatchMeta C.Metadata Pattern
   deriving (Eq, Show)
 
 --- Type parameters ---
 -- https://docs.python.org/3/library/ast.html#ast-type-params
-data PyTypeParam
-  = PyTypeVar String -- T[a]
-  | PyTypeVarTuple String -- T[*ts]
-  | PyParamSpec String -- T[**ts]
+data TypeParam
+  = TypeVar String -- T[a]
+  | TypeVarTuple String -- T[*ts]
+  | ParamSpec String -- T[**ts]
   deriving (Eq, Show)
 
 data BuildOptions = BuildOptions
@@ -248,7 +248,7 @@ data BuildOptions = BuildOptions
   }
   deriving (Eq, Show)
 
--- Taken from help("keywords") in Python 3.12 REPL
+-- Taken from help("keywords") in thon 3.12 REPL
 keywords :: [String]
 keywords =
   [ "False",
@@ -374,14 +374,36 @@ addUnique x (y : ys) = y : addUnique x ys
 
 --- Syntax sugar ---
 
-pyCall :: PyExpr -> [PyExpr] -> PyExpr
-pyCall f xs = PyCall f xs []
+int :: Expr
+int = Name "int"
 
-pyImport :: String -> PyStmt
-pyImport name = PyImport name Nothing
+float :: Expr
+float = Name "float"
 
-pyRaise :: PyExpr -> PyStmt
-pyRaise x = PyRaise x Nothing
+call :: String -> [Expr] -> Expr
+call f args = Call (Name f) args []
+
+dict :: [(String, Expr)] -> Expr
+dict fields = Dict (map (first String) fields)
+
+callable :: [Expr] -> Expr -> Expr
+callable args ret =
+  Subscript (Name "Callable") (Tuple [List args, ret])
+
+bitOr :: Expr -> Expr -> Expr
+bitOr a = BinOp a BitOr
+
+notImplementedError :: String -> Expr
+notImplementedError msg = call "NotImplementedError" [String msg]
+
+import' :: String -> Stmt
+import' name = Import name Nothing
+
+assign :: String -> Expr -> Stmt
+assign name = Assign [Name name]
+
+raise :: Expr -> Stmt
+raise x = Raise x Nothing
 
 --- Build target ---
 defaultBuildOptions :: BuildOptions
@@ -395,43 +417,43 @@ defaultBuildOptions =
       indent = "    "
     }
 
-stmtNames :: PyStmt -> [String]
-stmtNames (PyAssign [] _) = []
-stmtNames (PyAssign (var : vars) value) = case var of
-  PyName x -> x : stmtNames (PyAssign vars value)
-  _ -> stmtNames (PyAssign vars value)
-stmtNames (PyAnnAssign var _ _) = case var of
-  PyName x -> [x]
+stmtNames :: Stmt -> [String]
+stmtNames (Assign [] _) = []
+stmtNames (Assign (var : vars) value) = case var of
+  Name x -> x : stmtNames (Assign vars value)
+  _ -> stmtNames (Assign vars value)
+stmtNames (AnnAssign var _ _) = case var of
+  Name x -> [x]
   _ -> []
-stmtNames (PyTypeAlias x _ _) = [x]
-stmtNames (PyImport name maybeAlias) = case maybeAlias of
+stmtNames (TypeAlias x _ _) = [x]
+stmtNames (Import name maybeAlias) = case maybeAlias of
   Just alias -> [alias]
   Nothing -> [name]
-stmtNames (PyImportFrom _ exposed) = do
+stmtNames (ImportFrom _ exposed) = do
   let exposedNames (_, Just alias) = [alias]
       exposedNames (name, Nothing) = [name]
   concatMap exposedNames exposed
-stmtNames (PyGlobal names) = names
-stmtNames (PyNonlocal names) = names
-stmtNames (PyFunctionDef {name}) = [name]
-stmtNames (PyClassDef {name}) = [name]
+stmtNames (Global names) = names
+stmtNames (Nonlocal names) = names
+stmtNames (FunctionDef {name}) = [name]
+stmtNames (ClassDef {name}) = [name]
 stmtNames _ = []
 
-pyName :: [String] -> Expr -> String -> String
+pyName :: [String] -> T.Expr -> String -> String
 pyName existing expr identifier = do
-  let (_, _, name) = splitIdentifier identifier
+  let (_, _, name) = T.splitIdentifier identifier
   case name of
-    name | isTagDef expr -> nameCamelCaseUpper name
-    name | isTypeDef expr -> nameCamelCaseUpper name
-    name -> nameSnakeCase name
+    name | T.isTagDef expr -> T.nameCamelCaseUpper name
+    name | T.isTypeDef expr -> T.nameCamelCaseUpper name
+    name -> T.nameSnakeCase name
 
-build :: BuildOptions -> FilePath -> Package -> IO FilePath
+build :: BuildOptions -> FilePath -> T.Package -> IO FilePath
 build options base pkg = do
   let pyPkg =
-        link () pkg
-          & refactorName pyName
-          & refactorModuleName (replace '/' '.' . replace '-' '_')
-          & refactorModuleAlias nameSnakeCase
+        T.link () pkg
+          & T.refactorName pyName
+          & T.refactorModuleName (T.replace '/' '.' . T.replace '-' '_')
+          & T.refactorModuleAlias T.nameSnakeCase
 
   let pkgPath = base </> "python"
   let srcPath = pkgPath </> pyPkg.name
@@ -470,25 +492,25 @@ buildDir base dirs = do
     [] -> return ()
     (dir : subdirs) -> buildDir (base </> dir) subdirs
 
-buildModule :: BuildOptions -> String -> FilePath -> Module -> IO FilePath
+buildModule :: BuildOptions -> String -> FilePath -> T.Module -> IO FilePath
 buildModule options pkgName base mod = do
   -- Initialize the file path recursively.
-  let filename = replace '.' '/' mod.name ++ ".py"
+  let filename = T.replace '.' '/' mod.name ++ ".py"
   buildDir base (splitPath $ takeDirectory filename)
 
   -- Write the source file contents.
-  let mod' = mod {stmts = filter (not . isTest) mod.stmts}
+  let mod' = mod {T.stmts = filter (not . T.isTest) mod.stmts}
   let options' = options {packageName = pkgName}
   writeFile (base </> filename) $
-    (emit options' mod' :: PyModule)
+    (emit options' mod' :: Module)
       & layout
-      & pyPretty options'
+      & pretty options'
   return filename
 
-buildTests :: BuildOptions -> String -> FilePath -> Module -> IO FilePath
+buildTests :: BuildOptions -> String -> FilePath -> T.Module -> IO FilePath
 buildTests options pkgName base mod = do
   -- Initialize the file path recursively.
-  let (dir, name) = splitFileName (replace '.' '/' mod.name)
+  let (dir, name) = splitFileName (T.replace '.' '/' mod.name)
   let filename = dir </> "test_" ++ name ++ ".py"
   buildDir base (splitPath $ takeDirectory filename)
 
@@ -497,121 +519,109 @@ buildTests options pkgName base mod = do
   writeFile (base </> filename) $
     buildModuleTests options' mod
       & layout
-      & pyPretty options'
+      & pretty options'
   return filename
 
-buildModuleTests :: BuildOptions -> Module -> PyModule
+buildModuleTests :: BuildOptions -> T.Module -> Module
 buildModuleTests options mod = do
   let path = splitDirectories mod.name & filter (/= ".")
   let importPath = intercalate "." (options.packageName : path)
-  let importNames = case map fst (concatMap getContext mod.stmts) of
+  let importNames = case map fst (concatMap T.getContext mod.stmts) of
         [] -> []
-        names -> [PyImportFrom importPath (map (,Nothing) names)]
+        names -> [ImportFrom importPath (map (,Nothing) names)]
   let stmts =
-        PyImport "unittest" Nothing
-          : PyImport importPath Nothing
+        Import "unittest" Nothing
+          : Import importPath Nothing
           : importNames
-          ++ emit options (filter isImport mod.stmts)
-          ++ [ PyClassDef
-                 { name = "Test" ++ nameCamelCaseUpper (takeFileName mod.name),
-                   bases = [PyAttribute (PyName "unittest") "TestCase"],
-                   body = emit options (filter isTest mod.stmts),
+          ++ emit options (filter T.isImport mod.stmts)
+          ++ [ ClassDef
+                 { name = "Test" ++ T.nameCamelCaseUpper (takeFileName mod.name),
+                   bases = [Attribute (Name "unittest") "TestCase"],
+                   body = emit options (filter T.isTest mod.stmts),
                    decorators = [],
                    typeParams = []
                  },
-               PyIf
-                 { test = PyCompare (PyName "__name__") PyEq (PyString "__main__"),
-                   body = [PyAssign [] (pyCall (PyAttribute (PyName "unittest") "main") [])],
+               If
+                 { test = Compare (Name "__name__") Eq (String "__main__"),
+                   body = [Assign [] (Call (Attribute (Name "unittest") "main") [] [])],
                    orelse = []
                  }
              ]
-  PyModule {name = "test_" ++ mod.name, body = stmts}
-
-isImport :: Stmt -> Bool
-isImport Import {} = True
-isImport _ = False
-
-isTest :: Stmt -> Bool
-isTest Test {} = True
-isTest _ = False
-
-isDefine :: Stmt -> Bool
-isDefine Define {} = True
-isDefine _ = False
+  Module {name = "test_" ++ mod.name, body = stmts}
 
 -- TODO: rename to Emit
 class Emit a b where
   emit :: BuildOptions -> a -> b
 
-instance Emit Package PyPackage where
-  emit :: BuildOptions -> Package -> PyPackage
+instance Emit Package Package where
+  emit :: BuildOptions -> Package -> Package
   emit options pkg = do
-    PyPackage
-      { name = nameDashCase pkg.name,
+    Package
+      { name = T.nameDashCase pkg.name,
         src = [],
         test = []
       }
 
-instance Emit Module PyModule where
-  emit :: BuildOptions -> Module -> PyModule
+instance Emit T.Module Module where
+  emit :: BuildOptions -> T.Module -> Module
   emit options mod = do
-    let stmts = emit options (filter (not . isTest) mod.stmts)
-    PyModule {name = mod.name, body = stmts}
+    let stmts = emit options (filter (not . T.isTest) mod.stmts)
+    Module {name = mod.name, body = stmts}
 
-instance Emit Stmt [PyStmt] where
-  emit :: BuildOptions -> Stmt -> [PyStmt]
-  emit options (Import pkg path alias exposed) = do
+instance Emit T.Stmt [Stmt] where
+  emit :: BuildOptions -> T.Stmt -> [Stmt]
+  emit options (T.Import pkg path alias exposed) = do
     let mod = pkg ++ "." ++ path
     case exposed of
       [] -> do
         let alias' = if '@' : mod == alias then Nothing else Just alias
-        [PyImport mod alias']
+        [Import mod alias']
       exposed -> do
         let expose (x, x') | x == x' = (x, Nothing)
             expose (x, y) = (x, Just y)
-        let stmts = emit options (Import pkg path alias [])
-        stmts ++ [PyImportFrom mod (map expose exposed)]
-  emit options (Define def) = emit options def
-  emit options (Test a p) = do
+        let stmts = emit options (T.Import pkg path alias [])
+        stmts ++ [ImportFrom mod (map expose exposed)]
+  emit options (T.Define def) = emit options def
+  emit options (T.Test a p) = do
     let (stmts1, a') = emit options a
-    let (stmts2, b') = emit options (toExpr p) -- TODO: do a match instead
+    let (stmts2, b') = emit options (T.toExpr p) -- TODO: do a match instead
     let def =
-          PyFunctionDef
-            { name = "test_" ++ nameSnakeCase (show (dropMeta a)),
+          FunctionDef
+            { name = "test_" ++ T.nameSnakeCase (show (T.dropMeta a)),
               args = [("self", Nothing, Nothing)],
-              body = [PyAssign [] (pyCall (PyAttribute (PyName "self") "assertEqual") [a', b'])],
+              body = [Assign [] (Call (Attribute (Name "self") "assertEqual") [a', b'] [])],
               decorators = [],
               returns = Nothing,
               typeParams = [],
               async = False
             }
     stmts1 ++ stmts2 ++ [def]
-  emit options (MetaStmt _ stmt) = emit options stmt
+  emit options (T.MetaStmt _ stmt) = emit options stmt
 
-instance Emit [Stmt] [PyStmt] where
-  emit :: BuildOptions -> [Stmt] -> [PyStmt]
+instance Emit [T.Stmt] [Stmt] where
+  emit :: BuildOptions -> [T.Stmt] -> [Stmt]
   emit _ [] = []
   emit options (stmt : stmts) = emit options stmt ++ emit options stmts
 
-instance Emit Definition [PyStmt] where
-  emit :: BuildOptions -> Definition -> [PyStmt]
-  emit options (Def ts (PVar x) b) = case (lookup x ts, lambdaOf "_" b) of
+instance Emit T.Definition [Stmt] where
+  emit :: BuildOptions -> T.Definition -> [Stmt]
+  emit options (T.Def ts (T.PVar x) b) = case (lookup x ts, T.lambdaOf "_" b) of
     (Nothing, ([], b)) -> do
       let (stmts, b') = emit options b
-      let def = PyAssign [PyName x] b'
+      let def = Assign [Name x] b'
       stmts ++ [def]
     (Just t, ([], b)) -> do
       let (stmts1, t') = emit options t
       let (stmts2, b') = emit options b
-      let def = PyAnnAssign (PyName x) t' (Just b')
+      let def = AnnAssign (Name x) t' (Just b')
       stmts1 ++ stmts2 ++ [def]
     (Nothing, (xs, b)) -> do
       let (body, b') = emit options b
       let def =
-            PyFunctionDef
+            FunctionDef
               { name = x,
                 args = map (,Nothing,Nothing) xs,
-                body = body ++ [PyReturn b'],
+                body = body ++ [Return b'],
                 decorators = [],
                 returns = Nothing,
                 typeParams = [],
@@ -619,139 +629,152 @@ instance Emit Definition [PyStmt] where
               }
       [def]
     (Just t, (xs, b)) -> do
-      let emitArg :: (String, Expr) -> ([PyStmt], [(String, Maybe PyExpr, Maybe PyExpr)]) -> ([PyStmt], [(String, Maybe PyExpr, Maybe PyExpr)])
+      let emitArg :: (String, T.Expr) -> ([Stmt], [(String, Maybe Expr, Maybe Expr)]) -> ([Stmt], [(String, Maybe Expr, Maybe Expr)])
           emitArg (x, t) (stmts, args) = do
             let (stmts', t') = emit options t
             (stmts' ++ stmts, (x, Just t', Nothing) : args)
-      let (ts, ret) = asFun t
+      let (ts, ret) = T.funOf t
       let (stmts1, args) = foldr emitArg ([], []) (zip xs ts)
       let (stmts2, ret') = emit options ret
       let (body, b') = emit options b
       let def =
-            PyFunctionDef
+            FunctionDef
               { name = x,
                 args = args,
-                body = body ++ [PyReturn b'],
+                body = body ++ [Return b'],
                 decorators = [],
                 returns = Just ret',
                 typeParams = [],
                 async = False
               }
       stmts1 ++ stmts2 ++ [def]
-  emit options (Def ts (PMeta _ p) b) = emit options (Define (Def ts p b))
+  emit options (T.Def ts (T.PMeta _ p) b) = emit options (T.Define (T.Def ts p b))
   emit options def = error $ "TODO: emit " ++ show def
 
-instance Emit Expr ([PyStmt], PyExpr) where
-  emit :: BuildOptions -> Expr -> ([PyStmt], PyExpr)
-  emit _ (Int i) = ([], PyInteger i)
-  emit _ (Num n) = ([], PyFloat n)
-  emit _ (Var x) = ([], PyName x)
-  -- Type [String]
-  emit options (Tag k args) = case (k, args) of
-    ("Int", []) -> ([], PyName "int")
-    ("Num", []) -> ([], PyName "float")
-    ("True", []) -> ([], PyName "True")
-    ("False", []) -> ([], PyName "False")
-    ("Nothing", []) -> ([], PyName "None")
+instance Emit T.Expr ([Stmt], Expr) where
+  emit :: BuildOptions -> T.Expr -> ([Stmt], Expr)
+  emit _ (T.Int i) = ([], Integer i)
+  emit _ (T.Num n) = ([], Float n)
+  emit _ (T.Var x) = ([], Name x)
+  emit options (T.Tag k args) = case (k, args) of
+    ("Type", []) -> ([], Name "type")
+    ("Int", []) -> ([], Name "int")
+    ("Num", []) -> ([], Name "float")
+    ("True", []) -> ([], Name "True")
+    ("False", []) -> ([], Name "False")
+    ("Nothing", []) -> ([], Name "None")
     ("", args) | null args || any ((== "") . fst) args -> do
       let (stmts, items) = emit options (map snd args)
-      (stmts, PyTuple items)
+      (stmts, Tuple items)
     ("", args) -> do
       let (stmts, items) = emit options args
-      (stmts, PyDict (map (first PyString) items))
+      (stmts, Dict (map (first String) items))
     (k, args) -> do
       let (posArgs, kwArgs) = span ((== "") . fst) args
       let (stmts1, posArgs') = emit options (map snd posArgs)
       let (stmts2, kwArgs') = emit options kwArgs
-      (stmts1 ++ stmts2, PyCall (PyName k) posArgs' kwArgs')
-  emit options (Trait a x) = do
+      (stmts1 ++ stmts2, Call (Name k) posArgs' kwArgs')
+  emit options (T.Trait a x) = do
     let (stmts, a') = emit options a
-    (stmts, PyAttribute a' x)
-  emit _ (TraitFun x) = do
+    (stmts, Attribute a' x)
+  emit _ (T.TraitFun x) = do
     let a = "_"
-    ([], PyLambda [a] (PyAttribute (PyName a) x))
-  -- Fun Expr Expr
-  emit options (App a b) = do
-    let (f, args) = appOf (App a b)
-    let (stmts1, f') = emit options f
-    let (stmts2, args') = emit options args
-    (stmts1 ++ stmts2, pyCall f' args')
-  -- Let Definition Expr
-  -- Bind (Expr, Expr) Expr
-  emit options (Match [] cases) = do
-    let (xs, b) = lambdaOf "_arg" (Match [] cases)
-    let (stmts, b') = emit options b
-    let expr = PyLambda xs b'
-    (stmts, expr)
-  emit options (Match [arg] cases) = do
-    let (stmts1, arg') = emit options arg
-    let (stmts2, cases') = emit options cases
-    let x = C.newName (concatMap stmtNames $ stmts1 ++ stmts2) "_match"
-    let stmt = PyMatch arg' (cases' x)
-    let expr = PyName x
-    (stmts1 ++ stmts2 ++ [stmt], expr)
+    ([], Lambda [a] (Attribute (Name a) x))
+  emit options (T.Fun a b) = do
+    let (args, ret) = T.funOf (T.Fun a b)
+    let (stmts1, args') = emit options args
+    let (stmts2, ret') = emit options ret
+    (stmts1 ++ stmts2, callable args' ret')
+  emit options expr@(T.App _ _) = case T.appOf expr of
+    (T.Match cases, args) -> do
+      let x = C.newName (T.freeVars cases) "_match"
+      let (stmts1, args') = emit options args
+      let (stmts2, cases') = emit options cases
+      let stmt = Match (Tuple args') (cases' x)
+      (stmts1 ++ stmts2 ++ [stmt], Name x)
+    (f, args) -> do
+      let (stmts1, f') = emit options f
+      let (stmts2, args') = emit options args
+      (stmts1 ++ stmts2, Call f' args' [])
+  emit options (T.Or a b) = do
+    let (stmts1, a') = emit options a
+    let (stmts2, b') = emit options b
+    (stmts1 ++ stmts2, bitOr a' b')
+  emit options (T.Let def b) = do
+    let stmts1 = emit options def
+    let (stmts2, b') = emit options b
+    (stmts1 ++ stmts2, b')
+  emit options (T.Bind (p, a) b) = do
+    let stmts1 = emit options (T.Def [] p (T.Meta C.Unwrap a))
+    let (stmts2, b') = emit options b
+    (stmts1 ++ stmts2, b')
+  emit _ (T.Match []) = ([raise (notImplementedError "")], None)
+  emit options (T.Match cases) = do
+    let x = C.newName (T.freeVars cases) "_match"
+    let def = T.Def [] (T.PVar x) (T.Match cases)
+    let stmts = emit options def
+    (stmts, Name x)
   -- If Expr Expr Expr
   -- Or Expr Expr
   -- Ann Expr Expr
   -- Op1 C.UnaryOp Expr
-  emit options (Op op args) = case (op, args) of
-    ("+", [a, b]) -> emitBinOp PyAdd a b
-    ("-", [a, b]) -> emitBinOp PySub a b
-    ("*", [a, b]) -> emitBinOp PyMult a b
-    ("^", [a, b]) -> emitBinOp PyPow a b
-    _ -> error $ "TODO: emit Op " ++ show (Op op args)
+  emit options (T.Op op args) = case (op, args) of
+    ("+", [a, b]) -> emitBinOp Add a b
+    ("-", [a, b]) -> emitBinOp Sub a b
+    ("*", [a, b]) -> emitBinOp Mult a b
+    ("^", [a, b]) -> emitBinOp Pow a b
+    _ -> error $ "TODO: emit Op " ++ show (T.Op op args)
     where
-      emitBinOp :: PyBinOp -> Expr -> Expr -> ([PyStmt], PyExpr)
+      emitBinOp :: BinOp -> T.Expr -> T.Expr -> ([Stmt], Expr)
       emitBinOp op a b = do
         let (stmts1, a') = emit options a
         let (stmts2, b') = emit options b
-        (stmts1 ++ stmts2, PyBinOp a' op b')
-  emit options (Meta _ a) = emit options a
+        (stmts1 ++ stmts2, BinOp a' op b')
+  emit options (T.Meta C.Unwrap a) = do
+    let (stmts, a') = emit options a
+    (stmts, Call a' [] [])
+  emit options (T.Meta _ a) = emit options a
   -- Err
-  emit options expr = error $ "TODO: emit " ++ show (dropMeta expr)
+  emit options expr = error $ "TODO: emit " ++ show (T.dropMeta expr)
 
-instance Emit [Expr] ([PyStmt], [PyExpr]) where
-  emit :: BuildOptions -> [Expr] -> ([PyStmt], [PyExpr])
+instance Emit [T.Expr] ([Stmt], [Expr]) where
+  emit :: BuildOptions -> [T.Expr] -> ([Stmt], [Expr])
   emit options items = do
-    let items' :: [(String, PyExpr)]
+    let items' :: [(String, Expr)]
         (stmts, items') = emit options (map ("",) items)
     (stmts, map snd items')
 
-instance Emit [(String, Expr)] ([PyStmt], [(String, PyExpr)]) where
-  emit :: BuildOptions -> [(String, Expr)] -> ([PyStmt], [(String, PyExpr)])
+instance Emit [(String, T.Expr)] ([Stmt], [(String, Expr)]) where
+  emit :: BuildOptions -> [(String, T.Expr)] -> ([Stmt], [(String, Expr)])
   emit _ [] = ([], [])
   emit options ((x, a) : args) = do
     let (stmts1, a') = emit options a
     let (stmts2, args') = emit options args
     (stmts1 ++ stmts2, (x, a') : args')
 
-instance Emit Case ([PyStmt], String -> (PyPattern, Maybe PyExpr, [PyStmt])) where
-  emit :: BuildOptions -> Case -> ([PyStmt], String -> (PyPattern, Maybe PyExpr, [PyStmt]))
-  emit options (Case [p] guard b) = do
+instance Emit T.Case ([Stmt], String -> (Pattern, Maybe Expr, [Stmt])) where
+  emit :: BuildOptions -> T.Case -> ([Stmt], String -> (Pattern, Maybe Expr, [Stmt]))
+  emit options (T.Case [p] Nothing b) = do
     let (stmts, p') = emit options p
     let (body, b') = emit options b
-    case guard of
-      Just cond -> do
-        error $ "TODO: emit [p] " ++ show (Case [p] guard b)
-      Nothing -> do
-        let case' x = (p', Nothing, body ++ [PyAssign [PyName x] b'])
-        (stmts, case')
-  emit options (Case ps guard b) = error $ "TODO: emit ps " ++ show (Case ps guard b)
+    let case' x = (p', Nothing, body ++ [Assign [Name x] b'])
+    (stmts, case')
+  emit options (T.Case ps (Just guard) b) = error $ "TODO: emit ps " ++ show (T.Case ps (Just guard) b)
 
-instance Emit [Case] ([PyStmt], String -> [(PyPattern, Maybe PyExpr, [PyStmt])]) where
-  emit :: BuildOptions -> [Case] -> ([PyStmt], String -> [(PyPattern, Maybe PyExpr, [PyStmt])])
+instance Emit [T.Case] ([Stmt], String -> [(Pattern, Maybe Expr, [Stmt])]) where
+  emit :: BuildOptions -> [T.Case] -> ([Stmt], String -> [(Pattern, Maybe Expr, [Stmt])])
   emit _ [] = ([], const [])
   emit options (case_ : cases) = do
     let (stmts1, case') = emit options case_
     let (stmts2, cases') = emit options cases
     (stmts1 ++ stmts2, \x -> case' x : cases' x)
 
-instance Emit Pattern ([PyStmt], PyPattern) where
-  emit :: BuildOptions -> Pattern -> ([PyStmt], PyPattern)
-  emit _ PAny = ([], PyMatchValue (PyName "_"))
-  emit _ (PInt i) = ([], PyMatchValue (PyInteger i))
+instance Emit T.Pattern ([Stmt], Pattern) where
+  emit :: BuildOptions -> T.Pattern -> ([Stmt], Pattern)
+  emit _ T.PAny = ([], MatchValue (Name "_"))
+  emit _ (T.PInt i) = ([], MatchValue (Integer i))
   -- -- PNum Double
-  emit _ (PVar x) = ([], PyMatchValue (PyName x))
+  emit _ (T.PVar x) = ([], MatchValue (Name x))
   -- -- PType [String]
   -- -- PTuple [Pattern]
   -- -- PRecord [(String, Pattern)]
@@ -759,61 +782,61 @@ instance Emit Pattern ([PyStmt], PyPattern) where
   -- -- PFun Pattern Pattern
   -- -- POr [Pattern]
   -- -- PEq Expr
-  emit options (PMeta _ p) = emit options p
+  emit options (T.PMeta _ p) = emit options p
   -- -- PErr
   emit options p = error $ "TODO: emit " ++ show p
 
 --- Pretty printing layouts ---
-pyPretty :: BuildOptions -> PP.Layout -> String
-pyPretty options = PP.pretty options.maxLineLength options.indent
+pretty :: BuildOptions -> PP.Layout -> String
+pretty options = PP.pretty options.maxLineLength options.indent
 
 class Layout a where
   layout :: a -> PP.Layout
 
-instance Layout PyModule where
-  layout :: PyModule -> PP.Layout
-  layout PyModule {body} = layout body
+instance Layout Module where
+  layout :: Module -> PP.Layout
+  layout Module {body} = layout body
 
-instance Layout [PyStmt] where
-  layout :: [PyStmt] -> PP.Layout
+instance Layout [Stmt] where
+  layout :: [Stmt] -> PP.Layout
   layout stmts = PP.join [PP.Text "\n"] (map layout stmts)
 
-instance Layout PyStmt where
-  layout :: PyStmt -> PP.Layout
-  layout (PyAssign xs y) = case xs of
+instance Layout Stmt where
+  layout :: Stmt -> PP.Layout
+  layout (Assign xs y) = case xs of
     [] -> layout y
-    x : xs -> layout x ++ (PP.Text " = " : layout (PyAssign xs y))
-  layout (PyAnnAssign a t maybeValue) = case maybeValue of
+    x : xs -> layout x ++ (PP.Text " = " : layout (Assign xs y))
+  layout (AnnAssign a t maybeValue) = case maybeValue of
     Just b -> layout a ++ (PP.Text ": " : layout t) ++ (PP.Text " = " : layout b)
     Nothing -> layout a ++ (PP.Text ": " : layout t)
-  layout (PyImport name alias) = case alias of
+  layout (Import name alias) = case alias of
     Just alias -> [PP.Text $ "import " ++ name ++ " as " ++ alias]
     Nothing -> [PP.Text $ "import " ++ name]
-  layout (PyImportFrom name exposed) = do
+  layout (ImportFrom name exposed) = do
     let layoutExpose (name, Nothing) = name
         layoutExpose (name, Just alias) = name ++ " as " ++ alias
     [PP.Text $ "from " ++ name ++ " import " ++ intercalate ", " (map layoutExpose exposed)]
-  layout PyIf {test, body, orelse = []} = do
+  layout If {test, body, orelse = []} = do
     PP.Text "if "
       : layout test
       ++ [PP.Text ":", PP.Indent (PP.Text "\n" : layout body)]
-  layout PyIf {test, body, orelse} = do
-    layout PyIf {test = test, body = body, orelse = []}
+  layout If {test, body, orelse} = do
+    layout If {test = test, body = body, orelse = []}
       ++ [PP.Text "\nelse:", PP.Indent (PP.Text "\n" : layout orelse)]
-  layout def@PyFunctionDef {} = do
-    let body = if null def.body then [PyPass] else def.body
+  layout def@FunctionDef {} = do
+    let body = if null def.body then [Pass] else def.body
     PP.Text ("def " ++ def.name)
       : layoutCollection "(" "," ")" (map layout def.args)
       ++ maybe [] (\t -> PP.Text " -> " : layout t) def.returns
       ++ [PP.Text ":", PP.Indent (PP.Text "\n" : layout body)]
-  layout def@PyClassDef {} = do
-    let body = if null def.body then [PyPass] else def.body
+  layout def@ClassDef {} = do
+    let body = if null def.body then [Pass] else def.body
     PP.Text ("class " ++ def.name)
       : case def.bases of
         [] -> []
         bases -> layoutCollection "(" "," ")" (map layout bases)
       ++ [PP.Text ":", PP.Indent (PP.Text "\n" : layout body)]
-  layout (PyReturn expr) =
+  layout (Return expr) =
     [ PP.Text "return ",
       PP.Or
         (layout expr)
@@ -822,96 +845,96 @@ instance Layout PyStmt where
           PP.Text "\n)"
         ]
     ]
-  layout (PyMatch arg cases) = do
-    let layoutArg (PyTuple [arg]) = layout arg
+  layout (Match arg cases) = do
+    let layoutArg (Tuple [arg]) = layout arg
         layoutArg arg = layout arg
     let layoutCase' (pat, guard, body) =
           PP.Text "case "
             : layout pat
             ++ maybe [] (\e -> PP.Text " if " : layout e) guard
             ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layout body), PP.Text "\n"]
-    let layoutCase (PyMatchSequence [pat], guard, body) = layoutCase' (pat, guard, body)
+    let layoutCase (MatchSequence [pat], guard, body) = layoutCase' (pat, guard, body)
         layoutCase (pat, guard, body) = layoutCase' (pat, guard, body)
     PP.Text "match "
       : layoutArg arg
       ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layoutCase cases)]
-  layout (PyRaise exc from) =
+  layout (Raise exc from) =
     PP.Text "raise "
       : layout exc
       ++ maybe [] (\a -> PP.Text " from " : layout a) from
-  layout PyPass = [PP.Text "pass"]
+  layout Pass = [PP.Text "pass"]
   layout stmt = error $ "TODO: layout: " ++ show stmt
 
-instance Layout PyPattern where
-  layout :: PyPattern -> PP.Layout
-  layout (PyMatchValue expr) = layout expr
-  layout (PyMatchSequence pats) = layoutCollection "[" "," "]" (map layout pats)
-  layout (PyMatchStar name) = [PP.Text $ "*" ++ name]
+instance Layout Pattern where
+  layout :: Pattern -> PP.Layout
+  layout (MatchValue expr) = layout expr
+  layout (MatchSequence pats) = layoutCollection "[" "," "]" (map layout pats)
+  layout (MatchStar name) = [PP.Text $ "*" ++ name]
   -- MatchMapping [(String, Pattern)] (Maybe String) -- case {p: q, [, **kvs]}
   -- MatchClass String [Pattern] [(String, Pattern)] -- ClassName(p, x=q)
-  layout (PyMatchAs maybePattern name) = case maybePattern of
+  layout (MatchAs maybePattern name) = case maybePattern of
     Just pat -> layout pat ++ [PP.Text $ " as " ++ name]
     Nothing -> [PP.Text name]
-  layout (PyMatchOr pats) = PP.join [PP.Text " | "] (map layout pats)
-  layout (PyMatchMeta _ pat) = layout pat
+  layout (MatchOr pats) = PP.join [PP.Text " | "] (map layout pats)
+  layout (MatchMeta _ pat) = layout pat
   layout pat = error $ "TODO: layout: " ++ show pat
 
-instance Layout PyExpr where
-  layout :: PyExpr -> PP.Layout
-  layout (PyInteger i) = [PP.Text $ show i]
-  layout (PyString s) = case s of
+instance Layout Expr where
+  layout :: Expr -> PP.Layout
+  layout (Integer i) = [PP.Text $ show i]
+  layout (String s) = case s of
     s | '\'' `notElem` s -> [PP.Text $ "'" ++ s ++ "'"]
     s | '"' `notElem` s -> [PP.Text $ "\"" ++ s ++ "\""]
-    s -> error $ "TODO: layout PyString with quotes: " ++ show s
-  layout (PyName x) = [PP.Text x]
-  layout (PyTuple items) = layoutCollection "(" "," ")" (map layout items)
-  layout (PyDict items) = do
+    s -> error $ "TODO: layout String with quotes: " ++ show s
+  layout (Name x) = [PP.Text x]
+  layout (Tuple items) = layoutCollection "(" "," ")" (map layout items)
+  layout (Dict items) = do
     let layoutField (a, b) = layout a ++ PP.Text ": " : layout b
     layoutCollection "{" "," "}" (map layoutField items)
-  layout (PyCall func args kwargs) = do
+  layout (Call func args kwargs) = do
     let kwarg (x, a) = PP.Text (x ++ "=") : layout a
     layout func ++ layoutCollection "(" "," ")" (map layout args ++ map kwarg kwargs)
-  layout (PyLambda [] a) = PP.Text "lambda: " : layout a
-  layout (PyLambda xs a) =
+  layout (Lambda [] a) = PP.Text "lambda: " : layout a
+  layout (Lambda xs a) =
     PP.Text "lambda "
       : PP.join [PP.Text ", "] (map (\x -> [PP.Text x]) xs)
       ++ (PP.Text ": " : layout a)
-  layout (PyAttribute a x) = layout a ++ [PP.Text $ '.' : x]
-  layout (PySubscript a b) = layout a ++ PP.Text "[" : layout b ++ [PP.Text "]"]
+  layout (Attribute a x) = layout a ++ [PP.Text $ '.' : x]
+  layout (Subscript a b) = layout a ++ PP.Text "[" : layout b ++ [PP.Text "]"]
   -- TODO: remove redundant parentheses
   -- TODO: break long lines
-  layout (PyBinOp a op b) = do
-    let showOp PyAdd = " + "
-        showOp PySub = " - "
-        showOp PyMult = " * "
-        showOp PyDiv = " / "
-        showOp PyFloorDiv = " // "
-        showOp PyMod = " % "
-        showOp PyPow = "**"
-        showOp PyLShift = " << "
-        showOp PyRShift = " >> "
-        showOp PyBitOr = " | "
-        showOp PyBitXor = " ^ "
-        showOp PyBitAnd = " & "
-        showOp PyMatMult = " @ "
+  layout (BinOp a op b) = do
+    let showOp Add = " + "
+        showOp Sub = " - "
+        showOp Mult = " * "
+        showOp Div = " / "
+        showOp FloorDiv = " // "
+        showOp Mod = " % "
+        showOp Pow = "**"
+        showOp LShift = " << "
+        showOp RShift = " >> "
+        showOp BitOr = " | "
+        showOp BitXor = " ^ "
+        showOp BitAnd = " & "
+        showOp MatMult = " @ "
     PP.Text "(" : layout a ++ [PP.Text $ showOp op] ++ layout b ++ [PP.Text ")"]
-  layout (PyCompare a op b) = do
-    let showOp PyEq = " == "
-        showOp PyNotEq = " != "
-        showOp PyLt = " < "
-        showOp PyLtE = " <= "
-        showOp PyGt = " > "
-        showOp PyGtE = " >= "
-        showOp PyIs = " is "
-        showOp PyIsNot = " is not "
-        showOp PyIn = " in "
-        showOp PyNotIn = " not in "
+  layout (Compare a op b) = do
+    let showOp Eq = " == "
+        showOp NotEq = " != "
+        showOp Lt = " < "
+        showOp LtE = " <= "
+        showOp Gt = " > "
+        showOp GtE = " >= "
+        showOp Is = " is "
+        showOp IsNot = " is not "
+        showOp In = " in "
+        showOp NotIn = " not in "
     PP.Text "(" : layout a ++ [PP.Text $ showOp op] ++ layout b ++ [PP.Text ")"]
-  layout (PyMeta _ a) = layout a
+  layout (Meta _ a) = layout a
   layout a = error $ "TODO: layout: " ++ show a
 
-instance Layout (String, Maybe PyExpr, Maybe PyExpr) where
-  layout :: (String, Maybe PyExpr, Maybe PyExpr) -> PP.Layout
+instance Layout (String, Maybe Expr, Maybe Expr) where
+  layout :: (String, Maybe Expr, Maybe Expr) -> PP.Layout
   layout (x, Nothing, Nothing) = [PP.Text x]
   layout (x, Nothing, Just value) = PP.Text (x ++ "=") : layout value
   layout (x, Just type', Nothing) = PP.Text (x ++ ": ") : layout type'

@@ -314,7 +314,7 @@ parseDef = do
   _ <- P.char '='
   _ <- P.whitespaces
   value <- parseExpr 0 P.spaces
-  return (Def ts p (match0 ps value))
+  return (Def ts p (match [] [Case ps Nothing value]))
 
 parseTraitDef :: Parser Definition
 parseTraitDef = P.fail'
