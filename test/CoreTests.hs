@@ -129,8 +129,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- lam [] x `shouldBe` x
     -- lam [y'] x `shouldBe` Fun y' x
 
-    call x [] `shouldBe` x
-    call x [y, z] `shouldBe` App (App x y) z
+    app x [] `shouldBe` x
+    app x [y, z] `shouldBe` App (App x y) z
 
   it "☯ eval const" $ do
     eval [] Knd `shouldBe` Knd
@@ -173,7 +173,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval env (App (lam [PVar "x"] x) IntT) `shouldBe` IntT
     eval env (App (lam [PTag "A"] x) (Tag "A")) `shouldBe` Int 1
     eval env (App (lam [ptag "A" [x']] x) (tag "A" [IntT])) `shouldBe` IntT
-    eval env (app [lam [PIntT, PNumT] x, IntT, NumT]) `shouldBe` Int 1
+    eval env (app (lam [PIntT, PNumT] x) [IntT, NumT]) `shouldBe` Int 1
     eval env (App Err IntT) `shouldBe` Err
     eval env (App Err IntT) `shouldBe` Err
 
@@ -312,7 +312,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   -- it "☯ infer Vec" $ do
   --   let (n, a) = (Var "n", Var "a")
-  --   let (vec, cons, nil) = (\n a -> call (Tag "Vec") [n, a], \x xs -> tag "Cons" [x, xs], Tag "Nil")
+  --   let (vec, cons, nil) = (\n a -> app (Tag "Vec") [n, a], \x xs -> tag "Cons" [x, xs], Tag "Nil")
   --   let vecDef a = Ann (Tag "Nil") (vec i0 a) `Or` Ann (Tag "Cons") (For "n" $ fun [a, vec n a] (vec (n `add` i1) a))
   --   let env = [("Vec", lam [PVar "n", PVar "a"] (vecDef a))]
 

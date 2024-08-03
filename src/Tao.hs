@@ -1,12 +1,15 @@
 module Tao where
 
 -- TODO: maybe use terms like "lower" and "lift" for conversions to/from core
+
+import Control.Monad (mapAndUnzipM)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap), second)
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, union)
 import Data.List.Split (splitWhen)
+import Data.Maybe (fromMaybe, mapMaybe)
 
 data Expr
   = Int Int
@@ -20,7 +23,6 @@ data Expr
   | Or Expr Expr
   | Let Definition Expr
   | Bind (Pattern, Expr) Expr
-  | Lambda [String] Expr -- TODO: remove
   | Match [Case]
   | If Expr Expr Expr
   | Ann Expr Expr
@@ -30,8 +32,7 @@ data Expr
   deriving (Eq, Show)
 
 data Case
-  = Case [Pattern] Expr
-  | CaseIf [Pattern] Expr Expr
+  = Case [Pattern] (Maybe Expr) Expr
   deriving (Eq, Show)
 
 data Pattern
@@ -113,15 +114,54 @@ record = Tag ""
 pRecord :: [(String, Pattern)] -> Pattern
 pRecord = PTag ""
 
-lambda :: [String] -> [Case] -> Expr
-lambda xs cases = Lambda xs (match (map Var xs) cases)
-
-match0 :: [Pattern] -> Expr -> Expr
-match0 ps b = match [] [Case ps b]
-
 match :: [Expr] -> [Case] -> Expr
-match [] (Case [] b : _) = b
+match [] (Case [] Nothing b : _) = b
+match (Var x : args) cases = do
+  let matchVar (Case (PVar x' : ps) guard b) | x == x' = Just (Case ps guard b)
+      matchVar (Case (PAny : ps) guard b) | x `notElem` freeVars b = Just (Case ps guard b)
+      matchVar _ = Nothing
+  case mapM matchVar cases of
+    Just cases' -> match args cases'
+    Nothing -> app (Match cases) (Var x : args)
 match args cases = app (Match cases) args
+
+lambda :: [String] -> Expr -> Expr
+lambda xs b = match [] [Case (map PVar xs) Nothing b]
+
+lambdaOf :: String -> Expr -> ([String], Expr)
+lambdaOf _ (Match []) = ([], Err)
+lambdaOf prefix (Match cases) = do
+  let xs = lambdaArgs prefix cases
+  (xs, match (map Var xs) cases)
+lambdaOf prefix (Meta m a) = do
+  let (xs, a') = lambdaOf prefix a
+  (xs, Meta m a')
+lambdaOf _ a = ([], a)
+
+lambdaArgs :: String -> [Case] -> [String]
+lambdaArgs prefix cases = case popCases cases of
+  Just (ps, cases') -> do
+    let x = case patternsName ps of
+          Just x -> x
+          Nothing -> C.newName (prefix : freeVars cases') prefix
+    x : lambdaArgs prefix cases'
+  Nothing -> []
+
+popCases :: [Case] -> Maybe ([Pattern], [Case])
+popCases = mapAndUnzipM popCase
+
+popCase :: Case -> Maybe (Pattern, Case)
+popCase (Case [] guard a) = Nothing
+popCase (Case (p : ps) guard a) = Just (p, Case ps guard a)
+
+patternsName :: [Pattern] -> Maybe String
+patternsName [] = Nothing
+patternsName (p : ps) = case p of
+  PVar x -> case patternsName ps of
+    Just y | x /= y -> Nothing
+    _ -> Just x
+  PMeta _ p -> patternsName (p : ps)
+  _ -> patternsName ps
 
 let' :: Pattern -> Expr -> Expr -> Expr
 let' p a = Let (Def [] p a)
@@ -168,7 +208,7 @@ varT :: String -> Expr -> Expr -> Stmt
 varT name typ value = Define (Def [(name, typ)] (PVar name) value)
 
 fn :: String -> [Pattern] -> Expr -> Stmt
-fn name args value = Define (Def [] (PVar name) (match0 args value))
+fn name args value = Define (Def [] (PVar name) (match [] [Case args Nothing value]))
 
 app :: Expr -> [Expr] -> Expr
 app = foldl App
@@ -177,17 +217,6 @@ appOf :: Expr -> (Expr, [Expr])
 appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
 appOf (Meta _ a) = appOf a
 appOf a = (a, [])
-
-lambdaOf :: String -> Expr -> ([String], Expr)
-lambdaOf _ (Lambda xs b) = (xs, b)
-lambdaOf _ (Match []) = ([], Err)
-lambdaOf prefix (Match cases@(Case ps _ : _)) = do
-  let xs = C.newNames (prefix : freeVars (Match cases)) (replicate (length ps) prefix)
-  lambdaOf prefix (lambda xs cases)
-lambdaOf prefix (Meta m a) = do
-  let (xs, a') = lambdaOf prefix a
-  (xs, Meta m a')
-lambdaOf _ a = ([], a)
 
 isImport :: Stmt -> Bool
 isImport Import {} = True
@@ -250,6 +279,10 @@ instance FreeVars Case where
   freeVars :: Case -> [String]
   freeVars case' = C.freeVars (lower [] case' :: C.Expr)
 
+instance FreeVars [Case] where
+  freeVars :: [Case] -> [String]
+  freeVars = foldr (union . freeVars) []
+
 class Lower a b where
   lower :: C.Env -> a -> b
 
@@ -270,13 +303,13 @@ instance Lower Expr C.Expr where
     let a' = lower env a
     case C.infer env a' of
       Left _ -> C.Err
-      Right (t, _) -> C.call (C.Var $ '.' : x) [t, a']
+      Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
   lower env (Fun a b) = C.Fun (lower env a) (lower env b)
   lower env (App a b) = C.App (lower env a) (lower env b)
   lower env (Or a b) = C.Or (lower env a) (lower env b)
   lower env (Let def b) = case def of
-    Def ts p a -> lower env (match [a] [Case [p] b])
-  lower env (Bind (p, a) b) = lower env (App (Trait a "<-") (Match [Case [p] b]))
+    Def ts p a -> lower env (match [a] [Case [p] Nothing b])
+  lower env (Bind (p, a) b) = lower env (App (Trait a "<-") (match [] [Case [p] Nothing b]))
   lower env (Match cases) = C.or' (map (lower env) cases)
   lower env (Ann a b) = C.Ann (lower env a) (lower env b)
   lower env (Op op args) = C.Op op (map (lower env) args)
@@ -296,11 +329,11 @@ instance Lift C.Expr Expr where
   lift (C.For _ a) = lift a
   lift (C.Fix _ a) = lift a
   lift (C.Fun a b) = Fun (lift a) (lift b)
-  lift (C.Lam p b) = Match [Case [lift p] (lift b)]
+  lift (C.Lam p b) = Match [Case [lift p] Nothing (lift b)]
   lift (C.App a b) = case appOf (App (lift a) (lift b)) of
     (Var ('.' : x), _ : a : args) -> app (Trait a x) args
     (Tag k args, args') -> Tag k (args ++ map ("",) args')
-    (Trait a "<-", [Match [Case [p] b]]) -> Bind (p, a) b
+    (Trait a "<-", [Match [Case [p] Nothing b]]) -> Bind (p, a) b
     (a, args) -> app a args
   lift (C.Or a b) = Or (lift a) (lift b)
   lift (C.Ann a b) = Ann (lift a) (lift b)
@@ -311,8 +344,7 @@ instance Lift C.Expr Expr where
 
 instance Lower Case C.Expr where
   lower :: C.Env -> Case -> C.Expr
-  lower env (Case ps b) =
-    C.lam (map (lower env) ps) (lower env b)
+  lower env (Case ps guard b) = C.lam (map (lower env) ps) (lower env b)
 
 instance Lower Pattern C.Pattern where
   lower :: C.Env -> Pattern -> C.Pattern
@@ -587,7 +619,8 @@ instance Apply Pattern where
 
 instance Apply Case where
   apply :: (Expr -> Expr) -> Case -> Case
-  apply f (Case ps b) = Case (map (apply f) ps) (f b)
+  apply f (Case ps guard b) =
+    Case (map (apply f) ps) (fmap f guard) (apply f b)
 
 instance Apply Definition where
   apply :: (Expr -> Expr) -> Definition -> Definition
@@ -670,8 +703,8 @@ instance Rename Pattern where
 
 instance Rename Case where
   rename :: String -> String -> Case -> Case
-  rename old new (Case ps b) =
-    Case (map (rename old new) ps) (rename old new b)
+  rename old new (Case ps guard b) =
+    Case (map (rename old new) ps) (fmap (rename old new) guard) (rename old new b)
 
 instance Rename String where
   rename :: String -> String -> String -> String
@@ -757,7 +790,8 @@ instance DropMeta Pattern where
 
 instance DropMeta Case where
   dropMeta :: Case -> Case
-  dropMeta (Case ps a) = Case (map dropMeta ps) (dropMeta a)
+  dropMeta (Case ps guard a) =
+    Case (map dropMeta ps) (fmap dropMeta guard) (dropMeta a)
 
 instance DropMeta Definition where
   dropMeta :: Definition -> Definition
@@ -782,16 +816,3 @@ instance DropMeta Module where
 instance DropMeta Package where
   dropMeta :: Package -> Package
   dropMeta pkg = pkg {modules = map dropMeta pkg.modules}
-
-caseSplit :: Case -> (Pattern, Case)
-caseSplit (Case [] a) = (PAny, Case [] a)
-caseSplit (Case (p : ps) a) = (p, Case ps a)
-
-patternsName :: [Pattern] -> Maybe String
-patternsName [] = Nothing
-patternsName (p : ps) = case p of
-  PVar x -> case patternsName ps of
-    Just y | x /= y -> Nothing
-    _ -> Just x
-  PMeta _ p -> patternsName (p : ps)
-  _ -> patternsName ps

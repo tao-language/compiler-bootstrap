@@ -14,6 +14,22 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   let (xP', yP', zP') = (C.PVar "x", C.PVar "y", C.PVar "z")
   let (a, a') = (Var "a", C.Var "a")
   let (f, f') = (Var "f", C.Var "f")
+  let (i0, i1, i2) = (Int 0, Int 1, Int 2)
+
+  it "☯ lambda" $ do
+    lambda [] x `shouldBe` x
+    lambda ["x"] y `shouldBe` Match [Case [xP] Nothing y]
+    lambda ["x", "y"] z `shouldBe` Match [Case [xP, yP] Nothing z]
+
+  it "☯ lambdaOf" $ do
+    lambdaOf "$" x `shouldBe` ([], x)
+    lambdaOf "$" (Meta (C.Comment "") x) `shouldBe` ([], Meta (C.Comment "") x)
+    lambdaOf "$" (Match []) `shouldBe` ([], Err)
+    lambdaOf "$" (Match [Case [] Nothing x]) `shouldBe` ([], x)
+    lambdaOf "$" (Match [Case [xP] Nothing i1]) `shouldBe` (["x"], i1)
+    lambdaOf "$" (Match [Case [xP] Nothing i1, Case [xP] Nothing i2]) `shouldBe` (["x"], Int 1)
+    lambdaOf "$" (Match [Case [xP] Nothing i1, Case [yP] Nothing i2]) `shouldBe` (["$1"], app (Match [Case [xP] Nothing i1, Case [yP] Nothing i2]) [Var "$1"])
+    lambdaOf "$" (Match [Case [xP, yP] Nothing i1, Case [xP, zP] Nothing i2]) `shouldBe` (["x", "$1"], app (Match [Case [yP] Nothing i1, Case [zP] Nothing i2]) [Var "$1"])
 
   it "☯ lower/lift Type" $ do
     let expr = Tag "Type" []
@@ -81,17 +97,17 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower/lift Trait" $ do
     let expr = Trait (Int 1) "y"
-    let term = C.call (C.Var ".y") [C.Int 1 `C.Or` C.IntT, C.Int 1]
+    let term = C.app (C.Var ".y") [C.Int 1 `C.Or` C.IntT, C.Int 1]
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
     let expr = Trait x "y"
-    let term = C.call (C.Var ".y") [C.Int 1 `C.Or` C.IntT, x']
+    let term = C.app (C.Var ".y") [C.Int 1 `C.Or` C.IntT, x']
     lower [("x", C.Int 1)] expr `shouldBe` term
     lift term `shouldBe` expr
 
     let expr = Trait x "y"
-    let term = C.call (C.Var ".y") [C.Err, C.Var "x"]
+    let term = C.app (C.Var ".y") [C.Err, C.Var "x"]
     lower [] expr `shouldBe` C.Err
     lift term `shouldBe` expr
 
@@ -121,7 +137,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower/lift Bind" $ do
     let expr = Bind (xP, y) z
-    let term = C.call (C.Var ".<-") [C.Int 1 `C.Or` C.IntT, y', C.Lam xP' z']
+    let term = C.app (C.Var ".<-") [C.Int 1 `C.Or` C.IntT, y', C.Lam xP' z']
     lower [("y", C.Int 1)] expr `shouldBe` term
     lift term `shouldBe` expr
 

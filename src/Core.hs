@@ -112,7 +112,7 @@ instance Show Expr where
     Var x -> atom 12 ("($var '" ++ x ++ "')")
     Tag k -> atom 12 k
     Op op [] -> atom 12 ("(" ++ op ++ ")")
-    Op op args -> showsPrec p (call (Op op []) args)
+    Op op args -> showsPrec p (app (Op op []) args)
     Meta _ a -> showsPrec p a
     Lam p b -> infixR 8 (toExpr p) " => " b
     where
@@ -144,10 +144,10 @@ numT :: Double -> Expr
 numT n = Num n `Or` NumT
 
 tag :: String -> [Expr] -> Expr
-tag k = call (Tag k)
+tag k = app (Tag k)
 
 ptag :: String -> [Pattern] -> Pattern
-ptag k = pCall (PTag k)
+ptag k = pApp (PTag k)
 
 fix :: [String] -> Expr -> Expr
 fix xs a = foldr Fix a xs
@@ -202,26 +202,15 @@ let' (p, a) b = do
 lets :: [(Pattern, Expr)] -> Expr -> Expr
 lets defs b = foldr let' b defs
 
-app3 :: Expr -> Expr -> Expr -> Expr
-app3 a b c = app [a, b, c]
+app :: Expr -> [Expr] -> Expr
+app = foldl App
 
-app :: [Expr] -> Expr
-app [] = Err
-app (a : bs) = call a bs
+pApp :: Pattern -> [Pattern] -> Pattern
+pApp = foldl PApp
 
-pApp :: [Pattern] -> Pattern
-pApp [] = PErr
-pApp (p : qs) = pCall p qs
-
-call :: Expr -> [Expr] -> Expr
-call = foldl App
-
-pCall :: Pattern -> [Pattern] -> Pattern
-pCall = foldl PApp
-
-callOf :: Expr -> (Expr, [Expr])
-callOf (App a b) = let (a', bs) = callOf a in (a', bs ++ [b])
-callOf a = (a, [])
+appOf :: Expr -> (Expr, [Expr])
+appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
+appOf a = (a, [])
 
 or' :: [Expr] -> Expr
 or' [] = Err
@@ -230,7 +219,7 @@ or' (a : bs) = Or a (or' bs)
 
 list :: Expr -> Expr -> [Expr] -> Expr
 list _ nil [] = nil
-list cons nil (a : bs) = call cons [a, list cons nil bs]
+list cons nil (a : bs) = app cons [a, list cons nil bs]
 
 meta :: [Metadata] -> Expr -> Expr
 meta ms a = foldr Meta a ms
@@ -543,7 +532,7 @@ check env (App a b) t = do
   (_, s2) <- check (s1 `compose` env) a (Fun tb t)
   Right (substitute (s2 `compose` s1) t, s2 `compose` s1)
 check env (Op op args) t = case lookup op env of
-  Just a -> check env (call a args) t
+  Just a -> check env (app a args) t
   Nothing -> Right (t, []) -- TODO: check args
 check env (Meta _ a) t = check env a t
 check _ Err Err = Right (Err, [])
@@ -603,7 +592,7 @@ infer env (App a b) = do
       Right (substitute s2 t2, s2 `compose` s1)
     ta -> Left (NotAFunction a ta)
 infer env (Op op args) = case lookup op env of
-  Just a -> infer env (call a args)
+  Just a -> infer env (app a args)
   Nothing -> do
     let y = newName (map fst env) (op ++ "T")
     Right (Var y, [(y, Var y), (op, Ann (Op op []) (Var y))])

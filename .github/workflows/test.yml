@@ -9,7 +9,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: haskell-actions/setup@v2
-        with: 
+        with:
           enable-stack: true
 
       - uses: actions/cache@v4
@@ -27,7 +27,7 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
 
     runs-on: ${{ matrix.os }}
 
@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: haskell-actions/setup@v2
-        with: 
+        with:
           enable-stack: true
 
       - uses: actions/setup-python@v5
