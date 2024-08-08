@@ -386,6 +386,9 @@ call f args = Call (Name f) args []
 dict :: [(String, Expr)] -> Expr
 dict fields = Dict (map (first String) fields)
 
+record :: [(String, Expr)] -> Expr
+record = Call (Name "record") []
+
 callable :: [Expr] -> Expr -> Expr
 callable args ret =
   Subscript (Name "Callable") (Tuple [List args, ret])
@@ -441,7 +444,7 @@ stmtNames _ = []
 
 pyName :: [String] -> T.Expr -> String -> String
 pyName existing expr identifier = do
-  let (_, _, name) = T.splitIdentifier identifier
+  let (_, _, name) = T.splitName identifier
   case name of
     name | T.isTagDef expr -> T.nameCamelCaseUpper name
     name | T.isTypeDef expr -> T.nameCamelCaseUpper name
@@ -454,6 +457,7 @@ build options base pkg = do
           & T.refactorName pyName
           & T.refactorModuleName (T.replace '/' '.' . T.replace '-' '_')
           & T.refactorModuleAlias T.nameSnakeCase
+  -- & (\pkg -> pkg {T.modules = map (\mod -> mod {T.stmts = T.Import "" "prelude" "prelude" [("*", "*")] : mod.stmts}) pkg.modules})
 
   let pkgPath = base </> "python"
   let srcPath = pkgPath </> pyPkg.name
@@ -531,7 +535,6 @@ buildModuleTests options mod = do
         names -> [ImportFrom importPath (map (,Nothing) names)]
   let stmts =
         Import "unittest" Nothing
-          : Import importPath Nothing
           : importNames
           ++ emit options (filter T.isImport mod.stmts)
           ++ [ ClassDef
@@ -570,16 +573,18 @@ instance Emit T.Module Module where
 
 instance Emit T.Stmt [Stmt] where
   emit :: BuildOptions -> T.Stmt -> [Stmt]
-  emit options (T.Import pkg path alias exposed) = do
-    let mod = pkg ++ "." ++ path
+  emit options (T.Import name alias exposed) = do
+    let mod = case name of
+          '@' : name -> T.replace ':' '.' name
+          _ -> name
     case exposed of
       [] -> do
-        let alias' = if '@' : mod == alias then Nothing else Just alias
+        let alias' = if alias == "" then Nothing else Just alias
         [Import mod alias']
       exposed -> do
-        let expose (x, x') | x == x' = (x, Nothing)
+        let expose (x, "") = (x, Nothing)
             expose (x, y) = (x, Just y)
-        let stmts = emit options (T.Import pkg path alias [])
+        let stmts = emit options (T.Import name alias [])
         stmts ++ [ImportFrom mod (map expose exposed)]
   emit options (T.Define def) = emit options def
   emit options (T.Test a p) = do
@@ -667,8 +672,8 @@ instance Emit T.Expr ([Stmt], Expr) where
       let (stmts, items) = emit options (map snd args)
       (stmts, Tuple items)
     ("", args) -> do
-      let (stmts, items) = emit options args
-      (stmts, Dict (map (first String) items))
+      let (stmts, fields) = emit options args
+      (stmts, record fields)
     (k, args) -> do
       let (posArgs, kwArgs) = span ((== "") . fst) args
       let (stmts1, posArgs') = emit options (map snd posArgs)
@@ -815,7 +820,7 @@ instance Layout Stmt where
   layout (ImportFrom name exposed) = do
     let layoutExpose (name, Nothing) = name
         layoutExpose (name, Just alias) = name ++ " as " ++ alias
-    [PP.Text $ "from " ++ name ++ " import " ++ intercalate ", " (map layoutExpose exposed)]
+    [PP.Text $ "from " ++ name ++ " import (" ++ intercalate ", " (map layoutExpose exposed) ++ ")"]
   layout If {test, body, orelse = []} = do
     PP.Text "if "
       : layout test

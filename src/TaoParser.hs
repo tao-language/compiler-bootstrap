@@ -389,7 +389,7 @@ parseImport = do
       ]
   _ <- parseLineBreak
   _ <- P.whitespaces
-  return (Import pkg (intercalate "/" (path ++ [name])) alias exposing)
+  return (Import (fullName pkg (intercalate "/" (path ++ [name])) "") alias exposing)
 
 parseTest :: P.Parser ParserContext Stmt
 parseTest = do

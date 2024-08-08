@@ -32,7 +32,7 @@ run = describe "--==☯ thon ☯==--" $ do
     emit' (T.tuple []) `shouldBe` ([], Tuple [])
     emit' (T.tuple [x, y]) `shouldBe` ([], Tuple [x', y'])
     emit' (T.record [("", x), ("b", y)]) `shouldBe` ([], Tuple [x', y'])
-    emit' (T.record [("a", x), ("b", y)]) `shouldBe` ([], dict [("a", x'), ("b", y')])
+    emit' (T.record [("a", x), ("b", y)]) `shouldBe` ([], record [("a", x'), ("b", y')])
     emit' (T.Trait x "y") `shouldBe` ([], Attribute x' "y")
     emit' (T.TraitFun "x") `shouldBe` ([], Lambda ["_"] (Attribute (Name "_") "x"))
     emit' (T.Fun x y) `shouldBe` ([], callable [x'] y')
@@ -54,9 +54,11 @@ run = describe "--==☯ thon ☯==--" $ do
   it "☯ emit Stmt" $ do
     let emit' :: T.Stmt -> [Stmt]
         emit' = emit options
-    emit' (T.Import "pkg" "mod" "@pkg.mod" []) `shouldBe` [Import "pkg.mod" Nothing]
-    emit' (T.Import "pkg" "mod" "alias" []) `shouldBe` [Import "pkg.mod" (Just "alias")]
-    emit' (T.Import "pkg" "mod" "@pkg.mod" [("a", "a"), ("b", "c")]) `shouldBe` [Import "pkg.mod" Nothing, ImportFrom "pkg.mod" [("a", Nothing), ("b", Just "c")]]
+    emit' (T.Import "mod" "" []) `shouldBe` [Import "mod" Nothing]
+    emit' (T.Import "mod" "alias" []) `shouldBe` [Import "mod" (Just "alias")]
+    emit' (T.Import "@pkg:mod" "" []) `shouldBe` [Import "pkg.mod" Nothing]
+    emit' (T.Import "mod" "" [("x", "")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Nothing)]]
+    emit' (T.Import "mod" "" [("x", "y")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Just "y")]]
     emit' (T.var "x" y) `shouldBe` [Assign [x'] y']
     emit' (T.var "a" (T.Tag "Point" [("", T.Int 1), ("y", T.Int 2)])) `shouldBe` [Assign [a'] (Call (Name "Point") [Integer 1] [("y", Integer 2)])]
     -- emit' (var "a" (Tag "Point" [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]
