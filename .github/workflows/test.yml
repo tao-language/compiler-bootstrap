@@ -50,4 +50,5 @@ jobs:
           restore-keys: |
             ${{ matrix.os }}-stack
 
+      - run: stack build --test --no-run-tests
       - run: stack test

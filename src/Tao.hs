@@ -55,7 +55,7 @@ data Definition
   deriving (Eq, Show)
 
 data Stmt
-  = Import String String String [(String, String)] -- import pkg:path/package as alias (a, b, c)
+  = Import String String [(String, String)] -- import pkg:module as alias (a, b, c)
   | Define Definition
   | Test Expr Pattern
   | MetaStmt C.Metadata Stmt
@@ -217,6 +217,18 @@ appOf :: Expr -> (Expr, [Expr])
 appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
 appOf (Meta _ a) = appOf a
 appOf a = (a, [])
+
+import' :: String -> Stmt
+import' mod = Import mod "" []
+
+importAs :: String -> String -> Stmt
+importAs mod alias = Import mod alias []
+
+importFrom :: String -> [String] -> Stmt
+importFrom mod names = Import mod "" (map (,"") names)
+
+importAll :: String -> Stmt
+importAll mod = Import mod "" [("*", "")]
 
 isImport :: Stmt -> Bool
 isImport Import {} = True
@@ -385,7 +397,11 @@ stmtTests (MetaStmt _ stmt) = stmtTests stmt
 stmtTests _ = []
 
 fullName :: String -> String -> String -> String
-fullName pkg mod "" = '@' : pkg ++ "." ++ mod
+fullName "" "" name = name
+fullName "" mod "" = mod
+fullName "" mod name = mod ++ '.' : name
+fullName pkg "" "" = '@' : pkg
+fullName pkg mod "" = fullName pkg "" "" ++ ':' : mod
 fullName pkg mod name = fullName pkg mod "" ++ '.' : name
 
 class FullNames a b where
@@ -393,12 +409,17 @@ class FullNames a b where
 
 instance FullNames (String, String) Stmt where
   fullNames :: (String, String) -> Stmt -> [(String, String)]
-  fullNames (pkg, mod) (Import "" mod' alias existing) =
-    fullNames (pkg, mod) (Import pkg mod' alias existing)
-  fullNames (pkg, mod) (Import pkg' mod' alias []) =
-    [(alias, fullName pkg' mod' "")]
-  fullNames (pkg, mod) (Import pkg' mod' alias ((x, y) : existing)) =
-    (y, fullName pkg mod x) : fullNames (pkg, mod) (Import pkg' mod' alias existing)
+  fullNames (pkg, mod) (Import mod' alias exposed) = case (mod', alias, exposed) of
+    ('@' : _, "", exposed) -> do
+      let (_, alias, _) = splitName mod'
+      fullNames (pkg, mod) (Import mod' alias exposed)
+    ('@' : _, alias, exposed) -> do
+      let exposed' =
+            exposed
+              & filter (\(x, _) -> x /= "*")
+              & map (\(x, y) -> (if y == "" then x else y, mod' ++ '.' : x))
+      (alias, mod') : exposed'
+    (mod', alias, exposed) -> fullNames (pkg, mod) (Import (fullName pkg mod' "") alias exposed)
   fullNames (pkg, mod) (Define def) =
     map (\(x, _) -> (x, fullName pkg mod x)) (getContext def)
   fullNames _ (Test _ _) = []
@@ -422,6 +443,19 @@ splitWith f text = case dropWhile f text of
 
 split :: Char -> String -> [String]
 split delim = splitWith (== delim)
+
+split2 :: Char -> String -> (String, String)
+split2 delim text = case split delim text of
+  [] -> ("", "")
+  [x] -> (x, "")
+  x : y : _ -> (x, y)
+
+splitName :: String -> (String, String, String)
+splitName ('@' : pkgModName) = do
+  let (pkg, modName) = split2 ':' pkgModName
+  let (mod, name) = split2 '.' modName
+  (pkg, mod, name)
+splitName name = ("", "", name)
 
 splitIdentifier :: String -> (String, String, String)
 splitIdentifier ('@' : identifier) = case split '.' identifier of
@@ -447,11 +481,9 @@ instance Link String Module where
 
 instance Link (String, [(String, String)]) Stmt where
   link :: (String, [(String, String)]) -> Stmt -> Stmt
-  link (pkg, subs) (Import "" mod alias exposed) =
-    link (pkg, subs) (Import pkg mod alias exposed)
-  link (pkg, subs) (Import pkg' mod alias exposed) = do
-    let stmt = Import pkg' mod (substitute subs alias) exposed
-    substitute subs stmt
+  link (pkg, subs) (Import mod alias exposed) = case mod of
+    '@' : _ -> substitute subs (Import mod alias exposed)
+    _ -> link (pkg, subs) (Import (fullName pkg mod "") alias exposed)
   link (_, subs) stmt = substitute subs stmt
 
 class GetContext a where
@@ -459,10 +491,10 @@ class GetContext a where
 
 instance GetContext Stmt where
   getContext :: Stmt -> Context
-  getContext (Import pkg path alias exposed) = case exposed of
+  getContext (Import name alias exposed) = case exposed of
     (x, y) : exposed -> do
-      let def = (y, Var x)
-      def : getContext (Import pkg path alias exposed)
+      let def = if y == "" then (x, Var x) else (y, Var x)
+      def : getContext (Import name alias exposed)
     [] -> []
   getContext (Define def) = getContext def
   getContext (Test _ _) = []
@@ -570,11 +602,11 @@ nameDashCase :: String -> String
 nameDashCase name = nameSplit name & intercalate "-"
 
 isImported :: String -> Stmt -> Bool
-isImported x (Import _ _ alias exposed) = x == alias || x `elem` map fst exposed
+isImported x (Import _ alias exposed) = x == alias || x `elem` map fst exposed
 isImported _ _ = False
 
 defined :: Stmt -> [String]
-defined (Import _ _ alias exposed) = alias : map snd exposed
+defined (Import _ alias exposed) = alias : map snd exposed
 defined (Define def) = case def of
   Def _ p _ -> freeVars p
   TraitDef _ _ x _ -> [x]
@@ -653,10 +685,10 @@ instance Rename Module where
 
 instance Rename Stmt where
   rename :: String -> String -> Stmt -> Stmt
-  rename old new (Import pkg name alias exposed) = do
+  rename old new (Import name alias exposed) = do
     let alias' = rename old new alias
     let exposed' = map (bimap (rename old new) (rename old new)) exposed
-    Import pkg name alias' exposed'
+    Import name alias' exposed'
   rename old new (Define def) = Define (rename old new def)
   rename old new (Test a b) = Test (rename old new a) (rename old new b)
   rename old new (MetaStmt m stmt) = MetaStmt m (rename old new stmt)
@@ -736,7 +768,7 @@ instance RefactorModuleName Module where
 
 instance RefactorModuleName Stmt where
   refactorModuleName :: (FilePath -> FilePath) -> Stmt -> Stmt
-  refactorModuleName f (Import pkg path alias exposed) = Import (f pkg) (f path) alias exposed
+  refactorModuleName f (Import name alias exposed) = Import (f name) alias exposed
   refactorModuleName _ stmt = stmt
 
 class RefactorModuleAlias a where
@@ -754,7 +786,7 @@ instance RefactorModuleAlias Module where
     mod {name = mod.name, stmts = map refactor mod.stmts}
 
 importAlias :: Stmt -> [String]
-importAlias (Import _ _ alias _) = [alias]
+importAlias (Import _ alias _) = [alias]
 importAlias _ = []
 
 replace :: (Eq a) => a -> a -> [a] -> [a]

@@ -9,7 +9,7 @@ import Data.List (intercalate, union)
 import Data.Maybe (fromMaybe)
 import qualified Debug.Trace as Debug
 import qualified PrettyPrint as PP
-import System.Directory (createDirectory, createDirectoryIfMissing, doesPathExist, removeDirectoryRecursive)
+import System.Directory (copyFile, createDirectory, createDirectoryIfMissing, doesPathExist, removeDirectoryRecursive)
 import System.FilePath (joinPath, splitDirectories, splitFileName, splitPath, takeDirectory, takeFileName, (</>))
 import qualified Tao as T
 
@@ -386,6 +386,9 @@ call f args = Call (Name f) args []
 dict :: [(String, Expr)] -> Expr
 dict fields = Dict (map (first String) fields)
 
+record :: [(String, Expr)] -> Expr
+record = Call (Name "record") []
+
 callable :: [Expr] -> Expr -> Expr
 callable args ret =
   Subscript (Name "Callable") (Tuple [List args, ret])
@@ -417,35 +420,39 @@ defaultBuildOptions =
       indent = "    "
     }
 
-stmtNames :: Stmt -> [String]
-stmtNames (Assign [] _) = []
-stmtNames (Assign (var : vars) value) = case var of
-  Name x -> x : stmtNames (Assign vars value)
-  _ -> stmtNames (Assign vars value)
-stmtNames (AnnAssign var _ _) = case var of
-  Name x -> [x]
-  _ -> []
-stmtNames (TypeAlias x _ _) = [x]
-stmtNames (Import name maybeAlias) = case maybeAlias of
-  Just alias -> [alias]
-  Nothing -> [name]
-stmtNames (ImportFrom _ exposed) = do
-  let exposedNames (_, Just alias) = [alias]
-      exposedNames (name, Nothing) = [name]
-  concatMap exposedNames exposed
-stmtNames (Global names) = names
-stmtNames (Nonlocal names) = names
-stmtNames (FunctionDef {name}) = [name]
-stmtNames (ClassDef {name}) = [name]
-stmtNames _ = []
+-- stmtNames :: Stmt -> [String]
+-- stmtNames (Assign [] _) = []
+-- stmtNames (Assign (var : vars) value) = case var of
+--   Name x -> x : stmtNames (Assign vars value)
+--   _ -> stmtNames (Assign vars value)
+-- stmtNames (AnnAssign var _ _) = case var of
+--   Name x -> [x]
+--   _ -> []
+-- stmtNames (TypeAlias x _ _) = [x]
+-- stmtNames (Import name maybeAlias) = case maybeAlias of
+--   Just alias -> [alias]
+--   Nothing -> [name]
+-- stmtNames (ImportFrom _ exposed) = do
+--   let exposedNames ("*", Nothing) = []
+--       exposedNames (_, Just alias) = [alias]
+--       exposedNames (name, Nothing) = [name]
+--   concatMap exposedNames exposed
+-- stmtNames (Global names) = names
+-- stmtNames (Nonlocal names) = names
+-- stmtNames (FunctionDef {name}) = [name]
+-- stmtNames (ClassDef {name}) = [name]
+-- stmtNames _ = []
 
 pyName :: [String] -> T.Expr -> String -> String
 pyName existing expr identifier = do
-  let (_, _, name) = T.splitIdentifier identifier
+  let (_, _, name) = T.splitName identifier
   case name of
     name | T.isTagDef expr -> T.nameCamelCaseUpper name
     name | T.isTypeDef expr -> T.nameCamelCaseUpper name
     name -> T.nameSnakeCase name
+
+prelude :: BuildOptions -> Stmt
+prelude options = ImportFrom (options.packageName ++ ".__prelude__") [("*", Nothing)]
 
 build :: BuildOptions -> FilePath -> T.Package -> IO FilePath
 build options base pkg = do
@@ -465,13 +472,14 @@ build options base pkg = do
   when pkgPathExists (removeDirectoryRecursive pkgPath)
   createDirectoryIfMissing True pkgPath
 
-  -- Create pyproject.toml
+  -- Create project files.
   writeFile (pkgPath </> "pyproject.toml") ""
   -- TODO: create README.md
   -- TODO: create LICENSE
 
   -- Create source files
   files <- mapM (buildModule options pyPkg.name srcPath) pyPkg.modules
+  copyFile "src/target/python/__prelude__.py" (srcPath </> "__prelude__.py")
 
   createDirectory testPath
   writeFile (testPath </> "__init__.py") ""
@@ -526,14 +534,11 @@ buildModuleTests :: BuildOptions -> T.Module -> Module
 buildModuleTests options mod = do
   let path = splitDirectories mod.name & filter (/= ".")
   let importPath = intercalate "." (options.packageName : path)
-  let importNames = case map fst (concatMap T.getContext mod.stmts) of
-        [] -> []
-        names -> [ImportFrom importPath (map (,Nothing) names)]
   let stmts =
         Import "unittest" Nothing
-          : Import importPath Nothing
-          : importNames
-          ++ emit options (filter T.isImport mod.stmts)
+          : prelude options
+          : ImportFrom importPath [("*", Nothing)]
+          : emit options (filter T.isImport mod.stmts)
           ++ [ ClassDef
                  { name = "Test" ++ T.nameCamelCaseUpper (takeFileName mod.name),
                    bases = [Attribute (Name "unittest") "TestCase"],
@@ -566,20 +571,22 @@ instance Emit T.Module Module where
   emit :: BuildOptions -> T.Module -> Module
   emit options mod = do
     let stmts = emit options (filter (not . T.isTest) mod.stmts)
-    Module {name = mod.name, body = stmts}
+    Module {name = mod.name, body = prelude options : stmts}
 
 instance Emit T.Stmt [Stmt] where
   emit :: BuildOptions -> T.Stmt -> [Stmt]
-  emit options (T.Import pkg path alias exposed) = do
-    let mod = pkg ++ "." ++ path
+  emit options (T.Import name alias exposed) = do
+    let mod = case name of
+          '@' : name -> T.replace ':' '.' name
+          _ -> name
     case exposed of
       [] -> do
-        let alias' = if '@' : mod == alias then Nothing else Just alias
+        let alias' = if alias == "" then Nothing else Just alias
         [Import mod alias']
       exposed -> do
-        let expose (x, x') | x == x' = (x, Nothing)
+        let expose (x, "") = (x, Nothing)
             expose (x, y) = (x, Just y)
-        let stmts = emit options (T.Import pkg path alias [])
+        let stmts = emit options (T.Import name alias [])
         stmts ++ [ImportFrom mod (map expose exposed)]
   emit options (T.Define def) = emit options def
   emit options (T.Test a p) = do
@@ -667,8 +674,8 @@ instance Emit T.Expr ([Stmt], Expr) where
       let (stmts, items) = emit options (map snd args)
       (stmts, Tuple items)
     ("", args) -> do
-      let (stmts, items) = emit options args
-      (stmts, Dict (map (first String) items))
+      let (stmts, fields) = emit options args
+      (stmts, record fields)
     (k, args) -> do
       let (posArgs, kwArgs) = span ((== "") . fst) args
       let (stmts1, posArgs') = emit options (map snd posArgs)
@@ -815,7 +822,10 @@ instance Layout Stmt where
   layout (ImportFrom name exposed) = do
     let layoutExpose (name, Nothing) = name
         layoutExpose (name, Just alias) = name ++ " as " ++ alias
-    [PP.Text $ "from " ++ name ++ " import " ++ intercalate ", " (map layoutExpose exposed)]
+    let exposed' = case exposed of
+          [x] -> layoutExpose x
+          _ -> "(" ++ intercalate ", " (map layoutExpose exposed) ++ ")"
+    [PP.Text $ "from " ++ name ++ " import " ++ exposed']
   layout If {test, body, orelse = []} = do
     PP.Text "if "
       : layout test
@@ -893,7 +903,10 @@ instance Layout Expr where
     layoutCollection "{" "," "}" (map layoutField items)
   layout (Call func args kwargs) = do
     let kwarg (x, a) = PP.Text (x ++ "=") : layout a
-    layout func ++ layoutCollection "(" "," ")" (map layout args ++ map kwarg kwargs)
+    let func' = case func of
+          Lambda _ _ -> PP.Text "(" : layout func ++ [PP.Text ")"]
+          _ -> layout func
+    func' ++ layoutCollection "(" "," ")" (map layout args ++ map kwarg kwargs)
   layout (Lambda [] a) = PP.Text "lambda: " : layout a
   layout (Lambda xs a) =
     PP.Text "lambda "
