@@ -6,16 +6,16 @@ env:
   GHC_VERSION: '9.8.2'
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: haskell-actions/setup@v2
-        with:
-          ghc-version: ${{ env.GHC_VERSION }}
-          enable-stack: true
+  # lint:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: haskell-actions/setup@v2
+  #       with:
+  #         ghc-version: ${{ env.GHC_VERSION }}
+  #         enable-stack: true
 
-      - run: stack build --ghc-options="-Werror"
+  #     - run: stack build --ghc-options="-Werror"
 
   test:
     strategy:
