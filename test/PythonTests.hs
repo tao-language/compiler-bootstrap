@@ -11,7 +11,7 @@ import TaoParser (parsePackage)
 import Test.Hspec
 
 run :: SpecWith ()
-run = describe "--==☯ thon ☯==--" $ do
+run = describe "--==☯ Python ☯==--" $ do
   let options = defaultBuildOptions {packageName = "pkg"}
   let (x, y, z) = (T.Var "x", T.Var "y", T.Var "z")
   let (xP, yP, zP) = (T.PVar "x", T.PVar "y", T.PVar "z")
