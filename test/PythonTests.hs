@@ -79,7 +79,8 @@ run = describe "--==☯ thon ☯==--" $ do
             T.var "y" (T.Int 2)
           ]
     let expected =
-          [ Assign [x'] (Integer 1),
+          [ ImportFrom "pkg.__prelude__" [("*", Nothing)],
+            Assign [x'] (Integer 1),
             Assign [y'] (Integer 2)
           ]
     emit' (T.Module "mod" stmts) `shouldBe` Module {name = "mod", body = expected}

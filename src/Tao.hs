@@ -55,7 +55,7 @@ data Definition
   deriving (Eq, Show)
 
 data Stmt
-  = Import String String [(String, String)] -- import pkg:path/package as alias (a, b, c)
+  = Import String String [(String, String)] -- import pkg:module as alias (a, b, c)
   | Define Definition
   | Test Expr Pattern
   | MetaStmt C.Metadata Stmt
@@ -217,6 +217,18 @@ appOf :: Expr -> (Expr, [Expr])
 appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
 appOf (Meta _ a) = appOf a
 appOf a = (a, [])
+
+import' :: String -> Stmt
+import' mod = Import mod "" []
+
+importAs :: String -> String -> Stmt
+importAs mod alias = Import mod alias []
+
+importFrom :: String -> [String] -> Stmt
+importFrom mod names = Import mod "" (map (,"") names)
+
+importAll :: String -> Stmt
+importAll mod = Import mod "" [("*", "")]
 
 isImport :: Stmt -> Bool
 isImport Import {} = True
@@ -401,7 +413,12 @@ instance FullNames (String, String) Stmt where
     ('@' : _, "", exposed) -> do
       let (_, alias, _) = splitName mod'
       fullNames (pkg, mod) (Import mod' alias exposed)
-    ('@' : _, alias, exposed) -> (alias, mod') : map (\(x, y) -> (if y == "" then x else y, mod' ++ '.' : x)) exposed
+    ('@' : _, alias, exposed) -> do
+      let exposed' =
+            exposed
+              & filter (\(x, _) -> x /= "*")
+              & map (\(x, y) -> (if y == "" then x else y, mod' ++ '.' : x))
+      (alias, mod') : exposed'
     (mod', alias, exposed) -> fullNames (pkg, mod) (Import (fullName pkg mod' "") alias exposed)
   fullNames (pkg, mod) (Define def) =
     map (\(x, _) -> (x, fullName pkg mod x)) (getContext def)
