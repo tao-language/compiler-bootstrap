@@ -236,16 +236,19 @@ isImport _ = False
 
 isTest :: Stmt -> Bool
 isTest Test {} = True
+isTest (MetaStmt _ stmt) = isTest stmt
 isTest _ = False
 
 isDefine :: Stmt -> Bool
 isDefine Define {} = True
+isDefine (MetaStmt _ stmt) = isDefine stmt
 isDefine _ = False
 
 isTypeDef :: Expr -> Bool
 isTypeDef (Fun _ b) = isTypeDef b
 isTypeDef (App a _) = isTypeDef a
 isTypeDef (Ann a _) = isTypeDef a
+isTypeDef (Meta _ a) = isTypeDef a
 isTypeDef _ = False
 
 isTagDef :: Expr -> Bool
@@ -253,11 +256,13 @@ isTagDef (Tag _ _) = True
 isTagDef (Fun _ b) = isTagDef b
 isTagDef (App a _) = isTagDef a
 isTagDef (Ann a _) = isTagDef a
+isTagDef (Meta _ a) = isTagDef a
 isTagDef _ = False
 
 isFunctionDef :: Expr -> Bool
 isFunctionDef (Fun _ _) = True
 isFunctionDef (Ann a _) = isFunctionDef a
+isFunctionDef (Meta _ a) = isFunctionDef a
 isFunctionDef _ = False
 
 list :: [Expr] -> Expr
