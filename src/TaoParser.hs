@@ -137,7 +137,8 @@ parseExprAtom = do
             _ -> return (Var name),
         do
           _ <- P.char '.'
-          TraitFun <$> parseIdentifier,
+          x <- P.oneOf [parseIdentifier, fmap show P.integer]
+          return (TraitFun x),
         Int <$> P.integer,
         Num <$> P.number,
         do
@@ -152,7 +153,8 @@ parseExprAtom = do
     P.oneOf
       [ do
           _ <- P.char '.'
-          Meta loc . Trait a <$> parseIdentifier,
+          x <- P.oneOf [parseIdentifier, fmap show P.integer]
+          return (Meta loc (Trait a x)),
         return (Meta loc a)
       ]
   _ <- P.spaces
