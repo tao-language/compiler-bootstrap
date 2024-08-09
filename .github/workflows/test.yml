@@ -2,25 +2,18 @@ name: λ
 
 on: push
 
+env:
+  GHC_VERSION: '9.8.2'
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: haskell-actions/setup@v2
         with:
+          ghc-version: ${{ env.GHC_VERSION }}
           enable-stack: true
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.stack
-            .stack-work
-          # Best effort for cache: tie it to Stack resolver and package config
-          key: ubuntu-latest-stack-${{ hashFiles('stack.yaml.lock', 'package.yaml') }}
-          restore-keys: |
-            ubuntu-latest-stack
 
       - run: stack build --ghc-options="-Werror"
 
@@ -28,27 +21,16 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-
     runs-on: ${{ matrix.os }}
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: haskell-actions/setup@v2
         with:
+          ghc-version: ${{ env.GHC_VERSION }}
           enable-stack: true
-
       - uses: actions/setup-python@v5
-
-      - uses: actions/cache@v4
         with:
-          path: |
-            ~/.stack
-            .stack-work
-          # Best effort for cache: tie it to Stack resolver and package config
-          key: ${{ matrix.os }}-stack-${{ hashFiles('stack.yaml.lock', 'package.yaml') }}
-          restore-keys: |
-            ${{ matrix.os }}-stack
+          python-version: '3.12'
 
       - run: stack build --test --no-run-tests
       - run: stack test

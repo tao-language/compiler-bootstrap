@@ -19,7 +19,8 @@
 # resolver: https://example.com/snapshots/2018-01-01.yaml
 resolver:
   # https://github.com/commercialhaskell/stackage-snapshots/tree/master/lts
-  url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/22/18.yaml
+  # 🚨 The version here must match the one in .github/workflows/test.yaml
+  url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/nightly/2024/8/9.yaml
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -50,8 +51,8 @@ packages:
 # extra-package-dbs: []
 
 # Control whether we use the GHC we find on the path
-# system-ghc: true
-#
+system-ghc: true
+
 # Require a specific version of stack, using version ranges
 # require-stack-version: -any # Default
 # require-stack-version: ">=2.7"
