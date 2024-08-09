@@ -12,6 +12,7 @@ import qualified PrettyPrint as PP
 import System.Directory (copyFile, createDirectory, createDirectoryIfMissing, doesPathExist, removeDirectoryRecursive)
 import System.FilePath (joinPath, splitDirectories, splitFileName, splitPath, takeDirectory, takeFileName, (</>))
 import qualified Tao as T
+import Text.Read (readMaybe)
 
 -- TODO: abstract into an `Imperative` language
 -- https://en.wikipedia.org/wiki/Imperative_programming
@@ -393,6 +394,12 @@ callable :: [Expr] -> Expr -> Expr
 callable args ret =
   Subscript (Name "Callable") (Tuple [List args, ret])
 
+index :: Expr -> Expr -> Expr
+index = Subscript
+
+slice :: Expr -> Expr -> Expr -> Expr
+slice expr start end = Subscript expr (Slice start end)
+
 bitOr :: Expr -> Expr -> Expr
 bitOr a = BinOp a BitOr
 
@@ -683,10 +690,13 @@ instance Emit T.Expr ([Stmt], Expr) where
       (stmts1 ++ stmts2, Call (Name k) posArgs' kwArgs')
   emit options (T.Trait a x) = do
     let (stmts, a') = emit options a
-    (stmts, Attribute a' x)
-  emit _ (T.TraitFun x) = do
-    let a = "_"
-    ([], Lambda [a] (Attribute (Name a) x))
+    case readMaybe x of
+      Just i -> (stmts, index a' (Integer $ i - 1))
+      Nothing -> (stmts, Attribute a' x)
+  emit options (T.TraitFun x) = do
+    let arg = "_"
+    let (stmts, a) = emit options (T.Trait (T.Var arg) x)
+    (stmts, Lambda [arg] a)
   emit options (T.Fun a b) = do
     let (args, ret) = T.funOf (T.Fun a b)
     let (stmts1, args') = emit options args

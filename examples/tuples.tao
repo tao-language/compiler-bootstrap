@@ -1,5 +1,16 @@
-x = 1
-y = 2
+p = (10, 20)
 
-> (x, y)
-(1, 2)
+# Property-like access
+> p.1
+10
+
+> p.2
+20
+
+# Trait-like access
+> .1 p
+10
+
+> .2 p
+20
+
