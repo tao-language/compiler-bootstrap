@@ -1,0 +1,13 @@
+field =
+  {x} => x
+
+alias =
+  {y as x} => x
+
+p = {x = 10, y = 20}
+
+> field p
+10
+
+> alias p
+20
