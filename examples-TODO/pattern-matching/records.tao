@@ -4,6 +4,9 @@ field =
 alias =
   {y as x} => x
 
+sum =
+  {x, y} = x + y
+
 p = {x = 10, y = 20}
 
 > field p
@@ -11,3 +14,6 @@ p = {x = 10, y = 20}
 
 > alias p
 20
+
+> sum p
+30

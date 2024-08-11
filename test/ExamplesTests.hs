@@ -98,5 +98,9 @@ run = describe "--==☯ Examples ☯==--" $ do
   -- it ("☯ " ++ name) $ do
   --   test' name `shouldReturn` []
 
+  it "☯ examples" $ do
+    pkg <- parsePackage "examples"
+    map dropMeta (test pkg) `shouldBe` []
+
   it "☯ TODO" $ do
     True `shouldBe` True

@@ -321,6 +321,7 @@ instance Lower Expr C.Expr where
     case C.infer env a' of
       Left _ -> C.Err
       Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
+  lower env (TraitFun x) = lower env (lambda ["_"] (Trait (Var "_") x))
   lower env (Fun a b) = C.Fun (lower env a) (lower env b)
   lower env (App a b) = C.App (lower env a) (lower env b)
   lower env (Or a b) = C.Or (lower env a) (lower env b)
@@ -853,3 +854,7 @@ instance DropMeta Module where
 instance DropMeta Package where
   dropMeta :: Package -> Package
   dropMeta pkg = pkg {modules = map dropMeta pkg.modules}
+
+instance DropMeta TestError where
+  dropMeta :: TestError -> TestError
+  dropMeta (TestEqError a b p) = TestEqError (dropMeta a) (dropMeta b) (dropMeta p)

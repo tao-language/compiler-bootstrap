@@ -1,4 +1,4 @@
-type Point = (Int, Int)
+Point = (Int, Int)
 
 p : Point = (10, 20)
 

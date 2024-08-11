@@ -5,7 +5,7 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (first, second))
 import Data.Foldable (foldlM, foldrM)
 import Data.Function ((&))
-import Data.List (intercalate, union)
+import Data.List (intercalate, sortBy, union)
 import Data.Maybe (fromMaybe)
 import qualified Debug.Trace as Debug
 import qualified PrettyPrint as PP
@@ -485,12 +485,13 @@ build options base pkg = do
   -- TODO: create LICENSE
 
   -- Create source files
-  files <- mapM (buildModule options pyPkg.name srcPath) pyPkg.modules
+  let modules = sortBy (\m n -> compare m.name n.name) pyPkg.modules
+  files <- mapM (buildModule options pyPkg.name srcPath) modules
   copyFile "src/target/python/__prelude__.py" (srcPath </> "__prelude__.py")
 
   createDirectory testPath
   writeFile (testPath </> "__init__.py") ""
-  files <- mapM (buildTests options pyPkg.name testPath) pyPkg.modules
+  files <- mapM (buildTests options pyPkg.name testPath) modules
 
   -- TODO: Create docs
   createDirectory docsPath

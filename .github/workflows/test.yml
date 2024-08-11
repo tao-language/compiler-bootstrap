@@ -4,7 +4,6 @@ on: push
 
 env:
   GHC_VERSION: '9.8.2'
-  BUILD_CORES: '8'
 
 jobs:
   # lint:
@@ -16,7 +15,7 @@ jobs:
   #         ghc-version: ${{ env.GHC_VERSION }}
   #         enable-stack: true
 
-  #     - run: stack build --fast -j${{ env.BUILD_CORES }} --ghc-options="-Werror"
+  #     - run: stack build --fast --ghc-options="-Werror"
 
   test:
     strategy:
@@ -33,5 +32,5 @@ jobs:
         with:
           python-version: '3.12'
 
-      - run: stack build --fast -j${{ env.BUILD_CORES }} --test --no-run-tests
+      - run: stack build --fast --test --no-run-tests
       - run: stack test
