@@ -69,29 +69,29 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower/lift Tag" $ do
     let expr = Tag "A" []
-    let term = C.Tag "A"
+    let term = C.Tag "A" []
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
   it "☯ lower/lift Tuple" $ do
     let expr = tuple []
-    let term = C.Tag ""
+    let term = C.Tag "" []
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
     let expr = tuple [x, y]
-    let term = C.tag "" [x', y']
+    let term = C.Tag "" [x', y']
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
   it "☯ lower/lift Record" $ do
     let expr = record []
-    let term = C.Tag ""
+    let term = C.Tag "" []
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
     let expr = record [("a", x), ("b", y)]
-    let term = C.tag "" [C.field "a" x', C.field "b" y']
+    let term = C.Tag "" [C.field "a" x', C.field "b" y']
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 

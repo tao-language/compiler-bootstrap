@@ -324,7 +324,7 @@ instance Lower Expr C.Expr where
     | otherwise = do
         let field ("", a) = lower env a
             field (x, a) = C.field x (lower env a)
-        C.tag k (map field args)
+        C.Tag k (map field args)
   lower env (Trait a x) = do
     let a' = lower env a
     case C.infer env a' of
@@ -379,17 +379,16 @@ instance Lift C.Expr Expr where
   lift (C.Int i) = Int i
   lift (C.Num n) = Num n
   lift (C.Var x) = Var x
-  lift (C.Tag k) = Tag k []
+  lift (C.Tag k args) = do
+    let field (C.Meta (C.Label x) a) = (x, lift a)
+        field a = ("", lift a)
+    Tag k (map field args)
   lift (C.For _ a) = lift a
   lift (C.Fix _ a) = lift a
   lift (C.Fun a b) = Fun (lift a) (lift b)
   lift (C.Lam p b) = Match [Case [lift p] Nothing (lift b)]
   lift (C.App a b) = case appOf (App (lift a) (lift b)) of
     (Var ('.' : x), _ : a : args) -> app (Trait a x) args
-    (Tag k args, args') -> do
-      let field (Meta (C.Label x) a) = (x, a)
-          field a = ("", a)
-      Tag k (args ++ map field args')
     (Trait a "<-", [Match [Case [p] Nothing b]]) -> Bind (p, a) b
     (a, args) -> app a args
   lift (C.Or a b) = Or (lift a) (lift b)
@@ -411,7 +410,7 @@ instance Lower Pattern C.Pattern where
   lower env (PTag k ps)
     | PTag k ps == pIntT = C.PIntT
     | PTag k ps == pNumT = C.PNumT
-    | otherwise = C.ptag k (map (lower env . snd) ps)
+    | otherwise = C.PTag k (map (lower env . snd) ps)
   lower env (PFun p q) = C.PFun (lower env p) (lower env q)
   lower env (POr p q) = error "TODO"
   lower env (PEq a) = C.PEq (lower env a)

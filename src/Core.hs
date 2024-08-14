@@ -19,7 +19,7 @@ data Expr
   | Int Int
   | Num Double
   | Var String
-  | Tag String
+  | Tag String [Expr]
   | For String Expr
   | Fix String Expr
   | Fun Expr Expr
@@ -40,7 +40,7 @@ data Pattern
   | PInt Int
   | PNum Double
   | PVar String
-  | PTag String
+  | PTag String [Pattern]
   | PApp Pattern Pattern
   | PFun Pattern Pattern
   | PEq Expr
@@ -111,7 +111,8 @@ instance Show Expr where
     Num n -> atom 12 (show n)
     Var x | isVarName x -> atom 12 x
     Var x -> atom 12 ("($var '" ++ x ++ "')")
-    Tag k -> atom 12 k
+    Tag k [] -> atom 12 k
+    Tag k args -> showsPrec p (app (Tag k []) args)
     Op op [] -> atom 12 ("(" ++ op ++ ")")
     Op op args -> showsPrec p (app (Op op []) args)
     Meta (Label x) a -> prefix 0 (x ++ ": ") a
@@ -145,11 +146,11 @@ intT i = Int i `Or` IntT
 numT :: Double -> Expr
 numT n = Num n `Or` NumT
 
-tag :: String -> [Expr] -> Expr
-tag k = app (Tag k)
+-- tag :: String -> [Expr] -> Expr
+-- tag k = app (Tag k)
 
-ptag :: String -> [Pattern] -> Pattern
-ptag k = pApp (PTag k)
+-- ptag :: String -> [Pattern] -> Pattern
+-- ptag k = pApp (PTag k)
 
 fix :: [String] -> Expr -> Expr
 fix xs a = foldr Fix a xs
@@ -210,9 +211,9 @@ app = foldl App
 pApp :: Pattern -> [Pattern] -> Pattern
 pApp = foldl PApp
 
-appOf :: Expr -> (Expr, [Expr])
-appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
-appOf a = (a, [])
+-- appOf :: Expr -> (Expr, [Expr])
+-- appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
+-- appOf a = (a, [])
 
 or' :: [Expr] -> Expr
 or' [] = Err
@@ -255,7 +256,7 @@ instance FreeVars Expr where
   freeVars (Int _) = []
   freeVars (Num _) = []
   freeVars (Var x) = [x]
-  freeVars (Tag _) = []
+  freeVars (Tag _ args) = foldr (union . freeVars) [] args
   freeVars (For x a) = delete x (freeVars a)
   freeVars (Fix x a) = delete x (freeVars a)
   freeVars (Fun a b) = freeVars a `union` freeVars b
@@ -279,7 +280,7 @@ toExpr PNumT = NumT
 toExpr (PInt i) = Int i
 toExpr (PNum n) = Num n
 toExpr (PVar x) = Var x
-toExpr (PTag k) = Tag k
+toExpr (PTag k ps) = Tag k (map toExpr ps)
 toExpr (PApp p q) = App (toExpr p) (toExpr q)
 toExpr (PFun p q) = Fun (toExpr p) (toExpr q)
 toExpr (PEq a) = a
@@ -322,14 +323,10 @@ eval _ (Int i) = Int i
 eval _ (Num n) = Num n
 eval env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> Var x
-  Just (Tag k) -> Tag k
   Just (Ann (Var x') _) | x == x' -> Var x
   Just a -> eval env a
   Nothing -> Var x
-eval env (Tag k) = case lookup k env of
-  Just (Tag k') | k == k' -> Tag k
-  Just a -> eval ((k, Tag k) : env) a
-  Nothing -> Tag k
+eval env (Tag k args) = Tag k (map (eval env) args)
 eval env (For x a) = For x (eval ((x, Var x) : env) a)
 eval env (Fix x a) = Fix x (eval ((x, Var x) : env) a)
 eval env (Fun a b) = Fun (eval env a) (eval env b)
@@ -337,6 +334,7 @@ eval env (Lam p b) = Lam p (eval (pushVars (freeVars p) env) b)
 eval env (App a b) = case (eval env a, eval env b) of
   (For x a, b) -> eval [(x, Var x)] (App a b)
   (Fix x a, b) | isClosed b -> eval [(x, Fix x a)] (App a b)
+  (Tag k args, b) -> Tag k (args ++ [b])
   (Err, _) -> Err
   (Lam p c, b) -> case match p b of
     Just bindings -> eval bindings c
@@ -347,7 +345,7 @@ eval env (App a b) = case (eval env a, eval env b) of
     a -> a
   (a, b) -> App a b
 eval env (Or a b) = Or (eval env a) (eval env b)
-eval env (Ann (Tag k) ty) = Ann (Tag k) (eval env ty)
+eval env (Ann (Tag k []) ty) = Ann (Tag k []) (eval env ty)
 eval env (Ann a _) = eval env a
 eval env (Op op args) = case (op, map (eval env) args) of
   ("+", [Int a, Int b]) -> Int (a + b)
@@ -366,7 +364,7 @@ match (PInt i) (Int i') | i == i' = Just []
 match (PNum n) (Num n') | n == n' = Just []
 match (PVar x) b = Just [(x, b)]
 match (PApp p q) (App a b) = match2 (p, a) (q, b)
-match (PTag k) (Tag k') | k == k' = Just []
+match (PTag k ps) (Tag k' args) | k == k' = matchAll ps args
 match (PFun p q) (Fun a b) = match2 (p, a) (q, b)
 match (PMeta _ p) b = match p b
 match PErr Err = Just []
@@ -406,14 +404,14 @@ substitute _ (Num n) = Num n
 substitute [] (Var x) = Var x
 substitute ((x, a) : _) (Var x') | x == x' = a
 substitute (_ : s) (Var x) = substitute s (Var x)
-substitute _ (Tag k) = Tag k
+substitute s (Tag k args) = Tag k (map (substitute s) args)
 substitute s (For x a) = For x (substitute (filter ((/= x) . fst) s) a)
 substitute s (Fix x a) = Fix x (substitute (filter ((/= x) . fst) s) a)
 substitute s (Fun a b) = Fun (substitute s a) (substitute s b)
 substitute s (Lam p b) = Lam p (substitute (filter ((`elem` freeVars p) . fst) s) b)
 substitute s (App a b) = App (substitute s a) (substitute s b)
 substitute s (Or a b) = Or (substitute s a) (substitute s b)
-substitute s (Ann (Tag k) ty) = Ann (Tag k) (substitute s ty)
+substitute s (Ann (Tag k []) ty) = Ann (Tag k []) (substitute s ty)
 substitute s (Ann a _) = substitute s a
 substitute s (Op op args) = Op op (map (substitute s) args)
 substitute s (Meta m a) = Meta m (substitute s a)
@@ -429,10 +427,12 @@ unify NumT (Num _) = Right (NumT, [])
 unify (Int i) (Int i') | i == i' = Right (Int i, [])
 unify (Num n) (Num n') | n == n' = Right (Num n, [])
 unify (Var x) (Var x') | x == x' = Right (Var x, [])
-unify (Tag k) (Tag k') | k == k' = Right (Tag k, [])
-unify (Tag k) (Ann (Tag k') ty) | k == k' = Right (ty, [])
-unify (Ann (Tag k) ty) (Tag k') | k == k' = Right (ty, [])
-unify (Ann (Tag k) ty) (Ann (Tag k') ty') | k == k' = unify ty ty'
+unify (Tag k args1) (Tag k' args2) | k == k' = do
+  (args, s) <- unifyAll args1 args2
+  Right (Tag k args, s)
+unify (Tag k []) (Tag k' []) | k == k' = Right (Tag k [], [])
+unify (Ann (Tag _ []) ty) ty' = unify ty ty'
+unify ty (Ann (Tag _ []) ty') = unify ty ty'
 unify (Var x) b | x `occurs` b = Left (OccursError x b)
 unify (Var x) b = Right (b, [(x, b)])
 unify a (Var x) = unify (Var x) a
@@ -511,7 +511,7 @@ check env (Var x) t = case lookup x env of
     Right (t', s `compose` vars)
   Just a -> check env a t
   Nothing -> Left (UndefinedVar x)
-check env (Tag k) t = case lookup k env of
+check env (Tag k []) t = case lookup k env of
   Just a -> check env a t
   Nothing -> Right (t, [])
 check env (Or a b) t = do
@@ -562,18 +562,19 @@ infer env (Var x) = case lookup x env of
   Just (Ann (Var x') ty) | x == x' -> Right (instantiate env ty)
   Just a -> infer env a
   Nothing -> Left (UndefinedVar x)
-infer env (Tag k) = case lookup k env of
-  Just (Tag k') | k == k' -> Right (Tag k, [])
+infer env (Tag k []) = case lookup k env of
+  Just (Tag k' []) | k == k' -> Right (Tag k [], [])
   Just a -> infer env a
-  Nothing -> Right (Tag k, [])
+  Nothing -> Right (Tag k [], [])
+infer env (Tag k args) = infer env (app (Tag k []) args)
 infer env (Or a b) = do
   ((ta, tb), s1) <- infer2 env a b
   case unify ta tb of
     Left _ -> Right (Or ta tb, s1)
     Right (t, s2) -> Right (t, s2 `compose` s1)
-infer env (Ann (Tag k) ty) = do
+infer env (Ann (Tag k []) ty) = do
   let (t, vars) = instantiate env ty
-  (t', s) <- unify (Ann (Tag k) t) (eval env t)
+  (t', s) <- unify (Ann (Tag k []) t) (eval env t)
   Right (t', s `compose` vars)
 infer env (Ann a ty) = check env a ty
 infer env (For x a) = infer ((x, Var x) : env) a
@@ -591,8 +592,7 @@ infer env (App a b) = do
       let y = newName (map fst (s1 `compose` env)) x
       (t, s2) <- infer (s1 `compose` env) (App (Ann a (For y $ Fun tb (Var y))) b)
       Right (t, (y, t) : s2 `compose` s1)
-    Tag _ -> Right (App ta tb, s1)
-    App _ _ -> Right (App ta tb, s1)
+    Tag k ts -> Right (Tag k (ts ++ [tb]), s1)
     Fun t1 t2 -> do
       (_, s2) <- unify tb t1
       Right (substitute s2 t2, s2 `compose` s1)
