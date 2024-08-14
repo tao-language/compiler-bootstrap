@@ -87,11 +87,17 @@ kind = Tag "Type" []
 intT :: Expr
 intT = Tag "Int" []
 
+intT' :: Int -> Expr
+intT' i = Int i `Or` intT
+
 pIntT :: Pattern
 pIntT = PTag "Int" []
 
 numT :: Expr
 numT = Tag "Num" []
+
+numT' :: Double -> Expr
+numT' n = Num n `Or` numT
 
 pNumT :: Pattern
 pNumT = PTag "Num" []
@@ -315,7 +321,10 @@ instance Lower Expr C.Expr where
     | Tag k args == kind = C.Knd
     | Tag k args == intT = C.IntT
     | Tag k args == numT = C.NumT
-    | otherwise = C.tag k (map (lower env . snd) args)
+    | otherwise = do
+        let field ("", a) = lower env a
+            field (x, a) = C.field x (lower env a)
+        C.tag k (map field args)
   lower env (Trait a x) = do
     let a' = lower env a
     case C.infer env a' of
@@ -335,6 +344,33 @@ instance Lower Expr C.Expr where
   lower _ Err = C.Err
   lower _ a = error $ "TODO: lower " ++ show a
 
+-- instance Lift (C.Expr, C.Expr) Expr where
+--   lift :: (C.Expr, C.Expr) -> Expr
+--   lift (C.Knd, _) = kind
+--   lift (C.IntT, _) = intT
+--   lift (C.NumT, _) = numT
+--   lift (C.Int i, _) = Int i
+--   lift (C.Num n, _) = Num n
+--   lift (C.Var x, _) = Var x
+--   lift (C.Tag k, _) = Tag k []
+--   lift (C.For _ a, _) = lift a
+--   lift (C.Fix _ a, _) = lift a
+--   lift (C.Fun a b, _) = Fun (lift a) (lift b)
+--   lift (C.Lam p b, _) = Match [Case [lift p] Nothing (lift b)]
+--   lift (C.App a b, _) = case appOf (App (lift a) (lift b)) of
+--     (Var ('.' : x), _ : a : args) -> app (Trait a x) args
+--     (Tag k args, args') -> do
+--       let field (Meta (C.Label x) a) = (x, a)
+--           field a = ("", a)
+--       Tag k (args ++ map field args')
+--     (Trait a "<-", [Match [Case [p] Nothing b]]) -> Bind (p, a) b
+--     (a, args) -> app a args
+--   lift (C.Or a b, _) = Or (lift a) (lift b)
+--   lift (C.Ann a b, _) = Ann (lift a) (lift b)
+--   lift (C.Op op args, _) = Op op (map lift args)
+--   lift (C.Meta m a, _) = Meta m (lift a)
+--   lift (C.Err, _) = Err
+
 instance Lift C.Expr Expr where
   lift :: C.Expr -> Expr
   lift C.Knd = kind
@@ -350,7 +386,10 @@ instance Lift C.Expr Expr where
   lift (C.Lam p b) = Match [Case [lift p] Nothing (lift b)]
   lift (C.App a b) = case appOf (App (lift a) (lift b)) of
     (Var ('.' : x), _ : a : args) -> app (Trait a x) args
-    (Tag k args, args') -> Tag k (args ++ map ("",) args')
+    (Tag k args, args') -> do
+      let field (Meta (C.Label x) a) = (x, a)
+          field a = ("", a)
+      Tag k (args ++ map field args')
     (Trait a "<-", [Match [Case [p] Nothing b]]) -> Bind (p, a) b
     (a, args) -> app a args
   lift (C.Or a b) = Or (lift a) (lift b)
@@ -358,7 +397,6 @@ instance Lift C.Expr Expr where
   lift (C.Op op args) = Op op (map lift args)
   lift (C.Meta m a) = Meta m (lift a)
   lift C.Err = Err
-  lift a = error $ "TODO: lift " ++ show a
 
 instance Lower Case C.Expr where
   lower :: C.Env -> Case -> C.Expr
@@ -379,7 +417,6 @@ instance Lower Pattern C.Pattern where
   lower env (PEq a) = C.PEq (lower env a)
   lower env (PMeta m p) = C.PMeta m (lower env p)
   lower _ PErr = C.PErr
-  lower _ p = error $ "TODO: lower " ++ show p
 
 instance Lift C.Pattern Pattern where
   lift :: C.Pattern -> Pattern
@@ -533,39 +570,6 @@ moduleTests mod = concatMap stmtTests mod.stmts
 
 packageTests :: Package -> [(Expr, Pattern)]
 packageTests pkg = concatMap moduleTests pkg.modules
-
-run :: Package -> Expr -> Expr
-run pkg expr = do
-  let pkg' = link () pkg
-  let env = lower [] pkg'
-  let term = lower env expr
-  lift (C.eval env term)
-
-testEq :: C.Env -> (Expr, Pattern) -> [TestError]
-testEq env (expr, expected) = do
-  -- let env = lower ctx
-  -- let actual = C.eval env (lower ctx expr)
-  -- let expected = C.eval env (lower ctx result)
-  -- case C.eval [] (actual `C.eq` expected) of
-  --   C.Err -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
-  --   C.Op2 C.Eq _ _ -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
-  --   _ -> []
-  let unitTest = lower env (let' expected expr (tuple []))
-  let passed = case C.eval env unitTest of
-        C.Err -> False
-        -- C.Op2 C.Eq _ _ -> False
-        _ -> True
-  if passed
-    then []
-    else do
-      let actual = lower env expr & C.eval env & lift
-      [TestEqError expr actual expected]
-
-test :: Package -> [TestError]
-test pkg = do
-  let pkg' = link () pkg
-  let env = lower [] pkg'
-  concatMap (testEq env) (packageTests pkg')
 
 nameSplit :: String -> [String]
 nameSplit name =
@@ -858,3 +862,46 @@ instance DropMeta Package where
 instance DropMeta TestError where
   dropMeta :: TestError -> TestError
   dropMeta (TestEqError a b p) = TestEqError (dropMeta a) (dropMeta b) (dropMeta p)
+
+run :: Package -> Expr -> Expr
+run pkg expr = do
+  let pkg' = link () pkg
+  let env = lower [] pkg'
+  let term = lower env expr
+  lift (C.eval env term)
+
+eval :: [Package] -> Expr -> Either (Expr, C.TypeError) (Expr, Expr)
+eval deps expr = do
+  let deps' = map (link ()) deps
+  let env = concatMap (lower []) deps'
+  let expr' = lower env expr
+  let result = C.eval env expr'
+  case C.infer env expr' of
+    Right (ty, _) -> Right (lift result, lift ty)
+    Left e -> Left (lift result, e)
+
+test :: Package -> [TestError]
+test pkg = do
+  let pkg' = link () pkg
+  let env = lower [] pkg'
+  concatMap (testEq env) (packageTests pkg')
+
+testEq :: C.Env -> (Expr, Pattern) -> [TestError]
+testEq env (expr, expected) = do
+  -- let env = lower ctx
+  -- let actual = C.eval env (lower ctx expr)
+  -- let expected = C.eval env (lower ctx result)
+  -- case C.eval [] (actual `C.eq` expected) of
+  --   C.Err -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
+  --   C.Op2 C.Eq _ _ -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
+  --   _ -> []
+  let unitTest = lower env (let' expected expr (tuple []))
+  let passed = case C.eval env unitTest of
+        C.Err -> False
+        -- C.Op2 C.Eq _ _ -> False
+        _ -> True
+  if passed
+    then []
+    else do
+      let actual = lower env expr & C.eval env & lift
+      [TestEqError expr actual expected]

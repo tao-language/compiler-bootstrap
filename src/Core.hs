@@ -50,6 +50,7 @@ data Pattern
 
 data Metadata
   = Location String (Int, Int)
+  | Label String
   | Comment String
   | Unwrap
   deriving (Eq, Show)
@@ -113,6 +114,7 @@ instance Show Expr where
     Tag k -> atom 12 k
     Op op [] -> atom 12 ("(" ++ op ++ ")")
     Op op args -> showsPrec p (app (Op op []) args)
+    Meta (Label x) a -> prefix 0 (x ++ ": ") a
     Meta _ a -> showsPrec p a
     Lam p b -> infixR 8 (toExpr p) " => " b
     where
@@ -223,6 +225,9 @@ list cons nil (a : bs) = app cons [a, list cons nil bs]
 
 meta :: [Metadata] -> Expr -> Expr
 meta ms a = foldr Meta a ms
+
+field :: String -> Expr -> Expr
+field x = Meta (Label x)
 
 -- Helper functions
 pop :: (Eq k) => k -> [(k, v)] -> [(k, v)]
@@ -580,15 +585,16 @@ infer env (Lam p b) = do
   ((tp, tb), s) <- infer2 (pushVars (freeVars p) env) (toExpr p) b
   Right (Fun tp tb, s)
 infer env (App a b) = do
-  (ta, s1) <- infer env a
+  ((ta, tb), s1) <- infer2 env a b
   case ta of
     Var x -> do
       let y = newName (map fst (s1 `compose` env)) x
-      (tb, s2) <- infer (s1 `compose` env) b
-      (t, s3) <- infer (s2 `compose` s1 `compose` env) (App (Ann a (For "y" $ Fun tb (Var y))) b)
-      Right (t, (y, t) : s3 `compose` s2 `compose` s1)
+      (t, s2) <- infer (s1 `compose` env) (App (Ann a (For y $ Fun tb (Var y))) b)
+      Right (t, (y, t) : s2 `compose` s1)
+    Tag _ -> Right (App ta tb, s1)
+    App _ _ -> Right (App ta tb, s1)
     Fun t1 t2 -> do
-      (_, s2) <- check (s1 `compose` env) b t1
+      (_, s2) <- unify tb t1
       Right (substitute s2 t2, s2 `compose` s1)
     ta -> Left (NotAFunction a ta)
 infer env (Op op args) = case lookup op env of
@@ -596,7 +602,9 @@ infer env (Op op args) = case lookup op env of
   Nothing -> do
     let y = newName (map fst env) (op ++ "T")
     Right (Var y, [(y, Var y), (op, Ann (Op op []) (Var y))])
-infer env (Meta _ a) = infer env a
+infer env (Meta m a) = do
+  (t, s) <- infer env a
+  Right (Meta m t, s)
 infer _ Err = Right (Err, [])
 
 infer2 :: Env -> Expr -> Expr -> Either TypeError ((Expr, Expr), Substitution)
