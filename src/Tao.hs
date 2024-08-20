@@ -323,7 +323,7 @@ instance Lower Expr C.Expr where
     | Tag k args == numT = C.NumT
     | otherwise = do
         let field ("", a) = lower env a
-            field (x, a) = C.field x (lower env a)
+            field (x, a) = C.Fix x (lower env a)
         C.Tag k (map field args)
   lower env (Trait a x) = do
     let a' = lower env a
@@ -344,33 +344,6 @@ instance Lower Expr C.Expr where
   lower _ Err = C.Err
   lower _ a = error $ "TODO: lower " ++ show a
 
--- instance Lift (C.Expr, C.Expr) Expr where
---   lift :: (C.Expr, C.Expr) -> Expr
---   lift (C.Knd, _) = kind
---   lift (C.IntT, _) = intT
---   lift (C.NumT, _) = numT
---   lift (C.Int i, _) = Int i
---   lift (C.Num n, _) = Num n
---   lift (C.Var x, _) = Var x
---   lift (C.Tag k, _) = Tag k []
---   lift (C.For _ a, _) = lift a
---   lift (C.Fix _ a, _) = lift a
---   lift (C.Fun a b, _) = Fun (lift a) (lift b)
---   lift (C.Lam p b, _) = Match [Case [lift p] Nothing (lift b)]
---   lift (C.App a b, _) = case appOf (App (lift a) (lift b)) of
---     (Var ('.' : x), _ : a : args) -> app (Trait a x) args
---     (Tag k args, args') -> do
---       let field (Meta (C.Label x) a) = (x, a)
---           field a = ("", a)
---       Tag k (args ++ map field args')
---     (Trait a "<-", [Match [Case [p] Nothing b]]) -> Bind (p, a) b
---     (a, args) -> app a args
---   lift (C.Or a b, _) = Or (lift a) (lift b)
---   lift (C.Ann a b, _) = Ann (lift a) (lift b)
---   lift (C.Op op args, _) = Op op (map lift args)
---   lift (C.Meta m a, _) = Meta m (lift a)
---   lift (C.Err, _) = Err
-
 instance Lift C.Expr Expr where
   lift :: C.Expr -> Expr
   lift C.Knd = kind
@@ -380,7 +353,7 @@ instance Lift C.Expr Expr where
   lift (C.Num n) = Num n
   lift (C.Var x) = Var x
   lift (C.Tag k args) = do
-    let field (C.Meta (C.Label x) a) = (x, lift a)
+    let field (C.Fix x a) = (x, lift a)
         field a = ("", lift a)
     Tag k (map field args)
   lift (C.For _ a) = lift a
@@ -871,12 +844,11 @@ run pkg expr = do
 
 eval :: [Package] -> Expr -> Either (Expr, C.TypeError) (Expr, Expr)
 eval deps expr = do
-  let deps' = map (link ()) deps
-  let env = concatMap (lower []) deps'
+  let env = concatMap (lower [] . link ()) deps
   let expr' = lower env expr
   let result = C.eval env expr'
   case C.infer env expr' of
-    Right (ty, _) -> Right (lift result, lift ty)
+    Right (type', _) -> Right (lift result, lift type')
     Left e -> Left (lift result, e)
 
 test :: Package -> [TestError]

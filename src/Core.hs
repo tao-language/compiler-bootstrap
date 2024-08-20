@@ -50,7 +50,6 @@ data Pattern
 
 data Metadata
   = Location String (Int, Int)
-  | Label String
   | Comment String
   | Unwrap
   deriving (Eq, Show)
@@ -115,7 +114,6 @@ instance Show Expr where
     Tag k args -> showsPrec p (app (Tag k []) args)
     Op op [] -> atom 12 ("(" ++ op ++ ")")
     Op op args -> showsPrec p (app (Op op []) args)
-    Meta (Label x) a -> prefix 0 (x ++ ": ") a
     Meta _ a -> showsPrec p a
     Lam p b -> infixR 8 (toExpr p) " => " b
     where
@@ -226,9 +224,6 @@ list cons nil (a : bs) = app cons [a, list cons nil bs]
 
 meta :: [Metadata] -> Expr -> Expr
 meta ms a = foldr Meta a ms
-
-field :: String -> Expr -> Expr
-field x = Meta (Label x)
 
 -- Helper functions
 pop :: (Eq k) => k -> [(k, v)] -> [(k, v)]
@@ -578,7 +573,9 @@ infer env (Ann (Tag k []) ty) = do
   Right (t', s `compose` vars)
 infer env (Ann a ty) = check env a ty
 infer env (For x a) = infer ((x, Var x) : env) a
-infer env (Fix x a) = infer ((x, Var x) : env) a
+infer env (Fix x a) = do
+  (t, s) <- infer ((x, Var x) : env) a
+  Right (Fix x t, s)
 infer env (Fun a b) = do
   ((ta, tb), s) <- infer2 env a b
   Right (Fun ta tb, s)

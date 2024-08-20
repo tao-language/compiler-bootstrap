@@ -91,7 +91,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lift term `shouldBe` expr
 
     let expr = record [("a", x), ("b", y)]
-    let term = C.Tag "" [C.field "a" x', C.field "b" y']
+    let term = C.Tag "" [C.Fix "a" x', C.Fix "b" y']
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
@@ -414,9 +414,9 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ eval" $ do
     let deps =
-          [ (Package "pkg1")
+          [ Package "pkg1" $
               [Module "mod" [var "x" (Int 42)]],
-            (Package "pkg2")
+            Package "pkg2" $
               [Module "mod" [var "y" (Num 3.14)]]
           ]
     let x = Var "@pkg1:mod.x"
@@ -429,7 +429,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     eval deps (Tag "A" []) `shouldBe` Right (Tag "A" [], Tag "A" [])
     eval deps (Tag "A" [("", x)]) `shouldBe` Right (Tag "A" [("", Int 42)], Tag "A" [("", intT' 42)])
     eval deps (Tag "A" [("", x), ("", y)]) `shouldBe` Right (Tag "A" [("", Int 42), ("", Num 3.14)], Tag "A" [("", intT' 42), ("", numT' 3.14)])
-    -- eval deps (Tag "A" [("x", x), ("y", y)]) `shouldBe` Right (Tag "A" [("x", Int 42), ("y", Num 3.14)], Tag "A" [("x", intT' 42), ("y", numT' 3.14)])
+    eval deps (Tag "A" [("x", x), ("y", y)]) `shouldBe` Right (Tag "A" [("x", Int 42), ("y", Num 3.14)], Tag "A" [("x", intT' 42), ("y", numT' 3.14)])
     -- Trait Expr String
     -- TraitFun String
     -- Fun Expr Expr
