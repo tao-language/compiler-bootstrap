@@ -283,10 +283,12 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ test" $ do
     let defs =
           [ var "x" (Int 1),
-            Test x (PInt 2)
+            Test x (PInt 2),
+            var "y" (Int 3),
+            Test y (PInt 3)
           ]
-    let mod = Package {name = "pkg", modules = [Module "mod" defs]}
-    test mod `shouldBe` [TestEqError (Var "@pkg:mod.x") (Int 1) (PInt 2)]
+    let pkg = Package {name = "pkg", modules = [Module "mod" defs]}
+    test pkg `shouldBe` [TestEqError (Var "@pkg:mod.x") (Int 1) (PInt 2)]
 
   it "☯ splitCamelCase" $ do
     splitCamelCase "" `shouldBe` []
@@ -355,29 +357,49 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     -- rename "x" "z" pkg `shouldBe` pkg {modules = [m1 "z", m2 "z", m3 "z", m4 "z"]}
     True `shouldBe` True
 
+  it "☯ link Def" $ do
+    let f = link ("pkg", "mod")
+    f (Def [] xP y) `shouldBe` [("x", "@pkg:mod.x")]
+    f (TraitDef [] (Err, Err) "x" y) `shouldBe` []
+
+  it "☯ link Stmt" $ do
+    let f = link ("pkg", "mod")
+    f (Import ("p", "m") "n" []) `shouldBe` [("n", "@pkg:mod.n")]
+    f (Import ("p", "m") "" []) `shouldBe` [("m", "@pkg:mod.m")]
+    f (Import ("p", "m") "" [("x", "y")]) `shouldBe` [("y", "@pkg:mod.y"), ("m", "@pkg:mod.m")]
+    f (Import ("p", "m") "" [("x", "")]) `shouldBe` [("x", "@pkg:mod.x"), ("m", "@pkg:mod.m")]
+    f (var "x" y) `shouldBe` [("x", "@pkg:mod.x")]
+
+  it "☯ link Module" $ do
+    let f stmts = do
+          let mod = Module "mod" stmts
+          link "pkg" mod
+    f [] `shouldBe` []
+    f [Import ("p", "m") "n" []] `shouldBe` [("n", "@pkg:mod.n")]
+
   it "☯ getContext Stmt" $ do
-    let ctx = getContext ("pkg", "mod")
-    ctx (Import ("p", "m") "n" [("x", "y")]) `shouldBe` [("@pkg:mod.y", Var "@p:m.x"), ("@pkg:mod.n", Var "@p:m")]
-    ctx (Import ("p", "m") "" [("x", "")]) `shouldBe` [("@pkg:mod.x", Var "@p:m.x"), ("@pkg:mod.m", Var "@p:m")]
-    ctx (Import ("", "m") "n" [("x", "")]) `shouldBe` [("@pkg:mod.x", Var "@pkg:m.x"), ("@pkg:mod.n", Var "@pkg:m")]
-    ctx (Import ("", "m") "" [("x", "")]) `shouldBe` [("@pkg:mod.x", Var "@pkg:m.x"), ("@pkg:mod.m", Var "@pkg:m")]
+    let f = getContext ("pkg", "mod")
+    f (Import ("p", "m") "n" [("x", "y")]) `shouldBe` [("@pkg:mod.y", Var "@p:m.x"), ("@pkg:mod.n", Var "@p:m")]
+    f (Import ("p", "m") "" [("x", "")]) `shouldBe` [("@pkg:mod.x", Var "@p:m.x"), ("@pkg:mod.m", Var "@p:m")]
+    f (Import ("", "m") "n" [("x", "")]) `shouldBe` [("@pkg:mod.x", Var "@pkg:m.x"), ("@pkg:mod.n", Var "@pkg:m")]
+    f (Import ("", "m") "" [("x", "")]) `shouldBe` [("@pkg:mod.x", Var "@pkg:m.x"), ("@pkg:mod.m", Var "@pkg:m")]
 
   it "☯ getContext Module" $ do
-    let ctx stmts = do
+    let f stmts = do
           let mod = Module "mod" stmts
           getContext "pkg" mod
-    ctx [] `shouldBe` [("@pkg:mod", Tag "@pkg:mod" [])]
-    ctx [Import ("p", "m") "n" []] `shouldBe` [("@pkg:mod", Tag "@pkg:mod" [("n", Var "@pkg:mod.n")]), ("@pkg:mod.n", Var "@p:m")]
-    ctx [Import ("p", "m") "n" [("x", "y")]] `shouldBe` [("@pkg:mod", Tag "@pkg:mod" [("y", Var "@pkg:mod.y"), ("n", Var "@pkg:mod.n")]), ("@pkg:mod.y", Var "@p:m.x"), ("@pkg:mod.n", Var "@p:m")]
-    ctx [var "x" y] `shouldBe` [("@pkg:mod", Tag "@pkg:mod" [("x", Var "@pkg:mod.x")]), ("@pkg:mod.x", y)]
+    f [] `shouldBe` [("@pkg:mod", Tag "@pkg:mod" [])]
+    f [Import ("p", "m") "n" []] `shouldBe` [("@pkg:mod", Tag "@pkg:mod" [("n", Var "@pkg:mod.n")]), ("@pkg:mod.n", Var "@p:m")]
+    f [Import ("p", "m") "n" [("x", "y")]] `shouldBe` [("@pkg:mod", Tag "@pkg:mod" [("y", Var "@pkg:mod.y"), ("n", Var "@pkg:mod.n")]), ("@pkg:mod.y", Var "@p:m.x"), ("@pkg:mod.n", Var "@p:m")]
+    f [var "x" y] `shouldBe` [("@pkg:mod", Tag "@pkg:mod" [("x", Var "@pkg:mod.x")]), ("@pkg:mod.x", y)]
 
   it "☯ getContext Package" $ do
-    let ctx stmts = do
+    let f stmts = do
           let mod = Module "mod" stmts
           let pkg = Package "pkg" [mod]
           getContext () pkg
-    ctx [] `shouldBe` [("@pkg:mod", Tag "@pkg:mod" [])]
-    ctx [Import ("p", "m") "n" []] `shouldBe` [("@pkg:mod", Tag "@pkg:mod" [("n", Var "@pkg:mod.n")]), ("@pkg:mod.n", Var "@p:m")]
+    f [] `shouldBe` [("@pkg:mod", Tag "@pkg:mod" [])]
+    f [Import ("p", "m") "n" []] `shouldBe` [("@pkg:mod", Tag "@pkg:mod" [("n", Var "@pkg:mod.n")]), ("@pkg:mod.n", Var "@p:m")]
 
   -- it "☯ fullNames Stmt" $ do
   --   let names = fullNames ("pkg", "mod")

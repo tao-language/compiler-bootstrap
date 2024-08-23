@@ -92,7 +92,7 @@ instance Show Expr where
     For x a -> do
       let (xs, a') = asFor (For x a)
       prefix 2 ("@" ++ unwords xs ++ ". ") a'
-    Fix x a -> prefix 2 ("$fix " ++ x ++ ". ") a
+    Fix x a -> prefix 2 ("!fix " ++ show (Var x) ++ ". ") a
     Fun p b -> infixR 5 p " -> " b
     Op "+" [a, b] -> infixL 6 a " + " b
     Op "-" [a, b] -> infixL 6 a " - " b
@@ -102,14 +102,15 @@ instance Show Expr where
     Op ('$' : op) [a] -> prefix 8 ('$' : op ++ " ") a
     Op op [a] -> prefix 8 op a
     App a b -> infixL 8 a " " b
-    Err -> atom 12 "$error"
-    Knd -> atom 12 "$Kind"
-    IntT -> atom 12 "$Int"
-    NumT -> atom 12 "$Num"
+    Err -> atom 12 "!error"
+    Knd -> atom 12 "!Kind"
+    IntT -> atom 12 "!Int"
+    NumT -> atom 12 "!Num"
     Int i -> atom 12 (show i)
     Num n -> atom 12 (show n)
     Var x | isVarName x -> atom 12 x
-    Var x -> atom 12 ("($var '" ++ x ++ "')")
+    Var x -> atom 12 ("(!var '" ++ x ++ "')")
+    Tag "" [] -> atom 12 "()"
     Tag k [] -> atom 12 k
     Tag k args -> showsPrec p (app (Tag k []) args)
     Op op [] -> atom 12 ("(" ++ op ++ ")")
@@ -121,7 +122,8 @@ instance Show Expr where
       prefix n k a = showParen (p > n) $ showString k . showsPrec (n + 1) a
       infixL n a op b = showParen (p > n) $ showsPrec n a . showString op . showsPrec (n + 1) b
       infixR n a op b = showParen (p > n) $ showsPrec (n + 1) a . showString op . showsPrec n b
-      isVarName ('$' : xs) = all isNameChar xs
+      isVarName ('!' : xs) = all isNameChar xs
+      isVarName ('@' : xs) = True
       isVarName ('_' : xs) = all isNameChar xs
       isVarName (x : xs) = isLower x && all isNameChar xs
       isVarName [] = False

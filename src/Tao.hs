@@ -78,6 +78,7 @@ data TestError
   = TestEqError Expr Expr Pattern
   deriving (Eq, Show)
 
+-- Syntax sugar
 kind :: Expr
 kind = Tag "Type" []
 
@@ -104,6 +105,12 @@ tag k args = Tag k (map ("",) args)
 
 pTag :: String -> [Pattern] -> Pattern
 pTag k args = PTag k (map ("",) args)
+
+ok :: Expr -> Expr
+ok x = tag "Ok" [x]
+
+err :: Expr -> Expr
+err e = tag "Error" [e]
 
 tuple :: [Expr] -> Expr
 tuple = tag ""
@@ -403,11 +410,6 @@ instance Lower Package C.Env where
   lower :: C.Env -> Package -> C.Env
   lower env pkg = lower env (getContext () pkg)
 
-stmtTests :: Stmt -> [(Expr, Pattern)]
-stmtTests (Test expr expected) = [(expr, expected)]
-stmtTests (MetaStmt _ stmt) = stmtTests stmt
-stmtTests _ = []
-
 fullName :: String -> String -> String -> String
 fullName "" "" name = name
 fullName "" mod "" = mod
@@ -479,6 +481,36 @@ getPackageName fullName = do
   let (name, _, _) = splitName fullName
   name
 
+class Link a b where
+  link :: a -> b -> [(String, String)]
+
+instance Link (String, String) Definition where
+  link :: (String, String) -> Definition -> [(String, String)]
+  link (pkg, mod) (Def ts p b) =
+    map (\x -> (x, fullName pkg mod x)) (freeVars p)
+  link (pkg, mod) (TraitDef ts (t, a) x b) = []
+
+instance Link (String, String) Stmt where
+  link :: (String, String) -> Stmt -> [(String, String)]
+  link path (Import (pkg', mod') "" exposed) =
+    link path (Import (pkg', mod') mod' exposed)
+  link (pkg, mod) (Import (pkg', mod') alias exposed) = case exposed of
+    [] -> [(alias, fullName pkg mod alias)]
+    (x, "") : exposed ->
+      link (pkg, mod) (Import (pkg', mod') alias ((x, x) : exposed))
+    (_, y) : exposed ->
+      (y, fullName pkg mod y) : link (pkg, mod) (Import (pkg', mod') alias exposed)
+  link path (Define def) = link path def
+  link (pkg, mod) stmt = error "TODO: link Stmt"
+
+instance Link String Module where
+  link :: String -> Module -> [(String, String)]
+  link pkg mod = []
+
+instance Link () Package where
+  link :: () -> Package -> [(String, String)]
+  link () pkg = error "TODO: link Package"
+
 class GetContext a b where
   getContext :: a -> b -> Context
 
@@ -494,8 +526,11 @@ instance GetContext (String, String) Stmt where
       (fullName pkg path y', Var $ fullName pkg' path' x) : getContext (pkg, path) (Import (pkg', path') alias exposed)
     [] -> [(fullName pkg path alias, Var $ fullName pkg' path' "")]
   getContext (pkg, path) (Define def) = getContext (pkg, path) def
-  getContext (pkg, path) (Test a p) =
-    error "TODO: getContext Test -- ('> a == p', match a {p => Ok () | x => Error x})"
+  -- getContext (pkg, path) (Test a p) = []
+  getContext (pkg, path) (Test a p) = do
+    let expect = Case [p] Nothing (ok $ tuple [])
+    let error = Case [PVar "e"] Nothing (err $ Var "e")
+    [("> " ++ show a, match [a] [expect, error])]
   getContext (pkg, path) (MetaStmt _ stmt) = getContext (pkg, path) stmt
 
 instance GetContext (String, String) Definition where
@@ -522,6 +557,11 @@ instance GetContext String Module where
 instance GetContext () Package where
   getContext :: () -> Package -> Context
   getContext () pkg = concatMap (getContext pkg.name) pkg.modules
+
+stmtTests :: Stmt -> [(Expr, Pattern)]
+stmtTests (Test expr expected) = [(expr, expected)]
+stmtTests (MetaStmt _ stmt) = stmtTests stmt
+stmtTests _ = []
 
 moduleTests :: Module -> [(Expr, Pattern)]
 moduleTests mod = concatMap stmtTests mod.stmts
@@ -835,6 +875,7 @@ eval pkgs expr = do
 test :: Package -> [TestError]
 test pkg = do
   let env = lower [] pkg
+  let tests = packageTests pkg
   concatMap (testEq env) (packageTests pkg)
 
 testEq :: C.Env -> (Expr, Pattern) -> [TestError]
