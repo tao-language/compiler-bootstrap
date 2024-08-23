@@ -1,5 +1,5 @@
 import sub-module/sub-file (x)
-import examples:sub-module/sub-file (y)
+import @examples:sub-module/sub-file (y)
 
 > sub-file.x
 42

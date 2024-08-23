@@ -464,7 +464,8 @@ prelude options = ImportFrom (options.packageName ++ ".__prelude__") [("*", Noth
 build :: BuildOptions -> FilePath -> T.Package -> IO FilePath
 build options base pkg = do
   let pyPkg =
-        T.link () pkg
+        -- T.link () pkg
+        pkg
           & T.refactorName pyName
           & T.refactorModuleName (T.replace '/' '.' . T.replace '-' '_')
           & T.refactorModuleAlias T.nameSnakeCase
@@ -583,10 +584,8 @@ instance Emit T.Module Module where
 
 instance Emit T.Stmt [Stmt] where
   emit :: BuildOptions -> T.Stmt -> [Stmt]
-  emit options (T.Import name alias exposed) = do
-    let mod = case name of
-          '@' : name -> T.replace ':' '.' name
-          _ -> name
+  emit options (T.Import (pkg, path) alias exposed) = do
+    let mod = if pkg == "" then path else pkg ++ '.' : path
     case exposed of
       [] -> do
         let alias' = if alias == "" then Nothing else Just alias
@@ -594,7 +593,7 @@ instance Emit T.Stmt [Stmt] where
       exposed -> do
         let expose (x, "") = (x, Nothing)
             expose (x, y) = (x, Just y)
-        let stmts = emit options (T.Import name alias [])
+        let stmts = emit options (T.Import (pkg, path) alias [])
         stmts ++ [ImportFrom mod (map expose exposed)]
   emit options (T.Define def) = emit options def
   emit options (T.Test a p) = do

@@ -352,6 +352,7 @@ parseImport = do
   pkg <-
     P.oneOf
       [ do
+          _ <- P.char '@'
           pkg <- parseIdentifier
           _ <- P.text ":"
           return pkg,
@@ -371,7 +372,7 @@ parseImport = do
           name <- parseIdentifier
           _ <- P.spaces
           return name,
-        return name
+        return (if null path then "" else name)
       ]
   exposing <-
     P.oneOf
@@ -391,7 +392,7 @@ parseImport = do
       ]
   _ <- parseLineBreak
   _ <- P.whitespaces
-  return (Import (fullName pkg (intercalate "/" (path ++ [name])) "") alias exposing)
+  return (Import (pkg, intercalate "/" $ path ++ [name]) alias exposing)
 
 parseTest :: P.Parser ParserContext Stmt
 parseTest = do

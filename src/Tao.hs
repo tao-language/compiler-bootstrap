@@ -1,7 +1,5 @@
 module Tao where
 
--- TODO: maybe use terms like "lower" and "lift" for conversions to/from core
-
 import Control.Monad (mapAndUnzipM)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap), second)
@@ -9,7 +7,6 @@ import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, union)
 import Data.List.Split (splitWhen)
-import Data.Maybe (fromMaybe, mapMaybe)
 
 data Expr
   = Int Int
@@ -55,7 +52,7 @@ data Definition
   deriving (Eq, Show)
 
 data Stmt
-  = Import String String [(String, String)] -- import pkg:module as alias (a, b, c)
+  = Import (String, String) String [(String, String)] -- import pkg:module as alias (a, b, c)
   | Define Definition
   | Test Expr Pattern
   | MetaStmt C.Metadata Stmt
@@ -224,16 +221,16 @@ appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
 appOf (Meta _ a) = appOf a
 appOf a = (a, [])
 
-import' :: String -> Stmt
+import' :: (String, String) -> Stmt
 import' mod = Import mod "" []
 
-importAs :: String -> String -> Stmt
+importAs :: (String, String) -> String -> Stmt
 importAs mod alias = Import mod alias []
 
-importFrom :: String -> [String] -> Stmt
+importFrom :: (String, String) -> [String] -> Stmt
 importFrom mod names = Import mod "" (map (,"") names)
 
-importAll :: String -> Stmt
+importAll :: (String, String) -> Stmt
 importAll mod = Import mod "" [("*", "")]
 
 isImport :: Stmt -> Bool
@@ -404,7 +401,7 @@ instance Lower Context C.Env where
 
 instance Lower Package C.Env where
   lower :: C.Env -> Package -> C.Env
-  lower env pkg = lower env (getContext pkg)
+  lower env pkg = lower env (getContext () pkg)
 
 stmtTests :: Stmt -> [(Expr, Pattern)]
 stmtTests (Test expr expected) = [(expr, expected)]
@@ -424,21 +421,16 @@ class FullNames a b where
 
 instance FullNames (String, String) Stmt where
   fullNames :: (String, String) -> Stmt -> [(String, String)]
-  fullNames (pkg, mod) (Import mod' alias exposed) = case (mod', alias, exposed) of
-    ('@' : _, "", exposed) -> do
-      let (_, alias, _) = splitName mod'
-      fullNames (pkg, mod) (Import mod' alias exposed)
-    ('@' : _, alias, exposed) -> do
-      let exposed' =
-            exposed
-              & filter (\(x, _) -> x /= "*")
-              & map (\(x, y) -> (if y == "" then x else y, mod' ++ '.' : x))
-      (alias, mod') : exposed'
-    (mod', alias, exposed) -> fullNames (pkg, mod) (Import (fullName pkg mod' "") alias exposed)
-  fullNames (pkg, mod) (Define def) =
-    map (\(x, _) -> (x, fullName pkg mod x)) (getContext def)
+  fullNames ("", _) _ = error "package name cannot be empty"
+  fullNames (pkg, path) (Import ("", path') alias exposed) =
+    fullNames (pkg, path) (Import (pkg, path') alias exposed)
+  fullNames (pkg, path) (Import (pkg', path') alias exposed) = do
+    let exposed' = map (\(x, y) -> (if y == "" then x else y, fullName pkg path x)) exposed
+    (alias, fullName pkg path alias) : exposed'
+  fullNames (pkg, path) (Define def) =
+    map (\(x, _) -> (x, fullName pkg path x)) (getContext (pkg, path) def)
   fullNames _ (Test _ _) = []
-  fullNames (pkg, mod) (MetaStmt _ stmt) = fullNames (pkg, mod) stmt
+  fullNames (pkg, path) (MetaStmt _ stmt) = fullNames (pkg, path) stmt
 
 instance FullNames String Module where
   fullNames :: String -> Module -> [(String, String)]
@@ -446,7 +438,7 @@ instance FullNames String Module where
 
 moduleFullNames :: String -> Module -> [(String, String)]
 moduleFullNames pkgName mod = do
-  let ctx = concatMap getContext mod.stmts
+  let ctx = concatMap (getContext (pkgName, mod.name)) mod.stmts
   map (\(x, _) -> (x, fullName pkgName mod.name x)) ctx
 
 splitWith :: (Char -> Bool) -> String -> [String]
@@ -472,70 +464,64 @@ splitName ('@' : pkgModName) = do
   (pkg, mod, name)
 splitName name = ("", "", name)
 
-splitIdentifier :: String -> (String, String, String)
-splitIdentifier ('@' : identifier) = case split '.' identifier of
-  [] -> ("", "", "")
-  [pkg] -> (pkg, "", "")
-  [pkg, mod] -> (pkg, mod, "")
-  pkg : mod : name : _ -> (pkg, mod, name)
-splitIdentifier name = ("", "", name)
+getName :: String -> String
+getName fullName = do
+  let (_, _, name) = splitName fullName
+  name
 
-class Link a b where
-  link :: a -> b -> b
+getModuleName :: String -> String
+getModuleName fullName = do
+  let (_, name, _) = splitName fullName
+  name
 
-instance Link () Package where
-  link :: () -> Package -> Package
-  link _ pkg = do
-    pkg {modules = map (link pkg.name) pkg.modules}
+getPackageName :: String -> String
+getPackageName fullName = do
+  let (name, _, _) = splitName fullName
+  name
 
-instance Link String Module where
-  link :: String -> Module -> Module
-  link pkg mod = do
-    let subs = fullNames pkg mod
-    mod {stmts = map (link (pkg, subs)) mod.stmts}
+class GetContext a b where
+  getContext :: a -> b -> Context
 
-instance Link (String, [(String, String)]) Stmt where
-  link :: (String, [(String, String)]) -> Stmt -> Stmt
-  link (pkg, subs) (Import mod alias exposed) = case mod of
-    '@' : _ -> substitute subs (Import mod alias exposed)
-    _ -> link (pkg, subs) (Import (fullName pkg mod "") alias exposed)
-  link (_, subs) stmt = substitute subs stmt
-
-class GetContext a where
-  getContext :: a -> Context
-
-instance GetContext Stmt where
-  getContext :: Stmt -> Context
-  getContext (Import name alias exposed) = case exposed of
+instance GetContext (String, String) Stmt where
+  getContext :: (String, String) -> Stmt -> Context
+  getContext (pkg, path) (Import ("", path') alias exposed) =
+    getContext (pkg, path) (Import (pkg, path') alias exposed)
+  getContext (pkg, path) (Import (pkg', path') "" exposed) =
+    getContext (pkg, path) (Import (pkg', path') path' exposed)
+  getContext (pkg, path) (Import (pkg', path') alias exposed) = case exposed of
     (x, y) : exposed -> do
-      let def = if y == "" then (x, Var x) else (y, Var x)
-      def : getContext (Import name alias exposed)
-    [] -> []
-  getContext (Define def) = getContext def
-  getContext (Test _ _) = []
-  getContext (MetaStmt _ stmt) = getContext stmt
+      let y' = if y == "" then x else y
+      (fullName pkg path y', Var $ fullName pkg' path' x) : getContext (pkg, path) (Import (pkg', path') alias exposed)
+    [] -> [(fullName pkg path alias, Var $ fullName pkg' path' "")]
+  getContext (pkg, path) (Define def) = getContext (pkg, path) def
+  getContext (pkg, path) (Test a p) =
+    error "TODO: getContext Test -- ('> a == p', match a {p => Ok () | x => Error x})"
+  getContext (pkg, path) (MetaStmt _ stmt) = getContext (pkg, path) stmt
 
-instance GetContext Definition where
-  getContext :: Definition -> Context
-  getContext (Def ts (PVar x) b) = case lookup x ts of
-    Just t -> [(x, Ann b t)]
-    Nothing -> [(x, b)]
-  getContext (Def ts p b) = do
+instance GetContext (String, String) Definition where
+  getContext :: (String, String) -> Definition -> Context
+  getContext (pkg, path) (Def ts (PVar x) b) = case lookup x ts of
+    Just t -> [(fullName pkg path x, Ann b t)]
+    Nothing -> [(fullName pkg path x, b)]
+  getContext (pkg, path) (Def ts p b) = do
     let def x = let' p b (Var x)
     let typedDef x = case lookup x ts of
-          Just t -> (x, Ann (def x) t)
-          Nothing -> (x, def x)
+          Just t -> (fullName pkg path x, Ann (def x) t)
+          Nothing -> (fullName pkg path x, def x)
     map typedDef (freeVars p)
-  getContext (TraitDef ts (t, a) x b) =
+  getContext (pkg, path) (TraitDef ts (t, a) x b) =
     [('.' : x, fun [t, a] b)]
 
-instance GetContext Module where
-  getContext :: Module -> Context
-  getContext mod = concatMap getContext mod.stmts
+instance GetContext String Module where
+  getContext :: String -> Module -> Context
+  getContext pkg mod = do
+    let name = fullName pkg mod.name ""
+    let ctx = concatMap (getContext (pkg, mod.name)) mod.stmts
+    (name, Tag name (map (\(x, _) -> (getName x, Var x)) ctx)) : ctx
 
-instance GetContext Package where
-  getContext :: Package -> Context
-  getContext pkg = concatMap getContext pkg.modules
+instance GetContext () Package where
+  getContext :: () -> Package -> Context
+  getContext () pkg = concatMap (getContext pkg.name) pkg.modules
 
 moduleTests :: Module -> [(Expr, Pattern)]
 moduleTests mod = concatMap stmtTests mod.stmts
@@ -733,7 +719,7 @@ refactorName :: ([String] -> Expr -> String -> String) -> Package -> Package
 refactorName f pkg = do
   let refactor :: Module -> Package -> Package
       refactor mod pkg = do
-        let ctx = concatMap getContext mod.stmts
+        let ctx = concatMap (getContext (pkg.name, mod.name)) mod.stmts
         foldr (\(x, a) -> rename x (f (map fst ctx) a x)) pkg ctx
   foldr refactor pkg pkg.modules
 
@@ -750,7 +736,8 @@ instance RefactorModuleName Module where
 
 instance RefactorModuleName Stmt where
   refactorModuleName :: (FilePath -> FilePath) -> Stmt -> Stmt
-  refactorModuleName f (Import name alias exposed) = Import (f name) alias exposed
+  refactorModuleName f (Import (pkg, path) alias exposed) = error "TODO"
+  -- refactorModuleName f (Import name alias exposed) = Import (f name) alias exposed
   refactorModuleName _ stmt = stmt
 
 class RefactorModuleAlias a where
@@ -835,27 +822,20 @@ instance DropMeta TestError where
   dropMeta :: TestError -> TestError
   dropMeta (TestEqError a b p) = TestEqError (dropMeta a) (dropMeta b) (dropMeta p)
 
-run :: Package -> Expr -> Expr
-run pkg expr = do
-  let pkg' = link () pkg
-  let env = lower [] pkg'
-  let term = lower env expr
-  lift (C.eval env term)
-
 eval :: [Package] -> Expr -> Either (Expr, C.TypeError) (Expr, Expr)
-eval deps expr = do
-  let env = concatMap (lower [] . link ()) deps
+eval pkgs expr = do
+  let env = concatMap (lower []) pkgs
   let expr' = lower env expr
   let result = C.eval env expr'
   case C.infer env expr' of
     Right (type', _) -> Right (lift result, lift type')
     Left e -> Left (lift result, e)
 
+-- TODO: test :: [Package] -> [TestError]
 test :: Package -> [TestError]
 test pkg = do
-  let pkg' = link () pkg
-  let env = lower [] pkg'
-  concatMap (testEq env) (packageTests pkg')
+  let env = lower [] pkg
+  concatMap (testEq env) (packageTests pkg)
 
 testEq :: C.Env -> (Expr, Pattern) -> [TestError]
 testEq env (expr, expected) = do

@@ -54,11 +54,11 @@ run = describe "--==☯ Python ☯==--" $ do
   it "☯ emit Stmt" $ do
     let emit' :: T.Stmt -> [Stmt]
         emit' = emit options
-    emit' (T.Import "mod" "" []) `shouldBe` [Import "mod" Nothing]
-    emit' (T.Import "mod" "alias" []) `shouldBe` [Import "mod" (Just "alias")]
-    emit' (T.Import "@pkg:mod" "" []) `shouldBe` [Import "pkg.mod" Nothing]
-    emit' (T.Import "mod" "" [("x", "")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Nothing)]]
-    emit' (T.Import "mod" "" [("x", "y")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Just "y")]]
+    emit' (T.Import ("", "mod") "" []) `shouldBe` [Import "mod" Nothing]
+    emit' (T.Import ("", "mod") "alias" []) `shouldBe` [Import "mod" (Just "alias")]
+    emit' (T.Import ("pkg", "mod") "" []) `shouldBe` [Import "pkg.mod" Nothing]
+    emit' (T.Import ("", "mod") "" [("x", "")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Nothing)]]
+    emit' (T.Import ("", "mod") "" [("x", "y")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Just "y")]]
     emit' (T.var "x" y) `shouldBe` [Assign [x'] y']
     emit' (T.var "a" (T.Tag "Point" [("", T.Int 1), ("y", T.Int 2)])) `shouldBe` [Assign [a'] (Call (Name "Point") [Integer 1] [("y", Integer 2)])]
     -- emit' (var "a" (Tag "Point" [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]
