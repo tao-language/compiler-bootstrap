@@ -20,10 +20,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
           caseN f = Lam x' (x `mul` App (Var f) (x `sub` i1))
 
   it "☯ show" $ do
-    show Err `shouldBe` "$error"
-    show Knd `shouldBe` "$Kind"
-    show IntT `shouldBe` "$Int"
-    show NumT `shouldBe` "$Num"
+    show Err `shouldBe` "!error"
+    show Knd `shouldBe` "!Kind"
+    show IntT `shouldBe` "!Int"
+    show NumT `shouldBe` "!Num"
     show (Int 1) `shouldBe` "1"
     show (Num 1.1) `shouldBe` "1.1"
     -- show (Typ "T") `shouldBe` "$T"

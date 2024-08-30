@@ -349,30 +349,24 @@ parseImport = do
   (loc, _) <- parseLocation (P.word "import")
   P.commit CImport
   _ <- P.spaces
-  pkg <-
-    P.oneOf
-      [ do
-          _ <- P.char '@'
-          pkg <- parseIdentifier
-          _ <- P.text ":"
-          return pkg,
-        return ""
-      ]
-  path <- P.zeroOrMore $ do
-    path <- parseIdentifier
-    _ <- P.char '/'
-    return path
-  name <- parseIdentifier
+  (path, name) <- do
+    prefix <- P.oneOf [P.text "@", P.text ""]
+    path <- P.zeroOrMore $ do
+      path <- parseIdentifier
+      _ <- P.char '/'
+      return path
+    name <- parseIdentifier
+    return (prefix ++ intercalate "/" (path ++ [name]), name)
   _ <- P.spaces
   alias <-
     P.oneOf
       [ do
           _ <- P.word "as"
           _ <- P.spaces
-          name <- parseIdentifier
+          alias <- parseIdentifier
           _ <- P.spaces
-          return name,
-        return (if null path then "" else name)
+          return alias,
+        return name
       ]
   exposing <-
     P.oneOf
@@ -392,7 +386,7 @@ parseImport = do
       ]
   _ <- parseLineBreak
   _ <- P.whitespaces
-  return (Import (pkg, intercalate "/" $ path ++ [name]) alias exposing)
+  return (Import path alias exposing)
 
 parseTest :: P.Parser ParserContext Stmt
 parseTest = do

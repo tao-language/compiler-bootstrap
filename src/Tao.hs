@@ -7,6 +7,7 @@ import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, union)
 import Data.List.Split (splitWhen)
+import GHC.TypeLits (Mod)
 
 data Expr
   = Int Int
@@ -52,7 +53,7 @@ data Definition
   deriving (Eq, Show)
 
 data Stmt
-  = Import (String, String) String [(String, String)] -- import pkg:module as alias (a, b, c)
+  = Import String String [(String, String)] -- import pkg:module as alias (a, b, c)
   | Define Definition
   | Test Expr Pattern
   | MetaStmt C.Metadata Stmt
@@ -228,17 +229,17 @@ appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
 appOf (Meta _ a) = appOf a
 appOf a = (a, [])
 
-import' :: (String, String) -> Stmt
-import' mod = Import mod "" []
+import' :: String -> Stmt
+import' m = Import m "" []
 
-importAs :: (String, String) -> String -> Stmt
-importAs mod alias = Import mod alias []
+importAs :: String -> String -> Stmt
+importAs m n = Import m n []
 
-importFrom :: (String, String) -> [String] -> Stmt
-importFrom mod names = Import mod "" (map (,"") names)
+importFrom :: String -> [String] -> Stmt
+importFrom m names = Import m "" (map (,"") names)
 
-importAll :: (String, String) -> Stmt
-importAll mod = Import mod "" [("*", "")]
+importAll :: String -> Stmt
+importAll m = Import m "" [("*", "")]
 
 isImport :: Stmt -> Bool
 isImport Import {} = True
@@ -408,40 +409,34 @@ instance Lower Context C.Env where
 
 instance Lower Package C.Env where
   lower :: C.Env -> Package -> C.Env
-  lower env pkg = lower env (getContext () pkg)
+  lower env pkg =
+    -- lower env (getContext () pkg)
+    error "TODO: lower Package"
 
-fullName :: String -> String -> String -> String
-fullName "" "" name = name
-fullName "" mod "" = mod
-fullName "" mod name = mod ++ '.' : name
-fullName pkg "" "" = '@' : pkg
-fullName pkg mod "" = fullName pkg "" "" ++ ':' : mod
-fullName pkg mod name = fullName pkg mod "" ++ '.' : name
+fullName :: String -> String -> String
+fullName "" name = name
+fullName mod "" = mod
+fullName mod name = mod ++ '.' : name
 
-class FullNames a b where
-  fullNames :: a -> b -> [(String, String)]
+-- class FullNames a b where
+--   fullNames :: a -> b -> [(String, String)]
 
-instance FullNames (String, String) Stmt where
-  fullNames :: (String, String) -> Stmt -> [(String, String)]
-  fullNames ("", _) _ = error "package name cannot be empty"
-  fullNames (pkg, path) (Import ("", path') alias exposed) =
-    fullNames (pkg, path) (Import (pkg, path') alias exposed)
-  fullNames (pkg, path) (Import (pkg', path') alias exposed) = do
-    let exposed' = map (\(x, y) -> (if y == "" then x else y, fullName pkg path x)) exposed
-    (alias, fullName pkg path alias) : exposed'
-  fullNames (pkg, path) (Define def) =
-    map (\(x, _) -> (x, fullName pkg path x)) (getContext (pkg, path) def)
-  fullNames _ (Test _ _) = []
-  fullNames (pkg, path) (MetaStmt _ stmt) = fullNames (pkg, path) stmt
+-- instance FullNames (String, String) Stmt where
+--   fullNames :: (String, String) -> Stmt -> [(String, String)]
+--   fullNames ("", _) _ = error "package name cannot be empty"
+--   fullNames (pkg, path) (Import ("", path') alias exposed) =
+--     fullNames (pkg, path) (Import (pkg, path') alias exposed)
+--   fullNames (pkg, path) (Import (pkg', path') alias exposed) = do
+--     let exposed' = map (\(x, y) -> (if y == "" then x else y, fullName pkg path x)) exposed
+--     (alias, fullName pkg path alias) : exposed'
+--   fullNames (pkg, path) (Define def) =
+--     map (\(x, _) -> (x, fullName pkg path x)) (getContext (pkg, path) def)
+--   fullNames _ (Test _ _) = []
+--   fullNames (pkg, path) (MetaStmt _ stmt) = fullNames (pkg, path) stmt
 
-instance FullNames String Module where
-  fullNames :: String -> Module -> [(String, String)]
-  fullNames pkg mod = concatMap (fullNames (pkg, mod.name)) mod.stmts
-
-moduleFullNames :: String -> Module -> [(String, String)]
-moduleFullNames pkgName mod = do
-  let ctx = concatMap (getContext (pkgName, mod.name)) mod.stmts
-  map (\(x, _) -> (x, fullName pkgName mod.name x)) ctx
+-- instance FullNames String Module where
+--   fullNames :: String -> Module -> [(String, String)]
+--   fullNames pkg mod = concatMap (fullNames (pkg, mod.name)) mod.stmts
 
 splitWith :: (Char -> Bool) -> String -> [String]
 splitWith f text = case dropWhile f text of
@@ -481,82 +476,78 @@ getPackageName fullName = do
   let (name, _, _) = splitName fullName
   name
 
-class Link a b where
-  link :: a -> b -> [(String, String)]
+class ResolveNames a b where
+  resolveNames :: a -> b -> [(String, String)]
 
-instance Link (String, String) Definition where
-  link :: (String, String) -> Definition -> [(String, String)]
-  link (pkg, mod) (Def ts p b) =
-    map (\x -> (x, fullName pkg mod x)) (freeVars p)
-  link (pkg, mod) (TraitDef ts (t, a) x b) = []
+instance ResolveNames () Package where
+  resolveNames :: () -> Package -> [(String, String)]
+  resolveNames () pkg = error "TODO: resolveNames Package (also rename to resolveNames)"
 
-instance Link (String, String) Stmt where
-  link :: (String, String) -> Stmt -> [(String, String)]
-  link path (Import (pkg', mod') "" exposed) =
-    link path (Import (pkg', mod') mod' exposed)
-  link (pkg, mod) (Import (pkg', mod') alias exposed) = case exposed of
-    [] -> [(alias, fullName pkg mod alias)]
-    (x, "") : exposed ->
-      link (pkg, mod) (Import (pkg', mod') alias ((x, x) : exposed))
+instance ResolveNames () Module where
+  resolveNames :: () -> Module -> [(String, String)]
+  resolveNames () mod = concatMap (resolveNames mod.name) mod.stmts
+
+instance ResolveNames String Definition where
+  resolveNames :: String -> Definition -> [(String, String)]
+  resolveNames m (Def ts p b) =
+    map (\x -> (x, fullName m x)) (freeVars p)
+  resolveNames m (TraitDef ts (t, a) x b) = []
+
+instance ResolveNames String Stmt where
+  resolveNames :: String -> Stmt -> [(String, String)]
+  resolveNames m (Import m' n exposed) = case exposed of
+    [] -> [(n, fullName m n)]
     (_, y) : exposed ->
-      (y, fullName pkg mod y) : link (pkg, mod) (Import (pkg', mod') alias exposed)
-  link path (Define def) = link path def
-  link (pkg, mod) stmt = error "TODO: link Stmt"
-
-instance Link String Module where
-  link :: String -> Module -> [(String, String)]
-  link pkg mod = []
-
-instance Link () Package where
-  link :: () -> Package -> [(String, String)]
-  link () pkg = error "TODO: link Package"
+      (y, fullName m y) : resolveNames m (Import m' n exposed)
+  resolveNames m (Define def) = resolveNames m def
+  resolveNames m stmt = error "TODO: resolveNames Stmt"
 
 class GetContext a b where
   getContext :: a -> b -> Context
 
-instance GetContext (String, String) Stmt where
-  getContext :: (String, String) -> Stmt -> Context
-  getContext (pkg, path) (Import ("", path') alias exposed) =
-    getContext (pkg, path) (Import (pkg, path') alias exposed)
-  getContext (pkg, path) (Import (pkg', path') "" exposed) =
-    getContext (pkg, path) (Import (pkg', path') path' exposed)
-  getContext (pkg, path) (Import (pkg', path') alias exposed) = case exposed of
-    (x, y) : exposed -> do
-      let y' = if y == "" then x else y
-      (fullName pkg path y', Var $ fullName pkg' path' x) : getContext (pkg, path) (Import (pkg', path') alias exposed)
-    [] -> [(fullName pkg path alias, Var $ fullName pkg' path' "")]
-  getContext (pkg, path) (Define def) = getContext (pkg, path) def
-  -- getContext (pkg, path) (Test a p) = []
-  getContext (pkg, path) (Test a p) = do
-    let expect = Case [p] Nothing (ok $ tuple [])
-    let error = Case [PVar "e"] Nothing (err $ Var "e")
-    [("> " ++ show a, match [a] [expect, error])]
-  getContext (pkg, path) (MetaStmt _ stmt) = getContext (pkg, path) stmt
+-- instance GetContext () Package where
+--   getContext :: () -> Package -> Context
+--   getContext () pkg = concatMap (getContext pkg.name) pkg.modules
 
-instance GetContext (String, String) Definition where
-  getContext :: (String, String) -> Definition -> Context
-  getContext (pkg, path) (Def ts (PVar x) b) = case lookup x ts of
-    Just t -> [(fullName pkg path x, Ann b t)]
-    Nothing -> [(fullName pkg path x, b)]
-  getContext (pkg, path) (Def ts p b) = do
-    let def x = let' p b (Var x)
-    let typedDef x = case lookup x ts of
-          Just t -> (fullName pkg path x, Ann (def x) t)
-          Nothing -> (fullName pkg path x, def x)
-    map typedDef (freeVars p)
-  getContext (pkg, path) (TraitDef ts (t, a) x b) =
-    [('.' : x, fun [t, a] b)]
+-- instance GetContext String Module where
+--   getContext :: String -> Module -> Context
+--   getContext pkg mod = do
+--     let name = fullName pkg mod.name ""
+--     let ctx = concatMap (getContext (pkg, mod.name)) mod.stmts
+--     (name, Tag name (map (\(x, _) -> (getName x, Var x)) ctx)) : ctx
 
-instance GetContext String Module where
-  getContext :: String -> Module -> Context
-  getContext pkg mod = do
-    let name = fullName pkg mod.name ""
-    let ctx = concatMap (getContext (pkg, mod.name)) mod.stmts
-    (name, Tag name (map (\(x, _) -> (getName x, Var x)) ctx)) : ctx
+-- instance GetContext (String, String) Stmt where
+--   getContext :: (String, String) -> Stmt -> Context
+--   getContext (pkg, path) (Import ("", path') alias exposed) =
+--     getContext (pkg, path) (Import (pkg, path') alias exposed)
+--   getContext (pkg, path) (Import (pkg', path') "" exposed) =
+--     getContext (pkg, path) (Import (pkg', path') path' exposed)
+--   getContext (pkg, path) (Import (pkg', path') alias exposed) = case exposed of
+--     (x, y) : exposed -> do
+--       let y' = if y == "" then x else y
+--       (fullName pkg path y', Var $ fullName pkg' path' x) : getContext (pkg, path) (Import (pkg', path') alias exposed)
+--     [] -> [(fullName pkg path alias, Var $ fullName pkg' path' "")]
+--   getContext (pkg, path) (Define def) = getContext (pkg, path) def
+--   -- getContext (pkg, path) (Test a p) = []
+--   getContext (pkg, path) (Test a p) = do
+--     let expect = Case [p] Nothing (ok $ tuple [])
+--     let error = Case [PVar "e"] Nothing (err $ Var "e")
+--     [("> " ++ show a, match [a] [expect, error])]
+--   getContext (pkg, path) (MetaStmt _ stmt) = getContext (pkg, path) stmt
 
-instance GetContext () Package where
-  getContext :: () -> Package -> Context
-  getContext () pkg = concatMap (getContext pkg.name) pkg.modules
+-- instance GetContext (String, String) Definition where
+--   getContext :: (String, String) -> Definition -> Context
+--   getContext (pkg, path) (Def ts (PVar x) b) = case lookup x ts of
+--     Just t -> [(fullName pkg path x, Ann b t)]
+--     Nothing -> [(fullName pkg path x, b)]
+--   getContext (pkg, path) (Def ts p b) = do
+--     let def x = let' p b (Var x)
+--     let typedDef x = case lookup x ts of
+--           Just t -> (fullName pkg path x, Ann (def x) t)
+--           Nothing -> (fullName pkg path x, def x)
+--     map typedDef (freeVars p)
+--   getContext (pkg, path) (TraitDef ts (t, a) x b) =
+--     [('.' : x, fun [t, a] b)]
 
 stmtTests :: Stmt -> [(Expr, Pattern)]
 stmtTests (Test expr expected) = [(expr, expected)]
@@ -610,11 +601,11 @@ nameDashCase :: String -> String
 nameDashCase name = nameSplit name & intercalate "-"
 
 isImported :: String -> Stmt -> Bool
-isImported x (Import _ alias exposed) = x == alias || x `elem` map fst exposed
+isImported x (Import _ n exposed) = x == n || x `elem` map fst exposed
 isImported _ _ = False
 
 defined :: Stmt -> [String]
-defined (Import _ alias exposed) = alias : map snd exposed
+defined (Import _ n exposed) = n : map snd exposed
 defined (Define def) = case def of
   Def _ p _ -> freeVars p
   TraitDef _ _ x _ -> [x]
@@ -678,89 +669,193 @@ instance Apply Stmt where
   apply f (Test a b) = Test (apply f a) (apply f b)
   apply f (MetaStmt m a) = MetaStmt m (apply f a)
 
-class Rename a where
-  rename :: String -> String -> a -> a
+class Names path a b where
+  names :: path -> a -> [b]
 
-instance Rename Package where
-  rename :: String -> String -> Package -> Package
-  rename old new pkg =
-    pkg {modules = map (rename old new) pkg.modules}
+instance Names () Package (String, String, String) where
+  names :: () -> Package -> [(String, String, String)]
+  names () pkg = concatMap (names pkg.name) pkg.modules
 
-instance Rename Module where
-  rename :: String -> String -> Module -> Module
-  rename old new mod =
-    mod {stmts = map (rename old new) mod.stmts}
+instance Names String Module (String, String, String) where
+  names :: String -> Module -> [(String, String, String)]
+  names p mod = concatMap (names (p, mod.name)) mod.stmts
 
-instance Rename Stmt where
-  rename :: String -> String -> Stmt -> Stmt
-  rename old new (Import name alias exposed) = do
-    let alias' = rename old new alias
-    let exposed' = map (bimap (rename old new) (rename old new)) exposed
-    Import name alias' exposed'
-  rename old new (Define def) = Define (rename old new def)
-  rename old new (Test a b) = Test (rename old new a) (rename old new b)
-  rename old new (MetaStmt m stmt) = MetaStmt m (rename old new stmt)
+instance Names (String, String) Stmt (String, String, String) where
+  names :: (String, String) -> Stmt -> [(String, String, String)]
+  names (p, m) (Import _ alias exposed) = (p, m, alias) : map ((p,m,) . snd) exposed
+  names (p, m) (Define def) = names (p, m) def
+  names (p, m) (Test _ _) = []
+  names (p, m) (MetaStmt _ stmt) = names (p, m) stmt
 
-instance Rename Definition where
-  rename :: String -> String -> Definition -> Definition
-  rename old new (Def ts p val) = do
-    let ts' = map (bimap (rename old new) (rename old new)) ts
-    let p' = rename old new p
-    let val' = rename old new val
-    Def ts' p' val'
-  rename old new (TraitDef ts (t, a) x val) = do
-    let ts' = map (bimap (rename old new) (rename old new)) ts
-    let x' = rename old new x
-    let val' = rename old new val
-    TraitDef ts' (t, a) x' val'
+instance Names (String, String) Definition (String, String, String) where
+  names :: (String, String) -> Definition -> [(String, String, String)]
+  names (p, m) (Def _ p' _) = map (p,m,) (freeVars p')
+  names (p, m) (TraitDef _ _ x _) = [(p, m, '.' : x)]
 
-instance Rename (String, Expr) where
-  rename :: String -> String -> (String, Expr) -> (String, Expr)
-  rename old new (name, value) =
-    (rename old new name, rename old new value)
+type Substitution = ((String, String), String)
 
-instance Rename Context where
-  rename :: String -> String -> Context -> Context
-  rename old new ctx =
-    foldr (\_ ctx -> map (rename old new) ctx) ctx ctx
+class Rename path a where
+  rename :: path -> [Substitution] -> a -> a
 
-instance Rename Expr where
-  rename :: String -> String -> Expr -> Expr
-  rename old new (Var x) = Var (rename old new x)
-  rename old new (Tag k args) = Tag (rename old new k) (map (rename old new) args)
-  rename old new (Trait a x) = Trait (rename old new a) x
-  rename old new (Let def a) = Let (rename old new def) (rename old new a)
-  rename old new (Match cases) = Match (map (rename old new) cases)
-  rename old new (Meta m a) = Meta m (rename old new a)
-  rename old new expr = apply (rename old new) expr
+instance Rename () Package where
+  rename :: () -> [Substitution] -> Package -> Package
+  rename () s pkg = pkg {modules = map (rename () s) pkg.modules}
 
-instance Rename Pattern where
-  rename :: String -> String -> Pattern -> Pattern
-  rename old new (PVar x) = PVar (rename old new x)
-  rename old new (PTag k ps) = PTag (rename old new k) (map (second $ rename old new) ps)
-  rename old new (PMeta m p) = PMeta m (rename old new p)
-  rename old new p = apply (rename old new) p
+instance Rename () Module where
+  rename :: () -> [Substitution] -> Module -> Module
+  rename () s mod = mod {stmts = map (rename mod.name s) mod.stmts}
 
-instance Rename Case where
-  rename :: String -> String -> Case -> Case
-  rename old new (Case ps guard b) =
-    Case (map (rename old new) ps) (fmap (rename old new) guard) (rename old new b)
+instance Rename String Stmt where
+  rename :: String -> [Substitution] -> Stmt -> Stmt
+  rename m s (Import m' n vars) =
+    Import m' (rename m s n) (map (bimap (rename m' s) (rename m s)) vars)
+  rename m s (Define def) = Define (rename m s def)
 
-instance Rename String where
-  rename :: String -> String -> String -> String
-  rename old new str
-    | str == old = new
-    | otherwise = str
+instance Rename String Definition where
+  rename :: String -> [Substitution] -> Definition -> Definition
+  rename m s (Def ts p b) = Def (map (bimap (rename m s) (rename m s)) ts) (rename m s p) (rename m s b)
+  rename m s (TraitDef ts (a, t) x b) = error "TODO: rename TraitDef"
 
-substitute :: (Rename a) => [(String, String)] -> a -> a
-substitute subs a = foldr (uncurry rename) a subs
+instance Rename String Pattern where
+  rename :: String -> [Substitution] -> Pattern -> Pattern
+  rename _ _ PAny = PAny
+  rename _ _ (PInt i) = PInt i
+  rename _ _ (PNum n) = PNum n
+  rename m s (PVar x) = PVar (rename m s x)
+  rename m s (PTag k ps) = PTag k (map (second $ rename m s) ps)
+  rename m s p = error $ "TODO: rename Pattern " ++ show p
+
+instance Rename String Expr where
+  rename :: String -> [Substitution] -> Expr -> Expr
+  rename m s (Var x) = Var (rename m s x)
+  rename m s a = error $ "TODO: rename Expr " ++ show a
+
+instance Rename String String where
+  rename :: String -> [Substitution] -> String -> String
+  rename _ [] x = x
+  rename m ((sub, y) : s) x
+    | sub == (m, x) = y
+    | otherwise = rename m s x
+
+-- TODO: RenameModule
+-- TODO: RenamePackage
+
+-- class Rename a b where
+--   rename :: a -> String -> String -> b -> b
+
+-- instance Rename () Package where
+--   rename :: () -> String -> String -> Package -> Package
+--   rename () old new pkg =
+--     pkg {modules = map (rename pkg.name old new) pkg.modules}
+
+-- instance Rename String Module where
+--   rename :: String -> String -> String -> Module -> Module
+--   rename pkg old new mod =
+--     mod {stmts = map (rename (pkg, mod.name) old new) mod.stmts}
+
+-- instance Rename (String, String) Stmt where
+--   rename :: (String, String) -> String -> String -> Stmt -> Stmt
+--   rename path old new (Import name alias exposed) = do
+--     let alias' = rename () old new alias
+--     let exposed' = map (bimap (rename () old new) (rename () old new)) exposed
+--     -- Import name alias' exposed'
+--     error "rename Import check path for imported module and exposed"
+--   rename path old new (Define def) = Define (rename () old new def)
+--   rename path old new (Test a b) = Test (rename () old new a) (rename () old new b)
+--   rename path old new (MetaStmt m stmt) = MetaStmt m (rename path old new stmt)
+
+-- instance Rename () Definition where
+--   rename :: () -> String -> String -> Definition -> Definition
+--   rename () old new (Def ts p val) = do
+--     let ts' = map (bimap (rename () old new) (rename () old new)) ts
+--     let p' = rename () old new p
+--     let val' = rename () old new val
+--     Def ts' p' val'
+--   rename () old new (TraitDef ts (t, a) x val) = do
+--     let ts' = map (bimap (rename () old new) (rename () old new)) ts
+--     let x' = rename () old new x
+--     let val' = rename () old new val
+--     TraitDef ts' (t, a) x' val'
+
+-- instance Rename () Context where
+--   rename :: () -> String -> String -> Context -> Context
+--   rename () old new ctx =
+--     foldr (\_ ctx -> map (rename () old new) ctx) ctx ctx
+
+-- instance Rename () Expr where
+--   rename :: () -> String -> String -> Expr -> Expr
+--   rename () old new (Var x) = Var (rename () old new x)
+--   rename () old new (Tag k args) = Tag (rename () old new k) (map (rename () old new) args)
+--   rename () old new (Trait a x) = Trait (rename () old new a) x
+--   rename () old new (Let def a) = Let (rename () old new def) (rename () old new a)
+--   rename () old new (Match cases) = Match (map (rename () old new) cases)
+--   rename () old new (Meta m a) = Meta m (rename () old new a)
+--   rename () old new expr = apply (rename () old new) expr
+
+-- instance Rename () (String, Expr) where
+--   rename :: () -> String -> String -> (String, Expr) -> (String, Expr)
+--   rename () old new (name, value) =
+--     (rename () old new name, rename () old new value)
+
+-- instance Rename () Case where
+--   rename :: () -> String -> String -> Case -> Case
+--   rename () old new (Case ps guard b) =
+--     Case (map (rename () old new) ps) (fmap (rename () old new) guard) (rename () old new b)
+
+-- instance Rename () Pattern where
+--   rename :: () -> String -> String -> Pattern -> Pattern
+--   rename () old new (PVar x) = PVar (rename () old new x)
+--   rename () old new (PTag k ps) = PTag (rename () old new k) (map (second $ rename () old new) ps)
+--   rename () old new (PMeta m p) = PMeta m (rename () old new p)
+--   rename () old new p = apply (rename () old new) p
+
+-- instance Rename () String where
+--   rename :: () -> String -> String -> String -> String
+--   rename () old new str
+--     | str == old = new
+--     | otherwise = str
+
+class Link a where
+  link :: a -> a
+
+instance Link Package where
+  link :: Package -> Package
+  link pkg = pkg
+
+instance Link Module where
+  link :: Module -> Module
+  link mod = mod
+
+instance Link Stmt where
+  link :: Stmt -> Stmt
+  link stmt = stmt
+
+-- instance Link (String, String, String) [Package] where
+--   link :: [((String, String, String), String)] -> [Package] -> [Package]
+--   link subs pkgs = error "TODO: link [Package]"
+
+-- instance Link (String, String, String) Package where
+--   link :: [((String, String, String), String)] -> Package -> Package
+--   link subs pkg = error "TODO: link Package"
+
+-- instance Link (String, String, String) Module where
+--   link :: [((String, String, String), String)] -> Module -> Module
+--   link subs pkg = error "TODO: link Module"
+
+-- instance Link (String, String, String) Stmt where
+--   link :: [((String, String, String), String)] -> Stmt -> Stmt
+--   link subs pkg = error "TODO: link Stmt"
+
+-- substitute :: (Rename a) => [(String, String)] -> a -> a
+-- substitute subs a = foldr (uncurry rename) a subs
 
 refactorName :: ([String] -> Expr -> String -> String) -> Package -> Package
 refactorName f pkg = do
   let refactor :: Module -> Package -> Package
       refactor mod pkg = do
-        let ctx = concatMap (getContext (pkg.name, mod.name)) mod.stmts
-        foldr (\(x, a) -> rename x (f (map fst ctx) a x)) pkg ctx
+        -- let ctx = concatMap (getContext (pkg.name, mod.name)) mod.stmts
+        -- foldr (\(x, a) -> rename () x (f (map fst ctx) a x)) pkg ctx
+        error "TODO: refactorName"
   foldr refactor pkg pkg.modules
 
 class RefactorModuleName a where
@@ -776,7 +871,7 @@ instance RefactorModuleName Module where
 
 instance RefactorModuleName Stmt where
   refactorModuleName :: (FilePath -> FilePath) -> Stmt -> Stmt
-  refactorModuleName f (Import (pkg, path) alias exposed) = error "TODO"
+  refactorModuleName f (Import m n exposed) = error "TODO"
   -- refactorModuleName f (Import name alias exposed) = Import (f name) alias exposed
   refactorModuleName _ stmt = stmt
 
@@ -791,8 +886,9 @@ instance RefactorModuleAlias Module where
   refactorModuleAlias :: (FilePath -> FilePath) -> Module -> Module
   refactorModuleAlias f mod = do
     let names = concatMap importAlias mod.stmts
-    let refactor stmt = foldr (\x -> rename x (f x)) stmt names
-    mod {name = mod.name, stmts = map refactor mod.stmts}
+    -- let refactor stmt = foldr (\x -> rename () x (f x)) stmt names
+    -- mod {name = mod.name, stmts = map (refactor ()) mod.stmts}
+    error "TODO"
 
 importAlias :: Stmt -> [String]
 importAlias (Import _ alias _) = [alias]

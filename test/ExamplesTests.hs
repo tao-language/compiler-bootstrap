@@ -17,8 +17,8 @@ run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do
   let loc name pos = Meta (C.Location name pos)
   let ploc name pos = PMeta (C.Location name pos)
-  let var package filename pos x =
-        loc filename pos (Var $ fullName package (dropExtension filename) x)
+  let var filename pos x =
+        loc filename pos (Var $ fullName (dropExtension filename) x)
   let (x, y, z) = (Var "x", Var "y", Var "z")
 
   let name = "empty.tao"
@@ -46,7 +46,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     pkg <- parsePackage ("examples/" ++ name)
     let expected =
           [ let file = "wrong-result.tao"
-             in TestEqError (var name file (3, 3) "x") (Int 42) (ploc file (4, 1) $ PInt 0)
+             in TestEqError (var file (3, 3) "x") (Int 42) (ploc file (4, 1) $ PInt 0)
           ]
     test pkg `shouldBe` expected
 
