@@ -191,7 +191,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ lower/lift Package" $ do
     let pkg = Package "pkg" [Module "mod" [var "x" y]]
     let env :: C.Env
-        env = [("@pkg:mod", C.Tag "@pkg:mod" [C.Fix "x" (C.Var "@pkg:mod.x")]), ("@pkg:mod.x", C.Var "y")]
+        env = [("mod", C.Tag "mod" [C.Fix "mod.x" (C.Var "mod.x")]), ("mod.x", C.Var "y")]
     lower [] pkg `shouldBe` env
   -- TODO: lift env `shouldBe` pkg
 

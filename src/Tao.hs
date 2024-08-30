@@ -409,9 +409,7 @@ instance Lower Context C.Env where
 
 instance Lower Package C.Env where
   lower :: C.Env -> Package -> C.Env
-  lower env pkg =
-    -- lower env (getContext () pkg)
-    error "TODO: lower Package"
+  lower env pkg = lower env (getContext () pkg)
 
 fullName :: String -> String -> String
 fullName "" name = name
@@ -505,49 +503,45 @@ instance ResolveNames String Stmt where
 class GetContext a b where
   getContext :: a -> b -> Context
 
--- instance GetContext () Package where
---   getContext :: () -> Package -> Context
---   getContext () pkg = concatMap (getContext pkg.name) pkg.modules
+instance GetContext () Package where
+  getContext :: () -> Package -> Context
+  getContext () pkg = concatMap (getContext ()) pkg.modules
 
--- instance GetContext String Module where
---   getContext :: String -> Module -> Context
---   getContext pkg mod = do
---     let name = fullName pkg mod.name ""
---     let ctx = concatMap (getContext (pkg, mod.name)) mod.stmts
---     (name, Tag name (map (\(x, _) -> (getName x, Var x)) ctx)) : ctx
+instance GetContext () Module where
+  getContext :: () -> Module -> Context
+  getContext () mod = do
+    let name = fullName mod.name ""
+    let ctx = concatMap (getContext mod.name) mod.stmts
+    (name, Tag name (map (\(x, _) -> (getName x, Var x)) ctx)) : ctx
 
--- instance GetContext (String, String) Stmt where
---   getContext :: (String, String) -> Stmt -> Context
---   getContext (pkg, path) (Import ("", path') alias exposed) =
---     getContext (pkg, path) (Import (pkg, path') alias exposed)
---   getContext (pkg, path) (Import (pkg', path') "" exposed) =
---     getContext (pkg, path) (Import (pkg', path') path' exposed)
---   getContext (pkg, path) (Import (pkg', path') alias exposed) = case exposed of
---     (x, y) : exposed -> do
---       let y' = if y == "" then x else y
---       (fullName pkg path y', Var $ fullName pkg' path' x) : getContext (pkg, path) (Import (pkg', path') alias exposed)
---     [] -> [(fullName pkg path alias, Var $ fullName pkg' path' "")]
---   getContext (pkg, path) (Define def) = getContext (pkg, path) def
---   -- getContext (pkg, path) (Test a p) = []
---   getContext (pkg, path) (Test a p) = do
---     let expect = Case [p] Nothing (ok $ tuple [])
---     let error = Case [PVar "e"] Nothing (err $ Var "e")
---     [("> " ++ show a, match [a] [expect, error])]
---   getContext (pkg, path) (MetaStmt _ stmt) = getContext (pkg, path) stmt
+instance GetContext String Stmt where
+  getContext :: String -> Stmt -> Context
+  getContext m (Import m' alias exposed) = case exposed of
+    (x, y) : exposed -> do
+      let y' = if y == "" then x else y
+      (fullName m y', Var $ fullName m' x) : getContext m (Import m' alias exposed)
+    [] -> [(fullName m alias, Var $ fullName m' "")]
+  getContext m (Define def) = getContext m def
+  -- getContext (pkg, m) (Test a p) = []
+  getContext m (Test a p) = do
+    let expect = Case [p] Nothing (ok $ tuple [])
+    let error = Case [PVar "e"] Nothing (err $ Var "e")
+    [("> " ++ show a, match [a] [expect, error])]
+  getContext m (MetaStmt _ stmt) = getContext m stmt
 
--- instance GetContext (String, String) Definition where
---   getContext :: (String, String) -> Definition -> Context
---   getContext (pkg, path) (Def ts (PVar x) b) = case lookup x ts of
---     Just t -> [(fullName pkg path x, Ann b t)]
---     Nothing -> [(fullName pkg path x, b)]
---   getContext (pkg, path) (Def ts p b) = do
---     let def x = let' p b (Var x)
---     let typedDef x = case lookup x ts of
---           Just t -> (fullName pkg path x, Ann (def x) t)
---           Nothing -> (fullName pkg path x, def x)
---     map typedDef (freeVars p)
---   getContext (pkg, path) (TraitDef ts (t, a) x b) =
---     [('.' : x, fun [t, a] b)]
+instance GetContext String Definition where
+  getContext :: String -> Definition -> Context
+  getContext m (Def ts (PVar x) b) = case lookup x ts of
+    Just t -> [(fullName m x, Ann b t)]
+    Nothing -> [(fullName m x, b)]
+  getContext m (Def ts p b) = do
+    let def x = let' p b (Var x)
+    let typedDef x = case lookup x ts of
+          Just t -> (fullName m x, Ann (def x) t)
+          Nothing -> (fullName m x, def x)
+    map typedDef (freeVars p)
+  getContext m (TraitDef ts (t, a) x b) =
+    [('.' : x, fun [t, a] b)]
 
 stmtTests :: Stmt -> [(Expr, Pattern)]
 stmtTests (Test expr expected) = [(expr, expected)]
