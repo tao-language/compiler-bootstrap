@@ -314,9 +314,6 @@ instance FreeVars [Case] where
 class Lower a b where
   lower :: C.Env -> a -> b
 
-class Lift a b where
-  lift :: a -> b
-
 instance Lower Expr C.Expr where
   lower :: C.Env -> Expr -> C.Expr
   lower _ (Int i) = C.Int i
@@ -349,6 +346,67 @@ instance Lower Expr C.Expr where
   lower _ Err = C.Err
   lower _ a = error $ "TODO: lower " ++ show a
 
+instance Lower Case C.Expr where
+  lower :: C.Env -> Case -> C.Expr
+  lower env (Case ps guard b) = C.lam (map (lower env) ps) (lower env b)
+
+instance Lower Pattern C.Pattern where
+  lower :: C.Env -> Pattern -> C.Pattern
+  lower _ PAny = C.PAny
+  lower _ (PInt i) = C.PInt i
+  lower _ (PNum n) = C.PNum n
+  lower _ (PVar x) = C.PVar x
+  lower env (PTag k ps)
+    | PTag k ps == pIntT = C.PIntT
+    | PTag k ps == pNumT = C.PNumT
+    | otherwise = C.PTag k (map (lower env . snd) ps)
+  lower env (PFun p q) = C.PFun (lower env p) (lower env q)
+  lower env (POr p q) = error "TODO"
+  lower env (PEq a) = C.PEq (lower env a)
+  lower env (PMeta m p) = C.PMeta m (lower env p)
+  lower _ PErr = C.PErr
+
+instance Lower Stmt C.Env where
+  lower :: C.Env -> Stmt -> C.Env
+  lower env (Import m n xs) = case xs of
+    [] -> [(n, C.Var m)]
+    (x, y) : xs -> (y, C.Var x) : lower env (Import m n xs)
+  lower env (Define def) = lower env def
+  lower env (Test a p) = do
+    let expect = Case [p] Nothing (ok $ tuple [])
+    let error = Case [PVar "e"] Nothing (err $ Var "e")
+    let test = match [a] [expect, error]
+    [("> " ++ show a, lower env test)]
+  lower env (MetaStmt _ stmt) = lower env stmt
+
+instance Lower Definition C.Env where
+  lower :: C.Env -> Definition -> C.Env
+  lower env (Def ts (PVar x) b) = case lookup x ts of
+    Just t -> [(x, lower env (Ann b t))]
+    Nothing -> [(x, lower env b)]
+  lower env (Def ts p b) = do
+    let def x = let' p b (Var x)
+    let typed x = case lookup x ts of
+          Just t -> (x, lower env (Ann (def x) t))
+          Nothing -> (x, lower env (def x))
+    map typed (freeVars p)
+  lower env (TraitDef ts (t, a) x b) =
+    [('.' : x, lower env (fun [t, a] b))]
+
+instance Lower Module C.Env where
+  lower :: C.Env -> Module -> C.Env
+  lower env mod = do
+    let def (m, x) = (x, C.Var (fullName m x))
+    let mod' = C.record mod.name (map def (resolveNames () mod))
+    (mod.name, mod') : concatMap (lower env) mod.stmts
+
+instance Lower Package C.Env where
+  lower :: C.Env -> Package -> C.Env
+  lower env pkg = concatMap (lower env) pkg.modules
+
+class Lift a b where
+  lift :: a -> b
+
 instance Lift C.Expr Expr where
   lift :: C.Expr -> Expr
   lift C.Knd = kind
@@ -375,26 +433,6 @@ instance Lift C.Expr Expr where
   lift (C.Meta m a) = Meta m (lift a)
   lift C.Err = Err
 
-instance Lower Case C.Expr where
-  lower :: C.Env -> Case -> C.Expr
-  lower env (Case ps guard b) = C.lam (map (lower env) ps) (lower env b)
-
-instance Lower Pattern C.Pattern where
-  lower :: C.Env -> Pattern -> C.Pattern
-  lower _ PAny = C.PAny
-  lower _ (PInt i) = C.PInt i
-  lower _ (PNum n) = C.PNum n
-  lower _ (PVar x) = C.PVar x
-  lower env (PTag k ps)
-    | PTag k ps == pIntT = C.PIntT
-    | PTag k ps == pNumT = C.PNumT
-    | otherwise = C.PTag k (map (lower env . snd) ps)
-  lower env (PFun p q) = C.PFun (lower env p) (lower env q)
-  lower env (POr p q) = error "TODO"
-  lower env (PEq a) = C.PEq (lower env a)
-  lower env (PMeta m p) = C.PMeta m (lower env p)
-  lower _ PErr = C.PErr
-
 instance Lift C.Pattern Pattern where
   lift :: C.Pattern -> Pattern
   lift C.PAny = PAny
@@ -403,38 +441,10 @@ instance Lift C.Pattern Pattern where
   lift (C.PVar x) = PVar x
   lift p = error $ "TODO: lift " ++ show p
 
-instance Lower Context C.Env where
-  lower :: C.Env -> Context -> C.Env
-  lower ctx = map (second (lower ctx))
-
-instance Lower Package C.Env where
-  lower :: C.Env -> Package -> C.Env
-  lower env pkg = lower env (getContext () pkg)
-
 fullName :: String -> String -> String
 fullName "" name = name
 fullName mod "" = mod
 fullName mod name = mod ++ '.' : name
-
--- class FullNames a b where
---   fullNames :: a -> b -> [(String, String)]
-
--- instance FullNames (String, String) Stmt where
---   fullNames :: (String, String) -> Stmt -> [(String, String)]
---   fullNames ("", _) _ = error "package name cannot be empty"
---   fullNames (pkg, path) (Import ("", path') alias exposed) =
---     fullNames (pkg, path) (Import (pkg, path') alias exposed)
---   fullNames (pkg, path) (Import (pkg', path') alias exposed) = do
---     let exposed' = map (\(x, y) -> (if y == "" then x else y, fullName pkg path x)) exposed
---     (alias, fullName pkg path alias) : exposed'
---   fullNames (pkg, path) (Define def) =
---     map (\(x, _) -> (x, fullName pkg path x)) (getContext (pkg, path) def)
---   fullNames _ (Test _ _) = []
---   fullNames (pkg, path) (MetaStmt _ stmt) = fullNames (pkg, path) stmt
-
--- instance FullNames String Module where
---   fullNames :: String -> Module -> [(String, String)]
---   fullNames pkg mod = concatMap (fullNames (pkg, mod.name)) mod.stmts
 
 splitWith :: (Char -> Bool) -> String -> [String]
 splitWith f text = case dropWhile f text of
@@ -479,7 +489,7 @@ class ResolveNames a b where
 
 instance ResolveNames () Package where
   resolveNames :: () -> Package -> [(String, String)]
-  resolveNames () pkg = error "TODO: resolveNames Package (also rename to resolveNames)"
+  resolveNames () pkg = concatMap (resolveNames ()) pkg.modules
 
 instance ResolveNames () Module where
   resolveNames :: () -> Module -> [(String, String)]
@@ -488,60 +498,24 @@ instance ResolveNames () Module where
 instance ResolveNames String Definition where
   resolveNames :: String -> Definition -> [(String, String)]
   resolveNames m (Def ts p b) =
-    map (\x -> (x, fullName m x)) (freeVars p)
+    map (m,) (freeVars p)
   resolveNames m (TraitDef ts (t, a) x b) = []
 
 instance ResolveNames String Stmt where
   resolveNames :: String -> Stmt -> [(String, String)]
   resolveNames m (Import m' n exposed) = case exposed of
-    [] -> [(n, fullName m n)]
+    [] -> [(m, n)]
     (_, y) : exposed ->
-      (y, fullName m y) : resolveNames m (Import m' n exposed)
+      (m, y) : resolveNames m (Import m' n exposed)
   resolveNames m (Define def) = resolveNames m def
-  resolveNames m stmt = error "TODO: resolveNames Stmt"
+  resolveNames _ (Test _ _) = []
+  resolveNames m (MetaStmt _ stmt) = resolveNames m stmt
 
-class GetContext a b where
-  getContext :: a -> b -> Context
-
-instance GetContext () Package where
-  getContext :: () -> Package -> Context
-  getContext () pkg = concatMap (getContext ()) pkg.modules
-
-instance GetContext () Module where
-  getContext :: () -> Module -> Context
-  getContext () mod = do
-    let name = fullName mod.name ""
-    let ctx = concatMap (getContext mod.name) mod.stmts
-    (name, Tag name (map (\(x, _) -> (getName x, Var x)) ctx)) : ctx
-
-instance GetContext String Stmt where
-  getContext :: String -> Stmt -> Context
-  getContext m (Import m' alias exposed) = case exposed of
-    (x, y) : exposed -> do
-      let y' = if y == "" then x else y
-      (fullName m y', Var $ fullName m' x) : getContext m (Import m' alias exposed)
-    [] -> [(fullName m alias, Var $ fullName m' "")]
-  getContext m (Define def) = getContext m def
-  -- getContext (pkg, m) (Test a p) = []
-  getContext m (Test a p) = do
-    let expect = Case [p] Nothing (ok $ tuple [])
-    let error = Case [PVar "e"] Nothing (err $ Var "e")
-    [("> " ++ show a, match [a] [expect, error])]
-  getContext m (MetaStmt _ stmt) = getContext m stmt
-
-instance GetContext String Definition where
-  getContext :: String -> Definition -> Context
-  getContext m (Def ts (PVar x) b) = case lookup x ts of
-    Just t -> [(fullName m x, Ann b t)]
-    Nothing -> [(fullName m x, b)]
-  getContext m (Def ts p b) = do
-    let def x = let' p b (Var x)
-    let typedDef x = case lookup x ts of
-          Just t -> (fullName m x, Ann (def x) t)
-          Nothing -> (fullName m x, def x)
-    map typedDef (freeVars p)
-  getContext m (TraitDef ts (t, a) x b) =
-    [('.' : x, fun [t, a] b)]
+link :: Package -> Package
+link pkg = do
+  let sub (m, x) = ((m, x), fullName m x)
+  let names = resolveNames () pkg
+  rename () (map sub names) pkg
 
 stmtTests :: Stmt -> [(Expr, Pattern)]
 stmtTests (Test expr expected) = [(expr, expected)]
@@ -704,6 +678,8 @@ instance Rename String Stmt where
   rename m s (Import m' n vars) =
     Import m' (rename m s n) (map (bimap (rename m' s) (rename m s)) vars)
   rename m s (Define def) = Define (rename m s def)
+  rename m s (Test a p) = Test (rename m s a) (rename m s p)
+  rename m s (MetaStmt m' stmt) = MetaStmt m' (rename m s stmt)
 
 instance Rename String Definition where
   rename :: String -> [Substitution] -> Definition -> Definition
@@ -721,7 +697,11 @@ instance Rename String Pattern where
 
 instance Rename String Expr where
   rename :: String -> [Substitution] -> Expr -> Expr
+  rename _ _ (Int i) = Int i
+  rename _ _ (Num n) = Num n
   rename m s (Var x) = Var (rename m s x)
+  rename m s (Tag k args) = Tag k (map (second (rename m s)) args)
+  rename m s (Trait a x) = Trait (rename m s a) (rename m s x)
   rename m s a = error $ "TODO: rename Expr " ++ show a
 
 instance Rename String String where
@@ -808,37 +788,6 @@ instance Rename String String where
 --   rename () old new str
 --     | str == old = new
 --     | otherwise = str
-
-class Link a where
-  link :: a -> a
-
-instance Link Package where
-  link :: Package -> Package
-  link pkg = pkg
-
-instance Link Module where
-  link :: Module -> Module
-  link mod = mod
-
-instance Link Stmt where
-  link :: Stmt -> Stmt
-  link stmt = stmt
-
--- instance Link (String, String, String) [Package] where
---   link :: [((String, String, String), String)] -> [Package] -> [Package]
---   link subs pkgs = error "TODO: link [Package]"
-
--- instance Link (String, String, String) Package where
---   link :: [((String, String, String), String)] -> Package -> Package
---   link subs pkg = error "TODO: link Package"
-
--- instance Link (String, String, String) Module where
---   link :: [((String, String, String), String)] -> Module -> Module
---   link subs pkg = error "TODO: link Module"
-
--- instance Link (String, String, String) Stmt where
---   link :: [((String, String, String), String)] -> Stmt -> Stmt
---   link subs pkg = error "TODO: link Stmt"
 
 -- substitute :: (Rename a) => [(String, String)] -> a -> a
 -- substitute subs a = foldr (uncurry rename) a subs
@@ -952,10 +901,12 @@ instance DropMeta TestError where
   dropMeta :: TestError -> TestError
   dropMeta (TestEqError a b p) = TestEqError (dropMeta a) (dropMeta b) (dropMeta p)
 
-eval :: [Package] -> Expr -> Either (Expr, C.TypeError) (Expr, Expr)
-eval pkgs expr = do
-  let env = concatMap (lower []) pkgs
-  let expr' = lower env expr
+eval :: Package -> String -> Expr -> Either (Expr, C.TypeError) (Expr, Expr)
+eval pkg m expr = do
+  let names = resolveNames () pkg
+  let s = map (\(m, x) -> ((m, x), fullName m x)) names
+  let env = lower [] (link pkg)
+  let expr' = lower env (rename m s expr)
   let result = C.eval env expr'
   case C.infer env expr' of
     Right (type', _) -> Right (lift result, lift type')
@@ -964,9 +915,9 @@ eval pkgs expr = do
 -- TODO: test :: [Package] -> [TestError]
 test :: Package -> [TestError]
 test pkg = do
-  let env = lower [] pkg
-  let tests = packageTests pkg
-  concatMap (testEq env) (packageTests pkg)
+  let pkg' = link pkg
+  let env = lower [] pkg'
+  concatMap (testEq env) (packageTests pkg')
 
 testEq :: C.Env -> (Expr, Pattern) -> [TestError]
 testEq env (expr, expected) = do

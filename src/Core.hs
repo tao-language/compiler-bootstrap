@@ -220,6 +220,12 @@ or' [] = Err
 or' [a] = a
 or' (a : bs) = Or a (or' bs)
 
+tuple :: [Expr] -> Expr
+tuple = Tag ""
+
+record :: String -> [(String, Expr)] -> Expr
+record k fields = Tag k (map (uncurry Fix) fields)
+
 list :: Expr -> Expr -> [Expr] -> Expr
 list _ nil [] = nil
 list cons nil (a : bs) = app cons [a, list cons nil bs]
