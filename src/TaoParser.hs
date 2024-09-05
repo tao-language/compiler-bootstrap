@@ -133,7 +133,7 @@ parseExprAtom = do
             x | startsWithUpper x -> do
               _ <- P.spaces
               args <- P.zeroOrMore parseExprAtom
-              return (tag name args)
+              return (Tag name args)
             _ -> return (Var name),
         do
           _ <- P.char '.'
@@ -142,7 +142,7 @@ parseExprAtom = do
         Int <$> P.integer,
         Num <$> P.number,
         do
-          a <- parseTuple tuple (parseExpr 0 P.whitespaces)
+          a <- parseTuple Tuple (parseExpr 0 P.whitespaces)
           case a of
             Meta _ a -> return a
             a -> return a,
@@ -269,12 +269,12 @@ parsePattern = do
             x | startsWithUpper x -> do
               _ <- P.spaces
               ps <- P.zeroOrMore parsePattern
-              return (pTag name ps)
+              return (PTag name ps)
             _ -> return (PVar name),
         PInt <$> P.integer,
         PNum <$> P.number,
         do
-          p <- parseTuple pTuple parsePattern
+          p <- parseTuple PTuple parsePattern
           case p of
             PMeta _ p -> return p
             p -> return p
@@ -289,49 +289,11 @@ parseStmt = do
   comments <- P.zeroOrMore parseComment
   stmt <-
     P.oneOf
-      [ fmap Define parseDefinition,
+      [ -- fmap Define parseDefinition,
         parseImport,
         parseTest
       ]
   return (foldr (MetaStmt . C.Comment) stmt comments)
-
-parseTypedDef :: Parser Definition
-parseTypedDef = do
-  (loc, x) <- parseLocation parseIdentifier
-  _ <- P.whitespaces
-  _ <- P.char ':'
-  _ <- P.whitespaces
-  ty <- parseExpr 0 P.spaces
-  _ <- P.char '='
-  _ <- P.whitespaces
-  value <- parseExpr 0 P.spaces
-  return (Def [(x, ty)] (PMeta loc (PVar x)) value)
-
-parseDef :: Parser Definition
-parseDef = do
-  ts <- P.zeroOrMore parseTypeAnnotation
-  p <- parsePattern
-  ps <- P.zeroOrMore parsePattern
-  _ <- P.whitespaces
-  _ <- P.char '='
-  _ <- P.whitespaces
-  value <- parseExpr 0 P.spaces
-  return (Def ts p (match [] [Case ps Nothing value]))
-
-parseTraitDef :: Parser Definition
-parseTraitDef = P.fail'
-
-parseDefinition :: Parser Definition
-parseDefinition = do
-  def <-
-    P.oneOf
-      [ parseTypedDef,
-        parseDef,
-        parseTraitDef
-      ]
-  _ <- parseLineBreak
-  _ <- P.whitespaces
-  return def
 
 parseTypeAnnotation :: Parser (String, Expr)
 parseTypeAnnotation = do

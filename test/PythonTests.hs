@@ -24,13 +24,13 @@ run = describe "--==☯ Python ☯==--" $ do
     emit' (T.Int 42) `shouldBe` ([], Integer 42)
     emit' (T.Num 3.14) `shouldBe` ([], Float 3.14)
     emit' (T.Var "x") `shouldBe` ([], Name "x")
-    emit' (T.tag "Type" []) `shouldBe` ([], Name "type")
-    emit' (T.tag "Int" []) `shouldBe` ([], Name "int")
-    emit' (T.tag "Num" []) `shouldBe` ([], Name "float")
-    emit' (T.tag "A" []) `shouldBe` ([], call "A" [])
-    emit' (T.tag "A" [x, y]) `shouldBe` ([], call "A" [x', y'])
-    emit' (T.tuple []) `shouldBe` ([], Tuple [])
-    emit' (T.tuple [x, y]) `shouldBe` ([], Tuple [x', y'])
+    emit' (T.Tag "Type" []) `shouldBe` ([], Name "type")
+    emit' (T.Tag "Int" []) `shouldBe` ([], Name "int")
+    emit' (T.Tag "Num" []) `shouldBe` ([], Name "float")
+    emit' (T.Tag "A" []) `shouldBe` ([], call "A" [])
+    emit' (T.Tag "A" [x, y]) `shouldBe` ([], call "A" [x', y'])
+    emit' (T.Tuple []) `shouldBe` ([], Tuple [])
+    emit' (T.Tuple [x, y]) `shouldBe` ([], Tuple [x', y'])
     emit' (T.record [("", x), ("b", y)]) `shouldBe` ([], Tuple [x', y'])
     emit' (T.record [("a", x), ("b", y)]) `shouldBe` ([], record [("a", x'), ("b", y')])
     emit' (T.Trait x "y") `shouldBe` ([], Attribute x' "y")
@@ -41,7 +41,7 @@ run = describe "--==☯ Python ☯==--" $ do
     emit' (T.app x [y, z]) `shouldBe` ([], call "x" [y', z'])
     emit' (T.Or x y) `shouldBe` ([], bitOr x' y')
     emit' (T.let' xP y z) `shouldBe` ([assign "x" y'], z')
-    emit' (T.Bind (xP, y) z) `shouldBe` ([assign "x" (call "y" [])], z')
+    -- emit' (T.Bind (xP, y) z) `shouldBe` ([assign "x" (call "y" [])], z')
     -- Lambda [String] Expr
     -- Match [Expr] [Case]
     -- If Expr Expr Expr
@@ -60,7 +60,7 @@ run = describe "--==☯ Python ☯==--" $ do
     emit' (T.Import "mod" "" [("x", "")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Nothing)]]
     emit' (T.Import "mod" "" [("x", "y")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Just "y")]]
     emit' (T.var "x" y) `shouldBe` [Assign [x'] y']
-    emit' (T.var "a" (T.Tag "Point" [("", T.Int 1), ("y", T.Int 2)])) `shouldBe` [Assign [a'] (Call (Name "Point") [Integer 1] [("y", Integer 2)])]
+    emit' (T.var "a" (T.Tag "Point" [T.Int 1, T.Int 2])) `shouldBe` [Assign [a'] (call "Point" [Integer 1, Integer 2])]
     -- emit' (var "a" (Tag "Point" [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]
     -- emit' (varT "a" (Var "Point") (record [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]
     True `shouldBe` True

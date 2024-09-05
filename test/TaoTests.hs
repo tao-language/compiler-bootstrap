@@ -17,18 +17,18 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lambda" $ do
     lambda [] x `shouldBe` x
-    lambda ["x"] y `shouldBe` Match [Case [xP] Nothing y]
-    lambda ["x", "y"] z `shouldBe` Match [Case [xP, yP] Nothing z]
+    lambda ["x"] y `shouldBe` MatchFun [Case [xP] Nothing y]
+    lambda ["x", "y"] z `shouldBe` MatchFun [Case [xP, yP] Nothing z]
 
   it "☯ lambdaOf" $ do
     lambdaOf "$" x `shouldBe` ([], x)
     lambdaOf "$" (Meta (C.Comment "") x) `shouldBe` ([], Meta (C.Comment "") x)
-    lambdaOf "$" (Match []) `shouldBe` ([], Err)
-    lambdaOf "$" (Match [Case [] Nothing x]) `shouldBe` ([], x)
-    lambdaOf "$" (Match [Case [xP] Nothing i1]) `shouldBe` (["x"], i1)
-    lambdaOf "$" (Match [Case [xP] Nothing i1, Case [xP] Nothing i2]) `shouldBe` (["x"], Int 1)
-    lambdaOf "$" (Match [Case [xP] Nothing i1, Case [yP] Nothing i2]) `shouldBe` (["$1"], app (Match [Case [xP] Nothing i1, Case [yP] Nothing i2]) [Var "$1"])
-    lambdaOf "$" (Match [Case [xP, yP] Nothing i1, Case [xP, zP] Nothing i2]) `shouldBe` (["x", "$1"], app (Match [Case [yP] Nothing i1, Case [zP] Nothing i2]) [Var "$1"])
+    lambdaOf "$" (MatchFun []) `shouldBe` ([], Err)
+    lambdaOf "$" (MatchFun [Case [] Nothing x]) `shouldBe` ([], x)
+    lambdaOf "$" (MatchFun [Case [xP] Nothing i1]) `shouldBe` (["x"], i1)
+    lambdaOf "$" (MatchFun [Case [xP] Nothing i1, Case [xP] Nothing i2]) `shouldBe` (["x"], Int 1)
+    lambdaOf "$" (MatchFun [Case [xP] Nothing i1, Case [yP] Nothing i2]) `shouldBe` (["$1"], app (MatchFun [Case [xP] Nothing i1, Case [yP] Nothing i2]) [Var "$1"])
+    lambdaOf "$" (MatchFun [Case [xP, yP] Nothing i1, Case [xP, zP] Nothing i2]) `shouldBe` (["x", "$1"], app (MatchFun [Case [yP] Nothing i1, Case [zP] Nothing i2]) [Var "$1"])
 
   it "☯ lower/lift/eval Type" $ do
     let expr = Tag "Type" []
@@ -73,12 +73,12 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lift term `shouldBe` expr
 
   it "☯ lower/lift Tuple" $ do
-    let expr = tuple []
+    let expr = Tuple []
     let term = C.Tag "" []
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
-    let expr = tuple [x, y]
+    let expr = Tuple [x, y]
     let term = C.Tag "" [x', y']
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
@@ -135,7 +135,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   lift term `shouldBe` expr
 
   it "☯ lower/lift Bind" $ do
-    let expr = Bind (xP, y) z
+    let expr = Bind [] xP y z
     let term = C.app (C.Var ".<-") [C.intT 1, y', C.Lam xP' z']
     lower [("y", C.Int 1)] expr `shouldBe` term
     lift term `shouldBe` expr
@@ -171,7 +171,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lift term `shouldBe` expr
 
   it "☯ lower/lift Op" $ do
-    let expr = Op "+" [x, y]
+    let expr = Call "+" [x, y]
     let term = C.Op "+" [x', y']
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
@@ -191,7 +191,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ lower/lift Package" $ do
     let pkg = Package "pkg" [Module "mod" [var "x" y]]
     let env :: C.Env
-        env = [("mod", C.Tag "mod" [C.Fix "x" (C.Var "mod.x")]), ("x", C.Var "y")]
+        env = [("x", C.Var "y")]
     lower [] pkg `shouldBe` env
   -- TODO: lift env `shouldBe` pkg
 
@@ -343,15 +343,12 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ rename Expr" $ do
     True `shouldBe` True
 
-  it "☯ rename Definition" $ do
-    rename "m" [(("m", "x"), "y")] (Def [("x", x)] xP x) `shouldBe` Def [("y", y)] yP y
-
   it "☯ rename Stmt" $ do
     rename "m" [(("m", "x"), "y")] (Import "m" "x" [("x", "x")]) `shouldBe` Import "m" "y" [("y", "y")]
     rename "m" [(("m", "x"), "y")] (Import "n" "x" [("x", "x")]) `shouldBe` Import "n" "y" [("x", "y")]
     rename "m" [(("n", "x"), "y")] (Import "m" "x" [("x", "x")]) `shouldBe` Import "m" "x" [("x", "x")]
     rename "n" [(("m", "x"), "y")] (Import "m" "x" [("x", "x")]) `shouldBe` Import "m" "x" [("y", "x")]
-    rename "m" [(("m", "x"), "y")] (var "x" z) `shouldBe` var "y" z
+    rename "m" [(("m", "x"), "y")] (Define [("x", x)] xP x) `shouldBe` Define [("y", y)] yP y
 
   it "☯ rename Module" $ do
     True `shouldBe` True
@@ -365,10 +362,10 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     -- rename "x" "z" pkg `shouldBe` pkg {modules = [m1 "z", m2 "z", m3 "z", m4 "z"]}
     True `shouldBe` True
 
-  it "☯ resolveNames Def" $ do
-    let f = resolveNames "mod"
-    f (Def [] xP y) `shouldBe` [("mod", "x")]
-    f (TraitDef [] (Err, Err) "x" y) `shouldBe` []
+  -- it "☯ resolveNames Def" $ do
+  --   let f = resolveNames "mod"
+  --   f (Def [] xP y) `shouldBe` [("mod", "x")]
+  --   f (TraitDef [] (Err, Err) "x" y) `shouldBe` []
 
   it "☯ resolveNames Stmt" $ do
     let f = resolveNames "mod"
@@ -376,17 +373,17 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     f (var "x" y) `shouldBe` [("mod", "x")]
 
   it "☯ resolveNames Module" $ do
-    let f stmts = resolveNames () (Module "mod" stmts)
+    let f stmts = resolveNames "@pkg" (Module "mod" stmts)
     f [] `shouldBe` []
-    f [Import "m" "n" []] `shouldBe` [("mod", "n")]
+    f [Import "m" "n" []] `shouldBe` [("@pkg:mod", "n")]
 
-  it "☯ link Package" $ do
-    let pkg stmts = Package "pkg" [Module "mod" stmts]
-    let f stmts = link (pkg stmts)
-    f [] `shouldBe` pkg []
-    f [Import "m" "n" [("x", "y")]] `shouldBe` pkg [Import "m" "mod.n" [("x", "mod.y")]]
-    f [var "x" y] `shouldBe` pkg [var "mod.x" y]
-    f [var "x" y, var "y" z] `shouldBe` pkg [var "mod.x" (Var "mod.y"), var "mod.y" z]
+  -- it "☯ link Package" $ do
+  --   let pkg stmts = Package "pkg" [Module "mod" stmts]
+  --   let f stmts = link (pkg stmts)
+  --   f [] `shouldBe` pkg []
+  --   f [Import "m" "n" [("x", "y")]] `shouldBe` pkg [Import "m" "mod.n" [("x", "mod.y")]]
+  --   f [var "x" y] `shouldBe` pkg [var "mod.x" y]
+  --   f [var "x" y, var "y" z] `shouldBe` pkg [var "mod.x" (Var "mod.y"), var "mod.y" z]
 
   -- it "☯ getContext Stmt" $ do
   --   let f = getContext ("pkg", "mod")
@@ -436,20 +433,25 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     eval' (Var "y") `shouldBe` Left (Var "y", C.UndefinedVar "y")
     eval' (Var "mod.x") `shouldBe` Right (Int 42, intT' 42)
     eval' (Tag "A" []) `shouldBe` Right (Tag "A" [], Tag "A" [])
-    eval' (Tag "A" [("", x)]) `shouldBe` Right (Tag "A" [("", Int 42)], Tag "A" [("", intT' 42)])
-    eval' (Tag "A" [("x", x)]) `shouldBe` Right (Tag "A" [("x", Int 42)], Tag "A" [("x", intT' 42)])
-    eval' (Trait (Tag "A" [("a", x)]) "a") `shouldBe` Right (Int 42, intT' 42)
-    -- Trait Expr String
-    -- TraitFun String
+    eval' (Tag "A" [x]) `shouldBe` Right (Tag "A" [Int 42], Tag "A" [intT' 42])
+    -- Tuple [Expr]
+    -- Record [(String, Maybe Expr, Maybe Expr)]
     -- Fun Expr Expr
     -- App Expr Expr
     -- Or Expr Expr
-    -- Let Definition Expr
-    -- Bind (Pattern, Expr) Expr
-    -- Match [Case]
-    -- If Expr Expr Expr
-    -- Ann Expr Expr
-    -- Op String [Expr]
+    -- Ann Expr Type
+    -- Call String [Expr]
+    -- Let [(String, Type)] Pattern Expr Expr
+    -- Bind [(String, Type)] Pattern Expr Expr
+    -- Match [Expr] [Case]
+    -- MatchFun [Case]
+    -- Trait Expr String
+    -- TraitFun String
+    -- Select Expr [(String, Expr)]
+    -- SelectFun [(String, Expr)]
+    -- With Expr [(String, Expr)]
+    -- WithFun [(String, Expr)]
+    -- IfElse Expr Expr Expr
     -- Meta C.Metadata Expr
     -- Err
     True `shouldBe` True

@@ -18,7 +18,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let loc name pos = Meta (C.Location name pos)
   let ploc name pos = PMeta (C.Location name pos)
   let var filename pos x =
-        loc filename pos (Var $ fullName (dropExtension filename) x)
+        loc filename pos (Var $ dropExtension filename ++ '.' : x)
   let (x, y, z) = (Var "x", Var "y", Var "z")
 
   let name = "empty.tao"
