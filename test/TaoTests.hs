@@ -84,13 +84,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lift term `shouldBe` expr
 
   it "☯ lower/lift Record" $ do
-    let expr = record []
-    let term = C.Tag "" []
+    let expr = Record []
+    let term = C.Tag "~" []
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
-    let expr = record [("a", x), ("b", y)]
-    let term = C.Tag "" [C.Fix "a" x', C.Fix "b" y']
+    let expr = Record [("a", (Just x, Nothing)), ("b", (Just y, Nothing))]
+    let term = C.Tag "~a,b" [x', y']
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
@@ -288,7 +288,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
             Test y (PInt 3)
           ]
     let pkg = Package {name = "pkg", modules = [Module "mod" defs]}
-    test pkg `shouldBe` [TestEqError (Var "mod.x") (Int 1) (PInt 2)]
+    test pkg `shouldBe` [TestEqError (Var "@pkg:mod.x") (Int 1) (PInt 2)]
 
   it "☯ splitCamelCase" $ do
     splitCamelCase "" `shouldBe` []
@@ -425,13 +425,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ eval" $ do
     let pkg = Package "pkg" [Module "mod" [var "x" (Int 42)]]
-    let eval' = eval pkg "mod"
-    let x = Var "mod.x"
+    let eval' = eval pkg "@pkg:mod"
+    let x = Var "@pkg:mod.x"
     eval' (Int 42) `shouldBe` Right (Int 42, intT' 42)
     eval' (Num 3.14) `shouldBe` Right (Num 3.14, numT' 3.14)
     eval' (Var "x") `shouldBe` Right (Int 42, intT' 42)
     eval' (Var "y") `shouldBe` Left (Var "y", C.UndefinedVar "y")
-    eval' (Var "mod.x") `shouldBe` Right (Int 42, intT' 42)
+    eval' (Var "@pkg:mod.x") `shouldBe` Right (Int 42, intT' 42)
     eval' (Tag "A" []) `shouldBe` Right (Tag "A" [], Tag "A" [])
     eval' (Tag "A" [x]) `shouldBe` Right (Tag "A" [Int 42], Tag "A" [intT' 42])
     -- Tuple [Expr]

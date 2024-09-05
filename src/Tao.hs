@@ -7,6 +7,7 @@ import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, union)
 import Data.List.Split (splitWhen)
+import Data.Maybe (fromMaybe)
 
 data Expr
   = Int Int
@@ -14,7 +15,7 @@ data Expr
   | Var String
   | Tag String [Expr]
   | Tuple [Expr]
-  | Record [(String, Maybe Expr, Maybe Expr)]
+  | Record [(String, (Maybe Expr, Maybe Expr))]
   | Fun Expr Expr
   | App Expr Expr
   | Or Expr Expr
@@ -109,7 +110,7 @@ err :: Expr -> Expr
 err e = Tag "Error" [e]
 
 record :: [(String, Expr)] -> Expr
-record = error "TODO: Tao.record"
+record fields = Record (map (\(x, v) -> (x, (Just v, Nothing))) fields)
 
 pRecord :: [(String, Pattern)] -> Pattern
 pRecord = error "TODO: Tao.pRecord"
@@ -308,9 +309,12 @@ instance Lower Expr C.Expr where
     | Tag k args == kind = C.Knd
     | Tag k args == intT = C.IntT
     | Tag k args == numT = C.NumT
-    | otherwise =
-        -- C.Tag k (map field args)
-        error $ "TODO: lower " ++ show (Tag k args)
+    | otherwise = C.Tag k (map (lower env) args)
+  lower env (Tuple items) = lower env (Tag "" items)
+  lower env (Record fields) = do
+    let k = '~' : intercalate "," (map fst fields)
+    let args = map (fromMaybe Err . fst . snd) fields
+    lower env (Tag k args)
   lower env (Trait a x) = do
     let a' = lower env a
     case C.infer env a' of
@@ -320,10 +324,9 @@ instance Lower Expr C.Expr where
   lower env (Fun a b) = C.Fun (lower env a) (lower env b)
   lower env (App a b) = C.App (lower env a) (lower env b)
   lower env (Or a b) = C.Or (lower env a) (lower env b)
-  lower env (Let ts p a b) =
-    -- Def ts p a -> lower env (match [a] [Case [p] Nothing b])
-    error $ show $ "lower Let " ++ show (Let ts p a b)
+  lower env (Let ts p a b) = lower env (Match [a] [Case [p] Nothing b])
   lower env (Bind ts p a b) = lower env (App (Trait a "<-") (match [] [Case [p] Nothing b]))
+  lower env (Match args cases) = lower env (app (MatchFun cases) args)
   lower env (MatchFun cases) = C.or' (map (lower env) cases)
   lower env (Ann a b) = C.Ann (lower env a) (lower env b)
   lower env (Call op args) = C.Op op (map (lower env) args)
@@ -356,7 +359,9 @@ instance Lower Stmt C.Env where
   lower env (Import m n xs) = case xs of
     [] -> [(n, C.Var m)]
     (x, y) : xs -> (y, C.Var x) : lower env (Import m n xs)
-  lower env (Define ts p a) = error $ "TODO: lower Define " ++ show (ts, p, a)
+  lower env (Define ts p a) = case p of
+    PVar x -> [(x, lower env a)]
+    _ -> error $ "TODO: lower Define " ++ show (ts, p, a)
   lower env (Test a p) = do
     let expect = Case [p] Nothing (ok $ Tuple [])
     let error = Case [PVar "e"] Nothing (err $ Var "e")
@@ -383,6 +388,11 @@ instance Lift C.Expr Expr where
   lift (C.Int i) = Int i
   lift (C.Num n) = Num n
   lift (C.Var x) = Var x
+  lift (C.Tag "" args) = Tuple (map lift args)
+  lift (C.Tag ('~' : names) args) = do
+    let keys = split ',' names
+    let values = map (\a -> (Just $ lift a, Nothing)) args
+    Record (zip keys values)
   lift (C.Tag k args) = Tag k (map lift args)
   lift (C.For _ a) = lift a
   lift (C.Fix _ a) = lift a
@@ -456,6 +466,7 @@ instance ResolveNames String Stmt where
 
 instance ResolveNames String Pattern where
   resolveNames :: String -> Pattern -> [(String, String)]
+  resolveNames m (PVar x) = [(m, x)]
   resolveNames m p = error $ "TODO: resolveNames " ++ show (m, p)
 
 link :: Package -> [Substitution]
@@ -573,11 +584,13 @@ class Rename path a where
 
 instance Rename () Package where
   rename :: () -> [Substitution] -> Package -> Package
-  rename () s pkg = pkg {modules = map (rename () s) pkg.modules}
+  rename () s pkg = pkg {modules = map (rename pkg.name s) pkg.modules}
 
-instance Rename () Module where
-  rename :: () -> [Substitution] -> Module -> Module
-  rename () s mod = mod {stmts = map (rename mod.name s) mod.stmts}
+instance Rename String Module where
+  rename :: String -> [Substitution] -> Module -> Module
+  rename p s mod = do
+    let m = '@' : p ++ ':' : mod.name
+    mod {stmts = map (rename m s) mod.stmts}
 
 instance Rename String Stmt where
   rename :: String -> [Substitution] -> Stmt -> Stmt
@@ -803,7 +816,6 @@ eval pkg m expr = do
     Right (type', _) -> Right (lift result, lift type')
     Left e -> Left (lift result, e)
 
--- TODO: test :: [Package] -> [TestError]
 test :: Package -> [TestError]
 test pkg = do
   let s = link pkg
