@@ -45,6 +45,15 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "dash-case-name - 1" `shouldBe` Right ("dash-case-name", " - 1")
     p "a->" `shouldBe` Right ("a", "->")
 
+  it "☯ parseName" $ do
+    let p = parse' parseName
+    p "name" `shouldBe` Right ("name", "")
+    p "@package" `shouldBe` Right ("@package", "")
+    p "@package.name" `shouldBe` Right ("@package.name", "")
+    p "@package:module" `shouldBe` Right ("@package:module", "")
+    p "@package:module.name" `shouldBe` Right ("@package:module.name", "")
+    p "@package:path/to/module.name" `shouldBe` Right ("@package:path/to/module.name", "")
+
   it "☯ parseLineBreak" $ do
     let p = parse' parseLineBreak
     p "" `shouldBe` Right ("", "")
@@ -187,6 +196,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "42" `shouldBe` Right (meta [loc 1 1] $ Int 42, "")
     p "3.14" `shouldBe` Right (meta [loc 1 1] $ Num 3.14, "")
     p "var" `shouldBe` Right (meta [loc 1 1] $ Var "var", "")
+    p "@pkg:mod.name" `shouldBe` Right (meta [loc 1 1] $ Var "@pkg:mod.name", "")
     p "Tag" `shouldBe` Right (meta [loc 1 1] $ Tag "Tag" [], "")
     p "x => y" `shouldBe` Right (match [] [Case [pvar 1 1 "x"] Nothing (var 1 6 "y")], "")
     p "x => y\na => b" `shouldBe` Right (match [] [Case [pvar 1 1 "x"] Nothing (var 1 6 "y"), Case [pvar 2 1 "a"] Nothing (var 2 6 "b")], "")
@@ -229,7 +239,10 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "import mod as m ()" `shouldBe` Right (Import "mod" "m" [], "")
     p "import mod as m (a, b as c)" `shouldBe` Right (Import "mod" "m" [("a", "a"), ("b", "c")], "")
     p "import @pkg" `shouldBe` Right (Import "@pkg" "pkg" [], "")
-    p "import @pkg/path/to/mod" `shouldBe` Right (Import "@pkg/path/to/mod" "mod" [], "")
+    p "import @pkg as p" `shouldBe` Right (Import "@pkg" "p" [], "")
+    p "import @pkg:path/to/mod" `shouldBe` Right (Import "@pkg:path/to/mod" "mod" [], "")
+    p "import @pkg:path/to/mod as m" `shouldBe` Right (Import "@pkg:path/to/mod" "m" [], "")
+    True `shouldBe` True
 
   it "☯ parseTest" $ do
     let p = parse' parseTest

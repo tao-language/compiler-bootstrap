@@ -467,6 +467,7 @@ instance ResolveNames String Stmt where
 instance ResolveNames String Pattern where
   resolveNames :: String -> Pattern -> [(String, String)]
   resolveNames m (PVar x) = [(m, x)]
+  resolveNames m (PMeta _ p) = resolveNames m p
   resolveNames m p = error $ "TODO: resolveNames " ++ show (m, p)
 
 link :: Package -> [Substitution]
@@ -609,6 +610,7 @@ instance Rename String Pattern where
   rename _ _ (PNum n) = PNum n
   rename m s (PVar x) = PVar (rename m s x)
   rename m s (PTag k ps) = PTag k (map (rename m s) ps)
+  rename m s (PMeta m' p) = PMeta m' (rename m s p)
   rename m s p = error $ "TODO: rename Pattern " ++ show p
 
 instance Rename String Expr where
@@ -618,6 +620,7 @@ instance Rename String Expr where
   rename m s (Var x) = Var (rename m s x)
   rename m s (Tag k args) = Tag k (map (rename m s) args)
   rename m s (Trait a x) = Trait (rename m s a) (rename m s x)
+  rename m s (Meta m' a) = Meta m' (rename m s a)
   rename m s a = error $ "TODO: rename Expr " ++ show a
 
 instance Rename String String where

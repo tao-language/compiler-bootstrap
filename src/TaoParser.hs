@@ -53,6 +53,19 @@ parseIdentifier = do
     name | name `elem` keywords -> P.fail'
     name -> return name
 
+parseName :: Parser String
+parseName = do
+  let name = parseIdentifier
+  let pkg = P.concat [P.text "@", name]
+  let mod = P.concat [name, fmap concat (P.zeroOrMore (P.concat [P.text "/", name]))]
+  P.oneOf
+    [ P.concat [pkg, P.text ":", mod, P.text ".", name],
+      P.concat [pkg, P.text ":", mod],
+      P.concat [pkg, P.text ".", name],
+      pkg,
+      name
+    ]
+
 parseLineBreak :: Parser String
 parseLineBreak = do
   P.oneOf
@@ -128,7 +141,7 @@ parseExprAtom = do
   (loc, a) <-
     (parseLocation . P.oneOf)
       [ do
-          name <- parseIdentifier
+          name <- parseName
           case name of
             x | startsWithUpper x -> do
               _ <- P.spaces
@@ -289,11 +302,52 @@ parseStmt = do
   comments <- P.zeroOrMore parseComment
   stmt <-
     P.oneOf
-      [ -- fmap Define parseDefinition,
+      [ fmap (\(ts, p, a) -> Define ts p a) parseDefinition,
         parseImport,
         parseTest
       ]
   return (foldr (MetaStmt . C.Comment) stmt comments)
+
+parseDefinition :: Parser ([(String, Type)], Pattern, Expr)
+parseDefinition = do
+  ts <- P.zeroOrMore $ do
+    x <- parseIdentifier
+    _ <- P.spaces
+    _ <- P.char ':'
+    _ <- P.spaces
+    t <- parseExpr 0 P.spaces
+    _ <- parseLineBreak
+    return (x, t)
+  (ts, p, a) <-
+    P.oneOf
+      [ do
+          x <- parseIdentifier
+          _ <- P.spaces
+          _ <- P.char ':'
+          _ <- P.spaces
+          t <- parseExpr 0 P.spaces
+          _ <- P.char '='
+          _ <- P.spaces
+          a <- parseExpr 0 P.spaces
+          return ((x, t) : ts, PVar x, a),
+        do
+          x <- parseIdentifier
+          _ <- P.spaces
+          ps <- P.oneOrMore parsePattern
+          _ <- P.char '='
+          _ <- P.spaces
+          a <- parseExpr 0 P.spaces
+          return (ts, PVar x, MatchFun [Case ps Nothing a]),
+        do
+          p <- parsePattern
+          _ <- P.char '='
+          _ <- P.spaces
+          a <- parseExpr 0 P.spaces
+          return (ts, p, a)
+      ]
+  _ <- parseLineBreak
+  _ <- P.whitespaces
+  return (ts, p, a)
 
 parseTypeAnnotation :: Parser (String, Expr)
 parseTypeAnnotation = do
@@ -311,24 +365,24 @@ parseImport = do
   (loc, _) <- parseLocation (P.word "import")
   P.commit CImport
   _ <- P.spaces
-  (path, name) <- do
-    prefix <- P.oneOf [P.text "@", P.text ""]
-    path <- P.zeroOrMore $ do
-      path <- parseIdentifier
-      _ <- P.char '/'
-      return path
-    name <- parseIdentifier
-    return (prefix ++ intercalate "/" (path ++ [name]), name)
+  m <-
+    P.oneOf
+      [ P.concat [parseIdentifier, fmap concat (P.zeroOrMore (P.concat [P.text "/", parseIdentifier]))],
+        parseName
+      ]
   _ <- P.spaces
-  alias <-
+  n <-
     P.oneOf
       [ do
           _ <- P.word "as"
           _ <- P.spaces
-          alias <- parseIdentifier
+          n <- parseIdentifier
           _ <- P.spaces
-          return alias,
-        return name
+          return n,
+        return $ case splitName m of
+          (pkg, "", "") -> pkg
+          (_, mod, "") -> last (split '/' mod)
+          (_, _, name) -> last (split '/' name)
       ]
   exposing <-
     P.oneOf
@@ -348,7 +402,7 @@ parseImport = do
       ]
   _ <- parseLineBreak
   _ <- P.whitespaces
-  return (Import path alias exposing)
+  return (Import m n exposing)
 
 parseTest :: P.Parser ParserContext Stmt
 parseTest = do
