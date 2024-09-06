@@ -216,14 +216,27 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "x\ny" `shouldBe` Right (meta [loc 1 1] $ Var "x", "\ny")
     p "(x\ny)" `shouldBe` Right (meta [loc 1 1] $ App (var 1 2 "x") (var 2 1 "y"), "")
 
-  -- it "☯ parseDefinition" $ do
-  --   let p = parse' parseDefinition
-  --   p "x = y" `shouldBe` Right (Def [] (pvar 1 1 "x") (var 1 5 "y"), "")
-  --   p "x = y;" `shouldBe` Right (Def [] (pvar 1 1 "x") (var 1 5 "y"), "")
-  --   p "x = y\n" `shouldBe` Right (Def [] (pvar 1 1 "x") (var 1 5 "y"), "")
-  --   p "x =\ny" `shouldBe` Right (Def [] (pvar 1 1 "x") (var 2 1 "y"), "")
-  --   p "x\n= y" `shouldBe` Right (Def [] (pvar 1 1 "x") (var 2 3 "y"), "")
-  --   p "x : a = y" `shouldBe` Right (Def [("x", var 1 5 "a")] (pvar 1 1 "x") (var 1 9 "y"), "")
+  it "☯ parseDefinition" $ do
+    let p = parse' parseDefinition
+    p "x = y" `shouldBe` Right (DefVar "x" Nothing (var 1 5 "y"), "")
+    p "x : a = y" `shouldBe` Right (DefVar "x" (Just $ var 1 5 "a") (var 1 9 "y"), "")
+
+  it "☯ parseDefVar" $ do
+    let p = parse' parseDefVar
+    p "x = y" `shouldBe` Right (DefVar "x" Nothing (var 1 5 "y"), "")
+    p "x = y;" `shouldBe` Right (DefVar "x" Nothing (var 1 5 "y"), "")
+    p "x = y\n" `shouldBe` Right (DefVar "x" Nothing (var 1 5 "y"), "")
+    p "x =\ny" `shouldBe` Right (DefVar "x" Nothing (var 2 1 "y"), "")
+    p "x\n= y" `shouldBe` Right (DefVar "x" Nothing (var 2 3 "y"), "")
+    p "x : a = y" `shouldBe` Right (DefVar "x" (Just $ var 1 5 "a") (var 1 9 "y"), "")
+
+  it "☯ parseDefFun" $ do
+    let p = parse' parseDefFun
+    p "x = y" `shouldBe` Right (DefVar "x" Nothing (var 1 5 "y"), "")
+    p "x y = z" `shouldBe` Right (DefVar "x" Nothing (MatchFun [Case [pvar 1 3 "y"] Nothing (var 1 7 "z")]), "")
+    p "x : a\nx = y" `shouldBe` Right (DefVar "x" (Just $ var 1 5 "a") (var 2 5 "y"), "")
+    p "x : a; x = y" `shouldBe` Right (DefVar "x" (Just $ var 1 5 "a") (var 1 12 "y"), "")
+    p "x : a\nx y = z" `shouldBe` Right (DefVar "x" (Just $ var 1 5 "a") (MatchFun [Case [pvar 2 3 "y"] Nothing (var 2 7 "z")]), "")
 
   it "☯ parseTypeAnnotation" $ do
     let p = parse' parseTypeAnnotation

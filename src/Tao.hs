@@ -21,7 +21,7 @@ data Expr
   | Or Expr Expr
   | Ann Expr Type
   | Call String [Expr]
-  | Let [(String, Type)] Pattern Expr Expr
+  | Let Definition Expr
   | Bind [(String, Type)] Pattern Expr Expr
   | Match [Expr] [Case]
   | MatchFun [Case]
@@ -56,9 +56,18 @@ data Pattern
 
 data Stmt
   = Import String String [(String, String)] -- import @pkg:module as alias (a, b, c)
-  | Define [(String, Type)] Pattern Expr
+  | Def Definition
   | Test Expr Pattern
   | MetaStmt C.Metadata Stmt
+  deriving (Eq, Show)
+
+data Definition
+  = DefVar String (Maybe Type) Expr
+  | DefTag [(String, Type)] String [Pattern] Expr
+  | DefTuple [(String, Type)] [Pattern] Expr
+  | DefRecord [(String, Type)] [(String, Pattern)] Expr
+  | DefTrait Pattern String (Maybe Type) Expr
+  | DefMeta C.Metadata Definition
   deriving (Eq, Show)
 
 data Module = Module
@@ -164,9 +173,6 @@ patternsName (p : ps) = case p of
   PMeta _ p -> patternsName (p : ps)
   _ -> patternsName ps
 
-let' :: Pattern -> Expr -> Expr -> Expr
-let' = Let []
-
 fun :: [Expr] -> Expr -> Expr
 fun ps b = foldr Fun b ps
 
@@ -202,15 +208,6 @@ int2num a = Call "i2n" [a]
 meta :: [C.Metadata] -> Expr -> Expr
 meta ms a = foldr Meta a ms
 
-var :: String -> Expr -> Stmt
-var name = Define [] (PVar name)
-
-varT :: String -> Expr -> Expr -> Stmt
-varT name typ = Define [(name, typ)] (PVar name)
-
-fn :: String -> [Pattern] -> Expr -> Stmt
-fn name args value = Define [] (PVar name) (match [] [Case args Nothing value])
-
 app :: Expr -> [Expr] -> Expr
 app = foldl App
 
@@ -231,6 +228,24 @@ importFrom m names = Import m "" (map (,"") names)
 importAll :: String -> Stmt
 importAll m = Import m "" [("*", "")]
 
+letVar :: String -> Expr -> Expr -> Expr
+letVar x a = Let (DefVar x Nothing a)
+
+letVarT :: String -> Type -> Expr -> Expr -> Expr
+letVarT x t a = Let (DefVar x (Just t) a)
+
+defVar :: String -> Expr -> Stmt
+defVar x a = Def (DefVar x Nothing a)
+
+defVarT :: String -> Type -> Expr -> Stmt
+defVarT x t a = Def (DefVar x (Just t) a)
+
+-- \| DefTag [(String, Type)] String [Pattern] Expr
+-- \| DefTuple [(String, Type)] [Pattern] Expr
+-- \| DefRecord [(String, Type)] [(String, Pattern)] Expr
+-- \| DefTrait Pattern String (Maybe Type) Expr
+-- \| DefMeta C.Metadata Definition
+
 isImport :: Stmt -> Bool
 isImport Import {} = True
 isImport _ = False
@@ -241,7 +256,7 @@ isTest (MetaStmt _ stmt) = isTest stmt
 isTest _ = False
 
 isDefine :: Stmt -> Bool
-isDefine Define {} = True
+isDefine Def {} = True
 isDefine (MetaStmt _ stmt) = isDefine stmt
 isDefine _ = False
 
@@ -324,7 +339,7 @@ instance Lower Expr C.Expr where
   lower env (Fun a b) = C.Fun (lower env a) (lower env b)
   lower env (App a b) = C.App (lower env a) (lower env b)
   lower env (Or a b) = C.Or (lower env a) (lower env b)
-  lower env (Let ts p a b) = lower env (Match [a] [Case [p] Nothing b])
+  lower env (Let def b) = lower (lower env def ++ env) b
   lower env (Bind ts p a b) = lower env (App (Trait a "<-") (match [] [Case [p] Nothing b]))
   lower env (Match args cases) = lower env (app (MatchFun cases) args)
   lower env (MatchFun cases) = C.or' (map (lower env) cases)
@@ -333,6 +348,18 @@ instance Lower Expr C.Expr where
   lower env (Meta m a) = C.Meta m (lower env a)
   lower _ Err = C.Err
   lower _ a = error $ "TODO: lower " ++ show a
+
+instance Lower Definition C.Env where
+  lower :: C.Env -> Definition -> C.Env
+  lower env (DefVar x t a) = case t of
+    Just t -> [(x, lower env (Ann a t))]
+    Nothing -> [(x, lower env a)]
+  -- lower env (DefTag ts k ps a) = DefTag (map (second $ lower env) ts) k (map (lower env) ps) (lower env a)
+  -- lower env (DefTuple ts ps a) = DefTuple (map (second $ lower env) ts) (map (lower env) ps) (lower env a)
+  -- lower env (DefRecord ts kvs a) = DefRecord (map (second $ lower env) ts) (map (second $ lower env) kvs) (lower env a)
+  -- lower env (DefTrait p x t a) = DefTrait (lower env p) x (fmap (lower env) t) (lower env a)
+  -- lower env (DefMeta m def) = DefMeta m (lower env def)
+  lower env def = error $ "TODO lower Definition " ++ show def
 
 instance Lower Case C.Expr where
   lower :: C.Env -> Case -> C.Expr
@@ -348,6 +375,7 @@ instance Lower Pattern C.Pattern where
     | PTag k ps == pIntT = C.PIntT
     | PTag k ps == pNumT = C.PNumT
     | otherwise = C.PTag k (map (lower env) ps)
+  lower env (PTuple ps) = lower env (PTag "" ps)
   lower env (PFun p q) = C.PFun (lower env p) (lower env q)
   lower env (POr p q) = error "TODO"
   lower env (PEq a) = C.PEq (lower env a)
@@ -359,9 +387,7 @@ instance Lower Stmt C.Env where
   lower env (Import m n xs) = case xs of
     [] -> [(n, C.Var m)]
     (x, y) : xs -> (y, C.Var x) : lower env (Import m n xs)
-  lower env (Define ts p a) = case p of
-    PVar x -> [(x, lower env a)]
-    _ -> error $ "TODO: lower Define " ++ show (ts, p, a)
+  lower env (Def def) = lower env def
   lower env (Test a p) = do
     let expect = Case [p] Nothing (ok $ Tuple [])
     let error = Case [PVar "e"] Nothing (err $ Var "e")
@@ -460,9 +486,18 @@ instance ResolveNames String Stmt where
     [] -> [(m, n)]
     (_, y) : exposed ->
       (m, y) : resolveNames m (Import m' n exposed)
-  resolveNames m (Define ts p a) = resolveNames m p
+  resolveNames m (Def def) = resolveNames m def
   resolveNames _ (Test _ _) = []
   resolveNames m (MetaStmt _ stmt) = resolveNames m stmt
+
+instance ResolveNames String Definition where
+  resolveNames :: String -> Definition -> [(String, String)]
+  resolveNames m (DefVar x t a) = [(m, x)]
+  resolveNames m (DefTag ts k ps a) = concatMap (resolveNames m) ps
+  resolveNames m (DefTuple ts ps a) = concatMap (resolveNames m) ps
+  resolveNames m (DefRecord ts kvs a) = concatMap (resolveNames m . snd) kvs
+  resolveNames m (DefTrait p x t a) = [(m, '.' : x)]
+  resolveNames m (DefMeta _ def) = resolveNames m def
 
 instance ResolveNames String Pattern where
   resolveNames :: String -> Pattern -> [(String, String)]
@@ -538,13 +573,13 @@ instance Apply Expr where
   apply _ (Int i) = Int i
   apply _ (Num n) = Num n
   apply _ (Var x) = Var x
-  apply f (Tag k args) = Tag k (map f args)
-  apply f (Tuple items) = Tuple (map f items)
-  apply f (Record fields) = Record (map (\(x, (a, b)) -> (x, (fmap f a, fmap f b))) fields)
-  apply f (Fun a b) = Fun (f a) (f b)
-  apply f (App a b) = App (f a) (f b)
-  apply f (Or a b) = Or (f a) (f b)
-  apply f (Let ts p a b) = Let (map (second $ apply f) ts) (apply f p) (apply f a) (apply f b)
+  apply f (Tag k args) = Tag k (map (apply f) args)
+  apply f (Tuple items) = Tuple (map (apply f) items)
+  apply f (Record fields) = Record (map (\(x, (a, b)) -> (x, (fmap (apply f) a, fmap (apply f) b))) fields)
+  apply f (Fun a b) = Fun (apply f a) (apply f b)
+  apply f (App a b) = App (apply f a) (apply f b)
+  apply f (Or a b) = Or (apply f a) (apply f b)
+  apply f (Let def b) = Let (apply f def) (apply f b)
   apply f (Bind ts p a b) = Bind (map (second $ apply f) ts) (apply f p) (apply f a) (apply f b)
   apply f (MatchFun cases) = MatchFun (map (apply f) cases)
   apply f (Trait a x) = Trait (f a) x
@@ -576,9 +611,18 @@ instance Apply Case where
 instance Apply Stmt where
   apply :: (Expr -> Expr) -> Stmt -> Stmt
   apply _ stmt@Import {} = stmt
-  apply f (Define ts p a) = Define (map (second $ apply f) ts) (apply f p) (apply f a)
+  apply f (Def def) = Def (apply f def)
   apply f (Test a b) = Test (apply f a) (apply f b)
   apply f (MetaStmt m a) = MetaStmt m (apply f a)
+
+instance Apply Definition where
+  apply :: (Expr -> Expr) -> Definition -> Definition
+  apply f (DefVar x t a) = DefVar x (fmap (apply f) t) (apply f a)
+  apply f (DefTag ts k ps a) = DefTag (map (second $ apply f) ts) k (map (apply f) ps) (apply f a)
+  apply f (DefTuple ts ps a) = DefTuple (map (second $ apply f) ts) (map (apply f) ps) (apply f a)
+  apply f (DefRecord ts kvs a) = DefRecord (map (second $ apply f) ts) (map (second $ apply f) kvs) (apply f a)
+  apply f (DefTrait p x t a) = DefTrait (apply f p) x (fmap (apply f) t) (apply f a)
+  apply f (DefMeta m def) = DefMeta m (apply f def)
 
 type Substitution = ((String, String), String)
 
@@ -599,9 +643,18 @@ instance Rename String Stmt where
   rename :: String -> [Substitution] -> Stmt -> Stmt
   rename m s (Import m' n vars) =
     Import m' (rename m s n) (map (bimap (rename m' s) (rename m s)) vars)
-  rename m s (Define ts p a) = Define (map (bimap (rename m s) (rename m s)) ts) (rename m s p) (rename m s a)
+  rename m s (Def def) = Def (rename m s def)
   rename m s (Test a p) = Test (rename m s a) (rename m s p)
   rename m s (MetaStmt m' stmt) = MetaStmt m' (rename m s stmt)
+
+instance Rename String Definition where
+  rename :: String -> [Substitution] -> Definition -> Definition
+  rename m s (DefVar x t a) = DefVar (rename m s x) (fmap (rename m s) t) (rename m s a)
+  rename m s (DefTag ts k ps a) = DefTag (map (second $ rename m s) ts) k (map (rename m s) ps) (rename m s a)
+  rename m s (DefTuple ts ps a) = DefTuple (map (second $ rename m s) ts) (map (rename m s) ps) (rename m s a)
+  rename m s (DefRecord ts kvs a) = DefRecord (map (second $ rename m s) ts) (map (second $ rename m s) kvs) (rename m s a)
+  rename m s (DefTrait p x t a) = DefTrait (rename m s p) x (fmap (rename m s) t) (rename m s a)
+  rename m s (DefMeta m' def) = DefMeta m' (rename m s def)
 
 instance Rename String Pattern where
   rename :: String -> [Substitution] -> Pattern -> Pattern
@@ -610,6 +663,7 @@ instance Rename String Pattern where
   rename _ _ (PNum n) = PNum n
   rename m s (PVar x) = PVar (rename m s x)
   rename m s (PTag k ps) = PTag k (map (rename m s) ps)
+  rename m s (PTuple ps) = PTuple (map (rename m s) ps)
   rename m s (PMeta m' p) = PMeta m' (rename m s p)
   rename m s p = error $ "TODO: rename Pattern " ++ show p
 
@@ -619,9 +673,23 @@ instance Rename String Expr where
   rename _ _ (Num n) = Num n
   rename m s (Var x) = Var (rename m s x)
   rename m s (Tag k args) = Tag k (map (rename m s) args)
+  rename m s (Tuple args) = Tuple (map (rename m s) args)
+  rename m s (Record fields) = do
+    let renameField (x, (ma, mb)) =
+          (rename m s x, (fmap (rename m s) ma, fmap (rename m s) mb))
+    Record (map renameField fields)
+  rename m s (App a b) = App (rename m s a) (rename m s b)
+  rename m s (MatchFun cases) = MatchFun (map (rename m s) cases)
   rename m s (Trait a x) = Trait (rename m s a) (rename m s x)
+  rename m s (TraitFun x) = TraitFun (rename m s x)
+  rename m s (Call f args) = Call f (map (rename m s) args)
   rename m s (Meta m' a) = Meta m' (rename m s a)
   rename m s a = error $ "TODO: rename Expr " ++ show a
+
+instance Rename String Case where
+  rename :: String -> [Substitution] -> Case -> Case
+  rename m s (Case ps cond a) =
+    Case (map (rename m s) ps) (fmap (rename m s) cond) (rename m s a)
 
 instance Rename String String where
   rename :: String -> [Substitution] -> String -> String
@@ -795,9 +863,18 @@ instance DropMeta Case where
 instance DropMeta Stmt where
   dropMeta :: Stmt -> Stmt
   dropMeta stmt@Import {} = stmt
-  dropMeta (Define ts p a) = Define (map (second dropMeta) ts) (dropMeta p) (dropMeta a)
+  dropMeta (Def def) = Def (dropMeta def)
   dropMeta (Test a b) = Test (dropMeta a) (dropMeta b)
   dropMeta (MetaStmt _ stmt) = dropMeta stmt
+
+instance DropMeta Definition where
+  dropMeta :: Definition -> Definition
+  dropMeta (DefVar x t a) = DefVar x (fmap dropMeta t) (dropMeta a)
+  dropMeta (DefTag ts k ps a) = DefTag (map (second dropMeta) ts) k (map dropMeta ps) (dropMeta a)
+  dropMeta (DefTuple ts ps a) = DefTuple (map (second dropMeta) ts) (map dropMeta ps) (dropMeta a)
+  dropMeta (DefRecord ts kvs a) = DefRecord (map (second dropMeta) ts) (map (second dropMeta) kvs) (dropMeta a)
+  dropMeta (DefTrait p x t a) = DefTrait (dropMeta p) x (fmap dropMeta t) (dropMeta a)
+  dropMeta (DefMeta m def) = DefMeta m (dropMeta def)
 
 instance DropMeta Module where
   dropMeta :: Module -> Module
@@ -837,7 +914,7 @@ testEq env (expr, expected) = do
   --   C.Err -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
   --   C.Op2 C.Eq _ _ -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
   --   _ -> []
-  let unitTest = lower env (let' expected expr (Tuple []))
+  let unitTest = lower env $ Match [expr] [Case [expected] Nothing (Tuple [])]
   let passed = case C.eval env unitTest of
         C.Err -> False
         -- C.Op2 C.Eq _ _ -> False

@@ -189,7 +189,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lift term `shouldBe` expr
 
   it "☯ lower/lift Package" $ do
-    let pkg = Package "pkg" [Module "mod" [var "x" y]]
+    let pkg = Package "pkg" [Module "mod" [defVar "x" y]]
     let env :: C.Env
         env = [("x", C.Var "y")]
     lower [] pkg `shouldBe` env
@@ -274,7 +274,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ packageTests" $ do
     let defs =
-          [ var "x" (Int 1),
+          [ defVar "x" (Int 1),
             Test x (PInt 2)
           ]
     let mod = Package {name = "pkg", modules = [Module "mod" defs]}
@@ -282,9 +282,9 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ test" $ do
     let defs =
-          [ var "x" (Int 1),
+          [ defVar "x" (Int 1),
             Test x (PInt 2),
-            var "y" (Int 3),
+            defVar "y" (Int 3),
             Test y (PInt 3)
           ]
     let pkg = Package {name = "pkg", modules = [Module "mod" defs]}
@@ -348,7 +348,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     rename "m" [(("m", "x"), "y")] (Import "n" "x" [("x", "x")]) `shouldBe` Import "n" "y" [("x", "y")]
     rename "m" [(("n", "x"), "y")] (Import "m" "x" [("x", "x")]) `shouldBe` Import "m" "x" [("x", "x")]
     rename "n" [(("m", "x"), "y")] (Import "m" "x" [("x", "x")]) `shouldBe` Import "m" "x" [("y", "x")]
-    rename "m" [(("m", "x"), "y")] (Define [("x", x)] xP x) `shouldBe` Define [("y", y)] yP y
+    rename "m" [(("m", "x"), "y")] (defVarT "x" x x) `shouldBe` defVarT "y" y y
 
   it "☯ rename Module" $ do
     True `shouldBe` True
@@ -370,7 +370,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ resolveNames Stmt" $ do
     let f = resolveNames "mod"
     f (Import "m" "n" [("x", "y")]) `shouldBe` [("mod", "y"), ("mod", "n")]
-    f (var "x" y) `shouldBe` [("mod", "x")]
+    f (defVar "x" y) `shouldBe` [("mod", "x")]
 
   it "☯ resolveNames Module" $ do
     let f stmts = resolveNames "@pkg" (Module "mod" stmts)
@@ -424,7 +424,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   names [var "x" y] `shouldBe` [("x", "@pkg:mod.x")]
 
   it "☯ eval" $ do
-    let pkg = Package "pkg" [Module "mod" [var "x" (Int 42)]]
+    let pkg = Package "pkg" [Module "mod" [defVar "x" (Int 42)]]
     let eval' = eval pkg "@pkg:mod"
     let x = Var "@pkg:mod.x"
     eval' (Int 42) `shouldBe` Right (Int 42, intT' 42)

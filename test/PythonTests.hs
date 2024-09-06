@@ -39,7 +39,7 @@ run = describe "--==☯ Python ☯==--" $ do
     emit' (T.App x y) `shouldBe` ([], call "x" [y'])
     emit' (T.app x [y, z]) `shouldBe` ([], call "x" [y', z'])
     emit' (T.Or x y) `shouldBe` ([], bitOr x' y')
-    emit' (T.let' xP y z) `shouldBe` ([assign "x" y'], z')
+    emit' (T.letVar "x" y z) `shouldBe` ([assign "x" y'], z')
     -- emit' (T.Bind (xP, y) z) `shouldBe` ([assign "x" (call "y" [])], z')
     -- Lambda [String] Expr
     -- Match [Expr] [Case]
@@ -58,8 +58,8 @@ run = describe "--==☯ Python ☯==--" $ do
     emit' (T.Import "@pkg:mod" "" []) `shouldBe` [Import "pkg.mod" Nothing]
     emit' (T.Import "mod" "" [("x", "")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Nothing)]]
     emit' (T.Import "mod" "" [("x", "y")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Just "y")]]
-    emit' (T.var "x" y) `shouldBe` [Assign [x'] y']
-    emit' (T.var "a" (T.Tag "Point" [T.Int 1, T.Int 2])) `shouldBe` [Assign [a'] (call "Point" [Integer 1, Integer 2])]
+    emit' (T.defVar "x" y) `shouldBe` [Assign [x'] y']
+    emit' (T.defVar "a" (T.Tag "Point" [T.Int 1, T.Int 2])) `shouldBe` [Assign [a'] (call "Point" [Integer 1, Integer 2])]
     -- emit' (var "a" (Tag "Point" [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]
     -- emit' (varT "a" (Var "Point") (record [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]
     True `shouldBe` True
@@ -68,14 +68,14 @@ run = describe "--==☯ Python ☯==--" $ do
     let emit' :: [T.Stmt] -> [Stmt]
         emit' = emit options
     emit' [] `shouldBe` []
-    emit' [T.var "x" (T.Int 1)] `shouldBe` [Assign [Name "x"] (Integer 1)]
+    emit' [T.defVar "x" (T.Int 1)] `shouldBe` [Assign [Name "x"] (Integer 1)]
 
   it "☯ emit Module" $ do
     let emit' :: T.Module -> Module
         emit' = emit options
     let stmts =
-          [ T.var "x" (T.Int 1),
-            T.var "y" (T.Int 2)
+          [ T.defVar "x" (T.Int 1),
+            T.defVar "y" (T.Int 2)
           ]
     let expected =
           [ ImportFrom "pkg.__prelude__" [("*", Nothing)],
@@ -86,8 +86,8 @@ run = describe "--==☯ Python ☯==--" $ do
 
   it "☯ emit Package" $ do
     let stmts =
-          [ T.var "x" (T.Int 1),
-            T.var "y" (T.Int 2)
+          [ T.defVar "x" (T.Int 1),
+            T.defVar "y" (T.Int 2)
           ]
     let pySrc =
           [ Assign [x'] (Integer 1),

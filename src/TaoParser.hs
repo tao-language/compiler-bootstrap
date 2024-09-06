@@ -302,52 +302,118 @@ parseStmt = do
   comments <- P.zeroOrMore parseComment
   stmt <-
     P.oneOf
-      [ fmap (\(ts, p, a) -> Define ts p a) parseDefinition,
+      [ Def <$> parseDefinition,
         parseImport,
         parseTest
       ]
   return (foldr (MetaStmt . C.Comment) stmt comments)
 
-parseDefinition :: Parser ([(String, Type)], Pattern, Expr)
-parseDefinition = do
-  ts <- P.zeroOrMore $ do
-    x <- parseIdentifier
+parseDefinition :: Parser Definition
+parseDefinition =
+  P.oneOf
+    [ parseDefVar,
+      parseDefFun
+      -- ,parseDefTag
+      -- ,parseDefTuple
+      -- ,parseDefRecord
+      -- ,parseDefTrait
+    ]
+
+parseDefVar :: Parser Definition
+parseDefVar = do
+  x <- parseName
+  t <- P.maybe' $ do
+    _ <- P.spaces
+    _ <- P.char ':'
+    _ <- P.spaces
+    parseExpr 0 P.spaces
+  _ <- P.whitespaces
+  _ <- P.char '='
+  _ <- P.whitespaces
+  a <- parseExpr 0 P.spaces
+  _ <- parseLineBreak
+  _ <- P.whitespaces
+  return (DefVar x t a)
+
+parseDefFun :: Parser Definition
+parseDefFun = do
+  x <- parseName
+  t <- P.maybe' $ do
     _ <- P.spaces
     _ <- P.char ':'
     _ <- P.spaces
     t <- parseExpr 0 P.spaces
     _ <- parseLineBreak
-    return (x, t)
-  (ts, p, a) <-
-    P.oneOf
-      [ do
-          x <- parseIdentifier
-          _ <- P.spaces
-          _ <- P.char ':'
-          _ <- P.spaces
-          t <- parseExpr 0 P.spaces
-          _ <- P.char '='
-          _ <- P.spaces
-          a <- parseExpr 0 P.spaces
-          return ((x, t) : ts, PVar x, a),
-        do
-          x <- parseIdentifier
-          _ <- P.spaces
-          ps <- P.oneOrMore parsePattern
-          _ <- P.char '='
-          _ <- P.spaces
-          a <- parseExpr 0 P.spaces
-          return (ts, PVar x, MatchFun [Case ps Nothing a]),
-        do
-          p <- parsePattern
-          _ <- P.char '='
-          _ <- P.spaces
-          a <- parseExpr 0 P.spaces
-          return (ts, p, a)
-      ]
+    _ <- P.whitespaces
+    _ <- P.text x
+    return t
+  _ <- P.spaces
+  ps <- P.zeroOrMore parsePattern
+  _ <- P.char '='
+  _ <- P.spaces
+  a <- parseExpr 0 P.spaces
   _ <- parseLineBreak
   _ <- P.whitespaces
-  return (ts, p, a)
+  return (DefVar x t (match [] [Case ps Nothing a]))
+
+parseDefTag :: Parser Definition
+parseDefTag = error "TODO"
+
+parseDefTuple :: Parser Definition
+parseDefTuple = error "TODO"
+
+parseDefRecord :: Parser Definition
+parseDefRecord = error "TODO"
+
+parseDefTrait :: Parser Definition
+parseDefTrait = error "TODO"
+
+-- = DefVar String (Maybe Type) Expr
+-- \| DefTag [(String, Type)] String [Pattern] Expr
+-- \| DefTuple [(String, Type)] [Pattern] Expr
+-- \| DefRecord [(String, Type)] [(String, Pattern)] Expr
+-- \| DefTrait Pattern String (Maybe Type) Expr
+
+-- parseDefinition :: Parser ([(String, Type)], Pattern, Expr)
+-- parseDefinition = do
+--   ts <- P.zeroOrMore $ do
+--     x <- parseIdentifier
+--     _ <- P.spaces
+--     _ <- P.char ':'
+--     _ <- P.spaces
+--     t <- parseExpr 0 P.spaces
+--     _ <- parseLineBreak
+--     return (x, t)
+--   (ts, p, a) <-
+--     P.oneOf
+--       [ do
+--           x <- parseIdentifier
+--           _ <- P.spaces
+--           _ <- P.char ':'
+--           _ <- P.spaces
+--           t <- parseExpr 0 P.spaces
+--           _ <- P.char '='
+--           _ <- P.spaces
+--           a <- parseExpr 0 P.spaces
+--           return ((x, t) : ts, PVar x, a),
+--         do
+--           x <- parseIdentifier
+--           _ <- P.spaces
+--           ps <- P.oneOrMore parsePattern
+--           _ <- P.char '='
+--           _ <- P.spaces
+--           a <- parseExpr 0 P.spaces
+--           return (ts, PVar x, MatchFun [Case ps Nothing a]),
+--         do
+--           p <- parsePattern
+--           _ <- P.char '='
+--           _ <- P.spaces
+--           a <- parseExpr 0 P.spaces
+--           return (ts, p, a)
+--       ]
+--   _ <- parseLineBreak
+--   _ <- P.whitespaces
+--   return (ts, p, a)
 
 parseTypeAnnotation :: Parser (String, Expr)
 parseTypeAnnotation = do
