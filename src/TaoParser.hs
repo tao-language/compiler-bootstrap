@@ -354,7 +354,7 @@ parseDefFun = do
   a <- parseExpr 0 P.spaces
   _ <- parseLineBreak
   _ <- P.whitespaces
-  return (DefVar x t (match [] [Case ps Nothing a]))
+  return (DefVar x t (function ps a))
 
 parseDefTag :: Parser Definition
 parseDefTag = error "TODO"

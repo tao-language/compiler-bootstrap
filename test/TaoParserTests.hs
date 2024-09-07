@@ -220,6 +220,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     let p = parse' parseDefinition
     p "x = y" `shouldBe` Right (DefVar "x" Nothing (var 1 5 "y"), "")
     p "x : a = y" `shouldBe` Right (DefVar "x" (Just $ var 1 5 "a") (var 1 9 "y"), "")
+    p "x : a\nx = y" `shouldBe` Right (DefVar "x" (Just $ var 1 5 "a") (var 2 5 "y"), "")
+    p "x : a\nx y = z" `shouldBe` Right (DefVar "x" (Just $ var 1 5 "a") (Function [pvar 2 3 "y"] (var 2 7 "z")), "")
 
   it "☯ parseDefVar" $ do
     let p = parse' parseDefVar
@@ -233,10 +235,10 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   it "☯ parseDefFun" $ do
     let p = parse' parseDefFun
     p "x = y" `shouldBe` Right (DefVar "x" Nothing (var 1 5 "y"), "")
-    p "x y = z" `shouldBe` Right (DefVar "x" Nothing (MatchFun [Case [pvar 1 3 "y"] Nothing (var 1 7 "z")]), "")
+    p "x y = z" `shouldBe` Right (DefVar "x" Nothing (Function [pvar 1 3 "y"] (var 1 7 "z")), "")
     p "x : a\nx = y" `shouldBe` Right (DefVar "x" (Just $ var 1 5 "a") (var 2 5 "y"), "")
     p "x : a; x = y" `shouldBe` Right (DefVar "x" (Just $ var 1 5 "a") (var 1 12 "y"), "")
-    p "x : a\nx y = z" `shouldBe` Right (DefVar "x" (Just $ var 1 5 "a") (MatchFun [Case [pvar 2 3 "y"] Nothing (var 2 7 "z")]), "")
+    p "x : a\nx y = z" `shouldBe` Right (DefVar "x" (Just $ var 1 5 "a") (Function [pvar 2 3 "y"] (var 2 7 "z")), "")
 
   it "☯ parseTypeAnnotation" $ do
     let p = parse' parseTypeAnnotation

@@ -1,14 +1,14 @@
 import sub-module/sub-file (x)
 import @examples:sub-module/sub-file (y)
 
-> sub-file.x
-42
-
 > x
 42
 
-> sub-file.y
+> y
 42
 
-> y
+> sub-file.x
+42
+
+> sub-file.y
 42

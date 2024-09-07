@@ -23,6 +23,7 @@ data Expr
   | Call String [Expr]
   | Let Definition Expr
   | Bind [(String, Type)] Pattern Expr Expr
+  | Function [Pattern] Expr
   | Match [Expr] [Case]
   | MatchFun [Case]
   | Trait Expr String
@@ -124,8 +125,12 @@ record fields = Record (map (\(x, v) -> (x, (Just v, Nothing))) fields)
 pRecord :: [(String, Pattern)] -> Pattern
 pRecord = error "TODO: Tao.pRecord"
 
+function :: [Pattern] -> Expr -> Expr
+function [] b = b
+function ps b = Function ps b
+
 match :: [Expr] -> [Case] -> Expr
-match [] (Case [] Nothing b : _) = b
+match [] cases = matchFun cases
 match (Var x : args) cases = do
   let matchVar (Case (PVar x' : ps) guard b) | x == x' = Just (Case ps guard b)
       matchVar (Case (PAny : ps) guard b) | x `notElem` freeVars b = Just (Case ps guard b)
@@ -134,6 +139,10 @@ match (Var x : args) cases = do
     Just cases' -> match args cases'
     Nothing -> app (MatchFun cases) (Var x : args)
 match args cases = app (MatchFun cases) args
+
+matchFun :: [Case] -> Expr
+matchFun (Case [] Nothing b : _) = b
+matchFun cases = MatchFun cases
 
 lambda :: [String] -> Expr -> Expr
 lambda xs b = match [] [Case (map PVar xs) Nothing b]
@@ -340,7 +349,8 @@ instance Lower Expr C.Expr where
   lower env (App a b) = C.App (lower env a) (lower env b)
   lower env (Or a b) = C.Or (lower env a) (lower env b)
   lower env (Let def b) = lower (lower env def ++ env) b
-  lower env (Bind ts p a b) = lower env (App (Trait a "<-") (match [] [Case [p] Nothing b]))
+  lower env (Bind ts p a b) = lower env (App (Trait a "<-") (Function [p] b))
+  lower env (Function ps a) = lower env (MatchFun [Case ps Nothing a])
   lower env (Match args cases) = lower env (app (MatchFun cases) args)
   lower env (MatchFun cases) = C.or' (map (lower env) cases)
   lower env (Ann a b) = C.Ann (lower env a) (lower env b)
@@ -423,10 +433,10 @@ instance Lift C.Expr Expr where
   lift (C.For _ a) = lift a
   lift (C.Fix _ a) = lift a
   lift (C.Fun a b) = Fun (lift a) (lift b)
-  lift (C.Lam p b) = MatchFun [Case [lift p] Nothing (lift b)]
+  lift (C.Lam p b) = Function [lift p] (lift b)
   lift (C.App a b) = case appOf (App (lift a) (lift b)) of
     (Var ('.' : x), _ : a : args) -> app (Trait a x) args
-    (Trait a "<-", [MatchFun [Case [p] Nothing b]]) -> Bind [] p a b
+    (Trait a "<-", [Function [p] b]) -> Bind [] p a b
     (a, args) -> app a args
   lift (C.Or a b) = Or (lift a) (lift b)
   lift (C.Ann a b) = Ann (lift a) (lift b)
@@ -679,6 +689,7 @@ instance Rename String Expr where
           (rename m s x, (fmap (rename m s) ma, fmap (rename m s) mb))
     Record (map renameField fields)
   rename m s (App a b) = App (rename m s a) (rename m s b)
+  rename m s (Function ps a) = Function (map (rename m s) ps) (rename m s a)
   rename m s (MatchFun cases) = MatchFun (map (rename m s) cases)
   rename m s (Trait a x) = Trait (rename m s a) (rename m s x)
   rename m s (TraitFun x) = TraitFun (rename m s x)
@@ -697,87 +708,6 @@ instance Rename String String where
   rename m ((sub, y) : s) x
     | sub == (m, x) = y
     | otherwise = rename m s x
-
--- TODO: RenameModule
--- TODO: RenamePackage
-
--- class Rename a b where
---   rename :: a -> String -> String -> b -> b
-
--- instance Rename () Package where
---   rename :: () -> String -> String -> Package -> Package
---   rename () old new pkg =
---     pkg {modules = map (rename pkg.name old new) pkg.modules}
-
--- instance Rename String Module where
---   rename :: String -> String -> String -> Module -> Module
---   rename pkg old new mod =
---     mod {stmts = map (rename (pkg, mod.name) old new) mod.stmts}
-
--- instance Rename (String, String) Stmt where
---   rename :: (String, String) -> String -> String -> Stmt -> Stmt
---   rename path old new (Import name alias exposed) = do
---     let alias' = rename () old new alias
---     let exposed' = map (bimap (rename () old new) (rename () old new)) exposed
---     -- Import name alias' exposed'
---     error "rename Import check path for imported module and exposed"
---   rename path old new (Define def) = Define (rename () old new def)
---   rename path old new (Test a b) = Test (rename () old new a) (rename () old new b)
---   rename path old new (MetaStmt m stmt) = MetaStmt m (rename path old new stmt)
-
--- instance Rename () Definition where
---   rename :: () -> String -> String -> Definition -> Definition
---   rename () old new (Def ts p val) = do
---     let ts' = map (bimap (rename () old new) (rename () old new)) ts
---     let p' = rename () old new p
---     let val' = rename () old new val
---     Def ts' p' val'
---   rename () old new (TraitDef ts (t, a) x val) = do
---     let ts' = map (bimap (rename () old new) (rename () old new)) ts
---     let x' = rename () old new x
---     let val' = rename () old new val
---     TraitDef ts' (t, a) x' val'
-
--- instance Rename () Context where
---   rename :: () -> String -> String -> Context -> Context
---   rename () old new ctx =
---     foldr (\_ ctx -> map (rename () old new) ctx) ctx ctx
-
--- instance Rename () Expr where
---   rename :: () -> String -> String -> Expr -> Expr
---   rename () old new (Var x) = Var (rename () old new x)
---   rename () old new (Tag k args) = Tag (rename () old new k) (map (rename () old new) args)
---   rename () old new (Trait a x) = Trait (rename () old new a) x
---   rename () old new (Let def a) = Let (rename () old new def) (rename () old new a)
---   rename () old new (Match cases) = Match (map (rename () old new) cases)
---   rename () old new (Meta m a) = Meta m (rename () old new a)
---   rename () old new expr = apply (rename () old new) expr
-
--- instance Rename () (String, Expr) where
---   rename :: () -> String -> String -> (String, Expr) -> (String, Expr)
---   rename () old new (name, value) =
---     (rename () old new name, rename () old new value)
-
--- instance Rename () Case where
---   rename :: () -> String -> String -> Case -> Case
---   rename () old new (Case ps guard b) =
---     Case (map (rename () old new) ps) (fmap (rename () old new) guard) (rename () old new b)
-
--- instance Rename () Pattern where
---   rename :: () -> String -> String -> Pattern -> Pattern
---   rename () old new (PVar x) = PVar (rename () old new x)
---   rename () old new (PTag k ps) = PTag (rename () old new k) (map (second $ rename () old new) ps)
---   rename () old new (PMeta m p) = PMeta m (rename () old new p)
---   rename () old new p = apply (rename () old new) p
-
--- instance Rename () String where
---   rename :: () -> String -> String -> String -> String
---   rename () old new str
---     | str == old = new
---     | otherwise = str
-
--- substitute :: (Rename a) => [(String, String)] -> a -> a
--- substitute subs a = foldr (uncurry rename) a subs
 
 refactorName :: ([String] -> Expr -> String -> String) -> Package -> Package
 refactorName f pkg = do
