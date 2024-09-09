@@ -11,8 +11,7 @@ import Test.Hspec
 test' :: String -> IO [TestError]
 test' name = do
   pkg <- parsePackage "examples"
-  error "TODO: test Package String (filter), each test should be named `>@package:path/to/module.tao comment expression` globally, then filter by substring or matching pattern"
-  return (test pkg)
+  return (test pkg name)
 
 run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do
@@ -43,12 +42,12 @@ run = describe "--==☯ Examples ☯==--" $ do
 
   let name = "errors"
   it ("☯ " ++ name) $ do
-    pkg <- parsePackage ("examples/" ++ name)
     let expected =
-          [ let file = "wrong-result.tao"
-             in TestEqError (var file (3, 3) "@errors:wrong-result.x") (Int 42) (ploc file (4, 1) $ PInt 0)
+          [ let file = "errors/wrong-result.tao"
+                x = "@examples:errors/wrong-result.x"
+             in TestEqError (var file (3, 3) x) (Int 42) (ploc file (4, 1) $ PInt 0)
           ]
-    test pkg `shouldBe` expected
+    test' name `shouldReturn` expected
 
   let name = "imports.tao"
   it ("☯ " ++ name) $ do

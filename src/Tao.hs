@@ -5,7 +5,7 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap), second)
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
-import Data.List (intercalate, isPrefixOf, union)
+import Data.List (intercalate, isInfixOf, isPrefixOf, union)
 import Data.List.Split (splitWhen)
 import Data.Maybe (fromMaybe)
 
@@ -525,11 +525,14 @@ stmtTests (Test expr expected) = [(expr, expected)]
 stmtTests (MetaStmt _ stmt) = stmtTests stmt
 stmtTests _ = []
 
-moduleTests :: Module -> [(Expr, Pattern)]
-moduleTests mod = concatMap stmtTests mod.stmts
+moduleTests :: String -> String -> Module -> [(Expr, Pattern)]
+moduleTests filter p mod
+  | filter `isInfixOf` ('@' : p ++ ':' : mod.name) =
+      concatMap stmtTests mod.stmts
+moduleTests _ _ _ = []
 
-packageTests :: Package -> [(Expr, Pattern)]
-packageTests pkg = concatMap moduleTests pkg.modules
+packageTests :: String -> Package -> [(Expr, Pattern)]
+packageTests filter pkg = concatMap (moduleTests filter pkg.name) pkg.modules
 
 nameSplit :: String -> [String]
 nameSplit name =
@@ -828,22 +831,15 @@ eval pkg m expr = do
     Right (type', _) -> Right (lift result, lift type')
     Left e -> Left (lift result, e)
 
-test :: Package -> [TestError]
-test pkg = do
+test :: Package -> String -> [TestError]
+test pkg filter = do
   let s = link pkg
   let pkg' = rename () s pkg
   let env = lower [] pkg'
-  concatMap (testEq env) (packageTests pkg')
+  concatMap (testEq env) (packageTests filter pkg')
 
 testEq :: C.Env -> (Expr, Pattern) -> [TestError]
 testEq env (expr, expected) = do
-  -- let env = lower ctx
-  -- let actual = C.eval env (lower ctx expr)
-  -- let expected = C.eval env (lower ctx result)
-  -- case C.eval [] (actual `C.eq` expected) of
-  --   C.Err -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
-  --   C.Op2 C.Eq _ _ -> [TestEqError expr (liftExpr actual) (liftExpr expected)]
-  --   _ -> []
   let unitTest = lower env $ Match [expr] [Case [expected] Nothing (Tuple [])]
   let passed = case C.eval env unitTest of
         C.Err -> False

@@ -278,17 +278,28 @@ run = describe "--==☯ TaoTests ☯==--" $ do
             Test x (PInt 2)
           ]
     let mod = Package {name = "pkg", modules = [Module "mod" defs]}
-    packageTests mod `shouldBe` [(x, PInt 2)]
+    packageTests "" mod `shouldBe` [(x, PInt 2)]
+    packageTests "@pkg" mod `shouldBe` [(x, PInt 2)]
+    packageTests "@pkg:mod" mod `shouldBe` [(x, PInt 2)]
+    packageTests "@pkg2" mod `shouldBe` []
 
   it "☯ test" $ do
-    let defs =
-          [ defVar "x" (Int 1),
-            Test x (PInt 2),
-            defVar "y" (Int 3),
-            Test y (PInt 3)
-          ]
-    let pkg = Package {name = "pkg", modules = [Module "mod" defs]}
-    test pkg `shouldBe` [TestEqError (Var "@pkg:mod.x") (Int 1) (PInt 2)]
+    let mod1 =
+          Module
+            "mod1"
+            [ defVar "x" (Int 1),
+              Test x (PInt 1)
+            ]
+    let mod2 =
+          Module
+            "mod2"
+            [ defVar "y" (Int 1),
+              Test y (PInt 2)
+            ]
+    let pkg = Package {name = "pkg", modules = [mod1, mod2]}
+    test pkg "mod1" `shouldBe` []
+    test pkg "mod2" `shouldBe` [TestEqError (Var "@pkg:mod2.y") (Int 1) (PInt 2)]
+    test pkg "" `shouldBe` [TestEqError (Var "@pkg:mod2.y") (Int 1) (PInt 2)]
 
   it "☯ splitCamelCase" $ do
     splitCamelCase "" `shouldBe` []
