@@ -450,8 +450,8 @@ defaultBuildOptions =
 -- stmtNames (ClassDef {name}) = [name]
 -- stmtNames _ = []
 
-pyName :: [String] -> T.Expr -> String -> String
-pyName existing expr identifier = do
+pyName :: T.Expr -> String -> String
+pyName expr identifier = do
   let (_, _, name) = T.splitName identifier
   case name of
     name | T.isTagDef expr -> T.nameCamelCaseUpper name

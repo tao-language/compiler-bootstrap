@@ -85,8 +85,6 @@ data Package = Package
 
 type Type = Expr
 
-type Context = [(String, Expr)]
-
 data TestError
   = TestEqError Expr Expr Pattern
   deriving (Eq, Show)
@@ -712,14 +710,19 @@ instance Rename String String where
     | sub == (m, x) = y
     | otherwise = rename m s x
 
-refactorName :: ([String] -> Expr -> String -> String) -> Package -> Package
+refactorName :: (Type -> String -> String) -> Package -> Package
 refactorName f pkg = do
-  let refactor :: Module -> Package -> Package
-      refactor mod pkg = do
+  let refactor :: C.Env -> Module -> Package -> Package
+      refactor env mod pkg = do
         -- let ctx = concatMap (getContext (pkg.name, mod.name)) mod.stmts
         -- foldr (\(x, a) -> rename () x (f (map fst ctx) a x)) pkg ctx
+        let names = resolveNames pkg.name mod
+        -- let s = map (\(m, x) -> ((m, x), f (map snd names))) names
+        -- let s (m, x) = ((m, x), m ++ '.' : x)
+        -- map s (resolveNames () pkg)
         error "TODO: refactorName"
-  foldr refactor pkg pkg.modules
+  let env = lower [] pkg :: C.Env
+  foldr (refactor env) pkg pkg.modules
 
 class RefactorModuleName a where
   refactorModuleName :: (FilePath -> FilePath) -> a -> a
