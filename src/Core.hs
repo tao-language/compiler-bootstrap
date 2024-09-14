@@ -4,6 +4,7 @@ import Data.Bifunctor (Bifunctor (second))
 import Data.Char (isAlphaNum, isLower, isUpper)
 import Data.Function ((&))
 import Data.List (delete, intercalate, union)
+import Stdlib (replace, replaceString)
 
 -- https://simon.peytonjones.org/verse-calculus
 -- https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadt-pldi.pdf
@@ -109,7 +110,7 @@ instance Show Expr where
     Int i -> atom 12 (show i)
     Num n -> atom 12 (show n)
     Var x | isVarName x -> atom 12 x
-    Var x -> atom 12 ("(!var '" ++ x ++ "')")
+    Var x -> atom 12 ("`" ++ replaceString "`" "\\`" x ++ "`")
     Tag "" [] -> atom 12 "()"
     Tag k [] -> atom 12 k
     Tag k args -> showsPrec p (app (Tag k []) args)
@@ -153,7 +154,10 @@ numT n = Num n `Or` NumT
 -- ptag k = pApp (PTag k)
 
 fix :: [String] -> Expr -> Expr
-fix xs a = foldr Fix a xs
+fix [] a = a
+fix (x : xs) a
+  | x `occurs` a = Fix x (fix xs a)
+  | otherwise = fix xs a
 
 for :: [String] -> Expr -> Expr
 for xs a = foldr For a xs
@@ -222,9 +226,6 @@ or' (a : bs) = Or a (or' bs)
 
 tuple :: [Expr] -> Expr
 tuple = Tag ""
-
-record :: String -> [(String, Expr)] -> Expr
-record k fields = Tag k (map (uncurry Fix) fields)
 
 list :: Expr -> Expr -> [Expr] -> Expr
 list _ nil [] = nil

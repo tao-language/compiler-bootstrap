@@ -94,17 +94,25 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
-  it "☯ lower/lift Trait" $ do
+  it "☯ lower/lift Trait -- literal" $ do
     let expr = Trait (Int 1) "y"
     let term = C.app (C.Var ".y") [C.intT 1, C.Int 1]
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
+  it "☯ lower/lift Trait -- variable" $ do
     let expr = Trait x "y"
     let term = C.app (C.Var ".y") [C.intT 1, x']
     lower [("x", C.Int 1)] expr `shouldBe` term
     lift term `shouldBe` expr
 
+  it "☯ lower/lift Trait -- property" $ do
+    let expr = Trait x "y"
+    let term = C.app (C.Var ".y") [C.Tag "~y,z" [C.intT 1, C.intT 2], x']
+    lower [("x", C.Tag "~y,z" [C.Int 1, C.Int 2])] expr `shouldBe` term
+    lift term `shouldBe` expr
+
+  it "☯ lower/lift Trait -- undefined" $ do
     let expr = Trait x "y"
     let term = C.app (C.Var ".y") [C.Err, C.Var "x"]
     lower [] expr `shouldBe` C.Err

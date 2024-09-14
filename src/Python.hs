@@ -9,6 +9,7 @@ import Data.List (intercalate, sortBy, union)
 import Data.Maybe (fromMaybe)
 import qualified Debug.Trace as Debug
 import qualified PrettyPrint as PP
+import Stdlib (replace)
 import System.Directory (copyFile, createDirectory, createDirectoryIfMissing, doesPathExist, removeDirectoryRecursive)
 import System.FilePath (joinPath, splitDirectories, splitFileName, splitPath, takeDirectory, takeFileName, (</>))
 import qualified Tao as T
@@ -467,7 +468,7 @@ build options base pkg = do
         -- T.link () pkg
         pkg
           & T.refactorName pyName
-          & T.refactorModuleName (T.replace '/' '.' . T.replace '-' '_')
+          & T.refactorModuleName (replace '/' '.' . replace '-' '_')
           & T.refactorModuleAlias T.nameSnakeCase
 
   let pkgPath = base </> "python"
@@ -512,7 +513,7 @@ buildDir base dirs = do
 buildModule :: BuildOptions -> String -> FilePath -> T.Module -> IO FilePath
 buildModule options pkgName base mod = do
   -- Initialize the file path recursively.
-  let filename = T.replace '.' '/' mod.name ++ ".py"
+  let filename = replace '.' '/' mod.name ++ ".py"
   buildDir base (splitPath $ takeDirectory filename)
 
   -- Write the source file contents.
@@ -527,7 +528,7 @@ buildModule options pkgName base mod = do
 buildTests :: BuildOptions -> String -> FilePath -> T.Module -> IO FilePath
 buildTests options pkgName base mod = do
   -- Initialize the file path recursively.
-  let (dir, name) = splitFileName (T.replace '.' '/' mod.name)
+  let (dir, name) = splitFileName (replace '.' '/' mod.name)
   let filename = dir </> "test_" ++ name ++ ".py"
   buildDir base (splitPath $ takeDirectory filename)
 
@@ -586,7 +587,7 @@ instance Emit T.Stmt [Stmt] where
   emit :: BuildOptions -> T.Stmt -> [Stmt]
   emit options (T.Import m n exposed) = do
     let m' = case m of
-          '@' : m -> T.replace ':' '.' m
+          '@' : m -> replace ':' '.' m
           m -> m
     case exposed of
       [] -> do
