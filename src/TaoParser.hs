@@ -232,7 +232,7 @@ parseRecordField = do
 parseRecord :: Parser Expr
 parseRecord = do
   fields <- parseCollection "{" "," "}" parseRecordField
-  return (record fields)
+  return (Record fields)
 
 parseCase :: Parser Case
 parseCase = do

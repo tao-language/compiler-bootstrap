@@ -31,7 +31,7 @@ run = describe "--==☯ Python ☯==--" $ do
     emit' (T.Tag "A" [x, y]) `shouldBe` ([], call "A" [x', y'])
     emit' (T.Tuple []) `shouldBe` ([], Tuple [])
     emit' (T.Tuple [x, y]) `shouldBe` ([], Tuple [x', y'])
-    emit' (T.record [("a", x), ("b", y)]) `shouldBe` ([], record [("a", x'), ("b", y')])
+    emit' (T.Record [("a", x), ("b", y)]) `shouldBe` ([], record [("a", x'), ("b", y')])
     emit' (T.Trait x "y") `shouldBe` ([], Attribute x' "y")
     emit' (T.TraitFun "x") `shouldBe` ([], Lambda ["_"] (Attribute (Name "_") "x"))
     emit' (T.Fun x y) `shouldBe` ([], callable [x'] y')

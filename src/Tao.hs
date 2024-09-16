@@ -15,7 +15,7 @@ data Expr
   | Var String
   | Tag String [Expr]
   | Tuple [Expr]
-  | Record [(String, (Maybe Expr, Maybe Expr))]
+  | Record [(String, Expr)]
   | Fun Expr Expr
   | App Expr Expr
   | Or Expr Expr
@@ -117,9 +117,6 @@ ok x = Tag "Ok" [x]
 err :: Expr -> Expr
 err e = Tag "Error" [e]
 
-record :: [(String, Expr)] -> Expr
-record fields = Record (map (\(x, v) -> (x, (Just v, Nothing))) fields)
-
 pRecord :: [(String, Pattern)] -> Pattern
 pRecord = error "TODO: Tao.pRecord"
 
@@ -141,6 +138,12 @@ match args cases = app (MatchFun cases) args
 matchFun :: [Case] -> Expr
 matchFun (Case [] Nothing b : _) = b
 matchFun cases = MatchFun cases
+
+select :: Expr -> [String] -> Expr
+select a xs = Select a (map (\x -> (x, Var x)) xs)
+
+selectFun :: [String] -> Expr
+selectFun xs = SelectFun (map (\x -> (x, Var x)) xs)
 
 lambda :: [String] -> Expr -> Expr
 lambda xs b = match [] [Case (map PVar xs) Nothing b]
@@ -335,8 +338,7 @@ instance Lower Expr C.Expr where
   lower env (Tuple items) = lower env (Tag "" items)
   lower env (Record fields) = do
     let k = '~' : intercalate "," (map fst fields)
-    let args = map (fromMaybe Err . fst . snd) fields
-    lower env (Tag k args)
+    lower env (Tag k (map snd fields))
   lower env (Trait a x) = do
     let a' = lower env a
     case C.infer env a' of
@@ -344,13 +346,30 @@ instance Lower Expr C.Expr where
       Left _ -> C.Err
   lower env (TraitFun x) = lower env (lambda ["_"] (Trait (Var "_") x))
   lower env (Fun a b) = C.Fun (lower env a) (lower env b)
-  lower env (App a b) = C.App (lower env a) (lower env b)
+  lower env (App a b) = do
+    let a' = lower env a
+    case C.infer env a' of
+      Right (C.Fun (C.Tag ('~' : xs) _) _, _) ->
+        C.App a' (lower env (select b (split ',' xs)))
+      _ -> C.App a' (lower env b)
   lower env (Or a b) = C.Or (lower env a) (lower env b)
   lower env (Let def b) = lower (lower env def ++ env) b
   lower env (Bind ts p a b) = lower env (App (Trait a "<-") (Function [p] b))
   lower env (Function ps a) = lower env (MatchFun [Case ps Nothing a])
   lower env (Match args cases) = lower env (app (MatchFun cases) args)
   lower env (MatchFun cases) = C.or' (map (lower env) cases)
+  lower env (Select a kvs) = case a of
+    Record fields -> do
+      let sub = map (second $ lower env) fields
+      let lowerFields [] = []
+          lowerFields ((x, b) : xs) | x `elem` map fst fields = do
+            let b' = lower env b
+            (x, C.substitute sub b') : lowerFields xs
+          lowerFields (_ : xs) = lowerFields xs
+      let fields' = lowerFields kvs
+      let k = '~' : intercalate "," (map fst fields')
+      C.Tag k (map snd fields')
+    a -> error $ "TODO: lower Select " ++ show a
   lower env (Ann a b) = C.Ann (lower env a) (lower env b)
   lower env (Call op args) = C.Op op (map (lower env) args)
   lower env (Meta m a) = C.Meta m (lower env a)
@@ -425,8 +444,7 @@ instance Lift C.Expr Expr where
   lift (C.Tag "" args) = Tuple (map lift args)
   lift (C.Tag ('~' : names) args) = do
     let keys = split ',' names
-    let values = map (\a -> (Just $ lift a, Nothing)) args
-    Record (zip keys values)
+    Record (zip keys (map lift args))
   lift (C.Tag k args) = Tag k (map lift args)
   lift (C.For _ a) = lift a
   lift (C.Fix _ a) = lift a
@@ -586,7 +604,7 @@ instance Apply Expr where
   apply _ (Var x) = Var x
   apply f (Tag k args) = Tag k (map (apply f) args)
   apply f (Tuple items) = Tuple (map (apply f) items)
-  apply f (Record fields) = Record (map (\(x, (a, b)) -> (x, (fmap (apply f) a, fmap (apply f) b))) fields)
+  apply f (Record fields) = Record (map (second (apply f)) fields)
   apply f (Fun a b) = Fun (apply f a) (apply f b)
   apply f (App a b) = App (apply f a) (apply f b)
   apply f (Or a b) = Or (apply f a) (apply f b)
@@ -685,10 +703,7 @@ instance Rename String Expr where
   rename m s (Var x) = Var (rename m s x)
   rename m s (Tag k args) = Tag k (map (rename m s) args)
   rename m s (Tuple args) = Tuple (map (rename m s) args)
-  rename m s (Record fields) = do
-    let renameField (x, (ma, mb)) =
-          (rename m s x, (fmap (rename m s) ma, fmap (rename m s) mb))
-    Record (map renameField fields)
+  rename m s (Record fields) = Record (map (second $ rename m s) fields)
   rename m s (App a b) = App (rename m s a) (rename m s b)
   rename m s (Function ps a) = Function (map (rename m s) ps) (rename m s a)
   rename m s (MatchFun cases) = MatchFun (map (rename m s) cases)

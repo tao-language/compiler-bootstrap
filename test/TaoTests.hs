@@ -89,7 +89,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
-    let expr = Record [("a", (Just x, Nothing)), ("b", (Just y, Nothing))]
+    let expr = Record [("a", x), ("b", y)]
     let term = C.Tag "~a,b" [x', y']
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
@@ -129,6 +129,37 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     let term = C.App x' y'
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
+
+  it "☯ lower/lift Select -- empty" $ do
+    let expr = select (Record [("x", Int 1), ("y", Int 2)]) []
+    let term = C.Tag "~" []
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` Record []
+
+  it "☯ lower/lift Select -- undefined" $ do
+    let expr = select (Record [("x", Int 1), ("y", Int 2)]) ["z"]
+    let term = C.Tag "~" []
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` Record []
+
+  it "☯ lower/lift Select -- reorder" $ do
+    let expr = select (Record [("x", Int 1), ("y", Int 2)]) ["y", "x"]
+    let term = C.Tag "~y,x" [C.Int 2, C.Int 1]
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` Record [("y", Int 2), ("x", Int 1)]
+
+  it "☯ lower/lift Select -- remapping" $ do
+    let expr = Select (Record [("x", Int 1), ("y", Int 2)]) [("x", y), ("y", x)]
+    let term = C.Tag "~x,y" [C.Int 2, C.Int 1]
+    lower [] expr `shouldBe` term
+    lift term `shouldBe` Record [("x", Int 2), ("y", Int 1)]
+
+  it "☯ lower/lift App -- record select" $ do
+    let env = [("f", C.Ann (C.Var "f") (C.Fun (C.Tag "~x" [C.IntT]) C.NumT))]
+    let expr = App f (Record [("x", Int 42), ("y", Num 3.14)])
+    let term = C.App (C.Var "f") (C.Tag "~x" [C.Int 42])
+    lower env expr `shouldBe` term
+    lift term `shouldBe` App f (Record [("x", Int 42)])
 
   -- it "☯ lower/lift Let" $ do
   --   let expr = Let (x, y) z
