@@ -86,7 +86,8 @@ data Package = Package
 type Type = Expr
 
 data TestError
-  = TestEqError Expr Expr Pattern
+  = NoTestsFound String
+  | TestEqError Expr Expr Pattern
   deriving (Eq, Show)
 
 -- Syntax sugar
@@ -610,6 +611,7 @@ instance Apply Expr where
   apply f (Or a b) = Or (apply f a) (apply f b)
   apply f (Let def b) = Let (apply f def) (apply f b)
   apply f (Bind ts p a b) = Bind (map (second $ apply f) ts) (apply f p) (apply f a) (apply f b)
+  apply f (Function ps b) = Function (map (apply f) ps) (apply f b)
   apply f (MatchFun cases) = MatchFun (map (apply f) cases)
   apply f (Trait a x) = Trait (f a) x
   apply _ (TraitFun x) = TraitFun x
@@ -626,6 +628,7 @@ instance Apply Pattern where
   apply _ (PNum n) = PNum n
   apply _ (PVar x) = PVar x
   apply f (PTag k ps) = PTag k (map (apply f) ps)
+  apply f (PTuple ps) = PTuple (map (apply f) ps)
   apply f (PFun p q) = PFun (apply f p) (apply f q)
   apply f (POr p q) = POr (apply f p) (apply f q)
   apply f (PEq a) = PEq (f a)
@@ -705,6 +708,7 @@ instance Rename String Expr where
   rename m s (Tuple args) = Tuple (map (rename m s) args)
   rename m s (Record fields) = Record (map (second $ rename m s) fields)
   rename m s (App a b) = App (rename m s a) (rename m s b)
+  rename m s (Fun a b) = Fun (rename m s a) (rename m s b)
   rename m s (Function ps a) = Function (map (rename m s) ps) (rename m s a)
   rename m s (MatchFun cases) = MatchFun (map (rename m s) cases)
   rename m s (Trait a x) = Trait (rename m s a) (rename m s x)
@@ -825,6 +829,7 @@ instance DropMeta Package where
 
 instance DropMeta TestError where
   dropMeta :: TestError -> TestError
+  dropMeta (NoTestsFound x) = NoTestsFound x
   dropMeta (TestEqError a b p) = TestEqError (dropMeta a) (dropMeta b) (dropMeta p)
 
 eval :: Package -> String -> Expr -> Either (Expr, C.TypeError) (Expr, Expr)
@@ -842,7 +847,9 @@ test pkg filter = do
   let s = link pkg
   let pkg' = rename () s pkg
   let env = lower [] pkg'
-  concatMap (testEq env) (packageTests filter pkg')
+  case packageTests filter pkg' of
+    [] -> [NoTestsFound filter]
+    tests -> concatMap (testEq env) tests
 
 testEq :: C.Env -> (Expr, Pattern) -> [TestError]
 testEq env (expr, expected) = do
