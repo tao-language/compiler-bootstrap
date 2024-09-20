@@ -227,6 +227,12 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
+  it "☯ lower/lift Module" $ do
+    let mod = Module "mod" [defVar "x" y]
+    let env :: C.Env
+        env = [("x", C.Var "y")]
+    lower [] mod `shouldBe` env
+
   it "☯ lower/lift Package" $ do
     let pkg = Package "pkg" [Module "mod" [defVar "x" y]]
     let env :: C.Env

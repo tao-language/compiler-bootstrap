@@ -279,18 +279,18 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseFile exists" $ do
     let pkg = Package {name = "pkg", modules = [Module "my-file" []]}
-    parseFile "base-path" "my-file" pkg `shouldReturn` pkg
+    parseFile "base-path" "my-file" (pkg, []) `shouldReturn` (pkg, [])
 
   it "☯ parseFile load" $ do
     let pkg = Package {name = "pkg", modules = []}
-    parseFile "examples" "empty.tao" pkg `shouldReturn` pkg {modules = [Module "empty" []]}
+    parseFile "examples" "empty.tao" (pkg, []) `shouldReturn` (pkg {modules = [Module "empty" []]}, [])
 
   it "☯ parsePackage directory" $ do
-    let expected = Package {name = "empty", modules = [Module "empty-file" []]}
-    parsePackage "examples/empty" `shouldReturn` expected
-    withCurrentDirectory "examples" (parsePackage "empty") `shouldReturn` expected
+    let pkg = Package {name = "empty", modules = [Module "empty-file" []]}
+    parsePackage "examples/empty" `shouldReturn` (pkg, [])
+    withCurrentDirectory "examples" (parsePackage "empty") `shouldReturn` (pkg, [])
 
   it "☯ parsePackage file" $ do
-    let expected = Package {name = "empty", modules = [Module "empty" []]}
-    parsePackage "examples/empty.tao" `shouldReturn` expected
-    withCurrentDirectory "examples" (parsePackage "empty.tao") `shouldReturn` expected
+    let pkg = Package {name = "empty", modules = [Module "empty" []]}
+    parsePackage "examples/empty.tao" `shouldReturn` (pkg, [])
+    withCurrentDirectory "examples" (parsePackage "empty.tao") `shouldReturn` (pkg, [])

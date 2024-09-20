@@ -1,0 +1,19 @@
+import sub/module (x, y as z)
+
+> x
+1
+
+> y
+y
+
+> z
+2
+
+> module.x
+1
+
+> module.y
+2
+
+> module.z
+z

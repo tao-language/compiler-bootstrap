@@ -26,6 +26,28 @@ data ParserContext
   | CMatch
   deriving (Eq, Show)
 
+data SyntaxError
+  = SyntaxError
+  { filename :: String,
+    row :: Int,
+    col :: Int,
+    sourceCode :: String,
+    context :: [ParserContext]
+  }
+  deriving (Eq)
+
+instance Show SyntaxError where
+  show :: SyntaxError -> String
+  show e = do
+    let loc = intercalate ":" [e.filename, show e.row, show e.col]
+    intercalate
+      "\n"
+      [ "🛑 " ++ loc ++ ": syntax error " ++ show e.context,
+        "",
+        showSnippet (e.row, e.col) 3 3 e.sourceCode,
+        ""
+      ]
+
 keywords :: [String]
 keywords =
   [ "type",
@@ -510,23 +532,6 @@ slice start end xs =
     & drop (start - 1)
     & take (end - start)
 
-parseFile :: FilePath -> FilePath -> Package -> IO Package
-parseFile _ filename pkg | filename `elem` map (\f -> f.name) pkg.modules = return pkg
-parseFile base filename pkg = do
-  src <- readFile (base </> filename)
-  case P.parse filename (parseModule (dropExtension filename)) src of
-    Right (f, _) -> do
-      -- TODO: evaluate the module statements
-      return (pkg {modules = f : pkg.modules})
-    Left P.State {name, pos = (row, col), context} -> do
-      let loc = base </> intercalate ":" [name, show row, show col]
-      (error . intercalate "\n")
-        [ "🛑 " ++ loc ++ ": syntax error " ++ show context,
-          "",
-          showSnippet (row, col) 3 3 src,
-          ""
-        ]
-
 showSnippet :: (Int, Int) -> Int -> Int -> String -> String
 showSnippet (row, col) before after src = do
   let divider = "| "
@@ -550,17 +555,40 @@ showSnippet (row, col) before after src = do
           & zipWith showLine [row + 1 ..]
   intercalate "\n" (linesBefore ++ highlight ++ linesAfter)
 
-parsePackage :: FilePath -> IO Package
+parsePackage :: FilePath -> IO (Package, [SyntaxError])
 parsePackage path = do
   let pkg = Package {name = takeBaseName path, modules = []}
   isFile <- doesFileExist path
   case (isFile, path) of
     (True, path) -> do
-      let (base, filename) = splitFileName path
-      parseFile base filename pkg
+      --   let (base, filename) = splitFileName path
+      --   case parseFile base filename pkg of
+      --     Right pkg ->
+      --     Left err ->
+      error "TODO: parsePackage: single file packages"
     (False, base) -> do
       files <- walkDirectory base ""
-      foldM (flip (parseFile base)) pkg files
+      foldM (flip (parseFile base)) (pkg, []) files
+
+parseFile :: FilePath -> FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
+parseFile _ filename (pkg, errs) | filename `elem` map (\f -> f.name) pkg.modules = do
+  return (pkg, errs)
+parseFile base filename (pkg, errs) = do
+  src <- readFile (base </> filename)
+  case P.parse filename (parseModule (dropExtension filename)) src of
+    Right (f, _) -> do
+      -- TODO: evaluate the module statements
+      return (pkg {modules = f : pkg.modules}, errs)
+    Left P.State {name, pos = (row, col), context} -> do
+      let err =
+            SyntaxError
+              { filename = base </> name,
+                row = row,
+                col = col,
+                sourceCode = src,
+                context = context
+              }
+      return (pkg, err : errs)
 
 walkDirectory :: FilePath -> FilePath -> IO [FilePath]
 walkDirectory base path = do
