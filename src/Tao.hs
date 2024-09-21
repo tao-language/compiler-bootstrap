@@ -22,7 +22,7 @@ data Expr
   | Ann Expr Type
   | Call String [Expr]
   | Let Definition Expr
-  | Bind [(String, Type)] Pattern Expr Expr
+  | Bind Definition Expr
   | Function [Pattern] Expr
   | Match [Expr] [Case]
   | MatchFun [Case]
@@ -37,6 +37,8 @@ data Expr
   | Err
   deriving (Eq, Show)
 
+type Definition = ([(String, Type)], Pattern, Expr)
+
 data Case
   = Case [Pattern] (Maybe Expr) Expr
   deriving (Eq, Show)
@@ -48,6 +50,8 @@ data Pattern
   | PVar String
   | PTag String [Pattern]
   | PTuple [Pattern]
+  | PRecord [(String, Pattern)]
+  | PTrait Pattern String
   | PFun Pattern Pattern
   | POr Pattern Pattern
   | PEq Expr
@@ -56,19 +60,10 @@ data Pattern
   deriving (Eq, Show)
 
 data Stmt
-  = Import String String [(String, String)] -- import @pkg:module as alias (a, b, c)
+  = Import String String [(String, String)]
   | Def Definition
   | Test Expr Pattern
   | MetaStmt C.Metadata Stmt
-  deriving (Eq, Show)
-
-data Definition
-  = DefVar String (Maybe Type) Expr
-  | DefTag [(String, Type)] String [Pattern] Expr
-  | DefTuple [(String, Type)] [Pattern] Expr
-  | DefRecord [(String, Type)] [(String, Pattern)] Expr
-  | DefTrait Pattern String (Maybe Type) Expr
-  | DefMeta C.Metadata Definition
   deriving (Eq, Show)
 
 data Module = Module
@@ -239,17 +234,11 @@ importFrom m names = Import m "" (map (,"") names)
 importAll :: String -> Stmt
 importAll m = Import m "" [("*", "")]
 
-letVar :: String -> Expr -> Expr -> Expr
-letVar x a = Let (DefVar x Nothing a)
+defVar :: String -> Expr -> Definition
+defVar x a = ([], PVar x, a)
 
-letVarT :: String -> Type -> Expr -> Expr -> Expr
-letVarT x t a = Let (DefVar x (Just t) a)
-
-defVar :: String -> Expr -> Stmt
-defVar x a = Def (DefVar x Nothing a)
-
-defVarT :: String -> Type -> Expr -> Stmt
-defVarT x t a = Def (DefVar x (Just t) a)
+defVarT :: String -> Type -> Expr ->Definition
+defVarT x t a = ([(x, t)], PVar x, a)
 
 -- \| DefTag [(String, Type)] String [Pattern] Expr
 -- \| DefTuple [(String, Type)] [Pattern] Expr
@@ -355,7 +344,7 @@ instance Lower Expr C.Expr where
       _ -> C.App a' (lower env b)
   lower env (Or a b) = C.Or (lower env a) (lower env b)
   lower env (Let def b) = lower (lower env def ++ env) b
-  lower env (Bind ts p a b) = lower env (App (Trait a "<-") (Function [p] b))
+  lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
   lower env (Function ps a) = lower env (MatchFun [Case ps Nothing a])
   lower env (Match args cases) = lower env (app (MatchFun cases) args)
   lower env (MatchFun cases) = C.or' (map (lower env) cases)
@@ -379,14 +368,9 @@ instance Lower Expr C.Expr where
 
 instance Lower Definition C.Env where
   lower :: C.Env -> Definition -> C.Env
-  lower env (DefVar x t a) = case t of
+  lower env (ts, PVar x, a) = case lookup x ts of
     Just t -> [(x, lower env (Ann a t))]
     Nothing -> [(x, lower env a)]
-  -- lower env (DefTag ts k ps a) = DefTag (map (second $ lower env) ts) k (map (lower env) ps) (lower env a)
-  -- lower env (DefTuple ts ps a) = DefTuple (map (second $ lower env) ts) (map (lower env) ps) (lower env a)
-  -- lower env (DefRecord ts kvs a) = DefRecord (map (second $ lower env) ts) (map (second $ lower env) kvs) (lower env a)
-  -- lower env (DefTrait p x t a) = DefTrait (lower env p) x (fmap (lower env) t) (lower env a)
-  -- lower env (DefMeta m def) = DefMeta m (lower env def)
   lower env def = error $ "TODO lower Definition " ++ show def
 
 instance Lower Case C.Expr where
@@ -453,7 +437,7 @@ instance Lift C.Expr Expr where
   lift (C.Lam p b) = Function [lift p] (lift b)
   lift (C.App a b) = case appOf (App (lift a) (lift b)) of
     (Var ('.' : x), _ : a : args) -> app (Trait a x) args
-    (Trait a "<-", [Function [p] b]) -> Bind [] p a b
+    (Trait a "<-", [Function [p] b]) -> Bind ([], p, a) b
     (a, args) -> app a args
   lift (C.Or a b) = Or (lift a) (lift b)
   lift (C.Ann a b) = Ann (lift a) (lift b)
@@ -504,7 +488,7 @@ instance ResolveNames () Package where
 instance ResolveNames String Module where
   resolveNames :: String -> Module -> [(String, String)]
   resolveNames p mod = do
-    let m = p ++ ':' : mod.name
+    let m = p ++ '/' : mod.name
     concatMap (resolveNames m) mod.stmts
 
 instance ResolveNames String Stmt where
@@ -519,12 +503,13 @@ instance ResolveNames String Stmt where
 
 instance ResolveNames String Definition where
   resolveNames :: String -> Definition -> [(String, String)]
-  resolveNames m (DefVar x t a) = [(m, x)]
-  resolveNames m (DefTag ts k ps a) = concatMap (resolveNames m) ps
-  resolveNames m (DefTuple ts ps a) = concatMap (resolveNames m) ps
-  resolveNames m (DefRecord ts kvs a) = concatMap (resolveNames m . snd) kvs
-  resolveNames m (DefTrait p x t a) = [(m, '.' : x)]
-  resolveNames m (DefMeta _ def) = resolveNames m def
+  resolveNames m (_, p, _) = case p of
+    PVar x -> [(m, x)]
+    PTag _ ps -> concatMap (resolveNames m) ps
+    PTuple ps -> concatMap (resolveNames m) ps
+    PRecord kvs -> concatMap (resolveNames m . snd) kvs
+    PTrait p x -> [(m, '.' : x)]
+    p -> error $ "TODO: resolveNames " ++ show p
 
 instance ResolveNames String Pattern where
   resolveNames :: String -> Pattern -> [(String, String)]
@@ -610,7 +595,7 @@ instance Apply Expr where
   apply f (App a b) = App (apply f a) (apply f b)
   apply f (Or a b) = Or (apply f a) (apply f b)
   apply f (Let def b) = Let (apply f def) (apply f b)
-  apply f (Bind ts p a b) = Bind (map (second $ apply f) ts) (apply f p) (apply f a) (apply f b)
+  apply f (Bind (ts, p, a) b) = Bind (map (second $ apply f) ts, apply f p, apply f a) (apply f b)
   apply f (Function ps b) = Function (map (apply f) ps) (apply f b)
   apply f (MatchFun cases) = MatchFun (map (apply f) cases)
   apply f (Trait a x) = Trait (f a) x
@@ -649,12 +634,16 @@ instance Apply Stmt where
 
 instance Apply Definition where
   apply :: (Expr -> Expr) -> Definition -> Definition
-  apply f (DefVar x t a) = DefVar x (fmap (apply f) t) (apply f a)
-  apply f (DefTag ts k ps a) = DefTag (map (second $ apply f) ts) k (map (apply f) ps) (apply f a)
-  apply f (DefTuple ts ps a) = DefTuple (map (second $ apply f) ts) (map (apply f) ps) (apply f a)
-  apply f (DefRecord ts kvs a) = DefRecord (map (second $ apply f) ts) (map (second $ apply f) kvs) (apply f a)
-  apply f (DefTrait p x t a) = DefTrait (apply f p) x (fmap (apply f) t) (apply f a)
-  apply f (DefMeta m def) = DefMeta m (apply f def)
+  apply f (ts, p, a) = do
+    let ts' = second (apply f) <$> ts
+    let p' = case p of
+          PVar x -> PVar x
+          PTag k ps -> PTag k (apply f <$> ps)
+          PTuple ps -> PTuple (apply f <$> ps)
+          PRecord kvs -> PRecord (second (apply f) <$> kvs)
+          PTrait p x -> PTrait (apply f p) x
+    let a' = apply f a
+    (ts', p', a')
 
 type Substitution = ((String, String), String)
 
@@ -681,12 +670,11 @@ instance Rename String Stmt where
 
 instance Rename String Definition where
   rename :: String -> [Substitution] -> Definition -> Definition
-  rename m s (DefVar x t a) = DefVar (rename m s x) (fmap (rename m s) t) (rename m s a)
-  rename m s (DefTag ts k ps a) = DefTag (map (second $ rename m s) ts) k (map (rename m s) ps) (rename m s a)
-  rename m s (DefTuple ts ps a) = DefTuple (map (second $ rename m s) ts) (map (rename m s) ps) (rename m s a)
-  rename m s (DefRecord ts kvs a) = DefRecord (map (second $ rename m s) ts) (map (second $ rename m s) kvs) (rename m s a)
-  rename m s (DefTrait p x t a) = DefTrait (rename m s p) x (fmap (rename m s) t) (rename m s a)
-  rename m s (DefMeta m' def) = DefMeta m' (rename m s def)
+  rename m s (ts, p, a) = do
+    let ts' = second (rename m s) <$> ts
+    let p' = rename m s p
+    let a' = rename m s a
+    (ts', p', a')
 
 instance Rename String Pattern where
   rename :: String -> [Substitution] -> Pattern -> Pattern
@@ -812,12 +800,14 @@ instance DropMeta Stmt where
 
 instance DropMeta Definition where
   dropMeta :: Definition -> Definition
-  dropMeta (DefVar x t a) = DefVar x (fmap dropMeta t) (dropMeta a)
-  dropMeta (DefTag ts k ps a) = DefTag (map (second dropMeta) ts) k (map dropMeta ps) (dropMeta a)
-  dropMeta (DefTuple ts ps a) = DefTuple (map (second dropMeta) ts) (map dropMeta ps) (dropMeta a)
-  dropMeta (DefRecord ts kvs a) = DefRecord (map (second dropMeta) ts) (map (second dropMeta) kvs) (dropMeta a)
-  dropMeta (DefTrait p x t a) = DefTrait (dropMeta p) x (fmap dropMeta t) (dropMeta a)
-  dropMeta (DefMeta m def) = DefMeta m (dropMeta def)
+  dropMeta (ts, p, a) = do
+    let p' = case p of
+          PVar x -> PVar x
+          PTag k ps -> PTag k (dropMeta <$> ps)
+          PTuple ps -> PTuple (dropMeta <$> ps)
+          PRecord kvs -> PRecord (second dropMeta <$> kvs)
+          PTrait p x -> PTrait (dropMeta p) x
+    (ts, p', a)
 
 instance DropMeta Module where
   dropMeta :: Module -> Module

@@ -617,7 +617,7 @@ instance Emit T.Stmt [Stmt] where
 
 instance Emit T.Definition [Stmt] where
   emit :: BuildOptions -> T.Definition -> [Stmt]
-  emit options (T.DefVar x t b) = case (t, T.lambdaOf "_" b) of
+  emit options (ts, T.PVar x, b) = case (lookup x ts, T.lambdaOf "_" b) of
     (Nothing, ([], b)) -> do
       let (stmts, b') = emit options b
       let def = Assign [Name x] b'
@@ -721,7 +721,7 @@ instance Emit T.Expr ([Stmt], Expr) where
     let stmts1 = emit options def
     let (stmts2, b') = emit options b
     (stmts1 ++ stmts2, b')
-  emit options (T.Bind ts p a b) = do
+  emit options (T.Bind (ts, p, a) b) = do
     -- let stmts1 = emit options (T.Def [] p (T.Meta C.Unwrap a))
     -- let (stmts2, b') = emit options b
     -- (stmts1 ++ stmts2, b')

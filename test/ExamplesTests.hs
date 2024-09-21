@@ -13,7 +13,7 @@ test' name = do
   (pkg, errors) <- parsePackage "examples"
   case filter (\e -> name `isInfixOf` e.filename) errors of
     [] -> do
-      let pkg' = pkg {modules = filter (\m -> m.name == name) pkg.modules}
+      let pkg' = pkg {modules = filter (\m -> name `isInfixOf` m.name) pkg.modules}
       return (Right $ test (dropMeta pkg') name)
     errors -> return (Left errors)
 

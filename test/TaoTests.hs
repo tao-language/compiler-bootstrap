@@ -174,7 +174,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   lift term `shouldBe` expr
 
   it "☯ lower/lift Bind" $ do
-    let expr = Bind [] xP y z
+    let expr = Bind ([], xP, y) z
     let term = C.app (C.Var ".<-") [C.intT 1, y', C.Lam xP' z']
     lower [("y", C.Int 1)] expr `shouldBe` term
     lift term `shouldBe` expr
@@ -228,13 +228,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lift term `shouldBe` expr
 
   it "☯ lower/lift Module" $ do
-    let mod = Module "mod" [defVar "x" y]
+    let mod = Module "mod" [Def $ defVar "x" y]
     let env :: C.Env
         env = [("x", C.Var "y")]
     lower [] mod `shouldBe` env
 
   it "☯ lower/lift Package" $ do
-    let pkg = Package "pkg" [Module "mod" [defVar "x" y]]
+    let pkg = Package "pkg" [Module "mod" [Def $ defVar "x" y]]
     let env :: C.Env
         env = [("x", C.Var "y")]
     lower [] pkg `shouldBe` env
@@ -319,7 +319,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ packageTests" $ do
     let defs =
-          [ defVar "x" (Int 1),
+          [ Def $ defVar "x" (Int 1),
             Test x (PInt 2)
           ]
     let mod = Package {name = "pkg", modules = [Module "mod" defs]}
@@ -332,13 +332,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     let mod1 =
           Module
             "mod1"
-            [ defVar "x" (Int 1),
+            [ Def $ defVar "x" (Int 1),
               Test x (PInt 1)
             ]
     let mod2 =
           Module
             "mod2"
-            [ defVar "y" (Int 1),
+            [ Def $ defVar "y" (Int 1),
               Test y (PInt 2)
             ]
     let pkg = Package {name = "pkg", modules = [mod1, mod2]}
@@ -418,20 +418,15 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     -- rename "x" "z" pkg `shouldBe` pkg {modules = [m1 "z", m2 "z", m3 "z", m4 "z"]}
     True `shouldBe` True
 
-  -- it "☯ resolveNames Def" $ do
-  --   let f = resolveNames "mod"
-  --   f (Def [] xP y) `shouldBe` [("mod", "x")]
-  --   f (TraitDef [] (Err, Err) "x" y) `shouldBe` []
-
   it "☯ resolveNames Stmt" $ do
-    let f = resolveNames "mod"
-    f (Import "m" "n" [("x", "y")]) `shouldBe` [("mod", "y"), ("mod", "n")]
-    f (defVar "x" y) `shouldBe` [("mod", "x")]
+    let f = resolveNames "pkg/mod"
+    f (Import "m" "n" [("x", "y")]) `shouldBe` [("@pkg/mod", "y"), ("@pkg/mod", "n")]
+    f (Def $ defVar "x" y) `shouldBe` [("@pkg/mod", "x")]
 
   it "☯ resolveNames Module" $ do
-    let f stmts = resolveNames "@pkg" (Module "mod" stmts)
+    let f stmts = resolveNames "pkg" (Module "path/mod" stmts)
     f [] `shouldBe` []
-    f [Import "m" "n" []] `shouldBe` [("@pkg:mod", "n")]
+    f [Def $ defVar "x" y] `shouldBe` [("@pkg/path/mod", "x")]
 
   -- it "☯ link Package" $ do
   --   let pkg stmts = Package "pkg" [Module "mod" stmts]
@@ -480,7 +475,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   names [var "x" y] `shouldBe` [("x", "@pkg:mod.x")]
 
   it "☯ eval" $ do
-    let pkg = Package "pkg" [Module "mod" [defVar "x" (Int 42)]]
+    let pkg = Package "pkg" [Module "mod" [Def $ defVar "x" (Int 42)]]
     let eval' = eval pkg "@pkg:mod"
     let x = Var "@pkg:mod.x"
     eval' (Int 42) `shouldBe` Right (Int 42, intT' 42)

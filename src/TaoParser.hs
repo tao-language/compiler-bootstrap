@@ -344,31 +344,40 @@ parseDefinition =
 parseDefVar :: Parser Definition
 parseDefVar = do
   x <- parseName
-  t <- P.maybe' $ do
-    _ <- P.spaces
-    _ <- P.char ':'
-    _ <- P.spaces
-    parseExpr 0 P.spaces
+  ts <-
+    P.oneOf
+      [ do
+          _ <- P.spaces
+          _ <- P.char ':'
+          _ <- P.spaces
+          t <- parseExpr 0 P.spaces
+          return [(x, t)],
+        return []
+      ]
   _ <- P.whitespaces
   _ <- P.char '='
   _ <- P.whitespaces
   a <- parseExpr 0 P.spaces
   _ <- parseLineBreak
   _ <- P.whitespaces
-  return (DefVar x t a)
+  return (ts, PVar x, a)
 
 parseDefFun :: Parser Definition
 parseDefFun = do
   x <- parseName
-  t <- P.maybe' $ do
-    _ <- P.spaces
-    _ <- P.char ':'
-    _ <- P.spaces
-    t <- parseExpr 0 P.spaces
-    _ <- parseLineBreak
-    _ <- P.whitespaces
-    _ <- P.text x
-    return t
+  ts <-
+    P.oneOf
+      [ do
+          _ <- P.spaces
+          _ <- P.char ':'
+          _ <- P.spaces
+          t <- parseExpr 0 P.spaces
+          _ <- parseLineBreak
+          _ <- P.whitespaces
+          _ <- P.text x
+          return [(x, t)],
+        return []
+      ]
   _ <- P.spaces
   ps <- P.zeroOrMore parsePattern
   _ <- P.char '='
@@ -376,7 +385,7 @@ parseDefFun = do
   a <- parseExpr 0 P.spaces
   _ <- parseLineBreak
   _ <- P.whitespaces
-  return (DefVar x t (function ps a))
+  return (ts, PVar x, function ps a)
 
 parseDefTag :: Parser Definition
 parseDefTag = error "TODO"
