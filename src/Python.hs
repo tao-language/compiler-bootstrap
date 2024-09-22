@@ -585,18 +585,16 @@ instance Emit T.Module Module where
 
 instance Emit T.Stmt [Stmt] where
   emit :: BuildOptions -> T.Stmt -> [Stmt]
-  emit options (T.Import m n exposed) = do
+  emit options (T.Import m exposed) = do
     let m' = case m of
-          '@' : m -> replace ':' '.' m
+          '@' : m -> replace '/' '.' m
           m -> m
     case exposed of
-      [] -> do
-        let alias = if n == "" then Nothing else Just n
-        [Import m' alias]
+      [] -> []
       exposed -> do
-        let expose (x, "") = (x, Nothing)
+        let expose (x, x') | x == x' = (x, Nothing)
             expose (x, y) = (x, Just y)
-        let stmts = emit options (T.Import m n [])
+        let stmts = emit options (T.Import m [])
         stmts ++ [ImportFrom m' (map expose exposed)]
   emit options (T.Def def) = emit options def
   emit options (T.Test a p) = do

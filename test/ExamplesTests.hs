@@ -8,12 +8,13 @@ import Tao
 import TaoParser
 import Test.Hspec
 
-test' :: String -> IO (Either [SyntaxError] [TestError])
-test' name = do
+test' :: String -> [String] -> IO (Either [SyntaxError] [TestError])
+test' name includes = do
+  let names = name : includes
   (pkg, errors) <- parsePackage "examples"
-  case filter (\e -> name `isInfixOf` e.filename) errors of
+  case filter (\e -> any (`isInfixOf` e.filename) names) errors of
     [] -> do
-      let pkg' = pkg {modules = filter (\m -> name `isInfixOf` m.name) pkg.modules}
+      let pkg' = pkg {modules = filter (\m -> any (`isInfixOf` m.name) names) pkg.modules}
       return (Right $ test (dropMeta pkg') name)
     errors -> return (Left errors)
 
@@ -26,11 +27,11 @@ run = describe "--==☯ Examples ☯==--" $ do
 
   let name = "empty"
   it ("☯ " ++ name) $ do
-    test' name `shouldReturn` Right [NoTestsFound "empty"]
+    test' name [] `shouldReturn` Right [NoTestsFound "empty"]
 
   let name = "comments"
   it ("☯ " ++ name) $ do
-    test' name `shouldReturn` Right [NoTestsFound "comments"]
+    test' name [] `shouldReturn` Right [NoTestsFound "comments"]
 
   -- let name = "comments-multiline.tao"
   -- it ("☯ " ++ name) $ do
@@ -38,30 +39,30 @@ run = describe "--==☯ Examples ☯==--" $ do
 
   let name = "def-variable"
   it ("☯ " ++ name) $ do
-    test' name `shouldReturn` Right []
+    test' name [] `shouldReturn` Right []
 
   let name = "def-function"
   it ("☯ " ++ name) $ do
-    test' name `shouldReturn` Right []
+    test' name [] `shouldReturn` Right []
 
   let name = "errors"
   it ("☯ " ++ name) $ do
     let expected =
-          [ TestEqError (Var "@examples:errors/wrong-result.x") (Int 42) (PInt 0)
+          [ TestEqError (Var "@examples/errors/wrong-result.x") (Int 42) (PInt 0)
           ]
-    test' name `shouldReturn` Right expected
+    test' name [] `shouldReturn` Right expected
 
-  let name = "imports/basic"
+  let name = "global-name"
   it ("☯ " ++ name) $ do
-    test' name `shouldReturn` Right []
+    test' name ["sub/"] `shouldReturn` Right []
 
   let name = "tuples"
   it ("☯ " ++ name) $ do
-    test' name `shouldReturn` Right []
+    test' name [] `shouldReturn` Right []
 
   let name = "records"
   it ("☯ " ++ name) $ do
-    test' name `shouldReturn` Right []
+    test' name [] `shouldReturn` Right []
 
   it "☯ TODO" $ do
     True `shouldBe` True

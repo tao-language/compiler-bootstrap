@@ -52,6 +52,8 @@ data Pattern
   | PTuple [Pattern]
   | PRecord [(String, Pattern)]
   | PTrait Pattern String
+  | POp1 String Pattern
+  | POp2 String Pattern Pattern
   | PFun Pattern Pattern
   | POr Pattern Pattern
   | PEq Expr
@@ -60,7 +62,7 @@ data Pattern
   deriving (Eq, Show)
 
 data Stmt
-  = Import String String [(String, String)]
+  = Import String [(String, String)]
   | Def Definition
   | Test Expr Pattern
   | MetaStmt C.Metadata Stmt
@@ -222,22 +224,13 @@ appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
 appOf (Meta _ a) = appOf a
 appOf a = (a, [])
 
-import' :: String -> Stmt
-import' m = Import m "" []
-
-importAs :: String -> String -> Stmt
-importAs m n = Import m n []
-
-importFrom :: String -> [String] -> Stmt
-importFrom m names = Import m "" (map (,"") names)
-
-importAll :: String -> Stmt
-importAll m = Import m "" [("*", "")]
+import' :: String -> [String] -> Stmt
+import' m names = Import m (map (\x -> (x, x)) names)
 
 defVar :: String -> Expr -> Definition
 defVar x a = ([], PVar x, a)
 
-defVarT :: String -> Type -> Expr ->Definition
+defVarT :: String -> Type -> Expr -> Definition
 defVarT x t a = ([(x, t)], PVar x, a)
 
 -- \| DefTag [(String, Type)] String [Pattern] Expr
@@ -396,9 +389,9 @@ instance Lower Pattern C.Pattern where
 
 instance Lower Stmt C.Env where
   lower :: C.Env -> Stmt -> C.Env
-  lower env (Import m n xs) = case xs of
-    [] -> [(n, C.Var m)]
-    (x, y) : xs -> (y, C.Var x) : lower env (Import m n xs)
+  lower env (Import m xs) = case xs of
+    [] -> []
+    (x, y) : xs -> (y, C.Var x) : lower env (Import m xs)
   lower env (Def def) = lower env def
   lower env (Test a p) = do
     let expect = Case [p] Nothing (ok $ Tuple [])
@@ -481,9 +474,7 @@ class ResolveNames a b where
 
 instance ResolveNames () Package where
   resolveNames :: () -> Package -> [(String, String)]
-  resolveNames () pkg = do
-    let p = '@' : pkg.name
-    concatMap (resolveNames p) pkg.modules
+  resolveNames () pkg = concatMap (resolveNames pkg.name) pkg.modules
 
 instance ResolveNames String Module where
   resolveNames :: String -> Module -> [(String, String)]
@@ -493,10 +484,10 @@ instance ResolveNames String Module where
 
 instance ResolveNames String Stmt where
   resolveNames :: String -> Stmt -> [(String, String)]
-  resolveNames m (Import m' n exposed) = case exposed of
-    [] -> [(m, n)]
+  resolveNames m (Import m' exposed) = case exposed of
+    [] -> []
     (_, y) : exposed ->
-      (m, y) : resolveNames m (Import m' n exposed)
+      ('@' : m, y) : resolveNames m (Import m' exposed)
   resolveNames m (Def def) = resolveNames m def
   resolveNames _ (Test _ _) = []
   resolveNames m (MetaStmt _ stmt) = resolveNames m stmt
@@ -504,11 +495,15 @@ instance ResolveNames String Stmt where
 instance ResolveNames String Definition where
   resolveNames :: String -> Definition -> [(String, String)]
   resolveNames m (_, p, _) = case p of
-    PVar x -> [(m, x)]
+    PVar ('_' : x) -> [('_' : '@' : m, x)]
+    PVar x | "/_" `isInfixOf` m -> [('_' : '@' : m, x)]
+    PVar x -> case split2 '/' m of
+      (pkg, '@' : pkg') | pkg == pkg' -> [('@' : pkg, x)]
+      _ -> [('@' : m, x)]
     PTag _ ps -> concatMap (resolveNames m) ps
     PTuple ps -> concatMap (resolveNames m) ps
     PRecord kvs -> concatMap (resolveNames m . snd) kvs
-    PTrait p x -> [(m, '.' : x)]
+    PTrait p x -> [('.' : '@' : m ++ ':' : show p, x)]
     p -> error $ "TODO: resolveNames " ++ show p
 
 instance ResolveNames String Pattern where
@@ -517,10 +512,15 @@ instance ResolveNames String Pattern where
   resolveNames m (PMeta _ p) = resolveNames m p
   resolveNames m p = error $ "TODO: resolveNames " ++ show (m, p)
 
-link :: Package -> [Substitution]
-link pkg = do
+resolve :: Package -> [Substitution]
+resolve pkg = do
   let s (m, x) = ((m, x), m ++ '.' : x)
   map s (resolveNames () pkg)
+
+linkPackage :: Package -> Package
+linkPackage pkg = do
+  let s = resolve pkg
+  rename () s pkg
 
 stmtTests :: Stmt -> [(Expr, Pattern)]
 stmtTests (Test expr expected) = [(expr, expected)]
@@ -529,7 +529,7 @@ stmtTests _ = []
 
 moduleTests :: String -> String -> Module -> [(Expr, Pattern)]
 moduleTests filter p mod
-  | filter `isInfixOf` ('@' : p ++ ':' : mod.name) =
+  | filter `isInfixOf` (p ++ '/' : mod.name) =
       concatMap stmtTests mod.stmts
 moduleTests _ _ _ = []
 
@@ -577,7 +577,7 @@ nameDashCase :: String -> String
 nameDashCase name = nameSplit name & intercalate "-"
 
 isImported :: String -> Stmt -> Bool
-isImported x (Import _ n exposed) = x == n || x `elem` map fst exposed
+isImported x (Import _ exposed) = x `elem` map fst exposed
 isImported _ _ = False
 
 class Apply a where
@@ -652,18 +652,19 @@ class Rename path a where
 
 instance Rename () Package where
   rename :: () -> [Substitution] -> Package -> Package
-  rename () s pkg = pkg {modules = map (rename pkg.name s) pkg.modules}
+  rename () s pkg =
+    pkg {modules = map (rename ('@' : pkg.name) s) pkg.modules}
 
 instance Rename String Module where
   rename :: String -> [Substitution] -> Module -> Module
   rename p s mod = do
-    let m = '@' : p ++ ':' : mod.name
+    let m = p ++ '/' : mod.name
     mod {stmts = map (rename m s) mod.stmts}
 
 instance Rename String Stmt where
   rename :: String -> [Substitution] -> Stmt -> Stmt
-  rename m s (Import m' n vars) =
-    Import m' (rename m s n) (map (bimap (rename m' s) (rename m s)) vars)
+  rename m s (Import m' vars) =
+    Import m' (map (bimap (rename m' s) (rename m s)) vars)
   rename m s (Def def) = Def (rename m s def)
   rename m s (Test a p) = Test (rename m s a) (rename m s p)
   rename m s (MetaStmt m' stmt) = MetaStmt m' (rename m s stmt)
@@ -671,7 +672,7 @@ instance Rename String Stmt where
 instance Rename String Definition where
   rename :: String -> [Substitution] -> Definition -> Definition
   rename m s (ts, p, a) = do
-    let ts' = second (rename m s) <$> ts
+    let ts' = bimap (rename m s) (rename m s) <$> ts
     let p' = rename m s p
     let a' = rename m s a
     (ts', p', a')
@@ -744,8 +745,8 @@ instance RefactorModuleName Module where
 
 instance RefactorModuleName Stmt where
   refactorModuleName :: (FilePath -> FilePath) -> Stmt -> Stmt
-  refactorModuleName f (Import m n exposed) = error "TODO"
-  -- refactorModuleName f (Import name alias exposed) = Import (f name) alias exposed
+  refactorModuleName f (Import m exposed) = error "TODO"
+  -- refactorModuleName f (Import name exposed) = Import (f name) alias exposed
   refactorModuleName _ stmt = stmt
 
 class RefactorModuleAlias a where
@@ -758,14 +759,9 @@ instance RefactorModuleAlias Package where
 instance RefactorModuleAlias Module where
   refactorModuleAlias :: (FilePath -> FilePath) -> Module -> Module
   refactorModuleAlias f mod = do
-    let names = concatMap importAlias mod.stmts
     -- let refactor stmt = foldr (\x -> rename () x (f x)) stmt names
     -- mod {name = mod.name, stmts = map (refactor ()) mod.stmts}
     error "TODO"
-
-importAlias :: Stmt -> [String]
-importAlias (Import _ alias _) = [alias]
-importAlias _ = []
 
 in' :: String -> String -> Bool
 in' _ "" = False
@@ -824,7 +820,7 @@ instance DropMeta TestError where
 
 eval :: Package -> String -> Expr -> Either (Expr, C.TypeError) (Expr, Expr)
 eval pkg m expr = do
-  let s = link pkg
+  let s = resolve pkg
   let env = lower [] (rename () s pkg)
   let expr' = lower env (rename m s expr)
   let result = C.eval env expr'
@@ -834,7 +830,7 @@ eval pkg m expr = do
 
 test :: Package -> String -> [TestError]
 test pkg filter = do
-  let s = link pkg
+  let s = resolve pkg
   let pkg' = rename () s pkg
   let env = lower [] pkg'
   case packageTests filter pkg' of

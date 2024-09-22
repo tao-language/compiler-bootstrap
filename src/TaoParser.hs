@@ -75,17 +75,20 @@ parseIdentifier = do
     name | name `elem` keywords -> P.fail'
     name -> return name
 
+parsePath :: Parser String
+parsePath = do
+  let optional ps = P.oneOf [P.concat ps, return ""]
+  let path = fmap concat (P.zeroOrMore (P.concat [P.text "/", parseIdentifier]))
+  P.oneOf
+    [ P.concat [P.text "@", optional [parseIdentifier], path],
+      P.concat [P.text "./", parseIdentifier, path]
+    ]
+
 parseName :: Parser String
 parseName = do
-  let name = parseIdentifier
-  let pkg = P.concat [P.text "@", name]
-  let mod = P.concat [name, fmap concat (P.zeroOrMore (P.concat [P.text "/", name]))]
   P.oneOf
-    [ P.concat [pkg, P.text ":", mod, P.text ".", name],
-      P.concat [pkg, P.text ":", mod],
-      P.concat [pkg, P.text ".", name],
-      pkg,
-      name
+    [ P.concat [parsePath, P.text ".", parseIdentifier],
+      parseIdentifier
     ]
 
 parseLineBreak :: Parser String
@@ -462,25 +465,8 @@ parseImport = do
   (loc, _) <- parseLocation (P.word "import")
   P.commit CImport
   _ <- P.spaces
-  m <-
-    P.oneOf
-      [ P.concat [parseIdentifier, fmap concat (P.zeroOrMore (P.concat [P.text "/", parseIdentifier]))],
-        parseName
-      ]
+  m <- parsePath
   _ <- P.spaces
-  n <-
-    P.oneOf
-      [ do
-          _ <- P.word "as"
-          _ <- P.spaces
-          n <- parseIdentifier
-          _ <- P.spaces
-          return n,
-        return $ case splitName m of
-          (pkg, "", "") -> pkg
-          (_, mod, "") -> last (split '/' mod)
-          (_, _, name) -> last (split '/' name)
-      ]
   exposing <-
     P.oneOf
       [ do
@@ -499,7 +485,7 @@ parseImport = do
       ]
   _ <- parseLineBreak
   _ <- P.whitespaces
-  return (Import m n exposing)
+  return (Import m exposing)
 
 parseTest :: P.Parser ParserContext Stmt
 parseTest = do
@@ -570,11 +556,8 @@ parsePackage path = do
   isFile <- doesFileExist path
   case (isFile, path) of
     (True, path) -> do
-      --   let (base, filename) = splitFileName path
-      --   case parseFile base filename pkg of
-      --     Right pkg ->
-      --     Left err ->
-      error "TODO: parsePackage: single file packages"
+      let (base, filename) = splitFileName path
+      parseFile base filename (pkg, [])
     (False, base) -> do
       files <- walkDirectory base ""
       foldM (flip (parseFile base)) (pkg, []) files
