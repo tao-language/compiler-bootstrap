@@ -14,8 +14,15 @@ test' name includes = do
   (pkg, errors) <- parsePackage "examples"
   case filter (\e -> any (`isInfixOf` e.filename) names) errors of
     [] -> do
-      let pkg' = pkg {modules = filter (\m -> any (`isInfixOf` m.name) names) pkg.modules}
-      return (Right $ test (dropMeta pkg') name)
+      let pkg' = dropMeta (pkg {modules = filter (\m -> any (`isInfixOf` m.name) names) pkg.modules})
+      let testErrors = test pkg' name
+      -- return (Right testErrors)
+      case testErrors of
+        [] -> return (Right [])
+        [NoTestsFound x] -> return (Right [NoTestsFound x])
+        errors -> do
+          print pkg'
+          return (Right errors)
     errors -> return (Left errors)
 
 run :: SpecWith ()
