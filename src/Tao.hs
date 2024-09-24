@@ -797,13 +797,10 @@ instance DropMeta Stmt where
 instance DropMeta Definition where
   dropMeta :: Definition -> Definition
   dropMeta (ts, p, a) = do
-    let p' = case p of
-          PVar x -> PVar x
-          PTag k ps -> PTag k (dropMeta <$> ps)
-          PTuple ps -> PTuple (dropMeta <$> ps)
-          PRecord kvs -> PRecord (second dropMeta <$> kvs)
-          PTrait p x -> PTrait (dropMeta p) x
-    (ts, p', a)
+    let ts' = second dropMeta <$> ts
+    let p' = dropMeta p
+    let a' = dropMeta a
+    (ts', p', a')
 
 instance DropMeta Module where
   dropMeta :: Module -> Module

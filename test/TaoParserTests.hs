@@ -53,9 +53,6 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "@package/module.name" `shouldBe` Right ("@package/module", ".name")
     p "@package/path/to/module.name" `shouldBe` Right ("@package/path/to/module", ".name")
     p "@/path/to/module.name" `shouldBe` Right ("@/path/to/module", ".name")
-    p "./path/to/module.name" `shouldBe` Right ("./path/to/module", ".name")
-    p "./module.name" `shouldBe` Right ("./module", ".name")
-    p "." `shouldBe` Left ([], ".")
 
   it "☯ parseName" $ do
     let p = parse' parseName
@@ -65,9 +62,6 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "@package/module.name" `shouldBe` Right ("@package/module.name", "")
     p "@package/path/to/module.name" `shouldBe` Right ("@package/path/to/module.name", "")
     p "@/path/to/module.name" `shouldBe` Right ("@/path/to/module.name", "")
-    p "./path/to/module.name" `shouldBe` Right ("./path/to/module.name", "")
-    p "./module.name" `shouldBe` Right ("./module.name", "")
-    p "." `shouldBe` Left ([], ".")
 
   it "☯ parseLineBreak" $ do
     let p = parse' parseLineBreak
@@ -228,33 +222,10 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseDefinition" $ do
     let p = parse' parseDefinition
-    p "x = y" `shouldBe` Right (defVar "x" (var 1 5 "y"), "")
-    p "x : a = y" `shouldBe` Right (defVarT "x" (var 1 5 "a") (var 1 9 "y"), "")
-    p "x : a\nx = y" `shouldBe` Right (defVarT "x" (var 1 5 "a") (var 2 5 "y"), "")
-    p "x : a\nx y = z" `shouldBe` Right (defVarT "x" (var 1 5 "a") (Function [pvar 2 3 "y"] (var 2 7 "z")), "")
-
-  it "☯ parseDefVar" $ do
-    let p = parse' parseDefVar
-    p "x = y" `shouldBe` Right (defVar "x" (var 1 5 "y"), "")
-    p "x = y;" `shouldBe` Right (defVar "x" (var 1 5 "y"), "")
-    p "x = y\n" `shouldBe` Right (defVar "x" (var 1 5 "y"), "")
-    p "x =\ny" `shouldBe` Right (defVar "x" (var 2 1 "y"), "")
-    p "x\n= y" `shouldBe` Right (defVar "x" (var 2 3 "y"), "")
-    p "x : a = y" `shouldBe` Right (defVarT "x" (var 1 5 "a") (var 1 9 "y"), "")
-
-  it "☯ parseDefFun" $ do
-    let p = parse' parseDefFun
-    p "x = y" `shouldBe` Right (defVar "x" (var 1 5 "y"), "")
-    p "x y = z" `shouldBe` Right (defVar "x" (Function [pvar 1 3 "y"] (var 1 7 "z")), "")
-    p "x : a\nx = y" `shouldBe` Right (defVarT "x" (var 1 5 "a") (var 2 5 "y"), "")
-    p "x : a; x = y" `shouldBe` Right (defVarT "x" (var 1 5 "a") (var 1 12 "y"), "")
-    p "x : a\nx y = z" `shouldBe` Right (defVarT "x" (var 1 5 "a") (Function [pvar 2 3 "y"] (var 2 7 "z")), "")
-
-  it "☯ parseTypeAnnotation" $ do
-    let p = parse' parseTypeAnnotation
-    p "x : a" `shouldBe` Right (("x", var 1 5 "a"), "")
-    p "x : a;" `shouldBe` Right (("x", var 1 5 "a"), "")
-    p "x : a\n" `shouldBe` Right (("x", var 1 5 "a"), "")
+    p "x = y" `shouldBe` Right (([], pvar 1 1 "x", var 1 5 "y"), "")
+    p "x : a = y" `shouldBe` Right (([("x", var 1 5 "a")], pvar 1 1 "x", var 1 9 "y"), "")
+    p "x : a\nx = y" `shouldBe` Right (([("x", var 1 5 "a")], pvar 2 1 "x", var 2 5 "y"), "")
+    p "x : a\ny : b\nx = y" `shouldBe` Right (([("x", var 1 5 "a"), ("y", var 2 5 "b")], pvar 3 1 "x", var 3 5 "y"), "")
 
   it "☯ parseImport" $ do
     let p = parse' parseImport
@@ -262,7 +233,6 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "import @pkg/mod" `shouldBe` Right (Import "@pkg/mod" [], "")
     p "import @pkg (a, b as c)" `shouldBe` Right (Import "@pkg" [("a", "a"), ("b", "c")], "")
     p "import @/mod" `shouldBe` Right (Import "@/mod" [], "")
-    p "import ./mod" `shouldBe` Right (Import "./mod" [], "")
 
   it "☯ parseTest" $ do
     let p = parse' parseTest

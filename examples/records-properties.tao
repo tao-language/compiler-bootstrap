@@ -1,15 +1,15 @@
-p = {x = 10, y = 20}
+p = {x: 1, y: 2}
 
 # Property-like access
 > p.x
-10
+1
 
 > p.y
-20
+2
 
 # Trait-like access
 > .x p
-10
+1
 
 > .y p
-20
+2

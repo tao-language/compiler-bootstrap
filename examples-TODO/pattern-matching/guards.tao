@@ -1,9 +1,0 @@
-max =
-  x y if x > y => x
-  _ y => y
-
-> max 1 2
-2
-
-> max 2 1
-2

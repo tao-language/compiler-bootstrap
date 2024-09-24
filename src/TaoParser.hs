@@ -79,10 +79,7 @@ parsePath :: Parser String
 parsePath = do
   let optional ps = P.oneOf [P.concat ps, return ""]
   let path = fmap concat (P.zeroOrMore (P.concat [P.text "/", parseIdentifier]))
-  P.oneOf
-    [ P.concat [P.text "@", optional [parseIdentifier], path],
-      P.concat [P.text "./", parseIdentifier, path]
-    ]
+  P.concat [P.text "@", optional [parseIdentifier], path]
 
 parseName :: Parser String
 parseName = do
@@ -334,131 +331,38 @@ parseStmt = do
   return (foldr (MetaStmt . C.Comment) stmt comments)
 
 parseDefinition :: Parser Definition
-parseDefinition =
-  P.oneOf
-    [ parseDefVar,
-      parseDefFun
-      -- ,parseDefTag
-      -- ,parseDefTuple
-      -- ,parseDefRecord
-      -- ,parseDefTrait
-    ]
-
-parseDefVar :: Parser Definition
-parseDefVar = do
-  x <- parseName
-  ts <-
+parseDefinition = do
+  (ts, p, b) <-
     P.oneOf
       [ do
+          (loc, x) <- parseLocation parseName
           _ <- P.spaces
           _ <- P.char ':'
           _ <- P.spaces
           t <- parseExpr 0 P.spaces
-          return [(x, t)],
-        return []
-      ]
-  _ <- P.whitespaces
-  _ <- P.char '='
-  _ <- P.whitespaces
-  a <- parseExpr 0 P.spaces
-  _ <- parseLineBreak
-  _ <- P.whitespaces
-  return (ts, PVar x, a)
-
-parseDefFun :: Parser Definition
-parseDefFun = do
-  x <- parseName
-  ts <-
-    P.oneOf
-      [ do
           _ <- P.spaces
-          _ <- P.char ':'
+          _ <- P.char '='
           _ <- P.spaces
-          t <- parseExpr 0 P.spaces
-          _ <- parseLineBreak
-          _ <- P.whitespaces
-          _ <- P.text x
-          return [(x, t)],
-        return []
+          b <- parseExpr 0 P.spaces
+          return ([(x, t)], PMeta loc (PVar x), b),
+        do
+          ts <- P.zeroOrMore $ do
+            x <- parseName
+            _ <- P.spaces
+            _ <- P.char ':'
+            _ <- P.spaces
+            t <- parseExpr 0 P.spaces
+            _ <- parseLineBreak
+            return (x, t)
+          p <- parsePattern
+          _ <- P.char '='
+          _ <- P.spaces
+          b <- parseExpr 0 P.spaces
+          return (ts, p, b)
       ]
-  _ <- P.spaces
-  ps <- P.zeroOrMore parsePattern
-  _ <- P.char '='
-  _ <- P.spaces
-  a <- parseExpr 0 P.spaces
   _ <- parseLineBreak
   _ <- P.whitespaces
-  return (ts, PVar x, function ps a)
-
-parseDefTag :: Parser Definition
-parseDefTag = error "TODO"
-
-parseDefTuple :: Parser Definition
-parseDefTuple = error "TODO"
-
-parseDefRecord :: Parser Definition
-parseDefRecord = error "TODO"
-
-parseDefTrait :: Parser Definition
-parseDefTrait = error "TODO"
-
--- = DefVar String (Maybe Type) Expr
--- \| DefTag [(String, Type)] String [Pattern] Expr
--- \| DefTuple [(String, Type)] [Pattern] Expr
--- \| DefRecord [(String, Type)] [(String, Pattern)] Expr
--- \| DefTrait Pattern String (Maybe Type) Expr
-
--- parseDefinition :: Parser ([(String, Type)], Pattern, Expr)
--- parseDefinition = do
---   ts <- P.zeroOrMore $ do
---     x <- parseIdentifier
---     _ <- P.spaces
---     _ <- P.char ':'
---     _ <- P.spaces
---     t <- parseExpr 0 P.spaces
---     _ <- parseLineBreak
---     return (x, t)
---   (ts, p, a) <-
---     P.oneOf
---       [ do
---           x <- parseIdentifier
---           _ <- P.spaces
---           _ <- P.char ':'
---           _ <- P.spaces
---           t <- parseExpr 0 P.spaces
---           _ <- P.char '='
---           _ <- P.spaces
---           a <- parseExpr 0 P.spaces
---           return ((x, t) : ts, PVar x, a),
---         do
---           x <- parseIdentifier
---           _ <- P.spaces
---           ps <- P.oneOrMore parsePattern
---           _ <- P.char '='
---           _ <- P.spaces
---           a <- parseExpr 0 P.spaces
---           return (ts, PVar x, MatchFun [Case ps Nothing a]),
---         do
---           p <- parsePattern
---           _ <- P.char '='
---           _ <- P.spaces
---           a <- parseExpr 0 P.spaces
---           return (ts, p, a)
---       ]
---   _ <- parseLineBreak
---   _ <- P.whitespaces
---   return (ts, p, a)
-
-parseTypeAnnotation :: Parser (String, Expr)
-parseTypeAnnotation = do
-  x <- parseIdentifier
-  _ <- P.spaces
-  _ <- P.char ':'
-  _ <- P.spaces
-  ty <- parseExpr 0 P.spaces
-  _ <- parseLineBreak
-  _ <- P.whitespaces
-  return (x, ty)
+  return (ts, p, b)
 
 parseImport :: Parser Stmt
 parseImport = do

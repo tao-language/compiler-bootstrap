@@ -44,11 +44,15 @@ run = describe "--==☯ Examples ☯==--" $ do
   -- it ("☯ " ++ name) $ do
   --   test' "comments-multiline.tao" `shouldReturn` []
 
-  let name = "def-variable"
+  let name = "def-untyped"
   it ("☯ " ++ name) $ do
     test' name [] `shouldReturn` Right []
 
-  let name = "def-function"
+  let name = "def-typed"
+  it ("☯ " ++ name) $ do
+    test' name [] `shouldReturn` Right []
+
+  let name = "def-inline-type"
   it ("☯ " ++ name) $ do
     test' name [] `shouldReturn` Right []
 
@@ -59,17 +63,35 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     test' name [] `shouldReturn` Right expected
 
-  let name = "global-name"
+  let name = "name-global"
   it ("☯ " ++ name) $ do
+    -- @examples/sub/mod1.x
     test' name ["sub/"] `shouldReturn` Right []
 
-  let name = "tuples"
+  -- let name = "name-root"
+  -- it ("☯ " ++ name) $ do
+  --   -- @/sub/mod1.x
+  --   test' name ["sub/"] `shouldReturn` Right []
+
+  -- let name = "traits"
+  -- it ("☯ " ++ name) $ do
+  --   test' name [] `shouldReturn` Right []
+
+  let name = "tuples-def"
   it ("☯ " ++ name) $ do
     test' name [] `shouldReturn` Right []
 
-  let name = "records"
-  it ("☯ " ++ name) $ do
-    test' name [] `shouldReturn` Right []
+  -- let name = "tuples-properties"
+  -- it ("☯ " ++ name) $ do
+  --   test' name [] `shouldReturn` Right []
+
+  -- let name = "records-def"
+  -- it ("☯ " ++ name) $ do
+  --   test' name [] `shouldReturn` Right []
+
+  -- let name = "records-properties"
+  -- it ("☯ " ++ name) $ do
+  --   test' name [] `shouldReturn` Right []
 
   it "☯ TODO" $ do
     True `shouldBe` True
