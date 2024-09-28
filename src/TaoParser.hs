@@ -393,6 +393,14 @@ parseImport = do
 
 parseTest :: P.Parser ParserContext Stmt
 parseTest = do
+  name <-
+    P.oneOf
+      [ do
+          _ <- P.text "--"
+          _ <- P.spaces
+          P.skipTo P.endOfLine,
+        return ""
+      ]
   _ <- P.char '>'
   _ <- P.oneOrMore P.space
   P.commit CTest
@@ -408,7 +416,7 @@ parseTest = do
         return (PTag "True" [])
       ]
   _ <- P.whitespaces
-  return (Test expr result)
+  return (Test name expr result)
 
 parseModule :: String -> Parser Module
 parseModule name = do
@@ -453,6 +461,15 @@ showSnippet (row, col) before after src = do
           & slice (row + 1) (row + after + 1)
           & zipWith showLine [row + 1 ..]
   intercalate "\n" (linesBefore ++ highlight ++ linesAfter)
+
+loadPackage :: FilePath -> IO (C.Env, [Substitution], [SyntaxError])
+loadPackage path = do
+  (pkg, errors) <- parsePackage path
+  let env = [] -- TODO: link (load dependencies into the env)
+  let s = resolve pkg
+  let env' = lower env (rename () s pkg)
+  -- TODO: merge traits and operators
+  return (env', s, errors)
 
 parsePackage :: FilePath -> IO (Package, [SyntaxError])
 parsePackage path = do

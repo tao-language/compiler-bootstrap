@@ -6,7 +6,7 @@ import Data.Bifunctor (Bifunctor (bimap), second)
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
 import Data.List (elemIndex, intercalate, isInfixOf, isPrefixOf, union)
-import Data.List.Split (splitWhen)
+import Data.List.Split (splitWhen, startsWith)
 import Data.Maybe (fromMaybe)
 
 data Expr
@@ -64,7 +64,7 @@ data Pattern
 data Stmt
   = Import String [(String, String)]
   | Def Definition
-  | Test Expr Pattern
+  | Test String Expr Pattern
   | MetaStmt C.Metadata Stmt
   deriving (Eq, Show)
 
@@ -84,7 +84,7 @@ type Type = Expr
 
 data TestError
   = NoTestsFound String
-  | TestEqError Expr Expr Pattern
+  | TestEqError String C.Expr C.Expr
   deriving (Eq, Show)
 
 -- Syntax sugar
@@ -364,7 +364,9 @@ instance Lower Definition C.Env where
   lower env (ts, PVar x, a) = case lookup x ts of
     Just t -> [(x, lower env (Ann a t))]
     Nothing -> [(x, lower env a)]
-  lower env def = error $ "TODO lower Definition " ++ show def
+  lower env (ts, PMeta m p, a) = do
+    lower env (ts, p, a) & map (second $ C.Meta m)
+  lower env (ts, p, a) = error $ "TODO lower Definition " ++ show p
 
 instance Lower Case C.Expr where
   lower :: C.Env -> Case -> C.Expr
@@ -393,11 +395,14 @@ instance Lower Stmt C.Env where
     [] -> []
     (x, y) : xs -> (y, C.Var x) : lower env (Import m xs)
   lower env (Def def) = lower env def
-  lower env (Test a p) = do
-    let expect = Case [p] Nothing (ok $ Tuple [])
-    let error = Case [PVar "e"] Nothing (err $ Var "e")
-    let test = match [a] [expect, error]
-    [("> " ++ show a, lower env test)]
+  lower env (Test name a p) = do
+    let test' =
+          C.match'
+            [lower env a]
+            [ ([lower env p], C.Tag "pass" []),
+              ([C.PVar "_"], C.Tag "fail" [C.Var "_"])
+            ]
+    [(name, test')]
   lower env (MetaStmt _ stmt) = lower env stmt
 
 instance Lower Module C.Env where
@@ -479,7 +484,7 @@ instance ResolveNames () Package where
 instance ResolveNames String Module where
   resolveNames :: String -> Module -> [(String, String)]
   resolveNames p mod = do
-    let m = p ++ '/' : mod.name
+    let m = '@' : p ++ '/' : mod.name
     concatMap (resolveNames m) mod.stmts
 
 instance ResolveNames String Stmt where
@@ -489,7 +494,7 @@ instance ResolveNames String Stmt where
     (_, y) : exposed ->
       ('@' : m, y) : resolveNames m (Import m' exposed)
   resolveNames m (Def def) = resolveNames m def
-  resolveNames _ (Test _ _) = []
+  resolveNames _ Test {} = []
   resolveNames m (MetaStmt _ stmt) = resolveNames m stmt
 
 instance ResolveNames String Definition where
@@ -504,6 +509,7 @@ instance ResolveNames String Definition where
     PTuple ps -> concatMap (resolveNames m) ps
     PRecord kvs -> concatMap (resolveNames m . snd) kvs
     PTrait p x -> [('.' : '@' : m ++ ':' : show p, x)]
+    PMeta _ p -> resolveNames m p
     p -> error $ "TODO: resolveNames " ++ show p
 
 instance ResolveNames String Pattern where
@@ -514,27 +520,13 @@ instance ResolveNames String Pattern where
 
 resolve :: Package -> [Substitution]
 resolve pkg = do
-  let s (m, x) = ((m, x), m ++ '.' : x)
-  map s (resolveNames () pkg)
+  let sub (m, x) = ((m, x), m ++ '.' : x)
+  map sub (resolveNames () pkg)
 
 linkPackage :: Package -> Package
 linkPackage pkg = do
   let s = resolve pkg
   rename () s pkg
-
-stmtTests :: Stmt -> [(Expr, Pattern)]
-stmtTests (Test expr expected) = [(expr, expected)]
-stmtTests (MetaStmt _ stmt) = stmtTests stmt
-stmtTests _ = []
-
-moduleTests :: String -> String -> Module -> [(Expr, Pattern)]
-moduleTests filter p mod
-  | filter `isInfixOf` (p ++ '/' : mod.name) =
-      concatMap stmtTests mod.stmts
-moduleTests _ _ _ = []
-
-packageTests :: String -> Package -> [(Expr, Pattern)]
-packageTests filter pkg = concatMap (moduleTests filter pkg.name) pkg.modules
 
 nameSplit :: String -> [String]
 nameSplit name =
@@ -629,19 +621,14 @@ instance Apply Stmt where
   apply :: (Expr -> Expr) -> Stmt -> Stmt
   apply _ stmt@Import {} = stmt
   apply f (Def def) = Def (apply f def)
-  apply f (Test a b) = Test (apply f a) (apply f b)
+  apply f (Test name a b) = Test name (apply f a) (apply f b)
   apply f (MetaStmt m a) = MetaStmt m (apply f a)
 
 instance Apply Definition where
   apply :: (Expr -> Expr) -> Definition -> Definition
   apply f (ts, p, a) = do
     let ts' = second (apply f) <$> ts
-    let p' = case p of
-          PVar x -> PVar x
-          PTag k ps -> PTag k (apply f <$> ps)
-          PTuple ps -> PTuple (apply f <$> ps)
-          PRecord kvs -> PRecord (second (apply f) <$> kvs)
-          PTrait p x -> PTrait (apply f p) x
+    let p' = apply f p
     let a' = apply f a
     (ts', p', a')
 
@@ -666,7 +653,11 @@ instance Rename String Stmt where
   rename m s (Import m' vars) =
     Import m' (map (bimap (rename m' s) (rename m s)) vars)
   rename m s (Def def) = Def (rename m s def)
-  rename m s (Test a p) = Test (rename m s a) (rename m s p)
+  rename m s (Test name a p) = do
+    let name' = case name of
+          '>' : _ -> name
+          _ -> '>' : m ++ ':' : name
+    Test name' (rename m s a) (rename m s p)
   rename m s (MetaStmt m' stmt) = MetaStmt m' (rename m s stmt)
 
 instance Rename String Definition where
@@ -714,8 +705,8 @@ instance Rename String Case where
 instance Rename String String where
   rename :: String -> [Substitution] -> String -> String
   rename _ [] x = x
-  rename m ((sub, y) : s) x
-    | sub == (m, x) = y
+  rename m ((path, y) : s) x
+    | path == (m, x) = y
     | otherwise = rename m s x
 
 refactorName :: (Type -> String -> String) -> Package -> Package
@@ -791,7 +782,7 @@ instance DropMeta Stmt where
   dropMeta :: Stmt -> Stmt
   dropMeta stmt@Import {} = stmt
   dropMeta (Def def) = Def (dropMeta def)
-  dropMeta (Test a b) = Test (dropMeta a) (dropMeta b)
+  dropMeta (Test name a b) = Test name (dropMeta a) (dropMeta b)
   dropMeta (MetaStmt _ stmt) = dropMeta stmt
 
 instance DropMeta Definition where
@@ -813,7 +804,7 @@ instance DropMeta Package where
 instance DropMeta TestError where
   dropMeta :: TestError -> TestError
   dropMeta (NoTestsFound x) = NoTestsFound x
-  dropMeta (TestEqError a b p) = TestEqError (dropMeta a) (dropMeta b) (dropMeta p)
+  dropMeta (TestEqError name got expected) = TestEqError name got expected
 
 eval :: Package -> String -> Expr -> Either (Expr, C.TypeError) (Expr, Expr)
 eval pkg m expr = do
@@ -825,24 +816,49 @@ eval pkg m expr = do
     Right (type', _) -> Right (lift result, lift type')
     Left e -> Left (lift result, e)
 
-test :: Package -> String -> [TestError]
-test pkg filter = do
-  let s = resolve pkg
-  let pkg' = rename () s pkg
-  let env = lower [] pkg'
-  case packageTests filter pkg' of
-    [] -> [NoTestsFound filter]
-    tests -> concatMap (testEq env) tests
+test :: C.Env -> String -> [TestError]
+test env name = do
+  let match ('>' : x, _) | name `isInfixOf` x = True
+      match _ = False
+  let test' (name, expr) = case C.eval env expr of
+        C.Tag "pass" [] -> []
+        C.Tag "fail" [actual] -> [TestEqError name expr actual]
+        unexpected -> error $ show (expr, unexpected)
+  concatMap test' (filter match env)
 
-testEq :: C.Env -> (Expr, Pattern) -> [TestError]
-testEq env (expr, expected) = do
-  let unitTest = lower env $ Match [expr] [Case [expected] Nothing (Tuple [])]
-  let passed = case C.eval env unitTest of
-        C.Err -> False
-        -- C.Op2 C.Eq _ _ -> False
-        _ -> True
-  if passed
-    then []
-    else do
-      let actual = lower env expr & C.eval env & lift
-      [TestEqError expr actual expected]
+-- test :: Package -> String -> [TestError]
+-- test pkg filter = do
+--   let s = resolve pkg
+--   let pkg' = rename () s pkg
+--   let env = lower [] pkg'
+--   -- case packageTests filter pkg' of
+--   --   [] -> [NoTestsFound filter]
+--   --   tests -> concatMap (testEq env) tests
+--   error $ show (env :: C.Env)
+
+-- stmtTests :: Stmt -> [(Expr, Pattern)]
+-- stmtTests (Test expr expected) = [(expr, expected)]
+-- stmtTests (MetaStmt _ stmt) = stmtTests stmt
+-- stmtTests _ = []
+
+-- moduleTests :: String -> String -> Module -> [(Expr, Pattern)]
+-- moduleTests filter p mod
+--   | filter `isInfixOf` (p ++ '/' : mod.name) =
+--       concatMap stmtTests mod.stmts
+-- moduleTests _ _ _ = []
+
+-- packageTests :: String -> Package -> [(Expr, Pattern)]
+-- packageTests filter pkg = concatMap (moduleTests filter pkg.name) pkg.modules
+
+-- testEq :: C.Env -> (Expr, Pattern) -> [TestError]
+-- testEq env (expr, expected) = do
+--   let unitTest = lower env $ Match [expr] [Case [expected] Nothing (Tuple [])]
+--   let passed = case C.eval env unitTest of
+--         C.Err -> False
+--         -- C.Op2 C.Eq _ _ -> False
+--         _ -> True
+--   if passed
+--     then []
+--     else do
+--       let actual = lower env expr & C.eval env & lift
+--       [TestEqError expr actual expected]

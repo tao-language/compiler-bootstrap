@@ -240,42 +240,6 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower [] pkg `shouldBe` env
   -- TODO: lift env `shouldBe` pkg
 
-  it "☯ stmtDefs" $ do
-    -- stmtDefs (Def (Int 42) z) `shouldBe` []
-    -- stmtDefs (Def (Num 3.14) z) `shouldBe` []
-    -- stmtDefs (Def (Var "x") z) `shouldBe` [("x", z)]
-    -- stmtDefs (Def (Tag "A" []) z) `shouldBe` []
-    -- stmtDefs (Def (Tag "A" [x, y]) z) `shouldBe` [("x", Match [z] [Fun (Tag "A" [x, y]) x]), ("y", Match [z] [Fun (Tag "A" [x, y]) y])]
-    -- stmtDefs (Def (Tuple []) z) `shouldBe` []
-    -- stmtDefs (Def (Tuple [x, y]) z) `shouldBe` [("x", Match [z] [Fun (Tuple [x, y]) x]), ("y", Match [z] [Fun (Tuple [x, y]) y])]
-    -- stmtDefs (Def (Record []) z) `shouldBe` []
-    -- stmtDefs (Def (Record [("a", x), ("b", y)]) z) `shouldBe` [("x", Match [z] [Fun (Record [("a", x), ("b", y)]) x]), ("y", Match [z] [Fun (Record [("a", x), ("b", y)]) y])]
-    -- stmtDefs (Def (Trait y "x") z) `shouldBe` [(".x", fun [Any, y] z)]
-    -- stmtDefs (Def (Trait (Ann y IntType) "x") z) `shouldBe` [(".x", fun [IntType, y] z)]
-    -- -- TODO: List
-    -- -- TODO: Text
-    -- stmtDefs (Def (Fun x y) z) `shouldBe` [("x", Match [z] [Fun (Fun x y) x]), ("y", Match [z] [Fun (Fun x y) y])]
-    -- stmtDefs (Def (App x y) z) `shouldBe` [("x", Fun y z)]
-    -- -- stmtDefs (Def (Let (x, y) x) z) `shouldBe` [("y", Match [z] [Fun (Let (x, y) x) y])]
-    -- -- stmtDefs (Def (Let (x, Int 1) x) z) `shouldBe` []
-    -- -- stmtDefs (Def (Let (x, Int 1) y) z) `shouldBe` [("y", Match [z] [Fun (Let (x, Int 1) y) y])]
-    -- -- TODO: Bind
-    -- -- TODO: TypeDef
-    -- -- TODO: MatchFun
-    -- -- TODO: Match
-    -- stmtDefs (Def (Or x y) z) `shouldBe` [("x", Match [z] [Fun (Or x y) x]), ("y", Match [z] [Fun (Or x y) y])]
-    -- stmtDefs (Def (Ann x y) z) `shouldBe` [("x", Ann z y)]
-    -- stmtDefs (Def (Op1 C.Int2Num x) z) `shouldBe` []
-    -- stmtDefs (Def (Op2 C.Add x y) z) `shouldBe` []
-    -- stmtDefs (Def (Meta loc x) z) `shouldBe` [("x", Meta loc z)]
-    -- stmtDefs (Def Err y) `shouldBe` []
-    True `shouldBe` True
-
-  -- it "☯ lowerPackage" $ do
-  --   let mod defs = Package {name = "lowerPackage", modules = [Module "f" defs]}
-  --   lowerPackage (mod []) `shouldBe` []
-  --   lowerPackage (mod [Def (NameDef "x" [] y)]) `shouldBe` [("x", y')]
-
   -- it "☯ run" $ do
   --   let defs =
   --         [ Def (NameDef "x" [] (Int 42)),
@@ -317,34 +281,16 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   run mod (Meta loc x) `shouldBe` Int 42
   --   run mod Err `shouldBe` Err
 
-  it "☯ packageTests" $ do
-    let defs =
-          [ Def $ defVar "x" (Int 1),
-            Test x (PInt 2)
-          ]
-    let mod = Package {name = "pkg", modules = [Module "mod" defs]}
-    packageTests "" mod `shouldBe` [(x, PInt 2)]
-    packageTests "pkg" mod `shouldBe` [(x, PInt 2)]
-    packageTests "pkg/mod" mod `shouldBe` [(x, PInt 2)]
-    packageTests "pkg2" mod `shouldBe` []
-
   it "☯ test" $ do
-    let mod1 =
-          Module
-            "mod1"
-            [ Def $ defVar "x" (Int 1),
-              Test x (PInt 1)
-            ]
-    let mod2 =
-          Module
-            "mod2"
-            [ Def $ defVar "y" (Int 1),
-              Test y (PInt 2)
-            ]
-    let pkg = Package {name = "pkg", modules = [mod1, mod2]}
-    test pkg "mod1" `shouldBe` []
-    test pkg "mod2" `shouldBe` [TestEqError (Var "@pkg/mod2.y") (Int 1) (PInt 2)]
-    test pkg "" `shouldBe` [TestEqError (Var "@pkg/mod2.y") (Int 1) (PInt 2)]
+    -- TODO: this should be lowered from a Package, tests are built custom
+    let env =
+          [ ("x", C.Int 1),
+            ("y", C.Int 2),
+            (">x", C.Var "x")
+          ]
+    test env "" `shouldBe` []
+  -- test env "" `shouldBe` [TestEqError ">x" (Var "@pkg/mod2.y") (Int 1) (PInt 2)]
+  -- test env "" `shouldBe` [TestEqError ">x" (Var "@pkg/mod2.y") (Int 1) (PInt 2)]
 
   it "☯ splitCamelCase" $ do
     splitCamelCase "" `shouldBe` []

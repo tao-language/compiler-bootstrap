@@ -53,7 +53,7 @@ data Metadata
   = Location String (Int, Int)
   | Comment String
   | Unwrap
-  deriving (Eq, Show)
+  deriving (Eq)
 
 type Env = [(String, Expr)]
 
@@ -116,7 +116,7 @@ instance Show Expr where
     Tag k args -> showsPrec p (app (Tag k []) args)
     Op op [] -> atom 12 ("(" ++ op ++ ")")
     Op op args -> showsPrec p (app (Op op []) args)
-    Meta _ a -> showsPrec p a
+    Meta m a -> prefix p ("#(" ++ show m ++ ")") a
     Lam p b -> infixR 8 (toExpr p) " => " b
     where
       atom n k = showParen (p > n) $ showString k
@@ -139,6 +139,10 @@ instance Show Expr where
 instance Show Pattern where
   show :: Pattern -> String
   show = show . toExpr
+
+instance Show Metadata where
+  show :: Metadata -> String
+  show (Location src (row, col)) = src ++ ':' : show row ++ ':' : show col
 
 -- Syntax sugar
 intT :: Int -> Expr
@@ -230,6 +234,22 @@ tuple = Tag ""
 list :: Expr -> Expr -> [Expr] -> Expr
 list _ nil [] = nil
 list cons nil (a : bs) = app cons [a, list cons nil bs]
+
+match' :: [Expr] -> [([Pattern], Expr)] -> Expr
+match' args cases = app (matchFun cases) args
+
+matchFun :: [([Pattern], Expr)] -> Expr
+matchFun [] = Err
+matchFun [(ps, b)] = lam ps b
+matchFun ((ps, b) : cases) = lam ps b `Or` matchFun cases
+
+test :: Env -> Expr -> Pattern -> Either Expr ()
+test env expr expected = do
+  let actual = eval env expr
+  let test' = match' [actual] [([expected], Tag "" [])]
+  case eval env test' of
+    Err -> Left actual
+    _ -> Right ()
 
 meta :: [Metadata] -> Expr -> Expr
 meta ms a = foldr Meta a ms
@@ -657,3 +677,34 @@ rename f names env ((x, a) : env') = do
         Left _ -> Err
   let y = f t (names ++ map fst env') x
   (y, eval [(x, Var y)] a) : rename f (y : names) env env'
+
+class DropMeta a where
+  dropMeta :: a -> a
+
+instance DropMeta Expr where
+  dropMeta :: Expr -> Expr
+  dropMeta Knd = Knd
+  dropMeta IntT = IntT
+  dropMeta NumT = NumT
+  dropMeta (Int i) = Int i
+  dropMeta (Num n) = Num n
+  dropMeta (Var x) = Var x
+  dropMeta (Tag k args) = Tag k (map dropMeta args)
+  dropMeta (For x a) = For x (dropMeta a)
+  dropMeta (Fix x a) = Fix x (dropMeta a)
+  dropMeta (Fun a b) = Fun (dropMeta a) (dropMeta b)
+  dropMeta (Lam p b) = Lam (dropMeta p) (dropMeta b)
+  dropMeta (App a b) = App (dropMeta a) (dropMeta b)
+  dropMeta (Or a b) = Or (dropMeta a) (dropMeta b)
+  dropMeta (Ann a t) = Ann (dropMeta a) (dropMeta t)
+  dropMeta (Op op args) = Op op (map dropMeta args)
+  dropMeta (Meta _ a) = dropMeta a
+  dropMeta Err = Err
+
+instance DropMeta Pattern where
+  dropMeta :: Pattern -> Pattern
+  dropMeta PErr = PErr
+
+instance DropMeta (String, Expr) where
+  dropMeta :: (String, Expr) -> (String, Expr)
+  dropMeta (x, a) = (x, dropMeta a)

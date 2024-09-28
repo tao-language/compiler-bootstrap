@@ -597,7 +597,7 @@ instance Emit T.Stmt [Stmt] where
         let stmts = emit options (T.Import m [])
         stmts ++ [ImportFrom m' (map expose exposed)]
   emit options (T.Def def) = emit options def
-  emit options (T.Test a p) = do
+  emit options (T.Test name a p) = do
     let (stmts1, a') = emit options a
     let (stmts2, b') = emit options (T.toExpr p) -- TODO: do a match instead
     let def =

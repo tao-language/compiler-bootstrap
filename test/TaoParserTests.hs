@@ -236,15 +236,15 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseTest" $ do
     let p = parse' parseTest
-    p "> x; y" `shouldBe` Right (Test (var 1 3 "x") (pvar 1 6 "y"), "")
-    p "> x\ny" `shouldBe` Right (Test (var 1 3 "x") (pvar 2 1 "y"), "")
-    p "> x" `shouldBe` Right (Test (var 1 3 "x") (PTag "True" []), "")
+    p "> x; y" `shouldBe` Right (Test "" (var 1 3 "x") (pvar 1 6 "y"), "")
+    p "> x\ny" `shouldBe` Right (Test "" (var 1 3 "x") (pvar 2 1 "y"), "")
+    p "> x" `shouldBe` Right (Test "" (var 1 3 "x") (PTag "True" []), "")
 
   it "☯ parseStmt" $ do
     let p = parse' parseStmt
     p "import @pkg" `shouldBe` Right (Import "@pkg" [], "")
     -- p "x = y" `shouldBe` Right (Define (Def [] (pvar 1 1 "x") (var 1 5 "y")), "")
-    p "> x; y" `shouldBe` Right (Test (var 1 3 "x") (pvar 1 6 "y"), "")
+    p "> x; y" `shouldBe` Right (Test "" (var 1 3 "x") (pvar 1 6 "y"), "")
 
   it "☯ parseModule" $ do
     let p = parse' (parseModule "path/my-file.tao")
@@ -252,13 +252,13 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "x" `shouldBe` Left ([CModule], "x")
     p "import @pkg" `shouldBe` Right (Module "path/my-file.tao" [Import "@pkg" []], "")
 
+  it "☯ parseFile" $ do
+    let pkg = Package {name = "pkg", modules = []}
+    parseFile "examples" "empty.tao" (pkg, []) `shouldReturn` (pkg {modules = [Module "empty" []]}, [])
+
   it "☯ parseFile exists" $ do
     let pkg = Package {name = "pkg", modules = [Module "my-file" []]}
     parseFile "base-path" "my-file" (pkg, []) `shouldReturn` (pkg, [])
-
-  it "☯ parseFile load" $ do
-    let pkg = Package {name = "pkg", modules = []}
-    parseFile "examples" "empty.tao" (pkg, []) `shouldReturn` (pkg {modules = [Module "empty" []]}, [])
 
   it "☯ parsePackage directory" $ do
     let pkg = Package {name = "empty", modules = [Module "empty-file" []]}
@@ -269,3 +269,19 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     let pkg = Package {name = "empty", modules = [Module "empty" []]}
     parsePackage "examples/empty.tao" `shouldReturn` (pkg, [])
     withCurrentDirectory "examples" (parsePackage "empty.tao") `shouldReturn` (pkg, [])
+
+  it "☯ loadPackage" $ do
+    let env =
+          [ ("@sub/mod.x", C.Int 1),
+            ("@sub/mod.y", C.Int 2)
+          ]
+    let s =
+          [ (("@sub/mod", "x"), "@sub/mod.x"),
+            (("@sub/mod", "y"), "@sub/mod.y")
+          ]
+    let errors = []
+    let load path = do
+          (env, s, errors) <- loadPackage path
+          let env' = map C.dropMeta env
+          return (env', s, errors)
+    load "examples/sub" `shouldReturn` (env, s, errors)

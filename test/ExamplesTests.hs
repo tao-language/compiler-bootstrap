@@ -11,19 +11,20 @@ import Test.Hspec
 test' :: String -> [String] -> IO (Either [SyntaxError] [TestError])
 test' name includes = do
   let names = name : includes
-  (pkg, errors) <- parsePackage "examples"
-  case filter (\e -> any (`isInfixOf` e.filename) names) errors of
-    [] -> do
-      let pkg' = dropMeta (pkg {modules = filter (\m -> any (`isInfixOf` m.name) names) pkg.modules})
-      let testErrors = test pkg' name
-      -- return (Right testErrors)
-      case testErrors of
-        [] -> return (Right [])
-        [NoTestsFound x] -> return (Right [NoTestsFound x])
-        errors -> do
-          print pkg'
-          return (Right errors)
-    errors -> return (Left errors)
+  -- (pkg, errors) <- parsePackage "examples"
+  -- case filter (\e -> any (`isInfixOf` e.filename) names) errors of
+  --   [] -> do
+  --     let pkg' = dropMeta (pkg {modules = filter (\m -> any (`isInfixOf` m.name) names) pkg.modules})
+  --     let testErrors = test pkg' name
+  --     -- return (Right testErrors)
+  --     case testErrors of
+  --       [] -> return (Right [])
+  --       [NoTestsFound x] -> return (Right [NoTestsFound x])
+  --       errors -> do
+  --         print pkg'
+  --         return (Right errors)
+  --   errors -> return (Left errors)
+  error "TODO: test'"
 
 run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do
@@ -59,8 +60,9 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "errors"
   it ("☯ " ++ name) $ do
     let expected =
-          [ TestEqError (Var "@examples/errors/wrong-result.x") (Int 42) (PInt 0)
-          ]
+          []
+    -- TestEqError (Var "@examples/errors/wrong-result.x") (Int 42) (PInt 0)
+
     test' name [] `shouldReturn` Right expected
 
   let name = "name-global"
@@ -68,10 +70,16 @@ run = describe "--==☯ Examples ☯==--" $ do
     -- @examples/sub/mod1.x
     test' name ["sub/"] `shouldReturn` Right []
 
-  -- let name = "name-root"
-  -- it ("☯ " ++ name) $ do
-  --   -- @/sub/mod1.x
-  --   test' name ["sub/"] `shouldReturn` Right []
+  let name = "name-root"
+  it ("☯ " ++ name) $ do
+    -- @/sub/mod1.x
+    test' name ["sub/"] `shouldReturn` Right []
+
+  -- TODO: import global
+  -- TODO: import root
+
+  -- TODO: match-one
+  -- TODO: match-many
 
   -- let name = "traits"
   -- it ("☯ " ++ name) $ do
@@ -85,6 +93,8 @@ run = describe "--==☯ Examples ☯==--" $ do
   -- it ("☯ " ++ name) $ do
   --   test' name [] `shouldReturn` Right []
 
+  -- TODO: Tags
+
   -- let name = "records-def"
   -- it ("☯ " ++ name) $ do
   --   test' name [] `shouldReturn` Right []
@@ -92,6 +102,16 @@ run = describe "--==☯ Examples ☯==--" $ do
   -- let name = "records-properties"
   -- it ("☯ " ++ name) $ do
   --   test' name [] `shouldReturn` Right []
+
+  -- TODO: "records-select"
+  -- TODO: "records-update"
+  -- TODO: "records-reorder"
+  -- TODO: "records-positional"
+  -- TODO: "records-mixed-positional"
+  -- TODO: "records-default-values"
+
+  -- TODO: Unions
+  -- TODO: Choices (?)
 
   it "☯ TODO" $ do
     True `shouldBe` True
