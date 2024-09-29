@@ -282,13 +282,18 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   run mod Err `shouldBe` Err
 
   it "☯ test" $ do
-    -- TODO: this should be lowered from a Package, tests are built custom
-    let env =
-          [ ("x", C.Int 1),
-            ("y", C.Int 2),
-            (">x", C.Var "x")
+    let f name stmts = do
+          let pkg = Package "pkg" [Module "mod" stmts]
+          let s = resolve pkg
+          let env = lower [] (rename () s pkg)
+          test env name
+    let stmts =
+          [ Def (defVar "x" (Int 1)),
+            Def (defVar "y" (Int 2)),
+            Test ">x" x (PInt 1),
+            Test ">y" x (PInt 0)
           ]
-    test env "" `shouldBe` []
+    f "" stmts `shouldBe` []
   -- test env "" `shouldBe` [TestEqError ">x" (Var "@pkg/mod2.y") (Int 1) (PInt 2)]
   -- test env "" `shouldBe` [TestEqError ">x" (Var "@pkg/mod2.y") (Int 1) (PInt 2)]
 
@@ -367,17 +372,17 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ resolveNames Definition" $ do
     let ts = [] :: [(String, Type)]
     let f m p = resolveNames m (ts, p, Err)
-    f "pkg/mod" (PVar "x") `shouldBe` [("@pkg/mod", "x")]
-    f "pkg/@pkg" (PVar "x") `shouldBe` [("@pkg", "x")]
-    f "pkg/mod" (PVar "_x") `shouldBe` [("_@pkg/mod", "x")]
-    f "pkg/_mod" (PVar "x") `shouldBe` [("_@pkg/_mod", "x")]
+    f "@pkg/mod" (PVar "x") `shouldBe` [("@pkg/mod", "x")]
+    f "@pkg/@pkg" (PVar "x") `shouldBe` [("@pkg", "x")]
+    f "@pkg/mod" (PVar "_x") `shouldBe` [("_@pkg/mod", "x")]
+    f "@pkg/_mod" (PVar "x") `shouldBe` [("_@pkg/_mod", "x")]
     -- f "pkg/mod" (PTrait xP "y") de`shouldBe` [(".@pkg/mod:x", "y")]
     -- f "pkg/mod" (POp1 "+" xP) `shouldBe` [("$1@pkg/mod:x", "+")]
     -- f "pkg/mod" (POp2 "+" xP yP) `shouldBe` [("$2@pkg/mod:x:y", "+")]
     True `shouldBe` True
 
   it "☯ resolveNames Stmt" $ do
-    let f = resolveNames "pkg/mod"
+    let f = resolveNames "@pkg/mod"
     f (Import "m" [("x", "y")]) `shouldBe` [("@pkg/mod", "y")]
     f (Def $ defVar "x" y) `shouldBe` [("@pkg/mod", "x")]
 

@@ -11,20 +11,18 @@ import Test.Hspec
 test' :: String -> [String] -> IO (Either [SyntaxError] [TestError])
 test' name includes = do
   let names = name : includes
-  -- (pkg, errors) <- parsePackage "examples"
-  -- case filter (\e -> any (`isInfixOf` e.filename) names) errors of
-  --   [] -> do
-  --     let pkg' = dropMeta (pkg {modules = filter (\m -> any (`isInfixOf` m.name) names) pkg.modules})
-  --     let testErrors = test pkg' name
-  --     -- return (Right testErrors)
-  --     case testErrors of
-  --       [] -> return (Right [])
-  --       [NoTestsFound x] -> return (Right [NoTestsFound x])
-  --       errors -> do
-  --         print pkg'
-  --         return (Right errors)
-  --   errors -> return (Left errors)
-  error "TODO: test'"
+  (env, s, errors) <- loadPackage "examples"
+  case filter (\e -> any (`isInfixOf` e.filename) names) errors of
+    [] -> do
+      let testErrors = test env name
+      -- return (Right testErrors)
+      case testErrors of
+        [] -> return (Right [])
+        [NoTestsFound x] -> return (Right [NoTestsFound x])
+        errors -> do
+          print env
+          return (Right errors)
+    errors -> return (Left errors)
 
 run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do

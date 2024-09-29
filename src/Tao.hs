@@ -361,6 +361,7 @@ instance Lower Expr C.Expr where
 
 instance Lower Definition C.Env where
   lower :: C.Env -> Definition -> C.Env
+  lower env (ts, PAny, a) = []
   lower env (ts, PVar x, a) = case lookup x ts of
     Just t -> [(x, lower env (Ann a t))]
     Nothing -> [(x, lower env a)]
@@ -492,7 +493,7 @@ instance ResolveNames String Stmt where
   resolveNames m (Import m' exposed) = case exposed of
     [] -> []
     (_, y) : exposed ->
-      ('@' : m, y) : resolveNames m (Import m' exposed)
+      (m, y) : resolveNames m (Import m' exposed)
   resolveNames m (Def def) = resolveNames m def
   resolveNames _ Test {} = []
   resolveNames m (MetaStmt _ stmt) = resolveNames m stmt
@@ -500,11 +501,11 @@ instance ResolveNames String Stmt where
 instance ResolveNames String Definition where
   resolveNames :: String -> Definition -> [(String, String)]
   resolveNames m (_, p, _) = case p of
-    PVar ('_' : x) -> [('_' : '@' : m, x)]
-    PVar x | "/_" `isInfixOf` m -> [('_' : '@' : m, x)]
+    PVar ('_' : x) -> [('_' : m, x)]
+    PVar x | "/_" `isInfixOf` m -> [('_' : m, x)]
     PVar x -> case split2 '/' m of
-      (pkg, '@' : pkg') | pkg == pkg' -> [('@' : pkg, x)]
-      _ -> [('@' : m, x)]
+      (pkg, pkg') | pkg == pkg' -> [(pkg, x)]
+      _ -> [(m, x)]
     PTag _ ps -> concatMap (resolveNames m) ps
     PTuple ps -> concatMap (resolveNames m) ps
     PRecord kvs -> concatMap (resolveNames m . snd) kvs
@@ -514,6 +515,7 @@ instance ResolveNames String Definition where
 
 instance ResolveNames String Pattern where
   resolveNames :: String -> Pattern -> [(String, String)]
+  resolveNames _ PAny = []
   resolveNames m (PVar x) = [(m, x)]
   resolveNames m (PMeta _ p) = resolveNames m p
   resolveNames m p = error $ "TODO: resolveNames " ++ show (m, p)
@@ -688,6 +690,7 @@ instance Rename String Expr where
   rename m s (Tuple args) = Tuple (map (rename m s) args)
   rename m s (Record fields) = Record (map (second $ rename m s) fields)
   rename m s (App a b) = App (rename m s a) (rename m s b)
+  rename m s (Ann a b) = Ann (rename m s a) (rename m s b)
   rename m s (Fun a b) = Fun (rename m s a) (rename m s b)
   rename m s (Function ps a) = Function (map (rename m s) ps) (rename m s a)
   rename m s (MatchFun cases) = MatchFun (map (rename m s) cases)
