@@ -49,7 +49,7 @@ run = describe "--==☯ Examples ☯==--" $ do
 
   let name = "errors"
   it ("☯ " ++ name) $ do
-    test' name [] `shouldReturn` Right [TestEqError ">@examples/errors/wrong-result:" (C.Var "@examples/errors/wrong-result.x") (C.PInt 0) (C.Int 42)]
+    test' name [] `shouldReturn` Right [TestEqError ">@examples/errors/wrong-result:" (C.Var "@examples/errors/wrong-result.x") (C.Int 0) (C.Int 42)]
 
   let name = "name-global"
   it ("☯ " ++ name) $ do

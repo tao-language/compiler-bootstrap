@@ -84,7 +84,7 @@ type Type = Expr
 
 data TestError
   = NoTestsFound String
-  | TestEqError String C.Expr C.Pattern C.Expr
+  | TestEqError String C.Expr C.Expr C.Expr
   | NotATest String C.Expr
   deriving (Eq, Show)
 
@@ -296,7 +296,7 @@ instance FreeVars Expr where
 
 instance FreeVars Pattern where
   freeVars :: Pattern -> [String]
-  freeVars p = C.freeVars (lower [] p :: C.Pattern)
+  freeVars p = C.freeVars (lower [] p :: C.Expr)
 
 instance FreeVars Case where
   freeVars :: Case -> [String]
@@ -372,24 +372,24 @@ instance Lower Definition C.Env where
 
 instance Lower Case C.Expr where
   lower :: C.Env -> Case -> C.Expr
-  lower env (Case ps guard b) = C.lam (map (lower env) ps) (lower env b)
+  lower env (Case ps guard b) = C.fun (map (lower env) ps) (lower env b)
 
-instance Lower Pattern C.Pattern where
-  lower :: C.Env -> Pattern -> C.Pattern
-  lower _ PAny = C.PAny
-  lower _ (PInt i) = C.PInt i
-  lower _ (PNum n) = C.PNum n
-  lower _ (PVar x) = C.PVar x
+instance Lower Pattern C.Expr where
+  lower :: C.Env -> Pattern -> C.Expr
+  lower _ PAny = C.Var "_"
+  lower _ (PInt i) = C.Int i
+  lower _ (PNum n) = C.Num n
+  lower _ (PVar x) = C.Var x
   lower env (PTag k ps)
-    | PTag k ps == pIntT = C.PIntT
-    | PTag k ps == pNumT = C.PNumT
-    | otherwise = C.PTag k (map (lower env) ps)
+    | PTag k ps == pIntT = C.IntT
+    | PTag k ps == pNumT = C.NumT
+    | otherwise = C.Tag k (map (lower env) ps)
   lower env (PTuple ps) = lower env (PTag "" ps)
-  lower env (PFun p q) = C.PFun (lower env p) (lower env q)
+  lower env (PFun p q) = C.Fun (lower env p) (lower env q)
   lower env (POr p q) = error "TODO"
-  lower env (PEq a) = C.PEq (lower env a)
-  lower env (PMeta m p) = C.PMeta m (lower env p)
-  lower _ PErr = C.PErr
+  lower env (PEq a) = error "TODO"
+  lower env (PMeta m p) = C.Meta m (lower env p)
+  lower _ PErr = C.Err
 
 instance Lower Stmt C.Env where
   lower :: C.Env -> Stmt -> C.Env
@@ -397,7 +397,7 @@ instance Lower Stmt C.Env where
     [] -> []
     (x, y) : xs -> (y, C.Var x) : lower env (Import m xs)
   lower env (Def def) = lower env def
-  lower env (Test name a p) = [(name, C.Tag ">" [C.Lam (lower env p) (lower env a)])]
+  lower env (Test name a p) = [(name, C.Tag ">" [C.Fun (lower env p) (lower env a)])]
   lower env (MetaStmt _ stmt) = lower env stmt
 
 instance Lower Module C.Env where
@@ -427,10 +427,9 @@ instance Lift C.Expr Expr where
   lift (C.For _ a) = lift a
   lift (C.Fix _ a) = lift a
   lift (C.Fun a b) = Fun (lift a) (lift b)
-  lift (C.Lam p b) = Function [lift p] (lift b)
   lift (C.App a b) = case appOf (App (lift a) (lift b)) of
     (Var ('.' : x), _ : a : args) -> app (Trait a x) args
-    (Trait a "<-", [Function [p] b]) -> Bind ([], p, a) b
+    (Trait a "<-", [Fun p b]) -> Bind ([], toPattern p, a) b
     (a, args) -> app a args
   lift (C.Or a b) = Or (lift a) (lift b)
   lift (C.Ann a b) = Ann (lift a) (lift b)
@@ -438,13 +437,8 @@ instance Lift C.Expr Expr where
   lift (C.Meta m a) = Meta m (lift a)
   lift C.Err = Err
 
-instance Lift C.Pattern Pattern where
-  lift :: C.Pattern -> Pattern
-  lift C.PAny = PAny
-  lift (C.PInt i) = PInt i
-  lift (C.PNum n) = PNum n
-  lift (C.PVar x) = PVar x
-  lift p = error $ "TODO: lift " ++ show p
+toPattern :: Expr -> Pattern
+toPattern (Var x) = PVar x
 
 splitWith :: (Char -> Bool) -> String -> [String]
 splitWith f text = case dropWhile f text of
@@ -818,11 +812,11 @@ test env name = do
   let match ('>' : x, _) | name `isInfixOf` x = True
       match _ = False
   let test' (name, expr) = case expr of
-        C.Tag ">" [C.Lam p a] -> do
+        C.Tag ">" [C.Fun p a] -> do
           let run =
                 C.match' [a] $
                   [ ([p], C.Tag "Pass" []),
-                    ([C.PVar "_"], C.Tag "Fail" [C.Var "_"])
+                    ([C.Var "_"], C.Tag "Fail" [C.Var "_"])
                   ]
           case C.eval env run of
             C.Tag "Pass" [] -> []

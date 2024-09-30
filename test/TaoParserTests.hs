@@ -271,6 +271,10 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     withCurrentDirectory "examples" (parsePackage "empty.tao") `shouldReturn` (pkg, [])
 
   it "☯ loadPackage" $ do
+    let load path = do
+          (env, s, errors) <- loadPackage path
+          let env' = map C.dropMeta env
+          return (env', s, errors)
     let env =
           [ ("@sub/mod.x", C.Int 1),
             ("@sub/mod.y", C.Int 2)
@@ -280,8 +284,4 @@ run = describe "--==☯ TaoParser ☯==--" $ do
             (("@sub/mod", "y"), "@sub/mod.y")
           ]
     let errors = []
-    let load path = do
-          (env, s, errors) <- loadPackage path
-          let env' = map C.dropMeta env
-          return (env', s, errors)
     load "examples/sub" `shouldReturn` (env, s, errors)

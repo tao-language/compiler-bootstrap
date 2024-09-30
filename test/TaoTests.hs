@@ -10,7 +10,6 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (xP, yP, zP) = (PVar "x", PVar "y", PVar "z")
   let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
-  let (xP', yP', zP') = (C.PVar "x", C.PVar "y", C.PVar "z")
   let (a, a') = (Var "a", C.Var "a")
   let (f, f') = (Var "f", C.Var "f")
   let (i0, i1, i2) = (Int 0, Int 1, Int 2)
@@ -175,7 +174,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower/lift Bind" $ do
     let expr = Bind ([], xP, y) z
-    let term = C.app (C.Var ".<-") [C.intT 1, y', C.Lam xP' z']
+    let term = C.app (C.Var ".<-") [C.intT 1, y', C.Fun x' z']
     lower [("y", C.Int 1)] expr `shouldBe` term
     lift term `shouldBe` expr
 
@@ -294,8 +293,8 @@ run = describe "--==☯ TaoTests ☯==--" $ do
             Test ">y" y (PInt 0)
           ]
     f "x" stmts `shouldBe` []
-    f "y" stmts `shouldBe` [TestEqError ">y" (C.Var "@pkg/mod.y") (C.PInt 0) (C.Int 2)]
-    f "" stmts `shouldBe` [TestEqError ">y" (C.Var "@pkg/mod.y") (C.PInt 0) (C.Int 2)]
+    f "y" stmts `shouldBe` [TestEqError ">y" (C.Var "@pkg/mod.y") (C.Int 0) (C.Int 2)]
+    f "" stmts `shouldBe` [TestEqError ">y" (C.Var "@pkg/mod.y") (C.Int 0) (C.Int 2)]
 
   it "☯ splitCamelCase" $ do
     splitCamelCase "" `shouldBe` []

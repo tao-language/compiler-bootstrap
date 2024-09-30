@@ -24,29 +24,12 @@ data Expr
   | For String Expr
   | Fix String Expr
   | Fun Expr Expr
-  | Lam Pattern Expr
   | App Expr Expr
   | Or Expr Expr
   | Ann Expr Expr
   | Op String [Expr]
   | Meta Metadata Expr
   | Err
-  deriving (Eq)
-
-data Pattern
-  = PKnd
-  | PAny
-  | PIntT
-  | PNumT
-  | PInt Int
-  | PNum Double
-  | PVar String
-  | PTag String [Pattern]
-  | PApp Pattern Pattern
-  | PFun Pattern Pattern
-  | PEq Expr
-  | PMeta Metadata Pattern
-  | PErr
   deriving (Eq)
 
 data Metadata
@@ -117,7 +100,6 @@ instance Show Expr where
     Op op [] -> atom 12 ("(" ++ op ++ ")")
     Op op args -> showsPrec p (app (Op op []) args)
     Meta m a -> prefix p ("#(" ++ show m ++ ")") a
-    Lam p b -> infixR 8 (toExpr p) " => " b
     where
       atom n k = showParen (p > n) $ showString k
       prefix n k a = showParen (p > n) $ showString k . showsPrec (n + 1) a
@@ -135,10 +117,6 @@ instance Show Expr where
       isNameChar c = isAlphaNum c
       op2 op = " " ++ show op ++ " "
       op1 op = show op ++ " "
-
-instance Show Pattern where
-  show :: Pattern -> String
-  show = show . toExpr
 
 instance Show Metadata where
   show :: Metadata -> String
@@ -171,7 +149,10 @@ asFor (For x a) = let (xs, b) = asFor a in (x : xs, b)
 asFor a = ([], a)
 
 fun :: [Expr] -> Expr -> Expr
-fun args ret = foldr Fun ret args
+fun ps b = foldr Fun b ps
+
+lam :: [Expr] -> Expr -> Expr
+lam ps b = for (freeVars ps) (fun ps b)
 
 asFun :: Expr -> ([Expr], Expr)
 asFun (Fun arg ret) = let (args, ret') = asFun ret in (arg : args, ret')
@@ -201,23 +182,17 @@ gt a b = Op ">" [a, b]
 int2num :: Expr -> Expr
 int2num a = Op "$i2n" [a]
 
-lam :: [Pattern] -> Expr -> Expr
-lam ps b = foldr Lam b ps
-
-let' :: (Pattern, Expr) -> Expr -> Expr
-let' (PVar x, Var x') b | x == x' = b
+let' :: (Expr, Expr) -> Expr -> Expr
+let' (Var x, Var x') b | x == x' = b
 let' (p, a) b = do
   let xs = filter (`occurs` a) (freeVars p)
   App (lam [p] b) (fix xs a)
 
-lets :: [(Pattern, Expr)] -> Expr -> Expr
+lets :: [(Expr, Expr)] -> Expr -> Expr
 lets defs b = foldr let' b defs
 
 app :: Expr -> [Expr] -> Expr
 app = foldl App
-
-pApp :: Pattern -> [Pattern] -> Pattern
-pApp = foldl PApp
 
 -- appOf :: Expr -> (Expr, [Expr])
 -- appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
@@ -235,15 +210,15 @@ list :: Expr -> Expr -> [Expr] -> Expr
 list _ nil [] = nil
 list cons nil (a : bs) = app cons [a, list cons nil bs]
 
-match' :: [Expr] -> [([Pattern], Expr)] -> Expr
+match' :: [Expr] -> [([Expr], Expr)] -> Expr
 match' args cases = app (matchFun cases) args
 
-matchFun :: [([Pattern], Expr)] -> Expr
+matchFun :: [([Expr], Expr)] -> Expr
 matchFun [] = Err
-matchFun [(ps, b)] = lam ps b
-matchFun ((ps, b) : cases) = lam ps b `Or` matchFun cases
+matchFun [(ps, b)] = fun ps b
+matchFun ((ps, b) : cases) = fun ps b `Or` matchFun cases
 
-test :: Env -> Expr -> Pattern -> Either Expr ()
+test :: Env -> Expr -> Expr -> Either Expr ()
 test env expr expected = do
   let actual = eval env expr
   let test' = match' [actual] [([expected], Tag "" [])]
@@ -284,7 +259,6 @@ instance FreeVars Expr where
   freeVars (For x a) = delete x (freeVars a)
   freeVars (Fix x a) = delete x (freeVars a)
   freeVars (Fun a b) = freeVars a `union` freeVars b
-  freeVars (Lam p b) = freeVars p `union` freeVars b
   freeVars (App a b) = freeVars a `union` freeVars b
   freeVars (Or a b) = freeVars a `union` freeVars b
   freeVars (Ann a _) = freeVars a
@@ -292,24 +266,10 @@ instance FreeVars Expr where
   freeVars (Meta _ a) = freeVars a
   freeVars Err = []
 
-instance FreeVars Pattern where
-  freeVars :: Pattern -> [String]
-  freeVars = freeVars . toExpr
-
-toExpr :: Pattern -> Expr
-toExpr PKnd = Knd
-toExpr PAny = For "_" (Var "_")
-toExpr PIntT = IntT
-toExpr PNumT = NumT
-toExpr (PInt i) = Int i
-toExpr (PNum n) = Num n
-toExpr (PVar x) = Var x
-toExpr (PTag k ps) = Tag k (map toExpr ps)
-toExpr (PApp p q) = App (toExpr p) (toExpr q)
-toExpr (PFun p q) = Fun (toExpr p) (toExpr q)
-toExpr (PEq a) = a
-toExpr (PMeta m p) = Meta m (toExpr p)
-toExpr PErr = Err
+instance FreeVars [Expr] where
+  freeVars :: [Expr] -> [String]
+  freeVars [] = []
+  freeVars (a : bs) = freeVars a `union` freeVars bs
 
 occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
@@ -354,13 +314,12 @@ eval env (Tag k args) = Tag k (map (eval env) args)
 eval env (For x a) = For x (eval ((x, Var x) : env) a)
 eval env (Fix x a) = Fix x (eval ((x, Var x) : env) a)
 eval env (Fun a b) = Fun (eval env a) (eval env b)
-eval env (Lam p b) = Lam p (eval (pushVars (freeVars p) env) b)
 eval env (App a b) = case (eval env a, eval env b) of
   (For x a, b) -> eval [(x, Var x)] (App a b)
   (Fix x a, b) | isClosed b -> eval [(x, Fix x a)] (App a b)
   (Tag k args, b) -> Tag k (args ++ [b])
   (Err, _) -> Err
-  (Lam p c, b) -> case match p b of
+  (Fun a c, b) -> case match a b of
     Just bindings -> eval bindings c
     Nothing -> Err
   (Or a1 a2, b) -> case eval [] (App a1 b) of
@@ -380,27 +339,26 @@ eval env (Op op args) = case (op, map (eval env) args) of
 eval env (Meta _ a) = eval env a
 eval _ Err = Err
 
-match :: Pattern -> Expr -> Maybe [(String, Expr)]
-match PAny _ = Just []
-match PIntT IntT = Just []
-match PNumT NumT = Just []
-match (PInt i) (Int i') | i == i' = Just []
-match (PNum n) (Num n') | n == n' = Just []
-match (PVar x) b = Just [(x, b)]
-match (PApp p q) (App a b) = match2 (p, a) (q, b)
-match (PTag k ps) (Tag k' args) | k == k' = matchAll ps args
-match (PFun p q) (Fun a b) = match2 (p, a) (q, b)
-match (PMeta _ p) b = match p b
-match PErr Err = Just []
+match :: Expr -> Expr -> Maybe [(String, Expr)]
+match IntT IntT = Just []
+match NumT NumT = Just []
+match (Int i) (Int i') | i == i' = Just []
+match (Num n) (Num n') | n == n' = Just []
+match (Var x) b = Just [(x, b)]
+match (App p q) (App a b) = match2 (p, a) (q, b)
+match (Tag k ps) (Tag k' args) | k == k' = matchAll ps args
+match (Fun p q) (Fun a b) = match2 (p, a) (q, b)
+match (Meta _ p) b = match p b
+match Err Err = Just []
 match _ _ = Nothing
 
-match2 :: (Pattern, Expr) -> (Pattern, Expr) -> Maybe [(String, Expr)]
+match2 :: (Expr, Expr) -> (Expr, Expr) -> Maybe [(String, Expr)]
 match2 (p, a) (q, b) = do
   env1 <- match p a
   env2 <- match q b
   Just (env1 ++ env2)
 
-matchAll :: [Pattern] -> [Expr] -> Maybe [(String, Expr)]
+matchAll :: [Expr] -> [Expr] -> Maybe [(String, Expr)]
 matchAll [] [] = Just []
 matchAll (p : ps) (a : bs) = do
   env1 <- match p a
@@ -432,7 +390,6 @@ substitute s (Tag k args) = Tag k (map (substitute s) args)
 substitute s (For x a) = For x (substitute (filter ((/= x) . fst) s) a)
 substitute s (Fix x a) = Fix x (substitute (filter ((/= x) . fst) s) a)
 substitute s (Fun a b) = Fun (substitute s a) (substitute s b)
-substitute s (Lam p b) = Lam p (substitute (filter ((`elem` freeVars p) . fst) s) b)
 substitute s (App a b) = App (substitute s a) (substitute s b)
 substitute s (Or a b) = Or (substitute s a) (substitute s b)
 substitute s (Ann (Tag k []) ty) = Ann (Tag k []) (substitute s ty)
@@ -552,10 +509,6 @@ check env (Fix x a) t = check ((x, Var x) : env) a t
 check env (Fun a b) (Fun ta tb) = do
   ((ta', tb'), s) <- check2 env (a, ta) (b, tb)
   Right (Fun ta' tb', s)
-check env (Lam p b) (Fun tp tb) = do
-  let env' = pushVars (freeVars p) env
-  ((tp', tb'), s) <- check2 env' (toExpr p, tp) (b, tb)
-  Right (Fun tp' tb', s)
 check env (App a b) t = do
   (tb, s1) <- infer env b
   (_, s2) <- check (s1 `compose` env) a (Fun tb t)
@@ -608,9 +561,6 @@ infer env (Fix x a) = do
 infer env (Fun a b) = do
   ((ta, tb), s) <- infer2 env a b
   Right (Fun ta tb, s)
-infer env (Lam p b) = do
-  ((tp, tb), s) <- infer2 (pushVars (freeVars p) env) (toExpr p) b
-  Right (Fun tp tb, s)
 infer env (App a b) = do
   ((ta, tb), s1) <- infer2 env a b
   case ta of
@@ -693,21 +643,12 @@ instance DropMeta Expr where
   dropMeta (For x a) = For x (dropMeta a)
   dropMeta (Fix x a) = Fix x (dropMeta a)
   dropMeta (Fun a b) = Fun (dropMeta a) (dropMeta b)
-  dropMeta (Lam p b) = Lam (dropMeta p) (dropMeta b)
   dropMeta (App a b) = App (dropMeta a) (dropMeta b)
   dropMeta (Or a b) = Or (dropMeta a) (dropMeta b)
   dropMeta (Ann a t) = Ann (dropMeta a) (dropMeta t)
   dropMeta (Op op args) = Op op (map dropMeta args)
   dropMeta (Meta _ a) = dropMeta a
   dropMeta Err = Err
-
-instance DropMeta Pattern where
-  dropMeta :: Pattern -> Pattern
-  dropMeta (PInt i) = PInt i
-  dropMeta (PVar x) = PVar x
-  dropMeta (PMeta _ p) = dropMeta p
-  dropMeta PErr = PErr
-  dropMeta p = error $ "TODO: C.dropMeta " ++ show p
 
 instance DropMeta (String, Expr) where
   dropMeta :: (String, Expr) -> (String, Expr)
