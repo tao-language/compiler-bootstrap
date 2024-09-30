@@ -1,8 +1,5 @@
-> @/sub/mod1.x
+> @/sub/mod.x
 1
 
-> @/sub/mod1.y
+> @/sub/mod.y
 2
-
-> @/sub/mod2.z
-3

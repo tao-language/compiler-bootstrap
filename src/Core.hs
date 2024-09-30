@@ -703,7 +703,11 @@ instance DropMeta Expr where
 
 instance DropMeta Pattern where
   dropMeta :: Pattern -> Pattern
+  dropMeta (PInt i) = PInt i
+  dropMeta (PVar x) = PVar x
+  dropMeta (PMeta _ p) = dropMeta p
   dropMeta PErr = PErr
+  dropMeta p = error $ "TODO: C.dropMeta " ++ show p
 
 instance DropMeta (String, Expr) where
   dropMeta :: (String, Expr) -> (String, Expr)

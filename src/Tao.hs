@@ -84,7 +84,8 @@ type Type = Expr
 
 data TestError
   = NoTestsFound String
-  | TestEqError String C.Expr C.Expr
+  | TestEqError String C.Expr C.Pattern C.Expr
+  | NotATest String C.Expr
   deriving (Eq, Show)
 
 -- Syntax sugar
@@ -396,14 +397,7 @@ instance Lower Stmt C.Env where
     [] -> []
     (x, y) : xs -> (y, C.Var x) : lower env (Import m xs)
   lower env (Def def) = lower env def
-  lower env (Test name a p) = do
-    let test' =
-          C.match'
-            [lower env a]
-            [ ([lower env p], C.Tag "pass" []),
-              ([C.PVar "_"], C.Tag "fail" [C.Var "_"])
-            ]
-    [(name, test')]
+  lower env (Test name a p) = [(name, C.Tag ">" [C.Lam (lower env p) (lower env a)])]
   lower env (MetaStmt _ stmt) = lower env stmt
 
 instance Lower Module C.Env where
@@ -807,7 +801,7 @@ instance DropMeta Package where
 instance DropMeta TestError where
   dropMeta :: TestError -> TestError
   dropMeta (NoTestsFound x) = NoTestsFound x
-  dropMeta (TestEqError name got expected) = TestEqError name got expected
+  dropMeta (TestEqError name expr got expected) = TestEqError name (C.dropMeta expr) (C.dropMeta got) (C.dropMeta expected)
 
 eval :: Package -> String -> Expr -> Either (Expr, C.TypeError) (Expr, Expr)
 eval pkg m expr = do
@@ -823,11 +817,19 @@ test :: C.Env -> String -> [TestError]
 test env name = do
   let match ('>' : x, _) | name `isInfixOf` x = True
       match _ = False
-  let test' (name, expr) = case C.eval env expr of
-        C.Tag "pass" [] -> []
-        C.Tag "fail" [actual] -> [TestEqError name expr actual]
-        unexpected -> error $ show (expr, unexpected)
-  concatMap test' (filter match env)
+  let test' (name, expr) = case expr of
+        C.Tag ">" [C.Lam p a] -> do
+          let run =
+                C.match' [a] $
+                  [ ([p], C.Tag "Pass" []),
+                    ([C.PVar "_"], C.Tag "Fail" [C.Var "_"])
+                  ]
+          case C.eval env run of
+            C.Tag "Pass" [] -> []
+            C.Tag "Fail" [actual] -> [TestEqError name a p actual]
+  case filter match env of
+    [] -> [NoTestsFound name]
+    tests -> concatMap test' tests
 
 -- test :: Package -> String -> [TestError]
 -- test pkg filter = do

@@ -291,11 +291,11 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           [ Def (defVar "x" (Int 1)),
             Def (defVar "y" (Int 2)),
             Test ">x" x (PInt 1),
-            Test ">y" x (PInt 0)
+            Test ">y" y (PInt 0)
           ]
-    f "" stmts `shouldBe` []
-  -- test env "" `shouldBe` [TestEqError ">x" (Var "@pkg/mod2.y") (Int 1) (PInt 2)]
-  -- test env "" `shouldBe` [TestEqError ">x" (Var "@pkg/mod2.y") (Int 1) (PInt 2)]
+    f "x" stmts `shouldBe` []
+    f "y" stmts `shouldBe` [TestEqError ">y" (C.Var "@pkg/mod.y") (C.PInt 0) (C.Int 2)]
+    f "" stmts `shouldBe` [TestEqError ">y" (C.Var "@pkg/mod.y") (C.PInt 0) (C.Int 2)]
 
   it "☯ splitCamelCase" $ do
     splitCamelCase "" `shouldBe` []

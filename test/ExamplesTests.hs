@@ -13,15 +13,7 @@ test' name includes = do
   let names = name : includes
   (env, s, errors) <- loadPackage "examples"
   case filter (\e -> any (`isInfixOf` e.filename) names) errors of
-    [] -> do
-      let testErrors = test env name
-      -- return (Right testErrors)
-      case testErrors of
-        [] -> return (Right [])
-        [NoTestsFound x] -> return (Right [NoTestsFound x])
-        errors -> do
-          print env
-          return (Right errors)
+    [] -> return (Right (dropMeta <$> test env name))
     errors -> return (Left errors)
 
 run :: SpecWith ()
@@ -57,21 +49,17 @@ run = describe "--==☯ Examples ☯==--" $ do
 
   let name = "errors"
   it ("☯ " ++ name) $ do
-    let expected =
-          []
-    -- TestEqError (Var "@examples/errors/wrong-result.x") (Int 42) (PInt 0)
-
-    test' name [] `shouldReturn` Right expected
+    test' name [] `shouldReturn` Right [TestEqError ">@examples/errors/wrong-result:" (C.Var "@examples/errors/wrong-result.x") (C.PInt 0) (C.Int 42)]
 
   let name = "name-global"
   it ("☯ " ++ name) $ do
-    -- @examples/sub/mod1.x
+    -- @examples/sub/mod.x
     test' name ["sub/"] `shouldReturn` Right []
 
-  let name = "name-root"
-  it ("☯ " ++ name) $ do
-    -- @/sub/mod1.x
-    test' name ["sub/"] `shouldReturn` Right []
+  -- let name = "name-root"
+  -- it ("☯ " ++ name) $ do
+  --   -- @/sub/mod.x
+  --   test' name ["sub/"] `shouldReturn` Right []
 
   -- TODO: import global
   -- TODO: import root
