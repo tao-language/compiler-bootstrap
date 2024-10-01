@@ -127,6 +127,14 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- lam [] x `shouldBe` x
     -- lam [y'] x `shouldBe` Fun y' x
 
+    and' [] `shouldBe` Err
+    and' [x] `shouldBe` x
+    and' [x, y] `shouldBe` x `And` y
+
+    tag "A" [] `shouldBe` Tag "A"
+    tag "A" [x] `shouldBe` Tag "A" `And` x
+    tag "A" [x, y] `shouldBe` Tag "A" `And` (x `And` y)
+
     app x [] `shouldBe` x
     app x [y, z] `shouldBe` App (App x y) z
 
@@ -165,12 +173,14 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval env (App (Or Err f) IntT) `shouldBe` App g IntT
     eval env (App (Or f Err) IntT) `shouldBe` Or (App g IntT) (App Err IntT)
     eval env (App (Or f h) IntT) `shouldBe` Or (App g IntT) (App h IntT)
+    eval env (App (Tag "A") IntT) `shouldBe` tag "A" [IntT]
+    eval env (App (And (Tag "A") IntT) NumT) `shouldBe` tag "A" [IntT, NumT]
     eval env (App (lam [IntT] x) IntT) `shouldBe` Int 1
     eval env (App (lam [NumT] x) IntT) `shouldBe` Err
     eval env (App (lam [NumT] x) NumT) `shouldBe` Int 1
     eval env (App (lam [Var "x"] x) IntT) `shouldBe` IntT
-    eval env (App (lam [Tag "A" []] x) (Tag "A" [])) `shouldBe` Int 1
-    eval env (App (lam [Tag "A" [x]] x) (Tag "A" [IntT])) `shouldBe` IntT
+    eval env (App (lam [tag "A" []] x) (tag "A" [])) `shouldBe` Int 1
+    eval env (App (lam [tag "A" [x]] x) (tag "A" [IntT])) `shouldBe` IntT
     eval env (app (lam [IntT, NumT] x) [IntT, NumT]) `shouldBe` Int 1
     eval env (App Err IntT) `shouldBe` Err
     eval env (App Err IntT) `shouldBe` Err
@@ -213,7 +223,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval env (App f (Int 5)) `shouldBe` Int 120
 
   it "☯ unify" $ do
-    unify (Ann (Tag "A" []) (Tag "T" [])) (Tag "T" []) `shouldBe` Right (Tag "T" [], [])
+    unify (Ann (Tag "A") (Tag "T")) (Tag "T") `shouldBe` Right (Tag "T", [])
 
   it "☯ infer const" $ do
     infer [] Knd `shouldBe` Right (Knd, [])
@@ -239,11 +249,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer env (Ann i1 (for ["a"] a)) `shouldBe` Right (intT 1, [("a", intT 1)])
 
   it "☯ infer Ann Tag" $ do
-    let env = [("T", Tag "A" [] `Or` Tag "B" [])]
+    let env = [("T", Tag "A" `Or` Tag "B")]
     -- infer env (Tag "T" []) `shouldBe` Right (Tag "A" [] `Or` Tag "B" [], [])
     -- infer env (Ann (Tag "A" []) (Tag "A" [])) `shouldBe` Right (Tag "A" [], [])
-    infer env (Ann (Tag "A" []) (Tag "T" [])) `shouldBe` Right (Tag "T" [], [])
-    -- infer env (Ann (Tag "B" []) (Tag "T" [])) `shouldBe` Right (Tag "T" [], [])
+    infer env (Ann (Tag "A") (Tag "T")) `shouldBe` Right (Tag "T", [])
+    -- infer env (Ann (Tag "B []) (Tag "T" [])) `shouldBe` Right (Tag "T" [], [])
     -- infer env (Ann (Tag "C" []) (Tag "T" [])) `shouldBe` Left (TypeMismatch (Ann (Tag "C" []) (Tag "T" [])) (Tag "A" [] `Or` Tag "B" []))
     True `shouldBe` True
 

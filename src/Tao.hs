@@ -318,7 +318,7 @@ instance Lower Expr C.Expr where
     | Tag k args == kind = C.Knd
     | Tag k args == intT = C.IntT
     | Tag k args == numT = C.NumT
-    | otherwise = C.Tag k (map (lower env) args)
+    | otherwise = C.tag k (map (lower env) args)
   lower env (Tuple items) = lower env (Tag "" items)
   lower env (Record fields) = do
     let k = '~' : intercalate "," (map fst fields)
@@ -333,8 +333,10 @@ instance Lower Expr C.Expr where
   lower env (App a b) = do
     let a' = lower env a
     case C.infer env a' of
-      Right (C.Fun (C.Tag ('~' : xs) _) _, _) ->
-        C.App a' (lower env (select b (split ',' xs)))
+      Right (C.Fun t _, _) -> case t of
+        C.Tag "~" -> C.App a' (C.Tag "~")
+        C.And (C.Tag ('~' : xs)) _ ->
+          C.App a' (lower env (select b (split ',' xs)))
       _ -> C.App a' (lower env b)
   lower env (Or a b) = C.Or (lower env a) (lower env b)
   lower env (Let def b) = lower (lower env def ++ env) b
@@ -352,7 +354,7 @@ instance Lower Expr C.Expr where
           lowerFields (_ : xs) = lowerFields xs
       let fields' = lowerFields kvs
       let k = '~' : intercalate "," (map fst fields')
-      C.Tag k (map snd fields')
+      C.tag k (map snd fields')
     a -> error $ "TODO: lower Select " ++ show a
   lower env (Ann a b) = C.Ann (lower env a) (lower env b)
   lower env (Call op args) = C.Op op (map (lower env) args)
@@ -383,7 +385,7 @@ instance Lower Pattern C.Expr where
   lower env (PTag k ps)
     | PTag k ps == pIntT = C.IntT
     | PTag k ps == pNumT = C.NumT
-    | otherwise = C.Tag k (map (lower env) ps)
+    | otherwise = C.tag k (map (lower env) ps)
   lower env (PTuple ps) = lower env (PTag "" ps)
   lower env (PFun p q) = C.Fun (lower env p) (lower env q)
   lower env (POr p q) = error "TODO"
@@ -397,7 +399,7 @@ instance Lower Stmt C.Env where
     [] -> []
     (x, y) : xs -> (y, C.Var x) : lower env (Import m xs)
   lower env (Def def) = lower env def
-  lower env (Test name a p) = [(name, C.Tag ">" [C.Fun (lower env p) (lower env a)])]
+  lower env (Test name a p) = [(name, C.And (lower env a) (lower env p))]
   lower env (MetaStmt _ stmt) = lower env stmt
 
 instance Lower Module C.Env where
@@ -419,11 +421,9 @@ instance Lift C.Expr Expr where
   lift (C.Int i) = Int i
   lift (C.Num n) = Num n
   lift (C.Var x) = Var x
-  lift (C.Tag "" args) = Tuple (map lift args)
-  lift (C.Tag ('~' : names) args) = do
-    let keys = split ',' names
-    Record (zip keys (map lift args))
-  lift (C.Tag k args) = Tag k (map lift args)
+  lift (C.Tag "") = Tuple []
+  lift (C.Tag "~") = Record []
+  lift (C.Tag k) = Tag k []
   lift (C.For _ a) = lift a
   lift (C.Fix _ a) = lift a
   lift (C.Fun a b) = Fun (lift a) (lift b)
@@ -431,6 +431,13 @@ instance Lift C.Expr Expr where
     (Var ('.' : x), _ : a : args) -> app (Trait a x) args
     (Trait a "<-", [Fun p b]) -> Bind ([], toPattern p, a) b
     (a, args) -> app a args
+  lift (C.And a b) = case (a, map lift (C.andOf b)) of
+    (C.Tag "", items) -> Tuple items
+    (C.Tag ('~' : names), values) -> do
+      let keys = split ',' names
+      Record (zip keys values)
+    (C.Tag k, args) -> Tag k args
+    (a, items) -> Tuple (lift a : items)
   lift (C.Or a b) = Or (lift a) (lift b)
   lift (C.Ann a b) = Ann (lift a) (lift b)
   lift (C.Op op args) = Call op (map lift args)
@@ -812,15 +819,15 @@ test env name = do
   let match ('>' : x, _) | name `isInfixOf` x = True
       match _ = False
   let test' (name, expr) = case expr of
-        C.Tag ">" [C.Fun p a] -> do
+        C.And a p -> do
           let run =
                 C.match' [a] $
-                  [ ([p], C.Tag "Pass" []),
-                    ([C.Var "_"], C.Tag "Fail" [C.Var "_"])
+                  [ ([p], C.Tag "Pass"),
+                    ([C.Var "_"], C.Var "_")
                   ]
           case C.eval env run of
-            C.Tag "Pass" [] -> []
-            C.Tag "Fail" [actual] -> [TestEqError name a p actual]
+            C.Tag "Pass" -> []
+            actual -> [TestEqError name a p actual]
   case filter match env of
     [] -> [NoTestsFound name]
     tests -> concatMap test' tests
