@@ -208,9 +208,9 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
-  it "☯ lower/lift Op" $ do
+  it "☯ lower/lift Call" $ do
     let expr = Call "+" [x, y]
-    let term = C.Op "+" [x', y']
+    let term = C.Call "+" [x', y']
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 

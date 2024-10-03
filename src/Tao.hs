@@ -357,7 +357,7 @@ instance Lower Expr C.Expr where
       C.tag k (map snd fields')
     a -> error $ "TODO: lower Select " ++ show a
   lower env (Ann a b) = C.Ann (lower env a) (lower env b)
-  lower env (Call op args) = C.Op op (map (lower env) args)
+  lower env (Call op args) = C.Call op (map (lower env) args)
   lower env (Meta m a) = C.Meta m (lower env a)
   lower _ Err = C.Err
   lower _ a = error $ "TODO: lower " ++ show a
@@ -440,7 +440,7 @@ instance Lift C.Expr Expr where
     (a, items) -> Tuple (lift a : items)
   lift (C.Or a b) = Or (lift a) (lift b)
   lift (C.Ann a b) = Ann (lift a) (lift b)
-  lift (C.Op op args) = Call op (map lift args)
+  lift (C.Call op args) = Call op (map lift args)
   lift (C.Meta m a) = Meta m (lift a)
   lift C.Err = Err
 

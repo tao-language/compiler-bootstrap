@@ -28,7 +28,7 @@ data Expr
   | And Expr Expr
   | Or Expr Expr
   | Ann Expr Expr
-  | Op String [Expr]
+  | Call String [Expr]
   | Meta Metadata Expr
   | Err
   deriving (Eq)
@@ -72,21 +72,21 @@ instance Show Expr where
     Or a b -> infixR 1 a " | " b
     And a b -> infixL 1 a ", " b
     Ann a b -> infixR 2 a " : " b
-    Op "==" [a, b] -> infixL 3 a " == " b
-    Op "<" [a, b] -> infixR 4 a " < " b
-    Op ">" [a, b] -> infixR 4 a " > " b
+    Call "==" [a, b] -> infixL 3 a " == " b
+    Call "<" [a, b] -> infixR 4 a " < " b
+    Call ">" [a, b] -> infixR 4 a " > " b
     For x a -> do
       let (xs, a') = asFor (For x a)
       prefix 2 ("@" ++ unwords xs ++ ". ") a'
     Fix x a -> prefix 2 ("!fix " ++ show (Var x) ++ ". ") a
     Fun p b -> infixR 5 p " -> " b
-    Op "+" [a, b] -> infixL 6 a " + " b
-    Op "-" [a, b] -> infixL 6 a " - " b
-    Op "*" [a, b] -> infixL 7 a " * " b
-    Op "/" [a, b] -> infixL 7 a " / " b
-    Op "^" [a, b] -> infixL 10 a "^" b
-    Op ('$' : op) [a] -> prefix 8 ('$' : op ++ " ") a
-    Op op [a] -> prefix 8 op a
+    Call "+" [a, b] -> infixL 6 a " + " b
+    Call "-" [a, b] -> infixL 6 a " - " b
+    Call "*" [a, b] -> infixL 7 a " * " b
+    Call "/" [a, b] -> infixL 7 a " / " b
+    Call "^" [a, b] -> infixL 10 a "^" b
+    Call ('$' : op) [a] -> prefix 8 ('$' : op ++ " ") a
+    Call op [a] -> prefix 8 op a
     App a b -> infixL 8 a " " b
     Err -> atom 12 "!error"
     Knd -> atom 12 "!Kind"
@@ -98,8 +98,8 @@ instance Show Expr where
     Var x -> atom 12 ("`" ++ replaceString "`" "\\`" x ++ "`")
     Tag "" -> atom 12 "()"
     Tag k -> atom 12 k
-    Op op [] -> atom 12 ("(" ++ op ++ ")")
-    Op op args -> showsPrec p (app (Op op []) args)
+    Call op [] -> atom 12 ("(" ++ op ++ ")")
+    Call op args -> showsPrec p (app (Call op []) args)
     Meta m a -> prefix p ("#(" ++ show m ++ ")") a
     where
       atom n k = showParen (p > n) $ showString k
@@ -160,7 +160,7 @@ asFun (Fun arg ret) = let (args, ret') = asFun ret in (arg : args, ret')
 asFun a = ([], a)
 
 add :: Expr -> Expr -> Expr
-add a b = Op "+" [a, b]
+add a b = Call "+" [a, b]
 
 and' :: [Expr] -> Expr
 and' [] = Err
@@ -172,25 +172,25 @@ andOf (And a b) = a : andOf b
 andOf a = [a]
 
 sub :: Expr -> Expr -> Expr
-sub a b = Op "-" [a, b]
+sub a b = Call "-" [a, b]
 
 mul :: Expr -> Expr -> Expr
-mul a b = Op "*" [a, b]
+mul a b = Call "*" [a, b]
 
 pow :: Expr -> Expr -> Expr
-pow a b = Op "^" [a, b]
+pow a b = Call "^" [a, b]
 
 eq :: Expr -> Expr -> Expr
-eq a b = Op "==" [a, b]
+eq a b = Call "==" [a, b]
 
 lt :: Expr -> Expr -> Expr
-lt a b = Op "<" [a, b]
+lt a b = Call "<" [a, b]
 
 gt :: Expr -> Expr -> Expr
-gt a b = Op ">" [a, b]
+gt a b = Call ">" [a, b]
 
 int2num :: Expr -> Expr
-int2num a = Op "$i2n" [a]
+int2num a = Call "$i2n" [a]
 
 let' :: (Expr, Expr) -> Expr -> Expr
 let' (Var x, Var x') b | x == x' = b
@@ -270,7 +270,7 @@ instance FreeVars Expr where
   freeVars (And a b) = freeVars a `union` freeVars b
   freeVars (Or a b) = freeVars a `union` freeVars b
   freeVars (Ann a _) = freeVars a
-  freeVars (Op _ args) = foldr (union . freeVars) [] args
+  freeVars (Call _ args) = foldr (union . freeVars) [] args
   freeVars (Meta _ a) = freeVars a
   freeVars Err = []
 
@@ -340,12 +340,12 @@ eval env (And a b) = And (eval env a) (eval env b)
 eval env (Or a b) = Or (eval env a) (eval env b)
 eval env (Ann (Tag k) ty) = Ann (Tag k) (eval env ty)
 eval env (Ann a _) = eval env a
-eval env (Op op args) = case (op, map (eval env) args) of
+eval env (Call op args) = case (op, map (eval env) args) of
   ("+", [Int a, Int b]) -> Int (a + b)
   ("-", [Int a, Int b]) -> Int (a - b)
   ("*", [Int a, Int b]) -> Int (a * b)
   ("^", [Int a, Int b]) -> Int (a ^ b)
-  (op, args) -> Op op args
+  (op, args) -> Call op args
 eval env (Meta _ a) = eval env a
 eval _ Err = Err
 
@@ -405,7 +405,7 @@ substitute s (And a b) = And (substitute s a) (substitute s b)
 substitute s (Or a b) = Or (substitute s a) (substitute s b)
 substitute s (Ann (Tag k) ty) = Ann (Tag k) (substitute s ty)
 substitute s (Ann a _) = substitute s a
-substitute s (Op op args) = Op op (map (substitute s) args)
+substitute s (Call op args) = Call op (map (substitute s) args)
 substitute s (Meta m a) = Meta m (substitute s a)
 substitute _ Err = Err
 
@@ -449,9 +449,9 @@ unify a (Or b1 b2) = case unify a b1 of
 unify (App a1 b1) (App a2 b2) = do
   ((ta, tb), s) <- unify2 (a1, a2) (b1, b2)
   Right (App ta tb, s)
-unify (Op op args) (Op op' args') | op == op' = do
+unify (Call op args) (Call op' args') | op == op' = do
   (args, s) <- unifyAll args args'
-  Right (Op op args, s)
+  Right (Call op args, s)
 unify (Meta _ a) b = unify a b
 unify a (Meta _ b) = unify a b
 unify a b = Left (TypeMismatch a b)
@@ -521,7 +521,7 @@ check env (App a b) t = do
   (tb, s1) <- infer env b
   (_, s2) <- check (s1 `compose` env) a (Fun tb t)
   Right (substitute (s2 `compose` s1) t, s2 `compose` s1)
-check env (Op op args) t = case lookup op env of
+check env (Call op args) t = case lookup op env of
   Just a -> check env (app a args) t
   Nothing -> Right (t, []) -- TODO: check args
 check env (Meta _ a) t = check env a t
@@ -583,11 +583,11 @@ infer env (App a b) = do
       (_, s2) <- unify tb t1
       Right (substitute s2 t2, s2 `compose` s1)
     ta -> Left (NotAFunction a ta)
-infer env (Op op args) = case lookup op env of
+infer env (Call op args) = case lookup op env of
   Just a -> infer env (app a args)
   Nothing -> do
     let y = newName (map fst env) (op ++ "T")
-    Right (Var y, [(y, Var y), (op, Ann (Op op []) (Var y))])
+    Right (Var y, [(y, Var y), (op, Ann (Call op []) (Var y))])
 infer env (Meta m a) = do
   (t, s) <- infer env a
   Right (Meta m t, s)
@@ -657,7 +657,7 @@ instance DropMeta Expr where
   dropMeta (And a b) = And (dropMeta a) (dropMeta b)
   dropMeta (Or a b) = Or (dropMeta a) (dropMeta b)
   dropMeta (Ann a t) = Ann (dropMeta a) (dropMeta t)
-  dropMeta (Op op args) = Op op (map dropMeta args)
+  dropMeta (Call op args) = Call op (map dropMeta args)
   dropMeta (Meta _ a) = dropMeta a
   dropMeta Err = Err
 

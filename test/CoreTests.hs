@@ -189,7 +189,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let env = [("x", i1)]
     eval env (Ann x IntT) `shouldBe` Int 1
 
-  it "☯ eval Op" $ do
+  it "☯ eval Call" $ do
     let env = []
     eval env (add x y) `shouldBe` add x y
     eval env (add x i2) `shouldBe` add x i2
@@ -293,7 +293,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ infer factorial" $ do
     let env = [("f", factorial "f")]
-    infer env (Var "f") `shouldBe` Right (Fix "f" $ Fun (intT 0) (intT 1), [("xT", intT 0), ("x", Ann x (intT 0)), ("*T", intT 1), ("*", Ann (Op "*" []) (intT 1))])
+    infer env (Var "f") `shouldBe` Right (Fix "f" $ Fun (intT 0) (intT 1), [("xT", intT 0), ("x", Ann x (intT 0)), ("*T", intT 1), ("*", Ann (Call "*" []) (intT 1))])
     infer env (Ann (Var "f") (Fun IntT IntT)) `shouldBe` Right (Fun IntT IntT, [("x", Ann x IntT)])
 
   -- it "☯ infer Bool" $ do
