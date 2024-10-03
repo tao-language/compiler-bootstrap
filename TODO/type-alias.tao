@@ -1,9 +1,0 @@
-type Point = (Int, Int)
-
-p : Point = (10, 20)
-
-> p.1
-10
-
-> p.2
-20

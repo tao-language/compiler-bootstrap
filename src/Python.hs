@@ -5,10 +5,11 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (first, second))
 import Data.Foldable (foldlM, foldrM)
 import Data.Function ((&))
-import Data.List (intercalate, union)
+import Data.List (intercalate, sortBy, union)
 import Data.Maybe (fromMaybe)
 import qualified Debug.Trace as Debug
 import qualified PrettyPrint as PP
+import Stdlib (replace)
 import System.Directory (copyFile, createDirectory, createDirectoryIfMissing, doesPathExist, removeDirectoryRecursive)
 import System.FilePath (joinPath, splitDirectories, splitFileName, splitPath, takeDirectory, takeFileName, (</>))
 import qualified Tao as T
@@ -450,8 +451,8 @@ defaultBuildOptions =
 -- stmtNames (ClassDef {name}) = [name]
 -- stmtNames _ = []
 
-pyName :: [String] -> T.Expr -> String -> String
-pyName existing expr identifier = do
+pyName :: T.Expr -> String -> String
+pyName expr identifier = do
   let (_, _, name) = T.splitName identifier
   case name of
     name | T.isTagDef expr -> T.nameCamelCaseUpper name
@@ -464,9 +465,10 @@ prelude options = ImportFrom (options.packageName ++ ".__prelude__") [("*", Noth
 build :: BuildOptions -> FilePath -> T.Package -> IO FilePath
 build options base pkg = do
   let pyPkg =
-        T.link () pkg
+        -- T.link () pkg
+        pkg
           & T.refactorName pyName
-          & T.refactorModuleName (T.replace '/' '.' . T.replace '-' '_')
+          & T.refactorModuleName (replace '/' '.' . replace '-' '_')
           & T.refactorModuleAlias T.nameSnakeCase
 
   let pkgPath = base </> "python"
@@ -485,12 +487,13 @@ build options base pkg = do
   -- TODO: create LICENSE
 
   -- Create source files
-  files <- mapM (buildModule options pyPkg.name srcPath) pyPkg.modules
+  let modules = sortBy (\m n -> compare m.name n.name) pyPkg.modules
+  files <- mapM (buildModule options pyPkg.name srcPath) modules
   copyFile "src/target/python/__prelude__.py" (srcPath </> "__prelude__.py")
 
   createDirectory testPath
   writeFile (testPath </> "__init__.py") ""
-  files <- mapM (buildTests options pyPkg.name testPath) pyPkg.modules
+  files <- mapM (buildTests options pyPkg.name testPath) modules
 
   -- TODO: Create docs
   createDirectory docsPath
@@ -510,7 +513,7 @@ buildDir base dirs = do
 buildModule :: BuildOptions -> String -> FilePath -> T.Module -> IO FilePath
 buildModule options pkgName base mod = do
   -- Initialize the file path recursively.
-  let filename = T.replace '.' '/' mod.name ++ ".py"
+  let filename = replace '.' '/' mod.name ++ ".py"
   buildDir base (splitPath $ takeDirectory filename)
 
   -- Write the source file contents.
@@ -525,7 +528,7 @@ buildModule options pkgName base mod = do
 buildTests :: BuildOptions -> String -> FilePath -> T.Module -> IO FilePath
 buildTests options pkgName base mod = do
   -- Initialize the file path recursively.
-  let (dir, name) = splitFileName (T.replace '.' '/' mod.name)
+  let (dir, name) = splitFileName (replace '.' '/' mod.name)
   let filename = dir </> "test_" ++ name ++ ".py"
   buildDir base (splitPath $ takeDirectory filename)
 
@@ -582,21 +585,19 @@ instance Emit T.Module Module where
 
 instance Emit T.Stmt [Stmt] where
   emit :: BuildOptions -> T.Stmt -> [Stmt]
-  emit options (T.Import name alias exposed) = do
-    let mod = case name of
-          '@' : name -> T.replace ':' '.' name
-          _ -> name
+  emit options (T.Import m exposed) = do
+    let m' = case m of
+          '@' : m -> replace '/' '.' m
+          m -> m
     case exposed of
-      [] -> do
-        let alias' = if alias == "" then Nothing else Just alias
-        [Import mod alias']
+      [] -> []
       exposed -> do
-        let expose (x, "") = (x, Nothing)
+        let expose (x, x') | x == x' = (x, Nothing)
             expose (x, y) = (x, Just y)
-        let stmts = emit options (T.Import name alias [])
-        stmts ++ [ImportFrom mod (map expose exposed)]
-  emit options (T.Define def) = emit options def
-  emit options (T.Test a p) = do
+        let stmts = emit options (T.Import m [])
+        stmts ++ [ImportFrom m' (map expose exposed)]
+  emit options (T.Def def) = emit options def
+  emit options (T.Test name a p) = do
     let (stmts1, a') = emit options a
     let (stmts2, b') = emit options (T.toExpr p) -- TODO: do a match instead
     let def =
@@ -612,14 +613,9 @@ instance Emit T.Stmt [Stmt] where
     stmts1 ++ stmts2 ++ [def]
   emit options (T.MetaStmt _ stmt) = emit options stmt
 
-instance Emit [T.Stmt] [Stmt] where
-  emit :: BuildOptions -> [T.Stmt] -> [Stmt]
-  emit _ [] = []
-  emit options (stmt : stmts) = emit options stmt ++ emit options stmts
-
 instance Emit T.Definition [Stmt] where
   emit :: BuildOptions -> T.Definition -> [Stmt]
-  emit options (T.Def ts (T.PVar x) b) = case (lookup x ts, T.lambdaOf "_" b) of
+  emit options (ts, T.PVar x, b) = case (lookup x ts, T.lambdaOf "_" b) of
     (Nothing, ([], b)) -> do
       let (stmts, b') = emit options b
       let def = Assign [Name x] b'
@@ -662,8 +658,12 @@ instance Emit T.Definition [Stmt] where
                 async = False
               }
       stmts1 ++ stmts2 ++ [def]
-  emit options (T.Def ts (T.PMeta _ p) b) = emit options (T.Define (T.Def ts p b))
-  emit options def = error $ "TODO: emit " ++ show def
+  emit options def = error $ "TODO: emit Definition " ++ show def
+
+instance Emit [T.Stmt] [Stmt] where
+  emit :: BuildOptions -> [T.Stmt] -> [Stmt]
+  emit _ [] = []
+  emit options (stmt : stmts) = emit options stmt ++ emit options stmts
 
 instance Emit T.Expr ([Stmt], Expr) where
   emit :: BuildOptions -> T.Expr -> ([Stmt], Expr)
@@ -677,17 +677,15 @@ instance Emit T.Expr ([Stmt], Expr) where
     ("True", []) -> ([], Name "True")
     ("False", []) -> ([], Name "False")
     ("Nothing", []) -> ([], Name "None")
-    ("", args) | null args || any ((== "") . fst) args -> do
-      let (stmts, items) = emit options (map snd args)
-      (stmts, Tuple items)
-    ("", args) -> do
-      let (stmts, fields) = emit options args
-      (stmts, record fields)
     (k, args) -> do
-      let (posArgs, kwArgs) = span ((== "") . fst) args
-      let (stmts1, posArgs') = emit options (map snd posArgs)
-      let (stmts2, kwArgs') = emit options kwArgs
-      (stmts1 ++ stmts2, Call (Name k) posArgs' kwArgs')
+      let (stmts, args') = emit options args
+      (stmts, call k args')
+  emit options (T.Tuple items) = do
+    let (stmts, items') = emit options items
+    (stmts, Tuple items')
+  emit options (T.Record fields) = do
+    let (stmts, fields') = emit options fields
+    (stmts, record fields')
   emit options (T.Trait a x) = do
     let (stmts, a') = emit options a
     case readMaybe x of
@@ -703,7 +701,7 @@ instance Emit T.Expr ([Stmt], Expr) where
     let (stmts2, ret') = emit options ret
     (stmts1 ++ stmts2, callable args' ret')
   emit options expr@(T.App _ _) = case T.appOf expr of
-    (T.Match cases, args) -> do
+    (T.MatchFun cases, args) -> do
       let x = C.newName (T.freeVars cases) "_match"
       let (stmts1, args') = emit options args
       let (stmts2, cases') = emit options cases
@@ -721,26 +719,28 @@ instance Emit T.Expr ([Stmt], Expr) where
     let stmts1 = emit options def
     let (stmts2, b') = emit options b
     (stmts1 ++ stmts2, b')
-  emit options (T.Bind (p, a) b) = do
-    let stmts1 = emit options (T.Def [] p (T.Meta C.Unwrap a))
-    let (stmts2, b') = emit options b
-    (stmts1 ++ stmts2, b')
-  emit _ (T.Match []) = ([raise (notImplementedError "")], None)
-  emit options (T.Match cases) = do
+  emit options (T.Bind (ts, p, a) b) = do
+    -- let stmts1 = emit options (T.Def [] p (T.Meta C.Unwrap a))
+    -- let (stmts2, b') = emit options b
+    -- (stmts1 ++ stmts2, b')
+    error $ show "TODO: emit Bind " ++ show (ts, p, a, b)
+  emit _ (T.MatchFun []) = ([raise (notImplementedError "")], None)
+  emit options (T.MatchFun cases) = do
     let x = C.newName (T.freeVars cases) "_match"
-    let def = T.Def [] (T.PVar x) (T.Match cases)
-    let stmts = emit options def
-    (stmts, Name x)
+    -- let def = T.Def [] (T.PVar x) (T.Match cases)
+    -- let stmts = emit options def
+    -- (stmts, Name x)
+    error $ show "TODO: emit MatchFun " ++ show cases
   -- If Expr Expr Expr
   -- Or Expr Expr
   -- Ann Expr Expr
   -- Op1 C.UnaryOp Expr
-  emit options (T.Op op args) = case (op, args) of
+  emit options (T.Call op args) = case (op, args) of
     ("+", [a, b]) -> emitBinOp Add a b
     ("-", [a, b]) -> emitBinOp Sub a b
     ("*", [a, b]) -> emitBinOp Mult a b
     ("^", [a, b]) -> emitBinOp Pow a b
-    _ -> error $ "TODO: emit Op " ++ show (T.Op op args)
+    _ -> error $ "TODO: emit Op " ++ show (T.Call op args)
     where
       emitBinOp :: BinOp -> T.Expr -> T.Expr -> ([Stmt], Expr)
       emitBinOp op a b = do
@@ -766,6 +766,14 @@ instance Emit [(String, T.Expr)] ([Stmt], [(String, Expr)]) where
   emit _ [] = ([], [])
   emit options ((x, a) : args) = do
     let (stmts1, a') = emit options a
+    let (stmts2, args') = emit options args
+    (stmts1 ++ stmts2, (x, a') : args')
+
+instance Emit [(String, (Maybe T.Expr, Maybe T.Expr))] ([Stmt], [(String, Expr)]) where
+  emit :: BuildOptions -> [(String, (Maybe T.Expr, Maybe T.Expr))] -> ([Stmt], [(String, Expr)])
+  emit _ [] = ([], [])
+  emit options ((x, (a, _)) : args) = do
+    let (stmts1, a') = emit options (fromMaybe T.Err a)
     let (stmts2, args') = emit options args
     (stmts1 ++ stmts2, (x, a') : args')
 

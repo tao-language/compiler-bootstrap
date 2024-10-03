@@ -1,0 +1,11 @@
+x : Int
+x = 1
+> x
+1
+
+x : Int  # unused
+y : Int  # type annotation
+z : Int  # unused
+y = 2
+> y
+2

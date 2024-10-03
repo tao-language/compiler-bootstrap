@@ -2,101 +2,102 @@ module ExamplesTests where
 
 import qualified Core as C
 import Data.Bifunctor (second)
-import Data.List (intercalate)
+import Data.List (intercalate, isInfixOf)
 import System.FilePath (dropExtension)
 import Tao
 import TaoParser
 import Test.Hspec
 
-test' :: String -> IO [TestError]
-test' name = do
-  pkg <- parseFile "examples" name (Package {name = name, modules = []})
-  return (test pkg)
+test' :: String -> [String] -> IO (Either [SyntaxError] [TestError])
+test' name includes = do
+  let names = name : includes
+  (env, s, errors) <- loadPackage "examples"
+  case filter (\e -> any (`isInfixOf` e.filename) names) errors of
+    [] -> return (Right (dropMeta <$> test env name))
+    errors -> return (Left errors)
 
 run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do
   let loc name pos = Meta (C.Location name pos)
   let ploc name pos = PMeta (C.Location name pos)
-  let var package filename pos x =
-        loc filename pos (Var $ fullName package (dropExtension filename) x)
+  let var filename pos x = loc filename pos (Var x)
   let (x, y, z) = (Var "x", Var "y", Var "z")
 
-  let name = "empty.tao"
+  let name = "empty"
   it ("☯ " ++ name) $ do
-    test' name `shouldReturn` []
+    test' name [] `shouldReturn` Right [NoTestsFound "empty"]
 
-  let name = "comments.tao"
+  let name = "comments"
   it ("☯ " ++ name) $ do
-    test' "comments.tao" `shouldReturn` []
+    test' name [] `shouldReturn` Right [NoTestsFound "comments"]
 
   -- let name = "comments-multiline.tao"
   -- it ("☯ " ++ name) $ do
   --   test' "comments-multiline.tao" `shouldReturn` []
 
-  let name = "def-variable.tao"
+  let name = "def-untyped"
   it ("☯ " ++ name) $ do
-    test' name `shouldReturn` []
+    test' name [] `shouldReturn` Right []
 
-  let name = "def-function.tao"
+  let name = "def-typed"
   it ("☯ " ++ name) $ do
-    test' name `shouldReturn` []
+    test' name [] `shouldReturn` Right []
+
+  let name = "def-inline-type"
+  it ("☯ " ++ name) $ do
+    test' name [] `shouldReturn` Right []
 
   let name = "errors"
   it ("☯ " ++ name) $ do
-    pkg <- parsePackage ("examples/" ++ name)
-    let expected =
-          [ let file = "wrong-result.tao"
-             in TestEqError (var name file (3, 3) "x") (Int 42) (ploc file (4, 1) $ PInt 0)
-          ]
-    test pkg `shouldBe` expected
+    test' name [] `shouldReturn` Right [TestEqError ">@examples/errors/wrong-result:" (C.Var "@examples/errors/wrong-result.x") (C.Int 0) (C.Int 42)]
 
-  -- let name = "arithmetic.tao"
-  -- it ("☯ " ++ name) $ do
-  --   test' name `shouldReturn` []
+  let name = "name-global"
+  it ("☯ " ++ name) $ do
+    -- @examples/sub/mod.x
+    test' name ["sub/"] `shouldReturn` Right []
 
-  -- let name = "arithmetic-sugar.tao"
+  -- let name = "name-root"
   -- it ("☯ " ++ name) $ do
-  --   test' name `shouldReturn` []
+  --   -- @/sub/mod.x
+  --   test' name ["sub/"] `shouldReturn` Right []
 
-  -- let name = "arithmetic-division-by-zero.tao"
-  -- it ("☯ " ++ name) $ do
-  --   test' name `shouldReturn` []
+  -- TODO: import global
+  -- TODO: import root
 
-  -- let name = "comparison.tao"
-  -- it ("☯ " ++ name) $ do
-  --   test' name `shouldReturn` []
+  -- TODO: match-one
+  -- TODO: match-many
 
-  -- let name = "functions.tao"
+  -- let name = "traits"
   -- it ("☯ " ++ name) $ do
-  --   test' name `shouldReturn` []
+  --   test' name [] `shouldReturn` Right []
 
-  -- let name = "functions-lambda.tao"
-  -- it ("☯ " ++ name) $ do
-  --   test' name `shouldReturn` []
+  let name = "tuples-def"
+  it ("☯ " ++ name) $ do
+    test' name [] `shouldReturn` Right []
 
-  -- let name = "functions-application.tao"
+  -- let name = "tuples-properties"
   -- it ("☯ " ++ name) $ do
-  --   test' name `shouldReturn` []
+  --   test' name [] `shouldReturn` Right []
 
-  -- let name = "pattern-matching.tao"
-  -- it ("☯ " ++ name) $ do
-  --   test' name `shouldReturn` []
+  -- TODO: Tags
 
-  -- let name = "union-types.tao"
+  -- let name = "records-def"
   -- it ("☯ " ++ name) $ do
-  --   test' name `shouldReturn` []
+  --   test' name [] `shouldReturn` Right []
 
-  -- let name = "tuples.tao"
+  -- let name = "records-properties"
   -- it ("☯ " ++ name) $ do
-  --   test' name `shouldReturn` []
+  --   test' name [] `shouldReturn` Right []
 
-  -- let name = "records.tao"
-  -- it ("☯ " ++ name) $ do
-  --   test' name `shouldReturn` []
+  -- TODO: "records-select"
+  -- TODO: "records-update"
+  -- TODO: "records-reorder"
+  -- TODO: "records-positional"
+  -- TODO: "records-mixed-positional"
+  -- TODO: "records-default-values"
 
-  -- let name = "literals-numbers.tao"
-  -- it ("☯ " ++ name) $ do
-  --   test' name `shouldReturn` []
+  -- TODO: Unions
+  -- TODO: Choices (?)
 
   it "☯ TODO" $ do
     True `shouldBe` True

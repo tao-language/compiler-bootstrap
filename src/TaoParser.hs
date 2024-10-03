@@ -26,6 +26,28 @@ data ParserContext
   | CMatch
   deriving (Eq, Show)
 
+data SyntaxError
+  = SyntaxError
+  { filename :: String,
+    row :: Int,
+    col :: Int,
+    sourceCode :: String,
+    context :: [ParserContext]
+  }
+  deriving (Eq)
+
+instance Show SyntaxError where
+  show :: SyntaxError -> String
+  show e = do
+    let loc = intercalate ":" [e.filename, show e.row, show e.col]
+    intercalate
+      "\n"
+      [ "🛑 " ++ loc ++ ": syntax error " ++ show e.context,
+        "",
+        showSnippet (e.row, e.col) 3 3 e.sourceCode,
+        ""
+      ]
+
 keywords :: [String]
 keywords =
   [ "type",
@@ -52,6 +74,19 @@ parseIdentifier = do
   case c : cs of
     name | name `elem` keywords -> P.fail'
     name -> return name
+
+parsePath :: Parser String
+parsePath = do
+  let optional ps = P.oneOf [P.concat ps, return ""]
+  let path = fmap concat (P.zeroOrMore (P.concat [P.text "/", parseIdentifier]))
+  P.concat [P.text "@", optional [parseIdentifier], path]
+
+parseName :: Parser String
+parseName = do
+  P.oneOf
+    [ P.concat [parsePath, P.text ".", parseIdentifier],
+      parseIdentifier
+    ]
 
 parseLineBreak :: Parser String
 parseLineBreak = do
@@ -128,12 +163,12 @@ parseExprAtom = do
   (loc, a) <-
     (parseLocation . P.oneOf)
       [ do
-          name <- parseIdentifier
+          name <- parseName
           case name of
             x | startsWithUpper x -> do
               _ <- P.spaces
               args <- P.zeroOrMore parseExprAtom
-              return (tag name args)
+              return (Tag name args)
             _ -> return (Var name),
         do
           _ <- P.char '.'
@@ -142,7 +177,7 @@ parseExprAtom = do
         Int <$> P.integer,
         Num <$> P.number,
         do
-          a <- parseTuple tuple (parseExpr 0 P.whitespaces)
+          a <- parseTuple Tuple (parseExpr 0 P.whitespaces)
           case a of
             Meta _ a -> return a
             a -> return a,
@@ -219,7 +254,7 @@ parseRecordField = do
 parseRecord :: Parser Expr
 parseRecord = do
   fields <- parseCollection "{" "," "}" parseRecordField
-  return (record fields)
+  return (Record fields)
 
 parseCase :: Parser Case
 parseCase = do
@@ -269,12 +304,12 @@ parsePattern = do
             x | startsWithUpper x -> do
               _ <- P.spaces
               ps <- P.zeroOrMore parsePattern
-              return (pTag name ps)
+              return (PTag name ps)
             _ -> return (PVar name),
         PInt <$> P.integer,
         PNum <$> P.number,
         do
-          p <- parseTuple pTuple parsePattern
+          p <- parseTuple PTuple parsePattern
           case p of
             PMeta _ p -> return p
             p -> return p
@@ -289,90 +324,53 @@ parseStmt = do
   comments <- P.zeroOrMore parseComment
   stmt <-
     P.oneOf
-      [ fmap Define parseDefinition,
+      [ Def <$> parseDefinition,
         parseImport,
         parseTest
       ]
   return (foldr (MetaStmt . C.Comment) stmt comments)
 
-parseTypedDef :: Parser Definition
-parseTypedDef = do
-  (loc, x) <- parseLocation parseIdentifier
-  _ <- P.whitespaces
-  _ <- P.char ':'
-  _ <- P.whitespaces
-  ty <- parseExpr 0 P.spaces
-  _ <- P.char '='
-  _ <- P.whitespaces
-  value <- parseExpr 0 P.spaces
-  return (Def [(x, ty)] (PMeta loc (PVar x)) value)
-
-parseDef :: Parser Definition
-parseDef = do
-  ts <- P.zeroOrMore parseTypeAnnotation
-  p <- parsePattern
-  ps <- P.zeroOrMore parsePattern
-  _ <- P.whitespaces
-  _ <- P.char '='
-  _ <- P.whitespaces
-  value <- parseExpr 0 P.spaces
-  return (Def ts p (match [] [Case ps Nothing value]))
-
-parseTraitDef :: Parser Definition
-parseTraitDef = P.fail'
-
 parseDefinition :: Parser Definition
 parseDefinition = do
-  def <-
+  (ts, p, b) <-
     P.oneOf
-      [ parseTypedDef,
-        parseDef,
-        parseTraitDef
+      [ do
+          (loc, x) <- parseLocation parseName
+          _ <- P.spaces
+          _ <- P.char ':'
+          _ <- P.spaces
+          t <- parseExpr 0 P.spaces
+          _ <- P.spaces
+          _ <- P.char '='
+          _ <- P.spaces
+          b <- parseExpr 0 P.spaces
+          return ([(x, t)], PMeta loc (PVar x), b),
+        do
+          ts <- P.zeroOrMore $ do
+            x <- parseName
+            _ <- P.spaces
+            _ <- P.char ':'
+            _ <- P.spaces
+            t <- parseExpr 0 P.spaces
+            _ <- parseLineBreak
+            return (x, t)
+          p <- parsePattern
+          _ <- P.char '='
+          _ <- P.spaces
+          b <- parseExpr 0 P.spaces
+          return (ts, p, b)
       ]
   _ <- parseLineBreak
   _ <- P.whitespaces
-  return def
-
-parseTypeAnnotation :: Parser (String, Expr)
-parseTypeAnnotation = do
-  x <- parseIdentifier
-  _ <- P.spaces
-  _ <- P.char ':'
-  _ <- P.spaces
-  ty <- parseExpr 0 P.spaces
-  _ <- parseLineBreak
-  _ <- P.whitespaces
-  return (x, ty)
+  return (ts, p, b)
 
 parseImport :: Parser Stmt
 parseImport = do
   (loc, _) <- parseLocation (P.word "import")
   P.commit CImport
   _ <- P.spaces
-  pkg <-
-    P.oneOf
-      [ do
-          pkg <- parseIdentifier
-          _ <- P.text ":"
-          return pkg,
-        return ""
-      ]
-  path <- P.zeroOrMore $ do
-    path <- parseIdentifier
-    _ <- P.char '/'
-    return path
-  name <- parseIdentifier
+  m <- parsePath
   _ <- P.spaces
-  alias <-
-    P.oneOf
-      [ do
-          _ <- P.word "as"
-          _ <- P.spaces
-          name <- parseIdentifier
-          _ <- P.spaces
-          return name,
-        return name
-      ]
   exposing <-
     P.oneOf
       [ do
@@ -391,10 +389,18 @@ parseImport = do
       ]
   _ <- parseLineBreak
   _ <- P.whitespaces
-  return (Import (fullName pkg (intercalate "/" (path ++ [name])) "") alias exposing)
+  return (Import m exposing)
 
 parseTest :: P.Parser ParserContext Stmt
 parseTest = do
+  name <-
+    P.oneOf
+      [ do
+          _ <- P.text "--"
+          _ <- P.spaces
+          P.skipTo P.endOfLine,
+        return ""
+      ]
   _ <- P.char '>'
   _ <- P.oneOrMore P.space
   P.commit CTest
@@ -410,7 +416,7 @@ parseTest = do
         return (PTag "True" [])
       ]
   _ <- P.whitespaces
-  return (Test expr result)
+  return (Test name expr result)
 
 parseModule :: String -> Parser Module
 parseModule name = do
@@ -432,23 +438,6 @@ slice start end xs =
   xs
     & drop (start - 1)
     & take (end - start)
-
-parseFile :: FilePath -> FilePath -> Package -> IO Package
-parseFile _ filename pkg | filename `elem` map (\f -> f.name) pkg.modules = return pkg
-parseFile base filename pkg = do
-  src <- readFile (base </> filename)
-  case P.parse filename (parseModule (dropExtension filename)) src of
-    Right (f, _) -> do
-      -- TODO: evaluate the module statements
-      return (pkg {modules = f : pkg.modules})
-    Left P.State {name, pos = (row, col), context} -> do
-      let loc = base </> intercalate ":" [name, show row, show col]
-      (error . intercalate "\n")
-        [ "🛑 " ++ loc ++ ": syntax error " ++ show context,
-          "",
-          showSnippet (row, col) 3 3 src,
-          ""
-        ]
 
 showSnippet :: (Int, Int) -> Int -> Int -> String -> String
 showSnippet (row, col) before after src = do
@@ -473,17 +462,46 @@ showSnippet (row, col) before after src = do
           & zipWith showLine [row + 1 ..]
   intercalate "\n" (linesBefore ++ highlight ++ linesAfter)
 
-parsePackage :: FilePath -> IO Package
+loadPackage :: FilePath -> IO (C.Env, [Substitution], [SyntaxError])
+loadPackage path = do
+  (pkg, errors) <- parsePackage path
+  let env = [] -- TODO: link (load dependencies into the env)
+  let s = resolve pkg
+  let env' = lower env (rename () s pkg)
+  -- TODO: merge traits and operators
+  return (env', s, errors)
+
+parsePackage :: FilePath -> IO (Package, [SyntaxError])
 parsePackage path = do
   let pkg = Package {name = takeBaseName path, modules = []}
   isFile <- doesFileExist path
   case (isFile, path) of
     (True, path) -> do
       let (base, filename) = splitFileName path
-      parseFile base filename pkg
+      parseFile base filename (pkg, [])
     (False, base) -> do
       files <- walkDirectory base ""
-      foldM (flip (parseFile base)) pkg files
+      foldM (flip (parseFile base)) (pkg, []) files
+
+parseFile :: FilePath -> FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
+parseFile _ filename (pkg, errs) | filename `elem` map (\f -> f.name) pkg.modules = do
+  return (pkg, errs)
+parseFile base filename (pkg, errs) = do
+  src <- readFile (base </> filename)
+  case P.parse filename (parseModule (dropExtension filename)) src of
+    Right (f, _) -> do
+      -- TODO: evaluate the module statements
+      return (pkg {modules = f : pkg.modules}, errs)
+    Left P.State {name, pos = (row, col), context} -> do
+      let err =
+            SyntaxError
+              { filename = base </> name,
+                row = row,
+                col = col,
+                sourceCode = src,
+                context = context
+              }
+      return (pkg, err : errs)
 
 walkDirectory :: FilePath -> FilePath -> IO [FilePath]
 walkDirectory base path = do
