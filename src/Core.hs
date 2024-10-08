@@ -65,6 +65,29 @@ data PatternError
   | UnreachableCase Expr
   deriving (Eq, Show)
 
+data Package = Package
+  { name :: String,
+    modules :: [(String, Module)]
+  }
+
+data Module = Module
+  { public :: Env,
+    private :: Env,
+    types :: Env,
+    tests :: [UnitTest]
+  }
+
+data UnitTest = UnitTest
+  { name :: String,
+    expr :: Expr,
+    expect :: Expr
+  }
+
+data TestError = TestError
+  { test :: UnitTest,
+    got :: Expr
+  }
+
 instance Show Expr where
   showsPrec :: Int -> Expr -> ShowS
   showsPrec p expr = case expr of
@@ -224,14 +247,6 @@ matchFun :: [([Expr], Expr)] -> Expr
 matchFun [] = Err
 matchFun [(ps, b)] = fun ps b
 matchFun ((ps, b) : cases) = fun ps b `Or` matchFun cases
-
-test :: Env -> Expr -> Expr -> Either Expr ()
-test env expr expected = do
-  let actual = eval env expr
-  let test' = match' [actual] [([expected], Tag "")]
-  case eval env test' of
-    Err -> Left actual
-    _ -> Right ()
 
 meta :: [Metadata] -> Expr -> Expr
 meta ms a = foldr Meta a ms
@@ -664,3 +679,29 @@ instance DropMeta Expr where
 instance DropMeta (String, Expr) where
   dropMeta :: (String, Expr) -> (String, Expr)
   dropMeta (x, a) = (x, dropMeta a)
+
+-- test :: Env -> Expr -> Expr -> Either Expr ()
+-- test env expr expected = do
+--   let actual = eval env expr
+--   let test' = match' [actual] [([expected], Tag "")]
+--   case eval env test' of
+--     Err -> Left actual
+--     _ -> Right ()
+
+class Test a where
+  test :: Env -> a -> [TestError]
+
+instance Test Module where
+  test :: Env -> Module -> [TestError]
+  test env mod = do
+    let env' = mod.public ++ mod.private ++ env
+    concatMap (test env') mod.tests
+
+instance Test UnitTest where
+  test :: Env -> UnitTest -> [TestError]
+  test env t = do
+    let got = eval env t.expr
+    let test' = match' [got] [([t.expect], Tag "")]
+    case eval env test' of
+      Err -> [TestError {test = t, got = got}]
+      _ -> []

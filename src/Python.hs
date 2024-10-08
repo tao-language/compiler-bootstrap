@@ -242,7 +242,7 @@ data TypeParam
 
 data BuildOptions = BuildOptions
   { version :: (Int, Int),
-    packageName :: String,
+    prefix :: String,
     testPath :: FilePath,
     docsPath :: FilePath,
     maxLineLength :: Int,
@@ -421,7 +421,7 @@ defaultBuildOptions :: BuildOptions
 defaultBuildOptions =
   BuildOptions
     { version = (3, 12),
-      packageName = "",
+      prefix = "",
       testPath = "test",
       docsPath = "docs",
       maxLineLength = 79,
@@ -451,28 +451,15 @@ defaultBuildOptions =
 -- stmtNames (ClassDef {name}) = [name]
 -- stmtNames _ = []
 
-pyName :: T.Expr -> String -> String
-pyName expr identifier = do
-  let (_, _, name) = T.splitName identifier
-  case name of
-    name | T.isTagDef expr -> T.nameCamelCaseUpper name
-    name | T.isTypeDef expr -> T.nameCamelCaseUpper name
-    name -> T.nameSnakeCase name
-
 prelude :: BuildOptions -> Stmt
-prelude options = ImportFrom (options.packageName ++ ".__prelude__") [("*", Nothing)]
+prelude options = do
+  let pkg = T.namePackage options.prefix
+  ImportFrom (pkg ++ ".__prelude__") [("*", Nothing)]
 
 build :: BuildOptions -> FilePath -> T.Package -> IO FilePath
 build options base pkg = do
-  let pyPkg =
-        -- T.link () pkg
-        pkg
-          & T.refactorName pyName
-          & T.refactorModuleName (replace '/' '.' . replace '-' '_')
-          & T.refactorModuleAlias T.nameSnakeCase
-
   let pkgPath = base </> "python"
-  let srcPath = pkgPath </> pyPkg.name
+  let srcPath = pkgPath </> T.nameSnakeCase pkg.name
   let testPath = pkgPath </> options.testPath
   let docsPath = pkgPath </> options.docsPath
 
@@ -487,13 +474,14 @@ build options base pkg = do
   -- TODO: create LICENSE
 
   -- Create source files
-  let modules = sortBy (\m n -> compare m.name n.name) pyPkg.modules
-  files <- mapM (buildModule options pyPkg.name srcPath) modules
-  copyFile "src/target/python/__prelude__.py" (srcPath </> "__prelude__.py")
+  let options' = options {prefix = pkg.name}
+  let modules = sortBy (\m n -> compare m.name n.name) pkg.modules
+  files <- mapM (buildModule options' pkg.name srcPath) modules
+  copyFile "src/target/python/__tao__.py" (srcPath </> "__prelude__.py")
 
   createDirectory testPath
   writeFile (testPath </> "__init__.py") ""
-  files <- mapM (buildTests options pyPkg.name testPath) modules
+  files <- mapM (buildTests options' pkg.name testPath) modules
 
   -- TODO: Create docs
   createDirectory docsPath
@@ -513,27 +501,26 @@ buildDir base dirs = do
 buildModule :: BuildOptions -> String -> FilePath -> T.Module -> IO FilePath
 buildModule options pkgName base mod = do
   -- Initialize the file path recursively.
-  let filename = replace '.' '/' mod.name ++ ".py"
+  let filename = replace '-' '_' mod.name ++ ".py"
   buildDir base (splitPath $ takeDirectory filename)
 
   -- Write the source file contents.
   let mod' = mod {T.stmts = filter (not . T.isTest) mod.stmts}
-  let options' = options {packageName = pkgName}
   writeFile (base </> filename) $
-    (emit options' mod' :: Module)
+    (emit options mod' :: Module)
       & layout
-      & pretty options'
+      & pretty options
   return filename
 
 buildTests :: BuildOptions -> String -> FilePath -> T.Module -> IO FilePath
 buildTests options pkgName base mod = do
   -- Initialize the file path recursively.
-  let (dir, name) = splitFileName (replace '.' '/' mod.name)
+  let (dir, name) = splitFileName (replace '-' '_' mod.name)
   let filename = dir </> "test_" ++ name ++ ".py"
   buildDir base (splitPath $ takeDirectory filename)
 
   -- Write the test file contents.
-  let options' = options {packageName = pkgName}
+  let options' = options {prefix = options.prefix ++ '/' : mod.name}
   writeFile (base </> filename) $
     buildModuleTests options' mod
       & layout
@@ -543,12 +530,21 @@ buildTests options pkgName base mod = do
 buildModuleTests :: BuildOptions -> T.Module -> Module
 buildModuleTests options mod = do
   let path = splitDirectories mod.name & filter (/= ".")
-  let importPath = intercalate "." (options.packageName : path)
+  let exposed =
+        T.resolveNames options.prefix mod
+          & map (\(_, x) -> (T.nameIdentifier x & T.nameSnakeCase, Nothing))
+  let importPath =
+        options.prefix
+          & drop 1
+          & replace '-' '_'
+          & replace '/' '.'
   let stmts =
         Import "unittest" Nothing
           : prelude options
-          : ImportFrom importPath [("*", Nothing)]
-          : emit options (filter T.isImport mod.stmts)
+          : case exposed of
+            [] -> []
+            _ -> [ImportFrom importPath exposed]
+          ++ emit options (filter T.isImport mod.stmts)
           ++ [ ClassDef
                  { name = "Test" ++ T.nameCamelCaseUpper (takeFileName mod.name),
                    bases = [Attribute (Name "unittest") "TestCase"],
@@ -586,16 +582,12 @@ instance Emit T.Module Module where
 instance Emit T.Stmt [Stmt] where
   emit :: BuildOptions -> T.Stmt -> [Stmt]
   emit options (T.Import m exposed) = do
-    let m' = case m of
-          '@' : m -> replace '/' '.' m
-          m -> m
     case exposed of
       [] -> []
       exposed -> do
         let expose (x, x') | x == x' = (x, Nothing)
             expose (x, y) = (x, Just y)
-        let stmts = emit options (T.Import m [])
-        stmts ++ [ImportFrom m' (map expose exposed)]
+        [ImportFrom (replace '-' '_' m) (map expose exposed)]
   emit options (T.Def def) = emit options def
   emit options (T.Test name a p) = do
     let (stmts1, a') = emit options a
@@ -658,7 +650,8 @@ instance Emit T.Definition [Stmt] where
                 async = False
               }
       stmts1 ++ stmts2 ++ [def]
-  emit options def = error $ "TODO: emit Definition " ++ show def
+  emit options (ts, T.PMeta _ p, b) = emit options (ts, p, b)
+  emit options (ts, p, b) = error $ "TODO: emit Definition " ++ show p
 
 instance Emit [T.Stmt] [Stmt] where
   emit :: BuildOptions -> [T.Stmt] -> [Stmt]
@@ -669,7 +662,10 @@ instance Emit T.Expr ([Stmt], Expr) where
   emit :: BuildOptions -> T.Expr -> ([Stmt], Expr)
   emit _ (T.Int i) = ([], Integer i)
   emit _ (T.Num n) = ([], Float n)
-  emit _ (T.Var x) = ([], Name x)
+  emit options (T.Var x) = case x of
+    '@' : x | options.prefix == T.namePrefix ('@' : x) -> ([], Name (T.nameIdentifier x))
+    '@' : x -> ([], Name (x & replace '/' '.' & replace '-' '_'))
+    x -> ([], Name x)
   emit options (T.Tag k args) = case (k, args) of
     ("Type", []) -> ([], Name "type")
     ("Int", []) -> ([], Name "int")
@@ -733,7 +729,7 @@ instance Emit T.Expr ([Stmt], Expr) where
     error $ show "TODO: emit MatchFun " ++ show cases
   -- If Expr Expr Expr
   -- Or Expr Expr
-  -- Ann Expr Expr
+  emit options (T.Ann a _) = emit options a
   -- Op1 C.UnaryOp Expr
   emit options (T.Call op args) = case (op, args) of
     ("+", [a, b]) -> emitBinOp Add a b

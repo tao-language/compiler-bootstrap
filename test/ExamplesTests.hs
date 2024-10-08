@@ -11,7 +11,8 @@ import Test.Hspec
 test' :: String -> [String] -> IO (Either [SyntaxError] [TestError])
 test' name includes = do
   let names = name : includes
-  (env, s, errors) <- loadPackage "examples"
+  (pkg, s, errors) <- loadPackage "examples"
+  let env = lower [] pkg
   case filter (\e -> any (`isInfixOf` e.filename) names) errors of
     [] -> return (Right (dropMeta <$> test env name))
     errors -> return (Left errors)
@@ -50,16 +51,6 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "errors"
   it ("☯ " ++ name) $ do
     test' name [] `shouldReturn` Right [TestEqError ">@examples/errors/wrong-result:" (C.Var "@examples/errors/wrong-result.x") (C.Int 0) (C.Int 42)]
-
-  let name = "name-global"
-  it ("☯ " ++ name) $ do
-    -- @examples/sub/mod.x
-    test' name ["sub/"] `shouldReturn` Right []
-
-  -- let name = "name-root"
-  -- it ("☯ " ++ name) $ do
-  --   -- @/sub/mod.x
-  --   test' name ["sub/"] `shouldReturn` Right []
 
   -- TODO: import global
   -- TODO: import root

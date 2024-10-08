@@ -7,12 +7,12 @@ import qualified Subprocess
 import System.Directory (doesDirectoryExist, doesFileExist, getDirectoryContents, removeDirectoryRecursive, removeFile, withCurrentDirectory)
 import System.FilePath ((</>))
 import qualified Tao as T
-import TaoParser (parsePackage)
+import TaoParser (loadPackage)
 import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Python ☯==--" $ do
-  let options = defaultBuildOptions {packageName = "pkg"}
+  let options = defaultBuildOptions
   let (x, y, z) = (T.Var "x", T.Var "y", T.Var "z")
   let (xP, yP, zP) = (T.PVar "x", T.PVar "y", T.PVar "z")
   let (x', y', z') = (Name "x", Name "y", Name "z")
@@ -70,7 +70,7 @@ run = describe "--==☯ Python ☯==--" $ do
 
   it "☯ emit Module" $ do
     let emit' :: T.Module -> Module
-        emit' = emit options
+        emit' = emit options {prefix = "@pkg"}
     let stmts =
           [ T.Def $ T.defVar "x" (T.Int 1),
             T.Def $ T.defVar "y" (T.Int 2)
@@ -95,56 +95,57 @@ run = describe "--==☯ Python ☯==--" $ do
     -- emit options (Package "my_pkg" [Module "my-mod" stmts]) `shouldBe` Package "my-pkg" [Module "my_mod" pySrc] [Module "my_mod_test" pyTest]
     True `shouldBe` True
 
-  it "☯ build" $ do
-    -- putStrLn "> parsePackage"
-    -- pkg <- parsePackage "examples"
-    -- pkg.name `shouldBe` "examples"
-    -- putStrLn "> build"
-    -- build options "build" pkg `shouldReturn` "build/python"
+  -- it "☯ build" $ do
+  --   putStrLn "> parsePackage"
+  --   (pkg, s, errors) <- loadPackage "examples"
+  --   pkg.name `shouldBe` "@examples"
+  --   putStrLn "> build"
+  --   build options "build" pkg `shouldReturn` "build/python"
 
-    -- -- let taoModules =
-    -- --       [ "def-function",
-    -- --         "def-variable",
-    -- --         "empty",
-    -- --         "imports",
-    -- --         "sub-module/sub-file"
-    -- --       ]
-    -- -- sort (map (\m -> m.name) pkg.modules) `shouldBe` taoModules
+  --   -- let taoModules =
+  --   --       [ "def-function",
+  --   --         "def-variable",
+  --   --         "empty",
+  --   --         "imports",
+  --   --         "sub-module/sub-file"
+  --   --       ]
+  --   -- sort (map (\m -> m.name) pkg.modules) `shouldBe` taoModules
 
-    -- -- let pythonFiles =
-    -- --       [ "build/python/pyproject.toml",
-    -- --         "build/python/simple/__init__.py",
-    -- --         "build/python/simple/def_function.py",
-    -- --         "build/python/simple/def_variable.py",
-    -- --         "build/python/simple/empty.py",
-    -- --         "build/python/simple/imports.py",
-    -- --         "build/python/simple/sub_module/__init__.py",
-    -- --         "build/python/simple/sub_module/sub_file.py",
-    -- --         "build/python/test/__init__.py",
-    -- --         "build/python/test/sub_module/__init__.py",
-    -- --         "build/python/test/sub_module/test_sub_file.py",
-    -- --         "build/python/test/test_def_function.py",
-    -- --         "build/python/test/test_def_variable.py",
-    -- --         "build/python/test/test_empty.py",
-    -- --         "build/python/test/test_imports.py"
-    -- --       ]
-    -- -- fmap sort (getRecursiveContents "build/python") `shouldReturn` pythonFiles
+  --   -- let pythonFiles =
+  --   --       [ "build/python/pyproject.toml",
+  --   --         "build/python/simple/__init__.py",
+  --   --         "build/python/simple/def_function.py",
+  --   --         "build/python/simple/def_variable.py",
+  --   --         "build/python/simple/empty.py",
+  --   --         "build/python/simple/imports.py",
+  --   --         "build/python/simple/sub_module/__init__.py",
+  --   --         "build/python/simple/sub_module/sub_file.py",
+  --   --         "build/python/test/__init__.py",
+  --   --         "build/python/test/sub_module/__init__.py",
+  --   --         "build/python/test/sub_module/test_sub_file.py",
+  --   --         "build/python/test/test_def_function.py",
+  --   --         "build/python/test/test_def_variable.py",
+  --   --         "build/python/test/test_empty.py",
+  --   --         "build/python/test/test_imports.py"
+  --   --       ]
+  --   -- fmap sort (getRecursiveContents "build/python") `shouldReturn` pythonFiles
 
-    -- -- Setup the thon project.
-    -- Subprocess.run "build/python" "python" ["-m", "venv", "env"]
-    -- Subprocess.run "build/python" "env/bin/pip" ["install", "-U", "pip"]
-    -- Subprocess.run "build/python" "env/bin/pip" ["install", "-e", "."]
+  --   -- Setup the thon project.
+  --   Subprocess.run "build/python" "python" ["-m", "venv", "env"]
+  --   Subprocess.run "build/python" "env/bin/pip" ["install", "-U", "pip"]
+  --   Subprocess.run "build/python" "env/bin/pip" ["install", "-e", "."]
 
-    -- -- Run the tests, we expect a test failure.
-    -- Subprocess.run "build/python" "env/bin/python" ["-m", "unittest", "-v"]
-    --   `shouldThrow` anyException
+  --   -- Run the tests, we expect a test failure.
+  --   Subprocess.run "build/python" "env/bin/python" ["-m", "unittest", "-v"]
+  --     `shouldThrow` anyException
 
-    -- -- Remove the failing tests, and it should pass now.
-    -- let failingTestsDir = "build/python/test/errors/"
-    -- putStrLn ("> rm -r " ++ failingTestsDir)
-    -- removeDirectoryRecursive failingTestsDir
-    -- Subprocess.run "build/python" "env/bin/python" ["-m", "unittest", "-v"]
+  --   -- Remove the failing tests, and it should pass now.
+  --   let failingTestsDir = "build/python/test/errors/"
+  --   putStrLn ("> rm -r " ++ failingTestsDir)
+  --   removeDirectoryRecursive failingTestsDir
+  --   Subprocess.run "build/python" "env/bin/python" ["-m", "unittest", "-v"]
 
+  it "☯ TODO" $ do
     True `shouldBe` True
 
 -- https://book.realworldhaskell.org/read/io-case-study-a-library-for-searching-the-filesystem.html

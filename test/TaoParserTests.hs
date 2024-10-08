@@ -261,27 +261,31 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     parseFile "base-path" "my-file" (pkg, []) `shouldReturn` (pkg, [])
 
   it "☯ parsePackage directory" $ do
-    let pkg = Package {name = "empty", modules = [Module "empty-file" []]}
+    let pkg = Package {name = "@empty", modules = [Module "empty-file" []]}
     parsePackage "examples/empty" `shouldReturn` (pkg, [])
     withCurrentDirectory "examples" (parsePackage "empty") `shouldReturn` (pkg, [])
 
   it "☯ parsePackage file" $ do
-    let pkg = Package {name = "empty", modules = [Module "empty" []]}
+    let pkg = Package {name = "@empty", modules = [Module "empty" []]}
     parsePackage "examples/empty.tao" `shouldReturn` (pkg, [])
     withCurrentDirectory "examples" (parsePackage "empty.tao") `shouldReturn` (pkg, [])
 
   it "☯ loadPackage" $ do
     let load path = do
-          (env, s, errors) <- loadPackage path
-          let env' = map C.dropMeta env
-          return (env', s, errors)
-    let env =
-          [ ("@sub/mod.x", C.Int 1),
-            ("@sub/mod.y", C.Int 2)
-          ]
+          (pkg, s, errors) <- loadPackage path
+          return (dropMeta pkg, s, errors)
+    let pkg =
+          Package
+            "@sub"
+            [ Module
+                "mod"
+                [ Def (defVar "@sub/mod.x" (Int 1)),
+                  Def (defVar "@sub/mod.y" (Int 2))
+                ]
+            ]
     let s =
           [ (("@sub/mod", "x"), "@sub/mod.x"),
             (("@sub/mod", "y"), "@sub/mod.y")
           ]
     let errors = []
-    load "examples/sub" `shouldReturn` (env, s, errors)
+    load "examples/sub" `shouldReturn` (pkg, s, errors)

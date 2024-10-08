@@ -13,6 +13,7 @@ data Expr
   = Int Int
   | Num Double
   | Var String
+  | Name String String String
   | Tag String [Expr]
   | Tuple [Expr]
   | Record [(String, Expr)]
@@ -276,16 +277,17 @@ isFunctionDef (Meta _ a) = isFunctionDef a
 isFunctionDef _ = False
 
 toExpr :: Pattern -> Expr
-toExpr PAny = error "TODO: toExpr PAny"
 toExpr (PInt i) = Int i
 toExpr (PNum n) = Num n
 toExpr (PVar x) = Var x
 toExpr (PTag k ps) = Tag k (map toExpr ps)
+toExpr (PTuple items) = Tuple (map toExpr items)
 toExpr (PFun p q) = Fun (toExpr p) (toExpr q)
 toExpr (POr p q) = Or (toExpr p) (toExpr q)
 toExpr (PEq a) = a
 toExpr (PMeta m p) = Meta m (toExpr p)
 toExpr PErr = Err
+toExpr p = error $ "TODO: toExpr " ++ show p
 
 class FreeVars a where
   freeVars :: a -> [String]
@@ -314,6 +316,7 @@ instance Lower Expr C.Expr where
   lower _ (Int i) = C.Int i
   lower _ (Num n) = C.Num n
   lower _ (Var x) = C.Var x
+  lower _ (Name pkg mod x) = C.Var (pkg ++ '/' : mod ++ '.' : x)
   lower env (Tag k args)
     | Tag k args == kind = C.Knd
     | Tag k args == intT = C.IntT
@@ -460,15 +463,9 @@ split delim = splitWith (== delim)
 split2 :: Char -> String -> (String, String)
 split2 delim text = case split delim text of
   [] -> ("", "")
-  [x] -> (x, "")
-  x : y : _ -> (x, y)
-
-splitName :: String -> (String, String, String)
-splitName ('@' : pkgModName) = do
-  let (pkg, modName) = split2 ':' pkgModName
-  let (mod, name) = split2 '.' modName
-  (pkg, mod, name)
-splitName name = ("", "", name)
+  [x] -> ("", x)
+  [x, y] -> (x, y)
+  x : ys -> (x, intercalate [delim] ys)
 
 class ResolveNames a b where
   resolveNames :: a -> b -> [(String, String)]
@@ -480,7 +477,7 @@ instance ResolveNames () Package where
 instance ResolveNames String Module where
   resolveNames :: String -> Module -> [(String, String)]
   resolveNames p mod = do
-    let m = '@' : p ++ '/' : mod.name
+    let m = p ++ '/' : mod.name
     concatMap (resolveNames m) mod.stmts
 
 instance ResolveNames String Stmt where
@@ -495,7 +492,14 @@ instance ResolveNames String Stmt where
 
 instance ResolveNames String Definition where
   resolveNames :: String -> Definition -> [(String, String)]
-  resolveNames m (_, p, _) = case p of
+  resolveNames m (ts, p, b) = case p of
+    PVar ('@' : '/' : x) -> do
+      let pkg = namePackage m
+      let mod = nameModule x
+      [('@' : pkg ++ '/' : mod, nameIdentifier x)]
+    PVar ('@' : x) -> do
+      let x' = nameIdentifier x
+      resolveNames m (ts, PVar x', b)
     PVar ('_' : x) -> [('_' : m, x)]
     PVar x | "/_" `isInfixOf` m -> [('_' : m, x)]
     PVar x -> case split2 '/' m of
@@ -504,7 +508,7 @@ instance ResolveNames String Definition where
     PTag _ ps -> concatMap (resolveNames m) ps
     PTuple ps -> concatMap (resolveNames m) ps
     PRecord kvs -> concatMap (resolveNames m . snd) kvs
-    PTrait p x -> [('.' : '@' : m ++ ':' : show p, x)]
+    PTrait p x -> [('.' : m, x)]
     PMeta _ p -> resolveNames m p
     p -> error $ "TODO: resolveNames " ++ show p
 
@@ -515,18 +519,95 @@ instance ResolveNames String Pattern where
   resolveNames m (PMeta _ p) = resolveNames m p
   resolveNames m p = error $ "TODO: resolveNames " ++ show (m, p)
 
-resolve :: Package -> [Substitution]
-resolve pkg = do
+type Replacement = ((String, String, String), Expr)
+
+class Resolve scope a where
+  resolve :: scope -> a -> [Replacement]
+
+instance Resolve () Package where
+  resolve :: () -> Package -> [Replacement]
+  resolve () pkg =
+    concatMap (resolve pkg.name) pkg.modules
+
+instance Resolve String Module where
+  resolve :: String -> Module -> [Replacement]
+  resolve pkg mod =
+    concatMap (resolve (pkg, mod.name)) mod.stmts
+
+instance Resolve (String, String) Stmt where
+  resolve :: (String, String) -> Stmt -> [Replacement]
+  resolve scope stmt = case stmt of
+    Import path names -> error "TODO resolve Import"
+    Def def -> resolve scope def
+    Test {} -> []
+    MetaStmt _ stmt -> resolve scope stmt
+
+instance Resolve (String, String) Definition where
+  resolve :: (String, String) -> Definition -> [Replacement]
+  resolve (pkg, mod) (_, p, _) = case p of
+    PAny -> []
+    PVar x -> [((pkg, mod, x), Name pkg mod x)]
+    p -> error $ "TODO resolve " ++ show p
+
+class Replace scope a where
+  replace :: scope -> [Replacement] -> a -> a
+
+instance Replace () Package where
+  replace :: () -> [Replacement] -> Package -> Package
+  replace () s pkg =
+    pkg {modules = map (replace pkg.name s) pkg.modules}
+
+instance Replace String Module where
+  replace :: String -> [Replacement] -> Module -> Module
+  replace pkg s mod =
+    mod {stmts = map (replace (pkg, mod.name) s) mod.stmts}
+
+instance Replace (String, String) Stmt where
+  replace :: (String, String) -> [Replacement] -> Stmt -> Stmt
+  replace scope s stmt = case stmt of
+    Import path names -> Import path names
+    Def def -> Def (replace scope s def)
+    Test name a p -> do
+      let (pkg, mod) = scope
+      let name' = case name of
+            '>' : _ -> name
+            _ -> '>' : pkg ++ '/' : mod ++ ':' : name
+      Test name' (replace scope s a) (replace scope s p)
+    MetaStmt m stmt -> MetaStmt m (replace scope s stmt)
+
+instance Replace (String, String) Definition where
+  replace :: (String, String) -> [Replacement] -> Definition -> Definition
+  replace scope s (ts, p, b) = do
+    let ts' = map (second $ replace scope s) ts
+    let p' = replace scope s p
+    let b' = replace scope s b
+    (ts', p', b')
+
+instance Replace (String, String) Pattern where
+  replace :: (String, String) -> [Replacement] -> Pattern -> Pattern
+  replace scope s p = case p of
+    PAny -> PAny
+    PInt i -> PInt i
+    PVar x -> PVar x
+    p -> error $ "TODO replace " ++ show p
+
+instance Replace (String, String) Expr where
+  replace :: (String, String) -> [Replacement] -> Expr -> Expr
+  replace (pkg, mod) s a = case a of
+    Int _ -> a
+    Num _ -> a
+    Var x -> fromMaybe a (lookup (pkg, mod, x) s)
+    Name {} -> a
+    Err -> a
+    a -> error $ "TODO replace " ++ show a
+
+resolve' :: Package -> [Substitution]
+resolve' pkg = do
   let sub (m, x) = ((m, x), m ++ '.' : x)
   map sub (resolveNames () pkg)
 
-linkPackage :: Package -> Package
-linkPackage pkg = do
-  let s = resolve pkg
-  rename () s pkg
-
-nameSplit :: String -> [String]
-nameSplit name =
+nameWords :: String -> [String]
+nameWords name =
   splitWhen (not . isAlphaNum) name
     & filter (/= "")
     & concatMap splitCamelCase
@@ -548,22 +629,46 @@ capitalize :: String -> String
 capitalize "" = ""
 capitalize (x : xs) = toUpper x : xs
 
+nameSplit :: String -> (String, String, String)
+nameSplit ('@' : pkgModName) = nameSplit pkgModName
+nameSplit pkgModName = do
+  let (pkgMod, name) =
+        if '.' `elem` pkgModName
+          then split2 '.' pkgModName
+          else (pkgModName, "")
+  let (pkg, mod) = case pkgMod of
+        '/' : mod -> ("", mod)
+        _ -> split2 '/' pkgMod
+  (pkg, mod, name)
+
+nameIdentifier :: String -> String
+nameIdentifier name = split2 '.' name & snd
+
+nameModule :: String -> String
+nameModule name = let (_, m, _) = nameSplit name in m
+
+namePackage :: String -> String
+namePackage name = let (p, _, _) = nameSplit name in p
+
+namePrefix :: String -> String
+namePrefix name = split2 '.' name & fst
+
 nameCamelCaseUpper :: String -> String
 nameCamelCaseUpper name =
-  nameSplit name
+  nameWords name
     & map capitalize
     & intercalate ""
 
 nameCamelCaseLower :: String -> String
-nameCamelCaseLower name = case nameSplit name of
+nameCamelCaseLower name = case nameWords name of
   [] -> ""
   (x : xs) -> intercalate "" (x : map capitalize xs)
 
 nameSnakeCase :: String -> String
-nameSnakeCase name = nameSplit name & intercalate "_"
+nameSnakeCase name = nameWords name & intercalate "_"
 
 nameDashCase :: String -> String
-nameDashCase name = nameSplit name & intercalate "-"
+nameDashCase name = nameWords name & intercalate "-"
 
 isImported :: String -> Stmt -> Bool
 isImported x (Import _ exposed) = x `elem` map fst exposed
@@ -637,7 +742,7 @@ class Rename path a where
 instance Rename () Package where
   rename :: () -> [Substitution] -> Package -> Package
   rename () s pkg =
-    pkg {modules = map (rename ('@' : pkg.name) s) pkg.modules}
+    pkg {modules = map (rename pkg.name s) pkg.modules}
 
 instance Rename String Module where
   rename :: String -> [Substitution] -> Module -> Module
@@ -707,20 +812,6 @@ instance Rename String String where
     | path == (m, x) = y
     | otherwise = rename m s x
 
-refactorName :: (Type -> String -> String) -> Package -> Package
-refactorName f pkg = do
-  let refactor :: C.Env -> Module -> Package -> Package
-      refactor env mod pkg = do
-        -- let ctx = concatMap (getContext (pkg.name, mod.name)) mod.stmts
-        -- foldr (\(x, a) -> rename () x (f (map fst ctx) a x)) pkg ctx
-        let names = resolveNames pkg.name mod
-        -- let s = map (\(m, x) -> ((m, x), f (map snd names))) names
-        -- let s (m, x) = ((m, x), m ++ '.' : x)
-        -- map s (resolveNames () pkg)
-        error "TODO: refactorName"
-  let env = lower [] pkg :: C.Env
-  foldr (refactor env) pkg pkg.modules
-
 class RefactorModuleName a where
   refactorModuleName :: (FilePath -> FilePath) -> a -> a
 
@@ -737,20 +828,6 @@ instance RefactorModuleName Stmt where
   refactorModuleName f (Import m exposed) = error "TODO"
   -- refactorModuleName f (Import name exposed) = Import (f name) alias exposed
   refactorModuleName _ stmt = stmt
-
-class RefactorModuleAlias a where
-  refactorModuleAlias :: (FilePath -> FilePath) -> a -> a
-
-instance RefactorModuleAlias Package where
-  refactorModuleAlias :: (FilePath -> FilePath) -> Package -> Package
-  refactorModuleAlias f pkg = pkg {modules = map (refactorModuleAlias f) pkg.modules}
-
-instance RefactorModuleAlias Module where
-  refactorModuleAlias :: (FilePath -> FilePath) -> Module -> Module
-  refactorModuleAlias f mod = do
-    -- let refactor stmt = foldr (\x -> rename () x (f x)) stmt names
-    -- mod {name = mod.name, stmts = map (refactor ()) mod.stmts}
-    error "TODO"
 
 in' :: String -> String -> Bool
 in' _ "" = False
@@ -806,9 +883,9 @@ instance DropMeta TestError where
 
 eval :: Package -> String -> Expr -> Either (Expr, C.TypeError) (Expr, Expr)
 eval pkg m expr = do
-  let s = resolve pkg
-  let env = lower [] (rename () s pkg)
-  let expr' = lower env (rename m s expr)
+  let s = resolve () pkg
+  let env = lower [] (replace () s pkg)
+  let expr' = lower env (replace (pkg.name, m) s expr)
   let result = C.eval env expr'
   case C.infer env expr' of
     Right (type', _) -> Right (lift result, lift type')
@@ -834,7 +911,7 @@ test env name = do
 
 -- test :: Package -> String -> [TestError]
 -- test pkg filter = do
---   let s = resolve pkg
+--   let s = resolve' pkg
 --   let pkg' = rename () s pkg
 --   let env = lower [] pkg'
 --   -- case packageTests filter pkg' of

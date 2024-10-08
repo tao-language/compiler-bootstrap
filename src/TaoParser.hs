@@ -462,18 +462,17 @@ showSnippet (row, col) before after src = do
           & zipWith showLine [row + 1 ..]
   intercalate "\n" (linesBefore ++ highlight ++ linesAfter)
 
-loadPackage :: FilePath -> IO (C.Env, [Substitution], [SyntaxError])
+loadPackage :: FilePath -> IO (Package, [Substitution], [SyntaxError])
 loadPackage path = do
   (pkg, errors) <- parsePackage path
   let env = [] -- TODO: link (load dependencies into the env)
-  let s = resolve pkg
-  let env' = lower env (rename () s pkg)
+  let s = resolve' pkg
   -- TODO: merge traits and operators
-  return (env', s, errors)
+  return (rename () s pkg, s, errors)
 
 parsePackage :: FilePath -> IO (Package, [SyntaxError])
 parsePackage path = do
-  let pkg = Package {name = takeBaseName path, modules = []}
+  let pkg = Package {name = '@' : takeBaseName path, modules = []}
   isFile <- doesFileExist path
   case (isFile, path) of
     (True, path) -> do
