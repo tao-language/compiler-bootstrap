@@ -416,16 +416,7 @@ parseTest = do
         return (PTag "True" [])
       ]
   _ <- P.whitespaces
-  return (Test name expr result)
-
-parseModule :: String -> Parser Module
-parseModule name = do
-  P.commit CModule
-  stmts <- P.zeroOrMore parseStmt
-  _ <- P.whitespaces
-  comments <- P.zeroOrMore parseComment
-  _ <- P.endOfFile
-  return (Module name stmts)
+  return (TestStmt name expr result)
 
 pad :: Int -> String -> String
 pad = padWith ' '
@@ -462,35 +453,40 @@ showSnippet (row, col) before after src = do
           & zipWith showLine [row + 1 ..]
   intercalate "\n" (linesBefore ++ highlight ++ linesAfter)
 
-loadPackage :: FilePath -> IO (Package, [Substitution], [SyntaxError])
-loadPackage path = do
-  (pkg, errors) <- parsePackage path
-  let env = [] -- TODO: link (load dependencies into the env)
-  let s = resolve' pkg
-  -- TODO: merge traits and operators
-  return (rename () s pkg, s, errors)
+parseModule :: String -> Parser Module
+parseModule name = do
+  P.commit CModule
+  stmts <- P.zeroOrMore parseStmt
+  _ <- P.whitespaces
+  comments <- P.zeroOrMore parseComment
+  _ <- P.endOfFile
+  return (Module name stmts)
 
-parsePackage :: FilePath -> IO (Package, [SyntaxError])
-parsePackage path = do
-  let pkg = Package {name = '@' : takeBaseName path, modules = []}
+load :: FilePath -> [FilePath] -> IO (Package, [SyntaxError])
+load path dependencies = do
+  let pkg = Package (takeBaseName path) []
+  foldM (flip loadPackage) (pkg, []) (path : dependencies)
+
+loadPackage :: FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
+loadPackage path (pkg, errs) = do
   isFile <- doesFileExist path
   case (isFile, path) of
     (True, path) -> do
       let (base, filename) = splitFileName path
-      parseFile base filename (pkg, [])
+      loadModule base filename (pkg, errs)
     (False, base) -> do
       files <- walkDirectory base ""
-      foldM (flip (parseFile base)) (pkg, []) files
+      foldM (flip (loadModule base)) (pkg, errs) files
 
-parseFile :: FilePath -> FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
-parseFile _ filename (pkg, errs) | filename `elem` map (\f -> f.name) pkg.modules = do
+loadModule :: FilePath -> FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
+loadModule _ filename (pkg, errs) | filename `elem` map (\f -> f.name) pkg.modules = do
   return (pkg, errs)
-parseFile base filename (pkg, errs) = do
+loadModule base filename (pkg, errs) = do
   src <- readFile (base </> filename)
-  case P.parse filename (parseModule (dropExtension filename)) src of
-    Right (f, _) -> do
-      -- TODO: evaluate the module statements
-      return (pkg {modules = f : pkg.modules}, errs)
+  let modName = takeBaseName base ++ '/' : dropExtension filename
+  case P.parse filename (parseModule modName) src of
+    Right (mod, _) -> do
+      return (pkg {modules = mod : pkg.modules}, [])
     Left P.State {name, pos = (row, col), context} -> do
       let err =
             SyntaxError
