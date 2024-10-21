@@ -374,7 +374,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
                 Module
                   { values = [("x", Int 42)],
                     types = [],
-                    docs = [],
                     tests = ts
                   }
           test [] [] mod
@@ -389,7 +388,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
                     Module
                       { values = [("x", Int 42)],
                         types = [],
-                        docs = [],
                         tests = ts
                       }
                   )
@@ -404,7 +402,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 --         Module
 --           { values = [("x", Int 1), ("y", Int 2)],
 --             types = [],
---             docs = [],
 --             tests = []
 --           }
 --   load "examples/core-package/core-module" `shouldReturn` mod

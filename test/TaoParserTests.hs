@@ -222,17 +222,16 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseDefinition" $ do
     let p = parse' parseDefinition
-    p "x = y" `shouldBe` Right (([], pvar 1 1 "x", var 1 5 "y"), "")
-    p "x : a = y" `shouldBe` Right (([("x", var 1 5 "a")], pvar 1 1 "x", var 1 9 "y"), "")
-    p "x : a\nx = y" `shouldBe` Right (([("x", var 1 5 "a")], pvar 2 1 "x", var 2 5 "y"), "")
-    p "x : a\ny : b\nx = y" `shouldBe` Right (([("x", var 1 5 "a"), ("y", var 2 5 "b")], pvar 3 1 "x", var 3 5 "y"), "")
+    p "x = y" `shouldBe` Right ((pvar 1 1 "x", var 1 5 "y"), "")
+    p "x : a = y" `shouldBe` Right ((pvar 1 1 "x", Ann (var 1 9 "y") (var 1 5 "a")), "")
+    p ": a\nx = y" `shouldBe` Right ((pvar 2 1 "x", Ann (var 2 5 "y") (var 1 3 "a")), "")
 
   it "☯ parseImport" $ do
     let p = parse' parseImport
-    p "import @pkg" `shouldBe` Right (Import "@pkg" [], "")
-    p "import @pkg/mod" `shouldBe` Right (Import "@pkg/mod" [], "")
-    p "import @pkg (a, b as c)" `shouldBe` Right (Import "@pkg" [("a", "a"), ("b", "c")], "")
-    p "import @/mod" `shouldBe` Right (Import "@/mod" [], "")
+    p "import @pkg" `shouldBe` Right (Import "@pkg" "@pkg" [], "")
+    p "import @pkg/mod" `shouldBe` Right (Import "@pkg/mod" "mod" [], "")
+    p "import @pkg (a, b as c)" `shouldBe` Right (Import "@pkg" "@pkg" [("a", "a"), ("b", "c")], "")
+    p "import @/mod" `shouldBe` Right (Import "@/mod" "mod" [], "")
 
   it "☯ parseTest" $ do
     let p = parse' parseTest
@@ -242,7 +241,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseStmt" $ do
     let p = parse' parseStmt
-    p "import @pkg" `shouldBe` Right (Import "@pkg" [], "")
+    p "import @pkg" `shouldBe` Right (Import "@pkg" "@pkg" [], "")
     -- p "x = y" `shouldBe` Right (Define (Def [] (pvar 1 1 "x") (var 1 5 "y")), "")
     p "> x; y" `shouldBe` Right (TestStmt "" (var 1 3 "x") (pvar 1 6 "y"), "")
 
@@ -250,7 +249,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     let p = parse' (parseModule "path/my-file.tao")
     p "" `shouldBe` Right (Module "path/my-file.tao" [], "")
     p "x" `shouldBe` Left ([CModule], "x")
-    p "import @pkg" `shouldBe` Right (Module "path/my-file.tao" [Import "@pkg" []], "")
+    p "import @pkg" `shouldBe` Right (Module "path/my-file.tao" [Import "@pkg" "@pkg" []], "")
 
   -- it "☯ parsePackage directory" $ do
   --   let pkg = Package {name = "empty", modules = [Module "empty/empty-file" []]}
@@ -264,10 +263,10 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ loadModule" $ do
     let pkg = Package {name = "pkg", modules = []}
-    loadModule "examples" "empty.tao" (pkg, []) `shouldReturn` (pkg {modules = [Module "examples/empty" []]}, [])
+    loadModule "examples" "empty.tao" (pkg, []) `shouldReturn` (pkg {modules = [("examples/empty", Module "examples/empty" [])]}, [])
 
   it "☯ loadModule exists" $ do
-    let pkg = Package {name = "pkg", modules = [Module "my-file" []]}
+    let pkg = Package {name = "pkg", modules = [("my-file", Module "my-file" [])]}
     loadModule "base-path" "my-file" (pkg, []) `shouldReturn` (pkg, [])
 
   it "☯ loadPackage" $ do
@@ -277,11 +276,13 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     let pkg =
           Package
             "pkg"
-            [ Module
-                "sub/mod"
-                [ Def (defVar "x" (Int 1)),
-                  Def (defVar "y" (Int 2))
-                ]
+            [ ( "sub/mod",
+                Module
+                  "sub/mod"
+                  [ Def (PVar "x", Int 1),
+                    Def (PVar "y", Int 2)
+                  ]
+              )
             ]
     let errors = []
     load "examples/sub" `shouldReturn` (pkg, errors)
@@ -293,12 +294,14 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     let pkg =
           Package
             "sub"
-            [ Module "empty/empty-file" [],
-              Module
-                "sub/mod"
-                [ Def (defVar "x" (Int 1)),
-                  Def (defVar "y" (Int 2))
-                ]
+            [ ("empty/empty-file", Module "empty/empty-file" []),
+              ( "sub/mod",
+                Module
+                  "sub/mod"
+                  [ Def (PVar "x", Int 1),
+                    Def (PVar "y", Int 2)
+                  ]
+              )
             ]
     let errors = []
     load' "examples/sub" ["examples/empty"] `shouldReturn` (pkg, errors)

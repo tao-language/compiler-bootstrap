@@ -68,12 +68,10 @@ data PatternError
   | UnreachableCase Expr
   deriving (Eq, Show)
 
-type Package = [(String, Module)]
-
 data Module = Module
-  { values :: Env,
+  { path :: String,
+    values :: Env,
     types :: Env,
-    docs :: [(String, String)],
     tests :: [UnitTest]
   }
   deriving (Eq, Show)
@@ -709,15 +707,15 @@ instance Build Module where
     -- return mod
     error "TODO: load Module"
 
-import' :: String -> Package -> IO Package
+import' :: String -> [(String, Module)] -> IO [(String, Module)]
 import' path pkg = do
   return pkg
 
 class Test a where
   test :: Ops -> Env -> a -> [TestError]
 
-instance Test Package where
-  test :: Ops -> Env -> Package -> [TestError]
+instance Test [(String, Module)] where
+  test :: Ops -> Env -> [(String, Module)] -> [TestError]
   test ops env pkg = do
     concatMap (test ops env . snd) pkg
 

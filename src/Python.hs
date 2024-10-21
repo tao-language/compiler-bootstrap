@@ -475,13 +475,13 @@ build options base pkg = do
 
   -- Create source files
   let options' = options {prefix = pkg.name}
-  let modules = sortBy (\m n -> compare m.name n.name) pkg.modules
-  files <- mapM (buildModule options' pkg.name srcPath) modules
+  let modules = sortBy (\m n -> compare (fst m) (fst n)) pkg.modules
+  files <- mapM (buildModule options' pkg.name srcPath . snd) modules
   copyFile "src/target/python/__tao__.py" (srcPath </> "__prelude__.py")
 
   createDirectory testPath
   writeFile (testPath </> "__init__.py") ""
-  files <- mapM (buildTests options' pkg.name testPath) modules
+  files <- mapM (buildTests options' pkg.name testPath . snd) modules
 
   -- TODO: Create docs
   createDirectory docsPath
@@ -530,9 +530,9 @@ buildTests options pkgName base mod = do
 buildModuleTests :: BuildOptions -> T.Module -> Module
 buildModuleTests options mod = do
   let path = splitDirectories mod.name & filter (/= ".")
-  let exposed =
-        T.resolveNames options.prefix mod
-          & map (\(_, x) -> (T.nameIdentifier x & T.nameSnakeCase, Nothing))
+  -- let exposed =
+  --       T.resolveNames options.prefix mod
+  --         & map (\(_, x) -> (T.nameIdentifier x & T.nameSnakeCase, Nothing))
   let importPath =
         options.prefix
           & drop 1
@@ -540,10 +540,10 @@ buildModuleTests options mod = do
           & replace '/' '.'
   let stmts =
         Import "unittest" Nothing
-          : prelude options
-          : case exposed of
-            [] -> []
-            _ -> [ImportFrom importPath exposed]
+          : [prelude options]
+          -- : case exposed of
+          --   [] -> []
+          --   _ -> [ImportFrom importPath exposed]
           ++ emit options (filter T.isImport mod.stmts)
           ++ [ ClassDef
                  { name = "Test" ++ T.nameCamelCaseUpper (takeFileName mod.name),
@@ -581,14 +581,14 @@ instance Emit T.Module Module where
 
 instance Emit T.Stmt [Stmt] where
   emit :: BuildOptions -> T.Stmt -> [Stmt]
-  emit options (T.Import m exposed) = do
+  emit options (T.Import m n exposed) = do
     case exposed of
       [] -> []
       exposed -> do
         let expose (x, x') | x == x' = (x, Nothing)
             expose (x, y) = (x, Just y)
         [ImportFrom (replace '-' '_' m) (map expose exposed)]
-  emit options (T.Def def) = emit options def
+  -- emit options (T.Def def) = emit options def
   emit options (T.TestStmt name a p) = do
     let (stmts1, a') = emit options a
     let (stmts2, b') = emit options (T.toExpr p) -- TODO: do a match instead
@@ -605,53 +605,53 @@ instance Emit T.Stmt [Stmt] where
     stmts1 ++ stmts2 ++ [def]
   emit options (T.MetaStmt _ stmt) = emit options stmt
 
-instance Emit T.Definition [Stmt] where
-  emit :: BuildOptions -> T.Definition -> [Stmt]
-  emit options (ts, T.PVar x, b) = case (lookup x ts, T.lambdaOf "_" b) of
-    (Nothing, ([], b)) -> do
-      let (stmts, b') = emit options b
-      let def = Assign [Name x] b'
-      stmts ++ [def]
-    (Just t, ([], b)) -> do
-      let (stmts1, t') = emit options t
-      let (stmts2, b') = emit options b
-      let def = AnnAssign (Name x) t' (Just b')
-      stmts1 ++ stmts2 ++ [def]
-    (Nothing, (xs, b)) -> do
-      let (body, b') = emit options b
-      let def =
-            FunctionDef
-              { name = x,
-                args = map (,Nothing,Nothing) xs,
-                body = body ++ [Return b'],
-                decorators = [],
-                returns = Nothing,
-                typeParams = [],
-                async = False
-              }
-      [def]
-    (Just t, (xs, b)) -> do
-      let emitArg :: (String, T.Expr) -> ([Stmt], [(String, Maybe Expr, Maybe Expr)]) -> ([Stmt], [(String, Maybe Expr, Maybe Expr)])
-          emitArg (x, t) (stmts, args) = do
-            let (stmts', t') = emit options t
-            (stmts' ++ stmts, (x, Just t', Nothing) : args)
-      let (ts, ret) = T.funOf t
-      let (stmts1, args) = foldr emitArg ([], []) (zip xs ts)
-      let (stmts2, ret') = emit options ret
-      let (body, b') = emit options b
-      let def =
-            FunctionDef
-              { name = x,
-                args = args,
-                body = body ++ [Return b'],
-                decorators = [],
-                returns = Just ret',
-                typeParams = [],
-                async = False
-              }
-      stmts1 ++ stmts2 ++ [def]
-  emit options (ts, T.PMeta _ p, b) = emit options (ts, p, b)
-  emit options (ts, p, b) = error $ "TODO: emit Definition " ++ show p
+-- instance Emit T.Definition [Stmt] where
+--   emit :: BuildOptions -> T.Definition -> [Stmt]
+--   emit options (ts, T.PVar x, b) = case (lookup x ts, T.lambdaOf "_" b) of
+--     (Nothing, ([], b)) -> do
+--       let (stmts, b') = emit options b
+--       let def = Assign [Name x] b'
+--       stmts ++ [def]
+--     (Just t, ([], b)) -> do
+--       let (stmts1, t') = emit options t
+--       let (stmts2, b') = emit options b
+--       let def = AnnAssign (Name x) t' (Just b')
+--       stmts1 ++ stmts2 ++ [def]
+--     (Nothing, (xs, b)) -> do
+--       let (body, b') = emit options b
+--       let def =
+--             FunctionDef
+--               { name = x,
+--                 args = map (,Nothing,Nothing) xs,
+--                 body = body ++ [Return b'],
+--                 decorators = [],
+--                 returns = Nothing,
+--                 typeParams = [],
+--                 async = False
+--               }
+--       [def]
+--     (Just t, (xs, b)) -> do
+--       let emitArg :: (String, T.Expr) -> ([Stmt], [(String, Maybe Expr, Maybe Expr)]) -> ([Stmt], [(String, Maybe Expr, Maybe Expr)])
+--           emitArg (x, t) (stmts, args) = do
+--             let (stmts', t') = emit options t
+--             (stmts' ++ stmts, (x, Just t', Nothing) : args)
+--       let (ts, ret) = T.funOf t
+--       let (stmts1, args) = foldr emitArg ([], []) (zip xs ts)
+--       let (stmts2, ret') = emit options ret
+--       let (body, b') = emit options b
+--       let def =
+--             FunctionDef
+--               { name = x,
+--                 args = args,
+--                 body = body ++ [Return b'],
+--                 decorators = [],
+--                 returns = Just ret',
+--                 typeParams = [],
+--                 async = False
+--               }
+--       stmts1 ++ stmts2 ++ [def]
+--   emit options (ts, T.PMeta _ p, b) = emit options (ts, p, b)
+--   emit options (ts, p, b) = error $ "TODO: emit Definition " ++ show p
 
 instance Emit [T.Stmt] [Stmt] where
   emit :: BuildOptions -> [T.Stmt] -> [Stmt]
@@ -687,10 +687,10 @@ instance Emit T.Expr ([Stmt], Expr) where
     case readMaybe x of
       Just i -> (stmts, index a' (Integer $ i - 1))
       Nothing -> (stmts, Attribute a' x)
-  emit options (T.TraitFun x) = do
-    let arg = "_"
-    let (stmts, a) = emit options (T.Trait (T.Var arg) x)
-    (stmts, Lambda [arg] a)
+  -- emit options (T.TraitFun x) = do
+  --   let arg = "_"
+  --   let (stmts, a) = emit options (T.Trait (T.Var arg) x)
+  --   (stmts, Lambda [arg] a)
   emit options (T.Fun a b) = do
     let (args, ret) = T.funOf (T.Fun a b)
     let (stmts1, args') = emit options args
@@ -711,15 +711,15 @@ instance Emit T.Expr ([Stmt], Expr) where
     let (stmts1, a') = emit options a
     let (stmts2, b') = emit options b
     (stmts1 ++ stmts2, bitOr a' b')
-  emit options (T.Let def b) = do
-    let stmts1 = emit options def
-    let (stmts2, b') = emit options b
-    (stmts1 ++ stmts2, b')
-  emit options (T.Bind (ts, p, a) b) = do
-    -- let stmts1 = emit options (T.Def [] p (T.Meta C.Unwrap a))
-    -- let (stmts2, b') = emit options b
-    -- (stmts1 ++ stmts2, b')
-    error $ show "TODO: emit Bind " ++ show (ts, p, a, b)
+  -- emit options (T.Let def b) = do
+  --   let stmts1 = emit options def
+  --   let (stmts2, b') = emit options b
+  --   (stmts1 ++ stmts2, b')
+  -- emit options (T.Bind (ts, p, a) b) = do
+  --   -- let stmts1 = emit options (T.Def [] p (T.Meta C.Unwrap a))
+  --   -- let (stmts2, b') = emit options b
+  --   -- (stmts1 ++ stmts2, b')
+  --   error $ show "TODO: emit Bind " ++ show (ts, p, a, b)
   emit _ (T.MatchFun []) = ([raise (notImplementedError "")], None)
   emit options (T.MatchFun cases) = do
     let x = C.newName (T.freeVars cases) "_match"

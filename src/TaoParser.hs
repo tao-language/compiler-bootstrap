@@ -173,7 +173,7 @@ parseExprAtom = do
         do
           _ <- P.char '.'
           x <- P.oneOf [parseIdentifier, fmap show P.integer]
-          return (TraitFun x),
+          return (traitFun x),
         Int <$> P.integer,
         Num <$> P.number,
         do
@@ -330,9 +330,9 @@ parseStmt = do
       ]
   return (foldr (MetaStmt . C.Comment) stmt comments)
 
-parseDefinition :: Parser Definition
+parseDefinition :: Parser (Pattern, Expr)
 parseDefinition = do
-  (ts, p, b) <-
+  (p, b) <-
     P.oneOf
       [ do
           (loc, x) <- parseLocation parseName
@@ -344,25 +344,25 @@ parseDefinition = do
           _ <- P.char '='
           _ <- P.spaces
           b <- parseExpr 0 P.spaces
-          return ([(x, t)], PMeta loc (PVar x), b),
+          return (PMeta loc (PVar x), Ann b t),
         do
-          ts <- P.zeroOrMore $ do
-            x <- parseName
-            _ <- P.spaces
+          t <- P.maybe' $ do
             _ <- P.char ':'
             _ <- P.spaces
             t <- parseExpr 0 P.spaces
             _ <- parseLineBreak
-            return (x, t)
+            return t
           p <- parsePattern
           _ <- P.char '='
           _ <- P.spaces
           b <- parseExpr 0 P.spaces
-          return (ts, p, b)
+          case t of
+            Just t -> return (p, Ann b t)
+            Nothing -> return (p, b)
       ]
   _ <- parseLineBreak
   _ <- P.whitespaces
-  return (ts, p, b)
+  return (p, b)
 
 parseImport :: Parser Stmt
 parseImport = do
@@ -389,7 +389,7 @@ parseImport = do
       ]
   _ <- parseLineBreak
   _ <- P.whitespaces
-  return (Import m exposing)
+  return (Import m (takeBaseName m) exposing)
 
 parseTest :: P.Parser ParserContext Stmt
 parseTest = do
@@ -479,14 +479,14 @@ loadPackage path (pkg, errs) = do
       foldM (flip (loadModule base)) (pkg, errs) files
 
 loadModule :: FilePath -> FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
-loadModule _ filename (pkg, errs) | filename `elem` map (\f -> f.name) pkg.modules = do
+loadModule _ filename (pkg, errs) | filename `elem` map fst pkg.modules = do
   return (pkg, errs)
 loadModule base filename (pkg, errs) = do
   src <- readFile (base </> filename)
   let modName = takeBaseName base ++ '/' : dropExtension filename
   case P.parse filename (parseModule modName) src of
     Right (mod, _) -> do
-      return (pkg {modules = mod : pkg.modules}, [])
+      return (pkg {modules = (mod.name, mod) : pkg.modules}, [])
     Left P.State {name, pos = (row, col), context} -> do
       let err =
             SyntaxError
