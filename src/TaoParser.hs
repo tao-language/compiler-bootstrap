@@ -199,7 +199,7 @@ parseExpr :: Int -> Parser appDelim -> Parser Expr
 parseExpr prec delim = do
   let binary op m a b = Meta m (op a b)
   let ops =
-        [ P.atom 0 (match []) (P.oneOrMore parseCase),
+        [ P.atom 0 match (P.oneOrMore parseCase),
           P.infixR 1 (binary Or) (parseOp "|"),
           P.infixR 2 (binary Ann) (parseOp ":"),
           P.infixR 3 (binary eq) (parseOp "=="),
@@ -291,32 +291,32 @@ parseMatch = do
   _ <- P.spaces
   case' <- parseCase
   cases <- P.zeroOrMore (do _ <- P.whitespaces; parseCase)
-  return (match args (case' : cases))
+  return (matchArgs args (case' : cases))
 
 parsePattern :: Parser Pattern
 parsePattern = do
   (loc, a) <-
     (parseLocation . P.oneOf)
-      [ PAny <$ P.char '_',
+      [ Var <$> P.word "_",
         do
           name <- parseIdentifier
           case name of
             x | startsWithUpper x -> do
               _ <- P.spaces
               ps <- P.zeroOrMore parsePattern
-              return (PTag name ps)
-            _ -> return (PVar name),
-        PInt <$> P.integer,
-        PNum <$> P.number,
+              return (Tag name ps)
+            _ -> return (Var name),
+        Int <$> P.integer,
+        Num <$> P.number,
         do
-          p <- parseTuple PTuple parsePattern
+          p <- parseTuple Tuple parsePattern
           case p of
-            PMeta _ p -> return p
+            Meta _ p -> return p
             p -> return p
             -- , parseRecord
       ]
   _ <- P.spaces
-  return (PMeta loc a)
+  return (Meta loc a)
 
 -- Statements
 parseStmt :: Parser Stmt
@@ -344,7 +344,7 @@ parseDefinition = do
           _ <- P.char '='
           _ <- P.spaces
           b <- parseExpr 0 P.spaces
-          return (PMeta loc (PVar x), Ann b t),
+          return (Meta loc (Var x), Ann b t),
         do
           t <- P.maybe' $ do
             _ <- P.char ':'
@@ -413,7 +413,7 @@ parseTest = do
           result <- parsePattern
           _ <- parseLineBreak
           return result,
-        return (PTag "True" [])
+        return (Tag "True" [])
       ]
   _ <- P.whitespaces
   return (TestStmt name expr result)
@@ -460,11 +460,11 @@ parseModule name = do
   _ <- P.whitespaces
   comments <- P.zeroOrMore parseComment
   _ <- P.endOfFile
-  return (Module name stmts)
+  return (name, stmts)
 
 load :: FilePath -> [FilePath] -> IO (Package, [SyntaxError])
 load path dependencies = do
-  let pkg = Package (takeBaseName path) []
+  let pkg = (takeBaseName path, [])
   foldM (flip loadPackage) (pkg, []) (path : dependencies)
 
 loadPackage :: FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
@@ -479,14 +479,14 @@ loadPackage path (pkg, errs) = do
       foldM (flip (loadModule base)) (pkg, errs) files
 
 loadModule :: FilePath -> FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
-loadModule _ filename (pkg, errs) | filename `elem` map fst pkg.modules = do
+loadModule _ filename (pkg, errs) | filename `elem` map fst (snd pkg) = do
   return (pkg, errs)
 loadModule base filename (pkg, errs) = do
   src <- readFile (base </> filename)
   let modName = takeBaseName base ++ '/' : dropExtension filename
   case P.parse filename (parseModule modName) src of
     Right (mod, _) -> do
-      return (pkg {modules = (mod.name, mod) : pkg.modules}, [])
+      return (second (mod :) pkg, [])
     Left P.State {name, pos = (row, col), context} -> do
       let err =
             SyntaxError

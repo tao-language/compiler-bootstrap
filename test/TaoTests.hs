@@ -8,7 +8,6 @@ run :: SpecWith ()
 run = describe "--==☯ TaoTests ☯==--" $ do
   let loc = C.Location "TaoTests" (1, 2)
   let (x, y, z) = (Var "x", Var "y", Var "z")
-  let (xP, yP, zP) = (PVar "x", PVar "y", PVar "z")
   let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
   let (a, a') = (Var "a", C.Var "a")
   let (f, f') = (Var "f", C.Var "f")
@@ -16,18 +15,18 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lambda" $ do
     lambda [] x `shouldBe` x
-    lambda ["x"] y `shouldBe` MatchFun [Case [xP] Nothing y]
-    lambda ["x", "y"] z `shouldBe` MatchFun [Case [xP, yP] Nothing z]
+    lambda ["x"] y `shouldBe` Match [Case [x] Nothing y]
+    lambda ["x", "y"] z `shouldBe` Match [Case [x, y] Nothing z]
 
   it "☯ lambdaOf" $ do
     lambdaOf "$" x `shouldBe` ([], x)
     lambdaOf "$" (Meta (C.Comment "") x) `shouldBe` ([], Meta (C.Comment "") x)
-    lambdaOf "$" (MatchFun []) `shouldBe` ([], Err)
-    lambdaOf "$" (MatchFun [Case [] Nothing x]) `shouldBe` ([], x)
-    lambdaOf "$" (MatchFun [Case [xP] Nothing i1]) `shouldBe` (["x"], i1)
-    lambdaOf "$" (MatchFun [Case [xP] Nothing i1, Case [xP] Nothing i2]) `shouldBe` (["x"], Int 1)
-    lambdaOf "$" (MatchFun [Case [xP] Nothing i1, Case [yP] Nothing i2]) `shouldBe` (["$1"], app (MatchFun [Case [xP] Nothing i1, Case [yP] Nothing i2]) [Var "$1"])
-    lambdaOf "$" (MatchFun [Case [xP, yP] Nothing i1, Case [xP, zP] Nothing i2]) `shouldBe` (["x", "$1"], app (MatchFun [Case [yP] Nothing i1, Case [zP] Nothing i2]) [Var "$1"])
+    lambdaOf "$" (Match []) `shouldBe` ([], Err)
+    lambdaOf "$" (Match [Case [] Nothing x]) `shouldBe` ([], x)
+    lambdaOf "$" (Match [Case [x] Nothing i1]) `shouldBe` (["x"], i1)
+    lambdaOf "$" (Match [Case [x] Nothing i1, Case [x] Nothing i2]) `shouldBe` (["x"], Int 1)
+    lambdaOf "$" (Match [Case [x] Nothing i1, Case [y] Nothing i2]) `shouldBe` (["$1"], app (Match [Case [x] Nothing i1, Case [y] Nothing i2]) [Var "$1"])
+    lambdaOf "$" (Match [Case [x, y] Nothing i1, Case [x, z] Nothing i2]) `shouldBe` (["x", "$1"], matchArgs [Var "$1"] [Case [y] Nothing i1, Case [z] Nothing i2])
 
   it "☯ lower/lift Expr Type" $ do
     let expr = Tag "Type" []
@@ -450,11 +449,11 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ findName" $ do
     let ctx =
           [ ( "pkg/a",
-              [Def (PVar "x", Int 42)]
+              [Def (Var "x", Int 42)]
             ),
             ( "pkg/b",
               [ Import "pkg/a" "m" [("x", "y")],
-                Def (PVar "z", Var "y")
+                Def (Var "z", Var "y")
               ]
             )
           ]
@@ -468,23 +467,55 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ resolve" $ do
     let ctx =
           [ ( "pkg/a",
-              [Def (PVar "x", Int 42)]
+              [Def (Var "x", Int 42)]
             ),
             ( "pkg/b",
               [ Import "pkg/a" "m" [("x", "y")],
-                Def (PVar "z", Var "y")
+                Def (Var "z", Var "y")
               ]
             )
           ]
-    resolve ctx "pkg/a" "x" `shouldBe` Int 42
-    resolve ctx "pkg/a" "y" `shouldBe` Err
-    resolve ctx "pkg/b" "m" `shouldBe` Tag "pkg/a" []
-    resolve ctx "pkg/b" "x" `shouldBe` Err
-    resolve ctx "pkg/b" "y" `shouldBe` Int 42
-    resolve ctx "pkg/b" "z" `shouldBe` Let (PVar "y", Int 42) (Var "y")
+    resolve ctx "pkg/a" "x" `shouldBe` ([], Int 42)
+    resolve ctx "pkg/a" "y" `shouldBe` ([], Err)
+    resolve ctx "pkg/b" "m" `shouldBe` ([], Tag "pkg/a" [])
+    resolve ctx "pkg/b" "x" `shouldBe` ([], Err)
+    resolve ctx "pkg/b" "y" `shouldBe` ([], Int 42)
+    resolve ctx "pkg/b" "z" `shouldBe` ([("y", Int 42)], Var "y")
 
-  it "☯ compile Stmt" $ do
-    True `shouldBe` True
+  it "☯ compile" $ do
+    let pkg =
+          ( "pkg",
+            [ ( "pkg/a",
+                [Def (x, Int 42)]
+              ),
+              ( "pkg/b",
+                [ Import "pkg/a" "m" [("x", "y")],
+                  Def (z, y),
+                  Def (x, Trait y "w")
+                ]
+              )
+            ]
+          )
+    let expect =
+          [ ( "pkg/a",
+              C.Module
+                { values = [("x", C.Int 42)],
+                  types = [],
+                  tests = []
+                }
+            ),
+            ( "pkg/b",
+              C.Module
+                { values =
+                    [ ("x", C.letVar ("y", C.Int 42) (C.app (C.Var ".w") [C.intT 42, C.Var "y"])),
+                      ("z", C.letVar ("y", C.Int 42) (C.Var "y"))
+                    ],
+                  types = [],
+                  tests = []
+                }
+            )
+          ]
+    compile pkg `shouldBe` expect
 
   -- it "☯ eval" $ do
   --   let pkg = Package "@pkg" [Module "mod" [Def $ defVar "x" (Int 42)]]

@@ -14,7 +14,7 @@ run :: SpecWith ()
 run = describe "--==☯ Python ☯==--" $ do
   let options = defaultBuildOptions
   let (x, y, z) = (T.Var "x", T.Var "y", T.Var "z")
-  let (xP, yP, zP) = (T.PVar "x", T.PVar "y", T.PVar "z")
+  let (xP, yP, zP) = (T.Var "x", T.Var "y", T.Var "z")
   let (x', y', z') = (Name "x", Name "y", Name "z")
   let (a', b') = (Name "a", Name "b")
 
@@ -39,7 +39,7 @@ run = describe "--==☯ Python ☯==--" $ do
     emit' (T.App x y) `shouldBe` ([], call "x" [y'])
     emit' (T.app x [y, z]) `shouldBe` ([], call "x" [y', z'])
     emit' (T.Or x y) `shouldBe` ([], bitOr x' y')
-    emit' (T.Let (T.PVar "x", y) z) `shouldBe` ([assign "x" y'], z')
+    emit' (T.Let (T.Var "x", y) z) `shouldBe` ([assign "x" y'], z')
     -- emit' (T.Bind (xP, y) z) `shouldBe` ([assign "x" (call "y" [])], z')
     -- Lambda [String] Expr
     -- Match [Expr] [Case]
@@ -56,8 +56,8 @@ run = describe "--==☯ Python ☯==--" $ do
     emit' (T.Import "mod" "mod" []) `shouldBe` []
     emit' (T.Import "mod" "mod" [("x", "x")]) `shouldBe` [ImportFrom "mod" [("x", Nothing)]]
     emit' (T.Import "mod" "mod" [("x", "y")]) `shouldBe` [ImportFrom "mod" [("x", Just "y")]]
-    emit' (T.Def (T.PVar "x", y)) `shouldBe` [Assign [x'] y']
-    emit' (T.Def (T.PVar "a", T.Tag "Point" [T.Int 1, T.Int 2])) `shouldBe` [Assign [a'] (call "Point" [Integer 1, Integer 2])]
+    emit' (T.Def (T.Var "x", y)) `shouldBe` [Assign [x'] y']
+    emit' (T.Def (T.Var "a", T.Tag "Point" [T.Int 1, T.Int 2])) `shouldBe` [Assign [a'] (call "Point" [Integer 1, Integer 2])]
     -- emit' (var "a" (Tag "Point" [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]
     -- emit' (varT "a" (Var "Point") (record [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]
     True `shouldBe` True
@@ -66,26 +66,26 @@ run = describe "--==☯ Python ☯==--" $ do
     let emit' :: [T.Stmt] -> [Stmt]
         emit' = emit options
     emit' [] `shouldBe` []
-    emit' [T.Def (T.PVar "x", T.Int 1)] `shouldBe` [Assign [Name "x"] (Integer 1)]
+    emit' [T.Def (T.Var "x", T.Int 1)] `shouldBe` [Assign [Name "x"] (Integer 1)]
 
   it "☯ emit Module" $ do
     let emit' :: T.Module -> Module
         emit' = emit options {prefix = "@pkg"}
     let stmts =
-          [ T.Def (T.PVar "x", T.Int 1),
-            T.Def (T.PVar "y", T.Int 2)
+          [ T.Def (T.Var "x", T.Int 1),
+            T.Def (T.Var "y", T.Int 2)
           ]
     let expected =
           [ ImportFrom "pkg.__prelude__" [("*", Nothing)],
             Assign [x'] (Integer 1),
             Assign [y'] (Integer 2)
           ]
-    emit' (T.Module "mod" stmts) `shouldBe` Module {name = "mod", body = expected}
+    emit' ("mod", stmts) `shouldBe` Module {name = "mod", body = expected}
 
   it "☯ emit Package" $ do
     let stmts =
-          [ T.Def (T.PVar "x", T.Int 1),
-            T.Def (T.PVar "y", T.Int 2)
+          [ T.Def (T.Var "x", T.Int 1),
+            T.Def (T.Var "y", T.Int 2)
           ]
     let pySrc =
           [ Assign [x'] (Integer 1),

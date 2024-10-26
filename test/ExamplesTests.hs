@@ -21,7 +21,6 @@ test' name includes = do
 run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do
   let loc name pos = Meta (C.Location name pos)
-  let ploc name pos = PMeta (C.Location name pos)
   let var filename pos x = loc filename pos (Var x)
   let (x, y, z) = (Var "x", Var "y", Var "z")
 

@@ -69,8 +69,7 @@ data PatternError
   deriving (Eq, Show)
 
 data Module = Module
-  { path :: String,
-    values :: Env,
+  { values :: Env,
     types :: Env,
     tests :: [UnitTest]
   }
@@ -229,6 +228,12 @@ let' (p, a) b = do
 
 lets :: [(Expr, Expr)] -> Expr -> Expr
 lets defs b = foldr let' b defs
+
+letVar :: (String, Expr) -> Expr -> Expr
+letVar (x, a) = let' (Var x, a)
+
+letVars :: [(String, Expr)] -> Expr -> Expr
+letVars vars b = foldr letVar b vars
 
 app :: Expr -> [Expr] -> Expr
 app = foldl App
