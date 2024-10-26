@@ -475,11 +475,12 @@ run = describe "--==☯ TaoTests ☯==--" $ do
               ]
             )
           ]
-    resolve ctx "pkg/a" "x" `shouldBe` ([], Int 42)
-    resolve ctx "pkg/a" "y" `shouldBe` ([], Err)
-    resolve ctx "pkg/b" "m" `shouldBe` ([], Tag "pkg/a" [])
-    resolve ctx "pkg/b" "x" `shouldBe` ([], Err)
-    resolve ctx "pkg/b" "y" `shouldBe` ([], Int 42)
+    let empty = [] :: [(String, Expr)]
+    resolve ctx "pkg/a" "x" `shouldBe` (empty, Int 42)
+    resolve ctx "pkg/a" "y" `shouldBe` (empty, Err)
+    resolve ctx "pkg/b" "m" `shouldBe` (empty, Tag "pkg/a" [])
+    resolve ctx "pkg/b" "x" `shouldBe` (empty, Err)
+    resolve ctx "pkg/b" "y" `shouldBe` (empty, Int 42)
     resolve ctx "pkg/b" "z" `shouldBe` ([("y", Int 42)], Var "y")
 
   it "☯ compile" $ do
@@ -517,38 +518,46 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           ]
     compile pkg `shouldBe` expect
 
-  -- it "☯ eval" $ do
-  --   let pkg = Package "@pkg" [Module "mod" [Def $ defVar "x" (Int 42)]]
-  --   let eval' = eval pkg "mod"
-  --   let x = Name "pkg" "mod" "x"
-  --   eval' (Int 42) `shouldBe` Right (Int 42, intT' 42)
-  --   eval' (Num 3.14) `shouldBe` Right (Num 3.14, numT' 3.14)
-  --   eval' (Var "x") `shouldBe` Right (Int 42, intT' 42)
-  --   eval' (Var "y") `shouldBe` Left (Var "y", C.UndefinedVar "y")
-  --   eval' (Name "@pkg" "mod" "x") `shouldBe` Right (Int 42, intT' 42)
-  --   eval' (Tag "A" []) `shouldBe` Right (Tag "A" [], Tag "A" [])
-  --   eval' (Tag "A" [x]) `shouldBe` Right (Tag "A" [Int 42], Tag "A" [intT' 42])
-  --   -- Tuple [Expr]
-  --   -- Record [(String, Maybe Expr, Maybe Expr)]
-  --   -- Fun Expr Expr
-  --   -- App Expr Expr
-  --   -- Or Expr Expr
-  --   -- Ann Expr Type
-  --   -- Call String [Expr]
-  --   -- Let [(String, Type)] Pattern Expr Expr
-  --   -- Bind [(String, Type)] Pattern Expr Expr
-  --   -- Match [Expr] [Case]
-  --   -- MatchFun [Case]
-  --   -- Trait Expr String
-  --   -- TraitFun String
-  --   -- Select Expr [(String, Expr)]
-  --   -- SelectFun [(String, Expr)]
-  --   -- With Expr [(String, Expr)]
-  --   -- WithFun [(String, Expr)]
-  --   -- IfElse Expr Expr Expr
-  --   -- Meta C.Metadata Expr
-  --   -- Err
-  --   True `shouldBe` True
+  it "☯ eval" $ do
+    let ctx =
+          [ ( "pkg/a",
+              [Def (x, Int 42)]
+            ),
+            ( "pkg/b",
+              [ Import "pkg/a" "m" [("x", "y")],
+                Def (z, y),
+                Def (x, Int 9)
+              ]
+            )
+          ]
+    eval ctx "pkg/a" (Int 42) `shouldBe` Right (Int 42, intT' 42)
+    eval ctx "pkg/a" (Num 3.14) `shouldBe` Right (Num 3.14, numT' 3.14)
+    eval ctx "pkg/a" (Var "x") `shouldBe` Right (Int 42, intT' 42)
+    eval ctx "pkg/b" (Var "x") `shouldBe` Right (Int 9, intT' 9)
+    eval ctx "pkg/a" (Var "y") `shouldBe` Right (Err, Err)
+    eval ctx "pkg/a" (Tag "A" []) `shouldBe` Right (Tag "A" [], Tag "A" [])
+    eval ctx "pkg/a" (Tag "A" [x]) `shouldBe` Right (Tag "A" [Int 42], Tag "A" [intT' 42])
+    -- Tuple [Expr]
+    -- Record [(String, Maybe Expr, Maybe Expr)]
+    -- Fun Expr Expr
+    -- App Expr Expr
+    -- Or Expr Expr
+    -- Ann Expr Type
+    -- Call String [Expr]
+    -- Let [(String, Type)] Pattern Expr Expr
+    -- Bind [(String, Type)] Pattern Expr Expr
+    -- Match [Expr] [Case]
+    -- MatchFun [Case]
+    -- Trait Expr String
+    -- TraitFun String
+    -- Select Expr [(String, Expr)]
+    -- SelectFun [(String, Expr)]
+    -- With Expr [(String, Expr)]
+    -- WithFun [(String, Expr)]
+    -- IfElse Expr Expr Expr
+    -- Meta C.Metadata Expr
+    -- Err
+    True `shouldBe` True
 
   it "☯ test" $ do
     -- let f name stmts = do

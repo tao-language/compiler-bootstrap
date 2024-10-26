@@ -523,15 +523,16 @@ instance DropMeta Package where
   dropMeta :: Package -> Package
   dropMeta (name, mods) = (name, map dropMeta mods)
 
--- eval :: Package -> String -> Expr -> Either (Expr, C.TypeError) (Expr, Expr)
--- eval pkg m expr = do
---   let s = resolve () pkg
---   let env = lower [] (replace () s pkg)
---   let expr' = lower env (replace (pkg.name, m) s expr)
---   let result = C.eval env expr'
---   case C.infer env expr' of
---     Right (type', _) -> Right (lift result, lift type')
---     Left e -> Left (lift result, e)
+eval :: [Module] -> String -> Expr -> Either (Expr, C.TypeError) (Expr, Expr)
+eval ctx path expr = do
+  let ops = []
+  let defs = resolve ctx path expr :: [(String, Expr)]
+  let env = compile defs
+  let expr' = compile defs expr
+  let result = C.eval ops env expr'
+  case C.infer ops env expr' of
+    Right (ty, _) -> Right (lift result, lift ty)
+    Left e -> Left (lift result, e)
 
 -- data UnitTest = UnitTest
 --   { name :: String,
@@ -751,15 +752,23 @@ instance FindDef (Stmt -> Maybe (String, Pattern, Expr)) where
     TestStmt {} -> Nothing
     MetaStmt _ stmt -> findDef ctx path name stmt
 
-resolve :: [Module] -> String -> String -> ([(String, Expr)], Expr)
-resolve ctx path name = do
-  let (path', expr) =
-        fromMaybe (path, Err) (findName ctx path name)
-  let resolveDef x = do
-        let (defs, expr) = resolve ctx path' x
-        (x, expr) : defs
-  let defs = concatMap resolveDef (freeVars expr)
-  (defs, expr)
+class Resolve a b where
+  resolve :: [Module] -> String -> a -> b
+
+instance Resolve String ([(String, Expr)], Expr) where
+  resolve :: [Module] -> String -> String -> ([(String, Expr)], Expr)
+  resolve ctx path name = do
+    let (path', expr) =
+          fromMaybe (path, Err) (findName ctx path name)
+    (resolve ctx path' expr, expr)
+
+instance Resolve Expr [(String, Expr)] where
+  resolve :: [Module] -> String -> Expr -> [(String, Expr)]
+  resolve ctx path expr = do
+    let resolveDef x = do
+          let (defs, expr) = resolve ctx path x
+          (x, expr) : defs
+    concatMap resolveDef (freeVars expr)
 
 class Compile a where
   compile :: a
@@ -813,7 +822,11 @@ instance Compile ([(String, Expr)] -> Expr -> C.Expr) where
     Int i -> C.Int i
     Num n -> C.Num n
     Var x -> C.Var x
-    -- Tag String [Expr]
+    Tag k args
+      | expr == kind -> C.Knd
+      | expr == intT -> C.IntT
+      | expr == numT -> C.NumT
+      | otherwise -> C.tag k (map (compile defs) args)
     -- Tuple [Expr]
     -- Record [(String, Expr)]
     -- Fun Expr Expr
@@ -836,17 +849,11 @@ instance Compile ([(String, Expr)] -> Expr -> C.Expr) where
       let a' = compile defs a
       case C.infer buildOps env a' of
         Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
-        -- Left _ -> C.Err
-        Left err -> error $ show (defs, env, err)
+        Left _ -> C.Err
     -- Select Expr [(String, Expr)]
     -- Update Expr [(String, Expr)]
     -- IfElse Expr Expr Expr
     -- Meta C.Metadata Expr
-    -- lower env (Tag k args)
-    --   | Tag k args == kind = C.Knd
-    --   | Tag k args == intT = C.IntT
-    --   | Tag k args == numT = C.NumT
-    --   | otherwise = C.tag k (map (lower env) args)
     -- lower env (Tuple items) = lower env (Tag "" items)
     -- lower env (Record fields) = do
     --   let k = '~' : intercalate "," (map fst fields)
@@ -887,6 +894,7 @@ instance Compile ([(String, Expr)] -> Expr -> C.Expr) where
     -- lower env (Call op args) = C.Call op (map (lower env) args)
     -- lower env (Meta m a) = C.Meta m (lower env a)
     -- lower _ Err = C.Err
+    Err -> C.Err
     a -> error $ "TODO: compile " ++ show a
 
 -- instance Compile ([(String, Expr)] -> Expr -> C.Expr) where
