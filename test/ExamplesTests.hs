@@ -8,7 +8,7 @@ import Tao
 import TaoParser
 import Test.Hspec
 
-test' :: String -> [String] -> IO (Either [SyntaxError] [C.TestError])
+test' :: String -> [String] -> IO (Either [SyntaxError] [TestError])
 test' name includes = do
   -- let names = name : includes
   -- (pkg, s, errors) <- loadPackage "examples"

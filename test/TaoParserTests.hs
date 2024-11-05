@@ -233,15 +233,15 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseTest" $ do
     let p = parse' parseTest
-    p "> x; y" `shouldBe` Right (TestStmt "" (var 1 3 "x") (var 1 6 "y"), "")
-    p "> x\ny" `shouldBe` Right (TestStmt "" (var 1 3 "x") (var 2 1 "y"), "")
-    p "> x" `shouldBe` Right (TestStmt "" (var 1 3 "x") (Tag "True" []), "")
+    p "> x; y" `shouldBe` Right (Test "" (var 1 3 "x") (var 1 6 "y"), "")
+    p "> x\ny" `shouldBe` Right (Test "" (var 1 3 "x") (var 2 1 "y"), "")
+    p "> x" `shouldBe` Right (Test "" (var 1 3 "x") (Tag "True" []), "")
 
   it "☯ parseStmt" $ do
     let p = parse' parseStmt
     p "import @pkg" `shouldBe` Right (Import "@pkg" "@pkg" [], "")
     -- p "x = y" `shouldBe` Right (Define (Def [] (var 1 1 "x") (var 1 5 "y")), "")
-    p "> x; y" `shouldBe` Right (TestStmt "" (var 1 3 "x") (var 1 6 "y"), "")
+    p "> x; y" `shouldBe` Right (Test "" (var 1 3 "x") (var 1 6 "y"), "")
 
   it "☯ parseModule" $ do
     let p = parse' (parseModule "path/my-file.tao")

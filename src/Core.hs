@@ -12,6 +12,7 @@ import Stdlib (replace, replaceString)
 -- https://youtu.be/ytPAlhnAKro -- https://github.com/kritzcreek/fby19
 -- https://www.youtube.com/live/utyBNDj7s2w
 -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
+-- https://mroman42.github.io/mikrokosmos/tutorial.html
 
 -- TODO: replace operators with Target or Builtin terms
 data Expr
@@ -20,8 +21,8 @@ data Expr
   | NumT
   | Int Int
   | Num Double
-  | Var String
   | Tag String
+  | Var String
   | For String Expr
   | Fix String Expr
   | Fun Expr Expr
@@ -40,7 +41,7 @@ data Metadata
   | Unwrap
   deriving (Eq)
 
-type Ops = [(String, [Expr] -> Expr)]
+type Ops = [(String, Env -> [Expr] -> Expr)]
 
 type Env = [(String, Expr)]
 
@@ -68,51 +69,40 @@ data PatternError
   | UnreachableCase Expr
   deriving (Eq, Show)
 
-data Module = Module
-  { values :: Env,
-    types :: Env,
-    tests :: [UnitTest]
-  }
-  deriving (Eq, Show)
-
-data UnitTest = UnitTest
-  { name :: String,
-    expr :: Expr,
-    expect :: Expr
-  }
-  deriving (Eq, Show)
-
-data TestError = TestError
-  { test :: UnitTest,
-    got :: Expr
-  }
-  deriving (Eq, Show)
-
 instance Show Expr where
   show :: Expr -> String
   show expr = case expr of
-    Knd -> "@Knd"
-    IntT -> "@IntT"
-    NumT -> "@NumT"
+    Knd -> "!Knd"
+    IntT -> "!IntT"
+    NumT -> "!NumT"
     Int i -> show i
     Num n -> show n
     Var x | isName x -> x
     Var x -> "`" ++ replaceString "`" "\\`" x ++ "`"
     Tag k | isName k -> ':' : k
     Tag k -> ":`" ++ replaceString "`" "\\`" k ++ "`"
-    For x a -> show2 "@For" x (show a)
-    Fix x a -> show2 "@Fix" x (show a)
-    Fun a b -> show2 "@Fun" (show a) (show b)
-    App a b -> show2 "@App" (show a) (show b)
-    And a b -> show2 "@And" (show a) (show b)
-    Or a b -> show2 "@Or" (show a) (show b)
-    Ann a b -> show2 "@Ann" (show a) (show b)
-    Call f xs -> show2 "@Call" ("'" ++ f ++ "'") (unwords (map show xs))
-    Meta m a -> show2 "@Meta " (show m) (show a)
-    Err -> "@Err"
+    For _ _ -> do
+      let (xs, a) = asFor expr
+      "(@" ++ unwords xs ++ ". " ++ show a ++ ")"
+    Fix x a -> "(&" ++ x ++ ". " ++ show a ++ ")"
+    Fun _ _ -> do
+      let (args, ret) = asFun expr
+      "(" ++ intercalate ", " (map show args) ++ " -> " ++ show ret ++ ")"
+    App a b -> do
+      let (xs, a') = asFor a
+      case a' of
+        Fun a c -> do
+          let def = show a ++ " = " ++ show b ++ "; " ++ show c
+          if null xs then def else "@" ++ unwords xs ++ ". " ++ def
+        _ -> "(" ++ show a ++ " " ++ show b ++ ")"
+    And a b -> "(" ++ show a ++ ", " ++ show b ++ ")"
+    Or a b -> "(" ++ show a ++ " | " ++ show b ++ ")"
+    Ann a b -> "(" ++ show a ++ " : " ++ show b ++ ")"
+    Call f xs -> '%' : f ++ "(" ++ intercalate ", " (map show xs) ++ ")"
+    Meta m a -> '^' : show m ++ "(" ++ show a ++ ")"
+    Err -> "!error"
     where
       isName = all (\c -> isAlphaNum c || c `elem` ['_', '-'])
-      show2 op a b = "(" ++ op ++ " " ++ a ++ " " ++ b ++ ")"
 
 -- instance Show Expr where
 --   showsPrec :: Int -> Expr -> ShowS
@@ -223,8 +213,8 @@ andOf a = [a]
 let' :: (Expr, Expr) -> Expr -> Expr
 let' (Var x, Var x') b | x == x' = b
 let' (p, a) b = do
-  let xs = filter (`occurs` a) (freeVars p)
-  App (lam [p] b) (fix xs a)
+  let xs = freeVars p
+  App (for xs (Fun p b)) (fix (filter (`occurs` a) xs) a)
 
 lets :: [(Expr, Expr)] -> Expr -> Expr
 lets defs b = foldr let' b defs
@@ -333,45 +323,95 @@ isOpen :: Expr -> Bool
 isOpen = not . isClosed
 
 -- Evaluation
--- TODO: reduce + eval
-eval :: Ops -> Env -> Expr -> Expr
-eval _ _ Knd = Knd
-eval _ _ IntT = IntT
-eval _ _ NumT = NumT
-eval _ _ (Int i) = Int i
-eval _ _ (Num n) = Num n
-eval ops env (Var x) = case lookup x env of
-  Just (Var x') | x == x' -> Var x
-  Just (Ann (Var x') _) | x == x' -> Var x
-  Just a -> eval ops env a
-  Nothing -> Var x
-eval _ _ (Tag k) = Tag k
-eval ops env (For x a) = For x (eval ops ((x, Var x) : env) a)
-eval ops env (Fix x a) = Fix x (eval ops ((x, Var x) : env) a)
-eval ops env (Fun a b) = Fun (eval ops env a) (eval ops env b)
-eval ops env (App a b) = case (eval ops env a, eval ops env b) of
-  (For x a, b) -> eval ops [(x, Var x)] (App a b)
-  (Fix x a, b) | isClosed b -> eval ops [(x, Fix x a)] (App a b)
-  (Tag k, b) -> And (Tag k) b
-  (And a b, c) -> And a (And b c)
-  (Err, _) -> Err
-  (Fun a c, b) -> case match a b of
-    Just bindings -> eval ops bindings c
+reduce :: Ops -> Env -> Expr -> Expr
+reduce ops env expr = case expr of
+  Var x -> case lookup x env of
+    Just (Var x') | x == x' -> Var x
+    Just (Ann (Var x') _) | x == x' -> Var x
+    Just a -> reduce ops env a
     Nothing -> Err
-  (Or a1 a2, b) -> case eval ops [] (App a1 b) of
-    Err -> eval ops [] (App a2 b)
-    a | isOpen a -> Or a (App a2 b)
-    a -> a
-  (a, b) -> App a b
-eval ops env (And a b) = And (eval ops env a) (eval ops env b)
-eval ops env (Or a b) = Or (eval ops env a) (eval ops env b)
-eval ops env (Ann (Tag k) ty) = Ann (Tag k) (eval ops env ty)
-eval ops env (Ann a _) = eval ops env a
-eval ops env (Call op args) = case (lookup op ops, map (eval ops env) args) of
-  (Just f, args) -> f args
-  (Nothing, args) -> Call op args
-eval ops env (Meta _ a) = eval ops env a
-eval _ _ Err = Err
+  App a b -> case (reduce ops env a, reduce ops env b) of
+    (For x a, b) -> reduce ops ((x, Var x) : env) (App a b)
+    -- Fix x a -> reduce ((x, Var x) : env) (App a b)
+    -- Fix x a -> case reduce ops env b of
+    --   Var y -> App (Fix x a) (Var y)
+    --   App b1 b2 -> App (Fix x a) (App b1 b2)
+    --   b -> reduce ((x, Fix x a) : env) (App a b)
+    (Fun a c, b) -> case (reduce ops env a, b) of
+      -- (a, Var _) -> App a b
+      -- (a, App _ _) -> App a b
+      (Knd, Knd) -> reduce ops env c
+      (IntT, IntT) -> reduce ops env c
+      (NumT, NumT) -> reduce ops env c
+      (Int i, Int i') | i == i' -> reduce ops env c
+      (Num n, Num n') | n == n' -> reduce ops env c
+      (Tag k, Tag k') | k == k' -> reduce ops env c
+      (Var x, b) -> reduce ops ((x, reduce ops env b) : env) c
+      -- (App a1 a2, App b1 b2) -> reduce ops env (App (Fun a1 (App (Fun a2 c) b2)) b1)
+      (And a1 a2, And b1 b2) -> reduce ops env (App (Fun a1 (App (Fun a2 c) b2)) b1)
+      (Or a1 a2, b) -> case reduce ops env (App (Fun a1 c) b) of
+        Err -> reduce ops env (App (Fun a2 c) b)
+        c -> c
+      (Err, Err) -> reduce ops env c
+      _ -> Err
+    (Call f args, b) -> Call f (args ++ [b])
+    _ -> Err
+  Ann a _ -> reduce ops env a
+  Call f args -> case lookup f ops of
+    Just call -> call env args
+    Nothing -> Call f args
+  Meta _ a -> reduce ops env a
+  expr -> expr
+
+eval :: Ops -> Env -> Expr -> Expr
+eval ops env expr = case reduce ops env expr of
+  For x a -> For x (eval ops ((x, Var x) : env) a)
+  Fix x a -> Fix x (eval ops ((x, Var x) : env) a)
+  Fun a b -> Fun (eval ops env a) (eval ops env b)
+  App a b -> App (eval ops env a) (eval ops env b)
+  And a b -> And (eval ops env a) (eval ops env b)
+  Or a b -> Or (eval ops env a) (eval ops env b)
+  Call f args -> Call f (eval ops env <$> args)
+  a -> a
+
+-- eval :: Ops -> Env -> Expr -> Expr
+-- eval _ _ Knd = Knd
+-- eval _ _ IntT = IntT
+-- eval _ _ NumT = NumT
+-- eval _ _ (Int i) = Int i
+-- eval _ _ (Num n) = Num n
+-- eval ops env (Var x) = case lookup x env of
+--   Just (Var x') | x == x' -> Var x
+--   Just (Ann (Var x') _) | x == x' -> Var x
+--   Just a -> eval ops env a
+--   Nothing -> Var x
+-- eval _ _ (Tag k) = Tag k
+-- eval ops env (For x a) = For x (eval ops ((x, Var x) : env) a)
+-- eval ops env (Fix x a) = Fix x (eval ops ((x, Var x) : env) a)
+-- eval ops env (Fun a b) = Fun (eval ops env a) (eval ops env b)
+-- eval ops env (App a b) = case (eval ops env a, eval ops env b) of
+--   (For x a, b) -> eval ops [(x, Var x)] (App a b)
+--   (Fix x a, b) | isClosed b -> eval ops [(x, Fix x a)] (App a b)
+--   (Tag k, b) -> And (Tag k) b
+--   (And a b, c) -> And a (And b c)
+--   (Err, _) -> Err
+--   (Fun a c, b) -> case match a b of
+--     Just bindings -> eval ops bindings c
+--     Nothing -> Err
+--   (Or a1 a2, b) -> case eval ops [] (App a1 b) of
+--     Err -> eval ops [] (App a2 b)
+--     a | isOpen a -> Or a (App a2 b)
+--     a -> a
+--   (a, b) -> App a b
+-- eval ops env (And a b) = And (eval ops env a) (eval ops env b)
+-- eval ops env (Or a b) = Or (eval ops env a) (eval ops env b)
+-- eval ops env (Ann (Tag k) ty) = Ann (Tag k) (eval ops env ty)
+-- eval ops env (Ann a _) = eval ops env a
+-- eval ops env (Call op args) = case (lookup op ops, map (eval ops env) args) of
+--   (Just f, args) -> f args
+--   (Nothing, args) -> Call op args
+-- eval ops env (Meta _ a) = eval ops env a
+-- eval _ _ Err = Err
 
 match :: Expr -> Expr -> Maybe [(String, Expr)]
 match IntT IntT = Just []
@@ -688,56 +728,6 @@ instance DropMeta Expr where
 instance DropMeta (String, Expr) where
   dropMeta :: (String, Expr) -> (String, Expr)
   dropMeta (x, a) = (x, dropMeta a)
-
--- test :: Env -> Expr -> Expr -> Either Expr ()
--- test env expr expected = do
---   let actual = eval env expr
---   let test' = match' [actual] [([expected], Tag "")]
---   case eval env test' of
---     Err -> Left actual
---     _ -> Right ()
-
-class Build a where
-  save :: String -> a -> IO ()
-  load :: String -> IO a
-
-instance Build Module where
-  save :: String -> Module -> IO ()
-  save path mod =
-    error "TODO: save Module"
-
-  load :: String -> IO Module
-  load path = do
-    -- let mod = Module {values = [], types = [], docs = [], tests = []}
-    -- return mod
-    error "TODO: load Module"
-
-import' :: String -> [(String, Module)] -> IO [(String, Module)]
-import' path pkg = do
-  return pkg
-
-class Test a where
-  test :: Ops -> Env -> a -> [TestError]
-
-instance Test [(String, Module)] where
-  test :: Ops -> Env -> [(String, Module)] -> [TestError]
-  test ops env pkg = do
-    concatMap (test ops env . snd) pkg
-
-instance Test Module where
-  test :: Ops -> Env -> Module -> [TestError]
-  test ops env mod = do
-    let env' = env ++ mod.values
-    concatMap (test ops env') mod.tests
-
-instance Test UnitTest where
-  test :: Ops -> Env -> UnitTest -> [TestError]
-  test ops env t = do
-    let got = eval ops env t.expr
-    let test' = match' [got] [([t.expect], Tag "")]
-    case eval ops env test' of
-      Err -> [TestError {test = t, got = got}]
-      _ -> []
 
 -- Core parser
 type Parser a = P.Parser String a

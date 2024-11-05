@@ -328,7 +328,8 @@ parseStmt = do
         parseImport,
         parseTest
       ]
-  return (foldr (MetaStmt . C.Comment) stmt comments)
+  -- return (foldr (MetaStmt . C.Comment) stmt comments)
+  return stmt
 
 parseDefinition :: Parser (Pattern, Expr)
 parseDefinition = do
@@ -416,7 +417,7 @@ parseTest = do
         return (Tag "True" [])
       ]
   _ <- P.whitespaces
-  return (TestStmt name expr result)
+  return (Test name expr result)
 
 pad :: Int -> String -> String
 pad = padWith ' '

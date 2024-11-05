@@ -5,7 +5,7 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap), second)
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
-import Data.List (elemIndex, intercalate, isInfixOf, isPrefixOf, nub, union, (\\))
+import Data.List (delete, elemIndex, intercalate, isInfixOf, isPrefixOf, nub, union, (\\))
 import Data.List.Split (splitWhen, startsWith)
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import System.FilePath (takeBaseName)
@@ -43,8 +43,7 @@ type Pattern = Expr
 data Stmt
   = Import String String [(String, String)]
   | Def (Pattern, Expr)
-  | TestStmt String Expr Pattern
-  | MetaStmt C.Metadata Stmt
+  | Test String Expr Pattern
   deriving (Eq, Show)
 
 type Type = Expr
@@ -52,6 +51,20 @@ type Type = Expr
 type Package = (String, [Module])
 
 type Module = (String, [Stmt])
+
+data UnitTest = UnitTest
+  { path :: String,
+    name :: String,
+    expr :: Expr,
+    expect :: Expr
+  }
+  deriving (Eq, Show)
+
+data TestError = TestError
+  { test :: UnitTest,
+    got :: Expr
+  }
+  deriving (Eq, Show)
 
 buildOps :: C.Ops
 buildOps = []
@@ -204,13 +217,11 @@ isImport Import {} = True
 isImport _ = False
 
 isTest :: Stmt -> Bool
-isTest TestStmt {} = True
-isTest (MetaStmt _ stmt) = isTest stmt
+isTest Test {} = True
 isTest _ = False
 
 isDefine :: Stmt -> Bool
 isDefine Def {} = True
-isDefine (MetaStmt _ stmt) = isDefine stmt
 isDefine _ = False
 
 isTypeDef :: Expr -> Bool
@@ -280,6 +291,7 @@ instance Lower Expr C.Expr where
         C.Tag "~" -> C.App a' (C.Tag "~")
         C.And (C.Tag ('~' : xs)) _ ->
           C.App a' (lower env (select b (split ',' xs)))
+        _ -> C.App a' (lower env b)
       _ -> C.App a' (lower env b)
   lower env (Or a b) = C.Or (lower env a) (lower env b)
   -- lower env (Let def b) = lower (lower env def ++ env) b
@@ -316,7 +328,9 @@ instance Lower Expr C.Expr where
 
 instance Lower Case C.Expr where
   lower :: C.Env -> Case -> C.Expr
-  lower env (Case ps guard b) = C.fun (map (lower env) ps) (lower env b)
+  lower env (Case ps guard b) = do
+    let ps' = map (lower env) ps
+    C.for (C.freeVars ps') (C.fun ps' (lower env b))
 
 -- instance Lower Pattern C.Expr where
 --   lower :: C.Env -> Pattern -> C.Expr
@@ -341,8 +355,7 @@ instance Lower Stmt C.Env where
     [] -> []
     (x, y) : xs -> (y, C.Var x) : lower env (Import m n xs)
   -- lower env (Def p b) = lower env def
-  lower env (TestStmt name a p) = [(name, C.And (lower env a) (lower env p))]
-  lower env (MetaStmt _ stmt) = lower env stmt
+  lower env (Test name a p) = [(name, C.And (lower env a) (lower env p))]
 
 instance Lower Module C.Env where
   lower :: C.Env -> Module -> C.Env
@@ -488,21 +501,6 @@ instance DropMeta Expr where
     Match cases -> Match (map dropMeta cases)
     expr -> error $ "TODO: dropMeta " ++ show expr
 
--- instance DropMeta Pattern where
---   dropMeta :: Pattern -> Pattern
---   dropMeta = \case
---     PAny -> PAny
---     PInt i -> PInt i
---     PNum n -> PNum n
---     PVar x -> PVar x
---     PTag k ps -> PTag k (dropMeta <$> ps)
---     PTuple ps -> PTuple (dropMeta <$> ps)
---     PRecord kps -> PRecord (second dropMeta <$> kps)
---     PTrait p x -> PTrait (dropMeta p) x
---     PMeta _ p -> dropMeta p
---     PErr -> PErr
---     p -> error $ "TODO: dropMeta " ++ show p
-
 instance DropMeta Case where
   dropMeta :: Case -> Case
   dropMeta (Case ps guard a) =
@@ -512,8 +510,7 @@ instance DropMeta Stmt where
   dropMeta :: Stmt -> Stmt
   dropMeta stmt@Import {} = stmt
   dropMeta (Def (p, b)) = Def (dropMeta p, dropMeta b)
-  dropMeta (TestStmt name a b) = TestStmt name (dropMeta a) (dropMeta b)
-  dropMeta (MetaStmt _ stmt) = dropMeta stmt
+  dropMeta (Test name a b) = Test name (dropMeta a) (dropMeta b)
 
 instance DropMeta Module where
   dropMeta :: Module -> Module
@@ -523,385 +520,109 @@ instance DropMeta Package where
   dropMeta :: Package -> Package
   dropMeta (name, mods) = (name, map dropMeta mods)
 
-eval :: [Module] -> String -> Expr -> Either (Expr, C.TypeError) (Expr, Expr)
-eval ctx path expr = do
-  let ops = []
-  let defs = resolve ctx path expr :: [(String, Expr)]
-  let env = compile defs
-  let expr' = compile defs expr
-  let result = C.eval ops env expr'
-  case C.infer ops env expr' of
-    Right (ty, _) -> Right (lift result, lift ty)
-    Left e -> Left (lift result, e)
+class Resolve a where
+  resolve :: [Module] -> String -> a -> Maybe (String, Expr)
 
--- data UnitTest = UnitTest
---   { name :: String,
---     expr :: Expr,
---     expect :: Pattern
---   }
-
--- data TestError
---   = NoTestsFound String
---   | TestEqError String C.Expr C.Expr C.Expr
---   | NotATest String C.Expr
---   deriving (Eq, Show)
-
--- test :: C.Env -> String -> [TestError]
--- test env name = do
---   let match ('>' : x, _) | name `isInfixOf` x = True
---       match _ = False
---   let test' (name, expr) = case expr of
---         C.And a p -> do
---           let run =
---                 C.match' [a] $
---                   [ ([p], C.Tag "Pass"),
---                     ([C.Var "_"], C.Var "_")
---                   ]
---           case C.eval env run of
---             C.Tag "Pass" -> []
---             actual -> [TestEqError name a p actual]
---   case filter match env of
---     [] -> [NoTestsFound name]
---     tests -> concatMap test' tests
-
--- test :: Package -> String -> [TestError]
--- test pkg filter = do
---   let s = resolve' pkg
---   let pkg' = rename () s pkg
---   let env = lower [] pkg'
---   -- case packageTests filter pkg' of
---   --   [] -> [NoTestsFound filter]
---   --   tests -> concatMap (testEq env) tests
---   error $ show (env :: C.Env)
-
--- stmtTests :: Stmt -> [(Expr, Pattern)]
--- stmtTests (Test expr expected) = [(expr, expected)]
--- stmtTests (MetaStmt _ stmt) = stmtTests stmt
--- stmtTests _ = []
-
--- moduleTests :: String -> String -> Module -> [(Expr, Pattern)]
--- moduleTests filter p mod
---   | filter `isInfixOf` (p ++ '/' : mod.name) =
---       concatMap stmtTests mod.stmts
--- moduleTests _ _ _ = []
-
--- packageTests :: String -> Package -> [(Expr, Pattern)]
--- packageTests filter pkg = concatMap (moduleTests filter pkg.name) pkg.modules
-
--- testEq :: C.Env -> (Expr, Pattern) -> [TestError]
--- testEq env (expr, expected) = do
---   let unitTest = lower env $ Match [expr] [Case [expected] Nothing (Tuple [])]
---   let passed = case C.eval env unitTest of
---         C.Err -> False
---         -- C.Op2 C.Eq _ _ -> False
---         _ -> True
---   if passed
---     then []
---     else do
---       let actual = lower env expr & C.eval env & lift
---       [TestEqError expr actual expected]
-
--- class Find a where
---   find :: String -> a -> Maybe Expr
-
--- instance Find Module where
---   find :: String -> Module -> Maybe Expr
---   find x mod = case mod.stmts of
---     [] -> Nothing
---     stmt : stmts -> case find x stmt of
---       Just a -> Just a
---       Nothing -> find x (mod {stmts = stmts})
-
--- instance Find Stmt where
---   find :: String -> Stmt -> Maybe Expr
---   find x = \case
---     Def (p, b) -> case p of
---       PVar x' | x == x' -> Just b
---       PVar _ -> Nothing
---     _ -> Nothing
-
--- class Compile a b where
---   compile :: a -> b
-
--- instance Compile Package [(String, C.Module)] where
---   compile :: Package -> [(String, C.Module)]
---   compile pkg = error "TODO"
-
--- instance Compile (Package, Module) C.Module where
---   compile :: (Package, Module) -> C.Module
---   compile (pkg, mod) =
---     C.Module
---       { values = [],
---         types = [],
---         tests = []
---       }
-
--- instance Compile (Package, Stmt) (C.Module -> C.Module) where
---   compile :: (Package, Stmt) -> C.Module -> C.Module
---   compile (pkg, stmt) mod = case stmt of
---     Import path alias names -> case lookup path pkg.modules of
---       Just imported -> do
---         let imported' = compile (pkg, imported) :: C.Module
---         case names of
---           [] -> mod -- TODO: make record of imported'
---           (x, y) : names -> do
---             let mod' = compile (pkg, Import path alias names) mod :: C.Module
---             case lookup x imported'.values of
---               Just a -> mod' {C.values = (y, a) : mod'.values}
---               Nothing -> mod'
---       Nothing -> mod
---     Def (p, b) -> case p of
---       PAny -> error "TODO"
---       PVar x -> mod {C.values = (x, compile (pkg, b)) : mod.values}
---     TestStmt name a p -> error "TODO"
---     MetaStmt m stmt -> error "TODO"
-
--- instance Compile (Package, Expr) C.Expr where
---   compile :: (Package, Expr) -> C.Expr
---   compile (pkg, expr) = case expr of
---     Err -> C.Err
-
--- class ContextOf a b where
---   contextOf :: String -> a -> b
-
--- instance ContextOf Package' Context where
---   contextOf :: String -> Package' -> Context
---   contextOf name =
---     map
---       ( \(path, stmts) -> do
---           let path' = name ++ '/' : path
---           (path', contextOf path' stmts)
---       )
-
--- instance ContextOf [Stmt] [(String, Symbol)] where
---   contextOf :: String -> [Stmt] -> [(String, Symbol)]
---   contextOf path = concatMap (contextOf path)
-
--- instance ContextOf Stmt [(String, Symbol)] where
---   contextOf :: String -> Stmt -> [(String, Symbol)]
---   contextOf path stmt = case stmt of
---     Import path' alias names -> case names of
---       [] -> [(alias, Imported path' "")]
---       (x, y) : names ->
---         (y, Imported path' x) : contextOf path (Import path' alias names)
---     Def (p, b) -> case p of
---       PVar x -> [(x, Defined b)]
---     TestStmt {} -> []
---     MetaStmt _ stmt -> contextOf path stmt
-
-class FindName a where
-  findName :: [Module] -> String -> String -> a
-
-instance FindName (Maybe (String, Expr)) where
-  findName :: [Module] -> String -> String -> Maybe (String, Expr)
-  findName ctx path name = do
-    stmts <- lookup path ctx
-    findName ctx path name stmts
-
-instance FindName ([Stmt] -> Maybe (String, Expr)) where
-  findName :: [Module] -> String -> String -> [Stmt] -> Maybe (String, Expr)
-  findName ctx path name stmts = case stmts of
-    [] -> Nothing
-    stmt : stmts -> case findName ctx path name stmt of
-      Just def -> Just def
-      Nothing -> findName ctx path name stmts
-
-instance FindName (Stmt -> Maybe (String, Expr)) where
-  findName :: [Module] -> String -> String -> Stmt -> Maybe (String, Expr)
-  findName ctx path name stmt = case stmt of
-    Import path' alias names -> case names of
-      [] | alias == name -> Just (path, Tag path' [])
-      (x, y) : _ | y == name -> findName ctx path' x
-      _ : names -> findName ctx path name (Import path' alias names)
-      _ -> Nothing
-    Def (p, b) -> case p of
-      Var x | x == name -> Just (path, b)
-      _ -> Nothing
-    TestStmt {} -> Nothing
-    MetaStmt _ stmt -> findName ctx path name stmt
-
-class FindDef a where
-  findDef :: [Module] -> String -> String -> a
-
-instance FindDef (Maybe (String, Pattern, Expr)) where
-  findDef :: [Module] -> String -> String -> Maybe (String, Pattern, Expr)
-  findDef ctx path name = do
-    stmts <- lookup path ctx
-    findDef ctx path name stmts
-
-instance FindDef ([Stmt] -> Maybe (String, Pattern, Expr)) where
-  findDef :: [Module] -> String -> String -> [Stmt] -> Maybe (String, Pattern, Expr)
-  findDef ctx path name stmts = case stmts of
-    [] -> Nothing
-    stmt : stmts -> case findDef ctx path name stmt of
-      Just def -> Just def
-      Nothing -> findDef ctx path name stmts
-
-instance FindDef (Stmt -> Maybe (String, Pattern, Expr)) where
-  findDef :: [Module] -> String -> String -> Stmt -> Maybe (String, Pattern, Expr)
-  findDef ctx path name stmt = case stmt of
-    Import path' alias names -> case names of
-      [] | alias == name -> Just (path, Tag path' [], Tag path' [])
-      (x, y) : _ | y == name -> findDef ctx path' x
-      _ : names -> findDef ctx path name (Import path' alias names)
-      _ -> Nothing
-    Def (p, b) ->
-      if name `elem` freeVars p
-        then Just (path, p, b)
-        else Nothing
-    TestStmt {} -> Nothing
-    MetaStmt _ stmt -> findDef ctx path name stmt
-
-class Resolve a b where
-  resolve :: [Module] -> String -> a -> b
-
-instance Resolve String ([(String, Expr)], Expr) where
-  resolve :: [Module] -> String -> String -> ([(String, Expr)], Expr)
+instance Resolve String where
+  resolve :: [Module] -> String -> String -> Maybe (String, Expr)
   resolve ctx path name = do
-    let (path', expr) =
-          fromMaybe (path, Err) (findName ctx path name)
-    (resolve ctx path' expr, expr)
+    stmts <- lookup path ctx
+    resolve ctx path (stmts, name)
 
-instance Resolve Expr [(String, Expr)] where
-  resolve :: [Module] -> String -> Expr -> [(String, Expr)]
-  resolve ctx path expr = do
-    let resolveDef x = do
-          let (defs, expr) = resolve ctx path x
-          (x, expr) : defs
-    concatMap resolveDef (freeVars expr)
+instance Resolve ([Stmt], String) where
+  resolve :: [Module] -> String -> ([Stmt], String) -> Maybe (String, Expr)
+  resolve ctx path (stmts, name) = case stmts of
+    [] -> Nothing
+    stmt : stmts -> case resolve ctx path (stmt, name) of
+      Just def -> Just def
+      Nothing -> resolve ctx path (stmts, name)
+
+instance Resolve (Stmt, String) where
+  resolve :: [Module] -> String -> (Stmt, String) -> Maybe (String, Expr)
+  resolve ctx path (stmt, name) = case stmt of
+    Import path' alias names -> case names of
+      (x, y) : _ | y == name -> resolve ctx path' x
+      _ : names -> resolve ctx path (Import path' alias names, name)
+      [] | alias == name -> Just (path, Tag path' [])
+      [] -> Nothing
+    Def (p, a) -> case p of
+      Var x | x == name -> Just (path, a)
+      _ -> Nothing
+    Test {} -> Nothing
 
 class Compile a where
-  compile :: a
+  compile :: [Module] -> String -> a
 
-instance Compile (Package -> [(String, C.Module)]) where
-  compile :: Package -> [(String, C.Module)]
-  compile (_, modules) = map (compile modules) modules
+instance Compile (String -> (String, C.Expr)) where
+  compile :: [Module] -> String -> String -> (String, C.Expr)
+  compile ctx path name = do
+    let (path', expr) = fromMaybe (path, Err) (resolve ctx path name)
+    (name, compile ctx path' expr)
 
-instance Compile ([Module] -> Module -> (String, C.Module)) where
-  compile :: [Module] -> Module -> (String, C.Module)
-  compile ctx (path, stmts) = do
-    let mod =
-          C.Module
-            { values = [],
-              types = [],
-              tests = []
-            }
-    (path, foldl (compile ctx path) mod stmts)
+instance Compile ([String] -> C.Env) where
+  compile :: [Module] -> String -> [String] -> C.Env
+  compile ctx path = map (compile ctx path)
 
-instance Compile ([Module] -> String -> C.Module -> Stmt -> C.Module) where
-  compile :: [Module] -> String -> C.Module -> Stmt -> C.Module
-  compile ctx path mod stmt = case stmt of
-    Import {} -> mod
-    Def (p, _) -> compile ctx path mod p
-    TestStmt name expr expect -> mod
-    MetaStmt _ stmt -> compile ctx path mod stmt
+instance Compile (Expr -> C.Expr) where
+  compile :: [Module] -> String -> Expr -> C.Expr
+  compile ctx path expr = do
+    let env = compile ctx path (freeVars expr)
+    C.letVars env (lower env expr)
 
-instance Compile ([Module] -> String -> C.Module -> Pattern -> C.Module) where
-  compile :: [Module] -> String -> C.Module -> Pattern -> C.Module
-  compile ctx path mod p = do
-    foldl (compile ctx path) mod (freeVars p)
+eval :: [Module] -> String -> Expr -> Expr
+eval ctx path expr = do
+  let ops = []
+  compile ctx path expr
+    & C.eval ops []
+    & lift
 
-instance Compile ([Module] -> String -> C.Module -> String -> C.Module) where
-  compile :: [Module] -> String -> C.Module -> String -> C.Module
-  compile ctx path mod name = do
-    let (defs, expr) = resolve ctx path name
-    let expr' = compile ([] :: [(String, Expr)]) (lets defs expr)
-    mod {C.values = (name, expr') : mod.values}
+class RunTest a where
+  test :: [Module] -> a -> [TestError]
 
-instance Compile ([(String, Expr)] -> C.Env) where
-  compile :: [(String, Expr)] -> C.Env
-  compile defs = do
-    let compileDef (x, a) = do
-          let defs' = filter (\(y, _) -> x /= y) defs
-          (x, compile defs' a)
-    map compileDef defs
+instance RunTest Package where
+  test :: [Module] -> Package -> [TestError]
+  test ctx (_, mods) =
+    concatMap (test ctx) mods
 
-instance Compile ([(String, Expr)] -> Expr -> C.Expr) where
-  compile :: [(String, Expr)] -> Expr -> C.Expr
-  compile defs expr = case expr of
-    Int i -> C.Int i
-    Num n -> C.Num n
-    Var x -> C.Var x
-    Tag k args
-      | expr == kind -> C.Knd
-      | expr == intT -> C.IntT
-      | expr == numT -> C.NumT
-      | otherwise -> C.tag k (map (compile defs) args)
-    -- Tuple [Expr]
-    -- Record [(String, Expr)]
-    -- Fun Expr Expr
-    -- App Expr Expr
-    -- Or Expr Expr
-    -- Ann Expr Type
-    -- Call String [Expr]
-    Let (p, a) b -> do
-      let p' = compile defs p
-      let a' = compile defs a
-      let vars = map (\x -> (x, Let (p, a) (Var x))) (freeVars p)
-      let b' = compile (vars ++ defs) b
-      C.let' (p', a') b'
-    -- lower env (Let def b) = lower (lower env def ++ env) b
-    -- Bind (Pattern, Expr) Expr
-    -- Function [Pattern] Expr
-    -- Match [Case]
-    Trait a x -> do
-      let env = compile defs
-      let a' = compile defs a
-      case C.infer buildOps env a' of
-        Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
-        Left _ -> C.Err
-    -- Select Expr [(String, Expr)]
-    -- Update Expr [(String, Expr)]
-    -- IfElse Expr Expr Expr
-    -- Meta C.Metadata Expr
-    -- lower env (Tuple items) = lower env (Tag "" items)
-    -- lower env (Record fields) = do
-    --   let k = '~' : intercalate "," (map fst fields)
-    --   lower env (Tag k (map snd fields))
-    -- lower env (Trait a x) = do
-    --   let a' = lower env a
-    --   case C.infer buildOps env a' of
-    --     Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
-    --     Left _ -> C.Err
-    -- lower env (Fun a b) = C.Fun (lower env a) (lower env b)
-    -- lower env (App a b) = do
-    --   let a' = lower env a
-    --   case C.infer buildOps env a' of
-    --     Right (C.Fun t _, _) -> case t of
-    --       C.Tag "~" -> C.App a' (C.Tag "~")
-    --       C.And (C.Tag ('~' : xs)) _ ->
-    --         C.App a' (lower env (select b (split ',' xs)))
-    --     _ -> C.App a' (lower env b)
-    -- lower env (Or a b) = C.Or (lower env a) (lower env b)
-    -- -- lower env (Let def b) = lower (lower env def ++ env) b
-    -- -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
-    -- lower env (Function ps a) = lower env (MatchFun [Case ps Nothing a])
-    -- lower env (Match args cases) = lower env (app (MatchFun cases) args)
-    -- lower env (MatchFun cases) = C.or' (map (lower env) cases)
-    -- lower env (Select a kvs) = case a of
-    --   Record fields -> do
-    --     let sub = map (second $ lower env) fields
-    --     let lowerFields [] = []
-    --         lowerFields ((x, b) : xs) | x `elem` map fst fields = do
-    --           let b' = lower env b
-    --           (x, C.substitute sub b') : lowerFields xs
-    --         lowerFields (_ : xs) = lowerFields xs
-    --     let fields' = lowerFields kvs
-    --     let k = '~' : intercalate "," (map fst fields')
-    --     C.tag k (map snd fields')
-    --   a -> error $ "TODO: lower Select " ++ show a
-    -- lower env (Ann a b) = C.Ann (lower env a) (lower env b)
-    -- lower env (Call op args) = C.Call op (map (lower env) args)
-    -- lower env (Meta m a) = C.Meta m (lower env a)
-    -- lower _ Err = C.Err
-    Err -> C.Err
-    a -> error $ "TODO: compile " ++ show a
+instance RunTest Module where
+  test :: [Module] -> Module -> [TestError]
+  test ctx (path, stmts) =
+    concatMap (\stmt -> test ctx (path, stmt)) stmts
 
--- instance Compile ([(String, Expr)] -> Expr -> C.Expr) where
---   compile :: [(String, Expr)] -> Expr -> C.Expr
---   compile defs expr = do
---     let compileDef (x, a) = do
---           let defs' = filter (\(y, _) -> x /= y) defs
---           (x, compile defs' a)
---     let env = map compileDef defs
---     C.letVars env (lower env expr)
+instance RunTest (String, Stmt) where
+  test :: [Module] -> (String, Stmt) -> [TestError]
+  test ctx (path, stmt) = case stmt of
+    Import {} -> []
+    Def {} -> []
+    Test name expr expect -> test ctx (UnitTest path name expr expect)
+
+instance RunTest UnitTest where
+  test :: [Module] -> UnitTest -> [TestError]
+  test ctx t = do
+    let test' =
+          matchArgs
+            [t.expr]
+            [ Case [t.expect] Nothing (Tag "Pass" []),
+              Case [Var "_"] Nothing (Var "_")
+            ]
+    -- let expr = matchArgs [Var "x"] [Case [Int 1] Nothing (Int 2)]
+    -- let expr = Let (Var "x", Int 1) (Var "x")
+    let expr = C.lets [(C.Var "x", C.Int 1), (C.Int 1, C.Var "x")] (C.Var "x")
+    error $
+      -- show (compile ctx t.path expr :: C.Expr)
+      show expr
+        ++ "\n"
+        -- ++ show (eval ctx t.path expr)
+        ++ show (C.eval [] [] expr)
+        ++ "\n"
+        ++ show (C.eval [] [("x", C.Int 1)] (C.let' (C.Int 1, C.Var "x") (C.Int 42)))
+    case eval ctx t.path test' of
+      Tag "Pass" [] -> []
+      got -> [TestError {test = t, got = got}]
+
+class FindTests a where
+  findTests :: ((String, String) -> Bool) -> a -> [UnitTest]
+
+instance FindTests Package
+
+instance FindTests Module

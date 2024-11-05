@@ -590,7 +590,7 @@ instance Emit T.Stmt [Stmt] where
             expose (x, y) = (x, Just y)
         [ImportFrom (replace '-' '_' m) (map expose exposed)]
   -- emit options (T.Def def) = emit options def
-  emit options (T.TestStmt name a p) = do
+  emit options (T.Test name a p) = do
     let (stmts1, a') = emit options a
     let (stmts2, b') = emit options p -- TODO: do a match instead
     let def =
@@ -604,7 +604,8 @@ instance Emit T.Stmt [Stmt] where
               async = False
             }
     stmts1 ++ stmts2 ++ [def]
-  emit options (T.MetaStmt _ stmt) = emit options stmt
+
+-- emit options (T.MetaStmt _ stmt) = emit options stmt
 
 -- instance Emit T.Definition [Stmt] where
 --   emit :: BuildOptions -> T.Definition -> [Stmt]

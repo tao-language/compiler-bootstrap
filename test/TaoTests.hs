@@ -308,7 +308,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   f (Import "@pkg/mod" "mod" [("x", "x")]) `shouldBe` Import "@pkg/mod" "mod" [("x", "x")]
   --   f (Def $ defVar "x" y) `shouldBe` Def (defVar "x" (Var "y"))
   --   f (Def $ defVar "y" x) `shouldBe` Def (defVar "y" (Name "@pkg" "mod" "x"))
-  --   f (TestStmt "name" x xP) `shouldBe` TestStmt ">@pkg/mod:name" (Name "@pkg" "mod" "x") (PVar "x")
+  --   f (Test "name" x xP) `shouldBe` Test ">@pkg/mod:name" (Name "@pkg" "mod" "x") (PVar "x")
 
   -- it "☯ run" $ do
   --   let defs =
@@ -446,23 +446,23 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   f [] `shouldBe` []
   --   f [Def $ defVar "x" y] `shouldBe` [("@pkg/path/mod", "x")]
 
-  it "☯ findName" $ do
-    let ctx =
-          [ ( "pkg/a",
-              [Def (Var "x", Int 42)]
-            ),
-            ( "pkg/b",
-              [ Import "pkg/a" "m" [("x", "y")],
-                Def (Var "z", Var "y")
-              ]
-            )
-          ]
-    findName ctx "pkg/a" "x" `shouldBe` Just ("pkg/a", Int 42)
-    findName ctx "pkg/a" "y" `shouldBe` (Nothing :: Maybe (String, Expr))
-    findName ctx "pkg/b" "m" `shouldBe` Just ("pkg/b", Tag "pkg/a" [])
-    findName ctx "pkg/b" "x" `shouldBe` (Nothing :: Maybe (String, Expr))
-    findName ctx "pkg/b" "y" `shouldBe` Just ("pkg/a", Int 42)
-    findName ctx "pkg/b" "z" `shouldBe` Just ("pkg/b", Var "y")
+  -- it "☯ findName" $ do
+  --   let ctx =
+  --         [ ( "pkg/a",
+  --             [Def (Var "x", Int 42)]
+  --           ),
+  --           ( "pkg/b",
+  --             [ Import "pkg/a" "m" [("x", "y")],
+  --               Def (Var "z", Var "y")
+  --             ]
+  --           )
+  --         ]
+  --   findName ctx "pkg/a" "x" `shouldBe` Just ("pkg/a", Int 42)
+  --   findName ctx "pkg/a" "y" `shouldBe` (Nothing :: Maybe (String, Expr))
+  --   findName ctx "pkg/b" "m" `shouldBe` Just ("pkg/b", Tag "pkg/a" [])
+  --   findName ctx "pkg/b" "x" `shouldBe` (Nothing :: Maybe (String, Expr))
+  --   findName ctx "pkg/b" "y" `shouldBe` Just ("pkg/a", Int 42)
+  --   findName ctx "pkg/b" "z" `shouldBe` Just ("pkg/b", Var "y")
 
   it "☯ resolve" $ do
     let ctx =
@@ -475,48 +475,30 @@ run = describe "--==☯ TaoTests ☯==--" $ do
               ]
             )
           ]
-    let empty = [] :: [(String, Expr)]
-    resolve ctx "pkg/a" "x" `shouldBe` (empty, Int 42)
-    resolve ctx "pkg/a" "y" `shouldBe` (empty, Err)
-    resolve ctx "pkg/b" "m" `shouldBe` (empty, Tag "pkg/a" [])
-    resolve ctx "pkg/b" "x" `shouldBe` (empty, Err)
-    resolve ctx "pkg/b" "y" `shouldBe` (empty, Int 42)
-    resolve ctx "pkg/b" "z" `shouldBe` ([("y", Int 42)], Var "y")
+    resolve ctx "pkg/a" "x" `shouldBe` Just ("pkg/a", Int 42)
+    resolve ctx "pkg/a" "y" `shouldBe` Nothing
+    resolve ctx "pkg/b" "m" `shouldBe` Just ("pkg/b", Tag "pkg/a" [])
+    resolve ctx "pkg/b" "x" `shouldBe` Nothing
+    resolve ctx "pkg/b" "y" `shouldBe` Just ("pkg/a", Int 42)
+    resolve ctx "pkg/b" "z" `shouldBe` Just ("pkg/b", Var "y")
 
   it "☯ compile" $ do
-    let pkg =
-          ( "pkg",
-            [ ( "pkg/a",
-                [Def (x, Int 42)]
-              ),
-              ( "pkg/b",
-                [ Import "pkg/a" "m" [("x", "y")],
-                  Def (z, y),
-                  Def (x, Trait y "w")
-                ]
-              )
-            ]
-          )
-    let expect =
+    let ctx =
           [ ( "pkg/a",
-              C.Module
-                { values = [("x", C.Int 42)],
-                  types = [],
-                  tests = []
-                }
+              [Def (Var "x", Int 42)]
             ),
             ( "pkg/b",
-              C.Module
-                { values =
-                    [ ("x", C.letVar ("y", C.Int 42) (C.app (C.Var ".w") [C.intT 42, C.Var "y"])),
-                      ("z", C.letVar ("y", C.Int 42) (C.Var "y"))
-                    ],
-                  types = [],
-                  tests = []
-                }
+              [ Import "pkg/a" "m" [("x", "y")],
+                Def (Var "z", Var "y")
+              ]
             )
           ]
-    compile pkg `shouldBe` expect
+    compile ctx "pkg/a" "x" `shouldBe` ("x", C.Int 42)
+    compile ctx "pkg/a" "y" `shouldBe` ("y", C.Err)
+    compile ctx "pkg/b" "m" `shouldBe` ("m", C.Tag "pkg/a")
+    compile ctx "pkg/b" "x" `shouldBe` ("x", C.Err)
+    compile ctx "pkg/b" "y" `shouldBe` ("y", C.Int 42)
+    compile ctx "pkg/b" "z" `shouldBe` ("z", C.letVar ("y", C.Int 42) (C.Var "y"))
 
   it "☯ eval" $ do
     let ctx =
@@ -530,13 +512,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
               ]
             )
           ]
-    eval ctx "pkg/a" (Int 42) `shouldBe` Right (Int 42, intT' 42)
-    eval ctx "pkg/a" (Num 3.14) `shouldBe` Right (Num 3.14, numT' 3.14)
-    eval ctx "pkg/a" (Var "x") `shouldBe` Right (Int 42, intT' 42)
-    eval ctx "pkg/b" (Var "x") `shouldBe` Right (Int 9, intT' 9)
-    eval ctx "pkg/a" (Var "y") `shouldBe` Right (Err, Err)
-    eval ctx "pkg/a" (Tag "A" []) `shouldBe` Right (Tag "A" [], Tag "A" [])
-    eval ctx "pkg/a" (Tag "A" [x]) `shouldBe` Right (Tag "A" [Int 42], Tag "A" [intT' 42])
+    eval ctx "pkg/a" (Int 42) `shouldBe` Int 42
+    eval ctx "pkg/a" (Num 3.14) `shouldBe` Num 3.14
+    eval ctx "pkg/a" (Var "x") `shouldBe` Int 42
+    eval ctx "pkg/b" (Var "x") `shouldBe` Int 9
+    eval ctx "pkg/a" (Var "y") `shouldBe` Err
+    eval ctx "pkg/a" (Tag "A" []) `shouldBe` Tag "A" []
+    eval ctx "pkg/a" (Tag "A" [x]) `shouldBe` Tag "A" [Int 42]
     -- Tuple [Expr]
     -- Record [(String, Maybe Expr, Maybe Expr)]
     -- Fun Expr Expr
@@ -560,18 +542,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     True `shouldBe` True
 
   it "☯ test" $ do
-    -- let f name stmts = do
-    --       let pkg = Package "@pkg" [Module "mod" stmts]
-    --       let s = resolve () pkg
-    --       let env = lower [] (replace () s pkg)
-    --       test env name
-    -- let stmts =
-    --       [ Def (defVar "x" (Int 1)),
-    --         Def (defVar "y" (Int 2)),
-    --         TestStmt ">x" x (PInt 1),
-    --         TestStmt ">y" y (PInt 0)
-    --       ]
-    -- f "x" stmts `shouldBe` []
-    -- f "y" stmts `shouldBe` [TestEqError ">y" (C.Var "@pkg/mod.y") (C.Int 0) (C.Int 2)]
-    -- f "" stmts `shouldBe` [TestEqError ">y" (C.Var "@pkg/mod.y") (C.Int 0) (C.Int 2)]
-    True `shouldBe` True
+    let ctx =
+          [ ( "pkg/a",
+              [ Def (x, Int 1),
+                Def (y, Int 2),
+                Test ">x" x (Int 1),
+                Test ">y" y (Int 0)
+              ]
+            )
+          ]
+    test ctx ("pkg", ctx) `shouldBe` [TestError (UnitTest "pkg/a" ">y" y (Int 0)) (Int 2)]
