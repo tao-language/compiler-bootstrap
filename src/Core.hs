@@ -14,7 +14,6 @@ import Stdlib (replace, replaceString)
 -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
 -- https://mroman42.github.io/mikrokosmos/tutorial.html
 
--- TODO: replace operators with Target or Builtin terms
 data Expr
   = Knd
   | IntT
@@ -31,6 +30,7 @@ data Expr
   | Or Expr Expr
   | Ann Expr Expr
   | Call String [Expr]
+  | Let [(String, Expr)] Expr
   | Meta Metadata Expr
   | Err
   deriving (Eq)
@@ -99,6 +99,7 @@ instance Show Expr where
     Or a b -> "(" ++ show a ++ " | " ++ show b ++ ")"
     Ann a b -> "(" ++ show a ++ " : " ++ show b ++ ")"
     Call f xs -> '%' : f ++ "(" ++ intercalate ", " (map show xs) ++ ")"
+    Let env b -> "{" ++ intercalate "; " (map (\(x, a) -> x ++ " = " ++ show a) env) ++ "} " ++ show b
     Meta m a -> '^' : show m ++ "(" ++ show a ++ ")"
     Err -> "!error"
     where
@@ -323,55 +324,66 @@ isOpen :: Expr -> Bool
 isOpen = not . isClosed
 
 -- Evaluation
-reduce :: Ops -> Env -> Expr -> Expr
-reduce ops env expr = case expr of
-  Var x -> case lookup x env of
-    Just (Var x') | x == x' -> Var x
-    Just (Ann (Var x') _) | x == x' -> Var x
-    Just a -> reduce ops env a
-    Nothing -> Err
-  App a b -> case (reduce ops env a, reduce ops env b) of
-    (For x a, b) -> reduce ops ((x, Var x) : env) (App a b)
-    -- Fix x a -> reduce ((x, Var x) : env) (App a b)
-    -- Fix x a -> case reduce ops env b of
-    --   Var y -> App (Fix x a) (Var y)
-    --   App b1 b2 -> App (Fix x a) (App b1 b2)
-    --   b -> reduce ((x, Fix x a) : env) (App a b)
-    (Fun a c, b) -> case (reduce ops env a, b) of
+reduce :: Ops -> Expr -> Expr
+reduce ops = \case
+  For x a -> reduce ops (Let [(x, Var x)] a)
+  Ann a _ -> reduce ops a
+  Meta _ a -> reduce ops a
+  App a b -> case (reduce ops a, reduce ops b) of
+    (Var x, b) -> App (Var x) b
+    (App a1 a2, b) -> App (App a1 a2) b
+    (Fun a c, b) -> case (reduce ops a, b) of
       -- (a, Var _) -> App a b
       -- (a, App _ _) -> App a b
-      (Knd, Knd) -> reduce ops env c
-      (IntT, IntT) -> reduce ops env c
-      (NumT, NumT) -> reduce ops env c
-      (Int i, Int i') | i == i' -> reduce ops env c
-      (Num n, Num n') | n == n' -> reduce ops env c
-      (Tag k, Tag k') | k == k' -> reduce ops env c
-      (Var x, b) -> reduce ops ((x, reduce ops env b) : env) c
-      -- (App a1 a2, App b1 b2) -> reduce ops env (App (Fun a1 (App (Fun a2 c) b2)) b1)
-      (And a1 a2, And b1 b2) -> reduce ops env (App (Fun a1 (App (Fun a2 c) b2)) b1)
-      (Or a1 a2, b) -> case reduce ops env (App (Fun a1 c) b) of
-        Err -> reduce ops env (App (Fun a2 c) b)
-        c -> c
-      (Err, Err) -> reduce ops env c
+      (Knd, Knd) -> reduce ops c
+      (IntT, IntT) -> reduce ops c
+      (NumT, NumT) -> reduce ops c
+      (Int i, Int i') | i == i' -> reduce ops c
+      (Num n, Num n') | n == n' -> reduce ops c
+      (Tag k, Tag k') | k == k' -> reduce ops c
+      (Var x, b) -> reduce ops (Let [(x, b)] c)
+      (And a1 a2, And b1 b2) -> reduce ops (App (Fun a1 (App (Fun a2 c) b2)) b1)
+      (Or a1 a2, b) -> reduce ops (App (Or (Fun a1 c) (Fun a2 c)) b)
+      (Err, Err) -> reduce ops c
       _ -> Err
+    (Tag k, b) -> And (Tag k) b
+    (And a1 a2, b) -> And a1 (And a2 b)
+    (Or a1 a2, b) -> case reduce ops (App a1 b) of
+      Err -> reduce ops (App a2 b)
+      c -> c
     (Call f args, b) -> Call f (args ++ [b])
     _ -> Err
-  Ann a _ -> reduce ops env a
-  Call f args -> case lookup f ops of
-    Just call -> call env args
-    Nothing -> Call f args
-  Meta _ a -> reduce ops env a
+  Let env expr -> case expr of
+    Var x -> case lookup x env of
+      Just (Var x') | x == x' -> Var x
+      Just (Ann (Var x') _) | x == x' -> Var x
+      Just a -> reduce ops a
+      Nothing -> Var x
+    -- For x a -> reduce ops (Let ((x, Var x) : env) a)
+    For x a -> reduce ops (For x (Let env a))
+    -- Fix x a -> Fix x (reduce ops (Let ((x, Var x) : env) a))
+    Fun a b -> Fun (Let env a) (Let env b)
+    App a b -> reduce ops (App (Let env a) (Let env b))
+    And a b -> And (Let env a) (Let env b)
+    Or a b -> Or (Let env a) (Let env b)
+    Ann a _ -> reduce ops (Let env a)
+    Call f args -> case lookup f ops of
+      Just call -> call env args
+      Nothing -> Call f (Let env <$> args)
+    Let env' a -> reduce ops (Let (env ++ env') a)
+    Meta _ a -> reduce ops (Let env a)
+    expr -> expr
   expr -> expr
 
-eval :: Ops -> Env -> Expr -> Expr
-eval ops env expr = case reduce ops env expr of
-  For x a -> For x (eval ops ((x, Var x) : env) a)
-  Fix x a -> Fix x (eval ops ((x, Var x) : env) a)
-  Fun a b -> Fun (eval ops env a) (eval ops env b)
-  App a b -> App (eval ops env a) (eval ops env b)
-  And a b -> And (eval ops env a) (eval ops env b)
-  Or a b -> Or (eval ops env a) (eval ops env b)
-  Call f args -> Call f (eval ops env <$> args)
+eval :: Ops -> Expr -> Expr
+eval ops expr = case reduce ops expr of
+  For x a -> For x (eval ops (Let [(x, Var x)] a))
+  Fix x a -> Fix x (eval ops (Let [(x, Var x)] a))
+  Fun a b -> Fun (eval ops a) (eval ops b)
+  App a b -> App a (eval ops b)
+  And a b -> And (eval ops a) (eval ops b)
+  Or a b -> Or (eval ops a) (eval ops b)
+  Call f args -> Call f (eval ops <$> args)
   a -> a
 
 -- eval :: Ops -> Env -> Expr -> Expr
@@ -625,7 +637,7 @@ infer ops env (And a b) = do
   Right (And ta tb, s)
 infer ops env (Ann (Tag k) ty) = do
   let (t, vars) = instantiate env ty
-  (t', s) <- unify (Ann (Tag k) t) (eval ops env t)
+  (t', s) <- unify (Ann (Tag k) t) (eval ops (Let env t))
   Right (t', s `compose` vars)
 infer ops env (Ann a ty) = check ops env a ty
 infer ops env (For x a) = infer ops ((x, Var x) : env) a

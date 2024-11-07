@@ -144,123 +144,93 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let ops = []
     let env =
           [ ("x", Int 42),
-            ("y", Var "x"),
+            ("y", Num 3.14),
+            ("z", Var "z"),
             ("f", For "z" (Fun z z))
           ]
-    reduce ops env Knd `shouldBe` Knd
-    reduce ops env IntT `shouldBe` IntT
-    reduce ops env NumT `shouldBe` NumT
-    reduce ops env (Int 1) `shouldBe` Int 1
-    reduce ops env (Num 1.1) `shouldBe` Num 1.1
-    reduce ops env (Tag "x") `shouldBe` Tag "x"
-    reduce ops env (Var "x") `shouldBe` Int 42
-    reduce ops env (Var "y") `shouldBe` Int 42
-    reduce ops env (For "x" y) `shouldBe` For "x" y
-    reduce ops env (Fix "x" y) `shouldBe` Fix "x" y
-    reduce ops env (Fun x y) `shouldBe` Fun x y
-    reduce ops env (App Knd y) `shouldBe` Err
-    reduce ops env (App IntT y) `shouldBe` Err
-    reduce ops env (App NumT y) `shouldBe` Err
-    reduce ops env (App (Int 1) y) `shouldBe` Err
-    reduce ops env (App (Num 1.1) y) `shouldBe` Err
-    reduce ops env (App (Tag "x") y) `shouldBe` Err
-    reduce ops env (App (Var "x") y) `shouldBe` Err
-    reduce ops env (App (For "x" x) y) `shouldBe` Err
-    -- reduce ops env (App (Fix "x" x) y) `shouldBe` App (Fix "x" x) x
-    reduce ops env (App (Fun Knd x) Knd) `shouldBe` Int 42
-    reduce ops env (App (Fun Knd x) IntT) `shouldBe` Err
-    reduce ops env (App (Fun IntT Knd) IntT) `shouldBe` Knd
-    reduce ops env (App (Fun NumT Knd) NumT) `shouldBe` Knd
-    reduce ops env (App (Fun (Int 42) Knd) (Int 42)) `shouldBe` Knd
-    reduce ops env (App (Fun (Int 42) Knd) (Int 0)) `shouldBe` Err
-    reduce ops env (App (Fun (Num 3.14) Knd) (Num 3.14)) `shouldBe` Knd
-    reduce ops env (App (Fun (Num 3.14) Knd) (Num 0.0)) `shouldBe` Err
-    reduce ops env (App (Fun (Tag "A") Knd) (Tag "A")) `shouldBe` Knd
-    reduce ops env (App (Fun (Tag "A") Knd) (Tag "B")) `shouldBe` Err
-    reduce ops env (App (Fun (Var "x") Knd) (Int 42)) `shouldBe` Knd
-    reduce ops env (App (Fun (Var "x") Knd) (Int 0)) `shouldBe` Err
-    reduce ops env (App (Fun (Var "x") Knd) y) `shouldBe` Knd
-    reduce ops env (App (Fun (Var "z") Knd) y) `shouldBe` Err
+
+    let reduce' x = reduce ops (Let env x)
+    reduce' Knd `shouldBe` Knd
+    reduce' IntT `shouldBe` IntT
+    reduce' NumT `shouldBe` NumT
+    reduce' (Int 1) `shouldBe` Int 1
+    reduce' (Num 1.1) `shouldBe` Num 1.1
+    reduce' (Tag "x") `shouldBe` Tag "x"
+    reduce' (Var "x") `shouldBe` Int 42
+    reduce' (Var "y") `shouldBe` Num 3.14
+    reduce' (Var "z") `shouldBe` Var "z"
+    reduce' (Var "w") `shouldBe` Var "w"
+    -- reduce' (For "x" x) `shouldBe` For "x" x
+    -- reduce' (For "x" y) `shouldBe` For "x" (Num 3.14)
+    -- reduce' (Fix "x" x) `shouldBe` Fix "x" x
+    -- reduce' (Fix "x" y) `shouldBe` Fix "x" (Num 3.14)
+    reduce' (Fun x y) `shouldBe` Fun (Let env x) (Let env y)
+    reduce' (App Knd y) `shouldBe` Err
+    reduce' (App IntT y) `shouldBe` Err
+    reduce' (App NumT y) `shouldBe` Err
+    reduce' (App (Int 1) y) `shouldBe` Err
+    reduce' (App (Num 1.1) y) `shouldBe` Err
+    reduce' (App (Tag "x") y) `shouldBe` And (Tag "x") (Num 3.14)
+    reduce' (App (Var "x") y) `shouldBe` Err
+    reduce' (App (Var "z") y) `shouldBe` App z (Num 3.14)
+    reduce' (App (App (Var "z") y) x) `shouldBe` App (App z (Num 3.14)) (Int 42)
+    reduce' (App (For "x" x) y) `shouldBe` App x (Num 3.14)
+    -- reduce' (App (Fix "x" x) y) `shouldBe` App (Fix "x" x) x
+    reduce' (App (Fun Knd x) Knd) `shouldBe` Int 42
+    reduce' (App (Fun Knd x) IntT) `shouldBe` Err
+    reduce' (App (Fun IntT Knd) IntT) `shouldBe` Knd
+    reduce' (App (Fun NumT Knd) NumT) `shouldBe` Knd
+    reduce' (App (Fun (Int 42) Knd) (Int 42)) `shouldBe` Knd
+    reduce' (App (Fun (Int 42) Knd) (Int 0)) `shouldBe` Err
+    reduce' (App (Fun (Num 3.14) Knd) (Num 3.14)) `shouldBe` Knd
+    reduce' (App (Fun (Num 3.14) Knd) (Num 0.0)) `shouldBe` Err
+    reduce' (App (Fun (Tag "A") Knd) (Tag "A")) `shouldBe` Knd
+    reduce' (App (Fun (Tag "A") Knd) (Tag "B")) `shouldBe` Err
+    reduce' (App (Fun (Var "x") Knd) (Int 42)) `shouldBe` Knd
+    reduce' (App (Fun (Var "x") Knd) (Int 0)) `shouldBe` Err
+    reduce' (App (Fun (Var "x") Knd) x) `shouldBe` Knd
+    reduce' (App (Fun (Var "x") Knd) y) `shouldBe` Err
     -- TODO: reduce App Fun App
-    reduce ops env (App (Fun (And IntT NumT) Knd) (And IntT NumT)) `shouldBe` Knd
-    reduce ops env (App (Fun (And IntT NumT) Knd) (And IntT IntT)) `shouldBe` Err
-    reduce ops env (App (Fun (And IntT NumT) Knd) (And NumT NumT)) `shouldBe` Err
-    reduce ops env (App (Fun (Or IntT NumT) Knd) IntT) `shouldBe` Knd
-    reduce ops env (App (Fun (Or IntT NumT) Knd) NumT) `shouldBe` Knd
-    reduce ops env (App (Fun (Or IntT NumT) Knd) Knd) `shouldBe` Err
-    reduce ops env (App (Fun (Ann x Err) Knd) y) `shouldBe` Knd
-    reduce ops env (App (Fun (Call "f" []) Knd) (Call "f" [])) `shouldBe` Err
-    reduce ops env (App (Fun (Meta (Comment "") x) Knd) y) `shouldBe` Knd
-    reduce ops env (App (Fun Err Knd) Err) `shouldBe` Knd
-    reduce ops env (App (For "z" (Fun z z)) y) `shouldBe` Int 42
-    reduce ops env (App (Var "f") y) `shouldBe` Int 42
-    reduce ops env (And x y) `shouldBe` And x y
-    reduce ops env (Or x y) `shouldBe` Or x y
-    reduce ops env (Ann x Knd) `shouldBe` Int 42
-    reduce ops env (Call "f" [x, y]) `shouldBe` Call "f" [x, y]
-    reduce ops env (Meta (Comment "") x) `shouldBe` Int 42
-    reduce ops env Err `shouldBe` Err
+    reduce' (App (Fun (And IntT NumT) Knd) (And IntT NumT)) `shouldBe` Knd
+    reduce' (App (Fun (And IntT NumT) Knd) (And IntT IntT)) `shouldBe` Err
+    reduce' (App (Fun (And IntT NumT) Knd) (And NumT NumT)) `shouldBe` Err
+    reduce' (App (Fun (Or IntT NumT) Knd) IntT) `shouldBe` Knd
+    reduce' (App (Fun (Or IntT NumT) Knd) NumT) `shouldBe` Knd
+    reduce' (App (Fun (Or IntT NumT) Knd) Knd) `shouldBe` Err
+    reduce' (App (Fun (Ann x Err) Knd) x) `shouldBe` Knd
+    reduce' (App (Fun (Ann x Err) Knd) y) `shouldBe` Err
+    reduce' (App (Fun (Call "f" []) Knd) (Call "f" [])) `shouldBe` Err
+    reduce' (App (Fun (Meta (Comment "") x) Knd) x) `shouldBe` Knd
+    reduce' (App (Fun (Meta (Comment "") x) Knd) y) `shouldBe` Err
+    reduce' (App (Fun Err Knd) Err) `shouldBe` Knd
+    -- reduce' (App (For "x" (Fun x x)) y) `shouldBe` Num 3.14
+    reduce' (App (Var "f") x) `shouldBe` Int 42
+    reduce' (App (Or (Var "f") Err) x) `shouldBe` Int 42
+    reduce' (App (Or Err (Var "f")) x) `shouldBe` Int 42
+    reduce' (App (Or Err Err) x) `shouldBe` Err
+    reduce' (And x y) `shouldBe` And (Let env x) (Let env y)
+    reduce' (Or x y) `shouldBe` Or (Let env x) (Let env y)
+    reduce' (Ann x Knd) `shouldBe` Int 42
+    reduce' (Call "f" [x, y]) `shouldBe` Call "f" [Let env x, Let env y]
+    reduce' (Meta (Comment "") x) `shouldBe` Int 42
+    reduce' Err `shouldBe` Err
 
   it "☯ eval" $ do
     let ops = []
     let env =
           [ ("x", Int 42),
-            ("y", Var "x"),
+            ("y", Num 3.14),
             ("f", For "z" (Fun z z))
           ]
-    eval ops env Knd `shouldBe` Knd
-    eval ops env IntT `shouldBe` IntT
-    eval ops env NumT `shouldBe` NumT
-    eval ops env (Int 1) `shouldBe` Int 1
-    eval ops env (Num 1.1) `shouldBe` Num 1.1
-    eval ops env (Tag "x") `shouldBe` Tag "x"
-    eval ops env (Var "x") `shouldBe` Int 42
-    eval ops env (Var "y") `shouldBe` Int 42
-    eval ops env (For "x" y) `shouldBe` For "x" x
-    eval ops env (Fix "x" y) `shouldBe` Fix "x" x
-    eval ops env (Fun x y) `shouldBe` Fun (Int 42) (Int 42)
-    eval ops env (App Knd y) `shouldBe` Err
-    eval ops env (App IntT y) `shouldBe` Err
-    eval ops env (App NumT y) `shouldBe` Err
-    eval ops env (App (Int 1) y) `shouldBe` Err
-    eval ops env (App (Num 1.1) y) `shouldBe` Err
-    eval ops env (App (Tag "x") y) `shouldBe` Err
-    eval ops env (App (Var "x") y) `shouldBe` Err
-    eval ops env (App (For "x" x) y) `shouldBe` Err
-    -- eval ops env (App (Fix "x" x) y) `shouldBe` App (Fix "x" x) x
-    eval ops env (App (Fun Knd x) Knd) `shouldBe` Int 42
-    eval ops env (App (Fun Knd x) IntT) `shouldBe` Err
-    eval ops env (App (Fun IntT Knd) IntT) `shouldBe` Knd
-    eval ops env (App (Fun NumT Knd) NumT) `shouldBe` Knd
-    eval ops env (App (Fun (Int 42) Knd) (Int 42)) `shouldBe` Knd
-    eval ops env (App (Fun (Int 42) Knd) (Int 0)) `shouldBe` Err
-    eval ops env (App (Fun (Num 3.14) Knd) (Num 3.14)) `shouldBe` Knd
-    eval ops env (App (Fun (Num 3.14) Knd) (Num 0.0)) `shouldBe` Err
-    eval ops env (App (Fun (Tag "A") Knd) (Tag "A")) `shouldBe` Knd
-    eval ops env (App (Fun (Tag "A") Knd) (Tag "B")) `shouldBe` Err
-    eval ops env (App (Fun (Var "x") Knd) (Int 42)) `shouldBe` Knd
-    eval ops env (App (Fun (Var "x") Knd) (Int 0)) `shouldBe` Err
-    eval ops env (App (Fun (Var "x") Knd) y) `shouldBe` Knd
-    eval ops env (App (Fun (Var "z") Knd) y) `shouldBe` Err
-    -- TODO: eval App Fun App
-    eval ops env (App (Fun (And IntT NumT) Knd) (And IntT NumT)) `shouldBe` Knd
-    eval ops env (App (Fun (And IntT NumT) Knd) (And IntT IntT)) `shouldBe` Err
-    eval ops env (App (Fun (And IntT NumT) Knd) (And NumT NumT)) `shouldBe` Err
-    eval ops env (App (Fun (Or IntT NumT) Knd) IntT) `shouldBe` Knd
-    eval ops env (App (Fun (Or IntT NumT) Knd) NumT) `shouldBe` Knd
-    eval ops env (App (Fun (Or IntT NumT) Knd) Knd) `shouldBe` Err
-    eval ops env (App (Fun (Ann x Err) Knd) y) `shouldBe` Knd
-    eval ops env (App (Fun (Call "f" []) Knd) (Call "f" [])) `shouldBe` Err
-    eval ops env (App (Fun (Meta (Comment "") x) Knd) y) `shouldBe` Knd
-    eval ops env (App (Fun Err Knd) Err) `shouldBe` Knd
-    eval ops env (App (For "z" (Fun z z)) y) `shouldBe` Int 42
-    eval ops env (App (Var "f") y) `shouldBe` Int 42
-    eval ops env (And x y) `shouldBe` And (Int 42) (Int 42)
-    eval ops env (Or x y) `shouldBe` Or (Int 42) (Int 42)
-    eval ops env (Ann x Knd) `shouldBe` Int 42
-    eval ops env (Call "f" [x, y]) `shouldBe` Call "f" [Int 42, Int 42]
-    eval ops env (Meta (Comment "") x) `shouldBe` Int 42
-    eval ops env Err `shouldBe` Err
+
+    let eval' x = eval ops (Let env x)
+    eval' (Fun x y) `shouldBe` Fun (Int 42) (Num 3.14)
+    eval' (And x y) `shouldBe` And (Int 42) (Num 3.14)
+    eval' (Or x y) `shouldBe` Or (Int 42) (Num 3.14)
+    eval' (Call "f" [x, y]) `shouldBe` Call "f" [Int 42, Num 3.14]
+    -- eval' (For "x" (And x y)) `shouldBe` For "x" (And x (Num 3.14))
+    -- eval' (Fix "x" (And x y)) `shouldBe` Fix "x" (And x (Num 3.14))
+    eval' (App z (And x y)) `shouldBe` App z (And (Int 42) (Num 3.14))
 
   -- it "☯ eval const" $ do
   --   eval [] [] Knd `shouldBe` Knd

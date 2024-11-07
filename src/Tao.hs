@@ -573,7 +573,7 @@ eval :: [Module] -> String -> Expr -> Expr
 eval ctx path expr = do
   let ops = []
   compile ctx path expr
-    & C.eval ops []
+    & C.eval ops
     & lift
 
 class RunTest a where
@@ -605,17 +605,6 @@ instance RunTest UnitTest where
             [ Case [t.expect] Nothing (Tag "Pass" []),
               Case [Var "_"] Nothing (Var "_")
             ]
-    -- let expr = matchArgs [Var "x"] [Case [Int 1] Nothing (Int 2)]
-    -- let expr = Let (Var "x", Int 1) (Var "x")
-    let expr = C.lets [(C.Var "x", C.Int 1), (C.Int 1, C.Var "x")] (C.Var "x")
-    error $
-      -- show (compile ctx t.path expr :: C.Expr)
-      show expr
-        ++ "\n"
-        -- ++ show (eval ctx t.path expr)
-        ++ show (C.eval [] [] expr)
-        ++ "\n"
-        ++ show (C.eval [] [("x", C.Int 1)] (C.let' (C.Int 1, C.Var "x") (C.Int 42)))
     case eval ctx t.path test' of
       Tag "Pass" [] -> []
       got -> [TestError {test = t, got = got}]
