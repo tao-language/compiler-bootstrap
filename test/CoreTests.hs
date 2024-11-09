@@ -326,6 +326,33 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval' (App f (Int 4)) `shouldBe` Int 24
     eval' (App f (Int 5)) `shouldBe` Int 120
 
+  -- it "☯ eval fibonacci" $ do
+  --   let fib f = Fix f (case0 `Or` case1 `Or` caseN f)
+  --         where
+  --           case0 = Fun i0 i0
+  --           case1 = Fun i1 i1
+  --           caseN f = For "x" (Fun x (App (Var f) (x `sub` i1) `add` App (Var f) (x `sub` i2)))
+  --           add x y = Call "+" [x, y]
+  --           sub x y = Call "-" [x, y]
+  --   let add eval args = case eval <$> args of
+  --         [Int x, Int y] -> Int (x + y)
+  --         args -> Call "+" args
+  --   let sub eval args = case eval <$> args of
+  --         [Int x, Int y] -> Int (x - y)
+  --         args -> Call "-" args
+  --   let ops =
+  --         [ ("+", add),
+  --           ("-", sub)
+  --         ]
+  --   let env = [("f", fib "f")]
+  --   let eval' x = eval ops (Let env x)
+  --   eval' (App f (Int 0)) `shouldBe` Int 0
+  --   eval' (App f (Int 1)) `shouldBe` Int 1
+  --   eval' (App f (Int 2)) `shouldBe` Int 1
+  --   eval' (App f (Int 3)) `shouldBe` Int 2
+  --   eval' (App f (Int 4)) `shouldBe` Int 3
+  --   eval' (App f (Int 5)) `shouldBe` Int 5
+
   it "☯ unify" $ do
     unify (Ann (Tag "A") (Tag "T")) (Tag "T") `shouldBe` Right (Tag "T", [])
 
