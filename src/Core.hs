@@ -41,7 +41,7 @@ data Metadata
   | Unwrap
   deriving (Eq)
 
-type Ops = [(String, Env -> [Expr] -> Expr)]
+type Ops = [(String, (Expr -> Expr) -> [Expr] -> Expr)]
 
 type Env = [(String, Expr)]
 
@@ -326,15 +326,16 @@ isOpen = not . isClosed
 -- Evaluation
 reduce :: Ops -> Expr -> Expr
 reduce ops = \case
-  For x a -> reduce ops (Let [(x, Var x)] a)
   Ann a _ -> reduce ops a
   Meta _ a -> reduce ops a
   App a b -> case (reduce ops a, reduce ops b) of
+    (a, Var x) -> App a (Var x)
+    (a, App b1 b2) -> App a (App b1 b2)
     (Var x, b) -> App (Var x) b
+    (For x a, b) -> reduce ops (App (Let [(x, Var x)] a) b)
+    (Fix x a, b) -> reduce ops (App (Let [(x, Fix x a)] a) b)
     (App a1 a2, b) -> App (App a1 a2) b
     (Fun a c, b) -> case (reduce ops a, b) of
-      -- (a, Var _) -> App a b
-      -- (a, App _ _) -> App a b
       (Knd, Knd) -> reduce ops c
       (IntT, IntT) -> reduce ops c
       (NumT, NumT) -> reduce ops c
@@ -359,17 +360,16 @@ reduce ops = \case
       Just (Ann (Var x') _) | x == x' -> Var x
       Just a -> reduce ops a
       Nothing -> Var x
-    -- For x a -> reduce ops (Let ((x, Var x) : env) a)
-    For x a -> reduce ops (For x (Let env a))
-    -- Fix x a -> Fix x (reduce ops (Let ((x, Var x) : env) a))
+    For x a -> For x (Let env a)
+    Fix x a -> Fix x (Let env a)
     Fun a b -> Fun (Let env a) (Let env b)
     App a b -> reduce ops (App (Let env a) (Let env b))
     And a b -> And (Let env a) (Let env b)
     Or a b -> Or (Let env a) (Let env b)
     Ann a _ -> reduce ops (Let env a)
-    Call f args -> case lookup f ops of
-      Just call -> call env args
-      Nothing -> Call f (Let env <$> args)
+    Call f args -> case (lookup f ops, Let env <$> args) of
+      (Just call, args) -> call (reduce ops) args
+      (Nothing, args) -> Call f args
     Let env' a -> reduce ops (Let (env ++ env') a)
     Meta _ a -> reduce ops (Let env a)
     expr -> expr
