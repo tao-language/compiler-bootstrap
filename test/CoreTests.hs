@@ -170,7 +170,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' (App NumT y) `shouldBe` Err
     reduce' (App (Int 1) y) `shouldBe` Err
     reduce' (App (Num 1.1) y) `shouldBe` Err
-    reduce' (App (Tag "x") y) `shouldBe` And (Tag "x") (Num 3.14)
+    reduce' (App (Tag "x") y) `shouldBe` Err
     reduce' (App (Var "x") y) `shouldBe` Err
     reduce' (App (Var "z") y) `shouldBe` App z (Num 3.14)
     reduce' (App (App (Var "z") y) x) `shouldBe` App (App z (Num 3.14)) (Int 42)

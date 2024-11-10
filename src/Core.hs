@@ -347,12 +347,9 @@ reduce ops = \case
       (Or a1 a2, b) -> reduce ops (App (Or (Fun a1 c) (Fun a2 c)) b)
       (Err, Err) -> reduce ops c
       _ -> Err
-    (Tag k, b) -> And (Tag k) b
-    (And a1 a2, b) -> And a1 (And a2 b)
     (Or a1 a2, b) -> case reduce ops (App a1 b) of
       Err -> reduce ops (App a2 b)
       c -> c
-    (Call f args, b) -> Call f (args ++ [b])
     _ -> Err
   Let env expr -> case expr of
     Var x -> case lookup x env of
