@@ -4,6 +4,7 @@ import Data.Bifunctor (Bifunctor (second))
 import Data.Char (isAlphaNum, isLower, isUpper)
 import Data.Function ((&))
 import Data.List (delete, intercalate, union)
+import Data.Maybe (fromMaybe)
 import qualified Parser as P
 import Stdlib (replace, replaceString)
 
@@ -95,8 +96,8 @@ instance Show Expr where
           let def = show a ++ " = " ++ show b ++ "; " ++ show c
           if null xs then def else "@" ++ unwords xs ++ ". " ++ def
         _ -> "(" ++ show a ++ " " ++ show b ++ ")"
-    And a b -> "(" ++ show a ++ ", " ++ show b ++ ")"
-    Or a b -> "(" ++ show a ++ " | " ++ show b ++ ")"
+    And _ _ -> "(" ++ intercalate ", " (map show (andOf expr)) ++ ")"
+    Or _ _ -> "(" ++ intercalate " | " (map show (orOf expr)) ++ ")"
     Ann a b -> "(" ++ show a ++ " : " ++ show b ++ ")"
     Call f xs -> '%' : f ++ "(" ++ intercalate ", " (map show xs) ++ ")"
     Let env b -> "{" ++ intercalate "; " (map (\(x, a) -> x ++ " = " ++ show a) env) ++ "} " ++ show b
@@ -210,6 +211,10 @@ and' (a : bs) = And a (and' bs)
 andOf :: Expr -> [Expr]
 andOf (And a b) = a : andOf b
 andOf a = [a]
+
+orOf :: Expr -> [Expr]
+orOf (Or a b) = a : orOf b
+orOf a = [a]
 
 let' :: (Expr, Expr) -> Expr -> Expr
 let' (Var x, Var x') b | x == x' = b
@@ -326,8 +331,6 @@ isOpen = not . isClosed
 -- Evaluation
 reduce :: Ops -> Expr -> Expr
 reduce ops = \case
-  Ann a _ -> reduce ops a
-  Meta _ a -> reduce ops a
   App a b -> case (reduce ops a, reduce ops b) of
     (a, Var x) -> App a (Var x)
     (a, App b1 b2) -> App a (App b1 b2)
@@ -335,6 +338,13 @@ reduce ops = \case
     (For x a, b) -> reduce ops (App (Let [(x, Var x)] a) b)
     (Fix x a, b) -> reduce ops (App (Let [(x, Fix x a)] a) b)
     (App a1 a2, b) -> App (App a1 a2) b
+    (Fun (Let env (Tag k)) c, b) -> do
+      let b' = case lookup k env of
+            Just a -> App (Fun (Tag k) (Tag k) `Or` a) b
+            Nothing -> b
+      reduce ops (App (Fun (Tag k) c) b')
+    (Fun (Let env (Let env' a)) c, b) ->
+      reduce ops (App (Fun (Let (env ++ env') a) c) b)
     (Fun a c, b) -> case (reduce ops a, b) of
       (Knd, Knd) -> reduce ops c
       (IntT, IntT) -> reduce ops c
@@ -343,8 +353,18 @@ reduce ops = \case
       (Num n, Num n') | n == n' -> reduce ops c
       (Tag k, Tag k') | k == k' -> reduce ops c
       (Var x, b) -> reduce ops (Let [(x, b)] c)
+      (And (Let env (Tag k)) a2, b) -> do
+        let b' = case lookup k env of
+              Just a1 -> App (App a1 a2) b
+              Nothing -> b
+        reduce ops (App (Fun (And (Tag k) a2) c) b')
+      (And (Let env (Let env' a1)) a2, b) ->
+        reduce ops (App (Fun (And (Let (env ++ env') a1) a2) c) b)
       (And a1 a2, And b1 b2) -> reduce ops (App (Fun a1 (App (Fun a2 c) b2)) b1)
       (Or a1 a2, b) -> reduce ops (App (Or (Fun a1 c) (Fun a2 c)) b)
+      (a, Or b1 b2) -> case reduce ops (App (Fun a c) b1) of
+        Err -> reduce ops (App (Fun a c) b2)
+        c -> c
       (Err, Err) -> reduce ops c
       _ -> Err
     (Or a1 a2, b) -> case reduce ops (App a1 b) of
@@ -370,6 +390,8 @@ reduce ops = \case
     Let env' a -> reduce ops (Let (env ++ env') a)
     Meta _ a -> reduce ops (Let env a)
     expr -> expr
+  Ann a _ -> reduce ops a
+  Meta _ a -> reduce ops a
   expr -> expr
 
 eval :: Ops -> Expr -> Expr
@@ -377,88 +399,11 @@ eval ops expr = case reduce ops expr of
   For x a -> For x (eval ops (Let [(x, Var x)] a))
   Fix x a -> Fix x (eval ops (Let [(x, Var x)] a))
   Fun a b -> Fun (eval ops a) (eval ops b)
-  App a b -> App a (eval ops b)
+  App a b -> App (eval ops a) (eval ops b)
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> Or (eval ops a) (eval ops b)
   Call f args -> Call f (eval ops <$> args)
   a -> a
-
--- eval :: Ops -> Env -> Expr -> Expr
--- eval _ _ Knd = Knd
--- eval _ _ IntT = IntT
--- eval _ _ NumT = NumT
--- eval _ _ (Int i) = Int i
--- eval _ _ (Num n) = Num n
--- eval ops env (Var x) = case lookup x env of
---   Just (Var x') | x == x' -> Var x
---   Just (Ann (Var x') _) | x == x' -> Var x
---   Just a -> eval ops env a
---   Nothing -> Var x
--- eval _ _ (Tag k) = Tag k
--- eval ops env (For x a) = For x (eval ops ((x, Var x) : env) a)
--- eval ops env (Fix x a) = Fix x (eval ops ((x, Var x) : env) a)
--- eval ops env (Fun a b) = Fun (eval ops env a) (eval ops env b)
--- eval ops env (App a b) = case (eval ops env a, eval ops env b) of
---   (For x a, b) -> eval ops [(x, Var x)] (App a b)
---   (Fix x a, b) | isClosed b -> eval ops [(x, Fix x a)] (App a b)
---   (Tag k, b) -> And (Tag k) b
---   (And a b, c) -> And a (And b c)
---   (Err, _) -> Err
---   (Fun a c, b) -> case match a b of
---     Just bindings -> eval ops bindings c
---     Nothing -> Err
---   (Or a1 a2, b) -> case eval ops [] (App a1 b) of
---     Err -> eval ops [] (App a2 b)
---     a | isOpen a -> Or a (App a2 b)
---     a -> a
---   (a, b) -> App a b
--- eval ops env (And a b) = And (eval ops env a) (eval ops env b)
--- eval ops env (Or a b) = Or (eval ops env a) (eval ops env b)
--- eval ops env (Ann (Tag k) ty) = Ann (Tag k) (eval ops env ty)
--- eval ops env (Ann a _) = eval ops env a
--- eval ops env (Call op args) = case (lookup op ops, map (eval ops env) args) of
---   (Just f, args) -> f args
---   (Nothing, args) -> Call op args
--- eval ops env (Meta _ a) = eval ops env a
--- eval _ _ Err = Err
-
-match :: Expr -> Expr -> Maybe [(String, Expr)]
-match IntT IntT = Just []
-match NumT NumT = Just []
-match (Int i) (Int i') | i == i' = Just []
-match (Num n) (Num n') | n == n' = Just []
-match (Var x) b = Just [(x, b)]
-match (And p q) (And a b) = match2 (p, a) (q, b)
-match (Tag k) (Tag k') | k == k' = Just []
-match (Fun p q) (Fun a b) = match2 (p, a) (q, b)
-match (Meta _ p) b = match p b
-match Err Err = Just []
-match _ _ = Nothing
-
-match2 :: (Expr, Expr) -> (Expr, Expr) -> Maybe [(String, Expr)]
-match2 (p, a) (q, b) = do
-  env1 <- match p a
-  env2 <- match q b
-  Just (env1 ++ env2)
-
-matchAll :: [Expr] -> [Expr] -> Maybe [(String, Expr)]
-matchAll [] [] = Just []
-matchAll (p : ps) (a : bs) = do
-  env1 <- match p a
-  env2 <- matchAll ps bs
-  Just (env1 ++ env2)
-matchAll _ _ = Nothing
-
--- matchArgs :: [(String, Pattern)] -> [(String, Expr)] -> Maybe [(String, Expr)]
--- matchArgs [] _ = Just []
--- matchArgs (("", p) : ps) ((_, a) : args) = do
---   env1 <- match p a
---   env2 <- matchArgs ps args
---   Just (env1 ++ env2)
--- matchArgs ((x, p) : ps) args = case lookup x args of
---   Just a ->
---     matchArgs (("", p) : ps) ((x, a) : filter (\(x', _) -> x /= x') args)
---   Nothing -> Nothing
 
 substitute :: Substitution -> Expr -> Expr
 substitute _ Knd = Knd
@@ -482,124 +427,155 @@ substitute s (Call op args) = Call op (map (substitute s) args)
 substitute s (Meta m a) = Meta m (substitute s a)
 substitute _ Err = Err
 
-unify :: Expr -> Expr -> Either TypeError (Expr, Substitution)
-unify IntT IntT = Right (IntT, [])
-unify (Int _) IntT = Right (IntT, [])
-unify IntT (Int _) = Right (IntT, [])
-unify NumT NumT = Right (NumT, [])
-unify (Num _) NumT = Right (NumT, [])
-unify NumT (Num _) = Right (NumT, [])
-unify (Int i) (Int i') | i == i' = Right (Int i, [])
-unify (Num n) (Num n') | n == n' = Right (Num n, [])
-unify (Var x) (Var x') | x == x' = Right (Var x, [])
-unify (Tag k) (Tag k') | k == k' = Right (Tag k, [])
-unify (Ann (Tag _) ty) ty' = unify ty ty'
-unify ty (Ann (Tag _) ty') = unify ty ty'
-unify (Var x) b | x `occurs` b = Left (OccursError x b)
-unify (Var x) b = Right (b, [(x, b)])
-unify a (Var x) = unify (Var x) a
-unify (Fun a1 b1) (Fun a2 b2) = do
-  ((ta, tb), s) <- unify2 (a1, a2) (b1, b2)
-  Right (Fun ta tb, s)
-unify (Or a1 a2) b = case unify a1 b of
-  Left _ -> case unify a2 b of
-    Left _ -> Left (TypeMismatch (Or a1 a2) b)
-    Right (a, s) -> Right (a, s)
-  Right (a, s1) -> case unify a2 b of
-    Left _ -> Right (a, s1)
-    Right (b, s2) -> case unify (substitute s2 a) b of
+unify :: Ops -> Env -> Expr -> Expr -> Either TypeError (Expr, Substitution)
+unify ops env a b = case (a, b) of
+  (IntT, IntT) -> Right (IntT, [])
+  (Int _, IntT) -> Right (IntT, [])
+  (IntT, Int _) -> Right (IntT, [])
+  (NumT, NumT) -> Right (NumT, [])
+  (Num _, NumT) -> Right (NumT, [])
+  (NumT, Num _) -> Right (NumT, [])
+  (Int i, Int i') | i == i' -> Right (Int i, [])
+  (Num n, Num n') | n == n' -> Right (Num n, [])
+  (Var x, Var x') | x == x' -> Right (Var x, [])
+  (Tag k, Tag k') | k == k' -> Right (Tag k, [])
+  (Var x, b) | x `occurs` b -> Left (OccursError x b)
+  (Var x, b) -> Right (b, [(x, b)])
+  (a, Var x) -> unify ops env (Var x) a
+  (Fix _ a, b) -> unify ops env a b
+  (a, Fix _ b) -> unify ops env a b
+  (Fun a1 b1, Fun a2 b2) -> do
+    ((ta, tb), s) <- unify2 ops env (a1, a2) (b1, b2)
+    Right (Fun ta tb, s)
+  (And a1 b1, And a2 b2) -> do
+    ((a, b), s) <- unify2 ops env (a1, a2) (b1, b2)
+    Right (And a b, s)
+  (Or a1 a2, b) -> case unify ops env a1 b of
+    Left _ -> case unify ops env a2 b of
+      Left _ -> Left (TypeMismatch (Or a1 a2) b)
+      Right (a, s) -> Right (a, s)
+    Right (a, s1) -> case unify ops env a2 b of
       Left _ -> Right (a, s1)
-      Right (c, s3) -> Right (c, s3 `compose` s2 `compose` s1)
-unify a (Or b1 b2) = case unify a b1 of
-  Left _ -> case unify a b2 of
-    Left _ -> Left (TypeMismatch a (Or b1 b2))
-    Right (a, s) -> Right (a, s)
-  Right (a, s1) -> case unify a b2 of
-    Left _ -> Right (a, s1)
-    Right (b, s2) -> case unify (substitute s2 a) b of
-      Left _ -> Right (b, s1)
-      Right (c, s3) -> Right (c, s3 `compose` s2 `compose` s1)
-unify (App a1 b1) (App a2 b2) = do
-  ((ta, tb), s) <- unify2 (a1, a2) (b1, b2)
-  Right (App ta tb, s)
-unify (Call op args) (Call op' args') | op == op' = do
-  (args, s) <- unifyAll args args'
-  Right (Call op args, s)
-unify (Meta _ a) b = unify a b
-unify a (Meta _ b) = unify a b
-unify a b = Left (TypeMismatch a b)
+      Right (b, s2) -> case unify ops env (substitute s2 a) b of
+        Left _ -> Right (a, s1)
+        Right (c, s3) -> Right (c, s3 `compose` s2 `compose` s1)
+  (a, Or b1 b2) -> case unify ops env a b1 of
+    Left _ -> case unify ops env a b2 of
+      Left _ -> Left (TypeMismatch a (Or b1 b2))
+      Right (a, s) -> Right (a, s)
+    Right (a, s1) -> case unify ops env a b2 of
+      Left _ -> Right (a, s1)
+      Right (b, s2) -> case unify ops env (substitute s2 a) b of
+        Left _ -> Right (b, s1)
+        Right (c, s3) -> Right (c, s3 `compose` s2 `compose` s1)
+  (Call op args, Call op' args') | op == op' -> do
+    (args, s) <- unifyAll ops env args args'
+    Right (Call op args, s)
+  (Meta _ a, b) -> unify ops env a b
+  (a, Meta _ b) -> unify ops env a b
+  (a, b) -> Left (TypeMismatch a b)
 
-unify2 :: (Expr, Expr) -> (Expr, Expr) -> Either TypeError ((Expr, Expr), Substitution)
-unify2 (a1, a2) (b1, b2) = do
-  (ta, s1) <- unify a1 a2
-  (tb, s2) <- unify (substitute s1 b1) (substitute s1 b2)
+unify2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> Either TypeError ((Expr, Expr), Substitution)
+unify2 ops env (a1, a2) (b1, b2) = do
+  (ta, s1) <- unify ops env a1 a2
+  (tb, s2) <- unify ops env (substitute s1 b1) (substitute s1 b2)
   Right ((substitute s2 ta, tb), s2 `compose` s1)
 
-unifyAll :: [Expr] -> [Expr] -> Either TypeError ([Expr], Substitution)
-unifyAll (a : bs) (a' : bs') = do
-  (ta, s1) <- unify a a'
-  (tbs, s2) <- unifyAll (map (substitute s1) bs) (map (substitute s1) bs')
+unifyAll :: Ops -> Env -> [Expr] -> [Expr] -> Either TypeError ([Expr], Substitution)
+unifyAll ops env (a : bs) (a' : bs') = do
+  (ta, s1) <- unify ops env a a'
+  (tbs, s2) <- unifyAll ops env (map (substitute s1) bs) (map (substitute s1) bs')
   Right (ta : tbs, s2 `compose` s1)
-unifyAll _ _ = Right ([], [])
+unifyAll _ _ _ _ = Right ([], [])
+
+resolveType :: Ops -> Env -> Expr -> Maybe Expr
+resolveType ops env typ = do
+  t <- case typ of
+    Tag k -> lookup k env
+    And (Tag k) b -> do
+      t <- lookup k env
+      Just (App t b)
+    _ -> Nothing
+  Just (eval ops (Let env t))
 
 check :: Ops -> Env -> Expr -> Expr -> Either TypeError (Expr, Substitution)
-check ops env a (Var x) = do
-  (t, s) <- infer ops env a
-  Right (t, [(x, t)] `compose` s)
-check ops env a (For x t) = do
-  let (t', vars) = instantiate env (For x t)
-  check ops (vars ++ env) a t'
-check ops env a (Or t1 t2) = case check ops env a t1 of
-  Left _ -> case check ops env a t2 of
-    Left _ -> Left (TypeCheck a (Or t1 t2))
-    Right (t, s) -> Right (t, s)
-  Right (t1, s1) -> case check ops (s1 `compose` env) a t2 of
-    Left _ -> Right (t1, s1)
-    Right (t2, s2) -> Right (substitute s2 t1 `Or` t2, s2 `compose` s1)
-check _ _ Knd Knd = Right (Knd, [])
-check _ _ IntT Knd = Right (Knd, [])
-check _ _ IntT IntT = Right (IntT, [])
-check _ _ NumT Knd = Right (Knd, [])
-check _ _ NumT NumT = Right (NumT, [])
-check _ _ (Int _) IntT = Right (IntT, [])
-check _ _ (Int i) (Int i') | i == i' = Right (Int i, [])
-check _ _ (Num _) NumT = Right (NumT, [])
-check _ _ (Num n) (Num n') | n == n' = Right (Num n, [])
-check ops env (Var x) t = case lookup x env of
-  Just (Var x') | x == x' -> Right (t, [(x, Ann (Var x) t)])
-  Just (Ann (Var x') ty) | x == x' -> do
-    let (ty', vars) = instantiate env ty
-    (t', s) <- unify t ty'
-    Right (t', s `compose` vars)
-  Just a -> check ops env a t
-  Nothing -> Left (UndefinedVar x)
-check ops env (Tag k) t = case lookup k env of
-  Just a -> check ops env a t
-  Nothing -> Right (t, [])
-check ops env (Or a b) t = do
-  ((ta, tb), s1) <- check2 ops env (a, t) (b, t)
-  case unify ta tb of
-    Left _ -> Right (Or ta tb, s1)
-    Right (t, s2) -> Right (t, s2 `compose` s1)
-check ops env (Ann a ty) t = do
-  (ta, s1) <- check ops env a ty
-  (t', s2) <- unify ta (substitute s1 t)
-  Right (t', s2 `compose` s1)
-check ops env (For x a) t = check ops ((x, Var x) : env) a t
-check ops env (Fix x a) t = check ops ((x, Var x) : env) a t
-check ops env (Fun a b) (Fun ta tb) = do
-  ((ta', tb'), s) <- check2 ops env (a, ta) (b, tb)
-  Right (Fun ta' tb', s)
-check ops env (App a b) t = do
-  (tb, s1) <- infer ops env b
-  (_, s2) <- check ops (s1 `compose` env) a (Fun tb t)
-  Right (substitute (s2 `compose` s1) t, s2 `compose` s1)
-check ops env (Call op args) t = case lookup op env of
-  Just a -> check ops env (app a args) t
-  Nothing -> Right (t, []) -- TODO: check args
-check ops env (Meta _ a) t = check ops env a t
-check _ _ Err Err = Right (Err, [])
-check _ _ a t = Left (TypeCheck a t)
+-- check ops env a (Var x) = do
+--   (t, s) <- infer ops env a
+--   Right (t, [(x, t)] `compose` s)
+-- check ops env a (For x t) = do
+--   let (t', vars) = instantiate env (For x t)
+--   check ops (vars ++ env) a t'
+-- check ops env a (Or t1 t2) = case check ops env a t1 of
+--   Left _ -> case check ops env a t2 of
+--     Left _ -> Left (TypeCheck a (Or t1 t2))
+--     Right (t, s) -> Right (t, s)
+--   Right (t1, s1) -> case check ops (s1 `compose` env) a t2 of
+--     Left _ -> Right (t1, s1)
+--     Right (t2, s2) -> Right (substitute s2 t1 `Or` t2, s2 `compose` s1)
+-- check _ _ Knd Knd = Right (Knd, [])
+-- check _ _ IntT Knd = Right (Knd, [])
+-- check _ _ IntT IntT = Right (IntT, [])
+-- check _ _ NumT Knd = Right (Knd, [])
+-- check _ _ NumT NumT = Right (NumT, [])
+-- check _ _ (Int _) IntT = Right (IntT, [])
+-- check _ _ (Int i) (Int i') | i == i' = Right (Int i, [])
+-- check _ _ (Num _) NumT = Right (NumT, [])
+-- check _ _ (Num n) (Num n') | n == n' = Right (Num n, [])
+-- check ops env (Var x) t = case lookup x env of
+--   Just (Var x') | x == x' -> Right (t, [(x, Ann (Var x) t)])
+--   Just (Ann (Var x') ty) | x == x' -> do
+--     let (ty', vars) = instantiate env ty
+--     (t', s) <- unify t ty'
+--     Right (t', s `compose` vars)
+--   Just a -> check ops env a t
+--   Nothing -> Left (UndefinedVar x)
+-- -- check ops env (Tag k) t = case lookup k env of
+-- --   Just a -> check ops env a t
+-- --   Nothing -> Right (t, [])
+-- check ops env (Or a b) t = do
+--   ((ta, tb), s1) <- check2 ops env (a, t) (b, t)
+--   case unify ta tb of
+--     Left _ -> Right (Or ta tb, s1)
+--     Right (t, s2) -> Right (t, s2 `compose` s1)
+-- check ops env (Ann a ty) t = do
+--   (ta, s1) <- check ops env a ty
+--   (t', s2) <- unify ta (substitute s1 t)
+--   Right (t', s2 `compose` s1)
+-- check ops env (For x a) t = check ops ((x, Var x) : env) a t
+-- check ops env (Fix x a) t = check ops ((x, Var x) : env) a t
+-- check ops env (Fun a b) (Fun ta tb) = do
+--   ((ta', tb'), s) <- check2 ops env (a, ta) (b, tb)
+--   Right (Fun ta' tb', s)
+-- check ops env (Call op args) t = case lookup op env of
+--   Just a -> check ops env (app a args) t
+--   Nothing -> Right (t, []) -- TODO: check args
+-- check ops env (Meta _ a) t = check ops env a t
+-- check _ _ Err Err = Right (Err, [])
+check ops env a t = do
+  (ta, s1) <- infer ops env a
+  -- let t' = case resolveType ops env t of
+  --       Just def -> eval ops (Let env (App def ta))
+  --       Nothing -> ta
+  -- error $ intercalate "\n" [show a, show ta, show (resolveType ops env t), show t']
+  -- (typ, s2) <- unify ops env t' t
+  (typ, s2) <- unify ops env ta t
+  Right (typ, s2 `compose` s1)
+
+-- subtype :: Ops -> Env -> Expr -> Expr -> Either TypeError (Expr, Substitution)
+-- subtype ops env a b = case unify ops env a t of
+--   Right (t, s) -> Right (t, s)
+--   Left _ -> case (a, b) of
+
+-- (ta, s1) <- infer ops env a
+-- case resolveType ops env t of
+--   Just def -> do
+--     let t' = eval ops (Let (s1 `compose` env) (App def ta))
+--     -- error $ intercalate "\n" [show t']
+--     (ty, s2) <- check ops (s1 `compose` env) a t'
+--     Right (ty, s2 `compose` s1)
+--   Nothing -> do
+--     (ty, s2) <- unify ops env ta (substitute s1 t)
+--     Right (ty, s2 `compose` s1)
 
 check2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> Either TypeError ((Expr, Expr), Substitution)
 check2 ops env (a, ta) (b, tb) = do
@@ -609,10 +585,10 @@ check2 ops env (a, ta) (b, tb) = do
 
 infer :: Ops -> Env -> Expr -> Either TypeError (Expr, Substitution)
 infer _ _ Knd = Right (Knd, [])
-infer _ _ IntT = Right (IntT `Or` Knd, [])
-infer _ _ NumT = Right (NumT `Or` Knd, [])
-infer _ _ (Int i) = Right (Int i `Or` IntT, [])
-infer _ _ (Num n) = Right (Num n `Or` NumT, [])
+infer _ _ IntT = Right (Knd, [])
+infer _ _ NumT = Right (Knd, [])
+infer _ _ (Int _) = Right (IntT, [])
+infer _ _ (Num _) = Right (NumT, [])
 infer ops env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> do
     let y = newName (map fst env) (x ++ "T")
@@ -626,7 +602,7 @@ infer ops env (Tag k) = case lookup k env of
   Nothing -> Right (Tag k, [])
 infer ops env (Or a b) = do
   ((ta, tb), s1) <- infer2 ops env a b
-  case unify ta tb of
+  case unify ops env ta tb of
     Left _ -> Right (Or ta tb, s1)
     Right (t, s2) -> Right (t, s2 `compose` s1)
 infer ops env (And a b) = do
@@ -634,7 +610,7 @@ infer ops env (And a b) = do
   Right (And ta tb, s)
 infer ops env (Ann (Tag k) ty) = do
   let (t, vars) = instantiate env ty
-  (t', s) <- unify (Ann (Tag k) t) (eval ops (Let env t))
+  (t', s) <- unify ops env (Ann (Tag k) t) (eval ops (Let env t))
   Right (t', s `compose` vars)
 infer ops env (Ann a ty) = check ops env a ty
 infer ops env (For x a) = infer ops ((x, Var x) : env) a
@@ -646,16 +622,16 @@ infer ops env (Fun a b) = do
   Right (Fun ta tb, s)
 infer ops env (App a b) = do
   ((ta, tb), s1) <- infer2 ops env a b
-  case ta of
-    Var x -> do
+  case instantiate env ta of
+    (Var x, s2) -> do
       let y = newName (map fst (s1 `compose` env)) x
-      (t, s2) <- infer ops (s1 `compose` env) (App (Ann a (For y $ Fun tb (Var y))) b)
-      Right (t, (y, t) : s2 `compose` s1)
-    Tag k -> Right (Tag k, s1)
-    Fun t1 t2 -> do
-      (_, s2) <- unify tb t1
-      Right (substitute s2 t2, s2 `compose` s1)
-    ta -> Left (NotAFunction a ta)
+      (t, s3) <- infer ops (s1 `compose` env) (App (Ann a (For y $ Fun tb (Var y))) b)
+      Right (t, (y, t) : s3 `compose` s2 `compose` s1)
+    (Fun t1 t2, s2) -> do
+      (_, s3) <- unify ops env tb t1
+      Right (substitute s3 t2, s3 `compose` s2 `compose` s1)
+    (ta, _) -> Left (NotAFunction a ta)
+infer ops env (Let env' a) = infer ops (env' ++ env) a
 infer ops env (Call op args) = case lookup op env of
   Just a -> infer ops env (app a args)
   Nothing -> do
