@@ -332,15 +332,15 @@ isOpen = not . isClosed
 reduce :: Ops -> Expr -> Expr
 reduce ops = \case
   App a b -> case (reduce ops a, reduce ops b) of
-    (a, Var x) -> App a (Var x)
-    (a, App b1 b2) -> App a (App b1 b2)
     (Var x, b) -> App (Var x) b
     (For x a, b) -> reduce ops (App (Let [(x, Var x)] a) b)
+    (Fix x a, b@Var {}) -> App (Fix x a) b
+    (Fix x a, b@App {}) -> App (Fix x a) b
     (Fix x a, b) -> reduce ops (App (Let [(x, Fix x a)] a) b)
     (App a1 a2, b) -> App (App a1 a2) b
     (Fun (Let env (Tag k)) c, b) -> do
       let b' = case lookup k env of
-            Just a -> App (Fun (Tag k) (Tag k) `Or` a) b
+            Just a -> App (Fun (Tag k) (Tag k) `Or` Let env a) b
             Nothing -> b
       reduce ops (App (Fun (Tag k) c) b')
     (Fun (Let env (Let env' a)) c, b) ->
@@ -355,7 +355,7 @@ reduce ops = \case
       (Var x, b) -> reduce ops (Let [(x, b)] c)
       (And (Let env (Tag k)) a2, b) -> do
         let b' = case lookup k env of
-              Just a1 -> App (App a1 a2) b
+              Just a1 -> App (App (Let env a1) a2) b
               Nothing -> b
         reduce ops (App (Fun (And (Tag k) a2) c) b')
       (And (Let env (Let env' a1)) a2, b) ->

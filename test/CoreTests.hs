@@ -386,8 +386,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
             [ For "n" (Fun (cons a (vec n a)) (vec (n `add` i1) a)),
               Fun nil (vec i0 a)
             ]
-    let env = [("Vec", lam [And n a] (vecDef a)), ("Bool", Or (Fun (Tag "True") (Tag "Bool")) (Fun (Tag "False") (Tag "Bool")))]
-
+    let env = [("Vec", lam [And n a] (vecDef a))] -- , ("Bool", Or (Fun (Tag "True") (Tag "Bool")) (Fun (Tag "False") (Tag "Bool")))]
     let (x, y) = (Int 42, Num 3.14)
     let check' a t = fmap fst (check ops env a t)
     -- check' nil (vec i0 IntT) `shouldBe` Right (vec i0 IntT)
@@ -397,7 +396,16 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- check' (cons x nil) (vec i0 IntT) `shouldBe` Right Err
     -- eval ops (Let env $ App (Fun (Tag "Bool") (Tag "Pass")) (Tag "True")) `shouldBe` Var "TODO"
     -- eval ops (Let env (vec i1 IntT)) `shouldBe` vec i0 IntT
-    eval ops (Let env $ App (Fun (vec i0 IntT) (Tag "OK")) (cons IntT nil)) `shouldBe` Var "TODO"
+    -- eval ops (Let env $ App (Fun (vec i0 IntT) (Tag "OK")) (nil)) `shouldBe` Var "TODO"
+    -- let nat = And (Tag "Nat")
+    -- let zero = Tag "Zero"
+    -- let succ = And (Tag "Succ")
+    -- let env = [("Nat", lam [Var "_"] (Fun zero (nat (Int 0)) `Or` For "n" (Fun (succ (nat n)) (nat (n `add` i1)))))]
+    -- eval ops (Let env $ App (Fun (nat (Int 0)) (Tag "OK")) (succ zero)) `shouldBe` Var "TODO"
+    eval ops (Let env $ App (Fun (vec i0 IntT) (Tag "Ok")) nil) `shouldBe` Tag "Ok"
+    eval ops (Let env $ App (Fun (vec i1 IntT) (Tag "Ok")) nil) `shouldBe` Err
+    eval ops (Let env $ App (Fun (vec i1 IntT) (Tag "Ok")) (cons IntT nil)) `shouldBe` Tag "Ok"
+    eval ops (Let env $ App (Fun (vec i2 IntT) (Tag "Ok")) (cons IntT nil)) `shouldBe` Err
     -- eval ops (Let env $ App (vec i0 IntT) (cons IntT nil)) `shouldBe` Var "TODO"
     -- eval ops (App (Let env $ vec i0 IntT) (Let env $ cons IntT nil)) `shouldBe` Var "TODO"
     -- eval ops (Let env $ App (vec i0 IntT) (cons IntT nil)) `shouldBe` Var "TODO"
