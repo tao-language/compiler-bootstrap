@@ -386,42 +386,15 @@ run = describe "--==☯️ Core language ☯️==--" $ do
             [ For "n" (Fun (cons a (vec n a)) (vec (n `add` i1) a)),
               Fun nil (vec i0 a)
             ]
-    let env = [("Vec", lam [And n a] (vecDef a))] -- , ("Bool", Or (Fun (Tag "True") (Tag "Bool")) (Fun (Tag "False") (Tag "Bool")))]
-    let (x, y) = (Int 42, Num 3.14)
-    let check' a t = fmap fst (check ops env a t)
-    -- check' nil (vec i0 IntT) `shouldBe` Right (vec i0 IntT)
-    -- check' nil (vec i1 IntT) `shouldBe` Left (TypeMismatch i0 i1)
-    -- check' (cons x nil) (vec i0 IntT) `shouldBe` Left (TypeMismatch i0 i1)
-    -- eval ops (Let env $ App (vec i1 IntT) nil) `shouldBe` Num 0.0
-    -- check' (cons x nil) (vec i0 IntT) `shouldBe` Right Err
-    -- eval ops (Let env $ App (Fun (Tag "Bool") (Tag "Pass")) (Tag "True")) `shouldBe` Var "TODO"
-    -- eval ops (Let env (vec i1 IntT)) `shouldBe` vec i0 IntT
-    -- eval ops (Let env $ App (Fun (vec i0 IntT) (Tag "OK")) (nil)) `shouldBe` Var "TODO"
-    -- let nat = And (Tag "Nat")
-    -- let zero = Tag "Zero"
-    -- let succ = And (Tag "Succ")
-    -- let env = [("Nat", lam [Var "_"] (Fun zero (nat (Int 0)) `Or` For "n" (Fun (succ (nat n)) (nat (n `add` i1)))))]
-    -- eval ops (Let env $ App (Fun (nat (Int 0)) (Tag "OK")) (succ zero)) `shouldBe` Var "TODO"
-    eval ops (Let env $ App (Fun (vec i0 IntT) (Tag "Ok")) nil) `shouldBe` Tag "Ok"
-    eval ops (Let env $ App (Fun (vec i1 IntT) (Tag "Ok")) nil) `shouldBe` Err
-    eval ops (Let env $ App (Fun (vec i1 IntT) (Tag "Ok")) (cons IntT nil)) `shouldBe` Tag "Ok"
-    eval ops (Let env $ App (Fun (vec i2 IntT) (Tag "Ok")) (cons IntT nil)) `shouldBe` Err
-    -- eval ops (Let env $ App (vec i0 IntT) (cons IntT nil)) `shouldBe` Var "TODO"
-    -- eval ops (App (Let env $ vec i0 IntT) (Let env $ cons IntT nil)) `shouldBe` Var "TODO"
-    -- eval ops (Let env $ App (vec i0 IntT) (cons IntT nil)) `shouldBe` Var "TODO"
-    -- eval ops (Let env $ App (vec i0 IntT) (cons IntT nil)) `shouldBe` Var "TODO"
+    let env = [("Vec", lam [And n a] (vecDef a))]
 
     let infer' a = fmap fst (infer ops env a)
-    -- infer' (Tag "Nil") `shouldBe` Right (Tag "Nil")
-    -- infer' (Tag "Cons") `shouldBe` Right (Tag "Cons")
-    -- infer' (cons (Num 1.1) nil) `shouldBe` Right (cons (Num 1.1 `Or` NumT) nil)
-    -- infer' (Ann nil (vec i0 NumT)) `shouldBe` Right (vec i0 NumT)
-    -- infer' (Ann nil (vec i1 NumT)) `shouldBe` Left (TypeMismatch (Ann nil (vec i1 NumT)) (vecDef NumT))
-    -- infer' (Ann (cons (Num 1.1) nil) (vec i1 NumT)) `shouldBe` Right (vec i1 NumT)
-    -- infer' (Ann (cons [Num 1.1, cons [Num 2.2, nil]]) (vec [i0, NumT])) `shouldBe` Left (TypeMismatch i2 i0)
-    -- infer' (Ann (cons [Num 1.1, cons [Num 2.2, nil]]) (vec [i2, IntT])) `shouldBe` Left (TypeMismatch NumT IntT)
-    -- infer' (Ann (cons [Num 1.1, cons [Num 2.2, nil]]) (vec [i2, NumT])) `shouldBe` Right (vec [i2, NumT])
-    True `shouldBe` True
+    infer' (Tag "Nil") `shouldBe` Right (Tag "Nil")
+    infer' (cons (Num 1.1) nil) `shouldBe` Right (cons NumT nil)
+    infer' (Ann nil (vec i0 NumT)) `shouldBe` Right (vec i0 NumT)
+    infer' (Ann nil (vec i1 NumT)) `shouldBe` Left (TypeMismatch i0 i1)
+    infer' (Ann (cons (Num 1.1) nil) (vec i1 NumT)) `shouldBe` Right (vec i1 NumT)
+    infer' (Ann (cons (Num 1.1) (cons (Num 2.2) nil)) (vec i0 NumT)) `shouldBe` Left (TypeMismatch i2 i0)
 
 -- it "☯ checkTypes" $ do
 --   let env =
