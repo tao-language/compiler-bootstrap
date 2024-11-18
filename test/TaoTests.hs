@@ -94,19 +94,19 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower/lift Expr Trait -- literal" $ do
     let expr = Trait (Int 1) "y"
-    let term = C.app (C.Var ".y") [C.intT 1, C.Int 1]
+    let term = C.app (C.Var ".y") [C.IntT, C.Int 1]
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
   it "☯ lower/lift Expr Trait -- variable" $ do
     let expr = Trait x "y"
-    let term = C.app (C.Var ".y") [C.intT 1, x']
+    let term = C.app (C.Var ".y") [C.IntT, x']
     lower [("x", C.Int 1)] expr `shouldBe` term
     lift term `shouldBe` expr
 
   it "☯ lower/lift Expr Trait -- property" $ do
     let expr = Trait x "y"
-    let term = C.app (C.Var ".y") [C.tag "~y,z" [C.intT 1, C.intT 2], x']
+    let term = C.app (C.Var ".y") [C.tag "~y,z" [C.IntT, C.IntT], x']
     lower [("x", C.tag "~y,z" [C.Int 1, C.Int 2])] expr `shouldBe` term
     lift term `shouldBe` expr
 
@@ -173,7 +173,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   -- it "☯ lower/lift Expr Bind" $ do
   --   let expr = Bind ([], xP, y) z
-  --   let term = C.app (C.Var ".<-") [C.intT 1, y', C.Fun x' z']
+  --   let term = C.app (C.Var ".<-") [C.IntT, y', C.Fun x' z']
   --   lower [("y", C.Int 1)] expr `shouldBe` term
   --   lift term `shouldBe` expr
 

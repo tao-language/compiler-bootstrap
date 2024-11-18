@@ -497,8 +497,9 @@ instance DropMeta Expr where
   dropMeta = \case
     Int i -> Int i
     Var x -> Var x
-    Meta _ a -> dropMeta a
+    Let (x, a) b -> Let (x, dropMeta a) (dropMeta b)
     Match cases -> Match (map dropMeta cases)
+    Meta _ a -> dropMeta a
     expr -> error $ "TODO: dropMeta " ++ show expr
 
 instance DropMeta Case where

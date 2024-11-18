@@ -278,6 +278,14 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   --   eval' (App f (Int 4)) `shouldBe` Int 3
   --   eval' (App f (Int 5)) `shouldBe` Int 5
 
+  it "☯ eval type alias" $ do
+    let env = [("T0", Fun (Int 0) Knd), ("T1", lam [x] (Fun (Int 1) x))]
+    let eval' x = eval ops (Let env x)
+    eval' (App (Tag "A") (Tag "A")) `shouldBe` Tag "A"
+    eval' (App (And (Tag "A") IntT) (And (Tag "A") IntT)) `shouldBe` And (Tag "A") IntT
+    eval' (App (Tag "T0") (Int 0)) `shouldBe` Knd
+    eval' (App (And (Tag "T1") Knd) (Int 1)) `shouldBe` Knd
+
   it "☯ unify" $ do
     True `shouldBe` True
 
@@ -298,12 +306,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer [] env (Var "a") `shouldBe` Right (IntT, [])
     infer [] env (Var "c") `shouldBe` Right (a1, [("a1", a1)])
 
-  it "☯ infer Ann" $ do
+  it "☯ infer-Ann" $ do
     let env = []
     infer [] env (Ann i1 IntT) `shouldBe` Right (IntT, [])
     infer [] env (Ann i1 NumT) `shouldBe` Left (TypeMismatch IntT NumT)
-    -- infer [] env (Ann i1 (for ["a"] a)) `shouldBe` Right (intT 1, [("a", intT 1)])
-    True `shouldBe` True
+    infer [] env (Ann i1 (For "a" a)) `shouldBe` Right (IntT, [("a", IntT)])
 
   it "☯ infer Ann Tag" $ do
     let env = [("T", Tag "A" `Or` Tag "B")]
