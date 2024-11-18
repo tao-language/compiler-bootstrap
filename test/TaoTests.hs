@@ -28,12 +28,6 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lambdaOf "$" (Match [Case [x] Nothing i1, Case [y] Nothing i2]) `shouldBe` (["$1"], app (Match [Case [x] Nothing i1, Case [y] Nothing i2]) [Var "$1"])
     lambdaOf "$" (Match [Case [x, y] Nothing i1, Case [x, z] Nothing i2]) `shouldBe` (["x", "$1"], matchArgs [Var "$1"] [Case [y] Nothing i1, Case [z] Nothing i2])
 
-  it "☯ lower/lift Expr Type" $ do
-    let expr = Tag "Type" []
-    let term = C.Knd
-    lower [] expr `shouldBe` term
-    lift term `shouldBe` expr
-
   it "☯ lower/lift Expr IntType" $ do
     let expr = Tag "Int" []
     let term = C.IntT

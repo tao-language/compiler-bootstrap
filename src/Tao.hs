@@ -11,7 +11,10 @@ import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import System.FilePath (takeBaseName)
 
 data Expr
-  = Int Int
+  = Any
+  | IntType
+  | NumType
+  | Int Int
   | Num Double
   | Var String
   | Tag String [Expr]
@@ -270,7 +273,6 @@ instance Lower Expr C.Expr where
   lower _ (Num n) = C.Num n
   lower _ (Var x) = C.Var x
   lower env (Tag k args)
-    | Tag k args == kind = C.Knd
     | Tag k args == intT = C.IntT
     | Tag k args == numT = C.NumT
     | otherwise = C.tag k (map (lower env) args)
@@ -370,7 +372,6 @@ class Lift a b where
 
 instance Lift C.Expr Expr where
   lift :: C.Expr -> Expr
-  lift C.Knd = kind
   lift C.IntT = intT
   lift C.NumT = numT
   lift (C.Int i) = Int i

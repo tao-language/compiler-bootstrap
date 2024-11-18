@@ -16,8 +16,7 @@ import Stdlib (replace, replaceString)
 -- https://mroman42.github.io/mikrokosmos/tutorial.html
 
 data Expr
-  = Knd
-  | IntT
+  = IntT
   | NumT
   | Int Int
   | Num Double
@@ -73,7 +72,6 @@ data PatternError
 instance Show Expr where
   show :: Expr -> String
   show expr = case expr of
-    Knd -> "!Knd"
     IntT -> "!IntT"
     NumT -> "!NumT"
     Int i -> show i
@@ -130,7 +128,6 @@ instance Show Expr where
 --     Call op [a] -> prefix 8 op a
 --     App a b -> infixL 8 a " " b
 --     Err -> atom 12 "!error"
---     Knd -> atom 12 "!Kind"
 --     IntT -> atom 12 "!Int"
 --     NumT -> atom 12 "!Num"
 --     Int i -> atom 12 (show i)
@@ -274,7 +271,6 @@ class FreeVars a where
 
 instance FreeVars Expr where
   freeVars :: Expr -> [String]
-  freeVars Knd = []
   freeVars IntT = []
   freeVars NumT = []
   freeVars (Int _) = []
@@ -350,7 +346,6 @@ reduce ops = \case
     (Fun (Let env (Let env' a)) c, b) ->
       reduce ops (App (Fun (Let (env ++ env') a) c) b)
     (Fun a c, b) -> case (reduce ops a, b) of
-      (Knd, Knd) -> reduce ops c
       (IntT, IntT) -> reduce ops c
       (NumT, NumT) -> reduce ops c
       (Int i, Int i') | i == i' -> reduce ops c
@@ -408,7 +403,6 @@ eval ops expr = case reduce ops expr of
   a -> a
 
 substitute :: Substitution -> Expr -> Expr
-substitute _ Knd = Knd
 substitute _ IntT = IntT
 substitute _ NumT = NumT
 substitute _ (Int i) = Int i
@@ -499,9 +493,8 @@ unifyAll (a : bs) (a' : bs') = do
 unifyAll _ _ = Right ([], [])
 
 infer :: Ops -> Env -> Expr -> Either TypeError (Expr, Substitution)
-infer _ _ Knd = Right (Knd, [])
-infer _ _ IntT = Right (Knd, [])
-infer _ _ NumT = Right (Knd, [])
+infer _ _ IntT = Right (IntT, [])
+infer _ _ NumT = Right (NumT, [])
 infer _ _ (Int _) = Right (IntT, [])
 infer _ _ (Num _) = Right (NumT, [])
 infer ops env (Var x) = case lookup x env of
@@ -619,7 +612,6 @@ class DropMeta a where
 
 instance DropMeta Expr where
   dropMeta :: Expr -> Expr
-  dropMeta Knd = Knd
   dropMeta IntT = IntT
   dropMeta NumT = NumT
   dropMeta (Int i) = Int i
@@ -681,7 +673,6 @@ parseExpr =
       do
         name <- parseName
         let expr = case name of
-              "@Knd" -> Knd
               "@IntT" -> IntT
               "@NumT" -> NumT
               "@Err" -> Err
