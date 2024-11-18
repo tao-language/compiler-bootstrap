@@ -13,8 +13,6 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   let loc row col = C.Location sourceName (row, col)
   let expr row col = meta [loc row col]
   let var row col x = expr row col (Var x)
-  let pat row col = PMeta (loc row col)
-  let pvar row col x = pat row col (PVar x)
 
   let parse' :: Parser a -> String -> Either ([ParserContext], String) (a, String)
       parse' parser src = case P.parse sourceName parser src of
@@ -160,13 +158,13 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parsePattern" $ do
     let p = parse' parsePattern
-    p "_ y" `shouldBe` Right (pat 1 1 PAny, "y")
-    p "42 y" `shouldBe` Right (pat 1 1 (PInt 42), "y")
-    p "3.14 y" `shouldBe` Right (pat 1 1 (PNum 3.14), "y")
-    p "x y" `shouldBe` Right (pvar 1 1 "x", "y")
+    p "_ y" `shouldBe` Right (var 1 1 "_", "y")
+    p "42 y" `shouldBe` Right (expr 1 1 (Int 42), "y")
+    p "3.14 y" `shouldBe` Right (expr 1 1 (Num 3.14), "y")
+    p "x y" `shouldBe` Right (var 1 1 "x", "y")
     -- PType [String]
-    p "A" `shouldBe` Right (pat 1 1 (PTag "A" []), "")
-    -- p "A y" `shouldBe` Right (pat 1 1 (pTag "A" [pvar 1 3 "y"]), "")
+    p "A" `shouldBe` Right (expr 1 1 (Tag "A" []), "")
+    -- p "A y" `shouldBe` Right (expr 1 1 (pTag "A" [var 1 3 "y"]), "")
     -- PRecord [(String, Pattern)]
     -- PTag String [Pattern]
     -- PFun Pattern Pattern
@@ -180,17 +178,17 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     let p = parse' parseCase
     p "%" `shouldBe` Left ([], "%")
     p "=> y;" `shouldBe` Left ([], "=> y;")
-    p "x => y;" `shouldBe` Right (Case [pvar 1 1 "x"] Nothing (var 1 6 "y"), "")
-    p "x, y => z;" `shouldBe` Right (Case [pvar 1 1 "x", pvar 1 4 "y"] Nothing (var 1 9 "z"), "")
-    p "x if y => z;" `shouldBe` Right (Case [pvar 1 1 "x"] (Just $ var 1 6 "y") (var 1 11 "z"), "")
+    p "x => y;" `shouldBe` Right (Case [var 1 1 "x"] Nothing (var 1 6 "y"), "")
+    p "x, y => z;" `shouldBe` Right (Case [var 1 1 "x", var 1 4 "y"] Nothing (var 1 9 "z"), "")
+    p "x if y => z;" `shouldBe` Right (Case [var 1 1 "x"] (Just $ var 1 6 "y") (var 1 11 "z"), "")
 
   it "☯ parseMatch" $ do
     let p = parse' parseMatch
     p "match" `shouldBe` Left ([CMatch], "")
     p "match; x => y" `shouldBe` Left ([CMatch], "; x => y")
-    p "match a\nx => y" `shouldBe` Right (match [var 1 7 "a"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y")], "")
-    p "match a, b\nx => y" `shouldBe` Right (match [var 1 7 "a", var 1 10 "b"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y")], "")
-    p "match a\nx => y\na => b" `shouldBe` Right (match [var 1 7 "a"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y"), Case [pvar 3 1 "a"] Nothing (var 3 6 "b")], "")
+    p "match a\nx => y" `shouldBe` Right (matchArgs [var 1 7 "a"] [Case [var 2 1 "x"] Nothing (var 2 6 "y")], "")
+    p "match a, b\nx => y" `shouldBe` Right (matchArgs [var 1 7 "a", var 1 10 "b"] [Case [var 2 1 "x"] Nothing (var 2 6 "y")], "")
+    p "match a\nx => y\na => b" `shouldBe` Right (matchArgs [var 1 7 "a"] [Case [var 2 1 "x"] Nothing (var 2 6 "y"), Case [var 3 1 "a"] Nothing (var 3 6 "b")], "")
 
   it "☯ parseExpr" $ do
     let p = parse' (parseExpr 0 P.spaces)
@@ -202,9 +200,9 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "var" `shouldBe` Right (meta [loc 1 1] $ Var "var", "")
     p "@pkg/mod.name" `shouldBe` Right (meta [loc 1 1] $ Var "@pkg/mod.name", "")
     p "Tag" `shouldBe` Right (meta [loc 1 1] $ Tag "Tag" [], "")
-    p "x => y" `shouldBe` Right (match [] [Case [pvar 1 1 "x"] Nothing (var 1 6 "y")], "")
-    p "x => y\na => b" `shouldBe` Right (match [] [Case [pvar 1 1 "x"] Nothing (var 1 6 "y"), Case [pvar 2 1 "a"] Nothing (var 2 6 "b")], "")
-    p "match a\nx => y" `shouldBe` Right (meta [loc 1 1] $ match [var 1 7 "a"] [Case [pvar 2 1 "x"] Nothing (var 2 6 "y")], "")
+    p "x => y" `shouldBe` Right (match [Case [var 1 1 "x"] Nothing (var 1 6 "y")], "")
+    p "x => y\na => b" `shouldBe` Right (match [Case [var 1 1 "x"] Nothing (var 1 6 "y"), Case [var 2 1 "a"] Nothing (var 2 6 "b")], "")
+    p "match a\nx => y" `shouldBe` Right (meta [loc 1 1] $ matchArgs [var 1 7 "a"] [Case [var 2 1 "x"] Nothing (var 2 6 "y")], "")
     p "()" `shouldBe` Right (meta [loc 1 1] $ Tuple [], "")
     p "{}" `shouldBe` Right (meta [loc 1 1] $ Record [], "")
     p "x |  y" `shouldBe` Right (meta [loc 1 3] $ Or (var 1 1 "x") (var 1 6 "y"), "")
@@ -222,66 +220,82 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseDefinition" $ do
     let p = parse' parseDefinition
-    p "x = y" `shouldBe` Right (([], pvar 1 1 "x", var 1 5 "y"), "")
-    p "x : a = y" `shouldBe` Right (([("x", var 1 5 "a")], pvar 1 1 "x", var 1 9 "y"), "")
-    p "x : a\nx = y" `shouldBe` Right (([("x", var 1 5 "a")], pvar 2 1 "x", var 2 5 "y"), "")
-    p "x : a\ny : b\nx = y" `shouldBe` Right (([("x", var 1 5 "a"), ("y", var 2 5 "b")], pvar 3 1 "x", var 3 5 "y"), "")
+    p "x = y" `shouldBe` Right ((var 1 1 "x", var 1 5 "y"), "")
+    p "x : a = y" `shouldBe` Right ((var 1 1 "x", Ann (var 1 9 "y") (var 1 5 "a")), "")
+    p ": a\nx = y" `shouldBe` Right ((var 2 1 "x", Ann (var 2 5 "y") (var 1 3 "a")), "")
 
   it "☯ parseImport" $ do
     let p = parse' parseImport
-    p "import @pkg" `shouldBe` Right (Import "@pkg" [], "")
-    p "import @pkg/mod" `shouldBe` Right (Import "@pkg/mod" [], "")
-    p "import @pkg (a, b as c)" `shouldBe` Right (Import "@pkg" [("a", "a"), ("b", "c")], "")
-    p "import @/mod" `shouldBe` Right (Import "@/mod" [], "")
+    p "import @pkg" `shouldBe` Right (Import "@pkg" "@pkg" [], "")
+    p "import @pkg/mod" `shouldBe` Right (Import "@pkg/mod" "mod" [], "")
+    p "import @pkg (a, b as c)" `shouldBe` Right (Import "@pkg" "@pkg" [("a", "a"), ("b", "c")], "")
+    p "import @/mod" `shouldBe` Right (Import "@/mod" "mod" [], "")
 
   it "☯ parseTest" $ do
     let p = parse' parseTest
-    p "> x; y" `shouldBe` Right (Test "" (var 1 3 "x") (pvar 1 6 "y"), "")
-    p "> x\ny" `shouldBe` Right (Test "" (var 1 3 "x") (pvar 2 1 "y"), "")
-    p "> x" `shouldBe` Right (Test "" (var 1 3 "x") (PTag "True" []), "")
+    p "> x; y" `shouldBe` Right (Test "" (var 1 3 "x") (var 1 6 "y"), "")
+    p "> x\ny" `shouldBe` Right (Test "" (var 1 3 "x") (var 2 1 "y"), "")
+    p "> x" `shouldBe` Right (Test "" (var 1 3 "x") (Tag "True" []), "")
 
   it "☯ parseStmt" $ do
     let p = parse' parseStmt
-    p "import @pkg" `shouldBe` Right (Import "@pkg" [], "")
-    -- p "x = y" `shouldBe` Right (Define (Def [] (pvar 1 1 "x") (var 1 5 "y")), "")
-    p "> x; y" `shouldBe` Right (Test "" (var 1 3 "x") (pvar 1 6 "y"), "")
+    p "import @pkg" `shouldBe` Right (Import "@pkg" "@pkg" [], "")
+    -- p "x = y" `shouldBe` Right (Define (Def [] (var 1 1 "x") (var 1 5 "y")), "")
+    p "> x; y" `shouldBe` Right (Test "" (var 1 3 "x") (var 1 6 "y"), "")
 
   it "☯ parseModule" $ do
     let p = parse' (parseModule "path/my-file.tao")
-    p "" `shouldBe` Right (Module "path/my-file.tao" [], "")
+    p "" `shouldBe` Right (("path/my-file.tao", []), "")
     p "x" `shouldBe` Left ([CModule], "x")
-    p "import @pkg" `shouldBe` Right (Module "path/my-file.tao" [Import "@pkg" []], "")
+    p "import @pkg" `shouldBe` Right (("path/my-file.tao", [Import "@pkg" "@pkg" []]), "")
 
-  it "☯ parseFile" $ do
-    let pkg = Package {name = "pkg", modules = []}
-    parseFile "examples" "empty.tao" (pkg, []) `shouldReturn` (pkg {modules = [Module "empty" []]}, [])
+  -- it "☯ parsePackage directory" $ do
+  --   let pkg = Package {name = "empty", modules = [Module "empty/empty-file" []]}
+  --   parsePackage "examples/empty" `shouldReturn` (pkg, [])
+  --   withCurrentDirectory "examples" (parsePackage "empty") `shouldReturn` (pkg, [])
 
-  it "☯ parseFile exists" $ do
-    let pkg = Package {name = "pkg", modules = [Module "my-file" []]}
-    parseFile "base-path" "my-file" (pkg, []) `shouldReturn` (pkg, [])
+  -- it "☯ parsePackage file" $ do
+  --   let pkg = Package {name = "empty", modules = [Module "empty/empty" []]}
+  --   parsePackage "examples/empty.tao" `shouldReturn` (pkg, [])
+  --   withCurrentDirectory "examples" (parsePackage "empty.tao") `shouldReturn` (pkg, [])
 
-  it "☯ parsePackage directory" $ do
-    let pkg = Package {name = "empty", modules = [Module "empty-file" []]}
-    parsePackage "examples/empty" `shouldReturn` (pkg, [])
-    withCurrentDirectory "examples" (parsePackage "empty") `shouldReturn` (pkg, [])
+  it "☯ loadModule" $ do
+    let pkg = ("pkg", [])
+    let expect = ("pkg", [("examples/empty", [])])
+    loadModule "examples" "empty.tao" (pkg, []) `shouldReturn` (expect, [])
 
-  it "☯ parsePackage file" $ do
-    let pkg = Package {name = "empty", modules = [Module "empty" []]}
-    parsePackage "examples/empty.tao" `shouldReturn` (pkg, [])
-    withCurrentDirectory "examples" (parsePackage "empty.tao") `shouldReturn` (pkg, [])
+  it "☯ loadModule exists" $ do
+    let pkg = ("pkg", [("my-file", [])])
+    loadModule "base-path" "my-file" (pkg, []) `shouldReturn` (pkg, [])
 
   it "☯ loadPackage" $ do
     let load path = do
-          (env, s, errors) <- loadPackage path
-          let env' = map C.dropMeta env
-          return (env', s, errors)
-    let env =
-          [ ("@sub/mod.x", C.Int 1),
-            ("@sub/mod.y", C.Int 2)
-          ]
-    let s =
-          [ (("@sub/mod", "x"), "@sub/mod.x"),
-            (("@sub/mod", "y"), "@sub/mod.y")
-          ]
+          (pkg, errors) <- loadPackage path (("pkg", []), [])
+          return (dropMeta pkg, errors)
+    let pkg =
+          ( "pkg",
+            [ ( "sub/mod",
+                [ Def (Var "x", Int 1),
+                  Def (Var "y", Int 2)
+                ]
+              )
+            ]
+          )
+    load "examples/sub" `shouldReturn` (pkg, [] :: [SyntaxError])
+
+  it "☯ load" $ do
+    let load' path deps = do
+          (pkg, errors) <- load path deps
+          return (dropMeta pkg, errors)
+    let pkg =
+          ( "sub",
+            [ ("empty/empty-file", []),
+              ( "sub/mod",
+                [ Def (Var "x", Int 1),
+                  Def (Var "y", Int 2)
+                ]
+              )
+            ]
+          )
     let errors = []
-    load "examples/sub" `shouldReturn` (env, s, errors)
+    load' "examples/sub" ["examples/empty"] `shouldReturn` (pkg, errors)

@@ -37,6 +37,7 @@ ghc-options:
   - -XFlexibleContexts
   - -XFlexibleInstances
   - -XInstanceSigs
+  - -XLambdaCase
   - -XMultiParamTypeClasses
   - -XNamedFieldPuns
   - -XNoFieldSelectors
