@@ -12,6 +12,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (f, g, h) = (Var "f", Var "g", Var "h")
 
+  let add a b = Call "+" [a, b]
   let ops =
         [ ( "+",
             \eval args -> case eval <$> args of

@@ -85,7 +85,7 @@ instance Show Expr where
       "(@" ++ unwords xs ++ ". " ++ show a ++ ")"
     Fix x a -> "(&" ++ x ++ ". " ++ show a ++ ")"
     Fun _ _ -> do
-      let (args, ret) = asFun expr
+      let (args, ret) = funOf expr
       "(" ++ intercalate ", " (map show args) ++ " -> " ++ show ret ++ ")"
     App a b -> do
       let (xs, a') = asFor a
@@ -165,9 +165,6 @@ instance Show Metadata where
 tag :: String -> [Expr] -> Expr
 tag k args = and' (Tag k : args)
 
--- ptag :: String -> [Pattern] -> Pattern
--- ptag k = pApp (PTag k)
-
 fix :: [String] -> Expr -> Expr
 fix [] a = a
 fix (x : xs) a
@@ -189,12 +186,16 @@ fun ps b = foldr Fun b ps
 lam :: [Expr] -> Expr -> Expr
 lam ps b = for (freeVars ps) (fun ps b)
 
-asFun :: Expr -> ([Expr], Expr)
-asFun (Fun arg ret) = let (args, ret') = asFun ret in (arg : args, ret')
-asFun a = ([], a)
+funOf :: Expr -> ([Expr], Expr)
+funOf (Fun arg ret) = let (args, ret') = funOf ret in (arg : args, ret')
+funOf a = ([], a)
 
-add :: Expr -> Expr -> Expr
-add a b = Call "+" [a, b]
+app :: Expr -> [Expr] -> Expr
+app = foldl App
+
+appOf :: Expr -> (Expr, [Expr])
+appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
+appOf a = (a, [])
 
 and' :: [Expr] -> Expr
 and' [] = Err
@@ -204,6 +205,11 @@ and' (a : bs) = And a (and' bs)
 andOf :: Expr -> [Expr]
 andOf (And a b) = a : andOf b
 andOf a = [a]
+
+or' :: [Expr] -> Expr
+or' [] = Err
+or' [a] = a
+or' (a : bs) = Or a (or' bs)
 
 orOf :: Expr -> [Expr]
 orOf (Or a b) = a : orOf b
@@ -223,18 +229,6 @@ letVar (x, a) = let' (Var x, a)
 
 letVars :: [(String, Expr)] -> Expr -> Expr
 letVars vars b = foldr letVar b vars
-
-app :: Expr -> [Expr] -> Expr
-app = foldl App
-
--- appOf :: Expr -> (Expr, [Expr])
--- appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
--- appOf a = (a, [])
-
-or' :: [Expr] -> Expr
-or' [] = Err
-or' [a] = a
-or' (a : bs) = Or a (or' bs)
 
 list :: Expr -> Expr -> [Expr] -> Expr
 list _ nil [] = nil

@@ -699,12 +699,12 @@ instance Emit T.Expr ([Stmt], Expr) where
     let (stmts2, ret') = emit options ret
     (stmts1 ++ stmts2, callable args' ret')
   emit options expr@(T.App _ _) = case T.appOf expr of
-    (T.Match cases, args) -> do
-      let x = C.newName (T.freeVars cases) "_match"
-      let (stmts1, args') = emit options args
-      let (stmts2, cases') = emit options cases
-      let stmt = Match (Tuple args') (cases' x)
-      (stmts1 ++ stmts2 ++ [stmt], Name x)
+    -- (T.Match cases, args) -> do
+    --   let x = C.newName (T.freeVars cases) "_match"
+    --   let (stmts1, args') = emit options args
+    --   let (stmts2, cases') = emit options cases
+    --   let stmt = Match (Tuple args') (cases' x)
+    --   (stmts1 ++ stmts2 ++ [stmt], Name x)
     (f, args) -> do
       let (stmts1, f') = emit options f
       let (stmts2, args') = emit options args
@@ -722,9 +722,9 @@ instance Emit T.Expr ([Stmt], Expr) where
   --   -- let (stmts2, b') = emit options b
   --   -- (stmts1 ++ stmts2, b')
   --   error $ show "TODO: emit Bind " ++ show (ts, p, a, b)
-  emit _ (T.Match []) = ([raise (notImplementedError "")], None)
-  emit options (T.Match cases) = do
-    let x = C.newName (T.freeVars cases) "_match"
+  emit _ (T.Match _ []) = ([raise (notImplementedError "")], None)
+  emit options (T.Match [] cases) = do
+    let x = C.newName (concatMap (\(ps, b) -> T.freeVars (T.fun ps b)) cases) "_match"
     -- let def = T.Def [] (T.PVar x) (T.Match cases)
     -- let stmts = emit options def
     -- (stmts, Name x)

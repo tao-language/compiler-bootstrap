@@ -15,27 +15,27 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lambda" $ do
     lambda [] x `shouldBe` x
-    lambda ["x"] y `shouldBe` Match [Case [x] Nothing y]
-    lambda ["x", "y"] z `shouldBe` Match [Case [x, y] Nothing z]
+    lambda ["x"] y `shouldBe` Match [] [([x], y)]
+    lambda ["x", "y"] z `shouldBe` Match [] [([x, y], z)]
 
   it "☯ lambdaOf" $ do
     lambdaOf "$" x `shouldBe` ([], x)
     lambdaOf "$" (Meta (C.Comment "") x) `shouldBe` ([], Meta (C.Comment "") x)
-    lambdaOf "$" (Match []) `shouldBe` ([], Err)
-    lambdaOf "$" (Match [Case [] Nothing x]) `shouldBe` ([], x)
-    lambdaOf "$" (Match [Case [x] Nothing i1]) `shouldBe` (["x"], i1)
-    lambdaOf "$" (Match [Case [x] Nothing i1, Case [x] Nothing i2]) `shouldBe` (["x"], Int 1)
-    lambdaOf "$" (Match [Case [x] Nothing i1, Case [y] Nothing i2]) `shouldBe` (["$1"], app (Match [Case [x] Nothing i1, Case [y] Nothing i2]) [Var "$1"])
-    lambdaOf "$" (Match [Case [x, y] Nothing i1, Case [x, z] Nothing i2]) `shouldBe` (["x", "$1"], matchArgs [Var "$1"] [Case [y] Nothing i1, Case [z] Nothing i2])
+    lambdaOf "$" (Match [] []) `shouldBe` ([], Err)
+    lambdaOf "$" (Match [] [([], x)]) `shouldBe` ([], x)
+    lambdaOf "$" (Match [] [([x], i1)]) `shouldBe` (["x"], i1)
+    lambdaOf "$" (Match [] [([x], i1), ([x], i2)]) `shouldBe` (["x"], Int 1)
+    lambdaOf "$" (Match [] [([x], i1), ([y], i2)]) `shouldBe` (["$1"], Match [Var "$1"] [([x], i1), ([y], i2)])
+    lambdaOf "$" (Match [] [([x, y], i1), ([x, z], i2)]) `shouldBe` (["x", "$1"], Match [Var "$1"] [([y], i1), ([z], i2)])
 
   it "☯ lower/lift Expr IntType" $ do
-    let expr = Tag "Int" []
+    let expr = IntType
     let term = C.IntT
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
   it "☯ lower/lift Expr NumType" $ do
-    let expr = Tag "Num" []
+    let expr = NumType
     let term = C.NumT
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
@@ -66,7 +66,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower/lift Expr Tuple" $ do
     let expr = Tuple []
-    let term = C.tag "" []
+    let term = C.Tag ""
     lower [] expr `shouldBe` term
     lift term `shouldBe` expr
 
@@ -461,11 +461,11 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ resolve" $ do
     let ctx =
           [ ( "pkg/a",
-              [Def (Var "x", Int 42)]
+              [defVar ("x", Int 42)]
             ),
             ( "pkg/b",
               [ Import "pkg/a" "m" [("x", "y")],
-                Def (Var "z", Var "y")
+                defVar ("z", Var "y")
               ]
             )
           ]
@@ -479,11 +479,11 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ compile" $ do
     let ctx =
           [ ( "pkg/a",
-              [Def (Var "x", Int 42)]
+              [defVar ("x", Int 42)]
             ),
             ( "pkg/b",
               [ Import "pkg/a" "m" [("x", "y")],
-                Def (Var "z", Var "y")
+                defVar ("z", Var "y")
               ]
             )
           ]
@@ -497,12 +497,12 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ eval" $ do
     let ctx =
           [ ( "pkg/a",
-              [Def (x, Int 42)]
+              [defVar ("x", Int 42)]
             ),
             ( "pkg/b",
               [ Import "pkg/a" "m" [("x", "y")],
-                Def (z, y),
-                Def (x, Int 9)
+                defVar ("z", y),
+                defVar ("x", Int 9)
               ]
             )
           ]
@@ -538,8 +538,8 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ test" $ do
     let ctx =
           [ ( "pkg/a",
-              [ Def (x, Int 1),
-                Def (y, Int 2),
+              [ defVar ("x", Int 1),
+                defVar ("y", Int 2),
                 Test ">x" x (Int 1),
                 Test ">y" y (Int 0)
               ]

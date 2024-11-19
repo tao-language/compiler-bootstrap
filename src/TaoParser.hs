@@ -199,7 +199,7 @@ parseExpr :: Int -> Parser appDelim -> Parser Expr
 parseExpr prec delim = do
   let binary op m a b = Meta m (op a b)
   let ops =
-        [ P.atom 0 match (P.oneOrMore parseCase),
+        [ P.atom 0 (match []) (P.oneOrMore parseCase),
           P.infixR 1 (binary Or) (parseOp "|"),
           P.infixR 2 (binary Ann) (parseOp ":"),
           P.infixR 3 (binary eq) (parseOp "=="),
@@ -256,7 +256,7 @@ parseRecord = do
   fields <- parseCollection "{" "," "}" parseRecordField
   return (Record fields)
 
-parseCase :: Parser Case
+parseCase :: Parser ([Expr], Expr)
 parseCase = do
   p <- parsePattern
   ps <- P.zeroOrMore $ do
@@ -273,7 +273,7 @@ parseCase = do
   a <- parseExpr 0 P.spaces
   _ <- parseLineBreak
   _ <- P.spaces
-  return (Case (p : ps) guard a)
+  return (p : ps, a)
 
 parseMatch :: Parser Expr
 parseMatch = do
@@ -291,7 +291,7 @@ parseMatch = do
   _ <- P.spaces
   case' <- parseCase
   cases <- P.zeroOrMore (do _ <- P.whitespaces; parseCase)
-  return (matchArgs args (case' : cases))
+  return (match args (case' : cases))
 
 parsePattern :: Parser Pattern
 parsePattern = do
@@ -324,46 +324,47 @@ parseStmt = do
   comments <- P.zeroOrMore parseComment
   stmt <-
     P.oneOf
-      [ Def <$> parseDefinition,
+      [ Def <$> parseDef,
         parseImport,
         parseTest
       ]
   -- return (foldr (MetaStmt . C.Comment) stmt comments)
   return stmt
 
-parseDefinition :: Parser (Pattern, Expr)
-parseDefinition = do
-  (p, b) <-
-    P.oneOf
-      [ do
-          (loc, x) <- parseLocation parseName
-          _ <- P.spaces
-          _ <- P.char ':'
-          _ <- P.spaces
-          t <- parseExpr 0 P.spaces
-          _ <- P.spaces
-          _ <- P.char '='
-          _ <- P.spaces
-          b <- parseExpr 0 P.spaces
-          return (Meta loc (Var x), Ann b t),
-        do
-          t <- P.maybe' $ do
-            _ <- P.char ':'
-            _ <- P.spaces
-            t <- parseExpr 0 P.spaces
-            _ <- parseLineBreak
-            return t
-          p <- parsePattern
-          _ <- P.char '='
-          _ <- P.spaces
-          b <- parseExpr 0 P.spaces
-          case t of
-            Just t -> return (p, Ann b t)
-            Nothing -> return (p, b)
-      ]
-  _ <- parseLineBreak
-  _ <- P.whitespaces
-  return (p, b)
+parseDef :: Parser Def
+parseDef = do
+  -- (p, b) <-
+  --   P.oneOf
+  --     [ do
+  --         (loc, x) <- parseLocation parseName
+  --         _ <- P.spaces
+  --         _ <- P.char ':'
+  --         _ <- P.spaces
+  --         t <- parseExpr 0 P.spaces
+  --         _ <- P.spaces
+  --         _ <- P.char '='
+  --         _ <- P.spaces
+  --         b <- parseExpr 0 P.spaces
+  --         return (Meta loc (Var x), Ann b t),
+  --       do
+  --         t <- P.maybe' $ do
+  --           _ <- P.char ':'
+  --           _ <- P.spaces
+  --           t <- parseExpr 0 P.spaces
+  --           _ <- parseLineBreak
+  --           return t
+  --         p <- parsePattern
+  --         _ <- P.char '='
+  --         _ <- P.spaces
+  --         b <- parseExpr 0 P.spaces
+  --         case t of
+  --           Just t -> return (p, Ann b t)
+  --           Nothing -> return (p, b)
+  --     ]
+  -- _ <- parseLineBreak
+  -- _ <- P.whitespaces
+  -- return (p, b)
+  error "TODO parseDef"
 
 parseImport :: Parser Stmt
 parseImport = do
