@@ -565,4 +565,4 @@ run = describe "--==☯ TaoTests ☯==--" $ do
               ]
             )
           ]
-    test ctx ("pkg", ctx) `shouldBe` [TestError (UnitTest "pkg/a" ">y" y (Int 0)) (Int 2)]
+    test ctx (const True) ("pkg", ctx) `shouldBe` [TestError (UnitTest "pkg/a" ">y" y (Int 0)) (Int 2)]

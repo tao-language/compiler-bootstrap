@@ -8,15 +8,15 @@ import Tao
 import TaoParser
 import Test.Hspec
 
-test' :: String -> [String] -> IO (Either [SyntaxError] [TestError])
-test' name includes = do
-  -- let names = name : includes
-  -- (pkg, s, errors) <- loadPackage "examples"
-  -- let env = lower [] pkg
-  -- case filter (\e -> any (`isInfixOf` e.filename) names) errors of
-  --   [] -> return (Right (dropMeta <$> test env name))
-  --   errors -> return (Left errors)
-  return (Right [])
+test' :: String -> IO (Either [SyntaxError] [TestError])
+test' name = do
+  let path = "examples/" ++ name
+  (pkg, syntaxErrors) <- load "examples" []
+  case filter (\e -> (path ++ ".tao") == e.filename) syntaxErrors of
+    [] -> do
+      let errors = test [] (\(path', _) -> path `isInfixOf` path') pkg
+      return (Right errors)
+    _ -> return (Left syntaxErrors)
 
 run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do
@@ -38,26 +38,31 @@ run = describe "--==☯ Examples ☯==--" $ do
 
   let name = "def-untyped"
   it ("☯ " ++ name) $ do
-    test' name [] `shouldReturn` Right []
+    test' name `shouldReturn` Right []
 
   let name = "def-typed"
   it ("☯ " ++ name) $ do
-    test' name [] `shouldReturn` Right []
+    test' name `shouldReturn` Right []
 
   let name = "def-inline-type"
   it ("☯ " ++ name) $ do
-    test' name [] `shouldReturn` Right []
+    test' name `shouldReturn` Right []
 
   let name = "errors"
   it ("☯ " ++ name) $ do
-    -- test' name [] `shouldReturn` Right [TestEqError ">@examples/errors/wrong-result:" (C.Var "@examples/errors/wrong-result.x") (C.Int 0) (C.Int 42)]
-    True `shouldBe` True
-
-  -- TODO: import global
-  -- TODO: import root
-
-  -- TODO: match-one
-  -- TODO: match-many
+    let errors =
+          [ TestError
+              { test =
+                  UnitTest
+                    { path = "examples/errors/wrong-result",
+                      name = "",
+                      expr = x,
+                      expect = Int 0
+                    },
+                got = Int 42
+              }
+          ]
+    test' name `shouldReturn` Right errors
 
   -- let name = "traits"
   -- it ("☯ " ++ name) $ do
@@ -65,7 +70,7 @@ run = describe "--==☯ Examples ☯==--" $ do
 
   let name = "tuples-def"
   it ("☯ " ++ name) $ do
-    test' name [] `shouldReturn` Right []
+    test' name `shouldReturn` Right []
 
   -- let name = "tuples-properties"
   -- it ("☯ " ++ name) $ do

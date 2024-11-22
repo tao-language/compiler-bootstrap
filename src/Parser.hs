@@ -205,7 +205,7 @@ endOfFile =
     )
 
 endOfLine :: Parser ctx ()
-endOfLine = oneOf [void $ if' (== '\n') anyChar, endOfFile]
+endOfLine = oneOf [void $ char '\n', endOfFile]
 
 -- Sequences
 chain :: [Parser ctx a] -> Parser ctx [a]

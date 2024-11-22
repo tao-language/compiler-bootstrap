@@ -232,7 +232,7 @@ parseAtom = do
 parseExpr :: Int -> Parser appDelim -> Parser Expr
 parseExpr prec delim = do
   let parseOp txt = do
-        _ <- P.whitespaces
+        _ <- delim
         _ <- P.word txt
         _ <- P.lookaheadNot (P.char '-')
         _ <- P.whitespaces
@@ -495,6 +495,7 @@ showSnippet (row, col) before after src = do
 parseModule :: String -> Parser Module
 parseModule name = do
   P.commit CModule
+  _ <- P.whitespaces
   stmts <- P.zeroOrMore parseStmt
   _ <- P.whitespaces
   comments <- P.zeroOrMore parseComment

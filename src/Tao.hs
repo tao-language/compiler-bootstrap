@@ -327,6 +327,17 @@ instance Lower Expr C.Expr where
     a -> error $ "TODO: lower Select " ++ show a
   lower env (Ann a b) = C.Ann (lower env a) (lower env b)
   lower env (Call op args) = C.Call op (map (lower env) args)
+  lower env (Op1 op a) = case op of
+    Neg -> lower env (Trait a "-")
+  lower env (Op2 op a b) = case op of
+    Eq -> lower env (Trait (And a b) "==")
+    Lt -> lower env (Trait (And a b) "<")
+    Gt -> lower env (Trait (And a b) ">")
+    Add -> lower env (Trait (And a b) "+")
+    Sub -> lower env (Trait (And a b) "-")
+    Mul -> lower env (Trait (And a b) "*")
+    Div -> lower env (Trait (And a b) "/")
+    Pow -> lower env (Trait (And a b) "^")
   lower _ Err = C.Err
   lower _ a = error $ "TODO: lower " ++ show a
 
@@ -532,6 +543,7 @@ instance Resolve (Stmt, String) where
       [] -> Nothing
     Def (pattern', body) -> case pattern' of
       Var x | x == name -> Just (path, body)
+      Ann a _ -> resolve ctx path (Def (a, body), name)
       _ -> Nothing
     TypeDef (name', args, body) ->
       if name == name'
@@ -566,28 +578,31 @@ eval ctx path expr = do
     & lift
 
 class RunTest a where
-  test :: [Module] -> a -> [TestError]
+  test :: [Module] -> ((String, String) -> Bool) -> a -> [TestError]
 
 instance RunTest Package where
-  test :: [Module] -> Package -> [TestError]
-  test ctx (_, mods) =
-    concatMap (test ctx) mods
+  test :: [Module] -> ((String, String) -> Bool) -> Package -> [TestError]
+  test ctx filter (_, mods) = do
+    concatMap (test (ctx ++ mods) filter) mods
 
 instance RunTest Module where
-  test :: [Module] -> Module -> [TestError]
-  test ctx (path, stmts) =
-    concatMap (\stmt -> test ctx (path, stmt)) stmts
+  test :: [Module] -> ((String, String) -> Bool) -> Module -> [TestError]
+  test ctx filter (path, stmts) =
+    concatMap (\stmt -> test ctx filter (path, stmt)) stmts
 
 instance RunTest (String, Stmt) where
-  test :: [Module] -> (String, Stmt) -> [TestError]
-  test ctx (path, stmt) = case stmt of
+  test :: [Module] -> ((String, String) -> Bool) -> (String, Stmt) -> [TestError]
+  test ctx filter (path, stmt) = case stmt of
     Import {} -> []
     Def {} -> []
-    Test name expr expect -> test ctx (UnitTest path name expr expect)
+    TypeDef {} -> []
+    Test name expr expect | filter (path, name) -> do
+      test ctx filter (UnitTest path name expr expect)
+    Test {} -> []
 
 instance RunTest UnitTest where
-  test :: [Module] -> UnitTest -> [TestError]
-  test ctx t = do
+  test :: [Module] -> ((String, String) -> Bool) -> UnitTest -> [TestError]
+  test ctx _ t = do
     let test' =
           Match
             [t.expr]
@@ -597,10 +612,3 @@ instance RunTest UnitTest where
     case eval ctx t.path test' of
       Tag "Pass" -> []
       got -> [TestError {test = t, got = got}]
-
-class FindTests a where
-  findTests :: ((String, String) -> Bool) -> a -> [UnitTest]
-
-instance FindTests Package
-
-instance FindTests Module
