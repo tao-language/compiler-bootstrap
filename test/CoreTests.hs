@@ -214,8 +214,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' (App (Fun (Ann x Err) z) x) `shouldBe` z
     reduce' (App (Fun (Ann x Err) z) y) `shouldBe` Err
     reduce' (App (Fun (Call "f" []) z) (Call "f" [])) `shouldBe` Err
-    reduce' (App (Fun (Meta (Comment "") x) IntT) x) `shouldBe` IntT
-    reduce' (App (Fun (Meta (Comment "") x) IntT) y) `shouldBe` Err
     reduce' (App (Fun Err IntT) Err) `shouldBe` IntT
     reduce' (App (For "y" (Fun y y)) x) `shouldBe` Int 42
     reduce' (App (Var "f") x) `shouldBe` Int 42
@@ -226,7 +224,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' (Or x y) `shouldBe` Or (Let env x) (Let env y)
     reduce' (Ann x NumT) `shouldBe` Int 42
     reduce' (Call "f" [x, y]) `shouldBe` Call "f" [Let env x, Let env y]
-    reduce' (Meta (Comment "") x) `shouldBe` Int 42
     reduce' Err `shouldBe` Err
 
   it "☯ eval" $ do

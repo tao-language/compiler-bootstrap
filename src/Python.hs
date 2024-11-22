@@ -75,7 +75,6 @@ data Expr
   | SetComp Expr Expr Expr [Expr] -- {x for x in xs (if y)*}
   | GeneratorExp Expr Expr Expr [Expr] -- (x for x in xs (if y)*)
   | DictComp Expr Expr Expr [Expr] -- {x: x for x in xs (if y)*}
-  | Meta C.Metadata Expr
   deriving (Eq, Show)
 
 -- https://docs.python.org/3/library/ast.html#ast.FormattedValue
@@ -229,7 +228,6 @@ data Pattern
   | MatchClass String [Pattern] [(String, Pattern)] -- ClassName(p, x=q)
   | MatchAs (Maybe Pattern) String -- case p as x
   | MatchOr [Pattern] -- case p | q
-  | MatchMeta C.Metadata Pattern
   deriving (Eq, Show)
 
 --- Type parameters ---
@@ -595,7 +593,7 @@ instance Emit T.Stmt [Stmt] where
     let (stmts2, b') = emit options p -- TODO: do a match instead
     let def =
           FunctionDef
-            { name = "test_" ++ T.nameSnakeCase (show (T.dropMeta a)),
+            { name = "test_" ++ T.nameSnakeCase (show a),
               args = [("self", Nothing, Nothing)],
               body = [Assign [] (Call (Attribute (Name "self") "assertEqual") [a', b'] [])],
               decorators = [],
@@ -745,12 +743,8 @@ instance Emit T.Expr ([Stmt], Expr) where
         let (stmts1, a') = emit options a
         let (stmts2, b') = emit options b
         (stmts1 ++ stmts2, BinOp a' op b')
-  emit options (T.Meta C.Unwrap a) = do
-    let (stmts, a') = emit options a
-    (stmts, Call a' [] [])
-  emit options (T.Meta _ a) = emit options a
   -- Err
-  emit options expr = error $ "TODO: emit " ++ show (T.dropMeta expr)
+  emit options expr = error $ "TODO: emit " ++ show expr
 
 instance Emit [T.Expr] ([Stmt], [Expr]) where
   emit :: BuildOptions -> [T.Expr] -> ([Stmt], [Expr])
@@ -805,7 +799,6 @@ instance Emit T.Pattern ([Stmt], Pattern) where
   -- -- PFun Pattern Pattern
   -- -- POr [Pattern]
   -- -- PEq Expr
-  emit options (T.Meta _ p) = emit options p
   -- -- PErr
   emit options p = error $ "TODO: emit " ++ show p
 
@@ -902,7 +895,6 @@ instance Layout Pattern where
     Just pat -> layout pat ++ [PP.Text $ " as " ++ name]
     Nothing -> [PP.Text name]
   layout (MatchOr pats) = PP.join [PP.Text " | "] (map layout pats)
-  layout (MatchMeta _ pat) = layout pat
   layout pat = error $ "TODO: layout: " ++ show pat
 
 instance Layout Expr where
@@ -959,7 +951,6 @@ instance Layout Expr where
         showOp In = " in "
         showOp NotIn = " not in "
     PP.Text "(" : layout a ++ [PP.Text $ showOp op] ++ layout b ++ [PP.Text ")"]
-  layout (Meta _ a) = layout a
   layout a = error $ "TODO: layout: " ++ show a
 
 instance Layout (String, Maybe Expr, Maybe Expr) where

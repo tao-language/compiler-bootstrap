@@ -9,13 +9,8 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ TaoParser ☯==--" $ do
-  let sourceName = "TaoParserTests"
-  let loc row col = C.Location sourceName (row, col)
-  let expr row col = meta [loc row col]
-  let var row col x = expr row col (Var x)
-
   let parse' :: Parser a -> String -> Either ([ParserContext], String) (a, String)
-      parse' parser src = case P.parse sourceName parser src of
+      parse' parser src = case P.parse "TaoParserTests" parser src of
         Right (x, P.State {remaining}) -> Right (x, remaining)
         Left P.State {context, remaining} -> Left (context, remaining)
 
@@ -117,85 +112,85 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   -- it "☯ parseRecordField" $ do
   --   let p = parse' parseRecordField
-  --   p "x" `shouldBe` Right (("x", var 1 1 "x"), "")
-  --   p "x=y" `shouldBe` Right (("x", var 1 3 "y"), "")
-  --   p "x:y" `shouldBe` Right (("x", Ann (var 1 1 "x") (var 1 3 "y")), "")
-  --   p "x:y=z" `shouldBe` Right (("x", Ann (var 1 5 "z") (var 1 3 "y")), "")
-  --   p "x \n = \n y" `shouldBe` Right (("x", var 3 2 "y"), "")
-  --   p "x \n : \n y" `shouldBe` Right (("x", Ann (var 1 1 "x") (var 3 2 "y")), "")
-  --   p "x \n : \n y \n = z" `shouldBe` Right (("x", Ann (var 4 4 "z") (var 3 2 "y")), "")
+  --   p "x" `shouldBe` Right (("x", Var "x"), "")
+  --   p "x=y" `shouldBe` Right (("x", Var "y"), "")
+  --   p "x:y" `shouldBe` Right (("x", Ann (Var "x") (Var "y")), "")
+  --   p "x:y=z" `shouldBe` Right (("x", Ann (Var "z") (Var "y")), "")
+  --   p "x \n = \n y" `shouldBe` Right (("x", Var "y"), "")
+  --   p "x \n : \n y" `shouldBe` Right (("x", Ann (Var "x") (Var "y")), "")
+  --   p "x \n : \n y \n = z" `shouldBe` Right (("x", Ann (Var "z") (Var "y")), "")
 
   -- it "☯ parseRecord" $ do
   --   let p = parse' parseRecord
   --   p "{} abc" `shouldBe` Right (record [], " abc")
-  --   p "{x} abc" `shouldBe` Right (record [("x", var 1 2 "x")], " abc")
-  --   p "{x, y} abc" `shouldBe` Right (record [("x", var 1 2 "x"), ("y", var 1 5 "y")], " abc")
+  --   p "{x} abc" `shouldBe` Right (record [("x", Var "x")], " abc")
+  --   p "{x, y} abc" `shouldBe` Right (record [("x", Var "x"), ("y", Var "y")], " abc")
 
   it "☯ parseCases" $ do
     let p = parse' parseCases
     p "{}" `shouldBe` Left ([], "}")
     p "{ x }" `shouldBe` Left ([], "x }")
-    p "{ | x }" `shouldBe` Right ([var 1 5 "x"], "")
-    p "{ | x | y }" `shouldBe` Right ([var 1 5 "x", var 1 9 "y"], "")
-    p "{\n|\nx\n|\ny\n}" `shouldBe` Right ([var 3 1 "x", var 5 1 "y"], "")
+    p "{ | x }" `shouldBe` Right ([Var "x"], "")
+    p "{ | x | y }" `shouldBe` Right ([Var "x", Var "y"], "")
+    p "{\n|\nx\n|\ny\n}" `shouldBe` Right ([Var "x", Var "y"], "")
 
   it "☯ parseMatch" $ do
     let p = parse' parseMatch
     p "match" `shouldBe` Left ([CMatch], "")
     p "match {}" `shouldBe` Left ([CMatch], "")
-    p "match {| x}" `shouldBe` Right (Match [] [var 1 10 "x"], "")
-    p "match a {| x}" `shouldBe` Right (Match [var 1 7 "a"] [var 1 12 "x"], "")
-    p "match a, b {| x}" `shouldBe` Right (Match [var 1 7 "a", var 1 10 "b"] [var 1 15 "x"], "")
+    p "match {| x}" `shouldBe` Right (Match [] [Var "x"], "")
+    p "match a {| x}" `shouldBe` Right (Match [Var "a"] [Var "x"], "")
+    p "match a, b {| x}" `shouldBe` Right (Match [Var "a", Var "b"] [Var "x"], "")
 
   it "☯ parseExpr" $ do
     let p = parse' (parseExpr 0 P.spaces)
-    p "_" `shouldBe` Right (expr 1 1 Any, "")
-    p "Int" `shouldBe` Right (expr 1 1 IntType, "")
-    p "Num" `shouldBe` Right (expr 1 1 NumType, "")
-    p "42" `shouldBe` Right (expr 1 1 $ Int 42, "")
-    p "3.14" `shouldBe` Right (expr 1 1 $ Num 3.14, "")
-    p "var" `shouldBe` Right (expr 1 1 $ Var "var", "")
-    p "Tag" `shouldBe` Right (expr 1 1 $ Tag "Tag", "")
-    p "@. x" `shouldBe` Right (For [] (var 1 4 "x"), "")
-    p "@ x . y" `shouldBe` Right (For ["x"] (var 1 7 "y"), "")
-    p "@ x y . z" `shouldBe` Right (For ["x", "y"] (var 1 9 "z"), "")
-    p "@\nx\n.\ny" `shouldBe` Right (For ["x"] (var 4 1 "y"), "")
-    p "x -> y" `shouldBe` Right (expr 1 3 $ Fun (var 1 1 "x") (var 1 6 "y"), "")
-    p "x\n->\ny" `shouldBe` Right (expr 2 1 $ Fun (var 1 1 "x") (var 3 1 "y"), "")
-    p "x y" `shouldBe` Right (App (var 1 1 "x") (var 1 3 "y"), "")
-    p "x\ny" `shouldBe` Right (expr 1 1 $ Var "x", "\ny")
-    p "(x\ny)" `shouldBe` Right (expr 1 1 $ App (var 1 2 "x") (var 2 1 "y"), "")
-    p "()" `shouldBe` Right (expr 1 1 Unit, "")
-    p "(\n)" `shouldBe` Right (expr 1 1 Unit, "")
-    p "(x)" `shouldBe` Right (var 1 2 "x", "")
-    p "(x,)" `shouldBe` Right (var 1 2 "x", "")
-    p "(\nx\n,\n)" `shouldBe` Right (var 2 1 "x", "")
-    p "(x, y)" `shouldBe` Right (And (var 1 2 "x") (var 1 5 "y"), "")
-    p "(\nx\n,\ny\n)" `shouldBe` Right (And (var 2 1 "x") (var 4 1 "y"), "")
-    p "(x, y, z)" `shouldBe` Right (and' [var 1 2 "x", var 1 5 "y", var 1 8 "z"], "")
-    p "x | y" `shouldBe` Right (expr 1 3 $ Or (var 1 1 "x") (var 1 5 "y"), "")
-    p "x\n|\ny" `shouldBe` Right (expr 2 1 $ Or (var 1 1 "x") (var 3 1 "y"), "")
-    p "x : y" `shouldBe` Right (expr 1 3 $ Ann (var 1 1 "x") (var 1 5 "y"), "")
-    p "x\n:\ny" `shouldBe` Right (expr 2 1 $ Ann (var 1 1 "x") (var 3 1 "y"), "")
-    p "$call" `shouldBe` Right (expr 1 1 $ Call "call" [], "")
-    p "$call()" `shouldBe` Right (expr 1 1 $ Call "call" [], "")
-    p "$call(x)" `shouldBe` Right (expr 1 1 $ Call "call" [var 1 7 "x"], "")
-    p "$call(x, y, z)" `shouldBe` Right (expr 1 1 $ Call "call" [var 1 7 "x", var 1 10 "y", var 1 13 "z"], "")
-    p "$call(\nx,\ny)" `shouldBe` Right (expr 1 1 $ Call "call" [var 2 1 "x", var 3 1 "y"], "")
-    p "- x" `shouldBe` Right (expr 1 1 $ neg (var 1 3 "x"), "")
-    p "-\nx" `shouldBe` Right (expr 1 1 $ neg (var 2 1 "x"), "")
-    p "x == y" `shouldBe` Right (expr 1 3 $ eq (var 1 1 "x") (var 1 6 "y"), "")
-    p "x <  y" `shouldBe` Right (expr 1 3 $ lt (var 1 1 "x") (var 1 6 "y"), "")
-    p "x +  y" `shouldBe` Right (expr 1 3 $ add (var 1 1 "x") (var 1 6 "y"), "")
-    p "x -  y" `shouldBe` Right (expr 1 3 $ sub (var 1 1 "x") (var 1 6 "y"), "")
-    p "x *  y" `shouldBe` Right (expr 1 3 $ mul (var 1 1 "x") (var 1 6 "y"), "")
-    p "x ^  y" `shouldBe` Right (expr 1 3 $ pow (var 1 1 "x") (var 1 6 "y"), "")
+    p "_" `shouldBe` Right (Any, "")
+    p "Int" `shouldBe` Right (IntType, "")
+    p "Num" `shouldBe` Right (NumType, "")
+    p "42" `shouldBe` Right (Int 42, "")
+    p "3.14" `shouldBe` Right (Num 3.14, "")
+    p "var" `shouldBe` Right (Var "var", "")
+    p "Tag" `shouldBe` Right (Tag "Tag", "")
+    p "@. x" `shouldBe` Right (For [] (Var "x"), "")
+    p "@ x . y" `shouldBe` Right (For ["x"] (Var "y"), "")
+    p "@ x y . z" `shouldBe` Right (For ["x", "y"] (Var "z"), "")
+    p "@\nx\n.\ny" `shouldBe` Right (For ["x"] (Var "y"), "")
+    p "x -> y" `shouldBe` Right (Fun (Var "x") (Var "y"), "")
+    p "x\n->\ny" `shouldBe` Right (Fun (Var "x") (Var "y"), "")
+    p "x y" `shouldBe` Right (App (Var "x") (Var "y"), "")
+    p "x\ny" `shouldBe` Right (Var "x", "\ny")
+    p "(x\ny)" `shouldBe` Right (App (Var "x") (Var "y"), "")
+    p "()" `shouldBe` Right (Unit, "")
+    p "(\n)" `shouldBe` Right (Unit, "")
+    p "(x)" `shouldBe` Right (Var "x", "")
+    p "(x,)" `shouldBe` Right (Var "x", "")
+    p "(\nx\n,\n)" `shouldBe` Right (Var "x", "")
+    p "(x, y)" `shouldBe` Right (And (Var "x") (Var "y"), "")
+    p "(\nx\n,\ny\n)" `shouldBe` Right (And (Var "x") (Var "y"), "")
+    p "(x, y, z)" `shouldBe` Right (and' [Var "x", Var "y", Var "z"], "")
+    p "x | y" `shouldBe` Right (Or (Var "x") (Var "y"), "")
+    p "x\n|\ny" `shouldBe` Right (Or (Var "x") (Var "y"), "")
+    p "x : y" `shouldBe` Right (Ann (Var "x") (Var "y"), "")
+    p "x\n:\ny" `shouldBe` Right (Ann (Var "x") (Var "y"), "")
+    p "$call" `shouldBe` Right (Call "call" [], "")
+    p "$call()" `shouldBe` Right (Call "call" [], "")
+    p "$call(x)" `shouldBe` Right (Call "call" [Var "x"], "")
+    p "$call(x, y, z)" `shouldBe` Right (Call "call" [Var "x", Var "y", Var "z"], "")
+    p "$call(\nx,\ny)" `shouldBe` Right (Call "call" [Var "x", Var "y"], "")
+    p "- x" `shouldBe` Right (neg (Var "x"), "")
+    p "-\nx" `shouldBe` Right (neg (Var "x"), "")
+    p "x == y" `shouldBe` Right (eq (Var "x") (Var "y"), "")
+    p "x <  y" `shouldBe` Right (lt (Var "x") (Var "y"), "")
+    p "x +  y" `shouldBe` Right (add (Var "x") (Var "y"), "")
+    p "x -  y" `shouldBe` Right (sub (Var "x") (Var "y"), "")
+    p "x *  y" `shouldBe` Right (mul (Var "x") (Var "y"), "")
+    p "x ^  y" `shouldBe` Right (pow (Var "x") (Var "y"), "")
     -- p "x = y; z" `shouldBe` Right (Err, "")
     -- p "x\n=\ny\nz" `shouldBe` Right (Err, "")
 
-    p "{}" `shouldBe` Right (expr 1 1 $ Record [], "")
-    p "{| x }" `shouldBe` Right (Match [] [var 1 4 "x"], "")
-    p "match {| x}" `shouldBe` Right (expr 1 1 $ Match [] [var 1 10 "x"], "")
+    p "{}" `shouldBe` Right (Record [], "")
+    p "{| x }" `shouldBe` Right (Match [] [Var "x"], "")
+    p "match {| x}" `shouldBe` Right (Match [] [Var "x"], "")
 
   it "☯ parseImport" $ do
     let p = parse' parseImport
@@ -206,27 +201,27 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseDef" $ do
     let p = parse' parseDef
-    p "x = y" `shouldBe` Right ((var 1 1 "x", var 1 5 "y"), "")
-    p "x y = z" `shouldBe` Right ((App (var 1 1 "x") (var 1 3 "y"), var 1 7 "z"), "")
-    p "x : a = y" `shouldBe` Right ((expr 1 3 $ Ann (var 1 1 "x") (var 1 5 "a"), var 1 9 "y"), "")
-    p ": a\nx = y" `shouldBe` Right ((expr 1 1 $ Ann (var 2 1 "x") (var 1 3 "a"), var 2 5 "y"), "")
+    p "x = y" `shouldBe` Right ((Var "x", Var "y"), "")
+    p "x y = z" `shouldBe` Right ((App (Var "x") (Var "y"), Var "z"), "")
+    p "x : a = y" `shouldBe` Right ((Ann (Var "x") (Var "a"), Var "y"), "")
+    p ": a\nx = y" `shouldBe` Right ((Ann (Var "x") (Var "a"), Var "y"), "")
 
   it "☯ parseTypeDef" $ do
     let p = parse' parseTypeDef
-    p "type A = x" `shouldBe` Right (("A", [], var 1 10 "x"), "")
-    p "type A x y = z" `shouldBe` Right (("A", [var 1 8 "x", var 1 10 "y"], var 1 14 "z"), "")
+    p "type A = x" `shouldBe` Right (("A", [], Var "x"), "")
+    p "type A x y = z" `shouldBe` Right (("A", [Var "x", Var "y"], Var "z"), "")
 
   it "☯ parseTest" $ do
     let p = parse' parseTest
-    p "> x; y" `shouldBe` Right (Test "" (var 1 3 "x") (var 1 6 "y"), "")
-    p "> x\ny" `shouldBe` Right (Test "" (var 1 3 "x") (var 2 1 "y"), "")
-    p "> x" `shouldBe` Right (Test "" (var 1 3 "x") (Tag "True"), "")
+    p "> x; y" `shouldBe` Right (Test "" (Var "x") (Var "y"), "")
+    p "> x\ny" `shouldBe` Right (Test "" (Var "x") (Var "y"), "")
+    p "> x" `shouldBe` Right (Test "" (Var "x") (Tag "True"), "")
 
   it "☯ parseStmt" $ do
     let p = parse' parseStmt
     p "import pkg" `shouldBe` Right (Import "pkg" "pkg" [], "")
-    -- p "x = y" `shouldBe` Right (Define (Def [] (var 1 1 "x") (var 1 5 "y")), "")
-    p "> x; y" `shouldBe` Right (Test "" (var 1 3 "x") (var 1 6 "y"), "")
+    -- p "x = y" `shouldBe` Right (Define (Def [] (Var "x") (Var "y")), "")
+    p "> x; y" `shouldBe` Right (Test "" (Var "x") (Var "y"), "")
 
   it "☯ parseModule" $ do
     let p = parse' (parseModule "path/my-file.tao")
@@ -254,9 +249,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     loadModule "base-path" "my-file" (pkg, []) `shouldReturn` (pkg, [])
 
   it "☯ loadPackage" $ do
-    let load path = do
-          (pkg, errors) <- loadPackage path (("pkg", []), [])
-          return (dropMeta pkg, errors)
+    let load path = loadPackage path (("pkg", []), [])
     let pkg =
           ( "pkg",
             [ ( "sub/mod",
@@ -269,9 +262,6 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     load "examples/sub" `shouldReturn` (pkg, [] :: [SyntaxError])
 
   it "☯ load" $ do
-    let load' path deps = do
-          (pkg, errors) <- load path deps
-          return (dropMeta pkg, errors)
     let pkg =
           ( "sub",
             [ ("empty/empty-file", []),
@@ -283,4 +273,4 @@ run = describe "--==☯ TaoParser ☯==--" $ do
             ]
           )
     let errors = []
-    load' "examples/sub" ["examples/empty"] `shouldReturn` (pkg, errors)
+    load "examples/sub" ["examples/empty"] `shouldReturn` (pkg, errors)

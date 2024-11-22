@@ -6,7 +6,6 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ TaoTests ☯==--" $ do
-  let loc = C.Location "TaoTests" (1, 2)
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
   let (a, a') = (Var "a", C.Var "a")
@@ -233,12 +232,6 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lift term `shouldBe` App f (Record [("x", Int 42)])
 
   -- Select Expr [(String, Expr)]
-
-  it "☯ lower/lift Expr Meta" $ do
-    let expr = Meta loc x
-    let term = C.Meta loc x'
-    lower [] expr `shouldBe` term
-    lift term `shouldBe` expr
 
   it "☯ lower/lift Expr Err" $ do
     let expr = Err

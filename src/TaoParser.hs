@@ -134,20 +134,10 @@ parseCommentMultiLine = do
   error "TODO: parseCommentMultiLine"
   return (dropWhileEnd isSpace line)
 
-parseDocString :: Parser String -> Parser ([C.Metadata], String)
-parseDocString delimiter = do
-  error "TODO: DocString"
-
-parseLocation :: Parser a -> Parser (C.Metadata, a)
-parseLocation parser = do
-  state <- P.getState
-  x <- parser
-  return (C.Location state.name state.pos, x)
-
 parseAtom :: Parser Expr
 parseAtom = do
-  (loc, a) <-
-    (parseLocation . P.oneOf)
+  a <-
+    P.oneOf
       [ Any <$ P.word "_",
         IntType <$ P.word "Int",
         NumType <$ P.word "Num",
@@ -187,22 +177,17 @@ parseAtom = do
     [ do
         _ <- P.char '.'
         x <- P.oneOf [parseNameVar, fmap show P.integer]
-        return (Meta loc (Trait a x)),
-      case a of
-        And {} -> return a
-        Meta {} -> return a
-        a -> return (Meta loc a)
+        return (Trait a x),
+      return a
     ]
 
 parseExpr :: Int -> Parser appDelim -> Parser Expr
 parseExpr prec delim = do
   let parseOp txt = do
         _ <- P.whitespaces
-        (loc, _) <- parseLocation (P.text txt)
+        _ <- P.text txt
         _ <- P.whitespaces
-        return loc
-  let unary op m a = Meta m (op a)
-  let binary op m a b = Meta m (op a b)
+        return ()
   let ops =
         [ P.atom 0 (Match []) parseCases,
           P.prefix 0 For $ do
@@ -215,18 +200,18 @@ parseExpr prec delim = do
             _ <- P.char '.'
             _ <- P.whitespaces
             return xs,
-          P.infixR 1 (binary Or) (parseOp "|"),
-          P.infixR 2 (binary Ann) (parseOp ":"),
-          P.infixR 3 (binary eq) (parseOp "=="),
-          P.infixR 4 (binary lt) (parseOp "<"),
-          P.infixR 4 (binary gt) (parseOp ">"),
-          P.infixR 5 (binary Fun) (parseOp "->"),
-          P.infixR 6 (binary add) (parseOp "+"),
-          P.infixR 6 (binary sub) (parseOp "-"),
-          P.infixR 7 (binary mul) (parseOp "*"),
+          P.infixR 1 (const Or) (parseOp "|"),
+          P.infixR 2 (const Ann) (parseOp ":"),
+          P.infixR 3 (const eq) (parseOp "=="),
+          P.infixR 4 (const lt) (parseOp "<"),
+          P.infixR 4 (const gt) (parseOp ">"),
+          P.infixR 5 (const Fun) (parseOp "->"),
+          P.infixR 6 (const add) (parseOp "+"),
+          P.infixR 6 (const sub) (parseOp "-"),
+          P.infixR 7 (const mul) (parseOp "*"),
           P.infixL 8 (const App) (void delim),
-          P.infixR 9 (binary pow) (parseOp "^"),
-          P.prefix 10 (unary neg) (parseOp "-")
+          P.infixR 9 (const pow) (parseOp "^"),
+          P.prefix 10 (const neg) (parseOp "-")
         ]
   P.operators prec ops $ do
     a <- parseAtom
@@ -235,7 +220,7 @@ parseExpr prec delim = do
 
 parseRecordField :: Parser (String, Expr)
 parseRecordField = do
-  (loc, name) <- parseLocation parseNameVar
+  name <- parseNameVar
   P.commit (CRecordField name)
   _ <- P.spaces
   maybeType <- P.maybe' $ do
@@ -251,8 +236,8 @@ parseRecordField = do
   case (maybeValue, maybeType) of
     (Just value, Just type') -> return (name, Ann value type')
     (Just value, Nothing) -> return (name, value)
-    (Nothing, Just type') -> return (name, Ann (Meta loc (Var name)) type')
-    (Nothing, Nothing) -> return (name, Meta loc (Var name))
+    (Nothing, Just type') -> return (name, Ann (Var name) type')
+    (Nothing, Nothing) -> return (name, Var name)
 
 parseRecord :: Parser Expr
 parseRecord = do
@@ -323,7 +308,7 @@ parseModulePath = do
 
 parseImport :: Parser Stmt
 parseImport = do
-  (loc, _) <- parseLocation (P.word "import")
+  _ <- P.word "import"
   P.commit CImport
   _ <- P.spaces
   (path, alias) <- parseModulePath
@@ -349,12 +334,12 @@ parseImport = do
 parseDef :: Parser (Expr, Expr)
 parseDef = do
   typeAnnotation <- P.maybe' $ do
-    (loc, _) <- parseLocation (P.char ':')
+    _ <- P.char ':'
     _ <- P.spaces
     t <- parseExpr 0 P.spaces
     _ <- parseLineBreak
     _ <- P.whitespaces
-    return (\a -> Meta loc (Ann a t))
+    return (`Ann` t)
   a <- parseExpr 0 P.spaces
   _ <- P.spaces
   _ <- P.char '='

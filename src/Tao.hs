@@ -36,7 +36,6 @@ data Expr
   | Trait Expr String
   | Select Expr [(String, Expr)]
   | With Expr [(String, Expr)]
-  | Meta C.Metadata Expr
   | Err
   deriving (Eq, Show)
 
@@ -240,11 +239,7 @@ patternsName (p : ps) = case p of
   Var x -> case patternsName ps of
     Just y | x /= y -> Nothing
     _ -> Just x
-  Meta _ p -> patternsName (p : ps)
   _ -> patternsName ps
-
-meta :: [C.Metadata] -> Expr -> Expr
-meta ms a = foldr Meta a ms
 
 import' :: String -> [String] -> Stmt
 import' m names = Import m (takeBaseName m) (map (\x -> (x, x)) names)
@@ -323,7 +318,6 @@ instance Lower Expr C.Expr where
     a -> error $ "TODO: lower Select " ++ show a
   lower env (Ann a b) = C.Ann (lower env a) (lower env b)
   lower env (Call op args) = C.Call op (map (lower env) args)
-  lower env (Meta m a) = C.Meta m (lower env a)
   lower _ Err = C.Err
   lower _ a = error $ "TODO: lower " ++ show a
 
@@ -410,7 +404,6 @@ instance Lift C.Expr Expr where
   lift (C.Or a b) = Or (lift a) (lift b)
   lift (C.Ann a b) = Ann (lift a) (lift b)
   lift (C.Call op args) = Call op (map lift args)
-  lift (C.Meta m a) = Meta m (lift a)
   lift C.Err = Err
 
 splitWith :: (Char -> Bool) -> String -> [String]
@@ -502,38 +495,6 @@ in' :: String -> String -> Bool
 in' _ "" = False
 in' substring string | substring `isPrefixOf` string = True
 in' substring (_ : string) = in' substring string
-
-class DropMeta a where
-  dropMeta :: a -> a
-
-instance DropMeta Expr where
-  dropMeta :: Expr -> Expr
-  dropMeta = \case
-    Int i -> Int i
-    Var x -> Var x
-    Let (a, b) c -> Let (dropMeta a, dropMeta b) (dropMeta c)
-    Match args cases -> Match (map dropMeta args) (map dropMeta cases)
-    Meta _ a -> dropMeta a
-    expr -> error $ "TODO: dropMeta " ++ show expr
-
-instance DropMeta Case where
-  dropMeta :: Case -> Case
-  dropMeta (Case ps guard a) =
-    Case (map dropMeta ps) (fmap dropMeta guard) (dropMeta a)
-
-instance DropMeta Stmt where
-  dropMeta :: Stmt -> Stmt
-  dropMeta stmt@Import {} = stmt
-  dropMeta (Def (a, b)) = Def (dropMeta a, dropMeta b)
-  dropMeta (Test name a b) = Test name (dropMeta a) (dropMeta b)
-
-instance DropMeta Module where
-  dropMeta :: Module -> Module
-  dropMeta (name, stmts) = (name, map dropMeta stmts)
-
-instance DropMeta Package where
-  dropMeta :: Package -> Package
-  dropMeta (name, mods) = (name, map dropMeta mods)
 
 class Resolve a where
   resolve :: [Module] -> String -> a -> Maybe (String, Expr)

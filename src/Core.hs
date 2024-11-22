@@ -33,14 +33,7 @@ data Expr
   | Ann Expr Expr
   | Call String [Expr]
   | Let [(String, Expr)] Expr
-  | Meta Metadata Expr
   | Err
-  deriving (Eq)
-
-data Metadata
-  = Location String (Int, Int)
-  | Comment String
-  | Unwrap
   deriving (Eq)
 
 type Ops = [(String, (Expr -> Expr) -> [Expr] -> Expr)]
@@ -102,7 +95,6 @@ instance Show Expr where
     Ann a b -> "(" ++ show a ++ " : " ++ show b ++ ")"
     Call f xs -> '%' : f ++ "(" ++ intercalate ", " (map show xs) ++ ")"
     Let env b -> "{" ++ intercalate "; " (map (\(x, a) -> x ++ " = " ++ show a) env) ++ "} " ++ show b
-    Meta m a -> '^' : show m ++ "(" ++ show a ++ ")"
     Err -> "!error"
     where
       isName = all (\c -> isAlphaNum c || c `elem` ['_', '-'])
@@ -141,7 +133,6 @@ instance Show Expr where
 --     Tag k -> atom 12 k
 --     Call op [] -> atom 12 ("(" ++ op ++ ")")
 --     Call op args -> showsPrec p (app (Call op []) args)
---     Meta m a -> prefix p ("#(" ++ show m ++ ")") a
 --     where
 --       atom n k = showParen (p > n) $ showString k
 --       prefix n k a = showParen (p > n) $ showString k . showsPrec (n + 1) a
@@ -159,10 +150,6 @@ instance Show Expr where
 --       isNameChar c = isAlphaNum c
 --       op2 op = " " ++ show op ++ " "
 --       op1 op = show op ++ " "
-
-instance Show Metadata where
-  show :: Metadata -> String
-  show (Location src (row, col)) = src ++ ':' : show row ++ ':' : show col
 
 -- Syntax sugar
 tag :: String -> [Expr] -> Expr
@@ -245,9 +232,6 @@ matchFun [] = Err
 matchFun [(ps, b)] = fun ps b
 matchFun ((ps, b) : cases) = fun ps b `Or` matchFun cases
 
-meta :: [Metadata] -> Expr -> Expr
-meta ms a = foldr Meta a ms
-
 -- Helper functions
 pop :: (Eq k) => k -> [(k, v)] -> [(k, v)]
 pop _ [] = []
@@ -283,7 +267,6 @@ instance FreeVars Expr where
   freeVars (Or a b) = freeVars a `union` freeVars b
   freeVars (Ann a _) = freeVars a
   freeVars (Call _ args) = foldr (union . freeVars) [] args
-  freeVars (Meta _ a) = freeVars a
   freeVars Err = []
 
 instance FreeVars [Expr] where
@@ -383,10 +366,8 @@ reduce ops = \case
       (Just call, args) -> call (reduce ops) args
       (Nothing, args) -> Call f args
     Let env' a -> reduce ops (Let (env ++ env') a)
-    Meta _ a -> reduce ops (Let env a)
     expr -> expr
   Ann a _ -> reduce ops a
-  Meta _ a -> reduce ops a
   expr -> expr
 
 eval :: Ops -> Expr -> Expr
@@ -419,7 +400,6 @@ substitute s (Or a b) = Or (substitute s a) (substitute s b)
 substitute s (Ann (Tag k) ty) = Ann (Tag k) (substitute s ty)
 substitute s (Ann a _) = substitute s a
 substitute s (Call op args) = Call op (map (substitute s) args)
-substitute s (Meta m a) = Meta m (substitute s a)
 substitute _ Err = Err
 
 unify :: Expr -> Expr -> Either TypeError (Expr, Substitution)
@@ -474,8 +454,6 @@ unify a b = case (a, b) of
   (Call op args, Call op' args') | op == op' -> do
     (args, s) <- unifyAll args args'
     Right (Call op args, s)
-  (Meta _ a, b) -> unify a b
-  (a, Meta _ b) -> unify a b
   (a, b) -> Left (TypeMismatch a b)
 
 unify2 :: (Expr, Expr) -> (Expr, Expr) -> Either TypeError ((Expr, Expr), Substitution)
@@ -541,9 +519,6 @@ infer ops env (Call op args) = case lookup op env of
   Nothing -> do
     let y = newName (map fst env) (op ++ "T")
     Right (Var y, [(y, Var y), (op, Ann (Call op []) (Var y))])
-infer ops env (Meta m a) = do
-  (t, s) <- infer ops env a
-  Right (Meta m t, s)
 infer _ _ Err = Right (Err, [])
 
 infer2 :: Ops -> Env -> Expr -> Expr -> Either TypeError ((Expr, Expr), Substitution)
@@ -606,32 +581,6 @@ instantiate _ a = (a, [])
 --         Left _ -> Err
 --   let y = f t (names ++ map fst env') x
 --   (y, eval [(x, Var y)] a) : rename f (y : names) env env'
-
-class DropMeta a where
-  dropMeta :: a -> a
-
-instance DropMeta Expr where
-  dropMeta :: Expr -> Expr
-  dropMeta IntT = IntT
-  dropMeta NumT = NumT
-  dropMeta (Int i) = Int i
-  dropMeta (Num n) = Num n
-  dropMeta (Var x) = Var x
-  dropMeta (Tag k) = Tag k
-  dropMeta (For x a) = For x (dropMeta a)
-  dropMeta (Fix x a) = Fix x (dropMeta a)
-  dropMeta (Fun a b) = Fun (dropMeta a) (dropMeta b)
-  dropMeta (App a b) = App (dropMeta a) (dropMeta b)
-  dropMeta (And a b) = And (dropMeta a) (dropMeta b)
-  dropMeta (Or a b) = Or (dropMeta a) (dropMeta b)
-  dropMeta (Ann a t) = Ann (dropMeta a) (dropMeta t)
-  dropMeta (Call op args) = Call op (map dropMeta args)
-  dropMeta (Meta _ a) = dropMeta a
-  dropMeta Err = Err
-
-instance DropMeta (String, Expr) where
-  dropMeta :: (String, Expr) -> (String, Expr)
-  dropMeta (x, a) = (x, dropMeta a)
 
 -- Core parser
 type Parser a = P.Parser String a
@@ -696,7 +645,6 @@ parseExpr =
               _ <- P.spaces
               parseExpr
             return (Call f args)
-          "@Meta" -> error "TODO: parseExpr Meta"
           _ -> P.fail'
         _ <- P.spaces
         _ <- P.char ')'
