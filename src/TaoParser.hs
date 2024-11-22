@@ -306,6 +306,7 @@ parseStmt = do
         TypeDef <$> parseTypeDef,
         parseTest
       ]
+  _ <- P.spaces
   _ <- parseLineBreak
   _ <- P.whitespaces
   return stmt

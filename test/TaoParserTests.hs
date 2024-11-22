@@ -164,6 +164,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "x\n->\ny" `shouldBe` Right (expr 2 1 $ Fun (var 1 1 "x") (var 3 1 "y"), "")
     p "x y" `shouldBe` Right (App (var 1 1 "x") (var 1 3 "y"), "")
     p "x\ny" `shouldBe` Right (expr 1 1 $ Var "x", "\ny")
+    p "(x\ny)" `shouldBe` Right (expr 1 1 $ App (var 1 2 "x") (var 2 1 "y"), "")
     p "()" `shouldBe` Right (expr 1 1 Unit, "")
     p "(\n)" `shouldBe` Right (expr 1 1 Unit, "")
     p "(x)" `shouldBe` Right (var 1 2 "x", "")
@@ -183,17 +184,18 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "$call(\nx,\ny)" `shouldBe` Right (expr 1 1 $ Call "call" [var 2 1 "x", var 3 1 "y"], "")
     p "- x" `shouldBe` Right (expr 1 1 $ neg (var 1 3 "x"), "")
     p "-\nx" `shouldBe` Right (expr 1 1 $ neg (var 2 1 "x"), "")
-
-    p "{}" `shouldBe` Right (expr 1 1 $ Record [], "")
     p "x == y" `shouldBe` Right (expr 1 3 $ eq (var 1 1 "x") (var 1 6 "y"), "")
     p "x <  y" `shouldBe` Right (expr 1 3 $ lt (var 1 1 "x") (var 1 6 "y"), "")
     p "x +  y" `shouldBe` Right (expr 1 3 $ add (var 1 1 "x") (var 1 6 "y"), "")
     p "x -  y" `shouldBe` Right (expr 1 3 $ sub (var 1 1 "x") (var 1 6 "y"), "")
     p "x *  y" `shouldBe` Right (expr 1 3 $ mul (var 1 1 "x") (var 1 6 "y"), "")
     p "x ^  y" `shouldBe` Right (expr 1 3 $ pow (var 1 1 "x") (var 1 6 "y"), "")
+    -- p "x = y; z" `shouldBe` Right (Err, "")
+    -- p "x\n=\ny\nz" `shouldBe` Right (Err, "")
+
+    p "{}" `shouldBe` Right (expr 1 1 $ Record [], "")
     p "{| x }" `shouldBe` Right (Match [] [var 1 4 "x"], "")
     p "match {| x}" `shouldBe` Right (expr 1 1 $ Match [] [var 1 10 "x"], "")
-    p "(x\ny)" `shouldBe` Right (expr 1 1 $ App (var 1 2 "x") (var 2 1 "y"), "")
 
   it "☯ parseImport" $ do
     let p = parse' parseImport
