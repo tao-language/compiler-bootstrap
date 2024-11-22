@@ -105,7 +105,7 @@ parseCollection open delim close parser = do
 
 parseDelimited :: String -> Parser a -> Parser [a]
 parseDelimited delim parser = do
-  let delimiter = P.paddedR P.whitespaces (P.text delim)
+  let delimiter = P.padded P.whitespaces (P.text delim)
   x <- parser
   xs <- P.zeroOrMore (P.paddedL delimiter parser)
   _ <- P.maybe' delimiter
@@ -144,18 +144,12 @@ parseLocation parser = do
   x <- parser
   return (C.Location state.name state.pos, x)
 
-parseOp :: String -> Parser C.Metadata
-parseOp txt = do
-  _ <- P.spaces
-  (loc, _) <- parseLocation (P.text txt)
-  _ <- P.spaces
-  return loc
-
 parseAtom :: Parser Expr
 parseAtom = do
   (loc, a) <-
     (parseLocation . P.oneOf)
-      [ IntType <$ P.word "Int",
+      [ Any <$ P.word "_",
+        IntType <$ P.word "Int",
         NumType <$ P.word "Num",
         Var <$> parseNameVar,
         do
@@ -172,7 +166,20 @@ parseAtom = do
         do
           items <- parseCollection "(" "," ")" (parseExpr 0 P.whitespaces)
           return (and' items),
-        Match [] <$> parseCases,
+        do
+          _ <- P.char '$'
+          x <- parseName $ P.oneOf [P.letter, P.char '_']
+          args <-
+            P.oneOf
+              [ do
+                  _ <- P.spaces
+                  P.oneOf
+                    [ parseCollection "(" "," ")" (parseExpr 0 P.whitespaces),
+                      return []
+                    ],
+                return []
+              ]
+          return (Call x args),
         parseMatch,
         parseRecord
       ]
@@ -189,9 +196,25 @@ parseAtom = do
 
 parseExpr :: Int -> Parser appDelim -> Parser Expr
 parseExpr prec delim = do
+  let parseOp txt = do
+        _ <- P.whitespaces
+        (loc, _) <- parseLocation (P.text txt)
+        _ <- P.whitespaces
+        return loc
   let binary op m a b = Meta m (op a b)
   let ops =
-        [ P.infixR 1 (binary Or) (parseOp "|"),
+        [ P.atom 0 (Match []) parseCases,
+          P.prefix 0 For $ do
+            _ <- P.char '@'
+            _ <- P.whitespaces
+            xs <- P.zeroOrMore $ do
+              x <- parseNameVar
+              _ <- P.whitespaces
+              return x
+            _ <- P.char '.'
+            _ <- P.whitespaces
+            return xs,
+          P.infixR 1 (binary Or) (parseOp "|"),
           P.infixR 2 (binary Ann) (parseOp ":"),
           P.infixR 3 (binary eq) (parseOp "=="),
           P.infixR 4 (binary lt) (parseOp "<"),
@@ -240,8 +263,8 @@ parseCases = do
   _ <- P.whitespaces
   cases <- P.oneOrMore $ do
     _ <- P.char '|'
-    _ <- P.spaces
-    a <- parseExpr 1 P.spaces
+    _ <- P.whitespaces
+    a <- parseExpr 2 P.spaces
     _ <- P.whitespaces
     return a
   _ <- P.whitespaces
