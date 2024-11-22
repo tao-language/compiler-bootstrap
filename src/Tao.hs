@@ -144,6 +144,9 @@ letVars defs b = foldr letVar b defs
 defVar :: (String, Expr) -> Stmt
 defVar (x, a) = Def (Var x, a)
 
+neg :: Expr -> Expr
+neg = Op1 Neg
+
 eq :: Expr -> Expr -> Expr
 eq = Op2 Eq
 

@@ -180,6 +180,9 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "$call()" `shouldBe` Right (expr 1 1 $ Call "call" [], "")
     p "$call(x)" `shouldBe` Right (expr 1 1 $ Call "call" [var 1 7 "x"], "")
     p "$call(x, y, z)" `shouldBe` Right (expr 1 1 $ Call "call" [var 1 7 "x", var 1 10 "y", var 1 13 "z"], "")
+    p "$call(\nx,\ny)" `shouldBe` Right (expr 1 1 $ Call "call" [var 2 1 "x", var 3 1 "y"], "")
+    p "- x" `shouldBe` Right (expr 1 1 $ neg (var 1 3 "x"), "")
+    p "-\nx" `shouldBe` Right (expr 1 1 $ neg (var 2 1 "x"), "")
 
     p "{}" `shouldBe` Right (expr 1 1 $ Record [], "")
     p "x == y" `shouldBe` Right (expr 1 3 $ eq (var 1 1 "x") (var 1 6 "y"), "")

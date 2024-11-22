@@ -201,6 +201,7 @@ parseExpr prec delim = do
         (loc, _) <- parseLocation (P.text txt)
         _ <- P.whitespaces
         return loc
+  let unary op m a = Meta m (op a)
   let binary op m a b = Meta m (op a b)
   let ops =
         [ P.atom 0 (Match []) parseCases,
@@ -224,7 +225,8 @@ parseExpr prec delim = do
           P.infixR 6 (binary sub) (parseOp "-"),
           P.infixR 7 (binary mul) (parseOp "*"),
           P.infixL 8 (const App) (void delim),
-          P.infixR 9 (binary pow) (parseOp "^")
+          P.infixR 9 (binary pow) (parseOp "^"),
+          P.prefix 10 (unary neg) (parseOp "-")
         ]
   P.operators prec ops $ do
     a <- parseAtom
