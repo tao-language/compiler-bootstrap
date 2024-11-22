@@ -12,25 +12,26 @@ import System.FilePath (takeBaseName)
 
 data Expr
   = Any
+  | Unit
   | IntType
   | NumType
   | Int Int
   | Num Double
   | Var String
-  | Tag String [Expr]
-  | Tuple [Expr]
-  | ForAll [String] Expr
+  | Tag String
+  | For [String] Expr
   | Fun Expr Expr
   | App Expr Expr
+  | And Expr Expr
   | Or Expr Expr
   | Ann Expr Type
   | Call String [Expr]
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
-  | Let Def Expr
-  | Bind Def Expr
+  | Let (Expr, Expr) Expr
+  | Bind (Expr, Expr) Expr
   | If Expr Expr Expr
-  | Match [Expr] [([Expr], Expr)]
+  | Match [Expr] [Expr]
   | Record [(String, Expr)]
   | Trait Expr String
   | Select Expr [(String, Expr)]
@@ -54,15 +55,6 @@ data Op2
   | Pow
   deriving (Eq, Show)
 
-data Def
-  = VarDef (Maybe Type) (String, [Expr]) Expr
-  | AndDef (Maybe [Expr]) [Expr] Expr
-  | Op1Def (Maybe (Expr, Expr)) (Op1, [Expr]) Expr
-  | Op2Def (Maybe (Expr, Expr, Expr)) (Op2, [Expr]) Expr
-  | TraitDef (Maybe (Expr, Expr)) (String, [Expr]) Expr
-  | TypeDef (Maybe Type) (String, [Expr]) [(Expr, Maybe Expr)]
-  deriving (Eq, Show)
-
 data Case
   = Case [Pattern] (Maybe Expr) Expr
   deriving (Eq, Show)
@@ -71,7 +63,8 @@ type Pattern = Expr
 
 data Stmt
   = Import String String [(String, String)]
-  | Def Def
+  | Def (Expr, Expr)
+  | TypeDef (String, [Expr], Expr)
   | Test String Expr Pattern
   deriving (Eq, Show)
 
@@ -102,13 +95,16 @@ runtimeOps :: C.Ops
 runtimeOps = buildOps
 
 -- Syntax sugar
+tag :: String -> [Expr] -> Expr
+tag k args = and' (Tag k : args)
+
 for :: [String] -> Expr -> Expr
 for xs a = case filter (`occurs` a) xs of
   [] -> a
-  xs -> ForAll xs a
+  xs -> For xs a
 
 fun :: [Expr] -> Expr -> Expr
-fun ps b = for (concatMap freeVars ps) (foldr Fun b ps)
+fun ps b = foldr Fun b ps
 
 funOf :: Expr -> ([Expr], Expr)
 funOf (Fun arg ret) = let (args, ret') = funOf ret in (arg : args, ret')
@@ -121,6 +117,15 @@ appOf :: Expr -> (Expr, [Expr])
 appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
 appOf a = (a, [])
 
+and' :: [Expr] -> Expr
+and' [] = Unit
+and' [a] = a
+and' (a : bs) = And a (and' bs)
+
+andOf :: Expr -> [Expr]
+andOf (And a b) = a : andOf b
+andOf a = [a]
+
 or' :: [Expr] -> Expr
 or' [] = Err
 or' [a] = a
@@ -131,17 +136,13 @@ orOf (Or a b) = a : orOf b
 orOf a = [a]
 
 letVar :: (String, Expr) -> Expr -> Expr
-letVar (x, a) = Let (VarDef Nothing (x, []) a)
+letVar (x, a) = Let (Var x, a)
 
 letVars :: [(String, Expr)] -> Expr -> Expr
 letVars defs b = foldr letVar b defs
 
 defVar :: (String, Expr) -> Stmt
-defVar (x, a) = Def (VarDef Nothing (x, []) a)
-
-match :: [Expr] -> [([Expr], Expr)] -> Expr
-match [] (([], b) : _) = b
-match args cases = Match args cases
+defVar (x, a) = Def (Var x, a)
 
 eq :: Expr -> Expr -> Expr
 eq = Op2 Eq
@@ -174,31 +175,32 @@ selectFun :: [String] -> Expr
 selectFun xs = lambda ["_"] (Select (Var "_") (map (\x -> (x, Var x)) xs))
 
 lambda :: [String] -> Expr -> Expr
-lambda xs b = match [] [(map Var xs, b)]
+lambda xs = fun (map Var xs)
 
 lambdaOf :: String -> Expr -> ([String], Expr)
 lambdaOf _ (Match [] []) = ([], Err)
-lambdaOf _ (Match [] (([], b) : _)) = ([], b)
-lambdaOf prefix (Match [] cases) = do
-  let x = lambdaArg prefix cases
-  let matchCase x (ps, b) = case ps of
-        Any : _ -> Just (ps, b)
-        Var x' : ps | x == x' -> Just (ps, b)
-        _ -> Nothing
-  let matchCases x (case' : cases) = do
-        case' <- matchCase x case'
-        cases <- matchCases x cases
-        Just (case' : cases)
-      matchCases _ _ = Just []
-  case matchCases x cases of
-    Just cases -> do
-      let (ys, b) = lambdaOf prefix (match [] cases)
-      (x : ys, b)
-    Nothing -> ([x], Match [Var x] cases)
-lambdaOf prefix (Meta m a) = do
-  let (xs, a') = lambdaOf prefix a
-  (xs, Meta m a')
-lambdaOf _ a = ([], a)
+-- lambdaOf _ (Match [] (([], b) : _)) = ([], b)
+-- lambdaOf prefix (Match [] cases) = do
+--   let x = lambdaArg prefix cases
+--   let matchCase x (ps, b) = case ps of
+--         Any : _ -> Just (ps, b)
+--         Var x' : ps | x == x' -> Just (ps, b)
+--         _ -> Nothing
+--   let matchCases x (case' : cases) = do
+--         case' <- matchCase x case'
+--         cases <- matchCases x cases
+--         Just (case' : cases)
+--       matchCases _ _ = Just []
+--   case matchCases x cases of
+--     Just cases -> do
+--       let (ys, b) = lambdaOf prefix (match [] cases)
+--       (x : ys, b)
+--     Nothing -> ([x], Match [Var x] cases)
+-- lambdaOf prefix (Meta m a) = do
+--   let (xs, a') = lambdaOf prefix a
+--   (xs, Meta m a')
+-- lambdaOf _ a = ([], a)
+lambdaOf x a = error $ "TODO lambdaOf" ++ show (x, a)
 
 lambdaArg :: String -> [([Expr], Expr)] -> String
 lambdaArg prefix cases = case popCases cases of
@@ -252,31 +254,6 @@ isTest :: Stmt -> Bool
 isTest Test {} = True
 isTest _ = False
 
-isDefine :: Stmt -> Bool
-isDefine Def {} = True
-isDefine _ = False
-
-isTypeDef :: Expr -> Bool
-isTypeDef (Fun _ b) = isTypeDef b
-isTypeDef (App a _) = isTypeDef a
-isTypeDef (Ann a _) = isTypeDef a
-isTypeDef (Meta _ a) = isTypeDef a
-isTypeDef _ = False
-
-isTagDef :: Expr -> Bool
-isTagDef (Tag _ _) = True
-isTagDef (Fun _ b) = isTagDef b
-isTagDef (App a _) = isTagDef a
-isTagDef (Ann a _) = isTagDef a
-isTagDef (Meta _ a) = isTagDef a
-isTagDef _ = False
-
-isFunctionDef :: Expr -> Bool
-isFunctionDef (Fun _ _) = True
-isFunctionDef (Ann a _) = isFunctionDef a
-isFunctionDef (Meta _ a) = isFunctionDef a
-isFunctionDef _ = False
-
 class FreeVars a where
   freeVars :: a -> [String]
 
@@ -293,23 +270,18 @@ class Lower a b where
 
 instance Lower Expr C.Expr where
   lower :: C.Env -> Expr -> C.Expr
+  lower _ Any = C.Any
+  lower _ Unit = C.Unit
   lower _ IntType = C.IntT
   lower _ NumType = C.NumT
   lower _ (Int i) = C.Int i
   lower _ (Num n) = C.Num n
   lower _ (Var x) = C.Var x
-  lower env (Tag k args) = C.tag k (map (lower env) args)
-  lower env (Tuple items) = lower env (Tag "" items)
-  lower env (Record fields) = do
-    let k = '~' : intercalate "," (map fst fields)
-    lower env (Tag k (map snd fields))
-  lower env (Trait a x) = do
-    let a' = lower env a
-    case C.infer buildOps env a' of
-      Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
-      Left _ -> C.Err
-  lower env (ForAll xs a) = C.for xs (lower (C.pushVars xs env) a)
-  lower env (Fun a b) = C.Fun (lower env a) (lower env b)
+  lower env (Tag k) = C.Tag k
+  lower env (For xs a) = C.for xs (lower (C.pushVars xs env) a)
+  lower env (Fun a b) = do
+    let (args, body) = funOf (Fun a b)
+    C.for (concatMap freeVars args) (C.fun (lower env <$> args) (lower env body))
   lower env (App a b) = do
     let a' = lower env a
     case C.infer buildOps env a' of
@@ -319,13 +291,21 @@ instance Lower Expr C.Expr where
           C.App a' (lower env (select b (split ',' xs)))
         _ -> C.App a' (lower env b)
       _ -> C.App a' (lower env b)
+  lower env (And a b) = C.And (lower env a) (lower env b)
   lower env (Or a b) = C.Or (lower env a) (lower env b)
   -- lower env (Let def b) = lower (lower env def ++ env) b
   -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
-  lower env (Match [] cases) =
-    lower env (or' (uncurry fun <$> cases))
+  lower env (Match [] cases) = lower env (or' cases)
   lower env (Match args cases) =
     lower env (app (Match [] cases) args)
+  lower env (Record fields) = do
+    let k = '~' : intercalate "," (map fst fields)
+    lower env (tag k (map snd fields))
+  lower env (Trait a x) = do
+    let a' = lower env a
+    case C.infer buildOps env a' of
+      Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
+      Left _ -> C.Err
   lower env (Select a kvs) = case a of
     Record fields -> do
       let sub = map (second $ lower env) fields
@@ -398,28 +378,32 @@ class Lift a b where
 
 instance Lift C.Expr Expr where
   lift :: C.Expr -> Expr
+  lift C.Any = Any
+  lift C.Unit = Unit
   lift C.IntT = IntType
   lift C.NumT = NumType
   lift (C.Int i) = Int i
   lift (C.Num n) = Num n
   lift (C.Var x) = Var x
-  lift (C.Tag "") = Tuple []
   lift (C.Tag "~") = Record []
-  lift (C.Tag k) = Tag k []
-  lift (C.For _ a) = lift a
+  lift (C.Tag k) = Tag k
+  lift (C.For x a) = case lift a of
+    For xs a -> For (x : xs) a
+    a -> For [x] a
   lift (C.Fix _ a) = lift a
   lift (C.Fun a b) = Fun (lift a) (lift b)
   lift (C.App a b) = case appOf (App (lift a) (lift b)) of
     (Var ('.' : x), _ : a : args) -> app (Trait a x) args
     -- (Trait a "<-", [Fun p b]) -> Bind ([], toPattern p, a) b
+    (For x a, args) -> Match args [For x a]
+    (Fun a1 a2, args) -> Match args [Fun a1 a2]
+    (Or a1 a2, args) -> Match args (orOf (Or a1 a2))
     (a, args) -> app a args
   lift (C.And a b) = case (a, map lift (C.andOf b)) of
-    (C.Tag "", items) -> Tuple items
     (C.Tag ('~' : names), values) -> do
       let keys = split ',' names
       Record (zip keys values)
-    (C.Tag k, args) -> Tag k args
-    (a, items) -> Tuple (lift a : items)
+    (a, items) -> and' (lift a : items)
   lift (C.Or a b) = Or (lift a) (lift b)
   lift (C.Ann a b) = Ann (lift a) (lift b)
   lift (C.Call op args) = Call op (map lift args)
@@ -524,10 +508,8 @@ instance DropMeta Expr where
   dropMeta = \case
     Int i -> Int i
     Var x -> Var x
-    Let def b -> Let (dropMeta def) (dropMeta b)
-    Match args cases -> do
-      let dropMeta' (ps, b) = (map dropMeta ps, dropMeta b)
-      Match (map dropMeta args) (map dropMeta' cases)
+    Let (a, b) c -> Let (dropMeta a, dropMeta b) (dropMeta c)
+    Match args cases -> Match (map dropMeta args) (map dropMeta cases)
     Meta _ a -> dropMeta a
     expr -> error $ "TODO: dropMeta " ++ show expr
 
@@ -539,13 +521,8 @@ instance DropMeta Case where
 instance DropMeta Stmt where
   dropMeta :: Stmt -> Stmt
   dropMeta stmt@Import {} = stmt
-  dropMeta (Def def) = Def (dropMeta def)
+  dropMeta (Def (a, b)) = Def (dropMeta a, dropMeta b)
   dropMeta (Test name a b) = Test name (dropMeta a) (dropMeta b)
-
-instance DropMeta Def where
-  dropMeta :: Def -> Def
-  dropMeta (VarDef t (x, args) b) =
-    VarDef (fmap dropMeta t) (x, map dropMeta args) (dropMeta b)
 
 instance DropMeta Module where
   dropMeta :: Module -> Module
@@ -578,11 +555,15 @@ instance Resolve (Stmt, String) where
     Import path' alias names -> case names of
       (x, y) : _ | y == name -> resolve ctx path' x
       _ : names -> resolve ctx path (Import path' alias names, name)
-      [] | alias == name -> Just (path, Tag path' [])
+      [] | alias == name -> Just (path, Tag path')
       [] -> Nothing
-    Def def -> case def of
-      VarDef t (x, args) b | x == name -> Just (path, fun args b)
+    Def (pattern', body) -> case pattern' of
+      Var x | x == name -> Just (path, body)
       _ -> Nothing
+    TypeDef (name', args, body) ->
+      if name == name'
+        then Just (path, body)
+        else Nothing
     Test {} -> Nothing
 
 class Compile a where
@@ -635,13 +616,13 @@ instance RunTest UnitTest where
   test :: [Module] -> UnitTest -> [TestError]
   test ctx t = do
     let test' =
-          match
+          Match
             [t.expr]
-            [ ([t.expect], Tag "Pass" []),
-              ([Var "_"], Var "_")
+            [ Fun t.expect (Tag "Pass"),
+              fun [Var "_"] (Var "_")
             ]
     case eval ctx t.path test' of
-      Tag "Pass" [] -> []
+      Tag "Pass" -> []
       got -> [TestError {test = t, got = got}]
 
 class FindTests a where

@@ -668,19 +668,19 @@ instance Emit T.Expr ([Stmt], Expr) where
     '@' : x | options.prefix == T.namePrefix ('@' : x) -> ([], Name (T.nameIdentifier x))
     '@' : x -> ([], Name (x & replace '/' '.' & replace '-' '_'))
     x -> ([], Name x)
-  emit options (T.Tag k args) = case (k, args) of
-    ("Type", []) -> ([], Name "type")
-    ("Int", []) -> ([], Name "int")
-    ("Num", []) -> ([], Name "float")
-    ("True", []) -> ([], Name "True")
-    ("False", []) -> ([], Name "False")
-    ("Nothing", []) -> ([], Name "None")
-    (k, args) -> do
-      let (stmts, args') = emit options args
-      (stmts, call k args')
-  emit options (T.Tuple items) = do
-    let (stmts, items') = emit options items
-    (stmts, Tuple items')
+  -- emit options (T.Tag k args) = case (k, args) of
+  --   ("Type", []) -> ([], Name "type")
+  --   ("Int", []) -> ([], Name "int")
+  --   ("Num", []) -> ([], Name "float")
+  --   ("True", []) -> ([], Name "True")
+  --   ("False", []) -> ([], Name "False")
+  --   ("Nothing", []) -> ([], Name "None")
+  --   (k, args) -> do
+  --     let (stmts, args') = emit options args
+  --     (stmts, call k args')
+  -- emit options (T.Tuple items) = do
+  --   let (stmts, items') = emit options items
+  --   (stmts, Tuple items')
   emit options (T.Record fields) = do
     let (stmts, fields') = emit options fields
     (stmts, record fields')
@@ -724,7 +724,7 @@ instance Emit T.Expr ([Stmt], Expr) where
   --   error $ show "TODO: emit Bind " ++ show (ts, p, a, b)
   emit _ (T.Match _ []) = ([raise (notImplementedError "")], None)
   emit options (T.Match [] cases) = do
-    let x = C.newName (concatMap (\(ps, b) -> T.freeVars (T.fun ps b)) cases) "_match"
+    let x = C.newName (concatMap T.freeVars cases) "_match"
     -- let def = T.Def [] (T.PVar x) (T.Match cases)
     -- let stmts = emit options def
     -- (stmts, Name x)

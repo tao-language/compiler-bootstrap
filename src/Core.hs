@@ -16,7 +16,9 @@ import Stdlib (replace, replaceString)
 -- https://mroman42.github.io/mikrokosmos/tutorial.html
 
 data Expr
-  = IntT
+  = Any
+  | Unit
+  | IntT
   | NumT
   | Int Int
   | Num Double
@@ -72,6 +74,7 @@ data PatternError
 instance Show Expr where
   show :: Expr -> String
   show expr = case expr of
+    Unit -> "()"
     IntT -> "!IntT"
     NumT -> "!NumT"
     Int i -> show i
@@ -198,7 +201,7 @@ appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
 appOf a = (a, [])
 
 and' :: [Expr] -> Expr
-and' [] = Err
+and' [] = Unit
 and' [a] = a
 and' (a : bs) = And a (and' bs)
 
@@ -265,6 +268,7 @@ class FreeVars a where
 
 instance FreeVars Expr where
   freeVars :: Expr -> [String]
+  freeVars Unit = []
   freeVars IntT = []
   freeVars NumT = []
   freeVars (Int _) = []
@@ -397,6 +401,7 @@ eval ops expr = case reduce ops expr of
   a -> a
 
 substitute :: Substitution -> Expr -> Expr
+substitute _ Unit = Unit
 substitute _ IntT = IntT
 substitute _ NumT = NumT
 substitute _ (Int i) = Int i
@@ -487,6 +492,7 @@ unifyAll (a : bs) (a' : bs') = do
 unifyAll _ _ = Right ([], [])
 
 infer :: Ops -> Env -> Expr -> Either TypeError (Expr, Substitution)
+infer _ _ Unit = Right (Unit, [])
 infer _ _ IntT = Right (IntT, [])
 infer _ _ NumT = Right (NumT, [])
 infer _ _ (Int _) = Right (IntT, [])

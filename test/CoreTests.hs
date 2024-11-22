@@ -147,7 +147,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- lam [] x `shouldBe` x
     -- lam [y'] x `shouldBe` Fun y' x
 
-    and' [] `shouldBe` Err
+    and' [] `shouldBe` Unit
     and' [x] `shouldBe` x
     and' [x, y] `shouldBe` x `And` y
 

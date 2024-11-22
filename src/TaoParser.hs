@@ -61,32 +61,25 @@ startsWithUpper :: String -> Bool
 startsWithUpper (c : _) | isUpper c = True
 startsWithUpper _ = False
 
-parseIdentifier :: Parser String
-parseIdentifier = do
+parseName :: Parser Char -> Parser String
+parseName firstChar = do
   let validChars =
         [ P.letter,
           P.digit,
           P.char '_',
           P.paddedR (P.lookaheadNot $ P.char '>') (P.char '-')
         ]
-  c <- P.letter
+  c <- firstChar
   cs <- P.zeroOrMore (P.oneOf validChars)
   case c : cs of
     name | name `elem` keywords -> P.fail'
     name -> return name
 
-parsePath :: Parser String
-parsePath = do
-  let optional ps = P.oneOf [P.concat ps, return ""]
-  let path = fmap concat (P.zeroOrMore (P.concat [P.text "/", parseIdentifier]))
-  P.concat [P.text "@", optional [parseIdentifier], path]
+parseNameVar :: Parser String
+parseNameVar = parseName P.lowercase
 
-parseName :: Parser String
-parseName = do
-  P.oneOf
-    [ P.concat [parsePath, P.text ".", parseIdentifier],
-      parseIdentifier
-    ]
+parseNameTag :: Parser String
+parseNameTag = parseName P.uppercase
 
 parseLineBreak :: Parser String
 parseLineBreak = do
@@ -158,49 +151,47 @@ parseOp txt = do
   _ <- P.spaces
   return loc
 
-parseExprAtom :: Parser Expr
-parseExprAtom = do
+parseAtom :: Parser Expr
+parseAtom = do
   (loc, a) <-
     (parseLocation . P.oneOf)
-      [ do
-          name <- parseName
-          case name of
-            x | startsWithUpper x -> do
-              _ <- P.spaces
-              args <- P.zeroOrMore parseExprAtom
-              return (Tag name args)
-            _ -> return (Var name),
+      [ IntType <$ P.word "Int",
+        NumType <$ P.word "Num",
+        Var <$> parseNameVar,
+        do
+          name <- parseNameTag
+          _ <- P.spaces
+          args <- P.zeroOrMore parseAtom
+          return (tag name args),
         do
           _ <- P.char '.'
-          x <- P.oneOf [parseIdentifier, fmap show P.integer]
+          x <- P.oneOf [parseNameVar, fmap show P.integer]
           return (traitFun x),
         Int <$> P.integer,
         Num <$> P.number,
         do
-          a <- parseTuple Tuple (parseExpr 0 P.whitespaces)
-          case a of
-            Meta _ a -> return a
-            a -> return a,
-        parseRecord,
-        parseMatch
+          items <- parseCollection "(" "," ")" (parseExpr 0 P.whitespaces)
+          return (and' items),
+        Match [] <$> parseCases,
+        parseMatch,
+        parseRecord
       ]
-  a <-
-    P.oneOf
-      [ do
-          _ <- P.char '.'
-          x <- P.oneOf [parseIdentifier, fmap show P.integer]
-          return (Meta loc (Trait a x)),
-        return (Meta loc a)
-      ]
-  _ <- P.spaces
-  return a
+  P.oneOf
+    [ do
+        _ <- P.char '.'
+        x <- P.oneOf [parseNameVar, fmap show P.integer]
+        return (Meta loc (Trait a x)),
+      case a of
+        And {} -> return a
+        Meta {} -> return a
+        a -> return (Meta loc a)
+    ]
 
 parseExpr :: Int -> Parser appDelim -> Parser Expr
 parseExpr prec delim = do
   let binary op m a b = Meta m (op a b)
   let ops =
-        [ P.atom 0 (match []) (P.oneOrMore parseCase),
-          P.infixR 1 (binary Or) (parseOp "|"),
+        [ P.infixR 1 (binary Or) (parseOp "|"),
           P.infixR 2 (binary Ann) (parseOp ":"),
           P.infixR 3 (binary eq) (parseOp "=="),
           P.infixR 4 (binary lt) (parseOp "<"),
@@ -212,27 +203,14 @@ parseExpr prec delim = do
           P.infixL 8 (const App) (void delim),
           P.infixR 9 (binary pow) (parseOp "^")
         ]
-  P.operators prec ops parseExprAtom
-
-parseTuple :: ([a] -> a) -> Parser a -> Parser a
-parseTuple tup item = do
-  P.oneOf
-    [ do
-        -- One-item tuple: (x,)
-        item <- parseInbetween "(" ")" (do p <- item; _ <- P.char ','; return p)
-        return (tup [item]),
-      do
-        items <- parseCollection "(" "," ")" item
-        case items of
-          -- Parenthesized non-tuple: (x)
-          [item] -> return item
-          -- General case tuples: () (x, y, ...)
-          _ -> return (tup items)
-    ]
+  P.operators prec ops $ do
+    a <- parseAtom
+    _ <- P.spaces
+    return a
 
 parseRecordField :: Parser (String, Expr)
 parseRecordField = do
-  (loc, name) <- parseLocation parseIdentifier
+  (loc, name) <- parseLocation parseNameVar
   P.commit (CRecordField name)
   _ <- P.spaces
   maybeType <- P.maybe' $ do
@@ -256,67 +234,41 @@ parseRecord = do
   fields <- parseCollection "{" "," "}" parseRecordField
   return (Record fields)
 
-parseCase :: Parser ([Expr], Expr)
-parseCase = do
-  p <- parsePattern
-  ps <- P.zeroOrMore $ do
-    _ <- P.char ','
-    _ <- P.whitespaces
-    parsePattern
-  guard <- P.maybe' $ do
-    _ <- P.word "if"
-    _ <- P.whitespaces
-    parseExpr 1 P.whitespaces
-  _ <- P.text "=>"
-  P.commit CCase
+parseCases :: Parser [Expr]
+parseCases = do
+  _ <- P.char '{'
   _ <- P.whitespaces
-  a <- parseExpr 0 P.spaces
-  _ <- parseLineBreak
-  _ <- P.spaces
-  return (p : ps, a)
+  cases <- P.oneOrMore $ do
+    _ <- P.char '|'
+    _ <- P.spaces
+    a <- parseExpr 1 P.spaces
+    _ <- P.whitespaces
+    return a
+  _ <- P.whitespaces
+  _ <- P.char '}'
+  return cases
 
 parseMatch :: Parser Expr
 parseMatch = do
   _ <- P.word "match"
   P.commit CMatch
   _ <- P.spaces
-  args <- do
-    arg <- parseExpr 0 P.spaces
-    args <- P.zeroOrMore $ do
-      _ <- P.char ','
-      _ <- P.spaces
-      parseExpr 0 P.spaces
-    return (arg : args)
-  _ <- parseLineBreak
-  _ <- P.spaces
-  case' <- parseCase
-  cases <- P.zeroOrMore (do _ <- P.whitespaces; parseCase)
-  return (match args (case' : cases))
-
-parsePattern :: Parser Pattern
-parsePattern = do
-  (loc, a) <-
-    (parseLocation . P.oneOf)
-      [ Var <$> P.word "_",
-        do
-          name <- parseIdentifier
-          case name of
-            x | startsWithUpper x -> do
-              _ <- P.spaces
-              ps <- P.zeroOrMore parsePattern
-              return (Tag name ps)
-            _ -> return (Var name),
-        Int <$> P.integer,
-        Num <$> P.number,
-        do
-          p <- parseTuple Tuple parsePattern
-          case p of
-            Meta _ p -> return p
-            p -> return p
-            -- , parseRecord
+  args <-
+    P.oneOf
+      [ do
+          arg <- parseAtom
+          _ <- P.spaces
+          args <- P.zeroOrMore $ do
+            _ <- P.char ','
+            _ <- P.spaces
+            arg <- parseAtom
+            _ <- P.spaces
+            return arg
+          return (arg : args),
+        return []
       ]
-  _ <- P.spaces
-  return (Meta loc a)
+  _ <- P.whitespaces
+  Match args <$> parseCases
 
 -- Statements
 parseStmt :: Parser Stmt
@@ -324,76 +276,84 @@ parseStmt = do
   comments <- P.zeroOrMore parseComment
   stmt <-
     P.oneOf
-      [ Def <$> parseDef,
-        parseImport,
+      [ parseImport,
+        Def <$> parseDef,
+        TypeDef <$> parseTypeDef,
         parseTest
       ]
-  -- return (foldr (MetaStmt . C.Comment) stmt comments)
+  _ <- parseLineBreak
+  _ <- P.whitespaces
   return stmt
 
-parseDef :: Parser Def
-parseDef = do
-  -- (p, b) <-
-  --   P.oneOf
-  --     [ do
-  --         (loc, x) <- parseLocation parseName
-  --         _ <- P.spaces
-  --         _ <- P.char ':'
-  --         _ <- P.spaces
-  --         t <- parseExpr 0 P.spaces
-  --         _ <- P.spaces
-  --         _ <- P.char '='
-  --         _ <- P.spaces
-  --         b <- parseExpr 0 P.spaces
-  --         return (Meta loc (Var x), Ann b t),
-  --       do
-  --         t <- P.maybe' $ do
-  --           _ <- P.char ':'
-  --           _ <- P.spaces
-  --           t <- parseExpr 0 P.spaces
-  --           _ <- parseLineBreak
-  --           return t
-  --         p <- parsePattern
-  --         _ <- P.char '='
-  --         _ <- P.spaces
-  --         b <- parseExpr 0 P.spaces
-  --         case t of
-  --           Just t -> return (p, Ann b t)
-  --           Nothing -> return (p, b)
-  --     ]
-  -- _ <- parseLineBreak
-  -- _ <- P.whitespaces
-  -- return (p, b)
-  error "TODO parseDef"
+parseModulePath :: Parser (String, String)
+parseModulePath = do
+  pkg <- parseNameVar
+  path <- P.zeroOrMore $ do
+    _ <- P.char '/'
+    name <- parseNameVar
+    return ('/' : name)
+  let modulePath = concat (pkg : path)
+  return (modulePath, takeBaseName modulePath)
 
 parseImport :: Parser Stmt
 parseImport = do
   (loc, _) <- parseLocation (P.word "import")
   P.commit CImport
   _ <- P.spaces
-  m <- parsePath
+  (path, alias) <- parseModulePath
   _ <- P.spaces
   exposing <-
     P.oneOf
       [ do
           parseCollection "(" "," ")" $ do
-            name <- parseIdentifier
+            name <- parseName P.letter
             _ <- P.spaces
             P.oneOf
               [ do
                   _ <- P.word "as"
                   _ <- P.spaces
-                  alias <- parseIdentifier
+                  alias <- parseName P.letter
                   return (name, alias),
                 return (name, name)
               ],
         return []
       ]
-  _ <- parseLineBreak
-  _ <- P.whitespaces
-  return (Import m (takeBaseName m) exposing)
+  return (Import path alias exposing)
 
-parseTest :: P.Parser ParserContext Stmt
+parseDef :: Parser (Expr, Expr)
+parseDef = do
+  typeAnnotation <- P.maybe' $ do
+    (loc, _) <- parseLocation (P.char ':')
+    _ <- P.spaces
+    t <- parseExpr 0 P.spaces
+    _ <- parseLineBreak
+    _ <- P.whitespaces
+    return (\a -> Meta loc (Ann a t))
+  a <- parseExpr 0 P.spaces
+  _ <- P.spaces
+  _ <- P.char '='
+  _ <- P.whitespaces
+  b <- parseExpr 0 P.spaces
+  case typeAnnotation of
+    Just ann -> return (ann a, b)
+    Nothing -> return (a, b)
+
+parseTypeDef :: Parser (String, [Expr], Expr)
+parseTypeDef = do
+  _ <- P.word "type"
+  _ <- P.spaces
+  name <- parseNameTag
+  _ <- P.spaces
+  args <- P.zeroOrMore $ do
+    arg <- parseExpr 0 P.space
+    _ <- P.spaces
+    return arg
+  _ <- P.char '='
+  _ <- P.whitespaces
+  body <- parseExpr 0 P.space
+  return (name, args, body)
+
+parseTest :: Parser Stmt
 parseTest = do
   name <-
     P.oneOf
@@ -407,17 +367,14 @@ parseTest = do
   _ <- P.oneOrMore P.space
   P.commit CTest
   expr <- parseExpr 0 P.spaces
-  _ <- parseLineBreak
-  _ <- P.spaces
   result <-
     P.oneOf
       [ do
-          result <- parsePattern
           _ <- parseLineBreak
-          return result,
-        return (Tag "True" [])
+          _ <- P.spaces
+          parseExpr 0 P.spaces,
+        return (Tag "True")
       ]
-  _ <- P.whitespaces
   return (Test name expr result)
 
 pad :: Int -> String -> String
