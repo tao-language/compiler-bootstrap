@@ -50,10 +50,12 @@ instance Show SyntaxError where
 
 keywords :: [String]
 keywords =
-  [ "type",
-    "if",
+  [ "if",
+    "then",
     "else",
-    "match"
+    "match",
+    "type",
+    "with"
   ]
 
 -- Utilities
@@ -141,18 +143,22 @@ parseAtom = do
       [ Any <$ P.word "_",
         IntType <$ P.word "Int",
         NumType <$ P.word "Num",
+        Err <$ P.word "$!error",
         Var <$> parseNameVar,
         do
           name <- parseNameTag
           _ <- P.spaces
           args <- P.zeroOrMore parseAtom
           return (tag name args),
-        do
-          _ <- P.char '.'
-          x <- P.oneOf [parseNameVar, fmap show P.integer]
-          return (traitFun x),
         Int <$> P.integer,
         Num <$> P.number,
+        do
+          _ <- P.char '('
+          _ <- P.whitespaces
+          block <- parseBlock
+          _ <- P.whitespaces
+          _ <- P.char ')'
+          return block,
         do
           items <- parseCollection "(" "," ")" (parseExpr 0 P.whitespaces)
           return (and' items),
@@ -170,14 +176,56 @@ parseAtom = do
                 return []
               ]
           return (Call x args),
+        do
+          _ <- P.word "if"
+          _ <- P.whitespaces
+          a <- parseExpr 0 P.whitespaces
+          _ <- P.whitespaces
+          _ <- P.word "then"
+          _ <- P.whitespaces
+          b <- parseExpr 0 P.whitespaces
+          _ <- P.whitespaces
+          _ <- P.word "else"
+          _ <- P.whitespaces
+          c <- parseExpr 0 P.whitespaces
+          return (If a b c),
         parseMatch,
-        parseRecord
+        parseRecord,
+        do
+          _ <- P.char '.'
+          x <- P.oneOf [parseNameVar, fmap show P.integer]
+          return (traitFun x),
+        do
+          _ <- P.char '.'
+          fields <- parseCollection "{" "," "}" parseRecordField
+          return (selectFun fields),
+        do
+          _ <- P.word "with"
+          _ <- P.whitespaces
+          fields <- parseCollection "{" "," "}" parseRecordField
+          return (withFun fields)
       ]
   P.oneOf
     [ do
+        _ <- P.spaces
+        _ <- P.word "if"
+        _ <- P.whitespaces
+        cond <- parseExpr 0 P.spaces
+        return (If cond a Err),
+      do
         _ <- P.char '.'
         x <- P.oneOf [parseNameVar, fmap show P.integer]
         return (Trait a x),
+      do
+        _ <- P.char '.'
+        fields <- parseCollection "{" "," "}" parseRecordField
+        return (Select a fields),
+      do
+        _ <- P.spaces
+        _ <- P.word "with"
+        _ <- P.whitespaces
+        fields <- parseCollection "{" "," "}" parseRecordField
+        return (With a fields),
       return a
     ]
 
@@ -185,7 +233,8 @@ parseExpr :: Int -> Parser appDelim -> Parser Expr
 parseExpr prec delim = do
   let parseOp txt = do
         _ <- P.whitespaces
-        _ <- P.text txt
+        _ <- P.word txt
+        _ <- P.lookaheadNot (P.char '-')
         _ <- P.whitespaces
         return ()
   let ops =
@@ -280,6 +329,24 @@ parseMatch = do
   _ <- P.whitespaces
   Match args <$> parseCases
 
+parseBlock :: Parser Expr
+parseBlock = do
+  P.oneOf
+    [ do
+        def <- parseDef "="
+        _ <- P.spaces
+        _ <- parseLineBreak
+        _ <- P.whitespaces
+        Let def <$> parseBlock,
+      do
+        def <- parseDef "<-"
+        _ <- P.spaces
+        _ <- parseLineBreak
+        _ <- P.whitespaces
+        Bind def <$> parseBlock,
+      parseExpr 0 P.spaces
+    ]
+
 -- Statements
 parseStmt :: Parser Stmt
 parseStmt = do
@@ -287,7 +354,7 @@ parseStmt = do
   stmt <-
     P.oneOf
       [ parseImport,
-        Def <$> parseDef,
+        Def <$> parseDef "=",
         TypeDef <$> parseTypeDef,
         parseTest
       ]
@@ -331,18 +398,19 @@ parseImport = do
       ]
   return (Import path alias exposing)
 
-parseDef :: Parser (Expr, Expr)
-parseDef = do
+parseDef :: String -> Parser (Expr, Expr)
+parseDef op = do
   typeAnnotation <- P.maybe' $ do
     _ <- P.char ':'
     _ <- P.spaces
     t <- parseExpr 0 P.spaces
+    _ <- P.spaces
     _ <- parseLineBreak
     _ <- P.whitespaces
     return (`Ann` t)
   a <- parseExpr 0 P.spaces
   _ <- P.spaces
-  _ <- P.char '='
+  _ <- P.word op
   _ <- P.whitespaces
   b <- parseExpr 0 P.spaces
   case typeAnnotation of
@@ -381,6 +449,7 @@ parseTest = do
   result <-
     P.oneOf
       [ do
+          _ <- P.spaces
           _ <- parseLineBreak
           _ <- P.spaces
           parseExpr 0 P.spaces,

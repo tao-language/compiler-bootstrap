@@ -167,14 +167,23 @@ mul = Op2 Mul
 pow :: Expr -> Expr -> Expr
 pow = Op2 Pow
 
+lets :: [(Expr, Expr)] -> Expr -> Expr
+lets defs b = foldr Let b defs
+
 traitFun :: String -> Expr
 traitFun x = lambda ["_"] (Trait (Var "_") x)
 
 select :: Expr -> [String] -> Expr
 select a xs = Select a (map (\x -> (x, Var x)) xs)
 
-selectFun :: [String] -> Expr
-selectFun xs = lambda ["_"] (Select (Var "_") (map (\x -> (x, Var x)) xs))
+selectFun :: [(String, Expr)] -> Expr
+selectFun fields = lambda ["_"] (Select (Var "_") fields)
+
+with :: Expr -> [String] -> Expr
+with a xs = With a (map (\x -> (x, Var x)) xs)
+
+withFun :: [(String, Expr)] -> Expr
+withFun fields = lambda ["_"] (With (Var "_") fields)
 
 lambda :: [String] -> Expr -> Expr
 lambda xs = fun (map Var xs)
