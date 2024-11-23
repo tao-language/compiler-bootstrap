@@ -1,0 +1,31 @@
+-- Any
+> _
+_
+
+-- Unit
+> ()
+()
+
+-- IntType
+> Int
+Int
+
+-- NumType
+> Num
+Num
+
+-- Int
+> 42
+42
+
+-- Num
+> 3.14
+3.14
+
+-- Tag
+> A
+A
+
+-- Err
+> $!error
+$!error

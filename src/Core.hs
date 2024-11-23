@@ -252,6 +252,7 @@ class FreeVars a where
 
 instance FreeVars Expr where
   freeVars :: Expr -> [String]
+  freeVars Any = []
   freeVars Unit = []
   freeVars IntT = []
   freeVars NumT = []
@@ -327,6 +328,8 @@ reduce ops = \case
     (Fun (Let env (Let env' a)) c, b) ->
       reduce ops (App (Fun (Let (env ++ env') a) c) b)
     (Fun a c, b) -> case (reduce ops a, b) of
+      (Any, _) -> reduce ops c
+      (Unit, Unit) -> reduce ops c
       (IntT, IntT) -> reduce ops c
       (NumT, NumT) -> reduce ops c
       (Int i, Int i') | i == i' -> reduce ops c
@@ -382,6 +385,7 @@ eval ops expr = case reduce ops expr of
   a -> a
 
 substitute :: Substitution -> Expr -> Expr
+substitute _ Any = Any
 substitute _ Unit = Unit
 substitute _ IntT = IntT
 substitute _ NumT = NumT
@@ -390,7 +394,7 @@ substitute _ (Num n) = Num n
 substitute [] (Var x) = Var x
 substitute ((x, a) : _) (Var x') | x == x' = a
 substitute (_ : s) (Var x) = substitute s (Var x)
-substitute s (Tag k) = Tag k
+substitute _ (Tag k) = Tag k
 substitute s (For x a) = For x (substitute (filter ((/= x) . fst) s) a)
 substitute s (Fix x a) = Fix x (substitute (filter ((/= x) . fst) s) a)
 substitute s (Fun a b) = Fun (substitute s a) (substitute s b)
@@ -470,6 +474,7 @@ unifyAll (a : bs) (a' : bs') = do
 unifyAll _ _ = Right ([], [])
 
 infer :: Ops -> Env -> Expr -> Either TypeError (Expr, Substitution)
+infer _ _ Any = Right (Any, [])
 infer _ _ Unit = Right (Unit, [])
 infer _ _ IntT = Right (IntT, [])
 infer _ _ NumT = Right (NumT, [])

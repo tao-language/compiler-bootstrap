@@ -523,7 +523,7 @@ loadModule _ filename (pkg, errs) | filename `elem` map fst (snd pkg) = do
   return (pkg, errs)
 loadModule base filename (pkg, errs) = do
   src <- readFile (base </> filename)
-  let modName = takeBaseName base ++ '/' : dropExtension filename
+  let modName = base </> dropExtension filename
   case P.parse filename (parseModule modName) src of
     Right (mod, _) -> do
       return (second (mod :) pkg, errs)

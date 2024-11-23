@@ -1,0 +1,18 @@
+x = 1
+
+-- Untyped
+> x
+1
+
+: Int
+y = 2
+
+-- Typed
+> y
+2
+
+z : Int = 3
+
+-- Typed inline
+> z
+3

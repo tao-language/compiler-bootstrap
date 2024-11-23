@@ -266,7 +266,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     let load path = loadPackage path (("pkg", []), [])
     let pkg =
           ( "pkg",
-            [ ( "sub/mod",
+            [ ( "examples/sub/mod",
                 [ defVar ("x", Int 1),
                   defVar ("y", Int 2)
                 ]
@@ -278,8 +278,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   it "☯ load" $ do
     let pkg =
           ( "sub",
-            [ ("empty/empty-file", []),
-              ( "sub/mod",
+            [ ("examples/empty/empty-file", []),
+              ( "examples/sub/mod",
                 [ defVar ("x", Int 1),
                   defVar ("y", Int 2)
                 ]

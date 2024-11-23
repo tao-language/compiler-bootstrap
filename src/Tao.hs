@@ -83,7 +83,7 @@ data UnitTest = UnitTest
 
 data TestResult
   = TestPass String String
-  | TestFail UnitTest Expr
+  | TestFail String String (Expr, Expr) Expr
   deriving (Eq, Show)
 
 buildOps :: C.Ops
@@ -576,32 +576,32 @@ eval ctx path expr = do
     & C.eval ops
     & lift
 
-class RunTest a where
-  test :: [Module] -> ((String, String) -> Bool) -> a -> [TestResult]
+class TestSome a where
+  testSome :: [Module] -> ((String, String) -> Bool) -> a -> [TestResult]
 
-instance RunTest Package where
-  test :: [Module] -> ((String, String) -> Bool) -> Package -> [TestResult]
-  test ctx filter (_, mods) = do
-    concatMap (test (ctx ++ mods) filter) mods
+instance TestSome Package where
+  testSome :: [Module] -> ((String, String) -> Bool) -> Package -> [TestResult]
+  testSome ctx filter (_, mods) = do
+    concatMap (testSome (ctx ++ mods) filter) mods
 
-instance RunTest Module where
-  test :: [Module] -> ((String, String) -> Bool) -> Module -> [TestResult]
-  test ctx filter (path, stmts) =
-    concatMap (\stmt -> test ctx filter (path, stmt)) stmts
+instance TestSome Module where
+  testSome :: [Module] -> ((String, String) -> Bool) -> Module -> [TestResult]
+  testSome ctx filter (path, stmts) =
+    concatMap (\stmt -> testSome ctx filter (path, stmt)) stmts
 
-instance RunTest (String, Stmt) where
-  test :: [Module] -> ((String, String) -> Bool) -> (String, Stmt) -> [TestResult]
-  test ctx filter (path, stmt) = case stmt of
+instance TestSome (String, Stmt) where
+  testSome :: [Module] -> ((String, String) -> Bool) -> (String, Stmt) -> [TestResult]
+  testSome ctx filter (path, stmt) = case stmt of
     Import {} -> []
     Def {} -> []
     TypeDef {} -> []
     Test name expr expect | filter (path, name) -> do
-      test ctx filter (UnitTest path name expr expect)
+      testSome ctx filter (UnitTest path name expr expect)
     Test {} -> []
 
-instance RunTest UnitTest where
-  test :: [Module] -> ((String, String) -> Bool) -> UnitTest -> [TestResult]
-  test ctx _ t = do
+instance TestSome UnitTest where
+  testSome :: [Module] -> ((String, String) -> Bool) -> UnitTest -> [TestResult]
+  testSome ctx _ t = do
     let test' =
           Match
             [t.expr]
@@ -610,4 +610,7 @@ instance RunTest UnitTest where
             ]
     case eval ctx t.path test' of
       Tag "Pass" -> [TestPass t.path t.name]
-      got -> [TestFail t got]
+      got -> [TestFail t.path t.name (t.expr, t.expect) got]
+
+testAll :: (TestSome a) => [Module] -> a -> [TestResult]
+testAll ctx = testSome ctx (const True)
