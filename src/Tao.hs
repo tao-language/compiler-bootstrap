@@ -84,7 +84,13 @@ data UnitTest = UnitTest
 data TestResult
   = TestPass String String
   | TestFail String String (Expr, Expr) Expr
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show TestResult where
+  show :: TestResult -> String
+  show result = case result of
+    TestPass path name -> "✅ " ++ path ++ " -- " ++ name
+    TestFail path name _ _ -> "❌ " ++ path ++ " -- " ++ name
 
 buildOps :: C.Ops
 buildOps = []
@@ -107,6 +113,11 @@ fun ps b = foldr Fun b ps
 funOf :: Expr -> ([Expr], Expr)
 funOf (Fun arg ret) = let (args, ret') = funOf ret in (arg : args, ret')
 funOf a = ([], a)
+
+app' :: [Expr] -> Expr
+app' [] = Err
+app' [a] = a
+app' (a : bs) = app a bs
 
 app :: Expr -> [Expr] -> Expr
 app = foldl App

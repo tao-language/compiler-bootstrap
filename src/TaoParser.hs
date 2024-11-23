@@ -538,6 +538,27 @@ loadModule base filename (pkg, errs) = do
               }
       return (pkg, err : errs)
 
+loadAtom :: String -> IO (Expr, Maybe SyntaxError)
+loadAtom src = case P.parse "<run>" parseAtom src of
+  Right (a, _) -> return (a, Nothing)
+  Left P.State {name, pos = (row, col), context} -> do
+    let err =
+          SyntaxError
+            { filename = name,
+              row = row,
+              col = col,
+              sourceCode = src,
+              context = context
+            }
+    return (Err, Just err)
+
+loadAtoms :: [String] -> IO [(Expr, Maybe SyntaxError)]
+loadAtoms [] = return []
+loadAtoms (src : srcs) = do
+  result <- loadAtom src
+  results <- loadAtoms srcs
+  return (result : results)
+
 walkDirectory :: FilePath -> FilePath -> IO [FilePath]
 walkDirectory base path = do
   let walk path = do
