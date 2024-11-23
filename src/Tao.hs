@@ -81,10 +81,9 @@ data UnitTest = UnitTest
   }
   deriving (Eq, Show)
 
-data TestError = TestError
-  { test :: UnitTest,
-    got :: Expr
-  }
+data TestResult
+  = TestPass String String
+  | TestFail UnitTest Expr
   deriving (Eq, Show)
 
 buildOps :: C.Ops
@@ -578,20 +577,20 @@ eval ctx path expr = do
     & lift
 
 class RunTest a where
-  test :: [Module] -> ((String, String) -> Bool) -> a -> [TestError]
+  test :: [Module] -> ((String, String) -> Bool) -> a -> [TestResult]
 
 instance RunTest Package where
-  test :: [Module] -> ((String, String) -> Bool) -> Package -> [TestError]
+  test :: [Module] -> ((String, String) -> Bool) -> Package -> [TestResult]
   test ctx filter (_, mods) = do
     concatMap (test (ctx ++ mods) filter) mods
 
 instance RunTest Module where
-  test :: [Module] -> ((String, String) -> Bool) -> Module -> [TestError]
+  test :: [Module] -> ((String, String) -> Bool) -> Module -> [TestResult]
   test ctx filter (path, stmts) =
     concatMap (\stmt -> test ctx filter (path, stmt)) stmts
 
 instance RunTest (String, Stmt) where
-  test :: [Module] -> ((String, String) -> Bool) -> (String, Stmt) -> [TestError]
+  test :: [Module] -> ((String, String) -> Bool) -> (String, Stmt) -> [TestResult]
   test ctx filter (path, stmt) = case stmt of
     Import {} -> []
     Def {} -> []
@@ -601,7 +600,7 @@ instance RunTest (String, Stmt) where
     Test {} -> []
 
 instance RunTest UnitTest where
-  test :: [Module] -> ((String, String) -> Bool) -> UnitTest -> [TestError]
+  test :: [Module] -> ((String, String) -> Bool) -> UnitTest -> [TestResult]
   test ctx _ t = do
     let test' =
           Match
@@ -610,5 +609,5 @@ instance RunTest UnitTest where
               fun [Var "_"] (Var "_")
             ]
     case eval ctx t.path test' of
-      Tag "Pass" -> []
-      got -> [TestError {test = t, got = got}]
+      Tag "Pass" -> [TestPass t.path t.name]
+      got -> [TestFail t got]

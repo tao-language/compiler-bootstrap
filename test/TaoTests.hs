@@ -565,4 +565,8 @@ run = describe "--==☯ TaoTests ☯==--" $ do
               ]
             )
           ]
-    test ctx (const True) ("pkg", ctx) `shouldBe` [TestError (UnitTest "pkg/a" ">y" y (Int 0)) (Int 2)]
+    let results =
+          [ TestPass "pkg/a" ">x",
+            TestFail (UnitTest "pkg/a" ">y" y (Int 0)) (Int 2)
+          ]
+    test ctx (const True) ("pkg", ctx) `shouldBe` results

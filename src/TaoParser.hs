@@ -526,7 +526,7 @@ loadModule base filename (pkg, errs) = do
   let modName = takeBaseName base ++ '/' : dropExtension filename
   case P.parse filename (parseModule modName) src of
     Right (mod, _) -> do
-      return (second (mod :) pkg, [])
+      return (second (mod :) pkg, errs)
     Left P.State {name, pos = (row, col), context} -> do
       let err =
             SyntaxError

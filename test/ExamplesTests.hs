@@ -8,14 +8,14 @@ import Tao
 import TaoParser
 import Test.Hspec
 
-test' :: String -> IO (Either [SyntaxError] [TestError])
+test' :: String -> IO (Either [SyntaxError] [TestResult])
 test' name = do
-  let path = "examples/" ++ name
+  let testPath = "examples/" ++ name
   (pkg, syntaxErrors) <- load "examples" []
-  case filter (\e -> (path ++ ".tao") == e.filename) syntaxErrors of
+  case filter (\e -> testPath `isInfixOf` e.filename) syntaxErrors of
     [] -> do
-      let errors = test [] (\(path', _) -> path `isInfixOf` path') pkg
-      return (Right errors)
+      let results = test [] (\(path, _) -> testPath `isInfixOf` path) pkg
+      return (Right results)
     _ -> return (Left syntaxErrors)
 
 run :: SpecWith ()
@@ -24,8 +24,7 @@ run = describe "--==☯ Examples ☯==--" $ do
 
   let name = "empty"
   it ("☯ " ++ name) $ do
-    -- test' name [] `shouldReturn` Right [NoTestsFound "empty"]
-    True `shouldBe` True
+    test' name `shouldReturn` Right []
 
   let name = "comments"
   it ("☯ " ++ name) $ do
@@ -38,31 +37,29 @@ run = describe "--==☯ Examples ☯==--" $ do
 
   let name = "def-untyped"
   it ("☯ " ++ name) $ do
-    test' name `shouldReturn` Right []
+    test' name `shouldReturn` Right [TestPass ("examples/" ++ name) ""]
 
   let name = "def-typed"
   it ("☯ " ++ name) $ do
-    test' name `shouldReturn` Right []
+    test' name `shouldReturn` Right [TestPass ("examples/" ++ name) ""]
 
   let name = "def-inline-type"
   it ("☯ " ++ name) $ do
-    test' name `shouldReturn` Right []
+    test' name `shouldReturn` Right [TestPass ("examples/" ++ name) ""]
 
   let name = "errors"
   it ("☯ " ++ name) $ do
-    let errors =
-          [ TestError
-              { test =
-                  UnitTest
-                    { path = "examples/errors/wrong-result",
-                      name = "",
-                      expr = x,
-                      expect = Int 0
-                    },
-                got = Int 42
-              }
+    let results =
+          [ TestFail
+              UnitTest
+                { path = "examples/errors/wrong-result",
+                  name = "",
+                  expr = x,
+                  expect = Int 0
+                }
+              (Int 42)
           ]
-    test' name `shouldReturn` Right errors
+    test' name `shouldReturn` Right results
 
   -- let name = "traits"
   -- it ("☯ " ++ name) $ do
@@ -70,7 +67,7 @@ run = describe "--==☯ Examples ☯==--" $ do
 
   let name = "tuples-def"
   it ("☯ " ++ name) $ do
-    test' name `shouldReturn` Right []
+    test' name `shouldReturn` Right [TestPass ("examples/" ++ name) ""]
 
   -- let name = "tuples-properties"
   -- it ("☯ " ++ name) $ do
