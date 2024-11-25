@@ -147,7 +147,16 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  -- Ann Expr Type
+  let name = "examples/expr-ann"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "Ann match",
+            TestPass name "Ann match drop type",
+            TestFail name "Ann match fail" (Ann i1 IntType, i2) i1
+          ]
+    testAll [] pkg `shouldBe` testResults
 
   let name = "examples/expr-call"
   it ("☯ " ++ name) $ do

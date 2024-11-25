@@ -1,0 +1,11 @@
+-- Ann match
+> 1 : Int
+1
+
+-- Ann match drop type
+> 1 : Num
+1
+
+-- Ann match fail
+> 1 : Int
+2
