@@ -1,31 +1,67 @@
--- Any
+-- Any match
 > _
 _
 
--- Unit
+-- Any match 1
+> 1
+_
+
+-- Any match 2
+> 2
+_
+
+-- Unit match
 > ()
 ()
 
--- IntType
+-- Unit match fail
+> ()
+1
+
+-- IntType match
 > Int
 Int
 
--- NumType
+-- IntType match fail
+> Int
+Num
+
+-- NumType match
 > Num
 Num
 
--- Int
-> 42
-42
+-- NumType match fail
+> Num
+Int
 
--- Num
+-- Int match
+> 1
+1
+
+-- Int match fail
+> 1
+2
+
+-- Num match
 > 3.14
 3.14
 
--- Tag
+-- Num match fail
+> 3.14
+0.0
+
+-- Tag match
 > A
 A
 
--- Err
+-- Tag match fail
+> A
+B
+
+-- Err match
 > $!error
 $!error
+
+-- Err match fail
+> $!error
+1

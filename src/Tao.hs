@@ -621,11 +621,11 @@ instance TestSome UnitTest where
     let test' =
           Match
             [t.expr]
-            [ Fun t.expect (Tag "Pass"),
-              fun [Var "_"] (Var "_")
+            [ Fun t.expect (Tag ":Pass:"),
+              Fun (Var "got") (Var "got")
             ]
     case eval ctx t.path test' of
-      Tag "Pass" -> [TestPass t.path t.name]
+      Tag ":Pass:" -> [TestPass t.path t.name]
       got -> [TestFail t.path t.name (t.expr, t.expect) got]
 
 testAll :: (TestSome a) => [Module] -> a -> [TestResult]

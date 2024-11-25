@@ -10,6 +10,9 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do
+  let (x, y, z) = (Var "x", Var "y", Var "z")
+  let (i1, i2, i3) = (Int 1, Int 2, Int 3)
+
   let name = "examples/empty"
   it ("☯ " ++ name) $ do
     (pkg, syntaxErrors) <- load name []
@@ -34,7 +37,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     syntaxErrors `shouldBe` []
     let testResults =
           [ TestPass name "Pass",
-            TestFail name "Fail" (Int 42, Int 0) (Int 42)
+            TestFail name "Fail" (i1, i2) i1
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -43,14 +46,23 @@ run = describe "--==☯ Examples ☯==--" $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
     let testResults =
-          [ TestPass name "Any",
-            TestPass name "Unit",
-            TestPass name "IntType",
-            TestPass name "NumType",
-            TestPass name "Int",
-            TestPass name "Num",
-            TestPass name "Tag",
-            TestPass name "Err"
+          [ TestPass name "Any match",
+            TestPass name "Any match 1",
+            TestPass name "Any match 2",
+            TestPass name "Unit match",
+            TestFail name "Unit match fail" (Unit, i1) Unit,
+            TestPass name "IntType match",
+            TestFail name "IntType match fail" (IntType, NumType) IntType,
+            TestPass name "NumType match",
+            TestFail name "NumType match fail" (NumType, IntType) NumType,
+            TestPass name "Int match",
+            TestFail name "Int match fail" (i1, i2) i1,
+            TestPass name "Num match",
+            TestFail name "Num match fail" (Num 3.14, Num 0.0) (Num 3.14),
+            TestPass name "Tag match",
+            TestFail name "Tag match fail" (Tag "A", Tag "B") (Tag "A"),
+            TestPass name "Err match",
+            TestFail name "Err match fail" (Err, i1) Err
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -111,6 +123,32 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
+  let name = "examples/expr-and"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "And match",
+            TestFail name "And match fail 1" (And i1 i2, i1) (And i1 i2),
+            TestFail name "And match fail 2" (And i1 i2, And i1 i1) (And i1 i2),
+            TestFail name "And match fail 3" (And i1 i2, And i2 i2) (And i1 i2)
+          ]
+    testAll [] pkg `shouldBe` testResults
+
+  let name = "examples/expr-or"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "Or match first",
+            TestPass name "Or match second",
+            TestFail name "Or match fail" (Or i1 i2, i3) (Or i1 i2),
+            TestPass name "Or match any"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
+  -- Ann Expr Type
+
   let name = "examples/expr-call"
   it ("☯ " ++ name) $ do
     (pkg, syntaxErrors) <- load name []
@@ -121,6 +159,18 @@ run = describe "--==☯ Examples ☯==--" $ do
             TestPass name "Call args"
           ]
     testAll [] pkg `shouldBe` testResults
+
+  -- Op1 Op1 Expr
+  -- Op2 Op2 Expr Expr
+  -- Let (Expr, Expr) Expr
+  -- Bind (Expr, Expr) Expr
+  -- If Expr Expr Expr
+  -- Match [Expr] [Expr]
+  -- Record [(String, Expr)]
+  -- Trait Expr String
+  -- Select Expr [(String, Expr)]
+  -- With Expr [(String, Expr)]
+  -- Err
 
   let name = "examples/def-var"
   it ("☯ " ++ name) $ do
