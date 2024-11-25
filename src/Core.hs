@@ -93,7 +93,7 @@ instance Show Expr where
     And _ _ -> "(" ++ intercalate ", " (map show (andOf expr)) ++ ")"
     Or _ _ -> "(" ++ intercalate " | " (map show (orOf expr)) ++ ")"
     Ann a b -> "(" ++ show a ++ " : " ++ show b ++ ")"
-    Call f xs -> '%' : f ++ "(" ++ intercalate ", " (map show xs) ++ ")"
+    Call f xs -> '$' : f ++ "(" ++ intercalate ", " (map show xs) ++ ")"
     Let env b -> "{" ++ intercalate "; " (map (\(x, a) -> x ++ " = " ++ show a) env) ++ "} " ++ show b
     Err -> "!error"
     where
@@ -268,6 +268,8 @@ instance FreeVars Expr where
   freeVars (Or a b) = freeVars a `union` freeVars b
   freeVars (Ann a _) = freeVars a
   freeVars (Call _ args) = foldr (union . freeVars) [] args
+  freeVars (Let [] b) = freeVars b
+  freeVars (Let ((x, a) : defs) b) = delete x (freeVars a `union` freeVars (Let defs b))
   freeVars Err = []
 
 instance FreeVars [Expr] where
@@ -311,46 +313,57 @@ reduce ops = \case
   App (Let env (Let env' (Tag k))) b ->
     reduce ops (App (Let (env ++ env') (Tag k)) b)
   App a b -> case (reduce ops a, reduce ops b) of
+    (Any, b) -> App Any b
     (Var x, b) -> App (Var x) b
-    (For x a, b) -> reduce ops (App (Let [(x, Var x)] a) b)
+    (For x a, b) -> for [x] (reduce ops (App (Let [(x, Var x)] a) b))
     (Fix x a, b@Var {}) -> App (Fix x a) b
     (Fix x a, b@App {}) -> App (Fix x a) b
     (Fix x a, b) -> reduce ops (App (Let [(x, Fix x a)] a) b)
     (App a1 a2, b) -> App (App a1 a2) b
-    (And (Let env (Tag k)) a2, b) -> case lookup k env of
-      Just a1 -> reduce ops (App (App (Let env a1) a2) b)
-      Nothing -> b
-    (And (Let env (Let env' a1)) a2, b) ->
-      reduce ops (App (And (Let (env ++ env') a1) a2) b)
-    (Fun (Let env (Tag k)) c, b) -> do
-      let b' = App (Let env (Tag k)) b
-      reduce ops (App (Fun (Tag k) c) b')
-    (Fun (Let env (Let env' a)) c, b) ->
-      reduce ops (App (Fun (Let (env ++ env') a) c) b)
-    (Fun a c, b) -> case (reduce ops a, b) of
-      (Any, _) -> reduce ops c
-      (Unit, Unit) -> reduce ops c
-      (IntT, IntT) -> reduce ops c
-      (NumT, NumT) -> reduce ops c
-      (Int i, Int i') | i == i' -> reduce ops c
-      (Num n, Num n') | n == n' -> reduce ops c
-      (Tag k, Tag k') | k == k' -> reduce ops c
-      (Var x, b) -> reduce ops (Let [(x, b)] c)
-      (And (Let env (Tag k)) a2, b) -> do
-        let b' = App (And (Let env (Tag k)) a2) b
-        reduce ops (App (Fun (And (Tag k) a2) c) b')
-      (And (Let env (Let env' a1)) a2, b) ->
-        reduce ops (App (Fun (And (Let (env ++ env') a1) a2) c) b)
-      (And a1 a2, And b1 b2) -> reduce ops (App (Fun a1 (App (Fun a2 c) b2)) b1)
-      (Or a1 a2, b) -> reduce ops (App (Or (Fun a1 c) (Fun a2 c)) b)
-      (a, Or b1 b2) -> case reduce ops (App (Fun a c) b1) of
-        Err -> reduce ops (App (Fun a c) b2)
-        c -> c
-      (Err, Err) -> reduce ops c
+    (And a1 a2, b) -> case a1 of
+      Let env (Tag k) -> case lookup k env of
+        Just a1 -> reduce ops (App (App (Let env a1) a2) b)
+        Nothing -> b
+      Let env (Let env' a1) ->
+        reduce ops (App (And (Let (env ++ env') a1) a2) b)
       _ -> Err
+    (Fun a c, b) -> case a of
+      Let env (Tag k) -> do
+        let b' = App (Let env (Tag k)) b
+        reduce ops (App (Fun (Tag k) c) b')
+      Let env (Let env' a) ->
+        reduce ops (App (Fun (Let (env ++ env') a) c) b)
+      a -> case (reduce ops a, b) of
+        (Any, _) -> reduce ops c
+        (Unit, Unit) -> reduce ops c
+        (IntT, IntT) -> reduce ops c
+        (NumT, NumT) -> reduce ops c
+        (Int i, Int i') | i == i' -> reduce ops c
+        (Num n, Num n') | n == n' -> reduce ops c
+        (Tag k, Tag k') | k == k' -> reduce ops c
+        (Var x, b) -> reduce ops (Let [(x, b)] c)
+        (For x a, For y b) -> for [y] (reduce ops (Let [(y, Var y)] (App (Fun (Let [(x, Var y)] a) c) b)))
+        (For x a, b) -> reduce ops (Let [(x, Var x)] (App (Fun a c) b))
+        (Fun a1 a2, Fun b1 b2) -> reduce ops (App (Fun a1 (App (Fun a2 c) b2)) b1)
+        (App a1 a2, App b1 b2) -> reduce ops (App (Fun a1 (App (Fun a2 c) b2)) b1)
+        (And (Let env (Tag k)) a2, b) -> do
+          let b' = App (And (Let env (Tag k)) a2) b
+          reduce ops (App (Fun (And (Tag k) a2) c) b')
+        (And (Let env (Let env' a1)) a2, b) ->
+          reduce ops (App (Fun (And (Let (env ++ env') a1) a2) c) b)
+        (And a1 a2, And b1 b2) -> reduce ops (App (Fun a1 (App (Fun a2 c) b2)) b1)
+        (Or a1 a2, b) -> reduce ops (App (Or (Fun a1 c) (Fun a2 c)) b)
+        (a, Or b1 b2) -> case reduce ops (App (Fun a c) b1) of
+          Err -> reduce ops (App (Fun a c) b2)
+          c -> c
+        (Call x args, Call x' args') | x == x' -> do
+          reduce ops (App (Fun (and' args) c) (and' args'))
+        (Err, Err) -> reduce ops c
+        _ -> Err
     (Or a1 a2, b) -> case reduce ops (App a1 b) of
       Err -> reduce ops (App a2 b)
       c -> c
+    (Call f args, b) -> App (Call f args) b
     _ -> Err
   Let env expr -> case expr of
     Var x -> case lookup x env of

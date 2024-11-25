@@ -1,0 +1,14 @@
+-- Call constant
+> $A
+$A
+
+-- Call no args
+> $A()
+$A()
+
+x = 1
+y = 2
+
+-- Call args
+> $A(x, y)
+$A(1, 2)

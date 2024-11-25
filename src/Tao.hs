@@ -90,7 +90,7 @@ instance Show TestResult where
   show :: TestResult -> String
   show result = case result of
     TestPass path name -> "✅ " ++ path ++ " -- " ++ name
-    TestFail path name _ _ -> "❌ " ++ path ++ " -- " ++ name
+    TestFail path name t got -> "❌ " ++ path ++ " -- " ++ name ++ " test=" ++ show t ++ " got=" ++ show got
 
 buildOps :: C.Ops
 buildOps = []
@@ -294,7 +294,10 @@ instance Lower Expr C.Expr where
   lower _ (Int i) = C.Int i
   lower _ (Num n) = C.Num n
   lower _ (Var x) = C.Var x
-  lower env (Tag k) = C.Tag k
+  lower _ (Tag k) = C.Tag k
+  lower env (For xs (Fun a b)) = do
+    let (args, body) = funOf (Fun a b)
+    C.for xs (C.fun (lower env <$> args) (lower env body))
   lower env (For xs a) = C.for xs (lower (C.pushVars xs env) a)
   lower env (Fun a b) = do
     let (args, body) = funOf (Fun a b)
@@ -553,6 +556,8 @@ instance Resolve (Stmt, String) where
       [] -> Nothing
     Def (pattern', body) -> case pattern' of
       Var x | x == name -> Just (path, body)
+      Fun a b -> Just (path, Unit)
+      -- Fun a b -> resolve ctx path (Def (a, Match [body] [Fun (Fun a b) a]), name)
       Ann a _ -> resolve ctx path (Def (a, body), name)
       _ -> Nothing
     TypeDef (name', args, body) ->

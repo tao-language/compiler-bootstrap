@@ -1,0 +1,82 @@
+-- App Any
+> _ 1
+_ 1
+
+-- App Unit
+> () 1
+$!error
+
+-- App IntType
+> Int 1
+$!error
+
+-- App NumType
+> Int 1
+$!error
+
+-- App Int
+> 1 2
+$!error
+
+-- App Num
+> 3.14 1
+$!error
+
+-- App Tag
+> (A) 1
+$!error
+
+-- App For
+> (@x. x) 1
+@x. x 1
+
+-- App Fun
+> (x -> x) 1
+1
+
+-- App App
+> (@x. x) 1 2
+@x. x 1 2
+
+-- App And
+> (1, 2) 3
+$!error
+
+-- App Or first
+> (1 -> A | 2 -> B) 1
+A
+
+-- App Or second
+> (1 -> A | 2 -> B) 2
+B
+
+-- App Or fail
+> (1 -> A | 2 -> B) 3
+$!error
+
+-- App Ann
+> (1 -> A : T) 1
+A
+
+# -- App Call
+# > $call 1
+# $call
+
+# -- App Op1
+# > (@x. -x) 1
+
+# -- App Op2
+# > (@x. x + x) 1
+
+# TestPass name "App Let",
+# TestPass name "App Bind",
+# TestPass name "App If",
+# TestPass name "App Match",
+# TestPass name "App Record",
+# TestPass name "App Trait",
+# TestPass name "App Select",
+# TestPass name "App With",
+
+-- App Err
+> $!error 1
+$!error

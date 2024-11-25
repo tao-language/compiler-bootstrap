@@ -5,9 +5,10 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (isSpace, isUpper)
 import Data.Function ((&))
-import Data.List (dropWhileEnd, intercalate, sort)
+import Data.List (dropWhileEnd, intercalate, isSuffixOf, sort)
+import Data.List.Split (endsWith)
 import qualified Parser as P
-import System.Directory (doesDirectoryExist, doesFileExist, findFiles, listDirectory)
+import System.Directory (doesDirectoryExist, doesFileExist, doesPathExist, findFiles, listDirectory)
 import System.FilePath (dropExtension, splitDirectories, splitFileName, splitPath, takeBaseName, takeFileName, (</>))
 import Tao
 
@@ -508,15 +509,17 @@ load path dependencies = do
   foldM (flip loadPackage) (pkg, []) (path : dependencies)
 
 loadPackage :: FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
+loadPackage path (pkg, errs) | ".tao" `isSuffixOf` path = do
+  let (base, filename) = splitFileName path
+  loadModule base filename (pkg, errs)
 loadPackage path (pkg, errs) = do
-  isFile <- doesFileExist path
-  case (isFile, path) of
-    (True, path) -> do
-      let (base, filename) = splitFileName path
-      loadModule base filename (pkg, errs)
-    (False, base) -> do
-      files <- walkDirectory base ""
-      foldM (flip (loadModule base)) (pkg, errs) files
+  isDir <- doesDirectoryExist path
+  if isDir
+    then do
+      files <- walkDirectory path ""
+      foldM (flip (loadModule path)) (pkg, errs) files
+    else do
+      loadPackage (path ++ ".tao") (pkg, errs)
 
 loadModule :: FilePath -> FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
 loadModule _ filename (pkg, errs) | filename `elem` map fst (snd pkg) = do

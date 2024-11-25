@@ -1,0 +1,14 @@
+x = 1
+y = 2
+
+-- Fun implicit binding
+> x -> y
+@x. x -> 2
+
+-- Fun explicit binding
+> @y. x -> y
+@y. 1 -> y
+
+-- Fun alpha equivalence
+> x -> y
+@y. y -> 2
