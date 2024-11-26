@@ -208,7 +208,16 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  -- Fun Expr Expr
+  let name = "examples/def-fun"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "Fun match first",
+            TestPass name "Fun match second"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
   -- App Expr Expr
   -- And Expr Expr
   -- Or Expr Expr
@@ -224,16 +233,6 @@ run = describe "--==☯ Examples ☯==--" $ do
   -- Record [(String, Expr)]
   -- Select Expr [(String, Expr)]
   -- With Expr [(String, Expr)]
-
-  -- let name = "examples/def-fun"
-  -- it ("☯ " ++ name) $ do
-  --   (pkg, syntaxErrors) <- load name []
-  --   syntaxErrors `shouldBe` []
-  --   let testResults =
-  --         [ TestPass name "Function pattern",
-  --           TestPass name "Function body"
-  --         ]
-  --   testAll [] pkg `shouldBe` testResults
 
   -- let name = "examples/def-trait"
   -- it ("☯ " ++ name) $ do

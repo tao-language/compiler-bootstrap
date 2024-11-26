@@ -311,6 +311,7 @@ class Lower a b where
 inferBindings :: Expr -> [String]
 inferBindings = \case
   For xs _ -> xs
+  Fun a b -> inferBindings a `union` inferBindings b
   a -> freeVars a & filter (\x -> not ("." `isPrefixOf` x))
 
 instance Lower Expr C.Expr where
