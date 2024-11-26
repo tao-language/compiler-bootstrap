@@ -196,6 +196,17 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
+  let name = "examples/def-overload"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "Overload match 1",
+            TestPass name "Overload match 2",
+            TestFail name "Overload fail" (x, i3) (Or i1 i2)
+          ]
+    testAll [] pkg `shouldBe` testResults
+
   let name = "examples/def-for"
   it ("☯ " ++ name) $ do
     (pkg, syntaxErrors) <- load name []

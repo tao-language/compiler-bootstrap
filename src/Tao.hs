@@ -561,41 +561,37 @@ in' substring string | substring `isPrefixOf` string = True
 in' substring (_ : string) = in' substring string
 
 class Resolve a where
-  resolve :: [Module] -> String -> a -> Maybe (String, Expr)
+  resolve :: [Module] -> String -> a -> [(String, Expr)]
 
 instance Resolve String where
-  resolve :: [Module] -> String -> String -> Maybe (String, Expr)
-  resolve ctx path name = do
-    stmts <- lookup path ctx
-    resolve ctx path (stmts, name)
+  resolve :: [Module] -> String -> String -> [(String, Expr)]
+  resolve ctx path name = case lookup path ctx of
+    Just stmts -> resolve ctx path (stmts, name)
+    Nothing -> []
 
 instance Resolve ([Stmt], String) where
-  resolve :: [Module] -> String -> ([Stmt], String) -> Maybe (String, Expr)
-  resolve ctx path (stmts, name) = case stmts of
-    [] -> Nothing
-    stmt : stmts -> case resolve ctx path (stmt, name) of
-      Just def -> Just def
-      Nothing -> resolve ctx path (stmts, name)
+  resolve :: [Module] -> String -> ([Stmt], String) -> [(String, Expr)]
+  resolve ctx path (stmts, name) =
+    concatMap (\stmt -> resolve ctx path (stmt, name)) stmts
 
 instance Resolve (Stmt, String) where
-  resolve :: [Module] -> String -> (Stmt, String) -> Maybe (String, Expr)
+  resolve :: [Module] -> String -> (Stmt, String) -> [(String, Expr)]
   resolve ctx path (stmt, name) = case stmt of
     Import path' alias names -> case names of
-      (x, y) : _ | y == name -> resolve ctx path' x
-      _ : names -> resolve ctx path (Import path' alias names, name)
-      [] | alias == name -> Just (path, Tag path')
-      [] -> Nothing
+      (x, y) : names -> do
+        let defs = if y == name then resolve ctx path' x else []
+        defs ++ resolve ctx path (Import path' alias names, name)
+      [] | alias == name -> [(path, Tag path')]
+      [] -> []
     Def (App p1 p2, b) -> do
       let (p, args) = appOf (App p1 p2)
       resolve ctx path (Def (p, fun args b), name)
     Def (p, b) -> case inferBindings p of
-      xs | name `elem` xs -> Just (path, let' (p, b) (Var name))
-      _ -> Nothing
+      xs | name `elem` xs -> [(path, let' (p, b) (Var name))]
+      _ -> []
     TypeDef (name', args, body) ->
-      if name == name'
-        then Just (path, fun args body)
-        else Nothing
-    Test {} -> Nothing
+      ([(path, fun args body) | name == name'])
+    Test {} -> []
 
 class Compile a where
   compile :: [Module] -> String -> a
@@ -603,8 +599,9 @@ class Compile a where
 instance Compile (String -> (String, C.Expr)) where
   compile :: [Module] -> String -> String -> (String, C.Expr)
   compile ctx path name = do
-    let (path', expr) = fromMaybe (path, Err) (resolve ctx path name)
-    (name, compile ctx path' expr)
+    let defs = resolve ctx path name
+    let alts = map (uncurry (compile ctx)) defs
+    (name, C.or' alts)
 
 instance Compile ([String] -> C.Env) where
   compile :: [Module] -> String -> [String] -> C.Env

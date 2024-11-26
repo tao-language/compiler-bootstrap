@@ -489,12 +489,12 @@ run = describe "--==☯ TaoTests ☯==--" $ do
               ]
             )
           ]
-    resolve ctx "pkg/a" "x" `shouldBe` Just ("pkg/a", Int 42)
-    resolve ctx "pkg/a" "y" `shouldBe` Nothing
-    resolve ctx "pkg/b" "m" `shouldBe` Just ("pkg/b", Tag "pkg/a")
-    resolve ctx "pkg/b" "x" `shouldBe` Nothing
-    resolve ctx "pkg/b" "y" `shouldBe` Just ("pkg/a", Int 42)
-    resolve ctx "pkg/b" "z" `shouldBe` Just ("pkg/b", Var "y")
+    resolve ctx "pkg/a" "x" `shouldBe` [("pkg/a", Int 42)]
+    resolve ctx "pkg/a" "y" `shouldBe` []
+    resolve ctx "pkg/b" "m" `shouldBe` [("pkg/b", Tag "pkg/a")]
+    resolve ctx "pkg/b" "x" `shouldBe` []
+    resolve ctx "pkg/b" "y" `shouldBe` [("pkg/a", Int 42)]
+    resolve ctx "pkg/b" "z" `shouldBe` [("pkg/b", Var "y")]
 
   it "☯ compile" $ do
     let ctx =
