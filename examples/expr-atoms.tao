@@ -38,6 +38,10 @@ Int
 > 1
 1
 
+# -- Int match negative
+# > -1
+# 1
+
 -- Int match fail
 > 1
 2

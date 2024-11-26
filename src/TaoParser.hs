@@ -233,9 +233,19 @@ parseAtom = do
 parseExpr :: Int -> Parser appDelim -> Parser Expr
 parseExpr prec delim = do
   let parseOp txt = do
-        _ <- delim
-        _ <- P.word txt
-        _ <- P.lookaheadNot (P.char '-')
+        let breakChars =
+              [ P.whitespace,
+                P.letter,
+                P.digit,
+                P.char '_',
+                P.char '.',
+                P.char '$',
+                P.char '@',
+                P.char '(',
+                P.char '{'
+              ]
+        _ <- P.text txt
+        _ <- P.lookahead (P.oneOf breakChars)
         _ <- P.whitespaces
         return ()
   let ops =
@@ -250,23 +260,27 @@ parseExpr prec delim = do
             _ <- P.char '.'
             _ <- P.whitespaces
             return xs,
+          P.prefix 0 (const neg) (parseOp "-"),
           P.infixR 1 (const Or) (parseOp "|"),
           P.infixR 2 (const Ann) (parseOp ":"),
           P.infixR 3 (const eq) (parseOp "=="),
           P.infixR 4 (const lt) (parseOp "<"),
           P.infixR 4 (const gt) (parseOp ">"),
-          P.infixR 5 (const Fun) (parseOp "->"),
+          P.infixR 5 (\args a -> fun (a : args)) $ do
+            args <- P.zeroOrMore $ do
+              _ <- P.char ','
+              _ <- P.spaces
+              parseExpr 6 P.spaces
+            _ <- P.text "->"
+            _ <- P.whitespaces
+            return args,
           P.infixR 6 (const add) (parseOp "+"),
           P.infixR 6 (const sub) (parseOp "-"),
           P.infixR 7 (const mul) (parseOp "*"),
           P.infixL 8 (const App) (void delim),
-          P.infixR 9 (const pow) (parseOp "^"),
-          P.prefix 10 (const neg) (parseOp "-")
+          P.infixR 9 (const pow) (parseOp "^")
         ]
-  P.operators prec ops $ do
-    a <- parseAtom
-    _ <- P.spaces
-    return a
+  P.operators prec ops (P.paddedR delim parseAtom)
 
 parseRecordField :: Parser (String, Expr)
 parseRecordField = do
@@ -424,13 +438,10 @@ parseTypeDef = do
   _ <- P.spaces
   name <- parseNameTag
   _ <- P.spaces
-  args <- P.zeroOrMore $ do
-    arg <- parseExpr 0 P.space
-    _ <- P.spaces
-    return arg
+  args <- P.zeroOrMore (P.paddedR P.spaces parseAtom)
   _ <- P.char '='
   _ <- P.whitespaces
-  body <- parseExpr 0 P.space
+  body <- parseExpr 0 P.spaces
   return (name, args, body)
 
 parseTest :: Parser Stmt

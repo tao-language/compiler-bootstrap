@@ -84,7 +84,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     let testResults =
           [ TestPass name "Fun implicit binding",
             TestPass name "Fun explicit binding",
-            TestPass name "Fun alpha equivalence"
+            TestPass name "Fun alpha equivalence",
+            TestPass name "Fun args list"
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -169,17 +170,13 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  -- Op1 Op1 Expr
-  -- Op2 Op2 Expr Expr
   -- Let (Expr, Expr) Expr
   -- Bind (Expr, Expr) Expr
   -- If Expr Expr Expr
   -- Match [Expr] [Expr]
   -- Record [(String, Expr)]
-  -- Trait Expr String
   -- Select Expr [(String, Expr)]
   -- With Expr [(String, Expr)]
-  -- Err
 
   let name = "examples/def-var"
   it ("☯ " ++ name) $ do
@@ -201,6 +198,26 @@ run = describe "--==☯ Examples ☯==--" $ do
   --           TestPass name "Function body"
   --         ]
   --   testAll [] pkg `shouldBe` testResults
+
+  -- let name = "examples/def-trait"
+  -- it ("☯ " ++ name) $ do
+  --   (pkg, syntaxErrors) <- load name []
+  --   syntaxErrors `shouldBe` []
+  --   let testResults =
+  --         [ TestPass name "Neg"
+  --         ]
+  --   testAll [] pkg `shouldBe` testResults
+
+  -- let name = "examples/def-op1"
+  -- it ("☯ " ++ name) $ do
+  --   (pkg, syntaxErrors) <- load name []
+  --   syntaxErrors `shouldBe` []
+  --   let testResults =
+  --         [ TestPass name "Neg"
+  --         ]
+  --   testAll [] pkg `shouldBe` testResults
+
+  -- Op2 Op2 Expr Expr
 
   -- let name = "errors"
   -- it ("☯ " ++ name) $ do

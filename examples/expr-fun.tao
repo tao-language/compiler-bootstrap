@@ -12,3 +12,7 @@ y = 2
 -- Fun alpha equivalence
 > x -> y
 @y. y -> 2
+
+-- Fun args list
+> x, y -> x
+@x y. x, y -> x

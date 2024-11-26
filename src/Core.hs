@@ -67,19 +67,19 @@ data PatternError
 instance Show Expr where
   show :: Expr -> String
   show expr = case expr of
+    Any -> "_"
     Unit -> "()"
     IntT -> "!IntT"
     NumT -> "!NumT"
     Int i -> show i
     Num n -> show n
-    Var x | isName x -> x
-    Var x -> "`" ++ replaceString "`" "\\`" x ++ "`"
-    Tag k | isName k -> ':' : k
-    Tag k -> ":`" ++ replaceString "`" "\\`" k ++ "`"
+    Var x -> name x
+    Tag (':' : k) -> ':' : ':' : name k
+    Tag k -> ':' : name k
     For _ _ -> do
       let (xs, a) = asFor expr
-      "(@" ++ unwords xs ++ ". " ++ show a ++ ")"
-    Fix x a -> "(&" ++ x ++ ". " ++ show a ++ ")"
+      "(@" ++ unwords (map name xs) ++ ". " ++ show a ++ ")"
+    Fix x a -> "(&" ++ name x ++ ". " ++ show a ++ ")"
     Fun _ _ -> do
       let (args, ret) = funOf expr
       "(" ++ intercalate ", " (map show args) ++ " -> " ++ show ret ++ ")"
@@ -88,7 +88,7 @@ instance Show Expr where
       case a' of
         Fun a c -> do
           let def = show a ++ " = " ++ show b ++ "; " ++ show c
-          if null xs then def else "@" ++ unwords xs ++ ". " ++ def
+          if null xs then def else "@" ++ unwords (map name xs) ++ ". " ++ def
         _ -> "(" ++ show a ++ " " ++ show b ++ ")"
     And _ _ -> "(" ++ intercalate ", " (map show (andOf expr)) ++ ")"
     Or _ _ -> "(" ++ intercalate " | " (map show (orOf expr)) ++ ")"
@@ -97,7 +97,11 @@ instance Show Expr where
     Let env b -> "{" ++ intercalate "; " (map (\(x, a) -> x ++ " = " ++ show a) env) ++ "} " ++ show b
     Err -> "!error"
     where
-      isName = all (\c -> isAlphaNum c || c `elem` ['_', '-'])
+      isAlphaNumOr cs c = isAlphaNum c || c `elem` cs
+      name = \case
+        x | all (isAlphaNumOr "-_") x -> x
+        '.' : x | not (any (isAlphaNumOr "()") x) -> "(" ++ x ++ ")"
+        x -> "`" ++ replaceString "`" "\\`" x ++ "`"
 
 -- instance Show Expr where
 --   showsPrec :: Int -> Expr -> ShowS

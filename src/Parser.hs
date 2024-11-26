@@ -306,6 +306,9 @@ number = do
 wordChar :: Parser ctx Char
 wordChar = oneOf [letter, digit, char '_']
 
+wordStart :: Parser ctx ()
+wordStart = lookahead wordChar
+
 wordEnd :: Parser ctx ()
 wordEnd = lookaheadNot wordChar
 
@@ -382,7 +385,7 @@ atom prec f p = do
         ok (f x)
   Prefix prec parser
 
-prefix :: Int -> (op -> a -> a) -> Parser ctx op -> Operator ctx a
+prefix :: (Show op, Show a) => Int -> (op -> a -> a) -> Parser ctx op -> Operator ctx a
 prefix prec f op = do
   let parser expr = do
         op <- op

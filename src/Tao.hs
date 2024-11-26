@@ -26,6 +26,7 @@ data Expr
   | Or Expr Expr
   | Ann Expr Type
   | Call String [Expr]
+  | Trait Expr String
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
   | Let (Expr, Expr) Expr
@@ -33,7 +34,6 @@ data Expr
   | If Expr Expr Expr
   | Match [Expr] [Expr]
   | Record [(String, Expr)]
-  | Trait Expr String
   | Select Expr [(String, Expr)]
   | With Expr [(String, Expr)]
   | Err
@@ -93,7 +93,26 @@ instance Show TestResult where
     TestFail path name t got -> "❌ " ++ path ++ " -- " ++ name ++ " test=" ++ show t ++ " got=" ++ show got
 
 buildOps :: C.Ops
-buildOps = []
+buildOps = do
+  let intOp1 op f =
+        ( '.' : op,
+          \eval args -> case eval <$> args of
+            [C.Int x] -> C.Int (f x)
+            args -> C.Call op args
+        )
+  let intOp2 op f =
+        ( '.' : op,
+          \eval args -> case eval <$> args of
+            [C.Int x, C.Int y] -> C.Int (f x y)
+            args -> C.Call op args
+        )
+  [ intOp1 "-" (\x -> -x),
+    intOp2 "+" (+),
+    intOp2 "-" (-),
+    intOp2 "*" (*),
+    intOp2 "/" div,
+    intOp2 "^" (^)
+    ]
 
 runtimeOps :: C.Ops
 runtimeOps = buildOps
@@ -153,6 +172,9 @@ letVars defs b = foldr letVar b defs
 defVar :: (String, Expr) -> Stmt
 defVar (x, a) = Def (Var x, a)
 
+traitFun :: String -> Expr
+traitFun x = lambda ["_"] (Trait (Var "_") x)
+
 neg :: Expr -> Expr
 neg = Op1 Neg
 
@@ -179,9 +201,6 @@ pow = Op2 Pow
 
 lets :: [(Expr, Expr)] -> Expr -> Expr
 lets defs b = foldr Let b defs
-
-traitFun :: String -> Expr
-traitFun x = lambda ["_"] (Trait (Var "_") x)
 
 select :: Expr -> [String] -> Expr
 select a xs = Select a (map (\x -> (x, Var x)) xs)
@@ -301,7 +320,8 @@ instance Lower Expr C.Expr where
   lower env (For xs a) = C.for xs (lower (C.pushVars xs env) a)
   lower env (Fun a b) = do
     let (args, body) = funOf (Fun a b)
-    C.for (concatMap freeVars args) (C.fun (lower env <$> args) (lower env body))
+    let xs = concatMap (filter (\x -> not ("." `isPrefixOf` x)) . freeVars) args
+    C.for xs (C.fun (lower env <$> args) (lower env body))
   lower env (App a b) = do
     let a' = lower env a
     case C.infer buildOps env a' of
@@ -315,17 +335,30 @@ instance Lower Expr C.Expr where
   lower env (Or a b) = C.Or (lower env a) (lower env b)
   -- lower env (Let def b) = lower (lower env def ++ env) b
   -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
+  lower env (Ann a b) = C.Ann (lower env a) (lower env b)
+  lower env (Call op args) = C.Call op (map (lower env) args)
+  lower env (Trait a x) = do
+    let a' = lower env a
+    case C.infer buildOps env a' of
+      Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
+      Left _ -> C.Err
+  lower env (Op1 op a) = case op of
+    Neg -> lower env (Trait a "-")
+  lower env (Op2 op a b) = case op of
+    Eq -> lower env (Trait (And a b) "==")
+    Lt -> lower env (Trait (And a b) "<")
+    Gt -> lower env (Trait (And a b) ">")
+    Add -> lower env (Trait (And a b) "+")
+    Sub -> lower env (Trait (And a b) "-")
+    Mul -> lower env (Trait (And a b) "*")
+    Div -> lower env (Trait (And a b) "/")
+    Pow -> lower env (Trait (And a b) "^")
   lower env (Match [] cases) = lower env (or' cases)
   lower env (Match args cases) =
     lower env (app (Match [] cases) args)
   lower env (Record fields) = do
     let k = '~' : intercalate "," (map fst fields)
     lower env (tag k (map snd fields))
-  lower env (Trait a x) = do
-    let a' = lower env a
-    case C.infer buildOps env a' of
-      Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
-      Left _ -> C.Err
   lower env (Select a kvs) = case a of
     Record fields -> do
       let sub = map (second $ lower env) fields
@@ -338,19 +371,6 @@ instance Lower Expr C.Expr where
       let k = '~' : intercalate "," (map fst fields')
       C.tag k (map snd fields')
     a -> error $ "TODO: lower Select " ++ show a
-  lower env (Ann a b) = C.Ann (lower env a) (lower env b)
-  lower env (Call op args) = C.Call op (map (lower env) args)
-  lower env (Op1 op a) = case op of
-    Neg -> lower env (Trait a "-")
-  lower env (Op2 op a b) = case op of
-    Eq -> lower env (Trait (And a b) "==")
-    Lt -> lower env (Trait (And a b) "<")
-    Gt -> lower env (Trait (And a b) ">")
-    Add -> lower env (Trait (And a b) "+")
-    Sub -> lower env (Trait (And a b) "-")
-    Mul -> lower env (Trait (And a b) "*")
-    Div -> lower env (Trait (And a b) "/")
-    Pow -> lower env (Trait (And a b) "^")
   lower _ Err = C.Err
   lower _ a = error $ "TODO: lower " ++ show a
 
@@ -587,9 +607,8 @@ instance Compile (Expr -> C.Expr) where
 
 eval :: [Module] -> String -> Expr -> Expr
 eval ctx path expr = do
-  let ops = []
   compile ctx path expr
-    & C.eval ops
+    & C.eval runtimeOps
     & lift
 
 class TestSome a where
@@ -621,11 +640,11 @@ instance TestSome UnitTest where
     let test' =
           Match
             [t.expr]
-            [ Fun t.expect (Tag ":Pass:"),
+            [ Fun t.expect (Tag ":Ok"),
               Fun (Var "got") (Var "got")
             ]
     case eval ctx t.path test' of
-      Tag ":Pass:" -> [TestPass t.path t.name]
+      Tag ":Ok" -> [TestPass t.path t.name]
       got -> [TestFail t.path t.name (t.expr, t.expect) got]
 
 testAll :: (TestSome a) => [Module] -> a -> [TestResult]
