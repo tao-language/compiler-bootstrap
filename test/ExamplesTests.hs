@@ -218,7 +218,16 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  -- App Expr Expr
+  let name = "examples/def-app"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "App match 1",
+            TestPass name "App match 2"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
   -- And Expr Expr
   -- Or Expr Expr
   -- Ann Expr Type

@@ -585,6 +585,9 @@ instance Resolve (Stmt, String) where
       _ : names -> resolve ctx path (Import path' alias names, name)
       [] | alias == name -> Just (path, Tag path')
       [] -> Nothing
+    Def (App p1 p2, b) -> do
+      let (p, args) = appOf (App p1 p2)
+      resolve ctx path (Def (p, fun args b), name)
     Def (p, b) -> case inferBindings p of
       xs | name `elem` xs -> Just (path, let' (p, b) (Var name))
       _ -> Nothing
