@@ -78,11 +78,30 @@ parseName firstChar = do
     name | name `elem` keywords -> P.fail'
     name -> return name
 
+parseNameEscaped :: Parser String
+parseNameEscaped = do
+  _ <- P.char '`'
+  name <- P.zeroOrMore $ do
+    P.oneOf
+      [ fmap (const '`') (P.text "\\`"),
+        P.charIf (/= '`')
+      ]
+  _ <- P.char '`'
+  return name
+
 parseNameVar :: Parser String
-parseNameVar = parseName P.lowercase
+parseNameVar =
+  P.oneOf
+    [ parseName P.lowercase,
+      parseNameEscaped
+    ]
 
 parseNameTag :: Parser String
-parseNameTag = parseName P.uppercase
+parseNameTag =
+  P.oneOf
+    [ parseName P.uppercase,
+      P.paddedL (P.char ':') parseNameEscaped
+    ]
 
 parseLineBreak :: Parser String
 parseLineBreak = do
