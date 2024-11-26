@@ -192,9 +192,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
     let testResults =
-          [ TestPass name "Untyped",
-            TestPass name "Typed",
-            TestPass name "Typed inline"
+          [ TestPass name "Var match"
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -238,8 +236,26 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  -- Or Expr Expr
-  -- Ann Expr Type
+  -- let name = "examples/def-or"
+  -- it ("☯ " ++ name) $ do
+  --   (pkg, syntaxErrors) <- load name []
+  --   syntaxErrors `shouldBe` []
+  --   let testResults =
+  --         [ TestPass name "And match 1",
+  --           TestPass name "And match 2"
+  --         ]
+  --   testAll [] pkg `shouldBe` testResults
+
+  let name = "examples/def-ann"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "Ann match inline type",
+            TestPass name "Ann match type annotation"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
   -- Call String [Expr]
   -- Trait Expr String
   -- Op1 Op1 Expr
