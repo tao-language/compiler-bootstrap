@@ -178,6 +178,15 @@ run = describe "--==☯ Examples ☯==--" $ do
   -- Select Expr [(String, Expr)]
   -- With Expr [(String, Expr)]
 
+  let name = "examples/def-atoms"
+  it ("☯ " ++ name) $ do
+    -- There are no bindings, so there aren't any tests to run.
+    -- Just make sure there are no syntax errors.
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults = []
+    testAll [] pkg `shouldBe` testResults
+
   let name = "examples/def-var"
   it ("☯ " ++ name) $ do
     (pkg, syntaxErrors) <- load name []
@@ -188,6 +197,24 @@ run = describe "--==☯ Examples ☯==--" $ do
             TestPass name "Typed inline"
           ]
     testAll [] pkg `shouldBe` testResults
+
+  -- For [String] Expr
+  -- Fun Expr Expr
+  -- App Expr Expr
+  -- And Expr Expr
+  -- Or Expr Expr
+  -- Ann Expr Type
+  -- Call String [Expr]
+  -- Trait Expr String
+  -- Op1 Op1 Expr
+  -- Op2 Op2 Expr Expr
+  -- Let (Expr, Expr) Expr
+  -- Bind (Expr, Expr) Expr
+  -- If Expr Expr Expr
+  -- Match [Expr] [Expr]
+  -- Record [(String, Expr)]
+  -- Select Expr [(String, Expr)]
+  -- With Expr [(String, Expr)]
 
   -- let name = "examples/def-fun"
   -- it ("☯ " ++ name) $ do
