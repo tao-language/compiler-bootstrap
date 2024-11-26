@@ -213,8 +213,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
     let testResults =
-          [ TestPass name "Fun match first",
-            TestPass name "Fun match second"
+          [ TestPass name "Fun match 1",
+            TestPass name "Fun match 2"
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -228,7 +228,16 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  -- And Expr Expr
+  let name = "examples/def-and"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "And match 1",
+            TestPass name "And match 2"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
   -- Or Expr Expr
   -- Ann Expr Type
   -- Call String [Expr]

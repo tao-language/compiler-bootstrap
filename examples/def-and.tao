@@ -1,0 +1,9 @@
+(x, y) = (1, 2)
+
+-- And match 1
+> x
+1
+
+-- And match 2
+> y
+2
