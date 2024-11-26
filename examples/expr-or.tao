@@ -1,15 +1,19 @@
--- Or match first
+-- Or match 1
 > 1 | 2
 1
 
--- Or match second
+-- Or match 2
 > 1 | 2
 2
+
+-- Or match 3
+> 1 | 2
+2 | 1
+
+-- Or match 4
+> 1 | 2
+1 | 3
 
 -- Or match fail
 > 1 | 2
 3
-
--- Or match any
-> 1 | 2
-3 | 1

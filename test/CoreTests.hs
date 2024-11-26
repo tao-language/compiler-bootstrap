@@ -210,7 +210,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' (App (Fun (And IntT NumT) z) (And NumT NumT)) `shouldBe` Err
     reduce' (App (Fun (Or IntT NumT) z) IntT) `shouldBe` z
     reduce' (App (Fun (Or IntT NumT) z) NumT) `shouldBe` z
-    reduce' (App (Fun (Or IntT NumT) z) z) `shouldBe` Err
+    reduce' (App (Fun (Or IntT IntT) z) x) `shouldBe` Err
     reduce' (App (Fun (Ann x Err) z) x) `shouldBe` z
     reduce' (App (Fun (Ann x Err) z) y) `shouldBe` Err
     reduce' (App (Fun (Call "f" []) z) (Call "f" [])) `shouldBe` z
