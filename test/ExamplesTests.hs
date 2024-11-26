@@ -268,7 +268,16 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  -- Call String [Expr]
+  let name = "examples/def-call"
+  it ("☯ " ++ name ++ ".tao") $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "Call match",
+            TestFail name "Call match fail" (y, i1) Err
+          ]
+    testAll [] pkg `shouldBe` testResults
+
   -- Trait Expr String
   -- Op1 Op1 Expr
   -- Op2 Op2 Expr Expr
