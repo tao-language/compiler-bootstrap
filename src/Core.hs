@@ -431,6 +431,10 @@ substitute s (Or a b) = Or (substitute s a) (substitute s b)
 substitute s (Ann (Tag k) ty) = Ann (Tag k) (substitute s ty)
 substitute s (Ann a _) = substitute s a
 substitute s (Call op args) = Call op (map (substitute s) args)
+substitute s (Let env b) = do
+  let sub (x, a) = (x, substitute s a)
+  let s' = filter (\(x, _) -> x `notElem` map fst env) s
+  Let (map sub env) (substitute s' b)
 substitute _ Err = Err
 
 unify :: Expr -> Expr -> Either TypeError (Expr, Substitution)

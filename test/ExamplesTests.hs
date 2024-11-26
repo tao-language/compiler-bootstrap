@@ -198,7 +198,16 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  -- For [String] Expr
+  let name = "examples/def-for"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "For match",
+            TestFail name "For match fail" (y, i1) Err
+          ]
+    testAll [] pkg `shouldBe` testResults
+
   -- Fun Expr Expr
   -- App Expr Expr
   -- And Expr Expr

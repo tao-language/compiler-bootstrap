@@ -163,6 +163,10 @@ orOf :: Expr -> [Expr]
 orOf (Or a b) = a : orOf b
 orOf a = [a]
 
+let' :: (Expr, Expr) -> Expr -> Expr
+let' (Var x, b) (Var x') | x == x' = b
+let' (a, b) c = Let (a, b) c
+
 letVar :: (String, Expr) -> Expr -> Expr
 letVar (x, a) = Let (Var x, a)
 
@@ -304,6 +308,11 @@ occurs x a = x `elem` freeVars a
 class Lower a b where
   lower :: C.Env -> a -> b
 
+inferBindings :: Expr -> [String]
+inferBindings = \case
+  For xs _ -> xs
+  a -> freeVars a & filter (\x -> not ("." `isPrefixOf` x))
+
 instance Lower Expr C.Expr where
   lower :: C.Env -> Expr -> C.Expr
   lower _ Any = C.Any
@@ -320,7 +329,7 @@ instance Lower Expr C.Expr where
   lower env (For xs a) = C.for xs (lower (C.pushVars xs env) a)
   lower env (Fun a b) = do
     let (args, body) = funOf (Fun a b)
-    let xs = concatMap (filter (\x -> not ("." `isPrefixOf` x)) . freeVars) args
+    let xs = concatMap inferBindings args
     C.for xs (C.fun (lower env <$> args) (lower env body))
   lower env (App a b) = do
     let a' = lower env a
@@ -353,6 +362,7 @@ instance Lower Expr C.Expr where
     Mul -> lower env (Trait (And a b) "*")
     Div -> lower env (Trait (And a b) "/")
     Pow -> lower env (Trait (And a b) "^")
+  lower env (Let (a, b) c) = lower env (App (Fun a c) b)
   lower env (Match [] cases) = lower env (or' cases)
   lower env (Match args cases) =
     lower env (app (Match [] cases) args)
@@ -574,15 +584,12 @@ instance Resolve (Stmt, String) where
       _ : names -> resolve ctx path (Import path' alias names, name)
       [] | alias == name -> Just (path, Tag path')
       [] -> Nothing
-    Def (pattern', body) -> case pattern' of
-      Var x | x == name -> Just (path, body)
-      Fun a b -> Just (path, Unit)
-      -- Fun a b -> resolve ctx path (Def (a, Match [body] [Fun (Fun a b) a]), name)
-      Ann a _ -> resolve ctx path (Def (a, body), name)
+    Def (p, b) -> case inferBindings p of
+      xs | name `elem` xs -> Just (path, let' (p, b) (Var name))
       _ -> Nothing
     TypeDef (name', args, body) ->
       if name == name'
-        then Just (path, body)
+        then Just (path, fun args body)
         else Nothing
     Test {} -> Nothing
 
