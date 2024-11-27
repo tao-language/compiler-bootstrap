@@ -583,12 +583,14 @@ instance Resolve (Stmt, String) where
         defs ++ resolve ctx path (Import path' alias names, name)
       [] | alias == name -> [(path, Tag path')]
       [] -> []
-    Def (App p1 p2, b) -> do
-      let (p, args) = appOf (App p1 p2)
-      resolve ctx path (Def (p, fun args b), name)
+    Def (App p1 p2, b) -> case appOf (App p1 p2) of
+      (Var ('.' : x), args) -> [('.' : x, fun args b)]
+      (p, args) -> resolve ctx path (Def (p, fun args b), name)
     Def (Or p1 p2, b) -> do
       let defs = resolve ctx path (Def (p1, b), name)
       defs ++ resolve ctx path (Def (p2, b), name)
+    -- Def (Trait a x, b) | x == name -> do
+    --   error $ show (a, x, b)
     Def (p, b) -> case inferBindings p of
       xs | name `elem` xs -> [(path, let' (p, b) (Var name))]
       _ -> []

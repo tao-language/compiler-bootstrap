@@ -278,7 +278,45 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  -- Trait Expr String
+  let name = "examples/def-trait-direct"
+  it ("☯ " ++ name ++ ".tao") $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "Trait match property",
+            TestPass name "Trait match function",
+            TestPass name "Trait match direct",
+            TestPass name "Trait match fail 1",
+            TestPass name "Trait match fail 2"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
+  -- let name = "examples/def-trait-property"
+  -- it ("☯ " ++ name ++ ".tao") $ do
+  --   (pkg, syntaxErrors) <- load name []
+  --   syntaxErrors `shouldBe` []
+  --   let testResults =
+  --         [ TestPass name "Trait match property",
+  --           TestPass name "Trait match function",
+  --           TestPass name "Trait match direct",
+  --           TestPass name "Trait match fail 1",
+  --           TestPass name "Trait match fail 2"
+  --         ]
+  --   testAll [] pkg `shouldBe` testResults
+
+  -- let name = "examples/def-trait-function"
+  -- it ("☯ " ++ name ++ ".tao") $ do
+  --   (pkg, syntaxErrors) <- load name []
+  --   syntaxErrors `shouldBe` []
+  --   let testResults =
+  --         [ TestPass name "Trait match property",
+  --           TestPass name "Trait match function",
+  --           TestPass name "Trait match direct",
+  --           TestPass name "Trait match fail 1",
+  --           TestPass name "Trait match fail 2"
+  --         ]
+  --   testAll [] pkg `shouldBe` testResults
+
   -- Op1 Op1 Expr
   -- Op2 Op2 Expr Expr
   -- Let (Expr, Expr) Expr

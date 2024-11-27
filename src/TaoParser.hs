@@ -165,10 +165,17 @@ parseAtom = do
         NumType <$ P.word "Num",
         Err <$ P.word "$!error",
         Var <$> parseNameVar,
+        Tag <$> parseNameTag,
         do
+          _ <- P.char '('
+          _ <- P.whitespaces
           name <- parseNameTag
-          _ <- P.spaces
-          args <- P.zeroOrMore parseAtom
+          _ <- P.whitespaces
+          args <- P.zeroOrMore $ do
+            _ <- P.whitespaces
+            parseAtom
+          _ <- P.whitespaces
+          _ <- P.char ')'
           return (tag name args),
         Int <$> P.integer,
         Num <$> P.number,
