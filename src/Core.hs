@@ -213,11 +213,11 @@ let' :: [(String, Expr)] -> Expr -> Expr
 let' [] b = b
 let' env b = Let env b
 
--- lets :: [(Expr, Expr)] -> Expr -> Expr
--- lets ((Var x, Var x') : defs) b | x == x' = b
--- lets ((p, a) : defs) b = do
---   let xs = freeVars p
---   App (for xs (Fun p b)) (fix (filter (`occurs` a) xs) a)
+lets :: [(Expr, Expr)] -> Expr -> Expr
+lets ((Var x, Var x') : defs) b | x == x' = b
+lets ((p, a) : defs) b = do
+  let xs = freeVars p
+  App (for xs (Fun p b)) (fix (filter (`occurs` a) xs) a)
 
 list :: Expr -> Expr -> [Expr] -> Expr
 list _ nil [] = nil
@@ -547,11 +547,9 @@ infer ops env (App a b) = do
       Right (substitute s3 t2, s3 `compose` s2 `compose` s1)
     (ta, _) -> Left (NotAFunction a ta)
 infer ops env (Let env' a) = infer ops (env' ++ env) a
-infer ops env (Call op args) = case lookup op env of
-  Just a -> infer ops env (app a args)
-  Nothing -> do
-    let y = newName (map fst env) (op ++ "T")
-    Right (Var y, [(y, Var y), (op, Ann (Call op []) (Var y))])
+infer ops env (Call op args) = do
+  (argsT, s) <- inferAll ops env args
+  Right (Call op argsT, s)
 infer _ _ Err = Right (Err, [])
 
 infer2 :: Ops -> Env -> Expr -> Expr -> Either TypeError ((Expr, Expr), Substitution)

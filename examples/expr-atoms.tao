@@ -18,19 +18,19 @@ _
 > ()
 1
 
--- IntType match
+-- IntT match
 > Int
 Int
 
--- IntType match fail
+-- IntT match fail
 > Int
 Num
 
--- NumType match
+-- NumT match
 > Num
 Num
 
--- NumType match fail
+-- NumT match fail
 > Num
 Int
 

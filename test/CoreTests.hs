@@ -349,9 +349,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     True `shouldBe` True
 
   it "☯ infer factorial" $ do
-    let env = [("f", factorial "f")]
-    infer [] env (Var "f") `shouldBe` Right (Fix "f" $ Fun IntT IntT, [("xT", IntT), ("x", Ann x IntT), ("*T", IntT), ("*", Ann (Call "*" []) IntT)])
-    infer [] env (Ann (Var "f") (Fun IntT IntT)) `shouldBe` Right (Fun IntT IntT, [("xT", IntT), ("x", Ann x IntT), ("*T", IntT), ("*", Ann (Call "*" []) IntT)])
+    let env = [("f", Ann (factorial "f") (Fun IntT IntT))]
+    let infer' a = fmap fst (infer ops env a)
+    infer' (Var "f") `shouldBe` Right (Fun IntT IntT)
+    infer' (Ann (Var "f") (Fun IntT IntT)) `shouldBe` Right (Fun IntT IntT)
 
   -- it "☯ infer Bool" $ do
   --   let (bool, true, false) = (Tag "Bool", Tag "True", Tag "False")

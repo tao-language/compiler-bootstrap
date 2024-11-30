@@ -6,11 +6,11 @@ _ 1
 > () 1
 $!error
 
--- App IntType
+-- App IntT
 > Int 1
 $!error
 
--- App NumType
+-- App NumT
 > Int 1
 $!error
 
