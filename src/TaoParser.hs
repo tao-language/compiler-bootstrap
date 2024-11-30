@@ -161,8 +161,8 @@ parseAtom = do
   a <-
     P.oneOf
       [ Any <$ P.word "_",
-        IntType <$ P.word "Int",
-        NumType <$ P.word "Num",
+        IntT <$ P.word "Int",
+        NumT <$ P.word "Num",
         Err <$ P.word "$!error",
         Var <$> parseNameVar,
         Tag <$> parseNameTag,

@@ -51,10 +51,10 @@ run = describe "--==☯ Examples ☯==--" $ do
             TestPass name "Any match 2",
             TestPass name "Unit match",
             TestFail name "Unit match fail" (Unit, i1) Unit,
-            TestPass name "IntType match",
-            TestFail name "IntType match fail" (IntType, NumType) IntType,
-            TestPass name "NumType match",
-            TestFail name "NumType match fail" (NumType, IntType) NumType,
+            TestPass name "IntT match",
+            TestFail name "IntT match fail" (IntT, NumT) IntT,
+            TestPass name "NumT match",
+            TestFail name "NumT match fail" (NumT, IntT) NumT,
             TestPass name "Int match",
             TestFail name "Int match fail" (i1, i2) i1,
             TestPass name "Num match",
@@ -96,8 +96,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     let testResults =
           [ TestPass name "App Any",
             TestPass name "App Unit",
-            TestPass name "App IntType",
-            TestPass name "App NumType",
+            TestPass name "App IntT",
+            TestPass name "App NumT",
             TestPass name "App Int",
             TestPass name "App Num",
             TestPass name "App Tag",
@@ -156,7 +156,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let testResults =
           [ TestPass name "Ann match",
             TestPass name "Ann match drop type",
-            TestFail name "Ann match fail" (Ann i1 IntType, i2) i1
+            TestFail name "Ann match fail" (Ann i1 IntT, i2) i1
           ]
     testAll [] pkg `shouldBe` testResults
 

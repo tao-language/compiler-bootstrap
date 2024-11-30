@@ -146,8 +146,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   it "☯ parseExpr" $ do
     let p = parse' (parseExpr 0 P.spaces)
     p "_" `shouldBe` Right (Any, "")
-    p "Int" `shouldBe` Right (IntType, "")
-    p "Num" `shouldBe` Right (NumType, "")
+    p "Int" `shouldBe` Right (IntT, "")
+    p "Num" `shouldBe` Right (NumT, "")
     p "42" `shouldBe` Right (Int 42, "")
     p "3.14" `shouldBe` Right (Num 3.14, "")
     p "var" `shouldBe` Right (Var "var", "")
