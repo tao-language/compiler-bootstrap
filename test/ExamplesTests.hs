@@ -147,7 +147,7 @@ run = describe "--==☯ Examples ☯==--" $ do
             TestPass name "Or match 2",
             TestPass name "Or match 3",
             TestPass name "Or match 4",
-            TestFail name "Or match fail" (Or i1 i2, i3) (C.Or i1' i2', C.Or C.IntT C.IntT) (Or i1 i2)
+            TestFail name "Or match fail" (Or i1 i2, i3) (C.Or i1' i2', C.IntT) (Or i1 i2)
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -216,7 +216,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     syntaxErrors `shouldBe` []
     let testResults =
           [ TestPass name "For match",
-            TestFail name "For match fail" (y, i1) (C.Let [("y", C.Let [("z", i2')] (C.def ["y"] (C.And y' z', C.And i1' i1') y'))] y', C.IntT) Err
+            TestFail name "For match fail" (y, i1) (C.Let [("y", C.Let [("z", i2')] (C.def ["y"] (C.And y' z', C.And i1' i1') y'))] (C.Ann y' C.IntT), C.IntT) Err
           ]
     testAll [] pkg `shouldBe` testResults
 

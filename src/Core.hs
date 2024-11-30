@@ -79,20 +79,22 @@ instance Show Expr where
     And _ _ -> "(" ++ intercalate ", " (map show (andOf expr)) ++ ")"
     Or _ _ -> "(" ++ intercalate " | " (map show (orOf expr)) ++ ")"
     For _ _ -> do
-      let (xs, a) = asFor expr
+      let (xs, a) = forOf expr
       "(@" ++ unwords (map name xs) ++ ". " ++ show a ++ ")"
     Fix x a -> "(&" ++ name x ++ ". " ++ show a ++ ")"
     Fun _ _ -> do
       let (args, ret) = funOf expr
-      "(" ++ intercalate ", " (map show args) ++ " -> " ++ show ret ++ ")"
+      "(" ++ intercalate " -> " (map show args) ++ " -> " ++ show ret ++ ")"
     App a b -> do
-      let (xs, a') = asFor a
+      let (xs, a') = forOf a
       case a' of
         Fun a c -> show (for xs a) ++ " = " ++ show b ++ "; " ++ show c
-        _ -> "(" ++ show a ++ " " ++ show b ++ ")"
+        a -> do
+          let (a', bs) = appOf (App a b)
+          "(" ++ show a' ++ " " ++ unwords (map show bs) ++ ")"
     Ann a b -> "(" ++ show a ++ " : " ++ show b ++ ")"
-    Call f xs -> '$' : f ++ "(" ++ intercalate ", " (map show xs) ++ ")"
-    Let env b -> "@{" ++ intercalate "; " (map (\(x, a) -> x ++ " = " ++ show a) env) ++ "} " ++ show b
+    Call f args -> '$' : f ++ "(" ++ intercalate ", " (map show args) ++ ")"
+    Let env b -> "@{" ++ intercalate "; " (map (\(x, a) -> name x ++ " = " ++ show a) env) ++ "} " ++ show b
     Err -> "!error"
     where
       isAlphaNumOr cs c = isAlphaNum c || c `elem` cs
@@ -186,9 +188,9 @@ for [] a = a
 for (x : xs) a | x `occurs` a = For x (for xs a)
 for (_ : xs) a = for xs a
 
-asFor :: Expr -> ([String], Expr)
-asFor (For x a) = let (xs, b) = asFor a in (x : xs, b)
-asFor a = ([], a)
+forOf :: Expr -> ([String], Expr)
+forOf (For x a) = let (xs, b) = forOf a in (x : xs, b)
+forOf a = ([], a)
 
 fun :: [Expr] -> Expr -> Expr
 fun ps b = foldr Fun b ps
@@ -535,7 +537,7 @@ infer ops env (App a b) = do
   case instantiate (map fst env) ta of
     (Var x, s2) -> do
       let y = newName (map fst (s2 `compose` s1 `compose` env)) x
-      (t, s3) <- infer ops (s2 `compose` s1 `compose` env) (App (Ann a (For y $ Fun tb (Var y))) b)
+      (t, s3) <- infer ops ([(y, Var y)] `compose` s2 `compose` s1 `compose` env) (App (Ann a (Fun tb (Var y))) b)
       Right (t, s3 `compose` s2 `compose` s1 `compose` [(y, t)])
     (Fun t1 t2, s2) -> do
       (_, s3) <- unify tb t1
@@ -587,7 +589,7 @@ compose s1 s2 = apply s1 s2 `union` s1
 instantiate :: [String] -> Expr -> (Expr, Substitution)
 instantiate vars (For x a) | x `occurs` a = do
   let y = newName vars x
-  let (b, s) = instantiate vars (substitute [(x, Var y)] a)
+  let (b, s) = instantiate (y : vars) (substitute [(x, Var y)] a)
   (b, [(y, Var y)] `union` s)
 instantiate vars (For _ a) = instantiate vars a
 instantiate _ a = (a, [])

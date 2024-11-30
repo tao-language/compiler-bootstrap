@@ -11,6 +11,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   let (a, a') = (Var "a", C.Var "a")
   let (f, f') = (Var "f", C.Var "f")
   let (i0, i1, i2) = (Int 0, Int 1, Int 2)
+  let (i0', i1', i2') = (C.Int 0, C.Int 1, C.Int 2)
 
   it "☯ lambda" $ do
     lambda [] x `shouldBe` x
@@ -200,11 +201,12 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   lower [] expr `shouldBe` C.Err
   --   lift term `shouldBe` expr
 
-  -- it "☯ lower/lift Expr Trait -- function" $ do
-  --   let expr = App (traitFun "y") x
-  --   let term = C.Let [("_", C.Var "x")] (C.app (C.Var ".y") [C.IntT, C.Var "_"])
-  --   lower [("x", C.Int 1)] expr `shouldBe` term
-  --   lift term `shouldBe` expr
+  it "☯ lower/lift Expr Trait -- function" $ do
+    let env = [(".y", C.fun [C.IntT, C.Any] C.Unit)]
+    let expr = App (traitFun "y") i1
+    let term = C.def ["a"] (C.Var "a", i1') (C.app (C.Var ".y") [C.Ann C.IntT C.IntT, C.Var "a"])
+    lower env expr `shouldBe` (term, C.Unit, [("aT", C.Ann C.IntT C.IntT), ("a", C.Ann (C.Var "a") C.IntT), ("aTT", C.IntT), ("aT", C.IntT)])
+    lift term `shouldBe` Match [i1] [For ["a"] $ Fun a (Trait a "y")]
 
   -- it "☯ lower/lift Expr Select -- empty" $ do
   --   let expr = select (Record [("x", Int 1), ("y", Int 2)]) []
@@ -562,7 +564,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     compile ctx "pkg/a" (Or (Int 1) (Num 1.1)) `shouldBe` (C.Or (C.Int 1) (C.Num 1.1), C.Or C.IntT C.NumT)
     compile ctx "pkg/a" (For [] x) `shouldBe` (C.Let [("x", C.Int 42)] x', C.IntT)
     compile ctx "pkg/a" (For [] (Fun x x)) `shouldBe` (C.Let [("x", C.Int 42)] (C.Fun x' x'), C.Fun C.IntT C.IntT)
-    compile ctx "pkg/a" (For ["x"] x) `shouldBe` (C.For "x" x', C.For "xT" (C.Var "xT"))
+    compile ctx "pkg/a" (For ["x"] x) `shouldBe` (C.For "x" (C.Ann x' (C.Var "xT")), C.For "xT" (C.Var "xT"))
     compile ctx "pkg/a" (For ["x"] (Fun x x)) `shouldBe` (C.For "x" (C.Fun x' x'), C.For "xT" (C.Fun (C.Var "xT") (C.Var "xT")))
     compile ctx "pkg/a" (Fun x x) `shouldBe` (C.For "x" (C.Fun x' x'), C.For "xT" (C.Fun (C.Var "xT") (C.Var "xT")))
     compile ctx "pkg/a" (fun [x, y] x) `shouldBe` (C.for ["x", "y"] (C.fun [x', y'] x'), C.for ["xT", "yT"] (C.fun [C.Var "xT", C.Var "yT"] (C.Var "xT")))
