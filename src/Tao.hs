@@ -83,14 +83,14 @@ data UnitTest = UnitTest
 
 data TestResult
   = TestPass String String
-  | TestFail String String (Expr, Expr) Expr
+  | TestFail String String (Expr, Expr) (C.Expr, C.Expr) Expr
   deriving (Eq)
 
 instance Show TestResult where
   show :: TestResult -> String
   show result = case result of
     TestPass path name -> "✅ " ++ path ++ " -- " ++ name
-    TestFail path name t got -> "❌ " ++ path ++ " -- " ++ name ++ " test=" ++ show t ++ " got=" ++ show got
+    TestFail path name t (tc, ty) got -> "❌ " ++ path ++ " -- " ++ name ++ " test=" ++ show t ++ " core=" ++ show tc ++ " type=" ++ show ty ++ " got=" ++ show got
 
 buildOps :: C.Ops
 buildOps = do
@@ -299,7 +299,7 @@ class FreeVars a where
 
 instance FreeVars Expr where
   freeVars :: Expr -> [String]
-  freeVars (Trait a x) = ('.' : x) : freeVars a
+  freeVars (Trait a x) = ['.' : x] `union` freeVars a
   freeVars a = do
     let (a', _, _) = lower [] a :: (C.Expr, C.Expr, C.Substitution)
     C.freeVars a'
@@ -586,14 +586,14 @@ instance Resolve (Stmt, String) where
         defs ++ resolve ctx path (Import path' alias names, name)
       [] | alias == name -> [(path, Tag path')]
       [] -> []
-    Def (Var ('.' : x), b) | name == '.' : x -> [(path, Fun Any b)]
+    Def (Var ('.' : x), b) | name == '.' : x -> [(path, b)]
     Def (App p1 p2, b) -> case appOf (App p1 p2) of
       (p, args) -> resolve ctx path (Def (p, fun args b), name)
     Def (Or p1 p2, b) -> do
       let defs = resolve ctx path (Def (p1, b), name)
       defs ++ resolve ctx path (Def (p2, b), name)
     Def (Trait a x, b) ->
-      resolve ctx path (Def (App (Var ('.' : x)) a, b), name)
+      resolve ctx path (Def (app (Var ('.' : x)) [Any, a], b), name)
     Def (p, b) -> case inferBindings p of
       xs | name `elem` xs -> [(path, let' (p, b) (Var name))]
       _ -> []
@@ -729,7 +729,10 @@ instance Lower Expr (C.Expr, C.Expr, C.Substitution) where
       lower2 env a b = do
         let (a', ta, s1) = lower env a
         let (b', tb, s2) = lower (s1 `C.compose` env) b
-        ((C.substitute s2 a', C.substitute s2 ta), (b', tb), s2 `C.compose` s1)
+        ( (C.substitute s2 a', C.substitute s2 ta),
+          (C.substitute s1 b', tb),
+          s2 `C.compose` s1
+          )
 
       lowerAll :: C.Env -> [Expr] -> ([C.Expr], [C.Expr], C.Substitution)
       lowerAll env = \case
@@ -800,7 +803,7 @@ instance TestSome UnitTest where
             ]
     case eval ctx t.path test' of
       Tag ":Ok" -> [TestPass t.path t.name]
-      got -> [TestFail t.path t.name (t.expr, t.expect) got]
+      got -> [TestFail t.path t.name (t.expr, t.expect) (compile ctx t.path t.expr) got]
 
 testAll :: (TestSome a) => [Module] -> a -> [TestResult]
 testAll ctx = testSome ctx (const True)

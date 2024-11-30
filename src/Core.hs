@@ -88,9 +88,7 @@ instance Show Expr where
     App a b -> do
       let (xs, a') = asFor a
       case a' of
-        Fun a c -> do
-          let def = show a ++ " = " ++ show b ++ "; " ++ show c
-          if null xs then def else "@" ++ unwords (map name xs) ++ ". " ++ def
+        Fun a c -> show (for xs a) ++ " = " ++ show b ++ "; " ++ show c
         _ -> "(" ++ show a ++ " " ++ show b ++ ")"
     Ann a b -> "(" ++ show a ++ " : " ++ show b ++ ")"
     Call f xs -> '$' : f ++ "(" ++ intercalate ", " (map show xs) ++ ")"
@@ -213,11 +211,8 @@ let' :: [(String, Expr)] -> Expr -> Expr
 let' [] b = b
 let' env b = Let env b
 
-lets :: [(Expr, Expr)] -> Expr -> Expr
-lets ((Var x, Var x') : defs) b | x == x' = b
-lets ((p, a) : defs) b = do
-  let xs = freeVars p
-  App (for xs (Fun p b)) (fix (filter (`occurs` a) xs) a)
+def :: [String] -> (Expr, Expr) -> Expr -> Expr
+def xs (a, b) c = App (for xs (Fun a c)) b
 
 list :: Expr -> Expr -> [Expr] -> Expr
 list _ nil [] = nil
@@ -539,9 +534,9 @@ infer ops env (App a b) = do
   ((ta, tb), s1) <- infer2 ops env a b
   case instantiate (map fst env) ta of
     (Var x, s2) -> do
-      let y = newName (map fst (s1 `compose` env)) x
-      (t, s3) <- infer ops (s1 `compose` env) (App (Ann a (For y $ Fun tb (Var y))) b)
-      Right (t, (y, t) : s3 `compose` s2 `compose` s1)
+      let y = newName (map fst (s2 `compose` s1 `compose` env)) x
+      (t, s3) <- infer ops (s2 `compose` s1 `compose` env) (App (Ann a (For y $ Fun tb (Var y))) b)
+      Right (t, s3 `compose` s2 `compose` s1 `compose` [(y, t)])
     (Fun t1 t2, s2) -> do
       (_, s3) <- unify tb t1
       Right (substitute s3 t2, s3 `compose` s2 `compose` s1)

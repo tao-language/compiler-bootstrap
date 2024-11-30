@@ -335,7 +335,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
           ]
     infer [] env (App (Var "f") x) `shouldBe` Right (NumT, [])
     infer [] env (App (Fun y y) x) `shouldBe` Right (IntT, [("yT", IntT), ("y", Ann y IntT)])
-    infer [] env (App y x) `shouldBe` Right (Var "yT1", [("yT1", Var "yT1"), ("yT", For "yT1" $ Fun IntT (Var "yT1")), ("y", Ann y (For "yT1" $ Fun IntT (Var "yT1"))), ("yT1", Var "yT1")])
+    infer [] env (App y x) `shouldBe` Right (Var "yT1", [("yT1", Var "yT1"), ("yT", For "yT1" $ Fun IntT (Var "yT1")), ("y", Ann y (For "yT1" $ Fun IntT (Var "yT1")))])
 
   it "☯ infer Or" $ do
     let env = [("x", Int 42), ("y", Num 3.14)]

@@ -515,8 +515,8 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           ]
     resolve ctx "pkg/a" (Def (x, Int 1), "x") `shouldBe` [("pkg/a", Int 1)]
     resolve ctx "pkg/a" (Def (Or x y, Int 1), "x") `shouldBe` [("pkg/a", Int 1)]
-    resolve ctx "pkg/a" (Def (Var ".x", Int 1), ".x") `shouldBe` [("pkg/a", Fun Any (Int 1))]
-    resolve ctx "pkg/a" (Def (App (Var ".x") (Int 1), Int 2), ".x") `shouldBe` [("pkg/a", fun [Any, Int 1] (Int 2))]
+    resolve ctx "pkg/a" (Def (Var ".x", Int 1), ".x") `shouldBe` [("pkg/a", Int 1)]
+    resolve ctx "pkg/a" (Def (App (Var ".x") (Int 1), Int 2), ".x") `shouldBe` [("pkg/a", fun [Int 1] (Int 2))]
     resolve ctx "pkg/a" (Def (Trait (Int 1) "x", Int 2), ".x") `shouldBe` [("pkg/a", fun [Any, Int 1] (Int 2))]
 
   it "☯ compile Name" $ do
@@ -637,6 +637,6 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           ]
     let results =
           [ TestPass "pkg/a" ">x",
-            TestFail "pkg/a" ">y" (y, Int 0) (Int 2)
+            TestFail "pkg/a" ">y" (y, Int 0) (C.Let [("y", C.Int 2)] y', C.IntT) (Int 2)
           ]
     testAll ctx ("pkg", ctx) `shouldBe` results

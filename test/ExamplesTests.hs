@@ -11,7 +11,9 @@ import Test.Hspec
 run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
+  let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
   let (i1, i2, i3) = (Int 1, Int 2, Int 3)
+  let (i1', i2', i3') = (C.Int 1, C.Int 2, C.Int 3)
 
   let name = "examples/empty"
   it ("☯ " ++ name ++ ".tao") $ do
@@ -37,7 +39,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     syntaxErrors `shouldBe` []
     let testResults =
           [ TestPass name "Pass",
-            TestFail name "Fail" (i1, i2) i1
+            TestFail name "Fail" (i1, i2) (i1', C.IntT) i1
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -50,19 +52,19 @@ run = describe "--==☯ Examples ☯==--" $ do
             TestPass name "Any match 1",
             TestPass name "Any match 2",
             TestPass name "Unit match",
-            TestFail name "Unit match fail" (Unit, i1) Unit,
+            TestFail name "Unit match fail" (Unit, i1) (C.Unit, C.Unit) Unit,
             TestPass name "IntT match",
-            TestFail name "IntT match fail" (IntT, NumT) IntT,
+            TestFail name "IntT match fail" (IntT, NumT) (C.IntT, C.IntT) IntT,
             TestPass name "NumT match",
-            TestFail name "NumT match fail" (NumT, IntT) NumT,
+            TestFail name "NumT match fail" (NumT, IntT) (C.NumT, C.NumT) NumT,
             TestPass name "Int match",
-            TestFail name "Int match fail" (i1, i2) i1,
+            TestFail name "Int match fail" (i1, i2) (i1', C.IntT) i1,
             TestPass name "Num match",
-            TestFail name "Num match fail" (Num 3.14, Num 0.0) (Num 3.14),
+            TestFail name "Num match fail" (Num 3.14, Num 0.0) (C.Num 3.14, C.NumT) (Num 3.14),
             TestPass name "Tag match",
-            TestFail name "Tag match fail" (Tag "A", Tag "B") (Tag "A"),
+            TestFail name "Tag match fail" (Tag "A", Tag "B") (C.Tag "A", C.Tag "A") (Tag "A"),
             TestPass name "Err match",
-            TestFail name "Err match fail" (Err, i1) Err
+            TestFail name "Err match fail" (Err, i1) (C.Err, C.Err) Err
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -130,9 +132,9 @@ run = describe "--==☯ Examples ☯==--" $ do
     syntaxErrors `shouldBe` []
     let testResults =
           [ TestPass name "And match",
-            TestFail name "And match fail 1" (And i1 i2, i1) (And i1 i2),
-            TestFail name "And match fail 2" (And i1 i2, And i1 i1) (And i1 i2),
-            TestFail name "And match fail 3" (And i1 i2, And i2 i2) (And i1 i2)
+            TestFail name "And match fail 1" (And i1 i2, i1) (C.And i1' i2', C.And C.IntT C.IntT) (And i1 i2),
+            TestFail name "And match fail 2" (And i1 i2, And i1 i1) (C.And i1' i2', C.And C.IntT C.IntT) (And i1 i2),
+            TestFail name "And match fail 3" (And i1 i2, And i2 i2) (C.And i1' i2', C.And C.IntT C.IntT) (And i1 i2)
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -145,7 +147,7 @@ run = describe "--==☯ Examples ☯==--" $ do
             TestPass name "Or match 2",
             TestPass name "Or match 3",
             TestPass name "Or match 4",
-            TestFail name "Or match fail" (Or i1 i2, i3) (Or i1 i2)
+            TestFail name "Or match fail" (Or i1 i2, i3) (C.Or i1' i2', C.Or C.IntT C.IntT) (Or i1 i2)
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -156,7 +158,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let testResults =
           [ TestPass name "Ann match",
             TestPass name "Ann match drop type",
-            TestFail name "Ann match fail" (Ann i1 IntT, i2) i1
+            TestFail name "Ann match fail" (Ann i1 IntT, i2) (C.Ann i1' C.IntT, C.IntT) i1
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -204,7 +206,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let testResults =
           [ TestPass name "Overload match 1",
             TestPass name "Overload match 2",
-            TestFail name "Overload fail" (x, i3) (Or i1 i2)
+            TestFail name "Overload fail" (x, i3) (C.Let [("x", C.Or i1' i2')] x', C.IntT) (Or i1 i2)
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -214,7 +216,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     syntaxErrors `shouldBe` []
     let testResults =
           [ TestPass name "For match",
-            TestFail name "For match fail" (y, i1) Err
+            TestFail name "For match fail" (y, i1) (C.Let [("y", C.Let [("z", i2')] (C.def ["y"] (C.And y' z', C.And i1' i1') y'))] y', C.IntT) Err
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -274,7 +276,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     syntaxErrors `shouldBe` []
     let testResults =
           [ TestPass name "Call match",
-            TestFail name "Call match fail" (y, i1) Err
+            TestFail name "Call match fail" (y, i1) (C.Let [("y", C.def ["y"] (C.Call "f" [y'], C.Call "g" [i1']) y')] y', C.Err) Err
           ]
     testAll [] pkg `shouldBe` testResults
 
