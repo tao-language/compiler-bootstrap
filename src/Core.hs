@@ -343,7 +343,7 @@ reduceAppFun ops a b c = case a of
     reduce ops (App (Fun (Tag k) c) b')
   Let env (Let env' a) ->
     reduce ops (App (Fun (Let (env ++ env') a) c) b)
-  a -> case (reduce ops a, b) of
+  a -> case (reduce ops a, reduce ops b) of
     (Any, _) -> reduce ops c
     (Unit, Unit) -> reduce ops c
     (IntT, IntT) -> reduce ops c
@@ -358,7 +358,9 @@ reduceAppFun ops a b c = case a of
     (And (Let env (Tag k)) a2, b) -> do
       let b' = App (And (Let env (Tag k)) a2) b
       reduceAppFun ops (And (Tag k) a2) b' c
-    (And (Let env (Let env' a1)) a2, b) -> reduceAppFun ops (And (Let (env ++ env') a1) a2) b c
+    (And (Let env (Let env' a1)) a2, b) -> do
+      let a' = And (Let (env ++ env') a1) a2
+      reduceAppFun ops a' b c
     (And a1 a2, And b1 b2) -> reduceAppFun ops a1 b1 (App (Fun a2 c) b2)
     (Or a1 a2, b) -> reduceApp ops (Or (Fun a1 c) (Fun a2 c)) b
     (a, Or b1 b2) -> case reduceAppFun ops a b1 c of

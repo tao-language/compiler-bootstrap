@@ -180,6 +180,9 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- reduce' (For "x" y) `shouldBe` For "x" (Num 3.14)
     -- reduce' (Fix "x" x) `shouldBe` Fix "x" x
     -- reduce' (Fix "x" y) `shouldBe` Fix "x" (Num 3.14)
+    reduce' (Ann x NumT) `shouldBe` Ann (Int 42) NumT
+    reduce' (And x y) `shouldBe` And (Let env x) (Let env y)
+    reduce' (Or x y) `shouldBe` Or (Let env x) (Let env y)
     reduce' (Fun x y) `shouldBe` Fun (Let env x) (Let env y)
     reduce' (App IntT y) `shouldBe` Err
     reduce' (App NumT y) `shouldBe` Err
@@ -220,9 +223,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' (App (Or (Var "f") Err) x) `shouldBe` Int 42
     reduce' (App (Or Err (Var "f")) x) `shouldBe` Int 42
     reduce' (App (Or Err Err) x) `shouldBe` Err
-    reduce' (And x y) `shouldBe` And (Let env x) (Let env y)
-    reduce' (Or x y) `shouldBe` Or (Let env x) (Let env y)
-    reduce' (Ann x NumT) `shouldBe` Int 42
     reduce' (Call "f" [x, y]) `shouldBe` Call "f" [Let env x, Let env y]
     reduce' Err `shouldBe` Err
 
