@@ -221,7 +221,7 @@ parseAtom = do
         do
           _ <- P.char '.'
           x <- P.oneOf [parseNameVar, fmap show P.integer]
-          return (traitFun x),
+          return (Var ('.' : x)),
         do
           _ <- P.char '.'
           fields <- parseCollection "{" "," "}" parseRecordField
@@ -242,7 +242,7 @@ parseAtom = do
       do
         _ <- P.char '.'
         x <- P.oneOf [parseNameVar, fmap show P.integer]
-        return (Trait a x),
+        return (App (Var ('.' : x)) a),
       do
         _ <- P.char '.'
         fields <- parseCollection "{" "," "}" parseRecordField

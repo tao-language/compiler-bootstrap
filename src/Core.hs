@@ -262,7 +262,7 @@ instance FreeVars Expr where
   freeVars (Fix x a) = delete x (freeVars a)
   freeVars (Fun a b) = freeVars a `union` freeVars b
   freeVars (App a b) = freeVars a `union` freeVars b
-  freeVars (Ann a _) = freeVars a
+  freeVars (Ann a b) = freeVars a `union` freeVars b
   freeVars (Call _ args) = foldr (union . freeVars) [] args
   freeVars (Let [] b) = freeVars b
   freeVars (Let ((x, a) : defs) b) = delete x (freeVars a `union` freeVars (Let defs b))
@@ -305,7 +305,6 @@ reduce :: Ops -> Expr -> Expr
 reduce ops = \case
   App a b -> reduceApp ops a b
   Let env expr -> reduceLet ops env expr
-  Ann a _ -> reduce ops a
   expr -> expr
 
 reduceApp :: Ops -> Expr -> Expr -> Expr
@@ -360,13 +359,15 @@ reduceAppFun ops a b c = case a of
       reduce ops (App (Fun (And (Let (env ++ env') a1) a2) c) b)
     (And a1 a2, And b1 b2) -> reduce ops (App (Fun a1 (App (Fun a2 c) b2)) b1)
     (Or a1 a2, b) -> reduce ops (App (Or (Fun a1 c) (Fun a2 c)) b)
+    (a, Or b1 b2) -> case reduce ops (App (Fun a c) b1) of
+      Err -> reduce ops (App (Fun a c) b2)
+      c -> c
     (For x a, For y b) -> for [y] (reduce ops (Let [(y, Var y)] (App (Fun (Let [(x, Var y)] a) c) b)))
     (For x a, b) -> reduce ops (Let [(x, Var x)] (App (Fun a c) b))
     (Fun a1 a2, Fun b1 b2) -> reduce ops (App (Fun a1 (App (Fun a2 c) b2)) b1)
     (App a1 a2, App b1 b2) -> reduce ops (App (Fun a1 (App (Fun a2 c) b2)) b1)
-    (a, Or b1 b2) -> case reduce ops (App (Fun a c) b1) of
-      Err -> reduce ops (App (Fun a c) b2)
-      c -> c
+    (Ann a ta, Ann b tb) -> reduce ops (App (Fun ta (App (Fun a c) b)) tb)
+    (Ann a _, b) -> reduce ops (App (Fun a c) b)
     (Call x args, Call x' args') | x == x' -> do
       reduce ops (App (Fun (and' args) c) (and' args'))
     (Err, Err) -> reduce ops c
@@ -400,6 +401,7 @@ eval ops expr = case reduce ops expr of
   Fix x a -> Fix x (eval ops (Let [(x, Var x)] a))
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)
+  Ann a b -> Ann (eval ops a) (eval ops b)
   Call f args -> Call f (eval ops <$> args)
   a -> a
 
@@ -421,7 +423,7 @@ substitute s (Fix x a) = Fix x (substitute (filter ((/= x) . fst) s) a)
 substitute s (Fun a b) = Fun (substitute s a) (substitute s b)
 substitute s (App a b) = App (substitute s a) (substitute s b)
 substitute s (Ann (Tag k) ty) = Ann (Tag k) (substitute s ty)
-substitute s (Ann a _) = substitute s a
+substitute s (Ann a b) = Ann (substitute s a) (substitute s b)
 substitute s (Call op args) = Call op (map (substitute s) args)
 substitute s (Let env b) = do
   let sub (x, a) = (x, substitute s a)
@@ -480,6 +482,11 @@ unify a b = case (a, b) of
   (Fun a1 b1, Fun a2 b2) -> do
     ((ta, tb), s) <- unify2 (a1, a2) (b1, b2)
     Right (Fun ta tb, s)
+  (Ann a ta, Ann b tb) -> do
+    ((a, ta), s) <- unify2 (a, b) (ta, tb)
+    Right (Ann a ta, s)
+  (Ann a _, b) -> unify a b
+  (a, Ann b _) -> unify a b
   (Call op args, Call op' args') | op == op' -> do
     (args, s) <- unifyAll args args'
     Right (Call op args, s)
@@ -529,6 +536,10 @@ infer ops env (For x a) = infer ops ((x, Var x) : env) a
 infer ops env (Fix x a) = do
   (t, s) <- infer ops ((x, Var x) : env) a
   Right (Fix x t, s)
+infer ops env (Fun (Ann a ta) b) = do
+  ((ta', tb), s1) <- infer2 ops env a b
+  (ta, s2) <- unify ta ta'
+  Right (Fun (Ann ta Any) (substitute s2 tb), s2 `compose` s1)
 infer ops env (Fun a b) = do
   ((ta, tb), s) <- infer2 ops env a b
   Right (Fun ta tb, s)

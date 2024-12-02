@@ -682,11 +682,11 @@ instance Emit T.Expr ([Stmt], Expr) where
   emit options (T.Record fields) = do
     let (stmts, fields') = emit options fields
     (stmts, record fields')
-  emit options (T.Trait a x) = do
-    let (stmts, a') = emit options a
-    case readMaybe x of
-      Just i -> (stmts, index a' (Integer $ i - 1))
-      Nothing -> (stmts, Attribute a' x)
+  -- emit options (T.Trait a x) = do
+  --   let (stmts, a') = emit options a
+  --   case readMaybe x of
+  --     Just i -> (stmts, index a' (Integer $ i - 1))
+  --     Nothing -> (stmts, Attribute a' x)
   -- emit options (T.TraitFun x) = do
   --   let arg = "_"
   --   let (stmts, a) = emit options (T.Trait (T.Var arg) x)
