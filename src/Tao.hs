@@ -19,14 +19,13 @@ data Expr
   | Num Double
   | Var String
   | Tag String
+  | Ann Expr Type
   | And Expr Expr
   | Or Expr Expr
   | For [String] Expr
   | Fun Expr Expr
   | App Expr Expr
-  | Ann Expr Type
   | Call String [Expr]
-  | Trait Expr Expr
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
   | Let (Expr, Expr) Expr
@@ -309,164 +308,6 @@ inferBindings = \case
   Fun a b -> inferBindings a `union` inferBindings b
   a -> freeVars a & filter (\x -> not ("." `isPrefixOf` x))
 
--- instance Lower Expr C.Expr where
---   lower :: C.Env -> Expr -> C.Expr
---   lower _ Any = C.Any
---   lower _ Unit = C.Unit
---   lower _ IntT = C.IntT
---   lower _ NumT = C.NumT
---   lower _ (Int i) = C.Int i
---   lower _ (Num n) = C.Num n
---   lower _ (Var x) = C.Var x
---   lower _ (Tag k) = C.Tag k
---   lower env (For xs (Fun a b)) = do
---     let (args, body) = funOf (Fun a b)
---     let env' = C.pushVars xs env
---     C.for xs (C.fun (lower env' <$> args) (lower env' body))
---   lower env (For xs a) = C.for xs (lower (C.pushVars xs env) a)
---   lower env (Fun a b) = do
---     let (args, body) = funOf (Fun a b)
---     let xs = concatMap inferBindings args
---     lower env (For xs (fun args body))
---   lower env (App a b) = do
---     let a' = lower env a
---     case C.infer buildOps env a' of
---       Right (C.Fun t _, _) -> case t of
---         C.Tag "~" -> C.App a' (C.Tag "~")
---         C.And (C.Tag ('~' : xs)) _ ->
---           C.App a' (lower env (select b (split ',' xs)))
---         _ -> C.App a' (lower env b)
---       _ -> C.App a' (lower env b)
---   lower env (And a b) = C.And (lower env a) (lower env b)
---   lower env (Or a b) = C.Or (lower env a) (lower env b)
---   -- lower env (Let def b) = lower (lower env def ++ env) b
---   -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
---   lower env (Ann a b) = C.Ann (lower env a) (lower env b)
---   lower env (Call op args) = C.Call op (map (lower env) args)
---   lower env (Trait a x) = do
---     let a' = lower env a
---     case C.infer buildOps env a' of
---       Right (t, _) -> C.app (C.Var $ '.' : x) [t, a']
---       Left _ -> C.Err
---   lower env (Op1 op a) = case op of
---     Neg -> lower env (Trait a "-")
---   lower env (Op2 op a b) = case op of
---     Eq -> lower env (Trait (And a b) "==")
---     Lt -> lower env (Trait (And a b) "<")
---     Gt -> lower env (Trait (And a b) ">")
---     Add -> lower env (Trait (And a b) "+")
---     Sub -> lower env (Trait (And a b) "-")
---     Mul -> lower env (Trait (And a b) "*")
---     Div -> lower env (Trait (And a b) "/")
---     Pow -> lower env (Trait (And a b) "^")
---   lower env (Let (a, b) c) = lower env (App (Fun a c) b)
---   lower env (Match [] cases) = lower env (or' cases)
---   lower env (Match args cases) =
---     lower env (app (Match [] cases) args)
---   lower env (Record fields) = do
---     let k = '~' : intercalate "," (map fst fields)
---     lower env (tag k (map snd fields))
---   lower env (Select a kvs) = case a of
---     Record fields -> do
---       let sub = map (second $ lower env) fields
---       let lowerFields [] = []
---           lowerFields ((x, b) : xs) | x `elem` map fst fields = do
---             let b' = lower env b
---             (x, C.substitute sub b') : lowerFields xs
---           lowerFields (_ : xs) = lowerFields xs
---       let fields' = lowerFields kvs
---       let k = '~' : intercalate "," (map fst fields')
---       C.tag k (map snd fields')
---     a -> error $ "TODO: lower Select " ++ show a
---   lower _ Err = C.Err
---   lower _ a = error $ "TODO: lower " ++ show a
-
--- instance Lower Definition C.Env where
---   lower :: C.Env -> Definition -> C.Env
---   lower env (ts, PAny, a) = []
---   lower env (ts, PVar x, a) = case lookup x ts of
---     Just t -> [(x, lower env (Ann a t))]
---     Nothing -> [(x, lower env a)]
---   lower env (ts, PMeta m p, a) = do
---     lower env (ts, p, a) & map (second $ C.Meta m)
---   lower env (ts, p, a) = error $ "TODO lower Definition " ++ show p
-
--- instance Lower Case C.Expr where
---   lower :: C.Env -> Case -> C.Expr
---   lower env (Case ps guard b) = do
---     let ps' = map (lower env) ps
---     C.for (C.freeVars ps') (C.fun ps' (lower env b))
-
--- instance Lower Pattern C.Expr where
---   lower :: C.Env -> Pattern -> C.Expr
---   lower _ PAny = C.Var "_"
---   lower _ (PInt i) = C.Int i
---   lower _ (PNum n) = C.Num n
---   lower _ (PVar x) = C.Var x
---   lower env (PTag k ps)
---     | PTag k ps == pIntT = C.IntT
---     | PTag k ps == pNumT = C.NumT
---     | otherwise = C.tag k (map (lower env) ps)
---   lower env (PTuple ps) = lower env (PTag "" ps)
---   lower env (PFun p q) = C.Fun (lower env p) (lower env q)
---   lower env (POr p q) = error "TODO"
---   lower env (PEq a) = error "TODO"
---   lower env (PMeta m p) = C.Meta m (lower env p)
---   lower _ PErr = C.Err
-
--- instance Lower Stmt C.Env where
---   lower :: C.Env -> Stmt -> C.Env
---   lower env (Import m n xs) = case xs of
---     [] -> []
---     (x, y) : xs -> (y, C.Var x) : lower env (Import m n xs)
---   -- lower env (Def p b) = lower env def
---   lower env (Test name a p) = [(name, C.And (lower env a) (lower env p))]
-
--- instance Lower Module C.Env where
---   lower :: C.Env -> Module -> C.Env
---   lower env (name, stmts) = concatMap (lower env) stmts
-
--- instance Lower Package C.Env where
---   lower :: C.Env -> Package -> C.Env
---   lower env pkg = concatMap (lower env) pkg.modules
-
-class Lift a b where
-  lift :: a -> b
-
-instance Lift C.Expr Expr where
-  lift :: C.Expr -> Expr
-  lift C.Any = Any
-  lift C.Unit = Unit
-  lift C.IntT = IntT
-  lift C.NumT = NumT
-  lift (C.Int i) = Int i
-  lift (C.Num n) = Num n
-  lift (C.Var x) = Var x
-  lift (C.Tag "~") = Record []
-  lift (C.Tag k) = Tag k
-  lift (C.For x a) = case lift a of
-    For xs a -> For (x : xs) a
-    a -> For [x] a
-  lift (C.Fix _ a) = lift a
-  lift (C.Fun a@C.Ann {} b) = Trait (lift a) (lift b)
-  lift (C.Fun a b) = Fun (lift a) (lift b)
-  lift (C.App a b) = case appOf (App (lift a) (lift b)) of
-    -- (Var ('.' : x), _ : a : args) -> app (Trait a x) args
-    -- (Trait a "<-", [Fun p b]) -> Bind ([], toPattern p, a) b
-    (For x a, args) -> Match args [For x a]
-    (Fun a1 a2, args) -> Match args [Fun a1 a2]
-    (Or a1 a2, args) -> Match args (orOf (Or a1 a2))
-    (a, args) -> app a args
-  lift (C.And a b) = case (a, map lift (C.andOf b)) of
-    (C.Tag ('~' : names), values) -> do
-      let keys = split ',' names
-      Record (zip keys values)
-    (a, items) -> and' (lift a : items)
-  lift (C.Or a b) = Or (lift a) (lift b)
-  lift (C.Ann a b) = Ann (lift a) (lift b)
-  lift (C.Call op args) = Call op (map lift args)
-  lift C.Err = Err
-
 splitWith :: (Char -> Bool) -> String -> [String]
 splitWith f text = case dropWhile f text of
   "" -> []
@@ -586,8 +427,6 @@ instance Resolve (Stmt, String) where
     Def (Or p1 p2, b) -> do
       let defs = resolve ctx path (Def (p1, b), name)
       defs ++ resolve ctx path (Def (p2, b), name)
-    -- Def (Trait a x, b) ->
-    --   resolve ctx path (Def (app (Var ('.' : x)) [Any, a], b), name)
     Def (p, b) -> case inferBindings p of
       xs | name `elem` xs -> [(path, let' (p, b) (Var name))]
       _ -> []
@@ -637,46 +476,33 @@ lower env = \case
   Num n -> typed env (C.Num n)
   Var x -> typed env (C.Var x)
   Tag k -> typed env (C.Tag k)
-  And a b -> do
-    let ((a', _), (b', _), _) = lower2 env a b
-    typed env (C.And a' b')
-  Or a b -> do
-    let ((a', _), (b', _), _) = lower2 env a b
-    typed env (C.Or a' b')
+  Ann a b -> typed2 env C.Ann a b
+  And a b -> typed2 env C.And a b
+  Or a b -> typed2 env C.Or a b
   For [] (Fun a b) -> do
     let (args, body) = funOf (Fun a b)
     let (args', argsT, s1) = lowerAll env args
     let (body', bodyT, s2) = lower (s1 `C.compose` env) body
-    ( C.fun args' body',
+    let annotated a t = case a of
+          C.Ann a t -> annotated a t
+          a -> C.Ann a t
+    ( C.fun (zipWith annotated args' argsT) body',
       C.fun argsT bodyT,
       s2 `C.compose` s1
       )
   For [] a -> lower env a
   For (x : xs) a -> do
     let (a', ta, s) = lower ((x, C.Var x) : env) (For xs a)
-    (C.for [x] a', ta, s)
+    (C.for [x] a', C.for (map fst s) ta, s)
   Fun a b -> do
     let (args, _) = funOf (Fun a b)
     lower env (For (freeVars (and' args)) (Fun a b))
   App a b -> do
-    let ((a', ta), (b', tb), _) = lower2 env a b
-    case C.forOf ta of
-      (_, C.Fun C.Ann {} _) -> typed env (C.App a' (C.Ann b' tb))
-      _ -> typed env (C.App a' b')
-  Ann a b -> do
-    let ((a', ta), (b', tb), s) = lower2 env a b
-    (C.Ann a' ta, b', s)
+    let ((a', _), (b', tb), _) = lower2 env a b
+    typed env (C.App a' (C.Ann b' tb))
   Call op args -> do
     let (args', argsT, s) = lowerAll env args
     (C.Call op args', C.Call op argsT, s)
-  Trait a b -> do
-    let ((a', ta), (b', tb), s) = lower2 (C.pushVars (freeVars a) env) a b
-    let xs = C.freeVars a'
-    let ys = C.freeVars ta
-    ( C.for (xs `union` ys) $ C.Fun (C.Ann a' ta) b',
-      C.for ys $ C.Fun ta tb,
-      s
-      )
 
   -- lower env (Let def b) = lower (lower env def ++ env) b
   -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
@@ -718,8 +544,8 @@ lower env = \case
     lower2 env a b = do
       let (a', ta, s1) = lower env a
       let (b', tb, s2) = lower (s1 `C.compose` env) b
-      ( (sub s2 a', sub s2 ta),
-        (sub s1 b', tb),
+      ( (subExpr s2 a', C.substitute s2 ta),
+        (subExpr s1 b', tb),
         s2 `C.compose` s1
         )
 
@@ -729,33 +555,61 @@ lower env = \case
       a : bs -> do
         let (a', ta, s1) = lower env a
         let (bs', ts, s2) = lowerAll (s1 `C.compose` env) bs
-        ( sub s2 a' : bs',
-          sub s2 ta : ts,
+        ( subExpr s2 a' : bs',
+          C.substitute s2 ta : ts,
           s2 `C.compose` s1
           )
 
     typed :: C.Env -> C.Expr -> (C.Expr, C.Expr, C.Substitution)
     typed env expr = case C.infer buildOps env expr of
-      Right (t, s) -> (sub s expr, t, s)
+      Right (t, s) -> (subExpr s expr, t, s)
       Left _ -> (expr, C.Err, [])
 
-    sub :: C.Substitution -> C.Expr -> C.Expr
-    sub s a = case C.substitute s a of
+    typed2 :: C.Env -> (C.Expr -> C.Expr -> C.Expr) -> Expr -> Expr -> (C.Expr, C.Expr, C.Substitution)
+    typed2 env f a b = do
+      let ((a', _), (b', _), _) = lower2 env a b
+      typed env (f a' b')
+
+    subExpr :: C.Substitution -> C.Expr -> C.Expr
+    subExpr s a = case C.substitute s a of
       C.Ann a (C.Var _) -> a
       a -> a
 
--- typed2 :: C.Env -> C.Expr -> C.Expr -> ((C.Expr, C.Expr), (C.Expr, C.Expr), C.Substitution)
--- typed2 env a b = do
---   let (a', ta, s1) = typed env a
---   let (b', tb, s2) = typed (s1 `C.compose` env) b
---   ((a', C.substitute s2 ta), (b', tb), s2 `C.compose` s1)
--- typedAll :: C.Env -> [C.Expr] -> ([(C.Expr, C.Expr)], C.Substitution)
--- typedAll env = \case
---   [] -> ([], [])
---   a : bs -> do
---     let (a', ta, s1) = typed env a
---     let (bs', s2) = typedAll (s1 `C.compose` env) bs
---     ((a', C.substitute s2 ta) : bs', s2 `C.compose` s1)
+lift :: C.Expr -> Expr
+lift = \case
+  C.Any -> Any
+  C.Unit -> Unit
+  C.IntT -> IntT
+  C.NumT -> NumT
+  C.Int i -> Int i
+  C.Num n -> Num n
+  C.Var x -> Var x
+  C.Tag "~" -> Record []
+  C.Tag k -> Tag k
+  C.Ann a b -> Ann (lift a) (lift b)
+  C.And a b -> case (a, map lift (C.andOf b)) of
+    (C.Tag ('~' : names), values) -> do
+      let keys = split ',' names
+      Record (zip keys values)
+    (a, items) -> and' (lift a : items)
+  C.Or a b -> Or (lift a) (lift b)
+  C.For x a -> case lift a of
+    For xs a -> For (x : xs) a
+    a -> For [x] a
+  C.Fix _ a -> lift a
+  C.Fun a b -> do
+    let (args, body) = C.funOf (C.Fun a b)
+    For [] (fun (map lift args) (lift body))
+  C.App a b -> case appOf (App (lift a) (lift b)) of
+    -- (Var ('.' : x), _ : a : args) -> app (Trait a x) args
+    -- (Trait a "<-", [Fun p b]) -> Bind ([], toPattern p, a) b
+    (For x a, args) -> Match args [For x a]
+    (Fun a1 a2, args) -> Match args [Fun a1 a2]
+    (Or a1 a2, args) -> Match args (orOf (Or a1 a2))
+    (a, args) -> app a args
+  C.Call op args -> Call op (map lift args)
+  C.Let env b -> error "TODO: Let"
+  C.Err -> Err
 
 eval :: [Module] -> String -> Expr -> Expr
 eval ctx path expr = do
