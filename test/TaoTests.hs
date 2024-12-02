@@ -168,10 +168,10 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ lower/lift Expr Fun -- untyped" $ do
     let env = [("x", C.Int 42), ("y", C.Num 3.14)]
     let expr = Fun x y
-    let term = C.For "x" (C.Fun (C.Ann x' xT') y')
+    let term = C.for ["xT", "x"] (C.Fun (C.Ann x' xT') y')
     let typ = C.For "xT" (C.Fun xT' C.NumT)
     lower env expr `shouldBe` (term, typ, [("xT", xT'), ("x", C.Ann x' xT')])
-    lift term `shouldBe` For ["x"] (Fun (Ann x xT) y)
+    lift term `shouldBe` For ["xT", "x"] (Fun (Ann x xT) y)
 
   it "☯ lower/lift Expr Fun -- multiple args" $ do
     let env = [("z", C.Unit)]
@@ -644,13 +644,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     compile ctx "pkg/a" (Tag "A") `shouldBe` (C.Tag "A", C.Tag "A")
     compile ctx "pkg/a" (Ann i1 IntT) `shouldBe` (C.Ann i1' C.IntT, C.IntT)
     compile ctx "pkg/a" (Ann i1 NumT) `shouldBe` (C.Ann i1' C.NumT, C.Err)
-    compile ctx "pkg/a" (And i1 (Num 1.1)) `shouldBe` (C.And (i1') (C.Num 1.1), C.And C.IntT C.NumT)
-    compile ctx "pkg/a" (Or i1 (Num 1.1)) `shouldBe` (C.Or (i1') (C.Num 1.1), C.Or C.IntT C.NumT)
+    compile ctx "pkg/a" (And i1 (Num 1.1)) `shouldBe` (C.And i1' (C.Num 1.1), C.And C.IntT C.NumT)
+    compile ctx "pkg/a" (Or i1 (Num 1.1)) `shouldBe` (C.Or i1' (C.Num 1.1), C.Or C.IntT C.NumT)
     compile ctx "pkg/a" (For [] x) `shouldBe` (C.Let [("x", C.Int 42)] x', C.IntT)
     compile ctx "pkg/a" (For [] (Fun x x)) `shouldBe` (C.Let [("x", C.Int 42)] (C.Fun (C.Ann x' C.IntT) x'), C.Fun C.IntT C.IntT)
     compile ctx "pkg/a" (For ["x"] x) `shouldBe` (C.For "x" x', C.For "xT" xT')
-    compile ctx "pkg/a" (For ["x"] (Fun x x)) `shouldBe` (C.for ["x", "xT"] (C.Fun (C.Ann x' xT') x'), C.For "xT" (C.Fun xT' xT'))
-    compile ctx "pkg/a" (Fun x x) `shouldBe` (C.for ["x", "xT"] (C.Fun (C.Ann x' xT') x'), C.For "xT" (C.Fun xT' xT'))
+    compile ctx "pkg/a" (For ["x"] (Fun x x)) `shouldBe` (C.for ["xT", "x"] (C.Fun (C.Ann x' xT') x'), C.For "xT" (C.Fun xT' xT'))
+    compile ctx "pkg/a" (Fun x x) `shouldBe` (C.for ["xT", "x"] (C.Fun (C.Ann x' xT') x'), C.For "xT" (C.Fun xT' xT'))
     compile ctx "pkg/a" (App f i1) `shouldBe` (C.Let [("f", C.Ann (C.Var "f") (C.Fun (C.Ann C.IntT C.IntT) C.NumT))] (C.App (C.Var "f") (C.Ann i1' C.IntT)), C.NumT)
     compile ctx "pkg/a" (Call "f" []) `shouldBe` (C.Call "f" [], C.Call "f" [])
     compile ctx "pkg/a" (Call "f" [i1, Num 1.1]) `shouldBe` (C.Call "f" [C.Ann i1' C.IntT, C.Ann (C.Num 1.1) C.NumT], C.Call "f" [C.IntT, C.NumT])

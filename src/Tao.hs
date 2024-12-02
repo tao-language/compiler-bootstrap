@@ -509,11 +509,11 @@ lower env = \case
   For [] a -> lower env a
   For (x : xs) a -> do
     let (a', ta, s) = lower ((x, C.Var x) : env) (For xs a)
-    let ys = [x] `union` map fst s
+    let ys = map fst s
     (C.for ys a', C.for ys ta, s)
   Fun a b -> do
-    let (args, _) = funOf (Fun a b)
-    lower env (For (freeVars (and' args)) (Fun a b))
+    let (args, body) = funOf (Fun a b)
+    lower env (For (freeVars (and' args)) (fun args body))
   App a b -> do
     let ((a', _), (b', tb), _) = lower2 env a b
     typed env (C.App a' (C.Ann b' tb))
