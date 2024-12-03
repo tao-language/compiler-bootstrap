@@ -434,6 +434,18 @@ substitute s (Let env b) = do
   Let (map sub env) (substitute s' b)
 substitute _ Err = Err
 
+dropTypes :: Expr -> Expr
+dropTypes (Ann a _) = dropTypes a
+dropTypes (And a b) = And (dropTypes a) (dropTypes b)
+dropTypes (Or a b) = Or (dropTypes a) (dropTypes b)
+dropTypes (For x a) = For x (dropTypes a)
+dropTypes (Fix x a) = Fix x (dropTypes a)
+dropTypes (Fun a b) = Fun (dropTypes a) (dropTypes b)
+dropTypes (App a b) = App (dropTypes a) (dropTypes b)
+dropTypes (Call op args) = Call op (map dropTypes args)
+dropTypes (Let env b) = Let (map (second dropTypes) env) (dropTypes b)
+dropTypes a = a
+
 unify :: Expr -> Expr -> Either TypeError (Expr, Substitution)
 unify a b = case (a, b) of
   (Any, b) -> Right (b, [])

@@ -4,8 +4,8 @@
 > x
 1
 
-# %f(y) = %g(1)
+%f(y) = %g(1)
 
-# -- Call match fail
-# > y
-# 1
+-- Call match fail
+> y
+1

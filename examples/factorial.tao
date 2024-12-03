@@ -1,22 +1,14 @@
+`-` (x : Int, y : Int) = %int_sub(x, y)
+`*` (x : Int, y : Int) = %int_mul(x, y)
+
 factorial = {
 | 0 -> 1
 | n -> n * factorial (n - 1)
 }
 
-> factorial 0
-1
-
-> factorial 1
-1
-
-> factorial 2
-2
-
-> factorial 3
-6
-
-> factorial 4
-24
-
-> factorial 5
-120
+> factorial 0; 1
+> factorial 1; 1
+> factorial 2; 2
+> factorial 3; 6
+> factorial 4; 24
+> factorial 5; 120

@@ -51,7 +51,19 @@ data Op2
   | Mul
   | Div
   | Pow
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show Op2 where
+  show :: Op2 -> String
+  show = \case
+    Eq -> "=="
+    Lt -> "<"
+    Gt -> ">"
+    Add -> "+"
+    Sub -> "-"
+    Mul -> "*"
+    Div -> "/"
+    Pow -> "^"
 
 data Case
   = Case [Pattern] (Maybe Expr) Expr
@@ -94,23 +106,23 @@ instance Show TestResult where
 buildOps :: C.Ops
 buildOps = do
   let intOp1 op f =
-        ( '.' : op,
-          \eval args -> case eval <$> args of
+        ( op,
+          \eval args -> case C.dropTypes . eval <$> args of
             [C.Int x] -> C.Int (f x)
             args -> C.Call op args
         )
   let intOp2 op f =
-        ( '.' : op,
-          \eval args -> case eval <$> args of
+        ( op,
+          \eval args -> case C.dropTypes . eval <$> args of
             [C.Int x, C.Int y] -> C.Int (f x y)
             args -> C.Call op args
         )
-  [ intOp1 "-" (\x -> -x),
-    intOp2 "+" (+),
-    intOp2 "-" (-),
-    intOp2 "*" (*),
-    intOp2 "/" div,
-    intOp2 "^" (^)
+  [ intOp1 "int_neg" (\x -> -x),
+    intOp2 "int_add" (+),
+    intOp2 "int_sub" (-),
+    intOp2 "int_mul" (*),
+    intOp2 "int_div" div,
+    intOp2 "int_pow" (^)
     ]
 
 runtimeOps :: C.Ops
@@ -317,8 +329,8 @@ instance FreeVars Expr where
       freeVars (For (freeVars (and' args)) (fun args body))
     App a b -> freeVars a `union` freeVars b
     Call _ args -> freeVars (and' args)
-    Op1 _ a -> freeVars a
-    Op2 _ a b -> freeVars a `union` freeVars b
+    Op1 op a -> [show op] `union` freeVars a
+    Op2 op a b -> [show op] `union` freeVars a `union` freeVars b
     Let (a, b) c -> filter (`notElem` freeVars a) (freeVars b `union` freeVars c)
     Bind (a, b) c -> filter (`notElem` freeVars a) (freeVars b `union` freeVars c)
     If a b c -> freeVars (and' [a, b, c])
@@ -445,6 +457,10 @@ instance Resolve (Stmt, String) where
       [] | alias == name -> [(path, Tag path')]
       [] -> []
     Def (Var x, b) | x == name -> [(path, b)]
+    Def (Ann p t, b) ->
+      resolve ctx path (Def (p, Ann b t), name)
+    Def (For xs p, b) | name `elem` xs -> do
+      [(path, Let (For xs p, b) (Var name))]
     Def (Or p1 p2, b) -> do
       let defs = resolve ctx path (Def (p1, b), name)
       defs ++ resolve ctx path (Def (p2, b), name)
@@ -523,15 +539,7 @@ lower env = \case
   -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
   -- lower env (Op1 op a) = case op of
   --   Neg -> lower env (Trait a "-")
-  -- lower env (Op2 op a b) = case op of
-  --   Eq -> lower env (Trait (And a b) "==")
-  --   Lt -> lower env (Trait (And a b) "<")
-  --   Gt -> lower env (Trait (And a b) ">")
-  --   Add -> lower env (Trait (And a b) "+")
-  --   Sub -> lower env (Trait (And a b) "-")
-  --   Mul -> lower env (Trait (And a b) "*")
-  --   Div -> lower env (Trait (And a b) "/")
-  --   Pow -> lower env (Trait (And a b) "^")
+  Op2 op a b -> lower env (App (Var (show op)) (And a b))
   Let (a, b) c -> case a of
     For xs a -> lower env (App (For xs (Fun a c)) b)
     a -> lower env (App (For (freeVars a) (Fun a c)) b)

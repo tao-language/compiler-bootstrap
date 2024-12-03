@@ -41,7 +41,9 @@ run = describe "--==☯ Examples ☯==--" $ do
     syntaxErrors `shouldBe` []
     let testResults =
           [ TestPass name "Pass",
-            TestFail name "Fail" (i1, i2) (i1', C.IntT) i1
+            TestFail name "Fail" (i1, i2) (i1', C.IntT) i1,
+            TestPass name "Shortcut pass",
+            TestFail name "Shortcut fail" (i1, i2) (i1', C.IntT) i1
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -175,6 +177,16 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
+  let name = "examples/expressions/op2"
+  it ("☯ " ++ name ++ ".tao") $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "Add",
+            TestPass name "Sub"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
   -- Let (Expr, Expr) Expr
   -- Bind (Expr, Expr) Expr
   -- If Expr Expr Expr
@@ -212,33 +224,13 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  -- let name = "examples/definitions/for"
-  -- it ("☯ " ++ name ++ ".tao") $ do
-  --   (pkg, syntaxErrors) <- load name []
-  --   syntaxErrors `shouldBe` []
-  --   let testResults =
-  --         [ TestPass name "For match",
-  --           TestFail name "For match fail" (y, i1) (C.Let [("y", C.Let [("z", i2')] (C.def ["y"] (C.And y' z', C.And i1' i1') y'))] (C.Ann y' C.IntT), C.IntT) Err
-  --         ]
-  --   testAll [] pkg `shouldBe` testResults
-
-  let name = "examples/definitions/fun"
+  let name = "examples/definitions/ann"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
     let testResults =
-          [ -- TestPass name "Fun match 1",
-            TestPass name "Fun match 2"
-          ]
-    testAll [] pkg `shouldBe` testResults
-
-  let name = "examples/definitions/app"
-  it ("☯ " ++ name ++ ".tao") $ do
-    (pkg, syntaxErrors) <- load name []
-    syntaxErrors `shouldBe` []
-    let testResults =
-          [ TestPass name "App match 1",
-            TestPass name "App match 2"
+          [ TestPass name "Ann match inline type",
+            TestPass name "Ann match type annotation"
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -262,13 +254,33 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/definitions/ann"
+  let name = "examples/definitions/for"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
     let testResults =
-          [ TestPass name "Ann match inline type",
-            TestPass name "Ann match type annotation"
+          [ TestPass name "For match",
+            TestFail name "For match fail" (y, i1) (C.Let [("y", C.Let [("z", i2')] (C.def ["y"] (C.And y' z', C.And i1' i1') y'))] (C.Ann y' C.IntT), C.IntT) Err
+          ]
+    testAll [] pkg `shouldBe` testResults
+
+  let name = "examples/definitions/fun"
+  it ("☯ " ++ name ++ ".tao") $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "Fun match 1",
+            TestPass name "Fun match 2"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
+  let name = "examples/definitions/app"
+  it ("☯ " ++ name ++ ".tao") $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "App match 1",
+            TestPass name "App match 2"
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -277,8 +289,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
     let testResults =
-          [ TestPass name "Call match"
-          -- , TestFail name "Call match fail" (y, i1) (C.Let [("y", C.def ["yT", "y"] (C.Ann (C.Call "f" [C.Ann y' yT']) (C.Call "f" [yT']), C.Ann (C.Call "g" [C.Ann i1' C.IntT]) y') (C.Call "g" [C.IntT]))] y', C.Err) Err
+          [ TestPass name "Call match",
+            TestFail name "Call match fail" (y, i1) (C.Let [("y", C.def ["yT", "y"] (C.Ann (C.Call "f" [C.Ann y' yT']) (C.Call "f" [yT']), C.Ann (C.Call "g" [C.Ann i1' C.IntT]) (C.Call "g" [C.IntT])) y')] y', C.Err) Err
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -357,6 +369,16 @@ run = describe "--==☯ Examples ☯==--" $ do
 
   -- TODO: Unions
   -- TODO: Choices (?)
+
+  -- let name = "examples/factorial"
+  -- it ("☯ " ++ name ++ ".tao") $ do
+  --   (pkg, syntaxErrors) <- load name []
+  --   syntaxErrors `shouldBe` []
+  --   let testResults =
+  --         [ TestPass name "Call match"
+  --         -- , TestFail name "Call match fail" (y, i1) (C.Let [("y", C.def ["yT", "y"] (C.Ann (C.Call "f" [C.Ann y' yT']) (C.Call "f" [yT']), C.Ann (C.Call "g" [C.Ann i1' C.IntT]) y') (C.Call "g" [C.IntT]))] y', C.Err) Err
+  --         ]
+  --   testAll [] pkg `shouldBe` testResults
 
   it "☯ TODO" $ do
     True `shouldBe` True

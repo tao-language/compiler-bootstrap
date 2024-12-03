@@ -1,0 +1,10 @@
+`+` (x : Int, y : Int) = %int_add(x, y)
+`-` (x : Int, y : Int) = %int_sub(x, y)
+
+-- Add
+> 1 + 2
+3
+
+-- Sub
+> 2 - 1
+1
