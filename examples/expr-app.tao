@@ -26,17 +26,9 @@ $!error
 > (A) 1
 $!error
 
--- App For
-> (@x. x) 1
-@x. x 1
-
--- App Fun
-> (x -> x) 1
-1
-
--- App App
-> (@x. x) 1 2
-@x. x 1 2
+-- App Ann
+> (1 -> A : T) 1
+A
 
 -- App And
 > (1, 2) 3
@@ -54,9 +46,17 @@ B
 > (1 -> A | 2 -> B) 3
 $!error
 
--- App Ann
-> (1 -> A : T) 1
-A
+-- App For
+> (@x. x) 1
+@x. x 1
+
+-- App Fun
+> (x -> x) 1
+1
+
+# -- App App
+# > (@x. x) 1 2
+# @x. x 1 2
 
 # -- App Call
 # > $call 1

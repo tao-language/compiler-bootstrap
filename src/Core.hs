@@ -93,7 +93,7 @@ instance Show Expr where
         a -> do
           let (a', bs) = appOf (App a b)
           "(" ++ show a' ++ " " ++ unwords (map show bs) ++ ")"
-    Call f args -> '$' : f ++ "(" ++ intercalate ", " (map show args) ++ ")"
+    Call f args -> '%' : f ++ "(" ++ intercalate ", " (map show args) ++ ")"
     Let env b -> "@{" ++ intercalate "; " (map (\(x, a) -> name x ++ " = " ++ show a) env) ++ "} " ++ show b
     Err -> "!error"
     where
@@ -123,7 +123,7 @@ instance Show Expr where
 --     Call "*" [a, b] -> infixL 7 a " * " b
 --     Call "/" [a, b] -> infixL 7 a " / " b
 --     Call "^" [a, b] -> infixL 10 a "^" b
---     Call ('$' : op) [a] -> prefix 8 ('$' : op ++ " ") a
+--     Call ('%' : op) [a] -> prefix 8 ('%' : op ++ " ") a
 --     Call op [a] -> prefix 8 op a
 --     App a b -> infixL 8 a " " b
 --     Err -> atom 12 "!error"
@@ -317,6 +317,9 @@ reduceApp ops a b = case a of
   a -> case (reduce ops a, reduce ops b) of
     (Any, b) -> App Any b
     (Var x, b) -> App (Var x) b
+    (Ann a ta, Ann b tb) -> Ann (reduceApp ops a b) (reduceApp ops ta tb)
+    (Ann a _, b) -> reduceApp ops a b
+    (a, Ann b _) -> reduceApp ops a b
     (And a1 a2, b) -> case a1 of
       Let env (Tag k) -> case lookup k env of
         Just a1 -> reduceApp ops (App (Let env a1) a2) b
@@ -367,7 +370,7 @@ reduceAppFun ops a b c = case a of
       Err -> reduceAppFun ops a b2 c
       c -> c
     (For x a, For y b) -> for [y] (reduce ops (Let [(y, Var y)] (App (Fun (Let [(x, Var y)] a) c) b)))
-    (For x a, b) -> reduceApp ops (Let [(x, Var x)] (Fun a c)) b
+    (For x a, b) -> reduceAppFun ops (Let [(x, Var x)] a) b c
     (Fun a1 a2, Fun b1 b2) -> reduceAppFun ops a1 b1 (App (Fun a2 c) b2)
     (App a1 a2, App b1 b2) -> reduceAppFun ops a1 b1 (App (Fun a2 c) b2)
     (Call x args, Call x' args') | x == x' -> reduceAppFun ops (and' args) (and' args') c

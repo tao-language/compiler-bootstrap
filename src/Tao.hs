@@ -444,16 +444,14 @@ instance Resolve (Stmt, String) where
         defs ++ resolve ctx path (Import path' alias names, name)
       [] | alias == name -> [(path, Tag path')]
       [] -> []
-    Def (Var ('.' : x), b) | name == '.' : x -> [(path, b)]
-    Def (For xs p, b) ->
-      ([(path, let' (p, b) (Var name)) | name `elem` xs])
+    Def (Var x, b) | x == name -> [(path, b)]
     Def (Or p1 p2, b) -> do
       let defs = resolve ctx path (Def (p1, b), name)
       defs ++ resolve ctx path (Def (p2, b), name)
     Def (App p1 p2, b) -> case appOf (App p1 p2) of
       (p, ps) -> resolve ctx path (Def (p, fun ps b), name)
-    Def (p, b) ->
-      resolve ctx path (Def (For (freeVars p) p, b), name)
+    Def (p, b) | name `elem` freeVars p -> [(path, Let (p, b) (Var name))]
+    Def _ -> []
     TypeDef (name', args, body) ->
       ([(path, fun args body) | name == name'])
     Test {} -> []

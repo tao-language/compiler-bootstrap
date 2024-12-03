@@ -190,7 +190,7 @@ parseAtom = do
           items <- parseCollection "(" "," ")" (parseExpr 0 P.whitespaces)
           return (and' items),
         do
-          _ <- P.char '$'
+          _ <- P.char '%'
           x <- parseName $ P.oneOf [P.letter, P.char '_']
           args <-
             P.oneOf
@@ -265,7 +265,7 @@ parseExpr prec delim = do
                 P.digit,
                 P.char '_',
                 P.char '.',
-                P.char '$',
+                P.char '%',
                 P.char '@',
                 P.char '(',
                 P.char '{'
