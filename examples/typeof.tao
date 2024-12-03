@@ -1,0 +1,10 @@
+: a -> _
+typeofA _ = a
+
+> typeofA 1
+Int
+
+typeofB (_ : a) = a
+
+> typeofB 1
+Int
