@@ -45,7 +45,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/expr-atoms"
+  let name = "examples/expressions/atoms"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -70,7 +70,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/expr-for"
+  let name = "examples/expressions/for"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -81,7 +81,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/expr-fun"
+  let name = "examples/expressions/fun"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -93,7 +93,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/expr-app"
+  let name = "examples/expressions/app"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -128,7 +128,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/expr-and"
+  let name = "examples/expressions/and"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -140,7 +140,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/expr-or"
+  let name = "examples/expressions/or"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -153,7 +153,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/expr-ann"
+  let name = "examples/expressions/ann"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -164,7 +164,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/expr-call"
+  let name = "examples/expressions/call"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -183,7 +183,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   -- Select Expr [(String, Expr)]
   -- With Expr [(String, Expr)]
 
-  let name = "examples/def-atoms"
+  let name = "examples/definitions/atoms"
   it ("☯ " ++ name ++ ".tao") $ do
     -- There are no bindings, so there aren't any tests to run.
     -- Just make sure there are no syntax errors.
@@ -192,7 +192,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let testResults = []
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/def-var"
+  let name = "examples/definitions/var"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -201,7 +201,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/def-overload"
+  let name = "examples/definitions/overload"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -212,7 +212,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  -- let name = "examples/def-for"
+  -- let name = "examples/definitions/for"
   -- it ("☯ " ++ name ++ ".tao") $ do
   --   (pkg, syntaxErrors) <- load name []
   --   syntaxErrors `shouldBe` []
@@ -222,7 +222,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   --         ]
   --   testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/def-fun"
+  let name = "examples/definitions/fun"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -232,7 +232,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/def-app"
+  let name = "examples/definitions/app"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -242,7 +242,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/def-and"
+  let name = "examples/definitions/and"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -252,7 +252,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/def-or"
+  let name = "examples/definitions/or"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -262,7 +262,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/def-ann"
+  let name = "examples/definitions/ann"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -272,7 +272,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/def-call"
+  let name = "examples/definitions/call"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
     syntaxErrors `shouldBe` []
@@ -292,7 +292,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   -- Select Expr [(String, Expr)]
   -- With Expr [(String, Expr)]
 
-  -- let name = "examples/def-trait"
+  -- let name = "examples/definitions/trait"
   -- it ("☯ " ++ name ++ ".tao") $ do
   --   (pkg, syntaxErrors) <- load name []
   --   syntaxErrors `shouldBe` []
@@ -301,7 +301,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   --         ]
   --   testAll [] pkg `shouldBe` testResults
 
-  -- let name = "examples/def-op1"
+  -- let name = "examples/definitions/op1"
   -- it ("☯ " ++ name ++ ".tao") $ do
   --   (pkg, syntaxErrors) <- load name []
   --   syntaxErrors `shouldBe` []
