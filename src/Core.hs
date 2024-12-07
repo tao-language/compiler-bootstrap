@@ -185,8 +185,9 @@ fix (x : xs) a
 
 for :: [String] -> Expr -> Expr
 for [] a = a
-for (x : xs) a | x `occurs` a = For x (for xs a)
-for (_ : xs) a = for xs a
+for (x : xs) a
+  | x `occurs` a = For x (for xs a)
+  | otherwise = for xs a
 
 forOf :: Expr -> ([String], Expr)
 forOf (For x a) = let (xs, b) = forOf a in (x : xs, b)
@@ -420,7 +421,7 @@ substitute [] (Var x) = Var x
 substitute ((x, a) : _) (Var x') | x == x' = a
 substitute (_ : s) (Var x) = substitute s (Var x)
 substitute _ (Tag k) = Tag k
-substitute s (Ann a b) = Ann (substitute s a) (substitute s b)
+substitute s (Ann a _) = substitute s a
 substitute s (And a b) = And (substitute s a) (substitute s b)
 substitute s (Or a b) = Or (substitute s a) (substitute s b)
 substitute s (For x a) = For x (substitute (filter ((/= x) . fst) s) a)
