@@ -3,7 +3,7 @@ y = 2
 
 -- Fun implicit binding
 > x -> y
-@x. x -> 2
+@x xT. (x : xT) -> 2
 
 -- Fun explicit binding
 > @y. x -> y
@@ -11,8 +11,8 @@ y = 2
 
 -- Fun alpha equivalence
 > x -> y
-@y. y -> 2
+@y yT. (y : yT) -> 2
 
 -- Fun args list
-> x, y -> x
-@x y. x, y -> x
+> x -> y -> x
+@x y xT yT. (x : xT) -> (y : yT) -> x

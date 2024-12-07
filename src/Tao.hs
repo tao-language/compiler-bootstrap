@@ -336,6 +336,7 @@ instance FreeVars Expr where
 
 bindings :: Expr -> [String]
 bindings = \case
+  For xs _ -> xs
   App a _ -> bindings a
   Op1 op _ -> [show op]
   Op2 op _ _ -> [show op]
@@ -548,19 +549,18 @@ lower = \case
     lower (For (freeVars (and' args)) (fun args body))
   App a b -> C.App (lower a) (lower b)
   Call op args -> C.Call op (map lower args)
-  -- -- lower env (Let def b) = lower (lower env def ++ env) b
-  -- -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
-  -- -- lower env (Op1 op a) = case op of
-  -- --   Neg -> lower env (Trait a "-")
-  -- Op2 op a b -> lower env (App (Var (show op)) (And a b))
+  -- lower env (Let def b) = lower (lower env def ++ env) b
+  -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
+  Op1 op a -> lower (App (Var (show op)) a)
+  Op2 op a b -> lower (App (Var (show op)) (And a b))
   Let (Var x, b) (Var x') | x == x' -> lower b
-  -- Let (a, b) c -> case a of
-  --   Or a1 a2 -> lower env (lets [(a1, b), (a2, b)] c)
-  --   For xs a -> lower env (App (For xs (Fun a c)) b)
-  --   App a1 a2 -> lower env (Let (a1, b) (Fun a2 c))
-  --   a -> lower env (App (Fun a c) b)
-  -- Match [] cases -> lower env (or' cases)
-  -- Match args cases -> lower env (app (Match [] cases) args)
+  Let (a, b) c -> case a of
+    For xs a -> lower (App (For xs (Fun a c)) b)
+    Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
+    App a1 a2 -> lower (Let (a1, Fun a2 b) c)
+    a -> lower (App (For (freeVars a) (Fun a c)) b)
+  Match [] cases -> lower (or' cases)
+  Match args cases -> lower (app (Match [] cases) args)
   -- lower env (Record fields) = do
   --   let k = '~' : intercalate "," (map fst fields)
   --   lower env (tag k (map snd fields))
@@ -578,112 +578,6 @@ lower = \case
   --   a -> error $ "TODO: lower Select " ++ show a
   Err -> C.Err
   a -> error $ "TODO: lower " ++ show a
-
--- lower :: C.Env -> Expr -> (C.Expr, C.Expr, C.Substitution)
--- lower env = \case
---   Any -> typed env C.Any
---   Unit -> typed env C.Unit
---   IntT -> typed env C.IntT
---   NumT -> typed env C.NumT
---   Int i -> typed env (C.Int i)
---   Num n -> typed env (C.Num n)
---   Var x -> typed env (C.Var x)
---   Tag k -> typed env (C.Tag k)
---   Ann a b -> typed2 env C.Ann a b
---   And a b -> typed2 env C.And a b
---   Or a b -> typed2 env C.Or a b
---   For [] (Fun a b) -> do
---     let (args, body) = funOf (Fun a b)
---     let (args', argsT, s1) = lowerAll env args
---     let (body', bodyT, s2) = lower (s1 `C.compose` env) body
---     ( C.fun (zipWith C.Ann args' argsT) body',
---       C.fun argsT bodyT,
---       s2 `C.compose` s1
---       )
---   For [] a -> lower env a
---   For (x : xs) a -> do
---     let (a', ta, s) = lower ((x, C.Var x) : env) (For xs a)
---     let ys = map fst s
---     (C.for ys a', C.for ys ta, s)
---   Fun a b -> do
---     let (args, body) = funOf (Fun a b)
---     lower env (For (freeVars (and' args)) (fun args body))
---   App a b -> do
---     let ((a', _), (b', tb), _) = lower2 env a b
---     typed env (C.App a' (C.Ann b' tb))
---   Call op args -> do
---     let (args', argsT, s) = lowerAll env args
---     (C.Call op args', C.Call op argsT, s)
---   -- lower env (Let def b) = lower (lower env def ++ env) b
---   -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
---   -- lower env (Op1 op a) = case op of
---   --   Neg -> lower env (Trait a "-")
---   Op2 op a b -> lower env (App (Var (show op)) (And a b))
---   Let (Var x, b) (Var x') | x == x' -> lower env b
---   Let (a, b) c -> case a of
---     Or a1 a2 -> lower env (lets [(a1, b), (a2, b)] c)
---     For xs a -> lower env (App (For xs (Fun a c)) b)
---     App a1 a2 -> lower env (Let (a1, b) (Fun a2 c))
---     a -> lower env (App (Fun a c) b)
---   Match [] cases -> lower env (or' cases)
---   Match args cases -> lower env (app (Match [] cases) args)
---   -- lower env (Record fields) = do
---   --   let k = '~' : intercalate "," (map fst fields)
---   --   lower env (tag k (map snd fields))
---   -- lower env (Select a kvs) = case a of
---   --   Record fields -> do
---   --     let sub = map (second $ lower env) fields
---   --     let lowerFields [] = []
---   --         lowerFields ((x, b) : xs) | x `elem` map fst fields = do
---   --           let b' = lower env b
---   --           (x, C.substitute sub b') : lowerFields xs
---   --         lowerFields (_ : xs) = lowerFields xs
---   --     let fields' = lowerFields kvs
---   --     let k = '~' : intercalate "," (map fst fields')
---   --     C.tag k (map snd fields')
---   --   a -> error $ "TODO: lower Select " ++ show a
---   Err -> typed env C.Err
---   a -> error $ "TODO: lower " ++ show a
---   where
---     lower2 :: C.Env -> Expr -> Expr -> ((C.Expr, C.Expr), (C.Expr, C.Expr), C.Substitution)
---     lower2 env a b = do
---       let (a', ta, s1) = lower env a
---       let (b', tb, s2) = lower (s1 `C.compose` env) b
---       ( (a', C.substitute s2 ta),
---         (b', tb),
---         s2 `C.compose` s1
---         )
-
---     lowerAll :: C.Env -> [Expr] -> ([C.Expr], [C.Expr], C.Substitution)
---     lowerAll env = \case
---       [] -> ([], [], [])
---       a : bs -> do
---         let (a', ta, s1) = lower env a
---         let (bs', ts, s2) = lowerAll (s1 `C.compose` env) bs
---         ( a' : bs',
---           C.substitute s2 ta : ts,
---           s2 `C.compose` s1
---           )
-
---     typed :: C.Env -> C.Expr -> (C.Expr, C.Expr, C.Substitution)
---     typed env expr = case C.infer buildOps env expr of
---       Right (t, s) -> (expr, t, s)
---       Left _ -> (expr, C.Err, [])
-
---     typed2 :: C.Env -> (C.Expr -> C.Expr -> C.Expr) -> Expr -> Expr -> (C.Expr, C.Expr, C.Substitution)
---     typed2 env f a b = do
---       let ((a', _), (b', _), _) = lower2 env a b
---       typed env (f a' b')
-
---     subExpr :: C.Substitution -> C.Expr -> C.Expr
---     subExpr s a = case C.substitute s a of
---       C.Ann a t -> annotated a t
---       a -> a
-
---     annotated :: C.Expr -> C.Expr -> C.Expr
---     annotated a t = case a of
---       C.Ann a t -> annotated a t
---       a -> C.Ann a t
 
 lift :: C.Expr -> Expr
 lift = \case
