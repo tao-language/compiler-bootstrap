@@ -131,48 +131,100 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower expr `shouldBe` term
     lift term `shouldBe` App x y
 
-  -- it "☯ lower/lift Expr Call" $ do
-  --   let expr = Call "+" [x, y]
-  --   let term = C.Call "+" [x', y']
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` expr
+  it "☯ lower/lift Expr Call" $ do
+    let expr = Call "+" [x, y]
+    let term = C.Call "+" [x', y']
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
 
-  -- -- Op1 Op1 Expr
-  -- -- Op2 Op2 Expr Expr
-  -- -- Let (Expr, Expr) Expr
-  -- -- Bind (Expr, Expr) Expr
-  -- -- If Expr Expr Expr
+  it "☯ lower/lift Expr Op1" $ do
+    let expr = Op1 Neg x
+    let term = C.App (C.Var "-") x'
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
 
-  -- it "☯ lower/lift Expr Match" $ do
-  --   let expr = Match [] []
-  --   let term = C.Err
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` Err
+  it "☯ lower/lift Expr Op2 ==" $ do
+    let expr = Op2 Eq x y
+    let term = C.App (C.Var "==") (C.And x' y')
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
 
-  --   let expr = Match [] [x]
-  --   let term = x'
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` x
+  it "☯ lower/lift Expr Op2 <" $ do
+    let expr = Op2 Lt x y
+    let term = C.App (C.Var "<") (C.And x' y')
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
 
-  --   let expr = Match [] [x, y]
-  --   let term = C.Or x' y'
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` Or x y
+  it "☯ lower/lift Expr Op2 >" $ do
+    let expr = Op2 Gt x y
+    let term = C.App (C.Var ">") (C.And x' y')
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
 
-  --   let expr = Match [x] [For ["y"] y]
-  --   let term = C.App (C.For "y" y') x'
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` expr
+  it "☯ lower/lift Expr Op2 +" $ do
+    let expr = Op2 Add x y
+    let term = C.App (C.Var "+") (C.And x' y')
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
 
-  --   let expr = Match [x] [Fun y z]
-  --   let term = C.App (C.For "y" (C.Fun y' z')) x'
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` Match [x] [For ["y"] (Fun y z)]
+  it "☯ lower/lift Expr Op2 -" $ do
+    let expr = Op2 Sub x y
+    let term = C.App (C.Var "-") (C.And x' y')
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
 
-  --   let expr = Match [x] [y, z]
-  --   let term = C.App (C.Or y' z') x'
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` expr
+  it "☯ lower/lift Expr Op2 *" $ do
+    let expr = Op2 Mul x y
+    let term = C.App (C.Var "*") (C.And x' y')
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
+
+  it "☯ lower/lift Expr Op2 /" $ do
+    let expr = Op2 Div x y
+    let term = C.App (C.Var "/") (C.And x' y')
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
+
+  it "☯ lower/lift Expr Op2 ^" $ do
+    let expr = Op2 Pow x y
+    let term = C.App (C.Var "^") (C.And x' y')
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
+
+  it "☯ lower/lift Expr Let Var" $ do
+    let expr = Let (x, y) z
+    let term = C.Let [("x", y')] z'
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
+
+  -- TODO: Let pattern matching
+  -- Bind (Expr, Expr) Expr
+
+  -- If Expr Expr Expr
+
+  it "☯ lower/lift Expr Match -- empty" $ do
+    let expr = Match [] []
+    let term = C.Err
+    lower expr `shouldBe` term
+    lift term `shouldBe` Err
+
+  it "☯ lower/lift Expr Match -- no args, one case" $ do
+    let expr = Match [] [x]
+    let term = x'
+    lower expr `shouldBe` term
+    lift term `shouldBe` x
+
+  it "☯ lower/lift Expr Match -- no args, many cases" $ do
+    let expr = Match [] [x, y]
+    let term = C.Or x' y'
+    lower expr `shouldBe` term
+    lift term `shouldBe` Or x y
+
+  it "☯ lower/lift Expr Match -- args, with function" $ do
+    let expr = Match [x] [Fun y z]
+    let term = C.App (C.For "y" (C.Fun y' z')) x'
+    lower expr `shouldBe` term
+    lift term `shouldBe` Match [x] [For ["y"] (Fun y z)]
 
   -- it "☯ lower/lift Expr Record" $ do
   --   let expr = Record []

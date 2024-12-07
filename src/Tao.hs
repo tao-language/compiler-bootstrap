@@ -40,7 +40,7 @@ data Expr
 
 data Op1
   = Neg
-  deriving (Eq, Show)
+  deriving (Eq)
 
 data Op2
   = Eq
@@ -52,6 +52,11 @@ data Op2
   | Div
   | Pow
   deriving (Eq)
+
+instance Show Op1 where
+  show :: Op1 -> String
+  show = \case
+    Neg -> "-"
 
 instance Show Op2 where
   show :: Op2 -> String
@@ -555,6 +560,7 @@ lower = \case
   Op2 op a b -> lower (App (Var (show op)) (And a b))
   Let (Var x, b) (Var x') | x == x' -> lower b
   Let (a, b) c -> case a of
+    Var x -> C.Let [(x, lower b)] (lower c)
     For xs a -> lower (App (For xs (Fun a c)) b)
     Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
     App a1 a2 -> lower (Let (a1, Fun a2 b) c)
@@ -607,12 +613,22 @@ lift = \case
   C.App a b -> case appOf (App (lift a) (lift b)) of
     -- (Var ('.' : x), _ : a : args) -> app (Trait a x) args
     -- (Trait a "<-", [Fun p b]) -> Bind ([], toPattern p, a) b
+    (Var "==", [And a b]) -> Op2 Eq a b
+    (Var "<", [And a b]) -> Op2 Lt a b
+    (Var ">", [And a b]) -> Op2 Gt a b
+    (Var "+", [And a b]) -> Op2 Add a b
+    (Var "-", [And a b]) -> Op2 Sub a b
+    (Var "*", [And a b]) -> Op2 Mul a b
+    (Var "/", [And a b]) -> Op2 Div a b
+    (Var "^", [And a b]) -> Op2 Pow a b
+    (Var "-", [a]) -> Op1 Neg a
     (For x a, args) -> Match args [For x a]
     (Fun a1 a2, args) -> Match args [Fun a1 a2]
     (Or a1 a2, args) -> Match args (orOf (Or a1 a2))
     (a, args) -> app a args
   C.Call op args -> Call op (map lift args)
-  C.Let env b -> error "TODO: Let"
+  C.Let [] b -> lift b
+  C.Let ((x, a) : env) b -> Let (Var x, lift a) (lift (C.Let env b))
   C.Err -> Err
 
 eval :: [Module] -> String -> Expr -> Expr
