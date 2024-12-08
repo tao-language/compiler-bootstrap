@@ -191,13 +191,48 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower expr `shouldBe` term
     lift term `shouldBe` expr
 
+  it "☯ lower/lift Expr Let atom" $ do
+    let expr = Let (Unit, y) z
+    let term = C.def [] (C.Unit, y') z'
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
+
   it "☯ lower/lift Expr Let Var" $ do
     let expr = Let (x, y) z
     let term = C.Let [("x", y')] z'
     lower expr `shouldBe` term
     lift term `shouldBe` expr
 
-  -- TODO: Let pattern matching
+  it "☯ lower/lift Expr Let Ann" $ do
+    let expr = Let (Ann x IntT, y) z
+    let term = C.def ["x"] (C.Ann x' C.IntT, y') z'
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
+
+  it "☯ lower/lift Expr Let Or" $ do
+    let expr = Let (Or x y, i1) z
+    let term = C.Let [("x", i1')] (C.Let [("y", i1')] z')
+    lower expr `shouldBe` term
+    lift term `shouldBe` lets [(x, i1), (y, i1)] z
+
+  it "☯ lower/lift Expr Let For empty" $ do
+    let expr = Let (For [] x, i1) z
+    let term = C.def [] (x', i1') z'
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
+
+  it "☯ lower/lift Expr Let For bound" $ do
+    let expr = Let (For ["x", "y"] (And x y), i1) z
+    let term = C.def ["x", "y"] (C.And x' y', i1') z'
+    lower expr `shouldBe` term
+    lift term `shouldBe` Let (And x y, i1) z
+
+  it "☯ lower/lift Expr Let For unbound" $ do
+    let expr = Let (For ["x"] (And x y), i1) z
+    let term = C.def ["x"] (C.And x' y', i1') z'
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
+
   -- Bind (Expr, Expr) Expr
 
   -- If Expr Expr Expr
@@ -221,10 +256,10 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lift term `shouldBe` Or x y
 
   it "☯ lower/lift Expr Match -- args, with function" $ do
-    let expr = Match [x] [Fun y z]
-    let term = C.App (C.For "y" (C.Fun y' z')) x'
+    let expr = Match [y] [Fun x z]
+    let term = C.App (C.For "x" (C.Fun x' z')) y'
     lower expr `shouldBe` term
-    lift term `shouldBe` Match [x] [For ["y"] (Fun y z)]
+    lift term `shouldBe` Let (x, y) z
 
   -- it "☯ lower/lift Expr Record" $ do
   --   let expr = Record []

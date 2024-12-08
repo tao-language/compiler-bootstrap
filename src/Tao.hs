@@ -5,7 +5,7 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap), second)
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
-import Data.List (delete, elemIndex, intercalate, isInfixOf, isPrefixOf, nub, union, (\\))
+import Data.List (delete, elemIndex, intercalate, isInfixOf, isPrefixOf, nub, sort, union, (\\))
 import Data.List.Split (splitWhen, startsWith)
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import System.FilePath (takeBaseName)
@@ -622,7 +622,10 @@ lift = \case
     (Var "/", [And a b]) -> Op2 Div a b
     (Var "^", [And a b]) -> Op2 Pow a b
     (Var "-", [a]) -> Op1 Neg a
-    (For x a, args) -> Match args [For x a]
+    (For xs (Fun a c), [b])
+      | sort xs == sort (bindings a) -> Let (a, b) c
+      | otherwise -> Let (For xs a, b) c
+    (For xs a, args) -> Match args [For xs a]
     (Fun a1 a2, args) -> Match args [Fun a1 a2]
     (Or a1 a2, args) -> Match args (orOf (Or a1 a2))
     (a, args) -> app a args
