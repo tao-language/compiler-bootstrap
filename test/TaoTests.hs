@@ -148,32 +148,21 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower Expr Select" $ do
     let record = Record [("x", i1), ("y", i2)]
-    lower (select record []) `shouldBe` C.tag "~" []
+    lower (select record []) `shouldBe` C.Tag "~"
+    lower (select record ["z"]) `shouldBe` C.tag "~z" [z']
+    lower (select record ["y", "x"]) `shouldBe` C.tag "~y,x" [i2', i1']
+    lower (Select record [("x", y), ("y", x)]) `shouldBe` C.tag "~x,y" [i2', i1']
+    lower (select a []) `shouldBe` C.Tag "~"
+    lower (select a ["z"]) `shouldBe` C.tag "~z" [C.App z' a']
+    lower (select a ["y", "x"]) `shouldBe` C.tag "~y,x" [C.App y' a', C.App x' a']
+    lower (Select a [("x", y), ("y", x)]) `shouldBe` C.tag "~x,y" [C.App y' a', C.App x' a']
 
-  -- it "☯ lower Expr Select -- undefined" $ do
-  --   let expr = select (Record [("x", i1), ("y", i2)]) ["z"]
-  --   let term = C.tag "~" []
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` Record []
-
-  -- it "☯ lower Expr Select -- reorder" $ do
-  --   let expr = select (Record [("x", i1), ("y", i2)]) ["y", "x"]
-  --   let term = C.tag "~y,x" [i2', i1']
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` Record [("y", i2), ("x", i1)]
-
-  -- it "☯ lower Expr Select -- remapping" $ do
-  --   let expr = Select (Record [("x", i1), ("y", i2)]) [("x", y), ("y", x)]
-  --   let term = C.tag "~x,y" [i2', i1']
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` Record [("x", i2), ("y", i1)]
-
-  -- it "☯ lower Expr Select -- application" $ do
-  --   let env = [("f", C.Ann (C.Var "f") (C.Fun (C.tag "~x" [C.IntT]) C.NumT))]
-  --   let expr = App f (Record [("x", Int 42), ("y", Num 3.14)])
-  --   let term = C.App (C.Var "f") (C.tag "~x" [C.Int 42])
-  --   lower env expr `shouldBe` term
-  --   lift term `shouldBe` App f (Record [("x", Int 42)])
+  it "☯ lower Expr Select -- application" $ do
+    let env = [("f", C.Ann (C.Var "f") (C.Fun (C.tag "~x" [C.IntT]) C.NumT))]
+    let expr = App f (Record [("x", Int 42), ("y", Num 3.14)])
+    let term = C.App (C.Var "f") (C.tag "~x" [C.Int 42])
+    lower expr `shouldBe` term
+    lift term `shouldBe` App f (Record [("x", Int 42)])
 
   -- -- Select Expr [(String, Expr)]
 

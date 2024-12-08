@@ -553,8 +553,6 @@ lower = \case
     lower (For (freeVars (and' args)) (fun args body))
   App a b -> C.App (lower a) (lower b)
   Call op args -> C.Call op (map lower args)
-  -- lower env (Let def b) = lower (lower env def ++ env) b
-  -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
   Op1 op a -> lower (App (Var (show op)) a)
   Op2 op a b -> lower (App (Var (show op)) (And a b))
   Let (Var x, b) (Var x') | x == x' -> lower b
@@ -566,22 +564,21 @@ lower = \case
     Op1 op a -> lower (Let (App (Var (show op)) a, b) c)
     Op2 op a1 a2 -> lower (Let (App (Var (show op)) (And a1 a2), b) c)
     a -> lower (App (For (freeVars a) (Fun (For [] a) c)) b)
+  -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
   If a b c -> lower (Match [a] [Fun (Tag "True") b, Fun Any c])
   Match args cases -> lower (app (or' cases) args)
   Record fields -> do
     let k = '~' : intercalate "," (map fst fields)
     lower (tag k (map snd fields))
-  Select a kvs -> case a of
-    Record fields -> do
-      let sub = map (second lower) fields
-      let lowerFields [] = []
-          lowerFields ((x, b) : xs) | x `elem` map fst fields = do
-            (x, C.substitute sub (lower b)) : lowerFields xs
-          lowerFields (_ : xs) = lowerFields xs
-      let fields' = lowerFields kvs
-      let k = '~' : intercalate "," (map fst fields')
-      C.tag k (map snd fields')
-    a -> error $ "TODO: lower Select " ++ show a
+  Select a kvs -> do
+    let sub = case a of
+          Record fields -> map (second lower) fields
+          a -> do
+            let xs = freeVars (and' (map snd kvs))
+            map (\x -> (x, C.App (C.Var x) (lower a))) xs
+    let k = '~' : intercalate "," (map fst kvs)
+    let args = map ((C.substitute sub . lower) . snd) kvs
+    C.tag k args
   Err -> C.Err
   a -> error $ "TODO: lower " ++ show a
 

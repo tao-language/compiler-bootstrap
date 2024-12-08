@@ -75,6 +75,7 @@ instance Show Expr where
     Num n -> show n
     Var x -> name x
     Tag (':' : k) -> ':' : ':' : name k
+    Tag ('~' : k) -> ':' : '~' : name k
     Tag k -> ':' : name k
     Ann a b -> "(" ++ show a ++ " : " ++ show b ++ ")"
     And _ _ -> "(" ++ intercalate ", " (map show (andOf expr)) ++ ")"
