@@ -95,7 +95,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower (Let (x, y) a) `shouldBe` C.def ["x"] (x', y') a'
 
   it "☯ lower Expr Let Ann" $ do
-    lower (Let (Ann x y, z) a) `shouldBe` C.def ["x", "y"] (C.Ann x' y', z') a'
+    lower (Let (Ann x y, z) a) `shouldBe` C.def ["x", "y"] (x', C.Ann z' y') a'
 
   it "☯ lower Expr Let And" $ do
     lower (Let (And x y, z) a) `shouldBe` C.def ["x", "y"] (C.And x' y', z') a'
@@ -123,16 +123,18 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ lower Expr Let Op2" $ do
     lower (Let (Op2 Add x y, z) a) `shouldBe` C.def ["+"] (C.Var "+", C.for ["x", "y"] (C.Fun (C.And x' y') z')) a'
 
-  it "☯ lower Expr Let Let" $ do
-    lower (Let (Let (x, y) z, a) b) `shouldBe` C.def ["y", "z"] (C.def ["x"] (x', y') z', a') b'
-
   -- it "☯ lower Expr Let Bind" $ do
   --   lower (Let (Bind (x, y) z, a) b) `shouldBe` C.def ["y", "z"] (C.def ["x"] (x', y') z', a') b'
+
+  it "☯ lower Expr Let Match" $ do
+    lower (Let (Match [x] [y], a) b) `shouldBe` C.def ["x", "y"] (C.App y' x', a') b'
 
   it "☯ lower Expr Let If" $ do
     lower (Let (If x y z, a) b) `shouldBe` C.def ["x", "y", "z"] (C.App (C.Or (C.Fun (C.Tag "True") y') (C.Fun C.Any z')) x', a') b'
 
-  -- Match [Expr] [Expr]
+  it "☯ lower Expr Let Let" $ do
+    lower (Let (Let (x, y) z, a) b) `shouldBe` C.def ["y", "z"] (C.def ["x"] (x', y') z', a') b'
+
   -- Record [(String, Expr)]
   -- Select Expr [(String, Expr)]
   -- With Expr [(String, Expr)]
@@ -140,62 +142,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   -- Bind (Expr, Expr) Expr
 
-  -- If Expr Expr Expr
+  it "☯ lower Expr Record" $ do
+    lower (Record []) `shouldBe` C.Tag "~"
+    lower (Record [("a", x), ("b", y)]) `shouldBe` C.tag "~a,b" [x', y']
 
-  -- it "☯ lower Expr Record" $ do
-  --   let expr = Record []
-  --   let term = C.tag "~" []
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` expr
-
-  --   let expr = Record [("a", x), ("b", y)]
-  --   let term = C.tag "~a,b" [x', y']
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` expr
-
-  -- it "☯ lower Expr Trait -- property" $ do
-  --   let env = [(".id", Trait x x)]
-  --   let expr = Trait i1 "y"
-  --   let term = C.app (C.Var ".y") [C.IntT, i1']
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` expr
-
-  -- it "☯ lower Expr Trait -- literal" $ do
-  --   let expr = Trait i1 "y"
-  --   let term = C.app (C.Var ".y") [C.IntT, i1']
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` expr
-
-  -- it "☯ lower Expr Trait -- variable" $ do
-  --   let expr = Trait x "y"
-  --   let term = C.app (C.Var ".y") [C.IntT, x']
-  --   lower [("x", i1')] expr `shouldBe` term
-  --   lift term `shouldBe` expr
-
-  -- it "☯ lower Expr Trait -- property" $ do
-  --   let expr = Trait x "y"
-  --   let term = C.app (C.Var ".y") [C.tag "~y,z" [C.IntT, C.IntT], x']
-  --   lower [("x", C.tag "~y,z" [i1', i2'])] expr `shouldBe` term
-  --   lift term `shouldBe` expr
-
-  -- it "☯ lower Expr Trait -- undefined" $ do
-  --   let expr = Trait x "y"
-  --   let term = C.app (C.Var ".y") [C.Err, C.Var "x"]
-  --   lower [] expr `shouldBe` C.Err
-  --   lift term `shouldBe` expr
-
-  -- it "☯ lower Expr Trait -- function" $ do
-  --   let env = [(".id", Trait x x)]
-  --   let expr =
-  --   let term = C.def ["a"] (C.Var "a", i1') (C.app (C.Var ".y") [C.Ann C.IntT C.IntT, C.Var "a"])
-  --   lower env expr `shouldBe` (term, C.Unit, [("aT", C.Ann C.IntT C.IntT), ("a", C.Ann (C.Var "a") C.IntT), ("aTT", C.IntT), ("aT", C.IntT)])
-  --   lift term `shouldBe` Match [i1] [For ["a"] $ Fun a (Trait a "y")]
-
-  -- it "☯ lower Expr Select -- empty" $ do
-  --   let expr = select (Record [("x", i1), ("y", i2)]) []
-  --   let term = C.tag "~" []
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` Record []
+  it "☯ lower Expr Select" $ do
+    let record = Record [("x", i1), ("y", i2)]
+    lower (select record []) `shouldBe` C.tag "~" []
 
   -- it "☯ lower Expr Select -- undefined" $ do
   --   let expr = select (Record [("x", i1), ("y", i2)]) ["z"]

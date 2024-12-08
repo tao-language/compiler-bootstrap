@@ -559,6 +559,7 @@ lower = \case
   Op2 op a b -> lower (App (Var (show op)) (And a b))
   Let (Var x, b) (Var x') | x == x' -> lower b
   Let (a, b) c -> case a of
+    Ann a t -> lower (Let (a, Ann b t) c)
     For xs a -> lower (App (For xs (Fun a c)) b)
     Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
     App a1 a2 -> lower (Let (a1, Fun a2 b) c)
@@ -567,21 +568,20 @@ lower = \case
     a -> lower (App (For (freeVars a) (Fun (For [] a) c)) b)
   If a b c -> lower (Match [a] [Fun (Tag "True") b, Fun Any c])
   Match args cases -> lower (app (or' cases) args)
-  -- lower env (Record fields) = do
-  --   let k = '~' : intercalate "," (map fst fields)
-  --   lower env (tag k (map snd fields))
-  -- lower env (Select a kvs) = case a of
-  --   Record fields -> do
-  --     let sub = map (second $ lower env) fields
-  --     let lowerFields [] = []
-  --         lowerFields ((x, b) : xs) | x `elem` map fst fields = do
-  --           let b' = lower env b
-  --           (x, C.substitute sub b') : lowerFields xs
-  --         lowerFields (_ : xs) = lowerFields xs
-  --     let fields' = lowerFields kvs
-  --     let k = '~' : intercalate "," (map fst fields')
-  --     C.tag k (map snd fields')
-  --   a -> error $ "TODO: lower Select " ++ show a
+  Record fields -> do
+    let k = '~' : intercalate "," (map fst fields)
+    lower (tag k (map snd fields))
+  Select a kvs -> case a of
+    Record fields -> do
+      let sub = map (second lower) fields
+      let lowerFields [] = []
+          lowerFields ((x, b) : xs) | x `elem` map fst fields = do
+            (x, C.substitute sub (lower b)) : lowerFields xs
+          lowerFields (_ : xs) = lowerFields xs
+      let fields' = lowerFields kvs
+      let k = '~' : intercalate "," (map fst fields')
+      C.tag k (map snd fields')
+    a -> error $ "TODO: lower Select " ++ show a
   Err -> C.Err
   a -> error $ "TODO: lower " ++ show a
 
