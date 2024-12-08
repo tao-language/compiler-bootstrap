@@ -463,16 +463,6 @@ instance Resolve (String, Stmt) where
         defs ++ resolve ctx path (name, Import path' alias names)
       [] | alias == name -> [(path, Tag path')]
       [] -> []
-    -- Def (Var x, b) | x == name -> [(path, b)]
-    -- Def (Ann p t, b) ->
-    --   resolve ctx path (Def (p, Ann b t), name)
-    -- Def (For xs p, b) | name `elem` xs -> do
-    --   [(path, Let (For xs p, b) (Var name))]
-    -- Def (Or p1 p2, b) -> do
-    --   let defs = resolve ctx path (Def (p1, b), name)
-    --   defs ++ resolve ctx path (Def (p2, b), name)
-    -- Def (App p1 p2, b) -> case appOf (App p1 p2) of
-    --   (p, ps) -> resolve ctx path (Def (p, fun ps b), name)
     Def (p, b) | name `elem` bindings p -> [(path, Let (p, b) (Var name))]
     Def _ -> []
     TypeDef (name', args, body) ->
@@ -547,8 +537,7 @@ lower = \case
     let (args, body) = funOf (Fun a b)
     C.fun (map lower args) (lower body)
   For [] a -> lower a
-  For (x : xs) a -> do
-    C.for [x] (lower (For xs a))
+  For xs a -> C.for xs (lower (For [] a))
   Fun a b -> do
     let (args, body) = funOf (Fun a b)
     lower (For (freeVars (and' args)) (fun args body))
@@ -564,9 +553,8 @@ lower = \case
     For xs a -> lower (App (For xs (Fun a c)) b)
     Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
     App a1 a2 -> lower (Let (a1, Fun a2 b) c)
-    a -> lower (App (For (freeVars a) (Fun a c)) b)
-  Match [] cases -> lower (or' cases)
-  Match args cases -> lower (app (Match [] cases) args)
+    a -> lower (App (For (freeVars a) (Fun (For [] a) c)) b)
+  Match args cases -> lower (app (or' cases) args)
   -- lower env (Record fields) = do
   --   let k = '~' : intercalate "," (map fst fields)
   --   lower env (tag k (map snd fields))
@@ -609,7 +597,7 @@ lift = \case
   C.Fix _ a -> lift a
   C.Fun a b -> do
     let (args, body) = C.funOf (C.Fun a b)
-    For [] (fun (map lift args) (lift body))
+    fun (map lift args) (lift body)
   C.App a b -> case appOf (App (lift a) (lift b)) of
     -- (Var ('.' : x), _ : a : args) -> app (Trait a x) args
     -- (Trait a "<-", [Fun p b]) -> Bind ([], toPattern p, a) b
@@ -623,8 +611,11 @@ lift = \case
     (Var "^", [And a b]) -> Op2 Pow a b
     (Var "-", [a]) -> Op1 Neg a
     (For xs (Fun a c), [b])
-      | sort xs == sort (bindings a) -> Let (a, b) c
+      | sort (bindings a) == sort xs -> Let (a, b) c
       | otherwise -> Let (For xs a, b) c
+    (Fun a c, [b])
+      | null (bindings a) -> Let (a, b) c
+      | otherwise -> Let (For [] a, b) c
     (For xs a, args) -> Match args [For xs a]
     (Fun a1 a2, args) -> Match args [Fun a1 a2]
     (Or a1 a2, args) -> Match args (orOf (Or a1 a2))

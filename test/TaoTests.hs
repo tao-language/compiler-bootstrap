@@ -9,6 +9,8 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
   let (xT, xT') = (Var "xT", C.Var "xT")
+  let (a, b, c) = (Var "a", Var "b", Var "c")
+  let (a', b', c') = (C.Var "a", C.Var "b", C.Var "c")
   let (f, f') = (Var "f", C.Var "f")
   let (i1, i2, i3) = (Int 1, Int 2, Int 3)
   let (i1', i2', i3') = (C.Int 1, C.Int 2, C.Int 3)
@@ -117,7 +119,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     let expr = For [] (fun [x, y] z)
     let term = C.fun [x', y'] z'
     lower expr `shouldBe` term
-    lift term `shouldBe` expr
+    lift term `shouldBe` fun [x, y] z
 
   it "☯ lower/lift Expr Fun -- implicit bindings" $ do
     let expr = fun [x, y] z
@@ -198,38 +200,50 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lift term `shouldBe` expr
 
   it "☯ lower/lift Expr Let Var" $ do
-    let expr = Let (x, y) z
-    let term = C.Let [("x", y')] z'
+    let expr = Let (x, y) a
+    let term = C.Let [("x", y')] a'
     lower expr `shouldBe` term
     lift term `shouldBe` expr
 
   it "☯ lower/lift Expr Let Ann" $ do
-    let expr = Let (Ann x IntT, y) z
-    let term = C.def ["x"] (C.Ann x' C.IntT, y') z'
+    let expr = Let (Ann x y, z) a
+    let term = C.def ["x", "y"] (C.Ann x' y', z') a'
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
+
+  it "☯ lower/lift Expr Let And" $ do
+    let expr = Let (And x y, z) a
+    let term = C.def ["x", "y"] (C.And x' y', z') a'
     lower expr `shouldBe` term
     lift term `shouldBe` expr
 
   it "☯ lower/lift Expr Let Or" $ do
-    let expr = Let (Or x y, i1) z
-    let term = C.Let [("x", i1')] (C.Let [("y", i1')] z')
+    let expr = Let (Or x y, z) a
+    let term = C.Let [("x", z')] (C.Let [("y", z')] a')
     lower expr `shouldBe` term
-    lift term `shouldBe` lets [(x, i1), (y, i1)] z
+    lift term `shouldBe` lets [(x, z), (y, z)] a
 
   it "☯ lower/lift Expr Let For empty" $ do
-    let expr = Let (For [] x, i1) z
-    let term = C.def [] (x', i1') z'
+    let expr = Let (For [] x, y) a
+    let term = C.def [] (x', y') a'
     lower expr `shouldBe` term
     lift term `shouldBe` expr
 
   it "☯ lower/lift Expr Let For bound" $ do
-    let expr = Let (For ["x", "y"] (And x y), i1) z
-    let term = C.def ["x", "y"] (C.And x' y', i1') z'
+    let expr = Let (For ["x", "y"] (And x y), z) a
+    let term = C.def ["x", "y"] (C.And x' y', z') a'
     lower expr `shouldBe` term
-    lift term `shouldBe` Let (And x y, i1) z
+    lift term `shouldBe` Let (And x y, z) a
 
   it "☯ lower/lift Expr Let For unbound" $ do
-    let expr = Let (For ["x"] (And x y), i1) z
-    let term = C.def ["x"] (C.And x' y', i1') z'
+    let expr = Let (For ["x"] (And x y), z) a
+    let term = C.def ["x"] (C.And x' y', z') a'
+    lower expr `shouldBe` term
+    lift term `shouldBe` expr
+
+  it "☯ lower/lift Expr Let Fun" $ do
+    let expr = Let (Fun x y, z) a
+    let term = C.def ["x", "y"] (C.Fun x' y', z') a'
     lower expr `shouldBe` term
     lift term `shouldBe` expr
 
