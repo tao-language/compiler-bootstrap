@@ -17,8 +17,8 @@ data Expr
   | NumT
   | Int Int
   | Num Double
-  | Var String
   | Tag String
+  | Var String
   | Ann Expr Type
   | And Expr Expr
   | Or Expr Expr
@@ -28,10 +28,10 @@ data Expr
   | Call String [Expr]
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
+  | Match [Expr] [Expr]
+  | If Expr Expr Expr
   | Let (Expr, Expr) Expr
   | Bind (Expr, Expr) Expr
-  | If Expr Expr Expr
-  | Match [Expr] [Expr]
   | Record [(String, Expr)]
   | Select Expr [(String, Expr)]
   | With Expr [(String, Expr)]
@@ -138,6 +138,12 @@ tag :: String -> [Expr] -> Expr
 tag k args = and' (Tag k : args)
 
 for :: [String] -> Expr -> Expr
+for xs (For ys a) = for (xs ++ ys) a
+for [] (Fun a b) = For [] (Fun a b)
+for xs (Fun a b) = do
+  let args = funArgsOf (Fun a b)
+  let xs' = filter (\x -> x `occurs` and' args) xs
+  For xs' (Fun a b)
 for xs a = case filter (`occurs` a) xs of
   [] -> a
   xs -> For xs a
@@ -148,6 +154,9 @@ fun ps b = foldr Fun b ps
 funOf :: Expr -> ([Expr], Expr)
 funOf (Fun arg ret) = let (args, ret') = funOf ret in (arg : args, ret')
 funOf a = ([], a)
+
+funArgsOf :: Expr -> [Expr]
+funArgsOf = fst . funOf
 
 app' :: [Expr] -> Expr
 app' [] = Err
@@ -330,9 +339,9 @@ instance FreeVars Expr where
     Call _ args -> freeVars (and' args)
     Op1 op a -> [show op] `union` freeVars a
     Op2 op a b -> [show op] `union` freeVars a `union` freeVars b
-    Let (a, b) c -> filter (`notElem` freeVars a) (freeVars b `union` freeVars c)
-    Bind (a, b) c -> filter (`notElem` freeVars a) (freeVars b `union` freeVars c)
-    If a b c -> freeVars (and' [a, b, c])
+    Let (a, b) c -> freeVars a `union` freeVars b `union` freeVars c
+    Bind (a, b) c -> freeVars a `union` freeVars b `union` freeVars c
+    If a b c -> freeVars a `union` freeVars b `union` freeVars c
     Match args cases -> freeVars (and' args) `union` freeVars (and' cases)
     Record fields -> freeVars (and' (map snd fields))
     Select a fields -> freeVars a `union` freeVars (and' (map snd fields))
@@ -533,6 +542,7 @@ lower = \case
   Ann a b -> C.Ann (lower a) (lower b)
   And a b -> C.And (lower a) (lower b)
   Or a b -> C.Or (lower a) (lower b)
+  For xs (For ys a) -> lower (For (xs ++ ys) a)
   For [] (Fun a b) -> do
     let (args, body) = funOf (Fun a b)
     C.fun (map lower args) (lower body)
@@ -549,11 +559,13 @@ lower = \case
   Op2 op a b -> lower (App (Var (show op)) (And a b))
   Let (Var x, b) (Var x') | x == x' -> lower b
   Let (a, b) c -> case a of
-    Var x -> C.Let [(x, lower b)] (lower c)
     For xs a -> lower (App (For xs (Fun a c)) b)
     Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
     App a1 a2 -> lower (Let (a1, Fun a2 b) c)
+    Op1 op a -> lower (Let (App (Var (show op)) a, b) c)
+    Op2 op a1 a2 -> lower (Let (App (Var (show op)) (And a1 a2), b) c)
     a -> lower (App (For (freeVars a) (Fun (For [] a) c)) b)
+  If a b c -> lower (Match [a] [Fun (Tag "True") b, Fun Any c])
   Match args cases -> lower (app (or' cases) args)
   -- lower env (Record fields) = do
   --   let k = '~' : intercalate "," (map fst fields)
@@ -592,38 +604,41 @@ lift = \case
     (a, items) -> and' (lift a : items)
   C.Or a b -> Or (lift a) (lift b)
   C.For x a -> case lift a of
-    For xs a -> For (x : xs) a
-    a -> For [x] a
+    For xs a -> for (x : xs) a
+    a -> for [x] a
   C.Fix _ a -> lift a
-  C.Fun a b -> do
-    let (args, body) = C.funOf (C.Fun a b)
-    fun (map lift args) (lift body)
-  C.App a b -> case appOf (App (lift a) (lift b)) of
-    -- (Var ('.' : x), _ : a : args) -> app (Trait a x) args
-    -- (Trait a "<-", [Fun p b]) -> Bind ([], toPattern p, a) b
-    (Var "==", [And a b]) -> Op2 Eq a b
-    (Var "<", [And a b]) -> Op2 Lt a b
-    (Var ">", [And a b]) -> Op2 Gt a b
-    (Var "+", [And a b]) -> Op2 Add a b
-    (Var "-", [And a b]) -> Op2 Sub a b
-    (Var "*", [And a b]) -> Op2 Mul a b
-    (Var "/", [And a b]) -> Op2 Div a b
-    (Var "^", [And a b]) -> Op2 Pow a b
-    (Var "-", [a]) -> Op1 Neg a
-    (For xs (Fun a c), [b])
-      | sort (bindings a) == sort xs -> Let (a, b) c
-      | otherwise -> Let (For xs a, b) c
-    (Fun a c, [b])
-      | null (bindings a) -> Let (a, b) c
-      | otherwise -> Let (For [] a, b) c
-    (For xs a, args) -> Match args [For xs a]
-    (Fun a1 a2, args) -> Match args [Fun a1 a2]
-    (Or a1 a2, args) -> Match args (orOf (Or a1 a2))
-    (a, args) -> app a args
+  C.Fun a b -> Fun (lift a) (lift b)
+  C.App a b -> App (lift a) (lift b)
   C.Call op args -> Call op (map lift args)
   C.Let [] b -> lift b
-  C.Let ((x, a) : env) b -> Let (Var x, lift a) (lift (C.Let env b))
+  C.Let ((x, b) : env) c -> Let (Var x, lift b) (lift (C.Let env c))
   C.Err -> Err
+
+simplify :: Expr -> Expr
+-- C.App a b -> case appOf (App (lift a) (lift b)) of
+--   -- (Var ('.' : x), _ : a : args) -> app (Trait a x) args
+--   -- (Trait a "<-", [Fun p b]) -> Bind ([], toPattern p, a) b
+--   (Var "==", [And a b]) -> Op2 Eq a b
+--   (Var "<", [And a b]) -> Op2 Lt a b
+--   (Var ">", [And a b]) -> Op2 Gt a b
+--   (Var "+", [And a b]) -> Op2 Add a b
+--   (Var "-", [And a b]) -> Op2 Sub a b
+--   (Var "*", [And a b]) -> Op2 Mul a b
+--   (Var "/", [And a b]) -> Op2 Div a b
+--   (Var "^", [And a b]) -> Op2 Pow a b
+--   (Var "-", [a]) -> Op1 Neg a
+--   (For xs (Fun a c), [b]) -> Let (for xs a, b) c
+--   (For xs (Fun a c), [b])
+--     | sort (bindings a) == sort xs -> Let (a, b) c
+--     | otherwise -> Let (For xs a, b) c
+--   (Fun a c, [b])
+--     | null (bindings a) -> Let (a, b) c
+--     | otherwise -> Let (For [] a, b) c
+--   (For xs a, args) -> Match args [For xs a]
+--   (Fun a1 a2, args) -> Match args [Fun a1 a2]
+--   (Or a1 a2, args) -> Match args (orOf (Or a1 a2))
+--   (a, args) -> app a args
+simplify a = a
 
 eval :: [Module] -> String -> Expr -> Expr
 eval ctx path expr = do

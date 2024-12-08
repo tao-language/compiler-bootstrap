@@ -31,251 +31,118 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     -- lambdaOf "$" (Match [] [([x, y], i1), ([x, z], i2)]) `shouldBe` (["x", "$1"], Match [Var "$1"] [([y], i1), ([z], i2)])
     True `shouldBe` True
 
-  it "☯ lower/lift Expr Any" $ do
-    let expr = Any
-    let term = C.Any
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr atoms" $ do
+    lower Any `shouldBe` C.Any
+    lower Unit `shouldBe` C.Unit
+    lower IntT `shouldBe` C.IntT
+    lower NumT `shouldBe` C.NumT
+    lower (Int 42) `shouldBe` C.Int 42
+    lower (Num 3.14) `shouldBe` C.Num 3.14
+    lower (Tag "A") `shouldBe` C.Tag "A"
+    lower (Var "x") `shouldBe` C.Var "x"
 
-  it "☯ lower/lift Expr Unit" $ do
-    let expr = Unit
-    let term = C.Unit
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Ann" $ do
+    lower (Ann x y) `shouldBe` C.Ann x' y'
 
-  it "☯ lower/lift Expr IntT" $ do
-    let expr = IntT
-    let term = C.IntT
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr And" $ do
+    lower (And x y) `shouldBe` C.And x' y'
 
-  it "☯ lower/lift Expr NumT" $ do
-    let expr = NumT
-    let term = C.NumT
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Or" $ do
+    lower (Or x y) `shouldBe` C.Or x' y'
 
-  it "☯ lower/lift Expr Int" $ do
-    let expr = Int 42
-    let term = C.Int 42
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr For" $ do
+    lower (For [] x) `shouldBe` x'
+    lower (For ["y"] x) `shouldBe` x'
+    lower (For ["x"] x) `shouldBe` C.For "x" x'
+    lower (For [] (fun [x, y] z)) `shouldBe` C.fun [x', y'] z'
 
-  it "☯ lower/lift Expr Num" $ do
-    let expr = Num 3.14
-    let term = C.Num 3.14
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Fun" $ do
+    lower (fun [x, y] z) `shouldBe` C.for ["x", "y"] (C.fun [x', y'] z')
 
-  it "☯ lower/lift Expr Var" $ do
-    let expr = Var "x"
-    let term = C.Var "x"
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr App" $ do
+    lower (App x y) `shouldBe` C.App x' y'
 
-  it "☯ lower/lift Expr Tag" $ do
-    let expr = Tag "A"
-    let term = C.Tag "A"
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Call" $ do
+    lower (Call "f" [x, y]) `shouldBe` C.Call "f" [x', y']
 
-  it "☯ lower/lift Expr Ann" $ do
-    let expr = Ann x y
-    let term = C.Ann x' y'
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Op1" $ do
+    lower (Op1 Neg x) `shouldBe` C.App (C.Var "-") x'
 
-  it "☯ lower/lift Expr And" $ do
-    let expr = And x y
-    let term = C.And x' y'
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Op2" $ do
+    lower (Op2 Eq x y) `shouldBe` C.App (C.Var "==") (C.And x' y')
+    lower (Op2 Lt x y) `shouldBe` C.App (C.Var "<") (C.And x' y')
+    lower (Op2 Gt x y) `shouldBe` C.App (C.Var ">") (C.And x' y')
+    lower (Op2 Add x y) `shouldBe` C.App (C.Var "+") (C.And x' y')
+    lower (Op2 Sub x y) `shouldBe` C.App (C.Var "-") (C.And x' y')
+    lower (Op2 Mul x y) `shouldBe` C.App (C.Var "*") (C.And x' y')
+    lower (Op2 Div x y) `shouldBe` C.App (C.Var "/") (C.And x' y')
+    lower (Op2 Pow x y) `shouldBe` C.App (C.Var "^") (C.And x' y')
 
-  it "☯ lower/lift Expr Or" $ do
-    let expr = Or x y
-    let term = C.Or x' y'
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Match" $ do
+    lower (Match [] []) `shouldBe` C.Err
+    lower (Match [] [x]) `shouldBe` x'
+    lower (Match [] [x, y]) `shouldBe` C.Or x' y'
+    lower (Match [y] [x]) `shouldBe` C.App x' y'
+    lower (Match [y, z] [x]) `shouldBe` C.app x' [y', z']
 
-  it "☯ lower/lift Expr For -- empty" $ do
-    let expr = For [] x
-    let term = C.Var "x"
-    lower expr `shouldBe` term
-    lift term `shouldBe` x
+  it "☯ lower Expr If" $ do
+    lower (If x y z) `shouldBe` C.App (C.Or (C.Fun (C.Tag "True") y') (C.Fun C.Any z')) x'
 
-  it "☯ lower/lift Expr For -- unbound" $ do
-    let expr = For ["y"] x
-    let term = C.Var "x"
-    lower expr `shouldBe` term
-    lift term `shouldBe` x
+  it "☯ lower Expr Let atom" $ do
+    lower (Let (Unit, y) a) `shouldBe` C.def [] (C.Unit, y') a'
 
-  it "☯ lower/lift Expr For -- bound" $ do
-    let expr = For ["x"] x
-    let term = C.For "x" x'
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Let Var" $ do
+    lower (Let (x, y) a) `shouldBe` C.def ["x"] (x', y') a'
 
-  it "☯ lower/lift Expr For -- Fun explicit bindings" $ do
-    let expr = For [] (fun [x, y] z)
-    let term = C.fun [x', y'] z'
-    lower expr `shouldBe` term
-    lift term `shouldBe` fun [x, y] z
+  it "☯ lower Expr Let Ann" $ do
+    lower (Let (Ann x y, z) a) `shouldBe` C.def ["x", "y"] (C.Ann x' y', z') a'
 
-  it "☯ lower/lift Expr Fun -- implicit bindings" $ do
-    let expr = fun [x, y] z
-    let term = C.for ["x", "y"] (C.fun [x', y'] z')
-    lower expr `shouldBe` term
-    lift term `shouldBe` for ["x", "y"] expr
+  it "☯ lower Expr Let And" $ do
+    lower (Let (And x y, z) a) `shouldBe` C.def ["x", "y"] (C.And x' y', z') a'
 
-  it "☯ lower/lift Expr App -- type match" $ do
-    let expr = App x y
-    let term = C.App x' y'
-    lower expr `shouldBe` term
-    lift term `shouldBe` App x y
+  it "☯ lower Expr Let Or" $ do
+    lower (Let (Or x y, z) a) `shouldBe` C.def ["x"] (x', z') (C.def ["y"] (y', z') a')
 
-  it "☯ lower/lift Expr Call" $ do
-    let expr = Call "+" [x, y]
-    let term = C.Call "+" [x', y']
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Let For" $ do
+    lower (Let (For [] x, y) a) `shouldBe` C.def [] (x', y') a'
+    lower (Let (For ["x"] x, y) a) `shouldBe` C.def ["x"] (x', y') a'
+    lower (Let (For ["y"] x, y) a) `shouldBe` C.def [] (x', y') a'
 
-  it "☯ lower/lift Expr Op1" $ do
-    let expr = Op1 Neg x
-    let term = C.App (C.Var "-") x'
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Let Fun" $ do
+    lower (Let (Fun x y, z) a) `shouldBe` C.def ["x", "y"] (C.Fun x' y', z') a'
 
-  it "☯ lower/lift Expr Op2 ==" $ do
-    let expr = Op2 Eq x y
-    let term = C.App (C.Var "==") (C.And x' y')
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Let App" $ do
+    lower (Let (App x y, z) a) `shouldBe` C.def ["x"] (x', C.For "y" (C.Fun y' z')) a'
 
-  it "☯ lower/lift Expr Op2 <" $ do
-    let expr = Op2 Lt x y
-    let term = C.App (C.Var "<") (C.And x' y')
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Let Call" $ do
+    lower (Let (Call "f" [x, y], z) a) `shouldBe` C.def ["x", "y"] (C.Call "f" [x', y'], z') a'
 
-  it "☯ lower/lift Expr Op2 >" $ do
-    let expr = Op2 Gt x y
-    let term = C.App (C.Var ">") (C.And x' y')
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Let Op1" $ do
+    lower (Let (Op1 Neg x, z) a) `shouldBe` C.def ["-"] (C.Var "-", C.For "x" (C.Fun x' z')) a'
 
-  it "☯ lower/lift Expr Op2 +" $ do
-    let expr = Op2 Add x y
-    let term = C.App (C.Var "+") (C.And x' y')
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Let Op2" $ do
+    lower (Let (Op2 Add x y, z) a) `shouldBe` C.def ["+"] (C.Var "+", C.for ["x", "y"] (C.Fun (C.And x' y') z')) a'
 
-  it "☯ lower/lift Expr Op2 -" $ do
-    let expr = Op2 Sub x y
-    let term = C.App (C.Var "-") (C.And x' y')
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Let Let" $ do
+    lower (Let (Let (x, y) z, a) b) `shouldBe` C.def ["y", "z"] (C.def ["x"] (x', y') z', a') b'
 
-  it "☯ lower/lift Expr Op2 *" $ do
-    let expr = Op2 Mul x y
-    let term = C.App (C.Var "*") (C.And x' y')
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  -- it "☯ lower Expr Let Bind" $ do
+  --   lower (Let (Bind (x, y) z, a) b) `shouldBe` C.def ["y", "z"] (C.def ["x"] (x', y') z', a') b'
 
-  it "☯ lower/lift Expr Op2 /" $ do
-    let expr = Op2 Div x y
-    let term = C.App (C.Var "/") (C.And x' y')
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  it "☯ lower Expr Let If" $ do
+    lower (Let (If x y z, a) b) `shouldBe` C.def ["x", "y", "z"] (C.App (C.Or (C.Fun (C.Tag "True") y') (C.Fun C.Any z')) x', a') b'
 
-  it "☯ lower/lift Expr Op2 ^" $ do
-    let expr = Op2 Pow x y
-    let term = C.App (C.Var "^") (C.And x' y')
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
-
-  it "☯ lower/lift Expr Let atom" $ do
-    let expr = Let (Unit, y) z
-    let term = C.def [] (C.Unit, y') z'
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
-
-  it "☯ lower/lift Expr Let Var" $ do
-    let expr = Let (x, y) a
-    let term = C.Let [("x", y')] a'
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
-
-  it "☯ lower/lift Expr Let Ann" $ do
-    let expr = Let (Ann x y, z) a
-    let term = C.def ["x", "y"] (C.Ann x' y', z') a'
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
-
-  it "☯ lower/lift Expr Let And" $ do
-    let expr = Let (And x y, z) a
-    let term = C.def ["x", "y"] (C.And x' y', z') a'
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
-
-  it "☯ lower/lift Expr Let Or" $ do
-    let expr = Let (Or x y, z) a
-    let term = C.Let [("x", z')] (C.Let [("y", z')] a')
-    lower expr `shouldBe` term
-    lift term `shouldBe` lets [(x, z), (y, z)] a
-
-  it "☯ lower/lift Expr Let For empty" $ do
-    let expr = Let (For [] x, y) a
-    let term = C.def [] (x', y') a'
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
-
-  it "☯ lower/lift Expr Let For bound" $ do
-    let expr = Let (For ["x", "y"] (And x y), z) a
-    let term = C.def ["x", "y"] (C.And x' y', z') a'
-    lower expr `shouldBe` term
-    lift term `shouldBe` Let (And x y, z) a
-
-  it "☯ lower/lift Expr Let For unbound" $ do
-    let expr = Let (For ["x"] (And x y), z) a
-    let term = C.def ["x"] (C.And x' y', z') a'
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
-
-  it "☯ lower/lift Expr Let Fun" $ do
-    let expr = Let (Fun x y, z) a
-    let term = C.def ["x", "y"] (C.Fun x' y', z') a'
-    lower expr `shouldBe` term
-    lift term `shouldBe` expr
+  -- Match [Expr] [Expr]
+  -- Record [(String, Expr)]
+  -- Select Expr [(String, Expr)]
+  -- With Expr [(String, Expr)]
+  -- Err
 
   -- Bind (Expr, Expr) Expr
 
   -- If Expr Expr Expr
 
-  it "☯ lower/lift Expr Match -- empty" $ do
-    let expr = Match [] []
-    let term = C.Err
-    lower expr `shouldBe` term
-    lift term `shouldBe` Err
-
-  it "☯ lower/lift Expr Match -- no args, one case" $ do
-    let expr = Match [] [x]
-    let term = x'
-    lower expr `shouldBe` term
-    lift term `shouldBe` x
-
-  it "☯ lower/lift Expr Match -- no args, many cases" $ do
-    let expr = Match [] [x, y]
-    let term = C.Or x' y'
-    lower expr `shouldBe` term
-    lift term `shouldBe` Or x y
-
-  it "☯ lower/lift Expr Match -- args, with function" $ do
-    let expr = Match [y] [Fun x z]
-    let term = C.App (C.For "x" (C.Fun x' z')) y'
-    lower expr `shouldBe` term
-    lift term `shouldBe` Let (x, y) z
-
-  -- it "☯ lower/lift Expr Record" $ do
+  -- it "☯ lower Expr Record" $ do
   --   let expr = Record []
   --   let term = C.tag "~" []
   --   lower [] expr `shouldBe` term
@@ -286,69 +153,69 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   lower [] expr `shouldBe` term
   --   lift term `shouldBe` expr
 
-  -- it "☯ lower/lift Expr Trait -- property" $ do
+  -- it "☯ lower Expr Trait -- property" $ do
   --   let env = [(".id", Trait x x)]
   --   let expr = Trait i1 "y"
   --   let term = C.app (C.Var ".y") [C.IntT, i1']
   --   lower [] expr `shouldBe` term
   --   lift term `shouldBe` expr
 
-  -- it "☯ lower/lift Expr Trait -- literal" $ do
+  -- it "☯ lower Expr Trait -- literal" $ do
   --   let expr = Trait i1 "y"
   --   let term = C.app (C.Var ".y") [C.IntT, i1']
   --   lower [] expr `shouldBe` term
   --   lift term `shouldBe` expr
 
-  -- it "☯ lower/lift Expr Trait -- variable" $ do
+  -- it "☯ lower Expr Trait -- variable" $ do
   --   let expr = Trait x "y"
   --   let term = C.app (C.Var ".y") [C.IntT, x']
   --   lower [("x", i1')] expr `shouldBe` term
   --   lift term `shouldBe` expr
 
-  -- it "☯ lower/lift Expr Trait -- property" $ do
+  -- it "☯ lower Expr Trait -- property" $ do
   --   let expr = Trait x "y"
   --   let term = C.app (C.Var ".y") [C.tag "~y,z" [C.IntT, C.IntT], x']
   --   lower [("x", C.tag "~y,z" [i1', i2'])] expr `shouldBe` term
   --   lift term `shouldBe` expr
 
-  -- it "☯ lower/lift Expr Trait -- undefined" $ do
+  -- it "☯ lower Expr Trait -- undefined" $ do
   --   let expr = Trait x "y"
   --   let term = C.app (C.Var ".y") [C.Err, C.Var "x"]
   --   lower [] expr `shouldBe` C.Err
   --   lift term `shouldBe` expr
 
-  -- it "☯ lower/lift Expr Trait -- function" $ do
+  -- it "☯ lower Expr Trait -- function" $ do
   --   let env = [(".id", Trait x x)]
   --   let expr =
   --   let term = C.def ["a"] (C.Var "a", i1') (C.app (C.Var ".y") [C.Ann C.IntT C.IntT, C.Var "a"])
   --   lower env expr `shouldBe` (term, C.Unit, [("aT", C.Ann C.IntT C.IntT), ("a", C.Ann (C.Var "a") C.IntT), ("aTT", C.IntT), ("aT", C.IntT)])
   --   lift term `shouldBe` Match [i1] [For ["a"] $ Fun a (Trait a "y")]
 
-  -- it "☯ lower/lift Expr Select -- empty" $ do
+  -- it "☯ lower Expr Select -- empty" $ do
   --   let expr = select (Record [("x", i1), ("y", i2)]) []
   --   let term = C.tag "~" []
   --   lower [] expr `shouldBe` term
   --   lift term `shouldBe` Record []
 
-  -- it "☯ lower/lift Expr Select -- undefined" $ do
+  -- it "☯ lower Expr Select -- undefined" $ do
   --   let expr = select (Record [("x", i1), ("y", i2)]) ["z"]
   --   let term = C.tag "~" []
   --   lower [] expr `shouldBe` term
   --   lift term `shouldBe` Record []
 
-  -- it "☯ lower/lift Expr Select -- reorder" $ do
+  -- it "☯ lower Expr Select -- reorder" $ do
   --   let expr = select (Record [("x", i1), ("y", i2)]) ["y", "x"]
   --   let term = C.tag "~y,x" [i2', i1']
   --   lower [] expr `shouldBe` term
   --   lift term `shouldBe` Record [("y", i2), ("x", i1)]
 
-  -- it "☯ lower/lift Expr Select -- remapping" $ do
+  -- it "☯ lower Expr Select -- remapping" $ do
   --   let expr = Select (Record [("x", i1), ("y", i2)]) [("x", y), ("y", x)]
   --   let term = C.tag "~x,y" [i2', i1']
   --   lower [] expr `shouldBe` term
   --   lift term `shouldBe` Record [("x", i2), ("y", i1)]
 
-  -- it "☯ lower/lift Expr Select -- application" $ do
+  -- it "☯ lower Expr Select -- application" $ do
   --   let env = [("f", C.Ann (C.Var "f") (C.Fun (C.tag "~x" [C.IntT]) C.NumT))]
   --   let expr = App f (Record [("x", Int 42), ("y", Num 3.14)])
   --   let term = C.App (C.Var "f") (C.tag "~x" [C.Int 42])
@@ -357,13 +224,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   -- -- Select Expr [(String, Expr)]
 
-  -- it "☯ lower/lift Expr Err" $ do
+  -- it "☯ lower Expr Err" $ do
   --   let expr = Err
   --   let term = C.Err
   --   lower [] expr `shouldBe` term
   --   lift term `shouldBe` expr
 
-  -- it "☯ lower/lift Stmt Import" $ do
+  -- it "☯ lower Stmt Import" $ do
   --   let stmt = Import "@pkg/mod" "mod" []
   --   let env = [] :: C.Env
   --   lower [] stmt `shouldBe` env
@@ -374,13 +241,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   lower [] stmt `shouldBe` env
   -- -- TODO: lift
 
-  -- it "☯ lower/lift Module" $ do
+  -- it "☯ lower Module" $ do
   --   let mod = Module "mod" [Def $ defVar "x" y]
   --   let env = [("x", C.Var "y")] :: C.Env
   --   lower [] mod `shouldBe` env
   -- -- TODO: lift
 
-  -- it "☯ lower/lift Package" $ do
+  -- it "☯ lower Package" $ do
   --   let pkg = Package "pkg" [Module "mod" [Def $ defVar "x" y]]
   --   let env :: C.Env
   --       env = [("x", C.Var "y")]
