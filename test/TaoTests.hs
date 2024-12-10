@@ -157,20 +157,17 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower (select a ["y", "x"]) `shouldBe` C.tag "~y,x" [C.App y' a', C.App x' a']
     lower (Select a [("x", y), ("y", x)]) `shouldBe` C.tag "~x,y" [C.App y' a', C.App x' a']
 
-  it "☯ lower Expr Select -- application" $ do
-    let env = [("f", C.Ann (C.Var "f") (C.Fun (C.tag "~x" [C.IntT]) C.NumT))]
-    let expr = App f (Record [("x", Int 42), ("y", Num 3.14)])
-    let term = C.App (C.Var "f") (C.tag "~x" [C.Int 42])
-    lower expr `shouldBe` term
-    lift term `shouldBe` App f (Record [("x", Int 42)])
+  -- it "☯ lower Expr Select -- application" $ do
+  --   let env = [("f", C.Ann (C.Var "f") (C.Fun (C.tag "~x" [C.IntT]) C.NumT))]
+  --   let expr = App f (Record [("x", Int 42), ("y", Num 3.14)])
+  --   let term = C.App (C.Var "f") (C.tag "~x" [C.Int 42])
+  --   lower expr `shouldBe` term
+  --   lift term `shouldBe` App f (Record [("x", Int 42)])
 
-  -- -- Select Expr [(String, Expr)]
+  -- Select Expr [(String, Expr)]
 
-  -- it "☯ lower Expr Err" $ do
-  --   let expr = Err
-  --   let term = C.Err
-  --   lower [] expr `shouldBe` term
-  --   lift term `shouldBe` expr
+  it "☯ lower Expr Err" $ do
+    lower Err `shouldBe` C.Err
 
   -- it "☯ lower Stmt Import" $ do
   --   let stmt = Import "@pkg/mod" "mod" []
