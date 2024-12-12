@@ -1,0 +1,9 @@
+x -> y = 1 -> 2
+
+-- Fun match 1
+> x
+1
+
+-- Fun match 2
+> y
+2

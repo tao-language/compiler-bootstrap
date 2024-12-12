@@ -1,0 +1,18 @@
+x = 1
+y = 2
+
+-- Fun implicit binding
+> x -> y
+@x xT. (x : xT) -> 2
+
+-- Fun explicit binding
+> @y. x -> y
+@y. 1 -> y
+
+-- Fun alpha equivalence
+> x -> y
+@y yT. (y : yT) -> 2
+
+-- Fun args list
+> x -> y -> x
+@x y xT yT. (x : xT) -> (y : yT) -> x

@@ -1,0 +1,18 @@
+x = 1
+y = 2
+
+-- And match
+> (1, 2)
+(1, 2)
+
+-- And match fail 1
+> (1, 2)
+1
+
+-- And match fail 2
+> (1, 2)
+(1, 1)
+
+-- And match fail 3
+> (1, 2)
+(2, 2)

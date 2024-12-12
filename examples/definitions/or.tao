@@ -1,0 +1,9 @@
+x | y = 1
+
+-- Or match 1
+> x
+1
+
+-- Or match 2
+> y
+1

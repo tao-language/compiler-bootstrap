@@ -1,0 +1,67 @@
+-- Any match
+> _
+_
+
+-- Any match 1
+> 1
+_
+
+-- Any match 2
+> 2
+_
+
+-- Unit match
+> ()
+()
+
+-- Unit match fail
+> ()
+1
+
+-- IntT match
+> Int
+Int
+
+-- IntT match fail
+> Int
+Num
+
+-- NumT match
+> Num
+Num
+
+-- NumT match fail
+> Num
+Int
+
+-- Int match
+> 1
+1
+
+-- Int match fail
+> 1
+2
+
+-- Num match
+> 3.14
+3.14
+
+-- Num match fail
+> 3.14
+0.0
+
+-- Tag match
+> A
+A
+
+-- Tag match fail
+> A
+B
+
+-- Err match
+> $!error
+$!error
+
+-- Err match fail
+> $!error
+1

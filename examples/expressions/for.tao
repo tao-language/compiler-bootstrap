@@ -1,0 +1,13 @@
+x = 1
+
+-- For bound
+> @x. x
+@x. x
+
+-- For unbound
+> x
+@y. 1
+
+-- For alpha equivalence
+> @x. x
+@y. y

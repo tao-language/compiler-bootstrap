@@ -1,33 +1,35 @@
-import Data.List (isSuffixOf)
+import Data.List (intercalate, isSuffixOf)
 import PrettyPrint (pretty)
-import qualified Python
 import qualified System.Environment
-import qualified Tao
+import System.FilePath.Windows (dropExtension, takeDirectory)
+import qualified Tao as T
+import TaoParser (load, loadAtoms)
 
 main :: IO ()
 main = do
   cliArgs <- System.Environment.getArgs
   case cliArgs of
-    -- "build-py" : filename : args | ".tao" `isSuffixOf` filename -> buildPy filename args
-    filename : args -> run filename args
-    _ -> putStrLn "🛑 Please give me a file to run."
+    "run" : args -> case args of
+      filename : args -> run filename args
+      _ -> putStrLn "🛑 Please give me a filename, and an expression to run."
+    "test" : args -> case args of
+      [path] -> test path ["*"]
+      -- path : patterns -> test path patterns
+      path : patterns -> error "TODO: match test names by patterns"
+      _ -> putStrLn "🛑 Please give me a directory or filename to test."
+    _ -> error "TODO: repl"
 
--- buildPy :: String -> [String] -> IO ()
--- buildPy filename args = do
---   taoMod <- loadModule filename
---   let pyMod = Python.emit taoMod
---   let pyFile = pretty 80 "    " (Python.layoutModule pyMod)
---   putStrLn pyFile
-
-run :: String -> [String] -> IO ()
+run :: FilePath -> [String] -> IO ()
 run filename args = do
-  -- mod <- loadModule filename
-  -- env <- loadModule path
-  -- f' <- loadExpr f
-  -- args' <- mapM loadExpr args
-  -- case eval env (app f' args') of
-  --   Right (result, type') -> do
-  --     print type'
-  --     print result
-  --   Left err -> fail ("❌ " ++ show err)
-  putStrLn ("🔴 TODO run: filename=" ++ show filename ++ " args=" ++ show args)
+  ((_, ctx), syntaxErrors) <- load filename []
+  parsed <- loadAtoms args
+  let errors = map snd parsed
+  let expr = T.app' (map fst parsed)
+  let result = T.eval ctx (dropExtension filename) expr
+  print result
+
+test :: String -> [String] -> IO ()
+test path patterns = do
+  (pkg, syntaxErrors) <- load path []
+  let results = T.testAll [] pkg
+  putStrLn (intercalate "\n" (map show results))

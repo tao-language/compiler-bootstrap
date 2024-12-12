@@ -86,8 +86,8 @@ run = describe "--==☯ Python ☯==--" $ do
 
   it "☯ emit Package" $ do
     let stmts =
-          [ T.Def (T.Var "x", T.Int 1),
-            T.Def (T.Var "y", T.Int 2)
+          [ T.defVar ("x", T.Int 1),
+            T.defVar ("y", T.Int 2)
           ]
     let pySrc =
           [ Assign [x'] (Integer 1),
