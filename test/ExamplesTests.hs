@@ -370,15 +370,19 @@ run = describe "--==☯ Examples ☯==--" $ do
   -- TODO: Unions
   -- TODO: Choices (?)
 
-  -- let name = "examples/factorial"
-  -- it ("☯ " ++ name ++ ".tao") $ do
-  --   (pkg, syntaxErrors) <- load name []
-  --   syntaxErrors `shouldBe` []
-  --   let testResults =
-  --         [ TestPass name "Call match"
-  --         -- , TestFail name "Call match fail" (y, i1) (C.Let [("y", C.def ["yT", "y"] (C.Ann (C.Call "f" [C.Ann y' yT']) (C.Call "f" [yT']), C.Ann (C.Call "g" [C.Ann i1' C.IntT]) y') (C.Call "g" [C.IntT]))] y', C.Err) Err
-  --         ]
-  --   testAll [] pkg `shouldBe` testResults
+  let name = "examples/factorial"
+  it ("☯ " ++ name ++ ".tao") $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "0",
+            TestPass name "1",
+            TestPass name "2",
+            TestPass name "3",
+            TestPass name "4",
+            TestPass name "5"
+          ]
+    testAll [] pkg `shouldBe` testResults
 
   it "☯ TODO" $ do
     True `shouldBe` True

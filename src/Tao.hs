@@ -22,6 +22,7 @@ data Expr
   | Ann Expr Type
   | And Expr Expr
   | Or Expr Expr
+  | Fix String Expr
   | For [String] Expr
   | Fun Expr Expr
   | App Expr Expr
@@ -333,6 +334,7 @@ instance FreeVars Expr where
     Ann a b -> freeVars a `union` freeVars b
     And a b -> freeVars a `union` freeVars b
     Or a b -> freeVars a `union` freeVars b
+    Fix x a -> delete x (freeVars a)
     For xs a -> filter (`notElem` xs) (freeVars a)
     Fun a b -> freeVars a `union` freeVars b
     App a b -> freeVars a `union` freeVars b
@@ -473,10 +475,8 @@ instance Resolve (String, Stmt) where
       [] | alias == name -> [(path, Tag path')]
       [] -> []
     Def (p, b) | name `elem` bindings p -> [(path, Let (p, b) (Var name))]
-    Def _ -> []
-    TypeDef (name', args, body) ->
-      ([(path, fun args body) | name == name'])
-    Test {} -> []
+    TypeDef (name', args, body) | name == name' -> [(path, fun args body)]
+    _ -> []
 
 class Compile a where
   compile :: [Module] -> String -> a
@@ -486,7 +486,11 @@ instance Compile (String -> (String, C.Expr)) where
   compile ctx path name = do
     let defs = resolve ctx path name
     let alts = map (\(path, a) -> compile ctx path (name, a)) defs :: [C.Expr]
-    (name, C.or' alts)
+    let expr = case C.or' alts of
+          C.Var x | x == name -> C.Var x
+          C.Ann (C.Var x) t | x == name -> C.Ann (C.Var x) t
+          expr -> C.fix [name] expr
+    (name, expr)
 
 instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
@@ -525,9 +529,8 @@ instance Compile ((String, Expr) -> C.Expr) where
 
 instance Compile (Expr -> C.Expr) where
   compile :: [Module] -> String -> Expr -> C.Expr
-  compile ctx path expr = do
-    let (env, a) = compile ctx path (C.newName (freeVars expr) "", expr)
-    C.let' env a
+  compile ctx path expr =
+    compile ctx path (C.newName (freeVars expr) "", expr)
 
 lower :: Expr -> C.Expr
 lower = \case
@@ -557,6 +560,7 @@ lower = \case
   Op2 op a b -> lower (App (Var (show op)) (And a b))
   Let (Var x, b) (Var x') | x == x' -> lower b
   Let (a, b) c -> case a of
+    Var x | x `occurs` b -> lower (Let (Var x, Fix x b) c)
     Ann a t -> lower (Let (a, Ann b t) c)
     For xs a -> lower (App (For xs (Fun a c)) b)
     Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
