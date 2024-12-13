@@ -199,9 +199,6 @@ letVar (x, a) = Let (Var x, a)
 letVars :: [(String, Expr)] -> Expr -> Expr
 letVars defs b = foldr letVar b defs
 
-defVar :: (String, Expr) -> Stmt
-defVar (x, a) = Def (Var x, a)
-
 neg :: Expr -> Expr
 neg = Op1 Neg
 
@@ -685,3 +682,51 @@ instance TestSome UnitTest where
 
 testAll :: (TestSome a) => [Module] -> a -> [TestResult]
 testAll ctx = testSome ctx (const True)
+
+class Patch a where
+  patch :: [Module] -> [Stmt] -> a -> a
+
+instance Patch Expr where
+  patch :: [Module] -> [Stmt] -> Expr -> Expr
+  patch _ [] a = a
+  patch ctx (rule : rules) expr = case rule of
+    Import {} -> expr
+    Def (pattern', body) -> do
+      let patch' = patch ctx (rule : rules)
+      let expr' = case expr of
+            Ann a b -> Ann (patch' a) (patch' b)
+            And a b -> And (patch' a) (patch' b)
+            a -> a
+      case eval ctx "" (Let (pattern', expr') body) of
+        Err -> expr'
+        result -> result
+    -- Def (p, b) -> case (p, a) of
+    --   (Any, Any) -> b
+    --   (Unit, Unit) -> b
+    --   (IntT, IntT) -> b
+    --   (NumT, NumT) -> b
+    --   (Int i, Int i') -> if i == i' then b else a
+    --   (Num n, Num n') -> if n == n' then b else a
+    --   (Tag k, Tag k') -> if k == k' then b else a
+    --   (Var x, Var x') -> if x == x' then b else a
+    --   -- Ann Expr Type
+    --   -- And Expr Expr
+    --   -- Or Expr Expr
+    --   -- Fix String Expr
+    --   -- For [String] Expr
+    --   -- Fun Expr Expr
+    --   -- App Expr Expr
+    --   -- Call String [Expr]
+    --   -- Op1 Op1 Expr
+    --   -- Op2 Op2 Expr Expr
+    --   -- Match [Expr] [Expr]
+    --   -- If Expr Expr Expr
+    --   -- Let (Expr, Expr) Expr
+    --   -- Bind (Expr, Expr) Expr
+    --   -- Record [(String, Expr)]
+    --   -- Select Expr [(String, Expr)]
+    --   -- With Expr [(String, Expr)]
+    --   -- Err
+    --   (Err, Err) -> Err
+    TypeDef {} -> expr
+    Test {} -> expr

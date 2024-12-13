@@ -1,0 +1,5 @@
+match a {True -> b | False -> c} =
+  if a then b else c
+
+match a {False -> c | True -> b} =
+  if a then b else c
