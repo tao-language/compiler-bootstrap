@@ -411,68 +411,68 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ resolve Name" $ do
     let ctx =
           [ ( "pkg/a",
-              [defVar ("x", Int 42)]
+              [Def (x, i1)]
             ),
             ( "pkg/b",
               [ Import "pkg/a" "m" [("x", "y")],
-                defVar ("z", Var "y")
+                Def (z, y)
               ]
             )
           ]
 
-    resolve ctx "pkg/a" "x" `shouldBe` [("pkg/a", Let (x, Int 42) x)]
+    resolve ctx "pkg/a" "x" `shouldBe` [("pkg/a", Let (x, i1) x)]
     resolve ctx "pkg/a" "y" `shouldBe` []
     resolve ctx "pkg/b" "m" `shouldBe` [("pkg/b", Tag "pkg/a")]
     resolve ctx "pkg/b" "x" `shouldBe` []
-    resolve ctx "pkg/b" "y" `shouldBe` [("pkg/a", Let (x, Int 42) x)]
+    resolve ctx "pkg/b" "y" `shouldBe` [("pkg/a", Let (x, i1) x)]
     resolve ctx "pkg/b" "z" `shouldBe` [("pkg/b", Let (z, y) z)]
 
   it "☯ resolve Stmt" $ do
     let ctx =
           [ ( "pkg/a",
-              [defVar ("x", Int 42)]
+              [Def (x, i1)]
             ),
             ( "pkg/b",
               [ Import "pkg/a" "m" [("x", "y")],
-                defVar ("z", Var "y")
+                Def (z, y)
               ]
             )
           ]
 
-    resolve ctx "pkg/a" ("x", Def (x, i1)) `shouldBe` [("pkg/a", Let (x, i1) x)]
-    resolve ctx "pkg/a" ("y", Def (x, i1)) `shouldBe` []
-    resolve ctx "pkg/a" ("x", Def (Or x y, i1)) `shouldBe` [("pkg/a", Let (Or x y, i1) x)]
-    resolve ctx "pkg/a" ("x", Def (App x y, i1)) `shouldBe` [("pkg/a", Let (App x y, i1) x)]
-    resolve ctx "pkg/a" ("y", Def (App x y, i1)) `shouldBe` []
+    resolve ctx "pkg/a" ("x", Def (x, i2)) `shouldBe` [("pkg/a", Let (x, i2) x)]
+    resolve ctx "pkg/a" ("y", Def (x, i2)) `shouldBe` []
+    resolve ctx "pkg/a" ("x", Def (Or x y, i2)) `shouldBe` [("pkg/a", Let (Or x y, i2) x)]
+    resolve ctx "pkg/a" ("x", Def (App x y, i2)) `shouldBe` [("pkg/a", Let (App x y, i2) x)]
+    resolve ctx "pkg/a" ("y", Def (App x y, i2)) `shouldBe` []
 
   it "☯ compile Name" $ do
     let ctx =
           [ ( "pkg/a",
-              [ defVar ("x", Int 42),
-                defVar ("y", Var "y")
+              [ Def (x, i1),
+                Def (y, y)
               ]
             ),
             ( "pkg/b",
               [ Import "pkg/a" "m" [("x", "y")],
-                defVar ("z", Var "y")
+                Def (z, y)
               ]
             )
           ]
 
-    compile ctx "pkg/a" "x" `shouldBe` ("x", C.Int 42)
+    compile ctx "pkg/a" "x" `shouldBe` ("x", C.Int 1)
     compile ctx "pkg/a" "y" `shouldBe` ("y", C.Var "y")
     compile ctx "pkg/a" "z" `shouldBe` ("z", C.Err)
     compile ctx "pkg/b" "m" `shouldBe` ("m", C.Tag "pkg/a")
     compile ctx "pkg/b" "x" `shouldBe` ("x", C.Err)
-    compile ctx "pkg/b" "y" `shouldBe` ("y", C.Int 42)
-    compile ctx "pkg/b" "z" `shouldBe` ("z", C.Let [("y", C.Int 42)] (C.Var "y"))
+    compile ctx "pkg/b" "y" `shouldBe` ("y", C.Int 1)
+    compile ctx "pkg/b" "z" `shouldBe` ("z", C.Let [("y", C.Int 1)] (C.Var "y"))
 
   it "☯ compile Expr" $ do
     let ctx =
           [ ( "pkg/a",
-              [ defVar ("x", i1),
-                defVar ("y", y),
-                defVar ("f", Ann f (Fun IntT NumT))
+              [ Def (x, i1),
+                Def (y, y),
+                Def (f, Ann f (Fun IntT NumT))
               ]
             )
           ]
@@ -510,25 +510,25 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ eval" $ do
     let ctx =
           [ ( "pkg/a",
-              [defVar ("x", Int 42)]
+              [Def (x, i1)]
             ),
             ( "pkg/b",
               [ Import "pkg/a" "m" [("x", "y")],
-                defVar ("z", y),
-                defVar ("x", Int 9)
+                Def (z, y),
+                Def (x, i2)
               ]
             )
           ]
     eval ctx "pkg/a" (Int 42) `shouldBe` Int 42
     eval ctx "pkg/a" (Num 3.14) `shouldBe` Num 3.14
-    eval ctx "pkg/a" (Var "x") `shouldBe` Int 42
-    eval ctx "pkg/b" (Var "x") `shouldBe` Int 9
+    eval ctx "pkg/a" (Var "x") `shouldBe` Int 1
+    eval ctx "pkg/b" (Var "x") `shouldBe` Int 2
     eval ctx "pkg/a" (Var "y") `shouldBe` Err
     eval ctx "pkg/a" (Tag "A") `shouldBe` Tag "A"
     -- Record [(String, Maybe Expr, Maybe Expr)]
     -- Fun Expr Expr
     -- App Expr Expr
-    eval ctx "pkg/a" (tag "A" [x]) `shouldBe` tag "A" [Int 42]
+    eval ctx "pkg/a" (tag "A" [x]) `shouldBe` tag "A" [i1]
     -- And Expr Expr
     -- Or Expr Expr
     -- Ann Expr Type
@@ -551,8 +551,8 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   it "☯ test" $ do
     let ctx =
           [ ( "pkg/a",
-              [ defVar ("x", i1),
-                defVar ("y", i2),
+              [ Def (x, i1),
+                Def (y, i2),
                 Test ">x" x i1,
                 Test ">y" y i3
               ]
@@ -563,3 +563,12 @@ run = describe "--==☯ TaoTests ☯==--" $ do
             TestFail "pkg/a" ">y" (y, i3) (C.Let [("y", i2')] y') i2
           ]
     testAll ctx ("pkg", ctx) `shouldBe` results
+
+  it "☯ patch Expr" $ do
+    let patch' = patch [] [Def (i1, i2), Def (x, i3)]
+    patch' x `shouldBe` x
+    patch' y `shouldBe` y
+    patch' i1 `shouldBe` i2
+    patch' i3 `shouldBe` i3
+    patch' (Ann i1 i1) `shouldBe` Ann i2 i2
+    patch' (And i1 i1) `shouldBe` And i2 i2

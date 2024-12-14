@@ -1,0 +1,14 @@
+@result start i items body expr. (
+  result = foldl (i -> body) start (items : List _)
+  expr
+) =
+  # result = start
+  # for i in items:
+  #   result = body
+  # expr
+  %for_accum(
+    (result, start)
+    (i, items),
+    body,
+    expr,
+  )

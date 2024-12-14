@@ -270,8 +270,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     let pkg =
           ( "pkg",
             [ ( "examples/sub/mod",
-                [ defVar ("x", Int 1),
-                  defVar ("y", Int 2)
+                [ Def (x, Int 1),
+                  Def (y, Int 2)
                 ]
               )
             ]
@@ -283,8 +283,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
           ( "sub",
             [ ("examples/empty/empty-file", []),
               ( "examples/sub/mod",
-                [ defVar ("x", Int 1),
-                  defVar ("y", Int 2)
+                [ Def (x, Int 1),
+                  Def (y, Int 2)
                 ]
               )
             ]

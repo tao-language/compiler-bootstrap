@@ -1,0 +1,11 @@
+%if_stmt(
+  result,
+  branches,
+  if condition then a else b,
+  expr,
+) = %if_stmt(
+  result,
+  [..branches, (condition, a)],
+  b,
+  expr,
+)

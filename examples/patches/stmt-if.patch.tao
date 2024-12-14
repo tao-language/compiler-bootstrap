@@ -1,0 +1,10 @@
+(
+  result = if condition then a else b
+  expr
+) =
+  # if condition:
+  #   result = a
+  # else:
+  #   result = b
+  # expr
+  %if_stmt(result, condition, a, b, expr)
