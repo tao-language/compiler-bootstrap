@@ -1,0 +1,167 @@
+type PyExpr =
+| None
+| Bool Bool
+| Integer Int
+| Float Num
+| List [PyExpr]
+| Tuple [PyExpr]
+| String String
+| Name String
+| UnaryOp UnaryOp PyExpr
+| BinOp PyExpr BinOp PyExpr
+| BoolOp PyExpr BoolOp PyExpr
+| Compare PyExpr Compare PyExpr
+| Lambda [String] PyExpr
+| Call PyExpr [PyExpr]
+| IfExp PyExpr PyExpr PyExpr
+| Attribute PyExpr String
+
+type UnaryOp = USub
+
+type BinOp = Add | Sub | Mult | Div | Pow
+
+type BoolOp = And | Or
+
+type Compare = Eq | NotEq | Lt | LtE | Gt | GtE
+
+type PyStmt =
+| Assign PyExpr PyExpr
+| Import String String?
+| ImportFrom String [(String, String?)]
+| Match PyExpr [(Pattern, PyExpr?, [PyStmt])]
+| Return PyExpr
+| If PyExpr [PyStmt] [PyStmt]
+| For (PyExpr, PyExpr) [PyStmt]
+| While PyExpr [PyStmt]
+| FunctionDef String [(String, PyExpr?, PyExpr?)] [PyStmt]
+| ClassDef String [PyExpr] [PyStmt]
+
+type PyModule = {
+  name : String,
+  stmts : [PyStmt],
+}
+
+patches = [
+  "../patches/expr-if",
+  "../patches/stmt-if",
+  "../patches/stmt-if-elif",
+  "../patches/stmt-for-accum",
+  "../patches/stmt-for-each",
+]
+
+: Expr -> Int
+precedence = {
+| BoolOp _ op _ -> match op {
+  | Or -> 1
+  | And -> 2
+  }
+| Compare _ -> 3
+| BinOp _ op _ -> match op {
+  | (Add | Sub) -> 4
+  | (Mult | Div) -> 5
+  | Pow -> 6
+  }
+| _ -> 10
+}
+
+: BinOp -> (Left | Right)
+associative = {
+| Pow -> Left
+| _ -> Right
+}
+
+: Expr -> Int -> String
+layout expr prec if prec > expr.precedence =
+  "($(expr.layout 0))"
+layout expr prec = match expr {
+| None -> "None"
+| Bool True -> "True"
+| Bool False -> "False"
+| Integer i -> "$i"
+| Float n -> "$n"
+| List items -> "[$(items.map (.layout 0) |> join ', ')]"
+| Tuple items -> "($(items.map (.layout 0) |> join ', '))"
+| String s -> "\"$(s.replace '\"' '\\\"')\""
+| Name x -> x
+| UnaryOp op a -> "$(op)$(a.layout prec)"
+| BinOp a op b -> match op.associative {
+  | Left -> "$(a.layout prec) $op $(b.layout prec)"
+  | Right -> "$(a.layout (prec + 1)) $op $(b.layout (prec + 1))"
+  }
+| Compare a op b -> "$(a.layout prec) $op $(b.layout prec)"
+| Lambda [] a -> "lambda: $(a.layout prec)"
+| Lambda xs a -> "lambda $(xs.join ', '): $(a.layout prec)"
+| Call f args -> "$f($(args.map (.layout 0) |> join ', '))"
+| IfExp a condition b -> "$(a.layout prec) if $(condition.layout prec) else $(b.layout prec)"
+| Attribute a x -> "$(a.layout prec).$x"
+}
+
+: Package -> Context -> Path -> Result () Error
+build pkg ctx output_dir =
+  dir = output_dir / fs.dirname name
+  _ <- fs.write (dir / "project.toml") """
+    [project]
+    name = "$pkg.name"
+    """
+  pkg.modules.for_all (mod ->
+    mod.build ctx (dir / "$(mod.name.snake_case).py")
+  )
+
+: Module -> Context -> Path -> Result () Error
+build mod ctx filename =
+  mod.emit ctx
+   |> .layout
+   |> fs.write filename
+
+: Module -> Context -> PyModule
+emit mod ctx =
+  mod.stmts.foldl {name = mod.name} (stmt -> with {
+    stmts ++= stmt.emit ctx
+  })
+
+: Stmt -> Context -> [PyStmt]
+emit stmt ctx = match stmt {
+| Import path alias names -> ...
+| Def def -> def.unpack.concat_map (.emit ctx)
+| TypeDef _
+| Test _
+}
+
+: (String, Expr) -> Context -> [PyStmt]
+emit (name, expr) ctx = match expr, expr.type ctx {
+| expr, type = []
+}
+
+: Expr -> Context -> [PyStmt], PyExpr
+emit expr ctx = match expr {
+| Tag "None" -> None
+| Tag "True" -> Bool True
+| Tag "False" -> Bool False
+| Int i -> Integer i
+| Num n -> Float n
+# | List [Expr]
+# | Tuple [Expr]
+# | String String
+# | Name String
+# | UnaryOp UnaryOp Expr
+# | BinOp Expr BinOp Expr
+# | BoolOp Expr BoolOp Expr
+# | Compare Expr Compare Expr
+# | Lambda [String] Expr
+| Call builtin args _ -> match builtin, args {
+  | "if_stmt", [Any, a, b, c] ->
+      stmts1, a = a.emit ctx
+      stmts2, _ = b.emit ctx
+      stmts3, _ = c.emit ctx
+      stmts1, If a stmts2 stmts3
+  | "if_stmt", [Var result, a, b, c] ->
+      stmts1, a = a.emit ctx
+      stmts2, b = b.emit ctx
+      stmts3, c = c.emit ctx
+      stmts1, If a (stmts2.push (Assign result b)) (stmts3.push (Assign result c))
+  | _, _ -> [], Call "NotImplementedError" [String "$expr"]
+  }
+# | Call Expr [Expr]
+# | IfExp Expr Expr Expr
+# | Attribute Expr String
+}

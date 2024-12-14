@@ -1,0 +1,28 @@
+@i items body expr. (
+  _ = map (i -> body) (items : List ())
+  expr
+) =
+  # for i in items:
+  #   body
+  # expr
+  %for_each(
+    result,
+    (i, items),
+    body,
+    expr,
+  )
+
+@result i items body expr. (
+  result = map (i -> body) (items : List _)
+  expr
+) =
+  # result = []
+  # for i in items:
+  #   result.append(body)
+  # expr
+  %for_each(
+    result,
+    (i, items),
+    body,
+    expr,
+  )
