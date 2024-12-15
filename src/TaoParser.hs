@@ -3,7 +3,7 @@ module TaoParser where
 import Control.Monad (foldM, void)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
-import Data.Char (isSpace, isUpper)
+import Data.Char (isSpace, isUpper, ord)
 import Data.Function ((&))
 import Data.List (dropWhileEnd, intercalate, isSuffixOf, sort)
 import Data.List.Split (endsWith)
@@ -164,19 +164,14 @@ parseAtom = do
         IntT <$ P.word "Int",
         NumT <$ P.word "Num",
         Err <$ P.word "$!error",
+        do
+          _ <- P.char 'c'
+          quote <- P.oneOf [P.char '\'', P.char '"']
+          ch <- P.anyChar
+          _ <- P.char quote
+          return (tag "Char" [Int (ord ch)]),
         Var <$> parseNameVar,
         Tag <$> parseNameTag,
-        do
-          _ <- P.char '('
-          _ <- P.whitespaces
-          name <- parseNameTag
-          _ <- P.whitespaces
-          args <- P.zeroOrMore $ do
-            _ <- P.whitespaces
-            parseAtom
-          _ <- P.whitespaces
-          _ <- P.char ')'
-          return (tag name args),
         Int <$> P.integer,
         Num <$> P.number,
         do
@@ -187,8 +182,28 @@ parseAtom = do
           _ <- P.char ')'
           return block,
         do
+          _ <- P.char '('
+          _ <- P.whitespaces
+          op <-
+            P.oneOf
+              [ P.text "::"
+              ]
+          _ <- P.whitespaces
+          _ <- P.char ')'
+          return (fun [Var "a", Var "b"] (tag op [Var "a", Var "b"])),
+        do
           items <- parseCollection "(" "," ")" (parseExpr 0 P.whitespaces)
           return (and' items),
+        do
+          items <- parseCollection "[" "," "]" (parseExpr 0 P.whitespaces)
+          return (list items),
+        do
+          quote <- P.oneOf [P.char '\'', P.char '"']
+          chars <- P.zeroOrMore $ do
+            ch <- P.anyChar & P.if' (/= quote)
+            return (tag "Char" [Int (ord ch)])
+          _ <- P.char quote
+          return (list chars),
         do
           _ <- P.char '%'
           x <- parseName $ P.oneOf [P.letter, P.char '_']
@@ -288,6 +303,7 @@ parseExpr prec delim = do
             return xs,
           P.prefix 0 (const neg) (parseOp "-"),
           P.infixR 1 (const Or) (parseOp "|"),
+          P.infixR 2 (const (tag2 "::")) (parseOp "::"),
           P.infixR 2 (const Ann) (parseOp ":"),
           P.infixR 3 (const eq) (parseOp "=="),
           P.infixR 4 (const lt) (parseOp "<"),
@@ -306,7 +322,18 @@ parseExpr prec delim = do
           P.infixL 8 (const App) (void delim),
           P.infixR 9 (const pow) (parseOp "^")
         ]
-  P.operators prec ops (P.paddedR delim parseAtom)
+  P.operators prec ops $ do
+    a <- parseAtom
+    case a of
+      Tag k -> do
+        args <- P.zeroOrMore $ do
+          _ <- delim
+          parseAtom
+        _ <- delim
+        return (tag k args)
+      a -> do
+        _ <- delim
+        return a
 
 parseRecordField :: Parser (String, Expr)
 parseRecordField = do

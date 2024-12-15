@@ -138,6 +138,12 @@ runtimeOps = buildOps
 tag :: String -> [Expr] -> Expr
 tag k args = and' (Tag k : args)
 
+tag1 :: String -> Expr -> Expr
+tag1 k a = tag k [a]
+
+tag2 :: String -> Expr -> Expr -> Expr
+tag2 k a b = tag k [a, b]
+
 for :: [String] -> Expr -> Expr
 for xs (For ys a) = for (xs ++ ys) a
 for [] (Fun a b) = For [] (Fun a b)
@@ -237,6 +243,10 @@ with a xs = With a (map (\x -> (x, Var x)) xs)
 
 withFun :: [(String, Expr)] -> Expr
 withFun fields = lambda ["_"] (With (Var "_") fields)
+
+list :: [Expr] -> Expr
+list [] = Tag "[]"
+list (x : xs) = tag "::" [x, list xs]
 
 lambda :: [String] -> Expr -> Expr
 lambda xs = fun (map Var xs)

@@ -370,6 +370,38 @@ run = describe "--==☯ Examples ☯==--" $ do
   -- TODO: Unions
   -- TODO: Choices (?)
 
+  let name = "examples/syntax-sugar/list"
+  it ("☯ " ++ name ++ ".tao") $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "Nil",
+            TestPass name "Cons infix",
+            TestPass name "Cons prefix",
+            TestPass name "Cons Cons"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
+  let name = "examples/syntax-sugar/char"
+  it ("☯ " ++ name ++ ".tao") $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "Char single quote",
+            TestPass name "Char double quote"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
+  let name = "examples/syntax-sugar/string"
+  it ("☯ " ++ name ++ ".tao") $ do
+    (pkg, syntaxErrors) <- load name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name "String single quote",
+            TestPass name "String double quote"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
   let name = "examples/factorial"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load name []
@@ -383,6 +415,3 @@ run = describe "--==☯ Examples ☯==--" $ do
             TestPass name "5"
           ]
     testAll [] pkg `shouldBe` testResults
-
-  it "☯ TODO" $ do
-    True `shouldBe` True
