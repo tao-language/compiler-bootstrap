@@ -1,0 +1,7 @@
+-- String single quote
+> 'abc'
+[Char 97, Char 98, Char 99]
+
+-- String double quote
+> "abc"
+[Char 97, Char 98, Char 99]

@@ -24,7 +24,7 @@ $!error
 
 -- App Tag
 > (A) 1
-$!error
+A 1
 
 -- App Ann
 > (1 -> A : T) 1
