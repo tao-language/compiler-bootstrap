@@ -41,6 +41,10 @@ type PyModule = {
   stmts : [PyStmt],
 }
 
+type Context = {
+  path : String,
+}
+
 patches = [
   "../patches/expr-if",
   "../patches/stmt-if",

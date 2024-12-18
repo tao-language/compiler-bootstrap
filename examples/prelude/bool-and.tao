@@ -1,0 +1,15 @@
+-- TT
+> True and True
+True
+
+-- TF
+> True and False
+False
+
+-- FT
+> False and True
+False
+
+-- FF
+> False and False
+False

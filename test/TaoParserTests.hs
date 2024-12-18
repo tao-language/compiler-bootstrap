@@ -15,8 +15,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
         Right (x, P.State {remaining}) -> Right (x, remaining)
         Left P.State {context, remaining} -> Left (context, remaining)
 
-  it "☯ parseName" $ do
-    let p = parse' (parseName P.letter)
+  it "☯ parseNameBase" $ do
+    let p = parse' (parseNameBase P.letter)
     -- p "" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "")
     p "" `shouldBe` Left ([], "")
     p "a" `shouldBe` Right ("a", "")
@@ -259,14 +259,13 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   it "☯ loadModule" $ do
     let pkg = ("pkg", [])
     let expect = ("pkg", [("examples/empty", [])])
-    loadModule "examples" "empty.tao" (pkg, []) `shouldReturn` (expect, [])
+    loadModule ["examples"] "empty.tao" (pkg, []) `shouldReturn` (expect, [])
 
   it "☯ loadModule exists" $ do
     let pkg = ("pkg", [("my-file", [])])
-    loadModule "base-path" "my-file" (pkg, []) `shouldReturn` (pkg, [])
+    loadModule ["base-path"] "my-file" (pkg, []) `shouldReturn` (pkg, [])
 
   it "☯ loadPackage" $ do
-    let load path = loadPackage path (("pkg", []), [])
     let pkg =
           ( "pkg",
             [ ( "examples/sub/mod",
@@ -276,7 +275,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
               )
             ]
           )
-    load "examples/sub" `shouldReturn` (pkg, [] :: [SyntaxError])
+    loadPackage "examples/sub" (("pkg", []), []) `shouldReturn` (pkg, [] :: [SyntaxError])
 
   it "☯ load" $ do
     let pkg =
@@ -290,4 +289,4 @@ run = describe "--==☯ TaoParser ☯==--" $ do
             ]
           )
     let errors = []
-    load "examples/sub" ["examples/empty"] `shouldReturn` (pkg, errors)
+    load "" "examples/sub" ["examples/empty"] `shouldReturn` (pkg, errors)

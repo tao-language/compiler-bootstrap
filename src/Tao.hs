@@ -144,6 +144,12 @@ tag1 k a = tag k [a]
 tag2 :: String -> Expr -> Expr -> Expr
 tag2 k a b = tag k [a, b]
 
+var1 :: String -> Expr -> Expr
+var1 x = App (Var x)
+
+var2 :: String -> Expr -> Expr -> Expr
+var2 x a = App (var1 x a)
+
 for :: [String] -> Expr -> Expr
 for xs (For ys a) = for (xs ++ ys) a
 for [] (Fun a b) = For [] (Fun a b)

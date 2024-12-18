@@ -5,10 +5,12 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (isSpace, isUpper, ord)
 import Data.Function ((&))
-import Data.List (dropWhileEnd, intercalate, isSuffixOf, sort)
+import Data.List (dropWhileEnd, intercalate, isPrefixOf, isSuffixOf, sort)
 import Data.List.Split (endsWith)
+import Data.Maybe (fromMaybe)
 import qualified Parser as P
 import System.Directory (doesDirectoryExist, doesFileExist, doesPathExist, findFiles, listDirectory)
+import System.Environment (lookupEnv)
 import System.FilePath (dropExtension, splitDirectories, splitFileName, splitPath, takeBaseName, takeFileName, (</>))
 import Tao
 
@@ -51,7 +53,10 @@ instance Show SyntaxError where
 
 keywords :: [String]
 keywords =
-  [ "if",
+  [ "and",
+    "or",
+    "xor",
+    "if",
     "then",
     "else",
     "match",
@@ -64,8 +69,8 @@ startsWithUpper :: String -> Bool
 startsWithUpper (c : _) | isUpper c = True
 startsWithUpper _ = False
 
-parseName :: Parser Char -> Parser String
-parseName firstChar = do
+parseNameBase :: Parser Char -> Parser String
+parseNameBase firstChar = do
   let validChars =
         [ P.letter,
           P.digit,
@@ -92,15 +97,38 @@ parseNameEscaped = do
 parseNameVar :: Parser String
 parseNameVar =
   P.oneOf
-    [ parseName P.lowercase,
+    [ parseNameBase P.lowercase,
       parseNameEscaped
     ]
 
 parseNameTag :: Parser String
 parseNameTag =
   P.oneOf
-    [ parseName P.uppercase,
+    [ parseNameBase P.uppercase,
       P.paddedL (P.char ':') parseNameEscaped
+    ]
+
+parseNameOp :: Parser String
+parseNameOp = do
+  _ <- P.char '('
+  _ <- P.whitespaces
+  op <-
+    P.oneOf
+      [ P.text "::",
+        P.word "and",
+        P.word "or",
+        P.word "xor"
+      ]
+  _ <- P.whitespaces
+  _ <- P.char ')'
+  return op
+
+parseName :: Parser String
+parseName =
+  P.oneOf
+    [ parseNameBase P.letter,
+      parseNameOp,
+      parseNameEscaped
     ]
 
 parseLineBreak :: Parser String
@@ -182,14 +210,7 @@ parseAtom = do
           _ <- P.char ')'
           return block,
         do
-          _ <- P.char '('
-          _ <- P.whitespaces
-          op <-
-            P.oneOf
-              [ P.text "::"
-              ]
-          _ <- P.whitespaces
-          _ <- P.char ')'
+          op <- parseNameOp
           return (fun [Var "a", Var "b"] (tag op [Var "a", Var "b"])),
         do
           items <- parseCollection "(" "," ")" (parseExpr 0 P.whitespaces)
@@ -206,7 +227,7 @@ parseAtom = do
           return (list chars),
         do
           _ <- P.char '%'
-          x <- parseName $ P.oneOf [P.letter, P.char '_']
+          x <- parseNameBase $ P.oneOf [P.letter, P.char '_']
           args <-
             P.oneOf
               [ do
@@ -303,24 +324,27 @@ parseExpr prec delim = do
             return xs,
           P.prefix 0 (const neg) (parseOp "-"),
           P.infixR 1 (const Or) (parseOp "|"),
-          P.infixR 2 (const (tag2 "::")) (parseOp "::"),
-          P.infixR 2 (const Ann) (parseOp ":"),
-          P.infixR 3 (const eq) (parseOp "=="),
-          P.infixR 4 (const lt) (parseOp "<"),
-          P.infixR 4 (const gt) (parseOp ">"),
-          P.infixR 5 (\args a -> fun (a : args)) $ do
+          P.infixR 2 (const (var2 "and")) (parseOp "and"),
+          P.infixR 2 (const (var2 "or")) (parseOp "or"),
+          P.infixR 2 (const (var2 "xor")) (parseOp "xor"),
+          P.infixR 3 (const (tag2 "::")) (parseOp "::"),
+          P.infixR 3 (const Ann) (parseOp ":"),
+          P.infixR 4 (const eq) (parseOp "=="),
+          P.infixR 5 (const lt) (parseOp "<"),
+          P.infixR 5 (const gt) (parseOp ">"),
+          P.infixR 6 (\args a -> fun (a : args)) $ do
             args <- P.zeroOrMore $ do
               _ <- P.char ','
               _ <- P.spaces
-              parseExpr 6 P.spaces
+              parseExpr 7 P.spaces
             _ <- P.text "->"
             _ <- P.whitespaces
             return args,
-          P.infixR 6 (const add) (parseOp "+"),
-          P.infixR 6 (const sub) (parseOp "-"),
-          P.infixR 7 (const mul) (parseOp "*"),
-          P.infixL 8 (const App) (void delim),
-          P.infixR 9 (const pow) (parseOp "^")
+          P.infixR 7 (const add) (parseOp "+"),
+          P.infixR 7 (const sub) (parseOp "-"),
+          P.infixR 8 (const mul) (parseOp "*"),
+          P.infixL 9 (const App) (void delim),
+          P.infixR 10 (const pow) (parseOp "^")
         ]
   P.operators prec ops $ do
     a <- parseAtom
@@ -452,13 +476,13 @@ parseImport = do
     P.oneOf
       [ do
           parseCollection "(" "," ")" $ do
-            name <- parseName P.letter
+            name <- parseName
             _ <- P.spaces
             P.oneOf
               [ do
                   _ <- P.word "as"
                   _ <- P.spaces
-                  alias <- parseName P.letter
+                  alias <- parseName
                   return (name, alias),
                 return (name, name)
               ],
@@ -567,37 +591,51 @@ parseModule name = do
   _ <- P.endOfFile
   return (name, stmts)
 
-load :: FilePath -> [FilePath] -> IO (Package, [SyntaxError])
-load path dependencies = do
-  let pkg = (takeBaseName path, [])
-  foldM (flip loadPackage) (pkg, []) (path : dependencies)
+load :: FilePath -> FilePath -> [FilePath] -> IO (Package, [SyntaxError])
+load prelude path dependencies = do
+  let pkg0 = (takeBaseName path, [])
+  let deps = if prelude == "" then path : dependencies else prelude : path : dependencies
+  ((name, modules), errs) <- foldM (flip loadPackage) (pkg0, []) deps
+  let preludeStmts = fromMaybe [] (lookup (prelude </> prelude) modules)
+  let withPrelude (path, stmts) =
+        if prelude `isPrefixOf` path
+          then (path, stmts)
+          else (path, preludeStmts ++ stmts)
+  return ((name, map withPrelude modules), errs)
 
 loadPackage :: FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
 loadPackage path (pkg, errs) | ".tao" `isSuffixOf` path = do
   let (base, filename) = splitFileName path
-  loadModule base filename (pkg, errs)
+  home <- lookupEnv "HOME"
+  let stdlibPath = fromMaybe "." home </> ".tao" </> "src"
+  loadModule [base, stdlibPath] filename (pkg, errs)
 loadPackage path (pkg, errs) = do
   isDir <- doesDirectoryExist path
   if isDir
     then do
       files <- walkDirectory path ""
-      foldM (flip (loadModule path)) (pkg, errs) files
+      foldM (flip (loadModule [path])) (pkg, errs) files
     else do
       loadPackage (path ++ ".tao") (pkg, errs)
 
-loadModule :: FilePath -> FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
+loadModule :: [FilePath] -> FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
 loadModule _ filename (pkg, errs) | filename `elem` map fst (snd pkg) = do
   return (pkg, errs)
-loadModule base filename (pkg, errs) = do
-  src <- readFile (base </> filename)
-  let modName = base </> dropExtension filename
+loadModule (base : bases) filename (pkg, errs) = do
+  isFile <- doesFileExist (base </> filename)
+  if isFile
+    then loadModule [] (base </> filename) (pkg, errs)
+    else loadModule bases filename (pkg, errs)
+loadModule [] filename (pkg, errs) = do
+  src <- readFile filename
+  let modName = dropExtension filename
   case P.parse filename (parseModule modName) src of
     Right (mod, _) -> do
       return (second (mod :) pkg, errs)
     Left P.State {name, pos = (row, col), context} -> do
       let err =
             SyntaxError
-              { filename = base </> name,
+              { filename = name,
                 row = row,
                 col = col,
                 sourceCode = src,
