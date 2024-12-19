@@ -510,29 +510,8 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile ctx path (name, expr) = do
     let a = lower expr
     let env = map (compile ctx path) (delete name (C.freeVars a))
-    (env, annotate env a)
-
-annotate :: C.Env -> C.Expr -> C.Expr
-annotate env = \case
-  C.Ann a b -> C.Ann (annotate env a) (annotate env b)
-  C.And a b -> C.And (annotate env a) (annotate env b)
-  C.Or a b -> C.Or (annotate env a) (annotate env b)
-  C.For x a -> C.for [x] (annotate ((x, C.Var x) : env) a)
-  C.Fix x a -> C.fix [x] (annotate ((x, C.Var x) : env) a)
-  C.Fun a b -> do
-    let (args, body) = C.funOf (C.Fun a b)
-    case C.inferAll buildOps env args of
-      Right (argsT, s) ->
-        C.for (C.freeVars argsT) (C.fun (zipWith C.Ann args argsT) (annotate env body))
-      Left _ -> C.fun args (annotate env body)
-  C.App a b -> case C.infer2 buildOps env a b of
-    Right ((ta, tb), s) -> C.App (annotate env a) (C.Ann (annotate env b) tb)
-    Left _ -> C.App (annotate env a) (annotate env b)
-  C.Call f args -> case C.inferAll buildOps env args of
-    Right (argsT, s) -> C.Call f (zipWith C.Ann args argsT)
-    Left _ -> C.Call f args
-  C.Let defs b -> C.Let (map (second (annotate env)) defs) (annotate env b)
-  a -> a
+    let ((a', ta), s) = C.annotate buildOps env a
+    (env, C.for (map fst s) a')
 
 instance Compile ((String, Expr) -> C.Expr) where
   compile :: [Module] -> String -> (String, Expr) -> C.Expr

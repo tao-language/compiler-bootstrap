@@ -397,6 +397,13 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' (Ann (cons (Num 1.1) nil) (vec i1 NumT)) `shouldBe` Right (vec i1 NumT)
     infer' (Ann (cons (Num 1.1) (cons (Num 2.2) nil)) (vec i0 NumT)) `shouldBe` Left (TypeMismatch i2 i0)
 
+  it "☯ annotate" $ do
+    let annotate' = annotate ops [("x", Int 1), ("y", Num 1.1), ("z", Unit)]
+    annotate' (Fun x y) `shouldBe` ((Fun (Ann x IntT) y, Fun IntT NumT), [])
+    annotate' (fun [x, y] z) `shouldBe` ((fun [Ann x IntT, Ann y NumT] z, fun [IntT, NumT] Unit), [])
+    annotate' (For "x" $ Fun x y) `shouldBe` ((Fun (Ann x (Var "xT")) y, Fun (Var "xT") NumT), [("xT", Var "xT"), ("x", Ann x (Var "xT"))])
+    annotate' (Ann (For "x" $ Fun x y) (Fun Unit NumT)) `shouldBe` ((Ann (Fun (Ann x Unit) y) (Fun (Ann Unit Unit) NumT), Fun Unit NumT), [("xT", Unit), ("x", Ann x Unit)])
+
 -- it "☯ checkTypes" $ do
 --   let env =
 --         [ ("f", Ann f (Fun IntT NumT)),

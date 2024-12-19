@@ -114,10 +114,21 @@ parseNameOp = do
   _ <- P.whitespaces
   op <-
     P.oneOf
-      [ P.text "::",
-        P.word "and",
+      [ P.word "and",
         P.word "or",
         P.word "xor"
+      ]
+  _ <- P.whitespaces
+  _ <- P.char ')'
+  return op
+
+parseNameOpTag :: Parser String
+parseNameOpTag = do
+  _ <- P.char '('
+  _ <- P.whitespaces
+  op <-
+    P.oneOf
+      [ P.text "::"
       ]
   _ <- P.whitespaces
   _ <- P.char ')'
@@ -128,6 +139,7 @@ parseName =
   P.oneOf
     [ parseNameBase P.letter,
       parseNameOp,
+      parseNameOpTag,
       parseNameEscaped
     ]
 
@@ -200,6 +212,8 @@ parseAtom = do
           return (tag "Char" [Int (ord ch)]),
         Var <$> parseNameVar,
         Tag <$> parseNameTag,
+        Var <$> parseNameOp,
+        Tag <$> parseNameOpTag,
         Int <$> P.integer,
         Num <$> P.number,
         do
@@ -209,9 +223,6 @@ parseAtom = do
           _ <- P.whitespaces
           _ <- P.char ')'
           return block,
-        do
-          op <- parseNameOp
-          return (fun [Var "a", Var "b"] (tag op [Var "a", Var "b"])),
         do
           items <- parseCollection "(" "," ")" (parseExpr 0 P.whitespaces)
           return (and' items),

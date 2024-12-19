@@ -422,7 +422,7 @@ substitute [] (Var x) = Var x
 substitute ((x, a) : _) (Var x') | x == x' = a
 substitute (_ : s) (Var x) = substitute s (Var x)
 substitute _ (Tag k) = Tag k
-substitute s (Ann a _) = substitute s a
+substitute s (Ann a b) = Ann (dropType (substitute s a)) (dropType (substitute s b))
 substitute s (And a b) = And (substitute s a) (substitute s b)
 substitute s (Or a b) = Or (substitute s a) (substitute s b)
 substitute s (For x a) = For x (substitute (filter ((/= x) . fst) s) a)
@@ -435,6 +435,15 @@ substitute s (Let env b) = do
   let s' = filter (\(x, _) -> x `notElem` map fst env) s
   Let (map sub env) (substitute s' b)
 substitute _ Err = Err
+
+compose :: Substitution -> Substitution -> Substitution
+compose s1 s2 = do
+  let notIn s (x, _) = x `notElem` map fst s
+  map (second (substitute s1)) s2 `union` filter (notIn s2) s1
+
+dropType :: Expr -> Expr
+dropType (Ann a _) = dropType a
+dropType a = a
 
 dropTypes :: Expr -> Expr
 dropTypes (Ann a _) = dropTypes a
@@ -494,11 +503,11 @@ unify a b = case (a, b) of
   (a, For x b) -> do
     let (b', vars) = instantiate (freeVars a) (For x b)
     (t, s) <- unify a b'
-    Right (for (map fst vars) t, s `compose` vars)
+    Right (t, s `compose` vars)
   (For x a, b) -> do
     let (a', vars) = instantiate (freeVars b) (For x a)
     (t, s) <- unify a' b
-    Right (for (map fst vars) t, s `compose` vars)
+    Right (t, s `compose` vars)
   (Fix _ a, b) -> unify a b
   (a, Fix _ b) -> unify a b
   (Fun a1 b1, Fun a2 b2) -> do
@@ -605,22 +614,69 @@ check ops env a t = do
   (t, s2) <- unify ta (substitute s1 t)
   Right (t, s2 `compose` s1)
 
-compose :: Substitution -> Substitution -> Substitution
-compose s1 s2 = apply s1 s2 `union` s1
-  where
-    apply :: Substitution -> Env -> Env
-    apply _ [] = []
-    apply s ((x, Ann a t) : env) = do
-      (x, Ann (substitute s a) (substitute s t)) : apply s env
-    apply s ((x, a) : env) = (x, substitute s a) : apply s env
-
 instantiate :: [String] -> Expr -> (Expr, Substitution)
 instantiate vars (For x a) | x `occurs` a = do
   let y = newName vars x
   let (b, s) = instantiate (y : vars) (substitute [(x, Var y)] a)
-  (b, [(y, Var y)] `union` s)
+  (b, (y, Var y) : s)
 instantiate vars (For _ a) = instantiate vars a
 instantiate _ a = (a, [])
+
+annotate :: Ops -> Env -> Expr -> ((Expr, Expr), Substitution)
+annotate ops env (For x a) = annotate ops (pushVars [x] env) a
+annotate ops env (Fix x a) = do
+  let ((a', ta), s) = annotate ops (pushVars [x] env) a
+  ((fix [x] a', ta), s)
+annotate ops env expr = do
+  let (ta, s1) = case infer ops env expr of
+        Right (t, s) -> (t, s)
+        Left _ -> (Err, [])
+  let (a, s2) = case expr of
+        Ann a b -> do
+          let ((a', ta), (b', tb), s2) = annotate2 ops env a b
+          (Ann a' b', s2)
+        And a b -> do
+          let ((a', ta), (b', tb), s2) = annotate2 ops env a b
+          (And a' b', s2)
+        Or a b -> do
+          let ((a', ta), (b', tb), s2) = annotate2 ops env a b
+          (Or a' b', s2)
+        Fun a b -> do
+          let ((a', ta), (b', tb), s2) = annotate2 ops env a b
+          (Fun (Ann (dropType a') ta) b', s2)
+        App a b -> do
+          let ((a', ta), (b', tb), s2) = annotate2 ops env a b
+          (App a' (Ann b' tb), s2)
+        Call f args -> do
+          let (args', s2) = annotateAll ops env args
+          (Call f (map fst args'), s2)
+        _ -> (expr, [])
+  let s = s2 `compose` s1
+  ((substitute s a, substitute s ta), s)
+
+--   App a b -> case infer2 ops env a b of
+--     Right ((ta, tb), s) -> App (annotate ops env a) (Ann (annotate ops env b) tb)
+--     Left _ -> App (annotate ops env a) (annotate ops env b)
+--   Call f args -> case inferAll ops env args of
+--     Right (argsT, s) -> Call f (zipWith Ann args argsT)
+--     Left _ -> Call f args
+--   Let defs b -> Let (map (second (annotate ops env)) defs) (annotate ops env b)
+--   a -> case infer ops env a of
+--     Right (ta, s) -> ((a, ta), s)
+--     Left _ -> ((a, Err), [])
+
+annotate2 :: Ops -> Env -> Expr -> Expr -> ((Expr, Expr), (Expr, Expr), Substitution)
+annotate2 ops env a b = do
+  let ((a', ta), s1) = annotate ops env a
+  let ((b', tb), s2) = annotate ops (s1 `compose` env) (substitute s1 b)
+  ((a', ta), (b', tb), s2 `compose` s1)
+
+annotateAll :: Ops -> Env -> [Expr] -> ([(Expr, Expr)], Substitution)
+annotateAll _ _ [] = ([], [])
+annotateAll ops env (a : bs) = do
+  let ((a', ta), s1) = annotate ops env a
+  let (bts, s2) = annotateAll ops (s1 `compose` env) (map (substitute s1) bs)
+  ((a', ta) : bts, s2 `compose` s1)
 
 -- checkTypes :: Env -> [TypeError]
 -- checkTypes env = do
