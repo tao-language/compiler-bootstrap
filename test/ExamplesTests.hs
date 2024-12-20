@@ -293,7 +293,9 @@ run = describe "--==☯ Examples ☯==--" $ do
     syntaxErrors `shouldBe` []
     let testResults =
           [ TestPass name "Call match",
-            TestFail name "Call match fail" (y, i1) (C.Let [("y", C.def ["yT"] (C.For "y" $ C.Ann (C.Call "f" [y']) (C.Call "f" [yT']), C.Ann (C.Call "g" [i1']) (C.Call "g" [C.IntT])) y')] y') Err
+            let p = C.Ann (C.Call "f" [y']) (C.Call "f" [yT'])
+                a = C.Ann (C.Call "g" [i1']) (C.Call "g" [C.IntT])
+             in TestFail name "Call match fail" (y, i1) (C.Let [("y", C.For "yT" $ C.def ["y"] (p, a) y')] y') Err
           ]
     testAll [] pkg `shouldBe` testResults
 
