@@ -89,9 +89,10 @@ instance Show Expr where
       "(" ++ intercalate " -> " (map show args) ++ " -> " ++ show ret ++ ")"
     App a b -> do
       let (xs, a') = forOf a
-      case a' of
-        Fun a c -> show (for xs a) ++ " = " ++ show b ++ "; " ++ show c
-        a -> do
+      case (xs, a') of
+        ([], Fun a c) -> show a ++ " = " ++ show b ++ "; " ++ show c
+        (xs, Fun a c) -> "@[" ++ intercalate ", " xs ++ "] " ++ show a ++ " = " ++ show b ++ "; " ++ show c
+        _ -> do
           let (a', bs) = appOf (App a b)
           "(" ++ show a' ++ " " ++ unwords (map show bs) ++ ")"
     Call f args -> '%' : f ++ "(" ++ intercalate ", " (map show args) ++ ")"
