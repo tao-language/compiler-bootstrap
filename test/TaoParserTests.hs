@@ -10,6 +10,7 @@ import Test.Hspec
 run :: SpecWith ()
 run = describe "--==☯ TaoParser ☯==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
+  let (a, b, c) = (Var "a", Var "b", Var "c")
   let parse' :: Parser a -> String -> Either ([ParserContext], String) (a, String)
       parse' parser src = case P.parse "TaoParserTests" parser src of
         Right (x, P.State {remaining}) -> Right (x, remaining)
@@ -127,21 +128,18 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   --   p "{x} abc" `shouldBe` Right (record [("x", x)], " abc")
   --   p "{x, y} abc" `shouldBe` Right (record [("x", x), ("y", y)], " abc")
 
-  it "☯ parseCases" $ do
-    let p = parse' parseCases
-    p "{}" `shouldBe` Left ([], "}")
-    p "{ x }" `shouldBe` Left ([], "x }")
-    p "{ | x }" `shouldBe` Right ([x], "")
-    p "{ | x | y }" `shouldBe` Right ([x, y], "")
-    p "{\n|\nx\n|\ny\n}" `shouldBe` Right ([x, y], "")
-
   it "☯ parseMatch" $ do
     let p = parse' parseMatch
     p "match" `shouldBe` Left ([CMatch], "")
     p "match {}" `shouldBe` Left ([CMatch], "")
-    p "match {| x}" `shouldBe` Right (Match [] [x], "")
-    p "match a {| x}" `shouldBe` Right (Match [Var "a"] [x], "")
-    p "match a, b {| x}" `shouldBe` Right (Match [Var "a", Var "b"] [x], "")
+    p "match {| x -> y}" `shouldBe` Right (Match [] [([], [x], y)], "")
+    p "match a {| x -> y}" `shouldBe` Right (Match [Var "a"] [([], [x], y)], "")
+    p "match a, b {| x -> y}" `shouldBe` Right (Match [Var "a", Var "b"] [([], [x], y)], "")
+    p "{}" `shouldBe` Left ([], "}")
+    p "{ x -> y }" `shouldBe` Left ([], "x -> y }")
+    p "{ | x -> y }" `shouldBe` Right (Match [] [([], [x], y)], "")
+    p "{ | x -> y | a -> b }" `shouldBe` Right (Match [] [([], [x], y), ([], [a], b)], "")
+    p "{\n|\nx\n->\ny\n|\na\n->\nb\n}" `shouldBe` Right (Match [] [([], [x], y), ([], [a], b)], "")
 
   it "☯ parseExpr" $ do
     let p = parse' (parseExpr 0 P.spaces)
@@ -192,8 +190,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "(x <- y; z)" `shouldBe` Right (Bind (x, y) z, "")
     p "if x then y else z" `shouldBe` Right (If x y z, "")
     p "y if x" `shouldBe` Right (If x y Err, "")
-    p "{| x }" `shouldBe` Right (Match [] [x], "")
-    p "match {| x}" `shouldBe` Right (Match [] [x], "")
+    p "{| x -> y }" `shouldBe` Right (Match [] [([], [x], y)], "")
+    p "match {| x -> y}" `shouldBe` Right (Match [] [([], [x], y)], "")
     p "{}" `shouldBe` Right (Record [], "")
     p "x.y" `shouldBe` Right (App (Var ".y") x, "")
     p ".x" `shouldBe` Right (Var ".x", "")

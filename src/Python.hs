@@ -722,7 +722,7 @@ instance Emit T.Expr ([Stmt], Expr) where
   --   error $ show "TODO: emit Bind " ++ show (ts, p, a, b)
   emit _ (T.Match _ []) = ([raise (notImplementedError "")], None)
   emit options (T.Match [] cases) = do
-    let x = C.newName (concatMap T.freeVars cases) "_match"
+    -- let x = C.newName (concatMap T.freeVars cases) "_match"
     -- let def = T.Def [] (T.PVar x) (T.Match cases)
     -- let stmts = emit options def
     -- (stmts, Name x)

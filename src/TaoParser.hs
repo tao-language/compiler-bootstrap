@@ -322,7 +322,7 @@ parseExpr prec delim = do
         _ <- P.whitespaces
         return ()
   let ops =
-        [ P.atom 0 (Match []) parseCases,
+        [ -- P.atom 0 (Match []) parseCases,
           P.prefix 0 For $ do
             _ <- P.char '@'
             _ <- P.whitespaces
@@ -396,41 +396,99 @@ parseRecord = do
   fields <- parseCollection "{" "," "}" parseRecordField
   return (Record fields)
 
-parseCases :: Parser [Expr]
-parseCases = do
+-- parseCases :: Parser [([String], [Expr], Expr)]
+-- parseCases = do
+--   _ <- P.char '{'
+--   _ <- P.whitespaces
+--   cases <- P.oneOrMore $ do
+--     _ <- P.char '|'
+--     _ <- P.whitespaces
+--     xs <-
+--       P.oneOf
+--         [ do
+--             _ <- P.char '@'
+--             _ <- P.whitespaces
+--             xs <- P.zeroOrMore $ do
+--               x <- parseNameVar
+--               _ <- P.whitespaces
+--               return x
+--             _ <- P.char '.'
+--             _ <- P.whitespaces
+--             return xs,
+--           return []
+--         ]
+--     p <- parseExpr 7 P.whitespaces
+--     ps <- P.zeroOrMore $ do
+--       _ <- P.char ','
+--       _ <- P.whitespaces
+--       parseExpr 7 P.whitespaces
+--     _ <- P.word "->"
+--     _ <- P.whitespaces
+--     b <- parseExpr 2 P.whitespaces
+--     _ <- P.whitespaces
+--     return (xs, p : ps, b)
+--   _ <- P.whitespaces
+--   _ <- P.char '}'
+--   return cases
+
+parseMatch :: Parser Expr
+parseMatch = do
+  args <-
+    P.oneOf
+      [ do
+          _ <- P.word "match"
+          P.commit CMatch
+          _ <- P.spaces
+          args <-
+            P.oneOf
+              [ do
+                  arg <- parseAtom
+                  _ <- P.spaces
+                  args <- P.zeroOrMore $ do
+                    _ <- P.char ','
+                    _ <- P.spaces
+                    arg <- parseAtom
+                    _ <- P.spaces
+                    return arg
+                  return (arg : args),
+                return []
+              ]
+          _ <- P.whitespaces
+          return args,
+        return []
+      ]
   _ <- P.char '{'
   _ <- P.whitespaces
   cases <- P.oneOrMore $ do
     _ <- P.char '|'
     _ <- P.whitespaces
-    a <- parseExpr 2 P.spaces
+    xs <-
+      P.oneOf
+        [ do
+            _ <- P.char '@'
+            _ <- P.whitespaces
+            xs <- P.zeroOrMore $ do
+              x <- parseNameVar
+              _ <- P.whitespaces
+              return x
+            _ <- P.char '.'
+            _ <- P.whitespaces
+            return xs,
+          return []
+        ]
+    p <- parseExpr 7 P.whitespaces
+    ps <- P.zeroOrMore $ do
+      _ <- P.char ','
+      _ <- P.whitespaces
+      parseExpr 7 P.whitespaces
+    _ <- P.word "->"
     _ <- P.whitespaces
-    return a
+    b <- parseExpr 2 P.whitespaces
+    _ <- P.whitespaces
+    return (xs, p : ps, b)
   _ <- P.whitespaces
   _ <- P.char '}'
-  return cases
-
-parseMatch :: Parser Expr
-parseMatch = do
-  _ <- P.word "match"
-  P.commit CMatch
-  _ <- P.spaces
-  args <-
-    P.oneOf
-      [ do
-          arg <- parseAtom
-          _ <- P.spaces
-          args <- P.zeroOrMore $ do
-            _ <- P.char ','
-            _ <- P.spaces
-            arg <- parseAtom
-            _ <- P.spaces
-            return arg
-          return (arg : args),
-        return []
-      ]
-  _ <- P.whitespaces
-  Match args <$> parseCases
+  return (Match args cases)
 
 parseBlock :: Parser Expr
 parseBlock = do

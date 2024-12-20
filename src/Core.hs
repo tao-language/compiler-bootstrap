@@ -101,7 +101,7 @@ instance Show Expr where
     where
       isAlphaNumOr cs c = isAlphaNum c || c `elem` cs
       name = \case
-        x | all (isAlphaNumOr "-_") x -> x
+        x | all (isAlphaNumOr "$-_") x -> x
         '.' : x | not (any (isAlphaNumOr "()") x) -> "(" ++ x ++ ")"
         x -> "`" ++ replaceString "`" "\\`" x ++ "`"
 

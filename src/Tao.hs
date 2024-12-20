@@ -29,7 +29,7 @@ data Expr
   | Call String [Expr]
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
-  | Match [Expr] [Expr]
+  | Match [Expr] [([String], [Expr], Expr)]
   | If Expr Expr Expr
   | Let (Expr, Expr) Expr
   | Bind (Expr, Expr) Expr
@@ -357,7 +357,7 @@ instance FreeVars Expr where
     Let (a, b) c -> freeVars a `union` freeVars b `union` freeVars c
     Bind (a, b) c -> freeVars a `union` freeVars b `union` freeVars c
     If a b c -> freeVars a `union` freeVars b `union` freeVars c
-    Match args cases -> freeVars (and' args) `union` freeVars (and' cases)
+    Match args cases -> freeVars (and' args) `union` freeVars (and' (map (\(xs, ps, b) -> for xs (fun ps b)) cases))
     Record fields -> freeVars (and' (map snd fields))
     Select a fields -> freeVars a `union` freeVars (and' (map snd fields))
     With a fields -> freeVars a `union` freeVars (and' (map snd fields))
@@ -561,8 +561,15 @@ lower = \case
     Op2 op a1 a2 -> lower (Let (App (Var (show op)) (And a1 a2), b) c)
     a -> lower (App (For (freeVars a) (Fun (For [] a) c)) b)
   -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
-  If a b c -> lower (Match [a] [Fun (Tag "True") b, Fun Any c])
-  Match args cases -> lower (app (or' cases) args)
+  If a b c -> lower (Match [a] [([], [Tag "True"], b), ([], [], c)])
+  Match args cases -> do
+    let n = foldl max 0 (map (\(_, ps, _) -> length ps) cases)
+    let rpad :: Int -> a -> [a] -> [a]
+        rpad n x xs = xs ++ replicate (n - length xs) x
+    let cases' = map (\(xs, ps, b) -> for xs $ Fun (and' (rpad n Any ps)) b) cases
+    let args' = map (\i -> Var ("$" ++ show i)) [length args + 1 .. n]
+    let match' = fun args' (App (or' cases') (and' (args ++ args')))
+    lower match'
   Record fields -> do
     let k = '~' : intercalate "," (map fst fields)
     lower (tag k (map snd fields))
@@ -668,8 +675,8 @@ instance TestSome UnitTest where
     let test' =
           Match
             [t.expr]
-            [ Fun t.expect (Tag ":Ok"),
-              Fun (Var "got") (Var "got")
+            [ ([], [t.expect], Tag ":Ok"),
+              (["got"], [Var "got"], Var "got")
             ]
     case eval ctx t.path test' of
       Tag ":Ok" -> [TestPass t.path t.name]

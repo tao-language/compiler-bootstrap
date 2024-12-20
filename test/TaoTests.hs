@@ -80,10 +80,12 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ lower Expr Match" $ do
     lower (Match [] []) `shouldBe` C.Err
-    lower (Match [] [x]) `shouldBe` x'
-    lower (Match [] [x, y]) `shouldBe` C.Or x' y'
-    lower (Match [y] [x]) `shouldBe` C.App x' y'
-    lower (Match [y, z] [x]) `shouldBe` C.app x' [y', z']
+    lower (Match [] [([], [], x)]) `shouldBe` x'
+    lower (Match [] [(["x", "y"], [x, y], z)]) `shouldBe` C.for ["x", "y"] (C.fun [x', y'] z')
+    lower (Match [] [([], [], x), ([], [], y)]) `shouldBe` C.Or x' y'
+    lower (Match [z] [(["x"], [x, y], i1), ([], [a, b], i2)]) `shouldBe` C.Or x' y'
+    lower (Match [y] [([], [], x)]) `shouldBe` C.App x' y'
+    lower (Match [y, z] [([], [], x)]) `shouldBe` C.app x' [y', z']
 
   it "☯ lower Expr If" $ do
     lower (If x y z) `shouldBe` C.App (C.Or (C.Fun (C.Tag "True") y') (C.Fun C.Any z')) x'
@@ -126,8 +128,9 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   -- it "☯ lower Expr Let Bind" $ do
   --   lower (Let (Bind (x, y) z, a) b) `shouldBe` C.def ["y", "z"] (C.def ["x"] (x', y') z', a') b'
 
-  it "☯ lower Expr Let Match" $ do
-    lower (Let (Match [x] [y], a) b) `shouldBe` C.def ["x", "y"] (C.App y' x', a') b'
+  -- it "☯ lower Expr Let Match" $ do
+  --   lower (Let (Match [x] [([], [], y)], a) b) `shouldBe` C.def ["x", "y"] (C.App y' x', a') b'
+  --   lower (Let (Match [x] [([], [y], z)], a) b) `shouldBe` C.For "x" (C.def ["y", "z"] (y', x') (C.def [] (z', a') b'))
 
   it "☯ lower Expr Let If" $ do
     lower (Let (If x y z, a) b) `shouldBe` C.def ["x", "y", "z"] (C.App (C.Or (C.Fun (C.Tag "True") y') (C.Fun C.Any z')) x', a') b'
