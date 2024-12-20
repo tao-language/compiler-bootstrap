@@ -371,7 +371,10 @@ reduceAppFun ops a b c = case a of
     (a, Or b1 b2) -> case reduceAppFun ops a b1 c of
       Err -> reduceAppFun ops a b2 c
       c -> c
-    (For x a, For y b) -> for [y] (reduce ops (Let [(y, Var y)] (App (Fun (Let [(x, Var y)] a) c) b)))
+    (For x a, For y b) -> do
+      let z = newName (freeVars a) y
+      let a' = Let [(x, Var z)] a
+      for [z] (reduce ops (Let [(z, Var z)] (App (Fun a' c) b)))
     (For x a, b) -> reduceAppFun ops (Let [(x, Var x)] a) b c
     (Fun a1 a2, Fun b1 b2) -> reduceAppFun ops a1 b1 (App (Fun a2 c) b2)
     (App a1 a2, App b1 b2) -> reduceAppFun ops a1 b1 (App (Fun a2 c) b2)
@@ -445,17 +448,45 @@ dropType :: Expr -> Expr
 dropType (Ann a _) = dropType a
 dropType a = a
 
+dropFreeTypes :: Expr -> Expr
+dropFreeTypes (Ann a (Var _)) = dropFreeTypes a
+dropFreeTypes (And a b) = And (dropFreeTypes a) (dropFreeTypes b)
+dropFreeTypes (Or a b) = Or (dropFreeTypes a) (dropFreeTypes b)
+dropFreeTypes (For x a) = For x (dropFreeTypes a)
+dropFreeTypes (Fix x a) = Fix x (dropFreeTypes a)
+dropFreeTypes (Fun a b) = Fun (dropFreeTypes a) (dropFreeTypes b)
+dropFreeTypes (App a b) = App (dropFreeTypes a) (dropFreeTypes b)
+dropFreeTypes (Call op args) = Call op (map dropFreeTypes args)
+dropFreeTypes (Let env b) = Let (map (second dropFreeTypes) env) (dropFreeTypes b)
+dropFreeTypes a = a
+
 dropTypes :: Expr -> Expr
 dropTypes (Ann a _) = dropTypes a
 dropTypes (And a b) = And (dropTypes a) (dropTypes b)
 dropTypes (Or a b) = Or (dropTypes a) (dropTypes b)
 dropTypes (For x a) = For x (dropTypes a)
 dropTypes (Fix x a) = Fix x (dropTypes a)
+dropTypes (Fun (Ann a (Var _)) b) = Fun (dropTypes a) (dropTypes b)
+dropTypes (Fun (Ann a1 a2) b) = Fun (Ann (dropTypes a1) (dropTypes a2)) (dropTypes b)
 dropTypes (Fun a b) = Fun (dropTypes a) (dropTypes b)
+dropTypes (App a (Ann b (Var _))) = App (dropTypes a) (dropTypes b)
+dropTypes (App a (Ann b1 b2)) = App (dropTypes a) (Ann (dropTypes b1) (dropTypes b2))
 dropTypes (App a b) = App (dropTypes a) (dropTypes b)
 dropTypes (Call op args) = Call op (map dropTypes args)
-dropTypes (Let env b) = Let (map (second dropTypes) env) (dropTypes b)
+dropTypes (Let defs b) = Let (map (second dropTypes) defs) (dropTypes b)
 dropTypes a = a
+
+dropAllTypes :: Expr -> Expr
+dropAllTypes (Ann a _) = dropAllTypes a
+dropAllTypes (And a b) = And (dropAllTypes a) (dropAllTypes b)
+dropAllTypes (Or a b) = Or (dropAllTypes a) (dropAllTypes b)
+dropAllTypes (For x a) = For x (dropAllTypes a)
+dropAllTypes (Fix x a) = Fix x (dropAllTypes a)
+dropAllTypes (Fun a b) = Fun (dropAllTypes a) (dropAllTypes b)
+dropAllTypes (App a b) = App (dropAllTypes a) (dropAllTypes b)
+dropAllTypes (Call op args) = Call op (map dropAllTypes args)
+dropAllTypes (Let env b) = Let (map (second dropAllTypes) env) (dropAllTypes b)
+dropAllTypes a = a
 
 unify :: Expr -> Expr -> Either TypeError (Expr, Substitution)
 unify a b = case (a, b) of
@@ -623,7 +654,9 @@ instantiate vars (For _ a) = instantiate vars a
 instantiate _ a = (a, [])
 
 annotate :: Ops -> Env -> Expr -> ((Expr, Expr), Substitution)
-annotate ops env (For x a) = annotate ops (pushVars [x] env) a
+annotate ops env (For x a) = do
+  let ((a', ta), s) = annotate ops (pushVars [x] env) a
+  ((for [x] a', ta), s)
 annotate ops env (Fix x a) = do
   let ((a', ta), s) = annotate ops (pushVars [x] env) a
   ((fix [x] a', ta), s)
@@ -634,7 +667,7 @@ annotate ops env expr = do
   let (a, s2) = case expr of
         Ann a b -> do
           let ((a', ta), (b', tb), s2) = annotate2 ops env a b
-          (Ann a' b', s2)
+          (Ann a' (for (map fst (s2 `compose` s1)) b'), s2)
         And a b -> do
           let ((a', ta), (b', tb), s2) = annotate2 ops env a b
           (And a' b', s2)
@@ -648,22 +681,19 @@ annotate ops env expr = do
           let ((a', ta), (b', tb), s2) = annotate2 ops env a b
           (App a' (Ann b' tb), s2)
         Call f args -> do
-          let (args', s2) = annotateAll ops env args
-          (Call f (map fst args'), s2)
+          let ((args', argsT), s2) = annotateAll ops env args
+          (Call f args', s2)
+        Let [] a -> do
+          let ((a', _), s2) = annotate ops env a
+          (a', s2)
+        Let defs a -> do
+          let ((a', _), s2) = annotate ops (defs ++ env) a
+          let ((defs', defsT), s3) = annotateDefs ops (defs ++ env) defs
+          (Let defs' a', s3 `compose` s2)
         _ -> (expr, [])
   let s = s2 `compose` s1
-  ((substitute s a, substitute s ta), s)
-
---   App a b -> case infer2 ops env a b of
---     Right ((ta, tb), s) -> App (annotate ops env a) (Ann (annotate ops env b) tb)
---     Left _ -> App (annotate ops env a) (annotate ops env b)
---   Call f args -> case inferAll ops env args of
---     Right (argsT, s) -> Call f (zipWith Ann args argsT)
---     Left _ -> Call f args
---   Let defs b -> Let (map (second (annotate ops env)) defs) (annotate ops env b)
---   a -> case infer ops env a of
---     Right (ta, s) -> ((a, ta), s)
---     Left _ -> ((a, Err), [])
+  let sub = substitute s
+  ((sub a, sub ta), s)
 
 annotate2 :: Ops -> Env -> Expr -> Expr -> ((Expr, Expr), (Expr, Expr), Substitution)
 annotate2 ops env a b = do
@@ -671,12 +701,19 @@ annotate2 ops env a b = do
   let ((b', tb), s2) = annotate ops (s1 `compose` env) (substitute s1 b)
   ((a', ta), (b', tb), s2 `compose` s1)
 
-annotateAll :: Ops -> Env -> [Expr] -> ([(Expr, Expr)], Substitution)
-annotateAll _ _ [] = ([], [])
+annotateAll :: Ops -> Env -> [Expr] -> (([Expr], [Expr]), Substitution)
+annotateAll _ _ [] = (([], []), [])
 annotateAll ops env (a : bs) = do
   let ((a', ta), s1) = annotate ops env a
-  let (bts, s2) = annotateAll ops (s1 `compose` env) (map (substitute s1) bs)
-  ((a', ta) : bts, s2 `compose` s1)
+  let ((bs', bsT), s2) = annotateAll ops (s1 `compose` env) (map (substitute s1) bs)
+  ((a' : bs', ta : bsT), s2 `compose` s1)
+
+annotateDefs :: Ops -> Env -> [(String, Expr)] -> (([(String, Expr)], [(String, Expr)]), Substitution)
+annotateDefs _ _ [] = (([], []), [])
+annotateDefs ops env ((x, a) : defs) = do
+  let ((a', ta), s1) = annotate ops env a
+  let ((defs', defsT), s2) = annotateDefs ops (s1 `compose` env) (map (second (substitute s1)) defs)
+  (((x, a') : defs', (x, ta) : defsT), s2 `compose` s1)
 
 -- checkTypes :: Env -> [TypeError]
 -- checkTypes env = do

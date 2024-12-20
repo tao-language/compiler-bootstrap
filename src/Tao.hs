@@ -510,14 +510,14 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile ctx path (name, expr) = do
     let a = lower expr
     let env = map (compile ctx path) (delete name (C.freeVars a))
-    let ((a', ta), s) = C.annotate buildOps env a
-    (env, C.for (map fst s) a')
+    (env, a)
 
 instance Compile ((String, Expr) -> C.Expr) where
   compile :: [Module] -> String -> (String, Expr) -> C.Expr
   compile ctx path (name, expr) = do
     let (env, a) = compile ctx path (name, expr)
-    C.let' env a
+    let ((a', _), s) = C.annotate buildOps [] (C.Let env a)
+    C.for (map fst s) (C.dropTypes a')
 
 instance Compile (Expr -> C.Expr) where
   compile :: [Module] -> String -> Expr -> C.Expr

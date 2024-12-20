@@ -162,7 +162,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let testResults =
           [ TestPass name "Ann match",
             TestPass name "Ann match drop type",
-            TestFail name "Ann match fail" (Ann i1 IntT, i2) (C.Ann i1' C.IntT) i1
+            TestFail name "Ann match fail" (Ann i1 IntT, i2) i1' i1
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -260,7 +260,10 @@ run = describe "--==☯ Examples ☯==--" $ do
     syntaxErrors `shouldBe` []
     let testResults =
           [ TestPass name "For match",
-            TestFail name "For match fail" (y, i1) (C.Let [("y", C.Let [("z", i2')] (C.def ["y", "yT"] (C.Ann (C.And y' z') (C.And yT' C.IntT), C.Ann (C.And i1' i1') (C.And C.IntT C.IntT)) y'))] y') Err
+            let p = C.Ann (C.And y' z') (C.And C.IntT C.IntT)
+                a = C.Ann (C.And i1' i1') (C.And C.IntT C.IntT)
+                core = C.Let [("y", C.Let [("z", i2')] $ C.def ["y"] (p, a) y')] y'
+             in TestFail name "For match fail" (y, i1) core Err
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -290,7 +293,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     syntaxErrors `shouldBe` []
     let testResults =
           [ TestPass name "Call match",
-            TestFail name "Call match fail" (y, i1) (C.Let [("y", C.def ["y", "yT"] (C.Ann (C.Call "f" [y']) (C.Call "f" [yT']), C.Ann (C.Call "g" [C.Ann i1' C.IntT]) (C.Call "g" [C.IntT])) y')] y') Err
+            TestFail name "Call match fail" (y, i1) (C.Let [("y", C.def ["yT"] (C.For "y" $ C.Ann (C.Call "f" [y']) (C.Call "f" [yT']), C.Ann (C.Call "g" [i1']) (C.Call "g" [C.IntT])) y')] y') Err
           ]
     testAll [] pkg `shouldBe` testResults
 

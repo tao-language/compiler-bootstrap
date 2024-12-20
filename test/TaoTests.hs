@@ -485,17 +485,17 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     compile ctx "pkg/a" (Num 1.0) `shouldBe` C.Num 1.0
     compile ctx "pkg/a" (Var "x") `shouldBe` C.Let [("x", i1')] x'
     compile ctx "pkg/a" (Tag "A") `shouldBe` C.Tag "A"
-    compile ctx "pkg/a" (Ann i1 IntT) `shouldBe` C.Ann i1' C.IntT
-    compile ctx "pkg/a" (Ann i1 NumT) `shouldBe` C.Ann i1' C.NumT
+    compile ctx "pkg/a" (Ann i1 IntT) `shouldBe` i1'
+    compile ctx "pkg/a" (Ann i1 NumT) `shouldBe` i1'
     compile ctx "pkg/a" (Or i1 (Num 1.1)) `shouldBe` C.Or i1' (C.Num 1.1)
     compile ctx "pkg/a" (For [] x) `shouldBe` C.Let [("x", i1')] x'
     compile ctx "pkg/a" (For [] (Fun x x)) `shouldBe` C.Let [("x", i1')] (C.Fun (C.Ann x' C.IntT) x')
     compile ctx "pkg/a" (For ["x"] x) `shouldBe` C.For "x" x'
-    compile ctx "pkg/a" (For ["x"] (Fun x x)) `shouldBe` C.for ["x", "xT"] (C.Fun (C.Ann x' xT') x')
-    compile ctx "pkg/a" (Fun x x) `shouldBe` C.for ["x", "xT"] (C.Fun (C.Ann x' xT') x')
-    compile ctx "pkg/a" (App f i1) `shouldBe` C.Let [("f", C.Ann (C.Var "f") (C.Fun (C.Ann C.IntT C.IntT) C.NumT))] (C.App (C.Var "f") (C.Ann i1' C.IntT))
+    compile ctx "pkg/a" (For ["x"] (Fun x x)) `shouldBe` C.For "x" (C.Fun x' x')
+    compile ctx "pkg/a" (Fun x x) `shouldBe` C.For "x" (C.Fun x' x')
+    compile ctx "pkg/a" (App f i1) `shouldBe` C.Let [("f", C.Var "f")] (C.App (C.Var "f") (C.Ann i1' C.IntT))
     compile ctx "pkg/a" (Call "f" []) `shouldBe` C.Call "f" []
-    compile ctx "pkg/a" (Call "f" [i1, Num 1.1]) `shouldBe` C.Call "f" [C.Ann i1' C.IntT, C.Ann (C.Num 1.1) C.NumT]
+    compile ctx "pkg/a" (Call "f" [i1, Num 1.1]) `shouldBe` C.Call "f" [i1', C.Num 1.1]
     -- Op1 Op1 Expr
     -- Op2 Op2 Expr Expr
     -- Let (Expr, Expr) Expr
