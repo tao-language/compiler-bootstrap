@@ -299,7 +299,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer [] env (Var "a") `shouldBe` Right (IntT, [])
     infer [] env (Var "c") `shouldBe` Right (a1, [("a1", a1)])
 
-  it "☯ infer-Ann" $ do
+  it "☯ infer Ann" $ do
     let env = []
     infer [] env (Ann i1 IntT) `shouldBe` Right (IntT, [])
     infer [] env (Ann i1 NumT) `shouldBe` Left (TypeMismatch IntT NumT)

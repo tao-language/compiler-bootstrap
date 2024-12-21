@@ -564,7 +564,9 @@ unifyAll (a : bs) (a' : bs') = do
 unifyAll _ _ = Right ([], [])
 
 infer :: Ops -> Env -> Expr -> Either TypeError (Expr, Substitution)
-infer _ _ Any = Right (Any, [])
+infer _ env Any = do
+  let x = newName ("_T" : map fst env) "_T"
+  Right (Var x, [(x, Var x)])
 infer _ _ Unit = Right (Unit, [])
 infer _ _ IntT = Right (IntT, [])
 infer _ _ NumT = Right (NumT, [])
