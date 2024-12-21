@@ -414,7 +414,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     syntaxErrors `shouldBe` []
     let testResults =
           [ TestPass name "T",
-            TestPass name "F"
+            TestPass name "F",
+            TestPass name "Error"
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -426,7 +427,8 @@ run = describe "--==☯ Examples ☯==--" $ do
           [ TestPass name "TT",
             TestPass name "TF",
             TestPass name "FT",
-            TestPass name "FF"
+            TestPass name "FF",
+            TestPass name "Error"
           ]
     testAll [] pkg `shouldBe` testResults
 

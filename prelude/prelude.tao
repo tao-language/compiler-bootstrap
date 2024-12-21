@@ -1,4 +1,7 @@
 import prelude/bool (
-  (and),
+  Bool,
   not,
+  (and),
+  (or),
+  (xor),
 )

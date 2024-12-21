@@ -13,3 +13,7 @@ False
 -- FF
 > False and False
 False
+
+-- Error
+> A and B
+$!error
