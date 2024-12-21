@@ -3,7 +3,7 @@ not = {
 | False -> True
 }
 
-(and) = {
+(and) = match {
 | True, True -> True
 | _ -> False
 }

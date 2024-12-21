@@ -79,13 +79,12 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower (Op2 Pow x y) `shouldBe` C.App (C.Var "^") (C.And x' y')
 
   it "☯ lower Expr Match" $ do
-    lower (Match [] []) `shouldBe` C.Err
-    lower (Match [] [([], [], x)]) `shouldBe` x'
-    lower (Match [] [(["x", "y"], [x, y], z)]) `shouldBe` C.for ["x", "y"] (C.fun [x', y'] z')
-    lower (Match [] [([], [], x), ([], [], y)]) `shouldBe` C.Or x' y'
-    lower (Match [z] [(["x"], [x, y], i1), ([], [a, b], i2)]) `shouldBe` C.Or x' y'
-    lower (Match [y] [([], [], x)]) `shouldBe` C.App x' y'
-    lower (Match [y, z] [([], [], x)]) `shouldBe` C.app x' [y', z']
+    lower (Match [] []) `shouldBe` C.App C.Err C.Unit
+    lower (Match [] [([], [], x)]) `shouldBe` C.App (C.Fun C.Unit x') C.Unit
+    lower (Match [] [(["x", "y"], [x, y], z)]) `shouldBe` C.for ["$1", "$2"] (C.fun [C.Var "$1", C.Var "$2"] $ C.App (C.for ["x", "y"] (C.Fun (C.And x' y') z')) (C.And (C.Var "$1") (C.Var "$2")))
+    lower (Match [] [([], [], x), ([], [], y)]) `shouldBe` C.App (C.Or (C.Fun C.Unit x') (C.Fun C.Unit y')) C.Unit
+    lower (Match [a, b] [([], [x, y], z)]) `shouldBe` C.App (C.Fun (C.And x' y') z') (C.And a' b')
+    lower (Match [a, b] [([], [x, y], z), ([], [], c)]) `shouldBe` C.App (C.Fun (C.And x' y') z' `C.Or` C.Fun (C.And C.Any C.Any) c') (C.And a' b')
 
   it "☯ lower Expr If" $ do
     lower (If x y z) `shouldBe` C.App (C.Or (C.Fun (C.Tag "True") y') (C.Fun C.Any z')) x'

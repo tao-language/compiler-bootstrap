@@ -263,7 +263,6 @@ parseAtom = do
           _ <- P.whitespaces
           c <- parseExpr 0 P.whitespaces
           return (If a b c),
-        parseMatch,
         parseRecord,
         do
           _ <- P.char '.'
@@ -323,6 +322,7 @@ parseExpr prec delim = do
         return ()
   let ops =
         [ -- P.atom 0 (Match []) parseCases,
+          P.atom 0 id parseMatch,
           P.prefix 0 For $ do
             _ <- P.char '@'
             _ <- P.whitespaces
@@ -437,17 +437,16 @@ parseMatch = do
     P.oneOf
       [ do
           _ <- P.word "match"
-          P.commit CMatch
           _ <- P.spaces
           args <-
             P.oneOf
               [ do
-                  arg <- parseAtom
+                  arg <- parseExpr 1 P.spaces
                   _ <- P.spaces
                   args <- P.zeroOrMore $ do
                     _ <- P.char ','
                     _ <- P.spaces
-                    arg <- parseAtom
+                    arg <- parseExpr 1 P.spaces
                     _ <- P.spaces
                     return arg
                   return (arg : args),
@@ -462,7 +461,7 @@ parseMatch = do
   cases <- P.oneOrMore $ do
     _ <- P.char '|'
     _ <- P.whitespaces
-    xs <-
+    (xs, ps) <-
       P.oneOf
         [ do
             _ <- P.char '@'
@@ -473,19 +472,25 @@ parseMatch = do
               return x
             _ <- P.char '.'
             _ <- P.whitespaces
-            return xs,
-          return []
+            p <- parseExpr 7 P.whitespaces
+            ps <- P.zeroOrMore $ do
+              _ <- P.char ','
+              _ <- P.whitespaces
+              parseExpr 7 P.whitespaces
+            return (xs, p : ps),
+          do
+            p <- parseExpr 7 P.whitespaces
+            ps <- P.zeroOrMore $ do
+              _ <- P.char ','
+              _ <- P.whitespaces
+              parseExpr 7 P.whitespaces
+            return (freeVars (and' (p : ps)), p : ps)
         ]
-    p <- parseExpr 7 P.whitespaces
-    ps <- P.zeroOrMore $ do
-      _ <- P.char ','
-      _ <- P.whitespaces
-      parseExpr 7 P.whitespaces
     _ <- P.word "->"
     _ <- P.whitespaces
     b <- parseExpr 2 P.whitespaces
     _ <- P.whitespaces
-    return (xs, p : ps, b)
+    return (xs, ps, b)
   _ <- P.whitespaces
   _ <- P.char '}'
   return (Match args cases)
