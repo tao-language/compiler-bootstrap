@@ -634,19 +634,41 @@ inferAll ops env (a : bs) = do
   Right (substitute s2 t : ts, s2 `compose` s1)
 
 check :: Ops -> Env -> Expr -> Expr -> Either TypeError (Expr, Substitution)
+check ops env a (For x t) = do
+  let (t', s) = instantiate (map fst env) (For x t)
+  check ops (s `compose` env) a t'
+-- check ops env (And a b) (And ta tb) = do
+--   ((ta', tb'), s) <- check2 ops env (a, ta) (b, tb)
+--   Right (And ta' tb', s)
+-- check ops env (Or a b) t = do
+--   ((ta, tb), s1) <- check2 ops env (a, t) (b, t)
+--   (t, s2) <- unify ta tb
+--   Right (t, s2 `compose` s1)
+-- check ops env (Fun a b) (Fun ta tb) = do
+--   ((ta', tb'), s) <- check2 ops env (a, ta) (b, tb)
+--   Right (Fun ta' tb', s)
+check ops env a (Tag k) = do
+  (ta, s1) <- infer ops env a
+  let t = Tag k
+  let ta' = eval ops (Let env (App t ta))
+  (t', s2) <- unify ta' t
+  Right (t', s2 `compose` s1)
+check ops env a (And (Tag k) b) = do
+  (ta, s1) <- infer ops env a
+  let t = And (Tag k) (substitute s1 b)
+  let ta' = eval ops (Let env (App t ta))
+  (t', s2) <- unify ta' t
+  Right (t', s2 `compose` s1)
 check ops env a t = do
-  (ta, s1) <- case instantiate (map fst env) t of
-    (Tag k, _) -> do
-      (ta, s) <- infer ops env a
-      let t' = Let (s `compose` env) (App (Tag k) ta)
-      Right (eval ops t', s)
-    (And (Tag k) b, vars) -> do
-      (ta, s) <- infer ops (vars ++ env) a
-      let t' = Let (s `compose` env) (App (And (Tag k) b) ta)
-      Right (eval ops (for (map fst vars) t'), s)
-    (_, vars) -> infer ops (vars ++ env) a
-  (t, s2) <- unify ta (substitute s1 t)
-  Right (t, s2 `compose` s1)
+  (ta, s1) <- infer ops env a
+  (t', s2) <- unify ta (substitute s1 t)
+  Right (t', s2 `compose` s1)
+
+check2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> Either TypeError ((Expr, Expr), Substitution)
+check2 ops env (a, ta) (b, tb) = do
+  (ta', s1) <- check ops env a ta
+  (tb', s2) <- check ops (s1 `compose` env) (substitute s1 b) (substitute s1 tb)
+  Right ((substitute s2 ta', tb'), s2 `compose` s1)
 
 instantiate :: [String] -> Expr -> (Expr, Substitution)
 instantiate vars (For x a) | x `occurs` a = do
@@ -668,9 +690,9 @@ annotate ops env expr = do
         Right (t, s) -> (t, s)
         Left _ -> (Err, [])
   let (a, s2) = case expr of
-        Ann a b -> do
-          let ((a', ta), (b', tb), s2) = annotate2 ops env a b
-          (Ann a' (for (map fst (s2 `compose` s1)) b'), s2)
+        Ann a _ -> do
+          let ((a', ta), s2) = annotate ops env a
+          (a', s2)
         And a b -> do
           let ((a', ta), (b', tb), s2) = annotate2 ops env a b
           (And a' b', s2)
@@ -679,7 +701,7 @@ annotate ops env expr = do
           (Or a' b', s2)
         Fun a b -> do
           let ((a', ta), (b', tb), s2) = annotate2 ops env a b
-          (Fun (Ann (dropType a') ta) b', s2)
+          (Fun (Ann a' ta) b', s2)
         App a b -> do
           let ((a', ta), (b', tb), s2) = annotate2 ops env a b
           (App a' (Ann b' tb), s2)
@@ -702,21 +724,21 @@ annotate2 :: Ops -> Env -> Expr -> Expr -> ((Expr, Expr), (Expr, Expr), Substitu
 annotate2 ops env a b = do
   let ((a', ta), s1) = annotate ops env a
   let ((b', tb), s2) = annotate ops (s1 `compose` env) (substitute s1 b)
-  ((a', ta), (b', tb), s2 `compose` s1)
+  ((substitute s2 a', substitute s2 ta), (b', tb), s2 `compose` s1)
 
 annotateAll :: Ops -> Env -> [Expr] -> (([Expr], [Expr]), Substitution)
 annotateAll _ _ [] = (([], []), [])
 annotateAll ops env (a : bs) = do
   let ((a', ta), s1) = annotate ops env a
   let ((bs', bsT), s2) = annotateAll ops (s1 `compose` env) (map (substitute s1) bs)
-  ((a' : bs', ta : bsT), s2 `compose` s1)
+  ((substitute s2 a' : bs', substitute s2 ta : bsT), s2 `compose` s1)
 
 annotateDefs :: Ops -> Env -> [(String, Expr)] -> (([(String, Expr)], [(String, Expr)]), Substitution)
 annotateDefs _ _ [] = (([], []), [])
 annotateDefs ops env ((x, a) : defs) = do
   let ((a', ta), s1) = annotate ops env a
   let ((defs', defsT), s2) = annotateDefs ops (s1 `compose` env) (map (second (substitute s1)) defs)
-  (((x, a') : defs', (x, ta) : defsT), s2 `compose` s1)
+  (((x, substitute s2 a') : defs', (x, substitute s2 ta) : defsT), s2 `compose` s1)
 
 -- checkTypes :: Env -> [TypeError]
 -- checkTypes env = do
