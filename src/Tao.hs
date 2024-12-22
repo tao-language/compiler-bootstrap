@@ -363,6 +363,35 @@ instance FreeVars Expr where
     With a fields -> freeVars a `union` freeVars (and' (map snd fields))
     Err -> []
 
+freeTags :: Expr -> [String]
+freeTags = \case
+  Any -> []
+  Unit -> []
+  IntT -> []
+  NumT -> []
+  Int _ -> []
+  Num _ -> []
+  Var _ -> []
+  Tag k -> [k]
+  Ann a b -> freeTags a `union` freeTags b
+  And a b -> freeTags a `union` freeTags b
+  Or a b -> freeTags a `union` freeTags b
+  Fix x a -> delete x (freeTags a)
+  For xs a -> filter (`notElem` xs) (freeTags a)
+  Fun a b -> freeTags a `union` freeTags b
+  App a b -> freeTags a `union` freeTags b
+  Call _ args -> freeTags (and' args)
+  Op1 op a -> [show op] `union` freeTags a
+  Op2 op a b -> [show op] `union` freeTags a `union` freeTags b
+  Let (a, b) c -> freeTags a `union` freeTags b `union` freeTags c
+  Bind (a, b) c -> freeTags a `union` freeTags b `union` freeTags c
+  If a b c -> freeTags a `union` freeTags b `union` freeTags c
+  Match args cases -> freeTags (and' args) `union` freeTags (and' (map (\(xs, ps, b) -> for xs (fun ps b)) cases))
+  Record fields -> freeTags (and' (map snd fields))
+  Select a fields -> freeTags a `union` freeTags (and' (map snd fields))
+  With a fields -> freeTags a `union` freeTags (and' (map snd fields))
+  Err -> []
+
 bindings :: Expr -> [String]
 bindings = \case
   For xs _ -> xs
@@ -535,11 +564,17 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
   compile ctx path (name, expr) = do
     let a = lower expr
-    let env = map (compile ctx path) (delete name (C.freeVars a))
+    let env =
+          delete name (C.freeTags a `union` C.freeVars a)
+            & map (compile ctx path)
+            & filter (\(x, a) -> a /= C.Err)
     (env, a)
 
 instance Compile ((String, Expr) -> C.Expr) where
   compile :: [Module] -> String -> (String, Expr) -> C.Expr
+  compile ctx path (name@"not", expr) = do
+    let (env, a) = compile ctx path (name, expr)
+    error $ intercalate "\n" [">> compile not", show env, show a, show (C.infer' buildOps env a), "=============="]
   compile ctx path (name, expr) = do
     let (env, a) = compile ctx path (name, expr)
     -- let ((a', _), s) = C.annotate buildOps [] (C.Let env a)
@@ -550,7 +585,10 @@ instance Compile ((String, Expr) -> C.Expr) where
     --     let (a', _) = C.typed buildOps env a ta
     --     C.for (map fst s) $ C.let' env a'
     --   Left _ -> C.let' env a
-    let ((a', _), s) = C.annotate buildOps env a
+    -- let ((a', _), s) = C.annotate buildOps env a
+    let (a', s) = case C.infer' buildOps env a of
+          Right ((a', _), s) -> (a', s)
+          Left _ -> (a, [])
     C.for (map fst s) (C.let' env a')
 
 instance Compile (Expr -> C.Expr) where

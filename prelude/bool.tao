@@ -1,4 +1,4 @@
-type Bool = True | False
+type Bool = True -> Bool | False -> Bool
 
 : Bool -> Bool
 not = {
