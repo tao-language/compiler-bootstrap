@@ -420,7 +420,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- annotate' (Ann (Fun _A _B) (Fun _T _T)) `shouldBe` ((Err, Err), [])
     -- annotate' (Ann (Fun _A _B `Or` Fun Any _A) (Fun _T _T)) `shouldBe` ((Err, Err), [])
     -- typed' _A _T `shouldBe` ((Err, Err), [])
-    typed' (Fun _A _B) (Fun _T _T) `shouldBe` Err
+    -- typed' (Fun _A _B) (Fun _T _T) `shouldBe` Err
+    typed' (Fun _A _B `Or` Fun Any _B) (Fun _T _T) `shouldBe` (Err, [])
     -- typed' (Ann (Fun _A _B) (Fun _T _T)) `shouldBe` ((Err, Err), [])
     -- > f A; B
     -- > f B; A

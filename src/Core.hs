@@ -258,7 +258,7 @@ instance FreeVars Expr where
   freeVars (Int _) = []
   freeVars (Num _) = []
   freeVars (Var x) = [x]
-  freeVars (Tag _) = []
+  freeVars (Tag k) = [k]
   freeVars (Ann a b) = freeVars a `union` freeVars b
   freeVars (And a b) = freeVars a `union` freeVars b
   freeVars (Or a b) = freeVars a `union` freeVars b
@@ -580,6 +580,7 @@ infer ops env (Var x) = case lookup x env of
   Just a -> infer ops env a
   Nothing -> Left (UndefinedVar x)
 infer ops env (Tag k) = case lookup k env of
+  Just Err -> Right (Tag k, [])
   Just (Tag k') | k == k' -> Right (Tag k, [])
   Just a -> infer ops env a
   Nothing -> Right (Tag k, [])
@@ -678,7 +679,13 @@ instantiate vars (For x a) | x `occurs` a = do
 instantiate vars (For _ a) = instantiate vars a
 instantiate _ a = (a, [])
 
-typed :: Ops -> Env -> Expr -> Expr -> Expr
+typed :: Ops -> Env -> Expr -> Expr -> (Expr, Substitution)
+typed ops env a Any = do
+  let (ta, s1) = case infer ops env a of
+        Right (ta, s) -> (ta, s)
+        Left _ -> (Err, [])
+  let (a', s2) = typed ops env a ta
+  (a', s2 `compose` s1)
 -- Any
 -- Unit
 -- IntT
@@ -687,64 +694,149 @@ typed :: Ops -> Env -> Expr -> Expr -> Expr
 -- Num Double
 -- Tag String
 -- Var String
--- Ann Expr Expr
--- And Expr Expr
--- Or Expr Expr
-typed ops env a (For x t) = do
-  let (t', s1) = instantiate (map fst env) (For x t)
-  typed ops (s1 `compose` env) a t'
+typed ops env (Ann a t) _ = typed ops env a t
+-- typed ops env (And a b) (And ta tb) = do
+--   let ((a', b'), s) = typed2 ops env (a, ta) (b, tb)
+--   (And a' b', s)
+-- typed ops env (Or a b) t = do
+--   let ((a', b'), s) = typed2 ops env (a, t) (b, t)
+--   (Or a' b', s)
+typed ops env (For x a) t = do
+  let (a', s) = typed ops (pushVars [x] env) a t
+  (For x a', s)
+-- typed ops env a (For x t) = do
+--   let (t', s1) = instantiate (map fst env) (For x t)
+--   typed ops (s1 `compose` env) a t'
 -- Fix String Expr
-typed ops env (Fun a b) (Fun ta tb) =
-  Fun (Ann a ta) (typed ops env b tb)
-typed ops env (App a b) _ = case infer ops env b of
-  Right (tb, s) -> App a (Ann b tb)
-  Left _ -> App a b
+typed ops env (Fun a b) (Fun ta tb) = do
+  let ((a', b'), s) = typed2 ops env (a, ta) (b, tb)
+  (Fun (Ann a' ta) b', s)
+typed ops env (App a b) t = do
+  error $ intercalate "\n" ["TODO: App", show env, show a, show b, show t]
 -- Call String [Expr]
 -- Let [(String, Expr)] Expr
 -- Err
-typed _ _ a _ = a
+typed _ _ a _ = (a, [])
+
+typed2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> ((Expr, Expr), Substitution)
+typed2 ops env (a, ta) (b, tb) = do
+  let (a', s1) = typed ops env a ta
+  let (b', s2) = typed ops (s1 `compose` env) (substitute s1 b) (substitute s1 tb)
+  ((substitute s2 a', b'), s2 `compose` s1)
 
 annotate :: Ops -> Env -> Expr -> ((Expr, Expr), Substitution)
+annotate ops env a@Any = case infer ops env a of
+  -- TODO: centralize
+  Right (ta, s) -> ((a, ta), s)
+  Left _ -> ((a, Err), [])
+-- Unit
+-- IntT
+-- NumT
+-- Int Int
+-- Num Double
+-- Tag String
+annotate ops env a@Tag {} = case infer ops env a of
+  -- TODO: centralize
+  Right (ta, s) -> ((a, ta), s)
+  Left _ -> ((a, Err), [])
+annotate ops env a@Var {} = case infer ops env a of
+  -- TODO: centralize
+  Right (ta, s) -> ((a, ta), s)
+  Left _ -> ((a, Err), [])
+annotate ops env (Ann a t) = case (a, t) of
+  (Var _, _) -> ((a, t), [])
+  (Or a b, t) -> do
+    let ((a', ta), (b', tb), s) = annotate2 ops env (Ann a t) (Ann b t)
+    ((Or a' b', t), s)
+  (For x a, t) -> annotate ops (pushVars [x] env) (Ann a t)
+  (Fun a b, Fun ta tb) -> do
+    let ((b', tb'), s) = annotate ops env (Ann b tb)
+    ((Fun (Ann a ta) b', Fun ta tb'), s)
+  (App a b, t) -> do
+    let ((a', ta), (b', tb), s) = annotate2 ops env a b
+    ((App a' (Ann b' tb), t), s)
+  (a, t) ->
+    error $
+      intercalate
+        "\n"
+        [ ">> annotate Ann",
+          "   env: " ++ show env,
+          "   a:   " ++ show a,
+          "   t:   " ++ show t
+        ]
+annotate ops env (Ann a b) = do
+  let ((a', ta), (b', tb), s) = annotate2 ops env a b
+  ((a', b'), s)
+-- And Expr Expr
+annotate ops env (Or a b) = do
+  let ((a', ta), (b', tb), s1) = annotate2 ops env a b
+  let (t, s2) = case unify ta tb of
+        Right (t, s) -> (t, s)
+        Left _ -> (Err, [])
+  ((Or a' b', t), s2 `compose` s1)
 annotate ops env (For x a) = do
   let ((a', ta), s) = annotate ops (pushVars [x] env) a
   ((for [x] a', ta), s)
 annotate ops env (Fix x a) = do
   let ((a', ta), s) = annotate ops (pushVars [x] env) a
   ((fix [x] a', ta), s)
-annotate ops env expr = do
-  let (ta, s1) = case infer ops env expr of
+annotate ops env (Fun a b) = do
+  let ((a', ta), (b', tb), s) = annotate2 ops env a b
+  ((Fun (Ann a' ta) b', Fun ta tb), s)
+annotate ops env (App a b) = do
+  let (t, s1) = case infer ops env (App a b) of
         Right (t, s) -> (t, s)
         Left _ -> (Err, [])
-  let (a, s2) = case expr of
-        Ann a _ -> do
-          let ((a', ta), s2) = annotate ops env a
-          (a', s2)
-        And a b -> do
-          let ((a', ta), (b', tb), s2) = annotate2 ops env a b
-          (And a' b', s2)
-        Or a b -> do
-          let ((a', ta), (b', tb), s2) = annotate2 ops env a b
-          (Or a' b', s2)
-        Fun a b -> do
-          let ((a', ta), (b', tb), s2) = annotate2 ops env a b
-          (Fun (Ann a' ta) b', s2)
-        App a b -> do
-          let ((a', ta), (b', tb), s2) = annotate2 ops env a b
-          (App a' (Ann b' tb), s2)
-        Call f args -> do
-          let ((args', argsT), s2) = annotateAll ops env args
-          (Call f args', s2)
-        Let [] a -> do
-          let ((a', _), s2) = annotate ops env a
-          (a', s2)
-        Let defs a -> do
-          let ((a', _), s2) = annotate ops (defs ++ env) a
-          let ((defs', defsT), s3) = annotateDefs ops (defs ++ env) defs
-          (Let defs' a', s3 `compose` s2)
-        _ -> (expr, [])
-  let s = s2 `compose` s1
-  let sub = substitute s
-  ((sub a, sub ta), s)
+  let ((c, _), s2) = annotate ops (s1 `compose` env) (Ann (substitute s1 (App a b)) t)
+  ((c, t), s2 `compose` s1)
+-- Call String [Expr]
+-- Let [(String, Expr)] Expr
+annotate ops env a@Err = case infer ops env a of
+  -- TODO: centralize
+  Right (ta, s) -> ((a, ta), s)
+  Left _ -> ((a, Err), [])
+-- annotate ops env expr = do
+--   let (ta, s1) = case infer ops env expr of
+--         Right (t, s) -> (t, s)
+--         Left _ -> (Err, [])
+--   let (a, s2) = case expr of
+--         Ann a _ -> do
+--           let ((a', ta), s2) = annotate ops env a
+--           (a', s2)
+--         And a b -> do
+--           let ((a', ta), (b', tb), s2) = annotate2 ops env a b
+--           (And a' b', s2)
+--         Or a b -> do
+--           let ((a', ta), (b', tb), s2) = annotate2 ops env a b
+--           (Or a' b', s2)
+--         Fun a b -> do
+--           let ((a', ta), (b', tb), s2) = annotate2 ops env a b
+--           (Fun (Ann a' ta) b', s2)
+--         App a b -> do
+--           let ((a', ta), (b', tb), s2) = annotate2 ops env a b
+--           (App a' (Ann b' tb), s2)
+--         Call f args -> do
+--           let ((args', argsT), s2) = annotateAll ops env args
+--           (Call f args', s2)
+--         Let [] a -> do
+--           let ((a', _), s2) = annotate ops env a
+--           (a', s2)
+--         Let defs a -> do
+--           let ((a', _), s2) = annotate ops (defs ++ env) a
+--           let ((defs', defsT), s3) = annotateDefs ops (defs ++ env) defs
+--           (Let defs' a', s3 `compose` s2)
+--         _ -> (expr, [])
+--   let s = s2 `compose` s1
+--   let sub = substitute s
+--   ((sub a, sub ta), s)
+annotate ops env expr =
+  error $
+    intercalate
+      "\n"
+      [ ">> annotate",
+        "env: " ++ show env,
+        "expr: " ++ show expr
+      ]
 
 annotate2 :: Ops -> Env -> Expr -> Expr -> ((Expr, Expr), (Expr, Expr), Substitution)
 annotate2 ops env a b = do

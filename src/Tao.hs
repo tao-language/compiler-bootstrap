@@ -464,6 +464,32 @@ in' _ "" = False
 in' substring string | substring `isPrefixOf` string = True
 in' substring (_ : string) = in' substring string
 
+-- class Scope a where
+--   scope :: [Module] -> a -> [(String, Expr)]
+
+-- instance Scope String where
+--   scope :: [Module] -> String -> [(String, Expr)]
+--   scope ctx path = case lookup path ctx of
+--     Just stmts -> scope ctx stmts
+--     Nothing -> []
+
+-- instance Scope [Stmt] where
+--   scope :: [Module] -> [Stmt] -> [(String, Expr)]
+--   scope ctx = concatMap (scope ctx)
+
+-- instance Scope Stmt where
+--   scope :: [Module] -> Stmt -> [(String, Expr)]
+--   scope ctx = \case
+--     -- Import path' alias names -> case names of
+--     --   (x, y) : names -> do
+--     --   let defs = resolve ctx path' x
+--     --   defs ++ scope ctx path (name, Import path' alias names)
+--     -- [] | alias == name -> [(path, Tag path')]
+--     -- [] -> []
+--     Def (p, b) -> map (\x -> (x, let' (p, b) (Var x))) (bindings p)
+--     TypeDef (name, args, body) -> [(name, fun args body)]
+--     _ -> []
+
 class Resolve a where
   resolve :: [Module] -> String -> a -> [(String, Expr)]
 
@@ -519,9 +545,13 @@ instance Compile ((String, Expr) -> C.Expr) where
     -- let ((a', _), s) = C.annotate buildOps [] (C.Let env a)
     -- let ((a', _), s) = C.annotate buildOps [] (C.Let env a)
     -- C.for (map fst s) (C.dropTypes a')
-    case C.infer buildOps env a of
-      Right (ta, s) -> C.dropTypes (C.for (map fst s) $ C.let' env (C.typed buildOps env a ta))
-      Left _ -> C.dropTypes (C.let' env a)
+    -- case C.infer buildOps env a of
+    --   Right (ta, s) -> do
+    --     let (a', _) = C.typed buildOps env a ta
+    --     C.for (map fst s) $ C.let' env a'
+    --   Left _ -> C.let' env a
+    let ((a', _), s) = C.annotate buildOps env a
+    C.for (map fst s) (C.let' env a')
 
 instance Compile (Expr -> C.Expr) where
   compile :: [Module] -> String -> Expr -> C.Expr

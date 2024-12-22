@@ -3,7 +3,7 @@ type Bool = True | False
 : Bool -> Bool
 not = {
 | True -> False
-| False -> True
+| _ -> True
 }
 
 : Bool, Bool -> Bool
