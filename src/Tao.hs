@@ -516,8 +516,12 @@ instance Compile ((String, Expr) -> C.Expr) where
   compile :: [Module] -> String -> (String, Expr) -> C.Expr
   compile ctx path (name, expr) = do
     let (env, a) = compile ctx path (name, expr)
-    let ((a', _), s) = C.annotate buildOps [] (C.Let env a)
-    C.for (map fst s) (C.dropTypes a')
+    -- let ((a', _), s) = C.annotate buildOps [] (C.Let env a)
+    -- let ((a', _), s) = C.annotate buildOps [] (C.Let env a)
+    -- C.for (map fst s) (C.dropTypes a')
+    case C.infer buildOps env a of
+      Right (ta, s) -> C.dropTypes (C.for (map fst s) $ C.let' env (C.typed buildOps env a ta))
+      Left _ -> C.dropTypes (C.let' env a)
 
 instance Compile (Expr -> C.Expr) where
   compile :: [Module] -> String -> Expr -> C.Expr

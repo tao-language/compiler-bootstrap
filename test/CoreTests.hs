@@ -407,14 +407,21 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ annotate GADT" $ do
     let (_T, _A, _B) = (Tag "T", Tag "A", Tag "B")
     let env =
-          [ ("T", _A `Or` _B),
+          [ ("T", Fun _A _T `Or` Fun _B _T),
             ("f", Ann (Fun _A _B `Or` Fun Any _A) (Fun _T _T))
           ]
 
+    let infer' a = fmap fst (infer ops env a)
     let annotate' = annotate ops env
-    -- let infer' a = fmap fst (infer ops env a)
-    -- infer' f `shouldBe` Right Err
-    annotate' f `shouldBe` ((Err, Err), [])
+    let typed' = typed ops env
+    -- infer' (Ann (Fun _A _B) (Fun _T _T)) `shouldBe` Right Err
+    -- infer' (Ann (Fun Any _A) (Fun _T _T)) `shouldBe` Right Err
+    -- infer' (Ann (Fun _A _B `Or` Fun Any _A) (Fun _T _T)) `shouldBe` Right Err
+    -- annotate' (Ann (Fun _A _B) (Fun _T _T)) `shouldBe` ((Err, Err), [])
+    -- annotate' (Ann (Fun _A _B `Or` Fun Any _A) (Fun _T _T)) `shouldBe` ((Err, Err), [])
+    -- typed' _A _T `shouldBe` ((Err, Err), [])
+    typed' (Fun _A _B) (Fun _T _T) `shouldBe` Err
+    -- typed' (Ann (Fun _A _B) (Fun _T _T)) `shouldBe` ((Err, Err), [])
     -- > f A; B
     -- > f B; A
     -- > f C; !error

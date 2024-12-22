@@ -634,31 +634,31 @@ inferAll ops env (a : bs) = do
   Right (substitute s2 t : ts, s2 `compose` s1)
 
 check :: Ops -> Env -> Expr -> Expr -> Either TypeError (Expr, Substitution)
-check ops env a (For x t) = do
-  let (t', s) = instantiate (map fst env) (For x t)
-  check ops (s `compose` env) a t'
--- check ops env (And a b) (And ta tb) = do
---   ((ta', tb'), s) <- check2 ops env (a, ta) (b, tb)
---   Right (And ta' tb', s)
--- check ops env (Or a b) t = do
---   ((ta, tb), s1) <- check2 ops env (a, t) (b, t)
---   (t, s2) <- unify ta tb
---   Right (t, s2 `compose` s1)
--- check ops env (Fun a b) (Fun ta tb) = do
---   ((ta', tb'), s) <- check2 ops env (a, ta) (b, tb)
---   Right (Fun ta' tb', s)
+check _ _ Any t = Right (t, [])
 check ops env a (Tag k) = do
   (ta, s1) <- infer ops env a
-  let t = Tag k
-  let ta' = eval ops (Let env (App t ta))
-  (t', s2) <- unify ta' t
-  Right (t', s2 `compose` s1)
+  let ta' = eval ops (Let env (App (Tag k) ta))
+  (t, s2) <- unify ta' (Tag k)
+  Right (t, s2 `compose` s1)
 check ops env a (And (Tag k) b) = do
   (ta, s1) <- infer ops env a
   let t = And (Tag k) (substitute s1 b)
   let ta' = eval ops (Let env (App t ta))
   (t', s2) <- unify ta' t
   Right (t', s2 `compose` s1)
+check ops env (And a b) (And ta tb) = do
+  ((ta', tb'), s) <- check2 ops env (a, ta) (b, tb)
+  Right (And ta' tb', s)
+check ops env (Or a b) t = do
+  ((ta, tb), s1) <- check2 ops env (a, t) (b, t)
+  (t, s2) <- unify ta tb
+  Right (t, s2 `compose` s1)
+check ops env a (For x t) = do
+  let (t', s) = instantiate (map fst env) (For x t)
+  check ops (s `compose` env) a t'
+check ops env (Fun a b) (Fun ta tb) = do
+  ((ta', tb'), s) <- check2 ops env (a, ta) (b, tb)
+  Right (Fun ta' tb', s)
 check ops env a t = do
   (ta, s1) <- infer ops env a
   (t', s2) <- unify ta (substitute s1 t)
@@ -677,6 +677,32 @@ instantiate vars (For x a) | x `occurs` a = do
   (b, (y, Var y) : s)
 instantiate vars (For _ a) = instantiate vars a
 instantiate _ a = (a, [])
+
+typed :: Ops -> Env -> Expr -> Expr -> Expr
+-- Any
+-- Unit
+-- IntT
+-- NumT
+-- Int Int
+-- Num Double
+-- Tag String
+-- Var String
+-- Ann Expr Expr
+-- And Expr Expr
+-- Or Expr Expr
+typed ops env a (For x t) = do
+  let (t', s1) = instantiate (map fst env) (For x t)
+  typed ops (s1 `compose` env) a t'
+-- Fix String Expr
+typed ops env (Fun a b) (Fun ta tb) =
+  Fun (Ann a ta) (typed ops env b tb)
+typed ops env (App a b) _ = case infer ops env b of
+  Right (tb, s) -> App a (Ann b tb)
+  Left _ -> App a b
+-- Call String [Expr]
+-- Let [(String, Expr)] Expr
+-- Err
+typed _ _ a _ = a
 
 annotate :: Ops -> Env -> Expr -> ((Expr, Expr), Substitution)
 annotate ops env (For x a) = do
