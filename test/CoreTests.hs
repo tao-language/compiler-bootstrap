@@ -404,28 +404,16 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     annotate' (For "x" $ Fun x y) `shouldBe` ((For "x" $ Fun (Ann x (Var "xT")) y, Fun (Var "xT") NumT), [("xT", Var "xT"), ("x", Ann x (Var "xT"))])
     annotate' (Ann (For "x" $ Fun x y) (Fun Unit NumT)) `shouldBe` ((For "x" $ Fun (Ann x Unit) y, Fun Unit NumT), [("xT", Unit), ("x", Ann x Unit)])
 
-  it "☯ annotate GADT" $ do
+  it "☯ check" $ do
     let (_T, _A, _B) = (Tag "T", Tag "A", Tag "B")
-    let env =
-          [ ("T", Fun _A _T `Or` Fun _B _T),
-            ("f", Ann (Fun _A _B `Or` Fun Any _A) (Fun _T _T))
-          ]
+    let env = [("T", Fun (Ann _A _A) _T `Or` Fun (Ann _B _B) _T)]
+    let c = check' ops env
+    let i = infer' ops (("x", Ann x _T) : env)
 
-    let infer' a = fmap fst (infer ops env a)
-    let annotate' = annotate ops env
-    let typed' = typed ops env
-    -- infer' (Ann (Fun _A _B) (Fun _T _T)) `shouldBe` Right Err
-    -- infer' (Ann (Fun Any _A) (Fun _T _T)) `shouldBe` Right Err
-    -- infer' (Ann (Fun _A _B `Or` Fun Any _A) (Fun _T _T)) `shouldBe` Right Err
-    -- annotate' (Ann (Fun _A _B) (Fun _T _T)) `shouldBe` ((Err, Err), [])
-    -- annotate' (Ann (Fun _A _B `Or` Fun Any _A) (Fun _T _T)) `shouldBe` ((Err, Err), [])
-    -- typed' _A _T `shouldBe` ((Err, Err), [])
-    -- typed' (Fun _A _B) (Fun _T _T) `shouldBe` Err
-    typed' (Fun _A _B `Or` Fun Any _B) (Fun _T _T) `shouldBe` (Err, [])
-    -- typed' (Ann (Fun _A _B) (Fun _T _T)) `shouldBe` ((Err, Err), [])
-    -- > f A; B
-    -- > f B; A
-    -- > f C; !error
+    -- c (Fun Any _A) (Fun _T _T) `shouldBe` Right ((Fun (Ann Any _T) _A, Fun _T _T), [])
+    -- c (For "x" $ Fun x _A) (Fun _T _T) `shouldBe` Right ((For "x" $ Fun (Ann x _T) _A, Fun _T _T), [("x", Ann x _T)])
+    -- c (For "x" $ Fun x (App (Fun _A _B `Or` Fun _B _A) x)) (Fun _T _T) `shouldBe` Right ((For "x" $ Fun (Ann x _T) _A, Fun _T _T), [("x", Ann x _T)])
+    i (App (Fun _A _B `Or` Fun _B _A) (Ann x _T)) `shouldBe` Left (UndefinedVar "TODO")
     True `shouldBe` True
 
 -- it "☯ checkTypes" $ do

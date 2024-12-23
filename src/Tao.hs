@@ -572,9 +572,9 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
 
 instance Compile ((String, Expr) -> C.Expr) where
   compile :: [Module] -> String -> (String, Expr) -> C.Expr
-  compile ctx path (name@"not", expr) = do
-    let (env, a) = compile ctx path (name, expr)
-    error $ intercalate "\n" [">> compile not", show env, show a, show (C.infer' buildOps env a), "=============="]
+  -- compile ctx path (name@"not", expr) = do
+  --   let (env, a) = compile ctx path (name, expr)
+  --   error $ intercalate "\n" [">> compile not", show env, show a, show (C.infer' buildOps env a), "=============="]
   compile ctx path (name, expr) = do
     let (env, a) = compile ctx path (name, expr)
     -- let ((a', _), s) = C.annotate buildOps [] (C.Let env a)
