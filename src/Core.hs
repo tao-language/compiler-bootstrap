@@ -696,12 +696,33 @@ infer' ops env (Fix x a) = do
   Right ((Fix x a', Fix x ta), s)
 infer' ops env (Fun a b) = do
   ((a', ta), (b', tb), s) <- infer'2 ops env a b
-  Right ((Fun (Ann a' ta) b', Fun ta tb), s)
+  Right ((Fun (Ann (dropTypes a') ta) b', Fun ta tb), s)
 infer' ops env (App a b) = do
+  -- TODO: propaget tb into a'
+  -- This is where coercions would happen (like record reordering / default values)
+  -- ((a', ta), (b', tb), s1) <- infer'2 ops env a b
+  -- error $ intercalate "\n" [show env, show (App a' b'), show tb]
+  -- (aa, t, s2) <- checkApp ops (s1 `compose` env) (a', ta) (b', tb)
+  -- Right ((App (substitute s2 a') (substitute s2 (Ann b' tb)), t), s2 `compose` s1)
   ((a', ta), (b', tb), s1) <- infer'2 ops env a b
-  (aa, t, s2) <- checkApp ops (s1 `compose` env) (a', ta) (b', tb)
-  Right ((App (substitute s2 a') (substitute s2 (Ann b' tb)), t), s2 `compose` s1)
-infer' ops env (Let env' a) = infer' ops (env' ++ env) a
+  let unifyApp ops env ta tb = case ta of
+        Or t1 t2 -> do
+          (t1', s1) <- unifyApp ops env t1 tb
+          (t2', s2) <- unifyApp ops (s1 `compose` env) (substitute s1 t2) (substitute s1 tb)
+          Right (Or (substitute s2 t1') t2', s2 `compose` s1)
+        Fun t1 t2 -> do
+          (_, s) <- unify' ops env t1 tb
+          Right (substitute s t2, s)
+        ta -> error $ "TODO infer App " ++ show ta
+  (t, s2) <- unifyApp ops env ta tb
+  -- let checkApp ops env (a, ta) tb = case (a, ta) of
+  --       (Fun b c, Fun t1 t2) -> do
+  --         ((b', tb'), _, s) <- check'2 ops env (b, t1) (b, tb)
+  --         Right (Fun (dropAllTypes b') c, substitute s t2, s)
+  --       _ -> error $ "TODO checkApp " ++ show (a, ta)
+  -- (a', t, s2) <- checkApp ops env (a', ta) tb
+  Right ((App a' (Ann (substitute s2 b') (substitute s2 tb)), t), s2 `compose` s1)
+infer' ops env (Let defs a) = infer' ops (defs ++ env) a
 infer' ops env (Call op args) = do
   let x = newName (('$' : op) : map fst env) ('$' : op)
   (args', s) <- infer'All ops (pushVars [x] env) args
@@ -769,16 +790,25 @@ check' ops env a (For x t) = do
 -- check' ops env (Fun a b) (Fun ta tb) = do
 --   ((a', ta'), (b', tb'), s) <- check'2 ops env (a, ta) (b, tb)
 --   Right ((Fun (Ann a' ta') b', Fun ta' tb'), s)
-check' ops env (Fun a b) t = do
-  ((a', ta), (b', tb), s1) <- infer'2 ops env a b
-  -- error $ intercalate "\n" [show env, show (a', ta), show (b', tb), show s1]
-  -- error $ intercalate "\n" [show env, show (s1 `compose` env), show (Fun ta tb), show (substitute s1 t), show s1]
-  (t', s2) <- case substitute s1 t of
-    Fun ta' tb' -> do
-      ((t1, t2), s) <- unify'2 ops (s1 `compose` env) (ta, ta') (tb, tb')
-      Right (Fun t1 t2, s)
-    _ -> unify' ops (s1 `compose` env) (Fun ta tb) (substitute s1 t)
-  Right ((substitute s2 $ Fun (Ann a' ta) b', t'), s2 `compose` s1)
+check' ops env (Fun a b) (Fun ta tb) = do
+  -- error $ intercalate "\n" [show env, show (Fun a b), show (Fun ta tb)]
+  ((a', ta'), (b', tb'), s) <- check'2 ops env (a, ta) (b, tb)
+  -- error $ intercalate "\n" [show env, show (a', ta), show (b', tb), show s]
+  Right ((Fun (Ann (dropTypes a') ta') b', Fun ta' tb'), s)
+-- check' ops env (Fun a b) t = do
+--   ((a', ta), (b', tb), s1) <- infer'2 ops env a b
+--   -- error $ intercalate "\n" [show env, show (a', ta), show (b', tb), show s1]
+--   -- error $ intercalate "\n" [show env, show (s1 `compose` env), show (Fun ta tb), show (substitute s1 t), show s1]
+--   (t', s2) <- case substitute s1 t of
+--     Fun ta' tb' -> do
+--       ((t1, t2), s) <- unify'2 ops (s1 `compose` env) (ta, ta') (tb, tb')
+--       Right (Fun t1 t2, s)
+--     _ -> unify' ops (s1 `compose` env) (Fun ta tb) (substitute s1 t)
+--   Right ((substitute s2 $ Fun (Ann a' ta) b', t'), s2 `compose` s1)
+check' ops env (App a b) t2 = do
+  ((b', t1), s1) <- infer' ops env b
+  ((a', ta), s2) <- check' ops env a (Fun t1 (substitute s1 t2))
+  Right ((App a' (substitute s2 $ Ann b' t1), substitute (s2 `compose` s1) t2), s2 `compose` s1)
 check' ops env a t = do
   ((a', ta), s1) <- infer' ops env a
   (t', s2) <- unify' ops env ta (substitute s1 t)
