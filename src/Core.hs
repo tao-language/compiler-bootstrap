@@ -688,11 +688,8 @@ infer' ops env (And a b) = do
   ((a', ta), (b', tb), s) <- infer'2 ops env a b
   Right ((And a' b', And ta tb), s)
 infer' ops env (Or a b) = do
-  ((a', ta), (b', tb), s1) <- infer'2 ops env a b
-  let (t, s2) = case unify ta tb of
-        Right (t, s) -> (t, s)
-        Left _ -> (Or ta tb, [])
-  Right ((substitute s2 (Or a' b'), t), s2 `compose` s1)
+  ((a', ta), (b', tb), s) <- infer'2 ops env a b
+  Right ((Or a' b', Or ta tb), s)
 infer' ops env (For x a) = infer' ops ((x, Var x) : env) a
 infer' ops env (Fix x a) = do
   ((a', ta), s) <- infer' ops ((x, Var x) : env) a
@@ -703,7 +700,7 @@ infer' ops env (Fun a b) = do
 infer' ops env (App a b) = do
   ((a', ta), (b', tb), s1) <- infer'2 ops env a b
   (aa, t, s2) <- checkApp ops (s1 `compose` env) (a', ta) (b', tb)
-  Right ((App a' (Ann (substitute s2 b') tb), t), s2 `compose` s1)
+  Right ((App (substitute s2 a') (substitute s2 (Ann b' tb)), t), s2 `compose` s1)
 infer' ops env (Let env' a) = infer' ops (env' ++ env) a
 infer' ops env (Call op args) = do
   let x = newName (('$' : op) : map fst env) ('$' : op)
@@ -729,7 +726,7 @@ check' _ _ Any t = Right ((Any, t), [])
 check' ops env (Var x) t = case lookup x env of
   Just (Var x') | x == x' -> Right ((Var x, t), [(x, Ann (Var x) t)])
   Just (Ann (Var x') t') | x == x' -> do
-    (tx, s) <- unify t t'
+    (tx, s) <- unify' ops env t t'
     Right ((Var x, tx), s `compose` [(x, Ann (Var x) tx)])
   Just a -> do
     ((_, t), s) <- check' ops env a t
@@ -741,7 +738,7 @@ check' ops env (Var x) t = case lookup x env of
 --     Var _ -> Right (Tag k, [])
 --     _ -> do
 --       let ta' = eval ops (Let env (App (Tag k) ta))
---       unify ta' (Tag k)
+--       unify' ops env ta' (Tag k)
 --   Right ((substitute s2 a', t), s2 `compose` s1)
 check' ops env a (And (Tag k) b) = do
   -- ((a', ta), s1) <- infer' ops env a
@@ -750,7 +747,7 @@ check' ops env a (And (Tag k) b) = do
   --   _ -> do
   --     let t = And (Tag k) (substitute s1 b)
   --     let ta' = eval ops (Let env (App t ta))
-  --     unify ta' t
+  --     unify' ops env ta' t
   -- Right ((substitute s2 a', t), s2 `compose` s1)
   error "TODO: implement this on unify"
 check' ops env (And a b) (And ta tb) = do
@@ -758,7 +755,7 @@ check' ops env (And a b) (And ta tb) = do
   Right ((And a' b', And ta' tb'), s)
 check' ops env (Or a b) t = do
   ((a', ta), (b', tb), s1) <- check'2 ops env (a, t) (b, t)
-  (t, s2) <- unify ta tb
+  (t, s2) <- unify' ops env ta tb
   Right ((substitute s2 (Or a' b'), t), s2 `compose` s1)
 check' ops env (For x a) t = do
   ((a', ta), s) <- check' ops ((x, Var x) : env) a t
@@ -784,7 +781,7 @@ check' ops env (Fun a b) t = do
   Right ((substitute s2 $ Fun (Ann a' ta) b', t'), s2 `compose` s1)
 check' ops env a t = do
   ((a', ta), s1) <- infer' ops env a
-  (t', s2) <- unify ta (substitute s1 t)
+  (t', s2) <- unify' ops env ta (substitute s1 t)
   Right ((substitute s2 a', t'), s2 `compose` s1)
 
 check'2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> Either TypeError ((Expr, Expr), (Expr, Expr), Substitution)
@@ -801,13 +798,13 @@ checkApp ops env (a, ta) (b, tb) = case ta of
     Right (a, t, s)
   Or t1 t2 -> do
     (a1, t1', s1) <- checkApp ops env (a, t1) (b, tb)
-    (a2, t2', s2) <- checkApp ops (s1 `compose` env) (substitute s1 a, substitute s1 t2) (substitute s1 b, substitute s1 tb)
+    (a2, t2', s2) <- checkApp ops env (a, t2) (b, tb)
     Right (Or (substitute s2 a1) a2, Or (substitute s2 t1') t2', s2 `compose` s1)
   For x ta -> error "TODO: checkApp For"
   Fun t1 t2 -> do
     (t1', s1) <- unify' ops env tb t1
+    -- error $ intercalate "\n" [show env, show (a, ta), show (b, tb), show (t1', s1)]
     let t2' = substitute s1 t2
-    error $ intercalate "\n" [show env, show a, show (Fun t1' t2')]
     ((a', _), s2) <- check' ops env a (Fun t1' t2')
     Right (a', substitute s2 t2', s2 `compose` s1)
   ta -> Left (NotAFunction a ta)

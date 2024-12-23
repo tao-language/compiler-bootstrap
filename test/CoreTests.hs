@@ -412,8 +412,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
     -- c (Fun Any _A) (Fun _T _T) `shouldBe` Right ((Fun (Ann Any _T) _A, Fun _T _T), [])
     -- c (For "x" $ Fun x _A) (Fun _T _T) `shouldBe` Right ((For "x" $ Fun (Ann x _T) _A, Fun _T _T), [("x", Ann x _T)])
+    c (For "x" $ App (Fun _A _B) x) _T `shouldBe` Right ((For "x" $ Fun (Ann x _T) _A, Fun _T _B), [("x", Ann x _T)])
+    -- c (For "x" $ Fun x (App (Fun _A _B) x)) (Fun _T _T) `shouldBe` Right ((For "x" $ Fun (Ann x _T) _A, Fun _T _B), [("x", Ann x _T)])
     -- c (For "x" $ Fun x (App (Fun _A _B `Or` Fun _B _A) x)) (Fun _T _T) `shouldBe` Right ((For "x" $ Fun (Ann x _T) _A, Fun _T _T), [("x", Ann x _T)])
-    i (App (Fun _A _B `Or` Fun _B _A) (Ann x _T)) `shouldBe` Left (UndefinedVar "TODO")
+    -- i (App (Fun _A _B `Or` Fun _B _A) (Ann x _T)) `shouldBe` Left (UndefinedVar "TODO")
     True `shouldBe` True
 
 -- it "☯ checkTypes" $ do
