@@ -546,6 +546,23 @@ instance Resolve (String, Stmt) where
     TypeDef (name', args, body) | name == name' -> [(path, fun args body)]
     _ -> []
 
+class Defined a where
+  defined :: a -> [String]
+
+instance Defined ([Module], String) where
+  defined :: ([Module], String) -> [String]
+  defined (ctx, path) = case lookup path ctx of
+    Just stmts -> concatMap defined stmts
+    Nothing -> []
+
+instance Defined Stmt where
+  defined :: Stmt -> [String]
+  defined = \case
+    Import _ alias names -> alias : map snd names
+    Def (p, _) -> bindings p
+    TypeDef (name, _, _) -> [name]
+    Test {} -> []
+
 class Compile a where
   compile :: [Module] -> String -> a
 
@@ -572,21 +589,9 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
 
 instance Compile ((String, Expr) -> C.Expr) where
   compile :: [Module] -> String -> (String, Expr) -> C.Expr
-  compile ctx path (name@"not", expr) = do
-    let (env, a) = compile ctx path (name, expr)
-    error $ intercalate "\n" [">> compile not", show env, show a, show (C.infer' buildOps env a), "=============="]
   compile ctx path (name, expr) = do
     let (env, a) = compile ctx path (name, expr)
-    -- let ((a', _), s) = C.annotate buildOps [] (C.Let env a)
-    -- let ((a', _), s) = C.annotate buildOps [] (C.Let env a)
-    -- C.for (map fst s) (C.dropTypes a')
-    -- case C.infer buildOps env a of
-    --   Right (ta, s) -> do
-    --     let (a', _) = C.typed buildOps env a ta
-    --     C.for (map fst s) $ C.let' env a'
-    --   Left _ -> C.let' env a
-    -- let ((a', _), s) = C.annotate buildOps env a
-    let (a', s) = case C.infer' buildOps env a of
+    let (a', s) = case C.infer buildOps env a of
           Right ((a', _), s) -> (a', s)
           Left _ -> (a, [])
     C.for (map fst s) (C.let' env a')
