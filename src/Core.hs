@@ -444,7 +444,7 @@ substitute [] (Var x) = Var x
 substitute ((x, a) : _) (Var x') | x == x' = a
 substitute (_ : s) (Var x) = substitute s (Var x)
 substitute _ (Tag k) = Tag k
-substitute s (Ann a b) = Ann (dropType (substitute s a)) (dropType (substitute s b))
+substitute s (Ann a b) = Ann (dropTypes (substitute s a)) (dropTypes (substitute s b))
 substitute s (And a b) = And (substitute s a) (substitute s b)
 substitute s (Or a b) = Or (substitute s a) (substitute s b)
 substitute s (For x a) = For x (substitute (filter ((/= x) . fst) s) a)
@@ -463,22 +463,6 @@ compose s1 s2 = do
   let notIn s (x, _) = x `notElem` map fst s
   map (second (substitute s1)) s2 `union` filter (notIn s2) s1
 
-dropType :: Expr -> Expr
-dropType (Ann a _) = dropType a
-dropType a = a
-
-dropFreeTypes :: Expr -> Expr
-dropFreeTypes (Ann a (Var _)) = dropFreeTypes a
-dropFreeTypes (And a b) = And (dropFreeTypes a) (dropFreeTypes b)
-dropFreeTypes (Or a b) = Or (dropFreeTypes a) (dropFreeTypes b)
-dropFreeTypes (For x a) = For x (dropFreeTypes a)
-dropFreeTypes (Fix x a) = Fix x (dropFreeTypes a)
-dropFreeTypes (Fun a b) = Fun (dropFreeTypes a) (dropFreeTypes b)
-dropFreeTypes (App a b) = App (dropFreeTypes a) (dropFreeTypes b)
-dropFreeTypes (Call op args) = Call op (map dropFreeTypes args)
-dropFreeTypes (Let env b) = Let (map (second dropFreeTypes) env) (dropFreeTypes b)
-dropFreeTypes a = a
-
 dropTypes :: Expr -> Expr
 dropTypes (Ann a _) = dropTypes a
 dropTypes (And a b) = And (dropTypes a) (dropTypes b)
@@ -494,18 +478,6 @@ dropTypes (App a b) = App (dropTypes a) (dropTypes b)
 dropTypes (Call op args) = Call op (map dropTypes args)
 dropTypes (Let defs b) = Let (map (second dropTypes) defs) (dropTypes b)
 dropTypes a = a
-
-dropAllTypes :: Expr -> Expr
-dropAllTypes (Ann a _) = dropAllTypes a
-dropAllTypes (And a b) = And (dropAllTypes a) (dropAllTypes b)
-dropAllTypes (Or a b) = Or (dropAllTypes a) (dropAllTypes b)
-dropAllTypes (For x a) = For x (dropAllTypes a)
-dropAllTypes (Fix x a) = Fix x (dropAllTypes a)
-dropAllTypes (Fun a b) = Fun (dropAllTypes a) (dropAllTypes b)
-dropAllTypes (App a b) = App (dropAllTypes a) (dropAllTypes b)
-dropAllTypes (Call op args) = Call op (map dropAllTypes args)
-dropAllTypes (Let env b) = Let (map (second dropAllTypes) env) (dropAllTypes b)
-dropAllTypes a = a
 
 unify :: Ops -> Env -> Expr -> Expr -> Either TypeError (Expr, Substitution)
 unify ops env a b = case (a, b) of
@@ -640,7 +612,7 @@ infer ops env (Fix x a) = do
   Right ((Fix x a', Fix x ta), s)
 infer ops env (Fun a b) = do
   ((a', ta), (b', tb), s) <- infer2 ops env a b
-  Right ((Fun (Ann (dropTypes a') ta) b', Fun ta tb), s)
+  Right ((Fun (Ann a' ta) b', Fun ta tb), s)
 infer ops env (App a b) = do
   ((a', ta), (b', tb), s1) <- infer2 ops env a b
   let unifyApp ops env ta tb = case ta of
@@ -706,7 +678,7 @@ check ops env a (For x t) = do
 --   Right ((fix [x] a', ta), s)
 check ops env (Fun a b) (Fun ta tb) = do
   ((a', ta'), (b', tb'), s) <- check2 ops env (a, ta) (b, tb)
-  Right ((Fun (Ann (dropTypes a') ta') (Ann (dropTypes b') tb'), Fun ta' tb'), s)
+  Right ((Fun (Ann a' ta') (Ann b' tb'), Fun ta' tb'), s)
 check ops env (App a b) t2 = do
   ((b', t1), s1) <- infer ops env b
   ((a', ta), s2) <- check ops env a (Fun t1 (substitute s1 t2))
