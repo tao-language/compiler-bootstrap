@@ -525,7 +525,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     eval ctx "pkg/a" (Num 3.14) `shouldBe` Num 3.14
     eval ctx "pkg/a" (Var "x") `shouldBe` Int 1
     eval ctx "pkg/b" (Var "x") `shouldBe` Int 2
-    eval ctx "pkg/a" (Var "y") `shouldBe` Err
+    eval ctx "pkg/a" (Var "y") `shouldBe` Var "y"
     eval ctx "pkg/a" (Tag "A") `shouldBe` Tag "A"
     -- Record [(String, Maybe Expr, Maybe Expr)]
     -- Fun Expr Expr
@@ -562,7 +562,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           ]
     let results =
           [ TestPass "pkg/a" ">x",
-            TestFail "pkg/a" ">y" (y, i3) (C.Let [("y", i2')] y') i2
+            TestFail "pkg/a" ">y" (y, i3) i2' i2
           ]
     testAll ctx ("pkg", ctx) `shouldBe` results
 

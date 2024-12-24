@@ -321,11 +321,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
             ("y", Int 1),
             ("a", a)
           ]
-    infer [] env (Fun x x) `shouldBe` Right ((Fun x x, Fun a a), [])
+    infer [] env (Fun x x) `shouldBe` Right ((Fun (Ann x a) x, Fun a a), [])
 
   it "☯ infer Fun" $ do
     let env = [("a", Ann a IntT), ("b", Ann b NumT)]
-    infer [] env (Fun a b) `shouldBe` Right ((Fun a b, Fun IntT NumT), [])
+    infer [] env (Fun a b) `shouldBe` Right ((Fun (Ann a IntT) b, Fun IntT NumT), [])
 
   it "☯ infer App" $ do
     let env =
@@ -333,9 +333,9 @@ run = describe "--==☯️ Core language ☯️==--" $ do
             ("y", y),
             ("f", Ann f (Fun IntT NumT))
           ]
-    infer [] env (App f x) `shouldBe` Right ((App f x, NumT), [])
-    infer [] env (App (Fun y y) x) `shouldBe` Right ((App (Fun y y) x, IntT), [("yT", IntT), ("y", Ann y IntT)])
-    infer [] env (App y x) `shouldBe` Right ((App y x, Var "yT1"), [("yT1", Var "yT1"), ("yT", Fun IntT (Var "yT1")), ("y", Ann y (Fun IntT (Var "yT1")))])
+    infer [] env (App f x) `shouldBe` Right ((App f (Ann x IntT), NumT), [])
+    infer [] env (App (Fun y y) x) `shouldBe` Right ((App (Fun (Ann y (Var "yT")) y) (Ann x IntT), IntT), [("yT", IntT), ("y", Ann y IntT)])
+    infer [] env (App y x) `shouldBe` Right ((App y (Ann x IntT), Var "yT"), [("yT", Var "yT"), ("y", Ann y (Var "yT"))])
 
   it "☯ infer Or" $ do
     let env = [("x", Int 42), ("y", Num 3.14)]
@@ -396,20 +396,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' (Ann nil (vec i1 NumT)) `shouldBe` Left (TypeMismatch i0 i1)
     infer' (Ann (cons (Num 1.1) nil) (vec i1 NumT)) `shouldBe` Right (cons (Num 1.1) nil, vec i1 NumT)
     infer' (Ann (cons (Num 1.1) (cons (Num 2.2) nil)) (vec i0 NumT)) `shouldBe` Left (TypeMismatch i2 i0)
-
-  it "☯ check TODO REMOVE" $ do
-    let (_T, _A, _B) = (Tag "T", Tag "A", Tag "B")
-    let env = [("T", Fun (Ann _A _A) _T `Or` Fun (Ann _B _B) _T)]
-    let c = check ops env
-    let i = infer ops (("x", Ann x _T) : env)
-
-    -- c (Fun Any _A) (Fun _T _T) `shouldBe` Right ((Fun (Ann Any _T) _A, Fun _T _T), [])
-    -- c (For "x" $ Fun x _A) (Fun _T _T) `shouldBe` Right ((For "x" $ Fun (Ann x _T) _A, Fun _T _T), [("x", Ann x _T)])
-    c (For "x" $ Fun x $ App (Fun _A _B) x) (Fun _T _T) `shouldBe` Right ((For "x" $ Fun (Ann x _T) _A, Fun _T _B), [("x", Ann x _T)])
-    -- c (For "x" $ Fun x (App (Fun _A _B) x)) (Fun _T _T) `shouldBe` Right ((For "x" $ Fun (Ann x _T) _A, Fun _T _B), [("x", Ann x _T)])
-    -- c (For "x" $ Fun x (App (Fun _A _B `Or` Fun _B _A) x)) (Fun _T _T) `shouldBe` Right ((For "x" $ Fun (Ann x _T) _A, Fun _T _T), [("x", Ann x _T)])
-    -- i (App (Fun _A _B `Or` Fun _B _A) (Ann x _T)) `shouldBe` Left (UndefinedVar "TODO")
-    True `shouldBe` True
 
 -- it "☯ checkTypes" $ do
 --   let env =

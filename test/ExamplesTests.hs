@@ -220,7 +220,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let testResults =
           [ TestPass name "Overload match 1",
             TestPass name "Overload match 2",
-            TestFail name "Overload fail" (x, i3) (C.Let [("x", C.Or i1' i2')] x') (Or i1 i2)
+            TestFail name "Overload fail" (x, i3) (C.Or i1' i2') (Or i1 i2)
           ]
     testAll [] pkg `shouldBe` testResults
 
@@ -235,6 +235,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     testAll [] pkg `shouldBe` testResults
 
   let name = "examples/definitions/and"
+  -- @{x = @xT yT. (@x y. (((x, y) : (xT, yT)) -> x) ((1, 2) : (!IntT, !IntT)))}
+  -- ((1 : !IntT) -> ::Ok | @got. got -> got) (x : !IntT)
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load "" name []
     syntaxErrors `shouldBe` []

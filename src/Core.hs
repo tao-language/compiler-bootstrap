@@ -207,9 +207,11 @@ appOf :: Expr -> (Expr, [Expr])
 appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
 appOf a = (a, [])
 
+-- TODO: handle indirect references
 let' :: [(String, Expr)] -> Expr -> Expr
-let' [] b = b
-let' env b = Let env b
+let' defs b = case filter (\(x, _) -> x `occurs` b) defs of
+  [] -> b
+  defs -> Let defs b
 
 def :: [String] -> (Expr, Expr) -> Expr -> Expr
 def xs (a, b) c = App (for xs (Fun a c)) b
@@ -532,6 +534,16 @@ unify ops env a b = case (a, b) of
     let env' = filter (\(x, _) -> x /= k) env
     (t, s) <- unify ops env' (Tag k) b'
     Right (t, [(k, tdef)] `compose` s)
+  (a, And (Tag k) b) | Just tdef <- lookup k env -> do
+    let a' = eval ops (Let env (App (And (Tag k) b) a))
+    let env' = filter (\(x, _) -> x /= k) env
+    (t, s) <- unify ops env' a' (And (Tag k) b)
+    Right (t, [(k, tdef)] `compose` s)
+  (And (Tag k) a, b) | Just tdef <- lookup k env -> do
+    let b' = eval ops (Let env (App (And (Tag k) a) b))
+    let env' = filter (\(x, _) -> x /= k) env
+    (t, s) <- unify ops env' (And (Tag k) a) b'
+    Right (t, [(k, tdef)] `compose` s)
   (Ann a ta, Ann b tb) -> do
     ((a, ta), s) <- unify2 ops env (a, b) (ta, tb)
     Right (Ann a ta, s)
@@ -609,20 +621,20 @@ infer ops env (Var x) = case lookup x env of
     ((_, ta), s) <- infer ops env a
     Right ((Var x, ta), s)
   Nothing -> Left (UndefinedVar x)
-infer ops env (Tag k) = Right ((Tag k, Tag k), [])
--- infer ops env (Tag k) = case lookup k env of
---   Just Err -> Right ((Tag k, Tag k), [])
---   Just (Tag k') | k == k' -> Right ((Tag k, Tag k), [])
---   Just a -> infer ops env a
---   Nothing -> Right ((Tag k, Tag k), [])
+infer _ _ (Tag k) = Right ((Tag k, Tag k), [])
 infer ops env (Ann a ty) = check ops env a ty
 infer ops env (And a b) = do
   ((a', ta), (b', tb), s) <- infer2 ops env a b
   Right ((And a' b', And ta tb), s)
 infer ops env (Or a b) = do
-  ((a', ta), (b', tb), s) <- infer2 ops env a b
-  Right ((Or a' b', Or ta tb), s)
-infer ops env (For x a) = infer ops ((x, Var x) : env) a
+  ((a', ta), (b', tb), s1) <- infer2 ops env a b
+  let (t, s2) = case unify ops (s1 `compose` env) ta tb of
+        Right (t, s) -> (t, s)
+        Left _ -> (Or ta tb, [])
+  Right ((substitute s2 (Or a' b'), t), s2 `compose` s1)
+infer ops env (For x a) = do
+  ((a', ta), s) <- infer ops ((x, Var x) : env) a
+  Right ((for [x] a', ta), s)
 infer ops env (Fix x a) = do
   ((a', ta), s) <- infer ops ((x, Var x) : env) a
   Right ((Fix x a', Fix x ta), s)
@@ -630,13 +642,11 @@ infer ops env (Fun a b) = do
   ((a', ta), (b', tb), s) <- infer2 ops env a b
   Right ((Fun (Ann (dropTypes a') ta) b', Fun ta tb), s)
 infer ops env (App a b) = do
-  -- To annotate expressions even if types don't check
-  -- This keeps runtime type-safe even with type errors
-  -- Also gets all errors, instead of stopping on the first one
-  -- infer : .. -> ((Expr, Type), [Error], Sub)
-  -- error "TODO: infer/check/unify should return Err as a value instead of Result"
   ((a', ta), (b', tb), s1) <- infer2 ops env a b
   let unifyApp ops env ta tb = case ta of
+        Var x -> do
+          let y = newName (map fst env) x
+          Right (Var y, [(y, Var y), (x, Fun tb (Var y))])
         Or t1 t2 -> do
           (t1', s1) <- unifyApp ops env t1 tb
           (t2', s2) <- unifyApp ops (s1 `compose` env) (substitute s1 t2) (substitute s1 tb)
@@ -644,7 +654,7 @@ infer ops env (App a b) = do
         Fun t1 t2 -> do
           (_, s) <- unify ops env t1 tb
           Right (substitute s t2, s)
-        ta -> error $ "TODO infer App " ++ show ta
+        ta -> Left (NotAFunction a ta)
   (t, s2) <- unifyApp ops env ta tb
   Right ((App a' (Ann (substitute s2 b') (substitute s2 tb)), t), s2 `compose` s1)
 infer ops env (Let defs a) = infer ops (defs ++ env) a
@@ -678,16 +688,6 @@ check ops env (Var x) t = case lookup x env of
     ((_, t), s) <- check ops env a t
     Right ((Var x, t), s `compose` [(x, Ann (Var x) t)])
   Nothing -> Left (UndefinedVar x)
-check ops env a (And (Tag k) b) = do
-  -- ((a', ta), s1) <- infer ops env a
-  -- (t, s2) <- case ta of
-  --   Var _ -> Right (And (Tag k) (substitute s1 b), [])
-  --   _ -> do
-  --     let t = And (Tag k) (substitute s1 b)
-  --     let ta' = eval ops (Let env (App t ta))
-  --     unify ops env ta' t
-  -- Right ((substitute s2 a', t), s2 `compose` s1)
-  error "TODO: implement this on unify"
 check ops env (And a b) (And ta tb) = do
   ((a', ta'), (b', tb'), s) <- check2 ops env (a, ta) (b, tb)
   Right ((And a' b', And ta' tb'), s)

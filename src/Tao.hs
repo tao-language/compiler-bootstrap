@@ -107,7 +107,7 @@ instance Show TestResult where
   show :: TestResult -> String
   show result = case result of
     TestPass path name -> "✅ " ++ path ++ " -- " ++ name
-    TestFail path name t tc got -> "❌ " ++ path ++ " -- " ++ name ++ " test=" ++ show t ++ " core=" ++ show tc ++ " got=" ++ show got
+    TestFail path name (t, expect) tc got -> "❌ " ++ path ++ " -- " ++ name ++ " test=" ++ show t ++ " core=" ++ show tc ++ " expected=" ++ show expect ++ " got=" ++ show got
 
 buildOps :: C.Ops
 buildOps = do
@@ -594,7 +594,7 @@ instance Compile ((String, Expr) -> C.Expr) where
     let (a', s) = case C.infer buildOps env a of
           Right ((a', _), s) -> (a', s)
           Left _ -> (a, [])
-    C.for (map fst s) (C.let' env a')
+    C.let' s (C.dropTypes (C.let' env a'))
 
 instance Compile (Expr -> C.Expr) where
   compile :: [Module] -> String -> Expr -> C.Expr
@@ -757,7 +757,9 @@ instance TestSome UnitTest where
             ]
     case eval ctx t.path test' of
       Tag ":Ok" -> [TestPass t.path t.name]
-      got -> [TestFail t.path t.name (t.expr, t.expect) (compile ctx t.path t.expr) got]
+      got -> do
+        let core = compile ctx t.path (eval ctx t.path t.expr)
+        [TestFail t.path t.name (t.expr, t.expect) core got]
 
 testAll :: (TestSome a) => [Module] -> a -> [TestResult]
 testAll ctx = testSome ctx (const True)
