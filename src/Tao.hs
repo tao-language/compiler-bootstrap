@@ -591,9 +591,7 @@ instance Compile ((String, Expr) -> C.Expr) where
   compile :: [Module] -> String -> (String, Expr) -> C.Expr
   compile ctx path (name, expr) = do
     let (env, a) = compile ctx path (name, expr)
-    let (a', s) = case C.infer buildOps env a of
-          Right ((a', _), s) -> (a', s)
-          Left _ -> (a, [])
+    let ((a', t), s, e) = C.infer buildOps env a
     C.let' s (C.dropTypes (C.let' env a'))
 
 instance Compile (Expr -> C.Expr) where

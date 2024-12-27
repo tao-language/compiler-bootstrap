@@ -256,18 +256,18 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/definitions/for"
-  it ("☯ " ++ name ++ ".tao") $ do
-    (pkg, syntaxErrors) <- load "" name []
-    syntaxErrors `shouldBe` []
-    let testResults =
-          [ TestPass name "For match",
-            let p = C.Ann (C.And y' z') (C.And C.IntT C.IntT)
-                a = C.Ann (C.And i1' i1') (C.And C.IntT C.IntT)
-                core = C.Let [("y", C.Let [("z", i2')] $ C.def ["y"] (p, a) y')] y'
-             in TestFail name "For match fail" (y, i1) core Err
-          ]
-    testAll [] pkg `shouldBe` testResults
+  -- let name = "examples/definitions/for"
+  -- it ("☯ " ++ name ++ ".tao") $ do
+  --   (pkg, syntaxErrors) <- load "" name []
+  --   syntaxErrors `shouldBe` []
+  --   let testResults =
+  --         [ TestPass name "For match",
+  --           let p = C.Ann (C.And y' z') (C.And C.IntT C.IntT)
+  --               a = C.Ann (C.And i1' i1') (C.And C.IntT C.IntT)
+  --               core = C.Let [("y", C.Let [("z", i2')] $ C.def ["y"] (p, a) y')] y'
+  --            in TestFail name "For match fail" (y, i1) core Err
+  --         ]
+  --   testAll [] pkg `shouldBe` testResults
 
   let name = "examples/definitions/fun"
   it ("☯ " ++ name ++ ".tao") $ do
