@@ -464,7 +464,7 @@ compose s1 s2 = do
         Just b -> (x, b)
         Nothing -> (x, substitute s a)
   let notIn (x, _) s = x `notElem` map fst s
-  map (sub s1) s2 `union` filter (`notIn` s2) s1
+  s1 `union` map (sub s1) s2
 
 dropTypes :: Expr -> Expr
 dropTypes (Ann a _) = dropTypes a
@@ -593,7 +593,7 @@ infer ops env (Var x) = do
         Nothing -> (Err, [], [UndefinedVar x])
   ((Var x, ta), s, e)
 infer _ _ (Tag k) = ((Tag k, Tag k), [], [])
-infer ops env (Ann a ty) = check ops env a ty
+infer ops env (Ann a t) = check ops env a t
 infer ops env (And a b) = do
   let ((a', ta), (b', tb), s, e) = infer2 ops env a b
   ((And a' b', And ta tb), s, e)
@@ -627,7 +627,7 @@ infer ops env (App a b) = do
           let (_, s, e) = unify ops env t1 tb
           (substitute s t2, s, e)
         ta -> (ta, [], [NotAFunction a ta])
-  let (t, s2, e2) = unifyApp ops env ta tb
+  let (t, s2, e2) = unifyApp ops (s1 `compose` env) ta tb
   ((App a' (Ann (substitute s2 b') (substitute s2 tb)), t), s2 `compose` s1, e1 ++ e2)
 infer ops env (Let defs a) = infer ops (defs ++ env) a
 infer ops env (Call op args) = do
@@ -655,10 +655,10 @@ check ops env (Var x) t = case lookup x env of
   Just (Var x') | x == x' -> ((Var x, t), [(x, Ann (Var x) t)], [])
   Just (Ann (Var x') t') | x == x' -> do
     let (tx, s, e) = unify ops env t t'
-    ((Var x, tx), s `compose` [(x, Ann (Var x) tx)], e)
+    ((Var x, tx), [(x, Ann (Var x) tx)] `compose` s, e)
   Just a -> do
-    let ((_, t), s, e) = check ops env a t
-    ((Var x, t), s `compose` [(x, Ann (Var x) t)], e)
+    let ((_, t'), s, e) = check ops ((x, Var x) : env) a t
+    ((Var x, t'), [(x, Ann (Var x) t')] `compose` s, e)
   Nothing -> ((Var x, Err), [], [UndefinedVar x])
 check ops env (And a b) (And ta tb) = do
   let ((a', ta'), (b', tb'), s, e) = check2 ops env (a, ta) (b, tb)
@@ -673,9 +673,9 @@ check ops env (For x a) t = do
 check ops env a (For x t) = do
   let (t', s) = instantiate (map fst env) (For x t)
   check ops (s `compose` env) a t'
--- check ops env (Fix x a) t = do
---   ((a', ta), s) <- check ops ((x, Var x) : env) a t
---   ((fix [x] a', ta), s)
+check ops env (Fix x a) t = do
+  let ((a', ta), s, e) = check ops ((x, Var x) : env) a t
+  ((fix [x] a', ta), s, e)
 check ops env (Fun a b) (Fun ta tb) = do
   let ((a', ta'), (b', tb'), s, e) = check2 ops env (a, ta) (b, tb)
   ((Fun (Ann a' ta') (Ann b' tb'), Fun ta' tb'), s, e)

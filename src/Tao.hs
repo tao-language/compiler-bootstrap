@@ -579,6 +579,14 @@ instance Compile (String -> (String, C.Expr)) where
 
 instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
+  -- compile ctx path (name@"x", expr) = do
+  --   let a = lower expr
+  --   let env =
+  --         delete name (C.freeTags a `union` C.freeVars a)
+  --           & map (compile ctx path)
+  --           & filter (\(x, a) -> a /= C.Err)
+  --   -- (env, a)
+  --   error $ show (a, env :: C.Env)
   compile ctx path (name, expr) = do
     let a = lower expr
     let env =
