@@ -105,7 +105,7 @@ parseNameTag :: Parser String
 parseNameTag =
   P.oneOf
     [ parseNameBase P.uppercase,
-      P.paddedL (P.char ':') parseNameEscaped
+      P.paddedL (P.char '^') parseNameEscaped
     ]
 
 parseNameOp :: Parser String
@@ -203,7 +203,7 @@ parseAtom = do
       [ Any <$ P.word "_",
         IntT <$ P.word "Int",
         NumT <$ P.word "Num",
-        Err <$ P.word "$!error",
+        Err <$ P.word "!error",
         do
           _ <- P.char 'c'
           quote <- P.oneOf [P.char '\'', P.char '"']
@@ -605,6 +605,7 @@ parseTest = do
           P.skipTo P.endOfLine,
         return ""
       ]
+  s <- P.getState
   _ <- P.char '>'
   _ <- P.oneOrMore P.space
   P.commit CTest
@@ -618,7 +619,7 @@ parseTest = do
           parseExpr 0 P.spaces,
         return (Tag "True")
       ]
-  return (Test name expr result)
+  return (Test s.pos name expr result)
 
 pad :: Int -> String -> String
 pad = padWith ' '
@@ -702,8 +703,7 @@ loadModule (base : bases) filename (pkg, errs) = do
     else loadModule bases filename (pkg, errs)
 loadModule [] filename (pkg, errs) = do
   src <- readFile filename
-  let modName = dropExtension filename
-  case P.parse filename (parseModule modName) src of
+  case P.parse filename (parseModule filename) src of
     Right (mod, _) -> do
       return (second (mod :) pkg, errs)
     Left P.State {name, pos = (row, col), context} -> do

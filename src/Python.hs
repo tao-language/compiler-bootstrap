@@ -588,7 +588,7 @@ instance Emit T.Stmt [Stmt] where
             expose (x, y) = (x, Just y)
         [ImportFrom (replace '-' '_' m) (map expose exposed)]
   -- emit options (T.Def def) = emit options def
-  emit options (T.Test name a p) = do
+  emit options (T.Test pos name a p) = do
     let (stmts1, a') = emit options a
     let (stmts2, b') = emit options p -- TODO: do a match instead
     let def =

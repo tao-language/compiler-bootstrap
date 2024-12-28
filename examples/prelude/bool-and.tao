@@ -16,4 +16,4 @@ False
 
 -- Error
 > A and B
-$!error
+!error

@@ -154,7 +154,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "var" `shouldBe` Right (Var "var", "")
     p "`A.+\\``" `shouldBe` Right (Var "A.+`", "")
     p "Tag" `shouldBe` Right (Tag "Tag", "")
-    p ":`x.+\\``" `shouldBe` Right (Tag "x.+`", "")
+    p "^`x.+\\``" `shouldBe` Right (Tag "x.+`", "")
     p "@. x" `shouldBe` Right (For [] x, "")
     p "@ x . y" `shouldBe` Right (For ["x"] y, "")
     p "@ x y . z" `shouldBe` Right (For ["x", "y"] z, "")
@@ -202,7 +202,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p ".{}" `shouldBe` Right (selectFun [], "")
     p "x with {}" `shouldBe` Right (With x [], "")
     p "with {}" `shouldBe` Right (withFun [], "")
-    p "$!error" `shouldBe` Right (Err, "")
+    p "!error" `shouldBe` Right (Err, "")
 
   it "☯ parseBlock" $ do
     let p = parse' parseBlock
@@ -231,15 +231,15 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseTest" $ do
     let p = parse' parseTest
-    p "> x; y" `shouldBe` Right (Test "" x y, "")
-    p "> x\ny" `shouldBe` Right (Test "" x y, "")
-    p "> x" `shouldBe` Right (Test "" x (Tag "True"), "")
+    p "> x; y" `shouldBe` Right (Test (1, 1) "" x y, "")
+    p "> x\ny" `shouldBe` Right (Test (1, 1) "" x y, "")
+    p "> x" `shouldBe` Right (Test (1, 1) "" x (Tag "True"), "")
 
   it "☯ parseStmt" $ do
     let p = parse' parseStmt
     p "import pkg" `shouldBe` Right (Import "pkg" "pkg" [], "")
     -- p "x = y" `shouldBe` Right (Define (Def [] (x) (y)), "")
-    p "> x; y" `shouldBe` Right (Test "" x y, "")
+    p "> x; y" `shouldBe` Right (Test (1, 1) "" x y, "")
 
   it "☯ parseModule" $ do
     let p = parse' (parseModule "path/my-file.tao")
@@ -259,7 +259,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ loadModule" $ do
     let pkg = ("pkg", [])
-    let expect = ("pkg", [("examples/empty", [])])
+    let expect = ("pkg", [("examples/empty.tao", [])])
     loadModule ["examples"] "empty.tao" (pkg, []) `shouldReturn` (expect, [])
 
   it "☯ loadModule exists" $ do
@@ -269,7 +269,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   it "☯ loadPackage" $ do
     let pkg =
           ( "pkg",
-            [ ( "examples/sub/mod",
+            [ ( "examples/sub/mod.tao",
                 [ Def (x, Int 1),
                   Def (y, Int 2)
                 ]
@@ -281,8 +281,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   it "☯ load" $ do
     let pkg =
           ( "sub",
-            [ ("examples/empty/empty-file", []),
-              ( "examples/sub/mod",
+            [ ("examples/empty/empty-file.tao", []),
+              ( "examples/sub/mod.tao",
                 [ Def (x, Int 1),
                   Def (y, Int 2)
                 ]

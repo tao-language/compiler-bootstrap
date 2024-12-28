@@ -81,7 +81,7 @@ data Stmt
   = Import String String [(String, String)]
   | Def (Expr, Expr)
   | TypeDef (String, [Expr], Expr)
-  | Test String Expr Pattern
+  | Test (Int, Int) String Expr Pattern
   deriving (Eq, Show)
 
 type Type = Expr
@@ -91,7 +91,8 @@ type Package = (String, [Module])
 type Module = (String, [Stmt])
 
 data UnitTest = UnitTest
-  { path :: String,
+  { filename :: String,
+    pos :: (Int, Int),
     name :: String,
     expr :: Expr,
     expect :: Expr
@@ -99,15 +100,26 @@ data UnitTest = UnitTest
   deriving (Eq, Show)
 
 data TestResult
-  = TestPass String String
-  | TestFail String String (Expr, Expr) C.Expr Expr
+  = TestPass
+      { filename :: String,
+        pos :: (Int, Int),
+        name :: String
+      }
+  | TestFail
+      { filename :: String,
+        pos :: (Int, Int),
+        name :: String,
+        test :: Expr,
+        expected :: Expr,
+        got :: Expr
+      }
   deriving (Eq)
 
 instance Show TestResult where
   show :: TestResult -> String
   show result = case result of
-    TestPass path name -> "✅ " ++ path ++ " -- " ++ name
-    TestFail path name (t, expect) tc got -> "❌ " ++ path ++ " -- " ++ name ++ " test=" ++ show t ++ " core=" ++ show tc ++ " expected=" ++ show expect ++ " got=" ++ show got
+    TestPass filename (row, col) name -> "✅ " ++ filename ++ ":" ++ show row ++ ":" ++ show col ++ " -- " ++ name ++ "\n"
+    TestFail filename (row, col) name test expect got -> "❌ " ++ filename ++ ":" ++ show row ++ ":" ++ show col ++ " -- " ++ name ++ "\n  > " ++ show test ++ "\n  " ++ show expect ++ "\n* " ++ show got ++ "\n"
 
 buildOps :: C.Ops
 buildOps = do
@@ -579,7 +591,7 @@ instance Compile (String -> (String, C.Expr)) where
 
 instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"x", expr) = do
+  -- compile ctx path (name@"y", expr) = do
   --   let a = lower expr
   --   let env =
   --         delete name (C.freeTags a `union` C.freeVars a)
@@ -600,7 +612,12 @@ instance Compile ((String, Expr) -> C.Expr) where
   compile ctx path (name, expr) = do
     let (env, a) = compile ctx path (name, expr)
     let ((a', t), s, e) = C.infer buildOps env a
-    C.let' s (C.dropTypes (C.let' env a'))
+    let isFree = \case
+          (x, C.Var x') | x == x' -> True
+          _ -> False
+    let xs = map fst (filter isFree s)
+    let env' = env `C.compose` filter (not . isFree) s
+    C.let' env' (C.for xs a')
 
 instance Compile (Expr -> C.Expr) where
   compile :: [Module] -> String -> Expr -> C.Expr
@@ -748,8 +765,8 @@ instance TestSome (String, Stmt) where
     Import {} -> []
     Def {} -> []
     TypeDef {} -> []
-    Test name expr expect | filter (path, name) -> do
-      testSome ctx filter (UnitTest path name expr expect)
+    Test pos name expr expect | filter (path, name) -> do
+      testSome ctx filter (UnitTest path pos name expr expect)
     Test {} -> []
 
 instance TestSome UnitTest where
@@ -761,11 +778,10 @@ instance TestSome UnitTest where
             [ ([], [t.expect], Tag ":Ok"),
               (["got"], [Var "got"], Var "got")
             ]
-    case eval ctx t.path test' of
-      Tag ":Ok" -> [TestPass t.path t.name]
-      got -> do
-        let core = compile ctx t.path (eval ctx t.path t.expr)
-        [TestFail t.path t.name (t.expr, t.expect) core got]
+    -- error $ show (compile ctx t.filename test' :: C.Expr)
+    case eval ctx t.filename test' of
+      Tag ":Ok" -> [TestPass t.filename t.pos t.name]
+      got -> [TestFail t.filename t.pos t.name t.expr t.expect got]
 
 testAll :: (TestSome a) => [Module] -> a -> [TestResult]
 testAll ctx = testSome ctx (const True)

@@ -59,9 +59,9 @@ A
 B
 
 -- Err match
-> $!error
-$!error
+> !error
+!error
 
 -- Err match fail
-> $!error
+> !error
 1

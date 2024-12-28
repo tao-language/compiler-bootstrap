@@ -280,6 +280,26 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval' (App (Tag "T0") (Int 0)) `shouldBe` NumT
     eval' (App (And (Tag "T1") NumT) (Int 1)) `shouldBe` NumT
 
+  it "☯ eval type safety" $ do
+    let eval' = eval ops
+    eval' (App (For "x" $ Fun x x) i1) `shouldBe` i1
+    eval' (App (For "x" $ Fun x x) (Ann i1 IntT)) `shouldBe` i1
+    eval' (App (For "x" $ Fun (Ann x IntT) x) i1) `shouldBe` i1
+    eval' (App (For "x" $ Fun (Ann x IntT) x) (Ann i1 IntT)) `shouldBe` i1
+    eval' (App (For "x" $ Fun (Ann x NumT) x) (Ann i1 IntT)) `shouldBe` Err
+
+  it "☯ eval alpha equivalence" $ do
+    let eval' = eval ops
+    let a' = for ["x", "a"] (Fun (Ann x a) x)
+    let b' = for ["y", "b"] (Fun (Ann y b) y)
+    eval' (App (Fun a' i1) b') `shouldBe` i1
+
+  it "☯ eval experiment" $ do
+    let eval' = eval ops
+    let a' = Err
+    let b' = Ann Err Err
+    eval' (App (Fun a' i1) b') `shouldBe` i1
+
   it "☯ unify" $ do
     True `shouldBe` True
 
@@ -334,16 +354,17 @@ run = describe "--==☯️ Core language ☯️==--" $ do
             ("f", Ann f (Fun IntT NumT))
           ]
     infer [] env (App f x) `shouldBe` ((App f (Ann x IntT), NumT), [], [])
-    infer [] env (App (Fun y y) x) `shouldBe` ((App (Fun (Ann y (Var "yT")) y) (Ann x IntT), IntT), [("yT", IntT), ("y", Ann y IntT)], [])
+    infer [] env (App (Fun y y) x) `shouldBe` ((App (Fun (Ann y IntT) y) (Ann x IntT), IntT), [("yT", IntT), ("y", Ann y IntT)], [])
     infer [] env (App y x) `shouldBe` ((App y (Ann x IntT), Var "yT1"), [("yT1", Var "yT1"), ("yT", Fun IntT (Var "yT1")), ("y", Ann y (Fun IntT (Var "yT1")))], [])
 
   it "☯ infer Or" $ do
     let env = [("x", Int 42), ("y", Num 3.14)]
-    infer [] env (Or x x) `shouldBe` ((Or x x, IntT), [], [])
-    infer [] env (Or x y) `shouldBe` ((Or x y, IntT `Or` NumT), [], [])
+    infer [] env (Or x x) `shouldBe` ((Or x x, Or IntT IntT), [], [])
+    infer [] env (Or x y) `shouldBe` ((Or x y, Or IntT NumT), [], [])
 
   it "☯ infer For" $ do
-    True `shouldBe` True
+    let xT = Var "xT"
+    infer [] [] (For "x" x) `shouldBe` ((For "x" x, For "xT" xT), [("xT", xT), ("x", Ann x xT)], [])
 
   it "☯ infer Op2" $ do
     True `shouldBe` True
