@@ -348,7 +348,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ infer Op2" $ do
     True `shouldBe` True
 
-  it "☯ infer-factorial" $ do
+  it "☯ infer factorial" $ do
     let env = [("f", Ann (factorial "f") (Fun IntT IntT))]
     let infer' a = let ((a', t), _, _) = infer ops env a in (a', t)
     infer' (Var "f") `shouldBe` (f, Fun IntT IntT)
@@ -395,7 +395,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' (Ann nil (vec i0 NumT)) `shouldBe` ((nil, vec i0 NumT), env, [])
     infer' (Ann nil (vec i1 NumT)) `shouldBe` ((nil, vec Err NumT), env, [TypeMismatch i0 i1])
     infer' (Ann (cons (Num 1.1) nil) (vec i1 NumT)) `shouldBe` ((cons (Num 1.1) nil, vec i1 NumT), env, [])
-    infer' (Ann (cons (Num 1.1) (cons (Num 2.2) nil)) (vec i0 NumT)) `shouldBe` ((Err, Err), env, [TypeMismatch i2 i0])
+    infer' (Ann (cons (Num 1.1) (cons (Num 2.2) nil)) (vec i0 NumT)) `shouldBe` ((cons (Num 1.1) (cons (Num 2.2) nil), vec Err NumT), env, [TypeMismatch i2 i0])
 
 -- it "☯ checkTypes" $ do
 --   let env =

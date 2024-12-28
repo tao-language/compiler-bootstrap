@@ -660,9 +660,6 @@ check ops env (Var x) t = case lookup x env of
     let ((_, t'), s, e) = check ops ((x, Var x) : env) a t
     ((Var x, t'), [(x, Ann (Var x) t')] `compose` s, e)
   Nothing -> ((Var x, Err), [], [UndefinedVar x])
-check ops env (And a b) (And ta tb) = do
-  let ((a', ta'), (b', tb'), s, e) = check2 ops env (a, ta) (b, tb)
-  ((And a' b', And ta' tb'), s, e)
 check ops env (Or a b) t = do
   let ((a', ta), (b', tb), s1, e1) = check2 ops env (a, t) (b, t)
   let (t, s2, e2) = unify ops env ta tb
