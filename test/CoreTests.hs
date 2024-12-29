@@ -17,25 +17,28 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let mul a b = Call "*" IntT [a, b]
   let ops =
         [ ( "+",
-            \case
+            \args -> case dropTypes <$> args of
               [Int x, Int y] -> Int (x + y)
+              [a, b] -> add a b
               _ -> Err
           ),
           ( "-",
-            \case
+            \args -> case dropTypes <$> args of
               [Int x, Int y] -> Int (x - y)
+              [a, b] -> sub a b
               _ -> Err
           ),
           ( "*",
-            \case
+            \args -> case dropTypes <$> args of
               [Int x, Int y] -> Int (x * y)
-              _ -> Err
+              [a, b] -> mul a b
+              args -> error $ show args
           )
         ]
 
   let factorial f = Fix f (case0 `Or` caseN f)
         where
-          case0 = Fun (Int 0) i1
+          case0 = Fun i0 i1
           caseN f = For "x" (Fun x (x `mul` App (Var f) (x `sub` i1)))
 
   it "☯ format" $ do
@@ -239,6 +242,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval' (And x y) `shouldBe` And (Int 42) (Num 3.14)
     eval' (Or x y) `shouldBe` Or (Int 42) (Num 3.14)
     eval' (Call "f" IntT [x, y]) `shouldBe` Call "f" IntT [Int 42, Num 3.14]
+    eval' (Call "+" IntT [i1, i1]) `shouldBe` Ann i2 IntT
     -- eval' (For "x" (And x y)) `shouldBe` For "x" (And x (Num 3.14))
     -- eval' (Fix "x" (And x y)) `shouldBe` Fix "x" (And x (Num 3.14))
     eval' (App z (And x y)) `shouldBe` App z (And (Int 42) (Num 3.14))

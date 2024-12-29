@@ -564,13 +564,16 @@ class Compile a where
 instance Compile (String -> C.Env) where
   compile :: [Module] -> String -> String -> C.Env
   compile ctx path name = do
-    let defs = resolve ctx path name
-    let alts = map (\(path, a) -> compile ctx path (name, a)) defs :: [(C.Env, C.Expr)]
-    let expr = case C.or' (map snd alts) of
+    let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
+        compileDef (path, alt) (env, alts) = do
+          let (env', alt') = compile ctx path (name, alt)
+          (env' `C.compose` env, C.let' env' alt' : alts)
+    let (env, alts) = foldr compileDef ([], []) (resolve ctx path name)
+    let expr = case C.or' alts of
           C.Var x | x == name -> C.Var x
           C.Ann (C.Var x) t | x == name -> C.Ann (C.Var x) t
           expr -> C.fix [name] expr
-    (name, expr) : concatMap fst alts
+    [(name, expr)] `C.compose` env
 
 instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
@@ -583,7 +586,7 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
             )
             (delete name (C.freeTags a `union` C.freeVars a))
     let ((a', t), s, e) = C.infer buildOps env a
-    (env, a')
+    (env, C.for (map fst s) a')
 
 instance Compile (Expr -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> Expr -> (C.Env, C.Expr)

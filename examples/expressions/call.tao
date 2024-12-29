@@ -1,14 +1,14 @@
 -- Call constant
-> %A
-%A
+> %A<Int>
+%A<Int>
 
 -- Call no args
-> %A()
-%A()
+> %A<Int>()
+%A<Int>()
 
 x = 1
 y = 2
 
 -- Call args
-> %A(x, y)
-%A(1, 2)
+> %A<Int>(x, y)
+%A<Int>(1, 2)
