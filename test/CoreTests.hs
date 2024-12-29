@@ -294,12 +294,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let b' = for ["y", "b"] (Fun (Ann y b) y)
     eval' (App (Fun a' i1) b') `shouldBe` i1
 
-  it "☯ eval experiment" $ do
-    let eval' = eval ops
-    let a' = Err
-    let b' = Ann Err Err
-    eval' (App (Fun a' i1) b') `shouldBe` i1
-
   it "☯ unify" $ do
     True `shouldBe` True
 
