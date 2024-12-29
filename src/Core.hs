@@ -34,7 +34,7 @@ data Expr
   | Call String [Expr]
   | Let [(String, Expr)] Expr
   | Err
-  deriving (Eq)
+  deriving (Eq, Show)
 
 type Ops = [(String, (Expr -> Expr) -> [Expr] -> Expr)]
 
@@ -64,41 +64,40 @@ data PatternError
   | UnreachableCase Expr
   deriving (Eq, Show)
 
-instance Show Expr where
-  show :: Expr -> String
-  show expr = case expr of
-    Any -> "_"
-    Unit -> "()"
-    IntT -> "!IntT"
-    NumT -> "!NumT"
-    Int i -> show i
-    Num n -> show n
-    Var x -> name x
-    Tag ('^' : k) -> '^' : '^' : name k
-    Tag ('~' : k) -> '^' : '~' : name k
-    Tag k -> '^' : name k
-    Ann a b -> "(" ++ show a ++ " : " ++ show b ++ ")"
-    And _ _ -> "(" ++ intercalate ", " (map show (andOf expr)) ++ ")"
-    Or _ _ -> "(" ++ intercalate " | " (map show (orOf expr)) ++ ")"
-    For _ _ -> do
-      let (xs, a) = forOf expr
-      "(@" ++ unwords (map name xs) ++ ". " ++ show a ++ ")"
-    Fix x a -> "(&" ++ name x ++ ". " ++ show a ++ ")"
-    Fun _ _ -> do
-      let (args, ret) = funOf expr
-      "(" ++ intercalate " -> " (map show args) ++ " -> " ++ show ret ++ ")"
-    App a b -> do
-      let (a', bs) = appOf (App a b)
-      "(" ++ show a' ++ " " ++ unwords (map show bs) ++ ")"
-    Call f args -> '%' : f ++ "(" ++ intercalate ", " (map show args) ++ ")"
-    Let env b -> "@{" ++ intercalate "; " (map (\(x, a) -> name x ++ " = " ++ show a) env) ++ "} " ++ show b
-    Err -> "!error"
-    where
-      isAlphaNumOr cs c = isAlphaNum c || c `elem` cs
-      name = \case
-        x | all (isAlphaNumOr "$-_") x -> x
-        '.' : x | not (any (isAlphaNumOr "()") x) -> "(" ++ x ++ ")"
-        x -> "`" ++ replaceString "`" "\\`" x ++ "`"
+print :: Expr -> String
+print expr = case expr of
+  Any -> "_"
+  Unit -> "()"
+  IntT -> "!IntT"
+  NumT -> "!NumT"
+  Int i -> show i
+  Num n -> show n
+  Var x -> name x
+  Tag ('^' : k) -> '^' : '^' : name k
+  Tag ('~' : k) -> '^' : '~' : name k
+  Tag k -> '^' : name k
+  Ann a b -> "(" ++ show a ++ " : " ++ show b ++ ")"
+  And _ _ -> "(" ++ intercalate ", " (map show (andOf expr)) ++ ")"
+  Or _ _ -> "(" ++ intercalate " | " (map show (orOf expr)) ++ ")"
+  For _ _ -> do
+    let (xs, a) = forOf expr
+    "(@" ++ unwords (map name xs) ++ ". " ++ show a ++ ")"
+  Fix x a -> "(&" ++ name x ++ ". " ++ show a ++ ")"
+  Fun _ _ -> do
+    let (args, ret) = funOf expr
+    "(" ++ intercalate " -> " (map show args) ++ " -> " ++ show ret ++ ")"
+  App a b -> do
+    let (a', bs) = appOf (App a b)
+    "(" ++ show a' ++ " " ++ unwords (map show bs) ++ ")"
+  Call f args -> '%' : f ++ "(" ++ intercalate ", " (map show args) ++ ")"
+  Let env b -> "@{" ++ intercalate "; " (map (\(x, a) -> name x ++ " = " ++ show a) env) ++ "} " ++ show b
+  Err -> "!error"
+  where
+    isAlphaNumOr cs c = isAlphaNum c || c `elem` cs
+    name = \case
+      x | all (isAlphaNumOr "$-_") x -> x
+      '.' : x | not (any (isAlphaNumOr "()") x) -> "(" ++ x ++ ")"
+      x -> "`" ++ replaceString "`" "\\`" x ++ "`"
 
 -- instance Show Expr where
 --   showsPrec :: Int -> Expr -> ShowS
@@ -346,7 +345,7 @@ reduceApp ops a b = case a of
     (Or a1 a2, b) -> case reduceApp ops a1 b of
       Err -> reduceApp ops a2 b
       c -> c
-    (For x a, b) -> (reduceApp ops (Let [(x, Var x)] a) b)
+    (For x a, b) -> reduceApp ops (Let [(x, Var x)] a) b
     (Fix x a, b@Var {}) -> App (Fix x a) b
     (Fix x a, b@App {}) -> App (Fix x a) b
     (Fix x a, b) -> reduceApp ops (Let [(x, Fix x a)] a) b
@@ -618,7 +617,7 @@ infer ops env (App a b) = do
         Fun t1 t2 -> do
           let (_, s, e) = unify ops env t1 tb
           (substitute s t2, s, e)
-        ta -> (ta, [], [NotAFunction a ta])
+        _ -> (Err, [], [NotAFunction a ta])
   let (t, s2, e2) = unifyApp ops (s1 `compose` env) ta tb
   ((App (substitute s2 a') (Ann (substitute s2 b') (substitute s2 tb)), t), s2 `compose` s1, e1 ++ e2)
 infer ops env (Let defs a) = infer ops (defs ++ env) a
@@ -626,7 +625,7 @@ infer ops env (Call op args) = do
   let x = newName (('$' : op) : map fst env) ('$' : op)
   let (args', s, e) = inferAll ops (pushVars [x] env) args
   ((Call op (map fst args'), Var x), s `compose` [(x, Var x)], e)
-infer _ _ Err = ((Err, Err), [], [])
+infer _ _ Err = ((Err, Any), [], [])
 
 infer2 :: Ops -> Env -> Expr -> Expr -> ((Expr, Expr), (Expr, Expr), Substitution, [TypeError])
 infer2 ops env a b = do

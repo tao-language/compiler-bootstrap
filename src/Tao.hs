@@ -583,7 +583,7 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
             )
             (delete name (C.freeTags a `union` C.freeVars a))
     let ((a', t), s, e) = C.infer buildOps env a
-    (env, C.for (map fst s) a')
+    (env, a')
 
 instance Compile (Expr -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> Expr -> (C.Env, C.Expr)

@@ -297,6 +297,12 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let b' = for ["y", "b"] (Fun (Ann y b) y)
     eval' (App (Fun a' i1) b') `shouldBe` i1
 
+  it "☯ experiment" $ do
+    -- (1 -> A | 2 -> B) 3
+    let expr = App (Or (Fun (Ann Err Any) (Tag ":Ok")) (Fun (Ann (Var "got") (Var "gotT")) (Var "got"))) (Ann (App (Or (Fun (Ann (Int 1) IntT) (Tag "A")) (Fun (Ann (Int 2) IntT) (Tag "B"))) (Ann (Int 3) IntT)) (Or (Tag "A") (Tag "B")))
+    -- let expr = Ann (App (Or (Fun (Ann (Int 1) IntT) (Tag "A")) (Fun (Ann (Int 2) IntT) (Tag "B"))) (Ann (Int 3) IntT)) (Or (Tag "A") (Tag "B"))
+    eval ops expr `shouldBe` Tag "Ok"
+
   it "☯ unify" $ do
     True `shouldBe` True
 
