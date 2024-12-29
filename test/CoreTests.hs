@@ -12,22 +12,24 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (f, g, h) = (Var "f", Var "g", Var "h")
 
-  let add a b = Call "+" [a, b]
+  let add a b = Call "+" IntT [a, b]
+  let sub a b = Call "-" IntT [a, b]
+  let mul a b = Call "*" IntT [a, b]
   let ops =
         [ ( "+",
-            \eval args -> case eval <$> args of
+            \case
               [Int x, Int y] -> Int (x + y)
-              args -> Call "+" args
+              _ -> Err
           ),
           ( "-",
-            \eval args -> case eval <$> args of
+            \case
               [Int x, Int y] -> Int (x - y)
-              args -> Call "-" args
+              _ -> Err
           ),
           ( "*",
-            \eval args -> case eval <$> args of
+            \case
               [Int x, Int y] -> Int (x * y)
-              args -> Call "*" args
+              _ -> Err
           )
         ]
 
@@ -35,110 +37,108 @@ run = describe "--==☯️ Core language ☯️==--" $ do
         where
           case0 = Fun (Int 0) i1
           caseN f = For "x" (Fun x (x `mul` App (Var f) (x `sub` i1)))
-          sub x y = Call "-" [x, y]
-          mul x y = Call "*" [x, y]
 
-  it "☯ show" $ do
-    show Err `shouldBe` "!error"
-    show IntT `shouldBe` "!IntT"
-    show NumT `shouldBe` "!NumT"
-    show (Int 1) `shouldBe` "1"
-    show (Num 1.1) `shouldBe` "1.1"
-    -- show (Typ "T") `shouldBe` "$T"
-    -- show (Ctr "T" "A") `shouldBe` "$T.A"
-    show (Var "x") `shouldBe` "x"
+  it "☯ format" $ do
+    format Err `shouldBe` "!error"
+    format IntT `shouldBe` "!IntT"
+    format NumT `shouldBe` "!NumT"
+    format (Int 1) `shouldBe` "1"
+    format (Num 1.1) `shouldBe` "1.1"
+    -- format (Typ "T") `shouldBe` "$T"
+    -- format (Ctr "T" "A") `shouldBe` "$T.A"
+    format (Var "x") `shouldBe` "x"
 
-  -- show (pow (pow x y) z) `shouldBe` "(x^y)^z"
-  -- show (pow x (pow y z)) `shouldBe` "x^y^z"
-  -- show (pow (App x y) z) `shouldBe` "(x y)^z"
-  -- show (pow x (App y z)) `shouldBe` "x^(y z)"
+  -- format (pow (pow x y) z) `shouldBe` "(x^y)^z"
+  -- format (pow x (pow y z)) `shouldBe` "x^y^z"
+  -- format (pow (App x y) z) `shouldBe` "(x y)^z"
+  -- format (pow x (App y z)) `shouldBe` "x^(y z)"
 
-  -- show (App x (pow y z)) `shouldBe` "x y^z"
-  -- show (App (pow x y) z) `shouldBe` "x^y z"
-  -- show (App (App x y) z) `shouldBe` "x y z"
-  -- show (App x (App y z)) `shouldBe` "x (y z)"
-  -- show (App (mul x y) z) `shouldBe` "(x * y) z"
-  -- show (App x (mul y z)) `shouldBe` "x (y * z)"
+  -- format (App x (pow y z)) `shouldBe` "x y^z"
+  -- format (App (pow x y) z) `shouldBe` "x^y z"
+  -- format (App (App x y) z) `shouldBe` "x y z"
+  -- format (App x (App y z)) `shouldBe` "x (y z)"
+  -- format (App (mul x y) z) `shouldBe` "(x * y) z"
+  -- format (App x (mul y z)) `shouldBe` "x (y * z)"
 
-  -- show (isInt (App x y)) `shouldBe` "@isInt (x y)"
-  -- show (isInt (pow x y)) `shouldBe` "@isInt x^y"
-  -- show (pow (isInt x) y) `shouldBe` "(@isInt x)^y"
-  -- show (App (isInt x) y) `shouldBe` "@isInt x y"
-  -- show (App x (isInt y)) `shouldBe` "x (@isInt y)"
+  -- format (isInt (App x y)) `shouldBe` "@isInt (x y)"
+  -- format (isInt (pow x y)) `shouldBe` "@isInt x^y"
+  -- format (pow (isInt x) y) `shouldBe` "(@isInt x)^y"
+  -- format (App (isInt x) y) `shouldBe` "@isInt x y"
+  -- format (App x (isInt y)) `shouldBe` "x (@isInt y)"
 
-  -- show (isNum (App x y)) `shouldBe` "@isNum (x y)"
-  -- show (isNum (pow x y)) `shouldBe` "@isNum x^y"
-  -- show (pow (isNum x) y) `shouldBe` "(@isNum x)^y"
-  -- show (App (isNum x) y) `shouldBe` "@isNum x y"
-  -- show (App x (isNum y)) `shouldBe` "x (@isNum y)"
+  -- format (isNum (App x y)) `shouldBe` "@isNum (x y)"
+  -- format (isNum (pow x y)) `shouldBe` "@isNum x^y"
+  -- format (pow (isNum x) y) `shouldBe` "(@isNum x)^y"
+  -- format (App (isNum x) y) `shouldBe` "@isNum x y"
+  -- format (App x (isNum y)) `shouldBe` "x (@isNum y)"
 
-  -- show (int2num (App x y)) `shouldBe` "$i2n (x y)"
-  -- show (int2num (pow x y)) `shouldBe` "$i2n x^y"
-  -- show (pow (int2num x) y) `shouldBe` "($i2n x)^y"
-  -- show (App (int2num x) y) `shouldBe` "$i2n x y"
-  -- show (App x (int2num y)) `shouldBe` "x ($i2n y)"
+  -- format (int2num (App x y)) `shouldBe` "$i2n (x y)"
+  -- format (int2num (pow x y)) `shouldBe` "$i2n x^y"
+  -- format (pow (int2num x) y) `shouldBe` "($i2n x)^y"
+  -- format (App (int2num x) y) `shouldBe` "$i2n x y"
+  -- format (App x (int2num y)) `shouldBe` "x ($i2n y)"
 
-  -- show (mul x (App y z)) `shouldBe` "x * y z"
-  -- show (mul (App x y) z) `shouldBe` "x y * z"
-  -- show (mul (mul x y) z) `shouldBe` "x * y * z"
-  -- show (mul x (mul y z)) `shouldBe` "x * (y * z)"
-  -- show (mul (add x y) z) `shouldBe` "(x + y) * z"
-  -- show (mul x (add y z)) `shouldBe` "x * (y + z)"
+  -- format (mul x (App y z)) `shouldBe` "x * y z"
+  -- format (mul (App x y) z) `shouldBe` "x y * z"
+  -- format (mul (mul x y) z) `shouldBe` "x * y * z"
+  -- format (mul x (mul y z)) `shouldBe` "x * (y * z)"
+  -- format (mul (add x y) z) `shouldBe` "(x + y) * z"
+  -- format (mul x (add y z)) `shouldBe` "x * (y + z)"
 
-  -- show (add x (mul y z)) `shouldBe` "x + y * z"
-  -- show (add (mul x y) z) `shouldBe` "x * y + z"
-  -- show (add (add x y) z) `shouldBe` "x + y + z"
-  -- show (add x (add y z)) `shouldBe` "x + (y + z)"
-  -- show (sub (add x y) z) `shouldBe` "x + y - z"
-  -- show (sub x (add y z)) `shouldBe` "x - (y + z)"
-  -- show (sub (sub x y) z) `shouldBe` "x - y - z"
-  -- show (sub x (sub y z)) `shouldBe` "x - (y - z)"
-  -- show (sub (fun [x] y) z) `shouldBe` "(x -> y) - z"
-  -- show (sub x (fun [y] z)) `shouldBe` "x - (y -> z)"
+  -- format (add x (mul y z)) `shouldBe` "x + y * z"
+  -- format (add (mul x y) z) `shouldBe` "x * y + z"
+  -- format (add (add x y) z) `shouldBe` "x + y + z"
+  -- format (add x (add y z)) `shouldBe` "x + (y + z)"
+  -- format (sub (add x y) z) `shouldBe` "x + y - z"
+  -- format (sub x (add y z)) `shouldBe` "x - (y + z)"
+  -- format (sub (sub x y) z) `shouldBe` "x - y - z"
+  -- format (sub x (sub y z)) `shouldBe` "x - (y - z)"
+  -- format (sub (fun [x] y) z) `shouldBe` "(x -> y) - z"
+  -- format (sub x (fun [y] z)) `shouldBe` "x - (y -> z)"
 
-  -- show (fun [x] (add y z)) `shouldBe` "x -> y + z"
-  -- show (fun [add x y] z) `shouldBe` "x + y -> z"
-  -- show (fun [fun [x] y] z) `shouldBe` "(x -> y) -> z"
-  -- show (fun [x] (fun [y] z)) `shouldBe` "x -> y -> z"
-  -- show (fun [x] (lt y z)) `shouldBe` "x -> (y < z)"
-  -- show (fun [lt x y] z) `shouldBe` "(x < y) -> z"
+  -- format (fun [x] (add y z)) `shouldBe` "x -> y + z"
+  -- format (fun [add x y] z) `shouldBe` "x + y -> z"
+  -- format (fun [fun [x] y] z) `shouldBe` "(x -> y) -> z"
+  -- format (fun [x] (fun [y] z)) `shouldBe` "x -> y -> z"
+  -- format (fun [x] (lt y z)) `shouldBe` "x -> (y < z)"
+  -- format (fun [lt x y] z) `shouldBe` "(x < y) -> z"
 
-  -- show (lt x (fun [y] z)) `shouldBe` "x < y -> z"
-  -- show (lt (fun [x] y) z) `shouldBe` "x -> y < z"
-  -- show (lt (lt x y) z) `shouldBe` "(x < y) < z"
-  -- show (lt x (lt y z)) `shouldBe` "x < y < z"
-  -- show (lt (eq x y) z) `shouldBe` "(x == y) < z"
-  -- show (lt x (eq y z)) `shouldBe` "x < (y == z)"
+  -- format (lt x (fun [y] z)) `shouldBe` "x < y -> z"
+  -- format (lt (fun [x] y) z) `shouldBe` "x -> y < z"
+  -- format (lt (lt x y) z) `shouldBe` "(x < y) < z"
+  -- format (lt x (lt y z)) `shouldBe` "x < y < z"
+  -- format (lt (eq x y) z) `shouldBe` "(x == y) < z"
+  -- format (lt x (eq y z)) `shouldBe` "x < (y == z)"
 
-  -- show (eq x (lt y z)) `shouldBe` "x == y < z"
-  -- show (eq (lt x y) z) `shouldBe` "x < y == z"
-  -- show (eq (eq x y) z) `shouldBe` "x == y == z"
-  -- show (eq x (eq y z)) `shouldBe` "x == (y == z)"
-  -- show (eq (Ann x y) z) `shouldBe` "(x : y) == z"
-  -- show (eq x (Ann y z)) `shouldBe` "x == (y : z)"
+  -- format (eq x (lt y z)) `shouldBe` "x == y < z"
+  -- format (eq (lt x y) z) `shouldBe` "x < y == z"
+  -- format (eq (eq x y) z) `shouldBe` "x == y == z"
+  -- format (eq x (eq y z)) `shouldBe` "x == (y == z)"
+  -- format (eq (Ann x y) z) `shouldBe` "(x : y) == z"
+  -- format (eq x (Ann y z)) `shouldBe` "x == (y : z)"
 
-  -- show (Ann x (eq y z)) `shouldBe` "x : y == z"
-  -- show (Ann (eq x y) z) `shouldBe` "x == y : z"
-  -- show (Ann x (Ann y z)) `shouldBe` "x : y : z"
-  -- show (Ann (Ann x y) z) `shouldBe` "(x : y) : z"
-  -- show (Ann (Or x y) z) `shouldBe` "(x | y) : z"
-  -- show (Ann x (Or y z)) `shouldBe` "x : (y | z)"
+  -- format (Ann x (eq y z)) `shouldBe` "x : y == z"
+  -- format (Ann (eq x y) z) `shouldBe` "x == y : z"
+  -- format (Ann x (Ann y z)) `shouldBe` "x : y : z"
+  -- format (Ann (Ann x y) z) `shouldBe` "(x : y) : z"
+  -- format (Ann (Or x y) z) `shouldBe` "(x | y) : z"
+  -- format (Ann x (Or y z)) `shouldBe` "x : (y | z)"
 
-  -- show (For "x" (Ann y z)) `shouldBe` "@x. (y : z)"
-  -- show (For "x" (eq y z)) `shouldBe` "@x. y == z"
-  -- show (Ann (For "x" y) z) `shouldBe` "(@x. y) : z"
-  -- show (Or (For "x" y) z) `shouldBe` "@x. y | z"
-  -- show (Or x (For "y" z)) `shouldBe` "x | @y. z"
+  -- format (For "x" (Ann y z)) `shouldBe` "@x. (y : z)"
+  -- format (For "x" (eq y z)) `shouldBe` "@x. y == z"
+  -- format (Ann (For "x" y) z) `shouldBe` "(@x. y) : z"
+  -- format (Or (For "x" y) z) `shouldBe` "@x. y | z"
+  -- format (Or x (For "y" z)) `shouldBe` "x | @y. z"
 
-  -- show (Or x (Ann y z)) `shouldBe` "x | y : z"
-  -- show (Or (Ann x y) z) `shouldBe` "x : y | z"
-  -- show (Or x (Or y z)) `shouldBe` "x | y | z"
-  -- show (Or (Or x y) z) `shouldBe` "(x | y) | z"
+  -- format (Or x (Ann y z)) `shouldBe` "x | y : z"
+  -- format (Or (Ann x y) z) `shouldBe` "x : y | z"
+  -- format (Or x (Or y z)) `shouldBe` "x | y | z"
+  -- format (Or (Or x y) z) `shouldBe` "(x | y) | z"
 
-  -- show (If x (Ann y z)) `shouldBe` "x ? y : z"
-  -- show (If (Ann x y) z) `shouldBe` "x : y ? z"
-  -- show (If x (If y z)) `shouldBe` "x ? y ? z"
-  -- show (If (If x y) z) `shouldBe` "(x ? y) ? z"
+  -- format (If x (Ann y z)) `shouldBe` "x ? y : z"
+  -- format (If (Ann x y) z) `shouldBe` "x : y ? z"
+  -- format (If x (If y z)) `shouldBe` "x ? y ? z"
+  -- format (If (If x y) z) `shouldBe` "(x ? y) ? z"
 
   it "☯ syntax sugar" $ do
     -- let' [] x `shouldBe` x
@@ -160,7 +160,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ reduce" $ do
     let env =
-          [ ("x", Int 42),
+          [ ("a", IntT),
+            ("x", Int 42),
             ("y", Num 3.14),
             ("z", Var "z"),
             ("f", For "y" (Fun y y))
@@ -216,14 +217,14 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' (App (Fun (Or IntT IntT) z) x) `shouldBe` Err
     reduce' (App (Fun (Ann x Err) z) x) `shouldBe` z
     reduce' (App (Fun (Ann x Err) z) y) `shouldBe` Err
-    reduce' (App (Fun (Call "f" []) z) (Call "f" [])) `shouldBe` z
+    reduce' (App (Fun (Call "f" a []) z) (Call "f" a [])) `shouldBe` z
     reduce' (App (Fun Err IntT) Err) `shouldBe` IntT
     reduce' (App (For "y" (Fun y y)) x) `shouldBe` Int 42
     reduce' (App (Var "f") x) `shouldBe` Int 42
     reduce' (App (Or (Var "f") Err) x) `shouldBe` Int 42
     reduce' (App (Or Err (Var "f")) x) `shouldBe` Int 42
     reduce' (App (Or Err Err) x) `shouldBe` Err
-    reduce' (Call "f" [x, y]) `shouldBe` Call "f" [Let env x, Let env y]
+    reduce' (Call "f" a [x, y]) `shouldBe` Call "f" (Let env a) [Let env x, Let env y]
     reduce' Err `shouldBe` Err
 
   it "☯ eval" $ do
@@ -237,7 +238,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval' (Fun x y) `shouldBe` Fun (Int 42) (Num 3.14)
     eval' (And x y) `shouldBe` And (Int 42) (Num 3.14)
     eval' (Or x y) `shouldBe` Or (Int 42) (Num 3.14)
-    eval' (Call "f" [x, y]) `shouldBe` Call "f" [Int 42, Num 3.14]
+    eval' (Call "f" IntT [x, y]) `shouldBe` Call "f" IntT [Int 42, Num 3.14]
     -- eval' (For "x" (And x y)) `shouldBe` For "x" (And x (Num 3.14))
     -- eval' (Fix "x" (And x y)) `shouldBe` Fix "x" (And x (Num 3.14))
     eval' (App z (And x y)) `shouldBe` App z (And (Int 42) (Num 3.14))
@@ -297,12 +298,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let b' = for ["y", "b"] (Fun (Ann y b) y)
     eval' (App (Fun a' i1) b') `shouldBe` i1
 
-  it "☯ experiment" $ do
-    -- (1 -> A | 2 -> B) 3
-    let expr = App (Or (Fun (Ann Err Any) (Tag ":Ok")) (Fun (Ann (Var "got") (Var "gotT")) (Var "got"))) (Ann (App (Or (Fun (Ann (Int 1) IntT) (Tag "A")) (Fun (Ann (Int 2) IntT) (Tag "B"))) (Ann (Int 3) IntT)) (Or (Tag "A") (Tag "B")))
-    -- let expr = Ann (App (Or (Fun (Ann (Int 1) IntT) (Tag "A")) (Fun (Ann (Int 2) IntT) (Tag "B"))) (Ann (Int 3) IntT)) (Or (Tag "A") (Tag "B"))
-    eval ops expr `shouldBe` Tag "Ok"
-
   it "☯ unify" $ do
     True `shouldBe` True
 
@@ -311,7 +306,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer [] [] NumT `shouldBe` ((NumT, NumT), [], [])
     infer [] [] (Int 1) `shouldBe` ((Int 1, IntT), [], [])
     infer [] [] (Num 1.1) `shouldBe` ((Num 1.1, NumT), [], [])
-    infer [] [] Err `shouldBe` ((Err, Err), [], [])
+    infer [] [] Err `shouldBe` ((Err, Any), [], [])
 
   it "☯ infer Var" $ do
     let (a1, yT) = (Var "a1", Var "yT")

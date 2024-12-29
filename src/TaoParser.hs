@@ -239,6 +239,11 @@ parseAtom = do
         do
           _ <- P.char '%'
           x <- parseNameBase $ P.oneOf [P.letter, P.char '_']
+          _ <- P.char '<'
+          _ <- P.spaces
+          t <- parseExpr 6 P.spaces
+          _ <- P.spaces
+          _ <- P.char '>'
           args <-
             P.oneOf
               [ do
@@ -249,7 +254,7 @@ parseAtom = do
                     ],
                 return []
               ]
-          return (Call x args),
+          return (Call x t args),
         do
           _ <- P.word "if"
           _ <- P.whitespaces

@@ -1,8 +1,8 @@
 : (Int, Int) -> Int
-`+` (x , y) = %int_add(x, y)
+`+` (x, y) = %int_add<Int>(x, y)
 
 : (Int, Int) -> Int
-`-` (x, y) = %int_sub(x, y)
+`-` (x, y) = %int_sub<Int>(x, y)
 
 -- Add
 > 1 + 2

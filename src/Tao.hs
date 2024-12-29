@@ -26,7 +26,7 @@ data Expr
   | For [String] Expr
   | Fun Expr Expr
   | App Expr Expr
-  | Call String [Expr]
+  | Call String Type [Expr]
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
   | Match [Expr] [([String], [Expr], Expr)]
@@ -125,15 +125,15 @@ buildOps :: C.Ops
 buildOps = do
   let intOp1 op f =
         ( op,
-          \eval args -> case C.dropTypes . eval <$> args of
+          \args -> case C.dropTypes <$> args of
             [C.Int x] -> C.Int (f x)
-            args -> C.Call op args
+            _ -> C.Err
         )
   let intOp2 op f =
         ( op,
-          \eval args -> case C.dropTypes . eval <$> args of
+          \args -> case C.dropTypes <$> args of
             [C.Int x, C.Int y] -> C.Int (f x y)
-            args -> C.Call op args
+            _ -> C.Err
         )
   [ intOp1 "int_neg" (\x -> -x),
     intOp2 "int_add" (+),
@@ -363,7 +363,7 @@ instance FreeVars Expr where
     For xs a -> filter (`notElem` xs) (freeVars a)
     Fun a b -> freeVars a `union` freeVars b
     App a b -> freeVars a `union` freeVars b
-    Call _ args -> freeVars (and' args)
+    Call _ t args -> freeVars t `union` freeVars (and' args)
     Op1 op a -> [show op] `union` freeVars a
     Op2 op a b -> [show op] `union` freeVars a `union` freeVars b
     Let (a, b) c -> freeVars a `union` freeVars b `union` freeVars c
@@ -392,7 +392,7 @@ freeTags = \case
   For xs a -> filter (`notElem` xs) (freeTags a)
   Fun a b -> freeTags a `union` freeTags b
   App a b -> freeTags a `union` freeTags b
-  Call _ args -> freeTags (and' args)
+  Call _ t args -> freeTags t `union` freeTags (and' args)
   Op1 op a -> [show op] `union` freeTags a
   Op2 op a b -> [show op] `union` freeTags a `union` freeTags b
   Let (a, b) c -> freeTags a `union` freeTags b `union` freeTags c
@@ -613,7 +613,7 @@ lower = \case
     let (args, body) = funOf (Fun a b)
     lower (For (freeVars (and' args)) (fun args body))
   App a b -> C.App (lower a) (lower b)
-  Call op args -> C.Call op (map lower args)
+  Call op t args -> C.Call op (lower t) (map lower args)
   Op1 op a -> lower (App (Var (show op)) a)
   Op2 op a b -> lower (App (Var (show op)) (And a b))
   Let (Var x, b) (Var x') | x == x' -> lower b
@@ -675,7 +675,7 @@ lift = \case
   C.Fix _ a -> lift a
   C.Fun a b -> Fun (lift a) (lift b)
   C.App a b -> App (lift a) (lift b)
-  C.Call op args -> Call op (map lift args)
+  C.Call op t args -> Call op (lift t) (map lift args)
   C.Let [] b -> lift b
   C.Let ((x, b) : env) c -> Let (Var x, lift b) (lift (C.Let env c))
   C.Err -> Err
@@ -743,7 +743,10 @@ instance TestSome UnitTest where
             [ ([], [t.expect], Tag ":Ok"),
               (["got"], [Var "got"], Var "got")
             ]
-    -- error $ show (compile ctx t.filename test' :: (C.Env, C.Expr))
+    -- error . intercalate "\n" $
+    --   [ show (fst (compile ctx t.filename test' :: (C.Env, C.Expr))),
+    --     C.format (snd (compile ctx t.filename test' :: (C.Env, C.Expr)))
+    --   ]
     case eval ctx t.filename test' of
       Tag ":Ok" -> [TestPass t.filename t.pos t.name]
       got -> [TestFail t.filename t.pos t.name t.expr t.expect got]

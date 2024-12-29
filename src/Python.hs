@@ -731,12 +731,12 @@ instance Emit T.Expr ([Stmt], Expr) where
   -- Or Expr Expr
   emit options (T.Ann a _) = emit options a
   -- Op1 C.UnaryOp Expr
-  emit options (T.Call op args) = case (op, args) of
+  emit options (T.Call op t args) = case (op, args) of
     ("+", [a, b]) -> emitBinOp Add a b
     ("-", [a, b]) -> emitBinOp Sub a b
     ("*", [a, b]) -> emitBinOp Mult a b
     ("^", [a, b]) -> emitBinOp Pow a b
-    _ -> error $ "TODO: emit Op " ++ show (T.Call op args)
+    _ -> error $ "TODO: emit Op " ++ show (T.Call op t args)
     where
       emitBinOp :: BinOp -> T.Expr -> T.Expr -> ([Stmt], Expr)
       emitBinOp op a b = do

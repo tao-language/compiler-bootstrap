@@ -1,5 +1,5 @@
-`-` (x : Int, y : Int) = %int_sub(x, y)
-`*` (x : Int, y : Int) = %int_mul(x, y)
+`-` (x : Int, y : Int) = %int_sub<Int>(x, y)
+`*` (x : Int, y : Int) = %int_mul<Int>(x, y)
 
 factorial = {
 | 0 -> 1
