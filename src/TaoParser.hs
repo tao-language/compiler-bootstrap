@@ -671,7 +671,7 @@ load prelude path dependencies = do
   let pkg0 = (takeBaseName path, [])
   let deps = if prelude == "" then path : dependencies else prelude : path : dependencies
   ((name, modules), errs) <- foldM (flip loadPackage) (pkg0, []) deps
-  let preludeStmts = fromMaybe [] (lookup (prelude </> prelude) modules)
+  let preludeStmts = fromMaybe [] (lookup (prelude </> prelude ++ ".tao") modules)
   let withPrelude (path, stmts) =
         if prelude `isPrefixOf` path
           then (path, stmts)

@@ -550,30 +550,13 @@ instance Resolve (String, Stmt) where
   resolve ctx path (name, stmt) = case stmt of
     Import path' alias names -> case names of
       (x, y) : names -> do
-        let defs = if y == name then resolve ctx path' x else []
+        let defs = if y == name then resolve ctx (path' ++ ".tao") x else []
         defs ++ resolve ctx path (name, Import path' alias names)
       [] | alias == name -> [(path, Tag path')]
       [] -> []
     Def (p, b) | name `elem` bindings p -> [(path, Let (p, b) (Var name))]
     TypeDef (name', args, body) | name == name' -> [(path, fun args body)]
     _ -> []
-
-class Defined a where
-  defined :: a -> [String]
-
-instance Defined ([Module], String) where
-  defined :: ([Module], String) -> [String]
-  defined (ctx, path) = case lookup path ctx of
-    Just stmts -> concatMap defined stmts
-    Nothing -> []
-
-instance Defined Stmt where
-  defined :: Stmt -> [String]
-  defined = \case
-    Import _ alias names -> alias : map snd names
-    Def (p, _) -> bindings p
-    TypeDef (name, _, _) -> [name]
-    Test {} -> []
 
 class Compile a where
   compile :: [Module] -> String -> a
@@ -591,14 +574,6 @@ instance Compile (String -> (String, C.Expr)) where
 
 instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"y", expr) = do
-  --   let a = lower expr
-  --   let env =
-  --         delete name (C.freeTags a `union` C.freeVars a)
-  --           & map (compile ctx path)
-  --           & filter (\(x, a) -> a /= C.Err)
-  --   -- (env, a)
-  --   error $ show (a, env :: C.Env)
   compile ctx path (name, expr) = do
     let a = lower expr
     let env =
