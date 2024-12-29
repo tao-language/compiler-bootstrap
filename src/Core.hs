@@ -327,39 +327,44 @@ reduce ops = \case
   Let env expr -> reduceLet ops env expr
   expr -> expr
 
+reduceLet :: Ops -> Env -> Expr -> Expr
+reduceLet ops env = \case
+  Var x -> case lookup x env of
+    Just (Var x') | x == x' -> Var x
+    Just (Ann (Var x') _) | x == x' -> Var x
+    Just a -> reduce ops a
+    Nothing -> Var x
+  Ann a b -> Ann (Let env a) (Let env b)
+  And a b -> And (Let env a) (Let env b)
+  Or a b -> Or (Let env a) (Let env b)
+  For x a -> For x (Let env a)
+  Fix x a -> Fix x (Let env a)
+  Fun a b -> Fun (Let env a) (Let env b)
+  App a b -> reduceApp ops (Let env a) (Let env b)
+  Call f t args -> case (lookup f ops, Let env t, Let env <$> args) of
+    (Just call, t, args) | Just result <- call (eval ops <$> args) -> Ann result t
+    (Just call, t, args) -> error $ show (call (eval ops <$> args))
+    (_, t, args) -> Call f t args
+  Let env' a -> reduce ops (Let (env ++ env') a)
+  expr -> expr
+
 reduceApp :: Ops -> Expr -> Expr -> Expr
-reduceApp ops a b = case a of
-  Let env (Tag k) -> case lookup k env of
-    Just a -> reduce ops (App (Let env a) b)
-    Nothing -> reduce ops b
-  Let env (Let env' (Tag k)) ->
-    reduce ops (App (Let (env ++ env') (Tag k)) b)
-  a -> case (reduce ops a, reduce ops b) of
-    (Any, b) -> App Any b
-    (Var x, b) -> App (Var x) b
-    (And a1 a2, b) -> case a1 of
-      Let env (Tag k) -> case lookup k env of
-        Just a1 -> reduceApp ops (App (Let env a1) a2) b
-        Nothing -> b
-      Let env (Let env' a1) ->
-        reduceApp ops (And (Let (env ++ env') a1) a2) b
-      _ -> Err
-    (Or a1 a2, b) -> case reduceApp ops a1 b of
-      Err -> reduceApp ops a2 b
-      c -> c
-    (For x a, b) -> reduceApp ops (Let [(x, Var x)] a) b
-    (Fix x a, b@Var {}) -> App (Fix x a) b
-    (Fix x a, b@App {}) -> App (Fix x a) b
-    (Fix x a, b) -> reduceApp ops (Let [(x, Fix x a)] a) b
-    (App a1 a2, b) -> App (App a1 a2) b
-    -- (Fun (Or a1 a2) c, b) -> case reduceApp ops (Fun a1 c) b of
-    --   Err -> reduceApp ops (Fun a2 c) b
-    --   c -> c
-    (Fun a c, b) -> case match False ops a b of
-      Just env -> reduce ops (Let env c)
-      Nothing -> Err
-    (Call f t args, b) -> App (Call f t args) b
-    _ -> Err
+reduceApp ops a b = case (reduce ops a, reduce ops b) of
+  (Any, b) -> App Any b
+  (Var x, b) -> App (Var x) b
+  (Or a1 a2, b) -> case reduceApp ops a1 b of
+    Err -> reduceApp ops a2 b
+    c -> c
+  (For x a, b) -> reduceApp ops (Let [(x, Var x)] a) b
+  (Fix x a, b@Var {}) -> App (Fix x a) b
+  (Fix x a, b@App {}) -> App (Fix x a) b
+  (Fix x a, b) -> reduceApp ops (Let [(x, Fix x a)] a) b
+  (App a1 a2, b) -> App (App a1 a2) b
+  (Fun a c, b) -> case match False ops a b of
+    Just env -> reduce ops (Let env c)
+    Nothing -> Err
+  (Call f t args, b) -> App (Call f t args) b
+  _ -> Err
 
 match :: Bool -> Ops -> Expr -> Expr -> Maybe Env
 match unify ops (Let env (Tag k)) b = case lookup k env of
@@ -412,27 +417,6 @@ match unify ops a b = case (reduce ops a, reduce ops b, unify) of
   (Ann a _, b, _) -> match unify ops a b
   (a, Ann b _, _) -> match unify ops a b
   _ -> Nothing
-
-reduceLet :: Ops -> Env -> Expr -> Expr
-reduceLet ops env = \case
-  Var x -> case lookup x env of
-    Just (Var x') | x == x' -> Var x
-    Just (Ann (Var x') _) | x == x' -> Var x
-    Just a -> reduce ops a
-    Nothing -> Var x
-  Ann a b -> Ann (Let env a) (Let env b)
-  And a b -> And (Let env a) (Let env b)
-  Or a b -> Or (Let env a) (Let env b)
-  For x a -> For x (Let env a)
-  Fix x a -> Fix x (Let env a)
-  Fun a b -> Fun (Let env a) (Let env b)
-  App a b -> reduceApp ops (Let env a) (Let env b)
-  Call f t args -> case (lookup f ops, Let env t, Let env <$> args) of
-    (Just call, t, args) | Just result <- call (eval ops <$> args) -> Ann result t
-    (Just call, t, args) -> error $ show (call (eval ops <$> args))
-    (_, t, args) -> Call f t args
-  Let env' a -> reduce ops (Let (env ++ env') a)
-  expr -> expr
 
 eval :: Ops -> Expr -> Expr
 eval ops expr = case reduce ops expr of
