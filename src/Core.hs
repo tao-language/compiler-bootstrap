@@ -405,7 +405,7 @@ reduceLet ops env = \case
     Just (Ann (Var x') _) | x == x' -> Var x
     Just a -> reduce ops a
     Nothing -> Var x
-  Ann a b -> Ann (reduce ops (Let env a)) (reduce ops (Let env b))
+  Ann a b -> Ann (Let env a) (Let env b)
   And a b -> And (Let env a) (Let env b)
   Or a b -> Or (Let env a) (Let env b)
   For x a -> For x (Let env a)
@@ -645,16 +645,36 @@ inferAll ops env (a : bs) = do
   ((substitute s2 a', substitute s2 ta) : bts, s2 `compose` s1, e1 ++ e2)
 
 check :: Ops -> Env -> Expr -> Expr -> ((Expr, Expr), Substitution, [TypeError])
+check ops env (And a b) (And ta tb) = do
+  let ((a', ta'), (b', tb'), s, e) = check2 ops env (a, ta) (b, tb)
+  ((And a' b', And ta' tb'), s, e)
+check ops env (Or a b) t = do
+  let ((a', ta'), (b', tb'), s, e) = check2 ops env (a, t) (b, t)
+  ((Or a' b', ta'), s, e)
+check ops env (For x a) t = do
+  let y = newName (map fst env) x
+  let ((a', t'), s, e) = check ops ((y, Var y) : env) (substitute [(x, Var y)] a) t
+  ((a', t'), [(y, Var y)] `compose` s, e)
+check ops env (Fun a b) (Fun ta tb) = do
+  let ((a', ta'), (b', tb'), s, e) = check2 ops env (a, ta) (b, tb)
+  ((Fun (Ann a' ta') b', Fun ta' tb'), s, e)
+check ops env (App a b) t2 = do
+  let x = newName ("$" : map fst env) "$"
+  let env' = (x, Var x) : env
+  let ((b', t1), s1, e1) = infer ops env' b
+  let ((a', _), s2, e2) = check ops (s1 `compose` env') (substitute s1 a) (Fun t1 (substitute s1 t2))
+  let s = s2 `compose` s1
+  ((App a' (substitute s2 b'), substitute s t2), s, e1 ++ e2)
 check ops env a t = do
   let ((a', ta), s1, e1) = infer ops env a
   let (t', s2, e2) = unify ops env ta (substitute s1 t)
   ((substitute s2 a', t'), s2 `compose` s1, e1 ++ e2)
 
--- check2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> ((Expr, Expr), (Expr, Expr), Substitution, [TypeError])
--- check2 ops env (a, ta) (b, tb) = do
---   let ((a', ta'), s1, e1) = check ops env a ta
---   let ((b', tb'), s2, e2) = check ops (s1 `compose` env) (substitute s1 b) (substitute s1 tb)
---   ((substitute s2 a', substitute s2 ta'), (b', tb'), s2 `compose` s1, e1 ++ e2)
+check2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> ((Expr, Expr), (Expr, Expr), Substitution, [TypeError])
+check2 ops env (a, ta) (b, tb) = do
+  let ((a', ta'), s1, e1) = check ops env a ta
+  let ((b', tb'), s2, e2) = check ops (s1 `compose` env) (substitute s1 b) (substitute s1 tb)
+  ((substitute s2 a', substitute s2 ta'), (b', tb'), s2 `compose` s1, e1 ++ e2)
 
 instantiate :: [String] -> Expr -> (Expr, Substitution)
 instantiate vars (For x a) | x `occurs` a = do

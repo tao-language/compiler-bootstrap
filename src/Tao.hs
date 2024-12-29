@@ -5,7 +5,7 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap), second)
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
-import Data.List (delete, elemIndex, intercalate, isInfixOf, isPrefixOf, nub, sort, union, (\\))
+import Data.List (delete, elemIndex, intercalate, isInfixOf, isPrefixOf, nub, sort, union, unionBy, (\\))
 import Data.List.Split (splitWhen, startsWith)
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import System.FilePath (takeBaseName)
@@ -567,7 +567,7 @@ instance Compile (String -> C.Env) where
     let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
         compileDef (path, alt) (env, alts) = do
           let (env', alt') = compile ctx path (name, alt)
-          (env' `C.compose` env, C.let' env' alt' : alts)
+          (unionBy (\a b -> fst a == fst b) env' env, alt' : alts)
     let (env, alts) = foldr compileDef ([], []) (resolve ctx path name)
     let expr = case C.or' alts of
           C.Var x | x == name -> C.Var x
@@ -748,7 +748,7 @@ instance TestSome UnitTest where
             ]
     -- error . intercalate "\n" $
     --   [ show (fst (compile ctx t.filename test' :: (C.Env, C.Expr))),
-    --     C.format (snd (compile ctx t.filename test' :: (C.Env, C.Expr)))
+    --     show (snd (compile ctx t.filename test' :: (C.Env, C.Expr)))
     --   ]
     case eval ctx t.filename test' of
       Tag ":Ok" -> [TestPass t.filename t.pos t.name]
