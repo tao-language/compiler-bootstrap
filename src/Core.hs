@@ -628,8 +628,8 @@ infer ops env (App a b) = do
           (Var y, [(y, Var y), (x, Fun tb (Var y))], [])
         Or t1 t2 -> do
           let (t1', s1, e1) = unifyApp ops env t1 tb
-          let (t2', s2, e2) = unifyApp ops env t2 tb
-          (Or t1' t2', [], e1 ++ e2)
+          let (t2', s2, e2) = unifyApp ops (s1 `compose` env) (substitute s1 t2) (substitute s1 tb)
+          (Or (substitute s2 t1') t2', s2 `compose` s1, e1 ++ e2)
         Fun t1 t2 -> do
           let (_, s, e) = unify ops env t1 tb
           (substitute s t2, s, e)
