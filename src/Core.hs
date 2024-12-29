@@ -352,51 +352,63 @@ reduceApp ops a b = case a of
     (Fix x a, b@App {}) -> App (Fix x a) b
     (Fix x a, b) -> reduceApp ops (Let [(x, Fix x a)] a) b
     (App a1 a2, b) -> App (App a1 a2) b
-    (Fun a c, b) -> reduceAppFun ops a b c
+    (Fun a c, b) -> case match False ops a b of
+      Just env -> reduce ops (Let env c)
+      Nothing -> Err
     (Call f t args, b) -> App (Call f t args) b
     _ -> Err
 
-reduceAppFun :: Ops -> Expr -> Expr -> Expr -> Expr
-reduceAppFun ops a b c = case a of
-  Let env (Tag k) -> do
-    let b' = App (Let env (Tag k)) b
-    reduce ops (App (Fun (Tag k) c) b')
-  Let env (Let env' a) ->
-    reduce ops (App (Fun (Let (env ++ env') a) c) b)
-  a -> case (reduce ops a, reduce ops b) of
-    (Any, _) -> reduce ops c
-    (Unit, Unit) -> reduce ops c
-    (IntT, IntT) -> reduce ops c
-    (NumT, NumT) -> reduce ops c
-    (Int i, Int i') | i == i' -> reduce ops c
-    (Num n, Num n') | n == n' -> reduce ops c
-    (Tag k, Tag k') | k == k' -> reduce ops c
-    (Var x, b) -> reduce ops (Let [(x, b)] c)
-    (Ann a ta, Ann b (Var x)) -> reduceAppFun ops a b (Let [(x, ta)] c)
-    (Ann a ta, Ann b tb) -> reduceAppFun ops ta tb (App (Fun a c) b)
-    (And (Let env (Tag k)) a2, b) -> do
-      let b' = App (And (Let env (Tag k)) a2) b
-      reduceAppFun ops (And (Tag k) a2) b' c
-    (And (Let env (Let env' a1)) a2, b) -> do
-      let a' = And (Let (env ++ env') a1) a2
-      reduceAppFun ops a' b c
-    (And a1 a2, And b1 b2) -> reduceAppFun ops a1 b1 (App (Fun a2 c) b2)
-    (Or a1 a2, b) -> reduceApp ops (Or (Fun a1 c) (Fun a2 c)) b
-    (a, Or b1 b2) -> case reduceAppFun ops a b1 c of
-      Err -> reduceAppFun ops a b2 c
-      c -> c
-    (For x a, b) ->
-      reduceAppFun ops (Let [(x, Var x)] a) b c
-    (a, For x b) -> do
-      let y = newName (freeVars a `union` freeVars (For x b)) x
-      reduceAppFun ops a (Let [(x, Var y)] b) c
-    (Fun a1 a2, Fun b1 b2) -> reduceAppFun ops a1 b1 (App (Fun a2 c) b2)
-    (App a1 a2, App b1 b2) -> reduceAppFun ops a1 b1 (App (Fun a2 c) b2)
-    (Call x t args, Call x' t' args') | x == x' -> reduceAppFun ops (and' (t : args)) (and' (t' : args')) c
-    (Err, Err) -> reduce ops c
-    (Ann a _, b) -> reduceAppFun ops a b c
-    (a, Ann b _) -> reduceAppFun ops a b c
-    _ -> Err
+match :: Bool -> Ops -> Expr -> Expr -> Maybe Env
+match unify ops (Let env (Tag k)) b = case lookup k env of
+  Just def -> match unify ops (Tag k) (App def b)
+  Nothing -> match unify ops (Tag k) b
+match unify ops (Let env (Let env' a)) b =
+  match unify ops (Let (env ++ env') a) b
+match unify ops a b = case (reduce ops a, reduce ops b, unify) of
+  (Any, _, _) -> Just []
+  (_, Any, True) -> Just []
+  (Unit, Unit, _) -> Just []
+  (IntT, IntT, _) -> Just []
+  (NumT, NumT, _) -> Just []
+  (Int i, Int i', _) | i == i' -> Just []
+  (Num n, Num n', _) | n == n' -> Just []
+  (Tag k, Tag k', _) | k == k' -> Just []
+  (Var x, b, _) -> Just [(x, b)]
+  (a, Var x, True) -> Just [(x, a)]
+  (Ann a ta, Ann b tb, _) -> do
+    env1 <- match True ops ta tb
+    env2 <- match unify ops a b
+    Just (env1 ++ env2)
+  (And (Let env (Tag k)) a, b, _) -> case lookup k env of
+    Just def -> match unify ops (And (Tag k) a) (App def b)
+    Nothing -> match unify ops (And (Tag k) a) b
+  (And (Let env (Let env' a1)) a2, b, _) ->
+    match unify ops (Let (env ++ env') (And a1 a2)) b
+  (And a1 a2, And b1 b2, _) -> do
+    env1 <- match unify ops a1 b1
+    env2 <- match unify ops a2 b2
+    Just (env1 ++ env2)
+  (Or a1 a2, b, _) -> case match unify ops a1 b of
+    Just env1 -> case match unify ops a2 b of
+      Just env2 -> Just (env1 ++ env2)
+      Nothing -> Just env1
+    Nothing -> match unify ops a2 b
+  (a, Or b1 b2, _) -> case match unify ops a b1 of
+    Just env1 -> case match unify ops a b2 of
+      Just env2 -> Just (env1 ++ env2)
+      Nothing -> Just env1
+    Nothing -> match unify ops a b2
+  (For x a, b, _) -> do match unify ops (Let [(x, Var x)] a) b
+  (a, For x b, _) -> do match unify ops a (Let [(x, Var x)] b)
+  -- \| Fix String Expr
+  (Fun a1 a2, Fun b1 b2, _) -> match unify ops (And a1 a2) (And b1 b2)
+  (App a1 a2, App b1 b2, _) -> match unify ops (And a1 a2) (And b1 b2)
+  (Call x t args, Call x' t' args', _) | x == x' -> do
+    match unify ops (and' (t : args)) (and' (t' : args'))
+  (Err, Err, _) -> Just []
+  (Ann a _, b, _) -> match unify ops a b
+  (a, Ann b _, _) -> match unify ops a b
+  _ -> Nothing
 
 reduceLet :: Ops -> Env -> Expr -> Expr
 reduceLet ops env = \case

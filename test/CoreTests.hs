@@ -304,18 +304,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ experiment" $ do
     let env =
-          [ ( "not",
-              Let [("Bool", Or (Fun (Ann (Tag "True") (Tag "True")) (Tag "Bool")) (Fun (Ann (Tag "False") (Tag "False")) (Tag "Bool")))] $
-                For "$1" (Fun (Ann (Var "$1") (Tag "Bool")) (App (Or (Fun (Ann (Tag "True") (Tag "Bool")) (Tag "False")) (Fun (Ann Any (Tag "Bool")) (Tag "True"))) (Var "$1")))
-            ),
-            ("Bool", Or (Fun (Ann (Tag "True") (Tag "True")) (Tag "Bool")) (Fun (Ann (Tag "False") (Tag "False")) (Tag "Bool")))
+          [ ("x", For "x" (App (Fun (Ann (Call "f" IntT [Var "x"]) IntT) (Var "x")) (Ann (Call "f" IntT [Int 1]) IntT)))
           ]
-    -- let expr = For "got" (For "gotT" (App (Or (Fun (Ann (Tag "False") (Tag "False")) (Tag ":Ok")) (Fun (Ann (Var "got") (Var "gotT")) (Var "got"))) (Ann (App (Var "not") (Ann (Tag "True") (Tag "True"))) (Or (Tag "False") (Tag "True")))))
-    -- let expr = App (Or (Fun (Ann (Tag "False") (Tag "False")) (Tag ":Ok")) (Fun (Ann (Var "got") (Var "gotT")) (Var "got"))) (Ann (App (Var "not") (Ann (Tag "True") (Tag "True"))) (Or (Tag "False") (Tag "True")))
-    -- let expr = Ann (App (Var "not") (Ann (Tag "True") (Tag "True"))) (Or (Tag "False") (Tag "True"))
-    let expr = App (Var "not") (Ann (Tag "True") (Tag "True"))
-    -- let expr = App (Fun (Ann Any (Tag "Bool")) (Tag "Ok") `Or` Fun (Ann Any (Tag "Bool")) (Tag "Err")) (Ann (Tag "True") (Tag "True"))
-    -- let expr = App (Fun (Tag "Bool") (Tag "Ok")) (Tag "True")
+    -- let expr = For "x1T" (For "got" (For "gotT" (App (Or (Fun (Ann (Int 1) IntT) (Tag ":Ok")) (Fun (Ann (Var "got") (Var "gotT")) (Var "got"))) (Ann (Var "x") (Var "x1T")))))
+    -- let expr = App (Or (Fun (Ann (Int 1) IntT) (Tag ":Ok")) (Fun (Ann (Var "got") (Var "gotT")) (Var "got"))) (Ann (Var "x") (Var "x1T"))
+    let expr = For "x1T" $ App (Fun (Ann Any IntT) (Tag "Ok")) (Ann (Var "x") (Var "x1T"))
     eval ops (Let env expr) `shouldBe` Tag "TODO"
     True `shouldBe` True
 
