@@ -346,7 +346,7 @@ reduceApp ops a b = case a of
     (Or a1 a2, b) -> case reduceApp ops a1 b of
       Err -> reduceApp ops a2 b
       c -> c
-    (For x a, b) -> for [x] (reduceApp ops (Let [(x, Var x)] a) b)
+    (For x a, b) -> (reduceApp ops (Let [(x, Var x)] a) b)
     (Fix x a, b@Var {}) -> App (Fix x a) b
     (Fix x a, b@App {}) -> App (Fix x a) b
     (Fix x a, b) -> reduceApp ops (Let [(x, Fix x a)] a) b
@@ -421,7 +421,7 @@ eval ops expr = case reduce ops expr of
   Ann a b -> Ann (eval ops a) (eval ops b)
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> Or (eval ops a) (eval ops b)
-  For x a -> For x (eval ops (Let [(x, Var x)] a))
+  For x a -> for [x] (eval ops (Let [(x, Var x)] a))
   Fix x a -> Fix x (eval ops (Let [(x, Var x)] a))
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)

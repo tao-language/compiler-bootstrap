@@ -283,10 +283,13 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ eval type safety" $ do
     let eval' = eval ops
     eval' (App (For "x" $ Fun x x) i1) `shouldBe` i1
-    eval' (App (For "x" $ Fun x x) (Ann i1 IntT)) `shouldBe` i1
+    eval' (App (For "x" $ Fun x x) (Ann i1 IntT)) `shouldBe` Ann i1 IntT
     eval' (App (For "x" $ Fun (Ann x IntT) x) i1) `shouldBe` i1
     eval' (App (For "x" $ Fun (Ann x IntT) x) (Ann i1 IntT)) `shouldBe` i1
     eval' (App (For "x" $ Fun (Ann x NumT) x) (Ann i1 IntT)) `shouldBe` Err
+    let a' = Fun (Ann Err Err) (Tag "Ok") `Or` Fun (Ann x a) x
+    let b' = Ann (App Unit (Ann i1 IntT)) Unit
+    eval' (for ["x", "a"] $ App a' b') `shouldBe` Err
 
   it "☯ eval alpha equivalence" $ do
     let eval' = eval ops

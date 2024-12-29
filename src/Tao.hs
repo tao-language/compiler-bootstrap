@@ -743,7 +743,7 @@ instance TestSome UnitTest where
             [ ([], [t.expect], Tag ":Ok"),
               (["got"], [Var "got"], Var "got")
             ]
-    error $ show (compile ctx t.filename test' :: (C.Env, C.Expr))
+    -- error $ show (compile ctx t.filename test' :: (C.Env, C.Expr))
     case eval ctx t.filename test' of
       Tag ":Ok" -> [TestPass t.filename t.pos t.name]
       got -> [TestFail t.filename t.pos t.name t.expr t.expect got]
