@@ -38,7 +38,7 @@ data Expr
 
 type Type = Expr
 
-type Ops = [(String, [Expr] -> Expr)]
+type Ops = [(String, [Expr] -> Maybe Expr)]
 
 type Env = [(String, Expr)]
 
@@ -352,6 +352,9 @@ reduceApp ops a b = case a of
     (Fix x a, b@App {}) -> App (Fix x a) b
     (Fix x a, b) -> reduceApp ops (Let [(x, Fix x a)] a) b
     (App a1 a2, b) -> App (App a1 a2) b
+    -- (Fun (Or a1 a2) c, b) -> case reduceApp ops (Fun a1 c) b of
+    --   Err -> reduceApp ops (Fun a2 c) b
+    --   c -> c
     (Fun a c, b) -> case match False ops a b of
       Just env -> reduce ops (Let env c)
       Nothing -> Err
@@ -424,9 +427,10 @@ reduceLet ops env = \case
   Fix x a -> Fix x (Let env a)
   Fun a b -> Fun (Let env a) (Let env b)
   App a b -> reduceApp ops (Let env a) (Let env b)
-  Call f t args -> case (lookup f ops, Let env <$> args) of
-    (Just call, args) -> Ann (call (eval ops <$> args)) (Let env t)
-    (Nothing, args) -> Call f (Let env t) args
+  Call f t args -> case (lookup f ops, Let env t, Let env <$> args) of
+    (Just call, t, args) | Just result <- call (eval ops <$> args) -> Ann result t
+    (Just call, t, args) -> error $ show (call (eval ops <$> args))
+    (_, t, args) -> Call f t args
   Let env' a -> reduce ops (Let (env ++ env') a)
   expr -> expr
 
@@ -613,10 +617,10 @@ infer ops env (Or a b) = do
 infer ops env (For x a) = do
   let y = newName (map fst env) x
   let ((a', ta), s, e) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
-  ((a', ta), [(y, Var y)] `compose` s, e)
+  ((a', ta), s `compose` [(y, Var y)], e)
 infer ops env (Fix x a) = do
   let ((a', ta), s, e) = infer ops ((x, Var x) : env) a
-  ((fix [x] a', ta), filter (\(x', _) -> x /= x') s, e)
+  ((fix [x] a', ta), s, e)
 infer ops env (Fun a b) = do
   let ((a', ta), (b', tb), s, e) = infer2 ops env a b
   ((Fun (Ann a' ta) b', Fun ta tb), s, e)

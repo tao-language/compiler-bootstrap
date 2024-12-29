@@ -12,27 +12,24 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (f, g, h) = (Var "f", Var "g", Var "h")
 
-  let add a b = Call "+" IntT [a, b]
-  let sub a b = Call "-" IntT [a, b]
-  let mul a b = Call "*" IntT [a, b]
+  let add a b = Call "int_add" IntT [a, b]
+  let sub a b = Call "int_sub" IntT [a, b]
+  let mul a b = Call "int_mul" IntT [a, b]
   let ops =
-        [ ( "+",
+        [ ( "int_add",
             \args -> case dropTypes <$> args of
-              [Int x, Int y] -> Int (x + y)
-              [a, b] -> add a b
-              _ -> Err
+              [Int x, Int y] -> Just (Int (x + y))
+              _ -> Nothing
           ),
-          ( "-",
+          ( "int_sub",
             \args -> case dropTypes <$> args of
-              [Int x, Int y] -> Int (x - y)
-              [a, b] -> sub a b
-              _ -> Err
+              [Int x, Int y] -> Just (Int (x - y))
+              _ -> Nothing
           ),
-          ( "*",
+          ( "int_mul",
             \args -> case dropTypes <$> args of
-              [Int x, Int y] -> Int (x * y)
-              [a, b] -> mul a b
-              args -> error $ show args
+              [Int x, Int y] -> Just (Int (x * y))
+              _ -> Nothing
           )
         ]
 
@@ -242,7 +239,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval' (And x y) `shouldBe` And (Int 42) (Num 3.14)
     eval' (Or x y) `shouldBe` Or (Int 42) (Num 3.14)
     eval' (Call "f" IntT [x, y]) `shouldBe` Call "f" IntT [Int 42, Num 3.14]
-    eval' (Call "+" IntT [i1, i1]) `shouldBe` Ann i2 IntT
+    eval' (Call "int_add" IntT [i1, i1]) `shouldBe` Ann i2 IntT
     -- eval' (For "x" (And x y)) `shouldBe` For "x" (And x (Num 3.14))
     -- eval' (Fix "x" (And x y)) `shouldBe` Fix "x" (And x (Num 3.14))
     eval' (App z (And x y)) `shouldBe` App z (And (Int 42) (Num 3.14))
@@ -311,19 +308,15 @@ run = describe "--==☯️ Core language ☯️==--" $ do
                     [ ("*", For "x" (For "y" (Fun (Ann (And (Var "x") (Var "y")) (And IntT IntT)) (Call "int_mul" IntT [Var "x", Var "y"])))),
                       ("-", For "x" (For "y" (Fun (Ann (And (Var "x") (Var "y")) (And IntT IntT)) (Call "int_sub" IntT [Var "x", Var "y"]))))
                     ]
-                    (For "$1" (For "n" (For "$1T" (Fun (Ann (Var "$1") (Var "$1T")) (App (Or (Fun (Ann (Int 0) IntT) (Int 1)) (Fun (Ann (Var "n") IntT) (App (Var "*") (Ann (And (Var "n") (App (Var "factorial") (Ann (App (Var "-") (Ann (And (Var "n") (Int 1)) (And IntT IntT))) IntT))) (And IntT Err))))) (Ann (Var "$1") (Var "$1T")))))))
+                    (For "$1" (For "n" (Fun (Ann (Var "$1") IntT) (App (Or (Fun (Ann (Int 0) IntT) (Int 1)) (Fun (Ann (Var "n") IntT) (App (Var "*") (Ann (And (Var "n") (App (Var "factorial") (Ann (App (Var "-") (Ann (And (Var "n") (Int 1)) (And IntT IntT))) IntT))) (And IntT Err))))) (Ann (Var "$1") IntT)))))
                 )
             ),
             ("*", For "x" (For "y" (Fun (Ann (And (Var "x") (Var "y")) (And IntT IntT)) (Call "int_mul" IntT [Var "x", Var "y"])))),
-            ("-", For "x" (For "y" (Fun (Ann (And (Var "x") (Var "y")) (And IntT IntT)) (Call "int_sub" IntT [Var "x", Var "y"])))),
-            ("got", Var "got"),
-            ("gotT", Var "gotT")
+            ("-", For "x" (For "y" (Fun (Ann (And (Var "x") (Var "y")) (And IntT IntT)) (Call "int_sub" IntT [Var "x", Var "y"]))))
           ]
-    -- let expr = For "got" (For "gotT" (App (Or (Fun (Ann (Int 1) IntT) (Tag ":Ok")) (Fun (Ann (Var "got") (Var "gotT")) (Var "got"))) (Ann (App (Var "factorial") (Ann (Int 1) IntT)) (Or IntT IntT))))
-    -- let expr = App (Or (Fun (Ann (Int 1) IntT) (Tag ":Ok")) (Fun (Ann (Var "got") (Var "gotT")) (Var "got"))) (Ann (App (Var "factorial") (Ann (Int 1) IntT)) (Or IntT IntT))
-    -- let expr = Ann (App (Var "factorial") (Ann (Int 1) IntT)) (Or IntT IntT)
-    let expr = App (Var "factorial") (Ann (Int 1) IntT)
-    eval ops (Let env expr) `shouldBe` Tag "TODO"
+    -- infer ops env (Var "factorial") `shouldBe` ((Err, Err), [], [])
+    -- infer ops env (App (Var "factorial") (Int 0)) `shouldBe` ((Err, Err), [], [])
+    infer ops env (App (Var "factorial") (Ann (Int 0) IntT)) `shouldBe` ((Err, Err), [], [])
     True `shouldBe` True
 
   it "☯ -- unify" $ do

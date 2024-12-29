@@ -126,14 +126,14 @@ buildOps = do
   let intOp1 op f =
         ( op,
           \args -> case C.dropTypes <$> args of
-            [C.Int x] -> C.Int (f x)
-            _ -> C.Err
+            [C.Int x] -> Just (C.Int (f x))
+            _ -> Nothing
         )
   let intOp2 op f =
         ( op,
           \args -> case C.dropTypes <$> args of
-            [C.Int x, C.Int y] -> C.Int (f x y)
-            _ -> C.Err
+            [C.Int x, C.Int y] -> Just (C.Int (f x y))
+            _ -> Nothing
         )
   [ intOp1 "int_neg" (\x -> -x),
     intOp2 "int_add" (+),
