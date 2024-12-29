@@ -449,25 +449,26 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ compile Name" $ do
     let ctx =
-          [ ( "pkg/a",
+          [ ( "pkg/a.tao",
               [ Def (x, i1),
                 Def (y, y)
               ]
             ),
-            ( "pkg/b",
+            ( "pkg/b.tao",
               [ Import "pkg/a" "m" [("x", "y")],
                 Def (z, y)
               ]
             )
           ]
 
-    compile ctx "pkg/a" "x" `shouldBe` ("x", C.Int 1)
-    compile ctx "pkg/a" "y" `shouldBe` ("y", C.Var "y")
-    compile ctx "pkg/a" "z" `shouldBe` ("z", C.Err)
-    compile ctx "pkg/b" "m" `shouldBe` ("m", C.Tag "pkg/a")
-    compile ctx "pkg/b" "x" `shouldBe` ("x", C.Err)
-    compile ctx "pkg/b" "y" `shouldBe` ("y", C.Int 1)
-    compile ctx "pkg/b" "z" `shouldBe` ("z", C.Let [("y", C.Int 1)] (C.Var "y"))
+    let compile' path x = compile ctx path x :: C.Env
+    compile' "pkg/a.tao" "x" `shouldBe` [("x", C.Int 1)]
+    compile' "pkg/a.tao" "y" `shouldBe` [("y", C.Var "y")]
+    compile' "pkg/a.tao" "z" `shouldBe` [("z", C.Err)]
+    compile' "pkg/b.tao" "m" `shouldBe` [("m", C.Tag "pkg/a")]
+    compile' "pkg/b.tao" "x" `shouldBe` [("x", C.Err)]
+    compile' "pkg/b.tao" "y" `shouldBe` [("y", C.Int 1)]
+    compile' "pkg/b.tao" "z" `shouldBe` [("z", C.Var "y"), ("y", C.Int 1)]
 
   it "☯ compile Expr" $ do
     let ctx =
@@ -479,25 +480,26 @@ run = describe "--==☯ TaoTests ☯==--" $ do
             )
           ]
 
-    compile ctx "pkg/a" Any `shouldBe` C.Any
-    compile ctx "pkg/a" Unit `shouldBe` C.Unit
-    compile ctx "pkg/a" IntT `shouldBe` C.IntT
-    compile ctx "pkg/a" NumT `shouldBe` C.NumT
-    compile ctx "pkg/a" (Int 1) `shouldBe` C.Int 1
-    compile ctx "pkg/a" (Num 1.0) `shouldBe` C.Num 1.0
-    compile ctx "pkg/a" (Var "x") `shouldBe` C.Let [("x", i1')] x'
-    compile ctx "pkg/a" (Tag "A") `shouldBe` C.Tag "A"
-    compile ctx "pkg/a" (Ann i1 IntT) `shouldBe` i1'
-    compile ctx "pkg/a" (Ann i1 NumT) `shouldBe` i1'
-    compile ctx "pkg/a" (Or i1 (Num 1.1)) `shouldBe` C.Or i1' (C.Num 1.1)
-    compile ctx "pkg/a" (For [] x) `shouldBe` C.Let [("x", i1')] x'
-    compile ctx "pkg/a" (For [] (Fun x x)) `shouldBe` C.Let [("x", i1')] (C.Fun (C.Ann x' C.IntT) x')
-    compile ctx "pkg/a" (For ["x"] x) `shouldBe` C.For "x" x'
-    compile ctx "pkg/a" (For ["x"] (Fun x x)) `shouldBe` C.for ["xT", "x"] (C.Fun (C.Ann x' xT') x')
-    compile ctx "pkg/a" (Fun x x) `shouldBe` C.for ["xT", "x"] (C.Fun (C.Ann x' xT') x')
-    compile ctx "pkg/a" (App f i1) `shouldBe` C.Let [("f", C.Ann f' (C.Fun C.IntT (C.Var "fT1")))] (C.App (C.Var "f") (C.Ann i1' C.IntT))
-    compile ctx "pkg/a" (Call "f" []) `shouldBe` C.Call "f" []
-    compile ctx "pkg/a" (Call "f" [i1, Num 1.1]) `shouldBe` C.Call "f" [i1', C.Num 1.1]
+    let compile' a = compile ctx "pkg/a" a :: (C.Env, C.Expr)
+    compile' Any `shouldBe` ([], C.Any)
+    compile' Unit `shouldBe` ([], C.Unit)
+    compile' IntT `shouldBe` ([], C.IntT)
+    compile' NumT `shouldBe` ([], C.NumT)
+    compile' (Int 1) `shouldBe` ([], C.Int 1)
+    compile' (Num 1.0) `shouldBe` ([], C.Num 1.0)
+    compile' (Var "x") `shouldBe` ([("x", i1')], x')
+    compile' (Tag "A") `shouldBe` ([], C.Tag "A")
+    compile' (Ann i1 IntT) `shouldBe` ([], i1')
+    compile' (Ann i1 NumT) `shouldBe` ([], i1')
+    compile' (Or i1 (Num 1.1)) `shouldBe` ([], C.Or i1' (C.Num 1.1))
+    compile' (For [] x) `shouldBe` ([("x", i1')], x')
+    compile' (For [] (Fun x x)) `shouldBe` ([("x", i1')], C.Fun (C.Ann x' C.IntT) x')
+    compile' (For ["x"] x) `shouldBe` ([], C.For "x" x')
+    compile' (For ["x"] (Fun x x)) `shouldBe` ([], C.for ["x", "xT"] (C.Fun (C.Ann x' xT') x'))
+    compile' (Fun x x) `shouldBe` ([], C.for ["x", "xT"] (C.Fun (C.Ann x' xT') x'))
+    compile' (App f i1) `shouldBe` ([("f", C.Ann f' (C.Fun C.IntT (C.Var "fT1")))], C.App (C.Var "f") (C.Ann i1' C.IntT))
+    compile' (Call "f" []) `shouldBe` ([], C.Call "f" [])
+    compile' (Call "f" [i1, Num 1.1]) `shouldBe` ([], C.Call "f" [i1', C.Num 1.1])
     -- Op1 Op1 Expr
     -- Op2 Op2 Expr Expr
     -- Let (Expr, Expr) Expr
@@ -507,7 +509,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     -- Record [(String, Expr)]
     -- Select Expr [(String, Expr)]
     -- With Expr [(String, Expr)]
-    compile ctx "pkg/a" Err `shouldBe` C.Err
+    compile' Err `shouldBe` ([], C.Err)
 
   it "☯ eval" $ do
     let ctx =

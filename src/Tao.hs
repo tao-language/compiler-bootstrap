@@ -561,36 +561,32 @@ instance Resolve (String, Stmt) where
 class Compile a where
   compile :: [Module] -> String -> a
 
-instance Compile (String -> (String, C.Expr)) where
-  compile :: [Module] -> String -> String -> (String, C.Expr)
+instance Compile (String -> C.Env) where
+  compile :: [Module] -> String -> String -> C.Env
   compile ctx path name = do
     let defs = resolve ctx path name
-    let alts = map (\(path, a) -> compile ctx path (name, a)) defs :: [C.Expr]
-    let expr = case C.or' alts of
+    let alts = map (\(path, a) -> compile ctx path (name, a)) defs :: [(C.Env, C.Expr)]
+    let expr = case C.or' (map snd alts) of
           C.Var x | x == name -> C.Var x
           C.Ann (C.Var x) t | x == name -> C.Ann (C.Var x) t
           expr -> C.fix [name] expr
-    (name, expr)
+    (name, expr) : concatMap fst alts
 
 instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
   compile ctx path (name, expr) = do
     let a = lower expr
     let env =
-          delete name (C.freeTags a `union` C.freeVars a)
-            & map (compile ctx path)
-            & filter (\(x, a) -> a /= C.Err)
-    (env, a)
-
-instance Compile ((String, Expr) -> C.Expr) where
-  compile :: [Module] -> String -> (String, Expr) -> C.Expr
-  compile ctx path (name, expr) = do
-    let (env, a) = compile ctx path (name, expr)
+          concatMap
+            ( filter (\(x, a) -> a /= C.Err)
+                . compile ctx path
+            )
+            (delete name (C.freeTags a `union` C.freeVars a))
     let ((a', t), s, e) = C.infer buildOps env a
-    C.let' env (C.for (map fst s) a')
+    (env, C.for (map fst s) a')
 
-instance Compile (Expr -> C.Expr) where
-  compile :: [Module] -> String -> Expr -> C.Expr
+instance Compile (Expr -> (C.Env, C.Expr)) where
+  compile :: [Module] -> String -> Expr -> (C.Env, C.Expr)
   compile ctx path expr =
     compile ctx path (C.newName (freeVars expr) "", expr)
 
@@ -712,9 +708,8 @@ simplify a = a
 
 eval :: [Module] -> String -> Expr -> Expr
 eval ctx path expr = do
-  compile ctx path expr
-    & C.eval runtimeOps
-    & lift
+  let (env, expr') = compile ctx path expr
+  lift (C.eval runtimeOps (C.let' env expr'))
 
 class TestSome a where
   testSome :: [Module] -> ((String, String) -> Bool) -> a -> [TestResult]
@@ -748,7 +743,7 @@ instance TestSome UnitTest where
             [ ([], [t.expect], Tag ":Ok"),
               (["got"], [Var "got"], Var "got")
             ]
-    -- error $ show (compile ctx t.filename test' :: C.Expr)
+    error $ show (compile ctx t.filename test' :: (C.Env, C.Expr))
     case eval ctx t.filename test' of
       Tag ":Ok" -> [TestPass t.filename t.pos t.name]
       got -> [TestFail t.filename t.pos t.name t.expr t.expect got]

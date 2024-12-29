@@ -207,11 +207,9 @@ appOf :: Expr -> (Expr, [Expr])
 appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
 appOf a = (a, [])
 
--- TODO: handle indirect references
 let' :: [(String, Expr)] -> Expr -> Expr
-let' defs b = case filter (\(x, _) -> x `occurs` b) defs of
-  [] -> b
-  defs -> Let defs b
+let' [] b = b
+let' defs b = Let defs b
 
 def :: [String] -> (Expr, Expr) -> Expr -> Expr
 def xs (a, b) c = App (for xs (Fun a c)) b

@@ -369,15 +369,15 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' (Var "f") `shouldBe` (f, Fun IntT IntT)
     infer' (Ann f (Fun IntT IntT)) `shouldBe` (f, Fun IntT IntT)
 
-  -- it "☯ infer Bool" $ do
-  --   let (bool, true, false) = (Tag "Bool", Tag "True", Tag "False")
-  --   let env = [("Bool", true `Or` false)]
+  it "☯ infer Bool" $ do
+    let (bool, true, false) = (Tag "Bool", Tag "True", Tag "False")
+    let env = [("Bool", Fun true bool `Or` Fun false bool)]
 
-  --   let infer' a = fmap fst (infer ops env a)
-  --   infer' (Tag "True") `shouldBe` Right true
-  --   infer' (Ann true bool) `shouldBe` Right bool
-  --   infer' (Ann false (Tag "X")) `shouldBe` Left (TypeMismatch (Ann false (Tag "X")) (Tag "X"))
-  --   infer' (Ann (Tag "X") bool) `shouldBe` Left (TypeMismatch (Ann (Tag "X") bool) (true `Or` false))
+    let infer' = infer ops env
+    infer' (Tag "True") `shouldBe` ((true, true), [], [])
+    infer' (Ann true bool) `shouldBe` ((true, bool), env, [])
+    infer' (Ann false (Tag "X")) `shouldBe` ((false, Err), [], [TypeMismatch false (Tag "X")])
+    infer' (Ann (Tag "X") bool) `shouldBe` ((Tag "X", Err), env, [TypeMismatch Err bool])
 
   -- it "☯ infer Maybe" $ do
   --   let (maybe, just, nothing) = (App (Tag "Maybe"), \a -> tag "Just" [a], Tag "Nothing")
