@@ -609,6 +609,16 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
 
 instance Compile ((String, Expr) -> C.Expr) where
   compile :: [Module] -> String -> (String, Expr) -> C.Expr
+  -- compile ctx path (name@"", expr) = do
+  --   let (env, a) = compile ctx path (name, expr)
+  --   let ((a', t), s, e) = C.infer buildOps env a
+  --   let isFree = \case
+  --         (x, C.Var x') | x == x' -> True
+  --         _ -> False
+  --   let xs = map fst (filter isFree s)
+  --   let env' = env `C.compose` filter (not . isFree) s
+  --   -- C.let' env' (C.for xs a')
+  --   error $ intercalate "\n" [show env, show a', show t]
   compile ctx path (name, expr) = do
     let (env, a) = compile ctx path (name, expr)
     let ((a', t), s, e) = C.infer buildOps env a
