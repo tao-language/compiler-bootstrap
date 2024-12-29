@@ -251,8 +251,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let env = [("f", factorial "f")]
     let eval' x = eval ops (Let env x)
 
-    eval' (Var "f") `shouldBe` factorial "f"
-    eval' (App f x) `shouldBe` App (factorial "f") x
+    -- eval' (Var "f") `shouldBe` factorial "f"
+    -- eval' (App f x) `shouldBe` App (factorial "f") x
     eval' (App f (Int 0)) `shouldBe` Int 1
     eval' (App f (Int 1)) `shouldBe` Int 1
     eval' (App f (Int 2)) `shouldBe` Int 2

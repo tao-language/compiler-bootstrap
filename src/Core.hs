@@ -372,6 +372,7 @@ reduceAppFun ops a b c = case a of
     (Num n, Num n') | n == n' -> reduce ops c
     (Tag k, Tag k') | k == k' -> reduce ops c
     (Var x, b) -> reduce ops (Let [(x, b)] c)
+    (Ann a ta, Ann b (Var x)) -> reduceAppFun ops a b (Let [(x, ta)] c)
     (Ann a ta, Ann b tb) -> reduceAppFun ops ta tb (App (Fun a c) b)
     (And (Let env (Tag k)) a2, b) -> do
       let b' = App (And (Let env (Tag k)) a2) b
