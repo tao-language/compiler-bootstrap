@@ -302,7 +302,24 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let b' = for ["y", "b"] (Fun (Ann y b) y)
     eval' (App (Fun a' i1) b') `shouldBe` i1
 
-  it "☯ unify" $ do
+  it "☯ experiment" $ do
+    let env =
+          [ ( "not",
+              Let [("Bool", Or (Fun (Ann (Tag "True") (Tag "True")) (Tag "Bool")) (Fun (Ann (Tag "False") (Tag "False")) (Tag "Bool")))] $
+                For "$1" (Fun (Ann (Var "$1") (Tag "Bool")) (App (Or (Fun (Ann (Tag "True") (Tag "Bool")) (Tag "False")) (Fun (Ann Any (Tag "Bool")) (Tag "True"))) (Var "$1")))
+            ),
+            ("Bool", Or (Fun (Ann (Tag "True") (Tag "True")) (Tag "Bool")) (Fun (Ann (Tag "False") (Tag "False")) (Tag "Bool")))
+          ]
+    -- let expr = For "got" (For "gotT" (App (Or (Fun (Ann (Tag "False") (Tag "False")) (Tag ":Ok")) (Fun (Ann (Var "got") (Var "gotT")) (Var "got"))) (Ann (App (Var "not") (Ann (Tag "True") (Tag "True"))) (Or (Tag "False") (Tag "True")))))
+    -- let expr = App (Or (Fun (Ann (Tag "False") (Tag "False")) (Tag ":Ok")) (Fun (Ann (Var "got") (Var "gotT")) (Var "got"))) (Ann (App (Var "not") (Ann (Tag "True") (Tag "True"))) (Or (Tag "False") (Tag "True")))
+    -- let expr = Ann (App (Var "not") (Ann (Tag "True") (Tag "True"))) (Or (Tag "False") (Tag "True"))
+    let expr = App (Var "not") (Ann (Tag "True") (Tag "True"))
+    -- let expr = App (Fun (Ann Any (Tag "Bool")) (Tag "Ok") `Or` Fun (Ann Any (Tag "Bool")) (Tag "Err")) (Ann (Tag "True") (Tag "True"))
+    -- let expr = App (Fun (Tag "Bool") (Tag "Ok")) (Tag "True")
+    eval ops (Let env expr) `shouldBe` Tag "TODO"
+    True `shouldBe` True
+
+  it "☯ -- unify" $ do
     True `shouldBe` True
 
   it "☯ infer const" $ do
