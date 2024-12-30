@@ -586,7 +586,8 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
             )
             (delete name (C.freeTags a `union` C.freeVars a))
     let ((a', t), s, e) = C.infer buildOps env a
-    (env, C.for (map fst s) a')
+    let xs = concatMap (\(x, a) -> ([x | a == C.Var x])) s
+    (env, C.for xs a')
 
 instance Compile (Expr -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> Expr -> (C.Env, C.Expr)
@@ -746,10 +747,10 @@ instance TestSome UnitTest where
             [ ([], [t.expect], Tag ":Ok"),
               (["got"], [Var "got"], Var "got")
             ]
-    -- error . intercalate "\n" $
-    --   [ show (fst (compile ctx t.filename test' :: (C.Env, C.Expr))),
-    --     show (snd (compile ctx t.filename test' :: (C.Env, C.Expr)))
-    --   ]
+    error . intercalate "\n" $
+      [ show (fst (compile ctx t.filename test' :: (C.Env, C.Expr))),
+        show (snd (compile ctx t.filename test' :: (C.Env, C.Expr)))
+      ]
     case eval ctx t.filename test' of
       Tag ":Ok" -> [TestPass t.filename t.pos t.name]
       got -> [TestFail t.filename t.pos t.name t.expr t.expect got]

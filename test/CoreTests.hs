@@ -305,18 +305,19 @@ run = describe "--==☯️ Core language ☯️==--" $ do
               Fix
                 "factorial"
                 ( Let
-                    [ ("*", For "x" (For "y" (Fun (Ann (And (Var "x") (Var "y")) (And IntT IntT)) (Call "int_mul" IntT [Var "x", Var "y"])))),
-                      ("-", For "x" (For "y" (Fun (Ann (And (Var "x") (Var "y")) (And IntT IntT)) (Call "int_sub" IntT [Var "x", Var "y"]))))
+                    [ ("*", Fun (Ann (And (Var "x") (Var "y")) (And IntT IntT)) (Call "int_mul" IntT [Var "x", Var "y"])),
+                      ("-", For "yT" (For "xT" (Fun (Ann (And (Var "x") (Var "y")) (And (Var "xT") (Var "yT"))) (Call "int_sub" IntT [Var "x", Var "y"]))))
                     ]
-                    (For "$1" (For "n" (Fun (Ann (Var "$1") IntT) (App (Or (Fun (Ann (Int 0) IntT) (Int 1)) (Fun (Ann (Var "n") IntT) (App (Var "*") (Ann (And (Var "n") (App (Var "factorial") (Ann (App (Var "-") (Ann (And (Var "n") (Int 1)) (And IntT IntT))) IntT))) (And IntT Err))))) (Ann (Var "$1") IntT)))))
+                    (Fun (Ann (Var "$1") IntT) (App (Or (Fun (Ann (Int 0) IntT) (Int 1)) (Fun (Ann (Var "n") Err) (App (Var "*") (Ann (And (Var "n") (App (Var "factorial") (Ann (App (Var "-") (Ann (And (Var "n") (Int 1)) (And Err IntT))) IntT))) (And Err Err))))) (Ann (Var "$1") IntT)))
                 )
             ),
-            ("*", For "x" (For "y" (Fun (Ann (And (Var "x") (Var "y")) (And IntT IntT)) (Call "int_mul" IntT [Var "x", Var "y"])))),
-            ("-", For "x" (For "y" (Fun (Ann (And (Var "x") (Var "y")) (And IntT IntT)) (Call "int_sub" IntT [Var "x", Var "y"]))))
+            ("*", Fun (Ann (And (Var "x") (Var "y")) (And IntT IntT)) (Call "int_mul" IntT [Var "x", Var "y"])),
+            ("-", For "yT" (For "xT" (Fun (Ann (And (Var "x") (Var "y")) (And (Var "xT") (Var "yT"))) (Call "int_sub" IntT [Var "x", Var "y"]))))
           ]
-    -- infer ops env (Var "factorial") `shouldBe` ((Err, Err), [], [])
+    -- let expr = App (Or (Fun (Ann (Int 1) IntT) (Tag ":Ok")) (Fun (Ann (Var "got") (Or IntT IntT)) (Var "got"))) (Ann (App (Var "factorial") (Ann (Int 1) IntT)) (Or IntT IntT))
+    infer ops env (Var "*") `shouldBe` ((Err, Err), [], [])
     -- infer ops env (App (Var "factorial") (Int 0)) `shouldBe` ((Err, Err), [], [])
-    infer ops env (App (Var "factorial") (Ann (Int 0) IntT)) `shouldBe` ((Err, Err), [], [])
+    -- infer ops env (App (Var "factorial") (Ann (Int 0) IntT)) `shouldBe` ((Err, Err), [], [])
     True `shouldBe` True
 
   it "☯ -- unify" $ do
