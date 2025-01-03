@@ -601,7 +601,7 @@ infer ops env (Or a b) = do
 infer ops env (For x a) = do
   let y = newName (map fst env) x
   let ((a', ta), s, e) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
-  ((a', ta), s `compose` [(y, Var y)], e)
+  ((for [y] a', ta), s `compose` [(y, Var y)], e)
 infer ops env (Fix x a) = do
   let ((a', ta), s, e) = infer ops ((x, Var x) : env) a
   ((fix [x] a', ta), s, e)

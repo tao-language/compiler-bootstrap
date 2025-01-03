@@ -505,95 +505,6 @@ in' _ "" = False
 in' substring string | substring `isPrefixOf` string = True
 in' substring (_ : string) = in' substring string
 
--- class Scope a where
---   scope :: [Module] -> a -> [(String, Expr)]
-
--- instance Scope String where
---   scope :: [Module] -> String -> [(String, Expr)]
---   scope ctx path = case lookup path ctx of
---     Just stmts -> scope ctx stmts
---     Nothing -> []
-
--- instance Scope [Stmt] where
---   scope :: [Module] -> [Stmt] -> [(String, Expr)]
---   scope ctx = concatMap (scope ctx)
-
--- instance Scope Stmt where
---   scope :: [Module] -> Stmt -> [(String, Expr)]
---   scope ctx = \case
---     -- Import path' alias names -> case names of
---     --   (x, y) : names -> do
---     --   let defs = resolve ctx path' x
---     --   defs ++ scope ctx path (name, Import path' alias names)
---     -- [] | alias == name -> [(path, Tag path')]
---     -- [] -> []
---     Def (p, b) -> map (\x -> (x, let' (p, b) (Var x))) (bindings p)
---     TypeDef (name, args, body) -> [(name, fun args body)]
---     _ -> []
-
-class Resolve a where
-  resolve :: [Module] -> String -> a -> [(String, Expr)]
-
-instance Resolve String where
-  resolve :: [Module] -> String -> String -> [(String, Expr)]
-  resolve ctx path name = case lookup path ctx of
-    Just stmts -> resolve ctx path (name, stmts)
-    Nothing -> []
-
-instance Resolve (String, [Stmt]) where
-  resolve :: [Module] -> String -> (String, [Stmt]) -> [(String, Expr)]
-  resolve ctx path (name, stmts) =
-    concatMap (\stmt -> resolve ctx path (name, stmt)) stmts
-
-instance Resolve (String, Stmt) where
-  resolve :: [Module] -> String -> (String, Stmt) -> [(String, Expr)]
-  resolve ctx path (name, stmt) = case stmt of
-    Import path' alias names -> case names of
-      (x, y) : names -> do
-        let defs = if y == name then resolve ctx (path' ++ ".tao") x else []
-        defs ++ resolve ctx path (name, Import path' alias names)
-      [] | alias == name -> [(path, Tag path')]
-      [] -> []
-    Def (p, b) | name `elem` bindings p -> [(path, Let (p, b) (Var name))]
-    TypeDef (name', args, body) | name == name' -> [(path, fun args body)]
-    _ -> []
-
-class Compile a where
-  compile :: [Module] -> String -> a
-
-instance Compile (String -> C.Env) where
-  compile :: [Module] -> String -> String -> C.Env
-  compile ctx path name = do
-    let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
-        compileDef (path, alt) (env, alts) = do
-          let (env', alt') = compile ctx path (name, alt)
-          (unionBy (\a b -> fst a == fst b) env' env, C.let' env' alt' : alts)
-    let (env, alts) = foldr compileDef ([], []) (resolve ctx path name)
-    let expr = case C.or' alts of
-          C.Var x | x == name -> C.Var x
-          C.Ann (C.Var x) t | x == name -> C.Ann (C.Var x) t
-          expr -> C.fix [name] expr
-    [(name, expr)] `C.compose` env
-
-instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
-  compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
-  compile ctx path (name, expr) = do
-    let a = lower expr
-    let env =
-          concatMap
-            ( filter (\(x, a) -> a /= C.Err)
-                . compile ctx path
-            )
-            (delete name (C.freeTags a `union` C.freeVars a))
-    let ((a', t), s, e) = C.infer buildOps env a
-    let xs = concatMap (\(x, a) -> ([x | a == C.Var x])) s
-    (env, C.for xs a')
-
-instance Compile (Expr -> (C.Env, C.Expr)) where
-  compile :: [Module] -> String -> Expr -> (C.Env, C.Expr)
-  compile ctx path expr =
-    compile ctx path (C.newName (freeVars expr) "", expr)
-
 lower :: Expr -> C.Expr
 lower = \case
   Any -> C.Any
@@ -623,7 +534,7 @@ lower = \case
   Let (Var x, b) (Var x') | x == x' -> lower b
   Let (a, b) c -> case a of
     Var x | x `occurs` b -> lower (Let (Var x, Fix x b) c)
-    Ann a t -> lower (Let (a, Ann b t) c)
+    -- Ann a t -> lower (Let (a, Ann b t) c)
     For xs a -> lower (App (For xs (Fun a c)) b)
     Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
     App a1 a2 -> lower (Let (a1, Fun a2 b) c)
@@ -715,6 +626,97 @@ eval ctx path expr = do
   let (env, expr') = compile ctx path expr
   lift (C.eval runtimeOps (C.let' env expr'))
 
+-- class Scope a where
+--   scope :: [Module] -> a -> [(String, Expr)]
+
+-- instance Scope String where
+--   scope :: [Module] -> String -> [(String, Expr)]
+--   scope ctx path = case lookup path ctx of
+--     Just stmts -> scope ctx stmts
+--     Nothing -> []
+
+-- instance Scope [Stmt] where
+--   scope :: [Module] -> [Stmt] -> [(String, Expr)]
+--   scope ctx = concatMap (scope ctx)
+
+-- instance Scope Stmt where
+--   scope :: [Module] -> Stmt -> [(String, Expr)]
+--   scope ctx = \case
+--     -- Import path' alias names -> case names of
+--     --   (x, y) : names -> do
+--     --   let defs = resolve ctx path' x
+--     --   defs ++ scope ctx path (name, Import path' alias names)
+--     -- [] | alias == name -> [(path, Tag path')]
+--     -- [] -> []
+--     Def (p, b) -> map (\x -> (x, let' (p, b) (Var x))) (bindings p)
+--     TypeDef (name, args, body) -> [(name, fun args body)]
+--     _ -> []
+
+class Resolve a where
+  resolve :: [Module] -> String -> a -> [(String, Expr)]
+
+instance Resolve String where
+  resolve :: [Module] -> String -> String -> [(String, Expr)]
+  resolve ctx path name = case lookup path ctx of
+    Just stmts -> resolve ctx path (name, stmts)
+    Nothing -> []
+
+instance Resolve (String, [Stmt]) where
+  resolve :: [Module] -> String -> (String, [Stmt]) -> [(String, Expr)]
+  resolve ctx path (name, stmts) =
+    concatMap (\stmt -> resolve ctx path (name, stmt)) stmts
+
+instance Resolve (String, Stmt) where
+  resolve :: [Module] -> String -> (String, Stmt) -> [(String, Expr)]
+  resolve ctx path (name, stmt) = case stmt of
+    Import path' alias names -> case names of
+      (x, y) : names -> do
+        let defs = if y == name then resolve ctx (path' ++ ".tao") x else []
+        defs ++ resolve ctx path (name, Import path' alias names)
+      [] | alias == name -> [(path, Tag path')]
+      [] -> []
+    Def (p, b) | name `elem` bindings p -> [(path, Let (p, b) (Var name))]
+    TypeDef (name', args, body) | name == name' -> [(path, fun args body)]
+    _ -> []
+
+class Compile a where
+  compile :: [Module] -> String -> a
+
+instance Compile (String -> C.Env) where
+  compile :: [Module] -> String -> String -> C.Env
+  compile ctx path name = do
+    let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
+        compileDef (path, alt) (env, alts) = do
+          let (env', alt') = compile ctx path (name, alt)
+          (unionBy (\a b -> fst a == fst b) env' env, C.let' env' alt' : alts)
+    let (env, alts) = foldr compileDef ([], []) (resolve ctx path name)
+    let expr = case C.or' alts of
+          C.Var x | x == name -> C.Var x
+          C.Ann (C.Var x) t | x == name -> C.Ann (C.Var x) t
+          -- expr -> error "TODO: lower Let is not including For quantifiers"
+          -- ((x, y) : (Int, Int)) -> x
+          -- @x y. ((x, y) : (Int, Int)) -> x
+          expr -> C.fix [name] expr
+    [(name, expr)] `C.compose` env
+
+instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
+  compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
+  compile ctx path (name, expr) = do
+    let a = lower expr
+    let env =
+          concatMap
+            ( filter (\(x, a) -> a /= C.Err)
+                . compile ctx path
+            )
+            (delete name (C.freeTags a `union` C.freeVars a))
+    let ((a', t), s, e) = C.infer buildOps env a
+    (env, C.for (map fst s) a')
+
+instance Compile (Expr -> (C.Env, C.Expr)) where
+  compile :: [Module] -> String -> Expr -> (C.Env, C.Expr)
+  compile ctx path expr =
+    compile ctx path (C.newName (freeVars expr) "", expr)
+
 class TestSome a where
   testSome :: [Module] -> ((String, String) -> Bool) -> a -> [TestResult]
 
@@ -741,19 +743,17 @@ instance TestSome (String, Stmt) where
 instance TestSome UnitTest where
   testSome :: [Module] -> ((String, String) -> Bool) -> UnitTest -> [TestResult]
   testSome ctx _ t = do
-    let test' =
-          Match
-            [t.expr]
-            [ ([], [t.expect], Tag ":Ok"),
-              (["got"], [Var "got"], Var "got")
-            ]
+    let expr = let (env, a) = compile ctx t.filename t.expr in C.let' env a
+    let expect = let (env, a) = compile ctx t.filename t.expect in C.let' env a
+    let test' = C.Fun expect (C.Tag ":Ok") `C.Or` C.For "got" (C.Fun (C.Var "got") (C.Var "got"))
     error . intercalate "\n" $
-      [ show (fst (compile ctx t.filename test' :: (C.Env, C.Expr))),
-        show (snd (compile ctx t.filename test' :: (C.Env, C.Expr)))
+      [ "let t.expr = " ++ show t.expr,
+        "let expr = " ++ show expr,
+        "let expect = " ++ show expect
       ]
-    case eval ctx t.filename test' of
-      Tag ":Ok" -> [TestPass t.filename t.pos t.name]
-      got -> [TestFail t.filename t.pos t.name t.expr t.expect got]
+    case C.eval runtimeOps (C.App test' expr) of
+      C.Tag ":Ok" -> [TestPass t.filename t.pos t.name]
+      got -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
 
 testAll :: (TestSome a) => [Module] -> a -> [TestResult]
 testAll ctx = testSome ctx (const True)
