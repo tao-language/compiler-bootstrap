@@ -342,67 +342,52 @@ isTest :: Stmt -> Bool
 isTest Test {} = True
 isTest _ = False
 
-class FreeVars a where
-  freeVars :: a -> [String]
-
-instance FreeVars Expr where
-  freeVars :: Expr -> [String]
-  freeVars = \case
-    Any -> []
-    Unit -> []
-    IntT -> []
-    NumT -> []
-    Int _ -> []
-    Num _ -> []
-    Var x -> [x]
-    Tag _ -> []
-    Ann a b -> freeVars a `union` freeVars b
-    And a b -> freeVars a `union` freeVars b
-    Or a b -> freeVars a `union` freeVars b
-    Fix x a -> delete x (freeVars a)
-    For xs a -> filter (`notElem` xs) (freeVars a)
-    Fun a b -> freeVars a `union` freeVars b
-    App a b -> freeVars a `union` freeVars b
-    Call _ t args -> freeVars t `union` freeVars (and' args)
-    Op1 op a -> [show op] `union` freeVars a
-    Op2 op a b -> [show op] `union` freeVars a `union` freeVars b
-    Let (a, b) c -> freeVars a `union` freeVars b `union` freeVars c
-    Bind (a, b) c -> freeVars a `union` freeVars b `union` freeVars c
-    If a b c -> freeVars a `union` freeVars b `union` freeVars c
-    Match args cases -> freeVars (and' args) `union` freeVars (and' (map (\(xs, ps, b) -> for xs (fun ps b)) cases))
-    Record fields -> freeVars (and' (map snd fields))
-    Select a fields -> freeVars a `union` freeVars (and' (map snd fields))
-    With a fields -> freeVars a `union` freeVars (and' (map snd fields))
-    Err -> []
-
-freeTags :: Expr -> [String]
-freeTags = \case
+freeNames :: (Bool, Bool, Bool) -> Expr -> [String]
+freeNames (vars, tags, calls) = \case
   Any -> []
   Unit -> []
   IntT -> []
   NumT -> []
   Int _ -> []
   Num _ -> []
-  Var _ -> []
-  Tag k -> [k]
-  Ann a b -> freeTags a `union` freeTags b
-  And a b -> freeTags a `union` freeTags b
-  Or a b -> freeTags a `union` freeTags b
-  Fix x a -> delete x (freeTags a)
-  For xs a -> filter (`notElem` xs) (freeTags a)
-  Fun a b -> freeTags a `union` freeTags b
-  App a b -> freeTags a `union` freeTags b
-  Call _ t args -> freeTags t `union` freeTags (and' args)
-  Op1 op a -> [show op] `union` freeTags a
-  Op2 op a b -> [show op] `union` freeTags a `union` freeTags b
-  Let (a, b) c -> freeTags a `union` freeTags b `union` freeTags c
-  Bind (a, b) c -> freeTags a `union` freeTags b `union` freeTags c
-  If a b c -> freeTags a `union` freeTags b `union` freeTags c
-  Match args cases -> freeTags (and' args) `union` freeTags (and' (map (\(xs, ps, b) -> for xs (fun ps b)) cases))
-  Record fields -> freeTags (and' (map snd fields))
-  Select a fields -> freeTags a `union` freeTags (and' (map snd fields))
-  With a fields -> freeTags a `union` freeTags (and' (map snd fields))
+  Var x
+    | vars -> [x]
+    | otherwise -> []
+  Tag k
+    | tags -> [k]
+    | otherwise -> []
+  Ann a b -> freeNames' a `union` freeNames' b
+  And a b -> freeNames' a `union` freeNames' b
+  Or a b -> freeNames' a `union` freeNames' b
+  Fix x a -> delete x (freeNames' a)
+  For xs a -> filter (`notElem` xs) (freeNames' a)
+  Fun a b -> freeNames' a `union` freeNames' b
+  App a b -> freeNames' a `union` freeNames' b
+  Call f t args
+    | calls -> [f] `union` freeNames' t `union` freeNames' (and' args)
+    | otherwise -> freeNames' t `union` freeNames' (and' args)
+  Op1 op a
+    | vars -> [show op] `union` freeNames' a
+    | otherwise -> freeNames' a
+  Op2 op a b
+    | vars -> [show op] `union` freeNames' a `union` freeNames' b
+    | otherwise -> freeNames' a `union` freeNames' b
+  Let (a, b) c -> freeNames' a `union` freeNames' b `union` freeNames' c
+  Bind (a, b) c -> freeNames' a `union` freeNames' b `union` freeNames' c
+  If a b c -> freeNames' a `union` freeNames' b `union` freeNames' c
+  Match args cases -> freeNames' (and' args) `union` freeNames' (and' (map (\(xs, ps, b) -> for xs (fun ps b)) cases))
+  Record fields -> freeNames' (and' (map snd fields))
+  Select a fields -> freeNames' a `union` freeNames' (and' (map snd fields))
+  With a fields -> freeNames' a `union` freeNames' (and' (map snd fields))
   Err -> []
+  where
+    freeNames' = freeNames (vars, tags, calls)
+
+freeVars :: Expr -> [String]
+freeVars = freeNames (True, False, False)
+
+freeTags :: Expr -> [String]
+freeTags = freeNames (False, True, False)
 
 bindings :: Expr -> [String]
 bindings = \case
@@ -688,27 +673,20 @@ instance Compile (String -> C.Env) where
     let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
         compileDef (path, alt) (env, alts) = do
           let (env', alt') = compile ctx path (name, alt)
-          (unionBy (\a b -> fst a == fst b) env' env, C.let' env' alt' : alts)
+          (unionBy (\a b -> fst a == fst b) env' env, alt' : alts)
     let (env, alts) = foldr compileDef ([], []) (resolve ctx path name)
-    let expr = case C.or' alts of
-          C.Var x | x == name -> C.Var x
-          C.Ann (C.Var x) t | x == name -> C.Ann (C.Var x) t
-          -- expr -> error "TODO: lower Let is not including For quantifiers"
-          -- ((x, y) : (Int, Int)) -> x
-          -- @x y. ((x, y) : (Int, Int)) -> x
-          expr -> C.fix [name] expr
-    [(name, expr)] `C.compose` env
+    let def = case alts of
+          [] -> []
+          [C.Var x] | x == name -> [(name, C.Var x)]
+          [C.Ann (C.Var x) t] | x == name -> [(name, C.Ann (C.Var x) t)]
+          alts -> [(name, C.fix [name] (C.or' alts))]
+    unionBy (\a b -> fst a == fst b) def env
 
 instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
   compile ctx path (name, expr) = do
     let a = lower expr
-    let env =
-          concatMap
-            ( filter (\(x, a) -> a /= C.Err)
-                . compile ctx path
-            )
-            (delete name (C.freeTags a `union` C.freeVars a))
+    let env = concatMap (compile ctx path) (delete name (C.freeNames (True, True, False) a))
     let ((a', t), s, e) = C.infer buildOps env a
     (env, C.for (map fst s) a')
 
@@ -744,13 +722,16 @@ instance TestSome UnitTest where
   testSome :: [Module] -> ((String, String) -> Bool) -> UnitTest -> [TestResult]
   testSome ctx _ t = do
     let expr = let (env, a) = compile ctx t.filename t.expr in C.let' env a
-    let expect = let (env, a) = compile ctx t.filename t.expect in C.let' env a
-    let test' = C.Fun expect (C.Tag ":Ok") `C.Or` C.For "got" (C.Fun (C.Var "got") (C.Var "got"))
-    error . intercalate "\n" $
-      [ "let t.expr = " ++ show t.expr,
-        "let expr = " ++ show expr,
-        "let expect = " ++ show expect
-      ]
+    let expect = let (env, a) = compile ctx t.filename (Fun t.expect (Tag ":Ok")) in C.let' env a
+    let test' = expect `C.Or` C.For "got" (C.Fun (C.Var "got") (C.Var "got"))
+    -- error . intercalate "\n" $
+    --   [ "-- testSome",
+    --     "let t.expr = " ++ show t.expr,
+    --     "let expr = " ++ C.format expr,
+    --     "let expect = " ++ show expect,
+    --     show (C.eval runtimeOps (C.App test' expr)),
+    --     ""
+    --   ]
     case C.eval runtimeOps (C.App test' expr) of
       C.Tag ":Ok" -> [TestPass t.filename t.pos t.name]
       got -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
