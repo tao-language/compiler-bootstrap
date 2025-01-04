@@ -528,7 +528,8 @@ lower = \case
     App a1 a2 -> lower (Let (a1, Fun a2 b) c)
     Op1 op a -> lower (Let (Var (show op), Fun a b) c)
     Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
-    a -> lower (For (bindings a) $ App (Fun (For [] a) c) b)
+    For xs a -> lower (App (For xs (Fun a c)) b)
+    a -> lower (App (Fun a c) b)
   -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
   If a b c -> lower (Match [a] [([], [Tag "True"], b), ([], [], c)])
   Match args [(xs, ps, b)] -> lower (app (For xs $ fun ps b) args)
@@ -706,7 +707,7 @@ instance Compile (String -> C.Env) where
 
 instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"", expr) = do
+  -- compile ctx path (name@"y", expr) = do
   --   let a = lower expr
   --   let xs = delete name (C.freeNames (True, True, False) a)
   --   let env = concatMap (compile ctx path) xs
@@ -715,8 +716,9 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   --   error . intercalate "\n" $
   --     [ "-- compile/2 " ++ name,
   --       -- show ctx,
-  --       show xs,
+  --       show expr,
   --       show a,
+  --       show xs,
   --       C.format a,
   --       C.format a',
   --       C.format (C.Let env C.Any),
