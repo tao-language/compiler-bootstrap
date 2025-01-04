@@ -732,7 +732,7 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
     let a = lower expr
     let env = concatMap (compile ctx path) (delete name (C.freeNames (True, True, False) a))
     let ((a', t), s, e) = C.infer buildOps env a
-    (env, C.fix [name] (C.dropTypes a'))
+    (env, C.fix [name] (C.for (map fst s) $ C.dropTypes a'))
 
 instance Compile (Expr -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> Expr -> (C.Env, C.Expr)

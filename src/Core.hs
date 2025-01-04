@@ -367,9 +367,7 @@ match :: Bool -> Ops -> Expr -> Expr -> Maybe Env
 --   match unify ops (Let (env ++ env') a) b
 match unify ops a b = case (reduce ops a, reduce ops b) of
   (Any, _) -> Just []
-  (_, Any)
-    | unify -> Just []
-    | otherwise -> Nothing
+  (_, Any) | unify -> Just []
   (Unit, Unit) -> Just []
   (IntT, IntT) -> Just []
   (NumT, NumT) -> Just []
@@ -377,9 +375,7 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (Num n, Num n') | n == n' -> Just []
   (Tag k, Tag k') | k == k' -> Just []
   (Var x, b) -> Just [(x, b)]
-  (a, Var x)
-    | unify -> Just [(x, a)]
-    | otherwise -> Nothing
+  (a, Var x) | unify -> Just [(x, a)]
   (Ann a ta, Ann b tb) -> do
     env1 <- match True ops ta tb
     env2 <- match unify ops a b
@@ -403,8 +399,8 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
       Just env2 -> Just (env1 ++ env2)
       Nothing -> Just env1
     Nothing -> match unify ops a b2
-  (For x a, b) -> do match unify ops (Let [(x, Var x)] a) b
-  (a, For x b) -> do match unify ops a (Let [(x, Var x)] b)
+  (For x a, b) -> match unify ops (Let [(x, Var x)] a) b
+  (a, For x b) -> match unify ops a (Let [(x, Var x)] b)
   -- \| Fix String Expr
   (Fun a1 a2, Fun b1 b2) -> match unify ops (And a1 a2) (And b1 b2)
   (App a1 a2, App b1 b2) -> match unify ops (And a1 a2) (And b1 b2)
@@ -467,12 +463,12 @@ dropTypes (For x a) = For x (dropTypes a)
 dropTypes (Fix x a) = Fix x (dropTypes a)
 dropTypes (Fun (Ann a ta) b) = case andOf ta of
   [Ann ta _] -> Fun (Ann (dropTypes a) (dropTypes ta)) (dropTypes b)
-  ts | all isVar ts -> Fun (dropTypes a) (dropTypes b)
+  -- ts | all isVar ts -> Fun (dropTypes a) (dropTypes b)
   _ -> Fun (Ann (dropTypes a) (dropTypes ta)) (dropTypes b)
 dropTypes (Fun a b) = Fun (dropTypes a) (dropTypes b)
 dropTypes (App a (Ann b tb)) = case andOf tb of
   [Ann tb _] -> App (dropTypes a) (Ann (dropTypes b) (dropTypes tb))
-  ts | all isVar ts -> App (dropTypes a) (dropTypes b)
+  -- ts | all isVar ts -> App (dropTypes a) (dropTypes b)
   _ -> App (dropTypes a) (Ann (dropTypes b) (dropTypes tb))
 dropTypes (App a b) = App (dropTypes a) (dropTypes b)
 dropTypes (Call op t args) = Call op (dropTypes t) (map dropTypes args)
