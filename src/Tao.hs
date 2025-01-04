@@ -527,13 +527,14 @@ lower = \case
     a -> lower (For (bindings a) $ App (Fun (For [] a) c) b)
   -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
   If a b c -> lower (Match [a] [([], [Tag "True"], b), ([], [], c)])
+  Match args [(xs, ps, b)] -> lower (app (For xs $ fun ps b) args)
   Match args cases -> do
     let n = foldl max 0 (map (\(_, ps, _) -> length ps) cases)
     let rpad :: Int -> a -> [a] -> [a]
         rpad n x xs = xs ++ replicate (n - length xs) x
-    let cases' = map (\(xs, ps, b) -> for xs $ Fun (and' (rpad n Any ps)) b) cases
+    let cases' = map (\(xs, ps, b) -> for xs $ fun (rpad n Any ps) b) cases
     let args' = map (\i -> Var ("$" ++ show i)) [length args + 1 .. n]
-    let match' = fun args' (App (or' cases') (and' (args ++ args')))
+    let match' = fun args' (app (or' cases') (args ++ args'))
     lower match'
   Record fields -> do
     let k = '~' : intercalate "," (map fst fields)
@@ -756,18 +757,20 @@ instance TestSome (String, Stmt) where
 instance TestSome UnitTest where
   testSome :: [Module] -> ((String, String) -> Bool) -> UnitTest -> [TestResult]
   testSome ctx _ t = do
-    let expr = let (env, a) = compile ctx t.filename t.expr in C.let' env a
-    let expect = let (env, a) = compile ctx t.filename (Fun t.expect (Tag ":Ok")) in C.let' env a
+    let (env, expr) = compile ctx t.filename t.expr
+    let expect = let (env', a) = compile ctx t.filename (Fun t.expect (Tag ":Ok")) in C.let' env' a
     let test' = expect `C.Or` C.For "got" (C.Fun (C.Var "got") (C.Var "got"))
-    -- error . intercalate "\n" $
-    --   [ "-- testSome",
-    --     "let t.expr = " ++ show t.expr,
-    --     "let expr = " ++ C.format expr,
-    --     "let expect = " ++ show expect,
-    --     show (C.eval runtimeOps (C.App test' expr)),
-    --     ""
-    --   ]
-    case C.eval runtimeOps (C.App test' expr) of
+    error . intercalate "\n" $
+      [ "-- testSome",
+        show ctx,
+        "let t.expr = " ++ show t.expr,
+        "let expect = " ++ show expect,
+        "env = " ++ C.format (C.let' env C.Any),
+        "expr = " ++ C.format expr,
+        show (C.eval runtimeOps (C.App test' (C.let' env expr))),
+        ""
+      ]
+    case C.eval runtimeOps (C.App test' (C.let' env expr)) of
       C.Tag ":Ok" -> [TestPass t.filename t.pos t.name]
       got -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
 

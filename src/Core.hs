@@ -343,6 +343,7 @@ reduceApp ops a b = case (reduce ops a, reduce ops b) of
   (Var x, b) -> App (Var x) b
   (Or a1 a2, b) -> case reduceApp ops a1 b of
     Err -> reduceApp ops a2 b
+    c@Fun {} -> c `Or` App a2 b
     c -> c
   (For x a, b) -> reduceApp ops (Let [(x, Var x)] a) b
   (Fix x a, b@Var {}) -> App (Fix x a) b
@@ -452,18 +453,21 @@ compose s1 s2 = do
   unionBy (\a b -> fst a == fst b) s1 (map (sub s1) s2)
 
 dropTypes :: Expr -> Expr
-dropTypes (Ann a _) = dropTypes a
+dropTypes (Ann (Ann a t) _) = Ann (dropTypes a) (dropTypes t)
+dropTypes (Ann a t) = Ann (dropTypes a) (dropTypes t)
 dropTypes (And a b) = And (dropTypes a) (dropTypes b)
 dropTypes (Or a b) = Or (dropTypes a) (dropTypes b)
 dropTypes (For x a) = For x (dropTypes a)
 dropTypes (Fix x a) = Fix x (dropTypes a)
-dropTypes (Fun (Ann a t) b) = case andOf t of
+dropTypes (Fun (Ann a ta) b) = case andOf ta of
+  [Ann ta _] -> Fun (dropTypes (Ann a ta)) (dropTypes b)
   ts | all isVar ts -> Fun (dropTypes a) (dropTypes b)
-  _ -> Fun (Ann (dropTypes a) (dropTypes t)) (dropTypes b)
+  _ -> Fun (dropTypes (Ann a ta)) (dropTypes b)
 dropTypes (Fun a b) = Fun (dropTypes a) (dropTypes b)
-dropTypes (App a (Ann b t)) = case andOf t of
+dropTypes (App a (Ann b tb)) = case andOf tb of
+  [Ann tb _] -> App (dropTypes a) (dropTypes (Ann b tb))
   ts | all isVar ts -> App (dropTypes a) (dropTypes b)
-  _ -> App (dropTypes a) (Ann (dropTypes b) (dropTypes t))
+  _ -> App (dropTypes a) (dropTypes (Ann b tb))
 dropTypes (App a b) = App (dropTypes a) (dropTypes b)
 dropTypes (Call op t args) = Call op (dropTypes t) (map dropTypes args)
 dropTypes (Let defs b) = Let (map (second dropTypes) defs) (dropTypes b)
@@ -581,6 +585,9 @@ infer ops env (Var x) = do
           (ta, s, e)
         Nothing -> (Err, [], [UndefinedVar x])
   ((Var x, ta), s, e)
+infer ops env (Ann a t) = do
+  let ((a', ta), s, e) = check ops env a t
+  ((Ann a' ta, ta), s, e)
 infer ops env (Ann a t) = check ops env a t
 infer ops env (And a b) = do
   let ((a', ta), (b', tb), s, e) = infer2 ops env a b
@@ -599,7 +606,7 @@ infer ops env (Fun a b) = do
   let ((a', ta), (b', tb), s, e) = infer2 ops env a b
   ((Fun (Ann a' ta) b', Fun ta tb), s, e)
 infer ops env (App a b) = do
-  let ((_, ta), s1, e1) = infer ops env a
+  let ((a_, ta), s1, e1) = infer ops env a
   let checkApp :: Ops -> Env -> (Expr, Type) -> Expr -> ((Expr, Expr), (Type, Type), Substitution, [TypeError])
       checkApp ops env (a, ta) b = case ta of
         Or ta1 ta2 -> do
@@ -614,7 +621,7 @@ infer ops env (App a b) = do
         -- _ -> (a, b, Err, Err, [], [NotAFunction a ta])
         todo -> error $ "TODO infer App " ++ show todo
   let ((a', b'), (t1, t2), s2, e2) =
-        checkApp ops (s1 `compose` env) (substitute s1 a, ta) (substitute s1 b)
+        checkApp ops (s1 `compose` env) (a_, ta) (substitute s1 b)
   -- error . intercalate "\n" $
   --   [ "-- infer " ++ format (App a b),
   --     "a' = " ++ format a',
