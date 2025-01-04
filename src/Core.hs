@@ -38,7 +38,7 @@ data Expr
 
 type Type = Expr
 
-type Ops = [(String, (Expr -> Expr) -> Env -> [Expr] -> Maybe Expr)]
+type Ops = [(String, (Expr -> Expr) -> [Expr] -> Maybe Expr)]
 
 type Env = [(String, Expr)]
 
@@ -331,9 +331,9 @@ reduceLet ops env = \case
   Fix x a -> Fix x (Let env a)
   Fun a b -> Fun (Let env a) (Let env b)
   App a b -> reduceApp ops (Let env a) (Let env b)
-  Call f t args -> case (lookup f ops, Let env t, args) of
-    (Just call, t, args) | Just result <- call (eval ops) env args -> Ann result t
-    (_, t, args) -> Call f t (Let env <$> args)
+  Call f t args -> case (lookup f ops, Let env t, Let env <$> args) of
+    (Just call, t, args) | Just result <- call (eval ops) args -> Ann result t
+    (_, t, args) -> Call f t args
   Let env' a -> reduce ops (Let (env ++ env') a)
   expr -> expr
 
@@ -454,21 +454,20 @@ compose s1 s2 = do
   unionBy (\a b -> fst a == fst b) s1 (map (sub s1) s2)
 
 dropTypes :: Expr -> Expr
-dropTypes (Ann (Ann a t) _) = Ann (dropTypes a) (dropTypes t)
-dropTypes (Ann a t) = Ann (dropTypes a) (dropTypes t)
+dropTypes (Ann a _) = dropTypes a
 dropTypes (And a b) = And (dropTypes a) (dropTypes b)
 dropTypes (Or a b) = Or (dropTypes a) (dropTypes b)
 dropTypes (For x a) = For x (dropTypes a)
 dropTypes (Fix x a) = Fix x (dropTypes a)
 dropTypes (Fun (Ann a ta) b) = case andOf ta of
-  [Ann ta _] -> Fun (dropTypes (Ann a ta)) (dropTypes b)
+  [Ann ta _] -> Fun (Ann (dropTypes a) (dropTypes ta)) (dropTypes b)
   ts | all isVar ts -> Fun (dropTypes a) (dropTypes b)
-  _ -> Fun (dropTypes (Ann a ta)) (dropTypes b)
+  _ -> Fun (Ann (dropTypes a) (dropTypes ta)) (dropTypes b)
 dropTypes (Fun a b) = Fun (dropTypes a) (dropTypes b)
 dropTypes (App a (Ann b tb)) = case andOf tb of
-  [Ann tb _] -> App (dropTypes a) (dropTypes (Ann b tb))
+  [Ann tb _] -> App (dropTypes a) (Ann (dropTypes b) (dropTypes tb))
   ts | all isVar ts -> App (dropTypes a) (dropTypes b)
-  _ -> App (dropTypes a) (dropTypes (Ann b tb))
+  _ -> App (dropTypes a) (Ann (dropTypes b) (dropTypes tb))
 dropTypes (App a b) = App (dropTypes a) (dropTypes b)
 dropTypes (Call op t args) = Call op (dropTypes t) (map dropTypes args)
 dropTypes (Let defs b) = Let (map (second dropTypes) defs) (dropTypes b)
@@ -586,9 +585,6 @@ infer ops env (Var x) = do
           (ta, s, e)
         Nothing -> (Err, [], [UndefinedVar x])
   ((Var x, ta), s, e)
-infer ops env (Ann a t) = do
-  let ((a', ta), s, e) = check ops env a t
-  ((Ann a' ta, ta), s, e)
 infer ops env (Ann a t) = check ops env a t
 infer ops env (And a b) = do
   let ((a', ta), (b', tb), s, e) = infer2 ops env a b
@@ -636,7 +632,7 @@ infer ops env (Let defs a) = infer ops (defs ++ env) a
 infer ops env (Call op t args) = do
   let ((t', _), s1, e1) = infer ops env t
   let (args', s2, e2) = inferAll ops (s1 `compose` env) (substitute s1 <$> args)
-  ((Call op t' (map fst args'), substitute s2 t'), s2 `compose` s1, e1 ++ e2)
+  ((Call op (substitute s2 t') (map fst args'), substitute s2 t'), s2 `compose` s1, e1 ++ e2)
 infer _ _ Err = ((Err, Any), [], [])
 
 infer2 :: Ops -> Env -> Expr -> Expr -> ((Expr, Type), (Expr, Type), Substitution, [TypeError])

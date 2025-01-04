@@ -125,13 +125,13 @@ buildOps :: C.Ops
 buildOps = do
   let intOp1 op f =
         ( op,
-          \eval env args -> case map (C.dropTypes . eval . C.Let env) args of
+          \eval args -> case map (C.dropTypes . eval) args of
             [C.Int x] -> Just (C.Int (f x))
             _ -> Nothing
         )
   let intOp2 op f =
         ( op,
-          \eval env args -> case map (C.dropTypes . eval . C.Let env) args of
+          \eval args -> case map (C.dropTypes . eval) args of
             [C.Int x, C.Int y] -> Just (C.Int (f x y))
             _ -> Nothing
         )
@@ -760,20 +760,20 @@ instance TestSome UnitTest where
     let (env, expr) = compile ctx t.filename t.expr
     let expect = let (env', a) = compile ctx t.filename (Fun t.expect (Tag ":Ok")) in C.let' (env' ++ env) a
     let test' = expect `C.Or` C.For "got" (C.Fun (C.Var "got") (C.Var "got"))
-    error . intercalate "\n" $
-      [ "-- testSome",
-        show ctx,
-        "let t.expr = " ++ show t.expr,
-        "let expect = " ++ show expect,
-        "env = " ++ C.format (C.let' env C.Any),
-        "      " ++ show (map fst env),
-        "expr = " ++ C.format expr,
-        "expect = " ++ C.format expect,
-        "eval expect: " ++ C.format (C.eval runtimeOps expect),
-        "eval expr:   " ++ C.format (C.eval runtimeOps (C.let' env expr)),
-        "eval test:   " ++ C.format (C.eval runtimeOps (C.App test' (C.let' env expr))),
-        ""
-      ]
+    -- error . intercalate "\n" $
+    --   [ "-- testSome",
+    --     show ctx,
+    --     "let t.expr = " ++ show t.expr,
+    --     "let expect = " ++ show expect,
+    --     "env = " ++ C.format (C.let' env C.Any),
+    --     "      " ++ show (map fst env),
+    --     "expr = " ++ C.format expr,
+    --     "expect = " ++ C.format expect,
+    --     "eval expect: " ++ C.format (C.eval runtimeOps expect),
+    --     "eval expr:   " ++ C.format (C.eval runtimeOps (C.let' env expr)),
+    --     "eval test:   " ++ C.format (C.eval runtimeOps (C.App test' (C.let' env expr))),
+    --     ""
+    --   ]
     case C.eval runtimeOps (C.App test' (C.let' env expr)) of
       C.Tag ":Ok" -> [TestPass t.filename t.pos t.name]
       got -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
