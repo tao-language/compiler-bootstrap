@@ -519,8 +519,12 @@ lower = \case
   Let (Var x, b) (Var x') | x == x' -> lower b
   Let (a, b) c -> case a of
     Var x | x `occurs` b -> lower (Let (Var x, Fix x b) c)
-    Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
+    Ann (Or a1 a2) t -> lower (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
+    Ann (App a1 a2) t -> lower (Let (Ann a1 t, Fun a2 b) c)
+    Ann (Op1 op a) t -> lower (Let (Ann (Var (show op)) t, Fun a b) c)
+    Ann (Op2 op a1 a2) t -> lower (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
     Ann a t -> lower (Let (a, Ann b t) c)
+    Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
     App a1 a2 -> lower (Let (a1, Fun a2 b) c)
     Op1 op a -> lower (Let (Var (show op), Fun a b) c)
     Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
@@ -691,18 +695,18 @@ instance Compile (String -> C.Env) where
     let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
         compileDef (path, alt) (env, alts) = do
           let (env', alt') = compile ctx path (name, alt)
-          (unionBy (\a b -> fst a == fst b) env' env, alt' : alts)
+          (unionBy (\a b -> fst a == fst b) env' env, C.let' env' alt' : alts)
     let (env, alts) = foldr compileDef ([], []) (resolve ctx path name)
     let def = case alts of
           [] -> []
           [C.Var x] | x == name -> [(name, C.Var x)]
           [C.Ann (C.Var x) t] | x == name -> [(name, C.Ann (C.Var x) t)]
-          alts -> [(name, C.fix [name] (C.or' alts))]
+          alts -> [(name, C.or' alts)]
     unionBy (\a b -> fst a == fst b) def env
 
 instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"+", expr) = do
+  -- compile ctx path (name@"", expr) = do
   --   let a = lower expr
   --   let xs = delete name (C.freeNames (True, True, False) a)
   --   let env = concatMap (compile ctx path) xs
@@ -711,20 +715,22 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   --   error . intercalate "\n" $
   --     [ "-- compile/2 " ++ name,
   --       -- show ctx,
-  --       -- show env,
   --       show xs,
   --       show a,
   --       C.format a,
   --       C.format a',
-  --       show a',
-  --       show s,
+  --       C.format (C.Let env C.Any),
+  --       C.format (C.fix [name] $ C.dropTypes a'),
+  --       C.format t,
+  --       -- show a',
+  --       -- show s,
   --       ""
   --     ]
   compile ctx path (name, expr) = do
     let a = lower expr
     let env = concatMap (compile ctx path) (delete name (C.freeNames (True, True, False) a))
     let ((a', t), s, e) = C.infer buildOps env a
-    (env, C.for (map fst s) (C.dropTypes a'))
+    (env, C.fix [name] (C.dropTypes a'))
 
 instance Compile (Expr -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> Expr -> (C.Env, C.Expr)
@@ -769,9 +775,11 @@ instance TestSome UnitTest where
     --     "      " ++ show (map fst env),
     --     "expr = " ++ C.format expr,
     --     "expect = " ++ C.format expect,
+    --     "let env = " ++ show env,
+    --     "let expr = " ++ show expr,
     --     "eval expect: " ++ C.format (C.eval runtimeOps expect),
     --     "eval expr:   " ++ C.format (C.eval runtimeOps (C.let' env expr)),
-    --     "eval test:   " ++ C.format (C.eval runtimeOps (C.App test' (C.let' env expr))),
+    --     -- "eval test:   " ++ C.format (C.eval runtimeOps (C.App test' (C.let' env expr))),
     --     ""
     --   ]
     case C.eval runtimeOps (C.App test' (C.let' env expr)) of

@@ -1,15 +1,16 @@
-: (Int, Int) -> Int
-`-` (x, y) = %int_sub<Int>(x, y)
+: Int, Int -> Int
+x - y = %int_sub<Int>(x, y)
 
-`*` (x : Int, y : Int) = %int_mul<Int>(x, y)
+: Int, Int -> Int
+x * y = %int_mul<Int>(x, y)
 
 factorial = {
 | 0 -> 1
 | n -> n * factorial (n - 1)
 }
 
-# -- 0
-# > factorial 0; 1
+-- 0
+> factorial 0; 1
 
 -- 1
 > factorial 1; 1

@@ -299,27 +299,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let b' = for ["y", "b"] (Fun (Ann y b) y)
     eval' (App (Fun a' i1) b') `shouldBe` i1
 
-  it "☯ experiment" $ do
-    let env =
-          [ ( "factorial",
-              Fix
-                "factorial"
-                ( Let
-                    [ ("*", Fun (Ann (And (Var "x") (Var "y")) (And IntT IntT)) (Call "int_mul" IntT [Var "x", Var "y"])),
-                      ("-", For "yT" (For "xT" (Fun (Ann (And (Var "x") (Var "y")) (And (Var "xT") (Var "yT"))) (Call "int_sub" IntT [Var "x", Var "y"]))))
-                    ]
-                    (Fun (Ann (Var "$1") IntT) (App (Or (Fun (Ann (Int 0) IntT) (Int 1)) (Fun (Ann (Var "n") Err) (App (Var "*") (Ann (And (Var "n") (App (Var "factorial") (Ann (App (Var "-") (Ann (And (Var "n") (Int 1)) (And Err IntT))) IntT))) (And Err Err))))) (Ann (Var "$1") IntT)))
-                )
-            ),
-            ("*", Fun (Ann (And (Var "x") (Var "y")) (And IntT IntT)) (Call "int_mul" IntT [Var "x", Var "y"])),
-            ("-", For "yT" (For "xT" (Fun (Ann (And (Var "x") (Var "y")) (And (Var "xT") (Var "yT"))) (Call "int_sub" IntT [Var "x", Var "y"]))))
-          ]
-    -- let expr = App (Or (Fun (Ann (Int 1) IntT) (Tag ":Ok")) (Fun (Ann (Var "got") (Or IntT IntT)) (Var "got"))) (Ann (App (Var "factorial") (Ann (Int 1) IntT)) (Or IntT IntT))
-    infer ops env (Var "*") `shouldBe` ((Err, Err), [], [])
-    -- infer ops env (App (Var "factorial") (Int 0)) `shouldBe` ((Err, Err), [], [])
-    -- infer ops env (App (Var "factorial") (Ann (Int 0) IntT)) `shouldBe` ((Err, Err), [], [])
-    True `shouldBe` True
-
   it "☯ -- unify" $ do
     True `shouldBe` True
 

@@ -5,6 +5,7 @@ import Data.Char (isAlphaNum, isLower, isUpper)
 import Data.Function ((&))
 import Data.List (delete, intercalate, union, unionBy)
 import Data.Maybe (fromMaybe)
+import Debug.Trace (trace)
 import qualified Parser as P
 import Stdlib (replace, replaceString)
 
@@ -310,10 +311,14 @@ isClosed = null . freeVars
 isOpen :: Expr -> Bool
 isOpen = not . isClosed
 
+fmt :: Expr -> String
+fmt (Let env a) = "@{" ++ intercalate ", " (map fst env) ++ "} " ++ fmt a
+fmt a = format a
+
 -- Evaluation
 reduce :: Ops -> Expr -> Expr
 reduce ops = \case
-  App a b -> reduceApp ops a b
+  App a b -> reduceApp ops (reduce ops a) (reduce ops b)
   Let env expr -> reduceLet ops env expr
   expr -> expr
 
@@ -321,7 +326,7 @@ reduceLet :: Ops -> Env -> Expr -> Expr
 reduceLet ops env = \case
   Var x -> case lookup x env of
     Just (Var x') | x == x' -> Var x
-    Just (Ann (Var x') _) | x == x' -> Var x
+    Just (Ann (Var x') t) | x == x' -> Ann (Var x) t
     Just a -> reduce ops a
     Nothing -> Var x
   Ann a b -> Ann (Let env a) (Let env b)
@@ -330,7 +335,7 @@ reduceLet ops env = \case
   For x a -> For x (Let env a)
   Fix x a -> Fix x (Let env a)
   Fun a b -> Fun (Let env a) (Let env b)
-  App a b -> reduceApp ops (Let env a) (Let env b)
+  App a b -> reduceApp ops (reduce ops (Let env a)) (reduce ops (Let env b))
   Call f t args -> case (lookup f ops, Let env t, Let env <$> args) of
     (Just call, t, args) | Just result <- call (eval ops) args -> Ann result t
     (_, t, args) -> Call f t args
@@ -338,19 +343,19 @@ reduceLet ops env = \case
   expr -> expr
 
 reduceApp :: Ops -> Expr -> Expr -> Expr
-reduceApp ops a b = case (reduce ops a, reduce ops b) of
+reduceApp ops a b = case (a, b) of
   (Any, b) -> App Any b
-  (Var x, b) -> App (Var x) b
-  (Ann a _, b) -> reduceApp ops a b
-  (Or a1 a2, b) -> case reduceApp ops a1 b of
-    Err -> reduceApp ops a2 b
-    c@Fun {} -> c `Or` App a2 b
+  (Err, _) -> Err
+  (a@Var {}, b) -> App a b
+  (a@App {}, b) -> App a b
+  (a, b@Var {}) -> App a b
+  (a, b@App {}) -> App a b
+  (Ann a _, b) -> reduceApp ops (reduce ops a) b
+  (Or a1 a2, b) -> case reduceApp ops (reduce ops a1) b of
+    Err -> reduceApp ops (reduce ops a2) b
     c -> c
-  (For x a, b) -> reduceApp ops (Let [(x, Var x)] a) b
-  (Fix x a, b@Var {}) -> App (Fix x a) b
-  (Fix x a, b@App {}) -> App (Fix x a) b
-  (Fix x a, b) -> reduceApp ops (Let [(x, Fix x a)] a) b
-  (App a1 a2, b) -> App (App a1 a2) b
+  (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
+  (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
   (Fun a c, b) -> case match False ops a b of
     Just env -> reduce ops (Let env c)
     Nothing -> Err
@@ -415,7 +420,7 @@ eval ops expr = case reduce ops expr of
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> Or (eval ops a) (eval ops b)
   For x a -> for [x] (eval ops (Let [(x, Var x)] a))
-  Fix x a -> Fix x (eval ops (Let [(x, Var x)] a))
+  Fix x a -> fix [x] (eval ops (Let [(x, Var x)] a))
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)
   Call f t args -> Call f (eval ops t) (eval ops <$> args)
@@ -597,8 +602,9 @@ infer ops env (For x a) = do
   let ((a', ta), s, e) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
   ((for [x] (substitute [(y, Var x)] a'), ta), s `compose` [(y, Var y)], e)
 infer ops env (Fix x a) = do
-  let ((a', ta), s, e) = infer ops ((x, Var x) : env) a
-  ((fix [x] a', ta), s, e)
+  let y = newName (map fst env) x
+  let ((a', ta), s, e) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
+  ((fix [x] (substitute [(y, Var x)] a'), ta), s `compose` [(y, Var y)], e)
 infer ops env (Fun a b) = do
   let ((a', ta), (b', tb), s, e) = infer2 ops env a b
   ((Fun (Ann a' ta) b', Fun ta tb), s, e)
@@ -653,6 +659,7 @@ check ops env a (For x t) = do
   let y = newName (map fst env) x
   let ((a', t'), s, e) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] t)
   ((a', for [x] (substitute [(y, Var x)] t')), s `compose` [(y, Var y)], e)
+-- check _ _ (Var x) t = ((Var x, t), [(x, t)], [])
 check ops env (And a b) (And ta tb) = do
   let ((a', ta'), (b', tb'), s, e) = check2 ops env (a, ta) (b, tb)
   ((And a' b', And ta' tb'), s, e)
