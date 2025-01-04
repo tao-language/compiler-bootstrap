@@ -344,19 +344,19 @@ reduceApp ops a b = case (a, b) of
   (Err, _) -> Err
   (a@Var {}, b) -> App a b
   (a@App {}, b) -> App a b
-  (a, b@Var {}) -> App a b
-  (a, b@App {}) -> App a b
   (Ann a _, b) -> reduceApp ops (reduce ops a) b
   (Or a1 a2, b) -> case reduceApp ops (reduce ops a1) b of
     Err -> reduceApp ops (reduce ops a2) b
     c@Fun {} -> c `Or` App a2 b
     c -> c
   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
-  (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
   (Fun a c, b) -> case match False ops a b of
     Just env -> reduce ops (Let env c)
     Nothing -> Err
   (Call f t args, b) -> App (Call f t args) b
+  (a, b@Var {}) -> App a b
+  (a, b@App {}) -> App a b
+  (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
   _ -> Err
 
 match :: Bool -> Ops -> Expr -> Expr -> Maybe Env
@@ -365,50 +365,54 @@ match :: Bool -> Ops -> Expr -> Expr -> Maybe Env
 --   Nothing -> match unify ops (Tag k) b
 -- match unify ops (Let env (Let env' a)) b =
 --   match unify ops (Let (env ++ env') a) b
-match unify ops a b = case (reduce ops a, reduce ops b, unify) of
-  (Any, _, _) -> Just []
-  (_, Any, True) -> Just []
-  (Unit, Unit, _) -> Just []
-  (IntT, IntT, _) -> Just []
-  (NumT, NumT, _) -> Just []
-  (Int i, Int i', _) | i == i' -> Just []
-  (Num n, Num n', _) | n == n' -> Just []
-  (Tag k, Tag k', _) | k == k' -> Just []
-  (Var x, b, _) -> Just [(x, b)]
-  (a, Var x, True) -> Just [(x, a)]
-  (Ann a ta, Ann b tb, _) -> do
+match unify ops a b = case (reduce ops a, reduce ops b) of
+  (Any, _) -> Just []
+  (_, Any)
+    | unify -> Just []
+    | otherwise -> Nothing
+  (Unit, Unit) -> Just []
+  (IntT, IntT) -> Just []
+  (NumT, NumT) -> Just []
+  (Int i, Int i') | i == i' -> Just []
+  (Num n, Num n') | n == n' -> Just []
+  (Tag k, Tag k') | k == k' -> Just []
+  (Var x, b) -> Just [(x, b)]
+  (a, Var x)
+    | unify -> Just [(x, a)]
+    | otherwise -> Nothing
+  (Ann a ta, Ann b tb) -> do
     env1 <- match True ops ta tb
     env2 <- match unify ops a b
     Just (env1 ++ env2)
-  -- (And (Let env (Tag k)) a, b, _) -> case lookup k env of
+  -- (And (Let env (Tag k)) a, b) -> case lookup k env of
   --   Just def -> match unify ops (And (Tag k) a) (App def b)
   --   Nothing -> match unify ops (And (Tag k) a) b
-  -- (And (Let env (Let env' a1)) a2, b, _) ->
+  -- (And (Let env (Let env' a1)) a2, b) ->
   --   match unify ops (Let (env ++ env') (And a1 a2)) b
-  (And a1 a2, And b1 b2, _) -> do
+  (And a1 a2, And b1 b2) -> do
     env1 <- match unify ops a1 b1
     env2 <- match unify ops a2 b2
     Just (env1 ++ env2)
-  (Or a1 a2, b, _) -> case match unify ops a1 b of
+  (Or a1 a2, b) -> case match unify ops a1 b of
     Just env1 -> case match unify ops a2 b of
       Just env2 -> Just (env1 ++ env2)
       Nothing -> Just env1
     Nothing -> match unify ops a2 b
-  (a, Or b1 b2, _) -> case match unify ops a b1 of
+  (a, Or b1 b2) -> case match unify ops a b1 of
     Just env1 -> case match unify ops a b2 of
       Just env2 -> Just (env1 ++ env2)
       Nothing -> Just env1
     Nothing -> match unify ops a b2
-  (For x a, b, _) -> do match unify ops (Let [(x, Var x)] a) b
-  (a, For x b, _) -> do match unify ops a (Let [(x, Var x)] b)
+  (For x a, b) -> do match unify ops (Let [(x, Var x)] a) b
+  (a, For x b) -> do match unify ops a (Let [(x, Var x)] b)
   -- \| Fix String Expr
-  (Fun a1 a2, Fun b1 b2, _) -> match unify ops (And a1 a2) (And b1 b2)
-  (App a1 a2, App b1 b2, _) -> match unify ops (And a1 a2) (And b1 b2)
-  (Call x t args, Call x' t' args', _) | x == x' -> do
+  (Fun a1 a2, Fun b1 b2) -> match unify ops (And a1 a2) (And b1 b2)
+  (App a1 a2, App b1 b2) -> match unify ops (And a1 a2) (And b1 b2)
+  (Call x t args, Call x' t' args') | x == x' -> do
     match unify ops (and' (t : args)) (and' (t' : args'))
-  (Err, Err, _) -> Just []
-  (Ann a _, b, _) -> match unify ops a b
-  (a, Ann b _, _) -> match unify ops a b
+  (Err, Err) -> Just []
+  (Ann a _, b) -> match unify ops a b
+  (a, Ann b _) -> match unify ops a b
   _ -> Nothing
 
 eval :: Ops -> Expr -> Expr
@@ -609,6 +613,11 @@ infer ops env (App a b) = do
   let ((a_, ta), s1, e1) = infer ops env a
   let checkApp :: Ops -> Env -> (Expr, Type) -> Expr -> ((Expr, Expr), (Type, Type), Substitution, [TypeError])
       checkApp ops env (a, ta) b = case ta of
+        Var x -> do
+          let x1 = newName ((x ++ "$") : map fst env) (x ++ "$")
+          let x2 = newName (x1 : (x ++ "$") : map fst env) (x ++ "$")
+          let ((a', _), (b', t1), s, e) = check2 ops (pushVars [x1, x2] env) (a, Fun (Var x1) (Var x2)) (b, Var x1)
+          ((a', b'), (t1, substitute s (Var x2)), s, e)
         Or ta1 ta2 -> do
           let (_, _, s1, e1) = checkApp ops env (a, ta1) b
           let (ab, t, s2, e2) = checkApp ops (s1 `compose` env) (substitute s1 a, substitute s1 ta2) (substitute s1 b)
@@ -616,10 +625,8 @@ infer ops env (App a b) = do
         Fun t1 t2 -> do
           let ((a', _), (b', t1'), s, e) = check2 ops env (a, Fun t1 t2) (b, t1)
           ((a', b'), (t1', substitute s t2), s, e)
-        IntT -> ((a, b), (Err, Err), [], [NotAFunction a ta])
-        Err -> ((a, b), (Err, Err), [], [NotAFunction a ta])
-        -- _ -> (a, b, Err, Err, [], [NotAFunction a ta])
-        todo -> error $ "TODO infer App " ++ show todo
+        -- todo -> error $ "TODO infer App " ++ show todo
+        _ -> ((a, b), (Err, Err), [], [NotAFunction a ta])
   let ((a', b'), (t1, t2), s2, e2) =
         checkApp ops (s1 `compose` env) (a_, ta) (substitute s1 b)
   -- error . intercalate "\n" $
