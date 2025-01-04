@@ -311,10 +311,6 @@ isClosed = null . freeVars
 isOpen :: Expr -> Bool
 isOpen = not . isClosed
 
-fmt :: Expr -> String
-fmt (Let env a) = "@{" ++ intercalate ", " (map fst env) ++ "} " ++ fmt a
-fmt a = format a
-
 -- Evaluation
 reduce :: Ops -> Expr -> Expr
 reduce ops = \case
@@ -353,6 +349,7 @@ reduceApp ops a b = case (a, b) of
   (Ann a _, b) -> reduceApp ops (reduce ops a) b
   (Or a1 a2, b) -> case reduceApp ops (reduce ops a1) b of
     Err -> reduceApp ops (reduce ops a2) b
+    c@Fun {} -> c `Or` App a2 b
     c -> c
   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
   (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b

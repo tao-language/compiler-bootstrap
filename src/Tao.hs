@@ -768,18 +768,18 @@ instance TestSome UnitTest where
     let test' = expect `C.Or` C.For "got" (C.Fun (C.Var "got") (C.Var "got"))
     -- error . intercalate "\n" $
     --   [ "-- testSome",
-    --     show ctx,
-    --     "let t.expr = " ++ show t.expr,
-    --     "let expect = " ++ show expect,
+    --     -- show ctx,
+    --     -- "let t.expr = " ++ show t.expr,
+    --     -- "let expect = " ++ show expect,
     --     "env = " ++ C.format (C.let' env C.Any),
     --     "      " ++ show (map fst env),
     --     "expr = " ++ C.format expr,
     --     "expect = " ++ C.format expect,
-    --     "let env = " ++ show env,
-    --     "let expr = " ++ show expr,
+    --     -- "let env = " ++ show env,
+    --     -- "let expr = " ++ show expr,
     --     "eval expect: " ++ C.format (C.eval runtimeOps expect),
     --     "eval expr:   " ++ C.format (C.eval runtimeOps (C.let' env expr)),
-    --     -- "eval test:   " ++ C.format (C.eval runtimeOps (C.App test' (C.let' env expr))),
+    --     "eval test:   " ++ C.format (C.eval runtimeOps (C.App test' (C.let' env expr))),
     --     ""
     --   ]
     case C.eval runtimeOps (C.App test' (C.let' env expr)) of
