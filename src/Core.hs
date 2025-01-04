@@ -491,22 +491,22 @@ unify ops env a b = case (a, b) of
   (a, Var x) -> unify ops env (Var x) a
   (Tag k, Tag k') | k == k' -> (Tag k, [], [])
   (a, Tag k) | Just tdef <- lookup k env -> do
-    let a' = eval ops (App tdef a)
+    let a' = eval ops (App (tdef `Or` Fun Any a) a)
     let env' = filter (\(x, _) -> x /= k) env
     let (t, s, e) = unify ops env' a' (Tag k)
     (t, [(k, tdef)] `compose` s, e)
   (Tag k, b) | Just tdef <- lookup k env -> do
-    let b' = eval ops (App tdef b)
+    let b' = eval ops (App (tdef `Or` Fun Any b) b)
     let env' = filter (\(x, _) -> x /= k) env
     let (t, s, e) = unify ops env' (Tag k) b'
     (t, [(k, tdef)] `compose` s, e)
   (a, And (Tag k) b) | Just tdef <- lookup k env -> do
-    let a' = eval ops (app tdef [b, a])
+    let a' = eval ops (app (tdef `Or` fun [Any, Any] a) [b, a])
     let env' = filter (\(x, _) -> x /= k) env
     let (t, s, e) = unify ops env' a' (And (Tag k) b)
     (t, [(k, tdef)] `compose` s, e)
   (And (Tag k) a, b) | Just tdef <- lookup k env -> do
-    let b' = eval ops (app tdef [a, b])
+    let b' = eval ops (app (tdef `Or` fun [Any, Any] b) [a, b])
     let env' = filter (\(x, _) -> x /= k) env
     let (t, s, e) = unify ops env' (And (Tag k) a) b'
     (t, [(k, tdef)] `compose` s, e)
