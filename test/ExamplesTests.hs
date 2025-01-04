@@ -160,7 +160,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     syntaxErrors `shouldBe` []
     let testResults =
           [ TestPass name (2, 1) "Ann match",
-            TestFail name (6, 1) "Ann match drop type" (Ann i1 NumT) i1 i1,
+            TestPass name (6, 1) "Ann match drop type",
             TestFail name (10, 1) "Ann match fail" (Ann i1 IntT) i2 i1
           ]
     testAll [] pkg `shouldBe` testResults

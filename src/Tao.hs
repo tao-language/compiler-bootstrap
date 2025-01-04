@@ -773,7 +773,7 @@ instance TestSome UnitTest where
     --     -- show ctx,
     --     -- "let t.expr = " ++ show t.expr,
     --     -- "let expect = " ++ show expect,
-    --     "env = " ++ C.format (C.let' env C.Any),
+    --     "env = " ++ C.format (C.Let env C.Any),
     --     "      " ++ show (map fst env),
     --     "expr = " ++ C.format expr,
     --     "expect = " ++ C.format expect,
