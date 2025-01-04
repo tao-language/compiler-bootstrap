@@ -341,6 +341,7 @@ reduceApp :: Ops -> Expr -> Expr -> Expr
 reduceApp ops a b = case (reduce ops a, reduce ops b) of
   (Any, b) -> App Any b
   (Var x, b) -> App (Var x) b
+  (Ann a _, b) -> reduceApp ops a b
   (Or a1 a2, b) -> case reduceApp ops a1 b of
     Err -> reduceApp ops a2 b
     c@Fun {} -> c `Or` App a2 b

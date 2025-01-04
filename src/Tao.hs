@@ -758,7 +758,7 @@ instance TestSome UnitTest where
   testSome :: [Module] -> ((String, String) -> Bool) -> UnitTest -> [TestResult]
   testSome ctx _ t = do
     let (env, expr) = compile ctx t.filename t.expr
-    let expect = let (env', a) = compile ctx t.filename (Fun t.expect (Tag ":Ok")) in C.let' env' a
+    let expect = let (env', a) = compile ctx t.filename (Fun t.expect (Tag ":Ok")) in C.let' (env' ++ env) a
     let test' = expect `C.Or` C.For "got" (C.Fun (C.Var "got") (C.Var "got"))
     error . intercalate "\n" $
       [ "-- testSome",
@@ -766,8 +766,12 @@ instance TestSome UnitTest where
         "let t.expr = " ++ show t.expr,
         "let expect = " ++ show expect,
         "env = " ++ C.format (C.let' env C.Any),
+        "      " ++ show (map fst env),
         "expr = " ++ C.format expr,
-        show (C.eval runtimeOps (C.App test' (C.let' env expr))),
+        "expect = " ++ C.format expect,
+        "eval expect: " ++ C.format (C.eval runtimeOps expect),
+        "eval expr:   " ++ C.format (C.eval runtimeOps (C.let' env expr)),
+        "eval test:   " ++ C.format (C.eval runtimeOps (C.App test' (C.let' env expr))),
         ""
       ]
     case C.eval runtimeOps (C.App test' (C.let' env expr)) of
