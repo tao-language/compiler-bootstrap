@@ -600,12 +600,21 @@ infer ops env (Fun a b) = do
   ((Fun (Ann a' ta) b', Fun ta tb), s, e)
 infer ops env (App a b) = do
   let ((_, ta), s1, e1) = infer ops env a
-  let (a', b', t1, t2, s2, e2) = case (ta, substitute s1 a, substitute s1 b, s1 `compose` env) of
-        (Fun t1 t2, a, b, env) -> do
-          let ((a', _), (b', t1'), s2, e) = check2 ops env (a, Fun t1 t2) (b, t1)
-          let s = s2 `compose` s1
-          (a', b', t1', substitute s t2, s, e)
+  let checkApp :: Ops -> Env -> (Expr, Type) -> Expr -> ((Expr, Expr), (Type, Type), Substitution, [TypeError])
+      checkApp ops env (a, ta) b = case ta of
+        Or ta1 ta2 -> do
+          let (_, _, s1, e1) = checkApp ops env (a, ta1) b
+          let (ab, t, s2, e2) = checkApp ops (s1 `compose` env) (substitute s1 a, substitute s1 ta2) (substitute s1 b)
+          (ab, t, s2 `compose` s1, e1 ++ e2)
+        Fun t1 t2 -> do
+          let ((a', _), (b', t1'), s, e) = check2 ops env (a, Fun t1 t2) (b, t1)
+          ((a', b'), (t1', substitute s t2), s, e)
+        IntT -> ((a, b), (Err, Err), [], [NotAFunction a ta])
+        Err -> ((a, b), (Err, Err), [], [NotAFunction a ta])
+        -- _ -> (a, b, Err, Err, [], [NotAFunction a ta])
         todo -> error $ "TODO infer App " ++ show todo
+  let ((a', b'), (t1, t2), s2, e2) =
+        checkApp ops (s1 `compose` env) (substitute s1 a, ta) (substitute s1 b)
   -- error . intercalate "\n" $
   --   [ "-- infer " ++ format (App a b),
   --     "a' = " ++ format a',
