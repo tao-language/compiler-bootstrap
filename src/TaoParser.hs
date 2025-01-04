@@ -219,10 +219,14 @@ parseAtom = do
         do
           _ <- P.char '('
           _ <- P.whitespaces
-          block <- parseBlock
+          expr <-
+            P.oneOf
+              [ Var <$> P.oneOf [P.text "*"],
+                parseBlock
+              ]
           _ <- P.whitespaces
           _ <- P.char ')'
-          return block,
+          return expr,
         do
           items <- parseCollection "(" "," ")" (parseExpr 0 P.whitespaces)
           return (and' items),

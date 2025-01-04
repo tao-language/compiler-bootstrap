@@ -17,17 +17,17 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let mul a b = Call "int_mul" IntT [a, b]
   let ops =
         [ ( "int_add",
-            \args -> case dropTypes <$> args of
+            \eval env args -> case map (dropTypes . eval . Let env) args of
               [Int x, Int y] -> Just (Int (x + y))
               _ -> Nothing
           ),
           ( "int_sub",
-            \args -> case dropTypes <$> args of
+            \eval env args -> case map (dropTypes . eval . Let env) args of
               [Int x, Int y] -> Just (Int (x - y))
               _ -> Nothing
           ),
           ( "int_mul",
-            \args -> case dropTypes <$> args of
+            \eval env args -> case map (dropTypes . eval . Let env) args of
               [Int x, Int y] -> Just (Int (x * y))
               _ -> Nothing
           )

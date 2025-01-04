@@ -38,7 +38,7 @@ data Expr
 
 type Type = Expr
 
-type Ops = [(String, [Expr] -> Maybe Expr)]
+type Ops = [(String, (Expr -> Expr) -> Env -> [Expr] -> Maybe Expr)]
 
 type Env = [(String, Expr)]
 
@@ -228,6 +228,11 @@ matchFun [(ps, b)] = fun ps b
 matchFun ((ps, b) : cases) = fun ps b `Or` matchFun cases
 
 -- Helper functions
+isVar :: Expr -> Bool
+isVar = \case
+  Var _ -> True
+  _ -> False
+
 pop :: (Eq k) => k -> [(k, v)] -> [(k, v)]
 pop _ [] = []
 pop x ((x', _) : kvs) | x == x' = kvs
@@ -326,10 +331,9 @@ reduceLet ops env = \case
   Fix x a -> Fix x (Let env a)
   Fun a b -> Fun (Let env a) (Let env b)
   App a b -> reduceApp ops (Let env a) (Let env b)
-  Call f t args -> case (lookup f ops, Let env t, Let env <$> args) of
-    (Just call, t, args) | Just result <- call (eval ops <$> args) -> Ann result t
-    (Just call, t, args) -> error $ show (call (eval ops <$> args))
-    (_, t, args) -> Call f t args
+  Call f t args -> case (lookup f ops, Let env t, args) of
+    (Just call, t, args) | Just result <- call (eval ops) env args -> Ann result t
+    (_, t, args) -> Call f t (Let env <$> args)
   Let env' a -> reduce ops (Let (env ++ env') a)
   expr -> expr
 
@@ -453,11 +457,13 @@ dropTypes (And a b) = And (dropTypes a) (dropTypes b)
 dropTypes (Or a b) = Or (dropTypes a) (dropTypes b)
 dropTypes (For x a) = For x (dropTypes a)
 dropTypes (Fix x a) = Fix x (dropTypes a)
-dropTypes (Fun (Ann a (Var _)) b) = Fun (dropTypes a) (dropTypes b)
-dropTypes (Fun (Ann a1 a2) b) = Fun (Ann (dropTypes a1) (dropTypes a2)) (dropTypes b)
+dropTypes (Fun (Ann a t) b) = case andOf t of
+  ts | all isVar ts -> Fun (dropTypes a) (dropTypes b)
+  _ -> Fun (Ann (dropTypes a) (dropTypes t)) (dropTypes b)
 dropTypes (Fun a b) = Fun (dropTypes a) (dropTypes b)
-dropTypes (App a (Ann b (Var _))) = App (dropTypes a) (dropTypes b)
-dropTypes (App a (Ann b1 b2)) = App (dropTypes a) (Ann (dropTypes b1) (dropTypes b2))
+dropTypes (App a (Ann b t)) = case andOf t of
+  ts | all isVar ts -> App (dropTypes a) (dropTypes b)
+  _ -> App (dropTypes a) (Ann (dropTypes b) (dropTypes t))
 dropTypes (App a b) = App (dropTypes a) (dropTypes b)
 dropTypes (Call op t args) = Call op (dropTypes t) (map dropTypes args)
 dropTypes (Let defs b) = Let (map (second dropTypes) defs) (dropTypes b)
@@ -552,7 +558,7 @@ unifyAll ops env (a : bs) (a' : bs') = do
   (ta : tbs, s2 `compose` s1, e1 ++ e2)
 unifyAll _ _ _ _ = ([], [], [])
 
-infer :: Ops -> Env -> Expr -> ((Expr, Expr), Substitution, [TypeError])
+infer :: Ops -> Env -> Expr -> ((Expr, Type), Substitution, [TypeError])
 infer _ env Any = do
   let x = newName ("_" : map fst env) "_"
   ((Any, Var x), [(x, Var x)], [])
@@ -616,20 +622,20 @@ infer ops env (Call op t args) = do
   ((Call op t' (map fst args'), substitute s2 t'), s2 `compose` s1, e1 ++ e2)
 infer _ _ Err = ((Err, Any), [], [])
 
-infer2 :: Ops -> Env -> Expr -> Expr -> ((Expr, Expr), (Expr, Expr), Substitution, [TypeError])
+infer2 :: Ops -> Env -> Expr -> Expr -> ((Expr, Type), (Expr, Type), Substitution, [TypeError])
 infer2 ops env a b = do
   let ((a', ta), s1, e1) = infer ops env a
   let ((b', tb), s2, e2) = infer ops (s1 `compose` env) (substitute s1 b)
   ((substitute s2 a', substitute s2 ta), (b', tb), s2 `compose` s1, e1 ++ e2)
 
-inferAll :: Ops -> Env -> [Expr] -> ([(Expr, Expr)], Substitution, [TypeError])
+inferAll :: Ops -> Env -> [Expr] -> ([(Expr, Type)], Substitution, [TypeError])
 inferAll _ _ [] = ([], [], [])
 inferAll ops env (a : bs) = do
   let ((a', ta), s1, e1) = infer ops env a
   let (bts, s2, e2) = inferAll ops (s1 `compose` env) (map (substitute s1) bs)
   ((substitute s2 a', substitute s2 ta) : bts, s2 `compose` s1, e1 ++ e2)
 
-check :: Ops -> Env -> Expr -> Expr -> ((Expr, Expr), Substitution, [TypeError])
+check :: Ops -> Env -> Expr -> Type -> ((Expr, Type), Substitution, [TypeError])
 check ops env a (For x t) = do
   let y = newName (map fst env) x
   let ((a', t'), s, e) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] t)
@@ -657,7 +663,7 @@ check ops env a t = do
   let (t', s2, e2) = unify ops env ta (substitute s1 t)
   ((substitute s2 a', t'), s2 `compose` s1, e1 ++ e2)
 
-check2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> ((Expr, Expr), (Expr, Expr), Substitution, [TypeError])
+check2 :: Ops -> Env -> (Expr, Type) -> (Expr, Type) -> ((Expr, Type), (Expr, Type), Substitution, [TypeError])
 check2 ops env (a, ta) (b, tb) = do
   let ((a', ta'), s1, e1) = check ops env a ta
   let ((b', tb'), s2, e2) = check ops (s1 `compose` env) (substitute s1 b) (substitute s1 tb)

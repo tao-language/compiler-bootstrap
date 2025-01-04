@@ -176,16 +176,6 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/expressions/op2.tao"
-  it ("☯ " ++ name) $ do
-    (pkg, syntaxErrors) <- load "" name []
-    syntaxErrors `shouldBe` []
-    let testResults =
-          [ TestPass name (8, 1) "Add",
-            TestPass name (12, 1) "Sub"
-          ]
-    testAll [] pkg `shouldBe` testResults
-
   -- Let (Expr, Expr) Expr
   -- Bind (Expr, Expr) Expr
   -- If Expr Expr Expr
@@ -290,6 +280,18 @@ run = describe "--==☯ Examples ☯==--" $ do
     let testResults =
           [ TestPass name (4, 1) "Call match",
             TestFail name (10, 1) "Call match fail" y i1 Err
+          ]
+    testAll [] pkg `shouldBe` testResults
+
+  let name = "examples/definitions/op2.tao"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load "" name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name (14, 1) "Add",
+            TestPass name (18, 1) "Sub",
+            TestPass name (22, 1) "Mul",
+            TestPass name (26, 1) "Pow"
           ]
     testAll [] pkg `shouldBe` testResults
 
