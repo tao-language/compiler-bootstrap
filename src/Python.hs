@@ -588,7 +588,7 @@ instance Emit T.Stmt [Stmt] where
             expose (x, y) = (x, Just y)
         [ImportFrom (replace '-' '_' m) (map expose exposed)]
   -- emit options (T.Def def) = emit options def
-  emit options (T.Test name a p) = do
+  emit options (T.Test pos name a p) = do
     let (stmts1, a') = emit options a
     let (stmts2, b') = emit options p -- TODO: do a match instead
     let def =
@@ -722,7 +722,7 @@ instance Emit T.Expr ([Stmt], Expr) where
   --   error $ show "TODO: emit Bind " ++ show (ts, p, a, b)
   emit _ (T.Match _ []) = ([raise (notImplementedError "")], None)
   emit options (T.Match [] cases) = do
-    let x = C.newName (concatMap T.freeVars cases) "_match"
+    -- let x = C.newName (concatMap T.freeVars cases) "_match"
     -- let def = T.Def [] (T.PVar x) (T.Match cases)
     -- let stmts = emit options def
     -- (stmts, Name x)
@@ -731,12 +731,12 @@ instance Emit T.Expr ([Stmt], Expr) where
   -- Or Expr Expr
   emit options (T.Ann a _) = emit options a
   -- Op1 C.UnaryOp Expr
-  emit options (T.Call op args) = case (op, args) of
+  emit options (T.Call op t args) = case (op, args) of
     ("+", [a, b]) -> emitBinOp Add a b
     ("-", [a, b]) -> emitBinOp Sub a b
     ("*", [a, b]) -> emitBinOp Mult a b
     ("^", [a, b]) -> emitBinOp Pow a b
-    _ -> error $ "TODO: emit Op " ++ show (T.Call op args)
+    _ -> error $ "TODO: emit Op " ++ show (T.Call op t args)
     where
       emitBinOp :: BinOp -> T.Expr -> T.Expr -> ([Stmt], Expr)
       emitBinOp op a b = do

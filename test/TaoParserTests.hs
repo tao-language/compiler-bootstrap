@@ -10,13 +10,14 @@ import Test.Hspec
 run :: SpecWith ()
 run = describe "--==☯ TaoParser ☯==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
+  let (a, b, c) = (Var "a", Var "b", Var "c")
   let parse' :: Parser a -> String -> Either ([ParserContext], String) (a, String)
       parse' parser src = case P.parse "TaoParserTests" parser src of
         Right (x, P.State {remaining}) -> Right (x, remaining)
         Left P.State {context, remaining} -> Left (context, remaining)
 
-  it "☯ parseName" $ do
-    let p = parse' (parseName P.letter)
+  it "☯ parseNameBase" $ do
+    let p = parse' (parseNameBase P.letter)
     -- p "" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "")
     p "" `shouldBe` Left ([], "")
     p "a" `shouldBe` Right ("a", "")
@@ -127,21 +128,21 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   --   p "{x} abc" `shouldBe` Right (record [("x", x)], " abc")
   --   p "{x, y} abc" `shouldBe` Right (record [("x", x), ("y", y)], " abc")
 
-  it "☯ parseCases" $ do
-    let p = parse' parseCases
-    p "{}" `shouldBe` Left ([], "}")
-    p "{ x }" `shouldBe` Left ([], "x }")
-    p "{ | x }" `shouldBe` Right ([x], "")
-    p "{ | x | y }" `shouldBe` Right ([x, y], "")
-    p "{\n|\nx\n|\ny\n}" `shouldBe` Right ([x, y], "")
-
   it "☯ parseMatch" $ do
     let p = parse' parseMatch
-    p "match" `shouldBe` Left ([CMatch], "")
-    p "match {}" `shouldBe` Left ([CMatch], "")
-    p "match {| x}" `shouldBe` Right (Match [] [x], "")
-    p "match a {| x}" `shouldBe` Right (Match [Var "a"] [x], "")
-    p "match a, b {| x}" `shouldBe` Right (Match [Var "a", Var "b"] [x], "")
+    p "match" `shouldBe` Left ([], "")
+    p "match {}" `shouldBe` Left ([], "")
+    p "match {| x -> y}" `shouldBe` Right (Match [] [(["x"], [x], y)], "")
+    p "match {| @. x -> y}" `shouldBe` Right (Match [] [([], [x], y)], "")
+    p "match a {| x -> y}" `shouldBe` Right (Match [a] [(["x"], [x], y)], "")
+    p "match a, b {| x -> y}" `shouldBe` Right (Match [a, b] [(["x"], [x], y)], "")
+    p "{}" `shouldBe` Left ([], "}")
+    p "{ x -> y }" `shouldBe` Left ([], "x -> y }")
+    p "{ | x -> y }" `shouldBe` Right (Match [] [(["x"], [x], y)], "")
+    p "{ | @. x -> y }" `shouldBe` Right (Match [] [([], [x], y)], "")
+    p "{ | @a b. x -> y }" `shouldBe` Right (Match [] [(["a", "b"], [x], y)], "")
+    p "{ | x -> y | a -> b }" `shouldBe` Right (Match [] [(["x"], [x], y), (["a"], [a], b)], "")
+    p "{\n|\nx\n->\ny\n|\na\n->\nb\n}" `shouldBe` Right (Match [] [(["x"], [x], y), (["a"], [a], b)], "")
 
   it "☯ parseExpr" $ do
     let p = parse' (parseExpr 0 P.spaces)
@@ -153,7 +154,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "var" `shouldBe` Right (Var "var", "")
     p "`A.+\\``" `shouldBe` Right (Var "A.+`", "")
     p "Tag" `shouldBe` Right (Tag "Tag", "")
-    p ":`x.+\\``" `shouldBe` Right (Tag "x.+`", "")
+    p "^`x.+\\``" `shouldBe` Right (Tag "x.+`", "")
     p "@. x" `shouldBe` Right (For [] x, "")
     p "@ x . y" `shouldBe` Right (For ["x"] y, "")
     p "@ x y . z" `shouldBe` Right (For ["x", "y"] z, "")
@@ -174,11 +175,11 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "(x, y, z)" `shouldBe` Right (and' [x, y, z], "")
     p "x | y" `shouldBe` Right (Or x y, "")
     p "x : y" `shouldBe` Right (Ann x y, "")
-    p "%call" `shouldBe` Right (Call "call" [], "")
-    p "%call()" `shouldBe` Right (Call "call" [], "")
-    p "%call(x)" `shouldBe` Right (Call "call" [x], "")
-    p "%call(x, y, z)" `shouldBe` Right (Call "call" [x, y, z], "")
-    p "%call(\nx,\ny)" `shouldBe` Right (Call "call" [x, y], "")
+    p "%call<a>" `shouldBe` Right (Call "call" a [], "")
+    p "%call<a>()" `shouldBe` Right (Call "call" a [], "")
+    p "%call<a>(x)" `shouldBe` Right (Call "call" a [x], "")
+    p "%call<a>(x, y, z)" `shouldBe` Right (Call "call" a [x, y, z], "")
+    p "%call<a>(\nx,\ny)" `shouldBe` Right (Call "call" a [x, y], "")
     p "-x" `shouldBe` Right (neg x, "")
     p "x == y" `shouldBe` Right (eq x y, "")
     p "x <  y" `shouldBe` Right (lt x y, "")
@@ -192,8 +193,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "(x <- y; z)" `shouldBe` Right (Bind (x, y) z, "")
     p "if x then y else z" `shouldBe` Right (If x y z, "")
     p "y if x" `shouldBe` Right (If x y Err, "")
-    p "{| x }" `shouldBe` Right (Match [] [x], "")
-    p "match {| x}" `shouldBe` Right (Match [] [x], "")
+    p "{| x, y -> z }" `shouldBe` Right (Match [] [(["x", "y"], [x, y], z)], "")
+    p "match a, b {| x, y -> z}" `shouldBe` Right (Match [a, b] [(["x", "y"], [x, y], z)], "")
     p "{}" `shouldBe` Right (Record [], "")
     p "x.y" `shouldBe` Right (App (Var ".y") x, "")
     p ".x" `shouldBe` Right (Var ".x", "")
@@ -201,7 +202,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p ".{}" `shouldBe` Right (selectFun [], "")
     p "x with {}" `shouldBe` Right (With x [], "")
     p "with {}" `shouldBe` Right (withFun [], "")
-    p "$!error" `shouldBe` Right (Err, "")
+    p "!error" `shouldBe` Right (Err, "")
 
   it "☯ parseBlock" $ do
     let p = parse' parseBlock
@@ -230,15 +231,15 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseTest" $ do
     let p = parse' parseTest
-    p "> x; y" `shouldBe` Right (Test "" x y, "")
-    p "> x\ny" `shouldBe` Right (Test "" x y, "")
-    p "> x" `shouldBe` Right (Test "" x (Tag "True"), "")
+    p "> x; y" `shouldBe` Right (Test (1, 1) "" x y, "")
+    p "> x\ny" `shouldBe` Right (Test (1, 1) "" x y, "")
+    p "> x" `shouldBe` Right (Test (1, 1) "" x (Tag "True"), "")
 
   it "☯ parseStmt" $ do
     let p = parse' parseStmt
     p "import pkg" `shouldBe` Right (Import "pkg" "pkg" [], "")
     -- p "x = y" `shouldBe` Right (Define (Def [] (x) (y)), "")
-    p "> x; y" `shouldBe` Right (Test "" x y, "")
+    p "> x; y" `shouldBe` Right (Test (1, 1) "" x y, "")
 
   it "☯ parseModule" $ do
     let p = parse' (parseModule "path/my-file.tao")
@@ -258,31 +259,30 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ loadModule" $ do
     let pkg = ("pkg", [])
-    let expect = ("pkg", [("examples/empty", [])])
-    loadModule "examples" "empty.tao" (pkg, []) `shouldReturn` (expect, [])
+    let expect = ("pkg", [("examples/empty.tao", [])])
+    loadModule ["examples"] "empty.tao" (pkg, []) `shouldReturn` (expect, [])
 
   it "☯ loadModule exists" $ do
     let pkg = ("pkg", [("my-file", [])])
-    loadModule "base-path" "my-file" (pkg, []) `shouldReturn` (pkg, [])
+    loadModule ["base-path"] "my-file" (pkg, []) `shouldReturn` (pkg, [])
 
   it "☯ loadPackage" $ do
-    let load path = loadPackage path (("pkg", []), [])
     let pkg =
           ( "pkg",
-            [ ( "examples/sub/mod",
+            [ ( "examples/sub/mod.tao",
                 [ Def (x, Int 1),
                   Def (y, Int 2)
                 ]
               )
             ]
           )
-    load "examples/sub" `shouldReturn` (pkg, [] :: [SyntaxError])
+    loadPackage "examples/sub" (("pkg", []), []) `shouldReturn` (pkg, [] :: [SyntaxError])
 
   it "☯ load" $ do
     let pkg =
           ( "sub",
-            [ ("examples/empty/empty-file", []),
-              ( "examples/sub/mod",
+            [ ("examples/empty/empty-file.tao", []),
+              ( "examples/sub/mod.tao",
                 [ Def (x, Int 1),
                   Def (y, Int 2)
                 ]
@@ -290,4 +290,4 @@ run = describe "--==☯ TaoParser ☯==--" $ do
             ]
           )
     let errors = []
-    load "examples/sub" ["examples/empty"] `shouldReturn` (pkg, errors)
+    load "" "examples/sub" ["examples/empty"] `shouldReturn` (pkg, errors)

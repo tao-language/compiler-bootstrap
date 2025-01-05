@@ -5,7 +5,7 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap), second)
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
-import Data.List (delete, elemIndex, intercalate, isInfixOf, isPrefixOf, nub, sort, union, (\\))
+import Data.List (delete, elemIndex, intercalate, isInfixOf, isPrefixOf, nub, sort, union, unionBy, (\\))
 import Data.List.Split (splitWhen, startsWith)
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import System.FilePath (takeBaseName)
@@ -26,10 +26,10 @@ data Expr
   | For [String] Expr
   | Fun Expr Expr
   | App Expr Expr
-  | Call String [Expr]
+  | Call String Type [Expr]
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
-  | Match [Expr] [Expr]
+  | Match [Expr] [([String], [Expr], Expr)]
   | If Expr Expr Expr
   | Let (Expr, Expr) Expr
   | Bind (Expr, Expr) Expr
@@ -81,7 +81,7 @@ data Stmt
   = Import String String [(String, String)]
   | Def (Expr, Expr)
   | TypeDef (String, [Expr], Expr)
-  | Test String Expr Pattern
+  | Test (Int, Int) String Expr Pattern
   deriving (Eq, Show)
 
 type Type = Expr
@@ -91,7 +91,8 @@ type Package = (String, [Module])
 type Module = (String, [Stmt])
 
 data UnitTest = UnitTest
-  { path :: String,
+  { filename :: String,
+    pos :: (Int, Int),
     name :: String,
     expr :: Expr,
     expect :: Expr
@@ -99,29 +100,40 @@ data UnitTest = UnitTest
   deriving (Eq, Show)
 
 data TestResult
-  = TestPass String String
-  | TestFail String String (Expr, Expr) C.Expr Expr
+  = TestPass
+      { filename :: String,
+        pos :: (Int, Int),
+        name :: String
+      }
+  | TestFail
+      { filename :: String,
+        pos :: (Int, Int),
+        name :: String,
+        test :: Expr,
+        expected :: Expr,
+        got :: Expr
+      }
   deriving (Eq)
 
 instance Show TestResult where
   show :: TestResult -> String
   show result = case result of
-    TestPass path name -> "✅ " ++ path ++ " -- " ++ name
-    TestFail path name t tc got -> "❌ " ++ path ++ " -- " ++ name ++ " test=" ++ show t ++ " core=" ++ show tc ++ " got=" ++ show got
+    TestPass filename (row, col) name -> "✅ " ++ filename ++ ":" ++ show row ++ ":" ++ show col ++ " -- " ++ name ++ "\n"
+    TestFail filename (row, col) name test expect got -> "❌ " ++ filename ++ ":" ++ show row ++ ":" ++ show col ++ " -- " ++ name ++ "\n  > " ++ show test ++ "\n  " ++ show expect ++ "\n* " ++ show got ++ "\n"
 
 buildOps :: C.Ops
 buildOps = do
   let intOp1 op f =
         ( op,
-          \eval args -> case C.dropTypes . eval <$> args of
-            [C.Int x] -> C.Int (f x)
-            args -> C.Call op args
+          \eval args -> case map (C.dropTypes . eval) args of
+            [C.Int x] -> Just (C.Int (f x))
+            _ -> Nothing
         )
   let intOp2 op f =
         ( op,
-          \eval args -> case C.dropTypes . eval <$> args of
-            [C.Int x, C.Int y] -> C.Int (f x y)
-            args -> C.Call op args
+          \eval args -> case map (C.dropTypes . eval) args of
+            [C.Int x, C.Int y] -> Just (C.Int (f x y))
+            _ -> Nothing
         )
   [ intOp1 "int_neg" (\x -> -x),
     intOp2 "int_add" (+),
@@ -143,6 +155,12 @@ tag1 k a = tag k [a]
 
 tag2 :: String -> Expr -> Expr -> Expr
 tag2 k a b = tag k [a, b]
+
+var1 :: String -> Expr -> Expr
+var1 x = App (Var x)
+
+var2 :: String -> Expr -> Expr -> Expr
+var2 x a = App (var1 x a)
 
 for :: [String] -> Expr -> Expr
 for xs (For ys a) = for (xs ++ ys) a
@@ -324,38 +342,52 @@ isTest :: Stmt -> Bool
 isTest Test {} = True
 isTest _ = False
 
-class FreeVars a where
-  freeVars :: a -> [String]
+freeNames :: (Bool, Bool, Bool) -> Expr -> [String]
+freeNames (vars, tags, calls) = \case
+  Any -> []
+  Unit -> []
+  IntT -> []
+  NumT -> []
+  Int _ -> []
+  Num _ -> []
+  Var x
+    | vars -> [x]
+    | otherwise -> []
+  Tag k
+    | tags -> [k]
+    | otherwise -> []
+  Ann a b -> freeNames' a `union` freeNames' b
+  And a b -> freeNames' a `union` freeNames' b
+  Or a b -> freeNames' a `union` freeNames' b
+  Fix x a -> delete x (freeNames' a)
+  For xs a -> filter (`notElem` xs) (freeNames' a)
+  Fun a b -> freeNames' a `union` freeNames' b
+  App a b -> freeNames' a `union` freeNames' b
+  Call f t args
+    | calls -> [f] `union` freeNames' t `union` freeNames' (and' args)
+    | otherwise -> freeNames' t `union` freeNames' (and' args)
+  Op1 op a
+    | vars -> [show op] `union` freeNames' a
+    | otherwise -> freeNames' a
+  Op2 op a b
+    | vars -> [show op] `union` freeNames' a `union` freeNames' b
+    | otherwise -> freeNames' a `union` freeNames' b
+  Let (a, b) c -> freeNames' a `union` freeNames' b `union` freeNames' c
+  Bind (a, b) c -> freeNames' a `union` freeNames' b `union` freeNames' c
+  If a b c -> freeNames' a `union` freeNames' b `union` freeNames' c
+  Match args cases -> freeNames' (and' args) `union` freeNames' (and' (map (\(xs, ps, b) -> for xs (fun ps b)) cases))
+  Record fields -> freeNames' (and' (map snd fields))
+  Select a fields -> freeNames' a `union` freeNames' (and' (map snd fields))
+  With a fields -> freeNames' a `union` freeNames' (and' (map snd fields))
+  Err -> []
+  where
+    freeNames' = freeNames (vars, tags, calls)
 
-instance FreeVars Expr where
-  freeVars :: Expr -> [String]
-  freeVars = \case
-    Any -> []
-    Unit -> []
-    IntT -> []
-    NumT -> []
-    Int _ -> []
-    Num _ -> []
-    Var x -> [x]
-    Tag _ -> []
-    Ann a b -> freeVars a `union` freeVars b
-    And a b -> freeVars a `union` freeVars b
-    Or a b -> freeVars a `union` freeVars b
-    Fix x a -> delete x (freeVars a)
-    For xs a -> filter (`notElem` xs) (freeVars a)
-    Fun a b -> freeVars a `union` freeVars b
-    App a b -> freeVars a `union` freeVars b
-    Call _ args -> freeVars (and' args)
-    Op1 op a -> [show op] `union` freeVars a
-    Op2 op a b -> [show op] `union` freeVars a `union` freeVars b
-    Let (a, b) c -> freeVars a `union` freeVars b `union` freeVars c
-    Bind (a, b) c -> freeVars a `union` freeVars b `union` freeVars c
-    If a b c -> freeVars a `union` freeVars b `union` freeVars c
-    Match args cases -> freeVars (and' args) `union` freeVars (and' cases)
-    Record fields -> freeVars (and' (map snd fields))
-    Select a fields -> freeVars a `union` freeVars (and' (map snd fields))
-    With a fields -> freeVars a `union` freeVars (and' (map snd fields))
-    Err -> []
+freeVars :: Expr -> [String]
+freeVars = freeNames (True, False, False)
+
+freeTags :: Expr -> [String]
+freeTags = freeNames (False, True, False)
 
 bindings :: Expr -> [String]
 bindings = \case
@@ -458,87 +490,6 @@ in' _ "" = False
 in' substring string | substring `isPrefixOf` string = True
 in' substring (_ : string) = in' substring string
 
-class Resolve a where
-  resolve :: [Module] -> String -> a -> [(String, Expr)]
-
-instance Resolve String where
-  resolve :: [Module] -> String -> String -> [(String, Expr)]
-  resolve ctx path name = case lookup path ctx of
-    Just stmts -> resolve ctx path (name, stmts)
-    Nothing -> []
-
-instance Resolve (String, [Stmt]) where
-  resolve :: [Module] -> String -> (String, [Stmt]) -> [(String, Expr)]
-  resolve ctx path (name, stmts) =
-    concatMap (\stmt -> resolve ctx path (name, stmt)) stmts
-
-instance Resolve (String, Stmt) where
-  resolve :: [Module] -> String -> (String, Stmt) -> [(String, Expr)]
-  resolve ctx path (name, stmt) = case stmt of
-    Import path' alias names -> case names of
-      (x, y) : names -> do
-        let defs = if y == name then resolve ctx path' x else []
-        defs ++ resolve ctx path (name, Import path' alias names)
-      [] | alias == name -> [(path, Tag path')]
-      [] -> []
-    Def (p, b) | name `elem` bindings p -> [(path, Let (p, b) (Var name))]
-    TypeDef (name', args, body) | name == name' -> [(path, fun args body)]
-    _ -> []
-
-class Compile a where
-  compile :: [Module] -> String -> a
-
-instance Compile (String -> (String, C.Expr)) where
-  compile :: [Module] -> String -> String -> (String, C.Expr)
-  compile ctx path name = do
-    let defs = resolve ctx path name
-    let alts = map (\(path, a) -> compile ctx path (name, a)) defs :: [C.Expr]
-    let expr = case C.or' alts of
-          C.Var x | x == name -> C.Var x
-          C.Ann (C.Var x) t | x == name -> C.Ann (C.Var x) t
-          expr -> C.fix [name] expr
-    (name, expr)
-
-instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
-  compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
-  compile ctx path (name, expr) = do
-    let a = lower expr
-    let env = map (compile ctx path) (delete name (C.freeVars a))
-    (env, annotate env a)
-
-annotate :: C.Env -> C.Expr -> C.Expr
-annotate env = \case
-  C.Ann a b -> C.Ann (annotate env a) (annotate env b)
-  C.And a b -> C.And (annotate env a) (annotate env b)
-  C.Or a b -> C.Or (annotate env a) (annotate env b)
-  C.For x a -> C.for [x] (annotate ((x, C.Var x) : env) a)
-  C.Fix x a -> C.fix [x] (annotate ((x, C.Var x) : env) a)
-  C.Fun a b -> do
-    let (args, body) = C.funOf (C.Fun a b)
-    case C.inferAll buildOps env args of
-      Right (argsT, s) ->
-        C.for (C.freeVars argsT) (C.fun (zipWith C.Ann args argsT) (annotate env body))
-      Left _ -> C.fun args (annotate env body)
-  C.App a b -> case C.infer2 buildOps env a b of
-    Right ((ta, tb), s) -> C.App (annotate env a) (C.Ann (annotate env b) tb)
-    Left _ -> C.App (annotate env a) (annotate env b)
-  C.Call f args -> case C.inferAll buildOps env args of
-    Right (argsT, s) -> C.Call f (zipWith C.Ann args argsT)
-    Left _ -> C.Call f args
-  C.Let defs b -> C.Let (map (second (annotate env)) defs) (annotate env b)
-  a -> a
-
-instance Compile ((String, Expr) -> C.Expr) where
-  compile :: [Module] -> String -> (String, Expr) -> C.Expr
-  compile ctx path (name, expr) = do
-    let (env, a) = compile ctx path (name, expr)
-    C.let' env a
-
-instance Compile (Expr -> C.Expr) where
-  compile :: [Module] -> String -> Expr -> C.Expr
-  compile ctx path expr =
-    compile ctx path (C.newName (freeVars expr) "", expr)
-
 lower :: Expr -> C.Expr
 lower = \case
   Any -> C.Any
@@ -562,22 +513,34 @@ lower = \case
     let (args, body) = funOf (Fun a b)
     lower (For (freeVars (and' args)) (fun args body))
   App a b -> C.App (lower a) (lower b)
-  Call op args -> C.Call op (map lower args)
+  Call op t args -> C.Call op (lower t) (map lower args)
   Op1 op a -> lower (App (Var (show op)) a)
-  Op2 op a b -> lower (App (Var (show op)) (And a b))
+  Op2 op a b -> lower (app (Var (show op)) [a, b])
   Let (Var x, b) (Var x') | x == x' -> lower b
   Let (a, b) c -> case a of
     Var x | x `occurs` b -> lower (Let (Var x, Fix x b) c)
+    Ann (Or a1 a2) t -> lower (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
+    Ann (App a1 a2) t -> lower (Let (Ann a1 t, Fun a2 b) c)
+    Ann (Op1 op a) t -> lower (Let (Ann (Var (show op)) t, Fun a b) c)
+    Ann (Op2 op a1 a2) t -> lower (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
     Ann a t -> lower (Let (a, Ann b t) c)
-    For xs a -> lower (App (For xs (Fun a c)) b)
     Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
     App a1 a2 -> lower (Let (a1, Fun a2 b) c)
-    Op1 op a -> lower (Let (App (Var (show op)) a, b) c)
-    Op2 op a1 a2 -> lower (Let (App (Var (show op)) (And a1 a2), b) c)
-    a -> lower (App (For (freeVars a) (Fun (For [] a) c)) b)
+    Op1 op a -> lower (Let (Var (show op), Fun a b) c)
+    Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
+    For xs a -> lower (App (For xs (Fun a c)) b)
+    a -> lower (App (Fun a c) b)
   -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
-  If a b c -> lower (Match [a] [Fun (Tag "True") b, Fun Any c])
-  Match args cases -> lower (app (or' cases) args)
+  If a b c -> lower (Match [a] [([], [Tag "True"], b), ([], [], c)])
+  Match args [(xs, ps, b)] -> lower (app (For xs $ fun ps b) args)
+  Match args cases -> do
+    let n = foldl max 0 (map (\(_, ps, _) -> length ps) cases)
+    let rpad :: Int -> a -> [a] -> [a]
+        rpad n x xs = xs ++ replicate (n - length xs) x
+    let cases' = map (\(xs, ps, b) -> for xs $ fun (rpad n Any ps) b) cases
+    let args' = map (\i -> Var ("$" ++ show i)) [length args + 1 .. n]
+    let match' = fun args' (app (or' cases') (args ++ args'))
+    lower match'
   Record fields -> do
     let k = '~' : intercalate "," (map fst fields)
     lower (tag k (map snd fields))
@@ -617,7 +580,7 @@ lift = \case
   C.Fix _ a -> lift a
   C.Fun a b -> Fun (lift a) (lift b)
   C.App a b -> App (lift a) (lift b)
-  C.Call op args -> Call op (map lift args)
+  C.Call op t args -> Call op (lift t) (map lift args)
   C.Let [] b -> lift b
   C.Let ((x, b) : env) c -> Let (Var x, lift b) (lift (C.Let env c))
   C.Err -> Err
@@ -650,9 +613,132 @@ simplify a = a
 
 eval :: [Module] -> String -> Expr -> Expr
 eval ctx path expr = do
-  compile ctx path expr
-    & C.eval runtimeOps
-    & lift
+  let (env, expr') = compile ctx path expr
+  lift (C.eval runtimeOps (C.let' env expr'))
+
+-- class Scope a where
+--   scope :: [Module] -> a -> [(String, Expr)]
+
+-- instance Scope String where
+--   scope :: [Module] -> String -> [(String, Expr)]
+--   scope ctx path = case lookup path ctx of
+--     Just stmts -> scope ctx stmts
+--     Nothing -> []
+
+-- instance Scope [Stmt] where
+--   scope :: [Module] -> [Stmt] -> [(String, Expr)]
+--   scope ctx = concatMap (scope ctx)
+
+-- instance Scope Stmt where
+--   scope :: [Module] -> Stmt -> [(String, Expr)]
+--   scope ctx = \case
+--     -- Import path' alias names -> case names of
+--     --   (x, y) : names -> do
+--     --   let defs = resolve ctx path' x
+--     --   defs ++ scope ctx path (name, Import path' alias names)
+--     -- [] | alias == name -> [(path, Tag path')]
+--     -- [] -> []
+--     Def (p, b) -> map (\x -> (x, let' (p, b) (Var x))) (bindings p)
+--     TypeDef (name, args, body) -> [(name, fun args body)]
+--     _ -> []
+
+class Resolve a where
+  resolve :: [Module] -> String -> a -> [(String, Expr)]
+
+instance Resolve String where
+  resolve :: [Module] -> String -> String -> [(String, Expr)]
+  resolve ctx path name = case lookup path ctx of
+    Just stmts -> resolve ctx path (name, stmts)
+    Nothing -> []
+
+instance Resolve (String, [Stmt]) where
+  resolve :: [Module] -> String -> (String, [Stmt]) -> [(String, Expr)]
+  resolve ctx path (name, stmts) =
+    concatMap (\stmt -> resolve ctx path (name, stmt)) stmts
+
+instance Resolve (String, Stmt) where
+  resolve :: [Module] -> String -> (String, Stmt) -> [(String, Expr)]
+  resolve ctx path (name, stmt) = case stmt of
+    Import path' alias names -> case names of
+      (x, y) : names -> do
+        let defs = if y == name then resolve ctx (path' ++ ".tao") x else []
+        defs ++ resolve ctx path (name, Import path' alias names)
+      [] | alias == name -> [(path, Tag path')]
+      [] -> []
+    Def (p, b) | name `elem` bindings p -> [(path, Let (p, b) (Var name))]
+    TypeDef (name', args, body) | name == name' -> [(path, fun args body)]
+    _ -> []
+
+class Compile a where
+  compile :: [Module] -> String -> a
+
+instance Compile (String -> C.Env) where
+  compile :: [Module] -> String -> String -> C.Env
+  -- compile ctx path name@"+" = do
+  --   let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
+  --       compileDef (path, alt) (env, alts) = do
+  --         let (env', alt') = compile ctx path (name, alt)
+  --         (unionBy (\a b -> fst a == fst b) env' env, alt' : alts)
+  --   let (env, alts) = foldr compileDef ([], []) (resolve ctx path name)
+  --   let def = case alts of
+  --         [] -> []
+  --         [C.Var x] | x == name -> [(name, C.Var x)]
+  --         [C.Ann (C.Var x) t] | x == name -> [(name, C.Ann (C.Var x) t)]
+  --         alts -> [(name, C.fix [name] (C.or' alts))]
+  --   -- unionBy (\a b -> fst a == fst b) def env
+  --   error . intercalate "\n" $
+  --     [ "-- compile/1 " ++ name,
+  --       show env,
+  --       show $ map C.format alts,
+  --       ""
+  --     ]
+  compile ctx path name = do
+    let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
+        compileDef (path, alt) (env, alts) = do
+          let (env', alt') = compile ctx path (name, alt)
+          (unionBy (\a b -> fst a == fst b) env' env, C.let' env' alt' : alts)
+    let (env, alts) = foldr compileDef ([], []) (resolve ctx path name)
+    let def = case alts of
+          [] -> []
+          [C.Var x] | x == name -> [(name, C.Var x)]
+          [C.Ann (C.Var x) t] | x == name -> [(name, C.Ann (C.Var x) t)]
+          alts -> [(name, C.fix [name] (C.or' alts))]
+    unionBy (\a b -> fst a == fst b) def env
+
+instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
+  compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
+  -- compile ctx path (name@"y", expr) = do
+  --   let a = lower expr
+  --   let xs = delete name (C.freeNames (True, True, False) a)
+  --   let env = concatMap (compile ctx path) xs
+  --   let ((a', t), s, e) = C.infer buildOps env a
+  --   -- (env, C.for (map fst s) a')
+  --   error . intercalate "\n" $
+  --     [ "-- compile/2 " ++ name,
+  --       -- show ctx,
+  --       show expr,
+  --       show a,
+  --       show xs,
+  --       C.format a,
+  --       C.format a',
+  --       C.format (C.Let env C.Any),
+  --       C.format (C.fix [name] $ C.dropTypes a'),
+  --       C.format t,
+  --       -- show a',
+  --       -- show s,
+  --       ""
+  --     ]
+  compile ctx path (name, expr) = do
+    let a = lower expr
+    let env = concatMap (compile ctx path) (delete name (C.freeNames (True, True, False) a))
+    let ((a', t), s, e) = C.infer buildOps env a
+    let xs = filter (`notElem` map fst env) (map fst s)
+    (env, C.for xs $ C.dropTypes a')
+
+instance Compile (Expr -> (C.Env, C.Expr)) where
+  compile :: [Module] -> String -> Expr -> (C.Env, C.Expr)
+  compile ctx path expr =
+    compile ctx path (C.newName (freeVars expr) "", expr)
 
 class TestSome a where
   testSome :: [Module] -> ((String, String) -> Bool) -> a -> [TestResult]
@@ -673,22 +759,35 @@ instance TestSome (String, Stmt) where
     Import {} -> []
     Def {} -> []
     TypeDef {} -> []
-    Test name expr expect | filter (path, name) -> do
-      testSome ctx filter (UnitTest path name expr expect)
+    Test pos name expr expect | filter (path, name) -> do
+      testSome ctx filter (UnitTest path pos name expr expect)
     Test {} -> []
 
 instance TestSome UnitTest where
   testSome :: [Module] -> ((String, String) -> Bool) -> UnitTest -> [TestResult]
   testSome ctx _ t = do
-    let test' =
-          Match
-            [t.expr]
-            [ Fun t.expect (Tag ":Ok"),
-              Fun (Var "got") (Var "got")
-            ]
-    case eval ctx t.path test' of
-      Tag ":Ok" -> [TestPass t.path t.name]
-      got -> [TestFail t.path t.name (t.expr, t.expect) (compile ctx t.path t.expr) got]
+    let (env, expr) = compile ctx t.filename t.expr
+    let expect = let (env', a) = compile ctx t.filename (Fun t.expect (Tag ":Ok")) in C.let' (env' ++ env) a
+    let test' = expect `C.Or` C.For "got" (C.Fun (C.Var "got") (C.Var "got"))
+    -- error . intercalate "\n" $
+    --   [ "-- testSome",
+    --     -- show ctx,
+    --     -- "let t.expr = " ++ show t.expr,
+    --     -- "let expect = " ++ show expect,
+    --     "env = " ++ C.format (C.Let env C.Any),
+    --     "      " ++ show (map fst env),
+    --     "expr = " ++ C.format expr,
+    --     "expect = " ++ C.format expect,
+    --     -- "let env = " ++ show env,
+    --     -- "let expr = " ++ show expr,
+    --     "eval expect: " ++ C.format (C.eval runtimeOps expect),
+    --     "eval expr:   " ++ C.format (C.eval runtimeOps (C.let' env expr)),
+    --     "eval test:   " ++ C.format (C.eval runtimeOps (C.App test' (C.let' env expr))),
+    --     ""
+    --   ]
+    case C.eval runtimeOps (C.App test' (C.let' env expr)) of
+      C.Tag ":Ok" -> [TestPass t.filename t.pos t.name]
+      got -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
 
 testAll :: (TestSome a) => [Module] -> a -> [TestResult]
 testAll ctx = testSome ctx (const True)

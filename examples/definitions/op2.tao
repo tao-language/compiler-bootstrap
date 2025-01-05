@@ -1,0 +1,27 @@
+: Int, Int -> Int
+`+` x y = %int_add<Int>(x, y)
+
+`-` (x : Int) (y : Int) = %int_sub<Int>(x, y)
+
+: Int, Int -> Int
+(*) x y = %int_mul<Int>(x, y)
+
+: Int, Int -> Int
+x ^ y = %int_pow<Int>(x, y)
+
+
+-- Add
+> 3 + 2
+5
+
+-- Sub
+> 3 - 2
+1
+
+-- Mul
+> 3 * 2
+6
+
+-- Pow
+> 3 ^ 2
+9

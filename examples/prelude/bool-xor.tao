@@ -1,0 +1,15 @@
+-- TT
+> True xor True
+False
+
+-- TF
+> True xor False
+True
+
+-- FT
+> False xor True
+True
+
+-- FF
+> False xor False
+False

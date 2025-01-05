@@ -1,0 +1,25 @@
+type Bool = True -> Bool | False -> Bool
+
+: Bool -> Bool
+not = {
+| True -> False
+| _ -> True
+}
+
+: Bool, Bool -> Bool
+(and) = {
+| True, True -> True
+| _ -> False
+}
+
+: Bool, Bool -> Bool
+(or) = {
+| False, False -> False
+| _ -> True
+}
+
+: Bool, Bool -> Bool
+(xor) = {
+| x, x -> False
+| _ -> True
+}
