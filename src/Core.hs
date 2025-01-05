@@ -613,7 +613,7 @@ infer ops env (App a b) = do
           let x1 = newName ((x ++ "$") : map fst env) (x ++ "$")
           let x2 = newName (x1 : (x ++ "$") : map fst env) (x ++ "$")
           let ((a', _), (b', t1), s, e) = check2 ops (pushVars [x1, x2] env) (a, Fun (Var x1) (Var x2)) (b, Var x1)
-          ((a', b'), (t1, substitute s (Var x2)), s, e)
+          ((a', b'), (t1, substitute s (Var x2)), s `compose` [(x1, Var x1), (x2, Var x2)], e)
         Or ta1 ta2 -> do
           let (_, _, s1, e1) = checkApp ops env (a, ta1) b
           let (ab, t, s2, e2) = checkApp ops (s1 `compose` env) (substitute s1 a, substitute s1 ta2) (substitute s1 b)

@@ -702,7 +702,7 @@ instance Compile (String -> C.Env) where
           [] -> []
           [C.Var x] | x == name -> [(name, C.Var x)]
           [C.Ann (C.Var x) t] | x == name -> [(name, C.Ann (C.Var x) t)]
-          alts -> [(name, C.or' alts)]
+          alts -> [(name, C.fix [name] (C.or' alts))]
     unionBy (\a b -> fst a == fst b) def env
 
 instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
@@ -732,7 +732,8 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
     let a = lower expr
     let env = concatMap (compile ctx path) (delete name (C.freeNames (True, True, False) a))
     let ((a', t), s, e) = C.infer buildOps env a
-    (env, C.fix [name] (C.for (map fst s) $ C.dropTypes a'))
+    let xs = filter (`notElem` map fst env) (map fst s)
+    (env, C.for xs $ C.dropTypes a')
 
 instance Compile (Expr -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> Expr -> (C.Env, C.Expr)

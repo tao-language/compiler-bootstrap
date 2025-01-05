@@ -69,22 +69,22 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower (Op1 Neg x) `shouldBe` C.App (C.Var "-") x'
 
   it "☯ lower Expr Op2" $ do
-    lower (Op2 Eq x y) `shouldBe` C.App (C.Var "==") (C.And x' y')
-    lower (Op2 Lt x y) `shouldBe` C.App (C.Var "<") (C.And x' y')
-    lower (Op2 Gt x y) `shouldBe` C.App (C.Var ">") (C.And x' y')
-    lower (Op2 Add x y) `shouldBe` C.App (C.Var "+") (C.And x' y')
-    lower (Op2 Sub x y) `shouldBe` C.App (C.Var "-") (C.And x' y')
-    lower (Op2 Mul x y) `shouldBe` C.App (C.Var "*") (C.And x' y')
-    lower (Op2 Div x y) `shouldBe` C.App (C.Var "/") (C.And x' y')
-    lower (Op2 Pow x y) `shouldBe` C.App (C.Var "^") (C.And x' y')
+    lower (Op2 Eq x y) `shouldBe` C.app (C.Var "==") [x', y']
+    lower (Op2 Lt x y) `shouldBe` C.app (C.Var "<") [x', y']
+    lower (Op2 Gt x y) `shouldBe` C.app (C.Var ">") [x', y']
+    lower (Op2 Add x y) `shouldBe` C.app (C.Var "+") [x', y']
+    lower (Op2 Sub x y) `shouldBe` C.app (C.Var "-") [x', y']
+    lower (Op2 Mul x y) `shouldBe` C.app (C.Var "*") [x', y']
+    lower (Op2 Div x y) `shouldBe` C.app (C.Var "/") [x', y']
+    lower (Op2 Pow x y) `shouldBe` C.app (C.Var "^") [x', y']
 
   it "☯ lower Expr Match" $ do
-    lower (Match [] []) `shouldBe` C.App C.Err C.Unit
-    lower (Match [] [([], [], x)]) `shouldBe` C.App (C.Fun C.Unit x') C.Unit
-    lower (Match [] [(["x", "y"], [x, y], z)]) `shouldBe` C.for ["$1", "$2"] (C.fun [C.Var "$1", C.Var "$2"] $ C.App (C.for ["x", "y"] (C.Fun (C.And x' y') z')) (C.And (C.Var "$1") (C.Var "$2")))
-    lower (Match [] [([], [], x), ([], [], y)]) `shouldBe` C.App (C.Or (C.Fun C.Unit x') (C.Fun C.Unit y')) C.Unit
-    lower (Match [a, b] [([], [x, y], z)]) `shouldBe` C.App (C.Fun (C.And x' y') z') (C.And a' b')
-    lower (Match [a, b] [([], [x, y], z), ([], [], c)]) `shouldBe` C.App (C.Fun (C.And x' y') z' `C.Or` C.Fun (C.And C.Any C.Any) c') (C.And a' b')
+    lower (Match [] []) `shouldBe` C.Err
+    lower (Match [] [([], [], x)]) `shouldBe` x'
+    lower (Match [] [(["x", "y"], [x, y], z)]) `shouldBe` C.for ["x", "y"] (C.fun [x', y'] z')
+    lower (Match [] [([], [], x), ([], [], y)]) `shouldBe` C.Or x' y'
+    lower (Match [a, b] [([], [x, y], z)]) `shouldBe` C.app (C.fun [x', y'] z') [a', b']
+    lower (Match [a, b] [([], [x, y], z), ([], [], c)]) `shouldBe` C.app (C.fun [x', y'] z' `C.Or` C.fun [C.Any, C.Any] c') [a', b']
 
   it "☯ lower Expr If" $ do
     lower (If x y z) `shouldBe` C.App (C.Or (C.Fun (C.Tag "True") y') (C.Fun C.Any z')) x'
@@ -110,19 +110,19 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower (Let (For ["y"] x, y) a) `shouldBe` C.def [] (x', y') a'
 
   it "☯ lower Expr Let Fun" $ do
-    lower (Let (Fun x y, z) a) `shouldBe` C.def ["x", "y"] (C.Fun x' y', z') a'
+    lower (Let (Fun x y, z) a) `shouldBe` C.def ["y"] (C.For "x" $ C.Fun x' y', z') a'
 
   it "☯ lower Expr Let App" $ do
     lower (Let (App x y, z) a) `shouldBe` C.def ["x"] (x', C.For "y" (C.Fun y' z')) a'
 
   it "☯ lower Expr Let Call" $ do
-    lower (Let (Call "f" a [x, y], z) a) `shouldBe` C.def ["x", "y"] (C.Call "f" a' [x', y'], z') a'
+    lower (Let (Call "f" a [x, y], z) a) `shouldBe` C.def ["a", "x", "y"] (C.Call "f" a' [x', y'], z') a'
 
   it "☯ lower Expr Let Op1" $ do
     lower (Let (Op1 Neg x, z) a) `shouldBe` C.def ["-"] (C.Var "-", C.For "x" (C.Fun x' z')) a'
 
   it "☯ lower Expr Let Op2" $ do
-    lower (Let (Op2 Add x y, z) a) `shouldBe` C.def ["+"] (C.Var "+", C.for ["x", "y"] (C.Fun (C.And x' y') z')) a'
+    lower (Let (Op2 Add x y, z) a) `shouldBe` C.def ["+"] (C.Var "+", C.for ["x", "y"] (C.fun [x', y'] z')) a'
 
   -- it "☯ lower Expr Let Bind" $ do
   --   lower (Let (Bind (x, y) z, a) b) `shouldBe` C.def ["y", "z"] (C.def ["x"] (x', y') z', a') b'
@@ -412,22 +412,22 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ resolve Name" $ do
     let ctx =
-          [ ( "pkg/a",
+          [ ( "pkg/a.tao",
               [Def (x, i1)]
             ),
-            ( "pkg/b",
+            ( "pkg/b.tao",
               [ Import "pkg/a" "m" [("x", "y")],
                 Def (z, y)
               ]
             )
           ]
 
-    resolve ctx "pkg/a" "x" `shouldBe` [("pkg/a", Let (x, i1) x)]
-    resolve ctx "pkg/a" "y" `shouldBe` []
-    resolve ctx "pkg/b" "m" `shouldBe` [("pkg/b", Tag "pkg/a")]
-    resolve ctx "pkg/b" "x" `shouldBe` []
-    resolve ctx "pkg/b" "y" `shouldBe` [("pkg/a", Let (x, i1) x)]
-    resolve ctx "pkg/b" "z" `shouldBe` [("pkg/b", Let (z, y) z)]
+    resolve ctx "pkg/a.tao" "x" `shouldBe` [("pkg/a.tao", Let (x, i1) x)]
+    resolve ctx "pkg/a.tao" "y" `shouldBe` []
+    resolve ctx "pkg/b.tao" "m" `shouldBe` [("pkg/b.tao", Tag "pkg/a")]
+    resolve ctx "pkg/b.tao" "x" `shouldBe` []
+    resolve ctx "pkg/b.tao" "y" `shouldBe` [("pkg/a.tao", Let (x, i1) x)]
+    resolve ctx "pkg/b.tao" "z" `shouldBe` [("pkg/b.tao", Let (z, y) z)]
 
   it "☯ resolve Stmt" $ do
     let ctx =
@@ -462,13 +462,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           ]
 
     let compile' path x = compile ctx path x :: C.Env
-    compile' "pkg/a.tao" "x" `shouldBe` [("x", C.Int 1)]
-    compile' "pkg/a.tao" "y" `shouldBe` [("y", C.Var "y")]
-    compile' "pkg/a.tao" "z" `shouldBe` [("z", C.Err)]
+    compile' "pkg/a.tao" "x" `shouldBe` [("x", i1')]
+    compile' "pkg/a.tao" "y" `shouldBe` [("y", y')]
+    compile' "pkg/a.tao" "z" `shouldBe` []
     compile' "pkg/b.tao" "m" `shouldBe` [("m", C.Tag "pkg/a")]
-    compile' "pkg/b.tao" "x" `shouldBe` [("x", C.Err)]
-    compile' "pkg/b.tao" "y" `shouldBe` [("y", C.Int 1)]
-    compile' "pkg/b.tao" "z" `shouldBe` [("z", C.Var "y"), ("y", C.Int 1)]
+    compile' "pkg/b.tao" "x" `shouldBe` []
+    compile' "pkg/b.tao" "y" `shouldBe` [("y", i1')]
+    compile' "pkg/b.tao" "z" `shouldBe` [("z", C.Let [("y", i1')] y'), ("y", i1')]
 
   it "☯ compile Expr" $ do
     let ctx =
@@ -495,10 +495,9 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     compile' (For [] x) `shouldBe` ([("x", i1')], x')
     compile' (For [] (Fun x x)) `shouldBe` ([("x", i1')], C.Fun (C.Ann x' C.IntT) x')
     compile' (For ["x"] x) `shouldBe` ([], C.For "x" x')
-    compile' (For ["x"] (Fun x x)) `shouldBe` ([], C.for ["x"] (C.Fun x' x'))
-    compile' (Fun x x) `shouldBe` ([], C.for ["x"] (C.Fun x' x'))
-    compile' (Fun x x) `shouldBe` ([], C.for ["x"] (C.Fun x' x'))
-    compile' (App f i1) `shouldBe` ([("f", C.Ann f' (C.Fun C.IntT (C.Var "fT1")))], C.App (C.Var "f") (C.Ann i1' C.IntT))
+    compile' (For ["x"] (Fun x x)) `shouldBe` ([], C.for ["xT", "x"] (C.Fun (C.Ann x' xT') x'))
+    compile' (Fun x x) `shouldBe` ([], C.for ["xT", "x"] (C.Fun (C.Ann x' xT') x'))
+    compile' (App f i1) `shouldBe` ([("f", f')], C.App (C.Var "f") (C.Ann i1' C.IntT))
     compile' (Call "f" a []) `shouldBe` ([], C.Call "f" a' [])
     compile' (Call "f" a [i1, Num 1.1]) `shouldBe` ([], C.Call "f" a' [i1', C.Num 1.1])
     -- Op1 Op1 Expr

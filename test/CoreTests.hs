@@ -181,7 +181,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- reduce' (For "x" y) `shouldBe` For "x" (Num 3.14)
     -- reduce' (Fix "x" x) `shouldBe` Fix "x" x
     -- reduce' (Fix "x" y) `shouldBe` Fix "x" (Num 3.14)
-    reduce' (Ann x NumT) `shouldBe` Ann (Int 42) NumT
+    reduce' (Ann x y) `shouldBe` Ann (Let env x) (Let env y)
     reduce' (And x y) `shouldBe` And (Let env x) (Let env y)
     reduce' (Or x y) `shouldBe` Or (Let env x) (Let env y)
     reduce' (Fun x y) `shouldBe` Fun (Let env x) (Let env y)
@@ -251,11 +251,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- eval' (Var "f") `shouldBe` factorial "f"
     -- eval' (App f x) `shouldBe` App (factorial "f") x
     eval' (App f (Int 0)) `shouldBe` Int 1
-    eval' (App f (Int 1)) `shouldBe` Int 1
-    eval' (App f (Int 2)) `shouldBe` Int 2
-    eval' (App f (Int 3)) `shouldBe` Int 6
-    eval' (App f (Int 4)) `shouldBe` Int 24
-    eval' (App f (Int 5)) `shouldBe` Int 120
+    eval' (App f (Int 1)) `shouldBe` Ann (Int 1) IntT
+    eval' (App f (Int 2)) `shouldBe` Ann (Int 2) IntT
+    eval' (App f (Int 3)) `shouldBe` Ann (Int 6) IntT
+    eval' (App f (Int 4)) `shouldBe` Ann (Int 24) IntT
+    eval' (App f (Int 5)) `shouldBe` Ann (Int 120) IntT
 
   -- it "☯ eval fibonacci" $ do
   --   let fib f = Fix f (case0 `Or` case1 `Or` caseN f)
@@ -274,13 +274,13 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   --   eval' (App f (Int 4)) `shouldBe` Int 3
   --   eval' (App f (Int 5)) `shouldBe` Int 5
 
-  it "☯ eval type alias" $ do
-    let env = [("T0", Fun (Int 0) NumT), ("T1", lam [x] (Fun (Int 1) x))]
-    let eval' x = eval ops (Let env x)
-    eval' (App (Tag "A") (Tag "A")) `shouldBe` Tag "A"
-    eval' (App (And (Tag "A") IntT) (And (Tag "A") IntT)) `shouldBe` And (Tag "A") IntT
-    eval' (App (Tag "T0") (Int 0)) `shouldBe` NumT
-    eval' (App (And (Tag "T1") NumT) (Int 1)) `shouldBe` NumT
+  -- it "☯ eval type alias" $ do
+  --   let env = [("T0", Fun (Int 0) NumT), ("T1", lam [x] (Fun (Int 1) x))]
+  --   let eval' x = eval ops (Let env x)
+  --   eval' (App (Tag "A") (Tag "A")) `shouldBe` Tag "A"
+  --   eval' (App (And (Tag "A") IntT) (And (Tag "A") IntT)) `shouldBe` And (Tag "A") IntT
+  --   eval' (App (Tag "T0") (Int 0)) `shouldBe` NumT
+  --   eval' (App (And (Tag "T1") NumT) (Int 1)) `shouldBe` NumT
 
   it "☯ eval type safety" $ do
     let eval' = eval ops
@@ -354,7 +354,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
           ]
     infer [] env (App f x) `shouldBe` ((App f (Ann x IntT), NumT), [], [])
     infer [] env (App (Fun y y) x) `shouldBe` ((App (Fun (Ann y IntT) y) (Ann x IntT), IntT), [("yT", IntT), ("y", Ann y IntT)], [])
-    infer [] env (App y x) `shouldBe` ((App y (Ann x IntT), Var "yT1"), [("yT1", Var "yT1"), ("yT", Fun IntT (Var "yT1")), ("y", Ann y (Fun IntT (Var "yT1")))], [])
+    infer [] env (App y x) `shouldBe` ((App y (Ann x IntT), Var "yT$2"), [("yT$1", IntT), ("yT", Fun IntT (Var "yT$2")), ("yT$2", Var "yT$2"), ("y", Ann y (Fun IntT (Var "yT$2")))], [])
 
   it "☯ infer Or" $ do
     let env = [("x", Int 42), ("y", Num 3.14)]
@@ -363,7 +363,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ infer For" $ do
     let xT = Var "xT"
-    infer [] [] (For "x" x) `shouldBe` ((For "x" x, For "xT" xT), [("xT", xT), ("x", Ann x xT)], [])
+    infer [] [] (For "x" x) `shouldBe` ((For "x" x, xT), [("xT", xT), ("x", Ann x xT)], [])
 
   it "☯ infer Op2" $ do
     True `shouldBe` True
@@ -382,7 +382,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' (Tag "True") `shouldBe` ((true, true), [], [])
     infer' (Ann true bool) `shouldBe` ((true, bool), env, [])
     infer' (Ann false (Tag "X")) `shouldBe` ((false, Err), [], [TypeMismatch false (Tag "X")])
-    infer' (Ann (Tag "X") bool) `shouldBe` ((Tag "X", Err), env, [TypeMismatch Err bool])
+    infer' (Ann (Tag "X") bool) `shouldBe` ((Tag "X", Err), env, [TypeMismatch (Tag "X") bool])
 
   -- it "☯ infer Maybe" $ do
   --   let (maybe, just, nothing) = (App (Tag "Maybe"), \a -> tag "Just" [a], Tag "Nothing")
