@@ -360,11 +360,13 @@ reduceApp ops a b = case (a, b) of
   _ -> Err
 
 match :: Bool -> Ops -> Expr -> Expr -> Maybe Env
--- match unify ops (Let env (Tag k)) b = case lookup k env of
---   Just def -> match unify ops (Tag k) (App def b)
---   Nothing -> match unify ops (Tag k) b
--- match unify ops (Let env (Let env' a)) b =
---   match unify ops (Let (env ++ env') a) b
+match unify ops (Let env (Tag k)) b = case lookup k env of
+  Just def -> do
+    let b' = App (Let env def) b
+    match unify ops (Tag k) (b' `Or` b)
+  Nothing -> match unify ops (Tag k) b
+match unify ops (Let env (Let env' a)) b =
+  match unify ops (Let (env ++ env') a) b
 match unify ops a b = case (reduce ops a, reduce ops b) of
   (Any, _) -> Just []
   (_, Any) | unify -> Just []
@@ -380,11 +382,13 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
     env1 <- match True ops ta tb
     env2 <- match unify ops a b
     Just (env1 ++ env2)
-  -- (And (Let env (Tag k)) a, b) -> case lookup k env of
-  --   Just def -> match unify ops (And (Tag k) a) (App def b)
-  --   Nothing -> match unify ops (And (Tag k) a) b
-  -- (And (Let env (Let env' a1)) a2, b) ->
-  --   match unify ops (Let (env ++ env') (And a1 a2)) b
+  (And (Let env (Tag k)) a, b) -> case lookup k env of
+    Just def -> do
+      let b' = app (Let env def) [a, b]
+      match unify ops (And (Tag k) a) (b' `Or` b)
+    Nothing -> match unify ops (And (Tag k) a) b
+  (And (Let env (Let env' a1)) a2, b) ->
+    match unify ops (Let (env ++ env') (And a1 a2)) b
   (And a1 a2, And b1 b2) -> do
     env1 <- match unify ops a1 b1
     env2 <- match unify ops a2 b2
@@ -492,34 +496,34 @@ unify ops env a b = case (a, b) of
   (Var x, b) -> (b, [(x, b)], [])
   (a, Var x) -> unify ops env (Var x) a
   (Tag k, Tag k') | k == k' -> (Tag k, [], [])
-  (a, Tag k) | Just tdef <- lookup k env -> do
-    let a' = eval ops (App (tdef `Or` Fun Any a) a)
+  (a, Tag k) | Just def <- lookup k env -> do
+    let a' = eval ops (App (Let env def) a)
     let env' = filter (\(x, _) -> x /= k) env
     let (t, s, e) = unify ops env' a' (Tag k)
-    (t, [(k, tdef)] `compose` s, e)
-  (Tag k, b) | Just tdef <- lookup k env -> do
-    let b' = eval ops (App (tdef `Or` Fun Any b) b)
+    (t, [(k, def)] `compose` s, e)
+  (Tag k, b) | Just def <- lookup k env -> do
+    let b' = eval ops (App (Let env def) b)
     let env' = filter (\(x, _) -> x /= k) env
     let (t, s, e) = unify ops env' (Tag k) b'
-    (t, [(k, tdef)] `compose` s, e)
-  (a, And (Tag k) b) | Just tdef <- lookup k env -> do
-    let a' = eval ops (app (tdef `Or` fun [Any, Any] a) [b, a])
+    (t, [(k, def)] `compose` s, e)
+  (a, And (Tag k) b) | Just def <- lookup k env -> do
+    let a' = eval ops (app (Let env def) [b, a])
     let env' = filter (\(x, _) -> x /= k) env
     let (t, s, e) = unify ops env' a' (And (Tag k) b)
-    (t, [(k, tdef)] `compose` s, e)
-  (And (Tag k) a, b) | Just tdef <- lookup k env -> do
-    let b' = eval ops (app (tdef `Or` fun [Any, Any] b) [a, b])
+    (t, [(k, def)] `compose` s, e)
+  (And (Tag k) a, b) | Just def <- lookup k env -> do
+    let b' = eval ops (app (Let env def) [a, b])
     let env' = filter (\(x, _) -> x /= k) env
     let (t, s, e) = unify ops env' (And (Tag k) a) b'
-    (t, [(k, tdef)] `compose` s, e)
+    (t, [(k, def)] `compose` s, e)
+  (And a1 b1, And a2 b2) -> do
+    let ((a, b), s, e) = unify2 ops env (a1, a2) (b1, b2)
+    (And a b, s, e)
   (Ann a ta, Ann b tb) -> do
     let ((a', ta'), s, e) = unify2 ops env (a, b) (ta, tb)
     (Ann a' ta', s, e)
   (Ann a _, b) -> unify ops env a b
   (a, Ann b _) -> unify ops env a b
-  (And a1 b1, And a2 b2) -> do
-    let ((a, b), s, e) = unify2 ops env (a1, a2) (b1, b2)
-    (And a b, s, e)
   (Or a1 a2, b) -> do
     let ((c1, c2), s1, e1) = unify2 ops env (a1, b) (a2, b)
     let (c, s2, e2) = unify ops env c1 c2
@@ -660,9 +664,9 @@ check ops env a (For x t) = do
   let ((a', t'), s, e) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] t)
   ((a', for [x] (substitute [(y, Var x)] t')), s `compose` [(y, Var y)], e)
 -- check _ _ (Var x) t = ((Var x, t), [(x, t)], [])
-check ops env (And a b) (And ta tb) = do
-  let ((a', ta'), (b', tb'), s, e) = check2 ops env (a, ta) (b, tb)
-  ((And a' b', And ta' tb'), s, e)
+-- check ops env (And a b) (And ta tb) = do
+--   let ((a', ta'), (b', tb'), s, e) = check2 ops env (a, ta) (b, tb)
+--   ((And a' b', And ta' tb'), s, e)
 check ops env (Or a b) t = do
   let ((a', ta'), (b', tb'), s, e) = check2 ops env (a, t) (b, t)
   ((Or a' b', ta'), s, e)
