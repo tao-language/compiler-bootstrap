@@ -395,6 +395,32 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
+  let name = "examples/prelude/bool-or.tao"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load "prelude" name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name (2, 1) "TT",
+            TestPass name (6, 1) "TF",
+            TestPass name (10, 1) "FT",
+            TestPass name (14, 1) "FF",
+            TestPass name (18, 1) "Error"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
+  let name = "examples/prelude/bool-xor.tao"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load "prelude" name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name (2, 1) "TT",
+            TestPass name (6, 1) "TF",
+            TestPass name (10, 1) "FT",
+            TestPass name (14, 1) "FF",
+            TestPass name (18, 1) "Error"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
   let name = "examples/factorial.tao"
   it ("☯ " ++ name) $ do
     (pkg, syntaxErrors) <- load "" name []

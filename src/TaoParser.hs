@@ -602,17 +602,38 @@ parseDef op = do
     Just ann -> return (ann a, b)
     Nothing -> return (a, b)
 
-parseTypeDef :: Parser (String, [Expr], Expr)
+parseTypeDefAlt :: Parser (Expr, Maybe Type)
+parseTypeDefAlt = do
+  a <- parseExpr 2 P.spaces
+  _ <- P.spaces
+  mb <- P.maybe' $ do
+    _ <- P.text "=>"
+    _ <- P.whitespaces
+    parseExpr 2 P.spaces
+  return (a, mb)
+
+parseTypeDef :: Parser (String, [Expr], [(Expr, Maybe Type)])
 parseTypeDef = do
   _ <- P.word "type"
-  _ <- P.spaces
+  _ <- P.whitespaces
   name <- parseNameTag
-  _ <- P.spaces
-  args <- P.zeroOrMore (P.paddedR P.spaces parseAtom)
+  _ <- P.whitespaces
+  args <- P.zeroOrMore $ do
+    arg <- parseAtom
+    _ <- P.whitespaces
+    return arg
   _ <- P.char '='
   _ <- P.whitespaces
-  body <- parseExpr 0 P.spaces
-  return (name, args, body)
+  _ <- P.maybe' $ do
+    _ <- P.char '|'
+    P.whitespaces
+  alt <- parseTypeDefAlt
+  alts <- P.zeroOrMore $ do
+    _ <- P.whitespaces
+    _ <- P.char '|'
+    _ <- P.whitespaces
+    parseTypeDefAlt
+  return (name, args, alt : alts)
 
 parseTest :: Parser Stmt
 parseTest = do
@@ -690,7 +711,7 @@ load prelude path dependencies = do
   let pkg0 = (takeBaseName path, [])
   let deps = if prelude == "" then path : dependencies else prelude : path : dependencies
   ((name, modules), errs) <- foldM (flip loadPackage) (pkg0, []) deps
-  let preludeStmts = fromMaybe [] (lookup (prelude </> prelude ++ ".tao") modules)
+  let preludeStmts = fromMaybe [] (lookup (prelude </> "@main.tao") modules)
   let withPrelude (path, stmts) =
         if prelude `isPrefixOf` path
           then (path, stmts)

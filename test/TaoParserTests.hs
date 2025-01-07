@@ -226,8 +226,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseTypeDef" $ do
     let p = parse' parseTypeDef
-    p "type A = x" `shouldBe` Right (("A", [], x), "")
-    p "type A x y = z" `shouldBe` Right (("A", [x, y], z), "")
+    p "type A = x" `shouldBe` Right (("A", [], [(x, Nothing)]), "")
+    p "type A x y = z" `shouldBe` Right (("A", [x, y], [(z, Nothing)]), "")
 
   it "☯ parseTest" $ do
     let p = parse' parseTest

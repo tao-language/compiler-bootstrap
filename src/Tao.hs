@@ -80,7 +80,7 @@ type Pattern = Expr
 data Stmt
   = Import String String [(String, String)]
   | Def (Expr, Expr)
-  | TypeDef (String, [Expr], Expr)
+  | TypeDef (String, [Expr], [(Expr, Maybe Type)])
   | Test (Int, Int) String Expr Pattern
   deriving (Eq, Show)
 
@@ -666,7 +666,10 @@ instance Resolve (String, Stmt) where
       [] | alias == name -> [(path, Tag path')]
       [] -> []
     Def (p, b) | name `elem` bindings p -> [(path, Let (p, b) (Var name))]
-    TypeDef (name', args, body) | name == name' -> [(path, fun args body)]
+    TypeDef (name', args, alts) | name == name' -> do
+      let resolveAlt (a, Just b) = Fun a b
+          resolveAlt (a, Nothing) = Fun a (tag name' args)
+      [(path, fun args (or' (map resolveAlt alts)))]
     _ -> []
 
 class Compile a where

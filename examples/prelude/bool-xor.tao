@@ -13,3 +13,7 @@ True
 -- FF
 > False xor False
 False
+
+-- Error
+> A xor B
+!error
