@@ -1,8 +1,8 @@
 : Int, Int -> Int
-x - y = %int_sub<Int>(x, y)
+x - y = %int_sub(x, y)
 
 : Int, Int -> Int
-x * y = %int_mul<Int>(x, y)
+x * y = %int_mul(x, y)
 
 factorial = {
 | 0 -> 1

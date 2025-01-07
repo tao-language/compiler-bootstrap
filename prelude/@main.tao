@@ -1,7 +1,20 @@
+import prelude/int (
+  (+),
+  (-),
+  (*),
+  (/),
+  (//),
+  (^),
+)
+
 import prelude/bool (
   Bool,
   not,
   (and),
   (or),
   (xor),
+)
+
+import prelude/maybe (
+  Maybe,
 )

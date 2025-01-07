@@ -26,7 +26,7 @@ data Expr
   | For [String] Expr
   | Fun Expr Expr
   | App Expr Expr
-  | Call String Type [Expr]
+  | Call String [Expr]
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
   | Match [Expr] [([String], [Expr], Expr)]
@@ -51,6 +51,7 @@ data Op2
   | Sub
   | Mul
   | Div
+  | DivI
   | Pow
   deriving (Eq)
 
@@ -69,6 +70,7 @@ instance Show Op2 where
     Sub -> "-"
     Mul -> "*"
     Div -> "/"
+    DivI -> "//"
     Pow -> "^"
 
 data Case
@@ -123,23 +125,21 @@ instance Show TestResult where
 
 buildOps :: C.Ops
 buildOps = do
-  let intOp1 op f =
-        ( op,
-          \eval args -> case map (C.dropTypes . eval) args of
-            [C.Int x] -> Just (C.Int (f x))
-            _ -> Nothing
-        )
-  let intOp2 op f =
-        ( op,
-          \eval args -> case map (C.dropTypes . eval) args of
-            [C.Int x, C.Int y] -> Just (C.Int (f x y))
-            _ -> Nothing
-        )
+  let call op f = (op, \eval args -> f (map (C.dropTypes . eval) args))
+  let intOp1 op f = call op $ \case
+        [C.Int x] -> Just (C.Int (f x))
+        _ -> Nothing
+  let intOp2 op f = call op $ \case
+        [C.Int x, C.Int y] -> Just (C.Int (f x y))
+        _ -> Nothing
   [ intOp1 "int_neg" (\x -> -x),
     intOp2 "int_add" (+),
     intOp2 "int_sub" (-),
     intOp2 "int_mul" (*),
-    intOp2 "int_div" div,
+    call "int_div" $ \case
+      [C.Int x, C.Int y] -> Just (C.Num (fromIntegral x / fromIntegral y))
+      _ -> Nothing,
+    intOp2 "int_divi" Prelude.div,
     intOp2 "int_pow" (^)
     ]
 
@@ -243,6 +243,12 @@ sub = Op2 Sub
 
 mul :: Expr -> Expr -> Expr
 mul = Op2 Mul
+
+div' :: Expr -> Expr -> Expr
+div' = Op2 Div
+
+divI :: Expr -> Expr -> Expr
+divI = Op2 DivI
 
 pow :: Expr -> Expr -> Expr
 pow = Op2 Pow
@@ -363,9 +369,9 @@ freeNames (vars, tags, calls) = \case
   For xs a -> filter (`notElem` xs) (freeNames' a)
   Fun a b -> freeNames' a `union` freeNames' b
   App a b -> freeNames' a `union` freeNames' b
-  Call f t args
-    | calls -> [f] `union` freeNames' t `union` freeNames' (and' args)
-    | otherwise -> freeNames' t `union` freeNames' (and' args)
+  Call f args
+    | calls -> [f] `union` freeNames' (and' args)
+    | otherwise -> freeNames' (and' args)
   Op1 op a
     | vars -> [show op] `union` freeNames' a
     | otherwise -> freeNames' a
@@ -513,7 +519,7 @@ lower = \case
     let (args, body) = funOf (Fun a b)
     lower (For (freeVars (and' args)) (fun args body))
   App a b -> C.App (lower a) (lower b)
-  Call op t args -> C.Call op (lower t) (map lower args)
+  Call op args -> C.Call op (map lower args)
   Op1 op a -> lower (App (Var (show op)) a)
   Op2 op a b -> lower (app (Var (show op)) [a, b])
   Let (Var x, b) (Var x') | x == x' -> lower b
@@ -580,7 +586,7 @@ lift = \case
   C.Fix _ a -> lift a
   C.Fun a b -> Fun (lift a) (lift b)
   C.App a b -> App (lift a) (lift b)
-  C.Call op t args -> Call op (lift t) (map lift args)
+  C.Call op args -> Call op (map lift args)
   C.Let [] b -> lift b
   C.Let ((x, b) : env) c -> Let (Var x, lift b) (lift (C.Let env c))
   C.Err -> Err

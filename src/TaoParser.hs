@@ -98,7 +98,8 @@ parseNameVar :: Parser String
 parseNameVar =
   P.oneOf
     [ parseNameBase P.lowercase,
-      parseNameEscaped
+      parseNameEscaped,
+      parseNameOp
     ]
 
 parseNameTag :: Parser String
@@ -116,7 +117,13 @@ parseNameOp = do
     P.oneOf
       [ P.word "and",
         P.word "or",
-        P.word "xor"
+        P.word "xor",
+        P.text "+",
+        P.text "-",
+        P.text "*",
+        P.text "//",
+        P.text "/",
+        P.text "^"
       ]
   _ <- P.whitespaces
   _ <- P.char ')'
@@ -219,11 +226,7 @@ parseAtom = do
         do
           _ <- P.char '('
           _ <- P.whitespaces
-          expr <-
-            P.oneOf
-              [ Var <$> P.oneOf [P.text "*"],
-                parseBlock
-              ]
+          expr <- parseBlock
           _ <- P.whitespaces
           _ <- P.char ')'
           return expr,
@@ -253,11 +256,6 @@ parseAtom = do
         do
           _ <- P.char '%'
           x <- parseNameBase $ P.oneOf [P.letter, P.char '_']
-          _ <- P.char '<'
-          _ <- P.spaces
-          t <- parseExpr 6 P.spaces
-          _ <- P.spaces
-          _ <- P.char '>'
           args <-
             P.oneOf
               [ do
@@ -268,7 +266,7 @@ parseAtom = do
                     ],
                 return []
               ]
-          return (Call x t args),
+          return (Call x args),
         do
           _ <- P.word "if"
           _ <- P.whitespaces
@@ -373,6 +371,8 @@ parseExpr prec delim = do
           P.infixR 7 (const add) (parseOp "+"),
           P.infixR 7 (const sub) (parseOp "-"),
           P.infixR 8 (const mul) (parseOp "*"),
+          P.infixR 8 (const div') (parseOp "/"),
+          P.infixR 8 (const divI) (parseOp "//"),
           P.infixL 9 (const App) (void delim),
           P.infixR 10 (const pow) (parseOp "^")
         ]
