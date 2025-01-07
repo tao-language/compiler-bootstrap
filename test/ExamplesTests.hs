@@ -437,14 +437,14 @@ run = describe "--==☯ Examples ☯==--" $ do
 
   let name = "examples/factorial.tao"
   it ("☯ " ++ name) $ do
-    (pkg, syntaxErrors) <- load "" name []
+    (pkg, syntaxErrors) <- load "prelude" name []
     syntaxErrors `shouldBe` []
     let testResults =
-          [ TestPass name (13, 1) "0",
-            TestPass name (16, 1) "1",
-            TestPass name (19, 1) "2",
-            TestPass name (22, 1) "3",
-            TestPass name (25, 1) "4",
-            TestPass name (28, 1) "5"
+          [ TestPass name (7, 1) "0",
+            TestPass name (10, 1) "1",
+            TestPass name (13, 1) "2",
+            TestPass name (16, 1) "3",
+            TestPass name (19, 1) "4",
+            TestPass name (22, 1) "5"
           ]
     testAll [] pkg `shouldBe` testResults
