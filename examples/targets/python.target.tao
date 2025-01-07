@@ -1,3 +1,11 @@
+patches = [
+  "../patches/expr-if",
+  "../patches/stmt-if",
+  "../patches/stmt-if-elif",
+  "../patches/stmt-for-accum",
+  "../patches/stmt-for-each",
+]
+
 type PyExpr =
 | None
 | Bool Bool
@@ -45,14 +53,6 @@ type Context = {
   path : String,
 }
 
-patches = [
-  "../patches/expr-if",
-  "../patches/stmt-if",
-  "../patches/stmt-if-elif",
-  "../patches/stmt-for-accum",
-  "../patches/stmt-for-each",
-]
-
 : Expr -> Int
 precedence = {
 | BoolOp _ op _ -> match op {
@@ -75,9 +75,9 @@ associative = {
 }
 
 : Expr -> Int -> String
-layout expr prec if prec > expr.precedence =
-  "($(expr.layout 0))"
-layout expr prec = match expr {
+# layout expr prec = match expr {
+.layout prec = {
+| expr if prec > expr.precedence -> "($(expr.layout 0))"
 | None -> "None"
 | Bool True -> "True"
 | Bool False -> "False"

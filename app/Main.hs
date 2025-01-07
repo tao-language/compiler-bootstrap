@@ -10,10 +10,10 @@ main = do
   cliArgs <- System.Environment.getArgs
   case cliArgs of
     "run" : args -> case args of
-      filename : args -> run "prelude/imports.tao" filename args
+      filename : args -> run "prelude" filename args
       _ -> putStrLn "🛑 Please give me a filename, and an expression to run."
     "test" : args -> case args of
-      [path] -> test "prelude/imports.tao" path ["*"]
+      [path] -> test "prelude" path ["*"]
       -- path : patterns -> test path patterns
       path : patterns -> error "TODO: match test names by patterns"
       _ -> putStrLn "🛑 Please give me a directory or filename to test."
@@ -25,7 +25,7 @@ run prelude filename args = do
   parsed <- loadAtoms args
   let errors = map snd parsed
   let expr = T.app' (map fst parsed)
-  let result = T.eval ctx (dropExtension filename) expr
+  let result = T.eval ctx filename expr
   print result
 
 test :: FilePath -> FilePath -> [String] -> IO ()
