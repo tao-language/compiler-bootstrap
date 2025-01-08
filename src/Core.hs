@@ -654,15 +654,10 @@ inferAll ops env (a : bs) = do
   ((substitute s2 a', substitute s2 ta) : bts, s2 `compose` s1, e1 ++ e2)
 
 check :: Ops -> Env -> Expr -> Type -> ((Expr, Type), Substitution, [TypeError])
--- check ops env Any t = ((Any, t), [], [])
 check ops env a (For x t) = do
   let y = newName (map fst env) x
   let ((a', t'), s, e) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] t)
   ((a', for [x] (substitute [(y, Var x)] t')), s `compose` [(y, Var y)], e)
--- check _ _ (Var x) t = ((Var x, t), [(x, t)], [])
--- check ops env (And a b) (And ta tb) = do
---   let ((a', ta'), (b', tb'), s, e) = check2 ops env (a, ta) (b, tb)
---   ((And a' b', And ta' tb'), s, e)
 check ops env (Or a b) t = do
   let ((a', ta'), (b', tb'), s, e) = check2 ops env (a, t) (b, t)
   ((Or a' b', ta'), s, e)
@@ -678,9 +673,6 @@ check ops env (App a b) t2 = do
   let ((a', _), s2, e2) = check ops (s1 `compose` env) (substitute s1 a) (Fun t1 (substitute s1 t2))
   let s = s2 `compose` s1
   ((App a' (substitute s2 (Ann b' t1)), substitute s t2), s, e1 ++ e2)
-check ops env (Call op args) t = do
-  let (args', s, e) = inferAll ops env args
-  ((Ann (Call op (map fst args')) (substitute s t), substitute s t), s, e)
 check ops env a t = do
   let ((a', ta), s1, e1) = infer ops env a
   let (t', s2, e2) = unify ops env ta (substitute s1 t)
