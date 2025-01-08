@@ -63,7 +63,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower (App x y) `shouldBe` C.App x' y'
 
   it "☯ lower Expr Call" $ do
-    lower (Call "f" a [x, y]) `shouldBe` C.Call "f" a' [x', y']
+    lower (Call "f" [x, y]) `shouldBe` C.Call "f" [x', y']
 
   it "☯ lower Expr Op1" $ do
     lower (Op1 Neg x) `shouldBe` C.App (C.Var "-") x'
@@ -116,7 +116,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower (Let (App x y, z) a) `shouldBe` C.def ["x"] (x', C.For "y" (C.Fun y' z')) a'
 
   it "☯ lower Expr Let Call" $ do
-    lower (Let (Call "f" a [x, y], z) a) `shouldBe` C.def ["a", "x", "y"] (C.Call "f" a' [x', y'], z') a'
+    lower (Let (Call "f" [x, y], z) a) `shouldBe` C.def ["x", "y"] (C.Call "f" [x', y'], z') a'
 
   it "☯ lower Expr Let Op1" $ do
     lower (Let (Op1 Neg x, z) a) `shouldBe` C.def ["-"] (C.Var "-", C.For "x" (C.Fun x' z')) a'
@@ -498,8 +498,8 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     compile' (For ["x"] (Fun x x)) `shouldBe` ([], C.for ["xT", "x"] (C.Fun (C.Ann x' xT') x'))
     compile' (Fun x x) `shouldBe` ([], C.for ["xT", "x"] (C.Fun (C.Ann x' xT') x'))
     compile' (App f i1) `shouldBe` ([("f", f')], C.App (C.Var "f") (C.Ann i1' C.IntT))
-    compile' (Call "f" a []) `shouldBe` ([], C.Call "f" a' [])
-    compile' (Call "f" a [i1, Num 1.1]) `shouldBe` ([], C.Call "f" a' [i1', C.Num 1.1])
+    compile' (Call "f" []) `shouldBe` ([], C.Call "f" [])
+    compile' (Call "f" [i1, Num 1.1]) `shouldBe` ([], C.Call "f" [i1', C.Num 1.1])
     -- Op1 Op1 Expr
     -- Op2 Op2 Expr Expr
     -- Let (Expr, Expr) Expr

@@ -1,9 +1,3 @@
-: Int, Int -> Int
-x - y = %int_sub<Int>(x, y)
-
-: Int, Int -> Int
-x * y = %int_mul<Int>(x, y)
-
 factorial = {
 | 0 -> 1
 | n -> n * factorial (n - 1)

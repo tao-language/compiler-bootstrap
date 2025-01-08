@@ -98,7 +98,8 @@ parseNameVar :: Parser String
 parseNameVar =
   P.oneOf
     [ parseNameBase P.lowercase,
-      parseNameEscaped
+      parseNameEscaped,
+      parseNameOp
     ]
 
 parseNameTag :: Parser String
@@ -116,7 +117,13 @@ parseNameOp = do
     P.oneOf
       [ P.word "and",
         P.word "or",
-        P.word "xor"
+        P.word "xor",
+        P.text "+",
+        P.text "-",
+        P.text "*",
+        P.text "//",
+        P.text "/",
+        P.text "^"
       ]
   _ <- P.whitespaces
   _ <- P.char ')'
@@ -219,11 +226,7 @@ parseAtom = do
         do
           _ <- P.char '('
           _ <- P.whitespaces
-          expr <-
-            P.oneOf
-              [ Var <$> P.oneOf [P.text "*"],
-                parseBlock
-              ]
+          expr <- parseBlock
           _ <- P.whitespaces
           _ <- P.char ')'
           return expr,
@@ -253,11 +256,6 @@ parseAtom = do
         do
           _ <- P.char '%'
           x <- parseNameBase $ P.oneOf [P.letter, P.char '_']
-          _ <- P.char '<'
-          _ <- P.spaces
-          t <- parseExpr 6 P.spaces
-          _ <- P.spaces
-          _ <- P.char '>'
           args <-
             P.oneOf
               [ do
@@ -268,7 +266,7 @@ parseAtom = do
                     ],
                 return []
               ]
-          return (Call x t args),
+          return (Call x args),
         do
           _ <- P.word "if"
           _ <- P.whitespaces
@@ -373,6 +371,8 @@ parseExpr prec delim = do
           P.infixR 7 (const add) (parseOp "+"),
           P.infixR 7 (const sub) (parseOp "-"),
           P.infixR 8 (const mul) (parseOp "*"),
+          P.infixR 8 (const div') (parseOp "/"),
+          P.infixR 8 (const divI) (parseOp "//"),
           P.infixL 9 (const App) (void delim),
           P.infixR 10 (const pow) (parseOp "^")
         ]
@@ -602,17 +602,38 @@ parseDef op = do
     Just ann -> return (ann a, b)
     Nothing -> return (a, b)
 
-parseTypeDef :: Parser (String, [Expr], Expr)
+parseTypeDefAlt :: Parser (Expr, Maybe Type)
+parseTypeDefAlt = do
+  a <- parseExpr 2 P.spaces
+  _ <- P.spaces
+  mb <- P.maybe' $ do
+    _ <- P.text "=>"
+    _ <- P.whitespaces
+    parseExpr 2 P.spaces
+  return (a, mb)
+
+parseTypeDef :: Parser (String, [Expr], [(Expr, Maybe Type)])
 parseTypeDef = do
   _ <- P.word "type"
-  _ <- P.spaces
+  _ <- P.whitespaces
   name <- parseNameTag
-  _ <- P.spaces
-  args <- P.zeroOrMore (P.paddedR P.spaces parseAtom)
+  _ <- P.whitespaces
+  args <- P.zeroOrMore $ do
+    arg <- parseAtom
+    _ <- P.whitespaces
+    return arg
   _ <- P.char '='
   _ <- P.whitespaces
-  body <- parseExpr 0 P.spaces
-  return (name, args, body)
+  _ <- P.maybe' $ do
+    _ <- P.char '|'
+    P.whitespaces
+  alt <- parseTypeDefAlt
+  alts <- P.zeroOrMore $ do
+    _ <- P.whitespaces
+    _ <- P.char '|'
+    _ <- P.whitespaces
+    parseTypeDefAlt
+  return (name, args, alt : alts)
 
 parseTest :: Parser Stmt
 parseTest = do
@@ -690,7 +711,7 @@ load prelude path dependencies = do
   let pkg0 = (takeBaseName path, [])
   let deps = if prelude == "" then path : dependencies else prelude : path : dependencies
   ((name, modules), errs) <- foldM (flip loadPackage) (pkg0, []) deps
-  let preludeStmts = fromMaybe [] (lookup (prelude </> prelude ++ ".tao") modules)
+  let preludeStmts = fromMaybe [] (lookup (prelude </> "@main.tao") modules)
   let withPrelude (path, stmts) =
         if prelude `isPrefixOf` path
           then (path, stmts)

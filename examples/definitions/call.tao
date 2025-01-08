@@ -1,10 +1,10 @@
-%f<Int>(x) = %f<Int>(1)
+%f(x) = %f(1)
 
 -- Call match
 > x
 1
 
-%f<Int>(y) = %g<Int>(1)
+%f(y) = %g(1)
 
 -- Call match fail
 > y

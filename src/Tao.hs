@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-type-defaults #-}
+
 module Tao where
 
 import Control.Monad (mapAndUnzipM)
@@ -26,7 +28,7 @@ data Expr
   | For [String] Expr
   | Fun Expr Expr
   | App Expr Expr
-  | Call String Type [Expr]
+  | Call String [Expr]
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
   | Match [Expr] [([String], [Expr], Expr)]
@@ -51,6 +53,7 @@ data Op2
   | Sub
   | Mul
   | Div
+  | DivI
   | Pow
   deriving (Eq)
 
@@ -69,6 +72,7 @@ instance Show Op2 where
     Sub -> "-"
     Mul -> "*"
     Div -> "/"
+    DivI -> "//"
     Pow -> "^"
 
 data Case
@@ -80,7 +84,7 @@ type Pattern = Expr
 data Stmt
   = Import String String [(String, String)]
   | Def (Expr, Expr)
-  | TypeDef (String, [Expr], Expr)
+  | TypeDef (String, [Expr], [(Expr, Maybe Type)])
   | Test (Int, Int) String Expr Pattern
   deriving (Eq, Show)
 
@@ -123,24 +127,35 @@ instance Show TestResult where
 
 buildOps :: C.Ops
 buildOps = do
-  let intOp1 op f =
-        ( op,
-          \eval args -> case map (C.dropTypes . eval) args of
-            [C.Int x] -> Just (C.Int (f x))
-            _ -> Nothing
-        )
-  let intOp2 op f =
-        ( op,
-          \eval args -> case map (C.dropTypes . eval) args of
-            [C.Int x, C.Int y] -> Just (C.Int (f x y))
-            _ -> Nothing
-        )
+  let call op f = (op, \eval args -> f (map (C.dropTypes . eval) args))
+  let intOp1 op f = call op $ \case
+        [C.Int x] -> Just (C.Int (f x))
+        _ -> Nothing
+  let numOp1 op f = call op $ \case
+        [C.Num x] -> Just (C.Num (f x))
+        _ -> Nothing
+  let intOp2 op f = call op $ \case
+        [C.Int x, C.Int y] -> Just (C.Int (f x y))
+        _ -> Nothing
+  let numOp2 op f = call op $ \case
+        [C.Num x, C.Num y] -> Just (C.Num (f x y))
+        _ -> Nothing
   [ intOp1 "int_neg" (\x -> -x),
+    numOp1 "num_neg" (\x -> -x),
     intOp2 "int_add" (+),
+    numOp2 "num_add" (+),
     intOp2 "int_sub" (-),
+    numOp2 "num_sub" (-),
     intOp2 "int_mul" (*),
-    intOp2 "int_div" div,
-    intOp2 "int_pow" (^)
+    numOp2 "num_mul" (*),
+    call "int_div" $ \case
+      [C.Int x, C.Int y] -> Just (C.Num (fromIntegral x / fromIntegral y))
+      _ -> Nothing,
+    numOp2 "num_div" (/),
+    intOp2 "int_divi" Prelude.div,
+    numOp2 "num_divi" (\x y -> (fromIntegral . floor) (x / y)),
+    intOp2 "int_pow" (^),
+    numOp2 "num_pow" (**)
     ]
 
 runtimeOps :: C.Ops
@@ -243,6 +258,12 @@ sub = Op2 Sub
 
 mul :: Expr -> Expr -> Expr
 mul = Op2 Mul
+
+div' :: Expr -> Expr -> Expr
+div' = Op2 Div
+
+divI :: Expr -> Expr -> Expr
+divI = Op2 DivI
 
 pow :: Expr -> Expr -> Expr
 pow = Op2 Pow
@@ -363,9 +384,9 @@ freeNames (vars, tags, calls) = \case
   For xs a -> filter (`notElem` xs) (freeNames' a)
   Fun a b -> freeNames' a `union` freeNames' b
   App a b -> freeNames' a `union` freeNames' b
-  Call f t args
-    | calls -> [f] `union` freeNames' t `union` freeNames' (and' args)
-    | otherwise -> freeNames' t `union` freeNames' (and' args)
+  Call f args
+    | calls -> [f] `union` freeNames' (and' args)
+    | otherwise -> freeNames' (and' args)
   Op1 op a
     | vars -> [show op] `union` freeNames' a
     | otherwise -> freeNames' a
@@ -513,7 +534,7 @@ lower = \case
     let (args, body) = funOf (Fun a b)
     lower (For (freeVars (and' args)) (fun args body))
   App a b -> C.App (lower a) (lower b)
-  Call op t args -> C.Call op (lower t) (map lower args)
+  Call op args -> C.Call op (map lower args)
   Op1 op a -> lower (App (Var (show op)) a)
   Op2 op a b -> lower (app (Var (show op)) [a, b])
   Let (Var x, b) (Var x') | x == x' -> lower b
@@ -580,7 +601,7 @@ lift = \case
   C.Fix _ a -> lift a
   C.Fun a b -> Fun (lift a) (lift b)
   C.App a b -> App (lift a) (lift b)
-  C.Call op t args -> Call op (lift t) (map lift args)
+  C.Call op args -> Call op (map lift args)
   C.Let [] b -> lift b
   C.Let ((x, b) : env) c -> Let (Var x, lift b) (lift (C.Let env c))
   C.Err -> Err
@@ -616,32 +637,6 @@ eval ctx path expr = do
   let (env, expr') = compile ctx path expr
   lift (C.eval runtimeOps (C.let' env expr'))
 
--- class Scope a where
---   scope :: [Module] -> a -> [(String, Expr)]
-
--- instance Scope String where
---   scope :: [Module] -> String -> [(String, Expr)]
---   scope ctx path = case lookup path ctx of
---     Just stmts -> scope ctx stmts
---     Nothing -> []
-
--- instance Scope [Stmt] where
---   scope :: [Module] -> [Stmt] -> [(String, Expr)]
---   scope ctx = concatMap (scope ctx)
-
--- instance Scope Stmt where
---   scope :: [Module] -> Stmt -> [(String, Expr)]
---   scope ctx = \case
---     -- Import path' alias names -> case names of
---     --   (x, y) : names -> do
---     --   let defs = resolve ctx path' x
---     --   defs ++ scope ctx path (name, Import path' alias names)
---     -- [] | alias == name -> [(path, Tag path')]
---     -- [] -> []
---     Def (p, b) -> map (\x -> (x, let' (p, b) (Var x))) (bindings p)
---     TypeDef (name, args, body) -> [(name, fun args body)]
---     _ -> []
-
 class Resolve a where
   resolve :: [Module] -> String -> a -> [(String, Expr)]
 
@@ -666,7 +661,10 @@ instance Resolve (String, Stmt) where
       [] | alias == name -> [(path, Tag path')]
       [] -> []
     Def (p, b) | name `elem` bindings p -> [(path, Let (p, b) (Var name))]
-    TypeDef (name', args, body) | name == name' -> [(path, fun args body)]
+    TypeDef (name', args, alts) | name == name' -> do
+      let resolveAlt (a, Just b) = Fun a b
+          resolveAlt (a, Nothing) = Fun a (tag name' args)
+      [(path, fun args (or' (map resolveAlt alts)))]
     _ -> []
 
 class Compile a where
@@ -686,10 +684,13 @@ instance Compile (String -> C.Env) where
   --         [C.Ann (C.Var x) t] | x == name -> [(name, C.Ann (C.Var x) t)]
   --         alts -> [(name, C.fix [name] (C.or' alts))]
   --   -- unionBy (\a b -> fst a == fst b) def env
+  --   let ((a, t), s, e) = C.infer buildOps env (C.or' alts)
   --   error . intercalate "\n" $
   --     [ "-- compile/1 " ++ name,
   --       show env,
-  --       show $ map C.format alts,
+  --       -- show $ map C.format alts,
+  --       C.format a,
+  --       C.format t,
   --       ""
   --     ]
   compile ctx path name = do
@@ -707,25 +708,20 @@ instance Compile (String -> C.Env) where
 
 instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"y", expr) = do
+  -- compile ctx path (name@"", expr) = do
   --   let a = lower expr
-  --   let xs = delete name (C.freeNames (True, True, False) a)
-  --   let env = concatMap (compile ctx path) xs
+  --   let env = concatMap (compile ctx path) (delete name (C.freeNames (True, True, False) a))
   --   let ((a', t), s, e) = C.infer buildOps env a
-  --   -- (env, C.for (map fst s) a')
+  --   let xs = filter (`notElem` map fst env) (map fst s)
   --   error . intercalate "\n" $
   --     [ "-- compile/2 " ++ name,
   --       -- show ctx,
-  --       show expr,
-  --       show a,
-  --       show xs,
   --       C.format a,
-  --       C.format a',
   --       C.format (C.Let env C.Any),
-  --       C.format (C.fix [name] $ C.dropTypes a'),
-  --       C.format t,
-  --       -- show a',
-  --       -- show s,
+  --       show (map fst env),
+  --       C.format a',
+  --       -- C.format (C.for xs $ C.dropTypes a'),
+  --       -- C.format t,
   --       ""
   --     ]
   compile ctx path (name, expr) = do
@@ -771,15 +767,10 @@ instance TestSome UnitTest where
     let test' = expect `C.Or` C.For "got" (C.Fun (C.Var "got") (C.Var "got"))
     -- error . intercalate "\n" $
     --   [ "-- testSome",
-    --     -- show ctx,
-    --     -- "let t.expr = " ++ show t.expr,
-    --     -- "let expect = " ++ show expect,
     --     "env = " ++ C.format (C.Let env C.Any),
     --     "      " ++ show (map fst env),
     --     "expr = " ++ C.format expr,
     --     "expect = " ++ C.format expect,
-    --     -- "let env = " ++ show env,
-    --     -- "let expr = " ++ show expr,
     --     "eval expect: " ++ C.format (C.eval runtimeOps expect),
     --     "eval expr:   " ++ C.format (C.eval runtimeOps (C.let' env expr)),
     --     "eval test:   " ++ C.format (C.eval runtimeOps (C.App test' (C.let' env expr))),

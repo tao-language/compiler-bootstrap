@@ -371,6 +371,34 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
+  let name = "examples/prelude/arithmetic-int.tao"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load "prelude" name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name (2, 1) "Add",
+            TestPass name (6, 1) "Sub",
+            TestPass name (10, 1) "Mul",
+            TestPass name (14, 1) "Div",
+            TestPass name (18, 1) "Div Int",
+            TestPass name (22, 1) "Pow"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
+  let name = "examples/prelude/arithmetic-num.tao"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load "prelude" name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name (2, 1) "Add",
+            TestPass name (6, 1) "Sub",
+            TestPass name (10, 1) "Mul",
+            TestPass name (14, 1) "Div",
+            TestPass name (18, 1) "Div Int",
+            TestPass name (22, 1) "Pow"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
   let name = "examples/prelude/bool-not.tao"
   it ("☯ " ++ name) $ do
     (pkg, syntaxErrors) <- load "prelude" name []
@@ -395,16 +423,42 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
-  let name = "examples/factorial.tao"
+  let name = "examples/prelude/bool-or.tao"
   it ("☯ " ++ name) $ do
-    (pkg, syntaxErrors) <- load "" name []
+    (pkg, syntaxErrors) <- load "prelude" name []
     syntaxErrors `shouldBe` []
     let testResults =
-          [ TestPass name (13, 1) "0",
-            TestPass name (16, 1) "1",
-            TestPass name (19, 1) "2",
-            TestPass name (22, 1) "3",
-            TestPass name (25, 1) "4",
-            TestPass name (28, 1) "5"
+          [ TestPass name (2, 1) "TT",
+            TestPass name (6, 1) "TF",
+            TestPass name (10, 1) "FT",
+            TestPass name (14, 1) "FF",
+            TestPass name (18, 1) "Error"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
+  let name = "examples/prelude/bool-xor.tao"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load "prelude" name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name (2, 1) "TT",
+            TestPass name (6, 1) "TF",
+            TestPass name (10, 1) "FT",
+            TestPass name (14, 1) "FF",
+            TestPass name (18, 1) "Error"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
+  let name = "examples/factorial.tao"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load "prelude" name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name (7, 1) "0",
+            TestPass name (10, 1) "1",
+            TestPass name (13, 1) "2",
+            TestPass name (16, 1) "3",
+            TestPass name (19, 1) "4",
+            TestPass name (22, 1) "5"
           ]
     testAll [] pkg `shouldBe` testResults

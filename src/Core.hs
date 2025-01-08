@@ -32,7 +32,7 @@ data Expr
   | Fix String Expr
   | Fun Expr Expr
   | App Expr Expr
-  | Call String Type [Expr]
+  | Call String [Expr]
   | Let [(String, Expr)] Expr
   | Err
   deriving (Eq, Show)
@@ -92,7 +92,7 @@ format expr = case expr of
   App a b -> do
     let (a', bs) = appOf (App a b)
     "(" ++ format a' ++ " " ++ unwords (map format bs) ++ ")"
-  Call f t args -> '%' : f ++ "<" ++ format t ++ ">(" ++ intercalate ", " (map format args) ++ ")"
+  Call f args -> '%' : f ++ "(" ++ intercalate ", " (map format args) ++ ")"
   Let env b -> "@{" ++ intercalate "; " (map (\(x, a) -> name x ++ " = " ++ format a) env) ++ "} " ++ format b
   Err -> "!error"
   where
@@ -269,9 +269,9 @@ freeNames (vars, tags, calls) = \case
   Fix x a -> delete x (freeNames' a)
   Fun a b -> freeNames' a `union` freeNames' b
   App a b -> freeNames' a `union` freeNames' b
-  Call f t args
-    | calls -> [f] `union` foldr (union . freeNames') (freeNames' t) args
-    | otherwise -> foldr (union . freeNames') (freeNames' t) args
+  Call f args
+    | calls -> foldr (union . freeNames') [f] args
+    | otherwise -> foldr (union . freeNames') [] args
   Let [] b -> freeNames' b
   Let ((x, a) : defs) b -> delete x (freeNames' a `union` freeNames' (Let defs b))
   Err -> []
@@ -332,9 +332,9 @@ reduceLet ops env = \case
   Fix x a -> Fix x (Let env a)
   Fun a b -> Fun (Let env a) (Let env b)
   App a b -> reduceApp ops (reduce ops (Let env a)) (reduce ops (Let env b))
-  Call f t args -> case (lookup f ops, Let env t, Let env <$> args) of
-    (Just call, t, args) | Just result <- call (eval ops) args -> Ann result t
-    (_, t, args) -> Call f t args
+  Call f args -> case (lookup f ops, Let env <$> args) of
+    (Just call, args) | Just result <- call (eval ops) args -> result
+    (_, args) -> Call f args
   Let env' a -> reduce ops (Let (env ++ env') a)
   expr -> expr
 
@@ -347,13 +347,17 @@ reduceApp ops a b = case (a, b) of
   (Ann a _, b) -> reduceApp ops (reduce ops a) b
   (Or a1 a2, b) -> case reduceApp ops (reduce ops a1) b of
     Err -> reduceApp ops (reduce ops a2) b
+    c@Var {} -> c `Or` App a2 b
+    c@For {} -> c `Or` App a2 b
+    c@Fix {} -> c `Or` App a2 b
     c@Fun {} -> c `Or` App a2 b
+    c@App {} -> c `Or` App a2 b
     c -> c
   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
   (Fun a c, b) -> case match False ops a b of
     Just env -> reduce ops (Let env c)
     Nothing -> Err
-  (Call f t args, b) -> App (Call f t args) b
+  (Call f args, b) -> App (Call f args) b
   (a, b@Var {}) -> App a b
   (a, b@App {}) -> App a b
   (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
@@ -408,8 +412,8 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   -- \| Fix String Expr
   (Fun a1 a2, Fun b1 b2) -> match unify ops (And a1 a2) (And b1 b2)
   (App a1 a2, App b1 b2) -> match unify ops (And a1 a2) (And b1 b2)
-  (Call x t args, Call x' t' args') | x == x' -> do
-    match unify ops (and' (t : args)) (and' (t' : args'))
+  (Call x args, Call x' args') | x == x' -> do
+    match unify ops (and' args) (and' args')
   (Err, Err) -> Just []
   (Ann a _, b) -> match unify ops a b
   (a, Ann b _) -> match unify ops a b
@@ -424,7 +428,7 @@ eval ops expr = case reduce ops expr of
   Fix x a -> fix [x] (eval ops (Let [(x, Var x)] a))
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)
-  Call f t args -> Call f (eval ops t) (eval ops <$> args)
+  Call f args -> Call f (eval ops <$> args)
   a -> a
 
 substitute :: Substitution -> Expr -> Expr
@@ -445,7 +449,7 @@ substitute s (For x a) = For x (substitute (filter ((/= x) . fst) s) a)
 substitute s (Fix x a) = Fix x (substitute (filter ((/= x) . fst) s) a)
 substitute s (Fun a b) = Fun (substitute s a) (substitute s b)
 substitute s (App a b) = App (substitute s a) (substitute s b)
-substitute s (Call op t args) = Call op (substitute s t) (map (substitute s) args)
+substitute s (Call op args) = Call op (map (substitute s) args)
 substitute s (Let env b) = do
   let sub (x, a) = (x, substitute s a)
   let s' = filter (\(x, _) -> x `notElem` map fst env) s
@@ -460,6 +464,7 @@ compose s1 s2 = do
   unionBy (\a b -> fst a == fst b) s1 (map (sub s1) s2)
 
 dropTypes :: Expr -> Expr
+dropTypes (Ann a@Call {} t) = Ann (dropTypes a) (dropTypes t)
 dropTypes (Ann a _) = dropTypes a
 dropTypes (And a b) = And (dropTypes a) (dropTypes b)
 dropTypes (Or a b) = Or (dropTypes a) (dropTypes b)
@@ -475,7 +480,7 @@ dropTypes (App a (Ann b tb)) = case andOf tb of
   -- ts | all isVar ts -> App (dropTypes a) (dropTypes b)
   _ -> App (dropTypes a) (Ann (dropTypes b) (dropTypes tb))
 dropTypes (App a b) = App (dropTypes a) (dropTypes b)
-dropTypes (Call op t args) = Call op (dropTypes t) (map dropTypes args)
+dropTypes (Call op args) = Call op (map dropTypes args)
 dropTypes (Let defs b) = Let (map (second dropTypes) defs) (dropTypes b)
 dropTypes a = a
 
@@ -549,10 +554,9 @@ unify ops env a b = case (a, b) of
   (Fun a1 b1, Fun a2 b2) -> do
     let ((a, b), s, e) = unify2 ops env (a1, a2) (b1, b2)
     (Fun a b, s, e)
-  (Call op a args, Call op' b args') | op == op' -> do
-    let (t, s1, e1) = unify ops env a b
-    let (args, s2, e2) = unifyAll ops (s1 `compose` env) (substitute s1 <$> args) (substitute s1 <$> args')
-    (Call op t args, s2 `compose` s1, e1 ++ e2)
+  (Call op args, Call op' args') | op == op' -> do
+    let (args, s, e) = unifyAll ops env args args'
+    (Call op args, s, e)
   (a, b) -> (Err, [], [TypeMismatch a b])
 
 unify2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> ((Expr, Expr), Substitution, [TypeError])
@@ -611,38 +615,12 @@ infer ops env (Fun a b) = do
   ((Fun (Ann a' ta) b', Fun ta tb), s, e)
 infer ops env (App a b) = do
   let ((a_, ta), s1, e1) = infer ops env a
-  let checkApp :: Ops -> Env -> (Expr, Type) -> Expr -> ((Expr, Expr), (Type, Type), Substitution, [TypeError])
-      checkApp ops env (a, ta) b = case ta of
-        Var x -> do
-          let x1 = newName ((x ++ "$") : map fst env) (x ++ "$")
-          let x2 = newName (x1 : (x ++ "$") : map fst env) (x ++ "$")
-          let ((a', _), (b', t1), s, e) = check2 ops (pushVars [x1, x2] env) (a, Fun (Var x1) (Var x2)) (b, Var x1)
-          ((a', b'), (t1, substitute s (Var x2)), s `compose` [(x1, Var x1), (x2, Var x2)], e)
-        Or ta1 ta2 -> do
-          let (_, _, s1, e1) = checkApp ops env (a, ta1) b
-          let (ab, t, s2, e2) = checkApp ops (s1 `compose` env) (substitute s1 a, substitute s1 ta2) (substitute s1 b)
-          (ab, t, s2 `compose` s1, e1 ++ e2)
-        Fun t1 t2 -> do
-          let ((a', _), (b', t1'), s, e) = check2 ops env (a, Fun t1 t2) (b, t1)
-          ((a', b'), (t1', substitute s t2), s, e)
-        -- todo -> error $ "TODO infer App " ++ show todo
-        _ -> ((a, b), (Err, Err), [], [NotAFunction a ta])
-  let ((a', b'), (t1, t2), s2, e2) =
-        checkApp ops (s1 `compose` env) (a_, ta) (substitute s1 b)
-  -- error . intercalate "\n" $
-  --   [ "-- infer " ++ format (App a b),
-  --     "a' = " ++ format a',
-  --     "b' = " ++ format b',
-  --     "t1 = " ++ format t1,
-  --     "t2 = " ++ format t2,
-  --     ""
-  --   ]
+  let ((a', b'), (t1, t2), s2, e2) = checkApp ops (s1 `compose` env) (a_, ta) (substitute s1 b)
   ((App a' (Ann b' t1), t2), s2 `compose` s1, e1 ++ e2)
 infer ops env (Let defs a) = infer ops (defs ++ env) a
-infer ops env (Call op t args) = do
-  let ((t', _), s1, e1) = infer ops env t
-  let (args', s2, e2) = inferAll ops (s1 `compose` env) (substitute s1 <$> args)
-  ((Call op (substitute s2 t') (map fst args'), substitute s2 t'), s2 `compose` s1, e1 ++ e2)
+infer ops env (Call op args) = do
+  let (args', s, e) = inferAll ops env args
+  ((Call op (map fst args'), Any), s, e)
 infer _ _ Err = ((Err, Any), [], [])
 
 infer2 :: Ops -> Env -> Expr -> Expr -> ((Expr, Type), (Expr, Type), Substitution, [TypeError])
@@ -663,10 +641,6 @@ check ops env a (For x t) = do
   let y = newName (map fst env) x
   let ((a', t'), s, e) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] t)
   ((a', for [x] (substitute [(y, Var x)] t')), s `compose` [(y, Var y)], e)
--- check _ _ (Var x) t = ((Var x, t), [(x, t)], [])
--- check ops env (And a b) (And ta tb) = do
---   let ((a', ta'), (b', tb'), s, e) = check2 ops env (a, ta) (b, tb)
---   ((And a' b', And ta' tb'), s, e)
 check ops env (Or a b) t = do
   let ((a', ta'), (b', tb'), s, e) = check2 ops env (a, t) (b, t)
   ((Or a' b', ta'), s, e)
@@ -692,6 +666,23 @@ check2 ops env (a, ta) (b, tb) = do
   let ((a', ta'), s1, e1) = check ops env a ta
   let ((b', tb'), s2, e2) = check ops (s1 `compose` env) (substitute s1 b) (substitute s1 tb)
   ((substitute s2 a', substitute s2 ta'), (b', tb'), s2 `compose` s1, e1 ++ e2)
+
+checkApp :: Ops -> Env -> (Expr, Type) -> Expr -> ((Expr, Expr), (Type, Type), Substitution, [TypeError])
+checkApp ops env (a, ta) b = case ta of
+  Var x -> do
+    let x1 = newName ((x ++ "$") : map fst env) (x ++ "$")
+    let x2 = newName (x1 : (x ++ "$") : map fst env) (x ++ "$")
+    let ((a', _), (b', t1), s, e) = check2 ops (pushVars [x1, x2] env) (a, Fun (Var x1) (Var x2)) (b, Var x1)
+    ((a', b'), (t1, substitute s (Var x2)), s `compose` [(x1, Var x1), (x2, Var x2)], e)
+  Or ta1 ta2 -> case checkApp ops env (a, ta1) b of
+    (_, (Err, _), _, _) -> checkApp ops env (a, ta2) b
+    ((a, b), (t1, t2), s1, e1) -> case checkApp ops (s1 `compose` env) (a, substitute s1 ta2) b of
+      (_, (Err, _), _, _) -> ((a, b), (t1, t2), s1, e1)
+      ((a, b), (t1, t2), s2, e2) -> ((a, b), (t1, t2), s2 `compose` s1, e1 ++ e2)
+  Fun t1 t2 -> do
+    let ((a', _), (b', t1'), s, e) = check2 ops env (a, Fun t1 t2) (b, t1)
+    ((a', b'), (t1', substitute s t2), s, e)
+  _ -> ((a, b), (Err, Err), [], [NotAFunction a ta])
 
 instantiate :: [String] -> Expr -> (Expr, Substitution)
 instantiate vars (For x a) | x `occurs` a = do

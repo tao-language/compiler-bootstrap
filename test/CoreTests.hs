@@ -12,9 +12,9 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (f, g, h) = (Var "f", Var "g", Var "h")
 
-  let add a b = Call "int_add" IntT [a, b]
-  let sub a b = Call "int_sub" IntT [a, b]
-  let mul a b = Call "int_mul" IntT [a, b]
+  let add a b = Call "int_add" [a, b]
+  let sub a b = Call "int_sub" [a, b]
+  let mul a b = Call "int_mul" [a, b]
   let ops =
         [ ( "int_add",
             \eval args -> case map (dropTypes . eval) args of
@@ -217,14 +217,14 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' (App (Fun (Or IntT IntT) z) x) `shouldBe` Err
     reduce' (App (Fun (Ann x Err) z) x) `shouldBe` z
     reduce' (App (Fun (Ann x Err) z) y) `shouldBe` Err
-    reduce' (App (Fun (Call "f" a []) z) (Call "f" a [])) `shouldBe` z
+    reduce' (App (Fun (Call "f" []) z) (Call "f" [])) `shouldBe` z
     reduce' (App (Fun Err IntT) Err) `shouldBe` IntT
     reduce' (App (For "y" (Fun y y)) x) `shouldBe` Int 42
     reduce' (App (Var "f") x) `shouldBe` Int 42
     reduce' (App (Or (Var "f") Err) x) `shouldBe` Int 42
     reduce' (App (Or Err (Var "f")) x) `shouldBe` Int 42
     reduce' (App (Or Err Err) x) `shouldBe` Err
-    reduce' (Call "f" a [x, y]) `shouldBe` Call "f" (Let env a) [Let env x, Let env y]
+    reduce' (Call "f" [x, y]) `shouldBe` Call "f" [Let env x, Let env y]
     reduce' Err `shouldBe` Err
 
   it "☯ eval" $ do
@@ -238,8 +238,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval' (Fun x y) `shouldBe` Fun (Int 42) (Num 3.14)
     eval' (And x y) `shouldBe` And (Int 42) (Num 3.14)
     eval' (Or x y) `shouldBe` Or (Int 42) (Num 3.14)
-    eval' (Call "f" IntT [x, y]) `shouldBe` Call "f" IntT [Int 42, Num 3.14]
-    eval' (Call "int_add" IntT [i1, i1]) `shouldBe` Ann i2 IntT
+    eval' (Call "f" [x, y]) `shouldBe` Call "f" [Int 42, Num 3.14]
+    eval' (Call "int_add" [i1, i1]) `shouldBe` i2
     -- eval' (For "x" (And x y)) `shouldBe` For "x" (And x (Num 3.14))
     -- eval' (Fix "x" (And x y)) `shouldBe` Fix "x" (And x (Num 3.14))
     eval' (App z (And x y)) `shouldBe` App z (And (Int 42) (Num 3.14))
@@ -251,11 +251,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- eval' (Var "f") `shouldBe` factorial "f"
     -- eval' (App f x) `shouldBe` App (factorial "f") x
     eval' (App f (Int 0)) `shouldBe` Int 1
-    eval' (App f (Int 1)) `shouldBe` Ann (Int 1) IntT
-    eval' (App f (Int 2)) `shouldBe` Ann (Int 2) IntT
-    eval' (App f (Int 3)) `shouldBe` Ann (Int 6) IntT
-    eval' (App f (Int 4)) `shouldBe` Ann (Int 24) IntT
-    eval' (App f (Int 5)) `shouldBe` Ann (Int 120) IntT
+    eval' (App f (Int 1)) `shouldBe` Int 1
+    eval' (App f (Int 2)) `shouldBe` Int 2
+    eval' (App f (Int 3)) `shouldBe` Int 6
+    eval' (App f (Int 4)) `shouldBe` Int 24
+    eval' (App f (Int 5)) `shouldBe` Int 120
 
   -- it "☯ eval fibonacci" $ do
   --   let fib f = Fix f (case0 `Or` case1 `Or` caseN f)
