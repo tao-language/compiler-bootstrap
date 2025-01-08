@@ -615,24 +615,7 @@ infer ops env (Fun a b) = do
   ((Fun (Ann a' ta) b', Fun ta tb), s, e)
 infer ops env (App a b) = do
   let ((a_, ta), s1, e1) = infer ops env a
-  let checkApp :: Ops -> Env -> (Expr, Type) -> Expr -> ((Expr, Expr), (Type, Type), Substitution, [TypeError])
-      checkApp ops env (a, ta) b = case ta of
-        Var x -> do
-          let x1 = newName ((x ++ "$") : map fst env) (x ++ "$")
-          let x2 = newName (x1 : (x ++ "$") : map fst env) (x ++ "$")
-          let ((a', _), (b', t1), s, e) = check2 ops (pushVars [x1, x2] env) (a, Fun (Var x1) (Var x2)) (b, Var x1)
-          ((a', b'), (t1, substitute s (Var x2)), s `compose` [(x1, Var x1), (x2, Var x2)], e)
-        Or ta1 ta2 -> case checkApp ops env (a, ta1) b of
-          (_, (Err, _), _, _) -> checkApp ops env (a, ta2) b
-          ((a, b), (t1, t2), s1, e1) -> case checkApp ops (s1 `compose` env) (a, substitute s1 ta2) b of
-            (_, (Err, _), _, _) -> ((a, b), (t1, t2), s1, e1)
-            ((a, b), (t1, t2), s2, e2) -> ((a, b), (t1, t2), s2 `compose` s1, e1 ++ e2)
-        Fun t1 t2 -> do
-          let ((a', _), (b', t1'), s, e) = check2 ops env (a, Fun t1 t2) (b, t1)
-          ((a', b'), (t1', substitute s t2), s, e)
-        _ -> ((a, b), (Err, Err), [], [NotAFunction a ta])
-  let ((a', b'), (t1, t2), s2, e2) =
-        checkApp ops (s1 `compose` env) (a_, ta) (substitute s1 b)
+  let ((a', b'), (t1, t2), s2, e2) = checkApp ops (s1 `compose` env) (a_, ta) (substitute s1 b)
   ((App a' (Ann b' t1), t2), s2 `compose` s1, e1 ++ e2)
 infer ops env (Let defs a) = infer ops (defs ++ env) a
 infer ops env (Call op args) = do
@@ -683,6 +666,23 @@ check2 ops env (a, ta) (b, tb) = do
   let ((a', ta'), s1, e1) = check ops env a ta
   let ((b', tb'), s2, e2) = check ops (s1 `compose` env) (substitute s1 b) (substitute s1 tb)
   ((substitute s2 a', substitute s2 ta'), (b', tb'), s2 `compose` s1, e1 ++ e2)
+
+checkApp :: Ops -> Env -> (Expr, Type) -> Expr -> ((Expr, Expr), (Type, Type), Substitution, [TypeError])
+checkApp ops env (a, ta) b = case ta of
+  Var x -> do
+    let x1 = newName ((x ++ "$") : map fst env) (x ++ "$")
+    let x2 = newName (x1 : (x ++ "$") : map fst env) (x ++ "$")
+    let ((a', _), (b', t1), s, e) = check2 ops (pushVars [x1, x2] env) (a, Fun (Var x1) (Var x2)) (b, Var x1)
+    ((a', b'), (t1, substitute s (Var x2)), s `compose` [(x1, Var x1), (x2, Var x2)], e)
+  Or ta1 ta2 -> case checkApp ops env (a, ta1) b of
+    (_, (Err, _), _, _) -> checkApp ops env (a, ta2) b
+    ((a, b), (t1, t2), s1, e1) -> case checkApp ops (s1 `compose` env) (a, substitute s1 ta2) b of
+      (_, (Err, _), _, _) -> ((a, b), (t1, t2), s1, e1)
+      ((a, b), (t1, t2), s2, e2) -> ((a, b), (t1, t2), s2 `compose` s1, e1 ++ e2)
+  Fun t1 t2 -> do
+    let ((a', _), (b', t1'), s, e) = check2 ops env (a, Fun t1 t2) (b, t1)
+    ((a', b'), (t1', substitute s t2), s, e)
+  _ -> ((a, b), (Err, Err), [], [NotAFunction a ta])
 
 instantiate :: [String] -> Expr -> (Expr, Substitution)
 instantiate vars (For x a) | x `occurs` a = do
