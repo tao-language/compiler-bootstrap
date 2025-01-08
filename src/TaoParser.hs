@@ -9,9 +9,9 @@ import Data.List (dropWhileEnd, intercalate, isPrefixOf, isSuffixOf, sort)
 import Data.List.Split (endsWith)
 import Data.Maybe (fromMaybe)
 import qualified Parser as P
-import System.Directory (doesDirectoryExist, doesFileExist, doesPathExist, findFiles, listDirectory)
+import System.Directory (doesDirectoryExist, doesFileExist, doesPathExist, findFiles, getDirectoryContents, listDirectory)
 import System.Environment (lookupEnv)
-import System.FilePath (dropExtension, splitDirectories, splitFileName, splitPath, takeBaseName, takeFileName, (</>))
+import System.FilePath (dropExtension, splitDirectories, splitExtension, splitFileName, splitPath, takeBaseName, takeDirectory, takeExtension, takeFileName, (</>))
 import Tao
 
 type Parser a = P.Parser ParserContext a
@@ -711,7 +711,10 @@ load prelude path dependencies = do
   let pkg0 = (takeBaseName path, [])
   let deps = if prelude == "" then path : dependencies else prelude : path : dependencies
   ((name, modules), errs) <- foldM (flip loadPackage) (pkg0, []) deps
-  let preludeStmts = fromMaybe [] (lookup (prelude </> "@main.tao") modules)
+  -- TODO: instead of importing all prelude statements, import prelude (*)
+  -- TODO: instead of @main.tao do: prelude/@arithmetic.tao, prelude/@bool.tao, prelude/@...
+  --       any file starting with @ is imported in the same namespace as the directory
+  let preludeStmts = fromMaybe [] (lookup (prelude </> "@main") modules)
   let withPrelude (path, stmts) =
         if prelude `isPrefixOf` path
           then (path, stmts)
@@ -737,25 +740,31 @@ loadModule :: [FilePath] -> FilePath -> (Package, [SyntaxError]) -> IO (Package,
 loadModule _ filename (pkg, errs) | filename `elem` map fst (snd pkg) = do
   return (pkg, errs)
 loadModule (base : bases) filename (pkg, errs) = do
-  isFile <- doesFileExist (base </> filename)
-  if isFile
-    then loadModule [] (base </> filename) (pkg, errs)
+  entries <- listDirectory (base </> takeDirectory filename)
+  if any ((dropExtension filename ++ ".") `isPrefixOf`) entries
+    then loadFile (base </> filename) (pkg, errs)
     else loadModule bases filename (pkg, errs)
-loadModule [] filename (pkg, errs) = do
-  src <- readFile filename
-  case P.parse filename (parseModule filename) src of
-    Right (mod, _) -> do
-      return (second (mod :) pkg, errs)
-    Left P.State {name, pos = (row, col), context} -> do
-      let err =
-            SyntaxError
-              { filename = name,
-                row = row,
-                col = col,
-                sourceCode = src,
-                context = context
-              }
-      return (pkg, err : errs)
+loadModule [] filename (pkg, errs) = loadFile filename (pkg, errs)
+
+loadFile :: FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
+loadFile filename (pkg, errs) = case splitExtension filename of
+  (_, "") -> loadFile (filename ++ ".tao") (pkg, errs)
+  (name, ".tao") -> do
+    src <- readFile filename
+    case P.parse filename (parseModule name) src of
+      Right (mod, _) -> do
+        return (second (mod :) pkg, errs)
+      Left P.State {name, pos = (row, col), context} -> do
+        let err =
+              SyntaxError
+                { filename = name,
+                  row = row,
+                  col = col,
+                  sourceCode = src,
+                  context = context
+                }
+        return (pkg, err : errs)
+  _ -> error $ "file extension not supported: " ++ filename
 
 loadAtom :: String -> IO (Expr, Maybe SyntaxError)
 loadAtom src = case P.parse "<run>" parseAtom src of

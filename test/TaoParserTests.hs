@@ -259,8 +259,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ loadModule" $ do
     let pkg = ("pkg", [])
-    let expect = ("pkg", [("examples/empty.tao", [])])
-    loadModule ["examples"] "empty.tao" (pkg, []) `shouldReturn` (expect, [])
+    let expect = ("pkg", [("examples/empty", [])])
+    loadModule ["examples"] "empty" (pkg, []) `shouldReturn` (expect, [])
 
   it "☯ loadModule exists" $ do
     let pkg = ("pkg", [("my-file", [])])
@@ -269,7 +269,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   it "☯ loadPackage" $ do
     let pkg =
           ( "pkg",
-            [ ( "examples/sub/mod.tao",
+            [ ( "examples/sub/mod",
                 [ Def (x, Int 1),
                   Def (y, Int 2)
                 ]
@@ -281,8 +281,8 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   it "☯ load" $ do
     let pkg =
           ( "sub",
-            [ ("examples/empty/empty-file.tao", []),
-              ( "examples/sub/mod.tao",
+            [ ("examples/empty/empty-file", []),
+              ( "examples/sub/mod",
                 [ Def (x, Int 1),
                   Def (y, Int 2)
                 ]

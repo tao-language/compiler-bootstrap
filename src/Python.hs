@@ -239,14 +239,23 @@ data TypeParam
   deriving (Eq, Show)
 
 data BuildOptions = BuildOptions
-  { version :: (Int, Int),
-    prefix :: String,
+  { prefix :: String,
     testPath :: FilePath,
     docsPath :: FilePath,
     maxLineLength :: Int,
     indent :: String
   }
   deriving (Eq, Show)
+
+defaultBuildOptions :: BuildOptions
+defaultBuildOptions =
+  BuildOptions
+    { prefix = "",
+      testPath = "test",
+      docsPath = "docs",
+      maxLineLength = 79,
+      indent = "    "
+    }
 
 -- Taken from help("keywords") in thon 3.12 REPL
 keywords :: [String]
@@ -367,11 +376,6 @@ builtinFunctions =
 reservedNames :: [String]
 reservedNames = keywords ++ builtinFunctions
 
-addUnique :: (Eq a) => a -> [a] -> [a]
-addUnique x [] = [x]
-addUnique x (x' : ys) | x == x' = x : ys
-addUnique x (y : ys) = y : addUnique x ys
-
 --- Syntax sugar ---
 
 int :: Expr
@@ -385,9 +389,6 @@ call f args = Call (Name f) args []
 
 dict :: [(String, Expr)] -> Expr
 dict fields = Dict (map (first String) fields)
-
-record :: [(String, Expr)] -> Expr
-record = Call (Name "record") []
 
 callable :: [Expr] -> Expr -> Expr
 callable args ret =
@@ -415,44 +416,7 @@ raise :: Expr -> Stmt
 raise x = Raise x Nothing
 
 --- Build target ---
-defaultBuildOptions :: BuildOptions
-defaultBuildOptions =
-  BuildOptions
-    { version = (3, 12),
-      prefix = "",
-      testPath = "test",
-      docsPath = "docs",
-      maxLineLength = 79,
-      indent = "    "
-    }
-
--- stmtNames :: Stmt -> [String]
--- stmtNames (Assign [] _) = []
--- stmtNames (Assign (var : vars) value) = case var of
---   Name x -> x : stmtNames (Assign vars value)
---   _ -> stmtNames (Assign vars value)
--- stmtNames (AnnAssign var _ _) = case var of
---   Name x -> [x]
---   _ -> []
--- stmtNames (TypeAlias x _ _) = [x]
--- stmtNames (Import name maybeAlias) = case maybeAlias of
---   Just alias -> [alias]
---   Nothing -> [name]
--- stmtNames (ImportFrom _ exposed) = do
---   let exposedNames ("*", Nothing) = []
---       exposedNames (_, Just alias) = [alias]
---       exposedNames (name, Nothing) = [name]
---   concatMap exposedNames exposed
--- stmtNames (Global names) = names
--- stmtNames (Nonlocal names) = names
--- stmtNames (FunctionDef {name}) = [name]
--- stmtNames (ClassDef {name}) = [name]
--- stmtNames _ = []
-
-prelude :: BuildOptions -> Stmt
-prelude options = do
-  let pkg = T.namePackage options.prefix
-  ImportFrom (pkg ++ ".__prelude__") [("*", Nothing)]
+-- buildFile :: BuildOptions -> FilePath -> T.Context -> FilePath -> IO FilePath
 
 build :: BuildOptions -> FilePath -> T.Package -> IO FilePath
 build options base (name, modules) = do
@@ -505,10 +469,10 @@ buildModule options pkgName base (path, stmts) = do
   -- Write the source file contents.
   -- let mod' = mod {T.stmts = filter (not . T.isTest) mod.stmts}
   let stmts' = filter (not . T.isTest) stmts
-  writeFile (base </> filename) $
-    (emit options (path, stmts') :: Module)
-      & layout
-      & pretty options
+  -- writeFile (base </> filename) $
+  --   (emit options (path, stmts') :: Module)
+  --     & layout
+  --     & pretty options
   return filename
 
 buildTests :: BuildOptions -> String -> FilePath -> T.Module -> IO FilePath
@@ -539,7 +503,7 @@ buildModuleTests options (path, stmts) = do
           & replace '/' '.'
   let stmts' =
         Import "unittest" Nothing
-          : [prelude options]
+          : [] -- [prelude options]
           -- : case exposed of
           --   [] -> []
           --   _ -> [ImportFrom importPath exposed]
@@ -572,11 +536,11 @@ instance Emit Package Package where
         test = []
       }
 
-instance Emit T.Module Module where
-  emit :: BuildOptions -> T.Module -> Module
-  emit options (path, stmts) = do
-    let stmts' = emit options (filter (not . T.isTest) stmts)
-    Module {name = path, body = prelude options : stmts'}
+-- instance Emit T.Module Module where
+--   emit :: BuildOptions -> T.Module -> Module
+--   emit options (path, stmts) = do
+--     let stmts' = emit options (filter (not . T.isTest) stmts)
+--     Module {name = path, body = prelude options : stmts'}
 
 instance Emit T.Stmt [Stmt] where
   emit :: BuildOptions -> T.Stmt -> [Stmt]
@@ -679,9 +643,9 @@ instance Emit T.Expr ([Stmt], Expr) where
   -- emit options (T.Tuple items) = do
   --   let (stmts, items') = emit options items
   --   (stmts, Tuple items')
-  emit options (T.Record fields) = do
-    let (stmts, fields') = emit options fields
-    (stmts, record fields')
+  -- emit options (T.Record fields) = do
+  --   let (stmts, fields') = emit options fields
+  --   (stmts, record fields')
   -- emit options (T.Trait a x) = do
   --   let (stmts, a') = emit options a
   --   case readMaybe x of
