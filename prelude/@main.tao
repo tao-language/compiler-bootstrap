@@ -1,4 +1,4 @@
-import prelude/int (
+import prelude/arithmetic (
   (+),
   (-),
   (*),

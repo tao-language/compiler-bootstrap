@@ -385,6 +385,20 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
+  let name = "examples/prelude/arithmetic-num.tao"
+  it ("☯ " ++ name) $ do
+    (pkg, syntaxErrors) <- load "prelude" name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name (2, 1) "Add",
+            TestPass name (6, 1) "Sub",
+            TestPass name (10, 1) "Mul",
+            TestPass name (14, 1) "Div",
+            TestPass name (18, 1) "Div Int",
+            TestPass name (22, 1) "Pow"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
   let name = "examples/prelude/bool-not.tao"
   it ("☯ " ++ name) $ do
     (pkg, syntaxErrors) <- load "prelude" name []
