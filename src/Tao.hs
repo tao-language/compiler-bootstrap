@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -Wno-unused-do-bind #-}
+{-# OPTIONS_GHC -Wno-type-defaults #-}
 
 module Tao where
 
@@ -153,7 +153,7 @@ buildOps = do
       _ -> Nothing,
     numOp2 "num_div" (/),
     intOp2 "int_divi" Prelude.div,
-    numOp2 "num_divi" (/),
+    numOp2 "num_divi" (\x y -> (fromIntegral . floor) (x / y)),
     intOp2 "int_pow" (^),
     numOp2 "num_pow" (**)
     ]
