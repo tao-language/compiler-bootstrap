@@ -94,6 +94,8 @@ type Package = (String, [Module])
 
 type Module = (String, [Stmt])
 
+type Context = [Module]
+
 data UnitTest = UnitTest
   { filename :: String,
     pos :: (Int, Int),
@@ -632,31 +634,31 @@ simplify :: Expr -> Expr
 --   (a, args) -> app a args
 simplify a = a
 
-eval :: [Module] -> String -> Expr -> Expr
+eval :: Context -> String -> Expr -> Expr
 eval ctx path expr = do
   let (env, expr') = compile ctx path expr
   lift (C.eval runtimeOps (C.let' env expr'))
 
 class Resolve a where
-  resolve :: [Module] -> String -> a -> [(String, Expr)]
+  resolve :: Context -> String -> a -> [(String, Expr)]
 
 instance Resolve String where
-  resolve :: [Module] -> String -> String -> [(String, Expr)]
+  resolve :: Context -> String -> String -> [(String, Expr)]
   resolve ctx path name = case lookup path ctx of
     Just stmts -> resolve ctx path (name, stmts)
     Nothing -> []
 
 instance Resolve (String, [Stmt]) where
-  resolve :: [Module] -> String -> (String, [Stmt]) -> [(String, Expr)]
+  resolve :: Context -> String -> (String, [Stmt]) -> [(String, Expr)]
   resolve ctx path (name, stmts) =
     concatMap (\stmt -> resolve ctx path (name, stmt)) stmts
 
 instance Resolve (String, Stmt) where
-  resolve :: [Module] -> String -> (String, Stmt) -> [(String, Expr)]
+  resolve :: Context -> String -> (String, Stmt) -> [(String, Expr)]
   resolve ctx path (name, stmt) = case stmt of
     Import path' alias names -> case names of
       (x, y) : names -> do
-        let defs = if y == name then resolve ctx (path' ++ ".tao") x else []
+        let defs = if y == name then resolve ctx path' x else []
         defs ++ resolve ctx path (name, Import path' alias names)
       [] | alias == name -> [(path, Tag path')]
       [] -> []
@@ -668,10 +670,10 @@ instance Resolve (String, Stmt) where
     _ -> []
 
 class Compile a where
-  compile :: [Module] -> String -> a
+  compile :: Context -> String -> a
 
 instance Compile (String -> C.Env) where
-  compile :: [Module] -> String -> String -> C.Env
+  compile :: Context -> String -> String -> C.Env
   -- compile ctx path name@"+" = do
   --   let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
   --       compileDef (path, alt) (env, alts) = do
@@ -707,7 +709,7 @@ instance Compile (String -> C.Env) where
     unionBy (\a b -> fst a == fst b) def env
 
 instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
-  compile :: [Module] -> String -> (String, Expr) -> (C.Env, C.Expr)
+  compile :: Context -> String -> (String, Expr) -> (C.Env, C.Expr)
   -- compile ctx path (name@"", expr) = do
   --   let a = lower expr
   --   let env = concatMap (compile ctx path) (delete name (C.freeNames (True, True, False) a))
@@ -732,25 +734,25 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
     (env, C.for xs $ C.dropTypes a')
 
 instance Compile (Expr -> (C.Env, C.Expr)) where
-  compile :: [Module] -> String -> Expr -> (C.Env, C.Expr)
+  compile :: Context -> String -> Expr -> (C.Env, C.Expr)
   compile ctx path expr =
     compile ctx path (C.newName (freeVars expr) "", expr)
 
 class TestSome a where
-  testSome :: [Module] -> ((String, String) -> Bool) -> a -> [TestResult]
+  testSome :: Context -> ((String, String) -> Bool) -> a -> [TestResult]
 
 instance TestSome Package where
-  testSome :: [Module] -> ((String, String) -> Bool) -> Package -> [TestResult]
+  testSome :: Context -> ((String, String) -> Bool) -> Package -> [TestResult]
   testSome ctx filter (_, mods) = do
     concatMap (testSome (ctx ++ mods) filter) mods
 
 instance TestSome Module where
-  testSome :: [Module] -> ((String, String) -> Bool) -> Module -> [TestResult]
+  testSome :: Context -> ((String, String) -> Bool) -> Module -> [TestResult]
   testSome ctx filter (path, stmts) =
     concatMap (\stmt -> testSome ctx filter (path, stmt)) stmts
 
 instance TestSome (String, Stmt) where
-  testSome :: [Module] -> ((String, String) -> Bool) -> (String, Stmt) -> [TestResult]
+  testSome :: Context -> ((String, String) -> Bool) -> (String, Stmt) -> [TestResult]
   testSome ctx filter (path, stmt) = case stmt of
     Import {} -> []
     Def {} -> []
@@ -760,7 +762,7 @@ instance TestSome (String, Stmt) where
     Test {} -> []
 
 instance TestSome UnitTest where
-  testSome :: [Module] -> ((String, String) -> Bool) -> UnitTest -> [TestResult]
+  testSome :: Context -> ((String, String) -> Bool) -> UnitTest -> [TestResult]
   testSome ctx _ t = do
     let (env, expr) = compile ctx t.filename t.expr
     let expect = let (env', a) = compile ctx t.filename (Fun t.expect (Tag ":Ok")) in C.let' (env' ++ env) a
@@ -780,14 +782,14 @@ instance TestSome UnitTest where
       C.Tag ":Ok" -> [TestPass t.filename t.pos t.name]
       got -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
 
-testAll :: (TestSome a) => [Module] -> a -> [TestResult]
+testAll :: (TestSome a) => Context -> a -> [TestResult]
 testAll ctx = testSome ctx (const True)
 
 class Patch a where
-  patch :: [Module] -> [Stmt] -> a -> a
+  patch :: Context -> [Stmt] -> a -> a
 
 instance Patch Expr where
-  patch :: [Module] -> [Stmt] -> Expr -> Expr
+  patch :: Context -> [Stmt] -> Expr -> Expr
   patch _ [] a = a
   patch ctx (rule : rules) expr = case rule of
     Import {} -> expr

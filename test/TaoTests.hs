@@ -412,22 +412,24 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ resolve Name" $ do
     let ctx =
-          [ ( "pkg/a.tao",
+          [ ( "pkg/a",
               [Def (x, i1)]
             ),
-            ( "pkg/b.tao",
+            ( "pkg/b",
               [ Import "pkg/a" "m" [("x", "y")],
                 Def (z, y)
               ]
             )
           ]
 
-    resolve ctx "pkg/a.tao" "x" `shouldBe` [("pkg/a.tao", Let (x, i1) x)]
-    resolve ctx "pkg/a.tao" "y" `shouldBe` []
-    resolve ctx "pkg/b.tao" "m" `shouldBe` [("pkg/b.tao", Tag "pkg/a")]
-    resolve ctx "pkg/b.tao" "x" `shouldBe` []
-    resolve ctx "pkg/b.tao" "y" `shouldBe` [("pkg/a.tao", Let (x, i1) x)]
-    resolve ctx "pkg/b.tao" "z" `shouldBe` [("pkg/b.tao", Let (z, y) z)]
+    -- TODO: import same module (circular import) (pkg/b -- import pkg/b)
+    -- TODO: import all (import pkg/a (*))
+    resolve ctx "pkg/a" "x" `shouldBe` [("pkg/a", Let (x, i1) x)]
+    resolve ctx "pkg/a" "y" `shouldBe` []
+    resolve ctx "pkg/b" "m" `shouldBe` [("pkg/b", Tag "pkg/a")]
+    resolve ctx "pkg/b" "x" `shouldBe` []
+    resolve ctx "pkg/b" "y" `shouldBe` [("pkg/a", Let (x, i1) x)]
+    resolve ctx "pkg/b" "z" `shouldBe` [("pkg/b", Let (z, y) z)]
 
   it "☯ resolve Stmt" $ do
     let ctx =
@@ -449,12 +451,12 @@ run = describe "--==☯ TaoTests ☯==--" $ do
 
   it "☯ compile Name" $ do
     let ctx =
-          [ ( "pkg/a.tao",
+          [ ( "pkg/a",
               [ Def (x, i1),
                 Def (y, y)
               ]
             ),
-            ( "pkg/b.tao",
+            ( "pkg/b",
               [ Import "pkg/a" "m" [("x", "y")],
                 Def (z, y)
               ]
@@ -462,13 +464,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           ]
 
     let compile' path x = compile ctx path x :: C.Env
-    compile' "pkg/a.tao" "x" `shouldBe` [("x", i1')]
-    compile' "pkg/a.tao" "y" `shouldBe` [("y", y')]
-    compile' "pkg/a.tao" "z" `shouldBe` []
-    compile' "pkg/b.tao" "m" `shouldBe` [("m", C.Tag "pkg/a")]
-    compile' "pkg/b.tao" "x" `shouldBe` []
-    compile' "pkg/b.tao" "y" `shouldBe` [("y", i1')]
-    compile' "pkg/b.tao" "z" `shouldBe` [("z", C.Let [("y", i1')] y'), ("y", i1')]
+    compile' "pkg/a" "x" `shouldBe` [("x", i1')]
+    compile' "pkg/a" "y" `shouldBe` [("y", y')]
+    compile' "pkg/a" "z" `shouldBe` []
+    compile' "pkg/b" "m" `shouldBe` [("m", C.Tag "pkg/a")]
+    compile' "pkg/b" "x" `shouldBe` []
+    compile' "pkg/b" "y" `shouldBe` [("y", i1')]
+    compile' "pkg/b" "z" `shouldBe` [("z", C.Let [("y", i1')] y'), ("y", i1')]
 
   it "☯ compile Expr" $ do
     let ctx =
