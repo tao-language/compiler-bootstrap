@@ -7,7 +7,6 @@ import qualified Subprocess
 import System.Directory (doesDirectoryExist, doesFileExist, getDirectoryContents, removeDirectoryRecursive, removeFile, withCurrentDirectory)
 import System.FilePath ((</>))
 import qualified Tao as T
-import TaoParser (loadPackage)
 import Test.Hspec
 
 run :: SpecWith ()

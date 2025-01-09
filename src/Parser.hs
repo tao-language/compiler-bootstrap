@@ -10,7 +10,6 @@ newtype Parser ctx a = Parser (State ctx -> Either (State ctx) (a, State ctx))
 
 data State ctx = State
   { remaining :: String,
-    name :: String,
     pos :: (Int, Int),
     index :: Int,
     context :: [ctx]
@@ -50,9 +49,9 @@ instance Monad (Parser ctx) where
 apply :: Parser ctx a -> State ctx -> Either (State ctx) (a, State ctx)
 apply (Parser p) = p
 
-parse :: String -> Parser ctx a -> String -> Either (State ctx) (a, State ctx)
-parse name (Parser p) remaining =
-  p State {remaining = remaining, name = name, pos = (1, 1), index = 0, context = []}
+parse :: Parser ctx a -> String -> Either (State ctx) (a, State ctx)
+parse (Parser p) remaining =
+  p State {remaining = remaining, pos = (1, 1), index = 0, context = []}
 
 parseFrom :: (Int, Int) -> String -> Parser ctx a -> Parser ctx a
 parseFrom pos remaining (Parser p) =

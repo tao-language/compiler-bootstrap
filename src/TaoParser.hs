@@ -8,6 +8,7 @@ import Data.Function ((&))
 import Data.List (dropWhileEnd, intercalate, isPrefixOf, isSuffixOf, sort)
 import Data.List.Split (endsWith)
 import Data.Maybe (fromMaybe)
+import Debug.Trace (trace)
 import qualified Parser as P
 import System.Directory (doesDirectoryExist, doesFileExist, doesPathExist, findFiles, getDirectoryContents, listDirectory)
 import System.Environment (lookupEnv)
@@ -706,11 +707,17 @@ parseModule name = do
   _ <- P.endOfFile
   return (name, stmts)
 
-load :: FilePath -> FilePath -> [FilePath] -> IO (Package, [SyntaxError])
-load prelude path dependencies = do
+srcPath :: FilePath -> IO [FilePath]
+srcPath path = do
+  home <- lookupEnv "HOME"
+  let homePath = fromMaybe "." home </> ".tao" </> "src"
+  return [takeDirectory path, homePath]
+
+load :: [FilePath] -> FilePath -> FilePath -> [FilePath] -> IO (Package, [SyntaxError])
+load bases prelude path dependencies = do
   let pkg0 = (takeBaseName path, [])
   let deps = if prelude == "" then path : dependencies else prelude : path : dependencies
-  ((name, modules), errs) <- foldM (flip loadPackage) (pkg0, []) deps
+  ((name, modules), errs) <- foldM (flip (loadModule bases)) (pkg0, []) deps
   -- TODO: instead of importing all prelude statements, import prelude (*)
   -- TODO: instead of @main.tao do: prelude/@arithmetic.tao, prelude/@bool.tao, prelude/@...
   --       any file starting with @ is imported in the same namespace as the directory
@@ -721,43 +728,56 @@ load prelude path dependencies = do
           else (path, preludeStmts ++ stmts)
   return ((name, map withPrelude modules), errs)
 
-loadPackage :: FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
-loadPackage path (pkg, errs) | ".tao" `isSuffixOf` path = do
-  let (base, filename) = splitFileName path
-  home <- lookupEnv "HOME"
-  let stdlibPath = fromMaybe "." home </> ".tao" </> "src"
-  loadModule [base, stdlibPath] filename (pkg, errs)
-loadPackage path (pkg, errs) = do
-  isDir <- doesDirectoryExist path
-  if isDir
-    then do
-      files <- walkDirectory path ""
-      foldM (flip (loadModule [path])) (pkg, errs) files
-    else do
-      loadPackage (path ++ ".tao") (pkg, errs)
-
 loadModule :: [FilePath] -> FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
-loadModule _ filename (pkg, errs) | filename `elem` map fst (snd pkg) = do
+loadModule _ path (pkg, errs) | path `elem` map fst (snd pkg) = do
   return (pkg, errs)
-loadModule (base : bases) filename (pkg, errs) = do
-  entries <- listDirectory (base </> takeDirectory filename)
-  if any ((dropExtension filename ++ ".") `isPrefixOf`) entries
-    then loadFile (base </> filename) (pkg, errs)
-    else loadModule bases filename (pkg, errs)
-loadModule [] filename (pkg, errs) = loadFile filename (pkg, errs)
+loadModule (base : bases) path (pkg, errs) = do
+  loaded <- loadPath base path (pkg, errs)
+  case loaded of
+    Just (pkg, errs) -> return (pkg, errs)
+    Nothing -> loadModule bases path (pkg, errs)
+loadModule [] path (pkg, errs) = do
+  loaded <- loadPath "" path (pkg, errs)
+  case loaded of
+    Just (pkg, errs) -> return (pkg, errs)
+    Nothing -> error ("module not found: " ++ path)
 
-loadFile :: FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
-loadFile filename (pkg, errs) = case splitExtension filename of
-  (_, "") -> loadFile (filename ++ ".tao") (pkg, errs)
+loadPath :: FilePath -> FilePath -> (Package, [SyntaxError]) -> IO (Maybe (Package, [SyntaxError]))
+loadPath base path (pkg, errs) = do
+  isDir <- doesDirectoryExist (base </> path)
+  isFile <- do
+    dirFiles <- listDirectory (base </> takeDirectory path)
+    return (any ((takeBaseName path ++ ".") `isPrefixOf`) dirFiles)
+  case (isDir, isFile) of
+    (True, True) -> do
+      (pkg, errs) <- loadDir base path (pkg, errs)
+      (pkg, errs) <- loadFile base path (pkg, errs)
+      return (Just (pkg, errs))
+    (True, False) -> do
+      (pkg, errs) <- loadDir base path (pkg, errs)
+      return (Just (pkg, errs))
+    (False, True) -> do
+      (pkg, errs) <- loadFile base path (pkg, errs)
+      return (Just (pkg, errs))
+    (False, False) -> return Nothing
+
+loadDir :: FilePath -> FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
+loadDir base path (pkg, errs) = do
+  files <- walkDirectory base path
+  foldM (flip (loadFile base)) (pkg, errs) files
+
+loadFile :: FilePath -> FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
+loadFile base filename (pkg, errs) = case splitExtension filename of
+  (_, "") -> loadFile base (filename ++ ".tao") (pkg, errs)
   (name, ".tao") -> do
-    src <- readFile filename
-    case P.parse filename (parseModule name) src of
+    src <- readFile (base </> filename)
+    case P.parse (parseModule name) src of
       Right (mod, _) -> do
         return (second (mod :) pkg, errs)
-      Left P.State {name, pos = (row, col), context} -> do
+      Left P.State {pos = (row, col), context} -> do
         let err =
               SyntaxError
-                { filename = name,
+                { filename = base </> filename,
                   row = row,
                   col = col,
                   sourceCode = src,
@@ -766,13 +786,13 @@ loadFile filename (pkg, errs) = case splitExtension filename of
         return (pkg, err : errs)
   _ -> error $ "file extension not supported: " ++ filename
 
-loadAtom :: String -> IO (Expr, Maybe SyntaxError)
-loadAtom src = case P.parse "<run>" parseAtom src of
+loadAtom :: String -> String -> IO (Expr, Maybe SyntaxError)
+loadAtom filename src = case P.parse parseAtom src of
   Right (a, _) -> return (a, Nothing)
-  Left P.State {name, pos = (row, col), context} -> do
+  Left P.State {pos = (row, col), context} -> do
     let err =
           SyntaxError
-            { filename = name,
+            { filename = filename,
               row = row,
               col = col,
               sourceCode = src,
@@ -780,11 +800,11 @@ loadAtom src = case P.parse "<run>" parseAtom src of
             }
     return (Err, Just err)
 
-loadAtoms :: [String] -> IO [(Expr, Maybe SyntaxError)]
-loadAtoms [] = return []
-loadAtoms (src : srcs) = do
-  result <- loadAtom src
-  results <- loadAtoms srcs
+loadAtoms :: String -> [String] -> IO [(Expr, Maybe SyntaxError)]
+loadAtoms _ [] = return []
+loadAtoms filename (src : srcs) = do
+  result <- loadAtom filename src
+  results <- loadAtoms filename srcs
   return (result : results)
 
 walkDirectory :: FilePath -> FilePath -> IO [FilePath]
