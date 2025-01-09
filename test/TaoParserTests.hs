@@ -12,7 +12,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (a, b, c) = (Var "a", Var "b", Var "c")
   let parse' :: Parser a -> String -> Either ([ParserContext], String) (a, String)
-      parse' parser src = case P.parse "TaoParserTests" parser src of
+      parse' parser src = case P.parse parser src of
         Right (x, P.State {remaining}) -> Right (x, remaining)
         Left P.State {context, remaining} -> Left (context, remaining)
 
@@ -258,30 +258,17 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   --   withCurrentDirectory "examples" (parsePackage "empty.tao") `shouldReturn` (pkg, [])
 
   it "☯ loadModule" $ do
-    let pkg = ("pkg", [])
-    let expect = ("pkg", [("examples/empty", [])])
-    loadModule ["examples"] "empty" (pkg, []) `shouldReturn` (expect, [])
-
-  it "☯ loadModule exists" $ do
-    let pkg = ("pkg", [("my-file", [])])
-    loadModule ["base-path"] "my-file" (pkg, []) `shouldReturn` (pkg, [])
-
-  it "☯ loadPackage" $ do
-    let pkg =
-          ( "pkg",
-            [ ( "examples/sub/mod",
-                [ Def (x, Int 1),
-                  Def (y, Int 2)
-                ]
-              )
-            ]
-          )
-    loadPackage "examples/sub" (("pkg", []), []) `shouldReturn` (pkg, [] :: [SyntaxError])
+    let pkg = ("pkg", [("exists", [])])
+    loadModule [] "exists" (pkg, []) `shouldReturn` (("pkg", [("exists", [])]), [])
+    loadModule [] "examples/empty" (pkg, []) `shouldReturn` (("pkg", [("examples/empty", []), ("examples/empty/empty-file", []), ("exists", [])]), [])
+    loadModule ["examples"] "empty" (pkg, []) `shouldReturn` (("pkg", [("empty", []), ("empty/empty-file", []), ("exists", [])]), [])
+    loadModule ["examples/empty"] "" (pkg, []) `shouldReturn` (("pkg", [("empty-file", []), ("exists", [])]), [])
 
   it "☯ load" $ do
     let pkg =
           ( "sub",
-            [ ("examples/empty/empty-file", []),
+            [ ("examples/empty", []),
+              ("examples/empty/empty-file", []),
               ( "examples/sub/mod",
                 [ Def (x, Int 1),
                   Def (y, Int 2)
@@ -290,4 +277,4 @@ run = describe "--==☯ TaoParser ☯==--" $ do
             ]
           )
     let errors = []
-    load "" "examples/sub" ["examples/empty"] `shouldReturn` (pkg, errors)
+    load [] "" "examples/sub" ["examples/empty"] `shouldReturn` (pkg, errors)
