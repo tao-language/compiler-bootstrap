@@ -9,7 +9,7 @@ import Data.List (intercalate, isSuffixOf, sortBy, union)
 import Data.Maybe (fromMaybe)
 import qualified Debug.Trace as Debug
 import qualified PrettyPrint as PP
-import Stdlib (replace)
+import Stdlib (replace, replaceString)
 import System.Directory (copyFile, createDirectory, createDirectoryIfMissing, doesPathExist, removeDirectoryRecursive)
 import System.FilePath (joinPath, splitDirectories, splitFileName, splitPath, takeDirectory, takeFileName, (</>))
 import qualified Tao as T
@@ -888,7 +888,7 @@ instance Layout Module where
 
 instance Layout [Stmt] where
   layout :: [Stmt] -> PP.Layout
-  layout stmts = PP.join [PP.Text "\n"] (map layout stmts)
+  layout stmts = PP.join [PP.NewLine] (map layout stmts)
 
 instance Layout Stmt where
   layout :: Stmt -> PP.Layout
@@ -911,30 +911,31 @@ instance Layout Stmt where
   layout If {test, body, orelse = []} = do
     PP.Text "if "
       : layout test
-      ++ [PP.Text ":", PP.Indent (PP.Text "\n" : layout body)]
+      ++ [PP.Text ":", PP.Indent (PP.NewLine : layout body)]
   layout If {test, body, orelse} = do
     layout If {test = test, body = body, orelse = []}
-      ++ [PP.Text "\nelse:", PP.Indent (PP.Text "\n" : layout orelse)]
+      ++ [PP.NewLine, PP.Text "else:", PP.Indent (PP.NewLine : layout orelse)]
   layout def@FunctionDef {} = do
     let body = if null def.body then [Pass] else def.body
     PP.Text ("def " ++ def.name)
       : layoutCollection "(" "," ")" (map layout def.args)
       ++ maybe [] (\t -> PP.Text " -> " : layout t) def.returns
-      ++ [PP.Text ":", PP.Indent (PP.Text "\n" : layout body)]
+      ++ [PP.Text ":", PP.Indent (PP.NewLine : layout body)]
   layout def@ClassDef {} = do
     let body = if null def.body then [Pass] else def.body
     PP.Text ("class " ++ def.name)
       : case def.bases of
         [] -> []
         bases -> layoutCollection "(" "," ")" (map layout bases)
-      ++ [PP.Text ":", PP.Indent (PP.Text "\n" : layout body)]
+      ++ [PP.Text ":", PP.Indent (PP.NewLine : layout body)]
   layout (Return expr) =
     [ PP.Text "return ",
       PP.Or
         (layout expr)
         [ PP.Text "(",
-          PP.Indent (PP.Text "\n" : layout expr),
-          PP.Text "\n)"
+          PP.Indent (PP.NewLine : layout expr),
+          PP.NewLine,
+          PP.Text ")"
         ]
     ]
   layout (Match arg cases) = do
@@ -944,12 +945,12 @@ instance Layout Stmt where
           PP.Text "case "
             : layout pat
             ++ maybe [] (\e -> PP.Text " if " : layout e) guard
-            ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layout body), PP.Text "\n"]
+            ++ [PP.Text ":", PP.Indent (PP.NewLine : concatMap layout body), PP.NewLine]
     let layoutCase (MatchSequence [pat], guard, body) = layoutCase' (pat, guard, body)
         layoutCase (pat, guard, body) = layoutCase' (pat, guard, body)
     PP.Text "match "
       : layoutArg arg
-      ++ [PP.Text ":", PP.Indent (PP.Text "\n" : concatMap layoutCase cases)]
+      ++ [PP.Text ":", PP.Indent (PP.NewLine : concatMap layoutCase cases)]
   layout (Raise exc from) =
     PP.Text "raise "
       : layout exc
@@ -978,8 +979,7 @@ instance Layout Expr where
   layout (Float n) = [PP.Text $ show n]
   layout (String s) = case s of
     s | '\'' `notElem` s -> [PP.Text $ "'" ++ s ++ "'"]
-    s | '"' `notElem` s -> [PP.Text $ "\"" ++ s ++ "\""]
-    s -> error $ "TODO: layout String with quotes: " ++ show s
+    s -> [PP.Text $ "\"" ++ replaceString "\"" "\\\"" s ++ "\""]
   layout (Name x) = [PP.Text x]
   layout (Tuple [a]) = [PP.Text "("] ++ layout a ++ [PP.Text ",)"]
   layout (Tuple items) = layoutCollection "(" "," ")" (map layout items)
@@ -1002,42 +1002,46 @@ instance Layout Expr where
   -- TODO: remove redundant parentheses
   -- TODO: break long lines
   layout (UnaryOp op a) = do
-    let showOp UAdd = "+"
-        showOp USub = "-"
-        showOp Not = "not "
-        showOp Invert = "~"
-    PP.Text (showOp op) : layout a
+    let op' = case op of
+          UAdd -> "+"
+          USub -> "-"
+          Not -> "not "
+          Invert -> "~"
+    PP.Text op' : layout a
   layout (BinOp a op b) = do
-    let showOp Add = " + "
-        showOp Sub = " - "
-        showOp Mult = " * "
-        showOp Div = " / "
-        showOp FloorDiv = " // "
-        showOp Mod = " % "
-        showOp Pow = "**"
-        showOp LShift = " << "
-        showOp RShift = " >> "
-        showOp BitOr = " | "
-        showOp BitXor = " ^ "
-        showOp BitAnd = " & "
-        showOp MatMult = " @ "
-    PP.Text "(" : layout a ++ [PP.Text $ showOp op] ++ layout b ++ [PP.Text ")"]
+    let op' = case op of
+          Add -> " + "
+          Sub -> " - "
+          Mult -> " * "
+          Div -> " / "
+          FloorDiv -> " // "
+          Mod -> " % "
+          Pow -> "**"
+          LShift -> " << "
+          RShift -> " >> "
+          BitOr -> " | "
+          BitXor -> " ^ "
+          BitAnd -> " & "
+          MatMult -> " @ "
+    PP.Text "(" : layout a ++ [PP.Text op'] ++ layout b ++ [PP.Text ")"]
   layout (BoolOp a op b) = do
-    let showOp And = " and "
-        showOp Or = " or "
-    PP.Text "(" : layout a ++ [PP.Text $ showOp op] ++ layout b ++ [PP.Text ")"]
+    let op' = case op of
+          And -> " and "
+          Or -> " or "
+    PP.Text "(" : layout a ++ [PP.Text op'] ++ layout b ++ [PP.Text ")"]
   layout (Compare a op b) = do
-    let showOp Eq = " == "
-        showOp NotEq = " != "
-        showOp Lt = " < "
-        showOp LtE = " <= "
-        showOp Gt = " > "
-        showOp GtE = " >= "
-        showOp Is = " is "
-        showOp IsNot = " is not "
-        showOp In = " in "
-        showOp NotIn = " not in "
-    PP.Text "(" : layout a ++ [PP.Text $ showOp op] ++ layout b ++ [PP.Text ")"]
+    let op' = case op of
+          Eq -> " == "
+          NotEq -> " != "
+          Lt -> " < "
+          LtE -> " <= "
+          Gt -> " > "
+          GtE -> " >= "
+          Is -> " is "
+          IsNot -> " is not "
+          In -> " in "
+          NotIn -> " not in "
+    PP.Text "(" : layout a ++ [PP.Text op'] ++ layout b ++ [PP.Text ")"]
   layout a = error $ "TODO: layout: " ++ show a
 
 instance Layout (String, Maybe Expr, Maybe Expr) where
@@ -1053,6 +1057,6 @@ layoutCollection open delim close items =
   [ PP.Text open,
     PP.Or
       (PP.join [PP.Text $ delim ++ " "] items)
-      [PP.Indent (PP.Text "\n" : PP.join [PP.Text ",\n"] items), PP.Text ",\n"],
+      [PP.Indent (PP.NewLine : PP.join [PP.Text ",", PP.NewLine] items), PP.Text ",", PP.NewLine],
     PP.Text close
   ]
