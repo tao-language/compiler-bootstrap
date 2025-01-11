@@ -105,7 +105,7 @@ run = describe "--==☯ Python ☯==--" $ do
 
   it "☯ build factorial" $ do
     build options ["examples"] "prelude" "factorial.tao" [] `shouldReturn` "build"
-    True `shouldBe` True
+    Subprocess.run "build" "python" ["-m", "unittest", "-v", "factorial_test.py"]
 
   -- it "☯ build" $ do
   --   putStrLn "> parsePackage"

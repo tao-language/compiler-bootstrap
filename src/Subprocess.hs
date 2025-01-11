@@ -1,5 +1,6 @@
 module Subprocess where
 
+import Control.Monad (void)
 import Data.Char (isSpace)
 import Data.List (dropWhileEnd, intercalate)
 import GHC.IO.Exception (ExitCode (..))
@@ -7,10 +8,14 @@ import GHC.IO.Handle (hGetContents)
 import System.Process (CreateProcess (std_err, std_out), StdStream (CreatePipe), createProcess, cwd, proc, waitForProcess)
 
 run :: FilePath -> String -> [String] -> IO ()
-run workingDirectory cmd args = do
+run workingDirectory cmd args =
+  void (getOutput workingDirectory cmd args)
+
+getOutput :: FilePath -> String -> [String] -> IO String
+getOutput workingDirectory cmd args = do
   let trim = dropWhileEnd isSpace . dropWhile isSpace
   let command = '>' : ' ' : unwords (cmd : args)
-  putStrLn command
+  putStr command
   (_, Just stdout, Just stderr, p) <-
     createProcess
       (proc cmd args)
@@ -20,8 +25,15 @@ run workingDirectory cmd args = do
         }
   status <- waitForProcess p
   case status of
-    ExitSuccess -> return ()
+    ExitSuccess -> do
+      out <- hGetContents stdout
+      putStrLn (trim out)
+      err <- hGetContents stderr
+      putStrLn (trim err)
+      return out
     ExitFailure _ -> do
       out <- hGetContents stdout
+      putStrLn (trim out)
       err <- hGetContents stderr
-      fail (intercalate "\n" ["", command, trim out, trim err, ""])
+      putStrLn (trim err)
+      fail command

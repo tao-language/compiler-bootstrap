@@ -7,11 +7,12 @@ import Data.Foldable (foldlM, foldrM)
 import Data.Function ((&))
 import Data.List (intercalate, isSuffixOf, sortBy, union)
 import Data.Maybe (fromMaybe)
+import Debug.Trace (trace)
 import qualified Debug.Trace as Debug
 import qualified PrettyPrint as PP
-import Stdlib (replace, replaceString)
+import Stdlib (filterMap, replace, replaceString)
 import System.Directory (copyFile, createDirectory, createDirectoryIfMissing, doesPathExist, removeDirectoryRecursive)
-import System.FilePath (joinPath, splitDirectories, splitFileName, splitPath, takeDirectory, takeFileName, (</>))
+import System.FilePath (joinPath, splitDirectories, splitFileName, splitPath, takeBaseName, takeDirectory, takeFileName, (</>))
 import qualified Tao as T
 import qualified TaoParser as P
 import Text.Read (readMaybe)
@@ -436,123 +437,49 @@ build options bases prelude path dependencies = do
 
 buildModule :: BuildOptions -> T.Context -> FilePath -> IO FilePath
 buildModule options ctx path = do
-  let path' = options.buildDir </> replace '-' '_' path ++ ".py"
+  let path' = options.buildDir </> replace '-' '_' path
   createDirectoryIfMissing True (takeDirectory path')
-  stmts <- case lookup path ctx of
-    Just stmts -> return stmts
+  (imports, defs, tests) <- case lookup path ctx of
+    Just stmts ->
+      return
+        ( filter T.isImport stmts,
+          filterMap T.asDef stmts,
+          filter T.isTest stmts
+        )
     Nothing -> do
       putStrLn ("module not found: " ++ path)
-      return []
-  (concatMap (emit options) stmts :: [Stmt])
+      return ([], [], [])
+
+  -- Source file
+  (emit options (imports ++ map T.Def defs) :: [Stmt])
+    & Module path
     & layout
     & pretty options
-    & writeFile path'
+    & writeFile (path' ++ ".py")
+
+  -- Test file
+  let imports' =
+        emit options $
+          T.Import "unittest" "unittest" []
+            : ( concatMap (T.bindings . fst) defs
+                  & map (\x -> (x, x))
+                  & T.Import path (takeBaseName path)
+              )
+            : imports
+  let unitTest =
+        ClassDef
+          { name = "Test" ++ T.nameCamelCaseUpper path,
+            bases = [Name "unittest" `Attribute` "TestCase"],
+            body = emit options tests,
+            decorators = [],
+            typeParams = []
+          }
+  Module path (imports' ++ [unitTest])
+    & layout
+    & pretty options
+    & writeFile (path' ++ "_test.py")
+
   return path'
-
--- build :: BuildOptions -> FilePath -> T.Package -> IO FilePath
--- build options base (name, modules) = do
---   let pkgPath = base </> "python"
---   let srcPath = pkgPath </> T.nameSnakeCase name
---   let testPath = pkgPath </> options.testPath
---   let docsPath = pkgPath </> options.docsPath
-
---   -- Initialize build path
---   pkgPathExists <- doesPathExist pkgPath
---   when pkgPathExists (removeDirectoryRecursive pkgPath)
---   createDirectoryIfMissing True pkgPath
-
---   -- Create project files.
---   writeFile (pkgPath </> "pyproject.toml") ""
---   -- TODO: create README.md
---   -- TODO: create LICENSE
-
---   -- Create source files
---   let options' = options {prefix = name}
---   let modules' = sortBy (\m n -> compare (fst m) (fst n)) modules
---   files <- mapM (buildModule options' name srcPath) modules'
---   copyFile "src/target/python/__tao__.py" (srcPath </> "__prelude__.py")
-
---   createDirectory testPath
---   writeFile (testPath </> "__init__.py") ""
---   files <- mapM (buildTests options' name testPath) modules'
-
---   -- TODO: Create docs
---   createDirectory docsPath
-
---   return pkgPath
-
--- buildDir :: FilePath -> [FilePath] -> IO ()
--- buildDir base dirs = do
---   exists <- doesPathExist base
---   unless exists $ do
---     createDirectoryIfMissing True base
---     writeFile (base </> "__init__.py") ""
---   case dirs of
---     [] -> return ()
---     (dir : subdirs) -> buildDir (base </> dir) subdirs
-
--- buildModule :: BuildOptions -> String -> FilePath -> T.Module -> IO FilePath
--- buildModule options pkgName base (path, stmts) = do
---   -- Initialize the file path recursively.
---   let filename = replace '-' '_' path ++ ".py"
---   buildDir base (splitPath $ takeDirectory filename)
-
---   -- Write the source file contents.
---   -- let mod' = mod {T.stmts = filter (not . T.isTest) mod.stmts}
---   let stmts' = filter (not . T.isTest) stmts
---   -- writeFile (base </> filename) $
---   --   (emit options (path, stmts') :: Module)
---   --     & layout
---   --     & pretty options
---   return filename
-
--- buildTests :: BuildOptions -> String -> FilePath -> T.Module -> IO FilePath
--- buildTests options pkgName base (path, stmts) = do
---   -- Initialize the file path recursively.
---   let (dir, name) = splitFileName (replace '-' '_' path)
---   let filename = dir </> "test_" ++ name ++ ".py"
---   buildDir base (splitPath $ takeDirectory filename)
-
---   -- Write the test file contents.
---   let options' = options {prefix = options.prefix ++ '/' : path}
---   writeFile (base </> filename) $
---     buildModuleTests options' (path, stmts)
---       & layout
---       & pretty options'
---   return filename
-
--- buildModuleTests :: BuildOptions -> T.Module -> Module
--- buildModuleTests options (path, stmts) = do
---   let path' = splitDirectories path & filter (/= ".")
---   -- let exposed =
---   --       T.resolveNames options.prefix mod
---   --         & map (\(_, x) -> (T.nameIdentifier x & T.nameSnakeCase, Nothing))
---   let importPath =
---         options.prefix
---           & drop 1
---           & replace '-' '_'
---           & replace '/' '.'
---   let stmts' =
---         Import "unittest" Nothing
---           : [] -- [prelude options]
---           -- : case exposed of
---           --   [] -> []
---           --   _ -> [ImportFrom importPath exposed]
---           ++ emit options (filter T.isImport stmts)
---           ++ [ ClassDef
---                  { name = "Test" ++ T.nameCamelCaseUpper (takeFileName path),
---                    bases = [Attribute (Name "unittest") "TestCase"],
---                    body = emit options (filter T.isTest stmts),
---                    decorators = [],
---                    typeParams = []
---                  },
---                If
---                  { test = Compare (Name "__name__") Eq (String "__main__"),
---                    body = [Assign [] (Call (Attribute (Name "unittest") "main") [] [])],
---                    orelse = []
---                  }
---              ]
---   Module {name = "test_" ++ path, body = stmts'}
 
 class Emit a b where
   emit :: BuildOptions -> a -> b
@@ -648,6 +575,7 @@ instance Emit T.Expr ([Stmt], Expr) where
 instance Emit (Expr -> Stmt) (T.Expr -> [Stmt]) where
   emit :: BuildOptions -> (Expr -> Stmt) -> T.Expr -> [Stmt]
   emit options stmt = \case
+    T.Any -> [Pass]
     T.Match [] cases -> do
       let x = C.newName (concatMap (\(xs, _, _) -> xs) cases) "_match"
       let def = T.Def (T.Var x, T.Match [] cases)
@@ -656,9 +584,12 @@ instance Emit (Expr -> Stmt) (T.Expr -> [Stmt]) where
       let (s, arg) = emit options (T.and' args)
       let cases' = emit options stmt cases
       s ++ [Match arg cases']
-    a -> do
-      let (s, a') = emit options a
-      s ++ [stmt a']
+    a -> case T.letOf a of
+      (defs, T.Any) -> concatMap (emit options) defs
+      (defs, a) -> do
+        let s1 = concatMap (emit options) defs
+        let (s2, a') = emit options a
+        s1 ++ s2 ++ [stmt a']
 
 instance Emit T.Pattern Pattern where
   emit :: BuildOptions -> T.Pattern -> Pattern
@@ -733,52 +664,6 @@ instance Emit (T.Pattern, T.Expr) [Stmt] where
         ]
     (p, a) -> error $ "TODO: emit Def " ++ show (p, a)
 
--- emit options (ts, T.PVar x, b) = case (lookup x ts, T.lambdaOf "_" b) of {}
---     (Nothing, ([], b)) -> do
---       let (stmts, b') = emit options b
---       let def = Assign [Name x] b'
---       stmts ++ [def]
---     (Just t, ([], b)) -> do
---       let (stmts1, t') = emit options t
---       let (stmts2, b') = emit options b
---       let def = AnnAssign (Name x) t' (Just b')
---       stmts1 ++ stmts2 ++ [def]
---     (Nothing, (xs, b)) -> do
---       let (body, b') = emit options b
---       let def =
---             FunctionDef
---               { name = x,
---                 args = map (,Nothing,Nothing) xs,
---                 body = body ++ [Return b'],
---                 decorators = [],
---                 returns = Nothing,
---                 typeParams = [],
---                 async = False
---               }
---       [def]
---     (Just t, (xs, b)) -> do
---       let emitArg :: (String, T.Expr) -> ([Stmt], [(String, Maybe Expr, Maybe Expr)]) -> ([Stmt], [(String, Maybe Expr, Maybe Expr)])
---           emitArg (x, t) (stmts, args) = do
---             let (stmts', t') = emit options t
---             (stmts' ++ stmts, (x, Just t', Nothing) : args)
---       let (ts, ret) = T.funOf t
---       let (stmts1, args) = foldr emitArg ([], []) (zip xs ts)
---       let (stmts2, ret') = emit options ret
---       let (body, b') = emit options b
---       let def =
---             FunctionDef
---               { name = x,
---                 args = args,
---                 body = body ++ [Return b'],
---                 decorators = [],
---                 returns = Just ret',
---                 typeParams = [],
---                 async = False
---               }
---       stmts1 ++ stmts2 ++ [def]
---   emit options (ts, T.PMeta _ p, b) = emit options (ts, p, b)
---   emit options (ts, p, b) = error $ "TODO: emit Definition " ++ show p
-
 instance Emit T.Stmt [Stmt] where
   emit :: BuildOptions -> T.Stmt -> [Stmt]
   emit options = \case
@@ -788,7 +673,8 @@ instance Emit T.Stmt [Stmt] where
             | otherwise = (x, Just y)
       let path' = path & replace '/' '.' & replace '-' '_'
       let alias' = if path == alias || ('/' : alias) `isSuffixOf` path then Nothing else Just alias
-      Import path' alias' : [ImportFrom path' (map nameAlias names) | names /= []]
+      [Import path' alias' | alias `notElem` map snd names]
+        ++ [ImportFrom path' (map nameAlias names) | names /= []]
     T.Def def -> emit options def
     T.Test pos name a p -> do
       let (s1, a') = emit options a
@@ -797,7 +683,11 @@ instance Emit T.Stmt [Stmt] where
             FunctionDef
               { name = "test_" ++ T.nameSnakeCase name,
                 args = [("self", Nothing, Nothing)],
-                body = [Assign [] (Call (Attribute (Name "self") "assertEqual") [a', b'] [])],
+                body =
+                  [ Assign [Name "actual"] a',
+                    Assign [Name "expect"] b',
+                    Assign [] (Call (Attribute (Name "self") "assertEqual") [Name "actual", Name "expect"] [])
+                  ],
                 decorators = [],
                 returns = Nothing,
                 typeParams = [],
@@ -806,74 +696,9 @@ instance Emit T.Stmt [Stmt] where
       s1 ++ s2 ++ [def]
     stmt -> error $ "TODO: emit Stmt: " ++ show stmt
 
--- instance Emit [T.Stmt] [Stmt] where
---   emit :: BuildOptions -> [T.Stmt] -> [Stmt]
---   emit _ [] = []
---   emit options (stmt : stmts) = emit options stmt ++ emit options stmts
-
--- instance Emit [(String, T.Expr)] ([Stmt], [(String, Expr)]) where
---   emit :: BuildOptions -> [(String, T.Expr)] -> ([Stmt], [(String, Expr)])
---   emit _ [] = ([], [])
---   emit options ((x, a) : args) = do
---     let (stmts1, a') = emit options a
---     let (stmts2, args') = emit options args
---     (stmts1 ++ stmts2, (x, a') : args')
-
--- instance Emit [(String, (Maybe T.Expr, Maybe T.Expr))] ([Stmt], [(String, Expr)]) where
---   emit :: BuildOptions -> [(String, (Maybe T.Expr, Maybe T.Expr))] -> ([Stmt], [(String, Expr)])
---   emit _ [] = ([], [])
---   emit options ((x, (a, _)) : args) = do
---     let (stmts1, a') = emit options (fromMaybe T.Err a)
---     let (stmts2, args') = emit options args
---     (stmts1 ++ stmts2, (x, a') : args')
-
--- instance Emit T.Case ([Stmt], String -> (Pattern, Maybe Expr, [Stmt])) where
---   emit :: BuildOptions -> T.Case -> ([Stmt], String -> (Pattern, Maybe Expr, [Stmt]))
---   emit options (T.Case [p] Nothing b) = do
---     let (stmts, p') = emit options p
---     let (body, b') = emit options b
---     let case' x = (p', Nothing, body ++ [Assign [Name x] b'])
---     (stmts, case')
---   emit options (T.Case ps (Just guard) b) = error $ "TODO: emit ps " ++ show (T.Case ps (Just guard) b)
-
--- instance Emit [T.Case] ([Stmt], String -> [(Pattern, Maybe Expr, [Stmt])]) where
---   emit :: BuildOptions -> [T.Case] -> ([Stmt], String -> [(Pattern, Maybe Expr, [Stmt])])
---   emit _ [] = ([], const [])
---   emit options (case_ : cases) = do
---     let (stmts1, case') = emit options case_
---     let (stmts2, cases') = emit options cases
---     (stmts1 ++ stmts2, \x -> case' x : cases' x)
-
--- instance Emit T.Pattern ([Stmt], Pattern) where
---   emit :: BuildOptions -> T.Pattern -> ([Stmt], Pattern)
---   emit _ (T.Var "_") = ([], MatchValue (Name "_"))
---   emit _ (T.Int i) = ([], MatchValue (Integer i))
---   -- -- PNum Double
---   emit _ (T.Var x) = ([], MatchValue (Name x))
---   -- -- PType [String]
---   -- -- PTuple [Pattern]
---   -- -- PRecord [(String, Pattern)]
---   -- -- PTag String [Pattern]
---   -- -- PFun Pattern Pattern
---   -- -- POr [Pattern]
---   -- -- PEq Expr
---   -- -- PErr
---   emit options p = error $ "TODO: emit " ++ show p
-
--- instance Emit Package Package where
---   emit :: BuildOptions -> Package -> Package
---   emit options pkg = do
---     Package
---       { name = T.nameDashCase pkg.name,
---         src = [],
---         test = []
---       }
-
--- instance Emit T.Module Module where
---   emit :: BuildOptions -> T.Module -> Module
---   emit options (path, stmts) = do
---     let stmts' = emit options (filter (not . T.isTest) stmts)
---     Module {name = path, body = prelude options : stmts'}
+instance Emit [T.Stmt] [Stmt] where
+  emit :: BuildOptions -> [T.Stmt] -> [Stmt]
+  emit options = concatMap (emit options)
 
 --- Pretty printing layouts ---
 pretty :: BuildOptions -> PP.Layout -> String
@@ -884,11 +709,31 @@ class Layout a where
 
 instance Layout Module where
   layout :: Module -> PP.Layout
-  layout Module {body} = layout body
+  layout Module {body} = layout (True, body) ++ [PP.NewLine]
+
+instance Layout (Bool, [Stmt]) where
+  layout :: (Bool, [Stmt]) -> PP.Layout
+  layout (global, stmts) = case stmts of
+    [] -> []
+    [stmt] -> layout stmt
+    (stmt1 : stmt2@FunctionDef {} : stmts) -> do
+      layout stmt1
+        ++ [PP.NewLine, PP.NewLine]
+        ++ [PP.NewLine | global]
+        ++ layout (global, stmt2 : stmts)
+    (stmt1 : stmt2@ClassDef {} : stmts) -> do
+      layout stmt1
+        ++ [PP.NewLine, PP.NewLine]
+        ++ [PP.NewLine | global]
+        ++ layout (global, stmt2 : stmts)
+    (stmt : stmts) ->
+      layout stmt
+        ++ [PP.NewLine]
+        ++ layout (global, stmts)
 
 instance Layout [Stmt] where
   layout :: [Stmt] -> PP.Layout
-  layout stmts = PP.join [PP.NewLine] (map layout stmts)
+  layout stmts = layout (False, stmts)
 
 instance Layout Stmt where
   layout :: Stmt -> PP.Layout

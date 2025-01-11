@@ -267,8 +267,12 @@ divI = Op2 DivI
 pow :: Expr -> Expr -> Expr
 pow = Op2 Pow
 
-lets :: [(Expr, Expr)] -> Expr -> Expr
+lets :: [(Pattern, Expr)] -> Expr -> Expr
 lets defs b = foldr Let b defs
+
+letOf :: Expr -> ([(Pattern, Expr)], Expr)
+letOf (Let def a) = let (defs, a') = letOf a in (def : defs, a')
+letOf a = ([], a)
 
 select :: Expr -> [String] -> Expr
 select a xs = Select a (map (\x -> (x, Var x)) xs)
@@ -355,9 +359,21 @@ isImport :: Stmt -> Bool
 isImport Import {} = True
 isImport _ = False
 
+isDef :: Stmt -> Bool
+isDef Def {} = True
+isDef _ = False
+
+asDef :: Stmt -> Maybe (Pattern, Expr)
+asDef (Def def) = Just def
+asDef _ = Nothing
+
 isTest :: Stmt -> Bool
 isTest Test {} = True
 isTest _ = False
+
+asTest :: Stmt -> Maybe (String, Expr, Pattern)
+asTest (Test _ name a p) = Just (name, a, p)
+asTest _ = Nothing
 
 freeNames :: (Bool, Bool, Bool) -> Expr -> [String]
 freeNames (vars, tags, calls) = \case

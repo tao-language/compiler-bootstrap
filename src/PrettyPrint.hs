@@ -23,6 +23,7 @@ join y (x : xs) = x ++ y ++ join y xs
 -- Helper functions
 render :: (Int, Int) -> (String, String) -> Layout -> String
 render _ _ [] = ""
+render (w, _) (i, j) (NewLine : NewLine : y) = "\n" ++ render (w, length j) (i, j) (NewLine : y)
 render (w, _) (i, j) (NewLine : y) = "\n" ++ j ++ render (w, length j) (i, j) y
 render (w, k) (i, j) (Text (c : s) : y) = c : render (w, k + 1) (i, j) (Text s : y)
 render (w, k) (i, j) (Text "" : y) = render (w, k) (i, j) y
