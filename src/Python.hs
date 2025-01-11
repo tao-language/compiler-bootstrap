@@ -945,12 +945,12 @@ instance Layout Stmt where
           PP.Text "case "
             : layout pat
             ++ maybe [] (\e -> PP.Text " if " : layout e) guard
-            ++ [PP.Text ":", PP.Indent (PP.NewLine : concatMap layout body), PP.NewLine]
+            ++ [PP.Text ":", PP.Indent (PP.NewLine : concatMap layout body)]
     let layoutCase (MatchSequence [pat], guard, body) = layoutCase' (pat, guard, body)
         layoutCase (pat, guard, body) = layoutCase' (pat, guard, body)
     PP.Text "match "
       : layoutArg arg
-      ++ [PP.Text ":", PP.Indent (PP.NewLine : concatMap layoutCase cases)]
+      ++ [PP.Text ":", PP.Indent (PP.NewLine : PP.join [PP.NewLine] (map layoutCase cases))]
   layout (Raise exc from) =
     PP.Text "raise "
       : layout exc
