@@ -36,7 +36,7 @@ run = describe "--==☯ Pretty print ☯==--" $ do
             Text " [",
             Or
               (join [Text ", "] items)
-              [Indent (Text "\n" : join [Text ",\n"] items), Text ",\n"],
+              [Indent (NewLine : join [Text ",", NewLine] items), Text ",", NewLine],
             Text
               "]"
           ]
