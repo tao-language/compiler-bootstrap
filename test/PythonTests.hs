@@ -44,7 +44,7 @@ run = describe "--==☯ Python ☯==--" $ do
     -- Call String [Expr]
     -- Op1 Op1 Expr
     -- Op2 Op2 Expr Expr
-    -- Match [Expr] [([String], [Expr], Expr)]
+    emit' (T.Match [] []) `shouldBe` ([Assign [Name "_match"] (notImplementedError "error")], Name "_match")
     -- If Expr Expr Expr
     -- emit' (T.Let (T.Var "x", y) z) `shouldBe` ([assign "x" y'], z')
     -- emit' (T.Bind (xP, y) z) `shouldBe` ([assign "x" (call "y" [])], z')
@@ -62,49 +62,49 @@ run = describe "--==☯ Python ☯==--" $ do
     emit' (T.Import "path-to/mod" "mod" []) `shouldBe` [Import "path_to.mod" Nothing]
     emit' (T.Import "mod" "mod" [("x", "x")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Nothing)]]
     emit' (T.Import "mod" "mod" [("x", "y")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Just "y")]]
-    -- emit' (T.Def (T.Var "x", y)) `shouldBe` [Assign [x'] y']
+    emit' (T.Def (x, y)) `shouldBe` [Assign [x'] y']
     -- emit' (T.Def (T.Var "a", T.Tag "Point" [T.Int 1, T.Int 2])) `shouldBe` [Assign [a'] (call "Point" [Integer 1, Integer 2])]
     -- emit' (var "a" (Tag "Point" [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]
     -- emit' (varT "a" (Var "Point") (record [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]
     True `shouldBe` True
 
-  it "☯ emit [Stmt]" $ do
-    -- let emit' :: [T.Stmt] -> [Stmt]
-    --     emit' = emit options
-    -- emit' [] `shouldBe` []
-    -- emit' [T.Def (T.Var "x", T.Int 1)] `shouldBe` [Assign [Name "x"] (Integer 1)]
-    True `shouldBe` True
+  -- it "☯ emit [Stmt]" $ do
+  --   -- let emit' :: [T.Stmt] -> [Stmt]
+  --   --     emit' = emit options
+  --   -- emit' [] `shouldBe` []
+  --   -- emit' [T.Def (T.Var "x", T.Int 1)] `shouldBe` [Assign [Name "x"] (Integer 1)]
+  --   True `shouldBe` True
 
-  it "☯ emit Module" $ do
-    -- let emit' :: T.Module -> Module
-    --     emit' = emit options {prefix = "@pkg"}
-    -- let stmts =
-    --       [ T.Def (T.Var "x", T.Int 1),
-    --         T.Def (T.Var "y", T.Int 2)
-    --       ]
-    -- let expected =
-    --       [ ImportFrom "pkg.__prelude__" [("*", Nothing)],
-    --         Assign [x'] (Integer 1),
-    --         Assign [y'] (Integer 2)
-    --       ]
-    -- emit' ("mod", stmts) `shouldBe` Module {name = "mod", body = expected}
-    True `shouldBe` True
+  -- it "☯ emit Module" $ do
+  --   -- let emit' :: T.Module -> Module
+  --   --     emit' = emit options {prefix = "@pkg"}
+  --   -- let stmts =
+  --   --       [ T.Def (T.Var "x", T.Int 1),
+  --   --         T.Def (T.Var "y", T.Int 2)
+  --   --       ]
+  --   -- let expected =
+  --   --       [ ImportFrom "pkg.__prelude__" [("*", Nothing)],
+  --   --         Assign [x'] (Integer 1),
+  --   --         Assign [y'] (Integer 2)
+  --   --       ]
+  --   -- emit' ("mod", stmts) `shouldBe` Module {name = "mod", body = expected}
+  --   True `shouldBe` True
 
-  it "☯ emit Package" $ do
-    let stmts =
-          [ T.Def (x, T.Int 1),
-            T.Def (y, T.Int 2)
-          ]
-    let pySrc =
-          [ Assign [x'] (Integer 1),
-            Assign [y'] (Integer 2)
-          ]
-    let pyTest = []
-    -- emit options (Package "my_pkg" [Module "my-mod" stmts]) `shouldBe` Package "my-pkg" [Module "my_mod" pySrc] [Module "my_mod_test" pyTest]
-    True `shouldBe` True
+  -- it "☯ emit Package" $ do
+  --   let stmts =
+  --         [ T.Def (x, T.Int 1),
+  --           T.Def (y, T.Int 2)
+  --         ]
+  --   let pySrc =
+  --         [ Assign [x'] (Integer 1),
+  --           Assign [y'] (Integer 2)
+  --         ]
+  --   let pyTest = []
+  --   -- emit options (Package "my_pkg" [Module "my-mod" stmts]) `shouldBe` Package "my-pkg" [Module "my_mod" pySrc] [Module "my_mod_test" pyTest]
+  --   True `shouldBe` True
 
-  it "☯ build" $ do
-    build options ["examples"] "prelude" "factorial.tao" [] `shouldReturn` "examples/factorial"
+  it "☯ build factorial" $ do
+    build options ["examples"] "prelude" "factorial.tao" [] `shouldReturn` "build"
     True `shouldBe` True
 
   -- it "☯ build" $ do

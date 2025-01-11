@@ -25,15 +25,15 @@ data Expr
   | And Expr Expr
   | Or Expr Expr
   | For [String] Expr
-  | Fun Expr Expr
+  | Fun Pattern Expr
   | App Expr Expr
   | Call String [Expr]
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
-  | Match [Expr] [([String], [Expr], Expr)]
+  | Match [Expr] [Case]
   | If Expr Expr Expr
-  | Let (Expr, Expr) Expr
-  | Bind (Expr, Expr) Expr
+  | Let (Pattern, Expr) Expr
+  | Bind (Pattern, Expr) Expr
   | Record [(String, Expr)]
   | Select Expr [(String, Expr)]
   | With Expr [(String, Expr)]
@@ -74,9 +74,7 @@ instance Show Op2 where
     DivI -> "//"
     Pow -> "^"
 
-data Case
-  = Case [Pattern] (Maybe Expr) Expr
-  deriving (Eq, Show)
+type Case = ([String], [Pattern], Expr)
 
 type Pattern = Expr
 
@@ -293,57 +291,54 @@ lambda xs = fun (map Var xs)
 
 lambdaOf :: String -> Expr -> ([String], Expr)
 lambdaOf _ (Match [] []) = ([], Err)
--- lambdaOf _ (Match [] (([], b) : _)) = ([], b)
--- lambdaOf prefix (Match [] cases) = do
---   let x = lambdaArg prefix cases
---   let matchCase x (ps, b) = case ps of
---         Any : _ -> Just (ps, b)
---         Var x' : ps | x == x' -> Just (ps, b)
---         _ -> Nothing
---   let matchCases x (case' : cases) = do
---         case' <- matchCase x case'
---         cases <- matchCases x cases
---         Just (case' : cases)
---       matchCases _ _ = Just []
---   case matchCases x cases of
---     Just cases -> do
---       let (ys, b) = lambdaOf prefix (match [] cases)
---       (x : ys, b)
---     Nothing -> ([x], Match [Var x] cases)
+lambdaOf _ (Match [] ((_, [], b) : _)) = ([], b)
+lambdaOf prefix (Match [] cases) = do
+  let x = lambdaArg prefix cases
+  let matchCase x (xs, ps, b) = case ps of
+        Any : _ -> Just (xs, ps, b)
+        Var x' : ps | x == x' && x `elem` xs -> Just (xs, ps, b)
+        _ -> Nothing
+  let matchCases x (case' : cases) = do
+        case' <- matchCase x case'
+        cases <- matchCases x cases
+        Just (case' : cases)
+      matchCases _ _ = Just []
+  case matchCases x cases of
+    Just cases -> do
+      let (ys, b) = lambdaOf prefix (Match [] cases)
+      (x : ys, b)
+    Nothing -> ([x], Match [Var x] cases)
 -- lambdaOf prefix (Meta m a) = do
 --   let (xs, a') = lambdaOf prefix a
 --   (xs, Meta m a')
--- lambdaOf _ a = ([], a)
-lambdaOf x a = error $ "TODO lambdaOf" ++ show (x, a)
+lambdaOf _ a = ([], a)
 
-lambdaArg :: String -> [([Expr], Expr)] -> String
+lambdaArg :: String -> [Case] -> String
 lambdaArg prefix cases = case popCases cases of
   Just (ps, cases') -> do
     let x = case patternsName ps of
           Just x -> x
           Nothing -> do
-            let vars (ps, b) = freeVars (fun ps b)
-            C.newName (prefix : concatMap vars cases') prefix
+            C.newName (prefix : concatMap (\(xs, _, _) -> xs) cases') prefix
     x
   Nothing -> ""
 
-lambdaArgs :: String -> [([Expr], Expr)] -> [String]
+lambdaArgs :: String -> [Case] -> [String]
 lambdaArgs prefix cases = case popCases cases of
   Just (ps, cases') -> do
     let x = case patternsName ps of
           Just x -> x
           Nothing -> do
-            let vars (ps, b) = freeVars (fun ps b)
-            C.newName (prefix : concatMap vars cases') prefix
+            C.newName (prefix : concatMap (\(xs, _, _) -> xs) cases') prefix
     x : lambdaArgs prefix cases'
   Nothing -> []
 
-popCases :: [([Expr], Expr)] -> Maybe ([Pattern], [([Expr], Expr)])
+popCases :: [Case] -> Maybe ([Pattern], [Case])
 popCases = mapAndUnzipM popCase
 
-popCase :: ([Expr], Expr) -> Maybe (Pattern, ([Expr], Expr))
-popCase ([], _) = Nothing
-popCase (p : ps, a) = Just (p, (ps, a))
+popCase :: Case -> Maybe (Pattern, Case)
+popCase (_, [], _) = Nothing
+popCase (xs, p : ps, a) = Just (p, (xs, ps, a))
 
 patternsName :: [Pattern] -> Maybe String
 patternsName [] = Nothing
