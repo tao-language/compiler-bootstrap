@@ -24,7 +24,6 @@ data Expr
   | Ann Expr Type
   | And Expr Expr
   | Or Expr Expr
-  | Fix String Expr
   | For [String] Expr
   | Fun Expr Expr
   | App Expr Expr
@@ -382,7 +381,6 @@ freeNames (vars, tags, calls) = \case
   Ann a b -> freeNames' a `union` freeNames' b
   And a b -> freeNames' a `union` freeNames' b
   Or a b -> freeNames' a `union` freeNames' b
-  Fix x a -> delete x (freeNames' a)
   For xs a -> filter (`notElem` xs) (freeNames' a)
   Fun a b -> freeNames' a `union` freeNames' b
   App a b -> freeNames' a `union` freeNames' b
@@ -539,9 +537,9 @@ lower = \case
   Call op args -> C.Call op (map lower args)
   Op1 op a -> lower (App (Var (show op)) a)
   Op2 op a b -> lower (app (Var (show op)) [a, b])
-  Let (Var x, b) (Var x') | x == x' -> lower b
   Let (a, b) c -> case a of
-    Var x | x `occurs` b -> lower (Let (Var x, Fix x b) c)
+    Var x | c == Var x -> lower b
+    Var x -> C.App (lower (Fun a c)) (C.fix [x] (lower b))
     Ann (Or a1 a2) t -> lower (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
     Ann (App a1 a2) t -> lower (Let (Ann a1 t, Fun a2 b) c)
     Ann (Op1 op a) t -> lower (Let (Ann (Var (show op)) t, Fun a b) c)
@@ -600,7 +598,9 @@ lift = \case
   C.For x a -> case lift a of
     For xs a -> for (x : xs) a
     a -> for [x] a
-  C.Fix _ a -> lift a
+  C.Fix x a
+    | x `C.occurs` a -> Let (Var x, lift a) (lift a)
+    | otherwise -> lift a
   C.Fun a b -> Fun (lift a) (lift b)
   C.App a b -> App (lift a) (lift b)
   C.Call op args -> Call op (map lift args)
