@@ -588,11 +588,22 @@ instance Emit T.Expr ([Stmt], Expr) where
     --   let (stmts1, args') = emit options args
     --   let (stmts2, ret') = emit options ret
     --   (stmts1 ++ stmts2, callable args' ret')
-    T.App a b -> do
-      let (f, args) = T.appOf (T.App a b)
-      let (s1, f') = emit options f
-      let (s2, args') = emit options args
-      (s1 ++ s2, Call f' args' [])
+    T.App a b -> case T.appOf (T.App a b) of
+      (T.Var "not", [a]) -> do
+        let (s, a') = emit options a
+        (s, UnaryOp Not a')
+      (T.Var "and", [a, b]) -> do
+        let (s1, a') = emit options a
+        let (s2, b') = emit options b
+        (s1 ++ s2, BoolOp a' And b')
+      (T.Var "or", [a, b]) -> do
+        let (s1, a') = emit options a
+        let (s2, b') = emit options b
+        (s1 ++ s2, BoolOp a' Or b')
+      (f, args) -> do
+        let (s1, f') = emit options f
+        let (s2, args') = emit options args
+        (s1 ++ s2, Call f' args' [])
     -- Call String [Expr]
     -- emit options (T.Call op args) = case (op, args) of
     --   ("+", [a, b]) -> emitBinOp Add a b
@@ -990,6 +1001,12 @@ instance Layout Expr where
   layout (Subscript a b) = layout a ++ PP.Text "[" : layout b ++ [PP.Text "]"]
   -- TODO: remove redundant parentheses
   -- TODO: break long lines
+  layout (UnaryOp op a) = do
+    let showOp UAdd = "+"
+        showOp USub = "-"
+        showOp Not = "not "
+        showOp Invert = "~"
+    PP.Text (showOp op) : layout a
   layout (BinOp a op b) = do
     let showOp Add = " + "
         showOp Sub = " - "
@@ -1004,6 +1021,10 @@ instance Layout Expr where
         showOp BitXor = " ^ "
         showOp BitAnd = " & "
         showOp MatMult = " @ "
+    PP.Text "(" : layout a ++ [PP.Text $ showOp op] ++ layout b ++ [PP.Text ")"]
+  layout (BoolOp a op b) = do
+    let showOp And = " and "
+        showOp Or = " or "
     PP.Text "(" : layout a ++ [PP.Text $ showOp op] ++ layout b ++ [PP.Text ")"]
   layout (Compare a op b) = do
     let showOp Eq = " == "
