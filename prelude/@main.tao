@@ -1,4 +1,5 @@
 import prelude/arithmetic ((+), (-), (*), (/), (//), (^))
+import prelude/comparison ((==), (!=), (<), (<=), (>), (>=))
 import prelude/bool (Bool, not, (and), (or), (xor))
 import prelude/maybe (
   Maybe,

@@ -119,6 +119,12 @@ parseNameOp = do
       [ P.word "and",
         P.word "or",
         P.word "xor",
+        P.text "==",
+        P.text "!=",
+        P.text "<=",
+        P.text "<",
+        P.text ">=",
+        P.text ">",
         P.text "+",
         P.text "-",
         P.text "*",
@@ -268,19 +274,19 @@ parseAtom = do
                 return []
               ]
           return (Call x args),
-        do
-          _ <- P.word "if"
-          _ <- P.whitespaces
-          a <- parseExpr 0 P.whitespaces
-          _ <- P.whitespaces
-          _ <- P.word "then"
-          _ <- P.whitespaces
-          b <- parseExpr 0 P.whitespaces
-          _ <- P.whitespaces
-          _ <- P.word "else"
-          _ <- P.whitespaces
-          c <- parseExpr 0 P.whitespaces
-          return (If a b c),
+        -- do
+        --   _ <- P.word "if"
+        --   _ <- P.whitespaces
+        --   a <- parseExpr 0 P.whitespaces
+        --   _ <- P.whitespaces
+        --   _ <- P.word "then"
+        --   _ <- P.whitespaces
+        --   b <- parseExpr 0 P.whitespaces
+        --   _ <- P.whitespaces
+        --   _ <- P.word "else"
+        --   _ <- P.whitespaces
+        --   c <- parseExpr 0 P.whitespaces
+        --   return (If a b c),
         parseRecord,
         do
           _ <- P.char '.'
@@ -352,6 +358,18 @@ parseExpr prec delim = do
             _ <- P.whitespaces
             return xs,
           P.prefix 0 (const neg) (parseOp "-"),
+          P.prefix 0 (uncurry If) $ do
+            _ <- P.word "if"
+            _ <- P.whitespaces
+            a <- parseExpr 0 P.whitespaces
+            _ <- P.whitespaces
+            _ <- P.word "then"
+            _ <- P.whitespaces
+            b <- parseExpr 0 P.whitespaces
+            _ <- P.whitespaces
+            _ <- P.word "else"
+            _ <- P.whitespaces
+            return (a, b),
           P.infixR 1 (const Or) (parseOp "|"),
           P.infixR 2 (const (var2 "and")) (parseOp "and"),
           P.infixR 2 (const (var2 "or")) (parseOp "or"),
@@ -359,8 +377,11 @@ parseExpr prec delim = do
           P.infixR 3 (const (tag2 "::")) (parseOp "::"),
           P.infixR 3 (const Ann) (parseOp ":"),
           P.infixR 4 (const eq) (parseOp "=="),
+          P.infixR 4 (const ne) (parseOp "!="),
           P.infixR 5 (const lt) (parseOp "<"),
+          P.infixR 5 (const le) (parseOp "<="),
           P.infixR 5 (const gt) (parseOp ">"),
+          P.infixR 5 (const ge) (parseOp ">="),
           P.infixR 6 (\args a -> fun (a : args)) $ do
             args <- P.zeroOrMore $ do
               _ <- P.char ','

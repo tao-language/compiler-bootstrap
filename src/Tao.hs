@@ -46,8 +46,11 @@ data Op1
 
 data Op2
   = Eq
+  | Ne
   | Lt
+  | Le
   | Gt
+  | Ge
   | Add
   | Sub
   | Mul
@@ -65,8 +68,11 @@ instance Show Op2 where
   show :: Op2 -> String
   show = \case
     Eq -> "=="
+    Ne -> "!="
     Lt -> "<"
+    Le -> "<="
     Gt -> ">"
+    Ge -> ">="
     Add -> "+"
     Sub -> "-"
     Mul -> "*"
@@ -128,33 +134,33 @@ buildOps :: C.Ops
 buildOps = do
   let call op f = (op, \eval args -> f (map (C.dropTypes . eval) args))
   let intOp1 op f = call op $ \case
-        [C.Int x] -> Just (C.Int (f x))
+        [C.Int x] -> Just (f x)
         _ -> Nothing
   let numOp1 op f = call op $ \case
-        [C.Num x] -> Just (C.Num (f x))
+        [C.Num x] -> Just (f x)
         _ -> Nothing
   let intOp2 op f = call op $ \case
-        [C.Int x, C.Int y] -> Just (C.Int (f x y))
+        [C.Int x, C.Int y] -> Just (f x y)
         _ -> Nothing
   let numOp2 op f = call op $ \case
-        [C.Num x, C.Num y] -> Just (C.Num (f x y))
+        [C.Num x, C.Num y] -> Just (f x y)
         _ -> Nothing
-  [ intOp1 "int_neg" (\x -> -x),
-    numOp1 "num_neg" (\x -> -x),
-    intOp2 "int_add" (+),
-    numOp2 "num_add" (+),
-    intOp2 "int_sub" (-),
-    numOp2 "num_sub" (-),
-    intOp2 "int_mul" (*),
-    numOp2 "num_mul" (*),
-    call "int_div" $ \case
-      [C.Int x, C.Int y] -> Just (C.Num (fromIntegral x / fromIntegral y))
-      _ -> Nothing,
-    numOp2 "num_div" (/),
-    intOp2 "int_divi" Prelude.div,
-    numOp2 "num_divi" (\x y -> (fromIntegral . floor) (x / y)),
-    intOp2 "int_pow" (^),
-    numOp2 "num_pow" (**)
+  [ intOp1 "int_neg" (\x -> C.Int (-x)),
+    numOp1 "num_neg" (\x -> C.Num (-x)),
+    intOp2 "int_lt" (\x y -> C.Tag (if x < y then "True" else "False")),
+    intOp2 "int_add" (\x y -> C.Int (x + y)),
+    intOp2 "int_sub" (\x y -> C.Int (x - y)),
+    intOp2 "int_mul" (\x y -> C.Int (x * y)),
+    intOp2 "int_div" (\x y -> C.Num (fromIntegral x / fromIntegral y)),
+    intOp2 "int_divi" (\x y -> C.Int (Prelude.div x y)),
+    intOp2 "int_pow" (\x y -> C.Int (x ^ y)),
+    numOp2 "num_lt" (\x y -> C.Tag (if x < y then "True" else "False")),
+    numOp2 "num_add" (\x y -> C.Num (x + y)),
+    numOp2 "num_sub" (\x y -> C.Num (x - y)),
+    numOp2 "num_mul" (\x y -> C.Num (x * y)),
+    numOp2 "num_div" (\x y -> C.Num (x / y)),
+    numOp2 "num_divi" (\x y -> C.Num (fromIntegral (floor (x / y)))),
+    numOp2 "num_pow" (\x y -> C.Num (x ** y))
     ]
 
 runtimeOps :: C.Ops
@@ -243,11 +249,20 @@ neg = Op1 Neg
 eq :: Expr -> Expr -> Expr
 eq = Op2 Eq
 
+ne :: Expr -> Expr -> Expr
+ne = Op2 Ne
+
 lt :: Expr -> Expr -> Expr
 lt = Op2 Lt
 
+le :: Expr -> Expr -> Expr
+le = Op2 Le
+
 gt :: Expr -> Expr -> Expr
 gt = Op2 Gt
+
+ge :: Expr -> Expr -> Expr
+ge = Op2 Ge
 
 add :: Expr -> Expr -> Expr
 add = Op2 Add

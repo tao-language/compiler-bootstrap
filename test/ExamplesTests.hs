@@ -399,6 +399,32 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     testAll [] pkg `shouldBe` testResults
 
+  let name = "examples/prelude/comparison"
+  it ("☯ " ++ name ++ ".tao") $ do
+    (pkg, syntaxErrors) <- load [] "prelude" name []
+    syntaxErrors `shouldBe` []
+    let testResults =
+          [ TestPass name (2, 1) "Eq 1 1",
+            TestPass name (5, 1) "Eq 1 2",
+            TestPass name (8, 1) "Eq 2 1",
+            TestPass name (11, 1) "Ne 1 1",
+            TestPass name (14, 1) "Ne 1 2",
+            TestPass name (17, 1) "Ne 2 1",
+            TestPass name (20, 1) "Lt 1 1",
+            TestPass name (23, 1) "Lt 1 2",
+            TestPass name (26, 1) "Lt 2 1",
+            TestPass name (29, 1) "Le 1 1",
+            TestPass name (32, 1) "Le 1 2",
+            TestPass name (35, 1) "Le 2 1",
+            TestPass name (38, 1) "Gt 1 1",
+            TestPass name (41, 1) "Gt 1 2",
+            TestPass name (44, 1) "Gt 2 1",
+            TestPass name (47, 1) "Ge 1 1",
+            TestPass name (50, 1) "Ge 1 2",
+            TestPass name (53, 1) "Ge 2 1"
+          ]
+    testAll [] pkg `shouldBe` testResults
+
   let name = "examples/prelude/bool-not"
   it ("☯ " ++ name ++ ".tao") $ do
     (pkg, syntaxErrors) <- load [] "prelude" name []

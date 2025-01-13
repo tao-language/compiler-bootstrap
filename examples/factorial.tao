@@ -3,6 +3,10 @@ factorial = {
 | n -> n * factorial (n - 1)
 }
 
+# factorial n = if n == 0
+#   then 1
+#   else n * factorial (n - 1)
+
 -- 0
 > factorial 0; 1
 
