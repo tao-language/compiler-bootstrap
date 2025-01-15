@@ -431,6 +431,10 @@ build options paths = do
   putStrLn "Creating files:"
   files <- mapM (buildModule options ctx . fst) ctx
   mapM_ (\f -> putStrLn ("- " ++ f)) files
+
+  putStrLn "- pyproject.toml"
+  writeFile (options.buildDir </> "pyproject.toml") ""
+
   putStrLn "Done"
   return options.buildDir
 
