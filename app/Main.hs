@@ -37,4 +37,4 @@ test path patterns = do
   (ctx, errors) <- include "prelude" ctx
   mapM_ print errors
   let results = T.testAll [] ctx
-  mapM_ print results
+  mapM_ (putStr . show) results
