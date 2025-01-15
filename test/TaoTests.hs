@@ -195,30 +195,6 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   lower [] pkg `shouldBe` env
   -- -- TODO: lift env `shouldBe` pkg
 
-  -- it "☯ resolve Stmt" $ do
-  --   resolve ("@pkg", "mod") (Def $ defVar "x" y) `shouldBe` [(("@pkg", "mod", "x"), Name "@pkg" "mod" "x")]
-
-  -- it "☯ resolve Module" $ do
-  --   let mod =
-  --         Module
-  --           "mod"
-  --           [ Def $ defVar "x" y,
-  --             Def $ defVar "y" z
-  --           ]
-  --   resolve "@pkg" mod `shouldBe` [(("@pkg", "mod", "x"), Name "@pkg" "mod" "x"), (("@pkg", "mod", "y"), Name "@pkg" "mod" "y")]
-
-  -- it "☯ resolve Package" $ do
-  --   let pkg =
-  --         Package
-  --           "@pkg"
-  --           [ Module
-  --               "mod"
-  --               [ Def $ defVar "x" y,
-  --                 Def $ defVar "y" z
-  --               ]
-  --           ]
-  --   resolve () pkg `shouldBe` [(("@pkg", "mod", "x"), Name "@pkg" "mod" "x"), (("@pkg", "mod", "y"), Name "@pkg" "mod" "y")]
-
   -- it "☯ replace Expr" $ do
   --   let f = replace ("@pkg", "mod") [(("@pkg", "mod", "x"), Name "@pkg" "mod" "x")]
   --   -- Int Int
@@ -369,67 +345,26 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   -- rename "x" "z" pkg `shouldBe` pkg {modules = [m1 "z", m2 "z", m3 "z", m4 "z"]}
   --   True `shouldBe` True
 
-  -- it "☯ resolveNames Definition" $ do
-  --   let ts = [] :: [(String, Type)]
-  --   let f m p = resolveNames m (ts, p, Err)
-  --   f "@pkg/mod" (PVar "x") `shouldBe` [("@pkg/mod", "x")]
-  --   f "@pkg/@pkg" (PVar "x") `shouldBe` [("@pkg", "x")]
-  --   f "@pkg/mod" (PVar "_x") `shouldBe` [("_@pkg/mod", "x")]
-  --   f "@pkg/_mod" (PVar "x") `shouldBe` [("_@pkg/_mod", "x")]
-  --   -- f "pkg/mod" (PTrait xP "y") de`shouldBe` [(".@pkg/mod:x", "y")]
-  --   -- f "pkg/mod" (POp1 "+" xP) `shouldBe` [("$1@pkg/mod:x", "+")]
-  --   -- f "pkg/mod" (POp2 "+" xP yP) `shouldBe` [("$2@pkg/mod:x:y", "+")]
-  --   f "@pkg/mod" (PVar "@pkg/mod.x") `shouldBe` [("@pkg/mod", "x")]
-  --   f "@pkg/mod" (PVar "@/mod2.x") `shouldBe` [("@pkg/mod2", "x")]
-
-  -- it "☯ resolveNames Stmt" $ do
-  --   let f = resolveNames "@pkg/mod"
-  --   f (Import "m" "m" [("x", "y")]) `shouldBe` [("@pkg/mod", "y")]
-  --   f (Def $ defVar "x" y) `shouldBe` [("@pkg/mod", "x")]
-
-  -- it "☯ resolveNames Module" $ do
-  --   let f stmts = resolveNames "@pkg" (Module "path/mod" stmts)
-  --   f [] `shouldBe` []
-  --   f [Def $ defVar "x" y] `shouldBe` [("@pkg/path/mod", "x")]
-
-  -- it "☯ findName" $ do
-  --   let ctx =
-  --         [ ( "pkg/a",
-  --             [Def (Var "x", Int 42)]
-  --           ),
-  --           ( "pkg/b",
-  --             [ Import "pkg/a" "m" [("x", "y")],
-  --               Def (Var "z", Var "y")
-  --             ]
-  --           )
-  --         ]
-  --   findName ctx "pkg/a" "x" `shouldBe` Just ("pkg/a", Int 42)
-  --   findName ctx "pkg/a" "y" `shouldBe` (Nothing :: Maybe (String, Expr))
-  --   findName ctx "pkg/b" "m" `shouldBe` Just ("pkg/b", Tag "pkg/a" [])
-  --   findName ctx "pkg/b" "x" `shouldBe` (Nothing :: Maybe (String, Expr))
-  --   findName ctx "pkg/b" "y" `shouldBe` Just ("pkg/a", Int 42)
-  --   findName ctx "pkg/b" "z" `shouldBe` Just ("pkg/b", Var "y")
-
   it "☯ resolve Name" $ do
     let ctx =
           [ ( "pkg/a",
               [Def (x, i1)]
             ),
-            ( "pkg/b",
-              [ Import "pkg/a" "m" [("x", "y")],
-                Def (z, y)
-              ]
-            )
+            ("pkg/b", [Import "pkg/a" "m" [("x", "y")]]),
+            ("pkg/b/@implicit1", [Def (x, i2)]),
+            ("pkg/b/@implicit2", [Def (z, y)]),
+            ("pkg/c", [Import "pkg/b" "m" [("", "")]])
           ]
 
-    -- TODO: import same module (circular import) (pkg/b -- import pkg/b)
-    -- TODO: import all (import pkg/a (*))
     resolve ctx "pkg/a" "x" `shouldBe` [("pkg/a", Let (x, i1) x)]
     resolve ctx "pkg/a" "y" `shouldBe` []
     resolve ctx "pkg/b" "m" `shouldBe` [("pkg/b", Tag "pkg/a")]
-    resolve ctx "pkg/b" "x" `shouldBe` []
+    resolve ctx "pkg/b" "x" `shouldBe` [("pkg/b", Let (x, i2) x)]
     resolve ctx "pkg/b" "y" `shouldBe` [("pkg/a", Let (x, i1) x)]
     resolve ctx "pkg/b" "z" `shouldBe` [("pkg/b", Let (z, y) z)]
+    resolve ctx "pkg/c" "x" `shouldBe` [("pkg/b", Let (x, i2) x)]
+    resolve ctx "pkg/c" "y" `shouldBe` [("pkg/a", Let (x, i1) x)]
+    resolve ctx "pkg/c" "z" `shouldBe` [("pkg/b", Let (z, y) z)]
 
   it "☯ resolve Stmt" $ do
     let ctx =
@@ -559,8 +494,8 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           [ ( "pkg/a",
               [ Def (x, i1),
                 Def (y, i2),
-                Test (1, 2) ">x" x i1,
-                Test (3, 4) ">y" y i3
+                Test (UnitTest "pkg/a" (1, 2) ">x" x i1),
+                Test (UnitTest "pkg/a" (3, 4) ">y" y i3)
               ]
             )
           ]
@@ -568,7 +503,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           [ TestPass "pkg/a" (1, 2) ">x",
             TestFail "pkg/a" (3, 4) ">y" y i3 i2
           ]
-    testAll ctx ("pkg", ctx) `shouldBe` results
+    testAll [] ("pkg", ctx) `shouldBe` results
 
   it "☯ patch Expr" $ do
     let patch' = patch [] [Def (i1, i2), Def (x, i3)]

@@ -417,18 +417,17 @@ raise :: Expr -> Stmt
 raise x = Raise x Nothing
 
 --- Build target ---
-build :: BuildOptions -> [FilePath] -> FilePath -> FilePath -> [FilePath] -> IO FilePath
-build options bases prelude path dependencies = do
+build :: BuildOptions -> [FilePath] -> IO FilePath
+build options paths = do
   putStrLn $ "Clearing build directory: " ++ options.buildDir
   pathExists <- doesPathExist options.buildDir
   when pathExists (removeDirectoryRecursive options.buildDir)
   createDirectoryIfMissing True options.buildDir
 
-  putStrLn $ "Loading package: " ++ path
-  (pkg, errs) <- P.load bases prelude path dependencies
+  putStrLn "Loading modules"
+  (ctx, errs) <- P.load paths
   mapM_ (\e -> putStrLn ("❌ " ++ show e)) errs
 
-  let ctx = snd pkg
   putStrLn "Creating files:"
   files <- mapM (buildModule options ctx . fst) ctx
   mapM_ (\f -> putStrLn ("- " ++ f)) files
@@ -682,12 +681,12 @@ instance Emit T.Stmt [Stmt] where
       [Import path' alias' | alias `notElem` map snd names]
         ++ [ImportFrom path' (map nameAlias names) | names /= []]
     T.Def def -> emit options def
-    T.Test pos name a p -> do
-      let (s1, a') = emit options a
-      let (s2, b') = emit options p -- TODO: do a match instead
+    T.Test t -> do
+      let (s1, a') = emit options t.expr
+      let (s2, b') = emit options t.expect -- TODO: do a match instead
       let def =
             FunctionDef
-              { name = "test_" ++ T.nameSnakeCase name,
+              { name = "test_" ++ T.nameSnakeCase t.name,
                 args = [("self", Nothing, Nothing)],
                 body =
                   [ Assign [Name "actual"] a',

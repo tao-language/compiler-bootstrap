@@ -1,7 +1,7 @@
 import Data.List (intercalate, isSuffixOf)
 import PrettyPrint (pretty)
 import qualified System.Environment
-import System.FilePath.Windows (dropExtension, takeDirectory)
+import System.FilePath.Windows (dropExtension, takeBaseName, takeDirectory, takeFileName)
 import qualified Tao as T
 import TaoParser (load, loadAtoms, srcPath)
 
@@ -21,17 +21,15 @@ main = do
 
 run :: FilePath -> FilePath -> [String] -> IO ()
 run prelude filename args = do
-  bases <- srcPath filename
-  ((_, ctx), syntaxErrors) <- load bases prelude filename []
+  (ctx, syntaxErrors) <- load [filename]
   parsed <- loadAtoms "<run>" args
   let errors = map snd parsed
   let expr = T.app' (map fst parsed)
-  let result = T.eval ctx filename expr
+  let result = T.eval ctx (takeBaseName filename) expr
   print result
 
 test :: FilePath -> FilePath -> [String] -> IO ()
 test prelude path patterns = do
-  bases <- srcPath path
-  (pkg, syntaxErrors) <- load bases prelude path []
-  let results = T.testAll [] pkg
+  (ctx, syntaxErrors) <- load [path]
+  let results = T.testAll [] ctx
   putStrLn (intercalate "\n" (map show results))

@@ -12,7 +12,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (a, b, c) = (Var "a", Var "b", Var "c")
   let parse' :: Parser a -> String -> Either ([ParserContext], String) (a, String)
-      parse' parser src = case P.parse parser src of
+      parse' parser src = case P.parse parser "TaoParserTests" src of
         Right (x, P.State {remaining}) -> Right (x, remaining)
         Left P.State {context, remaining} -> Left (context, remaining)
 
@@ -231,15 +231,15 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseTest" $ do
     let p = parse' parseTest
-    p "> x; y" `shouldBe` Right (Test (1, 1) "" x y, "")
-    p "> x\ny" `shouldBe` Right (Test (1, 1) "" x y, "")
-    p "> x" `shouldBe` Right (Test (1, 1) "" x (Tag "True"), "")
+    p "> x; y" `shouldBe` Right (Test (UnitTest "TaoParserTests" (1, 1) "" x y), "")
+    p "> x\ny" `shouldBe` Right (Test (UnitTest "TaoParserTests" (1, 1) "" x y), "")
+    p "> x" `shouldBe` Right (Test (UnitTest "TaoParserTests" (1, 1) "" x (Tag "True")), "")
 
   it "☯ parseStmt" $ do
     let p = parse' parseStmt
     p "import pkg" `shouldBe` Right (Import "pkg" "pkg" [], "")
     -- p "x = y" `shouldBe` Right (Define (Def [] (x) (y)), "")
-    p "> x; y" `shouldBe` Right (Test (1, 1) "" x y, "")
+    p "> x; y" `shouldBe` Right (Test (UnitTest "TaoParserTests" (1, 1) "" x y), "")
 
   it "☯ parseModule" $ do
     let p = parse' (parseModule "path/my-file.tao")
@@ -258,23 +258,20 @@ run = describe "--==☯ TaoParser ☯==--" $ do
   --   withCurrentDirectory "examples" (parsePackage "empty.tao") `shouldReturn` (pkg, [])
 
   it "☯ loadModule" $ do
-    let pkg = ("pkg", [("exists", [])])
-    loadModule [] "exists" (pkg, []) `shouldReturn` (("pkg", [("exists", [])]), [])
-    loadModule [] "examples/empty" (pkg, []) `shouldReturn` (("pkg", [("examples/empty", []), ("examples/empty/empty-file", []), ("exists", [])]), [])
-    loadModule ["examples"] "empty" (pkg, []) `shouldReturn` (("pkg", [("empty", []), ("empty/empty-file", []), ("exists", [])]), [])
-    loadModule ["examples/empty"] "" (pkg, []) `shouldReturn` (("pkg", [("empty-file", []), ("exists", [])]), [])
+    let ctx = [("exists", [])]
+    let loadModule' = loadModule (ctx, [])
+    loadModule' "exists" `shouldReturn` ([("exists", [])], [])
+    loadModule' "examples/empty" `shouldReturn` ([("examples/empty", []), ("examples/empty/empty-file", []), ("exists", [])], [])
 
   it "☯ load" $ do
-    let pkg =
-          ( "sub",
-            [ ("examples/empty", []),
-              ("examples/empty/empty-file", []),
-              ( "examples/sub/mod",
-                [ Def (x, Int 1),
-                  Def (y, Int 2)
-                ]
-              )
-            ]
-          )
+    let ctx =
+          [ ("examples/empty", []),
+            ("examples/empty/empty-file", []),
+            ( "examples/sub/mod",
+              [ Def (x, Int 1),
+                Def (y, Int 2)
+              ]
+            )
+          ]
     let errors = []
-    load [] "" "examples/sub" ["examples/empty"] `shouldReturn` (pkg, errors)
+    load ["examples/sub", "examples/empty"] `shouldReturn` (ctx, errors)

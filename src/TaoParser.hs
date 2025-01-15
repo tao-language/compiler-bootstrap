@@ -681,7 +681,7 @@ parseTest = do
           parseExpr 0 P.spaces,
         return (Tag "True")
       ]
-  return (Test s.pos name expr result)
+  return (Test (UnitTest s.filename s.pos name expr result))
 
 pad :: Int -> String -> String
 pad = padWith ' '
@@ -734,83 +734,60 @@ srcPath path = do
   let homePath = fromMaybe "." home </> ".tao" </> "src"
   return [takeDirectory path, homePath]
 
-load :: [FilePath] -> FilePath -> FilePath -> [FilePath] -> IO (Package, [SyntaxError])
-load bases prelude path dependencies = do
-  let pkg0 = (takeBaseName path, [])
-  let deps = if prelude == "" then path : dependencies else prelude : path : dependencies
-  ((name, modules), errs) <- foldM (flip (loadModule bases)) (pkg0, []) deps
-  -- TODO: instead of importing all prelude statements, import prelude (*)
-  -- TODO: instead of @main.tao do: prelude/@arithmetic.tao, prelude/@bool.tao, prelude/@...
-  --       any file starting with @ is imported in the same namespace as the directory
-  let preludeStmts = fromMaybe [] (lookup (prelude </> "@main") modules)
-  let withPrelude (path, stmts) =
-        if prelude `isPrefixOf` path
-          then (path, stmts)
-          else (path, preludeStmts ++ stmts)
-  return ((name, map withPrelude modules), errs)
+load :: [FilePath] -> IO (Context, [SyntaxError])
+load = foldM loadModule ([], [])
 
-loadModule :: [FilePath] -> FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
-loadModule _ path (pkg, errs) | path `elem` map fst (snd pkg) = do
-  return (pkg, errs)
-loadModule (base : bases) path (pkg, errs) = do
-  loaded <- loadPath base path (pkg, errs)
-  case loaded of
-    Just (pkg, errs) -> return (pkg, errs)
-    Nothing -> loadModule bases path (pkg, errs)
-loadModule [] path (pkg, errs) = do
-  loaded <- loadPath "" path (pkg, errs)
-  case loaded of
-    Just (pkg, errs) -> return (pkg, errs)
-    Nothing -> error ("module not found: " ++ path)
+include :: FilePath -> Context -> IO (Context, [SyntaxError])
+include prelude ctx = do
+  let include' (path, stmts) =
+        (path, Import (dropExtension prelude) (takeBaseName prelude) [("", "")] : stmts)
+  (ctx, errs) <- loadModule (ctx, []) prelude
+  return (map include' ctx, errs)
 
-loadPath :: FilePath -> FilePath -> (Package, [SyntaxError]) -> IO (Maybe (Package, [SyntaxError]))
-loadPath base path (pkg, errs) = do
-  isDir <- doesDirectoryExist (base </> path)
+loadModule :: (Context, [SyntaxError]) -> FilePath -> IO (Context, [SyntaxError])
+loadModule (ctx, errs) path = do
+  isDir <- doesDirectoryExist path
   isFile <- do
-    dirFiles <- listDirectory (base </> takeDirectory path)
+    dirFiles <- listDirectory (takeDirectory path)
     return (any ((takeBaseName path ++ ".") `isPrefixOf`) dirFiles)
-  case (isDir, isFile) of
-    (True, True) -> do
-      (pkg, errs) <- loadDir base path (pkg, errs)
-      (pkg, errs) <- loadFile base path (pkg, errs)
-      return (Just (pkg, errs))
-    (True, False) -> do
-      (pkg, errs) <- loadDir base path (pkg, errs)
-      return (Just (pkg, errs))
-    (False, True) -> do
-      (pkg, errs) <- loadFile base path (pkg, errs)
-      return (Just (pkg, errs))
-    (False, False) -> return Nothing
+  (ctx, errs) <-
+    if isDir
+      then loadDir path (ctx, errs)
+      else return (ctx, errs)
+  if isFile
+    then loadFile path (ctx, errs)
+    else return (ctx, errs)
 
-loadDir :: FilePath -> FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
-loadDir base path (pkg, errs) = do
-  files <- walkDirectory base path
-  foldM (flip (loadFile base)) (pkg, errs) files
+loadDir :: FilePath -> (Context, [SyntaxError]) -> IO (Context, [SyntaxError])
+loadDir path (ctx, errs) = do
+  files <- walkDirectory "." path
+  foldM (flip loadFile) (ctx, errs) files
 
-loadFile :: FilePath -> FilePath -> (Package, [SyntaxError]) -> IO (Package, [SyntaxError])
-loadFile base filename (pkg, errs) = case splitExtension filename of
-  (_, "") -> loadFile base (filename ++ ".tao") (pkg, errs)
+loadFile :: FilePath -> (Context, [SyntaxError]) -> IO (Context, [SyntaxError])
+loadFile filename (ctx, errs) = case splitExtension filename of
+  (_, "") -> loadFile (filename ++ ".tao") (ctx, errs)
+  (name, _) | name `elem` map fst ctx -> return (ctx, errs)
   (name, ".tao") -> do
-    src <- readFile (base </> filename)
-    case P.parse (parseModule name) src of
-      Right (mod, _) -> do
-        return (second (mod :) pkg, errs)
+    src <- readFile filename
+    let parser = parseModule name
+    case P.parse parser filename src of
+      Right (mod, _) -> return (mod : ctx, errs)
       Left P.State {pos = (row, col), context} -> do
         let err =
               SyntaxError
-                { filename = base </> filename,
+                { filename = filename,
                   row = row,
                   col = col,
                   sourceCode = src,
                   context = context
                 }
-        return (pkg, err : errs)
+        return (ctx, err : errs)
   _ -> error $ "file extension not supported: " ++ filename
 
 loadAtom :: String -> String -> IO (Expr, Maybe SyntaxError)
-loadAtom filename src = case P.parse parseAtom src of
+loadAtom filename src = case P.parse parseAtom filename src of
   Right (a, _) -> return (a, Nothing)
-  Left P.State {pos = (row, col), context} -> do
+  Left P.State {filename, pos = (row, col), context} -> do
     let err =
           SyntaxError
             { filename = filename,
