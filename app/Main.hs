@@ -3,33 +3,38 @@ import PrettyPrint (pretty)
 import qualified System.Environment
 import System.FilePath.Windows (dropExtension, takeBaseName, takeDirectory, takeFileName)
 import qualified Tao as T
-import TaoParser (load, loadAtoms, srcPath)
+import TaoParser (include, load, loadAtoms, srcPath)
 
 main :: IO ()
 main = do
   cliArgs <- System.Environment.getArgs
   case cliArgs of
     "run" : args -> case args of
-      filename : args -> run "prelude" filename args
+      filename : args -> run filename args
       _ -> putStrLn "🛑 Please give me a filename, and an expression to run."
     "test" : args -> case args of
-      [path] -> test "prelude" path ["*"]
+      [path] -> test path ["*"]
       -- path : patterns -> test path patterns
       path : patterns -> error "TODO: match test names by patterns"
       _ -> putStrLn "🛑 Please give me a directory or filename to test."
     _ -> error "TODO: repl"
 
-run :: FilePath -> FilePath -> [String] -> IO ()
-run prelude filename args = do
-  (ctx, syntaxErrors) <- load [filename]
-  parsed <- loadAtoms "<run>" args
-  let errors = map snd parsed
-  let expr = T.app' (map fst parsed)
-  let result = T.eval ctx (takeBaseName filename) expr
+run :: FilePath -> [String] -> IO ()
+run filename args = do
+  (ctx, errors) <- load [filename]
+  mapM_ print errors
+  (ctx, errors) <- include "prelude" ctx
+  mapM_ print errors
+  (args', errors) <- loadAtoms "<run>" args
+  mapM_ print errors
+  let result = T.eval ctx (dropExtension filename) (T.app' args')
   print result
 
-test :: FilePath -> FilePath -> [String] -> IO ()
-test prelude path patterns = do
-  (ctx, syntaxErrors) <- load [path]
+test :: FilePath -> [String] -> IO ()
+test path patterns = do
+  (ctx, errors) <- load [path]
+  mapM_ print errors
+  (ctx, errors) <- include "prelude" ctx
+  mapM_ print errors
   let results = T.testAll [] ctx
-  putStrLn (intercalate "\n" (map show results))
+  mapM_ print results

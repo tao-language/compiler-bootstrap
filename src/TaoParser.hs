@@ -784,9 +784,9 @@ loadFile filename (ctx, errs) = case splitExtension filename of
         return (ctx, err : errs)
   _ -> error $ "file extension not supported: " ++ filename
 
-loadAtom :: String -> String -> IO (Expr, Maybe SyntaxError)
+loadAtom :: String -> String -> IO (Expr, [SyntaxError])
 loadAtom filename src = case P.parse parseAtom filename src of
-  Right (a, _) -> return (a, Nothing)
+  Right (a, _) -> return (a, [])
   Left P.State {filename, pos = (row, col), context} -> do
     let err =
           SyntaxError
@@ -796,14 +796,14 @@ loadAtom filename src = case P.parse parseAtom filename src of
               sourceCode = src,
               context = context
             }
-    return (Err, Just err)
+    return (Err, [err])
 
-loadAtoms :: String -> [String] -> IO [(Expr, Maybe SyntaxError)]
-loadAtoms _ [] = return []
+loadAtoms :: String -> [String] -> IO ([Expr], [SyntaxError])
+loadAtoms _ [] = return ([], [])
 loadAtoms filename (src : srcs) = do
-  result <- loadAtom filename src
-  results <- loadAtoms filename srcs
-  return (result : results)
+  (a, err1) <- loadAtom filename src
+  (bs, err2) <- loadAtoms filename srcs
+  return (a : bs, err1 ++ err2)
 
 walkDirectory :: FilePath -> FilePath -> IO [FilePath]
 walkDirectory base path = do
