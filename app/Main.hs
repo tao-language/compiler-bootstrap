@@ -1,5 +1,7 @@
+import Control.Monad (void)
 import Data.List (intercalate, isSuffixOf)
 import PrettyPrint (pretty)
+import qualified Python as Py
 import qualified System.Environment
 import System.FilePath.Windows (dropExtension, takeBaseName, takeDirectory, takeFileName)
 import qualified Tao as T
@@ -17,6 +19,9 @@ main = do
       -- path : patterns -> test path patterns
       path : patterns -> error "TODO: match test names by patterns"
       _ -> putStrLn "🛑 Please give me a directory or filename to test."
+    "build" : args -> case args of
+      [] -> build ["."]
+      paths -> build paths
     _ -> error "TODO: repl"
 
 run :: FilePath -> [String] -> IO ()
@@ -38,3 +43,8 @@ test path patterns = do
   mapM_ print errors
   let results = T.testAll [] ctx
   mapM_ (putStr . show) results
+
+build :: [FilePath] -> IO ()
+build paths = do
+  let options = Py.defaultBuildOptions
+  void $ Py.build options paths
