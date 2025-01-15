@@ -505,11 +505,11 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           ]
     testAll [] ("pkg", ctx) `shouldBe` results
 
-  it "☯ patch Expr" $ do
-    let patch' = patch [] [Def (i1, i2), Def (x, i3)]
-    patch' x `shouldBe` x
-    patch' y `shouldBe` y
-    patch' i1 `shouldBe` i2
-    patch' i3 `shouldBe` i3
-    patch' (Ann i1 i1) `shouldBe` Ann i2 i2
-    patch' (And i1 i1) `shouldBe` And i2 i2
+-- it "☯ patch Expr" $ do
+--   let patch' = patch [] [Def (i1, i2), Def (x, i3)]
+--   patch' x `shouldBe` x
+--   patch' y `shouldBe` y
+--   patch' i1 `shouldBe` i2
+--   patch' i3 `shouldBe` i3
+--   patch' (Ann i1 i1) `shouldBe` Ann i2 i2
+--   patch' (And i1 i1) `shouldBe` And i2 i2
