@@ -10,6 +10,7 @@ newtype Parser ctx a = Parser (State ctx -> Either (State ctx) (a, State ctx))
 
 data State ctx = State
   { remaining :: String,
+    filename :: String,
     pos :: (Int, Int),
     index :: Int,
     context :: [ctx]
@@ -49,9 +50,16 @@ instance Monad (Parser ctx) where
 apply :: Parser ctx a -> State ctx -> Either (State ctx) (a, State ctx)
 apply (Parser p) = p
 
-parse :: Parser ctx a -> String -> Either (State ctx) (a, State ctx)
-parse (Parser p) remaining =
-  p State {remaining = remaining, pos = (1, 1), index = 0, context = []}
+parse :: Parser ctx a -> FilePath -> String -> Either (State ctx) (a, State ctx)
+parse (Parser p) filename remaining =
+  p
+    State
+      { remaining = remaining,
+        filename = filename,
+        pos = (1, 1),
+        index = 0,
+        context = []
+      }
 
 parseFrom :: (Int, Int) -> String -> Parser ctx a -> Parser ctx a
 parseFrom pos remaining (Parser p) =

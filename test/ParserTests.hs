@@ -31,15 +31,15 @@ instance Show Expr where
 run :: SpecWith ()
 run = describe "--==☯ Parser ☯==--" $ do
   let parse' :: Parser Context a -> String -> Either String (a, String)
-      parse' parser txt = case parse parser txt of
+      parse' parser txt = case parse parser "ParserTests" txt of
         Right (x, state) -> Right (x, state.remaining)
         Left state -> Left state.remaining
   let parseErrors :: Parser Context a -> String -> (Maybe a, [Context], String)
-      parseErrors parser txt = case parse parser txt of
+      parseErrors parser txt = case parse parser "ParserTests" txt of
         Right (x, state) -> (Just x, state.context, state.remaining)
         Left state -> (Nothing, state.context, state.remaining)
   let parseShow :: (Show a) => Parser Context a -> String -> Maybe String
-      parseShow parser txt = case parse parser txt of
+      parseShow parser txt = case parse parser "ParserTests" txt of
         Right (x, _) -> Just (show x)
         Left _ -> Nothing
 
@@ -65,7 +65,7 @@ run = describe "--==☯ Parser ☯==--" $ do
           s2 <- getState
           ok (s1, s2)
     let p = parse' parser
-    let s1 = State {remaining = "abc", pos = (1, 1), index = 0, context = []}
+    let s1 = State {remaining = "abc", filename = "ParserTests", pos = (1, 1), index = 0, context = []}
     let s2 = s1 {remaining = "bc", index = 1, pos = (1, 2)}
     p "abc" `shouldBe` Right ((s1, s2), "bc")
 

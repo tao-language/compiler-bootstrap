@@ -7,7 +7,7 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap), second)
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
-import Data.List (delete, elemIndex, intercalate, isInfixOf, isPrefixOf, nub, sort, union, unionBy, (\\))
+import Data.List (delete, elemIndex, intercalate, isInfixOf, isPrefixOf, isSuffixOf, nub, sort, union, unionBy, (\\))
 import Data.List.Split (splitWhen, startsWith)
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import System.FilePath (takeBaseName)
@@ -46,8 +46,11 @@ data Op1
 
 data Op2
   = Eq
+  | Ne
   | Lt
+  | Le
   | Gt
+  | Ge
   | Add
   | Sub
   | Mul
@@ -65,8 +68,11 @@ instance Show Op2 where
   show :: Op2 -> String
   show = \case
     Eq -> "=="
+    Ne -> "!="
     Lt -> "<"
+    Le -> "<="
     Gt -> ">"
+    Ge -> ">="
     Add -> "+"
     Sub -> "-"
     Mul -> "*"
@@ -82,7 +88,7 @@ data Stmt
   = Import String String [(String, String)]
   | Def (Expr, Expr)
   | TypeDef (String, [Expr], [(Expr, Maybe Type)])
-  | Test (Int, Int) String Expr Pattern
+  | Test UnitTest
   deriving (Eq, Show)
 
 type Type = Expr
@@ -94,11 +100,11 @@ type Module = (String, [Stmt])
 type Context = [Module]
 
 data UnitTest = UnitTest
-  { filename :: String,
+  { filename :: FilePath,
     pos :: (Int, Int),
     name :: String,
     expr :: Expr,
-    expect :: Expr
+    expect :: Pattern
   }
   deriving (Eq, Show)
 
@@ -128,33 +134,33 @@ buildOps :: C.Ops
 buildOps = do
   let call op f = (op, \eval args -> f (map (C.dropTypes . eval) args))
   let intOp1 op f = call op $ \case
-        [C.Int x] -> Just (C.Int (f x))
+        [C.Int x] -> Just (f x)
         _ -> Nothing
   let numOp1 op f = call op $ \case
-        [C.Num x] -> Just (C.Num (f x))
+        [C.Num x] -> Just (f x)
         _ -> Nothing
   let intOp2 op f = call op $ \case
-        [C.Int x, C.Int y] -> Just (C.Int (f x y))
+        [C.Int x, C.Int y] -> Just (f x y)
         _ -> Nothing
   let numOp2 op f = call op $ \case
-        [C.Num x, C.Num y] -> Just (C.Num (f x y))
+        [C.Num x, C.Num y] -> Just (f x y)
         _ -> Nothing
-  [ intOp1 "int_neg" (\x -> -x),
-    numOp1 "num_neg" (\x -> -x),
-    intOp2 "int_add" (+),
-    numOp2 "num_add" (+),
-    intOp2 "int_sub" (-),
-    numOp2 "num_sub" (-),
-    intOp2 "int_mul" (*),
-    numOp2 "num_mul" (*),
-    call "int_div" $ \case
-      [C.Int x, C.Int y] -> Just (C.Num (fromIntegral x / fromIntegral y))
-      _ -> Nothing,
-    numOp2 "num_div" (/),
-    intOp2 "int_divi" Prelude.div,
-    numOp2 "num_divi" (\x y -> (fromIntegral . floor) (x / y)),
-    intOp2 "int_pow" (^),
-    numOp2 "num_pow" (**)
+  [ intOp1 "int_neg" (\x -> C.Int (-x)),
+    numOp1 "num_neg" (\x -> C.Num (-x)),
+    intOp2 "int_lt" (\x y -> C.Tag (if x < y then "True" else "False")),
+    intOp2 "int_add" (\x y -> C.Int (x + y)),
+    intOp2 "int_sub" (\x y -> C.Int (x - y)),
+    intOp2 "int_mul" (\x y -> C.Int (x * y)),
+    intOp2 "int_div" (\x y -> C.Num (fromIntegral x / fromIntegral y)),
+    intOp2 "int_divi" (\x y -> C.Int (Prelude.div x y)),
+    intOp2 "int_pow" (\x y -> C.Int (x ^ y)),
+    numOp2 "num_lt" (\x y -> C.Tag (if x < y then "True" else "False")),
+    numOp2 "num_add" (\x y -> C.Num (x + y)),
+    numOp2 "num_sub" (\x y -> C.Num (x - y)),
+    numOp2 "num_mul" (\x y -> C.Num (x * y)),
+    numOp2 "num_div" (\x y -> C.Num (x / y)),
+    numOp2 "num_divi" (\x y -> C.Num (fromIntegral (floor (x / y)))),
+    numOp2 "num_pow" (\x y -> C.Num (x ** y))
     ]
 
 runtimeOps :: C.Ops
@@ -243,11 +249,20 @@ neg = Op1 Neg
 eq :: Expr -> Expr -> Expr
 eq = Op2 Eq
 
+ne :: Expr -> Expr -> Expr
+ne = Op2 Ne
+
 lt :: Expr -> Expr -> Expr
 lt = Op2 Lt
 
+le :: Expr -> Expr -> Expr
+le = Op2 Le
+
 gt :: Expr -> Expr -> Expr
 gt = Op2 Gt
+
+ge :: Expr -> Expr -> Expr
+ge = Op2 Ge
 
 add :: Expr -> Expr -> Expr
 add = Op2 Add
@@ -359,6 +374,10 @@ isImport :: Stmt -> Bool
 isImport Import {} = True
 isImport _ = False
 
+asImport :: Stmt -> Maybe (FilePath, String, [(String, String)])
+asImport (Import path alias names) = Just (path, alias, names)
+asImport _ = Nothing
+
 isDef :: Stmt -> Bool
 isDef Def {} = True
 isDef _ = False
@@ -371,8 +390,8 @@ isTest :: Stmt -> Bool
 isTest Test {} = True
 isTest _ = False
 
-asTest :: Stmt -> Maybe (String, Expr, Pattern)
-asTest (Test _ name a p) = Just (name, a, p)
+asTest :: Stmt -> Maybe UnitTest
+asTest (Test t) = Just t
 asTest _ = Nothing
 
 freeNames :: (Bool, Bool, Bool) -> Expr -> [String]
@@ -651,23 +670,33 @@ eval ctx path expr = do
   lift (C.eval runtimeOps (C.let' env expr'))
 
 class Resolve a where
-  resolve :: Context -> String -> a -> [(String, Expr)]
+  resolve :: Context -> FilePath -> a -> [(FilePath, Expr)]
 
 instance Resolve String where
-  resolve :: Context -> String -> String -> [(String, Expr)]
-  resolve ctx path name = case lookup path ctx of
-    Just stmts -> resolve ctx path (name, stmts)
-    Nothing -> []
+  resolve :: Context -> FilePath -> String -> [(FilePath, Expr)]
+  resolve ctx path name = resolve ctx path (name, ctx)
+
+instance Resolve (String, [Module]) where
+  resolve :: Context -> FilePath -> (String, [Module]) -> [(FilePath, Expr)]
+  resolve ctx path (name, modules) = do
+    let matchStmts (path', stmts) =
+          if path == path' || (path ++ "/@") `isPrefixOf` path'
+            then stmts
+            else []
+    resolve ctx path (name, concatMap matchStmts modules)
 
 instance Resolve (String, [Stmt]) where
-  resolve :: Context -> String -> (String, [Stmt]) -> [(String, Expr)]
+  resolve :: Context -> FilePath -> (String, [Stmt]) -> [(FilePath, Expr)]
   resolve ctx path (name, stmts) =
     concatMap (\stmt -> resolve ctx path (name, stmt)) stmts
 
 instance Resolve (String, Stmt) where
-  resolve :: Context -> String -> (String, Stmt) -> [(String, Expr)]
+  resolve :: Context -> FilePath -> (String, Stmt) -> [(FilePath, Expr)]
   resolve ctx path (name, stmt) = case stmt of
     Import path' alias names -> case names of
+      _ | path == path' -> []
+      ("", _) : _ -> do
+        resolve ctx path (name, Import path' alias [(name, name)])
       (x, y) : names -> do
         let defs = if y == name then resolve ctx path' x else []
         defs ++ resolve ctx path (name, Import path' alias names)
@@ -685,11 +714,11 @@ class Compile a where
 
 instance Compile (String -> C.Env) where
   compile :: Context -> String -> String -> C.Env
-  -- compile ctx path name@"+" = do
+  -- compile ctx path name@"y" = do
   --   let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
   --       compileDef (path, alt) (env, alts) = do
   --         let (env', alt') = compile ctx path (name, alt)
-  --         (unionBy (\a b -> fst a == fst b) env' env, alt' : alts)
+  --         (unionBy (\a b -> fst a == fst b) env' env, C.let' env' alt' : alts)
   --   let (env, alts) = foldr compileDef ([], []) (resolve ctx path name)
   --   let def = case alts of
   --         [] -> []
@@ -699,9 +728,10 @@ instance Compile (String -> C.Env) where
   --   -- unionBy (\a b -> fst a == fst b) def env
   --   let ((a, t), s, e) = C.infer buildOps env (C.or' alts)
   --   error . intercalate "\n" $
-  --     [ "-- compile/1 " ++ name,
+  --     [ "-- compile/1 " ++ show path ++ " " ++ show name,
+  --       show (map fst ctx),
   --       show env,
-  --       -- show $ map C.format alts,
+  --       show $ map C.format alts,
   --       C.format a,
   --       C.format t,
   --       ""
@@ -750,36 +780,40 @@ instance Compile (Expr -> (C.Env, C.Expr)) where
     compile ctx path (C.newName (freeVars expr) "", expr)
 
 class TestSome a where
-  testSome :: Context -> ((String, String) -> Bool) -> a -> [TestResult]
+  testSome :: Context -> (UnitTest -> Bool) -> a -> [TestResult]
 
 instance TestSome Package where
-  testSome :: Context -> ((String, String) -> Bool) -> Package -> [TestResult]
-  testSome ctx filter (_, mods) = do
+  testSome :: Context -> (UnitTest -> Bool) -> Package -> [TestResult]
+  testSome ctx filter (_, mods) = testSome ctx filter mods
+
+instance TestSome [Module] where
+  testSome :: Context -> (UnitTest -> Bool) -> [Module] -> [TestResult]
+  testSome ctx filter mods =
     concatMap (testSome (ctx ++ mods) filter) mods
 
 instance TestSome Module where
-  testSome :: Context -> ((String, String) -> Bool) -> Module -> [TestResult]
+  testSome :: Context -> (UnitTest -> Bool) -> Module -> [TestResult]
   testSome ctx filter (path, stmts) =
     concatMap (\stmt -> testSome ctx filter (path, stmt)) stmts
 
 instance TestSome (String, Stmt) where
-  testSome :: Context -> ((String, String) -> Bool) -> (String, Stmt) -> [TestResult]
+  testSome :: Context -> (UnitTest -> Bool) -> (String, Stmt) -> [TestResult]
   testSome ctx filter (path, stmt) = case stmt of
     Import {} -> []
     Def {} -> []
     TypeDef {} -> []
-    Test pos name expr expect | filter (path, name) -> do
-      testSome ctx filter (UnitTest path pos name expr expect)
+    Test t | filter t -> testSome ctx filter (path, t)
     Test {} -> []
 
-instance TestSome UnitTest where
-  testSome :: Context -> ((String, String) -> Bool) -> UnitTest -> [TestResult]
-  testSome ctx _ t = do
-    let (env, expr) = compile ctx t.filename t.expr
-    let expect = let (env', a) = compile ctx t.filename (Fun t.expect (Tag ":Ok")) in C.let' (env' ++ env) a
+instance TestSome (FilePath, UnitTest) where
+  testSome :: Context -> (UnitTest -> Bool) -> (FilePath, UnitTest) -> [TestResult]
+  testSome ctx _ (path, t) = do
+    let (env, expr) = compile ctx path t.expr
+    let expect = let (env', a) = compile ctx path (Fun t.expect (Tag ":Ok")) in C.let' (env' ++ env) a
     let test' = expect `C.Or` C.For "got" (C.Fun (C.Var "got") (C.Var "got"))
     -- error . intercalate "\n" $
     --   [ "-- testSome",
+    --     "ctx = " ++ show (map fst ctx),
     --     "env = " ++ C.format (C.Let env C.Any),
     --     "      " ++ show (map fst env),
     --     "expr = " ++ C.format expr,

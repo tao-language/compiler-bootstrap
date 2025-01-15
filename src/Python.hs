@@ -417,21 +417,24 @@ raise :: Expr -> Stmt
 raise x = Raise x Nothing
 
 --- Build target ---
-build :: BuildOptions -> [FilePath] -> FilePath -> FilePath -> [FilePath] -> IO FilePath
-build options bases prelude path dependencies = do
+build :: BuildOptions -> [FilePath] -> IO FilePath
+build options paths = do
   putStrLn $ "Clearing build directory: " ++ options.buildDir
   pathExists <- doesPathExist options.buildDir
   when pathExists (removeDirectoryRecursive options.buildDir)
   createDirectoryIfMissing True options.buildDir
 
-  putStrLn $ "Loading package: " ++ path
-  (pkg, errs) <- P.load bases prelude path dependencies
+  putStrLn "Loading modules"
+  (ctx, errs) <- P.load paths
   mapM_ (\e -> putStrLn ("❌ " ++ show e)) errs
 
-  let ctx = snd pkg
   putStrLn "Creating files:"
   files <- mapM (buildModule options ctx . fst) ctx
   mapM_ (\f -> putStrLn ("- " ++ f)) files
+
+  putStrLn "- pyproject.toml"
+  writeFile (options.buildDir </> "pyproject.toml") ""
+
   putStrLn "Done"
   return options.buildDir
 
@@ -545,11 +548,7 @@ instance Emit T.Expr ([Stmt], Expr) where
     --       let (stmts2, b') = emit options b
     --       (stmts1 ++ stmts2, BinOp a' op b')
     -- Op1 Op1 Expr
-    T.Op2 op a b -> do
-      let (s1, a') = emit options a
-      let (s2, b') = emit options b
-      let op' = emit options op
-      (s1 ++ s2, BinOp a' op' b')
+    T.Op2 op a b -> emit options op a b
     T.Match args cases -> do
       let x = C.newName (concatMap (\(xs, _, _) -> xs) cases) "_match"
       let def = T.Def (T.Var x, T.Match args cases)
@@ -605,23 +604,33 @@ instance Emit T.Pattern Pattern where
     T.Var x -> MatchAs Nothing x
     p -> error $ "TODO emit Pattern " ++ show p
 
-instance Emit T.Op2 BinOp where
-  emit :: BuildOptions -> T.Op2 -> BinOp
-  emit options = \case
-    T.Add -> Add
-    T.Sub -> Sub
-    T.Mul -> Mult
-    T.Div -> Div
-    T.DivI -> FloorDiv
-    -- Mod -- x % y
-    T.Pow -> Pow
-    -- LShift -- x << y
-    -- RShift -- x >> y
-    -- BitOr -- x | y
-    -- BitXor -- x ^ y
-    -- BitAnd -- x & y
-    -- MatMult -- x @ y
-    op -> error $ "TODO emit Op2 " ++ show op
+instance Emit T.Op2 (T.Expr -> T.Expr -> ([Stmt], Expr)) where
+  emit :: BuildOptions -> T.Op2 -> T.Expr -> T.Expr -> ([Stmt], Expr)
+  emit options op a b = do
+    let (s1, a') = emit options a
+    let (s2, b') = emit options b
+    let c = case op of
+          T.Eq -> Compare a' Eq b'
+          T.Ne -> Compare a' NotEq b'
+          T.Lt -> Compare a' Lt b'
+          T.Le -> Compare a' LtE b'
+          T.Gt -> Compare a' Gt b'
+          T.Ge -> Compare a' GtE b'
+          T.Add -> BinOp a' Add b'
+          T.Sub -> BinOp a' Sub b'
+          T.Mul -> BinOp a' Mult b'
+          T.Div -> BinOp a' Div b'
+          T.DivI -> BinOp a' FloorDiv b'
+          -- Mod -- x % y
+          T.Pow -> BinOp a' Pow b'
+          -- LShift -- x << y
+          -- RShift -- x >> y
+          -- BitOr -- x | y
+          -- BitXor -- x ^ y
+          -- BitAnd -- x & y
+          -- MatMult -- x @ y
+          op -> error $ "TODO emit Op2 " ++ show op
+    (s1 ++ s2, c)
 
 instance Emit (Expr -> Stmt) (T.Case -> (Pattern, Maybe Expr, [Stmt])) where
   emit :: BuildOptions -> (Expr -> Stmt) -> T.Case -> (Pattern, Maybe Expr, [Stmt])
@@ -676,12 +685,12 @@ instance Emit T.Stmt [Stmt] where
       [Import path' alias' | alias `notElem` map snd names]
         ++ [ImportFrom path' (map nameAlias names) | names /= []]
     T.Def def -> emit options def
-    T.Test pos name a p -> do
-      let (s1, a') = emit options a
-      let (s2, b') = emit options p -- TODO: do a match instead
+    T.Test t -> do
+      let (s1, a') = emit options t.expr
+      let (s2, b') = emit options t.expect -- TODO: do a match instead
       let def =
             FunctionDef
-              { name = "test_" ++ T.nameSnakeCase name,
+              { name = "test_" ++ T.nameSnakeCase t.name,
                 args = [("self", Nothing, Nothing)],
                 body =
                   [ Assign [Name "actual"] a',
