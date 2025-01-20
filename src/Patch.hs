@@ -1,57 +1,75 @@
 module Patch where
 
+import Control.Monad (foldM)
+import Stdlib (push, set)
+import System.FilePath (splitDirectories, splitFileName, (</>))
 import Tao
+import TaoParser (SyntaxError, load, loadFile, loadSource)
 
-apply :: Context -> FilePath -> [FilePath] -> IO ()
-apply ctx buildDir = \case
-  [] -> return ()
-  patch : patches -> do
-    error "TODO Patch.apply"
+type PatchStep = ([FilePath], [(Pattern, Expr)])
 
-class Patch a where
-  patch :: Context -> [Stmt] -> a -> a
+class Plan a where
+  plan :: [PatchStep] -> FilePath -> a -> IO ([PatchStep], [SyntaxError])
 
-instance Patch Expr where
-  patch :: Context -> [Stmt] -> Expr -> Expr
-  patch _ [] a = a
-  patch ctx (rule : rules) expr = case rule of
-    Import {} -> error "TODO: import sub-patches"
-    Def (pattern', body) -> do
-      let patch' = patch ctx (rule : rules)
-      let expr' = case expr of
-            Ann a b -> Ann (patch' a) (patch' b)
-            And a b -> And (patch' a) (patch' b)
-            a -> a
-      case eval ctx "" (Let (pattern', expr') body) of
-        Err -> expr'
-        result -> result
-    -- Def (p, b) -> case (p, a) of
-    --   (Any, Any) -> b
-    --   (Unit, Unit) -> b
-    --   (IntT, IntT) -> b
-    --   (NumT, NumT) -> b
-    --   (Int i, Int i') -> if i == i' then b else a
-    --   (Num n, Num n') -> if n == n' then b else a
-    --   (Tag k, Tag k') -> if k == k' then b else a
-    --   (Var x, Var x') -> if x == x' then b else a
-    --   -- Ann Expr Type
-    --   -- And Expr Expr
-    --   -- Or Expr Expr
-    --   -- Fix String Expr
-    --   -- For [String] Expr
-    --   -- Fun Expr Expr
-    --   -- App Expr Expr
-    --   -- Call String [Expr]
-    --   -- Op1 Op1 Expr
-    --   -- Op2 Op2 Expr Expr
-    --   -- Match [Expr] [Expr]
-    --   -- If Expr Expr Expr
-    --   -- Let (Expr, Expr) Expr
-    --   -- Bind (Expr, Expr) Expr
-    --   -- Record [(String, Expr)]
-    --   -- Select Expr [(String, Expr)]
-    --   -- With Expr [(String, Expr)]
-    --   -- Err
-    --   (Err, Err) -> Err
-    TypeDef {} -> expr
-    Test {} -> expr
+instance Plan [FilePath] where
+  plan :: [PatchStep] -> FilePath -> [FilePath] -> IO ([PatchStep], [SyntaxError])
+  plan steps0 dir = \case
+    [] -> return (steps0, [])
+    path : paths -> do
+      (steps1, errs1) <- plan steps0 dir ([] :: [FilePath], path)
+      (steps2, errs2) <- plan steps1 dir paths
+      return (steps2, errs1 ++ errs2)
+
+instance Plan ([FilePath], FilePath) where
+  plan :: [PatchStep] -> FilePath -> ([FilePath], FilePath) -> IO ([PatchStep], [SyntaxError])
+  plan steps dir (paths, path) = do
+    src <- loadSource dir path
+    case src of
+      Right (path, stmts) -> plan steps dir (push path paths, stmts)
+      Left errs -> return ([], errs)
+
+instance Plan ([FilePath], [Stmt]) where
+  plan :: [PatchStep] -> FilePath -> ([FilePath], [Stmt]) -> IO ([PatchStep], [SyntaxError])
+  plan steps0 dir (paths, stmts) = case stmts of
+    [] -> return (steps0, [])
+    stmt : stmts -> do
+      (steps1, errs1) <- plan steps0 dir (paths, stmt)
+      (steps2, errs2) <- plan steps1 dir (paths, stmts)
+      return (steps2, errs1 ++ errs2)
+
+instance Plan ([FilePath], Stmt) where
+  plan :: [PatchStep] -> FilePath -> ([FilePath], Stmt) -> IO ([PatchStep], [SyntaxError])
+  plan steps0 dir (paths, stmt) = case stmt of
+    Import path alias names -> plan steps0 dir (paths, path)
+    Def rule -> case lookup paths steps0 of
+      Just rules -> return (set paths (push rule rules) steps0, [])
+      Nothing -> return (push (paths, [rule]) steps0, [])
+    stmt -> error $ "TODO plan " ++ show stmt
+
+class Apply patch a where
+  apply :: Context -> FilePath -> patch -> a -> a
+
+-- instance Apply PatchModule Module where
+--   apply :: Context -> FilePath -> PatchModule -> Module -> Module
+--   apply ctx path rule x = error $ "TODO apply " ++ show rule ++ " -- " ++ show x
+
+-- instance Apply PatchStmt Module where
+--   apply :: Context -> FilePath -> PatchStmt -> Module -> Module
+--   apply ctx path rule x = error $ "TODO apply " ++ show rule ++ " -- " ++ show x
+
+-- instance Apply PatchStmt Stmt where
+--   apply :: Context -> FilePath -> PatchStmt -> Stmt -> Stmt
+--   apply ctx path rule x = error $ "TODO apply " ++ show rule ++ " -- " ++ show x
+
+instance Apply (Pattern, Expr) Stmt where
+  apply :: Context -> FilePath -> (Pattern, Expr) -> Stmt -> Stmt
+  apply ctx path rule = \case
+    Def (a, b) -> Def (a, apply ctx path rule b)
+    stmt -> error $ "TODO: apply " ++ show stmt
+
+instance Apply (Pattern, Expr) Expr where
+  apply :: Context -> FilePath -> (Pattern, Expr) -> Expr -> Expr
+  apply ctx path (p, q) expr = do
+    case eval ctx path (Let (p, expr) q) of
+      Err -> expr
+      result -> result

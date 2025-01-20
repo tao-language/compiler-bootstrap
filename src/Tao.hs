@@ -86,7 +86,7 @@ type Pattern = Expr
 
 data Stmt
   = Import String String [(String, String)]
-  | Def (Expr, Expr)
+  | Def (Pattern, Expr)
   | TypeDef (String, [Expr], [(Expr, Maybe Type)])
   | Test UnitTest
   deriving (Eq, Show)
@@ -95,7 +95,7 @@ type Type = Expr
 
 type Package = (String, [Module])
 
-type Module = (String, [Stmt])
+type Module = (FilePath, [Stmt])
 
 type Context = [Module]
 

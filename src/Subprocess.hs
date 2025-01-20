@@ -4,7 +4,8 @@ import Control.Monad (void)
 import Data.Char (isSpace)
 import Data.List (dropWhileEnd, intercalate)
 import GHC.IO.Exception (ExitCode (..))
-import GHC.IO.Handle (hGetContents)
+import GHC.IO.Handle (hFlush, hGetContents)
+import System.IO (stdout)
 import System.Process (CreateProcess (std_err, std_out), StdStream (CreatePipe), createProcess, cwd, proc, waitForProcess)
 
 run :: FilePath -> String -> [String] -> IO ()
@@ -15,7 +16,7 @@ getOutput :: FilePath -> String -> [String] -> IO String
 getOutput workingDirectory cmd args = do
   let trim = dropWhileEnd isSpace . dropWhile isSpace
   let command = '>' : ' ' : unwords (cmd : args)
-  putStr command
+  putStrLn command
   (_, Just stdout, Just stderr, p) <-
     createProcess
       (proc cmd args)
@@ -27,13 +28,21 @@ getOutput workingDirectory cmd args = do
   case status of
     ExitSuccess -> do
       out <- hGetContents stdout
-      putStrLn (trim out)
+      case trim out of
+        "" -> return ()
+        out -> putStrLn out
       err <- hGetContents stderr
-      putStrLn (trim err)
-      return out
+      case trim err of
+        "" -> return ()
+        err -> putStrLn err
+      return (trim out)
     ExitFailure _ -> do
       out <- hGetContents stdout
-      putStrLn (trim out)
+      case trim out of
+        "" -> return ()
+        out -> putStrLn out
       err <- hGetContents stderr
-      putStrLn (trim err)
+      case trim err of
+        "" -> return ()
+        err -> putStrLn err
       fail command

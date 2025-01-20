@@ -4,6 +4,7 @@ import qualified CoreTests
 import qualified ExamplesTests
 import qualified OperatorPrecedenceTests
 import qualified ParserTests
+import qualified PatchTests
 import qualified PrettyPrintTests
 import qualified PythonTests
 import qualified TaoParserTests
@@ -18,5 +19,6 @@ main = hspec $ do
   TaoTests.run
   TaoParserTests.run
   OperatorPrecedenceTests.run
+  PatchTests.run
   ExamplesTests.run
   PythonTests.run

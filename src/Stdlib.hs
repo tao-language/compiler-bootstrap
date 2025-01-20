@@ -19,3 +19,14 @@ filterMap _ [] = []
 filterMap f (x : xs) = case f x of
   Just y -> y : filterMap f xs
   Nothing -> filterMap f xs
+
+push :: a -> [a] -> [a]
+push y = \case
+  [] -> [y]
+  x : xs -> x : push y xs
+
+set :: (Eq k) => k -> v -> [(k, v)] -> [(k, v)]
+set key value = \case
+  [] -> [(key, value)]
+  (k', _) : kvs | key == k' -> (key, value) : kvs
+  kv : kvs -> kv : set key value kvs

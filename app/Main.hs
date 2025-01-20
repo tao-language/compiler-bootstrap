@@ -14,49 +14,50 @@ main = do
   cliArgs <- System.Environment.getArgs
   case cliArgs of
     "run" : args -> case args of
-      path : args -> run path args
+      path : args -> run "." path args
       _ -> putStrLn "🛑 Please give me a path, and an expression to run."
     "test" : args -> case args of
-      [path] -> test path ["*"]
+      [path] -> test "." path ["*"]
       -- path : patterns -> test path patterns
       path : patterns -> error "TODO: match test names by patterns"
       _ -> putStrLn "🛑 Please give me a path to test."
     "patch" : args -> case args of
-      path : patches -> patch path patches
+      path : patches -> patch "." path patches
       _ -> putStrLn "🛑 Please give me a path, and the patches to apply."
     "build" : args -> case args of
-      [] -> build ["."]
-      paths -> build paths
+      [] -> build "." ["."]
+      paths -> build "." paths
     _ -> error "TODO: repl"
 
-run :: FilePath -> [String] -> IO ()
-run filename args = do
-  (ctx, errors) <- load [filename]
+run :: FilePath -> FilePath -> [String] -> IO ()
+run dir filename args = do
+  (ctx, errors) <- load dir [filename]
   mapM_ print errors
-  (ctx, errors) <- include "prelude" ctx
+  (ctx, errors) <- include dir "prelude" ctx
   mapM_ print errors
   (args', errors) <- loadAtoms "<run>" args
   mapM_ print errors
   print (T.eval ctx (dropExtension filename) (T.app' args'))
 
-test :: FilePath -> [String] -> IO ()
-test path patterns = do
-  (ctx, errors) <- load [path]
+test :: FilePath -> FilePath -> [String] -> IO ()
+test dir path patterns = do
+  (ctx, errors) <- load dir [path]
   mapM_ print errors
-  (ctx, errors) <- include "prelude" ctx
+  (ctx, errors) <- include dir "prelude" ctx
   mapM_ print errors
   let results = T.testAll [] ctx
   mapM_ (putStr . show) results
 
-patch :: FilePath -> [FilePath] -> IO ()
-patch path patches = do
-  (ctx, errors) <- load [path]
-  mapM_ print errors
-  (ctx, errors) <- include "prelude" ctx
-  mapM_ print errors
-  Patch.apply ctx ("build" </> "patch") patches
+patch :: FilePath -> FilePath -> [FilePath] -> IO ()
+patch dir path patches = do
+  -- (ctx, errors) <- load [path]
+  -- mapM_ print errors
+  -- (ctx, errors) <- include "prelude" ctx
+  -- mapM_ print errors
+  -- Patch.apply ctx ("build" </> "patch") patches
+  error "TODO: Main.patch"
 
-build :: [FilePath] -> IO ()
-build paths = do
+build :: FilePath -> [FilePath] -> IO ()
+build dir paths = do
   let options = Py.defaultBuildOptions
-  void $ Py.build options paths
+  void $ Py.build options dir paths
