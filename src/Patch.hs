@@ -65,12 +65,11 @@ instance Apply (Context, [Rule]) Module where
 instance Apply (Context, FilePath, [Rule]) Stmt where
   apply :: (Context, FilePath, [Rule]) -> Stmt -> Stmt
   apply (ctx, path, rules) = \case
-    Def (p, b) -> Def (applyP p, apply' b)
-    Test t -> Test (t {expr = applyP t.expr, expect = apply' t.expect})
+    Def (p, b) -> Def (p, apply' b)
+    Test t -> Test (t {expect = apply' t.expect})
     stmt -> error $ "TODO apply " ++ show stmt
     where
       apply' = apply (ctx, path, rules)
-      applyP = apply (ctx, "", rules)
 
 instance Apply (Context, FilePath, [Rule]) Expr where
   apply :: (Context, FilePath, [Rule]) -> Expr -> Expr

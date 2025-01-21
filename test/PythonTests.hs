@@ -2,6 +2,7 @@ module PythonTests where
 
 import Control.Monad (forM)
 import Data.List (sort)
+import Load (load)
 import Python
 import qualified Subprocess
 import System.Directory (doesDirectoryExist, doesFileExist, getDirectoryContents, removeDirectoryRecursive, removeFile, withCurrentDirectory)
@@ -105,7 +106,9 @@ run = describe "--==☯ Python ☯==--" $ do
 
   it "☯ build factorial" $ do
     putStrLn "  ☯ build factorial"
-    build options ["examples/factorial.tao"] `shouldReturn` "build"
+    (ctx, syntaxErrors) <- load ["examples/factorial"]
+    syntaxErrors `shouldBe` []
+    build options ctx `shouldReturn` "build"
     Subprocess.run "build" "python" ["-m", "venv", "env"]
     Subprocess.run "build" "env/bin/pip" ["install", "-e", "."]
     Subprocess.run "build" "env/bin/python" ["-m", "unittest", "-v", "examples.factorial_test"]
