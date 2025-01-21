@@ -1,12 +1,19 @@
 module Patch where
 
 import Control.Monad (foldM)
+import Load (loadSource)
 import Stdlib (push, set)
 import System.FilePath (splitDirectories, splitFileName, (</>))
 import Tao
-import TaoParser (SyntaxError, load, loadFile, loadSource)
 
 type PatchStep = ([FilePath], [(Pattern, Expr)])
+
+patch :: FilePath -> FilePath -> FilePath -> IO (FilePath, [SyntaxError])
+patch buildDir patchPath sourcePath = do
+  -- (ctx, errs) <- load
+  error "TODO"
+
+-- patch :: FilePath -> [FilePath] -> (Context, [Module]) -> IO ([FilePath], [SyntaxError])
 
 class Plan a where
   plan :: [PatchStep] -> FilePath -> a -> IO ([PatchStep], [SyntaxError])

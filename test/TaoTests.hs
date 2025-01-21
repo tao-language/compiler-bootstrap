@@ -273,6 +273,14 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --   run mod (Meta loc x) `shouldBe` Int 42
   --   run mod Err `shouldBe` Err
 
+  it "☯ split2" $ do
+    split2 ':' "" `shouldBe` ("", "")
+    split2 ':' "abc" `shouldBe` ("", "abc")
+    split2 ':' ":abc" `shouldBe` ("", "abc")
+    split2 ':' "a:bc" `shouldBe` ("a", "bc")
+    split2 ':' "ab:c" `shouldBe` ("ab", "c")
+    split2 ':' "abc:" `shouldBe` ("abc", "")
+
   it "☯ splitCamelCase" $ do
     splitCamelCase "" `shouldBe` []
     splitCamelCase "Camel" `shouldBe` ["Camel"]

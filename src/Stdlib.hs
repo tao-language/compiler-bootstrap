@@ -1,5 +1,6 @@
 module Stdlib where
 
+import Data.Function ((&))
 import Data.List (isPrefixOf)
 
 replace :: (Eq a) => a -> a -> [a] -> [a]
@@ -30,3 +31,15 @@ set key value = \case
   [] -> [(key, value)]
   (k', _) : kvs | key == k' -> (key, value) : kvs
   kv : kvs -> kv : set key value kvs
+
+pad :: Int -> String -> String
+pad = padWith ' '
+
+padWith :: Char -> Int -> String -> String
+padWith fill n text = replicate (n - length text) fill ++ text
+
+slice :: Int -> Int -> [a] -> [a]
+slice start end xs =
+  xs
+    & drop (start - 1)
+    & take (end - start)

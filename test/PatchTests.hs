@@ -41,3 +41,6 @@ run = describe "--==☯ PatchTests ☯==--" $ do
     -- apply' (Ann i1 i1) `shouldBe` Ann i2 i2
     -- apply' (And i1 i1) `shouldBe` And i2 i2
     True `shouldBe` True
+
+  it "☯ patch" $ do
+    True `shouldBe` True

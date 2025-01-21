@@ -17,41 +17,6 @@ import Tao
 
 type Parser a = P.Parser ParserContext a
 
-data ParserContext
-  = CModule
-  | CDefinition
-  | CImport
-  | CTest
-  | CComment
-  | CCommentMultiLine
-  | CDocString
-  | CRecordField String
-  | CCase
-  | CMatch
-  deriving (Eq, Show)
-
-data SyntaxError
-  = SyntaxError
-  { filename :: String,
-    row :: Int,
-    col :: Int,
-    sourceCode :: String,
-    context :: [ParserContext]
-  }
-  deriving (Eq)
-
-instance Show SyntaxError where
-  show :: SyntaxError -> String
-  show e = do
-    let loc = intercalate ":" [e.filename, show e.row, show e.col]
-    intercalate
-      "\n"
-      [ "🛑 " ++ loc ++ ": syntax error " ++ show e.context,
-        "",
-        showSnippet (e.row, e.col) 3 3 e.sourceCode,
-        ""
-      ]
-
 keywords :: [String]
 keywords =
   [ "and",
@@ -683,41 +648,6 @@ parseTest = do
       ]
   return (Test (UnitTest s.filename s.pos name expr result))
 
-pad :: Int -> String -> String
-pad = padWith ' '
-
-padWith :: Char -> Int -> String -> String
-padWith fill n text = replicate (n - length text) fill ++ text
-
-slice :: Int -> Int -> [a] -> [a]
-slice start end xs =
-  xs
-    & drop (start - 1)
-    & take (end - start)
-
-showSnippet :: (Int, Int) -> Int -> Int -> String -> String
-showSnippet (row, col) before after src = do
-  let divider = "| "
-  let rowMark = "* "
-  let colMark = "^"
-  let start = max 1 (row - before)
-  let padding = max (length $ show start) (length $ show (row + after))
-  let showLine i line = pad (padding + length rowMark) (show i) ++ divider ++ line
-  let linesBefore =
-        lines src
-          & slice start row
-          & zipWith showLine [start ..]
-  let highlight =
-        lines src
-          & slice row (row + 1)
-          & map (\line -> pad padding (rowMark ++ show row) ++ divider ++ line)
-          & (++ [replicate (col + padding + length divider + 1) ' ' ++ colMark])
-  let linesAfter =
-        lines src
-          & slice (row + 1) (row + after + 1)
-          & zipWith showLine [row + 1 ..]
-  intercalate "\n" (linesBefore ++ highlight ++ linesAfter)
-
 parseModule :: String -> Parser Module
 parseModule name = do
   P.commit CModule
@@ -733,91 +663,3 @@ srcPath path = do
   home <- lookupEnv "HOME"
   let homePath = fromMaybe "." home </> ".tao" </> "src"
   return [takeDirectory path, homePath]
-
-load :: FilePath -> [FilePath] -> IO (Context, [SyntaxError])
-load dir = foldM (loadModule dir) ([], [])
-
-include :: FilePath -> FilePath -> Context -> IO (Context, [SyntaxError])
-include dir prelude ctx = do
-  let include' (path, stmts) =
-        (path, Import (dropExtension prelude) (takeBaseName prelude) [("", "")] : stmts)
-  (ctx, errs) <- loadModule dir (ctx, []) prelude
-  return (map include' ctx, errs)
-
-loadModule :: FilePath -> (Context, [SyntaxError]) -> FilePath -> IO (Context, [SyntaxError])
-loadModule dir (ctx, errs) path = do
-  isDir <- doesDirectoryExist path
-  isFile <- do
-    dirFiles <- listDirectory (takeDirectory path)
-    return (any ((takeBaseName path ++ ".") `isPrefixOf`) dirFiles)
-  (ctx, errs) <-
-    if isDir
-      then loadDir dir path (ctx, errs)
-      else return (ctx, errs)
-  if isFile
-    then loadFile dir path (ctx, errs)
-    else return (ctx, errs)
-
-loadDir :: FilePath -> FilePath -> (Context, [SyntaxError]) -> IO (Context, [SyntaxError])
-loadDir dir path (ctx, errs) = do
-  files <- walkDirectory "." path
-  foldM (flip (loadFile dir)) (ctx, errs) files
-
-loadFile :: FilePath -> FilePath -> (Context, [SyntaxError]) -> IO (Context, [SyntaxError])
-loadFile dir path (ctx, errs) = do
-  src <- loadSource dir path
-  case src of
-    Right mod -> return (mod : ctx, errs)
-    Left errs' -> return (ctx, errs ++ errs')
-
-loadSource :: FilePath -> FilePath -> IO (Either [SyntaxError] Module)
-loadSource dir filename = case splitExtension filename of
-  (_, "") -> loadSource dir (filename ++ ".tao")
-  (name, ".tao") -> do
-    src <- readFile (dir </> filename)
-    let parser = parseModule name
-    case P.parse parser (dir </> filename) src of
-      Right (mod, _) -> return (Right mod)
-      Left P.State {filename, pos = (row, col), context} -> do
-        let err =
-              SyntaxError
-                { filename = filename,
-                  row = row,
-                  col = col,
-                  sourceCode = src,
-                  context = context
-                }
-        return (Left [err])
-  _ -> error $ "file extension not supported: " ++ filename
-
-loadAtom :: String -> String -> IO (Expr, [SyntaxError])
-loadAtom filename src = case P.parse parseAtom filename src of
-  Right (a, _) -> return (a, [])
-  Left P.State {filename, pos = (row, col), context} -> do
-    let err =
-          SyntaxError
-            { filename = filename,
-              row = row,
-              col = col,
-              sourceCode = src,
-              context = context
-            }
-    return (Err, [err])
-
-loadAtoms :: String -> [String] -> IO ([Expr], [SyntaxError])
-loadAtoms _ [] = return ([], [])
-loadAtoms filename (src : srcs) = do
-  (a, err1) <- loadAtom filename src
-  (bs, err2) <- loadAtoms filename srcs
-  return (a : bs, err1 ++ err2)
-
-walkDirectory :: FilePath -> FilePath -> IO [FilePath]
-walkDirectory base path = do
-  let walk path = do
-        isDir <- doesDirectoryExist (base </> path)
-        if isDir
-          then walkDirectory base path
-          else return [path]
-  paths <- listDirectory (base </> path)
-  files <- mapM walk (sort paths)
-  return (map (path </>) (concat files))

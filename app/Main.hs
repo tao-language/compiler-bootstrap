@@ -1,5 +1,6 @@
 import Control.Monad (void)
 import Data.List (intercalate, isSuffixOf)
+import Load (include, load, loadAtoms)
 import qualified Patch
 import PrettyPrint (pretty)
 import qualified Python as Py
@@ -7,7 +8,6 @@ import qualified System.Environment
 import System.FilePath ((</>))
 import System.FilePath.Windows (dropExtension, takeBaseName, takeDirectory, takeFileName)
 import qualified Tao as T
-import TaoParser (include, load, loadAtoms, srcPath)
 
 main :: IO ()
 main = do

@@ -9,6 +9,7 @@ import Data.List (intercalate, isSuffixOf, sortBy, union)
 import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
 import qualified Debug.Trace as Debug
+import Load (load)
 import qualified PrettyPrint as PP
 import Stdlib (filterMap, replace, replaceString)
 import System.Directory (copyFile, createDirectory, createDirectoryIfMissing, doesPathExist, removeDirectoryRecursive)
@@ -425,7 +426,7 @@ build options dir paths = do
   createDirectoryIfMissing True options.buildDir
 
   putStrLn "Loading modules"
-  (ctx, errs) <- P.load dir paths
+  (ctx, errs) <- load dir paths
   mapM_ (\e -> putStrLn ("❌ " ++ show e)) errs
 
   putStrLn "Creating files:"
