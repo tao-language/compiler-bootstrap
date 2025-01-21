@@ -246,32 +246,3 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "" `shouldBe` Right (("path/my-file.tao", []), "")
     p "x" `shouldBe` Left ([CModule], "x")
     p "import pkg" `shouldBe` Right (("path/my-file.tao", [Import "pkg" "pkg" []]), "")
-
-  -- it "☯ parsePackage directory" $ do
-  --   let pkg = Package {name = "empty", modules = [Module "empty/empty-file" []]}
-  --   parsePackage "examples/empty" `shouldReturn` (pkg, [])
-  --   withCurrentDirectory "examples" (parsePackage "empty") `shouldReturn` (pkg, [])
-
-  -- it "☯ parsePackage file" $ do
-  --   let pkg = Package {name = "empty", modules = [Module "empty/empty" []]}
-  --   parsePackage "examples/empty.tao" `shouldReturn` (pkg, [])
-  --   withCurrentDirectory "examples" (parsePackage "empty.tao") `shouldReturn` (pkg, [])
-
-  it "☯ loadModule" $ do
-    let ctx = [("exists", [])]
-    let loadModule' = loadModule (ctx, [])
-    loadModule' "exists" `shouldReturn` ([("exists", [])], [])
-    loadModule' "examples/empty" `shouldReturn` ([("examples/empty", []), ("examples/empty/empty-file", []), ("exists", [])], [])
-
-  it "☯ load" $ do
-    let ctx =
-          [ ("examples/empty", []),
-            ("examples/empty/empty-file", []),
-            ( "examples/sub/mod",
-              [ Def (x, Int 1),
-                Def (y, Int 2)
-              ]
-            )
-          ]
-    let errors = []
-    load ["examples/sub", "examples/empty"] `shouldReturn` (ctx, errors)

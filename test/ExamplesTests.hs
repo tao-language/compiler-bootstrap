@@ -3,6 +3,7 @@ module ExamplesTests where
 import qualified Core as C
 import Data.Bifunctor (second)
 import Data.List (intercalate, isInfixOf)
+import Load
 import System.FilePath (dropExtension)
 import Tao
 import TaoParser

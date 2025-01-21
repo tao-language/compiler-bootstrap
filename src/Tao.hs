@@ -4,12 +4,13 @@ module Tao where
 
 import Control.Monad (mapAndUnzipM)
 import qualified Core as C
-import Data.Bifunctor (Bifunctor (bimap), second)
+import Data.Bifunctor (Bifunctor (bimap, first), second)
 import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
 import Data.List (delete, elemIndex, intercalate, isInfixOf, isPrefixOf, isSuffixOf, nub, sort, union, unionBy, (\\))
 import Data.List.Split (splitWhen, startsWith)
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
+import Stdlib (pad, slice, split, split2)
 import System.FilePath (takeBaseName)
 
 data Expr
@@ -86,7 +87,7 @@ type Pattern = Expr
 
 data Stmt
   = Import String String [(String, String)]
-  | Def (Expr, Expr)
+  | Def (Pattern, Expr)
   | TypeDef (String, [Expr], [(Expr, Maybe Type)])
   | Test UnitTest
   deriving (Eq, Show)
@@ -95,9 +96,67 @@ type Type = Expr
 
 type Package = (String, [Module])
 
-type Module = (String, [Stmt])
+type Module = (FilePath, [Stmt])
 
 type Context = [Module]
+
+data SyntaxError
+  = SyntaxError
+  { filename :: String,
+    row :: Int,
+    col :: Int,
+    sourceCode :: String,
+    context :: [ParserContext]
+  }
+  deriving (Eq)
+
+data ParserContext
+  = CModule
+  | CDefinition
+  | CImport
+  | CTest
+  | CComment
+  | CCommentMultiLine
+  | CDocString
+  | CRecordField String
+  | CCase
+  | CMatch
+  deriving (Eq, Show)
+
+instance Show SyntaxError where
+  show :: SyntaxError -> String
+  show e = do
+    let loc = intercalate ":" [e.filename, show e.row, show e.col]
+    intercalate
+      "\n"
+      [ "🛑 " ++ loc ++ ": syntax error " ++ show e.context,
+        "",
+        showSnippet (e.row, e.col) 3 3 e.sourceCode,
+        ""
+      ]
+
+showSnippet :: (Int, Int) -> Int -> Int -> String -> String
+showSnippet (row, col) before after src = do
+  let divider = "| "
+  let rowMark = "* "
+  let colMark = "^"
+  let start = max 1 (row - before)
+  let padding = max (length $ show start) (length $ show (row + after))
+  let showLine i line = pad (padding + length rowMark) (show i) ++ divider ++ line
+  let linesBefore =
+        lines src
+          & slice start row
+          & zipWith showLine [start ..]
+  let highlight =
+        lines src
+          & slice row (row + 1)
+          & map (\line -> pad padding (rowMark ++ show row) ++ divider ++ line)
+          & (++ [replicate (col + padding + length divider + 1) ' ' ++ colMark])
+  let linesAfter =
+        lines src
+          & slice (row + 1) (row + after + 1)
+          & zipWith showLine [row + 1 ..]
+  intercalate "\n" (linesBefore ++ highlight ++ linesAfter)
 
 data UnitTest = UnitTest
   { filename :: FilePath,
@@ -450,23 +509,6 @@ bindings = \case
 
 occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
-
-splitWith :: (Char -> Bool) -> String -> [String]
-splitWith f text = case dropWhile f text of
-  "" -> []
-  text -> do
-    let (word, remaining) = break f text
-    word : splitWith f remaining
-
-split :: Char -> String -> [String]
-split delim = splitWith (== delim)
-
-split2 :: Char -> String -> (String, String)
-split2 delim text = case split delim text of
-  [] -> ("", "")
-  [x] -> ("", x)
-  [x, y] -> (x, y)
-  x : ys -> (x, intercalate [delim] ys)
 
 nameWords :: String -> [String]
 nameWords name =
