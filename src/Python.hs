@@ -418,15 +418,15 @@ raise :: Expr -> Stmt
 raise x = Raise x Nothing
 
 --- Build target ---
-build :: BuildOptions -> FilePath -> [FilePath] -> IO FilePath
-build options dir paths = do
+build :: BuildOptions -> [FilePath] -> IO FilePath
+build options paths = do
   putStrLn $ "Clearing build directory: " ++ options.buildDir
   pathExists <- doesPathExist options.buildDir
   when pathExists (removeDirectoryRecursive options.buildDir)
   createDirectoryIfMissing True options.buildDir
 
   putStrLn "Loading modules"
-  (ctx, errs) <- load dir paths
+  (ctx, errs) <- load paths
   mapM_ (\e -> putStrLn ("❌ " ++ show e)) errs
 
   putStrLn "Creating files:"

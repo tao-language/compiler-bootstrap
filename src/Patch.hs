@@ -30,7 +30,7 @@ instance Plan [FilePath] where
 instance Plan ([FilePath], FilePath) where
   plan :: [PatchStep] -> FilePath -> ([FilePath], FilePath) -> IO ([PatchStep], [SyntaxError])
   plan steps dir (paths, path) = do
-    src <- loadSource dir path
+    src <- loadSource path
     case src of
       Right (path, stmts) -> plan steps dir (push path paths, stmts)
       Left errs -> return ([], errs)

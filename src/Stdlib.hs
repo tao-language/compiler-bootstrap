@@ -43,3 +43,22 @@ slice start end xs =
   xs
     & drop (start - 1)
     & take (end - start)
+
+splitWith :: (Char -> Bool) -> String -> [String]
+splitWith f text = case dropWhile f text of
+  "" -> []
+  text -> do
+    let (word, remaining) = break f text
+    word : splitWith f remaining
+
+split :: Char -> String -> [String]
+split delim = splitWith (== delim)
+
+split2 :: Char -> String -> (String, String)
+split2 delim text = case text of
+  "" -> ("", "")
+  a : bs | a == delim -> ("", bs)
+  a : b : cs | b == delim -> ([a], cs)
+  a : bs -> case split2 delim bs of
+    ("", ys) -> ("", a : ys)
+    (xs, ys) -> (a : xs, ys)

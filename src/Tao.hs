@@ -10,7 +10,7 @@ import Data.Function ((&))
 import Data.List (delete, elemIndex, intercalate, isInfixOf, isPrefixOf, isSuffixOf, nub, sort, union, unionBy, (\\))
 import Data.List.Split (splitWhen, startsWith)
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
-import Stdlib (pad, slice)
+import Stdlib (pad, slice, split, split2)
 import System.FilePath (takeBaseName)
 
 data Expr
@@ -509,25 +509,6 @@ bindings = \case
 
 occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a
-
-splitWith :: (Char -> Bool) -> String -> [String]
-splitWith f text = case dropWhile f text of
-  "" -> []
-  text -> do
-    let (word, remaining) = break f text
-    word : splitWith f remaining
-
-split :: Char -> String -> [String]
-split delim = splitWith (== delim)
-
-split2 :: Char -> String -> (String, String)
-split2 delim text = case text of
-  "" -> ("", "")
-  a : bs | a == delim -> ("", bs)
-  a : b : cs | b == delim -> ([a], cs)
-  a : bs -> case split2 delim bs of
-    ("", ys) -> ("", a : ys)
-    (xs, ys) -> (a : xs, ys)
 
 nameWords :: String -> [String]
 nameWords name =
