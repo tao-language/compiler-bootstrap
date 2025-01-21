@@ -2,7 +2,7 @@ module Patch where
 
 import Control.Monad (foldM)
 import Load (loadSource)
-import Stdlib (push, set)
+import Stdlib (push, set, split2)
 import System.FilePath (splitDirectories, splitFileName, (</>))
 import Tao
 
@@ -16,38 +16,39 @@ patch buildDir patchPath sourcePath = do
 -- patch :: FilePath -> [FilePath] -> (Context, [Module]) -> IO ([FilePath], [SyntaxError])
 
 class Plan a where
-  plan :: [PatchStep] -> FilePath -> a -> IO ([PatchStep], [SyntaxError])
+  plan :: [PatchStep] -> a -> IO ([PatchStep], [SyntaxError])
 
 instance Plan [FilePath] where
-  plan :: [PatchStep] -> FilePath -> [FilePath] -> IO ([PatchStep], [SyntaxError])
-  plan steps0 dir = \case
+  plan :: [PatchStep] -> [FilePath] -> IO ([PatchStep], [SyntaxError])
+  plan steps0 = \case
     [] -> return (steps0, [])
     path : paths -> do
-      (steps1, errs1) <- plan steps0 dir ([] :: [FilePath], path)
-      (steps2, errs2) <- plan steps1 dir paths
+      (steps1, errs1) <- plan steps0 ([] :: [FilePath], path)
+      (steps2, errs2) <- plan steps1 paths
       return (steps2, errs1 ++ errs2)
 
 instance Plan ([FilePath], FilePath) where
-  plan :: [PatchStep] -> FilePath -> ([FilePath], FilePath) -> IO ([PatchStep], [SyntaxError])
-  plan steps dir (paths, path) = do
+  plan :: [PatchStep] -> ([FilePath], FilePath) -> IO ([PatchStep], [SyntaxError])
+  plan steps (paths, path) = do
+    let dir = fst (split2 ':' path)
     src <- loadSource path
     case src of
-      Right (path, stmts) -> plan steps dir (push path paths, stmts)
+      Right (path, stmts) -> plan steps (dir, push path paths, stmts)
       Left errs -> return ([], errs)
 
-instance Plan ([FilePath], [Stmt]) where
-  plan :: [PatchStep] -> FilePath -> ([FilePath], [Stmt]) -> IO ([PatchStep], [SyntaxError])
-  plan steps0 dir (paths, stmts) = case stmts of
+instance Plan (FilePath, [FilePath], [Stmt]) where
+  plan :: [PatchStep] -> (FilePath, [FilePath], [Stmt]) -> IO ([PatchStep], [SyntaxError])
+  plan steps0 (dir, paths, stmts) = case stmts of
     [] -> return (steps0, [])
     stmt : stmts -> do
-      (steps1, errs1) <- plan steps0 dir (paths, stmt)
-      (steps2, errs2) <- plan steps1 dir (paths, stmts)
+      (steps1, errs1) <- plan steps0 (dir, paths, stmt)
+      (steps2, errs2) <- plan steps1 (dir, paths, stmts)
       return (steps2, errs1 ++ errs2)
 
-instance Plan ([FilePath], Stmt) where
-  plan :: [PatchStep] -> FilePath -> ([FilePath], Stmt) -> IO ([PatchStep], [SyntaxError])
-  plan steps0 dir (paths, stmt) = case stmt of
-    Import path alias names -> plan steps0 dir (paths, path)
+instance Plan (FilePath, [FilePath], Stmt) where
+  plan :: [PatchStep] -> (FilePath, [FilePath], Stmt) -> IO ([PatchStep], [SyntaxError])
+  plan steps0 (dir, paths, stmt) = case stmt of
+    Import path alias names -> plan steps0 (paths, dir ++ ":" ++ path)
     Def rule -> case lookup paths steps0 of
       Just rules -> return (set paths (push rule rules) steps0, [])
       Nothing -> return (push (paths, [rule]) steps0, [])

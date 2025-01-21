@@ -12,10 +12,10 @@ run = describe "--==☯ PatchTests ☯==--" $ do
 
   it "☯ plan" $ do
     let steps = [(["steps"], [(x, y)])]
-    plan steps "examples/patch" ["constant"] `shouldReturn` (steps ++ [(["constant"], [(i1, i2)])], [])
-    plan steps "examples/patch" ["imports"] `shouldReturn` (steps ++ [(["imports", "constant"], [(i1, i2)]), (["imports"], [(i2, i3)])], [])
-    plan steps "examples/patch" ["constant", "constant"] `shouldReturn` (steps ++ [(["constant"], [(i1, i2), (i1, i2)])], [])
-    plan steps "examples/patch" ["constant", "imports"] `shouldReturn` (steps ++ [(["constant"], [(i1, i2)]), (["imports", "constant"], [(i1, i2)]), (["imports"], [(i2, i3)])], [])
+    plan steps ["examples/patch:constant"] `shouldReturn` (steps ++ [(["constant"], [(i1, i2)])], [])
+    plan steps ["examples/patch:imports"] `shouldReturn` (steps ++ [(["imports", "constant"], [(i1, i2)]), (["imports"], [(i2, i3)])], [])
+    plan steps ["examples/patch:constant", "examples/patch:constant"] `shouldReturn` (steps ++ [(["constant"], [(i1, i2), (i1, i2)])], [])
+    plan steps ["examples/patch:constant", "examples/patch:imports"] `shouldReturn` (steps ++ [(["constant"], [(i1, i2)]), (["imports", "constant"], [(i1, i2)]), (["imports"], [(i2, i3)])], [])
 
   it "☯ apply Expr" $ do
     let apply' = apply [("mod", [Def (x, i1)])] "mod"

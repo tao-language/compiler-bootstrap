@@ -16,6 +16,7 @@ run = describe "--==☯ Load ☯==--" $ do
     let loadModule' = loadModule (ctx, [])
     loadModule' "exists" `shouldReturn` ([("exists", [])], [])
     loadModule' "examples/empty" `shouldReturn` ([("examples/empty", []), ("examples/empty/empty-file", []), ("exists", [])], [])
+    loadModule' "examples:empty" `shouldReturn` ([("empty", []), ("empty/empty-file", []), ("exists", [])], [])
 
   it "☯ load" $ do
     let ctx =

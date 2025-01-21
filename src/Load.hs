@@ -14,14 +14,15 @@ load = foldM loadModule ([], [])
 
 include :: FilePath -> Context -> IO (Context, [SyntaxError])
 include preludePath ctx = do
-  let include' (path, stmts) =
-        (path, Import (dropExtension path) (takeBaseName path) [("", "")] : stmts)
+  let include' (path, stmts) = do
+        let path' = snd (split2 ':' preludePath)
+        (path, Import (dropExtension path') (takeBaseName path') [("", "")] : stmts)
   (ctx, errs) <- loadModule (ctx, []) preludePath
   return (map include' ctx, errs)
 
 loadModule :: (Context, [SyntaxError]) -> FilePath -> IO (Context, [SyntaxError])
 loadModule (ctx, errs) sourcePath = do
-  let osPath = replace ':' '/' sourcePath
+  let osPath = getOSPath sourcePath
   isDir <- doesDirectoryExist osPath
   isFile <- do
     dirFiles <- listDirectory (takeDirectory osPath)
@@ -35,9 +36,10 @@ loadModule (ctx, errs) sourcePath = do
     else return (ctx, errs)
 
 loadDir :: FilePath -> (Context, [SyntaxError]) -> IO (Context, [SyntaxError])
-loadDir path (ctx, errs) = do
-  files <- walkDirectory "." path
-  foldM (flip loadFile) (ctx, errs) files
+loadDir sourcePath (ctx, errs) = do
+  let (dir, path) = split2 ':' sourcePath
+  files <- walkDirectory dir path
+  foldM (flip loadFile) (ctx, errs) (map ((dir ++ ":") ++) files)
 
 loadFile :: FilePath -> (Context, [SyntaxError]) -> IO (Context, [SyntaxError])
 loadFile path (ctx, errs) = do
@@ -46,13 +48,18 @@ loadFile path (ctx, errs) = do
     Right mod -> return (mod : ctx, errs)
     Left errs' -> return (ctx, errs ++ errs')
 
+getOSPath :: FilePath -> FilePath
+getOSPath = \case
+  (':' : path) -> path
+  path -> replace ':' '/' path
+
 loadSource :: FilePath -> IO (Either [SyntaxError] Module)
 loadSource filename = case splitExtension filename of
   (_, "") -> loadSource (filename ++ ".tao")
   (name, ".tao") -> do
-    let osPath = replace ':' '/' filename
+    let osPath = getOSPath filename
     src <- readFile osPath
-    let parser = parseModule name
+    let parser = parseModule (snd (split2 ':' name))
     case P.parse parser osPath src of
       Right (mod, _) -> return (Right mod)
       Left P.State {filename, pos = (row, col), context} -> do
@@ -89,12 +96,12 @@ loadAtoms filename (src : srcs) = do
   return (a : bs, err1 ++ err2)
 
 walkDirectory :: FilePath -> FilePath -> IO [FilePath]
-walkDirectory base path = do
+walkDirectory dir path = do
   let walk path = do
-        isDir <- doesDirectoryExist (base </> path)
+        isDir <- doesDirectoryExist (dir </> path)
         if isDir
-          then walkDirectory base path
+          then walkDirectory dir path
           else return [path]
-  paths <- listDirectory (base </> path)
+  paths <- listDirectory (dir </> path)
   files <- mapM walk (sort paths)
   return (map (path </>) (concat files))
