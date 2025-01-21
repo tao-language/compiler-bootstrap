@@ -1,7 +1,8 @@
 module Stdlib where
 
 import Data.Function ((&))
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, stripPrefix)
+import Data.Maybe (fromMaybe)
 
 replace :: (Eq a) => a -> a -> [a] -> [a]
 replace x y (x' : xs)
@@ -44,21 +45,24 @@ slice start end xs =
     & drop (start - 1)
     & take (end - start)
 
-splitWith :: (Char -> Bool) -> String -> [String]
+splitWith :: (a -> Bool) -> [a] -> [[a]]
 splitWith f text = case dropWhile f text of
-  "" -> []
+  [] -> []
   text -> do
     let (word, remaining) = break f text
     word : splitWith f remaining
 
-split :: Char -> String -> [String]
+split :: (Eq a) => a -> [a] -> [[a]]
 split delim = splitWith (== delim)
 
-split2 :: Char -> String -> (String, String)
+split2 :: (Eq a) => a -> [a] -> ([a], [a])
 split2 delim text = case text of
-  "" -> ("", "")
-  a : bs | a == delim -> ("", bs)
-  a : b : cs | b == delim -> ([a], cs)
-  a : bs -> case split2 delim bs of
-    ("", ys) -> ("", a : ys)
-    (xs, ys) -> (a : xs, ys)
+  [] -> ([], [])
+  x : ys | x == delim -> ([], ys)
+  x : y : ys | y == delim -> ([x], ys)
+  x : xs -> case split2 delim xs of
+    ([], ys) -> ([], x : ys)
+    (xs, ys) -> (x : xs, ys)
+
+trimPrefix :: (Eq a) => [a] -> [a] -> [a]
+trimPrefix prefix xs = fromMaybe xs (stripPrefix prefix xs)

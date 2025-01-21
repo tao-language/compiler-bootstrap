@@ -1,19 +1,15 @@
 module Patch where
 
 import Control.Monad (foldM)
-import Load (loadSource)
+import Data.Function ((&))
+import Load (load, loadSource)
 import Stdlib (push, set, split2)
 import System.FilePath (splitDirectories, splitFileName, (</>))
 import Tao
 
-type PatchStep = ([FilePath], [(Pattern, Expr)])
+type Rule = (Pattern, Expr)
 
-patch :: FilePath -> FilePath -> FilePath -> IO (FilePath, [SyntaxError])
-patch buildDir patchPath sourcePath = do
-  -- (ctx, errs) <- load
-  error "TODO"
-
--- patch :: FilePath -> [FilePath] -> (Context, [Module]) -> IO ([FilePath], [SyntaxError])
+type PatchStep = ([FilePath], [Rule])
 
 class Plan a where
   plan :: [PatchStep] -> a -> IO ([PatchStep], [SyntaxError])
@@ -55,29 +51,54 @@ instance Plan (FilePath, [FilePath], Stmt) where
     stmt -> error $ "TODO plan " ++ show stmt
 
 class Apply patch a where
-  apply :: Context -> FilePath -> patch -> a -> a
+  apply :: patch -> a -> a
 
--- instance Apply PatchModule Module where
---   apply :: Context -> FilePath -> PatchModule -> Module -> Module
---   apply ctx path rule x = error $ "TODO apply " ++ show rule ++ " -- " ++ show x
+instance Apply [Rule] Context where
+  apply :: [Rule] -> Context -> Context
+  apply rules ctx = map (apply (ctx, rules)) ctx
 
--- instance Apply PatchStmt Module where
---   apply :: Context -> FilePath -> PatchStmt -> Module -> Module
---   apply ctx path rule x = error $ "TODO apply " ++ show rule ++ " -- " ++ show x
+instance Apply (Context, [Rule]) Module where
+  apply :: (Context, [Rule]) -> Module -> Module
+  apply (ctx, rules) (path, stmts) =
+    (path, map (apply (ctx, path, rules)) stmts)
 
--- instance Apply PatchStmt Stmt where
---   apply :: Context -> FilePath -> PatchStmt -> Stmt -> Stmt
---   apply ctx path rule x = error $ "TODO apply " ++ show rule ++ " -- " ++ show x
+instance Apply (Context, FilePath, [Rule]) Stmt where
+  apply :: (Context, FilePath, [Rule]) -> Stmt -> Stmt
+  apply (ctx, path, rules) = \case
+    Def (p, b) -> Def (applyP p, apply' b)
+    Test t -> Test (t {expr = applyP t.expr, expect = apply' t.expect})
+    stmt -> error $ "TODO apply " ++ show stmt
+    where
+      apply' = apply (ctx, path, rules)
+      applyP = apply (ctx, "", rules)
 
-instance Apply (Pattern, Expr) Stmt where
-  apply :: Context -> FilePath -> (Pattern, Expr) -> Stmt -> Stmt
-  apply ctx path rule = \case
-    Def (a, b) -> Def (a, apply ctx path rule b)
-    stmt -> error $ "TODO: apply " ++ show stmt
+instance Apply (Context, FilePath, [Rule]) Expr where
+  apply :: (Context, FilePath, [Rule]) -> Expr -> Expr
+  apply (ctx, path, rules) expr = case rules of
+    [] -> expr
+    rule : rules ->
+      apply (ctx, path, rule) expr
+        & apply (ctx, path, rules)
 
-instance Apply (Pattern, Expr) Expr where
-  apply :: Context -> FilePath -> (Pattern, Expr) -> Expr -> Expr
-  apply ctx path (p, q) expr = do
-    case eval ctx path (Let (p, expr) q) of
-      Err -> expr
-      result -> result
+instance Apply (Context, FilePath, Rule) Expr where
+  apply :: (Context, FilePath, Rule) -> Expr -> Expr
+  apply (ctx, path, (p, q)) expr = case eval ctx path (Let (p, expr) q) of
+    Err -> expr
+    result -> result
+
+class Patch step a where
+  patch :: Context -> step -> a -> [(FilePath, [String], [Stmt])]
+
+instance Patch [PatchStep] Context where
+  patch :: Context -> [PatchStep] -> Context -> [(FilePath, [String], [Stmt])]
+  patch ctx steps = concatMap (patch ctx steps)
+
+instance Patch [PatchStep] Module where
+  patch :: Context -> [PatchStep] -> Module -> [(FilePath, [String], [Stmt])]
+  patch ctx steps mod =
+    concatMap (\step -> patch ctx step mod) steps
+
+instance Patch PatchStep Module where
+  patch :: Context -> PatchStep -> Module -> [(FilePath, [String], [Stmt])]
+  patch ctx (id, rules) (path, stmts) =
+    [(path, id, map (apply (ctx, path, rules)) stmts)]

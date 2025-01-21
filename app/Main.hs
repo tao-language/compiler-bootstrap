@@ -1,9 +1,11 @@
 import Control.Monad (void)
-import Data.List (intercalate, isSuffixOf)
+import Data.Function ((&))
+import Data.List (intercalate, isPrefixOf, isSuffixOf, partition)
 import Load (include, load, loadAtoms)
-import qualified Patch
+import Patch (PatchStep, Plan (plan), patch)
 import PrettyPrint (pretty)
 import qualified Python as Py
+import Stdlib (split2, splitWith, trimPrefix)
 import qualified System.Environment
 import System.FilePath ((</>))
 import System.FilePath.Windows (dropExtension, takeBaseName, takeDirectory, takeFileName)
@@ -14,33 +16,40 @@ main = do
   cliArgs <- System.Environment.getArgs
   case cliArgs of
     "run" : args -> case args of
-      path : args -> run path args
+      path : args -> runCmd path args
       _ -> putStrLn "🛑 Please give me a path, and an expression to run."
     "test" : args -> case args of
-      [path] -> test path ["*"]
+      [path] -> testCmd path ["*"]
       -- path : patterns -> test path patterns
       path : patterns -> error "TODO: match test names by patterns"
       _ -> putStrLn "🛑 Please give me a path to test."
     "patch" : args -> case args of
-      path : patches -> patch path patches
-      _ -> putStrLn "🛑 Please give me a path, and the patches to apply."
+      [patchFile, sourceFile] -> patchCmd "build" [patchFile] [sourceFile]
+      _ -> putStrLn "🛑 Please give me a patch path and a source path."
     "build" : args -> case args of
-      [] -> build ["."]
-      paths -> build paths
+      target : args -> case target of
+        "python" -> case args of
+          [] -> buildPythonCmd [] ["."]
+          args -> do
+            let (patches, paths) = partition ("-p=" `isPrefixOf`) args
+            buildPythonCmd (map (trimPrefix "-p=") patches) paths
+        _ -> putStrLn $ "🛑 Target not supported: " ++ target
+      _ -> putStrLn "🛑 Please give me a target."
     _ -> error "TODO: repl"
 
-run :: FilePath -> [String] -> IO ()
-run filename args = do
+runCmd :: FilePath -> [String] -> IO ()
+runCmd filename args = do
   (ctx, errors) <- load [filename]
   mapM_ print errors
   (ctx, errors) <- include "prelude" ctx
   mapM_ print errors
   (args', errors) <- loadAtoms "<run>" args
   mapM_ print errors
-  print (T.eval ctx (dropExtension filename) (T.app' args'))
+  let path = dropExtension (snd (split2 ':' filename))
+  print (T.eval ctx path (T.app' args'))
 
-test :: FilePath -> [String] -> IO ()
-test path patterns = do
+testCmd :: FilePath -> [String] -> IO ()
+testCmd path patterns = do
   (ctx, errors) <- load [path]
   mapM_ print errors
   (ctx, errors) <- include "prelude" ctx
@@ -48,16 +57,28 @@ test path patterns = do
   let results = T.testAll [] ctx
   mapM_ (putStr . show) results
 
-patch :: FilePath -> [FilePath] -> IO ()
-patch path patches = do
-  -- (ctx, errors) <- load [path]
-  -- mapM_ print errors
-  -- (ctx, errors) <- include "prelude" ctx
-  -- mapM_ print errors
-  -- Patch.apply ctx ("build" </> "patch") patches
-  error "TODO: Main.patch"
+patchCmd :: FilePath -> [FilePath] -> [FilePath] -> IO ()
+patchCmd buildDir patches sources = do
+  (steps, errors) <- plan [] patches
+  mapM_ print errors
+  (ctx, errors) <- load sources
+  mapM_ print errors
+  let build = patch ctx steps ctx
+  let writeFile (path, id, stmts) = do
+        let filename = buildDir </> path ++ "@" ++ intercalate "!" id ++ ".tao"
+        putStrLn filename
+        error "TODO: tao patch -- writeFile"
+  mapM_ writeFile build
 
-build :: [FilePath] -> IO ()
-build paths = do
+buildPythonCmd :: [FilePath] -> [FilePath] -> IO ()
+buildPythonCmd patches sources = do
+  (steps, errors) <- plan [] patches
+  mapM_ print errors
+  (ctx, errors) <- load sources
+  mapM_ print errors
+  putStrLn "TODO: write intermediate patch files"
+  let ctx' =
+        patch ctx steps ctx
+          & map (\(path, _, stmts) -> (path, stmts))
   let options = Py.defaultBuildOptions
-  void $ Py.build options paths
+  void $ Py.build options ctx'
