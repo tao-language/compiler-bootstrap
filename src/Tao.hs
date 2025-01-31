@@ -38,6 +38,7 @@ data Expr
   | Record [(String, Expr)]
   | Select Expr [(String, Expr)]
   | With Expr [(String, Expr)]
+  | Meta C.Metadata Expr
   | Err
   deriving (Eq, Show)
 
@@ -141,21 +142,21 @@ showSnippet (row, col) before after src = do
   let rowMark = "* "
   let colMark = "^"
   let start = max 1 (row - before)
-  let padding = max (length $ show start) (length $ show (row + after))
-  let showLine i line = pad (padding + length rowMark) (show i) ++ divider ++ line
+  let padding = length (rowMark ++ show (row + after))
+  let showLine x line = pad padding x ++ divider ++ line
   let linesBefore =
         lines src
           & slice start row
-          & zipWith showLine [start ..]
+          & zipWith (showLine . show) [start ..]
   let highlight =
         lines src
           & slice row (row + 1)
-          & map (\line -> pad padding (rowMark ++ show row) ++ divider ++ line)
+          & map (showLine (rowMark ++ show row))
           & (++ [replicate (col + padding + length divider + 1) ' ' ++ colMark])
   let linesAfter =
         lines src
           & slice (row + 1) (row + after + 1)
-          & zipWith showLine [row + 1 ..]
+          & zipWith (showLine . show) [row + 1 ..]
   intercalate "\n" (linesBefore ++ highlight ++ linesAfter)
 
 data UnitTest = UnitTest
@@ -489,6 +490,7 @@ freeNames (vars, tags, calls) = \case
   Record fields -> freeNames' (and' (map snd fields))
   Select a fields -> freeNames' a `union` freeNames' (and' (map snd fields))
   With a fields -> freeNames' a `union` freeNames' (and' (map snd fields))
+  Meta _ a -> freeNames' a
   Err -> []
   where
     freeNames' = freeNames (vars, tags, calls)
@@ -646,6 +648,7 @@ lower = \case
     let k = '~' : intercalate "," (map fst kvs)
     let args = map ((C.substitute sub . lower) . snd) kvs
     C.tag k args
+  Meta m a -> C.Meta m (lower a)
   Err -> C.Err
   a -> error $ "TODO: lower " ++ show a
 
@@ -678,6 +681,7 @@ lift = \case
   C.Call op args -> Call op (map lift args)
   C.Let [] b -> lift b
   C.Let ((x, b) : env) c -> Let (Var x, lift b) (lift (C.Let env c))
+  C.Meta m a -> Meta m (lift a)
   C.Err -> Err
 
 simplify :: Expr -> Expr

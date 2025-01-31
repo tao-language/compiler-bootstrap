@@ -89,13 +89,13 @@ class Patch step a where
   patch :: Context -> step -> a -> [(FilePath, [String], [Stmt])]
 
 instance Patch [PatchStep] Context where
-  patch :: Context -> [PatchStep] -> Context -> [(FilePath, [String], [Stmt])]
+  patch :: Context -> [PatchStep] -> [Module] -> [(FilePath, [String], [Stmt])]
   patch ctx steps = concatMap (patch ctx steps)
 
 instance Patch [PatchStep] Module where
   patch :: Context -> [PatchStep] -> Module -> [(FilePath, [String], [Stmt])]
-  patch ctx steps mod =
-    concatMap (\step -> patch ctx step mod) steps
+  patch ctx steps mod@(path, stmts) =
+    (path, [], stmts) : concatMap (\step -> patch ctx step mod) steps
 
 instance Patch PatchStep Module where
   patch :: Context -> PatchStep -> Module -> [(FilePath, [String], [Stmt])]

@@ -34,6 +34,7 @@ data Expr
   | App Expr Expr
   | Call String [Expr]
   | Let [(String, Expr)] Expr
+  | Meta Metadata Expr
   | Err
   deriving (Eq, Show)
 
@@ -44,6 +45,11 @@ type Ops = [(String, (Expr -> Expr) -> [Expr] -> Maybe Expr)]
 type Env = [(String, Expr)]
 
 type Substitution = [(String, Expr)]
+
+data Metadata
+  = Comments [String]
+  | TrailingComment String
+  deriving (Eq, Show)
 
 -- https://package.elm-lang.org/packages/elm-in-elm/compiler/latest/Elm.Compiler.Error
 -- https://github.com/elm-in-elm/compiler/blob/master/src/Elm/Compiler/Error.elm
@@ -94,6 +100,10 @@ format expr = case expr of
     "(" ++ format a' ++ " " ++ unwords (map format bs) ++ ")"
   Call f args -> '%' : f ++ "(" ++ intercalate ", " (map format args) ++ ")"
   Let env b -> "@{" ++ intercalate "; " (map (\(x, a) -> name x ++ " = " ++ format a) env) ++ "} " ++ format b
+  Meta m a -> case m of
+    Comments [] -> show a
+    Comments (c : cs) -> "# " ++ c ++ "\n" ++ show (Meta (Comments cs) a)
+    TrailingComment c -> show a ++ "  # " ++ c ++ "\n"
   Err -> "!error"
   where
     isAlphaNumOr cs c = isAlphaNum c || c `elem` cs
@@ -274,6 +284,7 @@ freeNames (vars, tags, calls) = \case
     | otherwise -> foldr (union . freeNames') [] args
   Let [] b -> freeNames' b
   Let ((x, a) : defs) b -> delete x (freeNames' a `union` freeNames' (Let defs b))
+  Meta _ a -> freeNames' a
   Err -> []
   where
     freeNames' = freeNames (vars, tags, calls)
@@ -454,6 +465,7 @@ substitute s (Let env b) = do
   let sub (x, a) = (x, substitute s a)
   let s' = filter (\(x, _) -> x `notElem` map fst env) s
   Let (map sub env) (substitute s' b)
+substitute s (Meta m a) = Meta m (substitute s a)
 substitute _ Err = Err
 
 compose :: Substitution -> Substitution -> Substitution
@@ -557,6 +569,8 @@ unify ops env a b = case (a, b) of
   (Call op args, Call op' args') | op == op' -> do
     let (args, s, e) = unifyAll ops env args args'
     (Call op args, s, e)
+  (Meta _ a, b) -> unify ops env a b
+  (a, Meta _ b) -> unify ops env a b
   (a, b) -> (Err, [], [TypeMismatch a b])
 
 unify2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> ((Expr, Expr), Substitution, [TypeError])
@@ -621,6 +635,7 @@ infer ops env (Let defs a) = infer ops (defs ++ env) a
 infer ops env (Call op args) = do
   let (args', s, e) = inferAll ops env args
   ((Call op (map fst args'), Any), s, e)
+infer ops env (Meta _ a) = infer ops env a
 infer _ _ Err = ((Err, Any), [], [])
 
 infer2 :: Ops -> Env -> Expr -> Expr -> ((Expr, Type), (Expr, Type), Substitution, [TypeError])

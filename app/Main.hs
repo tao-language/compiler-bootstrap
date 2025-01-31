@@ -72,13 +72,17 @@ patchCmd buildDir patches sources = do
 
 buildPythonCmd :: [FilePath] -> [FilePath] -> IO ()
 buildPythonCmd patches sources = do
+  putStrLn $ "patches: " ++ show patches
+  putStrLn $ "sources: " ++ show sources
   (steps, errors) <- plan [] patches
+  putStrLn $ "steps: " ++ show steps
   mapM_ print errors
   (ctx, errors) <- load sources
+  putStrLn $ "ctx: " ++ show (map fst ctx)
   mapM_ print errors
-  putStrLn "TODO: write intermediate patch files"
   let ctx' =
         patch ctx steps ctx
           & map (\(path, _, stmts) -> (path, stmts))
+  putStrLn "TODO: write intermediate patch files"
   let options = Py.defaultBuildOptions
   void $ Py.build options ctx'

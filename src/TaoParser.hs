@@ -361,7 +361,12 @@ parseExpr prec delim = do
           P.infixR 8 (const div') (parseOp "/"),
           P.infixR 8 (const divI) (parseOp "//"),
           P.infixL 9 (const App) (void delim),
-          P.infixR 10 (const pow) (parseOp "^")
+          P.infixR 10 (const pow) (parseOp "^"),
+          P.prefix 11 Meta $ do
+            C.Comments <$> P.oneOrMore parseComment,
+          P.suffix 11 Meta $ do
+            _ <- P.spaces
+            C.TrailingComment <$> parseCommentSingleLine
         ]
   P.operators prec ops $ do
     a <- parseAtom
@@ -443,6 +448,7 @@ parseMatch = do
     P.oneOf
       [ do
           _ <- P.word "match"
+          P.commit CMatch
           _ <- P.spaces
           args <-
             P.oneOf
@@ -464,6 +470,8 @@ parseMatch = do
       ]
   _ <- P.char '{'
   _ <- P.whitespaces
+  P.lookahead (P.char '|')
+  P.commit CMatch
   cases <- P.oneOrMore $ do
     _ <- P.char '|'
     _ <- P.whitespaces
@@ -574,6 +582,7 @@ parseDef :: String -> Parser (Expr, Expr)
 parseDef op = do
   typeAnnotation <- P.maybe' $ do
     _ <- P.char ':'
+    P.commit CDefinition
     _ <- P.spaces
     t <- parseExpr 0 P.spaces
     _ <- P.spaces
@@ -583,6 +592,7 @@ parseDef op = do
   a <- parseExpr 0 P.spaces
   _ <- P.spaces
   _ <- P.word op
+  P.commit CDefinition
   _ <- P.whitespaces
   b <- parseExpr 0 P.spaces
   case typeAnnotation of
