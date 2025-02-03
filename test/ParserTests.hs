@@ -319,23 +319,20 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "ab--}c" `shouldBe` Right ("ab", "--}c")
     p "abc--}" `shouldBe` Right ("abc", "--}")
 
-  it "☯ operators" $ do
+  it "☯ precedence" $ do
     let op x = padded whitespaces (text x)
         ops =
-          [ infixL 1 (const Add) (op "+"),
-            infixL 1 (const Sub) (op "-"),
-            infixL 2 (const Mul) (op "*"),
-            prefix 3 (const Neg) (op "-"),
-            infixR 4 (const Pow) (op "^"),
-            suffix 5 (const Factorial) (op "!"),
-            prefix 5 (const At) (op "@")
+          [ atom Var (oneOrMore letter),
+            group (op "(") (op ")"),
+            infixL 1 Add (op "+"),
+            infixL 1 Sub (op "-"),
+            infixL 2 Mul (op "*"),
+            prefix 3 Neg (op "-"),
+            infixR 4 Pow (op "^"),
+            suffix 5 Factorial (op "!"),
+            prefix 5 At (op "@")
           ]
-        atom =
-          oneOf
-            [ inbetween (op "(") (op ")") expr,
-              Var <$> oneOrMore letter
-            ]
-        expr = operators 0 ops atom
+        expr = precedence ops 0
 
     let p = parseShow expr
     -- Unary operators
@@ -364,3 +361,4 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "x ^ y * z" `shouldBe` Just "((x ^ y) * z)"
     p "x ^ y ^ z" `shouldBe` Just "(x ^ (y ^ z))"
     p "(x ^ y) ^ z" `shouldBe` Just "((x ^ y) ^ z)"
+    p "x ^ (y ^ z)" `shouldBe` Just "(x ^ (y ^ z))"

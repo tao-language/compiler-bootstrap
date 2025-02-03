@@ -5,6 +5,9 @@ module Parser where
 
 import Control.Monad (void)
 import qualified Data.Char as Char
+import Data.Function ((&))
+import qualified Debug.Trace as Debug
+import Stdlib (filterMap)
 
 newtype Parser ctx a = Parser (State ctx -> Either (State ctx) (a, State ctx))
 
@@ -381,67 +384,76 @@ subparser delim parser = subparserPartial delim (do x <- parser; _ <- endOfFile;
 -- Operator precedence
 -- https://github.com/zesterer/chumsky/blob/main/src/pratt.rs
 data Operator ctx a
-  = Prefix Int (Parser ctx a -> Parser ctx a)
+  = Atom (Parser ctx a -> Parser ctx a)
+  | Prefix Int (Parser ctx a -> Parser ctx a)
   | InfixL Int (a -> Parser ctx a -> Parser ctx a)
   | InfixR Int (a -> Parser ctx a -> Parser ctx a)
 
-atom :: Int -> (a -> b) -> Parser ctx a -> Operator ctx b
-atom prec f p = do
-  let parser _ = do
-        x <- p
-        ok (f x)
-  Prefix prec parser
+atom :: (a -> b) -> Parser ctx a -> Operator ctx b
+atom f p =
+  Atom $ \_ -> do
+    f <$> p
 
-prefix :: (Show op, Show a) => Int -> (op -> a -> a) -> Parser ctx op -> Operator ctx a
-prefix prec f op = do
-  let parser expr = do
-        op <- op
-        x <- expr
-        ok (f op x)
-  Prefix prec parser
+group :: Parser ctx open -> Parser ctx close -> Operator ctx a
+group open close =
+  Atom $ \expr -> do
+    _ <- open
+    x <- expr
+    _ <- close
+    return x
 
-suffix :: Int -> (op -> a -> a) -> Parser ctx op -> Operator ctx a
-suffix prec f op = do
-  let parser x _ = do
-        op <- op
-        ok (f op x)
-  InfixL prec parser
+prefixWith :: (Show op, Show a) => Int -> (op -> a -> a) -> Parser ctx op -> Operator ctx a
+prefixWith prec f op =
+  Prefix prec $ \expr -> do
+    op <- op
+    f op <$> expr
 
-infixL :: Int -> (op -> a -> a -> a) -> Parser ctx op -> Operator ctx a
-infixL prec f op = do
-  let parser x expr = do
-        op <- op
-        y <- expr
-        ok (f op x y)
-  InfixL prec parser
+prefix :: (Show op, Show a) => Int -> (a -> a) -> Parser ctx op -> Operator ctx a
+prefix prec f = prefixWith prec (const f)
 
-infixR :: Int -> (op -> a -> a -> a) -> Parser ctx op -> Operator ctx a
-infixR prec f op = do
-  let parser x expr = do
-        op <- op
-        y <- expr
-        ok (f op x y)
-  InfixR prec parser
+suffixWith :: Int -> (op -> a -> a) -> Parser ctx op -> Operator ctx a
+suffixWith prec f op =
+  InfixL prec $ \x _ -> do
+    op <- op
+    return (f op x)
 
-operators :: Int -> [Operator ctx a] -> Parser ctx a -> Parser ctx a
-operators prec ops atom = do
-  x <- unary prec ops atom
-  binary prec ops atom x
+suffix :: Int -> (a -> a) -> Parser ctx op -> Operator ctx a
+suffix prec f = suffixWith prec (const f)
 
-unary :: Int -> [Operator ctx a] -> Parser ctx a -> Parser ctx a
-unary prec ops atom = do
-  let toUnary (Prefix prec' f) | prec <= prec' = do
-        f (operators prec' ops atom)
-      toUnary _ = fail'
-  oneOf (map toUnary ops ++ [atom])
+infixLWith :: Int -> (op -> a -> a -> a) -> Parser ctx op -> Operator ctx a
+infixLWith prec f op =
+  InfixL prec $ \x expr -> do
+    op <- op
+    f op x <$> expr
 
-binary :: Int -> [Operator ctx a] -> Parser ctx a -> a -> Parser ctx a
-binary prec ops atom x = do
-  let toBinary (InfixL prec' f) | prec < prec' = do
-        y <- f x (operators prec' ops atom)
-        binary prec ops atom y
-      toBinary (InfixR prec' f) | prec <= prec' = do
-        y <- f x (operators prec' ops atom)
-        binary prec ops atom y
-      toBinary _ = fail'
-  oneOf (map toBinary ops ++ [ok x])
+infixL :: Int -> (a -> a -> a) -> Parser ctx op -> Operator ctx a
+infixL prec f = infixLWith prec (const f)
+
+infixRWith :: Int -> (op -> a -> a -> a) -> Parser ctx op -> Operator ctx a
+infixRWith prec f op =
+  InfixR prec $ \x expr -> do
+    op <- op
+    f op x <$> expr
+
+infixR :: Int -> (a -> a -> a) -> Parser ctx op -> Operator ctx a
+infixR prec f = infixRWith prec (const f)
+
+precedence :: [Operator ctx a] -> Int -> Parser ctx a
+precedence ops prec = do
+  let unary = \case
+        Atom parser -> do
+          parser (precedence ops 0)
+        Prefix precOp parser | prec <= precOp -> do
+          parser (precedence ops precOp)
+        _ -> fail'
+  let binary x = \case
+        InfixL precOp parser | prec < precOp -> do
+          y <- parser x (precedence ops precOp)
+          loop y
+        InfixR precOp parser | prec <= precOp -> do
+          y <- parser x (precedence ops precOp)
+          loop y
+        _ -> fail'
+      loop x = oneOf (map (binary x) ops ++ [return x])
+  x <- oneOf (map unary ops)
+  loop x
