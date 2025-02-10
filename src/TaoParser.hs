@@ -445,30 +445,26 @@ parseRecord = do
 
 parseMatch :: Parser Expr
 parseMatch = do
-  args <-
-    P.oneOf
-      [ do
-          _ <- P.word "match"
-          P.commit CMatch
-          _ <- P.spaces
-          args <-
-            P.oneOf
-              [ do
-                  arg <- parseExpr 1 P.spaces
-                  _ <- P.spaces
-                  args <- P.zeroOrMore $ do
-                    _ <- P.char ','
-                    _ <- P.spaces
-                    arg <- parseExpr 1 P.spaces
-                    _ <- P.spaces
-                    return arg
-                  return (arg : args),
-                return []
-              ]
-          _ <- P.whitespaces
-          return args,
-        return []
-      ]
+  args <- do
+    _ <- P.word "match"
+    P.commit CMatch
+    _ <- P.spaces
+    args <-
+      P.oneOf
+        [ do
+            arg <- parseExpr 1 P.spaces
+            _ <- P.spaces
+            args <- P.zeroOrMore $ do
+              _ <- P.char ','
+              _ <- P.spaces
+              arg <- parseExpr 1 P.spaces
+              _ <- P.spaces
+              return arg
+            return (arg : args),
+          return []
+        ]
+    _ <- P.whitespaces
+    return args
   _ <- P.char '{'
   _ <- P.whitespaces
   P.lookahead (P.char '|')

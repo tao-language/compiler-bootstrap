@@ -7,7 +7,7 @@ x < y = %int_lt(x, y)
 x < y = %num_lt(x, y)
 
 : a, a -> Bool
-(==) = {
+(==) = match {
 | @x. x, x -> True
 | _ -> False
 }

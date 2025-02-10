@@ -1,25 +1,25 @@
 type Bool = True | False
 
 : Bool -> Bool
-not = {
+not = match {
 | True -> False
 | _ -> True
 }
 
 : Bool, Bool -> Bool
-(and) = {
+(and) = match {
 | True, True -> True
 | _ -> False
 }
 
 : Bool, Bool -> Bool
-(or) = {
+(or) = match {
 | False, False -> False
 | _ -> True
 }
 
 : Bool, Bool -> Bool
-(xor) = {
+(xor) = match {
 | x, x -> False
 | _ -> True
 }
