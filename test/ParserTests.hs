@@ -7,14 +7,14 @@ import Test.Hspec (SpecWith, describe, it, shouldBe)
 type Context = String
 
 data Expr -- for `operators`
-  = Var !String
-  | Neg !Expr
-  | At !Expr
-  | Factorial !Expr
-  | Add !Expr !Expr
-  | Mul !Expr !Expr
-  | Sub !Expr !Expr
-  | Pow !Expr !Expr
+  = Var String
+  | Neg Expr
+  | At Expr
+  | Fac Expr
+  | Add Expr Expr
+  | Mul Expr Expr
+  | Sub Expr Expr
+  | Pow Expr Expr
   deriving (Eq)
 
 instance Show Expr where
@@ -22,7 +22,7 @@ instance Show Expr where
   show (Var x) = x
   show (Neg x) = "(-" ++ show x ++ ")"
   show (At x) = "(@" ++ show x ++ ")"
-  show (Factorial x) = "(" ++ show x ++ "!)"
+  show (Fac x) = "(" ++ show x ++ "!)"
   show (Add x y) = "(" ++ show x ++ " + " ++ show y ++ ")"
   show (Sub x y) = "(" ++ show x ++ " - " ++ show y ++ ")"
   show (Mul x y) = "(" ++ show x ++ " * " ++ show y ++ ")"
@@ -319,23 +319,20 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "ab--}c" `shouldBe` Right ("ab", "--}c")
     p "abc--}" `shouldBe` Right ("abc", "--}")
 
-  it "☯ operators" $ do
+  it "☯ precedence" $ do
     let op x = padded whitespaces (text x)
         ops =
-          [ infixL 1 (const Add) (op "+"),
-            infixL 1 (const Sub) (op "-"),
-            infixL 2 (const Mul) (op "*"),
-            prefix 3 (const Neg) (op "-"),
-            infixR 4 (const Pow) (op "^"),
-            suffix 5 (const Factorial) (op "!"),
-            prefix 5 (const At) (op "@")
+          [ atom Var (oneOrMore letter),
+            group (op "(") (op ")"),
+            infixL 1 Add (op "+"),
+            infixL 1 Sub (op "-"),
+            infixL 2 Mul (op "*"),
+            prefix 3 Neg (op "-"),
+            infixR 4 Pow (op "^"),
+            suffix 5 Fac (op "!"),
+            prefix 5 At (op "@")
           ]
-        atom =
-          oneOf
-            [ inbetween (op "(") (op ")") expr,
-              Var <$> oneOrMore letter
-            ]
-        expr = operators 0 ops atom
+        expr = precedence ops 0
 
     let p = parseShow expr
     -- Unary operators
@@ -364,3 +361,4 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "x ^ y * z" `shouldBe` Just "((x ^ y) * z)"
     p "x ^ y ^ z" `shouldBe` Just "(x ^ (y ^ z))"
     p "(x ^ y) ^ z" `shouldBe` Just "((x ^ y) ^ z)"
+    p "x ^ (y ^ z)" `shouldBe` Just "(x ^ (y ^ z))"

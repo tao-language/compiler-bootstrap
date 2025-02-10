@@ -5,8 +5,12 @@ module Parser where
 
 import Control.Monad (void)
 import qualified Data.Char as Char
+import Data.Function ((&))
+import qualified Debug.Trace as Debug
+import Stdlib (filterMap)
 
-newtype Parser ctx a = Parser (State ctx -> Either (State ctx) (a, State ctx))
+newtype Parser ctx a
+  = Parser (State ctx -> Either (State ctx) (a, State ctx))
 
 data State ctx = State
   { remaining :: String,
@@ -379,69 +383,79 @@ subparser delim parser = subparserPartial delim (do x <- parser; _ <- endOfFile;
 -- TODO: multiLineComment
 
 -- Operator precedence
--- https://github.com/zesterer/chumsky/blob/main/src/pratt.rs
-data Operator ctx a
-  = Prefix Int (Parser ctx a -> Parser ctx a)
+data ExprParser ctx a
+  = Atom (Parser ctx a -> Parser ctx a)
+  | Prefix Int (Parser ctx a -> Parser ctx a)
   | InfixL Int (a -> Parser ctx a -> Parser ctx a)
   | InfixR Int (a -> Parser ctx a -> Parser ctx a)
 
-atom :: Int -> (a -> b) -> Parser ctx a -> Operator ctx b
-atom prec f p = do
-  let parser _ = do
-        x <- p
-        ok (f x)
-  Prefix prec parser
+atom :: (a -> b) -> Parser ctx a -> ExprParser ctx b
+atom f p =
+  Atom $ \_ -> do
+    f <$> p
 
-prefix :: (Show op, Show a) => Int -> (op -> a -> a) -> Parser ctx op -> Operator ctx a
-prefix prec f op = do
-  let parser expr = do
-        op <- op
-        x <- expr
-        ok (f op x)
-  Prefix prec parser
+group :: Parser ctx open -> Parser ctx close -> ExprParser ctx a
+group open close =
+  Atom $ \expr -> do
+    _ <- open
+    x <- expr
+    _ <- close
+    return x
 
-suffix :: Int -> (op -> a -> a) -> Parser ctx op -> Operator ctx a
-suffix prec f op = do
-  let parser x _ = do
-        op <- op
-        ok (f op x)
-  InfixL prec parser
+prefixWith :: (Show op, Show a) => Int -> (op -> a -> a) -> Parser ctx op -> ExprParser ctx a
+prefixWith p f op =
+  Prefix p $ \expr -> do
+    op <- op
+    f op <$> expr
 
-infixL :: Int -> (op -> a -> a -> a) -> Parser ctx op -> Operator ctx a
-infixL prec f op = do
-  let parser x expr = do
-        op <- op
-        y <- expr
-        ok (f op x y)
-  InfixL prec parser
+prefix :: (Show op, Show a) => Int -> (a -> a) -> Parser ctx op -> ExprParser ctx a
+prefix p f = prefixWith p (const f)
 
-infixR :: Int -> (op -> a -> a -> a) -> Parser ctx op -> Operator ctx a
-infixR prec f op = do
-  let parser x expr = do
-        op <- op
-        y <- expr
-        ok (f op x y)
-  InfixR prec parser
+suffixWith :: Int -> (op -> a -> a) -> Parser ctx op -> ExprParser ctx a
+suffixWith p f op =
+  InfixL p $ \x _ -> do
+    op <- op
+    return (f op x)
 
-operators :: Int -> [Operator ctx a] -> Parser ctx a -> Parser ctx a
-operators prec ops atom = do
-  x <- unary prec ops atom
-  binary prec ops atom x
+suffix :: Int -> (a -> a) -> Parser ctx op -> ExprParser ctx a
+suffix p f = suffixWith p (const f)
 
-unary :: Int -> [Operator ctx a] -> Parser ctx a -> Parser ctx a
-unary prec ops atom = do
-  let toUnary (Prefix prec' f) | prec <= prec' = do
-        f (operators prec' ops atom)
-      toUnary _ = fail'
-  oneOf (map toUnary ops ++ [atom])
+infixLWith :: Int -> (op -> a -> a -> a) -> Parser ctx op -> ExprParser ctx a
+infixLWith p f op =
+  InfixL p $ \x expr -> do
+    op <- op
+    f op x <$> expr
 
-binary :: Int -> [Operator ctx a] -> Parser ctx a -> a -> Parser ctx a
-binary prec ops atom x = do
-  let toBinary (InfixL prec' f) | prec < prec' = do
-        y <- f x (operators prec' ops atom)
-        binary prec ops atom y
-      toBinary (InfixR prec' f) | prec <= prec' = do
-        y <- f x (operators prec' ops atom)
-        binary prec ops atom y
-      toBinary _ = fail'
-  oneOf (map toBinary ops ++ [ok x])
+infixL :: Int -> (a -> a -> a) -> Parser ctx op -> ExprParser ctx a
+infixL p f = infixLWith p (const f)
+
+infixRWith :: Int -> (op -> a -> a -> a) -> Parser ctx op -> ExprParser ctx a
+infixRWith p f op =
+  InfixR p $ \x expr -> do
+    op <- op
+    f op x <$> expr
+
+infixR :: Int -> (a -> a -> a) -> Parser ctx op -> ExprParser ctx a
+infixR p f = infixRWith p (const f)
+
+-- https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
+-- https://github.com/zesterer/chumsky/blob/main/tutorial.md
+precedence :: [ExprParser ctx a] -> Int -> Parser ctx a
+precedence ops p = do
+  let unary = \case
+        Atom op -> do
+          op (precedence ops 0)
+        Prefix q op | p <= q -> do
+          op (precedence ops q)
+        _ -> fail'
+      binary x = \case
+        InfixL q op | p < q -> do
+          y <- op x (precedence ops q)
+          loop y
+        InfixR q op | p <= q -> do
+          y <- op x (precedence ops q)
+          loop y
+        _ -> fail'
+      loop x = oneOf (map (binary x) ops ++ [return x])
+  x <- oneOf (map unary ops)
+  loop x

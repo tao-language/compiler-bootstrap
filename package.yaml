@@ -39,6 +39,7 @@ ghc-options:
   - -XInstanceSigs
   - -XLambdaCase
   - -XMultiParamTypeClasses
+  - -XMultiWayIf
   - -XNamedFieldPuns
   - -XNoFieldSelectors
   - -XOverloadedRecordDot

@@ -310,9 +310,21 @@ parseExpr prec delim = do
         _ <- P.whitespaces
         return ()
   let ops =
-        [ -- P.atom 0 (Match []) parseCases,
-          P.atom 0 id parseMatch,
-          P.prefix 0 For $ do
+        [ P.atom id $ do
+            a <- parseAtom
+            case a of
+              Tag k -> do
+                args <- P.zeroOrMore $ do
+                  _ <- delim
+                  parseAtom
+                _ <- delim
+                return (tag k args)
+              a -> do
+                _ <- delim
+                return a,
+          -- P.atom 0 (Match []) parseCases,
+          P.atom id parseMatch,
+          P.prefixWith 0 For $ do
             _ <- P.char '@'
             _ <- P.whitespaces
             xs <- P.zeroOrMore $ do
@@ -322,8 +334,8 @@ parseExpr prec delim = do
             _ <- P.char '.'
             _ <- P.whitespaces
             return xs,
-          P.prefix 0 (const neg) (parseOp "-"),
-          P.prefix 0 (uncurry If) $ do
+          P.prefix 0 neg (parseOp "-"),
+          P.prefixWith 0 (uncurry If) $ do
             _ <- P.word "if"
             _ <- P.whitespaces
             a <- parseExpr 0 P.whitespaces
@@ -335,19 +347,19 @@ parseExpr prec delim = do
             _ <- P.word "else"
             _ <- P.whitespaces
             return (a, b),
-          P.infixR 1 (const Or) (parseOp "|"),
-          P.infixR 2 (const (var2 "and")) (parseOp "and"),
-          P.infixR 2 (const (var2 "or")) (parseOp "or"),
-          P.infixR 2 (const (var2 "xor")) (parseOp "xor"),
-          P.infixR 3 (const (tag2 "::")) (parseOp "::"),
-          P.infixR 3 (const Ann) (parseOp ":"),
-          P.infixR 4 (const eq) (parseOp "=="),
-          P.infixR 4 (const ne) (parseOp "!="),
-          P.infixR 5 (const lt) (parseOp "<"),
-          P.infixR 5 (const le) (parseOp "<="),
-          P.infixR 5 (const gt) (parseOp ">"),
-          P.infixR 5 (const ge) (parseOp ">="),
-          P.infixR 6 (\args a -> fun (a : args)) $ do
+          P.infixR 1 Or (parseOp "|"),
+          P.infixR 2 (var2 "and") (parseOp "and"),
+          P.infixR 2 (var2 "or") (parseOp "or"),
+          P.infixR 2 (var2 "xor") (parseOp "xor"),
+          P.infixR 3 (tag2 "::") (parseOp "::"),
+          P.infixR 3 Ann (parseOp ":"),
+          P.infixR 4 eq (parseOp "=="),
+          P.infixR 4 ne (parseOp "!="),
+          P.infixR 5 lt (parseOp "<"),
+          P.infixR 5 le (parseOp "<="),
+          P.infixR 5 gt (parseOp ">"),
+          P.infixR 5 ge (parseOp ">="),
+          P.infixRWith 6 (\args a -> fun (a : args)) $ do
             args <- P.zeroOrMore $ do
               _ <- P.char ','
               _ <- P.spaces
@@ -355,31 +367,20 @@ parseExpr prec delim = do
             _ <- P.text "->"
             _ <- P.whitespaces
             return args,
-          P.infixR 7 (const add) (parseOp "+"),
-          P.infixR 7 (const sub) (parseOp "-"),
-          P.infixR 8 (const mul) (parseOp "*"),
-          P.infixR 8 (const div') (parseOp "/"),
-          P.infixR 8 (const divI) (parseOp "//"),
-          P.infixL 9 (const App) (void delim),
-          P.infixR 10 (const pow) (parseOp "^"),
-          P.prefix 11 Meta $ do
+          P.infixR 7 add (parseOp "+"),
+          P.infixR 7 sub (parseOp "-"),
+          P.infixR 8 mul (parseOp "*"),
+          P.infixR 8 div' (parseOp "/"),
+          P.infixR 8 divI (parseOp "//"),
+          P.infixL 9 App (void delim),
+          P.infixR 10 pow (parseOp "^"),
+          P.prefixWith 11 Meta $ do
             C.Comments <$> P.oneOrMore parseComment,
-          P.suffix 11 Meta $ do
+          P.suffixWith 11 Meta $ do
             _ <- P.spaces
             C.TrailingComment <$> parseCommentSingleLine
         ]
-  P.operators prec ops $ do
-    a <- parseAtom
-    case a of
-      Tag k -> do
-        args <- P.zeroOrMore $ do
-          _ <- delim
-          parseAtom
-        _ <- delim
-        return (tag k args)
-      a -> do
-        _ <- delim
-        return a
+  P.precedence ops prec
 
 parseRecordField :: Parser (String, Expr)
 parseRecordField = do
@@ -444,30 +445,26 @@ parseRecord = do
 
 parseMatch :: Parser Expr
 parseMatch = do
-  args <-
-    P.oneOf
-      [ do
-          _ <- P.word "match"
-          P.commit CMatch
-          _ <- P.spaces
-          args <-
-            P.oneOf
-              [ do
-                  arg <- parseExpr 1 P.spaces
-                  _ <- P.spaces
-                  args <- P.zeroOrMore $ do
-                    _ <- P.char ','
-                    _ <- P.spaces
-                    arg <- parseExpr 1 P.spaces
-                    _ <- P.spaces
-                    return arg
-                  return (arg : args),
-                return []
-              ]
-          _ <- P.whitespaces
-          return args,
-        return []
-      ]
+  args <- do
+    _ <- P.word "match"
+    P.commit CMatch
+    _ <- P.spaces
+    args <-
+      P.oneOf
+        [ do
+            arg <- parseExpr 1 P.spaces
+            _ <- P.spaces
+            args <- P.zeroOrMore $ do
+              _ <- P.char ','
+              _ <- P.spaces
+              arg <- parseExpr 1 P.spaces
+              _ <- P.spaces
+              return arg
+            return (arg : args),
+          return []
+        ]
+    _ <- P.whitespaces
+    return args
   _ <- P.char '{'
   _ <- P.whitespaces
   P.lookahead (P.char '|')
