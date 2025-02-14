@@ -2,6 +2,7 @@ module Load where
 
 import Control.Monad (foldM)
 import Data.List (isPrefixOf, sort)
+import Error (Error (..), ErrorType (..), Location (..), Position (..))
 import qualified Parser as P
 import Stdlib (replace, split2)
 import System.Directory (doesDirectoryExist, listDirectory)
@@ -9,10 +10,10 @@ import System.FilePath (dropExtension, splitExtension, takeBaseName, takeDirecto
 import Tao
 import TaoParser (parseAtom, parseModule)
 
-load :: [FilePath] -> IO (Context, [SyntaxError])
+load :: [FilePath] -> IO (Context, [Error Expr])
 load = foldM loadModule ([], [])
 
-include :: FilePath -> Context -> IO (Context, [SyntaxError])
+include :: FilePath -> Context -> IO (Context, [Error Expr])
 include preludePath ctx = do
   let include' (path, stmts) = do
         let path' = snd (split2 ':' preludePath)
@@ -20,7 +21,7 @@ include preludePath ctx = do
   (ctx, errs) <- loadModule (ctx, []) preludePath
   return (map include' ctx, errs)
 
-loadModule :: (Context, [SyntaxError]) -> FilePath -> IO (Context, [SyntaxError])
+loadModule :: (Context, [Error Expr]) -> FilePath -> IO (Context, [Error Expr])
 loadModule (ctx, errs) sourcePath = do
   let osPath = getOSPath sourcePath
   isDir <- doesDirectoryExist osPath
@@ -35,13 +36,13 @@ loadModule (ctx, errs) sourcePath = do
     then loadFile sourcePath (ctx, errs)
     else return (ctx, errs)
 
-loadDir :: FilePath -> (Context, [SyntaxError]) -> IO (Context, [SyntaxError])
+loadDir :: FilePath -> (Context, [Error Expr]) -> IO (Context, [Error Expr])
 loadDir sourcePath (ctx, errs) = do
   let (dir, path) = split2 ':' sourcePath
   files <- walkDirectory dir path
   foldM (flip loadFile) (ctx, errs) (map ((dir ++ ":") ++) files)
 
-loadFile :: FilePath -> (Context, [SyntaxError]) -> IO (Context, [SyntaxError])
+loadFile :: FilePath -> (Context, [Error Expr]) -> IO (Context, [Error Expr])
 loadFile path (ctx, errs) = do
   src <- loadSource path
   case src of
@@ -53,7 +54,7 @@ getOSPath = \case
   (':' : path) -> path
   path -> replace ':' '/' path
 
-loadSource :: FilePath -> IO (Either [SyntaxError] Module)
+loadSource :: FilePath -> IO (Either [Error Expr] Module)
 loadSource filename = case splitExtension filename of
   (_, "") -> loadSource (filename ++ ".tao")
   (name, ".tao") -> do
@@ -63,32 +64,30 @@ loadSource filename = case splitExtension filename of
     case P.parse parser osPath src of
       Right (mod, _) -> return (Right mod)
       Left P.State {filename, pos = (row, col), context} -> do
-        let err =
-              SyntaxError
+        let loc =
+              Location
                 { filename = filename,
-                  row = row,
-                  col = col,
-                  sourceCode = src,
-                  context = context
+                  start = Pos row col,
+                  end = Pos row col
                 }
+        let err = Error loc SyntaxError
         return (Left [err])
   _ -> error $ "file extension not supported: " ++ filename
 
-loadAtom :: String -> String -> IO (Expr, [SyntaxError])
+loadAtom :: String -> String -> IO (Expr, [Error Expr])
 loadAtom filename src = case P.parse parseAtom filename src of
   Right (a, _) -> return (a, [])
   Left P.State {filename, pos = (row, col), context} -> do
-    let err =
-          SyntaxError
+    let loc =
+          Location
             { filename = filename,
-              row = row,
-              col = col,
-              sourceCode = src,
-              context = context
+              start = Pos row col,
+              end = Pos row col
             }
+    let err = Error loc SyntaxError
     return (Err, [err])
 
-loadAtoms :: String -> [String] -> IO ([Expr], [SyntaxError])
+loadAtoms :: String -> [String] -> IO ([Expr], [Error Expr])
 loadAtoms _ [] = return ([], [])
 loadAtoms filename (src : srcs) = do
   (a, err1) <- loadAtom filename src

@@ -101,16 +101,6 @@ type Module = (FilePath, [Stmt])
 
 type Context = [Module]
 
-data SyntaxError
-  = SyntaxError
-  { filename :: String,
-    row :: Int,
-    col :: Int,
-    sourceCode :: String,
-    context :: [ParserContext]
-  }
-  deriving (Eq)
-
 data ParserContext
   = CModule
   | CDefinition
@@ -123,41 +113,6 @@ data ParserContext
   | CCase
   | CMatch
   deriving (Eq, Show)
-
-instance Show SyntaxError where
-  show :: SyntaxError -> String
-  show e = do
-    let loc = intercalate ":" [e.filename, show e.row, show e.col]
-    intercalate
-      "\n"
-      [ "🛑 " ++ loc ++ ": syntax error " ++ show e.context,
-        "",
-        showSnippet (e.row, e.col) 3 3 e.sourceCode,
-        ""
-      ]
-
-showSnippet :: (Int, Int) -> Int -> Int -> String -> String
-showSnippet (row, col) before after src = do
-  let divider = "| "
-  let rowMark = "* "
-  let colMark = "^"
-  let start = max 1 (row - before)
-  let padding = length (rowMark ++ show (row + after))
-  let showLine x line = pad padding x ++ divider ++ line
-  let linesBefore =
-        lines src
-          & slice start row
-          & zipWith (showLine . show) [start ..]
-  let highlight =
-        lines src
-          & slice row (row + 1)
-          & map (showLine (rowMark ++ show row))
-          & (++ [replicate (col + padding + length divider + 1) ' ' ++ colMark])
-  let linesAfter =
-        lines src
-          & slice (row + 1) (row + after + 1)
-          & zipWith (showLine . show) [row + 1 ..]
-  intercalate "\n" (linesBefore ++ highlight ++ linesAfter)
 
 data UnitTest = UnitTest
   { filename :: FilePath,

@@ -51,26 +51,11 @@ data Metadata
   | TrailingComment String
   deriving (Eq, Show)
 
--- https://package.elm-lang.org/packages/elm-in-elm/compiler/latest/Elm.Compiler.Error
--- https://github.com/elm-in-elm/compiler/blob/master/src/Elm/Compiler/Error.elm
--- https://github.com/gleam-lang/gleam/blob/main/compiler-core/src/error.rs
-data Error
-  = TypeError TypeError
-  | PatternError PatternError
-  deriving (Eq, Show)
-
 data TypeError
   = OccursError String Expr
   | TypeMismatch Expr Expr
-  | TypeCheck Expr Expr
   | NotAFunction Expr Expr
   | UndefinedVar String
-  | UndefinedField String [(String, Expr)]
-  deriving (Eq, Show)
-
-data PatternError
-  = MissingCases [Expr]
-  | UnreachableCase Expr
   deriving (Eq, Show)
 
 format :: Expr -> String
