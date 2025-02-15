@@ -522,14 +522,18 @@ unify ops env a b = case (a, b) of
   (a, Ann b _) -> unify ops env a b
   (Or a1 a2, b) -> case unify ops env a1 b of
     (c1, s1, []) -> case unify ops env a2 b of
-      (c2, s2, []) -> (Or c1 c2, s2 `compose` s1, [])
+      (c2, s2, []) -> case unify ops env c1 c2 of
+        (c, s3, []) -> (c, s3 `compose` s2 `compose` s1, [])
+        _ -> (Or c1 c2, s2 `compose` s1, [])
       _ -> (c1, s1, [])
     (_, _, e1) -> case unify ops env a2 b of
       (c2, s2, []) -> (c2, s2, [])
       (c2, s2, e2) -> (c2, s2, e1 ++ e2)
   (a, Or b1 b2) -> case unify ops env a b1 of
     (c1, s1, []) -> case unify ops env a b2 of
-      (c2, s2, []) -> (Or c1 c2, s2 `compose` s1, [])
+      (c2, s2, []) -> case unify ops env c1 c2 of
+        (c, s3, []) -> (c, s3 `compose` s2 `compose` s1, [])
+        _ -> (Or c1 c2, s2 `compose` s1, [])
       _ -> (c1, s1, [])
     (_, _, e1) -> case unify ops env a b2 of
       (c2, s2, []) -> (c2, s2, [])

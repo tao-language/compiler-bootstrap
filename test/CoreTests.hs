@@ -3,6 +3,7 @@ module CoreTests where
 import Core
 import Data.Bifunctor (Bifunctor (first))
 import Data.Char (toLower)
+import Error (TypeError(..))
 import Test.Hspec
 
 run :: SpecWith ()

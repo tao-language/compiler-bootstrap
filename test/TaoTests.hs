@@ -2,6 +2,7 @@ module TaoTests where
 
 import qualified Core as C
 import Tao
+import qualified Tao as T
 import Test.Hspec
 
 run :: SpecWith ()
@@ -448,7 +449,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     -- With Expr [(String, Expr)]
     compile' Err `shouldBe` ([], C.Err)
 
-  it "☯ eval" $ do
+  it "☯ run" $ do
     let ctx =
           [ ( "pkg/a",
               [Def (x, i1)]
@@ -460,16 +461,16 @@ run = describe "--==☯ TaoTests ☯==--" $ do
               ]
             )
           ]
-    eval ctx "pkg/a" (Int 42) `shouldBe` Int 42
-    eval ctx "pkg/a" (Num 3.14) `shouldBe` Num 3.14
-    eval ctx "pkg/a" (Var "x") `shouldBe` Int 1
-    eval ctx "pkg/b" (Var "x") `shouldBe` Int 2
-    eval ctx "pkg/a" (Var "y") `shouldBe` Var "y"
-    eval ctx "pkg/a" (Tag "A") `shouldBe` Tag "A"
+    T.run ctx "pkg/a" (Int 42) `shouldBe` Int 42
+    T.run ctx "pkg/a" (Num 3.14) `shouldBe` Num 3.14
+    T.run ctx "pkg/a" (Var "x") `shouldBe` Int 1
+    T.run ctx "pkg/b" (Var "x") `shouldBe` Int 2
+    T.run ctx "pkg/a" (Var "y") `shouldBe` Var "y"
+    T.run ctx "pkg/a" (Tag "A") `shouldBe` Tag "A"
     -- Record [(String, Maybe Expr, Maybe Expr)]
     -- Fun Expr Expr
     -- App Expr Expr
-    eval ctx "pkg/a" (tag "A" [x]) `shouldBe` tag "A" [i1]
+    T.run ctx "pkg/a" (tag "A" [x]) `shouldBe` tag "A" [i1]
     -- And Expr Expr
     -- Or Expr Expr
     -- Ann Expr Type
