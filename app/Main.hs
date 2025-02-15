@@ -8,6 +8,7 @@ import PrettyPrint (pretty)
 import qualified Python as Py
 import Stdlib (split2, splitWith, trimPrefix)
 import qualified System.Environment
+import System.Exit (exitFailure)
 import System.FilePath ((</>))
 import System.FilePath.Windows (dropExtension, takeBaseName, takeDirectory, takeFileName)
 import qualified Tao as T
@@ -19,6 +20,9 @@ main = do
     "run" : args -> case args of
       path : args -> runCmd path args
       _ -> putStrLn "🛑 Please give me a path, and an expression to run."
+    "check" : args -> case args of
+      path : args -> checkCmd path args
+      _ -> putStrLn "🛑 Please give me a path, and an expression to check."
     "test" : args -> case args of
       [path] -> testCmd path ["*"]
       -- path : patterns -> test path patterns
@@ -47,7 +51,22 @@ runCmd filename args = do
   (args', errors) <- loadAtoms "<run>" args
   mapM_ print errors
   let path = dropExtension (snd (split2 ':' filename))
-  print (T.eval ctx path (T.app' args'))
+  print (T.run ctx path (T.app' args'))
+
+checkCmd :: FilePath -> [String] -> IO ()
+checkCmd filename args = do
+  (ctx, errors) <- load [filename]
+  mapM_ display errors
+  (ctx, errors) <- include "prelude" ctx
+  mapM_ print errors
+  (args', errors) <- loadAtoms "<check>" args
+  mapM_ print errors
+  let path = dropExtension (snd (split2 ':' filename))
+  case T.checkTypes ctx path (T.app' args') of
+    [] -> return ()
+    errors -> do
+      mapM_ print errors
+      exitFailure
 
 testCmd :: FilePath -> [String] -> IO ()
 testCmd path patterns = do

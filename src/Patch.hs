@@ -82,7 +82,7 @@ instance Apply (Context, FilePath, [Rule]) Expr where
 
 instance Apply (Context, FilePath, Rule) Expr where
   apply :: (Context, FilePath, Rule) -> Expr -> Expr
-  apply (ctx, path, (p, q)) expr = case eval ctx path (Let (p, expr) q) of
+  apply (ctx, path, (p, q)) expr = case run ctx path (Let (p, expr) q) of
     Err -> expr
     result -> result
 

@@ -27,14 +27,8 @@ data Error a
 
 data ErrorType a
   = SyntaxError
-  | NameError (NameError a)
   | TypeError (TypeError a)
   | CaseError (CaseError a)
-  deriving (Eq, Show)
-
-data NameError a
-  = NameNotFound String
-  | NameMismatch String [a]
   deriving (Eq, Show)
 
 data TypeError a
@@ -42,6 +36,9 @@ data TypeError a
   | TypeMismatch a a
   | NotAFunction a a
   | UndefinedVar String
+  -- MissingArgs
+  -- ExtraArgs
+  -- ArgsMismatch
   deriving (Eq, Show)
 
 data CaseError a

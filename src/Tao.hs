@@ -10,6 +10,7 @@ import Data.Function ((&))
 import Data.List (delete, elemIndex, intercalate, isInfixOf, isPrefixOf, isSuffixOf, nub, sort, union, unionBy, (\\))
 import Data.List.Split (splitWhen, startsWith)
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
+import Error (TypeError (..))
 import Stdlib (pad, slice, split, split2)
 import System.FilePath (takeBaseName)
 
@@ -639,6 +640,13 @@ lift = \case
   C.Meta m a -> Meta m (lift a)
   C.Err -> Err
 
+liftTypeError :: TypeError C.Expr -> TypeError Expr
+liftTypeError = \case
+  OccursError x a -> OccursError x (lift a)
+  TypeMismatch a b -> TypeMismatch (lift a) (lift b)
+  NotAFunction a b -> NotAFunction (lift a) (lift b)
+  UndefinedVar x -> UndefinedVar x
+
 simplify :: Expr -> Expr
 -- C.App a b -> case appOf (App (lift a) (lift b)) of
 --   -- (Var ('.' : x), _ : a : args) -> app (Trait a x) args
@@ -664,11 +672,6 @@ simplify :: Expr -> Expr
 --   (Or a1 a2, args) -> Match args (orOf (Or a1 a2))
 --   (a, args) -> app a args
 simplify a = a
-
-eval :: Context -> String -> Expr -> Expr
-eval ctx path expr = do
-  let (env, expr') = compile ctx path expr
-  lift (C.eval runtimeOps (C.let' env expr'))
 
 class Resolve a where
   resolve :: Context -> FilePath -> a -> [(FilePath, Expr)]
@@ -779,6 +782,17 @@ instance Compile (Expr -> (C.Env, C.Expr)) where
   compile :: Context -> String -> Expr -> (C.Env, C.Expr)
   compile ctx path expr =
     compile ctx path (C.newName (freeVars expr) "", expr)
+
+run :: Context -> String -> Expr -> Expr
+run ctx path expr = do
+  let (env, expr') = compile ctx path expr
+  lift (C.eval runtimeOps (C.let' env expr'))
+
+checkTypes :: Context -> String -> Expr -> [TypeError Expr]
+checkTypes ctx path expr = do
+  let (env, expr') = compile ctx path expr
+  let (_, _, errors) = C.infer buildOps env expr'
+  map liftTypeError errors
 
 class TestSome a where
   testSome :: Context -> (UnitTest -> Bool) -> a -> [TestResult]
