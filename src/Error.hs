@@ -49,47 +49,27 @@ data CaseError a
   | RedundantCases [a]
   deriving (Eq, Show)
 
-data ErrorDetails = ErrorDetails
-  { summary :: String,
-    description :: String,
-    suggestion :: String
-  }
-  deriving (Eq, Show)
-
 instance Show Location where
   show :: Location -> String
   show (Location filename start _) =
     filename ++ ":" ++ show start.row ++ ":" ++ show start.col
 
-details :: ErrorType a -> ErrorDetails
-details = \case
-  SyntaxError ->
-    ErrorDetails
-      { summary = "Syntax error",
-        description = "Description",
-        suggestion = "Suggestion"
-      }
+summary :: ErrorType a -> String
+summary = \case
+  SyntaxError -> "Syntax Error"
+  _ -> ""
 
-display :: Error a -> IO ()
-display (Error loc e) = do
-  let ErrorDetails {summary, description, suggestion} = details e
-  src <- readFile loc.filename
-  putStrLn (replicate 60 '-')
-  putStrLn ("🛑 " ++ summary)
-  putStrLn ""
-  putStrLn description
-  putStrLn ""
-  putStrLn (snippet loc src)
-  putStrLn ""
-  putStrLn suggestion
+description :: ErrorType a -> String
+description = \case
+  _ -> ""
 
--- intercalate
--- "\n"
--- [ "🛑 " ++ show e,
---   "",
---   snippet loc 3 3 src,
---   ""
--- ]
+suggestion :: ErrorType a -> String
+suggestion = \case
+  _ -> ""
+
+docsUrl :: ErrorType a -> String
+docsUrl = \case
+  _ -> ""
 
 snippet :: Location -> String -> String
 snippet loc src = do
@@ -98,7 +78,7 @@ snippet loc src = do
   let rowMark = "* "
   let colMark = "^"
   let start = max 1 (loc.start.row - before)
-  let padding = length (rowMark ++ show (loc.start.row + after))
+  let padding = length (rowMark ++ show (loc.end.row + after))
   let showLine x line = pad padding x ++ divider ++ line
   let linesBefore =
         lines src
@@ -108,7 +88,7 @@ snippet loc src = do
         lines src
           & slice loc.start.row (loc.start.row + 1)
           & map (showLine (rowMark ++ show loc.start.row))
-          & (++ [replicate (loc.start.col + padding + length divider + 1) ' ' ++ colMark])
+          & (++ [replicate (loc.start.col + padding + length divider - 1) ' ' ++ colMark])
   let linesAfter =
         lines src
           & slice (loc.start.row + 1) (loc.start.row + after + 1)
@@ -120,3 +100,28 @@ snippet loc src = do
         ++ highlight
         ++ linesAfter
     )
+
+display :: Error a -> IO ()
+display (Error loc e) = do
+  src <- readFile loc.filename
+  putStrLn (replicate 60 '-')
+  putStrLn ("🛑 " ++ summary e)
+  case description e of
+    "" -> return ()
+    description -> do
+      putStrLn ""
+      putStrLn description
+  putStrLn ""
+  putStrLn (snippet loc src)
+  case suggestion e of
+    "" -> return ()
+    suggestion -> do
+      putStrLn ""
+      putStrLn suggestion
+  case docsUrl e of
+    "" -> return ()
+    url -> do
+      putStrLn ""
+      putStrLn "For more information about this error, see:"
+      putStrLn ("  " ++ url)
+  putStrLn ""
