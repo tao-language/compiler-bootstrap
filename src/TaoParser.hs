@@ -9,7 +9,8 @@ import Data.List (dropWhileEnd, intercalate, isPrefixOf, isSuffixOf, sort)
 import Data.List.Split (endsWith)
 import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
-import Location (Location (..), Position (..))
+import Location (Location (..), Position (..), Range (..))
+import qualified Location as Loc
 import qualified Parser as P
 import System.Directory (doesDirectoryExist, doesFileExist, doesPathExist, findFiles, getDirectoryContents, listDirectory)
 import System.Environment (lookupEnv)
@@ -178,7 +179,7 @@ parseCommentMultiLine = do
 
 parseAtom :: Parser Expr
 parseAtom = do
-  start <- P.getState
+  start <- P.position
   a <-
     P.oneOf
       [ Any <$ P.word "_",
@@ -293,17 +294,11 @@ parseAtom = do
           return (With a fields),
         return a
       ]
-  end <- P.getState
-  let loc =
-        Location
-          { filename = start.filename,
-            start = start.pos,
-            end = end.pos
-          }
+  loc <- P.location start
   return (Meta (C.Loc loc) a)
 
 parseExpr :: Int -> Parser appDelim -> Parser Expr
-parseExpr prec delim = do
+parseExpr prec spaces = do
   let parseOp txt = do
         let breakChars =
               [ P.whitespace,
@@ -318,24 +313,27 @@ parseExpr prec delim = do
               ]
         _ <- P.text txt
         _ <- P.lookahead (P.oneOf breakChars)
-        _ <- P.whitespaces
         return ()
+  let op1' f loc op x = Meta (C.Loc loc) (f op x)
+  let op1 f = op1' (const f)
+  let op2' f loc op x y = Meta (C.Loc loc) (f op x y)
+  let op2 f = op2' (const f)
   let ops =
         [ P.atom id $ do
             a <- parseAtom
             case a of
               Tag k -> do
                 args <- P.zeroOrMore $ do
-                  _ <- delim
+                  _ <- spaces
                   parseAtom
-                _ <- delim
+                _ <- spaces
                 return (tag k args)
               a -> do
-                _ <- delim
+                _ <- spaces
                 return a,
           -- P.atom 0 (Match []) parseCases,
           P.atom id parseMatch,
-          P.prefixWith 0 For $ do
+          P.prefix 0 (op1' For) P.whitespaces $ do
             _ <- P.char '@'
             _ <- P.whitespaces
             xs <- P.zeroOrMore $ do
@@ -343,10 +341,9 @@ parseExpr prec delim = do
               _ <- P.whitespaces
               return x
             _ <- P.char '.'
-            _ <- P.whitespaces
             return xs,
-          P.prefix 0 neg (parseOp "-"),
-          P.prefixWith 0 (uncurry If) $ do
+          P.prefix 0 (op1 neg) P.whitespaces (parseOp "-"),
+          P.prefix 0 (op1' $ uncurry If) P.whitespaces $ do
             _ <- P.word "if"
             _ <- P.whitespaces
             a <- parseExpr 0 P.whitespaces
@@ -356,36 +353,35 @@ parseExpr prec delim = do
             b <- parseExpr 0 P.whitespaces
             _ <- P.whitespaces
             _ <- P.word "else"
-            _ <- P.whitespaces
             return (a, b),
-          P.infixR 1 Or (parseOp "|"),
-          P.infixR 2 (var2 "and") (parseOp "and"),
-          P.infixR 2 (var2 "or") (parseOp "or"),
-          P.infixR 2 (var2 "xor") (parseOp "xor"),
-          P.infixR 3 (tag2 "::") (parseOp "::"),
-          P.infixR 3 Ann (parseOp ":"),
-          P.infixR 4 eq (parseOp "=="),
-          P.infixR 4 ne (parseOp "!="),
-          P.infixR 5 lt (parseOp "<"),
-          P.infixR 5 le (parseOp "<="),
-          P.infixR 5 gt (parseOp ">"),
-          P.infixR 5 ge (parseOp ">="),
-          P.infixRWith 6 (\args a -> fun (a : args)) $ do
+          P.infixR 1 (op2 Or) spaces (parseOp "|"),
+          P.infixR 2 (op2 $ var2 "and") spaces (parseOp "and"),
+          P.infixR 2 (op2 $ var2 "or") spaces (parseOp "or"),
+          P.infixR 2 (op2 $ var2 "xor") spaces (parseOp "xor"),
+          P.infixR 3 (op2 $ tag2 "::") spaces (parseOp "::"),
+          P.infixR 3 (op2 Ann) spaces (parseOp ":"),
+          P.infixR 4 (op2 eq) spaces (parseOp "=="),
+          P.infixR 4 (op2 ne) spaces (parseOp "!="),
+          P.infixR 5 (op2 lt) spaces (parseOp "<"),
+          P.infixR 5 (op2 le) spaces (parseOp "<="),
+          P.infixR 5 (op2 gt) spaces (parseOp ">"),
+          P.infixR 5 (op2 ge) spaces (parseOp ">="),
+          -- let op2' f loc op x y = Meta (C.Loc loc) (f op x y)
+          P.infixR 6 (\loc args a b -> op2' (\_ a b -> fun (a : args) b) loc {range = loc.range {start = Loc.prev 2 loc.range.end}} () a b) P.whitespaces $ do
             args <- P.zeroOrMore $ do
               _ <- P.char ','
-              _ <- P.spaces
-              parseExpr 7 P.spaces
+              _ <- P.whitespaces
+              parseExpr 7 P.whitespaces
             _ <- P.text "->"
-            _ <- P.whitespaces
             return args,
-          P.infixR 7 add (parseOp "+"),
-          P.infixR 7 sub (parseOp "-"),
-          P.infixR 8 mul (parseOp "*"),
-          P.infixR 8 div' (parseOp "/"),
-          P.infixR 8 divI (parseOp "//"),
-          P.infixL 9 App (void delim),
-          P.infixR 10 pow (parseOp "^"),
-          P.prefixWith 11 Meta $ do
+          P.infixL 7 (op2 add) spaces (parseOp "+"),
+          P.infixR 7 (op2 sub) spaces (parseOp "-"),
+          P.infixR 8 (op2 mul) spaces (parseOp "*"),
+          P.infixR 8 (op2 div') spaces (parseOp "/"),
+          P.infixR 8 (op2 divI) spaces (parseOp "//"),
+          P.infixL 9 (op2 App) (return ()) spaces,
+          P.infixR 10 (op2 pow) spaces (parseOp "^"),
+          P.prefix 11 (const Meta) spaces $ do
             C.Comments <$> P.oneOrMore parseComment,
           P.suffixWith 11 Meta $ do
             _ <- P.spaces

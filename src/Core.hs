@@ -7,7 +7,7 @@ import Data.List (delete, intercalate, union, unionBy)
 import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
 import Error (TypeError (..))
-import Location (Location (..))
+import Location (Location (..), Position (..))
 import qualified Parser as P
 import Stdlib (replace, replaceString)
 

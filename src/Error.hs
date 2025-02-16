@@ -2,7 +2,7 @@ module Error where
 
 import Data.Function ((&))
 import Data.List (intercalate)
-import Location (Location (..), Position (..))
+import Location (Location (..), Position (..), Range (..))
 import Stdlib (pad, slice)
 
 -- https://package.elm-lang.org/packages/elm-in-elm/compiler/latest/Elm.Compiler.Error
@@ -74,25 +74,25 @@ snippet loc src = do
   let divider = "| "
   let rowMark = "* "
   let colMark = "^"
-  let start = max 1 (loc.start.row - before)
-  let padding = length (rowMark ++ show (loc.end.row + after))
+  let start = max 1 (loc.range.start.row - before)
+  let padding = length (rowMark ++ show (loc.range.start.row + after))
   let showLine x line = pad padding x ++ divider ++ line
   let linesBefore =
         lines src
-          & slice start loc.start.row
+          & slice start loc.range.start.row
           & zipWith (showLine . show) [start ..]
   let highlight =
         lines src
-          & slice loc.start.row (loc.start.row + 1)
-          & map (showLine (rowMark ++ show loc.start.row))
-          & (++ [replicate (loc.start.col + padding + length divider - 1) ' ' ++ colMark])
+          & slice loc.range.start.row (loc.range.start.row + 1)
+          & map (showLine (rowMark ++ show loc.range.start.row))
+          & (++ [replicate (loc.range.start.col + padding + length divider - 1) ' ' ++ colMark])
   let linesAfter =
         lines src
-          & slice (loc.start.row + 1) (loc.start.row + after + 1)
-          & zipWith (showLine . show) [loc.start.row + 1 ..]
+          & slice (loc.range.start.row + 1) (loc.range.start.row + after + 1)
+          & zipWith (showLine . show) [loc.range.start.row + 1 ..]
   intercalate
     "\n"
-    ( (loc.filename ++ ":" ++ show loc.start.row ++ ":" ++ show loc.start.col)
+    ( (loc.filename ++ ":" ++ show loc.range.start.row ++ ":" ++ show loc.range.start.col)
         : linesBefore
         ++ highlight
         ++ linesAfter

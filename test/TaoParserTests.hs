@@ -1,19 +1,37 @@
 module TaoParserTests where
 
 import qualified Core as C
-import Location (Position (..))
+import Data.Bifunctor (Bifunctor (bimap, first, second))
+import Location (Location (..), Position (..), Range (..))
 import qualified Parser as P
 import System.Directory (withCurrentDirectory)
 import Tao
 import TaoParser
-import Test.Hspec
+import Test.Hspec (SpecWith, describe, it, shouldBe)
 
 run :: SpecWith ()
 run = describe "--==☯ TaoParser ☯==--" $ do
+  let filename = "TaoParserTests"
+  let expr r1 c1 r2 c2 = Meta (C.Loc (Location filename (Range (Pos r1 c1) (Pos r2 c2))))
+  let op2 r1 c1 r2 c2 f x y = Meta (C.Loc $ Location filename (Range (Pos r1 c1) (r2 c2))) (f x y)
+  let any row col = expr row col row (col + 1) Any
+  let intT row col = expr row col row (col + 3) IntT
+  let numT row col = expr row col row (col + 3) NumT
+  let int row col i = expr row col row (col + length (show i)) (Int i)
+  let num row col n = expr row col row (col + length (show n)) (Num n)
+  let var row col x = expr row col row (col + length x) (Var x)
+  let tag row col k = expr row col row (col + length k) (Tag k)
+  let for r1 c1 r2 c2 xs a = expr r1 c1 r2 c2 (For xs a)
+  let fun r c a b = expr r c r (c + 2) (Fun a b)
+  let app r c a b = expr r c r c (App a b)
+
   let (x, y, z) = (Var "x", Var "y", Var "z")
+  let (x', y', z') = (\r c -> var r c "x", \r c -> var r c "y", \r c -> var r c "z")
   let (a, b, c) = (Var "a", Var "b", Var "c")
+  let (a', b', c') = (\r c -> var r c "a", \r c -> var r c "b", \r c -> var r c "c")
+
   let parse' :: Parser a -> String -> Either ([ParserContext], String) (a, String)
-      parse' parser src = case P.parse parser "TaoParserTests" src of
+      parse' parser src = case P.parse parser filename src of
         Right (x, P.State {remaining}) -> Right (x, remaining)
         Left P.State {context, remaining} -> Left (context, remaining)
 
@@ -133,32 +151,32 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     let p = parse' parseMatch
     p "match" `shouldBe` Left ([CMatch], "")
     p "match {}" `shouldBe` Left ([CMatch], "")
-    p "match {| x -> y}" `shouldBe` Right (Match [] [(["x"], [x], y)], "")
-    p "match {| @. x -> y}" `shouldBe` Right (Match [] [([], [x], y)], "")
-    p "match a {| x -> y}" `shouldBe` Right (Match [a] [(["x"], [x], y)], "")
-    p "match a, b {| x -> y}" `shouldBe` Right (Match [a, b] [(["x"], [x], y)], "")
+    p "match {| x -> y}" `shouldBe` Right (Match [] [(["x"], [x' 1 10], y' 1 15)], "")
+    p "match {| @. x -> y}" `shouldBe` Right (Match [] [([], [x' 1 13], y' 1 18)], "")
+    p "match a {| x -> y}" `shouldBe` Right (Match [a' 1 7] [(["x"], [x' 1 12], y' 1 17)], "")
+    p "match a, b {| x -> y}" `shouldBe` Right (Match [a' 1 7, b' 1 10] [(["x"], [x' 1 15], y' 1 20)], "")
 
   it "☯ parseExpr" $ do
     let p = parse' (parseExpr 0 P.spaces)
-    p "_" `shouldBe` Right (Any, "")
-    p "Int" `shouldBe` Right (IntT, "")
-    p "Num" `shouldBe` Right (NumT, "")
-    p "42" `shouldBe` Right (Int 42, "")
-    p "3.14" `shouldBe` Right (Num 3.14, "")
-    p "var" `shouldBe` Right (Var "var", "")
-    p "`A.+\\``" `shouldBe` Right (Var "A.+`", "")
-    p "Tag" `shouldBe` Right (Tag "Tag", "")
-    p "^`x.+\\``" `shouldBe` Right (Tag "x.+`", "")
-    p "@. x" `shouldBe` Right (For [] x, "")
-    p "@ x . y" `shouldBe` Right (For ["x"] y, "")
-    p "@ x y . z" `shouldBe` Right (For ["x", "y"] z, "")
-    p "@\nx\n.\ny" `shouldBe` Right (For ["x"] y, "")
-    p "x -> y" `shouldBe` Right (Fun x y, "")
-    p "x ->\ny" `shouldBe` Right (Fun x y, "")
-    p "x, y -> z" `shouldBe` Right (Fun x (Fun y z), "")
-    p "x y" `shouldBe` Right (App x y, "")
-    p "x\ny" `shouldBe` Right (x, "\ny")
-    p "(x\ny)" `shouldBe` Right (App x y, "")
+    p "_" `shouldBe` Right (any 1 1, "")
+    p "Int" `shouldBe` Right (intT 1 1, "")
+    p "Num" `shouldBe` Right (numT 1 1, "")
+    p "42" `shouldBe` Right (int 1 1 42, "")
+    p "3.14" `shouldBe` Right (num 1 1 3.14, "")
+    p "var" `shouldBe` Right (var 1 1 "var", "")
+    p "`A.+\\``" `shouldBe` Right (expr 1 1 1 8 (Var "A.+`"), "")
+    p "Tag" `shouldBe` Right (tag 1 1 "Tag", "")
+    p "^`x.+\\``" `shouldBe` Right (expr 1 1 1 9 (Tag "x.+`"), "")
+    p "@. x" `shouldBe` Right (for 1 1 1 2 [] (x' 1 4), "")
+    p "@ x . y" `shouldBe` Right (for 1 1 1 5 ["x"] (y' 1 7), "")
+    p "@ x y . z" `shouldBe` Right (for 1 1 1 7 ["x", "y"] (z' 1 9), "")
+    p "@\nx\n.\ny" `shouldBe` Right (for 1 1 3 1 ["x"] (y' 4 1), "")
+    p "x -> y" `shouldBe` Right (fun 1 3 (x' 1 1) (y' 1 6), "")
+    p "x ->\ny" `shouldBe` Right (fun 1 3 (x' 1 1) (y' 2 1), "")
+    p "x, y -> z" `shouldBe` Right (fun 1 6 (x' 1 1) (Fun (y' 1 4) (z' 1 9)), "")
+    p "x y" `shouldBe` Right (app 1 3 (x' 1 1) (y' 1 3), "")
+    p "x\ny" `shouldBe` Right (x' 1 1, "\ny")
+    p "(x\ny)" `shouldBe` Right (expr 1 1 2 3 (app 2 1 (x' 1 2) (y' 2 1)), "")
     p "()" `shouldBe` Right (Unit, "")
     p "(\n)" `shouldBe` Right (Unit, "")
     p "(x)" `shouldBe` Right (x, "")

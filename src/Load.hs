@@ -3,7 +3,7 @@ module Load where
 import Control.Monad (foldM)
 import Data.List (isPrefixOf, sort)
 import Error (SyntaxError (..))
-import Location (Location (..), Position (..))
+import Location (Location (..), Position (..), Range (..))
 import qualified Parser as P
 import Stdlib (replace, split2)
 import System.Directory (doesDirectoryExist, listDirectory)
@@ -68,8 +68,7 @@ loadSource filename = case splitExtension filename of
         let loc =
               Location
                 { filename = filename,
-                  start = pos,
-                  end = pos
+                  range = Range pos pos
                 }
         return (Left [UnexpectedChar loc])
   _ -> error $ "file extension not supported: " ++ filename
@@ -81,8 +80,7 @@ loadAtom filename src = case P.parse parseAtom filename src of
     let loc =
           Location
             { filename = filename,
-              start = pos,
-              end = pos
+              range = Range pos pos
             }
     return (Err, [UnexpectedChar loc])
 

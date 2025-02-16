@@ -4,16 +4,31 @@ data Position = Pos
   { row :: Int,
     col :: Int
   }
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show Position where
+  show :: Position -> String
+  show p = show p.row ++ ":" ++ show p.col
+
+data Range = Range
+  { start :: Position,
+    end :: Position
+  }
+  deriving (Eq)
+
+instance Show Range where
+  show :: Range -> String
+  show r = show r.start ++ ".." ++ show r.end
 
 data Location = Location
   { filename :: FilePath,
-    start :: Position,
-    end :: Position
+    range :: Range
   }
   deriving (Eq)
 
 instance Show Location where
   show :: Location -> String
-  show (Location filename start _) =
-    filename ++ ":" ++ show start.row ++ ":" ++ show start.col
+  show l = show l.filename ++ "(" ++ show l.range ++ ")"
+
+prev :: Int -> Position -> Position
+prev n pos = pos {col = pos.col - n}

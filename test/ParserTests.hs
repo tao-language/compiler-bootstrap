@@ -321,17 +321,16 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "abc--}" `shouldBe` Right ("abc", "--}")
 
   it "☯ precedence" $ do
-    let op x = padded whitespaces (text x)
-        ops =
+    let ops =
           [ atom Var (oneOrMore letter),
-            group (op "(") (op ")"),
-            infixL 1 Add (op "+"),
-            infixL 1 Sub (op "-"),
-            infixL 2 Mul (op "*"),
-            prefix 3 Neg (op "-"),
-            infixR 4 Pow (op "^"),
-            suffix 5 Fac (op "!"),
-            prefix 5 At (op "@")
+            group (text "(") (text ")"),
+            infixL 1 (\_ _ -> Add) spaces (text "+"),
+            infixL 1 (\_ _ -> Sub) spaces (text "-"),
+            infixL 2 (\_ _ -> Mul) spaces (text "*"),
+            prefix 3 (\_ _ -> Neg) spaces (text "-"),
+            infixR 4 (\_ _ -> Pow) spaces (text "^"),
+            suffix 5 Fac (text "!"),
+            prefix 5 (\_ _ -> At) spaces (text "@")
           ]
         expr = precedence ops 0
 
