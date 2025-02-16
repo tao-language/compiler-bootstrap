@@ -521,20 +521,32 @@ unify ops env a b = case (a, b) of
   (Ann a _, b) -> unify ops env a b
   (a, Ann b _) -> unify ops env a b
   (Or a1 a2, b) -> case unify ops env a1 b of
-    (c1, s1, []) -> case unify ops env a2 b of
-      (c2, s2, []) -> case unify ops env c1 c2 of
-        (c, s3, []) -> (c, s3 `compose` s2 `compose` s1, [])
-        _ -> (Or c1 c2, s2 `compose` s1, [])
-      _ -> (c1, s1, [])
+    (c1, s1, []) -> do
+      let env1 = s1 `compose` env
+      let (a2', b') = (substitute s1 a2, substitute s1 b)
+      case unify ops env1 a2' b' of
+        (c2, s2, []) -> do
+          let env2 = s2 `compose` env1
+          let c1' = substitute s2 c1
+          case unify ops env2 c1' c2 of
+            (c, s3, []) -> (c, s3 `compose` s2 `compose` s1, [])
+            _ -> (Or c1 c2, s2 `compose` s1, [])
+        _ -> (c1, s1, [])
     (_, _, e1) -> case unify ops env a2 b of
       (c2, s2, []) -> (c2, s2, [])
       (c2, s2, e2) -> (c2, s2, e1 ++ e2)
   (a, Or b1 b2) -> case unify ops env a b1 of
-    (c1, s1, []) -> case unify ops env a b2 of
-      (c2, s2, []) -> case unify ops env c1 c2 of
-        (c, s3, []) -> (c, s3 `compose` s2 `compose` s1, [])
-        _ -> (Or c1 c2, s2 `compose` s1, [])
-      _ -> (c1, s1, [])
+    (c1, s1, []) -> do
+      let env1 = s1 `compose` env
+      let (a', b2') = (substitute s1 a, substitute s1 b2)
+      case unify ops env1 a' b2' of
+        (c2, s2, []) -> do
+          let env2 = s2 `compose` env1
+          let c1' = substitute s2 c1
+          case unify ops env2 c1' c2 of
+            (c, s3, []) -> (c, s3 `compose` s2 `compose` s1, [])
+            _ -> (Or c1 c2, s2 `compose` s1, [])
+        _ -> (c1, s1, [])
     (_, _, e1) -> case unify ops env a b2 of
       (c2, s2, []) -> (c2, s2, [])
       (c2, s2, e2) -> (c2, s2, e1 ++ e2)
