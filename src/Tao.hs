@@ -642,10 +642,10 @@ lift = \case
 
 liftTypeError :: TypeError C.Expr -> TypeError Expr
 liftTypeError = \case
-  OccursError x a -> OccursError x (lift a)
-  TypeMismatch a b -> TypeMismatch (lift a) (lift b)
-  NotAFunction a b -> NotAFunction (lift a) (lift b)
-  UndefinedVar x -> UndefinedVar x
+  OccursError loc x a -> OccursError loc x (lift a)
+  TypeMismatch loc a b -> TypeMismatch loc (lift a) (lift b)
+  NotAFunction loc a b -> NotAFunction loc (lift a) (lift b)
+  UndefinedVar loc x -> UndefinedVar loc x
 
 simplify :: Expr -> Expr
 -- C.App a b -> case appOf (App (lift a) (lift b)) of
@@ -787,12 +787,6 @@ run :: Context -> String -> Expr -> Expr
 run ctx path expr = do
   let (env, expr') = compile ctx path expr
   lift (C.eval runtimeOps (C.let' env expr'))
-
-checkTypes :: Context -> String -> Expr -> [TypeError Expr]
-checkTypes ctx path expr = do
-  let (env, expr') = compile ctx path expr
-  let (_, _, errors) = C.infer buildOps env expr'
-  map liftTypeError errors
 
 class TestSome a where
   testSome :: Context -> (UnitTest -> Bool) -> a -> [TestResult]

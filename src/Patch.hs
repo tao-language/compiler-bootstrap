@@ -2,7 +2,7 @@ module Patch where
 
 import Control.Monad (foldM)
 import Data.Function ((&))
-import Error (Error (..))
+import Error (SyntaxError (..))
 import Load (load, loadSource)
 import Stdlib (push, set, split2)
 import System.FilePath (splitDirectories, splitFileName, (</>))
@@ -13,10 +13,10 @@ type Rule = (Pattern, Expr)
 type PatchStep = ([FilePath], [Rule])
 
 class Plan a where
-  plan :: [PatchStep] -> a -> IO ([PatchStep], [Error Expr])
+  plan :: [PatchStep] -> a -> IO ([PatchStep], [SyntaxError])
 
 instance Plan [FilePath] where
-  plan :: [PatchStep] -> [FilePath] -> IO ([PatchStep], [Error Expr])
+  plan :: [PatchStep] -> [FilePath] -> IO ([PatchStep], [SyntaxError])
   plan steps0 = \case
     [] -> return (steps0, [])
     path : paths -> do
@@ -25,7 +25,7 @@ instance Plan [FilePath] where
       return (steps2, errs1 ++ errs2)
 
 instance Plan ([FilePath], FilePath) where
-  plan :: [PatchStep] -> ([FilePath], FilePath) -> IO ([PatchStep], [Error Expr])
+  plan :: [PatchStep] -> ([FilePath], FilePath) -> IO ([PatchStep], [SyntaxError])
   plan steps (paths, path) = do
     let dir = fst (split2 ':' path)
     src <- loadSource path
@@ -34,7 +34,7 @@ instance Plan ([FilePath], FilePath) where
       Left errs -> return ([], errs)
 
 instance Plan (FilePath, [FilePath], [Stmt]) where
-  plan :: [PatchStep] -> (FilePath, [FilePath], [Stmt]) -> IO ([PatchStep], [Error Expr])
+  plan :: [PatchStep] -> (FilePath, [FilePath], [Stmt]) -> IO ([PatchStep], [SyntaxError])
   plan steps0 (dir, paths, stmts) = case stmts of
     [] -> return (steps0, [])
     stmt : stmts -> do
@@ -43,7 +43,7 @@ instance Plan (FilePath, [FilePath], [Stmt]) where
       return (steps2, errs1 ++ errs2)
 
 instance Plan (FilePath, [FilePath], Stmt) where
-  plan :: [PatchStep] -> (FilePath, [FilePath], Stmt) -> IO ([PatchStep], [Error Expr])
+  plan :: [PatchStep] -> (FilePath, [FilePath], Stmt) -> IO ([PatchStep], [SyntaxError])
   plan steps0 (dir, paths, stmt) = case stmt of
     Import path alias names -> plan steps0 (paths, dir ++ ":" ++ path)
     Def rule -> case lookup paths steps0 of

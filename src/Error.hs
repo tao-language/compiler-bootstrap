@@ -2,48 +2,36 @@ module Error where
 
 import Data.Function ((&))
 import Data.List (intercalate)
+import Location (Location (..), Position (..))
 import Stdlib (pad, slice)
 
 -- https://package.elm-lang.org/packages/elm-in-elm/compiler/latest/Elm.Compiler.Error
 -- https://github.com/elm-in-elm/compiler/blob/master/src/Elm/Compiler/Error.elm
 -- https://github.com/gleam-lang/gleam/blob/main/compiler-core/src/error.rs
 
-data Position = Pos
-  { row :: Int,
-    col :: Int
-  }
-  deriving (Eq, Show)
-
-data Location = Location
-  { filename :: FilePath,
-    start :: Position,
-    end :: Position
-  }
-  deriving (Eq)
-
 data Error a
-  = Error Location (ErrorType a)
-  deriving (Eq, Show)
-
-data ErrorType a
-  = SyntaxError
+  = SyntaxError SyntaxError
   | TypeError (TypeError a)
   | CaseError (CaseError a)
   deriving (Eq, Show)
 
+newtype SyntaxError
+  = UnexpectedChar Location
+  deriving (Eq, Show)
+
 data TypeError a
-  = OccursError String a
-  | TypeMismatch a a
-  | NotAFunction a a
-  | UndefinedVar String
+  = OccursError (Maybe Location) String a
+  | TypeMismatch (Maybe Location) a a
+  | NotAFunction (Maybe Location) a a
+  | UndefinedVar (Maybe Location) String
   -- MissingArgs
   -- ExtraArgs
   -- ArgsMismatch
   deriving (Eq, Show)
 
 data CaseError a
-  = MissingCases [a]
-  | RedundantCases [a]
+  = MissingCases Location [a]
+  | RedundantCases Location [a]
   deriving (Eq, Show)
 
 instance Show Location where
@@ -51,22 +39,54 @@ instance Show Location where
   show (Location filename start _) =
     filename ++ ":" ++ show start.row ++ ":" ++ show start.col
 
-summary :: ErrorType a -> String
+summary :: Error a -> String
 summary = \case
-  SyntaxError -> "Syntax Error"
+  SyntaxError _ -> "Syntax Error"
   _ -> ""
 
-description :: ErrorType a -> String
+description :: Error a -> String
 description = \case
   _ -> ""
 
-suggestion :: ErrorType a -> String
+suggestion :: Error a -> String
 suggestion = \case
   _ -> ""
 
-docsUrl :: ErrorType a -> String
+docsUrl :: Error a -> String
 docsUrl = \case
   _ -> ""
+
+class LocationOf a where
+  locationOf :: a -> Maybe Location
+
+instance LocationOf (Error a) where
+  locationOf :: Error a -> Maybe Location
+  locationOf = \case
+    SyntaxError e -> locationOf e
+    TypeError e -> locationOf e
+
+instance LocationOf SyntaxError where
+  locationOf :: SyntaxError -> Maybe Location
+  locationOf = \case
+    UnexpectedChar loc -> Just loc
+
+instance LocationOf (TypeError a) where
+  locationOf :: TypeError a -> Maybe Location
+  locationOf = \case
+    OccursError loc _ _ -> loc
+    TypeMismatch loc _ _ -> loc
+    NotAFunction loc _ _ -> loc
+    UndefinedVar loc _ -> loc
+
+-- MissingArgs
+-- ExtraArgs
+-- ArgsMismatch
+
+instance LocationOf (CaseError a) where
+  locationOf :: CaseError a -> Maybe Location
+  locationOf = \case
+    MissingCases loc _ -> Just loc
+    RedundantCases loc _ -> Just loc
 
 snippet :: Location -> String -> String
 snippet loc src = do
@@ -99,8 +119,7 @@ snippet loc src = do
     )
 
 display :: Error a -> IO ()
-display (Error loc e) = do
-  src <- readFile loc.filename
+display e = do
   putStrLn (replicate 60 '-')
   putStrLn ("🛑 " ++ summary e)
   case description e of
@@ -108,8 +127,12 @@ display (Error loc e) = do
     description -> do
       putStrLn ""
       putStrLn description
-  putStrLn ""
-  putStrLn (snippet loc src)
+  case locationOf e of
+    Nothing -> return ()
+    Just loc -> do
+      src <- readFile loc.filename
+      putStrLn ""
+      putStrLn (snippet loc src)
   case suggestion e of
     "" -> return ()
     suggestion -> do

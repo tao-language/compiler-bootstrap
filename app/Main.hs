@@ -1,7 +1,8 @@
+import Check (checkTypes)
 import Control.Monad (void)
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, isSuffixOf, partition)
-import Error (display)
+import Error (Error (..), display)
 import Load (include, load, loadAtoms)
 import Patch (PatchStep, Plan (plan), patch)
 import PrettyPrint (pretty)
@@ -45,7 +46,7 @@ main = do
 runCmd :: FilePath -> [String] -> IO ()
 runCmd filename args = do
   (ctx, errors) <- load [filename]
-  mapM_ display errors
+  mapM_ (display . SyntaxError) errors
   (ctx, errors) <- include "prelude" ctx
   mapM_ print errors
   (args', errors) <- loadAtoms "<run>" args
@@ -56,13 +57,13 @@ runCmd filename args = do
 checkCmd :: FilePath -> [String] -> IO ()
 checkCmd filename args = do
   (ctx, errors) <- load [filename]
-  mapM_ display errors
+  mapM_ (display . SyntaxError) errors
   (ctx, errors) <- include "prelude" ctx
   mapM_ print errors
   (args', errors) <- loadAtoms "<check>" args
   mapM_ print errors
   let path = dropExtension (snd (split2 ':' filename))
-  case T.checkTypes ctx path (T.app' args') of
+  case checkTypes ctx path (T.app' args') of
     [] -> return ()
     errors -> do
       mapM_ print errors

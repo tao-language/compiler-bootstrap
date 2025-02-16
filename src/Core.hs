@@ -7,6 +7,7 @@ import Data.List (delete, intercalate, union, unionBy)
 import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
 import Error (TypeError (..))
+import Location (Location (..))
 import qualified Parser as P
 import Stdlib (replace, replaceString)
 
@@ -50,6 +51,7 @@ type Substitution = [(String, Expr)]
 data Metadata
   = Comments [String]
   | TrailingComment String
+  | Loc Location
   deriving (Eq, Show)
 
 format :: Expr -> String
@@ -475,6 +477,12 @@ dropTypes (Call op args) = Call op (map dropTypes args)
 dropTypes (Let defs b) = Let (map (second dropTypes) defs) (dropTypes b)
 dropTypes a = a
 
+location :: Expr -> Maybe Location
+location = \case
+  Meta (Loc loc) _ -> Just loc
+  Meta _ a -> location a
+  _ -> Nothing
+
 unify :: Ops -> Env -> Expr -> Expr -> (Expr, Substitution, [TypeError Expr])
 unify ops env a b = case (a, b) of
   (Any, b) -> (b, [], [])
@@ -488,7 +496,7 @@ unify ops env a b = case (a, b) of
   (Int i, Int i') | i == i' -> (Int i, [], [])
   (Num n, Num n') | n == n' -> (Num n, [], [])
   (Var x, Var x') | x == x' -> (Var x, [], [])
-  (Var x, b) | x `occurs` b -> (b, [], [OccursError x b])
+  (Var x, b) | x `occurs` b -> (b, [], [OccursError (location b) x b])
   (Var x, b) -> (b, [(x, b)], [])
   (a, Var x) -> unify ops env (Var x) a
   (Tag k, Tag k') | k == k' -> (Tag k, [], [])
@@ -568,7 +576,7 @@ unify ops env a b = case (a, b) of
     (Call op args, s, e)
   (Meta _ a, b) -> unify ops env a b
   (a, Meta _ b) -> unify ops env a b
-  (a, b) -> (Err, [], [TypeMismatch a b])
+  (a, b) -> (Err, [], [TypeMismatch (location a) a b])
 
 unify2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> ((Expr, Expr), Substitution, [TypeError Expr])
 unify2 ops env (a1, a2) (b1, b2) = do
@@ -604,7 +612,7 @@ infer ops env (Var x) = do
         Just a -> do
           let ((_, ta), s, e) = infer ops env a
           (ta, s, e)
-        Nothing -> (Err, [], [UndefinedVar x])
+        Nothing -> (Err, [], [UndefinedVar Nothing x])
   ((Var x, ta), s, e)
 infer ops env (Ann a t) = check ops env a t
 infer ops env (And a b) = do
@@ -694,7 +702,7 @@ checkApp ops env (a, ta) b = case ta of
   Fun t1 t2 -> do
     let ((a', _), (b', t1'), s, e) = check2 ops env (a, Fun t1 t2) (b, t1)
     ((a', b'), (t1', substitute s t2), s, e)
-  _ -> ((a, b), (Err, Err), [], [NotAFunction a ta])
+  _ -> ((a, b), (Err, Err), [], [NotAFunction (location a) a ta])
 
 instantiate :: [String] -> Expr -> (Expr, Substitution)
 instantiate vars (For x a) | x `occurs` a = do
