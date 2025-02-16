@@ -3,7 +3,7 @@ module CoreTests where
 import Core
 import Data.Bifunctor (Bifunctor (first))
 import Data.Char (toLower)
-import Error (TypeError(..))
+import Error (TypeError (..))
 import Test.Hspec
 
 run :: SpecWith ()
@@ -315,14 +315,14 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let env = [("x", i1), ("y", y), ("b", Ann b IntT), ("a", b), ("c", Ann c (for ["a"] a))]
     infer [] env (Var "x") `shouldBe` ((x, IntT), [], [])
     infer [] env (Var "y") `shouldBe` ((y, yT), [("yT", yT), ("y", Ann y yT)], [])
-    infer [] env (Var "z") `shouldBe` ((z, Err), [], [UndefinedVar "z"])
+    infer [] env (Var "z") `shouldBe` ((z, Err), [], [UndefinedVar Nothing "z"])
     infer [] env (Var "a") `shouldBe` ((a, IntT), [], [])
     infer [] env (Var "c") `shouldBe` ((c, a1), [("a1", a1)], [])
 
   it "☯ infer Ann" $ do
     let env = []
     infer [] env (Ann i1 IntT) `shouldBe` ((i1, IntT), [], [])
-    infer [] env (Ann i1 NumT) `shouldBe` ((i1, Err), [], [TypeMismatch IntT NumT])
+    infer [] env (Ann i1 NumT) `shouldBe` ((i1, Err), [], [TypeMismatch Nothing IntT NumT])
     infer [] env (Ann i1 (For "a" a)) `shouldBe` ((i1, IntT), [("a", IntT)], [])
 
   it "☯ infer Ann Tag" $ do
@@ -386,8 +386,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let infer' = infer ops env
     infer' (Tag "True") `shouldBe` ((true, true), [], [])
     infer' (Ann true bool) `shouldBe` ((true, bool), env, [])
-    infer' (Ann false (Tag "X")) `shouldBe` ((false, Err), [], [TypeMismatch false (Tag "X")])
-    infer' (Ann (Tag "X") bool) `shouldBe` ((Tag "X", Err), env, [TypeMismatch Err bool])
+    infer' (Ann false (Tag "X")) `shouldBe` ((false, Err), [], [TypeMismatch Nothing false (Tag "X")])
+    infer' (Ann (Tag "X") bool) `shouldBe` ((Tag "X", Err), env, [TypeMismatch Nothing Err bool])
 
   -- it "☯ infer Maybe" $ do
   --   let (maybe, just, nothing) = (App (Tag "Maybe"), \a -> tag "Just" [a], Tag "Nothing")
@@ -422,9 +422,9 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' (Tag "Nil") `shouldBe` ((Tag "Nil", Tag "Nil"), [], [])
     infer' (cons (Num 1.1) nil) `shouldBe` ((cons (Num 1.1) nil, cons NumT nil), [], [])
     infer' (Ann nil (vec i0 NumT)) `shouldBe` ((nil, vec i0 NumT), env, [])
-    infer' (Ann nil (vec i1 NumT)) `shouldBe` ((nil, vec Err NumT), env, [TypeMismatch i0 i1])
+    infer' (Ann nil (vec i1 NumT)) `shouldBe` ((nil, vec Err NumT), env, [TypeMismatch Nothing i0 i1])
     infer' (Ann (cons (Num 1.1) nil) (vec i1 NumT)) `shouldBe` ((cons (Num 1.1) nil, vec i1 NumT), env, [])
-    infer' (Ann (cons (Num 1.1) (cons (Num 2.2) nil)) (vec i0 NumT)) `shouldBe` ((cons (Num 1.1) (cons (Num 2.2) nil), vec Err NumT), env, [TypeMismatch i2 i0])
+    infer' (Ann (cons (Num 1.1) (cons (Num 2.2) nil)) (vec i0 NumT)) `shouldBe` ((cons (Num 1.1) (cons (Num 2.2) nil), vec Err NumT), env, [TypeMismatch Nothing i2 i0])
 
 -- it "☯ checkTypes" $ do
 --   let env =
