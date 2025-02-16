@@ -12,3 +12,8 @@ data Location = Location
     end :: Position
   }
   deriving (Eq)
+
+instance Show Location where
+  show :: Location -> String
+  show (Location filename start _) =
+    filename ++ ":" ++ show start.row ++ ":" ++ show start.col

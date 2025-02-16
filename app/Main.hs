@@ -66,7 +66,7 @@ checkCmd filename args = do
   case checkTypes ctx path (T.app' args') of
     [] -> return ()
     errors -> do
-      mapM_ print errors
+      mapM_ (display . TypeError) errors
       exitFailure
 
 testCmd :: FilePath -> [String] -> IO ()

@@ -30,19 +30,15 @@ data TypeError a
   deriving (Eq, Show)
 
 data CaseError a
-  = MissingCases Location [a]
-  | RedundantCases Location [a]
+  = MissingCases (Maybe Location) [a]
+  | RedundantCases (Maybe Location) [a]
   deriving (Eq, Show)
-
-instance Show Location where
-  show :: Location -> String
-  show (Location filename start _) =
-    filename ++ ":" ++ show start.row ++ ":" ++ show start.col
 
 summary :: Error a -> String
 summary = \case
   SyntaxError _ -> "Syntax Error"
-  _ -> ""
+  TypeError _ -> "Type Error"
+  CaseError _ -> "Case Error"
 
 description :: Error a -> String
 description = \case
@@ -56,37 +52,21 @@ docsUrl :: Error a -> String
 docsUrl = \case
   _ -> ""
 
-class LocationOf a where
-  locationOf :: a -> Maybe Location
-
-instance LocationOf (Error a) where
-  locationOf :: Error a -> Maybe Location
-  locationOf = \case
-    SyntaxError e -> locationOf e
-    TypeError e -> locationOf e
-
-instance LocationOf SyntaxError where
-  locationOf :: SyntaxError -> Maybe Location
-  locationOf = \case
+location :: Error a -> Maybe Location
+location = \case
+  SyntaxError e -> case e of
     UnexpectedChar loc -> Just loc
-
-instance LocationOf (TypeError a) where
-  locationOf :: TypeError a -> Maybe Location
-  locationOf = \case
+  TypeError e -> case e of
     OccursError loc _ _ -> loc
     TypeMismatch loc _ _ -> loc
     NotAFunction loc _ _ -> loc
     UndefinedVar loc _ -> loc
-
--- MissingArgs
--- ExtraArgs
--- ArgsMismatch
-
-instance LocationOf (CaseError a) where
-  locationOf :: CaseError a -> Maybe Location
-  locationOf = \case
-    MissingCases loc _ -> Just loc
-    RedundantCases loc _ -> Just loc
+  -- MissingArgs
+  -- ExtraArgs
+  -- ArgsMismatch
+  CaseError e -> case e of
+    MissingCases loc _ -> loc
+    RedundantCases loc _ -> loc
 
 snippet :: Location -> String -> String
 snippet loc src = do
@@ -127,7 +107,7 @@ display e = do
     description -> do
       putStrLn ""
       putStrLn description
-  case locationOf e of
+  case location e of
     Nothing -> return ()
     Just loc -> do
       src <- readFile loc.filename

@@ -1,6 +1,7 @@
 module TaoTests where
 
 import qualified Core as C
+import Location (Position (..))
 import Tao
 import qualified Tao as T
 import Test.Hspec
@@ -495,13 +496,13 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           [ ( "pkg/a",
               [ Def (x, i1),
                 Def (y, i2),
-                Test (UnitTest "pkg/a" (1, 2) ">x" x i1),
-                Test (UnitTest "pkg/a" (3, 4) ">y" y i3)
+                Test (UnitTest "pkg/a" (Pos 1 2) ">x" x i1),
+                Test (UnitTest "pkg/a" (Pos 3 4) ">y" y i3)
               ]
             )
           ]
     let results =
-          [ TestPass "pkg/a" (1, 2) ">x",
-            TestFail "pkg/a" (3, 4) ">y" y i3 i2
+          [ TestPass "pkg/a" (Pos 1 2) ">x",
+            TestFail "pkg/a" (Pos 3 4) ">y" y i3 i2
           ]
     testAll [] ("pkg", ctx) `shouldBe` results

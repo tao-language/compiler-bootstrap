@@ -11,6 +11,7 @@ import Data.List (delete, elemIndex, intercalate, isInfixOf, isPrefixOf, isSuffi
 import Data.List.Split (splitWhen, startsWith)
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import Error (TypeError (..))
+import Location (Position (..))
 import Stdlib (pad, slice, split, split2)
 import System.FilePath (takeBaseName)
 
@@ -117,7 +118,7 @@ data ParserContext
 
 data UnitTest = UnitTest
   { filename :: FilePath,
-    pos :: (Int, Int),
+    pos :: Position,
     name :: String,
     expr :: Expr,
     expect :: Pattern
@@ -127,12 +128,12 @@ data UnitTest = UnitTest
 data TestResult
   = TestPass
       { filename :: String,
-        pos :: (Int, Int),
+        pos :: Position,
         name :: String
       }
   | TestFail
       { filename :: String,
-        pos :: (Int, Int),
+        pos :: Position,
         name :: String,
         test :: Expr,
         expected :: Expr,
@@ -143,8 +144,8 @@ data TestResult
 instance Show TestResult where
   show :: TestResult -> String
   show result = case result of
-    TestPass filename (row, col) name -> "✅ " ++ filename ++ ":" ++ show row ++ ":" ++ show col ++ " -- " ++ name ++ "\n"
-    TestFail filename (row, col) name test expect got -> "❌ " ++ filename ++ ":" ++ show row ++ ":" ++ show col ++ " -- " ++ name ++ "\n  > " ++ show test ++ "\n  " ++ show expect ++ "\n* " ++ show got ++ "\n"
+    TestPass filename pos name -> "✅ " ++ filename ++ ":" ++ show pos.row ++ ":" ++ show pos.col ++ " -- " ++ name ++ "\n"
+    TestFail filename pos name test expect got -> "❌ " ++ filename ++ ":" ++ show pos.row ++ ":" ++ show pos.col ++ " -- " ++ name ++ "\n  > " ++ show test ++ "\n  " ++ show expect ++ "\n* " ++ show got ++ "\n"
 
 buildOps :: C.Ops
 buildOps = do

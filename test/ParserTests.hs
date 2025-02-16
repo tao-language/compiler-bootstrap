@@ -1,6 +1,7 @@
 module ParserTests where
 
 import qualified Data.Char as Char
+import Location (Position (..))
 import Parser
 import Test.Hspec (SpecWith, describe, it, shouldBe)
 
@@ -65,8 +66,8 @@ run = describe "--==☯ Parser ☯==--" $ do
           s2 <- getState
           ok (s1, s2)
     let p = parse' parser
-    let s1 = State {remaining = "abc", filename = "ParserTests", pos = (1, 1), index = 0, context = []}
-    let s2 = s1 {remaining = "bc", index = 1, pos = (1, 2)}
+    let s1 = State {remaining = "abc", filename = "ParserTests", pos = Pos 1 1, index = 0, context = []}
+    let s2 = s1 {remaining = "bc", index = 1, pos = Pos 1 2}
     p "abc" `shouldBe` Right ((s1, s2), "bc")
 
   it "☯ if'" $ do

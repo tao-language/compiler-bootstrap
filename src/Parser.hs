@@ -7,6 +7,7 @@ import Control.Monad (void)
 import qualified Data.Char as Char
 import Data.Function ((&))
 import qualified Debug.Trace as Debug
+import Location (Position (..))
 import Stdlib (filterMap)
 
 newtype Parser ctx a
@@ -15,7 +16,7 @@ newtype Parser ctx a
 data State ctx = State
   { remaining :: String,
     filename :: String,
-    pos :: (Int, Int),
+    pos :: Position,
     index :: Int,
     context :: [ctx]
   }
@@ -60,12 +61,12 @@ parse (Parser p) filename remaining =
     State
       { remaining = remaining,
         filename = filename,
-        pos = (1, 1),
+        pos = Pos 1 1,
         index = 0,
         context = []
       }
 
-parseFrom :: (Int, Int) -> String -> Parser ctx a -> Parser ctx a
+parseFrom :: Position -> String -> Parser ctx a -> Parser ctx a
 parseFrom pos remaining (Parser p) =
   Parser
     ( \state -> case p state {pos = pos, remaining = remaining} of
@@ -140,10 +141,9 @@ anyChar :: Parser ctx Char
 anyChar =
   Parser
     ( \state -> do
-        let (row, col) = state.pos
         case state.remaining of
-          '\n' : src -> Right ('\n', state {remaining = src, index = state.index + 1, pos = (row + 1, 1)})
-          c : src -> Right (c, state {remaining = src, index = state.index + 1, pos = (row, col + 1)})
+          '\n' : src -> Right ('\n', state {remaining = src, index = state.index + 1, pos = Pos (state.pos.row + 1) 1})
+          c : src -> Right (c, state {remaining = src, index = state.index + 1, pos = Pos state.pos.row (state.pos.col + 1)})
           "" -> Left state
     )
 

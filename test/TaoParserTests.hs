@@ -1,6 +1,7 @@
 module TaoParserTests where
 
 import qualified Core as C
+import Location (Position (..))
 import qualified Parser as P
 import System.Directory (withCurrentDirectory)
 import Tao
@@ -224,15 +225,15 @@ run = describe "--==☯ TaoParser ☯==--" $ do
 
   it "☯ parseTest" $ do
     let p = parse' parseTest
-    p "> x; y" `shouldBe` Right (Test (UnitTest "TaoParserTests" (1, 1) "" x y), "")
-    p "> x\ny" `shouldBe` Right (Test (UnitTest "TaoParserTests" (1, 1) "" x y), "")
-    p "> x" `shouldBe` Right (Test (UnitTest "TaoParserTests" (1, 1) "" x (Tag "True")), "")
+    p "> x; y" `shouldBe` Right (Test (UnitTest "TaoParserTests" (Pos 1 1) "" x y), "")
+    p "> x\ny" `shouldBe` Right (Test (UnitTest "TaoParserTests" (Pos 1 1) "" x y), "")
+    p "> x" `shouldBe` Right (Test (UnitTest "TaoParserTests" (Pos 1 1) "" x (Tag "True")), "")
 
   it "☯ parseStmt" $ do
     let p = parse' parseStmt
     p "import pkg" `shouldBe` Right (Import "pkg" "pkg" [], "")
     -- p "x = y" `shouldBe` Right (Define (Def [] (x) (y)), "")
-    p "> x; y" `shouldBe` Right (Test (UnitTest "TaoParserTests" (1, 1) "" x y), "")
+    p "> x; y" `shouldBe` Right (Test (UnitTest "TaoParserTests" (Pos 1 1) "" x y), "")
 
   it "☯ parseModule" $ do
     let p = parse' (parseModule "path/my-file.tao")

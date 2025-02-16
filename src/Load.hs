@@ -64,12 +64,12 @@ loadSource filename = case splitExtension filename of
     let parser = parseModule (snd (split2 ':' name))
     case P.parse parser osPath src of
       Right (mod, _) -> return (Right mod)
-      Left P.State {filename, pos = (row, col), context} -> do
+      Left P.State {filename, pos, context} -> do
         let loc =
               Location
                 { filename = filename,
-                  start = Pos row col,
-                  end = Pos row col
+                  start = pos,
+                  end = pos
                 }
         return (Left [UnexpectedChar loc])
   _ -> error $ "file extension not supported: " ++ filename
@@ -77,12 +77,12 @@ loadSource filename = case splitExtension filename of
 loadAtom :: String -> String -> IO (Expr, [SyntaxError])
 loadAtom filename src = case P.parse parseAtom filename src of
   Right (a, _) -> return (a, [])
-  Left P.State {filename, pos = (row, col), context} -> do
+  Left P.State {filename, pos, context} -> do
     let loc =
           Location
             { filename = filename,
-              start = Pos row col,
-              end = Pos row col
+              start = pos,
+              end = pos
             }
     return (Err, [UnexpectedChar loc])
 

@@ -9,6 +9,7 @@ import Data.List (dropWhileEnd, intercalate, isPrefixOf, isSuffixOf, sort)
 import Data.List.Split (endsWith)
 import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
+import Location (Location (..), Position (..))
 import qualified Parser as P
 import System.Directory (doesDirectoryExist, doesFileExist, doesPathExist, findFiles, getDirectoryContents, listDirectory)
 import System.Environment (lookupEnv)
@@ -177,6 +178,7 @@ parseCommentMultiLine = do
 
 parseAtom :: Parser Expr
 parseAtom = do
+  start <- P.getState
   a <-
     P.oneOf
       [ Any <$ P.word "_",
@@ -267,29 +269,38 @@ parseAtom = do
           fields <- parseCollection "{" "," "}" parseRecordField
           return (withFun fields)
       ]
-  P.oneOf
-    [ do
-        _ <- P.spaces
-        _ <- P.word "if"
-        _ <- P.whitespaces
-        cond <- parseExpr 0 P.spaces
-        return (If cond a Err),
-      do
-        _ <- P.char '.'
-        x <- P.oneOf [parseNameVar, fmap show P.integer]
-        return (App (Var ('.' : x)) a),
-      do
-        _ <- P.char '.'
-        fields <- parseCollection "{" "," "}" parseRecordField
-        return (Select a fields),
-      do
-        _ <- P.spaces
-        _ <- P.word "with"
-        _ <- P.whitespaces
-        fields <- parseCollection "{" "," "}" parseRecordField
-        return (With a fields),
-      return a
-    ]
+  a <-
+    P.oneOf
+      [ do
+          _ <- P.spaces
+          _ <- P.word "if"
+          _ <- P.whitespaces
+          cond <- parseExpr 0 P.spaces
+          return (If cond a Err),
+        do
+          _ <- P.char '.'
+          x <- P.oneOf [parseNameVar, fmap show P.integer]
+          return (App (Var ('.' : x)) a),
+        do
+          _ <- P.char '.'
+          fields <- parseCollection "{" "," "}" parseRecordField
+          return (Select a fields),
+        do
+          _ <- P.spaces
+          _ <- P.word "with"
+          _ <- P.whitespaces
+          fields <- parseCollection "{" "," "}" parseRecordField
+          return (With a fields),
+        return a
+      ]
+  end <- P.getState
+  let loc =
+        Location
+          { filename = start.filename,
+            start = start.pos,
+            end = end.pos
+          }
+  return (Meta (C.Loc loc) a)
 
 parseExpr :: Int -> Parser appDelim -> Parser Expr
 parseExpr prec delim = do
