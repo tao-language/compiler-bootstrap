@@ -220,11 +220,6 @@ matchFun [(ps, b)] = fun ps b
 matchFun ((ps, b) : cases) = fun ps b `Or` matchFun cases
 
 -- Helper functions
-isVar :: Expr -> Bool
-isVar = \case
-  Var _ -> True
-  _ -> False
-
 pop :: (Eq k) => k -> [(k, v)] -> [(k, v)]
 pop _ [] = []
 pop x ((x', _) : kvs) | x == x' = kvs
@@ -308,6 +303,7 @@ reduce :: Ops -> Expr -> Expr
 reduce ops = \case
   App a b -> reduceApp ops (reduce ops a) (reduce ops b)
   Let env expr -> reduceLet ops env expr
+  Meta _ a -> reduce ops a
   expr -> expr
 
 reduceLet :: Ops -> Env -> Expr -> Expr
@@ -328,6 +324,7 @@ reduceLet ops env = \case
     (Just call, args) | Just result <- call (eval ops) args -> result
     (_, args) -> Call f args
   Let env' a -> reduce ops (Let (env ++ env') a)
+  Meta _ a -> reduce ops (Let env a)
   expr -> expr
 
 reduceApp :: Ops -> Expr -> Expr -> Expr
@@ -353,6 +350,8 @@ reduceApp ops a b = case (a, b) of
   (a, b@Var {}) -> App a b
   (a, b@App {}) -> App a b
   (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
+  (Meta _ a, b) -> reduceApp ops a b
+  (a, Meta _ b) -> reduceApp ops a b
   _ -> Err
 
 match :: Bool -> Ops -> Expr -> Expr -> Maybe Env
@@ -409,6 +408,8 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (Err, Err) -> Just []
   (Ann a _, b) -> match unify ops a b
   (a, Ann b _) -> match unify ops a b
+  (Meta _ a, b) -> match unify ops a b
+  (_, Meta _ b) -> match unify ops a b
   _ -> Nothing
 
 eval :: Ops -> Expr -> Expr
@@ -421,6 +422,7 @@ eval ops expr = case reduce ops expr of
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)
   Call f args -> Call f (eval ops <$> args)
+  Meta m a -> Meta m (eval ops a)
   a -> a
 
 substitute :: Substitution -> Expr -> Expr
@@ -465,17 +467,29 @@ dropTypes (For x a) = For x (dropTypes a)
 dropTypes (Fix x a) = Fix x (dropTypes a)
 dropTypes (Fun (Ann a ta) b) = case andOf ta of
   [Ann ta _] -> Fun (Ann (dropTypes a) (dropTypes ta)) (dropTypes b)
-  -- ts | all isVar ts -> Fun (dropTypes a) (dropTypes b)
   _ -> Fun (Ann (dropTypes a) (dropTypes ta)) (dropTypes b)
 dropTypes (Fun a b) = Fun (dropTypes a) (dropTypes b)
 dropTypes (App a (Ann b tb)) = case andOf tb of
   [Ann tb _] -> App (dropTypes a) (Ann (dropTypes b) (dropTypes tb))
-  -- ts | all isVar ts -> App (dropTypes a) (dropTypes b)
   _ -> App (dropTypes a) (Ann (dropTypes b) (dropTypes tb))
 dropTypes (App a b) = App (dropTypes a) (dropTypes b)
 dropTypes (Call op args) = Call op (map dropTypes args)
 dropTypes (Let defs b) = Let (map (second dropTypes) defs) (dropTypes b)
+dropTypes (Meta m a) = Meta m (dropTypes a)
 dropTypes a = a
+
+dropMeta :: Expr -> Expr
+dropMeta (Ann a b) = Ann (dropMeta a) (dropMeta b)
+dropMeta (And a b) = And (dropMeta a) (dropMeta b)
+dropMeta (Or a b) = Or (dropMeta a) (dropMeta b)
+dropMeta (For x a) = For x (dropMeta a)
+dropMeta (Fix x a) = Fix x (dropMeta a)
+dropMeta (Fun a b) = Fun (dropMeta a) (dropMeta b)
+dropMeta (App a b) = App (dropMeta a) (dropMeta b)
+dropMeta (Call op args) = Call op (map dropMeta args)
+dropMeta (Let defs b) = Let (map (second dropMeta) defs) (dropMeta b)
+dropMeta (Meta _ a) = dropMeta a
+dropMeta a = a
 
 location :: Expr -> Maybe Location
 location = \case
@@ -572,8 +586,8 @@ unify ops env a b = case (a, b) of
     let ((a, b), s, e) = unify2 ops env (a1, a2) (b1, b2)
     (Fun a b, s, e)
   (Call op args, Call op' args') | op == op' -> do
-    let (args, s, e) = unifyAll ops env args args'
-    (Call op args, s, e)
+    let (args'', s, e) = unifyAll ops env args args'
+    (Call op args'', s, e)
   (Meta _ a, b) -> unify ops env a b
   (a, Meta _ b) -> unify ops env a b
   (a, b) -> (Err, [], [TypeMismatch (location a) a b])

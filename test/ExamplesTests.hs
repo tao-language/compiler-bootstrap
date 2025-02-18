@@ -9,6 +9,7 @@ import Location (Position (..))
 import System.FilePath (dropExtension)
 import Tao
 import TaoParser
+import Test (testAll)
 import Test.Hspec
 
 test :: Context -> [Either (String, Expr, Expr) String]

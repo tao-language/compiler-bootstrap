@@ -179,7 +179,7 @@ parseCommentMultiLine = do
 
 parseAtom :: Parser Expr
 parseAtom = do
-  start <- P.position
+  s <- P.getState
   a <-
     P.oneOf
       [ Any <$ P.word "_",
@@ -294,25 +294,26 @@ parseAtom = do
           return (With a fields),
         return a
       ]
-  loc <- P.location start
+  end <- P.position
+  let loc = Location s.filename (Range s.pos end)
   return (Meta (C.Loc loc) a)
 
 parseExpr :: Int -> Parser appDelim -> Parser Expr
 parseExpr prec spaces = do
   let parseOp txt = do
-        let breakChars =
-              [ P.whitespace,
-                P.letter,
-                P.digit,
-                P.char '_',
-                P.char '.',
-                P.char '%',
-                P.char '@',
-                P.char '(',
-                P.char '{'
-              ]
         _ <- P.text txt
-        _ <- P.lookahead (P.oneOf breakChars)
+        _ <-
+          (P.lookahead . P.oneOf)
+            [ P.whitespace,
+              P.letter,
+              P.digit,
+              P.char '_',
+              P.char '.',
+              P.char '%',
+              P.char '@',
+              P.char '(',
+              P.char '{'
+            ]
         return ()
   let op1' f loc op x = Meta (C.Loc loc) (f op x)
   let op1 f = op1' (const f)

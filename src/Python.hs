@@ -1,5 +1,6 @@
 module Python where
 
+import Compile (bindings)
 import Control.Monad (unless, when)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (first, second))
@@ -462,7 +463,7 @@ buildModule options ctx path = do
   let imports' =
         emit options $
           T.Import "unittest" "unittest" []
-            : ( concatMap (T.bindings . fst) defs
+            : ( concatMap (bindings . fst) defs
                   & map (\x -> (x, x))
                   & T.Import path (takeBaseName path)
               )
@@ -603,6 +604,7 @@ instance Emit T.Pattern Pattern where
     -- MatchOr [Pattern] -- case p | q
     T.Int i -> MatchValue (Integer i)
     T.Var x -> MatchAs Nothing x
+    T.Meta _ p -> emit options p
     p -> error $ "TODO emit Pattern " ++ show p
 
 instance Emit T.Op2 (T.Expr -> T.Expr -> ([Stmt], Expr)) where
@@ -672,6 +674,7 @@ instance Emit (T.Pattern, T.Expr) [Stmt] where
               async = False
             }
         ]
+    (T.Meta _ p, a) -> emit options (p, a)
     (p, a) -> error $ "TODO: emit Def " ++ show (p, a)
 
 instance Emit T.Stmt [Stmt] where
@@ -904,6 +907,7 @@ instance Layout Expr where
     C.Comments [] -> layout a
     C.Comments (c : cs) -> [PP.Text ("# " ++ c), PP.NewLine] ++ layout (Meta (C.Comments cs) a)
     C.TrailingComment comment -> layout a ++ [PP.Text ("  # " ++ comment)]
+    C.Loc _ -> layout a
   layout a = error $ "TODO: layout: " ++ show a
 
 instance Layout (String, Maybe Expr, Maybe Expr) where

@@ -424,7 +424,7 @@ prefix p f spaces op = do
   Prefix p $ \expr -> do
     s <- getState
     op <- op
-    end <- Loc.prev 1 <$> position
+    end <- position
     _ <- spaces
     let loc = Location s.filename (Range s.pos end)
     f loc op <$> expr

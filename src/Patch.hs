@@ -4,6 +4,7 @@ import Control.Monad (foldM)
 import Data.Function ((&))
 import Error (SyntaxError (..))
 import Load (load, loadSource)
+import Run (run)
 import Stdlib (push, set, split2)
 import System.FilePath (splitDirectories, splitFileName, (</>))
 import Tao

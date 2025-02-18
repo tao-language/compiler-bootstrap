@@ -13,6 +13,8 @@ import System.Exit (exitFailure)
 import System.FilePath ((</>))
 import System.FilePath.Windows (dropExtension, takeBaseName, takeDirectory, takeFileName)
 import qualified Tao as T
+import Run (run)
+import Test (testAll)
 
 main :: IO ()
 main = do
@@ -52,7 +54,7 @@ runCmd filename args = do
   (args', errors) <- loadAtoms "<run>" args
   mapM_ print errors
   let path = dropExtension (snd (split2 ':' filename))
-  print (T.run ctx path (T.app' args'))
+  print (run ctx path (T.app' args'))
 
 checkCmd :: FilePath -> [String] -> IO ()
 checkCmd filename args = do
@@ -75,7 +77,7 @@ testCmd path patterns = do
   mapM_ print errors
   (ctx, errors) <- include "prelude" ctx
   mapM_ print errors
-  let results = T.testAll [] ctx
+  let results = testAll [] ctx
   mapM_ (putStr . show) results
 
 patchCmd :: FilePath -> [FilePath] -> [FilePath] -> IO ()

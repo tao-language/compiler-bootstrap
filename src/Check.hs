@@ -1,5 +1,6 @@
 module Check where
 
+import Compile (compile, liftTypeError)
 import qualified Core as C
 import Error (TypeError (..))
 import Tao

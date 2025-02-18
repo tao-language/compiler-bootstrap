@@ -1,0 +1,10 @@
+module Run where
+
+import Compile (compile, lift)
+import qualified Core as C
+import Tao
+
+run :: Context -> String -> Expr -> Expr
+run ctx path expr = do
+  let (env, expr') = compile ctx path expr
+  lift (C.eval runtimeOps (C.let' env expr'))

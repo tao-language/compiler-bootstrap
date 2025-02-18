@@ -1,9 +1,12 @@
 module TaoTests where
 
+import Compile
 import qualified Core as C
 import Location (Position (..))
+import qualified Run
 import Tao
 import qualified Tao as T
+import Test (testAll)
 import Test.Hspec
 
 run :: SpecWith ()
@@ -242,38 +245,38 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   --         ]
   --   let mod = Package {name = "run", modules = [Module "f" defs]}
 
-  --   run mod Any `shouldBe` Any
-  --   run mod (Type ["A"]) `shouldBe` Type ["A"]
-  --   run mod IntT `shouldBe` IntT
-  --   run mod (Int 42) `shouldBe` Int 42
-  --   run mod (Num 3.14) `shouldBe` Num 3.14
-  --   run mod (Var "x") `shouldBe` Int 42
-  --   run mod (Var "y") `shouldBe` Var "y"
-  --   run mod (Tag "A" [x]) `shouldBe` Tag "A" [Int 42]
-  --   run mod (Tuple [x]) `shouldBe` Tuple [Int 42]
-  --   run mod (Record [("a", x)]) `shouldBe` Record [("a", Int 42)]
-  --   run mod (Trait x "y") `shouldBe` Num 3.14
-  --   run mod ListNil `shouldBe` ListNil
-  --   run mod ListCons `shouldBe` ListCons
-  --   run mod TextNil `shouldBe` TextNil
-  --   run mod TextCons `shouldBe` TextCons
-  --   run mod (Fun x y) `shouldBe` Fun (Int 42) y
-  --   run mod (App (Tag "A" []) x) `shouldBe` Tag "A" [Int 42]
-  --   run mod (App f i1) `shouldBe` i2
-  --   run mod (App f i2) `shouldBe` Err
-  --   -- run mod (Let (Expr, Expr) Expr) `shouldBe` Any
-  --   -- run mod (Bind (Expr, Expr) Expr) `shouldBe` Any
-  --   -- run mod (TypeDef String [Expr] Expr) `shouldBe` Any
-  --   -- run mod (MatchFun [Expr]) `shouldBe` Any
-  --   -- run mod (Match [Expr] [Expr]) `shouldBe` Any
-  --   run mod (Or x Err) `shouldBe` Int 42
-  --   run mod (Or Err x) `shouldBe` Int 42
-  --   run mod (Or Err Err) `shouldBe` Err
-  --   run mod (Ann x IntT) `shouldBe` Int 42
-  --   run mod (Op1 C.Int2Num x) `shouldBe` Num 42.0
-  --   run mod (Op2 C.Add x i1) `shouldBe` Int 43
-  --   run mod (Meta loc x) `shouldBe` Int 42
-  --   run mod Err `shouldBe` Err
+  --   Run.run mod Any `shouldBe` Any
+  --   Run.run mod (Type ["A"]) `shouldBe` Type ["A"]
+  --   Run.run mod IntT `shouldBe` IntT
+  --   Run.run mod (Int 42) `shouldBe` Int 42
+  --   Run.run mod (Num 3.14) `shouldBe` Num 3.14
+  --   Run.run mod (Var "x") `shouldBe` Int 42
+  --   Run.run mod (Var "y") `shouldBe` Var "y"
+  --   Run.run mod (Tag "A" [x]) `shouldBe` Tag "A" [Int 42]
+  --   Run.run mod (Tuple [x]) `shouldBe` Tuple [Int 42]
+  --   Run.run mod (Record [("a", x)]) `shouldBe` Record [("a", Int 42)]
+  --   Run.run mod (Trait x "y") `shouldBe` Num 3.14
+  --   Run.run mod ListNil `shouldBe` ListNil
+  --   Run.run mod ListCons `shouldBe` ListCons
+  --   Run.run mod TextNil `shouldBe` TextNil
+  --   Run.run mod TextCons `shouldBe` TextCons
+  --   Run.run mod (Fun x y) `shouldBe` Fun (Int 42) y
+  --   Run.run mod (App (Tag "A" []) x) `shouldBe` Tag "A" [Int 42]
+  --   Run.run mod (App f i1) `shouldBe` i2
+  --   Run.run mod (App f i2) `shouldBe` Err
+  --   -- Run.run mod (Let (Expr, Expr) Expr) `shouldBe` Any
+  --   -- Run.run mod (Bind (Expr, Expr) Expr) `shouldBe` Any
+  --   -- Run.run mod (TypeDef String [Expr] Expr) `shouldBe` Any
+  --   -- Run.run mod (MatchFun [Expr]) `shouldBe` Any
+  --   -- Run.run mod (Match [Expr] [Expr]) `shouldBe` Any
+  --   Run.run mod (Or x Err) `shouldBe` Int 42
+  --   Run.run mod (Or Err x) `shouldBe` Int 42
+  --   Run.run mod (Or Err Err) `shouldBe` Err
+  --   Run.run mod (Ann x IntT) `shouldBe` Int 42
+  --   Run.run mod (Op1 C.Int2Num x) `shouldBe` Num 42.0
+  --   Run.run mod (Op2 C.Add x i1) `shouldBe` Int 43
+  --   Run.run mod (Meta loc x) `shouldBe` Int 42
+  --   Run.run mod Err `shouldBe` Err
 
   it "☯ splitCamelCase" $ do
     splitCamelCase "" `shouldBe` []
@@ -462,16 +465,16 @@ run = describe "--==☯ TaoTests ☯==--" $ do
               ]
             )
           ]
-    T.run ctx "pkg/a" (Int 42) `shouldBe` Int 42
-    T.run ctx "pkg/a" (Num 3.14) `shouldBe` Num 3.14
-    T.run ctx "pkg/a" (Var "x") `shouldBe` Int 1
-    T.run ctx "pkg/b" (Var "x") `shouldBe` Int 2
-    T.run ctx "pkg/a" (Var "y") `shouldBe` Var "y"
-    T.run ctx "pkg/a" (Tag "A") `shouldBe` Tag "A"
+    Run.run ctx "pkg/a" (Int 42) `shouldBe` Int 42
+    Run.run ctx "pkg/a" (Num 3.14) `shouldBe` Num 3.14
+    Run.run ctx "pkg/a" (Var "x") `shouldBe` Int 1
+    Run.run ctx "pkg/b" (Var "x") `shouldBe` Int 2
+    Run.run ctx "pkg/a" (Var "y") `shouldBe` Var "y"
+    Run.run ctx "pkg/a" (Tag "A") `shouldBe` Tag "A"
     -- Record [(String, Maybe Expr, Maybe Expr)]
     -- Fun Expr Expr
     -- App Expr Expr
-    T.run ctx "pkg/a" (tag "A" [x]) `shouldBe` tag "A" [i1]
+    Run.run ctx "pkg/a" (tag "A" [x]) `shouldBe` tag "A" [i1]
     -- And Expr Expr
     -- Or Expr Expr
     -- Ann Expr Type
