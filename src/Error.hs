@@ -34,25 +34,29 @@ data CaseError a
   | RedundantCases (Maybe Location) [a]
   deriving (Eq, Show)
 
-summary :: Error a -> String
+summary :: (Show a) => Error a -> String
 summary = \case
   SyntaxError _ -> "Syntax Error"
-  TypeError _ -> "Type Error"
+  TypeError e -> case e of
+    OccursError {} -> "Occurs Error"
+    TypeMismatch {} -> "Type Mismatch " ++ show e
+    NotAFunction {} -> "Not a Function"
+    UndefinedVar {} -> "Undefined Variable"
   CaseError _ -> "Case Error"
 
-description :: Error a -> String
+description :: (Show a) => Error a -> String
 description = \case
   _ -> ""
 
-suggestion :: Error a -> String
+suggestion :: (Show a) => Error a -> String
 suggestion = \case
   _ -> ""
 
-docsUrl :: Error a -> String
+docsUrl :: (Show a) => Error a -> String
 docsUrl = \case
   _ -> ""
 
-location :: Error a -> Maybe Location
+location :: (Show a) => Error a -> Maybe Location
 location = \case
   SyntaxError e -> case e of
     UnexpectedChar loc -> Just loc
@@ -98,7 +102,7 @@ snippet loc src = do
         ++ linesAfter
     )
 
-display :: Error a -> IO ()
+display :: (Show a) => Error a -> IO ()
 display e = do
   putStrLn (replicate 60 '-')
   putStrLn ("🛑 " ++ summary e)

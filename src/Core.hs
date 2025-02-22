@@ -593,7 +593,9 @@ unify ops env a b = case (a, b) of
   (Call op args, Call op' args') | op == op' -> do
     let (args'', s, e) = unifyAll ops env args args'
     (Call op args'', s, e)
-  (Meta _ a, b) -> unify ops env a b
+  (Meta (Loc loc) a, b) -> case unify ops env a b of
+    (c, s, []) -> (c, s, [])
+    (c, s, TypeMismatch _ a b : errs) -> (c, s, TypeMismatch (Just loc) a b : errs)
   (a, Meta _ b) -> unify ops env a b
   (a, b) -> (Err, [], [TypeMismatch (location a) a b])
 

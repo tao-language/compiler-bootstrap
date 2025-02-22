@@ -2,7 +2,7 @@ import Check (checkTypes)
 import Control.Monad (void)
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, isSuffixOf, partition)
-import Error (Error (..), display)
+import Error (Error (..), SyntaxError(..), display)
 import Load (include, load, loadAtoms)
 import Patch (PatchStep, Plan (plan), patch)
 import PrettyPrint (pretty)
@@ -12,7 +12,7 @@ import qualified System.Environment
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
 import System.FilePath.Windows (dropExtension, takeBaseName, takeDirectory, takeFileName)
-import qualified Tao as T
+import Tao
 import Run (run)
 import Test (testAll)
 
@@ -48,24 +48,24 @@ main = do
 runCmd :: FilePath -> [String] -> IO ()
 runCmd filename args = do
   (ctx, errors) <- load [filename]
-  mapM_ (display . SyntaxError) errors
+  mapM_ (\e -> display (SyntaxError e :: Error Expr)) errors 
   (ctx, errors) <- include "prelude" ctx
   mapM_ print errors
   (args', errors) <- loadAtoms "<run>" args
   mapM_ print errors
   let path = dropExtension (snd (split2 ':' filename))
-  print (run ctx path (T.app' args'))
+  print (run ctx path (app' args'))
 
 checkCmd :: FilePath -> [String] -> IO ()
 checkCmd filename args = do
   (ctx, errors) <- load [filename]
-  mapM_ (display . SyntaxError) errors
+  mapM_ (\e -> display (SyntaxError e :: Error Expr)) errors
   (ctx, errors) <- include "prelude" ctx
   mapM_ print errors
   (args', errors) <- loadAtoms "<check>" args
   mapM_ print errors
   let path = dropExtension (snd (split2 ':' filename))
-  case checkTypes ctx path (T.app' args') of
+  case checkTypes ctx path (app' args') of
     [] -> return ()
     errors -> do
       mapM_ (display . TypeError) errors
