@@ -206,7 +206,7 @@ instance Compile (String -> C.Env) where
 
 instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile :: Context -> String -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"+", expr) = do
+  -- compile ctx path (name@"", expr) = do
   --   let a = lower expr
   --   let env = concatMap (compile ctx path) (delete name (C.freeNames (True, True, False) a))
   --   let ((a', t), s, e) = C.infer buildOps env a
@@ -214,11 +214,11 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   --   error . intercalate "\n" $
   --     [ "-- compile/2 " ++ name,
   --       -- show ctx,
-  --       C.format a,
-  --       C.format t,
-  --       C.format (C.Let env C.Any),
-  --       show (map fst env),
-  --       C.format a',
+  --       "a: " ++ C.format a,
+  --       "t: " ++ C.format t,
+  --       "env: " ++ C.format (C.Let env C.Any),
+  --       "     " ++ show (map fst env),
+  --       "a': " ++ C.format a',
   --       -- C.format (C.for xs $ C.dropTypes a'),
   --       -- C.format t,
   --       ""

@@ -2,18 +2,18 @@ import Check (checkTypes)
 import Control.Monad (void)
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, isSuffixOf, partition)
-import Error (Error (..), SyntaxError(..), display)
+import Error (Error (..), SyntaxError (..), display)
 import Load (include, load, loadAtoms)
 import Patch (PatchStep, Plan (plan), patch)
 import PrettyPrint (pretty)
 import qualified Python as Py
+import Run (run)
 import Stdlib (split2, splitWith, trimPrefix)
 import qualified System.Environment
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
 import System.FilePath.Windows (dropExtension, takeBaseName, takeDirectory, takeFileName)
 import Tao
-import Run (run)
 import Test (testAll)
 
 main :: IO ()
@@ -24,8 +24,8 @@ main = do
       path : args -> runCmd path args
       _ -> putStrLn "🛑 Please give me a path, and an expression to run."
     "check" : args -> case args of
-      path : args -> checkCmd path args
-      _ -> putStrLn "🛑 Please give me a path, and an expression to check."
+      path : _ -> checkCmd path
+      _ -> putStrLn "🛑 Please give me a path to check."
     "test" : args -> case args of
       [path] -> testCmd path ["*"]
       -- path : patterns -> test path patterns
@@ -48,7 +48,7 @@ main = do
 runCmd :: FilePath -> [String] -> IO ()
 runCmd filename args = do
   (ctx, errors) <- load [filename]
-  mapM_ (\e -> display (SyntaxError e :: Error Expr)) errors 
+  mapM_ (\e -> display (SyntaxError e :: Error Expr)) errors
   (ctx, errors) <- include "prelude" ctx
   mapM_ print errors
   (args', errors) <- loadAtoms "<run>" args
@@ -56,16 +56,14 @@ runCmd filename args = do
   let path = dropExtension (snd (split2 ':' filename))
   print (run ctx path (app' args'))
 
-checkCmd :: FilePath -> [String] -> IO ()
-checkCmd filename args = do
+checkCmd :: FilePath -> IO ()
+checkCmd filename = do
   (ctx, errors) <- load [filename]
   mapM_ (\e -> display (SyntaxError e :: Error Expr)) errors
   (ctx, errors) <- include "prelude" ctx
   mapM_ print errors
-  (args', errors) <- loadAtoms "<check>" args
-  mapM_ print errors
   let path = dropExtension (snd (split2 ':' filename))
-  case checkTypes ctx path (app' args') of
+  case checkTypes ctx path ctx of
     [] -> return ()
     errors -> do
       mapM_ (display . TypeError) errors

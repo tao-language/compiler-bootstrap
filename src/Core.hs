@@ -506,6 +506,7 @@ unify :: Ops -> Env -> Expr -> Expr -> (Expr, Substitution, [TypeError Expr])
 unify ops env a b = case (a, b) of
   (Any, b) -> (b, [], [])
   (a, Any) -> (a, [], [])
+  (Unit, Unit) -> (Unit, [], [])
   (IntT, IntT) -> (IntT, [], [])
   (Int _, IntT) -> (IntT, [], [])
   (IntT, Int _) -> (IntT, [], [])
