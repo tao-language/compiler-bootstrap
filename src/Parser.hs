@@ -429,18 +429,20 @@ prefix p f spaces op = do
     let loc = Location s.filename (Range s.pos end)
     f loc op <$> expr
 
-suffixWith :: Int -> (op -> a -> a) -> Parser ctx op -> ExprParser ctx a
-suffixWith p f op =
+suffix :: (Show op, Show a) => Int -> (Location -> op -> a -> a) -> Parser ctx spaces -> Parser ctx op -> ExprParser ctx a
+suffix p f spaces op = do
   InfixL p $ \x _ -> do
+    _ <- spaces
+    s <- getState
     op <- op
-    return (f op x)
-
-suffix :: Int -> (a -> a) -> Parser ctx op -> ExprParser ctx a
-suffix p f = suffixWith p (const f)
+    end <- position
+    let loc = Location s.filename (Range s.pos end)
+    return (f loc op x)
 
 infixL :: Int -> (Location -> op -> a -> a -> a) -> Parser ctx spaces -> Parser ctx op -> ExprParser ctx a
 infixL p f spaces op =
   InfixL p $ \x expr -> do
+    _ <- spaces
     s <- getState
     op <- op
     end <- position
@@ -451,6 +453,7 @@ infixL p f spaces op =
 infixR :: Int -> (Location -> op -> a -> a -> a) -> Parser ctx spaces -> Parser ctx op -> ExprParser ctx a
 infixR p f spaces op =
   InfixR p $ \x expr -> do
+    _ <- spaces
     s <- getState
     op <- op
     end <- position

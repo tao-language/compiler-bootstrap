@@ -329,7 +329,7 @@ run = describe "--==☯ Parser ☯==--" $ do
             infixL 2 (\_ _ -> Mul) spaces (text "*"),
             prefix 3 (\_ _ -> Neg) spaces (text "-"),
             infixR 4 (\_ _ -> Pow) spaces (text "^"),
-            suffix 5 Fac (text "!"),
+            suffix 5 (\_ _ -> Fac) spaces (text "!"),
             prefix 5 (\_ _ -> At) spaces (text "@")
           ]
         expr = precedence ops 0

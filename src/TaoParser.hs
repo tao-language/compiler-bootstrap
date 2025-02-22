@@ -384,8 +384,7 @@ parseExpr prec spaces = do
           P.infixR 10 (op2 pow) spaces (parseOp "^"),
           P.prefix 11 (const Meta) spaces $ do
             C.Comments <$> P.oneOrMore parseComment,
-          P.suffixWith 11 Meta $ do
-            _ <- P.spaces
+          P.suffix 11 (const Meta) spaces $ do
             C.TrailingComment <$> parseCommentSingleLine
         ]
   P.precedence ops prec
