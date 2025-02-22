@@ -29,9 +29,9 @@ instance Plan ([FilePath], FilePath) where
   plan :: [PatchStep] -> ([FilePath], FilePath) -> IO ([PatchStep], [SyntaxError])
   plan steps (paths, path) = do
     let dir = fst (split2 ':' path)
-    src <- loadSource path
-    case src of
-      Right (path, stmts) -> plan steps (dir, push path paths, stmts)
+    maybeModule <- loadSource path
+    case maybeModule of
+      Right (path, stmts) -> plan steps (dir, push path paths, map dropMeta stmts)
       Left errs -> return ([], errs)
 
 instance Plan (FilePath, [FilePath], [Stmt]) where

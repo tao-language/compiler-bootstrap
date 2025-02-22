@@ -323,7 +323,7 @@ run = describe "--==☯ Parser ☯==--" $ do
   it "☯ precedence" $ do
     let ops =
           [ atom Var (oneOrMore letter),
-            group (text "(") (text ")"),
+            group (text "(") (text ")") spaces,
             infixL 1 (\_ _ -> Add) spaces (text "+"),
             infixL 1 (\_ _ -> Sub) spaces (text "-"),
             infixL 2 (\_ _ -> Mul) spaces (text "*"),

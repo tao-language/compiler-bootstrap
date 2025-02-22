@@ -411,11 +411,13 @@ atom f p =
   Atom $ \_ -> do
     f <$> p
 
-group :: Parser ctx open -> Parser ctx close -> ExprParser ctx a
-group open close =
+group :: Parser ctx open -> Parser ctx close -> Parser ctx spaces -> ExprParser ctx a
+group open close spaces =
   Atom $ \expr -> do
     _ <- open
+    _ <- spaces
     x <- expr
+    _ <- spaces
     _ <- close
     return x
 

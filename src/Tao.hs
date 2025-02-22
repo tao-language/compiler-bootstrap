@@ -461,26 +461,46 @@ freeVars = freeNames (True, False, False)
 freeTags :: Expr -> [String]
 freeTags = freeNames (False, True, False)
 
-dropMeta :: Expr -> Expr
-dropMeta = \case
-  Ann a b -> Ann (dropMeta a) (dropMeta b)
-  And a b -> And (dropMeta a) (dropMeta b)
-  Or a b -> Or (dropMeta a) (dropMeta b)
-  For xs a -> For xs (dropMeta a)
-  Fun a b -> Fun (dropMeta a) (dropMeta b)
-  App a b -> App (dropMeta a) (dropMeta b)
-  Call f args -> Call f (map dropMeta args)
-  Op1 op a -> Op1 op (dropMeta a)
-  Op2 op a b -> Op2 op (dropMeta a) (dropMeta b)
-  Let (a, b) c -> Let (dropMeta a, dropMeta b) (dropMeta c)
-  Bind (a, b) c -> Bind (dropMeta a, dropMeta b) (dropMeta c)
-  If a b c -> If (dropMeta a) (dropMeta b) (dropMeta c)
-  Match args cases -> Match (map dropMeta args) (map (\(xs, ps, b) -> (xs, map dropMeta ps, dropMeta b)) cases)
-  Record fields -> Record (second dropMeta <$> fields)
-  Select a fields -> Select (dropMeta a) (second dropMeta <$> fields)
-  With a fields -> With (dropMeta a) (second dropMeta <$> fields)
-  Meta _ a -> dropMeta a
-  a -> a
+class DropMeta a where
+  dropMeta :: a -> a
+
+instance DropMeta Module where
+  dropMeta :: Module -> Module
+  dropMeta (path, stmts) = (path, map dropMeta stmts)
+
+instance DropMeta Stmt where
+  dropMeta :: Stmt -> Stmt
+  dropMeta = \case
+    stmt@Import {} -> stmt
+    Def (p, b) -> Def (dropMeta p, dropMeta b)
+    TypeDef (k, args, alts) -> do
+      let dropMetaAlt (a, mt) = case mt of
+            Just t -> (dropMeta a, Just (dropMeta t))
+            Nothing -> (dropMeta a, Nothing)
+      TypeDef (k, map dropMeta args, map dropMetaAlt alts)
+    Test t -> Test t -- TODO
+
+instance DropMeta Expr where
+  dropMeta :: Expr -> Expr
+  dropMeta = \case
+    Ann a b -> Ann (dropMeta a) (dropMeta b)
+    And a b -> And (dropMeta a) (dropMeta b)
+    Or a b -> Or (dropMeta a) (dropMeta b)
+    For xs a -> For xs (dropMeta a)
+    Fun a b -> Fun (dropMeta a) (dropMeta b)
+    App a b -> App (dropMeta a) (dropMeta b)
+    Call f args -> Call f (map dropMeta args)
+    Op1 op a -> Op1 op (dropMeta a)
+    Op2 op a b -> Op2 op (dropMeta a) (dropMeta b)
+    Let (a, b) c -> Let (dropMeta a, dropMeta b) (dropMeta c)
+    Bind (a, b) c -> Bind (dropMeta a, dropMeta b) (dropMeta c)
+    If a b c -> If (dropMeta a) (dropMeta b) (dropMeta c)
+    Match args cases -> Match (map dropMeta args) (map (\(xs, ps, b) -> (xs, map dropMeta ps, dropMeta b)) cases)
+    Record fields -> Record (second dropMeta <$> fields)
+    Select a fields -> Select (dropMeta a) (second dropMeta <$> fields)
+    With a fields -> With (dropMeta a) (second dropMeta <$> fields)
+    Meta _ a -> dropMeta a
+    a -> a
 
 occurs :: String -> Expr -> Bool
 occurs x a = x `elem` freeVars a

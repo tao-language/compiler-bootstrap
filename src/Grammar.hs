@@ -78,7 +78,7 @@ parse grammar prec = do
         InfixR p parser _ -> P.InfixR p parser
   let (open, close) = grammar.group
   let op x = P.paddedR P.spaces (P.text x)
-  let group = P.group (op open) (op close)
+  let group = P.group (op open) (op close) P.whitespaces
   P.precedence (group : map parserOf grammar.operators) prec
 
 layout :: Grammar ctx a -> Int -> a -> PP.Layout
