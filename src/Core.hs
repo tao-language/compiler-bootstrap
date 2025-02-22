@@ -6,7 +6,7 @@ import Data.Function ((&))
 import Data.List (delete, intercalate, union, unionBy)
 import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
-import Error (TypeError (..))
+import Error (TypeError (..), annotateError)
 import Location (Location (..), Position (..), Range (..))
 import qualified Parser as P
 import Stdlib (replace, replaceString)
@@ -496,16 +496,16 @@ dropMeta (Let defs b) = Let (map (second dropMeta) defs) (dropMeta b)
 dropMeta (Meta _ a) = dropMeta a
 dropMeta a = a
 
-location :: Expr -> Maybe Location
-location = \case
+findLocation :: Expr -> Maybe Location
+findLocation = \case
   Meta (Loc loc) _ -> Just loc
-  Meta _ a -> location a
+  Meta _ a -> findLocation a
   _ -> Nothing
 
 unify :: Ops -> Env -> Expr -> Expr -> (Expr, Substitution, [TypeError Expr])
 unify ops env a b = case (a, b) of
-  (Any, b) -> (b, [], [])
-  (a, Any) -> (a, [], [])
+  (Any, _) -> (Any, [], [])
+  (_, Any) -> (Any, [], [])
   (Unit, Unit) -> (Unit, [], [])
   (IntT, IntT) -> (IntT, [], [])
   (Int _, IntT) -> (IntT, [], [])
@@ -516,7 +516,7 @@ unify ops env a b = case (a, b) of
   (Int i, Int i') | i == i' -> (Int i, [], [])
   (Num n, Num n') | n == n' -> (Num n, [], [])
   (Var x, Var x') | x == x' -> (Var x, [], [])
-  (Var x, b) | x `occurs` b -> (b, [], [OccursError (location b) x b])
+  (Var x, b) | x `occurs` b -> (b, [], [OccursError Nothing x b])
   (Var x, b) -> (b, [(x, b)], [])
   (a, Var x) -> unify ops env (Var x) a
   (Tag k, Tag k') | k == k' -> (Tag k, [], [])
@@ -594,11 +594,9 @@ unify ops env a b = case (a, b) of
   (Call op args, Call op' args') | op == op' -> do
     let (args'', s, e) = unifyAll ops env args args'
     (Call op args'', s, e)
-  (Meta (Loc loc) a, b) -> case unify ops env a b of
-    (c, s, []) -> (c, s, [])
-    (c, s, TypeMismatch _ a b : errs) -> (c, s, TypeMismatch (Just loc) a b : errs)
+  (Meta _ a, b) -> unify ops env a b
   (a, Meta _ b) -> unify ops env a b
-  (a, b) -> (Err, [], [TypeMismatch (location a) a b])
+  (a, b) -> (Err, [], [TypeMismatch Nothing a b])
 
 unify2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> ((Expr, Expr), Substitution, [TypeError Expr])
 unify2 ops env (a1, a2) (b1, b2) = do
@@ -662,6 +660,9 @@ infer ops env (Let defs a) = infer ops (defs ++ env) a
 infer ops env (Call op args) = do
   let (args', s, e) = inferAll ops env args
   ((Call op (map fst args'), Any), s, e)
+infer ops env (Meta (Loc loc) a) = case infer ops env a of
+  ((a, Err), s, e : es) -> ((a, Err), s, annotateError loc e : es)
+  result -> result
 infer ops env (Meta _ a) = infer ops env a
 infer _ _ Err = ((Err, Any), [], [])
 
@@ -679,8 +680,6 @@ inferAll ops env (a : bs) = do
   ((substitute s2 a', substitute s2 ta) : bts, s2 `compose` s1, e1 ++ e2)
 
 check :: Ops -> Env -> Expr -> Type -> ((Expr, Type), Substitution, [TypeError Expr])
-check ops env a (Meta _ t) = check ops env a t
-check ops env (Meta _ a) t = check ops env a t
 check ops env a (For x t) = do
   let y = newName (map fst env) x
   let ((a', t'), s, e) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] t)
@@ -700,6 +699,11 @@ check ops env (App a b) t2 = do
   let ((a', _), s2, e2) = check ops (s1 `compose` env) (substitute s1 a) (Fun t1 (substitute s1 t2))
   let s = s2 `compose` s1
   ((App a' (substitute s2 (Ann b' t1)), substitute s t2), s, e1 ++ e2)
+check ops env a (Meta _ t) = check ops env a t
+check ops env (Meta (Loc loc) a) t = case check ops env a t of
+  ((a, Err), s, e : es) -> ((a, Err), s, annotateError loc e : es)
+  result -> result
+check ops env (Meta _ a) t = check ops env a t
 check ops env a t = do
   let ((a', ta), s1, e1) = infer ops env a
   let (t', s2, e2) = unify ops env ta (substitute s1 t)
@@ -727,7 +731,7 @@ checkApp ops env (a, ta) b = case ta of
     let ((a', _), (b', t1'), s, e) = check2 ops env (a, Fun t1 t2) (b, t1)
     ((a', b'), (t1', substitute s t2), s, e)
   Meta _ ta -> checkApp ops env (a, ta) b
-  _ -> ((a, b), (Err, Err), [], [NotAFunction (location a) a ta])
+  _ -> ((a, b), (Err, Err), [], [NotAFunction Nothing a ta])
 
 instantiate :: [String] -> Expr -> (Expr, Substitution)
 instantiate vars (For x a) | x `occurs` a = do

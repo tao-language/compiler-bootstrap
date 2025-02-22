@@ -34,19 +34,35 @@ data CaseError a
   | RedundantCases (Maybe Location) [a]
   deriving (Eq, Show)
 
+annotateError :: Location -> TypeError a -> TypeError a
+annotateError loc = \case
+  OccursError _ x a -> OccursError (Just loc) x a
+  TypeMismatch _ a b -> TypeMismatch (Just loc) a b
+  NotAFunction _ a t -> NotAFunction (Just loc) a t
+  UndefinedVar _ x -> UndefinedVar (Just loc) x
+
 summary :: (Show a) => Error a -> String
 summary = \case
   SyntaxError _ -> "Syntax Error"
   TypeError e -> case e of
     OccursError {} -> "Occurs Error"
-    TypeMismatch {} -> "Type Mismatch " ++ show e
+    TypeMismatch {} -> "Type Mismatch"
     NotAFunction {} -> "Not a Function"
     UndefinedVar {} -> "Undefined Variable"
   CaseError _ -> "Case Error"
 
 description :: (Show a) => Error a -> String
 description = \case
-  _ -> ""
+  TypeError e -> case e of
+    OccursError _ x a -> show e
+    TypeMismatch _ got expected ->
+      "This expression is of type:\n  "
+        ++ show got
+        ++ "\n\nI was expecting it to be:\n  "
+        ++ show expected
+    NotAFunction _ a t -> show e
+    UndefinedVar _ x -> show e
+  _ -> "TODO: description"
 
 suggestion :: (Show a) => Error a -> String
 suggestion = \case
@@ -106,17 +122,17 @@ display :: (Show a) => Error a -> IO ()
 display e = do
   putStrLn (replicate 60 '-')
   putStrLn ("🛑 " ++ summary e)
-  case description e of
-    "" -> return ()
-    description -> do
-      putStrLn ""
-      putStrLn description
   case location e of
     Nothing -> return ()
     Just loc -> do
       src <- readFile loc.filename
       putStrLn ""
       putStrLn (snippet loc src)
+  case description e of
+    "" -> return ()
+    description -> do
+      putStrLn ""
+      putStrLn description
   case suggestion e of
     "" -> return ()
     suggestion -> do

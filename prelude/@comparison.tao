@@ -1,5 +1,3 @@
-import prelude/bool (not)
-
 : Int, Int -> Bool
 x < y = %int_lt(x, y)
 

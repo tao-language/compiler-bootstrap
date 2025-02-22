@@ -58,15 +58,19 @@ runCmd filename args = do
 
 checkCmd :: FilePath -> IO ()
 checkCmd filename = do
-  (ctx, errors) <- load [filename]
+  (pkg, errors) <- load [filename]
   mapM_ (\e -> display (SyntaxError e :: Error Expr)) errors
-  (ctx, errors) <- include "prelude" ctx
+  (ctx, errors) <- include "prelude" pkg
   mapM_ print errors
   let path = dropExtension (snd (split2 ':' filename))
-  case checkTypes ctx path ctx of
+  case checkTypes ctx path pkg of
     [] -> return ()
     errors -> do
-      mapM_ (display . TypeError) errors
+      let n = length errors
+      mapM_ display errors
+      putStrLn $ "=== SUMMARY " ++ replicate 50 '='
+      putStrLn $ "🚨 " ++ show n ++ " error" ++ (if n == 1 then "" else "s")
+      putStrLn ""
       exitFailure
 
 testCmd :: FilePath -> [String] -> IO ()
