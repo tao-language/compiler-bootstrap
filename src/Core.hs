@@ -7,7 +7,7 @@ import Data.List (delete, intercalate, union, unionBy)
 import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
 import Error (TypeError (..))
-import Location (Location (..), Position (..))
+import Location (Location (..), Position (..), Range (..))
 import qualified Parser as P
 import Stdlib (replace, replaceString)
 
@@ -85,6 +85,7 @@ format expr = case expr of
     Comments [] -> show a
     Comments (c : cs) -> "# " ++ c ++ "\n" ++ show (Meta (Comments cs) a)
     TrailingComment c -> show a ++ "  # " ++ c ++ "\n"
+    Loc (Location filename range) -> "#(" ++ filename ++ ":" ++ show range.start.row ++ ":" ++ show range.start.col ++ " .." ++ show range.end.row ++ ":" ++ show range.end.col ++ ")" ++ format a
   Err -> "!error"
   where
     isAlphaNumOr cs c = isAlphaNum c || c `elem` cs
@@ -360,6 +361,8 @@ match unify ops (Let env (Tag k)) b = case lookup k env of
     let b' = App (Let env def) b
     match unify ops (Tag k) (b' `Or` b)
   Nothing -> match unify ops (Tag k) b
+match unify ops (Let env (Meta _ a)) b =
+  match unify ops (Let env a) b
 match unify ops (Let env (Let env' a)) b =
   match unify ops (Let (env ++ env') a) b
 match unify ops a b = case (reduce ops a, reduce ops b) of
@@ -382,6 +385,8 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
       let b' = app (Let env def) [a, b]
       match unify ops (And (Tag k) a) (b' `Or` b)
     Nothing -> match unify ops (And (Tag k) a) b
+  (And (Let env (Meta _ a1)) a2, b) ->
+    match unify ops (Let env (And a1 a2)) b
   (And (Let env (Let env' a1)) a2, b) ->
     match unify ops (Let (env ++ env') (And a1 a2)) b
   (And a1 a2, And b1 b2) -> do
@@ -671,6 +676,8 @@ inferAll ops env (a : bs) = do
   ((substitute s2 a', substitute s2 ta) : bts, s2 `compose` s1, e1 ++ e2)
 
 check :: Ops -> Env -> Expr -> Type -> ((Expr, Type), Substitution, [TypeError Expr])
+check ops env a (Meta _ t) = check ops env a t
+check ops env (Meta _ a) t = check ops env a t
 check ops env a (For x t) = do
   let y = newName (map fst env) x
   let ((a', t'), s, e) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] t)
@@ -716,6 +723,7 @@ checkApp ops env (a, ta) b = case ta of
   Fun t1 t2 -> do
     let ((a', _), (b', t1'), s, e) = check2 ops env (a, Fun t1 t2) (b, t1)
     ((a', b'), (t1', substitute s t2), s, e)
+  Meta _ ta -> checkApp ops env (a, ta) b
   _ -> ((a, b), (Err, Err), [], [NotAFunction (location a) a ta])
 
 instantiate :: [String] -> Expr -> (Expr, Substitution)
@@ -724,6 +732,7 @@ instantiate vars (For x a) | x `occurs` a = do
   let (b, s) = instantiate (y : vars) (substitute [(x, Var y)] a)
   (b, (y, Var y) : s)
 instantiate vars (For _ a) = instantiate vars a
+instantiate vars (Meta _ a) = instantiate vars a
 instantiate _ a = (a, [])
 
 -- -- Core parser

@@ -214,6 +214,7 @@ fun ps b = foldr Fun b ps
 
 funOf :: Expr -> ([Expr], Expr)
 funOf (Fun arg ret) = let (args, ret') = funOf ret in (arg : args, ret')
+funOf (Meta _ a) = funOf a
 funOf a = ([], a)
 
 funArgsOf :: Expr -> [Expr]
@@ -229,6 +230,7 @@ app = foldl App
 
 appOf :: Expr -> (Expr, [Expr])
 appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
+appOf (Meta _ a) = appOf a
 appOf a = (a, [])
 
 and' :: [Expr] -> Expr
@@ -238,6 +240,7 @@ and' (a : bs) = And a (and' bs)
 
 andOf :: Expr -> [Expr]
 andOf (And a b) = a : andOf b
+andOf (Meta _ a) = andOf a
 andOf a = [a]
 
 or' :: [Expr] -> Expr
@@ -247,6 +250,7 @@ or' (a : bs) = Or a (or' bs)
 
 orOf :: Expr -> [Expr]
 orOf (Or a b) = a : orOf b
+orOf (Meta _ a) = orOf a
 orOf a = [a]
 
 let' :: (Expr, Expr) -> Expr -> Expr

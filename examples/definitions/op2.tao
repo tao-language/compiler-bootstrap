@@ -1,27 +1,17 @@
-: Int, Int -> Int
-`+` x y = %int_add(x, y)
+`+` x y = A
 
-`-` (x : Int) (y : Int) = %int_sub(x, y)
+-- `Op` def
+> 1 + 2
+A
 
-: Int, Int -> Int
-(*) x y = %int_mul(x, y)
+(-) x y = B
 
-: Int, Int -> Int
-x ^ y = %int_pow(x, y)
+-- (Op) def
+> 1 - 2
+B
 
+x * y = C
 
--- Add
-> 3 + 2
-5
-
--- Sub
-> 3 - 2
-1
-
--- Mul
-> 3 * 2
-6
-
--- Pow
-> 3 ^ 2
-9
+-- Infix def
+> 1 * 2
+C

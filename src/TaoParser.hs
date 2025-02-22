@@ -3,7 +3,7 @@ module TaoParser where
 import Control.Monad (foldM, void)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
-import Data.Char (isSpace, isUpper, ord)
+import Data.Char (isAlphaNum, isSpace, isUpper, ord)
 import Data.Function ((&))
 import Data.List (dropWhileEnd, intercalate, isPrefixOf, isSuffixOf, sort)
 import Data.List.Split (endsWith)
@@ -74,7 +74,8 @@ parseNameTag :: Parser String
 parseNameTag =
   P.oneOf
     [ parseNameBase P.uppercase,
-      P.paddedL (P.char '^') parseNameEscaped
+      P.paddedL (P.char '^') parseNameEscaped,
+      parseNameOpTag
     ]
 
 parseNameOp :: Parser String
@@ -193,9 +194,18 @@ parseAtom = do
           _ <- P.char quote
           return (tag "Char" [Int (ord ch)]),
         Var <$> parseNameVar,
-        Tag <$> parseNameTag,
+        do
+          k <- parseNameTag
+          args <- P.zeroOrMore $ do
+            _ <- P.spaces
+            parseAtom
+          return $ case (k, args) of
+            _ | all isAlphaNum k -> tag k args
+            ("[]", []) -> Tag k
+            (op, []) -> fun [Var "a", Var "b"] (tag op [Var "a", Var "b"])
+            (op, [a]) -> fun [Var "b"] (tag op [a, Var "b"])
+            (op, args) -> tag op args,
         Var <$> parseNameOp,
-        Tag <$> parseNameOpTag,
         Int <$> P.integer,
         Num <$> P.number,
         do
@@ -205,16 +215,6 @@ parseAtom = do
           _ <- P.whitespaces
           _ <- P.char ')'
           return expr,
-        do
-          _ <- P.char '('
-          _ <- P.whitespaces
-          op <-
-            P.oneOf
-              [ P.text "::"
-              ]
-          _ <- P.whitespaces
-          _ <- P.char ')'
-          return (fun [Var "a", Var "b"] (tag op [Var "a", Var "b"])),
         do
           items <- parseCollection "(" "," ")" (parseExpr 0 P.whitespaces)
           return (and' items),

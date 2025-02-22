@@ -28,7 +28,7 @@ data Location = Location
 
 instance Show Location where
   show :: Location -> String
-  show l = show l.filename ++ "(" ++ show l.range ++ ")"
+  show l = l.filename ++ ":" ++ show l.range
 
 prev :: Int -> Position -> Position
 prev n pos = pos {col = pos.col - n}

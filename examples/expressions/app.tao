@@ -23,8 +23,8 @@ _ 1
 !error
 
 -- App Tag
-> (A) 1
-A 1
+> A 1
+(A, 1)
 
 -- App Ann
 > (1 -> (2 : Int)) 1

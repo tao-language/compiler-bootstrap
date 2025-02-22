@@ -30,6 +30,7 @@ lower = \case
   Ann a b -> C.Ann (lower a) (lower b)
   And a b -> C.And (lower a) (lower b)
   Or a b -> C.Or (lower a) (lower b)
+  For xs (Meta _ a) -> lower (For xs a)
   For xs (For ys a) -> lower (For (xs ++ ys) a)
   For [] (Fun a b) -> do
     let (args, body) = funOf (Fun a b)
@@ -50,12 +51,14 @@ lower = \case
     Ann (App a1 a2) t -> lower (Let (Ann a1 t, Fun a2 b) c)
     Ann (Op1 op a) t -> lower (Let (Ann (Var (show op)) t, Fun a b) c)
     Ann (Op2 op a1 a2) t -> lower (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
+    Ann (Meta _ a) t -> lower (Let (Ann a t, b) c)
     Ann a t -> lower (Let (a, Ann b t) c)
     Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
     App a1 a2 -> lower (Let (a1, Fun a2 b) c)
     Op1 op a -> lower (Let (Var (show op), Fun a b) c)
     Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
     For xs a -> lower (App (For xs (Fun a c)) b)
+    Meta _ a -> lower (Let (a, b) c)
     a -> lower (App (Fun a c) b)
   -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
   If a b c -> lower (Match [a] [([], [Tag "True"], b), ([], [], c)])
@@ -156,7 +159,8 @@ instance Resolve (String, Stmt) where
         defs ++ resolve ctx path (name, Import path' alias names)
       [] | alias == name -> [(path, Tag path')]
       [] -> []
-    Def (p, b) | name `elem` bindings p -> [(path, Let (p, b) (Var name))]
+    Def (p, b) | name `elem` bindings p -> do
+      [(path, Let (p, b) (Var name))]
     TypeDef (name', args, alts) | name == name' -> do
       let resolveAlt (a, Just b) = Fun a b
           resolveAlt (a, Nothing) = Fun a (tag name' args)
@@ -202,7 +206,7 @@ instance Compile (String -> C.Env) where
 
 instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile :: Context -> String -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"", expr) = do
+  -- compile ctx path (name@"+", expr) = do
   --   let a = lower expr
   --   let env = concatMap (compile ctx path) (delete name (C.freeNames (True, True, False) a))
   --   let ((a', t), s, e) = C.infer buildOps env a
@@ -211,6 +215,7 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   --     [ "-- compile/2 " ++ name,
   --       -- show ctx,
   --       C.format a,
+  --       C.format t,
   --       C.format (C.Let env C.Any),
   --       show (map fst env),
   --       C.format a',

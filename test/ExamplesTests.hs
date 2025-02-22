@@ -12,11 +12,22 @@ import TaoParser
 import Test (testAll)
 import Test.Hspec
 
-test :: Context -> [Either (String, Expr, Expr) String]
+data Result a
+  = Pass String
+  | Fail String a a
+  deriving (Eq)
+
+instance (Show a) => Show (Result a) where
+  show :: Result a -> String
+  show = \case
+    Pass name -> "✅ " ++ name ++ "\n"
+    Fail name expected got -> "❌ " ++ name ++ "\n" ++ show expected ++ "\n" ++ show got ++ "\n"
+
+test :: Context -> [Result Expr]
 test ctx = do
   let output = \case
-        TestPass {name} -> Right name
-        TestFail {name, expected, got} -> Left (name, expected, got)
+        TestPass {name} -> Pass name
+        TestFail {name, expected, got} -> Fail name (dropMeta expected) (dropMeta got)
   map output (testAll [] ctx)
 
 run :: SpecWith ()
@@ -50,10 +61,10 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Pass",
-            Left ("Fail", i2, i1),
-            Right "Shortcut pass",
-            Left ("Shortcut fail", i2, i1)
+          [ Pass "Pass",
+            Fail "Fail" i2 i1,
+            Pass "Shortcut pass",
+            Fail "Shortcut fail" i2 i1
           ]
     test ctx `shouldBe` testResults
 
@@ -62,23 +73,23 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Any match",
-            Right "Any match 1",
-            Right "Any match 2",
-            Right "Unit match",
-            Left ("Unit match fail", i1, Unit),
-            Right "IntT match",
-            Left ("IntT match fail", NumT, IntT),
-            Right "NumT match",
-            Left ("NumT match fail", IntT, NumT),
-            Right "Int match",
-            Left ("Int match fail", i2, i1),
-            Right "Num match",
-            Left ("Num match fail", Num 0.0, Num 3.14),
-            Right "Tag match",
-            Left ("Tag match fail", Tag "B", Tag "A"),
-            Right "Err match",
-            Left ("Err match fail", i1, Err)
+          [ Pass "Any match",
+            Pass "Any match 1",
+            Pass "Any match 2",
+            Pass "Unit match",
+            Fail "Unit match fail" i1 Unit,
+            Pass "IntT match",
+            Fail "IntT match fail" NumT IntT,
+            Pass "NumT match",
+            Fail "NumT match fail" IntT NumT,
+            Pass "Int match",
+            Fail "Int match fail" i2 i1,
+            Pass "Num match",
+            Fail "Num match fail" (Num 0.0) (Num 3.14),
+            Pass "Tag match",
+            Fail "Tag match fail" (Tag "B") (Tag "A"),
+            Pass "Err match",
+            Fail "Err match fail" i1 Err
           ]
     test ctx `shouldBe` testResults
 
@@ -87,9 +98,9 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "For bound",
-            Right "For unbound",
-            Right "For alpha equivalence"
+          [ Pass "For bound",
+            Pass "For unbound",
+            Pass "For alpha equivalence"
           ]
     test ctx `shouldBe` testResults
 
@@ -98,10 +109,10 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Fun implicit binding",
-            Right "Fun explicit binding",
-            Right "Fun alpha equivalence",
-            Right "Fun args list"
+          [ Pass "Fun implicit binding",
+            Pass "Fun explicit binding",
+            Pass "Fun alpha equivalence",
+            Pass "Fun args list"
           ]
     test ctx `shouldBe` testResults
 
@@ -110,33 +121,33 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "App Any",
-            Right "App Unit",
-            Right "App IntT",
-            Right "App NumT",
-            Right "App Int",
-            Right "App Num",
-            Right "App Tag",
-            Right "App Ann",
-            Right "App And",
-            Right "App Or first",
-            Right "App Or second",
-            Right "App Or fail",
-            Right "App For",
-            Right "App Fun",
-            -- Right "App App",
-            -- Right "App Call",
-            -- Right "App Op1",
-            -- Right "App Op2",
-            -- Right "App Let",
-            -- Right "App Bind",
-            -- Right "App If",
-            -- Right "App Match",
-            -- Right "App Record",
-            -- Right "App Trait",
-            -- Right "App Select",
-            -- Right "App With",
-            Right "App Err"
+          [ Pass "App Any",
+            Pass "App Unit",
+            Pass "App IntT",
+            Pass "App NumT",
+            Pass "App Int",
+            Pass "App Num",
+            Pass "App Tag",
+            Pass "App Ann",
+            Pass "App And",
+            Pass "App Or first",
+            Pass "App Or second",
+            Pass "App Or fail",
+            Pass "App For",
+            Pass "App Fun",
+            -- Pass "App App",
+            -- Pass "App Call",
+            -- Pass "App Op1",
+            -- Pass "App Op2",
+            -- Pass "App Let",
+            -- Pass "App Bind",
+            -- Pass "App If",
+            -- Pass "App Match",
+            -- Pass "App Record",
+            -- Pass "App Trait",
+            -- Pass "App Select",
+            -- Pass "App With",
+            Pass "App Err"
           ]
     test ctx `shouldBe` testResults
 
@@ -145,10 +156,10 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "And match",
-            Left ("And match fail 1", i1, And i1 i2),
-            Left ("And match fail 2", And i1 i1, And i1 i2),
-            Left ("And match fail 3", And i2 i2, And i1 i2)
+          [ Pass "And match",
+            Fail "And match fail 1" i1 (And i1 i2),
+            Fail "And match fail 2" (And i1 i1) (And i1 i2),
+            Fail "And match fail 3" (And i2 i2) (And i1 i2)
           ]
     test ctx `shouldBe` testResults
 
@@ -157,11 +168,11 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Or match 1",
-            Right "Or match 2",
-            Right "Or match 3",
-            Right "Or match 4",
-            Left ("Or match fail", i3, Or i1 i2)
+          [ Pass "Or match 1",
+            Pass "Or match 2",
+            Pass "Or match 3",
+            Pass "Or match 4",
+            Fail "Or match fail" i3 (Or i1 i2)
           ]
     test ctx `shouldBe` testResults
 
@@ -170,9 +181,9 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Ann match",
-            Right "Ann match drop type",
-            Left ("Ann match fail", i2, i1)
+          [ Pass "Ann match",
+            Pass "Ann match drop type",
+            Fail "Ann match fail" i2 i1
           ]
     test ctx `shouldBe` testResults
 
@@ -181,9 +192,9 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Call constant",
-            Right "Call no args",
-            Right "Call args"
+          [ Pass "Call constant",
+            Pass "Call no args",
+            Pass "Call args"
           ]
     test ctx `shouldBe` testResults
 
@@ -209,7 +220,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Var match"
+          [ Pass "Var match"
           ]
     test ctx `shouldBe` testResults
 
@@ -218,9 +229,9 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Overload match 1",
-            Right "Overload match 2",
-            Left ("Overload fail", i3, Or i1 i2)
+          [ Pass "Overload match 1",
+            Pass "Overload match 2",
+            Fail "Overload fail" i3 (Or i1 i2)
           ]
     test ctx `shouldBe` testResults
 
@@ -229,8 +240,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Ann match inline type",
-            Right "Ann match type annotation"
+          [ Pass "Ann match inline type",
+            Pass "Ann match type annotation"
           ]
     test ctx `shouldBe` testResults
 
@@ -239,8 +250,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "And match 1",
-            Right "And match 2"
+          [ Pass "And match 1",
+            Pass "And match 2"
           ]
     test ctx `shouldBe` testResults
 
@@ -249,8 +260,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Or match 1",
-            Right "Or match 2"
+          [ Pass "Or match 1",
+            Pass "Or match 2"
           ]
     test ctx `shouldBe` testResults
 
@@ -259,8 +270,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "For match",
-            Left ("For match fail", i1, Err)
+          [ Pass "For match",
+            Fail "For match fail" i1 Err
           ]
     test ctx `shouldBe` testResults
 
@@ -269,8 +280,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Fun match 1",
-            Right "Fun match 2"
+          [ Pass "Fun match 1",
+            Pass "Fun match 2"
           ]
     test ctx `shouldBe` testResults
 
@@ -279,8 +290,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "App match 1",
-            Right "App match 2"
+          [ Pass "App match 1",
+            Pass "App match 2"
           ]
     test ctx `shouldBe` testResults
 
@@ -289,8 +300,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Call match",
-            Left ("Call match fail", i1, Err)
+          [ Pass "Call match",
+            Fail "Call match fail" i1 Err
           ]
     test ctx `shouldBe` testResults
 
@@ -299,10 +310,9 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Add",
-            Right "Sub",
-            Right "Mul",
-            Right "Pow"
+          [ Pass "`Op` def",
+            Pass "(Op) def",
+            Pass "Infix def"
           ]
     test ctx `shouldBe` testResults
 
@@ -321,7 +331,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   --   (ctx, syntaxErrors) <- load [name]
   --   syntaxErrors `shouldBe` []
   --   let testResults =
-  --         [ Right "Neg"
+  --         [ Pass "Neg"
   --         ]
   --   test ctx `shouldBe` testResults
 
@@ -330,7 +340,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   --   (ctx, syntaxErrors) <- load [name]
   --   syntaxErrors `shouldBe` []
   --   let testResults =
-  --         [ Right "Neg"
+  --         [ Pass "Neg"
   --         ]
   --   test ctx `shouldBe` testResults
 
@@ -348,17 +358,17 @@ run = describe "--==☯ Examples ☯==--" $ do
   --               }
   --             (Int 42)
   --         ]
-  --   test' name `shouldReturn` Right results
+  --   test' name `shouldReturn` Pass results
 
   let name = "examples/syntax-sugar/list"
   it ("☯ " ++ name ++ ".tao") $ do
     (ctx, syntaxErrors) <- load [name]
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Nil",
-            Right "Cons infix",
-            Right "Cons prefix",
-            Right "Cons Cons"
+          [ Pass "Nil",
+            Pass "Cons infix",
+            Pass "Cons prefix",
+            Pass "Cons Cons"
           ]
     test ctx `shouldBe` testResults
 
@@ -369,8 +379,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- include "prelude" ctx
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Char single quote",
-            Right "Char double quote"
+          [ Pass "Char single quote",
+            Pass "Char double quote"
           ]
     test ctx `shouldBe` testResults
 
@@ -381,8 +391,8 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- include "prelude" ctx
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "String single quote",
-            Right "String double quote"
+          [ Pass "String single quote",
+            Pass "String double quote"
           ]
     test ctx `shouldBe` testResults
 
@@ -393,12 +403,12 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- include "prelude" ctx
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Add",
-            Right "Sub",
-            Right "Mul",
-            Right "Div",
-            Right "Div Int",
-            Right "Pow"
+          [ Pass "Add",
+            Pass "Sub",
+            Pass "Mul",
+            Pass "Div",
+            Pass "Div Int",
+            Pass "Pow"
           ]
     test ctx `shouldBe` testResults
 
@@ -409,12 +419,12 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- include "prelude" ctx
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Add",
-            Right "Sub",
-            Right "Mul",
-            Right "Div",
-            Right "Div Int",
-            Right "Pow"
+          [ Pass "Add",
+            Pass "Sub",
+            Pass "Mul",
+            Pass "Div",
+            Pass "Div Int",
+            Pass "Pow"
           ]
     test ctx `shouldBe` testResults
 
@@ -425,24 +435,24 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- include "prelude" ctx
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "Eq 1 1",
-            Right "Eq 1 2",
-            Right "Eq 2 1",
-            Right "Ne 1 1",
-            Right "Ne 1 2",
-            Right "Ne 2 1",
-            Right "Lt 1 1",
-            Right "Lt 1 2",
-            Right "Lt 2 1",
-            Right "Le 1 1",
-            Right "Le 1 2",
-            Right "Le 2 1",
-            Right "Gt 1 1",
-            Right "Gt 1 2",
-            Right "Gt 2 1",
-            Right "Ge 1 1",
-            Right "Ge 1 2",
-            Right "Ge 2 1"
+          [ Pass "Eq 1 1",
+            Pass "Eq 1 2",
+            Pass "Eq 2 1",
+            Pass "Ne 1 1",
+            Pass "Ne 1 2",
+            Pass "Ne 2 1",
+            Pass "Lt 1 1",
+            Pass "Lt 1 2",
+            Pass "Lt 2 1",
+            Pass "Le 1 1",
+            Pass "Le 1 2",
+            Pass "Le 2 1",
+            Pass "Gt 1 1",
+            Pass "Gt 1 2",
+            Pass "Gt 2 1",
+            Pass "Ge 1 1",
+            Pass "Ge 1 2",
+            Pass "Ge 2 1"
           ]
     test ctx `shouldBe` testResults
 
@@ -453,9 +463,9 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- include "prelude" ctx
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "T",
-            Right "F",
-            Right "Error"
+          [ Pass "T",
+            Pass "F",
+            Pass "Error"
           ]
     test ctx `shouldBe` testResults
 
@@ -466,11 +476,11 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- include "prelude" ctx
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "TT",
-            Right "TF",
-            Right "FT",
-            Right "FF",
-            Right "Error"
+          [ Pass "TT",
+            Pass "TF",
+            Pass "FT",
+            Pass "FF",
+            Pass "Error"
           ]
     test ctx `shouldBe` testResults
 
@@ -481,11 +491,11 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- include "prelude" ctx
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "TT",
-            Right "TF",
-            Right "FT",
-            Right "FF",
-            Right "Error"
+          [ Pass "TT",
+            Pass "TF",
+            Pass "FT",
+            Pass "FF",
+            Pass "Error"
           ]
     test ctx `shouldBe` testResults
 
@@ -496,11 +506,11 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- include "prelude" ctx
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "TT",
-            Right "TF",
-            Right "FT",
-            Right "FF",
-            Right "Error"
+          [ Pass "TT",
+            Pass "TF",
+            Pass "FT",
+            Pass "FF",
+            Pass "Error"
           ]
     test ctx `shouldBe` testResults
 
@@ -511,11 +521,11 @@ run = describe "--==☯ Examples ☯==--" $ do
     (ctx, syntaxErrors) <- include "prelude" ctx
     syntaxErrors `shouldBe` []
     let testResults =
-          [ Right "0",
-            Right "1",
-            Right "2",
-            Right "3",
-            Right "4",
-            Right "5"
+          [ Pass "0",
+            Pass "1",
+            Pass "2",
+            Pass "3",
+            Pass "4",
+            Pass "5"
           ]
     test ctx `shouldBe` testResults
