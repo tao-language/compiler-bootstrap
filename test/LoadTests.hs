@@ -1,6 +1,7 @@
 module LoadTests where
 
 import qualified Core as C
+import Data.Bifunctor (Bifunctor (first))
 import Load
 import qualified Parser as P
 import System.Directory (withCurrentDirectory)
@@ -29,4 +30,5 @@ run = describe "--==☯ Load ☯==--" $ do
             )
           ]
     let errors = []
-    load ["examples/sub", "examples/empty"] `shouldReturn` (ctx, errors)
+    result <- load ["examples/sub", "examples/empty"]
+    first dropMeta result `shouldBe` (ctx, errors)

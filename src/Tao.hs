@@ -464,6 +464,10 @@ freeTags = freeNames (False, True, False)
 class DropMeta a where
   dropMeta :: a -> a
 
+instance DropMeta Context where
+  dropMeta :: Context -> Context
+  dropMeta = map dropMeta
+
 instance DropMeta Module where
   dropMeta :: Module -> Module
   dropMeta (path, stmts) = (path, map dropMeta stmts)
