@@ -48,13 +48,15 @@ instance CheckTypes Stmt where
     Test t -> do
       let a = lower (And t.expr t.expect)
       let env = concatMap (compile ctx path) (C.freeNames (True, True, False) a)
-      let (_, _, es) = C.infer buildOps env a
-      -- (error . intercalate "\n")
-      --   [ "",
-      --     "a: " ++ C.format a,
-      --     "env: " ++ C.format (C.Let env C.Any),
-      --     "a': " ++ C.format a',
-      --     "t: " ++ C.format t,
-      --     "e: " ++ show e
-      --   ]
+      let ((a', t), s, es) = C.infer buildOps env a
+      (error . intercalate "\n")
+        [ "\n",
+          "a: " ++ C.format a,
+          "",
+          "a: " ++ C.format (C.dropMeta a),
+          "env: " ++ C.format (C.Let env C.Any),
+          "a': " ++ C.format a',
+          "t: " ++ C.format t,
+          "e: " ++ show es
+        ]
       map (TypeError . liftTypeError) es

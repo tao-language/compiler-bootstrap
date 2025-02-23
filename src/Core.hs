@@ -504,6 +504,8 @@ findLocation = \case
 
 unify :: Ops -> Env -> Expr -> Expr -> (Expr, Substitution, [TypeError Expr])
 unify ops env a b = case (a, b) of
+  (Meta _ a, b) -> unify ops env a b
+  (a, Meta _ b) -> unify ops env a b
   (Any, _) -> (Any, [], [])
   (_, Any) -> (Any, [], [])
   (Unit, Unit) -> (Unit, [], [])
@@ -549,35 +551,35 @@ unify ops env a b = case (a, b) of
   (Ann a _, b) -> unify ops env a b
   (a, Ann b _) -> unify ops env a b
   (Or a1 a2, b) -> case unify ops env a1 b of
-    (c1, s1, []) -> do
+    (Err, _, e1) -> case unify ops env a2 b of
+      (Err, _, e2) -> (Err, [], e1 ++ e2)
+      (c2, s2, e2) -> (c2, s2, e2)
+    (c1, s1, e1) -> do
       let env1 = s1 `compose` env
       let (a2', b') = (substitute s1 a2, substitute s1 b)
       case unify ops env1 a2' b' of
-        (c2, s2, []) -> do
+        (Err, _, _) -> (c1, s1, e1)
+        (c2, s2, e2) -> do
           let env2 = s2 `compose` env1
           let c1' = substitute s2 c1
           case unify ops env2 c1' c2 of
-            (c, s3, []) -> (c, s3 `compose` s2 `compose` s1, [])
-            _ -> (Or c1 c2, s2 `compose` s1, [])
-        _ -> (c1, s1, [])
-    (_, _, e1) -> case unify ops env a2 b of
-      (c2, s2, []) -> (c2, s2, [])
-      (c2, s2, e2) -> (c2, s2, e1 ++ e2)
+            (Err, _, _) -> (Or c1' c2, s2 `compose` s1, e1 ++ e2)
+            (c, s3, e3) -> (c, s3 `compose` s2 `compose` s1, e1 ++ e2 ++ e3)
   (a, Or b1 b2) -> case unify ops env a b1 of
-    (c1, s1, []) -> do
+    (Err, _, e1) -> case unify ops env a b2 of
+      (Err, _, e2) -> (Err, [], e1 ++ e2)
+      (c2, s2, e2) -> (c2, s2, e2)
+    (c1, s1, e1) -> do
       let env1 = s1 `compose` env
       let (a', b2') = (substitute s1 a, substitute s1 b2)
       case unify ops env1 a' b2' of
-        (c2, s2, []) -> do
+        (Err, _, _) -> (c1, s1, e1)
+        (c2, s2, e2) -> do
           let env2 = s2 `compose` env1
           let c1' = substitute s2 c1
           case unify ops env2 c1' c2 of
-            (c, s3, []) -> (c, s3 `compose` s2 `compose` s1, [])
-            _ -> (Or c1 c2, s2 `compose` s1, [])
-        _ -> (c1, s1, [])
-    (_, _, e1) -> case unify ops env a b2 of
-      (c2, s2, []) -> (c2, s2, [])
-      (c2, s2, e2) -> (c2, s2, e1 ++ e2)
+            (Err, _, _) -> (Or c1' c2, s2 `compose` s1, e1 ++ e2)
+            (c, s3, e3) -> (c, s3 `compose` s2 `compose` s1, e1 ++ e2 ++ e3)
   (a, For x b) -> do
     let (b', s1) = instantiate (freeVars a) (For x b)
     let (c, s2, e) = unify ops (s1 `compose` env) a b'
@@ -594,8 +596,6 @@ unify ops env a b = case (a, b) of
   (Call op args, Call op' args') | op == op' -> do
     let (args'', s, e) = unifyAll ops env args args'
     (Call op args'', s, e)
-  (Meta _ a, b) -> unify ops env a b
-  (a, Meta _ b) -> unify ops env a b
   (a, b) -> (Err, [], [TypeMismatch Nothing a b])
 
 unify2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> ((Expr, Expr), Substitution, [TypeError Expr])
@@ -612,9 +612,7 @@ unifyAll ops env (a : bs) (a' : bs') = do
 unifyAll _ _ _ _ = ([], [], [])
 
 infer :: Ops -> Env -> Expr -> ((Expr, Type), Substitution, [TypeError Expr])
-infer _ env Any = do
-  let x = newName ("_" : map fst env) "_"
-  ((Any, Var x), [(x, Var x)], [])
+infer _ _ Any = ((Any, Any), [], [])
 infer _ _ Unit = ((Unit, Unit), [], [])
 infer _ _ IntT = ((IntT, IntT), [], [])
 infer _ _ NumT = ((NumT, NumT), [], [])
@@ -686,7 +684,7 @@ check ops env a (For x t) = do
   ((a', for [x] (substitute [(y, Var x)] t')), s `compose` [(y, Var y)], e)
 check ops env (Or a b) t = do
   let ((a', ta'), (b', tb'), s, e) = check2 ops env (a, t) (b, t)
-  ((Or a' b', ta'), s, e)
+  ((Or a' b', Or ta' tb'), s, e)
 check ops env (For x a) t = do
   let y = newName (map fst env) x
   let ((a', t'), s, e) = check ops ((y, Var y) : env) (substitute [(x, Var y)] a) t
@@ -722,11 +720,10 @@ checkApp ops env (a, ta) b = case ta of
     let x2 = newName (x1 : (x ++ "$") : map fst env) (x ++ "$")
     let ((a', _), (b', t1), s, e) = check2 ops (pushVars [x1, x2] env) (a, Fun (Var x1) (Var x2)) (b, Var x1)
     ((a', b'), (t1, substitute s (Var x2)), s `compose` [(x1, Var x1), (x2, Var x2)], e)
-  Or ta1 ta2 -> case checkApp ops env (a, ta1) b of
-    (_, (Err, _), _, _) -> checkApp ops env (a, ta2) b
-    ((a, b), (t1, t2), s1, e1) -> case checkApp ops (s1 `compose` env) (a, substitute s1 ta2) b of
-      (_, (Err, _), _, _) -> ((a, b), (t1, t2), s1, e1)
-      ((a, b), (t1, t2), s2, e2) -> ((a, b), (t1, t2), s2 `compose` s1, e1 ++ e2)
+  Or ta1 ta2 -> do
+    let ((a_, b_), (t1a, t2a), s1, e1) = checkApp ops env (a, ta1) b
+    let ((a', b'), (t1b, t2b), s2, e2) = checkApp ops (s1 `compose` env) (a_, substitute s1 ta2) b_
+    ((a', b'), (Or t1a t1b, Or t2a t2b), s2 `compose` s1, e1 ++ e2)
   Fun t1 t2 -> do
     let ((a', _), (b', t1'), s, e) = check2 ops env (a, Fun t1 t2) (b, t1)
     ((a', b'), (t1', substitute s t2), s, e)
