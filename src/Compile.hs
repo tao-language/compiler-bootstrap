@@ -3,7 +3,7 @@ module Compile where
 import qualified Core as C
 import Data.Bifunctor (second)
 import Data.List (delete, intercalate, isPrefixOf, unionBy)
-import Error (TypeError (..))
+import Error (Error (RuntimeError), TypeError (..))
 import Stdlib (split)
 import Tao
 
@@ -84,7 +84,7 @@ lower = \case
     let args = map ((C.substitute sub . lower) . snd) kvs
     C.tag k args
   Meta m a -> C.Meta m (lower a)
-  Err -> C.Err
+  Err -> C.Err RuntimeError -- TODO: use the right error
   a -> error $ "TODO: lower " ++ show a
 
 lift :: C.Expr -> Expr
@@ -117,14 +117,14 @@ lift = \case
   C.Let [] b -> lift b
   C.Let ((x, b) : env) c -> Let (Var x, lift b) (lift (C.Let env c))
   C.Meta m a -> Meta m (lift a)
-  C.Err -> Err
+  C.Err e -> Err
 
 liftTypeError :: TypeError C.Expr -> TypeError Expr
 liftTypeError = \case
-  OccursError loc x a -> OccursError loc x (lift a)
-  TypeMismatch loc a b -> TypeMismatch loc (lift a) (lift b)
-  NotAFunction loc a b -> NotAFunction loc (lift a) (lift b)
-  UndefinedVar loc x -> UndefinedVar loc x
+  OccursError x a -> OccursError x (lift a)
+  TypeMismatch a b -> TypeMismatch (lift a) (lift b)
+  NotAFunction a -> NotAFunction (lift a)
+  UndefinedVar x -> UndefinedVar x
 
 class Resolve a where
   resolve :: Context -> FilePath -> a -> [(FilePath, Expr)]
@@ -226,7 +226,7 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
   compile ctx path (name, expr) = do
     let a = lower expr
     let env = concatMap (compile ctx path) (delete name (C.freeNames (True, True, False) a))
-    let ((a', t), s, e) = C.infer buildOps env a
+    let ((a', t), s) = C.infer buildOps env a
     let xs = filter (`notElem` map fst env) (map fst s)
     (env, C.for xs $ C.dropTypes a')
 

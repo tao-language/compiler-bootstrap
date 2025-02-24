@@ -30,33 +30,26 @@ instance CheckTypes Stmt where
     Def (p, b) -> do
       let a = lower (Let (p, b) Unit)
       let env = concatMap (compile ctx path) (C.freeNames (True, True, False) a)
-      let ((a', t), s, es) = C.infer buildOps env a
-      -- case es of
-      --   [] -> return ()
-      --   _ ->
-      --     (error . intercalate "\n")
-      --       [ "",
-      --         "def: " ++ show (p, b),
-      --         "a: " ++ C.format a,
-      --         "env: " ++ C.format (C.Let env C.Any),
-      --         "a': " ++ C.format a',
-      --         "t: " ++ C.format t,
-      --         "e: " ++ show es
-      --       ]
-      map (TypeError . liftTypeError) es
+      let ((a', t), s) = C.infer buildOps env a
+      -- TODO: recursively find all errors
+      (error . intercalate "\n")
+        [ "\n\nDef",
+          "def: " ++ show (p, b),
+          "env: " ++ C.format (C.Let env C.Any),
+          "a: " ++ C.format (C.dropMeta a),
+          "a': " ++ C.format (C.dropMeta a'),
+          "t: " ++ C.format t
+        ]
     TypeDef {} -> []
     Test t -> do
       let a = lower (And t.expr t.expect)
       let env = concatMap (compile ctx path) (C.freeNames (True, True, False) a)
-      let ((a', t), s, es) = C.infer buildOps env a
+      let ((a', t), s) = C.infer buildOps env a
+      -- TODO: recursively find all errors
       (error . intercalate "\n")
-        [ "\n",
-          "a: " ++ C.format a,
-          "",
-          "a: " ++ C.format (C.dropMeta a),
+        [ "\n\nTest",
           "env: " ++ C.format (C.Let env C.Any),
-          "a': " ++ C.format a',
-          "t: " ++ C.format t,
-          "e: " ++ show es
+          "a: " ++ C.format (C.dropMeta a),
+          "a': " ++ C.format (C.dropMeta a'),
+          "t: " ++ C.format t
         ]
-      map (TypeError . liftTypeError) es

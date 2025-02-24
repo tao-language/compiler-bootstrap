@@ -10,7 +10,8 @@ import Stdlib (pad, slice)
 -- https://github.com/gleam-lang/gleam/blob/main/compiler-core/src/error.rs
 
 data Error a
-  = SyntaxError SyntaxError
+  = RuntimeError
+  | SyntaxError SyntaxError
   | TypeError (TypeError a)
   | CaseError (CaseError a)
   deriving (Eq, Show)
@@ -20,26 +21,19 @@ newtype SyntaxError
   deriving (Eq, Show)
 
 data TypeError a
-  = OccursError (Maybe Location) String a
-  | TypeMismatch (Maybe Location) a a
-  | NotAFunction (Maybe Location) a a
-  | UndefinedVar (Maybe Location) String
+  = OccursError String a
+  | TypeMismatch a a
+  | NotAFunction a
+  | UndefinedVar String
   -- MissingArgs
   -- ExtraArgs
   -- ArgsMismatch
   deriving (Eq, Show)
 
 data CaseError a
-  = MissingCases (Maybe Location) [a]
-  | RedundantCases (Maybe Location) [a]
+  = MissingCases [a]
+  | RedundantCases [a]
   deriving (Eq, Show)
-
-annotateError :: Location -> TypeError a -> TypeError a
-annotateError loc = \case
-  OccursError _ x a -> OccursError (Just loc) x a
-  TypeMismatch _ a b -> TypeMismatch (Just loc) a b
-  NotAFunction _ a t -> NotAFunction (Just loc) a t
-  UndefinedVar _ x -> UndefinedVar (Just loc) x
 
 summary :: (Show a) => Error a -> String
 summary = \case
@@ -54,14 +48,14 @@ summary = \case
 description :: (Show a) => Error a -> String
 description = \case
   TypeError e -> case e of
-    OccursError _ x a -> show e
-    TypeMismatch _ got expected ->
+    OccursError x a -> show e
+    TypeMismatch got expected ->
       "This expression is of type:\n  "
         ++ show got
         ++ "\n\nI was expecting it to be:\n  "
         ++ show expected
-    NotAFunction _ a t -> show e
-    UndefinedVar _ x -> show e
+    NotAFunction t -> show e
+    UndefinedVar x -> show e
   _ -> "TODO: description"
 
 suggestion :: (Show a) => Error a -> String
@@ -71,22 +65,6 @@ suggestion = \case
 docsUrl :: (Show a) => Error a -> String
 docsUrl = \case
   _ -> ""
-
-location :: (Show a) => Error a -> Maybe Location
-location = \case
-  SyntaxError e -> case e of
-    UnexpectedChar loc -> Just loc
-  TypeError e -> case e of
-    OccursError loc _ _ -> loc
-    TypeMismatch loc _ _ -> loc
-    NotAFunction loc _ _ -> loc
-    UndefinedVar loc _ -> loc
-  -- MissingArgs
-  -- ExtraArgs
-  -- ArgsMismatch
-  CaseError e -> case e of
-    MissingCases loc _ -> loc
-    RedundantCases loc _ -> loc
 
 snippet :: Location -> String -> String
 snippet loc src = do
@@ -122,7 +100,7 @@ display :: (Show a) => Error a -> IO ()
 display e = do
   putStrLn (replicate 60 '-')
   putStrLn ("🛑 " ++ summary e)
-  case location e of
+  case Nothing of
     Nothing -> return ()
     Just loc -> do
       src <- readFile loc.filename
