@@ -2,7 +2,7 @@ module Load where
 
 import Control.Monad (foldM)
 import Data.List (isPrefixOf, sort)
-import Error (SyntaxError (..))
+import Error (Error (SyntaxError), SyntaxError (..))
 import Location (Location (..), Position (..), Range (..))
 import qualified Parser as P
 import Stdlib (replace, split2)
@@ -11,51 +11,51 @@ import System.FilePath (dropExtension, splitExtension, takeBaseName, takeDirecto
 import Tao
 import TaoParser (parseAtom, parseModule)
 
-load :: [FilePath] -> IO (Context, [SyntaxError])
-load = foldM loadModule ([], [])
+load :: [FilePath] -> IO Context
+load = foldM loadModule []
 
-include :: FilePath -> Context -> IO (Context, [SyntaxError])
+include :: FilePath -> Context -> IO Context
 include preludePath ctx = do
   let include' (path, stmts) = do
         let path' = snd (split2 ':' preludePath)
         (path, Import (dropExtension path') (takeBaseName path') [("", "")] : stmts)
-  (ctx, errs) <- loadModule (ctx, []) preludePath
-  return (map include' ctx, errs)
+  ctx <- loadModule ctx preludePath
+  return (map include' ctx)
 
-loadModule :: (Context, [SyntaxError]) -> FilePath -> IO (Context, [SyntaxError])
-loadModule (ctx, errs) sourcePath = do
+loadModule :: Context -> FilePath -> IO Context
+loadModule ctx sourcePath = do
   let osPath = getOSPath sourcePath
   isDir <- doesDirectoryExist osPath
   isFile <- do
     dirFiles <- listDirectory (takeDirectory osPath)
     return (any ((takeBaseName osPath ++ ".") `isPrefixOf`) dirFiles)
-  (ctx, errs) <-
+  ctx <-
     if isDir
-      then loadDir sourcePath (ctx, errs)
-      else return (ctx, errs)
+      then loadDir sourcePath ctx
+      else return ctx
   if isFile
-    then loadFile sourcePath (ctx, errs)
-    else return (ctx, errs)
+    then loadFile sourcePath ctx
+    else return ctx
 
-loadDir :: FilePath -> (Context, [SyntaxError]) -> IO (Context, [SyntaxError])
-loadDir sourcePath (ctx, errs) = do
+loadDir :: FilePath -> Context -> IO Context
+loadDir sourcePath ctx = do
   let (dir, path) = split2 ':' sourcePath
   files <- walkDirectory dir path
-  foldM (flip loadFile) (ctx, errs) (map ((dir ++ ":") ++) files)
+  foldM (flip loadFile) ctx (map ((dir ++ ":") ++) files)
 
-loadFile :: FilePath -> (Context, [SyntaxError]) -> IO (Context, [SyntaxError])
-loadFile path (ctx, errs) = do
+loadFile :: FilePath -> Context -> IO Context
+loadFile path ctx = do
   src <- loadSource path
   case src of
-    Right mod -> return (mod : ctx, errs)
-    Left errs' -> return (ctx, errs ++ errs')
+    Just mod -> return (mod : ctx)
+    Nothing -> return ctx
 
 getOSPath :: FilePath -> FilePath
 getOSPath = \case
   (':' : path) -> path
   path -> replace ':' '/' path
 
-loadSource :: FilePath -> IO (Either [SyntaxError] Module)
+loadSource :: FilePath -> IO (Maybe Module)
 loadSource filename = case splitExtension filename of
   (_, "") -> loadSource (filename ++ ".tao")
   (name, ".tao") -> do
@@ -63,33 +63,34 @@ loadSource filename = case splitExtension filename of
     src <- readFile osPath
     let parser = parseModule (snd (split2 ':' name))
     case P.parse parser osPath src of
-      Right (mod, _) -> return (Right mod)
+      Right (mod, _) -> return (Just mod)
       Left P.State {filename, pos, context} -> do
-        let loc =
-              Location
-                { filename = filename,
-                  range = Range pos pos
-                }
-        return (Left [UnexpectedChar loc])
+        -- let loc =
+        --       Location
+        --         { filename = filename,
+        --           range = Range pos pos
+        --         }
+        -- return (Left [UnexpectedChar loc])
+        error "TODO: loadSource handle error"
   _ -> error $ "file extension not supported: " ++ filename
 
-loadAtom :: String -> String -> IO (Expr, [SyntaxError])
+loadAtom :: String -> String -> IO Expr
 loadAtom filename src = case P.parse parseAtom filename src of
-  Right (a, _) -> return (a, [])
+  Right (a, _) -> return a
   Left P.State {filename, pos, context} -> do
     let loc =
           Location
             { filename = filename,
               range = Range pos pos
             }
-    return (Err, [UnexpectedChar loc])
+    return (Err $ SyntaxError $ UnexpectedChar loc)
 
-loadAtoms :: String -> [String] -> IO ([Expr], [SyntaxError])
-loadAtoms _ [] = return ([], [])
+loadAtoms :: String -> [String] -> IO [Expr]
+loadAtoms _ [] = return []
 loadAtoms filename (src : srcs) = do
-  (a, err1) <- loadAtom filename src
-  (bs, err2) <- loadAtoms filename srcs
-  return (a : bs, err1 ++ err2)
+  a <- loadAtom filename src
+  bs <- loadAtoms filename srcs
+  return (a : bs)
 
 walkDirectory :: FilePath -> FilePath -> IO [FilePath]
 walkDirectory dir path = do

@@ -4,6 +4,7 @@ import qualified Core as C
 import Data.Bifunctor (second)
 import Data.Function ((&))
 import Data.List (intercalate, isInfixOf)
+import Error (Error (..))
 import Load
 import Location (Position (..))
 import System.FilePath (dropExtension)
@@ -23,12 +24,12 @@ instance (Show a) => Show (Result a) where
     Pass name -> "✅ " ++ name ++ "\n"
     Fail name expected got -> "❌ " ++ name ++ "\n" ++ show expected ++ "\n" ++ show got ++ "\n"
 
-test :: Context -> [Result Expr]
-test ctx = do
+test :: Context -> Package -> [Result Expr]
+test ctx pkg = do
   let output = \case
         TestPass {name} -> Pass name
         TestFail {name, expected, got} -> Fail name (dropMeta expected) (dropMeta got)
-  map output (testAll [] ctx)
+  map output (testAll ctx pkg)
 
 run :: SpecWith ()
 run = describe "--==☯ Examples ☯==--" $ do
@@ -40,15 +41,15 @@ run = describe "--==☯ Examples ☯==--" $ do
 
   let name = "examples/empty"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
-    test ctx `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
+    test ctx pkg `shouldBe` []
 
   let name = "examples/comments"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
-    test ctx `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
+    test ctx pkg `shouldBe` []
 
   -- let name = "examples/comments-multiline"
   -- it ("☯ " ++ name ++ ".tao") $ do
@@ -58,20 +59,20 @@ run = describe "--==☯ Examples ☯==--" $ do
 
   let name = "examples/tests"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "Pass",
             Fail "Fail" i2 i1,
             Pass "Shortcut pass",
             Fail "Shortcut fail" i2 i1
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/expressions/atoms"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "Any match",
             Pass "Any match 1",
@@ -89,37 +90,37 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "Tag match",
             Fail "Tag match fail" (Tag "B") (Tag "A"),
             Pass "Err match",
-            Fail "Err match fail" i1 Err
+            Fail "Err match fail" i1 (Err RuntimeError)
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/expressions/for"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "For bound",
             Pass "For unbound",
             Pass "For alpha equivalence"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/expressions/fun"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "Fun implicit binding",
             Pass "Fun explicit binding",
             Pass "Fun alpha equivalence",
             Pass "Fun args list"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/expressions/app"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "App Any",
             Pass "App Unit",
@@ -149,24 +150,24 @@ run = describe "--==☯ Examples ☯==--" $ do
             -- Pass "App With",
             Pass "App Err"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/expressions/and"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "And match",
             Fail "And match fail 1" i1 (And i1 i2),
             Fail "And match fail 2" (And i1 i1) (And i1 i2),
             Fail "And match fail 3" (And i2 i2) (And i1 i2)
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/expressions/or"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "Or match 1",
             Pass "Or match 2",
@@ -174,29 +175,29 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "Or match 4",
             Fail "Or match fail" i3 (Or i1 i2)
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/expressions/ann"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "Ann match",
             Pass "Ann match drop type",
             Fail "Ann match fail" i2 i1
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/expressions/call"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "Call constant",
             Pass "Call no args",
             Pass "Call args"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   -- Let (Expr, Expr) Expr
   -- Bind (Expr, Expr) Expr
@@ -210,111 +211,111 @@ run = describe "--==☯ Examples ☯==--" $ do
   it ("☯ " ++ name ++ ".tao") $ do
     -- There are no bindings, so there aren't any tests to run.
     -- Just make sure there are no syntax errors.
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults = []
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/definitions/var"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "Var match"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/definitions/overload"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "Overload match 1",
             Pass "Overload match 2",
             Fail "Overload fail" i3 (Or i1 i2)
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/definitions/ann"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "Ann match inline type",
             Pass "Ann match type annotation"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/definitions/and"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "And match 1",
             Pass "And match 2"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/definitions/or"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "Or match 1",
             Pass "Or match 2"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/definitions/for"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "For match",
-            Fail "For match fail" i1 Err
+            Fail "For match fail" i1 (Err RuntimeError)
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/definitions/fun"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "Fun match 1",
             Pass "Fun match 2"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/definitions/app"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "App match 1",
             Pass "App match 2"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/definitions/call"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "Call match",
-            Fail "Call match fail" i1 Err
+            Fail "Call match fail" i1 (Err RuntimeError)
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/definitions/op2"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "`Op` def",
             Pass "(Op) def",
             Pass "Infix def"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   -- Op1 Op1 Expr
   -- Op2 Op2 Expr Expr
@@ -362,46 +363,40 @@ run = describe "--==☯ Examples ☯==--" $ do
 
   let name = "examples/syntax-sugar/list"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "Nil",
             Pass "Cons infix",
             Pass "Cons prefix",
             Pass "Cons Cons"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/syntax-sugar/char"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
-    (ctx, syntaxErrors) <- include "prelude" ctx
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "Char single quote",
             Pass "Char double quote"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/syntax-sugar/string"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
-    (ctx, syntaxErrors) <- include "prelude" ctx
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    let ctx = pkg
     let testResults =
           [ Pass "String single quote",
             Pass "String double quote"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/prelude/arithmetic-int"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
-    (ctx, syntaxErrors) <- include "prelude" ctx
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    ctx <- include "prelude" pkg
     let testResults =
           [ Pass "Add",
             Pass "Sub",
@@ -410,14 +405,12 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "Div Int",
             Pass "Pow"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/prelude/arithmetic-num"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
-    (ctx, syntaxErrors) <- include "prelude" ctx
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    ctx <- include "prelude" pkg
     let testResults =
           [ Pass "Add",
             Pass "Sub",
@@ -426,14 +419,12 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "Div Int",
             Pass "Pow"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/prelude/comparison"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
-    (ctx, syntaxErrors) <- include "prelude" ctx
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    ctx <- include "prelude" pkg
     let testResults =
           [ Pass "Eq 1 1",
             Pass "Eq 1 2",
@@ -454,27 +445,23 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "Ge 1 2",
             Pass "Ge 2 1"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/prelude/bool-not"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
-    (ctx, syntaxErrors) <- include "prelude" ctx
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    ctx <- include "prelude" pkg
     let testResults =
           [ Pass "T",
             Pass "F",
             Pass "Error"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/prelude/bool-and"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
-    (ctx, syntaxErrors) <- include "prelude" ctx
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    ctx <- include "prelude" pkg
     let testResults =
           [ Pass "TT",
             Pass "TF",
@@ -482,14 +469,12 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "FF",
             Pass "Error"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/prelude/bool-or"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
-    (ctx, syntaxErrors) <- include "prelude" ctx
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    ctx <- include "prelude" pkg
     let testResults =
           [ Pass "TT",
             Pass "TF",
@@ -497,14 +482,12 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "FF",
             Pass "Error"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/prelude/bool-xor"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load [name]
-    syntaxErrors `shouldBe` []
-    (ctx, syntaxErrors) <- include "prelude" ctx
-    syntaxErrors `shouldBe` []
+    pkg <- load [name]
+    ctx <- include "prelude" pkg
     let testResults =
           [ Pass "TT",
             Pass "TF",
@@ -512,14 +495,12 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "FF",
             Pass "Error"
           ]
-    test ctx `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults
 
   let name = "examples/factorial"
   it ("☯ " ++ name ++ ".tao") $ do
-    (ctx, syntaxErrors) <- load ["examples/factorial.tao"]
-    syntaxErrors `shouldBe` []
-    (ctx, syntaxErrors) <- include "prelude" ctx
-    syntaxErrors `shouldBe` []
+    pkg <- load ["examples/factorial.tao"]
+    ctx <- include "prelude" pkg
     let testResults =
           [ Pass "0",
             Pass "1",
@@ -528,4 +509,4 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "4",
             Pass "5"
           ]
-    test ctx `shouldBe` testResults
+    test (dropMeta ctx) (dropMeta pkg) `shouldBe` testResults

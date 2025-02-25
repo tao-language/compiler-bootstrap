@@ -10,12 +10,8 @@ class TestSome a where
 
 instance TestSome Package where
   testSome :: Context -> (UnitTest -> Bool) -> Package -> [TestResult]
-  testSome ctx filter (_, mods) = testSome ctx filter mods
-
-instance TestSome [Module] where
-  testSome :: Context -> (UnitTest -> Bool) -> [Module] -> [TestResult]
-  testSome ctx filter mods =
-    concatMap (testSome (ctx ++ mods) filter) mods
+  testSome ctx filter pkg =
+    concatMap (testSome (ctx ++ pkg) filter) pkg
 
 instance TestSome Module where
   testSome :: Context -> (UnitTest -> Bool) -> Module -> [TestResult]

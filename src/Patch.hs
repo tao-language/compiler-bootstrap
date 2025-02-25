@@ -14,42 +14,40 @@ type Rule = (Pattern, Expr)
 type PatchStep = ([FilePath], [Rule])
 
 class Plan a where
-  plan :: [PatchStep] -> a -> IO ([PatchStep], [SyntaxError])
+  plan :: [PatchStep] -> a -> IO [PatchStep]
 
 instance Plan [FilePath] where
-  plan :: [PatchStep] -> [FilePath] -> IO ([PatchStep], [SyntaxError])
-  plan steps0 = \case
-    [] -> return (steps0, [])
+  plan :: [PatchStep] -> [FilePath] -> IO [PatchStep]
+  plan steps = \case
+    [] -> return steps
     path : paths -> do
-      (steps1, errs1) <- plan steps0 ([] :: [FilePath], path)
-      (steps2, errs2) <- plan steps1 paths
-      return (steps2, errs1 ++ errs2)
+      steps' <- plan steps ([] :: [FilePath], path)
+      plan steps' paths
 
 instance Plan ([FilePath], FilePath) where
-  plan :: [PatchStep] -> ([FilePath], FilePath) -> IO ([PatchStep], [SyntaxError])
+  plan :: [PatchStep] -> ([FilePath], FilePath) -> IO [PatchStep]
   plan steps (paths, path) = do
     let dir = fst (split2 ':' path)
     maybeModule <- loadSource path
     case maybeModule of
-      Right (path, stmts) -> plan steps (dir, push path paths, map dropMeta stmts)
-      Left errs -> return ([], errs)
+      Just (path, stmts) -> plan steps (dir, push path paths, map dropMeta stmts)
+      Nothing -> return []
 
 instance Plan (FilePath, [FilePath], [Stmt]) where
-  plan :: [PatchStep] -> (FilePath, [FilePath], [Stmt]) -> IO ([PatchStep], [SyntaxError])
+  plan :: [PatchStep] -> (FilePath, [FilePath], [Stmt]) -> IO [PatchStep]
   plan steps0 (dir, paths, stmts) = case stmts of
-    [] -> return (steps0, [])
+    [] -> return steps0
     stmt : stmts -> do
-      (steps1, errs1) <- plan steps0 (dir, paths, stmt)
-      (steps2, errs2) <- plan steps1 (dir, paths, stmts)
-      return (steps2, errs1 ++ errs2)
+      steps1 <- plan steps0 (dir, paths, stmt)
+      plan steps1 (dir, paths, stmts)
 
 instance Plan (FilePath, [FilePath], Stmt) where
-  plan :: [PatchStep] -> (FilePath, [FilePath], Stmt) -> IO ([PatchStep], [SyntaxError])
+  plan :: [PatchStep] -> (FilePath, [FilePath], Stmt) -> IO [PatchStep]
   plan steps0 (dir, paths, stmt) = case stmt of
     Import path alias names -> plan steps0 (paths, dir ++ ":" ++ path)
     Def rule -> case lookup paths steps0 of
-      Just rules -> return (set paths (push rule rules) steps0, [])
-      Nothing -> return (push (paths, [rule]) steps0, [])
+      Just rules -> return (set paths (push rule rules) steps0)
+      Nothing -> return (push (paths, [rule]) steps0)
     stmt -> error $ "TODO plan " ++ show stmt
 
 class Apply patch a where
@@ -84,7 +82,7 @@ instance Apply (Context, FilePath, [Rule]) Expr where
 instance Apply (Context, FilePath, Rule) Expr where
   apply :: (Context, FilePath, Rule) -> Expr -> Expr
   apply (ctx, path, (p, q)) expr = case run ctx path (Let (p, expr) q) of
-    Err -> expr
+    Err _ -> expr
     result -> result
 
 class Patch step a where

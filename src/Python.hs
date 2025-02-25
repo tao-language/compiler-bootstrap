@@ -570,7 +570,7 @@ instance Emit T.Expr ([Stmt], Expr) where
     T.Meta m a -> do
       let (stmts, a') = emit options a
       (stmts, Meta m a')
-    T.Err -> ([], notImplementedError "error")
+    T.Err e -> ([], notImplementedError (show e))
     expr -> error $ "TODO: emit Expr: " ++ show expr
 
 instance Emit (Expr -> Stmt) (T.Expr -> [Stmt]) where

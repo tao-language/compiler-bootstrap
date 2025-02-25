@@ -1,6 +1,6 @@
 module Check where
 
-import Compile (compile, liftTypeError, lower)
+import Compile (compile, lower)
 import qualified Core as C
 import Data.List (intercalate)
 import Error (Error (..), TypeError (..))

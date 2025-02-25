@@ -1,5 +1,6 @@
 module TaoParserTests where
 
+import Error(Error(..))
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap, first, second))
 import Location (Location (..), Position (..), Range (..))
@@ -205,7 +206,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p "(x = y; z)" `shouldBe` Right (Let (x, y) z, "")
     p "(x <- y; z)" `shouldBe` Right (Bind (x, y) z, "")
     p "if x then y else z" `shouldBe` Right (If x y z, "")
-    p "y if x" `shouldBe` Right (If x y Err, "")
+    p "y if x" `shouldBe` Right (If x y (Err RuntimeError), "")
     p "match {| x, y -> z }" `shouldBe` Right (Match [] [(["x", "y"], [x, y], z)], "")
     p "match a, b {| x, y -> z}" `shouldBe` Right (Match [a, b] [(["x", "y"], [x, y], z)], "")
     p "{}" `shouldBe` Right (Record [], "")
@@ -215,7 +216,7 @@ run = describe "--==☯ TaoParser ☯==--" $ do
     p ".{}" `shouldBe` Right (selectFun [], "")
     p "x with {}" `shouldBe` Right (With x [], "")
     p "with {}" `shouldBe` Right (withFun [], "")
-    p "!error" `shouldBe` Right (Err, "")
+    p "!error" `shouldBe` Right (Err RuntimeError, "")
 
   it "☯ parseBlock" $ do
     let p = parse' parseBlock

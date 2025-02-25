@@ -1,6 +1,7 @@
 module TaoTests where
 
 import Compile
+import Error (Error(..))
 import qualified Core as C
 import Location (Position (..))
 import qualified Run
@@ -84,7 +85,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     lower (Op2 Pow x y) `shouldBe` C.app (C.Var "^") [x', y']
 
   it "☯ lower Expr Match" $ do
-    lower (Match [] []) `shouldBe` C.Err
+    lower (Match [] []) `shouldBe` C.Unit
     lower (Match [] [([], [], x)]) `shouldBe` x'
     lower (Match [] [(["x", "y"], [x, y], z)]) `shouldBe` C.for ["x", "y"] (C.fun [x', y'] z')
     lower (Match [] [([], [], x), ([], [], y)]) `shouldBe` C.Or x' y'
@@ -174,7 +175,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   -- Select Expr [(String, Expr)]
 
   it "☯ lower Expr Err" $ do
-    lower Err `shouldBe` C.Err
+    lower (Err RuntimeError) `shouldBe` C.Err RuntimeError
 
   -- it "☯ lower Stmt Import" $ do
   --   let stmt = Import "@pkg/mod" "mod" []
@@ -451,7 +452,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     -- Record [(String, Expr)]
     -- Select Expr [(String, Expr)]
     -- With Expr [(String, Expr)]
-    compile' Err `shouldBe` ([], C.Err)
+    compile' (Err RuntimeError) `shouldBe` ([], C.Err RuntimeError)
 
   it "☯ run" $ do
     let ctx =
@@ -508,4 +509,4 @@ run = describe "--==☯ TaoTests ☯==--" $ do
           [ TestPass "pkg/a" (Pos 1 2) ">x",
             TestFail "pkg/a" (Pos 3 4) ">y" y i3 i2
           ]
-    testAll [] ("pkg", ctx) `shouldBe` results
+    testAll ctx ctx `shouldBe` results

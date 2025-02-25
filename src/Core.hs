@@ -462,7 +462,7 @@ instance Substitute Expr where
 
 instance Substitute (Error Expr) where
   substitute :: Substitution -> Error Expr -> Error Expr
-  substitute = error "TODO: substitute Error"
+  substitute s = fmap (substitute s)
 
 compose :: Substitution -> Substitution -> Substitution
 compose s1 s2 = do

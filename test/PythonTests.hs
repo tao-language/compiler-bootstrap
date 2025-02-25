@@ -106,8 +106,7 @@ run = describe "--==☯ Python ☯==--" $ do
 
   it "☯ build factorial" $ do
     putStrLn "  ☯ build factorial"
-    (ctx, syntaxErrors) <- load ["examples/factorial"]
-    syntaxErrors `shouldBe` []
+    ctx <- load ["examples/factorial"]
     build options ctx `shouldReturn` "build"
     Subprocess.run "build" "python" ["-m", "venv", "env"]
     Subprocess.run "build" "env/bin/pip" ["install", "-e", "."]

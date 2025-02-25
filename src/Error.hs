@@ -35,6 +35,42 @@ data CaseError a
   | RedundantCases [a]
   deriving (Eq, Show)
 
+instance Functor Error where
+  fmap :: (a -> b) -> Error a -> Error b
+  fmap f = \case
+    RuntimeError -> RuntimeError
+    SyntaxError e -> case e of
+      UnexpectedChar loc -> unexpectedChar loc
+    TypeError e -> case e of
+      OccursError x a -> occursError x (f a)
+      TypeMismatch a b -> typeMismatch (f a) (f b)
+      NotAFunction a -> notAFunction (f a)
+      UndefinedVar x -> undefinedVar x
+    CaseError e -> case e of
+      MissingCases cases -> missingCases (map f cases)
+      RedundantCases cases -> redundantCases (map f cases)
+
+unexpectedChar :: Location -> Error a
+unexpectedChar loc = SyntaxError (UnexpectedChar loc)
+
+occursError :: String -> a -> Error a
+occursError x a = TypeError (OccursError x a)
+
+typeMismatch :: a -> a -> Error a
+typeMismatch a b = TypeError (TypeMismatch a b)
+
+notAFunction :: a -> Error a
+notAFunction a = TypeError (NotAFunction a)
+
+undefinedVar :: String -> Error a
+undefinedVar x = TypeError (UndefinedVar x)
+
+missingCases :: [a] -> Error a
+missingCases cases = CaseError (MissingCases cases)
+
+redundantCases :: [a] -> Error a
+redundantCases cases = CaseError (RedundantCases cases)
+
 summary :: (Show a) => Error a -> String
 summary = \case
   SyntaxError _ -> "Syntax Error"

@@ -84,8 +84,11 @@ lower = \case
     let args = map ((C.substitute sub . lower) . snd) kvs
     C.tag k args
   Meta m a -> C.Meta m (lower a)
-  Err -> C.Err RuntimeError -- TODO: use the right error
+  Err e -> C.Err (lowerErr e)
   a -> error $ "TODO: lower " ++ show a
+
+lowerErr :: Error Expr -> Error C.Expr
+lowerErr = fmap lower
 
 lift :: C.Expr -> Expr
 lift = \case
@@ -117,14 +120,17 @@ lift = \case
   C.Let [] b -> lift b
   C.Let ((x, b) : env) c -> Let (Var x, lift b) (lift (C.Let env c))
   C.Meta m a -> Meta m (lift a)
-  C.Err e -> Err
+  C.Err e -> Err (liftErr e)
 
-liftTypeError :: TypeError C.Expr -> TypeError Expr
-liftTypeError = \case
-  OccursError x a -> OccursError x (lift a)
-  TypeMismatch a b -> TypeMismatch (lift a) (lift b)
-  NotAFunction a -> NotAFunction (lift a)
-  UndefinedVar x -> UndefinedVar x
+liftErr :: Error C.Expr -> Error Expr
+liftErr = fmap lift
+
+-- liftTypeError :: TypeError C.Expr -> TypeError Expr
+-- liftTypeError = \case
+--   OccursError x a -> OccursError x (lift a)
+--   TypeMismatch a b -> TypeMismatch (lift a) (lift b)
+--   NotAFunction a -> NotAFunction (lift a)
+--   UndefinedVar x -> UndefinedVar x
 
 class Resolve a where
   resolve :: Context -> FilePath -> a -> [(FilePath, Expr)]

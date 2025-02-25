@@ -14,10 +14,10 @@ run = describe "--==☯ Load ☯==--" $ do
 
   it "☯ loadModule" $ do
     let ctx = [("exists", [])]
-    let loadModule' = loadModule (ctx, [])
-    loadModule' "exists" `shouldReturn` ([("exists", [])], [])
-    loadModule' "examples/empty" `shouldReturn` ([("examples/empty", []), ("examples/empty/empty-file", []), ("exists", [])], [])
-    loadModule' "examples:empty" `shouldReturn` ([("empty", []), ("empty/empty-file", []), ("exists", [])], [])
+    let loadModule' = loadModule ctx
+    loadModule' "exists" `shouldReturn` [("exists", [])]
+    loadModule' "examples/empty" `shouldReturn` [("examples/empty", []), ("examples/empty/empty-file", []), ("exists", [])]
+    loadModule' "examples:empty" `shouldReturn` [("empty", []), ("empty/empty-file", []), ("exists", [])]
 
   it "☯ load" $ do
     let ctx =
@@ -29,6 +29,5 @@ run = describe "--==☯ Load ☯==--" $ do
               ]
             )
           ]
-    let errors = []
     result <- load ["examples/sub", "examples/empty"]
-    first dropMeta result `shouldBe` (ctx, errors)
+    dropMeta result `shouldBe` ctx

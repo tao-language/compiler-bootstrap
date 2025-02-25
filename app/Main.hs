@@ -47,21 +47,18 @@ main = do
 
 runCmd :: FilePath -> [String] -> IO ()
 runCmd filename args = do
-  (ctx, errors) <- load [filename]
-  mapM_ (\e -> display (SyntaxError e :: Error Expr)) errors
-  (ctx, errors) <- include "prelude" ctx
-  mapM_ print errors
-  (args', errors) <- loadAtoms "<run>" args
-  mapM_ print errors
+  ctx <- load [filename]
+  ctx <- include "prelude" ctx
+  args' <- loadAtoms "<run>" args
+  -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
   print (run ctx path (app' args'))
 
 checkCmd :: FilePath -> IO ()
 checkCmd filename = do
-  (pkg, errors) <- load [filename]
-  mapM_ (\e -> display (SyntaxError e :: Error Expr)) errors
-  (ctx, errors) <- include "prelude" pkg
-  mapM_ print errors
+  pkg <- load [filename]
+  ctx <- include "prelude" pkg
+  -- TODO: display errors
   let path = dropExtension (snd (split2 ':' filename))
   case checkTypes ctx path pkg of
     [] -> return ()
@@ -75,19 +72,17 @@ checkCmd filename = do
 
 testCmd :: FilePath -> [String] -> IO ()
 testCmd path patterns = do
-  (ctx, errors) <- load [path]
-  mapM_ print errors
-  (ctx, errors) <- include "prelude" ctx
-  mapM_ print errors
+  ctx <- load [path]
+  ctx <- include "prelude" ctx
+  -- TODO: display errors
   let results = testAll [] ctx
   mapM_ (putStr . show) results
 
 patchCmd :: FilePath -> [FilePath] -> [FilePath] -> IO ()
 patchCmd buildDir patches sources = do
-  (steps, errors) <- plan [] patches
-  mapM_ print errors
-  (ctx, errors) <- load sources
-  mapM_ print errors
+  steps <- plan [] patches
+  ctx <- load sources
+  -- TODO: display errors
   let build = patch ctx steps ctx
   let writeFile (path, id, stmts) = do
         let filename = buildDir </> path ++ "@" ++ intercalate "!" id ++ ".tao"
@@ -99,12 +94,11 @@ buildPythonCmd :: [FilePath] -> [FilePath] -> IO ()
 buildPythonCmd patches sources = do
   putStrLn $ "patches: " ++ show patches
   putStrLn $ "sources: " ++ show sources
-  (steps, errors) <- plan [] patches
+  steps <- plan [] patches
   putStrLn $ "steps: " ++ show steps
-  mapM_ print errors
-  (ctx, errors) <- load sources
+  ctx <- load sources
   putStrLn $ "ctx: " ++ show (map fst ctx)
-  mapM_ print errors
+  -- TODO: display errors
   let ctx' =
         patch ctx steps ctx
           & map (\(path, _, stmts) -> (path, stmts))

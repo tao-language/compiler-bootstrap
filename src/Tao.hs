@@ -9,6 +9,7 @@ import Data.Char (isAlphaNum, isLower, isUpper, toLower, toUpper)
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, union)
 import Data.List.Split (splitWhen)
+import Error (Error (..))
 import Location (Position (..))
 import Stdlib (split2)
 import System.FilePath (takeBaseName)
@@ -39,7 +40,7 @@ data Expr
   | Select Expr [(String, Expr)]
   | With Expr [(String, Expr)]
   | Meta C.Metadata Expr
-  | Err
+  | Err (Error Expr)
   deriving (Eq, Show)
 
 data Op1
@@ -95,9 +96,9 @@ data Stmt
 
 type Type = Expr
 
-type Package = (String, [Module])
-
 type Module = (FilePath, [Stmt])
+
+type Package = [Module]
 
 type Context = [Module]
 
@@ -221,7 +222,7 @@ funArgsOf :: Expr -> [Expr]
 funArgsOf = fst . funOf
 
 app' :: [Expr] -> Expr
-app' [] = Err
+app' [] = Unit
 app' [a] = a
 app' (a : bs) = app a bs
 
@@ -244,7 +245,7 @@ andOf (Meta _ a) = andOf a
 andOf a = [a]
 
 or' :: [Expr] -> Expr
-or' [] = Err
+or' [] = Unit
 or' [a] = a
 or' (a : bs) = Or a (or' bs)
 
@@ -329,7 +330,7 @@ lambda :: [String] -> Expr -> Expr
 lambda xs = fun (map Var xs)
 
 lambdaOf :: String -> Expr -> ([String], Expr)
-lambdaOf _ (Match [] []) = ([], Err)
+lambdaOf _ (Match [] []) = ([], Unit)
 lambdaOf _ (Match [] ((_, [], b) : _)) = ([], b)
 lambdaOf prefix (Match [] cases) = do
   let x = lambdaArg prefix cases
@@ -451,7 +452,7 @@ freeNames (vars, tags, calls) = \case
   Select a fields -> freeNames' a `union` freeNames' (and' (map snd fields))
   With a fields -> freeNames' a `union` freeNames' (and' (map snd fields))
   Meta _ a -> freeNames' a
-  Err -> []
+  Err _ -> []
   where
     freeNames' = freeNames (vars, tags, calls)
 
