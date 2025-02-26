@@ -246,6 +246,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- eval' (Fix "x" (And x y)) `shouldBe` Fix "x" (And x (Num 3.14))
     eval' (App z (And x y)) `shouldBe` App z (And (Int 42) (Num 3.14))
 
+  it "☯ eval eq" $ do
+    let eq a b = app (For "x" (fun [x, x] i1) `Or` fun [Any, Any] i0) [a, b]
+    eval ops (eq i2 i2) `shouldBe` i1
+    eval ops (eq i1 i2) `shouldBe` i0
+
   it "☯ eval factorial" $ do
     let env = [("f", factorial "f")]
     let eval' x = eval ops (Let env x)

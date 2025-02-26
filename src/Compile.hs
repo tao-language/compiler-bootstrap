@@ -67,9 +67,16 @@ lower = \case
     let n = foldl max 0 (map (\(_, ps, _) -> length ps) cases)
     let rpad :: Int -> a -> [a] -> [a]
         rpad n x xs = xs ++ replicate (n - length xs) x
-    let cases' = map (\(xs, ps, b) -> for xs $ fun (rpad n Any ps) b) cases
+    let cases' = map (\(xs, ps, b) -> For xs $ fun (rpad n Any ps) b) cases
     let args' = map (\i -> Var ("$" ++ show i)) [length args + 1 .. n]
     let match' = fun args' (app (or' cases') (args ++ args'))
+    -- let a = lower match'
+    -- (error . intercalate "\n")
+    --   [ show match',
+    --     C.format (C.dropMeta a),
+    --     C.format (C.dropMeta $ C.eval buildOps a),
+    --     C.format (C.eval buildOps $ C.dropMeta a)
+    --   ]
     lower match'
   Record fields -> do
     let k = '~' : intercalate "," (map fst fields)
@@ -178,7 +185,7 @@ class Compile a where
 
 instance Compile (String -> C.Env) where
   compile :: Context -> String -> String -> C.Env
-  -- compile ctx path name@"x" = do
+  -- compile ctx path name@"==" = do
   --   let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
   --       compileDef (path, alt) (env, alts) = do
   --         let (env', alt') = compile ctx path (name, alt)

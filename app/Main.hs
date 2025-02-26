@@ -1,5 +1,7 @@
 import Check (checkTypes)
+import Compile (Compile (compile))
 import Control.Monad (void)
+import qualified Core as C
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, isSuffixOf, partition)
 import Error (Error (..), SyntaxError (..), display)
@@ -20,6 +22,9 @@ main :: IO ()
 main = do
   cliArgs <- System.Environment.getArgs
   case cliArgs of
+    "core" : args -> case args of
+      path : args -> coreCmd path args
+      _ -> putStrLn "🛑 Please give me a path, and an expression to convert to Core."
     "run" : args -> case args of
       path : args -> runCmd path args
       _ -> putStrLn "🛑 Please give me a path, and an expression to run."
@@ -44,6 +49,22 @@ main = do
         _ -> putStrLn $ "🛑 Target not supported: " ++ target
       _ -> putStrLn "🛑 Please give me a target."
     _ -> error "TODO: repl"
+
+coreCmd :: FilePath -> [String] -> IO ()
+coreCmd filename args = do
+  pkg <- load [filename]
+  ctx <- include "prelude" pkg
+  args' <- loadAtoms "<core>" args
+  -- TODO: check for errors
+  let path = dropExtension (snd (split2 ':' filename))
+  let (env, expr') = compile ctx path (app' args') :: (C.Env, C.Expr)
+  let fmt = C.format . C.dropMeta
+  putStrLn ("# env (" ++ show (length env) ++ " symbols)")
+  mapM_ (\(x, a) -> putStrLn ("- " ++ fmt (C.Var x) ++ ": " ++ fmt a)) env
+  putStrLn "\n# expr"
+  putStrLn (fmt expr')
+  putStrLn "\n# result"
+  putStrLn (fmt (C.eval runtimeOps (C.Let env expr')))
 
 runCmd :: FilePath -> [String] -> IO ()
 runCmd filename args = do

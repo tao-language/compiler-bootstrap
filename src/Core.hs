@@ -330,10 +330,12 @@ reduceLet ops env = \case
 
 reduceApp :: Ops -> Expr -> Expr -> Expr
 reduceApp ops a b = case (a, b) of
-  (Any, b) -> App Any b
+  (Any, _) -> Any
   (Err e, _) -> Err e
   (a@Var {}, b) -> App a b
   (a@App {}, b) -> App a b
+  (a, b@Var {}) -> App a b
+  (a, b@App {}) -> App a b
   (Ann a _, b) -> reduceApp ops (reduce ops a) b
   (Or a1 a2, b) -> case reduceApp ops (reduce ops a1) b of
     Err _ -> reduceApp ops (reduce ops a2) b
@@ -346,6 +348,7 @@ reduceApp ops a b = case (a, b) of
         Fix _ _ -> False
         Fun _ _ -> False
         App _ _ -> False
+        Let _ a -> isTerm a
         Meta _ a -> isTerm a
         _ -> True
   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
@@ -353,11 +356,8 @@ reduceApp ops a b = case (a, b) of
     Just env -> reduce ops (Let env c)
     Nothing -> Err RuntimeError
   (Call f args, b) -> App (Call f args) b
-  (a, b@Var {}) -> App a b
-  (a, b@App {}) -> App a b
   (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
   (Meta _ a, b) -> reduceApp ops a b
-  (a, Meta _ b) -> reduceApp ops a b
   _ -> Err RuntimeError
 
 match :: Bool -> Ops -> Expr -> Expr -> Maybe Env
