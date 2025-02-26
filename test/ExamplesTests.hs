@@ -509,4 +509,4 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "4",
             Pass "5"
           ]
-    test (dropMeta ctx) (dropMeta pkg) `shouldBe` testResults
+    test ctx pkg `shouldBe` testResults

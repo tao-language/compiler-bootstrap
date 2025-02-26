@@ -337,12 +337,17 @@ reduceApp ops a b = case (a, b) of
   (Ann a _, b) -> reduceApp ops (reduce ops a) b
   (Or a1 a2, b) -> case reduceApp ops (reduce ops a1) b of
     Err _ -> reduceApp ops (reduce ops a2) b
-    c@Var {} -> c `Or` App a2 b
-    c@For {} -> c `Or` App a2 b
-    c@Fix {} -> c `Or` App a2 b
-    c@Fun {} -> c `Or` App a2 b
-    c@App {} -> c `Or` App a2 b
-    c -> c
+    c | isTerm c -> c
+    c -> c `Or` App a2 b
+    where
+      isTerm = \case
+        Var _ -> False
+        For _ _ -> False
+        Fix _ _ -> False
+        Fun _ _ -> False
+        App _ _ -> False
+        Meta _ a -> isTerm a
+        _ -> True
   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
   (Fun a c, b) -> case match False ops a b of
     Just env -> reduce ops (Let env c)
@@ -512,10 +517,10 @@ findLocation = \case
 
 unify :: Ops -> Env -> Expr -> Expr -> (Expr, Substitution)
 unify ops env a b = case (a, b) of
-  (Meta _ a, b) -> unify ops env a b
   (a, Meta _ b) -> unify ops env a b
-  (Any, _) -> (Any, [])
+  (Meta _ a, b) -> unify ops env a b
   (_, Any) -> (Any, [])
+  (Any, _) -> (Any, [])
   (Unit, Unit) -> (Unit, [])
   (IntT, IntT) -> (IntT, [])
   (Int _, IntT) -> (IntT, [])
@@ -690,7 +695,7 @@ check ops env a (For x t) = do
   ((a', for [x] (substitute [(y, Var x)] t')), s `compose` [(y, Var y)])
 check ops env (Or a b) t = do
   let ((a', ta'), (b', tb'), s) = check2 ops env (a, t) (b, t)
-  ((Or a' b', Or ta' tb'), s)
+  ((Or a' b', substitute s t), s)
 check ops env (For x a) t = do
   let y = newName (map fst env) x
   let ((a', t'), s) = check ops ((y, Var y) : env) (substitute [(x, Var y)] a) t

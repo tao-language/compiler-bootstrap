@@ -10,8 +10,7 @@ class TestSome a where
 
 instance TestSome Package where
   testSome :: Context -> (UnitTest -> Bool) -> Package -> [TestResult]
-  testSome ctx filter pkg =
-    concatMap (testSome (ctx ++ pkg) filter) pkg
+  testSome ctx filter = concatMap (testSome ctx filter)
 
 instance TestSome Module where
   testSome :: Context -> (UnitTest -> Bool) -> Module -> [TestResult]

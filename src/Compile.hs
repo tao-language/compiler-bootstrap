@@ -177,7 +177,7 @@ class Compile a where
   compile :: Context -> String -> a
 
 instance Compile (String -> C.Env) where
-  -- compile :: Context -> String -> String -> C.Env
+  compile :: Context -> String -> String -> C.Env
   -- compile ctx path name@"x" = do
   --   let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
   --       compileDef (path, alt) (env, alts) = do
