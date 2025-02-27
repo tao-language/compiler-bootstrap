@@ -626,7 +626,9 @@ unifyAll ops env (a : bs) (a' : bs') = do
 unifyAll _ _ _ _ = ([], [])
 
 infer :: Ops -> Env -> Expr -> ((Expr, Type), Substitution)
-infer _ _ Any = ((Any, Any), [])
+infer _ env Any = do
+  let y = newName (map fst env) "_"
+  ((Any, Var y), [(y, Var y)])
 infer _ _ Unit = ((Unit, Unit), [])
 infer _ _ IntT = ((IntT, IntT), [])
 infer _ _ NumT = ((NumT, NumT), [])
