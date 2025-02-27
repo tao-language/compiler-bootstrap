@@ -217,8 +217,8 @@ instance Compile (String -> C.Env) where
           alts -> [(name, C.fix [name] (C.or' alts))]
     unionBy (\a b -> fst a == fst b) def env
 
-instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
-  compile :: Context -> String -> (String, Expr) -> (C.Env, C.Expr)
+instance Compile ((String, Expr) -> (C.Env, C.Expr, C.Type)) where
+  compile :: Context -> String -> (String, Expr) -> (C.Env, C.Expr, C.Type)
   -- compile ctx path (name@"", expr) = do
   --   let a = lower expr
   --   let env = concatMap (compile ctx path) (delete name (C.freeNames (True, True, False) a))
@@ -241,7 +241,18 @@ instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
     let env = concatMap (compile ctx path) (delete name (C.freeNames (True, True, False) a))
     let ((a', t), s) = C.infer buildOps env a
     let xs = filter (`notElem` map fst env) (map fst s)
-    (env, C.for xs $ C.dropTypes a')
+    (env, C.for xs a', t)
+
+instance Compile ((String, Expr) -> (C.Env, C.Expr)) where
+  compile :: Context -> String -> (String, Expr) -> (C.Env, C.Expr)
+  compile ctx path (name, expr) = do
+    let (env, a, t) = compile ctx path (name, expr) :: (C.Env, C.Expr, C.Type)
+    (env, C.Ann a t)
+
+instance Compile (Expr -> (C.Env, C.Expr, C.Type)) where
+  compile :: Context -> String -> Expr -> (C.Env, C.Expr, C.Type)
+  compile ctx path expr =
+    compile ctx path (C.newName (freeVars expr) "", expr)
 
 instance Compile (Expr -> (C.Env, C.Expr)) where
   compile :: Context -> String -> Expr -> (C.Env, C.Expr)

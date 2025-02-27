@@ -273,6 +273,8 @@ freeTags :: Expr -> [String]
 freeTags = freeNames (False, True, False)
 
 occurs :: String -> Expr -> Bool
+occurs _ (Var _) = False
+occurs x (Or a b) = occurs x a || occurs x b
 occurs x a = x `elem` freeVars a
 
 newName :: [String] -> String -> String
@@ -332,10 +334,9 @@ reduceApp :: Ops -> Expr -> Expr -> Expr
 reduceApp ops a b = case (a, b) of
   (Any, _) -> Any
   (Err e, _) -> Err e
+  (a, b) | isOpen b -> App a b
   (a@Var {}, b) -> App a b
   (a@App {}, b) -> App a b
-  (a, b@Var {}) -> App a b
-  (a, b@App {}) -> App a b
   (Ann a _, b) -> reduceApp ops (reduce ops a) b
   (Or a1 a2, b) -> case reduceApp ops (reduce ops a1) b of
     Err _ -> reduceApp ops (reduce ops a2) b
@@ -649,8 +650,10 @@ infer ops env (And a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((And a' b', And ta tb), s)
 infer ops env (Or a b) = do
-  let ((a', ta), (b', tb), s) = infer2 ops env a b
-  ((Or a' b', Or ta tb), s)
+  let ((a', ta), (b', tb), s1) = infer2 ops env a b
+  case unify ops (s1 `compose` env) ta tb of
+    (Err _, _) -> ((Or a' b', Or ta tb), s1)
+    (t, s2) -> ((Or a' b', t), s2 `compose` s1)
 infer ops env (For x a) = do
   let y = newName (map fst env) x
   let ((a', ta), s) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
@@ -694,8 +697,10 @@ check ops env a (For x t) = do
   let ((a', t'), s) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] t)
   ((a', for [x] (substitute [(y, Var x)] t')), s `compose` [(y, Var y)])
 check ops env (Or a b) t = do
-  let ((a', ta'), (b', tb'), s) = check2 ops env (a, t) (b, t)
-  ((Or a' b', substitute s t), s)
+  let ((a', ta'), (b', tb'), s1) = check2 ops env (a, t) (b, t)
+  case unify ops (s1 `compose` env) ta' tb' of
+    (Err _, _) -> ((Or a' b', Or ta' tb'), s1)
+    (t', s2) -> ((Or a' b', t'), s2 `compose` s1)
 check ops env (For x a) t = do
   let y = newName (map fst env) x
   let ((a', t'), s) = check ops ((y, Var y) : env) (substitute [(x, Var y)] a) t

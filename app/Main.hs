@@ -1,5 +1,5 @@
 import Check (checkTypes)
-import Compile (Compile (compile))
+import Compile (Compile (compile), lower)
 import Control.Monad (void)
 import qualified Core as C
 import Data.Function ((&))
@@ -54,17 +54,23 @@ coreCmd :: FilePath -> [String] -> IO ()
 coreCmd filename args = do
   pkg <- load [filename]
   ctx <- include "prelude" pkg
-  args' <- loadAtoms "<core>" args
+  args' <- loadAtoms "<core>" (map (\a -> "(" ++ a ++ ")") args)
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
-  let (env, expr') = compile ctx path (app' args') :: (C.Env, C.Expr)
+  let a = lower (app' args')
+  let env = concatMap (compile ctx path) (C.freeNames (True, True, False) a)
+  let ((a', t), s) = C.infer buildOps env a
   let fmt = C.format . C.dropMeta
   putStrLn ("# env (" ++ show (length env) ++ " symbols)")
   mapM_ (\(x, a) -> putStrLn ("- " ++ fmt (C.Var x) ++ ": " ++ fmt a)) env
   putStrLn "\n# expr"
-  putStrLn (fmt expr')
+  putStrLn (fmt a')
+  putStrLn "\n# type"
+  putStrLn (fmt t)
+  putStrLn "\n# type substitutions"
+  mapM_ (\(x, a) -> putStrLn ("- " ++ fmt (C.Var x) ++ ": " ++ fmt a)) s
   putStrLn "\n# result"
-  putStrLn (fmt (C.eval runtimeOps (C.Let env expr')))
+  putStrLn (fmt (C.eval runtimeOps (C.Let env a')))
 
 runCmd :: FilePath -> [String] -> IO ()
 runCmd filename args = do
