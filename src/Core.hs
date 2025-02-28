@@ -259,8 +259,14 @@ freeNames (vars, tags, calls) = \case
   Call f args
     | calls -> foldr (union . freeNames') [f] args
     | otherwise -> foldr (union . freeNames') [] args
-  Let [] b -> freeNames' b
-  Let ((x, a) : defs) b -> delete x (freeNames' a `union` freeNames' (Let defs b))
+  -- TODO: This is much more subtle than it appears for Let.
+  --       Free names should be done recursively on definitions used.
+  --       More of a graph traversal problem, visiting nodes (definitions).
+  --       This could also be used to only keep the relevant definitions and drop irrelevant ones.
+  -- Let [] b -> freeNames' b
+  -- Let ((x, a) : defs) b -> delete x (freeNames' a `union` freeNames' (Let defs b))
+  -- Let defs b -> filter (`notElem` map fst defs) (foldr ((union . freeNames') . snd) (freeNames' b) defs)
+  Let _ b -> freeNames' b
   Meta _ a -> freeNames' a
   Err _ -> []
   where
@@ -275,6 +281,7 @@ freeTags = freeNames (False, True, False)
 occurs :: String -> Expr -> Bool
 occurs _ (Var _) = False
 occurs x (Or a b) = occurs x a || occurs x b
+occurs x (Meta _ a) = occurs x a
 occurs x a = x `elem` freeVars a
 
 newName :: [String] -> String -> String
@@ -510,6 +517,19 @@ dropMeta (Let defs b) = Let (map (second dropMeta) defs) (dropMeta b)
 dropMeta (Meta _ a) = dropMeta a
 dropMeta a = a
 
+dropLet :: Expr -> Expr
+dropLet (Ann a b) = Ann (dropLet a) (dropLet b)
+dropLet (And a b) = And (dropLet a) (dropLet b)
+dropLet (Or a b) = Or (dropLet a) (dropLet b)
+dropLet (For x a) = For x (dropLet a)
+dropLet (Fix x a) = Fix x (dropLet a)
+dropLet (Fun a b) = Fun (dropLet a) (dropLet b)
+dropLet (App a b) = App (dropLet a) (dropLet b)
+dropLet (Call op args) = Call op (map dropLet args)
+dropLet (Let _ b) = dropLet b
+dropLet (Meta m a) = Meta m (dropLet a)
+dropLet a = a
+
 findLocation :: Expr -> Maybe Location
 findLocation = \case
   Meta (Loc loc) _ -> Just loc
@@ -627,7 +647,7 @@ unifyAll _ _ _ _ = ([], [])
 
 infer :: Ops -> Env -> Expr -> ((Expr, Type), Substitution)
 infer _ env Any = do
-  let y = newName (map fst env) "_"
+  let y = newName ("_" : map fst env) "_"
   ((Any, Var y), [(y, Var y)])
 infer _ _ Unit = ((Unit, Unit), [])
 infer _ _ IntT = ((IntT, IntT), [])

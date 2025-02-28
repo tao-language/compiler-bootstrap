@@ -62,7 +62,7 @@ coreCmd filename args = do
   let ((a', t), s) = C.infer buildOps env a
   let fmt = C.format . C.dropMeta
   putStrLn ("# env (" ++ show (length env) ++ " symbols)")
-  mapM_ (\(x, a) -> putStrLn ("- " ++ fmt (C.Var x) ++ ": " ++ fmt a)) env
+  mapM_ (\(x, a) -> putStrLn ("- " ++ fmt (C.Var x) ++ ": " ++ fmt (C.dropLet a))) env
   putStrLn "\n# expr"
   putStrLn (fmt a')
   putStrLn "\n# type"
@@ -70,7 +70,10 @@ coreCmd filename args = do
   putStrLn "\n# type substitutions"
   mapM_ (\(x, a) -> putStrLn ("- " ++ fmt (C.Var x) ++ ": " ++ fmt a)) s
   putStrLn "\n# result"
-  putStrLn (fmt (C.eval runtimeOps (C.Let env a')))
+  putStrLn (fmt (C.eval runtimeOps (C.dropMeta $ C.Let env a')))
+
+-- @a x. (x : a) -> (@z. (z : a) -> ^True | (_ : a) -> ^False) (x : a)
+--  : (@a. (a -> ^Bool))
 
 runCmd :: FilePath -> [String] -> IO ()
 runCmd filename args = do
