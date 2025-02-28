@@ -263,6 +263,8 @@ freeNames (vars, tags, calls) = \case
   --       Free names should be done recursively on definitions used.
   --       More of a graph traversal problem, visiting nodes (definitions).
   --       This could also be used to only keep the relevant definitions and drop irrelevant ones.
+  --        e.g. : a -> Bool
+  --             (==) = x -> (y -> True | _ -> False) x
   -- Let [] b -> freeNames' b
   -- Let ((x, a) : defs) b -> delete x (freeNames' a `union` freeNames' (Let defs b))
   -- Let defs b -> filter (`notElem` map fst defs) (foldr ((union . freeNames') . snd) (freeNames' b) defs)
