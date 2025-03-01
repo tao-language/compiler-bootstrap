@@ -23,7 +23,7 @@ newtype SyntaxError
 data TypeError a
   = OccursError String a
   | TypeMismatch a a
-  | NotAFunction a
+  | NotAFunction a a
   | UndefinedVar String
   -- MissingArgs
   -- ExtraArgs
@@ -44,7 +44,7 @@ instance Functor Error where
     TypeError e -> case e of
       OccursError x a -> occursError x (f a)
       TypeMismatch a b -> typeMismatch (f a) (f b)
-      NotAFunction a -> notAFunction (f a)
+      NotAFunction a t -> notAFunction (f a) (f t)
       UndefinedVar x -> undefinedVar x
     CaseError e -> case e of
       MissingCases cases -> missingCases (map f cases)
@@ -59,8 +59,8 @@ occursError x a = TypeError (OccursError x a)
 typeMismatch :: a -> a -> Error a
 typeMismatch a b = TypeError (TypeMismatch a b)
 
-notAFunction :: a -> Error a
-notAFunction a = TypeError (NotAFunction a)
+notAFunction :: a -> a -> Error a
+notAFunction a t = TypeError (NotAFunction a t)
 
 undefinedVar :: String -> Error a
 undefinedVar x = TypeError (UndefinedVar x)
@@ -90,7 +90,7 @@ description = \case
         ++ show got
         ++ "\n\nI was expecting it to be:\n  "
         ++ show expected
-    NotAFunction t -> show e
+    NotAFunction a t -> show e
     UndefinedVar x -> show e
   _ -> "TODO: description"
 

@@ -268,7 +268,8 @@ freeNames (vars, tags, calls) = \case
   -- Let [] b -> freeNames' b
   -- Let ((x, a) : defs) b -> delete x (freeNames' a `union` freeNames' (Let defs b))
   -- Let defs b -> filter (`notElem` map fst defs) (foldr ((union . freeNames') . snd) (freeNames' b) defs)
-  Let _ b -> freeNames' b
+  -- Let _ b -> freeNames' b
+  Let env b -> freeNames' (reduce [] (Let env b))
   Meta _ a -> freeNames' a
   Err _ -> []
   where
@@ -759,6 +760,10 @@ checkApp ops env (a, ta) b = case ta of
     let x2 = newName (x1 : (x ++ "$") : map fst env) (x ++ "$")
     let ((a', _), (b', t1), s) = check2 ops (pushVars [x1, x2] env) (a, Fun (Var x1) (Var x2)) (b, Var x1)
     ((a', b'), (t1, substitute s (Var x2)), s `compose` [(x1, Var x1), (x2, Var x2)])
+  For x ta -> do
+    let (ta', s1) = instantiate (map fst env) (For x ta)
+    let (ab, ts, s2) = checkApp ops (s1 `compose` env) (substitute s1 a, ta') (substitute s1 b)
+    (ab, ts, s2 `compose` s1)
   Or ta1 ta2 -> do
     let ((a_, b_), (t1a, t2a), s1) = checkApp ops env (a, ta1) b
     let ((a', b'), (t1b, t2b), s2) = checkApp ops (s1 `compose` env) (a_, substitute s1 ta2) b_
@@ -769,7 +774,7 @@ checkApp ops env (a, ta) b = case ta of
   Meta _ ta -> checkApp ops env (a, ta) b
   _ -> do
     let ((b', tb), s) = infer ops env b
-    ((substitute s a, b'), (Err $ TypeError $ NotAFunction (substitute s ta), tb), s)
+    ((substitute s a, b'), (Err $ TypeError $ NotAFunction (substitute s a) (substitute s ta), tb), s)
 
 instantiate :: [String] -> Expr -> (Expr, Substitution)
 instantiate vars (For x a) | x `occurs` a = do

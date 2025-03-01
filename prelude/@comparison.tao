@@ -5,7 +5,7 @@ x < y = %int_lt(x, y)
 x < y = %num_lt(x, y)
 
 : a, a -> Bool
-(==) x y = match (x, y) {
+x == y = match (x, y) {
 | (x, x) -> True
 | _ -> False
 }
