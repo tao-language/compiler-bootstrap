@@ -10,10 +10,10 @@ import Stdlib (pad, slice)
 -- https://github.com/gleam-lang/gleam/blob/main/compiler-core/src/error.rs
 
 data Error a
-  = RuntimeError
-  | SyntaxError SyntaxError
+  = SyntaxError SyntaxError
   | TypeError (TypeError a)
   | CaseError (CaseError a)
+  | RuntimeError (RuntimeError a)
   deriving (Eq, Show)
 
 newtype SyntaxError
@@ -35,10 +35,19 @@ data CaseError a
   | RedundantCases [a]
   deriving (Eq, Show)
 
+data RuntimeError a
+  = UnhandledCase a
+  | CannotApply a a
+  | CustomError a
+  deriving (Eq, Show)
+
 instance Functor Error where
   fmap :: (a -> b) -> Error a -> Error b
   fmap f = \case
-    RuntimeError -> RuntimeError
+    RuntimeError e -> case e of
+      UnhandledCase a -> unhandledCase (f a)
+      CannotApply a b -> cannotApply (f a) (f b)
+      CustomError a -> customError (f a)
     SyntaxError e -> case e of
       UnexpectedChar loc -> unexpectedChar loc
     TypeError e -> case e of
@@ -70,6 +79,15 @@ missingCases cases = CaseError (MissingCases cases)
 
 redundantCases :: [a] -> Error a
 redundantCases cases = CaseError (RedundantCases cases)
+
+unhandledCase :: a -> Error a
+unhandledCase a = RuntimeError (UnhandledCase a)
+
+cannotApply :: a -> a -> Error a
+cannotApply a b = RuntimeError (CannotApply a b)
+
+customError :: a -> Error a
+customError a = RuntimeError (CustomError a)
 
 summary :: (Show a) => Error a -> String
 summary = \case

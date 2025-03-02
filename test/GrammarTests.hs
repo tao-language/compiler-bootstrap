@@ -36,7 +36,7 @@ grammar =
             Mul a b -> Just (a, b)
             _ -> Nothing,
           prefix 3 Neg "-" $ \case
-            Neg a -> Just a
+            Neg a -> Just ("", a)
             _ -> Nothing,
           infixR 4 Pow "^" $ \case
             Pow a b -> Just (a, b)
@@ -45,7 +45,7 @@ grammar =
             Fac a -> Just a
             _ -> Nothing,
           prefix 5 At "@" $ \case
-            At a -> Just a
+            At a -> Just ("", a)
             _ -> Nothing
         ]
     }

@@ -6,7 +6,7 @@ import Data.Function ((&))
 import Data.List (delete, intercalate, union, unionBy)
 import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
-import Error (Error (..), TypeError (..))
+import Error (Error (..), TypeError (..), cannotApply, unhandledCase)
 import Location (Location (..), Position (..), Range (..))
 import qualified Parser as P
 import Stdlib (replace, replaceString)
@@ -365,11 +365,11 @@ reduceApp ops a b = case (a, b) of
   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
   (Fun a c, b) -> case match False ops a b of
     Just env -> reduce ops (Let env c)
-    Nothing -> Err RuntimeError
+    Nothing -> Err (unhandledCase b)
   (Call f args, b) -> App (Call f args) b
   (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
   (Meta _ a, b) -> reduceApp ops a b
-  _ -> Err RuntimeError
+  _ -> Err (cannotApply a b)
 
 match :: Bool -> Ops -> Expr -> Expr -> Maybe Env
 match unify ops (Let env (Tag k)) b = case lookup k env of

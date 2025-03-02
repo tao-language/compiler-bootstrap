@@ -4,7 +4,7 @@ import qualified Core as C
 import Data.Bifunctor (second)
 import Data.Function ((&))
 import Data.List (intercalate, isInfixOf)
-import Error (Error (..))
+import Error (Error (..), customError)
 import Load
 import Location (Position (..))
 import System.FilePath (dropExtension)
@@ -26,6 +26,7 @@ instance (Show a) => Show (Result a) where
 
 test :: Context -> Package -> [Result Expr]
 test ctx pkg = do
+  let err a = Err (customError a)
   let output = \case
         TestPass {name} -> Pass name
         TestFail {name, expected, got} -> Fail name (dropMeta expected) (dropMeta got)
@@ -38,6 +39,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let (xT, xT') = (Var "xT", C.Var "xT")
   let (i1, i2, i3) = (Int 1, Int 2, Int 3)
   let (i1', i2', i3') = (C.Int 1, C.Int 2, C.Int 3)
+  let err a = Err (customError a)
 
   let name = "examples/empty"
   it ("☯ " ++ name ++ ".tao") $ do
@@ -90,7 +92,7 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "Tag match",
             Fail "Tag match fail" (Tag "B") (Tag "A"),
             Pass "Err match",
-            Fail "Err match fail" i1 (Err RuntimeError)
+            Fail "Err match fail" i1 (err Any)
           ]
     test ctx pkg `shouldBe` testResults
 
@@ -272,7 +274,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let ctx = pkg
     let testResults =
           [ Pass "For match",
-            Fail "For match fail" i1 (Err RuntimeError)
+            Fail "For match fail" i1 (err Any)
           ]
     test ctx pkg `shouldBe` testResults
 
@@ -302,7 +304,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let ctx = pkg
     let testResults =
           [ Pass "Call match",
-            Fail "Call match fail" i1 (Err RuntimeError)
+            Fail "Call match fail" i1 (err Any)
           ]
     test ctx pkg `shouldBe` testResults
 

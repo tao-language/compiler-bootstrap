@@ -25,15 +25,15 @@ atom f parser layout = do
         return (f x)
   Atom parser' layout
 
-prefix :: Int -> (a -> a) -> String -> (a -> Maybe a) -> Operator ctx a
+prefix :: Int -> (a -> a) -> String -> (a -> Maybe (String, a)) -> Operator ctx a
 prefix p f op match = do
   let parser' expr = do
         _ <- P.text op
         _ <- P.spaces
         f <$> expr
   let layout' rhs x = do
-        a <- match x
-        return (PP.Text op : rhs a)
+        (space, a) <- match x
+        return (PP.Text (op ++ space) : rhs a)
   Prefix p parser' layout'
 
 suffix :: Int -> (a -> a) -> String -> (a -> Maybe a) -> Operator ctx a

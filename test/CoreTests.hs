@@ -3,7 +3,7 @@ module CoreTests where
 import Core
 import Data.Bifunctor (Bifunctor (first))
 import Data.Char (toLower)
-import Error (Error (..), TypeError (..), typeMismatch)
+import Error (Error (..), TypeError (..), customError, typeMismatch)
 import Test.Hspec
 
 run :: SpecWith ()
@@ -12,7 +12,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let (a, b, c) = (Var "a", Var "b", Var "c")
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (f, g, h) = (Var "f", Var "g", Var "h")
-  let err = Err RuntimeError
+  let err = Err (customError Any)
 
   let add a b = Call "int_add" [a, b]
   let sub a b = Call "int_sub" [a, b]

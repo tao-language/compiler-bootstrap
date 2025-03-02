@@ -9,7 +9,7 @@ import Data.List (dropWhileEnd, intercalate, isPrefixOf, isSuffixOf, sort)
 import Data.List.Split (endsWith)
 import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
-import Error (Error (RuntimeError))
+import Error (Error (RuntimeError), customError)
 import Location (Location (..), Position (..), Range (..))
 import qualified Location as Loc
 import qualified Parser as P
@@ -187,7 +187,7 @@ parseAtom = do
       [ Any <$ P.word "_",
         IntT <$ P.word "Int",
         NumT <$ P.word "Num",
-        Err RuntimeError <$ P.word "!error",
+        Err (customError Any) <$ P.word "!error",
         do
           _ <- P.char 'c'
           quote <- P.oneOf [P.char '\'', P.char '"']
@@ -273,12 +273,12 @@ parseAtom = do
       ]
   a <-
     P.oneOf
-      [ do
-          _ <- P.spaces
-          _ <- P.word "if"
-          _ <- P.whitespaces
-          cond <- parseExpr 0 P.spaces
-          return (If cond a (Err RuntimeError)),
+      [ -- do
+        --   _ <- P.spaces
+        --   _ <- P.word "if"
+        --   _ <- P.whitespaces
+        --   cond <- parseExpr 0 P.spaces
+        --   return (If cond a (Err RuntimeError)),
         do
           _ <- P.char '.'
           x <- P.oneOf [parseNameVar, fmap show P.integer]

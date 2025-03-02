@@ -1,8 +1,8 @@
 module TaoTests where
 
 import Compile
-import Error (Error(..))
 import qualified Core as C
+import Error (Error (..), customError)
 import Location (Position (..))
 import qualified Run
 import Tao
@@ -175,7 +175,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
   -- Select Expr [(String, Expr)]
 
   it "☯ lower Expr Err" $ do
-    lower (Err RuntimeError) `shouldBe` C.Err RuntimeError
+    lower (Err (customError Any)) `shouldBe` C.Err (customError C.Any)
 
   -- it "☯ lower Stmt Import" $ do
   --   let stmt = Import "@pkg/mod" "mod" []
@@ -452,7 +452,7 @@ run = describe "--==☯ TaoTests ☯==--" $ do
     -- Record [(String, Expr)]
     -- Select Expr [(String, Expr)]
     -- With Expr [(String, Expr)]
-    compile' (Err RuntimeError) `shouldBe` ([], C.Err RuntimeError)
+    compile' (Err (customError Any)) `shouldBe` ([], C.Err (customError C.Any))
 
   it "☯ run" $ do
     let ctx =
