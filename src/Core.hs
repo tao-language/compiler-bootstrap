@@ -49,9 +49,9 @@ type Env = [(String, Expr)]
 type Substitution = [(String, Expr)]
 
 data Metadata
-  = Comments [String]
+  = Loc Location
+  | Comments [String]
   | TrailingComment String
-  | Loc Location
   deriving (Eq, Show)
 
 format :: Expr -> String

@@ -2,6 +2,7 @@ module Grammar where
 
 import Data.Bifunctor (Bifunctor (second))
 import Data.Function ((&))
+import Location (Location (..), Range (Range))
 import qualified Parser as P
 import qualified PrettyPrint as PP
 
@@ -18,19 +19,31 @@ data Grammar ctx a
   }
 
 atom :: (a -> b) -> P.Parser ctx a -> ((b -> PP.Layout) -> b -> Maybe PP.Layout) -> Operator ctx b
-atom f parser layout = do
+atom f = atomLoc (const f)
+
+atomLoc :: (Location -> a -> b) -> P.Parser ctx a -> ((b -> PP.Layout) -> b -> Maybe PP.Layout) -> Operator ctx b
+atomLoc f parser layout = do
   let parser' _ = do
+        start <- P.getState
         x <- parser
+        end <- P.getState
         _ <- P.spaces
-        return (f x)
+        let loc = Location start.filename (Range start.pos end.pos)
+        return (f loc x)
   Atom parser' layout
 
 prefix :: Int -> (a -> a) -> String -> (a -> Maybe (String, a)) -> Operator ctx a
-prefix p f op match = do
+prefix p f = prefixLoc p (const f)
+
+prefixLoc :: Int -> (Location -> a -> a) -> String -> (a -> Maybe (String, a)) -> Operator ctx a
+prefixLoc p f op match = do
   let parser' expr = do
+        start <- P.getState
         _ <- P.text op
+        end <- P.getState
         _ <- P.spaces
-        f <$> expr
+        let loc = Location start.filename (Range start.pos end.pos)
+        f loc <$> expr
   let layout' rhs x = do
         (space, a) <- match x
         return (PP.Text (op ++ space) : rhs a)
