@@ -508,7 +508,6 @@ dropTypes (Meta m a) = Meta m (dropTypes a)
 dropTypes a = a
 
 dropMeta :: Expr -> Expr
-dropMeta (Ann a b) = Ann (dropMeta a) (dropMeta b)
 dropMeta (And a b) = And (dropMeta a) (dropMeta b)
 dropMeta (Or a b) = Or (dropMeta a) (dropMeta b)
 dropMeta (For x a) = For x (dropMeta a)
