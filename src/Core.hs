@@ -435,7 +435,7 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
 
 eval :: Ops -> Expr -> Expr
 eval ops expr = case reduce ops expr of
-  Ann a b -> Ann (eval ops a) (eval ops b)
+  Ann a _ -> eval ops a
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> Or (eval ops a) (eval ops b)
   For x a -> for [x] (eval ops (Let [(x, Var x)] a))
