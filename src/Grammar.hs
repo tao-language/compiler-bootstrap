@@ -18,11 +18,8 @@ data Grammar ctx a
     operators :: [Operator ctx a]
   }
 
-atom :: (a -> b) -> P.Parser ctx a -> ((b -> PP.Layout) -> b -> Maybe PP.Layout) -> Operator ctx b
-atom f = atomLoc (const f)
-
-atomLoc :: (Location -> a -> b) -> P.Parser ctx a -> ((b -> PP.Layout) -> b -> Maybe PP.Layout) -> Operator ctx b
-atomLoc f parser layout = do
+atom :: (Location -> a -> b) -> P.Parser ctx a -> ((b -> PP.Layout) -> b -> Maybe PP.Layout) -> Operator ctx b
+atom f parser layout = do
   let parser' _ = do
         start <- P.getState
         x <- parser
@@ -32,11 +29,8 @@ atomLoc f parser layout = do
         return (f loc x)
   Atom parser' layout
 
-prefix :: Int -> (a -> a) -> String -> (a -> Maybe (String, a)) -> Operator ctx a
-prefix p f = prefixLoc p (const f)
-
-prefixLoc :: Int -> (Location -> a -> a) -> String -> (a -> Maybe (String, a)) -> Operator ctx a
-prefixLoc p f op match = do
+prefix :: Int -> (Location -> a -> a) -> String -> (a -> Maybe (String, a)) -> Operator ctx a
+prefix p f op match = do
   let parser' expr = do
         start <- P.getState
         _ <- P.text op
@@ -49,37 +43,46 @@ prefixLoc p f op match = do
         return (PP.Text (op ++ space) : rhs a)
   Prefix p parser' layout'
 
-suffix :: Int -> (a -> a) -> String -> (a -> Maybe a) -> Operator ctx a
+suffix :: Int -> (Location -> a -> a) -> String -> (a -> Maybe (a, String)) -> Operator ctx a
 suffix p f op match = do
   let parser' x _expr = do
+        start <- P.getState
         _ <- P.text op
+        end <- P.getState
         _ <- P.spaces
-        return (f x)
+        let loc = Location start.filename (Range start.pos end.pos)
+        return (f loc x)
   let layout' lhs _ x = do
-        a <- match x
-        return (lhs a ++ [PP.Text op])
+        (a, space) <- match x
+        return (lhs a ++ [PP.Text (space ++ op)])
   InfixL p parser' layout'
 
-infixL :: Int -> (a -> a -> a) -> String -> (a -> Maybe (a, a)) -> Operator ctx a
+infixL :: Int -> (Location -> a -> a -> a) -> String -> (a -> Maybe (a, String, a)) -> Operator ctx a
 infixL p f op match = do
   let parser' x expr = do
+        start <- P.getState
         _ <- P.text op
+        end <- P.getState
         _ <- P.spaces
-        f x <$> expr
+        let loc = Location start.filename (Range start.pos end.pos)
+        f loc x <$> expr
   let layout' lhs rhs x = do
-        (a, b) <- match x
-        return (lhs a ++ [PP.Text (" " ++ op ++ " ")] ++ rhs b)
+        (a, space, b) <- match x
+        return (lhs a ++ [PP.Text (space ++ op ++ space)] ++ rhs b)
   InfixL p parser' layout'
 
-infixR :: Int -> (a -> a -> a) -> String -> (a -> Maybe (a, a)) -> Operator ctx a
+infixR :: Int -> (Location -> a -> a -> a) -> String -> (a -> Maybe (a, String, a)) -> Operator ctx a
 infixR p f op match = do
   let parser' x expr = do
+        start <- P.getState
         _ <- P.text op
+        end <- P.getState
         _ <- P.spaces
-        f x <$> expr
+        let loc = Location start.filename (Range start.pos end.pos)
+        f loc x <$> expr
   let layout' lhs rhs x = do
-        (a, b) <- match x
-        return (lhs a ++ [PP.Text (" " ++ op ++ " ")] ++ rhs b)
+        (a, space, b) <- match x
+        return (lhs a ++ [PP.Text (space ++ op ++ space)] ++ rhs b)
   InfixR p parser' layout'
 
 parse :: Grammar ctx a -> Int -> P.Parser ctx a

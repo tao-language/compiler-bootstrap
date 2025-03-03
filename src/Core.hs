@@ -6,7 +6,7 @@ import Data.Function ((&))
 import Data.List (delete, intercalate, union, unionBy)
 import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
-import Error (Error (..), TypeError (..), cannotApply, unhandledCase)
+import Error (Error (..), TypeError (..), cannotApply, typeMismatch, unhandledCase)
 import Location (Location (..), Position (..), Range (..))
 import qualified Parser as P
 import Stdlib (replace, replaceString)
@@ -350,18 +350,7 @@ reduceApp ops a b = case (a, b) of
   (Ann a _, b) -> reduceApp ops (reduce ops a) b
   (Or a1 a2, b) -> case reduceApp ops (reduce ops a1) b of
     Err _ -> reduceApp ops (reduce ops a2) b
-    c | isTerm c -> c
-    c -> c `Or` App a2 b
-    where
-      isTerm = \case
-        Var _ -> False
-        For _ _ -> False
-        Fix _ _ -> False
-        Fun _ _ -> False
-        App _ _ -> False
-        Let _ a -> isTerm a
-        Meta _ a -> isTerm a
-        _ -> True
+    c -> c
   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
   (Fun a c, b) -> case match False ops a b of
     Just env -> reduce ops (Let env c)
@@ -508,6 +497,7 @@ dropTypes (Meta m a) = Meta m (dropTypes a)
 dropTypes a = a
 
 dropMeta :: Expr -> Expr
+dropMeta (Ann a b) = Ann (dropMeta a) (dropMeta b)
 dropMeta (And a b) = And (dropMeta a) (dropMeta b)
 dropMeta (Or a b) = Or (dropMeta a) (dropMeta b)
 dropMeta (For x a) = For x (dropMeta a)
@@ -540,8 +530,12 @@ findLocation = \case
 
 unify :: Ops -> Env -> Expr -> Expr -> (Expr, Substitution)
 unify ops env a b = case (a, b) of
-  (a, Meta _ b) -> unify ops env a b
-  (Meta _ a, b) -> unify ops env a b
+  (a, Meta m b) -> case unify ops env a b of
+    (Err (TypeError (TypeMismatch a b)), s) -> (Err $ typeMismatch a (Meta m b), s)
+    result -> result
+  (Meta m a, b) -> case unify ops env a b of
+    (Err (TypeError (TypeMismatch a b)), s) -> (Err $ typeMismatch (Meta m a) b, s)
+    result -> result
   (_, Any) -> (Any, [])
   (Any, _) -> (Any, [])
   (Unit, Unit) -> (Unit, [])
@@ -669,7 +663,9 @@ infer ops env (Var x) = do
           (ta, s)
         Nothing -> (Err $ TypeError $ UndefinedVar x, [])
   ((Var x, ta), s)
-infer ops env (Ann a t) = check ops env a t
+infer ops env (Ann a t) = do
+  let ((a', t'), s) = check ops env a t
+  ((Ann a' t', t'), s)
 infer ops env (And a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((And a' b', And ta tb), s)
@@ -737,10 +733,12 @@ check ops env (App a b) t2 = do
   let ((a', _), s2) = check ops (s1 `compose` env) (substitute s1 a) (Fun t1 (substitute s1 t2))
   let s = s2 `compose` s1
   ((App a' (substitute s2 (Ann b' t1)), substitute s t2), s)
-check ops env a (Meta _ t) = check ops env a t
+check ops env a (Meta m t) = do
+  let ((a', t'), s) = check ops env a t
+  ((a', Meta m t'), s)
 check ops env (Meta m a) t = do
-  let ((a', ta), s) = check ops env a t
-  ((Meta m a', ta), s)
+  let ((a', t'), s) = check ops env a t
+  ((Meta m a', t'), s)
 check ops env a t = do
   let ((a', ta), s1) = infer ops env a
   let (t', s2) = unify ops env ta (substitute s1 t)
