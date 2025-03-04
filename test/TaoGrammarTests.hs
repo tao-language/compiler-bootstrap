@@ -293,7 +293,18 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   -- it "☯ Tao.String literal" $ do
   -- it "☯ Tao.String interpolation" $ do
 
-  -- Or Expr Expr
+  let or' r c a b = loc r c r (c + 1) (Or a b)
+
+  it "☯ Tao.Or" $ do
+    let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
+    let expr = or' 1 3 (x 1 1) (y 1 5)
+    let (_, expr') = compile ctx "m" expr
+    parse' "x | y " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "x | y"
+    C.dropMeta expr' `shouldBe` C.Ann (C.Or x' y') (C.Or C.IntT C.NumT)
+    liftExpr expr' `shouldBe` Ann expr (Or IntT NumT)
+    eval ctx "m" expr `shouldBe` Or (Int 42) (Num 3.14)
+
   -- For [String] Expr
   -- Fun [(String, Pattern)] Expr
   -- App Expr [Expr]

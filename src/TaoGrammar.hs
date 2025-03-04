@@ -355,7 +355,10 @@ grammar = do
                         Val a -> error "TODO: layout string interpolation"
                   Just ([PP.Text "'"] ++ concatMap layoutSegment segments ++ [PP.Text "'"])
                 _ -> Nothing,
-          -- Or Expr Expr
+          -- Or
+          G.infixL 1 (loc2 Or) "|" $ \case
+            Or a b -> Just (a, " ", b)
+            _ -> Nothing,
           -- For [String] Expr
           -- Fun [(String, Pattern)] Expr
           -- App Expr [Expr]
@@ -691,7 +694,7 @@ lowerExpr = \case
   List (a : bs) -> C.and' [C.Tag "::", lowerExpr a, lowerExpr (List bs)]
   String [] -> C.Tag "''"
   String segments -> error "TODO: lower String"
-  -- Or a b -> C.Or (lowerExpr a) (lowerExpr b)
+  Or a b -> C.Or (lowerExpr a) (lowerExpr b)
   -- For xs (Meta _ a) -> lowerExpr (For xs a)
   -- For xs (For ys a) -> lowerExpr (For (xs ++ ys) a)
   -- For [] (Fun a b) -> do
@@ -782,7 +785,7 @@ liftExpr = \case
     (a, b) -> Tag "::" [a, b]
   C.And (C.Tag k) args -> Tag k (map liftExpr (C.andOf args))
   C.And a bs -> Tuple (map liftExpr (a : C.andOf bs))
-  -- C.Or a b -> Or (liftExpr a) (liftExpr b)
+  C.Or a b -> Or (liftExpr a) (liftExpr b)
   -- C.For x a -> case liftExpr a of
   --   For xs a -> for (x : xs) a
   --   a -> for [x] a
