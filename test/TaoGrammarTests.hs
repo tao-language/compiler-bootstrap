@@ -28,6 +28,8 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   let var r c x = loc r c r (c + length x) (Var x)
   let tag r c k args = loc r c r (c + length k) (Tag k args)
   let ann r c a b = loc r c r (c + 1) (Ann a b)
+  let or' r c a b = loc r c r (c + 1) (Or a b)
+  let fun r c a b = loc r c r (c + 2) (Fun a b)
 
   let x r c = var r c "x"
   let y r c = var r c "y"
@@ -55,7 +57,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     parse' "![file:1:2,3:4] _" `shouldBe` Right (expr, "")
     format 80 expr `shouldBe` "_"
     C.dropMeta expr' `shouldBe` C.Ann C.Any (C.Var "_1")
-    liftExpr expr' `shouldBe` Ann expr (Var "_1")
+    liftExpr expr' `shouldBe` Ann (any 1 17) (Var "_1")
     eval ctx "m" expr `shouldBe` Any
 
   it "☯ Tao.Meta.Comments 1" $ do
@@ -237,7 +239,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     parse' "(x) " `shouldBe` Right (x 1 2, "")
     format 80 expr `shouldBe` "(x)"
     C.dropMeta expr' `shouldBe` C.Ann x' C.IntT
-    liftExpr expr' `shouldBe` Ann (loc 1 1 1 3 (x 1 2)) IntT
+    liftExpr expr' `shouldBe` Ann (x 1 2) IntT
     eval ctx "m" expr `shouldBe` Int 42
 
   it "☯ Tao.Tuple 2" $ do
@@ -293,8 +295,6 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   -- it "☯ Tao.String literal" $ do
   -- it "☯ Tao.String interpolation" $ do
 
-  let or' r c a b = loc r c r (c + 1) (Or a b)
-
   it "☯ Tao.Or" $ do
     let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
     let expr = or' 1 3 (x 1 1) (y 1 5)
@@ -305,8 +305,46 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     liftExpr expr' `shouldBe` Ann expr (Or IntT NumT)
     eval ctx "m" expr `shouldBe` Or (Int 42) (Num 3.14)
 
-  -- For [String] Expr
-  -- Fun [(String, Pattern)] Expr
+  it "☯ Tao.For 0" $ do
+    let ctx = [("m", [def "x" (int 10 10 42)])]
+    let expr = loc 1 1 1 2 (For [] (x 1 4))
+    let (_, expr') = compile ctx "m" expr
+    parse' "@; x " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "@; x"
+    C.dropMeta expr' `shouldBe` C.Ann x' C.IntT
+    liftExpr expr' `shouldBe` Ann (x 1 4) IntT
+    eval ctx "m" expr `shouldBe` Int 42
+
+  it "☯ Tao.For 1" $ do
+    let ctx = [("m", [def "x" (int 10 10 42)])]
+    let expr = loc 1 1 1 3 (For ["a"] (x 1 5))
+    let (_, expr') = compile ctx "m" expr
+    parse' "@a; x " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "@a; x"
+    C.dropMeta expr' `shouldBe` C.Ann x' C.IntT
+    liftExpr expr' `shouldBe` Ann (x 1 5) IntT
+    eval ctx "m" expr `shouldBe` Int 42
+
+  it "☯ Tao.For 2" $ do
+    let ctx = [("m", [def "x" (int 10 10 42)])]
+    let expr = loc 1 1 1 5 (For ["a", "b"] (x 1 7))
+    let (_, expr') = compile ctx "m" expr
+    parse' "@a b; x " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "@a b; x"
+    C.dropMeta expr' `shouldBe` C.Ann x' C.IntT
+    liftExpr expr' `shouldBe` Ann (x 1 7) IntT
+    eval ctx "m" expr `shouldBe` Int 42
+
+  it "☯ Tao.Fun" $ do
+    let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
+    let expr = fun 1 3 (x 1 1) (y 1 6)
+    let (_, expr') = compile ctx "m" expr
+    parse' "x -> y " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "x -> y"
+    C.dropMeta expr' `shouldBe` C.Ann (C.for ["x1T", "x"] $ C.Fun (C.Ann x' (C.Var "x1T")) y') (C.Fun (C.Var "x1T") C.NumT)
+    liftExpr expr' `shouldBe` Ann (For ["x1T"] $ loc 1 3 1 5 $ For ["x"] $ Fun (Ann (x 1 1) (Var "x1T")) (y 1 6)) (Fun (Var "x1T") NumT)
+    eval ctx "m" expr `shouldBe` For ["x"] (Fun (Var "x") (Num 3.14))
+
   -- App Expr [Expr]
   -- Call String [(String, Expr)]
   -- Spread Expr

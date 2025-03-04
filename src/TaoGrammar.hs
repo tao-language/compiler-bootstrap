@@ -1,5 +1,6 @@
 module TaoGrammar where
 
+import Control.Monad (void)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (chr, ord)
@@ -27,7 +28,7 @@ data Expr
   | String [Segment]
   | Or Expr Expr
   | For [String] Expr
-  | Fun [Pattern] Expr
+  | Fun Pattern Expr
   | App Expr [(String, Expr)]
   | Call String [Expr]
   | Spread Expr
@@ -161,7 +162,7 @@ instance Apply Expr where
       String (map applySegment segments)
     Or a b -> Or (f a) (f b)
     For xs a -> For xs (f a)
-    Fun args body -> Fun (map f args) (f body)
+    Fun a b -> Fun (f a) (f b)
     App fun kwargs -> App (f fun) (second f <$> kwargs)
     Call x args -> Call x (map f args)
     Spread a -> Spread (f a)
@@ -204,14 +205,14 @@ collect f = \case
     unionMap collectSegment segments
   Or a b -> f a `union` f b
   For xs a -> filter (`notElem` xs) (f a)
-  Fun args body -> unionMap f args `union` f body
+  Fun a b -> f a `union` f b
   App fun kwargs -> f fun `union` unionMap (f . snd) kwargs
   Call x args -> unionMap f args
   Spread a -> f a
   Op1 op a -> f a
   Op2 op a b -> f a `union` f b
   Match args cases -> do
-    let collectCase (xs, a, b) = f (For xs (Fun [a] b))
+    let collectCase (xs, a, b) = f (For xs (Fun a b))
     unionMap f args `union` unionMap collectCase cases
   If a b c -> f a `union` f b `union` f c
   Let (a, b) c -> f a `union` f b `union` f c
@@ -359,8 +360,36 @@ grammar = do
           G.infixL 1 (loc2 Or) "|" $ \case
             Or a b -> Just (a, " ", b)
             _ -> Nothing,
-          -- For [String] Expr
-          -- Fun [(String, Pattern)] Expr
+          -- For
+          let parser expr = do
+                start <- P.getState
+                _ <- P.char '@'
+                xs <-
+                  P.oneOf
+                    [ do
+                        x <- parseNameVar
+                        _ <- P.spaces
+                        xs <- P.zeroOrMore $ do
+                          y <- parseNameVar
+                          _ <- P.spaces
+                          return y
+                        return (x : xs),
+                      return []
+                    ]
+                end <- P.getState
+                _ <- lineBreak
+                _ <- P.whitespaces
+                a <- expr
+                _ <- P.spaces
+                return (withLoc start end $ For xs a)
+           in G.Prefix 1 parser $ \layout -> \case
+                For xs a ->
+                  Just (PP.Text ('@' : unwords xs ++ "; ") : layout a)
+                _ -> Nothing,
+          -- Fun
+          G.infixR 1 (loc2 Fun) "->" $ \case
+            Fun a b -> Just (a, " ", b)
+            _ -> Nothing,
           -- App Expr [Expr]
           -- Call String [(String, Expr)]
           -- Spread Expr
@@ -441,6 +470,132 @@ grammar = do
       [] -> []
       [a] -> layout a
       a : bs -> layout a ++ [PP.Text ", "] ++ collectionLayout layout bs
+
+lowerExpr :: Expr -> C.Expr
+lowerExpr = \case
+  Any -> C.Any
+  IntT -> C.IntT
+  NumT -> C.NumT
+  Int i -> C.Int i
+  Num n -> C.Num n
+  Char c -> C.tag "Char" [C.Int (ord c)]
+  Var x -> C.Var x
+  Tag k [] -> C.Tag k
+  Tag k args -> lowerExpr (Tuple (Tag k [] : args))
+  Ann a b -> C.Ann (lowerExpr a) (lowerExpr b)
+  Tuple items -> C.and' (map lowerExpr items)
+  List [] -> C.Tag "[]"
+  List (a : bs) -> C.and' [C.Tag "::", lowerExpr a, lowerExpr (List bs)]
+  String [] -> C.Tag "''"
+  String segments -> error "TODO: lower String"
+  Or a b -> C.Or (lowerExpr a) (lowerExpr b)
+  -- For xs (For ys a) -> lowerExpr (For (xs ++ ys) a)
+  For [] (Fun a b) -> C.Fun (lowerExpr a) (lowerExpr b)
+  For [] a -> lowerExpr a
+  For xs a -> C.for xs (lowerExpr (For [] a))
+  Fun a b -> lowerExpr (For (freeVars a) (Fun a b))
+  -- App a b -> C.App (lowerExpr a) (lowerExpr b)
+  -- Call op args -> C.Call op (map lowerExpr args)
+  -- Op1 op a -> lowerExpr (App (Var (show op)) a)
+  -- Op2 op a b -> lowerExpr (app (Var (show op)) [a, b])
+  Let (a, b) c -> case a of
+    Var x | c == Var x -> lowerExpr b
+    -- Var x -> C.App (lowerExpr (Fun a c)) (C.fix [x] (lowerExpr b))
+    -- Ann (Or a1 a2) t -> lowerExpr (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
+    -- Ann (App a1 a2) t -> lowerExpr (Let (Ann a1 t, Fun a2 b) c)
+    -- Ann (Op1 op a) t -> lowerExpr (Let (Ann (Var (show op)) t, Fun a b) c)
+    -- Ann (Op2 op a1 a2) t -> lowerExpr (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
+    -- Ann (Meta _ a) t -> lowerExpr (Let (Ann a t, b) c)
+    -- Ann a t -> lowerExpr (Let (a, Ann b t) c)
+    -- Or a1 a2 -> lowerExpr (lets [(a1, b), (a2, b)] c)
+    -- App a1 a2 -> lowerExpr (Let (a1, Fun a2 b) c)
+    -- Op1 op a -> lowerExpr (Let (Var (show op), Fun a b) c)
+    -- Op2 op a1 a2 -> lowerExpr (Let (Var (show op), fun [a1, a2] b) c)
+    -- For xs a -> lowerExpr (App (For xs (Fun a c)) b)
+    -- Meta _ a -> lowerExpr (Let (a, b) c)
+    -- a -> lowerExpr (App (Fun [("", a)] c) [("", b)])
+    a -> error $ "TODO: lowerExpr " ++ show (Let (a, b) c)
+  -- -- lowerExpr env (Bind (ts, p, a) b) = lowerExpr env (App (Trait a "<-") (Function [p] b))
+  -- If a b c -> lowerExpr (Match [a] [([], [Tag "True"], b), ([], [], c)])
+  -- Match args [(xs, ps, b)] -> lowerExpr (app (For xs $ fun ps b) args)
+  -- Match args cases -> do
+  --   let n = foldl max 0 (map (\(_, ps, _) -> length ps) cases)
+  --   let rpad :: Int -> a -> [a] -> [a]
+  --       rpad n x xs = xs ++ replicate (n - length xs) x
+  --   let cases' = map (\(xs, ps, b) -> For xs $ fun (rpad n Any ps) b) cases
+  --   let args' = map (\i -> Var ("$" ++ show i)) [length args + 1 .. n]
+  --   let match' = fun args' (app (or' cases') (args ++ args'))
+  --   -- let a = lowerExpr match'
+  --   -- (error . intercalate "\n")
+  --   --   [ show match',
+  --   --     C.format (C.dropMeta a),
+  --   --     C.format (C.dropMeta $ C.eval buildOps a),
+  --   --     C.format (C.eval buildOps $ C.dropMeta a)
+  --   --   ]
+  --   lowerExpr match'
+  -- Record fields -> do
+  --   let k = '~' : intercalate "," (map fst fields)
+  --   lowerExpr (tag k (map snd fields))
+  -- Select a kvs -> do
+  --   let sub = case a of
+  --         Record fields -> map (second lowerExpr) fields
+  --         a -> do
+  --           let xs = freeVars (and' (map snd kvs))
+  --           map (\x -> (x, C.App (C.Var x) (lowerExpr a))) xs
+  --   let k = '~' : intercalate "," (map fst kvs)
+  --   let args = map ((C.substitute sub . lowerExpr) . snd) kvs
+  --   C.tag k args
+  Meta m a -> C.Meta m (lowerExpr a)
+  Err e -> C.Err (fmap lowerExpr e)
+  a -> error $ "TODO: lowerExpr " ++ show a
+
+liftExpr :: C.Expr -> Expr
+liftExpr = \case
+  C.Any -> Any
+  C.Unit -> Tuple []
+  C.IntT -> IntT
+  C.NumT -> NumT
+  C.Int i -> Int i
+  C.Num n -> Num n
+  C.Var x -> Var x
+  C.Tag "~" -> Record []
+  C.Tag "[]" -> List []
+  C.Tag "''" -> String []
+  C.Tag k -> Tag k []
+  C.Ann a b -> Ann (liftExpr a) (liftExpr b)
+  C.And (C.Tag "Char") (C.Int i) -> Char (chr i)
+  C.And (C.Tag ('~' : names)) args -> do
+    let keys = split ',' names
+    let values = map liftExpr (C.andOf args)
+    Record (zip keys values)
+  C.And (C.Tag "::") (C.And a b) -> case (liftExpr a, liftExpr b) of
+    (a, List bs) -> List (a : bs)
+    (a, String segments) -> error "TODO: lift String"
+    (a, b) -> Tag "::" [a, b]
+  C.And (C.Tag k) args -> Tag k (map liftExpr (C.andOf args))
+  C.And a bs -> Tuple (map liftExpr (a : C.andOf bs))
+  C.Or a b -> Or (liftExpr a) (liftExpr b)
+  C.For x a -> case liftExpr a of
+    For xs a -> For (x : xs) a
+    a -> For [x] a
+  C.Fun a b -> Fun (liftExpr a) (liftExpr b)
+  -- C.Fix x a
+  --   | x `C.occurs` a -> Let (Var x, liftExpr a) (liftExpr a)
+  --   | otherwise -> liftExpr a
+  -- C.App a b -> App (liftExpr a) (liftExpr b)
+  -- C.Call op args -> Call op (map liftExpr args)
+  -- C.Let [] b -> liftExpr b
+  -- C.Let ((x, b) : env) c -> Let (Var x, liftExpr b) (liftExpr (C.Let env c))
+  C.Meta (C.Loc _) (C.Meta (C.Loc loc) a) -> Meta (C.Loc loc) (liftExpr a)
+  C.Meta m a -> Meta m (liftExpr a)
+  C.Err e -> Err (fmap liftExpr e)
+  a -> error $ "TODO: liftExpr " ++ show a
+
+lineBreak :: P.Parser String ()
+lineBreak = do
+  _ <- P.oneOf [P.char '\n', P.char ';']
+  _ <- P.whitespaces
+  return ()
 
 parseNameVar :: P.Parser String String
 parseNameVar =
@@ -676,127 +831,3 @@ instance Compile String where
           alts -> [(name, C.fix [name] (C.or' alts))]
     let env' = unionBy (\a b -> fst a == fst b) def env
     (env', C.Var name)
-
-lowerExpr :: Expr -> C.Expr
-lowerExpr = \case
-  Any -> C.Any
-  IntT -> C.IntT
-  NumT -> C.NumT
-  Int i -> C.Int i
-  Num n -> C.Num n
-  Char c -> C.tag "Char" [C.Int (ord c)]
-  Var x -> C.Var x
-  Tag k [] -> C.Tag k
-  Tag k args -> lowerExpr (Tuple (Tag k [] : args))
-  Ann a b -> C.Ann (lowerExpr a) (lowerExpr b)
-  Tuple items -> C.and' (map lowerExpr items)
-  List [] -> C.Tag "[]"
-  List (a : bs) -> C.and' [C.Tag "::", lowerExpr a, lowerExpr (List bs)]
-  String [] -> C.Tag "''"
-  String segments -> error "TODO: lower String"
-  Or a b -> C.Or (lowerExpr a) (lowerExpr b)
-  -- For xs (Meta _ a) -> lowerExpr (For xs a)
-  -- For xs (For ys a) -> lowerExpr (For (xs ++ ys) a)
-  -- For [] (Fun a b) -> do
-  --   let (args, body) = funOf (Fun a b)
-  --   C.fun (map lowerExpr args) (lowerExpr body)
-  -- For [] a -> lowerExpr a
-  -- For xs a -> C.for xs (lowerExpr (For [] a))
-  -- Fun a b -> do
-  --   let (args, body) = funOf (Fun a b)
-  --   lowerExpr (For (freeVars (and' args)) (fun args body))
-  -- App a b -> C.App (lowerExpr a) (lowerExpr b)
-  -- Call op args -> C.Call op (map lowerExpr args)
-  -- Op1 op a -> lowerExpr (App (Var (show op)) a)
-  -- Op2 op a b -> lowerExpr (app (Var (show op)) [a, b])
-  Let (a, b) c -> case a of
-    Var x | c == Var x -> lowerExpr b
-    -- Var x -> C.App (lowerExpr (Fun a c)) (C.fix [x] (lowerExpr b))
-    -- Ann (Or a1 a2) t -> lowerExpr (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
-    -- Ann (App a1 a2) t -> lowerExpr (Let (Ann a1 t, Fun a2 b) c)
-    -- Ann (Op1 op a) t -> lowerExpr (Let (Ann (Var (show op)) t, Fun a b) c)
-    -- Ann (Op2 op a1 a2) t -> lowerExpr (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
-    -- Ann (Meta _ a) t -> lowerExpr (Let (Ann a t, b) c)
-    -- Ann a t -> lowerExpr (Let (a, Ann b t) c)
-    -- Or a1 a2 -> lowerExpr (lets [(a1, b), (a2, b)] c)
-    -- App a1 a2 -> lowerExpr (Let (a1, Fun a2 b) c)
-    -- Op1 op a -> lowerExpr (Let (Var (show op), Fun a b) c)
-    -- Op2 op a1 a2 -> lowerExpr (Let (Var (show op), fun [a1, a2] b) c)
-    -- For xs a -> lowerExpr (App (For xs (Fun a c)) b)
-    -- Meta _ a -> lowerExpr (Let (a, b) c)
-    -- a -> lowerExpr (App (Fun [("", a)] c) [("", b)])
-    a -> error $ "TODO: lowerExpr " ++ show (Let (a, b) c)
-  -- -- lowerExpr env (Bind (ts, p, a) b) = lowerExpr env (App (Trait a "<-") (Function [p] b))
-  -- If a b c -> lowerExpr (Match [a] [([], [Tag "True"], b), ([], [], c)])
-  -- Match args [(xs, ps, b)] -> lowerExpr (app (For xs $ fun ps b) args)
-  -- Match args cases -> do
-  --   let n = foldl max 0 (map (\(_, ps, _) -> length ps) cases)
-  --   let rpad :: Int -> a -> [a] -> [a]
-  --       rpad n x xs = xs ++ replicate (n - length xs) x
-  --   let cases' = map (\(xs, ps, b) -> For xs $ fun (rpad n Any ps) b) cases
-  --   let args' = map (\i -> Var ("$" ++ show i)) [length args + 1 .. n]
-  --   let match' = fun args' (app (or' cases') (args ++ args'))
-  --   -- let a = lowerExpr match'
-  --   -- (error . intercalate "\n")
-  --   --   [ show match',
-  --   --     C.format (C.dropMeta a),
-  --   --     C.format (C.dropMeta $ C.eval buildOps a),
-  --   --     C.format (C.eval buildOps $ C.dropMeta a)
-  --   --   ]
-  --   lowerExpr match'
-  -- Record fields -> do
-  --   let k = '~' : intercalate "," (map fst fields)
-  --   lowerExpr (tag k (map snd fields))
-  -- Select a kvs -> do
-  --   let sub = case a of
-  --         Record fields -> map (second lowerExpr) fields
-  --         a -> do
-  --           let xs = freeVars (and' (map snd kvs))
-  --           map (\x -> (x, C.App (C.Var x) (lowerExpr a))) xs
-  --   let k = '~' : intercalate "," (map fst kvs)
-  --   let args = map ((C.substitute sub . lowerExpr) . snd) kvs
-  --   C.tag k args
-  Meta m a -> C.Meta m (lowerExpr a)
-  Err e -> C.Err (fmap lowerExpr e)
-  a -> error $ "TODO: lowerExpr " ++ show a
-
-liftExpr :: C.Expr -> Expr
-liftExpr = \case
-  C.Any -> Any
-  C.Unit -> Tuple []
-  C.IntT -> IntT
-  C.NumT -> NumT
-  C.Int i -> Int i
-  C.Num n -> Num n
-  C.Var x -> Var x
-  C.Tag "~" -> Record []
-  C.Tag "[]" -> List []
-  C.Tag "''" -> String []
-  C.Tag k -> Tag k []
-  C.Ann a b -> Ann (liftExpr a) (liftExpr b)
-  C.And (C.Tag "Char") (C.Int i) -> Char (chr i)
-  C.And (C.Tag ('~' : names)) args -> do
-    let keys = split ',' names
-    let values = map liftExpr (C.andOf args)
-    Record (zip keys values)
-  C.And (C.Tag "::") (C.And a b) -> case (liftExpr a, liftExpr b) of
-    (a, List bs) -> List (a : bs)
-    (a, String segments) -> error "TODO: lift String"
-    (a, b) -> Tag "::" [a, b]
-  C.And (C.Tag k) args -> Tag k (map liftExpr (C.andOf args))
-  C.And a bs -> Tuple (map liftExpr (a : C.andOf bs))
-  C.Or a b -> Or (liftExpr a) (liftExpr b)
-  -- C.For x a -> case liftExpr a of
-  --   For xs a -> for (x : xs) a
-  --   a -> for [x] a
-  -- C.Fix x a
-  --   | x `C.occurs` a -> Let (Var x, liftExpr a) (liftExpr a)
-  --   | otherwise -> liftExpr a
-  -- C.Fun a b -> Fun (liftExpr a) (liftExpr b)
-  -- C.App a b -> App (liftExpr a) (liftExpr b)
-  -- C.Call op args -> Call op (map liftExpr args)
-  -- C.Let [] b -> liftExpr b
-  -- C.Let ((x, b) : env) c -> Let (Var x, liftExpr b) (liftExpr (C.Let env c))
-  C.Meta m a -> Meta m (liftExpr a)
-  C.Err e -> Err (fmap liftExpr e)
-  a -> error $ "TODO: liftExpr " ++ show a
