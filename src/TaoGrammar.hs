@@ -390,7 +390,25 @@ grammar = do
           G.infixR 1 (loc2 Fun) "->" $ \case
             Fun a b -> Just (a, " ", b)
             _ -> Nothing,
-          -- App Expr [Expr]
+          -- App
+          let parser x expr = do
+                start <- P.getState
+                _ <- P.char '('
+                _ <- P.whitespaces
+                args <- collectionParser P.whitespaces $ do
+                  a <- expr
+                  return ("", a)
+                _ <- P.whitespaces
+                _ <- P.char ')'
+                end <- P.getState
+                _ <- P.spaces
+                return (withLoc start end $ App x args)
+           in G.InfixL 1 parser $ \lhs rhs -> \case
+                App fun args -> do
+                  let layoutArg ("", a) = rhs a
+                      layoutArg (x, a) = PP.Text (x ++ " = ") : rhs a
+                  Just (lhs fun ++ PP.Text "(" : collectionLayout layoutArg args ++ [PP.Text ")"])
+                _ -> Nothing,
           -- Call String [(String, Expr)]
           -- Spread Expr
           -- Op1 Op1 Expr
@@ -494,7 +512,7 @@ lowerExpr = \case
   For [] a -> lowerExpr a
   For xs a -> C.for xs (lowerExpr (For [] a))
   Fun a b -> lowerExpr (For (freeVars a) (Fun a b))
-  -- App a b -> C.App (lowerExpr a) (lowerExpr b)
+  App fun args -> C.App (lowerExpr fun) (lowerExpr $ Tuple (map snd args))
   -- Call op args -> C.Call op (map lowerExpr args)
   -- Op1 op a -> lowerExpr (App (Var (show op)) a)
   -- Op2 op a b -> lowerExpr (app (Var (show op)) [a, b])
@@ -582,7 +600,10 @@ liftExpr = \case
   -- C.Fix x a
   --   | x `C.occurs` a -> Let (Var x, liftExpr a) (liftExpr a)
   --   | otherwise -> liftExpr a
-  -- C.App a b -> App (liftExpr a) (liftExpr b)
+  C.App a b -> case (liftExpr a, liftExpr b) of
+    (fun, Ann (Tuple args) (Tuple targs)) ->
+      App fun (zipWith (\a ta -> ("", Ann a ta)) args targs)
+    (fun, arg) -> App fun [("", arg)]
   -- C.Call op args -> Call op (map liftExpr args)
   -- C.Let [] b -> liftExpr b
   -- C.Let ((x, b) : env) c -> Let (Var x, liftExpr b) (liftExpr (C.Let env c))

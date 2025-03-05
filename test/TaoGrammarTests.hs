@@ -31,10 +31,13 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   let or' r c a b = loc r c r (c + 1) (Or a b)
   let fun r c a b = loc r c r (c + 2) (Fun a b)
 
+  let a r c = var r c "a"
+  let b r c = var r c "b"
   let x r c = var r c "x"
   let y r c = var r c "y"
   let z r c = var r c "z"
 
+  let (a', b') = (C.Var "a", C.Var "b")
   let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
 
   let def x a = Def (Var x, a)
@@ -345,7 +348,51 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     liftExpr expr' `shouldBe` Ann (For ["x1T"] $ loc 1 3 1 5 $ For ["x"] $ Fun (Ann (x 1 1) (Var "x1T")) (y 1 6)) (Fun (Var "x1T") NumT)
     eval ctx "m" expr `shouldBe` For ["x"] (Fun (Var "x") (Num 3.14))
 
-  -- App Expr [Expr]
+  it "☯ Tao.App no args" $ do
+    let ctx = [("m", [def "x" (Fun (loc 10 10 11 11 $ Tuple []) (int 20 20 42))])]
+    let expr = loc 1 2 1 4 (App (x 1 1) [])
+    let (_, expr') = compile ctx "m" expr
+    parse' "x() " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "x()"
+    C.dropMeta expr' `shouldBe` C.Ann (C.App x' (C.Ann C.Unit C.Unit)) C.IntT
+    liftExpr expr' `shouldBe` Ann expr IntT
+    eval ctx "m" expr `shouldBe` Int 42
+
+  it "☯ Tao.App positional args 1" $ do
+    let ctx =
+          [ ( "m",
+              [ def "x" (Fun (loc 10 10 11 11 $ Tuple [a 12 12]) (a 20 20)),
+                def "y" (int 30 30 42)
+              ]
+            )
+          ]
+    let app a = loc 1 2 1 5 (App (x 1 1) [("", a)])
+    let expr = app (y 1 3)
+    let (_, expr') = compile ctx "m" expr
+    parse' "x(y) " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "x(y)"
+    C.dropMeta expr' `shouldBe` C.Ann (C.App x' (C.Ann y' C.IntT)) C.IntT
+    liftExpr expr' `shouldBe` Ann (app (Ann (y 1 3) IntT)) IntT
+    eval ctx "m" expr `shouldBe` Int 42
+
+  it "☯ Tao.App positional args 2" $ do
+    let ctx =
+          [ ( "m",
+              [ def "x" (Fun (loc 10 10 11 11 $ Tuple [a 12 12, b 13 13]) (b 20 20)),
+                def "y" (int 30 30 42),
+                def "z" (num 30 30 3.14)
+              ]
+            )
+          ]
+    let app a b = loc 1 2 1 8 (App (x 1 1) [("", a), ("", b)])
+    let expr = app (y 1 3) (z 1 6)
+    let (_, expr') = compile ctx "m" expr
+    parse' "x(y, z) " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "x(y, z)"
+    C.dropMeta expr' `shouldBe` C.Ann (C.App x' (C.Ann (C.And y' z') (C.And C.IntT C.NumT))) C.NumT
+    liftExpr expr' `shouldBe` Ann (app (Ann (y 1 3) IntT) (Ann (z 1 6) NumT)) NumT
+    eval ctx "m" expr `shouldBe` Num 3.14
+
   -- Call String [(String, Expr)]
   -- Spread Expr
   -- Op1 Op1 Expr
