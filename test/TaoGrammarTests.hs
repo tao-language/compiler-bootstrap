@@ -43,6 +43,8 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
 
   let def x a = Def (Var x, a)
+  let defOp1 op f = def op (For ["a"] (lambda [Var "a"] (Call f [Var "a"])))
+  let defOp2 op f = def op (For ["a", "b"] (lambda [Var "a", Var "b"] (Call f [Var "a", Var "b"])))
 
   it "☯ Tao.Any" $ do
     let ctx = []
@@ -430,7 +432,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     eval ctx "m" expr `shouldBe` Int 42
 
   it "☯ Tao.Op1 -" $ do
-    let ctx = [("m", [def "-" (For ["x"] $ Fun (x 10 10) (Call "int_neg" [x 11 11])), def "x" (int 20 20 42)])]
+    let ctx = [("m", [defOp1 "-" "int_neg", def "x" (int 20 20 42)])]
     let neg = op1 1 1 Neg
     let expr = neg (x 1 2)
     let (_, expr') = compile ctx "m" expr
@@ -441,7 +443,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     eval ctx "m" expr `shouldBe` Int (-42)
 
   it "☯ Tao.Op2 +" $ do
-    let ctx = [("m", [def "+" (For ["x", "y"] $ lambda [x 10 10, y 11 11] (Call "int_add" [x 12 12, y 13 13])), def "x" (int 20 20 40), def "y" (int 30 30 2)])]
+    let ctx = [("m", [defOp2 "+" "int_add", def "x" (int 20 20 40), def "y" (int 30 30 2)])]
     let add = op2 1 3 Add
     let expr = add (x 1 1) (y 1 5)
     let (_, expr') = compile ctx "m" expr
@@ -454,11 +456,17 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   -- Match [Expr] [Case]
   -- If Expr Expr Expr
   -- Let (Pattern, Expr) Expr
+
   -- Bind (Pattern, Expr) Expr
   -- Record [(String, Expr)]
   -- Select Expr [(String, Expr)]
   -- With Expr [(String, Expr)]
-  -- Meta C.Metadata Expr
+  -- Record type definitions
+  -- Record default values
+  -- Record var shortcut
+  -- App named arguments
+  -- App default values
+  -- Spread
   it "☯ Tao.Err" $ do
     parse' "!error _" `shouldBe` Right (loc 1 1 1 7 (Err (customError $ any 1 8)), "")
     format 80 (Err (customError Any)) `shouldBe` "!error _"
