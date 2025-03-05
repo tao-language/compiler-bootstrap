@@ -30,6 +30,8 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   let ann r c a b = loc r c r (c + 1) (Ann a b)
   let or' r c a b = loc r c r (c + 1) (Or a b)
   let fun r c a b = loc r c r (c + 2) (Fun a b)
+  let op1 r c op a = loc r c r (c + length (showOp1 op)) (Op1 op a)
+  let op2 r c op a b = loc r c r (c + length (showOp2 op)) (Op2 op a b)
 
   let a r c = var r c "a"
   let b r c = var r c "b"
@@ -429,7 +431,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
 
   it "☯ Tao.Op1 -" $ do
     let ctx = [("m", [def "-" (For ["x"] $ Fun (x 10 10) (Call "int_neg" [x 11 11])), def "x" (int 20 20 42)])]
-    let neg a = loc 1 1 1 2 (Op1 Neg a)
+    let neg = op1 1 1 Neg
     let expr = neg (x 1 2)
     let (_, expr') = compile ctx "m" expr
     parse' "-x " `shouldBe` Right (expr, "")
@@ -440,7 +442,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
 
   it "☯ Tao.Op2 +" $ do
     let ctx = [("m", [def "+" (For ["x", "y"] $ lambda [x 10 10, y 11 11] (Call "int_add" [x 12 12, y 13 13])), def "x" (int 20 20 40), def "y" (int 30 30 2)])]
-    let add a b = loc 1 3 1 4 (Op2 Add a b)
+    let add = op2 1 3 Add
     let expr = add (x 1 1) (y 1 5)
     let (_, expr') = compile ctx "m" expr
     parse' "x + y " `shouldBe` Right (expr, "")
