@@ -31,7 +31,6 @@ data Expr
   | Fun Pattern Expr
   | App Expr [(String, Expr)]
   | Call String [Expr]
-  | Spread Expr
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
   | Match [Expr] [Case]
@@ -165,7 +164,6 @@ instance Apply Expr where
     Fun a b -> Fun (f a) (f b)
     App fun kwargs -> App (f fun) (second f <$> kwargs)
     Call x args -> Call x (map f args)
-    Spread a -> Spread (f a)
     Op1 op a -> Op1 op (f a)
     Op2 op a b -> Op2 op (f a) (f b)
     Match args cases -> do
@@ -208,7 +206,6 @@ collect f = \case
   Fun a b -> f a `union` f b
   App fun kwargs -> f fun `union` unionMap (f . snd) kwargs
   Call x args -> unionMap f args
-  Spread a -> f a
   Op1 op a -> f a
   Op2 op a b -> f a `union` f b
   Match args cases -> do
@@ -410,7 +407,6 @@ grammar = do
                   Just (lhs fun ++ PP.Text "(" : collectionLayout layoutArg args ++ [PP.Text ")"])
                 _ -> Nothing,
           -- Call String [(String, Expr)]
-          -- Spread Expr
           -- Op1 Op1 Expr
           -- Op2 Op2 Expr Expr
           -- Match [Expr] [Case]

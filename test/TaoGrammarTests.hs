@@ -394,7 +394,6 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     eval ctx "m" expr `shouldBe` Num 3.14
 
   -- Call String [(String, Expr)]
-  -- Spread Expr
   -- Op1 Op1 Expr
   -- Op2 Op2 Expr Expr
   -- Match [Expr] [Case]
