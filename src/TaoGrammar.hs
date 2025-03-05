@@ -393,8 +393,18 @@ grammar = do
                 _ <- P.char '('
                 _ <- P.whitespaces
                 args <- collectionParser P.whitespaces $ do
-                  a <- expr
-                  return ("", a)
+                  name <-
+                    P.oneOf
+                      [ do
+                          name <- parseNameVar
+                          _ <- P.spaces
+                          _ <- P.char ':'
+                          _ <- P.whitespaces
+                          return name,
+                        return ""
+                      ]
+                  arg <- expr
+                  return (name, arg)
                 _ <- P.whitespaces
                 _ <- P.char ')'
                 end <- P.getState
@@ -403,10 +413,33 @@ grammar = do
            in G.InfixL 1 parser $ \lhs rhs -> \case
                 App fun args -> do
                   let layoutArg ("", a) = rhs a
-                      layoutArg (x, a) = PP.Text (x ++ " = ") : rhs a
+                      layoutArg (x, a) = PP.Text (x ++ ": ") : rhs a
                   Just (lhs fun ++ PP.Text "(" : collectionLayout layoutArg args ++ [PP.Text ")"])
                 _ -> Nothing,
-          -- Call String [(String, Expr)]
+          -- Call
+          let parser expr = do
+                start <- P.getState
+                _ <- P.char '%'
+                f <- parseNameVar
+                end <- P.getState
+                _ <- P.spaces
+                args <-
+                  P.oneOf
+                    [ do
+                        _ <- P.char '('
+                        _ <- P.whitespaces
+                        args <- collectionParser P.whitespaces expr
+                        _ <- P.whitespaces
+                        _ <- P.char ')'
+                        _ <- P.spaces
+                        return args,
+                      return []
+                    ]
+                return (withLoc start end $ Call f args)
+           in G.Atom parser $ \layout -> \case
+                Call f [] -> Just [PP.Text $ "%" ++ f]
+                Call f args -> Just (PP.Text ("%" ++ f ++ "(") : collectionLayout layout args ++ [PP.Text ")"])
+                _ -> Nothing,
           -- Op1 Op1 Expr
           -- Op2 Op2 Expr Expr
           -- Match [Expr] [Case]
@@ -509,7 +542,7 @@ lowerExpr = \case
   For xs a -> C.for xs (lowerExpr (For [] a))
   Fun a b -> lowerExpr (For (freeVars a) (Fun a b))
   App fun args -> C.App (lowerExpr fun) (lowerExpr $ Tuple (map snd args))
-  -- Call op args -> C.Call op (map lowerExpr args)
+  Call op args -> C.Call op (map lowerExpr args)
   -- Op1 op a -> lowerExpr (App (Var (show op)) a)
   -- Op2 op a b -> lowerExpr (app (Var (show op)) [a, b])
   Let (a, b) c -> case a of
@@ -600,7 +633,7 @@ liftExpr = \case
     (fun, Ann (Tuple args) (Tuple targs)) ->
       App fun (zipWith (\a ta -> ("", Ann a ta)) args targs)
     (fun, arg) -> App fun [("", arg)]
-  -- C.Call op args -> Call op (map liftExpr args)
+  C.Call op args -> Call op (map liftExpr args)
   -- C.Let [] b -> liftExpr b
   -- C.Let ((x, b) : env) c -> Let (Var x, liftExpr b) (liftExpr (C.Let env c))
   C.Meta (C.Loc _) (C.Meta (C.Loc loc) a) -> Meta (C.Loc loc) (liftExpr a)

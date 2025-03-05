@@ -393,7 +393,40 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     liftExpr expr' `shouldBe` Ann (app (Ann (y 1 3) IntT) (Ann (z 1 6) NumT)) NumT
     eval ctx "m" expr `shouldBe` Num 3.14
 
-  -- Call String [(String, Expr)]
+  -- TODO: App named arguments
+  -- TODO: App default values
+
+  it "☯ Tao.Call 0" $ do
+    let ctx = []
+    let expr = loc 1 1 1 3 (Call "f" [])
+    let (_, expr') = compile ctx "m" expr
+    parse' "%f " `shouldBe` Right (expr, "")
+    parse' "%f() " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "%f"
+    C.dropMeta expr' `shouldBe` C.Ann (C.Call "f" []) (C.Var "_1")
+    liftExpr expr' `shouldBe` Ann expr (Var "_1")
+    eval ctx "m" expr `shouldBe` Call "f" []
+
+  it "☯ Tao.Call 1" $ do
+    let ctx = [("m", [def "x" (int 10 10 42)])]
+    let expr = loc 1 1 1 3 (Call "f" [x 1 4])
+    let (_, expr') = compile ctx "m" expr
+    parse' "%f(x) " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "%f(x)"
+    C.dropMeta expr' `shouldBe` C.Ann (C.Call "f" [x']) (C.Var "_1")
+    liftExpr expr' `shouldBe` Ann expr (Var "_1")
+    eval ctx "m" expr `shouldBe` Call "f" [Int 42]
+
+  it "☯ Tao.Call 2" $ do
+    let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 30 30 3.14)])]
+    let expr = loc 1 1 1 3 (Call "f" [x 1 4, y 1 7])
+    let (_, expr') = compile ctx "m" expr
+    parse' "%f(x, y) " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "%f(x, y)"
+    C.dropMeta expr' `shouldBe` C.Ann (C.Call "f" [x', y']) (C.Var "_1")
+    liftExpr expr' `shouldBe` Ann expr (Var "_1")
+    eval ctx "m" expr `shouldBe` Call "f" [Int 42, Num 3.14]
+
   -- Op1 Op1 Expr
   -- Op2 Op2 Expr Expr
   -- Match [Expr] [Case]

@@ -691,8 +691,9 @@ infer ops env (App a b) = do
   ((App a' (Ann b' t1), t2), s2 `compose` s1)
 infer ops env (Let defs a) = infer ops (defs ++ env) a
 infer ops env (Call op args) = do
-  let (args', s) = inferAll ops env args
-  ((Call op (map fst args'), Any), s)
+  let y = newName ("_" : map fst env) "_"
+  let (args', s) = inferAll ops ((y, Var y) : env) args
+  ((Call op (map fst args'), substitute s (Var y)), s)
 infer ops env (Meta m a) = do
   let ((a', ta), s) = infer ops env a
   ((Meta m a', ta), s)
