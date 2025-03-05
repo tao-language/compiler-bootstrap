@@ -195,7 +195,10 @@ funOf (Fun arg ret) = let (args, ret') = funOf ret in (arg : args, ret')
 funOf a = ([], a)
 
 app :: Expr -> [Expr] -> Expr
-app = foldl App
+app fun args = App fun (and' args)
+
+appT :: Expr -> [Expr] -> [Type] -> Expr
+appT fun args types = App fun (Ann (and' args) (and' types))
 
 appOf :: Expr -> (Expr, [Expr])
 appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])

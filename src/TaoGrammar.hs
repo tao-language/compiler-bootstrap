@@ -11,7 +11,7 @@ import qualified Grammar as G
 import Location (Location (Location), Position (Pos), Range (Range))
 import qualified Parser as P
 import qualified PrettyPrint as PP
-import Stdlib (split)
+import Stdlib (lookupValue, split)
 
 data Expr
   = Any
@@ -61,12 +61,17 @@ data Segment
 
 data Op1
   = Neg
-  deriving (Eq)
+  deriving (Eq, Show)
 
-instance Show Op1 where
-  show :: Op1 -> String
-  show = \case
-    Neg -> "-"
+op1s :: [(String, Op1)]
+op1s =
+  [ ("-", Neg)
+  ]
+
+showOp1 :: Op1 -> String
+showOp1 op = case lookupValue op op1s of
+  Just x -> x
+  Nothing -> show op
 
 data Op2
   = Eq
@@ -81,23 +86,28 @@ data Op2
   | Div
   | DivI
   | Pow
-  deriving (Eq)
+  deriving (Eq, Show)
 
-instance Show Op2 where
-  show :: Op2 -> String
-  show = \case
-    Eq -> "=="
-    Ne -> "!="
-    Lt -> "<"
-    Le -> "<="
-    Gt -> ">"
-    Ge -> ">="
-    Add -> "+"
-    Sub -> "-"
-    Mul -> "*"
-    Div -> "/"
-    DivI -> "//"
-    Pow -> "^"
+op2s :: [(String, Op2)]
+op2s =
+  [ ("==", Eq),
+    ("!=", Ne),
+    ("<", Lt),
+    ("<=", Le),
+    (">", Gt),
+    (">=", Ge),
+    ("+", Add),
+    ("-", Sub),
+    ("*", Mul),
+    ("/", Div),
+    ("//", DivI),
+    ("^", Pow)
+  ]
+
+showOp2 :: Op2 -> String
+showOp2 op = case lookupValue op op2s of
+  Just x -> x
+  Nothing -> show op
 
 data Stmt
   = Import String String [(String, String)]
@@ -133,6 +143,9 @@ keywords =
     "type",
     "with"
   ]
+
+lambda :: [Expr] -> Expr -> Expr
+lambda args = Fun (Tuple args)
 
 string :: String -> Expr
 string str = String [Str str]
@@ -206,8 +219,8 @@ collect f = \case
   Fun a b -> f a `union` f b
   App fun kwargs -> f fun `union` unionMap (f . snd) kwargs
   Call x args -> unionMap f args
-  Op1 op a -> f (Var (show op)) `union` f a
-  Op2 op a b -> f (Var (show op)) `union` f a `union` f b
+  Op1 op a -> f (Var (showOp1 op)) `union` f a
+  Op2 op a b -> f (Var (showOp2 op)) `union` f a `union` f b
   Match args cases -> do
     let collectCase (xs, a, b) = f (For xs (Fun a b))
     unionMap f args `union` unionMap collectCase cases
@@ -445,8 +458,9 @@ grammar = do
           G.prefix 1 (locOp1 Neg) "-" $ \case
             Op1 Neg a -> Just ("", a)
             _ -> Nothing,
-          -- Op1 Op1 Expr
-          -- Op2 Op2 Expr Expr
+          G.infixL 1 (locOp2 Add) "+" $ \case
+            Op2 Add a b -> Just (a, " ", b)
+            _ -> Nothing,
           -- Match [Expr] [Case]
           -- If Expr Expr Expr
           -- Let (Pattern, Expr) Expr
@@ -548,8 +562,8 @@ lowerExpr = \case
   Fun a b -> lowerExpr (For (freeVars a) (Fun a b))
   App fun args -> C.App (lowerExpr fun) (lowerExpr $ Tuple (map snd args))
   Call op args -> C.Call op (map lowerExpr args)
-  Op1 op a -> C.app (C.Var (show op)) [lowerExpr a]
-  Op2 op a b -> C.app (C.Var (show op)) [lowerExpr a, lowerExpr b]
+  Op1 op a -> C.app (C.Var $ showOp1 op) [lowerExpr a]
+  Op2 op a b -> C.app (C.Var $ showOp2 op) [lowerExpr a, lowerExpr b]
   Let (a, b) c -> case a of
     Var x | c == Var x -> lowerExpr b
     -- Var x -> C.App (lowerExpr (Fun a c)) (C.fix [x] (lowerExpr b))
@@ -635,7 +649,10 @@ liftExpr = \case
   --   | x `C.occurs` a -> Let (Var x, liftExpr a) (liftExpr a)
   --   | otherwise -> liftExpr a
   C.App a b -> case (liftExpr a, liftExpr b) of
-    (Var "-", a) -> Op1 Neg a
+    (Var x, a) | Just op <- lookup x op1s -> do
+      Op1 op a
+    (Var x, Ann (Tuple [a, b]) (Tuple [ta, tb])) | Just op <- lookup x op2s -> do
+      Op2 op (Ann a ta) (Ann b tb)
     (fun, Ann (Tuple args) (Tuple targs)) ->
       App fun (zipWith (\a ta -> ("", Ann a ta)) args targs)
     (fun, arg) -> App fun [("", arg)]
@@ -744,8 +761,8 @@ bindings = \case
   -- For xs _ -> xs
   -- Ann a _ -> bindings a
   -- App a _ -> bindings a
-  -- Op1 op _ -> [show op]
-  -- Op2 op _ _ -> [show op]
+  -- Op1 op _ -> [showOp1 op]
+  -- Op2 op _ _ -> [showOp2 op]
   Meta _ a -> bindings a
   -- a -> freeVars a
   a -> error $ "TODO bindings " ++ show a

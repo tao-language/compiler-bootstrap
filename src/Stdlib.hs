@@ -66,3 +66,9 @@ split2 delim text = case text of
 
 trimPrefix :: (Eq a) => [a] -> [a] -> [a]
 trimPrefix prefix xs = fromMaybe xs (stripPrefix prefix xs)
+
+lookupValue :: (Eq v) => v -> [(k, v)] -> Maybe k
+lookupValue x = \case
+  [] -> Nothing
+  (k, v) : _ | v == x -> Just k
+  _ : kvs -> lookupValue x kvs
