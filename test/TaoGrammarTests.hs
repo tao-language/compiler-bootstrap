@@ -411,35 +411,34 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
 
   it "☯ Tao.Call 1" $ do
     let ctx = [("m", [def "x" (int 10 10 42)])]
-    let expr = loc 1 1 1 3 (Call "f" [x 1 4])
+    let expr = loc 1 1 1 9 (Call "int_neg" [x 1 10])
     let (_, expr') = compile ctx "m" expr
-    parse' "%f(x) " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "%f(x)"
-    C.dropMeta expr' `shouldBe` C.Ann (C.Call "f" [x']) (C.Var "_1")
+    parse' "%int_neg(x) " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "%int_neg(x)"
+    C.dropMeta expr' `shouldBe` C.Ann (C.Call "int_neg" [x']) (C.Var "_1")
     liftExpr expr' `shouldBe` Ann expr (Var "_1")
-    eval ctx "m" expr `shouldBe` Call "f" [Int 42]
+    eval ctx "m" expr `shouldBe` Int (-42)
 
   it "☯ Tao.Call 2" $ do
-    let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 30 30 3.14)])]
-    let expr = loc 1 1 1 3 (Call "f" [x 1 4, y 1 7])
+    let ctx = [("m", [def "x" (int 10 10 40), def "y" (int 30 30 2)])]
+    let expr = loc 1 1 1 9 (Call "int_add" [x 1 10, y 1 13])
     let (_, expr') = compile ctx "m" expr
-    parse' "%f(x, y) " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "%f(x, y)"
-    C.dropMeta expr' `shouldBe` C.Ann (C.Call "f" [x', y']) (C.Var "_1")
+    parse' "%int_add(x, y) " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "%int_add(x, y)"
+    C.dropMeta expr' `shouldBe` C.Ann (C.Call "int_add" [x', y']) (C.Var "_1")
     liftExpr expr' `shouldBe` Ann expr (Var "_1")
-    eval ctx "m" expr `shouldBe` Call "f" [Int 42, Num 3.14]
+    eval ctx "m" expr `shouldBe` Int 42
 
   it "☯ Tao.Op1" $ do
-    let err e a = e (notAFunction a (e $ undefinedVar "-"))
-    let ctx = [("m", [def "x" (int 10 10 42)])]
+    let ctx = [("m", [def "x" (int 10 10 42), def "-" (Fun (x 20 20) (Call "int_neg" [x 21 21]))])]
     let neg = op1 1 1 Neg
     let expr = neg (x 1 2)
     let (_, expr') = compile ctx "m" expr
     parse' "-x " `shouldBe` Right (expr, "")
     format 80 expr `shouldBe` "-x"
-    C.dropMeta expr' `shouldBe` let err' = err C.Err (C.Var "-") in C.Ann (C.app (C.Var "-") [C.Ann x' err']) C.IntT
-    liftExpr expr' `shouldBe` let err' = err Err (Var "-") in Ann (neg (Ann (x 1 2) err')) IntT
-    eval ctx "m" expr `shouldBe` Op1 Neg (Int 42)
+    C.dropMeta expr' `shouldBe` C.Ann (C.app (C.Var "-") [C.Ann x' C.IntT]) (C.Var "_1")
+    liftExpr expr' `shouldBe` Ann (neg (Ann (x 1 2) IntT)) (Var "_1")
+    eval ctx "m" expr `shouldBe` Int (-42)
 
   -- Op2 Op2 Expr Expr
   -- let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 30 30 3.14)])]

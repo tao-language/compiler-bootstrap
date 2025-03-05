@@ -206,8 +206,8 @@ collect f = \case
   Fun a b -> f a `union` f b
   App fun kwargs -> f fun `union` unionMap (f . snd) kwargs
   Call x args -> unionMap f args
-  Op1 op a -> f a
-  Op2 op a b -> f a `union` f b
+  Op1 op a -> f (Var (show op)) `union` f a
+  Op2 op a b -> f (Var (show op)) `union` f a `union` f b
   Match args cases -> do
     let collectCase (xs, a, b) = f (For xs (Fun a b))
     unionMap f args `union` unionMap collectCase cases
