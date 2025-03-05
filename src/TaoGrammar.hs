@@ -248,6 +248,8 @@ grammar = do
   let loc0 f location _ = Meta (C.Loc location) f
   let loc1 f location x = Meta (C.Loc location) (f x)
   let loc2 f location x y = Meta (C.Loc location) (f x y)
+  let locOp1 op location x = Meta (C.Loc location) (Op1 op x)
+  let locOp2 op location x y = Meta (C.Loc location) (Op2 op x y)
   G.Grammar
     { group = ("(", ")"),
       operators =
@@ -440,6 +442,9 @@ grammar = do
                 Call f [] -> Just [PP.Text $ "%" ++ f]
                 Call f args -> Just (PP.Text ("%" ++ f ++ "(") : collectionLayout layout args ++ [PP.Text ")"])
                 _ -> Nothing,
+          G.prefix 1 (locOp1 Neg) "-" $ \case
+            Op1 Neg a -> Just ("", a)
+            _ -> Nothing,
           -- Op1 Op1 Expr
           -- Op2 Op2 Expr Expr
           -- Match [Expr] [Case]
@@ -543,8 +548,8 @@ lowerExpr = \case
   Fun a b -> lowerExpr (For (freeVars a) (Fun a b))
   App fun args -> C.App (lowerExpr fun) (lowerExpr $ Tuple (map snd args))
   Call op args -> C.Call op (map lowerExpr args)
-  -- Op1 op a -> lowerExpr (App (Var (show op)) a)
-  -- Op2 op a b -> lowerExpr (app (Var (show op)) [a, b])
+  Op1 op a -> C.app (C.Var (show op)) [lowerExpr a]
+  Op2 op a b -> C.app (C.Var (show op)) [lowerExpr a, lowerExpr b]
   Let (a, b) c -> case a of
     Var x | c == Var x -> lowerExpr b
     -- Var x -> C.App (lowerExpr (Fun a c)) (C.fix [x] (lowerExpr b))
@@ -630,6 +635,7 @@ liftExpr = \case
   --   | x `C.occurs` a -> Let (Var x, liftExpr a) (liftExpr a)
   --   | otherwise -> liftExpr a
   C.App a b -> case (liftExpr a, liftExpr b) of
+    (Var "-", a) -> Op1 Neg a
     (fun, Ann (Tuple args) (Tuple targs)) ->
       App fun (zipWith (\a ta -> ("", Ann a ta)) args targs)
     (fun, arg) -> App fun [("", arg)]
@@ -725,32 +731,6 @@ parseNameOpTag = do
   _ <- P.whitespaces
   _ <- P.char ')'
   return op
-
--- [ atom Var (P.oneOrMore P.letter) $ \_ -> \case
---     Var x -> Just [PP.Text x]
---     _ -> Nothing,
---   infixL 1 Add "+" $ \case
---     Add a b -> Just (a, b)
---     _ -> Nothing,
---   infixL 1 Sub "-" $ \case
---     Sub a b -> Just (a, b)
---     _ -> Nothing,
---   infixL 2 Mul "*" $ \case
---     Mul a b -> Just (a, b)
---     _ -> Nothing,
---   prefix 3 Neg "-" $ \case
---     Neg a -> Just a
---     _ -> Nothing,
---   infixR 4 Pow "^" $ \case
---     Pow a b -> Just (a, b)
---     _ -> Nothing,
---   suffix 5 Fac "!" $ \case
---     Fac a -> Just a
---     _ -> Nothing,
---   prefix 5 At "@" $ \case
---     At a -> Just a
---     _ -> Nothing
--- ]
 
 eval :: Context -> FilePath -> Expr -> Expr
 eval ctx path expr = do

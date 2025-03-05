@@ -30,6 +30,8 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   let ann r c a b = loc r c r (c + 1) (Ann a b)
   let or' r c a b = loc r c r (c + 1) (Or a b)
   let fun r c a b = loc r c r (c + 2) (Fun a b)
+  let op1 r c op a = loc r c r (c + length (show op)) (Op1 op a)
+  let op2 r c op a b = loc r c r (c + length (show op)) (Op2 op a b)
 
   let a r c = var r c "a"
   let b r c = var r c "b"
@@ -427,8 +429,20 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     liftExpr expr' `shouldBe` Ann expr (Var "_1")
     eval ctx "m" expr `shouldBe` Call "f" [Int 42, Num 3.14]
 
-  -- Op1 Op1 Expr
+  it "☯ Tao.Op1" $ do
+    let err e a = e (notAFunction a (e $ undefinedVar "-"))
+    let ctx = [("m", [def "x" (int 10 10 42)])]
+    let neg = op1 1 1 Neg
+    let expr = neg (x 1 2)
+    let (_, expr') = compile ctx "m" expr
+    parse' "-x " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "-x"
+    C.dropMeta expr' `shouldBe` let err' = err C.Err (C.Var "-") in C.Ann (C.app (C.Var "-") [C.Ann x' err']) C.IntT
+    liftExpr expr' `shouldBe` let err' = err Err (Var "-") in Ann (neg (Ann (x 1 2) err')) IntT
+    eval ctx "m" expr `shouldBe` Op1 Neg (Int 42)
+
   -- Op2 Op2 Expr Expr
+  -- let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 30 30 3.14)])]
   -- Match [Expr] [Case]
   -- If Expr Expr Expr
   -- Let (Pattern, Expr) Expr
