@@ -427,7 +427,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     liftExpr expr' `shouldBe` Ann expr (Var "_1")
     eval ctx "m" expr `shouldBe` Int 42
 
-  it "☯ Tao.Op1" $ do
+  it "☯ Tao.Op1 -" $ do
     let ctx = [("m", [def "-" (For ["x"] $ Fun (x 10 10) (Call "int_neg" [x 11 11])), def "x" (int 20 20 42)])]
     let neg a = loc 1 1 1 2 (Op1 Neg a)
     let expr = neg (x 1 2)
@@ -438,7 +438,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     liftExpr expr' `shouldBe` Ann (neg (Ann (x 1 2) IntT)) (Var "_1")
     eval ctx "m" expr `shouldBe` Int (-42)
 
-  it "☯ Tao.Op2" $ do
+  it "☯ Tao.Op2 +" $ do
     let ctx = [("m", [def "+" (For ["x", "y"] $ lambda [x 10 10, y 11 11] (Call "int_add" [x 12 12, y 13 13])), def "x" (int 20 20 40), def "y" (int 30 30 2)])]
     let add a b = loc 1 3 1 4 (Op2 Add a b)
     let expr = add (x 1 1) (y 1 5)
