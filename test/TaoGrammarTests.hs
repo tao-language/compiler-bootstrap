@@ -453,7 +453,17 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     liftExpr expr' `shouldBe` Ann (add (Ann (x 1 1) IntT) (Ann (y 1 5) IntT)) (Var "_1")
     eval ctx "m" expr `shouldBe` Int 42
 
-  -- Match [Expr] [Case]
+  let match r c arg cases = loc r c r (c + length "match") (Match arg cases)
+  it "☯ Tao.Match empty" $ do
+    let ctx = [("m", [def "x" (int 20 20 40), def "y" (int 30 30 2)])]
+    let expr = match 1 1 Nothing []
+    let (_, expr') = compile ctx "m" expr
+    parse' "match {} " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "match {}"
+    C.dropMeta expr' `shouldBe` C.Ann (C.Err $ cannotApply C.Unit C.Unit) C.Any
+    liftExpr expr' `shouldBe` Ann expr Any
+    eval ctx "m" expr `shouldBe` Match Nothing []
+
   -- If Expr Expr Expr
   -- Let (Pattern, Expr) Expr
 

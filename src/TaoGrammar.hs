@@ -33,7 +33,7 @@ data Expr
   | Call String [Expr]
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
-  | Match [Expr] [Case]
+  | Match (Maybe Expr) [Expr]
   | If Expr Expr Expr
   | Let (Pattern, Expr) Expr
   | Bind (Pattern, Expr) Expr
@@ -144,12 +144,19 @@ keywords =
     "with"
   ]
 
+-- Syntax sugar
+or' :: [Expr] -> Expr
+or' [] = Err (cannotApply (Tuple []) (Tuple []))
+or' [a] = a
+or' (a : bs) = Or a (or' bs)
+
 lambda :: [Expr] -> Expr -> Expr
 lambda args = Fun (Tuple args)
 
 string :: String -> Expr
 string str = String [Str str]
 
+-- Helper functions
 class Apply a where
   apply :: (Expr -> Expr) -> a -> a
 
@@ -179,9 +186,7 @@ instance Apply Expr where
     Call x args -> Call x (map f args)
     Op1 op a -> Op1 op (f a)
     Op2 op a b -> Op2 op (f a) (f b)
-    Match args cases -> do
-      let applyCase (xs, a, b) = (xs, f a, f b)
-      Match (map f args) (map applyCase cases)
+    Match arg cases -> Match (fmap f arg) (map f cases)
     If a b c -> If (f a) (f b) (f c)
     Let (a, b) c -> Let (f a, f b) (f c)
     Bind (a, b) c -> Bind (f a, f b) (f c)
@@ -221,9 +226,8 @@ collect f = \case
   Call x args -> unionMap f args
   Op1 op a -> f (Var (showOp1 op)) `union` f a
   Op2 op a b -> f (Var (showOp2 op)) `union` f a `union` f b
-  Match args cases -> do
-    let collectCase (xs, a, b) = f (For xs (Fun a b))
-    unionMap f args `union` unionMap collectCase cases
+  Match Nothing cases -> unionMap f cases
+  Match (Just arg) cases -> f arg `union` unionMap f cases
   If a b c -> f a `union` f b `union` f c
   Let (a, b) c -> f a `union` f b `union` f c
   Bind (a, b) c -> f a `union` f b `union` f c
@@ -461,7 +465,43 @@ grammar = do
           G.infixL 1 (locOp2 Add) "+" $ \case
             Op2 Add a b -> Just (a, " ", b)
             _ -> Nothing,
-          -- Match [Expr] [Case]
+          -- Match
+          let parser expr = do
+                start <- P.getState
+                _ <- P.word "match"
+                end <- P.getState
+                _ <- P.spaces
+                let parseCases = do
+                      _ <- P.char '{'
+                      _ <- P.whitespaces
+                      cases <- P.zeroOrMore $ do
+                        _ <- P.char '|'
+                        _ <- P.spaces
+                        case' <- expr
+                        _ <- P.whitespaces
+                        return case'
+                      _ <- P.char '}'
+                      _ <- P.spaces
+                      return cases
+                (arg, cases) <-
+                  P.oneOf
+                    [ do
+                        arg <- expr
+                        _ <- P.spaces
+                        cases <- parseCases
+                        return (Just arg, cases),
+                      do
+                        cases <- parseCases
+                        return (Nothing, cases)
+                    ]
+                return (withLoc start end $ Match arg cases)
+           in G.Prefix 1 parser $ \layout -> \case
+                Match arg cases -> do
+                  let arg' = case arg of
+                        Just arg -> layout arg ++ [PP.Text " "]
+                        Nothing -> []
+                  Just (PP.Text "match " : arg' ++ [PP.Text "{"] ++ [PP.Text "}"])
+                _ -> Nothing,
           -- If Expr Expr Expr
           -- Let (Pattern, Expr) Expr
           -- Bind (Pattern, Expr) Expr
@@ -564,6 +604,23 @@ lowerExpr = \case
   Call op args -> C.Call op (map lowerExpr args)
   Op1 op a -> C.app (C.Var $ showOp1 op) [lowerExpr a]
   Op2 op a b -> C.app (C.Var $ showOp2 op) [lowerExpr a, lowerExpr b]
+  Match Nothing cases -> lowerExpr (or' cases)
+  -- Match args [(xs, ps, b)] -> lowerExpr (app (For xs $ fun ps b) args)
+  -- Match args cases -> do
+  --   let n = foldl max 0 (map (\(_, ps, _) -> length ps) cases)
+  --   let rpad :: Int -> a -> [a] -> [a]
+  --       rpad n x xs = xs ++ replicate (n - length xs) x
+  --   let cases' = map (\(xs, ps, b) -> For xs $ fun (rpad n Any ps) b) cases
+  --   let args' = map (\i -> Var ("$" ++ show i)) [length args + 1 .. n]
+  --   let match' = fun args' (app (or' cases') (args ++ args'))
+  --   -- let a = lowerExpr match'
+  --   -- (error . intercalate "\n")
+  --   --   [ show match',
+  --   --     C.format (C.dropMeta a),
+  --   --     C.format (C.dropMeta $ C.eval buildOps a),
+  --   --     C.format (C.eval buildOps $ C.dropMeta a)
+  --   --   ]
+  --   lowerExpr match'
   Let (a, b) c -> case a of
     Var x | c == Var x -> lowerExpr b
     -- Var x -> C.App (lowerExpr (Fun a c)) (C.fix [x] (lowerExpr b))
@@ -583,22 +640,6 @@ lowerExpr = \case
     a -> error $ "TODO: lowerExpr " ++ show (Let (a, b) c)
   -- -- lowerExpr env (Bind (ts, p, a) b) = lowerExpr env (App (Trait a "<-") (Function [p] b))
   -- If a b c -> lowerExpr (Match [a] [([], [Tag "True"], b), ([], [], c)])
-  -- Match args [(xs, ps, b)] -> lowerExpr (app (For xs $ fun ps b) args)
-  -- Match args cases -> do
-  --   let n = foldl max 0 (map (\(_, ps, _) -> length ps) cases)
-  --   let rpad :: Int -> a -> [a] -> [a]
-  --       rpad n x xs = xs ++ replicate (n - length xs) x
-  --   let cases' = map (\(xs, ps, b) -> For xs $ fun (rpad n Any ps) b) cases
-  --   let args' = map (\i -> Var ("$" ++ show i)) [length args + 1 .. n]
-  --   let match' = fun args' (app (or' cases') (args ++ args'))
-  --   -- let a = lowerExpr match'
-  --   -- (error . intercalate "\n")
-  --   --   [ show match',
-  --   --     C.format (C.dropMeta a),
-  --   --     C.format (C.dropMeta $ C.eval buildOps a),
-  --   --     C.format (C.eval buildOps $ C.dropMeta a)
-  --   --   ]
-  --   lowerExpr match'
   -- Record fields -> do
   --   let k = '~' : intercalate "," (map fst fields)
   --   lowerExpr (tag k (map snd fields))
@@ -661,6 +702,7 @@ liftExpr = \case
   -- C.Let ((x, b) : env) c -> Let (Var x, liftExpr b) (liftExpr (C.Let env c))
   C.Meta (C.Loc _) (C.Meta (C.Loc loc) a) -> Meta (C.Loc loc) (liftExpr a)
   C.Meta m a -> Meta m (liftExpr a)
+  C.Err (RuntimeError (CannotApply C.Unit C.Unit)) -> Match Nothing []
   C.Err e -> Err (fmap liftExpr e)
   a -> error $ "TODO: liftExpr " ++ show a
 
