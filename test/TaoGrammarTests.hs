@@ -455,7 +455,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     eval ctx "m" expr `shouldBe` Int 42
 
   it "☯ Tao.Match empty" $ do
-    let ctx = [("m", [def "x" (int 20 20 42)])]
+    let ctx = [("m", [def "x" (int 10 10 42)])]
     let match' arg = match 1 1 arg []
     let expr = match' (x 1 7)
     let (_, expr') = compile ctx "m" expr
@@ -467,7 +467,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     let errApp = Err (cannotApply (Tuple []) (Tuple []))
     let errFun = Err (notAFunction errApp Any)
     liftExpr expr' `shouldBe` Ann (match' (Ann (x 1 7) errFun)) IntT
-    eval ctx "m" expr `shouldBe` Err (unhandledCase (Int 42))
+    eval ctx "m" expr `shouldBe` loc 1 1 1 6 (Err (unhandledCase (Int 42)))
 
   -- If Expr Expr Expr
   -- Let (Pattern, Expr) Expr

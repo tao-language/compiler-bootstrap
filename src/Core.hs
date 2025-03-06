@@ -319,7 +319,7 @@ reduce :: Ops -> Expr -> Expr
 reduce ops = \case
   App a b -> reduceApp ops (reduce ops a) (reduce ops b)
   Let env expr -> reduceLet ops env expr
-  Meta _ a -> reduce ops a
+  Meta m a -> Meta m (reduce ops a)
   expr -> expr
 
 reduceLet :: Ops -> Env -> Expr -> Expr
@@ -340,7 +340,7 @@ reduceLet ops env = \case
     (Just call, args) | Just result <- call (eval ops) args -> result
     (_, args) -> Call f args
   Let env' a -> reduce ops (Let (env ++ env') a)
-  Meta _ a -> reduce ops (Let env a)
+  Meta m a -> Meta m (reduce ops (Let env a))
   expr -> expr
 
 reduceApp :: Ops -> Expr -> Expr -> Expr
@@ -435,8 +435,10 @@ eval ops expr = case reduce ops expr of
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)
   Call f args -> Call f (eval ops <$> args)
-  Meta m a -> Meta m (eval ops a)
-  Err (RuntimeError (UnhandledCase a)) -> Err (unhandledCase (eval ops a))
+  Meta m a -> case eval ops a of
+    Err e -> Meta m (Err e)
+    b -> b
+  Err e -> Err (fmap (eval ops) e)
   a -> a
 
 class Substitute a where
