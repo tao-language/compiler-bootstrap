@@ -6,7 +6,7 @@ import Data.Function ((&))
 import Data.List (delete, intercalate, union, unionBy)
 import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
-import Error (Error (..), TypeError (..), cannotApply, typeMismatch, unhandledCase)
+import Error (Error (..), RuntimeError (UnhandledCase), TypeError (..), cannotApply, typeMismatch, unhandledCase)
 import Location (Location (..), Position (..), Range (..))
 import qualified Parser as P
 import Stdlib (replace, replaceString)
@@ -346,7 +346,7 @@ reduceLet ops env = \case
 reduceApp :: Ops -> Expr -> Expr -> Expr
 reduceApp ops a b = case (a, b) of
   (Any, _) -> Any
-  (Err e, _) -> Err e
+  (Err _, _) -> Err (unhandledCase b)
   (a, b) | isOpen b -> App a b
   (a@Var {}, b) -> App a b
   (a@App {}, b) -> App a b
@@ -436,6 +436,7 @@ eval ops expr = case reduce ops expr of
   App a b -> App (eval ops a) (eval ops b)
   Call f args -> Call f (eval ops <$> args)
   Meta m a -> Meta m (eval ops a)
+  Err (RuntimeError (UnhandledCase a)) -> Err (unhandledCase (eval ops a))
   a -> a
 
 class Substitute a where

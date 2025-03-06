@@ -32,6 +32,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   let fun r c a b = loc r c r (c + 2) (Fun a b)
   let op1 r c op a = loc r c r (c + length (showOp1 op)) (Op1 op a)
   let op2 r c op a b = loc r c r (c + length (showOp2 op)) (Op2 op a b)
+  let match r c arg cases = loc r c r (c + length "match") (Match arg cases)
 
   let a r c = var r c "a"
   let b r c = var r c "b"
@@ -453,16 +454,20 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     liftExpr expr' `shouldBe` Ann (add (Ann (x 1 1) IntT) (Ann (y 1 5) IntT)) (Var "_1")
     eval ctx "m" expr `shouldBe` Int 42
 
-  let match r c arg cases = loc r c r (c + length "match") (Match arg cases)
   it "☯ Tao.Match empty" $ do
-    let ctx = [("m", [def "x" (int 20 20 40), def "y" (int 30 30 2)])]
-    let expr = match 1 1 Nothing []
+    let ctx = [("m", [def "x" (int 20 20 42)])]
+    let match' arg = match 1 1 arg []
+    let expr = match' (x 1 7)
     let (_, expr') = compile ctx "m" expr
-    parse' "match {} " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "match {}"
-    C.dropMeta expr' `shouldBe` C.Ann (C.Err $ cannotApply C.Unit C.Unit) C.Any
-    liftExpr expr' `shouldBe` Ann expr Any
-    eval ctx "m" expr `shouldBe` Match Nothing []
+    parse' "match x {} " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "match x {}"
+    let errApp = C.Err (cannotApply C.Unit C.Unit)
+    let errFun = C.Err (notAFunction errApp C.Any)
+    C.dropMeta expr' `shouldBe` C.Ann (C.App errApp (C.Ann x' errFun)) C.IntT
+    let errApp = Err (cannotApply (Tuple []) (Tuple []))
+    let errFun = Err (notAFunction errApp Any)
+    liftExpr expr' `shouldBe` Ann (match' (Ann (x 1 7) errFun)) IntT
+    eval ctx "m" expr `shouldBe` Err (unhandledCase (Int 42))
 
   -- If Expr Expr Expr
   -- Let (Pattern, Expr) Expr

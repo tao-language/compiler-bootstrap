@@ -33,7 +33,7 @@ data Expr
   | Call String [Expr]
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
-  | Match (Maybe Expr) [Expr]
+  | Match Expr [Expr]
   | If Expr Expr Expr
   | Let (Pattern, Expr) Expr
   | Bind (Pattern, Expr) Expr
@@ -186,7 +186,7 @@ instance Apply Expr where
     Call x args -> Call x (map f args)
     Op1 op a -> Op1 op (f a)
     Op2 op a b -> Op2 op (f a) (f b)
-    Match arg cases -> Match (fmap f arg) (map f cases)
+    Match arg cases -> Match (f arg) (map f cases)
     If a b c -> If (f a) (f b) (f c)
     Let (a, b) c -> Let (f a, f b) (f c)
     Bind (a, b) c -> Bind (f a, f b) (f c)
@@ -226,8 +226,7 @@ collect f = \case
   Call x args -> unionMap f args
   Op1 op a -> f (Var (showOp1 op)) `union` f a
   Op2 op a b -> f (Var (showOp2 op)) `union` f a `union` f b
-  Match Nothing cases -> unionMap f cases
-  Match (Just arg) cases -> f arg `union` unionMap f cases
+  Match arg cases -> f arg `union` unionMap f cases
   If a b c -> f a `union` f b `union` f c
   Let (a, b) c -> f a `union` f b `union` f c
   Bind (a, b) c -> f a `union` f b `union` f c
@@ -471,36 +470,22 @@ grammar = do
                 _ <- P.word "match"
                 end <- P.getState
                 _ <- P.spaces
-                let parseCases = do
-                      _ <- P.char '{'
-                      _ <- P.whitespaces
-                      cases <- P.zeroOrMore $ do
-                        _ <- P.char '|'
-                        _ <- P.spaces
-                        case' <- expr
-                        _ <- P.whitespaces
-                        return case'
-                      _ <- P.char '}'
-                      _ <- P.spaces
-                      return cases
-                (arg, cases) <-
-                  P.oneOf
-                    [ do
-                        arg <- expr
-                        _ <- P.spaces
-                        cases <- parseCases
-                        return (Just arg, cases),
-                      do
-                        cases <- parseCases
-                        return (Nothing, cases)
-                    ]
+                arg <- expr
+                _ <- P.spaces
+                _ <- P.char '{'
+                _ <- P.whitespaces
+                cases <- P.zeroOrMore $ do
+                  _ <- P.char '|'
+                  _ <- P.spaces
+                  case' <- expr
+                  _ <- P.whitespaces
+                  return case'
+                _ <- P.char '}'
+                _ <- P.spaces
                 return (withLoc start end $ Match arg cases)
            in G.Prefix 1 parser $ \layout -> \case
                 Match arg cases -> do
-                  let arg' = case arg of
-                        Just arg -> layout arg ++ [PP.Text " "]
-                        Nothing -> []
-                  Just (PP.Text "match " : arg' ++ [PP.Text "{"] ++ [PP.Text "}"])
+                  Just (PP.Text "match " : layout arg ++ PP.Text " {" : concatMap (\c -> PP.Text "| " : layout c ++ [PP.NewLine]) cases ++ [PP.Text "}"])
                 _ -> Nothing,
           -- If Expr Expr Expr
           -- Let (Pattern, Expr) Expr
@@ -604,7 +589,7 @@ lowerExpr = \case
   Call op args -> C.Call op (map lowerExpr args)
   Op1 op a -> C.app (C.Var $ showOp1 op) [lowerExpr a]
   Op2 op a b -> C.app (C.Var $ showOp2 op) [lowerExpr a, lowerExpr b]
-  Match Nothing cases -> lowerExpr (or' cases)
+  Match arg cases -> C.App (lowerExpr (or' cases)) (lowerExpr arg)
   -- Match args [(xs, ps, b)] -> lowerExpr (app (For xs $ fun ps b) args)
   -- Match args cases -> do
   --   let n = foldl max 0 (map (\(_, ps, _) -> length ps) cases)
@@ -690,6 +675,8 @@ liftExpr = \case
   --   | x `C.occurs` a -> Let (Var x, liftExpr a) (liftExpr a)
   --   | otherwise -> liftExpr a
   C.App a b -> case (liftExpr a, liftExpr b) of
+    (Err (RuntimeError (CannotApply (Tuple []) (Tuple []))), arg) ->
+      Match arg []
     (Var x, a) | Just op <- lookup x op1s -> do
       Op1 op a
     (Var x, Ann (Tuple [a, b]) (Tuple [ta, tb])) | Just op <- lookup x op2s -> do
@@ -702,7 +689,6 @@ liftExpr = \case
   -- C.Let ((x, b) : env) c -> Let (Var x, liftExpr b) (liftExpr (C.Let env c))
   C.Meta (C.Loc _) (C.Meta (C.Loc loc) a) -> Meta (C.Loc loc) (liftExpr a)
   C.Meta m a -> Meta m (liftExpr a)
-  C.Err (RuntimeError (CannotApply C.Unit C.Unit)) -> Match Nothing []
   C.Err e -> Err (fmap liftExpr e)
   a -> error $ "TODO: liftExpr " ++ show a
 
