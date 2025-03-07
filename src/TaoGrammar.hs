@@ -5,7 +5,7 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (chr, ord)
 import Data.Function ((&))
-import Data.List (delete, isPrefixOf, union, unionBy)
+import Data.List (delete, isPrefixOf, sort, union, unionBy)
 import Error
 import qualified Grammar as G
 import Location (Location (Location), Position (Pos), Range (Range))
@@ -144,11 +144,58 @@ keywords =
     "with"
   ]
 
+isTuple :: Expr -> Bool
+isTuple = \case
+  Tuple _ -> True
+  Meta _ a -> isTuple a
+  _ -> False
+
+isOr :: Expr -> Bool
+isOr = \case
+  Or _ _ -> True
+  Meta _ a -> isOr a
+  _ -> False
+
+isFor :: Expr -> Bool
+isFor = \case
+  For _ _ -> True
+  Meta _ a -> isFor a
+  _ -> False
+
+isFun :: Expr -> Bool
+isFun = \case
+  Fun _ _ -> True
+  Meta _ a -> isFun a
+  _ -> False
+
 -- Syntax sugar
+forOf :: Expr -> ([String], Expr)
+forOf = \case
+  For xs a -> do
+    let (ys, a') = forOf a
+    (xs ++ ys, a')
+  Meta m a -> do
+    let (xs, a') = forOf a
+    (xs, Meta m a')
+  a -> ([], a)
+
+caseBindings :: Expr -> [String]
+caseBindings = \case
+  For xs _ -> xs
+  Fun a _ -> freeVars a
+  Meta _ a -> caseBindings a
+  _ -> []
+
 or' :: [Expr] -> Expr
 or' [] = Err (cannotApply (Tuple []) (Tuple []))
 or' [a] = a
 or' (a : bs) = Or a (or' bs)
+
+orOf :: Expr -> [Expr]
+orOf = \case
+  Err (RuntimeError (CannotApply (Tuple []) (Tuple []))) -> []
+  Or a b -> a : orOf b
+  a -> [a]
 
 lambda :: [Expr] -> Expr -> Expr
 lambda args = Fun (Tuple args)
@@ -485,7 +532,10 @@ grammar = do
                 return (withLoc start end $ Match arg cases)
            in G.Prefix 1 parser $ \layout -> \case
                 Match arg cases -> do
-                  Just (PP.Text "match " : layout arg ++ PP.Text " {" : concatMap (\c -> PP.Text "| " : layout c ++ [PP.NewLine]) cases ++ [PP.Text "}"])
+                  let layoutCases = \case
+                        [] -> []
+                        cases -> PP.NewLine : concatMap (\c -> PP.Text "| " : layout c ++ [PP.NewLine]) cases
+                  Just (PP.Text "match " : layout arg ++ PP.Text " {" : layoutCases cases ++ [PP.Text "}"])
                 _ -> Nothing,
           -- If Expr Expr Expr
           -- Let (Pattern, Expr) Expr
@@ -667,9 +717,12 @@ liftExpr = \case
   C.And (C.Tag k) args -> Tag k (map liftExpr (C.andOf args))
   C.And a bs -> Tuple (map liftExpr (a : C.andOf bs))
   C.Or a b -> Or (liftExpr a) (liftExpr b)
-  C.For x a -> case liftExpr a of
-    For xs a -> For (x : xs) a
-    a -> For [x] a
+  -- C.For x a -> case liftExpr a of
+  --   For xs a -> For (x : xs) a
+  --   a -> For [x] a
+  C.For x a -> case forOf (liftExpr a) of
+    (xs, a) | sort (x : xs) == sort (caseBindings a) -> a
+    (xs, a) -> For (x : xs) a
   C.Fun a b -> Fun (liftExpr a) (liftExpr b)
   -- C.Fix x a
   --   | x `C.occurs` a -> Let (Var x, liftExpr a) (liftExpr a)
@@ -681,6 +734,8 @@ liftExpr = \case
       Op1 op a
     (Var x, Ann (Tuple [a, b]) (Tuple [ta, tb])) | Just op <- lookup x op2s -> do
       Op2 op (Ann a ta) (Ann b tb)
+    (cases, arg) | isFun cases || isFor cases || isOr cases -> do
+      Match arg (orOf cases)
     (fun, Ann (Tuple args) (Tuple targs)) ->
       App fun (zipWith (\a ta -> ("", Ann a ta)) args targs)
     (fun, arg) -> App fun [("", arg)]

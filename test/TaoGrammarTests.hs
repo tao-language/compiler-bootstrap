@@ -345,13 +345,14 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
 
   it "☯ Tao.Fun" $ do
     let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
-    let expr = fun 1 3 (x 1 1) (y 1 6)
+    let fun' = fun 1 3
+    let expr = fun' (x 1 1) (y 1 6)
     let (_, expr') = compile ctx "m" expr
     parse' "x -> y " `shouldBe` Right (expr, "")
     format 80 expr `shouldBe` "x -> y"
     C.dropMeta expr' `shouldBe` C.Ann (C.for ["x1T", "x"] $ C.Fun (C.Ann x' (C.Var "x1T")) y') (C.Fun (C.Var "x1T") C.NumT)
-    liftExpr expr' `shouldBe` Ann (For ["x1T"] $ loc 1 3 1 5 $ For ["x"] $ Fun (Ann (x 1 1) (Var "x1T")) (y 1 6)) (Fun (Var "x1T") NumT)
-    eval ctx "m" expr `shouldBe` For ["x"] (Fun (Var "x") (Num 3.14))
+    liftExpr expr' `shouldBe` Ann (fun' (Ann (x 1 1) (Var "x1T")) (y 1 6)) (Fun (Var "x1T") NumT)
+    eval ctx "m" expr `shouldBe` Fun (Var "x") (Num 3.14)
 
   it "☯ Tao.App no args" $ do
     let ctx = [("m", [def "x" (Fun (loc 10 10 11 11 $ Tuple []) (int 20 20 42))])]
@@ -454,7 +455,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     liftExpr expr' `shouldBe` Ann (add (Ann (x 1 1) IntT) (Ann (y 1 5) IntT)) (Var "_1")
     eval ctx "m" expr `shouldBe` Int 42
 
-  it "☯ Tao.Match empty" $ do
+  it "☯ Tao.Match case 0" $ do
     let ctx = [("m", [def "x" (int 10 10 42)])]
     let match' arg = match 1 1 arg []
     let expr = match' (x 1 7)
@@ -468,6 +469,28 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     let errFun = Err (notAFunction errApp Any)
     liftExpr expr' `shouldBe` Ann (match' (Ann (x 1 7) errFun)) IntT
     eval ctx "m" expr `shouldBe` loc 1 1 1 6 (Err (unhandledCase (Int 42)))
+
+  it "☯ Tao.Match case 1" $ do
+    let ctx = [("m", [def "x" (int 10 10 42)])]
+    let match' arg (a, b) = match 1 1 arg [fun 1 14 a b]
+    let expr = match' (x 1 7) (a 1 12, int 1 17 1)
+    let (_, expr') = compile ctx "m" expr
+    parse' "match x {| a -> 1} " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "match x {\n| a -> 1\n}"
+    C.dropMeta expr' `shouldBe` C.Ann (C.App (C.For "a" $ C.Fun (C.Ann a' C.IntT) (C.Int 1)) (C.Ann x' C.IntT)) C.IntT
+    liftExpr expr' `shouldBe` Ann (match' (Ann (x 1 7) IntT) (Ann (a 1 12) IntT, int 1 17 1)) IntT
+    eval ctx "m" expr `shouldBe` Int 1
+
+  it "☯ Tao.Match case 2" $ do
+    let ctx = [("m", [def "x" (int 10 10 42)])]
+    let match' arg (a, b) (c, d) = match 1 1 arg [fun 1 14 a b, fun 1 23 c d]
+    let expr = match' (x 1 7) (a 1 12, int 1 17 1) (b 1 21, int 1 26 2)
+    let (_, expr') = compile ctx "m" expr
+    parse' "match x {| a -> 1 | b -> 2} " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "match x {\n| a -> 1\n| b -> 2\n}"
+    C.dropMeta expr' `shouldBe` C.Ann (C.App (C.Or (C.For "a" $ C.Fun (C.Ann a' C.IntT) (C.Int 1)) (C.For "b" $ C.Fun (C.Ann b' C.IntT) (C.Int 2))) (C.Ann x' C.IntT)) C.IntT
+    liftExpr expr' `shouldBe` Ann (match' (Ann (x 1 7) IntT) (Ann (a 1 12) IntT, int 1 17 1) (Ann (b 1 21) IntT, int 1 26 2)) IntT
+    eval ctx "m" expr `shouldBe` Int 1
 
   -- If Expr Expr Expr
   -- Let (Pattern, Expr) Expr
