@@ -258,6 +258,7 @@ instance Apply Expr where
 dropMeta :: Expr -> Expr
 dropMeta = \case
   Meta _ a -> dropMeta a
+  Err e -> Err e -- do not drop metadata from errors
   a -> apply dropMeta a
 
 collect :: (Expr -> [String]) -> Expr -> [String]
@@ -775,6 +776,7 @@ liftExpr = \case
       Op1 op a
     (Var x, Ann (Tuple [a, b]) (Tuple [ta, tb])) | Just op <- lookup x op2s -> do
       Op2 op (Ann a ta) (Ann b tb)
+    (Fun a c, b) -> Let (a, b) c
     (cases, arg) | isFun cases || isFor cases || isOr cases -> do
       Match arg (orOf cases)
     (fun, Ann (Tuple args) (Tuple targs)) ->

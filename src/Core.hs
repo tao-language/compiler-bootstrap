@@ -424,7 +424,6 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (Call x args, Call x' args') | x == x' -> do
     match unify ops (and' args) (and' args')
   (Err e, Err e') | e == e' -> Just []
-  (Ann a _, b) -> match unify ops a b
   (a, Ann b _) -> match unify ops a b
   _ -> Nothing
 
@@ -438,9 +437,7 @@ eval ops expr = case reduce ops expr of
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)
   Call f args -> Call f (eval ops <$> args)
-  Meta m a -> case eval ops a of
-    Err e -> Meta m (Err e)
-    b -> b
+  Meta m a -> Meta m (eval ops a)
   Err e -> Err (fmap (eval ops) e)
   a -> a
 
@@ -516,6 +513,7 @@ dropMeta (App a b) = App (dropMeta a) (dropMeta b)
 dropMeta (Call op args) = Call op (map dropMeta args)
 dropMeta (Let defs b) = Let (map (second dropMeta) defs) (dropMeta b)
 dropMeta (Meta _ a) = dropMeta a
+dropMeta (Err e) = Err (fmap dropMeta e)
 dropMeta a = a
 
 dropLet :: Expr -> Expr
