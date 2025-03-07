@@ -1,12 +1,11 @@
 import Check (checkTypes)
-import Compile (Compile (compile), lower)
 import Control.Monad (void)
 import qualified Core as C
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, isSuffixOf, partition)
 import Error (Error (..), SyntaxError (..), display)
-import Load (include, load, loadAtoms)
-import Patch (PatchStep, Plan (plan), patch)
+import Load (include, load)
+import Patch
 import PrettyPrint (pretty)
 import qualified Python as Py
 import Run (run)
@@ -23,10 +22,10 @@ main = do
   cliArgs <- System.Environment.getArgs
   case cliArgs of
     "core" : args -> case args of
-      path : args -> coreCmd path args
+      path : arg : args -> coreCmd path arg
       _ -> putStrLn "🛑 Please give me a path, and an expression to convert to Core."
     "run" : args -> case args of
-      path : args -> runCmd path args
+      path : arg : args -> runCmd path arg
       _ -> putStrLn "🛑 Please give me a path, and an expression to run."
     "check" : args -> case args of
       path : _ -> checkCmd path
@@ -50,15 +49,15 @@ main = do
       _ -> putStrLn "🛑 Please give me a target."
     _ -> error "TODO: repl"
 
-coreCmd :: FilePath -> [String] -> IO ()
-coreCmd filename args = do
+coreCmd :: FilePath -> String -> IO ()
+coreCmd filename arg = do
   pkg <- load [filename]
   ctx <- include "prelude" pkg
-  args' <- loadAtoms "<core>" (map (\a -> "(" ++ a ++ ")") args)
+  arg' <- error "TODO" -- load "<core>" arg
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
-  let a = lower (app' args')
-  let env = concatMap (compile ctx path) (C.freeNames (True, True, False) a)
+  let a = lower arg'
+  let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
   let ((a', t), s) = C.infer buildOps env a
   let fmt = C.format . C.dropMeta
   putStrLn ("# env (" ++ show (length env) ++ " symbols)")
@@ -75,14 +74,14 @@ coreCmd filename args = do
 -- @a x. (x : a) -> (@z. (z : a) -> ^True | (_ : a) -> ^False) (x : a)
 --  : (@a. (a -> ^Bool))
 
-runCmd :: FilePath -> [String] -> IO ()
-runCmd filename args = do
+runCmd :: FilePath -> String -> IO ()
+runCmd filename arg = do
   ctx <- load [filename]
   ctx <- include "prelude" ctx
-  args' <- loadAtoms "<run>" args
+  arg' <- error "TODO" -- load "<run>" arg
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
-  print (run ctx path (app' args'))
+  print (run ctx path arg')
 
 checkCmd :: FilePath -> IO ()
 checkCmd filename = do
@@ -113,7 +112,7 @@ patchCmd buildDir patches sources = do
   steps <- plan [] patches
   ctx <- load sources
   -- TODO: display errors
-  let build = patch ctx steps ctx
+  let build = applyStep ctx steps ctx
   let writeFile (path, id, stmts) = do
         let filename = buildDir </> path ++ "@" ++ intercalate "!" id ++ ".tao"
         putStrLn filename
@@ -130,7 +129,7 @@ buildPythonCmd patches sources = do
   putStrLn $ "ctx: " ++ show (map fst ctx)
   -- TODO: display errors
   let ctx' =
-        patch ctx steps ctx
+        applyStep ctx steps ctx
           & map (\(path, _, stmts) -> (path, stmts))
   putStrLn "TODO: write intermediate patch files"
   let options = Py.defaultBuildOptions

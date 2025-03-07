@@ -1,6 +1,5 @@
 module Check where
 
-import Compile (compile, lower)
 import qualified Core as C
 import Data.List (intercalate)
 import Error (Error (..), TypeError (..))
@@ -28,8 +27,8 @@ instance CheckTypes Stmt where
   checkTypes ctx path = \case
     Import {} -> []
     Def (p, b) -> do
-      let a = lower (Let (p, b) Unit)
-      let env = concatMap (compile ctx path) (C.freeNames (True, True, False) a)
+      let a = lower (Let (p, b) (Tuple []))
+      let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
       let ((a', t), s) = C.infer buildOps env a
       -- TODO: recursively find all errors
       (error . intercalate "\n")
@@ -42,8 +41,8 @@ instance CheckTypes Stmt where
         ]
     TypeDef {} -> []
     Test t -> do
-      let a = lower (And t.expr t.expect)
-      let env = concatMap (compile ctx path) (C.freeNames (True, True, False) a)
+      let a = lower (Tuple [t.expr, t.expect])
+      let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
       let ((a', t), s) = C.infer buildOps env a
       -- TODO: recursively find all errors
       (error . intercalate "\n")

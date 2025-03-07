@@ -1,9 +1,31 @@
 module Test where
 
-import Compile (compile, lift)
 import qualified Core as C
 import Data.List (intercalate)
+import Location
 import Tao
+
+data TestResult
+  = TestPass
+      { filename :: String,
+        pos :: Position,
+        name :: String
+      }
+  | TestFail
+      { filename :: String,
+        pos :: Position,
+        name :: String,
+        test :: Expr,
+        expected :: Expr,
+        got :: Expr
+      }
+  deriving (Eq)
+
+instance Show TestResult where
+  show :: TestResult -> String
+  show result = case result of
+    TestPass filename pos name -> "✅ " ++ filename ++ ":" ++ show pos.row ++ ":" ++ show pos.col ++ " -- " ++ name ++ "\n"
+    TestFail filename pos name test expect got -> "❌ " ++ filename ++ ":" ++ show pos.row ++ ":" ++ show pos.col ++ " -- " ++ name ++ "\n  > " ++ show test ++ "\n  " ++ show expect ++ "\n* " ++ show got ++ "\n"
 
 class TestSome a where
   testSome :: Context -> (UnitTest -> Bool) -> a -> [TestResult]
@@ -30,7 +52,7 @@ instance TestSome (FilePath, UnitTest) where
   testSome :: Context -> (UnitTest -> Bool) -> (FilePath, UnitTest) -> [TestResult]
   testSome ctx _ (path, t) = do
     let (env, expr) = compile ctx path t.expr
-    let expect = let (env', a) = compile ctx path (Fun t.expect (Tag ":Ok")) in C.let' (env' ++ env) a
+    let expect = let (env', a) = compile ctx path (Fun t.expect (Tag ":Ok" [])) in C.let' (env' ++ env) a
     let test' = expect `C.Or` C.For "got" (C.Fun (C.Var "got") (C.Var "got"))
     -- error . intercalate "\n" $
     --   [ "-- testSome",

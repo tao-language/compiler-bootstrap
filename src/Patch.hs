@@ -50,54 +50,54 @@ instance Plan (FilePath, [FilePath], Stmt) where
       Nothing -> return (push (paths, [rule]) steps0)
     stmt -> error $ "TODO plan " ++ show stmt
 
-class Apply patch a where
-  apply :: patch -> a -> a
+class ApplyPatch applyStep a where
+  applyPatch :: applyStep -> a -> a
 
-instance Apply [Rule] Context where
-  apply :: [Rule] -> Context -> Context
-  apply rules ctx = map (apply (ctx, rules)) ctx
+instance ApplyPatch [Rule] Context where
+  applyPatch :: [Rule] -> Context -> Context
+  applyPatch rules ctx = map (applyPatch (ctx, rules)) ctx
 
-instance Apply (Context, [Rule]) Module where
-  apply :: (Context, [Rule]) -> Module -> Module
-  apply (ctx, rules) (path, stmts) =
-    (path, map (apply (ctx, path, rules)) stmts)
+instance ApplyPatch (Context, [Rule]) Module where
+  applyPatch :: (Context, [Rule]) -> Module -> Module
+  applyPatch (ctx, rules) (path, stmts) =
+    (path, map (applyPatch (ctx, path, rules)) stmts)
 
-instance Apply (Context, FilePath, [Rule]) Stmt where
-  apply :: (Context, FilePath, [Rule]) -> Stmt -> Stmt
-  apply (ctx, path, rules) = \case
-    Def (p, b) -> Def (p, apply' b)
-    Test t -> Test (t {expect = apply' t.expect})
-    stmt -> error $ "TODO apply " ++ show stmt
+instance ApplyPatch (Context, FilePath, [Rule]) Stmt where
+  applyPatch :: (Context, FilePath, [Rule]) -> Stmt -> Stmt
+  applyPatch (ctx, path, rules) = \case
+    Def (p, b) -> Def (p, applyPatch' b)
+    Test t -> Test (t {expect = applyPatch' t.expect})
+    stmt -> error $ "TODO applyPatch " ++ show stmt
     where
-      apply' = apply (ctx, path, rules)
+      applyPatch' = applyPatch (ctx, path, rules)
 
-instance Apply (Context, FilePath, [Rule]) Expr where
-  apply :: (Context, FilePath, [Rule]) -> Expr -> Expr
-  apply (ctx, path, rules) expr = case rules of
+instance ApplyPatch (Context, FilePath, [Rule]) Expr where
+  applyPatch :: (Context, FilePath, [Rule]) -> Expr -> Expr
+  applyPatch (ctx, path, rules) expr = case rules of
     [] -> expr
     rule : rules ->
-      apply (ctx, path, rule) expr
-        & apply (ctx, path, rules)
+      applyPatch (ctx, path, rule) expr
+        & applyPatch (ctx, path, rules)
 
-instance Apply (Context, FilePath, Rule) Expr where
-  apply :: (Context, FilePath, Rule) -> Expr -> Expr
-  apply (ctx, path, (p, q)) expr = case run ctx path (Let (p, expr) q) of
+instance ApplyPatch (Context, FilePath, Rule) Expr where
+  applyPatch :: (Context, FilePath, Rule) -> Expr -> Expr
+  applyPatch (ctx, path, (p, q)) expr = case run ctx path (Let (p, expr) q) of
     Err _ -> expr
     result -> result
 
-class Patch step a where
-  patch :: Context -> step -> a -> [(FilePath, [String], [Stmt])]
+class ApplyStep step a where
+  applyStep :: Context -> step -> a -> [(FilePath, [String], [Stmt])]
 
-instance Patch [PatchStep] Context where
-  patch :: Context -> [PatchStep] -> [Module] -> [(FilePath, [String], [Stmt])]
-  patch ctx steps = concatMap (patch ctx steps)
+instance ApplyStep [PatchStep] Context where
+  applyStep :: Context -> [PatchStep] -> [Module] -> [(FilePath, [String], [Stmt])]
+  applyStep ctx steps = concatMap (applyStep ctx steps)
 
-instance Patch [PatchStep] Module where
-  patch :: Context -> [PatchStep] -> Module -> [(FilePath, [String], [Stmt])]
-  patch ctx steps mod@(path, stmts) =
-    (path, [], stmts) : concatMap (\step -> patch ctx step mod) steps
+instance ApplyStep [PatchStep] Module where
+  applyStep :: Context -> [PatchStep] -> Module -> [(FilePath, [String], [Stmt])]
+  applyStep ctx steps mod@(path, stmts) =
+    (path, [], stmts) : concatMap (\step -> applyStep ctx step mod) steps
 
-instance Patch PatchStep Module where
-  patch :: Context -> PatchStep -> Module -> [(FilePath, [String], [Stmt])]
-  patch ctx (id, rules) (path, stmts) =
-    [(path, id, map (apply (ctx, path, rules)) stmts)]
+instance ApplyStep PatchStep Module where
+  applyStep :: Context -> PatchStep -> Module -> [(FilePath, [String], [Stmt])]
+  applyStep ctx (id, rules) (path, stmts) =
+    [(path, id, map (applyPatch (ctx, path, rules)) stmts)]

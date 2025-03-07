@@ -17,9 +17,9 @@ run = describe "--==☯ PatchTests ☯==--" $ do
     plan steps ["examples/patch:constant", "examples/patch:constant"] `shouldReturn` (steps ++ [(["constant"], [(i1, i2), (i1, i2)])])
     plan steps ["examples/patch:constant", "examples/patch:imports"] `shouldReturn` (steps ++ [(["constant"], [(i1, i2)]), (["imports", "constant"], [(i1, i2)]), (["imports"], [(i2, i3)])])
 
-  it "☯ apply Expr" $ do
+  it "☯ applyPatch Expr" $ do
     let ctx = [("mod", [Def (x, i1)])]
-    let apply' rule = apply (ctx, "mod", rule)
+    let apply' rule = applyPatch (ctx, "mod", rule)
     apply' (x, y) x `shouldBe` y
     apply' (x, y) z `shouldBe` y
     apply' (x, y) i1 `shouldBe` y
@@ -33,7 +33,7 @@ run = describe "--==☯ PatchTests ☯==--" $ do
     apply' (For ["x"] x, y) i1 `shouldBe` y
     apply' (For ["x"] x, y) i2 `shouldBe` y
 
-  it "☯ apply Stmt" $ do
+  it "☯ applyPatch Stmt" $ do
     let ctx = [("mod", [Def (x, i1)])]
-    let apply' rule = apply (ctx, "mod", [rule])
+    let apply' rule = applyPatch (ctx, "mod", [rule])
     apply' (x, y) (Def (x, x)) `shouldBe` Def (x, y)

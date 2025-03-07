@@ -9,7 +9,6 @@ import Stdlib (replace, split2)
 import System.Directory (doesDirectoryExist, listDirectory)
 import System.FilePath (dropExtension, splitExtension, takeBaseName, takeDirectory, (</>))
 import Tao
-import TaoParser (parseAtom, parseModule)
 
 load :: [FilePath] -> IO Context
 load = foldM loadModule []
@@ -74,23 +73,23 @@ loadSource filename = case splitExtension filename of
         error "TODO: loadSource handle error"
   _ -> error $ "file extension not supported: " ++ filename
 
-loadAtom :: String -> String -> IO Expr
-loadAtom filename src = case P.parse parseAtom filename src of
-  Right (a, _) -> return a
-  Left P.State {filename, pos, context} -> do
-    let loc =
-          Location
-            { filename = filename,
-              range = Range pos pos
-            }
-    return (Err $ SyntaxError $ UnexpectedChar loc)
+-- loadAtom :: String -> String -> IO Expr
+-- loadAtom filename src = case P.parse parseAtom filename src of
+--   Right (a, _) -> return a
+--   Left P.State {filename, pos, context} -> do
+--     let loc =
+--           Location
+--             { filename = filename,
+--               range = Range pos pos
+--             }
+--     return (Err $ SyntaxError $ UnexpectedChar loc)
 
-loadAtoms :: String -> [String] -> IO [Expr]
-loadAtoms _ [] = return []
-loadAtoms filename (src : srcs) = do
-  a <- loadAtom filename src
-  bs <- loadAtoms filename srcs
-  return (a : bs)
+-- loadAtoms :: String -> [String] -> IO [Expr]
+-- loadAtoms _ [] = return []
+-- loadAtoms filename (src : srcs) = do
+--   a <- loadAtom filename src
+--   bs <- loadAtoms filename srcs
+--   return (a : bs)
 
 walkDirectory :: FilePath -> FilePath -> IO [FilePath]
 walkDirectory dir path = do

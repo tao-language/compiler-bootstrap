@@ -30,4 +30,4 @@ run = describe "--==☯ Load ☯==--" $ do
             )
           ]
     result <- load ["examples/sub", "examples/empty"]
-    dropMeta result `shouldBe` ctx
+    result `shouldBe` ctx

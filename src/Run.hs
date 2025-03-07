@@ -1,6 +1,5 @@
 module Run where
 
-import Compile (compile, lift)
 import qualified Core as C
 import Tao
 

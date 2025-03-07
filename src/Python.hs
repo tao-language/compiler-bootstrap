@@ -1,6 +1,5 @@
 module Python where
 
-import Compile (bindings)
 import Control.Monad (unless, when)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (first, second))
@@ -11,12 +10,12 @@ import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
 import qualified Debug.Trace as Debug
 import Load (load)
+import qualified Name
 import qualified PrettyPrint as PP
 import Stdlib (filterMap, replace, replaceString)
 import System.Directory (copyFile, createDirectory, createDirectoryIfMissing, doesPathExist, removeDirectoryRecursive)
 import System.FilePath (joinPath, splitDirectories, splitFileName, splitPath, takeBaseName, takeDirectory, takeFileName, (</>))
 import qualified Tao as T
-import qualified TaoParser as P
 import Text.Read (readMaybe)
 
 -- TODO: abstract into an `Imperative` language
@@ -460,26 +459,27 @@ buildModule options ctx path = do
     & writeFile (path' ++ ".py")
 
   -- Test file
-  let imports' =
-        emit options $
-          T.Import "unittest" "unittest" []
-            : ( concatMap (bindings . fst) defs
-                  & map (\x -> (x, x))
-                  & T.Import path (takeBaseName path)
-              )
-            : imports
-  let unitTest =
-        ClassDef
-          { name = "Test" ++ T.nameCamelCaseUpper path,
-            bases = [Name "unittest" `Attribute` "TestCase"],
-            body = emit options tests,
-            decorators = [],
-            typeParams = []
-          }
-  Module path (imports' ++ [unitTest])
-    & layout
-    & pretty options
-    & writeFile (path' ++ "_test.py")
+  error "TODO: buildModule tests"
+  -- let imports' =
+  --       emit options $
+  --         T.Import "unittest" "unittest" []
+  --           : ( concatMap (bindings . fst) defs
+  --                 & map (\x -> (x, x))
+  --                 & T.Import path (takeBaseName path)
+  --             )
+  --           : imports
+  -- let unitTest =
+  --       ClassDef
+  --         { name = "Test" ++ Name.camelCaseUpper path,
+  --           bases = [Name "unittest" `Attribute` "TestCase"],
+  --           body = emit options tests,
+  --           decorators = [],
+  --           typeParams = []
+  --         }
+  -- Module path (imports' ++ [unitTest])
+  --   & layout
+  --   & pretty options
+  --   & writeFile (path' ++ "_test.py")
 
   return (path' ++ ".py")
 
@@ -490,23 +490,22 @@ instance Emit T.Expr ([Stmt], Expr) where
   emit :: BuildOptions -> T.Expr -> ([Stmt], Expr)
   emit options = \case
     T.Any -> ([], None)
-    T.Unit -> ([], Tuple [])
     T.IntT -> ([], Name "int")
     T.NumT -> ([], Name "float")
     T.Int i -> ([], Integer i)
     T.Num n -> ([], Float n)
-    T.Tag "Bool" -> ([], Name "bool")
-    T.Tag "True" -> ([], Bool True)
-    T.Tag "False" -> ([], Bool False)
-    T.Tag k -> ([], Tuple [String k])
+    T.Tag "Bool" [] -> ([], Name "bool")
+    T.Tag "True" [] -> ([], Bool True)
+    T.Tag "False" [] -> ([], Bool False)
+    T.Tag k [] -> ([], Tuple [String k])
     T.Var x -> ([], Name x)
     T.Ann a _ -> emit options a
-    T.And (T.Tag k) b -> do
-      let (s, args) = emit options (T.andOf b)
-      (s, Tuple (String k : args))
-    T.And a b -> do
-      let (s, items) = emit options (T.andOf (T.And a b))
-      (s, Tuple items)
+    -- T.And (T.Tag k) b -> do
+    --   let (s, args) = emit options (T.andOf b)
+    --   (s, Tuple (String k : args))
+    -- T.And a b -> do
+    --   let (s, items) = emit options (T.andOf (T.Tuple a b))
+    --   (s, Tuple items)
     T.Or a b -> do
       let (s1, a') = emit options a
       let (s2, b') = emit options b
@@ -517,22 +516,22 @@ instance Emit T.Expr ([Stmt], Expr) where
     --   let (stmts1, args') = emit options args
     --   let (stmts2, ret') = emit options ret
     --   (stmts1 ++ stmts2, callable args' ret')
-    T.App a b -> case T.appOf (T.App a b) of
-      (T.Var "not", [a]) -> do
-        let (s, a') = emit options a
-        (s, UnaryOp Not a')
-      (T.Var "and", [a, b]) -> do
-        let (s1, a') = emit options a
-        let (s2, b') = emit options b
-        (s1 ++ s2, BoolOp a' And b')
-      (T.Var "or", [a, b]) -> do
-        let (s1, a') = emit options a
-        let (s2, b') = emit options b
-        (s1 ++ s2, BoolOp a' Or b')
-      (f, args) -> do
-        let (s1, f') = emit options f
-        let (s2, args') = emit options args
-        (s1 ++ s2, Call f' args' [])
+    -- T.App a b -> case T.appOf (T.App a b) of
+    --   (T.Var "not", [a]) -> do
+    --     let (s, a') = emit options a
+    --     (s, UnaryOp Not a')
+    --   (T.Var "and", [a, b]) -> do
+    --     let (s1, a') = emit options a
+    --     let (s2, b') = emit options b
+    --     (s1 ++ s2, BoolOp a' And b')
+    --   (T.Var "or", [a, b]) -> do
+    --     let (s1, a') = emit options a
+    --     let (s2, b') = emit options b
+    --     (s1 ++ s2, BoolOp a' Or b')
+    --   (f, args) -> do
+    --     let (s1, f') = emit options f
+    --     let (s2, args') = emit options args
+    --     (s1 ++ s2, Call f' args' [])
     -- Call String [Expr]
     -- emit options (T.Call op args) = case (op, args) of
     --   ("+", [a, b]) -> emitBinOp Add a b
@@ -548,10 +547,10 @@ instance Emit T.Expr ([Stmt], Expr) where
     --       (stmts1 ++ stmts2, BinOp a' op b')
     -- Op1 Op1 Expr
     T.Op2 op a b -> emit options op a b
-    T.Match args cases -> do
-      let x = C.newName (concatMap (\(xs, _, _) -> xs) cases) "_match"
-      let def = T.Def (T.Var x, T.Match args cases)
-      (emit options def, Name x)
+    -- T.Match args cases -> do
+    --   let x = C.newName (concatMap (\(xs, _, _) -> xs) cases) "_match"
+    --   let def = T.Def (T.Var x, T.Match args cases)
+    --   (emit options def, Name x)
     -- If Expr Expr Expr
     -- emit options (T.Let def b) = do
     --   let stmts1 = emit options def
@@ -577,20 +576,21 @@ instance Emit (Expr -> Stmt) (T.Expr -> [Stmt]) where
   emit :: BuildOptions -> (Expr -> Stmt) -> T.Expr -> [Stmt]
   emit options stmt = \case
     T.Any -> [Pass]
-    T.Match [] cases -> do
-      let x = C.newName (concatMap (\(xs, _, _) -> xs) cases) "_match"
-      let def = T.Def (T.Var x, T.Match [] cases)
-      emit options def ++ [stmt (Name x)]
-    T.Match args cases -> do
-      let (s, arg) = emit options (T.and' args)
-      let cases' = emit options stmt cases
-      s ++ [Match arg cases']
-    a -> case T.letOf a of
-      (defs, T.Any) -> concatMap (emit options) defs
-      (defs, a) -> do
-        let s1 = concatMap (emit options) defs
-        let (s2, a') = emit options a
-        s1 ++ s2 ++ [stmt a']
+    -- T.Match [] cases -> do
+    --   let x = C.newName (concatMap (\(xs, _, _) -> xs) cases) "_match"
+    --   let def = T.Def (T.Var x, T.Match [] cases)
+    --   emit options def ++ [stmt (Name x)]
+    -- T.Match args cases -> do
+    --   let (s, arg) = emit options args
+    --   let cases' = emit options stmt cases
+    --   s ++ [Match arg cases']
+    -- a -> case T.letOf a of
+    --   (defs, T.Any) -> concatMap (emit options) defs
+    --   (defs, a) -> do
+    --     let s1 = concatMap (emit options) defs
+    --     let (s2, a') = emit options a
+    --     s1 ++ s2 ++ [stmt a']
+    a -> error ("TODO: emit " ++ show a)
 
 instance Emit T.Pattern Pattern where
   emit :: BuildOptions -> T.Pattern -> Pattern
@@ -638,7 +638,7 @@ instance Emit T.Op2 (T.Expr -> T.Expr -> ([Stmt], Expr)) where
 instance Emit (Expr -> Stmt) (T.Case -> (Pattern, Maybe Expr, [Stmt])) where
   emit :: BuildOptions -> (Expr -> Stmt) -> T.Case -> (Pattern, Maybe Expr, [Stmt])
   emit options stmt (xs, ps, a) = do
-    let p = emit options (T.and' ps) -- TODO: check for bound variables with xs
+    let p = emit options ps -- TODO: check for bound variables with xs
     let guard = Nothing -- TODO: support case guards
     (p, guard, emit options stmt a)
 
@@ -661,19 +661,19 @@ instance Emit [T.Expr] ([Stmt], [Expr]) where
 instance Emit (T.Pattern, T.Expr) [Stmt] where
   emit :: BuildOptions -> (T.Pattern, T.Expr) -> [Stmt]
   emit options = \case
-    (T.Var x, a) -> case T.lambdaOf "_" a of
-      ([], a) -> emit options (Assign [Name x]) a
-      (xs, a) ->
-        [ FunctionDef
-            { name = x,
-              args = map (,Nothing,Nothing) xs,
-              body = emit options Return a,
-              decorators = [],
-              returns = Nothing,
-              typeParams = [],
-              async = False
-            }
-        ]
+    -- (T.Var x, a) -> case T.lambdaOf "_" a of
+    --   ([], a) -> emit options (Assign [Name x]) a
+    --   (xs, a) ->
+    --     [ FunctionDef
+    --         { name = x,
+    --           args = map (,Nothing,Nothing) xs,
+    --           body = emit options Return a,
+    --           decorators = [],
+    --           returns = Nothing,
+    --           typeParams = [],
+    --           async = False
+    --         }
+    --     ]
     (T.Meta _ p, a) -> emit options (p, a)
     (p, a) -> error $ "TODO: emit Def " ++ show (p, a)
 
@@ -694,7 +694,7 @@ instance Emit T.Stmt [Stmt] where
       let (s2, b') = emit options t.expect -- TODO: do a match instead
       let def =
             FunctionDef
-              { name = "test_" ++ T.nameSnakeCase t.name,
+              { name = "test_" ++ Name.snakeCase t.name,
                 args = [("self", Nothing, Nothing)],
                 body =
                   [ Assign [Name "actual"] a',

@@ -9,8 +9,7 @@ import Load
 import Location (Position (..))
 import System.FilePath (dropExtension)
 import Tao
-import TaoParser
-import Test (testAll)
+import Test
 import Test.Hspec
 
 data Result a
@@ -80,7 +79,7 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "Any match 1",
             Pass "Any match 2",
             Pass "Unit match",
-            Fail "Unit match fail" i1 Unit,
+            -- Fail "Unit match fail" i1 Unit,
             Pass "IntT match",
             Fail "IntT match fail" NumT IntT,
             Pass "NumT match",
@@ -90,7 +89,7 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "Num match",
             Fail "Num match fail" (Num 0.0) (Num 3.14),
             Pass "Tag match",
-            Fail "Tag match fail" (Tag "B") (Tag "A"),
+            -- Fail "Tag match fail" (Tag "B") (Tag "A"),
             Pass "Err match",
             Fail "Err match fail" i1 (err Any)
           ]
@@ -154,17 +153,17 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     test ctx pkg `shouldBe` testResults
 
-  let name = "examples/expressions/and"
-  it ("☯ " ++ name ++ ".tao") $ do
-    pkg <- load [name]
-    let ctx = pkg
-    let testResults =
-          [ Pass "And match",
-            Fail "And match fail 1" i1 (And i1 i2),
-            Fail "And match fail 2" (And i1 i1) (And i1 i2),
-            Fail "And match fail 3" (And i2 i2) (And i1 i2)
-          ]
-    test ctx pkg `shouldBe` testResults
+  -- let name = "examples/expressions/and"
+  -- it ("☯ " ++ name ++ ".tao") $ do
+  --   pkg <- load [name]
+  --   let ctx = pkg
+  --   let testResults =
+  --         [ Pass "And match",
+  --           Fail "And match fail 1" i1 (And i1 i2),
+  --           Fail "And match fail 2" (And i1 i1) (And i1 i2),
+  --           Fail "And match fail 3" (And i2 i2) (And i1 i2)
+  --         ]
+  --   test ctx pkg `shouldBe` testResults
 
   let name = "examples/expressions/or"
   it ("☯ " ++ name ++ ".tao") $ do
