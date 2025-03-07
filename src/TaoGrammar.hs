@@ -34,12 +34,12 @@ data Expr
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
   | Match Expr [Expr]
-  | If Expr Expr Expr
   | Let (Pattern, Expr) Expr
   | Bind (Pattern, Expr) Expr
   | Record [(String, Expr)]
   | Select Expr [(String, Expr)]
   | With Expr [(String, Expr)]
+  | If Expr Expr Expr
   | Meta C.Metadata Expr
   | Err (Error Expr)
   deriving (Eq, Show)
@@ -169,6 +169,18 @@ isFun = \case
   _ -> False
 
 -- Syntax sugar
+bool :: Expr
+bool = tag "Bool"
+
+true :: Expr
+true = tag "True"
+
+false :: Expr
+false = tag "False"
+
+tag :: String -> Expr
+tag k = Tag k []
+
 forOf :: Expr -> ([String], Expr)
 forOf = \case
   For xs a -> do
@@ -234,12 +246,12 @@ instance Apply Expr where
     Op1 op a -> Op1 op (f a)
     Op2 op a b -> Op2 op (f a) (f b)
     Match arg cases -> Match (f arg) (map f cases)
-    If a b c -> If (f a) (f b) (f c)
     Let (a, b) c -> Let (f a, f b) (f c)
     Bind (a, b) c -> Bind (f a, f b) (f c)
     Record fields -> Record (second f <$> fields)
     Select a fields -> Select (f a) (second f <$> fields)
     With a fields -> With (f a) (second f <$> fields)
+    If a b c -> If (f a) (f b) (f c)
     Meta m a -> Meta m (f a)
     Err e -> Err (fmap f e)
 
@@ -274,12 +286,12 @@ collect f = \case
   Op1 op a -> f (Var (showOp1 op)) `union` f a
   Op2 op a b -> f (Var (showOp2 op)) `union` f a `union` f b
   Match arg cases -> f arg `union` unionMap f cases
-  If a b c -> f a `union` f b `union` f c
   Let (a, b) c -> f a `union` f b `union` f c
   Bind (a, b) c -> f a `union` f b `union` f c
   Record fields -> unionMap (f . snd) fields
   Select a fields -> f a `union` unionMap (f . snd) fields
   With a fields -> f a `union` unionMap (f . snd) fields
+  If a b c -> f a `union` f b `union` f c
   Meta m a -> f a
   Err e -> []
   where
@@ -537,12 +549,44 @@ grammar = do
                         cases -> PP.NewLine : concatMap (\c -> PP.Text "| " : layout c ++ [PP.NewLine]) cases
                   Just (PP.Text "match " : layout arg ++ PP.Text " {" : layoutCases cases ++ [PP.Text "}"])
                 _ -> Nothing,
-          -- If Expr Expr Expr
-          -- Let (Pattern, Expr) Expr
+          -- Let
+          let parser a expr = do
+                start <- P.getState
+                _ <- P.char '='
+                end <- P.getState
+                _ <- P.whitespaces
+                b <- expr
+                _ <- lineBreak
+                c <- expr
+                _ <- P.spaces
+                return (withLoc start end $ Let (a, b) c)
+           in G.InfixR 0 parser $ \lhs rhs -> \case
+                Let (a, b) c -> Just (lhs a ++ PP.Text " = " : rhs b ++ PP.NewLine : rhs c)
+                _ -> Nothing,
           -- Bind (Pattern, Expr) Expr
           -- Record [(String, Expr)]
           -- Select Expr [(String, Expr)]
           -- With Expr [(String, Expr)]
+          -- If
+          let parser expr = do
+                start <- P.getState
+                _ <- P.word "if"
+                end <- P.getState
+                _ <- P.spaces
+                a <- expr
+                _ <- P.whitespaces
+                _ <- P.word "then"
+                _ <- P.spaces
+                b <- expr
+                _ <- P.whitespaces
+                _ <- P.word "else"
+                _ <- P.spaces
+                c <- expr
+                _ <- P.spaces
+                return (withLoc start end $ If a b c)
+           in G.Atom parser $ \layout -> \case
+                If a b c -> Just (PP.Text "if " : layout a ++ PP.Text " then " : layout b ++ PP.Text " else " : layout c)
+                _ -> Nothing,
           -- Metadata Comments
           let parser expr = do
                 comments <- P.oneOrMore $ do
@@ -672,9 +716,8 @@ lowerExpr = \case
     -- For xs a -> lowerExpr (App (For xs (Fun a c)) b)
     -- Meta _ a -> lowerExpr (Let (a, b) c)
     -- a -> lowerExpr (App (Fun [("", a)] c) [("", b)])
-    a -> error $ "TODO: lowerExpr " ++ show (Let (a, b) c)
+    a -> C.App (lowerExpr (Fun a c)) (lowerExpr b)
   -- -- lowerExpr env (Bind (ts, p, a) b) = lowerExpr env (App (Trait a "<-") (Function [p] b))
-  -- If a b c -> lowerExpr (Match [a] [([], [Tag "True"], b), ([], [], c)])
   -- Record fields -> do
   --   let k = '~' : intercalate "," (map fst fields)
   --   lowerExpr (tag k (map snd fields))
@@ -687,6 +730,7 @@ lowerExpr = \case
   --   let k = '~' : intercalate "," (map fst kvs)
   --   let args = map ((C.substitute sub . lowerExpr) . snd) kvs
   --   C.tag k args
+  If a b c -> lowerExpr (Match a [Fun (Ann true bool) b, Fun (Ann false bool) c])
   Meta m a -> C.Meta m (lowerExpr a)
   Err e -> C.Err (fmap lowerExpr e)
   a -> error $ "TODO: lowerExpr " ++ show a
@@ -717,9 +761,6 @@ liftExpr = \case
   C.And (C.Tag k) args -> Tag k (map liftExpr (C.andOf args))
   C.And a bs -> Tuple (map liftExpr (a : C.andOf bs))
   C.Or a b -> Or (liftExpr a) (liftExpr b)
-  -- C.For x a -> case liftExpr a of
-  --   For xs a -> For (x : xs) a
-  --   a -> For [x] a
   C.For x a -> case forOf (liftExpr a) of
     (xs, a) | sort (x : xs) == sort (caseBindings a) -> a
     (xs, a) -> For (x : xs) a

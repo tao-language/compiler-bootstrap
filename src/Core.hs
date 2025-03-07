@@ -374,6 +374,8 @@ match unify ops (Let env (Meta _ a)) b =
 match unify ops (Let env (Let env' a)) b =
   match unify ops (Let (env ++ env') a) b
 match unify ops a b = case (reduce ops a, reduce ops b) of
+  (Meta _ a, b) -> match unify ops a b
+  (_, Meta _ b) -> match unify ops a b
   (Any, _) -> Just []
   (_, Any) | unify -> Just []
   (Unit, Unit) -> Just []
@@ -384,10 +386,13 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (Tag k, Tag k') | k == k' -> Just []
   (Var x, b) -> Just [(x, b)]
   (a, Var x) | unify -> Just [(x, a)]
+  (a, Ann b (Err _)) -> match unify ops a b
+  (Ann a (Err _), b) -> match unify ops a b
   (Ann a ta, Ann b tb) -> do
     env1 <- match True ops ta tb
     env2 <- match unify ops a b
     Just (env1 ++ env2)
+  (Ann a _, b) -> match unify ops a b
   (And (Let env (Tag k)) a, b) -> case lookup k env of
     Just def -> do
       let b' = app (Let env def) [a, b]
@@ -421,8 +426,6 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (Err e, Err e') | e == e' -> Just []
   (Ann a _, b) -> match unify ops a b
   (a, Ann b _) -> match unify ops a b
-  (Meta _ a, b) -> match unify ops a b
-  (_, Meta _ b) -> match unify ops a b
   _ -> Nothing
 
 eval :: Ops -> Expr -> Expr
@@ -719,6 +722,7 @@ inferAll ops env (a : bs) = do
   ((substitute s2 a', substitute s2 ta) : bts, s2 `compose` s1)
 
 check :: Ops -> Env -> Expr -> Type -> ((Expr, Type), Substitution)
+check _ _ (Tag k) t = ((Tag k, t), [])
 check ops env a (For x t) = do
   let y = newName (map fst env) x
   let ((a', t'), s) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] t)

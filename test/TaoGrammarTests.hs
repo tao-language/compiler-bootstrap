@@ -33,14 +33,16 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   let op1 r c op a = loc r c r (c + length (showOp1 op)) (Op1 op a)
   let op2 r c op a b = loc r c r (c + length (showOp2 op)) (Op2 op a b)
   let match r c arg cases = loc r c r (c + length "match") (Match arg cases)
+  let let' r c (x, y) z = loc r c r (c + 1) (Let (x, y) z)
 
   let a r c = var r c "a"
   let b r c = var r c "b"
+  let c r c = var r c "c"
   let x r c = var r c "x"
   let y r c = var r c "y"
   let z r c = var r c "z"
 
-  let (a', b') = (C.Var "a", C.Var "b")
+  let (a', b', c') = (C.Var "a", C.Var "b", C.Var "c")
   let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
 
   let def x a = Def (Var x, a)
@@ -492,8 +494,25 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     liftExpr expr' `shouldBe` Ann (match' (Ann (x 1 7) IntT) (Ann (a 1 12) IntT, int 1 17 1) (Ann (b 1 21) IntT, int 1 26 2)) IntT
     eval ctx "m" expr `shouldBe` Int 1
 
-  -- If Expr Expr Expr
-  -- Let (Pattern, Expr) Expr
+  it "☯ Tao.Let" $ do
+    let ctx = [("m", [def "y" (int 10 10 42)])]
+    let expr = let' 1 3 (x 1 1, y 1 5) (x 1 8)
+    let (_, expr') = compile ctx "m" expr
+    parse' "x = y; x" `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "x = y\nx"
+    C.dropMeta expr' `shouldBe` C.Ann (C.App (C.For "x" $ C.Fun (C.Ann x' C.IntT) (C.Ann x' C.IntT)) (C.Ann y' C.IntT)) C.IntT
+    liftExpr expr' `shouldBe` Ann expr IntT
+    eval ctx "m" expr `shouldBe` Any
+
+  -- it "☯ Tao.TODO" $ do
+  --   let ctx = [("m", [def "x" (int 10 10 42)])]
+  --   let expr = Any
+  --   let (_, expr') = compile ctx "m" expr
+  --   parse' "TODO " `shouldBe` Right (expr, "")
+  --   format 80 expr `shouldBe` "TODO"
+  --   C.dropMeta expr' `shouldBe` C.Ann C.Any C.IntT
+  --   liftExpr expr' `shouldBe` Ann expr IntT
+  --   eval ctx "m" expr `shouldBe` Any
 
   -- Bind (Pattern, Expr) Expr
   -- Record [(String, Expr)]
@@ -505,6 +524,29 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   -- App named arguments
   -- App default values
   -- Spread
+  -- ToDo
+
+  -- let if' r c x y z = loc r c r (c + 2) (If x y z)
+  -- it "☯ Tao.If" $ do
+  --   let ctx =
+  --         [ ( "m",
+  --             [ def "Bool" (Or (Fun true bool) (Fun true bool)),
+  --               def "a" (tag 10 10 "True" []),
+  --               def "b" (int 20 20 1),
+  --               def "c" (int 30 30 2)
+  --             ]
+  --           )
+  --         ]
+  --   let (bool', true', false') = (C.Tag "Bool", C.Tag "True", C.Tag "False")
+  --   let expr = if' 1 1 (a 1 4) (b 1 11) (c 1 18)
+  --   let (_, expr') = compile ctx "m" expr
+  --   parse' "if a then b else c " `shouldBe` Right (expr, "")
+  --   format 80 expr `shouldBe` "if a then b else c"
+  --   -- TODO: fix this
+  --   C.dropMeta expr' `shouldBe` C.Ann (C.App (C.Or (C.Fun (C.Ann true' bool') b') (C.Fun (C.Ann false' bool') c')) (C.Ann a' bool')) C.IntT
+  --   liftExpr expr' `shouldBe` Ann expr IntT
+  --   eval ctx "m" expr `shouldBe` Int 1
+
   it "☯ Tao.Err" $ do
     parse' "!error _" `shouldBe` Right (loc 1 1 1 7 (Err (customError $ any 1 8)), "")
     format 80 (Err (customError Any)) `shouldBe` "!error _"
