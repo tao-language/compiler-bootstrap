@@ -31,9 +31,9 @@ data Expr
   | Num Double
   | Tag String
   | Var String
-  | Ann Expr Type
   | And Expr Expr
   | Or Expr Expr
+  | Ann Expr Type
   | For String Expr
   | Fix String Expr
   | Fun Expr Expr
@@ -102,37 +102,31 @@ grammar = do
           G.atom (const Var) parseNameVar $ \_ -> \case
             Var x -> Just [PP.Text x]
             _ -> Nothing,
-          -- Ann
-          G.infixR 1 (const Ann) ":" $ \case
-            Ann a b -> Just (a, " ", b)
-            _ -> Nothing,
           -- And
           let parser expr = do
                 _ <- P.char '('
                 _ <- P.whitespaces
-                items <-
-                  P.oneOf
-                    [ do
-                        arg <- expr
-                        _ <- P.whitespaces
-                        args <- P.zeroOrMore $ do
-                          _ <- P.char ','
-                          _ <- P.whitespaces
-                          expr
-                        return (arg : args),
-                      return []
-                    ]
+                arg <- expr
+                _ <- P.whitespaces
+                args <- P.oneOrMore $ do
+                  _ <- P.char ','
+                  _ <- P.whitespaces
+                  expr
                 _ <- P.char ')'
                 _ <- P.spaces
-                return (and' items)
+                return (and' (arg : args))
            in G.Atom parser $ \layout -> \case
                 And a b -> do
                   let items = andOf (And a b)
                   Just (PP.Text "(" : intercalate [PP.Text ", "] (map layout items) ++ [PP.Text ")"])
                 _ -> Nothing,
           -- Or
-          G.infixL 1 (const Or) "|" $ \case
+          G.infixR 1 (const Or) "|" $ \case
             Or a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Ann
+          G.infixR 2 (const Ann) ":" $ \case
+            Ann a b -> Just (a, " ", b)
             _ -> Nothing,
           -- For
           let parser expr = do
@@ -147,7 +141,7 @@ grammar = do
                 a <- expr
                 _ <- P.spaces
                 return (for xs a)
-           in G.Prefix 1 parser $ \layout -> \case
+           in G.Prefix 3 parser $ \layout -> \case
                 For x a -> do
                   let (xs, a') = forOf (For x a)
                   Just (PP.Text ("@" ++ unwords xs ++ ". ") : layout a')
@@ -165,13 +159,13 @@ grammar = do
                 a <- expr
                 _ <- P.spaces
                 return (fix xs a)
-           in G.Prefix 1 parser $ \layout -> \case
+           in G.Prefix 3 parser $ \layout -> \case
                 Fix x a -> do
-                  let (xs, a') = forOf (For x a)
+                  let (xs, a') = fixOf (Fix x a)
                   Just (PP.Text ("&" ++ unwords xs ++ ". ") : layout a')
                 _ -> Nothing,
           -- Fun
-          G.infixR 1 (const Fun) "->" $ \case
+          G.infixR 3 (const Fun) "->" $ \case
             Fun a b -> Just (a, " ", b)
             _ -> Nothing,
           -- App
@@ -179,7 +173,7 @@ grammar = do
                 y <- expr
                 _ <- P.spaces
                 return (App x y)
-           in G.InfixR 1 parser $ \lhs rhs -> \case
+           in G.InfixL 4 parser $ \lhs rhs -> \case
                 App a b -> Just (lhs a ++ PP.Text " " : rhs b)
                 _ -> Nothing,
           -- Call
@@ -273,10 +267,14 @@ grammar = do
                 Meta (Loc loc) a -> Just (PP.Text ("![" ++ show loc ++ "] ") : layout a)
                 _ -> Nothing,
           -- Err
-          G.prefix 1 (\_ a -> Err (customError a)) "!error" $ \case
-            Err (RuntimeError (CustomError a)) -> Just (" ", a)
-            Err _ -> Just (" ", Any)
-            _ -> Nothing
+          let parser expr = do
+                _ <- P.word "!error"
+                _ <- P.spaces
+                err <$> expr
+           in G.Atom parser $ \layout -> \case
+                Err (RuntimeError (CustomError a)) -> Just (PP.Text "!error " : layout a)
+                Err _ -> Just (layout (err Any))
+                _ -> Nothing
         ]
     }
 
@@ -432,9 +430,6 @@ orOf :: Expr -> [Expr]
 orOf (Or a b) = a : orOf b
 orOf a = [a]
 
-fix :: [String] -> Expr -> Expr
-fix xs a = foldr Fix a xs
-
 for :: [String] -> Expr -> Expr
 for xs a = foldr For a xs
 
@@ -442,15 +437,22 @@ forOf :: Expr -> ([String], Expr)
 forOf (For x a) = let (xs, b) = forOf a in (x : xs, b)
 forOf a = ([], a)
 
+fix :: [String] -> Expr -> Expr
+fix xs a = foldr Fix a xs
+
+fixOf :: Expr -> ([String], Expr)
+fixOf (Fix x a) = let (xs, b) = fixOf a in (x : xs, b)
+fixOf a = ([], a)
+
 fun :: [Expr] -> Expr -> Expr
-fun ps b = foldr Fun b ps
+fun ps = Fun (and' ps)
+
+funOf :: Expr -> ([Expr], Expr)
+funOf (Fun arg ret) = (andOf arg, ret)
+funOf a = ([], a)
 
 lam :: [Expr] -> Expr -> Expr
 lam ps b = for (freeVars (and' ps)) (fun ps b)
-
-funOf :: Expr -> ([Expr], Expr)
-funOf (Fun arg ret) = let (args, ret') = funOf ret in (arg : args, ret')
-funOf a = ([], a)
 
 app :: Expr -> [Expr] -> Expr
 app fun args = App fun (and' args)
@@ -480,6 +482,9 @@ matchFun :: [([Expr], Expr)] -> Expr
 matchFun [] = Unit
 matchFun [(ps, b)] = fun ps b
 matchFun ((ps, b) : cases) = fun ps b `Or` matchFun cases
+
+err :: Expr -> Expr
+err a = Err (customError a)
 
 -- Helper functions
 pop :: (Eq k) => k -> [(k, v)] -> [(k, v)]

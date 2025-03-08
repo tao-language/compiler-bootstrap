@@ -457,7 +457,7 @@ grammar = do
                   Just ([PP.Text "'"] ++ concatMap layoutSegment segments ++ [PP.Text "'"])
                 _ -> Nothing,
           -- Or
-          G.infixL 1 (loc2 Or) "|" $ \case
+          G.infixR 1 (loc2 Or) "|" $ \case
             Or a b -> Just (a, " ", b)
             _ -> Nothing,
           -- For
