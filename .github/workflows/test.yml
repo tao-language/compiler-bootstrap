@@ -3,10 +3,11 @@ name: λ
 on: push
 
 env:
-  GHC_VERSION: '9.8.2'
+  GHC_VERSION: "9.8.2"
 
 jobs:
   # lint:
+  #   timeout-minutes: 5
   #   runs-on: ubuntu-latest
   #   steps:
   #     - uses: actions/checkout@v4
@@ -18,6 +19,7 @@ jobs:
   #     - run: stack build --fast --ghc-options="-Werror"
 
   test:
+    timeout-minutes: 5
     strategy:
       matrix:
         os: [ubuntu-latest]
@@ -30,7 +32,7 @@ jobs:
           enable-stack: true
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - run: stack build --fast --test --no-run-tests
       - run: stack test
