@@ -4,6 +4,8 @@ import Core
 import Data.Bifunctor (Bifunctor (first))
 import Data.Char (toLower)
 import Error (Error (..), TypeError (..), customError, typeMismatch)
+import Location (Location (Location), Position (Pos), Range (Range))
+import Parser (State (..))
 import Test.Hspec
 
 run :: SpecWith ()
@@ -18,7 +20,17 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let sub a b = Call "int_sub" [a, b]
   let mul a b = Call "int_mul" [a, b]
   let ops =
-        [ ( "int_add",
+        [ ( "null",
+            \eval args -> case map (dropTypes . eval) args of
+              [] -> Just (Tag "Null")
+              _ -> Nothing
+          ),
+          ( "int_neg",
+            \eval args -> case map (dropTypes . eval) args of
+              [Int x] -> Just (Int (-x))
+              _ -> Nothing
+          ),
+          ( "int_add",
             \eval args -> case map (dropTypes . eval) args of
               [Int x, Int y] -> Just (Int (x + y))
               _ -> Nothing
@@ -40,15 +52,267 @@ run = describe "--==☯️ Core language ☯️==--" $ do
           case0 = Fun i0 i1
           caseN f = For "x" (Fun x (x `mul` App (Var f) (x `sub` i1)))
 
-  it "☯ format" $ do
-    format err `shouldBe` "!RuntimeError"
-    format IntT `shouldBe` "!IntT"
-    format NumT `shouldBe` "!NumT"
-    format (Int 1) `shouldBe` "1"
-    format (Num 1.1) `shouldBe` "1.1"
-    -- format (Typ "T") `shouldBe` "$T"
-    -- format (Ctr "T" "A") `shouldBe` "$T.A"
-    format (Var "x") `shouldBe` "x"
+  let filename = "<CoreTests>"
+  let parse' :: String -> Either ([String], String) (Expr, String)
+      parse' text = case parse 0 filename text of
+        Right (a, s) -> Right (a, s.remaining)
+        Left s -> Left (s.context, s.remaining)
+
+  it "☯ Core.Any" $ do
+    let env = []
+    let expr = Any
+    parse' "_ " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "_"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, Var "_1", [("_1", Var "_1")])
+    eval ops (Let env expr') `shouldBe` expr
+
+  it "☯ Core.Unit" $ do
+    let env = []
+    let expr = Unit
+    parse' "() " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "()"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, expr, [])
+    eval ops (Let env expr') `shouldBe` expr
+
+  it "☯ Core.IntT" $ do
+    let env = []
+    let expr = IntT
+    parse' "!Int " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "!Int"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, expr, [])
+    eval ops (Let env expr') `shouldBe` expr
+
+  it "☯ Core.NumT" $ do
+    let env = []
+    let expr = NumT
+    parse' "!Num " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "!Num"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, expr, [])
+    eval ops (Let env expr') `shouldBe` expr
+
+  it "☯ Core.Int" $ do
+    let env = []
+    let expr = Int 42
+    parse' "42 " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "42"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, IntT, [])
+    eval ops (Let env expr') `shouldBe` expr
+
+  it "☯ Core.Num" $ do
+    let env = []
+    let expr = Num 3.14
+    parse' "3.14 " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "3.14"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, NumT, [])
+    eval ops (Let env expr') `shouldBe` expr
+
+  it "☯ Core.Tag" $ do
+    let env = []
+    let expr = Tag "A"
+    parse' "A " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "A"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, expr, [])
+    eval ops (Let env expr') `shouldBe` expr
+
+  it "☯ Core.Var" $ do
+    let env = [("x", Int 42)]
+    let expr = Var "x"
+    parse' "x " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "x"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, IntT, [])
+    eval ops (Let env expr') `shouldBe` Int 42
+
+  it "☯ Core.Ann" $ do
+    let env = [("x", Int 42), ("y", IntT)]
+    let expr = Ann x y
+    parse' "x : y " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "x : y"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (Ann x IntT, IntT, [("y", IntT)])
+    eval ops (Let env expr') `shouldBe` Ann (Int 42) IntT
+
+  it "☯ Core.And 2" $ do
+    let env = [("x", Int 42), ("y", Num 3.14)]
+    let expr = And x y
+    parse' "(x, y) " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "(x, y)"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, And IntT NumT, [])
+    eval ops (Let env expr') `shouldBe` And (Int 42) (Num 3.14)
+
+  it "☯ Core.And 3" $ do
+    let env = [("x", Int 42), ("y", Num 3.14), ("z", Unit)]
+    let expr = and' [x, y, z]
+    parse' "(x, y, z) " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "(x, y, z)"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, and' [IntT, NumT, Unit], [])
+    eval ops (Let env expr') `shouldBe` and' [Int 42, Num 3.14, Unit]
+
+  it "☯ Core.Or" $ do
+    let env = [("x", Int 42), ("y", Num 3.14)]
+    let expr = Or x y
+    parse' "x | y " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "x | y"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, Or IntT NumT, [])
+    eval ops (Let env expr') `shouldBe` Or (Int 42) (Num 3.14)
+
+  it "☯ Core.For" $ do
+    let env = [("y", Int 42)]
+    let expr = For "x" y
+    parse' "@x. y " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "@x. y"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, IntT, [("x", x)])
+    eval ops (Let env expr') `shouldBe` For "x" (Int 42)
+
+  it "☯ Core.Fix" $ do
+    let env = [("y", Int 42)]
+    let expr = Fix "x" y
+    parse' "&x. y " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "&x. y"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, IntT, [("x", x)])
+    eval ops (Let env expr') `shouldBe` Fix "x" (Int 42)
+
+  it "☯ Core.Fun" $ do
+    let env = [("x", Int 42), ("y", Num 3.14)]
+    let expr = Fun x y
+    parse' "x -> y " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "x -> y"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (Fun (Ann x IntT) y, Fun IntT NumT, [])
+    eval ops (Let env expr') `shouldBe` Fun (Ann (Int 42) IntT) (Num 3.14)
+
+  it "☯ Core.App" $ do
+    let env = [("x", Fun (Int 1) (Num 3.14)), ("y", Int 1)]
+    let expr = App x y
+    parse' "x y " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "x y"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (App x (Ann y IntT), NumT, [])
+    eval ops (Let env expr') `shouldBe` Num 3.14
+
+  it "☯ Core.Call 0" $ do
+    let env = []
+    let expr = Call "null" []
+    parse' "%null() " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "%null()"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (Call "null" [], Var "_1", [])
+    eval ops (Let env expr') `shouldBe` Tag "Null"
+
+  it "☯ Core.Call 1" $ do
+    let env = [("x", Int 1)]
+    let expr = Call "int_neg" [x]
+    parse' "%int_neg(x) " `shouldBe` Right (expr, "")
+    parse' "%int_neg x " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "%int_neg(x)"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (Call "int_neg" [x], Var "_1", [])
+    eval ops (Let env expr') `shouldBe` Int (-1)
+
+  it "☯ Core.Call 2" $ do
+    let env = [("x", Int 1), ("y", Int 2)]
+    let expr = Call "int_add" [x, y]
+    parse' "%int_add(x, y) " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "%int_add(x, y)"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (Call "int_add" [x, y], Var "_1", [])
+    eval ops (Let env expr') `shouldBe` Int 3
+
+  it "☯ Core.Let 0" $ do
+    let env = [("x", Int 1)]
+    let expr = Let [] x
+    parse' "@{} x " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "@{} x"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, IntT, [])
+    eval ops (Let env expr') `shouldBe` Int 1
+
+  it "☯ Core.Let 1" $ do
+    let env = [("x", Num 3.14)]
+    let expr = Let [("x", Int 1)] x
+    parse' "@{x = 1} x " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "@{x = 1} x"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, IntT, [])
+    eval ops expr' `shouldBe` Int 1
+
+  it "☯ Core.Let 2" $ do
+    let env = [("x", Num 3.14), ("y", Num 2.71)]
+    let expr = Let [("x", Int 1), ("y", Int 2)] y
+    parse' "@{x = 1, y = 2} y " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "@{x = 1, y = 2} y"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, IntT, [])
+    eval ops expr' `shouldBe` Int 2
+
+  it "☯ Core.Meta.Location" $ do
+    let env = [("x", Int 1)]
+    let expr = Meta (Loc $ Location "file" (Range (Pos 1 2) (Pos 3 4)))
+    parse' "![file:1:2,3:4] x" `shouldBe` Right (expr x, "")
+    format 80 (expr x) `shouldBe` "![file:1:2,3:4] x"
+    let ((expr', typ), s) = infer ops env (expr x)
+    (expr', typ, s) `shouldBe` (expr x, IntT, [])
+    eval ops (Let env expr') `shouldBe` expr (Int 1)
+
+  it "☯ Core.Meta.Comments 1" $ do
+    let env = [("x", Int 1)]
+    let expr = Meta (Comments ["c1"])
+    parse' "# c1\nx " `shouldBe` Right (expr x, "")
+    format 80 (expr x) `shouldBe` "# c1\nx"
+    let ((expr', typ), s) = infer ops env (expr x)
+    (expr', typ, s) `shouldBe` (expr x, IntT, [])
+    eval ops (Let env expr') `shouldBe` expr (Int 1)
+
+  it "☯ Core.Meta.Comments 2" $ do
+    let env = [("x", Int 1)]
+    let expr = Meta (Comments ["c1", "c2"])
+    parse' "# c1\n# c2\nx " `shouldBe` Right (expr x, "")
+    format 80 (expr x) `shouldBe` "# c1\n# c2\nx"
+    let ((expr', typ), s) = infer ops env (expr x)
+    (expr', typ, s) `shouldBe` (expr x, IntT, [])
+    eval ops (Let env expr') `shouldBe` expr (Int 1)
+
+  -- TODO: multi-line comments
+
+  it "☯ Core.Meta.TrailingComment" $ do
+    let env = [("x", Int 1)]
+    let expr = Meta (TrailingComment "c")
+    parse' "x # c" `shouldBe` Right (expr x, "")
+    format 80 (expr x) `shouldBe` "x  # c\n"
+    let ((expr', typ), s) = infer ops env (expr x)
+    (expr', typ, s) `shouldBe` (expr x, IntT, [])
+    eval ops (Let env expr') `shouldBe` expr (Int 1)
+
+  it "☯ Core.Err" $ do
+    let env = [("x", Int 1)]
+    let expr = Err (customError x)
+    parse' "!error x" `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "!error x"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, Any, [])
+    eval ops (Let env expr') `shouldBe` expr
+
+  -- it "☯ format" $ do
+  --   format err `shouldBe` "!RuntimeError"
+  --   format IntT `shouldBe` "!IntT"
+  --   format NumT `shouldBe` "!NumT"
+  --   format (Int 1) `shouldBe` "1"
+  --   format (Num 1.1) `shouldBe` "1.1"
+  --   -- format (Typ "T") `shouldBe` "$T"
+  --   -- format (Ctr "T" "A") `shouldBe` "$T.A"
+  --   format (Var "x") `shouldBe` "x"
 
   -- format (pow (pow x y) z) `shouldBe` "(x^y)^z"
   -- format (pow x (pow y z)) `shouldBe` "x^y^z"

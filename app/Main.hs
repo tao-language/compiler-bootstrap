@@ -59,7 +59,7 @@ coreCmd filename arg = do
   let a = lower arg'
   let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
   let ((a', t), s) = C.infer buildOps env a
-  let fmt = C.format . C.dropMeta
+  let fmt = C.format 100 . C.dropMeta
   putStrLn ("# env (" ++ show (length env) ++ " symbols)")
   mapM_ (\(x, a) -> putStrLn ("- " ++ fmt (C.Var x) ++ ": " ++ fmt (C.dropLet a))) env
   putStrLn "\n# expr"

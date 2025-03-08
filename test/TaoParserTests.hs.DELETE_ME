@@ -1,0 +1,261 @@
+module TaoParserTests where
+
+import qualified Core as C
+import Data.Bifunctor (Bifunctor (bimap, first, second))
+import Error (Error (..), customError)
+import Location (Location (..), Position (..), Range (..))
+import qualified Parser as P
+import System.Directory (withCurrentDirectory)
+import Tao
+import Test.Hspec (SpecWith, describe, it, shouldBe)
+
+run :: SpecWith ()
+run = describe "--==☯ TaoParser ☯==--" $ do
+  let filename = "TaoParserTests"
+  let expr r1 c1 r2 c2 = Meta (C.Loc (Location filename (Range (Pos r1 c1) (Pos r2 c2))))
+  let op2 r1 c1 r2 c2 f x y = Meta (C.Loc $ Location filename (Range (Pos r1 c1) (r2 c2))) (f x y)
+  let any r c = expr r c r (c + 1) Any
+  -- let unit r c = expr r c r (c + 2) Unit
+  let intT r c = expr r c r (c + 3) IntT
+  let numT r c = expr r c r (c + 3) NumT
+  let int r c i = expr r c r (c + length (show i)) (Int i)
+  let num r c n = expr r c r (c + length (show n)) (Num n)
+  let var r c x = expr r c r (c + length x) (Var x)
+  -- let tag r c k = expr r c r (c + length k) (Tag k)
+  let for r c xs a = expr r c r (c + 2) (For xs a)
+  let fun r c a b = expr r c r (c + 2) (Fun a b)
+  let app r c a b = expr r c r c (App a b)
+
+  let (x, y, z) = (Var "x", Var "y", Var "z")
+  let (x', y', z') = (\r c -> var r c "x", \r c -> var r c "y", \r c -> var r c "z")
+  let (a, b, c) = (Var "a", Var "b", Var "c")
+  let (a', b', c') = (\r c -> var r c "a", \r c -> var r c "b", \r c -> var r c "c")
+
+  let parse' :: Parser a -> String -> Either ([String], String) (a, String)
+      parse' parser src = case P.parse parser filename src of
+        Right (x, P.State {remaining}) -> Right (x, remaining)
+        Left P.State {context, remaining} -> Left (context, remaining)
+
+  it "☯ parseNameBase" $ do
+    let p = parse' (parseNameBase P.letter)
+    -- p "" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "")
+    p "" `shouldBe` Left ([], "")
+    p "a" `shouldBe` Right ("a", "")
+    p "A" `shouldBe` Right ("A", "")
+    -- p "9" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "9") -- cannot start with number
+    -- p "-" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "-") -- cannot start with dash
+    -- p "_" `shouldBe` Left ([SyntaxError NameError "test" 1 1], "_") -- cannot start with underscore
+    p "9" `shouldBe` Left ([], "9") -- cannot start with number
+    p "-" `shouldBe` Left ([], "-") -- cannot start with dash
+    p "_" `shouldBe` Left ([], "_") -- cannot start with underscore
+    p "ab" `shouldBe` Right ("ab", "")
+    p "aB" `shouldBe` Right ("aB", "")
+    p "a9" `shouldBe` Right ("a9", "")
+    p "a-" `shouldBe` Right ("a-", "")
+    p "a_" `shouldBe` Right ("a_", "")
+    p "CamelCaseName" `shouldBe` Right ("CamelCaseName", "")
+    p "snake_case_name" `shouldBe` Right ("snake_case_name", "")
+    p "dash-case-name" `shouldBe` Right ("dash-case-name", "")
+    p "dash-case-name-1" `shouldBe` Right ("dash-case-name-1", "")
+    p "dash-case-name - 1" `shouldBe` Right ("dash-case-name", " - 1")
+    p "a->" `shouldBe` Right ("a", "->")
+
+  -- it "☯ parseLineBreak" $ do
+  --   let p = parse' parseLineBreak
+  --   p "" `shouldBe` Right ("", "")
+  --   p "x" `shouldBe` Left ([], "x")
+  --   p "\n" `shouldBe` Right ("", "")
+  --   p ";" `shouldBe` Right ("", "")
+  --   p "# trailing parseComment" `shouldBe` Right ("trailing parseComment", "")
+
+  -- it "☯ parseInbetween" $ do
+  --   let p = parse' (parseInbetween "(" ")" (P.zeroOrMore P.letter))
+  --   p "" `shouldBe` Left ([], "")
+  --   p "()" `shouldBe` Right ("", "")
+  --   p "(abc)" `shouldBe` Right ("abc", "")
+  --   p "( \n abc \n )  \ndef" `shouldBe` Right ("abc", "  \ndef")
+
+  -- it "☯ parseCollection" $ do
+  --   let p = parse' $ parseCollection "[" "," "]" (P.paddedR P.whitespaces P.letter)
+  --   p "[] ." `shouldBe` Right ("", " .")
+  --   p "[,]" `shouldBe` Left ([], ",]")
+  --   p "[a]" `shouldBe` Right ("a", "")
+  --   p "[a,]" `shouldBe` Right ("a", "")
+  --   p "[a, b]" `shouldBe` Right ("ab", "")
+  --   p "[a, b,]" `shouldBe` Right ("ab", "")
+  --   p "[ \n a \n , \n b \n , \n ]" `shouldBe` Right ("ab", "")
+
+  -- it "☯ docString" $ do
+  --   let p = parse' $ docString (P.text "---")
+  --   p "---\n---\nabc" `shouldBe` Right (newDocString {public = True, meta = [loc 1 1]}, "abc")
+  --   p "---\ndocs\n---\nabc" `shouldBe` Right (newDocString {public = True, description = "docs", meta = [loc 1 1]}, "abc")
+  --   p "---  \n  docs  \n  ---  \nabc" `shouldBe` Right (newDocString {public = True, description = "docs", meta = [loc 1 1]}, "abc")
+  --   p "---  private  \nA\nB\n\nC\n  ---  \nabc" `shouldBe` Right (newDocString {public = False, description = "A\nB\n\nC", meta = [loc 1 1]}, "abc")
+  --   let src =
+  --         [ "# A",
+  --           "--- # B",
+  --           "Docs",
+  --           "--- # C",
+  --           "# end"
+  --         ]
+  --   p (intercalate "\n" src)
+  --     `shouldBe` Right
+  --       ( newDocString
+  --           { public = True,
+  --             description = "Docs",
+  --             meta =
+  --               [ loc 2 1,
+  --                 parseComments [parseComment (1, 3) "A"],
+  --                 TrailingparseComment (parseComment (2, 7) "B"),
+  --                 TrailingparseComment (parseComment (4, 7) "C")
+  --               ]
+  --           },
+  --         "# end"
+  --       )
+
+  -- it "☯ metadata parseLocation" $ do
+  --   let meta row col x = ([parseLocation sourceName row col], x)
+  --   let p = parse' $ metadata (P.text "abc")
+  --   p "abcdef" `shouldBe` Right (meta 1 1 "abc", "def")
+  --   p "abc   def" `shouldBe` Right (meta 1 1 "abc", "def")
+  --   p "abc \n  def" `shouldBe` Right (meta 1 1 "abc", "\n  def")
+
+  -- it "☯ metadata parseComments" $ do
+  --   let meta row col parseComments x = ([parseLocation sourceName row col, parseComments parseComments], x)
+  --   let p = parse' $ metadata (P.text "abc")
+  --   p "#A\n#B\nabc def" `shouldBe` Right (meta 3 1 ["A", "B"] "abc", "def")
+  --   p "# A \n \n \n  #  B  \n  abc  def" `shouldBe` Right (meta 5 3 ["A", "B"] "abc", "def")
+
+  -- it "☯ metadata parseComments (trailing)" $ do
+  --   let meta row col parseComment x = ([parseLocation sourceName row col, TrailingparseComment parseComment], x)
+  --   let p = parse' $ metadata (P.text "abc")
+  --   p "abc#parseComment" `shouldBe` Right (meta 1 1 "parseComment" "abc", "")
+  --   p "abc#  parseComment  " `shouldBe` Right (meta 1 1 "parseComment" "abc", "")
+
+  -- it "☯ parseRecordField" $ do
+  --   let p = parse' parseRecordField
+  --   p "x" `shouldBe` Right (("x", x), "")
+  --   p "x=y" `shouldBe` Right (("x", y), "")
+  --   p "x:y" `shouldBe` Right (("x", Ann (x) (y)), "")
+  --   p "x:y=z" `shouldBe` Right (("x", Ann (z) (y)), "")
+  --   p "x \n = \n y" `shouldBe` Right (("x", y), "")
+  --   p "x \n : \n y" `shouldBe` Right (("x", Ann (x) (y)), "")
+  --   p "x \n : \n y \n = z" `shouldBe` Right (("x", Ann (z) (y)), "")
+
+  -- it "☯ parseRecord" $ do
+  --   let p = parse' parseRecord
+  --   p "{} abc" `shouldBe` Right (record [], " abc")
+  --   p "{x} abc" `shouldBe` Right (record [("x", x)], " abc")
+  --   p "{x, y} abc" `shouldBe` Right (record [("x", x), ("y", y)], " abc")
+
+  -- it "☯ parseMatch" $ do
+  --   let p = parse' parseMatch
+  --   p "match" `shouldBe` Left ([CMatch], "")
+  --   p "match {}" `shouldBe` Left ([CMatch], "")
+  --   p "match {| x -> y}" `shouldBe` Right (Match [] [(["x"], [x' 1 10], y' 1 15)], "")
+  --   p "match {| @. x -> y}" `shouldBe` Right (Match [] [([], [x' 1 13], y' 1 18)], "")
+  --   p "match a {| x -> y}" `shouldBe` Right (Match [a' 1 7] [(["x"], [x' 1 12], y' 1 17)], "")
+  --   p "match a, b {| x -> y}" `shouldBe` Right (Match [a' 1 7, b' 1 10] [(["x"], [x' 1 15], y' 1 20)], "")
+
+  -- it "☯ parseExpr" $ do
+  --   let p = parse' (parseExpr 0 P.spaces)
+  --   p "_" `shouldBe` Right (any 1 1, "")
+  --   p "Int" `shouldBe` Right (intT 1 1, "")
+  --   p "Num" `shouldBe` Right (numT 1 1, "")
+  --   p "42" `shouldBe` Right (int 1 1 42, "")
+  --   p "3.14" `shouldBe` Right (num 1 1 3.14, "")
+  --   p "var" `shouldBe` Right (var 1 1 "var", "")
+  --   p "`A.+\\``" `shouldBe` Right (expr 1 1 1 8 (Var "A.+`"), "")
+  --   p "Tag" `shouldBe` Right (tag 1 1 "Tag", "")
+  --   p "^`x.+\\``" `shouldBe` Right (expr 1 1 1 9 (Tag "x.+`"), "")
+  --   p "@. x" `shouldBe` Right (for 1 1 [] (x' 1 4), "")
+  --   p "@ x . y" `shouldBe` Right (expr 1 1 1 6 $ For ["x"] (y' 1 7), "")
+  --   p "@ x y . z" `shouldBe` Right (expr 1 1 1 8 $ For ["x", "y"] (z' 1 9), "")
+  --   p "@\nx\n.\ny" `shouldBe` Right (expr 1 1 3 2 $ For ["x"] (y' 4 1), "")
+  --   p "x -> y" `shouldBe` Right (fun 1 3 (x' 1 1) (y' 1 6), "")
+  --   p "x ->\ny" `shouldBe` Right (fun 1 3 (x' 1 1) (y' 2 1), "")
+  --   p "x, y -> z" `shouldBe` Right (fun 1 6 (x' 1 1) (Fun (y' 1 4) (z' 1 9)), "")
+  --   p "x y" `shouldBe` Right (app 1 3 (x' 1 1) (y' 1 3), "")
+  --   p "x\ny" `shouldBe` Right (x' 1 1, "\ny")
+  --   p "(x\ny)" `shouldBe` Right (expr 1 1 2 3 (app 2 1 (x' 1 2) (y' 2 1)), "")
+  --   p "()" `shouldBe` Right (unit 1 1, "")
+  --   p "(\n)" `shouldBe` Right (expr 1 1 2 2 Unit, "")
+  --   p "(x)" `shouldBe` Right (expr 1 1 1 4 $ x' 1 2, "")
+  --   p "(x,)" `shouldBe` Right (expr 1 1 1 5 $ x' 1 2, "")
+  --   p "(\nx\n,\n)" `shouldBe` Right (expr 1 1 4 2 $ x' 2 1, "")
+  --   p "(x, y)" `shouldBe` Right (expr 1 1 1 7 $ And (x' 1 2) (y' 1 5), "")
+  --   p "(\nx\n,\ny\n)" `shouldBe` Right (expr 1 1 5 2 $ And (x' 2 1) (y' 4 1), "")
+  --   p "(x, y, z)" `shouldBe` Right (expr 1 1 1 10 $ and' [x' 1 2, y' 1 5, z' 1 8], "")
+  --   p "x | y" `shouldBe` Right (expr 1 3 1 4 $ Or (x' 1 1) (y' 1 5), "")
+  --   p "x : y" `shouldBe` Right (expr 1 3 1 4 $ Ann (x' 1 1) (y' 1 5), "")
+  --   p "%call" `shouldBe` Right (expr 1 1 1 6 $ Call "call" [], "")
+  --   p "%call()" `shouldBe` Right (expr 1 1 1 8 $ Call "call" [], "")
+  --   p "%call(x)" `shouldBe` Right (expr 1 1 1 9 $ Call "call" [x' 1 7], "")
+  --   p "%call(x, y, z)" `shouldBe` Right (expr 1 1 1 15 $ Call "call" [x' 1 7, y' 1 10, z' 1 13], "")
+  --   p "%call(\nx,\ny\n)" `shouldBe` Right (expr 1 1 4 2 $ Call "call" [x' 2 1, y' 3 1], "")
+  --   p "-x" `shouldBe` Right (neg x, "")
+  --   p "x == y" `shouldBe` Right (eq x y, "")
+  --   p "x <  y" `shouldBe` Right (lt x y, "")
+  --   p "x +  y" `shouldBe` Right (add x y, "")
+  --   p "x -  y" `shouldBe` Right (sub x y, "")
+  --   p "x *  y" `shouldBe` Right (mul x y, "")
+  --   p "x ^  y" `shouldBe` Right (pow x y, "")
+  --   p "x = y; z" `shouldBe` Right (x, "= y; z")
+  --   p "x <- y; z" `shouldBe` Right (x, "<- y; z")
+  --   p "(x = y; z)" `shouldBe` Right (Let (x, y) z, "")
+  --   p "(x <- y; z)" `shouldBe` Right (Bind (x, y) z, "")
+  --   p "if x then y else z" `shouldBe` Right (If x y z, "")
+  --   p "y if x" `shouldBe` Right (If x y (Err (customError Any)), "")
+  --   p "match {| x, y -> z }" `shouldBe` Right (Match [] [(["x", "y"], [x, y], z)], "")
+  --   p "match a, b {| x, y -> z}" `shouldBe` Right (Match [a, b] [(["x", "y"], [x, y], z)], "")
+  --   p "{}" `shouldBe` Right (Record [], "")
+  --   p "x.y" `shouldBe` Right (App (Var ".y") x, "")
+  --   p ".x" `shouldBe` Right (Var ".x", "")
+  --   p "x.{}" `shouldBe` Right (Select x [], "")
+  --   p ".{}" `shouldBe` Right (selectFun [], "")
+  --   p "x with {}" `shouldBe` Right (With x [], "")
+  --   p "with {}" `shouldBe` Right (withFun [], "")
+  --   p "!error" `shouldBe` Right (Err (customError Any), "")
+
+  -- it "☯ parseBlock" $ do
+  --   let p = parse' parseBlock
+  --   p "x" `shouldBe` Right (x, "")
+  --   p "x = y; z" `shouldBe` Right (Let (x, y) z, "")
+  --   p "x <- y; z" `shouldBe` Right (Bind (x, y) z, "")
+
+  -- it "☯ parseImport" $ do
+  --   let p = parse' parseImport
+  --   p "import pkg" `shouldBe` Right (Import "pkg" "pkg" [], "")
+  --   p "import pkg/mod" `shouldBe` Right (Import "pkg/mod" "mod" [], "")
+  --   p "import pkg (a, b as c)" `shouldBe` Right (Import "pkg" "pkg" [("a", "a"), ("b", "c")], "")
+  -- -- p "import /mod" `shouldBe` Right (Import "/mod" "mod" [], "")
+
+  -- it "☯ parseDef" $ do
+  --   let p = parse' (parseDef "=")
+  --   p "x = y" `shouldBe` Right ((x, y), "")
+  --   p "x y = z" `shouldBe` Right ((App x y, z), "")
+  --   p "x : a = y" `shouldBe` Right ((Ann x (Var "a"), y), "")
+  --   p ": a\nx = y" `shouldBe` Right ((Ann x (Var "a"), y), "")
+
+  -- it "☯ parseTypeDef" $ do
+  --   let p = parse' parseTypeDef
+  --   p "type A = x" `shouldBe` Right (("A", [], [(x, Nothing)]), "")
+  --   p "type A x y = z" `shouldBe` Right (("A", [x, y], [(z, Nothing)]), "")
+
+  -- it "☯ parseTest" $ do
+  --   let p = parse' parseTest
+  --   p "> x; y" `shouldBe` Right (Test (UnitTest "TaoParserTests" (Pos 1 1) "" x y), "")
+  --   p "> x\ny" `shouldBe` Right (Test (UnitTest "TaoParserTests" (Pos 1 1) "" x y), "")
+  --   p "> x" `shouldBe` Right (Test (UnitTest "TaoParserTests" (Pos 1 1) "" x (Tag "True")), "")
+
+  it "☯ parseStmt" $ do
+    let p = parse' parseStmt
+    p "import pkg" `shouldBe` Right (Import "pkg" "pkg" [], "")
+    -- p "x = y" `shouldBe` Right (Define (Def [] (x) (y)), "")
+    p "> x; y" `shouldBe` Right (Test (UnitTest "TaoParserTests" (Pos 1 1) "" x y), "")
+
+  it "☯ parseModule" $ do
+    let p = parse' (parseModule "path/my-file.tao")
+    p "" `shouldBe` Right (("path/my-file.tao", []), "")
+    p "x" `shouldBe` Left ([], "x")
+    p "import pkg" `shouldBe` Right (("path/my-file.tao", [Import "pkg" "pkg" []]), "")

@@ -6,9 +6,11 @@ import Data.Function ((&))
 import Data.List (delete, intercalate, union, unionBy)
 import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
-import Error (Error (..), RuntimeError (UnhandledCase), TypeError (..), cannotApply, typeMismatch, unhandledCase)
+import Error
+import Grammar as G
 import Location (Location (..), Position (..), Range (..))
 import qualified Parser as P
+import qualified PrettyPrint as PP
 import Stdlib (replace, replaceString)
 
 -- https://simon.peytonjones.org/verse-calculus
@@ -17,6 +19,8 @@ import Stdlib (replace, replaceString)
 -- https://www.youtube.com/live/utyBNDj7s2w
 -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
 -- https://mroman42.github.io/mikrokosmos/tutorial.html
+
+type Parser a = P.Parser String a
 
 data Expr
   = Any
@@ -54,45 +58,304 @@ data Metadata
   | TrailingComment String
   deriving (Eq, Show)
 
-format :: Expr -> String
-format expr = case expr of
-  Any -> "_"
-  Unit -> "()"
-  IntT -> "!IntT"
-  NumT -> "!NumT"
-  Int i -> show i
-  Num n -> show n
-  Var x -> name x
-  Tag ('^' : k) -> '^' : '^' : name k
-  Tag ('~' : k) -> '^' : '~' : name k
-  Tag k -> '^' : name k
-  Ann a b -> "(" ++ format a ++ " : " ++ format b ++ ")"
-  And _ _ -> "(" ++ intercalate ", " (map format (andOf expr)) ++ ")"
-  Or _ _ -> "(" ++ intercalate " | " (map format (orOf expr)) ++ ")"
-  For _ _ -> do
-    let (xs, a) = forOf expr
-    "(@" ++ unwords (map name xs) ++ ". " ++ format a ++ ")"
-  Fix x a -> "(&" ++ name x ++ ". " ++ format a ++ ")"
-  Fun _ _ -> do
-    let (args, ret) = funOf expr
-    "(" ++ intercalate " -> " (map format args) ++ " -> " ++ format ret ++ ")"
-  App a b -> do
-    let (a', bs) = appOf (App a b)
-    "(" ++ format a' ++ " " ++ unwords (map format bs) ++ ")"
-  Call f args -> '%' : f ++ "(" ++ intercalate ", " (map format args) ++ ")"
-  Let env b -> "@{" ++ intercalate "; " (map (\(x, a) -> name x ++ " = " ++ format a) env) ++ "} " ++ format b
-  Meta m a -> case m of
-    Comments [] -> show a
-    Comments (c : cs) -> "# " ++ c ++ "\n" ++ show (Meta (Comments cs) a)
-    TrailingComment c -> show a ++ "  # " ++ c ++ "\n"
-    Loc (Location filename range) -> "#(" ++ filename ++ ":" ++ show range.start.row ++ ":" ++ show range.start.col ++ " .." ++ show range.end.row ++ ":" ++ show range.end.col ++ ")" ++ format a
-  Err e -> "!" ++ show e
-  where
-    isAlphaNumOr cs c = isAlphaNum c || c `elem` cs
-    name = \case
-      x | all (isAlphaNumOr "$-_") x -> x
-      '.' : x | not (any (isAlphaNumOr "()") x) -> "(" ++ x ++ ")"
-      x -> "`" ++ replaceString "`" "\\`" x ++ "`"
+parse :: Int -> FilePath -> String -> Either (P.State String) (Expr, P.State String)
+parse prec = P.parse (G.parse grammar prec)
+
+format :: Int -> Expr -> String
+format width = G.format grammar width "  "
+
+grammar :: G.Grammar String Expr
+grammar = do
+  G.Grammar
+    { group = ("(", ")"),
+      operators =
+        [ -- Any
+          G.atom (\_ _ -> Any) (P.word "_") $ \_ -> \case
+            Any -> Just [PP.Text "_"]
+            _ -> Nothing,
+          -- Unit
+          let parser = do _ <- P.char '('; _ <- P.whitespaces; P.char ')'
+           in G.atom (\_ _ -> Unit) parser $ \_ -> \case
+                Unit -> Just [PP.Text "()"]
+                _ -> Nothing,
+          -- IntT
+          G.atom (\_ _ -> IntT) (P.word "!Int") $ \_ -> \case
+            IntT -> Just [PP.Text "!Int"]
+            _ -> Nothing,
+          -- NumT
+          G.atom (\_ _ -> NumT) (P.word "!Num") $ \_ -> \case
+            NumT -> Just [PP.Text "!Num"]
+            _ -> Nothing,
+          -- Int
+          G.atom (const Int) P.integer $ \_ -> \case
+            Int i -> Just [PP.Text $ show i]
+            _ -> Nothing,
+          -- Num
+          G.atom (const Num) P.number $ \_ -> \case
+            Num n -> Just [PP.Text $ show n]
+            _ -> Nothing,
+          -- Tag
+          G.atom (const Tag) parseNameTag $ \_ -> \case
+            Tag k -> Just [PP.Text k]
+            _ -> Nothing,
+          -- Var
+          G.atom (const Var) parseNameVar $ \_ -> \case
+            Var x -> Just [PP.Text x]
+            _ -> Nothing,
+          -- Ann
+          G.infixR 1 (const Ann) ":" $ \case
+            Ann a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- And
+          let parser expr = do
+                _ <- P.char '('
+                _ <- P.whitespaces
+                items <-
+                  P.oneOf
+                    [ do
+                        arg <- expr
+                        _ <- P.whitespaces
+                        args <- P.zeroOrMore $ do
+                          _ <- P.char ','
+                          _ <- P.whitespaces
+                          expr
+                        return (arg : args),
+                      return []
+                    ]
+                _ <- P.char ')'
+                _ <- P.spaces
+                return (and' items)
+           in G.Atom parser $ \layout -> \case
+                And a b -> do
+                  let items = andOf (And a b)
+                  Just (PP.Text "(" : intercalate [PP.Text ", "] (map layout items) ++ [PP.Text ")"])
+                _ -> Nothing,
+          -- Or
+          G.infixL 1 (const Or) "|" $ \case
+            Or a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- For
+          let parser expr = do
+                _ <- P.char '@'
+                _ <- P.spaces
+                xs <- P.oneOrMore $ do
+                  x <- parseNameVar
+                  _ <- P.spaces
+                  return x
+                _ <- P.char '.'
+                _ <- P.whitespaces
+                a <- expr
+                _ <- P.spaces
+                return (for xs a)
+           in G.Prefix 1 parser $ \layout -> \case
+                For x a -> do
+                  let (xs, a') = forOf (For x a)
+                  Just (PP.Text ("@" ++ unwords xs ++ ". ") : layout a')
+                _ -> Nothing,
+          -- Fix
+          let parser expr = do
+                _ <- P.char '&'
+                _ <- P.spaces
+                xs <- P.oneOrMore $ do
+                  x <- parseNameVar
+                  _ <- P.spaces
+                  return x
+                _ <- P.char '.'
+                _ <- P.whitespaces
+                a <- expr
+                _ <- P.spaces
+                return (fix xs a)
+           in G.Prefix 1 parser $ \layout -> \case
+                Fix x a -> do
+                  let (xs, a') = forOf (For x a)
+                  Just (PP.Text ("&" ++ unwords xs ++ ". ") : layout a')
+                _ -> Nothing,
+          -- Fun
+          G.infixR 1 (const Fun) "->" $ \case
+            Fun a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- App
+          let parser x expr = do
+                y <- expr
+                _ <- P.spaces
+                return (App x y)
+           in G.InfixR 1 parser $ \lhs rhs -> \case
+                App a b -> Just (lhs a ++ PP.Text " " : rhs b)
+                _ -> Nothing,
+          -- Call
+          let parser expr = do
+                _ <- P.char '%'
+                x <- parseNameVar
+                _ <- P.spaces
+                arg <- expr
+                _ <- P.spaces
+                return (Call x (andOf arg))
+           in G.Atom parser $ \layout -> \case
+                Call f args -> do
+                  Just (PP.Text ("%" ++ f ++ "(") : intercalate [PP.Text ", "] (map layout args) ++ [PP.Text ")"])
+                _ -> Nothing,
+          -- Let
+          let parser expr = do
+                _ <- P.char '@'
+                _ <- P.spaces
+                _ <- P.char '{'
+                _ <- P.whitespaces
+                env <- do
+                  let parseDef = do
+                        x <- parseNameVar
+                        _ <- P.whitespaces
+                        _ <- P.char '='
+                        _ <- P.whitespaces
+                        a <- expr
+                        _ <- P.whitespaces
+                        return (x, a)
+                  P.oneOf
+                    [ do
+                        def <- parseDef
+                        defs <- P.zeroOrMore $ do
+                          _ <- P.char ','
+                          _ <- P.whitespaces
+                          parseDef
+                        return (def : defs),
+                      return []
+                    ]
+                _ <- P.char '}'
+                _ <- P.whitespaces
+                a <- expr
+                _ <- P.spaces
+                return (Let env a)
+           in G.Atom parser $ \layout -> \case
+                Let env a -> do
+                  let layoutDef (x, a) = PP.Text (x ++ " = ") : layout a
+                  Just (PP.Text "@{" : intercalate [PP.Text ", "] (map layoutDef env) ++ PP.Text "} " : layout a)
+                _ -> Nothing,
+          -- Metadata Comments
+          let parser expr = do
+                comments <- P.oneOrMore $ do
+                  _ <- P.char '#'
+                  _ <- P.spaces
+                  comment <- P.zeroOrMore (P.charIf (/= '\n'))
+                  _ <- P.whitespaces
+                  return comment
+                Meta (Comments comments) <$> expr
+           in G.Atom parser $ \rhs -> \case
+                Meta (Comments comments) a -> do
+                  let comments' = concatMap (\c -> [PP.Text ("# " ++ c), PP.NewLine]) comments
+                  Just (comments' ++ rhs a)
+                _ -> Nothing,
+          -- Metadata TrailingComment
+          let parser x _expr = do
+                _ <- P.char '#'
+                _ <- P.spaces
+                comment <- P.zeroOrMore (P.charIf (/= '\n'))
+                _ <- P.whitespaces
+                return (Meta (TrailingComment comment) x)
+           in G.InfixL 1 parser $ \lhs _ -> \case
+                Meta (TrailingComment comment) a ->
+                  Just (lhs a ++ [PP.Text ("  # " ++ comment), PP.NewLine])
+                _ -> Nothing,
+          -- Metadata Location
+          let parser expr = do
+                _ <- P.text "!["
+                filename <- P.oneOrMore $ P.charIf (/= ':')
+                _ <- P.char ':'
+                row1 <- P.integer
+                _ <- P.char ':'
+                col1 <- P.integer
+                _ <- P.char ','
+                row2 <- P.integer
+                _ <- P.char ':'
+                col2 <- P.integer
+                _ <- P.char ']'
+                _ <- P.spaces
+                Meta (Loc (Location filename (Range (Pos row1 col1) (Pos row2 col2)))) <$> expr
+           in G.Atom parser $ \layout -> \case
+                Meta (Loc loc) a -> Just (PP.Text ("![" ++ show loc ++ "] ") : layout a)
+                _ -> Nothing,
+          -- Err
+          G.prefix 1 (\_ a -> Err (customError a)) "!error" $ \case
+            Err (RuntimeError (CustomError a)) -> Just (" ", a)
+            Err _ -> Just (" ", Any)
+            _ -> Nothing
+        ]
+    }
+
+parseNameBase :: Parser Char -> Parser String
+parseNameBase firstChar = do
+  let validChars =
+        [ P.letter,
+          P.digit,
+          P.char '_',
+          P.paddedR (P.lookaheadNot $ P.char '>') (P.char '-')
+        ]
+  c <- firstChar
+  cs <- P.zeroOrMore (P.oneOf validChars)
+  return (c : cs)
+
+parseNameEscaped :: Parser String
+parseNameEscaped = do
+  _ <- P.char '`'
+  name <- P.zeroOrMore $ do
+    P.oneOf
+      [ fmap (const '`') (P.text "\\`"),
+        P.charIf (/= '`')
+      ]
+  _ <- P.char '`'
+  return name
+
+parseNameVar :: Parser String
+parseNameVar =
+  P.oneOf
+    [ parseNameBase P.lowercase,
+      parseNameEscaped
+    ]
+
+parseNameTag :: Parser String
+parseNameTag =
+  P.oneOf
+    [ parseNameBase P.uppercase,
+      P.paddedL (P.char '^') parseNameEscaped
+    ]
+
+-- format :: Expr -> String
+-- format expr = case expr of
+--   Any -> "_"
+--   Unit -> "()"
+--   IntT -> "!IntT"
+--   NumT -> "!NumT"
+--   Int i -> show i
+--   Num n -> show n
+--   Var x -> name x
+--   Tag ('^' : k) -> '^' : '^' : name k
+--   Tag ('~' : k) -> '^' : '~' : name k
+--   Tag k -> '^' : name k
+--   Ann a b -> "(" ++ format a ++ " : " ++ format b ++ ")"
+--   And _ _ -> "(" ++ intercalate ", " (map format (andOf expr)) ++ ")"
+--   Or _ _ -> "(" ++ intercalate " | " (map format (orOf expr)) ++ ")"
+--   For _ _ -> do
+--     let (xs, a) = forOf expr
+--     "(@" ++ unwords (map name xs) ++ ". " ++ format a ++ ")"
+--   Fix x a -> "(&" ++ name x ++ ". " ++ format a ++ ")"
+--   Fun _ _ -> do
+--     let (args, ret) = funOf expr
+--     "(" ++ intercalate " -> " (map format args) ++ " -> " ++ format ret ++ ")"
+--   App a b -> do
+--     let (a', bs) = appOf (App a b)
+--     "(" ++ format a' ++ " " ++ unwords (map format bs) ++ ")"
+--   Call f args -> '%' : f ++ "(" ++ intercalate ", " (map format args) ++ ")"
+--   Let env b -> "@{" ++ intercalate "; " (map (\(x, a) -> name x ++ " = " ++ format a) env) ++ "} " ++ format b
+--   Meta m a -> case m of
+--     Comments [] -> show a
+--     Comments (c : cs) -> "# " ++ c ++ "\n" ++ show (Meta (Comments cs) a)
+--     TrailingComment c -> show a ++ "  # " ++ c ++ "\n"
+--     Loc (Location filename range) -> "#(" ++ filename ++ ":" ++ show range.start.row ++ ":" ++ show range.start.col ++ " .." ++ show range.end.row ++ ":" ++ show range.end.col ++ ")" ++ format a
+--   Err e -> "!" ++ show e
+--   where
+--     isAlphaNumOr cs c = isAlphaNum c || c `elem` cs
+--     name = \case
+--       x | all (isAlphaNumOr "$-_") x -> x
+--       '.' : x | not (any (isAlphaNumOr "()") x) -> "(" ++ x ++ ")"
+--       x -> "`" ++ replaceString "`" "\\`" x ++ "`"
 
 -- instance Show Expr where
 --   showsPrec :: Int -> Expr -> ShowS
@@ -156,6 +419,7 @@ and' [a] = a
 and' (a : bs) = And a (and' bs)
 
 andOf :: Expr -> [Expr]
+andOf Unit = []
 andOf (And a b) = a : andOf b
 andOf a = [a]
 
@@ -169,16 +433,10 @@ orOf (Or a b) = a : orOf b
 orOf a = [a]
 
 fix :: [String] -> Expr -> Expr
-fix [] a = a
-fix (x : xs) a
-  | x `occurs` a = Fix x (fix xs a)
-  | otherwise = fix xs a
+fix xs a = foldr Fix a xs
 
 for :: [String] -> Expr -> Expr
-for [] a = a
-for (x : xs) a
-  | x `occurs` a = For x (for xs a)
-  | otherwise = for xs a
+for xs a = foldr For a xs
 
 forOf :: Expr -> ([String], Expr)
 forOf (For x a) = let (xs, b) = forOf a in (x : xs, b)
@@ -429,7 +687,7 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
 
 eval :: Ops -> Expr -> Expr
 eval ops expr = case reduce ops expr of
-  Ann a _ -> eval ops a
+  Ann a b -> Ann (eval ops a) (eval ops b)
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> Or (eval ops a) (eval ops b)
   For x a -> for [x] (eval ops (Let [(x, Var x)] a))
@@ -696,7 +954,9 @@ infer ops env (App a b) = do
   let ((a_, ta), s1) = infer ops env a
   let ((a', b'), (t1, t2), s2) = checkApp ops (s1 `compose` env) (a_, ta) (substitute s1 b)
   ((App a' (Ann b' t1), t2), s2 `compose` s1)
-infer ops env (Let defs a) = infer ops (defs ++ env) a
+infer ops env (Let defs a) = do
+  let ((a', ta), s) = infer ops (defs ++ env) a
+  ((Let defs a', ta), s)
 infer ops env (Call op args) = do
   let y = newName ("_" : map fst env) "_"
   let (args', s) = inferAll ops ((y, Var y) : env) args

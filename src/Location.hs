@@ -18,7 +18,7 @@ data Range = Range
 
 instance Show Range where
   show :: Range -> String
-  show r = show r.start ++ ".." ++ show r.end
+  show r = show r.start ++ "," ++ show r.end
 
 data Location = Location
   { filename :: FilePath,

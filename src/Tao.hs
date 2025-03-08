@@ -821,14 +821,6 @@ parseLineBreak = do
   _ <- P.whitespaces
   return ()
 
-parseNameVar :: Parser String
-parseNameVar =
-  P.oneOf
-    [ parseNameBase P.lowercase,
-      parseNameEscaped,
-      parseNameOp
-    ]
-
 parseNameBase :: Parser Char -> Parser String
 parseNameBase firstChar = do
   let validChars =
@@ -842,6 +834,14 @@ parseNameBase firstChar = do
   case c : cs of
     name | name `elem` keywords -> P.fail'
     name -> return name
+
+parseNameVar :: Parser String
+parseNameVar =
+  P.oneOf
+    [ parseNameBase P.lowercase,
+      parseNameEscaped,
+      parseNameOp
+    ]
 
 parseNameEscaped :: Parser String
 parseNameEscaped = do

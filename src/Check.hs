@@ -34,10 +34,10 @@ instance CheckTypes Stmt where
       (error . intercalate "\n")
         [ "\n\nDef",
           "def: " ++ show (p, b),
-          "env: " ++ C.format (C.Let env C.Any),
-          "a: " ++ C.format (C.dropMeta a),
-          "a': " ++ C.format (C.dropMeta a'),
-          "t: " ++ C.format t
+          "env: " ++ C.format 80 (C.Let env C.Any),
+          "a: " ++ C.format 80 (C.dropMeta a),
+          "a': " ++ C.format 80 (C.dropMeta a'),
+          "t: " ++ C.format 80 t
         ]
     TypeDef {} -> []
     Test t -> do
@@ -47,8 +47,8 @@ instance CheckTypes Stmt where
       -- TODO: recursively find all errors
       (error . intercalate "\n")
         [ "\n\nTest",
-          "env: " ++ C.format (C.Let env C.Any),
-          "a: " ++ C.format (C.dropMeta a),
-          "a': " ++ C.format (C.dropMeta a'),
-          "t: " ++ C.format t
+          "env: " ++ C.format 80 (C.Let env C.Any),
+          "a: " ++ C.format 80 (C.dropMeta a),
+          "a': " ++ C.format 80 (C.dropMeta a'),
+          "t: " ++ C.format 80 t
         ]

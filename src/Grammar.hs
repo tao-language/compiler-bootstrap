@@ -58,7 +58,12 @@ suffix p f op match = do
   InfixL p parser' layout'
 
 infixL :: Int -> (Location -> a -> a -> a) -> String -> (a -> Maybe (a, String, a)) -> Operator ctx a
-infixL p f op match = do
+infixL p f op match = infixL' p f op $ \x -> do
+  (a, space, b) <- match x
+  return (a, space, space, b)
+
+infixL' :: Int -> (Location -> a -> a -> a) -> String -> (a -> Maybe (a, String, String, a)) -> Operator ctx a
+infixL' p f op match = do
   let parser' x expr = do
         start <- P.getState
         _ <- P.text op
@@ -67,12 +72,17 @@ infixL p f op match = do
         let loc = Location start.filename (Range start.pos end.pos)
         f loc x <$> expr
   let layout' lhs rhs x = do
-        (a, space, b) <- match x
-        return (lhs a ++ [PP.Text (space ++ op ++ space)] ++ rhs b)
+        (a, space1, space2, b) <- match x
+        return (lhs a ++ [PP.Text (space1 ++ op ++ space2)] ++ rhs b)
   InfixL p parser' layout'
 
 infixR :: Int -> (Location -> a -> a -> a) -> String -> (a -> Maybe (a, String, a)) -> Operator ctx a
-infixR p f op match = do
+infixR p f op match = infixR' p f op $ \x -> do
+  (a, space, b) <- match x
+  return (a, space, space, b)
+
+infixR' :: Int -> (Location -> a -> a -> a) -> String -> (a -> Maybe (a, String, String, a)) -> Operator ctx a
+infixR' p f op match = do
   let parser' x expr = do
         start <- P.getState
         _ <- P.text op
@@ -81,8 +91,8 @@ infixR p f op match = do
         let loc = Location start.filename (Range start.pos end.pos)
         f loc x <$> expr
   let layout' lhs rhs x = do
-        (a, space, b) <- match x
-        return (lhs a ++ [PP.Text (space ++ op ++ space)] ++ rhs b)
+        (a, space1, space2, b) <- match x
+        return (lhs a ++ [PP.Text (space1 ++ op ++ space2)] ++ rhs b)
   InfixR p parser' layout'
 
 parse :: Grammar ctx a -> Int -> P.Parser ctx a
