@@ -79,12 +79,12 @@ grammar = do
                 Unit -> Just [PP.Text "()"]
                 _ -> Nothing,
           -- IntT
-          G.atom (\_ _ -> IntT) (P.word "!Int") $ \_ -> \case
-            IntT -> Just [PP.Text "!Int"]
+          G.atom (\_ _ -> IntT) (P.word "^Int") $ \_ -> \case
+            IntT -> Just [PP.Text "^Int"]
             _ -> Nothing,
           -- NumT
-          G.atom (\_ _ -> NumT) (P.word "!Num") $ \_ -> \case
-            NumT -> Just [PP.Text "!Num"]
+          G.atom (\_ _ -> NumT) (P.word "^Num") $ \_ -> \case
+            NumT -> Just [PP.Text "^Num"]
             _ -> Nothing,
           -- Int
           G.atom (const Int) P.integer $ \_ -> \case
@@ -262,17 +262,31 @@ grammar = do
                 col2 <- P.integer
                 _ <- P.char ']'
                 _ <- P.spaces
-                Meta (Loc (Location filename (Range (Pos row1 col1) (Pos row2 col2)))) <$> expr
+                _ <- P.char '('
+                _ <- P.whitespaces
+                a <- expr
+                _ <- P.whitespaces
+                _ <- P.char ')'
+                _ <- P.spaces
+                return (Meta (Loc (Location filename (Range (Pos row1 col1) (Pos row2 col2)))) a)
            in G.Atom parser $ \layout -> \case
-                Meta (Loc loc) a -> Just (PP.Text ("![" ++ show loc ++ "] ") : layout a)
+                Meta (Loc loc) a -> Just (PP.Text ("![" ++ show loc ++ "](") : layout a ++ [PP.Text ")"])
                 _ -> Nothing,
           -- Err
           let parser expr = do
                 _ <- P.word "!error"
                 _ <- P.spaces
-                err <$> expr
+                _ <- P.char '('
+                _ <- P.whitespaces
+                a <- expr
+                _ <- P.whitespaces
+                _ <- P.char ')'
+                return (err a)
            in G.Atom parser $ \layout -> \case
-                Err (RuntimeError (CustomError a)) -> Just (PP.Text "!error " : layout a)
+                Err (RuntimeError e) -> case e of
+                  UnhandledCase a -> Just (PP.Text "!unhandled-case(" : layout a ++ [PP.Text ")"])
+                  CannotApply a b -> Just (PP.Text "!cannot-apply(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
+                  CustomError a -> Just (PP.Text "!error(" : layout a ++ [PP.Text ")"])
                 Err _ -> Just (layout (err Any))
                 _ -> Nothing
         ]
@@ -312,7 +326,7 @@ parseNameTag :: Parser String
 parseNameTag =
   P.oneOf
     [ parseNameBase P.uppercase,
-      P.paddedL (P.char '^') parseNameEscaped
+      P.paddedL (P.char ':') parseNameEscaped
     ]
 
 -- format :: Expr -> String
@@ -618,11 +632,11 @@ reduceApp ops a b = case (a, b) of
     Err _ -> reduceApp ops (reduce ops a2) b
     c -> c
   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
+  (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
   (Fun a c, b) -> case match False ops a b of
     Just env -> reduce ops (Let env c)
     Nothing -> Err (unhandledCase b)
   (Call f args, b) -> App (Call f args) b
-  (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
   (Meta _ a, b) -> reduceApp ops a b
   _ -> Err (cannotApply a b)
 
@@ -649,13 +663,10 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (Tag k, Tag k') | k == k' -> Just []
   (Var x, b) -> Just [(x, b)]
   (a, Var x) | unify -> Just [(x, a)]
-  (a, Ann b (Err _)) -> match unify ops a b
-  (Ann a (Err _), b) -> match unify ops a b
   (Ann a ta, Ann b tb) -> do
     env1 <- match True ops ta tb
     env2 <- match unify ops a b
     Just (env1 ++ env2)
-  (Ann a _, b) -> match unify ops a b
   (And (Let env (Tag k)) a, b) -> case lookup k env of
     Just def -> do
       let b' = app (Let env def) [a, b]
@@ -681,12 +692,15 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
     Nothing -> match unify ops a b2
   (For x a, b) -> match unify ops (Let [(x, Var x)] a) b
   (a, For x b) -> match unify ops a (Let [(x, Var x)] b)
-  -- \| Fix String Expr
+  (Fix x a, b) -> do
+    -- env <- match unify ops (Let [(x, Var x)] a) b
+    -- return ((x, Fix x a) : env)
+    error "TODO: match Fix"
   (Fun a1 a2, Fun b1 b2) -> match unify ops (And a1 a2) (And b1 b2)
   (App a1 a2, App b1 b2) -> match unify ops (And a1 a2) (And b1 b2)
   (Call x args, Call x' args') | x == x' -> do
     match unify ops (and' args) (and' args')
-  (Err e, Err e') | e == e' -> Just []
+  (_, Err _) -> Just []
   (a, Ann b _) -> match unify ops a b
   _ -> Nothing
 

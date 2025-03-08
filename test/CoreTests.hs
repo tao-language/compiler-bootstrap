@@ -57,6 +57,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
       parse' text = case parse 0 filename text of
         Right (a, s) -> Right (a, s.remaining)
         Left s -> Left (s.context, s.remaining)
+  let run env src = case parse' src of
+        Right (a, "") -> Right (format 80 $ eval ops (Let env a))
+        Right (_, rem) -> Left ("remaining: " ++ rem)
+        Left (_, rem) -> Left ("syntax error: " ++ rem)
 
   it "☯ Core.Any" $ do
     let env = []
@@ -303,6 +307,60 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let ((expr', typ), s) = infer ops env expr
     (expr', typ, s) `shouldBe` (expr, Any, [])
     eval ops (Let env expr') `shouldBe` expr
+
+  it "☯ Core.run.App" $ do
+    let env = [("x", Int 42), ("y", Num 3.14), ("a", Any)]
+    run env "_ x" `shouldBe` Right "_"
+    run env "() x" `shouldBe` Right "!cannot-apply((), 42)"
+    run env "^Int x" `shouldBe` Right "!cannot-apply(^Int, 42)"
+    run env "^Num x" `shouldBe` Right "!cannot-apply(^Num, 42)"
+    run env "1 x" `shouldBe` Right "!cannot-apply(1, 42)"
+    run env "1.1 x" `shouldBe` Right "!cannot-apply(1.1, 42)"
+    run env "A x" `shouldBe` Right "!cannot-apply(A, 42)"
+    run env "y x" `shouldBe` Right "!cannot-apply(3.14, 42)"
+    run env "a x" `shouldBe` Right "_"
+    run env "z x" `shouldBe` Right "z 42"
+    run env "(1, 2) x" `shouldBe` Right "!cannot-apply((1, 2), 42)"
+    run env "(a | 2) x" `shouldBe` Right "_"
+    run env "(1 | a) x" `shouldBe` Right "_"
+    run env "(1 | 2) x" `shouldBe` Right "!cannot-apply(2, 42)"
+    run env "(1 : ^Int) x" `shouldBe` Right "!cannot-apply(1, 42)"
+    run env "(a : ^Int) x" `shouldBe` Right "_"
+    run env "(@y. y) x" `shouldBe` Right "y 42"
+    run env "(&y. a) x" `shouldBe` Right "_"
+    run env "(_ -> Ok) x" `shouldBe` Right "Ok"
+    run env "(() -> Ok) x" `shouldBe` Right "!unhandled-case(42)"
+    run env "(() -> Ok) ()" `shouldBe` Right "Ok"
+    run env "(^Int -> Ok) x" `shouldBe` Right "!unhandled-case(42)"
+    run env "(^Int -> Ok) ^Int" `shouldBe` Right "Ok"
+    run env "(^Num -> Ok) x" `shouldBe` Right "!unhandled-case(42)"
+    run env "(^Num -> Ok) ^Num" `shouldBe` Right "Ok"
+    run env "(1 -> Ok) x" `shouldBe` Right "!unhandled-case(42)"
+    run env "(42 -> Ok) x" `shouldBe` Right "Ok"
+    run env "(3.14 -> Ok) x" `shouldBe` Right "!unhandled-case(42)"
+    run env "(3.14 -> Ok) 3.14" `shouldBe` Right "Ok"
+    run env "(A -> Ok) x" `shouldBe` Right "!unhandled-case(42)"
+    run env "(A -> Ok) A" `shouldBe` Right "Ok"
+    run env "(y -> y) x" `shouldBe` Right "!unhandled-case(42)"
+    run env "(y -> y) 3.14" `shouldBe` Right "3.14"
+    run env "(@y. y -> y) x" `shouldBe` Right "42"
+    run env "(&y. x -> y) x" `shouldBe` Right "&y. 42 -> y"
+    run env "((A, 42) -> Ok) (B, x)" `shouldBe` Right "!unhandled-case((B, 42))"
+    run env "((A, 42) -> Ok) (A, x)" `shouldBe` Right "Ok"
+    run env "((A | 42) -> Ok) B" `shouldBe` Right "!unhandled-case(B)"
+    run env "((A | 42) -> Ok) A" `shouldBe` Right "Ok"
+    run env "((A | 42) -> Ok) x" `shouldBe` Right "Ok"
+    run env "((_ : ^Int) -> Ok) (x : ^Int)" `shouldBe` Right "Ok"
+    run env "((_ : ^Num) -> Ok) (x : ^Int)" `shouldBe` Right "!unhandled-case(42 : ^Int)"
+    run env "((_ : ^Num) -> Ok) (x : _)" `shouldBe` Right "Ok"
+    run env "((_ : ^Num) -> Ok) (x : !error(_))" `shouldBe` Right "Ok"
+    run env "((_ : ^Num) -> Ok) x" `shouldBe` Right "!unhandled-case(42)"
+  -- Fun Expr Expr
+  -- App Expr Expr
+  -- Call String [Expr]
+  -- Let [(String, Expr)] Expr
+  -- Meta Metadata Expr
+  -- Err (Error Expr)
 
   -- it "☯ format" $ do
   --   format err `shouldBe` "!RuntimeError"
