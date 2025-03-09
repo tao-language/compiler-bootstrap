@@ -95,8 +95,8 @@ infixR' p f op match = do
         return (lhs a ++ [PP.Text (space1 ++ op ++ space2)] ++ rhs b)
   InfixR p parser' layout'
 
-parse :: Grammar ctx a -> Int -> P.Parser ctx a
-parse grammar prec = do
+parser :: Grammar ctx a -> Int -> P.Parser ctx a
+parser grammar prec = do
   let parserOf = \case
         Atom parser _ -> P.Atom parser
         Prefix p parser _ -> P.Prefix p parser

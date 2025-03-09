@@ -42,7 +42,12 @@ data Expr
   | Let [(String, Expr)] Expr
   | Meta Metadata Expr
   | Err (Error Expr)
-  deriving (Eq, Show)
+  -- deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show Expr where
+  show :: Expr -> String
+  show = Core.format 80
 
 type Type = Expr
 
@@ -59,7 +64,7 @@ data Metadata
   deriving (Eq, Show)
 
 parse :: Int -> FilePath -> String -> Either (P.State String) (Expr, P.State String)
-parse prec = P.parse (G.parse grammar prec)
+parse prec = P.parse (parser grammar prec)
 
 format :: Int -> Expr -> String
 format width = G.format grammar width "  "
@@ -324,11 +329,12 @@ grammar = do
                 _ <- P.spaces
                 return (err a)
            in G.Atom parser $ \layout -> \case
-                Err (RuntimeError e) -> case e of
-                  UnhandledCase a -> Just (PP.Text "!unhandled-case(" : layout a ++ [PP.Text ")"])
-                  CannotApply a b -> Just (PP.Text "!cannot-apply(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
-                  CustomError a -> Just (PP.Text "!error(" : layout a ++ [PP.Text ")"])
-                Err _ -> Just (layout (err Any))
+                Err e -> case e of
+                  RuntimeError e -> case e of
+                    UnhandledCase a -> Just (PP.Text "!unhandled-case(" : layout a ++ [PP.Text ")"])
+                    CannotApply a b -> Just (PP.Text "!cannot-apply(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
+                    CustomError a -> Just (PP.Text "!error(" : layout a ++ [PP.Text ")"])
+                  e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
                 _ -> Nothing
         ]
     }
@@ -487,6 +493,11 @@ orOf a = [a]
 
 for :: [String] -> Expr -> Expr
 for xs a = foldr For a xs
+
+for' :: [String] -> Expr -> Expr
+for' [] a = a
+for' (x : xs) a | x `occurs` a = For x (for' xs a)
+for' (_ : xs) a = for' xs a
 
 forOf :: Expr -> ([String], Expr)
 forOf (For x a) = let (xs, b) = forOf a in (x : xs, b)
@@ -1039,7 +1050,7 @@ inferAll ops env (a : bs) = do
   ((substitute s2 a', substitute s2 ta) : bts, s2 `compose` s1)
 
 check :: Ops -> Env -> Expr -> Type -> ((Expr, Type), Substitution)
-check _ _ (Tag k) t = ((Tag k, t), [])
+-- check _ _ (Tag k) t = ((Tag k, t), [])
 check ops env a (For x t) = do
   let y = newName (map fst env) x
   let ((a', t'), s) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] t)

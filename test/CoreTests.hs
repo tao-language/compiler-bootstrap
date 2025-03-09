@@ -14,7 +14,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let (a, b, c) = (Var "a", Var "b", Var "c")
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (f, g, h) = (Var "f", Var "g", Var "h")
-  let err = Err (customError Any)
 
   let add a b = Call "int_add" [a, b]
   let sub a b = Call "int_sub" [a, b]
@@ -616,7 +615,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' (Var "f") `shouldBe` (f, Fun IntT IntT)
     infer' (Ann f (Fun IntT IntT)) `shouldBe` (Ann f (Fun IntT IntT), Fun IntT IntT)
 
-  it "☯ infer Bool" $ do
+  it "☯ Core.infer.Bool" $ do
     let (bool, true, false) = (Tag "Bool", Tag "True", Tag "False")
     let env = [("Bool", Fun true bool `Or` Fun false bool)]
 
@@ -626,9 +625,9 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
     let infer' = infer ops env
     infer' (Tag "True") `shouldBe` ((true, true), [])
-    infer' (Ann true bool) `shouldBe` ((true, bool), env)
-    infer' (Ann false (Tag "X")) `shouldBe` ((false, Err $ typeMismatch false (Tag "X")), [])
-    infer' (Ann (Tag "X") bool) `shouldBe` ((Tag "X", Err $ typeMismatch err bool), env)
+    infer' (Ann true bool) `shouldBe` ((Ann true bool, bool), env)
+    infer' (Ann false (Tag "X")) `shouldBe` let err = Err (typeMismatch false (Tag "X")) in ((Ann false err, err), [])
+    infer' (Ann (Tag "X") bool) `shouldBe` let err = Err (typeMismatch (Err (unhandledCase (Tag "X"))) bool) in ((Ann (Tag "X") err, err), env)
 
   -- it "☯ infer Maybe" $ do
   --   let (maybe, just, nothing) = (App (Tag "Maybe"), \a -> tag "Just" [a], Tag "Nothing")

@@ -51,7 +51,7 @@ grammar =
     }
 
 test :: Int -> String -> Either ([String], String) (AST, String, String)
-test width text = case P.parse (parse grammar 0) "<GrammarTests>" text of
+test width text = case P.parse (parser grammar 0) "<GrammarTests>" text of
   Right (x, s) -> do
     Right (x, format grammar width "  " x, s.remaining)
   Left s -> Left (s.context, s.remaining)

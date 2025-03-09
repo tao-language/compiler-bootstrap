@@ -10,6 +10,7 @@ import qualified ParserTests
 import qualified PatchTests
 import qualified PrettyPrintTests
 import qualified PythonTests
+import qualified TaoPrecedenceTests
 import qualified TaoTests
 import Test.Hspec (hspec)
 
@@ -21,6 +22,7 @@ main = hspec $ do
   CoreTests.run
   CorePrecedenceTests.run
   TaoTests.run
+  TaoPrecedenceTests.run
   LoadTests.run
   OperatorPrecedenceTests.run
   PatchTests.run

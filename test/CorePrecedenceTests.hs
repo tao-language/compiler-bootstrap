@@ -1,12 +1,11 @@
 module CorePrecedenceTests where
 
 import Core
-import Error
 import Parser (State (..))
 import Test.Hspec
 
 run :: SpecWith ()
-run = describe "--==☯️ Core language ☯️==--" $ do
+run = describe "--== Core precedence ==--" $ do
   let (a, b, c) = (Var "a", Var "b", Var "c")
   let (x, y, z) = (Var "x", Var "y", Var "z")
 

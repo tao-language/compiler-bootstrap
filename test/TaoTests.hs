@@ -49,58 +49,61 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   let defOp1 op f = def op (For ["a"] (lambda [Var "a"] (Call f [Var "a"])))
   let defOp2 op f = def op (For ["a", "b"] (lambda [Var "a", Var "b"] (Call f [Var "a", Var "b"])))
 
+  let fmt = format 80
+  let fmt' = C.format 80 . C.dropMeta
+
   it "☯ Tao.Any" $ do
     let ctx = []
     let expr = any 1 1
     let (_, expr') = compile ctx "m" expr
     parse' "_ " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "_"
-    C.dropMeta expr' `shouldBe` C.Ann C.Any (C.Var "_1")
-    lift expr' `shouldBe` Ann expr (Var "_1")
-    dropMeta (eval ctx "m" expr) `shouldBe` Any
+    fmt expr `shouldBe` "_"
+    fmt' expr' `shouldBe` "_ : @_1. _1"
+    fmt (lift expr') `shouldBe` "_ : @_1. _1"
+    fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "_ : @_1. _1"
 
   it "☯ Tao.Meta.Location" $ do
     let ctx = []
     let expr = Meta (C.Loc $ Location "file" (Range (Pos 1 2) (Pos 3 4))) (any 1 17)
     let (_, expr') = compile ctx "m" expr
-    parse' "![:1:2,3:4] _" `shouldBe` Left (["Metadata location"], ":1:2,3:4] _")
-    parse' "![file:1:2,3:4] _" `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "_"
-    C.dropMeta expr' `shouldBe` C.Ann C.Any (C.Var "_1")
-    lift expr' `shouldBe` Ann (any 1 17) (Var "_1")
-    dropMeta (eval ctx "m" expr) `shouldBe` Any
+    parse' "@[:1:2,3:4] _" `shouldBe` Left (["Metadata location"], ":1:2,3:4] _")
+    parse' "@[file:1:2,3:4] _" `shouldBe` Right (expr, "")
+    fmt expr `shouldBe` "_"
+    fmt' expr' `shouldBe` "_ : @_1. _1"
+    fmt (lift expr') `shouldBe` "_ : @_1. _1"
+    fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "_ : @_1. _1"
 
-  it "☯ Tao.Meta.Comments 1" $ do
+  it "☯ Tao.Meta.Comments.1" $ do
     let ctx = []
     let expr = Meta (C.Comments ["c1"]) (any 2 1)
     let (_, expr') = compile ctx "m" expr
     parse' "# c1\n_ " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "# c1\n_"
-    C.dropMeta expr' `shouldBe` C.Ann C.Any (C.Var "_1")
-    lift expr' `shouldBe` Ann expr (Var "_1")
-    dropMeta (eval ctx "m" expr) `shouldBe` Any
+    fmt expr `shouldBe` "# c1\n_"
+    fmt' expr' `shouldBe` "_ : @_1. _1"
+    fmt (lift expr') `shouldBe` "# c1\n_ : @_1. _1"
+    fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "_ : @_1. _1"
 
-  it "☯ Tao.Meta.Comments 2" $ do
+  it "☯ Tao.Meta.Comments.2" $ do
     let ctx = []
     let expr = Meta (C.Comments ["c1", "c2"]) (any 3 1)
     let (_, expr') = compile ctx "m" expr
     parse' "# c1\n# c2\n_ " `shouldBe` Right (Meta (C.Comments ["c1", "c2"]) (any 3 1), "")
-    format 80 expr `shouldBe` "# c1\n# c2\n_"
-    C.dropMeta expr' `shouldBe` C.Ann C.Any (C.Var "_1")
-    lift expr' `shouldBe` Ann expr (Var "_1")
-    dropMeta (eval ctx "m" expr) `shouldBe` Any
-
-  -- TODO: multi-line comments
+    fmt expr `shouldBe` "# c1\n# c2\n_"
+    fmt' expr' `shouldBe` "_ : @_1. _1"
+    fmt (lift expr') `shouldBe` "# c1\n# c2\n_ : @_1. _1"
+    fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "_ : @_1. _1"
 
   it "☯ Tao.Meta.TrailingComment" $ do
     let ctx = []
     let expr = Meta (C.TrailingComment "c") (any 1 1)
     let (_, expr') = compile ctx "m" expr
     parse' "_ # c" `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "_  # c\n"
-    C.dropMeta expr' `shouldBe` C.Ann C.Any (C.Var "_1")
-    lift expr' `shouldBe` Ann expr (Var "_1")
-    dropMeta (eval ctx "m" expr) `shouldBe` Any
+    fmt expr `shouldBe` "_  # c\n"
+    fmt' expr' `shouldBe` "_ : @_1. _1"
+    fmt (lift expr') `shouldBe` "(_  # c\n) : @_1. _1"
+    fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "_ : @_1. _1"
+
+  -- TODO: multi-line comments
 
   it "☯ Tao.IntT" $ do
     let ctx = []
