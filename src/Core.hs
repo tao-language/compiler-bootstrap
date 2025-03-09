@@ -3,7 +3,7 @@ module Core where
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (isAlphaNum, isLower, isUpper)
 import Data.Function ((&))
-import Data.List (delete, intercalate, union, unionBy)
+import Data.List (delete, intercalate, sort, union, unionBy)
 import Data.Maybe (fromMaybe)
 import Debug.Trace (trace)
 import Error
@@ -120,6 +120,23 @@ grammar = do
                   let items = andOf (And a b)
                   Just (PP.Text "(" : intercalate [PP.Text ", "] (map layout items) ++ [PP.Text ")"])
                 _ -> Nothing,
+          -- Grammar.sugar.def
+          let parser expr = do
+                _ <- P.word "^let"
+                _ <- P.spaces
+                a <- expr
+                _ <- P.char '='
+                _ <- P.whitespaces
+                b <- expr
+                _ <- P.oneOf [P.char ';', P.char '\n']
+                _ <- P.whitespaces
+                def (a, b) <$> expr
+           in G.Atom parser $ \layout -> \case
+                App fun b -> case forOf fun of
+                  (xs, Fun a c) | sort (freeVars a) == sort xs -> do
+                    Just (PP.Text "^let " : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
+                  _ -> Nothing
+                _ -> Nothing,
           -- Grammar.Or
           G.infixR 1 (const Or) "|" $ \case
             Or a b -> Just (a, " ", b)
@@ -159,7 +176,7 @@ grammar = do
                 a <- expr
                 _ <- P.spaces
                 return (fix xs a)
-           in G.Prefix 3 parser $ \layout -> \case
+           in G.Atom parser $ \layout -> \case
                 Fix x a -> do
                   let (xs, a') = fixOf (Fix x a)
                   Just (PP.Text ("&" ++ unwords xs ++ ". ") : layout a')
@@ -506,8 +523,8 @@ let' :: [(String, Expr)] -> Expr -> Expr
 let' [] b = b
 let' defs b = Let defs b
 
-def :: [String] -> (Expr, Expr) -> Expr -> Expr
-def xs (a, b) c = App (for xs (Fun a c)) b
+def :: (Expr, Expr) -> Expr -> Expr
+def (a, b) c = App (for (freeVars a) (Fun a c)) b
 
 list :: Expr -> Expr -> [Expr] -> Expr
 list _ nil [] = nil
@@ -687,7 +704,7 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (a, Var x) | unify -> Just [(x, a)]
   (Ann a ta, Ann b tb) -> do
     env1 <- match True ops ta tb
-    env2 <- match unify ops a b
+    env2 <- match unify ops (Let env1 a) b
     Just (env1 ++ env2)
   (And (Let env (Tag k)) a, b) -> case lookup k env of
     Just def -> do
@@ -700,15 +717,15 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
     match unify ops (Let (env ++ env') (And a1 a2)) b
   (And a1 a2, And b1 b2) -> do
     env1 <- match unify ops a1 b1
-    env2 <- match unify ops a2 b2
+    env2 <- match unify ops (Let env1 a2) b2
     Just (env1 ++ env2)
   (Or a1 a2, b) -> case match unify ops a1 b of
-    Just env1 -> case match unify ops a2 b of
+    Just env1 -> case match unify ops (Let env1 a2) b of
       Just env2 -> Just (env1 ++ env2)
       Nothing -> Just env1
     Nothing -> match unify ops a2 b
   (a, Or b1 b2) -> case match unify ops a b1 of
-    Just env1 -> case match unify ops a b2 of
+    Just env1 -> case match unify ops (Let env1 a) b2 of
       Just env2 -> Just (env1 ++ env2)
       Nothing -> Just env1
     Nothing -> match unify ops a b2

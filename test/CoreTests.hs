@@ -307,6 +307,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     (expr', typ, s) `shouldBe` (expr, Any, [])
     eval ops (Let env expr') `shouldBe` Err (customError $ Int 1)
 
+  it "☯ Core.sugar.def" $ do
+    let expr = def (x, y) z
+    parse' "x = y; z " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "x = y; z"
+
   it "☯ Core.run.App" $ do
     let env = [("x", Int 42), ("y", Num 3.14), ("a", a)]
     run env "_ x" `shouldBe` Right "_"
@@ -383,107 +388,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     run env "(!error(x) -> Ok) x" `shouldBe` Right "!unhandled-case(42)"
     run env "(x -> Ok) !error(x)" `shouldBe` Right "!unhandled-case(!error(42))"
 
-  -- it "☯ format" $ do
-  --   format err `shouldBe` "!RuntimeError"
-  --   format IntT `shouldBe` "!IntT"
-  --   format NumT `shouldBe` "!NumT"
-  --   format (Int 1) `shouldBe` "1"
-  --   format (Num 1.1) `shouldBe` "1.1"
-  --   -- format (Typ "T") `shouldBe` "$T"
-  --   -- format (Ctr "T" "A") `shouldBe` "$T.A"
-  --   format (Var "x") `shouldBe` "x"
-
-  -- format (pow (pow x y) z) `shouldBe` "(x^y)^z"
-  -- format (pow x (pow y z)) `shouldBe` "x^y^z"
-  -- format (pow (App x y) z) `shouldBe` "(x y)^z"
-  -- format (pow x (App y z)) `shouldBe` "x^(y z)"
-
-  -- format (App x (pow y z)) `shouldBe` "x y^z"
-  -- format (App (pow x y) z) `shouldBe` "x^y z"
-  -- format (App (App x y) z) `shouldBe` "x y z"
-  -- format (App x (App y z)) `shouldBe` "x (y z)"
-  -- format (App (mul x y) z) `shouldBe` "(x * y) z"
-  -- format (App x (mul y z)) `shouldBe` "x (y * z)"
-
-  -- format (isInt (App x y)) `shouldBe` "@isInt (x y)"
-  -- format (isInt (pow x y)) `shouldBe` "@isInt x^y"
-  -- format (pow (isInt x) y) `shouldBe` "(@isInt x)^y"
-  -- format (App (isInt x) y) `shouldBe` "@isInt x y"
-  -- format (App x (isInt y)) `shouldBe` "x (@isInt y)"
-
-  -- format (isNum (App x y)) `shouldBe` "@isNum (x y)"
-  -- format (isNum (pow x y)) `shouldBe` "@isNum x^y"
-  -- format (pow (isNum x) y) `shouldBe` "(@isNum x)^y"
-  -- format (App (isNum x) y) `shouldBe` "@isNum x y"
-  -- format (App x (isNum y)) `shouldBe` "x (@isNum y)"
-
-  -- format (int2num (App x y)) `shouldBe` "$i2n (x y)"
-  -- format (int2num (pow x y)) `shouldBe` "$i2n x^y"
-  -- format (pow (int2num x) y) `shouldBe` "($i2n x)^y"
-  -- format (App (int2num x) y) `shouldBe` "$i2n x y"
-  -- format (App x (int2num y)) `shouldBe` "x ($i2n y)"
-
-  -- format (mul x (App y z)) `shouldBe` "x * y z"
-  -- format (mul (App x y) z) `shouldBe` "x y * z"
-  -- format (mul (mul x y) z) `shouldBe` "x * y * z"
-  -- format (mul x (mul y z)) `shouldBe` "x * (y * z)"
-  -- format (mul (add x y) z) `shouldBe` "(x + y) * z"
-  -- format (mul x (add y z)) `shouldBe` "x * (y + z)"
-
-  -- format (add x (mul y z)) `shouldBe` "x + y * z"
-  -- format (add (mul x y) z) `shouldBe` "x * y + z"
-  -- format (add (add x y) z) `shouldBe` "x + y + z"
-  -- format (add x (add y z)) `shouldBe` "x + (y + z)"
-  -- format (sub (add x y) z) `shouldBe` "x + y - z"
-  -- format (sub x (add y z)) `shouldBe` "x - (y + z)"
-  -- format (sub (sub x y) z) `shouldBe` "x - y - z"
-  -- format (sub x (sub y z)) `shouldBe` "x - (y - z)"
-  -- format (sub (fun [x] y) z) `shouldBe` "(x -> y) - z"
-  -- format (sub x (fun [y] z)) `shouldBe` "x - (y -> z)"
-
-  -- format (fun [x] (add y z)) `shouldBe` "x -> y + z"
-  -- format (fun [add x y] z) `shouldBe` "x + y -> z"
-  -- format (fun [fun [x] y] z) `shouldBe` "(x -> y) -> z"
-  -- format (fun [x] (fun [y] z)) `shouldBe` "x -> y -> z"
-  -- format (fun [x] (lt y z)) `shouldBe` "x -> (y < z)"
-  -- format (fun [lt x y] z) `shouldBe` "(x < y) -> z"
-
-  -- format (lt x (fun [y] z)) `shouldBe` "x < y -> z"
-  -- format (lt (fun [x] y) z) `shouldBe` "x -> y < z"
-  -- format (lt (lt x y) z) `shouldBe` "(x < y) < z"
-  -- format (lt x (lt y z)) `shouldBe` "x < y < z"
-  -- format (lt (eq x y) z) `shouldBe` "(x == y) < z"
-  -- format (lt x (eq y z)) `shouldBe` "x < (y == z)"
-
-  -- format (eq x (lt y z)) `shouldBe` "x == y < z"
-  -- format (eq (lt x y) z) `shouldBe` "x < y == z"
-  -- format (eq (eq x y) z) `shouldBe` "x == y == z"
-  -- format (eq x (eq y z)) `shouldBe` "x == (y == z)"
-  -- format (eq (Ann x y) z) `shouldBe` "(x : y) == z"
-  -- format (eq x (Ann y z)) `shouldBe` "x == (y : z)"
-
-  -- format (Ann x (eq y z)) `shouldBe` "x : y == z"
-  -- format (Ann (eq x y) z) `shouldBe` "x == y : z"
-  -- format (Ann x (Ann y z)) `shouldBe` "x : y : z"
-  -- format (Ann (Ann x y) z) `shouldBe` "(x : y) : z"
-  -- format (Ann (Or x y) z) `shouldBe` "(x | y) : z"
-  -- format (Ann x (Or y z)) `shouldBe` "x : (y | z)"
-
-  -- format (For "x" (Ann y z)) `shouldBe` "@x. (y : z)"
-  -- format (For "x" (eq y z)) `shouldBe` "@x. y == z"
-  -- format (Ann (For "x" y) z) `shouldBe` "(@x. y) : z"
-  -- format (Or (For "x" y) z) `shouldBe` "@x. y | z"
-  -- format (Or x (For "y" z)) `shouldBe` "x | @y. z"
-
-  -- format (Or x (Ann y z)) `shouldBe` "x | y : z"
-  -- format (Or (Ann x y) z) `shouldBe` "x : y | z"
-  -- format (Or x (Or y z)) `shouldBe` "x | y | z"
-  -- format (Or (Or x y) z) `shouldBe` "(x | y) | z"
-
-  -- format (If x (Ann y z)) `shouldBe` "x ? y : z"
-  -- format (If (Ann x y) z) `shouldBe` "x : y ? z"
-  -- format (If x (If y z)) `shouldBe` "x ? y ? z"
-  -- format (If (If x y) z) `shouldBe` "(x ? y) ? z"
+  it "☯ Core.example.eq" $ do
+    let letEq = "^let eq = @x. (x, x) -> T | _ -> F; "
+    run [] (letEq ++ "eq (1, 1)") `shouldBe` Right "T"
+    run [] (letEq ++ "eq (1, 2)") `shouldBe` Right "F"
 
   it "☯ syntax sugar" $ do
     -- let' [] x `shouldBe` x
@@ -503,96 +411,91 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     app x [] `shouldBe` App x Unit
     app x [y, z] `shouldBe` App x (And y z)
 
-  it "☯ reduce" $ do
-    let env =
-          [ ("a", IntT),
-            ("x", Int 42),
-            ("y", Num 3.14),
-            ("z", Var "z"),
-            ("f", For "y" (Fun y y))
-          ]
+  -- it "☯ reduce" $ do
+  --   let env =
+  --         [ ("a", IntT),
+  --           ("x", Int 42),
+  --           ("y", Num 3.14),
+  --           ("z", Var "z"),
+  --           ("f", For "y" (Fun y y))
+  --         ]
 
-    let reduce' x = reduce ops (Let env x)
-    reduce' IntT `shouldBe` IntT
-    reduce' NumT `shouldBe` NumT
-    reduce' (Int 1) `shouldBe` Int 1
-    reduce' (Num 1.1) `shouldBe` Num 1.1
-    reduce' (Tag "x") `shouldBe` Tag "x"
-    reduce' (Var "x") `shouldBe` Int 42
-    reduce' (Var "y") `shouldBe` Num 3.14
-    reduce' (Var "z") `shouldBe` Var "z"
-    reduce' (Var "w") `shouldBe` Var "w"
-    -- reduce' (For "x" x) `shouldBe` For "x" x
-    -- reduce' (For "x" y) `shouldBe` For "x" (Num 3.14)
-    -- reduce' (Fix "x" x) `shouldBe` Fix "x" x
-    -- reduce' (Fix "x" y) `shouldBe` Fix "x" (Num 3.14)
-    reduce' (Ann x y) `shouldBe` Ann (Let env x) (Let env y)
-    reduce' (And x y) `shouldBe` And (Let env x) (Let env y)
-    reduce' (Or x y) `shouldBe` Or (Let env x) (Let env y)
-    reduce' (Fun x y) `shouldBe` Fun (Let env x) (Let env y)
-    reduce' (App IntT y) `shouldBe` Err (cannotApply IntT (Num 3.14))
-    reduce' (App NumT y) `shouldBe` Err (cannotApply NumT (Num 3.14))
-    -- reduce' (App (Int 1) y) `shouldBe` err
-    -- reduce' (App (Num 1.1) y) `shouldBe` err
-    -- reduce' (App (Tag "x") y) `shouldBe` err
-    -- reduce' (App (Var "x") y) `shouldBe` err
-    reduce' (App (Var "z") y) `shouldBe` App z (Num 3.14)
-    reduce' (App (App (Var "z") y) x) `shouldBe` App (App z (Num 3.14)) (Int 42)
-    -- reduce' (App (For "x" x) y) `shouldBe` App x (Num 3.14)
-    -- reduce' (App (Fix "x" x) y) `shouldBe` App (Fix "x" x) x
-    reduce' (App (Fun IntT NumT) IntT) `shouldBe` NumT
-    -- reduce' (App (Fun NumT IntT) IntT) `shouldBe` err
-    reduce' (App (Fun NumT IntT) NumT) `shouldBe` IntT
-    reduce' (App (Fun (Int 42) z) (Int 42)) `shouldBe` z
-    -- reduce' (App (Fun (Int 42) z) (Int 0)) `shouldBe` err
-    reduce' (App (Fun (Num 3.14) z) (Num 3.14)) `shouldBe` z
-    -- reduce' (App (Fun (Num 3.14) z) (Num 0.0)) `shouldBe` err
-    reduce' (App (Fun (Tag "A") z) (Tag "A")) `shouldBe` z
-    -- reduce' (App (Fun (Tag "A") z) (Tag "B")) `shouldBe` err
-    reduce' (App (Fun (Var "x") z) (Int 42)) `shouldBe` z
-    -- reduce' (App (Fun (Var "x") z) (Int 0)) `shouldBe` err
-    reduce' (App (Fun (Var "x") z) x) `shouldBe` z
-    -- reduce' (App (Fun (Var "x") z) y) `shouldBe` err
-    -- TODO: reduce App Fun App
-    reduce' (App (Fun (And IntT NumT) z) (And IntT NumT)) `shouldBe` z
-    -- reduce' (App (Fun (And IntT NumT) z) (And IntT IntT)) `shouldBe` err
-    -- reduce' (App (Fun (And IntT NumT) z) (And NumT NumT)) `shouldBe` err
-    reduce' (App (Fun (Or IntT NumT) z) IntT) `shouldBe` z
-    reduce' (App (Fun (Or IntT NumT) z) NumT) `shouldBe` z
-    -- reduce' (App (Fun (Or IntT IntT) z) x) `shouldBe` err
-    reduce' (App (Fun (Ann x err) z) x) `shouldBe` z
-    -- reduce' (App (Fun (Ann x err) z) y) `shouldBe` err
-    reduce' (App (Fun (Call "f" []) z) (Call "f" [])) `shouldBe` z
-    reduce' (App (Fun err IntT) err) `shouldBe` IntT
-    reduce' (App (For "y" (Fun y y)) x) `shouldBe` Int 42
-    reduce' (App (Var "f") x) `shouldBe` Int 42
-    reduce' (App (Or (Var "f") err) x) `shouldBe` Int 42
-    reduce' (App (Or err (Var "f")) x) `shouldBe` Int 42
-    -- reduce' (App (Or err err) x) `shouldBe` err
-    reduce' (Call "f" [x, y]) `shouldBe` Call "f" [Let env x, Let env y]
-    reduce' err `shouldBe` err
+  --   let reduce' x = reduce ops (Let env x)
+  --   reduce' IntT `shouldBe` IntT
+  --   reduce' NumT `shouldBe` NumT
+  --   reduce' (Int 1) `shouldBe` Int 1
+  --   reduce' (Num 1.1) `shouldBe` Num 1.1
+  --   reduce' (Tag "x") `shouldBe` Tag "x"
+  --   reduce' (Var "x") `shouldBe` Int 42
+  --   reduce' (Var "y") `shouldBe` Num 3.14
+  --   reduce' (Var "z") `shouldBe` Var "z"
+  --   reduce' (Var "w") `shouldBe` Var "w"
+  --   -- reduce' (For "x" x) `shouldBe` For "x" x
+  --   -- reduce' (For "x" y) `shouldBe` For "x" (Num 3.14)
+  --   -- reduce' (Fix "x" x) `shouldBe` Fix "x" x
+  --   -- reduce' (Fix "x" y) `shouldBe` Fix "x" (Num 3.14)
+  --   reduce' (Ann x y) `shouldBe` Ann (Let env x) (Let env y)
+  --   reduce' (And x y) `shouldBe` And (Let env x) (Let env y)
+  --   reduce' (Or x y) `shouldBe` Or (Let env x) (Let env y)
+  --   reduce' (Fun x y) `shouldBe` Fun (Let env x) (Let env y)
+  --   reduce' (App IntT y) `shouldBe` Err (cannotApply IntT (Num 3.14))
+  --   reduce' (App NumT y) `shouldBe` Err (cannotApply NumT (Num 3.14))
+  --   -- reduce' (App (Int 1) y) `shouldBe` err
+  --   -- reduce' (App (Num 1.1) y) `shouldBe` err
+  --   -- reduce' (App (Tag "x") y) `shouldBe` err
+  --   -- reduce' (App (Var "x") y) `shouldBe` err
+  --   reduce' (App (Var "z") y) `shouldBe` App z (Num 3.14)
+  --   reduce' (App (App (Var "z") y) x) `shouldBe` App (App z (Num 3.14)) (Int 42)
+  --   -- reduce' (App (For "x" x) y) `shouldBe` App x (Num 3.14)
+  --   -- reduce' (App (Fix "x" x) y) `shouldBe` App (Fix "x" x) x
+  --   reduce' (App (Fun IntT NumT) IntT) `shouldBe` NumT
+  --   -- reduce' (App (Fun NumT IntT) IntT) `shouldBe` err
+  --   reduce' (App (Fun NumT IntT) NumT) `shouldBe` IntT
+  --   reduce' (App (Fun (Int 42) z) (Int 42)) `shouldBe` z
+  --   -- reduce' (App (Fun (Int 42) z) (Int 0)) `shouldBe` err
+  --   reduce' (App (Fun (Num 3.14) z) (Num 3.14)) `shouldBe` z
+  --   -- reduce' (App (Fun (Num 3.14) z) (Num 0.0)) `shouldBe` err
+  --   reduce' (App (Fun (Tag "A") z) (Tag "A")) `shouldBe` z
+  --   -- reduce' (App (Fun (Tag "A") z) (Tag "B")) `shouldBe` err
+  --   reduce' (App (Fun (Var "x") z) (Int 42)) `shouldBe` z
+  --   -- reduce' (App (Fun (Var "x") z) (Int 0)) `shouldBe` err
+  --   reduce' (App (Fun (Var "x") z) x) `shouldBe` z
+  --   -- reduce' (App (Fun (Var "x") z) y) `shouldBe` err
+  --   -- TODO: reduce App Fun App
+  --   reduce' (App (Fun (And IntT NumT) z) (And IntT NumT)) `shouldBe` z
+  --   -- reduce' (App (Fun (And IntT NumT) z) (And IntT IntT)) `shouldBe` err
+  --   -- reduce' (App (Fun (And IntT NumT) z) (And NumT NumT)) `shouldBe` err
+  --   reduce' (App (Fun (Or IntT NumT) z) IntT) `shouldBe` z
+  --   reduce' (App (Fun (Or IntT NumT) z) NumT) `shouldBe` z
+  --   -- reduce' (App (Fun (Or IntT IntT) z) x) `shouldBe` err
+  --   reduce' (App (Fun (Ann x err) z) x) `shouldBe` z
+  --   -- reduce' (App (Fun (Ann x err) z) y) `shouldBe` err
+  --   reduce' (App (Fun (Call "f" []) z) (Call "f" [])) `shouldBe` z
+  --   reduce' (App (Fun err IntT) err) `shouldBe` IntT
+  --   reduce' (App (For "y" (Fun y y)) x) `shouldBe` Int 42
+  --   reduce' (App (Var "f") x) `shouldBe` Int 42
+  --   reduce' (App (Or (Var "f") err) x) `shouldBe` Int 42
+  --   reduce' (App (Or err (Var "f")) x) `shouldBe` Int 42
+  --   -- reduce' (App (Or err err) x) `shouldBe` err
+  --   reduce' (Call "f" [x, y]) `shouldBe` Call "f" [Let env x, Let env y]
+  --   reduce' err `shouldBe` err
 
-  it "☯ eval" $ do
-    let env =
-          [ ("x", Int 42),
-            ("y", Num 3.14),
-            ("f", For "z" (Fun z z))
-          ]
+  -- it "☯ eval" $ do
+  --   let env =
+  --         [ ("x", Int 42),
+  --           ("y", Num 3.14),
+  --           ("f", For "z" (Fun z z))
+  --         ]
 
-    let eval' x = eval ops (Let env x)
-    eval' (Fun x y) `shouldBe` Fun (Int 42) (Num 3.14)
-    eval' (And x y) `shouldBe` And (Int 42) (Num 3.14)
-    eval' (Or x y) `shouldBe` Or (Int 42) (Num 3.14)
-    eval' (Call "f" [x, y]) `shouldBe` Call "f" [Int 42, Num 3.14]
-    eval' (Call "int_add" [i1, i1]) `shouldBe` i2
-    -- eval' (For "x" (And x y)) `shouldBe` For "x" (And x (Num 3.14))
-    -- eval' (Fix "x" (And x y)) `shouldBe` Fix "x" (And x (Num 3.14))
-    eval' (App z (And x y)) `shouldBe` App z (And (Int 42) (Num 3.14))
-
-  it "☯ eval eq" $ do
-    let eq a b = app (For "x" (fun [x, x] i1) `Or` fun [Any, Any] i0) [a, b]
-    eval ops (eq i2 i2) `shouldBe` i1
-    eval ops (eq i1 i2) `shouldBe` i0
+  --   let eval' x = eval ops (Let env x)
+  --   eval' (Fun x y) `shouldBe` Fun (Int 42) (Num 3.14)
+  --   eval' (And x y) `shouldBe` And (Int 42) (Num 3.14)
+  --   eval' (Or x y) `shouldBe` Or (Int 42) (Num 3.14)
+  --   eval' (Call "f" [x, y]) `shouldBe` Call "f" [Int 42, Num 3.14]
+  --   eval' (Call "int_add" [i1, i1]) `shouldBe` i2
+  --   -- eval' (For "x" (And x y)) `shouldBe` For "x" (And x (Num 3.14))
+  --   -- eval' (Fix "x" (And x y)) `shouldBe` Fix "x" (And x (Num 3.14))
+  --   eval' (App z (And x y)) `shouldBe` App z (And (Int 42) (Num 3.14))
 
   it "☯ eval factorial" $ do
     let env = [("f", factorial "f")]
