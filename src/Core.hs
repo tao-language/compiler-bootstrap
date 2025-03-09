@@ -69,40 +69,40 @@ grammar = do
   G.Grammar
     { group = ("(", ")"),
       operators =
-        [ -- Any
+        [ -- Grammar.Any
           G.atom (\_ _ -> Any) (P.word "_") $ \_ -> \case
             Any -> Just [PP.Text "_"]
             _ -> Nothing,
-          -- Unit
+          -- Grammar.Unit
           let parser = do _ <- P.char '('; _ <- P.whitespaces; P.char ')'
            in G.atom (\_ _ -> Unit) parser $ \_ -> \case
                 Unit -> Just [PP.Text "()"]
                 _ -> Nothing,
-          -- IntT
+          -- Grammar.IntT
           G.atom (\_ _ -> IntT) (P.word "^Int") $ \_ -> \case
             IntT -> Just [PP.Text "^Int"]
             _ -> Nothing,
-          -- NumT
+          -- Grammar.NumT
           G.atom (\_ _ -> NumT) (P.word "^Num") $ \_ -> \case
             NumT -> Just [PP.Text "^Num"]
             _ -> Nothing,
-          -- Int
+          -- Grammar.Int
           G.atom (const Int) P.integer $ \_ -> \case
             Int i -> Just [PP.Text $ show i]
             _ -> Nothing,
-          -- Num
+          -- Grammar.Num
           G.atom (const Num) P.number $ \_ -> \case
             Num n -> Just [PP.Text $ show n]
             _ -> Nothing,
-          -- Tag
+          -- Grammar.Tag
           G.atom (const Tag) parseNameTag $ \_ -> \case
             Tag k -> Just [PP.Text k]
             _ -> Nothing,
-          -- Var
+          -- Grammar.Var
           G.atom (const Var) parseNameVar $ \_ -> \case
             Var x -> Just [PP.Text x]
             _ -> Nothing,
-          -- And
+          -- Grammar.And
           let parser expr = do
                 _ <- P.char '('
                 _ <- P.whitespaces
@@ -120,15 +120,15 @@ grammar = do
                   let items = andOf (And a b)
                   Just (PP.Text "(" : intercalate [PP.Text ", "] (map layout items) ++ [PP.Text ")"])
                 _ -> Nothing,
-          -- Or
+          -- Grammar.Or
           G.infixR 1 (const Or) "|" $ \case
             Or a b -> Just (a, " ", b)
             _ -> Nothing,
-          -- Ann
+          -- Grammar.Ann
           G.infixR 2 (const Ann) ":" $ \case
             Ann a b -> Just (a, " ", b)
             _ -> Nothing,
-          -- For
+          -- Grammar.For
           let parser expr = do
                 _ <- P.char '@'
                 _ <- P.spaces
@@ -146,7 +146,7 @@ grammar = do
                   let (xs, a') = forOf (For x a)
                   Just (PP.Text ("@" ++ unwords xs ++ ". ") : layout a')
                 _ -> Nothing,
-          -- Fix
+          -- Grammar.Fix
           let parser expr = do
                 _ <- P.char '&'
                 _ <- P.spaces
@@ -164,11 +164,11 @@ grammar = do
                   let (xs, a') = fixOf (Fix x a)
                   Just (PP.Text ("&" ++ unwords xs ++ ". ") : layout a')
                 _ -> Nothing,
-          -- Fun
+          -- Grammar.Fun
           G.infixR 3 (const Fun) "->" $ \case
             Fun a b -> Just (a, " ", b)
             _ -> Nothing,
-          -- App
+          -- Grammar.App
           let parser x expr = do
                 y <- expr
                 _ <- P.spaces
@@ -176,23 +176,37 @@ grammar = do
            in G.InfixL 4 parser $ \lhs rhs -> \case
                 App a b -> Just (lhs a ++ PP.Text " " : rhs b)
                 _ -> Nothing,
-          -- Call
+          -- Grammar.Call
           let parser expr = do
                 _ <- P.char '%'
                 x <- parseNameVar
                 _ <- P.spaces
-                arg <- expr
+                _ <- P.char '('
+                _ <- P.whitespaces
+                args <-
+                  P.oneOf
+                    [ do
+                        arg <- expr
+                        _ <- P.whitespaces
+                        args <- P.zeroOrMore $ do
+                          _ <- P.char ','
+                          _ <- P.whitespaces
+                          arg <- expr
+                          _ <- P.whitespaces
+                          return arg
+                        return (arg : args),
+                      return []
+                    ]
+                _ <- P.char ')'
                 _ <- P.spaces
-                return (Call x (andOf arg))
+                return (Call x args)
            in G.Atom parser $ \layout -> \case
                 Call f args -> do
                   Just (PP.Text ("%" ++ f ++ "(") : intercalate [PP.Text ", "] (map layout args) ++ [PP.Text ")"])
                 _ -> Nothing,
-          -- Let
+          -- Grammar.Let
           let parser expr = do
-                _ <- P.char '@'
-                _ <- P.spaces
-                _ <- P.char '{'
+                _ <- P.text "@{"
                 _ <- P.whitespaces
                 env <- do
                   let parseDef = do
@@ -223,7 +237,7 @@ grammar = do
                   let layoutDef (x, a) = PP.Text (x ++ " = ") : layout a
                   Just (PP.Text "@{" : intercalate [PP.Text ", "] (map layoutDef env) ++ PP.Text "} " : layout a)
                 _ -> Nothing,
-          -- Metadata Comments
+          -- Grammar.Metadata.Comments
           let parser expr = do
                 comments <- P.oneOrMore $ do
                   _ <- P.char '#'
@@ -237,7 +251,7 @@ grammar = do
                   let comments' = concatMap (\c -> [PP.Text ("# " ++ c), PP.NewLine]) comments
                   Just (comments' ++ rhs a)
                 _ -> Nothing,
-          -- Metadata TrailingComment
+          -- Grammar.Metadata.TrailingComment
           let parser x _expr = do
                 _ <- P.char '#'
                 _ <- P.spaces
@@ -248,18 +262,27 @@ grammar = do
                 Meta (TrailingComment comment) a ->
                   Just (lhs a ++ [PP.Text ("  # " ++ comment), PP.NewLine])
                 _ -> Nothing,
-          -- Metadata Location
+          -- Grammar.Metadata.Location
           let parser expr = do
-                _ <- P.text "!["
+                _ <- P.text "@["
+                _ <- P.spaces
                 filename <- P.oneOrMore $ P.charIf (/= ':')
                 _ <- P.char ':'
+                _ <- P.spaces
                 row1 <- P.integer
+                _ <- P.spaces
                 _ <- P.char ':'
+                _ <- P.spaces
                 col1 <- P.integer
+                _ <- P.spaces
                 _ <- P.char ','
+                _ <- P.spaces
                 row2 <- P.integer
+                _ <- P.spaces
                 _ <- P.char ':'
+                _ <- P.spaces
                 col2 <- P.integer
+                _ <- P.spaces
                 _ <- P.char ']'
                 _ <- P.spaces
                 _ <- P.char '('
@@ -270,9 +293,9 @@ grammar = do
                 _ <- P.spaces
                 return (Meta (Loc (Location filename (Range (Pos row1 col1) (Pos row2 col2)))) a)
            in G.Atom parser $ \layout -> \case
-                Meta (Loc loc) a -> Just (PP.Text ("![" ++ show loc ++ "](") : layout a ++ [PP.Text ")"])
+                Meta (Loc loc) a -> Just (PP.Text ("@[" ++ show loc ++ "](") : layout a ++ [PP.Text ")"])
                 _ -> Nothing,
-          -- Err
+          -- Grammar.Err.CustomError
           let parser expr = do
                 _ <- P.word "!error"
                 _ <- P.spaces
@@ -281,6 +304,7 @@ grammar = do
                 a <- expr
                 _ <- P.whitespaces
                 _ <- P.char ')'
+                _ <- P.spaces
                 return (err a)
            in G.Atom parser $ \layout -> \case
                 Err (RuntimeError e) -> case e of
@@ -618,13 +642,12 @@ reduceLet ops env = \case
     (_, args) -> Call f args
   Let env' a -> reduce ops (Let (env ++ env') a)
   Meta m a -> Meta m (reduce ops (Let env a))
+  Err e -> Err (Let env <$> e)
   expr -> expr
 
 reduceApp :: Ops -> Expr -> Expr -> Expr
 reduceApp ops a b = case (a, b) of
   (Any, _) -> Any
-  (Err _, _) -> Err (unhandledCase b)
-  (a, b) | isOpen b -> App a b
   (a@Var {}, b) -> App a b
   (a@App {}, b) -> App a b
   (Ann a _, b) -> reduceApp ops (reduce ops a) b
@@ -632,7 +655,8 @@ reduceApp ops a b = case (a, b) of
     Err _ -> reduceApp ops (reduce ops a2) b
     c -> c
   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
-  (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
+  (Fix x a, b) | isClosed b -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
+  (Fix x a, b) -> App (Fix x a) b
   (Fun a c, b) -> case match False ops a b of
     Just env -> reduce ops (Let env c)
     Nothing -> Err (unhandledCase b)
@@ -651,8 +675,6 @@ match unify ops (Let env (Meta _ a)) b =
 match unify ops (Let env (Let env' a)) b =
   match unify ops (Let (env ++ env') a) b
 match unify ops a b = case (reduce ops a, reduce ops b) of
-  (Meta _ a, b) -> match unify ops a b
-  (_, Meta _ b) -> match unify ops a b
   (Any, _) -> Just []
   (_, Any) | unify -> Just []
   (Unit, Unit) -> Just []
@@ -692,16 +714,17 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
     Nothing -> match unify ops a b2
   (For x a, b) -> match unify ops (Let [(x, Var x)] a) b
   (a, For x b) -> match unify ops a (Let [(x, Var x)] b)
-  (Fix x a, b) -> do
-    -- env <- match unify ops (Let [(x, Var x)] a) b
-    -- return ((x, Fix x a) : env)
-    error "TODO: match Fix"
+  (Fix x a, Fix x' b) | x == x' -> do
+    match unify ops (Let [(x, Var x)] a) (Let [(x', Fix x' b)] b)
+  (Fix x a, Fix y b) -> do
+    match unify ops (Fix x a) (Fix x (substitute [(y, Var x)] b))
   (Fun a1 a2, Fun b1 b2) -> match unify ops (And a1 a2) (And b1 b2)
   (App a1 a2, App b1 b2) -> match unify ops (And a1 a2) (And b1 b2)
   (Call x args, Call x' args') | x == x' -> do
     match unify ops (and' args) (and' args')
-  (_, Err _) -> Just []
-  (a, Ann b _) -> match unify ops a b
+  (Meta _ a, b) -> match unify ops a b
+  (_, Meta _ b) -> match unify ops a b
+  (Err _, Err _) -> Just []
   _ -> Nothing
 
 eval :: Ops -> Expr -> Expr
