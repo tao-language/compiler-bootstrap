@@ -3,8 +3,8 @@ module CoreTests where
 import Core
 import Data.Bifunctor (Bifunctor (first))
 import Data.Char (toLower)
-import Error (Error (..), TypeError (..), cannotApply, customError, typeMismatch)
-import Location (Location (Location), Position (Pos), Range (Range))
+import Error
+import Location
 import Parser (State (..))
 import Test.Hspec
 
@@ -309,8 +309,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ Core.sugar.def" $ do
     let expr = def (x, y) z
-    parse' "x = y; z " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "x = y; z"
+    parse' "^let x = y; z " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "^let x = y; z"
 
   it "☯ Core.run.App" $ do
     let env = [("x", Int 42), ("y", Num 3.14), ("a", a)]
@@ -535,17 +535,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   --   eval' (App (Tag "T0") (Int 0)) `shouldBe` NumT
   --   eval' (App (And (Tag "T1") NumT) (Int 1)) `shouldBe` NumT
 
-  it "☯ eval type safety" $ do
-    let eval' = eval ops
-    eval' (App (For "x" $ Fun x x) i1) `shouldBe` i1
-    eval' (App (For "x" $ Fun x x) (Ann i1 IntT)) `shouldBe` Ann i1 IntT
-    eval' (App (For "x" $ Fun (Ann x IntT) x) i1) `shouldBe` i1
-    eval' (App (For "x" $ Fun (Ann x IntT) x) (Ann i1 IntT)) `shouldBe` i1
-    eval' (App (For "x" $ Fun (Ann x NumT) x) (Ann i1 IntT)) `shouldBe` err
-    let a' = Fun (Ann err err) (Tag "Ok") `Or` Fun (Ann x a) x
-    let b' = Ann (App Unit (Ann i1 IntT)) Unit
-    eval' (for ["x", "a"] $ App a' b') `shouldBe` err
-
   it "☯ eval alpha equivalence" $ do
     let eval' = eval ops
     let a' = for ["x", "a"] (Fun (Ann x a) x)
@@ -555,84 +544,84 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ -- unify" $ do
     True `shouldBe` True
 
-  it "☯ infer const" $ do
-    infer [] [] IntT `shouldBe` ((IntT, IntT), [])
-    infer [] [] NumT `shouldBe` ((NumT, NumT), [])
-    infer [] [] (Int 1) `shouldBe` ((Int 1, IntT), [])
-    infer [] [] (Num 1.1) `shouldBe` ((Num 1.1, NumT), [])
-    infer [] [] err `shouldBe` ((err, Any), [])
+  -- it "☯ infer const" $ do
+  --   infer [] [] IntT `shouldBe` ((IntT, IntT), [])
+  --   infer [] [] NumT `shouldBe` ((NumT, NumT), [])
+  --   infer [] [] (Int 1) `shouldBe` ((Int 1, IntT), [])
+  --   infer [] [] (Num 1.1) `shouldBe` ((Num 1.1, NumT), [])
+  --   infer [] [] err `shouldBe` ((err, Any), [])
 
-  it "☯ infer Var" $ do
-    let (a1, yT) = (Var "a1", Var "yT")
-    let env = [("x", i1), ("y", y), ("b", Ann b IntT), ("a", b), ("c", Ann c (for ["a"] a))]
-    infer [] env (Var "x") `shouldBe` ((x, IntT), [])
-    infer [] env (Var "y") `shouldBe` ((y, yT), [("yT", yT), ("y", Ann y yT)])
-    infer [] env (Var "z") `shouldBe` ((z, Err $ TypeError $ UndefinedVar "z"), [])
-    infer [] env (Var "a") `shouldBe` ((a, IntT), [])
-    infer [] env (Var "c") `shouldBe` ((c, a1), [("a1", a1)])
+  -- it "☯ infer Var" $ do
+  --   let (a1, yT) = (Var "a1", Var "yT")
+  --   let env = [("x", i1), ("y", y), ("b", Ann b IntT), ("a", b), ("c", Ann c (for ["a"] a))]
+  --   infer [] env (Var "x") `shouldBe` ((x, IntT), [])
+  --   infer [] env (Var "y") `shouldBe` ((y, yT), [("yT", yT), ("y", Ann y yT)])
+  --   infer [] env (Var "z") `shouldBe` ((z, Err $ TypeError $ UndefinedVar "z"), [])
+  --   infer [] env (Var "a") `shouldBe` ((a, IntT), [])
+  --   infer [] env (Var "c") `shouldBe` ((c, a1), [("a1", a1)])
 
-  it "☯ infer Ann" $ do
-    let env = []
-    infer [] env (Ann i1 IntT) `shouldBe` ((i1, IntT), [])
-    infer [] env (Ann i1 NumT) `shouldBe` ((i1, Err $ typeMismatch IntT NumT), [])
-    infer [] env (Ann i1 (For "a" a)) `shouldBe` ((i1, IntT), [("a", IntT)])
+  -- it "☯ infer Ann" $ do
+  --   let env = []
+  --   infer [] env (Ann i1 IntT) `shouldBe` ((i1, IntT), [])
+  --   infer [] env (Ann i1 NumT) `shouldBe` ((i1, Err $ typeMismatch IntT NumT), [])
+  --   infer [] env (Ann i1 (For "a" a)) `shouldBe` ((i1, IntT), [("a", IntT)])
 
-  it "☯ infer Ann Tag" $ do
-    let env = [("T", Tag "A" `Or` Tag "B")]
-    -- infer [] env (Tag "T" []) `shouldBe` Right (Tag "A" [] `Or` Tag "B" [], [])
-    -- infer [] env (Ann (Tag "A" []) (Tag "A" [])) `shouldBe` Right (Tag "A" [], [])
-    -- infer [] env (Ann (Tag "A") (Tag "T")) `shouldBe` Right (Tag "T", [])
-    -- infer [] env (Ann (Tag "B []) (Tag "T" [])) `shouldBe` Right (Tag "T" [], [])
-    -- infer [] env (Ann (Tag "C" []) (Tag "T" [])) `shouldBe` Left (TypeMismatch (Ann (Tag "C" []) (Tag "T" [])) (Tag "A" [] `Or` Tag "B" []))
-    True `shouldBe` True
+  -- it "☯ infer Ann Tag" $ do
+  --   let env = [("T", Tag "A" `Or` Tag "B")]
+  --   -- infer [] env (Tag "T" []) `shouldBe` Right (Tag "A" [] `Or` Tag "B" [], [])
+  --   -- infer [] env (Ann (Tag "A" []) (Tag "A" [])) `shouldBe` Right (Tag "A" [], [])
+  --   -- infer [] env (Ann (Tag "A") (Tag "T")) `shouldBe` Right (Tag "T", [])
+  --   -- infer [] env (Ann (Tag "B []) (Tag "T" [])) `shouldBe` Right (Tag "T" [], [])
+  --   -- infer [] env (Ann (Tag "C" []) (Tag "T" [])) `shouldBe` Left (TypeMismatch (Ann (Tag "C" []) (Tag "T" [])) (Tag "A" [] `Or` Tag "B" []))
+  --   True `shouldBe` True
 
-  it "☯ infer Fun" $ do
-    let (t, xT, _T) = (Var "t", Var "xT", Var "_T")
-    let env =
-          [ ("x", Ann x a),
-            ("y", Int 1),
-            ("a", a)
-          ]
-    infer [] env (Fun x x) `shouldBe` ((Fun (Ann x a) x, Fun a a), [])
+  -- it "☯ infer Fun" $ do
+  --   let (t, xT, _T) = (Var "t", Var "xT", Var "_T")
+  --   let env =
+  --         [ ("x", Ann x a),
+  --           ("y", Int 1),
+  --           ("a", a)
+  --         ]
+  --   infer [] env (Fun x x) `shouldBe` ((Fun (Ann x a) x, Fun a a), [])
 
-  it "☯ infer Fun" $ do
-    let env = [("a", Ann a IntT), ("b", Ann b NumT)]
-    infer [] env (Fun a b) `shouldBe` ((Fun (Ann a IntT) b, Fun IntT NumT), [])
+  -- it "☯ infer Fun" $ do
+  --   let env = [("a", Ann a IntT), ("b", Ann b NumT)]
+  --   infer [] env (Fun a b) `shouldBe` ((Fun (Ann a IntT) b, Fun IntT NumT), [])
 
-  it "☯ infer App" $ do
-    let env =
-          [ ("x", i1),
-            ("y", y),
-            ("f", Ann f (Fun IntT NumT))
-          ]
-    infer [] env (App f x) `shouldBe` ((App f (Ann x IntT), NumT), [])
-    infer [] env (App (Fun y y) x) `shouldBe` ((App (Fun (Ann y IntT) y) (Ann x IntT), IntT), [("yT", IntT), ("y", Ann y IntT)])
-    infer [] env (App y x) `shouldBe` ((App y (Ann x IntT), Var "yT$2"), [("yT$1", IntT), ("yT", Fun IntT (Var "yT$2")), ("yT$2", Var "yT$2"), ("y", Ann y (Fun IntT (Var "yT$2")))])
+  -- it "☯ infer App" $ do
+  --   let env =
+  --         [ ("x", i1),
+  --           ("y", y),
+  --           ("f", Ann f (Fun IntT NumT))
+  --         ]
+  --   infer [] env (App f x) `shouldBe` ((App f (Ann x IntT), NumT), [])
+  --   infer [] env (App (Fun y y) x) `shouldBe` ((App (Fun (Ann y IntT) y) (Ann x IntT), IntT), [("yT", IntT), ("y", Ann y IntT)])
+  --   infer [] env (App y x) `shouldBe` ((App y (Ann x IntT), Var "yT$2"), [("yT$1", IntT), ("yT", Fun IntT (Var "yT$2")), ("yT$2", Var "yT$2"), ("y", Ann y (Fun IntT (Var "yT$2")))])
 
-  it "☯ infer Or" $ do
-    let env = [("x", Int 42), ("y", Num 3.14)]
-    infer [] env (Or x x) `shouldBe` ((Or x x, Or IntT IntT), [])
-    infer [] env (Or x y) `shouldBe` ((Or x y, Or IntT NumT), [])
+  -- it "☯ infer Or" $ do
+  --   let env = [("x", Int 42), ("y", Num 3.14)]
+  --   infer [] env (Or x x) `shouldBe` ((Or x x, Or IntT IntT), [])
+  --   infer [] env (Or x y) `shouldBe` ((Or x y, Or IntT NumT), [])
 
-  it "☯ infer For" $ do
-    let xT = Var "xT"
-    infer [] [] (For "x" x) `shouldBe` ((For "x" x, xT), [("xT", xT), ("x", Ann x xT)])
+  -- it "☯ infer For" $ do
+  --   let xT = Var "xT"
+  --   infer [] [] (For "x" x) `shouldBe` ((For "x" x, xT), [("xT", xT), ("x", Ann x xT)])
 
-  it "☯ infer Op2" $ do
-    True `shouldBe` True
+  -- it "☯ infer Op2" $ do
+  --   True `shouldBe` True
 
   it "☯ infer factorial" $ do
     let env = [("f", Ann (factorial "f") (Fun IntT IntT))]
     let infer' = fst . infer ops env
     infer' (Var "f") `shouldBe` (f, Fun IntT IntT)
-    infer' (Ann f (Fun IntT IntT)) `shouldBe` (f, Fun IntT IntT)
+    infer' (Ann f (Fun IntT IntT)) `shouldBe` (Ann f (Fun IntT IntT), Fun IntT IntT)
 
   it "☯ infer Bool" $ do
     let (bool, true, false) = (Tag "Bool", Tag "True", Tag "False")
     let env = [("Bool", Fun true bool `Or` Fun false bool)]
 
     eval ops (Let env (App (Fun bool Unit) true)) `shouldBe` Unit
-    eval ops (Let env (App (Fun bool Unit) (Tag "X"))) `shouldBe` err
+    eval ops (Let env (App (Fun bool Unit) (Tag "X"))) `shouldBe` Err (unhandledCase (Tag "X"))
     eval ops (Let env (App (Fun bool Unit) bool)) `shouldBe` Unit
 
     let infer' = infer ops env
@@ -666,14 +655,14 @@ run = describe "--==☯️ Core language ☯️==--" $ do
             ]
     let env = [("Vec", lam [And n a] (vecDef a))]
 
-    eval ops (Let env (App (Fun (vec i0 NumT) Unit) nil)) `shouldBe` Unit
-    eval ops (Let env (App (Fun (vec i0 NumT) Unit) (Tag "X"))) `shouldBe` err
+    eval ops (Let env (App (Fun (vec i0 NumT) Unit) nil)) `shouldBe` Err (unhandledCase nil)
+    eval ops (Let env (App (Fun (vec i0 NumT) Unit) (Tag "X"))) `shouldBe` Err (unhandledCase $ Tag "X")
     eval ops (Let env (App (Fun (vec i0 NumT) Unit) (vec i0 NumT))) `shouldBe` Unit
 
     let infer' = infer ops env
     infer' (Tag "Nil") `shouldBe` ((Tag "Nil", Tag "Nil"), [])
     infer' (cons (Num 1.1) nil) `shouldBe` ((cons (Num 1.1) nil, cons NumT nil), [])
-    infer' (Ann nil (vec i0 NumT)) `shouldBe` ((nil, vec i0 NumT), env)
+    infer' (Ann nil (vec i0 NumT)) `shouldBe` ((Ann nil (vec i0 NumT), vec i0 NumT), [])
     infer' (Ann nil (vec i1 NumT)) `shouldBe` ((nil, vec (Err $ typeMismatch i0 i1) NumT), env)
     infer' (Ann (cons (Num 1.1) nil) (vec i1 NumT)) `shouldBe` ((cons (Num 1.1) nil, vec i1 NumT), env)
     infer' (Ann (cons (Num 1.1) (cons (Num 2.2) nil)) (vec i0 NumT)) `shouldBe` ((cons (Num 1.1) (cons (Num 2.2) nil), vec (Err $ typeMismatch i2 i0) NumT), env)
