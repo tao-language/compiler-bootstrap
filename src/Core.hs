@@ -146,10 +146,6 @@ grammar = do
           G.infixR 1 (const Or) "|" $ \case
             Or a b -> Just (a, " ", b)
             _ -> Nothing,
-          -- Grammar.Ann
-          G.infixR 2 (const Ann) ":" $ \case
-            Ann a b -> Just (a, " ", b)
-            _ -> Nothing,
           -- Grammar.For
           let parser expr = do
                 _ <- P.char '@'
@@ -158,12 +154,12 @@ grammar = do
                   x <- parseNameVar
                   _ <- P.spaces
                   return x
-                _ <- P.char '.'
+                _ <- P.oneOf [P.char '.', P.char '\n']
                 _ <- P.whitespaces
-                a <- expr
+                a <- parseExpr 2
                 _ <- P.spaces
                 return (for xs a)
-           in G.Prefix 3 parser $ \layout -> \case
+           in G.Atom parser $ \layout -> \case
                 For x a -> do
                   let (xs, a') = forOf (For x a)
                   Just (PP.Text ("@" ++ unwords xs ++ ". ") : layout a')
@@ -186,8 +182,12 @@ grammar = do
                   let (xs, a') = fixOf (Fix x a)
                   Just (PP.Text ("&" ++ unwords xs ++ ". ") : layout a')
                 _ -> Nothing,
+          -- Grammar.Ann
+          G.infixR 3 (const Ann) ":" $ \case
+            Ann a b -> Just (a, " ", b)
+            _ -> Nothing,
           -- Grammar.Fun
-          G.infixR 3 (const Fun) "->" $ \case
+          G.infixR 4 (const Fun) "->" $ \case
             Fun a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.App
@@ -195,7 +195,7 @@ grammar = do
                 y <- expr
                 _ <- P.spaces
                 return (App x y)
-           in G.InfixL 4 parser $ \lhs rhs -> \case
+           in G.InfixL 5 parser $ \lhs rhs -> \case
                 App a b -> Just (lhs a ++ PP.Text " " : rhs b)
                 _ -> Nothing,
           -- Grammar.Call
@@ -338,6 +338,9 @@ grammar = do
                 _ -> Nothing
         ]
     }
+
+parseExpr :: Int -> Parser Expr
+parseExpr = G.parser grammar
 
 parseNameBase :: Parser Char -> Parser String
 parseNameBase firstChar = do
