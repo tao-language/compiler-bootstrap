@@ -418,9 +418,12 @@ forOf (For x a) = let (xs, b) = forOf a in (x : xs, b)
 forOf a = ([], a)
 
 fix :: [String] -> Expr -> Expr
-fix [] a = a
-fix (x : xs) a | x `occurs` a = Fix x (fix xs a)
-fix (_ : xs) a = fix xs a
+fix xs a = foldr Fix a xs
+
+fix' :: [String] -> Expr -> Expr
+fix' [] a = a
+fix' (x : xs) a | x `occurs` a = Fix x (fix' xs a)
+fix' (_ : xs) a = fix' xs a
 
 fixOf :: Expr -> ([String], Expr)
 fixOf (Fix x a) = let (xs, b) = fixOf a in (x : xs, b)
