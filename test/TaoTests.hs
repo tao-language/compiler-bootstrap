@@ -130,6 +130,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     fmt expr `shouldBe` "Num"
     fmt' expr' `shouldBe` "^Num : ^Num"
     fmt (lift expr') `shouldBe` "Num : Num"
+    check (lift expr') `shouldBe` []
     fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "Num : Num"
 
   it "☯ Tao.Int" $ do
@@ -181,20 +182,22 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     let expr = x 1 1
     let (_, expr') = compile ctx "m" expr
     parse' "x " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "x"
-    C.dropMeta expr' `shouldBe` C.Ann x' C.IntT
-    lift expr' `shouldBe` Ann expr IntT
-    dropMeta (eval ctx "m" expr) `shouldBe` Int 42
+    fmt expr `shouldBe` "x"
+    fmt' expr' `shouldBe` "x : ^Int"
+    fmt (lift expr') `shouldBe` "x : Int"
+    check (lift expr') `shouldBe` []
+    fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "42 : Int"
 
   it "☯ Tao.Var.indirect" $ do
     let ctx = [("m", [def "y" (int 10 10 42), def "x" (y 20 20)])]
     let expr = x 1 1
     let (_, expr') = compile ctx "m" expr
     parse' "x " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "x"
-    C.dropMeta expr' `shouldBe` C.Ann x' C.IntT
-    lift expr' `shouldBe` Ann expr IntT
-    dropMeta (eval ctx "m" expr) `shouldBe` Int 42
+    fmt expr `shouldBe` "x"
+    fmt' expr' `shouldBe` "x : ^Int"
+    fmt (lift expr') `shouldBe` "x : Int"
+    check (lift expr') `shouldBe` []
+    fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "42 : Int"
 
   it "☯ Tao.Tag 0" $ do
     let ctx = []

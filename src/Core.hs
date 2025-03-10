@@ -382,98 +382,6 @@ parseNameTag =
       P.paddedL (P.char ':') parseNameEscaped
     ]
 
--- format :: Expr -> String
--- format expr = case expr of
---   Any -> "_"
---   Unit -> "()"
---   IntT -> "!IntT"
---   NumT -> "!NumT"
---   Int i -> show i
---   Num n -> show n
---   Var x -> name x
---   Tag ('^' : k) -> '^' : '^' : name k
---   Tag ('~' : k) -> '^' : '~' : name k
---   Tag k -> '^' : name k
---   Ann a b -> "(" ++ format a ++ " : " ++ format b ++ ")"
---   And _ _ -> "(" ++ intercalate ", " (map format (andOf expr)) ++ ")"
---   Or _ _ -> "(" ++ intercalate " | " (map format (orOf expr)) ++ ")"
---   For _ _ -> do
---     let (xs, a) = forOf expr
---     "(@" ++ unwords (map name xs) ++ ". " ++ format a ++ ")"
---   Fix x a -> "(&" ++ name x ++ ". " ++ format a ++ ")"
---   Fun _ _ -> do
---     let (args, ret) = funOf expr
---     "(" ++ intercalate " -> " (map format args) ++ " -> " ++ format ret ++ ")"
---   App a b -> do
---     let (a', bs) = appOf (App a b)
---     "(" ++ format a' ++ " " ++ unwords (map format bs) ++ ")"
---   Call f args -> '%' : f ++ "(" ++ intercalate ", " (map format args) ++ ")"
---   Let env b -> "@{" ++ intercalate "; " (map (\(x, a) -> name x ++ " = " ++ format a) env) ++ "} " ++ format b
---   Meta m a -> case m of
---     Comments [] -> show a
---     Comments (c : cs) -> "# " ++ c ++ "\n" ++ show (Meta (Comments cs) a)
---     TrailingComment c -> show a ++ "  # " ++ c ++ "\n"
---     Loc (Location filename range) -> "#(" ++ filename ++ ":" ++ show range.start.row ++ ":" ++ show range.start.col ++ " .." ++ show range.end.row ++ ":" ++ show range.end.col ++ ")" ++ format a
---   Err e -> "!" ++ show e
---   where
---     isAlphaNumOr cs c = isAlphaNum c || c `elem` cs
---     name = \case
---       x | all (isAlphaNumOr "$-_") x -> x
---       '.' : x | not (any (isAlphaNumOr "()") x) -> "(" ++ x ++ ")"
---       x -> "`" ++ replaceString "`" "\\`" x ++ "`"
-
--- instance Show Expr where
---   showsPrec :: Int -> Expr -> ShowS
---   showsPrec p expr = case expr of
---     -- App (Lam [Case [p] b]) a -> prefix 1 (show p ++ " = " ++ show a ++ "; ") b
---     Or a b -> infixR 1 a " | " b
---     And a b -> infixL 1 a ", " b
---     Ann a b -> infixR 2 a " : " b
---     Call "==" [a, b] -> infixL 3 a " == " b
---     Call "<" [a, b] -> infixR 4 a " < " b
---     Call ">" [a, b] -> infixR 4 a " > " b
---     For x a -> do
---       let (xs, a') = asFor (For x a)
---       prefix 2 ("@" ++ unwords xs ++ ". ") a'
---     Fix x a -> prefix 2 ("!fix " ++ show (Var x) ++ ". ") a
---     Fun p b -> infixR 5 p " -> " b
---     Call "+" [a, b] -> infixL 6 a " + " b
---     Call "-" [a, b] -> infixL 6 a " - " b
---     Call "*" [a, b] -> infixL 7 a " * " b
---     Call "/" [a, b] -> infixL 7 a " / " b
---     Call "^" [a, b] -> infixL 10 a "^" b
---     Call ('%' : op) [a] -> prefix 8 ('%' : op ++ " ") a
---     Call op [a] -> prefix 8 op a
---     App a b -> infixL 8 a " " b
---     Err -> atom 12 "!error"
---     IntT -> atom 12 "!Int"
---     NumT -> atom 12 "!Num"
---     Int i -> atom 12 (show i)
---     Num n -> atom 12 (show n)
---     Var x | isVarName x -> atom 12 x
---     Var x -> atom 12 ("`" ++ replaceString "`" "\\`" x ++ "`")
---     Tag "" -> atom 12 "()"
---     Tag k -> atom 12 k
---     Call op [] -> atom 12 ("(" ++ op ++ ")")
---     Call op args -> showsPrec p (app (Call op []) args)
---     where
---       atom n k = showParen (p > n) $ showString k
---       prefix n k a = showParen (p > n) $ showString k . showsPrec (n + 1) a
---       infixL n a op b = showParen (p > n) $ showsPrec n a . showString op . showsPrec (n + 1) b
---       infixR n a op b = showParen (p > n) $ showsPrec (n + 1) a . showString op . showsPrec n b
---       isVarName ('!' : xs) = all isNameChar xs
---       isVarName ('@' : xs) = True
---       isVarName ('_' : xs) = all isNameChar xs
---       isVarName (x : xs) = isLower x && all isNameChar xs
---       isVarName [] = False
---       isTagName (x : xs) = isUpper x && all isNameChar xs
---       isTagName [] = False
---       isNameChar '-' = True
---       isNameChar '_' = True
---       isNameChar c = isAlphaNum c
---       op2 op = " " ++ show op ++ " "
---       op1 op = show op ++ " "
-
 -- Syntax sugar
 tag :: String -> [Expr] -> Expr
 tag k args = and' (Tag k : args)
@@ -510,7 +418,9 @@ forOf (For x a) = let (xs, b) = forOf a in (x : xs, b)
 forOf a = ([], a)
 
 fix :: [String] -> Expr -> Expr
-fix xs a = foldr Fix a xs
+fix [] a = a
+fix (x : xs) a | x `occurs` a = Fix x (fix xs a)
+fix (_ : xs) a = fix xs a
 
 fixOf :: Expr -> ([String], Expr)
 fixOf (Fix x a) = let (xs, b) = fixOf a in (x : xs, b)
