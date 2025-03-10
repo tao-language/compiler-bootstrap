@@ -330,6 +330,9 @@ grammar = do
                 return (err a)
            in G.Atom parser $ \layout -> \case
                 Err e -> case e of
+                  TypeError e -> case e of
+                    UndefinedVar x -> Just [PP.Text $ "!undefined-var(" ++ x ++ ")"]
+                    e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
                   RuntimeError e -> case e of
                     UnhandledCase a -> Just (PP.Text "!unhandled-case(" : layout a ++ [PP.Text ")"])
                     CannotApply a b -> Just (PP.Text "!cannot-apply(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])

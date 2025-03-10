@@ -5,7 +5,7 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (chr, ord)
 import Data.Function ((&))
-import Data.List (delete, isPrefixOf, sort, union, unionBy, (\\))
+import Data.List (delete, intersect, isPrefixOf, sort, union, unionBy, (\\))
 import Error
 import Grammar as G
 import Location (Location (Location), Position (Pos), Range (Range))
@@ -331,7 +331,7 @@ instance DropMeta Stmt where
   dropMeta :: Stmt -> Stmt
   dropMeta = error "TODO: dropMeta Stmt"
 
-collect :: (Expr -> [String]) -> Expr -> [String]
+collect :: (Eq a) => (Expr -> [a]) -> Expr -> [a]
 collect f = \case
   Any -> []
   IntT -> []
@@ -350,10 +350,10 @@ collect f = \case
           Val a -> f a
     unionMap collectSegment segments
   Or a b -> f a `union` f b
-  For xs a -> filter (`notElem` xs) (f a)
+  For _ a -> f a
   Fun a b -> f a `union` f b
   App fun kwargs -> f fun `union` unionMap (f . snd) kwargs
-  Call x args -> unionMap f args
+  Call _ args -> unionMap f args
   Op1 op a -> f (Var (showOp1 op)) `union` f a
   Op2 op a b -> f (Var (showOp2 op)) `union` f a `union` f b
   Match arg cases -> f arg `union` unionMap f cases
@@ -371,6 +371,7 @@ collect f = \case
 freeVars :: Expr -> [String]
 freeVars = \case
   Var x -> [x]
+  For xs a -> filter (`notElem` xs) (freeVars a)
   a -> collect freeVars a
 
 freeTags :: Expr -> [String]
@@ -740,6 +741,9 @@ grammar = do
                 return (Err (customError a))
            in G.Atom parser $ \layout -> \case
                 Err e -> case e of
+                  TypeError e -> case e of
+                    UndefinedVar x -> Just [PP.Text $ "!undefined-var(" ++ x ++ ")"]
+                    e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
                   RuntimeError e -> case e of
                     UnhandledCase a -> Just (PP.Text "!unhandled-case(" : layout a ++ [PP.Text ")"])
                     CannotApply a b -> Just (PP.Text "!cannot-apply(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
@@ -1023,6 +1027,12 @@ parseStmt = do
   -- return stmt
   error "TODO: parseStmt"
 
+check :: Expr -> [(Maybe Location, Error Expr)]
+check = \case
+  Ann (Meta (C.Loc loc) a) (Err e) -> (Just loc, e) : check a -- type errors
+  Err e -> [(Nothing, e)]
+  a -> collect check a
+
 eval :: Context -> FilePath -> Expr -> Expr
 eval ctx path expr = do
   let (env, expr') = compile ctx path expr
@@ -1134,8 +1144,8 @@ instance Compile (String, Expr) where
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies
     let ((a, t), s) = C.infer buildOps env (lower expr)
-    let xs = C.freeVars a \\ map fst env
-    let ys = C.freeVars t \\ map fst env
+    let xs = C.freeVars a `intersect` map fst s \\ map fst env
+    let ys = C.freeVars t `intersect` map fst s \\ map fst env
     (env, C.Ann (C.for xs a) (C.for ys t))
 
 instance Compile String where

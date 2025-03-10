@@ -18,7 +18,8 @@ parse' text = case parse filename text of
 
 run :: SpecWith ()
 run = describe "--==☯ TaoGrammar ☯==--" $ do
-  let loc r1 c1 r2 c2 = Meta (C.Loc $ Location filename (Range (Pos r1 c1) (Pos r2 c2)))
+  let loc' r1 c1 r2 c2 = Location filename (Range (Pos r1 c1) (Pos r2 c2))
+  let loc r1 c1 r2 c2 = Meta (C.Loc $ loc' r1 c1 r2 c2)
   let any r c = loc r c r (c + 1) Any
   let intT r c = loc r c r (c + 3) IntT
   let numT r c = loc r c r (c + 3) NumT
@@ -60,6 +61,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     fmt expr `shouldBe` "_"
     fmt' expr' `shouldBe` "_ : @_1. _1"
     fmt (lift expr') `shouldBe` "_ : @_1. _1"
+    check (lift expr') `shouldBe` []
     fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "_ : @_1. _1"
 
   it "☯ Tao.Meta.Location" $ do
@@ -71,6 +73,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     fmt expr `shouldBe` "_"
     fmt' expr' `shouldBe` "_ : @_1. _1"
     fmt (lift expr') `shouldBe` "_ : @_1. _1"
+    check (lift expr') `shouldBe` []
     fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "_ : @_1. _1"
 
   it "☯ Tao.Meta.Comments.1" $ do
@@ -81,6 +84,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     fmt expr `shouldBe` "# c1\n_"
     fmt' expr' `shouldBe` "_ : @_1. _1"
     fmt (lift expr') `shouldBe` "# c1\n_ : @_1. _1"
+    check (lift expr') `shouldBe` []
     fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "_ : @_1. _1"
 
   it "☯ Tao.Meta.Comments.2" $ do
@@ -91,6 +95,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     fmt expr `shouldBe` "# c1\n# c2\n_"
     fmt' expr' `shouldBe` "_ : @_1. _1"
     fmt (lift expr') `shouldBe` "# c1\n# c2\n_ : @_1. _1"
+    check (lift expr') `shouldBe` []
     fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "_ : @_1. _1"
 
   it "☯ Tao.Meta.TrailingComment" $ do
@@ -101,6 +106,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     fmt expr `shouldBe` "_  # c\n"
     fmt' expr' `shouldBe` "_ : @_1. _1"
     fmt (lift expr') `shouldBe` "(_  # c\n) : @_1. _1"
+    check (lift expr') `shouldBe` []
     fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "_ : @_1. _1"
 
   -- TODO: multi-line comments
@@ -110,62 +116,67 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     let expr = intT 1 1
     let (_, expr') = compile ctx "m" expr
     parse' "Int " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "Int"
-    C.dropMeta expr' `shouldBe` C.Ann C.IntT C.IntT
-    lift expr' `shouldBe` Ann expr IntT
-    dropMeta (eval ctx "m" expr) `shouldBe` IntT
+    fmt expr `shouldBe` "Int"
+    fmt' expr' `shouldBe` "^Int : ^Int"
+    fmt (lift expr') `shouldBe` "Int : Int"
+    check (lift expr') `shouldBe` []
+    fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "Int : Int"
 
   it "☯ Tao.NumT" $ do
     let ctx = []
     let expr = numT 1 1
     let (_, expr') = compile ctx "m" expr
     parse' "Num " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "Num"
-    C.dropMeta expr' `shouldBe` C.Ann C.NumT C.NumT
-    lift expr' `shouldBe` Ann expr NumT
-    dropMeta (eval ctx "m" expr) `shouldBe` NumT
+    fmt expr `shouldBe` "Num"
+    fmt' expr' `shouldBe` "^Num : ^Num"
+    fmt (lift expr') `shouldBe` "Num : Num"
+    fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "Num : Num"
 
   it "☯ Tao.Int" $ do
     let ctx = []
     let expr = int 1 1 42
     let (_, expr') = compile ctx "m" expr
     parse' "42 " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "42"
-    C.dropMeta expr' `shouldBe` C.Ann (C.Int 42) C.IntT
-    lift expr' `shouldBe` Ann expr IntT
-    dropMeta (eval ctx "m" expr) `shouldBe` Int 42
+    fmt expr `shouldBe` "42"
+    fmt' expr' `shouldBe` "42 : ^Int"
+    fmt (lift expr') `shouldBe` "42 : Int"
+    check (lift expr') `shouldBe` []
+    fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "42 : Int"
 
   it "☯ Tao.Num" $ do
     let ctx = []
     let expr = num 1 1 3.14
     let (_, expr') = compile ctx "m" expr
     parse' "3.14 " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "3.14"
-    C.dropMeta expr' `shouldBe` C.Ann (C.Num 3.14) C.NumT
-    lift expr' `shouldBe` Ann expr NumT
-    dropMeta (eval ctx "m" expr) `shouldBe` Num 3.14
+    fmt expr `shouldBe` "3.14"
+    fmt' expr' `shouldBe` "3.14 : ^Num"
+    fmt (lift expr') `shouldBe` "3.14 : Num"
+    check (lift expr') `shouldBe` []
+    fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "3.14 : Num"
 
   it "☯ Tao.Char" $ do
     let ctx = []
     let expr = char 1 1 'x'
     let (_, expr') = compile ctx "m" expr
     parse' "c'x' " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "c'x'"
-    C.dropMeta expr' `shouldBe` C.Ann (C.tag "Char" [C.Int 120]) (C.tag "Char" [C.IntT])
-    lift expr' `shouldBe` Ann expr (Tag "Char" [IntT])
-    dropMeta (eval ctx "m" expr) `shouldBe` Char 'x'
+    fmt expr `shouldBe` "c'x'"
+    fmt' expr' `shouldBe` "(Char, 120) : (Char, ^Int)"
+    fmt (lift expr') `shouldBe` "c'x' : Char Int"
+    check (lift expr') `shouldBe` []
+    fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "c'x' : Char Int"
 
-  it "☯ Tao.Var undefined" $ do
+  it "☯ Tao.Var.undefined" $ do
     let ctx = []
     let expr = x 1 1
     let (_, expr') = compile ctx "m" expr
     parse' "x " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "x"
-    C.dropMeta expr' `shouldBe` C.Ann x' (C.Err (undefinedVar "x"))
-    lift expr' `shouldBe` Ann expr (Err (undefinedVar "x"))
-    dropMeta (eval ctx "m" expr) `shouldBe` Var "x"
+    fmt expr `shouldBe` "x"
+    fmt' expr' `shouldBe` "x : !undefined-var(x)"
+    fmt (lift expr') `shouldBe` "x : !undefined-var(x)"
+    check (lift expr') `shouldBe` [(Just $ loc' 1 1 1 2, undefinedVar "x")]
+    fmt (dropMeta (eval ctx "m" expr)) `shouldBe` "x : !undefined-var(x)"
 
-  it "☯ Tao.Var defined direct" $ do
+  it "☯ Tao.Var.direct" $ do
     let ctx = [("m", [def "x" (int 10 10 42)])]
     let expr = x 1 1
     let (_, expr') = compile ctx "m" expr
@@ -175,7 +186,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     lift expr' `shouldBe` Ann expr IntT
     dropMeta (eval ctx "m" expr) `shouldBe` Int 42
 
-  it "☯ Tao.Var defined indirect" $ do
+  it "☯ Tao.Var.indirect" $ do
     let ctx = [("m", [def "y" (int 10 10 42), def "x" (y 20 20)])]
     let expr = x 1 1
     let (_, expr') = compile ctx "m" expr
