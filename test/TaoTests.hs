@@ -12,7 +12,7 @@ filename :: String
 filename = "<TaoGrammarTests>"
 
 parse' :: String -> Either ([String], String) (Expr, String)
-parse' text = case parse 0 filename text of
+parse' text = case parse filename text of
   Right (a, s) -> Right (a, s.remaining)
   Left s -> Left (s.context, s.remaining)
 

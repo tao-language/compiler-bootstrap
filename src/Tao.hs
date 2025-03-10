@@ -241,8 +241,41 @@ string str = String [Str str]
 neg :: Expr -> Expr
 neg = Op1 Neg
 
+eq :: Expr -> Expr -> Expr
+eq = Op2 Eq
+
+ne :: Expr -> Expr -> Expr
+ne = Op2 Ne
+
+lt :: Expr -> Expr -> Expr
+lt = Op2 Lt
+
+le :: Expr -> Expr -> Expr
+le = Op2 Le
+
+gt :: Expr -> Expr -> Expr
+gt = Op2 Gt
+
+ge :: Expr -> Expr -> Expr
+ge = Op2 Ge
+
 add :: Expr -> Expr -> Expr
 add = Op2 Add
+
+sub :: Expr -> Expr -> Expr
+sub = Op2 Sub
+
+mul :: Expr -> Expr -> Expr
+mul = Op2 Mul
+
+div' :: Expr -> Expr -> Expr
+div' = Op2 Div
+
+divI :: Expr -> Expr -> Expr
+divI = Op2 DivI
+
+pow :: Expr -> Expr -> Expr
+pow = Op2 Pow
 
 -- Helper functions
 class Apply a where
@@ -349,8 +382,8 @@ freeTags = \case
 freeNames :: Expr -> [String]
 freeNames a = freeVars a `union` freeTags a
 
-parse :: Int -> FilePath -> String -> Either (P.State String) (Expr, P.State String)
-parse prec = P.parse (G.parser grammar prec)
+parse :: FilePath -> String -> Either (P.State String) (Expr, P.State String)
+parse = P.parse (parseExpr 0)
 
 format :: Int -> Expr -> String
 format width = G.format grammar width "  "
@@ -460,7 +493,7 @@ grammar = do
                 _ <- P.char '='
                 end <- P.getState
                 _ <- P.whitespaces
-                b <- G.parser grammar 0
+                b <- parseExpr 0
                 _ <- parseLineBreak
                 c <- expr
                 _ <- P.spaces
@@ -472,10 +505,6 @@ grammar = do
           -- Grammar.Or
           G.infixR 1 (loc2 Or) "|" $ \case
             Or a b -> Just (a, " ", b)
-            _ -> Nothing,
-          -- Grammar.Ann
-          G.infixR 2 (loc2 Ann) ":" $ \case
-            Ann a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.For
           let parser expr = do
@@ -496,23 +525,71 @@ grammar = do
                 end <- P.getState
                 _ <- P.oneOf [P.char '.', P.char '\n']
                 _ <- P.whitespaces
-                a <- expr
+                a <- parseExpr 2
                 _ <- P.spaces
                 return (withLoc start end $ For xs a)
-           in G.Prefix 3 parser $ \layout -> \case
+           in G.Atom parser $ \layout -> \case
                 For xs a ->
                   Just (PP.Text ('@' : unwords xs ++ ". ") : layout a)
                 _ -> Nothing,
+          -- Grammar.Op2.Eq
+          G.infixL 3 (locOp2 Eq) "==" $ \case
+            Op2 Eq a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.Ne
+          G.infixL 3 (locOp2 Ne) "!=" $ \case
+            Op2 Ne a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.Lt
+          G.infixL 4 (locOp2 Lt) "<" $ \case
+            Op2 Lt a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.Le
+          G.infixL 4 (locOp2 Le) "<=" $ \case
+            Op2 Le a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.Gt
+          G.infixL 4 (locOp2 Gt) ">" $ \case
+            Op2 Gt a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.Ge
+          G.infixL 4 (locOp2 Ge) ">=" $ \case
+            Op2 Ge a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Ann
+          G.infixR 4 (loc2 Ann) ":" $ \case
+            Ann a b -> Just (a, " ", b)
+            _ -> Nothing,
           -- Grammar.Fun
-          G.infixR 3 (loc2 Fun) "->" $ \case
+          G.infixR 5 (loc2 Fun) "->" $ \case
             Fun a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Add
-          G.infixL 4 (locOp2 Add) "+" $ \case
+          G.infixL 6 (locOp2 Add) "+" $ \case
             Op2 Add a b -> Just (a, " ", b)
             _ -> Nothing,
+          -- Grammar.Op2.Sub
+          G.infixL 6 (locOp2 Sub) "-" $ \case
+            Op2 Sub a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.Mul
+          G.infixL 7 (locOp2 Mul) "*" $ \case
+            Op2 Mul a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.Div
+          G.infixL 7 (locOp2 Div) "/" $ \case
+            Op2 Div a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.DivI
+          G.infixL 7 (locOp2 DivI) "//" $ \case
+            Op2 DivI a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.Pow
+          G.infixL 8 (locOp2 Pow) "^" $ \case
+            Op2 Pow a b -> Just (a, " ", b)
+            _ -> Nothing,
           -- Grammar.Op1.Neg
-          G.prefix 5 (locOp1 Neg) "-" $ \case
+          G.prefix 7 (locOp1 Neg) "-" $ \case
             Op1 Neg a -> Just ("", a)
             _ -> Nothing,
           -- Grammar.App
@@ -529,12 +606,12 @@ grammar = do
                           return name,
                         return ""
                       ]
-                  arg <- G.parser grammar 0
+                  arg <- parseExpr 0
                   return (name, arg)
                 end <- P.getState
                 _ <- P.spaces
                 return (withLoc start end $ App x args)
-           in G.InfixL 5 parser $ \lhs rhs -> \case
+           in G.InfixL 7 parser $ \lhs rhs -> \case
                 App fun args -> do
                   let layoutArg ("", a) = rhs a
                       layoutArg (x, a) = PP.Text (x ++ ": ") : rhs a
@@ -809,6 +886,9 @@ lift = \case
   C.Meta m a -> Meta m (lift a)
   C.Err e -> Err (fmap lift e)
   a -> error $ "TODO: lift " ++ show a
+
+parseExpr :: Int -> Parser Expr
+parseExpr = G.parser grammar
 
 parseCollection :: String -> String -> String -> P.Parser ctx a -> P.Parser ctx [a]
 parseCollection open delim close parser = do

@@ -10,7 +10,7 @@ run = describe "--== Core precedence ==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
 
   let prec' :: String -> Either String (Expr, String)
-      prec' src = case parse 0 "filename" src of
+      prec' src = case parse 0 "<CorePrecedence>" src of
         Right (a, s) | s.remaining /= "" -> Right (a, "remaining: " ++ s.remaining)
         Right (a, _) -> Right (a, format 80 a)
         Left s -> Left ("syntax error, remaining: " ++ s.remaining)
