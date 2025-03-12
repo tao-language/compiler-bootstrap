@@ -146,24 +146,6 @@ grammar = do
           G.infixR 1 (const Or) "|" $ \case
             Or a b -> Just (a, " ", b)
             _ -> Nothing,
-          -- Grammar.For
-          let parser expr = do
-                _ <- P.char '@'
-                _ <- P.spaces
-                xs <- P.oneOrMore $ do
-                  x <- parseNameVar
-                  _ <- P.spaces
-                  return x
-                _ <- P.oneOf [P.char '.', P.char '\n']
-                _ <- P.whitespaces
-                a <- parseExpr 2
-                _ <- P.spaces
-                return (for xs a)
-           in G.Atom parser $ \layout -> \case
-                For x a -> do
-                  let (xs, a') = forOf (For x a)
-                  Just (PP.Text ("@" ++ unwords xs ++ ". ") : layout a')
-                _ -> Nothing,
           -- Grammar.Fix
           let parser expr = do
                 _ <- P.char '&'
@@ -186,6 +168,24 @@ grammar = do
           G.infixR 3 (const Ann) ":" $ \case
             Ann a b -> Just (a, " ", b)
             _ -> Nothing,
+          -- Grammar.For
+          let parser expr = do
+                _ <- P.char '@'
+                _ <- P.spaces
+                xs <- P.oneOrMore $ do
+                  x <- parseNameVar
+                  _ <- P.spaces
+                  return x
+                _ <- P.oneOf [P.char '.', P.char '\n']
+                _ <- P.whitespaces
+                a <- parseExpr 2
+                _ <- P.spaces
+                return (for xs a)
+           in G.Atom parser $ \layout -> \case
+                For x a -> do
+                  let (xs, a') = forOf (For x a)
+                  Just (PP.Text ("@" ++ unwords xs ++ ". ") : layout a')
+                _ -> Nothing,
           -- Grammar.Fun
           G.infixR 4 (const Fun) "->" $ \case
             Fun a b -> Just (a, " ", b)
@@ -332,6 +332,7 @@ grammar = do
                 Err e -> case e of
                   TypeError e -> case e of
                     UndefinedVar x -> Just [PP.Text $ "!undefined-var(" ++ x ++ ")"]
+                    TypeMismatch a b -> Just (PP.Text "!type-mismatch(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
                     e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
                   RuntimeError e -> case e of
                     UnhandledCase a -> Just (PP.Text "!unhandled-case(" : layout a ++ [PP.Text ")"])
@@ -404,6 +405,16 @@ or' (a : bs) = Or a (or' bs)
 orOf :: Expr -> [Expr]
 orOf (Or a b) = a : orOf b
 orOf a = [a]
+
+isAnn :: Expr -> Bool
+isAnn (Ann _ _) = True
+isAnn (Meta _ a) = isAnn a
+isAnn _ = False
+
+annOf :: Expr -> Maybe (Expr, Expr)
+annOf (Ann a b) = Just (a, b)
+annOf (Meta _ a) = annOf a
+annOf _ = Nothing
 
 for :: [String] -> Expr -> Expr
 for xs a = foldr For a xs
@@ -676,7 +687,9 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
 
 eval :: Ops -> Expr -> Expr
 eval ops expr = case reduce ops expr of
-  Ann a b -> Ann (eval ops a) (eval ops b)
+  Ann a b -> case (eval ops a, eval ops b) of
+    (a, b) | Just (a', _) <- annOf a -> Ann a' b
+    (a, b) -> Ann a b
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> Or (eval ops a) (eval ops b)
   For x a -> for [x] (eval ops (Let [(x, Var x)] a))
@@ -917,9 +930,7 @@ infer ops env (Var x) = do
           (ta, s)
         Nothing -> (Err $ TypeError $ UndefinedVar x, [])
   ((Var x, ta), s)
-infer ops env (Ann a t) = do
-  let ((a', t'), s) = check ops env a t
-  ((Ann a' t', t'), s)
+infer ops env (Ann a t) = check ops env a t
 infer ops env (And a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((And a' b', And ta tb), s)
@@ -969,7 +980,6 @@ inferAll ops env (a : bs) = do
   ((substitute s2 a', substitute s2 ta) : bts, s2 `compose` s1)
 
 check :: Ops -> Env -> Expr -> Type -> ((Expr, Type), Substitution)
--- check _ _ (Tag k) t = ((Tag k, t), [])
 check ops env a (For x t) = do
   let y = newName (map fst env) x
   let ((a', t'), s) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] t)
@@ -991,12 +1001,6 @@ check ops env (App a b) t2 = do
   let ((a', _), s2) = check ops (s1 `compose` env) (substitute s1 a) (Fun t1 (substitute s1 t2))
   let s = s2 `compose` s1
   ((App a' (substitute s2 (Ann b' t1)), substitute s t2), s)
-check ops env a (Meta m t) = do
-  let ((a', t'), s) = check ops env a t
-  ((a', Meta m t'), s)
-check ops env (Meta m a) t = do
-  let ((a', t'), s) = check ops env a t
-  ((Meta m a', t'), s)
 check ops env a t = do
   let ((a', ta), s1) = infer ops env a
   let (t', s2) = unify ops env ta (substitute s1 t)

@@ -661,7 +661,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let infer' = infer ops env
     infer' (Tag "Nil") `shouldBe` ((Tag "Nil", Tag "Nil"), [])
     infer' (cons (Num 1.1) nil) `shouldBe` ((cons (Num 1.1) nil, cons NumT nil), [])
-    infer' (Ann nil (vec i0 NumT)) `shouldBe` ((Ann nil (vec i0 NumT), vec i0 NumT), [])
+    infer' (Ann nil (vec i0 NumT)) `shouldBe` ((Ann nil (vec i0 NumT), vec i0 NumT), env)
     infer' (Ann nil (vec i1 NumT)) `shouldBe` ((nil, vec (Err $ typeMismatch i0 i1) NumT), env)
     infer' (Ann (cons (Num 1.1) nil) (vec i1 NumT)) `shouldBe` ((cons (Num 1.1) nil, vec i1 NumT), env)
     infer' (Ann (cons (Num 1.1) (cons (Num 2.2) nil)) (vec i0 NumT)) `shouldBe` ((cons (Num 1.1) (cons (Num 2.2) nil), vec (Err $ typeMismatch i2 i0) NumT), env)
