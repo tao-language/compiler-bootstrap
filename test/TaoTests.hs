@@ -245,89 +245,71 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     core ctx "m" expr `shouldBe` "(::, x, ::, y, [])"
     eval' ctx "m" expr `shouldBe` ("[42, 9]", "[Int, Int]", [])
 
-  -- it "☯ Tao.String empty" $ do
-  --   let ctx = []
-  --   let expr = loc 1 1 1 3 (String [])
-  --   syntax "''" `shouldBe` Right expr
-  --   fmt expr `shouldBe` "''"
-  --   core ctx "m" expr `shouldBe` "'' : ''"
-  --   check (lift expr') `shouldBe` []
-  --   eval' ctx "m" expr `shouldBe` ("''", "''")
+  it "☯ Tao.String.empty" $ do
+    let ctx = []
+    let expr = loc 1 1 1 3 (String [])
+    syntax "''" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "''"
+    eval' ctx "m" expr `shouldBe` ("''", "''", [])
 
-  -- -- -- it "☯ Tao.String literal" $ do
-  -- -- -- it "☯ Tao.String interpolation" $ do
+  -- it "☯ Tao.String literal" $ do
+  -- it "☯ Tao.String interpolation" $ do
 
-  -- it "☯ Tao.Or.different" $ do
-  --   let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
-  --   let expr = or' 1 3 (x 1 1) (y 1 5)
-  --   syntax "x | y" `shouldBe` Right expr
-  --   fmt expr `shouldBe` "x | y"
-  --   core ctx "m" expr `shouldBe` "(x | y) : (^Int | ^Num)"
-  --   check (lift expr') `shouldBe` []
-  --   eval' ctx "m" expr `shouldBe` ("42 | 3.14", "Int | Num")
+  it "☯ Tao.Or.different" $ do
+    let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
+    let expr = or' 1 3 (x 1 1) (y 1 5)
+    syntax "x | y" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "x | y"
+    eval' ctx "m" expr `shouldBe` ("42 | 3.14", "Int | Num", [])
 
-  -- it "☯ Tao.Or.same" $ do
-  --   let ctx = [("m", [def "x" (int 10 10 42), def "y" (int 20 20 9)])]
-  --   let expr = or' 1 3 (x 1 1) (y 1 5)
-  --   syntax "x | y" `shouldBe` Right expr
-  --   fmt expr `shouldBe` "x | y"
-  --   core ctx "m" expr `shouldBe` "(x | y) : ^Int"
-  --   check (lift expr') `shouldBe` []
-  --   eval' ctx "m" expr `shouldBe` ("42 | 9", "Int")
+  it "☯ Tao.Or.same" $ do
+    let ctx = [("m", [def "x" (int 10 10 42), def "y" (int 20 20 9)])]
+    let expr = or' 1 3 (x 1 1) (y 1 5)
+    syntax "x | y" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "x | y"
+    eval' ctx "m" expr `shouldBe` ("42 | 9", "Int", [])
 
-  -- it "☯ Tao.For.0" $ do
-  --   let ctx = [("m", [def "x" (int 10 10 42)])]
-  --   let expr = loc 1 1 1 2 (For [] (x 1 4))
-  --   syntax "@. x" `shouldBe` Right expr
-  --   fmt expr `shouldBe` "@. x"
-  --   core ctx "m" expr `shouldBe` "x : ^Int"
-  --   check (lift expr') `shouldBe` []
-  --   eval' ctx "m" expr `shouldBe` ("42", "Int")
+  it "☯ Tao.For.0" $ do
+    let ctx = [("m", [def "x" (int 10 10 42)])]
+    let expr = loc 1 1 1 2 (For [] (x 1 4))
+    syntax "@. x" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "x"
+    eval' ctx "m" expr `shouldBe` ("42", "Int", [])
 
-  -- it "☯ Tao.For.1" $ do
-  --   let ctx = [("m", [def "x" (int 10 10 42)])]
-  --   let expr = loc 1 1 1 3 (For ["a"] (x 1 5))
-  --   syntax "@a. x" `shouldBe` Right expr
-  --   fmt expr `shouldBe` "@a. x"
-  --   core ctx "m" expr `shouldBe` "@a. x : ^Int"
-  --   check (lift expr') `shouldBe` []
-  --   eval' ctx "m" expr `shouldBe` ("@a. 42", "Int")
+  it "☯ Tao.For.1" $ do
+    let ctx = [("m", [def "x" (int 10 10 42)])]
+    let expr = loc 1 1 1 3 (For ["a"] (x 1 5))
+    syntax "@a. x" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "@a. x"
+    eval' ctx "m" expr `shouldBe` ("@a. 42", "Int", [])
 
-  -- it "☯ Tao.For.2" $ do
-  --   let ctx = [("m", [def "x" (int 10 10 42)])]
-  --   let expr = loc 1 1 1 5 (For ["a", "b"] (x 1 7))
-  --   syntax "@a b. x" `shouldBe` Right expr
-  --   fmt expr `shouldBe` "@a b. x"
-  --   core ctx "m" expr `shouldBe` "@a b. x : ^Int"
-  --   check (lift expr') `shouldBe` []
-  --   eval' ctx "m" expr `shouldBe` ("@a b. 42", "Int")
+  it "☯ Tao.For.2" $ do
+    let ctx = [("m", [def "x" (int 10 10 42)])]
+    let expr = loc 1 1 1 5 (For ["a", "b"] (x 1 7))
+    syntax "@a b. x" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "@a b. x"
+    eval' ctx "m" expr `shouldBe` ("@a b. 42", "Int", [])
 
-  -- it "☯ Tao.Fun.unbound" $ do
-  --   let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
-  --   let expr = fun 1 3 (x 1 1) (y 1 6)
-  --   syntax "x -> y" `shouldBe` Right expr
-  --   fmt expr `shouldBe` "x -> y"
-  --   core ctx "m" expr `shouldBe` "@x1T x. (x : x1T) -> y : @x1T. x1T -> ^Num"
-  --   check (lift expr') `shouldBe` []
-  --   eval' ctx "m" expr `shouldBe` ("x -> 3.14", "x1T -> Num")
+  it "☯ Tao.Fun.unbound" $ do
+    let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
+    let expr = fun 1 3 (x 1 1) (y 1 6)
+    syntax "x -> y" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "@x1T x. (x : x1T) -> y"
+    eval' ctx "m" expr `shouldBe` ("x -> 3.14", "x1T -> Num", [])
 
-  -- it "☯ Tao.Fun.bound" $ do
-  --   let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
-  --   let expr = loc 1 1 1 2 (For [] $ fun 1 6 (x 1 4) (y 1 9))
-  --   syntax "@. x -> y" `shouldBe` Right expr
-  --   fmt expr `shouldBe` "@. x -> y"
-  --   core ctx "m" expr `shouldBe` "(x : ^Int) -> y : ^Int -> ^Num"
-  --   check (lift expr') `shouldBe` []
-  --   eval' ctx "m" expr `shouldBe` ("42 -> 3.14", "Int -> Num")
+  it "☯ Tao.Fun.bound" $ do
+    let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
+    let expr = loc 1 1 1 2 (For [] $ fun 1 6 (x 1 4) (y 1 9))
+    syntax "@. x -> y" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "(x : ^Int) -> y"
+    eval' ctx "m" expr `shouldBe` ("42 -> 3.14", "Int -> Num", [])
 
-  -- it "☯ Tao.App.empty" $ do
-  --   let ctx = [("m", [def "x" (Fun (loc 10 10 11 11 $ Tuple []) (int 20 20 42))])]
-  --   let expr = loc 1 2 1 4 (App (x 1 1) [])
-  --   syntax "x()" `shouldBe` Right expr
-  --   fmt expr `shouldBe` "x()"
-  --   core ctx "m" expr `shouldBe` "x (() : ()) : ^Int"
-  --   check (lift expr') `shouldBe` []
-  --   eval' ctx "m" expr `shouldBe` ("42", "Int")
+  it "☯ Tao.App.empty" $ do
+    let ctx = [("m", [def "x" (Fun (loc 10 10 11 11 $ Tuple []) (int 20 20 42))])]
+    let expr = loc 1 2 1 4 (App (x 1 1) [])
+    syntax "x()" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "x (() : ())"
+    eval' ctx "m" expr `shouldBe` ("42", "Int", [])
 
   -- it "☯ Tao.App positional args 1" $ do
   --   let ctx =
