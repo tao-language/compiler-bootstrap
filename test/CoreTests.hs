@@ -139,8 +139,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     parse' "x : y " `shouldBe` Right (expr, "")
     format 80 expr `shouldBe` "x : y"
     let ((expr', typ), s) = infer ops env expr
-    (expr', typ, s) `shouldBe` (Ann x IntT, IntT, [("y", IntT)])
-    eval ops (Let env expr') `shouldBe` Ann (Int 42) IntT
+    (expr', typ, s) `shouldBe` (x, IntT, [("y", IntT)])
+    eval ops (Let env expr') `shouldBe` Int 42
 
   it "☯ Core.And 2" $ do
     let env = [("x", Int 42), ("y", Num 3.14)]
@@ -613,7 +613,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let env = [("f", Ann (factorial "f") (Fun IntT IntT))]
     let infer' = fst . infer ops env
     infer' (Var "f") `shouldBe` (f, Fun IntT IntT)
-    infer' (Ann f (Fun IntT IntT)) `shouldBe` (Ann f (Fun IntT IntT), Fun IntT IntT)
+    infer' (Ann f (Fun IntT IntT)) `shouldBe` (f, Fun IntT IntT)
 
   it "☯ Core.infer.Bool" $ do
     let (bool, true, false) = (Tag "Bool", Tag "True", Tag "False")
@@ -625,9 +625,9 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
     let infer' = infer ops env
     infer' (Tag "True") `shouldBe` ((true, true), [])
-    infer' (Ann true bool) `shouldBe` ((Ann true bool, bool), env)
-    infer' (Ann false (Tag "X")) `shouldBe` let err = Err (typeMismatch false (Tag "X")) in ((Ann false err, err), [])
-    infer' (Ann (Tag "X") bool) `shouldBe` let err = Err (typeMismatch (Err (unhandledCase (Tag "X"))) bool) in ((Ann (Tag "X") err, err), env)
+    infer' (Ann true bool) `shouldBe` ((true, bool), env)
+    infer' (Ann false (Tag "X")) `shouldBe` ((false, Err (typeMismatch false (Tag "X"))), [])
+    infer' (Ann (Tag "X") bool) `shouldBe` ((Tag "X", Err (typeMismatch (Err (unhandledCase (Tag "X"))) bool)), env)
 
   -- it "☯ infer Maybe" $ do
   --   let (maybe, just, nothing) = (App (Tag "Maybe"), \a -> tag "Just" [a], Tag "Nothing")
@@ -661,7 +661,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let infer' = infer ops env
     infer' (Tag "Nil") `shouldBe` ((Tag "Nil", Tag "Nil"), [])
     infer' (cons (Num 1.1) nil) `shouldBe` ((cons (Num 1.1) nil, cons NumT nil), [])
-    infer' (Ann nil (vec i0 NumT)) `shouldBe` ((Ann nil (vec i0 NumT), vec i0 NumT), env)
+    infer' (Ann nil (vec i0 NumT)) `shouldBe` ((nil, vec i0 NumT), env)
     infer' (Ann nil (vec i1 NumT)) `shouldBe` ((nil, vec (Err $ typeMismatch i0 i1) NumT), env)
     infer' (Ann (cons (Num 1.1) nil) (vec i1 NumT)) `shouldBe` ((cons (Num 1.1) nil, vec i1 NumT), env)
     infer' (Ann (cons (Num 1.1) (cons (Num 2.2) nil)) (vec i0 NumT)) `shouldBe` ((cons (Num 1.1) (cons (Num 2.2) nil), vec (Err $ typeMismatch i2 i0) NumT), env)

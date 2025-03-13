@@ -22,12 +22,8 @@ fmt = format 80 . dropLocations
 fmt' :: C.Expr -> String
 fmt' = C.format 80 . C.dropMeta
 
-evalCore :: [(String, C.Expr)] -> C.Expr -> String
-evalCore env expr =
-  fmt' (C.eval runtimeOps (C.Let env expr))
-
-evalTao :: Context -> FilePath -> Expr -> (String, String)
-evalTao ctx path expr = do
+eval' :: Context -> FilePath -> Expr -> (String, String)
+eval' ctx path expr = do
   let (result, type') = eval ctx path expr
   (fmt result, fmt type')
 
@@ -68,300 +64,256 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   it "☯ Tao.Any" $ do
     let ctx = []
     let expr = any 1 1
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "_ " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "_"
     fmt' expr' `shouldBe` "_ : @_1. _1"
-    fmt (lift expr') `shouldBe` "_ : @_1. _1"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "_ : @_1. _1"
-    evalTao ctx "m" expr `shouldBe` ("_", "@_1. _1")
+    eval' ctx "m" expr `shouldBe` ("_", "@_1. _1")
 
   it "☯ Tao.Meta.Location" $ do
     let ctx = []
     let expr = Meta (C.Loc $ Location "file" (Range (Pos 1 2) (Pos 3 4))) (any 1 17)
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "@[:1:2,3:4] _" `shouldBe` Left (["Metadata location"], ":1:2,3:4] _")
     parse' "@[file:1:2,3:4] _" `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "_"
     fmt' expr' `shouldBe` "_ : @_1. _1"
-    fmt (lift expr') `shouldBe` "_ : @_1. _1"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "_ : @_1. _1"
-    evalTao ctx "m" expr `shouldBe` ("_", "@_1. _1")
+    eval' ctx "m" expr `shouldBe` ("_", "@_1. _1")
 
   it "☯ Tao.Meta.Comments.1" $ do
     let ctx = []
     let expr = Meta (C.Comments ["c1"]) (any 2 1)
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "# c1\n_ " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "# c1\n_"
     fmt' expr' `shouldBe` "_ : @_1. _1"
-    fmt (lift expr') `shouldBe` "# c1\n_ : @_1. _1"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "_ : @_1. _1"
-    evalTao ctx "m" expr `shouldBe` ("# c1\n_", "@_1. _1")
+    eval' ctx "m" expr `shouldBe` ("# c1\n_", "@_1. _1")
 
   it "☯ Tao.Meta.Comments.2" $ do
     let ctx = []
     let expr = Meta (C.Comments ["c1", "c2"]) (any 3 1)
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "# c1\n# c2\n_ " `shouldBe` Right (Meta (C.Comments ["c1", "c2"]) (any 3 1), "")
     fmt expr `shouldBe` "# c1\n# c2\n_"
     fmt' expr' `shouldBe` "_ : @_1. _1"
-    fmt (lift expr') `shouldBe` "# c1\n# c2\n_ : @_1. _1"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "_ : @_1. _1"
-    evalTao ctx "m" expr `shouldBe` ("# c1\n# c2\n_", "@_1. _1")
+    eval' ctx "m" expr `shouldBe` ("# c1\n# c2\n_", "@_1. _1")
 
   it "☯ Tao.Meta.TrailingComment" $ do
     let ctx = []
     let expr = Meta (C.TrailingComment "c") (any 1 1)
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "_ # c" `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "_  # c\n"
     fmt' expr' `shouldBe` "_ : @_1. _1"
-    fmt (lift expr') `shouldBe` "(_  # c\n) : @_1. _1"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "_ : @_1. _1"
-    evalTao ctx "m" expr `shouldBe` ("_  # c\n", "@_1. _1")
+    eval' ctx "m" expr `shouldBe` ("_  # c\n", "@_1. _1")
 
   -- TODO: multi-line comments
 
   it "☯ Tao.IntT" $ do
     let ctx = []
     let expr = intT 1 1
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "Int " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "Int"
     fmt' expr' `shouldBe` "^Int : ^Int"
-    fmt (lift expr') `shouldBe` "Int : Int"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "^Int : ^Int"
-    evalTao ctx "m" expr `shouldBe` ("Int", "Int")
+    eval' ctx "m" expr `shouldBe` ("Int", "Int")
 
   it "☯ Tao.NumT" $ do
     let ctx = []
     let expr = numT 1 1
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "Num " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "Num"
     fmt' expr' `shouldBe` "^Num : ^Num"
-    fmt (lift expr') `shouldBe` "Num : Num"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "^Num : ^Num"
-    evalTao ctx "m" expr `shouldBe` ("Num", "Num")
+    eval' ctx "m" expr `shouldBe` ("Num", "Num")
 
   it "☯ Tao.Int" $ do
     let ctx = []
     let expr = int 1 1 42
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "42 " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "42"
     fmt' expr' `shouldBe` "42 : ^Int"
-    fmt (lift expr') `shouldBe` "42 : Int"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "42 : ^Int"
-    evalTao ctx "m" expr `shouldBe` ("42", "Int")
+    eval' ctx "m" expr `shouldBe` ("42", "Int")
 
   it "☯ Tao.Num" $ do
     let ctx = []
     let expr = num 1 1 3.14
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "3.14 " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "3.14"
     fmt' expr' `shouldBe` "3.14 : ^Num"
-    fmt (lift expr') `shouldBe` "3.14 : Num"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "3.14 : ^Num"
-    evalTao ctx "m" expr `shouldBe` ("3.14", "Num")
+    eval' ctx "m" expr `shouldBe` ("3.14", "Num")
 
   it "☯ Tao.Char" $ do
     let ctx = []
     let expr = char 1 1 'x'
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "c'x' " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "c'x'"
     fmt' expr' `shouldBe` "(Char, 120) : (Char, ^Int)"
-    fmt (lift expr') `shouldBe` "c'x' : Char(Int)"
     check (lift expr') `shouldBe` []
-    evalTao ctx "m" expr `shouldBe` ("c'x'", "Char(Int)")
+    eval' ctx "m" expr `shouldBe` ("c'x'", "Char(Int)")
 
   it "☯ Tao.Var.undefined" $ do
     let ctx = []
     let expr = x 1 1
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "x " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "x"
     fmt' expr' `shouldBe` "x : !undefined-var(x)"
-    fmt (lift expr') `shouldBe` "x : !undefined-var(x)"
     check (lift expr') `shouldBe` [(x 1 1, undefinedVar "x")]
-    evalTao ctx "m" expr `shouldBe` ("x", "!undefined-var(x)")
+    eval' ctx "m" expr `shouldBe` ("x", "!undefined-var(x)")
 
   it "☯ Tao.Var.direct" $ do
     let ctx = [("m", [def "x" (int 10 10 42)])]
     let expr = x 1 1
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "x " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "x"
     fmt' expr' `shouldBe` "x : ^Int"
-    fmt (lift expr') `shouldBe` "x : Int"
     check (lift expr') `shouldBe` []
-    evalTao ctx "m" expr `shouldBe` ("42", "Int")
+    eval' ctx "m" expr `shouldBe` ("42", "Int")
 
   it "☯ Tao.Var.indirect" $ do
     let ctx = [("m", [def "y" (int 10 10 42), def "x" (y 20 20)])]
     let expr = x 1 1
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "x " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "x"
     fmt' expr' `shouldBe` "x : ^Int"
-    fmt (lift expr') `shouldBe` "x : Int"
     check (lift expr') `shouldBe` []
-    evalTao ctx "m" expr `shouldBe` ("42", "Int")
+    eval' ctx "m" expr `shouldBe` ("42", "Int")
 
   it "☯ Tao.Tag.0" $ do
     let ctx = []
     let expr = tag 1 1 "A" []
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "A " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "A"
     fmt' expr' `shouldBe` "A : A"
-    fmt (lift expr') `shouldBe` "A : A"
     check (lift expr') `shouldBe` []
-    evalTao ctx "m" expr `shouldBe` ("A", "A")
+    eval' ctx "m" expr `shouldBe` ("A", "A")
 
   it "☯ Tao.Tag.1" $ do
     let ctx = [("m", [def "x" (int 10 10 42)])]
     let expr = tag 1 1 "A" [x 1 3]
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "A(x) " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "A(x)"
     fmt' expr' `shouldBe` "(A, x) : (A, ^Int)"
-    fmt (lift expr') `shouldBe` "A(x) : A(Int)"
     check (lift expr') `shouldBe` []
-    evalTao ctx "m" expr `shouldBe` ("A(42)", "A(Int)")
+    eval' ctx "m" expr `shouldBe` ("A(42)", "A(Int)")
 
   it "☯ Tao.Tag.2" $ do
     let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
     let expr = tag 1 1 "A" [x 1 3, y 1 6]
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "A(x, y) " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "A(x, y)"
     fmt' expr' `shouldBe` "(A, x, y) : (A, ^Int, ^Num)"
-    fmt (lift expr') `shouldBe` "A(x, y) : A(Int, Num)"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "(A, 42 : ^Int, 3.14 : ^Num) : (A, ^Int, ^Num)"
-    evalTao ctx "m" expr `shouldBe` ("A(42, 3.14)", "A(Int, Num)")
+    eval' ctx "m" expr `shouldBe` ("A(42, 3.14)", "A(Int, Num)")
 
   it "☯ Tao.Ann.ok" $ do
     let ctx = [("m", [def "x" (int 10 10 42)])]
     let expr = Ann (x 1 1) (intT 1 5)
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "x : Int " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "x : Int"
     fmt' expr' `shouldBe` "x : ^Int"
-    fmt (lift expr') `shouldBe` "x : Int"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "42 : ^Int"
-    evalTao ctx "m" expr `shouldBe` ("42", "Int")
+    eval' ctx "m" expr `shouldBe` ("42", "Int")
 
   it "☯ Tao.Ann.type-mismatch" $ do
     let ctx = [("m", [def "x" (int 10 10 42)])]
     let err = typeMismatch IntT (numT 1 5)
     let expr = Ann (x 1 1) (numT 1 5)
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "x : Num " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "x : Num"
     fmt' expr' `shouldBe` "x : !type-mismatch(^Int, ^Num)"
-    fmt (lift expr') `shouldBe` "x : !type-mismatch(Int, @[<test>:1:5,1:8](Num))"
     check (lift expr') `shouldBe` [(x 1 1, err)]
-    evalCore env expr' `shouldBe` "42 : !type-mismatch(^Int, ^Num)"
-    evalTao ctx "m" expr `shouldBe` ("42", "!type-mismatch(Int, @[<test>:1:5,1:8](Num))")
+    eval' ctx "m" expr `shouldBe` ("42", "!type-mismatch(Int, @[<test>:1:5,1:8](Num))")
 
   it "☯ Tao.Tuple.0" $ do
     let ctx = []
     let expr = loc 1 1 1 3 (Tuple [])
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "() " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "()"
     fmt' expr' `shouldBe` "() : ()"
-    fmt (lift expr') `shouldBe` "() : ()"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "() : ()"
-    evalTao ctx "m" expr `shouldBe` ("()", "()")
+    eval' ctx "m" expr `shouldBe` ("()", "()")
 
   it "☯ Tao.Tuple.1" $ do
     let ctx = [("m", [def "x" (int 10 10 42)])]
     let expr = loc 1 1 1 3 (Tuple [x 1 2])
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "(x) " `shouldBe` Right (x 1 2, "")
     fmt expr `shouldBe` "(x)"
     fmt' expr' `shouldBe` "x : ^Int"
-    fmt (lift expr') `shouldBe` "x : Int"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "42 : ^Int"
-    evalTao ctx "m" expr `shouldBe` ("42", "Int")
+    eval' ctx "m" expr `shouldBe` ("42", "Int")
 
   it "☯ Tao.Tuple.2" $ do
     let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
     let expr = loc 1 1 1 7 (Tuple [x 1 2, y 1 5])
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "(x, y) " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "(x, y)"
     fmt' expr' `shouldBe` "(x, y) : (^Int, ^Num)"
-    fmt (lift expr') `shouldBe` "(x, y) : (Int, Num)"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "(42 : ^Int, 3.14 : ^Num) : (^Int, ^Num)"
-    evalTao ctx "m" expr `shouldBe` ("(42, 3.14)", "(Int, Num)")
+    eval' ctx "m" expr `shouldBe` ("(42, 3.14)", "(Int, Num)")
 
   it "☯ Tao.List 0" $ do
     let ctx = []
     let expr = loc 1 1 1 3 (List [])
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "[] " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "[]"
     fmt' expr' `shouldBe` "[] : []"
-    fmt (lift expr') `shouldBe` "[] : []"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "[] : []"
-    evalTao ctx "m" expr `shouldBe` ("[]", "[]")
+    eval' ctx "m" expr `shouldBe` ("[]", "[]")
 
   it "☯ Tao.List 1" $ do
     let ctx = [("m", [def "x" (int 10 10 42)])]
     let expr = loc 1 1 1 4 (List [x 1 2])
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "[x] " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "[x]"
     fmt' expr' `shouldBe` "(::, x, []) : (::, ^Int, [])"
-    fmt (lift expr') `shouldBe` "[x] : [Int]"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "(::, 42 : ^Int, []) : (::, ^Int, [])"
-    evalTao ctx "m" expr `shouldBe` ("[42]", "[Int]")
+    eval' ctx "m" expr `shouldBe` ("[42]", "[Int]")
 
   it "☯ Tao.List 2" $ do
     let ctx = [("m", [def "x" (int 10 10 42), def "y" (int 20 20 9)])]
     let expr = loc 1 1 1 7 (List [x 1 2, y 1 5])
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "[x, y] " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "[x, y]"
     fmt' expr' `shouldBe` "(::, x, ::, y, []) : (::, ^Int, ::, ^Int, [])"
-    fmt (lift expr') `shouldBe` "[x, y] : [Int, Int]"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "(::, 42 : ^Int, ::, 9 : ^Int, []) : (::, ^Int, ::, ^Int, [])"
-    evalTao ctx "m" expr `shouldBe` ("[42, 9]", "[Int, Int]")
+    eval' ctx "m" expr `shouldBe` ("[42, 9]", "[Int, Int]")
 
   it "☯ Tao.String empty" $ do
     let ctx = []
     let expr = loc 1 1 1 3 (String [])
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "'' " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "''"
     fmt' expr' `shouldBe` "'' : ''"
-    fmt (lift expr') `shouldBe` "'' : ''"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "'' : ''"
-    evalTao ctx "m" expr `shouldBe` ("''", "''")
+    eval' ctx "m" expr `shouldBe` ("''", "''")
 
   -- -- it "☯ Tao.String literal" $ do
   -- -- it "☯ Tao.String interpolation" $ do
@@ -369,76 +321,77 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   it "☯ Tao.Or.different" $ do
     let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
     let expr = or' 1 3 (x 1 1) (y 1 5)
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "x | y " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "x | y"
     fmt' expr' `shouldBe` "(x | y) : (^Int | ^Num)"
-    fmt (lift expr') `shouldBe` "(x | y) : (Int | Num)"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "(42 : ^Int | 3.14 : ^Num) : (^Int | ^Num)"
-    evalTao ctx "m" expr `shouldBe` ("42 | 3.14", "Int | Num")
+    eval' ctx "m" expr `shouldBe` ("42 | 3.14", "Int | Num")
 
   it "☯ Tao.Or.same" $ do
     let ctx = [("m", [def "x" (int 10 10 42), def "y" (int 20 20 9)])]
     let expr = or' 1 3 (x 1 1) (y 1 5)
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "x | y " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "x | y"
     fmt' expr' `shouldBe` "(x | y) : ^Int"
-    fmt (lift expr') `shouldBe` "(x | y) : Int"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "(42 : ^Int | 9 : ^Int) : ^Int"
-    evalTao ctx "m" expr `shouldBe` ("42 | 9", "Int")
+    eval' ctx "m" expr `shouldBe` ("42 | 9", "Int")
 
-  it "☯ Tao.For.empty" $ do
+  it "☯ Tao.For.0" $ do
     let ctx = [("m", [def "x" (int 10 10 42)])]
     let expr = loc 1 1 1 2 (For [] (x 1 4))
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "@. x " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "@. x"
     fmt' expr' `shouldBe` "x : ^Int"
-    fmt (lift expr') `shouldBe` "x : Int"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "42 : ^Int"
-    evalTao ctx "m" expr `shouldBe` ("42", "Int")
+    eval' ctx "m" expr `shouldBe` ("42", "Int")
 
-  it "☯ Tao.For.unbound" $ do
+  it "☯ Tao.For.1" $ do
     let ctx = [("m", [def "x" (int 10 10 42)])]
     let expr = loc 1 1 1 3 (For ["a"] (x 1 5))
-    let (env, expr') = compile ctx "m" expr
+    let (_, expr') = compile ctx "m" expr
     parse' "@a. x " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "@a. x"
-    fmt' expr' `shouldBe` "(@a. x) : ^Int"
-    fmt (lift expr') `shouldBe` "(@a. x) : Int"
+    fmt' expr' `shouldBe` "@a. x : ^Int"
     check (lift expr') `shouldBe` []
-    evalCore env expr' `shouldBe` "(@a. 42 : ^Int) : ^Int"
-    evalTao ctx "m" expr `shouldBe` ("@a. 42", "Int")
+    eval' ctx "m" expr `shouldBe` ("@a. 42", "Int")
 
-  -- it "☯ Tao.For 2" $ do
-  --   let ctx = [("m", [def "x" (int 10 10 42)])]
-  --   let expr = loc 1 1 1 5 (For ["a", "b"] (x 1 7))
-  --   let (env, expr') = compile ctx "m" expr
-  --   parse' "@a b; x " `shouldBe` Right (expr, "")
-  --   format 80 expr `shouldBe` "@a b; x"
-  --   C.dropMeta expr' `shouldBe` C.Ann x' C.IntT
-  --   lift expr' `shouldBe` Ann (x 1 7) IntT
-  --   dropMeta (eval ctx "m" expr) `shouldBe` Int 42
+  it "☯ Tao.For.2" $ do
+    let ctx = [("m", [def "x" (int 10 10 42)])]
+    let expr = loc 1 1 1 5 (For ["a", "b"] (x 1 7))
+    let (_, expr') = compile ctx "m" expr
+    parse' "@a b. x " `shouldBe` Right (expr, "")
+    fmt expr `shouldBe` "@a b. x"
+    fmt' expr' `shouldBe` "@a b. x : ^Int"
+    check (lift expr') `shouldBe` []
+    eval' ctx "m" expr `shouldBe` ("@a b. 42", "Int")
 
-  -- it "☯ Tao.Fun" $ do
-  --   let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
-  --   let fun' = fun 1 3
-  --   let expr = fun' (x 1 1) (y 1 6)
-  --   let (env, expr') = compile ctx "m" expr
-  --   parse' "x -> y " `shouldBe` Right (expr, "")
-  --   format 80 expr `shouldBe` "x -> y"
-  --   C.dropMeta expr' `shouldBe` C.Ann (C.for ["x1T", "x"] $ C.Fun (C.Ann x' (C.Var "x1T")) y') (C.Fun (C.Var "x1T") C.NumT)
-  --   lift expr' `shouldBe` Ann (fun' (Ann (x 1 1) (Var "x1T")) (y 1 6)) (Fun (Var "x1T") NumT)
-  --   dropMeta (eval ctx "m" expr) `shouldBe` Fun (Var "x") (Num 3.14)
+  it "☯ Tao.Fun.unbound" $ do
+    let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
+    let expr = fun 1 3 (x 1 1) (y 1 6)
+    let (_, expr') = compile ctx "m" expr
+    parse' "x -> y " `shouldBe` Right (expr, "")
+    fmt expr `shouldBe` "x -> y"
+    fmt' expr' `shouldBe` "@x1T x. (x : x1T) -> y : @x1T. x1T -> ^Num"
+    check (lift expr') `shouldBe` []
+    eval' ctx "m" expr `shouldBe` ("x -> 3.14", "x1T -> Num")
+
+  it "☯ Tao.Fun.bound" $ do
+    let ctx = [("m", [def "x" (int 10 10 42), def "y" (num 20 20 3.14)])]
+    let expr = loc 1 1 1 2 (For [] $ fun 1 6 (x 1 4) (y 1 9))
+    let (_, expr') = compile ctx "m" expr
+    parse' "@. x -> y " `shouldBe` Right (expr, "")
+    fmt expr `shouldBe` "@. x -> y"
+    fmt' expr' `shouldBe` "@x. (x : ^Int) -> y : ^Int -> ^Num"
+    check (lift expr') `shouldBe` []
+    eval' ctx "m" expr `shouldBe` ("42 -> 3.14", "Int -> Num")
 
   -- it "☯ Tao.App no args" $ do
   --   let ctx = [("m", [def "x" (Fun (loc 10 10 11 11 $ Tuple []) (int 20 20 42))])]
   --   let expr = loc 1 2 1 4 (App (x 1 1) [])
-  --   let (env, expr') = compile ctx "m" expr
+  --   let (_, expr') = compile ctx "m" expr
   --   parse' "x() " `shouldBe` Right (expr, "")
   --   format 80 expr `shouldBe` "x()"
   --   C.dropMeta expr' `shouldBe` C.Ann (C.App x' (C.Ann C.Unit C.Unit)) C.IntT
@@ -455,7 +408,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   --         ]
   --   let app a = loc 1 2 1 5 (App (x 1 1) [("", a)])
   --   let expr = app (y 1 3)
-  --   let (env, expr') = compile ctx "m" expr
+  --   let (_, expr') = compile ctx "m" expr
   --   parse' "x(y) " `shouldBe` Right (expr, "")
   --   format 80 expr `shouldBe` "x(y)"
   --   C.dropMeta expr' `shouldBe` C.Ann (C.App x' (C.Ann y' C.IntT)) C.IntT
@@ -473,7 +426,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   --         ]
   --   let app a b = loc 1 2 1 8 (App (x 1 1) [("", a), ("", b)])
   --   let expr = app (y 1 3) (z 1 6)
-  --   let (env, expr') = compile ctx "m" expr
+  --   let (_, expr') = compile ctx "m" expr
   --   parse' "x(y, z) " `shouldBe` Right (expr, "")
   --   format 80 expr `shouldBe` "x(y, z)"
   --   C.dropMeta expr' `shouldBe` C.Ann (C.App x' (C.Ann (C.And y' z') (C.And C.IntT C.NumT))) C.NumT
@@ -486,7 +439,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   -- it "☯ Tao.Call 0" $ do
   --   let ctx = []
   --   let expr = loc 1 1 1 3 (Call "f" [])
-  --   let (env, expr') = compile ctx "m" expr
+  --   let (_, expr') = compile ctx "m" expr
   --   parse' "%f " `shouldBe` Right (expr, "")
   --   parse' "%f() " `shouldBe` Right (expr, "")
   --   format 80 expr `shouldBe` "%f"
@@ -497,7 +450,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   -- it "☯ Tao.Call 1" $ do
   --   let ctx = [("m", [def "x" (int 10 10 42)])]
   --   let expr = loc 1 1 1 9 (Call "int_neg" [x 1 10])
-  --   let (env, expr') = compile ctx "m" expr
+  --   let (_, expr') = compile ctx "m" expr
   --   parse' "%int_neg(x) " `shouldBe` Right (expr, "")
   --   format 80 expr `shouldBe` "%int_neg(x)"
   --   C.dropMeta expr' `shouldBe` C.Ann (C.Call "int_neg" [x']) (C.Var "_1")
@@ -507,7 +460,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   -- it "☯ Tao.Call 2" $ do
   --   let ctx = [("m", [def "x" (int 10 10 40), def "y" (int 30 30 2)])]
   --   let expr = loc 1 1 1 9 (Call "int_add" [x 1 10, y 1 13])
-  --   let (env, expr') = compile ctx "m" expr
+  --   let (_, expr') = compile ctx "m" expr
   --   parse' "%int_add(x, y) " `shouldBe` Right (expr, "")
   --   format 80 expr `shouldBe` "%int_add(x, y)"
   --   C.dropMeta expr' `shouldBe` C.Ann (C.Call "int_add" [x', y']) (C.Var "_1")
@@ -518,7 +471,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   --   let ctx = [("m", [defOp1 "-" "int_neg", def "x" (int 20 20 42)])]
   --   let neg = op1 1 1 Neg
   --   let expr = neg (x 1 2)
-  --   let (env, expr') = compile ctx "m" expr
+  --   let (_, expr') = compile ctx "m" expr
   --   parse' "-x " `shouldBe` Right (expr, "")
   --   format 80 expr `shouldBe` "-x"
   --   C.dropMeta expr' `shouldBe` C.Ann (C.app (C.Var "-") [C.Ann x' C.IntT]) (C.Var "_1")
@@ -529,7 +482,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   --   let ctx = [("m", [defOp2 "+" "int_add", def "x" (int 20 20 40), def "y" (int 30 30 2)])]
   --   let add = op2 1 3 Add
   --   let expr = add (x 1 1) (y 1 5)
-  --   let (env, expr') = compile ctx "m" expr
+  --   let (_, expr') = compile ctx "m" expr
   --   parse' "x + y " `shouldBe` Right (expr, "")
   --   format 80 expr `shouldBe` "x + y"
   --   C.dropMeta expr' `shouldBe` C.Ann (C.appT (C.Var "+") [x', y'] [C.IntT, C.IntT]) (C.Var "_1")
@@ -540,7 +493,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   --   let ctx = [("m", [def "x" (int 10 10 42)])]
   --   let match' arg = match 1 1 arg []
   --   let expr = match' (x 1 7)
-  --   let (env, expr') = compile ctx "m" expr
+  --   let (_, expr') = compile ctx "m" expr
   --   parse' "match x {} " `shouldBe` Right (expr, "")
   --   format 80 expr `shouldBe` "match x {}"
   --   let errApp = C.Err (cannotApply C.Unit C.Unit)
@@ -555,7 +508,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   --   let ctx = [("m", [def "x" (int 10 10 42)])]
   --   let match' arg (a, b) = match 1 1 arg [fun 1 14 a b]
   --   let expr = match' (x 1 7) (a 1 12, int 1 17 1)
-  --   let (env, expr') = compile ctx "m" expr
+  --   let (_, expr') = compile ctx "m" expr
   --   parse' "match x {| a -> 1} " `shouldBe` Right (expr, "")
   --   format 80 expr `shouldBe` "match x {\n| a -> 1\n}"
   --   C.dropMeta expr' `shouldBe` C.Ann (C.App (C.For "a" $ C.Fun (C.Ann a' C.IntT) (C.Int 1)) (C.Ann x' C.IntT)) C.IntT
@@ -566,7 +519,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   --   let ctx = [("m", [def "x" (int 10 10 42)])]
   --   let match' arg (a, b) (c, d) = match 1 1 arg [fun 1 14 a b, fun 1 23 c d]
   --   let expr = match' (x 1 7) (a 1 12, int 1 17 1) (b 1 21, int 1 26 2)
-  --   let (env, expr') = compile ctx "m" expr
+  --   let (_, expr') = compile ctx "m" expr
   --   parse' "match x {| a -> 1 | b -> 2} " `shouldBe` Right (expr, "")
   --   format 80 expr `shouldBe` "match x {\n| a -> 1\n| b -> 2\n}"
   --   C.dropMeta expr' `shouldBe` C.Ann (C.App (C.Or (C.For "a" $ C.Fun (C.Ann a' C.IntT) (C.Int 1)) (C.For "b" $ C.Fun (C.Ann b' C.IntT) (C.Int 2))) (C.Ann x' C.IntT)) C.IntT
@@ -576,7 +529,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   -- it "☯ Tao.Let" $ do
   --   let ctx = [("m", [def "y" (int 10 10 42)])]
   --   let expr = let' 1 3 (x 1 1, y 1 5) (x 1 8)
-  --   let (env, expr') = compile ctx "m" expr
+  --   let (_, expr') = compile ctx "m" expr
   --   parse' "x = y; x " `shouldBe` Right (expr, "")
   --   format 80 expr `shouldBe` "x = y\nx"
   --   C.dropMeta expr' `shouldBe` C.Ann (C.App (C.For "x" $ C.Fun (C.Ann x' C.IntT) (C.Ann x' C.IntT)) (C.Ann y' C.IntT)) C.IntT
@@ -586,7 +539,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   -- it "☯ Tao.TODO" $ do
   --   let ctx = [("m", [def "x" (int 10 10 42)])]
   --   let expr = Any
-  --   let (env, expr') = compile ctx "m" expr
+  --   let (_, expr') = compile ctx "m" expr
   --   parse' "TODO " `shouldBe` Right (expr, "")
   --   format 80 expr `shouldBe` "TODO"
   --   C.dropMeta expr' `shouldBe` C.Ann C.Any C.IntT
@@ -619,7 +572,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
   --         ]
   --   let (bool', true', false') = (C.Tag "Bool", C.Tag "True", C.Tag "False")
   --   let expr = if' 1 1 (a 1 4) (b 1 11) (c 1 18)
-  --   let (env, expr') = compile ctx "m" expr
+  --   let (_, expr') = compile ctx "m" expr
   --   parse' "if a then b else c " `shouldBe` Right (expr, "")
   --   format 80 expr `shouldBe` "if a then b else c"
   --   -- TODO: fix this
@@ -633,7 +586,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
 
   --   let ctx = []
   --   let expr = loc 1 1 1 7 (Err (customError $ any 1 8))
-  --   let (env, expr') = compile ctx "m" expr
+  --   let (_, expr') = compile ctx "m" expr
   --   parse' "!error _ " `shouldBe` Right (expr, "")
   --   format 80 expr `shouldBe` "!error _"
   --   C.dropMeta expr' `shouldBe` C.Ann (C.Err (customError C.Any)) C.Any
