@@ -1075,13 +1075,13 @@ check = \case
   a | Just e <- errOf a -> [(a, e)]
   a -> collect check a
 
-eval :: Context -> FilePath -> Expr -> (Expr, Type)
+eval :: Context -> FilePath -> Expr -> (Expr, Type, [(Expr, Error Expr)])
 eval ctx path expr = do
   let (env, expr') = compile ctx path expr
   let (result, type') = case C.eval runtimeOps (C.Let env expr') of
         result | Just typed <- C.annOf result -> typed
         result -> (result, C.Any)
-  (dropTypes (lift result), dropTypes (lift type'))
+  (dropTypes (lift result), dropTypes (lift type'), check (lift expr'))
 
 bindings :: Expr -> [String]
 bindings = \case
