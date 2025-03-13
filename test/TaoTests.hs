@@ -18,9 +18,10 @@ fmt' :: C.Expr -> String
 fmt' = C.format 80 . C.dropMeta
 
 def :: String -> String -> Stmt
-def x src = case parse ("ctx." ++ x) src of
-  Right (a, _) -> Def (Var x, a)
-  Left s -> error ("ctx syntax error, remaining: " ++ s.remaining)
+def a b = case (parse ("ctx." ++ a) a, parse ("ctx." ++ a ++ " = " ++ b) b) of
+  (Right (a, _), Right (b, _)) -> Def (a, b)
+  (Left s, _) -> error ("ctx[pattern] syntax error, remaining: " ++ s.remaining)
+  (_, Left s) -> error ("ctx[value] syntax error, remaining: " ++ s.remaining)
 
 -- let defOp1 op f = def op (For ["a"] (lambda [Var "a"] (Call f [Var "a"])))
 -- let defOp2 op f = def op (For ["a", "b"] (lambda [Var "a", Var "b"] (Call f [Var "a", Var "b"])))
