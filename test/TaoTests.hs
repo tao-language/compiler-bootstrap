@@ -224,32 +224,26 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     core ctx "m" expr `shouldBe` "(x, y)"
     eval' ctx "m" expr `shouldBe` ("(42, 3.14)", "(Int, Num)", [])
 
-  -- it "☯ Tao.List 0" $ do
-  --   let ctx = []
-  --   let expr = loc 1 1 1 3 (List [])
-  --   syntax "[]" `shouldBe` Right expr
-  --   fmt expr `shouldBe` "[]"
-  --   core ctx "m" expr `shouldBe` "[] : []"
-  --   check (lift expr') `shouldBe` []
-  --   eval' ctx "m" expr `shouldBe` ("[]", "[]")
+  it "☯ Tao.List.0" $ do
+    let ctx = []
+    let expr = loc 1 1 1 3 (List [])
+    syntax "[]" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "[]"
+    eval' ctx "m" expr `shouldBe` ("[]", "[]", [])
 
-  -- it "☯ Tao.List 1" $ do
-  --   let ctx = [("m", [def "x" (int 10 10 42)])]
-  --   let expr = loc 1 1 1 4 (List [x 1 2])
-  --   syntax "[x]" `shouldBe` Right expr
-  --   fmt expr `shouldBe` "[x]"
-  --   core ctx "m" expr `shouldBe` "(::, x, []) : (::, ^Int, [])"
-  --   check (lift expr') `shouldBe` []
-  --   eval' ctx "m" expr `shouldBe` ("[42]", "[Int]")
+  it "☯ Tao.List.1" $ do
+    let ctx = [("m", [def "x" (int 10 10 42)])]
+    let expr = loc 1 1 1 4 (List [x 1 2])
+    syntax "[x]" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "(::, x, [])"
+    eval' ctx "m" expr `shouldBe` ("[42]", "[Int]", [])
 
-  -- it "☯ Tao.List 2" $ do
-  --   let ctx = [("m", [def "x" (int 10 10 42), def "y" (int 20 20 9)])]
-  --   let expr = loc 1 1 1 7 (List [x 1 2, y 1 5])
-  --   syntax "[x, y]" `shouldBe` Right expr
-  --   fmt expr `shouldBe` "[x, y]"
-  --   core ctx "m" expr `shouldBe` "(::, x, ::, y, []) : (::, ^Int, ::, ^Int, [])"
-  --   check (lift expr') `shouldBe` []
-  --   eval' ctx "m" expr `shouldBe` ("[42, 9]", "[Int, Int]")
+  it "☯ Tao.List.2" $ do
+    let ctx = [("m", [def "x" (int 10 10 42), def "y" (int 20 20 9)])]
+    let expr = loc 1 1 1 7 (List [x 1 2, y 1 5])
+    syntax "[x, y]" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "(::, x, ::, y, [])"
+    eval' ctx "m" expr `shouldBe` ("[42, 9]", "[Int, Int]", [])
 
   -- it "☯ Tao.String empty" $ do
   --   let ctx = []
