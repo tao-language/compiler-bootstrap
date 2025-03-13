@@ -819,6 +819,7 @@ lower = \case
   Or a b -> C.Or (lower a) (lower b)
   -- For xs (For ys a) -> lower (For (xs ++ ys) a)
   For [] (Fun a b) -> C.Fun (lower a) (lower b)
+  For [] (Meta m a) | isFun a -> C.Meta m (lower (For [] a))
   For [] a -> lower a
   For xs a -> C.for xs (lower (For [] a))
   Fun a b -> lower (For (freeVars a) (Fun a b))

@@ -384,7 +384,7 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     let (_, expr') = compile ctx "m" expr
     parse' "@. x -> y " `shouldBe` Right (expr, "")
     fmt expr `shouldBe` "@. x -> y"
-    fmt' expr' `shouldBe` "@x. (x : ^Int) -> y : ^Int -> ^Num"
+    fmt' expr' `shouldBe` "(x : ^Int) -> y : ^Int -> ^Num"
     check (lift expr') `shouldBe` []
     eval' ctx "m" expr `shouldBe` ("42 -> 3.14", "Int -> Num")
 
