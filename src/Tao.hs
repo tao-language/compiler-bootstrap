@@ -2,7 +2,7 @@ module Tao where
 
 import Control.Monad (void)
 import qualified Core as C
-import Data.Bifunctor (Bifunctor (second))
+import Data.Bifunctor (Bifunctor (bimap, second))
 import Data.Char (chr, ord)
 import Data.Function ((&))
 import Data.List (delete, intersect, isPrefixOf, sort, union, unionBy, (\\))
@@ -240,6 +240,11 @@ orOf = \case
 lambda :: [Expr] -> Expr -> Expr
 lambda args = Fun (Tuple args)
 
+isAnn :: Expr -> Bool
+isAnn (Ann _ _) = True
+isAnn (Meta _ a) = isAnn a
+isAnn _ = False
+
 app :: Expr -> [Expr] -> Expr
 app fun args = App fun (map ("",) args)
 
@@ -287,6 +292,11 @@ divI = Op2 DivI
 
 pow :: Expr -> Expr -> Expr
 pow = Op2 Pow
+
+typed :: Expr -> (Expr, Type)
+typed (Ann a t) = (a, t)
+typed (Meta _ a) | isAnn a = typed a
+typed a = (a, Any)
 
 -- Helper functions
 class Apply a where
@@ -598,7 +608,7 @@ grammar = do
             Op2 Ge a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Ann
-          G.infixR 5 (const Ann) ":" $ \case
+          G.infixR 5 (loc2 Ann) ":" $ \case
             Ann a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Fun
@@ -1071,17 +1081,23 @@ parseStmt = do
 
 check :: Expr -> [(Expr, Error Expr)]
 check = \case
-  Ann a b | Just e <- errOf b -> [(a, e)]
+  Ann a b -> case errOf b of
+    Just e -> (a, e) : check a
+    Nothing -> check a
   a | Just e <- errOf a -> [(a, e)]
   a -> collect check a
 
-eval :: Context -> FilePath -> Expr -> (Expr, Type, [(Expr, Error Expr)])
-eval ctx path expr = do
+run :: Context -> FilePath -> Expr -> (Expr, Type)
+run ctx path expr = do
   let (env, expr') = compile ctx path expr
-  let (result, type') = case C.eval runtimeOps (C.Let env expr') of
-        result | Just typed <- C.annOf result -> typed
-        result -> (result, C.Any)
-  (dropTypes (lift result), dropTypes (lift type'), check (lift expr'))
+  eval env expr'
+
+eval :: C.Env -> C.Expr -> (Expr, Type)
+eval env expr =
+  C.eval runtimeOps (C.Let env expr)
+    & lift
+    & typed
+    & bimap dropTypes dropTypes
 
 bindings :: Expr -> [String]
 bindings = \case

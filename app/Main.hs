@@ -81,7 +81,7 @@ runCmd filename arg = do
   arg' <- error "TODO" -- load "<run>" arg
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
-  print (run ctx path arg')
+  print (Run.run ctx path arg')
 
 checkCmd :: FilePath -> IO ()
 checkCmd filename = do
