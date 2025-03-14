@@ -229,6 +229,13 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
     core ctx "m" expr `shouldBe` "(x, y)"
     eval' ctx "m" expr `shouldBe` ("(42, 3.14)", "(Int, Num)", [])
 
+  it "☯ Tao.Tuple.error" $ do
+    let ctx = [("m", [def "x" "42", def "y" "3.14"])]
+    let expr = loc 1 1 1 7 (Tuple [x 1 2, z 1 5])
+    syntax "(x, z)" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "(x, z)"
+    eval' ctx "m" expr `shouldBe` ("(42, z)", "(Int, !undefined-var(z))", [(Any, undefinedVar "z")])
+
   it "☯ Tao.List.0" $ do
     let ctx = []
     let expr = loc 1 1 1 3 (List [])
@@ -318,110 +325,73 @@ run = describe "--==☯ TaoGrammar ☯==--" $ do
 
   it "☯ Tao.App.args1" $ do
     let ctx = [("m", [def "x" "a -> a", def "y" "42"])]
-    let app a = loc 1 2 1 5 (App (x 1 1) [("", a)])
-    let expr = app (y 1 3)
+    let expr = loc 1 2 1 5 (app (x 1 1) [y 1 3])
     syntax "x(y)" `shouldBe` Right expr
     core ctx "m" expr `shouldBe` "x (y : ^Int)"
     eval' ctx "m" expr `shouldBe` ("42", "Int", [])
 
   it "☯ Tao.App.args2" $ do
     let ctx = [("m", [def "x" "(a, b) -> b", def "y" "42", def "z" "3.14"])]
-    let app a b = loc 1 2 1 8 (App (x 1 1) [("", a), ("", b)])
-    let expr = app (y 1 3) (z 1 6)
+    let expr = loc 1 2 1 8 (app (x 1 1) [y 1 3, z 1 6])
     syntax "x(y, z)" `shouldBe` Right expr
     core ctx "m" expr `shouldBe` "x ((y, z) : (^Int, ^Num))"
     eval' ctx "m" expr `shouldBe` ("3.14", "Num", [])
 
-  -- -- TODO: App named arguments
-  -- -- TODO: App default values
+  -- TODO: App named arguments
+  -- TODO: App default values
 
-  -- it "☯ Tao.Call 0" $ do
-  --   let ctx = []
-  --   let expr = loc 1 1 1 3 (Call "f" [])
-  --   syntax "%f" `shouldBe` Right expr
-  --   syntax "%f()" `shouldBe` Right expr
-  --   format 80 expr `shouldBe` "%f"
-  --   C.dropMeta expr' `shouldBe` C.Ann (C.Call "f" []) (C.Var "_1")
-  --   lift expr' `shouldBe` Ann expr (Var "_1")
-  --   dropMeta (eval ctx "m" expr) `shouldBe` Call "f" []
+  it "☯ Tao.Call.0" $ do
+    let ctx = []
+    let expr = loc 1 1 1 3 (Call "f" [])
+    syntax "%f" `shouldBe` Right expr
+    syntax' "%f()" "%f" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "%f()"
+    eval' ctx "m" expr `shouldBe` ("%f", "_1", [])
 
-  -- it "☯ Tao.Call 1" $ do
+  it "☯ Tao.Call.1" $ do
+    let ctx = [("m", [def "x" "42"])]
+    let expr = loc 1 1 1 9 (Call "int_neg" [x 1 10])
+    syntax "%int_neg(x)" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "%int_neg(x)"
+    eval' ctx "m" expr `shouldBe` ("-42", "_1", [])
+
+  it "☯ Tao.Call.2" $ do
+    let ctx = [("m", [def "x" "40", def "y" "2"])]
+    let expr = loc 1 1 1 9 (Call "int_add" [x 1 10, y 1 13])
+    syntax "%int_add(x, y)" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "%int_add(x, y)"
+    eval' ctx "m" expr `shouldBe` ("42", "_1", [])
+
+  it "☯ Tao.Match.empty" $ do
+    let ctx = [("m", [def "x" "42"])]
+    let expr = match 1 1 (x 1 7) []
+    syntax "match x {}" `shouldBe` Right expr
+    core ctx "m" expr `shouldBe` "!cannot-apply((), ()) (x : !error(NotAFunction !cannot-apply((), ()) _))"
+    eval' ctx "m" expr
+      `shouldBe` ( "!cannot-apply(!cannot-apply((), ()), @[ctx.x = 42:1:1,1:3](42) : !error(NotAFunction (Err (RuntimeError (CannotApply (Tuple []) (Tuple [])))) Any))",
+                   "Int",
+                   [(x 1 7, notAFunction (Err (cannotApply (Tuple []) (Tuple []))) Any)]
+                 )
+
+  -- it "☯ Tao.Match.error" $ do
   --   let ctx = [("m", [def "x" "42"])]
-  --   let expr = loc 1 1 1 9 (Call "int_neg" [x 1 10])
-  --   syntax "%int_neg(x)" `shouldBe` Right expr
-  --   format 80 expr `shouldBe` "%int_neg(x)"
-  --   C.dropMeta expr' `shouldBe` C.Ann (C.Call "int_neg" [x']) (C.Var "_1")
-  --   lift expr' `shouldBe` Ann expr (Var "_1")
-  --   dropMeta (eval ctx "m" expr) `shouldBe` Int (-42)
+  --   let expr = match 1 1 (x 1 7) [fun 2 5 (y 2 3) (z 2 8)]
+  --   syntax "match x {\n| y -> z\n}" `shouldBe` Right expr
+  --   core ctx "m" expr `shouldBe` "^let y : ^Int = x : ^Int; z"
+  --   eval' ctx "m" expr
+  --     `shouldBe` ( "z",
+  --                  "!undefined-var(z)",
+  --                  [()]
+  --                )
 
-  -- it "☯ Tao.Call 2" $ do
-  --   let ctx = [("m", [def "x" "40", def "y" "2"])]
-  --   let expr = loc 1 1 1 9 (Call "int_add" [x 1 10, y 1 13])
-  --   let (_, expr') = compile ctx "m" expr
-  --   syntax "%int_add(x, y)" `shouldBe` Right expr
-  --   format 80 expr `shouldBe` "%int_add(x, y)"
-  --   C.dropMeta expr' `shouldBe` C.Ann (C.Call "int_add" [x', y']) (C.Var "_1")
-  --   lift expr' `shouldBe` Ann expr (Var "_1")
-  --   dropMeta (eval ctx "m" expr) `shouldBe` Int 42
-
-  -- it "☯ Tao.Op1 -" $ do
-  --   let ctx = [("m", [defOp1 "-" "int_neg", def "x" "42"])]
-  --   let neg = op1 1 1 Neg
-  --   let expr = neg (x 1 2)
-  --   let (_, expr') = compile ctx "m" expr
-  --   syntax "-x" `shouldBe` Right expr
-  --   format 80 expr `shouldBe` "-x"
-  --   C.dropMeta expr' `shouldBe` C.Ann (C.app (C.Var "-") [C.Ann x' C.IntT]) (C.Var "_1")
-  --   lift expr' `shouldBe` Ann (neg (Ann (x 1 2) IntT)) (Var "_1")
-  --   dropMeta (eval ctx "m" expr) `shouldBe` Int (-42)
-
-  -- it "☯ Tao.Op2 +" $ do
-  --   let ctx = [("m", [defOp2 "+" "int_add", def "x" "40", def "y" "2"])]
-  --   let add = op2 1 3 Add
-  --   let expr = add (x 1 1) (y 1 5)
-  --   let (_, expr') = compile ctx "m" expr
-  --   syntax "x + y" `shouldBe` Right expr
-  --   format 80 expr `shouldBe` "x + y"
-  --   C.dropMeta expr' `shouldBe` C.Ann (C.appT (C.Var "+") [x', y'] [C.IntT, C.IntT]) (C.Var "_1")
-  --   lift expr' `shouldBe` Ann (add (Ann (x 1 1) IntT) (Ann (y 1 5) IntT)) (Var "_1")
-  --   dropMeta (eval ctx "m" expr) `shouldBe` Int 42
-
-  -- it "☯ Tao.Match case 0" $ do
-  --   let ctx = [("m", [def "x" "42"])]
-  --   let match' arg = match 1 1 arg []
-  --   let expr = match' (x 1 7)
-  --   let (_, expr') = compile ctx "m" expr
-  --   syntax "match x {}" `shouldBe` Right expr
-  --   format 80 expr `shouldBe` "match x {}"
-  --   let errApp = C.Err (cannotApply C.Unit C.Unit)
-  --   let errFun = C.Err (notAFunction errApp C.Any)
-  --   C.dropMeta expr' `shouldBe` C.Ann (C.App errApp (C.Ann x' errFun)) C.IntT
-  --   let errApp = Err (cannotApply (Tuple []) (Tuple []))
-  --   let errFun = Err (notAFunction errApp Any)
-  --   lift expr' `shouldBe` Ann (match' (Ann (x 1 7) errFun)) IntT
-  --   dropMeta (eval ctx "m" expr) `shouldBe` Err (unhandledCase "42")
-
-  -- it "☯ Tao.Match case 1" $ do
-  --   let ctx = [("m", [def "x" "42"])]
-  --   let match' arg (a, b) = match 1 1 arg [fun 1 14 a b]
-  --   let expr = match' (x 1 7) (a 1 12, int 1 17 1)
-  --   let (_, expr') = compile ctx "m" expr
-  --   syntax "match x {| a -> 1}" `shouldBe` Right expr
-  --   format 80 expr `shouldBe` "match x {\n| a -> 1\n}"
-  --   C.dropMeta expr' `shouldBe` C.Ann (C.App (C.For "a" $ C.Fun (C.Ann a' C.IntT) (C.Int 1)) (C.Ann x' C.IntT)) C.IntT
-  --   lift expr' `shouldBe` Ann (match' (Ann (x 1 7) IntT) (Ann (a 1 12) IntT, int 1 17 1)) IntT
-  --   dropMeta (eval ctx "m" expr) `shouldBe` Int 1
-
-  -- it "☯ Tao.Match case 2" $ do
+  -- it "☯ Tao.Match.2" $ do
   --   let ctx = [("m", [def "x" "42"])]
   --   let match' arg (a, b) (c, d) = match 1 1 arg [fun 1 14 a b, fun 1 23 c d]
   --   let expr = match' (x 1 7) (a 1 12, int 1 17 1) (b 1 21, int 1 26 2)
-  --   let (_, expr') = compile ctx "m" expr
-  --   syntax "match x {| a -> 1 | b -> 2}" `shouldBe` Right expr
-  --   format 80 expr `shouldBe` "match x {\n| a -> 1\n| b -> 2\n}"
-  --   C.dropMeta expr' `shouldBe` C.Ann (C.App (C.Or (C.For "a" $ C.Fun (C.Ann a' C.IntT) (C.Int 1)) (C.For "b" $ C.Fun (C.Ann b' C.IntT) (C.Int 2))) (C.Ann x' C.IntT)) C.IntT
-  --   lift expr' `shouldBe` Ann (match' (Ann (x 1 7) IntT) (Ann (a 1 12) IntT, int 1 17 1) (Ann (b 1 21) IntT, int 1 26 2)) IntT
-  --   dropMeta (eval ctx "m" expr) `shouldBe` Int 1
+  --   let expr = match 1 1 (x 1 7)[fun 1 14 (a 1 1) (b 1 1), fun 1 23 ()]
+  --   syntax "match x {\n| a -> 1\n| b -> 2\n}" `shouldBe` Right expr
+  --   core ctx "m" expr `shouldBe` ""
+  --   eval' ctx "m" expr `shouldBe` ("", "", [])
 
   -- it "☯ Tao.Let" $ do
   --   let ctx = [("m", [def "y" "42"])]
