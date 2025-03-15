@@ -9,6 +9,8 @@ import qualified Parser as P
 import Tao
 import Test.Hspec
 
+-- TODO: isolate errors and error reporting into its own test file
+
 filename :: String
 filename = "<test>"
 
@@ -476,34 +478,41 @@ run = describe "--==☯ Tao ☯==--" $ do
     check' a `shouldBe` [(z 2 8, undefinedVar "z")]
     eval' env a t `shouldBe` ("z", "_")
 
-  -- it "☯ Tao.Match.2" $ do
-  --   let ctx = [("m", [def "x" "42"])]
-  --   let match' arg (a, b) (c, d) = match 1 1 arg [fun 1 14 a b, fun 1 23 c d]
-  --   let expr = match' (x 1 7) (a 1 12, int 1 17 1) (b 1 21, int 1 26 2)
-  --   let expr = match 1 1 (x 1 7)[fun 1 14 (a 1 1) (b 1 1), fun 1 23 ()]
-  --   syntax "match x {\n| a -> 1\n| b -> 2\n}" `shouldBe` Right expr
-  --   fmt' a `shouldBe` ""
-  --   eval' env a t `shouldBe` ("", "")
+  it "☯ Tao.Match.1" $ do
+    let ctx = [("m", [def "x" "42"])]
+    let expr = match 1 1 (x 1 7) [fun 2 5 (a 2 3) (int 2 8 1)]
+    let (env, (a, t)) = compile' ctx "m" expr
+    syntax "match x {\n| a -> 1\n}" `shouldBe` Right expr
+    fmt' a `shouldBe` "(@a. (a : ^Int) -> (1 : ^Int)) (x : ^Int)"
+    check' a `shouldBe` []
+    eval' env a t `shouldBe` ("1", "Int")
 
-  -- it "☯ Tao.Let" $ do
-  --   let ctx = [("m", [def "y" "42"])]
-  --   let expr = let' 1 3 (x 1 1, y 1 5) (x 1 8)
-  --   let (_, expr') = compile ctx "m" expr
-  --   syntax "x = y; x" `shouldBe` Right expr
-  --   format 80 expr `shouldBe` "x = y\nx"
-  --   C.dropMeta expr' `shouldBe` C.Ann (C.App (C.For "x" $ C.Fun (C.Ann x' C.IntT) (C.Ann x' C.IntT)) (C.Ann y' C.IntT)) C.IntT
-  --   lift expr' `shouldBe` Ann (let' 1 3 (Ann (x 1 1) IntT, Ann (y 1 5) IntT) (loc 1 8 1 9 (Ann (Var "x") IntT))) IntT
-  --   dropMeta (eval ctx "m" expr) `shouldBe` Int 42
+  it "☯ Tao.Match.2" $ do
+    let ctx = [("m", [def "x" "42"])]
+    let expr = match 1 1 (x 1 7) [fun 2 5 (a 2 3) (int 2 8 1), fun 3 5 (b 3 3) (int 3 8 2)]
+    let (env, (a, t)) = compile' ctx "m" expr
+    syntax "match x {\n| a -> 1\n| b -> 2\n}" `shouldBe` Right expr
+    fmt' a `shouldBe` "(@a. (a : ^Int) -> (1 : ^Int) | @b. (b : ^Int) -> (2 : ^Int)) (x : ^Int)"
+    check' a `shouldBe` []
+    eval' env a t `shouldBe` ("1", "Int")
+
+  it "☯ Tao.Let" $ do
+    let ctx = [("m", [def "y" "42"])]
+    let expr = let' 1 3 (x 1 1, y 1 5) (x 2 1)
+    let (env, (a, t)) = compile' ctx "m" expr
+    syntax "x = y\nx" `shouldBe` Right expr
+    fmt' a `shouldBe` "(@x. (x : ^Int) -> (x : ^Int)) (y : ^Int)"
+    check' a `shouldBe` []
+    eval' env a t `shouldBe` ("42", "Int")
 
   -- it "☯ Tao.TODO" $ do
   --   let ctx = [("m", [def "x" "42"])]
   --   let expr = Any
-  --   let (_, expr') = compile ctx "m" expr
+  --   let (env, (a, t)) = compile' ctx "m" expr
   --   syntax "TODO" `shouldBe` Right expr
-  --   format 80 expr `shouldBe` "TODO"
-  --   C.dropMeta expr' `shouldBe` C.Ann C.Any C.IntT
-  --   lift expr' `shouldBe` Ann expr IntT
-  --   dropMeta (eval ctx "m" expr) `shouldBe` Any
+  --   fmt' a `shouldBe` ""
+  --   check' a `shouldBe` []
+  --   eval' env a t `shouldBe` ("", "")
 
   -- Bind (Pattern, Expr) Expr
   -- Record [(String, Expr)]
