@@ -942,7 +942,7 @@ infer ops env (Var x) = do
         Just a -> do
           let ((_, ta), s) = infer ops env a
           (ta, s)
-        Nothing -> (Err $ TypeError $ UndefinedVar x, [])
+        Nothing -> (Err (undefinedVar x), [])
   ((Var x, ta), s)
 infer ops env (Ann a t) = check ops env a t
 infer ops env (And a b) = do
@@ -963,7 +963,7 @@ infer ops env (Fix x a) = do
   ((fix [x] (substitute [(y, Var x)] a'), ta), s `compose` [(y, Var y)])
 infer ops env (Fun a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
-  ((Fun (typed a' ta) b', Fun ta tb), s)
+  ((Fun (typed a' ta) (typed b' tb), Fun ta tb), s)
 infer ops env (App a b) = do
   let ((a_, ta), s1) = infer ops env a
   let ((a', b'), (t1, t2), s2) = checkApp ops (s1 `compose` env) (a_, ta) (substitute s1 b)
@@ -978,7 +978,7 @@ infer ops env (Call op args) = do
 infer ops env (Meta m a) = do
   let ((a', ta), s) = infer ops env a
   case (a', ta) of
-    (a', e) | isErr e -> ((Ann (Meta m a') e, e), s)
+    (a', Err e) -> ((Ann (Meta m a') (Err e), Err e), s)
     (a', ta) -> ((Meta m a', ta), s)
 infer _ _ (Err e) = ((Err e, Any), [])
 
@@ -1011,13 +1011,13 @@ check ops env (For x a) t = do
   ((for [x] (substitute [(y, Var x)] a'), t'), s `compose` [(y, Var y)])
 check ops env (Fun a b) (Fun ta tb) = do
   let ((a', ta'), (b', tb'), s) = check2 ops env (a, ta) (b, tb)
-  ((Fun (typed a' ta') b', Fun ta' tb'), s)
+  ((Fun (typed a' ta') (typed b' tb), Fun ta' tb'), s)
 check ops env (App a b) t2 = do
   let ((b', t1), s1) = infer ops env b
   let ((a', _), s2) = check ops (s1 `compose` env) (substitute s1 a) (Fun t1 (substitute s1 t2))
   let s = s2 `compose` s1
   ((App a' (substitute s2 (typed b' t1)), substitute s t2), s)
-check ops env a (Err e) = ((a, Err e), [])
+check ops env a (Err _) = infer ops env a
 check ops env a t = do
   let ((a', ta), s1) = infer ops env a
   let (t', s2) = unify ops env ta (substitute s1 t)
@@ -1046,7 +1046,10 @@ checkApp ops env (a, ta) b = case ta of
     ((a', b'), (Or t1a t1b, Or t2a t2b), s2 `compose` s1)
   Fun t1 t2 -> do
     let ((a', _), (b', t1'), s) = check2 ops env (a, Fun t1 t2) (b, t1)
-    ((a', b'), (t1', substitute s t2), s)
+    let t2' = case substitute s t2 of
+          Err _ -> Any
+          t2 -> t2
+    ((a', b'), (t1', t2'), s)
   Meta _ ta -> checkApp ops env (a, ta) b
   _ -> do
     let ((b', tb), s) = infer ops env b

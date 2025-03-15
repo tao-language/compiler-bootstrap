@@ -378,7 +378,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = fun 1 3 (x 1 1) (y 1 6)
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x -> y" `shouldBe` Right expr
-    fmt' a `shouldBe` "@x1T x. (x : x1T) -> y"
+    fmt' a `shouldBe` "@x1T x. (x : x1T) -> (y : ^Num)"
     check' a `shouldBe` []
     eval' env a t `shouldBe` ("x -> 3.14", "x1T -> Num")
 
@@ -387,7 +387,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = loc 1 1 1 2 (For [] $ fun 1 6 (x 1 4) (y 1 9))
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "@. x -> y" `shouldBe` Right expr
-    fmt' a `shouldBe` "(x : ^Int) -> y"
+    fmt' a `shouldBe` "(x : ^Int) -> (y : ^Num)"
     check' a `shouldBe` []
     eval' env a t `shouldBe` ("42 -> 3.14", "Int -> Num")
 
@@ -449,7 +449,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     check' a `shouldBe` []
     eval' env a t `shouldBe` ("42", "_1")
 
-  it "☯ Tao.Match.empty" $ do
+  it "☯ Tao.Match.error.empty" $ do
     let ctx = [("m", [def "x" "42"])]
     let expr = match 1 1 (x 1 7) []
     let (env, (a, t)) = compile' ctx "m" expr
@@ -463,11 +463,8 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = match 1 1 (z 1 7) [fun 2 5 (y 2 3) (x 2 8)]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match z {\n| y -> x\n}" `shouldBe` Right expr
-    fmt' a `shouldBe` "^let y : !undefined-var(z) = z : !undefined-var(z); x"
-    check' a
-      `shouldBe` [ (z 1 7, undefinedVar "z"),
-                   (y 2 3, undefinedVar "z")
-                 ]
+    fmt' a `shouldBe` "(@y. (y : !undefined-var(z)) -> (x : ^Int)) (z : !undefined-var(z))"
+    check' a `shouldBe` [(z 1 7, undefinedVar "z"), (y 2 3, undefinedVar "z")]
     eval' env a t `shouldBe` ("42", "Int")
 
   it "☯ Tao.Match.error.case" $ do
@@ -475,12 +472,9 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = match 1 1 (x 1 7) [fun 2 5 (y 2 3) (z 2 8)]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match x {\n| y -> z\n}" `shouldBe` Right expr
-    C.format 80 a `shouldBe` ""
-    fmt' a `shouldBe` "^let y : ^Int = x : ^Int; z : !undefined-var(z)"
-    check' a
-      `shouldBe` [ (match 1 1 (Ann (x 1 7) IntT) [fun 2 5 (Ann (y 2 3) IntT) (z 2 8)], undefinedVar "z")
-                 ]
-    eval' env a t `shouldBe` ("z", "!undefined-var(z)")
+    fmt' a `shouldBe` "(@y. (y : ^Int) -> (z : !undefined-var(z))) (x : ^Int)"
+    check' a `shouldBe` [(z 2 8, undefinedVar "z")]
+    eval' env a t `shouldBe` ("z", "_")
 
   -- it "☯ Tao.Match.2" $ do
   --   let ctx = [("m", [def "x" "42"])]
