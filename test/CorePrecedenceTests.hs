@@ -36,7 +36,7 @@ run = describe "--== Core precedence ==--" $ do
   it "☯ CorePrecedence.For" $ do
     prec "@x. y | z" `shouldBe` Right (Or (For "x" y) z)
     prec' "@x. @y. z" `shouldBe` Right (For "x" (For "y" z), "@x y. z")
-    prec "@x. y : z" `shouldBe` Right (For "x" (y `Ann` z))
+    prec "@x. y : z" `shouldBe` Right (Ann (For "x" y) z)
     prec "@x. y -> z" `shouldBe` Right (For "x" (y `Fun` z))
     prec "@x. y z" `shouldBe` Right (For "x" (y `App` z))
 
@@ -56,7 +56,7 @@ run = describe "--== Core precedence ==--" $ do
 
   it "☯ CorePrecedence.App" $ do
     prec "x y | z" `shouldBe` Right (x `App` y `Or` z)
-    prec "x @y. z" `shouldBe` Right (App x (For "y" z))
+    prec "x (@y. z)" `shouldBe` Right (App x (For "y" z))
     prec "x y : z" `shouldBe` Right (x `App` y `Ann` z)
     prec "x y -> z" `shouldBe` Right (x `App` y `Fun` z)
     prec "x y z" `shouldBe` Right (x `App` y `App` z)

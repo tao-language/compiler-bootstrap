@@ -88,7 +88,7 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Op2.Eq" $ do
     prec "x == y = z\na" `shouldBe` Right (Let (x `eq` y, z) a)
     prec "x == y | z" `shouldBe` Right (x `eq` y `Or` z)
-    prec "x == @y. z" `shouldBe` Right (x `eq` For ["y"] z)
+    prec "x == (@y. z)" `shouldBe` Right (x `eq` For ["y"] z)
     prec "x == y == z" `shouldBe` Right (x `eq` y `eq` z)
     prec "x == y != z" `shouldBe` Right (x `eq` y `ne` z)
     prec "x == y < z" `shouldBe` Right (x `eq` (y `lt` z))
@@ -109,7 +109,7 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Op2.Ne" $ do
     prec "x != y = z\na" `shouldBe` Right (Let (x `ne` y, z) a)
     prec "x != y | z" `shouldBe` Right (x `ne` y `Or` z)
-    prec "x != @y. z" `shouldBe` Right (x `ne` For ["y"] z)
+    prec "x != (@y. z)" `shouldBe` Right (x `ne` For ["y"] z)
     prec "x != y == z" `shouldBe` Right (x `ne` y `eq` z)
     prec "x != y != z" `shouldBe` Right (x `ne` y `ne` z)
     prec "x != y < z" `shouldBe` Right (x `ne` (y `lt` z))
@@ -130,7 +130,7 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Op2.Lt" $ do
     prec "x < y = z\na" `shouldBe` Right (Let (x `lt` y, z) a)
     prec "x < y | z" `shouldBe` Right (x `lt` y `Or` z)
-    prec "x < @y. z" `shouldBe` Right (x `lt` For ["y"] z)
+    prec "x < (@y. z)" `shouldBe` Right (x `lt` For ["y"] z)
     prec "x < y == z" `shouldBe` Right (x `lt` y `eq` z)
     prec "x < y != z" `shouldBe` Right (x `lt` y `ne` z)
     prec "x < y < z" `shouldBe` Right (x `lt` y `lt` z)
@@ -151,7 +151,7 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Op2.Le" $ do
     prec "x <= y = z\na" `shouldBe` Right (Let (x `le` y, z) a)
     prec "x <= y | z" `shouldBe` Right (x `le` y `Or` z)
-    prec "x <= @y. z" `shouldBe` Right (x `le` For ["y"] z)
+    prec "x <= (@y. z)" `shouldBe` Right (x `le` For ["y"] z)
     prec "x <= y == z" `shouldBe` Right (x `le` y `eq` z)
     prec "x <= y != z" `shouldBe` Right (x `le` y `ne` z)
     prec "x <= y < z" `shouldBe` Right (x `le` y `lt` z)
@@ -172,7 +172,7 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Op2.Gt" $ do
     prec "x > y = z\na" `shouldBe` Right (Let (x `gt` y, z) a)
     prec "x > y | z" `shouldBe` Right (x `gt` y `Or` z)
-    prec "x > @y. z" `shouldBe` Right (x `gt` For ["y"] z)
+    prec "x > (@y. z)" `shouldBe` Right (x `gt` For ["y"] z)
     prec "x > y == z" `shouldBe` Right (x `gt` y `eq` z)
     prec "x > y != z" `shouldBe` Right (x `gt` y `ne` z)
     prec "x > y < z" `shouldBe` Right (x `gt` y `lt` z)
@@ -193,7 +193,7 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Op2.Ge" $ do
     prec "x >= y = z\na" `shouldBe` Right (Let (x `ge` y, z) a)
     prec "x >= y | z" `shouldBe` Right (x `ge` y `Or` z)
-    prec "x >= @y. z" `shouldBe` Right (x `ge` For ["y"] z)
+    prec "x >= (@y. z)" `shouldBe` Right (x `ge` For ["y"] z)
     prec "x >= y == z" `shouldBe` Right (x `ge` y `eq` z)
     prec "x >= y != z" `shouldBe` Right (x `ge` y `ne` z)
     prec "x >= y < z" `shouldBe` Right (x `ge` y `lt` z)
@@ -214,7 +214,7 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Ann" $ do
     prec "x : y = z\na" `shouldBe` Right (Let (x `Ann` y, z) a)
     prec "x : y | z" `shouldBe` Right (x `Ann` y `Or` z)
-    prec "x : @y. z" `shouldBe` Right (x `Ann` For ["y"] z)
+    prec "x : (@y. z)" `shouldBe` Right (x `Ann` For ["y"] z)
     prec "x : y == z" `shouldBe` Right (x `Ann` y `eq` z)
     prec "x : y != z" `shouldBe` Right (x `Ann` y `ne` z)
     prec "x : y < z" `shouldBe` Right (x `Ann` y `lt` z)
@@ -235,7 +235,7 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Fun" $ do
     prec "x -> y = z\na" `shouldBe` Right (Let (x `Fun` y, z) a)
     prec "x -> y | z" `shouldBe` Right (x `Fun` y `Or` z)
-    prec "x -> @y. z" `shouldBe` Right (x `Fun` For ["y"] z)
+    prec "x -> (@y. z)" `shouldBe` Right (x `Fun` For ["y"] z)
     prec "x -> y == z" `shouldBe` Right (x `Fun` y `eq` z)
     prec "x -> y != z" `shouldBe` Right (x `Fun` y `ne` z)
     prec "x -> y < z" `shouldBe` Right (x `Fun` y `lt` z)
@@ -256,7 +256,7 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Op2.Add" $ do
     prec "x + y = z\na" `shouldBe` Right (Let (x `add` y, z) a)
     prec "x + y | z" `shouldBe` Right (x `add` y `Or` z)
-    prec "x + @y. z" `shouldBe` Right (x `add` For ["y"] z)
+    prec "x + (@y. z)" `shouldBe` Right (x `add` For ["y"] z)
     prec "x + y == z" `shouldBe` Right (x `add` y `eq` z)
     prec "x + y != z" `shouldBe` Right (x `add` y `ne` z)
     prec "x + y < z" `shouldBe` Right (x `add` y `lt` z)
@@ -277,7 +277,7 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Op2.Sub" $ do
     prec "x - y = z\na" `shouldBe` Right (Let (x `sub` y, z) a)
     prec "x - y | z" `shouldBe` Right (x `sub` y `Or` z)
-    prec "x - @y. z" `shouldBe` Right (x `sub` For ["y"] z)
+    prec "x - (@y. z)" `shouldBe` Right (x `sub` For ["y"] z)
     prec "x - y == z" `shouldBe` Right (x `sub` y `eq` z)
     prec "x - y != z" `shouldBe` Right (x `sub` y `ne` z)
     prec "x - y < z" `shouldBe` Right (x `sub` y `lt` z)
@@ -298,7 +298,7 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Op2.Mul" $ do
     prec "x * y = z\na" `shouldBe` Right (Let (x `mul` y, z) a)
     prec "x * y | z" `shouldBe` Right (x `mul` y `Or` z)
-    prec "x * @y. z" `shouldBe` Right (x `mul` For ["y"] z)
+    prec "x * (@y. z)" `shouldBe` Right (x `mul` For ["y"] z)
     prec "x * y == z" `shouldBe` Right (x `mul` y `eq` z)
     prec "x * y != z" `shouldBe` Right (x `mul` y `ne` z)
     prec "x * y < z" `shouldBe` Right (x `mul` y `lt` z)
@@ -319,7 +319,7 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Op2.Div" $ do
     prec "x / y = z\na" `shouldBe` Right (Let (x `div'` y, z) a)
     prec "x / y | z" `shouldBe` Right (x `div'` y `Or` z)
-    prec "x / @y. z" `shouldBe` Right (x `div'` For ["y"] z)
+    prec "x / (@y. z)" `shouldBe` Right (x `div'` For ["y"] z)
     prec "x / y == z" `shouldBe` Right (x `div'` y `eq` z)
     prec "x / y != z" `shouldBe` Right (x `div'` y `ne` z)
     prec "x / y < z" `shouldBe` Right (x `div'` y `lt` z)
@@ -340,7 +340,7 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Op2.DivI" $ do
     prec "x // y = z\na" `shouldBe` Right (Let (x `divI` y, z) a)
     prec "x // y | z" `shouldBe` Right (x `divI` y `Or` z)
-    prec "x // @y. z" `shouldBe` Right (x `divI` For ["y"] z)
+    prec "x // (@y. z)" `shouldBe` Right (x `divI` For ["y"] z)
     prec "x // y == z" `shouldBe` Right (x `divI` y `eq` z)
     prec "x // y != z" `shouldBe` Right (x `divI` y `ne` z)
     prec "x // y < z" `shouldBe` Right (x `divI` y `lt` z)
@@ -361,7 +361,7 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Op2.Pow" $ do
     prec "x ^ y = z\na" `shouldBe` Right (Let (x `pow` y, z) a)
     prec "x ^ y | z" `shouldBe` Right (x `pow` y `Or` z)
-    prec "x ^ @y. z" `shouldBe` Right (x `pow` For ["y"] z)
+    prec "x ^ (@y. z)" `shouldBe` Right (x `pow` For ["y"] z)
     prec "x ^ y == z" `shouldBe` Right (x `pow` y `eq` z)
     prec "x ^ y != z" `shouldBe` Right (x `pow` y `ne` z)
     prec "x ^ y < z" `shouldBe` Right (x `pow` y `lt` z)
@@ -382,7 +382,7 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Op1.Neg" $ do
     prec "-x = y\nz" `shouldBe` Right (Let (neg x, y) z)
     prec "-x | y" `shouldBe` Right (neg x `Or` y)
-    prec "-@x. y" `shouldBe` Right (neg (For ["x"] y))
+    prec "-(@x. y)" `shouldBe` Right (neg (For ["x"] y))
     prec "-x == y" `shouldBe` Right (neg x `eq` y)
     prec "-x != y" `shouldBe` Right (neg x `ne` y)
     prec "-x < y" `shouldBe` Right (neg x `lt` y)

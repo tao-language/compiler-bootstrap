@@ -538,32 +538,6 @@ grammar = do
                         Val a -> error "TODO: layout string interpolation"
                   Just ([PP.Text "'"] ++ concatMap layoutSegment segments ++ [PP.Text "'"])
                 _ -> Nothing,
-          -- Grammar.For
-          let parser expr = do
-                start <- P.getState
-                _ <- P.char '@'
-                xs <-
-                  P.oneOf
-                    [ do
-                        x <- parseNameVar
-                        _ <- P.spaces
-                        xs <- P.zeroOrMore $ do
-                          y <- parseNameVar
-                          _ <- P.spaces
-                          return y
-                        return (x : xs),
-                      return []
-                    ]
-                end <- P.getState
-                _ <- P.oneOf [P.char '.', P.char '\n']
-                _ <- P.whitespaces
-                a <- parseExpr 2
-                _ <- P.spaces
-                return (withLoc start end $ For xs a)
-           in G.Atom parser $ \layout -> \case
-                For xs a ->
-                  Just (PP.Text ('@' : unwords xs ++ ". ") : layout a)
-                _ -> Nothing,
           -- Grammar.Let
           let parser a expr = do
                 start <- P.getState
@@ -611,6 +585,32 @@ grammar = do
           G.infixR 5 (loc2 Ann) ":" $ \case
             Ann a b -> Just (a, " ", b)
             _ -> Nothing,
+          -- Grammar.For
+          let parser expr = do
+                start <- P.getState
+                _ <- P.char '@'
+                xs <-
+                  P.oneOf
+                    [ do
+                        x <- parseNameVar
+                        _ <- P.spaces
+                        xs <- P.zeroOrMore $ do
+                          y <- parseNameVar
+                          _ <- P.spaces
+                          return y
+                        return (x : xs),
+                      return []
+                    ]
+                end <- P.getState
+                _ <- P.oneOf [P.char '.', P.char '\n']
+                _ <- P.whitespaces
+                a <- expr
+                _ <- P.spaces
+                return (withLoc start end $ For xs a)
+           in G.Prefix 2 parser $ \layout -> \case
+                For xs a ->
+                  Just (PP.Text ('@' : unwords xs ++ ". ") : layout a)
+                _ -> Nothing,
           -- Grammar.Fun
           G.infixR 6 (loc2 Fun) "->" $ \case
             Fun a b -> Just (a, " ", b)
@@ -664,8 +664,8 @@ grammar = do
                 return (withLoc start end $ App x args)
            in G.InfixL 10 parser $ \lhs rhs -> \case
                 App fun args -> do
-                  let layoutArg ("", a) = rhs a
-                      layoutArg (x, a) = PP.Text (x ++ ": ") : rhs a
+                  let layoutArg ("", a) = G.layout grammar 0 a
+                      layoutArg (x, a) = PP.Text (x ++ ": ") : G.layout grammar 0 a
                   Just (lhs fun ++ PP.Text "(" : collectionLayout layoutArg args ++ [PP.Text ")"])
                 _ -> Nothing,
           -- Grammar.Call

@@ -40,7 +40,7 @@ syntax' src expected = case parse filename src of
 compile' :: Context -> FilePath -> Expr -> (C.Env, (C.Expr, C.Type))
 compile' ctx path expr = do
   let (env, a) = compile ctx path expr
-  (env, C.typed a)
+  (env, C.typedOf a)
 
 check' :: C.Expr -> [(Expr, Error Expr)]
 check' = check . lift
@@ -475,8 +475,11 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = match 1 1 (x 1 7) [fun 2 5 (y 2 3) (z 2 8)]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match x {\n| y -> z\n}" `shouldBe` Right expr
-    fmt' a `shouldBe` "^let y : ^Int = x : ^Int; z"
-    check' a `shouldBe` []
+    C.format 80 a `shouldBe` ""
+    fmt' a `shouldBe` "^let y : ^Int = x : ^Int; z : !undefined-var(z)"
+    check' a
+      `shouldBe` [ (match 1 1 (Ann (x 1 7) IntT) [fun 2 5 (Ann (y 2 3) IntT) (z 2 8)], undefinedVar "z")
+                 ]
     eval' env a t `shouldBe` ("z", "!undefined-var(z)")
 
   -- it "☯ Tao.Match.2" $ do

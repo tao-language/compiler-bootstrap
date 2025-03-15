@@ -125,23 +125,23 @@ grammar = do
                   let items = andOf (And a b)
                   Just (PP.Text "(" : intercalate [PP.Text ", "] (map layout items) ++ [PP.Text ")"])
                 _ -> Nothing,
-          -- Grammar.sugar.def
-          let parser expr = do
-                _ <- P.word "^let"
-                _ <- P.spaces
-                a <- expr
-                _ <- P.char '='
-                _ <- P.whitespaces
-                b <- expr
-                _ <- P.oneOf [P.char ';', P.char '\n']
-                _ <- P.whitespaces
-                def (a, b) <$> expr
-           in G.Atom parser $ \layout -> \case
-                App fun b -> case forOf fun of
-                  (xs, Fun a c) | sort (freeVars a) == sort xs -> do
-                    Just (PP.Text "^let " : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
-                  _ -> Nothing
-                _ -> Nothing,
+          -- -- Grammar.sugar.def
+          -- let parser expr = do
+          --       _ <- P.word "^let"
+          --       _ <- P.spaces
+          --       a <- expr
+          --       _ <- P.char '='
+          --       _ <- P.whitespaces
+          --       b <- expr
+          --       _ <- P.oneOf [P.char ';', P.char '\n']
+          --       _ <- P.whitespaces
+          --       def (a, b) <$> expr
+          --  in G.Atom parser $ \layout -> \case
+          --       App fun b -> case forOf fun of
+          --         (xs, Fun a c) | sort (freeVars a) == sort xs -> do
+          --           Just (PP.Text "^let " : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
+          --         _ -> Nothing
+          --       _ -> Nothing,
           -- Grammar.Or
           G.infixR 1 (const Or) "|" $ \case
             Or a b -> Just (a, " ", b)
@@ -178,10 +178,10 @@ grammar = do
                   return x
                 _ <- P.oneOf [P.char '.', P.char '\n']
                 _ <- P.whitespaces
-                a <- parseExpr 2
+                a <- expr
                 _ <- P.spaces
                 return (for xs a)
-           in G.Atom parser $ \layout -> \case
+           in G.Prefix 4 parser $ \layout -> \case
                 For x a -> do
                   let (xs, a') = forOf (For x a)
                   Just (PP.Text ("@" ++ unwords xs ++ ". ") : layout a')
@@ -487,10 +487,14 @@ isErr (Err _) = True
 isErr (Meta _ a) = isErr a
 isErr _ = False
 
-typed :: Expr -> (Expr, Type)
-typed (Ann a t) = (a, t)
-typed (Meta _ a) | isAnn a = typed a
-typed a = (a, Any)
+typed :: Expr -> Type -> Expr
+typed a _ | isAnn a = a
+typed a t = Ann a t
+
+typedOf :: Expr -> (Expr, Type)
+typedOf (Ann a t) = (a, t)
+typedOf (Meta _ a) | isAnn a = typedOf a
+typedOf a = (a, Any)
 
 -- Helper functions
 pop :: (Eq k) => k -> [(k, v)] -> [(k, v)]
@@ -959,11 +963,11 @@ infer ops env (Fix x a) = do
   ((fix [x] (substitute [(y, Var x)] a'), ta), s `compose` [(y, Var y)])
 infer ops env (Fun a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
-  ((Fun (Ann a' ta) b', Fun ta tb), s)
+  ((Fun (typed a' ta) b', Fun ta tb), s)
 infer ops env (App a b) = do
   let ((a_, ta), s1) = infer ops env a
   let ((a', b'), (t1, t2), s2) = checkApp ops (s1 `compose` env) (a_, ta) (substitute s1 b)
-  ((App a' (Ann b' t1), t2), s2 `compose` s1)
+  ((App a' (typed b' t1), t2), s2 `compose` s1)
 infer ops env (Let defs a) = do
   let ((a', ta), s) = infer ops (defs ++ env) a
   ((Let defs a', ta), s)
@@ -1007,12 +1011,12 @@ check ops env (For x a) t = do
   ((for [x] (substitute [(y, Var x)] a'), t'), s `compose` [(y, Var y)])
 check ops env (Fun a b) (Fun ta tb) = do
   let ((a', ta'), (b', tb'), s) = check2 ops env (a, ta) (b, tb)
-  ((Fun (Ann a' ta') b', Fun ta' tb'), s)
+  ((Fun (typed a' ta') b', Fun ta' tb'), s)
 check ops env (App a b) t2 = do
   let ((b', t1), s1) = infer ops env b
   let ((a', _), s2) = check ops (s1 `compose` env) (substitute s1 a) (Fun t1 (substitute s1 t2))
   let s = s2 `compose` s1
-  ((App a' (substitute s2 (Ann b' t1)), substitute s t2), s)
+  ((App a' (substitute s2 (typed b' t1)), substitute s t2), s)
 check ops env a (Err e) = ((a, Err e), [])
 check ops env a t = do
   let ((a', ta), s1) = infer ops env a
