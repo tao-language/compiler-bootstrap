@@ -465,7 +465,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = match 1 1 (z 1 7) [fun 2 5 (y 2 3) (x 2 8)]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match z {\n| y -> x\n}" `shouldBe` Right expr
-    fmt' a `shouldBe` "(@y. (y : !undefined-var(z)) -> (x : ^Int)) (z : !undefined-var(z))"
+    fmt' a `shouldBe` "^let y : !undefined-var(z) = z : !undefined-var(z); x : ^Int"
     check' a `shouldBe` [(z 1 7, undefinedVar "z"), (y 2 3, undefinedVar "z")]
     eval' env a t `shouldBe` ("42", "Int")
 
@@ -474,7 +474,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = match 1 1 (x 1 7) [fun 2 5 (y 2 3) (z 2 8)]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match x {\n| y -> z\n}" `shouldBe` Right expr
-    fmt' a `shouldBe` "(@y. (y : ^Int) -> (z : !undefined-var(z))) (x : ^Int)"
+    fmt' a `shouldBe` "^let y : ^Int = x : ^Int; z : !undefined-var(z)"
     check' a `shouldBe` [(z 2 8, undefinedVar "z")]
     eval' env a t `shouldBe` ("z", "_")
 
@@ -483,7 +483,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = match 1 1 (x 1 7) [fun 2 5 (a 2 3) (int 2 8 1)]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match x {\n| a -> 1\n}" `shouldBe` Right expr
-    fmt' a `shouldBe` "(@a. (a : ^Int) -> (1 : ^Int)) (x : ^Int)"
+    fmt' a `shouldBe` "^let a : ^Int = x : ^Int; 1 : ^Int"
     check' a `shouldBe` []
     eval' env a t `shouldBe` ("1", "Int")
 
@@ -501,7 +501,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = let' 1 3 (x 1 1, y 1 5) (x 2 1)
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x = y\nx" `shouldBe` Right expr
-    fmt' a `shouldBe` "(@x. (x : ^Int) -> (x : ^Int)) (y : ^Int)"
+    fmt' a `shouldBe` "^let x : ^Int = y : ^Int; x : ^Int"
     check' a `shouldBe` []
     eval' env a t `shouldBe` ("42", "Int")
 

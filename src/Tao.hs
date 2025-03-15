@@ -44,11 +44,11 @@ data Expr
   | If Expr Expr Expr
   | Meta C.Metadata Expr
   | Err (Error Expr)
-  deriving (Eq, Show)
+  deriving (Eq)
 
--- instance Show Expr where
---   show :: Expr -> String
---   show = format 80
+instance Show Expr where
+  show :: Expr -> String
+  show = Tao.format 80
 
 type Type = Expr
 

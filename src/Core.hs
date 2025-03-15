@@ -125,23 +125,23 @@ grammar = do
                   let items = andOf (And a b)
                   Just (PP.Text "(" : intercalate [PP.Text ", "] (map layout items) ++ [PP.Text ")"])
                 _ -> Nothing,
-          -- -- Grammar.sugar.def
-          -- let parser expr = do
-          --       _ <- P.word "^let"
-          --       _ <- P.spaces
-          --       a <- expr
-          --       _ <- P.char '='
-          --       _ <- P.whitespaces
-          --       b <- expr
-          --       _ <- P.oneOf [P.char ';', P.char '\n']
-          --       _ <- P.whitespaces
-          --       def (a, b) <$> expr
-          --  in G.Atom parser $ \layout -> \case
-          --       App fun b -> case forOf fun of
-          --         (xs, Fun a c) | sort (freeVars a) == sort xs -> do
-          --           Just (PP.Text "^let " : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
-          --         _ -> Nothing
-          --       _ -> Nothing,
+          -- Grammar.sugar.def
+          let parser expr = do
+                _ <- P.word "^let"
+                _ <- P.spaces
+                a <- expr
+                _ <- P.char '='
+                _ <- P.whitespaces
+                b <- expr
+                _ <- P.oneOf [P.char ';', P.char '\n']
+                _ <- P.whitespaces
+                def (a, b) <$> expr
+           in G.Atom parser $ \layout -> \case
+                App fun b -> case forOf fun of
+                  (xs, Fun a c) | sort (freeVars a) == sort xs -> do
+                    Just (PP.Text "^let " : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
+                  _ -> Nothing
+                _ -> Nothing,
           -- Grammar.Or
           G.infixR 1 (const Or) "|" $ \case
             Or a b -> Just (a, " ", b)
@@ -459,6 +459,10 @@ appT fun args types = App fun (Ann (and' args) (and' types))
 appOf :: Expr -> (Expr, [Expr])
 appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
 appOf a = (a, [])
+
+curry' :: Expr -> [Expr] -> Expr
+curry' fun [] = fun
+curry' fun (arg : args) = app (App fun arg) args
 
 let' :: [(String, Expr)] -> Expr -> Expr
 let' [] b = b
@@ -829,7 +833,7 @@ unify ops env a b = case (a, b) of
   (Int i, Int i') | i == i' -> (Int i, [])
   (Num n, Num n') | n == n' -> (Num n, [])
   (Var x, Var x') | x == x' -> (Var x, [])
-  (Var x, b) | x `occurs` b -> (Err $ TypeError $ OccursError x b, [])
+  (Var x, b) | x `occurs` b -> (Err $ occursError x b, [])
   (Var x, b) -> (b, [(x, b)])
   (a, Var x) -> unify ops env (Var x) a
   (Tag k, Tag k') | k == k' -> (Tag k, [])
@@ -844,12 +848,12 @@ unify ops env a b = case (a, b) of
     let (t, s) = unify ops env' (Tag k) b'
     (t, [(k, def)] `compose` s)
   (a, And (Tag k) b) | Just def <- lookup k env -> do
-    let a' = eval ops (app (Let env def) [b, a])
+    let a' = eval ops (curry' (Let env def) [b, a])
     let env' = filter (\(x, _) -> x /= k) env
     let (t, s) = unify ops env' a' (And (Tag k) b)
     (t, [(k, def)] `compose` s)
   (And (Tag k) a, b) | Just def <- lookup k env -> do
-    let b' = eval ops (app (Let env def) [a, b])
+    let b' = eval ops (curry' (Let env def) [a, b])
     let env' = filter (\(x, _) -> x /= k) env
     let (t, s) = unify ops env' (And (Tag k) a) b'
     (t, [(k, def)] `compose` s)
@@ -907,7 +911,7 @@ unify ops env a b = case (a, b) of
   (Call op args, Call op' args') | op == op' -> do
     let (args'', s) = unifyAll ops env args args'
     (Call op args'', s)
-  (a, b) -> (Err $ TypeError $ TypeMismatch a b, [])
+  (a, b) -> (Err $ typeMismatch a b, [])
 
 unify2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> ((Expr, Expr), Substitution)
 unify2 ops env (a1, a2) (b1, b2) = do

@@ -193,8 +193,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     parse' "x -> y " `shouldBe` Right (expr, "")
     format 80 expr `shouldBe` "x -> y"
     let ((expr', typ), s) = infer ops env expr
-    (expr', typ, s) `shouldBe` (Fun (Ann x IntT) y, Fun IntT NumT, [])
-    eval ops (Let env expr') `shouldBe` Fun (Ann (Int 42) IntT) (Num 3.14)
+    (expr', typ, s) `shouldBe` (Fun (Ann x IntT) (Ann y NumT), Fun IntT NumT, [])
+    eval ops (Let env expr') `shouldBe` Fun (Ann (Int 42) IntT) (Ann (Num 3.14) NumT)
 
   it "☯ Core.App" $ do
     let env = [("x", Fun (Ann (Int 1) IntT) (Num 3.14)), ("y", Int 1)]
@@ -642,17 +642,17 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   --   infer' (Ann (just i1) (maybe NumT)) `shouldBe` Left (TypeMismatch (just (Int 1 `Or` IntT)) (nothing `Or` just NumT))
   --   infer' (Ann (Tag "X") (maybe IntT)) `shouldBe` Left (TypeMismatch (Ann (Tag "X") (maybe IntT)) (nothing `Or` just IntT))
 
-  it "☯ infer Vec" $ do
+  it "☯ Core.infer.Vec" $ do
     let (n, a) = (Var "n", Var "a")
     let nil = Tag "Nil"
     let cons x xs = tag "Cons" [x, xs]
     let vec n a = tag "Vec" [n, a]
     let vecDef a =
           or'
-            [ For "n" (Fun (cons a (vec n a)) (vec (n `add` i1) a)),
-              Fun nil (vec i0 a)
+            [ lam [cons a (vec n a)] (vec (n `add` i1) a),
+              lam [nil] (vec i0 a)
             ]
-    let env = [("Vec", lam [And n a] (vecDef a))]
+    let env = [("Vec", lam [n, a] (vecDef a))]
 
     eval ops (Let env (App (Fun (vec i0 NumT) Unit) nil)) `shouldBe` Err (unhandledCase nil)
     eval ops (Let env (App (Fun (vec i0 NumT) Unit) (Tag "X"))) `shouldBe` Err (unhandledCase $ Tag "X")
