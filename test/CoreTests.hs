@@ -654,7 +654,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
             ]
     let env = [("Vec", lam [n, a] (vecDef a))]
 
-    eval ops (Let env (App (Fun (vec i0 NumT) Unit) nil)) `shouldBe` Err (unhandledCase nil)
+    eval ops (Let env (App (Fun (vec i0 NumT) Unit) nil)) `shouldBe` Unit
     eval ops (Let env (App (Fun (vec i0 NumT) Unit) (Tag "X"))) `shouldBe` Err (unhandledCase $ Tag "X")
     eval ops (Let env (App (Fun (vec i0 NumT) Unit) (vec i0 NumT))) `shouldBe` Unit
 

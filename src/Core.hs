@@ -667,7 +667,7 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
     Just (env1 ++ env2)
   (And (Let env (Tag k)) a, b) -> case lookup k env of
     Just def -> do
-      let b' = app (Let env def) [a, b]
+      let b' = curry' (Let env def) [a, b]
       match unify ops (And (Tag k) a) (b' `Or` b)
     Nothing -> match unify ops (And (Tag k) a) b
   (And (Let env (Meta _ a1)) a2, b) ->
