@@ -333,6 +333,7 @@ grammar = do
                   TypeError e -> case e of
                     UndefinedVar x -> Just [PP.Text $ "!undefined-var(" ++ x ++ ")"]
                     TypeMismatch a b -> Just (PP.Text "!type-mismatch(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
+                    NotAFunction a b -> Just (PP.Text "!not-a-function(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
                     e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
                   RuntimeError e -> case e of
                     UnhandledCase a -> Just (PP.Text "!unhandled-case(" : layout a ++ [PP.Text ")"])

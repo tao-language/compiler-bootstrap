@@ -456,9 +456,9 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = match 1 1 (x 1 7) []
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match x {}" `shouldBe` Right expr
-    fmt' a `shouldBe` "!cannot-apply((), ()) (x : !error(NotAFunction !cannot-apply((), ()) _))"
+    fmt' a `shouldBe` "!cannot-apply((), ()) (x : !not-a-function(!cannot-apply((), ()), _))"
     check' a `shouldBe` [(x 1 7, notAFunction (Err (cannotApply (Tuple []) (Tuple []))) Any)]
-    eval' env a t `shouldBe` ("!cannot-apply(!cannot-apply((), ()), @[ctx.x = 42:1:1,1:3](42) : !error(NotAFunction (Err (RuntimeError (CannotApply (Tuple []) (Tuple [])))) Any))", "Int")
+    eval' env a t `shouldBe` ("!cannot-apply(!cannot-apply((), ()), @[ctx.x = 42:1:1,1:3](42) : !not-a-function(!cannot-apply((), ()), _))", "Int")
 
   it "☯ Tao.Match.error.arg" $ do
     let ctx = [("m", [def "x" "42"])]
