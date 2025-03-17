@@ -12,6 +12,7 @@ import Location (Location (Location), Position (Pos), Range (Range))
 import qualified Parser as P
 import qualified PrettyPrint as PP
 import Stdlib (lookupValue, split)
+import System.FilePath (takeBaseName)
 
 type Parser a = P.Parser String a
 
@@ -1055,6 +1056,9 @@ parseNameOpTag = do
   _ <- P.char ')'
   return op
 
+parseName :: Parser String
+parseName = P.oneOf [parseNameVar, parseNameTag]
+
 parseModule :: String -> Parser Module
 parseModule name = do
   _ <- P.whitespaces
@@ -1067,18 +1071,132 @@ parseModule name = do
 parseStmt :: Parser Stmt
 parseStmt = do
   -- comments <- P.zeroOrMore parseComment
-  -- stmt <-
-  --   P.oneOf
-  --     [ parseImport,
-  --       Def <$> parseDef "=",
-  --       TypeDef <$> parseTypeDef,
-  --       parseTest
-  --     ]
-  -- _ <- P.spaces
-  -- _ <- parseLineBreak
-  -- _ <- P.whitespaces
-  -- return stmt
-  error "TODO: parseStmt"
+  stmt <-
+    P.oneOf
+      [ parseImport,
+        Def <$> parseDef "=",
+        TypeDef <$> parseTypeDef,
+        parseTest
+      ]
+  _ <- P.spaces
+  _ <- parseLineBreak
+  _ <- P.whitespaces
+  return stmt
+
+parseModulePath :: Parser (String, String)
+parseModulePath = do
+  pkg <- parseNameVar
+  path <- P.zeroOrMore $ do
+    _ <- P.char '/'
+    name <- parseNameVar
+    return ('/' : name)
+  let modulePath = concat (pkg : path)
+  return (modulePath, takeBaseName modulePath)
+
+parseImport :: Parser Stmt
+parseImport = do
+  _ <- P.word "import"
+  P.commit "import"
+  _ <- P.spaces
+  (path, alias) <- parseModulePath
+  _ <- P.spaces
+  exposing <-
+    P.oneOf
+      [ do
+          parseCollection "(" "," ")" $ do
+            name <- parseName
+            _ <- P.spaces
+            P.oneOf
+              [ do
+                  _ <- P.word "as"
+                  _ <- P.spaces
+                  alias <- parseName
+                  return (name, alias),
+                return (name, name)
+              ],
+        return []
+      ]
+  return (Import path alias exposing)
+
+parseDef :: String -> Parser (Expr, Expr)
+parseDef op = do
+  typeAnnotation <- P.maybe' $ do
+    _ <- P.char ':'
+    P.commit "definition-typed"
+    _ <- P.spaces
+    t <- parseExpr 0
+    _ <- P.spaces
+    _ <- parseLineBreak
+    _ <- P.whitespaces
+    return (`Ann` t)
+  a <- parseExpr 0
+  _ <- P.spaces
+  _ <- P.word op
+  P.commit "definition"
+  _ <- P.whitespaces
+  b <- parseExpr 0
+  case typeAnnotation of
+    Just ann -> return (ann a, b)
+    Nothing -> return (a, b)
+
+parseTypeDefAlt :: Parser (Expr, Maybe Type)
+parseTypeDefAlt = do
+  a <- parseExpr 2
+  _ <- P.spaces
+  mb <- P.maybe' $ do
+    _ <- P.text "=>"
+    _ <- P.whitespaces
+    parseExpr 2
+  return (a, mb)
+
+parseTypeDef :: Parser (String, [Expr], [(Expr, Maybe Type)])
+parseTypeDef = do
+  _ <- P.word "type"
+  _ <- P.whitespaces
+  name <- parseNameTag
+  _ <- P.whitespaces
+  args <- P.zeroOrMore $ do
+    arg <- parseExpr 0
+    _ <- P.whitespaces
+    return arg
+  _ <- P.char '='
+  _ <- P.whitespaces
+  _ <- P.maybe' $ do
+    _ <- P.char '|'
+    P.whitespaces
+  alt <- parseTypeDefAlt
+  alts <- P.zeroOrMore $ do
+    _ <- P.whitespaces
+    _ <- P.char '|'
+    _ <- P.whitespaces
+    parseTypeDefAlt
+  return (name, args, alt : alts)
+
+parseTest :: Parser Stmt
+parseTest = do
+  name <-
+    P.oneOf
+      [ do
+          _ <- P.text "--"
+          _ <- P.spaces
+          P.skipTo P.endOfLine,
+        return ""
+      ]
+  s <- P.getState
+  _ <- P.char '>'
+  _ <- P.oneOrMore P.space
+  P.commit "test"
+  expr <- parseExpr 0
+  result <-
+    P.oneOf
+      [ do
+          _ <- P.spaces
+          _ <- parseLineBreak
+          _ <- P.spaces
+          parseExpr 0,
+        return (Tag "True" [])
+      ]
+  return (Test (UnitTest s.filename s.pos name expr result))
 
 check :: Expr -> [(Expr, Error Expr)]
 check = \case
