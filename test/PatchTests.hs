@@ -19,7 +19,7 @@ run = describe "--==☯ PatchTests ☯==--" $ do
 
   it "☯ applyPatch Expr" $ do
     let ctx = [("mod", [Def (x, i1)])]
-    let apply' rule = applyPatch (ctx, "mod", rule)
+    let apply' rule = dropTypes . applyPatch (ctx, "mod", rule)
     apply' (x, y) x `shouldBe` y
     apply' (x, y) z `shouldBe` y
     apply' (x, y) i1 `shouldBe` y
@@ -36,4 +36,4 @@ run = describe "--==☯ PatchTests ☯==--" $ do
   it "☯ applyPatch Stmt" $ do
     let ctx = [("mod", [Def (x, i1)])]
     let apply' rule = applyPatch (ctx, "mod", [rule])
-    apply' (x, y) (Def (x, x)) `shouldBe` Def (x, y)
+    apply' (x, y) (Def (x, x)) `shouldBe` Def (x, Ann y Any)
