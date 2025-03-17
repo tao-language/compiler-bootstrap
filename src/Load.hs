@@ -70,7 +70,7 @@ loadSource filename = case splitExtension filename of
         --           range = Range pos pos
         --         }
         -- return (Left [UnexpectedChar loc])
-        error "TODO: loadSource handle error"
+        return Nothing
   _ -> error $ "file extension not supported: " ++ filename
 
 -- loadAtom :: String -> String -> IO Expr
