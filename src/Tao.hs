@@ -339,6 +339,18 @@ instance Apply Expr where
     Meta m a -> Meta m (f a)
     Err e -> Err (fmap f e)
 
+instance Apply Stmt where
+  apply :: (Expr -> Expr) -> Stmt -> Stmt
+  apply f = \case
+    Import path alias names -> Import path alias names
+    Def (a, b) -> Def (f a, f b)
+    TypeDef (name, args, alts) -> TypeDef (name, map f args, map (bimap f (fmap f)) alts)
+    Test t -> Test (apply f t)
+
+instance Apply UnitTest where
+  apply :: (Expr -> Expr) -> UnitTest -> UnitTest
+  apply f t = t {expr = f t.expr, expect = f t.expect}
+
 class DropMeta a where
   dropMeta :: a -> a
 
@@ -351,7 +363,15 @@ instance DropMeta Expr where
 
 instance DropMeta Stmt where
   dropMeta :: Stmt -> Stmt
-  dropMeta = error "TODO: dropMeta Stmt"
+  dropMeta = apply dropMeta
+
+instance DropMeta Module where
+  dropMeta :: Module -> Module
+  dropMeta (path, stmts) = (path, map dropMeta stmts)
+
+instance DropMeta Context where
+  dropMeta :: Context -> Context
+  dropMeta = map dropMeta
 
 class DropLocations a where
   dropLocations :: a -> a
@@ -1129,7 +1149,7 @@ parseDef op = do
     _ <- parseLineBreak
     _ <- P.whitespaces
     return (`Ann` t)
-  a <- parseExpr 0
+  a <- parseExpr 1
   _ <- P.spaces
   _ <- P.word op
   P.commit "definition"
