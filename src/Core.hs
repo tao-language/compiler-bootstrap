@@ -465,10 +465,6 @@ curry' :: Expr -> [Expr] -> Expr
 curry' fun [] = fun
 curry' fun (arg : args) = app (App fun arg) args
 
-let' :: [(String, Expr)] -> Expr -> Expr
-let' [] b = b
-let' defs b = Let defs b
-
 def :: (Expr, Expr) -> Expr -> Expr
 def (a, b) c = App (for (freeVars a) (Fun a c)) b
 

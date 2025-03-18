@@ -1353,7 +1353,7 @@ instance Compile String where
     let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
         compileDef (path, alt) (env, alts) = do
           let (env', alt') = compile ctx path (name, alt)
-          (unionBy (\a b -> fst a == fst b) env' env, C.let' env' alt' : alts)
+          (unionBy (\a b -> fst a == fst b) env' env, C.Let env' alt' : alts)
     let (env, alts) = foldr compileDef ([], []) (resolve ctx path name)
     let def = case alts of
           [] -> []

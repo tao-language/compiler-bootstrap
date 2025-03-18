@@ -51,24 +51,15 @@ instance TestSome (String, Stmt) where
 instance TestSome (FilePath, UnitTest) where
   testSome :: Context -> (UnitTest -> Bool) -> (FilePath, UnitTest) -> [TestResult]
   testSome ctx _ (path, t) = do
-    let (env, expr) = compile ctx path t.expr
-    let expect = let (env', a) = compile ctx path (Fun t.expect (Tag ":Ok" [])) in C.let' (env' ++ env) a
-    let test' = expect `C.Or` C.For "got" (C.Fun (C.Var "got") (C.Var "got"))
-    -- error . intercalate "\n" $
-    --   [ "-- testSome",
-    --     "ctx = " ++ show (map fst ctx),
-    --     "env = " ++ C.format (C.Let env C.Any),
-    --     "      " ++ show (map fst env),
-    --     "expr = " ++ C.format expr,
-    --     "expect = " ++ C.format expect,
-    --     "eval expect: " ++ C.format (C.eval runtimeOps expect),
-    --     "eval expr:   " ++ C.format (C.eval runtimeOps (C.let' env expr)),
-    --     "eval test:   " ++ C.format (C.eval runtimeOps (C.App test' (C.let' env expr))),
-    --     ""
-    --   ]
-    case C.eval runtimeOps (C.App test' (C.let' env expr)) of
+    let cases =
+          [ For [] (Fun t.expect (Tag ":Ok" [])),
+            fun [Var "$got"] (Var "$got")
+          ]
+    let (env, test') = compile ctx path (Match t.expr cases)
+    case C.eval runtimeOps (C.Let env test') of
+      C.Ann (C.Tag ":Ok") _ -> [TestPass t.filename t.pos t.name]
       C.Tag ":Ok" -> [TestPass t.filename t.pos t.name]
-      got -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
+      got -> [TestFail t.filename t.pos t.name t.expr t.expect (dropTypes $ lift got)]
 
 testAll :: (TestSome a) => Context -> a -> [TestResult]
 testAll ctx = testSome ctx (const True)
