@@ -6,7 +6,7 @@ import Data.Function ((&))
 import Data.List (intercalate, isInfixOf)
 import Error (Error (..), customError)
 import Load
-import Location (Position (..))
+import Location
 import System.FilePath (dropExtension)
 import Tao
 import Test
@@ -25,7 +25,6 @@ instance (Show a) => Show (Result a) where
 
 test :: Context -> Package -> [Result Expr]
 test ctx pkg = do
-  let err a = Err (customError a)
   let output = \case
         TestPass {name} -> Pass name
         TestFail {name, expected, got} -> Fail name (dropMeta expected) (dropMeta got)
@@ -38,6 +37,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let (xT, xT') = (Var "xT", C.Var "xT")
   let (i1, i2, i3) = (Int 1, Int 2, Int 3)
   let (i1', i2', i3') = (C.Int 1, C.Int 2, C.Int 3)
+  let loc f r1 c1 r2 c2 = Meta (C.Loc (Location f (Range (Pos r1 c1) (Pos r2 c2))))
   let err a = Err (customError a)
 
   let name = "examples/empty"
@@ -79,7 +79,7 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "Any match 1",
             Pass "Any match 2",
             Pass "Unit match",
-            -- Fail "Unit match fail" i1 Unit,
+            Fail "Unit match fail" i1 (Tuple []),
             Pass "IntT match",
             Fail "IntT match fail" NumT IntT,
             Pass "NumT match",
@@ -89,9 +89,9 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "Num match",
             Fail "Num match fail" (Num 0.0) (Num 3.14),
             Pass "Tag match",
-            -- Fail "Tag match fail" (Tag "B") (Tag "A"),
+            Fail "Tag match fail" (Tag "B" []) (Tag "A" []),
             Pass "Err match",
-            Fail "Err match fail" i1 (err Any)
+            Fail "Err match fail" i1 (err $ loc (name ++ ".tao") 66 10 66 11 Any)
           ]
     test ctx pkg `shouldBe` testResults
 

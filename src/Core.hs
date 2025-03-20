@@ -1,6 +1,6 @@
 module Core where
 
-import Data.Bifunctor (Bifunctor (second))
+import Data.Bifunctor (Bifunctor (bimap, second))
 import Data.Char (isAlphaNum, isLower, isUpper)
 import Data.Function ((&))
 import Data.List (delete, intercalate, sort, union, unionBy)
@@ -398,6 +398,11 @@ andOf Unit = []
 andOf (And a b) = a : andOf b
 andOf a = [a]
 
+isOr :: Expr -> Bool
+isOr (Or _ _) = True
+isOr (Meta _ a) = isOr a
+isOr _ = False
+
 or' :: [Expr] -> Expr
 or' [] = Unit
 or' [a] = a
@@ -406,6 +411,11 @@ or' (a : bs) = Or a (or' bs)
 orOf :: Expr -> [Expr]
 orOf (Or a b) = a : orOf b
 orOf a = [a]
+
+asOr :: Expr -> Maybe (Expr, Expr)
+asOr (Or a b) = Just (a, b)
+asOr (Meta _ a) = asOr a
+asOr _ = Nothing
 
 isAnn :: Expr -> Bool
 isAnn (Ann _ _) = True
@@ -707,8 +717,8 @@ eval ops expr = case reduce ops expr of
     (a, b) -> Ann a b
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> Or (eval ops a) (eval ops b)
-  For x a -> for [x] (eval ops (Let [(x, Var x)] a))
-  Fix x a -> fix [x] (eval ops (Let [(x, Var x)] a))
+  For x a -> for' [x] (eval ops (Let [(x, Var x)] a))
+  Fix x a -> fix' [x] (eval ops (Let [(x, Var x)] a))
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)
   Call f args -> Call f (eval ops <$> args)
@@ -950,10 +960,10 @@ infer ops env (And a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((And a' b', And ta tb), s)
 infer ops env (Or a b) = do
-  let ((a', ta), (b', tb), s1) = infer2 ops env a b
-  case unify ops (s1 `compose` env) ta tb of
-    (Err _, _) -> ((Or a' b', Or ta tb), s1)
-    (t, s2) -> ((Or a' b', t), s2 `compose` s1)
+  let ((a', ta), (b', tb), s) = infer2 ops env a b
+  case unify ops (s `compose` env) ta tb of
+    (t, []) -> ((Or a' b', t), s)
+    _ -> ((Or a' b', Or ta tb), s)
 infer ops env (For x a) = do
   let y = newName (map fst env) x
   let ((a', ta), s) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
@@ -1002,10 +1012,10 @@ check ops env a (For x t) = do
   let ((a', t'), s) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] t)
   ((a', for [x] (substitute [(y, Var x)] t')), s `compose` [(y, Var y)])
 check ops env (Or a b) t = do
-  let ((a', ta'), (b', tb'), s1) = check2 ops env (a, t) (b, t)
-  case unify ops (s1 `compose` env) ta' tb' of
-    (Err _, _) -> ((Or a' b', Or ta' tb'), s1)
-    (t', s2) -> ((Or a' b', t'), s2 `compose` s1)
+  let ((a', ta'), (b', tb'), s) = check2 ops env (a, t) (b, t)
+  case unify ops (s `compose` env) ta' tb' of
+    (t', []) -> ((Or a' b', t'), s)
+    _ -> ((Or a' b', Or ta' tb'), s)
 check ops env (For x a) t = do
   let y = newName (map fst env) x
   let ((a', t'), s) = check ops ((y, Var y) : env) (substitute [(x, Var y)] a) t
@@ -1041,6 +1051,12 @@ checkApp ops env (a, ta) b = case ta of
     let (ta', s1) = instantiate (map fst env) (For x ta)
     let (ab, ts, s2) = checkApp ops (s1 `compose` env) (substitute s1 a, ta') (substitute s1 b)
     (ab, ts, s2 `compose` s1)
+  Or ta1 ta2 | Just (a1, a2) <- asOr a -> do
+    case checkApp ops env (a1, ta1) b of
+      (_, (t1, t2), _) | isErr t1 || isErr t2 -> checkApp ops env (a2, ta2) b
+      ((a, b), (t1, t2), s1) -> case checkApp ops (s1 `compose` env) (a2, substitute s1 ta2) b of
+        (_, (t1, t2), _) | isErr t1 || isErr t2 -> ((a, b), (t1, t2), s1)
+        ((a', b), (t1', t2'), s2) -> ((Or a a', b), (Or (substitute s2 t1) t1', Or (substitute s2 t2) t2'), s2 `compose` s1)
   Or ta1 ta2 -> do
     let ((a_, b_), (t1a, t2a), s1) = checkApp ops env (a, ta1) b
     let ((a', b'), (t1b, t2b), s2) = checkApp ops (s1 `compose` env) (a_, substitute s1 ta2) b_
