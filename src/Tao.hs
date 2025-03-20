@@ -606,6 +606,10 @@ grammar = do
           G.infixR 5 (loc2 Ann) ":" $ \case
             Ann a b -> Just (a, " ", b)
             _ -> Nothing,
+          -- Grammar.Fun
+          G.infixR 6 (loc2 Fun) "->" $ \case
+            Fun a b -> Just (a, " ", b)
+            _ -> Nothing,
           -- Grammar.For
           let parser expr = do
                 start <- P.getState
@@ -628,40 +632,36 @@ grammar = do
                 a <- expr
                 _ <- P.spaces
                 return (withLoc start end $ For xs a)
-           in G.Prefix 2 parser $ \layout -> \case
+           in G.Prefix 7 parser $ \layout -> \case
                 For xs a ->
                   Just (PP.Text ('@' : unwords xs ++ ". ") : layout a)
                 _ -> Nothing,
-          -- Grammar.Fun
-          G.infixR 6 (loc2 Fun) "->" $ \case
-            Fun a b -> Just (a, " ", b)
-            _ -> Nothing,
           -- Grammar.Op2.Add
-          G.infixL 7 (locOp2 Add) "+" $ \case
+          G.infixL 8 (locOp2 Add) "+" $ \case
             Op2 Add a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Sub
-          G.infixL 7 (locOp2 Sub) "-" $ \case
+          G.infixL 8 (locOp2 Sub) "-" $ \case
             Op2 Sub a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Mul
-          G.infixL 8 (locOp2 Mul) "*" $ \case
+          G.infixL 9 (locOp2 Mul) "*" $ \case
             Op2 Mul a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Div
-          G.infixL 8 (locOp2 Div) "/" $ \case
+          G.infixL 9 (locOp2 Div) "/" $ \case
             Op2 Div a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.DivI
-          G.infixL 8 (locOp2 DivI) "//" $ \case
+          G.infixL 9 (locOp2 DivI) "//" $ \case
             Op2 DivI a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Pow
-          G.infixR 9 (locOp2 Pow) "^" $ \case
+          G.infixR 10 (locOp2 Pow) "^" $ \case
             Op2 Pow a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op1.Neg
-          G.prefix 10 (locOp1 Neg) "-" $ \case
+          G.prefix 11 (locOp1 Neg) "-" $ \case
             Op1 Neg a -> Just ("", a)
             _ -> Nothing,
           -- Grammar.App
@@ -683,7 +683,7 @@ grammar = do
                 end <- P.getState
                 _ <- P.spaces
                 return (withLoc start end $ App x args)
-           in G.InfixL 10 parser $ \lhs rhs -> \case
+           in G.InfixL 11 parser $ \lhs rhs -> \case
                 App fun args -> do
                   let layoutArg ("", a) = G.layout grammar 0 a
                       layoutArg (x, a) = PP.Text (x ++ ": ") : G.layout grammar 0 a

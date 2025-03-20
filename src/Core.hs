@@ -459,7 +459,7 @@ funOf (Fun arg ret) = (andOf arg, ret)
 funOf a = ([], a)
 
 lam :: [Expr] -> Expr -> Expr
-lam ps b = for (freeVars (and' ps)) (fun ps b)
+lam ps b = for' (freeVars (and' ps)) (fun ps b)
 
 app :: Expr -> [Expr] -> Expr
 app fun args = App fun (and' args)
@@ -476,7 +476,7 @@ curry' fun [] = fun
 curry' fun (arg : args) = app (App fun arg) args
 
 def :: (Expr, Expr) -> Expr -> Expr
-def (a, b) c = App (for (freeVars a) (Fun a c)) b
+def (a, b) c = App (for' (freeVars a) (Fun a c)) b
 
 list :: Expr -> Expr -> [Expr] -> Expr
 list _ nil [] = nil
@@ -717,8 +717,8 @@ eval ops expr = case reduce ops expr of
     (a, b) -> Ann a b
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> Or (eval ops a) (eval ops b)
-  For x a -> for' [x] (eval ops (Let [(x, Var x)] a))
-  Fix x a -> fix' [x] (eval ops (Let [(x, Var x)] a))
+  For x a -> for [x] (eval ops (Let [(x, Var x)] a))
+  Fix x a -> fix [x] (eval ops (Let [(x, Var x)] a))
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)
   Call f args -> Call f (eval ops <$> args)
@@ -967,11 +967,11 @@ infer ops env (Or a b) = do
 infer ops env (For x a) = do
   let y = newName (map fst env) x
   let ((a', ta), s) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
-  ((for [x] (substitute [(y, Var x)] a'), ta), s `compose` [(y, Var y)])
+  ((for' [x] (substitute [(y, Var x)] a'), ta), s `compose` [(y, Var y)])
 infer ops env (Fix x a) = do
   let y = newName (map fst env) x
   let ((a', ta), s) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
-  ((fix [x] (substitute [(y, Var x)] a'), ta), s `compose` [(y, Var y)])
+  ((fix' [x] (substitute [(y, Var x)] a'), ta), s `compose` [(y, Var y)])
 infer ops env (Fun a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((Fun (typed a' ta) (typed b' tb), Fun ta tb), s)
@@ -1010,7 +1010,7 @@ check :: Ops -> Env -> Expr -> Type -> ((Expr, Type), Substitution)
 check ops env a (For x t) = do
   let y = newName (map fst env) x
   let ((a', t'), s) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] t)
-  ((a', for [x] (substitute [(y, Var x)] t')), s `compose` [(y, Var y)])
+  ((a', for' [x] (substitute [(y, Var x)] t')), s `compose` [(y, Var y)])
 check ops env (Or a b) t = do
   let ((a', ta'), (b', tb'), s) = check2 ops env (a, t) (b, t)
   case unify ops (s `compose` env) ta' tb' of
@@ -1019,7 +1019,7 @@ check ops env (Or a b) t = do
 check ops env (For x a) t = do
   let y = newName (map fst env) x
   let ((a', t'), s) = check ops ((y, Var y) : env) (substitute [(x, Var y)] a) t
-  ((for [x] (substitute [(y, Var x)] a'), t'), s `compose` [(y, Var y)])
+  ((for' [x] (substitute [(y, Var x)] a'), t'), s `compose` [(y, Var y)])
 check ops env (Fun a b) (Fun ta tb) = do
   let ((a', ta'), (b', tb'), s) = check2 ops env (a, ta) (b, tb)
   ((Fun (typed a' ta') (typed b' tb), Fun ta' tb'), s)
