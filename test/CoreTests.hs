@@ -56,10 +56,23 @@ run = describe "--==☯️ Core language ☯️==--" $ do
       parse' text = case parse 0 filename text of
         Right (a, s) -> Right (a, s.remaining)
         Left s -> Left (s.context, s.remaining)
-  let run env src = case parse' src of
-        Right (a, "") -> Right (format 80 $ eval ops (Let env a))
-        Right (_, rem) -> Left ("remaining: " ++ rem)
-        Left (_, rem) -> Left ("syntax error: " ++ rem)
+  let parseWith :: [(String, String)] -> String -> Either String (Env, Expr)
+      parseWith envSrc src = do
+        let p src = case parse' src of
+              Right (a, "") -> Right a
+              Right (_, rem) -> Left ("remaining: " ++ rem)
+              Left (_, rem) -> Left ("syntax error: " ++ rem)
+        env <- mapM (\(x, src) -> fmap (x,) (p src)) envSrc
+        expr <- p src
+        Right (env, expr)
+  let run envSrc src = do
+        (env, a) <- parseWith envSrc src
+        let a' = eval ops (Let env a)
+        Right (format 80 a')
+  let infer' envSrc src = do
+        (env, a) <- parseWith envSrc src
+        let ((a', t), s) = infer ops env a
+        Right (format 80 t)
 
   it "☯ Core.Any" $ do
     let env = []
@@ -312,7 +325,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     format 80 expr `shouldBe` "^let x = y; z"
 
   it "☯ Core.run.App" $ do
-    let env = [("x", Int 42), ("y", Num 3.14), ("a", a)]
+    let env = [("x", "42"), ("y", "3.14"), ("a", "a")]
     run env "_ x" `shouldBe` Right "_"
     run env "() x" `shouldBe` Right "!cannot-apply((), 42)"
     run env "^Int x" `shouldBe` Right "!cannot-apply(^Int, 42)"
@@ -339,7 +352,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     run env "!error(a) x" `shouldBe` Right "!cannot-apply(!error(a), 42)"
 
   it "☯ Core.run.match" $ do
-    let env = [("x", Int 42), ("y", Num 3.14), ("a", a)]
+    let env = [("x", "42"), ("y", "3.14"), ("a", "a")]
     run env "(_ -> Ok) x" `shouldBe` Right "Ok"
     run env "(() -> Ok) x" `shouldBe` Right "!unhandled-case(42)"
     run env "(() -> Ok) ()" `shouldBe` Right "Ok"
@@ -388,9 +401,16 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     run env "(x -> Ok) !error(x)" `shouldBe` Right "!unhandled-case(!error(42))"
 
   it "☯ Core.example.eq" $ do
-    let letEq = "^let eq = @x. (x, x) -> T | _ -> F; "
-    run [] (letEq ++ "eq (1, 1)") `shouldBe` Right "T"
-    run [] (letEq ++ "eq (1, 2)") `shouldBe` Right "F"
+    let env = [("eq", "(@x. (x, x)) -> T | _ -> F")]
+    run env "eq (1, 1)" `shouldBe` Right "T"
+    run env "eq (1, 2)" `shouldBe` Right "F"
+
+  it "☯ Core.example.not" $ do
+    let env = [("not", "T -> F | F -> T")]
+    infer' env "not" `shouldBe` Right "T -> F | F -> T"
+    run env "not T" `shouldBe` Right "F"
+    run env "not F" `shouldBe` Right "T"
+    run env "not X" `shouldBe` Right "!unhandled-case(X)"
 
   it "☯ syntax sugar" $ do
     -- let' [] x `shouldBe` x

@@ -849,12 +849,11 @@ lower = \case
   String [] -> C.Tag "''"
   String segments -> error "TODO: lower String"
   Or a b -> C.Or (lower a) (lower b)
-  -- For xs (For ys a) -> lower (For (xs ++ ys) a)
-  For [] (Fun a b) -> C.Fun (lower a) (lower b)
-  For [] (Meta m a) | isFun a -> C.Meta m (lower (For [] a))
-  For [] a -> lower a
-  For xs a -> C.for xs (lower (For [] a))
-  Fun a b -> lower (For (freeVars a) (Fun a b))
+  For xs a -> C.for xs (lower a)
+  -- Fun (For xs a) b -> C.Fun (C.for xs (lower a)) (lower b)
+  Fun (For xs a) b -> C.for xs (C.Fun (lower a) (lower b))
+  Fun (Meta _ a) b | isFor a -> lower (Fun a b)
+  Fun a b -> lower (Fun (For (freeVars a) a) b)
   App fun args -> C.App (lower fun) (lower $ Tuple (map snd args))
   Call op args -> C.Call op (map lower args)
   Op1 op a -> C.app (C.Var $ showOp1 op) [lower a]
@@ -1233,7 +1232,7 @@ run ctx path expr = do
 
 eval :: C.Env -> C.Expr -> (Expr, Type)
 eval env expr =
-  C.eval runtimeOps (C.Let env expr)
+  C.eval runtimeOps (C.let' env expr)
     & lift
     & typed
     & bimap dropTypes dropTypes
@@ -1343,8 +1342,8 @@ instance Compile (String, Expr) where
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies
     let ((a, t), s) = C.infer buildOps env (lower expr)
-    let xs = C.freeVars a `intersect` map fst s \\ map fst env
-    let ys = C.freeVars t `intersect` map fst s \\ map fst env
+    let xs = (C.freeVars a `intersect` map fst s) \\ map fst env
+    let ys = (C.freeVars t `intersect` map fst s) \\ map fst env
     (env, C.Ann (C.for xs a) (C.for ys t))
 
 instance Compile String where
@@ -1353,7 +1352,7 @@ instance Compile String where
     let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
         compileDef (path, alt) (env, alts) = do
           let (env', alt') = compile ctx path (name, alt)
-          (unionBy (\a b -> fst a == fst b) env' env, C.Let env' alt' : alts)
+          (unionBy (\a b -> fst a == fst b) env' env, C.let' env' alt' : alts)
     let (env, alts) = foldr compileDef ([], []) (resolve ctx path name)
     let def = case alts of
           [] -> []

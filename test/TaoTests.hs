@@ -21,7 +21,7 @@ fmt' :: C.Expr -> String
 fmt' = C.format 80 . C.dropMeta
 
 def :: String -> String -> Stmt
-def a b = case (parse ("ctx." ++ a) a, parse ("ctx." ++ a ++ " = " ++ b) b) of
+def a b = case (parse ("ctx." ++ a) a, parse ("ctx." ++ a) b) of
   (Right (a, _), Right (b, _)) -> Def (a, b)
   (Left s, _) -> error ("ctx[pattern] syntax error, remaining: " ++ s.remaining)
   (_, Left s) -> error ("ctx[value] syntax error, remaining: " ++ s.remaining)
@@ -386,7 +386,7 @@ run = describe "--==☯ Tao ☯==--" $ do
 
   it "☯ Tao.Fun.bound" $ do
     let ctx = [("m", [def "x" "42", def "y" "3.14"])]
-    let expr = loc 1 1 1 2 (For [] $ fun 1 6 (x 1 4) (y 1 9))
+    let expr = fun 1 6 (loc 1 1 1 2 $ For [] $ x 1 4) (y 1 9)
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "@. x -> y" `shouldBe` Right expr
     fmt' a `shouldBe` "(x : ^Int) -> (y : ^Num)"
@@ -419,6 +419,46 @@ run = describe "--==☯ Tao ☯==--" $ do
     fmt' a `shouldBe` "x ((y, z) : (^Int, ^Num))"
     check' a `shouldBe` []
     eval' env a t `shouldBe` ("3.14", "Num")
+
+  it "☯ Tao.App.Fun" $ do
+    let ctx = [("m", [def "x" "A -> B", def "y" "A"])]
+    let expr = loc 1 2 1 5 (app (x 1 1) [y 1 3])
+    let (env, (a, t)) = compile' ctx "m" expr
+    syntax "x(y)" `shouldBe` Right expr
+    fmt' a `shouldBe` "x (y : A)"
+    fmt' t `shouldBe` "B"
+    check' a `shouldBe` []
+    eval' env a t `shouldBe` ("B", "B")
+
+  it "☯ Tao.App.Or.first" $ do
+    let ctx = [("m", [def "x" "A -> B | B -> A", def "y" "A"])]
+    let expr = loc 1 2 1 5 (app (x 1 1) [y 1 3])
+    let (env, (a, t)) = compile' ctx "m" expr
+    syntax "x(y)" `shouldBe` Right expr
+    fmt' a `shouldBe` "x (y : A)"
+    fmt' t `shouldBe` "B"
+    check' a `shouldBe` []
+    eval' env a t `shouldBe` ("B", "B")
+
+  it "☯ Tao.App.Or.second" $ do
+    let ctx = [("m", [def "x" "A -> B | B -> A", def "y" "B"])]
+    let expr = loc 1 2 1 5 (app (x 1 1) [y 1 3])
+    let (env, (a, t)) = compile' ctx "m" expr
+    syntax "x(y)" `shouldBe` Right expr
+    fmt' a `shouldBe` "x (y : B)"
+    fmt' t `shouldBe` "A"
+    check' a `shouldBe` []
+    eval' env a t `shouldBe` ("A", "A")
+
+  it "☯ Tao.App.Or.any" $ do
+    let ctx = [("m", [def "x" "A -> B | B -> A", def "y" "y"])]
+    let expr = loc 1 2 1 5 (app (x 1 1) [y 1 3])
+    let (env, (a, t)) = compile' ctx "m" expr
+    syntax "x(y)" `shouldBe` Right expr
+    fmt' a `shouldBe` "x (y : (A | B))"
+    fmt' t `shouldBe` "B | A"
+    check' a `shouldBe` []
+    eval' env a t `shouldBe` ("x (y : (A | B))", "B | A")
 
   -- TODO: App named arguments
   -- TODO: App default values

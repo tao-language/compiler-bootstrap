@@ -52,23 +52,21 @@ instance TestSome (FilePath, UnitTest) where
   testSome :: Context -> (UnitTest -> Bool) -> (FilePath, UnitTest) -> [TestResult]
   testSome ctx _ (path, t) = do
     let cases =
-          [ For [] (Fun t.expect (Tag ":Ok" [])),
+          [ Fun (For [] t.expect) (Tag ":Ok" []),
             fun [Var "$got"] (Tag ":Err" [Var "$got"])
           ]
     let (env, test') = compile ctx path (Match t.expr cases)
-    case C.eval runtimeOps (C.Let env test') of
-      C.Ann (C.Tag ":Ok") _ -> [TestPass t.filename t.pos t.name]
-      C.Tag ":Ok" -> [TestPass t.filename t.pos t.name]
-      C.Ann (C.And (C.Tag ":Err") got) _ -> [TestFail t.filename t.pos t.name t.expr t.expect (dropTypes $ lift got)]
-      C.And (C.Tag ":Err") got -> [TestFail t.filename t.pos t.name t.expr t.expect (dropTypes $ lift got)]
-      a ->
+    case C.typedOf (C.eval runtimeOps (C.Let env test')) of
+      (C.Tag ":Ok", _) -> [TestPass t.filename t.pos t.name]
+      (C.And (C.Tag ":Err") got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (dropTypes $ lift got)]
+      (a, _) ->
         (error . intercalate "\n")
           [ show test',
             show $ C.dropMeta test',
             show a,
             ""
           ]
-      got -> [TestFail t.filename t.pos t.name t.expr t.expect (dropTypes $ lift got)]
+      (got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (dropTypes $ lift got)]
 
 testAll :: (TestSome a) => Context -> a -> [TestResult]
 testAll ctx = testSome ctx (const True)
