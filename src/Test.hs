@@ -59,13 +59,6 @@ instance TestSome (FilePath, UnitTest) where
     case C.typedOf (C.eval runtimeOps (C.Let env test')) of
       (C.Tag ":Ok", _) -> [TestPass t.filename t.pos t.name]
       (C.And (C.Tag ":Err") got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (dropTypes $ lift got)]
-      (a, _) ->
-        (error . intercalate "\n")
-          [ show test',
-            show $ C.dropMeta test',
-            show a,
-            ""
-          ]
       (got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (dropTypes $ lift got)]
 
 testAll :: (TestSome a) => Context -> a -> [TestResult]

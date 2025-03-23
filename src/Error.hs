@@ -36,7 +36,7 @@ data CaseError a
   deriving (Eq, Show)
 
 data RuntimeError a
-  = UnhandledCase a
+  = UnhandledCase a a
   | CannotApply a a
   | CustomError a
   deriving (Eq, Show)
@@ -45,7 +45,7 @@ instance Functor Error where
   fmap :: (a -> b) -> Error a -> Error b
   fmap f = \case
     RuntimeError e -> case e of
-      UnhandledCase a -> unhandledCase (f a)
+      UnhandledCase a b -> unhandledCase (f a) (f b)
       CannotApply a b -> cannotApply (f a) (f b)
       CustomError a -> customError (f a)
     SyntaxError e -> case e of
@@ -80,8 +80,8 @@ missingCases cases = CaseError (MissingCases cases)
 redundantCases :: [a] -> Error a
 redundantCases cases = CaseError (RedundantCases cases)
 
-unhandledCase :: a -> Error a
-unhandledCase a = RuntimeError (UnhandledCase a)
+unhandledCase :: a -> a -> Error a
+unhandledCase a b = RuntimeError (UnhandledCase a b)
 
 cannotApply :: a -> a -> Error a
 cannotApply a b = RuntimeError (CannotApply a b)

@@ -48,7 +48,8 @@ check' :: C.Expr -> [(Expr, Error Expr)]
 check' = check . lift
 
 eval' :: C.Env -> C.Expr -> C.Type -> (String, String)
-eval' env expr type' = bimap fmt fmt (eval env (C.Ann expr type'))
+eval' env expr type' =
+  bimap (fmt . dropTypes) (fmt . dropTypes) (eval env (C.Ann expr type'))
 
 run :: SpecWith ()
 run = describe "--==☯ Tao ☯==--" $ do
@@ -93,8 +94,8 @@ run = describe "--==☯ Tao ☯==--" $ do
     let ctx = []
     let expr = Meta (C.Loc $ Location "file" (Range (Pos 1 2) (Pos 3 4))) (any 1 17)
     let (env, (a, t)) = compile' ctx "m" expr
-    syntax "@[:1:2,3:4] _" `shouldBe` Left "syntax error, remaining: :1:2,3:4] _"
-    syntax' "@[file:1:2,3:4] _" "_" `shouldBe` Right expr
+    syntax "^[:1:2,3:4] _" `shouldBe` Left "syntax error, remaining: :1:2,3:4] _"
+    syntax' "^[file:1:2,3:4] _" "_" `shouldBe` Right expr
     fmt' a `shouldBe` "_"
     check' a `shouldBe` []
     eval' env a t `shouldBe` ("_", "@_1. _1")
@@ -253,7 +254,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "x : Num" `shouldBe` Right expr
     fmt' a `shouldBe` "x : !type-mismatch(^Int, ^Num)"
     check' a `shouldBe` [(x 1 1, typeMismatch IntT (numT 1 5))]
-    eval' env a t `shouldBe` ("42", "!type-mismatch(Int, @[<test>:1:5,1:8](Num))")
+    eval' env a t `shouldBe` ("42", "!type-mismatch(Int, ^[<test>:1:5,1:8](Num))")
 
   it "☯ Tao.Tuple.0" $ do
     let ctx = []
@@ -382,7 +383,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "x -> y" `shouldBe` Right expr
     fmt' a `shouldBe` "@x1T x. (x : x1T) -> (y : ^Num)"
     check' a `shouldBe` []
-    eval' env a t `shouldBe` ("x -> 3.14", "x1T -> Num")
+    eval' env a t `shouldBe` ("(x : x1T) -> 3.14", "x1T -> Num")
 
   it "☯ Tao.Fun.bound" $ do
     let ctx = [("m", [def "x" "42", def "y" "3.14"])]
@@ -391,7 +392,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "@. x -> y" `shouldBe` Right expr
     fmt' a `shouldBe` "(x : ^Int) -> (y : ^Num)"
     check' a `shouldBe` []
-    eval' env a t `shouldBe` ("42 -> 3.14", "Int -> Num")
+    eval' env a t `shouldBe` ("(42 : Int) -> 3.14", "Int -> Num")
 
   it "☯ Tao.App.empty" $ do
     let ctx = [("m", [def "x" "() -> 42"])]
@@ -451,14 +452,14 @@ run = describe "--==☯ Tao ☯==--" $ do
     eval' env a t `shouldBe` ("A", "A")
 
   it "☯ Tao.App.Or.both" $ do
-    let ctx = [("m", [def "x" "A -> B | B -> A", def "y" "y"])]
+    let ctx = [("m", [def "x" "A -> B | B -> A", Def (Var "y", Var "y")])]
     let expr = loc 1 2 1 5 (app (x 1 1) [y 1 3])
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x(y)" `shouldBe` Right expr
     fmt' a `shouldBe` "x (y : (A | B))"
     fmt' t `shouldBe` "B | A"
     check' a `shouldBe` []
-    eval' env a t `shouldBe` ("x (y : (A | B))", "B | A")
+    eval' env a t `shouldBe` ("((A : A) -> B | (B : B) -> A)(y : (A | B))", "B | A")
 
   -- TODO: App named arguments
   -- TODO: App default values
@@ -498,7 +499,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "match x {}" `shouldBe` Right expr
     fmt' a `shouldBe` "!cannot-apply((), ()) (x : !not-a-function(!cannot-apply((), ()), _))"
     check' a `shouldBe` [(x 1 7, notAFunction (Err (cannotApply (Tuple []) (Tuple []))) Any)]
-    eval' env a t `shouldBe` ("!cannot-apply(!cannot-apply((), ()), @[ctx.x = 42:1:1,1:3](42) : !not-a-function(!cannot-apply((), ()), _))", "Int")
+    eval' env a t `shouldBe` ("!cannot-apply(!cannot-apply((), ()), ^[<test>:1:7,1:8](^[ctx.x:1:1,1:3](42) : Int) : !not-a-function(!cannot-apply((), ()), _))", "Int")
 
   it "☯ Tao.Match.error.arg" $ do
     let ctx = [("m", [def "x" "42"])]
@@ -507,7 +508,8 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "match z {\n| y -> x\n}" `shouldBe` Right expr
     fmt' a `shouldBe` "^let y : !undefined-var(z) = z : !undefined-var(z); x : ^Int"
     check' a `shouldBe` [(z 1 7, undefinedVar "z"), (y 2 3, undefinedVar "z")]
-    eval' env a t `shouldBe` ("42", "Int")
+    -- Undefined since there are errors (should this be removed?)
+    eval' env a t `shouldBe` ("match z {\n| (y : !undefined-var(z)) -> 42\n}", "Int")
 
   it "☯ Tao.Match.error.case" $ do
     let ctx = [("m", [def "x" "42"])]

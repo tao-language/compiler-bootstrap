@@ -394,7 +394,12 @@ instance DropTypes Expr where
   dropTypes :: Expr -> Expr
   dropTypes = \case
     Ann a _ -> dropTypes a
-    Err e -> Err e -- do not drop types from errors
+    Fun (Ann a t) b -> Fun (Ann (dropTypes a) (dropTypes t)) (dropTypes b)
+    App a args -> do
+      let dropTypesArg (x, Ann a t) = (x, Ann (dropTypes a) (dropTypes t))
+          dropTypesArg (x, a) = (x, dropTypes a)
+      App (dropTypes a) (map dropTypesArg args)
+    Err e -> Err e -- keep types from errors
     a -> apply dropTypes a
 
 instance DropTypes Stmt where
@@ -782,7 +787,7 @@ grammar = do
                 _ -> Nothing,
           -- Grammar.Metadata.Location
           let parser expr = do
-                _ <- P.text "@["
+                _ <- P.text "^["
                 P.commit "Metadata location"
                 filename <- P.oneOrMore $ P.charIf (/= ':')
                 _ <- P.char ':'
@@ -797,7 +802,7 @@ grammar = do
                 _ <- P.spaces
                 Meta (C.Loc (Location filename (Range (Pos row1 col1) (Pos row2 col2)))) <$> expr
            in G.Atom parser $ \layout -> \case
-                Meta (C.Loc loc) a -> Just (PP.Text ("@[" ++ show loc ++ "](") : layout a ++ [PP.Text ")"])
+                Meta (C.Loc loc) a -> Just (PP.Text ("^[" ++ show loc ++ "](") : layout a ++ [PP.Text ")"])
                 _ -> Nothing,
           -- Grammar.Err
           let parser expr = do
@@ -818,7 +823,7 @@ grammar = do
                     NotAFunction a b -> Just (PP.Text "!not-a-function(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
                     e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
                   RuntimeError e -> case e of
-                    UnhandledCase a -> Just (PP.Text "!unhandled-case(" : layout a ++ [PP.Text ")"])
+                    UnhandledCase a b -> Just (PP.Text "!unhandled-case(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
                     CannotApply a b -> Just (PP.Text "!cannot-apply(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
                     CustomError a -> Just (PP.Text "!error(" : layout a ++ [PP.Text ")"])
                   e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
@@ -878,19 +883,19 @@ lower = \case
   Let (a, b) c -> case a of
     Var x | c == Var x -> lower b
     -- Var x -> C.App (lower (Fun a c)) (C.fix [x] (lower b))
+    Ann (Var x) t | c == Var x -> lower (Ann b t)
     -- Ann (Or a1 a2) t -> lower (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
     -- Ann (App a1 a2) t -> lower (Let (Ann a1 t, Fun a2 b) c)
     -- Ann (Op1 op a) t -> lower (Let (Ann (Var (show op)) t, Fun a b) c)
     -- Ann (Op2 op a1 a2) t -> lower (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
-    -- Ann (Meta _ a) t -> lower (Let (Ann a t, b) c)
-    -- Ann a t -> lower (Let (a, Ann b t) c)
+    Ann (Meta _ a) t -> lower (Let (Ann a t, b) c)
+    Ann a t -> lower (Let (a, Ann b t) c)
     -- Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
     -- App a1 a2 -> lower (Let (a1, Fun a2 b) c)
     -- Op1 op a -> lower (Let (Var (show op), Fun a b) c)
     -- Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
     -- For xs a -> lower (App (For xs (Fun a c)) b)
-    -- Meta _ a -> lower (Let (a, b) c)
-    -- a -> lower (App (Fun [("", a)] c) [("", b)])
+    Meta _ a -> lower (Let (a, b) c)
     a -> C.App (lower (Fun a c)) (lower b)
   -- -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
   -- Record fields -> do
@@ -1235,7 +1240,6 @@ eval env expr =
   C.eval runtimeOps (C.let' env expr)
     & lift
     & typed
-    & bimap dropTypes dropTypes
 
 bindings :: Expr -> [String]
 bindings = \case
@@ -1338,13 +1342,18 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
+  -- compile ctx path (name@"y", expr) = do
+  --   let dependencies = delete name (freeNames expr)
+  --   let env = concatMap (fst . compile ctx path) dependencies
+  --   let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
+  --   let xs = delete name (map fst s)
+  --   error $ show (expr, C.for' xs a, C.for' xs t)
   compile ctx path (name, expr) = do
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies
-    let ((a, t), s) = C.infer buildOps env (lower expr)
-    let xs = (C.freeVars a `intersect` map fst s) \\ map fst env
-    let ys = (C.freeVars t `intersect` map fst s) \\ map fst env
-    (env, C.Ann (C.for xs a) (C.for ys t))
+    let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
+    let xs = delete name (map fst s) \\ map fst env
+    (env, if a == C.Var name then a else C.Ann (C.for' xs a) (C.for' xs t))
 
 instance Compile String where
   compile :: Context -> FilePath -> String -> (C.Env, C.Expr)
