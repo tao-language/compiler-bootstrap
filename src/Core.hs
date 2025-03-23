@@ -1055,21 +1055,12 @@ checkApp ops env (a, ta) b = case ta of
     let (ta', s1) = instantiate (map fst env) (For x ta)
     let (ab, ts, s2) = checkApp ops (s1 `compose` env) (substitute s1 a, ta') (substitute s1 b)
     (ab, ts, s2 `compose` s1)
-  Or ta1 ta2 -> do
-    (error . intercalate "\n")
-      [ "-- checkApp " ++ show (App a b),
-        ""
-      ]
-  Or ta1 ta2 | Just (a1, a2) <- asOr a -> do
-    case checkApp ops env (a1, ta1) b of
-      (_, (t1, t2), _) | isErr t1 || isErr t2 -> checkApp ops env (a2, ta2) b
-      ((a, b), (t1, t2), s1) -> case checkApp ops (s1 `compose` env) (a2, substitute s1 ta2) b of
-        (_, (t1, t2), _) | isErr t1 || isErr t2 -> ((a, b), (t1, t2), s1)
-        ((a', b), (t1', t2'), s2) -> ((Or a a', b), (Or (substitute s2 t1) t1', Or (substitute s2 t2) t2'), s2 `compose` s1)
-  Or ta1 ta2 -> do
-    let ((a_, b_), (t1a, t2a), s1) = checkApp ops env (a, ta1) b
-    let ((a', b'), (t1b, t2b), s2) = checkApp ops (s1 `compose` env) (a_, substitute s1 ta2) b_
-    ((a', b'), (Or t1a t1b, Or t2a t2b), s2 `compose` s1)
+  Or ta1 ta2 -> case checkApp ops env (a, ta1) b of
+    ((a, b), (t1, t2), s1) | not (isErr t1) && not (isErr t2) -> case checkApp ops (s1 `compose` env) (a, substitute s1 ta2) (substitute s1 b) of
+      ((a, b), (t1', t2'), s2) | not (isErr t1') && not (isErr t2') -> do
+        ((a, b), (Or t1 t1', Or t2 t2'), s2 `compose` s1)
+      _ -> ((a, b), (t1, t2), s1)
+    _ -> checkApp ops env (a, ta2) b
   Fun t1 t2 -> do
     let ((a', _), (b', t1'), s) = check2 ops env (a, Fun t1 t2) (b, t1)
     let t2' = case substitute s t2 of

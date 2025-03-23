@@ -450,7 +450,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     check' a `shouldBe` []
     eval' env a t `shouldBe` ("A", "A")
 
-  it "☯ Tao.App.Or.any" $ do
+  it "☯ Tao.App.Or.both" $ do
     let ctx = [("m", [def "x" "A -> B | B -> A", def "y" "y"])]
     let expr = loc 1 2 1 5 (app (x 1 1) [y 1 3])
     let (env, (a, t)) = compile' ctx "m" expr
