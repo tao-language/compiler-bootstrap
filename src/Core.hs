@@ -672,7 +672,9 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (Num n, Num n') | n == n' -> Just []
   (Tag k, Tag k') | k == k' -> Just []
   (Var x, b) -> Just [(x, b)]
-  (a, Var x) | unify -> Just [(x, a)]
+  (a, Var x)
+    | unify -> Just [(x, a)]
+    | otherwise -> Just []
   (Ann a ta, Ann b tb) -> do
     env1 <- match True ops ta tb
     env2 <- match unify ops (Let env1 a) b
