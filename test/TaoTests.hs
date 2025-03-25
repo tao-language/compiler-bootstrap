@@ -88,7 +88,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "_" `shouldBe` Right expr
     fmt' a `shouldBe` "_"
     check' (C.Ann a t) `shouldBe` []
-    eval' env a t `shouldBe` ("_", "_1")
+    eval' env a t `shouldBe` ("_", "_")
 
   it "☯ Tao.Meta.Location" $ do
     let ctx = []
@@ -98,7 +98,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax' "^[file:1:2,3:4] _" "_" `shouldBe` Right expr
     fmt' a `shouldBe` "_"
     check' (C.Ann a t) `shouldBe` []
-    eval' env a t `shouldBe` ("_", "_1")
+    eval' env a t `shouldBe` ("_", "_")
 
   it "☯ Tao.Meta.Comments.1" $ do
     let ctx = []
@@ -107,7 +107,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "# c1\n_" `shouldBe` Right expr
     fmt' a `shouldBe` "_"
     check' (C.Ann a t) `shouldBe` []
-    eval' env a t `shouldBe` ("# c1\n_", "_1")
+    eval' env a t `shouldBe` ("# c1\n_", "_")
 
   it "☯ Tao.Meta.Comments.2" $ do
     let ctx = []
@@ -116,7 +116,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "# c1\n# c2\n_" `shouldBe` Right expr
     fmt' a `shouldBe` "_"
     check' (C.Ann a t) `shouldBe` []
-    eval' env a t `shouldBe` ("# c1\n# c2\n_", "_1")
+    eval' env a t `shouldBe` ("# c1\n# c2\n_", "_")
 
   it "☯ Tao.Meta.TrailingComment" $ do
     let ctx = []
@@ -125,7 +125,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "_  # c\n" `shouldBe` Right expr
     fmt' a `shouldBe` "_"
     check' (C.Ann a t) `shouldBe` []
-    eval' env a t `shouldBe` ("_  # c\n", "_1")
+    eval' env a t `shouldBe` ("_  # c\n", "_")
 
   -- TODO: multi-line comments
 
@@ -461,7 +461,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     fmt' a `shouldBe` "x (y : (A | B))"
     fmt' t `shouldBe` "B | A"
     check' (C.Ann a t) `shouldBe` []
-    eval' env a t `shouldBe` ("((A : A) -> B | (B : B) -> A)(y : (A | B))", "B | A")
+    eval' env a t `shouldBe` ("(A = y\nB) | B = y\nA", "B | A")
 
   -- TODO: App named arguments
   -- TODO: App default values
@@ -474,7 +474,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax' "%f()" "%f" `shouldBe` Right expr
     fmt' a `shouldBe` "%f()"
     check' (C.Ann a t) `shouldBe` []
-    eval' env a t `shouldBe` ("%f", "_1")
+    eval' env a t `shouldBe` ("%f", "_")
 
   it "☯ Tao.Call.1" $ do
     let ctx = [("m", [def "x" "42"])]
@@ -483,7 +483,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "%int_neg(x)" `shouldBe` Right expr
     fmt' a `shouldBe` "%int_neg(x)"
     check' (C.Ann a t) `shouldBe` []
-    eval' env a t `shouldBe` ("-42", "_1")
+    eval' env a t `shouldBe` ("-42", "_")
 
   it "☯ Tao.Call.2" $ do
     let ctx = [("m", [def "x" "40", def "y" "2"])]
@@ -492,7 +492,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "%int_add(x, y)" `shouldBe` Right expr
     fmt' a `shouldBe` "%int_add(x, y)"
     check' (C.Ann a t) `shouldBe` []
-    eval' env a t `shouldBe` ("42", "_1")
+    eval' env a t `shouldBe` ("42", "_")
 
   it "☯ Tao.Match.error.empty" $ do
     let ctx = [("m", [def "x" "42"])]

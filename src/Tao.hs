@@ -196,6 +196,11 @@ asDef (Def def) = Just def
 asDef _ = Nothing
 
 -- Syntax sugar
+asVar :: Expr -> Maybe String
+asVar (Var x) = Just x
+asVar (Meta _ a) = asVar a
+asVar _ = Nothing
+
 bool :: Expr
 bool = tag "Bool"
 
@@ -1368,17 +1373,14 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"y", expr) = do
-  --   let dependencies = delete name (freeNames expr)
-  --   let env = concatMap (fst . compile ctx path) dependencies
-  --   let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
-  --   let xs = delete name (map fst s)
-  --   error $ show (expr, C.for' xs a, C.for' xs t)
   compile ctx path (name, expr) = do
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies
     let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
-    (s `C.compose` env, C.Ann a t)
+    case t of
+      C.Any -> (env, a)
+      C.Var _ -> (env, a)
+      _ -> (s `C.compose` env, C.Ann a t)
 
 instance Compile String where
   compile :: Context -> FilePath -> String -> (C.Env, C.Expr)

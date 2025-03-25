@@ -63,6 +63,33 @@ data Metadata
   | TrailingComment String
   deriving (Eq, Show)
 
+data MatchResult a
+  = Matched a
+  | MaybeMatched Expr Expr
+  | NotMatched
+  deriving (Eq, Show)
+
+instance Functor MatchResult where
+  fmap :: (a -> b) -> MatchResult a -> MatchResult b
+  fmap f (Matched env) = Matched (f env)
+  fmap _ (MaybeMatched a b) = MaybeMatched a b
+  fmap _ NotMatched = NotMatched
+
+instance Applicative MatchResult where
+  pure :: a -> MatchResult a
+  pure = Matched
+
+  (<*>) :: MatchResult (a -> b) -> MatchResult a -> MatchResult b
+  (<*>) (Matched f) m = fmap f m
+  (<*>) (MaybeMatched a b) _ = MaybeMatched a b
+  (<*>) NotMatched _ = NotMatched
+
+instance Monad MatchResult where
+  (>>=) :: MatchResult a -> (a -> MatchResult b) -> MatchResult b
+  (>>=) (Matched env) f = f env
+  (>>=) (MaybeMatched a b) _ = MaybeMatched a b
+  (>>=) NotMatched _ = NotMatched
+
 parse :: Int -> FilePath -> String -> Either (P.State String) (Expr, P.State String)
 parse prec = P.parse (parser grammar prec)
 
@@ -637,21 +664,23 @@ reduceApp ops a b = case (a, reduce ops b) of
   (a@App {}, b) -> App a b
   -- (a@Or {}, b) | isOpen b -> App a b
   -- (a@Fun {}, b) | isOpen b -> App a b
-  (a@Fix {}, b) | isOpen b -> App a b
+  -- (a@Fix {}, b) | isOpen b -> App a b
   (Ann a _, b) -> reduceApp ops (reduce ops a) b
   (Or a1 a2, b) -> case reduceApp ops (reduce ops a1) b of
     Err _ -> reduceApp ops (reduce ops a2) b
+    c@App {} -> Or c (App a2 b)
     c -> c
   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
-  (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
+  (Fix x a, b) | isClosed b -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
   (Fun a c, b) -> case match False ops a b of
-    Just env -> reduce ops (Let env c)
-    Nothing -> Err (unhandledCase a b)
+    Matched env -> reduce ops (Let env c)
+    MaybeMatched a b -> App (Fun a c) b
+    NotMatched -> Err (unhandledCase a b)
   (Call f args, b) -> App (Call f args) b
   (Meta _ a, b) -> reduceApp ops a b
   _ -> Err (cannotApply a b)
 
-match :: Bool -> Ops -> Expr -> Expr -> Maybe Env
+match :: Bool -> Ops -> Expr -> Expr -> MatchResult Env
 match unify ops (Let env (Tag k)) b = case lookup k env of
   Just def -> do
     let b' = App (Let env def) b
@@ -663,22 +692,22 @@ match unify ops (Let env (Let env' a)) b =
   match unify ops (Let (env ++ env') a) b
 match unify ops a b = case (reduce ops a, reduce ops b) of
   (Meta _ a, b) -> match unify ops a b
-  (Any, _) -> Just []
-  (_, Any) | unify -> Just []
-  (Unit, Unit) -> Just []
-  (IntT, IntT) -> Just []
-  (NumT, NumT) -> Just []
-  (Int i, Int i') | i == i' -> Just []
-  (Num n, Num n') | n == n' -> Just []
-  (Tag k, Tag k') | k == k' -> Just []
-  (Var x, b) -> Just [(x, b)]
+  (Any, _) -> Matched []
+  (_, Any) | unify -> Matched []
+  (Unit, Unit) -> Matched []
+  (IntT, IntT) -> Matched []
+  (NumT, NumT) -> Matched []
+  (Int i, Int i') | i == i' -> Matched []
+  (Num n, Num n') | n == n' -> Matched []
+  (Tag k, Tag k') | k == k' -> Matched []
+  (Var x, b) -> Matched [(x, b)]
   (a, Var x)
-    | unify -> Just [(x, a)]
-    | otherwise -> Just []
+    | unify -> Matched [(x, a)]
+    | otherwise -> MaybeMatched a (Var x)
   (Ann a ta, Ann b tb) -> do
     env1 <- match True ops ta tb
     env2 <- match unify ops (Let env1 a) b
-    Just (env1 ++ env2)
+    return (env1 ++ env2)
   (a, Ann b _) -> match unify ops a b
   (And (Let env (Tag k)) a, b) -> case lookup k env of
     Just def -> do
@@ -692,17 +721,21 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (And a1 a2, And b1 b2) -> do
     env1 <- match unify ops a1 b1
     env2 <- match unify ops (Let env1 a2) b2
-    Just (env1 ++ env2)
+    return (env1 ++ env2)
   (Or a1 a2, b) -> case match unify ops a1 b of
-    Just env1 -> case match unify ops (Let env1 a2) b of
-      Just env2 -> Just (env1 ++ env2)
-      Nothing -> Just env1
-    Nothing -> match unify ops a2 b
+    Matched env1 -> case match unify ops (Let env1 a2) b of
+      Matched env2 -> Matched (env1 ++ env2)
+      MaybeMatched a2 b -> MaybeMatched (Or a1 a2) b
+      NotMatched -> Matched env1
+    MaybeMatched a1 b -> MaybeMatched (Or a1 a2) b
+    NotMatched -> match unify ops a2 b
   (a, Or b1 b2) -> case match unify ops a b1 of
-    Just env1 -> case match unify ops (Let env1 a) b2 of
-      Just env2 -> Just (env1 ++ env2)
-      Nothing -> Just env1
-    Nothing -> match unify ops a b2
+    Matched env1 -> case match unify ops (Let env1 a) b2 of
+      Matched env2 -> Matched (env1 ++ env2)
+      MaybeMatched a b2 -> MaybeMatched a (Or b1 b2)
+      NotMatched -> Matched env1
+    MaybeMatched a b1 -> MaybeMatched a (Or b1 b2)
+    NotMatched -> match unify ops a b2
   (For x a, b) -> match unify ops (Let [(x, Var x)] a) b
   (a, For x b) -> match unify ops a (Let [(x, Var x)] b)
   (Fix x a, Fix x' b) | x == x' -> do
@@ -714,8 +747,8 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (Call x args, Call x' args') | x == x' -> do
     match unify ops (and' args) (and' args')
   (_, Meta _ b) -> match unify ops a b
-  (Err _, Err _) -> Just []
-  _ -> Nothing
+  (Err _, Err _) -> Matched []
+  _ -> NotMatched
 
 eval :: Ops -> Expr -> Expr
 eval ops expr = case reduce ops expr of
