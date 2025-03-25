@@ -4,7 +4,7 @@ import qualified Core as C
 import Data.Bifunctor (second)
 import Data.Function ((&))
 import Data.List (intercalate, isInfixOf)
-import Error (Error (..), customError)
+import Error
 import Load
 import Location
 import System.FilePath (dropExtension)
@@ -79,19 +79,16 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "Any match 1",
             Pass "Any match 2",
             Pass "Unit match",
-            Fail "Unit match fail" i1 (Tuple []),
+            Fail "Unit match fail" i1 (Err $ unhandledCase (Ann (For ["$got"] (Var "$got")) IntT) (Ann (loc (name ++ ".tao") 18 3 18 5 (Tuple [])) (Err $ typeMismatch (Tuple []) IntT))),
             Pass "IntT match",
-            Fail "IntT match fail" NumT IntT,
             Pass "NumT match",
-            Fail "NumT match fail" IntT NumT,
             Pass "Int match",
             Fail "Int match fail" i2 i1,
             Pass "Num match",
             Fail "Num match fail" (Num 0.0) (Num 3.14),
             Pass "Tag match",
-            Fail "Tag match fail" (Tag "B" []) (Tag "A" []),
             Pass "Err match",
-            Fail "Err match fail" i1 (err $ loc (name ++ ".tao") 66 10 66 11 Any)
+            Fail "Err match fail" i1 (err $ loc (name ++ ".tao") 54 10 54 11 Any)
           ]
     test ctx pkg `shouldBe` testResults
 

@@ -137,10 +137,8 @@ grammar = do
                 _ <- P.whitespaces
                 def (a, b) <$> expr
            in G.Atom parser $ \layout -> \case
-                App fun b -> case forOf fun of
-                  (xs, Fun a c) | sort (freeVars a) == sort xs -> do
-                    Just (PP.Text "^let " : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
-                  _ -> Nothing
+                App (Fun a c) b -> do
+                  Just (PP.Text "^let " : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
                 _ -> Nothing,
           -- Grammar.Or
           G.infixR 1 (const Or) "|" $ \case
@@ -481,7 +479,7 @@ let' env (Let env' a) = let' (env ++ env') a
 let' env a = Let env a
 
 def :: (Expr, Expr) -> Expr -> Expr
-def (a, b) c = App (for' (freeVars a) (Fun a c)) b
+def (a, b) c = App (Fun (for' (freeVars a) a) c) b
 
 list :: Expr -> Expr -> [Expr] -> Expr
 list _ nil [] = nil
@@ -508,7 +506,9 @@ typed a _ | isAnn a = a
 typed a t = Ann a t
 
 typedOf :: Expr -> (Expr, Type)
-typedOf (Ann a t) = (a, t)
+typedOf (Ann a t) = case typedOf a of
+  (a, Any) -> (a, t)
+  (a, t) -> typedOf (Ann a t)
 typedOf (Meta _ a) | isAnn a = typedOf a
 typedOf a = (a, Any)
 
@@ -635,8 +635,10 @@ reduceApp ops a b = case (a, reduce ops b) of
   (Any, _) -> Any
   (a@Var {}, b) -> App a b
   (a@App {}, b) -> App a b
+  -- (a@Or {}, b) | isOpen b -> App a b
+  -- (a@Fun {}, b) | isOpen b -> App a b
+  (a@Fix {}, b) | isOpen b -> App a b
   (Ann a _, b) -> reduceApp ops (reduce ops a) b
-  (a, b) | isOpen b -> App a b
   (Or a1 a2, b) -> case reduceApp ops (reduce ops a1) b of
     Err _ -> reduceApp ops (reduce ops a2) b
     c -> c

@@ -3,9 +3,9 @@ module Tao where
 import Control.Monad (void)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap, second))
-import Data.Char (chr, ord)
+import Data.Char (chr, isSpace, ord)
 import Data.Function ((&))
-import Data.List (delete, intersect, isPrefixOf, sort, union, unionBy, (\\))
+import Data.List (delete, dropWhileEnd, intersect, isPrefixOf, sort, union, unionBy, (\\))
 import Error
 import Grammar as G
 import Location (Location (Location), Position (Pos), Range (Range))
@@ -117,6 +117,7 @@ data Stmt
   | Def (Pattern, Expr)
   | TypeDef (String, [Expr], [(Expr, Maybe Type)])
   | Test UnitTest
+  | Comment String
   deriving (Eq, Show)
 
 data UnitTest = UnitTest
@@ -856,7 +857,7 @@ lower = \case
   Or a b -> C.Or (lower a) (lower b)
   For xs a -> C.for xs (lower a)
   -- Fun (For xs a) b -> C.Fun (C.for xs (lower a)) (lower b)
-  Fun (For xs a) b -> C.for xs (C.Fun (lower a) (lower b))
+  Fun (For xs a) b -> C.Fun (lower (For xs a)) (lower b)
   Fun (Meta _ a) b | isFor a -> lower (Fun a b)
   Fun a b -> lower (Fun (For (freeVars a) a) b)
   App fun args -> C.App (lower fun) (lower $ Tuple (map snd args))
@@ -896,7 +897,8 @@ lower = \case
     -- Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
     -- For xs a -> lower (App (For xs (Fun a c)) b)
     Meta _ a -> lower (Let (a, b) c)
-    a -> C.App (lower (Fun a c)) (lower b)
+    -- a -> C.App (lower (Fun a c)) (lower b)
+    a -> lower (app (Fun a c) [b])
   -- -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
   -- Record fields -> do
   --   let k = '~' : intercalate "," (map fst fields)
@@ -945,9 +947,9 @@ lift = \case
     (xs, a) | sort (x : xs) == sort (caseBindings a) -> a
     (xs, a) -> For (x : xs) a
   C.Fun a b -> Fun (lift a) (lift b)
-  -- C.Fix x a
-  --   | x `C.occurs` a -> Let (Var x, lift a) (lift a)
-  --   | otherwise -> lift a
+  C.Fix x a
+    | x `C.occurs` a -> Let (Var x, lift a) (lift a)
+    | otherwise -> lift a
   C.App a b -> case (lift a, lift b) of
     (Err (RuntimeError (CannotApply (Tuple []) (Tuple []))), arg) ->
       Match arg []
@@ -1100,7 +1102,8 @@ parseStmt = do
       [ parseImport,
         Def <$> parseDef "=",
         TypeDef <$> parseTypeDef,
-        parseTest
+        parseTest,
+        Comment <$> parseComment
       ]
   _ <- P.spaces
   _ <- parseLineBreak
@@ -1221,6 +1224,29 @@ parseTest = do
         return (Tag "True" [])
       ]
   return (Test (UnitTest s.filename s.pos name expr result))
+
+parseComment :: Parser String
+parseComment = P.oneOf [parseCommentMultiLine, parseCommentSingleLine]
+
+parseCommentSingleLine :: Parser String
+parseCommentSingleLine = do
+  _ <- P.char '#'
+  P.commit "comment-singleline"
+  _ <- P.spaces
+  -- line <- P.skipTo P.endOfLine
+  line <- P.zeroOrMore (P.charIf (/= '\n'))
+  -- _ <- P.whitespaces
+  return (dropWhileEnd isSpace line)
+
+parseCommentMultiLine :: Parser String
+parseCommentMultiLine = do
+  delim <- P.chain [P.text "#--", P.zeroOrMore (P.char '-')]
+  P.commit "comment-multiline"
+  _ <- P.spaces
+  line <- P.skipTo parseLineBreak
+  _ <- P.whitespaces
+  error "TODO: parseCommentMultiLine"
+  return (dropWhileEnd isSpace line)
 
 check :: Expr -> [(Expr, Error Expr)]
 check = \case
@@ -1352,8 +1378,7 @@ instance Compile (String, Expr) where
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies
     let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
-    let xs = delete name (map fst s) \\ map fst env
-    (env, if a == C.Var name then a else C.Ann (C.for' xs a) (C.for' xs t))
+    (s `C.compose` env, C.Ann a t)
 
 instance Compile String where
   compile :: Context -> FilePath -> String -> (C.Env, C.Expr)

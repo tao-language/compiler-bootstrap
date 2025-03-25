@@ -322,7 +322,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ Core.sugar.def" $ do
     let expr = def (x, y) z
     parse' "^let x = y; z " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "^let x = y; z"
+    format 80 expr `shouldBe` "^let @x. x = y; z"
 
   it "☯ Core.run.App" $ do
     let env = [("x", "42"), ("y", "3.14"), ("a", "a")]

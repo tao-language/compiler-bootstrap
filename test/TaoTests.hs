@@ -87,8 +87,8 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "_" `shouldBe` Right expr
     fmt' a `shouldBe` "_"
-    check' a `shouldBe` []
-    eval' env a t `shouldBe` ("_", "@_1. _1")
+    check' (C.Ann a t) `shouldBe` []
+    eval' env a t `shouldBe` ("_", "_1")
 
   it "☯ Tao.Meta.Location" $ do
     let ctx = []
@@ -97,8 +97,8 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "^[:1:2,3:4] _" `shouldBe` Left "syntax error, remaining: :1:2,3:4] _"
     syntax' "^[file:1:2,3:4] _" "_" `shouldBe` Right expr
     fmt' a `shouldBe` "_"
-    check' a `shouldBe` []
-    eval' env a t `shouldBe` ("_", "@_1. _1")
+    check' (C.Ann a t) `shouldBe` []
+    eval' env a t `shouldBe` ("_", "_1")
 
   it "☯ Tao.Meta.Comments.1" $ do
     let ctx = []
@@ -106,8 +106,8 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "# c1\n_" `shouldBe` Right expr
     fmt' a `shouldBe` "_"
-    check' a `shouldBe` []
-    eval' env a t `shouldBe` ("# c1\n_", "@_1. _1")
+    check' (C.Ann a t) `shouldBe` []
+    eval' env a t `shouldBe` ("# c1\n_", "_1")
 
   it "☯ Tao.Meta.Comments.2" $ do
     let ctx = []
@@ -115,8 +115,8 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "# c1\n# c2\n_" `shouldBe` Right expr
     fmt' a `shouldBe` "_"
-    check' a `shouldBe` []
-    eval' env a t `shouldBe` ("# c1\n# c2\n_", "@_1. _1")
+    check' (C.Ann a t) `shouldBe` []
+    eval' env a t `shouldBe` ("# c1\n# c2\n_", "_1")
 
   it "☯ Tao.Meta.TrailingComment" $ do
     let ctx = []
@@ -124,8 +124,8 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "_  # c\n" `shouldBe` Right expr
     fmt' a `shouldBe` "_"
-    check' a `shouldBe` []
-    eval' env a t `shouldBe` ("_  # c\n", "@_1. _1")
+    check' (C.Ann a t) `shouldBe` []
+    eval' env a t `shouldBe` ("_  # c\n", "_1")
 
   -- TODO: multi-line comments
 
@@ -135,7 +135,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "Int" `shouldBe` Right expr
     fmt' a `shouldBe` "^Int"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("Int", "Int")
 
   it "☯ Tao.NumT" $ do
@@ -144,7 +144,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "Num" `shouldBe` Right expr
     fmt' a `shouldBe` "^Num"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("Num", "Num")
 
   it "☯ Tao.Int" $ do
@@ -153,7 +153,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "42" `shouldBe` Right expr
     fmt' a `shouldBe` "42"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("42", "Int")
 
   it "☯ Tao.Num" $ do
@@ -163,7 +163,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "3.14" `shouldBe` Right expr
     fmt expr `shouldBe` "3.14"
     fmt' a `shouldBe` "3.14"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("3.14", "Num")
 
   it "☯ Tao.Char" $ do
@@ -172,7 +172,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "c'x'" `shouldBe` Right expr
     fmt' a `shouldBe` "(Char, 120)"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("c'x'", "Char(Int)")
 
   it "☯ Tao.Var.undefined" $ do
@@ -180,8 +180,9 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = x 1 1
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x" `shouldBe` Right expr
-    fmt' a `shouldBe` "x : !undefined-var(x)"
-    check' a `shouldBe` [(x 1 1, undefinedVar "x")]
+    fmt' a `shouldBe` "x"
+    fmt' t `shouldBe` "!undefined-var(x)"
+    check' (C.Ann a t) `shouldBe` [(x 1 1, undefinedVar "x")]
     eval' env a t `shouldBe` ("x", "!undefined-var(x)")
 
   it "☯ Tao.Var.direct" $ do
@@ -190,7 +191,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x" `shouldBe` Right expr
     fmt' a `shouldBe` "x"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("42", "Int")
 
   it "☯ Tao.Var.indirect" $ do
@@ -199,7 +200,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x" `shouldBe` Right expr
     fmt' a `shouldBe` "x"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("42", "Int")
 
   it "☯ Tao.Tag.0" $ do
@@ -208,7 +209,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "A" `shouldBe` Right expr
     fmt' a `shouldBe` "A"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("A", "A")
 
   it "☯ Tao.Tag.1" $ do
@@ -217,7 +218,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "A(x)" `shouldBe` Right expr
     fmt' a `shouldBe` "(A, x)"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("A(42)", "A(Int)")
 
   it "☯ Tao.Tag.2" $ do
@@ -226,7 +227,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "A(x, y)" `shouldBe` Right expr
     fmt' a `shouldBe` "(A, x, y)"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("A(42, 3.14)", "A(Int, Num)")
 
   it "☯ Tao.Tag.error" $ do
@@ -235,7 +236,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "A(x)" `shouldBe` Right expr
     fmt' a `shouldBe` "(A, x : !undefined-var(x))"
-    check' a `shouldBe` [(x 1 3, undefinedVar "x")]
+    check' (C.Ann a t) `shouldBe` [(x 1 3, undefinedVar "x")]
     eval' env a t `shouldBe` ("A(x)", "A(!undefined-var(x))")
 
   it "☯ Tao.Ann.ok" $ do
@@ -244,7 +245,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x : Int" `shouldBe` Right expr
     fmt' a `shouldBe` "x"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("42", "Int")
 
   it "☯ Tao.Ann.type-mismatch" $ do
@@ -252,8 +253,9 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = ann 1 3 (x 1 1) (numT 1 5)
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x : Num" `shouldBe` Right expr
-    fmt' a `shouldBe` "x : !type-mismatch(^Int, ^Num)"
-    check' a `shouldBe` [(x 1 1, typeMismatch IntT (numT 1 5))]
+    fmt' a `shouldBe` "x"
+    fmt' t `shouldBe` "!type-mismatch(^Int, ^Num)"
+    check' (C.Ann a t) `shouldBe` [(x 1 1, typeMismatch IntT (numT 1 5))]
     eval' env a t `shouldBe` ("42", "!type-mismatch(Int, ^[<test>:1:5,1:8](Num))")
 
   it "☯ Tao.Tuple.0" $ do
@@ -262,7 +264,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "()" `shouldBe` Right expr
     fmt' a `shouldBe` "()"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("()", "()")
 
   it "☯ Tao.Tuple.1" $ do
@@ -271,7 +273,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax' "(x)" "x" `shouldBe` Right (x 1 2)
     fmt' a `shouldBe` "x"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("42", "Int")
 
   it "☯ Tao.Tuple.2" $ do
@@ -280,7 +282,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "(x, y)" `shouldBe` Right expr
     fmt' a `shouldBe` "(x, y)"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("(42, 3.14)", "(Int, Num)")
 
   it "☯ Tao.Tuple.error" $ do
@@ -289,7 +291,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "(x, z)" `shouldBe` Right expr
     fmt' a `shouldBe` "(x, z : !undefined-var(z))"
-    check' a `shouldBe` [(z 1 5, undefinedVar "z")]
+    check' (C.Ann a t) `shouldBe` [(z 1 5, undefinedVar "z")]
     eval' env a t `shouldBe` ("(42, z)", "(Int, !undefined-var(z))")
 
   it "☯ Tao.List.0" $ do
@@ -298,7 +300,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "[]" `shouldBe` Right expr
     fmt' a `shouldBe` "[]"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("[]", "[]")
 
   it "☯ Tao.List.1" $ do
@@ -307,7 +309,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "[x]" `shouldBe` Right expr
     fmt' a `shouldBe` "(::, x, [])"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("[42]", "[Int]")
 
   it "☯ Tao.List.2" $ do
@@ -316,7 +318,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "[x, y]" `shouldBe` Right expr
     fmt' a `shouldBe` "(::, x, ::, y, [])"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("[42, 9]", "[Int, Int]")
 
   it "☯ Tao.String.empty" $ do
@@ -325,7 +327,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "''" `shouldBe` Right expr
     fmt' a `shouldBe` "''"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("''", "''")
 
   -- it "☯ Tao.String literal" $ do
@@ -337,7 +339,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x | y" `shouldBe` Right expr
     fmt' a `shouldBe` "x | y"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("42 | 3.14", "Int | Num")
 
   it "☯ Tao.Or.same" $ do
@@ -346,7 +348,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x | y" `shouldBe` Right expr
     fmt' a `shouldBe` "x | y"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("42 | 9", "Int")
 
   it "☯ Tao.For.0" $ do
@@ -355,7 +357,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "@. x" `shouldBe` Right expr
     fmt' a `shouldBe` "x"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("42", "Int")
 
   it "☯ Tao.For.1" $ do
@@ -364,7 +366,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "@a. x" `shouldBe` Right expr
     fmt' a `shouldBe` "@a. x"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("@a. 42", "Int")
 
   it "☯ Tao.For.2" $ do
@@ -373,7 +375,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "@a b. x" `shouldBe` Right expr
     fmt' a `shouldBe` "@a b. x"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("@a b. 42", "Int")
 
   it "☯ Tao.Fun.unbound" $ do
@@ -381,9 +383,9 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = fun 1 3 (x 1 1) (y 1 6)
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x -> y" `shouldBe` Right expr
-    fmt' a `shouldBe` "@x1T x. (x : x1T) -> (y : ^Num)"
-    check' a `shouldBe` []
-    eval' env a t `shouldBe` ("(x : x1T) -> 3.14", "x1T -> Num")
+    fmt' a `shouldBe` "(@x. x : x1T) -> (y : ^Num)"
+    check' (C.Ann a t) `shouldBe` []
+    eval' env a t `shouldBe` ("(@x. x : x1T) -> 3.14", "x1T -> Num")
 
   it "☯ Tao.Fun.bound" $ do
     let ctx = [("m", [def "x" "42", def "y" "3.14"])]
@@ -391,7 +393,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "@. x -> y" `shouldBe` Right expr
     fmt' a `shouldBe` "(x : ^Int) -> (y : ^Num)"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("(42 : Int) -> 3.14", "Int -> Num")
 
   it "☯ Tao.App.empty" $ do
@@ -400,7 +402,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x()" `shouldBe` Right expr
     fmt' a `shouldBe` "x (() : ())"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("42", "Int")
 
   it "☯ Tao.App.args1" $ do
@@ -409,7 +411,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x(y)" `shouldBe` Right expr
     fmt' a `shouldBe` "x (y : ^Int)"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("42", "Int")
 
   it "☯ Tao.App.args2" $ do
@@ -418,7 +420,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x(y, z)" `shouldBe` Right expr
     fmt' a `shouldBe` "x ((y, z) : (^Int, ^Num))"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("3.14", "Num")
 
   it "☯ Tao.App.Fun" $ do
@@ -428,7 +430,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "x(y)" `shouldBe` Right expr
     fmt' a `shouldBe` "x (y : A)"
     fmt' t `shouldBe` "B"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("B", "B")
 
   it "☯ Tao.App.Or.first" $ do
@@ -438,7 +440,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "x(y)" `shouldBe` Right expr
     fmt' a `shouldBe` "x (y : A)"
     fmt' t `shouldBe` "B"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("B", "B")
 
   it "☯ Tao.App.Or.second" $ do
@@ -448,7 +450,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "x(y)" `shouldBe` Right expr
     fmt' a `shouldBe` "x (y : B)"
     fmt' t `shouldBe` "A"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("A", "A")
 
   it "☯ Tao.App.Or.both" $ do
@@ -458,7 +460,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "x(y)" `shouldBe` Right expr
     fmt' a `shouldBe` "x (y : (A | B))"
     fmt' t `shouldBe` "B | A"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("((A : A) -> B | (B : B) -> A)(y : (A | B))", "B | A")
 
   -- TODO: App named arguments
@@ -471,7 +473,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "%f" `shouldBe` Right expr
     syntax' "%f()" "%f" `shouldBe` Right expr
     fmt' a `shouldBe` "%f()"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("%f", "_1")
 
   it "☯ Tao.Call.1" $ do
@@ -480,7 +482,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "%int_neg(x)" `shouldBe` Right expr
     fmt' a `shouldBe` "%int_neg(x)"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("-42", "_1")
 
   it "☯ Tao.Call.2" $ do
@@ -489,7 +491,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "%int_add(x, y)" `shouldBe` Right expr
     fmt' a `shouldBe` "%int_add(x, y)"
-    check' a `shouldBe` []
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("42", "_1")
 
   it "☯ Tao.Match.error.empty" $ do
@@ -498,7 +500,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match x {}" `shouldBe` Right expr
     fmt' a `shouldBe` "!cannot-apply((), ()) (x : !not-a-function(!cannot-apply((), ()), _))"
-    check' a `shouldBe` [(x 1 7, notAFunction (Err (cannotApply (Tuple []) (Tuple []))) Any)]
+    check' (C.Ann a t) `shouldBe` [(x 1 7, notAFunction (Err (cannotApply (Tuple []) (Tuple []))) Any)]
     eval' env a t `shouldBe` ("!cannot-apply(!cannot-apply((), ()), ^[<test>:1:7,1:8](^[ctx.x:1:1,1:3](42) : Int) : !not-a-function(!cannot-apply((), ()), _))", "Int")
 
   it "☯ Tao.Match.error.arg" $ do
@@ -506,18 +508,19 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = match 1 1 (z 1 7) [fun 2 5 (y 2 3) (x 2 8)]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match z {\n| y -> x\n}" `shouldBe` Right expr
-    fmt' a `shouldBe` "^let y : !undefined-var(z) = z : !undefined-var(z); x : ^Int"
-    check' a `shouldBe` [(z 1 7, undefinedVar "z"), (y 2 3, undefinedVar "z")]
+    fmt' a `shouldBe` "^let @y. y : !undefined-var(z) = z : !undefined-var(z); x : ^Int"
+    check' (C.Ann a t) `shouldBe` [(z 1 7, undefinedVar "z"), (For ["y"] $ y 2 3, undefinedVar "z")]
     -- Undefined since there are errors (should this be removed?)
-    eval' env a t `shouldBe` ("match z {\n| (y : !undefined-var(z)) -> 42\n}", "Int")
+    -- eval' env a t `shouldBe` ("match z {\n| (y : !undefined-var(z)) -> 42\n}", "Int")
+    eval' env a t `shouldBe` ("42", "Int")
 
   it "☯ Tao.Match.error.case" $ do
     let ctx = [("m", [def "x" "42"])]
     let expr = match 1 1 (x 1 7) [fun 2 5 (y 2 3) (z 2 8)]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match x {\n| y -> z\n}" `shouldBe` Right expr
-    fmt' a `shouldBe` "^let y : ^Int = x : ^Int; z : !undefined-var(z)"
-    check' a `shouldBe` [(z 2 8, undefinedVar "z")]
+    fmt' a `shouldBe` "^let @y. y : ^Int = x : ^Int; z : !undefined-var(z)"
+    check' (C.Ann a t) `shouldBe` [(z 2 8, undefinedVar "z")]
     eval' env a t `shouldBe` ("z", "_")
 
   it "☯ Tao.Match.1" $ do
@@ -525,8 +528,8 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = match 1 1 (x 1 7) [fun 2 5 (a 2 3) (int 2 8 1)]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match x {\n| a -> 1\n}" `shouldBe` Right expr
-    fmt' a `shouldBe` "^let a : ^Int = x : ^Int; 1 : ^Int"
-    check' a `shouldBe` []
+    fmt' a `shouldBe` "^let @a. a : ^Int = x : ^Int; 1 : ^Int"
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("1", "Int")
 
   it "☯ Tao.Match.2" $ do
@@ -534,8 +537,8 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = match 1 1 (x 1 7) [fun 2 5 (a 2 3) (int 2 8 1), fun 3 5 (b 3 3) (int 3 8 2)]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match x {\n| a -> 1\n| b -> 2\n}" `shouldBe` Right expr
-    fmt' a `shouldBe` "(@a. (a : ^Int) -> (1 : ^Int) | @b. (b : ^Int) -> (2 : ^Int)) (x : ^Int)"
-    check' a `shouldBe` []
+    fmt' a `shouldBe` "((@a. a : ^Int) -> (1 : ^Int) | (@b. b : ^Int) -> (2 : ^Int)) (x : ^Int)"
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("1", "Int")
 
   it "☯ Tao.Let" $ do
@@ -543,8 +546,8 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = let' 1 3 (x 1 1, y 1 5) (x 2 1)
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x = y\nx" `shouldBe` Right expr
-    fmt' a `shouldBe` "^let x : ^Int = y : ^Int; x : ^Int"
-    check' a `shouldBe` []
+    fmt' a `shouldBe` "^let @x. x : ^Int = y : ^Int; x : ^Int"
+    check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("42", "Int")
 
   -- it "☯ Tao.TODO" $ do
@@ -553,7 +556,7 @@ run = describe "--==☯ Tao ☯==--" $ do
   --   let (env, (a, t)) = compile' ctx "m" expr
   --   syntax "TODO" `shouldBe` Right expr
   --   fmt' a `shouldBe` ""
-  --   check' a `shouldBe` []
+  --   check' (C.Ann a t) `shouldBe` []
   --   eval' env a t `shouldBe` ("", "")
 
   -- Bind (Pattern, Expr) Expr

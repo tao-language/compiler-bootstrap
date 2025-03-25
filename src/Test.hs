@@ -1,6 +1,7 @@
 module Test where
 
 import qualified Core as C
+import Data.Bifunctor (Bifunctor (bimap))
 import Data.List (intercalate)
 import Location
 import Tao
@@ -47,13 +48,14 @@ instance TestSome (String, Stmt) where
     TypeDef {} -> []
     Test t | filter t -> testSome ctx filter (path, t)
     Test {} -> []
+    Comment {} -> []
 
 instance TestSome (FilePath, UnitTest) where
   testSome :: Context -> (UnitTest -> Bool) -> (FilePath, UnitTest) -> [TestResult]
   testSome ctx _ (path, t) = do
     let cases =
           [ Fun (For [] t.expect) (Tag ":Ok" []),
-            fun [Var "$got"] (Tag ":Err" [Var "$got"])
+            Fun (Var "$got") (Tag ":Err" [Var "$got"])
           ]
     let (env, test') = compile ctx path (Match t.expr cases)
     case C.typedOf (C.eval runtimeOps (C.Let env test')) of

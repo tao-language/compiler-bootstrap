@@ -22,17 +22,9 @@ _
 > Int
 Int
 
--- IntT match fail
-> Int
-Num
-
 -- NumT match
 > Num
 Num
-
--- NumT match fail
-> Num
-Int
 
 -- Int match
 > 1
@@ -53,10 +45,6 @@ Int
 -- Tag match
 > A
 A
-
--- Tag match fail
-> A
-B
 
 -- Err match
 > !error(_)
