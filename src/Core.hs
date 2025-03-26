@@ -668,8 +668,7 @@ reduceApp ops a b = case (a, reduce ops b) of
     c@App {} -> Or c (App a2 b)
     c -> c
   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
-  (Fix x a, b) | isClosed b -> error "TODO: is this necessary or can match handle it?"
-  -- (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
+  (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
   (Fun a c, b) -> case match False ops a b of
     Matched env -> reduce ops (Let env c)
     MaybeMatched a b -> App (Fun a c) b

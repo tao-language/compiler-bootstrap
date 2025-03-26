@@ -5,7 +5,7 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap, second))
 import Data.Char (chr, isSpace, ord)
 import Data.Function ((&))
-import Data.List (delete, dropWhileEnd, intersect, isPrefixOf, sort, union, unionBy, (\\))
+import Data.List (delete, dropWhileEnd, intercalate, intersect, isPrefixOf, sort, union, unionBy, (\\))
 import Error
 import Grammar as G
 import Location (Location (Location), Position (Pos), Range (Range))
@@ -453,6 +453,7 @@ freeVars :: Expr -> [String]
 freeVars = \case
   Var x -> [x]
   For xs a -> filter (`notElem` xs) (freeVars a)
+  Let (a, b) c -> (freeVars a \\ bindings a) `union` freeVars b `union` freeVars c
   a -> collect freeVars a
 
 freeTags :: Expr -> [String]
@@ -861,7 +862,6 @@ lower = \case
   String segments -> error "TODO: lower String"
   Or a b -> C.Or (lower a) (lower b)
   For xs a -> C.for xs (lower a)
-  -- Fun (For xs a) b -> C.Fun (C.for xs (lower a)) (lower b)
   Fun (For xs a) b -> C.Fun (lower (For xs a)) (lower b)
   Fun (Meta _ a) b | isFor a -> lower (Fun a b)
   Fun a b -> lower (Fun (For (freeVars a) a) b)
@@ -870,22 +870,6 @@ lower = \case
   Op1 op a -> C.app (C.Var $ showOp1 op) [lower a]
   Op2 op a b -> C.app (C.Var $ showOp2 op) [lower a, lower b]
   Match arg cases -> C.App (lower (or' cases)) (lower arg)
-  -- Match args [(xs, ps, b)] -> lower (app (For xs $ fun ps b) args)
-  -- Match args cases -> do
-  --   let n = foldl max 0 (map (\(_, ps, _) -> length ps) cases)
-  --   let rpad :: Int -> a -> [a] -> [a]
-  --       rpad n x xs = xs ++ replicate (n - length xs) x
-  --   let cases' = map (\(xs, ps, b) -> For xs $ fun (rpad n Any ps) b) cases
-  --   let args' = map (\i -> Var ("$" ++ show i)) [length args + 1 .. n]
-  --   let match' = fun args' (app (or' cases') (args ++ args'))
-  --   -- let a = lower match'
-  --   -- (error . intercalate "\n")
-  --   --   [ show match',
-  --   --     C.format (C.dropMeta a),
-  --   --     C.format (C.dropMeta $ C.eval buildOps a),
-  --   --     C.format (C.eval buildOps $ C.dropMeta a)
-  --   --   ]
-  --   lower match'
   Let (a, b) c -> case a of
     Var x | c == Var x -> lower b
     -- Var x -> C.App (lower (Fun a c)) (C.fix [x] (lower b))
@@ -1305,14 +1289,12 @@ eval env expr =
 bindings :: Expr -> [String]
 bindings = \case
   Var x -> [x]
-  -- For xs _ -> xs
-  -- Ann a _ -> bindings a
-  -- App a _ -> bindings a
-  -- Op1 op _ -> [showOp1 op]
-  -- Op2 op _ _ -> [showOp2 op]
+  For xs _ -> xs
+  Ann a _ -> bindings a
+  Op1 op _ -> [showOp1 op]
+  Op2 op _ _ -> [showOp2 op]
   Meta _ a -> bindings a
-  -- a -> freeVars a
-  a -> error $ "TODO bindings " ++ show a
+  a -> freeVars a
 
 buildOps :: C.Ops
 buildOps = do

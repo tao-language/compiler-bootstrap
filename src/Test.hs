@@ -61,9 +61,9 @@ instance TestSome (FilePath, UnitTest) where
     let (env, test') = compile ctx path (Match t.expr cases)
     case C.typedOf (C.eval runtimeOps (C.Let env test')) of
       (C.Tag ":Ok", _) -> [TestPass t.filename t.pos t.name]
-      (C.And (C.Tag ":Err") got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (dropTypes $ lift got)]
+      (C.And (C.Tag ":Err") got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
       (C.Err (RuntimeError (UnhandledCase _ (C.Ann _ (C.Err e)))), _) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift (C.Err e))]
-      (got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (dropTypes $ lift got)]
+      (got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
 
 testAll :: (TestSome a) => Context -> a -> [TestResult]
 testAll ctx = testSome ctx (const True)
