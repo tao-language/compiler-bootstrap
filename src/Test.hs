@@ -3,6 +3,7 @@ module Test where
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap))
 import Data.List (intercalate)
+import Error
 import Location
 import Tao
 
@@ -61,6 +62,7 @@ instance TestSome (FilePath, UnitTest) where
     case C.typedOf (C.eval runtimeOps (C.Let env test')) of
       (C.Tag ":Ok", _) -> [TestPass t.filename t.pos t.name]
       (C.And (C.Tag ":Err") got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (dropTypes $ lift got)]
+      (C.Err (RuntimeError (UnhandledCase _ (C.Ann _ (C.Err e)))), _) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift (C.Err e))]
       (got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (dropTypes $ lift got)]
 
 testAll :: (TestSome a) => Context -> a -> [TestResult]

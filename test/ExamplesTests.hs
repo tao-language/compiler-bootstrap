@@ -79,7 +79,7 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "Any match 1",
             Pass "Any match 2",
             Pass "Unit match",
-            Fail "Unit match fail" i1 (Err $ unhandledCase (Ann (For ["$got"] (Var "$got")) IntT) (Ann (loc (name ++ ".tao") 18 3 18 5 (Tuple [])) (Err $ typeMismatch (Tuple []) IntT))),
+            Fail "Unit match fail" i1 (Err $ typeMismatch (Tuple []) IntT),
             Pass "IntT match",
             Pass "NumT match",
             Pass "Int match",
@@ -182,7 +182,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let ctx = pkg
     let testResults =
           [ Pass "Ann match",
-            Pass "Ann match drop type",
+            Fail "Ann match type mismatch" i1 (Err $ typeMismatch IntT (loc (name ++ ".tao") 6 7 6 10 NumT)),
             Fail "Ann match fail" i2 i1
           ]
     test ctx pkg `shouldBe` testResults
@@ -190,6 +190,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/expressions/call"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "Call constant",

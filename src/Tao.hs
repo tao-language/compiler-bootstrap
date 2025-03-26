@@ -704,7 +704,7 @@ grammar = do
           let parser expr = do
                 start <- P.getState
                 _ <- P.char '%'
-                f <- parseNameVar
+                f <- parseName
                 end <- P.getState
                 _ <- P.spaces
                 args <-
