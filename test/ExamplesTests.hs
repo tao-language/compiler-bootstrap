@@ -139,14 +139,14 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "App Call",
             Pass "App Op1",
             Pass "App Op2",
-            Pass "App Let",
-            Pass "App Bind",
-            Pass "App If",
-            Pass "App Match",
-            Pass "App Record",
-            Pass "App Trait",
-            Pass "App Select",
-            Pass "App With",
+            -- Pass "App Let",
+            -- Pass "App Bind",
+            -- Pass "App If",
+            -- Pass "App Match",
+            -- Pass "App Record",
+            -- Pass "App Trait",
+            -- Pass "App Select",
+            -- Pass "App With",
             Pass "App Err"
           ]
     test ctx pkg `shouldBe` testResults

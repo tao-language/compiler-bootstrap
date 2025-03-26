@@ -1,26 +1,26 @@
 -- App Any
 > _(1)
-_ 1
+_
 
 -- App Unit
 > ()(1)
-!error
+!error(_)
 
 -- App IntT
 > Int(1)
-!error
+!error(_)
 
 -- App NumT
 > Int(1)
-!error
+!error(_)
 
 -- App Int
 > 1(2)
-!error
+!error(_)
 
 -- App Num
 > 3.14(1)
-!error
+!error(_)
 
 -- App Tag
 > A(1)
@@ -32,7 +32,7 @@ _ 1
 
 -- App And
 > (1, 2)(3)
-!error
+!error(_)
 
 -- App Or first
 > (1 -> A | 2 -> B)(1)
@@ -44,11 +44,11 @@ B
 
 -- App Or fail
 > (1 -> A | 2 -> B)(3)
-!error
+!error(_)
 
 -- App For
 > (@x. x)(1)
-@x. x 1
+(@x. x)(1)
 
 -- App Fun
 > (x -> x)(1)
@@ -56,17 +56,19 @@ B
 
 -- App App
 > (@x. x)(1)(2)
-@x. x 1 2
+(@x. x)(1)(2)
 
-# -- App Call
-# > $call 1
-# $call
+-- App Call
+> %call()(1)
+%call()(1)
 
-# -- App Op1
-# > (@x. -x) 1
+-- App Op1
+> (@x. -x)(1)
+(@x. -x)(1)
 
-# -- App Op2
-# > (@x. x + x) 1
+-- App Op2
+> (@x. x + x)(1)
+(@x. x + x)(1)
 
 # TestPass name "App Let",
 # TestPass name "App Bind",
@@ -78,5 +80,5 @@ B
 # TestPass name "App With",
 
 -- App Err
-> !error 1
-!error
+> !error(_)(1)
+!error(_)
