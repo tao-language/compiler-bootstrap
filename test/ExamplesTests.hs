@@ -118,6 +118,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/expressions/app"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "App Any",
@@ -134,18 +135,18 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "App Or fail",
             Pass "App For",
             Pass "App Fun",
-            -- Pass "App App",
-            -- Pass "App Call",
-            -- Pass "App Op1",
-            -- Pass "App Op2",
-            -- Pass "App Let",
-            -- Pass "App Bind",
-            -- Pass "App If",
-            -- Pass "App Match",
-            -- Pass "App Record",
-            -- Pass "App Trait",
-            -- Pass "App Select",
-            -- Pass "App With",
+            Pass "App App",
+            Pass "App Call",
+            Pass "App Op1",
+            Pass "App Op2",
+            Pass "App Let",
+            Pass "App Bind",
+            Pass "App If",
+            Pass "App Match",
+            Pass "App Record",
+            Pass "App Trait",
+            Pass "App Select",
+            Pass "App With",
             Pass "App Err"
           ]
     test ctx pkg `shouldBe` testResults

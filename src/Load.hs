@@ -1,8 +1,9 @@
 module Load where
 
 import Control.Monad (foldM)
+import qualified Core as C
 import Data.List (isPrefixOf, sort)
-import Error (Error (SyntaxError), SyntaxError (..))
+import Error
 import Location (Location (..), Position (..), Range (..))
 import qualified Parser as P
 import Stdlib (replace, split2)
@@ -60,17 +61,14 @@ loadSource filename = case splitExtension filename of
   (name, ".tao") -> do
     let osPath = getOSPath filename
     src <- readFile osPath
-    let parser = parseModule (snd (split2 ':' name))
+    let path = snd (split2 ':' name)
+    let parser = parseModule path
     case P.parse parser osPath src of
       Right (mod, _) -> return (Just mod)
-      Left P.State {filename, pos, context} -> do
-        -- let loc =
-        --       Location
-        --         { filename = filename,
-        --           range = Range pos pos
-        --         }
-        -- return (Left [UnexpectedChar loc])
-        return Nothing
+      Left P.State {filename, pos, context, remaining} -> do
+        -- TODO: this should gracefully recover from errors on the parser.
+        let loc = Location filename (Range pos pos)
+        return (Just (path, [Def (Any, Err $ unexpectedChar loc)]))
   _ -> error $ "file extension not supported: " ++ filename
 
 -- loadAtom :: String -> String -> IO Expr

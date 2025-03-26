@@ -1253,13 +1253,43 @@ parseCommentMultiLine = do
   error "TODO: parseCommentMultiLine"
   return (dropWhileEnd isSpace line)
 
-check :: Expr -> [(Expr, Error Expr)]
-check = \case
-  Ann a b -> case errOf b of
-    Just e -> (a, e) : check a
-    Nothing -> check a
-  a | Just e <- errOf a -> [(a, e)]
-  a -> collect check a
+class Check a where
+  check :: a -> [(Expr, Error Expr)]
+
+instance Check Expr where
+  check :: Expr -> [(Expr, Error Expr)]
+  check = \case
+    Ann a b -> case errOf b of
+      Just e -> (a, e) : check a
+      Nothing -> check a
+    a | Just e <- errOf a -> [(a, e)]
+    a -> collect check a
+
+instance Check (Expr, Maybe Type) where
+  check :: (Expr, Maybe Type) -> [(Expr, Error Expr)]
+  check (a, Just t) = check a ++ check t
+  check (a, Nothing) = check a
+
+instance Check Stmt where
+  check :: Stmt -> [(Expr, Error Expr)]
+  check = \case
+    Import {} -> []
+    Def (a, b) -> check a ++ check b
+    TypeDef (_, args, alts) -> concatMap check args ++ concatMap check alts
+    Test _ -> []
+    Comment _ -> []
+
+instance Check [Stmt] where
+  check :: [Stmt] -> [(Expr, Error Expr)]
+  check = concatMap check
+
+instance Check Module where
+  check :: Module -> [(Expr, Error Expr)]
+  check = concatMap check
+
+instance Check Context where
+  check :: Context -> [(Expr, Error Expr)]
+  check = concatMap check
 
 run :: Context -> FilePath -> Expr -> (Expr, Type)
 run ctx path expr = do
