@@ -49,6 +49,7 @@ instance TestSome (String, Stmt) where
     TypeDef {} -> []
     Test t | filter t -> testSome ctx filter (path, t)
     Test {} -> []
+    Run {} -> []
     Comment {} -> []
 
 instance TestSome (FilePath, UnitTest) where
