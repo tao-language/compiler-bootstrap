@@ -37,6 +37,7 @@ data Expr
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
   | Match Expr [Expr]
+  | MatchFun [Expr]
   | Let (Pattern, Expr) Expr
   | Bind (Pattern, Expr) Expr
   | Record [(String, Expr)]
@@ -117,6 +118,7 @@ data Stmt
   | Def (Pattern, Expr)
   | TypeDef (String, [Expr], [(Expr, Maybe Type)])
   | Test UnitTest
+  | Run Expr
   | Comment String
   deriving (Eq, Show)
 
@@ -336,6 +338,7 @@ instance Apply Expr where
     Op1 op a -> Op1 op (f a)
     Op2 op a b -> Op2 op (f a) (f b)
     Match arg cases -> Match (f arg) (map f cases)
+    MatchFun cases -> MatchFun (map f cases)
     Let (a, b) c -> Let (f a, f b) (f c)
     Bind (a, b) c -> Bind (f a, f b) (f c)
     Record fields -> Record (second f <$> fields)
@@ -352,6 +355,8 @@ instance Apply Stmt where
     Def (a, b) -> Def (f a, f b)
     TypeDef (name, args, alts) -> TypeDef (name, map f args, map (bimap f (fmap f)) alts)
     Test t -> Test (apply f t)
+    Run a -> Run (f a)
+    Comment x -> Comment x
 
 instance Apply UnitTest where
   apply :: (Expr -> Expr) -> UnitTest -> UnitTest
@@ -507,6 +512,7 @@ grammar = do
                 start <- P.getState
                 _ <- P.char 'c'
                 quote <- P.oneOf [P.char '\'', P.char '"']
+                _ <- P.commit "char"
                 ch <- P.anyChar
                 _ <- P.char quote
                 end <- P.getState
@@ -559,6 +565,7 @@ grammar = do
           let parser expr = do
                 start <- P.getState
                 quote <- P.oneOf [P.char '\'', P.char '"']
+                _ <- P.commit "string"
                 _ <- P.char quote
                 end <- P.getState
                 _ <- P.spaces
@@ -578,6 +585,7 @@ grammar = do
                 end <- P.getState
                 _ <- P.whitespaces
                 b <- parseExpr 0
+                _ <- P.commit "let"
                 _ <- parseLineBreak
                 c <- expr
                 _ <- P.spaces
@@ -626,6 +634,7 @@ grammar = do
           let parser expr = do
                 start <- P.getState
                 _ <- P.char '@'
+                _ <- P.commit "for"
                 xs <-
                   P.oneOf
                     [ do
@@ -660,13 +669,13 @@ grammar = do
           G.infixL 9 (locOp2 Mul) "*" $ \case
             Op2 Mul a b -> Just (a, " ", b)
             _ -> Nothing,
-          -- Grammar.Op2.Div
-          G.infixL 9 (locOp2 Div) "/" $ \case
-            Op2 Div a b -> Just (a, " ", b)
-            _ -> Nothing,
-          -- Grammar.Op2.DivI
+          -- Grammar.Op2.DivI must go before Div '/'
           G.infixL 9 (locOp2 DivI) "//" $ \case
             Op2 DivI a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.Div must go after DivI '//'
+          G.infixL 9 (locOp2 Div) "/" $ \case
+            Op2 Div a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Pow
           G.infixR 10 (locOp2 Pow) "^" $ \case
@@ -705,6 +714,7 @@ grammar = do
           let parser expr = do
                 start <- P.getState
                 _ <- P.char '%'
+                _ <- P.commit "call"
                 f <- parseName
                 end <- P.getState
                 _ <- P.spaces
@@ -718,31 +728,38 @@ grammar = do
                 Call f [] -> Just [PP.Text $ "%" ++ f]
                 Call f args -> Just (PP.Text ("%" ++ f ++ "(") : collectionLayout layout args ++ [PP.Text ")"])
                 _ -> Nothing,
-          -- Grammar.Match
+          -- Grammar.Match / Grammar.MatchFun
           let parser expr = do
                 start <- P.getState
                 _ <- P.word "match"
+                _ <- P.commit "match"
                 end <- P.getState
-                _ <- P.spaces
-                arg <- expr
-                _ <- P.spaces
+                _ <- P.whitespaces
+                maybeArg <- P.maybe' $ do
+                  arg <- expr
+                  _ <- P.whitespaces
+                  return arg
                 _ <- P.char '{'
                 _ <- P.whitespaces
                 cases <- P.zeroOrMore $ do
                   _ <- P.char '|'
                   _ <- P.spaces
-                  case' <- expr
+                  case' <- parseExpr 1
                   _ <- P.whitespaces
                   return case'
                 _ <- P.char '}'
                 _ <- P.spaces
-                return (withLoc start end $ Match arg cases)
+                case maybeArg of
+                  Just arg -> return (withLoc start end $ Match arg cases)
+                  Nothing -> return (withLoc start end $ MatchFun cases)
+              layoutCases layout = \case
+                [] -> []
+                cases -> PP.NewLine : concatMap (\c -> PP.Text "| " : layout c ++ [PP.NewLine]) cases
            in G.Atom parser $ \layout -> \case
                 Match arg cases -> do
-                  let layoutCases = \case
-                        [] -> []
-                        cases -> PP.NewLine : concatMap (\c -> PP.Text "| " : layout c ++ [PP.NewLine]) cases
-                  Just (PP.Text "match " : layout arg ++ PP.Text " {" : layoutCases cases ++ [PP.Text "}"])
+                  Just (PP.Text "match " : layout arg ++ PP.Text " {" : layoutCases layout cases ++ [PP.Text "}"])
+                MatchFun cases -> do
+                  Just (PP.Text "match {" : layoutCases layout cases ++ [PP.Text "}"])
                 _ -> Nothing,
           -- Grammar.Record [(String, Expr)]
           -- Grammar.Select Expr [(String, Expr)]
@@ -751,6 +768,7 @@ grammar = do
           let parser expr = do
                 start <- P.getState
                 _ <- P.word "if"
+                _ <- P.commit "if"
                 end <- P.getState
                 _ <- P.spaces
                 a <- expr
@@ -824,6 +842,7 @@ grammar = do
                 return (Err (customError a))
            in G.Atom parser $ \layout -> \case
                 Err e -> case e of
+                  SyntaxError loc txt -> Just [PP.Text $ "!syntax-error[" ++ show loc ++ "](" ++ txt ++ ")"]
                   TypeError e -> case e of
                     UndefinedVar x -> Just [PP.Text $ "!undefined-var(" ++ x ++ ")"]
                     TypeMismatch a b -> Just (PP.Text "!type-mismatch(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
@@ -988,7 +1007,7 @@ parseCollection open delim close parser = do
 
 parseLineBreak :: Parser ()
 parseLineBreak = do
-  _ <- P.oneOf [P.char '\n', P.char ';']
+  _ <- P.oneOf [P.char '\n', P.char ';', '$' <$ P.endOfFile]
   _ <- P.whitespaces
   return ()
 
@@ -1078,25 +1097,25 @@ parseModule :: String -> Parser Module
 parseModule name = do
   _ <- P.whitespaces
   stmts <- P.zeroOrMore parseStmt
-  _ <- P.whitespaces
-  -- comments <- P.zeroOrMore parseComment
   _ <- P.endOfFile
   return (name, stmts)
 
 parseStmt :: Parser Stmt
 parseStmt = do
-  -- comments <- P.zeroOrMore parseComment
   stmt <-
     P.oneOf
       [ parseImport,
         Def <$> parseDef "=",
         TypeDef <$> parseTypeDef,
         parseTest,
-        Comment <$> parseComment
+        Comment <$> parseComment,
+        Run <$> parseExpr 1,
+        -- Recovering from a syntax error must be done at the end
+        -- because it matches anything.
+        -- TODO: consider a trailing comment on a syntax error like this
+        Run <$> recoverSyntaxError ['\n']
       ]
-  _ <- P.spaces
   _ <- parseLineBreak
-  _ <- P.whitespaces
   return stmt
 
 parseModulePath :: Parser (String, String)
@@ -1138,21 +1157,18 @@ parseDef :: String -> Parser (Expr, Expr)
 parseDef op = do
   typeAnnotation <- P.maybe' $ do
     _ <- P.char ':'
-    P.commit "definition-typed"
+    P.commit "typed def"
     _ <- P.spaces
     t <- parseExpr 0
-    _ <- P.spaces
     _ <- parseLineBreak
-    _ <- P.whitespaces
-    return (`Ann` t)
-  a <- parseExpr 1
-  _ <- P.spaces
+    return t
+  a <- parseExpr 2
   _ <- P.word op
-  P.commit "definition"
+  _ <- P.commit "def"
   _ <- P.whitespaces
-  b <- parseExpr 0
+  b <- parseExpr 2
   case typeAnnotation of
-    Just ann -> return (ann a, b)
+    Just t -> return (Ann a t, b)
     Nothing -> return (a, b)
 
 parseTypeDefAlt :: Parser (Expr, Maybe Type)
@@ -1168,25 +1184,28 @@ parseTypeDefAlt = do
 parseTypeDef :: Parser (String, [Expr], [(Expr, Maybe Type)])
 parseTypeDef = do
   _ <- P.word "type"
+  _ <- P.commit "typedef"
   _ <- P.whitespaces
   name <- parseNameTag
   _ <- P.whitespaces
-  args <- P.zeroOrMore $ do
-    arg <- parseExpr 0
-    _ <- P.whitespaces
-    return arg
-  _ <- P.char '='
+  args <- P.oneOf [parseCollection "(" "," ")" (parseExpr 0), return []]
   _ <- P.whitespaces
-  _ <- P.maybe' $ do
-    _ <- P.char '|'
-    P.whitespaces
-  alt <- parseTypeDefAlt
+  _ <- P.char '{'
+  _ <- P.whitespaces
   alts <- P.zeroOrMore $ do
-    _ <- P.whitespaces
     _ <- P.char '|'
+    _ <- P.spaces
+    a <- parseExpr 1
+    _ <- P.spaces
+    mb <- P.maybe' $ do
+      _ <- P.text "=>"
+      _ <- P.whitespaces
+      parseExpr 1
     _ <- P.whitespaces
-    parseTypeDefAlt
-  return (name, args, alt : alts)
+    return (a, mb)
+  _ <- P.char '}'
+  _ <- P.spaces
+  return (name, args, alts)
 
 parseTest :: Parser Stmt
 parseTest = do
@@ -1208,14 +1227,13 @@ parseTest = do
       [ do
           _ <- P.spaces
           _ <- parseLineBreak
-          _ <- P.spaces
           parseExpr 0,
         return (Tag "True" [])
       ]
   return (Test (UnitTest s.filename s.pos name expr result))
 
 parseComment :: Parser String
-parseComment = P.oneOf [parseCommentMultiLine, parseCommentSingleLine]
+parseComment = parseCommentSingleLine
 
 parseCommentSingleLine :: Parser String
 parseCommentSingleLine = do
@@ -1227,52 +1245,65 @@ parseCommentSingleLine = do
   -- _ <- P.whitespaces
   return (dropWhileEnd isSpace line)
 
-parseCommentMultiLine :: Parser String
-parseCommentMultiLine = do
-  delim <- P.chain [P.text "#--", P.zeroOrMore (P.char '-')]
-  P.commit "comment-multiline"
-  _ <- P.spaces
-  line <- P.skipTo parseLineBreak
-  _ <- P.whitespaces
-  error "TODO: parseCommentMultiLine"
-  return (dropWhileEnd isSpace line)
+-- parseCommentMultiLine :: Parser String
+-- parseCommentMultiLine = do
+--   -- #{ multi-line comment }#
+--   delim <- P.chain [P.text "#--", P.zeroOrMore (P.char '-')]
+--   P.commit "comment-multiline"
+--   _ <- P.spaces
+--   line <- P.skipTo parseLineBreak
+--   _ <- P.whitespaces
+--   error "TODO: parseCommentMultiLine"
+--   return (dropWhileEnd isSpace line)
+
+recoverSyntaxError :: [Char] -> Parser Expr
+recoverSyntaxError delims = do
+  start <- P.getState
+  txt <- P.oneOrMore (P.charIf (`notElem` delims))
+  end <- P.getState
+  let loc = Location start.filename (Range start.pos end.pos)
+  case start.filename of
+    "prelude/@comparison.tao" -> error $ show (loc, txt)
+    _ -> return ()
+  return (Err (SyntaxError loc txt))
+
+locOf :: Expr -> Maybe Location
+locOf (Meta (C.Loc loc) _) = Just loc
+locOf (Meta _ a) = locOf a
+locOf (Ann a _) = locOf a
+locOf _ = Nothing
 
 class Check a where
-  check :: a -> [(Expr, Error Expr)]
+  check :: a -> [(Maybe Location, Error Expr)]
 
 instance Check Expr where
-  check :: Expr -> [(Expr, Error Expr)]
+  check :: Expr -> [(Maybe Location, Error Expr)]
   check = \case
     Ann a b -> case errOf b of
-      Just e -> (a, e) : check a
+      Just e -> (locOf a, e) : check a
       Nothing -> check a
-    a | Just e <- errOf a -> [(a, e)]
+    a | Just e <- errOf a -> case e of
+      SyntaxError loc _ -> [(Just loc, e)]
+      _ -> [(Nothing, e)]
     a -> collect check a
 
 instance Check (Expr, Maybe Type) where
-  check :: (Expr, Maybe Type) -> [(Expr, Error Expr)]
+  check :: (Expr, Maybe Type) -> [(Maybe Location, Error Expr)]
   check (a, Just t) = check a ++ check t
   check (a, Nothing) = check a
 
 instance Check Stmt where
-  check :: Stmt -> [(Expr, Error Expr)]
+  check :: Stmt -> [(Maybe Location, Error Expr)]
   check = \case
     Import {} -> []
     Def (a, b) -> check a ++ check b
     TypeDef (_, args, alts) -> concatMap check args ++ concatMap check alts
     Test _ -> []
+    Run a -> check a
     Comment _ -> []
 
-instance Check [Stmt] where
-  check :: [Stmt] -> [(Expr, Error Expr)]
-  check = concatMap check
-
-instance Check Module where
-  check :: Module -> [(Expr, Error Expr)]
-  check = concatMap check
-
-instance Check Context where
-  check :: Context -> [(Expr, Error Expr)]
+instance (Check a) => Check [a] where
+  check :: [a] -> [(Maybe Location, Error Expr)]
   check = concatMap check
 
 run :: Context -> FilePath -> Expr -> (Expr, Type)

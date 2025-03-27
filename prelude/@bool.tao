@@ -1,4 +1,7 @@
-type Bool = True | False
+type Bool {
+| True
+| False
+}
 
 : Bool -> Bool
 not = match {
@@ -6,20 +9,20 @@ not = match {
 | _ -> True
 }
 
-: Bool, Bool -> Bool
+: (Bool, Bool) -> Bool
 (and) = match {
-| True, True -> True
+| (True, True) -> True
 | _ -> False
 }
 
-: Bool, Bool -> Bool
+: (Bool, Bool) -> Bool
 (or) = match {
-| False, False -> False
+| (False, False) -> False
 | _ -> True
 }
 
-: Bool, Bool -> Bool
+: (Bool, Bool) -> Bool
 (xor) = match {
-| x, x -> False
+| (x, x) -> False
 | _ -> True
 }

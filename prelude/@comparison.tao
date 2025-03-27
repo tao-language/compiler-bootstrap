@@ -1,23 +1,23 @@
-: Int, Int -> Bool
+: (Int, Int) -> Bool
 x < y = %int_lt(x, y)
 
-: Num, Num -> Bool
+: (Num, Num) -> Bool
 x < y = %num_lt(x, y)
 
-: a, a -> Bool
-x == y = match (x, y) {
+: (a, a) -> Bool
+(==) = match {
 | (x, x) -> True
 | _ -> False
 }
 
-: a, a -> Bool
+: (a, a) -> Bool
 x != y = not (x == y)
 
-: a, a -> Bool
+: (a, a) -> Bool
 x <= y = not (y < x)
 
-: a, a -> Bool
+: (a, a) -> Bool
 x > y = y < x
 
-: a, a -> Bool
+: (a, a) -> Bool
 x >= y = not (x < y)

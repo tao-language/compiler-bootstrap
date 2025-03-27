@@ -64,11 +64,10 @@ loadSource filename = case splitExtension filename of
     let path = snd (split2 ':' name)
     let parser = parseModule path
     case P.parse parser osPath src of
-      Right (mod, _) -> return (Just mod)
-      Left P.State {filename, pos, context, remaining} -> do
-        -- TODO: this should gracefully recover from errors on the parser.
-        let loc = Location filename (Range pos pos)
-        return (Just (path, [Def (Any, Err $ unexpectedChar loc)]))
+      Right (mod, s) -> return (Just mod)
+      Left s -> do
+        let loc = Location s.filename (Range s.pos s.pos)
+        error ("compiler error, there is a bug in the parser\n ❌ " ++ show loc ++ ": the parser was not able to gracefully recover from an error.\ncontext=" ++ show s.context ++ "\n")
   _ -> error $ "file extension not supported: " ++ filename
 
 -- loadAtom :: String -> String -> IO Expr

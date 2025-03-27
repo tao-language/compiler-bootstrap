@@ -18,6 +18,7 @@ data Range = Range
 
 instance Show Range where
   show :: Range -> String
+  show r | r.start == r.end = show r.start
   show r = show r.start ++ "," ++ show r.end
 
 data Location = Location

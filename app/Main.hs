@@ -3,7 +3,7 @@ import Control.Monad (void)
 import qualified Core as C
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, isSuffixOf, partition)
-import Error (Error (..), SyntaxError (..), display)
+import Error
 import Load (include, load)
 import Patch
 import PrettyPrint (pretty)
@@ -87,7 +87,6 @@ checkCmd :: FilePath -> IO ()
 checkCmd filename = do
   pkg <- load [filename]
   ctx <- include "prelude" pkg
-  -- TODO: display errors
   let path = dropExtension (snd (split2 ':' filename))
   case checkTypes ctx path pkg of
     [] -> return ()

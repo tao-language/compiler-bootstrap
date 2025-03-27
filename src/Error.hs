@@ -10,14 +10,10 @@ import Stdlib (pad, slice)
 -- https://github.com/gleam-lang/gleam/blob/main/compiler-core/src/error.rs
 
 data Error a
-  = SyntaxError SyntaxError
+  = SyntaxError Location String
   | TypeError (TypeError a)
   | CaseError (CaseError a)
   | RuntimeError (RuntimeError a)
-  deriving (Eq, Show)
-
-newtype SyntaxError
-  = UnexpectedChar Location
   deriving (Eq, Show)
 
 data TypeError a
@@ -44,12 +40,7 @@ data RuntimeError a
 instance Functor Error where
   fmap :: (a -> b) -> Error a -> Error b
   fmap f = \case
-    RuntimeError e -> case e of
-      UnhandledCase a b -> unhandledCase (f a) (f b)
-      CannotApply a b -> cannotApply (f a) (f b)
-      CustomError a -> customError (f a)
-    SyntaxError e -> case e of
-      UnexpectedChar loc -> unexpectedChar loc
+    SyntaxError loc txt -> SyntaxError loc txt
     TypeError e -> case e of
       OccursError x a -> occursError x (f a)
       TypeMismatch a b -> typeMismatch (f a) (f b)
@@ -58,9 +49,10 @@ instance Functor Error where
     CaseError e -> case e of
       MissingCases cases -> missingCases (map f cases)
       RedundantCases cases -> redundantCases (map f cases)
-
-unexpectedChar :: Location -> Error a
-unexpectedChar loc = SyntaxError (UnexpectedChar loc)
+    RuntimeError e -> case e of
+      UnhandledCase a b -> unhandledCase (f a) (f b)
+      CannotApply a b -> cannotApply (f a) (f b)
+      CustomError a -> customError (f a)
 
 occursError :: String -> a -> Error a
 occursError x a = TypeError (OccursError x a)
@@ -91,7 +83,7 @@ customError a = RuntimeError (CustomError a)
 
 summary :: (Show a) => Error a -> String
 summary = \case
-  SyntaxError _ -> "Syntax Error"
+  SyntaxError _ _ -> "Syntax Error"
   TypeError e -> case e of
     OccursError {} -> "Occurs Error"
     TypeMismatch {} -> "Type Mismatch"
@@ -150,27 +142,27 @@ snippet loc src = do
         ++ linesAfter
     )
 
-display :: (Show a) => Error a -> IO ()
-display e = do
+display :: (Show a) => (Maybe Location, Error a) -> IO ()
+display (mloc, err) = do
   putStrLn (replicate 60 '-')
-  putStrLn ("🛑 " ++ summary e)
-  case Nothing of
+  putStrLn ("🛑 " ++ summary err)
+  case mloc of
     Nothing -> return ()
     Just loc -> do
       src <- readFile loc.filename
       putStrLn ""
       putStrLn (snippet loc src)
-  case description e of
+  case description err of
     "" -> return ()
     description -> do
       putStrLn ""
       putStrLn description
-  case suggestion e of
+  case suggestion err of
     "" -> return ()
     suggestion -> do
       putStrLn ""
       putStrLn suggestion
-  case docsUrl e of
+  case docsUrl err of
     "" -> return ()
     url -> do
       putStrLn ""

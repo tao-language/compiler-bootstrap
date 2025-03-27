@@ -2,7 +2,7 @@ module Patch where
 
 import Control.Monad (foldM)
 import Data.Function ((&))
-import Error (SyntaxError (..))
+import Error
 import Load (load, loadSource)
 import Run (run)
 import Stdlib (push, set, split2)
