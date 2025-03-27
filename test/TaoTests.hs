@@ -4,7 +4,7 @@ import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap, second))
 import Data.Function ((&))
 import Error
-import Location (Location (Location), Position (Pos), Range (Range))
+import Location
 import qualified Parser as P
 import Tao
 import Test.Hspec
@@ -44,8 +44,11 @@ compile' ctx path expr = do
   let (env, a) = compile ctx path expr
   (env, C.typedOf a)
 
-check' :: C.Expr -> [(Expr, Error Expr)]
-check' = check . lift
+check' :: C.Expr -> [(Maybe (Int, Int, Int, Int), Error Expr)]
+check' a = do
+  let f (Just (Location _ (Range start end)), err) = (Just (start.row, start.col, end.row, end.col), err)
+      f (Nothing, err) = (Nothing, err)
+  map f (check (lift a))
 
 eval' :: C.Env -> C.Expr -> C.Type -> (String, String)
 eval' env expr type' =
@@ -182,7 +185,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "x" `shouldBe` Right expr
     fmt' a `shouldBe` "x"
     fmt' t `shouldBe` "!undefined-var(x)"
-    check' (C.Ann a t) `shouldBe` [(x 1 1, undefinedVar "x")]
+    check' (C.Ann a t) `shouldBe` [(Just (1, 1, 1, 2), undefinedVar "x")]
     eval' env a t `shouldBe` ("x", "!undefined-var(x)")
 
   it "☯ Tao.Var.direct" $ do
@@ -236,7 +239,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "A(x)" `shouldBe` Right expr
     fmt' a `shouldBe` "(A, x : !undefined-var(x))"
-    check' (C.Ann a t) `shouldBe` [(x 1 3, undefinedVar "x")]
+    check' (C.Ann a t) `shouldBe` [(Just (1, 3, 1, 4), undefinedVar "x")]
     eval' env a t `shouldBe` ("A(x)", "A(!undefined-var(x))")
 
   it "☯ Tao.Ann.ok" $ do
@@ -255,7 +258,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "x : Num" `shouldBe` Right expr
     fmt' a `shouldBe` "x"
     fmt' t `shouldBe` "!type-mismatch(^Int, ^Num)"
-    check' (C.Ann a t) `shouldBe` [(x 1 1, typeMismatch IntT (numT 1 5))]
+    check' (C.Ann a t) `shouldBe` [(Just (1, 1, 1, 2), typeMismatch IntT (numT 1 5))]
     eval' env a t `shouldBe` ("42", "!type-mismatch(Int, ^[<test>:1:5,1:8](Num))")
 
   it "☯ Tao.Tuple.0" $ do
@@ -291,7 +294,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "(x, z)" `shouldBe` Right expr
     fmt' a `shouldBe` "(x, z : !undefined-var(z))"
-    check' (C.Ann a t) `shouldBe` [(z 1 5, undefinedVar "z")]
+    check' (C.Ann a t) `shouldBe` [(Just (1, 5, 1, 6), undefinedVar "z")]
     eval' env a t `shouldBe` ("(42, z)", "(Int, !undefined-var(z))")
 
   it "☯ Tao.List.0" $ do
@@ -500,7 +503,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match x {}" `shouldBe` Right expr
     fmt' a `shouldBe` "!cannot-apply((), ()) (x : !not-a-function(!cannot-apply((), ()), _))"
-    check' (C.Ann a t) `shouldBe` [(x 1 7, notAFunction (Err (cannotApply (Tuple []) (Tuple []))) Any)]
+    check' (C.Ann a t) `shouldBe` [(Just (1, 7, 1, 8), notAFunction (Err (cannotApply (Tuple []) (Tuple []))) Any)]
     eval' env a t `shouldBe` ("!cannot-apply(!cannot-apply((), ()), ^[<test>:1:7,1:8](^[ctx.x:1:1,1:3](42) : Int) : !not-a-function(!cannot-apply((), ()), _))", "Int")
 
   it "☯ Tao.Match.error.arg" $ do
@@ -509,7 +512,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match z {\n| y -> x\n}" `shouldBe` Right expr
     fmt' a `shouldBe` "^let @y. y : !undefined-var(z) = z : !undefined-var(z); x : ^Int"
-    check' (C.Ann a t) `shouldBe` [(z 1 7, undefinedVar "z"), (For ["y"] $ y 2 3, undefinedVar "z")]
+    check' (C.Ann a t) `shouldBe` [(Just (1, 7, 1, 8), undefinedVar "z"), (Nothing, undefinedVar "z")]
     -- Undefined since there are errors (should this be removed?)
     -- eval' env a t `shouldBe` ("match z {\n| (y : !undefined-var(z)) -> 42\n}", "Int")
     eval' env a t `shouldBe` ("42", "Int")
@@ -520,7 +523,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match x {\n| y -> z\n}" `shouldBe` Right expr
     fmt' a `shouldBe` "^let @y. y : ^Int = x : ^Int; z : !undefined-var(z)"
-    check' (C.Ann a t) `shouldBe` [(z 2 8, undefinedVar "z")]
+    check' (C.Ann a t) `shouldBe` [(Just (2, 8, 2, 9), undefinedVar "z")]
     eval' env a t `shouldBe` ("z", "_")
 
   it "☯ Tao.Match.1" $ do

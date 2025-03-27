@@ -1282,7 +1282,8 @@ instance Check Expr where
     Ann a b -> case errOf b of
       Just e -> (locOf a, e) : check a
       Nothing -> check a
-    a | Just e <- errOf a -> case e of
+    Meta _ a -> check a
+    Err e -> case e of
       SyntaxError loc _ -> [(Just loc, e)]
       _ -> [(Nothing, e)]
     a -> collect check a
@@ -1305,6 +1306,10 @@ instance Check Stmt where
 instance (Check a) => Check [a] where
   check :: [a] -> [(Maybe Location, Error Expr)]
   check = concatMap check
+
+instance Check Module where
+  check :: Module -> [(Maybe Location, Error Expr)]
+  check (_, stmts) = concatMap check stmts
 
 run :: Context -> FilePath -> Expr -> (Expr, Type)
 run ctx path expr = do
