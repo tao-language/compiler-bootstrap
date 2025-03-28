@@ -880,12 +880,12 @@ lower = \case
   String [] -> C.Tag "''"
   String segments -> error "TODO: lower String"
   Or a b -> C.Or (lower a) (lower b)
+  For xs a -> C.for xs (lower a)
   Fun (For xs a) b -> C.for xs (C.Fun (lower a) (lower b))
   Fun (Meta m a) b -> case lower (Fun a b) of
     C.Fun a b -> C.Fun (C.Meta m a) b
     a -> C.Meta m a
   Fun a b -> lower (Fun (For (freeVars a) a) b)
-  -- For xs a -> C.for xs (lower a)
   -- Fun (For xs a) b -> C.Fun (lower (For xs a)) (lower b)
   -- Fun (Meta _ a) b | isFor a -> lower (Fun a b)
   -- Fun a b -> lower (Fun (For (freeVars a) a) b)
@@ -956,7 +956,7 @@ lift = \case
   C.And (C.Tag k) args -> Tag k (map lift (C.andOf args))
   C.And a bs -> Tuple (map lift (a : C.andOf bs))
   C.Or a b -> Or (lift a) (lift b)
-  C.For x a -> case forOf (lift a) of
+  C.For (x, _) a -> case forOf (lift a) of
     (xs, a) | sort (x : xs) == sort (caseBindings a) -> a
     (xs, a) -> For (x : xs) a
   C.Fun a b -> Fun (lift a) (lift b)
@@ -1426,15 +1426,15 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  compile ctx path (name@"x", expr) = do
-    let dependencies = delete name (freeNames expr)
-    let env = concatMap (fst . compile ctx path) dependencies
-    let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
-    -- case t of
-    --   C.Any -> (env, a)
-    --   C.Var _ -> (env, a)
-    --   _ -> (env, C.Ann a t)
-    error $ show (C.dropMeta a)
+  -- compile ctx path (name@"x", expr) = do
+  --   let dependencies = delete name (freeNames expr)
+  --   let env = concatMap (fst . compile ctx path) dependencies
+  --   let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
+  --   -- case t of
+  --   --   C.Any -> (env, a)
+  --   --   C.Var _ -> (env, a)
+  --   --   _ -> (env, C.Ann a t)
+  --   error $ show (C.dropMeta a)
   compile ctx path (name, expr) = do
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies

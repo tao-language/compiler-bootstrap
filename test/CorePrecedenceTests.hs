@@ -21,42 +21,42 @@ run = describe "--== Core precedence ==--" $ do
 
   it "☯ CorePrecedence.Fix" $ do
     prec "&x. y | z" `shouldBe` Right (Fix "x" (y `Or` z))
-    prec "&x. @y. z" `shouldBe` Right (Fix "x" (For "y" z))
+    prec "&x. @y. z" `shouldBe` Right (Fix "x" (for ["y"] z))
     prec "&x. y : z" `shouldBe` Right (Fix "x" (y `Ann` z))
     prec "&x. y -> z" `shouldBe` Right (Fix "x" (y `Fun` z))
     prec "&x. y z" `shouldBe` Right (Fix "x" (y `App` z))
 
   it "☯ CorePrecedence.Or" $ do
     prec "x | y | z" `shouldBe` Right (x `Or` (y `Or` z))
-    prec "x | @y. z" `shouldBe` Right (Or x (For "y" z))
+    prec "x | @y. z" `shouldBe` Right (Or x (for ["y"] z))
     prec "x | y : z" `shouldBe` Right (x `Or` (y `Ann` z))
     prec "x | y -> z" `shouldBe` Right (x `Or` (y `Fun` z))
     prec "x | y z" `shouldBe` Right (x `Or` (y `App` z))
 
   it "☯ CorePrecedence.For" $ do
-    prec "@x. y | z" `shouldBe` Right (Or (For "x" y) z)
-    prec' "@x. @y. z" `shouldBe` Right (For "x" (For "y" z), "@x y. z")
-    prec "@x. y : z" `shouldBe` Right (Ann (For "x" y) z)
-    prec "@x. y -> z" `shouldBe` Right (For "x" (y `Fun` z))
-    prec "@x. y z" `shouldBe` Right (For "x" (y `App` z))
+    prec "@x. y | z" `shouldBe` Right (Or (for ["x"] y) z)
+    prec' "@x. @y. z" `shouldBe` Right (for ["x"] (for ["y"] z), "@x y. z")
+    prec "@x. y : z" `shouldBe` Right (Ann (for ["x"] y) z)
+    prec "@x. y -> z" `shouldBe` Right (for ["x"] (y `Fun` z))
+    prec "@x. y z" `shouldBe` Right (for ["x"] (y `App` z))
 
   it "☯ CorePrecedence.Ann" $ do
     prec "x : y | z" `shouldBe` Right (x `Ann` y `Or` z)
     prec "x : y : z" `shouldBe` Right (x `Ann` (y `Ann` z))
-    prec "x : @y. z" `shouldBe` Right (Ann x (For "y" z))
+    prec "x : @y. z" `shouldBe` Right (Ann x (for ["y"] z))
     prec "x : y -> z" `shouldBe` Right (x `Ann` (y `Fun` z))
     prec "x : y z" `shouldBe` Right (x `Ann` (y `App` z))
 
   it "☯ CorePrecedence.Fun" $ do
     prec "x -> y | z" `shouldBe` Right (x `Fun` y `Or` z)
-    prec "x -> @y. z" `shouldBe` Right (Fun x (For "y" z))
+    prec "x -> @y. z" `shouldBe` Right (Fun x (for ["y"] z))
     prec "x -> y : z" `shouldBe` Right (x `Fun` y `Ann` z)
     prec "x -> y -> z" `shouldBe` Right (x `Fun` (y `Fun` z))
     prec "x -> y z" `shouldBe` Right (x `Fun` (y `App` z))
 
   it "☯ CorePrecedence.App" $ do
     prec "x y | z" `shouldBe` Right (x `App` y `Or` z)
-    prec "x (@y. z)" `shouldBe` Right (App x (For "y" z))
+    prec "x (@y. z)" `shouldBe` Right (App x (for ["y"] z))
     prec "x y : z" `shouldBe` Right (x `App` y `Ann` z)
     prec "x y -> z" `shouldBe` Right (x `App` y `Fun` z)
     prec "x y z" `shouldBe` Right (x `App` y `App` z)
