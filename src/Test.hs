@@ -1,7 +1,7 @@
 module Test where
 
 import qualified Core as C
-import Data.Bifunctor (Bifunctor (bimap))
+import Data.Bifunctor (Bifunctor (bimap, second))
 import Data.List (intercalate)
 import Error
 import Location
@@ -59,7 +59,9 @@ instance TestSome (FilePath, UnitTest) where
           [ Fun (For [] t.expect) (Tag ":Ok" []),
             Fun (Var "$got") (Tag ":Err" [Var "$got"])
           ]
+    -- error $ show (Match t.expr cases)
     let (env, test') = compile ctx path (Match t.expr cases)
+    error $ show (map fst env, C.dropMeta test')
     case C.typedOf (C.eval runtimeOps (C.Let env test')) of
       (C.Tag ":Ok", _) -> [TestPass t.filename t.pos t.name]
       (C.And (C.Tag ":Err") got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]

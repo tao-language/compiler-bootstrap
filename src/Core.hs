@@ -469,8 +469,15 @@ fix xs a = foldr Fix a xs
 
 fix' :: [String] -> Expr -> Expr
 fix' [] a = a
-fix' (x : xs) a | x `occurs` a = Fix x (fix' xs a)
+fix' (x : xs) a | isRec x a = Fix x (fix' xs a)
 fix' (_ : xs) a = fix' xs a
+
+isRec :: String -> Expr -> Bool
+isRec _ (Var _) = False
+isRec x (Ann a _) = isRec x a
+isRec x (Fun a b) = not (x `occurs` a) && x `occurs` b
+isRec x (Meta _ a) = isRec x a
+isRec _ _ = False
 
 fixOf :: Expr -> ([String], Expr)
 fixOf (Fix x a) = let (xs, b) = fixOf a in (x : xs, b)
@@ -714,7 +721,7 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (And (Let env (Meta _ a1)) a2, b) ->
     match unify ops (Let env (And a1 a2)) b
   (And (Let env (Let env' a1)) a2, b) ->
-    match unify ops (Let (env ++ env') (And a1 a2)) b
+    match unify ops (And (Let (env ++ env') a1) a2) b
   (And a1 a2, And b1 b2) -> do
     env1 <- match unify ops a1 b1
     env2 <- match unify ops (Let env1 a2) b2
@@ -1053,9 +1060,10 @@ check ops env (Or a b) t = do
     (t', []) | not (isErr t) -> ((Or a' b', t'), s)
     _ -> ((Or a' b', Or ta' tb'), s)
 check ops env (For x a) t = do
-  let y = newName (map fst env) x
-  let ((a', t'), s) = check ops ((y, Var y) : env) (substitute [(x, Var y)] a) t
-  ((For x (substitute [(y, Var x)] a'), t'), s `compose` [(y, Var y)])
+  -- let y = newName (map fst env) x
+  -- let ((a', t'), s) = check ops ((y, Var y) : env) (substitute [(x, Var y)] a) t
+  -- ((For x (substitute [(y, Var x)] a'), t'), s `compose` [(y, Var y)])
+  error "🚨 TODO: do not output For, make infer instantiate all with unique names"
 check ops env (Fun a b) (Fun ta tb) = do
   let ((a', ta'), (b', tb'), s) = check2 ops env (a, ta) (b, tb)
   ((Fun (typed a' ta') (typed b' tb), Fun ta' tb'), s)

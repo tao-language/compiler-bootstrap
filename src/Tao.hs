@@ -595,7 +595,7 @@ grammar = do
                 _ -> Nothing,
           -- Grammar.Bind (Pattern, Expr) Expr
           -- Grammar.Or
-          G.infixR 1 (loc2 Or) "|" $ \case
+          G.infixR 2 (loc2 Or) "|" $ \case
             Or a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Eq
@@ -880,10 +880,15 @@ lower = \case
   String [] -> C.Tag "''"
   String segments -> error "TODO: lower String"
   Or a b -> C.Or (lower a) (lower b)
-  For xs a -> C.for xs (lower a)
-  Fun (For xs a) b -> C.Fun (lower (For xs a)) (lower b)
-  Fun (Meta _ a) b | isFor a -> lower (Fun a b)
+  Fun (For xs a) b -> C.for xs (C.Fun (lower a) (lower b))
+  Fun (Meta m a) b -> case lower (Fun a b) of
+    C.Fun a b -> C.Fun (C.Meta m a) b
+    a -> C.Meta m a
   Fun a b -> lower (Fun (For (freeVars a) a) b)
+  -- For xs a -> C.for xs (lower a)
+  -- Fun (For xs a) b -> C.Fun (lower (For xs a)) (lower b)
+  -- Fun (Meta _ a) b | isFor a -> lower (Fun a b)
+  -- Fun a b -> lower (Fun (For (freeVars a) a) b)
   App fun args -> C.App (lower fun) (lower $ Tuple (map snd args))
   Call op args -> C.Call op (map lower args)
   Op1 op a -> C.app (C.Var $ showOp1 op) [lower a]
@@ -1421,6 +1426,15 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
+  compile ctx path (name@"x", expr) = do
+    let dependencies = delete name (freeNames expr)
+    let env = concatMap (fst . compile ctx path) dependencies
+    let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
+    -- case t of
+    --   C.Any -> (env, a)
+    --   C.Var _ -> (env, a)
+    --   _ -> (env, C.Ann a t)
+    error $ show (C.dropMeta a)
   compile ctx path (name, expr) = do
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies
@@ -1428,7 +1442,7 @@ instance Compile (String, Expr) where
     case t of
       C.Any -> (env, a)
       C.Var _ -> (env, a)
-      _ -> (s `C.compose` env, C.Ann a t)
+      _ -> (env, C.Ann a t)
 
 instance Compile String where
   compile :: Context -> FilePath -> String -> (C.Env, C.Expr)
