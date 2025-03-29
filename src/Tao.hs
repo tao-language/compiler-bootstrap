@@ -956,7 +956,7 @@ lift = \case
   C.And (C.Tag k) args -> Tag k (map lift (C.andOf args))
   C.And a bs -> Tuple (map lift (a : C.andOf bs))
   C.Or a b -> Or (lift a) (lift b)
-  C.For (x, _) a -> case forOf (lift a) of
+  C.For x a -> case forOf (lift a) of
     (xs, a) | sort (x : xs) == sort (caseBindings a) -> a
     (xs, a) -> For (x : xs) a
   C.Fun a b -> Fun (lift a) (lift b)

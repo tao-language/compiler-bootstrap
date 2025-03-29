@@ -49,7 +49,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let factorial f = Fix f (case0 `Or` caseN f)
         where
           case0 = Fun i0 i1
-          caseN f = For ("x", IntT) (Fun x (x `mul` App (Var f) (x `sub` i1)))
+          caseN f = For "x" (Fun x (x `mul` App (Var f) (x `sub` i1)))
 
   let filename = "<CoreTests>"
   let parse' :: String -> Either ([String], String) (Expr, String)
@@ -184,12 +184,12 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ Core.For" $ do
     let env = [("y", Int 42)]
-    let expr = For ("x", IntT) y
+    let expr = For "x" y
     parse' "@x. y " `shouldBe` Right (expr, "")
     format 80 expr `shouldBe` "@x. y"
     let ((expr', typ), s) = infer ops env expr
     (expr', typ, s) `shouldBe` (expr, IntT, [("x", x)])
-    eval ops (Let env expr') `shouldBe` For ("x", IntT) (Int 42)
+    eval ops (Let env expr') `shouldBe` For "x" (Int 42)
 
   it "☯ Core.Fix" $ do
     let env = [("y", Int 42)]
