@@ -272,7 +272,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let ctx = pkg
     let testResults =
           [ Pass "For match",
-            Fail "For match fail" i1 (err Any)
+            Fail "For match fail" i1 (Ann (Err $ unhandledCase i2 i1) IntT)
           ]
     test ctx pkg `shouldBe` testResults
 

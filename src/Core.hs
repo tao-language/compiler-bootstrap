@@ -66,14 +66,14 @@ data Metadata
 data MatchResult a
   = Matched a
   | MaybeMatched Expr Expr
-  | NotMatched
+  | NotMatched Expr Expr
   deriving (Eq, Show)
 
 instance Functor MatchResult where
   fmap :: (a -> b) -> MatchResult a -> MatchResult b
   fmap f (Matched env) = Matched (f env)
   fmap _ (MaybeMatched a b) = MaybeMatched a b
-  fmap _ NotMatched = NotMatched
+  fmap _ (NotMatched a b) = NotMatched a b
 
 instance Applicative MatchResult where
   pure :: a -> MatchResult a
@@ -82,13 +82,13 @@ instance Applicative MatchResult where
   (<*>) :: MatchResult (a -> b) -> MatchResult a -> MatchResult b
   (<*>) (Matched f) m = fmap f m
   (<*>) (MaybeMatched a b) _ = MaybeMatched a b
-  (<*>) NotMatched _ = NotMatched
+  (<*>) (NotMatched a b) _ = NotMatched a b
 
 instance Monad MatchResult where
   (>>=) :: MatchResult a -> (a -> MatchResult b) -> MatchResult b
   (>>=) (Matched env) f = f env
   (>>=) (MaybeMatched a b) _ = MaybeMatched a b
-  (>>=) NotMatched _ = NotMatched
+  (>>=) (NotMatched a b) _ = NotMatched a b
 
 parse :: Int -> FilePath -> String -> Either (P.State String) (Expr, P.State String)
 parse prec = P.parse (parser grammar prec)
@@ -682,7 +682,7 @@ reduceApp ops a b = case (a, reduce ops b) of
   (Fun a c, b) -> case match False ops a b of
     Matched env -> reduce ops (Let env c)
     MaybeMatched a b -> App (Fun a c) b
-    NotMatched -> Err (unhandledCase a b)
+    NotMatched a b -> Err (unhandledCase a b)
   (Call f args, b) -> App (Call f args) b
   (Meta _ a, b) -> reduceApp ops a b
   _ -> Err (cannotApply a b)
@@ -715,7 +715,6 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
     env1 <- match True ops ta tb
     env2 <- match unify ops (Let env1 a) b
     return (env1 ++ env2)
-  (a, Ann b _) -> match unify ops a b
   (And (Let env (Tag k)) a, b) -> case lookup k env of
     Just def -> do
       let b' = curry' (Let env def) [a, b]
@@ -733,16 +732,16 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
     Matched env1 -> case match unify ops (Let env1 a2) b of
       Matched env2 -> Matched (env1 ++ env2)
       MaybeMatched a2 b -> MaybeMatched (Or a1 a2) b
-      NotMatched -> Matched env1
+      NotMatched _ _ -> Matched env1
     MaybeMatched a1 b -> MaybeMatched (Or a1 a2) b
-    NotMatched -> match unify ops a2 b
+    NotMatched _ _ -> match unify ops a2 b
   (a, Or b1 b2) -> case match unify ops a b1 of
     Matched env1 -> case match unify ops (Let env1 a) b2 of
       Matched env2 -> Matched (env1 ++ env2)
       MaybeMatched a b2 -> MaybeMatched a (Or b1 b2)
-      NotMatched -> Matched env1
+      NotMatched _ _ -> Matched env1
     MaybeMatched a b1 -> MaybeMatched a (Or b1 b2)
-    NotMatched -> match unify ops a b2
+    NotMatched _ _ -> match unify ops a b2
   (For x a, b) -> match unify ops (Let [(x, Var x)] a) b
   (a, For x b) -> match unify ops a (Let [(x, Var x)] b)
   (Fix x a, Fix x' b) | x == x' -> do
@@ -754,8 +753,10 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (Call x args, Call x' args') | x == x' -> do
     match unify ops (and' args) (and' args')
   (_, Meta _ b) -> match unify ops a b
+  (a, Ann b _) -> match unify ops a b
+  (Ann a _, b) -> match unify ops a b
   (Err _, Err _) -> Matched []
-  _ -> NotMatched
+  (a, b) -> NotMatched a b
 
 eval :: Ops -> Expr -> Expr
 eval ops expr = case reduce ops expr of
@@ -814,19 +815,19 @@ compose s1 s2 = do
   unionBy (\a b -> fst a == fst b) s1 (map (sub s1) s2)
 
 dropTypes :: Expr -> Expr
-dropTypes (Ann a@Call {} t) = Ann (dropTypes a) (dropTypes t)
+-- dropTypes (Ann a@Call {} t) = Ann (dropTypes a) (dropTypes t)
 dropTypes (Ann a _) = dropTypes a
 dropTypes (And a b) = And (dropTypes a) (dropTypes b)
 dropTypes (Or a b) = Or (dropTypes a) (dropTypes b)
 dropTypes (For x a) = For x (dropTypes a)
 dropTypes (Fix x a) = Fix x (dropTypes a)
-dropTypes (Fun (Ann a ta) b) = case andOf ta of
-  [Ann ta _] -> Fun (Ann (dropTypes a) (dropTypes ta)) (dropTypes b)
-  _ -> Fun (Ann (dropTypes a) (dropTypes ta)) (dropTypes b)
+-- dropTypes (Fun (Ann a ta) b) = case andOf ta of
+--   [Ann ta _] -> Fun (Ann (dropTypes a) (dropTypes ta)) (dropTypes b)
+--   _ -> Fun (Ann (dropTypes a) (dropTypes ta)) (dropTypes b)
 dropTypes (Fun a b) = Fun (dropTypes a) (dropTypes b)
-dropTypes (App a (Ann b tb)) = case andOf tb of
-  [Ann tb _] -> App (dropTypes a) (Ann (dropTypes b) (dropTypes tb))
-  _ -> App (dropTypes a) (Ann (dropTypes b) (dropTypes tb))
+-- dropTypes (App a (Ann b tb)) = case andOf tb of
+--   [Ann tb _] -> App (dropTypes a) (Ann (dropTypes b) (dropTypes tb))
+--   _ -> App (dropTypes a) (Ann (dropTypes b) (dropTypes tb))
 dropTypes (App a b) = App (dropTypes a) (dropTypes b)
 dropTypes (Call op args) = Call op (map dropTypes args)
 dropTypes (Let defs b) = Let (map (second dropTypes) defs) (dropTypes b)
@@ -1011,7 +1012,7 @@ infer ops env (Fix x a) = do
   ((Fix x (substitute [(y, Var x)] a'), ta), s `compose` [(y, Var y)])
 infer ops env (Fun a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
-  ((Fun (typed a' ta) (typed b' tb), Fun ta tb), s)
+  ((Fun (typed (dropTypes a') ta) (typed b' tb), Fun ta tb), s)
 infer ops env (App a b) = do
   let ((a_, ta), s1) = infer ops env a
   let ((a', b'), (t1, t2), s2) = checkApp ops (s1 `compose` env) (a_, ta) (substitute s1 b)
@@ -1059,7 +1060,7 @@ check ops env (For x a) ta = do
   ((For x (substitute [(y, Var x)] a'), ta'), s)
 check ops env (Fun a b) (Fun ta tb) = do
   let ((a', ta'), (b', tb'), s) = check2 ops env (a, ta) (b, tb)
-  ((Fun (typed a' ta') (typed b' tb), Fun ta' tb'), s)
+  ((Fun (typed (dropTypes a') ta') (typed b' tb), Fun ta' tb'), s)
 check ops env (App a b) t2 = do
   let ((b', t1), s1) = infer ops env b
   let ((a', _), s2) = check ops (s1 `compose` env) (substitute s1 a) (Fun t1 (substitute s1 t2))
