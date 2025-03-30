@@ -1004,8 +1004,7 @@ infer ops env (Or a b) = do
 infer ops env (For x a) = do
   let y = newName (map fst env) x
   let ((a', ta), s) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
-  -- ((For x (substitute [(y, Var x)] a'), ta), s)
-  ((a', ta), s)
+  ((For x (substitute [(y, Var x)] a'), ta), s)
 infer ops env (Fix x a) = do
   let y = newName (map fst env) x
   let ((a', ta), s) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
@@ -1048,29 +1047,16 @@ check :: Ops -> Env -> Expr -> Type -> ((Expr, Type), Substitution)
 check ops env a (For x ta) = do
   let y = newName (map fst env) x
   let ((a', ta'), s) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] ta)
-  -- ((a', For x (substitute [(y, Var x)] ta')), s)
-  ((a', ta'), s)
+  ((a', For x (substitute [(y, Var x)] ta')), s)
 check ops env (Or a b) t = do
   let ((a', ta'), (b', tb'), s) = check2 ops env (a, t) (b, t)
   case unify ops (s `compose` env) ta' tb' of
     (t', []) | not (isErr t) -> ((Or a' b', t'), s)
     _ -> ((Or a' b', Or ta' tb'), s)
--- check ops env (For x@"y" a) ta = do
---   let y = newName (map fst env) x
---   let ((a', ta'), s) = check ops ((y, Var y) : env) (substitute [(x, Var y)] a) ta
---   -- ((For x (substitute [(y, Var x)] a'), ta'), s)
---   (error . intercalate "\n")
---     [ "-- check " ++ show (dropMeta $ For x a) ++ " -- " ++ show (dropMeta ta),
---       show $ second dropMeta <$> (y, Var y) : env,
---       show $ dropMeta $ substitute [(x, Var y)] a,
---       show $ dropMeta ta,
---       ""
---     ]
 check ops env (For x a) ta = do
   let y = newName (map fst env) x
   let ((a', ta'), s) = check ops ((y, Var y) : env) (substitute [(x, Var y)] a) ta
-  -- ((For x (substitute [(y, Var x)] a'), ta'), s)
-  ((a', ta'), s)
+  ((For x (substitute [(y, Var x)] a'), ta'), s)
 check ops env (Fun a b) (Fun ta tb) = do
   let ((a', ta'), (b', tb'), s) = check2 ops env (a, ta) (b, tb)
   ((Fun (typed a' ta') (typed b' tb), Fun ta' tb'), s)
@@ -1117,7 +1103,7 @@ checkApp ops env (a, ta) b = case ta of
   Meta _ ta -> checkApp ops env (a, ta) b
   _ -> do
     let ((b', tb), s) = infer ops env b
-    ((substitute s a, b'), (Err $ TypeError $ NotAFunction (substitute s a) (substitute s ta), tb), s)
+    ((substitute s a, b'), (Err $ notAFunction (substitute s a) (substitute s ta), tb), s)
 
 merge :: Ops -> Env -> Expr -> Expr -> Expr
 merge ops env a b = case unify ops env a b of
