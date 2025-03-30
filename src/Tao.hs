@@ -582,10 +582,11 @@ grammar = do
           let parser a expr = do
                 start <- P.getState
                 _ <- P.char '='
+                _ <- P.commit "let"
                 end <- P.getState
                 _ <- P.whitespaces
+                -- b <- parseExprUntil 0 ["\n"]
                 b <- parseExpr 0
-                _ <- P.commit "let"
                 _ <- parseLineBreak
                 c <- expr
                 _ <- P.spaces
@@ -699,6 +700,7 @@ grammar = do
                           return name,
                         return ""
                       ]
+                  -- arg <- parseExprUntil 0 [",", ")", "\n"]
                   arg <- parseExpr 0
                   return (name, arg)
                 end <- P.getState
@@ -744,6 +746,7 @@ grammar = do
                 cases <- P.zeroOrMore $ do
                   _ <- P.char '|'
                   _ <- P.spaces
+                  -- case' <- parseExprUntil 1 ["|", "}", "\n"]
                   case' <- parseExpr 1
                   _ <- P.whitespaces
                   return case'
@@ -812,7 +815,7 @@ grammar = do
                 _ -> Nothing,
           -- Grammar.Metadata.Location
           let parser expr = do
-                _ <- P.text "^["
+                _ <- P.text "^[loc|"
                 P.commit "Metadata location"
                 filename <- P.oneOrMore $ P.charIf (/= ':')
                 _ <- P.char ':'
@@ -827,8 +830,13 @@ grammar = do
                 _ <- P.spaces
                 Meta (C.Loc (Location filename (Range (Pos row1 col1) (Pos row2 col2)))) <$> expr
            in G.Atom parser $ \layout -> \case
-                Meta (C.Loc loc) a -> Just (PP.Text ("^[" ++ show loc ++ "](") : layout a ++ [PP.Text ")"])
+                Meta (C.Loc loc) a -> Just (PP.Text ("^[loc|" ++ show loc ++ "](") : layout a ++ [PP.Text ")"])
                 _ -> Nothing,
+          -- Grammar.Metadata.SyntaxError
+          G.Atom (const P.fail') $ \layout -> \case
+            Meta (C.SyntaxError (loc, txt)) a -> Just (PP.Text ("^[syntax-error|" ++ show loc ++ "|" ++ show txt ++ "](") : layout a ++ [PP.Text ")"])
+            Meta m a -> error $ "Grammar.layout " ++ show m
+            _ -> Nothing,
           -- Grammar.Err
           let parser expr = do
                 _ <- P.word "!error"
@@ -842,7 +850,7 @@ grammar = do
                 return (Err (customError a))
            in G.Atom parser $ \layout -> \case
                 Err e -> case e of
-                  SyntaxError loc txt -> Just [PP.Text $ "!syntax-error[" ++ show loc ++ "](" ++ txt ++ ")"]
+                  SyntaxError (loc, txt) -> Just [PP.Text $ "!syntax-error[" ++ show loc ++ "](" ++ show txt ++ ")"]
                   TypeError e -> case e of
                     UndefinedVar x -> Just [PP.Text $ "!undefined-var(" ++ x ++ ")"]
                     TypeMismatch a b -> Just (PP.Text "!type-mismatch(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
@@ -987,6 +995,19 @@ lift = \case
 parseExpr :: Int -> Parser Expr
 parseExpr = G.parser grammar
 
+parseExprUntil :: Int -> [String] -> Parser Expr
+parseExprUntil prec delims = do
+  let recover a "" = return a
+      recover a (c : cs) = do
+        err <- recoverSyntaxError [c]
+        _ <- P.lookahead (P.text (c : cs))
+        case err of
+          (_, "") -> return a
+          _ -> return (Meta (C.SyntaxError err) a)
+  a <- parseExpr prec
+  _ <- P.whitespaces
+  P.oneOf (map (recover a) (delims ++ [""]))
+
 parseCollection :: String -> String -> String -> P.Parser ctx a -> P.Parser ctx [a]
 parseCollection open delim close parser = do
   _ <- P.text open
@@ -1114,11 +1135,12 @@ parseStmt = do
         TypeDef <$> parseTypeDef,
         parseTest,
         Comment <$> parseComment,
+        -- Run <$> parseExprUntil 1 ["\n"],
         Run <$> parseExpr 1,
         -- Recovering from a syntax error must be done at the end
         -- because it matches anything.
         -- TODO: consider a trailing comment on a syntax error like this
-        Run <$> recoverSyntaxError ['\n']
+        Run . Err . SyntaxError <$> recoverSyntaxError ['\n']
       ]
   _ <- parseLineBreak
   return stmt
@@ -1159,32 +1181,26 @@ parseImport = do
   return (Import path alias exposing)
 
 parseDef :: String -> Parser (Expr, Expr)
-parseDef op = do
+parseDef "" = error "parseDef delimiter must not be empty"
+parseDef op@(opHead : _) = do
   typeAnnotation <- P.maybe' $ do
     _ <- P.char ':'
     P.commit "typed def"
     _ <- P.spaces
+    -- t <- parseExprUntil 0 ["\n"]
     t <- parseExpr 0
     _ <- parseLineBreak
     return t
+  -- a <- parseExprUntil 2 [op]
   a <- parseExpr 2
   _ <- P.word op
   _ <- P.commit "def"
   _ <- P.whitespaces
+  -- b <- parseExprUntil 2 ["\n"]
   b <- parseExpr 2
   case typeAnnotation of
     Just t -> return (Ann a t, b)
     Nothing -> return (a, b)
-
-parseTypeDefAlt :: Parser (Expr, Maybe Type)
-parseTypeDefAlt = do
-  a <- parseExpr 2
-  _ <- P.spaces
-  mb <- P.maybe' $ do
-    _ <- P.text "=>"
-    _ <- P.whitespaces
-    parseExpr 2
-  return (a, mb)
 
 parseTypeDef :: Parser (String, [Expr], [(Expr, Maybe Type)])
 parseTypeDef = do
@@ -1193,18 +1209,26 @@ parseTypeDef = do
   _ <- P.whitespaces
   name <- parseNameTag
   _ <- P.whitespaces
-  args <- P.oneOf [parseCollection "(" "," ")" (parseExpr 0), return []]
+  args <-
+    P.oneOf
+      [ parseCollection "(" "," ")" $ do
+          -- parseExprUntil 0 [",", ")"],
+          parseExpr 0,
+        return []
+      ]
   _ <- P.whitespaces
   _ <- P.char '{'
   _ <- P.whitespaces
   alts <- P.zeroOrMore $ do
     _ <- P.char '|'
     _ <- P.spaces
+    -- a <- parseExprUntil 1 ["=>", "|", "}"]
     a <- parseExpr 1
     _ <- P.spaces
     mb <- P.maybe' $ do
       _ <- P.text "=>"
       _ <- P.whitespaces
+      -- parseExprUntil 1 ["|", "}"]
       parseExpr 1
     _ <- P.whitespaces
     return (a, mb)
@@ -1226,12 +1250,14 @@ parseTest = do
   _ <- P.char '>'
   _ <- P.oneOrMore P.space
   P.commit "test"
+  -- expr <- parseExprUntil 0 ["\n"]
   expr <- parseExpr 0
   result <-
     P.oneOf
       [ do
           _ <- P.spaces
           _ <- parseLineBreak
+          -- parseExprUntil 0 ["\n"],
           parseExpr 0,
         return (Tag "True" [])
       ]
@@ -1261,16 +1287,13 @@ parseCommentSingleLine = do
 --   error "TODO: parseCommentMultiLine"
 --   return (dropWhileEnd isSpace line)
 
-recoverSyntaxError :: [Char] -> Parser Expr
+recoverSyntaxError :: [Char] -> Parser (Location, String)
 recoverSyntaxError delims = do
   start <- P.getState
   txt <- P.oneOrMore (P.charIf (`notElem` delims))
   end <- P.getState
   let loc = Location start.filename (Range start.pos end.pos)
-  case start.filename of
-    "prelude/@comparison.tao" -> error $ show (loc, txt)
-    _ -> return ()
-  return (Err (SyntaxError loc txt))
+  return (loc, txt)
 
 locOf :: Expr -> Maybe Location
 locOf (Meta (C.Loc loc) _) = Just loc
@@ -1289,7 +1312,7 @@ instance Check Expr where
       Nothing -> check a
     Meta _ a -> check a
     Err e -> case e of
-      SyntaxError loc _ -> [(Just loc, e)]
+      SyntaxError (loc, _) -> [(Just loc, e)]
       _ -> [(Nothing, e)]
     a -> collect check a
 

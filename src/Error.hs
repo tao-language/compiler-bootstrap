@@ -10,7 +10,7 @@ import Stdlib (pad, slice)
 -- https://github.com/gleam-lang/gleam/blob/main/compiler-core/src/error.rs
 
 data Error a
-  = SyntaxError Location String
+  = SyntaxError (Location, String)
   | TypeError (TypeError a)
   | CaseError (CaseError a)
   | RuntimeError (RuntimeError a)
@@ -40,7 +40,7 @@ data RuntimeError a
 instance Functor Error where
   fmap :: (a -> b) -> Error a -> Error b
   fmap f = \case
-    SyntaxError loc txt -> SyntaxError loc txt
+    SyntaxError e -> SyntaxError e
     TypeError e -> case e of
       OccursError x a -> occursError x (f a)
       TypeMismatch a b -> typeMismatch (f a) (f b)
@@ -83,7 +83,7 @@ customError a = RuntimeError (CustomError a)
 
 summary :: (Show a) => Error a -> String
 summary = \case
-  SyntaxError _ _ -> "Syntax Error"
+  SyntaxError _ -> "Syntax Error"
   TypeError e -> case e of
     OccursError {} -> "Occurs Error"
     TypeMismatch {} -> "Type Mismatch"
