@@ -785,7 +785,7 @@ instance Substitute Expr where
   substitute [] (Var x) = Var x
   substitute ((x, a) : _) (Var x') | x == x' = a
   substitute (_ : s) (Var x) = substitute s (Var x)
-  substitute ((x, a) : s) b | x `occurs` b = error $ "TODO substitute: " ++ x ++ " occurs in " ++ show b
+  substitute ((x, a) : s) b | x `occurs` a = error $ "TODO substitute: " ++ x ++ " occurs in  " ++ show a
   substitute _ (Tag k) = Tag k
   substitute s (Ann a b) = Ann (dropTypes (substitute s a)) (dropTypes (substitute s b))
   substitute s (And a b) = And (substitute s a) (substitute s b)
@@ -885,6 +885,26 @@ unify ops env a b = case (a, b) of
   (NumT, Num _) -> (NumT, [])
   (Int i, Int i') | i == i' -> (Int i, [])
   (Num n, Num n') | n == n' -> (Num n, [])
+  (Or a1 a2, b) -> case unify ops env a1 b of
+    (e1, _) | isErr e1 -> case unify ops env a2 b of
+      (e2, _) | isErr e2 -> (Or e1 e2, [])
+      (c2, s2) -> (c2, s2)
+    (c1, s1) -> do
+      let env1 = s1 `compose` env
+      let (a2', b') = (substitute s1 a2, substitute s1 b)
+      case unify ops env1 a2' b' of
+        (e, _) | isErr e -> (c1, s1)
+        (c2, s2) -> (merge ops env (substitute s2 c1) c2, s2 `compose` s1)
+  (a, Or b1 b2) -> case unify ops env a b1 of
+    (e1, _) | isErr e1 -> case unify ops env a b2 of
+      (e2, _) | isErr e2 -> (Or e1 e2, [])
+      (c2, s2) -> (c2, s2)
+    (c1, s1) -> do
+      let env1 = s1 `compose` env
+      let (a', b2') = (substitute s1 a, substitute s1 b2)
+      case unify ops env1 a' b2' of
+        (e, _) | isErr e -> (c1, s1)
+        (c2, s2) -> (merge ops env (substitute s2 c1) c2, s2 `compose` s1)
   (Var x, Var x') | x == x' -> (Var x, [])
   (Var x, b) | x `occurs` b -> (Err $ occursError x b, [])
   (Var x, b) -> (b, [(x, b)])
@@ -918,36 +938,6 @@ unify ops env a b = case (a, b) of
     (Ann a' ta', s)
   (Ann a _, b) -> unify ops env a b
   (a, Ann b _) -> unify ops env a b
-  (Or a1 a2, b) -> case unify ops env a1 b of
-    (e1, _) | isErr e1 -> case unify ops env a2 b of
-      (e2, _) | isErr e2 -> (Or e1 e2, [])
-      (c2, s2) -> (c2, s2)
-    (c1, s1) -> do
-      let env1 = s1 `compose` env
-      let (a2', b') = (substitute s1 a2, substitute s1 b)
-      case unify ops env1 a2' b' of
-        (e, _) | isErr e -> (c1, s1)
-        (c2, s2) -> do
-          let env2 = s2 `compose` env1
-          let c1' = substitute s2 c1
-          case unify ops env2 c1' c2 of
-            (e, _) | isErr e -> (Or c1' c2, s2 `compose` s1)
-            (c, s3) -> (c, s3 `compose` s2 `compose` s1)
-  (a, Or b1 b2) -> case unify ops env a b1 of
-    (e1, _) | isErr e1 -> case unify ops env a b2 of
-      (e2, _) | isErr e2 -> (Or e1 e2, [])
-      (c2, s2) -> (c2, s2)
-    (c1, s1) -> do
-      let env1 = s1 `compose` env
-      let (a', b2') = (substitute s1 a, substitute s1 b2)
-      case unify ops env1 a' b2' of
-        (e, _) | isErr e -> (c1, s1)
-        (c2, s2) -> do
-          let env2 = s2 `compose` env1
-          let c1' = substitute s2 c1
-          case unify ops env2 c1' c2 of
-            (e, _) | isErr e -> (Or c1' c2, s2 `compose` s1)
-            (c, s3) -> (c, s3 `compose` s2 `compose` s1)
   (a, For x b) -> do
     let (b', s1) = instantiate (freeVars a) (For x b)
     let (c, s2) = unify ops (s1 `compose` env) a b'
@@ -1060,16 +1050,6 @@ check ops env a (For x ta) = do
   let ((a', ta'), s) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] ta)
   -- ((a', For x (substitute [(y, Var x)] ta')), s)
   ((a', ta'), s)
-check ops env (Or a' b') t' = do
-  let (a, b, t) = (dropMeta a', dropMeta b', dropMeta t')
-  (error . intercalate "\n")
-    [ "-- check " ++ show (Or a b) ++ " -- " ++ show t,
-      show $ check ops env a t,
-      show $ check ops env b t,
-      show $ check2 ops env (a, t) (b, t),
-      "** There's an infinite tree expansion **",
-      ""
-    ]
 check ops env (Or a b) t = do
   let ((a', ta'), (b', tb'), s) = check2 ops env (a, t) (b, t)
   case unify ops (s `compose` env) ta' tb' of
@@ -1092,15 +1072,6 @@ check ops env (For x a) ta = do
   -- ((For x (substitute [(y, Var x)] a'), ta'), s)
   ((a', ta'), s)
 check ops env (Fun a b) (Fun ta tb) = do
-  (error . intercalate "\n")
-    [ "-- check " ++ show (dropMeta $ Fun a b) ++ " -- " ++ show (dropMeta $ Fun ta tb),
-      show $ second dropMeta <$> env,
-      show $ dropMeta a,
-      show $ dropMeta ta,
-      show $ check ops env a ta,
-      ""
-    ]
-check ops env (Fun a b) (Fun ta tb) = do
   let ((a', ta'), (b', tb'), s) = check2 ops env (a, ta) (b, tb)
   ((Fun (typed a' ta') (typed b' tb), Fun ta' tb'), s)
 check ops env (App a b) t2 = do
@@ -1109,14 +1080,6 @@ check ops env (App a b) t2 = do
   let s = s2 `compose` s1
   ((App a' (substitute s2 (typed b' t1)), substitute s t2), s)
 check ops env a (Err _) = infer ops env a
-check ops env a@Ann {} t = do
-  let ((a', ta), s1) = infer ops env a
-  (error . intercalate "\n")
-    [ "-- check " ++ show (dropMeta a) ++ " -- " ++ show (dropMeta t),
-      show $ second dropMeta <$> env,
-      show $ dropMeta a',
-      ""
-    ]
 check ops env a t = do
   let ((a', ta), s1) = infer ops env a
   let (t', s2) = unify ops env ta (substitute s1 t)
@@ -1145,13 +1108,6 @@ checkApp ops env (a, ta) b = case ta of
         ((a, b), (merge ops env t1 t1', merge ops env t2 t2'), s2 `compose` s1)
       _ -> ((a, b), (t1, t2), s1)
     _ -> checkApp ops env (a, ta2) b
-  Fun t1 t2 ->
-    (error . intercalate "\n")
-      [ show (dropMeta a, dropMeta ta),
-        show (second dropMeta <$> env),
-        show $ check ops env a (Fun t1 t2),
-        ""
-      ]
   Fun t1 t2 -> do
     let ((a', _), (b', t1'), s) = check2 ops env (a, Fun t1 t2) (b, t1)
     let t2' = case substitute s t2 of
