@@ -61,7 +61,7 @@ data Metadata
   = Loc Location
   | Comments [String]
   | TrailingComment String
-  | SyntaxError (Location, String)
+  | SyntaxError (Location, [String], String)
   deriving (Eq, Show)
 
 data MatchResult a

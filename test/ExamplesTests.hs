@@ -43,24 +43,28 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/empty"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     test ctx pkg `shouldBe` []
 
   let name = "examples/comments"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     test ctx pkg `shouldBe` []
 
   -- let name = "examples/comments-multiline"
   -- it ("☯ " ++ name ++ ".tao") $ do
   --   (ctx, syntaxErrors) <- load [name]
+  --   check pkg `shouldBe` []
   --   syntaxErrors `shouldBe` []
   --   test ctx `shouldBe` []
 
   let name = "examples/tests"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "Pass",
@@ -73,6 +77,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/expressions/atoms"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "Any match",
@@ -95,6 +100,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/expressions/for"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "For bound",
@@ -106,6 +112,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/expressions/fun"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "Fun implicit binding",
@@ -154,6 +161,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   -- let name = "examples/expressions/and"
   -- it ("☯ " ++ name ++ ".tao") $ do
   --   pkg <- load [name]
+  --   check pkg `shouldBe` []
   --   let ctx = pkg
   --   let testResults =
   --         [ Pass "And match",
@@ -166,6 +174,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/expressions/or"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "Or match 1",
@@ -179,6 +188,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/expressions/ann"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "Ann match",
@@ -212,6 +222,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     -- There are no bindings, so there aren't any tests to run.
     -- Just make sure there are no syntax errors.
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults = []
     test ctx pkg `shouldBe` testResults
@@ -219,6 +230,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/definitions/var"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "Var match"
@@ -228,6 +240,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/definitions/overload"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "Overload match 1",
@@ -239,6 +252,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/definitions/ann"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "Ann match inline type",
@@ -249,6 +263,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/definitions/and"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "And match 1",
@@ -259,6 +274,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/definitions/or"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "Or match 1",
@@ -269,6 +285,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/definitions/for"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "For match",
@@ -279,6 +296,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/definitions/fun"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "Fun match 1",
@@ -289,6 +307,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/definitions/app"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "App match 1",
@@ -299,6 +318,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/definitions/call"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "Call match",
@@ -309,6 +329,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/definitions/op2"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "`Op` def",
@@ -364,6 +385,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/syntax-sugar/list"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "Nil",
@@ -376,6 +398,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/syntax-sugar/char"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "Char single quote",
@@ -386,6 +409,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/syntax-sugar/string"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "String single quote",
@@ -396,6 +420,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/prelude/arithmetic-int"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
     let testResults =
           [ Pass "Add",
@@ -410,6 +435,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/prelude/arithmetic-num"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
     let testResults =
           [ Pass "Add",
@@ -424,6 +450,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/prelude/comparison"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
     let testResults =
           [ Pass "Eq 1 1",
@@ -450,6 +477,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/prelude/bool-not"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
     let testResults =
           [ Pass "T",
@@ -461,6 +489,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/prelude/bool-and"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
     let testResults =
           [ Pass "TT",
@@ -474,6 +503,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/prelude/bool-or"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
     let testResults =
           [ Pass "TT",
@@ -487,6 +517,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/prelude/bool-xor"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
+    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
     let testResults =
           [ Pass "TT",
@@ -500,6 +531,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/factorial"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load ["examples/factorial.tao"]
+    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
     let testResults =
           [ Pass "0",
