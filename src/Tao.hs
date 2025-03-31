@@ -32,7 +32,7 @@ data Expr
   | Or Expr Expr
   | For [String] Expr
   | Fun Pattern Expr
-  | App Expr [(String, Expr)]
+  | App Expr Expr
   | Call String [Expr]
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
@@ -150,6 +150,10 @@ keywords =
     "with"
   ]
 
+tupleOf :: Expr -> [Expr]
+tupleOf (Tuple items) = items
+tupleOf a = [a]
+
 isTuple :: Expr -> Bool
 isTuple = \case
   Tuple _ -> True
@@ -255,7 +259,7 @@ isAnn (Meta _ a) = isAnn a
 isAnn _ = False
 
 app :: Expr -> [Expr] -> Expr
-app fun args = App fun (map ("",) args)
+app fun args = App fun (Tuple args)
 
 app1 :: Expr -> Expr -> Expr
 app1 a b = app a [b]
@@ -333,7 +337,7 @@ instance Apply Expr where
     Or a b -> Or (f a) (f b)
     For xs a -> For xs (f a)
     Fun a b -> Fun (f a) (f b)
-    App fun kwargs -> App (f fun) (second f <$> kwargs)
+    App a b -> App (f a) (f b)
     Call x args -> Call x (map f args)
     Op1 op a -> Op1 op (f a)
     Op2 op a b -> Op2 op (f a) (f b)
@@ -406,10 +410,8 @@ instance DropTypes Expr where
   dropTypes = \case
     Ann a _ -> dropTypes a
     Fun (Ann a t) b -> Fun (Ann (dropTypes a) (dropTypes t)) (dropTypes b)
-    App a args -> do
-      let dropTypesArg (x, Ann a t) = (x, Ann (dropTypes a) (dropTypes t))
-          dropTypesArg (x, a) = (x, dropTypes a)
-      App (dropTypes a) (map dropTypesArg args)
+    App a (Ann b t) -> do
+      App (dropTypes a) (Ann (dropTypes b) (dropTypes t))
     Err e -> Err e -- keep types from errors
     a -> apply dropTypes a
 
@@ -438,7 +440,7 @@ collect f = \case
   Or a b -> f a `union` f b
   For _ a -> f a
   Fun a b -> f a `union` f b
-  App fun kwargs -> f fun `union` unionMap (f . snd) kwargs
+  App a b -> f a `union` f b
   Call _ args -> unionMap f args
   Op1 op a -> f (Var (showOp1 op)) `union` f a
   Op2 op a b -> f (Var (showOp2 op)) `union` f a `union` f b
@@ -699,16 +701,14 @@ grammar = do
                           return name,
                         return ""
                       ]
-                  arg <- parseExprUntil 0 [",", ")", "\n"]
-                  return (name, arg)
+                  parseExprUntil 0 [",", ")", "\n"]
                 end <- P.getState
                 _ <- P.spaces
-                return (withLoc start end $ App x args)
+                return (withLoc start end $ app x args)
            in G.InfixL 11 parser $ \lhs rhs -> \case
-                App fun args -> do
-                  let layoutArg ("", a) = G.layout grammar 0 a
-                      layoutArg (x, a) = PP.Text (x ++ ": ") : G.layout grammar 0 a
-                  Just (lhs fun ++ PP.Text "(" : collectionLayout layoutArg args ++ [PP.Text ")"])
+                App a b -> do
+                  let args = tupleOf b
+                  Just (lhs a ++ PP.Text "(" : collectionLayout (G.layout grammar 0) args ++ [PP.Text ")"])
                 _ -> Nothing,
           -- Grammar.Call
           let parser expr = do
@@ -894,7 +894,7 @@ lower = \case
   -- Fun (For xs a) b -> C.Fun (lower (For xs a)) (lower b)
   -- Fun (Meta _ a) b | isFor a -> lower (Fun a b)
   -- Fun a b -> lower (Fun (For (freeVars a) a) b)
-  App fun args -> C.App (lower fun) (lower $ Tuple (map snd args))
+  App a b -> C.App (lower a) (lower b)
   Call op args -> C.Call op (map lower args)
   Op1 op a -> C.app (C.Var $ showOp1 op) [lower a]
   Op2 op a b -> C.app (C.Var $ showOp2 op) [lower a, lower b]
@@ -911,6 +911,7 @@ lower = \case
     Ann a t -> lower (Let (a, Ann b t) c)
     -- Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
     -- App a1 a2 -> lower (Let (a1, Fun a2 b) c)
+    App a1 a2 -> lower (Let (a1, Fun a2 b) c)
     -- Op1 op a -> lower (Let (Var (show op), Fun a b) c)
     -- Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
     -- For xs a -> lower (App (For xs (Fun a c)) b)
@@ -978,9 +979,9 @@ lift = \case
     (Fun a c, b) -> Let (a, b) c
     (cases, arg) | isFun cases || isFor cases || isOr cases -> do
       Match arg (orOf cases)
-    (fun, Ann (Tuple args) (Tuple targs)) ->
-      App fun (zipWith (\a ta -> ("", Ann a ta)) args targs)
-    (fun, arg) -> App fun [("", arg)]
+    (a, Ann (Tuple bs) (Tuple ts)) -> do
+      app a (zipWith Ann bs ts)
+    (a, b) -> App a b
   C.Call op args -> Call op (map lift args)
   -- C.Let [] b -> lift b
   -- C.Let ((x, b) : env) c -> Let (Var x, lift b) (lift (C.Let env c))

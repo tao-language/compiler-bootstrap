@@ -401,7 +401,7 @@ run = describe "--==☯ Tao ☯==--" $ do
 
   it "☯ Tao.App.empty" $ do
     let ctx = [("m", [def "x" "() -> 42"])]
-    let expr = loc 1 2 1 4 (App (x 1 1) [])
+    let expr = loc 1 2 1 4 (app (x 1 1) [])
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x()" `shouldBe` Right expr
     fmt' a `shouldBe` "x (() : ())"
