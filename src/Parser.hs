@@ -104,6 +104,33 @@ oneOf (Parser p : choices) =
         Left state2 -> Left state2 {context = state2.context ++ state1.context}
     )
 
+choose :: (a -> a -> Either () ()) -> [Parser ctx a] -> Parser ctx a
+choose _ [] = fail'
+choose _ [p] = p
+choose f (Parser p : ps) = do
+  let (Parser q) = choose f ps
+  Parser $ \state -> case (p state, q state) of
+    (Right (x, s1), Right (y, s2)) -> case f x y of
+      Left () -> Right (x, s1)
+      Right () -> Right (y, s2)
+    (Right result, Left _) -> Right result
+    (Left _, Right result) -> Right result
+    (Left _, Left s2) -> Left s2
+
+chooseShortest :: [Parser ctx [a]] -> Parser ctx [a]
+chooseShortest = do
+  let f [] _ = Left ()
+      f _ [] = Right ()
+      f (_ : xs) (_ : ys) = f xs ys
+  choose f
+
+chooseLongest :: [Parser ctx [a]] -> Parser ctx [a]
+chooseLongest = do
+  let f _ [] = Left ()
+      f [] _ = Right ()
+      f (_ : xs) (_ : ys) = f xs ys
+  choose f
+
 getState :: Parser ctx (State ctx)
 getState = Parser (\state -> Right (state, state))
 
@@ -114,7 +141,7 @@ commit ctx = Parser (\state -> Right ((), state {context = ctx : state.context})
 skipTo :: Parser ctx delim -> Parser ctx String
 skipTo delim =
   oneOf
-    [ "" <$ delim,
+    [ "" <$ lookahead delim,
       do
         c <- anyChar
         cs <- skipTo delim

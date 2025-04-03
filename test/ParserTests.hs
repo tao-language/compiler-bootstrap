@@ -286,10 +286,10 @@ run = describe "--==☯ Parser ☯==--" $ do
   it "☯ skipTo" $ do
     let p = parse' (skipTo (char '.'))
     p "" `shouldBe` Left ""
-    p ".abc" `shouldBe` Right ("", "abc")
-    p "a.bc" `shouldBe` Right ("a", "bc")
-    p "ab.c" `shouldBe` Right ("ab", "c")
-    p "abc." `shouldBe` Right ("abc", "")
+    p ".abc" `shouldBe` Right ("", ".abc")
+    p "a.bc" `shouldBe` Right ("a", ".bc")
+    p "ab.c" `shouldBe` Right ("ab", ".c")
+    p "abc." `shouldBe` Right ("abc", ".")
     p "abc" `shouldBe` Left "abc"
 
   it "☯ integer" $ do

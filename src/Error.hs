@@ -10,7 +10,7 @@ import Stdlib (pad, slice)
 -- https://github.com/gleam-lang/gleam/blob/main/compiler-core/src/error.rs
 
 data Error a
-  = SyntaxError (Location, [String], String)
+  = SyntaxError (Location, String, String)
   | TypeError (TypeError a)
   | CaseError (CaseError a)
   | RuntimeError (RuntimeError a)

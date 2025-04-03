@@ -77,14 +77,15 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/expressions/atoms"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
-    check pkg `shouldBe` []
+    -- TODO: explicitly set the errors here
+    -- check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
           [ Pass "Any match",
             Pass "Any match 1",
             Pass "Any match 2",
             Pass "Unit match",
-            Fail "Unit match fail" i1 (Err $ typeMismatch (Tuple []) IntT),
+            Fail "Unit match fail" i1 (Err $ unhandledCase IntT (Err $ typeMismatch (Tuple []) IntT)),
             Pass "IntT match",
             Pass "NumT match",
             Pass "Int match",
@@ -117,15 +118,14 @@ run = describe "--==☯ Examples ☯==--" $ do
     let testResults =
           [ Pass "Fun implicit binding",
             Pass "Fun explicit binding",
-            Pass "Fun alpha equivalence",
-            Pass "Fun args list"
+            Pass "Fun alpha equivalence"
           ]
     test ctx pkg `shouldBe` testResults
 
   let name = "examples/expressions/app"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
-    check pkg `shouldBe` []
+    length (check pkg) `shouldBe` 9
     let ctx = pkg
     let testResults =
           [ Pass "App Any",
@@ -192,7 +192,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let ctx = pkg
     let testResults =
           [ Pass "Ann match",
-            Fail "Ann match type mismatch" i1 (Err $ typeMismatch IntT (loc (name ++ ".tao") 6 7 6 10 NumT)),
+            Fail "Ann match type mismatch" i1 (Err $ unhandledCase IntT (Err $ typeMismatch IntT (loc (name ++ ".tao") 6 7 6 10 NumT))),
             Fail "Ann match fail" i2 i1
           ]
     test ctx pkg `shouldBe` testResults

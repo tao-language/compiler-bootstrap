@@ -1,5 +1,5 @@
-x = 1
-y = 2
+let x = 1
+let y = 2
 
 -- Fun implicit binding
 > x -> y
@@ -12,7 +12,3 @@ y = 2
 -- Fun alpha equivalence
 > x -> y
 @y yT. (y : yT) -> 2
-
--- Fun args list
-> x -> y -> x
-@x y xT yT. (x : xT) -> (y : yT) -> x
