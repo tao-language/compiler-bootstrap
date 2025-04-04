@@ -582,19 +582,21 @@ grammar = do
                   Just ([PP.Text "'"] ++ concatMap layoutSegment segments ++ [PP.Text "'"])
                 _ -> Nothing,
           -- Grammar.Let
-          let parser a expr = do
+          let parser expr = do
                 start <- P.getState
-                _ <- P.char '='
+                _ <- P.word "let"
                 _ <- P.commit "let"
                 end <- P.getState
                 _ <- P.whitespaces
+                a <- parseExprUntil "let lhs" 0 ["=", ";"]
+                _ <- P.whitespaces
+                _ <- P.char '='
+                _ <- P.whitespaces
                 b <- parseExprUntil "let rhs" 0 [";", "\n"]
                 _ <- parseLineBreak
-                c <- expr
-                _ <- P.spaces
-                return (withLoc start end $ Let (a, b) c)
-           in G.InfixL 1 parser $ \lhs rhs -> \case
-                Let (a, b) c -> Just (lhs a ++ PP.Text " = " : lhs b ++ PP.NewLine : rhs c)
+                withLoc start end . Let (a, b) <$> expr
+           in G.Atom parser $ \layout -> \case
+                Let (a, b) c -> Just (PP.Text " = " : layout a ++ PP.Text " = " : layout b ++ PP.NewLine : layout c)
                 _ -> Nothing,
           -- Grammar.Bind (Pattern, Expr) Expr
           -- Grammar.Or
