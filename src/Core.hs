@@ -157,16 +157,34 @@ grammar = do
           let parser expr = do
                 _ <- P.word "^let"
                 _ <- P.spaces
+                bindings <-
+                  P.oneOf
+                    [ do
+                        _ <- P.char '<'
+                        _ <- P.spaces
+                        xs <- P.zeroOrMore $ do
+                          x <- parseNameVar
+                          _ <- P.spaces
+                          return x
+                        _ <- P.char '>'
+                        _ <- P.spaces
+                        return (const xs),
+                      return freeVars
+                    ]
                 a <- expr
                 _ <- P.char '='
                 _ <- P.whitespaces
                 b <- expr
                 _ <- P.oneOf [P.char ';', P.char '\n']
                 _ <- P.whitespaces
-                def (a, b) <$> expr
+                def' (bindings a, a, b) <$> expr
            in G.Atom parser $ \layout -> \case
-                App (Fun a c) b -> do
-                  Just (PP.Text "^let " : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
+                App a b -> case forOf a of
+                  (xs, Fun a c) | sort xs == sort (freeVars a) -> do
+                    Just (PP.Text "^let " : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
+                  (xs, Fun a c) -> do
+                    Just (PP.Text ("^let<" ++ unwords xs ++ "> ") : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
+                  _ -> Nothing
                 _ -> Nothing,
           -- Grammar.Or
           G.infixR 1 (const Or) "|" $ \case
@@ -514,7 +532,10 @@ let' env (Let env' a) = let' (env ++ env') a
 let' env a = Let env a
 
 def :: (Expr, Expr) -> Expr -> Expr
-def (a, b) c = App (Fun (for' (freeVars a) a) c) b
+def (a, b) = def' (freeVars a, a, b)
+
+def' :: ([String], Expr, Expr) -> Expr -> Expr
+def' (xs, a, b) c = App (for xs (Fun a c)) b
 
 list :: Expr -> Expr -> [Expr] -> Expr
 list _ nil [] = nil

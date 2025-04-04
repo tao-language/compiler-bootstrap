@@ -549,7 +549,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = let' 1 3 (x 1 1, y 1 5) (x 2 1)
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x = y\nx" `shouldBe` Right expr
-    fmt' a `shouldBe` "^let @x. x : ^Int = y : ^Int; x : ^Int"
+    fmt' a `shouldBe` "^let x : ^Int = y : ^Int; x : ^Int"
     check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("42", "Int")
 
