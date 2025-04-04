@@ -6,6 +6,7 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--== Tao precedence ==--" $ do
+  let (a, b, c) = (Var "a", Var "b", Var "c")
   let (x, y, z) = (Var "x", Var "y", Var "z")
 
   let prec' :: String -> Either String (Expr, String)
@@ -18,6 +19,29 @@ run = describe "--== Tao precedence ==--" $ do
         Right (a, out) | src == out -> Right a
         Right (a, out) -> Left (a, out)
         Left err -> Left (Any, err)
+
+  it "☯ TaoPrecedence.Let" $ do
+    prec "let x = let y = z\na\nb" `shouldBe` Right (Let (x, Let (y, z) a) b)
+    prec "let x = y | z\na" `shouldBe` Right (Let (x, y `Or` z) a)
+    prec "let x = y == z\na" `shouldBe` Right (Let (x, y `eq` z) a)
+    prec "let x = y != z\na" `shouldBe` Right (Let (x, y `ne` z) a)
+    prec "let x = y < z\na" `shouldBe` Right (Let (x, y `lt` z) a)
+    prec "let x = y <= z\na" `shouldBe` Right (Let (x, y `le` z) a)
+    prec "let x = y > z\na" `shouldBe` Right (Let (x, y `gt` z) a)
+    prec "let x = y >= z\na" `shouldBe` Right (Let (x, y `ge` z) a)
+    prec "let x = y : z\na" `shouldBe` Right (Let (x, y `Ann` z) a)
+    prec "let x = y -> z\na" `shouldBe` Right (Let (x, y `Fun` z) a)
+    prec "let x = @y. z\na" `shouldBe` Right (Let (x, For ["y"] z) a)
+    prec "let x = y + z\na" `shouldBe` Right (Let (x, y `add` z) a)
+    prec "let x = y - z\na" `shouldBe` Right (Let (x, y `sub` z) a)
+    prec "let x = y * z\na" `shouldBe` Right (Let (x, y `mul` z) a)
+    prec "let x = y / z\na" `shouldBe` Right (Let (x, y `div'` z) a)
+    prec "let x = y // z\na" `shouldBe` Right (Let (x, y `divI` z) a)
+    prec "let x = y ^ z\na" `shouldBe` Right (Let (x, y `pow` z) a)
+    prec "let x = -y\na" `shouldBe` Right (Let (x, neg y) a)
+    prec "let x = y(z)\na" `shouldBe` Right (Let (x, y `app1` z) a)
+
+  -- it "☯ TaoPrecedence.Bind" $ do
 
   it "☯ TaoPrecedence.Or" $ do
     prec "x | y | z" `shouldBe` Right (x `Or` (y `Or` z))

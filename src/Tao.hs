@@ -592,7 +592,7 @@ grammar = do
                 _ <- P.whitespaces
                 _ <- P.char '='
                 _ <- P.whitespaces
-                b <- parseExprUntil "let rhs" 1 [";", "\n"]
+                b <- parseExprUntil "let rhs" 0 [";", "\n"]
                 _ <- parseLineBreak
                 withLoc start end . Let (a, b) <$> expr
            in G.Atom parser $ \layout -> \case
