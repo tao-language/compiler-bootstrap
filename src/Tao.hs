@@ -592,11 +592,11 @@ grammar = do
                 _ <- P.whitespaces
                 _ <- P.char '='
                 _ <- P.whitespaces
-                b <- parseExprUntil "let rhs" 0 [";", "\n"]
+                b <- parseExprUntil "let rhs" 1 [";", "\n"]
                 _ <- parseLineBreak
                 withLoc start end . Let (a, b) <$> expr
            in G.Atom parser $ \layout -> \case
-                Let (a, b) c -> Just (PP.Text " = " : layout a ++ PP.Text " = " : layout b ++ PP.NewLine : layout c)
+                Let (a, b) c -> Just (PP.Text "let " : layout a ++ PP.Text " = " : layout b ++ PP.NewLine : layout c)
                 _ -> Nothing,
           -- Grammar.Bind (Pattern, Expr) Expr
           -- Grammar.Or
