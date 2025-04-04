@@ -826,7 +826,11 @@ grammar = do
                 col2 <- P.integer
                 _ <- P.char ']'
                 _ <- P.spaces
-                Meta (C.Loc (Location filename (Range (Pos row1 col1) (Pos row2 col2)))) <$> expr
+                _ <- P.char '('
+                a <- expr
+                _ <- P.char ')'
+                let loc = Location filename (Range (Pos row1 col1) (Pos row2 col2))
+                return (Meta (C.Loc loc) a)
            in G.Atom parser $ \layout -> \case
                 Meta (C.Loc loc) a -> Just (PP.Text ("^loc[" ++ show loc ++ "](") : layout a ++ [PP.Text ")"])
                 _ -> Nothing,

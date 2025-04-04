@@ -95,10 +95,10 @@ run = describe "--==☯ Tao ☯==--" $ do
 
   it "☯ Tao.Meta.Location" $ do
     let ctx = []
-    let expr = Meta (C.Loc $ Location "file" (Range (Pos 1 2) (Pos 3 4))) (any 1 17)
+    let expr = Meta (C.Loc $ Location "file" (Range (Pos 1 2) (Pos 3 4))) (any 1 20)
     let (env, (a, t)) = compile' ctx "m" expr
-    syntax "^[:1:2,3:4] _" `shouldBe` Left "syntax error, remaining: :1:2,3:4] _"
-    syntax' "^[file:1:2,3:4] _" "_" `shouldBe` Right expr
+    syntax "^loc[:1:2,3:4](_)" `shouldBe` Left "syntax error, remaining: :1:2,3:4](_)"
+    syntax' "^loc[file:1:2,3:4](_)" "_" `shouldBe` Right expr
     fmt' a `shouldBe` "_"
     check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("_", "_")
