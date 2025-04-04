@@ -735,14 +735,20 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
       MaybeMatched a2 b -> MaybeMatched (Or a1 a2) b
       NotMatched _ _ -> Matched env1
     MaybeMatched a1 b -> MaybeMatched (Or a1 a2) b
-    NotMatched _ _ -> match unify ops a2 b
+    NotMatched a1 b -> case match unify ops a2 b of
+      Matched env -> Matched env
+      MaybeMatched a2 b -> MaybeMatched a2 b
+      NotMatched a2 b -> NotMatched (Or a1 a2) b
   (a, Or b1 b2) -> case match unify ops a b1 of
     Matched env1 -> case match unify ops (Let env1 a) b2 of
       Matched env2 -> Matched (env1 ++ env2)
       MaybeMatched a b2 -> MaybeMatched a (Or b1 b2)
       NotMatched _ _ -> Matched env1
     MaybeMatched a b1 -> MaybeMatched a (Or b1 b2)
-    NotMatched _ _ -> match unify ops a b2
+    NotMatched a b1 -> case match unify ops a b2 of
+      Matched env -> Matched env
+      MaybeMatched a b2 -> MaybeMatched a b2
+      NotMatched a b2 -> NotMatched a (Or b1 b2)
   (For x a, b) -> match unify ops (Let [(x, Var x)] a) b
   (a, For x b) -> match unify ops a (Let [(x, Var x)] b)
   (Fix x a, Fix x' b) | x == x' -> do

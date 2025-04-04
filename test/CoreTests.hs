@@ -381,13 +381,13 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     run env "((A | B) -> x) B" `shouldBe` Right "42"
     run env "((A | B) -> x) (A | B)" `shouldBe` Right "42"
     run env "((A | B) -> x) (B | A)" `shouldBe` Right "42"
-    run env "((a : ^Int) -> a) x" `shouldBe` Right "!unhandled-case(a : ^Int, 42)"
+    run env "((a : ^Int) -> a) x" `shouldBe` Right "42"
     run env "((a : ^Int) -> a) (x : ^Int)" `shouldBe` Right "42"
-    run env "((a : ^Num) -> a) (x : ^Int)" `shouldBe` Right "!unhandled-case(a : ^Num, 42 : ^Int)"
+    run env "((a : ^Num) -> a) (x : ^Int)" `shouldBe` Right "!unhandled-case(^Num, ^Int)"
     run env "((x : a) -> a) (x : ^Int)" `shouldBe` Right "^Int"
     run env "((a : ^Num) -> a) (x : _)" `shouldBe` Right "42"
-    run env "((a : ^Num) -> a) (x : !error(_))" `shouldBe` Right "!unhandled-case(a : ^Num, 42 : !error(_))"
-    run env "((a : ^Num) -> a) x" `shouldBe` Right "!unhandled-case(a : ^Num, 42)"
+    run env "((a : ^Num) -> a) (x : !error(_))" `shouldBe` Right "!unhandled-case(^Num, !error(_))"
+    run env "((a : ^Num) -> a) x" `shouldBe` Right "42"
     run env "((A : A) -> B) (a : A)" `shouldBe` Right "^let A = a; B"
     run env "((@y. y) -> y) x" `shouldBe` Right "42"
     run env "((&y. x -> y) -> y) x" `shouldBe` Right "!unhandled-case(&y. 42 -> y, 42)"
@@ -645,7 +645,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let env = [("Bool", Fun true bool `Or` Fun false bool)]
 
     eval ops (Let env (App (Fun bool Unit) true)) `shouldBe` Unit
-    eval ops (Let env (App (Fun bool Unit) (Tag "X"))) `shouldBe` Err (unhandledCase bool (Tag "X"))
+    eval ops (Let env (App (Fun bool Unit) (Tag "X"))) `shouldBe` Err (unhandledCase bool (Or (Err $ unhandledCase false (Tag "X")) (Tag "X")))
     eval ops (Let env (App (Fun bool Unit) bool)) `shouldBe` Unit
 
     let infer' = infer ops env
@@ -680,7 +680,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let env = [("Vec", lam [n, a] (vecDef a))]
 
     eval ops (Let env (App (Fun (vec i0 NumT) Unit) nil)) `shouldBe` Unit
-    eval ops (Let env (App (Fun (vec i0 NumT) Unit) (Tag "X"))) `shouldBe` Err (unhandledCase (vec i0 NumT) (Tag "X"))
+    eval ops (Let env (App (Fun (vec i0 NumT) Unit) (Tag "X"))) `shouldBe` Err (unhandledCase (vec i0 NumT) (Or (Err $ unhandledCase nil (Tag "X")) (Tag "X")))
     eval ops (Let env (App (Fun (vec i0 NumT) Unit) (vec i0 NumT))) `shouldBe` Unit
 
     let infer' = infer ops env
