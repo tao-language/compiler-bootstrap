@@ -38,14 +38,7 @@ instance CheckTypes Stmt where
       let a = lower (Tuple [t.expr, t.expect])
       let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
       let ((a', t), s) = C.infer buildOps env a
-      -- TODO: recursively find all errors
-      (error . intercalate "\n")
-        [ "\n\nTest",
-          "env: " ++ C.format 80 (C.Let env C.Any),
-          "a: " ++ C.format 80 (C.dropMeta a),
-          "a': " ++ C.format 80 (C.dropMeta a'),
-          "t: " ++ C.format 80 t
-        ]
+      check (lift (C.Ann a' t))
     Run expr -> do
       let a = lower expr
       let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)

@@ -107,7 +107,7 @@ description = \case
     NotAFunction a t -> show e
     UndefinedVar x -> show e
   RuntimeError e -> ""
-  _ -> "TODO: description"
+  e -> "TODO: description"
 
 suggestion :: (Show a) => Error a -> String
 suggestion = \case

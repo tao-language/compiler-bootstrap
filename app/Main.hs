@@ -94,6 +94,7 @@ checkCmd filename = do
       let n = length errors
       mapM_ display errors
       putStrLn $ "=== SUMMARY " ++ replicate 50 '='
+      putStrLn filename
       putStrLn $ "🚨 " ++ show n ++ " error" ++ (if n == 1 then "" else "s")
       putStrLn ""
       exitFailure

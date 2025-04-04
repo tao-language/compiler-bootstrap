@@ -1,16 +1,16 @@
-`+` x y = A
+let `+`(x, y) = A
 
 -- `Op` def
 > 1 + 2
 A
 
-(-) x y = B
+let (-)(x, y) = B
 
 -- (Op) def
 > 1 - 2
 B
 
-x * y = C
+let x * y = C
 
 -- Infix def
 > 1 * 2
