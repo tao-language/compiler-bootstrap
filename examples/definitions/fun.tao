@@ -1,4 +1,4 @@
-x -> y = 1 -> 2
+let x -> y = 1 -> 2
 
 -- Fun match 1
 > x

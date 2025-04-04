@@ -1,4 +1,4 @@
-x(y) = y
+let x(y) = y
 
 -- App match 1
 > x(1)
