@@ -733,7 +733,10 @@ grammar = do
                 _ <- P.spaces
                 args <-
                   P.oneOf
-                    [ parseCollection "(" "," ")" expr,
+                    [ do
+                        args <- parseCollection "(" "," ")" expr
+                        _ <- P.spaces
+                        return args,
                       return []
                     ]
                 return (withLoc start end $ Call f args)

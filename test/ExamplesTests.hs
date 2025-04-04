@@ -323,7 +323,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let ctx = pkg
     let testResults =
           [ Pass "Call match",
-            Fail "Call match fail" i1 (err Any)
+            Fail "Call match fail" i1 (Err $ unhandledCase (Call "f" [y]) (Call "g" [i1]))
           ]
     test ctx pkg `shouldBe` testResults
 
