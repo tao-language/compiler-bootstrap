@@ -83,13 +83,17 @@ customError a = RuntimeError (CustomError a)
 
 summary :: (Show a) => Error a -> String
 summary = \case
-  SyntaxError _ -> "Syntax Error"
+  SyntaxError _ -> "Syntax error"
   TypeError e -> case e of
-    OccursError {} -> "Occurs Error"
-    TypeMismatch {} -> "Type Mismatch"
-    NotAFunction {} -> "Not a Function"
-    UndefinedVar {} -> "Undefined Variable"
-  CaseError _ -> "Case Error"
+    OccursError {} -> "Occurs error"
+    TypeMismatch {} -> "Type mismatch"
+    NotAFunction {} -> "Not a function"
+    UndefinedVar {} -> "Undefined variable"
+  CaseError _ -> "Case error"
+  RuntimeError e -> case e of
+    UnhandledCase {} -> "Unhandled error"
+    CannotApply {} -> "Cannot apply"
+    CustomError {} -> "User defined error"
 
 description :: (Show a) => Error a -> String
 description = \case
@@ -102,6 +106,7 @@ description = \case
         ++ show expected
     NotAFunction a t -> show e
     UndefinedVar x -> show e
+  RuntimeError e -> ""
   _ -> "TODO: description"
 
 suggestion :: (Show a) => Error a -> String

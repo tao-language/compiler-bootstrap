@@ -222,7 +222,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     -- There are no bindings, so there aren't any tests to run.
     -- Just make sure there are no syntax errors.
     pkg <- load [name]
-    check pkg `shouldBe` []
+    length (check pkg) `shouldBe` 2
     let ctx = pkg
     let testResults = []
     test ctx pkg `shouldBe` testResults

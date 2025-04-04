@@ -843,13 +843,21 @@ grammar = do
             _ -> Nothing,
           -- Grammar.Err
           let parser expr = do
+                start <- P.getState
                 _ <- P.word "!error"
+                end <- P.getState
                 _ <- P.spaces
-                _ <- P.char '('
-                _ <- P.whitespaces
-                a <- expr
-                _ <- P.whitespaces
-                _ <- P.char ')'
+                a <-
+                  P.oneOf
+                    [ do
+                        _ <- P.char '('
+                        _ <- P.whitespaces
+                        a <- expr
+                        _ <- P.whitespaces
+                        _ <- P.char ')'
+                        return a,
+                      return (withLoc start end Any)
+                    ]
                 _ <- P.spaces
                 return (Err (customError a))
            in G.Atom parser $ \layout -> \case
@@ -1311,6 +1319,8 @@ instance Check Expr where
     Meta _ a -> check a
     Err e -> case e of
       SyntaxError (loc, _, _) -> [(Just loc, e)]
+      RuntimeError (CustomError (Meta (C.Loc loc) a)) ->
+        [(Just loc, customError a)]
       _ -> [(Nothing, e)]
     a -> collect check a
 
