@@ -123,7 +123,7 @@ instance Show Op2 where
 
 data Stmt
   = Import String String [(String, String)]
-  | Def (Pattern, Expr)
+  | Def ([String], Pattern, Expr)
   | TypeDef (String, [Expr], [(Expr, Maybe Type)])
   | Test UnitTest
   | Run Expr
@@ -206,7 +206,10 @@ isTest :: Stmt -> Bool
 isTest Test {} = True
 isTest _ = False
 
-asDef :: Stmt -> Maybe (Pattern, Expr)
+def :: (Expr, Expr) -> Stmt
+def (a, b) = Def (freeVars a, a, b)
+
+asDef :: Stmt -> Maybe ([String], Pattern, Expr)
 asDef (Def def) = Just def
 asDef _ = Nothing
 
@@ -365,7 +368,7 @@ instance Apply Stmt where
   apply :: (Expr -> Expr) -> Stmt -> Stmt
   apply f = \case
     Import path alias names -> Import path alias names
-    Def (a, b) -> Def (f a, f b)
+    Def (xs, a, b) -> Def (xs, f a, f b)
     TypeDef (name, args, alts) -> TypeDef (name, map f args, map (bimap f (fmap f)) alts)
     Test t -> Test (apply f t)
     Run a -> Run (f a)
@@ -1202,12 +1205,12 @@ parseImport = do
       ]
   return (Import path alias exposing)
 
-parseDef :: String -> Parser (Expr, Expr)
+parseDef :: String -> Parser ([String], Expr, Expr)
 parseDef "" = error "parseDef delimiter must not be empty"
 parseDef op = do
   typeAnnotation <- P.maybe' $ do
     _ <- P.char ':'
-    P.commit "typed def"
+    P.commit "def type"
     _ <- P.spaces
     t <- parseExprUntil "def type" 0 [";", "\n"]
     _ <- parseLineBreak
@@ -1215,13 +1218,21 @@ parseDef op = do
   _ <- P.word "let"
   _ <- P.commit "def"
   _ <- P.whitespaces
+  bind <-
+    P.oneOf
+      [ do
+          xs <- parseCollection "<" "" ">" parseNameVar
+          _ <- P.whitespaces
+          return (const xs),
+        return freeVars
+      ]
   a <- parseExprUntil "def lhs" 2 [op, "\n"]
   _ <- P.word op
   _ <- P.whitespaces
   b <- parseExprUntil "def rhs" 2 [";", "\n"]
   case typeAnnotation of
-    Just t -> return (Ann a t, b)
-    Nothing -> return (a, b)
+    Just t -> return (bind a, Ann a t, b)
+    Nothing -> return (bind a, a, b)
 
 parseTypeDef :: Parser (String, [Expr], [(Expr, Maybe Type)])
 parseTypeDef = do
@@ -1346,7 +1357,7 @@ instance Check Stmt where
   check :: Stmt -> [(Maybe Location, Error Expr)]
   check = \case
     Import {} -> []
-    Def (a, b) -> check a ++ check b
+    Def (xs, a, b) -> check a ++ check b
     TypeDef (_, args, alts) -> concatMap check args ++ concatMap check alts
     Test t -> concatMap check [t.expr, t.expect]
     Run a -> check a
@@ -1451,8 +1462,8 @@ instance Resolve (String, Stmt) where
         defs ++ resolve ctx path (name, Import path' alias names)
       [] | alias == name -> [(path, Tag path' [])]
       [] -> []
-    Def (p, b) | name `elem` bindings p -> do
-      [(path, Let (p, b) (Var name))]
+    Def (xs, p, b) | name `elem` xs -> do
+      [(path, For xs $ Let (p, b) (Var name))]
     TypeDef (name', args, alts) | name == name' -> do
       -- let resolveAlt (a, Just b) = Fun a b
       --     resolveAlt (a, Nothing) = Fun a (tag name' args)
