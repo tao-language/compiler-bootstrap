@@ -385,8 +385,8 @@ instance DropMeta Expr where
   dropMeta :: Expr -> Expr
   dropMeta = \case
     Meta _ a -> dropMeta a
-    -- Err e -> Err e -- do not drop metadata from errors
-    Err e -> Err (fmap dropMeta e)
+    Err e -> Err e -- do not drop metadata from errors
+    -- Err e -> Err (fmap dropMeta e)
     a -> apply dropMeta a
 
 instance DropMeta Stmt where
@@ -425,8 +425,8 @@ instance DropTypes Expr where
     Fun (Ann a t) b -> Fun (Ann (dropTypes a) (dropTypes t)) (dropTypes b)
     App a (Ann b t) -> do
       App (dropTypes a) (Ann (dropTypes b) (dropTypes t))
-    -- Err e -> Err e -- keep types from errors
-    Err e -> Err (fmap dropTypes e)
+    Err e -> Err e -- keep types from errors
+    -- Err e -> Err (fmap dropTypes e)
     a -> apply dropTypes a
 
 instance DropTypes Stmt where

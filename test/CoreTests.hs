@@ -189,7 +189,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     format 80 expr `shouldBe` "@x. y"
     let ((expr', typ), s) = infer ops env expr
     (expr', typ, s) `shouldBe` (expr, IntT, [])
-    eval ops (Let env expr') `shouldBe` For "x" (Int 42)
+    eval ops (Let env expr') `shouldBe` Int 42
 
   it "☯ Core.Fix" $ do
     let env = [("y", Int 42)]
@@ -198,7 +198,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     format 80 expr `shouldBe` "&x. y"
     let ((expr', typ), s) = infer ops env expr
     (expr', typ, s) `shouldBe` (expr, IntT, [("x", x)])
-    eval ops (Let env expr') `shouldBe` Fix "x" (Int 42)
+    eval ops (Let env expr') `shouldBe` Int 42
 
   it "☯ Core.Fun" $ do
     let env = [("x", Int 42), ("y", Num 3.14)]
@@ -370,7 +370,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     run env "(y -> y) x" `shouldBe` Right "!unhandled-case(3.14, 42)"
     run env "(y -> y) 3.14" `shouldBe` Right "3.14"
     run env "(@y. y -> y) x" `shouldBe` Right "42"
-    run env "(&y. x -> y) x" `shouldBe` Right "&y. 42 -> y"
+    run env "(&y. x -> y) x" `shouldBe` Right "42 -> y"
     run env "((A, a) -> a) (B, x)" `shouldBe` Right "!unhandled-case(A, B)"
     run env "((A, a) -> a) (A, x)" `shouldBe` Right "42"
     run env "((A | x) -> x) B" `shouldBe` Right "!unhandled-case(A | 42, B)"

@@ -27,7 +27,6 @@ test :: Context -> Package -> [Result Expr]
 test ctx pkg = do
   let output = \case
         TestPass {name} -> Pass name
-        TestFail {name, expected, got} -> Fail name (dropTypes $ dropMeta expected) (dropTypes $ dropMeta got)
         TestFail {name, expected, got} -> Fail name (dropMeta expected) (dropMeta got)
   map output (testAll ctx pkg)
 
