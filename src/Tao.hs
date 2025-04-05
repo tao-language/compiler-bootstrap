@@ -916,12 +916,16 @@ lower = \case
   String [] -> C.Tag "''"
   String segments -> error "TODO: lower String"
   Or a b -> C.Or (lower a) (lower b)
+  -- For xs a -> error $ show (For xs a)
+  For xs (Fun a b) -> C.for xs (C.Fun (lower a) (lower b))
   For xs a -> C.for xs (lower a)
-  Fun (For xs a) b -> C.for xs (C.Fun (lower a) (lower b))
-  Fun (Meta m a) b -> case lower (Fun a b) of
-    C.Fun a b -> C.Fun (C.Meta m a) b
-    a -> C.Meta m a
-  Fun a b -> lower (Fun (For (freeVars a) a) b)
+  -- Fun (For xs a) b -> C.for xs (C.Fun (lower a) (lower b))
+  -- Fun (Meta m a) b -> case lower (Fun a b) of
+  --   C.Fun a b -> C.Fun (C.Meta m a) b
+  --   a -> C.Meta m a
+  -- Fun a b -> lower (Fun (For (freeVars a) a) b)
+  -- Fun a b -> C.for (freeVars a) (C.Fun (lower a) (lower b))
+  Fun a b -> lower (For (freeVars a) (Fun a b))
   -- Fun (For xs a) b -> C.Fun (lower (For xs a)) (lower b)
   -- Fun (Meta _ a) b | isFor a -> lower (Fun a b)
   -- Fun a b -> lower (Fun (For (freeVars a) a) b)
@@ -945,7 +949,7 @@ lower = \case
     App a1 a2 -> lower (Let (a1, Fun a2 b) c)
     Op1 op a -> lower (Let (Var (show op), Fun a b) c)
     Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
-    -- For xs a -> lower (App (For xs (Fun a c)) b)
+    For xs a -> lower (App (For xs (Fun a c)) b)
     Meta _ a -> lower (Let (a, b) c)
     -- a -> C.App (lower (Fun a c)) (lower b)
     a -> lower (app (Fun a c) [b])
@@ -1208,6 +1212,19 @@ parseImport = do
 parseDef :: String -> Parser ([String], Expr, Expr)
 parseDef "" = error "parseDef delimiter must not be empty"
 parseDef op = do
+  bind <-
+    P.oneOf
+      [ do
+          _ <- P.char '@'
+          xs <- P.zeroOrMore $ do
+            x <- parseNameVar
+            _ <- P.spaces
+            return x
+          _ <- P.oneOf [P.char '.', P.char '\n']
+          _ <- P.whitespaces
+          return (const xs),
+        return freeVars
+      ]
   typeAnnotation <- P.maybe' $ do
     _ <- P.char ':'
     P.commit "def type"
@@ -1218,14 +1235,6 @@ parseDef op = do
   _ <- P.word "let"
   _ <- P.commit "def"
   _ <- P.whitespaces
-  bind <-
-    P.oneOf
-      [ do
-          xs <- parseCollection "<" "" ">" parseNameVar
-          _ <- P.whitespaces
-          return (const xs),
-        return freeVars
-      ]
   a <- parseExprUntil "def lhs" 2 [op, "\n"]
   _ <- P.word op
   _ <- P.whitespaces
@@ -1463,7 +1472,7 @@ instance Resolve (String, Stmt) where
       [] | alias == name -> [(path, Tag path' [])]
       [] -> []
     Def (xs, p, b) | name `elem` xs -> do
-      [(path, For xs $ Let (p, b) (Var name))]
+      [(path, Let (For xs p, b) (Var name))]
     TypeDef (name', args, alts) | name == name' -> do
       -- let resolveAlt (a, Just b) = Fun a b
       --     resolveAlt (a, Nothing) = Fun a (tag name' args)

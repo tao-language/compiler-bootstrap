@@ -59,9 +59,10 @@ instance TestSome (FilePath, UnitTest) where
           [ Fun (For [] t.expect) (Tag ":Ok" []),
             Fun (Var "$got") (Tag ":Err" [Var "$got"])
           ]
-    -- error $ show (Match t.expr cases)
+    -- error $ show (dropMeta $ Match t.expr cases)
     let (env, test') = compile ctx path (Match t.expr cases)
     -- error $ show (C.dropMeta test')
+    -- error $ show (C.dropTypes $ C.dropMeta test')
     -- error $ show (second C.dropMeta <$> env)
     case C.typedOf (C.eval runtimeOps (C.Let env test')) of
       (C.Tag ":Ok", _) -> [TestPass t.filename t.pos t.name]

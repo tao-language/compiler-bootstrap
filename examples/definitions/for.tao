@@ -1,12 +1,13 @@
 let z = 2
 
-let<x> (x, z) = (1, 2)
+@x. let (x, z) = (1, 2)
 
 -- For match
 > x
 1
 
-let<y> (y, z) = (1, 1)
+@y
+let (y, z) = (1, 1)
 
 -- For match fail
 > y
