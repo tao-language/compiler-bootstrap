@@ -70,6 +70,13 @@ loadSource filename = case splitExtension filename of
         error ("compiler error, there is a bug in the parser\n ❌ " ++ show loc ++ ": the parser was not able to gracefully recover from an error.\ncontext=" ++ show s.context ++ "\n")
   _ -> error $ "file extension not supported: " ++ filename
 
+loadExpr :: FilePath -> String -> IO Expr
+loadExpr path src = case P.parse (parseExpr 0) path src of
+  Right (a, _) -> return a
+  Left s -> do
+    let loc = Location s.filename (Range s.pos s.pos)
+    error ("compiler error, there is a bug in the parser\n ❌ " ++ show loc ++ ": the parser was not able to gracefully recover from an error.\ncontext=" ++ show s.context ++ "\n")
+
 -- loadAtom :: String -> String -> IO Expr
 -- loadAtom filename src = case P.parse parseAtom filename src of
 --   Right (a, _) -> return a

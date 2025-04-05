@@ -4,7 +4,7 @@ import qualified Core as C
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, isSuffixOf, partition)
 import Error
-import Load (include, load)
+import Load (include, load, loadExpr)
 import Patch
 import PrettyPrint (pretty)
 import qualified Python as Py
@@ -53,7 +53,7 @@ coreCmd :: FilePath -> String -> IO ()
 coreCmd filename arg = do
   pkg <- load [filename]
   ctx <- include "prelude" pkg
-  arg' <- error "TODO" -- load "<core>" arg
+  arg' <- loadExpr "<core>" arg
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
   let a = lower arg'
