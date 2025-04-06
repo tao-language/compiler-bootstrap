@@ -644,10 +644,6 @@ grammar = do
           G.infixR 5 (loc2 Ann) ":" $ \case
             Ann a b -> Just (a, " ", b)
             _ -> Nothing,
-          -- Grammar.Fun
-          G.infixR 6 (loc2 Fun) "->" $ \case
-            Fun a b -> Just (a, " ", b)
-            _ -> Nothing,
           -- Grammar.For
           let parser expr = do
                 start <- P.getState
@@ -671,10 +667,14 @@ grammar = do
                 a <- expr
                 _ <- P.spaces
                 return (withLoc start end $ For xs a)
-           in G.Prefix 7 parser $ \layout -> \case
+           in G.Prefix 6 parser $ \layout -> \case
                 For xs a ->
                   Just (PP.Text ('@' : unwords xs ++ ". ") : layout a)
                 _ -> Nothing,
+          -- Grammar.Fun
+          G.infixR 7 (loc2 Fun) "->" $ \case
+            Fun a b -> Just (a, " ", b)
+            _ -> Nothing,
           -- Grammar.Op2.Add
           G.infixL 8 (locOp2 Add) "+" $ \case
             Op2 Add a b -> Just (a, " ", b)
@@ -918,6 +918,9 @@ lower = \case
   Or a b -> C.Or (lower a) (lower b)
   -- For xs a -> error $ show (For xs a)
   For xs (Fun a b) -> C.for xs (C.Fun (lower a) (lower b))
+  For xs (Meta m a) -> do
+    let (ys, a') = C.forOf (lower (For xs a))
+    C.for (xs ++ ys) (C.Meta m a')
   For xs a -> C.for xs (lower a)
   -- Fun (For xs a) b -> C.for xs (C.Fun (lower a) (lower b))
   -- Fun (Meta m a) b -> case lower (Fun a b) of
