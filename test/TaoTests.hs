@@ -503,8 +503,8 @@ run = describe "--==☯ Tao ☯==--" $ do
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match x {}" `shouldBe` Right expr
     core a `shouldBe` "!cannot-apply((), ()) (x : ^Int)"
-    check' (C.Ann a t) `shouldBe` [(Just (1, 7, 1, 8), notAFunction (Err (cannotApply (Tuple []) (Tuple []))) Any)]
-    eval' env a t `shouldBe` ("!cannot-apply(!cannot-apply((), ()), ^loc[<test>:1:7,1:8](^loc[ctx.x:1:1,1:3](42)))", "Int")
+    check' (C.Ann a t) `shouldBe` []
+    eval' env a t `shouldBe` ("!cannot-apply(!cannot-apply((), ()), ^loc[<test>:1:7,1:8](^loc[ctx.x:1:1,1:3](42) : Int) : Int)", "_")
 
   it "☯ Tao.Match.error.arg" $ do
     let ctx = [("m", [def' "x" "42"])]

@@ -459,6 +459,7 @@ collect f = \case
   Op1 op a -> f (Var (show op)) `union` f a
   Op2 op a b -> f (Var (show op)) `union` f a `union` f b
   Match arg cases -> f arg `union` unionMap f cases
+  MatchFun cases -> unionMap f cases
   Let (a, b) c -> f a `union` f b `union` f c
   Bind (a, b) c -> f a `union` f b `union` f c
   Record fields -> unionMap (f . snd) fields
@@ -1365,7 +1366,7 @@ instance Check Expr where
       SyntaxError (loc, _, _) -> [(Just loc, e)]
       RuntimeError (CustomError (Meta (C.Loc loc) a)) ->
         [(Just loc, customError a)]
-      _ -> [(Nothing, e)]
+      e -> error ("TODO check: handle " ++ show e)
     a -> collect check a
 
 instance Check (Expr, Maybe Type) where
