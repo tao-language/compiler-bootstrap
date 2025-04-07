@@ -1,4 +1,4 @@
-x | y = 1
+let x | y = 1
 
 -- Or match 1
 > x

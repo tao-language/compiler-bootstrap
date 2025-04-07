@@ -322,7 +322,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ Core.sugar.def" $ do
     let expr = def (x, y) z
     parse' "^let x = y; z " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "^let x = y; z"
+    format 80 expr `shouldBe` "^let<x> x = y; z"
 
   it "☯ Core.run.App" $ do
     let env = [("x", "42"), ("y", "3.14"), ("a", "a")]
@@ -388,7 +388,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     run env "((a : ^Num) -> a) (x : _)" `shouldBe` Right "42"
     run env "((a : ^Num) -> a) (x : !error(_))" `shouldBe` Right "!unhandled-case(^Num, !error(_))"
     run env "((a : ^Num) -> a) x" `shouldBe` Right "42"
-    run env "((A : A) -> B) (a : A)" `shouldBe` Right "^let A = a; B"
+    run env "((A : A) -> B) (a : A)" `shouldBe` Right "^let<> A = a; B"
     run env "((@y. y) -> y) x" `shouldBe` Right "42"
     run env "((&y. x -> y) -> y) x" `shouldBe` Right "!unhandled-case(&y. 42 -> y, 42)"
     run env "((&y. x -> y) -> y) (&y. x -> y)" `shouldBe` Right "&y. 42 -> y"

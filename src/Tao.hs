@@ -1253,9 +1253,10 @@ parseDef op = do
   _ <- P.word op
   _ <- P.whitespaces
   b <- parseExprUntil "def rhs" 2 [";", "\n"]
+  let (xs, a') = forOf a
   case typeAnnotation of
-    Just t -> return (bind a, Ann a t, b)
-    Nothing -> return (bind a, a, b)
+    Just t -> return (xs, Ann a' t, b)
+    Nothing -> return (xs, a', b)
 
 parseTypeDef :: Parser (String, [Expr], [(Expr, Maybe Type)])
 parseTypeDef = do
@@ -1504,15 +1505,17 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"y", expr) = do
+  -- compile ctx path (name@"x", expr) = do
   --   let dependencies = delete name (freeNames expr)
-  --   let env = concatMap (fst . compile ctx path) dependencies
-  --   let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
+  --   -- let env = concatMap (fst . compile ctx path) dependencies
+  --   -- let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
   --   -- case t of
   --   --   C.Any -> (env, a)
   --   --   C.Var _ -> (env, a)
   --   --   _ -> (env, C.Ann a t)
-  --   error $ show (a)
+  --   -- error $ show (dropMeta expr)
+  --   -- error $ show (C.dropMeta a)
+  --   error $ show dependencies
   compile ctx path (name, expr) = do
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies

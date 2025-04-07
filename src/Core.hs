@@ -180,8 +180,6 @@ grammar = do
                 def' (bindings a, a, b) <$> expr
            in G.Atom parser $ \layout -> \case
                 App a b -> case forOf a of
-                  (xs, Fun a c) | sort xs == sort (freeVars a) -> do
-                    Just (PP.Text "^let " : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
                   (xs, Fun a c) -> do
                     Just (PP.Text ("^let<" ++ unwords xs ++ "> ") : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
                   _ -> Nothing

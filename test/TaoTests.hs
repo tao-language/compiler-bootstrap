@@ -531,7 +531,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = match 1 1 (x 1 7) [fun 2 5 (a 2 3) (int 2 8 1)]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match x {\n| a -> 1\n}" `shouldBe` Right expr
-    core a `shouldBe` "^let a : ^Int = x : ^Int; 1 : ^Int"
+    core a `shouldBe` "^let<a> a : ^Int = x : ^Int; 1 : ^Int"
     check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("1", "Int")
 
@@ -549,7 +549,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = let' 1 1 (x 1 5, y 1 9) (x 2 1)
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "let x = y\nx" `shouldBe` Right expr
-    core a `shouldBe` "^let x : ^Int = y : ^Int; x : ^Int"
+    core a `shouldBe` "^let<x> x : ^Int = y : ^Int; x : ^Int"
     check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("42", "Int")
 

@@ -1,6 +1,6 @@
-x = 1
+let x = 1
 
-x = 2
+let x = 2
 
 -- Overload match 1
 > x

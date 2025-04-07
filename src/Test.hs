@@ -62,14 +62,12 @@ instance TestSome (FilePath, UnitTest) where
     -- error $ show (dropMeta $ Match t.expr cases)
     let (env, test') = compile ctx path (Match t.expr cases)
     -- error $ show (C.dropMeta test')
-    -- error $ show (C.dropTypes $ C.dropMeta test')
     -- error $ show (second C.dropMeta <$> env)
     -- error $ show (C.dropMeta $ C.eval runtimeOps (C.Let env test'))
     case C.typedOf (C.eval runtimeOps (C.Let env test')) of
       (C.Tag ":Ok", _) -> [TestPass t.filename t.pos t.name]
       (_, C.And (C.Tag ":Err") (C.Err e)) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift (C.Err e))]
       (C.And (C.Tag ":Err") got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
-      (C.Err (RuntimeError (UnhandledCase _ (C.Ann _ (C.Err e)))), _) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift (C.Err e))]
       (got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
 
 testAll :: (TestSome a) => Context -> a -> [TestResult]
