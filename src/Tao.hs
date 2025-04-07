@@ -916,11 +916,11 @@ lower = \case
   String [] -> C.Tag "''"
   String segments -> error "TODO: lower String"
   Or a b -> C.Or (lower a) (lower b)
-  -- For xs a -> error $ show (For xs a)
   For xs (Fun a b) -> C.for xs (C.Fun (lower a) (lower b))
   For xs (Meta m a) -> do
-    let (ys, a') = C.forOf (lower (For xs a))
-    C.for (xs ++ ys) (C.Meta m a')
+    let (xs', a') = C.forOf (lower (For xs a))
+    C.for xs' (C.Meta m a')
+  -- For xs a -> error $ show (For xs a)
   For xs a -> C.for xs (lower a)
   -- Fun (For xs a) b -> C.for xs (C.Fun (lower a) (lower b))
   -- Fun (Meta m a) b -> case lower (Fun a b) of
@@ -1000,10 +1000,16 @@ lift = \case
   C.And (C.Tag k) args -> Tag k (map lift (C.andOf args))
   C.And a bs -> Tuple (map lift (a : C.andOf bs))
   C.Or a b -> Or (lift a) (lift b)
-  C.For x a -> case forOf (lift a) of
-    (xs, a) | sort (x : xs) == sort (caseBindings a) -> a
-    (xs, a) -> For (x : xs) a
-  C.Fun a b -> Fun (lift a) (lift b)
+  -- For xs (Fun a b) -> C.for xs (C.Fun (lower a) (lower b))
+  -- For xs (Meta m a) -> do
+  --   let (xs', a') = C.forOf (lower (For xs a))
+  --   C.for xs' (C.Meta m a')
+  C.For x a -> case C.forOf a of
+    (xs, C.Fun a b) | sort xs == sort (C.freeVars a) -> Fun (lift a) (lift b)
+    (xs, C.Fun a b) -> For xs (Fun (lift a) (lift b))
+    (xs, C.Meta m a) -> error ("TODO: " ++ show (C.For x a))
+    (xs, a) -> For (x : xs) (lift a)
+  C.Fun a b -> For [] (Fun (lift a) (lift b))
   C.Fix x a
     | x `C.occurs` a -> Let (Var x, lift a) (lift a)
     | otherwise -> lift a

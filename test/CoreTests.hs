@@ -189,7 +189,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     format 80 expr `shouldBe` "@x. y"
     let ((expr', typ), s) = infer ops env expr
     (expr', typ, s) `shouldBe` (expr, IntT, [])
-    eval ops (Let env expr') `shouldBe` Int 42
+    eval ops (Let env expr') `shouldBe` For "x" (Int 42)
 
   it "☯ Core.Fix" $ do
     let env = [("y", Int 42)]
@@ -198,7 +198,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     format 80 expr `shouldBe` "&x. y"
     let ((expr', typ), s) = infer ops env expr
     (expr', typ, s) `shouldBe` (expr, IntT, [("x", x)])
-    eval ops (Let env expr') `shouldBe` Int 42
+    eval ops (Let env expr') `shouldBe` Fix "x" (Int 42)
 
   it "☯ Core.Fun" $ do
     let env = [("x", Int 42), ("y", Num 3.14)]
@@ -215,7 +215,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     parse' "x y " `shouldBe` Right (expr, "")
     format 80 expr `shouldBe` "x y"
     let ((expr', typ), s) = infer ops env expr
-    (expr', typ, s) `shouldBe` (App x (Ann y IntT), NumT, [])
+    (expr', typ, s) `shouldBe` (App x (Ann y IntT), NumT, [("$1", NumT)])
     eval ops (Let env expr') `shouldBe` Num 3.14
 
   it "☯ Core.Call 0" $ do
@@ -370,7 +370,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     run env "(y -> y) x" `shouldBe` Right "!unhandled-case(3.14, 42)"
     run env "(y -> y) 3.14" `shouldBe` Right "3.14"
     run env "(@y. y -> y) x" `shouldBe` Right "42"
-    run env "(&y. x -> y) x" `shouldBe` Right "42 -> y"
+    run env "(&y. x -> y) x" `shouldBe` Right "&y. 42 -> y"
     run env "((A, a) -> a) (B, x)" `shouldBe` Right "!unhandled-case(A, B)"
     run env "((A, a) -> a) (A, x)" `shouldBe` Right "42"
     run env "((A | x) -> x) B" `shouldBe` Right "!unhandled-case(A | 42, B)"
@@ -691,34 +691,64 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' (Ann (cons (Num 1.1) nil) (vec i1 NumT)) `shouldBe` ((cons (Num 1.1) nil, vec i1 NumT), env)
     infer' (Ann (cons (Num 1.1) (cons (Num 2.2) nil)) (vec i0 NumT)) `shouldBe` ((cons (Num 1.1) (cons (Num 2.2) nil), vec (Err $ typeMismatch i2 i0) NumT), env)
 
--- it "☯ checkTypes" $ do
---   let env =
---         [ ("f", Ann f (Fun IntT NumT)),
---           ("x", Ann (Int 42) NumT),
---           ("y", App f (Int 42)),
---           ("z", App f (Tag "A"))
---         ]
---   checkTypes env `shouldBe` [TypeMismatch (Int 42 `Or` IntT) NumT, TypeMismatch (Tag "A") IntT]
+  -- it "☯ checkTypes" $ do
+  --   let env =
+  --         [ ("f", Ann f (Fun IntT NumT)),
+  --           ("x", Ann (Int 42) NumT),
+  --           ("y", App f (Int 42)),
+  --           ("z", App f (Tag "A"))
+  --         ]
+  --   checkTypes env `shouldBe` [TypeMismatch (Int 42 `Or` IntT) NumT, TypeMismatch (Tag "A") IntT]
 
--- it "☯ rename simple" $ do
---   let env = [("A", x), ("B", y)]
---   let f t xs x = case map toLower x of
---         y | y `elem` xs -> f t xs (y ++ "_")
---         y -> y
---   rename f [] env env `shouldBe` [("a", x), ("b", y)]
+  -- it "☯ rename simple" $ do
+  --   let env = [("A", x), ("B", y)]
+  --   let f t xs x = case map toLower x of
+  --         y | y `elem` xs -> f t xs (y ++ "_")
+  --         y -> y
+  --   rename f [] env env `shouldBe` [("a", x), ("b", y)]
 
--- it "☯ rename name clashes" $ do
---   let env = [("a_", x), ("A", y), ("a", z)]
---   let f t xs x = case map toLower x of
---         y | y `elem` xs -> f t xs (y ++ "_")
---         y -> y
---   rename f [] env env `shouldBe` [("a_", x), ("a__", y), ("a", z)]
+  -- it "☯ rename name clashes" $ do
+  --   let env = [("a_", x), ("A", y), ("a", z)]
+  --   let f t xs x = case map toLower x of
+  --         y | y `elem` xs -> f t xs (y ++ "_")
+  --         y -> y
+  --   rename f [] env env `shouldBe` [("a_", x), ("a__", y), ("a", z)]
 
--- it "☯ load Module" $ do
---   let mod =
---         Module
---           { values = [("x", Int 1), ("y", Int 2)],
---             types = [],
---             tests = []
---           }
---   load "examples/core-package/core-module" `shouldReturn` mod
+  -- it "☯ load Module" $ do
+  --   let mod =
+  --         Module
+  --           { values = [("x", Int 1), ("y", Int 2)],
+  --             types = [],
+  --             tests = []
+  --           }
+  --   load "examples/core-package/core-module" `shouldReturn` mod
+
+  let ops = []
+  let env = []
+  let x = Var "x"
+  let y = Var "y"
+  let z = Var "z"
+  let i1 = Int 1
+  let i2 = Int 2
+  let n1 = Num 1.1
+  let n2 = Num 2.2
+
+  it "☯ merge empty substitutions" $ do
+    let s = [] :: Substitution
+    merge ops env s s `shouldBe` s
+
+  it "☯ merge with empty substitution" $ do
+    merge ops env [("x", i1)] [] `shouldBe` [("x", i1)]
+    merge ops env [] [("x", i1)] `shouldBe` [("x", i1)]
+
+  it "☯ merge disjoint substitutions" $ do
+    merge ops env [("x", i1)] [("y", i2)] `shouldBe` [("x", i1), ("y", i2)]
+
+  it "☯ merge overlapping substitutions" $ do
+    merge ops env [("x", i1)] [("x", i2)] `shouldBe` [("x", Or i1 i2)]
+    merge ops env [("x", i1), ("y", n1)] [("x", i2), ("z", n2)] `shouldBe` [("x", Or i1 i2), ("y", n1), ("z", n2)]
+
+  it "☯ merge complex substitutions" $ do
+    merge ops env [("x", i1), ("y", n1)] [("x", i2), ("y", n2)] `shouldBe` [("x", Or i1 i2), ("y", Or n1 n2)]
+    merge ops env [("x", i1), ("y", n1), ("z", i2)] [("x", i2), ("y", n2)] `shouldBe` [("x", Or i1 i2), ("y", Or n1 n2), ("z", i2)]
+    merge ops env [("x", i1), ("y", n1)] [("x", i2), ("y", n2), ("z", i1)] `shouldBe` [("x", Or i1 i2), ("y", Or n1 n2), ("z", i1)]
