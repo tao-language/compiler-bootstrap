@@ -28,8 +28,8 @@ instance CheckTypes Stmt where
   checkTypes :: Context -> FilePath -> Stmt -> [(Maybe Location, Error Expr)]
   checkTypes ctx path = \case
     Import {} -> []
-    Def (xs, p, b) -> do
-      let a = lower (For xs $ Let (p, b) (Tuple []))
+    Def (p, b) -> do
+      let a = lower (Let (p, b) (Tuple []))
       let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
       let ((a', t), s) = C.infer buildOps env a
       check (lift (C.Ann a' t))

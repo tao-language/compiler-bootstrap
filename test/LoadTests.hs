@@ -24,8 +24,8 @@ run = describe "--==☯ Load ☯==--" $ do
           [ ("examples/empty", []),
             ("examples/empty/empty-file", []),
             ( "examples/sub/mod",
-              [ Def (["x"], x, Int 1),
-                Def (["y"], y, Int 2)
+              [ Def (x, Int 1),
+                Def (y, Int 2)
               ]
             )
           ]

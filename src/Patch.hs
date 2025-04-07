@@ -9,7 +9,7 @@ import Stdlib (push, set, split2)
 import System.FilePath (splitDirectories, splitFileName, (</>))
 import Tao
 
-type Rule = ([String], Pattern, Expr)
+type Rule = (Pattern, Expr)
 
 type PatchStep = ([FilePath], [Rule])
 
@@ -65,7 +65,7 @@ instance ApplyPatch (Context, [Rule]) Module where
 instance ApplyPatch (Context, FilePath, [Rule]) Stmt where
   applyPatch :: (Context, FilePath, [Rule]) -> Stmt -> Stmt
   applyPatch (ctx, path, rules) = \case
-    Def (xs, p, b) -> Def (xs, p, applyPatch' b)
+    Def (p, b) -> Def (p, applyPatch' b)
     Test t -> Test (t {expect = applyPatch' t.expect})
     stmt -> error $ "TODO applyPatch " ++ show stmt
     where
@@ -81,7 +81,7 @@ instance ApplyPatch (Context, FilePath, [Rule]) Expr where
 
 instance ApplyPatch (Context, FilePath, Rule) Expr where
   applyPatch :: (Context, FilePath, Rule) -> Expr -> Expr
-  applyPatch (ctx, path, (xs, p, q)) expr = case Run.run ctx path (For xs $ Let (p, expr) q) of
+  applyPatch (ctx, path, (p, q)) expr = case Run.run ctx path (Let (p, expr) q) of
     Err _ -> expr
     result -> result
 

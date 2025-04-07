@@ -658,8 +658,8 @@ instance Emit [T.Expr] ([Stmt], [Expr]) where
       let (s2, bs') = emit options bs
       (s1 ++ s2, a' : bs')
 
-instance Emit ([String], T.Pattern, T.Expr) [Stmt] where
-  emit :: BuildOptions -> ([String], T.Pattern, T.Expr) -> [Stmt]
+instance Emit (T.Pattern, T.Expr) [Stmt] where
+  emit :: BuildOptions -> (T.Pattern, T.Expr) -> [Stmt]
   emit options = \case
     -- (T.Var x, a) -> case T.lambdaOf "_" a of
     --   ([], a) -> emit options (Assign [Name x]) a
@@ -674,8 +674,8 @@ instance Emit ([String], T.Pattern, T.Expr) [Stmt] where
     --           async = False
     --         }
     --     ]
-    (xs, T.Meta _ p, a) -> emit options (xs, p, a)
-    (xs, p, a) -> error $ "TODO: emit Def " ++ show (xs, p, a)
+    (T.Meta _ p, a) -> emit options (p, a)
+    (p, a) -> error $ "TODO: emit Def " ++ show (p, a)
 
 instance Emit T.Stmt [Stmt] where
   emit :: BuildOptions -> T.Stmt -> [Stmt]
