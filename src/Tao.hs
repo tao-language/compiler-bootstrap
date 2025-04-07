@@ -1006,11 +1006,13 @@ lift = \case
   -- For xs (Meta m a) -> do
   --   let (xs', a') = C.forOf (lower (For xs a))
   --   C.for xs' (C.Meta m a')
-  C.For x a -> case C.forOf a of
+  C.For x a -> case C.forOf (C.For x a) of
     (xs, C.Fun a b) | sort xs == sort (C.freeVars a) -> Fun (lift a) (lift b)
     (xs, C.Fun a b) -> For xs (Fun (lift a) (lift b))
-    (xs, C.Meta m a) -> error ("TODO: " ++ show (C.For x a))
-    (xs, a) -> For (x : xs) (lift a)
+    (xs, C.Meta m a) -> do
+      let (xs', a') = forOf (lift (C.for xs a))
+      For xs' (Meta m a')
+    (xs, a) -> For xs (lift a)
   C.Fun a b | null (C.freeVars a) -> Fun (lift a) (lift b)
   C.Fun a b -> For [] (Fun (lift a) (lift b))
   C.Fix x a

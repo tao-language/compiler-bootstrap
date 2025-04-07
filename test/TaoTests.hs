@@ -370,7 +370,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "@a. x" `shouldBe` Right expr
     core a `shouldBe` "@a. x"
     check' (C.Ann a t) `shouldBe` []
-    eval' env a t `shouldBe` ("42", "Int")
+    eval' env a t `shouldBe` ("@a. 42", "Int")
 
   it "☯ Tao.For.2" $ do
     let ctx = [("m", [def' "x" "42"])]
@@ -379,7 +379,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "@a b. x" `shouldBe` Right expr
     core a `shouldBe` "@a b. x"
     check' (C.Ann a t) `shouldBe` []
-    eval' env a t `shouldBe` ("42", "Int")
+    eval' env a t `shouldBe` ("@a b. 42", "Int")
 
   it "☯ Tao.Fun.unbound" $ do
     let ctx = [("m", [def' "x" "42", def' "y" "3.14"])]
@@ -388,7 +388,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "x -> y" `shouldBe` Right expr
     core a `shouldBe` "@x. (x : x1T) -> (y : ^Num)"
     check' (C.Ann a t) `shouldBe` []
-    eval' env a t `shouldBe` ("@. (x : x1T) -> 3.14", "@. x1T -> Num")
+    eval' env a t `shouldBe` ("@x. (x : x1T) -> 3.14", "@. x1T -> Num")
 
   it "☯ Tao.Fun.bound" $ do
     let ctx = [("m", [def' "x" "42", def' "y" "3.14"])]
