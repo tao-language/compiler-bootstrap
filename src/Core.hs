@@ -911,29 +911,16 @@ unify ops env a b = case (a, b) of
   (NumT, Num _) -> (NumT, [])
   (Int i, Int i') | i == i' -> (Int i, [])
   (Num n, Num n') | n == n' -> (Num n, [])
-  (Or a1 a2, b) -> case unify ops env a1 b of
-    (e1, _) | isErr e1 -> case unify ops env a2 b of
-      (e2, _) | isErr e2 -> (Or e1 e2, [])
-      (c2, s2) -> (c2, s2)
-    (c1, s1) -> do
-      let env1 = s1 `compose` env
-      let (a2', b') = (substitute s1 a2, substitute s1 b)
-      case unify ops env1 a2' b' of
-        (e, _) | isErr e -> (c1, s1)
-        (c2, s2) -> (merge ops env (substitute s2 c1) c2, s2 `compose` s1)
-  -- (a, Or b1 b2) -> error $ show ("unify", dropMeta a, dropMeta (Or b1 b2))
-  (a, Or b1 b2) -> case unify ops env a b1 of
-    (e1, _) | isErr e1 -> case unify ops env a b2 of
-      (e2, _) | isErr e2 -> (Or e1 e2, [])
-      (c2, s2) -> (c2, s2)
-    (c1, []) -> case unify ops env a b2 of
-      (e, _) | isErr e -> (c1, [])
-      (c2, []) -> (merge ops env c1 c2, [])
-      (c2, s2) -> (Or (substitute s2 c1) c2, s2)
-    (c1, s1) -> case unify ops env a b2 of
-      (e, _) | isErr e -> (c1, s1)
-      (c2, []) -> (Or c1 (substitute s1 c2), s1)
-      (c2, s2) -> (Or c1 c2, s2 `compose` s1)
+  (Or a1 a2, b) -> case (unify ops env a1 b, unify ops env a2 b) of
+    ((e1, _), (e2, _)) | isErr e1 && isErr e2 -> (Or e1 e2, [])
+    ((c, s), (e, _)) | isErr e -> (c, s)
+    ((e, _), (c, s)) | isErr e -> (c, s)
+    ((c1, s1), (c2, s2)) -> (merge ops env (substitute s2 c1) (substitute s1 c2), merge ops env s1 s2)
+  (a, Or b1 b2) -> case (unify ops env a b1, unify ops env a b2) of
+    ((e1, _), (e2, _)) | isErr e1 && isErr e2 -> (Or e1 e2, [])
+    ((c, s), (e, _)) | isErr e -> (c, s)
+    ((e, _), (c, s)) | isErr e -> (c, s)
+    ((c1, s1), (c2, s2)) -> (merge ops env (substitute s2 c1) (substitute s1 c2), merge ops env s1 s2)
   (Var x, Var x') | x == x' -> (Var x, [])
   (Var x, b) | x `occurs` b -> (Err $ occursError x b, [])
   (Var x, b) -> (b, [(x, b)])

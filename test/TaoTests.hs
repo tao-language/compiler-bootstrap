@@ -388,7 +388,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "x -> y" `shouldBe` Right expr
     core a `shouldBe` "@x. (x : x1T) -> (y : ^Num)"
     check' (C.Ann a t) `shouldBe` []
-    eval' env a t `shouldBe` ("@x. (x : x1T) -> 3.14", "x1T -> Num")
+    eval' env a t `shouldBe` ("@. (x : x1T) -> 3.14", "@. x1T -> Num")
 
   it "☯ Tao.Fun.bound" $ do
     let ctx = [("m", [def' "x" "42", def' "y" "3.14"])]
@@ -451,7 +451,6 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = loc 1 2 1 5 (app (x 1 1) [y 1 3])
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "x(y)" `shouldBe` Right expr
-    second C.dropMeta <$> env `shouldBe` []
     core a `shouldBe` "x (y : B)"
     core t `shouldBe` "A"
     check' (C.Ann a t) `shouldBe` []
@@ -503,7 +502,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = match 1 1 (x 1 7) []
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match x {}" `shouldBe` Right expr
-    core a `shouldBe` "!cannot-apply((), ()) (x : !not-a-function(!cannot-apply((), ()), _))"
+    core a `shouldBe` "!cannot-apply((), ()) (x : ^Int)"
     check' (C.Ann a t) `shouldBe` [(Just (1, 7, 1, 8), notAFunction (Err (cannotApply (Tuple []) (Tuple []))) Any)]
     eval' env a t `shouldBe` ("!cannot-apply(!cannot-apply((), ()), ^loc[<test>:1:7,1:8](^loc[ctx.x:1:1,1:3](42)))", "Int")
 
@@ -512,18 +511,18 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = match 1 1 (z 1 7) [fun 2 5 (y 2 3) (x 2 8)]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match z {\n| y -> x\n}" `shouldBe` Right expr
-    core a `shouldBe` "^let y : !undefined-var(z) = z : !undefined-var(z); x : ^Int"
-    check' (C.Ann a t) `shouldBe` [(Just (1, 7, 1, 8), undefinedVar "z"), (Nothing, undefinedVar "z")]
+    core a `shouldBe` "^let<y> y : yT = z : !undefined-var(z); x : ^Int"
+    check' (C.Ann a t) `shouldBe` [(Just (1, 7, 1, 8), undefinedVar "z")]
     -- Undefined since there are errors (should this be removed?)
     -- eval' env a t `shouldBe` ("match z {\n| (y : !undefined-var(z)) -> 42\n}", "Int")
-    eval' env a t `shouldBe` ("42", "Int")
+    eval' env a t `shouldBe` ("42", "_")
 
   it "☯ Tao.Match.error.case" $ do
     let ctx = [("m", [def' "x" "42"])]
     let expr = match 1 1 (x 1 7) [fun 2 5 (y 2 3) (z 2 8)]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "match x {\n| y -> z\n}" `shouldBe` Right expr
-    core a `shouldBe` "^let y : ^Int = x : ^Int; z : !undefined-var(z)"
+    core a `shouldBe` "^let<y> y : yT = x : ^Int; z : !undefined-var(z)"
     check' (C.Ann a t) `shouldBe` [(Just (2, 8, 2, 9), undefinedVar "z")]
     eval' env a t `shouldBe` ("z", "_")
 

@@ -937,10 +937,10 @@ lower = \case
   Op1 op a -> C.app (C.Var $ show op) [lower a]
   Op2 op a b -> C.app (C.Var $ show op) [lower a, lower b]
   Match arg cases -> C.App (lower (or' cases)) (lower arg)
-  Let (a, b) c -> case a of
-    Var x | c == Var x -> lower b
+  Let (For xs a, b) c -> case a of
+    Var x | x `elem` xs && c == Var x -> lower b
     -- Var x -> C.App (lower (Fun a c)) (C.fix [x] (lower b))
-    Ann (Var x) t | c == Var x -> lower (Ann b t)
+    Ann (Var x) t | x `elem` xs && c == Var x -> lower (Ann b t)
     -- Ann (Or a1 a2) t -> lower (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
     Ann (App a1 a2) t -> lower (Let (Ann a1 t, Fun a2 b) c)
     Ann (Op1 op a) t -> lower (Let (Ann (Var (show op)) t, Fun a b) c)
@@ -952,10 +952,11 @@ lower = \case
     App a1 a2 -> lower (Let (a1, Fun a2 b) c)
     Op1 op a -> lower (Let (Var (show op), Fun a b) c)
     Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
-    For xs a -> lower (App (For xs (Fun a c)) b)
+    -- For xs a -> lower (App (For xs (Fun a c)) b)
     Meta _ a -> lower (Let (a, b) c)
     -- a -> C.App (lower (Fun a c)) (lower b)
-    a -> lower (app (Fun a c) [b])
+    a -> lower (App (For xs (Fun a c)) b)
+  Let (a, b) c -> lower (Let (For (freeVars a) a, b) c)
   -- -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
   -- Record fields -> do
   --   let k = '~' : intercalate "," (map fst fields)
@@ -1009,6 +1010,7 @@ lift = \case
     (xs, C.Fun a b) -> For xs (Fun (lift a) (lift b))
     (xs, C.Meta m a) -> error ("TODO: " ++ show (C.For x a))
     (xs, a) -> For (x : xs) (lift a)
+  C.Fun a b | null (C.freeVars a) -> Fun (lift a) (lift b)
   C.Fun a b -> For [] (Fun (lift a) (lift b))
   C.Fix x a
     | x `C.occurs` a -> Let (Var x, lift a) (lift a)
@@ -1499,7 +1501,7 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"x", expr) = do
+  -- compile ctx path (name@"y", expr) = do
   --   let dependencies = delete name (freeNames expr)
   --   let env = concatMap (fst . compile ctx path) dependencies
   --   let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
@@ -1507,7 +1509,7 @@ instance Compile (String, Expr) where
   --   --   C.Any -> (env, a)
   --   --   C.Var _ -> (env, a)
   --   --   _ -> (env, C.Ann a t)
-  --   error $ show (C.dropMeta a)
+  --   error $ show (a)
   compile ctx path (name, expr) = do
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies
