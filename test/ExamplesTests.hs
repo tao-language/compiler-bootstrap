@@ -85,7 +85,7 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "Any match 1",
             Pass "Any match 2",
             Pass "Unit match",
-            Fail "Unit match fail" i1 (Err $ unhandledCase IntT (Err $ typeMismatch (Tuple []) IntT)),
+            Fail "Unit match fail" i1 (Tuple []),
             Pass "IntT match",
             Pass "NumT match",
             Pass "Int match",
@@ -192,7 +192,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let ctx = pkg
     let testResults =
           [ Pass "Ann match",
-            Fail "Ann match type mismatch" i1 (Err $ unhandledCase IntT (Err $ typeMismatch IntT (loc (name ++ ".tao") 6 7 6 10 NumT))),
+            Fail "Ann match type mismatch" i1 (Err $ typeMismatch IntT (loc (name ++ ".tao") 6 7 6 10 NumT)),
             Fail "Ann match fail" i2 i1
           ]
     test ctx pkg `shouldBe` testResults
