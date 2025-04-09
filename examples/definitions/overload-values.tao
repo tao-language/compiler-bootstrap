@@ -1,0 +1,15 @@
+let x = 1
+
+let x = 2.2
+
+-- Overload match 1
+> x
+1
+
+-- Overload match 2
+> x
+2.2
+
+-- Overload fail
+> x
+3

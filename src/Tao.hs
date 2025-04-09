@@ -951,9 +951,9 @@ lower = \case
   Op2 Cons a b -> lower (Tag "::" [a, b])
   Op2 op a b -> C.app (C.Var $ show op) [lower a, lower b]
   Match arg cases -> C.App (lower (or' cases)) (lower arg)
-  -- MatchFun cases -> do
-  --   let x = C.newName ("$" : freeVars (Tuple cases)) "$"
-  --   lower (For [x] $ Fun (Var x) (Match (Var x) cases))
+  MatchFun cases -> do
+    let x = C.newName ("$" : freeVars (Tuple cases)) "$"
+    lower (For [x] $ Fun (Var x) (Match (Var x) cases))
   Let (a, b) c -> case a of
     Var x | c == Var x -> lower b
     -- Var x -> C.App (lower (Fun a c)) (C.fix [x] (lower b))
@@ -1502,10 +1502,9 @@ instance Resolve (String, Stmt) where
     Def (p, b) | name `elem` bindings p -> do
       [(path, Let (p, b) (Var name))]
     TypeDef (name', args, alts) | name == name' -> do
-      -- let resolveAlt (a, Just b) = Fun a b
-      --     resolveAlt (a, Nothing) = Fun a (tag name' args)
-      -- [(path, fun args (or' (map resolveAlt alts)))]
-      error $ "TODO: resolve " ++ show stmt
+      let resolveAlt (a, Just b) = Fun a b
+          resolveAlt (a, Nothing) = Fun a (Tag name' args)
+      [(path, fun args (or' (map resolveAlt alts)))]
     _ -> []
 
 class Compile a where
@@ -1518,17 +1517,18 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name, expr) = do
-  --   let dependencies = delete name (freeNames expr)
-  --   let env = concatMap (fst . compile ctx path) dependencies
-  --   let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
-  --   error $ show (dropMeta expr)
-  --   error $ show (second C.dropMeta <$> env)
-  --   error $ show (C.dropMeta a)
+  compile ctx path (name@"==", expr) = do
+    let dependencies = delete name (freeNames expr)
+    let env = concatMap (fst . compile ctx path) dependencies
+    let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
+    -- error $ show (dropMeta expr)
+    -- error $ show (second C.dropMeta <$> env)
+    error $ show (C.dropMeta a)
   compile ctx path (name, expr) = do
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies
     let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
+    -- (env, C.for' (map fst s) $ C.Ann a t)
     case t of
       C.Any -> (env, a)
       C.Var _ -> (env, a)
