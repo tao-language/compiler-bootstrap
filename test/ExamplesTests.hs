@@ -257,7 +257,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let testResults =
           [ Pass "Overload match 1",
             Pass "Overload match 2",
-            Fail "Overload fail" i3 (Or (Ann i1 IntT) (Ann (Num 2.2) NumT))
+            Fail "Overload fail" (Num 1.1) (Ann i1 IntT)
           ]
     test ctx pkg `shouldBe` testResults
 

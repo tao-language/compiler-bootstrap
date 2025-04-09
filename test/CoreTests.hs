@@ -739,14 +739,14 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     merge ops env [("x", i1)] [("x", i2)] `shouldBe` [("x", Or i1 i2)]
     merge ops env [("x", i1), ("y", n1)] [("x", i2), ("z", n2)] `shouldBe` [("x", Or i1 i2), ("y", n1), ("z", n2)]
 
-  it "☯ Core.overload" $ do
-    let f1 = Ann (Fun i1 i2) (Fun IntT IntT)
-    let f2 = Ann (Fun n1 n2) (Fun NumT NumT)
+  it "☯ Core.overload.fixed" $ do
+    let f1 = Ann (Fun (Ann i1 IntT) i2) (Fun IntT IntT)
+    let f2 = Ann (Fun (Ann n1 NumT) n2) (Fun NumT NumT)
     let env = [("f", Or f1 f2)]
     eval ops (Let env f) `shouldBe` Or f1 f2
-    eval ops (Let env (App f i1)) `shouldBe` i2
-    eval ops (Let env (App f i2)) `shouldBe` Err (unhandledCase n1 i2)
-    eval ops (Let env (App f n1)) `shouldBe` n2
+    eval ops (Let env (App f (Ann i1 IntT))) `shouldBe` i2
+    eval ops (Let env (App f (Ann i2 IntT))) `shouldBe` Err (unhandledCase NumT IntT)
+    eval ops (Let env (App f (Ann n1 NumT))) `shouldBe` n2
     infer ops env f `shouldBe` ((f, Fun IntT IntT `Or` Fun NumT NumT), [])
     infer ops env (App f i1) `shouldBe` ((App f (Ann i1 IntT), IntT), [("$1", IntT)])
     infer ops env (App f n1) `shouldBe` ((App f (Ann n1 NumT), NumT), [("$1", NumT)])
@@ -754,3 +754,19 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer ops env (App f i2) `shouldBe` ((App f (Ann i2 IntT), IntT), [("$1", IntT)])
     -- TODO: This should give a type error, the final type is undefined
     infer ops env (App f Unit) `shouldBe` ((App f (Ann Unit Unit), Var "$1"), [])
+
+  it "☯ Core.overload.bind" $ do
+    let f1 = Ann (For "x" $ Fun (Ann x IntT) i2) (Fun IntT IntT)
+    let f2 = Ann (For "x" $ Fun (Ann x NumT) n2) (Fun NumT NumT)
+    let env = [("f", Or f1 f2)]
+    eval ops (Let env f) `shouldBe` Or f1 f2
+    eval ops (Let env (App f (Ann i1 IntT))) `shouldBe` i2
+    eval ops (Let env (App f (Ann n1 NumT))) `shouldBe` n2
+    let s = [("x1T", NumT), ("x1", Ann (Var "x1") NumT), ("xT", IntT), ("x", Ann x IntT)]
+    infer ops env f `shouldBe` ((f, Fun IntT IntT `Or` Fun NumT NumT), s)
+    infer ops env (App f i1) `shouldBe` ((App f (Ann i1 IntT), IntT), ("$1", IntT) : s)
+    infer ops env (App f n1) `shouldBe` ((App f (Ann n1 NumT), NumT), ("$1", NumT) : s)
+    -- TODO: This should give a type error, that case is unreachable
+    infer ops env (App f i2) `shouldBe` ((App f (Ann i2 IntT), IntT), ("$1", IntT) : s)
+    -- TODO: This should give a type error, the final type is undefined
+    infer ops env (App f Unit) `shouldBe` ((App f (Ann Unit Unit), Var "$1"), s)

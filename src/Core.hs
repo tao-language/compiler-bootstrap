@@ -811,7 +811,7 @@ instance Substitute Expr where
   substitute (_ : s) (Var x) = substitute s (Var x)
   substitute ((x, a) : s) b | x `occurs` a = error $ "TODO substitute: " ++ x ++ " occurs in  " ++ show a
   substitute _ (Tag k) = Tag k
-  substitute s (Ann a b) = Ann (dropTypes (substitute s a)) (dropTypes (substitute s b))
+  substitute s (Ann a b) = Ann (substitute s a) (dropTypes $ substitute s b)
   substitute s (And a b) = And (substitute s a) (substitute s b)
   substitute s (Or a b) = Or (substitute s a) (substitute s b)
   substitute s (For x a) = For x (substitute (filter ((/= x) . fst) s) a)
@@ -1029,8 +1029,9 @@ infer ops env (App a b) = do
   let env' = s1 `compose` env
   let x = newName ("$" : map fst env') "$"
   let (_, s2) = unify ops ((x, Var x) : env') ta (Fun tb (Var x))
+  -- TODO: if not found, this might mean an overload was not found
   let t = fromMaybe (Var x) (lookup x s2)
-  ((substitute s2 (App a' (Ann b' tb)), t), s2 `compose` s1)
+  ((substitute s2 (App a' (typed b' tb)), t), s2 `compose` s1)
 infer ops env (Let defs a) = do
   let ((a', ta), s) = infer ops (defs ++ env) a
   ((Let defs a', ta), s)
@@ -1081,7 +1082,7 @@ check ops env (App a b) t2 = do
 check ops env a (Err _) = infer ops env a
 check ops env a t = do
   let ((a', ta), s1) = infer ops env a
-  let (t', s2) = unify ops env ta (substitute s1 t)
+  let (t', s2) = unify ops (s1 `compose` env) ta (substitute s1 t)
   ((substitute s2 a', t'), s2 `compose` s1)
 
 check2 :: Ops -> Env -> (Expr, Type) -> (Expr, Type) -> ((Expr, Type), (Expr, Type), Substitution)
