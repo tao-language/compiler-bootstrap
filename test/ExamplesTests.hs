@@ -237,18 +237,27 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     test ctx pkg `shouldBe` testResults
 
-  let name = "examples/definitions/overload"
+  let name = "examples/definitions/overload-values"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
     check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
-          [ Pass "Overload value match 1",
-            Pass "Overload value match 2",
-            Fail "Overload value fail" i3 (Or (Ann i1 IntT) (Ann (Num 2.2) NumT)),
-            Pass "Overload function match 1",
-            Pass "Overload function match 2",
-            Fail "Overload function fail" i3 (Or (Ann i1 IntT) (Ann (Num 2.2) NumT))
+          [ Pass "Overload match 1",
+            Pass "Overload match 2",
+            Fail "Overload fail" i3 (Or (Ann i1 IntT) (Ann (Num 2.2) NumT))
+          ]
+    test ctx pkg `shouldBe` testResults
+
+  let name = "examples/definitions/overload-functions"
+  it ("☯ " ++ name ++ ".tao") $ do
+    pkg <- load [name]
+    check pkg `shouldBe` []
+    let ctx = pkg
+    let testResults =
+          [ Pass "Overload match 1",
+            Pass "Overload match 2",
+            Fail "Overload fail" i3 (Or (Ann i1 IntT) (Ann (Num 2.2) NumT))
           ]
     test ctx pkg `shouldBe` testResults
 
