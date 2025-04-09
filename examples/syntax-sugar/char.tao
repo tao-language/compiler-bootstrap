@@ -1,7 +1,7 @@
 -- Char single quote
 > c'a'
-Char 97
+Char(97)
 
 -- Char double quote
 > c"a"
-Char 97
+Char(97)
