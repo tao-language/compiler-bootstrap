@@ -1,10 +1,10 @@
 -- String empty single quotes
 > ''
-[]
+^`''`
 
 -- String empty double quotes
 > ""
-[]
+^`''`
 
 -- String literal single quotes
 > 'abc'

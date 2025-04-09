@@ -593,7 +593,7 @@ grammar = do
                 _ <- P.char quote
                 end <- P.getState
                 _ <- P.spaces
-                let segments = [Str txt]
+                let segments = [Str txt | txt /= ""]
                 return (withLoc start end $ String segments)
            in G.Atom parser $ \layout -> \case
                 String segments -> do
