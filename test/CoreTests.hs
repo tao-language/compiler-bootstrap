@@ -11,6 +11,7 @@ import Test.Hspec
 run :: SpecWith ()
 run = describe "--==☯️ Core language ☯️==--" $ do
   let (i0, i1, i2) = (Int 0, Int 1, Int 2)
+  let (n0, n1, n2) = (Num 0.0, Num 1.1, Num 2.2)
   let (a, b, c) = (Var "a", Var "b", Var "c")
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (f, g, h) = (Var "f", Var "g", Var "h")
@@ -18,6 +19,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let add a b = Call "int_add" [a, b]
   let sub a b = Call "int_sub" [a, b]
   let mul a b = Call "int_mul" [a, b]
+  let env = []
   let ops =
         [ ( "null",
             \eval args -> case map (dropTypes . eval) args of
@@ -723,32 +725,32 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   --           }
   --   load "examples/core-package/core-module" `shouldReturn` mod
 
-  let ops = []
-  let env = []
-  let x = Var "x"
-  let y = Var "y"
-  let z = Var "z"
-  let i1 = Int 1
-  let i2 = Int 2
-  let n1 = Num 1.1
-  let n2 = Num 2.2
-
-  it "☯ merge empty substitutions" $ do
+  it "☯ Core.merge" $ do
+    -- empty
     let s = [] :: Substitution
     merge ops env s s `shouldBe` s
-
-  it "☯ merge with empty substitution" $ do
     merge ops env [("x", i1)] [] `shouldBe` [("x", i1)]
     merge ops env [] [("x", i1)] `shouldBe` [("x", i1)]
 
-  it "☯ merge disjoint substitutions" $ do
+    -- disjoint
     merge ops env [("x", i1)] [("y", i2)] `shouldBe` [("x", i1), ("y", i2)]
 
-  it "☯ merge overlapping substitutions" $ do
+    -- overlapping
     merge ops env [("x", i1)] [("x", i2)] `shouldBe` [("x", Or i1 i2)]
     merge ops env [("x", i1), ("y", n1)] [("x", i2), ("z", n2)] `shouldBe` [("x", Or i1 i2), ("y", n1), ("z", n2)]
 
-  it "☯ merge complex substitutions" $ do
-    merge ops env [("x", i1), ("y", n1)] [("x", i2), ("y", n2)] `shouldBe` [("x", Or i1 i2), ("y", Or n1 n2)]
-    merge ops env [("x", i1), ("y", n1), ("z", i2)] [("x", i2), ("y", n2)] `shouldBe` [("x", Or i1 i2), ("y", Or n1 n2), ("z", i2)]
-    merge ops env [("x", i1), ("y", n1)] [("x", i2), ("y", n2), ("z", i1)] `shouldBe` [("x", Or i1 i2), ("y", Or n1 n2), ("z", i1)]
+  it "☯ Core.overload" $ do
+    let f1 = Ann (Fun i1 i2) (Fun IntT IntT)
+    let f2 = Ann (Fun n1 n2) (Fun NumT NumT)
+    let env = [("f", Or f1 f2)]
+    eval ops (Let env f) `shouldBe` Or f1 f2
+    eval ops (Let env (App f i1)) `shouldBe` i2
+    eval ops (Let env (App f i2)) `shouldBe` Err (unhandledCase n1 i2)
+    eval ops (Let env (App f n1)) `shouldBe` n2
+    infer ops env f `shouldBe` ((f, Fun IntT IntT `Or` Fun NumT NumT), [])
+    infer ops env (App f i1) `shouldBe` ((App f (Ann i1 IntT), IntT), [("$1", IntT)])
+    infer ops env (App f n1) `shouldBe` ((App f (Ann n1 NumT), NumT), [("$1", NumT)])
+    -- TODO: This should give a type error, that case is unreachable
+    infer ops env (App f i2) `shouldBe` ((App f (Ann i2 IntT), IntT), [("$1", IntT)])
+    -- TODO: This should give a type error, the final type is undefined
+    infer ops env (App f Unit) `shouldBe` ((App f (Ann Unit Unit), Var "$1"), [])
