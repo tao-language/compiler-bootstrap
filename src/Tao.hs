@@ -1314,14 +1314,14 @@ parseTest = do
   _ <- P.char '>'
   _ <- P.oneOrMore P.space
   P.commit "test"
-  expr <- parseExprUntil "test expr" 0 ["=>", "\n"]
+  expr <- parseExprUntil "test expr" 0 ["~>", "\n"]
   result <-
     P.oneOf
       [ do
           _ <- parseLineBreak
           parseExprUntil "test expect newline" 0 ["\n"],
         do
-          _ <- P.text "=>"
+          _ <- P.text "~>"
           _ <- P.whitespaces
           parseExprUntil "test expect =>" 0 ["\n"],
         return (Tag "True" [])
