@@ -88,6 +88,7 @@ data Op2
   | Le
   | Gt
   | Ge
+  | Cons
   | Add
   | Sub
   | Mul
@@ -299,6 +300,9 @@ gt = Op2 Gt
 
 ge :: Expr -> Expr -> Expr
 ge = Op2 Ge
+
+cons :: Expr -> Expr -> Expr
+cons = Op2 Cons
 
 add :: Expr -> Expr -> Expr
 add = Op2 Add
@@ -625,24 +629,28 @@ grammar = do
           G.infixL 3 (locOp2 Ne) "!=" $ \case
             Op2 Ne a b -> Just (a, " ", b)
             _ -> Nothing,
+          -- Grammar.Op2.Cons
+          G.infixR 4 (locOp2 Cons) "::" $ \case
+            Op2 Cons a b -> Just (a, " ", b)
+            _ -> Nothing,
           -- Grammar.Op2.Lt
-          G.infixL 4 (locOp2 Lt) "<" $ \case
+          G.infixL 5 (locOp2 Lt) "<" $ \case
             Op2 Lt a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Le
-          G.infixL 4 (locOp2 Le) "<=" $ \case
+          G.infixL 5 (locOp2 Le) "<=" $ \case
             Op2 Le a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Gt
-          G.infixL 4 (locOp2 Gt) ">" $ \case
+          G.infixL 5 (locOp2 Gt) ">" $ \case
             Op2 Gt a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Ge
-          G.infixL 4 (locOp2 Ge) ">=" $ \case
+          G.infixL 5 (locOp2 Ge) ">=" $ \case
             Op2 Ge a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Ann
-          G.infixR 5 (loc2 Ann) ":" $ \case
+          G.infixR 6 (loc2 Ann) ":" $ \case
             Ann a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.For
@@ -668,7 +676,7 @@ grammar = do
                 a <- expr
                 _ <- P.spaces
                 return (withLoc start end $ For xs a)
-           in G.Prefix 6 parser $ \layout -> \case
+           in G.Prefix 7 parser $ \layout -> \case
                 For xs a ->
                   Just (PP.Text ('@' : unwords xs ++ ". ") : layout a)
                 _ -> Nothing,
