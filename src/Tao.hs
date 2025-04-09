@@ -461,6 +461,7 @@ collect f = \case
   App a b -> f a `union` f b
   Call _ args -> unionMap f args
   Op1 op a -> f (Var (show op)) `union` f a
+  Op2 Cons a b -> f a `union` f b
   Op2 op a b -> f (Var (show op)) `union` f a `union` f b
   Match arg cases -> f arg `union` unionMap f cases
   MatchFun cases -> unionMap f cases
@@ -921,7 +922,7 @@ lower = \case
   Ann a b -> C.Ann (lower a) (lower b)
   Tuple items -> C.and' (map lower items)
   List [] -> C.Tag "[]"
-  List (a : bs) -> C.and' [C.Tag "::", lower a, lower (List bs)]
+  List (a : bs) -> lower (Tag "::" [a, List bs])
   String [] -> C.Tag "''"
   String segments -> error "TODO: lower String"
   Or a b -> C.Or (lower a) (lower b)
@@ -944,6 +945,7 @@ lower = \case
   App a b -> C.App (lower a) (lower b)
   Call op args -> C.Call op (map lower args)
   Op1 op a -> C.app (C.Var $ show op) [lower a]
+  Op2 Cons a b -> lower (Tag "::" [a, b])
   Op2 op a b -> C.app (C.Var $ show op) [lower a, lower b]
   Match arg cases -> C.App (lower (or' cases)) (lower arg)
   Let (a, b) c -> case a of
@@ -1510,12 +1512,12 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"y", expr) = do
+  -- compile ctx path (name, expr) = do
   --   let dependencies = delete name (freeNames expr)
   --   let env = concatMap (fst . compile ctx path) dependencies
   --   let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
-  --   -- error $ show (dropMeta expr)
-  --   -- error $ show (second C.dropMeta <$> env)
+  --   error $ show (dropMeta expr)
+  --   error $ show (second C.dropMeta <$> env)
   --   error $ show (C.dropMeta a)
   compile ctx path (name, expr) = do
     let dependencies = delete name (freeNames expr)
