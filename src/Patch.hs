@@ -48,7 +48,7 @@ instance Plan (FilePath, [FilePath], Stmt) where
     Def rule -> case lookup paths steps0 of
       Just rules -> return (set paths (push rule rules) steps0)
       Nothing -> return (push (paths, [rule]) steps0)
-    stmt -> error $ "TODO plan " ++ show stmt
+    stmt -> error $ "TODO plan " ++ show (dir, paths) ++ " " ++ show stmt
 
 class ApplyPatch applyStep a where
   applyPatch :: applyStep -> a -> a
