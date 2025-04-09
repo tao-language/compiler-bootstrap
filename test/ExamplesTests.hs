@@ -412,8 +412,10 @@ run = describe "--==☯ Examples ☯==--" $ do
     check pkg `shouldBe` []
     let ctx = pkg
     let testResults =
-          [ Pass "String single quote",
-            Pass "String double quote"
+          [ Pass "String empty single quotes",
+            Pass "String empty double quotes",
+            Pass "String literal single quotes",
+            Pass "String literal double quotes"
           ]
     test ctx pkg `shouldBe` testResults
 

@@ -584,14 +584,16 @@ grammar = do
                   Just (PP.Text "[" : collectionLayout layout items ++ [PP.Text "]"])
                 _ -> Nothing,
           -- Grammar.String
+          -- TODO: support string interpolation
           let parser expr = do
                 start <- P.getState
                 quote <- P.oneOf [P.char '\'', P.char '"']
                 _ <- P.commit "string"
+                txt <- P.skipTo (P.char quote)
                 _ <- P.char quote
                 end <- P.getState
                 _ <- P.spaces
-                let segments = []
+                let segments = [Str txt]
                 return (withLoc start end $ String segments)
            in G.Atom parser $ \layout -> \case
                 String segments -> do
@@ -924,7 +926,8 @@ lower = \case
   List [] -> C.Tag "[]"
   List (a : bs) -> lower (Tag "::" [a, List bs])
   String [] -> C.Tag "''"
-  String segments -> error "TODO: lower String"
+  String [Str txt] -> lower (List (map Char txt))
+  String segments -> error "TODO: lower String interpolation"
   Or a b -> C.Or (lower a) (lower b)
   For xs (Fun a b) -> C.for xs (C.Fun (lower a) (lower b))
   For xs (Meta m a) -> do
