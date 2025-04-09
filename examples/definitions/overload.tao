@@ -1,15 +1,33 @@
 let x = 1
 
-let x = 2
+let x = 2.2
 
--- Overload match 1
+-- Overload value match 1
 > x
 1
 
--- Overload match 2
+-- Overload value match 2
 > x
-2
+2.2
 
--- Overload fail
+-- Overload value fail
 > x
 3
+
+: Int -> Int
+let f = y -> 1
+
+: Num -> Num
+let f = y -> 2.2
+
+-- Overload function match 1
+> f(0)
+1
+
+-- Overload function match 2
+> f(1.1)
+2.2
+
+-- Overload function fail
+> f(0)
+2.2

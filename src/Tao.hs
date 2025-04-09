@@ -951,6 +951,9 @@ lower = \case
   Op2 Cons a b -> lower (Tag "::" [a, b])
   Op2 op a b -> C.app (C.Var $ show op) [lower a, lower b]
   Match arg cases -> C.App (lower (or' cases)) (lower arg)
+  -- MatchFun cases -> do
+  --   let x = C.newName ("$" : freeVars (Tuple cases)) "$"
+  --   lower (For [x] $ Fun (Var x) (Match (Var x) cases))
   Let (a, b) c -> case a of
     Var x | c == Var x -> lower b
     -- Var x -> C.App (lower (Fun a c)) (C.fix [x] (lower b))
