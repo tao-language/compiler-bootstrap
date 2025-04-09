@@ -1,37 +1,37 @@
 # Integer arithmetic
 : (Int, Int) -> Int
-x + y = %int_add(x, y)
+let x + y = %int_add(x, y)
 
 : (Int, Int) -> Int
-x - y = %int_sub(x, y)
+let x - y = %int_sub(x, y)
 
 : (Int, Int) -> Int
-x * y = %int_mul(x, y)
+let x * y = %int_mul(x, y)
 
 : (Int, Int) -> Num
-x / y = %int_div(x, y)
+let x / y = %int_div(x, y)
 
 : (Int, Int) -> Int
-x // y = %int_divi(x, y)
+let x // y = %int_divi(x, y)
 
 : (Int, Int) -> Int
-x ^ y = %int_pow(x, y)
+let x ^ y = %int_pow(x, y)
 
 # Number arithmetic
 : (Num, Num) -> Num
-x + y = %num_add(x, y)
+let x + y = %num_add(x, y)
 
 : (Num, Num) -> Num
-x - y = %num_sub(x, y)
+let x - y = %num_sub(x, y)
 
 : (Num, Num) -> Num
-x * y = %num_mul(x, y)
+let x * y = %num_mul(x, y)
 
 : (Num, Num) -> Num
-x / y = %num_div(x, y)
+let x / y = %num_div(x, y)
 
 : (Num, Num) -> Num
-x // y = %num_divi(x, y)
+let x // y = %num_divi(x, y)
 
 : (Num, Num) -> Num
-x ^ y = %num_pow(x, y)
+let x ^ y = %num_pow(x, y)

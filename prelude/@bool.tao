@@ -4,25 +4,25 @@ type Bool {
 }
 
 : Bool -> Bool
-not = match {
+let not = match {
 | True -> False
 | _ -> True
 }
 
 : (Bool, Bool) -> Bool
-(and) = match {
+let (and) = match {
 | (True, True) -> True
 | _ -> False
 }
 
 : (Bool, Bool) -> Bool
-(or) = match {
+let (or) = match {
 | (False, False) -> False
 | _ -> True
 }
 
 : (Bool, Bool) -> Bool
-(xor) = match {
+let (xor) = match {
 | (x, x) -> False
 | _ -> True
 }
