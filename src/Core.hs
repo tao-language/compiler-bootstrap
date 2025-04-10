@@ -29,7 +29,7 @@ data Expr
   | NumT
   | Int Int
   | Num Double
-  | Tag String
+  | Tag String Expr
   | Var String
   | And Expr Expr
   | Or Expr Expr
@@ -128,9 +128,31 @@ grammar = do
             Num n -> Just [PP.Text $ show n]
             _ -> Nothing,
           -- Grammar.Tag
-          G.atom (const Tag) parseNameTag $ \_ -> \case
-            Tag k -> Just [PP.Text k]
-            _ -> Nothing,
+          let parser expr = do
+                k <- parseNameTag
+                _ <- P.spaces
+                args <-
+                  P.oneOf
+                    [ do
+                        _ <- P.char '<'
+                        _ <- P.spaces
+                        arg <- expr
+                        args <- P.zeroOrMore $ do
+                          _ <- P.char ','
+                          _ <- P.spaces
+                          expr
+                        _ <- P.char '>'
+                        _ <- P.spaces
+                        return (arg : args),
+                      return []
+                    ]
+                return (tag k args)
+           in G.Atom parser $ \layout -> \case
+                Tag k Unit -> Just [PP.Text k]
+                Tag k a -> do
+                  let args = map layout (andOf a)
+                  Just (PP.Text (k ++ "<") : intercalate [PP.Text ", "] args ++ [PP.Text ">"])
+                _ -> Nothing,
           -- Grammar.Var
           G.atom (const Var) parseNameVar $ \_ -> \case
             Var x -> Just [PP.Text x]
@@ -150,8 +172,8 @@ grammar = do
                 return (and' (arg : args))
            in G.Atom parser $ \layout -> \case
                 And a b -> do
-                  let items = andOf (And a b)
-                  Just (PP.Text "(" : intercalate [PP.Text ", "] (map layout items) ++ [PP.Text ")"])
+                  let items = map layout (andOf (And a b))
+                  Just (PP.Text "(" : intercalate [PP.Text ", "] items ++ [PP.Text ")"])
                 _ -> Nothing,
           -- Grammar.sugar.def
           let parser expr = do
@@ -428,7 +450,10 @@ parseNameTag =
 
 -- Syntax sugar
 tag :: String -> [Expr] -> Expr
-tag k args = and' (Tag k : args)
+tag k = Tag k . and'
+
+tag' :: String -> Expr
+tag' k = Tag k Unit
 
 and' :: [Expr] -> Expr
 and' [] = Unit
@@ -587,9 +612,9 @@ freeNames (vars, tags, calls) = \case
   Var x
     | vars -> [x]
     | otherwise -> []
-  Tag k
-    | tags -> [k]
-    | otherwise -> []
+  Tag k a
+    | tags -> k : freeNames' a
+    | otherwise -> freeNames' a
   Ann a b -> freeNames' a `union` freeNames' b
   And a b -> freeNames' a `union` freeNames' b
   Or a b -> freeNames' a `union` freeNames' b
@@ -667,6 +692,7 @@ reduceLet ops env = \case
     Just (Ann (Var x') t) | x == x' -> Ann (Var x) t
     Just a -> reduce ops a
     Nothing -> Var x
+  Tag k a -> Tag k (Let env a)
   Ann a b -> Ann (Let env a) (Let env b)
   And a b -> And (Let env a) (Let env b)
   Or a b -> Or (Let env a) (Let env b)
@@ -703,11 +729,11 @@ reduceApp ops a b = case (a, reduce ops b) of
   _ -> Err (cannotApply a b)
 
 match :: Bool -> Ops -> Expr -> Expr -> MatchResult Env
-match unify ops (Let env (Tag k)) b = case lookup k env of
+match unify ops (Let env (Tag k a)) b = case lookup k env of
   Just def -> do
-    let b' = App (Let env def) b
-    match unify ops (Tag k) (b' `Or` b)
-  Nothing -> match unify ops (Tag k) b
+    let b' = curry' (Let env def) [a, b]
+    match unify ops (Tag k a) (b' `Or` b)
+  Nothing -> match unify ops (Tag k a) b
 match unify ops (Let env (Meta _ a)) b =
   match unify ops (Let env a) b
 match unify ops (Let env (Let env' a)) b =
@@ -721,7 +747,7 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (NumT, NumT) -> Matched []
   (Int i, Int i') | i == i' -> Matched []
   (Num n, Num n') | n == n' -> Matched []
-  (Tag k, Tag k') | k == k' -> Matched []
+  (Tag k a, Tag k' b) | k == k' -> match unify ops a b
   (Var x, b) -> Matched [(x, b)]
   (a, Var x)
     | unify -> Matched [(x, a)]
@@ -730,15 +756,6 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
     env1 <- match True ops ta tb
     env2 <- match unify ops (Let env1 a) b
     return (env1 ++ env2)
-  (And (Let env (Tag k)) a, b) -> case lookup k env of
-    Just def -> do
-      let b' = curry' (Let env def) [a, b]
-      match unify ops (And (Tag k) a) (b' `Or` b)
-    Nothing -> match unify ops (And (Tag k) a) b
-  (And (Let env (Meta _ a1)) a2, b) ->
-    match unify ops (Let env (And a1 a2)) b
-  (And (Let env (Let env' a1)) a2, b) ->
-    match unify ops (And (Let (env ++ env') a1) a2) b
   (And a1 a2, And b1 b2) -> do
     env1 <- match unify ops a1 b1
     env2 <- match unify ops (Let env1 a2) b2
@@ -783,6 +800,7 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
 
 eval :: Ops -> Expr -> Expr
 eval ops expr = case reduce ops expr of
+  Tag k a -> Tag k (eval ops a)
   Ann a b -> Ann (eval ops a) (eval ops b)
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> Or (eval ops a) (eval ops b)
@@ -810,7 +828,7 @@ instance Substitute Expr where
   substitute ((x, a) : _) (Var x') | x == x' = a
   substitute (_ : s) (Var x) = substitute s (Var x)
   substitute ((x, a) : s) b | x `occurs` a = error $ "TODO substitute: " ++ x ++ " occurs in  " ++ show a
-  substitute _ (Tag k) = Tag k
+  substitute s (Tag k a) = Tag k (substitute s a)
   substitute s (Ann a b) = Ann (substitute s a) (dropTypes $ substitute s b)
   substitute s (And a b) = And (substitute s a) (substitute s b)
   substitute s (Or a b) = Or (substitute s a) (substitute s b)
@@ -838,6 +856,7 @@ compose s1 s2 = do
   unionBy (\a b -> fst a == fst b) s1 (map (sub s1) s2)
 
 dropTypes :: Expr -> Expr
+dropTypes (Tag k a) = Tag k (dropTypes a)
 -- dropTypes (Ann a@Call {} t) = Ann (dropTypes a) (dropTypes t)
 dropTypes (Ann a _) = dropTypes a
 dropTypes (And a b) = And (dropTypes a) (dropTypes b)
@@ -858,6 +877,7 @@ dropTypes (Meta m a) = Meta m (dropTypes a)
 dropTypes a = a
 
 dropMeta :: Expr -> Expr
+dropMeta (Tag k a) = Tag k (dropMeta a)
 dropMeta (Ann a b) = Ann (dropMeta a) (dropMeta b)
 dropMeta (And a b) = And (dropMeta a) (dropMeta b)
 dropMeta (Or a b) = Or (dropMeta a) (dropMeta b)
@@ -872,6 +892,7 @@ dropMeta (Err e) = Err (fmap dropMeta e)
 dropMeta a = a
 
 dropLet :: Expr -> Expr
+dropLet (Tag k a) = Tag k (dropLet a)
 dropLet (Ann a b) = Ann (dropLet a) (dropLet b)
 dropLet (And a b) = And (dropLet a) (dropLet b)
 dropLet (Or a b) = Or (dropLet a) (dropLet b)
@@ -923,26 +944,18 @@ unify ops env a b = case (a, b) of
   (Var x, b) | x `occurs` b -> (Err $ occursError x b, [])
   (Var x, b) -> (b, [(x, b)])
   (a, Var x) -> unify ops env (Var x) a
-  (Tag k, Tag k') | k == k' -> (Tag k, [])
-  (a, Tag k) | Just def <- lookup k env -> do
-    let a' = eval ops (App (Let env def) a)
-    let env' = filter (\(x, _) -> x /= k) env
-    let (t, s) = unify ops env' a' (Tag k)
-    (t, [(k, def)] `compose` s)
-  (Tag k, b) | Just def <- lookup k env -> do
-    let b' = eval ops (App (Let env def) b)
-    let env' = filter (\(x, _) -> x /= k) env
-    let (t, s) = unify ops env' (Tag k) b'
-    (t, [(k, def)] `compose` s)
-  (a, And (Tag k) b) | Just def <- lookup k env -> do
+  (Tag k a, Tag k' b) | k == k' -> do
+    let (a', s) = unify ops env a b
+    (Tag k a', s)
+  (a, Tag k b) | Just def <- lookup k env -> do
     let a' = eval ops (curry' (Let env def) [b, a])
     let env' = filter (\(x, _) -> x /= k) env
-    let (t, s) = unify ops env' a' (And (Tag k) b)
+    let (t, s) = unify ops env' a' (Tag k b)
     (t, [(k, def)] `compose` s)
-  (And (Tag k) a, b) | Just def <- lookup k env -> do
+  (Tag k a, b) | Just def <- lookup k env -> do
     let b' = eval ops (curry' (Let env def) [a, b])
     let env' = filter (\(x, _) -> x /= k) env
-    let (t, s) = unify ops env' (And (Tag k) a) b'
+    let (t, s) = unify ops env' (Tag k a) b'
     (t, [(k, def)] `compose` s)
   (And a1 b1, And a2 b2) -> do
     let ((a, b), s) = unify2 ops env (a1, a2) (b1, b2)
@@ -993,7 +1006,9 @@ infer _ _ IntT = ((IntT, IntT), [])
 infer _ _ NumT = ((NumT, NumT), [])
 infer _ _ (Int i) = ((Int i, IntT), [])
 infer _ _ (Num n) = ((Num n, NumT), [])
-infer _ _ (Tag k) = ((Tag k, Tag k), [])
+infer ops env (Tag k a) = do
+  let ((a', ta), s) = infer ops env a
+  ((Tag k a', Tag k ta), s)
 infer ops env (Var x) = do
   let (ta, s) = case lookup x env of
         Just (Var x') | x == x' -> do
@@ -1090,34 +1105,6 @@ check2 ops env (a, ta) (b, tb) = do
   let ((a', ta'), s1) = check ops env a ta
   let ((b', tb'), s2) = check ops (s1 `compose` env) (substitute s1 b) (substitute s1 tb)
   ((substitute s2 a', substitute s2 ta'), (b', tb'), s2 `compose` s1)
-
--- checkApp :: Ops -> Env -> (Expr, Type) -> Expr -> ((Expr, Expr), (Type, Type), Substitution)
--- checkApp ops env (a, ta) b = case ta of
---   Var x -> do
---     let x1 = newName ((x ++ "$") : map fst env) (x ++ "$")
---     let x2 = newName (x1 : (x ++ "$") : map fst env) (x ++ "$")
---     let ((a', _), (b', t1), s) = check2 ops (pushVars [x1, x2] env) (a, Fun (Var x1) (Var x2)) (b, Var x1)
---     ((a', b'), (t1, substitute s (Var x2)), s `compose` [(x1, Var x1), (x2, Var x2)])
---   For x ta -> do
---     let (ta', s1) = instantiate (map fst env) (For x ta)
---     let (ab, ts, s2) = checkApp ops (s1 `compose` env) (substitute s1 a, ta') (substitute s1 b)
---     (ab, ts, s2 `compose` s1)
---   Or ta1 ta2 -> case checkApp ops env (a, ta1) b of
---     ((a, b), (t1, t2), s1) | not (isErr t1) && not (isErr t2) -> case checkApp ops env (a, ta2) b of
---       ((a, b), (t1', t2'), s2) | not (isErr t1') && not (isErr t2') -> do
---         ((a, b), (merge ops env t1 t1', merge ops env t2 t2'), s2 `compose` s1)
---       _ -> ((a, b), (t1, t2), s1)
---     _ -> checkApp ops env (a, ta2) b
---   Fun t1 t2 -> do
---     let ((a', _), (b', t1'), s) = check2 ops env (a, Fun t1 t2) (b, t1)
---     let t2' = case substitute s t2 of
---           Err _ -> Any
---           t2 -> t2
---     ((a', b'), (t1', t2'), s)
---   Meta _ ta -> checkApp ops env (a, ta) b
---   _ -> do
---     let ((b', tb), s) = infer ops env b
---     ((substitute s a, b'), (Err $ notAFunction (substitute s a) (substitute s ta), tb), s)
 
 class Merge a where
   merge :: Ops -> Env -> a -> a -> a

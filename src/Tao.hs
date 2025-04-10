@@ -919,13 +919,12 @@ lower = \case
   Num n -> C.Num n
   Char c -> C.tag "Char" [C.Int (ord c)]
   Var x -> C.Var x
-  Tag k [] -> C.Tag k
-  Tag k args -> lower (Tuple (Tag k [] : args))
+  Tag k args -> C.tag k (map lower args)
   Ann a b -> C.Ann (lower a) (lower b)
   Tuple items -> C.and' (map lower items)
-  List [] -> C.Tag "[]"
+  List [] -> C.tag' "[]"
   List (a : bs) -> lower (Tag "::" [a, List bs])
-  String [] -> C.Tag "''"
+  String [] -> C.tag' "''"
   String [Str txt] -> lower (List (map Char txt))
   String segments -> error "TODO: lower String interpolation"
   Or a b -> C.Or (lower a) (lower b)
@@ -951,9 +950,7 @@ lower = \case
   Op2 Cons a b -> lower (Tag "::" [a, b])
   Op2 op a b -> C.app (C.Var $ show op) [lower a, lower b]
   Match arg cases -> C.App (lower (or' cases)) (lower arg)
-  MatchFun cases -> do
-    let x = C.newName ("$" : freeVars (Tuple cases)) "$"
-    lower (For [x] $ Fun (Var x) (Match (Var x) cases))
+  MatchFun cases -> lower (or' cases)
   Let (a, b) c -> case a of
     Var x | c == Var x -> lower b
     -- Var x -> C.App (lower (Fun a c)) (C.fix [x] (lower b))
@@ -1008,21 +1005,19 @@ lift = \case
   C.Int i -> Int i
   C.Num n -> Num n
   C.Var x -> Var x
-  C.Tag "~" -> Record []
-  C.Tag "[]" -> List []
-  C.Tag "''" -> String []
-  C.Tag k -> Tag k []
-  C.Ann a b -> Ann (lift a) (lift b)
-  C.And (C.Tag "Char") (C.Int i) -> Char (chr i)
-  C.And (C.Tag ('~' : names)) args -> do
+  C.Tag "Char" (C.Int i) -> Char (chr i)
+  C.Tag ('~' : names) a -> do
     let keys = split ',' names
-    let values = map lift (C.andOf args)
+    let values = map lift (C.andOf a)
     Record (zip keys values)
-  C.And (C.Tag "::") (C.And a b) -> case (lift a, lift b) of
-    (a, List bs) -> List (a : bs)
-    (a, String segments) -> error "TODO: lift String"
-    (a, b) -> Tag "::" [a, b]
-  C.And (C.Tag k) args -> Tag k (map lift (C.andOf args))
+  C.Tag "[]" C.Unit -> List []
+  C.Tag "''" C.Unit -> String []
+  C.Tag "::" a -> case map lift (C.andOf a) of
+    [a, List bs] -> List (a : bs)
+    [a, String segments] -> error "TODO: lift String"
+    args -> Tag "::" args
+  C.Tag k a -> Tag k (map lift (C.andOf a))
+  C.Ann a b -> Ann (lift a) (lift b)
   C.And a bs -> Tuple (map lift (a : C.andOf bs))
   C.Or a b -> Or (lift a) (lift b)
   -- For xs (Fun a b) -> C.for xs (C.Fun (lower a) (lower b))
@@ -1446,7 +1441,7 @@ buildOps = do
         [C.Num x, C.Num y] -> Just (f x y)
         _ -> Nothing
   [ intOp1 "int_neg" (\x -> C.Int (-x)),
-    intOp2 "int_lt" (\x y -> C.Tag (if x < y then "True" else "False")),
+    intOp2 "int_lt" (\x y -> C.tag' (if x < y then "True" else "False")),
     intOp2 "int_add" (\x y -> C.Int (x + y)),
     intOp2 "int_sub" (\x y -> C.Int (x - y)),
     intOp2 "int_mul" (\x y -> C.Int (x * y)),
@@ -1454,7 +1449,7 @@ buildOps = do
     intOp2 "int_divi" (\x y -> C.Int (Prelude.div x y)),
     intOp2 "int_pow" (\x y -> C.Int (x ^ y)),
     numOp1 "num_neg" (\x -> C.Num (-x)),
-    numOp2 "num_lt" (\x y -> C.Tag (if x < y then "True" else "False")),
+    numOp2 "num_lt" (\x y -> C.tag' (if x < y then "True" else "False")),
     numOp2 "num_add" (\x y -> C.Num (x + y)),
     numOp2 "num_sub" (\x y -> C.Num (x - y)),
     numOp2 "num_mul" (\x y -> C.Num (x * y)),
@@ -1517,13 +1512,13 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  compile ctx path (name@"==", expr) = do
-    let dependencies = delete name (freeNames expr)
-    let env = concatMap (fst . compile ctx path) dependencies
-    let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
-    -- error $ show (dropMeta expr)
-    -- error $ show (second C.dropMeta <$> env)
-    error $ show (C.dropMeta a)
+  -- compile ctx path (name@"==", expr) = do
+  --   let dependencies = delete name (freeNames expr)
+  --   let env = concatMap (fst . compile ctx path) dependencies
+  --   let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
+  --   -- error $ show (dropMeta expr)
+  --   -- error $ show (second C.dropMeta <$> env)
+  --   error $ show (C.dropMeta a)
   compile ctx path (name, expr) = do
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies

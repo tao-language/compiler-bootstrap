@@ -23,7 +23,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let ops =
         [ ( "null",
             \eval args -> case map (dropTypes . eval) args of
-              [] -> Just (Tag "Null")
+              [] -> Just (tag' "Null")
               _ -> Nothing
           ),
           ( "int_neg",
@@ -130,13 +130,31 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     (expr', typ, s) `shouldBe` (expr, NumT, [])
     eval ops (Let env expr') `shouldBe` expr
 
-  it "☯ Core.Tag" $ do
+  it "☯ Core.Tag.0" $ do
     let env = []
-    let expr = Tag "A"
+    let expr = tag' "A"
     parse' "A " `shouldBe` Right (expr, "")
     format 80 expr `shouldBe` "A"
     let ((expr', typ), s) = infer ops env expr
     (expr', typ, s) `shouldBe` (expr, expr, [])
+    eval ops (Let env expr') `shouldBe` expr
+
+  it "☯ Core.Tag.1" $ do
+    let env = []
+    let expr = tag "A" [i1]
+    parse' "A<1> " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "A<1>"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, tag "A" [IntT], [])
+    eval ops (Let env expr') `shouldBe` expr
+
+  it "☯ Core.Tag.2" $ do
+    let env = []
+    let expr = tag "A" [i1, n2]
+    parse' "A<1, 2.2> " `shouldBe` Right (expr, "")
+    format 80 expr `shouldBe` "A<1, 2.2>"
+    let ((expr', typ), s) = infer ops env expr
+    (expr', typ, s) `shouldBe` (expr, tag "A" [IntT, NumT], [])
     eval ops (Let env expr') `shouldBe` expr
 
   it "☯ Core.Var" $ do
@@ -227,7 +245,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     format 80 expr `shouldBe` "%null()"
     let ((expr', typ), s) = infer ops env expr
     (expr', typ, s) `shouldBe` (Call "null" [], Var "_1", [])
-    eval ops (Let env expr') `shouldBe` Tag "Null"
+    eval ops (Let env expr') `shouldBe` tag' "Null"
 
   it "☯ Core.Call 1" $ do
     let env = [("x", Int 1)]
@@ -428,11 +446,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
     and' [] `shouldBe` Unit
     and' [x] `shouldBe` x
-    and' [x, y] `shouldBe` x `And` y
+    and' [x, y] `shouldBe` And x y
 
-    tag "A" [] `shouldBe` Tag "A"
-    tag "A" [x] `shouldBe` Tag "A" `And` x
-    tag "A" [x, y] `shouldBe` Tag "A" `And` (x `And` y)
+    tag "A" [] `shouldBe` Tag "A" Unit
+    tag "A" [x] `shouldBe` Tag "A" x
+    tag "A" [x, y] `shouldBe` Tag "A" (And x y)
 
     app x [] `shouldBe` App x Unit
     app x [y, z] `shouldBe` App x (And y z)
@@ -643,18 +661,18 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' (Ann f (Fun IntT IntT)) `shouldBe` (f, Fun IntT IntT)
 
   it "☯ Core.infer.Bool" $ do
-    let (bool, true, false) = (Tag "Bool", Tag "True", Tag "False")
-    let env = [("Bool", Fun true bool `Or` Fun false bool)]
+    let (bool, true, false) = (tag' "Bool", tag' "True", tag' "False")
+    let env = [("Bool", Fun Unit (Fun true bool `Or` Fun false bool))]
 
     eval ops (Let env (App (Fun bool Unit) true)) `shouldBe` Unit
-    eval ops (Let env (App (Fun bool Unit) (Tag "X"))) `shouldBe` Err (unhandledCase bool (Or (Err $ unhandledCase false (Tag "X")) (Tag "X")))
+    eval ops (Let env (App (Fun bool Unit) (tag' "X"))) `shouldBe` Err (unhandledCase bool (Or (Err $ unhandledCase false (tag' "X")) (tag' "X")))
     eval ops (Let env (App (Fun bool Unit) bool)) `shouldBe` Unit
 
     let infer' = infer ops env
-    infer' (Tag "True") `shouldBe` ((true, true), [])
+    infer' true `shouldBe` ((true, true), [])
     infer' (Ann true bool) `shouldBe` ((true, bool), env)
-    infer' (Ann false (Tag "X")) `shouldBe` ((false, Err (typeMismatch false (Tag "X"))), [])
-    infer' (Ann (Tag "X") bool) `shouldBe` ((Tag "X", Err (typeMismatch (Err (unhandledCase false (Tag "X"))) bool)), env)
+    infer' (Ann false (tag' "X")) `shouldBe` ((false, Err (typeMismatch false (tag' "X"))), [])
+    infer' (Ann (tag' "X") bool) `shouldBe` ((tag' "X", Err (typeMismatch (Err (unhandledCase false (tag' "X"))) bool)), env)
 
   -- it "☯ infer Maybe" $ do
   --   let (maybe, just, nothing) = (App (Tag "Maybe"), \a -> tag "Just" [a], Tag "Nothing")
@@ -671,22 +689,21 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ Core.infer.Vec" $ do
     let (n, a) = (Var "n", Var "a")
-    let nil = Tag "Nil"
+    let nil = tag' "Nil"
     let cons x xs = tag "Cons" [x, xs]
     let vec n a = tag "Vec" [n, a]
-    let vecDef a =
-          or'
-            [ lam [cons a (vec n a)] (vec (n `add` i1) a),
-              lam [nil] (vec i0 a)
-            ]
-    let env = [("Vec", lam [n, a] (vecDef a))]
+    let alts a =
+          [ lam [cons a (vec n a)] (vec (n `add` i1) a),
+            lam [nil] (vec i0 a)
+          ]
+    let env = [("Vec", lam [n, a] (or' $ alts a))]
 
     eval ops (Let env (App (Fun (vec i0 NumT) Unit) nil)) `shouldBe` Unit
-    eval ops (Let env (App (Fun (vec i0 NumT) Unit) (Tag "X"))) `shouldBe` Err (unhandledCase (vec i0 NumT) (Or (Err $ unhandledCase nil (Tag "X")) (Tag "X")))
+    eval ops (Let env (App (Fun (vec i0 NumT) Unit) (tag' "X"))) `shouldBe` Err (unhandledCase (vec i0 NumT) (Or (Err $ unhandledCase nil (tag' "X")) (tag' "X")))
     eval ops (Let env (App (Fun (vec i0 NumT) Unit) (vec i0 NumT))) `shouldBe` Unit
 
     let infer' = infer ops env
-    infer' (Tag "Nil") `shouldBe` ((Tag "Nil", Tag "Nil"), [])
+    infer' nil `shouldBe` ((nil, nil), [])
     infer' (cons (Num 1.1) nil) `shouldBe` ((cons (Num 1.1) nil, cons NumT nil), [])
     infer' (Ann nil (vec i0 NumT)) `shouldBe` ((nil, vec i0 NumT), env)
     infer' (Ann nil (vec i1 NumT)) `shouldBe` ((nil, vec (Err $ typeMismatch i0 i1) NumT), env)

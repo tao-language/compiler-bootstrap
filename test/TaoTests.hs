@@ -174,7 +174,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = char 1 1 'x'
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "c'x'" `shouldBe` Right expr
-    core a `shouldBe` "(Char, 120)"
+    core a `shouldBe` "Char<120>"
     check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("c'x'", "Char(Int)")
 
@@ -220,7 +220,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = tag 1 1 "A" [x 1 3]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "A(x)" `shouldBe` Right expr
-    core a `shouldBe` "(A, x)"
+    core a `shouldBe` "A<x>"
     check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("A(42)", "A(Int)")
 
@@ -229,7 +229,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = tag 1 1 "A" [x 1 3, y 1 6]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "A(x, y)" `shouldBe` Right expr
-    core a `shouldBe` "(A, x, y)"
+    core a `shouldBe` "A<x, y>"
     check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("A(42, 3.14)", "A(Int, Num)")
 
