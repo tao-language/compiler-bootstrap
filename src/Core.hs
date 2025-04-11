@@ -1048,28 +1048,45 @@ infer ops env (Fun a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((Fun (typed (dropTypes a') ta) (typed b' tb), Fun ta tb), s)
 infer ops env (App a@Or {} b) = do
-  let ((a', ta), (b', tb), s1) = infer2 ops env a b
-  let env' = s1 `compose` env
-  let x = newName ("$" : map fst env') "$"
-  let (ta', s2) = unify ops ((x, Var x) : env') ta (Fun tb (Var x))
-  -- TODO: if not found, this might mean an overload was not found
-  let t = fromMaybe (Var x) (lookup x s2)
-  -- ((substitute s2 (App a' (typed b' tb)), t), s2 `compose` s1)
+  let ((b', tb), s1) = infer ops env b
   (error . intercalate "\n")
-    [ "   " ++ show (dropMeta a, dropMeta a', dropMeta ta),
-      "   " ++ show (dropMeta b, dropMeta b', dropMeta tb),
-      "** unify " ++ show (dropMeta ta, dropMeta $ Fun tb (Var x)),
-      "**    ~> " ++ show (unify ops ((x, Var x) : env') ta (Fun tb (Var x))),
-      "** should be: Bool -> :Ok | Bool -> :Err<Bool>",
-      "**   of type: Bool -> (:Ok | :Err<Bool>)",
-      "**   a' starts with (True : True) -> :Ok, which could be troublesome to substitute, maybe needs to be deferred after the unification?",
-      -- "   " ++ show ta',
-      -- "   " ++ show s2,
-      -- "   " ++ show t,
-      -- "   " ++ show (dropMeta $ substitute s2 (App a' (typed b' tb))),
-      "TODO: Bool is not unifying with True, see **",
+    [ "infer " ++ show (dropMeta $ App a b),
+      "env: " ++ show (map fst env),
+      "Bool: " ++ show (dropMeta <$> lookup "Bool" env),
+      "(==): " ++ show (dropMeta <$> lookup "==" env),
+      "b': " ++ show (dropMeta b'),
+      "tb: " ++ show (dropMeta tb),
+      "s1: " ++ show (second dropMeta <$> s1),
+      "",
+      "* We're getting type errors on s1, they shouldn't be there, it should give the Bool definition as is.",
       ""
     ]
+-- infer ops env (App a@Or {} b) = do
+--   let ((a', ta), (b', tb), s1) = infer2 ops env a b
+--   let env' = s1 `compose` env
+--   let x = newName ("$" : map fst env') "$"
+--   let (ta', s2) = unify ops ((x, Var x) : env') ta (Fun tb (Var x))
+--   -- TODO: if not found, this might mean an overload was not found
+--   let t = fromMaybe (Var x) (lookup x s2)
+--   -- ((substitute s2 (App a' (typed b' tb)), t), s2 `compose` s1)
+--   (error . intercalate "\n")
+--     [ "   " ++ show (dropMeta a, dropMeta a', dropMeta ta),
+--       "   " ++ show (dropMeta b, dropMeta b', dropMeta tb),
+--       "** unify " ++ show (dropMeta ta, dropMeta $ Fun tb (Var x)),
+--       "**    ~> " ++ show (unify ops ((x, Var x) : env') ta (Fun tb (Var x))),
+--       "** should be: Bool -> :Ok | Bool -> :Err<Bool>",
+--       "**   of type: Bool -> (:Ok | :Err<Bool>)",
+--       "**   a' starts with (True : True) -> :Ok, which could be troublesome to substitute, maybe needs to be deferred after the unification?",
+--       show $ second dropMeta <$> env,
+--       show $ map fst env,
+--       show $ unify ops env (Fun (tag' "True") (tag' ":Ok") `Or` For "y" (Fun (Var "y") (Tag ":Err" (Var "y")))) (Fun (tag' "Bool") (Var "x")),
+--       -- "   " ++ show ta',
+--       -- "   " ++ show s2,
+--       -- "   " ++ show t,
+--       -- "   " ++ show (dropMeta $ substitute s2 (App a' (typed b' tb))),
+--       "TODO: Bool is not unifying with True, see **",
+--       ""
+--     ]
 infer ops env (App a b) = do
   let ((a', ta), (b', tb), s1) = infer2 ops env a b
   let env' = s1 `compose` env
