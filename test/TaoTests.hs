@@ -238,7 +238,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = tag 1 1 "A" [x 1 3]
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "A(x)" `shouldBe` Right expr
-    core a `shouldBe` "(A, x : !undefined-var(x))"
+    core a `shouldBe` "A<x : !undefined-var(x)>"
     check' (C.Ann a t) `shouldBe` [(Just (1, 3, 1, 4), undefinedVar "x")]
     eval' env a t `shouldBe` ("A(x)", "A(!undefined-var(x))")
 
@@ -311,7 +311,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = loc 1 1 1 4 (List [x 1 2])
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "[x]" `shouldBe` Right expr
-    core a `shouldBe` "(::, x, [])"
+    core a `shouldBe` "::<x, []>"
     check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("[42]", "[Int]")
 
@@ -320,7 +320,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let expr = loc 1 1 1 7 (List [x 1 2, y 1 5])
     let (env, (a, t)) = compile' ctx "m" expr
     syntax "[x, y]" `shouldBe` Right expr
-    core a `shouldBe` "(::, x, ::, y, [])"
+    core a `shouldBe` "::<x, ::<y, []>>"
     check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("[42, 9]", "[Int, Int]")
 
