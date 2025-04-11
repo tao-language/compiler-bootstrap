@@ -965,6 +965,10 @@ unify ops env a b = case (a, b) of
     let env' = filter (\(x, _) -> x /= k) env
     let (t, s) = unify ops env' (Tag k a) b'
     (t, [(k, def)] `compose` s)
+  (And a1 b1, And a2 b2) -> case unify2 ops env (a1, a2) (b1, b2) of
+    ((a, _), s) | isErr a -> (a, s)
+    ((_, b), s) | isErr b -> (b, s)
+    ((a, b), s) -> (And a b, s)
   (And a1 b1, And a2 b2) -> do
     let ((a, b), s) = unify2 ops env (a1, a2) (b1, b2)
     (And a b, s)
