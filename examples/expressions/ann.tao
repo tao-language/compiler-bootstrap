@@ -1,6 +1,6 @@
--- Ann match
-> 1 : Int
-1
+# -- Ann match
+# > 1 : Int
+# 1
 
 -- Ann match type mismatch
 > 1 : Num
