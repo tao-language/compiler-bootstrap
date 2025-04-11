@@ -44,7 +44,7 @@ data Expr
   | Select Expr [(String, Expr)]
   | With Expr [(String, Expr)]
   | If Expr Expr Expr
-  | Meta C.Metadata Expr
+  | Meta (C.Metadata Expr) Expr
   | Err (Error Expr)
   deriving (Eq)
 
@@ -866,7 +866,7 @@ grammar = do
                 _ -> Nothing,
           -- Grammar.Metadata.SyntaxError
           G.Atom (const P.fail') $ \layout -> \case
-            Meta (C.SyntaxError (loc, ctx, txt)) a -> Just (PP.Text ("^syntax-error[" ++ show loc ++ "|" ++ show ctx ++ "|" ++ show txt ++ "](") : layout a ++ [PP.Text ")"])
+            Meta (C.Error (SyntaxError (loc, ctx, txt))) a -> Just (PP.Text ("^syntax-error[" ++ show loc ++ "|" ++ show ctx ++ "|" ++ show txt ++ "](") : layout a ++ [PP.Text ")"])
             Meta m a -> error $ "Grammar.layout " ++ show m
             _ -> Nothing,
           -- Grammar.Err
@@ -931,7 +931,7 @@ lower = \case
   For xs (Fun a b) -> C.for xs (C.Fun (lower a) (lower b))
   For xs (Meta m a) -> do
     let (xs', a') = C.forOf (lower (For xs a))
-    C.for xs' (C.Meta m a')
+    C.for xs' (C.Meta (fmap lower m) a')
   -- For xs a -> error $ show (For xs a)
   For xs a -> C.for xs (lower a)
   -- Fun (For xs a) b -> C.for xs (C.Fun (lower a) (lower b))
@@ -960,7 +960,7 @@ lower = \case
     Ann (Op1 op a) t -> lower (Let (Ann (Var (show op)) t, Fun a b) c)
     Ann (Op2 op a1 a2) t -> lower (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
     Ann (Meta m a) t -> case lower (Let (Ann a t, b) c) of
-      C.App a b -> C.App (C.Meta m a) b
+      C.App a b -> C.App (C.Meta (fmap lower m) a) b
       a -> a
     Ann a t -> lower (Let (a, Ann b t) c)
     -- Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
@@ -970,7 +970,7 @@ lower = \case
     Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
     For xs a -> lower (App (For xs (Fun a c)) b)
     Meta m a -> case lower (Let (a, b) c) of
-      C.App a b -> C.App (C.Meta m a) b
+      C.App a b -> C.App (C.Meta (fmap lower m) a) b
       a -> a
     -- a -> C.App (lower (Fun a c)) (lower b)
     a -> lower (App (For (freeVars a) (Fun a c)) b)
@@ -992,7 +992,7 @@ lower = \case
   --   let args = map ((C.substitute sub . lower) . snd) kvs
   --   C.tag k args
   If a b c -> lower (Match a [Fun (Ann true bool) b, Fun (Ann false bool) c])
-  Meta m a -> C.Meta m (lower a)
+  Meta m a -> C.Meta (fmap lower m) (lower a)
   Err e -> C.Err (fmap lower e)
   a -> error $ "TODO: lower " ++ show a
 
@@ -1029,7 +1029,7 @@ lift = \case
     (xs, C.Fun a b) -> For xs (Fun (lift a) (lift b))
     (xs, C.Meta m a) -> do
       let (xs', a') = forOf (lift (C.for xs a))
-      For xs' (Meta m a')
+      For xs' (Meta (fmap lift m) a')
     (xs, a) -> For xs (lift a)
   C.Fun a b | null (C.freeVars a) -> Fun (lift a) (lift b)
   C.Fun a b -> For [] (Fun (lift a) (lift b))
@@ -1053,7 +1053,7 @@ lift = \case
   -- C.Let [] b -> lift b
   -- C.Let ((x, b) : env) c -> Let (Var x, lift b) (lift (C.Let env c))
   C.Meta (C.Loc _) (C.Meta (C.Loc loc) a) -> Meta (C.Loc loc) (lift a)
-  C.Meta m a -> Meta m (lift a)
+  C.Meta m a -> Meta (fmap lift m) (lift a)
   C.Err e -> Err (fmap lift e)
   a -> error $ "TODO: lift " ++ show a
 
@@ -1070,7 +1070,7 @@ parseExprUntil msg prec delims = do
     txt -> do
       end <- P.getState
       let loc = Location start.filename (Range start.pos end.pos)
-      return (Meta (C.SyntaxError (loc, msg, txt)) a)
+      return (Meta (C.Error (SyntaxError (loc, msg, txt))) a)
 
 parseCollection :: String -> String -> String -> P.Parser ctx a -> P.Parser ctx [a]
 parseCollection open delim close parser = do
@@ -1370,7 +1370,7 @@ instance Check Expr where
     Ann a b -> case errOf b of
       Just e -> (locOf a, e) : check a
       Nothing -> check a
-    Meta (C.SyntaxError (loc, ctx, txt)) a ->
+    Meta (C.Error (SyntaxError (loc, ctx, txt))) a ->
       (Just loc, SyntaxError (loc, ctx, txt)) : check a
     Meta _ a -> check a
     Err e -> case e of

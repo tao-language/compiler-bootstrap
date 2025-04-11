@@ -40,7 +40,7 @@ data Expr
   | App Expr Expr
   | Call String [Expr]
   | Let [(String, Expr)] Expr
-  | Meta Metadata Expr
+  | Meta (Metadata Expr) Expr
   | Err (Error Expr)
   -- deriving (Eq, Show)
   deriving (Eq)
@@ -57,11 +57,11 @@ type Env = [(String, Expr)]
 
 type Substitution = [(String, Expr)]
 
-data Metadata
+data Metadata a
   = Loc Location
   | Comments [String]
   | TrailingComment String
-  | SyntaxError (Location, String, String)
+  | Error (Error a)
   deriving (Eq, Show)
 
 data MatchResult a
@@ -69,6 +69,13 @@ data MatchResult a
   | MaybeMatched Expr Expr
   | NotMatched Expr Expr
   deriving (Eq, Show)
+
+instance Functor Metadata where
+  fmap :: (a -> b) -> Metadata a -> Metadata b
+  fmap _ (Loc loc) = Loc loc
+  fmap _ (Comments cs) = Comments cs
+  fmap _ (TrailingComment c) = TrailingComment c
+  fmap f (Error e) = Error (fmap f e)
 
 instance Functor MatchResult where
   fmap :: (a -> b) -> MatchResult a -> MatchResult b
@@ -404,6 +411,7 @@ grammar = do
                     CannotApply a b -> Just (PP.Text "!cannot-apply(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
                     CustomError a -> Just (PP.Text "!error(" : layout a ++ [PP.Text ")"])
                   e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
+                Meta (Error e) a -> Just (PP.Text ("![" ++ show (Err e) ++ "](") : layout a ++ [PP.Text ")"])
                 _ -> Nothing
         ]
     }
@@ -576,8 +584,14 @@ err a = Err (customError a)
 
 isErr :: Expr -> Bool
 isErr (Err _) = True
+isErr (Meta (Error _) _) = True
 isErr (Meta _ a) = isErr a
 isErr _ = False
+
+errOf :: Expr -> Maybe (Error Expr)
+errOf (Err e) = Just e
+errOf (Meta _ a) = errOf a
+errOf _ = Nothing
 
 typed :: Expr -> Type -> Expr
 typed a _ | isAnn a = a
@@ -966,12 +980,9 @@ unify ops env a b = case (a, b) of
     let (t, s) = unify ops env' (Tag k a) b'
     (t, [(k, def)] `compose` s)
   (And a1 b1, And a2 b2) -> case unify2 ops env (a1, a2) (b1, b2) of
-    ((a, _), s) | isErr a -> (a, s)
-    ((_, b), s) | isErr b -> (b, s)
+    ((a, b), s) | Just e <- errOf a -> (Meta (Error e) (And a b), s)
+    ((a, b), s) | Just e <- errOf b -> (Meta (Error e) (And a b), s)
     ((a, b), s) -> (And a b, s)
-  (And a1 b1, And a2 b2) -> do
-    let ((a, b), s) = unify2 ops env (a1, a2) (b1, b2)
-    (And a b, s)
   (Ann a ta, Ann b tb) -> do
     let ((a', ta'), s) = unify2 ops env (a, b) (ta, tb)
     (Ann a' ta', s)
@@ -1033,40 +1044,13 @@ infer ops env (Var x) = do
           (ta, s)
         Nothing -> (Err (undefinedVar x), [])
   ((Var x, ta), s)
-infer ops env (Ann a t@(Fun {})) = do
-  -- error $ show (check ops env a t)
-  let ((a', ta), s) = check ops env a t
-  (error . intercalate "\n")
-    [ "infer " ++ show (dropMeta $ Ann a t),
-      "a': " ++ show (dropMeta a'),
-      "ta: " ++ show (dropMeta ta),
-      "s: " ++ show (second dropMeta <$> s),
-      ""
-    ]
 infer ops env (Ann a t) = check ops env a t
 infer ops env (And a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((And a' b', And ta tb), s)
--- infer ops env (Or a b) = do
---   let ((a', ta), (b', tb), s) = infer2 ops env a b
---   -- error $ show ((Or a' b', merge ops (s `compose` env) ta tb), s)
---   (error . intercalate "\n")
---     [ "infer " ++ show (dropMeta $ Or a b),
---       "a': " ++ show (dropMeta a'),
---       "ta: " ++ show (dropMeta ta),
---       "b': " ++ show (dropMeta b'),
---       "tb: " ++ show (dropMeta tb),
---       "s: " ++ show (second dropMeta <$> s),
---       "merge ta tb: " ++ show (merge ops (s `compose` env) ta tb),
---       ""
---     ]
 infer ops env (Or a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((Or a' b', merge ops (s `compose` env) ta tb), s)
--- infer ops env (For x a) = do
---   let y = newName (map fst env) x
---   let ((a', ta), s) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
---   error $ show ((For x (substitute [(y, Var x)] a'), ta), s)
 infer ops env (For x a) = do
   let y = newName (map fst env) x
   let ((a', ta), s) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
@@ -1085,55 +1069,6 @@ infer ops env (App a b) = do
   -- TODO: if not found, this might mean an overload was not found
   let t = fromMaybe (Var x) (lookup x s2)
   ((App a' (typed (substitute s2 b') (substitute s2 tb)), t), s2 `compose` s1)
--- infer ops env (App a@Or {} b) = do
---   let ((b', tb), s1) = infer ops env b
---   (error . intercalate "\n")
---     [ "infer " ++ show (dropMeta $ App a b),
---       show $ infer ops env (App (Var "==") (And (Int 1) (Int 1))),
---       "env: " ++ show (map fst env),
---       "Bool: " ++ show (dropMeta <$> lookup "Bool" env),
---       "(==): " ++ show (dropMeta <$> lookup "==" env),
---       "b': " ++ show (dropMeta b'),
---       "tb: " ++ show (dropMeta tb),
---       "s1: " ++ show (second dropMeta <$> s1),
---       "",
---       "* We're getting type errors on s1, they shouldn't be there, it should give the Bool definition as is.",
---       ""
---     ]
--- infer ops env (App a@Or {} b) = do
---   let ((a', ta), (b', tb), s1) = infer2 ops env a b
---   let env' = s1 `compose` env
---   let x = newName ("$" : map fst env') "$"
---   let (ta', s2) = unify ops ((x, Var x) : env') ta (Fun tb (Var x))
---   -- TODO: if not found, this might mean an overload was not found
---   let t = fromMaybe (Var x) (lookup x s2)
---   -- ((substitute s2 (App a' (typed b' tb)), t), s2 `compose` s1)
---   (error . intercalate "\n")
---     [ "   " ++ show (dropMeta a, dropMeta a', dropMeta ta),
---       "   " ++ show (dropMeta b, dropMeta b', dropMeta tb),
---       "** unify " ++ show (dropMeta ta, dropMeta $ Fun tb (Var x)),
---       "**    ~> " ++ show (unify ops ((x, Var x) : env') ta (Fun tb (Var x))),
---       "** should be: Bool -> :Ok | Bool -> :Err<Bool>",
---       "**   of type: Bool -> (:Ok | :Err<Bool>)",
---       "**   a' starts with (True : True) -> :Ok, which could be troublesome to substitute, maybe needs to be deferred after the unification?",
---       show $ second dropMeta <$> env,
---       show $ map fst env,
---       show $ unify ops env (Fun (tag' "True") (tag' ":Ok") `Or` For "y" (Fun (Var "y") (Tag ":Err" (Var "y")))) (Fun (tag' "Bool") (Var "x")),
---       -- "   " ++ show ta',
---       -- "   " ++ show s2,
---       -- "   " ++ show t,
---       -- "   " ++ show (dropMeta $ substitute s2 (App a' (typed b' tb))),
---       "TODO: Bool is not unifying with True, see **",
---       ""
---     ]
--- infer ops env (App a b) = do
---   let ((a', ta), (b', tb), s1) = infer2 ops env a b
---   let env' = s1 `compose` env
---   let x = newName ("$" : map fst env') "$"
---   let (ta', s2) = unify ops ((x, Var x) : env') ta (Fun tb (Var x))
---   -- TODO: if not found, this might mean an overload was not found
---   let t = fromMaybe (Var x) (lookup x s2)
---   ((substitute s2 (App a' (typed b' tb)), t), s2 `compose` s1)
 infer ops env (Let defs a) = do
   let ((a', ta), s) = infer ops (defs ++ env) a
   ((Let defs a', ta), s)

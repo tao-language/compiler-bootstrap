@@ -78,7 +78,7 @@ data Expr
   | SetComp Expr Expr Expr [Expr] -- {x for x in xs (if y)*}
   | GeneratorExp Expr Expr Expr [Expr] -- (x for x in xs (if y)*)
   | DictComp Expr Expr Expr [Expr] -- {x: x for x in xs (if y)*}
-  | Meta C.Metadata Expr
+  | Meta (C.Metadata Expr) Expr
   deriving (Eq, Show)
 
 -- https://docs.python.org/3/library/ast.html#ast.FormattedValue
@@ -567,8 +567,9 @@ instance Emit T.Expr ([Stmt], Expr) where
     -- Select Expr [(String, Expr)]
     -- With Expr [(String, Expr)]
     T.Meta m a -> do
-      let (stmts, a') = emit options a
-      (stmts, Meta m a')
+      -- let (stmts, a') = emit options a
+      -- (stmts, Meta (fmap (emit options) m) a')
+      error "TODO"
     T.Err e -> ([], notImplementedError (show e))
     expr -> error $ "TODO: emit Expr: " ++ show expr
 
