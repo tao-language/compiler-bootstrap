@@ -733,19 +733,19 @@ match unify ops (Let env (Tag k a)) b = case lookup k env of
     let b' = curry' (Let env def) [a, b]
     match True ops (Tag k (Let env a)) (b' `Or` b)
   Nothing -> match unify ops (Tag k (Let env a)) b
-match True ops a (Let env (Tag k b)) = case lookup k env of
-  Just def -> do
-    let a' = curry' (Let env def) [b, a]
-    match True ops (a' `Or` a) (Tag k (Let env b))
-  Nothing -> match True ops a (Tag k (Let env b))
+-- match True ops a (Let env (Tag k b)) = case lookup k env of
+--   Just def -> do
+--     let a' = curry' (Let env def) [b, a]
+--     match True ops (a' `Or` a) (Tag k (Let env b))
+--   Nothing -> match True ops a (Tag k (Let env b))
 match unify ops (Let env (Meta _ a)) b =
   match unify ops (Let env a) b
-match True ops a (Let env (Meta _ b)) =
-  match True ops a (Let env b)
+-- match True ops a (Let env (Meta _ b)) =
+--   match True ops a (Let env b)
 match unify ops (Let env (Let env' a)) b =
   match unify ops (Let (env ++ env') a) b
-match True ops a (Let env (Let env' b)) =
-  match True ops a (Let (env ++ env') b)
+-- match True ops a (Let env (Let env' b)) =
+--   match True ops a (Let (env ++ env') b)
 match unify ops a b = case (reduce ops a, reduce ops b) of
   (Meta _ a, b) -> match unify ops a b
   (Any, _) -> Matched []
@@ -1047,11 +1047,34 @@ infer ops env (Fix x a) = do
 infer ops env (Fun a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((Fun (typed (dropTypes a') ta) (typed b' tb), Fun ta tb), s)
+infer ops env (App a@Or {} b) = do
+  let ((a', ta), (b', tb), s1) = infer2 ops env a b
+  let env' = s1 `compose` env
+  let x = newName ("$" : map fst env') "$"
+  let (ta', s2) = unify ops ((x, Var x) : env') ta (Fun tb (Var x))
+  -- TODO: if not found, this might mean an overload was not found
+  let t = fromMaybe (Var x) (lookup x s2)
+  -- ((substitute s2 (App a' (typed b' tb)), t), s2 `compose` s1)
+  (error . intercalate "\n")
+    [ "   " ++ show (dropMeta a, dropMeta a', dropMeta ta),
+      "   " ++ show (dropMeta b, dropMeta b', dropMeta tb),
+      "** unify " ++ show (dropMeta ta, dropMeta $ Fun tb (Var x)),
+      "**    ~> " ++ show (unify ops ((x, Var x) : env') ta (Fun tb (Var x))),
+      "** should be: Bool -> :Ok | Bool -> :Err<Bool>",
+      "**   of type: Bool -> (:Ok | :Err<Bool>)",
+      "**   a' starts with (True : True) -> :Ok, which could be troublesome to substitute, maybe needs to be deferred after the unification?",
+      -- "   " ++ show ta',
+      -- "   " ++ show s2,
+      -- "   " ++ show t,
+      -- "   " ++ show (dropMeta $ substitute s2 (App a' (typed b' tb))),
+      "TODO: Bool is not unifying with True, see **",
+      ""
+    ]
 infer ops env (App a b) = do
   let ((a', ta), (b', tb), s1) = infer2 ops env a b
   let env' = s1 `compose` env
   let x = newName ("$" : map fst env') "$"
-  let (_, s2) = unify ops ((x, Var x) : env') ta (Fun tb (Var x))
+  let (ta', s2) = unify ops ((x, Var x) : env') ta (Fun tb (Var x))
   -- TODO: if not found, this might mean an overload was not found
   let t = fromMaybe (Var x) (lookup x s2)
   ((substitute s2 (App a' (typed b' tb)), t), s2 `compose` s1)
