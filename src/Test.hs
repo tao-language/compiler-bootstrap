@@ -61,7 +61,7 @@ instance TestSome (FilePath, UnitTest) where
           ]
     let (env, test') = compile ctx path (Match t.expr cases)
     -- error $ show (dropMeta $ Match t.expr cases)
-    error $ show (C.dropMeta test')
+    -- error $ show (C.dropMeta test')
     -- error $ show (second C.dropMeta <$> env)
     -- error $ show (C.dropMeta $ C.eval runtimeOps (C.Let env test'))
     case C.typedOf (C.eval runtimeOps (C.Let env test')) of
