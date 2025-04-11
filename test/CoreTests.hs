@@ -707,9 +707,9 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     unify ops env (vec i0 NumT) nil `shouldBe` (vec i0 NumT, env)
     unify ops env nil (vec i0 NumT) `shouldBe` (vec i0 NumT, env)
     unify ops env (vec i1 NumT) nil `shouldBe` (vec (Err $ typeMismatch i1 i0) NumT, env)
-    unify ops env (vec i1 NumT) (cons n1 nil) `shouldBe` (vec i1 NumT, env)
-    unify ops env (cons n1 nil) (vec i1 NumT) `shouldBe` (vec i1 NumT, env)
-    unify ops env (vec i0 NumT) (cons n1 nil) `shouldBe` (vec (Err $ typeMismatch i0 i1) NumT, env)
+    unify ops env (vec i1 NumT) (cons NumT nil) `shouldBe` (vec i1 NumT, env)
+    unify ops env (cons NumT nil) (vec i1 NumT) `shouldBe` (vec i1 NumT, env)
+    unify ops env (vec i0 NumT) (cons NumT nil) `shouldBe` (vec (Err $ typeMismatch i0 i1) NumT, env)
 
     let infer' = infer ops env
     infer' nil `shouldBe` ((nil, nil), [])
