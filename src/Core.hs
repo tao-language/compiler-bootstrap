@@ -1029,13 +1029,40 @@ infer ops env (Var x) = do
           (ta, s)
         Nothing -> (Err (undefinedVar x), [])
   ((Var x, ta), s)
+infer ops env (Ann a t@(Fun {})) = do
+  -- error $ show (check ops env a t)
+  let ((a', ta), s) = check ops env a t
+  (error . intercalate "\n")
+    [ "infer " ++ show (dropMeta $ Ann a t),
+      "a': " ++ show (dropMeta a'),
+      "ta: " ++ show (dropMeta ta),
+      "s: " ++ show (second dropMeta <$> s),
+      ""
+    ]
 infer ops env (Ann a t) = check ops env a t
 infer ops env (And a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((And a' b', And ta tb), s)
+-- infer ops env (Or a b) = do
+--   let ((a', ta), (b', tb), s) = infer2 ops env a b
+--   -- error $ show ((Or a' b', merge ops (s `compose` env) ta tb), s)
+--   (error . intercalate "\n")
+--     [ "infer " ++ show (dropMeta $ Or a b),
+--       "a': " ++ show (dropMeta a'),
+--       "ta: " ++ show (dropMeta ta),
+--       "b': " ++ show (dropMeta b'),
+--       "tb: " ++ show (dropMeta tb),
+--       "s: " ++ show (second dropMeta <$> s),
+--       "merge ta tb: " ++ show (merge ops (s `compose` env) ta tb),
+--       ""
+--     ]
 infer ops env (Or a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((Or a' b', merge ops (s `compose` env) ta tb), s)
+-- infer ops env (For x a) = do
+--   let y = newName (map fst env) x
+--   let ((a', ta), s) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
+--   error $ show ((For x (substitute [(y, Var x)] a'), ta), s)
 infer ops env (For x a) = do
   let y = newName (map fst env) x
   let ((a', ta), s) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
@@ -1047,10 +1074,33 @@ infer ops env (Fix x a) = do
 infer ops env (Fun a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((Fun (typed (dropTypes a') ta) (typed b' tb), Fun ta tb), s)
+infer ops env (App a@(Var "==") b) = do
+  let ((b', tb), s1) = infer ops env b
+  let x = newName ("$" : map fst (s1 ++ env)) "$"
+  let ((a', ta), s2) = check ops ((x, Var x) : s1 `compose` env) a (Fun tb (Var x))
+  -- let ((a', ta), (b', tb), s1) = infer2 ops env a b
+  -- let env' = s1 `compose` env
+  -- let x = newName ("$" : map fst env') "$"
+  -- let (ta', s2) = unify ops ((x, Var x) : env') ta (Fun tb (Var x))
+  -- -- TODO: if not found, this might mean an overload was not found
+  -- let t = fromMaybe (Var x) (lookup x s2)
+  -- -- ((substitute s2 (App a' (typed b' tb)), t), s2 `compose` s1)
+  (error . intercalate "\n")
+    [ "infer " ++ show (dropMeta $ App a b),
+      "env: " ++ show (map fst env),
+      "b': " ++ show (dropMeta b'),
+      "tb: " ++ show (dropMeta tb),
+      "s1: " ++ show (second dropMeta <$> s1),
+      "a': " ++ show (dropMeta a'),
+      "ta: " ++ show (dropMeta ta),
+      "s2: " ++ show (second dropMeta <$> s2),
+      ""
+    ]
 infer ops env (App a@Or {} b) = do
   let ((b', tb), s1) = infer ops env b
   (error . intercalate "\n")
     [ "infer " ++ show (dropMeta $ App a b),
+      show $ infer ops env (App (Var "==") (And (Int 1) (Int 1))),
       "env: " ++ show (map fst env),
       "Bool: " ++ show (dropMeta <$> lookup "Bool" env),
       "(==): " ++ show (dropMeta <$> lookup "==" env),
@@ -1097,6 +1147,16 @@ infer ops env (App a b) = do
   ((substitute s2 (App a' (typed b' tb)), t), s2 `compose` s1)
 infer ops env (Let defs a) = do
   let ((a', ta), s) = infer ops (defs ++ env) a
+  -- ((Let defs a', ta), s)
+  (error . intercalate "\n")
+    [ "infer " ++ show (dropMeta $ Let defs a),
+      "a': " ++ show (dropMeta a'),
+      "ta: " ++ show (dropMeta ta),
+      "s: " ++ show (second dropMeta <$> s),
+      ""
+    ]
+infer ops env (Let defs a) = do
+  let ((a', ta), s) = infer ops (defs ++ env) a
   ((Let defs a', ta), s)
 infer ops env (Call op args) = do
   let y = newName ("_" : map fst env) "_"
@@ -1123,6 +1183,12 @@ inferAll ops env (a : bs) = do
   ((substitute s2 a', substitute s2 ta) : bts, s2 `compose` s1)
 
 check :: Ops -> Env -> Expr -> Type -> ((Expr, Type), Substitution)
+check ops env a (Meta m ta) = do
+  let ((a', ta'), s) = check ops env a ta
+  ((a', Meta m ta'), s)
+check ops env (Meta m a) ta = do
+  let ((a', ta'), s) = check ops env a ta
+  ((Meta m a', ta'), s)
 check ops env a (For x ta) = do
   let y = newName (map fst env) x
   let ((a', ta'), s) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] ta)
@@ -1143,6 +1209,22 @@ check ops env (App a b) t2 = do
   let s = s2 `compose` s1
   ((App a' (substitute s2 (typed b' t1)), substitute s t2), s)
 check ops env a (Err _) = infer ops env a
+check ops env a@(Var "==") t = do
+  let ((a', ta), s1) = infer ops env a
+  let (t', s2) = unify ops (s1 `compose` env) ta (substitute s1 t)
+  -- error $ show ((substitute s2 a', t'), s2 `compose` s1)
+  (error . intercalate "\n")
+    [ "check " ++ show a ++ " -- " ++ show t,
+      "(==): " ++ show (dropMeta <$> lookup "==" env),
+      "a': " ++ show a',
+      "ta: " ++ show ta,
+      "s1: " ++ show (second dropMeta <$> s1),
+      "t': " ++ show t',
+      "s2: " ++ show (second dropMeta <$> s2),
+      "",
+      "* It's happening on the `infer ops env (==)`",
+      ""
+    ]
 check ops env a t = do
   let ((a', ta), s1) = infer ops env a
   let (t', s2) = unify ops (s1 `compose` env) ta (substitute s1 t)
