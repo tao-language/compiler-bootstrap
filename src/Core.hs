@@ -733,10 +733,19 @@ match unify ops (Let env (Tag k a)) b = case lookup k env of
     let b' = curry' (Let env def) [a, b]
     match True ops (Tag k (Let env a)) (b' `Or` b)
   Nothing -> match unify ops (Tag k (Let env a)) b
+match True ops a (Let env (Tag k b)) = case lookup k env of
+  Just def -> do
+    let a' = curry' (Let env def) [b, a]
+    match True ops (a' `Or` a) (Tag k (Let env b))
+  Nothing -> match True ops a (Tag k (Let env b))
 match unify ops (Let env (Meta _ a)) b =
   match unify ops (Let env a) b
+match True ops a (Let env (Meta _ b)) =
+  match True ops a (Let env b)
 match unify ops (Let env (Let env' a)) b =
   match unify ops (Let (env ++ env') a) b
+match True ops a (Let env (Let env' b)) =
+  match True ops a (Let (env ++ env') b)
 match unify ops a b = case (reduce ops a, reduce ops b) of
   (Meta _ a, b) -> match unify ops a b
   (Any, _) -> Matched []

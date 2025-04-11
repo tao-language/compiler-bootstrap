@@ -61,11 +61,8 @@ instance TestSome (FilePath, UnitTest) where
           ]
     let (env, test') = compile ctx path (Match t.expr cases)
     -- error $ show (dropMeta $ Match t.expr cases)
-    -- error $ show (compile ctx path (app (Var "==") []))
     -- error $ show (C.dropMeta test')
     -- error $ show (second C.dropMeta <$> env)
-    -- error $ show (C.dropMeta $ C.eval runtimeOps (C.Let env (C.Var "f")))
-    -- error $ show (C.dropMeta $ C.eval runtimeOps (C.Let env (C.App (C.Var "f") (C.Num 1.1))))
     -- error $ show (C.dropMeta $ C.eval runtimeOps (C.Let env test'))
     case C.typedOf (C.eval runtimeOps (C.Let env test')) of
       (C.Tag ":Ok" _, _) -> [TestPass t.filename t.pos t.name]
