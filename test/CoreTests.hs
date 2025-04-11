@@ -693,14 +693,23 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let cons x xs = tag "Cons" [x, xs]
     let vec n a = tag "Vec" [n, a]
     let alts a =
-          [ lam [cons a (vec n a)] (vec (n `add` i1) a),
-            lam [nil] (vec i0 a)
+          [ For "n" $ fun [cons a (vec n a)] (vec (n `add` i1) a),
+            fun [nil] (vec i0 a)
           ]
     let env = [("Vec", lam [n, a] (or' $ alts a))]
 
     eval ops (Let env (App (Fun (vec i0 NumT) Unit) nil)) `shouldBe` Unit
     eval ops (Let env (App (Fun (vec i0 NumT) Unit) (tag' "X"))) `shouldBe` Err (unhandledCase (vec i0 NumT) (Or (Err $ unhandledCase nil (tag' "X")) (tag' "X")))
     eval ops (Let env (App (Fun (vec i0 NumT) Unit) (vec i0 NumT))) `shouldBe` Unit
+    eval ops (Let env (App (Fun (vec i1 NumT) Unit) (cons NumT nil))) `shouldBe` Unit
+    eval ops (Let env (App (Fun (vec i1 NumT) Unit) (vec i1 NumT))) `shouldBe` Unit
+
+    unify ops env (vec i0 NumT) nil `shouldBe` (vec i0 NumT, env)
+    unify ops env nil (vec i0 NumT) `shouldBe` (vec i0 NumT, env)
+    unify ops env (vec i1 NumT) nil `shouldBe` (vec (Err $ typeMismatch i1 i0) NumT, env)
+    unify ops env (vec i1 NumT) (cons n1 nil) `shouldBe` (vec i1 NumT, env)
+    unify ops env (cons n1 nil) (vec i1 NumT) `shouldBe` (vec i1 NumT, env)
+    unify ops env (vec i0 NumT) (cons n1 nil) `shouldBe` (vec (Err $ typeMismatch i0 i1) NumT, env)
 
     let infer' = infer ops env
     infer' nil `shouldBe` ((nil, nil), [])

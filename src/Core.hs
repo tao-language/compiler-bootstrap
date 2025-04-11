@@ -546,8 +546,7 @@ appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
 appOf a = (a, [])
 
 curry' :: Expr -> [Expr] -> Expr
-curry' fun [] = fun
-curry' fun (arg : args) = app (App fun arg) args
+curry' = foldl App
 
 let' :: Env -> Expr -> Expr
 let' [] a = a
@@ -732,8 +731,8 @@ match :: Bool -> Ops -> Expr -> Expr -> MatchResult Env
 match unify ops (Let env (Tag k a)) b = case lookup k env of
   Just def -> do
     let b' = curry' (Let env def) [a, b]
-    match unify ops (Tag k a) (b' `Or` b)
-  Nothing -> match unify ops (Tag k a) b
+    match True ops (Tag k (Let env a)) (b' `Or` b)
+  Nothing -> match unify ops (Tag k (Let env a)) b
 match unify ops (Let env (Meta _ a)) b =
   match unify ops (Let env a) b
 match unify ops (Let env (Let env' a)) b =
