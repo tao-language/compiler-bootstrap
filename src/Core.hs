@@ -582,6 +582,7 @@ matchFun ((ps, b) : cases) = fun ps b `Or` matchFun cases
 err :: Expr -> Expr
 err a = Err (customError a)
 
+-- TODO: centralize into a single kind of errors
 isErr :: Expr -> Bool
 isErr (Err _) = True
 isErr (Meta (Error _) _) = True
@@ -1097,12 +1098,6 @@ inferAll ops env (a : bs) = do
   ((substitute s2 a', substitute s2 ta) : bts, s2 `compose` s1)
 
 check :: Ops -> Env -> Expr -> Type -> ((Expr, Type), Substitution)
-check ops env a (Meta m ta) = do
-  let ((a', ta'), s) = check ops env a ta
-  ((a', Meta m ta'), s)
-check ops env (Meta m a) ta = do
-  let ((a', ta'), s) = check ops env a ta
-  ((Meta m a', ta'), s)
 check ops env a (For x ta) = do
   let y = newName (map fst env) x
   let ((a', ta'), s) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] ta)
@@ -1123,6 +1118,12 @@ check ops env (App a b) t2 = do
   let s = s2 `compose` s1
   ((App a' (substitute s2 (typed b' t1)), substitute s t2), s)
 check ops env a (Err _) = infer ops env a
+-- check ops env a (Meta m ta) = do
+--   let ((a', ta'), s) = check ops env a ta
+--   ((a', Meta m ta'), s)
+-- check ops env (Meta m a) ta = do
+--   let ((a', ta'), s) = check ops env a ta
+--   ((Meta m a', ta'), s)
 check ops env a t = do
   let ((a', ta), s1) = infer ops env a
   let (t', s2) = unify ops (s1 `compose` env) ta (substitute s1 t)

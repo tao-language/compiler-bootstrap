@@ -866,7 +866,7 @@ grammar = do
                 _ -> Nothing,
           -- Grammar.Metadata.SyntaxError
           G.Atom (const P.fail') $ \layout -> \case
-            Meta (C.Error (SyntaxError (loc, ctx, txt))) a -> Just (PP.Text ("^syntax-error[" ++ show loc ++ "|" ++ show ctx ++ "|" ++ show txt ++ "](") : layout a ++ [PP.Text ")"])
+            Meta (C.Error e) a -> Just (PP.Text ("![" ++ show (Err e) ++ "](") : layout a ++ [PP.Text ")"])
             Meta m a -> error $ "Grammar.layout " ++ show m
             _ -> Nothing,
           -- Grammar.Err
