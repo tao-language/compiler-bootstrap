@@ -89,6 +89,9 @@ data Op2
   | Gt
   | Ge
   | Cons
+  | AndOp
+  | OrOp
+  | XorOp
   | Add
   | Sub
   | Mul
@@ -278,11 +281,23 @@ app fun args = App fun (Tuple args)
 app1 :: Expr -> Expr -> Expr
 app1 a b = app a [b]
 
+app2 :: Expr -> Expr -> Expr -> Expr
+app2 a b c = app a [b, c]
+
 string :: String -> Expr
 string str = String [Str str]
 
 neg :: Expr -> Expr
 neg = Op1 Neg
+
+andOp :: Expr -> Expr -> Expr
+andOp = Op2 AndOp
+
+orOp :: Expr -> Expr -> Expr
+orOp = Op2 OrOp
+
+xorOp :: Expr -> Expr -> Expr
+xorOp = Op2 XorOp
 
 eq :: Expr -> Expr -> Expr
 eq = Op2 Eq
@@ -625,36 +640,48 @@ grammar = do
           G.infixR 2 (loc2 Or) "|" $ \case
             Or a b -> Just (a, " ", b)
             _ -> Nothing,
+          -- Grammar.Op2.OrOp
+          G.infixL 3 (locOp2 OrOp) "or" $ \case
+            Op2 OrOp a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.XorOp
+          G.infixL 3 (locOp2 XorOp) "xor" $ \case
+            Op2 XorOp a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.AndOp
+          G.infixL 4 (locOp2 AndOp) "and" $ \case
+            Op2 AndOp a b -> Just (a, " ", b)
+            _ -> Nothing,
           -- Grammar.Op2.Eq
-          G.infixL 3 (locOp2 Eq) "==" $ \case
+          G.infixL 5 (locOp2 Eq) "==" $ \case
             Op2 Eq a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Ne
-          G.infixL 3 (locOp2 Ne) "!=" $ \case
+          G.infixL 5 (locOp2 Ne) "!=" $ \case
             Op2 Ne a b -> Just (a, " ", b)
             _ -> Nothing,
-          -- Grammar.Op2.Cons
-          G.infixR 4 (locOp2 Cons) "::" $ \case
-            Op2 Cons a b -> Just (a, " ", b)
-            _ -> Nothing,
           -- Grammar.Op2.Lt
-          G.infixL 5 (locOp2 Lt) "<" $ \case
+          G.infixL 6 (locOp2 Lt) "<" $ \case
             Op2 Lt a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Le
-          G.infixL 5 (locOp2 Le) "<=" $ \case
+          G.infixL 6 (locOp2 Le) "<=" $ \case
             Op2 Le a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Gt
-          G.infixL 5 (locOp2 Gt) ">" $ \case
+          G.infixL 6 (locOp2 Gt) ">" $ \case
             Op2 Gt a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Ge
-          G.infixL 5 (locOp2 Ge) ">=" $ \case
+          G.infixL 6 (locOp2 Ge) ">=" $ \case
             Op2 Ge a b -> Just (a, " ", b)
             _ -> Nothing,
+          -- Grammar.Op2.Cons
+          G.infixR 7 (locOp2 Cons) "::" $ \case
+            Op2 Cons a b -> Just (a, " ", b)
+            _ -> Nothing,
           -- Grammar.Ann
-          G.infixR 6 (loc2 Ann) ":" $ \case
+          G.infixR 8 (loc2 Ann) ":" $ \case
             Ann a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.For
@@ -680,44 +707,44 @@ grammar = do
                 a <- expr
                 _ <- P.spaces
                 return (withLoc start end $ For xs a)
-           in G.Prefix 7 parser $ \layout -> \case
+           in G.Prefix 9 parser $ \layout -> \case
                 For xs a ->
                   Just (PP.Text ('@' : unwords xs ++ ". ") : layout a)
                 _ -> Nothing,
           -- Grammar.Fun
-          G.infixR 7 (loc2 Fun) "->" $ \case
+          G.infixR 9 (loc2 Fun) "->" $ \case
             Fun a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Add
-          G.infixL 8 (locOp2 Add) "+" $ \case
+          G.infixL 10 (locOp2 Add) "+" $ \case
             Op2 Add a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Sub
-          G.infixL 8 (locOp2 Sub) "-" $ \case
+          G.infixL 10 (locOp2 Sub) "-" $ \case
             Op2 Sub a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Mul
-          G.infixL 9 (locOp2 Mul) "*" $ \case
+          G.infixL 11 (locOp2 Mul) "*" $ \case
             Op2 Mul a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.DivI must go before Div '/'
-          G.infixL 9 (locOp2 DivI) "//" $ \case
+          G.infixL 11 (locOp2 DivI) "//" $ \case
             Op2 DivI a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Div must go after DivI '//'
-          G.infixL 9 (locOp2 Div) "/" $ \case
+          G.infixL 11 (locOp2 Div) "/" $ \case
             Op2 Div a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Pow
-          G.infixR 10 (locOp2 Pow) "^" $ \case
+          G.infixR 12 (locOp2 Pow) "^" $ \case
             Op2 Pow a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op1.Neg
-          G.prefix 11 (locOp1 Neg) "-" $ \case
+          G.prefix 13 (locOp1 Neg) "-" $ \case
             Op1 Neg a -> Just ("", a)
             _ -> Nothing,
           -- Grammar.not
-          G.prefix 11 (loc1 (App (Var "not"))) "not" $ \case
+          G.prefix 13 (loc1 (App (Var "not"))) "not" $ \case
             App (Var "not") a -> Just ("", a)
             _ -> Nothing,
           -- Grammar.App
@@ -738,7 +765,7 @@ grammar = do
                 end <- P.getState
                 _ <- P.spaces
                 return (withLoc start end $ app x args)
-           in G.InfixL 11 parser $ \lhs rhs -> \case
+           in G.InfixL 13 parser $ \lhs rhs -> \case
                 App a b -> do
                   let args = tupleOf b
                   Just (lhs a ++ PP.Text "(" : collectionLayout (G.layout grammar 0) args ++ [PP.Text ")"])
