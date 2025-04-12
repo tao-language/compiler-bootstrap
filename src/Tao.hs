@@ -75,7 +75,7 @@ op1s =
 showOp1 :: Op1 -> String
 showOp1 op = case lookupValue op op1s of
   Just x -> x
-  Nothing -> show op
+  Nothing -> error "TODO: showOp1"
 
 instance Show Op1 where
   show :: Op1 -> String
@@ -102,7 +102,10 @@ data Op2
 
 op2s :: [(String, Op2)]
 op2s =
-  [ ("==", Eq),
+  [ ("and", AndOp),
+    ("or", OrOp),
+    ("xor", XorOp),
+    ("==", Eq),
     ("!=", Ne),
     ("<", Lt),
     ("<=", Le),
@@ -119,7 +122,7 @@ op2s =
 showOp2 :: Op2 -> String
 showOp2 op = case lookupValue op op2s of
   Just x -> x
-  Nothing -> show op
+  Nothing -> error "TODO: showOp2"
 
 instance Show Op2 where
   show :: Op2 -> String

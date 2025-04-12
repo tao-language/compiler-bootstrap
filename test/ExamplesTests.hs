@@ -508,8 +508,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           [ Pass "TT",
             Pass "TF",
             Pass "FT",
-            Pass "FF",
-            Pass "Error"
+            Pass "FF"
           ]
     test ctx pkg `shouldBe` testResults
 
@@ -522,8 +521,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           [ Pass "TT",
             Pass "TF",
             Pass "FT",
-            Pass "FF",
-            Pass "Error"
+            Pass "FF"
           ]
     test ctx pkg `shouldBe` testResults
 
@@ -536,8 +534,7 @@ run = describe "--==☯ Examples ☯==--" $ do
           [ Pass "TT",
             Pass "TF",
             Pass "FT",
-            Pass "FF",
-            Pass "Error"
+            Pass "FF"
           ]
     test ctx pkg `shouldBe` testResults
 
