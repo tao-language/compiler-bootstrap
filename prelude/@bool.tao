@@ -4,7 +4,7 @@ type Bool {
 }
 
 : Bool -> Bool
-let not = match {
+let (not) = match {
 | True -> False
 | _ -> True
 }

@@ -148,7 +148,8 @@ type Context = [Module]
 
 keywords :: [String]
 keywords =
-  [ "and",
+  [ "not",
+    "and",
     "or",
     "xor",
     "let",
@@ -715,6 +716,10 @@ grammar = do
           G.prefix 11 (locOp1 Neg) "-" $ \case
             Op1 Neg a -> Just ("", a)
             _ -> Nothing,
+          -- Grammar.not
+          G.prefix 11 (loc1 (App (Var "not"))) "not" $ \case
+            App (Var "not") a -> Just ("", a)
+            _ -> Nothing,
           -- Grammar.App
           let parser x expr = do
                 start <- P.getState
@@ -1140,7 +1145,8 @@ parseNameOp = do
   _ <- P.whitespaces
   op <-
     P.oneOf
-      [ P.word "and",
+      [ P.word "not",
+        P.word "and",
         P.word "or",
         P.word "xor",
         P.text "==",

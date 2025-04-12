@@ -495,8 +495,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     ctx <- include "prelude" pkg
     let testResults =
           [ Pass "T",
-            Pass "F",
-            Pass "Error"
+            Pass "F"
           ]
     test ctx pkg `shouldBe` testResults
 
