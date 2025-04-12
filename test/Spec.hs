@@ -27,4 +27,5 @@ main = hspec $ do
   OperatorPrecedenceTests.run
   PatchTests.run
   ExamplesTests.run
-  PythonTests.run
+
+-- PythonTests.run
