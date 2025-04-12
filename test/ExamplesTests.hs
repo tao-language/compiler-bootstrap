@@ -544,11 +544,11 @@ run = describe "--==☯ Examples ☯==--" $ do
     check pkg `shouldBe` []
     ctx <- include "prelude" pkg
     let testResults =
-          [ Pass "0",
-            Pass "1",
-            Pass "2",
-            Pass "3",
-            Pass "4",
-            Pass "5"
+          [ Pass "factorial(0)",
+            Pass "factorial(1)",
+            Pass "factorial(2)",
+            Pass "factorial(3)",
+            Pass "factorial(4)",
+            Pass "factorial(5)"
           ]
     test ctx pkg `shouldBe` testResults

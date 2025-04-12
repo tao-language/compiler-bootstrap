@@ -1043,7 +1043,7 @@ infer ops env (Var x) = do
         Just (Ann (Var x') ty) | x == x' -> do
           instantiate (map fst env) ty
         Just a -> do
-          let ((_, ta), s) = infer ops env a
+          let ((_, ta), s) = infer ops ((x, Var x) : env) a
           (ta, s)
         Nothing -> (Err (undefinedVar x), [])
   ((Var x, ta), s)
