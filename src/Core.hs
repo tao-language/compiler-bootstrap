@@ -937,11 +937,13 @@ findLocation = \case
 unify :: Ops -> Env -> Expr -> Expr -> (Expr, Substitution)
 unify ops env a b = case (a, b) of
   (a, Meta m b) -> case unify ops env a b of
-    (Err (TypeError (TypeMismatch a b)), s) -> (Err $ typeMismatch a (Meta m b), s)
-    result -> result
+    -- (Err (TypeError (TypeMismatch a b)), s) -> (Err $ typeMismatch a (Meta m b), s)
+    -- result -> result
+    (a, s) -> (Meta m a, s)
   (Meta m a, b) -> case unify ops env a b of
-    (Err (TypeError (TypeMismatch a b)), s) -> (Err $ typeMismatch (Meta m a) b, s)
-    result -> result
+    -- (Err (TypeError (TypeMismatch a b)), s) -> (Err $ typeMismatch (Meta m a) b, s)
+    -- result -> result
+    (a, s) -> (Meta m a, s)
   (_, Any) -> (Any, [])
   (Any, _) -> (Any, [])
   (Unit, Unit) -> (Unit, [])
@@ -1118,12 +1120,12 @@ check ops env (App a b) t2 = do
   let s = s2 `compose` s1
   ((App a' (substitute s2 (typed b' t1)), substitute s t2), s)
 check ops env a (Err _) = infer ops env a
--- check ops env a (Meta m ta) = do
---   let ((a', ta'), s) = check ops env a ta
---   ((a', Meta m ta'), s)
--- check ops env (Meta m a) ta = do
---   let ((a', ta'), s) = check ops env a ta
---   ((Meta m a', ta'), s)
+check ops env a (Meta m ta) = do
+  let ((a', ta'), s) = check ops env a ta
+  ((a', Meta m ta'), s)
+check ops env (Meta m a) ta = do
+  let ((a', ta'), s) = check ops env a ta
+  ((Meta m a', ta'), s)
 check ops env a t = do
   let ((a', ta), s1) = infer ops env a
   let (t', s2) = unify ops (s1 `compose` env) ta (substitute s1 t)
