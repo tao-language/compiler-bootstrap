@@ -519,15 +519,8 @@ fix xs a = foldr Fix a xs
 
 fix' :: [String] -> Expr -> Expr
 fix' [] a = a
-fix' (x : xs) a | isRec x a = Fix x (fix' xs a)
+fix' (x : xs) a | x `occurs` a = Fix x (fix' xs a)
 fix' (_ : xs) a = fix' xs a
-
-isRec :: String -> Expr -> Bool
-isRec _ (Var _) = False
-isRec x (Ann a _) = isRec x a
-isRec x (Fun a b) = not (x `occurs` a) && x `occurs` b
-isRec x (Meta _ a) = isRec x a
-isRec _ _ = False
 
 fixOf :: Expr -> ([String], Expr)
 fixOf (Fix x a) = let (xs, b) = fixOf a in (x : xs, b)

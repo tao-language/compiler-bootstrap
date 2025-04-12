@@ -1548,13 +1548,6 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"==", expr) = do
-  --   let dependencies = delete name (freeNames expr)
-  --   let env = concatMap (fst . compile ctx path) dependencies
-  --   let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
-  --   -- error $ show (dropMeta expr)
-  --   -- error $ show (second C.dropMeta <$> env)
-  --   error $ show (C.dropMeta a)
   compile ctx path (name, expr) = do
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies
