@@ -60,8 +60,8 @@ instance TestSome (FilePath, UnitTest) where
           [ Fun t.expect (Tag ":Ok" []),
             Fun (Var "$got") (Tag ":Err" [Var "$got"])
           ]
-    -- let (env, test') = compile ctx path (Match t.expr cases)
-    let (env, test') = compile (dropMeta ctx) path (dropMeta $ Match t.expr cases)
+    let (env, test') = compile ctx path (Match t.expr cases)
+    -- let (env, test') = compile (dropMeta ctx) path (dropMeta $ Match t.expr cases)
     -- error $ show (C.dropMeta test')
     -- error $ show (dropMeta $ Match t.expr cases)
     -- error $ show (C.dropMeta test')
@@ -71,10 +71,10 @@ instance TestSome (FilePath, UnitTest) where
       (C.Tag ":Ok" _, _) -> [TestPass t.filename t.pos name]
       -- TODO: Fix this, it's where type errors on tests get reported.
       --       Just check the result for any errors and mark it as failure.
-      (_, C.Tag ":Err" (C.Err e)) -> [TestFail t.filename t.pos name t.expr t.expect (lift (C.Err e))]
+      -- (_, C.Tag ":Err" (C.Err e)) -> [TestFail t.filename t.pos name t.expr t.expect (lift (C.Err e))]
       (C.Tag ":Err" got, _) -> [TestFail t.filename t.pos name t.expr t.expect (lift got)]
-      -- (got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
-      (got, t) -> error ("Unreachable " ++ show (C.Ann got t))
+      (got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
+      (got, t) -> error ("Unreachable " ++ show (got, t))
 
 testAll :: (TestSome a) => Context -> a -> [TestResult]
 testAll ctx = testSome ctx (const True)
