@@ -529,7 +529,8 @@ run = describe "--==☯ Tao ☯==--" $ do
   it "☯ Tao.Match.1" $ do
     let ctx = [("m", [def' "x" "42"])]
     let expr = match 1 1 (x 1 7) [fun 2 5 (a 2 3) (int 2 8 1)]
-    let (env, (a, t)) = compile' ctx "m" expr
+    -- let (env, (a, t)) = compile' ctx "m" expr
+    let (env, (a, t)) = compile' (dropMeta ctx) "m" (dropMeta expr)
     syntax "match x {\n| a -> 1\n}" `shouldBe` Right expr
     core a `shouldBe` "^let<a> a : ^Int = x : ^Int; 1 : ^Int"
     check' (C.Ann a t) `shouldBe` []

@@ -1062,7 +1062,6 @@ infer ops env (App a b) = do
   let ((b', tb), s1) = infer ops env b
   let x = newName ("$" : map fst (s1 ++ env)) "$"
   let ((a', ta), s2) = check ops ((x, Var x) : s1 `compose` env) (substitute s1 a) (Fun (substitute s1 tb) (Var x))
-  -- TODO: if not found, this might mean an overload was not found
   let t = fromMaybe (Var x) (lookup x s2)
   if isErr tb
     then ((substitute s2 tb, t), s2 `compose` s1)
@@ -1108,7 +1107,7 @@ check ops env (For x a) ta = do
   ((For x (substitute [(y, Var x)] a'), ta'), s)
 check ops env (Fun a b) (Fun ta tb) = do
   let ((a', ta'), (b', tb'), s) = check2 ops env (a, ta) (b, tb)
-  ((Fun (typed (dropTypes a') ta') (typed b' tb), Fun ta' tb'), s)
+  ((Fun (typed (dropTypes a') ta') (typed b' tb'), Fun ta' tb'), s)
 check ops env (App a b) t2 = do
   let ((b', t1), s1) = infer ops env b
   let ((a', _), s2) = check ops (s1 `compose` env) (substitute s1 a) (Fun t1 (substitute s1 t2))
