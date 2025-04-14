@@ -931,11 +931,9 @@ unify :: Ops -> Env -> Expr -> Expr -> (Expr, Substitution)
 unify ops env a b = case (a, b) of
   (a, Meta m b) -> case unify ops env a b of
     -- (Err (TypeError (TypeMismatch a b)), s) -> (Err $ typeMismatch a (Meta m b), s)
-    -- result -> result
     (a, s) -> (Meta m a, s)
   (Meta m a, b) -> case unify ops env a b of
     -- (Err (TypeError (TypeMismatch a b)), s) -> (Err $ typeMismatch (Meta m a) b, s)
-    -- result -> result
     (a, s) -> (Meta m a, s)
   (_, Any) -> (Any, [])
   (Any, _) -> (Any, [])
