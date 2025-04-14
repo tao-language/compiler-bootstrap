@@ -258,8 +258,8 @@ run = describe "--==☯ Tao ☯==--" $ do
     syntax "x : Num" `shouldBe` Right expr
     core a `shouldBe` "x"
     core t `shouldBe` "!type-mismatch(^Int, ^Num)"
-    check' (C.Ann a t) `shouldBe` [(Just (1, 1, 1, 2), typeMismatch IntT (numT 1 5))]
-    eval' env a t `shouldBe` ("42", "!type-mismatch(Int, ^loc[<test>:1:5,1:8](Num))")
+    check' (C.Ann a t) `shouldBe` [(Just (1, 1, 1, 2), typeMismatch IntT NumT)]
+    eval' env a t `shouldBe` ("42", "!type-mismatch(Int, Num)")
 
   it "☯ Tao.Tuple.0" $ do
     let ctx = []

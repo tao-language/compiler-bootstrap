@@ -59,7 +59,7 @@ mainExpr = \case
   SyntaxError e -> Nothing
   TypeError e -> case e of
     OccursError x a -> Just a
-    TypeMismatch a b -> Just a
+    TypeMismatch a b -> Just b
     NotAFunction a t -> Just a
     UndefinedVar x -> Nothing
   CaseError e -> case e of
