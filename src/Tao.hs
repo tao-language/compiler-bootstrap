@@ -1408,11 +1408,13 @@ instance Check Expr where
       Nothing -> check a
     Meta (C.Error (SyntaxError (loc, ctx, txt))) a ->
       (Just loc, SyntaxError (loc, ctx, txt)) : check a
+    Meta (C.Loc loc) a | Just e <- errOf a -> do
+      [(Just loc, e)]
     Meta _ a -> check a
+    Err e | Just a <- Error.mainExpr e -> check a
     Err e -> case e of
       SyntaxError (loc, _, _) -> [(Just loc, e)]
-      RuntimeError (CustomError (Meta (C.Loc loc) a)) ->
-        [(Just loc, customError a)]
+      TypeError (UndefinedVar _) -> [(Nothing, e)]
       e -> error ("TODO check: handle " ++ show e)
     a -> collect check a
 

@@ -54,6 +54,22 @@ instance Functor Error where
       CannotApply a b -> cannotApply (f a) (f b)
       CustomError a -> customError (f a)
 
+mainExpr :: Error a -> Maybe a
+mainExpr = \case
+  SyntaxError e -> Nothing
+  TypeError e -> case e of
+    OccursError x a -> Just a
+    TypeMismatch a b -> Just a
+    NotAFunction a t -> Just a
+    UndefinedVar x -> Nothing
+  CaseError e -> case e of
+    MissingCases cases -> Nothing
+    RedundantCases cases -> Nothing
+  RuntimeError e -> case e of
+    UnhandledCase a b -> Just a
+    CannotApply a b -> Just a
+    CustomError a -> Just a
+
 occursError :: String -> a -> Error a
 occursError x a = TypeError (OccursError x a)
 
