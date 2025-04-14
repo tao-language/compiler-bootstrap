@@ -125,7 +125,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let name = "examples/expressions/app"
   it ("☯ " ++ name ++ ".tao") $ do
     pkg <- load [name]
-    -- length (check pkg) `shouldBe` 9
+    length (check pkg) `shouldBe` 9
     let ctx = pkg
     let testResults =
           [ Pass "App Any",

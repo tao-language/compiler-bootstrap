@@ -1411,10 +1411,11 @@ instance Check Expr where
     Meta (C.Loc loc) a | Just e <- errOf a -> do
       [(Just loc, e)]
     Meta _ a -> check a
-    Err e | Just a <- Error.mainExpr e -> check a
+    Err e | Just a <- Error.mainExpr e -> case locOf a of
+      Just loc -> [(Just loc, e)]
+      Nothing -> [(Nothing, e)]
     Err e -> case e of
       SyntaxError (loc, _, _) -> [(Just loc, e)]
-      TypeError (UndefinedVar _) -> [(Nothing, e)]
       e -> error ("TODO check: handle " ++ show e)
     a -> collect check a
 
