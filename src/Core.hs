@@ -1042,9 +1042,11 @@ infer ops env (Ann a t) = check ops env a t
 infer ops env (And a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((And a' b', And ta tb), s)
-infer ops env (Or a b) = do
-  let ((a', ta), (b', tb), s) = infer2 ops env a b
-  ((Or a' b', merge ops (s `compose` env) ta tb), s)
+infer ops env (Or a b) = case (infer ops env a, infer ops env b) of
+  (((a', e1), _), ((b', e2), _)) | isErr e1 && isErr e2 -> ((Or a' b', Or e1 e2), [])
+  (((a', ta), s), ((_, e), _)) | isErr e -> ((a', ta), s)
+  (((_, e), _), ((b', tb), s)) | isErr e -> ((b', tb), s)
+  (((a', ta), s1), ((b', tb), s2)) -> ((Or a' b', merge ops env ta tb), merge ops env s1 s2)
 infer ops env (For x a) = do
   let y = newName (map fst env) x
   let ((a', ta), s) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
@@ -1096,9 +1098,11 @@ check ops env a (For x ta) = do
   let y = newName (map fst env) x
   let ((a', ta'), s) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] ta)
   ((a', For x (substitute [(y, Var x)] ta')), s)
-check ops env (Or a b) t = do
-  let ((a', ta'), (b', tb'), s) = check2 ops env (a, t) (b, t)
-  ((Or a' b', merge ops (s `compose` env) ta' tb'), s)
+check ops env (Or a b) t = case (check ops env a t, check ops env b t) of
+  (((a', e1), _), ((b', e2), _)) | isErr e1 && isErr e2 -> ((Or a' b', Or e1 e2), [])
+  (((a', ta), s), ((_, e), _)) | isErr e -> ((a', ta), s)
+  (((_, e), _), ((b', tb), s)) | isErr e -> ((b', tb), s)
+  (((a', ta), s1), ((b', tb), s2)) -> ((Or a' b', merge ops env ta tb), merge ops env s1 s2)
 check ops env (For x a) ta = do
   let y = newName (map fst env) x
   let ((a', ta'), s) = check ops ((y, Var y) : env) (substitute [(x, Var y)] a) ta
