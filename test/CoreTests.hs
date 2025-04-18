@@ -788,7 +788,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval ops (Let env f) `shouldBe` Or f1 f2
     eval ops (Let env (App f (Ann i1 IntT))) `shouldBe` i2
     eval ops (Let env (App f (Ann n1 NumT))) `shouldBe` n2
-    let s = [("x1T", Or IntT NumT), ("x1", Ann (Var "x1") NumT), ("xT", Or IntT NumT), ("x", Ann x IntT)]
+    let s = [("xT", Or IntT NumT), ("x", Ann x (Or IntT NumT))]
     infer ops env f `shouldBe` ((f, Fun IntT IntT `Or` Fun NumT NumT), s)
     infer ops env (App f i1) `shouldBe` ((App f (Ann i1 IntT), IntT), ("$1", IntT) : s)
     infer ops env (App f n1) `shouldBe` ((App f (Ann n1 NumT), NumT), ("$1", NumT) : s)

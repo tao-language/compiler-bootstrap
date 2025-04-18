@@ -457,6 +457,11 @@ parseNameTag =
     ]
 
 -- Syntax sugar
+varOf :: Expr -> Maybe String
+varOf (Var x) = Just x
+varOf (Meta _ a) = varOf a
+varOf _ = Nothing
+
 tag :: String -> [Expr] -> Expr
 tag k = Tag k . and'
 
@@ -1043,7 +1048,7 @@ infer ops env (And a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((And a' b', And ta tb), s)
 infer ops env (Or a b) = case (infer ops env a, infer ops env b) of
-  (((a', e1), _), ((b', e2), _)) | isErr e1 && isErr e2 -> ((Or a' b', Or e1 e2), [])
+  (((a', e1), _), ((b', e2), _)) | isErr e1 && isErr e2 -> ((Or a' b', Or e1 e2), [] :: Substitution)
   (((a', ta), s), ((_, e), _)) | isErr e -> ((a', ta), s)
   (((_, e), _), ((b', tb), s)) | isErr e -> ((b', tb), s)
   (((a', ta), s1), ((b', tb), s2)) -> ((Or a' b', merge ops env ta tb), merge ops env s1 s2)
@@ -1138,6 +1143,11 @@ class Merge a where
 
 instance Merge Expr where
   merge :: Ops -> Env -> Expr -> Expr -> Expr
+  merge ops env (Ann a ta) (Ann b tb)
+    | Just x <- varOf a,
+      Just x' <- varOf b,
+      x == x' =
+        Ann a (merge ops env ta tb)
   merge ops env a b = case unify ops env a b of
     (a, []) | not (isErr a) -> a
     _ -> Or a b
