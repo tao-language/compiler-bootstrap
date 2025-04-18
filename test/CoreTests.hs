@@ -670,9 +670,9 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
     let infer' = infer ops env
     infer' true `shouldBe` ((true, true), [])
-    infer' (Ann true bool) `shouldBe` ((true, bool), env)
+    infer' (Ann true bool) `shouldBe` ((true, bool), [])
     infer' (Ann false (tag' "X")) `shouldBe` ((false, Err (typeMismatch false (tag' "X"))), [])
-    infer' (Ann (tag' "X") bool) `shouldBe` ((tag' "X", Err (typeMismatch (Err (unhandledCase false (tag' "X"))) bool)), env)
+    infer' (Ann (tag' "X") bool) `shouldBe` ((tag' "X", Err (typeMismatch (Err (unhandledCase false (tag' "X"))) bool)), [])
 
   -- it "☯ infer Maybe" $ do
   --   let (maybe, just, nothing) = (App (Tag "Maybe"), \a -> tag "Just" [a], Tag "Nothing")
@@ -704,20 +704,20 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     eval ops (Let env (App (Fun (vec i1 NumT) Unit) (cons NumT nil))) `shouldBe` Unit
     eval ops (Let env (App (Fun (vec i1 NumT) Unit) (vec i1 NumT))) `shouldBe` Unit
 
-    unify ops env (vec i0 NumT) nil `shouldBe` (vec i0 NumT, env)
-    unify ops env nil (vec i0 NumT) `shouldBe` (vec i0 NumT, env)
-    unify ops env (vec i1 NumT) nil `shouldBe` (Tag "Vec" (Meta (Error $ typeMismatch i1 i0) $ And (Err $ typeMismatch i1 i0) NumT), env)
-    unify ops env (vec i1 NumT) (cons NumT nil) `shouldBe` (vec i1 NumT, env)
-    unify ops env (cons NumT nil) (vec i1 NumT) `shouldBe` (vec i1 NumT, env)
-    unify ops env (vec i0 NumT) (cons NumT nil) `shouldBe` (Tag "Vec" (Meta (Error $ typeMismatch i0 i1) $ And (Err $ typeMismatch i0 i1) NumT), env)
+    unify ops env (vec i0 NumT) nil `shouldBe` (vec i0 NumT, [])
+    unify ops env nil (vec i0 NumT) `shouldBe` (vec i0 NumT, [])
+    unify ops env (vec i1 NumT) nil `shouldBe` (Tag "Vec" (Meta (Error $ typeMismatch i1 i0) $ And (Err $ typeMismatch i1 i0) NumT), [])
+    unify ops env (vec i1 NumT) (cons NumT nil) `shouldBe` (vec i1 NumT, [])
+    unify ops env (cons NumT nil) (vec i1 NumT) `shouldBe` (vec i1 NumT, [])
+    unify ops env (vec i0 NumT) (cons NumT nil) `shouldBe` (Tag "Vec" (Meta (Error $ typeMismatch i0 i1) $ And (Err $ typeMismatch i0 i1) NumT), [])
 
     let infer' = infer ops env
     infer' nil `shouldBe` ((nil, nil), [])
     infer' (cons (Num 1.1) nil) `shouldBe` ((cons (Num 1.1) nil, cons NumT nil), [])
-    infer' (Ann nil (vec i0 NumT)) `shouldBe` ((nil, vec i0 NumT), env)
-    infer' (Ann nil (vec i1 NumT)) `shouldBe` ((nil, Tag "Vec" (Meta (Error $ typeMismatch i0 i1) $ And (Err $ typeMismatch i0 i1) NumT)), env)
-    infer' (Ann (cons (Num 1.1) nil) (vec i1 NumT)) `shouldBe` ((cons (Num 1.1) nil, vec i1 NumT), env)
-    infer' (Ann (cons (Num 1.1) (cons (Num 2.2) nil)) (vec i0 NumT)) `shouldBe` ((cons (Num 1.1) (cons (Num 2.2) nil), Tag "Vec" (Meta (Error $ typeMismatch i2 i0) $ And (Err $ typeMismatch i2 i0) NumT)), env)
+    infer' (Ann nil (vec i0 NumT)) `shouldBe` ((nil, vec i0 NumT), [])
+    infer' (Ann nil (vec i1 NumT)) `shouldBe` ((nil, Tag "Vec" (Meta (Error $ typeMismatch i0 i1) $ And (Err $ typeMismatch i0 i1) NumT)), [])
+    infer' (Ann (cons (Num 1.1) nil) (vec i1 NumT)) `shouldBe` ((cons (Num 1.1) nil, vec i1 NumT), [])
+    infer' (Ann (cons (Num 1.1) (cons (Num 2.2) nil)) (vec i0 NumT)) `shouldBe` ((cons (Num 1.1) (cons (Num 2.2) nil), Tag "Vec" (Meta (Error $ typeMismatch i2 i0) $ And (Err $ typeMismatch i2 i0) NumT)), [])
 
   -- it "☯ checkTypes" $ do
   --   let env =

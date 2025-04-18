@@ -1556,6 +1556,7 @@ instance Compile (String, Expr) where
     let env = concatMap (fst . compile ctx path) dependencies
     let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
     -- (env, C.for' (map fst s) $ C.Ann a t)
+    -- let expr a = C.for (C.freeVars a) a
     case t of
       C.Any -> (env, a)
       C.Var _ -> (env, a)

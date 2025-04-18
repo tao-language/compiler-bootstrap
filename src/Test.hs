@@ -62,10 +62,12 @@ instance TestSome (FilePath, UnitTest) where
           ]
     let (env, test') = compile ctx path (Match t.expr cases)
     -- let (env, test') = compile (dropMeta ctx) path (dropMeta $ Match t.expr cases)
+    -- error $ show (map fst env)
     -- error $ show (dropMeta $ Match t.expr cases)
     -- error $ show (compile (dropMeta ctx) path (dropMeta t.expr))
     -- error $ show (C.dropMeta test')
     -- error $ show (second (C.dropMeta . C.eval []) <$> env)
+    -- error $ intercalate "\n" $ map (\(x, a) -> show x ++ ": " ++ show (eval [] a)) env
     -- error $ show (C.dropMeta $ C.eval runtimeOps (C.Let env test'))
     -- error $ show "TODO: do not dropMeta on compile"
     case C.typedOf (C.eval runtimeOps (C.Let env test')) of
