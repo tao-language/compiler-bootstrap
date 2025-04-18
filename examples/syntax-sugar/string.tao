@@ -1,7 +1,15 @@
--- String single quote
-> 'abc'
-[Char 97, Char 98, Char 99]
+-- String empty single quotes
+> ''
+^`''`
 
--- String double quote
+-- String empty double quotes
+> ""
+^`''`
+
+-- String literal single quotes
+> 'abc'
+[Char(97), Char(98), Char(99)]
+
+-- String literal double quotes
 > "abc"
-[Char 97, Char 98, Char 99]
+[Char(97), Char(98), Char(99)]

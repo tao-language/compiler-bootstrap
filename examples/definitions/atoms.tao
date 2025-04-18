@@ -1,15 +1,15 @@
-_ = _
+let _ = _
 
-() = ()
+let () = ()
 
-Int = Int
+let Int = Int
 
-Num = Num
+let Num = Num
 
-1 = 1
+let 1 = 1
 
-3.14 = 3.14
+let 3.14 = 3.14
 
-A = A
+let A = A
 
-!error = !error
+let !error = !error

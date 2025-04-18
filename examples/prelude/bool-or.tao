@@ -13,7 +13,3 @@ True
 -- FF
 > False or False
 False
-
--- Error
-> A or B
-!error

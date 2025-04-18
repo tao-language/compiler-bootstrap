@@ -27,11 +27,23 @@ push y = \case
   [] -> [y]
   x : xs -> x : push y xs
 
+pop :: (Eq k) => k -> [(k, v)] -> [(k, v)]
+pop _ [] = []
+pop k ((k', _) : kvs) | k == k' = kvs
+pop k (_ : kvs) = pop k kvs
+
+pop' :: (Eq k) => k -> [(k, v)] -> Maybe (v, [(k, v)])
+pop' _ [] = Nothing
+pop' k ((k', v) : kvs) | k == k' = Just (v, kvs)
+pop' k (kv : kvs) = do
+  (v, kvs) <- pop' k kvs
+  return (v, kv : kvs)
+
 set :: (Eq k) => k -> v -> [(k, v)] -> [(k, v)]
-set key value = \case
-  [] -> [(key, value)]
-  (k', _) : kvs | key == k' -> (key, value) : kvs
-  kv : kvs -> kv : set key value kvs
+set k v = \case
+  [] -> [(k, v)]
+  (k', _) : kvs | k == k' -> (k, v) : kvs
+  kv : kvs -> kv : set k v kvs
 
 pad :: Int -> String -> String
 pad = padWith ' '
@@ -66,3 +78,9 @@ split2 delim text = case text of
 
 trimPrefix :: (Eq a) => [a] -> [a] -> [a]
 trimPrefix prefix xs = fromMaybe xs (stripPrefix prefix xs)
+
+lookupValue :: (Eq v) => v -> [(k, v)] -> Maybe k
+lookupValue x = \case
+  [] -> Nothing
+  (k, v) : _ | v == x -> Just k
+  _ : kvs -> lookupValue x kvs

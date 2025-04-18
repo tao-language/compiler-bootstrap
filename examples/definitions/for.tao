@@ -1,12 +1,12 @@
-z = 2
+let z = 2
 
-@x. (x, z) = (1, 2)
+let @x. (x, z) = (1, 2)
 
 -- For match
 > x
 1
 
-@y. (y, z) = (1, 1)
+let @y. (y, z) = (1, 1)
 
 -- For match fail
 > y

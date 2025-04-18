@@ -1,23 +1,35 @@
+import Check (checkTypes)
 import Control.Monad (void)
+import qualified Core as C
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, isSuffixOf, partition)
-import Load (include, load, loadAtoms)
-import Patch (PatchStep, Plan (plan), patch)
+import Error
+import Load (include, load, loadExpr)
+import Patch
 import PrettyPrint (pretty)
 import qualified Python as Py
+import Run (run)
 import Stdlib (split2, splitWith, trimPrefix)
 import qualified System.Environment
+import System.Exit (exitFailure)
 import System.FilePath ((</>))
 import System.FilePath.Windows (dropExtension, takeBaseName, takeDirectory, takeFileName)
-import qualified Tao as T
+import Tao
+import Test (testAll)
 
 main :: IO ()
 main = do
   cliArgs <- System.Environment.getArgs
   case cliArgs of
+    "core" : args -> case args of
+      path : arg : args -> coreCmd path arg
+      _ -> putStrLn "🛑 Please give me a path, and an expression to convert to Core."
     "run" : args -> case args of
-      path : args -> runCmd path args
+      path : arg : args -> runCmd path arg
       _ -> putStrLn "🛑 Please give me a path, and an expression to run."
+    "check" : args -> case args of
+      path : _ -> checkCmd path
+      _ -> putStrLn "🛑 Please give me a path to check."
     "test" : args -> case args of
       [path] -> testCmd path ["*"]
       -- path : patterns -> test path patterns
@@ -37,33 +49,70 @@ main = do
       _ -> putStrLn "🛑 Please give me a target."
     _ -> error "TODO: repl"
 
-runCmd :: FilePath -> [String] -> IO ()
-runCmd filename args = do
-  (ctx, errors) <- load [filename]
-  mapM_ print errors
-  (ctx, errors) <- include "prelude" ctx
-  mapM_ print errors
-  (args', errors) <- loadAtoms "<run>" args
-  mapM_ print errors
+coreCmd :: FilePath -> String -> IO ()
+coreCmd filename arg = do
+  pkg <- load [filename]
+  ctx <- include "prelude" pkg
+  arg' <- loadExpr "<core>" arg
+  -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
-  print (T.eval ctx path (T.app' args'))
+  let a = lower arg'
+  let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
+  let ((a', t), s) = C.infer buildOps env a
+  let fmt = C.format 100 . C.dropMeta
+  putStrLn ("# env (" ++ show (length env) ++ " symbols)")
+  mapM_ (\(x, a) -> putStrLn ("- " ++ fmt (C.Var x) ++ ": " ++ fmt (C.dropLet a))) env
+  putStrLn "\n# expr"
+  putStrLn (fmt a')
+  putStrLn "\n# type"
+  putStrLn (fmt t)
+  putStrLn "\n# type substitutions"
+  mapM_ (\(x, a) -> putStrLn ("- " ++ fmt (C.Var x) ++ ": " ++ fmt a)) s
+  putStrLn "\n# result"
+  putStrLn (fmt (C.eval runtimeOps (C.dropMeta $ C.Let env a')))
+
+-- @a x. (x : a) -> (@z. (z : a) -> ^True | (_ : a) -> ^False) (x : a)
+--  : (@a. (a -> ^Bool))
+
+runCmd :: FilePath -> String -> IO ()
+runCmd filename arg = do
+  ctx <- load [filename]
+  ctx <- include "prelude" ctx
+  arg' <- error "TODO" -- load "<run>" arg
+  -- TODO: check for errors
+  let path = dropExtension (snd (split2 ':' filename))
+  print (Run.run ctx path arg')
+
+checkCmd :: FilePath -> IO ()
+checkCmd filename = do
+  pkg <- load [filename]
+  ctx <- include "prelude" pkg
+  let path = dropExtension (snd (split2 ':' filename))
+  case checkTypes ctx path pkg of
+    [] -> return ()
+    errors -> do
+      let n = length errors
+      mapM_ display errors
+      putStrLn $ "=== SUMMARY " ++ replicate 50 '='
+      putStrLn filename
+      putStrLn $ "🚨 " ++ show n ++ " error" ++ (if n == 1 then "" else "s")
+      putStrLn ""
+      exitFailure
 
 testCmd :: FilePath -> [String] -> IO ()
 testCmd path patterns = do
-  (ctx, errors) <- load [path]
-  mapM_ print errors
-  (ctx, errors) <- include "prelude" ctx
-  mapM_ print errors
-  let results = T.testAll [] ctx
+  ctx <- load [path]
+  ctx <- include "prelude" ctx
+  -- TODO: display errors
+  let results = testAll [] ctx
   mapM_ (putStr . show) results
 
 patchCmd :: FilePath -> [FilePath] -> [FilePath] -> IO ()
 patchCmd buildDir patches sources = do
-  (steps, errors) <- plan [] patches
-  mapM_ print errors
-  (ctx, errors) <- load sources
-  mapM_ print errors
-  let build = patch ctx steps ctx
+  steps <- plan [] patches
+  ctx <- load sources
+  -- TODO: display errors
+  let build = applyStep ctx steps ctx
   let writeFile (path, id, stmts) = do
         let filename = buildDir </> path ++ "@" ++ intercalate "!" id ++ ".tao"
         putStrLn filename
@@ -74,14 +123,13 @@ buildPythonCmd :: [FilePath] -> [FilePath] -> IO ()
 buildPythonCmd patches sources = do
   putStrLn $ "patches: " ++ show patches
   putStrLn $ "sources: " ++ show sources
-  (steps, errors) <- plan [] patches
+  steps <- plan [] patches
   putStrLn $ "steps: " ++ show steps
-  mapM_ print errors
-  (ctx, errors) <- load sources
+  ctx <- load sources
   putStrLn $ "ctx: " ++ show (map fst ctx)
-  mapM_ print errors
+  -- TODO: display errors
   let ctx' =
-        patch ctx steps ctx
+        applyStep ctx steps ctx
           & map (\(path, _, stmts) -> (path, stmts))
   putStrLn "TODO: write intermediate patch files"
   let options = Py.defaultBuildOptions

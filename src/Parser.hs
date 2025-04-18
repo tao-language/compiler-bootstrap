@@ -7,6 +7,8 @@ import Control.Monad (void)
 import qualified Data.Char as Char
 import Data.Function ((&))
 import qualified Debug.Trace as Debug
+import Location (Location (..), Position (..), Range (..))
+import qualified Location as Loc
 import Stdlib (filterMap)
 
 newtype Parser ctx a
@@ -15,7 +17,7 @@ newtype Parser ctx a
 data State ctx = State
   { remaining :: String,
     filename :: String,
-    pos :: (Int, Int),
+    pos :: Position,
     index :: Int,
     context :: [ctx]
   }
@@ -60,12 +62,12 @@ parse (Parser p) filename remaining =
     State
       { remaining = remaining,
         filename = filename,
-        pos = (1, 1),
+        pos = Pos 1 1,
         index = 0,
         context = []
       }
 
-parseFrom :: (Int, Int) -> String -> Parser ctx a -> Parser ctx a
+parseFrom :: Position -> String -> Parser ctx a -> Parser ctx a
 parseFrom pos remaining (Parser p) =
   Parser
     ( \state -> case p state {pos = pos, remaining = remaining} of
@@ -102,6 +104,33 @@ oneOf (Parser p : choices) =
         Left state2 -> Left state2 {context = state2.context ++ state1.context}
     )
 
+choose :: (a -> a -> Either () ()) -> [Parser ctx a] -> Parser ctx a
+choose _ [] = fail'
+choose _ [p] = p
+choose f (Parser p : ps) = do
+  let (Parser q) = choose f ps
+  Parser $ \state -> case (p state, q state) of
+    (Right (x, s1), Right (y, s2)) -> case f x y of
+      Left () -> Right (x, s1)
+      Right () -> Right (y, s2)
+    (Right result, Left _) -> Right result
+    (Left _, Right result) -> Right result
+    (Left _, Left s2) -> Left s2
+
+chooseShortest :: [Parser ctx [a]] -> Parser ctx [a]
+chooseShortest = do
+  let f [] _ = Left ()
+      f _ [] = Right ()
+      f (_ : xs) (_ : ys) = f xs ys
+  choose f
+
+chooseLongest :: [Parser ctx [a]] -> Parser ctx [a]
+chooseLongest = do
+  let f _ [] = Left ()
+      f [] _ = Right ()
+      f (_ : xs) (_ : ys) = f xs ys
+  choose f
+
 getState :: Parser ctx (State ctx)
 getState = Parser (\state -> Right (state, state))
 
@@ -112,7 +141,7 @@ commit ctx = Parser (\state -> Right ((), state {context = ctx : state.context})
 skipTo :: Parser ctx delim -> Parser ctx String
 skipTo delim =
   oneOf
-    [ "" <$ delim,
+    [ "" <$ lookahead delim,
       do
         c <- anyChar
         cs <- skipTo delim
@@ -140,10 +169,9 @@ anyChar :: Parser ctx Char
 anyChar =
   Parser
     ( \state -> do
-        let (row, col) = state.pos
         case state.remaining of
-          '\n' : src -> Right ('\n', state {remaining = src, index = state.index + 1, pos = (row + 1, 1)})
-          c : src -> Right (c, state {remaining = src, index = state.index + 1, pos = (row, col + 1)})
+          '\n' : src -> Right ('\n', state {remaining = src, index = state.index + 1, pos = Pos (state.pos.row + 1) 1})
+          c : src -> Right (c, state {remaining = src, index = state.index + 1, pos = Pos state.pos.row (state.pos.col + 1)})
           "" -> Left state
     )
 
@@ -382,7 +410,23 @@ subparser delim parser = subparserPartial delim (do x <- parser; _ <- endOfFile;
 -- TODO: comment
 -- TODO: multiLineComment
 
+position :: Parser ctx Position
+position = do
+  state <- getState
+  return state.pos
+
+location :: Position -> Parser ctx Location
+location start = do
+  state <- getState
+  return $
+    Location
+      { filename = state.filename,
+        range = Range start state.pos
+      }
+
 -- Operator precedence
+-- https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
+-- https://github.com/zesterer/chumsky/blob/main/tutorial.md
 data ExprParser ctx a
   = Atom (Parser ctx a -> Parser ctx a)
   | Prefix Int (Parser ctx a -> Parser ctx a)
@@ -394,52 +438,58 @@ atom f p =
   Atom $ \_ -> do
     f <$> p
 
-group :: Parser ctx open -> Parser ctx close -> ExprParser ctx a
-group open close =
+group :: Parser ctx open -> Parser ctx close -> Parser ctx spaces -> ExprParser ctx a
+group open close spaces =
   Atom $ \expr -> do
     _ <- open
+    _ <- spaces
     x <- expr
+    _ <- spaces
     _ <- close
     return x
 
-prefixWith :: (Show op, Show a) => Int -> (op -> a -> a) -> Parser ctx op -> ExprParser ctx a
-prefixWith p f op =
+prefix :: (Show op, Show a) => Int -> (Location -> op -> a -> a) -> Parser ctx spaces -> Parser ctx op -> ExprParser ctx a
+prefix p f spaces op = do
   Prefix p $ \expr -> do
+    s <- getState
     op <- op
-    f op <$> expr
+    end <- position
+    _ <- spaces
+    let loc = Location s.filename (Range s.pos end)
+    f loc op <$> expr
 
-prefix :: (Show op, Show a) => Int -> (a -> a) -> Parser ctx op -> ExprParser ctx a
-prefix p f = prefixWith p (const f)
-
-suffixWith :: Int -> (op -> a -> a) -> Parser ctx op -> ExprParser ctx a
-suffixWith p f op =
+suffix :: (Show op, Show a) => Int -> (Location -> op -> a -> a) -> Parser ctx spaces -> Parser ctx op -> ExprParser ctx a
+suffix p f spaces op = do
   InfixL p $ \x _ -> do
+    _ <- spaces
+    s <- getState
     op <- op
-    return (f op x)
+    end <- position
+    let loc = Location s.filename (Range s.pos end)
+    return (f loc op x)
 
-suffix :: Int -> (a -> a) -> Parser ctx op -> ExprParser ctx a
-suffix p f = suffixWith p (const f)
-
-infixLWith :: Int -> (op -> a -> a -> a) -> Parser ctx op -> ExprParser ctx a
-infixLWith p f op =
+infixL :: Int -> (Location -> op -> a -> a -> a) -> Parser ctx spaces -> Parser ctx op -> ExprParser ctx a
+infixL p f spaces op =
   InfixL p $ \x expr -> do
+    _ <- spaces
+    s <- getState
     op <- op
-    f op x <$> expr
+    end <- position
+    _ <- spaces
+    let loc = Location s.filename (Range s.pos end)
+    f loc op x <$> expr
 
-infixL :: Int -> (a -> a -> a) -> Parser ctx op -> ExprParser ctx a
-infixL p f = infixLWith p (const f)
-
-infixRWith :: Int -> (op -> a -> a -> a) -> Parser ctx op -> ExprParser ctx a
-infixRWith p f op =
+infixR :: Int -> (Location -> op -> a -> a -> a) -> Parser ctx spaces -> Parser ctx op -> ExprParser ctx a
+infixR p f spaces op =
   InfixR p $ \x expr -> do
+    _ <- spaces
+    s <- getState
     op <- op
-    f op x <$> expr
+    end <- position
+    _ <- spaces
+    let loc = Location s.filename (Range s.pos end)
+    f loc op x <$> expr
 
-infixR :: Int -> (a -> a -> a) -> Parser ctx op -> ExprParser ctx a
-infixR p f = infixRWith p (const f)
-
--- https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
--- https://github.com/zesterer/chumsky/blob/main/tutorial.md
 precedence :: [ExprParser ctx a] -> Int -> Parser ctx a
 precedence ops p = do
   let unary = \case

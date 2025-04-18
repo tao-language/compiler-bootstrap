@@ -1,0 +1,17 @@
+: Int -> Int
+let f(x) = 1
+
+: Num -> Num
+let f(x) = 2.2
+
+-- Overload match 1
+> f(0)
+1
+
+-- Overload match 2
+> f(1.1)
+2.2
+
+-- Overload fail
+> f(0)
+1.1

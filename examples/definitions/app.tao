@@ -1,9 +1,9 @@
-x y = y
+let x(y) = y
 
 -- App match 1
-> x 1
+> x(1)
 1
 
 -- App match 2
-> x 2
+> x(2)
 2

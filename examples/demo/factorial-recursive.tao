@@ -1,10 +1,10 @@
 # Simple example.
 
-# ---
-# Multiplies a number by all positive integers less than or equal to it.
+---
+Multiplies a number by all positive integers less than or equal to it.
 
-# https://en.wikipedia.org/wiki/Factorial
-# ---
+https://en.wikipedia.org/wiki/Factorial
+---
 factorial = {
 | 0 -> 1  # Base case.
 | n ->

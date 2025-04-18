@@ -1,11 +1,11 @@
-x : Int = 1
+let x : Int = 1
 
 -- Ann match inline type
 > x
 1
 
 : Int
-y = 2
+let y = 2
 
 -- Ann match type annotation
 > y

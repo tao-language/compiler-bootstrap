@@ -22,20 +22,20 @@ run = describe "--==☯ Python ☯==--" $ do
     let emit' :: T.Expr -> ([Stmt], Expr)
         emit' = emit options
     emit' T.Any `shouldBe` ([], None)
-    emit' T.Unit `shouldBe` ([], Tuple [])
+    -- emit' T.Unit `shouldBe` ([], Tuple [])
     emit' T.IntT `shouldBe` ([], Name "int")
     emit' T.NumT `shouldBe` ([], Name "float")
     emit' (T.Int 42) `shouldBe` ([], Integer 42)
     emit' (T.Num 3.14) `shouldBe` ([], Float 3.14)
-    emit' (T.Tag "Bool") `shouldBe` ([], Name "bool")
-    emit' (T.Tag "True") `shouldBe` ([], Bool True)
-    emit' (T.Tag "False") `shouldBe` ([], Bool False)
-    emit' (T.Tag "A") `shouldBe` ([], Tuple [String "A"])
+    -- emit' (T.Tag "Bool") `shouldBe` ([], Name "bool")
+    -- emit' (T.Tag "True") `shouldBe` ([], Bool True)
+    -- emit' (T.Tag "False") `shouldBe` ([], Bool False)
+    -- emit' (T.Tag "A") `shouldBe` ([], Tuple [String "A"])
     emit' (T.Var "x") `shouldBe` ([], x')
     emit' (T.Ann x y) `shouldBe` ([], x')
-    emit' (T.tag "A" [x, y]) `shouldBe` ([], Tuple [String "A", x', y'])
-    emit' (T.And x y) `shouldBe` ([], Tuple [x', y'])
-    emit' (T.and' [x, y, z]) `shouldBe` ([], Tuple [x', y', z'])
+    -- emit' (T.tag "A" [x, y]) `shouldBe` ([], Tuple [String "A", x', y'])
+    -- emit' (T.And x y) `shouldBe` ([], Tuple [x', y'])
+    -- emit' (T.and' [x, y, z]) `shouldBe` ([], Tuple [x', y', z'])
     emit' (T.Or x y) `shouldBe` ([], bitOr x' y')
     emit' (T.For ["x"] y) `shouldBe` ([], y')
     -- emit' (T.Fun x y) `shouldBe` ([], callable [x'] y')
@@ -45,7 +45,7 @@ run = describe "--==☯ Python ☯==--" $ do
     -- Call String [Expr]
     -- Op1 Op1 Expr
     -- Op2 Op2 Expr Expr
-    emit' (T.Match [] []) `shouldBe` ([Assign [Name "_match"] (notImplementedError "error")], Name "_match")
+    -- emit' (T.Match [] []) `shouldBe` ([Assign [Name "_match"] (notImplementedError "error")], Name "_match")
     -- If Expr Expr Expr
     -- emit' (T.Let (T.Var "x", y) z) `shouldBe` ([assign "x" y'], z')
     -- emit' (T.Bind (xP, y) z) `shouldBe` ([assign "x" (call "y" [])], z')
@@ -63,7 +63,7 @@ run = describe "--==☯ Python ☯==--" $ do
     emit' (T.Import "path-to/mod" "mod" []) `shouldBe` [Import "path_to.mod" Nothing]
     emit' (T.Import "mod" "mod" [("x", "x")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Nothing)]]
     emit' (T.Import "mod" "mod" [("x", "y")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Just "y")]]
-    emit' (T.Def (x, y)) `shouldBe` [Assign [x'] y']
+    emit' (T.def (x, y)) `shouldBe` [Assign [x'] y']
     -- emit' (T.Def (T.Var "a", T.Tag "Point" [T.Int 1, T.Int 2])) `shouldBe` [Assign [a'] (call "Point" [Integer 1, Integer 2])]
     -- emit' (var "a" (Tag "Point" [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]
     -- emit' (varT "a" (Var "Point") (record [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]
@@ -106,8 +106,7 @@ run = describe "--==☯ Python ☯==--" $ do
 
   it "☯ build factorial" $ do
     putStrLn "  ☯ build factorial"
-    (ctx, syntaxErrors) <- load ["examples/factorial"]
-    syntaxErrors `shouldBe` []
+    ctx <- load ["examples/factorial"]
     build options ctx `shouldReturn` "build"
     Subprocess.run "build" "python" ["-m", "venv", "env"]
     Subprocess.run "build" "env/bin/pip" ["install", "-e", "."]

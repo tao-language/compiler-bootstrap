@@ -1,6 +1,7 @@
 module ParserTests where
 
 import qualified Data.Char as Char
+import Location (Position (..))
 import Parser
 import Test.Hspec (SpecWith, describe, it, shouldBe)
 
@@ -65,8 +66,8 @@ run = describe "--==☯ Parser ☯==--" $ do
           s2 <- getState
           ok (s1, s2)
     let p = parse' parser
-    let s1 = State {remaining = "abc", filename = "ParserTests", pos = (1, 1), index = 0, context = []}
-    let s2 = s1 {remaining = "bc", index = 1, pos = (1, 2)}
+    let s1 = State {remaining = "abc", filename = "ParserTests", pos = Pos 1 1, index = 0, context = []}
+    let s2 = s1 {remaining = "bc", index = 1, pos = Pos 1 2}
     p "abc" `shouldBe` Right ((s1, s2), "bc")
 
   it "☯ if'" $ do
@@ -285,10 +286,10 @@ run = describe "--==☯ Parser ☯==--" $ do
   it "☯ skipTo" $ do
     let p = parse' (skipTo (char '.'))
     p "" `shouldBe` Left ""
-    p ".abc" `shouldBe` Right ("", "abc")
-    p "a.bc" `shouldBe` Right ("a", "bc")
-    p "ab.c" `shouldBe` Right ("ab", "c")
-    p "abc." `shouldBe` Right ("abc", "")
+    p ".abc" `shouldBe` Right ("", ".abc")
+    p "a.bc" `shouldBe` Right ("a", ".bc")
+    p "ab.c" `shouldBe` Right ("ab", ".c")
+    p "abc." `shouldBe` Right ("abc", ".")
     p "abc" `shouldBe` Left "abc"
 
   it "☯ integer" $ do
@@ -320,17 +321,16 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "abc--}" `shouldBe` Right ("abc", "--}")
 
   it "☯ precedence" $ do
-    let op x = padded whitespaces (text x)
-        ops =
+    let ops =
           [ atom Var (oneOrMore letter),
-            group (op "(") (op ")"),
-            infixL 1 Add (op "+"),
-            infixL 1 Sub (op "-"),
-            infixL 2 Mul (op "*"),
-            prefix 3 Neg (op "-"),
-            infixR 4 Pow (op "^"),
-            suffix 5 Fac (op "!"),
-            prefix 5 At (op "@")
+            group (text "(") (text ")") spaces,
+            infixL 1 (\_ _ -> Add) spaces (text "+"),
+            infixL 1 (\_ _ -> Sub) spaces (text "-"),
+            infixL 2 (\_ _ -> Mul) spaces (text "*"),
+            prefix 3 (\_ _ -> Neg) spaces (text "-"),
+            infixR 4 (\_ _ -> Pow) spaces (text "^"),
+            suffix 5 (\_ _ -> Fac) spaces (text "!"),
+            prefix 5 (\_ _ -> At) spaces (text "@")
           ]
         expr = precedence ops 0
 

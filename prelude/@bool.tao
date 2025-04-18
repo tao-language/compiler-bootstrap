@@ -1,25 +1,28 @@
-type Bool = True | False
+type Bool {
+| True
+| False
+}
 
 : Bool -> Bool
-not = match {
+let (not) = match {
 | True -> False
 | _ -> True
 }
 
-: Bool, Bool -> Bool
-(and) = match {
-| True, True -> True
+: (Bool, Bool) -> Bool
+let (and) = match {
+| (True, True) -> True
 | _ -> False
 }
 
-: Bool, Bool -> Bool
-(or) = match {
-| False, False -> False
+: (Bool, Bool) -> Bool
+let (or) = match {
+| (False, False) -> False
 | _ -> True
 }
 
-: Bool, Bool -> Bool
-(xor) = match {
-| x, x -> False
+: (Bool, Bool) -> Bool
+let (xor) = match {
+| (x, x) -> False
 | _ -> True
 }

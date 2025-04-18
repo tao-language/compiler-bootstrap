@@ -23,35 +23,35 @@ grammar =
   Grammar
     { group = ("(", ")"),
       operators =
-        [ atom Var (P.oneOrMore P.letter) $ \_ -> \case
+        [ atom (const Var) (P.oneOrMore P.letter) $ \_ -> \case
             Var x -> Just [PP.Text x]
             _ -> Nothing,
-          infixL 1 Add "+" $ \case
-            Add a b -> Just (a, b)
+          infixL 1 (const Add) "+" $ \case
+            Add a b -> Just (a, " ", b)
             _ -> Nothing,
-          infixL 1 Sub "-" $ \case
-            Sub a b -> Just (a, b)
+          infixL 1 (const Sub) "-" $ \case
+            Sub a b -> Just (a, " ", b)
             _ -> Nothing,
-          infixL 2 Mul "*" $ \case
-            Mul a b -> Just (a, b)
+          infixL 2 (const Mul) "*" $ \case
+            Mul a b -> Just (a, " ", b)
             _ -> Nothing,
-          prefix 3 Neg "-" $ \case
-            Neg a -> Just a
+          prefix 3 (const Neg) "-" $ \case
+            Neg a -> Just ("", a)
             _ -> Nothing,
-          infixR 4 Pow "^" $ \case
-            Pow a b -> Just (a, b)
+          infixR 4 (const Pow) "^" $ \case
+            Pow a b -> Just (a, " ", b)
             _ -> Nothing,
-          suffix 5 Fac "!" $ \case
-            Fac a -> Just a
+          suffix 5 (const Fac) "!" $ \case
+            Fac a -> Just (a, "")
             _ -> Nothing,
-          prefix 5 At "@" $ \case
-            At a -> Just a
+          prefix 5 (const At) "@" $ \case
+            At a -> Just ("", a)
             _ -> Nothing
         ]
     }
 
 test :: Int -> String -> Either ([String], String) (AST, String, String)
-test width text = case P.parse (parse grammar 0) "<GrammarTests>" text of
+test width text = case P.parse (parser grammar 0) "<GrammarTests>" text of
   Right (x, s) -> do
     Right (x, format grammar width "  " x, s.remaining)
   Left s -> Left (s.context, s.remaining)
