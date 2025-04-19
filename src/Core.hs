@@ -1048,8 +1048,7 @@ infer ops env (Var x) = do
         --       ""
         --     ]
         Just a -> do
-          -- TODO: experiment with inferring with an empty env, `a` might already has an env.
-          let ((_, ta), s) = infer ops ((x, Var x) : env) a
+          let ((_, ta), s) = infer ops [] a
           (ta, s)
         Nothing -> (Err (undefinedVar x), [])
   ((Var x, ta), s)
