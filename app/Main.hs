@@ -78,10 +78,10 @@ runCmd :: FilePath -> String -> IO ()
 runCmd filename arg = do
   ctx <- load [filename]
   ctx <- include "prelude" ctx
-  arg' <- error "TODO" -- load "<run>" arg
+  arg' <- loadExpr "<run>" arg
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
-  print (Run.run ctx path arg')
+  print (dropTypes $ dropMeta $ Run.run ctx path arg')
 
 checkCmd :: FilePath -> IO ()
 checkCmd filename = do
