@@ -101,10 +101,10 @@ checkCmd filename = do
 
 testCmd :: FilePath -> [String] -> IO ()
 testCmd path patterns = do
-  ctx <- load [path]
-  ctx <- include "prelude" ctx
+  pkg <- load [path]
+  ctx <- include "prelude" pkg
   -- TODO: display errors
-  let results = testAll [] ctx
+  let results = testAll ctx pkg
   mapM_ (putStr . show) results
 
 patchCmd :: FilePath -> [FilePath] -> [FilePath] -> IO ()
