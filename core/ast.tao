@@ -1,0 +1,31 @@
+type Expr =
+| Any
+| Unit
+| IntT
+| NumT
+| Int(Int)
+| Num(Num)
+| Tag(String, Expr)
+| Var(String)
+| And(Expr, Expr)
+| Or(Expr, Expr)
+| Ann(Expr, Type)
+| For(String, Expr)
+| Fix(String, Expr)
+| Fun(Expr, Expr)
+| App(Expr, Expr)
+| Call(String, [Expr])
+| Let(Env, Expr)
+| Meta(Meta(Expr), Expr)
+| Err
+
+type Type = Expr
+type Env = {String: Expr}
+type Sub = {String: Expr}
+type Ops = {String: (Expr -> Expr, [Expr]) -> Expr?}
+
+type Meta(a) =
+| Loc(Loc)
+| Comments([String])
+| TrailingComment(String)
+| Error(Error(a))

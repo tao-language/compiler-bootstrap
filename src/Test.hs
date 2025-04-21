@@ -23,11 +23,23 @@ data TestResult
       }
   deriving (Eq)
 
+isFailure :: TestResult -> Bool
+isFailure TestFail {} = True
+isFailure _ = False
+
+count :: [TestResult] -> (Int, Int)
+count [] = (0, 0)
+count (result : results) = do
+  let (failures, total) = count results
+  case result of
+    TestPass {} -> (failures, total + 1)
+    TestFail {} -> (failures + 1, total + 1)
+
 instance Show TestResult where
   show :: TestResult -> String
   show result = case result of
-    TestPass filename pos name -> "✅ " ++ filename ++ ":" ++ show pos.row ++ ":" ++ show pos.col ++ " -- " ++ name ++ "\n"
-    TestFail filename pos name test expect got -> "❌ " ++ filename ++ ":" ++ show pos.row ++ ":" ++ show pos.col ++ " -- " ++ name ++ "\n  > " ++ show test ++ "\n  " ++ show expect ++ "\n* " ++ show got ++ "\n"
+    TestPass filename pos name -> "✅ " ++ name ++ "\n"
+    TestFail filename pos name test expect got -> "❌ " ++ filename ++ ":" ++ show pos.row ++ ":" ++ show pos.col ++ ": " ++ name ++ "\n  > " ++ show test ++ "\n  " ++ show expect ++ "\n* " ++ show got ++ "\n"
 
 class TestSome a where
   testSome :: Context -> (UnitTest -> Bool) -> a -> [TestResult]

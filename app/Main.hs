@@ -11,11 +11,11 @@ import qualified Python as Py
 import Run (run)
 import Stdlib (split2, splitWith, trimPrefix)
 import qualified System.Environment
-import System.Exit (exitFailure)
+import System.Exit (exitFailure, exitSuccess)
 import System.FilePath ((</>))
 import System.FilePath.Windows (dropExtension, takeBaseName, takeDirectory, takeFileName)
 import Tao
-import Test (testAll)
+import Test (count, testAll)
 
 main :: IO ()
 main = do
@@ -106,6 +106,15 @@ testCmd path patterns = do
   -- TODO: display errors
   let results = testAll ctx pkg
   mapM_ (putStr . show) results
+  let (failures, total) = count results
+  putStrLn ""
+  putStrLn $ "Ran " ++ show total ++ " tests"
+  if failures > 0
+    then do
+      putStrLn $ " ✅ " ++ show (total - failures) ++ " passed"
+      putStrLn $ " ❌ " ++ show failures ++ " failed"
+      exitFailure
+    else exitSuccess
 
 patchCmd :: FilePath -> [FilePath] -> [FilePath] -> IO ()
 patchCmd buildDir patches sources = do

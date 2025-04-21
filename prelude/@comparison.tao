@@ -1,8 +1,16 @@
 : (Int, Int) -> Bool
 let x < y = %int_lt(x, y)
 
+> 1 < 1 ~> False
+> 1 < 2 ~> True
+> 2 < 1 ~> False
+
 : (Num, Num) -> Bool
 let x < y = %num_lt(x, y)
+
+> 1.0 < 1.0 ~> False
+> 1.0 < 2.0 ~> True
+> 2.0 < 1.0 ~> False
 
 : (a, a) -> Bool
 let (==) = match {

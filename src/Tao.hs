@@ -748,7 +748,7 @@ grammar = do
             _ -> Nothing,
           -- Grammar.not
           G.prefix 13 (loc1 (App (Var "not"))) "not" $ \case
-            App (Var "not") a -> Just ("", a)
+            App (Var "not") a -> Just (" ", a)
             _ -> Nothing,
           -- Grammar.App
           let parser x expr = do
