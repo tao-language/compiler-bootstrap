@@ -1458,6 +1458,7 @@ bindings = \case
   Var x -> [x]
   For xs _ -> xs
   Ann a _ -> bindings a
+  App a _ -> bindings a
   Op1 op _ -> [show op]
   Op2 op _ _ -> [show op]
   Meta _ a -> bindings a

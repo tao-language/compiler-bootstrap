@@ -72,8 +72,8 @@ instance TestSome (FilePath, UnitTest) where
           [ Fun t.expect (Tag ":Ok" []),
             Fun (Var "$got") (Tag ":Err" [Var "$got"])
           ]
-    -- let (env, test') = compile ctx path (Match t.expr cases)
-    let (env, test') = compile (dropMeta ctx) path (dropMeta $ Match t.expr cases)
+    let (env, test') = compile ctx path (Match t.expr cases)
+    -- let (env, test') = compile (dropMeta ctx) path (dropMeta $ Match t.expr cases)
     -- error $ show (map fst env)
     -- error $ show (dropMeta $ Match t.expr cases)
     -- error $ show (compile (dropMeta ctx) path (dropMeta t.expr))
