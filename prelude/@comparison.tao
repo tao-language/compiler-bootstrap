@@ -70,6 +70,8 @@ let x >= y = not (x < y)
 > 1.0 >= 2.0 ~> False
 > 2.0 >= 1.0 ~> True
 
+let x = 42
+
 : a -> a
 let id(x) = x
 

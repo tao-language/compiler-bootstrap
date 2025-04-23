@@ -44,6 +44,8 @@ loadDir sourcePath ctx = do
   foldM (flip loadFile) ctx (map ((dir ++ ":") ++) files)
 
 loadFile :: FilePath -> Context -> IO Context
+loadFile path ctx
+  | snd (split2 ':' $ dropExtension path) `elem` map fst ctx = return ctx
 loadFile path ctx = do
   src <- loadSource path
   case src of
