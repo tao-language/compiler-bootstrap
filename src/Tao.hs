@@ -967,18 +967,8 @@ lower = \case
   For xs (Meta m a) -> do
     let (xs', a') = C.forOf (lower (For xs a))
     C.for xs' (C.Meta (fmap lower m) a')
-  -- For xs a -> error $ show (For xs a)
   For xs a -> C.for xs (lower a)
-  -- Fun (For xs a) b -> C.for xs (C.Fun (lower a) (lower b))
-  -- Fun (Meta m a) b -> case lower (Fun a b) of
-  --   C.Fun a b -> C.Fun (C.Meta m a) b
-  --   a -> C.Meta m a
-  -- Fun a b -> lower (Fun (For (freeVars a) a) b)
-  -- Fun a b -> C.for (freeVars a) (C.Fun (lower a) (lower b))
   Fun a b -> lower (For (freeVars a) (Fun a b))
-  -- Fun (For xs a) b -> C.Fun (lower (For xs a)) (lower b)
-  -- Fun (Meta _ a) b | isFor a -> lower (Fun a b)
-  -- Fun a b -> lower (Fun (For (freeVars a) a) b)
   App a b -> C.App (lower a) (lower b)
   Call op args -> C.Call op (map lower args)
   Op1 op a -> C.app (C.Var $ show op) [lower a]
@@ -988,7 +978,6 @@ lower = \case
   MatchFun cases -> lower (or' cases)
   Let (a, b) c -> case a of
     Var x | c == Var x -> lower b
-    -- Var x -> C.App (lower (Fun a c)) (C.fix [x] (lower b))
     Ann (Var x) t | c == Var x -> lower (Ann b t)
     -- Ann (Or a1 a2) t -> lower (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
     Ann (App a1 a2) t -> lower (Let (Ann a1 t, Fun a2 b) c)
@@ -999,7 +988,6 @@ lower = \case
       a -> a
     Ann a t -> lower (Let (a, Ann b t) c)
     -- Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
-    -- App a1 a2 -> lower (Let (a1, Fun a2 b) c)
     App a1 a2 -> lower (Let (a1, Fun a2 b) c)
     Op1 op a -> lower (Let (Var (show op), Fun a b) c)
     Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
@@ -1007,7 +995,6 @@ lower = \case
     Meta m a -> case lower (Let (a, b) c) of
       C.App a b -> C.App (C.Meta (fmap lower m) a) b
       a -> a
-    -- a -> C.App (lower (Fun a c)) (lower b)
     a -> lower (App (For (freeVars a) (Fun a c)) b)
   -- Let (Meta m a, b) c -> case lower (Let (a, b) c) of
   --   C.App a b -> C.App (C.Meta m a) b
