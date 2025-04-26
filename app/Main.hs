@@ -51,9 +51,9 @@ main = do
 
 coreCmd :: FilePath -> String -> IO ()
 coreCmd filename arg = do
-  pkg <- load [filename]
-  ctx <- include "prelude" pkg
-  arg' <- loadExpr "<core>" arg
+  pkg <- dropMeta <$> load [filename]
+  ctx <- dropMeta <$> include "prelude" pkg
+  arg' <- dropMeta <$> loadExpr "<core>" arg
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
   let a = lower arg'

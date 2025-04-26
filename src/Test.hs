@@ -39,7 +39,7 @@ instance Show TestResult where
   show :: TestResult -> String
   show result = case result of
     TestPass filename pos name -> "✅ " ++ name ++ "\n"
-    TestFail filename pos name test expect got -> "❌ " ++ filename ++ ":" ++ show pos.row ++ ":" ++ show pos.col ++ ": " ++ name ++ "\n  > " ++ show test ++ "\n  " ++ show expect ++ "\n* " ++ show got ++ "\n"
+    TestFail filename pos name test expect got -> "❌ " ++ filename ++ ":" ++ show pos.row ++ ":" ++ show pos.col ++ ": " ++ name ++ "\n  > " ++ show test ++ "\n  " ++ show expect ++ "\n* " ++ show (dropMeta got) ++ "\n"
 
 class TestSome a where
   testSome :: Context -> (UnitTest -> Bool) -> a -> [TestResult]

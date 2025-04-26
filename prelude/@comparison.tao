@@ -69,15 +69,3 @@ let x >= y = not (x < y)
 > 1.0 >= 1.0 ~> True
 > 1.0 >= 2.0 ~> False
 > 2.0 >= 1.0 ~> True
-
-: Int -> Int
-let f(x) = x
-
-: Num -> Num
-let f(y) = y
-
-: a -> a
-let g(z) = z
-
-: a -> a
-let h(x) = g(f(x))

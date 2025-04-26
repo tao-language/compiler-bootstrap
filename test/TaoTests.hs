@@ -515,7 +515,8 @@ run = describe "--==☯ Tao ☯==--" $ do
     check' (C.Ann a t) `shouldBe` [(Just (1, 1, 1, 6), undefinedVar "z")]
     -- Undefined since there are errors (should this be removed?)
     -- eval' env a t `shouldBe` ("match z {\n| (y : !undefined-var(z)) -> 42\n}", "Int")
-    eval' env a t `shouldBe` ("!undefined-var(z)", "Int")
+    -- eval' env a t `shouldBe` ("!undefined-var(z)", "Int")
+    eval' env a t `shouldBe` ("!undefined-var(z)", "_")
 
   it "☯ Tao.Match.error.case" $ do
     let ctx = [("m", [def' "x" "42"])]

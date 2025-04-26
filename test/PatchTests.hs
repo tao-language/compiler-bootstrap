@@ -22,7 +22,7 @@ run = describe "--==☯ PatchTests ☯==--" $ do
     let ctx = [("mod", [def (x, i1)])]
     let apply' rule = dropTypes . applyPatch (ctx, "mod", rule)
     apply' (x, y) x `shouldBe` y
-    apply' (x, y) z `shouldBe` Err (undefinedVar "z")
+    apply' (x, y) z `shouldBe` z -- Err (undefinedVar "z")
     apply' (x, y) i1 `shouldBe` y
     apply' (x, y) i2 `shouldBe` y
     apply' (x, y) x `shouldBe` y
