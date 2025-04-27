@@ -570,7 +570,7 @@ instance Emit T.Expr ([Stmt], Expr) where
       -- let (stmts, a') = emit options a
       -- (stmts, Meta (fmap (emit options) m) a')
       error "TODO"
-    T.Err e -> ([], notImplementedError (show e))
+    -- T.Err e -> ([], notImplementedError (show e))
     expr -> error $ "TODO: emit Expr: " ++ show expr
 
 instance Emit (Expr -> Stmt) (T.Expr -> [Stmt]) where

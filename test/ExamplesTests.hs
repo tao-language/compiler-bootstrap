@@ -38,7 +38,7 @@ run = describe "--==☯ Examples ☯==--" $ do
   let (i1, i2, i3) = (Int 1, Int 2, Int 3)
   let (i1', i2', i3') = (C.Int 1, C.Int 2, C.Int 3)
   let loc f r1 c1 r2 c2 = Meta (C.Loc (Location f (Range (Pos r1 c1) (Pos r2 c2))))
-  let err a = Err (customError a)
+  let err e = Meta (C.Error e) Err
 
   let name = "examples/empty"
   it ("☯ " ++ name ++ ".tao") $ do
@@ -94,7 +94,7 @@ run = describe "--==☯ Examples ☯==--" $ do
             Fail "Num match fail" (Num 0.0) (Num 3.14),
             Pass "Tag match",
             Pass "Err match",
-            Fail "Err match fail" i1 (err $ loc (name ++ ".tao") 54 10 54 11 Any)
+            Fail "Err match fail" i1 (err $ customError $ loc (name ++ ".tao") 54 10 54 11 Any)
           ]
     test ctx pkg `shouldBe` testResults
 
@@ -192,7 +192,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let ctx = pkg
     let testResults =
           [ Pass "Ann match",
-            Fail "Ann match type mismatch" i1 (Err $ typeMismatch IntT NumT),
+            Fail "Ann match type mismatch" i1 (err $ typeMismatch IntT NumT),
             Fail "Ann match fail" i2 i1
           ]
     test ctx pkg `shouldBe` testResults
@@ -301,7 +301,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let ctx = pkg
     let testResults =
           [ Pass "For match",
-            Fail "For match fail" i1 (Ann (Err $ unhandledCase i2 i1) IntT)
+            Fail "For match fail" i1 (Ann (err $ unhandledCase i2 i1) IntT)
           ]
     test ctx pkg `shouldBe` testResults
 
@@ -334,7 +334,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let ctx = pkg
     let testResults =
           [ Pass "Call match",
-            Fail "Call match fail" i1 (Err $ unhandledCase (Call "f" [loc (name ++ ".tao") 7 8 7 9 y]) (Call "g" [loc (name ++ ".tao") 7 16 7 17 i1]))
+            Fail "Call match fail" i1 (err $ unhandledCase (Call "f" [loc (name ++ ".tao") 7 8 7 9 y]) (Call "g" [loc (name ++ ".tao") 7 16 7 17 i1]))
           ]
     test ctx pkg `shouldBe` testResults
 

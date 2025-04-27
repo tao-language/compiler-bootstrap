@@ -45,7 +45,7 @@ data Expr
   | With Expr [(String, Expr)]
   | If Expr Expr Expr
   | Meta (C.Metadata Expr) Expr
-  | Err (Error Expr)
+  | Err
   deriving (Eq)
 
 instance Show Expr where
@@ -197,13 +197,12 @@ isFun = \case
 
 isErr :: Expr -> Bool
 isErr = \case
-  Err _ -> True
+  Err -> True
   Meta _ a -> isErr a
   _ -> False
 
 errOf :: Expr -> Maybe (Error Expr)
-errOf (Err e) = Just e
-errOf (Meta _ a) = errOf a
+errOf (Meta (C.Error e) _) = Just e
 errOf _ = Nothing
 
 isImport :: Stmt -> Bool
@@ -260,13 +259,13 @@ caseBindings = \case
   _ -> []
 
 or' :: [Expr] -> Expr
-or' [] = Err (cannotApply (Tuple []) (Tuple []))
+or' [] = Err
 or' [a] = a
 or' (a : bs) = Or a (or' bs)
 
 orOf :: Expr -> [Expr]
 orOf = \case
-  Err (RuntimeError (CannotApply (Tuple []) (Tuple []))) -> []
+  Err -> []
   Or a b -> a : orOf b
   a -> [a]
 
@@ -385,7 +384,7 @@ instance Apply Expr where
     With a fields -> With (f a) (second f <$> fields)
     If a b c -> If (f a) (f b) (f c)
     Meta m a -> Meta m (f a)
-    Err e -> Err (fmap f e)
+    Err -> Err
 
 instance Apply Stmt where
   apply :: (Expr -> Expr) -> Stmt -> Stmt
@@ -408,7 +407,6 @@ instance DropMeta Expr where
   dropMeta :: Expr -> Expr
   dropMeta = \case
     Meta _ a -> dropMeta a
-    Err e -> Err e -- do not drop metadata from errors
     -- Err e -> Err (fmap dropMeta e)
     a -> apply dropMeta a
 
@@ -431,7 +429,6 @@ instance DropLocations Expr where
   dropLocations :: Expr -> Expr
   dropLocations = \case
     Meta (C.Loc _) a -> dropLocations a
-    Err e -> Err e -- do not drop metadata from errors
     a -> apply dropLocations a
 
 instance DropLocations Stmt where
@@ -448,7 +445,6 @@ instance DropTypes Expr where
     Fun (Ann a t) b -> Fun (Ann (dropTypes a) (dropTypes t)) (dropTypes b)
     App a (Ann b t) -> do
       App (dropTypes a) (Ann (dropTypes b) (dropTypes t))
-    Err e -> Err e -- keep types from errors
     -- Err e -> Err (fmap dropTypes e)
     a -> apply dropTypes a
 
@@ -491,7 +487,7 @@ collect f = \case
   With a fields -> f a `union` unionMap (f . snd) fields
   If a b c -> f a `union` f b `union` f c
   Meta m a -> f a
-  Err e -> []
+  Err -> []
   where
     unionMap f = foldr (union . f) []
 
@@ -901,7 +897,7 @@ grammar = do
                 _ -> Nothing,
           -- Grammar.Metadata.SyntaxError
           G.Atom (const P.fail') $ \layout -> \case
-            Meta (C.Error e) a -> Just (PP.Text ("![" ++ show (Err e) ++ "](") : layout a ++ [PP.Text ")"])
+            Meta (C.Error e) a -> Just (PP.Text ("![" ++ show e ++ "](") : layout a ++ [PP.Text ")"])
             Meta m a -> error $ "Grammar.layout " ++ show m
             _ -> Nothing,
           -- Grammar.Err
@@ -922,9 +918,10 @@ grammar = do
                       return (withLoc start end Any)
                     ]
                 _ <- P.spaces
-                return (Err (customError a))
+                return (Meta (C.Error $ customError a) Err)
            in G.Atom parser $ \layout -> \case
-                Err e -> case e of
+                Err -> Just [PP.Text "!Err"]
+                Meta (C.Error e) Err -> case e of
                   SyntaxError (loc, ctx, txt) -> Just [PP.Text $ "!syntax-error[" ++ show loc ++ "|" ++ show ctx ++ "|" ++ show txt ++ "]"]
                   TypeError e -> case e of
                     UndefinedVar x -> Just [PP.Text $ "!undefined-var(" ++ x ++ ")"]
@@ -1015,7 +1012,7 @@ lower = \case
   --   C.tag k args
   If a b c -> lower (Match a [Fun (Ann true bool) b, Fun (Ann false bool) c])
   Meta m a -> C.Meta (fmap lower m) (lower a)
-  Err e -> C.Err (fmap lower e)
+  Err -> C.Err
   a -> error $ "TODO: lower " ++ show a
 
 lift :: C.Expr -> Expr
@@ -1059,8 +1056,7 @@ lift = \case
     | x `C.occurs` a -> Let (Var x, lift a) (lift a)
     | otherwise -> lift a
   C.App a b -> case (lift a, lift b) of
-    (Err (RuntimeError (CannotApply (Tuple []) (Tuple []))), arg) ->
-      Match arg []
+    (Err, arg) -> Match arg []
     (Var x, a) | Just op <- lookup x op1s -> do
       Op1 op a
     (Var x, Ann (Tuple [a, b]) (Tuple [ta, tb])) | Just op <- lookup x op2s -> do
@@ -1076,7 +1072,7 @@ lift = \case
   -- C.Let ((x, b) : env) c -> Let (Var x, lift b) (lift (C.Let env c))
   C.Meta (C.Loc _) (C.Meta (C.Loc loc) a) -> Meta (C.Loc loc) (lift a)
   C.Meta m a -> Meta (fmap lift m) (lift a)
-  C.Err e -> Err (fmap lift e)
+  C.Err -> Err
   a -> error $ "TODO: lift " ++ show a
 
 parseExpr :: Int -> Parser Expr
@@ -1224,7 +1220,7 @@ parseStmt = do
         Comment <$> parseComment,
         Run <$> parseExprUntil "run stmt" 1 [";", "\n"],
         -- TODO: consider a trailing comment on a syntax error like this
-        Run . Err . SyntaxError <$> recoverSyntaxError "statement" (P.text "\n")
+        Run . (\e -> Meta (C.Error e) Err) . SyntaxError <$> recoverSyntaxError "statement" (P.text "\n")
       ]
   _ <- parseLineBreak
   return stmt
@@ -1395,15 +1391,12 @@ instance Check Expr where
       Nothing -> check a
     Meta (C.Error (SyntaxError (loc, ctx, txt))) a ->
       (Just loc, SyntaxError (loc, ctx, txt)) : check a
+    Meta (C.Error e) Err | Just a <- Error.mainExpr e -> case locOf a of
+      Just loc -> [(Just loc, e)]
+      Nothing -> [(Nothing, e)]
     Meta (C.Loc loc) a | Just e <- errOf a -> do
       [(Just loc, e)]
     Meta _ a -> check a
-    Err e | Just a <- Error.mainExpr e -> case locOf a of
-      Just loc -> [(Just loc, e)]
-      Nothing -> [(Nothing, e)]
-    Err e -> case e of
-      SyntaxError (loc, _, _) -> [(Just loc, e)]
-      e -> error ("TODO check: handle " ++ show e)
     a -> collect check a
 
 instance Check (Expr, Maybe Type) where

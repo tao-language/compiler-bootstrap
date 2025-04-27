@@ -41,7 +41,7 @@ data Expr
   | Call String [Expr]
   | Let [(String, Expr)] Expr
   | Meta (Metadata Expr) Expr
-  | Err (Error Expr)
+  | Err
   -- deriving (Eq, Show)
   deriving (Eq)
 
@@ -398,9 +398,10 @@ grammar = do
                 _ <- P.whitespaces
                 _ <- P.char ')'
                 _ <- P.spaces
-                return (err a)
+                return (err $ customError a)
            in G.Atom parser $ \layout -> \case
-                Err e -> case e of
+                Err -> Just [PP.Text "!Err"]
+                Meta (Error e) Err -> case e of
                   TypeError e -> case e of
                     UndefinedVar x -> Just [PP.Text $ "!undefined-var(" ++ x ++ ")"]
                     TypeMismatch a b -> Just (PP.Text "!type-mismatch(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
@@ -411,7 +412,6 @@ grammar = do
                     CannotApply a b -> Just (PP.Text "!cannot-apply(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
                     CustomError a -> Just (PP.Text "!error(" : layout a ++ [PP.Text ")"])
                   e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
-                Meta (Error e) a -> Just (PP.Text ("![" ++ show (Err e) ++ "](") : layout a ++ [PP.Text ")"])
                 _ -> Nothing
         ]
     }
@@ -577,20 +577,31 @@ matchFun [] = Unit
 matchFun [(ps, b)] = fun ps b
 matchFun ((ps, b) : cases) = fun ps b `Or` matchFun cases
 
-err :: Expr -> Expr
-err a = Err (customError a)
+err :: Error Expr -> Expr
+err e = Meta (Error e) Err
 
 -- TODO: centralize into a single kind of errors
 isErr :: Expr -> Bool
-isErr (Err _) = True
-isErr (Meta (Error _) _) = True
+isErr Err = True
 isErr (Meta _ a) = isErr a
 isErr _ = False
 
-errOf :: Expr -> Maybe (Error Expr)
-errOf (Err e) = Just e
-errOf (Meta _ a) = errOf a
-errOf _ = Nothing
+hasErr :: Expr -> Bool
+hasErr = \case
+  Tag _ a -> hasErr a
+  And a b -> hasErr a || hasErr b
+  Or a b -> hasErr a || hasErr b
+  Ann a b -> hasErr a || hasErr b
+  For _ a -> hasErr a
+  Fix _ a -> hasErr a
+  Fun a b -> hasErr a || hasErr b
+  App a b -> hasErr a || hasErr b
+  Call _ args -> any hasErr args
+  Let _ a -> hasErr a
+  Meta (Error _) _ -> True
+  Meta _ a -> hasErr a
+  Err -> True
+  _ -> False
 
 typed :: Expr -> Type -> Expr
 typed a _ | isAnn a = a
@@ -649,7 +660,7 @@ freeNames (vars, tags, calls) = \case
   -- Let _ b -> freeNames' b
   Let env b -> freeNames' (reduce [] (Let env b))
   Meta _ a -> freeNames' a
-  Err _ -> []
+  Err -> []
   where
     freeNames' = freeNames (vars, tags, calls)
 
@@ -717,7 +728,7 @@ reduceLet ops env = \case
     (_, args) -> Call f args
   Let env' a -> reduce ops (Let (env ++ env') a)
   Meta m a -> Meta m (reduce ops (Let env a))
-  Err e -> Err (Let env <$> e)
+  Err -> Err
   expr -> expr
 
 reduceApp :: Ops -> Expr -> Expr -> Expr
@@ -727,7 +738,7 @@ reduceApp ops a b = case (a, reduce ops b) of
   (a@App {}, b) -> App a b
   (Ann a _, b) -> reduceApp ops (reduce ops a) b
   (Or a1 a2, b) -> case reduceApp ops (reduce ops a1) b of
-    Err _ -> reduceApp ops (reduce ops a2) b
+    Err -> reduceApp ops (reduce ops a2) b
     c@App {} -> Or c (App a2 b)
     c -> c
   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
@@ -735,10 +746,10 @@ reduceApp ops a b = case (a, reduce ops b) of
   (Fun a c, b) -> case match False ops a b of
     Matched env -> reduce ops (Let env c)
     MaybeMatched a b -> App (Fun a c) b
-    NotMatched a b -> Err (unhandledCase a b)
+    NotMatched a b -> err (unhandledCase a b)
   (Call f args, b) -> App (Call f args) b
   (Meta _ a, b) -> reduceApp ops a b
-  _ -> Err (cannotApply a b)
+  _ -> err (cannotApply a b)
 
 match :: Bool -> Ops -> Expr -> Expr -> MatchResult Env
 match unify ops (Let env (Tag k a)) b = case lookup k env of
@@ -807,7 +818,7 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (_, Meta _ b) -> match unify ops a b
   (a, Ann b _) -> match unify ops a b
   (Ann a _, b) -> match unify ops a b
-  (Err _, Err _) -> Matched []
+  (Err, Err) -> Matched []
   (a, b) -> NotMatched a b
 
 eval :: Ops -> Expr -> Expr
@@ -822,7 +833,7 @@ eval ops expr = case reduce ops expr of
   App a b -> App (eval ops a) (eval ops b)
   Call f args -> Call f (eval ops <$> args)
   Meta m a -> Meta m (eval ops a)
-  Err e -> Err (fmap (eval ops) e)
+  Err -> Err
   a -> a
 
 class Substitute a where
@@ -854,7 +865,7 @@ instance Substitute Expr where
     let s' = filter (\(x, _) -> x `notElem` map fst env) s
     Let (map sub env) (substitute s' b)
   substitute s (Meta m a) = Meta m (substitute s a)
-  substitute s (Err e) = Err (substitute s e)
+  substitute _ Err = Err
 
 instance Substitute (Error Expr) where
   substitute :: Substitution -> Error Expr -> Error Expr
@@ -900,7 +911,7 @@ dropMeta (App a b) = App (dropMeta a) (dropMeta b)
 dropMeta (Call op args) = Call op (map dropMeta args)
 dropMeta (Let defs b) = Let (map (second dropMeta) defs) (dropMeta b)
 dropMeta (Meta _ a) = dropMeta a
-dropMeta (Err e) = Err (fmap dropMeta e)
+dropMeta Err = Err
 dropMeta a = a
 
 dropLet :: Expr -> Expr
@@ -943,17 +954,15 @@ unify ops env a b = case (a, b) of
   (Int i, Int i') | i == i' -> (Int i, [])
   (Num n, Num n') | n == n' -> (Num n, [])
   (Or a1 a2, b) -> case (unify ops env a1 b, unify ops env a2 b) of
-    ((e1, _), (e2, _)) | isErr e1 && isErr e2 -> (Or e1 e2, [])
-    ((c, s), (e, _)) | isErr e -> (c, s)
-    ((e, _), (c, s)) | isErr e -> (c, s)
+    ((c, s), (e, _)) | hasErr e -> (c, s)
+    ((e, _), (c, s)) | hasErr e -> (c, s)
     ((c1, s1), (c2, s2)) -> (merge ops env (substitute s2 c1) (substitute s1 c2), merge ops env s1 s2)
   (a, Or b1 b2) -> case (unify ops env a b1, unify ops env a b2) of
-    ((e1, _), (e2, _)) | isErr e1 && isErr e2 -> (Or e1 e2, [])
-    ((c, s), (e, _)) | isErr e -> (c, s)
-    ((e, _), (c, s)) | isErr e -> (c, s)
+    ((c, s), (e, _)) | hasErr e -> (c, s)
+    ((e, _), (c, s)) | hasErr e -> (c, s)
     ((c1, s1), (c2, s2)) -> (merge ops env (substitute s2 c1) (substitute s1 c2), merge ops env s1 s2)
   (Var x, Var x') | x == x' -> (Var x, [])
-  (Var x, b) | x `occurs` b -> (Err $ occursError x b, [])
+  (Var x, b) | x `occurs` b -> (err $ occursError x b, [])
   (Var x, b) -> (b, [(x, b)])
   (a, Var x) -> unify ops env (Var x) a
   (Tag k a, Tag k' b) | k == k' -> do
@@ -970,8 +979,8 @@ unify ops env a b = case (a, b) of
     let (t, s) = unify ops env' (Tag k a) b'
     (t, s)
   (And a1 b1, And a2 b2) -> case unify2 ops env (a1, a2) (b1, b2) of
-    ((a, b), s) | Just e <- errOf a -> (Meta (Error e) (And a b), s)
-    ((a, b), s) | Just e <- errOf b -> (Meta (Error e) (And a b), s)
+    -- ((a, b), s) | Just e <- errOf a -> (Meta (Error e) (And a b), s)
+    -- ((a, b), s) | Just e <- errOf b -> (Meta (Error e) (And a b), s)
     ((a, b), s) -> (And a b, s)
   (Ann a ta, Ann b tb) -> do
     let ((a', ta'), s) = unify2 ops env (a, b) (ta, tb)
@@ -989,13 +998,14 @@ unify ops env a b = case (a, b) of
   (Fix _ a, b) -> unify ops env a b
   (a, Fix _ b) -> unify ops env a b
   (Fun a1 b1, Fun a2 b2) -> case unify2 ops env (a1, a2) (b1, b2) of
-    ((a, _), _) | isErr a -> (a, [])
-    ((_, b), _) | isErr b -> (b, [])
+    -- ((a, _), _) | hasErr a -> (a, [])
+    -- ((_, b), _) | hasErr b -> (b, [])
+    ((a, b), _) | hasErr a || hasErr b -> (Fun a b, [])
     ((a, b), s) -> (Fun a b, s)
   (Call op args, Call op' args') | op == op' -> do
     let (args'', s) = unifyAll ops env args args'
     (Call op args'', s)
-  (a, b) -> (Err $ typeMismatch a b, [])
+  (a, b) -> (err $ typeMismatch a b, [])
 
 unify2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> ((Expr, Expr), Substitution)
 unify2 ops env (a1, a2) (b1, b2) = do
@@ -1032,7 +1042,7 @@ infer ops env (Var x) = do
         Just a -> do
           let ((_, ta), s) = infer ops [] a
           (ta, s)
-        Nothing -> (Err (undefinedVar x), [])
+        Nothing -> (err (undefinedVar x), [])
   ((Var x, ta), s)
 infer ops env (Ann a (For x t)) = infer ops env (For x (Ann a t))
 infer ops env (Ann a (Meta m t)) = do
@@ -1043,9 +1053,9 @@ infer ops env (And a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((And a' b', And ta tb), s)
 infer ops env (Or a b) = case (infer ops env a, infer ops env b) of
-  (((a', e1), _), ((b', e2), _)) | isErr e1 && isErr e2 -> ((Or a' b', Or e1 e2), [] :: Substitution)
-  (((a', ta), s), ((_, e), _)) | isErr e -> ((a', ta), s)
-  (((_, e), _), ((b', tb), s)) | isErr e -> ((b', tb), s)
+  (((a', ta), _), ((b', tb), _)) | hasErr ta && hasErr tb -> ((Or a' b', Or ta tb), [])
+  (((_, ta), _), ((b', tb), s)) | hasErr ta -> ((b', tb), s)
+  (((a', ta), s), ((_, tb), _)) | hasErr tb -> ((a', ta), s)
   (((a', ta), s1), ((b', tb), s2)) -> ((Or a' b', merge ops env ta tb), merge ops env s1 s2)
 infer ops env (For x a) = do
   let y = newName (map fst env) x
@@ -1057,10 +1067,6 @@ infer ops env (Fix x a) = do
   ((Fix x (substitute [(y, Var x)] a'), ta), s `compose` [(y, Var y)])
 infer ops env (Fun a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
-  -- case (ta, tb) of
-  --   (ta, tb) | Just e <- errOf ta -> ((Any, Meta (Error e) (Fun ta tb)), [])
-  --   (ta, tb) | Just e <- errOf tb -> ((Any, Meta (Error e) (Fun ta tb)), [])
-  --   _ -> ((Fun (typed (dropTypes a') ta) (typed b' tb), Fun ta tb), s)
   ((Fun (typed (dropTypes a') ta) (typed b' tb), Fun ta tb), s)
 -- infer ops env (App a b) = do
 --   let ((a', ta), (b', tb), s1) = infer2 ops env a b
@@ -1070,7 +1076,7 @@ infer ops env (Fun a b) = do
 --       let x = newName ("$" : map fst (s1 ++ env)) "$"
 --       let (ta', s2) = unify ops (s1 `compose` env) ta (Fun tb (Var x))
 --       let t = fromMaybe (Var x) (lookup x s2)
---       if isErr tb
+--       if hasErr tb
 --         then ((substitute s2 tb, t), s2 `compose` s1)
 --         else ((App a' (substitute s2 $ typed b' tb), t), s2 `compose` s1)
 -- infer ops env (App a@(Var "f") b) = do
@@ -1078,7 +1084,7 @@ infer ops env (Fun a b) = do
 --   let x = newName ("$" : map fst (s1 ++ env)) "$"
 --   let ((a', ta), s2) = check ops ((x, Var x) : s1 `compose` env) (substitute s1 a) (Fun (substitute s1 tb) (Var x))
 --   let t = fromMaybe (Var x) (lookup x s2)
---   -- if isErr tb
+--   -- if hasErr tb
 --   --   then ((substitute s2 tb, t), s2 `compose` s1)
 --   --   else ((App a' (typed (substitute s2 b') (substitute s2 tb)), t), s2 `compose` s1)
 --   -- error $ show ((App a' (substitute s2 $ typed b' tb), t), s2 `compose` s1)
@@ -1102,7 +1108,7 @@ infer ops env (App a b) = do
   let x = newName ("$" : map fst (s1 ++ env)) "$"
   let ((a', ta), s2) = check ops ((x, Var x) : s1 `compose` env) (substitute s1 a) (Fun (substitute s1 tb) (Var x))
   let t = fromMaybe (Var x) (lookup x s2)
-  if isErr tb
+  if hasErr tb
     then ((substitute s2 tb, t), s2 `compose` s1)
     else ((App a' (substitute s2 $ typed b' tb), t), s2 `compose` s1)
 infer ops env (Let defs a) = do
@@ -1115,9 +1121,9 @@ infer ops env (Call op args) = do
 infer ops env (Meta m a) = do
   let ((a', ta), s) = infer ops env a
   case (a', ta) of
-    (a', e) | isErr e -> ((Ann (Meta m a') e, e), s)
+    (a', e) | hasErr e -> ((Ann (Meta m a') e, e), s)
     (a', ta) -> ((Meta m a', ta), s)
-infer _ _ (Err e) = ((Err e, Any), [])
+infer _ _ Err = ((Err, Err), [])
 
 infer2 :: Ops -> Env -> Expr -> Expr -> ((Expr, Type), (Expr, Type), Substitution)
 infer2 ops env a b = do
@@ -1134,9 +1140,8 @@ inferAll ops env (a : bs) = do
 
 check :: Ops -> Env -> Expr -> Type -> ((Expr, Type), Substitution)
 check ops env (Or a b) t = case (check ops env a t, check ops env b t) of
-  (((a', e1), _), ((b', e2), _)) | isErr e1 && isErr e2 -> ((Or a' b', Or e1 e2), [])
-  (((a', ta), s), ((_, e), _)) | isErr e -> ((a', ta), s)
-  (((_, e), _), ((b', tb), s)) | isErr e -> ((b', tb), s)
+  (((a', ta), s), ((_, tb), _)) | hasErr tb -> ((a', ta), s)
+  (((_, ta), _), ((b', tb), s)) | hasErr ta -> ((b', tb), s)
   (((a', ta), s1), ((b', tb), s2)) -> ((Or a' b', merge ops env ta tb), merge ops env s1 s2)
 check ops env (For x a) ta = do
   let y = newName (map fst env) x
@@ -1159,8 +1164,8 @@ check ops env (For x a) ta = do
 check ops env (Fun a b) (Fun ta tb) = do
   let ((a', ta'), (b', tb'), s) = check2 ops env (a, ta) (b, tb)
   case (ta, tb) of
-    (ta, tb) | Just e <- errOf ta -> ((Any, Meta (Error e) (Fun ta tb)), [])
-    (ta, tb) | Just e <- errOf tb -> ((Any, Meta (Error e) (Fun ta tb)), [])
+    -- (ta, tb) | Just e <- errOf ta -> ((Any, Meta (Error e) (Fun ta tb)), [])
+    -- (ta, tb) | Just e <- errOf tb -> ((Any, Meta (Error e) (Fun ta tb)), [])
     _ -> ((Fun (typed (dropTypes a') ta') (typed b' tb'), Fun ta' tb'), s)
 check ops env (App a b) t2 = do
   let ((b', t1), s1) = infer ops env b
@@ -1192,7 +1197,7 @@ check ops env (App a b) t2 = do
 --   let ((a', _), s2) = check ops (s1 `compose` env) (substitute s1 a) (Fun t1 (substitute s1 t2))
 --   let s = s2 `compose` s1
 --   ((App a' (substitute s2 (typed b' t1)), substitute s t2), s)
-check ops env a (Err _) = infer ops env a
+check ops env a Err = infer ops env a
 check ops env a (Meta m ta) = do
   let ((a', ta'), s) = check ops env a ta
   ((a', Meta m ta'), s)
@@ -1234,7 +1239,7 @@ instance Merge Expr where
       x == x' =
         Ann a (merge ops env ta tb)
   merge ops env a b = case unify ops env a b of
-    (a, []) | not (isErr a) -> a
+    (c, []) | not (hasErr c) -> c
     _ -> Or a b
 
 instance Merge Substitution where
