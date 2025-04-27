@@ -732,6 +732,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     check' (Fun x y `Or` Fun e e) (Fun IntT NumT) `shouldBe` ((Fun (Ann x IntT) (Ann y NumT), Fun IntT NumT), [])
     infer' (Fun e e `Or` Fun (Ann x IntT) (Ann y NumT)) `shouldBe` ((Fun (Ann x IntT) (Ann y NumT), Fun IntT NumT), [])
     check' (Fun e e `Or` Fun x y) (Fun IntT NumT) `shouldBe` ((Fun (Ann x IntT) (Ann y NumT), Fun IntT NumT), [])
+    infer' (App (Fun x y) i1) `shouldBe` ((App (Fun (Ann x IntT) (Ann y NumT)) (Ann i1 IntT), NumT), [("$1", NumT)])
+    check' (App (Fun x y) i1) NumT `shouldBe` ((App (Fun (Ann x IntT) (Ann y NumT)) (Ann i1 IntT), NumT), [])
 
   -- it "☯ checkTypes" $ do
   --   let env =
