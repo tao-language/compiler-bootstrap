@@ -720,7 +720,14 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' (Ann (cons (Num 1.1) (cons (Num 2.2) nil)) (vec i0 NumT)) `shouldBe` ((cons (Num 1.1) (cons (Num 2.2) nil), Tag "Vec" (Meta (Error $ typeMismatch i2 i0) $ And (err $ typeMismatch i2 i0) NumT)), [])
 
   it "☯ Core.choice" $ do
-    let env = [("a", a), ("b", b), ("x", i1), ("y", n1)]
+    let env =
+          [ ("a", a),
+            ("b", b),
+            ("x", i1),
+            ("y", n1),
+            ("f", Ann f (Fun a a)),
+            ("g", Ann g (Fun (And a a) a))
+          ]
     let infer' = infer ops env
     let check' = check ops env
     let e = err (typeMismatch NumT IntT)
@@ -734,6 +741,9 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     check' (Fun e e `Or` Fun x y) (Fun IntT NumT) `shouldBe` ((Fun (Ann x IntT) (Ann y NumT), Fun IntT NumT), [])
     infer' (App (Fun x y) i1) `shouldBe` ((App (Fun (Ann x IntT) (Ann y NumT)) (Ann i1 IntT), NumT), [("$1", NumT)])
     check' (App (Fun x y) i1) NumT `shouldBe` ((App (Fun (Ann x IntT) (Ann y NumT)) (Ann i1 IntT), NumT), [])
+    -- f : a -> a
+    -- g : (a, a) -> a
+    () `shouldBe` ()
 
   -- it "☯ checkTypes" $ do
   --   let env =

@@ -406,6 +406,7 @@ class DropMeta a where
 instance DropMeta Expr where
   dropMeta :: Expr -> Expr
   dropMeta = \case
+    Meta (C.Error e) a -> Meta (C.Error e) (dropMeta a)
     Meta _ a -> dropMeta a
     -- Err e -> Err (fmap dropMeta e)
     a -> apply dropMeta a
