@@ -1105,9 +1105,9 @@ infer ops env (App a b) = do
       | Just (b1, b2) <- asOr (substitute s2 b'),
         Just (tb1, tb2) <- asOr tb -> do
           ((App a' (typed b1 tb1) `Or` App a' (typed b2 tb2), tb), s2 `compose` s1)
-    -- (ta, tb)
-    --   | Just (tb1, tb2) <- asOr tb -> do
-    --       error $ show ((App a' (typed b' tb1) `Or` App a' (typed b' tb2), t), s2 `compose` s1)
+    (ta, tb)
+      | Just (tb1, tb2) <- asOr tb -> do
+          ((App a' (typed b' tb1) `Or` App a' (typed b' tb2), t), s2 `compose` s1)
     (ta, tb) -> do
       ((App a' (typed b' $ substitute s2 tb), t), s2 `compose` s1)
 -- infer ops env (App a b) = do
