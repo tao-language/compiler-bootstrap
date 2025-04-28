@@ -69,14 +69,3 @@ let x >= y = not (x < y)
 > 1.0 >= 1.0 ~> True
 > 1.0 >= 2.0 ~> False
 > 2.0 >= 1.0 ~> True
-
-: a -> a
-let id(x) = x
-
-let f(1) = 2
-let f(1.0) = 2.0
-
-# @y. f(y) ~> @y. (f(y : Int) | f(y : Num)) : (Int | Num)
-# @y. id(f(y)) ~> @y. id(f(y : Int)) | id(f(y : Num)) : (Int | Num)
-# y -> id(f(y)) ~> (y : Int) -> id(f(..)) | (y : Num) -> id(f(..)) : (Int -> Int | Num -> Num)
-let g(y) = id(f(y))
