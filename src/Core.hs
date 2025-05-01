@@ -457,6 +457,12 @@ parseNameTag =
     ]
 
 -- Syntax sugar
+isVar :: Expr -> Bool
+isVar (Var _) = True
+isVar (Ann a _) = isVar a
+isVar (Meta _ a) = isVar a
+isVar _ = False
+
 varOf :: Expr -> Maybe String
 varOf (Var x) = Just x
 varOf (Meta _ a) = varOf a
@@ -538,6 +544,11 @@ funOf :: Expr -> ([Expr], Expr)
 funOf (Fun arg ret) = (andOf arg, ret)
 funOf a = ([], a)
 
+isFun :: Expr -> Bool
+isFun (Fun _ _) = True
+isFun (Meta _ a) = isFun a
+isFun _ = False
+
 asFun :: Expr -> Maybe (Expr, Expr)
 asFun (Fun a b) = Just (a, b)
 asFun (Meta _ a) = asFun a
@@ -551,6 +562,11 @@ app fun args = App fun (and' args)
 
 appT :: Expr -> [Expr] -> [Type] -> Expr
 appT fun args types = App fun (Ann (and' args) (and' types))
+
+isApp :: Expr -> Bool
+isApp (App _ _) = True
+isApp (Meta _ a) = isApp a
+isApp _ = False
 
 appOf :: Expr -> (Expr, [Expr])
 appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
@@ -739,13 +755,9 @@ reduceLet ops env = \case
 reduceApp :: Ops -> Expr -> Expr -> Expr
 reduceApp ops a b = case (a, reduce ops b) of
   (Any, _) -> Any
-  (a@Var {}, b) -> App a b
-  (a@App {}, b) -> App a b
+  (a, b) | isVar a || isApp a -> App a b
   (Ann a _, b) -> reduceApp ops (reduce ops a) b
-  (Or a1 a2, b) -> case reduceApp ops (reduce ops a1) b of
-    Err -> reduceApp ops (reduce ops a2) b
-    c@App {} -> Or c (App a2 b)
-    c -> c
+  (Or a1 a2, b) -> Or (reduceApp ops (reduce ops a1) b) (App a2 b)
   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
   (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
   (Fun a c, b) -> case match False ops a b of
@@ -831,7 +843,10 @@ eval ops expr = case reduce ops expr of
   Tag k a -> Tag k (eval ops a)
   Ann a b -> Ann (eval ops a) (eval ops b)
   And a b -> And (eval ops a) (eval ops b)
-  Or a b -> Or (eval ops a) (eval ops b)
+  Or a b -> case typedOf (eval ops a) of
+    (Err, _) -> eval ops b
+    (a, t) | isVar a || isApp a -> Or (Ann a t) (eval ops b)
+    (a, t) -> Ann a t
   For x a -> For x (eval ops (Let [(x, Var x)] a))
   Fix x a -> Fix x (eval ops (Let [(x, Var x)] a))
   Fun a b -> Fun (eval ops a) (eval ops b)
