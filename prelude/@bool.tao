@@ -1,7 +1,4 @@
-type Bool {
-| True
-| False
-}
+type Bool = True | False
 
 : Bool -> Bool
 let (not) = match {

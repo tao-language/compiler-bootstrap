@@ -1285,33 +1285,37 @@ parseDef op = do
 parseTypeDef :: Parser (String, [Expr], [(Expr, Maybe Type)])
 parseTypeDef = do
   _ <- P.word "type"
-  _ <- P.commit "typedef"
+  _ <- P.commit "type"
   _ <- P.whitespaces
   name <- parseNameTag
   _ <- P.whitespaces
   args <-
     P.oneOf
       [ parseCollection "(" "," ")" $ do
-          parseExprUntil "typedef arg" 0 [",", ")"],
+          parseExprUntil "typedef arg" 0 [",", ")", "=", "\n"],
         return []
       ]
   _ <- P.whitespaces
-  _ <- P.char '{'
+  _ <- P.char '='
+  _ <- P.whitespaces
+  let parseAlt = do
+        a <- parseExprUntil "type alt" 3 ["=>", "|", "\n"]
+        _ <- P.spaces
+        mb <- P.maybe' $ do
+          _ <- P.whitespaces
+          _ <- P.text "=>"
+          _ <- P.whitespaces
+          parseExprUntil "type alt-type" 3 ["|", "\n"]
+        return (a, mb)
+  _ <- P.maybe' (P.char '|')
+  _ <- P.whitespaces
+  alt <- parseAlt
   _ <- P.whitespaces
   alts <- P.zeroOrMore $ do
     _ <- P.char '|'
-    _ <- P.spaces
-    a <- parseExprUntil "typedef alt" 1 ["=>", "|", "}", "\n"]
-    _ <- P.spaces
-    mb <- P.maybe' $ do
-      _ <- P.text "=>"
-      _ <- P.whitespaces
-      parseExprUntil "typedef alt-type" 1 ["|", "}", "\n"]
     _ <- P.whitespaces
-    return (a, mb)
-  _ <- P.char '}'
-  _ <- P.spaces
-  return (name, args, alts)
+    parseAlt
+  return (name, args, alt : alts)
 
 parseTest :: Parser Stmt
 parseTest = do
