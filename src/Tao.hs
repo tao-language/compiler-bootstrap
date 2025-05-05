@@ -241,15 +241,21 @@ tag k = Tag k []
 fun :: [Expr] -> Expr -> Expr
 fun ps = Fun (Tuple ps)
 
-forOf :: Expr -> ([String], Expr)
-forOf = \case
-  For xs a -> do
-    let (ys, a') = forOf a
-    (xs ++ ys, a')
+asFun :: Expr -> Maybe (Expr, Expr)
+asFun = \case
+  Fun a b -> Just (a, b)
+  Meta _ a -> asFun a
+  _ -> Nothing
+
+asFor :: Expr -> Maybe ([String], Expr)
+asFor = \case
+  For xs a -> case asFor a of
+    Just (ys, a') -> Just (xs ++ ys, a')
+    Nothing -> Just (xs, a)
   Meta m a -> do
-    let (xs, a') = forOf a
-    (xs, Meta m a')
-  a -> ([], a)
+    (xs, a') <- asFor a
+    Just (xs, Meta m a')
+  _ -> Nothing
 
 caseBindings :: Expr -> [String]
 caseBindings = \case
@@ -344,6 +350,11 @@ typed :: Expr -> (Expr, Type)
 typed (Ann a t) = (a, t)
 typed (Meta _ a) | isAnn a = typed a
 typed a = (a, Any)
+
+bound :: Expr -> Expr
+bound = \case
+  Fun a b -> For [] (Fun (bound a) (bound b))
+  a -> apply bound a
 
 -- Helper functions
 class Apply a where
@@ -619,23 +630,28 @@ grammar = do
                   Just ([PP.Text "'"] ++ concatMap layoutSegment segments ++ [PP.Text "'"])
                 _ -> Nothing,
           -- Grammar.Let
+          -- Grammar.Bind
           let parser expr = do
                 start <- P.getState
                 _ <- P.word "let"
                 _ <- P.commit "let"
                 end <- P.getState
                 _ <- P.whitespaces
-                a <- parseExprUntil "let lhs" 0 ["=", ";"]
+                a <- parseExprUntil "let lhs" 0 ["=", "<-", ";", "\n", "~>"]
                 _ <- P.whitespaces
-                _ <- P.char '='
+                bind <-
+                  P.oneOf
+                    [ do _ <- P.char '='; return Let,
+                      do _ <- P.text "<-"; return Bind
+                    ]
                 _ <- P.whitespaces
-                b <- parseExprUntil "let rhs" 0 [";", "\n"]
+                b <- parseExprUntil "let rhs" 0 [";", "\n", "~>"]
                 _ <- parseLineBreak
-                withLoc start end . Let (a, b) <$> expr
+                withLoc start end . bind (a, b) <$> expr
            in G.Atom parser $ \layout -> \case
                 Let (a, b) c -> Just (PP.Text "let " : layout a ++ PP.Text " = " : layout b ++ PP.NewLine : layout c)
+                Bind (a, b) c -> Just (PP.Text "let " : layout a ++ PP.Text " <- " : layout b ++ PP.NewLine : layout c)
                 _ -> Nothing,
-          -- Grammar.Bind (Pattern, Expr) Expr
           -- Grammar.Or
           G.infixR 2 (loc2 Or) "|" $ \case
             Or a b -> Just (a, " ", b)
@@ -661,9 +677,16 @@ grammar = do
             Op2 Ne a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Lt
-          G.infixL 6 (locOp2 Lt) "<" $ \case
-            Op2 Lt a b -> Just (a, " ", b)
-            _ -> Nothing,
+          let parser x expr = do
+                start <- P.getState
+                _ <- P.char '<'
+                end <- P.getState
+                _ <- P.lookaheadNot (P.char '-')
+                _ <- P.spaces
+                withLoc start end . Op2 Lt x <$> expr
+           in G.InfixL 6 parser $ \lhs rhs -> \case
+                Op2 Lt a b -> Just (lhs a ++ PP.Text " " : rhs b)
+                _ -> Nothing,
           -- Grammar.Op2.Le
           G.infixL 6 (locOp2 Le) "<=" $ \case
             Op2 Le a b -> Just (a, " ", b)
@@ -953,7 +976,9 @@ lower = \case
   Char c -> C.tag "Char" [C.Int (ord c)]
   Var x -> C.Var x
   Tag k args -> C.tag k (map lower args)
-  Ann a b -> C.Ann (lower a) (lower b)
+  Ann a b -> case freeVars b of
+    [] -> C.Ann (lower a) (lower b)
+    xs -> C.Ann (lower a) (lower $ For xs b)
   Tuple items -> C.and' (map lower items)
   List [] -> C.tag' "[]"
   List (a : bs) -> lower (Tag "::" [a, List bs])
@@ -961,10 +986,8 @@ lower = \case
   String [Str txt] -> lower (List (map Char txt))
   String segments -> error "TODO: lower String interpolation"
   Or a b -> C.Or (lower a) (lower b)
-  For xs (Fun a b) -> C.for xs (C.Fun (lower a) (lower b))
-  For xs (Meta m a) -> do
-    let (xs', a') = C.forOf (lower (For xs a))
-    C.for xs' (C.Meta (fmap lower m) a')
+  For xs a | Just (a, b) <- asFun a -> do
+    C.for xs (C.Fun (lower $ bound a) (lower $ bound b))
   For xs a -> C.for xs (lower a)
   Fun a b -> lower (For (freeVars a) (Fun a b))
   App a b -> C.App (lower a) (lower b)
@@ -994,11 +1017,7 @@ lower = \case
       C.App a b -> C.App (C.Meta (fmap lower m) a) b
       a -> a
     a -> lower (App (For (freeVars a) (Fun a c)) b)
-  -- Let (Meta m a, b) c -> case lower (Let (a, b) c) of
-  --   C.App a b -> C.App (C.Meta m a) b
-  --   a -> a
-  -- Let (a, b) c -> lower (Let (For (freeVars a) a, b) c)
-  -- -- lower env (Bind (ts, p, a) b) = lower env (App (Trait a "<-") (Function [p] b))
+  Bind (a, b) c -> lower (app (Var "<-") [b, Fun a c])
   -- Record fields -> do
   --   let k = '~' : intercalate "," (map fst fields)
   --   lower (tag k (map snd fields))
@@ -1047,9 +1066,6 @@ lift = \case
   C.For x a -> case C.forOf (C.For x a) of
     (xs, C.Fun a b) | sort xs == sort (C.freeVars a) -> Fun (lift a) (lift b)
     (xs, C.Fun a b) -> For xs (Fun (lift a) (lift b))
-    (xs, C.Meta m a) -> do
-      let (xs', a') = forOf (lift (C.for xs a))
-      For xs' (Meta (fmap lift m) a')
     (xs, a) -> For xs (lift a)
   C.Fun a b | null (C.freeVars a) -> Fun (lift a) (lift b)
   C.Fun a b -> For [] (Fun (lift a) (lift b))
@@ -1163,6 +1179,7 @@ parseNameOp = do
         P.word "and",
         P.word "or",
         P.word "xor",
+        P.text "<-",
         P.text "==",
         P.text "!=",
         P.text "<=",
@@ -1537,12 +1554,19 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
+  compile ctx path (name@"<-", expr) = do
+    let dependencies = delete name (freeNames expr)
+    let env = concatMap (fst . compile ctx path) dependencies
+    let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
+    -- case t of
+    --   C.Any -> (env, a)
+    --   C.Var _ -> (env, a)
+    --   _ -> (env, C.Ann a t)
+    error $ show (lower expr)
   compile ctx path (name, expr) = do
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies
     let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
-    -- (env, C.for' (map fst s) $ C.Ann a t)
-    -- let expr a = C.for (C.freeVars a) a
     case t of
       C.Any -> (env, a)
       C.Var _ -> (env, a)

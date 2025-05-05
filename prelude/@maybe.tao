@@ -1,4 +1,29 @@
 type Maybe(a) =
-| Just(a)
-| Nothing
+| Some(a)
+| None
 
+: (Maybe(a), a -> Maybe(b)) -> Maybe(b)
+let (<-)(m, f) = match m {
+| Some(x) -> f(x)
+| None -> None
+}
+
+> let x <- Some(1); x ~> 1
+> let x <- None; x ~> None
+
+: (Maybe(a), a -> b) -> Maybe(b)
+let map(m, f) =
+  let x <- m
+  Some(f(x))
+
+> map(Some(1), x -> x + 1) ~> Some(2)
+> map(None, x -> x + 1) ~> None
+
+: (Maybe(a), a) -> Maybe(a)
+let m or default = match m {
+| Some(x) -> Some(x)
+| None -> Some(default)
+}
+
+> Some(1) or 2 ~> 1
+> None or 2 ~> 2
