@@ -987,7 +987,7 @@ lower = \case
   String segments -> error "TODO: lower String interpolation"
   Or a b -> C.Or (lower a) (lower b)
   For xs a | Just (a, b) <- asFun a -> do
-    C.for xs (C.Fun (lower $ bound a) (lower $ bound b))
+    C.for xs (C.Fun (lower $ bound a) (lower b))
   For xs a -> C.for xs (lower a)
   Fun a b -> lower (For (freeVars a) (Fun a b))
   App a b -> C.App (lower a) (lower b)
@@ -995,7 +995,7 @@ lower = \case
   Op1 op a -> C.app (C.Var $ show op) [lower a]
   Op2 Cons a b -> lower (Tag "::" [a, b])
   Op2 op a b -> C.app (C.Var $ show op) [lower a, lower b]
-  Match arg cases -> C.App (lower (or' cases)) (lower arg)
+  Match arg cases -> lower (App (or' cases) arg)
   MatchFun cases -> lower (or' cases)
   Let (a, b) c -> case a of
     Var x | c == Var x -> lower b

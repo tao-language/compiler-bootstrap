@@ -1016,18 +1016,8 @@ unify ops env a b = case (a, b) of
     let env' = filter (\(x, _) -> x /= k) env
     unify ops env' (Tag k a) b'
   (And a1 b1, And a2 b2) -> do
-    let asdf = unify2 ops env (a1, a2) (b1, b2)
-    -- error $ show (unify ops env a1 a2)
-    (error . intercalate "\n")
-      [ "unify " ++ show (And a1 b1, And a2 b2),
-        show $ unify ops env a1 a2,
-        show $ unify ops env b1 b2,
-        ""
-      ]
-  (And a1 b1, And a2 b2) -> case unify2 ops env (a1, a2) (b1, b2) of
-    -- ((a, b), s) | Just e <- errOf a -> (Meta (Error e) (And a b), s)
-    -- ((a, b), s) | Just e <- errOf b -> (Meta (Error e) (And a b), s)
-    ((a, b), s) -> (And a b, s)
+    let ((a, b), s) = unify2 ops env (a1, a2) (b1, b2)
+    (And a b, s)
   (Ann a ta, Ann b tb) -> do
     let ((a', ta'), s) = unify2 ops env (a, b) (ta, tb)
     (Ann a' ta', s)
@@ -1255,21 +1245,21 @@ check ops env a (Meta m ta) = do
 check ops env (Meta m a) ta = do
   let ((a', ta'), s) = check ops env a ta
   ((Meta m a', ta'), s)
-check ops env a@And {} t@And {} = do
-  let ((a', ta), s1) = infer ops env a
-  let (t', s2) = unify ops (s1 `compose` env) ta (substitute s1 t)
-  -- error $ show ((substitute s2 a', t'), s2 `compose` s1)
-  (error . intercalate "\n")
-    [ "check " ++ show (a, t),
-      "-- infer " ++ show a,
-      "a': " ++ show a',
-      "ta: " ++ show ta,
-      "s1: " ++ show s1,
-      "-- unify " ++ show (ta, substitute s1 t),
-      "t: " ++ show t,
-      "s2: " ++ show s2,
-      ""
-    ]
+-- check ops env a@And {} t@And {} = do
+--   let ((a', ta), s1) = infer ops env a
+--   let (t', s2) = unify ops (s1 `compose` env) ta (substitute s1 t)
+--   -- error $ show ((substitute s2 a', t'), s2 `compose` s1)
+--   (error . intercalate "\n")
+--     [ "check " ++ show (a, t),
+--       "-- infer " ++ show a,
+--       "a': " ++ show a',
+--       "ta: " ++ show ta,
+--       "s1: " ++ show s1,
+--       "-- unify " ++ show (ta, substitute s1 t),
+--       "t: " ++ show t,
+--       "s2: " ++ show s2,
+--       ""
+--     ]
 check ops env a t = do
   let ((a', ta), s1) = infer ops env a
   let (t', s2) = unify ops (s1 `compose` env) ta (substitute s1 t)
