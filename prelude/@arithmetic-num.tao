@@ -1,0 +1,29 @@
+: (Num, Num) -> Num
+let x + y = %num_add(x, y)
+
+> 3.0 + 2.0 ~> 5.0
+
+: (Num, Num) -> Num
+let x - y = %num_sub(x, y)
+
+> 3.0 - 2.0 ~> 1.0
+
+: (Num, Num) -> Num
+let x * y = %num_mul(x, y)
+
+> 3.0 * 2.0 ~> 6.0
+
+: (Num, Num) -> Num
+let x / y = %num_div(x, y)
+
+> 3.0 / 2.0 ~> 1.5
+
+: (Num, Num) -> Num
+let x // y = %num_divi(x, y)
+
+> 3.0 // 2.0 ~> 1.0
+
+: (Num, Num) -> Num
+let x ^ y = %num_pow(x, y)
+
+> 3.0 ^ 2.0 ~> 9.0

@@ -8,7 +8,7 @@ let map(m, f) = match m {
 | None -> None
 }
 
-> map(Some(1), x -> A(x)) ~> Some(1)
+> map(Some(1), x -> A(x)) ~> Some(A(1))
 > map(None, x -> A(x)) ~> None
 
 : (Maybe(a), a -> b) -> Maybe(b)
