@@ -966,8 +966,8 @@ grammar = do
       [a] -> layout a
       a : bs -> layout a ++ [PP.Text ", "] ++ collectionLayout layout bs
 
-lower :: Expr -> C.Expr
-lower = \case
+lower :: [String] -> Expr -> C.Expr
+lower xs = \case
   Any -> C.Any
   IntT -> C.IntT
   NumT -> C.NumT
@@ -975,49 +975,49 @@ lower = \case
   Num n -> C.Num n
   Char c -> C.tag "Char" [C.Int (ord c)]
   Var x -> C.Var x
-  Tag k args -> C.tag k (map lower args)
+  Tag k args -> C.tag k (map (lower xs) args)
   Ann a b -> case freeVars b of
-    [] -> C.Ann (lower a) (lower b)
-    xs -> C.Ann (lower a) (lower $ For xs b)
-  Tuple items -> C.and' (map lower items)
+    [] -> C.Ann (lower xs a) (lower xs b)
+    ys -> C.Ann (lower xs a) (lower xs $ For ys b)
+  Tuple items -> C.and' (map (lower xs) items)
   List [] -> C.tag' "[]"
-  List (a : bs) -> lower (Tag "::" [a, List bs])
+  List (a : bs) -> lower xs (Tag "::" [a, List bs])
   String [] -> C.tag' "''"
-  String [Str txt] -> lower (List (map Char txt))
+  String [Str txt] -> lower xs (List (map Char txt))
   String segments -> error "TODO: lower String interpolation"
-  Or a b -> C.Or (lower a) (lower b)
-  For xs a | Just (a, b) <- asFun a -> do
-    C.for xs (C.Fun (lower $ bound a) (lower b))
-  For xs a -> C.for xs (lower a)
-  Fun a b -> lower (For (freeVars a) (Fun a b))
-  App a b -> C.App (lower a) (lower b)
-  Call op args -> C.Call op (map lower args)
-  Op1 op a -> C.app (C.Var $ show op) [lower a]
-  Op2 Cons a b -> lower (Tag "::" [a, b])
-  Op2 op a b -> C.app (C.Var $ show op) [lower a, lower b]
-  Match arg cases -> lower (App (or' cases) arg)
-  MatchFun cases -> lower (or' cases)
+  Or a b -> C.Or (lower xs a) (lower xs b)
+  For ys a | Just (a, b) <- asFun a -> do
+    C.for ys (C.Fun (lower (xs ++ ys) a) (lower (xs ++ ys) b))
+  For ys a -> C.for xs (lower (xs ++ ys) a)
+  Fun a b -> lower xs (For (filter (`notElem` xs) $ freeVars a) (Fun a b))
+  App a b -> C.App (lower xs a) (lower xs b)
+  Call op args -> C.Call op (map (lower xs) args)
+  Op1 op a -> C.app (C.Var $ show op) [lower xs a]
+  Op2 Cons a b -> lower xs (Tag "::" [a, b])
+  Op2 op a b -> C.app (C.Var $ show op) [lower xs a, lower xs b]
+  Match arg cases -> lower xs (App (or' cases) arg)
+  MatchFun cases -> lower xs (or' cases)
   Let (a, b) c -> case a of
-    Var x | c == Var x -> lower b
-    Ann (Var x) t | c == Var x -> lower (Ann b t)
+    Var x | c == Var x -> lower xs b
+    Ann (Var x) t | c == Var x -> lower xs (Ann b t)
     -- Ann (Or a1 a2) t -> lower (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
-    Ann (App a1 a2) t -> lower (Let (Ann a1 t, Fun a2 b) c)
-    Ann (Op1 op a) t -> lower (Let (Ann (Var (show op)) t, Fun a b) c)
-    Ann (Op2 op a1 a2) t -> lower (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
-    Ann (Meta m a) t -> case lower (Let (Ann a t, b) c) of
-      C.App a b -> C.App (C.Meta (fmap lower m) a) b
+    Ann (App a1 a2) t -> lower xs (Let (Ann a1 t, Fun a2 b) c)
+    Ann (Op1 op a) t -> lower xs (Let (Ann (Var (show op)) t, Fun a b) c)
+    Ann (Op2 op a1 a2) t -> lower xs (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
+    Ann (Meta m a) t -> case lower xs (Let (Ann a t, b) c) of
+      C.App a b -> C.App (C.Meta (fmap (lower xs) m) a) b
       a -> a
-    Ann a t -> lower (Let (a, Ann b t) c)
+    Ann a t -> lower xs (Let (a, Ann b t) c)
     -- Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
-    App a1 a2 -> lower (Let (a1, Fun a2 b) c)
-    Op1 op a -> lower (Let (Var (show op), Fun a b) c)
-    Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
-    For xs a -> lower (App (For xs (Fun a c)) b)
-    Meta m a -> case lower (Let (a, b) c) of
-      C.App a b -> C.App (C.Meta (fmap lower m) a) b
+    App a1 a2 -> lower xs (Let (a1, Fun a2 b) c)
+    Op1 op a -> lower xs (Let (Var (show op), Fun a b) c)
+    Op2 op a1 a2 -> lower xs (Let (Var (show op), fun [a1, a2] b) c)
+    For xs a -> lower xs (App (For xs (Fun a c)) b)
+    Meta m a -> case lower xs (Let (a, b) c) of
+      C.App a b -> C.App (C.Meta (fmap (lower xs) m) a) b
       a -> a
-    a -> lower (App (For (freeVars a) (Fun a c)) b)
-  Bind (a, b) c -> lower (app (Var "<-") [b, Fun a c])
+    a -> lower xs (App (For (freeVars a) (Fun a c)) b)
+  Bind (a, b) c -> lower xs (app (Var "<-") [b, Fun a c])
   -- Record fields -> do
   --   let k = '~' : intercalate "," (map fst fields)
   --   lower (tag k (map snd fields))
@@ -1030,8 +1030,8 @@ lower = \case
   --   let k = '~' : intercalate "," (map fst kvs)
   --   let args = map ((C.substitute sub . lower) . snd) kvs
   --   C.tag k args
-  If a b c -> lower (Match a [Fun (Ann true bool) b, Fun (Ann false bool) c])
-  Meta m a -> C.Meta (fmap lower m) (lower a)
+  If a b c -> lower xs (Match a [Fun (Ann true bool) b, Fun (Ann false bool) c])
+  Meta m a -> C.Meta (fmap (lower xs) m) (lower xs a)
   Err -> C.Err
   a -> error $ "TODO: lower " ++ show a
 
@@ -1059,10 +1059,6 @@ lift = \case
   C.Ann a b -> Ann (lift a) (lift b)
   C.And a bs -> Tuple (map lift (a : C.andOf bs))
   C.Or a b -> Or (lift a) (lift b)
-  -- For xs (Fun a b) -> C.for xs (C.Fun (lower a) (lower b))
-  -- For xs (Meta m a) -> do
-  --   let (xs', a') = C.forOf (lower (For xs a))
-  --   C.for xs' (C.Meta m a')
   C.For x a -> case C.forOf (C.For x a) of
     (xs, C.Fun a b) | sort xs == sort (C.freeVars a) -> Fun (lift a) (lift b)
     (xs, C.Fun a b) -> For xs (Fun (lift a) (lift b))
@@ -1554,19 +1550,10 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  compile ctx path (name@"<-", expr) = do
-    let dependencies = delete name (freeNames expr)
-    let env = concatMap (fst . compile ctx path) dependencies
-    let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
-    -- case t of
-    --   C.Any -> (env, a)
-    --   C.Var _ -> (env, a)
-    --   _ -> (env, C.Ann a t)
-    error $ show (lower expr)
   compile ctx path (name, expr) = do
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies
-    let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower expr)
+    let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower [] expr)
     case t of
       C.Any -> (env, a)
       C.Var _ -> (env, a)

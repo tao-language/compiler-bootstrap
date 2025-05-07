@@ -56,15 +56,19 @@ coreCmd filename arg = do
   arg' <- dropMeta <$> loadExpr "<core>" arg
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
-  let a = lower arg'
+  let a = lower [] arg'
   let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
   let ((a', t), s) = C.infer buildOps env a
   let fmt = C.format 100 . C.dropMeta
   putStrLn "\n# type substitutions"
   mapM_ (\(x, a) -> putStrLn ("  - " ++ fmt (C.Var x) ++ ": " ++ fmt a)) s
-  putStrLn ("\n# env (" ++ show (length env) ++ " symbols)")
+  putStrLn ("\n# env(" ++ show (length env) ++ "): " ++ unwords (map fst env))
   mapM_ (\(x, a) -> putStrLn ("  - " ++ fmt (C.Var x) ++ ": " ++ fmt (C.dropLet a))) env
-  putStrLn "\n# expr"
+  putStrLn "\n# tao expr"
+  putStrLn (format 100 arg')
+  putStrLn "\n# core expr (lower)"
+  putStrLn (fmt (lower [] arg'))
+  putStrLn "\n# core expr (infer)"
   putStrLn (fmt a')
   putStrLn "\n# type"
   putStrLn (fmt t)

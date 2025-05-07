@@ -2,9 +2,9 @@ type Maybe(a) =
 | Some(a)
 | None
 
-: (Maybe(a), a -> Maybe(b)) -> Maybe(b)
+: (Maybe(a), a -> b) -> Maybe(b)
 let (<-)(m, f) = match m {
-| Some(x) -> f(x)
+| Some(x) -> Some(f(x))
 | None -> None
 }
 
@@ -14,7 +14,7 @@ let (<-)(m, f) = match m {
 : (Maybe(a), a -> b) -> Maybe(b)
 let map(m, f) =
   let x <- m
-  Some(f(x))
+  f(x)
 
 > map(Some(1), x -> x + 1) ~> Some(2)
 > map(None, x -> x + 1) ~> None
