@@ -98,6 +98,10 @@ data Op2
   | Div
   | DivI
   | Pow
+  | ShiftL
+  | ShiftR
+  | PipeL
+  | PipeR
   deriving (Eq)
 
 op2s :: [(String, Op2)]
@@ -116,7 +120,11 @@ op2s =
     ("*", Mul),
     ("/", Div),
     ("//", DivI),
-    ("^", Pow)
+    ("^", Pow),
+    (">>", ShiftR),
+    ("<<", ShiftL),
+    ("|>", PipeL),
+    ("<|", PipeR)
   ]
 
 showOp2 :: Op2 -> String
@@ -669,6 +677,22 @@ grammar = do
           G.infixL 4 (locOp2 AndOp) "and" $ \case
             Op2 AndOp a b -> Just (a, " ", b)
             _ -> Nothing,
+          -- Grammar.Op2.ShiftL
+          G.infixL 4 (locOp2 ShiftL) "<<" $ \case
+            Op2 ShiftL a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.ShiftR
+          G.infixL 4 (locOp2 ShiftR) ">>" $ \case
+            Op2 ShiftR a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.PipeL
+          G.infixL 4 (locOp2 PipeL) "<|" $ \case
+            Op2 PipeL a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.PipeR
+          G.infixL 4 (locOp2 PipeR) "|>" $ \case
+            Op2 PipeR a b -> Just (a, " ", b)
+            _ -> Nothing,
           -- Grammar.Op2.Eq
           G.infixL 5 (locOp2 Eq) "==" $ \case
             Op2 Eq a b -> Just (a, " ", b)
@@ -1188,7 +1212,11 @@ parseNameOp = do
         P.text "*",
         P.text "//",
         P.text "/",
-        P.text "^"
+        P.text "^",
+        P.text "<<",
+        P.text ">>",
+        P.text "<|",
+        P.text "|>"
       ]
   _ <- P.whitespaces
   _ <- P.char ')'
