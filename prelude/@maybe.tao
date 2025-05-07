@@ -19,10 +19,10 @@ let map(m, f) =
 > map(Some(1), x -> x + 1) ~> Some(2)
 > map(None, x -> x + 1) ~> None
 
-: (Maybe(a), a) -> Maybe(a)
-let m or default = match m {
-| Some(x) -> Some(x)
-| None -> Some(default)
+: (Maybe(a), a) -> a
+let m or y = match m {
+| Some(x) -> x
+| None -> y
 }
 
 > Some(1) or 2 ~> 1
