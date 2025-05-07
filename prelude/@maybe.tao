@@ -3,21 +3,19 @@ type Maybe(a) =
 | None
 
 : (Maybe(a), a -> b) -> Maybe(b)
-let (<-)(m, f) = match m {
+let map(m, f) = match m {
 | Some(x) -> Some(f(x))
 | None -> None
 }
 
-> let x <- Some(1); x ~> 1
-> let x <- None; x ~> None
+> map(Some(1), x -> x) ~> Some(1)
+> map(None, x -> x) ~> None
 
 : (Maybe(a), a -> b) -> Maybe(b)
-let map(m, f) =
-  let x <- m
-  f(x)
+let (<-) = map
 
-> map(Some(1), x -> x + 1) ~> Some(2)
-> map(None, x -> x + 1) ~> None
+> let x <- Some(1); x ~> Some(1)
+> let x <- None; x ~> None
 
 : (Maybe(a), a) -> a
 let m or y = match m {

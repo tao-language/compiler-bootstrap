@@ -508,6 +508,7 @@ freeVars = \case
   Var x -> [x]
   For xs a -> filter (`notElem` xs) (freeVars a)
   Let (a, b) c -> (freeVars a \\ bindings a) `union` freeVars b `union` freeVars c
+  Bind (a, b) c -> ["<-"] `union` (freeVars a \\ bindings a) `union` freeVars b `union` freeVars c
   a -> collect freeVars a
 
 freeTags :: Expr -> [String]
