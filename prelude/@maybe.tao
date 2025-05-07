@@ -1,5 +1,5 @@
-type Maybe(a) =
-| Some(a)
+type Maybe(value) =
+| Some(value)
 | None
 
 : (Maybe(a), a -> b) -> Maybe(b)
@@ -8,14 +8,14 @@ let map(m, f) = match m {
 | None -> None
 }
 
-> map(Some(1), x -> x) ~> Some(1)
-> map(None, x -> x) ~> None
+> map(Some(1), x -> A(x)) ~> Some(1)
+> map(None, x -> A(x)) ~> None
 
 : (Maybe(a), a -> b) -> Maybe(b)
 let (<-) = map
 
-> let x <- Some(1); x ~> Some(1)
-> let x <- None; x ~> None
+> let x <- Some(1); A(x) ~> Some(A(1))
+> let x <- None; A(x) ~> None
 
 : (Maybe(a), a) -> a
 let m or y = match m {
