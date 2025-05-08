@@ -1146,11 +1146,11 @@ infer ops env (App a b) = do
     tb
       | Nothing <- asOr a',
         Just (ta1, ta2) <- asOr ta,
-        Just (t1, _) <- asFun ta1,
-        Just (t2, _) <- asFun ta2 -> case () of
+        Just (t1, t1') <- asFun ta1,
+        Just (t2, t2') <- asFun ta2 -> case () of
           _ | hasErr ta1 && hasErr ta2 -> ((Err, Or ta1 ta2), [])
-          _ | hasErr ta2 -> ((App a' (typed b' t1), substitute s t), s)
-          _ | hasErr ta1 -> ((App a' (typed b' t2), substitute s t), s)
+          _ | hasErr ta2 -> ((App a' (typed b' t1), t1'), s)
+          _ | hasErr ta1 -> ((App a' (typed b' t2), t2'), s)
           _ -> ((App a' (typed b' t1) `Or` App a' (typed b' t2), substitute s t), s)
     tb -> do
       ((App a' (substitute s2 $ typed b' tb), t), s2 `compose` s1)
@@ -1226,16 +1226,15 @@ check ops env (App a b) t = do
     ta
       | Nothing <- asOr a',
         Just (ta1, ta2) <- asOr ta,
-        Just (t1, _) <- asFun ta1,
-        Just (t2, _) <- asFun ta2 -> case () of
+        Just (t1, t1') <- asFun ta1,
+        Just (t2, t2') <- asFun ta2 -> case () of
           _ | hasErr ta1 && hasErr ta2 -> ((Err, Or ta1 ta2), [])
-          _ | hasErr ta2 -> ((App a' (typed b' t1), substitute s t), s)
-          _ | hasErr ta1 -> ((App a' (typed b' t2), substitute s t), s)
+          _ | hasErr ta2 -> ((App a' (typed b' t1), t1'), s)
+          _ | hasErr ta1 -> ((App a' (typed b' t2), t2'), s)
           _ -> ((App a' (typed b' t1) `Or` App a' (typed b' t2), substitute s t), s)
     ta -> do
       ((App a' (substitute s2 (typed b' tb)), substitute s t), s)
-check ops env a t | isErr a = ((a, t), [])
-check ops env a t | isErr t = infer ops env a
+check ops env a t | isErr a || isErr t = ((a, t), [])
 check ops env a (Meta m ta) = do
   let ((a', ta'), s) = check ops env a ta
   ((a', Meta m ta'), s)

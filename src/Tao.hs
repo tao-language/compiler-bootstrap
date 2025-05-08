@@ -722,7 +722,7 @@ grammar = do
                 _ <- P.spaces
                 withLoc start end . Op2 Lt x <$> expr
            in G.InfixL 6 parser $ \lhs rhs -> \case
-                Op2 Lt a b -> Just (lhs a ++ PP.Text " " : rhs b)
+                Op2 Lt a b -> Just (lhs a ++ PP.Text " < " : rhs b)
                 _ -> Nothing,
           -- Grammar.Op2.Le
           G.infixL 6 (locOp2 Le) "<=" $ \case
@@ -982,7 +982,7 @@ grammar = do
                 return (Meta (C.Error $ customError a) Err)
            in G.Atom parser $ \layout -> \case
                 Err -> Just [PP.Text "!Err"]
-                Meta (C.Error e) Err -> case e of
+                Meta (C.Error e) c -> case e of
                   SyntaxError (loc, ctx, txt) -> Just [PP.Text $ "!syntax-error[" ++ show loc ++ "|" ++ show ctx ++ "|" ++ show txt ++ "]"]
                   TypeError e -> case e of
                     UndefinedVar x -> Just [PP.Text $ "!undefined-var(" ++ x ++ ")"]
