@@ -574,6 +574,7 @@ funOf a = ([], a)
 
 isFun :: Expr -> Bool
 isFun (Fun _ _) = True
+isFun (Ann a _) = isFun a
 isFun (Meta _ a) = isFun a
 isFun _ = False
 
@@ -877,7 +878,7 @@ eval ops expr = case reduce ops expr of
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> case eval ops a of
     a | isErr a -> eval ops b
-    a | isVar a || isApp a -> Or a (eval ops b)
+    a | isVar a || isApp a || isFun a -> Or a (eval ops b)
     a -> a
   For x a -> For x (eval ops (Let [(x, Var x)] a))
   Fix x a -> Fix x (eval ops (Let [(x, Var x)] a))
@@ -1105,10 +1106,11 @@ infer ops env (And a b) = do
   let ((a', ta), (b', tb), s) = infer2 ops env a b
   ((And a' b', And ta tb), s)
 infer ops env (Or a b) = case (infer ops env a, infer ops env b) of
-  (((a', ta), _), ((b', tb), _)) | hasErr ta && hasErr tb -> ((Or a' b', Or ta tb), [])
-  (((_, ta), _), ((b', tb), s)) | hasErr ta -> ((b', tb), s)
-  (((a', ta), s), ((_, tb), _)) | hasErr tb -> ((a', ta), s)
-  (((a', ta), s1), ((b', tb), s2)) -> ((Or a' b', merge ops env ta tb), merge ops env s1 s2)
+  (((a', ta), s1), ((b', tb), s2))
+    | hasErr (Ann a' ta) && hasErr (Ann b' tb) -> ((Or a' b', Or ta tb), [])
+    | hasErr (Ann a' ta) -> ((b', tb), s2)
+    | hasErr (Ann b' tb) -> ((a', ta), s1)
+    | otherwise -> ((Or a' b', merge ops env ta tb), merge ops env s1 s2)
 infer ops env (For x a) = do
   let y = newName ((x ++ "$") : map fst env) (x ++ "$")
   let ((a', ta), s) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
@@ -1184,10 +1186,11 @@ check ops env (Var x) t = do
         Nothing -> (err (undefinedVar x), [])
   ((Var x, ta), s)
 check ops env (Or a b) t = case (check ops env a t, check ops env b t) of
-  (((a', ta), _), ((b', tb), _)) | hasErr ta && hasErr tb -> ((Or a' b', Or ta tb), [])
-  (((_, ta), _), ((b', tb), s)) | hasErr ta -> ((b', tb), s)
-  (((a', ta), s), ((_, tb), _)) | hasErr tb -> ((a', ta), s)
-  (((a', ta), s1), ((b', tb), s2)) -> ((Or a' b', merge ops env ta tb), merge ops env s1 s2)
+  (((a', ta), s1), ((b', tb), s2))
+    | hasErr (Ann a' ta) && hasErr (Ann b' tb) -> ((Or a' b', Or ta tb), [])
+    | hasErr (Ann a' ta) -> ((b', tb), s2)
+    | hasErr (Ann b' tb) -> ((a', ta), s1)
+    | otherwise -> ((Or a' b', merge ops env ta tb), merge ops env s1 s2)
 check ops env (For x a) ta = do
   let y = newName (map fst env) x
   let ((a', ta'), s) = check ops ((y, Var y) : env) (substitute [(x, Var y)] a) ta
