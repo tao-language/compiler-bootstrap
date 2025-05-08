@@ -401,15 +401,15 @@ grammar = do
                 return (err $ customError a)
            in G.Atom parser $ \layout -> \case
                 Err -> Just [PP.Text "!Err"]
-                Meta (Error e) _ -> case e of
+                Meta (Error e) c -> case e of
                   TypeError e -> case e of
-                    UndefinedVar x -> Just [PP.Text $ "!undefined-var(" ++ x ++ ")"]
-                    TypeMismatch a b -> Just (PP.Text "!type-mismatch(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
-                    NotAFunction a b -> Just (PP.Text "!not-a-function(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
+                    UndefinedVar x -> Just (PP.Text ("!undefined-var<" ++ x ++ ">(") : layout c ++ [PP.Text ")"])
+                    TypeMismatch a b -> Just (PP.Text "!type-mismatch<" : layout a ++ PP.Text ", " : layout b ++ PP.Text ">(" : layout c ++ [PP.Text ")"])
+                    NotAFunction a b -> Just (PP.Text "!not-a-function<" : layout a ++ PP.Text ", " : layout b ++ PP.Text ">(" : layout c ++ [PP.Text ")"])
                     e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
                   RuntimeError e -> case e of
-                    UnhandledCase a b -> Just (PP.Text "!unhandled-case(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
-                    CannotApply a b -> Just (PP.Text "!cannot-apply(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
+                    UnhandledCase a b -> Just (PP.Text "!unhandled-case<" : layout a ++ PP.Text ", " : layout b ++ PP.Text ">(" : layout c ++ [PP.Text ")"])
+                    CannotApply a b -> Just (PP.Text "!cannot-apply<" : layout a ++ PP.Text ", " : layout b ++ PP.Text ">(" : layout c ++ [PP.Text ")"])
                     CustomError a -> Just (PP.Text "!error(" : layout a ++ [PP.Text ")"])
                   e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
                 _ -> Nothing
@@ -457,6 +457,18 @@ parseNameTag =
     ]
 
 -- Syntax sugar
+asInt :: Expr -> Maybe Int
+asInt (Int i) = Just i
+asInt (Ann a _) = asInt a
+asInt (Meta _ a) = asInt a
+asInt _ = Nothing
+
+asNum :: Expr -> Maybe Double
+asNum (Num n) = Just n
+asNum (Ann a _) = asNum a
+asNum (Meta _ a) = asNum a
+asNum _ = Nothing
+
 isVar :: Expr -> Bool
 isVar (Var _) = True
 isVar (Ann a _) = isVar a
@@ -508,10 +520,10 @@ isAnn (Ann _ _) = True
 isAnn (Meta _ a) = isAnn a
 isAnn _ = False
 
-annOf :: Expr -> Maybe (Expr, Expr)
-annOf (Ann a b) = Just (a, b)
-annOf (Meta _ a) = annOf a
-annOf _ = Nothing
+asAnn :: Expr -> Maybe (Expr, Expr)
+asAnn (Ann a b) = Just (a, b)
+asAnn (Meta _ a) = asAnn a
+asAnn _ = Nothing
 
 for :: [String] -> Expr -> Expr
 for xs a = foldr For a xs
@@ -581,6 +593,7 @@ appT fun args types = App fun (Ann (and' args) (and' types))
 
 isApp :: Expr -> Bool
 isApp (App _ _) = True
+isApp (Ann a _) = isApp a
 isApp (Meta _ a) = isApp a
 isApp _ = False
 
@@ -620,6 +633,7 @@ err e = Meta (Error e) Err
 -- TODO: centralize into a single kind of errors
 isErr :: Expr -> Bool
 isErr Err = True
+isErr (Ann a _) = isErr a
 isErr (Meta _ a) = isErr a
 isErr _ = False
 
@@ -741,7 +755,7 @@ isOpen = not . isClosed
 reduce :: Ops -> Expr -> Expr
 reduce ops = \case
   App a b -> reduceApp ops (reduce ops a) (reduce ops b)
-  Let env expr -> reduceLet ops env expr
+  Let env a -> reduceLet ops env a
   Meta m a -> Meta m (reduce ops a)
   expr -> expr
 
@@ -779,10 +793,10 @@ reduceApp ops a b = case (a, reduce ops b) of
   (Fun a c, b) -> case match False ops a b of
     Matched env -> reduce ops (Let env c)
     MaybeMatched a b -> App (Fun a c) b
-    NotMatched a b -> Err
+    NotMatched a b -> err (unhandledCase a b)
   (Call f args, b) -> App (Call f args) b
   (Meta _ a, b) -> reduceApp ops a b
-  _ -> Err
+  _ -> err (cannotApply a b)
 
 match :: Bool -> Ops -> Expr -> Expr -> MatchResult Env
 match unify ops (Let env (Tag k a)) b = case lookup k env of
@@ -846,22 +860,25 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (App a1 a2, App b1 b2) -> match unify ops (And a1 a2) (And b1 b2)
   (Call x args, Call x' args') | x == x' -> do
     match unify ops (and' args) (and' args')
-  (_, Meta _ b) -> match unify ops a b
   (a, Ann b _) -> match unify ops a b
   (Ann a _, b) -> match unify ops a b
   (Err, Err) -> Matched []
+  (_, Meta _ b) -> match unify ops a b
   (a, Var x) -> MaybeMatched a (Var x)
   (a, b) -> NotMatched a b
 
 eval :: Ops -> Expr -> Expr
 eval ops expr = case reduce ops expr of
   Tag k a -> Tag k (eval ops a)
-  Ann a b -> Ann (eval ops a) (eval ops b)
+  Ann a b -> case (eval ops a, eval ops b) of
+    (a, b) | Just (a, _) <- asAnn a -> eval ops (Ann a b)
+    (a, _) | isErr a -> a
+    (a, b) -> Ann a b
   And a b -> And (eval ops a) (eval ops b)
-  Or a b -> case typedOf (eval ops a) of
-    (Err, _) -> eval ops b
-    (a, t) | isVar a || isApp a -> Or (Ann a t) (eval ops b)
-    (a, t) -> Ann a t
+  Or a b -> case eval ops a of
+    a | isErr a -> eval ops b
+    a | isVar a || isApp a -> Or a (eval ops b)
+    a -> a
   For x a -> For x (eval ops (Let [(x, Var x)] a))
   Fix x a -> Fix x (eval ops (Let [(x, Var x)] a))
   Fun a b -> Fun (eval ops a) (eval ops b)
@@ -1202,7 +1219,8 @@ check ops env (App a b) t = do
           ((App a' (typed b' t1) `Or` App a' (typed b' t2), substitute s t), s)
     ta -> do
       ((App a' (substitute s2 (typed b' tb)), substitute s t), s)
-check ops env a Err = infer ops env a
+check ops env a t | isErr a = ((a, t), [])
+check ops env a t | isErr t = infer ops env a
 check ops env a (Meta m ta) = do
   let ((a', ta'), s) = check ops env a ta
   ((a', Meta m ta'), s)

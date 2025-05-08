@@ -229,6 +229,18 @@ asDef (Def def) = Just def
 asDef _ = Nothing
 
 -- Syntax sugar
+asInt :: Expr -> Maybe Int
+asInt (Int i) = Just i
+asInt (Ann a _) = asInt a
+asInt (Meta _ a) = asInt a
+asInt _ = Nothing
+
+asNum :: Expr -> Maybe Double
+asNum (Num n) = Just n
+asNum (Ann a _) = asNum a
+asNum (Meta _ a) = asNum a
+asNum _ = Nothing
+
 asVar :: Expr -> Maybe String
 asVar (Var x) = Just x
 asVar (Meta _ a) = asVar a
@@ -1496,16 +1508,16 @@ buildOps = do
   let call op f =
         (op, \eval args -> f (eval . C.dropTypes . C.dropMeta <$> args))
   let intOp1 op f = call op $ \case
-        [C.Int x] -> Just (f x)
+        [a] | Just x <- C.asInt a -> Just (f x)
         _ -> Nothing
   let numOp1 op f = call op $ \case
-        [C.Num x] -> Just (f x)
+        [a] | Just x <- C.asNum a -> Just (f x)
         _ -> Nothing
   let intOp2 op f = call op $ \case
-        [C.Int x, C.Int y] -> Just (f x y)
+        [a, b] | Just x <- C.asInt a, Just y <- C.asInt b -> Just (f x y)
         _ -> Nothing
   let numOp2 op f = call op $ \case
-        [C.Num x, C.Num y] -> Just (f x y)
+        [a, b] | Just x <- C.asNum a, Just y <- C.asNum b -> Just (f x y)
         _ -> Nothing
   [ intOp1 "int_neg" (\x -> C.Int (-x)),
     intOp2 "int_lt" (\x y -> C.tag' (if x < y then "True" else "False")),
