@@ -574,12 +574,14 @@ funOf a = ([], a)
 
 isFun :: Expr -> Bool
 isFun (Fun _ _) = True
+isFun (For _ a) = isFun a
 isFun (Ann a _) = isFun a
 isFun (Meta _ a) = isFun a
 isFun _ = False
 
 asFun :: Expr -> Maybe (Expr, Expr)
 asFun (Fun a b) = Just (a, b)
+asFun (Ann a _) = asFun a
 asFun (Meta _ a) = asFun a
 asFun _ = Nothing
 
@@ -1134,17 +1136,22 @@ infer ops env (App a b) = do
   let ((b', tb), s1) = infer ops env b
   let x = newName ("$" : map fst (s1 ++ env)) "$"
   let ((a', ta), s2) = check ops ((x, Var x) : s1 `compose` env) (substitute s1 a) (Fun (substitute s1 tb) (Var x))
+  let s = s2 `compose` s1
   let t = fromMaybe (Var x) (lookup x s2)
   case tb of
     tb | Just (b1, b2) <- asOr (substitute s2 b') -> do
       let (tb1, tb2) = fromMaybe (tb, tb) (asOr tb)
-      ((App a' (typed b1 tb1) `Or` App a' (typed b2 tb2), t), s2 `compose` s1)
+      let (result, s3) = infer ops (s `compose` env) (App a' (typed b1 tb1) `Or` App a' (typed b2 tb2))
+      (result, s3 `compose` s)
     tb
       | Nothing <- asOr a',
         Just (ta1, ta2) <- asOr ta,
         Just (t1, _) <- asFun ta1,
-        Just (t2, _) <- asFun ta2 -> do
-          ((App a' (typed b' t1) `Or` App a' (typed b' t2), t), s2 `compose` s1)
+        Just (t2, _) <- asFun ta2 -> case () of
+          _ | hasErr ta1 && hasErr ta2 -> ((Err, Or ta1 ta2), [])
+          _ | hasErr ta2 -> ((App a' (typed b' t1), substitute s t), s)
+          _ | hasErr ta1 -> ((App a' (typed b' t2), substitute s t), s)
+          _ -> ((App a' (typed b' t1) `Or` App a' (typed b' t2), substitute s t), s)
     tb -> do
       ((App a' (substitute s2 $ typed b' tb), t), s2 `compose` s1)
 infer ops env (Let defs a) = do
@@ -1213,13 +1220,17 @@ check ops env (App a b) t = do
   case ta of
     ta | Just (b1, b2) <- asOr (substitute s2 b') -> do
       let (tb1, tb2) = fromMaybe (tb, tb) (asOr $ substitute s2 tb)
-      ((App a' (typed b1 tb1) `Or` App a' (typed b2 tb2), substitute s t), s)
+      let (result, s3) = infer ops (s `compose` env) (App a' (typed b1 tb1) `Or` App a' (typed b2 tb2))
+      (result, s3 `compose` s)
     ta
       | Nothing <- asOr a',
         Just (ta1, ta2) <- asOr ta,
         Just (t1, _) <- asFun ta1,
-        Just (t2, _) <- asFun ta2 -> do
-          ((App a' (typed b' t1) `Or` App a' (typed b' t2), substitute s t), s)
+        Just (t2, _) <- asFun ta2 -> case () of
+          _ | hasErr ta1 && hasErr ta2 -> ((Err, Or ta1 ta2), [])
+          _ | hasErr ta2 -> ((App a' (typed b' t1), substitute s t), s)
+          _ | hasErr ta1 -> ((App a' (typed b' t2), substitute s t), s)
+          _ -> ((App a' (typed b' t1) `Or` App a' (typed b' t2), substitute s t), s)
     ta -> do
       ((App a' (substitute s2 (typed b' tb)), substitute s t), s)
 check ops env a t | isErr a = ((a, t), [])
