@@ -887,7 +887,7 @@ eval ops expr = case reduce ops expr of
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)
   Call f args -> Call f (eval ops <$> args)
-  Meta (Error e) a -> Meta (Error $ eval ops <$> e) (eval ops a)
+  Meta (Error e) _ -> Meta (Error $ eval ops <$> e) Err
   Meta m a -> Meta m (eval ops a)
   Err -> Err
   a -> a
@@ -994,10 +994,10 @@ findLocation = \case
 
 unify :: Ops -> Env -> Expr -> Expr -> (Expr, Substitution)
 unify ops env a b = case (a, b) of
-  (a, Meta m b) -> do
+  (a, Meta m b) | not (isErr (Meta m b)) -> do
     let (a', s) = unify ops env a b
     (Meta m a', s)
-  (Meta m a, b) -> do
+  (Meta m a, b) | not (isErr (Meta m a)) -> do
     let (a', s) = unify ops env a b
     (Meta m a', s)
   (_, Any) -> (Any, [])
@@ -1161,10 +1161,11 @@ infer ops env (Call op args) = do
   let y = newName ("_" : map fst env) "_"
   let (args', s) = inferAll ops ((y, Var y) : env) args
   ((Call op (map fst args'), substitute s (Var y)), s)
+infer _ _ a | isErr a = ((a, Err), [])
 infer ops env (Meta m a) = do
   let ((a', ta), s) = infer ops env a
   case (a', ta) of
-    (a', e) | hasErr e -> ((Ann (Meta m a') e, e), s)
+    (a', t) | hasErr (Ann a' t) -> ((a', t), [])
     (a', ta) -> ((Meta m a', ta), s)
 infer _ _ Err = ((Err, Err), [])
 

@@ -336,7 +336,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     parse' "!error(x) " `shouldBe` Right (expr, "")
     format 80 expr `shouldBe` "!error(x)"
     let ((expr', typ), s) = infer ops env expr
-    (expr', typ, s) `shouldBe` (Ann expr Err, Err, [])
+    (expr', typ, s) `shouldBe` (expr, Err, [])
     eval ops (Let env expr') `shouldBe` expr
 
   it "☯ Core.sugar.def" $ do
@@ -672,7 +672,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' true `shouldBe` ((true, true), [])
     infer' (Ann true bool) `shouldBe` ((true, bool), [])
     infer' (Ann false (tag' "X")) `shouldBe` ((false, err (typeMismatch false (tag' "X"))), [])
-    infer' (Ann (tag' "X") bool) `shouldBe` ((tag' "X", err (unhandledCase false (tag' "X"))), [])
+    infer' (Ann (tag' "X") bool) `shouldBe` ((tag' "X", err $ typeMismatch (err $ unhandledCase false (tag' "X")) bool), [])
 
   -- it "☯ infer Maybe" $ do
   --   let (maybe, just, nothing) = (App (Tag "Maybe"), \a -> tag "Just" [a], Tag "Nothing")
