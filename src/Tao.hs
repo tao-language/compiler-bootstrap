@@ -1594,12 +1594,7 @@ instance Compile (String, Expr) where
   compile ctx path (name, expr) = do
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies
-    -- let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower [] expr)
     let alts = C.infer' buildOps ((name, C.Var name) : env) (lower [] expr)
-    -- case t of
-    --   C.Any -> (env, a)
-    --   C.Var _ -> (env, a)
-    --   _ -> (env, C.Ann a t)
     case alts of
       Right alts -> (env, C.or' (map (\((a, t), s) -> C.Ann a t) alts))
       Left err -> error $ show err
