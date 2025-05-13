@@ -508,7 +508,6 @@ collect f = \case
   App a b -> f a `union` f b
   Call _ args -> unionMap f args
   Op1 op a -> f (Var (show op)) `union` f a
-  Op2 Cons a b -> f a `union` f b
   Op2 op a b -> f (Var (show op)) `union` f a `union` f b
   Match arg cases -> f arg `union` unionMap f cases
   MatchFun cases -> unionMap f cases
@@ -1597,17 +1596,27 @@ instance Compile (String, Expr) where
     let alts = C.infer' buildOps ((name, C.Var name) : env) (lower [] expr)
     case alts of
       Right alts -> (env, C.or' (map (\((a, t), s) -> C.Ann a t) alts))
-      Left err -> error $ show err
+      Left err -> error $ show (name, expr) ++ ": " ++ show err
 
 instance Compile String where
   compile :: Context -> FilePath -> String -> (C.Env, C.Expr)
   -- compile ctx path name@"or" = do
-  --   let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
-  --       compileDef (path, alt) (env, alts) = do
-  --         let (env', alt') = compile ctx path (name, alt)
-  --         (unionBy (\a b -> fst a == fst b) env' env, C.let' env' alt' : alts)
-  --   let (env, alts) = foldr compileDef ([], []) (resolve ctx path name)
-  --   error $ intercalate "\n" (map show alts)
+  --   let compileDef :: (FilePath, Expr) -> [C.Expr] -> [C.Expr]
+  --       compileDef (path, alt) alts = do
+  --         let (env, alt') = compile ctx path (name, alt)
+  --         error $ show (name, alt')
+  --         C.let' env alt' : alts
+  --   -- error $ show (resolve ctx path name)
+  --   let alts = foldr compileDef [] (resolve ctx path name)
+  --   error $ show (name, alts)
+  --   -- let def = case alts of
+  --   --       [] -> []
+  --   --       [C.Var x] | x == name -> [(name, C.Var x)]
+  --   --       [C.Ann (C.Var x) t] | x == name -> [(name, C.Ann (C.Var x) t)]
+  --   --       alts -> [(name, C.fix' [name] (C.or' alts))]
+  --   -- let env' = unionBy (\a b -> fst a == fst b) def env
+  --   -- (env', C.Var name)
+  --   ([], C.or' alts)
   compile ctx path name = do
     let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
         compileDef (path, alt) (env, alts) = do

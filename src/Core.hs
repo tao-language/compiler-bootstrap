@@ -1228,8 +1228,9 @@ infer' ops env (Or a b) = do
   Right (alts1 ++ alts2)
 infer' ops env (For x a) = do
   let y = newName ((x ++ "$") : map fst env) (x ++ "$")
+  let sub x y = substitute [(x, Var y)]
   Right
-    [ ((For y a, t), [(y, Var y)] `compose` s)
+    [ ((For x (sub y x a), sub y x t), pop y s)
       | ((a, t), s) <- fromRight [] $ infer' ops ((y, Var y) : env) (substitute [(x, Var y)] a)
     ]
 -- infer' ops env (Fix x a) = do
@@ -1328,9 +1329,10 @@ check' ops env (And a b) (And ta tb) = do
       | ((a, ta), (b, tb), s) <- fromRight [] $ check2' ops env (a, ta) (b, tb)
     ]
 check' ops env (For x a) ta = do
-  let y = newName (map fst env) x
+  let y = newName ((x ++ "$") : map fst env) (x ++ "$")
+  let sub x y = substitute [(x, Var y)]
   Right
-    [ ((For y a, ta), s)
+    [ ((For x (sub y x a), sub y x ta), pop y s)
       | ((a, ta), s) <- fromRight [] $ check' ops ((y, Var y) : env) (substitute [(x, Var y)] a) ta
     ]
 check' ops env (Fun a b) (Fun ta tb) = do
