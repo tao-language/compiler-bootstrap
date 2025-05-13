@@ -1184,9 +1184,11 @@ infer' _ _ IntT = Right [((IntT, IntT), [])]
 infer' _ _ NumT = Right [((NumT, NumT), [])]
 infer' _ _ (Int i) = Right [((Int i, IntT), [])]
 infer' _ _ (Num n) = Right [((Num n, NumT), [])]
--- infer' ops env (Tag k a) = do
---   let ((a', ta), s) = infer' ops env a
---   ((Tag k a', Tag k ta), s)
+infer' ops env (Tag k a) = do
+  Right
+    [ ((Tag k a, Tag k t), s)
+      | ((a, t), s) <- fromRight [] $ infer' ops env a
+    ]
 infer' ops env (Var x) = case lookup x env of
   Just (Var x') | x == x' -> do
     let y = newName (map fst env) (x ++ "T")
@@ -1296,11 +1298,11 @@ infer' ops env (Call op args) = do
       | (args, s) <- fromRight [] $ inferAll' ops ((x, Var x) : env) args
     ]
 -- infer' _ _ a | isErr a = ((a, Err), [])
--- infer' ops env (Meta m a) = do
---   let ((a', ta), s) = infer' ops env a
---   case (a', ta) of
---     (a', t) | hasErr (Ann a' t) -> ((a', t), [])
---     (a', ta) -> ((Meta m a', ta), s)
+infer' ops env (Meta m a) = do
+  Right
+    [ ((Meta m a, t), s)
+      | ((a, t), s) <- fromRight [] $ infer' ops env a
+    ]
 -- infer' _ _ Err = ((Err, Err), [])
 infer' ops env a =
   (error . intercalate "\n")
@@ -1329,11 +1331,11 @@ inferAll' ops env (a : bs) = do
 
 check' :: Ops -> Env -> Expr -> Type -> Either (Error Expr) [((Expr, Type), Substitution)]
 check' ops env a (For x ta) = infer' ops env (For x (Ann a ta))
-check' ops env a (Meta m ta) = do
-  Right
-    [ ((a, Meta m ta), s)
-      | ((a, ta), s) <- fromRight [] (check' ops env a ta)
-    ]
+-- check' ops env a (Meta m ta) = do
+--   Right
+--     [ ((a, Meta m ta), s)
+--       | ((a, ta), s) <- fromRight [] (check' ops env a ta)
+--     ]
 check' ops env (Var x) t = do
   case lookup x env of
     Just (Var x') | x == x' -> Right [((Var x, t), [(x, Ann (Var x) t)])]
@@ -1403,6 +1405,10 @@ check' ops env (Fun a b) (Fun ta tb) = do
 --     ta -> do
 --       ((App a' (substitute s2 (typed b' tb)), substitute s t), s)
 -- check' ops env a t | isErr a || isErr t = ((a, t), [])
+check' ops env (Meta m a) t = do
+  Right [((Meta m a, t), s) | ((a, t), s) <- fromRight [] (check' ops env a t)]
+check' ops env a (Meta m t) = do
+  Right [((a, Meta m t), s) | ((a, t), s) <- fromRight [] (check' ops env a t)]
 -- check' ops env (Meta m a) ta = do
 --   let ((a', ta'), s) = check' ops env a ta
 --   ((Meta m a', ta'), s)
