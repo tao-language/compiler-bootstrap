@@ -109,6 +109,10 @@ op2s =
   [ ("and", AndOp),
     ("or", OrOp),
     ("xor", XorOp),
+    (">>", ShiftR),
+    ("<<", ShiftL),
+    ("|>", PipeL),
+    ("<|", PipeR),
     ("==", Eq),
     ("!=", Ne),
     ("<", Lt),
@@ -120,11 +124,7 @@ op2s =
     ("*", Mul),
     ("/", Div),
     ("//", DivI),
-    ("^", Pow),
-    (">>", ShiftR),
-    ("<<", ShiftL),
-    ("|>", PipeL),
-    ("<|", PipeR)
+    ("^", Pow)
   ]
 
 showOp2 :: Op2 -> String
@@ -1212,6 +1212,10 @@ parseNameOp = do
         P.word "and",
         P.word "or",
         P.word "xor",
+        P.text "<<",
+        P.text ">>",
+        P.text "<|",
+        P.text "|>",
         P.text "<-",
         P.text "==",
         P.text "!=",
@@ -1224,11 +1228,7 @@ parseNameOp = do
         P.text "*",
         P.text "//",
         P.text "/",
-        P.text "^",
-        P.text "<<",
-        P.text ">>",
-        P.text "<|",
-        P.text "|>"
+        P.text "^"
       ]
   _ <- P.whitespaces
   _ <- P.char ')'
@@ -1506,7 +1506,7 @@ bindings = \case
 buildOps :: C.Ops
 buildOps = do
   let call op f =
-        (op, \eval args -> f (eval . C.dropTypes . C.dropMeta <$> args))
+        (op, \eval args -> f (map eval args))
   let intOp1 op f = call op $ \case
         [a] | Just x <- C.asInt a -> Just (f x)
         _ -> Nothing
@@ -1594,11 +1594,15 @@ instance Compile (String, Expr) where
   compile ctx path (name, expr) = do
     let dependencies = delete name (freeNames expr)
     let env = concatMap (fst . compile ctx path) dependencies
-    let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower [] expr)
-    case t of
-      C.Any -> (env, a)
-      C.Var _ -> (env, a)
-      _ -> (env, C.Ann a t)
+    -- let ((a, t), s) = C.infer buildOps ((name, C.Var name) : env) (lower [] expr)
+    let alts = C.infer' buildOps ((name, C.Var name) : env) (lower [] expr)
+    -- case t of
+    --   C.Any -> (env, a)
+    --   C.Var _ -> (env, a)
+    --   _ -> (env, C.Ann a t)
+    case alts of
+      Right alts -> (env, C.or' (map (\((a, t), s) -> C.Ann a t) alts))
+      Left err -> error $ show err
 
 instance Compile String where
   compile :: Context -> FilePath -> String -> (C.Env, C.Expr)

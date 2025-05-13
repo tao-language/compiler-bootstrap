@@ -38,7 +38,7 @@ count (result : results) = do
 instance Show TestResult where
   show :: TestResult -> String
   show result = case result of
-    TestPass filename pos name -> "✅ " ++ name ++ "\n"
+    TestPass filename pos name -> "✅ " ++ filename ++ ":" ++ show pos.row ++ ":" ++ show pos.col ++ ": " ++ name ++ "\n"
     TestFail filename pos name test expect got -> "❌ " ++ filename ++ ":" ++ show pos.row ++ ":" ++ show pos.col ++ ": " ++ name ++ "\n  > " ++ show (dropMeta test) ++ "\n  " ++ show (dropMeta expect) ++ "\n* " ++ show (dropMeta got) ++ "\n"
 
 class TestSome a where
