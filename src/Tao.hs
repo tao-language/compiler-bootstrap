@@ -1601,6 +1601,13 @@ instance Compile (String, Expr) where
 
 instance Compile String where
   compile :: Context -> FilePath -> String -> (C.Env, C.Expr)
+  -- compile ctx path name@"or" = do
+  --   let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
+  --       compileDef (path, alt) (env, alts) = do
+  --         let (env', alt') = compile ctx path (name, alt)
+  --         (unionBy (\a b -> fst a == fst b) env' env, C.let' env' alt' : alts)
+  --   let (env, alts) = foldr compileDef ([], []) (resolve ctx path name)
+  --   error $ intercalate "\n" (map show alts)
   compile ctx path name = do
     let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
         compileDef (path, alt) (env, alts) = do
