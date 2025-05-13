@@ -487,6 +487,12 @@ tag k = Tag k . and'
 tag' :: String -> Expr
 tag' k = Tag k Unit
 
+isTag :: Expr -> Bool
+isTag (Tag _ _) = True
+isTag (Ann a _) = isTag a
+isTag (Meta _ a) = isTag a
+isTag _ = False
+
 and' :: [Expr] -> Expr
 and' [] = Unit
 and' [a] = a
@@ -618,6 +624,12 @@ let' :: Env -> Expr -> Expr
 let' [] a = a
 let' env (Let env' a) = let' (env ++ env') a
 let' env a = Let env a
+
+isLet :: Expr -> Bool
+isLet (Let _ _) = True
+isLet (Meta _ a) = isLet a
+isLet (Ann a _) = isLet a
+isLet _ = False
 
 def :: (Expr, Expr) -> Expr -> Expr
 def (a, b) = def' (freeVars a, a, b)
@@ -1176,9 +1188,9 @@ unifyAll' ops env (a : bs) (a' : bs') = do
 unifyAll' ops env _ _ = error $ show "unifyAll' size mismatch"
 
 infer' :: Ops -> Env -> Expr -> Either (Error Expr) [((Expr, Type), Substitution)]
--- infer' _ env Any = do
---   let y = newName ("_" : map fst env) "_"
---   ((Any, Var y), [(y, Var y)])
+infer' _ env Any = do
+  let y = newName ("_" : map fst env) "_"
+  Right [((Any, Var y), [(y, Var y)])]
 infer' _ _ Unit = Right [((Unit, Unit), [])]
 infer' _ _ IntT = Right [((IntT, IntT), [])]
 infer' _ _ NumT = Right [((NumT, NumT), [])]
@@ -1416,7 +1428,8 @@ check' ops env a (Meta m t) = do
 --   let ((a', ta), s1) = infer ops env a
 --   let (t', s2) = unify ops (s1 `compose` env) ta (substitute s1 t)
 --   ((substitute s2 a', t'), s2 `compose` s1)
-check' ops env a t | isApp a || isCall a || isAnd a || isAnn a = do
+-- check' ops env a t | isApp a || isCall a || isAnd a || isAnn a || isTag a || isLet a = do
+check' ops env a t = do
   Right
     [ ((a, t), s2 `compose` s1)
       | ((a, ta), s1) <- fromRight [] $ infer' ops env a,
