@@ -60,16 +60,15 @@ coreCmd filename arg = do
   -- let a = lower [] arg'
   -- let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
   let (env, a) = compile ctx path arg'
-  -- putStrLn $ "env: " ++ unwords (map fst env)
-  -- putStrLn $ "a: " ++ show a
+  putStrLn $ "core: " ++ show a
+  putStrLn $ "env: " ++ unwords (map fst env)
+  mapM_ (\(x, a) -> putStrLn ("  " ++ show (C.Var x) ++ ": " ++ show (C.dropLet a))) env
   mapM_
     ( \((a, t), s) -> do
         putStrLn "----------"
-        -- putStrLn $ "env: " ++ unwords (map fst env)
-        -- mapM_ (\(x, a) -> putStrLn ("  - " ++ fmt (C.Var x) ++ ": " ++ fmt (C.dropLet a))) env
         putStrLn $ ": " ++ show (C.dropMeta t)
         putStrLn $ "> " ++ show (C.dropMeta a)
-        print $ C.dropMeta $ C.dropTypes $ C.eval runtimeOps (C.Let env a)
+        print $ C.dropMeta $ C.dropTypes $ C.eval runtimeOps (C.Let env (C.Ann a t))
         -- putStrLn "\n# type substitutions"
         -- mapM_ (\(x, a) -> putStrLn ("  - " ++ fmt (C.Var x) ++ ": " ++ fmt a)) s
         putStrLn ""

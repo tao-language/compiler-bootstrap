@@ -1212,11 +1212,12 @@ infer' ops env (Var x) = case lookup x env of
         | ((_, t), s) <- fromRight [] $ infer' ops env a
       ]
   Nothing -> Left (undefinedVar x)
--- infer' ops env (Ann a (For x t)) = infer' ops env (For x (Ann a t))
--- infer' ops env (Ann a (Meta m t)) = do
---   let (alts, s) = infer' ops env (Ann a t)
---   (map (second $ Meta m) alts, s)
 infer' ops env (Ann a t) = check' ops env a t
+-- infer' ops env (Ann a t) = do
+--   Right
+--     [ ((Ann a t, t), s)
+--       | ((a, t), s) <- fromRight [] $ check' ops env a t
+--     ]
 infer' ops env (And a b) = do
   Right
     [ ((And a b, And ta tb), s)
@@ -1230,8 +1231,8 @@ infer' ops env (For x a) = do
   let y = newName ((x ++ "$") : map fst env) (x ++ "$")
   let sub x y = substitute [(x, Var y)]
   Right
-    [ ((For x (sub y x a), sub y x t), pop y s)
-      | ((a, t), s) <- fromRight [] $ infer' ops ((y, Var y) : env) (substitute [(x, Var y)] a)
+    [ ((For x (sub y x a), sub y x t), s)
+      | ((a, t), s) <- fromRight [] $ infer' ops ((y, Var y) : env) (sub x y a)
     ]
 -- infer' ops env (Fix x a) = do
 --   let y = newName (map fst env) x
@@ -1263,7 +1264,7 @@ infer' ops env (Let defs a) = do
 infer' ops env (Call op args) = do
   let x = newName ("$" : map fst env) "$"
   Right
-    [ ((Call op (map (uncurry Ann) args), substitute s (Var x)), s)
+    [ ((Call op (map (uncurry Ann) args), substitute s (Var x)), [(x, Var x)] `compose` s)
       | (args, s) <- fromRight [] $ inferAll' ops ((x, Var x) : env) args
     ]
 -- infer' _ _ a | isErr a = ((a, Err), [])
@@ -1299,27 +1300,21 @@ inferAll' ops env (a : bs) = do
     ]
 
 check' :: Ops -> Env -> Expr -> Type -> Either (Error Expr) [((Expr, Type), Substitution)]
-check' ops env a (For x ta) = infer' ops env (For x (Ann a ta))
--- check' ops env a (Meta m ta) = do
---   Right
---     [ ((a, Meta m ta), s)
---       | ((a, ta), s) <- fromRight [] (check' ops env a ta)
---     ]
-check' ops env (Var x) t = do
-  case lookup x env of
-    Just (Var x') | x == x' -> Right [((Var x, t), [(x, Ann (Var x) t)])]
-    Just (Ann (Var x') ty) | x == x' -> do
-      Right [((Var x, ty), [])]
-    Just a -> do
-      Right
-        [ ((Var x, ta), s)
-          | ((_, ta), s) <- fromRight [] $ check' ops env a t
-        ]
-    Nothing -> Left (undefinedVar x)
+check' ops env a (For x t) = infer' ops env (For x (Ann a t))
+check' ops env (For x a) t = infer' ops env (For x (Ann a t))
+check' ops env (Var x) t = case lookup x env of
+  Just (Var x') | x == x' -> Right [((Var x, t), [(x, Ann (Var x) t)])]
+  Just (Ann (Var x') ty) | x == x' -> do
+    Right [((Var x, ty), [])]
+  Just a -> do
+    Right
+      [ ((Var x, ta), s)
+        | ((_, ta), s) <- fromRight [] $ check' ops env a t
+      ]
+  Nothing -> Left (undefinedVar x)
 check' ops env (Or a b) t = do
   Right
-    [
-      ((Or (substitute s2 a) b, t), s2 `compose` s1)
+    [ ((Or (substitute s2 a) b, t), s2 `compose` s1)
       | ((a, t), s1) <- fromRight [] $ check' ops env a t,
         ((b, t), s2) <- fromRight [] $ check' ops (s1 `compose` env) (substitute s1 b) t
     ]
@@ -1328,50 +1323,16 @@ check' ops env (And a b) (And ta tb) = do
     [ ((And a b, And ta tb), s)
       | ((a, ta), (b, tb), s) <- fromRight [] $ check2' ops env (a, ta) (b, tb)
     ]
-check' ops env (For x a) ta = do
-  let y = newName ((x ++ "$") : map fst env) (x ++ "$")
-  let sub x y = substitute [(x, Var y)]
-  Right
-    [ ((For x (sub y x a), sub y x ta), pop y s)
-      | ((a, ta), s) <- fromRight [] $ check' ops ((y, Var y) : env) (substitute [(x, Var y)] a) ta
-    ]
 check' ops env (Fun a b) (Fun ta tb) = do
   Right
     [ ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
       | ((a, ta), (b, tb), s) <- fromRight [] (check2' ops env (a, ta) (b, tb))
     ]
--- check' ops env (App a b) t = do
---   let ((b', tb), s1) = infer ops env b
---   let ((a', ta), s2) = check' ops (s1 `compose` env) (substitute s1 a) (Fun tb (substitute s1 t))
---   let s = s2 `compose` s1
---   case ta of
---     ta | Just (b1, b2) <- asOr (substitute s2 b') -> do
---       let (tb1, tb2) = fromMaybe (tb, tb) (asOr $ substitute s2 tb)
---       let (result, s3) = infer ops (s `compose` env) (App a' (typed b1 tb1) `Or` App a' (typed b2 tb2))
---       (result, s3 `compose` s)
---     ta
---       | Nothing <- asOr a',
---         Just (ta1, ta2) <- asOr ta,
---         Just (t1, t1') <- asFun ta1,
---         Just (t2, t2') <- asFun ta2 -> case () of
---           _ | hasErr ta1 && hasErr ta2 -> ((Err, Or ta1 ta2), [])
---           _ | hasErr ta2 -> ((App a' (typed b' t1), t1'), s)
---           _ | hasErr ta1 -> ((App a' (typed b' t2), t2'), s)
---           _ -> ((App a' (typed b' t1) `Or` App a' (typed b' t2), substitute s t), s)
---     ta -> do
---       ((App a' (substitute s2 (typed b' tb)), substitute s t), s)
--- check' ops env a t | isErr a || isErr t = ((a, t), [])
 check' ops env (Meta m a) t = do
   Right [((Meta m a, t), s) | ((a, t), s) <- fromRight [] (check' ops env a t)]
 check' ops env a (Meta m t) = do
   Right [((a, Meta m t), s) | ((a, t), s) <- fromRight [] (check' ops env a t)]
-check' ops env a t = do
-  Right
-    [ ((a, t), s2 `compose` s1)
-      | ((a, ta), s1) <- fromRight [] $ infer' ops env a,
-        (t, s2) <- fromRight [] $ unify' ops (s1 `compose` env) ta (substitute s1 t)
-    ]
-check' ops env a t = do
+check' ops env a t | False = do
   (error . intercalate "\n")
     [ "check' " ++ show (a, t),
       "env: " ++ show (env & filter (\(x, a) -> a == Var x) & map fst),
@@ -1383,6 +1344,12 @@ check' ops env a t = do
             (t, s2) <- fromRight [] $ unify' ops (s1 `compose` env) ta (substitute s1 t)
         ],
       ""
+    ]
+check' ops env a t = do
+  Right
+    [ ((a, t), s2 `compose` s1)
+      | ((a, ta), s1) <- fromRight [] $ infer' ops env a,
+        (t, s2) <- fromRight [] $ unify' ops (s1 `compose` env) ta (substitute s1 t)
     ]
 
 -- check' ops env a t =

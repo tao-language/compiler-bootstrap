@@ -1592,10 +1592,11 @@ instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
   compile ctx path (name, expr) = do
     let a = lower [] expr
-    let env = C.freeVars a `union` C.freeTags a
-          & delete name
-          & concatMap (fst . compile ctx path)
-    (env, a)
+    let env = C.freeVars a `union` C.freeTags a & delete name & concatMap (fst . compile ctx path)
+    case C.infer' buildOps env a of
+      Right alts -> (env, C.or' $ map (\((a, t), _) -> C.Ann a t) alts)
+      Left err -> error $ show err
+
 
 instance Compile String where
   compile :: Context -> FilePath -> String -> (C.Env, C.Expr)
