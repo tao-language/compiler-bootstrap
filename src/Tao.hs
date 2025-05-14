@@ -1591,42 +1591,23 @@ instance Compile Expr where
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
   compile ctx path (name, expr) = do
-    let dependencies = delete name (freeNames expr)
-    let env = concatMap (fst . compile ctx path) dependencies
-    let alts = C.infer' buildOps ((name, C.Var name) : env) (lower [] expr)
-    case alts of
-      Right alts -> (env, C.or' (map (\((a, t), s) -> C.Ann a t) alts))
-      Left err -> error $ show (name, expr) ++ ": " ++ show err
+    let a = lower [] expr
+    let env = C.freeVars a `union` C.freeTags a
+          & delete name
+          & concatMap (fst . compile ctx path)
+    (env, a)
 
 instance Compile String where
   compile :: Context -> FilePath -> String -> (C.Env, C.Expr)
-  -- compile ctx path name@"or" = do
-  --   let compileDef :: (FilePath, Expr) -> [C.Expr] -> [C.Expr]
-  --       compileDef (path, alt) alts = do
-  --         let (env, alt') = compile ctx path (name, alt)
-  --         error $ show (name, alt')
-  --         C.let' env alt' : alts
-  --   -- error $ show (resolve ctx path name)
-  --   let alts = foldr compileDef [] (resolve ctx path name)
-  --   error $ show (name, alts)
-  --   -- let def = case alts of
-  --   --       [] -> []
-  --   --       [C.Var x] | x == name -> [(name, C.Var x)]
-  --   --       [C.Ann (C.Var x) t] | x == name -> [(name, C.Ann (C.Var x) t)]
-  --   --       alts -> [(name, C.fix' [name] (C.or' alts))]
-  --   -- let env' = unionBy (\a b -> fst a == fst b) def env
-  --   -- (env', C.Var name)
-  --   ([], C.or' alts)
   compile ctx path name = do
-    let compileDef :: (FilePath, Expr) -> (C.Env, [C.Expr]) -> (C.Env, [C.Expr])
-        compileDef (path, alt) (env, alts) = do
-          let (env', alt') = compile ctx path (name, alt)
-          (unionBy (\a b -> fst a == fst b) env' env, C.let' env' alt' : alts)
-    let (env, alts) = foldr compileDef ([], []) (resolve ctx path name)
-    let def = case alts of
-          [] -> []
-          [C.Var x] | x == name -> [(name, C.Var x)]
-          [C.Ann (C.Var x) t] | x == name -> [(name, C.Ann (C.Var x) t)]
-          alts -> [(name, C.fix' [name] (C.or' alts))]
-    let env' = unionBy (\a b -> fst a == fst b) def env
-    (env', C.Var name)
+    -- Only the return env is relevant.
+    -- An empty env means the name is not defined.
+    -- Otherwise, an env with the name's definition is returned.
+    let compileDef :: (FilePath , Expr) -> C.Expr
+        compileDef (path, expr) = do
+          let (env, a) = compile ctx path (name, expr)
+          C.let' env a
+    let env = case resolve ctx path name of
+              [] -> []
+              alts -> [(name, C.or' $ map compileDef alts)]
+    (env, C.Var name)

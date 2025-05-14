@@ -59,21 +59,22 @@ coreCmd filename arg = do
   let path = dropExtension (snd (split2 ':' filename))
   -- let a = lower [] arg'
   -- let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
-  -- mapM_ (\((a, t),s) -> do
-  --     putStrLn "----------"
-  --     -- putStrLn $ "env: " ++ unwords (map fst env)
-  --     -- mapM_ (\(x, a) -> putStrLn ("  - " ++ fmt (C.Var x) ++ ": " ++ fmt (C.dropLet a))) env
-  --     putStrLn $ ": " ++ show (C.dropMeta t)
-  --     putStrLn $ "> " ++ show (C.dropMeta $ lower [] arg')
-  --     print $ C.dropMeta $ C.dropTypes $  C.eval runtimeOps (C.Let env a)
-  --     -- putStrLn "\n# type substitutions"
-  --     -- mapM_ (\(x, a) -> putStrLn ("  - " ++ fmt (C.Var x) ++ ": " ++ fmt a)) s
-  --     putStrLn ""
-  --   ) (fromRight [] $ C.infer' buildOps env a)
   let (env, a) = compile ctx path arg'
-  print arg'
-  print (map fst env)
-  print a
+  -- putStrLn $ "env: " ++ unwords (map fst env)
+  -- putStrLn $ "a: " ++ show a
+  mapM_
+    ( \((a, t), s) -> do
+        putStrLn "----------"
+        -- putStrLn $ "env: " ++ unwords (map fst env)
+        -- mapM_ (\(x, a) -> putStrLn ("  - " ++ fmt (C.Var x) ++ ": " ++ fmt (C.dropLet a))) env
+        putStrLn $ ": " ++ show (C.dropMeta t)
+        putStrLn $ "> " ++ show (C.dropMeta a)
+        print $ C.dropMeta $ C.dropTypes $ C.eval runtimeOps (C.Let env a)
+        -- putStrLn "\n# type substitutions"
+        -- mapM_ (\(x, a) -> putStrLn ("  - " ++ fmt (C.Var x) ++ ": " ++ fmt a)) s
+        putStrLn ""
+    )
+    (fromRight [] $ C.infer' buildOps env a)
 
 runCmd :: FilePath -> String -> IO ()
 runCmd filename arg = do
