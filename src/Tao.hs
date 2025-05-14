@@ -1481,9 +1481,7 @@ instance Check Module where
   check (_, stmts) = concatMap check stmts
 
 run :: Context -> FilePath -> Expr -> (Expr, Type)
-run ctx path expr = do
-  let (env, expr') = compile ctx path expr
-  eval env expr'
+run ctx path expr = eval [] (compile ctx path expr)
 
 eval :: C.Env -> C.Expr -> (Expr, Type)
 eval env expr =
@@ -1581,34 +1579,28 @@ instance Resolve (String, Stmt) where
     _ -> []
 
 class Compile a where
-  compile :: Context -> FilePath -> a -> (C.Env, C.Expr)
+  compile :: Context -> FilePath -> a -> C.Expr
 
 instance Compile Expr where
-  compile :: Context -> FilePath -> Expr -> (C.Env, C.Expr)
+  compile :: Context -> FilePath -> Expr -> C.Expr
   compile ctx path expr =
     compile ctx path (C.newName (freeVars expr) "", expr)
 
 instance Compile (String, Expr) where
-  compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
+  compile :: Context -> FilePath -> (String, Expr) -> C.Expr
   compile ctx path (name, expr) = do
     let a = lower [] expr
-    let env = C.freeVars a `union` C.freeTags a & delete name & concatMap (fst . compile ctx path)
+    let env = C.freeVars a `union` C.freeTags a & delete name & map (\x -> (x, compile ctx path x))
     case C.infer' buildOps env a of
-      Right alts -> (env, C.or' $ map (\((a, t), _) -> C.Ann a t) alts)
+      Right alts -> C.let' env (C.or' $ map (\((a, t), _) -> C.Ann a t) alts)
       Left err -> error $ show err
 
-
 instance Compile String where
-  compile :: Context -> FilePath -> String -> (C.Env, C.Expr)
+  compile :: Context -> FilePath -> String -> C.Expr
   compile ctx path name = do
     -- Only the return env is relevant.
     -- An empty env means the name is not defined.
     -- Otherwise, an env with the name's definition is returned.
-    let compileDef :: (FilePath , Expr) -> C.Expr
-        compileDef (path, expr) = do
-          let (env, a) = compile ctx path (name, expr)
-          C.let' env a
-    let env = case resolve ctx path name of
-              [] -> []
-              alts -> [(name, C.or' $ map compileDef alts)]
-    (env, C.Var name)
+    case resolve ctx path name of
+      [] -> error $ "compile " ++ name
+      alts -> C.or' $ map (\(path, a) -> compile ctx path (name, a)) alts

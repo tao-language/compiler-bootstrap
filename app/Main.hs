@@ -59,21 +59,23 @@ coreCmd filename arg = do
   let path = dropExtension (snd (split2 ':' filename))
   -- let a = lower [] arg'
   -- let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
-  let (env, a) = compile ctx path arg'
-  putStrLn $ "core: " ++ show a
+  let a = compile ctx path arg'
+  let (env, a') = C.letOf a
+  putStrLn $ "core: " ++ show a'
   putStrLn $ "env: " ++ unwords (map fst env)
   mapM_ (\(x, a) -> putStrLn ("  " ++ show (C.Var x) ++ ": " ++ show (C.dropLet a))) env
   mapM_
-    ( \((a, t), s) -> do
+    ( \a -> do
         putStrLn "----------"
-        putStrLn $ ": " ++ show (C.dropMeta t)
         putStrLn $ "> " ++ show (C.dropMeta a)
-        print $ C.dropMeta $ C.dropTypes $ C.eval runtimeOps (C.Let env (C.Ann a t))
+        print $ C.dropMeta $ C.dropTypes $ C.eval runtimeOps (C.Let env a)
         -- putStrLn "\n# type substitutions"
         -- mapM_ (\(x, a) -> putStrLn ("  - " ++ fmt (C.Var x) ++ ": " ++ fmt a)) s
         putStrLn ""
     )
-    (fromRight [] $ C.infer' buildOps env a)
+    (C.orOf a')
+  putStrLn "----------"
+  print $ C.dropMeta $ C.dropTypes $ C.eval runtimeOps a
 
 runCmd :: FilePath -> String -> IO ()
 runCmd filename arg = do

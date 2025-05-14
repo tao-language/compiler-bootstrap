@@ -625,6 +625,12 @@ let' [] a = a
 let' env (Let env' a) = let' (env ++ env') a
 let' env a = Let env a
 
+letOf :: Expr -> (Env, Expr)
+letOf (Let env a) = (env, a)
+letOf (Ann a _) = letOf a
+letOf (Meta _ a) = letOf a
+letOf a = ([], a)
+
 isLet :: Expr -> Bool
 isLet (Let _ _) = True
 isLet (Meta _ a) = isLet a
@@ -899,8 +905,8 @@ eval :: Ops -> Expr -> Expr
 eval ops expr = case reduce ops expr of
   Tag k a -> Tag k (eval ops a)
   Ann a b -> case (eval ops a, eval ops b) of
-    (a, b) | Just (a, _) <- asAnn a -> eval ops (Ann a b)
-    (a, _) | isErr a -> a
+    -- (a, b) | Just (a, _) <- asAnn a -> eval ops (Ann a b)
+    -- (a, _) | isErr a -> a
     (a, b) -> Ann a b
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> case eval ops a of

@@ -5,5 +5,4 @@ import Tao
 
 run :: Context -> String -> Expr -> Expr
 run ctx path expr = do
-  let (env, expr') = compile ctx path expr
-  lift (C.eval runtimeOps (C.Let env expr'))
+  lift $ C.eval runtimeOps $ compile ctx path expr
