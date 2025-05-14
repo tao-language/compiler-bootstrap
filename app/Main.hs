@@ -1,6 +1,7 @@
 import Check (checkTypes)
 import Control.Monad (void)
 import qualified Core as C
+import Data.Either (fromRight)
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, isSuffixOf, partition)
 import Error
@@ -16,7 +17,6 @@ import System.FilePath ((</>))
 import System.FilePath.Windows (dropExtension, takeBaseName, takeDirectory, takeFileName)
 import Tao
 import Test (count, testAll)
-import Data.Either (fromRight)
 
 main :: IO ()
 main = do
@@ -59,23 +59,25 @@ coreCmd filename arg = do
   let path = dropExtension (snd (split2 ':' filename))
   -- let a = lower [] arg'
   -- let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
-  let a = compile ctx path arg'
-  let (env, a') = C.letOf a
-  putStrLn $ "core: " ++ show a'
+  let (env, a) = compile ctx path arg'
+  putStrLn $ "core: " ++ show a
   putStrLn $ "env: " ++ unwords (map fst env)
-  mapM_ (\(x, a) -> putStrLn ("  " ++ show (C.Var x) ++ ": " ++ show (C.dropLet a))) env
-  mapM_
-    ( \a -> do
-        putStrLn "----------"
-        putStrLn $ "> " ++ show (C.dropMeta a)
-        print $ C.dropMeta $ C.dropTypes $ C.eval runtimeOps (C.Let env a)
-        -- putStrLn "\n# type substitutions"
-        -- mapM_ (\(x, a) -> putStrLn ("  - " ++ fmt (C.Var x) ++ ": " ++ fmt a)) s
-        putStrLn ""
-    )
-    (C.orOf a')
+  mapM_ (\(x, a) -> putStrLn ("  " ++ show (C.Var x) ++ ": " ++ show a)) env
+  -- mapM_
+  --   ( \alt -> do
+  --       let (env, a) = C.letOf alt
+  --       putStrLn "----------"
+  --       putStrLn $ "> " ++ show (C.dropMeta a)
+  --       let result = C.dropMeta $ C.eval runtimeOps alt
+  --       print result
+  --       print $ C.dropTypes result
+  --       -- putStrLn "\n# type substitutions"
+  --       -- mapM_ (\(x, a) -> putStrLn ("  - " ++ fmt (C.Var x) ++ ": " ++ fmt a)) s
+  --       putStrLn ""
+  --   )
+  --   alts
   putStrLn "----------"
-  print $ C.dropMeta $ C.dropTypes $ C.eval runtimeOps a
+  print $ C.dropMeta $ C.dropTypes $ C.eval runtimeOps $ C.let' env a
 
 runCmd :: FilePath -> String -> IO ()
 runCmd filename arg = do

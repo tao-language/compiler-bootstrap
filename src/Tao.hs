@@ -1481,7 +1481,9 @@ instance Check Module where
   check (_, stmts) = concatMap check stmts
 
 run :: Context -> FilePath -> Expr -> (Expr, Type)
-run ctx path expr = eval [] (compile ctx path expr)
+run ctx path expr = do
+  let (env, a) = compile ctx path expr
+  eval [] (C.let' env a)
 
 eval :: C.Env -> C.Expr -> (Expr, Type)
 eval env expr =
@@ -1579,28 +1581,29 @@ instance Resolve (String, Stmt) where
     _ -> []
 
 class Compile a where
-  compile :: Context -> FilePath -> a -> C.Expr
+  compile :: Context -> FilePath -> a -> (C.Env, C.Expr)
 
 instance Compile Expr where
-  compile :: Context -> FilePath -> Expr -> C.Expr
+  compile :: Context -> FilePath -> Expr -> (C.Env, C.Expr)
   compile ctx path expr =
     compile ctx path (C.newName (freeVars expr) "", expr)
 
 instance Compile (String, Expr) where
-  compile :: Context -> FilePath -> (String, Expr) -> C.Expr
+  compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
   compile ctx path (name, expr) = do
     let a = lower [] expr
-    let env = C.freeVars a `union` C.freeTags a & delete name & map (\x -> (x, compile ctx path x))
+    let xs = delete name (C.freeVars a `union` C.freeTags a)
+    let env = compileDefs ctx path xs
     case C.infer' buildOps env a of
-      Right alts -> C.let' env (C.or' $ map (\((a, t), _) -> C.Ann a t) alts)
-      Left err -> error $ show err
+      Right alts -> (env, C.or' $ map (\((a, t), _) -> C.Ann a t) alts)
+      Left err -> error $ show (name, xs, map fst env, err)
 
-instance Compile String where
-  compile :: Context -> FilePath -> String -> C.Expr
-  compile ctx path name = do
-    -- Only the return env is relevant.
-    -- An empty env means the name is not defined.
-    -- Otherwise, an env with the name's definition is returned.
-    case resolve ctx path name of
-      [] -> error $ "compile " ++ name
-      alts -> C.or' $ map (\(path, a) -> compile ctx path (name, a)) alts
+compileDefs :: Context -> FilePath -> [String] -> C.Env
+compileDefs _ _ [] = []
+compileDefs ctx path (x : xs) = do
+  let defs = resolve ctx path x
+  let compileDef (path, a) = do
+        let (env, a') = compile ctx path (x, a)
+        (x, a') : env
+  let env = compileDefs ctx path xs
+  foldr (unionBy (\a b -> fst a == fst b)) env (map compileDef defs)

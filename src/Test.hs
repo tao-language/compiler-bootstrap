@@ -72,7 +72,7 @@ instance TestSome (FilePath, UnitTest) where
           [ Fun t.expect (Tag ":Ok" []),
             Fun (Var "$got") (Tag ":Err" [Var "$got"])
           ]
-    let test' = compile ctx path (Match t.expr cases)
+    let (env, test') = compile ctx path (Match t.expr cases)
     -- let (env, test') = compile (dropMeta ctx) path (dropMeta $ Match t.expr cases)
     -- error $ show (map fst env)
     -- error $ show (dropMeta $ Match t.expr cases)
@@ -82,7 +82,7 @@ instance TestSome (FilePath, UnitTest) where
     -- error $ intercalate "\n" $ map (\(x, a) -> show x ++ ": " ++ show (eval [] a)) env
     -- error $ show (C.dropMeta $ C.eval runtimeOps (C.Let env test'))
     -- error $ show "TODO: do not dropMeta on compile"
-    case C.typedOf (C.eval runtimeOps test') of
+    case C.typedOf (C.eval runtimeOps $ C.let' env test') of
       (C.Tag ":Ok" _, _) -> [TestPass t.filename t.pos name]
       -- TODO: Fix this, it's where type errors on tests get reported.
       --       Just check the result for any errors and mark it as failure.

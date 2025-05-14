@@ -30,11 +30,14 @@ instance CheckTypes Stmt where
     Import {} -> []
     Def (p, b) -> do
       let expr = (Let (p, b) (Tuple []))
-      check $ lift $ compile ctx path expr
+      let (env, a) = compile ctx path expr
+      check $ lift $ C.let' env a
     TypeDef {} -> []
     Test t -> do
       let expr = (Tuple [t.expr, t.expect])
-      check $ lift $ compile ctx path expr
+      let (env, a) = compile ctx path expr
+      check $ lift $ C.let' env a
     Run expr -> do
-      check $ lift $ compile ctx path expr
+      let (env, a) = compile ctx path expr
+      check $ lift $ C.let' env a
     Comment _ -> []
