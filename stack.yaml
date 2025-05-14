@@ -20,7 +20,7 @@
 
 # 🚨 The version here must match the one in .github/workflows/test.yaml
 #   https://github.com/commercialhaskell/stackage-snapshots/tree/master
-resolver: nightly-2024-08-09
+resolver: nightly-2025-05-05
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
