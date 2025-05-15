@@ -1601,9 +1601,10 @@ instance Compile (String, Expr) where
 compileDefs :: Context -> FilePath -> [String] -> C.Env
 compileDefs _ _ [] = []
 compileDefs ctx path (x : xs) = do
-  let defs = resolve ctx path x
-  let compileDef (path, a) = do
-        let (env, a') = compile ctx path (x, a)
-        (x, a') : env
-  let env = compileDefs ctx path xs
-  foldr (unionBy (\a b -> fst a == fst b)) env (map compileDef defs)
+  let compileDef (path, a) = compile ctx path (x, a)
+  let defs = map compileDef (resolve ctx path x)
+  let env1 = compileDefs ctx path xs
+  let env2 = foldr (unionBy (\a b -> fst a == fst b)) env1 (map fst defs)
+  case defs of
+    [] -> env2
+    defs -> (x, C.or' $ map snd defs) : env2
