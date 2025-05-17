@@ -1577,7 +1577,7 @@ instance Resolve (String, Stmt) where
     TypeDef (name', args, alts) | name == name' -> do
       let resolveAlt (a, Just b) = Fun a b
           resolveAlt (a, Nothing) = Fun a (Tag name' args)
-      [(path, fun args (or' (map resolveAlt alts)))]
+      [(path, fun args (or' $ map resolveAlt alts))]
     _ -> []
 
 class Compile a where

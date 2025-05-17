@@ -77,6 +77,7 @@ coreCmd filename arg = do
   --   )
   --   alts
   putStrLn "----------"
+  print $ C.dropMeta $ C.eval runtimeOps $ C.let' env a
   print $ C.dropMeta $ C.dropTypes $ C.eval runtimeOps $ C.let' env a
 
 runCmd :: FilePath -> String -> IO ()
