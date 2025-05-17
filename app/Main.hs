@@ -60,24 +60,17 @@ coreCmd filename arg = do
   -- let a = lower [] arg'
   -- let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
   let (env, a) = compile ctx path arg'
-  putStrLn $ "core: " ++ show a
   putStrLn $ "env: " ++ unwords (map fst env)
-  mapM_ (\(x, a) -> putStrLn ("  " ++ show (C.Var x) ++ ": " ++ show a)) env
-  -- mapM_
-  --   ( \alt -> do
-  --       let (env, a) = C.letOf alt
-  --       putStrLn "----------"
-  --       putStrLn $ "> " ++ show (C.dropMeta a)
-  --       let result = C.dropMeta $ C.eval runtimeOps alt
-  --       print result
-  --       print $ C.dropTypes result
-  --       -- putStrLn "\n# type substitutions"
-  --       -- mapM_ (\(x, a) -> putStrLn ("  - " ++ fmt (C.Var x) ++ ": " ++ fmt a)) s
-  --       putStrLn ""
-  --   )
-  --   alts
+  mapM_
+    ( \(x, a) -> do
+        let (env', a') = C.letOf a
+        putStrLn ("  " ++ show (C.Var x) ++ ": @{" ++ unwords (map fst env') ++ "} " ++ show a')
+    )
+    env
+  putStrLn $ show a
   putStrLn "----------"
   print $ C.dropMeta $ C.eval runtimeOps $ C.let' env a
+  putStrLn "----------"
   print $ C.dropMeta $ C.dropTypes $ C.eval runtimeOps $ C.let' env a
 
 runCmd :: FilePath -> String -> IO ()

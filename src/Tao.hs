@@ -1603,8 +1603,9 @@ compileDefs _ _ [] = []
 compileDefs ctx path (x : xs) = do
   let compileDef (path, a) = compile ctx path (x, a)
   let defs = map compileDef (resolve ctx path x)
-  let env1 = compileDefs ctx path xs
-  let env2 = foldr (unionBy (\a b -> fst a == fst b)) env1 (map fst defs)
+  let env1 = foldr (unionBy (\a b -> fst a == fst b)) [] (map fst defs)
+  let env2 = compileDefs ctx path xs
+  let env = unionBy (\a b -> fst a == fst b) env1 env2
   case defs of
-    [] -> env2
-    defs -> (x, C.or' $ map snd defs) : env2
+    [] -> env
+    defs -> (x, C.let' env1 $ C.or' $ map snd defs) : env

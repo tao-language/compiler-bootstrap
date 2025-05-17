@@ -798,7 +798,7 @@ reduceLet ops env = \case
   Var x -> case lookup x env of
     Just (Var x') | x == x' -> Var x
     Just (Ann (Var x') t) | x == x' -> Ann (Var x) t
-    Just a -> reduce ops (Let ((x, Var x) : env) a)
+    Just a -> reduce ops a
     Nothing -> Var x
   Tag k a -> Tag k (Let env a)
   Ann a b -> Ann (Let env a) (Let env b)
