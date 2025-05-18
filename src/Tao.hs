@@ -1594,7 +1594,7 @@ instance Compile (String, Expr) where
     let a = lower [] expr
     let xs = delete name (C.freeVars a `union` C.freeTags a)
     let env = compileDefs ctx path xs
-    case C.infer' buildOps env a of
+    case C.infer buildOps env a of
       Right alts -> (env, C.or' $ map (\((a, t), _) -> C.Ann a t) alts)
       Left err -> error $ show (name, xs, map fst env, err)
 
