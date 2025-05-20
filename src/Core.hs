@@ -528,6 +528,9 @@ asOr (Or a b) = Just (a, b)
 asOr (Meta _ a) = asOr a
 asOr _ = Nothing
 
+ann :: (Expr, Type) -> Expr
+ann (a, t) = Ann a t
+
 isAnn :: Expr -> Bool
 isAnn (Ann _ _) = True
 isAnn (Meta _ a) = isAnn a
@@ -823,6 +826,7 @@ reduceApp ops a b = case (a, reduce ops b) of
   (Ann a _, b) -> reduceApp ops (reduce ops a) b
   (Or a1 a2, b) -> Or (reduceApp ops (reduce ops a1) b) (App a2 b)
   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
+  (Fix x a, b) | isOpen b -> error $ show $ dropMeta $ App (Fix x a) b
   (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
   (Fun a c, b) -> case match False ops a b of
     Matched env -> reduce ops (Let env c)
@@ -1112,6 +1116,16 @@ unifyAll ops env (a : bs) (a' : bs') = do
     ]
 unifyAll ops env _ _ = error $ show "unifyAll size mismatch"
 
+collapse :: Ops -> Env -> [Expr] -> Either (Error Expr) [(Expr, Substitution)]
+collapse ops env [] = error "collapse: empty list"
+collapse ops env [a] = Right [(a, [])]
+collapse ops env (a : bs) = do
+  Right
+    [ (c, s2 `compose` s1)
+    | (b, s1) <- fromRight [] $ collapse ops env bs,
+      (c, s2) <- fromRight [] $ unify ops (s1 `compose` env) (substitute s1 a) b
+    ]
+
 infer :: Ops -> Env -> Expr -> Either (Error Expr) [((Expr, Type), Substitution)]
 infer _ env Any = do
   let y = newName ("_" : map fst env) "_"
@@ -1160,14 +1174,28 @@ infer ops env (For x a) = do
     | ((a, t), s) <- fromRight [] $ infer ops ((y, Var y) : env) (sub x y a)
     ]
 -- infer ops env (Fix x a) = do
---   let y = newName (map fst env) x
---   let ((a', ta), s) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
---   ((Fix x (substitute [(y, Var x)] a'), ta), s `compose` [(y, Var y)])
+--   let y = newName ((x ++ "$") : map fst env) (x ++ "$")
+--   let sub x y = substitute [(x, Var y)]
+--   Right
+--     [ ((Fix x (sub y x a), sub y x t), s)
+--     | ((a, t), s) <- fromRight [] $ infer ops ((y, Var y) : env) (sub x y a)
+--     ]
 infer ops env (Fun a b) = do
   Right
     [ ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
     | ((a, ta), (b, tb), s) <- fromRight [] $ infer2 ops env a b
     ]
+-- infer ops env (App a b) = do
+--   let x = newName ("$" : map fst env) "$"
+--   Right
+--     [ do
+--         let s = s2 `compose` s1
+--         let t1 = substitute s2 tb
+--         let t2 = fromMaybe (Var x) (lookup x $ s `compose` env)
+--         ((App a (Ann b t1), substitute s2 t2), s2 `compose` s1 `compose` [(x, Var x)])
+--     | ((a, ta), (b, tb), s1) <- fromRight [] $ infer2 ops env a b,
+--       (_, s2) <- fromRight [] $ unify ops (s1 `compose` env) ta (Fun (substitute s1 tb) (Var x))
+--     ]
 infer ops env (App a b) = do
   let funAlts :: Expr -> [(Expr, Expr)]
       funAlts (Fun a b) = [(a, b)]

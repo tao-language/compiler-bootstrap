@@ -113,6 +113,7 @@ op2s =
     ("<<", ShiftL),
     ("|>", PipeL),
     ("<|", PipeR),
+    ("::", Cons),
     ("==", Eq),
     ("!=", Ne),
     ("<", Lt),
@@ -1594,8 +1595,13 @@ instance Compile (String, Expr) where
     let a = lower [] expr
     let xs = delete name (C.freeVars a `union` C.freeTags a)
     let env = compileDefs ctx path xs
-    case C.infer buildOps env a of
-      Right alts -> (env, C.or' $ map (\((a, t), _) -> C.Ann a t) alts)
+    case C.infer buildOps ((name, C.Var name) : env) a of
+      Right [] -> error $ show ("compile: infer was empty", name, xs, map fst env, dropMeta expr, C.dropMeta a)
+      -- Right alts -> do
+      --   case C.collapse buildOps env (map (snd . fst) alts) of
+      --     Right [(t, s)] -> (env, C.Ann (C.or' $ map (fst . fst) alts) t)
+      --     _ -> (env, C.or' $ map (C.ann . fst) alts)
+      Right alts -> (env, C.or' $ map (C.ann . fst) alts)
       Left err -> error $ show (name, xs, map fst env, err)
 
 compileDefs :: Context -> FilePath -> [String] -> C.Env
@@ -1608,4 +1614,5 @@ compileDefs ctx path (x : xs) = do
   let env = unionBy (\a b -> fst a == fst b) env1 env2
   case defs of
     [] -> env
+    -- defs -> (x, C.let' env1 $ C.fix' [x] $ C.or' $ map snd defs) : env
     defs -> (x, C.let' env1 $ C.or' $ map snd defs) : env

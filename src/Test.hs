@@ -88,7 +88,7 @@ instance TestSome (FilePath, UnitTest) where
       --       Just check the result for any errors and mark it as failure.
       -- (_, C.Tag ":Err" (C.Err e)) -> [TestFail t.filename t.pos name t.expr t.expect (lift (C.Err e))]
       (C.Tag ":Err" got, _) -> [TestFail t.filename t.pos name (dropMeta t.expr) (dropMeta t.expect) (lift got)]
-      (got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
+      -- (got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
       (got, t) -> error ("Unreachable " ++ show (got, t))
 
 testAll :: (TestSome a) => Context -> a -> [TestResult]
