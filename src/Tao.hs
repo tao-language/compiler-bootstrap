@@ -1613,7 +1613,6 @@ compileDefs ctx path (x : xs) = do
   let env = unionBy (\a b -> fst a == fst b) env1 env2
   case defs of
     [] -> env
-    -- defs -> (x, C.let' env1 $ C.or' $ map snd defs) : env
     defs -> do
       let a = C.let' env1 $ C.or' $ map snd defs
-      (x, C.fix' [x] $ C.for' (C.freeVars a) a) : env
+      (x, C.fix' [x] $ C.for' (delete x $ C.freeVars a) a) : env
