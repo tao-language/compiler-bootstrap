@@ -80,8 +80,7 @@ instance TestSome (FilePath, UnitTest) where
     -- error $ show (C.dropMeta test')
     -- error $ show (second (C.dropMeta . C.eval []) <$> env)
     -- error $ intercalate "\n" $ map (\(x, a) -> show x ++ ": " ++ show (eval [] a)) env
-    -- error $ show (C.dropMeta $ C.eval runtimeOps (C.Let env test'))
-    -- error $ show "TODO: do not dropMeta on compile"
+    -- error $ show (C.dropMeta $ C.eval runtimeOps (C.let' env test'))
     case C.typedOf (C.eval runtimeOps $ C.let' env test') of
       (C.Tag ":Ok" _, _) -> [TestPass t.filename t.pos name]
       -- TODO: Fix this, it's where type errors on tests get reported.

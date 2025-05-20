@@ -1614,4 +1614,6 @@ compileDefs ctx path (x : xs) = do
   case defs of
     [] -> env
     -- defs -> (x, C.let' env1 $ C.or' $ map snd defs) : env
-    defs -> (x, C.let' env1 $ C.fix' [x] $ C.or' $ map snd defs) : env
+    defs -> do
+      let a = C.let' env1 $ C.or' $ map snd defs
+      (x, C.fix' [x] $ C.for' (C.freeVars a) a) : env
