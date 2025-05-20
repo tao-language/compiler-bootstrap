@@ -1173,29 +1173,30 @@ infer ops env (For x a) = do
     [ ((For x (sub y x a), sub y x t), s)
     | ((a, t), s) <- fromRight [] $ infer ops ((y, Var y) : env) (sub x y a)
     ]
--- infer ops env (Fix x a) = do
---   let y = newName ((x ++ "$") : map fst env) (x ++ "$")
---   let sub x y = substitute [(x, Var y)]
---   Right
---     [ ((Fix x (sub y x a), sub y x t), s)
---     | ((a, t), s) <- fromRight [] $ infer ops ((y, Var y) : env) (sub x y a)
---     ]
+infer ops env (Fix x a) = do
+  let y = newName ((x ++ "$") : map fst env) (x ++ "$")
+  let sub x y = substitute [(x, Var y)]
+  Right
+    [ ((Fix x (sub y x a), sub y x t), pop y s)
+    | ((a, t), s) <- fromRight [] $ infer ops ((y, Var y) : env) (sub x y a)
+    ]
 infer ops env (Fun a b) = do
   Right
     [ ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
     | ((a, ta), (b, tb), s) <- fromRight [] $ infer2 ops env a b
     ]
--- infer ops env (App a b) = do
---   let x = newName ("$" : map fst env) "$"
---   Right
---     [ do
---         let s = s2 `compose` s1
---         let t1 = substitute s2 tb
---         let t2 = fromMaybe (Var x) (lookup x $ s `compose` env)
---         ((App a (Ann b t1), substitute s2 t2), s2 `compose` s1 `compose` [(x, Var x)])
---     | ((a, ta), (b, tb), s1) <- fromRight [] $ infer2 ops env a b,
---       (_, s2) <- fromRight [] $ unify ops (s1 `compose` env) ta (Fun (substitute s1 tb) (Var x))
---     ]
+infer ops env (App a b) = do
+  let x = newName ("$" : map fst env) "$"
+  let env' = (x, Var x) : env
+  Right
+    [ do
+        let s = s2 `compose` s1
+        let t1 = substitute s2 tb
+        let t2 = fromMaybe (Var x) (lookup x $ s `compose` env')
+        ((App a (Ann b t1), substitute s2 t2), s `compose` [(x, Var x)])
+    | ((a, ta), (b, tb), s1) <- fromRight [] $ infer2 ops env' a b,
+      (_, s2) <- fromRight [] $ unify ops (s1 `compose` env') ta (Fun (substitute s1 tb) (Var x))
+    ]
 infer ops env (App a b) = do
   let funAlts :: Expr -> [(Expr, Expr)]
       funAlts (Fun a b) = [(a, b)]
