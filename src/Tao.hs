@@ -204,6 +204,10 @@ isFun = \case
   Meta _ a -> isFun a
   _ -> False
 
+lets :: [(Pattern, Expr)] -> Expr -> Expr
+lets [] a = a
+lets (def : defs) a = Let def (lets defs a)
+
 isErr :: Expr -> Bool
 isErr = \case
   Err -> True
@@ -277,13 +281,6 @@ asFor = \case
     (xs, a') <- asFor a
     Just (xs, Meta m a')
   _ -> Nothing
-
-caseBindings :: Expr -> [String]
-caseBindings = \case
-  For xs _ -> xs
-  Fun a _ -> freeVars a
-  Meta _ a -> caseBindings a
-  _ -> []
 
 or' :: [Expr] -> Expr
 or' [] = Err
@@ -1037,7 +1034,7 @@ lower xs = \case
   Let (a, b) c -> case a of
     Var x | c == Var x -> lower xs b
     Ann (Var x) t | c == Var x -> lower xs (Ann b t)
-    -- Ann (Or a1 a2) t -> lower (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
+    Ann (Or a1 a2) t -> lower xs (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
     Ann (App a1 a2) t -> lower xs (Let (Ann a1 t, Fun a2 b) c)
     Ann (Op1 op a) t -> lower xs (Let (Ann (Var (show op)) t, Fun a b) c)
     Ann (Op2 op a1 a2) t -> lower xs (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
@@ -1045,7 +1042,7 @@ lower xs = \case
       C.App a b -> C.App (C.Meta (fmap (lower xs) m) a) b
       a -> a
     Ann a t -> lower xs (Let (a, Ann b t) c)
-    -- Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
+    Or a1 a2 -> lower xs (lets [(a1, b), (a2, b)] c)
     App a1 a2 -> lower xs (Let (a1, Fun a2 b) c)
     Op1 op a -> lower xs (Let (Var (show op), Fun a b) c)
     Op2 op a1 a2 -> lower xs (Let (Var (show op), fun [a1, a2] b) c)

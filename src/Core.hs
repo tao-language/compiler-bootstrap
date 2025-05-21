@@ -826,7 +826,7 @@ reduceApp ops a b = case (a, reduce ops b) of
   (Ann a _, b) -> reduceApp ops (reduce ops a) b
   (Or a1 a2, b) -> Or (reduceApp ops (reduce ops a1) b) (App a2 b)
   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
-  (Fix x a, b) | isOpen b -> error $ show $ dropMeta $ App (Fix x a) b
+  -- (Fix x a, b) | isOpen b -> error $ show $ dropMeta $ App (Fix x a) b
   (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
   (Fun a c, b) -> case match False ops a b of
     Matched env -> reduce ops (Let env c)
@@ -915,7 +915,7 @@ eval ops expr = case reduce ops expr of
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> case eval ops a of
     a | isErr a -> eval ops b
-    a | isVar a || isApp a || isFun a -> Or a (eval ops b)
+    a | isVar a || isApp a || isFun a || isOr a -> Or a (eval ops b)
     a -> a
   For x a -> For x (eval ops (Let [(x, Var x)] a))
   Fix x a -> Fix x (eval ops (Let [(x, Var x)] a))
@@ -1221,7 +1221,7 @@ infer ops env (Meta m a) = do
     [ ((Meta m a, t), s)
     | ((a, t), s) <- fromRight [] $ infer ops env a
     ]
--- infer _ _ Err = ((Err, Err), [])
+infer _ _ Err = Right [((Err, Err), [])]
 infer ops env a =
   (error . intercalate "\n")
     [ "infer " ++ show a,

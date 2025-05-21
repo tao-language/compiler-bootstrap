@@ -181,7 +181,7 @@ run = describe "--==☯ Examples ☯==--" $ do
             Pass "Or match 2",
             Pass "Or match 3",
             Pass "Or match 4",
-            Fail "Or match fail" i3 (Or i1 i2)
+            Fail "Or match fail" i3 i1
           ]
     test ctx pkg `shouldBe` testResults
 
@@ -245,7 +245,7 @@ run = describe "--==☯ Examples ☯==--" $ do
     let testResults =
           [ Pass "Overload match 1",
             Pass "Overload match 2",
-            Fail "Overload fail" i3 (Or (Ann i1 IntT) (Ann (Num 2.2) NumT))
+            Fail "Overload fail" i3 (Ann i1 IntT)
           ]
     test ctx pkg `shouldBe` testResults
 
@@ -330,17 +330,17 @@ run = describe "--==☯ Examples ☯==--" $ do
           ]
     test ctx pkg `shouldBe` testResults
 
-  -- let name = "examples/factorial"
-  -- it ("☯ " ++ name ++ ".tao") $ do
-  --   pkg <- load ["examples/factorial.tao"]
-  --   check pkg `shouldBe` []
-  --   ctx <- include "prelude" pkg
-  --   let testResults =
-  --         [ Pass "factorial(0)",
-  --           Pass "factorial(1)",
-  --           Pass "factorial(2)",
-  --           Pass "factorial(3)",
-  --           Pass "factorial(4)",
-  --           Pass "factorial(5)"
-  --         ]
-  --   test ctx pkg `shouldBe` testResults
+-- let name = "examples/factorial"
+-- it ("☯ " ++ name ++ ".tao") $ do
+--   pkg <- load ["examples/factorial.tao"]
+--   check pkg `shouldBe` []
+--   ctx <- include "prelude" pkg
+--   let testResults =
+--         [ Pass "factorial(0)",
+--           Pass "factorial(1)",
+--           Pass "factorial(2)",
+--           Pass "factorial(3)",
+--           Pass "factorial(4)",
+--           Pass "factorial(5)"
+--         ]
+--   test ctx pkg `shouldBe` testResults
