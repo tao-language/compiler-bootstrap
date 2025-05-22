@@ -10,6 +10,8 @@ let map(r, f) = match r {
 
 > map(Ok(1), x -> A(x)) ~> Ok(A(1))
 > map(Err(0), x -> A(x)) ~> Err(0)
+> Ok(1).map(x -> A(x)) ~> Ok(A(1))
+> Err(0).map(x -> A(x)) ~> Err(0)
 
 : (Result(a, e1), e1 -> e2) -> Result(a, e2)
 let map-error(r, f) = match r {
@@ -19,6 +21,8 @@ let map-error(r, f) = match r {
 
 > map-error(Ok(1), x -> A(x)) ~> Ok(1)
 > map-error(Err(0), x -> A(x)) ~> Err(A(0))
+> Ok(1).map-error(x -> A(x)) ~> Ok(1)
+> Err(0).map-error(x -> A(x)) ~> Err(A(0))
 
 : (Result(a, e), a -> b) -> Result(b, e)
 let (<-) = map
