@@ -1,0 +1,37 @@
+type List(value) =
+| value :: List(value)
+| []
+
+# Syntax sugar
+> [] ~> []
+> [1] ~> 1 :: []
+> [1,] ~> 1 :: []
+> [1, 2] ~> 1 :: 2 :: []
+> [1, 2,] ~> 1 :: 2 :: []
+
+# Type checking
+> [] : List(Int) ~> []
+> [1] : List(Int) ~> [1]
+> [1] ~> [1] : List(Int)
+
+: List(value) -> Int
+let length = match {
+| [] -> 0
+| x :: xs -> 1 + length(xs)
+}
+
+# > [].length() ~> 0
+
+# (++) or in [idx] [start..end]
+# length, empty, flatten
+# map, filter, flat-map, foldl, foldr
+# push, pop, add, remove
+# all, any, max, min, sum, product, average, count
+# repeat, range, reverse
+# split, join, intercalate, sort, replace
+# take, drop, pad, trim, partition, zip, unzip
+# starts-with, ends-with
+# find
+# List comprehensions
+
+
