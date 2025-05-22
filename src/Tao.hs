@@ -37,6 +37,7 @@ data Expr
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
   | Dot Expr String (Maybe [Expr])
+  | Spread Expr
   | Match Expr [Expr]
   | MatchFun [Expr]
   | Let (Pattern, Expr) Expr
@@ -204,6 +205,25 @@ isFun = \case
   Fun _ _ -> True
   Meta _ a -> isFun a
   _ -> False
+
+isSpread :: Expr -> Bool
+isSpread = \case
+  Spread _ -> True
+  Ann a _ -> isSpread a
+  Meta _ a -> isSpread a
+  _ -> False
+
+spreadOf :: Expr -> Maybe Expr
+spreadOf = \case
+  Spread a -> Just a
+  Ann a _ -> spreadOf a
+  Meta _ a -> spreadOf a
+  _ -> Nothing
+
+list' :: [Expr] -> Expr
+list' [] = tag "[]"
+list' [a] | Just a' <- spreadOf a = a'
+list' (a : bs) = Tag "::" [a, list' bs]
 
 lets :: [(Pattern, Expr)] -> Expr -> Expr
 lets [] a = a
@@ -843,6 +863,15 @@ grammar = do
                 Dot a x Nothing -> Just (lhs a ++ [PP.Text ("." ++ x)])
                 Dot a x (Just args) -> Just (lhs a ++ [PP.Text ("." ++ x ++ "(")] ++ collectionLayout (G.layout grammar 0) args ++ [PP.Text ")"])
                 _ -> Nothing,
+          -- Grammar.Spread
+          let parser expr = do
+                _ <- P.text ".."
+                a <- P.oneOf [do _ <- P.spaces; expr, return Any]
+                return (Spread a)
+           in G.Atom parser $ \layout -> \case
+                Spread Any -> Just [PP.Text ".."]
+                Spread a -> Just (PP.Text ".." : layout a)
+                _ -> Nothing,
           -- Grammar.Call
           let parser expr = do
                 start <- P.getState
@@ -1028,8 +1057,9 @@ lower xs = \case
   Tag k args -> C.tag k (map (lower xs) args)
   Ann a b -> C.Ann (lower xs a) (lower xs b)
   Tuple items -> C.and' (map (lower xs) items)
-  List [] -> C.tag' "[]"
-  List (a : bs) -> lower xs (Tag "::" [a, List bs])
+  List items -> lower xs (list' items)
+  -- List [] -> C.tag' "[]"
+  -- List (a : bs) -> lower xs (Tag "::" [a, List bs])
   String [] -> C.tag' "''"
   String [Str txt] -> lower xs (List (map Char txt))
   String segments -> error "TODO: lower String interpolation"
