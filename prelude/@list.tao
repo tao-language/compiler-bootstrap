@@ -2,15 +2,34 @@ type List(a) =
 | a :: List(a)
 | []
 
-: List(a) -> Int
+: List(_) -> Int
 let length = match {
 | [] -> 0
-| (x :: xs) -> 1 + length(xs)
+| x :: xs -> 1 + length(xs)
 }
 
 > [].length() ~> 0
 > [1].length() ~> 1
 > [1, 2].length() ~> 2
+
+: List(a) -> Maybe(a)
+let first = match {
+| [] -> None
+| x :: xs -> Some(x)
+}
+
+> [].first() ~> None
+> [1, 2].first() ~> Some(1)
+
+: List(a) -> Maybe(a)
+let last = match {
+| [] -> None
+| [x] -> Some(x)
+| x :: xs -> last(xs)
+}
+
+> [].last() ~> None
+> [1, 2].last() ~> Some(2)
 
 # (++) or in [idx] [start..end]
 # length, empty, flatten
