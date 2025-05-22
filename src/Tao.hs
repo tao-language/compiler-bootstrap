@@ -525,24 +525,24 @@ collect f = \case
   where
     unionMap f = foldr (union . f) []
 
-freeVars :: Expr -> [String]
-freeVars = \case
-  Var x -> [x]
-  For xs a -> filter (`notElem` xs) (freeVars a)
-  Dot a x Nothing -> [x] `union` freeVars a
-  Dot a x (Just args) -> freeVars a `union` [x] `union` concatMap freeVars args
-  Let (a, b) c -> (freeVars a \\ bindings a) `union` freeVars b `union` freeVars c
-  Bind (a, b) c -> ["<-"] `union` (freeVars a \\ bindings a) `union` freeVars b `union` freeVars c
-  a -> collect freeVars a
+-- freeVars :: Expr -> [String]
+-- freeVars = \case
+--   Var x -> [x]
+--   For xs a -> filter (`notElem` xs) (freeVars a)
+--   Dot a x Nothing -> [x] `union` freeVars a
+--   Dot a x (Just args) -> freeVars a `union` [x] `union` concatMap freeVars args
+--   Let (a, b) c -> (freeVars a \\ bindings a) `union` freeVars b `union` freeVars c
+--   Bind (a, b) c -> ["<-"] `union` (freeVars a \\ bindings a) `union` freeVars b `union` freeVars c
+--   a -> collect freeVars a
 
-freeTags :: Expr -> [String]
-freeTags = \case
-  Tag k [] -> [k]
-  Tag k (a : args) -> freeTags a `union` freeTags (Tag k args)
-  a -> collect freeTags a
+-- freeTags :: Expr -> [String]
+-- freeTags = \case
+--   Tag k [] -> [k]
+--   Tag k (a : args) -> freeTags a `union` freeTags (Tag k args)
+--   a -> collect freeTags a
 
-freeNames :: Expr -> [String]
-freeNames a = freeVars a `union` freeTags a
+-- freeNames :: Expr -> [String]
+-- freeNames a = freeVars a `union` freeTags a
 
 parse :: FilePath -> String -> Either (P.State String) (Expr, P.State String)
 parse = P.parse (parseExpr 0)
@@ -1036,9 +1036,7 @@ lower xs = \case
   Char c -> C.tag "Char" [C.Int (ord c)]
   Var x -> C.Var x
   Tag k args -> C.tag k (map (lower xs) args)
-  Ann a b -> case freeVars b of
-    [] -> C.Ann (lower xs a) (lower xs b)
-    ys -> C.Ann (lower xs a) (lower xs $ For ys b)
+  Ann a b -> C.Ann (lower xs a) (lower xs b)
   Tuple items -> C.and' (map (lower xs) items)
   List [] -> C.tag' "[]"
   List (a : bs) -> lower xs (Tag "::" [a, List bs])
@@ -1049,7 +1047,10 @@ lower xs = \case
   For ys a | Just (a, b) <- asFun a -> do
     C.for ys (C.Fun (lower (xs ++ ys) a) (lower (xs ++ ys) b))
   For ys a -> C.for xs (lower (xs ++ ys) a)
-  Fun a b -> lower xs (For (filter (`notElem` xs) $ freeVars a) (Fun a b))
+  Fun a b -> do
+    let ys = filter (`notElem` xs) (C.freeVars (lower xs a))
+    let (a', b') = (lower (xs ++ ys) a, lower (xs ++ ys) b)
+    C.for' ys (C.Fun a' b')
   App a b -> C.App (lower xs a) (lower xs b)
   Call op args -> C.Call op (map (lower xs) args)
   Op1 op a -> C.app (C.Var $ show op) [lower xs a]
@@ -1078,7 +1079,8 @@ lower xs = \case
     Meta m a -> case lower xs (Let (a, b) c) of
       C.App a b -> C.App (C.Meta (fmap (lower xs) m) a) b
       a -> a
-    a -> lower xs (App (For (freeVars a) (Fun a c)) b)
+    -- a -> lower xs (App (For (freeVars a) (Fun a c)) b)
+    a -> C.App (lower xs $ Fun a c) (lower xs b)
   Bind (a, b) c -> lower xs (app (Var "<-") [b, Fun a c])
   -- Record fields -> do
   --   let k = '~' : intercalate "," (map fst fields)
@@ -1517,17 +1519,6 @@ eval env expr =
     & lift
     & typed
 
-bindings :: Expr -> [String]
-bindings = \case
-  Var x -> [x]
-  For xs _ -> xs
-  Ann a _ -> bindings a
-  App a _ -> bindings a
-  Op1 op _ -> [show op]
-  Op2 op _ _ -> [show op]
-  Meta _ a -> bindings a
-  a -> freeVars a
-
 buildOps :: C.Ops
 buildOps = do
   let call op f =
@@ -1606,22 +1597,35 @@ instance Resolve (String, Stmt) where
       [(path, fun args (or' $ map resolveAlt alts))]
     _ -> []
 
+bindings :: Expr -> [String]
+bindings p = do
+  let (a, _) = C.appOf (lower [] $ Let (p, Any) Any)
+  fst (C.forOf a)
+
 class Compile a where
   compile :: Context -> FilePath -> a -> (C.Env, C.Expr)
 
 instance Compile Expr where
   compile :: Context -> FilePath -> Expr -> (C.Env, C.Expr)
-  compile ctx path expr =
-    compile ctx path (C.newName (freeVars expr) "", expr)
+  compile ctx path expr = compile ctx path ("", expr)
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
   compile ctx path (name, expr) = do
-    let a = lower [] expr
+    let a = C.dropMeta $ lower [] expr
     let xs = delete name (C.freeVars a `union` C.freeTags a)
     let env = compileDefs ctx path xs
     case C.infer buildOps ((name, C.Var name) : env) a of
-      Right [] -> error $ show ("compile: infer was empty", name, xs, map fst env, dropMeta expr, C.dropMeta a)
+      Right [] ->
+        (error . intercalate "\n")
+          [ "compile: infer was empty",
+            "name: " ++ name,
+            "xs: " ++ show xs,
+            "env: " ++ show (map fst env),
+            "expr: " ++ show (dropMeta expr),
+            "core: " ++ show (C.dropMeta a),
+            ""
+          ]
       Right alts -> do
         case C.collapse buildOps env (map (snd . fst) alts) of
           Right [(t, s)] -> (env, C.Ann (C.or' $ map (fst . fst) alts) t)
@@ -1640,4 +1644,4 @@ compileDefs ctx path (x : xs) = do
     [] -> env
     defs -> do
       let a = C.let' env1 $ C.or' $ map snd defs
-      (x, C.fix' [x] $ C.for' (delete x $ C.freeVars a) a) : env
+      (x, C.fix' [x] a) : env

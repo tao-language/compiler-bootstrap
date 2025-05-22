@@ -1127,6 +1127,15 @@ collapse ops env (a : bs) = do
     ]
 
 infer :: Ops -> Env -> Expr -> Either (Error Expr) [((Expr, Type), Substitution)]
+-- infer ops env a@(Ann b@(Var "map") t) =
+--   (error . intercalate "\n")
+--     [ "infer",
+--       "a: " ++ show a,
+--       "env: " ++ show (env & filter (\(x, a) -> a == Var x) & map fst),
+--       intercalate "\n" (env & filter (\(x, a) -> a /= Var x) & map (\x -> "- " ++ show x)),
+--       show $ check ops env b t,
+--       ""
+--     ]
 infer _ env Any = do
   let y = newName ("_" : map fst env) "_"
   Right [((Any, Var y), [(y, Var y)])]
@@ -1170,7 +1179,7 @@ infer ops env (For x a) = do
   let y = newName ((x ++ "$") : map fst env) (x ++ "$")
   let sub x y = substitute [(x, Var y)]
   Right
-    [ ((For x (sub y x a), sub y x t), s)
+    [ ((for' [x] (sub y x a), sub y x t), s)
     | ((a, t), s) <- fromRight [] $ infer ops ((y, Var y) : env) (sub x y a)
     ]
 infer ops env (Fix x a) = do
@@ -1222,13 +1231,6 @@ infer ops env (Meta m a) = do
     | ((a, t), s) <- fromRight [] $ infer ops env a
     ]
 infer _ _ Err = Right [((Err, Err), [])]
-infer ops env a =
-  (error . intercalate "\n")
-    [ "infer " ++ show a,
-      "env: " ++ show (env & filter (\(x, a) -> a == Var x) & map fst),
-      intercalate "\n" (env & filter (\(x, a) -> a /= Var x) & map (\x -> "- " ++ show x)),
-      ""
-    ]
 
 infer2 :: Ops -> Env -> Expr -> Expr -> Either (Error Expr) [((Expr, Type), (Expr, Type), Substitution)]
 infer2 ops env a b = do
@@ -1248,6 +1250,19 @@ inferAll ops env (a : bs) = do
     ]
 
 check :: Ops -> Env -> Expr -> Type -> Either (Error Expr) [((Expr, Type), Substitution)]
+-- check ops env a@(Var "map") t = do
+--   (error . intercalate "\n")
+--     [ "check " ++ show (a, t),
+--       "env: " ++ show (env & filter (\(x, a) -> a == Var x) & map fst),
+--       intercalate "\n" (env & filter (\(x, a) -> a /= Var x) & map (\x -> "- " ++ show x)),
+--       "a: " ++ show (infer ops env a),
+--       show
+--         [ ((a, t), s2 `compose` s1)
+--         | ((a, ta), s1) <- fromRight [] $ infer ops env a,
+--           (t, s2) <- fromRight [] $ unify ops (s1 `compose` env) ta (substitute s1 t)
+--         ],
+--       ""
+--     ]
 check ops env a (For x t) = infer ops env (For x (Ann a t))
 check ops env (For x a) t = infer ops env (For x (Ann a t))
 check ops env (Var x) t = case lookup x env of
@@ -1280,19 +1295,6 @@ check ops env (Meta m a) t = do
   Right [((Meta m a, t), s) | ((a, t), s) <- fromRight [] (check ops env a t)]
 check ops env a (Meta m t) = do
   Right [((a, Meta m t), s) | ((a, t), s) <- fromRight [] (check ops env a t)]
-check ops env a t | False = do
-  (error . intercalate "\n")
-    [ "check " ++ show (a, t),
-      "env: " ++ show (env & filter (\(x, a) -> a == Var x) & map fst),
-      intercalate "\n" (env & filter (\(x, a) -> a /= Var x) & map (\x -> "- " ++ show x)),
-      "a: " ++ show (infer ops env a),
-      show
-        [ ((a, t), s2 `compose` s1)
-        | ((a, ta), s1) <- fromRight [] $ infer ops env a,
-          (t, s2) <- fromRight [] $ unify ops (s1 `compose` env) ta (substitute s1 t)
-        ],
-      ""
-    ]
 check ops env a t = do
   Right
     [ ((a, t), s2 `compose` s1)

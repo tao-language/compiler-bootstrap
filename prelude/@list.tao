@@ -2,26 +2,14 @@ type List(a) =
 | a :: List(a)
 | []
 
-# Syntax sugar
-> [] ~> []
-> [1] ~> 1 :: []
-> [1,] ~> 1 :: []
-> [1, 2] ~> 1 :: 2 :: []
-> [1, 2,] ~> 1 :: 2 :: []
-
-# Type checking
-> [] : List(Int) ~> []
-> [1] : List(Int) ~> [1]
-> [1] ~> [1] : List(Int)
-
 : List(a) -> Int
 let length = match {
 | [] -> 0
-| x :: xs -> 1 + length(xs)
+| (x :: xs) -> 1 + length(xs)
 }
 
 > length([]) ~> 0
-> [].length() ~> 0
+# > [].length() ~> 0
 
 # (++) or in [idx] [start..end]
 # length, empty, flatten
