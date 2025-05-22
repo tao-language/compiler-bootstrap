@@ -36,6 +36,7 @@ data Expr
   | Call String [Expr]
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
+  | Dot Expr String (Maybe [Expr])
   | Match Expr [Expr]
   | MatchFun [Expr]
   | Let (Pattern, Expr) Expr
@@ -404,6 +405,8 @@ instance Apply Expr where
     Call x args -> Call x (map f args)
     Op1 op a -> Op1 op (f a)
     Op2 op a b -> Op2 op (f a) (f b)
+    Dot a x Nothing -> Dot (f a) x Nothing
+    Dot a x (Just args) -> Dot (f a) x (Just (map f args))
     Match arg cases -> Match (f arg) (map f cases)
     MatchFun cases -> MatchFun (map f cases)
     Let (a, b) c -> Let (f a, f b) (f c)
@@ -507,6 +510,8 @@ collect f = \case
   Call _ args -> unionMap f args
   Op1 op a -> f (Var (show op)) `union` f a
   Op2 op a b -> f (Var (show op)) `union` f a `union` f b
+  Dot a _ Nothing -> f a
+  Dot a _ (Just args) -> f a `union` unionMap f args
   Match arg cases -> f arg `union` unionMap f cases
   MatchFun cases -> unionMap f cases
   Let (a, b) c -> f a `union` f b `union` f c
@@ -524,6 +529,8 @@ freeVars :: Expr -> [String]
 freeVars = \case
   Var x -> [x]
   For xs a -> filter (`notElem` xs) (freeVars a)
+  Dot a x Nothing -> [x] `union` freeVars a
+  Dot a x (Just args) -> freeVars a `union` [x] `union` concatMap freeVars args
   Let (a, b) c -> (freeVars a \\ bindings a) `union` freeVars b `union` freeVars c
   Bind (a, b) c -> ["<-"] `union` (freeVars a \\ bindings a) `union` freeVars b `union` freeVars c
   a -> collect freeVars a
@@ -711,13 +718,13 @@ grammar = do
             Op2 Ne a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Lt
-          let parser x expr = do
+          let parser a expr = do
                 start <- P.getState
                 _ <- P.char '<'
                 end <- P.getState
                 _ <- P.lookaheadNot (P.char '-')
                 _ <- P.spaces
-                withLoc start end . Op2 Lt x <$> expr
+                withLoc start end . Op2 Lt a <$> expr
            in G.InfixL 6 parser $ \lhs rhs -> \case
                 Op2 Lt a b -> Just (lhs a ++ PP.Text " < " : rhs b)
                 _ -> Nothing,
@@ -805,7 +812,7 @@ grammar = do
             App (Var "not") a -> Just (" ", a)
             _ -> Nothing,
           -- Grammar.App
-          let parser x expr = do
+          let parser a expr = do
                 start <- P.getState
                 args <- parseCollection "(" "," ")" $ do
                   -- name <-
@@ -821,11 +828,30 @@ grammar = do
                   parseExprUntil "app arg" 0 [",", ")", "\n"]
                 end <- P.getState
                 _ <- P.spaces
-                return (withLoc start end $ app x args)
+                return (withLoc start end $ app a args)
            in G.InfixL 13 parser $ \lhs rhs -> \case
                 App a b -> do
                   let args = tupleOf b
                   Just (lhs a ++ PP.Text "(" : collectionLayout (G.layout grammar 0) args ++ [PP.Text ")"])
+                _ -> Nothing,
+          -- Grammar.Dot
+          let parser a expr = do
+                start <- P.getState
+                _ <- P.char '.'
+                end <- P.getState
+                _ <- P.whitespaces
+                x <- parseNameVar
+                _ <- P.spaces
+                args <-
+                  P.maybe' $ do
+                    args <- parseCollection "(" "," ")" (parseExpr 0)
+                    _ <- P.spaces
+                    return args
+                _ <- P.spaces
+                return (withLoc start end $ Dot a x args)
+           in G.InfixL 13 parser $ \lhs rhs -> \case
+                Dot a x Nothing -> Just (lhs a ++ [PP.Text ("." ++ x)])
+                Dot a x (Just args) -> Just (lhs a ++ [PP.Text ("." ++ x ++ "(")] ++ collectionLayout (G.layout grammar 0) args ++ [PP.Text ")"])
                 _ -> Nothing,
           -- Grammar.Call
           let parser expr = do
@@ -920,12 +946,12 @@ grammar = do
                   Just (comments' ++ rhs a)
                 _ -> Nothing,
           -- Grammar.Metadata.TrailingComment
-          let parser x _expr = do
+          let parser a _expr = do
                 _ <- P.char '#'
                 _ <- P.spaces
                 comment <- P.zeroOrMore (P.charIf (/= '\n'))
                 _ <- P.whitespaces
-                return (Meta (C.TrailingComment comment) x)
+                return (Meta (C.TrailingComment comment) a)
            in G.InfixL 1 parser $ \lhs _ -> \case
                 Meta (C.TrailingComment comment) a ->
                   Just (lhs a ++ [PP.Text ("  # " ++ comment), PP.NewLine])
@@ -1029,6 +1055,8 @@ lower xs = \case
   Op1 op a -> C.app (C.Var $ show op) [lower xs a]
   Op2 Cons a b -> lower xs (Tag "::" [a, b])
   Op2 op a b -> C.app (C.Var $ show op) [lower xs a, lower xs b]
+  Dot a x Nothing -> C.App (C.Var x) (lower xs a)
+  Dot a x (Just args) -> C.App (C.Var x) (lower xs $ Tuple (a : args))
   Match arg cases -> lower xs (App (or' cases) arg)
   MatchFun cases -> lower xs (or' cases)
   Let (a, b) c -> case a of

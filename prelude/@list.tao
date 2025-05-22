@@ -1,5 +1,5 @@
-type List(value) =
-| value :: List(value)
+type List(a) =
+| a :: List(a)
 | []
 
 # Syntax sugar
@@ -14,13 +14,14 @@ type List(value) =
 > [1] : List(Int) ~> [1]
 > [1] ~> [1] : List(Int)
 
-: List(value) -> Int
+: List(a) -> Int
 let length = match {
 | [] -> 0
 | x :: xs -> 1 + length(xs)
 }
 
-# > [].length() ~> 0
+> length([]) ~> 0
+> [].length() ~> 0
 
 # (++) or in [idx] [start..end]
 # length, empty, flatten
