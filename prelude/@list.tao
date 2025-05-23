@@ -2,6 +2,15 @@ type List(a) =
 | a :: List(a)
 | []
 
+: List(_) -> Bool
+let empty = match {
+| [] -> True
+| _ -> False
+}
+
+> [].empty() ~> True
+> [1, 2, 3].empty ~> False
+
 : List(_) -> Int
 let length = match {
 | [] -> 0
@@ -30,6 +39,17 @@ let last = match {
 
 > [].last() ~> None
 > [1, 2, 3].last() ~> Some(3)
+
+: (List(a), List(a)) -> List(a)
+let (++) = match {
+| ([], ys) -> ys
+| ([x, ..xs], ys) -> x :: (xs ++ ys)
+}
+
+> [] ++ [1, 2, 3] ~> [1, 2, 3]
+> [1] ++ [2, 3] ~> [1, 2, 3]
+> [1, 2] ++ [3] ~> [1, 2, 3]
+> [1, 2, 3] ++ [] ~> [1, 2, 3]
 
 # (++) or in [idx] [start..end]
 # length, empty, flatten

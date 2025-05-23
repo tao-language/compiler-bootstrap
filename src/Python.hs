@@ -624,7 +624,7 @@ instance Emit T.Op2 (T.Expr -> T.Expr -> ([Stmt], Expr)) where
           T.Sub -> BinOp a' Sub b'
           T.Mul -> BinOp a' Mult b'
           T.Div -> BinOp a' Div b'
-          T.DivI -> BinOp a' FloorDiv b'
+          T.Div2 -> BinOp a' FloorDiv b'
           -- Mod -- x % y
           T.Pow -> BinOp a' Pow b'
           -- LShift -- x << y

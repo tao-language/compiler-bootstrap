@@ -95,11 +95,15 @@ data Op2
   | OrOp
   | XorOp
   | Add
+  | Add2
   | Sub
+  | Sub2
   | Mul
+  | Mul2
   | Div
-  | DivI
+  | Div2
   | Pow
+  | Pow2
   | ShiftL
   | ShiftR
   | PipeL
@@ -123,11 +127,15 @@ op2s =
     (">", Gt),
     (">=", Ge),
     ("+", Add),
+    ("++", Add2),
     ("-", Sub),
+    ("--", Sub2),
     ("*", Mul),
+    ("**", Mul2),
     ("/", Div),
-    ("//", DivI),
-    ("^", Pow)
+    ("//", Div2),
+    ("^", Pow),
+    ("^^", Pow2)
   ]
 
 showOp2 :: Op2 -> String
@@ -379,8 +387,8 @@ mul = Op2 Mul
 div' :: Expr -> Expr -> Expr
 div' = Op2 Div
 
-divI :: Expr -> Expr -> Expr
-divI = Op2 DivI
+div2 :: Expr -> Expr -> Expr
+div2 = Op2 Div2
 
 pow :: Expr -> Expr -> Expr
 pow = Op2 Pow
@@ -427,6 +435,7 @@ instance Apply Expr where
     Op2 op a b -> Op2 op (f a) (f b)
     Dot a x Nothing -> Dot (f a) x Nothing
     Dot a x (Just args) -> Dot (f a) x (Just (map f args))
+    Spread a -> Spread (f a)
     Match arg cases -> Match (f arg) (map f cases)
     MatchFun cases -> MatchFun (map f cases)
     Let (a, b) c -> Let (f a, f b) (f c)
@@ -532,6 +541,7 @@ collect f = \case
   Op2 op a b -> f (Var (show op)) `union` f a `union` f b
   Dot a _ Nothing -> f a
   Dot a _ (Just args) -> f a `union` unionMap f args
+  Spread a -> f a
   Match arg cases -> f arg `union` unionMap f cases
   MatchFun cases -> unionMap f cases
   Let (a, b) c -> f a `union` f b `union` f c
@@ -799,25 +809,41 @@ grammar = do
           G.infixR 10 (locOp2 Cons) "::" $ \case
             Op2 Cons a b -> Just (a, " ", b)
             _ -> Nothing,
+          -- Grammar.Op2.Add2
+          G.infixL 11 (locOp2 Add2) "++" $ \case
+            Op2 Add2 a b -> Just (a, " ", b)
+            _ -> Nothing,
           -- Grammar.Op2.Add
           G.infixL 11 (locOp2 Add) "+" $ \case
             Op2 Add a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Sub
+          G.infixL 11 (locOp2 Sub2) "--" $ \case
+            Op2 Sub2 a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.Sub
           G.infixL 11 (locOp2 Sub) "-" $ \case
             Op2 Sub a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.Mul2
+          G.infixL 12 (locOp2 Mul2) "**" $ \case
+            Op2 Mul2 a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Mul
           G.infixL 12 (locOp2 Mul) "*" $ \case
             Op2 Mul a b -> Just (a, " ", b)
             _ -> Nothing,
-          -- Grammar.Op2.DivI must go before Div '/'
-          G.infixL 12 (locOp2 DivI) "//" $ \case
-            Op2 DivI a b -> Just (a, " ", b)
+          -- Grammar.Op2.Div2
+          G.infixL 12 (locOp2 Div2) "//" $ \case
+            Op2 Div2 a b -> Just (a, " ", b)
             _ -> Nothing,
-          -- Grammar.Op2.Div must go after DivI '//'
+          -- Grammar.Op2.Div
           G.infixL 12 (locOp2 Div) "/" $ \case
             Op2 Div a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.Pow2
+          G.infixR 13 (locOp2 Pow2) "^^" $ \case
+            Op2 Pow2 a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Pow
           G.infixR 13 (locOp2 Pow) "^" $ \case
@@ -1058,8 +1084,6 @@ lower xs = \case
   Ann a b -> C.Ann (lower xs a) (lower xs b)
   Tuple items -> C.and' (map (lower xs) items)
   List items -> lower xs (list' items)
-  -- List [] -> C.tag' "[]"
-  -- List (a : bs) -> lower xs (Tag "::" [a, List bs])
   String [] -> C.tag' "''"
   String [Str txt] -> lower xs (List (map Char txt))
   String segments -> error "TODO: lower String interpolation"
@@ -1078,8 +1102,8 @@ lower xs = \case
   Op2 op a b -> C.app (C.Var $ show op) [lower xs a, lower xs b]
   Dot a x Nothing -> C.App (C.Var x) (lower xs a)
   Dot a x (Just args) -> C.App (C.Var x) (lower xs $ Tuple (a : args))
-  Match arg cases -> lower xs (App (or' cases) arg)
-  MatchFun cases -> lower xs (or' cases)
+  Match arg cases -> lower xs (App (MatchFun cases) arg)
+  MatchFun cases -> lower [] (or' cases)
   Let (a, b) c -> case a of
     Var x | c == Var x -> lower xs b
     Ann (Var x) t | c == Var x -> lower xs (Ann b t)
@@ -1270,11 +1294,15 @@ parseNameOp = do
         P.text "<",
         P.text ">=",
         P.text ">",
+        P.text "++",
         P.text "+",
+        P.text "--",
         P.text "-",
+        P.text "**",
         P.text "*",
         P.text "//",
         P.text "/",
+        P.text "^^",
         P.text "^"
       ]
   _ <- P.whitespaces
@@ -1642,6 +1670,7 @@ instance Compile (String, Expr) where
             "name: " ++ name,
             "xs: " ++ show xs,
             "env: " ++ show (map fst env),
+            intercalate "\n" $ map (\(x, a) -> "  " ++ show (Var x) ++ ": " ++ show (eval [] a)) env,
             "expr: " ++ show (dropMeta expr),
             "core: " ++ show (C.dropMeta a),
             ""

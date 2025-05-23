@@ -1161,11 +1161,6 @@ infer ops env (Var x) = case lookup x env of
       ]
   Nothing -> Left (undefinedVar x)
 infer ops env (Ann a t) = check ops env a t
--- infer ops env (Ann a t) = do
---   Right
---     [ ((Ann a t, t), s)
---       | ((a, t), s) <- fromRight [] $ check ops env a t
---     ]
 infer ops env (And a b) = do
   Right
     [ ((And a b, And ta tb), s)
