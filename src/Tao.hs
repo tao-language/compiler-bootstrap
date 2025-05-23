@@ -47,7 +47,8 @@ data Expr
   | Record [(String, Expr)]
   | Select Expr [(String, Expr)]
   | With Expr [(String, Expr)]
-  | If Expr Expr Expr
+  | If Expr Expr
+  | IfElse Expr Expr Expr
   | Meta (C.Metadata Expr) Expr
   | Err
   deriving (Eq)
@@ -447,7 +448,8 @@ instance Apply Expr where
     Record fields -> Record (second f <$> fields)
     Select a fields -> Select (f a) (second f <$> fields)
     With a fields -> With (f a) (second f <$> fields)
-    If a b c -> If (f a) (f b) (f c)
+    If a b -> If (f a) (f b)
+    IfElse a b c -> IfElse (f a) (f b) (f c)
     Meta m a -> Meta m (f a)
     Err -> Err
 
@@ -555,7 +557,8 @@ collect f = \case
   Record fields -> unionMap (f . snd) fields
   Select a fields -> f a `union` unionMap (f . snd) fields
   With a fields -> f a `union` unionMap (f . snd) fields
-  If a b c -> f a `union` f b `union` f c
+  If a b -> f a `union` f b
+  IfElse a b c -> f a `union` f b `union` f c
   Meta m a -> f a
   Err -> []
   where
@@ -977,6 +980,18 @@ grammar = do
           -- Grammar.Select Expr [(String, Expr)]
           -- Grammar.With Expr [(String, Expr)]
           -- Grammar.If
+          let parser a expr = do
+                start <- P.getState
+                _ <- P.word "if"
+                _ <- P.commit "if"
+                end <- P.getState
+                _ <- P.spaces
+                b <- expr
+                return (withLoc start end $ If a b)
+           in G.InfixL 14 parser $ \lhs rhs -> \case
+                If a b -> Just (lhs a ++ PP.Text " if " : rhs b)
+                _ -> Nothing,
+          -- Grammar.IfElse
           let parser expr = do
                 start <- P.getState
                 _ <- P.word "if"
@@ -992,10 +1007,9 @@ grammar = do
                 _ <- P.word "else"
                 _ <- P.spaces
                 c <- expr
-                _ <- P.spaces
-                return (withLoc start end $ If a b c)
+                return (withLoc start end $ IfElse a b c)
            in G.Atom parser $ \layout -> \case
-                If a b c -> Just (PP.Text "if " : layout a ++ PP.Text " then " : layout b ++ PP.Text " else " : layout c)
+                IfElse a b c -> Just (PP.Text "if " : layout a ++ PP.Text " then " : layout b ++ PP.Text " else " : layout c)
                 _ -> Nothing,
           -- Grammar.Metadata.Comments
           let parser expr = do
@@ -1162,10 +1176,10 @@ lower xs = \case
   --   let k = '~' : intercalate "," (map fst kvs)
   --   let args = map ((C.substitute sub . lower) . snd) kvs
   --   C.tag k args
-  If a b c -> lower xs (Match a [Fun (Ann true bool) b, Fun (Ann false bool) c])
+  IfElse a b c -> lower xs (Match a [Fun (Ann true bool) b, Fun (Ann false bool) c])
   Meta m a -> C.Meta (fmap (lower xs) m) (lower xs a)
   Err -> C.Err
-  a -> error $ "TODO: lower " ++ show a
+  a -> error $ "TODO: lower " ++ show (dropMeta a)
 
 lift :: C.Expr -> Expr
 lift = \case
