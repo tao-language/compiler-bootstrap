@@ -38,6 +38,8 @@ data Expr
   | Op2 Op2 Expr Expr
   | Dot Expr String (Maybe [Expr])
   | Spread Expr
+  | Get Expr Expr
+  | Slice Expr (Expr, Expr)
   | Match Expr [Expr]
   | MatchFun [Expr]
   | Let (Pattern, Expr) Expr
@@ -436,6 +438,8 @@ instance Apply Expr where
     Dot a x Nothing -> Dot (f a) x Nothing
     Dot a x (Just args) -> Dot (f a) x (Just (map f args))
     Spread a -> Spread (f a)
+    Get a b -> Get (f a) (f b)
+    Slice a (b, c) -> Slice (f a) (f b, f c)
     Match arg cases -> Match (f arg) (map f cases)
     MatchFun cases -> MatchFun (map f cases)
     Let (a, b) c -> Let (f a, f b) (f c)
@@ -542,6 +546,8 @@ collect f = \case
   Dot a _ Nothing -> f a
   Dot a _ (Just args) -> f a `union` unionMap f args
   Spread a -> f a
+  Get a b -> f a `union` f b
+  Slice a (b, c) -> f a `union` f b `union` f c
   Match arg cases -> f arg `union` unionMap f cases
   MatchFun cases -> unionMap f cases
   Let (a, b) c -> f a `union` f b `union` f c
@@ -870,6 +876,21 @@ grammar = do
                   let args = tupleOf b
                   Just (lhs a ++ PP.Text "(" : collectionLayout (G.layout grammar 0) args ++ [PP.Text ")"])
                 _ -> Nothing,
+          -- Grammar.Get / Grammar.Slice
+          let parser a expr = do
+                start <- P.getState
+                _ <- P.char '['
+                _ <- P.whitespaces
+                b <- parseExprUntil "get/slice 1" 0 ["]", ":", "\n"]
+                _ <- P.whitespaces
+                _ <- P.char ']'
+                end <- P.getState
+                _ <- P.spaces
+                return (withLoc start end $ Get a b)
+           in G.InfixL 14 parser $ \lhs rhs -> \case
+                Get a b -> do
+                  Just (lhs a ++ PP.Text "[" : G.layout grammar 0 b ++ [PP.Text ")"])
+                _ -> Nothing,
           -- Grammar.Dot
           let parser a expr = do
                 start <- P.getState
@@ -1102,6 +1123,9 @@ lower xs = \case
   Op2 op a b -> C.app (C.Var $ show op) [lower xs a, lower xs b]
   Dot a x Nothing -> C.App (C.Var x) (lower xs a)
   Dot a x (Just args) -> C.App (C.Var x) (lower xs $ Tuple (a : args))
+  Spread a -> error $ "TODO: lower Spread " ++ show a
+  Get a b -> lower xs (app (Var ".[]") [a, b])
+  Slice a (b, c) -> lower xs (app (Var ".[:]") [a, b, c])
   Match arg cases -> lower xs (App (MatchFun cases) arg)
   MatchFun cases -> lower [] (or' cases)
   Let (a, b) c -> case a of
@@ -1303,7 +1327,9 @@ parseNameOp = do
         P.text "//",
         P.text "/",
         P.text "^^",
-        P.text "^"
+        P.text "^",
+        P.text ".[]",
+        P.text ".[:]"
       ]
   _ <- P.whitespaces
   _ <- P.char ')'
@@ -1583,15 +1609,13 @@ buildOps = do
   let numOp2 op f = call op $ \case
         [a, b] | Just x <- C.asNum a, Just y <- C.asNum b -> Just (f x y)
         _ -> Nothing
-  [ intOp1 "int_neg" (\x -> C.Int (-x)),
-    intOp2 "int_lt" (\x y -> C.tag' (if x < y then "True" else "False")),
+  [ intOp2 "int_lt" (\x y -> C.tag' (if x < y then "True" else "False")),
     intOp2 "int_add" (\x y -> C.Int (x + y)),
     intOp2 "int_sub" (\x y -> C.Int (x - y)),
     intOp2 "int_mul" (\x y -> C.Int (x * y)),
     intOp2 "int_div" (\x y -> C.Num (fromIntegral x / fromIntegral y)),
     intOp2 "int_divi" (\x y -> C.Int (Prelude.div x y)),
     intOp2 "int_pow" (\x y -> C.Int (x ^ y)),
-    numOp1 "num_neg" (\x -> C.Num (-x)),
     numOp2 "num_lt" (\x y -> C.tag' (if x < y then "True" else "False")),
     numOp2 "num_add" (\x y -> C.Num (x + y)),
     numOp2 "num_sub" (\x y -> C.Num (x - y)),
@@ -1667,7 +1691,7 @@ instance Compile (String, Expr) where
       Right [] ->
         (error . intercalate "\n")
           [ "compile: infer was empty",
-            "name: " ++ name,
+            "name: " ++ show name,
             "xs: " ++ show xs,
             "env: " ++ show (map fst env),
             intercalate "\n" $ map (\(x, a) -> "  " ++ show (Var x) ++ ": " ++ show (eval [] a)) env,

@@ -142,14 +142,14 @@ grammar = do
                 args <-
                   P.oneOf
                     [ do
-                        _ <- P.char '<'
+                        _ <- P.char '('
                         _ <- P.spaces
                         arg <- expr
                         args <- P.zeroOrMore $ do
                           _ <- P.char ','
                           _ <- P.spaces
                           expr
-                        _ <- P.char '>'
+                        _ <- P.char ')'
                         _ <- P.spaces
                         return (arg : args),
                       return []
@@ -159,7 +159,7 @@ grammar = do
                 Tag k Unit -> Just [PP.Text k]
                 Tag k a -> do
                   let args = map layout (andOf a)
-                  Just (PP.Text (k ++ "<") : intercalate [PP.Text ", "] args ++ [PP.Text ">"])
+                  Just (PP.Text (k ++ "(") : intercalate [PP.Text ", "] args ++ [PP.Text ")"])
                 _ -> Nothing,
           -- Grammar.Var
           G.atom (const Var) parseNameVar $ \_ -> \case

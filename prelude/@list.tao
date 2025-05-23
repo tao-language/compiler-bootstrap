@@ -51,6 +51,34 @@ let (++) = match {
 > [1, 2] ++ [3] ~> [1, 2, 3]
 > [1, 2, 3] ++ [] ~> [1, 2, 3]
 
+: (List(a), Int) -> Maybe(a)
+let (.[]) = match {
+  | ([], _) -> None
+  | ([x, ..], 1) -> Some(x)
+  | ([_, ..xs], i) -> xs[i - 1]
+}
+
+> [10, 20, 30][0] ~> None
+> [10, 20, 30][1] ~> Some(10)
+> [10, 20, 30][2] ~> Some(20)
+> [10, 20, 30][3] ~> Some(30)
+> [10, 20, 30][4] ~> None
+> [10, 20, 30][-1] ~> None
+
+# : (List(a), Int) -> Maybe(a)
+# let xs.get(i) if i < 0 = xs[length(xs) + i + 1]
+# let xs.get(i) = xs[i]
+
+# > [10, 20, 30].get(0) ~> None
+# > [10, 20, 30].get(1) ~> Some(10)
+# > [10, 20, 30].get(2) ~> Some(20)
+# > [10, 20, 30].get(3) ~> Some(30)
+# > [10, 20, 30].get(4) ~> None
+# > [10, 20, 30].get(-1) ~> Some(30)
+# > [10, 20, 30].get(-2) ~> Some(20)
+# > [10, 20, 30].get(-3) ~> Some(10)
+# > [10, 20, 30].get(-4) ~> None
+
 # (++) or in [idx] [start..end]
 # length, empty, flatten
 # map, filter, flat-map, foldl, foldr

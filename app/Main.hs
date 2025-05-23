@@ -68,10 +68,11 @@ coreCmd filename arg = do
     )
     env
   putStrLn $ show a
+  let a' = C.eval runtimeOps $ C.let' env a
   putStrLn "----------"
-  print $ C.dropMeta $ C.eval runtimeOps $ C.let' env a
+  print a'
   putStrLn "----------"
-  print $ C.dropMeta $ C.dropTypes $ C.eval runtimeOps $ C.let' env a
+  print $ C.dropTypes a'
 
 runCmd :: FilePath -> String -> IO ()
 runCmd filename arg = do

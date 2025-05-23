@@ -1,3 +1,6 @@
+: Int -> Int
+let -x = 0 - x
+
 : (Int, Int) -> Int
 let x + y = %int_add(x, y)
 

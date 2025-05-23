@@ -1,3 +1,6 @@
+: Num -> Num
+let -x = 0.0 - x
+
 : (Num, Num) -> Num
 let x + y = %num_add(x, y)
 
