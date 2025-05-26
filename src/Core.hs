@@ -640,6 +640,9 @@ isLet (Meta _ a) = isLet a
 isLet (Ann a _) = isLet a
 isLet _ = False
 
+letP :: (Expr, Expr) -> Expr -> Expr
+letP (a, b) c = App (Fun a c) b
+
 def :: (Expr, Expr) -> Expr -> Expr
 def (a, b) = def' (freeVars a, a, b)
 
@@ -712,6 +715,53 @@ popAll xs env = foldl (flip pop) env xs
 pushVars :: [String] -> Env -> Env
 pushVars xs = pushAll (map (\x -> (x, Var x)) xs)
 
+unpack :: (Expr, Expr) -> Env
+unpack (a, b) = case unpackDef (a, b) of
+  (Just xs, a, b) -> do
+    map (unpackVar xs (a, b)) xs
+  (Nothing, a, b) -> do
+    let xs = freeVars a
+    map (unpackVar xs (a, b)) xs
+
+unpackDef :: (Expr, Expr) -> (Maybe [String], Expr, Expr)
+unpackDef (a, b) = case a of
+  Ann a t -> unpackDef (a, Ann b t)
+  App a1 a2 -> unpackDef (a1, Fun a2 b)
+  For x a -> case unpackDef (a, b) of
+    (Just xs, a', b') -> (Just (x : xs), a', b')
+    (Nothing, a', b') -> (Just [x], a', b')
+  Fix x a -> case unpackDef (a, b) of
+    (Just xs, a', b') -> (Just (x : xs), Fix x a', b')
+    (Nothing, a', b') -> (Just [x], Fix x a', b')
+  Meta _ a -> unpackDef (a, b)
+  _ -> (Nothing, a, b)
+
+unpackVar :: [String] -> (Expr, Expr) -> String -> (String, Expr)
+unpackVar xs (a, b) x | Just x' <- varOf a, x == x', x `elem` xs = (x, b)
+unpackVar xs (a, b) x = (x, letP (for' xs a, b) (Var x))
+
+-- Let (a, b) c -> case a of
+--   Var x | c == Var x -> lower b
+--   Ann (Var x) t | c == Var x -> lower (Ann b t)
+--   Ann (Or a1 a2) t -> lower (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
+--   Ann (App a1 a2) t -> lower (Let (Ann a1 t, Fun a2 b) c)
+--   Ann (Op1 op a) t -> lower (Let (Ann (Var (show op)) t, Fun a b) c)
+--   Ann (Op2 op a1 a2) t -> lower (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
+--   Ann (Meta m a) t -> case lower (Let (Ann a t, b) c) of
+--     C.App a b -> C.App (C.Meta (fmap lower m) a) b
+--     a -> a
+--   Ann a t -> lower (Let (a, Ann b t) c)
+--   Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
+--   App a1 a2 -> lower (Let (a1, Fun a2 b) c)
+--   Op1 op a -> lower (Let (Var (show op), Fun a b) c)
+--   Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
+--   For xs a -> lower (App (For xs (Fun a c)) b)
+--   Meta m a -> case lower (Let (a, b) c) of
+--     C.App a b -> C.App (C.Meta (fmap lower m) a) b
+--     a -> a
+--   -- a -> lower xs (App (For (freeVars a) (Fun a c)) b)
+--   a -> C.App (lower $ Fun a c) (lower b)
+
 freeNames :: (Bool, Bool, Bool) -> Expr -> [String]
 freeNames (vars, tags, calls) = \case
   Any -> []
@@ -759,9 +809,9 @@ freeTags :: Expr -> [String]
 freeTags = freeNames (False, True, False)
 
 occurs :: String -> Expr -> Bool
-occurs x (Var x') | x == x' = False
-occurs x (Or a b) = occurs x a || occurs x b
-occurs x (Meta _ a) = occurs x a
+-- occurs x (Var x') | x == x' = False
+-- occurs x (Or a b) = occurs x a || occurs x b
+-- occurs x (Meta _ a) = occurs x a
 occurs x a = x `elem` freeVars a
 
 newName :: [String] -> String -> String

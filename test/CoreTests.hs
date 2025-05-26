@@ -761,3 +761,28 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer ops env (App f Unit) `shouldBe` Right [((Err, Or (Fun (err $ typeMismatch IntT Unit) IntT) (Fun (err $ typeMismatch NumT Unit) NumT)), [])]
     -- TODO: This should give a type error, that case is unreachable
     infer ops env (App f i2) `shouldBe` Right [((App f (Ann i2 IntT), IntT), [("$1", IntT), ("x", Ann x IntT)])]
+
+  it "☯ Core.unpack" $ do
+    let (x, y, z) = (Var "x", Var "y", Var "z")
+    unpack (Any, z) `shouldBe` []
+    unpack (Unit, z) `shouldBe` []
+    unpack (IntT, z) `shouldBe` []
+    unpack (NumT, z) `shouldBe` []
+    unpack (Int 1, z) `shouldBe` []
+    unpack (Num 1.1, z) `shouldBe` []
+    unpack (Var "x", z) `shouldBe` [("x", z)]
+    unpack (Tag "A" x, z) `shouldBe` [("x", letP (For "x" $ Tag "A" x, z) x)]
+    unpack (And x y, z) `shouldBe` [("x", letP (for ["x", "y"] $ And x y, z) x), ("y", letP (for ["x", "y"] $ And x y, z) y)]
+    unpack (Or x y, z) `shouldBe` [("x", letP (for ["x", "y"] $ Or x y, z) x), ("y", letP (for ["x", "y"] $ Or x y, z) y)]
+    unpack (Ann x y, z) `shouldBe` [("x", Ann z y)]
+    unpack (For "x" x, z) `shouldBe` [("x", z)]
+    unpack (For "x" y, z) `shouldBe` [("x", letP (y, z) x)]
+    unpack (For "x" (And x y), z) `shouldBe` [("x", letP (For "x" (And x y), z) x)]
+    unpack (Fix "x" y, z) `shouldBe` [("x", letP (Fix "x" y, z) x)]
+    -- Fun Expr Expr
+    -- App Expr Expr
+    -- Call String [Expr]
+    -- Let [(String, Expr)] Expr
+    -- Meta (Metadata Expr) Expr
+    -- Err
+    "" `shouldBe` ""

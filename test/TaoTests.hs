@@ -555,15 +555,6 @@ run = describe "--==☯ Tao ☯==--" $ do
     check' (C.Ann a t) `shouldBe` []
     eval' env a t `shouldBe` ("42", "Int")
 
-  -- it "☯ Tao.TODO" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = Any
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "TODO" `shouldBe` Right expr
-  --   core a `shouldBe` ""
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("", "")
-
   -- Bind (Pattern, Expr) Expr
   -- Record [(String, Expr)]
   -- Select Expr [(String, Expr)]
@@ -610,6 +601,110 @@ run = describe "--==☯ Tao ☯==--" $ do
   --   C.dropMeta expr' `shouldBe` C.Ann (C.Err (customError C.Any)) C.Any
   --   lift expr' `shouldBe` Ann expr Any
   --   dropMeta (eval ctx "m" expr) `shouldBe` Err (customError $ any 1 8)
+
+  it "☯ Tao.bind" $ do
+    let (x, y, z) = (Var "x", Var "y", Var "z")
+    bind [] x `shouldBe` x
+    bind [] (Fun x y) `shouldBe` For ["x", "y"] (Fun x y)
+    bind ["x"] (Fun x y) `shouldBe` For ["y"] (Fun x y)
+    bind ["x", "y"] (Fun x y) `shouldBe` Fun x y
+    bind [] (For [] (Fun x y)) `shouldBe` For [] (Fun x y)
+    bind [] (Fun (Tuple [x, y]) z) `shouldBe` For ["x", "y", "z"] (Fun (Tuple [x, y]) z)
+    bind [] (Fun (Tuple [x, Fun x y]) z) `shouldBe` For ["x", "y", "z"] (Fun (Tuple [x, Fun x y]) z)
+    bind [] (MatchFun [Fun x y]) `shouldBe` MatchFun [For ["x", "y"] $ Fun x y]
+    bind [] (Match z [Fun x y]) `shouldBe` Match z [For ["x", "y"] $ Fun x y]
+
+  it "☯ Tao.unpack" $ do
+    let (x, y, z) = (Var "x", Var "y", Var "z")
+    unpack [] (Any, z) `shouldBe` []
+    unpack [] (IntT, z) `shouldBe` []
+    unpack [] (NumT, z) `shouldBe` []
+    unpack [] (Int 1, z) `shouldBe` []
+    unpack [] (Num 1.1, z) `shouldBe` []
+    unpack [] (Char 'a', z) `shouldBe` []
+    -- unpack [] (For ["x"] x, z) `shouldBe` [("x", Let (For ["x"] x, z) x)]
+    -- unpack [] (For ["x", "y"] x, z) `shouldBe` [("x", Let (For ["x", "y"] x, z) x), ("y", Let (For ["x", "y"] x, z) y)]
+    unpack [] (Var "x", z) `shouldBe` [("x", z)]
+    -- unpack [] (Tag "A" [], z) `shouldBe` []
+    -- unpack [] (Tag "A" [x], z) `shouldBe` [("x", Let (Tag "A" [x], z) x)]
+    -- unpack [] (Tag "A" [x, y], z) `shouldBe` [("x", Let (Tag "A" [x, y], z) x), ("y", Let (Tag "A" [x, y], z) y)]
+    -- unpack [] (Ann x y, z) `shouldBe` [("x", Ann z y)]
+    -- unpack [] (Tuple [], z) `shouldBe` []
+    -- unpack [] (Tuple [x], z) `shouldBe` [("x", Let (Tuple [x], z) x)]
+    -- unpack [] (Tuple [x, y], z) `shouldBe` [("x", Let (Tuple [x, y], z) x), ("y", Let (Tuple [x, y], z) y)]
+    -- unpack [] (List [], z) `shouldBe` []
+    -- unpack [] (List [x], z) `shouldBe` [("x", Let (List [x], z) x)]
+    -- unpack [] (List [x, y], z) `shouldBe` [("x", Let (List [x, y], z) x), ("y", Let (List [x, y], z) y)]
+    -- String [Segment]
+    -- Or Expr Expr
+    -- For [String] Expr
+    -- Fun Pattern Expr
+    -- App Expr Expr
+    -- Call String [Expr]
+    -- Op1 Op1 Expr
+    -- Op2 Op2 Expr Expr
+    -- Dot Expr String (Maybe [Expr])
+    -- Spread Expr
+    -- Get Expr Expr
+    -- Slice Expr (Expr, Expr)
+    -- Match Expr [Expr]
+    -- MatchFun [Expr]
+    -- Let (Pattern, Expr) Expr
+    -- Bind (Pattern, Expr) Expr
+    -- Record [(String, Expr)]
+    -- Select Expr [(String, Expr)]
+    -- With Expr [(String, Expr)]
+    -- If Expr Expr
+    -- IfElse Expr Expr Expr
+    -- Meta (C.Metadata Expr) Expr
+    -- Err
+    "" `shouldBe` ""
+
+  it "☯ Tao.lowerDef" $ do
+    let (x, y, z) = (Var "x", Var "y", Var "z")
+    let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
+    -- lowerDef (Any, z) `shouldBe` []
+    -- lowerDef (Any, z) `shouldBe` []
+    -- lowerDef (IntT, z) `shouldBe` []
+    -- lowerDef (NumT, z) `shouldBe` [("x", C.def' ([], C.NumT, z') x')]
+    -- lowerDef (Int 1, z) `shouldBe` []
+    -- lowerDef (Num 1.1, z) `shouldBe` []
+    -- lowerDef (Char 'a', z) `shouldBe` []
+    -- lowerDef (Var "x", z) `shouldBe` [("x", z')]
+    -- lowerDef (Tag "A" [], z) `shouldBe` []
+    -- lowerDef (Tag "A" [x], z) `shouldBe` [("x", C.Any)]
+    -- lowerDef [] (Tag "A" [x, y], z) `shouldBe` [("x", Let (Tag "A" [x, y], z) x), ("y", Let (Tag "A" [x, y], z) y)]
+    -- lowerDef [] (Ann x y, z) `shouldBe` [("x", Ann z y)]
+    -- lowerDef [] (Tuple [], z) `shouldBe` []
+    -- lowerDef [] (Tuple [x], z) `shouldBe` [("x", Let (Tuple [x], z) x)]
+    -- lowerDef [] (Tuple [x, y], z) `shouldBe` [("x", Let (Tuple [x, y], z) x), ("y", Let (Tuple [x, y], z) y)]
+    -- lowerDef [] (List [], z) `shouldBe` []
+    -- lowerDef [] (List [x], z) `shouldBe` [("x", Let (List [x], z) x)]
+    -- lowerDef [] (List [x, y], z) `shouldBe` [("x", Let (List [x, y], z) x), ("y", Let (List [x, y], z) y)]
+    -- String [Segment]
+    -- Or Expr Expr
+    -- For [String] Expr
+    -- Fun Pattern Expr
+    -- App Expr Expr
+    -- Call String [Expr]
+    -- Op1 Op1 Expr
+    -- Op2 Op2 Expr Expr
+    -- Dot Expr String (Maybe [Expr])
+    -- Spread Expr
+    -- Get Expr Expr
+    -- Slice Expr (Expr, Expr)
+    -- Match Expr [Expr]
+    -- MatchFun [Expr]
+    -- Let (Pattern, Expr) Expr
+    -- Bind (Pattern, Expr) Expr
+    -- Record [(String, Expr)]
+    -- Select Expr [(String, Expr)]
+    -- With Expr [(String, Expr)]
+    -- If Expr Expr
+    -- IfElse Expr Expr Expr
+    -- Meta (C.Metadata Expr) Expr
+    -- Err
+    "" `shouldBe` ""
 
   it "☯ TODO" $ do
     "" `shouldBe` ""
