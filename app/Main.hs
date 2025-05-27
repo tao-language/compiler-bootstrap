@@ -62,9 +62,11 @@ coreCmd filename arg = do
   let (env, a) = compile ctx path arg'
   putStrLn $ "env: " ++ unwords (map fst env)
   mapM_
-    ( \(x, a) -> do
-        let (env', a') = C.letOf a
-        putStrLn ("  " ++ show (C.Var x) ++ ": @{" ++ unwords (map fst env') ++ "} " ++ show a')
+    ( \(x, a) -> case C.letOf a of
+        Just (env, a) -> do
+          putStrLn ("  " ++ show (C.Var x) ++ ": @{" ++ unwords (map fst env) ++ "} " ++ show a)
+        Nothing -> do
+          putStrLn ("  " ++ show (C.Var x) ++ ": " ++ show a)
     )
     env
   putStrLn $ show a

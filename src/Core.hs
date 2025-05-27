@@ -628,11 +628,11 @@ let' [] a = a
 let' env (Let env' a) = let' (env ++ env') a
 let' env a = Let env a
 
-letOf :: Expr -> (Env, Expr)
-letOf (Let env a) = (env, a)
+letOf :: Expr -> Maybe (Env, Expr)
+letOf (Let env a) = Just (env, a)
 letOf (Ann a _) = letOf a
 letOf (Meta _ a) = letOf a
-letOf a = ([], a)
+letOf _ = Nothing
 
 isLet :: Expr -> Bool
 isLet (Let _ _) = True
@@ -800,9 +800,9 @@ unpack (a, b) = case unpackDef (a, b) of
 
 unpackDef :: (Expr, Expr) -> (Maybe [String], Expr, Expr)
 unpackDef (a, b) = case a of
-  Ann a t -> do
-    let (mxs, a', b') = unpackDef (a, b)
-    (mxs, a', Ann b' t)
+  Ann a t -> case unpackDef (a, b) of
+    (Just xs, a', b') -> (Just xs, a', b')
+    (Nothing, a', b') -> (Nothing, a', Ann b' t)
   App a1 a2 -> unpackDef (a1, Fun a2 b)
   For x a -> case unpackDef (a, b) of
     (Just xs, a', b') -> (Just (x : xs), a', b')
@@ -820,7 +820,7 @@ unpackVar xs (a, b) x = (x, letP (for' xs a, b) (Var x))
 bind :: [String] -> Expr -> Expr
 bind xs = \case
   For x a -> For x (bind (x : xs ++ freeVars a) a)
-  Fun a b -> case filter (`notElem` xs) (freeVars $ Fun a b) of
+  Fun a b -> case filter (`notElem` xs) (freeVars a) of
     [] -> Fun (bind xs a) (bind xs b)
     ys -> for ys (Fun (bind (xs ++ ys) a) (bind (xs ++ ys) b))
   a -> apply (bind xs) a
