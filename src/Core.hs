@@ -706,6 +706,81 @@ typedOf (Meta _ a) | isAnn a = typedOf a
 typedOf a = (a, Any)
 
 -- Helper functions
+class Apply a where
+  apply :: (Expr -> Expr) -> a -> a
+
+instance Apply Expr where
+  apply :: (Expr -> Expr) -> Expr -> Expr
+  apply f = \case
+    Any -> Any
+    Unit -> Unit
+    IntT -> IntT
+    NumT -> NumT
+    Int i -> Int i
+    Num n -> Num n
+    Var x -> Var x
+    Tag k a -> Tag k (f a)
+    Ann a b -> Ann (f a) (f b)
+    And a b -> And (f a) (f b)
+    Or a b -> Or (f a) (f b)
+    For x a -> For x (f a)
+    Fix x a -> Fix x (f a)
+    Fun a b -> Fun (f a) (f b)
+    App a b -> App (f a) (f b)
+    Call x args -> Call x (map f args)
+    Let env a -> Let (second f <$> env) (f a)
+    Meta m a -> Meta m (f a)
+    Err -> Err
+
+collect :: (Eq a, Show a) => (Expr -> [a]) -> Expr -> [a]
+collect f = \case
+  Any -> []
+  Unit -> []
+  IntT -> []
+  NumT -> []
+  Int _ -> []
+  Num _ -> []
+  Var _ -> []
+  Tag _ a -> f a
+  Ann a b -> f a `union` f b
+  And a b -> f a `union` f b
+  Or a b -> f a `union` f b
+  For _ a -> f a
+  Fix _ a -> f a
+  Fun a b -> f a `union` f b
+  App a b -> f a `union` f b
+  Call _ args -> unionMap f args
+  Let env a -> concatMap f (map snd env) `union` f a
+  Meta _ a -> f a
+  Err -> []
+  where
+    unionMap f = foldr (union . f) []
+
+freeVars :: Expr -> [String]
+freeVars = \case
+  Var x -> [x]
+  For x a -> delete x (freeVars a)
+  Fix x a -> delete x (freeVars a)
+  Let env a -> do
+    let collectDef x = case lookup x env of
+          Just b -> freeVars (let' (filter (\(x', _) -> x /= x') env) b)
+          Nothing -> [x]
+    foldr (union . collectDef) [] (freeVars a)
+  a -> collect freeVars a
+
+freeTags :: Expr -> [String]
+freeTags = \case
+  Tag k a -> [k] `union` freeTags a
+  For x a -> delete x (freeTags a)
+  Fix x a -> delete x (freeTags a)
+  Let env a -> do
+    let collectDef x = case lookup x env of
+          Just b -> freeTags (let' (filter (\(x', _) -> x /= x') env) b)
+          Nothing | x `elem` freeTags a -> [x]
+          Nothing -> []
+    foldr (union . collectDef) [] (freeVars a `union` freeTags a)
+  a -> collect freeTags a
+
 pushAll :: [(String, Expr)] -> Env -> Env
 pushAll vars env = foldr (:) env vars
 
@@ -725,7 +800,9 @@ unpack (a, b) = case unpackDef (a, b) of
 
 unpackDef :: (Expr, Expr) -> (Maybe [String], Expr, Expr)
 unpackDef (a, b) = case a of
-  Ann a t -> unpackDef (a, Ann b t)
+  Ann a t -> do
+    let (mxs, a', b') = unpackDef (a, b)
+    (mxs, a', Ann b' t)
   App a1 a2 -> unpackDef (a1, Fun a2 b)
   For x a -> case unpackDef (a, b) of
     (Just xs, a', b') -> (Just (x : xs), a', b')
@@ -740,73 +817,13 @@ unpackVar :: [String] -> (Expr, Expr) -> String -> (String, Expr)
 unpackVar xs (a, b) x | Just x' <- varOf a, x == x', x `elem` xs = (x, b)
 unpackVar xs (a, b) x = (x, letP (for' xs a, b) (Var x))
 
--- Let (a, b) c -> case a of
---   Var x | c == Var x -> lower b
---   Ann (Var x) t | c == Var x -> lower (Ann b t)
---   Ann (Or a1 a2) t -> lower (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
---   Ann (App a1 a2) t -> lower (Let (Ann a1 t, Fun a2 b) c)
---   Ann (Op1 op a) t -> lower (Let (Ann (Var (show op)) t, Fun a b) c)
---   Ann (Op2 op a1 a2) t -> lower (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
---   Ann (Meta m a) t -> case lower (Let (Ann a t, b) c) of
---     C.App a b -> C.App (C.Meta (fmap lower m) a) b
---     a -> a
---   Ann a t -> lower (Let (a, Ann b t) c)
---   Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
---   App a1 a2 -> lower (Let (a1, Fun a2 b) c)
---   Op1 op a -> lower (Let (Var (show op), Fun a b) c)
---   Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
---   For xs a -> lower (App (For xs (Fun a c)) b)
---   Meta m a -> case lower (Let (a, b) c) of
---     C.App a b -> C.App (C.Meta (fmap lower m) a) b
---     a -> a
---   -- a -> lower xs (App (For (freeVars a) (Fun a c)) b)
---   a -> C.App (lower $ Fun a c) (lower b)
-
-freeNames :: (Bool, Bool, Bool) -> Expr -> [String]
-freeNames (vars, tags, calls) = \case
-  Any -> []
-  Unit -> []
-  IntT -> []
-  NumT -> []
-  Int _ -> []
-  Num _ -> []
-  Var x
-    | vars -> [x]
-    | otherwise -> []
-  Tag k a
-    | tags -> k : freeNames' a
-    | otherwise -> freeNames' a
-  Ann a b -> freeNames' a `union` freeNames' b
-  And a b -> freeNames' a `union` freeNames' b
-  Or a b -> freeNames' a `union` freeNames' b
-  For x a -> delete x (freeNames' a)
-  Fix x a -> delete x (freeNames' a)
-  Fun a b -> freeNames' a `union` freeNames' b
-  App a b -> freeNames' a `union` freeNames' b
-  Call f args
-    | calls -> foldr (union . freeNames') [f] args
-    | otherwise -> foldr (union . freeNames') [] args
-  -- TODO: This is much more subtle than it appears for Let.
-  --       Free names should be done recursively on definitions used.
-  --       More of a graph traversal problem, visiting nodes (definitions).
-  --       This could also be used to only keep the relevant definitions and drop irrelevant ones.
-  --        e.g. : a -> Bool
-  --             (==) = x -> (y -> True | _ -> False) x
-  -- Let [] b -> freeNames' b
-  -- Let ((x, a) : defs) b -> delete x (freeNames' a `union` freeNames' (Let defs b))
-  -- Let defs b -> filter (`notElem` map fst defs) (foldr ((union . freeNames') . snd) (freeNames' b) defs)
-  -- Let _ b -> freeNames' b
-  Let env b -> freeNames' (reduce [] (Let env b))
-  Meta _ a -> freeNames' a
-  Err -> []
-  where
-    freeNames' = freeNames (vars, tags, calls)
-
-freeVars :: Expr -> [String]
-freeVars = freeNames (True, False, False)
-
-freeTags :: Expr -> [String]
-freeTags = freeNames (False, True, False)
+bind :: [String] -> Expr -> Expr
+bind xs = \case
+  For x a -> For x (bind (x : xs ++ freeVars a) a)
+  Fun a b -> case filter (`notElem` xs) (freeVars $ Fun a b) of
+    [] -> Fun (bind xs a) (bind xs b)
+    ys -> for ys (Fun (bind (xs ++ ys) a) (bind (xs ++ ys) b))
+  a -> apply (bind xs) a
 
 occurs :: String -> Expr -> Bool
 -- occurs x (Var x') | x == x' = False
@@ -1177,13 +1194,14 @@ collapse ops env (a : bs) = do
     ]
 
 infer :: Ops -> Env -> Expr -> Either (Error Expr) [((Expr, Type), Substitution)]
--- infer ops env a@(Ann b@(Var "map") t) =
+-- infer ops env a@(For x@"y" a') =
 --   (error . intercalate "\n")
 --     [ "infer",
 --       "a: " ++ show a,
+--       "a': " ++ show a',
 --       "env: " ++ show (env & filter (\(x, a) -> a == Var x) & map fst),
 --       intercalate "\n" (env & filter (\(x, a) -> a /= Var x) & map (\x -> "- " ++ show x)),
---       show $ check ops env b t,
+--       show $ infer ops ((x, Var x) : env) a',
 --       ""
 --     ]
 infer _ env Any = do
@@ -1295,16 +1313,16 @@ inferAll ops env (a : bs) = do
     ]
 
 check :: Ops -> Env -> Expr -> Type -> Either (Error Expr) [((Expr, Type), Substitution)]
--- check ops env a@(Var "map") t = do
+-- check ops env (Fun a b) (Fun ta tb) = do
 --   (error . intercalate "\n")
---     [ "check " ++ show (a, t),
+--     [ "check " ++ show (Fun a b, Fun ta tb),
 --       "env: " ++ show (env & filter (\(x, a) -> a == Var x) & map fst),
 --       intercalate "\n" (env & filter (\(x, a) -> a /= Var x) & map (\x -> "- " ++ show x)),
 --       "a: " ++ show (infer ops env a),
+--       "b: " ++ show (infer ops env b),
 --       show
---         [ ((a, t), s2 `compose` s1)
---         | ((a, ta), s1) <- fromRight [] $ infer ops env a,
---           (t, s2) <- fromRight [] $ unify ops (s1 `compose` env) ta (substitute s1 t)
+--         [ ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
+--         | ((a, ta), (b, tb), s) <- fromRight [] (check2 ops env (a, ta) (b, tb))
 --         ],
 --       ""
 --     ]

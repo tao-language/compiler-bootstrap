@@ -189,6 +189,11 @@ keywords =
     "with"
   ]
 
+varOf :: Expr -> Maybe String
+varOf (Var x) = Just x
+varOf (Meta _ a) = varOf a
+varOf _ = Nothing
+
 tupleOf :: Expr -> [Expr]
 tupleOf (Tuple items) = items
 tupleOf a = [a]
@@ -577,25 +582,6 @@ collect f = \case
   Err -> []
   where
     unionMap f = foldr (union . f) []
-
--- freeVars :: Expr -> [String]
--- freeVars = \case
---   Var x -> [x]
---   For xs a -> filter (`notElem` xs) (freeVars a)
---   Dot a x Nothing -> [x] `union` freeVars a
---   Dot a x (Just args) -> freeVars a `union` [x] `union` concatMap freeVars args
---   Let (a, b) c -> (freeVars a \\ bindings a) `union` freeVars b `union` freeVars c
---   Bind (a, b) c -> ["<-"] `union` (freeVars a \\ bindings a) `union` freeVars b `union` freeVars c
---   a -> collect freeVars a
-
--- freeTags :: Expr -> [String]
--- freeTags = \case
---   Tag k [] -> [k]
---   Tag k (a : args) -> freeTags a `union` freeTags (Tag k args)
---   a -> collect freeTags a
-
--- freeNames :: Expr -> [String]
--- freeNames a = freeVars a `union` freeTags a
 
 parse :: FilePath -> String -> Either (P.State String) (Expr, P.State String)
 parse = P.parse (parseExpr 0)
@@ -1151,27 +1137,31 @@ lower = \case
   Slice a (b, c) -> lower (app (Var ".[:]") [a, b, c])
   Match arg cases -> lower (App (or' cases) arg)
   MatchFun cases -> lower (or' cases)
-  Let (a, b) c -> case a of
-    Var x | c == Var x -> lower b
-    Ann (Var x) t | c == Var x -> lower (Ann b t)
-    Ann (Or a1 a2) t -> lower (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
-    Ann (App a1 a2) t -> lower (Let (Ann a1 t, Fun a2 b) c)
-    Ann (Op1 op a) t -> lower (Let (Ann (Var (show op)) t, Fun a b) c)
-    Ann (Op2 op a1 a2) t -> lower (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
-    Ann (Meta m a) t -> case lower (Let (Ann a t, b) c) of
-      C.App a b -> C.App (C.Meta (fmap lower m) a) b
-      a -> a
-    Ann a t -> lower (Let (a, Ann b t) c)
-    Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
-    App a1 a2 -> lower (Let (a1, Fun a2 b) c)
-    Op1 op a -> lower (Let (Var (show op), Fun a b) c)
-    Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
-    For xs a -> lower (App (For xs (Fun a c)) b)
-    Meta m a -> case lower (Let (a, b) c) of
-      C.App a b -> C.App (C.Meta (fmap lower m) a) b
-      a -> a
-    -- a -> lower xs (App (For (freeVars a) (Fun a c)) b)
-    a -> C.App (lower $ Fun a c) (lower b)
+  Let (a, b) c | Just x <- varOf c -> case lookup x (C.unpack (lower a, lower b)) of
+    Just c -> c
+    Nothing -> error $ "undefined var " ++ x
+  Let (a, b) c -> C.let' (C.unpack (lower a, lower b)) (lower c)
+  -- Let (a, b) c -> case a of
+  --   Var x | c == Var x -> lower b
+  --   Ann (Var x) t | c == Var x -> lower (Ann b t)
+  --   Ann (Or a1 a2) t -> lower (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
+  --   Ann (App a1 a2) t -> lower (Let (Ann a1 t, Fun a2 b) c)
+  --   Ann (Op1 op a) t -> lower (Let (Ann (Var (show op)) t, Fun a b) c)
+  --   Ann (Op2 op a1 a2) t -> lower (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
+  --   Ann (Meta m a) t -> case lower (Let (Ann a t, b) c) of
+  --     C.App a b -> C.App (C.Meta (fmap lower m) a) b
+  --     a -> a
+  --   Ann a t -> lower (Let (a, Ann b t) c)
+  --   Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
+  --   App a1 a2 -> lower (Let (a1, Fun a2 b) c)
+  --   Op1 op a -> lower (Let (Var (show op), Fun a b) c)
+  --   Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
+  --   For xs a -> lower (App (For xs (Fun a c)) b)
+  --   Meta m a -> case lower (Let (a, b) c) of
+  --     C.App a b -> C.App (C.Meta (fmap lower m) a) b
+  --     a -> a
+  --   -- a -> lower xs (App (For (freeVars a) (Fun a c)) b)
+  --   a -> C.App (lower $ Fun a c) (lower b)
   Bind (a, b) c -> lower (app (Var "<-") [b, Fun a c])
   -- Record fields -> do
   --   let k = '~' : intercalate "," (map fst fields)
@@ -1190,89 +1180,6 @@ lower = \case
   Meta m a -> C.Meta (fmap lower m) (lower a)
   Err -> C.Err
   a -> error $ "TODO: lower " ++ show (dropMeta a)
-
-bindings :: Pattern -> [String]
-bindings p = error $ show (dropMeta p, fst $ forOf $ bind [] $ Fun (dropMeta p) Any)
-
-bind :: [String] -> Expr -> Expr
-bind xs = \case
-  For ys a -> For ys (bind (xs ++ ys ++ C.freeVars (lower a)) a)
-  Fun a b -> case filter (`notElem` xs) (C.freeVars $ lower (Fun a b)) of
-    [] -> Fun (bind xs a) (bind xs b)
-    ys -> For ys (Fun (bind (xs ++ ys) a) (bind (xs ++ ys) b))
-  a -> apply (bind xs) a
-
--- unpackVar :: (Pattern, Expr) -> String -> (String, Expr)
--- unpackVar def x = (x, Let def (Var x))
-
-unpack :: [String] -> (Pattern, Expr) -> [(String, Expr)]
-unpack xs (a, b) = case a of
-  a -> map (\x -> (x, Let (a, b) (Var x))) xs
-
--- Let (a, b) c -> case a of
---   Var x | c == Var x -> lower b
---   Ann (Var x) t | c == Var x -> lower (Ann b t)
---   Ann (Or a1 a2) t -> lower (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
---   Ann (App a1 a2) t -> lower (Let (Ann a1 t, Fun a2 b) c)
---   Ann (Op1 op a) t -> lower (Let (Ann (Var (show op)) t, Fun a b) c)
---   Ann (Op2 op a1 a2) t -> lower (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
---   Ann (Meta m a) t -> case lower (Let (Ann a t, b) c) of
---     C.App a b -> C.App (C.Meta (fmap lower m) a) b
---     a -> a
---   Ann a t -> lower (Let (a, Ann b t) c)
---   Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
---   App a1 a2 -> lower (Let (a1, Fun a2 b) c)
---   Op1 op a -> lower (Let (Var (show op), Fun a b) c)
---   Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
---   For xs a -> lower (App (For xs (Fun a c)) b)
---   Meta m a -> case lower (Let (a, b) c) of
---     C.App a b -> C.App (C.Meta (fmap lower m) a) b
---     a -> a
---   -- a -> lower xs (App (For (freeVars a) (Fun a c)) b)
---   a -> C.App (lower $ Fun a c) (lower b)
-
--- unpack :: (Pattern, Expr) -> [(String, Expr)]
--- unpack (p, c) = case p of
---   Var x -> [(x, c)]
---   Tag _ args -> concatMap (\a -> unpack (a, Let (p, c) a)) args
---   Tuple items -> concatMap (\a -> unpack (a, Let (p, c) a)) items
---   List items -> concatMap (\a -> unpack (a, Let (p, c) a)) items
---   Ann a b -> unpack (a, Ann c b)
---   _ -> []
-
-lowerDef :: (Pattern, Expr) -> C.Env
--- lowerDef (a, b) = case a of
---   -- For xs a -> case a of
---   --   a -> do
---   --     let defs = map (\x -> (x, C.def' (,lower b) (C.Var x))) xs
---   --     defs ++ lowerDef (a, b)
---   a -> []
-lowerDef (a, b) = case (lower a, lower b) of
-  -- lowerDef (a, b) = case (lower a, lower b) of
-  --   (C.Var x, b) -> [(x, b)]
-  --   (C.Tag k a, b) -> lowerDef (a, )
-  -- Var x -> [(x, lower b)]
-  -- Ann (Var x) t | c == Var x -> lower (Ann b t)
-  -- Ann (Or a1 a2) t -> lower (lets [(Ann a1 t, b), (Ann a2 t, b)] c)
-  -- Ann (App a1 a2) t -> lower (Let (Ann a1 t, Fun a2 b) c)
-  -- Ann (Op1 op a) t -> lower (Let (Ann (Var (show op)) t, Fun a b) c)
-  -- Ann (Op2 op a1 a2) t -> lower (Let (Ann (Var (show op)) t, fun [a1, a2] b) c)
-  -- Ann (Meta m a) t -> case lower (Let (Ann a t, b) c) of
-  --   C.App a b -> C.App (C.Meta (fmap lower m) a) b
-  --   a -> a
-  -- Ann a t -> lower (Let (a, Ann b t) c)
-  -- Or a1 a2 -> lower (lets [(a1, b), (a2, b)] c)
-  -- App a1 a2 -> lower (Let (a1, Fun a2 b) c)
-  -- Op1 op a -> lower (Let (Var (show op), Fun a b) c)
-  -- Op2 op a1 a2 -> lower (Let (Var (show op), fun [a1, a2] b) c)
-  -- For xs a -> lower (App (For xs (Fun a c)) b)
-  -- Meta m a -> case lower (Let (a, b) c) of
-  --   C.App a b -> C.App (C.Meta (fmap lower m) a) b
-  --   a -> a
-  -- -- a -> lower xs (App (For (freeVars a) (Fun a c)) b)
-  -- a -> C.App (lower $ Fun a c) (lower b)
-  -- (a, b) -> C.unpack (a, b)
-  _ -> error "TODO"
 
 lift :: C.Expr -> Expr
 lift = \case
@@ -1770,6 +1677,9 @@ instance Resolve (String, Stmt) where
       [] -> []
     Def (p, b) | name `elem` bindings p -> do
       [(path, Let (p, b) (Var name))]
+      where
+        bindings :: Pattern -> [String]
+        bindings p = map fst (C.unpack (lower p, C.Any))
     TypeDef (name', args, alts) | name == name' -> do
       let resolveAlt (a, Just b) = Fun a b
           resolveAlt (a, Nothing) = Fun a (Tag name' args)
@@ -1786,7 +1696,7 @@ instance Compile Expr where
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
   compile ctx path (name, expr) = do
-    let a = C.dropMeta $ lower $ bind [] expr
+    let a = C.dropMeta $ C.bind [] $ lower expr
     let xs = delete name (C.freeVars a `union` C.freeTags a)
     let env = compileDefs ctx path xs
     case C.infer buildOps ((name, C.Var name) : env) a of
@@ -1794,11 +1704,11 @@ instance Compile (String, Expr) where
         (error . intercalate "\n")
           [ "compile: infer was empty",
             "name: " ++ show name,
+            "expr: " ++ show (dropMeta expr),
+            "core: " ++ show (C.dropMeta a),
             "xs: " ++ show xs,
             "env: " ++ show (map fst env),
             intercalate "\n" $ map (\(x, a) -> "  " ++ show (Var x) ++ ": " ++ show (eval [] a)) env,
-            "expr: " ++ show (dropMeta expr),
-            "core: " ++ show (C.dropMeta a),
             ""
           ]
       Right alts -> do
@@ -1810,8 +1720,7 @@ instance Compile (String, Expr) where
 compileDefs :: Context -> FilePath -> [String] -> C.Env
 compileDefs _ _ [] = []
 compileDefs ctx path (x : xs) = do
-  let compileDef (path, a) = compile ctx path (x, a)
-  let defs = map compileDef (resolve ctx path x)
+  let defs = map (\(path, a) -> compile ctx path (x, a)) (resolve ctx path x)
   let env1 = foldr (unionBy (\a b -> fst a == fst b)) [] (map fst defs)
   let env2 = compileDefs ctx path xs
   let env = unionBy (\a b -> fst a == fst b) env1 env2

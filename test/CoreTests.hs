@@ -72,6 +72,62 @@ run = describe "--==☯️ Core language ☯️==--" $ do
         let a' = eval ops (Let env a)
         Right (format 80 a')
 
+  it "☯ Core.freeVars" $ do
+    freeVars Any `shouldBe` []
+    freeVars Unit `shouldBe` []
+    freeVars IntT `shouldBe` []
+    freeVars NumT `shouldBe` []
+    freeVars (Int 1) `shouldBe` []
+    freeVars (Num 1.1) `shouldBe` []
+    freeVars (Var "x") `shouldBe` ["x"]
+    freeVars (Tag "A" x) `shouldBe` ["x"]
+    freeVars (And x y) `shouldBe` ["x", "y"]
+    freeVars (Or x y) `shouldBe` ["x", "y"]
+    freeVars (Ann x y) `shouldBe` ["x", "y"]
+    freeVars (For "x" x) `shouldBe` []
+    freeVars (For "x" y) `shouldBe` ["y"]
+    freeVars (Fix "x" x) `shouldBe` []
+    freeVars (Fix "x" y) `shouldBe` ["y"]
+    freeVars (Fun x y) `shouldBe` ["x", "y"]
+    freeVars (App x y) `shouldBe` ["x", "y"]
+    freeVars (Call "f" [x, y]) `shouldBe` ["x", "y"]
+    freeVars (Let [] x) `shouldBe` ["x"]
+    freeVars (Let [("y", z)] x) `shouldBe` ["x"]
+    freeVars (Let [("x", y)] x) `shouldBe` ["y"]
+    freeVars (Let [("x", y), ("y", z)] x) `shouldBe` ["z"]
+    freeVars (Meta (Loc $ Location "file" (Range (Pos 1 2) (Pos 3 4))) x) `shouldBe` ["x"]
+    freeVars Err `shouldBe` []
+
+  it "☯ Core.freeTags" $ do
+    let (a, b, c) = (tag' "A", tag' "B", tag' "C")
+    freeTags Any `shouldBe` []
+    freeTags Unit `shouldBe` []
+    freeTags IntT `shouldBe` []
+    freeTags NumT `shouldBe` []
+    freeTags (Int 1) `shouldBe` []
+    freeTags (Num 1.1) `shouldBe` []
+    freeTags (Var "x") `shouldBe` []
+    freeTags (Tag "A" x) `shouldBe` ["A"]
+    freeTags (Tag "A" (Tag "B" x)) `shouldBe` ["A", "B"]
+    freeTags (And a b) `shouldBe` ["A", "B"]
+    freeTags (Or a b) `shouldBe` ["A", "B"]
+    freeTags (Ann a b) `shouldBe` ["A", "B"]
+    freeTags (For "A" a) `shouldBe` []
+    freeTags (For "A" b) `shouldBe` ["B"]
+    freeTags (Fix "A" a) `shouldBe` []
+    freeTags (Fix "A" b) `shouldBe` ["B"]
+    freeTags (Fun a b) `shouldBe` ["A", "B"]
+    freeTags (App a b) `shouldBe` ["A", "B"]
+    freeTags (Call "f" [a, b]) `shouldBe` ["A", "B"]
+    freeTags (Let [] a) `shouldBe` ["A"]
+    freeTags (Let [("B", c)] a) `shouldBe` ["A"]
+    freeTags (Let [("A", b)] a) `shouldBe` ["B"]
+    freeTags (Let [("A", b)] x) `shouldBe` []
+    freeTags (Let [("x", b)] x) `shouldBe` ["B"]
+    freeTags (Let [("A", b), ("B", c)] a) `shouldBe` ["C"]
+    freeTags (Meta (Loc $ Location "file" (Range (Pos 1 2) (Pos 3 4))) a) `shouldBe` ["A"]
+    freeTags Err `shouldBe` []
+
   it "☯ Core.Any" $ do
     let env = []
     let expr = Any
@@ -763,7 +819,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer ops env (App f i2) `shouldBe` Right [((App f (Ann i2 IntT), IntT), [("$1", IntT), ("x", Ann x IntT)])]
 
   it "☯ Core.unpack" $ do
-    let (x, y, z) = (Var "x", Var "y", Var "z")
+    let loc = Loc $ Location "file" (Range (Pos 1 2) (Pos 3 4))
+    let (x, y, z, w) = (Var "x", Var "y", Var "z", Var "w")
+
+    -- Basic cases
     unpack (Any, z) `shouldBe` []
     unpack (Unit, z) `shouldBe` []
     unpack (IntT, z) `shouldBe` []
@@ -779,10 +838,22 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     unpack (For "x" y, z) `shouldBe` [("x", letP (y, z) x)]
     unpack (For "x" (And x y), z) `shouldBe` [("x", letP (For "x" (And x y), z) x)]
     unpack (Fix "x" y, z) `shouldBe` [("x", letP (Fix "x" y, z) x)]
-    -- Fun Expr Expr
-    -- App Expr Expr
-    -- Call String [Expr]
-    -- Let [(String, Expr)] Expr
-    -- Meta (Metadata Expr) Expr
-    -- Err
-    "" `shouldBe` ""
+    unpack (Fun x y, z) `shouldBe` [("x", letP (for ["x", "y"] $ Fun x y, z) x), ("y", letP (for ["x", "y"] $ Fun x y, z) y)]
+    unpack (App x y, z) `shouldBe` [("x", Fun y z)]
+    unpack (Call "f" [x], z) `shouldBe` [("x", letP (For "x" $ Call "f" [x], z) x)]
+    -- unpack (Let [] x, z) `shouldBe` [("x", letP (For "x" $ Let [] x, z) x)]
+    -- unpack (Let [("x", y)] x, z) `shouldBe` []
+    unpack (Meta loc x, z) `shouldBe` [("x", z)]
+    unpack (Err, z) `shouldBe` []
+
+    -- Special cases
+    unpack (Ann (App x y) z, w) `shouldBe` [("x", Ann (Fun y w) z)]
+
+  it "☯ Core.bind" $ do
+    let (x, y, z) = (Var "x", Var "y", Var "z")
+    bind [] x `shouldBe` x
+    bind [] (Fun x y) `shouldBe` for ["x", "y"] (Fun x y)
+    bind ["x"] (Fun x y) `shouldBe` for ["y"] (Fun x y)
+    bind ["x", "y"] (Fun x y) `shouldBe` Fun x y
+    bind [] (Fun (And x y) z) `shouldBe` for ["x", "y", "z"] (Fun (And x y) z)
+    bind [] (Fun (And x (Fun x y)) z) `shouldBe` for ["x", "y", "z"] (Fun (And x (Fun x y)) z)
