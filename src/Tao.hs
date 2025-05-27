@@ -1713,8 +1713,12 @@ instance Compile (String, Expr) where
           ]
       Right alts -> do
         case C.collapse buildOps env (map (snd . fst) alts) of
-          Right [(t, s)] -> (env, C.Ann (C.or' $ map (fst . fst) alts) t)
-          _ -> (env, C.or' $ map (C.ann . fst) alts)
+          Right [(t, s)] -> do
+            let expr = C.Ann (C.or' $ map (fst . fst) alts) t
+            (env, expr)
+          _ -> do
+            let expr = C.or' $ map (C.ann . fst) alts
+            (env, expr)
       Left err -> error $ show (name, xs, map fst env, err)
 
 compileDefs :: Context -> FilePath -> [String] -> C.Env

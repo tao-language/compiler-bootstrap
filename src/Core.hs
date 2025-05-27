@@ -984,8 +984,8 @@ eval ops expr = case reduce ops expr of
     a | isErr a -> eval ops b
     a | isVar a || isApp a || isFun a || isOr a -> Or a (eval ops b)
     a -> a
-  For x a -> For x (eval ops (Let [(x, Var x)] a))
-  Fix x a -> Fix x (eval ops (Let [(x, Var x)] a))
+  For x a -> for' [x] (eval ops (Let [(x, Var x)] a))
+  Fix x a -> fix' [x] (eval ops (Let [(x, Var x)] a))
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)
   Call f args -> Call f (eval ops <$> args)
@@ -1006,6 +1006,7 @@ instance Substitute Expr where
   substitute _ (Int i) = Int i
   substitute _ (Num n) = Num n
   substitute [] (Var x) = Var x
+  substitute ((x, Ann (Var x') _) : s) b | x == x' = substitute s b
   substitute ((x, a) : _) (Var x') | x == x' = a
   substitute (_ : s) (Var x) = substitute s (Var x)
   substitute ((x, a) : s) b | x `occurs` a = substitute s b
@@ -1342,7 +1343,7 @@ check ops env (Or a b) t = do
   Right
     [ ((Or (substitute s2 a) b, t), s2 `compose` s1)
     | ((a, t), s1) <- fromRight [] $ check ops env a t,
-      ((b, t), s2) <- fromRight [] $ check ops (s1 `compose` env) (substitute s1 b) t
+      ((b, t), s2) <- fromRight [] $ check ops (s1 `compose` env) (substitute s1 b) (substitute s1 t)
     ]
 check ops env (And a b) (And ta tb) = do
   Right
