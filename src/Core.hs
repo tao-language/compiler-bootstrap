@@ -826,9 +826,6 @@ bind xs = \case
   a -> apply (bind xs) a
 
 occurs :: String -> Expr -> Bool
--- occurs x (Var x') | x == x' = False
--- occurs x (Or a b) = occurs x a || occurs x b
--- occurs x (Meta _ a) = occurs x a
 occurs x a = x `elem` freeVars a
 
 newName :: [String] -> String -> String
@@ -1006,11 +1003,9 @@ instance Substitute Expr where
   substitute _ (Int i) = Int i
   substitute _ (Num n) = Num n
   substitute [] (Var x) = Var x
-  substitute ((x, Ann (Var x') _) : s) b | x == x' = substitute s b
+  substitute ((x, a) : s) b | x `occurs` a = substitute s b
   substitute ((x, a) : _) (Var x') | x == x' = a
   substitute (_ : s) (Var x) = substitute s (Var x)
-  substitute ((x, a) : s) b | x `occurs` a = substitute s b
-  -- substitute ((x, a) : s) b | x `occurs` a = error $ "TODO substitute: " ++ x ++ " occurs in  " ++ show a
   substitute s (Tag k a) = Tag k (substitute s a)
   substitute s (Ann a b) = Ann (substitute s a) (dropTypes $ substitute s b)
   substitute s (And a b) = And (substitute s a) (substitute s b)

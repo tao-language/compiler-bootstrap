@@ -67,19 +67,19 @@ let (.[]) = match {
 
 : (List(a), Int) -> Maybe(a)
 let get = match {
-| (xs, i) if i < 0 -> xs[length(xs) + i + 1]
+| (xs, i) if i < 0 -> xs[xs.length() + i + 1]
 | (xs, i) -> xs[i]
 }
 
-# > [10, 20, 30].get(0) ~> None
-# > [10, 20, 30].get(1) ~> Some(10)
-# > [10, 20, 30].get(2) ~> Some(20)
-# > [10, 20, 30].get(3) ~> Some(30)
-# > [10, 20, 30].get(4) ~> None
-# > [10, 20, 30].get(-1) ~> Some(30)
-# > [10, 20, 30].get(-2) ~> Some(20)
-# > [10, 20, 30].get(-3) ~> Some(10)
-# > [10, 20, 30].get(-4) ~> None
+> [10, 20, 30].get(0) ~> None
+> [10, 20, 30].get(1) ~> Some(10)
+> [10, 20, 30].get(2) ~> Some(20)
+> [10, 20, 30].get(3) ~> Some(30)
+> [10, 20, 30].get(4) ~> None
+> [10, 20, 30].get(-1) ~> Some(30)
+> [10, 20, 30].get(-2) ~> Some(20)
+> [10, 20, 30].get(-3) ~> Some(10)
+> [10, 20, 30].get(-4) ~> None
 
 # (++) or in [idx] [start..end]
 # length, empty, flatten
