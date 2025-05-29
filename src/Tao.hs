@@ -388,6 +388,18 @@ gt = Op2 Gt
 ge :: Expr -> Expr -> Expr
 ge = Op2 Ge
 
+shiftL :: Expr -> Expr -> Expr
+shiftL = Op2 ShiftL
+
+shiftR :: Expr -> Expr -> Expr
+shiftR = Op2 ShiftR
+
+pipeL :: Expr -> Expr -> Expr
+pipeL = Op2 PipeL
+
+pipeR :: Expr -> Expr -> Expr
+pipeR = Op2 PipeR
+
 cons :: Expr -> Expr -> Expr
 cons = Op2 Cons
 
@@ -716,31 +728,32 @@ grammar = do
                 Let (a, b) c -> Just (PP.Text "let " : layout a ++ PP.Text " = " : layout b ++ PP.NewLine : layout c)
                 Bind (a, b) c -> Just (PP.Text "let " : layout a ++ PP.Text " <- " : layout b ++ PP.NewLine : layout c)
                 _ -> Nothing,
-          -- Grammar.Or
-          G.infixR 2 (loc2 Or) "|" $ \case
-            Or a b -> Just (a, " ", b)
-            _ -> Nothing,
-          -- Grammar.Ann
-          G.infixR 3 (loc2 Ann) ":" $ \case
-            Ann a b -> Just (a, " ", b)
-            _ -> Nothing,
-          G.infixL 4 (locOp2 ShiftL) "<<" $ \case
-            Op2 ShiftL a b -> Just (a, " ", b)
-            _ -> Nothing,
-          -- Grammar.Op2.ShiftR
-          G.infixL 4 (locOp2 ShiftR) ">>" $ \case
-            Op2 ShiftR a b -> Just (a, " ", b)
-            _ -> Nothing,
           -- Grammar.Op2.PipeL
-          G.infixL 4 (locOp2 PipeL) "<|" $ \case
+          G.infixR 3 (locOp2 PipeL) "<|" $ \case
             Op2 PipeL a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.PipeR
           G.infixL 4 (locOp2 PipeR) "|>" $ \case
             Op2 PipeR a b -> Just (a, " ", b)
             _ -> Nothing,
+          -- Grammar.Or
+          G.infixR 2 (loc2 Or) "|" $ \case
+            Or a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.ShiftL
+          G.infixR 5 (locOp2 ShiftL) "<<" $ \case
+            Op2 ShiftL a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Op2.ShiftR
+          G.infixL 6 (locOp2 ShiftR) ">>" $ \case
+            Op2 ShiftR a b -> Just (a, " ", b)
+            _ -> Nothing,
+          -- Grammar.Ann
+          G.infixR 7 (loc2 Ann) ":" $ \case
+            Ann a b -> Just (a, " ", b)
+            _ -> Nothing,
           -- Grammar.Fun
-          G.infixR 5 (loc2 Fun) "->" $ \case
+          G.infixR 8 (loc2 Fun) "->" $ \case
             Fun a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.If
@@ -752,28 +765,27 @@ grammar = do
                 _ <- P.spaces
                 b <- expr
                 return (withLoc start end $ If a b)
-           in G.InfixR 6 parser $ \lhs rhs -> \case
+           in G.InfixR 9 parser $ \lhs rhs -> \case
                 If a b -> Just (lhs a ++ PP.Text " if " : rhs b)
                 _ -> Nothing,
           -- Grammar.Op2.OrOp
-          G.infixL 7 (locOp2 OrOp) "or" $ \case
+          G.infixL 10 (locOp2 OrOp) "or" $ \case
             Op2 OrOp a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.XorOp
-          G.infixL 7 (locOp2 XorOp) "xor" $ \case
+          G.infixL 10 (locOp2 XorOp) "xor" $ \case
             Op2 XorOp a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.AndOp
-          G.infixL 8 (locOp2 AndOp) "and" $ \case
+          G.infixL 11 (locOp2 AndOp) "and" $ \case
             Op2 AndOp a b -> Just (a, " ", b)
             _ -> Nothing,
-          -- Grammar.Op2.ShiftL
           -- Grammar.Op2.Eq
-          G.infixL 9 (locOp2 Eq) "==" $ \case
+          G.infixL 12 (locOp2 Eq) "==" $ \case
             Op2 Eq a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Ne
-          G.infixL 9 (locOp2 Ne) "!=" $ \case
+          G.infixL 12 (locOp2 Ne) "!=" $ \case
             Op2 Ne a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Lt
@@ -784,23 +796,24 @@ grammar = do
                 _ <- P.lookaheadNot (P.char '-')
                 _ <- P.spaces
                 withLoc start end . Op2 Lt a <$> expr
-           in G.InfixL 10 parser $ \lhs rhs -> \case
+           in G.InfixL 13 parser $ \lhs rhs -> \case
                 Op2 Lt a b -> Just (lhs a ++ PP.Text " < " : rhs b)
                 _ -> Nothing,
           -- Grammar.Op2.Le
-          G.infixL 10 (locOp2 Le) "<=" $ \case
+          G.infixL 13 (locOp2 Le) "<=" $ \case
             Op2 Le a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Gt
-          G.infixL 10 (locOp2 Gt) ">" $ \case
+          G.infixL 13 (locOp2 Gt) ">" $ \case
             Op2 Gt a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Ge
-          G.infixL 10 (locOp2 Ge) ">=" $ \case
+          G.infixL 13 (locOp2 Ge) ">=" $ \case
             Op2 Ge a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.For
-          let parser expr = do
+          let prec = 14
+              parser expr = do
                 start <- P.getState
                 _ <- P.char '@'
                 _ <- P.commit "for"
@@ -819,63 +832,63 @@ grammar = do
                 end <- P.getState
                 _ <- P.oneOf [P.char '.', P.char '\n']
                 _ <- P.whitespaces
-                a <- parseExpr 11
+                a <- parseExpr prec
                 _ <- P.spaces
                 return (withLoc start end $ For xs a)
            in G.Atom parser $ \layout -> \case
                 For xs a ->
-                  Just (PP.Text ('@' : unwords (map (show . Var) xs) ++ ". ") : G.layout grammar 11 a)
+                  Just (PP.Text ('@' : unwords (map (show . Var) xs) ++ ". ") : G.layout grammar prec a)
                 _ -> Nothing,
           -- Grammar.Op2.Cons
-          G.infixR 11 (locOp2 Cons) "::" $ \case
+          G.infixR 14 (locOp2 Cons) "::" $ \case
             Op2 Cons a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Add2
-          G.infixL 12 (locOp2 Add2) "++" $ \case
+          G.infixL 15 (locOp2 Add2) "++" $ \case
             Op2 Add2 a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Add
-          G.infixL 12 (locOp2 Add) "+" $ \case
+          G.infixL 15 (locOp2 Add) "+" $ \case
             Op2 Add a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Sub
-          G.infixL 12 (locOp2 Sub2) "--" $ \case
+          G.infixL 15 (locOp2 Sub2) "--" $ \case
             Op2 Sub2 a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Sub
-          G.infixL 12 (locOp2 Sub) "-" $ \case
+          G.infixL 15 (locOp2 Sub) "-" $ \case
             Op2 Sub a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Mul2
-          G.infixL 13 (locOp2 Mul2) "**" $ \case
+          G.infixL 16 (locOp2 Mul2) "**" $ \case
             Op2 Mul2 a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Mul
-          G.infixL 13 (locOp2 Mul) "*" $ \case
+          G.infixL 16 (locOp2 Mul) "*" $ \case
             Op2 Mul a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Div2
-          G.infixL 13 (locOp2 Div2) "//" $ \case
+          G.infixL 16 (locOp2 Div2) "//" $ \case
             Op2 Div2 a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Div
-          G.infixL 13 (locOp2 Div) "/" $ \case
+          G.infixL 16 (locOp2 Div) "/" $ \case
             Op2 Div a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Pow2
-          G.infixR 14 (locOp2 Pow2) "^^" $ \case
+          G.infixR 17 (locOp2 Pow2) "^^" $ \case
             Op2 Pow2 a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.Pow
-          G.infixR 14 (locOp2 Pow) "^" $ \case
+          G.infixR 17 (locOp2 Pow) "^" $ \case
             Op2 Pow a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op1.Neg
-          G.prefix 15 (locOp1 Neg) "-" $ \case
+          G.prefix 18 (locOp1 Neg) "-" $ \case
             Op1 Neg a -> Just ("", a)
             _ -> Nothing,
           -- Grammar.not
-          G.prefix 15 (loc1 (App (Var "not"))) "not" $ \case
+          G.prefix 18 (loc1 (App (Var "not"))) "not" $ \case
             App (Var "not") a -> Just (" ", a)
             _ -> Nothing,
           -- Grammar.App
@@ -886,7 +899,7 @@ grammar = do
                 end <- P.getState
                 _ <- P.spaces
                 return (withLoc start end $ app a args)
-           in G.InfixL 15 parser $ \lhs rhs -> \case
+           in G.InfixL 18 parser $ \lhs rhs -> \case
                 App a b -> do
                   let args = tupleOf b
                   Just (lhs a ++ PP.Text "(" : collectionLayout (G.layout grammar 0) args ++ [PP.Text ")"])
@@ -902,7 +915,7 @@ grammar = do
                 end <- P.getState
                 _ <- P.spaces
                 return (withLoc start end $ Get a b)
-           in G.InfixL 15 parser $ \lhs rhs -> \case
+           in G.InfixL 18 parser $ \lhs rhs -> \case
                 Get a b -> do
                   Just (lhs a ++ PP.Text "[" : G.layout grammar 0 b ++ [PP.Text "]"])
                 Slice a (b, c) -> do
@@ -923,7 +936,7 @@ grammar = do
                     return args
                 _ <- P.spaces
                 return (withLoc start end $ Dot a x args)
-           in G.InfixL 15 parser $ \lhs rhs -> \case
+           in G.InfixL 18 parser $ \lhs rhs -> \case
                 Dot a x Nothing -> Just (lhs a ++ [PP.Text ("." ++ x)])
                 Dot a x (Just args) -> Just (lhs a ++ [PP.Text ("." ++ x ++ "(")] ++ collectionLayout (G.layout grammar 0) args ++ [PP.Text ")"])
                 _ -> Nothing,
