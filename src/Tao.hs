@@ -4,6 +4,7 @@ import Control.Monad (void)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap, second))
 import Data.Char (chr, isSpace, ord)
+import Data.Either (fromRight)
 import Data.Function ((&))
 import Data.List (delete, dropWhileEnd, intercalate, intersect, isPrefixOf, sort, union, unionBy, (\\))
 import Error
@@ -1664,7 +1665,7 @@ instance Resolve (String, Stmt) where
   resolve ctx path (name, stmt) = case stmt of
     Import path' alias names -> case names of
       _ | path == path' -> []
-      ("", _) : _ -> do
+      ("", _) : _ | path /= path' -> do
         resolve ctx path (name, Import path' alias [(name, name)])
       (x, y) : names -> do
         let defs = if y == name then resolve ctx path' x else []
@@ -1691,6 +1692,21 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
+  -- compile ctx path (name@"", expr) = do
+  --   let a = C.dropMeta $ C.bind [] $ lower expr
+  --   let xs = delete name (C.freeVars a `union` C.freeTags a)
+  --   let env = compileDefs ctx path xs
+  --   (error . intercalate "\n")
+  --     [ "compile " ++ show name,
+  --       "expr:  " ++ show (dropMeta expr),
+  --       "a:  " ++ show (C.dropMeta a),
+  --       "xs:  " ++ show xs,
+  --       "env: " ++ show (map fst env),
+  --       intercalate "\n" $ map (\(x, a) -> "  " ++ show x ++ ": " ++ show (C.eval runtimeOps $ C.let' env a)) env,
+  --       "alts:",
+  --       intercalate "\n" $ map (show . fst) (fromRight [] $ C.infer buildOps ((name, C.Var name) : env) a),
+  --       ""
+  --     ]
   compile ctx path (name, expr) = do
     let a = C.dropMeta $ C.bind [] $ lower expr
     let xs = delete name (C.freeVars a `union` C.freeTags a)
@@ -1705,7 +1721,7 @@ instance Compile (String, Expr) where
             "bound: " ++ show (C.dropMeta a),
             "xs: " ++ show xs,
             "env: " ++ show (map fst env),
-            intercalate "\n" $ map (\(x, a) -> "  " ++ show (Var x) ++ ": " ++ show (eval [] a)) env,
+            intercalate "\n" $ map (\(x, a) -> "  " ++ show x ++ ": " ++ show (eval [] a)) env,
             ""
           ]
       Right alts -> do

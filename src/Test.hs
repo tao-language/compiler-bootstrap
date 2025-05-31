@@ -73,14 +73,19 @@ instance TestSome (FilePath, UnitTest) where
             Fun (Var "$got") (Tag ":Fail" [Var "$got"])
           ]
     let (env, test') = compile ctx path (Match t.expr cases)
-    -- let (env, test') = compile (dropMeta ctx) path (dropMeta $ Match t.expr cases)
-    -- error $ show (map fst env)
-    -- error $ show (dropMeta $ Match t.expr cases)
-    -- error $ show (compile (dropMeta ctx) path (dropMeta t.expr))
-    -- error $ show (C.dropMeta test')
-    -- error $ show (second (C.dropMeta . C.eval []) <$> env)
-    -- error $ intercalate "\n" $ map (\(x, a) -> show x ++ ": " ++ show (eval [] a)) env
-    -- error $ show (C.dropMeta $ C.eval runtimeOps (C.let' env test'))
+    -- (error . intercalate "\n")
+    --   [ "testSome",
+    --     "expr: " ++ show (dropMeta t.expr),
+    --     "expect: " ++ show (dropMeta t.expect),
+    --     "env: " ++ show (map fst env),
+    --     intercalate "\n" $ map (\(x, a) -> "  " ++ show x ++ ": " ++ show (C.eval runtimeOps $ C.let' env a)) env,
+    --     "lower: " ++ show (lower (dropMeta $ Match t.expr cases)),
+    --     "core: " ++ show test',
+    --     "core alts:",
+    --     intercalate "\n" $ map (\a -> "  | " ++ show a) (C.orOf test'),
+    --     "result: " ++ show (C.eval runtimeOps $ C.let' env test'),
+    --     ""
+    --   ]
     case C.typedOf (C.eval runtimeOps $ C.let' env test') of
       (C.Tag ":Pass" _, _) -> [TestPass t.filename t.pos name]
       -- TODO: Fix this, it's where type errors on tests get reported.

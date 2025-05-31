@@ -57,16 +57,14 @@ coreCmd filename arg = do
   arg' <- dropMeta <$> loadExpr "<core>" arg
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
-  -- let a = lower [] arg'
-  -- let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
   let (env, a) = compile ctx path arg'
-  putStrLn $ "env: " ++ unwords (map fst env)
+  putStrLn $ "env: " ++ unwords (map (show . fst) env)
   mapM_
     ( \(x, a) -> case C.letOf a of
         Just (env, a) -> do
-          putStrLn ("  " ++ show (C.Var x) ++ ": @{" ++ unwords (map fst env) ++ "} " ++ show a)
+          putStrLn ("  " ++ show x ++ ": @{" ++ unwords (map (show . fst) env) ++ "} " ++ show a)
         Nothing -> do
-          putStrLn ("  " ++ show (C.Var x) ++ ": " ++ show a)
+          putStrLn ("  " ++ show x ++ ": " ++ show a)
     )
     env
   putStrLn $ show a
