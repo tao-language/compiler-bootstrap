@@ -4,7 +4,7 @@ import Data.Bifunctor (Bifunctor (bimap, first, second))
 import Data.Char (isAlphaNum, isLower, isUpper)
 import Data.Either (fromRight)
 import Data.Function ((&))
-import Data.List (delete, intercalate, sort, union, unionBy)
+import Data.List (delete, intercalate, nub, sort, union, unionBy)
 import Data.Maybe (fromMaybe, maybeToList)
 import Debug.Trace (trace)
 import Error
@@ -823,6 +823,9 @@ bind xs = \case
   Fun a b -> case filter (`notElem` xs) (freeVars a) of
     [] -> Fun (bind xs a) (bind xs b)
     ys -> for ys (Fun (bind (xs ++ ys) a) (bind (xs ++ ys) b))
+  -- Ann a b -> do
+  --   let ys = filter (`notElem` xs) (freeVars b)
+  --   for ys (Ann (bind (xs ++ ys) a) (bind (xs ++ ys) b))
   a -> apply (bind xs) a
 
 occurs :: String -> Expr -> Bool
@@ -1230,7 +1233,7 @@ infer ops env (Var x) = case lookup x env of
     Right [((Var x, Var y), [(y, Var y), (x, Ann (Var x) (Var y))])]
   Just (Ann (Var x') ty) | x == x' -> Right [((Var x, ty), [])]
   Just a -> do
-    Right
+    (Right . nub)
       [ ((Var x, t), s)
       | ((_, t), s) <- fromRight [] $ infer ops env a
       ]
@@ -1343,7 +1346,7 @@ check :: Ops -> Env -> Expr -> Type -> Either (Error Expr) [((Expr, Type), Subst
 --         ],
 --       ""
 --     ]
-check ops env a (For x t) = infer ops env (For x (Ann a t))
+check ops env a (For x t) = check ops ((x, Var x) : env) a t
 check ops env (For x a) t = infer ops env (For x (Ann a t))
 check ops env (Var x) t = case lookup x env of
   Just (Var x') | x == x' -> Right [((Var x, t), [(x, Ann (Var x) t)])]

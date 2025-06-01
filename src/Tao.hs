@@ -1692,7 +1692,7 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"", expr) = do
+  -- compile ctx path (name@"==", expr) = do
   --   let a = C.dropMeta $ C.bind [] $ lower expr
   --   let xs = delete name (C.freeVars a `union` C.freeTags a)
   --   let env = compileDefs ctx path xs
@@ -1705,12 +1705,20 @@ instance Compile (String, Expr) where
   --       intercalate "\n" $ map (\(x, a) -> "  " ++ show x ++ ": " ++ show (C.eval runtimeOps $ C.let' env a)) env,
   --       "alts:",
   --       intercalate "\n" $ map (show . fst) (fromRight [] $ C.infer buildOps ((name, C.Var name) : env) a),
+  --       "",
+  --       let a' = C.or' $ map (C.ann . fst) (fromRight [] $ C.infer buildOps ((name, C.Var name) : env) a)
+  --        in show $ C.for' (C.freeVars a') a',
+  --       "",
+  --       "",
+  --       "TO REPRODUCE: stack run core prelude '(==)'",
+  --       "** The 'a' is transferred to all alts, instead of being unified by a single one",
   --       ""
   --     ]
   compile ctx path (name, expr) = do
     let a = C.dropMeta $ C.bind [] $ lower expr
     let xs = delete name (C.freeVars a `union` C.freeTags a)
     let env = compileDefs ctx path xs
+    let vars a = filter (`notElem` name : map fst env) (C.freeVars a)
     case C.infer buildOps ((name, C.Var name) : env) a of
       Right [] ->
         (error . intercalate "\n")
@@ -1726,8 +1734,12 @@ instance Compile (String, Expr) where
           ]
       Right alts -> do
         case C.collapse buildOps env (map (snd . fst) alts) of
-          Right [(t, s)] -> (env, C.Ann (C.or' $ map (fst . fst) alts) t)
-          _ -> (env, C.or' $ map (C.ann . fst) alts)
+          Right [(t, s)] -> do
+            let expr = C.Ann (C.or' $ map (fst . fst) alts) t
+            (env, C.for' (vars expr) expr)
+          _ -> do
+            let expr = C.or' $ map (C.ann . fst) alts
+            (env, C.for (vars expr) expr)
       Left err -> error $ show (name, xs, map fst env, err)
 
 compileDefs :: Context -> FilePath -> [String] -> C.Env
