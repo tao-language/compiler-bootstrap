@@ -101,7 +101,7 @@ run = describe "--== Tao precedence ==--" $ do
     prec "x < y <= z" `shouldBe` Right ((x `lt` y) `le` z)
     prec "x < y > z" `shouldBe` Right ((x `lt` y) `gt` z)
     prec "x < y >= z" `shouldBe` Right ((x `lt` y) `ge` z)
-    prec "x < y :: z" `shouldBe` Right (x `lt` (y `cons` z))
+    prec "x < y as z" `shouldBe` Right (x `lt` (y `as` z))
 
   it "☯ TaoPrecedence.Op2.Le" $ do
     prec "x <= y == z" `shouldBe` Right ((x `le` y) `eq` z)
@@ -109,7 +109,7 @@ run = describe "--== Tao precedence ==--" $ do
     prec "x <= y <= z" `shouldBe` Right ((x `le` y) `le` z)
     prec "x <= y > z" `shouldBe` Right ((x `le` y) `gt` z)
     prec "x <= y >= z" `shouldBe` Right ((x `le` y) `ge` z)
-    prec "x <= y :: z" `shouldBe` Right (x `le` (y `cons` z))
+    prec "x <= y as z" `shouldBe` Right (x `le` (y `as` z))
 
   it "☯ TaoPrecedence.Op2.Gt" $ do
     prec "x > y == z" `shouldBe` Right ((x `gt` y) `eq` z)
@@ -117,7 +117,7 @@ run = describe "--== Tao precedence ==--" $ do
     prec "x > y <= z" `shouldBe` Right ((x `gt` y) `le` z)
     prec "x > y > z" `shouldBe` Right ((x `gt` y) `gt` z)
     prec "x > y >= z" `shouldBe` Right ((x `gt` y) `ge` z)
-    prec "x > y :: z" `shouldBe` Right (x `gt` (y `cons` z))
+    prec "x > y as z" `shouldBe` Right (x `gt` (y `as` z))
 
   it "☯ TaoPrecedence.Op2.Ge" $ do
     prec "x >= y == z" `shouldBe` Right ((x `ge` y) `eq` z)
@@ -125,10 +125,70 @@ run = describe "--== Tao precedence ==--" $ do
     prec "x >= y <= z" `shouldBe` Right ((x `ge` y) `le` z)
     prec "x >= y > z" `shouldBe` Right ((x `ge` y) `gt` z)
     prec "x >= y >= z" `shouldBe` Right ((x `ge` y) `ge` z)
-    prec "x >= y :: z" `shouldBe` Right (x `ge` (y `cons` z))
+    prec "x >= y as z" `shouldBe` Right (x `ge` (y `as` z))
+
+  it "☯ TaoPrecedence.Op2.As" $ do
+    prec "x as y < z" `shouldBe` Right ((x `as` y) `lt` z)
+    prec "x as y as z" `shouldBe` Right ((x `as` y) `as` z)
+    prec "x as y in z" `shouldBe` Right ((x `as` y) `in'` z)
+    prec "x as y is z" `shouldBe` Right ((x `as` y) `is` z)
+    prec "x as y not as z" `shouldBe` Right ((x `as` y) `notAs` z)
+    prec "x as y not in z" `shouldBe` Right ((x `as` y) `notIn` z)
+    prec "x as y is not z" `shouldBe` Right ((x `as` y) `isNot` z)
+    prec "x as y :: z" `shouldBe` Right (x `as` (y `cons` z))
+
+  it "☯ TaoPrecedence.Op2.As.not" $ do
+    prec "x not as y < z" `shouldBe` Right ((x `notAs` y) `lt` z)
+    prec "x not as y as z" `shouldBe` Right ((x `notAs` y) `as` z)
+    prec "x not as y in z" `shouldBe` Right ((x `notAs` y) `in'` z)
+    prec "x not as y is z" `shouldBe` Right ((x `notAs` y) `is` z)
+    prec "x not as y not as z" `shouldBe` Right ((x `notAs` y) `notAs` z)
+    prec "x not as y not in z" `shouldBe` Right ((x `notAs` y) `notIn` z)
+    prec "x not as y is not z" `shouldBe` Right ((x `notAs` y) `isNot` z)
+    prec "x not as y :: z" `shouldBe` Right (x `notAs` (y `cons` z))
+
+  it "☯ TaoPrecedence.Op2.In" $ do
+    prec "x in y < z" `shouldBe` Right ((x `in'` y) `lt` z)
+    prec "x in y as z" `shouldBe` Right ((x `in'` y) `as` z)
+    prec "x in y in z" `shouldBe` Right ((x `in'` y) `in'` z)
+    prec "x in y is z" `shouldBe` Right ((x `in'` y) `is` z)
+    prec "x in y not as z" `shouldBe` Right ((x `in'` y) `notAs` z)
+    prec "x in y not in z" `shouldBe` Right ((x `in'` y) `notIn` z)
+    prec "x in y is not z" `shouldBe` Right ((x `in'` y) `isNot` z)
+    prec "x in y :: z" `shouldBe` Right (x `in'` (y `cons` z))
+
+  it "☯ TaoPrecedence.Op2.Not.In" $ do
+    prec "x not in y < z" `shouldBe` Right ((x `notIn` y) `lt` z)
+    prec "x not in y as z" `shouldBe` Right ((x `notIn` y) `as` z)
+    prec "x not in y in z" `shouldBe` Right ((x `notIn` y) `in'` z)
+    prec "x not in y is z" `shouldBe` Right ((x `notIn` y) `is` z)
+    prec "x not in y not as z" `shouldBe` Right ((x `notIn` y) `notAs` z)
+    prec "x not in y not in z" `shouldBe` Right ((x `notIn` y) `notIn` z)
+    prec "x not in y is not z" `shouldBe` Right ((x `notIn` y) `isNot` z)
+    prec "x not in y :: z" `shouldBe` Right (x `notIn` (y `cons` z))
+
+  it "☯ TaoPrecedence.Op2.Is" $ do
+    prec "x is y < z" `shouldBe` Right ((x `is` y) `lt` z)
+    prec "x is y as z" `shouldBe` Right ((x `is` y) `as` z)
+    prec "x is y in z" `shouldBe` Right ((x `is` y) `in'` z)
+    prec "x is y is z" `shouldBe` Right ((x `is` y) `is` z)
+    prec "x is y not as z" `shouldBe` Right ((x `is` y) `notAs` z)
+    prec "x is y not in z" `shouldBe` Right ((x `is` y) `notIn` z)
+    prec "x is y is not z" `shouldBe` Right ((x `is` y) `isNot` z)
+    prec "x is y :: z" `shouldBe` Right (x `is` (y `cons` z))
+
+  it "☯ TaoPrecedence.Op2.Is.Not" $ do
+    prec "x is not y < z" `shouldBe` Right ((x `isNot` y) `lt` z)
+    prec "x is not y as z" `shouldBe` Right ((x `isNot` y) `as` z)
+    prec "x is not y in z" `shouldBe` Right ((x `isNot` y) `in'` z)
+    prec "x is not y is z" `shouldBe` Right ((x `isNot` y) `is` z)
+    prec "x is not y not as z" `shouldBe` Right ((x `isNot` y) `notAs` z)
+    prec "x is not y not in z" `shouldBe` Right ((x `isNot` y) `notIn` z)
+    prec "x is not y is not z" `shouldBe` Right ((x `isNot` y) `isNot` z)
+    prec "x is not y :: z" `shouldBe` Right (x `isNot` (y `cons` z))
 
   it "☯ TaoPrecedence.Op2.Cons" $ do
-    prec "x :: y < z" `shouldBe` Right ((x `cons` y) `lt` z)
+    prec "x :: y as z" `shouldBe` Right ((x `cons` y) `as` z)
     prec "x :: y :: z" `shouldBe` Right (x `cons` (y `cons` z))
     prec "x :: y + z" `shouldBe` Right (x `cons` (y `add` z))
 

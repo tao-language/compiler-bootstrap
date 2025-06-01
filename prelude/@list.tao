@@ -81,7 +81,7 @@ let get = match {
 > [10, 20, 30].get(-3) ~> Some(10)
 > [10, 20, 30].get(-4) ~> None
 
-# (++) or in [idx] [start..end]
+# or in [idx] [start..end]
 # length, empty, flatten
 # map, filter, flat-map, foldl, foldr
 # push, pop, add, remove
