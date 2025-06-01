@@ -26,7 +26,12 @@ run = describe "--== Tao precedence ==--" $ do
 
   -- it "☯ TaoPrecedence.Bind" $ do
 
+  it "☯ TaoPrecedence.Ann" $ do
+    prec "x : y : z" `shouldBe` Right (x `Ann` (y `Ann` z))
+    prec "x : y | z" `shouldBe` Right (x `Ann` (y `Or` z))
+
   it "☯ TaoPrecedence.Or" $ do
+    prec "x | y : z" `shouldBe` Right ((x `Or` y) `Ann` z)
     prec "x | y | z" `shouldBe` Right (x `Or` (y `Or` z))
     prec "x | y <| z" `shouldBe` Right (x `Or` (y `pipeL` z))
 
@@ -48,15 +53,10 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.Op2.ShiftR" $ do
     prec "x >> y << z" `shouldBe` Right ((x `shiftR` y) `shiftL` z)
     prec "x >> y >> z" `shouldBe` Right ((x `shiftR` y) `shiftR` z)
-    prec "x >> y : z" `shouldBe` Right (x `shiftR` (y `Ann` z))
-
-  it "☯ TaoPrecedence.Ann" $ do
-    prec "x : y |> z" `shouldBe` Right ((x `Ann` y) `pipeR` z)
-    prec "x : y : z" `shouldBe` Right (x `Ann` (y `Ann` z))
-    prec "x : y -> z" `shouldBe` Right (x `Ann` (y `Fun` z))
+    prec "x >> y -> z" `shouldBe` Right (x `shiftR` (y `Fun` z))
 
   it "☯ TaoPrecedence.Fun" $ do
-    prec "x -> y : z" `shouldBe` Right ((x `Fun` y) `Ann` z)
+    prec "x -> y >> z" `shouldBe` Right ((x `Fun` y) `shiftR` z)
     prec "x -> y -> z" `shouldBe` Right (x `Fun` (y `Fun` z))
     prec "x -> y if z" `shouldBe` Right (x `Fun` (y `If` z))
 
@@ -244,5 +244,19 @@ run = describe "--== Tao precedence ==--" $ do
   it "☯ TaoPrecedence.App" $ do
     prec "x(y) ^ z" `shouldBe` Right ((x `app1` y) `pow` z)
     prec "x(y)(z)" `shouldBe` Right ((x `app1` y) `app1` z)
+    prec "x(y)[z]" `shouldBe` Right ((x `app1` y) `Get` z)
+    prec "x(y)[z:b]" `shouldBe` Right ((x `app1` y) `Slice` (z, b))
+
+  it "☯ TaoPrecedence.Get" $ do
+    prec "x[y] ^ z" `shouldBe` Right ((x `Get` y) `pow` z)
+    prec "x[y](z)" `shouldBe` Right ((x `Get` y) `app1` z)
+    prec "x[y][z]" `shouldBe` Right ((x `Get` y) `Get` z)
+    prec "x[y][z:b]" `shouldBe` Right ((x `Get` y) `Slice` (z, b))
+
+  it "☯ TaoPrecedence.Slice" $ do
+    prec "x[y:a] ^ z" `shouldBe` Right ((x `Slice` (y, a)) `pow` z)
+    prec "x[y:a](z)" `shouldBe` Right ((x `Slice` (y, a)) `app1` z)
+    prec "x[y:a][z]" `shouldBe` Right ((x `Slice` (y, a)) `Get` z)
+    prec "x[y:a][z:b]" `shouldBe` Right ((x `Slice` (y, a)) `Slice` (z, b))
 
 -- Metadata.TrailingComment

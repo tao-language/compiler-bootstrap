@@ -779,29 +779,29 @@ grammar = do
                 Let (a, b) c -> Just (PP.Text "let " : layout a ++ PP.Text " = " : layout b ++ PP.NewLine : layout c)
                 Bind (a, b) c -> Just (PP.Text "let " : layout a ++ PP.Text " <- " : layout b ++ PP.NewLine : layout c)
                 _ -> Nothing,
+          -- Grammar.Ann
+          G.infixR 1 (loc2 Ann) ":" $ \case
+            Ann a b -> Just (a, " ", b)
+            _ -> Nothing,
           -- Grammar.Op2.PipeL
-          G.infixR 3 (locOp2 PipeL) "<|" $ \case
+          G.infixR 4 (locOp2 PipeL) "<|" $ \case
             Op2 PipeL a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.PipeR
-          G.infixL 4 (locOp2 PipeR) "|>" $ \case
+          G.infixL 5 (locOp2 PipeR) "|>" $ \case
             Op2 PipeR a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Or
-          G.infixR 2 (loc2 Or) "|" $ \case
+          G.infixR 3 (loc2 Or) "|" $ \case
             Or a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.ShiftL
-          G.infixR 5 (locOp2 ShiftL) "<<" $ \case
+          G.infixR 6 (locOp2 ShiftL) "<<" $ \case
             Op2 ShiftL a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op2.ShiftR
-          G.infixL 6 (locOp2 ShiftR) ">>" $ \case
+          G.infixL 7 (locOp2 ShiftR) ">>" $ \case
             Op2 ShiftR a b -> Just (a, " ", b)
-            _ -> Nothing,
-          -- Grammar.Ann
-          G.infixR 7 (loc2 Ann) ":" $ \case
-            Ann a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Fun
           G.infixR 8 (loc2 Fun) "->" $ \case
@@ -995,22 +995,31 @@ grammar = do
                   let args = tupleOf b
                   Just (lhs a ++ PP.Text "(" : collectionLayout (G.layout grammar 0) args ++ [PP.Text ")"])
                 _ -> Nothing,
-          -- Grammar.Get / Grammar.Slice
+          -- Grammar.Get | Grammar.Slice
           let parser a expr = do
                 start <- P.getState
                 _ <- P.char '['
                 _ <- P.whitespaces
-                b <- parseExprUntil "get/slice 1" 0 ["]", ":", "\n"]
+                b <- parseExprUntil "get/slice 1" 2 ["]", ":", "\n"]
+                op <-
+                  P.oneOf
+                    [ do
+                        _ <- P.char ':'
+                        _ <- P.whitespaces
+                        c <- parseExprUntil "slice 2" 2 ["]", "\n"]
+                        return (`Slice` (b, c)),
+                      return (`Get` b)
+                    ]
                 _ <- P.whitespaces
                 _ <- P.char ']'
                 end <- P.getState
                 _ <- P.spaces
-                return (withLoc start end $ Get a b)
+                return (withLoc start end $ op a)
            in G.InfixL 19 parser $ \lhs rhs -> \case
                 Get a b -> do
-                  Just (lhs a ++ PP.Text "[" : G.layout grammar 0 b ++ [PP.Text "]"])
+                  Just (lhs a ++ PP.Text "[" : G.layout grammar 2 b ++ [PP.Text "]"])
                 Slice a (b, c) -> do
-                  Just (lhs a ++ PP.Text "[" : G.layout grammar 0 b ++ PP.Text ":" : G.layout grammar 0 c ++ [PP.Text "]"])
+                  Just (lhs a ++ PP.Text "[" : G.layout grammar 2 b ++ PP.Text ":" : G.layout grammar 2 c ++ [PP.Text "]"])
                 _ -> Nothing,
           -- Grammar.Dot
           let parser a expr = do
@@ -1558,13 +1567,13 @@ parseTypeDef = do
   _ <- P.char '='
   _ <- P.whitespaces
   let parseAlt = do
-        a <- parseExprUntil "type alt" 3 ["=>", "|", "\n"]
+        a <- parseExprUntil "type alt" 4 ["=>", "|", "\n"]
         _ <- P.spaces
         mb <- P.maybe' $ do
           _ <- P.whitespaces
           _ <- P.text "=>"
           _ <- P.whitespaces
-          parseExprUntil "type alt-type" 3 ["|", "\n"]
+          parseExprUntil "type alt-type" 4 ["|", "\n"]
         return (a, mb)
   _ <- P.maybe' (P.char '|')
   _ <- P.whitespaces

@@ -8,18 +8,35 @@ let empty = match {
 | _ -> False
 }
 
-> [].empty() ~> True
+> [].empty ~> True
 > [1, 2, 3].empty ~> False
 
 : List(_) -> Int
 let length = match {
 | [] -> 0
-| [x, ..xs] -> 1 + length(xs)
+| [x, ..xs] -> 1 + xs.length
 }
 
-> [].length() ~> 0
-> [1].length() ~> 1
-> [1, 2, 3].length() ~> 3
+> [].length ~> 0
+> [1].length ~> 1
+> [1, 2, 3].length ~> 3
+
+# Access elements
+: (a, List(a)) -> Bool
+let (in) = match {
+| (_, []) -> False
+| (x, [y, ..ys]) if x == y -> True
+| (x, [_, ..ys]) -> x in ys
+}
+
+> 1 in [] ~> False
+> 1 in [1, 2, 3] ~> True
+> 3 in [1, 2, 3] ~> True
+> 0 in [1, 2, 3] ~> False
+> 1 not in [] ~> True
+> 1 not in [1, 2, 3] ~> False
+> 3 not in [1, 2, 3] ~> False
+> 0 not in [1, 2, 3] ~> True
 
 : List(a) -> Maybe(a)
 let first = match {
@@ -39,17 +56,6 @@ let last = match {
 
 > [].last() ~> None
 > [1, 2, 3].last() ~> Some(3)
-
-: (List(a), List(a)) -> List(a)
-let (++) = match {
-| ([], ys) -> ys
-| ([x, ..xs], ys) -> x :: (xs ++ ys)
-}
-
-> [] ++ [1, 2, 3] ~> [1, 2, 3]
-> [1] ++ [2, 3] ~> [1, 2, 3]
-> [1, 2] ++ [3] ~> [1, 2, 3]
-> [1, 2, 3] ++ [] ~> [1, 2, 3]
 
 : (List(a), Int) -> Maybe(a)
 let (.[]) = match {
@@ -81,8 +87,26 @@ let get = match {
 > [10, 20, 30].get(-3) ~> Some(10)
 > [10, 20, 30].get(-4) ~> None
 
-# or in [idx] [start..end]
-# length, empty, flatten
+# : (List(a), Int, Int) -> Maybe(List(a))
+# let xs[i:j] = match {
+# | (xs, i, j) if i < 1 || j < 1 || i > xs.length() || j > xs.length() -> None
+# | (xs, i, j) if i > j -> None
+# | (xs, i, j) -> Some([xs[k] for k in i..j])
+# }
+
+# Transformations
+: (List(a), List(a)) -> List(a)
+let (++) = match {
+| ([], ys) -> ys
+| ([x, ..xs], ys) -> x :: (xs ++ ys)
+}
+
+> [] ++ [1, 2, 3] ~> [1, 2, 3]
+> [1] ++ [2, 3] ~> [1, 2, 3]
+> [1, 2] ++ [3] ~> [1, 2, 3]
+> [1, 2, 3] ++ [] ~> [1, 2, 3]
+
+# flatten
 # map, filter, flat-map, foldl, foldr
 # push, pop, add, remove
 # all, any, max, min, sum, product, average, count
