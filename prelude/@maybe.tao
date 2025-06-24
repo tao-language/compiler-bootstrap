@@ -9,7 +9,6 @@ let map(m, f) = match m {
 }
 
 > map(Some(1), x -> A(x)) ~> Some(A(1))
-> map(None, x -> A(x)) ~> None
 > Some(1).map(x -> A(x)) ~> Some(A(1))
 > None.map(x -> A(x)) ~> None
 

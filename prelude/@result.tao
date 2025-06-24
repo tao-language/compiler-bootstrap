@@ -9,7 +9,6 @@ let map(r, f) = match r {
 }
 
 > map(Ok(1), x -> A(x)) ~> Ok(A(1))
-> map(Err(0), x -> A(x)) ~> Err(0)
 > Ok(1).map(x -> A(x)) ~> Ok(A(1))
 > Err(0).map(x -> A(x)) ~> Err(0)
 

@@ -3,10 +3,11 @@ module Tao where
 import Control.Monad (void)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap, second))
-import Data.Char (chr, isSpace, ord)
+import Data.Char (chr, isAlphaNum, isSpace, ord)
 import Data.Either (fromRight)
 import Data.Function ((&))
 import Data.List (delete, dropWhileEnd, intercalate, intersect, isPrefixOf, sort, union, unionBy, (\\))
+import Data.Maybe (fromMaybe)
 import Error
 import Grammar as G
 import Location (Location (Location), Position (Pos), Range (Range))
@@ -216,6 +217,11 @@ isTuple = \case
   Meta _ a -> isTuple a
   _ -> False
 
+listOf :: Expr -> Maybe [Expr]
+listOf (List items) = Just items
+listOf (Meta _ a) = listOf a
+listOf _ = Nothing
+
 isOr :: Expr -> Bool
 isOr = \case
   Or _ _ -> True
@@ -319,6 +325,11 @@ false = tag "False"
 
 tag :: String -> Expr
 tag k = Tag k []
+
+tagOf :: Expr -> Maybe (String, [Expr])
+tagOf (Tag k args) = Just (k, args)
+tagOf (Meta _ a) = tagOf a
+tagOf _ = Nothing
 
 fun :: [Expr] -> Expr -> Expr
 fun ps = Fun (Tuple ps)
@@ -453,6 +464,11 @@ pipeR = Op2 PipeR
 
 cons :: Expr -> Expr -> Expr
 cons = Op2 Cons
+
+consOf :: Expr -> Maybe (Expr, Expr)
+consOf (Op2 Cons a b) = Just (a, b)
+consOf (Meta _ a) = consOf a
+consOf _ = Nothing
 
 add :: Expr -> Expr -> Expr
 add = Op2 Add
@@ -699,7 +715,8 @@ grammar = do
                 _ -> Nothing,
           -- Grammar.Var
           G.atom (loc1 Var) parseNameVar $ \_ -> \case
-            Var x -> Just [PP.Text x]
+            Var x | all isAlphaNum x -> Just [PP.Text x]
+            Var x -> Just [PP.Text ("(" ++ x ++ ")")]
             _ -> Nothing,
           -- Grammar.Tag
           let parser expr = do
@@ -711,9 +728,9 @@ grammar = do
                 _ <- P.spaces
                 return (withLoc start end $ Tag k args)
            in G.Atom parser $ \layout -> \case
-                Tag k [] -> Just [PP.Text k]
+                Tag k [] -> Just [PP.Text (show (Var k))]
                 Tag k args -> do
-                  Just (PP.Text k : PP.Text "(" : collectionLayout layout args ++ [PP.Text ")"])
+                  Just (PP.Text (show (Var k)) : PP.Text "(" : collectionLayout layout args ++ [PP.Text ")"])
                 _ -> Nothing,
           -- Grammar.Tuple.empty
           let parser expr = do
@@ -1256,7 +1273,7 @@ lower = \case
   MatchFun cases -> lower (or' cases)
   Let (a, b) c | Just x <- varOf c -> case lookup x (C.unpack (lower a, lower b)) of
     Just c -> c
-    Nothing -> error $ "undefined var " ++ x
+    Nothing -> lower (App (Fun a c) b)
   Let (a, b) c -> C.let' (C.unpack (lower a, lower b)) (lower c)
   Bind (a, b) c -> lower (app (Var "<-") [b, Fun a c])
   -- Record fields -> do
@@ -1271,7 +1288,7 @@ lower = \case
   --   let k = '~' : intercalate "," (map fst kvs)
   --   let args = map ((C.substitute sub . lower) . snd) kvs
   --   C.tag k args
-  If a b -> lower (IfElse b a Err)
+  If a b -> lower (Let (Ann true bool, b) a)
   IfElse a b c -> lower (Match a [Fun (Ann true bool) b, Fun (Ann false bool) c])
   Meta m a -> C.Meta (fmap lower m) (lower a)
   Err -> C.Err
@@ -1779,10 +1796,20 @@ instance Resolve (String, Stmt) where
       where
         bindings :: Pattern -> [String]
         bindings p = map fst (C.unpack (lower p, C.Any))
-    TypeDef (name', args, alts) | name == name' -> do
+    TypeDef (tname, args, alts) | name == tname -> do
       let resolveAlt (a, Just b) = Fun a b
-          resolveAlt (a, Nothing) = Fun a (Tag name' args)
+          resolveAlt (a, Nothing) = Fun a (Tag tname args)
       [(path, fun args (or' $ map resolveAlt alts))]
+    -- TypeDef (tname, args, alts) -> do
+    --   [ (path, For (C.freeVars $ lower alt) alt)
+    --     | (a, mb) <- alts,
+    --       let t = fromMaybe (Tag tname args) mb,
+    --       alt <- case name of
+    --         _ | Just (k', args') <- tagOf a, name == k' -> [Fun (Tuple args') t]
+    --         "::" | Just (a1, a2) <- consOf a -> [Fun (Tuple [a1, a2]) t]
+    --         "[]" | Just [] <- listOf a -> [Fun (Tuple []) t]
+    --         _ -> []
+    --     ]
     _ -> []
 
 class Compile a where
@@ -1794,7 +1821,9 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"==", expr) = do
+  -- compile ctx path (name@"[]", expr) = do
+  --   error $ show (name, expr)
+  -- compile ctx path (name@"drop", expr) = do
   --   let a = C.dropMeta $ C.bind [] $ lower expr
   --   let xs = delete name (C.freeVars a `union` C.freeTags a)
   --   let env = compileDefs ctx path xs
@@ -1804,16 +1833,12 @@ instance Compile (String, Expr) where
   --       "a:  " ++ show (C.dropMeta a),
   --       "xs:  " ++ show xs,
   --       "env: " ++ show (map fst env),
-  --       intercalate "\n" $ map (\(x, a) -> "  " ++ show x ++ ": " ++ show (C.eval runtimeOps $ C.let' env a)) env,
+  --       intercalate "\n" $ map (\(x, a) -> "  " ++ show (C.Var x) ++ ": " ++ show (C.eval runtimeOps $ C.let' env a)) env,
   --       "alts:",
-  --       intercalate "\n" $ map (show . fst) (fromRight [] $ C.infer buildOps ((name, C.Var name) : env) a),
+  --       intercalate "\n" $ map ((" - " ++) . show . fst) (fromRight [] $ C.infer buildOps ((name, C.Var name) : env) a),
   --       "",
   --       let a' = C.or' $ map (C.ann . fst) (fromRight [] $ C.infer buildOps ((name, C.Var name) : env) a)
   --        in show $ C.for' (C.freeVars a') a',
-  --       "",
-  --       "",
-  --       "TO REPRODUCE: stack run core prelude '(==)'",
-  --       "** The 'a' is transferred to all alts, instead of being unified by a single one",
   --       ""
   --     ]
   compile ctx path (name, expr) = do
@@ -1835,13 +1860,8 @@ instance Compile (String, Expr) where
             ""
           ]
       Right alts -> do
-        case C.collapse buildOps env (map (snd . fst) alts) of
-          Right [(t, s)] -> do
-            let expr = C.Ann (C.or' $ map (fst . fst) alts) t
-            (env, C.for' (vars expr) expr)
-          _ -> do
-            let expr = C.or' $ map (C.ann . fst) alts
-            (env, C.for (vars expr) expr)
+        let expr = C.or' $ map (C.ann . fst) alts
+        (env, C.for (vars expr) expr)
       Left err -> error $ show (name, xs, map fst env, err)
 
 compileDefs :: Context -> FilePath -> [String] -> C.Env
@@ -1850,6 +1870,11 @@ compileDefs ctx path (x : xs) = do
   let defs = map (\(path, a) -> compile ctx path (x, a)) (resolve ctx path x)
   let env1 = foldr (unionBy (\a b -> fst a == fst b)) [] (map fst defs)
   let env2 = compileDefs ctx path xs
+  -- case defs of
+  --   [] -> env2
+  --   defs -> do
+  --     let a = C.let' env1 $ C.or' $ map snd defs
+  --     (x, C.fix' [x] a) : env2
   let env = unionBy (\a b -> fst a == fst b) env1 env2
   case defs of
     [] -> env

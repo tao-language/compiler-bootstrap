@@ -59,14 +59,7 @@ coreCmd filename arg = do
   let path = dropExtension (snd (split2 ':' filename))
   let (env, a) = compile ctx path arg'
   putStrLn $ "env: " ++ unwords (map (show . fst) env)
-  mapM_
-    ( \(x, a) -> case C.letOf a of
-        Just (env, a) -> do
-          putStrLn ("  " ++ show x ++ ": @{" ++ unwords (map (show . fst) env) ++ "} " ++ show a)
-        Nothing -> do
-          putStrLn ("  " ++ show x ++ ": " ++ show a)
-    )
-    env
+  mapM_ (\(x, a) -> putStrLn ("  " ++ show (C.Var x) ++ ": " ++ show a)) env
   putStrLn $ show a
   let a' = C.eval runtimeOps $ C.let' env a
   putStrLn "----------"
