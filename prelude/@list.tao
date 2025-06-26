@@ -2,7 +2,7 @@ type List(a) =
 | a :: List(a)
 | []
 
-: List(_) -> Bool
+: List(a) -> Bool
 let empty = match {
 | [] -> True
 | _ -> False
@@ -12,7 +12,7 @@ let empty = match {
 > [].empty ~> True
 > [1, 2, 3].empty ~> False
 
-: List(_) -> Int
+: List(a) -> Int
 let length = match {
 | [] -> 0
 | [x, ..xs] -> 1 + xs.length

@@ -715,8 +715,11 @@ grammar = do
                 _ -> Nothing,
           -- Grammar.Var
           G.atom (loc1 Var) parseNameVar $ \_ -> \case
-            Var x | all isAlphaNum x -> Just [PP.Text x]
-            Var x -> Just [PP.Text ("(" ++ x ++ ")")]
+            Var x -> do
+              let showVar = \case
+                    x | all (\c -> isAlphaNum c || c `elem` "_-$") x -> x
+                    x -> "(" ++ x ++ ")"
+              Just [PP.Text (showVar x)]
             _ -> Nothing,
           -- Grammar.Tag
           let parser expr = do
@@ -728,9 +731,14 @@ grammar = do
                 _ <- P.spaces
                 return (withLoc start end $ Tag k args)
            in G.Atom parser $ \layout -> \case
-                Tag k [] -> Just [PP.Text (show (Var k))]
                 Tag k args -> do
-                  Just (PP.Text (show (Var k)) : PP.Text "(" : collectionLayout layout args ++ [PP.Text ")"])
+                  let showTag = \case
+                        k | all (\c -> isAlphaNum c || c `elem` "_-$") k -> k
+                        k -> "(" ++ k ++ ")"
+                  let showArgs = \case
+                        [] -> []
+                        args -> PP.Text "(" : intercalate [PP.Text ", "] (map layout args) ++ [PP.Text ")"]
+                  Just (PP.Text (showTag k) : showArgs args)
                 _ -> Nothing,
           -- Grammar.Tuple.empty
           let parser expr = do
@@ -1821,12 +1829,11 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"[]", expr) = do
-  --   error $ show (name, expr)
-  -- compile ctx path (name@"drop", expr) = do
+  -- compile ctx path (name@"", expr) = do
   --   let a = C.dropMeta $ C.bind [] $ lower expr
   --   let xs = delete name (C.freeVars a `union` C.freeTags a)
   --   let env = compileDefs ctx path xs
+  --   let vars a = filter (`notElem` name : map fst env) (C.freeVars a)
   --   (error . intercalate "\n")
   --     [ "compile " ++ show name,
   --       "expr:  " ++ show (dropMeta expr),
