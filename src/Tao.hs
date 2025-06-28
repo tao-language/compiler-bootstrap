@@ -1829,11 +1829,11 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"", expr) = do
+  -- compile ctx path (name@"length", expr) = do
   --   let a = C.dropMeta $ C.bind [] $ lower expr
   --   let xs = delete name (C.freeVars a `union` C.freeTags a)
   --   let env = compileDefs ctx path xs
-  --   let vars a = filter (`notElem` name : map fst env) (C.freeVars a)
+  --   -- let vars a = filter (`notElem` name : map fst env) (C.freeVars a)
   --   (error . intercalate "\n")
   --     [ "compile " ++ show name,
   --       "expr:  " ++ show (dropMeta expr),
@@ -1842,17 +1842,21 @@ instance Compile (String, Expr) where
   --       "env: " ++ show (map fst env),
   --       intercalate "\n" $ map (\(x, a) -> "  " ++ show (C.Var x) ++ ": " ++ show (C.eval runtimeOps $ C.let' env a)) env,
   --       "alts:",
-  --       intercalate "\n" $ map ((" - " ++) . show . fst) (fromRight [] $ C.infer buildOps ((name, C.Var name) : env) a),
+  --       intercalate "\n" $ map ((" | " ++) . show . fst) (fromRight [] $ C.infer buildOps ((name, C.Var name) : env) a),
   --       "",
   --       let a' = C.or' $ map (C.ann . fst) (fromRight [] $ C.infer buildOps ((name, C.Var name) : env) a)
   --        in show $ C.for' (C.freeVars a') a',
+  --       -- "",
+  --       -- "TODO: reproduce pattern matching issue:",
+  --       -- "  let A = B; C  -- should give !error",
+  --       -- "  (A -> C)(B) -- should give !error",
   --       ""
   --     ]
   compile ctx path (name, expr) = do
     let a = C.dropMeta $ C.bind [] $ lower expr
     let xs = delete name (C.freeVars a `union` C.freeTags a)
     let env = compileDefs ctx path xs
-    let vars a = filter (`notElem` name : map fst env) (C.freeVars a)
+    -- let vars a = filter (`notElem` name : map fst env) (C.freeVars a)
     case C.infer buildOps ((name, C.Var name) : env) a of
       Right [] ->
         (error . intercalate "\n")
@@ -1867,8 +1871,10 @@ instance Compile (String, Expr) where
             ""
           ]
       Right alts -> do
-        let expr = C.or' $ map (C.ann . fst) alts
-        (env, C.for (vars expr) expr)
+        let typed (a, t) = do
+              let (xs, a') = C.forOf a
+              C.for' xs (C.Ann a' t)
+        (env, C.or' $ map (typed . fst) alts)
       Left err -> error $ show (name, xs, map fst env, err)
 
 compileDefs :: Context -> FilePath -> [String] -> C.Env
@@ -1886,5 +1892,5 @@ compileDefs ctx path (x : xs) = do
   case defs of
     [] -> env
     defs -> do
-      let a = C.let' env1 $ C.or' $ map snd defs
-      (x, C.fix' [x] a) : env
+      let a = C.or' $ map snd defs
+      (x, C.let' env1 $ C.fix' [x] a) : env

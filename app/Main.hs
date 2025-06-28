@@ -4,6 +4,7 @@ import qualified Core as C
 import Data.Either (fromRight)
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, isSuffixOf, partition)
+import Data.Maybe (fromMaybe)
 import Error
 import Load (include, load, loadExpr)
 import Patch
@@ -58,14 +59,27 @@ coreCmd filename arg = do
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
   let (env, a) = compile ctx path arg'
-  putStrLn $ "env: " ++ unwords (map (show . fst) env)
-  mapM_ (\(x, a) -> putStrLn ("  " ++ show (C.Var x) ++ ": " ++ show a)) env
-  putStrLn $ show a
-  let a' = C.eval runtimeOps $ C.let' env a
-  putStrLn "----------"
-  print a'
-  putStrLn "----------"
-  print $ C.dropTypes a'
+  putStrLn $ "---- env: " ++ unwords (map (show . fst) env)
+  let printDef (name, a0) = do
+        let (env, a') = fromMaybe ([], a0) $ C.letOf a0
+        putStrLn ("+ " ++ name ++ ": " ++ "@{" ++ unwords (map fst env) ++ "}")
+        mapM_
+          ( \a -> do
+              let (xs, a1) = C.forOf a
+              let (a', t) = fromMaybe (a1, C.Any) (C.asAnn a1)
+              putStrLn ("| @" ++ unwords (map (show . Var) xs) ++ ".")
+              putStrLn ("  : " ++ show t)
+              mapM_ (\b -> putStrLn ("  | " ++ show b)) (C.orOf a')
+          )
+          (C.orOf a')
+  mapM_ printDef env
+  putStrLn "---- core"
+  mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf a)
+  putStrLn "---- eval"
+  let b = C.eval runtimeOps $ C.let' env a
+  mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf b)
+  putStrLn "---- eval (untyped)"
+  mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf $ C.dropTypes b)
 
 runCmd :: FilePath -> String -> IO ()
 runCmd filename arg = do

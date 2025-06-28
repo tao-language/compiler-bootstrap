@@ -1,6 +1,6 @@
-type Result(value, error) =
-| Ok(value)
-| Err(error)
+type Result(a, e) =
+| Ok(a)
+| Err(e)
 
 : (Result(a, e), a -> b) -> Result(b, e)
 let map(r, f) = match r {
