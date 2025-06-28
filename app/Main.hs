@@ -77,7 +77,9 @@ coreCmd filename arg = do
   mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf a)
   putStrLn "---- eval"
   let b = C.eval runtimeOps $ C.let' env a
-  mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf b)
+  let (b', t) = fromMaybe (b, C.Any) (C.asAnn b)
+  putStrLn $ ": " ++ show t
+  mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf b')
   putStrLn "---- eval (untyped)"
   mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf $ C.dropTypes b)
 
