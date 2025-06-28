@@ -1568,6 +1568,7 @@ inferAll ops env (a : bs) = do
     ]
 
 check :: Ops -> Env -> Expr -> Type -> Either (Error Expr) [((Expr, Type), Substitution)]
+check ops env a Any = infer ops env a
 check ops env a (For x t) = infer ops env (For x (Ann a t))
 check ops env (For x a) t = infer ops env (For x (Ann a t))
 check ops env (Var x) t = case lookup x env of
