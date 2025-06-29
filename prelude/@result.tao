@@ -5,7 +5,7 @@ type Result(a, e) =
 : (Result(a, e), a -> b) -> Result(b, e)
 let map(r, f) = match r {
 | Ok(x) -> Ok(f(x))
-| Err(e) -> Err(e)
+| Err(y) -> Err(y)
 }
 
 > map(Ok(1), x -> A(x)) ~> Ok(A(1))
@@ -15,7 +15,7 @@ let map(r, f) = match r {
 : (Result(a, e1), e1 -> e2) -> Result(a, e2)
 let map-error(r, f) = match r {
 | Ok(x) -> Ok(x)
-| Err(e) -> Err(f(e))
+| Err(y) -> Err(f(y))
 }
 
 > map-error(Ok(1), x -> A(x)) ~> Ok(1)

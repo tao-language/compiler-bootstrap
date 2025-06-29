@@ -239,10 +239,10 @@ grammar = do
                 _ <- P.whitespaces
                 def' (bindings a, a, b) <$> expr
            in G.Atom parser $ \layout -> \case
-                App a b -> case forOf a of
-                  (xs, Fun a c) -> do
-                    Just (PP.Text ("^let<" ++ unwords xs ++ "> ") : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
-                  _ -> Nothing
+                -- App a b -> case forOf a of
+                --   (xs, Fun a c) -> do
+                --     Just (PP.Text ("^let<" ++ unwords xs ++ "> ") : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
+                --   _ -> Nothing
                 _ -> Nothing,
           -- Grammar.Or
           G.infixR 1 (const Or) "|" $ \case
@@ -434,7 +434,7 @@ grammar = do
                 _ <- P.spaces
                 return (err $ customError a)
            in G.Atom parser $ \layout -> \case
-                Err -> Just [PP.Text "!Err"]
+                Err -> Just [PP.Text "!error"]
                 Meta (Error e) c -> case e of
                   TypeError e -> case e of
                     UndefinedVar x -> Just (PP.Text ("!undefined-var<" ++ x ++ ">(") : layout c ++ [PP.Text ")"])
@@ -601,6 +601,11 @@ asFor = \case
     (xs, a') <- asFor a
     Just (xs, Meta m a')
   _ -> Nothing
+
+isFor :: Expr -> Bool
+isFor (For _ _) = True
+isFor (Meta _ a) = isFor a
+isFor _ = False
 
 fix :: [String] -> Expr -> Expr
 fix xs a = foldr Fix a xs
@@ -889,206 +894,21 @@ isOpen :: Expr -> Bool
 isOpen = not . isClosed
 
 -- Evaluation
--- step :: Ops -> Expr -> Maybe Expr
--- step ops = \case
---   Var _ -> Nothing
---   Tag k a -> step1 ops (Tag k) a
---   Ann a _ -> Just a
---   And a b -> step2 ops And a b
---   Or a b -> case a of
---     Any -> Just a
---     Unit -> Just a
---     IntT -> Just a
---     NumT -> Just a
---     Int _ -> Just a
---     Num _ -> Just a
---     Tag _ _ -> Just a
---     -- Var String
---     -- And Expr Expr
---     -- Or Expr Expr
---     Ann a _ -> Just (Or a b)
---     For _ _ -> do
---       a <- step ops a
---       Just (Or a b)
---     -- Fix String Expr
---     Fun _ _ -> Nothing
---     App _ _ -> do
---       a <- step ops a
---       Just (Or a b)
---     -- Call String [Expr]
---     Let env a -> do
---       a <- step ops (Let env a)
---       Just (Or a b)
---     -- Meta (Metadata Expr) Expr
---     Err -> Just b
---     a -> error $ "TODO: step Or: " ++ show a
---   For x a -> step ops (Let [(x, Var x)] a)
---   Fix x a -> Nothing
---   Fun a b -> step2 ops Fun a b
---   App a b -> case a of
---     Any -> Just Any
---     Var x -> error $ "TODO: stepApp Var"
---     Ann a _ -> Just (App a b)
---     Or a1 a2 -> Just (Or (App a1 b) (App a2 b))
---     For x a -> step ops (App (Let [(x, Var x)] a) b)
---     Fix x a -> Just (App (Let [(x, Fix x a)] a) b)
---     Fun a c -> case (a, b) of
---       (Any, _) -> Just c
---       (Let env a, b) -> do
---         a <- step ops (Let env a)
---         Just (letP (a, b) c)
---       (a, Let env b) -> do
---         b <- step ops (Let env b)
---         Just (letP (a, b) c)
---       (Unit, Unit) -> Just c
---       (IntT, IntT) -> Just c
---       (NumT, NumT) -> Just c
---       (Int i, Int i') | i == i' -> Just c
---       (Num n, Num n') | n == n' -> Just c
---       (Tag k1 a, Tag k2 b) | k1 == k2 -> Just (letP (a, b) c)
---       (Var x, b) -> Just (Let [(x, b)] c)
---       (Ann a1 a2, Ann b1 b2) -> Just (letP (a2, b2) (letP (a1, b1) c))
---       (And a1 a2, And b1 b2) -> Just (letP (a1, b1) (letP (a2, b2) c))
---       -- TODO: remove this last case and replace with:
---       -- _ -> Just Err
---       (a, b) -> case a of
---         Unit -> Just Err
---         IntT -> Just Err
---         NumT -> Just Err
---         Int _ -> Just Err
---         Num _ -> Just Err
---         Tag _ _ -> Just Err
---         a -> error $ "TODO: beta " ++ show (a, b)
---     App _ _ -> error "TODO: stepApp App"
---     Call _ _ -> error "TODO: stepApp Call"
---     Let env a -> do
---       a <- step ops (Let env a)
---       Just (App a b)
---     Meta _ a -> Just (App a b)
---     Err -> Just Err
---     a -> Just (err $ cannotApply a b)
---   -- App a b -> reduceApp ops (reduce ops (Let env a)) (reduce ops (Let env b))
---   Call f args -> do
---     call <- lookup f ops
---     call (eval ops) args
---   -- Call f args -> case (lookup f ops, Let env <$> args) of
---   --   (Just call, args) | Just result <- call (eval ops) args -> result
---   --   (_, args) -> Call f args
---   Let env a -> case a of
---     Tag k a -> step1 ops (Tag k) (Let env a)
---     Var x -> case lookup x env of
---       Just (Var x') | x == x' -> Just (Var x)
---       Just a -> Just a
---       Nothing -> Just (Var x)
---     And a b -> step2 ops And (Let env a) (Let env b)
---     Or a b -> step2 ops Or (Let env a) (Let env b)
---     Ann a b -> step2 ops Ann (Let env a) (Let env b)
---     For x a -> step1 ops (For x) (Let ((x, Var x) : env) a)
---     Fix x a -> step1 ops (Fix x) (Let ((x, Var x) : env) a)
---     Fun a b -> step2 ops Fun (Let env a) (Let env b)
---     App a b -> step2 ops App (Let env a) (Let env b)
---     Call f args -> do
---       let step' a = fromMaybe a (step ops $ Let env a)
---       Just (Call f (map step' args))
---     Let env' a -> step ops (Let (env ++ env') a)
---     Meta _ a -> step ops (Let env a)
---     a -> Just a
---   Meta _ a -> step ops a
---   _ -> Nothing
-
--- step1 :: Ops -> (Expr -> Expr) -> Expr -> Maybe Expr
--- step1 ops f a = do
---   a <- step ops a
---   Just (f a)
-
--- step2 :: Ops -> (Expr -> Expr -> Expr) -> Expr -> Expr -> Maybe Expr
--- step2 ops f a b = case (step ops a, step ops b) of
---   (Just a, Just b) -> Just (f a b)
---   (Just a, Nothing) -> Just (f a b)
---   (Nothing, Just b) -> Just (f a b)
---   (Nothing, Nothing) -> Nothing
-
--- stepApp :: Ops -> Expr -> Expr -> Maybe Expr
--- stepApp ops a b = case a of
---   Any -> Just Any
---   Var x -> error $ "TODO: stepApp Var"
---   Ann a _ -> Just (App a b)
---   Or a1 a2 -> Just (Or (App a1 b) (App a2 b))
---   For x a -> Just (App (Let [(x, Var x)] a) b)
---   Fix x a -> Just (App (Let [(x, Fix x a)] a) b)
---   Fun a c -> case match False ops a b of
---     Matched env -> Just (let' env c)
---     MaybeMatched a b -> Nothing
---     NotMatched a b -> Just Err
---   App _ _ -> error "TODO: stepApp App"
---   Call _ _ -> error "TODO: stepApp Call"
---   Let env a -> do
---     a <- step ops (Let env a)
---     Just (App a b)
---   Meta _ a -> Just (App a b)
---   Err -> Just Err
---   a -> Just (err $ cannotApply a b)
-
--- reduceApp :: Ops -> Expr -> Expr -> Expr
--- reduceApp ops a b = case (a, reduce ops b) of
---   (Any, _) -> Any
---   (a, b) | isVar a || isApp a -> App a b
---   (Ann a _, b) -> reduceApp ops (reduce ops a) b
---   (Or a1 a2, b) -> Or (reduceApp ops (reduce ops a1) b) (App a2 b)
---   (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
---   -- (Fix x a, b) | isOpen b -> error $ show $ dropMeta $ App (Fix x a) b
---   (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
---   (Fun a c, b) -> case match False ops a b of
---     Matched env -> reduce ops (Let env c)
---     MaybeMatched a b -> App (Fun a c) b
---     NotMatched a b -> err (unhandledCase a b)
---   (Call f args, b) -> App (Call f args) b
---   (Meta _ a, b) -> reduceApp ops a b
---   _ -> err (cannotApply a b)
-
--- steps :: Ops -> Expr -> [Expr]
--- steps ops expr =
---   expr : case step ops expr of
---     Just next -> steps ops next
---     Nothing -> []
-
--- steps ops env expr =
---   case expr of
---     -- Var x -> case lookup x env of
---     --   Just (Var x') | x == x' -> Var x
---     --   Just (Ann (Var x') t) | x == x' -> Ann (Var x) t
---     --   Just a -> reduce ops a
---     --   Nothing -> Var x
---     Var x -> error "TODO: steps Var"
---     Tag k a -> [Tag k a | a <- steps ops env a]
---     Ann a b -> [Ann a b | a <- steps ops env a, b <- steps ops env b]
---     And a b -> [And a b | a <- steps ops env a, b <- steps ops env b]
---     Or a b -> [Or a b | a <- steps ops env a, b <- steps ops env b]
---     For x a -> [For x a | a <- steps ops ((x, Var x) : env) a]
---     Fix x a -> [Fix x a | a <- steps ops ((x, Fix x a) : env) a]
---     Fun a b -> [Fun a b | a <- steps ops env a, b <- steps ops env b]
---     App a b -> error "TODO: steps App"
---     -- App a b -> reduceApp ops (reduce ops (Let env a)) (reduce ops (Let env b))
---     -- Call f args -> case (lookup f ops, Let env <$> args) of
---     --   (Just call, args) | Just result <- call (eval ops) args -> result
---     --   (_, args) -> Call f args
---     Call f args -> error "TODO: steps Call"
---     Let env' a -> [a | a <- steps ops (env ++ env') a]
---     Meta m a -> [Meta m a | a <- steps ops env a]
---     a -> [a]
-
 reduce :: Ops -> Expr -> Expr
-reduce ops = \case
-  App a b -> reduceApp ops (reduce ops a) (reduce ops b)
+reduce ops a = case a of
+  -- App a b | trace (">> reduce[App] " ++ show (dropLet $ App a b)) False -> undefined
+  App a b -> reduceApp ops a b
   Let env a -> reduceLet ops env a
   Meta m a -> Meta m (reduce ops a)
   expr -> expr
 
 reduceLet :: Ops -> Env -> Expr -> Expr
-reduceLet ops env = \case
+reduceLet ops env a = case a of
   Var x -> case lookup x env of
     Just (Var x') | x == x' -> Var x
     Just (Ann (Var x') t) | x == x' -> Ann (Var x) t
+    -- Just a | x == "e" && trace (">> reduceLet[Var(" ++ x ++ ")] " ++ show (dropLet a) ++ "\n" ++ intercalate "\n" (map (\(x, a) -> "   - " ++ show (Var x) ++ ": " ++ show a) env)) False -> undefined
+    -- Just a | trace (">> reduceLet[Var(" ++ x ++ ")] " ++ show (dropLet a)) False -> undefined
     Just a -> reduce ops a
     Nothing -> Var x
   Tag k a -> Tag k (Let env a)
@@ -1098,7 +918,9 @@ reduceLet ops env = \case
   For x a -> For x (Let env a)
   Fix x a -> Fix x (Let env a)
   Fun a b -> Fun (Let env a) (Let env b)
-  App a b -> reduceApp ops (reduce ops (Let env a)) (reduce ops (Let env b))
+  -- App a b | trace (">> reduceLet[App] " ++ show (dropLet $ App a b)) False -> undefined
+  App a b -> reduceApp ops (Let env a) (Let env b)
+  -- Call f args | trace (">> reduceLet[Call] " ++ show (dropLet $ Call f args)) False -> undefined
   Call f args -> case (lookup f ops, Let env <$> args) of
     (Just call, args) | Just result <- call (eval ops) args -> result
     (_, args) -> Call f args
@@ -1108,14 +930,18 @@ reduceLet ops env = \case
   expr -> expr
 
 reduceApp :: Ops -> Expr -> Expr -> Expr
-reduceApp ops a b = case (a, reduce ops b) of
+-- reduceApp ops a b | trace (">> reduceApp " ++ show (showCtr a, showCtr b)) False = undefined
+reduceApp ops a b = case (reduce ops a, reduce ops b) of
   (Any, _) -> Any
   (a, b) | isVar a || isApp a -> App a b
-  (Ann a _, b) -> reduceApp ops (reduce ops a) b
-  (Or a1 a2, b) -> Or (reduceApp ops (reduce ops a1) b) (App a2 b)
-  (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
+  (Ann a _, b) -> reduceApp ops a b
+  -- (Or a1 a2, b) | trace (">> reduceApp[Or]\n   | " ++ show (dropLet a1) ++ "\n   | " ++ show (dropLet a2) ++ "\n   ~ " ++ show (dropLet b)) False -> undefined
+  (Or a1 a2, b) -> Or (reduceApp ops a1 b) (App a2 b)
+  -- (For x a, b) | trace (">> reduceApp[For] " ++ show (dropLet $ For x a, dropLet b)) False -> undefined
+  (For x a, b) -> reduceApp ops (Let [(x, Var x)] a) b
   -- (Fix x a, b) | isOpen b -> error $ show $ dropMeta $ App (Fix x a) b
-  (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
+  (Fix x a, b) -> reduceApp ops (Let [(x, Fix x a)] a) b
+  -- (Fun a c, b) | trace (">> reduceApp[Fun] " ++ show (dropLet $ Fun a c, dropLet b)) False -> undefined
   (Fun a c, b) -> case match False ops a b of
     Matched env -> reduce ops (Let env c)
     MaybeMatched a b -> App (Fun a c) b
@@ -1125,6 +951,7 @@ reduceApp ops a b = case (a, reduce ops b) of
   _ -> err (cannotApply a b)
 
 match :: Bool -> Ops -> Expr -> Expr -> MatchResult Env
+-- match unify ops a b | trace ("   match[" ++ showCtr (reduce ops a) ++ ":" ++ showCtr (reduce ops b) ++ "] " ++ show (dropLet $ reduce ops a, dropLet $ reduce ops b)) False = undefined
 -- match unify ops (Let env (Tag k a)) b = case lookup k env of
 --   Just def -> do
 --     let b' = curry' (Let env def) [a, b]
@@ -1194,6 +1021,7 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (a, b) -> NotMatched a b
 
 eval :: Ops -> Expr -> Expr
+-- eval ops a | trace (">> eval[" ++ showCtr a ++ "] " ++ show (dropLet a)) False = undefined
 eval ops expr = case reduce ops expr of
   Tag k a -> Tag k (eval ops a)
   Ann a b -> case (eval ops a, eval ops b) of
@@ -1202,9 +1030,12 @@ eval ops expr = case reduce ops expr of
     (a, b) -> Ann a b
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> case eval ops a of
+    -- a | isErr a && trace ("   eval Or[b] " ++ show (dropLet $ Or a b)) False -> undefined
     a | isErr a -> eval ops b
     a | isVar a || isApp a || isFun a || isOr a || isCall a -> case eval ops b of
+      -- b | isErr b && trace ("   eval Or[a] " ++ show (dropLet $ Or a b)) False -> undefined
       b | isErr b -> a
+      -- b | trace ("   eval Or[a|b] " ++ show (dropLet $ Or a b)) False -> undefined
       b -> Or a b
     a -> a
   For x a -> for' [x] (eval ops (Let [(x, Var x)] a))
@@ -1488,7 +1319,7 @@ infer ops env (For x a) = do
   let y = newName ((x ++ "$") : map fst env) (x ++ "$")
   let sub x y = substitute [(x, Var y)]
   Right
-    [ ((for' [x] (sub y x a), sub y x t), s)
+    [ ((for' [x] (sub y x a), sub y x t), filter ((/= y) . fst) s)
     | ((a, t), s) <- fromRight [] $ infer ops ((y, Var y) : env) (sub x y a)
     ]
 infer ops env (Fix x a) = do

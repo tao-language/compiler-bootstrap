@@ -49,7 +49,9 @@ main = do
             buildPythonCmd (map (trimPrefix "-p=") patches) paths
         _ -> putStrLn $ "🛑 Target not supported: " ++ target
       _ -> putStrLn "🛑 Please give me a target."
-    _ -> error "TODO: repl"
+    args -> do
+      coreCmd "prelude" "Err(1).map(x -> A(x))"
+      error "TODO: repl"
 
 coreCmd :: FilePath -> String -> IO ()
 coreCmd filename arg = do

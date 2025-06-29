@@ -1224,7 +1224,7 @@ grammar = do
                 _ <- P.spaces
                 return (Meta (C.Error $ customError a) Err)
            in G.Atom parser $ \layout -> \case
-                Err -> Just [PP.Text "!Err"]
+                Err -> Just [PP.Text "!error"]
                 Meta (C.Error e) c -> case e of
                   SyntaxError (loc, ctx, txt) -> Just [PP.Text $ "!syntax-error[" ++ show loc ++ "|" ++ show ctx ++ "|" ++ show txt ++ "]"]
                   TypeError e -> case e of
