@@ -1829,7 +1829,7 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"length", expr) = do
+  -- compile ctx path (name@"map", expr) = do
   --   let a = C.dropMeta $ C.bind [] $ lower expr
   --   let xs = delete name (C.freeVars a `union` C.freeTags a)
   --   let env = compileDefs ctx path xs

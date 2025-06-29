@@ -1316,19 +1316,13 @@ infer ops env (Or a b) = do
 --           ]
 --     )
 infer ops env (For x a) = do
-  let y = newName ((x ++ "$") : map fst env) (x ++ "$")
-  let sub x y = substitute [(x, Var y)]
-  Right
-    [ ((for' [x] (sub y x a), sub y x t), filter ((/= y) . fst) s)
-    | ((a, t), s) <- fromRight [] $ infer ops ((y, Var y) : env) (sub x y a)
-    ]
+  let y = newName (map fst env) x
+  ats <- infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
+  Right [((for' [y] a, t), pop y s) | ((a, t), s) <- ats]
 infer ops env (Fix x a) = do
-  let y = newName ((x ++ "$") : map fst env) (x ++ "$")
-  let sub x y = substitute [(x, Var y)]
-  Right
-    [ ((Fix x (sub y x a), sub y x t), pop y s)
-    | ((a, t), s) <- fromRight [] $ infer ops ((y, Var y) : env) (sub x y a)
-    ]
+  let y = newName (map fst env) x
+  ats <- infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
+  Right [((fix' [y] a, t), pop y s) | ((a, t), s) <- ats]
 infer ops env (Fun a b) = do
   Right
     [ ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
@@ -1400,8 +1394,12 @@ inferAll ops env (a : bs) = do
 
 check :: Ops -> Env -> Expr -> Type -> Either (Error Expr) [((Expr, Type), Substitution)]
 check ops env a Any = infer ops env a
-check ops env a (For x t) = infer ops env (For x (Ann a t))
-check ops env (For x a) t = infer ops env (For x (Ann a t))
+check ops env a (For x t) = do
+  let y = newName (map fst env) x
+  infer ops env (For y (Ann a (substitute [(x, Var y)] t)))
+check ops env (For x a) t = do
+  let y = newName (map fst env) x
+  infer ops env (For y (Ann (substitute [(x, Var y)] a) t))
 check ops env (Var x) t = case lookup x env of
   Just (Var x') | x == x' -> Right [((Var x, t), [(x, Ann (Var x) t)])]
   Just (Ann (Var x') ty) | x == x' -> do
