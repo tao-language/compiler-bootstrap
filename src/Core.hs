@@ -1489,7 +1489,7 @@ inspect1 name env a xs = do
 
 inspect1' :: (Show a) => [Char] -> [(String, Expr)] -> Expr -> Either e [a] -> Either e [a]
 inspect1' name env a r
-  | inspect1 name env a (fromRight [] r) = undefined
+  -- \| inspect1 name env a (fromRight [] r) = undefined
   | otherwise = r
 
 inspect2 :: (Show a) => [Char] -> [(String, Expr)] -> Expr -> Expr -> [a] -> Bool
@@ -1507,5 +1507,5 @@ inspect2 name env a b xs = do
 
 inspect2' :: (Show a) => [Char] -> [(String, Expr)] -> Expr -> Expr -> Either e [a] -> Either e [a]
 inspect2' name env a b r
-  | inspect2 name env a b (fromRight [] r) = undefined
+  -- \| inspect2 name env a b (fromRight [] r) = undefined
   | otherwise = r

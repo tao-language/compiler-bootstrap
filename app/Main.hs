@@ -71,7 +71,7 @@ coreCmd filename arg = do
               a <- case C.fixOf a of
                 ([], a) -> return a
                 (xs, a) -> do
-                  putStr ("& " ++ unwords (map (show . Var) xs) ++ ". ")
+                  putStr ("&" ++ unwords (map (show . Var) xs) ++ ". ")
                   return a
               (xs, a) <- return (C.forOf a)
               putStrLn ("@" ++ unwords (map (show . Var) xs) ++ ".")
