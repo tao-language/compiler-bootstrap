@@ -49,9 +49,7 @@ main = do
             buildPythonCmd (map (trimPrefix "-p=") patches) paths
         _ -> putStrLn $ "🛑 Target not supported: " ++ target
       _ -> putStrLn "🛑 Please give me a target."
-    args -> do
-      coreCmd "prelude" "Err(1).map(x -> A(x))"
-      error "TODO: repl"
+    args -> error "TODO: repl"
 
 coreCmd :: FilePath -> String -> IO ()
 coreCmd filename arg = do
@@ -62,28 +60,42 @@ coreCmd filename arg = do
   let path = dropExtension (snd (split2 ':' filename))
   let (env, a) = compile ctx path arg'
   putStrLn $ "---- env: " ++ unwords (map (show . fst) env)
-  let printDef (name, a0) = do
-        let (env, a') = fromMaybe ([], a0) $ C.letOf a0
-        putStrLn ("+ " ++ name ++ ": " ++ "@{" ++ unwords (map fst env) ++ "}")
+  let printExpr a = do
+        (env, a) <- case C.letOf a of
+          Just (env, a) -> return (env, a)
+          Nothing -> return ([], a)
+        putStrLn ("@{" ++ unwords (map fst env) ++ "}")
         mapM_
           ( \a -> do
-              let (xs, a1) = C.forOf a
-              let (a', t) = fromMaybe (a1, C.Any) (C.asAnn a1)
-              putStrLn ("| @" ++ unwords (map (show . Var) xs) ++ ".")
-              putStrLn ("  : " ++ show t)
-              mapM_ (\b -> putStrLn ("  | " ++ show b)) (C.orOf a')
+              putStr "| "
+              a <- case C.fixOf a of
+                ([], a) -> return a
+                (xs, a) -> do
+                  putStr ("& " ++ unwords (map (show . Var) xs) ++ ". ")
+                  return a
+              (xs, a) <- return (C.forOf a)
+              putStrLn ("@" ++ unwords (map (show . Var) xs) ++ ".")
+              a <- case C.asAnn a of
+                Just (a, t) -> do
+                  putStrLn ("  : " ++ show t)
+                  return a
+                Nothing -> return a
+              mapM_ (\b -> putStrLn ("  | " ++ show b)) (C.orOf a)
           )
-          (C.orOf a')
-  mapM_ printDef env
+          (C.orOf a)
+  mapM_
+    ( \(name, a) -> do
+        putStr ("+ " ++ name ++ ": ")
+        printExpr a
+    )
+    env
   putStrLn "---- core"
   mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf a)
   putStrLn "---- eval"
   let b = C.eval runtimeOps $ C.let' env a
-  let (b', t) = fromMaybe (b, C.Any) (C.asAnn b)
-  putStrLn $ ": " ++ show t
-  mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf b')
+  printExpr b
   putStrLn "---- eval (untyped)"
-  mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf $ C.dropTypes b)
+  printExpr (C.dropTypes b)
 
 runCmd :: FilePath -> String -> IO ()
 runCmd filename arg = do

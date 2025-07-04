@@ -8,6 +8,7 @@ import Data.Either (fromRight)
 import Data.Function ((&))
 import Data.List (delete, dropWhileEnd, intercalate, intersect, isPrefixOf, sort, union, unionBy, (\\))
 import Data.Maybe (fromMaybe)
+import Debug.Trace (trace)
 import Error
 import Grammar as G
 import Location (Location (Location), Position (Pos), Range (Range))
@@ -1279,10 +1280,8 @@ lower = \case
   Slice a (b, c) -> lower (app (Var ".[:]") [a, b, c])
   Match arg cases -> lower (App (or' cases) arg)
   MatchFun cases -> lower (or' cases)
-  Let (a, b) c | Just x <- varOf c -> case lookup x (C.unpack (lower a, lower b)) of
-    Just c -> c
-    Nothing -> lower (App (Fun a c) b)
-  Let (a, b) c -> C.let' (C.unpack (lower a, lower b)) (lower c)
+  Let (a, b) c | Just x <- varOf c, Just d <- lookup x (C.unpack (lower a, lower b)) -> d
+  Let (a, b) c -> lower (App (Fun a c) b)
   Bind (a, b) c -> lower (app (Var "<-") [b, Fun a c])
   -- Record fields -> do
   --   let k = '~' : intercalate "," (map fst fields)
@@ -1873,7 +1872,7 @@ instance Compile (String, Expr) where
       Right alts -> do
         let typed (a, t) = do
               let (xs, a') = C.forOf a
-              C.for' xs (C.Ann a' t)
+              C.for' (xs `union` C.freeVars t) (C.Ann a' t)
         (env, C.or' $ map (typed . fst) alts)
       Left err -> error $ show (name, xs, map fst env, err)
 

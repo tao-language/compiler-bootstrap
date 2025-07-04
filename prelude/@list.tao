@@ -119,9 +119,6 @@ let drop = match {
 | ([_, ..xs], i) -> xs.drop(i - 1)
 }
 
-# let `::` = (a, List(a))
-# let `[]` = List(a)
-
 > [].drop(1) ~> []
 > [1, 2, 3].drop(-1) ~> [1, 2, 3]
 > [1, 2, 3].drop(0) ~> [1, 2, 3]
