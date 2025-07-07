@@ -907,7 +907,6 @@ reduceLet ops env a = case a of
   Var x -> case lookup x env of
     Just (Var x') | x == x' -> Var x
     Just (Ann (Var x') t) | x == x' -> Ann (Var x) t
-    -- Just a | trace (">> reduceLet[Var(" ++ x ++ ")] " ++ show (dropLet a)) False -> undefined
     Just a -> reduce ops a
     Nothing -> Var x
   Tag k a -> Tag k (Let env a)
@@ -919,7 +918,6 @@ reduceLet ops env a = case a of
   Fun a b -> Fun (Let env a) (Let env b)
   -- App a b | trace (">> reduceLet[App] " ++ show (dropLet $ App a b)) False -> undefined
   App a b -> reduceApp ops (Let env a) (Let env b)
-  -- Call f args | trace (">> reduceLet[Call] " ++ show (dropLet $ Call f args)) False -> undefined
   Call f args -> case (lookup f ops, Let env <$> args) of
     (Just call, args) | Just result <- call (eval ops) args -> result
     (_, args) -> Call f args
@@ -936,8 +934,9 @@ reduceApp ops a b = case (reduce ops a, reduce ops b) of
   -- (Or a1 a2, b) | trace (">> reduceApp[Or]\n   | " ++ show (dropLet a1) ++ "\n   | " ++ show (dropLet a2) ++ "\n   ~ " ++ show (dropLet b)) False -> undefined
   (Or a1 a2, b) -> Or (reduceApp ops a1 b) (App a2 b)
   -- (For x a, b) | trace (">> reduceApp[For] " ++ show (dropLet $ For x a, dropLet b)) False -> undefined
-  (For x a, b) -> reduceApp ops (Let [(x, Var x)] a) b
-  -- (Fix x a, b) | isOpen b -> error $ show $ dropMeta $ App (Fix x a) b
+  (For x a, b) -> case reduceApp ops (Let [(x, Var x)] a) b of
+    App a b -> App (for' [x] a) b
+    c -> c
   (Fix x a, b) -> reduceApp ops (Let [(x, Fix x a)] a) b
   -- (Fun a c, b) | trace (">> reduceApp[Fun] " ++ show (dropLet $ Fun a c, dropLet b, match False ops a b)) False -> undefined
   (Fun a c, b) -> case match False ops a b of
@@ -1002,8 +1001,14 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
       Matched env -> Matched env
       MaybeMatched a b2 -> MaybeMatched a b2
       NotMatched a b2 -> NotMatched a (Or b1 b2)
-  (For x a, b) -> match unify ops (Let [(x, Var x)] a) b
-  (a, For x b) -> match unify ops a (Let [(x, Var x)] b)
+  (For x a, b) -> case match unify ops (Let [(x, Var x)] a) b of
+    Matched env -> Matched env
+    MaybeMatched a b -> MaybeMatched (For x a) b
+    NotMatched a b -> NotMatched (For x a) b
+  (a, For x b) -> case match unify ops a (Let [(x, Var x)] b) of
+    Matched env -> Matched env
+    MaybeMatched a b -> MaybeMatched a (For x b)
+    NotMatched a b -> NotMatched a (For x b)
   (Fix x a, Fix x' b) | x == x' -> case match unify ops (Let [(x, Var x)] a) (Let [(x', Fix x' b)] b) of
     Matched env -> Matched env
     MaybeMatched a b -> MaybeMatched (Fix x a) (Fix x b)
@@ -1019,7 +1024,7 @@ match unify ops a b = case (reduce ops a, reduce ops b) of
   (Ann a _, b) -> match unify ops a b
   (Err, Err) -> Matched []
   (_, Meta _ b) -> match unify ops a b
-  -- (a, b) | isVar b || isApp b || isCall b -> MaybeMatched a b
+  (a, b) | isVar b || isApp b || isCall b -> MaybeMatched a b
   (a, b) -> NotMatched a b
 
 match2 :: Bool -> Ops -> (Expr -> Expr -> Expr) -> (Expr, Expr) -> (Expr, Expr) -> MatchResult Env
@@ -1159,7 +1164,7 @@ dropLet (Fun a b) = Fun (dropLet a) (dropLet b)
 dropLet (App a b) = App (dropLet a) (dropLet b)
 dropLet (Call op args) = Call op (map dropLet args)
 dropLet (Let _ b) = dropLet b
-dropLet (Meta m a) = Meta m (dropLet a)
+dropLet (Meta m a) = Meta (fmap dropLet m) (dropLet a)
 dropLet a = a
 
 findLocation :: Expr -> Maybe Location
@@ -1208,7 +1213,7 @@ unify ops env a b = case (a, b) of
   (Tag k a, Tag k' b) | k == k' -> do
     cs <- unify ops env a b
     Right [(Tag k c, s) | (c, s) <- cs]
-  (a, Tag k b) | Just def <- lookup k env -> inspect2' "unify" env a (Tag k b) $ do
+  (a, Tag k b) | Just def <- lookup k env -> do
     let x = newName ((k ++ "$") : map fst env) (k ++ "$")
     defs <- unify ops env def (Fun b (Fun a (Var x)))
     Right
@@ -1304,7 +1309,7 @@ infer ops env (Or a b) = do
   let alts1 = fromRight [] $ infer ops env a
   let alts2 = fromRight [] $ infer ops env b
   Right (alts1 ++ alts2)
-infer ops env (For x a) = inspect1' "infer" env (For x a) $ do
+infer ops env (For x a) = do
   let y = newName (map fst env) x
   ats <- infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
   Right [((for' [y] a, t), s `compose` [(y, Var y)]) | ((a, t), s) <- ats]
@@ -1396,6 +1401,7 @@ check ops env (Var x) t = case lookup x env of
     Right [((Var x, ta), s) | ((_, ta), s) <- ats]
   Nothing -> Left (undefinedVar x)
 check ops env (Or a b) t = do
+  -- inspect2' "check" env (Or a b) t $ do
   case check ops env a t of
     Left _ -> check ops env b t
     Right [] -> check ops env b t
@@ -1411,13 +1417,15 @@ check ops env (And a b) (And ta tb) = do
     [ ((And a b, And ta tb), s)
     | ((a, ta), (b, tb), s) <- abts
     ]
-check ops env (Fun a b) (Fun ta tb) = inspect2' "check" env (Fun a b) (Fun ta tb) $ do
+check ops env (Fun a b) (Fun ta tb) = do
+  -- inspect2' "check" env (Fun a b) (Fun ta tb) $ do
   abts <- check2 ops env (a, ta) (b, tb)
   Right
     [ ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
     | ((a, ta), (b, tb), s) <- abts
     ]
-check ops env (App a b) t = inspect2' "check" env (App a b) t $ do
+check ops env (App a b) t = do
+  -- inspect2' "check" env (App a b) t $ do
   bts <- infer ops env b
   Right
     [ ((App a (substitute s2 $ Ann b tb), substitute s t), s)
@@ -1487,11 +1495,6 @@ inspect1 name env a xs = do
         ]
   trace (intercalate "\n" lines) False
 
-inspect1' :: (Show a) => [Char] -> [(String, Expr)] -> Expr -> Either e [a] -> Either e [a]
-inspect1' name env a r
-  -- \| inspect1 name env a (fromRight [] r) = undefined
-  | otherwise = r
-
 inspect2 :: (Show a) => [Char] -> [(String, Expr)] -> Expr -> Expr -> [a] -> Bool
 inspect2 name env a b xs = do
   let lines =
@@ -1504,6 +1507,11 @@ inspect2 name env a b xs = do
           intercalate "\n" (map (\x -> "    - " ++ show x) xs)
         ]
   trace (intercalate "\n" lines) False
+
+inspect1' :: (Show a) => [Char] -> [(String, Expr)] -> Expr -> Either e [a] -> Either e [a]
+inspect1' name env a r
+  -- \| inspect1 name env a (fromRight [] r) = undefined
+  | otherwise = r
 
 inspect2' :: (Show a) => [Char] -> [(String, Expr)] -> Expr -> Expr -> Either e [a] -> Either e [a]
 inspect2' name env a b r
