@@ -111,12 +111,6 @@ let get = match {
 # > [10, 20, 30][3:4] ~> Some([30])
 # > [10, 20, 30][4:4] ~> None
 
-: Int -> Bool
-let i2b = match {
-| i if i <= 0 -> False
-| _ -> True
-}
-
 # Transformations
 : (List(a), Int) -> List(a)
 let drop = match {
