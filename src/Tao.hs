@@ -734,6 +734,7 @@ grammar = do
            in G.Atom parser $ \layout -> \case
                 Tag k args -> do
                   let showTag = \case
+                        "[]" -> "[]"
                         k | all (\c -> isAlphaNum c || c `elem` "_-$") k -> k
                         k -> "(" ++ k ++ ")"
                   let showArgs = \case
@@ -1856,24 +1857,34 @@ instance Compile (String, Expr) where
     let xs = delete name (C.freeVars a `union` C.freeTags a)
     let env = compileDefs ctx path xs
     -- let vars a = filter (`notElem` name : map fst env) (C.freeVars a)
-    case C.infer buildOps ((name, C.Var name) : env) a of
-      Right [] ->
-        (error . intercalate "\n")
-          [ "compile: infer was empty",
-            "name: " ++ show name,
-            "expr:  " ++ show (dropMeta expr),
-            "core:  " ++ show (C.dropMeta (lower expr)),
-            "bound: " ++ show (C.dropMeta a),
-            "xs: " ++ show xs,
-            "env: " ++ show (map fst env),
-            intercalate "\n" $ map (\(x, a) -> "  " ++ show x ++ ": " ++ show (eval [] a)) env,
-            ""
-          ]
-      Right alts -> do
-        let typed (a, t) = do
-              let (xs, a') = C.forOf a
-              C.for' (xs `union` C.freeVars t) (C.Ann a' t)
-        (env, C.or' $ map (typed . fst) alts)
+    -- case C.infer buildOps ((name, C.Var name) : env) a of
+    --   Right [] ->
+    --     (error . intercalate "\n")
+    --       [ "compile: infer was empty",
+    --         "name: " ++ show name,
+    --         "expr:  " ++ show (dropMeta expr),
+    --         "core:  " ++ show (C.dropMeta (lower expr)),
+    --         "bound: " ++ show (C.dropMeta a),
+    --         "xs: " ++ show xs,
+    --         "env: " ++ show (map fst env),
+    --         intercalate "\n" $ map (\(x, a) -> "  " ++ show x ++ ": " ++ show (eval [] a)) env,
+    --         ""
+    --       ]
+    --   Right alts -> do
+    --     let typed (a, t) = do
+    --           let (xs, a') = C.forOf a
+    --           C.for' (xs `union` C.freeVars t) (C.Ann a' t)
+    --     (env, C.or' $ map (typed . fst) alts)
+    --   Left err -> error $ show (name, xs, map fst env, err)
+    case C.infer' buildOps ((name, C.Var name) : env) a of
+      Right ((a, t), s) -> do
+        -- let typed (a, t) = do
+        --       let (xs, a') = C.forOf a
+        --       C.for' (xs `union` C.freeVars t) (C.Ann a' t)
+        -- (env, C.or' $ map (typed . fst) alts)
+        let (xs, a') = C.forOf a
+        let ys = C.freeVars t
+        (env, C.for' (xs `union` ys) (C.Ann a' t))
       Left err -> error $ show (name, xs, map fst env, err)
 
 compileDefs :: Context -> FilePath -> [String] -> C.Env

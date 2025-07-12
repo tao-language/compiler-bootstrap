@@ -96,7 +96,7 @@ instance TestSome (FilePath, UnitTest) where
       -- (_, C.Tag "Err" (C.Err e)) -> [TestFail t.filename t.pos name t.expr t.expect (lift (C.Err e))]
       (C.Tag "Fail" got, _) -> [TestFail t.filename t.pos name (dropMeta t.expr) (dropMeta t.expect) (lift got)]
       -- (got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
-      (got, t) -> error ("Unreachable " ++ show (got, t))
+      (got, ty) -> error ("Unreachable " ++ t.filename ++ ":" ++ show t.pos.row ++ ":" ++ show t.pos.col ++ ": " ++ t.name ++ "\ngot: " ++ show got ++ "\nt: " ++ show ty)
 
 testAll :: (TestSome a) => Context -> a -> [TestResult]
 testAll ctx = testSome ctx (const True)
