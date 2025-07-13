@@ -1883,7 +1883,7 @@ instance Compile (String, Expr) where
         --       C.for' (xs `union` C.freeVars t) (C.Ann a' t)
         -- (env, C.or' $ map (typed . fst) alts)
         let (xs, a') = C.forOf a
-        let ys = C.freeVars t
+        let ys = [] -- C.freeVars t
         (env, C.for' (xs `union` ys) (C.Ann a' t))
       Left err -> error $ show (name, xs, map fst env, err)
 

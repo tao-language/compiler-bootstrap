@@ -20,6 +20,7 @@ import Stdlib
 -- https://www.youtube.com/live/utyBNDj7s2w
 -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
 -- https://mroman42.github.io/mikrokosmos/tutorial.html
+-- https://blog.chewxy.com/wp-content/uploads/personal/dissertation31482.pdf
 
 type Parser a = P.Parser String a
 
@@ -907,6 +908,14 @@ isOpen = not . isClosed
 -- Evaluation
 reduce :: Ops -> Expr -> Expr
 reduce ops a = case a of
+  -- _ ->
+  --   (error . intercalate "\n")
+  --     [ "\n\nTODO",
+  --       "stack run core prelude '(x -> x + x)(1)' -- should infer type Int, got generic $1 instead",
+  --       "stack run core prelude '(x : Int, y : Int) -> ((x, y) -> (x, y))(y, x)' -- no For on nested Fun, causes (y, y) name collision",
+  --       "stack run core prelude '(x : Int, y : Int) -> (@x y. (x, y) -> (x, y))(y, x)' -- unhandled case [For(And):And]",
+  --       ""
+  --     ]
   -- App a b | trace (">> reduce[App] " ++ show (dropLet $ App a b)) False -> undefined
   App a b -> reduceApp ops a b
   Let env a -> reduceLet ops env a
@@ -969,8 +978,8 @@ reduceApp ops a b =
       (Var x, Var x') | x == x' -> reduce ops c
       (Var x, b) -> reduce ops (Let [(x, b)] c)
       (And a1 a2, And b1 b2) -> reduce ops (letPs [(a1, b1), (a2, b2)] c)
-      (Or a1 a2, b) -> (Or (letP (a1, b) c) (letP (a2, b) c))
-      (a, Or b1 b2) -> (Or (letP (a, b1) c) (letP (a, b2) c))
+      (Or a1 a2, b) -> Or (letP (a1, b) c) (letP (a2, b) c)
+      (a, Or b1 b2) -> Or (letP (a, b1) c) (letP (a, b2) c)
       (Ann a ta, Ann b tb) -> reduce ops (letPs [(ta, tb), (a, b)] c)
       (Ann a _, b) -> reduce ops (letP (a, b) c)
       (a, Ann b _) -> reduce ops (letP (a, b) c)
@@ -1122,10 +1131,6 @@ instance Substitute Expr where
   substitute s (Var x) = case lookup x s of
     Just a | not (x `occurs` a) -> a
     _ -> Var x
-  -- substitute [] (Var x) = Var x
-  -- substitute ((x, a) : s) b | x `occurs` a = substitute s b
-  -- substitute ((x, a) : _) (Var x') | x == x' = a
-  -- substitute (_ : s) (Var x) = substitute s (Var x)
   substitute s (Tag k a) = Tag k (substitute s a)
   substitute s (Ann a b) = Ann (substitute s a) (dropTypes $ substitute s b)
   substitute s (And a b) = And (substitute s a) (substitute s b)
@@ -1160,8 +1165,11 @@ compose s1 s2 = do
       sub s (x, a) = case lookup x s of
         Just b -> (x, b)
         Nothing -> (x, substitute s a)
-  let generic kv = fst kv `elem` map fst (filterMap (forOf' . snd) s2)
+  let generic kv = fst kv `elem` map fst (generics s2)
   unionBy key (filter (not . generic) s1) (map (sub s1) s2)
+
+generics :: Env -> Env
+generics = filterMap (forOf' . snd)
 
 dropTypes :: Expr -> Expr
 dropTypes (Tag k a) = Tag k (dropTypes a)
@@ -1662,12 +1670,12 @@ unify' ops env a b = case (a, b) of
     Right (c, s `compose` [(x, Var x)])
   (And a1 b1, And a2 b2) -> do
     unify2' ops env And (a1, a2) (b1, b2)
-  (a, For x b) -> do
-    (c, _) <- unify' ops ((x, Var x) : env) a b
-    Right (For x c, [])
-  (For x a, b) -> do
-    (c, _) <- unify' ops ((x, Var x) : env) a b
-    Right (For x c, [])
+  (a, For x b) -> case unify' ops env a b of
+    Right (c, s) -> Right (For x c, s)
+    Left _ -> Right (For x (Or a b), [])
+  (For x a, b) -> case unify' ops env a b of
+    Right (c, s) -> Right (For x c, s)
+    Left _ -> Right (For x (Or a b), [])
   (Fix _ a, b) -> unify' ops env a b
   (a, Fix _ b) -> unify' ops env a b
   (Fun a1 b1, Fun a2 b2) -> do
@@ -1722,16 +1730,24 @@ infer' ops env (Or a b) = case (infer' ops env a, infer' ops env b) of
   (Left _, Right bts) -> Right bts
   (Left e1, Left e2) -> Left e1
 infer' ops env (For x a) = do
-  ((a, t), _) <- infer' ops ((x, Var x) : env) a
-  Right ((For x a, t), [])
+  ((a, t), s) <- infer' ops ((x, Var x) : env) a
+  let xs = fromMaybe [x] (fmap freeVars (lookup x s))
+  Right ((for' xs a, t), s)
 infer' ops env (Fix x a) = do
   let y = newName (map fst env) x
   ((a, t), s) <- infer' ops ((y, Var y) : env) (substitute [(x, Var y)] a)
   Right ((fix' [y] a, t), s `compose` [(y, Var y)])
 infer' ops env (Fun a b) = do
   ((a, ta), (b, tb), s) <- infer2' ops env a b
-  -- let xs = freeVars (Fun ta tb)
   Right ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
+infer' ops env (App a b) = do
+  let x = newName ("$" : map fst env) "$"
+  let env' = (x, Var x) : env
+  error $ show ("infer", a, b)
+  ((a, ta), (b, tb), s1) <- infer2' ops env' a b
+  (_, s2) <- unify' ops (s1 `compose` env') ta (Fun tb (Var x))
+  let t = eval ops (Let (s2 `compose` s1 `compose` env') (Var x))
+  Right ((substitute s2 $ App a (Ann b tb), t), s2 `compose` s1)
 infer' ops env (App a b) = do
   let x = newName ("$" : map fst env) "$"
   let env' = (x, Var x) : env

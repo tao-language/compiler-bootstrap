@@ -857,3 +857,40 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     bind ["x", "y"] (Fun x y) `shouldBe` Fun x y
     bind [] (Fun (And x y) z) `shouldBe` for ["x", "y", "z"] (Fun (And x y) z)
     bind [] (Fun (And x (Fun x y)) z) `shouldBe` for ["x", "y", "z"] (Fun (And x (Fun x y)) z)
+
+  it "☯ Core.substitute" $ do
+    let s = [("x", i1), ("y", i2)]
+    substitute s Any `shouldBe` Any
+    substitute s Unit `shouldBe` Unit
+    substitute s IntT `shouldBe` IntT
+    substitute s NumT `shouldBe` NumT
+    substitute s (Int 0) `shouldBe` Int 0
+    substitute s (Num 0.0) `shouldBe` Num 0.0
+    substitute s (Var "x") `shouldBe` i1
+    substitute s (Var "y") `shouldBe` i2
+    substitute s (Var "z") `shouldBe` Var "z"
+    substitute s (Tag "A" x) `shouldBe` Tag "A" i1
+    substitute s (Ann x y) `shouldBe` Ann i1 i2
+    substitute s (And x y) `shouldBe` And i1 i2
+    substitute s (Or x y) `shouldBe` Or i1 i2
+    substitute s (For "x" x) `shouldBe` For "x" x
+    substitute s (For "x" y) `shouldBe` For "x" i2
+    substitute s (Fix "x" x) `shouldBe` Fix "x" x
+    substitute s (Fix "x" y) `shouldBe` Fix "x" i2
+    substitute s (Fun x y) `shouldBe` Fun i1 i2
+    substitute s (App x y) `shouldBe` App i1 i2
+    substitute s (Call "f" [x]) `shouldBe` Call "f" [i1]
+    substitute s (Let [] x) `shouldBe` Let [] i1
+    substitute s (Let [("x", y)] x) `shouldBe` Let [("x", i2)] x
+    substitute s (Let [("y", x)] x) `shouldBe` Let [("y", i1)] i1
+    substitute s Err `shouldBe` Err
+
+  it "☯ Core.compose" $ do
+    compose [] [("x", i1)] `shouldBe` [("x", i1)]
+    compose [("x", i1)] [] `shouldBe` [("x", i1)]
+    compose [("x", i1)] [("x", i2)] `shouldBe` [("x", i1)]
+    compose [("x", i1)] [("y", i2)] `shouldBe` [("x", i1), ("y", i2)]
+    compose [("x", i1)] [("y", x)] `shouldBe` [("x", i1), ("y", i1)]
+    compose [("x", y)] [("y", i1)] `shouldBe` [("x", y), ("y", i1)]
+    compose [("x", i1)] [("x", For "x" x)] `shouldBe` [("x", For "x" i1)]
+    compose [("x", i1)] [("x", For "x" i2)] `shouldBe` [("x", For "x" i2)]
