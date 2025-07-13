@@ -1161,12 +1161,13 @@ instance (Substitute a) => Substitute [a] where
 compose :: Substitution -> Substitution -> Substitution
 compose s1 s2 = do
   let key (x, _) (y, _) = x == y
-  let sub s (x, For x' a) | x == x' = (x, For x (substitute s a))
+  let -- sub s (x, For x' a) | x == x' = (x, For x (substitute s a))
       sub s (x, a) = case lookup x s of
         Just b -> (x, b)
         Nothing -> (x, substitute s a)
-  let generic kv = fst kv `elem` map fst (generics s2)
-  unionBy key (filter (not . generic) s1) (map (sub s1) s2)
+  -- let generic kv = fst kv `elem` map fst (generics s2)
+  -- unionBy key (filter (not . generic) s1) (map (sub s1) s2)
+  unionBy key s1 (map (sub s1) s2)
 
 generics :: Env -> Env
 generics = filterMap (forOf' . snd)
@@ -1742,19 +1743,12 @@ infer' ops env (Fun a b) = do
   Right ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
 infer' ops env (App a b) = do
   let x = newName ("$" : map fst env) "$"
-  let env' = (x, Var x) : env
-  error $ show ("infer", a, b)
-  ((a, ta), (b, tb), s1) <- infer2' ops env' a b
+  ((a, ta), (b, tb), s1) <- infer2' ops ((x, Var x) : env) a b
+  let (a', vars) = instantiate (x : map fst env) a
+  let env' = (x, Var x) : vars ++ env
   (_, s2) <- unify' ops (s1 `compose` env') ta (Fun tb (Var x))
   let t = eval ops (Let (s2 `compose` s1 `compose` env') (Var x))
-  Right ((substitute s2 $ App a (Ann b tb), t), s2 `compose` s1)
-infer' ops env (App a b) = do
-  let x = newName ("$" : map fst env) "$"
-  let env' = (x, Var x) : env
-  ((a, ta), (b, tb), s1) <- infer2' ops env' a b
-  (_, s2) <- unify' ops (s1 `compose` env') ta (Fun tb (Var x))
-  let t = eval ops (Let (s2 `compose` s1 `compose` env') (Var x))
-  Right ((substitute s2 $ App a (Ann b tb), t), s2 `compose` s1)
+  Right ((substitute s2 $ App a' (Ann b tb), t), s2 `compose` s1)
 infer' ops env (Let defs a) = do
   ((a, t), s) <- infer' ops (defs ++ env) a
   Right ((Let defs a, t), s)
