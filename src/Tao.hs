@@ -1854,8 +1854,8 @@ instance Compile (String, Expr) where
   --     ]
   compile ctx path (name, expr) = do
     let a = C.dropMeta $ C.bind [] $ lower expr
-    let xs = delete name (C.freeVars a `union` C.freeTags a)
-    let env = compileDefs ctx path xs
+    let dependencies = delete name (C.freeVars a `union` C.freeTags a)
+    let env = compileDefs ctx path dependencies
     -- let vars a = filter (`notElem` name : map fst env) (C.freeVars a)
     -- case C.infer buildOps ((name, C.Var name) : env) a of
     --   Right [] ->
@@ -1883,9 +1883,8 @@ instance Compile (String, Expr) where
         --       C.for' (xs `union` C.freeVars t) (C.Ann a' t)
         -- (env, C.or' $ map (typed . fst) alts)
         let (xs, a') = C.forOf a
-        let ys = [] -- C.freeVars t
-        (env, C.for' (xs `union` ys) (C.Ann a' t))
-      Left err -> error $ show (name, xs, map fst env, err)
+        (env, C.for' xs (C.Ann a' t))
+      Left err -> error $ show (name, dependencies, map fst env, err)
 
 compileDefs :: Context -> FilePath -> [String] -> C.Env
 compileDefs _ _ [] = []

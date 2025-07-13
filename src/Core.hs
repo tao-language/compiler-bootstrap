@@ -868,14 +868,14 @@ unpackVar xs (a, b) x | Just x' <- varOf a, x == x', x `elem` xs = (x, b)
 unpackVar xs (a, b) x = (x, letP (for' xs a, b) (Var x))
 
 bind :: [String] -> Expr -> Expr
+-- bind xs = \case
+--   For x a -> For x (bind (x : xs ++ freeVars a) a)
+--   a -> apply (bind xs) a
 bind xs = \case
   For x a -> For x (bind (x : xs ++ freeVars a) a)
-  Fun a b -> case filter (`notElem` xs) (freeVars a) of
-    [] -> Fun (bind xs a) (bind xs b)
-    ys -> for ys (Fun (bind (xs ++ ys) a) (bind (xs ++ ys) b))
-  -- Ann a b -> do
-  --   let ys = filter (`notElem` xs) (freeVars b)
-  --   for ys (Ann (bind (xs ++ ys) a) (bind (xs ++ ys) b))
+  Fun a b -> do
+    let ys = filter (`notElem` xs) (freeVars a)
+    for ys (Fun (bind (xs ++ ys) a) (bind xs b))
   a -> apply (bind xs) a
 
 occurs :: String -> Expr -> Bool
@@ -1731,9 +1731,10 @@ infer' ops env (Or a b) = case (infer' ops env a, infer' ops env b) of
   (Left _, Right bts) -> Right bts
   (Left e1, Left e2) -> Left e1
 infer' ops env (For x a) = do
-  ((a, t), s) <- infer' ops ((x, Var x) : env) a
-  let xs = fromMaybe [x] (fmap freeVars (lookup x s))
-  Right ((for' xs a, t), s)
+  let y = newName (map fst env) x
+  ((a, t), s) <- infer' ops ((y, Var y) : env) (substitute [(x, Var y)] a)
+  let xs = fromMaybe [y] (fmap freeVars (lookup y s))
+  Right ((for' xs a, t), s `compose` [(y, Var y)])
 infer' ops env (Fix x a) = do
   let y = newName (map fst env) x
   ((a, t), s) <- infer' ops ((y, Var y) : env) (substitute [(x, Var y)] a)
@@ -1744,11 +1745,11 @@ infer' ops env (Fun a b) = do
 infer' ops env (App a b) = do
   let x = newName ("$" : map fst env) "$"
   ((a, ta), (b, tb), s1) <- infer2' ops ((x, Var x) : env) a b
-  let (a', vars) = instantiate (x : map fst env) a
-  let env' = (x, Var x) : vars ++ env
-  (_, s2) <- unify' ops (s1 `compose` env') ta (Fun tb (Var x))
-  let t = eval ops (Let (s2 `compose` s1 `compose` env') (Var x))
-  Right ((substitute s2 $ App a' (Ann b tb), t), s2 `compose` s1)
+  let (a', s2) = instantiate (x : map fst env) a
+  let s = s2 `compose` s1 `compose` [(x, Var x)]
+  (_, s3) <- unify' ops (s `compose` env) ta (Fun tb (Var x))
+  let t = eval ops (Let (s3 `compose` s `compose` env) (Var x))
+  Right ((substitute s3 $ App a' (Ann b tb), t), s3 `compose` s)
 infer' ops env (Let defs a) = do
   ((a, t), s) <- infer' ops (defs ++ env) a
   Right ((Let defs a, t), s)

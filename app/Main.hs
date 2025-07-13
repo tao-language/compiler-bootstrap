@@ -55,10 +55,10 @@ coreCmd :: FilePath -> String -> IO ()
 coreCmd filename arg = do
   pkg <- dropMeta <$> load [filename]
   ctx <- dropMeta <$> include "prelude" pkg
-  arg' <- dropMeta <$> loadExpr "<core>" arg
+  expr <- dropMeta <$> loadExpr "<core>" arg
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
-  let (env, a) = compile ctx path arg'
+  let (env, a) = compile ctx path expr
   putStrLn $ "---- env: " ++ unwords (map (show . fst) env)
   let printExpr a = do
         (env, a) <- case C.letOf a of
@@ -89,7 +89,11 @@ coreCmd filename arg = do
         printExpr a
     )
     env
-  putStrLn "---- core"
+  putStrLn "---- lower"
+  mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf $ lower expr)
+  putStrLn "---- bind"
+  mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf $ C.bind [] $ lower expr)
+  putStrLn "---- compile"
   mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf a)
   putStrLn "---- eval"
   let b = C.eval runtimeOps $ C.let' env a
@@ -101,10 +105,10 @@ runCmd :: FilePath -> String -> IO ()
 runCmd filename arg = do
   ctx <- load [filename]
   ctx <- include "prelude" ctx
-  arg' <- loadExpr "<run>" arg
+  expr <- loadExpr "<run>" arg
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
-  print (dropTypes $ dropMeta $ Run.run ctx path arg')
+  print (dropTypes $ dropMeta $ Run.run ctx path expr)
 
 checkCmd :: FilePath -> IO ()
 checkCmd filename = do

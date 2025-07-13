@@ -852,11 +852,13 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ Core.bind" $ do
     let (x, y, z) = (Var "x", Var "y", Var "z")
     bind [] x `shouldBe` x
-    bind [] (Fun x y) `shouldBe` for ["x", "y"] (Fun x y)
-    bind ["x"] (Fun x y) `shouldBe` for ["y"] (Fun x y)
-    bind ["x", "y"] (Fun x y) `shouldBe` Fun x y
-    bind [] (Fun (And x y) z) `shouldBe` for ["x", "y", "z"] (Fun (And x y) z)
-    bind [] (Fun (And x (Fun x y)) z) `shouldBe` for ["x", "y", "z"] (Fun (And x (Fun x y)) z)
+    bind [] (Fun x y) `shouldBe` for ["x"] (Fun x y)
+    bind ["x"] (Fun x y) `shouldBe` Fun x y
+    bind [] (For "x" (Fun x y)) `shouldBe` for ["x"] (Fun x y)
+    bind [] (Fun (And x y) z) `shouldBe` for ["x", "y"] (Fun (And x y) z)
+    bind [] (Fun (And x (Fun x y)) z) `shouldBe` for ["x", "y"] (Fun (And x (Fun x y)) z)
+    bind [] (Fun x (Fun y z)) `shouldBe` for ["x"] (Fun x (for ["y"] (Fun y z)))
+    bind [] (Fun x (Fun x y)) `shouldBe` for ["x"] (Fun x (for ["x"] (Fun x y)))
 
   it "☯ Core.substitute" $ do
     let s = [("x", i1), ("y", i2)]
