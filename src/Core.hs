@@ -905,7 +905,98 @@ isClosed = null . freeVars
 isOpen :: Expr -> Bool
 isOpen = not . isClosed
 
+isValue :: Expr -> Bool
+isValue = \case
+  Any -> True
+  Unit -> True
+  IntT -> True
+  NumT -> True
+  Int _ -> True
+  Num _ -> True
+  Tag _ a -> True
+  Ann a b -> isValue a
+  And a b -> True
+  Meta _ a -> isValue a
+  Err -> True
+  _ -> False
+
 -- Evaluation
+step :: Ops -> Expr -> Expr
+step ops = \case
+  Tag k a -> Tag k (step ops a)
+  And a b -> And (step ops a) (step ops b)
+  Or a b -> case step ops a of
+    a | isErr a -> step ops b
+    a -> case step ops b of
+      b | isErr b -> a
+      b -> Or a b
+  Ann a b -> case (step ops a, step ops b) of
+    (Ann a b, _) -> Ann a b
+    (a, b) -> Ann a b
+  Fun a b -> Fun (step ops a) (step ops b)
+  App a b -> case (step ops a, step ops b) of
+    (For x a, b) -> do
+      let y = newName (freeVars b) x
+      let a' = substitute [(x, Var y)] a
+      App (Let [(y, Var y)] a') b
+    (Or a1 a2, b) -> step ops (Or (App a1 b) (App a2 b))
+    (Fun a c, b) -> case (step ops a, b) of
+      (Any, _) -> c
+      (Unit, Unit) -> c
+      (IntT, IntT) -> c
+      (NumT, NumT) -> c
+      (Int i, Int i') | i == i' -> c
+      (Num n, Num n') | n == n' -> c
+      (Tag k a, Tag k' b) | k == k' -> letP (a, b) c
+      (Var x, Var x') | x == x' -> c
+      (Var x, b) -> step ops $ Let [(x, b)] c
+      (a, Var x) -> step ops $ Let [(x, a)] c
+      (Ann a ta, Ann b tb) -> letPs [(ta, tb), (a, b)] c
+      (And a1 a2, And b1 b2) -> letPs [(a1, b1), (a2, b2)] c
+      -- TODO: replace these specific failures with a catch-all
+      -- (a, b) -> err $ unhandledCase a b
+      (Unit, _) -> err $ unhandledCase a b
+      (IntT, _) -> err $ unhandledCase a b
+      (NumT, _) -> err $ unhandledCase a b
+      (Int _, _) -> err $ unhandledCase a b
+      (Num _, _) -> err $ unhandledCase a b
+      (Tag _ _, _) -> err $ unhandledCase a b
+      (And _ _, _) -> err $ unhandledCase a b
+      (a, b) -> error $ "TODO: step App-Fun[" ++ showCtr a ++ ":" ++ showCtr b ++ "]\n  " ++ show (dropLet a) ++ "\n  " ++ show (dropLet b)
+    (a, b) -> error $ "TODO: step App[" ++ showCtr a ++ ":" ++ showCtr b ++ "]\n  " ++ show (dropLet a) ++ "\n  " ++ show (dropLet b)
+  Call f args -> case lookup f ops of
+    Just f | Just result <- f (eval ops) args -> result
+    _ -> Call f args
+  Let env a -> case a of
+    Tag k a -> Tag k (step ops $ Let env a)
+    Var x -> case lookup x env of
+      Just (Var x') | x == x' -> Var x
+      Just (Ann (Var x') t) | x == x' -> Ann (Var x) t
+      Just a -> a
+      Nothing -> Var x
+    And a b -> And (step ops $ Let env a) (step ops $ Let env b)
+    Or a b -> Or (step ops $ Let env a) (step ops $ Let env b)
+    Ann a b -> Ann (step ops $ Let env a) (step ops $ Let env b)
+    For x a -> For x (step ops $ Let env a)
+    Fix x a -> Fix x (step ops $ Let env a)
+    Fun a b -> Fun (step ops $ Let env a) (step ops $ Let env b)
+    App a b -> App (step ops $ Let env a) (step ops $ Let env b)
+    Call f args -> Call f (step ops . Let env <$> args)
+    Let env' a -> step ops (Let (env ++ env') a)
+    Meta m a -> step ops (Let env a)
+    a -> a
+  Meta m a -> step ops a
+  a -> a
+
+steps :: Ops -> Expr -> [Expr]
+steps ops a = case step ops a of
+  For x a -> [For x b | b <- steps ops (Let [(x, Var x)] a)]
+  a' | a == a' -> [a]
+  b -> b : steps ops b
+
+eval' :: Ops -> Expr -> Expr
+eval' ops = last . steps ops
+
 reduce :: Ops -> Expr -> Expr
 reduce ops a = case a of
   -- _ ->
