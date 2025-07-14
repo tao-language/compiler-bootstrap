@@ -1878,12 +1878,9 @@ instance Compile (String, Expr) where
     --   Left err -> error $ show (name, xs, map fst env, err)
     case C.infer' buildOps ((name, C.Var name) : env) a of
       Right ((a, t), s) -> do
-        -- let typed (a, t) = do
-        --       let (xs, a') = C.forOf a
-        --       C.for' (xs `union` C.freeVars t) (C.Ann a' t)
-        -- (env, C.or' $ map (typed . fst) alts)
-        let (xs, a') = C.forOf a
-        (env, C.for' xs (C.Ann a' t))
+        -- let (xs, a') = C.forOf a
+        -- (env, C.for' (xs `union` C.freeVars t) (C.Ann a' t))
+        (env, a)
       Left err -> error $ show (name, dependencies, map fst env, err)
 
 compileDefs :: Context -> FilePath -> [String] -> C.Env

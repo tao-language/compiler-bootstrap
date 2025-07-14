@@ -960,9 +960,13 @@ reduceApp ops a b =
     --   c | isErr c -> reduceApp ops a2 b
     --   c -> c
     -- (For x a, b) | trace (">> reduceApp[For] " ++ show (dropLet $ For x a, dropLet b)) False -> undefined
-    (For x a, b) -> case reduceApp ops (Let [(x, Var x)] a) b of
-      App a b -> App (for' [x] a) b
-      c -> c
+    -- (For x a, b) -> case reduceApp ops (Let [(x, Var x)] a) b of
+    --   -- App a b -> App (for' [x] a) b
+    --   c -> c
+    (For x a, b) -> do
+      let y = newName (freeVars b) x
+      let a' = substitute [(x, Var y)] a
+      reduceApp ops (Let [(y, Var y)] a') b
     (Fix x a, b) -> reduceApp ops (Let [(x, Fix x a)] a) b
     -- (Fun a c, b) | trace (">> reduceApp[Fun] " ++ show (dropLet $ Fun a c, dropLet b, match False ops a b)) False -> undefined
     -- (Fun a c, b) -> inspect "reduceApp[Fun]" [] (Fun a' (dropLet c), b') $ case (a', b') of
