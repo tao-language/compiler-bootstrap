@@ -59,19 +59,44 @@ showCtr = \case
   NumT -> "NumT"
   Int _ -> "Int"
   Num _ -> "Num"
-  Tag _ _ -> "Tag"
+  Tag _ a -> "Tag"
   Var _ -> "Var"
-  And _ _ -> "And"
-  Or _ _ -> "Or"
-  Ann _ _ -> "Ann"
-  For _ _ -> "For"
-  Fix _ _ -> "Fix"
-  Fun _ _ -> "Fun"
-  App _ _ -> "App"
+  And a b -> "And"
+  Or a b -> "Or"
+  Ann a b -> "Ann"
+  For _ a -> "For"
+  Fix _ a -> "Fix"
+  Fun a b -> "Fun"
+  App a b -> "App"
   Call _ _ -> "Call"
-  Let _ _ -> "Let"
-  Meta _ _ -> "Meta"
+  Let _ a -> "Let"
+  Meta _ a -> "Meta"
   Err -> "Err"
+
+showCtr' :: Int -> Expr -> String
+showCtr' 0 = showCtr
+showCtr' i = \case
+  Any -> "Any"
+  Unit -> "Unit"
+  IntT -> "IntT"
+  NumT -> "NumT"
+  Int _ -> "Int"
+  Num _ -> "Num"
+  Tag _ a -> "Tag(" ++ self a ++ ")"
+  Var _ -> "Var"
+  And a b -> "And(" ++ self a ++ ", " ++ self b ++ ")"
+  Or a b -> "Or(" ++ self a ++ ", " ++ self b ++ ")"
+  Ann a b -> "Ann(" ++ self a ++ ", " ++ self b ++ ")"
+  For _ a -> "For(" ++ self a ++ ")"
+  Fix _ a -> "Fix(" ++ self a ++ ")"
+  Fun a b -> "Fun(" ++ self a ++ ", " ++ self b ++ ")"
+  App a b -> "App(" ++ self a ++ ", " ++ self b ++ ")"
+  Call _ _ -> "Call"
+  Let _ a -> "Let(" ++ self a ++ ")"
+  Meta _ a -> "Meta(" ++ self a ++ ")"
+  Err -> "Err"
+  where
+    self = showCtr' (i - 1)
 
 type Type = Expr
 
@@ -913,89 +938,107 @@ isValue = \case
   NumT -> True
   Int _ -> True
   Num _ -> True
-  Tag _ a -> True
-  Ann a b -> isValue a
-  And a b -> True
+  Tag _ _ -> True
+  Ann a _ -> isValue a
+  And _ _ -> True
   Meta _ a -> isValue a
   Err -> True
   _ -> False
 
 -- Evaluation
-step :: Ops -> Expr -> Expr
+step :: Ops -> Expr -> (String, Expr)
 step ops = \case
-  Tag k a -> Tag k (step ops a)
-  And a b -> And (step ops a) (step ops b)
-  Or a b -> case step ops a of
-    a | isErr a -> step ops b
-    a -> case step ops b of
-      b | isErr b -> a
-      b -> Or a b
-  Ann a b -> case (step ops a, step ops b) of
-    (Ann a b, _) -> Ann a b
-    (a, b) -> Ann a b
-  Fun a b -> Fun (step ops a) (step ops b)
-  App a b -> case (step ops a, step ops b) of
+  Tag k a -> step1 "tag" (Tag k) a
+  And a b -> step2 "and" And a b
+  Or a b
+    | isErr a -> ("or-snd", b)
+    | isErr b -> ("or-fst", a)
+    | isValue a -> ("or-value", a)
+    | otherwise -> step2 "or-both" Or a b
+  Ann a b -> case a of
+    Ann a b -> ("ann-ann", Ann a b)
+    a -> step2 "ann" Ann a b
+  Fun a b -> step2 "fun" Fun a b
+  App a b -> case (snd $ step ops a, snd $ step ops b) of
     (For x a, b) -> do
       let y = newName (freeVars b) x
       let a' = substitute [(x, Var y)] a
-      App (Let [(y, Var y)] a') b
-    (Or a1 a2, b) -> step ops (Or (App a1 b) (App a2 b))
-    (Fun a c, b) -> case (step ops a, b) of
-      (Any, _) -> c
-      (Unit, Unit) -> c
-      (IntT, IntT) -> c
-      (NumT, NumT) -> c
-      (Int i, Int i') | i == i' -> c
-      (Num n, Num n') | n == n' -> c
-      (Tag k a, Tag k' b) | k == k' -> letP (a, b) c
-      (Var x, Var x') | x == x' -> c
-      (Var x, b) -> step ops $ Let [(x, b)] c
-      (a, Var x) -> step ops $ Let [(x, a)] c
-      (Ann a ta, Ann b tb) -> letPs [(ta, tb), (a, b)] c
-      (And a1 a2, And b1 b2) -> letPs [(a1, b1), (a2, b2)] c
+      ("app-for", App a' b)
+    (Or a1 a2, b) -> ("app-or", Or (App a1 b) (App a2 b))
+    (Fun a c, b) -> case (snd $ step ops a, b) of
+      (a, b@App {}) -> ("beta-arg-app", letP (a, b) c)
+      (Any, _) -> ("beta-any", c)
+      (Unit, Unit) -> ("beta-unit", c)
+      (IntT, IntT) -> ("beta-intT", c)
+      (NumT, NumT) -> ("beta-numT", c)
+      (Int i, Int i') | i == i' -> ("beta-int (" ++ show i ++ ")", c)
+      (Num n, Num n') | n == n' -> ("beta-num (" ++ show n ++ ")", c)
+      (Tag k a, Tag k' b) | k == k' -> ("beta-tag (" ++ k ++ ")", letP (a, b) c)
+      -- (Var x, Var x') | x == x' -> c
+      -- -- (Var x, b) -> Let [(x, b)] c
+      (Var x, b) -> ("beta-var (" ++ x ++ " = " ++ showCtr b ++ ")", substitute [(x, b)] c)
+      -- (a, Var x) -> substitute [(x, a)] c
+      (Ann a ta, Ann b tb) -> ("beta-ann", letPs [(ta, tb), (a, b)] c)
+      (Ann a _, b) -> ("beta-fun-ann", letP (a, b) c)
+      (a, Ann b _) -> ("beta-arg-ann", letP (a, b) c)
+      (And a1 a2, And b1 b2) -> ("beta-and", letPs [(a1, b1), (a2, b2)] c)
+      -- (a, App _ _) -> letP (a, b) c
+      (Or a1 a2, b) -> ("beta-fun-or", Or (letP (a1, b) c) (letP (a2, b) c))
+      (a, Or b1 b2) -> ("beta-arg-or", Or (letP (a, b1) c) (letP (a, b2) c))
+      -- (Err, Err) -> c
+      -- (Err, _) -> Err
+      -- (_, Err) -> Err
       -- TODO: replace these specific failures with a catch-all
-      -- (a, b) -> err $ unhandledCase a b
-      (Unit, _) -> err $ unhandledCase a b
-      (IntT, _) -> err $ unhandledCase a b
-      (NumT, _) -> err $ unhandledCase a b
-      (Int _, _) -> err $ unhandledCase a b
-      (Num _, _) -> err $ unhandledCase a b
-      (Tag _ _, _) -> err $ unhandledCase a b
-      (And _ _, _) -> err $ unhandledCase a b
+      -- (a, b) -> ("beta-mismatch", err $ unhandledCase a b)
+      (Unit, _) -> ("beta-mismatch", err $ unhandledCase a b)
+      (IntT, _) -> ("beta-mismatch", err $ unhandledCase a b)
+      (NumT, _) -> ("beta-mismatch", err $ unhandledCase a b)
+      (Int _, _) -> ("beta-mismatch", err $ unhandledCase a b)
+      (Num _, _) -> ("beta-mismatch", err $ unhandledCase a b)
+      (Tag _ _, _) -> ("beta-mismatch", err $ unhandledCase a b)
+      (And _ _, _) -> ("beta-mismatch", err $ unhandledCase a b)
       (a, b) -> error $ "TODO: step App-Fun[" ++ showCtr a ++ ":" ++ showCtr b ++ "]\n  " ++ show (dropLet a) ++ "\n  " ++ show (dropLet b)
     (a, b) -> error $ "TODO: step App[" ++ showCtr a ++ ":" ++ showCtr b ++ "]\n  " ++ show (dropLet a) ++ "\n  " ++ show (dropLet b)
   Call f args -> case lookup f ops of
-    Just f | Just result <- f (eval ops) args -> result
-    _ -> Call f args
+    Just f | Just result <- f (eval ops) args -> ("call", result)
+    _ -> ("call-nop", Call f args)
   Let env a -> case a of
-    Tag k a -> Tag k (step ops $ Let env a)
+    Tag k a -> step1 "let-tag" (Tag k) (Let env a)
     Var x -> case lookup x env of
-      Just (Var x') | x == x' -> Var x
-      Just (Ann (Var x') t) | x == x' -> Ann (Var x) t
-      Just a -> a
-      Nothing -> Var x
-    And a b -> And (step ops $ Let env a) (step ops $ Let env b)
-    Or a b -> Or (step ops $ Let env a) (step ops $ Let env b)
-    Ann a b -> Ann (step ops $ Let env a) (step ops $ Let env b)
-    For x a -> For x (step ops $ Let env a)
-    Fix x a -> Fix x (step ops $ Let env a)
-    Fun a b -> Fun (step ops $ Let env a) (step ops $ Let env b)
-    App a b -> App (step ops $ Let env a) (step ops $ Let env b)
-    Call f args -> Call f (step ops . Let env <$> args)
-    Let env' a -> step ops (Let (env ++ env') a)
+      Just (Var x') | x == x' -> ("let-var-bound", Var x)
+      Just (Ann (Var x') t) | x == x' -> ("let-var-typed", Ann (Var x) t)
+      Just a -> ("let-var-def", a)
+      Nothing -> ("let-var-undef", Var x)
+    And a b -> step2 "let-and" And (Let env a) (Let env b)
+    Or a b -> step2 "let-or" Or (Let env a) (Let env b)
+    Ann a b -> step2 "let-ann" Ann (Let env a) (Let env b)
+    For x a -> step1 "let-for" (For x) (Let env a)
+    Fix x a -> step1 "let-fix" (Fix x) (Let env a)
+    Fun a b -> step2 "let-fun" Fun (Let env a) (Let env b)
+    App a b -> step2 "let-app" App (Let env a) (Let env b)
+    Call f args -> ("let-call", Call f (Let env <$> args))
+    Let env' a -> step1 "let-let" (Let (env ++ env')) a
     Meta m a -> step ops (Let env a)
-    a -> a
+    a -> ("let-const", a)
   Meta m a -> step ops a
-  a -> a
+  a -> ("const", a)
+  where
+    step1 rule f a = do
+      let (_, a') = step ops a
+      (rule, f a')
+    step2 rule f a b = do
+      let (_, a') = step ops a
+      let (_, b') = step ops b
+      (rule, f a' b')
 
-steps :: Ops -> Expr -> [Expr]
+steps :: Ops -> Expr -> [(String, Expr)]
 steps ops a = case step ops a of
-  For x a -> [For x b | b <- steps ops (Let [(x, Var x)] a)]
-  a' | a == a' -> [a]
-  b -> b : steps ops b
+  (_, For x a) -> [(rule, For x b) | (rule, b) <- steps ops (Let [(x, Var x)] a)]
+  (_, a') | a == a' -> [("END", a)]
+  (rule, b) -> (rule, b) : steps ops b
 
 eval' :: Ops -> Expr -> Expr
-eval' ops = last . steps ops
+eval' ops a = last (map snd $ steps ops a)
 
 reduce :: Ops -> Expr -> Expr
 reduce ops a = case a of

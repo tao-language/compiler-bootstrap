@@ -96,10 +96,7 @@ coreCmd filename arg = do
   putStrLn "---- compile"
   mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf a)
   putStrLn "---- steps"
-  let showCtrTyped = \case
-        C.Ann a b -> C.showCtr a ++ ":" ++ C.showCtr b
-        a -> C.showCtr a
-  mapM_ (\a -> putStrLn ("[" ++ showCtrTyped a ++ "]> " ++ show (C.dropLet a))) (C.steps runtimeOps $ C.let' env a)
+  mapM_ (\(r, a) -> putStrLn ("# [" ++ r ++ "] " ++ C.showCtr' 2 a ++ " #\n" ++ show (C.dropLet a) ++ "\n")) (C.steps runtimeOps $ C.let' env a)
   putStrLn "---- eval"
   let b = C.eval' runtimeOps $ C.let' env a
   printExpr b
