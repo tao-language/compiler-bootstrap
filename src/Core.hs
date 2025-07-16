@@ -958,6 +958,8 @@ step ops = \case
   Ann a b -> case a of
     Ann a b -> ("ann-ann", Ann a b)
     a -> step2 "ann" Ann a b
+  For x a -> step1 "for" (For x) (substitute [(x, Var x)] a)
+  Fix x a -> error "TODO"
   Fun a b -> step2 "fun" Fun a b
   App a b -> case (snd $ step ops a, snd $ step ops b) of
     (For x a, b) -> do
@@ -966,7 +968,8 @@ step ops = \case
       ("app-for", App a' b)
     (Or a1 a2, b) -> ("app-or", Or (App a1 b) (App a2 b))
     (Fun a c, b) -> case (snd $ step ops a, b) of
-      (a, b@App {}) -> ("beta-arg-app", letP (a, b) c)
+      (a, b@App {}) -> ("beta-noop-app", letP (a, b) c)
+      (a, b@Call {}) -> ("beta-noop-call", letP (a, b) c)
       (Any, _) -> ("beta-any", c)
       (Unit, Unit) -> ("beta-unit", c)
       (IntT, IntT) -> ("beta-intT", c)
@@ -977,7 +980,7 @@ step ops = \case
       -- (Var x, Var x') | x == x' -> c
       -- -- (Var x, b) -> Let [(x, b)] c
       (Var x, b) -> ("beta-var (" ++ x ++ " = " ++ showCtr b ++ ")", substitute [(x, b)] c)
-      -- (a, Var x) -> substitute [(x, a)] c
+      (a, Var x) -> ("beta-unify (" ++ x ++ " = " ++ showCtr a ++ ")", substitute [(x, a)] c)
       (Ann a ta, Ann b tb) -> ("beta-ann", letPs [(ta, tb), (a, b)] c)
       (Ann a _, b) -> ("beta-fun-ann", letP (a, b) c)
       (a, Ann b _) -> ("beta-arg-ann", letP (a, b) c)
@@ -1024,16 +1027,18 @@ step ops = \case
   a -> ("const", a)
   where
     step1 rule f a = do
-      let (_, a') = step ops a
-      (rule, f a')
+      let (r, a') = step ops a
+      let r' = if a == a' then "_" else r
+      (rule ++ "(" ++ r' ++ ")", f a')
     step2 rule f a b = do
-      let (_, a') = step ops a
-      let (_, b') = step ops b
-      (rule, f a' b')
+      let (r1, a') = step ops a
+      let (r2, b') = step ops b
+      let r1' = if a == a' then "_" else r1
+      let r2' = if b == b' then "_" else r2
+      (rule ++ "(" ++ r1' ++ ", " ++ r2' ++ ")", f a' b')
 
 steps :: Ops -> Expr -> [(String, Expr)]
 steps ops a = case step ops a of
-  (_, For x a) -> [(rule, For x b) | (rule, b) <- steps ops (Let [(x, Var x)] a)]
   (_, a') | a == a' -> [("END", a)]
   (rule, b) -> (rule, b) : steps ops b
 
