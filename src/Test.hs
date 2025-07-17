@@ -88,7 +88,7 @@ instance TestSome (FilePath, UnitTest) where
     --     "result: " ++ show (C.eval runtimeOps $ C.let' env test'),
     --     ""
     --   ]
-    let result = C.eval runtimeOps (C.let' env test')
+    let result = C.eval' runtimeOps (C.let' env test')
     case C.typedOf (snd $ C.forOf result) of
       (C.Tag "Pass" _, _) -> [TestPass t.filename t.pos name]
       -- TODO: Fix this, it's where type errors on tests get reported.

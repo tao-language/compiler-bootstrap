@@ -941,6 +941,7 @@ isValue = \case
   Tag _ _ -> True
   Ann a _ -> isValue a
   And _ _ -> True
+  Or a _ -> isValue a
   Meta _ a -> isValue a
   Err -> True
   _ -> False
@@ -978,7 +979,6 @@ step ops = \case
       (Num n, Num n') | n == n' -> ("beta-num (" ++ show n ++ ")", c)
       (Tag k a, Tag k' b) | k == k' -> ("beta-tag (" ++ k ++ ")", letP (a, b) c)
       -- (Var x, Var x') | x == x' -> c
-      -- -- (Var x, b) -> Let [(x, b)] c
       (Var x, b) -> ("beta-var (" ++ x ++ " = " ++ showCtr b ++ ")", substitute [(x, b)] c)
       (a, Var x) -> ("beta-unify (" ++ x ++ " = " ++ showCtr a ++ ")", substitute [(x, a)] c)
       (Ann a ta, Ann b tb) -> ("beta-ann", letPs [(ta, tb), (a, b)] c)
@@ -1883,14 +1883,14 @@ infer' ops env (Fix x a) = do
   ((a, t), s) <- infer' ops ((y, Var y) : env) (substitute [(x, Var y)] a)
   Right ((fix' [y] a, t), s `compose` [(y, Var y)])
 infer' ops env (Fun a b) = do
-  ((a, ta), (b, tb), s) <- infer2' ops env a b
+  ((b, tb), (a, ta), s) <- infer2' ops env b a
   Right ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
 infer' ops env (App a b) = do
   let x = newName ("$" : map fst env) "$"
-  ((a, ta), (b, tb), s1) <- infer2' ops ((x, Var x) : env) a b
+  ((b, tb), s1) <- infer' ops ((x, Var x) : env) b
   let (a', s2) = instantiate (x : map fst env) a
   let s = s2 `compose` s1 `compose` [(x, Var x)]
-  (_, s3) <- unify' ops (s `compose` env) ta (Fun tb (Var x))
+  ((a', _), s3) <- check' ops (s `compose` env) a' (Fun tb (Var x))
   let t = eval ops (Let (s3 `compose` s `compose` env) (Var x))
   Right ((substitute s3 $ App a' (Ann b tb), t), s3 `compose` s)
 infer' ops env (Let defs a) = do
@@ -1951,7 +1951,7 @@ check' ops env (And a b) (And ta tb) = do
   ((a, ta), (b, tb), s) <- check2' ops env (a, ta) (b, tb)
   Right ((And a b, And ta tb), s)
 check' ops env (Fun a b) (Fun ta tb) = do
-  ((a, ta), (b, tb), s) <- check2' ops env (a, ta) (b, tb)
+  ((b, tb), (a, ta), s) <- check2' ops env (b, tb) (a, ta)
   Right ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
 check' ops env a t = do
   ((a, ta), s1) <- infer' ops env a
