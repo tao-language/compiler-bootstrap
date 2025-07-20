@@ -943,7 +943,7 @@ isValue = \case
   And _ _ -> True
   Or a _ -> isValue a
   Meta _ a -> isValue a
-  Err -> True
+  Err -> False
   _ -> False
 
 -- Evaluation
