@@ -49,7 +49,7 @@ data Expr
 
 instance Show Expr where
   show :: Expr -> String
-  show = Core.format 80
+  show = Core.format 120
 
 showCtr :: Expr -> String
 showCtr = \case
@@ -951,11 +951,12 @@ step :: Ops -> Expr -> (String, Expr)
 step ops = \case
   Tag k a -> step1 "tag" (Tag k) a
   And a b -> step2 "and" And a b
-  Or a b
-    | isErr a -> ("or-snd", b)
-    | isErr b -> ("or-fst", a)
-    | isValue a -> ("or-value", a)
-    | otherwise -> step2 "or-both" Or a b
+  Or a b -> case (snd $ step ops a, snd $ step ops b) of
+    (Or a1 a2, b) -> ("or-or", Or a1 (Or a2 b))
+    (a, b) | isErr a -> ("or-snd", b)
+    (a, b) | isErr b -> ("or-fst", a)
+    (a, b) | isValue a -> ("or-value", a)
+    (a, b) -> ("or-both", Or a b)
   Ann a b -> case a of
     Ann a b -> ("ann-ann", Ann a b)
     a -> step2 "ann" Ann a b
@@ -1008,10 +1009,10 @@ step ops = \case
   Let env a -> case a of
     Tag k a -> step1 "let-tag" (Tag k) (Let env a)
     Var x -> case lookup x env of
-      Just (Var x') | x == x' -> ("let-var-bound", Var x)
-      Just (Ann (Var x') t) | x == x' -> ("let-var-typed", Ann (Var x) t)
-      Just a -> ("let-var-def", a)
-      Nothing -> ("let-var-undef", Var x)
+      Just (Var x') | x == x' -> ("let-var-bound[" ++ show (Var x) ++ "]", Var x)
+      Just (Ann (Var x') t) | x == x' -> ("let-var-typed[" ++ show (Var x) ++ "]", Ann (Var x) t)
+      Just a -> ("let-var-def[" ++ show (Var x) ++ "]", a)
+      Nothing -> ("let-var-undef[" ++ show (Var x) ++ "]", Var x)
     And a b -> step2 "let-and" And (Let env a) (Let env b)
     Or a b -> step2 "let-or" Or (Let env a) (Let env b)
     Ann a b -> step2 "let-ann" Ann (Let env a) (Let env b)
@@ -1022,9 +1023,9 @@ step ops = \case
     Call f args -> ("let-call", Call f (Let env <$> args))
     Let env' a -> step1 "let-let" (Let (env ++ env')) a
     Meta m a -> step ops (Let env a)
-    a -> ("let-const", a)
+    a -> ("let-const[" ++ showCtr a ++ "]", a)
   Meta m a -> step ops a
-  a -> ("const", a)
+  a -> ("const[" ++ showCtr a ++ "]", a)
   where
     step1 rule f a = do
       let (r, a') = step ops a
@@ -1043,7 +1044,7 @@ steps ops a = case step ops a of
   (rule, b) -> (rule, b) : steps ops b
 
 eval' :: Ops -> Expr -> Expr
-eval' ops a = last (map snd $ steps ops a)
+eval' ops a = snd (last (steps ops a))
 
 reduce :: Ops -> Expr -> Expr
 reduce ops a = case a of
@@ -1753,6 +1754,7 @@ class Merge a where
 
 instance Merge Expr where
   merge :: Ops -> Env -> Expr -> Expr -> Expr
+  merge ops env a a' | a == a' = a
   merge ops env a b = case unify' ops env a b of
     Right (c, []) -> c
     _ -> Or a b
@@ -1869,7 +1871,7 @@ infer' ops env (And a b) = do
   Right ((And a b, And ta tb), s)
 infer' ops env (Or a b) = case (infer' ops env a, infer' ops env b) of
   (Right ((a, ta), s1), Right ((b, tb), s2)) -> do
-    Right ((Or a b, merge ops env ta tb), merge ops env s1 s2)
+    Right ((merge ops env a b, merge ops env ta tb), merge ops env s1 s2)
   (Right ats, Left _) -> Right ats
   (Left _, Right bts) -> Right bts
   (Left e1, Left e2) -> Left e1
@@ -1943,7 +1945,7 @@ check' ops env (Var x) t = case lookup x env of
   Nothing -> Left (undefinedVar x)
 check' ops env (Or a b) t = case (check' ops env a t, check' ops env b t) of
   (Right ((a, ta), s1), Right ((b, tb), s2)) -> do
-    Right ((Or a b, merge ops env ta tb), merge ops env s1 s2)
+    Right ((merge ops env a b, merge ops env ta tb), merge ops env s1 s2)
   (Right ats, Left _) -> Right ats
   (Left _, Right bts) -> Right bts
   (Left e1, Left e2) -> Left e1

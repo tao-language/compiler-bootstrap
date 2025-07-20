@@ -15,7 +15,7 @@ import Location (Location (Location), Position (Pos), Range (Range))
 import qualified Parser as P
 import qualified PrettyPrint as PP
 import Stdlib (lookupValue, split)
-import System.FilePath (takeBaseName)
+import System.FilePath (dropTrailingPathSeparator, splitFileName, takeBaseName)
 
 type Parser a = P.Parser String a
 
@@ -352,7 +352,7 @@ asFor = \case
   _ -> Nothing
 
 or' :: [Expr] -> Expr
-or' [] = Err
+or' [] = Tuple []
 or' [a] = a
 or' (a : bs) = Or a (or' bs)
 
@@ -1776,11 +1776,15 @@ instance Resolve String where
 instance Resolve (String, [Module]) where
   resolve :: Context -> FilePath -> (String, [Module]) -> [(FilePath, Expr)]
   resolve ctx path (name, modules) = do
-    let matchStmts (path', stmts) =
-          if path == path' || (path ++ "/@") `isPrefixOf` path'
-            then stmts
-            else []
-    resolve ctx path (name, concatMap matchStmts modules)
+    concatMap (\mod -> resolve ctx path (name, mod)) modules
+
+instance Resolve (String, Module) where
+  resolve :: Context -> FilePath -> (String, Module) -> [(FilePath, Expr)]
+  resolve ctx path (name, (path', stmts)) = case splitFileName path of
+    (dir, '@' : _) -> resolve ctx (dropTrailingPathSeparator dir) (name, (path', stmts))
+    _ | path == path' -> resolve ctx path (name, stmts)
+    _ | (path ++ "/@") `isPrefixOf` path' -> resolve ctx path (name, stmts)
+    _ -> []
 
 instance Resolve (String, [Stmt]) where
   resolve :: Context -> FilePath -> (String, [Stmt]) -> [(FilePath, Expr)]
@@ -1792,15 +1796,28 @@ instance Resolve (String, Stmt) where
   resolve ctx path (name, stmt) = case stmt of
     Import path' alias names -> case names of
       _ | path == path' -> []
-      ("", _) : _ | path /= path' -> do
+      _ | (path' ++ "/@") `isPrefixOf` path -> []
+      -- _ | (path' ++ "/@") `isPrefixOf` path -> do
+      --   let ctx' = filter ((/= path) . fst) ctx
+      --   let paths = filter (\p -> p /= path && (path' ++ "/@") `isPrefixOf` p) (map fst ctx)
+      --   resolve ctx' path (name, map (\p -> Import p alias names) paths)
+      -- resolve ctx path (name, map ())
+      -- _ | (path ++ "/@") `isPrefixOf` path' -> []
+      -- TODO: support imported name wildcards, e.g. parse-*
+      ("*", _) : _ -> do
         resolve ctx path (name, Import path' alias [(name, name)])
       (x, y) : names -> do
-        let defs = if y == name then resolve ctx path' x else []
+        -- let ctx' = filter ((`notElem` [path]) . fst) ctx
+        let ctx' = ctx
+        let defs = if y == name then resolve ctx' path' x else []
         defs ++ resolve ctx path (name, Import path' alias names)
-      [] | alias == name -> [(path, Tag path' [])]
+      -- [] | alias == name -> [(path, Tag path' [])]
       [] -> []
-    Def (p, b) | name `elem` bindings p -> do
-      [(path, Let (p, b) (Var name))]
+    Def (p, b)
+      | Just x <- varOf p, name == x -> [(path, b)]
+      | name `elem` bindings p -> do
+          [(path, Let (p, b) (Var name))]
+      | otherwise -> []
       where
         bindings :: Pattern -> [String]
         bindings p = map fst (C.unpack (lower p, C.Any))
@@ -1808,16 +1825,6 @@ instance Resolve (String, Stmt) where
       let resolveAlt (a, Just b) = Fun a b
           resolveAlt (a, Nothing) = Fun a (Tag tname args)
       [(path, fun args (or' $ map resolveAlt alts))]
-    -- TypeDef (tname, args, alts) -> do
-    --   [ (path, For (C.freeVars $ lower alt) alt)
-    --     | (a, mb) <- alts,
-    --       let t = fromMaybe (Tag tname args) mb,
-    --       alt <- case name of
-    --         _ | Just (k', args') <- tagOf a, name == k' -> [Fun (Tuple args') t]
-    --         "::" | Just (a1, a2) <- consOf a -> [Fun (Tuple [a1, a2]) t]
-    --         "[]" | Just [] <- listOf a -> [Fun (Tuple []) t]
-    --         _ -> []
-    --     ]
     _ -> []
 
 class Compile a where
@@ -1829,53 +1836,42 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"map", expr) = do
+  -- compile ctx path (name@"<=", expr) = do
   --   let a = C.dropMeta $ C.bind [] $ lower expr
-  --   let xs = delete name (C.freeVars a `union` C.freeTags a)
-  --   let env = compileDefs ctx path xs
-  --   -- let vars a = filter (`notElem` name : map fst env) (C.freeVars a)
+  --   let dependencies = delete name (C.freeVars a `union` C.freeTags a)
+  --   let env = compileDefs ctx path dependencies
   --   (error . intercalate "\n")
   --     [ "compile " ++ show name,
   --       "expr:  " ++ show (dropMeta expr),
-  --       "a:  " ++ show (C.dropMeta a),
-  --       "xs:  " ++ show xs,
+  --       "lower:  " ++ show (C.dropMeta $ lower expr),
+  --       "bind:  " ++ show (C.dropMeta a),
+  --       "deps: " ++ show dependencies,
   --       "env: " ++ show (map fst env),
-  --       intercalate "\n" $ map (\(x, a) -> "  " ++ show (C.Var x) ++ ": " ++ show (C.eval runtimeOps $ C.let' env a)) env,
-  --       "alts:",
-  --       intercalate "\n" $ map ((" | " ++) . show . fst) (fromRight [] $ C.infer buildOps ((name, C.Var name) : env) a),
+  --       intercalate "\n" $ map (\(x, a) -> " - " ++ show (C.Var x) ++ ": " ++ show (C.dropLet a)) env,
   --       "",
-  --       let a' = C.or' $ map (C.ann . fst) (fromRight [] $ C.infer buildOps ((name, C.Var name) : env) a)
-  --        in show $ C.for' (C.freeVars a') a',
-  --       -- "",
-  --       -- "TODO: reproduce pattern matching issue:",
-  --       -- "  let A = B; C  -- should give !error",
-  --       -- "  (A -> C)(B) -- should give !error",
+  --       "infer:",
+  --       case C.infer' buildOps ((name, C.Var name) : env) a of
+  --         Right ((a, t), s) -> do
+  --           let steps = C.steps runtimeOps (C.let' env a)
+  --           let result = snd (last steps)
+  --           (intercalate "\n")
+  --             [ " - a: " ++ show a,
+  --               " - t: " ++ show t,
+  --               " - s: " ++ show s,
+  --               "",
+  --               "steps:",
+  --               intercalate "\n\n" (map (\(r, a) -> "# [" ++ r ++ "] " ++ C.showCtr' 2 a ++ "#\n> " ++ show (C.dropLet a)) steps),
+  --               "",
+  --               "result[" ++ C.showCtr' 2 result ++ "]:",
+  --               "  " ++ show result
+  --             ]
+  --         Left e -> "  ERROR: " ++ show e,
   --       ""
   --     ]
   compile ctx path (name, expr) = do
     let a = C.dropMeta $ C.bind [] $ lower expr
     let dependencies = delete name (C.freeVars a `union` C.freeTags a)
     let env = compileDefs ctx path dependencies
-    -- let vars a = filter (`notElem` name : map fst env) (C.freeVars a)
-    -- case C.infer buildOps ((name, C.Var name) : env) a of
-    --   Right [] ->
-    --     (error . intercalate "\n")
-    --       [ "compile: infer was empty",
-    --         "name: " ++ show name,
-    --         "expr:  " ++ show (dropMeta expr),
-    --         "core:  " ++ show (C.dropMeta (lower expr)),
-    --         "bound: " ++ show (C.dropMeta a),
-    --         "xs: " ++ show xs,
-    --         "env: " ++ show (map fst env),
-    --         intercalate "\n" $ map (\(x, a) -> "  " ++ show x ++ ": " ++ show (eval [] a)) env,
-    --         ""
-    --       ]
-    --   Right alts -> do
-    --     let typed (a, t) = do
-    --           let (xs, a') = C.forOf a
-    --           C.for' (xs `union` C.freeVars t) (C.Ann a' t)
-    --     (env, C.or' $ map (typed . fst) alts)
-    --   Left err -> error $ show (name, xs, map fst env, err)
     case C.infer' buildOps ((name, C.Var name) : env) a of
       Right ((a, t), s) -> do
         -- let (xs, a') = C.forOf a

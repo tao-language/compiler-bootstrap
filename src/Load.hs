@@ -18,7 +18,7 @@ include :: FilePath -> Context -> IO Context
 include preludePath ctx = do
   let include' (path, stmts) = do
         let path' = snd (split2 ':' preludePath)
-        (path, Import (dropExtension path') (takeBaseName path') [("", "")] : stmts)
+        (path, Import (dropExtension path') (takeBaseName path') [("*", "")] : stmts)
   ctx <- loadModule ctx preludePath
   return (map include' ctx)
 

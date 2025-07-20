@@ -602,5 +602,61 @@ run = describe "--==☯ Tao ☯==--" $ do
   --   lift expr' `shouldBe` Ann expr Any
   --   dropMeta (eval ctx "m" expr) `shouldBe` Err (customError $ any 1 8)
 
+  it "☯ Tao.resolve" $ do
+    let (x, y, z, w) = (Var "x", Var "y", Var "z", Var "w")
+    let (i1, i2) = (Int 1, Int 2)
+    let test a b = Test (UnitTest "filename" (Pos 1 2) "name" a b)
+
+    -- Stmt
+    let ctx = []
+    resolve ctx "m1" ("x", Def (x, y)) `shouldBe` [("m1", y)]
+    resolve ctx "m1" ("x", Def (y, z)) `shouldBe` []
+    resolve ctx "m1" ("x", TypeDef ("x", [], [])) `shouldBe` [("m1", Fun (Tuple []) (Tuple []))]
+    resolve ctx "m1" ("x", test y z) `shouldBe` []
+
+    -- [Stmt]
+    let ctx = []
+    resolve ctx "m1" ("x", [] :: [Stmt]) `shouldBe` []
+    resolve ctx "m1" ("x", [Def (x, y)]) `shouldBe` [("m1", y)]
+    resolve ctx "m1" ("x", [Def (x, y), Def (x, z)]) `shouldBe` [("m1", y), ("m1", z)]
+
+    -- Module
+    let ctx = []
+    resolve ctx "m1" ("x", ("m1", []) :: Module) `shouldBe` []
+    resolve ctx "m1" ("x", ("m1", [Def (x, y)])) `shouldBe` [("m1", y)]
+    resolve ctx "m1" ("x", ("m1", [Def (x, y), Def (x, z)])) `shouldBe` [("m1", y), ("m1", z)]
+    resolve ctx "m1" ("x", ("m2", [Def (x, y)])) `shouldBe` []
+
+    -- Name
+    let ctx = [("m1", [Def (x, y)]), ("m1/@f1", [Def (x, z)])]
+    resolve ctx "m1" "x" `shouldBe` [("m1", y), ("m1", z)]
+    resolve ctx "m1/@f1" "x" `shouldBe` [("m1", y), ("m1", z)]
+    resolve ctx "m1" "y" `shouldBe` []
+
+    -- Imports
+    -- let ctx = [("m1", [Def (x, y)]), ("m1/@f1", [Def (x, z)])]
+    -- resolve ctx "m" ("x", [Import "m1" "m1" [("x", "x")], Def (x, w)]) `shouldBe` [("m1", y), ("m1/@f1", z), ("m", w)]
+    -- resolve ctx "m1" ("x", [Import "m1" "m1" [("x", "x")], Def (x, w)]) `shouldBe` [("m1", w)]
+    -- resolve ctx "m1" ("x", [Import "m1/@f1" "m1" [("x", "x")], Def (x, w)]) `shouldBe` [("m1/@f1", z), ("m1", w)]
+
+    -- Self imports
+    let ctx =
+          [ ("m1", [Import "m1" "m1" [("x", "x")], Def (x, i1)]),
+            ("m1/@f1", [Import "m1" "m1" [("x", "x")], Def (x, i2)]),
+            ("m2/@f1", [Import "m2" "m2" [("y", "y")], Def (y, i1)]),
+            ("m2/@f2", [Import "m2" "m2" [("y", "y")], Def (y, i2)]),
+            ("m3/@f1", [Import "m3/@f1" "m3/@f1" [("z", "z")], Def (z, i1)]),
+            ("m3/@f2", [Import "m3/@f1" "m3/@f1" [("z", "z")], Def (z, i2)])
+          ]
+    resolve ctx "m1" "x" `shouldBe` [("m1", i1), ("m1", i2)]
+    resolve ctx "m2" "y" `shouldBe` [("m2", i1), ("m2", i2)]
+    resolve ctx "m2/@f1" "y" `shouldBe` [("m2", i1), ("m2", i2)]
+    -- resolve ctx "m3" "z" `shouldBe` [("m3", i1), ("m3", i2)]
+    -- resolve ctx "m3/@f1" "z" `shouldBe` [("m3", i1), ("m3", i2)]
+
+    -- Import wildcards
+    let ctx = [("m1", [Def (x, y)])]
+    resolve ctx "m" ("x", [Import "m1" "m1" [("*", "")], Def (x, w)]) `shouldBe` [("m1", y), ("m", w)]
+
   it "☯ TODO" $ do
     "" `shouldBe` ""

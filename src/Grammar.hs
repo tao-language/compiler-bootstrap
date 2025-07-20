@@ -73,7 +73,9 @@ infixL' p f op match = do
         f loc x <$> expr
   let layout' lhs rhs x = do
         (a, space1, space2, b) <- match x
-        return (lhs a ++ [PP.Text (space1 ++ op ++ space2)] ++ rhs b)
+        let alt1 = lhs a ++ [PP.Text (space1 ++ op ++ space2)] ++ rhs b
+        let alt2 = lhs a ++ [PP.Indent (PP.NewLine : PP.Text (op ++ space2) : rhs b)]
+        return [PP.Or alt1 alt2]
   InfixL p parser' layout'
 
 infixR :: Int -> (Location -> a -> a -> a) -> String -> (a -> Maybe (a, String, a)) -> Operator ctx a
@@ -92,7 +94,9 @@ infixR' p f op match = do
         f loc x <$> expr
   let layout' lhs rhs x = do
         (a, space1, space2, b) <- match x
-        return (lhs a ++ [PP.Text (space1 ++ op ++ space2)] ++ rhs b)
+        let alt1 = lhs a ++ [PP.Text (space1 ++ op ++ space2)] ++ rhs b
+        let alt2 = lhs a ++ [PP.Indent (PP.NewLine : PP.Text (op ++ space2) : rhs b)]
+        return [PP.Or alt1 alt2]
   InfixR p parser' layout'
 
 parser :: Grammar ctx a -> Int -> P.Parser ctx a
@@ -126,7 +130,13 @@ layout grammar p x = do
           Nothing -> loop ops
         where
           groupIf cond x =
-            if cond then PP.Text (fst grammar.group) : x ++ [PP.Text (snd grammar.group)] else x
+            if cond
+              then do
+                let (open, close) = grammar.group
+                let alt1 = PP.Text open : x ++ [PP.Text close]
+                let alt2 = [PP.Text open, PP.Indent [PP.Indent (PP.NewLine : x), PP.NewLine], PP.Text close]
+                [PP.Or alt1 alt2]
+              else x
   loop grammar.operators
 
 format :: Grammar ctx a -> Int -> String -> a -> String

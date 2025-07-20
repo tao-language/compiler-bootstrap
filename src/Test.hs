@@ -79,13 +79,13 @@ instance TestSome (FilePath, UnitTest) where
     --     "expr': " ++ show (snd $ compile ctx path t.expr),
     --     "expect: " ++ show (dropMeta t.expect),
     --     "env: " ++ show (map (Var . fst) env),
-    --     intercalate "\n" $ map (\(x, a) -> "  " ++ show (Var x) ++ ": " ++ show (C.eval runtimeOps $ C.let' env a)) env,
+    --     intercalate "\n" $ map (\(x, a) -> " - " ++ show (Var x) ++ ": " ++ show (C.dropLet a)) env,
     --     "test: " ++ show (dropMeta $ Match t.expr cases),
     --     "lower: " ++ show (lower (dropMeta $ Match t.expr cases)),
     --     "core: " ++ show test',
-    --     "core alts:",
-    --     intercalate "\n" $ map (\a -> "  | " ++ show a) (C.orOf test'),
-    --     "result: " ++ show (C.eval runtimeOps $ C.let' env test'),
+    --     "steps:",
+    --     intercalate "\n\n" (map (\(r, a) -> "# [" ++ r ++ "] " ++ C.showCtr' 2 a ++ "#\n> " ++ show (C.dropLet a)) (C.steps runtimeOps $ C.let' env test')),
+    --     "result: " ++ show (C.eval' runtimeOps $ C.let' env test'),
     --     ""
     --   ]
     let result = C.eval' runtimeOps (C.let' env test')
@@ -96,7 +96,7 @@ instance TestSome (FilePath, UnitTest) where
       -- (_, C.Tag "Err" (C.Err e)) -> [TestFail t.filename t.pos name t.expr t.expect (lift (C.Err e))]
       (C.Tag "Fail" got, _) -> [TestFail t.filename t.pos name (dropMeta t.expr) (dropMeta t.expect) (lift got)]
       -- (got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
-      (got, ty) -> error ("Unreachable " ++ t.filename ++ ":" ++ show t.pos.row ++ ":" ++ show t.pos.col ++ ": " ++ t.name ++ "\ngot: " ++ show got ++ "\nt: " ++ show ty)
+      (got, ty) -> error ("Unreachable " ++ t.filename ++ ":" ++ show t.pos.row ++ ":" ++ show t.pos.col ++ ": " ++ t.name ++ "\ntest: " ++ show test' ++ "\ngot: " ++ show got ++ "\nt: " ++ show ty)
 
 testAll :: (TestSome a) => Context -> a -> [TestResult]
 testAll ctx = testSome ctx (const True)
