@@ -964,6 +964,8 @@ step ops = \case
   Fix x a -> error "TODO"
   Fun a b -> step2 "fun" Fun a b
   App a b -> case (snd $ step ops a, snd $ step ops b) of
+    (a@Var {}, b) -> ("app-var", App a b)
+    (a@App {}, b) -> ("app-app", App a b)
     (For x a, b) -> do
       let y = newName (freeVars b) x
       let a' = substitute [(x, Var y)] a
