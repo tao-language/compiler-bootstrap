@@ -961,7 +961,7 @@ step ops = \case
     Ann a b -> Ann a b
     a -> Ann a (step ops b)
   For x a -> For x (substitute [(x, Var x)] a)
-  Fix x a -> error "TODO"
+  Fix x a -> Fix x (substitute [(x, Var x)] a)
   Fun a b -> Fun (step ops a) (step ops b)
   App a b -> case (step ops a, step ops b) of
     (a@Var {}, b) -> App a b
@@ -1879,13 +1879,30 @@ infer' ops env (Fun a b) = do
   ((b, tb), (a, ta), s) <- infer2' ops env b a
   Right ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
 infer' ops env (App a b) = do
-  let x = newName ("$" : map fst env) "$"
-  ((b, tb), s1) <- infer' ops ((x, Var x) : env) b
-  let (a', s2) = instantiate (x : map fst env) a
-  let s = s2 `compose` s1 `compose` [(x, Var x)]
-  ((a', _), s3) <- check' ops (s `compose` env) a' (Fun tb (Var x))
-  let t = eval ops (Let (s3 `compose` s `compose` env) (Var x))
-  Right ((substitute s3 $ App a' (Ann b tb), t), s3 `compose` s)
+  let splitFun = \case
+        Or a b -> do
+          (a1, a2) <- splitFun a
+          (b1, b2) <- splitFun b
+          Right (Or a1 b1, Or a2 b2)
+        Fun a b -> Right (a, b)
+        Meta _ a -> splitFun a
+        t -> Left (notAFunction a t)
+  ((_, tb), s1) <- infer' ops env b
+  let (a', s2) = instantiate (map fst $ s1 `compose` env) (substitute s1 a)
+  let s12 = s2 `compose` s1
+  ((a, ta), s3) <- check' ops (s12 `compose` env) a' (Fun (substitute s2 tb) Any)
+  (t1, t2) <- splitFun ta
+  let s123 = s3 `compose` s12
+  ((b, tb), s3) <- check' ops (s123 `compose` env) (substitute s123 b) t1
+  Right ((App a (Ann b tb), substitute s3 t2), s3 `compose` s12)
+-- infer' ops env (App a b) = do
+--   let x = newName ("$" : map fst env) "$"
+--   ((b, tb), s1) <- infer' ops ((x, Var x) : env) b
+--   let (a', s2) = instantiate (x : map fst env) a
+--   let s = s2 `compose` s1 `compose` [(x, Var x)]
+--   ((a', _), s3) <- check' ops (s `compose` env) a' (Fun tb (Var x))
+--   let t = eval ops (Let (s3 `compose` s `compose` env) (Var x))
+--   Right ((substitute s3 $ App a' (Ann b tb), t), s3 `compose` s)
 infer' ops env (Let defs a) = do
   ((a, t), s) <- infer' ops (defs ++ env) a
   Right ((Let defs a, t), s)
