@@ -61,47 +61,50 @@ coreCmd filename arg = do
   let (env, a) = compile ctx path expr
   putStrLn $ "---- env: " ++ unwords (map (show . fst) env)
   let printExpr a = do
-        (env, a) <- case C.letOf a of
-          Just (env, a) -> return (env, a)
-          Nothing -> return ([], a)
-        putStrLn ("@{" ++ unwords (map fst env) ++ "}")
+        a <- case C.letOf a of
+          Just (env, a) -> do
+            putStrLn ("  {" ++ unwords (map fst env) ++ "}")
+            return a
+          Nothing -> return a
         mapM_
           ( \a -> do
-              putStr "| "
-              a <- case C.fixOf a of
-                ([], a) -> return a
-                (xs, a) -> do
-                  putStr ("&" ++ unwords (map (show . Var) xs) ++ ". ")
-                  return a
-              (xs, a) <- return (C.forOf a)
-              putStrLn ("@" ++ unwords (map (show . Var) xs) ++ ".")
-              a <- case C.asAnn a of
-                Just (a, t) -> do
-                  putStrLn ("  : " ++ show t)
-                  return a
-                Nothing -> return a
-              mapM_ (\b -> putStrLn ("  | " ++ show b)) (C.orOf a)
+              putStr "  | "
+              -- a <- case C.fixOf a of
+              --   ([], a) -> return a
+              --   (xs, a) -> do
+              --     putStr ("&" ++ unwords (map (show . Var) xs) ++ ". ")
+              --     return a
+              -- (xs, a) <- return (C.forOf a)
+              -- putStrLn ("@" ++ unwords (map (show . Var) xs) ++ ".")
+              -- a <- case C.asAnn a of
+              --   Just (a, t) -> do
+              --     putStrLn ("  : " ++ show t)
+              --     return a
+              --   Nothing -> return a
+              -- mapM_ (\b -> putStrLn ("  | " ++ show b)) (C.orOf a)
+              print a
           )
           (C.orOf a)
   mapM_
     ( \(name, a) -> do
-        putStr ("+ " ++ name ++ ": ")
+        putStrLn ("+ " ++ name ++ ": ")
         printExpr a
     )
     env
   putStrLn "---- lower"
-  mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf $ lower expr)
+  printExpr (lower expr)
   putStrLn "---- bind"
-  mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf $ C.bind [] $ lower expr)
+  printExpr (C.bind [] $ lower expr)
   putStrLn "---- compile"
-  mapM_ (\a -> putStrLn ("| " ++ show a)) (C.orOf a)
-  putStrLn "---- steps"
-  mapM_ (\a -> putStrLn (show (C.dropLet a) ++ "\n")) (C.steps runtimeOps $ C.let' env a)
+  printExpr a
+  -- putStrLn "---- steps"
+  -- mapM_ (\a -> putStrLn (show (C.dropLet a) ++ "\n")) (C.steps runtimeOps $ C.let' env a)
   putStrLn "---- eval"
   let b = C.eval' runtimeOps $ C.let' env a
   printExpr b
-  putStrLn "---- eval (untyped)"
-  printExpr (C.dropTypes b)
+  -- putStrLn "---- eval (untyped)"
+  -- printExpr (C.dropTypes b)
+  return ()
 
 runCmd :: FilePath -> String -> IO ()
 runCmd filename arg = do

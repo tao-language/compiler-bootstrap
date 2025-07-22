@@ -14,13 +14,11 @@ import qualified Parser as P
 import qualified PrettyPrint as PP
 import Stdlib
 
--- https://simon.peytonjones.org/verse-calculus
--- https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadt-pldi.pdf
--- https://youtu.be/ytPAlhnAKro -- https://github.com/kritzcreek/fby19
--- https://www.youtube.com/live/utyBNDj7s2w
--- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
--- https://mroman42.github.io/mikrokosmos/tutorial.html
--- https://blog.chewxy.com/wp-content/uploads/personal/dissertation31482.pdf
+-- Lambda calculus: https://mroman42.github.io/mikrokosmos/tutorial.html
+-- Closure calculus: https://blog.chewxy.com/wp-content/uploads/personal/dissertation31482.pdf
+-- Type inference from scratch: https://youtu.be/ytPAlhnAKro -- https://github.com/kritzcreek/fby19
+-- Bidirectional type checking: https://www.youtube.com/live/utyBNDj7s2w -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
+-- Verse calculus: https://simon.peytonjones.org/verse-calculus
 
 type Parser a = P.Parser String a
 
@@ -49,7 +47,7 @@ data Expr
 
 instance Show Expr where
   show :: Expr -> String
-  show = Core.format 120
+  show = Core.format 200
 
 showCtr :: Expr -> String
 showCtr = \case
@@ -960,6 +958,7 @@ step ops = \case
   Ann a b -> case step ops a of
     Ann a b -> Ann a b
     a -> Ann a (step ops b)
+  For x (Or a b) -> Or (For x a) (For x b)
   For x a -> For x (substitute [(x, Var x)] a)
   Fix x a -> Fix x (substitute [(x, Var x)] a)
   Fun a b -> Fun (step ops a) (step ops b)
@@ -1011,6 +1010,7 @@ step ops = \case
   Let env a -> case a of
     Tag k a -> Tag k (step ops $ Let env a)
     Var x -> case lookup x env of
+      Just Any -> Var x
       Just (Var x') | x == x' -> Var x
       Just (Ann (Var x') t) | x == x' -> Ann (Var x) t
       Just a -> a
@@ -1304,8 +1304,8 @@ compose s1 s2 = do
   -- unionBy key (filter (not . generic) s1) (map (sub s1) s2)
   unionBy key s1 (map (sub s1) s2)
 
-generics :: Env -> Env
-generics = filterMap (forOf' . snd)
+-- generics :: Env -> Env
+-- generics = filterMap (forOf' . snd)
 
 dropTypes :: Expr -> Expr
 dropTypes (Tag k a) = Tag k (dropTypes a)
@@ -1777,42 +1777,47 @@ unify' ops env a b = case (a, b) of
   (Int i, Int i') | i == i' -> Right (Int i, [])
   (Num n, Num n') | n == n' -> Right (Num n, [])
   (Or a1 a2, b) -> case (unify' ops env a1 b, unify' ops env a2 b) of
-    (Right (a, s1), Right (b, s2)) -> Right (merge ops env a b, merge ops env s1 s2)
+    (Right (a, s1), Right (b, s2)) -> Right (merge ops env a b, [])
     (Right ts, Left _) -> Right ts
     (Left _, Right ts) -> Right ts
     (Left _, Left _) -> Left (typeMismatch a b)
   (a, Or b1 b2) -> case (unify' ops env a b1, unify' ops env a b2) of
-    (Right (a, s1), Right (b, s2)) -> Right (merge ops env a b, merge ops env s1 s2)
+    (Right (a, s1), Right (b, s2)) -> Right (merge ops env a b, [])
     (Right ts, Left _) -> Right ts
     (Left _, Right ts) -> Right ts
     (Left _, Left _) -> Left (typeMismatch a b)
-  (Var x, Var x') | x == x' -> Right (Var x, [])
+  (Var x, Var y) | x == y -> Right (Var x, [])
+  (Var x, Var y) | isGeneric x && isUnbound y -> Right (a, [(y, a)])
+  (Var x, Var y) | isGeneric x -> Right (b, [(x, b)])
   (Var x, b) | x `occurs` b -> Left (occursError x b)
-  (Var x, b) -> case lookup x env of
-    Just (For x' a) | x == x' -> unify' ops env (For x a) b
-    _ -> Right (b, [(x, b)])
+  (Var x, b) | isGeneric x -> Right (a, [])
+  (Var x, b) -> Right (b, [(x, b)])
   (a, Var x) -> unify' ops env (Var x) a
   (Tag k a, Tag k' b) | k == k' -> do
     (c, s) <- unify' ops env a b
     Right (Tag k c, s)
   (a, Tag k b) | Just def <- lookup k env -> do
     let x = newName ((k ++ "$") : map fst env) (k ++ "$")
-    (_, s) <- unify' ops env def (Fun b (Fun a (Var x)))
+    (_, s) <- unify' ops ((x, Any) : env) def (Fun b (Fun a (Var x)))
     let c = eval ops (Let (s `compose` env) (Var x))
-    Right (c, s `compose` [(x, Var x)])
+    Right (c, s `compose` [(x, Any)])
   (Tag k a, b) | Just def <- lookup k env -> do
     let x = newName ((k ++ "$") : map fst env) (k ++ "$")
-    (_, s) <- unify' ops env (Fun a (Fun b (Var x))) def
+    (_, s) <- unify' ops ((x, Any) : env) (Fun a (Fun b (Var x))) def
     let c = eval ops (Let (s `compose` env) (Var x))
-    Right (c, s `compose` [(x, Var x)])
+    Right (c, s `compose` [(x, Any)])
   (And a1 b1, And a2 b2) -> do
     unify2' ops env And (a1, a2) (b1, b2)
-  (a, For x b) -> case unify' ops env a b of
-    Right (c, s) -> Right (For x c, s)
-    Left _ -> Right (For x (Or a b), [])
-  (For x a, b) -> case unify' ops env a b of
-    Right (c, s) -> Right (For x c, s)
-    Left _ -> Right (For x (Or a b), [])
+  (a, For x b) -> do
+    let y = newName (freeVars a) x
+    (c, s) <- unify' ops ((y, Var y) : env) a (substitute [(x, Var y)] b)
+    -- Right (for' [y] c, s `compose` [(y, Var y)])
+    Right (for' [x] (substitute [(y, Var x)] c), s)
+  (For x a, b) -> do
+    let y = newName (freeVars b) x
+    (c, s) <- unify' ops ((y, Var y) : env) (substitute [(x, Var y)] a) b
+    -- Right (for' [y] c, s `compose` [(y, Var y)])
+    Right (for' [x] (substitute [(y, Var x)] c), s)
   (Fix _ a, b) -> unify' ops env a b
   (a, Fix _ b) -> unify' ops env a b
   (Fun a1 b1, Fun a2 b2) -> do
@@ -1821,6 +1826,13 @@ unify' ops env a b = case (a, b) of
     (cs, s) <- unifyAll' ops env args args'
     Right (Call op cs, s)
   (a, b) -> Left (typeMismatch a b)
+  where
+    isGeneric x = case lookup x env of
+      Just (Var x') | x == x' -> True
+      _ -> False
+    isUnbound x = case lookup x env of
+      Just Any -> True
+      _ -> False
 
 unify2' :: Ops -> Env -> (Expr -> Expr -> Expr) -> (Expr, Expr) -> (Expr, Expr) -> Either (Error Expr) (Expr, Substitution)
 unify2' ops env f (a1, a2) (b1, b2) = do
@@ -1838,7 +1850,7 @@ unifyAll' ops env _ _ = error $ show "unifyAll' size mismatch"
 infer' :: Ops -> Env -> Expr -> Either (Error Expr) ((Expr, Type), Substitution)
 infer' _ env Any = do
   let y = newName ("_" : map fst env) "_"
-  Right ((Any, Var y), [(y, Var y)])
+  Right ((Any, Var y), [(y, Any)])
 infer' _ _ Unit = Right ((Unit, Unit), [])
 infer' _ _ IntT = Right ((IntT, IntT), [])
 infer' _ _ NumT = Right ((NumT, NumT), [])
@@ -1878,23 +1890,21 @@ infer' ops env (Fix x a) = do
 infer' ops env (Fun a b) = do
   ((b, tb), (a, ta), s) <- infer2' ops env b a
   Right ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
+infer' ops env (App (Meta m a) b) = do
+  infer' ops env (App a b)
+infer' ops env (App (For x a) b) = do
+  let y = newName (map fst env) x
+  ((a, t), s) <- infer' ops ((y, Any) : env) (App (substitute [(x, Var y)] a) b)
+  Right ((a, t), s `compose` [(y, Any)])
 infer' ops env (App a b) = do
-  let splitFun = \case
-        Or a b -> do
-          (a1, a2) <- splitFun a
-          (b1, b2) <- splitFun b
-          Right (Or a1 b1, Or a2 b2)
-        Fun a b -> Right (a, b)
-        Meta _ a -> splitFun a
-        t -> Left (notAFunction a t)
   ((_, tb), s1) <- infer' ops env b
-  let (a', s2) = instantiate (map fst $ s1 `compose` env) (substitute s1 a)
+  ((a, ta), s2) <- check' ops (s1 `compose` env) a (Fun tb Any)
+  (t1, t2) <- case splitFun ops env ta of
+    Just (t1, t2) -> Right (t1, t2)
+    Nothing -> Left (notAFunction a ta)
   let s12 = s2 `compose` s1
-  ((a, ta), s3) <- check' ops (s12 `compose` env) a' (Fun (substitute s2 tb) Any)
-  (t1, t2) <- splitFun ta
-  let s123 = s3 `compose` s12
-  ((b, tb), s3) <- check' ops (s123 `compose` env) (substitute s123 b) t1
-  Right ((App a (Ann b tb), substitute s3 t2), s3 `compose` s12)
+  ((b, tb), s3) <- check' ops (s12 `compose` env) (substitute s12 b) t1
+  Right ((App (substitute s3 a) (Ann b tb), substitute s3 t2), s3 `compose` s12)
 -- infer' ops env (App a b) = do
 --   let x = newName ("$" : map fst env) "$"
 --   ((b, tb), s1) <- infer' ops ((x, Var x) : env) b
@@ -1908,12 +1918,22 @@ infer' ops env (Let defs a) = do
   Right ((Let defs a, t), s)
 infer' ops env (Call op args) = do
   let x = newName ("$" : map fst env) "$"
-  (args, s) <- inferAll' ops ((x, Var x) : env) args
-  Right ((Call op (map (uncurry Ann) args), substitute s (Var x)), s `compose` [(x, Var x)])
+  (args, s) <- inferAll' ops ((x, Any) : env) args
+  Right ((Call op (map (uncurry Ann) args), substitute s (Var x)), s `compose` [(x, Any)])
 infer' ops env (Meta m a) = do
   ((a, t), s) <- infer' ops env a
   Right ((Meta m a, t), s)
 infer' _ _ Err = Right ((Err, Err), [])
+
+splitFun :: Ops -> Env -> Expr -> Maybe (Expr, Expr)
+splitFun ops env = \case
+  Or a b -> do
+    (a1, a2) <- splitFun ops env a
+    (b1, b2) <- splitFun ops env b
+    Just (merge ops env a1 b1, merge ops env a2 b2)
+  Fun a b -> Just (a, b)
+  Meta _ a -> splitFun ops env a
+  t -> Nothing
 
 infer2' :: Ops -> Env -> Expr -> Expr -> Either (Error Expr) ((Expr, Type), (Expr, Type), Substitution)
 infer2' ops env a b = do
