@@ -1616,10 +1616,6 @@ infer ops env (Fun a b) = do
   Right ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
 infer ops env (App (Meta m a) b) = do
   infer ops env (App a b)
-infer ops env (App (For x a) b) = do
-  let y = newName (map fst env) x
-  ((c, t), s) <- infer ops ((y, Any) : env) (App (substitute [(x, Var y)] a) b)
-  Right ((c, t), s `compose` [(y, Any)])
 infer ops env (App a b) = do
   ((_, tb), s1) <- infer ops env b
   ((a, ta), s2) <- check ops (s1 `compose` env) a (Fun tb Any)
@@ -1686,7 +1682,7 @@ check ops env (For x a) t
       check ops env (For y (substitute [(x, Var y)] a)) t
   | otherwise = do
       let y = newName (map fst env) x
-      ((a, ta), s) <- check ops ((y, Any) : env) (substitute [(x, Var y)] a) t
+      ((a, t), s) <- check ops ((y, Any) : env) (substitute [(x, Var y)] a) t
       Right ((for' [y] a, t), s `compose` [(y, Any)])
 check ops env a (For x t)
   | x `occurs` a = do

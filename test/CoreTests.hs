@@ -968,6 +968,12 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' [x1] (Or y x) `shouldBe` Right ((x, IntT), [])
     infer' [x1] (Or y z) `shouldBe` Left (undefinedVar "z")
     infer' [x1, y2] (Fun x y) `shouldBe` Right ((Fun (Ann x IntT) (Ann y NumT), Fun IntT NumT), [])
+    infer' [] (For "x" (Fun x x)) `shouldBe` Right ((for ["x", "xT"] (Fun (Ann x xT) (Ann x xT)), Fun xT xT), [("xT", xT), ("x", Ann x xT)])
+    infer' [("x", Any), y2] (App x y) `shouldBe` Right ((App x (Ann y NumT), Any), [("_1", Fun NumT Any)])
+    infer' [("x", x), y2] (App x y) `shouldBe` Right ((App x (Ann y NumT), Any), [("x", Ann x (Fun NumT Any))])
+    infer' [x1] (App (Fun i1 n1) x) `shouldBe` Right ((App (Fun (Ann i1 IntT) (Ann n1 NumT)) (Ann x IntT), NumT), [])
+    infer' [x1] (App (Fun n1 i1) x) `shouldBe` Left (typeMismatch NumT IntT)
+    infer' [x1] (App (For "a" $ Fun a a) x) `shouldBe` Right ((App (For "a" $ Fun (Ann a IntT) (Ann a IntT)) (Ann x IntT), IntT), [("a", Ann a IntT), ("aT", IntT)])
     -- TODO: App
     -- TODO: Call
     infer' [] (Let [x1] x) `shouldBe` Right ((Let [x1] x, IntT), [])
@@ -976,8 +982,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' [] Err `shouldBe` Right ((Err, Err), [])
 
   it "☯ Core.check" $ do
-    -- `x` is unbound, `a` is generic
-    let check' = check [] [("x", Any), ("a", a)]
+    let check' = check []
     -- Any
     -- Unit
     -- IntT
@@ -986,6 +991,9 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- Num Double
     -- Var String
     -- Tag String Expr
+    check' [("a", Any)] (Fun a a) (Fun IntT Any) `shouldBe` Right ((Fun (Ann a IntT) (Ann a IntT), Fun IntT IntT), [("a", Ann a IntT), ("aT", IntT)])
+    check' [] (For "a" $ Fun a a) (Fun IntT IntT) `shouldBe` Right ((For "a" $ Fun (Ann a IntT) (Ann a IntT), Fun IntT IntT), [("_2", IntT), ("_1", IntT), ("a", Any)])
+    check' [] (For "a" $ Fun a a) (Fun IntT Any) `shouldBe` Right ((For "a" $ Fun (Ann a IntT) (Ann a IntT), Fun IntT IntT), [("a", Ann a IntT), ("aT", IntT)])
     -- For String Expr
     -- Fix String Expr
     -- Ann Expr Type
