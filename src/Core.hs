@@ -1788,7 +1788,10 @@ unify' ops env a b = case (a, b) of
     (Left _, Left _) -> Left (typeMismatch a b)
   (Var x, Var y) | x == y -> Right (Var x, [])
   (Var x, Var y) | isGeneric x && isUnbound y -> Right (a, [(y, a)])
-  (Var x, Var y) | isGeneric x -> Right (b, [(x, b)])
+  (Var x, Var y) -> Right (b, [(x, b)])
+  -- (Var x, Var y) | isGeneric x && isGeneric y -> Right (b, [(x, b)])
+  -- (Var x, Var y) | isUnbound x && isGeneric y -> Right (b, [(x, b)])
+  -- (Var x, Var y) | isUnbound x && isUnbound y -> Right (b, [(x, b)])
   (Var x, b) | x `occurs` b -> Left (occursError x b)
   (Var x, b) | isGeneric x -> Right (a, [])
   (Var x, b) -> Right (b, [(x, b)])
@@ -1860,8 +1863,11 @@ infer' ops env (Tag k a) = do
   ((a, t), s) <- infer' ops env a
   Right ((Tag k a, Tag k t), s)
 infer' ops env (Var x) = case lookup x env of
-  Just (Var x') | x == x' -> do
+  Just Any -> do
     let y = newName (map fst env) (x ++ "T")
+    Right ((Var x, Var y), [(y, Any), (x, Ann (Var x) (Var y))])
+  Just (Var x') | x == x' -> do
+    let y = newName (map fst env) (x ++ "G")
     Right ((Var x, Var y), [(y, Var y), (x, Ann (Var x) (Var y))])
   Just (Ann (Var x') ty) | x == x' -> Right ((Var x, ty), [])
   Just a -> do
@@ -1956,12 +1962,19 @@ check' ops env (Meta m a) t = do
 check' ops env a (Meta m t) = do
   ((a, t), s) <- check' ops env a t
   Right ((a, Meta m t), s)
-check' ops env (For x a) t = do
-  let y = newName (freeVars t) x
-  infer' ops env (For y (Ann (substitute [(x, Var y)] a) t))
-check' ops env a (For x t) = do
-  let y = newName (freeVars a) x
-  infer' ops env (For y (Ann a (substitute [(x, Var y)] t)))
+check' ops env (For x a) t
+  | x `occurs` t = do
+      let y = newName (freeVars (And a t)) x
+      check' ops env (For y (substitute [(x, Var y)] a)) t
+  | otherwise = do
+      let y = newName (map fst env) x
+      ((a, ta), s) <- check' ops ((y, Any) : env) (substitute [(x, Var y)] a) t
+      Right ((for' [y] a, t), s `compose` [(y, Any)])
+check' ops env a (For x t)
+  | x `occurs` a = do
+      let y = newName (freeVars (And a t)) x
+      check' ops env (For y a) (substitute [(x, Var y)] t)
+  | otherwise = check' ops env (For x a) t
 check' ops env (Var x) t = case lookup x env of
   Just (Var x') | x == x' -> Right ((Var x, t), [(x, Ann (Var x) t)])
   Just (Ann (Var x') ty) | x == x' -> do
