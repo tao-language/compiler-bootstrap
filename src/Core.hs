@@ -29,13 +29,13 @@ data Expr
   | NumT
   | Int Int
   | Num Double
-  | Tag String Expr
   | Var String
-  | And Expr Expr
-  | Or Expr Expr
-  | Ann Expr Type
+  | Tag String Expr
   | For String Expr
   | Fix String Expr
+  | Ann Expr Type
+  | And Expr Expr
+  | Or Expr Expr
   | Fun Expr Expr
   | App Expr Expr
   | Call String [Expr]
@@ -1364,284 +1364,6 @@ findLocation = \case
   Meta _ a -> findLocation a
   _ -> Nothing
 
-unify :: Ops -> Env -> Expr -> Expr -> Either (Error Expr) [(Expr, Substitution)]
-unify ops env a b = case (a, b) of
-  (Ann a ta, Ann b tb) -> do
-    unify2 ops env Ann (a, b) (ta, tb)
-  (Ann a _, b) -> unify ops env a b
-  (a, Ann b _) -> unify ops env a b
-  (a, Meta m b) | not (isErr (Meta m b)) -> do
-    ats <- unify ops env a b
-    Right [(Meta m a, s) | (a, s) <- ats]
-  (Meta m a, b) | not (isErr (Meta m a)) -> do
-    ats <- unify ops env a b
-    Right [(Meta m a, s) | (a, s) <- ats]
-  (a, Any) -> Right [(a, [])]
-  (Any, b) -> Right [(b, [])]
-  (Unit, Unit) -> Right [(Unit, [])]
-  (IntT, IntT) -> Right [(IntT, [])]
-  (Int _, IntT) -> Right [(IntT, [])]
-  (IntT, Int _) -> Right [(IntT, [])]
-  (NumT, NumT) -> Right [(NumT, [])]
-  (Num _, NumT) -> Right [(NumT, [])]
-  (NumT, Num _) -> Right [(NumT, [])]
-  (Int i, Int i') | i == i' -> Right [(Int i, [])]
-  (Num n, Num n') | n == n' -> Right [(Num n, [])]
-  (Or a1 a2, b) -> case (unify ops env a1 b, unify ops env a2 b) of
-    (Right alts1, Right alts2) -> Right (alts1 ++ alts2)
-    (Right alts, Left _) -> Right alts
-    (Left _, Right alts) -> Right alts
-    (Left _, Left _) -> Left (typeMismatch a b)
-  (a, Or b1 b2) -> case (unify ops env a b1, unify ops env a b2) of
-    (Right alts1, Right alts2) -> Right (alts1 ++ alts2)
-    (Right alts, Left _) -> Right alts
-    (Left _, Right alts) -> Right alts
-    (Left _, Left _) -> Left (typeMismatch a b)
-  (Var x, Var x') | x == x' -> Right [(Var x, [])]
-  (Var x, b) | x `occurs` b -> Left (occursError x b)
-  (Var x, b) -> Right [(b, [(x, b)])]
-  (a, Var x) -> Right [(a, [(x, a)])]
-  (Tag k a, Tag k' b) | k == k' -> do
-    cs <- unify ops env a b
-    Right [(Tag k c, s) | (c, s) <- cs]
-  (a, Tag k b) | Just def <- lookup k env -> do
-    let x = newName ((k ++ "$") : map fst env) (k ++ "$")
-    defs <- unify ops env def (Fun b (Fun a (Var x)))
-    Right
-      [ (eval ops (Let (s `compose` env) (Var x)), s `compose` [(x, Var x)])
-      | (_, s) <- defs
-      ]
-  (Tag k a, b) | Just def <- lookup k env -> do
-    let x = newName ((k ++ "$") : map fst env) (k ++ "$")
-    defs <- unify ops env (Fun a (Fun b (Var x))) def
-    Right
-      [ (eval ops (Let (s `compose` env) (Var x)), s `compose` [(x, Var x)])
-      | (_, s) <- defs
-      ]
-  (And a1 b1, And a2 b2) -> do
-    unify2 ops env And (a1, a2) (b1, b2)
-  (a, For x b) -> do
-    let (b', s1) = instantiate (map fst env) (For x b)
-    alts <- unify ops (s1 `compose` env) a b'
-    Right $ map (\(c, s2) -> (c, s2 `compose` s1)) alts
-  (For x a, b) -> do
-    let (a', s1) = instantiate (map fst env) (For x a)
-    alts <- unify ops (s1 `compose` env) a' b
-    Right $ map (\(c, s2) -> (c, s2 `compose` s1)) alts
-  (Fix _ a, b) -> unify ops env a b
-  (a, Fix _ b) -> unify ops env a b
-  (Fun a1 b1, Fun a2 b2) -> do
-    unify2 ops env (flip Fun) (b1, b2) (a1, a2)
-  (Call op args, Call op' args') | op == op' -> do
-    alts <- unifyAll ops env args args'
-    Right $ map (first $ Call op) alts
-  (a, b) -> Left (typeMismatch a b)
-
-unify2 :: Ops -> Env -> (Expr -> Expr -> Expr) -> (Expr, Expr) -> (Expr, Expr) -> Either (Error Expr) [(Expr, Substitution)]
-unify2 ops env f (a1, a2) (b1, b2) = do
-  ats <- unify ops env a1 a2
-  Right
-    [ (f (substitute s2 a) b, s2 `compose` s1)
-    | (a, s1) <- ats,
-      (b, s2) <- fromRight [] $ unify ops (s1 `compose` env) (substitute s1 b1) (substitute s1 b2)
-    ]
-
-unifyAll :: Ops -> Env -> [Expr] -> [Expr] -> Either (Error Expr) [([Expr], Substitution)]
-unifyAll ops env (a : bs) (a' : bs') = do
-  ats <- unify ops env a a'
-  Right
-    [ (c : cs, s2 `compose` s1)
-    | (c, s1) <- ats,
-      (cs, s2) <- fromRight [] $ unifyAll ops env (map (substitute s1) bs) (map (substitute s1) bs')
-    ]
-unifyAll ops env _ _ = error $ show "unifyAll size mismatch"
-
--- collapse :: Ops -> Env -> [Expr] -> Either (Error Expr) [(Expr, Substitution)]
--- collapse ops env [] = error "collapse: empty list"
--- collapse ops env [a] = Right [(a, [])]
--- collapse ops env (a : bs) = do
---   Right
---     [ (c, s2 `compose` s1)
---     | (b, s1) <- fromRight [] $ collapse ops env bs,
---       (c, s2) <- fromRight [] $ unify ops (s1 `compose` env) (substitute s1 a) b
---     ]
-
-infer :: Ops -> Env -> Expr -> Either (Error Expr) [((Expr, Type), Substitution)]
--- infer _ _ a | trace (">> infer[" ++ showCtr a ++ "] " ++ show (dropLet a)) False = undefined
-infer _ env Any = do
-  let y = newName ("_" : map fst env) "_"
-  Right [((Any, Var y), [(y, Var y)])]
-infer _ _ Unit = Right [((Unit, Unit), [])]
-infer _ _ IntT = Right [((IntT, IntT), [])]
-infer _ _ NumT = Right [((NumT, NumT), [])]
-infer _ _ (Int i) = Right [((Int i, IntT), [])]
-infer _ _ (Num n) = Right [((Num n, NumT), [])]
-infer ops env (Tag k a) = do
-  ats <- infer ops env a
-  Right [((Tag k a, Tag k t), s) | ((a, t), s) <- ats]
-infer ops env (Var x) = case lookup x env of
-  Just (Var x') | x == x' -> do
-    let y = newName (map fst env) (x ++ "T")
-    Right [((Var x, Var y), [(y, Var y), (x, Ann (Var x) (Var y))])]
-  Just (Ann (Var x') ty) | x == x' -> Right [((Var x, ty), [])]
-  Just a -> do
-    ats <- infer ops env a
-    (Right . nubBy (\a b -> fst a == fst b))
-      [((Var x, t), s) | ((_, t), s) <- ats]
-  Nothing -> Left (undefinedVar x)
-infer ops env (Ann a t) = check ops env a t
-infer ops env (And a b) = do
-  abts <- infer2 ops env a b
-  Right
-    [ ((And a b, And ta tb), s)
-    | ((a, ta), (b, tb), s) <- abts
-    ]
-infer ops env (Or a b) = do
-  let alts1 = fromRight [] $ infer ops env a
-  let alts2 = fromRight [] $ infer ops env b
-  Right (alts1 ++ alts2)
-infer ops env (For x a) = do
-  let y = newName (map fst env) x
-  ats <- infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
-  Right [((for' [y] a, t), s `compose` [(y, Var y)]) | ((a, t), s) <- ats]
-infer ops env (Fix x a) = do
-  let y = newName (map fst env) x
-  ats <- infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
-  Right [((fix' [y] a, t), s `compose` [(y, Var y)]) | ((a, t), s) <- ats]
-infer ops env (Fun a b) = do
-  abts <- infer2 ops env a b
-  Right
-    [ ((for' xs $ Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
-    | ((a, ta), (b, tb), s) <- abts,
-      let xs = freeVars (Fun ta tb)
-    ]
-infer ops env (App a b) = do
-  let funAlts :: Expr -> [(Expr, Expr, Substitution)]
-      funAlts (Var x) = do
-        let x1 = newName ((x ++ "$") : map fst env) (x ++ "$")
-        let x2 = newName ((x ++ "$") : x1 : map fst env) (x ++ "$")
-        [(Var x1, Var x2, [(x1, Var x1), (x2, Var x2)])]
-      funAlts (Fun a b) = [(a, b, [])]
-      funAlts (Or a b) = funAlts a ++ funAlts b
-      funAlts (Ann a _) = funAlts a
-      funAlts (Meta _ a) = funAlts a
-      funAlts _ = []
-  abts <- infer2 ops env a b
-  Right
-    [ (substitute s (App a (Ann b t1), substitute s t2), s)
-    | ((a, ta), (b, tb), s1) <- abts,
-      (t1, t2, s2) <- funAlts ta,
-      (_, s3) <- fromRight [] $ unify ops (s2 `compose` s1 `compose` env) t1 (substitute s1 tb),
-      let s = s3 `compose` s2 `compose` s1
-    ]
-infer ops env (Let defs a) = do
-  ats <- infer ops (defs ++ env) a
-  Right [((Let defs a, t), s) | ((a, t), s) <- ats]
-infer ops env (Call op args) = do
-  let x = newName ("$" : map fst env) "$"
-  Right
-    [ ((Call op (map (uncurry Ann) args), substitute s (Var x)), s `compose` [(x, Var x)])
-    | (args, s) <- fromRight [] $ inferAll ops ((x, Var x) : env) args
-    ]
--- infer _ _ a | isErr a = ((a, Err), [])
-infer ops env (Meta m a) = do
-  ats <- infer ops env a
-  Right [((Meta m a, t), s) | ((a, t), s) <- ats]
-infer _ _ Err = Right [((Err, Err), [])]
-
-infer2 :: Ops -> Env -> Expr -> Expr -> Either (Error Expr) [((Expr, Type), (Expr, Type), Substitution)]
-infer2 ops env a b = do
-  ats <- infer ops env a
-  Right
-    [ (substitute s2 at, bt, s2 `compose` s1)
-    | (at, s1) <- ats,
-      (bt, s2) <- fromRight [] $ infer ops (s1 `compose` env) (substitute s1 b)
-    ]
-
-inferAll :: Ops -> Env -> [Expr] -> Either (Error Expr) [([(Expr, Type)], Substitution)]
-inferAll _ _ [] = Right [([], [])]
-inferAll ops env (a : bs) = do
-  ats <- infer ops env a
-  Right
-    [ (substitute s2 at : bts, s2 `compose` s1)
-    | (at, s1) <- ats,
-      (bts, s2) <- fromRight [] $ inferAll ops (s1 `compose` env) (substitute s1 bs)
-    ]
-
-check :: Ops -> Env -> Expr -> Type -> Either (Error Expr) [((Expr, Type), Substitution)]
--- check _ _ a b | trace (">> check[" ++ showCtr a ++ ":" ++ showCtr b ++ "] " ++ show (dropLet a, dropLet b)) False = undefined
-check ops env a Any = infer ops env a
-check ops env (Meta m a) t = do
-  ats <- check ops env a t
-  Right [((Meta m a, t), s) | ((a, t), s) <- ats]
-check ops env a (Meta m t) = do
-  ats <- check ops env a t
-  Right [((a, Meta m t), s) | ((a, t), s) <- ats]
-check ops env (For x a) t = do
-  let y = newName (freeVars t) x
-  infer ops env (For y (Ann (substitute [(x, Var y)] a) t))
-check ops env a (For x t) = do
-  let y = newName (freeVars a) x
-  infer ops env (For y (Ann a (substitute [(x, Var y)] t)))
-check ops env (Var x) t = case lookup x env of
-  Just (Var x') | x == x' -> Right [((Var x, t), [(x, Ann (Var x) t)])]
-  Just (Ann (Var x') ty) | x == x' -> do
-    Right [((Var x, ty), [])]
-  Just a -> do
-    ats <- check ops env a t
-    Right [((Var x, ta), s) | ((_, ta), s) <- ats]
-  Nothing -> Left (undefinedVar x)
-check ops env (Or a b) t = do
-  -- inspect2' "check" env (Or a b) t $ do
-  case check ops env a t of
-    Left _ -> check ops env b t
-    Right [] -> check ops env b t
-    Right ats -> do
-      Right
-        [ ((Or (substitute s2 a) b, t), s2 `compose` s1)
-        | ((a, t), s1) <- ats,
-          ((b, t), s2) <- fromRight [] $ check ops env b t
-        ]
-check ops env (And a b) (And ta tb) = do
-  abts <- check2 ops env (a, ta) (b, tb)
-  Right
-    [ ((And a b, And ta tb), s)
-    | ((a, ta), (b, tb), s) <- abts
-    ]
-check ops env (Fun a b) (Fun ta tb) = do
-  -- inspect2' "check" env (Fun a b) (Fun ta tb) $ do
-  abts <- check2 ops env (a, ta) (b, tb)
-  Right
-    [ ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
-    | ((a, ta), (b, tb), s) <- abts
-    ]
-check ops env (App a b) t = do
-  -- inspect2' "check" env (App a b) t $ do
-  bts <- infer ops env b
-  Right
-    [ ((App a (substitute s2 $ Ann b tb), substitute s t), s)
-    | ((b, tb), s1) <- bts,
-      ((a, _), s2) <- fromRight [] $ check ops (s1 `compose` env) (substitute s1 a) (Fun tb (substitute s1 t)),
-      let s = s2 `compose` s1
-    ]
-check ops env a t = do
-  ats <- infer ops env a
-  Right
-    [ ((substitute s2 a, substitute s t), s)
-    | ((a, ta), s1) <- ats,
-      (t, s2) <- fromRight [] $ unify ops (s1 `compose` env) ta (substitute s1 t),
-      let s = s2 `compose` s1
-    ]
-
-check2 :: Ops -> Env -> (Expr, Type) -> (Expr, Type) -> Either (Error Expr) [((Expr, Type), (Expr, Type), Substitution)]
-check2 ops env (a, ta) (b, tb) = do
-  ats <- check ops env a ta
-  Right
-    [ (substitute s2 at, bt, s2 `compose` s1)
-    | (at, s1) <- ats,
-      (bt, s2) <- fromRight [] $ check ops (s1 `compose` env) (substitute s1 b) (substitute s1 tb)
-    ]
-
 instantiate :: [String] -> Expr -> (Expr, Substitution)
 instantiate vars (For x a) | x `occurs` a = do
   let y = newName vars x
@@ -1746,7 +1468,7 @@ class Merge a where
 instance Merge Expr where
   merge :: Ops -> Env -> Expr -> Expr -> Expr
   merge ops env a a' | a == a' = a
-  merge ops env a b = case unify' ops env a b of
+  merge ops env a b = case unify ops env a b of
     Right (c, []) -> c
     _ -> Or a b
 
@@ -1757,17 +1479,17 @@ instance Merge Substitution where
     Just (b, s2) -> (x, Var x) : merge ops env s1 s2
     Nothing -> (x, a) : merge ops env s1 s2
 
-unify' :: Ops -> Env -> Expr -> Expr -> Either (Error Expr) (Expr, Substitution)
-unify' ops env a b = case (a, b) of
+unify :: Ops -> Env -> Expr -> Expr -> Either (Error Expr) (Expr, Substitution)
+unify ops env a b = case (a, b) of
   (Ann a ta, Ann b tb) -> do
-    unify2' ops env Ann (a, b) (ta, tb)
-  (Ann a _, b) -> unify' ops env a b
-  (a, Ann b _) -> unify' ops env a b
+    unify2 ops env Ann (a, b) (ta, tb)
+  (Ann a _, b) -> unify ops env a b
+  (a, Ann b _) -> unify ops env a b
   (a, Meta m b) | not (isErr (Meta m b)) -> do
-    (a, s) <- unify' ops env a b
+    (a, s) <- unify ops env a b
     Right (Meta m a, s)
   (Meta m a, b) | not (isErr (Meta m a)) -> do
-    (a, s) <- unify' ops env a b
+    (a, s) <- unify ops env a b
     Right (Meta m a, s)
   (a, Any) -> Right (a, [])
   (Any, b) -> Right (b, [])
@@ -1776,12 +1498,12 @@ unify' ops env a b = case (a, b) of
   (NumT, NumT) -> Right (NumT, [])
   (Int i, Int i') | i == i' -> Right (Int i, [])
   (Num n, Num n') | n == n' -> Right (Num n, [])
-  (Or a1 a2, b) -> case (unify' ops env a1 b, unify' ops env a2 b) of
+  (Or a1 a2, b) -> case (unify ops env a1 b, unify ops env a2 b) of
     (Right (a, s1), Right (b, s2)) -> Right (merge ops env a b, [])
     (Right ts, Left _) -> Right ts
     (Left _, Right ts) -> Right ts
     (Left _, Left _) -> Left (typeMismatch a b)
-  (a, Or b1 b2) -> case (unify' ops env a b1, unify' ops env a b2) of
+  (a, Or b1 b2) -> case (unify ops env a b1, unify ops env a b2) of
     (Right (a, s1), Right (b, s2)) -> Right (merge ops env a b, [])
     (Right ts, Left _) -> Right ts
     (Left _, Right ts) -> Right ts
@@ -1789,45 +1511,41 @@ unify' ops env a b = case (a, b) of
   (Var x, Var y) | x == y -> Right (Var x, [])
   (Var x, Var y) | isGeneric x && isUnbound y -> Right (a, [(y, a)])
   (Var x, Var y) -> Right (b, [(x, b)])
-  -- (Var x, Var y) | isGeneric x && isGeneric y -> Right (b, [(x, b)])
-  -- (Var x, Var y) | isUnbound x && isGeneric y -> Right (b, [(x, b)])
-  -- (Var x, Var y) | isUnbound x && isUnbound y -> Right (b, [(x, b)])
   (Var x, b) | x `occurs` b -> Left (occursError x b)
   (Var x, b) | isGeneric x -> Right (a, [])
   (Var x, b) -> Right (b, [(x, b)])
-  (a, Var x) -> unify' ops env (Var x) a
+  (a, Var x) -> unify ops env (Var x) a
   (Tag k a, Tag k' b) | k == k' -> do
-    (c, s) <- unify' ops env a b
+    (c, s) <- unify ops env a b
     Right (Tag k c, s)
   (a, Tag k b) | Just def <- lookup k env -> do
     let x = newName ((k ++ "$") : map fst env) (k ++ "$")
-    (_, s) <- unify' ops ((x, Any) : env) def (Fun b (Fun a (Var x)))
+    (_, s) <- unify ops ((x, Any) : env) def (Fun b (Fun a (Var x)))
     let c = eval ops (Let (s `compose` env) (Var x))
     Right (c, s `compose` [(x, Any)])
   (Tag k a, b) | Just def <- lookup k env -> do
     let x = newName ((k ++ "$") : map fst env) (k ++ "$")
-    (_, s) <- unify' ops ((x, Any) : env) (Fun a (Fun b (Var x))) def
+    (_, s) <- unify ops ((x, Any) : env) (Fun a (Fun b (Var x))) def
     let c = eval ops (Let (s `compose` env) (Var x))
     Right (c, s `compose` [(x, Any)])
   (And a1 b1, And a2 b2) -> do
-    unify2' ops env And (a1, a2) (b1, b2)
+    unify2 ops env And (a1, a2) (b1, b2)
   (a, For x b) -> do
     let y = newName (freeVars a) x
-    (c, s) <- unify' ops ((y, Var y) : env) a (substitute [(x, Var y)] b)
-    -- Right (for' [y] c, s `compose` [(y, Var y)])
-    Right (for' [x] (substitute [(y, Var x)] c), s)
+    (c, s) <- unify ops ((y, Var y) : env) a (substitute [(x, Var y)] b)
+    Right (for' [x] (substitute [(y, Var x)] c), s `compose` [(y, Var y)])
   (For x a, b) -> do
     let y = newName (freeVars b) x
-    (c, s) <- unify' ops ((y, Var y) : env) (substitute [(x, Var y)] a) b
-    -- Right (for' [y] c, s `compose` [(y, Var y)])
-    Right (for' [x] (substitute [(y, Var x)] c), s)
-  (Fix _ a, b) -> unify' ops env a b
-  (a, Fix _ b) -> unify' ops env a b
+    (c, s) <- unify ops ((y, Var y) : env) (substitute [(x, Var y)] a) b
+    Right (for' [x] (substitute [(y, Var x)] c), s `compose` [(y, Var y)])
+  (Fix _ a, b) -> unify ops env a b
+  (a, Fix _ b) -> unify ops env a b
   (Fun a1 b1, Fun a2 b2) -> do
-    unify2' ops env (flip Fun) (b1, b2) (a1, a2)
+    unify2 ops env (flip Fun) (b1, b2) (a1, a2)
   (Call op args, Call op' args') | op == op' -> do
-    (cs, s) <- unifyAll' ops env args args'
+    (cs, s) <- unifyAll ops env args args'
     Right (Call op cs, s)
+  (Err, Err) -> Right (Err, [])
   (a, b) -> Left (typeMismatch a b)
   where
     isGeneric x = case lookup x env of
@@ -1837,99 +1555,99 @@ unify' ops env a b = case (a, b) of
       Just Any -> True
       _ -> False
 
-unify2' :: Ops -> Env -> (Expr -> Expr -> Expr) -> (Expr, Expr) -> (Expr, Expr) -> Either (Error Expr) (Expr, Substitution)
-unify2' ops env f (a1, a2) (b1, b2) = do
-  (a, s1) <- unify' ops env a1 a2
-  (b, s2) <- unify' ops (s1 `compose` env) (substitute s1 b1) (substitute s1 b2)
+unify2 :: Ops -> Env -> (Expr -> Expr -> Expr) -> (Expr, Expr) -> (Expr, Expr) -> Either (Error Expr) (Expr, Substitution)
+unify2 ops env f (a1, a2) (b1, b2) = do
+  (a, s1) <- unify ops env a1 a2
+  (b, s2) <- unify ops (s1 `compose` env) (substitute s1 b1) (substitute s1 b2)
   Right (f (substitute s2 a) b, s2 `compose` s1)
 
-unifyAll' :: Ops -> Env -> [Expr] -> [Expr] -> Either (Error Expr) ([Expr], Substitution)
-unifyAll' ops env (a : bs) (a' : bs') = do
-  (c, s1) <- unify' ops env a a'
-  (cs, s2) <- unifyAll' ops env (map (substitute s1) bs) (map (substitute s1) bs')
+unifyAll :: Ops -> Env -> [Expr] -> [Expr] -> Either (Error Expr) ([Expr], Substitution)
+unifyAll ops env (a : bs) (a' : bs') = do
+  (c, s1) <- unify ops env a a'
+  (cs, s2) <- unifyAll ops env (map (substitute s1) bs) (map (substitute s1) bs')
   Right (c : cs, s2 `compose` s1)
-unifyAll' ops env _ _ = error $ show "unifyAll' size mismatch"
+unifyAll ops env _ _ = error $ show "unifyAll size mismatch"
 
-infer' :: Ops -> Env -> Expr -> Either (Error Expr) ((Expr, Type), Substitution)
-infer' _ env Any = do
+infer :: Ops -> Env -> Expr -> Either (Error Expr) ((Expr, Type), Substitution)
+infer _ env Any = do
   let y = newName ("_" : map fst env) "_"
   Right ((Any, Var y), [(y, Any)])
-infer' _ _ Unit = Right ((Unit, Unit), [])
-infer' _ _ IntT = Right ((IntT, IntT), [])
-infer' _ _ NumT = Right ((NumT, NumT), [])
-infer' _ _ (Int i) = Right ((Int i, IntT), [])
-infer' _ _ (Num n) = Right ((Num n, NumT), [])
-infer' ops env (Tag k a) = do
-  ((a, t), s) <- infer' ops env a
-  Right ((Tag k a, Tag k t), s)
-infer' ops env (Var x) = case lookup x env of
+infer _ _ Unit = Right ((Unit, Unit), [])
+infer _ _ IntT = Right ((IntT, IntT), [])
+infer _ _ NumT = Right ((NumT, NumT), [])
+infer _ _ (Int i) = Right ((Int i, IntT), [])
+infer _ _ (Num n) = Right ((Num n, NumT), [])
+infer ops env (Var x) = case lookup x env of
   Just Any -> do
     let y = newName (map fst env) (x ++ "T")
     Right ((Var x, Var y), [(y, Any), (x, Ann (Var x) (Var y))])
   Just (Var x') | x == x' -> do
-    let y = newName (map fst env) (x ++ "G")
+    let y = newName (map fst env) (x ++ "T")
     Right ((Var x, Var y), [(y, Var y), (x, Ann (Var x) (Var y))])
   Just (Ann (Var x') ty) | x == x' -> Right ((Var x, ty), [])
   Just a -> do
-    ((_, t), s) <- infer' ops env a
+    ((_, t), s) <- infer ops env a
     Right ((Var x, t), s)
   Nothing -> Left (undefinedVar x)
-infer' ops env (Ann a t) = check' ops env a t
-infer' ops env (And a b) = do
-  ((a, ta), (b, tb), s) <- infer2' ops env a b
+infer ops env (Tag k a) = do
+  ((a, t), s) <- infer ops env a
+  Right ((Tag k a, Tag k t), s)
+infer ops env (For x a) = do
+  let y = newName (map fst env) x
+  ((a, t), s) <- infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
+  let xs = fromMaybe [y] (fmap freeVars (lookup y s))
+  Right ((for' xs a, t), s `compose` [(y, Var y)])
+infer ops env (Fix x a) = do
+  let y = newName (map fst env) x
+  ((a, t), s) <- infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
+  Right ((fix' [y] a, t), s `compose` [(y, Var y)])
+infer ops env (Ann a t) = check ops env a t
+infer ops env (And a b) = do
+  ((a, ta), (b, tb), s) <- infer2 ops env a b
   Right ((And a b, And ta tb), s)
-infer' ops env (Or a b) = case (infer' ops env a, infer' ops env b) of
+infer ops env (Or a b) = case (infer ops env a, infer ops env b) of
   (Right ((a, ta), s1), Right ((b, tb), s2)) -> do
     Right ((merge ops env a b, merge ops env ta tb), merge ops env s1 s2)
   (Right ats, Left _) -> Right ats
   (Left _, Right bts) -> Right bts
-  (Left e1, Left e2) -> Left e1
-infer' ops env (For x a) = do
-  let y = newName (map fst env) x
-  ((a, t), s) <- infer' ops ((y, Var y) : env) (substitute [(x, Var y)] a)
-  let xs = fromMaybe [y] (fmap freeVars (lookup y s))
-  Right ((for' xs a, t), s `compose` [(y, Var y)])
-infer' ops env (Fix x a) = do
-  let y = newName (map fst env) x
-  ((a, t), s) <- infer' ops ((y, Var y) : env) (substitute [(x, Var y)] a)
-  Right ((fix' [y] a, t), s `compose` [(y, Var y)])
-infer' ops env (Fun a b) = do
-  ((b, tb), (a, ta), s) <- infer2' ops env b a
+  (Left e1, Left e2) -> Left e2
+infer ops env (Fun a b) = do
+  ((b, tb), (a, ta), s) <- infer2 ops env b a
   Right ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
-infer' ops env (App (Meta m a) b) = do
-  infer' ops env (App a b)
-infer' ops env (App (For x a) b) = do
+infer ops env (App (Meta m a) b) = do
+  infer ops env (App a b)
+infer ops env (App (For x a) b) = do
   let y = newName (map fst env) x
-  ((a, t), s) <- infer' ops ((y, Any) : env) (App (substitute [(x, Var y)] a) b)
-  Right ((a, t), s `compose` [(y, Any)])
-infer' ops env (App a b) = do
-  ((_, tb), s1) <- infer' ops env b
-  ((a, ta), s2) <- check' ops (s1 `compose` env) a (Fun tb Any)
+  ((c, t), s) <- infer ops ((y, Any) : env) (App (substitute [(x, Var y)] a) b)
+  Right ((c, t), s `compose` [(y, Any)])
+infer ops env (App a b) = do
+  ((_, tb), s1) <- infer ops env b
+  ((a, ta), s2) <- check ops (s1 `compose` env) a (Fun tb Any)
   (t1, t2) <- case splitFun ops env ta of
     Just (t1, t2) -> Right (t1, t2)
     Nothing -> Left (notAFunction a ta)
   let s12 = s2 `compose` s1
-  ((b, tb), s3) <- check' ops (s12 `compose` env) (substitute s12 b) t1
+  ((b, tb), s3) <- check ops (s12 `compose` env) (substitute s12 b) t1
   Right ((App (substitute s3 a) (Ann b tb), substitute s3 t2), s3 `compose` s12)
--- infer' ops env (App a b) = do
+-- infer ops env (App a b) = do
 --   let x = newName ("$" : map fst env) "$"
---   ((b, tb), s1) <- infer' ops ((x, Var x) : env) b
+--   ((b, tb), s1) <- infer ops ((x, Var x) : env) b
 --   let (a', s2) = instantiate (x : map fst env) a
 --   let s = s2 `compose` s1 `compose` [(x, Var x)]
---   ((a', _), s3) <- check' ops (s `compose` env) a' (Fun tb (Var x))
+--   ((a', _), s3) <- check ops (s `compose` env) a' (Fun tb (Var x))
 --   let t = eval ops (Let (s3 `compose` s `compose` env) (Var x))
 --   Right ((substitute s3 $ App a' (Ann b tb), t), s3 `compose` s)
-infer' ops env (Let defs a) = do
-  ((a, t), s) <- infer' ops (defs ++ env) a
+infer ops env (Let defs a) = do
+  ((a, t), s) <- infer ops (defs ++ env) a
   Right ((Let defs a, t), s)
-infer' ops env (Call op args) = do
+infer ops env (Call op args) = do
   let x = newName ("$" : map fst env) "$"
-  (args, s) <- inferAll' ops ((x, Any) : env) args
+  (args, s) <- inferAll ops ((x, Any) : env) args
   Right ((Call op (map (uncurry Ann) args), substitute s (Var x)), s `compose` [(x, Any)])
-infer' ops env (Meta m a) = do
-  ((a, t), s) <- infer' ops env a
+infer ops env (Meta m a) = do
+  ((a, t), s) <- infer ops env a
   Right ((Meta m a, t), s)
-infer' _ _ Err = Right ((Err, Err), [])
+infer _ _ Err = Right ((Err, Err), [])
 
 splitFun :: Ops -> Env -> Expr -> Maybe (Expr, Expr)
 splitFun ops env = \case
@@ -1941,68 +1659,346 @@ splitFun ops env = \case
   Meta _ a -> splitFun ops env a
   t -> Nothing
 
-infer2' :: Ops -> Env -> Expr -> Expr -> Either (Error Expr) ((Expr, Type), (Expr, Type), Substitution)
-infer2' ops env a b = do
-  (at, s1) <- infer' ops env a
-  (bt, s2) <- infer' ops (s1 `compose` env) (substitute s1 b)
+infer2 :: Ops -> Env -> Expr -> Expr -> Either (Error Expr) ((Expr, Type), (Expr, Type), Substitution)
+infer2 ops env a b = do
+  (at, s1) <- infer ops env a
+  (bt, s2) <- infer ops (s1 `compose` env) (substitute s1 b)
   Right (substitute s2 at, bt, s2 `compose` s1)
 
-inferAll' :: Ops -> Env -> [Expr] -> Either (Error Expr) ([(Expr, Type)], Substitution)
-inferAll' _ _ [] = Right ([], [])
-inferAll' ops env (a : bs) = do
-  (at, s1) <- infer' ops env a
-  (bts, s2) <- inferAll' ops (s1 `compose` env) (substitute s1 bs)
+inferAll :: Ops -> Env -> [Expr] -> Either (Error Expr) ([(Expr, Type)], Substitution)
+inferAll _ _ [] = Right ([], [])
+inferAll ops env (a : bs) = do
+  (at, s1) <- infer ops env a
+  (bts, s2) <- inferAll ops (s1 `compose` env) (substitute s1 bs)
   Right (substitute s2 at : bts, s2 `compose` s1)
 
-check' :: Ops -> Env -> Expr -> Type -> Either (Error Expr) ((Expr, Type), Substitution)
-check' ops env a Any = infer' ops env a
-check' ops env (Meta m a) t = do
-  ((a, t), s) <- check' ops env a t
+check :: Ops -> Env -> Expr -> Type -> Either (Error Expr) ((Expr, Type), Substitution)
+check ops env a Any = infer ops env a
+check ops env (Meta m a) t = do
+  ((a, t), s) <- check ops env a t
   Right ((Meta m a, t), s)
-check' ops env a (Meta m t) = do
-  ((a, t), s) <- check' ops env a t
+check ops env a (Meta m t) = do
+  ((a, t), s) <- check ops env a t
   Right ((a, Meta m t), s)
-check' ops env (For x a) t
+check ops env (For x a) t
   | x `occurs` t = do
       let y = newName (freeVars (And a t)) x
-      check' ops env (For y (substitute [(x, Var y)] a)) t
+      check ops env (For y (substitute [(x, Var y)] a)) t
   | otherwise = do
       let y = newName (map fst env) x
-      ((a, ta), s) <- check' ops ((y, Any) : env) (substitute [(x, Var y)] a) t
+      ((a, ta), s) <- check ops ((y, Any) : env) (substitute [(x, Var y)] a) t
       Right ((for' [y] a, t), s `compose` [(y, Any)])
-check' ops env a (For x t)
+check ops env a (For x t)
   | x `occurs` a = do
       let y = newName (freeVars (And a t)) x
-      check' ops env (For y a) (substitute [(x, Var y)] t)
-  | otherwise = check' ops env (For x a) t
-check' ops env (Var x) t = case lookup x env of
+      check ops env (For y a) (substitute [(x, Var y)] t)
+  | otherwise = check ops env (For x a) t
+check ops env (Var x) t = case lookup x env of
   Just (Var x') | x == x' -> Right ((Var x, t), [(x, Ann (Var x) t)])
   Just (Ann (Var x') ty) | x == x' -> do
-    (t, s) <- unify' ops env ty t
+    (t, s) <- unify ops env ty t
     Right ((Var x, t), [(x, Ann (Var x) t)] `compose` s)
   Just a -> do
-    ((_, ta), s) <- check' ops env a t
+    ((_, ta), s) <- check ops env a t
     Right ((Var x, ta), s)
   Nothing -> Left (undefinedVar x)
-check' ops env (Or a b) t = case (check' ops env a t, check' ops env b t) of
+check ops env (Or a b) t = case (check ops env a t, check ops env b t) of
   (Right ((a, ta), s1), Right ((b, tb), s2)) -> do
     Right ((merge ops env a b, merge ops env ta tb), merge ops env s1 s2)
   (Right ats, Left _) -> Right ats
   (Left _, Right bts) -> Right bts
   (Left e1, Left e2) -> Left e1
-check' ops env (And a b) (And ta tb) = do
-  ((a, ta), (b, tb), s) <- check2' ops env (a, ta) (b, tb)
+check ops env (And a b) (And ta tb) = do
+  ((a, ta), (b, tb), s) <- check2 ops env (a, ta) (b, tb)
   Right ((And a b, And ta tb), s)
-check' ops env (Fun a b) (Fun ta tb) = do
-  ((b, tb), (a, ta), s) <- check2' ops env (b, tb) (a, ta)
+check ops env (Fun a b) (Fun ta tb) = do
+  ((b, tb), (a, ta), s) <- check2 ops env (b, tb) (a, ta)
   Right ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
-check' ops env a t = do
-  ((a, ta), s1) <- infer' ops env a
-  (t, s2) <- unify' ops (s1 `compose` env) ta (substitute s1 t)
+check ops env a t = do
+  ((a, ta), s1) <- infer ops env a
+  (t, s2) <- unify ops (s1 `compose` env) ta (substitute s1 t)
   Right ((substitute s2 a, t), s2 `compose` s1)
 
-check2' :: Ops -> Env -> (Expr, Type) -> (Expr, Type) -> Either (Error Expr) ((Expr, Type), (Expr, Type), Substitution)
-check2' ops env (a, ta) (b, tb) = do
-  (at, s1) <- check' ops env a ta
-  (bt, s2) <- check' ops (s1 `compose` env) (substitute s1 b) (substitute s1 tb)
+check2 :: Ops -> Env -> (Expr, Type) -> (Expr, Type) -> Either (Error Expr) ((Expr, Type), (Expr, Type), Substitution)
+check2 ops env (a, ta) (b, tb) = do
+  (at, s1) <- check ops env a ta
+  (bt, s2) <- check ops (s1 `compose` env) (substitute s1 b) (substitute s1 tb)
   Right (substitute s2 at, bt, s2 `compose` s1)
+
+-- unify :: Ops -> Env -> Expr -> Expr -> Either (Error Expr) [(Expr, Substitution)]
+-- unify ops env a b = case (a, b) of
+--   (Ann a ta, Ann b tb) -> do
+--     unify2 ops env Ann (a, b) (ta, tb)
+--   (Ann a _, b) -> unify ops env a b
+--   (a, Ann b _) -> unify ops env a b
+--   (a, Meta m b) | not (isErr (Meta m b)) -> do
+--     ats <- unify ops env a b
+--     Right [(Meta m a, s) | (a, s) <- ats]
+--   (Meta m a, b) | not (isErr (Meta m a)) -> do
+--     ats <- unify ops env a b
+--     Right [(Meta m a, s) | (a, s) <- ats]
+--   (a, Any) -> Right [(a, [])]
+--   (Any, b) -> Right [(b, [])]
+--   (Unit, Unit) -> Right [(Unit, [])]
+--   (IntT, IntT) -> Right [(IntT, [])]
+--   (Int _, IntT) -> Right [(IntT, [])]
+--   (IntT, Int _) -> Right [(IntT, [])]
+--   (NumT, NumT) -> Right [(NumT, [])]
+--   (Num _, NumT) -> Right [(NumT, [])]
+--   (NumT, Num _) -> Right [(NumT, [])]
+--   (Int i, Int i') | i == i' -> Right [(Int i, [])]
+--   (Num n, Num n') | n == n' -> Right [(Num n, [])]
+--   (Or a1 a2, b) -> case (unify ops env a1 b, unify ops env a2 b) of
+--     (Right alts1, Right alts2) -> Right (alts1 ++ alts2)
+--     (Right alts, Left _) -> Right alts
+--     (Left _, Right alts) -> Right alts
+--     (Left _, Left _) -> Left (typeMismatch a b)
+--   (a, Or b1 b2) -> case (unify ops env a b1, unify ops env a b2) of
+--     (Right alts1, Right alts2) -> Right (alts1 ++ alts2)
+--     (Right alts, Left _) -> Right alts
+--     (Left _, Right alts) -> Right alts
+--     (Left _, Left _) -> Left (typeMismatch a b)
+--   (Var x, Var x') | x == x' -> Right [(Var x, [])]
+--   (Var x, b) | x `occurs` b -> Left (occursError x b)
+--   (Var x, b) -> Right [(b, [(x, b)])]
+--   (a, Var x) -> Right [(a, [(x, a)])]
+--   (Tag k a, Tag k' b) | k == k' -> do
+--     cs <- unify ops env a b
+--     Right [(Tag k c, s) | (c, s) <- cs]
+--   (a, Tag k b) | Just def <- lookup k env -> do
+--     let x = newName ((k ++ "$") : map fst env) (k ++ "$")
+--     defs <- unify ops env def (Fun b (Fun a (Var x)))
+--     Right
+--       [ (eval ops (Let (s `compose` env) (Var x)), s `compose` [(x, Var x)])
+--       | (_, s) <- defs
+--       ]
+--   (Tag k a, b) | Just def <- lookup k env -> do
+--     let x = newName ((k ++ "$") : map fst env) (k ++ "$")
+--     defs <- unify ops env (Fun a (Fun b (Var x))) def
+--     Right
+--       [ (eval ops (Let (s `compose` env) (Var x)), s `compose` [(x, Var x)])
+--       | (_, s) <- defs
+--       ]
+--   (And a1 b1, And a2 b2) -> do
+--     unify2 ops env And (a1, a2) (b1, b2)
+--   (a, For x b) -> do
+--     let (b', s1) = instantiate (map fst env) (For x b)
+--     alts <- unify ops (s1 `compose` env) a b'
+--     Right $ map (\(c, s2) -> (c, s2 `compose` s1)) alts
+--   (For x a, b) -> do
+--     let (a', s1) = instantiate (map fst env) (For x a)
+--     alts <- unify ops (s1 `compose` env) a' b
+--     Right $ map (\(c, s2) -> (c, s2 `compose` s1)) alts
+--   (Fix _ a, b) -> unify ops env a b
+--   (a, Fix _ b) -> unify ops env a b
+--   (Fun a1 b1, Fun a2 b2) -> do
+--     unify2 ops env (flip Fun) (b1, b2) (a1, a2)
+--   (Call op args, Call op' args') | op == op' -> do
+--     alts <- unifyAll ops env args args'
+--     Right $ map (first $ Call op) alts
+--   (a, b) -> Left (typeMismatch a b)
+
+-- unify2 :: Ops -> Env -> (Expr -> Expr -> Expr) -> (Expr, Expr) -> (Expr, Expr) -> Either (Error Expr) [(Expr, Substitution)]
+-- unify2 ops env f (a1, a2) (b1, b2) = do
+--   ats <- unify ops env a1 a2
+--   Right
+--     [ (f (substitute s2 a) b, s2 `compose` s1)
+--     | (a, s1) <- ats,
+--       (b, s2) <- fromRight [] $ unify ops (s1 `compose` env) (substitute s1 b1) (substitute s1 b2)
+--     ]
+
+-- unifyAll :: Ops -> Env -> [Expr] -> [Expr] -> Either (Error Expr) [([Expr], Substitution)]
+-- unifyAll ops env (a : bs) (a' : bs') = do
+--   ats <- unify ops env a a'
+--   Right
+--     [ (c : cs, s2 `compose` s1)
+--     | (c, s1) <- ats,
+--       (cs, s2) <- fromRight [] $ unifyAll ops env (map (substitute s1) bs) (map (substitute s1) bs')
+--     ]
+-- unifyAll ops env _ _ = error $ show "unifyAll size mismatch"
+
+-- -- collapse :: Ops -> Env -> [Expr] -> Either (Error Expr) [(Expr, Substitution)]
+-- -- collapse ops env [] = error "collapse: empty list"
+-- -- collapse ops env [a] = Right [(a, [])]
+-- -- collapse ops env (a : bs) = do
+-- --   Right
+-- --     [ (c, s2 `compose` s1)
+-- --     | (b, s1) <- fromRight [] $ collapse ops env bs,
+-- --       (c, s2) <- fromRight [] $ unify ops (s1 `compose` env) (substitute s1 a) b
+-- --     ]
+
+-- infer :: Ops -> Env -> Expr -> Either (Error Expr) [((Expr, Type), Substitution)]
+-- -- infer _ _ a | trace (">> infer[" ++ showCtr a ++ "] " ++ show (dropLet a)) False = undefined
+-- infer _ env Any = do
+--   let y = newName ("_" : map fst env) "_"
+--   Right [((Any, Var y), [(y, Var y)])]
+-- infer _ _ Unit = Right [((Unit, Unit), [])]
+-- infer _ _ IntT = Right [((IntT, IntT), [])]
+-- infer _ _ NumT = Right [((NumT, NumT), [])]
+-- infer _ _ (Int i) = Right [((Int i, IntT), [])]
+-- infer _ _ (Num n) = Right [((Num n, NumT), [])]
+-- infer ops env (Tag k a) = do
+--   ats <- infer ops env a
+--   Right [((Tag k a, Tag k t), s) | ((a, t), s) <- ats]
+-- infer ops env (Var x) = case lookup x env of
+--   Just (Var x') | x == x' -> do
+--     let y = newName (map fst env) (x ++ "T")
+--     Right [((Var x, Var y), [(y, Var y), (x, Ann (Var x) (Var y))])]
+--   Just (Ann (Var x') ty) | x == x' -> Right [((Var x, ty), [])]
+--   Just a -> do
+--     ats <- infer ops env a
+--     (Right . nubBy (\a b -> fst a == fst b))
+--       [((Var x, t), s) | ((_, t), s) <- ats]
+--   Nothing -> Left (undefinedVar x)
+-- infer ops env (Ann a t) = check ops env a t
+-- infer ops env (And a b) = do
+--   abts <- infer2 ops env a b
+--   Right
+--     [ ((And a b, And ta tb), s)
+--     | ((a, ta), (b, tb), s) <- abts
+--     ]
+-- infer ops env (Or a b) = do
+--   let alts1 = fromRight [] $ infer ops env a
+--   let alts2 = fromRight [] $ infer ops env b
+--   Right (alts1 ++ alts2)
+-- infer ops env (For x a) = do
+--   let y = newName (map fst env) x
+--   ats <- infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
+--   Right [((for' [y] a, t), s `compose` [(y, Var y)]) | ((a, t), s) <- ats]
+-- infer ops env (Fix x a) = do
+--   let y = newName (map fst env) x
+--   ats <- infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
+--   Right [((fix' [y] a, t), s `compose` [(y, Var y)]) | ((a, t), s) <- ats]
+-- infer ops env (Fun a b) = do
+--   abts <- infer2 ops env a b
+--   Right
+--     [ ((for' xs $ Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
+--     | ((a, ta), (b, tb), s) <- abts,
+--       let xs = freeVars (Fun ta tb)
+--     ]
+-- infer ops env (App a b) = do
+--   let funAlts :: Expr -> [(Expr, Expr, Substitution)]
+--       funAlts (Var x) = do
+--         let x1 = newName ((x ++ "$") : map fst env) (x ++ "$")
+--         let x2 = newName ((x ++ "$") : x1 : map fst env) (x ++ "$")
+--         [(Var x1, Var x2, [(x1, Var x1), (x2, Var x2)])]
+--       funAlts (Fun a b) = [(a, b, [])]
+--       funAlts (Or a b) = funAlts a ++ funAlts b
+--       funAlts (Ann a _) = funAlts a
+--       funAlts (Meta _ a) = funAlts a
+--       funAlts _ = []
+--   abts <- infer2 ops env a b
+--   Right
+--     [ (substitute s (App a (Ann b t1), substitute s t2), s)
+--     | ((a, ta), (b, tb), s1) <- abts,
+--       (t1, t2, s2) <- funAlts ta,
+--       (_, s3) <- fromRight [] $ unify ops (s2 `compose` s1 `compose` env) t1 (substitute s1 tb),
+--       let s = s3 `compose` s2 `compose` s1
+--     ]
+-- infer ops env (Let defs a) = do
+--   ats <- infer ops (defs ++ env) a
+--   Right [((Let defs a, t), s) | ((a, t), s) <- ats]
+-- infer ops env (Call op args) = do
+--   let x = newName ("$" : map fst env) "$"
+--   Right
+--     [ ((Call op (map (uncurry Ann) args), substitute s (Var x)), s `compose` [(x, Var x)])
+--     | (args, s) <- fromRight [] $ inferAll ops ((x, Var x) : env) args
+--     ]
+-- -- infer _ _ a | isErr a = ((a, Err), [])
+-- infer ops env (Meta m a) = do
+--   ats <- infer ops env a
+--   Right [((Meta m a, t), s) | ((a, t), s) <- ats]
+-- infer _ _ Err = Right [((Err, Err), [])]
+
+-- infer2 :: Ops -> Env -> Expr -> Expr -> Either (Error Expr) [((Expr, Type), (Expr, Type), Substitution)]
+-- infer2 ops env a b = do
+--   ats <- infer ops env a
+--   Right
+--     [ (substitute s2 at, bt, s2 `compose` s1)
+--     | (at, s1) <- ats,
+--       (bt, s2) <- fromRight [] $ infer ops (s1 `compose` env) (substitute s1 b)
+--     ]
+
+-- inferAll :: Ops -> Env -> [Expr] -> Either (Error Expr) [([(Expr, Type)], Substitution)]
+-- inferAll _ _ [] = Right [([], [])]
+-- inferAll ops env (a : bs) = do
+--   ats <- infer ops env a
+--   Right
+--     [ (substitute s2 at : bts, s2 `compose` s1)
+--     | (at, s1) <- ats,
+--       (bts, s2) <- fromRight [] $ inferAll ops (s1 `compose` env) (substitute s1 bs)
+--     ]
+
+-- check :: Ops -> Env -> Expr -> Type -> Either (Error Expr) [((Expr, Type), Substitution)]
+-- -- check _ _ a b | trace (">> check[" ++ showCtr a ++ ":" ++ showCtr b ++ "] " ++ show (dropLet a, dropLet b)) False = undefined
+-- check ops env a Any = infer ops env a
+-- check ops env (Meta m a) t = do
+--   ats <- check ops env a t
+--   Right [((Meta m a, t), s) | ((a, t), s) <- ats]
+-- check ops env a (Meta m t) = do
+--   ats <- check ops env a t
+--   Right [((a, Meta m t), s) | ((a, t), s) <- ats]
+-- check ops env (For x a) t = do
+--   let y = newName (freeVars t) x
+--   infer ops env (For y (Ann (substitute [(x, Var y)] a) t))
+-- check ops env a (For x t) = do
+--   let y = newName (freeVars a) x
+--   infer ops env (For y (Ann a (substitute [(x, Var y)] t)))
+-- check ops env (Var x) t = case lookup x env of
+--   Just (Var x') | x == x' -> Right [((Var x, t), [(x, Ann (Var x) t)])]
+--   Just (Ann (Var x') ty) | x == x' -> do
+--     Right [((Var x, ty), [])]
+--   Just a -> do
+--     ats <- check ops env a t
+--     Right [((Var x, ta), s) | ((_, ta), s) <- ats]
+--   Nothing -> Left (undefinedVar x)
+-- check ops env (Or a b) t = do
+--   -- inspect2' "check" env (Or a b) t $ do
+--   case check ops env a t of
+--     Left _ -> check ops env b t
+--     Right [] -> check ops env b t
+--     Right ats -> do
+--       Right
+--         [ ((Or (substitute s2 a) b, t), s2 `compose` s1)
+--         | ((a, t), s1) <- ats,
+--           ((b, t), s2) <- fromRight [] $ check ops env b t
+--         ]
+-- check ops env (And a b) (And ta tb) = do
+--   abts <- check2 ops env (a, ta) (b, tb)
+--   Right
+--     [ ((And a b, And ta tb), s)
+--     | ((a, ta), (b, tb), s) <- abts
+--     ]
+-- check ops env (Fun a b) (Fun ta tb) = do
+--   -- inspect2' "check" env (Fun a b) (Fun ta tb) $ do
+--   abts <- check2 ops env (a, ta) (b, tb)
+--   Right
+--     [ ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
+--     | ((a, ta), (b, tb), s) <- abts
+--     ]
+-- check ops env (App a b) t = do
+--   -- inspect2' "check" env (App a b) t $ do
+--   bts <- infer ops env b
+--   Right
+--     [ ((App a (substitute s2 $ Ann b tb), substitute s t), s)
+--     | ((b, tb), s1) <- bts,
+--       ((a, _), s2) <- fromRight [] $ check ops (s1 `compose` env) (substitute s1 a) (Fun tb (substitute s1 t)),
+--       let s = s2 `compose` s1
+--     ]
+-- check ops env a t = do
+--   ats <- infer ops env a
+--   Right
+--     [ ((substitute s2 a, substitute s t), s)
+--     | ((a, ta), s1) <- ats,
+--       (t, s2) <- fromRight [] $ unify ops (s1 `compose` env) ta (substitute s1 t),
+--       let s = s2 `compose` s1
+--     ]
+
+-- check2 :: Ops -> Env -> (Expr, Type) -> (Expr, Type) -> Either (Error Expr) [((Expr, Type), (Expr, Type), Substitution)]
+-- check2 ops env (a, ta) (b, tb) = do
+--   ats <- check ops env a ta
+--   Right
+--     [ (substitute s2 at, bt, s2 `compose` s1)
+--     | (at, s1) <- ats,
+--       (bt, s2) <- fromRight [] $ check ops (s1 `compose` env) (substitute s1 b) (substitute s1 tb)
+--     ]

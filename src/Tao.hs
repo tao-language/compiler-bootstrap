@@ -1872,7 +1872,7 @@ instance Compile (String, Expr) where
     let a = C.dropMeta $ C.bind [] $ lower expr
     let dependencies = delete name (C.freeVars a `union` C.freeTags a)
     let env = compileDefs ctx path dependencies
-    case C.infer' buildOps ((name, C.Var name) : env) a of
+    case C.infer buildOps ((name, C.Var name) : env) a of
       Right ((a, t), s) -> do
         -- let (xs, a') = C.forOf a
         -- (env, C.for' (xs `union` C.freeVars t) (C.Ann a' t))
