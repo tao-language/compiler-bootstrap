@@ -974,6 +974,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer' [x1] (App (Fun i1 n1) x) `shouldBe` Right ((App (Fun (Ann i1 IntT) (Ann n1 NumT)) (Ann x IntT), NumT), [])
     infer' [x1] (App (Fun n1 i1) x) `shouldBe` Left (typeMismatch NumT IntT)
     infer' [x1] (App (For "a" $ Fun a a) x) `shouldBe` Right ((App (For "a" $ Fun (Ann a IntT) (Ann a IntT)) (Ann x IntT), IntT), [("a", Ann a IntT), ("aT", IntT)])
+    -- @x y. (x, y) -> (<) (y, x) : @a. (a, a) -> Bool
     -- TODO: App
     -- TODO: Call
     infer' [] (Let [x1] x) `shouldBe` Right ((Let [x1] x, IntT), [])
