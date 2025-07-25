@@ -969,6 +969,7 @@ step ops = \case
       let y = newName (freeVars b) x
       let a' = substitute [(x, Var y)] a
       App a' b
+    (Fix x a, b) -> App (Let [(x, Fix x a)] a) b
     (Or a1 a2, b) -> Or (App a1 b) (App a2 b)
     (Fun a c, b) -> case (step ops a, b) of
       (a, b@App {}) -> letP (a, b) c
@@ -987,6 +988,7 @@ step ops = \case
       (Ann a _, b) -> letP (a, b) c
       (a, Ann b _) -> letP (a, b) c
       (And a1 a2, And b1 b2) -> letPs [(a1, b1), (a2, b2)] c
+      (Fun a1 a2, Fun b1 b2) -> letPs [(a1, b1), (a2, b2)] c
       -- (a, App _ _) -> letP (a, b) c
       (Or a1 a2, b) -> Or (letP (a1, b) c) (letP (a2, b) c)
       (a, Or b1 b2) -> Or (letP (a, b1) c) (letP (a, b2) c)
@@ -1002,7 +1004,7 @@ step ops = \case
       (Num _, _) -> err $ unhandledCase a b
       (Tag _ _, _) -> err $ unhandledCase a b
       (And _ _, _) -> err $ unhandledCase a b
-      (a, b) -> error $ "TODO: step App-Fun[" ++ showCtr a ++ ":" ++ showCtr b ++ "]\n  " ++ show (dropLet a) ++ "\n  " ++ show (dropLet b)
+      (a, b) -> error $ "TODO: step (pattern match) App-Fun[" ++ showCtr a ++ ":" ++ showCtr b ++ "]\n  " ++ show (dropLet a) ++ "\n  " ++ show (dropLet b)
     (a, b) -> error $ "TODO: step App[" ++ showCtr a ++ ":" ++ showCtr b ++ "]\n  " ++ show (dropLet a) ++ "\n  " ++ show (dropLet b)
   Call f args -> case lookup f ops of
     Just f | Just result <- f (eval ops) args -> result
