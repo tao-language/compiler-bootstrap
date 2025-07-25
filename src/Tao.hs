@@ -739,7 +739,7 @@ grammar = do
                         k -> "(" ++ k ++ ")"
                   let showArgs = \case
                         [] -> []
-                        args -> PP.Text "(" : intercalate [PP.Text ", "] (map layout args) ++ [PP.Text ")"]
+                        args -> PP.Text "(" : (collectionLayout layout args) ++ [PP.Text ")"]
                   Just (PP.Text (showTag k) : showArgs args)
                 _ -> Nothing,
           -- Grammar.Tuple.empty
@@ -1123,10 +1123,14 @@ grammar = do
                   Nothing -> return (withLoc start end $ MatchFun cases)
               layoutCases layout = \case
                 [] -> []
-                cases -> PP.NewLine : concatMap (\c -> PP.Text "| " : layout c ++ [PP.NewLine]) cases
+                cases -> PP.NewLine : concatMap (\c -> [PP.Text "| ", PP.Indent (layout c), PP.NewLine]) cases
            in G.Atom parser $ \layout -> \case
                 Match arg cases -> do
-                  Just (PP.Text "match " : layout arg ++ PP.Text " {" : layoutCases layout cases ++ [PP.Text "}"])
+                  let arg' = case layout arg of
+                        arg | PP.isMultiLine arg -> do
+                          [PP.Text "(", PP.Indent (PP.NewLine : arg), PP.NewLine, PP.Text ")"]
+                        arg -> arg
+                  Just (PP.Text "match " : arg' ++ PP.Text " {" : layoutCases layout cases ++ [PP.Text "}"])
                 MatchFun cases -> do
                   Just (PP.Text "match {" : layoutCases layout cases ++ [PP.Text "}"])
                 _ -> Nothing,
@@ -1243,10 +1247,10 @@ grammar = do
         ]
     }
   where
-    collectionLayout layout = \case
-      [] -> []
-      [a] -> layout a
-      a : bs -> layout a ++ [PP.Text ", "] ++ collectionLayout layout bs
+    collectionLayout layout args = do
+      let alt1 = intercalate [PP.Text ", "] (map layout args)
+      let alt2 = [PP.Indent (PP.NewLine : intercalate [PP.NewLine] (map (\a -> layout a ++ [PP.Text ","]) args)), PP.NewLine]
+      [PP.Or alt1 alt2]
 
 lower :: Expr -> C.Expr
 lower = \case

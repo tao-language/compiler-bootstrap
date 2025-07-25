@@ -1701,6 +1701,9 @@ check ops env (Or a b) t = case (check ops env a t, check ops env b t) of
 check ops env (Fun a b) (Fun ta tb) = do
   ((a, ta), (b, tb), s) <- check2 ops env (a, ta) (b, tb)
   Right ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
+check ops env (Let defs a) t = do
+  ((a, t), s) <- check ops (defs ++ env) a t
+  Right ((Let defs a, t), s)
 check ops env a t = do
   ((a, ta), s1) <- infer ops env a
   (t, s2) <- unify ops (s1 `compose` env) ta (substitute s1 t)

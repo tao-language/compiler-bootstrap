@@ -39,3 +39,13 @@ fits w (Text (_ : s) : y) = fits (w - 1) (Text s : y)
 fits w (Text "" : y) = fits w y
 fits w (Indent x : y) = fits w (x ++ y)
 fits w (Or x _ : y) = fits w (x ++ y)
+
+isMultiLine :: Layout -> Bool
+isMultiLine [] = False
+isMultiLine (NewLine : _) = True
+isMultiLine (Text _ : b) = isMultiLine b
+isMultiLine (Indent a : b) = isMultiLine (a ++ b)
+isMultiLine (Or a b : c) = isMultiLine (a ++ b ++ c)
+
+isSingleLine :: Layout -> Bool
+isSingleLine = not . isMultiLine

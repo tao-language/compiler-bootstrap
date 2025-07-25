@@ -98,7 +98,7 @@ coreCmd filename arg = do
   putStrLn "---- compile"
   printExpr a
   -- putStrLn "---- steps"
-  -- mapM_ (\a -> putStrLn (show (C.dropLet a) ++ "\n")) (C.steps runtimeOps $ C.let' env a)
+  -- mapM_ (\a -> putStrLn (show (lift $ C.dropLet a) ++ "\n")) (C.steps runtimeOps $ C.let' env a)
   putStrLn "---- eval"
   let b = C.eval' runtimeOps $ C.let' env a
   printExpr b
