@@ -66,25 +66,26 @@ coreCmd filename arg = do
             putStrLn ("  {" ++ unwords (map fst env) ++ "}")
             return a
           Nothing -> return a
-        mapM_
-          ( \a -> do
-              putStr "  | "
-              -- a <- case C.fixOf a of
-              --   ([], a) -> return a
-              --   (xs, a) -> do
-              --     putStr ("&" ++ unwords (map (show . Var) xs) ++ ". ")
-              --     return a
-              -- (xs, a) <- return (C.forOf a)
-              -- putStrLn ("@" ++ unwords (map (show . Var) xs) ++ ".")
-              -- a <- case C.asAnn a of
-              --   Just (a, t) -> do
-              --     putStrLn ("  : " ++ show t)
-              --     return a
-              --   Nothing -> return a
-              -- mapM_ (\b -> putStrLn ("  | " ++ show b)) (C.orOf a)
-              print a
-          )
-          (C.orOf a)
+        -- mapM_
+        --   ( \a -> do
+        --       putStr "  | "
+        --       -- a <- case C.fixOf a of
+        --       --   ([], a) -> return a
+        --       --   (xs, a) -> do
+        --       --     putStr ("&" ++ unwords (map (show . Var) xs) ++ ". ")
+        --       --     return a
+        --       -- (xs, a) <- return (C.forOf a)
+        --       -- putStrLn ("@" ++ unwords (map (show . Var) xs) ++ ".")
+        --       -- a <- case C.asAnn a of
+        --       --   Just (a, t) -> do
+        --       --     putStrLn ("  : " ++ show t)
+        --       --     return a
+        --       --   Nothing -> return a
+        --       -- mapM_ (\b -> putStrLn ("  | " ++ show b)) (C.orOf a)
+        --       print a
+        --   )
+        --   (C.orOf a)
+        print a
   mapM_
     ( \(name, a) -> do
         putStrLn ("+ " ++ name ++ ": ")
@@ -97,8 +98,8 @@ coreCmd filename arg = do
   printExpr (C.bind [] $ lower expr)
   putStrLn "---- compile"
   printExpr a
-  -- putStrLn "---- steps"
-  -- mapM_ (\a -> putStrLn (show (lift $ C.dropLet a) ++ "\n")) (C.steps runtimeOps $ C.let' env a)
+  putStrLn "---- steps"
+  mapM_ (\a -> putStrLn (show (lift $ C.dropLet a) ++ "\n")) (C.steps runtimeOps $ C.let' env a)
   putStrLn "---- eval"
   let b = C.eval' runtimeOps $ C.let' env a
   printExpr b

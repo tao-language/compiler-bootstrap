@@ -19,8 +19,8 @@ let length = match {
 }
 
 > [].length ~> 0
-> [1].length ~> 1
-> [1, 2, 3].length ~> 3
+> [10].length ~> 1
+> [10, 20, 30].length ~> 3
 
 # Access elements
 : (a, List(a)) -> Bool

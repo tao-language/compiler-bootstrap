@@ -958,9 +958,10 @@ step ops = \case
   Ann a b -> case step ops a of
     Ann a b -> Ann a b
     a -> Ann a (step ops b)
-  For x (Or a b) -> Or (For x a) (For x b)
-  For x a -> For x (substitute [(x, Var x)] a)
-  Fix x a -> Fix x (substitute [(x, Var x)] a)
+  -- For x (Or a b) -> Or (For x a) (For x b)
+  For x a -> For x (step ops (Let [(x, Var x)] a))
+  Fix x a -> Fix x (step ops (Let [(x, Var x)] a))
+  -- Fix x a -> Fix x a
   Fun a b -> Fun (step ops a) (step ops b)
   App a b -> case (step ops a, step ops b) of
     (a@Var {}, b) -> App a b
@@ -1020,8 +1021,10 @@ step ops = \case
     And a b -> And (step ops $ Let env a) (step ops $ Let env b)
     Or a b -> Or (step ops $ Let env a) (step ops $ Let env b)
     Ann a b -> Ann (step ops $ Let env a) (step ops $ Let env b)
-    For x a -> For x (step ops $ Let env a)
-    Fix x a -> Fix x (step ops $ Let env a)
+    For x a -> For x (step ops $ Let ((x, Var x) : env) a)
+    -- Fix x a -> Fix x (step ops $ Let ((x, Var x) : env) a)
+    Fix x a -> Fix x (Let (filter ((/= x) . fst) env) a)
+    -- Fix x a -> Fix x (Let env a)
     Fun a b -> Fun (step ops $ Let env a) (step ops $ Let env b)
     App a b -> App (step ops $ Let env a) (step ops $ Let env b)
     Call f args -> Call f (step ops . Let env <$> args)
@@ -1279,7 +1282,7 @@ instance Substitute Expr where
   substitute s (Call op args) = Call op (map (substitute s) args)
   substitute s (Let env b) = do
     let sub (x, a) = (x, substitute s a)
-    let s' = filter (\(x, _) -> x `notElem` map fst env) s
+    let s' = filter ((`notElem` map fst env) . fst) s
     Let (map sub env) (substitute s' b)
   substitute s (Meta m a) = Meta m (substitute s a)
   substitute _ Err = Err
@@ -1600,9 +1603,8 @@ infer ops env (For x a) = do
   let xs = fromMaybe [y] (fmap freeVars (lookup y s))
   Right ((for' xs a, t), s `compose` [(y, Var y)])
 infer ops env (Fix x a) = do
-  let y = newName (map fst env) x
-  ((a, t), s) <- infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
-  Right ((fix' [y] a, t), s `compose` [(y, Var y)])
+  ((a, t), s) <- infer ops ((x, Any) : env) a
+  Right ((fix' [x] a, t), s `compose` [(x, Any)])
 infer ops env (Ann a t) = check ops env a t
 infer ops env (And a b) = do
   ((a, ta), (b, tb), s) <- infer2 ops env a b
@@ -1675,12 +1677,16 @@ check ops env (For x a) t
   | otherwise = do
       let y = newName (map fst env) x
       ((a, t), s) <- check ops ((y, Any) : env) (substitute [(x, Var y)] a) t
-      Right ((for' [y] a, t), s `compose` [(y, Any)])
+      let xs = fromMaybe [y] (fmap freeVars (lookup y s))
+      Right ((for' xs a, t), s `compose` [(y, Any)])
 check ops env a (For x t)
   | x `occurs` a = do
       let y = newName (freeVars (Ann a t)) x
       check ops env a (for' [y] (substitute [(x, Var y)] t))
-  | otherwise = infer ops env (For x (Ann a t))
+  | otherwise = check ops env (For x a) t
+check ops env (Fix x a) t = do
+  ((a, t), s) <- check ops ((x, Any) : env) a t
+  Right ((fix' [x] a, t), s `compose` [(x, Any)])
 check ops env (Var x) t = case lookup x env of
   Just Any -> Right ((Var x, t), [(x, Ann (Var x) t)])
   Just (Var x') | x == x' -> Right ((Var x, t), [(x, Ann (Var x) t)])
@@ -1699,7 +1705,7 @@ check ops env (Or a b) t = case (check ops env a t, check ops env b t) of
     Right ((merge ops env a b, merge ops env ta tb), merge ops env s1 s2)
   (Right ats, Left _) -> Right ats
   (Left _, Right bts) -> Right bts
-  (Left e1, Left e2) -> Left e1
+  (Left e1, Left e2) -> Left e2
 check ops env (Fun a b) (Fun ta tb) = do
   ((a, ta), (b, tb), s) <- check2 ops env (a, ta) (b, tb)
   Right ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
