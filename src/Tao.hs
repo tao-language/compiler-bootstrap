@@ -1731,7 +1731,7 @@ run ctx path expr = do
 
 eval :: C.Env -> C.Expr -> (Expr, Type)
 eval env expr =
-  C.eval runtimeOps (C.let' env expr)
+  C.eval' runtimeOps (C.let' env expr)
     & lift
     & typed
 

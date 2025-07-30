@@ -897,6 +897,93 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     compose [("x", i1)] [("x", For "x" x)] `shouldBe` [("x", For "x" i1)]
     compose [("x", i1)] [("x", For "x" i2)] `shouldBe` [("x", For "x" i2)]
 
+  it "☯ Core.reduce" $ do
+    reduce [] Any `shouldBe` Any
+    reduce [] Unit `shouldBe` Unit
+    reduce [] IntT `shouldBe` IntT
+    reduce [] NumT `shouldBe` NumT
+    reduce [] (Int 0) `shouldBe` (Int 0)
+    reduce [] (Num 0.0) `shouldBe` (Num 0.0)
+    reduce [] (Var "x") `shouldBe` (Var "x")
+    reduce [] (Tag "A" x) `shouldBe` (Tag "A" x)
+    reduce [] (For "x" x) `shouldBe` (For "x" x)
+    reduce [] (Fix "x" x) `shouldBe` (Fix "x" x)
+    reduce [] (Ann x y) `shouldBe` (Ann x y)
+    reduce [] (And x y) `shouldBe` (And x y)
+    reduce [] (Or x y) `shouldBe` (Or x y)
+    reduce [] (Fun x y) `shouldBe` (Fun x y)
+    reduce [] (App x y) `shouldBe` (App x y)
+    reduce [] (Call "f" []) `shouldBe` (Call "f" [])
+    reduce [] (Let [] x) `shouldBe` x
+    reduce [] (Meta (Comments []) x) `shouldBe` x
+    reduce [] Err `shouldBe` Err
+
+  it "☯ Core.reduce.Let" $ do
+    let env = [("x", a), ("y", b)]
+    reduce [] (Let env Any) `shouldBe` Any
+    reduce [] (Let env Unit) `shouldBe` Unit
+    reduce [] (Let env IntT) `shouldBe` IntT
+    reduce [] (Let env NumT) `shouldBe` NumT
+    reduce [] (Let env $ Int 0) `shouldBe` (Int 0)
+    reduce [] (Let env $ Num 0.0) `shouldBe` (Num 0.0)
+    reduce [] (Let env $ Var "x") `shouldBe` a
+    reduce [] (Let env $ Tag "A" x) `shouldBe` Tag "A" (Let env x)
+    reduce [] (Let env $ For "x" x) `shouldBe` (For "x" (Let env x))
+    reduce [] (Let env $ Fix "x" x) `shouldBe` (Fix "x" (Let env x))
+    reduce [] (Let env $ Ann x y) `shouldBe` (Ann (Let env x) (Let env y))
+    reduce [] (Let env $ And x y) `shouldBe` (And (Let env x) (Let env y))
+    reduce [] (Let env $ Or x y) `shouldBe` (Or (Let env x) (Let env y))
+    reduce [] (Let env $ Fun x y) `shouldBe` (Fun (Let env x) (Let env y))
+    reduce [] (Let env $ App x y) `shouldBe` (App (Let env x) (Let env y))
+    reduce [] (Let env $ Call "f" [x]) `shouldBe` (Call "f" [Let env x])
+    reduce [] (Let env $ Let [] x) `shouldBe` a
+    reduce [] (Let env $ Let [("x", c)] x) `shouldBe` c
+    reduce [] (Let env $ Meta (Comments []) x) `shouldBe` a
+    reduce [] (Let env Err) `shouldBe` Err
+
+  it "☯ Core.reduce.Call" $ do
+    let ops =
+          [ ("f", \eval args -> Just i0),
+            ("g", \eval args -> Nothing)
+          ]
+    -- TODO: ("h", \eval args -> Just $ and' (map eval args))
+    reduce ops (Call "undefined" []) `shouldBe` Call "undefined" []
+    reduce ops (Call "f" []) `shouldBe` i0
+    reduce ops (Call "g" []) `shouldBe` Call "g" []
+
+  it "☯ Core.reduce.App" $ do
+    let x1 = Var "x1"
+    reduce [] (App Any x) `shouldBe` Any
+    reduce [] (App Unit x) `shouldBe` err (cannotApply Unit x)
+    reduce [] (App IntT x) `shouldBe` err (cannotApply IntT x)
+    reduce [] (App NumT x) `shouldBe` err (cannotApply NumT x)
+    reduce [] (App i0 x) `shouldBe` err (cannotApply i0 x)
+    reduce [] (App n0 x) `shouldBe` err (cannotApply n0 x)
+    reduce [] (App x y) `shouldBe` App x y
+    reduce [] (App (Tag "A" x) y) `shouldBe` err (cannotApply (Tag "A" x) y)
+    reduce [] (App (For "x" x) x) `shouldBe` For "x1" (App x1 x)
+    reduce [] (App (For "x" x) y) `shouldBe` For "x" (App x y)
+    reduce [] (App (For "x" y) x) `shouldBe` App y x
+    reduce [] (App (For "x" y) y) `shouldBe` App y y
+    reduce [] (App (Fix "x" y) z) `shouldBe` App (Let [("x", Fix "x" y)] y) z
+    reduce [] (App (Ann x y) z) `shouldBe` App x z
+    reduce [] (App (And x y) z) `shouldBe` err (cannotApply (And x y) z)
+    reduce [] (App (Or x y) z) `shouldBe` Or (App x z) (App y z)
+    reduce [] (App (Fun x y) z) `shouldBe` y
+    reduce [] (App (App x y) z) `shouldBe` App (App x y) z
+    reduce [] (App (Call "f" []) x) `shouldBe` App (Call "f" []) x
+    reduce [("f", \_ _ -> Just x)] (App (Call "f" []) y) `shouldBe` App x y
+    reduce [] (App (Let [] x) y) `shouldBe` App x y
+    reduce [] (App (Let [("x", y)] x) z) `shouldBe` App y z
+    reduce [] (App (Meta (Comments []) x) y) `shouldBe` App x y
+    reduce [] (App Err x) `shouldBe` Err
+
+  it "☯ Core.reduce.App.Fun" $ do
+    "" `shouldBe` ""
+
+  it "☯ Core.steps" $ do
+    steps [] x `shouldBe` [x]
+
   it "☯ Core.unify" $ do
     let unify' = unify [] [("x", Any), ("a", a)]
     unify' Any Any `shouldBe` Right (Any, [])

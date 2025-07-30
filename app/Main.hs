@@ -59,6 +59,8 @@ coreCmd filename arg = do
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
   let (env, a) = compile ctx path expr
+  putStrLn "---- steps"
+  mapM_ (\a -> putStrLn (show (lift $ C.dropLet a) ++ "\n")) (C.steps runtimeOps $ C.let' env a)
   putStrLn $ "---- env: " ++ unwords (map (show . fst) env)
   let printExpr a = do
         a <- case C.letOf a of
@@ -98,13 +100,14 @@ coreCmd filename arg = do
   printExpr (C.bind [] $ lower expr)
   putStrLn "---- compile"
   printExpr a
-  putStrLn "---- steps"
-  mapM_ (\a -> putStrLn (show (lift $ C.dropLet a) ++ "\n")) (C.steps runtimeOps $ C.let' env a)
   putStrLn "---- eval"
   let b = C.eval' runtimeOps $ C.let' env a
   printExpr b
   -- putStrLn "---- eval (untyped)"
   -- printExpr (C.dropTypes b)
+  putStrLn "TODO:"
+  putStrLn "- infer length does not place the `a` quantifier at the beginning"
+  putStrLn "- make the Fix (&length) go before the Let"
   return ()
 
 runCmd :: FilePath -> String -> IO ()
