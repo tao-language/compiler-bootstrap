@@ -934,7 +934,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce [] (Let env $ And x y) `shouldBe` (And (Let env x) (Let env y))
     reduce [] (Let env $ Or x y) `shouldBe` (Or (Let env x) (Let env y))
     reduce [] (Let env $ Fun x y) `shouldBe` (Fun (Let env x) (Let env y))
-    reduce [] (Let env $ App x y) `shouldBe` (App (Let env x) (Let env y))
+    reduce [] (Let env $ App x y) `shouldBe` (App a (Let env y))
     reduce [] (Let env $ Call "f" [x]) `shouldBe` (Call "f" [Let env x])
     reduce [] (Let env $ Let [] x) `shouldBe` a
     reduce [] (Let env $ Let [("x", c)] x) `shouldBe` c
@@ -965,7 +965,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce [] (App (For "x" x) y) `shouldBe` For "x" (App x y)
     reduce [] (App (For "x" y) x) `shouldBe` App y x
     reduce [] (App (For "x" y) y) `shouldBe` App y y
-    reduce [] (App (Fix "x" y) z) `shouldBe` App (Let [("x", Fix "x" y)] y) z
+    reduce [] (App (Fix "x" y) z) `shouldBe` App y z
     reduce [] (App (Ann x y) z) `shouldBe` App x z
     reduce [] (App (And x y) z) `shouldBe` err (cannotApply (And x y) z)
     reduce [] (App (Or x y) z) `shouldBe` Or (App x z) (App y z)
@@ -978,7 +978,91 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce [] (App (Meta (Comments []) x) y) `shouldBe` App x y
     reduce [] (App Err x) `shouldBe` Err
 
-  it "☯ Core.reduce.App.Fun" $ do
+  it "☯ Core.reduce.App.Fun -- pattern matching" $ do
+    let reduceBeta a b c = reduce [] (App (Fun a c) b)
+    reduceBeta Any Any x `shouldBe` x
+    reduceBeta Any Unit x `shouldBe` x
+    reduceBeta Any IntT x `shouldBe` x
+    reduceBeta Any x x `shouldBe` x
+    reduceBeta Any y x `shouldBe` x
+    reduceBeta Unit Any x `shouldBe` x
+    reduceBeta Unit Unit x `shouldBe` x
+    reduceBeta Unit IntT x `shouldBe` err (unhandledCase Unit IntT)
+    reduceBeta Unit x x `shouldBe` Unit
+    reduceBeta Unit y x `shouldBe` x
+    reduceBeta IntT Unit x `shouldBe` err (unhandledCase IntT Unit)
+    reduceBeta IntT IntT x `shouldBe` x
+    reduceBeta IntT x x `shouldBe` IntT
+    reduceBeta IntT y x `shouldBe` x
+    reduceBeta NumT Unit x `shouldBe` err (unhandledCase NumT Unit)
+    reduceBeta NumT NumT x `shouldBe` x
+    reduceBeta NumT x x `shouldBe` NumT
+    reduceBeta NumT y x `shouldBe` x
+    reduceBeta (Int 0) i0 x `shouldBe` x
+    reduceBeta (Int 0) i1 x `shouldBe` err (unhandledCase i0 i1)
+    reduceBeta (Int 0) x x `shouldBe` (Int 0)
+    reduceBeta (Int 0) y x `shouldBe` x
+    reduceBeta (Num 0.0) n0 x `shouldBe` x
+    reduceBeta (Num 0.0) n1 x `shouldBe` err (unhandledCase n0 n1)
+    reduceBeta (Num 0.0) x x `shouldBe` (Num 0.0)
+    reduceBeta (Num 0.0) y x `shouldBe` x
+    reduceBeta (Var "x") i1 x `shouldBe` i1
+    reduceBeta (Var "x") x x `shouldBe` x
+    reduceBeta (Var "x") y x `shouldBe` y
+    reduceBeta (Tag "A" x) (Tag "A" y) x `shouldBe` y
+    reduceBeta (Tag "A" x) (Tag "A" i1) x `shouldBe` i1
+    reduceBeta (Tag "A" x) (Tag "B" i1) x `shouldBe` err (unhandledCase (Tag "A" x) (Tag "B" i1))
+    reduceBeta (Tag "A" i0) (Tag "A" i1) x `shouldBe` err (unhandledCase i0 i1)
+    reduceBeta (Tag "A" x) y y `shouldBe` Tag "A" x
+    reduceBeta (For "x" x) i1 x `shouldBe` i1
+    reduceBeta (For "x" x) y x `shouldBe` y
+    reduceBeta (For "x" x) y y `shouldBe` y
+    reduceBeta (Fix "x" x) i1 x `shouldBe` err (unhandledCase (Fix "x" x) i1)
+    reduceBeta (Fix "x" x) (Fix "y" y) x `shouldBe` y
+    reduceBeta (Fix "x" x) y x `shouldBe` x
+    reduceBeta (Fix "x" x) y y `shouldBe` Fix "x" x
+    reduceBeta (Ann x y) i1 x `shouldBe` i1
+    reduceBeta i1 (Ann x y) x `shouldBe` i1
+    reduceBeta (Ann x y) (Ann i1 IntT) x `shouldBe` i1
+    reduceBeta (Ann x y) (Ann i1 IntT) y `shouldBe` IntT
+    reduceBeta (Ann i0 y) (Ann i1 IntT) y `shouldBe` err (unhandledCase i0 i1)
+    reduceBeta (Ann x NumT) (Ann i1 IntT) y `shouldBe` err (unhandledCase NumT IntT)
+    reduceBeta (Ann x y) z x `shouldBe` x
+    reduceBeta (Ann x y) z z `shouldBe` Ann x y
+    reduceBeta (And x y) i1 x `shouldBe` err (unhandledCase (And x y) i1)
+    reduceBeta (And x y) (And i1 i2) x `shouldBe` i1
+    reduceBeta (And x y) (And i1 i2) y `shouldBe` i2
+    reduceBeta (And i0 y) (And i1 i2) y `shouldBe` err (unhandledCase i0 i1)
+    reduceBeta (And x i0) (And i1 i2) y `shouldBe` err (unhandledCase i0 i2)
+    reduceBeta (And x y) z x `shouldBe` x
+    reduceBeta (And x y) z z `shouldBe` And x y
+    reduceBeta (Or x y) i1 x `shouldBe` i1
+    reduceBeta (Or i0 y) i1 y `shouldBe` i1
+    reduceBeta (Or x i0) i1 x `shouldBe` i1
+    reduceBeta (Or i1 i2) i0 x `shouldBe` err (unhandledCase i2 i0)
+    reduceBeta (Or x y) (Fun a b) x `shouldBe` Or (Fun a b) (letP (y, Fun a b) x)
+    reduceBeta (Or x y) z x `shouldBe` x
+    reduceBeta (Or x y) z z `shouldBe` Or x y
+    reduceBeta i1 (Or x y) x `shouldBe` i1
+    reduceBeta i1 (Or i0 y) y `shouldBe` i1
+    reduceBeta i1 (Or x i0) x `shouldBe` i1
+    reduceBeta i0 (Or i1 i2) x `shouldBe` err (unhandledCase i0 i2)
+    reduceBeta (Fun a b) (Or x y) x `shouldBe` Or (Fun a b) (letP (Fun a b, y) x)
+    reduceBeta z (Or x y) x `shouldBe` x
+    reduceBeta z (Or x y) z `shouldBe` Or x y
+    -- reduceBeta (Fun x y) `shouldBe` (Fun x y)
+    -- reduceBeta (App x y) `shouldBe` (App x y)
+    -- reduceBeta (Call "f" []) `shouldBe` (Call "f" [])
+    -- reduceBeta (Let [] x) `shouldBe` x
+    -- reduceBeta (Meta (Comments []) x) `shouldBe` x
+    -- reduceBeta Err `shouldBe` Err
+    "" `shouldBe` ""
+
+  it "☯ Core.reduce.App.For -- generics" $ do
+    "" `shouldBe` ""
+
+  it "☯ Core.reduce.App.Fix -- recursion" $ do
+    let appFix x a b = reduce [] (App (Fix x a) b)
     "" `shouldBe` ""
 
   it "☯ Core.steps" $ do

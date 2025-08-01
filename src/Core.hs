@@ -939,7 +939,6 @@ isValue = \case
   Tag _ _ -> True
   Ann a _ -> isValue a
   And _ _ -> True
-  Or a _ -> isValue a
   Meta _ a -> isValue a
   _ -> False
 
@@ -1094,31 +1093,45 @@ reduce ops (App a b) = case reduce ops a of
   a@App {} -> App a b
   For x a -> do
     let y = newName (freeVars b) x
-    for' [y] (App (substitute [(x, Var y)] a) b)
-  Fix x a -> App (Let [(x, Fix x a)] a) b
-  Ann a _ -> App a b
+    for' [y] (reduce ops $ App (substitute [(x, Var y)] a) b)
+  Fix x a -> reduce ops $ App (Let [(x, Fix x a)] a) b
+  Ann a _ -> reduce ops $ App a b
   Or a1 a2 -> Or (App a1 b) (App a2 b)
   Fun a c -> case (a, b) of
     -- (a, b@App {}) -> letP (a, b) c
     -- (a, b@Call {}) -> letP (a, b) c
-    -- (Any, _) -> c
-    -- (Unit, Unit) -> c
-    -- (IntT, IntT) -> c
-    -- (NumT, NumT) -> c
-    -- (Int i, Int i') | i == i' -> c
-    -- (Num n, Num n') | n == n' -> c
-    (Tag k a, Tag k' b) | k == k' -> letP (a, b) c
+    (Let env a, b) -> reduce ops $ letP (reduce ops $ Let env a, b) c
+    (a, Let env b) -> reduce ops $ letP (a, reduce ops $ Let env b) c
+    (_, Any) -> reduce ops c
+    (Any, _) -> reduce ops c
+    (For x a, b) -> reduce ops $ App (For x (Fun a c)) b
     -- (Var x, Var x') | x == x' -> c
     (Var x, b) -> reduce ops $ Let [(x, b)] c
-    -- (a, Var x) -> reduce ops $ Let [(x, a)] c
-    (Ann a ta, Ann b tb) -> letPs [(ta, tb), (a, b)] c
-    -- (Ann a _, b) -> letP (a, b) c
-    -- (a, Ann b _) -> letP (a, b) c
-    -- (And a1 a2, And b1 b2) -> letPs [(a1, b1), (a2, b2)] c
+    (a, Var x) -> reduce ops $ Let [(x, a)] c
+    (Unit, Unit) -> reduce ops c
+    (IntT, IntT) -> reduce ops c
+    (NumT, NumT) -> reduce ops c
+    (Int i, Int i') | i == i' -> reduce ops c
+    (Num n, Num n') | n == n' -> reduce ops c
+    (Tag k a, Tag k' b) | k == k' -> reduce ops $ letP (a, b) c
+    (Fix x a, Fix y b) -> do
+      let x' = newName (freeVars (Fix y b)) x
+      let a' = substitute [(x, Var x')] a
+      reduce ops $ letP (a', b) c
+    (Ann a ta, Ann b tb) -> reduce ops $ letPs [(ta, tb), (a, b)] c
+    (Ann a _, b) -> reduce ops $ letP (a, b) c
+    (a, Ann b _) -> reduce ops $ letP (a, b) c
+    (And a1 a2, And b1 b2) -> reduce ops $ letPs [(a1, b1), (a2, b2)] c
+    (Or a1 a2, b) -> case reduce ops $ letP (a1, b) c of
+      a' | isErr a' -> reduce ops $ letP (a2, b) c
+      a' | isValue a' -> a'
+      a' -> Or a' (letP (a2, b) c)
+    (a, Or b1 b2) -> case reduce ops $ letP (a, b1) c of
+      a' | isErr a' -> reduce ops $ letP (a, b2) c
+      a' | isValue a' -> a'
+      a' -> Or a' (letP (a, b2) c)
     -- (Fun a1 a2, Fun b1 b2) -> letPs [(a1, b1), (a2, b2)] c
     -- -- (a, App _ _) -> letP (a, b) c
-    -- (Or a1 a2, b) -> Or (letP (a1, b) c) (letP (a2, b) c)
-    -- (a, Or b1 b2) -> Or (letP (a, b1) c) (letP (a, b2) c)
     -- (Err, Err) -> c
     -- (Err, _) -> Err
     -- (_, Err) -> Err
@@ -1131,8 +1144,9 @@ reduce ops (App a b) = case reduce ops a of
     (Num _, _) -> err $ unhandledCase a b
     (Tag _ _, _) -> err $ unhandledCase a b
     (And _ _, _) -> err $ unhandledCase a b
-    (a, b) -> error $ "TODO: reduce (pattern match) App-Fun[" ++ showCtr a ++ ":" ++ showCtr b ++ "]\n  " ++ show (dropLet a) ++ "\n  " ++ show (dropLet b)
-  Call f args -> App (Call f args) b
+    (Fix _ _, _) -> err $ unhandledCase a b
+    (a, b) -> error $ "TODO: reduce (pattern match) App-Fun[" ++ showCtr a ++ ":" ++ showCtr b ++ "]\n  p: " ++ show (dropLet a) ++ "\n  b: " ++ show (dropLet b)
+  a@Call {} -> App a b
   Err -> Err
   a -> err $ cannotApply a b
 reduce ops (Call f args) = case lookup f ops of
@@ -1152,10 +1166,10 @@ reduce ops (Let env a) = case a of
   And a b -> And (Let env a) (Let env b)
   Or a b -> Or (Let env a) (Let env b)
   Fun a b -> Fun (Let env a) (Let env b)
-  App a b -> App (Let env a) (Let env b)
+  App a b -> reduce ops $ App (Let env a) (Let env b)
   Call f args -> Call f (Let env <$> args)
-  Let env' a -> reduce ops (Let (env' ++ env) a)
-  Meta m a -> reduce ops (Let env a)
+  Let env' a -> reduce ops $ Let (env' ++ env) a
+  Meta m a -> reduce ops $ Let env a
   a -> a
 reduce ops (Meta _ a) = reduce ops a
 reduce ops a = a
