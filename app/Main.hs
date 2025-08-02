@@ -59,8 +59,6 @@ coreCmd filename arg = do
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
   let (env, a) = compile ctx path expr
-  putStrLn "---- steps"
-  mapM_ (\a -> putStrLn (show (lift $ C.dropLet a) ++ "\n")) (C.steps runtimeOps $ C.let' env a)
   putStrLn $ "---- env: " ++ unwords (map (show . fst) env)
   let printExpr a = do
         a <- case C.letOf a of
@@ -101,7 +99,7 @@ coreCmd filename arg = do
   putStrLn "---- compile"
   printExpr a
   putStrLn "---- eval"
-  let b = C.eval' runtimeOps $ C.let' env a
+  let b = C.eval runtimeOps $ C.let' env a
   printExpr b
   -- putStrLn "---- eval (untyped)"
   -- printExpr (C.dropTypes b)

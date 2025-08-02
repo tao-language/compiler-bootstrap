@@ -1274,7 +1274,7 @@ lower = \case
     | Just (a, cond) <- ifOf a -> lower (Fun a (If b cond))
     | otherwise -> C.Fun (lower a) (lower b)
   App a b -> C.App (lower a) (lower b)
-  Call op args -> C.Call op (map lower args)
+  Call op args -> C.Call op (lower (Tuple args))
   Op1 op a -> C.app (C.Var $ show op) [lower a]
   Op2 Cons a b -> lower (Tag "::" [a, b])
   Op2 op a b -> C.app (C.Var $ show op) [lower a, lower b]
@@ -1351,7 +1351,7 @@ lift = \case
     (a, Ann (Tuple bs) (Tuple ts)) -> do
       app a (zipWith Ann bs ts)
     (a, b) -> App a b
-  C.Call op args -> Call op (map lift args)
+  C.Call op a -> Call op (tupleOf (lift a))
   -- C.Let [] b -> lift b
   -- C.Let ((x, b) : env) c -> Let (Var x, lift b) (lift (C.Let env c))
   C.Meta (C.Loc _) (C.Meta (C.Loc loc) a) -> Meta (C.Loc loc) (lift a)
@@ -1731,25 +1731,25 @@ run ctx path expr = do
 
 eval :: C.Env -> C.Expr -> (Expr, Type)
 eval env expr =
-  C.eval' runtimeOps (C.let' env expr)
+  C.eval runtimeOps (C.let' env expr)
     & lift
     & typed
 
 buildOps :: C.Ops
 buildOps = do
   let call op f =
-        (op, \eval args -> f (map eval args))
+        (op, \eval a -> f (eval a))
   let intOp1 op f = call op $ \case
-        [a] | Just x <- C.asInt a -> Just (f x)
+        C.Int x -> Just (f x)
         _ -> Nothing
   let numOp1 op f = call op $ \case
-        [a] | Just x <- C.asNum a -> Just (f x)
+        C.Num x -> Just (f x)
         _ -> Nothing
   let intOp2 op f = call op $ \case
-        [a, b] | Just x <- C.asInt a, Just y <- C.asInt b -> Just (f x y)
+        C.And (C.Int x) (C.Int y) -> Just (f x y)
         _ -> Nothing
   let numOp2 op f = call op $ \case
-        [a, b] | Just x <- C.asNum a, Just y <- C.asNum b -> Just (f x y)
+        C.And (C.Num x) (C.Num y) -> Just (f x y)
         _ -> Nothing
   [ intOp2 "int_lt" (\x y -> C.tag' (if x < y then "True" else "False")),
     intOp2 "int_add" (\x y -> C.Int (x + y)),
