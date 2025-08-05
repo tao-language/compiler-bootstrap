@@ -932,16 +932,26 @@ isValue = \case
 
 -- Evaluation
 reduce :: Ops -> Expr -> Expr
+reduce ops (App (Or a1 a2) b) = case reduce ops (App a1 b) of
+  c | isErr c -> reduce ops (App a2 b)
+  c | isValue c -> c
+  c -> Or c (App a2 b)
+reduce ops (App a (Or b1 b2)) = case reduce ops (App a b1) of
+  c | isErr c -> reduce ops (App a b2)
+  c | isValue c -> c
+  c -> Or c (App a b2)
 reduce ops (App a b) = case reduce ops a of
   Any -> Any
   a@Var {} -> App a b
   a@App {} -> App a b
   For x a -> do
     let y = newName (freeVars b) x
-    For y (reduce ops $ App (substitute [(x, Var y)] a) b)
+    case reduce ops $ App (substitute [(x, Var y)] a) b of
+      App a b -> App (for' [y] a) b
+      c -> c
   Fix x a -> reduce ops $ App (Let [(x, Fix x a)] a) b
   Ann a _ -> reduce ops $ App a b
-  Or a1 a2 -> Or (App a1 b) (App a2 b)
+  Or a1 a2 -> reduce ops $ Or (App a1 b) (App a2 b)
   a@Call {} -> App a b
   Fun a c -> case (a, b) of
     (Let env a, b) -> reduce ops $ letP (reduce ops $ Let env a, b) c
@@ -965,28 +975,25 @@ reduce ops (App a b) = case reduce ops a of
     (Ann a _, b) -> reduce ops $ letP (a, b) c
     (a, Ann b _) -> reduce ops $ letP (a, b) c
     (And a1 a2, And b1 b2) -> reduce ops $ letPs [(a1, b1), (a2, b2)] c
-    (Or a1 a2, b) -> case reduce ops $ letP (a1, b) c of
-      a' | isErr a' -> reduce ops $ letP (a2, b) c
-      a' | isValue a' -> a'
-      a' -> Or a' (letP (a2, b) c)
-    (a, Or b1 b2) -> case reduce ops $ letP (a, b1) c of
-      a' | isErr a' -> reduce ops $ letP (a, b2) c
-      a' | isValue a' -> a'
-      a' -> Or a' (letP (a, b2) c)
+    (Or a1 a2, b) -> reduce ops (App (Or (Fun a1 c) (Fun a2 c)) b)
+    -- (a, Or b1 b2) -> reduce ops $ Or (App (Fun a c) b1) (App (Fun a c) b2)
     (Fun a1 a2, Fun b1 b2) -> reduce ops $ letPs [(a1, b1), (a2, b2)] c
     (App a1 a2, App b1 b2) -> reduce ops $ letPs [(a1, b1), (a2, b2)] c
     (Call f a, Call f' b) | f == f' -> reduce ops $ letP (a, b) c
     (Err, Err) -> reduce ops c
     (a, App b1 b2) -> case reduce ops (App b1 b2) of
       b@App {} -> letP (a, b) c
+      b@Call {} -> letP (a, b) c
       b -> reduce ops (letP (a, b) c)
     (a, Call f b) -> case reduce ops (Call f b) of
+      b@App {} -> letP (a, b) c
       b@Call {} -> letP (a, b) c
       b -> reduce ops (letP (a, b) c)
     (a, Let env b) -> reduce ops $ letP (a, reduce ops $ Let env b) c
     (a, Meta _ b) -> reduce ops $ letP (a, reduce ops b) c
     (a, b) -> err $ unhandledCase a b
   a -> err $ cannotApply a b
+reduce ops (Or a b) = Or (reduce ops a) b
 reduce ops (Call f a) = case lookup f ops of
   Just f | Just result <- f (eval ops) a -> result
   _ -> Call f a
@@ -1002,7 +1009,7 @@ reduce ops (Let env a) = case a of
   Fix x a -> Fix x (Let env a)
   Ann a b -> Ann (Let env a) (Let env b)
   And a b -> And (Let env a) (Let env b)
-  Or a b -> Or (Let env a) (Let env b)
+  Or a b -> reduce ops $ Or (Let env a) (Let env b)
   Fun a b -> Fun (Let env a) (Let env b)
   App a b -> reduce ops $ App (Let env a) (Let env b)
   Call f a -> Call f (Let env a)
@@ -1023,9 +1030,10 @@ eval ops a = case reduce ops a of
   And a b -> case eval ops a of
     And a1 a2 -> And a1 (eval ops a2)
     a -> And a (eval ops a)
-  Or a b -> case eval ops a of
-    Or a1 a2 -> Or a1 (Or a2 (eval ops b))
-    a -> Or a (eval ops b)
+  -- Or a b -> case eval ops a of
+  --   Or a1 a2 -> Or a1 (Or a2 (eval ops b))
+  --   a -> Or a (eval ops b)
+  Or a b -> Or (eval ops a) (eval ops b)
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)
   Call f a -> Call f (eval ops a)

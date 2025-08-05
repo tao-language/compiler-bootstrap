@@ -932,7 +932,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce [] (Let env $ Fix "x" x) `shouldBe` (Fix "x" (Let env x))
     reduce [] (Let env $ Ann x y) `shouldBe` (Ann (Let env x) (Let env y))
     reduce [] (Let env $ And x y) `shouldBe` (And (Let env x) (Let env y))
-    reduce [] (Let env $ Or x y) `shouldBe` (Or (Let env x) (Let env y))
+    reduce [] (Let env $ Or x y) `shouldBe` (Or a (Let env y))
     reduce [] (Let env $ Fun x y) `shouldBe` (Fun (Let env x) (Let env y))
     reduce [] (Let env $ App x y) `shouldBe` (App a (Let env y))
     reduce [] (Let env $ Call "f" x) `shouldBe` (Call "f" (Let env x))
@@ -961,10 +961,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce [] (App n0 x) `shouldBe` err (cannotApply n0 x)
     reduce [] (App x y) `shouldBe` App x y
     reduce [] (App (Tag "A" x) y) `shouldBe` err (cannotApply (Tag "A" x) y)
-    reduce [] (App (For "x" x) x) `shouldBe` For "x1" (App x1 x)
-    reduce [] (App (For "x" x) y) `shouldBe` For "x" (App x y)
-    reduce [] (App (For "x" y) x) `shouldBe` For "x1" (App y x)
-    reduce [] (App (For "x" y) y) `shouldBe` For "x" (App y y)
+    reduce [] (App (For "x" x) x) `shouldBe` App (For "x1" x1) x
+    reduce [] (App (For "x" x) y) `shouldBe` App (For "x" x) y
+    reduce [] (App (For "x" y) x) `shouldBe` App y x
+    reduce [] (App (For "x" y) y) `shouldBe` App y y
     reduce [] (App (Fix "x" y) z) `shouldBe` App y z
     reduce [] (App (Ann x y) z) `shouldBe` App x z
     reduce [] (App (And x y) z) `shouldBe` err (cannotApply (And x y) z)
@@ -1018,9 +1018,9 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' (Tag "A" x) (Tag "A" a) x `shouldBe` a
     reduce' (Tag "A" x) (Tag "A" i1) x `shouldBe` i1
     reduce' (Tag "A" i0) (Tag "A" i1) x `shouldBe` err (unhandledCase i0 i1)
-    reduce' (For "x" x) i1 x `shouldBe` For "x" i1
-    reduce' (For "x" x) a x `shouldBe` For "x" a
-    reduce' (For "x" x) a a `shouldBe` For "x" a
+    reduce' (For "x" x) i1 x `shouldBe` i1
+    reduce' (For "x" x) a x `shouldBe` a
+    reduce' (For "x" x) a a `shouldBe` a
     reduce' (Fix "x" x) i1 x `shouldBe` err (unhandledCase (Fix "x" x) i1)
     reduce' (Fix "x" x) a x `shouldBe` x
     reduce' (Fix "x" x) a a `shouldBe` Fix "x" x
@@ -1029,8 +1029,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' i1 (Ann x y) x `shouldBe` i1
     reduce' (Ann x y) a x `shouldBe` x
     reduce' (Ann x y) a a `shouldBe` Ann x y
-    reduce' (Ann x y) (Ann i1 IntT) x `shouldBe` i1
-    reduce' (Ann x y) (Ann i1 IntT) y `shouldBe` IntT
+    reduce' (Ann x y) (Ann a IntT) x `shouldBe` a
+    reduce' (Ann x y) (Ann a IntT) y `shouldBe` IntT
+    reduce' (Ann x IntT) (Ann a IntT) x `shouldBe` a
+    reduce' (Ann x IntT) (Ann a NumT) x `shouldBe` err (unhandledCase IntT NumT)
     reduce' (And x y) i1 x `shouldBe` err (unhandledCase (And x y) i1)
     reduce' (And x y) a x `shouldBe` x
     reduce' (And x y) a a `shouldBe` And x y
@@ -1048,8 +1050,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' i1 (Or x i0) x `shouldBe` i1
     reduce' i0 (Or i1 i2) x `shouldBe` err (unhandledCase i0 i2)
     reduce' (Fun a b) (Or x y) x `shouldBe` Or (Fun a b) (letP (Fun a b, y) x)
-    reduce' z (Or x y) x `shouldBe` x
-    reduce' z (Or x y) z `shouldBe` Or x y
+    reduce' z (Or x y) x `shouldBe` Or x (letP (z, y) x)
+    reduce' z (Or x y) z `shouldBe` Or x (letP (z, y) z)
     reduce' (Fun x y) i1 x `shouldBe` err (unhandledCase (Fun x y) i1)
     reduce' (Fun x y) a x `shouldBe` x
     reduce' (Fun x y) a a `shouldBe` Fun x y
@@ -1091,7 +1093,11 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' (And x x) (Meta (Comments []) (And b b)) x `shouldBe` b
 
   it "☯ Core.reduce.App.For -- generics" $ do
-    "" `shouldBe` ""
+    let env = [("f", For "x" (Fun (Ann x IntT) Unit))]
+    let reduce' a = reduce ops (Let env a)
+    reduce' (Var "f") `shouldBe` For "x" (Fun (Ann x IntT) Unit)
+    reduce' (App f (Ann y IntT)) `shouldBe` Unit
+    reduce' (App f (Ann y NumT)) `shouldBe` Err
 
   it "☯ Core.reduce.App.Fix -- recursion" $ do
     let appFix x a b = reduce [] (App (Fix x a) b)

@@ -1738,7 +1738,7 @@ eval env expr =
 buildOps :: C.Ops
 buildOps = do
   let call op f =
-        (op, \eval a -> f (eval a))
+        (op, \eval a -> f (C.dropTypes $ eval a))
   let intOp1 op f = call op $ \case
         C.Int x -> Just (f x)
         _ -> Nothing
