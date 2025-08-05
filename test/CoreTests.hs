@@ -1103,6 +1103,9 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let appFix x a b = reduce [] (App (Fix x a) b)
     "" `shouldBe` ""
 
+  it "☯ Core.reduce.overload" $ do
+    reduce ops (App (Fun (Int 3 `Ann` IntT) (Tag "A" Unit) `Or` Any) (Call "int_add" (And i1 i2 `Ann` And IntT IntT) `Ann` IntT)) `shouldBe` Unit
+
   it "☯ Core.eval.swap" $ do
     eval ops (letP (And x y, And i1 i2) (And y x)) `shouldBe` And i2 i1
 

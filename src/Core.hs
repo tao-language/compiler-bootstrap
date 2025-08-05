@@ -927,6 +927,7 @@ isValue = \case
   Tag _ _ -> True
   Ann a _ -> isValue a
   And _ _ -> True
+  Let _ a -> isValue a
   Meta _ a -> isValue a
   _ -> False
 
@@ -943,6 +944,7 @@ reduce ops (App a b) = case reduce ops a of
   Any -> Any
   a@Var {} -> App a b
   a@App {} -> App a b
+  a@Call {} -> App a b
   For x a -> do
     let y = newName (freeVars b) x
     case reduce ops $ App (substitute [(x, Var y)] a) b of
@@ -954,7 +956,6 @@ reduce ops (App a b) = case reduce ops a of
     c | isErr c -> reduce ops (App a2 b)
     c | isValue c -> c
     c -> Or c (App a2 b)
-  a@Call {} -> App a b
   Fun a c -> case (a, b) of
     (Let env a, b) -> reduce ops $ letP (reduce ops $ Let env a, b) c
     (Meta _ a, b) -> reduce ops $ letP (reduce ops a, b) c
@@ -994,7 +995,7 @@ reduce ops (App a b) = case reduce ops a of
     (a, Ann b _) -> reduce ops $ letP (a, b) c
     (a, b) -> err $ unhandledCase a b
   a -> err $ cannotApply a b
-reduce ops (Or a b) = Or (reduce ops a) b
+-- reduce ops (Or a b) = Or (reduce ops a) b
 reduce ops (Call f a) = case lookup f ops of
   Just f | Just result <- f (eval ops) a -> result
   _ -> Call f a
