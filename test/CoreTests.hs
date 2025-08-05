@@ -1043,8 +1043,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' (Or x i0) i1 x `shouldBe` i1
     reduce' (Or i1 i2) i0 x `shouldBe` err (unhandledCase i2 i0)
     reduce' (Or x y) (Fun a b) x `shouldBe` Or (Fun a b) (letP (y, Fun a b) x)
-    reduce' (Or x y) z x `shouldBe` x
-    reduce' (Or x y) z z `shouldBe` Or x y
+    reduce' (Or x y) z x `shouldBe` Or z (letP (y, z) x)
+    reduce' (Or x y) z z `shouldBe` Or z (letP (y, z) z)
     reduce' i1 (Or x y) x `shouldBe` i1
     reduce' i1 (Or i0 y) y `shouldBe` i1
     reduce' i1 (Or x i0) x `shouldBe` i1
@@ -1097,11 +1097,18 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let reduce' a = reduce ops (Let env a)
     reduce' (Var "f") `shouldBe` For "x" (Fun (Ann x IntT) Unit)
     reduce' (App f (Ann y IntT)) `shouldBe` Unit
-    reduce' (App f (Ann y NumT)) `shouldBe` Err
+    reduce' (App f (Ann y NumT)) `shouldBe` err (unhandledCase IntT NumT)
 
   it "☯ Core.reduce.App.Fix -- recursion" $ do
     let appFix x a b = reduce [] (App (Fix x a) b)
     "" `shouldBe` ""
+
+  it "☯ Core.eval.swap" $ do
+    eval ops (letP (And x y, And i1 i2) (And y x)) `shouldBe` And i2 i1
+
+  it "☯ Core.eval.add" $ do
+    eval ops (Call "int_add" (And i1 i2)) `shouldBe` Int 3
+    eval ops (letP (And x y, And i1 i2) (Call "int_add" (And x y))) `shouldBe` Int 3
 
   it "☯ Core.unify" $ do
     let unify' = unify [] [("x", Any), ("a", a)]

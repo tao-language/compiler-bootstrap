@@ -932,10 +932,9 @@ isValue = \case
 
 -- Evaluation
 reduce :: Ops -> Expr -> Expr
-reduce ops (App (Or a1 a2) b) = case reduce ops (App a1 b) of
-  c | isErr c -> reduce ops (App a2 b)
-  c | isValue c -> c
-  c -> Or c (App a2 b)
+-- reduce ops (Ann a b) = case reduce ops a of
+--   Ann a b -> reduce ops (Ann a b)
+--   a -> Ann a (reduce ops b)
 reduce ops (App a (Or b1 b2)) = case reduce ops (App a b1) of
   c | isErr c -> reduce ops (App a b2)
   c | isValue c -> c
@@ -951,7 +950,10 @@ reduce ops (App a b) = case reduce ops a of
       c -> c
   Fix x a -> reduce ops $ App (Let [(x, Fix x a)] a) b
   Ann a _ -> reduce ops $ App a b
-  Or a1 a2 -> reduce ops $ Or (App a1 b) (App a2 b)
+  Or a1 a2 -> case reduce ops (App a1 b) of
+    c | isErr c -> reduce ops (App a2 b)
+    c | isValue c -> c
+    c -> Or c (App a2 b)
   a@Call {} -> App a b
   Fun a c -> case (a, b) of
     (Let env a, b) -> reduce ops $ letP (reduce ops $ Let env a, b) c
@@ -959,6 +961,7 @@ reduce ops (App a b) = case reduce ops a of
     (_, Any) -> reduce ops c
     (Any, _) -> reduce ops c
     (For x a, b) -> reduce ops $ App (For x (Fun a c)) b
+    (Or a1 a2, b) -> reduce ops $ App (Or (Fun a1 c) (Fun a2 c)) b
     (Var x, b) -> reduce ops $ Let [(x, b)] c
     (a, Var x) -> reduce ops $ Let [(x, a)] c
     (Unit, Unit) -> reduce ops c
@@ -972,25 +975,23 @@ reduce ops (App a b) = case reduce ops a of
       let a' = substitute [(x, Var x')] a
       reduce ops $ letP (a', b) c
     (Ann a ta, Ann b tb) -> reduce ops $ letPs [(ta, tb), (a, b)] c
-    (Ann a _, b) -> reduce ops $ letP (a, b) c
-    (a, Ann b _) -> reduce ops $ letP (a, b) c
     (And a1 a2, And b1 b2) -> reduce ops $ letPs [(a1, b1), (a2, b2)] c
-    (Or a1 a2, b) -> reduce ops (App (Or (Fun a1 c) (Fun a2 c)) b)
-    -- (a, Or b1 b2) -> reduce ops $ Or (App (Fun a c) b1) (App (Fun a c) b2)
     (Fun a1 a2, Fun b1 b2) -> reduce ops $ letPs [(a1, b1), (a2, b2)] c
     (App a1 a2, App b1 b2) -> reduce ops $ letPs [(a1, b1), (a2, b2)] c
     (Call f a, Call f' b) | f == f' -> reduce ops $ letP (a, b) c
     (Err, Err) -> reduce ops c
-    (a, App b1 b2) -> case reduce ops (App b1 b2) of
+    (a, App {}) -> case reduce ops b of
       b@App {} -> letP (a, b) c
       b@Call {} -> letP (a, b) c
       b -> reduce ops (letP (a, b) c)
-    (a, Call f b) -> case reduce ops (Call f b) of
+    (a, Call {}) -> case reduce ops b of
       b@App {} -> letP (a, b) c
       b@Call {} -> letP (a, b) c
       b -> reduce ops (letP (a, b) c)
     (a, Let env b) -> reduce ops $ letP (a, reduce ops $ Let env b) c
     (a, Meta _ b) -> reduce ops $ letP (a, reduce ops b) c
+    (Ann a _, b) -> reduce ops $ letP (a, b) c
+    (a, Ann b _) -> reduce ops $ letP (a, b) c
     (a, b) -> err $ unhandledCase a b
   a -> err $ cannotApply a b
 reduce ops (Or a b) = Or (reduce ops a) b
@@ -1007,12 +1008,12 @@ reduce ops (Let env a) = case a of
   Tag k a -> Tag k (Let env a)
   For x a -> For x (Let env a)
   Fix x a -> Fix x (Let env a)
-  Ann a b -> Ann (Let env a) (Let env b)
+  Ann a b -> reduce ops $ Ann (Let env a) (Let env b)
   And a b -> And (Let env a) (Let env b)
   Or a b -> reduce ops $ Or (Let env a) (Let env b)
   Fun a b -> Fun (Let env a) (Let env b)
   App a b -> reduce ops $ App (Let env a) (Let env b)
-  Call f a -> Call f (Let env a)
+  Call f a -> reduce ops $ Call f (Let env a)
   Let env' a -> reduce ops $ Let (env' ++ env) a
   Meta m a -> reduce ops $ Let env a
   a -> a
@@ -1024,15 +1025,8 @@ eval ops a = case reduce ops a of
   Tag k a -> Tag k (eval ops a)
   For x a -> for' [x] (eval ops a)
   Fix x a -> fix' [x] (eval ops a)
-  Ann a b -> case eval ops a of
-    Ann a b -> Ann a b
-    a -> Ann a (eval ops b)
-  And a b -> case eval ops a of
-    And a1 a2 -> And a1 (eval ops a2)
-    a -> And a (eval ops a)
-  -- Or a b -> case eval ops a of
-  --   Or a1 a2 -> Or a1 (Or a2 (eval ops b))
-  --   a -> Or a (eval ops b)
+  Ann a b -> Ann (eval ops a) (eval ops b)
+  And a b -> And (eval ops a) (eval ops b)
   Or a b -> Or (eval ops a) (eval ops b)
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)

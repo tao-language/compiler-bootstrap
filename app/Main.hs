@@ -103,9 +103,6 @@ coreCmd filename arg = do
   printExpr b
   -- putStrLn "---- eval (untyped)"
   -- printExpr (C.dropTypes b)
-  putStrLn "TODO:"
-  putStrLn "- infer length does not place the `a` quantifier at the beginning"
-  putStrLn "- make the Fix (&length) go before the Let"
   return ()
 
 runCmd :: FilePath -> String -> IO ()
