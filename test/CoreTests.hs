@@ -128,6 +128,87 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     freeTags (Meta (Loc $ Location "file" (Range (Pos 1 2) (Pos 3 4))) a) `shouldBe` ["A"]
     freeTags Err `shouldBe` []
 
+  it "☯ Core.grammar.parser" $ do
+    parse' "_ \n" `shouldBe` Right (Any, "\n")
+    parse' "() \n" `shouldBe` Right (Unit, "\n")
+    parse' "( \n ) \n" `shouldBe` Right (Unit, "\n")
+    parse' "^Int \n" `shouldBe` Right (IntT, "\n")
+    parse' "^Num \n" `shouldBe` Right (NumT, "\n")
+    parse' "x \n" `shouldBe` Right (Var "x", "\n")
+    parse' "A \n" `shouldBe` Right (tag "A" [], "\n")
+    parse' "A() \n" `shouldBe` Right (tag "A" [], "\n")
+    parse' "A(x) \n" `shouldBe` Right (tag "A" [x], "\n")
+    parse' "A(x,y) \n" `shouldBe` Right (tag "A" [x, y], "\n")
+    parse' "A(x, y, z) \n" `shouldBe` Right (tag "A" [x, y, z], "\n")
+    parse' "A(\nx\n,\ny\n,\n) \n" `shouldBe` Right (tag "A" [x, y], "\n")
+    parse' "@x.y \n" `shouldBe` Right (For "x" y, "\n")
+    parse' "@ x .\ny \n" `shouldBe` Right (For "x" y, "\n")
+    parse' "@ x y \nz \n" `shouldBe` Right (for ["x", "y"] z, "\n")
+    parse' "@\nx. y \n" `shouldBe` Left ([], "@\nx. y \n")
+    parse' "&x.y \n" `shouldBe` Right (Fix "x" y, "\n")
+    parse' "& x .\ny \n" `shouldBe` Right (Fix "x" y, "\n")
+    parse' "& x y \nz \n" `shouldBe` Right (fix ["x", "y"] z, "\n")
+    parse' "&\nx. y \n" `shouldBe` Left ([], "&\nx. y \n")
+    parse' "x:y \n" `shouldBe` Right (Ann x y, "\n")
+    parse' "x :\ny \n" `shouldBe` Right (Ann x y, "\n")
+    parse' "x\n:\ny \n" `shouldBe` Right (Ann x y, "\n")
+    parse' "x : y : z \n" `shouldBe` Right (Ann x (Ann y z), "\n")
+    parse' "(x) \n" `shouldBe` Right (x, "\n")
+    parse' "(\nx\n) \n" `shouldBe` Right (x, "\n")
+    parse' "(x,y) \n" `shouldBe` Right (and' [x, y], "\n")
+    parse' "(x, y, z) \n" `shouldBe` Right (and' [x, y, z], "\n")
+    parse' "(\nx\n,\ny\n,\n) \n" `shouldBe` Right (and' [x, y], "\n")
+    parse' "x|y \n" `shouldBe` Right (Or x y, "\n")
+    parse' "x | y | z \n" `shouldBe` Right (Or x (Or y z), "\n")
+    parse' "x\n|\ny \n" `shouldBe` Right (Or x y, "\n")
+  -- Or Expr Expr
+  -- Fun Expr Expr
+  -- App Expr Expr
+  -- Call String Expr
+  -- Let [(String, Expr)] Expr
+  -- Meta (Metadata Expr) Expr
+  -- Err
+  it "☯ Core.grammar.layout" $ do
+    format 0 Any `shouldBe` "_"
+    format 0 Unit `shouldBe` "()"
+    format 0 IntT `shouldBe` "^Int"
+    format 0 NumT `shouldBe` "^Num"
+    format 0 (Int 1) `shouldBe` "1"
+    format 0 (Num 1.1) `shouldBe` "1.1"
+    format 0 (Var "x") `shouldBe` "x"
+    format 0 (tag "A" []) `shouldBe` "A"
+    format 4 (tag "A" [x]) `shouldBe` "A(x)"
+    format 3 (tag "A" [x]) `shouldBe` "A(\n  x,\n)"
+    format 7 (tag "A" [x, y]) `shouldBe` "A(x, y)"
+    format 6 (tag "A" [x, y]) `shouldBe` "A(\n  x,\n  y,\n)"
+    format 4 (tag "A" [x, y]) `shouldBe` "A(\n  x,\n  y,\n)"
+    format 5 (For "x" y) `shouldBe` "@x. y"
+    format 4 (For "x" y) `shouldBe` "@x\ny"
+    format 5 (Ann x y) `shouldBe` "x : y"
+    format 4 (Ann x y) `shouldBe` "x\n: y"
+    format 9 (Ann x (Ann y z)) `shouldBe` "x : y : z"
+    format 8 (Ann x (Ann y z)) `shouldBe` "x : y\n: z"
+    format 4 (Ann x (Ann y z)) `shouldBe` "x\n: y\n: z"
+    format 6 (and' [x, y]) `shouldBe` "(x, y)"
+    format 5 (and' [x, y]) `shouldBe` "( x,\n  y,\n)"
+    format 9 (and' [x, y, z]) `shouldBe` "(x, y, z)"
+    format 8 (and' [x, y, z]) `shouldBe` "( x,\n  y,\n  z,\n)"
+    format 5 (Or x y) `shouldBe` "x | y"
+    format 4 (Or x y) `shouldBe` "x\n| y"
+    format 9 (Or x (Or y z)) `shouldBe` "x | y | z"
+    format 8 (Or x (Or y z)) `shouldBe` "x | y\n| z"
+    format 4 (Or x (Or y z)) `shouldBe` "x\n| y\n| z"
+    format 6 (Fun x y) `shouldBe` "x -> y"
+    format 11 (Fun x (And y z)) `shouldBe` "x -> (y, z)"
+    format 16 (Fun (And x y) (And y z)) `shouldBe` "(x, y) -> (y, z)"
+    format 15 (Fun (And x y) (And y z)) `shouldBe` "(x, y) -> ( y,\n  z,\n)"
+    format 13 (Fun (And x y) (And y z)) `shouldBe` "(x, y) ->\n  (y, z)"
+  -- App Expr Expr
+  -- Call String Expr
+  -- Let [(String, Expr)] Expr
+  -- Meta (Metadata Expr) Expr
+  -- Err
+
   it "☯ Core.Any" $ do
     let env = []
     let expr = Any

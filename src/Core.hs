@@ -151,6 +151,64 @@ parse prec = P.parse (parser grammar prec)
 format :: Int -> Expr -> String
 format width = G.format grammar width "  "
 
+showVar :: String -> String
+showVar = \case
+  x | all (\c -> isAlphaNum c || c `elem` "_-$") x -> x
+  x -> "(" ++ x ++ ")"
+
+showTag :: String -> String
+showTag = \case
+  "[]" -> "[]"
+  k | all (\c -> isAlphaNum c || c `elem` "_-$") k -> k
+  k -> "(" ++ k ++ ")"
+
+parseTuple :: Parser [Expr]
+parseTuple = do
+  _ <- P.char '('
+  _ <- P.whitespaces
+  xs <- P.zeroOrMore $ do
+    x <- parseExpr 0
+    _ <- P.whitespaces
+    _ <- P.char ','
+    _ <- P.whitespaces
+    return x
+  x <- P.zeroOrOne $ do
+    x <- parseExpr 0
+    _ <- P.whitespaces
+    return x
+  _ <- P.char ')'
+  _ <- P.spaces
+  return (xs ++ x)
+
+layoutTuple :: [PP.Layout] -> PP.Layout
+layoutTuple xs = do
+  let alt1 = PP.join [PP.Text ", "] xs
+  let alt2 = [PP.Indent (PP.Text " " : PP.join [PP.Text ",", PP.NewLine] xs), PP.Text ",", PP.NewLine]
+  [PP.Text "(", PP.Or alt1 alt2, PP.Text ")"]
+
+parserDecorator :: String -> ([String] -> Expr -> Expr) -> Parser Expr -> Parser Expr
+parserDecorator op f rhs = do
+  _ <- P.text op
+  _ <- P.spaces
+  xs <- P.oneOrMore $ do
+    x <- parseNameVar
+    _ <- P.spaces
+    return x
+  _ <- P.oneOf [P.char '.', P.char '\n']
+  _ <- P.whitespaces
+  a <- rhs
+  _ <- P.spaces
+  return (f xs a)
+
+layoutDecorator :: String -> (a -> Maybe ([String], a)) -> (a -> PP.Layout) -> a -> Maybe PP.Layout
+layoutDecorator op match rhs a = do
+  (xs, a) <- match a
+  let names = map (\x -> [PP.Text x]) xs
+  let decorator = PP.Text op : PP.join [PP.Text " "] names
+  let alt1 = PP.Text ". " : rhs a
+  let alt2 = PP.NewLine : rhs a
+  Just (decorator ++ [PP.Or alt1 alt2])
+
 grammar :: G.Grammar String Expr
 grammar = do
   G.Grammar
@@ -181,62 +239,35 @@ grammar = do
           G.atom (const Num) P.number $ \_ -> \case
             Num n -> Just [PP.Text $ show n]
             _ -> Nothing,
+          -- Grammar.Var
+          G.atom (const Var) parseNameVar $ \_ -> \case
+            Var x -> Just [PP.Text (showVar x)]
+            _ -> Nothing,
           -- Grammar.Tag
           let parser expr = do
                 k <- parseNameTag
                 _ <- P.spaces
-                args <-
-                  P.oneOf
-                    [ do
-                        _ <- P.char '('
-                        _ <- P.spaces
-                        arg <- expr
-                        args <- P.zeroOrMore $ do
-                          _ <- P.char ','
-                          _ <- P.spaces
-                          expr
-                        _ <- P.char ')'
-                        _ <- P.spaces
-                        return (arg : args),
-                      return []
-                    ]
+                args <- P.oneOf [parseTuple, return []]
                 return (tag k args)
            in G.Atom parser $ \layout -> \case
                 Tag k a -> do
-                  let showTag = \case
-                        "[]" -> "[]"
-                        k | all (\c -> isAlphaNum c || c `elem` "_-$") k -> k
-                        k -> "(" ++ k ++ ")"
-                  let showArgs a = case andOf a of
+                  let layoutArgs a = case andOf a of
                         [] -> []
-                        args -> PP.Text "(" : intercalate [PP.Text ", "] (map layout args) ++ [PP.Text ")"]
-                  Just (PP.Text (showTag k) : showArgs a)
+                        args -> do
+                          let xs = map layout args
+                          let alt1 = PP.join [PP.Text ", "] xs
+                          let alt2 = [PP.Indent (PP.NewLine : PP.join [PP.Text ",", PP.NewLine] xs), PP.Text ",", PP.NewLine]
+                          [PP.Text "(", PP.Or alt1 alt2, PP.Text ")"]
+                  Just (PP.Text (showTag k) : layoutArgs a)
                 _ -> Nothing,
-          -- Grammar.Var
-          G.atom (const Var) parseNameVar $ \_ -> \case
-            Var x -> do
-              let showVar = \case
-                    x | all (\c -> isAlphaNum c || c `elem` "_-$") x -> x
-                    x -> "(" ++ x ++ ")"
-              Just [PP.Text (showVar x)]
-            _ -> Nothing,
           -- Grammar.And
           let parser expr = do
-                _ <- P.char '('
-                _ <- P.whitespaces
-                arg <- expr
-                _ <- P.whitespaces
-                args <- P.oneOrMore $ do
-                  _ <- P.char ','
-                  _ <- P.whitespaces
-                  expr
-                _ <- P.char ')'
-                _ <- P.spaces
-                return (and' (arg : args))
+                items <- parseTuple
+                return (and' items)
            in G.Atom parser $ \layout -> \case
                 And a b -> do
                   let items = map layout (andOf (And a b))
-                  Just (PP.Text "(" : intercalate [PP.Text ", "] items ++ [PP.Text ")"])
+                  Just (layoutTuple items)
                 _ -> Nothing,
           -- Grammar.sugar.def
           let parser expr = do
@@ -270,53 +301,31 @@ grammar = do
                 --   _ -> Nothing
                 _ -> Nothing,
           -- Grammar.Or
-          G.infixR 1 (const Or) "|" $ \case
-            Or a b -> Just (a, " ", b)
+          G.InfixR 1 (G.parserLeading "|" (const Or)) $ G.layoutLeading (" | ", "| ") $ \case
+            Or a b -> Just (a, b)
             _ -> Nothing,
           -- Grammar.Fix
-          let parser expr = do
-                _ <- P.char '&'
-                _ <- P.spaces
-                xs <- P.oneOrMore $ do
-                  x <- parseNameVar
-                  _ <- P.spaces
-                  return x
-                _ <- P.char '.'
-                _ <- P.whitespaces
-                a <- expr
-                _ <- P.spaces
-                return (fix xs a)
-           in G.Atom parser $ \layout -> \case
-                Fix x a -> do
-                  let (xs, a') = fixOf (Fix x a)
-                  Just (PP.Text ("&" ++ unwords xs ++ ". ") : layout a')
-                _ -> Nothing,
+          G.Atom (parserDecorator "&" fix) $ layoutDecorator "&" $ \case
+            Fix x a -> Just (fixOf (Fix x a))
+            _ -> Nothing,
           -- Grammar.Ann
-          G.infixR 3 (const Ann) ":" $ \case
-            Ann a b -> Just (a, " ", b)
+          G.InfixR 3 (G.parserLeading ":" (const Ann)) $ G.layoutLeading (" : ", ": ") $ \case
+            Ann a b -> Just (a, b)
             _ -> Nothing,
           -- Grammar.For
-          let parser expr = do
-                _ <- P.char '@'
-                _ <- P.spaces
-                xs <- P.oneOrMore $ do
-                  x <- parseNameVar
-                  _ <- P.spaces
-                  return x
-                _ <- P.oneOf [P.char '.', P.char '\n']
-                _ <- P.whitespaces
-                a <- expr
-                _ <- P.spaces
-                return (for xs a)
-           in G.Prefix 4 parser $ \layout -> \case
-                For x a -> do
-                  let (xs, a') = forOf (For x a)
-                  Just (PP.Text ("@" ++ unwords xs ++ ". ") : layout a')
-                _ -> Nothing,
-          -- Grammar.Fun
-          G.infixR 4 (const Fun) "->" $ \case
-            Fun a b -> Just (a, " ", b)
+          G.Prefix 4 (parserDecorator "@" for) $ layoutDecorator "@" $ \case
+            For x a -> Just (forOf (For x a))
             _ -> Nothing,
+          -- Grammar.Fun
+          G.InfixR 4 (parserLeading "->" (const Fun)) $ \lhs rhs -> \case
+            Fun a b -> do
+              let alt1 = PP.Text " " : rhs b
+              let alt2 = [PP.Indent (PP.NewLine : rhs b)]
+              Just (lhs a ++ [PP.Text " ->", PP.Or alt1 alt2])
+            _ -> Nothing,
+          -- G.infixR 4 (const Fun) "->" $ \case
+          --   Fun a b -> Just (a, " ", b)
+          --   _ -> Nothing,
           -- Grammar.App
           let parser x expr = do
                 y <- expr
@@ -933,9 +942,6 @@ isValue = \case
 
 -- Evaluation
 reduce :: Ops -> Expr -> Expr
--- reduce ops (Ann a b) = case reduce ops a of
---   Ann a b -> reduce ops (Ann a b)
---   a -> Ann a (reduce ops b)
 reduce ops (App a (Or b1 b2)) = case reduce ops (App a b1) of
   c | isErr c -> reduce ops (App a b2)
   c | isValue c -> c
@@ -1026,7 +1032,9 @@ eval ops a = case reduce ops a of
   Tag k a -> Tag k (eval ops a)
   For x a -> for' [x] (eval ops a)
   Fix x a -> fix' [x] (eval ops a)
-  Ann a b -> Ann (eval ops a) (eval ops b)
+  Ann a b -> case eval ops a of
+    Ann a b -> Ann (eval ops a) (eval ops b)
+    a -> Ann a (eval ops b)
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> Or (eval ops a) (eval ops b)
   Fun a b -> Fun (eval ops a) (eval ops b)
