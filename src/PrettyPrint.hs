@@ -11,8 +11,8 @@ data Segment
   | Or Layout Layout
   deriving (Eq, Show)
 
-pretty :: Int -> String -> Layout -> String
-pretty width indent = render (width, 0) (indent, "")
+pretty :: Int -> (String, String) -> Layout -> String
+pretty width (indent, startIndent) = render (width, 0) (indent, startIndent)
 
 -- Common
 join :: Layout -> [Layout] -> Layout

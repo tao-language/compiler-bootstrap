@@ -716,7 +716,7 @@ instance Emit [T.Stmt] [Stmt] where
 
 --- Pretty printing layouts ---
 pretty :: BuildOptions -> PP.Layout -> String
-pretty options = PP.pretty options.maxLineLength options.indent
+pretty options = PP.pretty options.maxLineLength (options.indent, "")
 
 class Layout a where
   layout :: a -> PP.Layout

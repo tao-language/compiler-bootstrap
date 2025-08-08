@@ -58,7 +58,7 @@ data Expr
 
 instance Show Expr where
   show :: Expr -> String
-  show = Tao.format 80
+  show = Tao.format 80 ""
 
 type Type = Expr
 
@@ -666,8 +666,8 @@ collect f = \case
 parse :: FilePath -> String -> Either (P.State String) (Expr, P.State String)
 parse = P.parse (parseExpr 0)
 
-format :: Int -> Expr -> String
-format width = G.format grammar width "  "
+format :: Int -> String -> Expr -> String
+format width indent = G.format grammar width ("  ", indent)
 
 grammar :: G.Grammar String Expr
 grammar = do

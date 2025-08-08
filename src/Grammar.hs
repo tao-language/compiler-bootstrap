@@ -57,6 +57,41 @@ suffix p f op match = do
         return (lhs a ++ [PP.Text (space ++ op)])
   InfixL p parser' layout'
 
+parserTrailing :: String -> (Location -> a -> a -> a) -> a -> P.Parser ctx a -> P.Parser ctx a
+parserTrailing op f x rhs = do
+  start <- P.getState
+  _ <- P.text op
+  end <- P.getState
+  _ <- P.whitespaces
+  y <- rhs
+  let loc = Location start.filename (Range start.pos end.pos)
+  return (f loc x y)
+
+parserLeading :: String -> (Location -> a -> a -> a) -> a -> P.Parser ctx a -> P.Parser ctx a
+parserLeading op f x rhs = do
+  _ <- P.whitespaces
+  start <- P.getState
+  _ <- P.text op
+  end <- P.getState
+  _ <- P.whitespaces
+  y <- rhs
+  let loc = Location start.filename (Range start.pos end.pos)
+  return (f loc x y)
+
+layoutTrailing :: (String, String) -> (a -> Maybe (a, a)) -> (a -> PP.Layout) -> (a -> PP.Layout) -> a -> Maybe PP.Layout
+layoutTrailing (op1, op2) match lhs rhs x = do
+  (x, y) <- match x
+  let alt1 = lhs x ++ [PP.Text op1] ++ rhs y
+  let alt2 = lhs x ++ [PP.Text op2, PP.Indent (PP.NewLine : rhs y)]
+  return [PP.Or alt1 alt2]
+
+layoutLeading :: (String, String) -> (a -> Maybe (a, a)) -> (a -> PP.Layout) -> (a -> PP.Layout) -> a -> Maybe PP.Layout
+layoutLeading (op1, op2) match lhs rhs x = do
+  (x, y) <- match x
+  let alt1 = lhs x ++ [PP.Text op1] ++ rhs y
+  let alt2 = lhs x ++ (PP.NewLine : PP.Text op2 : rhs y)
+  return [PP.Or alt1 alt2]
+
 infixL :: Int -> (Location -> a -> a -> a) -> String -> (a -> Maybe (a, String, a)) -> Operator ctx a
 infixL p f op match = infixL' p f op $ \x -> do
   (a, space, b) <- match x
@@ -133,13 +168,19 @@ layout grammar p x = do
             if cond
               then do
                 let (open, close) = grammar.group
-                let alt1 = PP.Text open : x ++ [PP.Text close]
-                let alt2 = [PP.Text open, PP.Indent [PP.Indent (PP.NewLine : x), PP.NewLine], PP.Text close]
-                [PP.Or alt1 alt2]
+                let alt2 = [PP.Indent (PP.NewLine : x), PP.NewLine]
+                [PP.Text open, PP.Or x alt2, PP.Text close]
               else x
+  -- layoutArgs :: [PP.Layout] -> PP.Layout
+  -- layoutArgs [] = [PP.Text "()"]
+  -- layoutArgs xs = do
+  --   let alt1 = PP.join [PP.Text ", "] xs
+  --   let alt2 = [PP.Indent (PP.NewLine : PP.join [PP.Text ",", PP.NewLine] xs), PP.Text ",", PP.NewLine]
+  --   [PP.Text "(", PP.Or alt1 alt2, PP.Text ")"]
+
   loop grammar.operators
 
-format :: Grammar ctx a -> Int -> String -> a -> String
+format :: Grammar ctx a -> Int -> (String, String) -> a -> String
 format grammar width indent x =
   layout grammar 0 x
     & PP.pretty width indent

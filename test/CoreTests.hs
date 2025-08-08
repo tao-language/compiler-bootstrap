@@ -132,8 +132,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     parse' "_ \n" `shouldBe` Right (Any, "\n")
     parse' "() \n" `shouldBe` Right (Unit, "\n")
     parse' "( \n ) \n" `shouldBe` Right (Unit, "\n")
-    parse' "^Int \n" `shouldBe` Right (IntT, "\n")
-    parse' "^Num \n" `shouldBe` Right (NumT, "\n")
+    parse' "!Int \n" `shouldBe` Right (IntT, "\n")
+    parse' "!Num \n" `shouldBe` Right (NumT, "\n")
     parse' "x \n" `shouldBe` Right (Var "x", "\n")
     parse' "A \n" `shouldBe` Right (tag "A" [], "\n")
     parse' "A() \n" `shouldBe` Right (tag "A" [], "\n")
@@ -161,18 +161,34 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     parse' "x|y \n" `shouldBe` Right (Or x y, "\n")
     parse' "x | y | z \n" `shouldBe` Right (Or x (Or y z), "\n")
     parse' "x\n|\ny \n" `shouldBe` Right (Or x y, "\n")
-  -- Or Expr Expr
-  -- Fun Expr Expr
-  -- App Expr Expr
-  -- Call String Expr
-  -- Let [(String, Expr)] Expr
+    parse' "x->y \n" `shouldBe` Right (Fun x y, "\n")
+    parse' "x -> y -> z \n" `shouldBe` Right (Fun x (Fun y z), "\n")
+    parse' "x\n->\ny\n->\nz \n" `shouldBe` Right (Fun x (Fun y z), "\n")
+    parse' "a() \n" `shouldBe` Right (app a [], "\n")
+    parse' "a(x) \n" `shouldBe` Right (app a [x], "\n")
+    parse' "a(x,y) \n" `shouldBe` Right (app a [x, y], "\n")
+    parse' "a (x, y, z) \n" `shouldBe` Right (app a [x, y, z], "\n")
+    parse' "a(\nx\n,\ny\n,\n) \n" `shouldBe` Right (app a [x, y], "\n")
+    parse' "%f \n" `shouldBe` Right (call "f" [], "\n")
+    parse' "%f() \n" `shouldBe` Right (call "f" [], "\n")
+    parse' "%f(x) \n" `shouldBe` Right (call "f" [x], "\n")
+    parse' "%f(x,y) \n" `shouldBe` Right (call "f" [x, y], "\n")
+    parse' "%f (x, y, z) \n" `shouldBe` Right (call "f" [x, y, z], "\n")
+    parse' "%f(\nx\n,\ny\n,\n) \n" `shouldBe` Right (call "f" [x, y], "\n")
+    parse' "^{}y \n" `shouldBe` Right (Let [] y, "\n")
+    parse' "^ { } y \n" `shouldBe` Right (Let [] y, "\n")
+    parse' "^\n{\n}\ny \n" `shouldBe` Right (Let [] y, "\n")
+    parse' "^x=a;y \n" `shouldBe` Right (Let [("x", a)] y, "\n")
+    parse' "^ x = a ; ^ y = b ; z \n" `shouldBe` Right (Let [("x", a), ("y", b)] z, "\n")
+    parse' "^\nx\n=\na \n^\ny\n=\nb \nz \n" `shouldBe` Right (Let [("x", a), ("y", b)] z, "\n")
   -- Meta (Metadata Expr) Expr
   -- Err
+
   it "☯ Core.grammar.layout" $ do
     format 0 Any `shouldBe` "_"
     format 0 Unit `shouldBe` "()"
-    format 0 IntT `shouldBe` "^Int"
-    format 0 NumT `shouldBe` "^Num"
+    format 0 IntT `shouldBe` "!Int"
+    format 0 NumT `shouldBe` "!Num"
     format 0 (Int 1) `shouldBe` "1"
     format 0 (Num 1.1) `shouldBe` "1.1"
     format 0 (Var "x") `shouldBe` "x"
@@ -199,13 +215,26 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     format 8 (Or x (Or y z)) `shouldBe` "x | y\n| z"
     format 4 (Or x (Or y z)) `shouldBe` "x\n| y\n| z"
     format 6 (Fun x y) `shouldBe` "x -> y"
+    format 5 (Fun x y) `shouldBe` "x ->\n  y"
     format 11 (Fun x (And y z)) `shouldBe` "x -> (y, z)"
     format 16 (Fun (And x y) (And y z)) `shouldBe` "(x, y) -> (y, z)"
     format 15 (Fun (And x y) (And y z)) `shouldBe` "(x, y) -> ( y,\n  z,\n)"
     format 13 (Fun (And x y) (And y z)) `shouldBe` "(x, y) ->\n  (y, z)"
-  -- App Expr Expr
-  -- Call String Expr
-  -- Let [(String, Expr)] Expr
+    format 0 (app x []) `shouldBe` "x()"
+    format 4 (app x [y]) `shouldBe` "x(y)"
+    format 3 (app x [y]) `shouldBe` "x(\n  y,\n)"
+    format 7 (app x [y, z]) `shouldBe` "x(y, z)"
+    format 6 (app x [y, z]) `shouldBe` "x(\n  y,\n  z,\n)"
+    format 0 (call "f" []) `shouldBe` "%f"
+    format 5 (call "f" [x]) `shouldBe` "%f(x)"
+    format 4 (call "f" [x]) `shouldBe` "%f(\n  x,\n)"
+    format 8 (call "f" [x, y]) `shouldBe` "%f(x, y)"
+    format 7 (call "f" [x, y]) `shouldBe` "%f(\n  x,\n  y,\n)"
+    format 5 (Let [] x) `shouldBe` "^{} x"
+    format 4 (Let [] x) `shouldBe` "^{}\nx"
+    format 10 (Let [("x", a)] y) `shouldBe` "^x = a\ny"
+    format 6 (Let [("x", a)] y) `shouldBe` "^x = a\ny"
+    format 5 (Let [("x", a)] y) `shouldBe` "^x =\n  a\ny"
   -- Meta (Metadata Expr) Expr
   -- Err
 

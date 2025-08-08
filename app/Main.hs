@@ -59,48 +59,15 @@ coreCmd filename arg = do
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
   let (env, a) = compile ctx path expr
-  putStrLn $ "---- env: " ++ unwords (map (show . fst) env)
-  let printExpr a = do
-        a <- case C.letOf a of
-          Just (env, a) -> do
-            putStrLn ("  {" ++ unwords (map fst env) ++ "}")
-            return a
-          Nothing -> return a
-        -- mapM_
-        --   ( \a -> do
-        --       putStr "  | "
-        --       -- a <- case C.fixOf a of
-        --       --   ([], a) -> return a
-        --       --   (xs, a) -> do
-        --       --     putStr ("&" ++ unwords (map (show . Var) xs) ++ ". ")
-        --       --     return a
-        --       -- (xs, a) <- return (C.forOf a)
-        --       -- putStrLn ("@" ++ unwords (map (show . Var) xs) ++ ".")
-        --       -- a <- case C.asAnn a of
-        --       --   Just (a, t) -> do
-        --       --     putStrLn ("  : " ++ show t)
-        --       --     return a
-        --       --   Nothing -> return a
-        --       -- mapM_ (\b -> putStrLn ("  | " ++ show b)) (C.orOf a)
-        --       print a
-        --   )
-        --   (C.orOf a)
-        print a
-  mapM_
-    ( \(name, a) -> do
-        putStrLn ("+ " ++ name ++ ": ")
-        printExpr a
-    )
-    env
-  putStrLn "---- lower"
-  printExpr (lower expr)
-  putStrLn "---- bind"
-  printExpr (C.bind [] $ lower expr)
   putStrLn "---- compile"
-  printExpr a
+  print (C.Let env a)
+  putStrLn "---- lower"
+  print (lower expr)
+  putStrLn "---- bind"
+  print (C.bind [] $ lower expr)
   putStrLn "---- eval"
   let b = C.eval runtimeOps $ C.let' env a
-  printExpr b
+  print b
   -- putStrLn "---- eval (untyped)"
   -- printExpr (C.dropTypes b)
   return ()

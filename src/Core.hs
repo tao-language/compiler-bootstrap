@@ -8,7 +8,7 @@ import Data.List (delete, intercalate, intersect, nub, nubBy, sort, union, union
 import Data.Maybe (fromMaybe, maybeToList)
 import Debug.Trace (trace)
 import Error
-import Grammar as G
+import qualified Grammar as G
 import Location (Location (..), Position (..), Range (..))
 import qualified Parser as P
 import qualified PrettyPrint as PP
@@ -47,7 +47,7 @@ data Expr
 
 instance Show Expr where
   show :: Expr -> String
-  show = Core.format 200
+  show = Core.format 120 ""
 
 showCtr :: Expr -> String
 showCtr = \case
@@ -146,10 +146,13 @@ instance Monad MatchResult where
   (>>=) (NotMatched a b) _ = NotMatched a b
 
 parse :: Int -> FilePath -> String -> Either (P.State String) (Expr, P.State String)
-parse prec = P.parse (parser grammar prec)
+parse prec = P.parse (G.parser grammar prec)
 
-format :: Int -> Expr -> String
-format width = G.format grammar width "  "
+layout :: Int -> Expr -> PP.Layout
+layout prec = G.layout grammar prec
+
+format :: Int -> String -> Expr -> String
+format width indent = G.format grammar width ("  ", indent)
 
 showVar :: String -> String
 showVar = \case
@@ -181,10 +184,22 @@ parseTuple = do
   return (xs ++ x)
 
 layoutTuple :: [PP.Layout] -> PP.Layout
+layoutTuple [] = [PP.Text "()"]
 layoutTuple xs = do
   let alt1 = PP.join [PP.Text ", "] xs
   let alt2 = [PP.Indent (PP.Text " " : PP.join [PP.Text ",", PP.NewLine] xs), PP.Text ",", PP.NewLine]
   [PP.Text "(", PP.Or alt1 alt2, PP.Text ")"]
+
+layoutArgs :: [PP.Layout] -> PP.Layout
+layoutArgs [] = [PP.Text "()"]
+layoutArgs xs = do
+  let alt1 = PP.join [PP.Text ", "] xs
+  let alt2 = [PP.Indent (PP.NewLine : PP.join [PP.Text ",", PP.NewLine] xs), PP.Text ",", PP.NewLine]
+  [PP.Text "(", PP.Or alt1 alt2, PP.Text ")"]
+
+maybeLayoutArgs :: [PP.Layout] -> PP.Layout
+maybeLayoutArgs [] = []
+maybeLayoutArgs args = layoutArgs args
 
 parserDecorator :: String -> ([String] -> Expr -> Expr) -> Parser Expr -> Parser Expr
 parserDecorator op f rhs = do
@@ -207,7 +222,7 @@ layoutDecorator op match rhs a = do
   let decorator = PP.Text op : PP.join [PP.Text " "] names
   let alt1 = PP.Text ". " : rhs a
   let alt2 = PP.NewLine : rhs a
-  Just (decorator ++ [PP.Or alt1 alt2])
+  Just (decorator ++ [PP.Indent [PP.Or alt1 alt2]])
 
 grammar :: G.Grammar String Expr
 grammar = do
@@ -224,12 +239,12 @@ grammar = do
                 Unit -> Just [PP.Text "()"]
                 _ -> Nothing,
           -- Grammar.IntT
-          G.atom (\_ _ -> IntT) (P.word "^Int") $ \_ -> \case
-            IntT -> Just [PP.Text "^Int"]
+          G.atom (\_ _ -> IntT) (P.word "!Int") $ \_ -> \case
+            IntT -> Just [PP.Text "!Int"]
             _ -> Nothing,
           -- Grammar.NumT
-          G.atom (\_ _ -> NumT) (P.word "^Num") $ \_ -> \case
-            NumT -> Just [PP.Text "^Num"]
+          G.atom (\_ _ -> NumT) (P.word "!Num") $ \_ -> \case
+            NumT -> Just [PP.Text "!Num"]
             _ -> Nothing,
           -- Grammar.Int
           G.atom (const Int) P.integer $ \_ -> \case
@@ -249,16 +264,10 @@ grammar = do
                 _ <- P.spaces
                 args <- P.oneOf [parseTuple, return []]
                 return (tag k args)
-           in G.Atom parser $ \layout -> \case
+           in G.Atom parser $ \rhs -> \case
                 Tag k a -> do
-                  let layoutArgs a = case andOf a of
-                        [] -> []
-                        args -> do
-                          let xs = map layout args
-                          let alt1 = PP.join [PP.Text ", "] xs
-                          let alt2 = [PP.Indent (PP.NewLine : PP.join [PP.Text ",", PP.NewLine] xs), PP.Text ",", PP.NewLine]
-                          [PP.Text "(", PP.Or alt1 alt2, PP.Text ")"]
-                  Just (PP.Text (showTag k) : layoutArgs a)
+                  let args = map rhs (andOf a)
+                  Just (PP.Text (showTag k) : maybeLayoutArgs args)
                 _ -> Nothing,
           -- Grammar.And
           let parser expr = do
@@ -301,8 +310,11 @@ grammar = do
                 --   _ -> Nothing
                 _ -> Nothing,
           -- Grammar.Or
-          G.InfixR 1 (G.parserLeading "|" (const Or)) $ G.layoutLeading (" | ", "| ") $ \case
-            Or a b -> Just (a, b)
+          G.InfixR 1 (G.parserLeading "|" (const Or)) $ \lhs rhs -> \case
+            Or a b -> do
+              let alt1 = lhs a ++ [PP.Text " | "] ++ rhs b
+              let alt2 = lhs a ++ (PP.NewLine : PP.Text "| " : rhs b)
+              return $ if isValue a then [PP.Or alt1 alt2] else alt2
             _ -> Nothing,
           -- Grammar.Fix
           G.Atom (parserDecorator "&" fix) $ layoutDecorator "&" $ \case
@@ -317,74 +329,73 @@ grammar = do
             For x a -> Just (forOf (For x a))
             _ -> Nothing,
           -- Grammar.Fun
-          G.InfixR 4 (parserLeading "->" (const Fun)) $ \lhs rhs -> \case
+          G.InfixR 4 (G.parserLeading "->" (const Fun)) $ \lhs rhs -> \case
             Fun a b -> do
               let alt1 = PP.Text " " : rhs b
               let alt2 = [PP.Indent (PP.NewLine : rhs b)]
               Just (lhs a ++ [PP.Text " ->", PP.Or alt1 alt2])
             _ -> Nothing,
-          -- G.infixR 4 (const Fun) "->" $ \case
-          --   Fun a b -> Just (a, " ", b)
-          --   _ -> Nothing,
           -- Grammar.App
-          let parser x expr = do
-                y <- expr
-                _ <- P.spaces
-                return (App x y)
+          let parser a _ = do
+                args <- parseTuple
+                return (app a args)
            in G.InfixL 5 parser $ \lhs rhs -> \case
-                App a b -> Just (lhs a ++ PP.Text " " : rhs b)
+                App a b -> do
+                  let args = map (layout 0) (andOf b)
+                  Just (lhs a ++ layoutArgs args)
                 _ -> Nothing,
           -- Grammar.Call
           let parser expr = do
                 _ <- P.char '%'
                 x <- parseNameVar
                 _ <- P.spaces
-                _ <- P.char '<'
-                _ <- P.whitespaces
-                a <- expr
-                _ <- P.whitespaces
-                _ <- P.char '>'
-                _ <- P.spaces
-                return (Call x a)
-           in G.Atom parser $ \layout -> \case
+                args <- P.oneOf [parseTuple, return []]
+                return (call x args)
+           in G.Atom parser $ \rhs -> \case
                 Call f a -> do
-                  Just (PP.Text ("%" ++ f ++ "<") : layout a ++ [PP.Text ">"])
+                  let args = map rhs (andOf a)
+                  Just (PP.Text ("%" ++ f) : maybeLayoutArgs args)
                 _ -> Nothing,
           -- Grammar.Let
           let parser expr = do
-                _ <- P.text "@{"
-                _ <- P.whitespaces
-                env <- do
-                  let parseDef = do
+                env <-
+                  P.oneOf
+                    [ P.oneOrMore $ do
+                        _ <- P.char '^'
+                        _ <- P.whitespaces
                         x <- parseNameVar
                         _ <- P.whitespaces
                         _ <- P.char '='
                         _ <- P.whitespaces
-                        a <- expr
+                        a <- parseExpr 0
+                        _ <- P.oneOf [P.char ';', P.char '\n']
                         _ <- P.whitespaces
-                        return (x, a)
-                  P.oneOf
-                    [ do
-                        def <- parseDef
-                        defs <- P.zeroOrMore $ do
-                          _ <- P.char ','
-                          _ <- P.whitespaces
-                          parseDef
-                        return (def : defs),
-                      return []
+                        return (x, a),
+                      do
+                        _ <- P.char '^'
+                        _ <- P.whitespaces
+                        _ <- P.char '{'
+                        _ <- P.whitespaces
+                        _ <- P.char '}'
+                        _ <- P.whitespaces
+                        return []
                     ]
-                _ <- P.char '}'
-                _ <- P.whitespaces
                 a <- expr
-                _ <- P.spaces
                 return (Let env a)
-           in G.Prefix 1 parser $ \layout -> \case
+           in G.Prefix 1 parser $ \rhs -> \case
+                Let [] a -> do
+                  let alt1 = PP.Text "^{} " : rhs a
+                  let alt2 = PP.Text "^{}" : PP.NewLine : rhs a
+                  Just [PP.Or alt1 alt2]
                 Let env a -> do
-                  let layoutDef (x, a)
-                        | a == Var x = [PP.Text (show $ Var x)]
-                        -- \| otherwise = PP.Text (show x ++ " = ") : layout a
-                        | otherwise = [PP.Text (show $ Var x)]
-                  Just (PP.Text "@{" : intercalate [PP.Text " "] (map layoutDef env) ++ PP.Text "} " : layout a)
+                  let layoutDef (x, a) = do
+                        let def = PP.Text ("^" ++ show (Var x) ++ " =")
+                        let alt1 = PP.Text " " : layout 0 a
+                        let alt2 = PP.NewLine : layout 0 a
+                        if isValue a
+                          then [def, PP.Indent [PP.Or alt1 alt2], PP.NewLine]
+                          else [def, PP.Indent alt2, PP.NewLine]
+                  Just (concatMap layoutDef env ++ rhs a)
                 _ -> Nothing,
           -- Grammar.Metadata.Comments
           let parser expr = do
@@ -689,6 +700,15 @@ appOf a = (a, [])
 curry' :: Expr -> [Expr] -> Expr
 curry' = foldl App
 
+call :: String -> [Expr] -> Expr
+call f args = Call f (and' args)
+
+isCall :: Expr -> Bool
+isCall (Call _ _) = True
+isCall (Ann a _) = isCall a
+isCall (Meta _ a) = isCall a
+isCall _ = False
+
 let' :: Env -> Expr -> Expr
 let' [] a = a
 let' env (Let env' a) = let' (env ++ env') a
@@ -730,12 +750,6 @@ matchFun :: [([Expr], Expr)] -> Expr
 matchFun [] = Unit
 matchFun [(ps, b)] = fun ps b
 matchFun ((ps, b) : cases) = fun ps b `Or` matchFun cases
-
-isCall :: Expr -> Bool
-isCall (Call _ _) = True
-isCall (Ann a _) = isCall a
-isCall (Meta _ a) = isCall a
-isCall _ = False
 
 err :: Error Expr -> Expr
 err e = Meta (Error e) Err
