@@ -73,7 +73,7 @@ run = describe "--==☯ Pretty print ☯==--" $ do
             "  ii,",
             "]]"
           ]
-    pretty 40 "  " (layout tree) `shouldBe` intercalate "\n" expected
+    pretty 40 ("  ", "") (layout tree) `shouldBe` intercalate "\n" expected
 
     let expected =
           [ "aaa [bbbbb [",
@@ -81,7 +81,7 @@ run = describe "--==☯ Pretty print ☯==--" $ do
             "  dd,",
             "], eee, ffff [gg, hhh, ii]]"
           ]
-    pretty 30 "  " (layout tree) `shouldBe` intercalate "\n" expected
+    pretty 30 ("  ", "") (layout tree) `shouldBe` intercalate "\n" expected
 
     let expected =
           [ "aaa [bbbbb [",
@@ -93,7 +93,7 @@ run = describe "--==☯ Pretty print ☯==--" $ do
             "  ii,",
             "]]"
           ]
-    pretty 20 "  " (layout tree) `shouldBe` intercalate "\n" expected
+    pretty 20 ("  ", "") (layout tree) `shouldBe` intercalate "\n" expected
 
     let expected =
           [ "aaa [",
@@ -109,4 +109,4 @@ run = describe "--==☯ Pretty print ☯==--" $ do
             "  ],",
             "]"
           ]
-    pretty 10 "  " (layout tree) `shouldBe` intercalate "\n" expected
+    pretty 10 ("  ", "") (layout tree) `shouldBe` intercalate "\n" expected

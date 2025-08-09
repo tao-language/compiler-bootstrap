@@ -15,10 +15,10 @@ filename :: String
 filename = "<test>"
 
 fmt :: Expr -> String
-fmt = format 80 . dropLocations
+fmt = show . dropLocations
 
 core :: C.Expr -> String
-core = C.format 80 . C.dropMeta
+core = show . C.dropMeta
 
 def' :: String -> String -> Stmt
 def' a b = case (parse ("ctx." ++ a) a, parse ("ctx." ++ a) b) of

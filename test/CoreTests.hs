@@ -69,8 +69,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
         Right (env, expr)
   let run envSrc src = do
         (env, a) <- parseWith envSrc src
-        let a' = eval ops (Let env a)
-        Right (format 80 a')
+        Right (show $ eval ops (Let env a))
 
   it "☯ Core.freeVars" $ do
     freeVars Any `shouldBe` []
@@ -185,298 +184,58 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   -- Err
 
   it "☯ Core.grammar.layout" $ do
-    format 0 Any `shouldBe` "_"
-    format 0 Unit `shouldBe` "()"
-    format 0 IntT `shouldBe` "!Int"
-    format 0 NumT `shouldBe` "!Num"
-    format 0 (Int 1) `shouldBe` "1"
-    format 0 (Num 1.1) `shouldBe` "1.1"
-    format 0 (Var "x") `shouldBe` "x"
-    format 0 (tag "A" []) `shouldBe` "A"
-    format 4 (tag "A" [x]) `shouldBe` "A(x)"
-    format 3 (tag "A" [x]) `shouldBe` "A(\n  x,\n)"
-    format 7 (tag "A" [x, y]) `shouldBe` "A(x, y)"
-    format 6 (tag "A" [x, y]) `shouldBe` "A(\n  x,\n  y,\n)"
-    format 4 (tag "A" [x, y]) `shouldBe` "A(\n  x,\n  y,\n)"
-    format 5 (For "x" y) `shouldBe` "@x. y"
-    format 4 (For "x" y) `shouldBe` "@x\ny"
-    format 5 (Ann x y) `shouldBe` "x : y"
-    format 4 (Ann x y) `shouldBe` "x\n: y"
-    format 9 (Ann x (Ann y z)) `shouldBe` "x : y : z"
-    format 8 (Ann x (Ann y z)) `shouldBe` "x : y\n: z"
-    format 4 (Ann x (Ann y z)) `shouldBe` "x\n: y\n: z"
-    format 6 (and' [x, y]) `shouldBe` "(x, y)"
-    format 5 (and' [x, y]) `shouldBe` "( x,\n  y,\n)"
-    format 9 (and' [x, y, z]) `shouldBe` "(x, y, z)"
-    format 8 (and' [x, y, z]) `shouldBe` "( x,\n  y,\n  z,\n)"
-    format 5 (Or x y) `shouldBe` "x | y"
-    format 4 (Or x y) `shouldBe` "x\n| y"
-    format 9 (Or x (Or y z)) `shouldBe` "x | y | z"
-    format 8 (Or x (Or y z)) `shouldBe` "x | y\n| z"
-    format 4 (Or x (Or y z)) `shouldBe` "x\n| y\n| z"
-    format 6 (Fun x y) `shouldBe` "x -> y"
-    format 5 (Fun x y) `shouldBe` "x ->\n  y"
-    format 11 (Fun x (And y z)) `shouldBe` "x -> (y, z)"
-    format 16 (Fun (And x y) (And y z)) `shouldBe` "(x, y) -> (y, z)"
-    format 15 (Fun (And x y) (And y z)) `shouldBe` "(x, y) -> ( y,\n  z,\n)"
-    format 13 (Fun (And x y) (And y z)) `shouldBe` "(x, y) ->\n  (y, z)"
-    format 0 (app x []) `shouldBe` "x()"
-    format 4 (app x [y]) `shouldBe` "x(y)"
-    format 3 (app x [y]) `shouldBe` "x(\n  y,\n)"
-    format 7 (app x [y, z]) `shouldBe` "x(y, z)"
-    format 6 (app x [y, z]) `shouldBe` "x(\n  y,\n  z,\n)"
-    format 0 (call "f" []) `shouldBe` "%f"
-    format 5 (call "f" [x]) `shouldBe` "%f(x)"
-    format 4 (call "f" [x]) `shouldBe` "%f(\n  x,\n)"
-    format 8 (call "f" [x, y]) `shouldBe` "%f(x, y)"
-    format 7 (call "f" [x, y]) `shouldBe` "%f(\n  x,\n  y,\n)"
-    format 5 (Let [] x) `shouldBe` "^{} x"
-    format 4 (Let [] x) `shouldBe` "^{}\nx"
-    format 10 (Let [("x", a)] y) `shouldBe` "^x = a\ny"
-    format 6 (Let [("x", a)] y) `shouldBe` "^x = a\ny"
-    format 5 (Let [("x", a)] y) `shouldBe` "^x =\n  a\ny"
+    format 0 "" Any `shouldBe` "_"
+    format 0 "" Unit `shouldBe` "()"
+    format 0 "" IntT `shouldBe` "!Int"
+    format 0 "" NumT `shouldBe` "!Num"
+    format 0 "" (Int 1) `shouldBe` "1"
+    format 0 "" (Num 1.1) `shouldBe` "1.1"
+    format 0 "" (Var "x") `shouldBe` "x"
+    format 0 "" (tag "A" []) `shouldBe` "A"
+    format 4 "" (tag "A" [x]) `shouldBe` "A(x)"
+    format 3 "" (tag "A" [x]) `shouldBe` "A(\n  x,\n)"
+    format 7 "" (tag "A" [x, y]) `shouldBe` "A(x, y)"
+    format 6 "" (tag "A" [x, y]) `shouldBe` "A(\n  x,\n  y,\n)"
+    format 4 "" (tag "A" [x, y]) `shouldBe` "A(\n  x,\n  y,\n)"
+    format 5 "" (For "x" y) `shouldBe` "@x. y"
+    format 4 "" (For "x" y) `shouldBe` "@x\ny"
+    format 5 "" (Ann x y) `shouldBe` "x : y"
+    format 4 "" (Ann x y) `shouldBe` "x\n: y"
+    format 9 "" (Ann x (Ann y z)) `shouldBe` "x : y : z"
+    format 8 "" (Ann x (Ann y z)) `shouldBe` "x : y\n: z"
+    format 4 "" (Ann x (Ann y z)) `shouldBe` "x\n: y\n: z"
+    format 6 "" (and' [x, y]) `shouldBe` "(x, y)"
+    format 5 "" (and' [x, y]) `shouldBe` "( x,\n  y,\n)"
+    format 9 "" (and' [x, y, z]) `shouldBe` "(x, y, z)"
+    format 8 "" (and' [x, y, z]) `shouldBe` "( x,\n  y,\n  z,\n)"
+    format 5 "" (Or x y) `shouldBe` "x | y"
+    format 4 "" (Or x y) `shouldBe` "x\n| y"
+    format 9 "" (Or x (Or y z)) `shouldBe` "x | y | z"
+    format 8 "" (Or x (Or y z)) `shouldBe` "x | y\n| z"
+    format 4 "" (Or x (Or y z)) `shouldBe` "x\n| y\n| z"
+    format 6 "" (Fun x y) `shouldBe` "x -> y"
+    format 5 "" (Fun x y) `shouldBe` "x ->\n  y"
+    format 11 "" (Fun x (And y z)) `shouldBe` "x -> (y, z)"
+    format 16 "" (Fun (And x y) (And y z)) `shouldBe` "(x, y) -> (y, z)"
+    format 15 "" (Fun (And x y) (And y z)) `shouldBe` "(x, y) -> ( y,\n  z,\n)"
+    format 13 "" (Fun (And x y) (And y z)) `shouldBe` "(x, y) ->\n  (y, z)"
+    format 0 "" (app x []) `shouldBe` "x()"
+    format 4 "" (app x [y]) `shouldBe` "x(y)"
+    format 3 "" (app x [y]) `shouldBe` "x(\n  y,\n)"
+    format 7 "" (app x [y, z]) `shouldBe` "x(y, z)"
+    format 6 "" (app x [y, z]) `shouldBe` "x(\n  y,\n  z,\n)"
+    format 0 "" (call "f" []) `shouldBe` "%f"
+    format 5 "" (call "f" [x]) `shouldBe` "%f(x)"
+    format 4 "" (call "f" [x]) `shouldBe` "%f(\n  x,\n)"
+    format 8 "" (call "f" [x, y]) `shouldBe` "%f(x, y)"
+    format 7 "" (call "f" [x, y]) `shouldBe` "%f(\n  x,\n  y,\n)"
+    format 5 "" (Let [] x) `shouldBe` "^{} x"
+    format 4 "" (Let [] x) `shouldBe` "^{}\nx"
+    format 10 "" (Let [("x", a)] y) `shouldBe` "^x = a\ny"
+    format 6 "" (Let [("x", a)] y) `shouldBe` "^x = a\ny"
+    format 5 "" (Let [("x", a)] y) `shouldBe` "^x =\n  a\ny"
   -- Meta (Metadata Expr) Expr
   -- Err
-
-  it "☯ Core.Any" $ do
-    let env = []
-    let expr = Any
-    parse' "_ " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "_"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` expr
-
-  it "☯ Core.Unit" $ do
-    let env = []
-    let expr = Unit
-    parse' "() " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "()"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` expr
-
-  it "☯ Core.IntT" $ do
-    let env = []
-    let expr = IntT
-    parse' "^Int " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "^Int"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` expr
-
-  it "☯ Core.NumT" $ do
-    let env = []
-    let expr = NumT
-    parse' "^Num " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "^Num"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` expr
-
-  it "☯ Core.Int" $ do
-    let env = []
-    let expr = Int 42
-    parse' "42 " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "42"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` expr
-
-  it "☯ Core.Num" $ do
-    let env = []
-    let expr = Num 3.14
-    parse' "3.14 " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "3.14"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` expr
-
-  it "☯ Core.Tag.0" $ do
-    let env = []
-    let expr = tag' "A"
-    parse' "A " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "A"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` expr
-
-  it "☯ Core.Tag.1" $ do
-    let env = []
-    let expr = tag "A" [i1]
-    parse' "A<1> " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "A<1>"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` expr
-
-  it "☯ Core.Tag.2" $ do
-    let env = []
-    let expr = tag "A" [i1, n2]
-    parse' "A<1, 2.2> " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "A<1, 2.2>"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` expr
-
-  it "☯ Core.Var" $ do
-    let env = [("x", Int 42)]
-    let expr = Var "x"
-    parse' "x " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "x"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` Int 42
-
-  it "☯ Core.Ann" $ do
-    let env = [("x", Int 42), ("y", IntT)]
-    let expr = Ann x y
-    parse' "x : y " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "x : y"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` Int 42
-
-  it "☯ Core.And 2" $ do
-    let env = [("x", Int 42), ("y", Num 3.14)]
-    let expr = And x y
-    parse' "(x, y) " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "(x, y)"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` And (Int 42) (Num 3.14)
-
-  it "☯ Core.And 3" $ do
-    let env = [("x", Int 42), ("y", Num 3.14), ("z", Unit)]
-    let expr = and' [x, y, z]
-    parse' "(x, y, z) " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "(x, y, z)"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` and' [Int 42, Num 3.14, Unit]
-
-  it "☯ Core.Or" $ do
-    let env = [("x", Int 42), ("y", Num 3.14)]
-    let expr = Or x y
-    parse' "x | y " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "x | y"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` Int 42
-
-  it "☯ Core.For" $ do
-    let env = [("y", Int 42)]
-    let expr = For "x" y
-    parse' "@x. y " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "@x. y"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` For "x" (Int 42)
-
-  it "☯ Core.Fix" $ do
-    let env = [("y", Int 42)]
-    let expr = Fix "x" y
-    parse' "&x. y " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "&x. y"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` Fix "x" (Int 42)
-
-  it "☯ Core.Fun" $ do
-    let env = [("x", Int 42), ("y", Num 3.14)]
-    let expr = Fun x y
-    parse' "x -> y " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "x -> y"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` Fun (Ann (Int 42) IntT) (Ann (Num 3.14) NumT)
-
-  it "☯ Core.App" $ do
-    let env = [("x", Fun (Ann (Int 1) IntT) (Num 3.14)), ("y", Int 1)]
-    let expr = App x y
-    parse' "x y " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "x y"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` Num 3.14
-
-  -- it "☯ Core.Call 0" $ do
-  --   let env = []
-  --   let expr = Call "null" []
-  --   parse' "%null() " `shouldBe` Right (expr, "")
-  --   format 80 expr `shouldBe` "%null()"
-  --   -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-  --   eval ops (Let env expr) `shouldBe` tag' "Null"
-
-  -- it "☯ Core.Call 1" $ do
-  --   let env = [("x", Int 1)]
-  --   let expr = Call "int_neg" [x]
-  --   parse' "%int_neg(x) " `shouldBe` Right (expr, "")
-  --   format 80 expr `shouldBe` "%int_neg(x)"
-  --   -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-  --   eval ops (Let env expr) `shouldBe` Int (-1)
-
-  -- it "☯ Core.Call 2" $ do
-  --   let env = [("x", Int 1), ("y", Int 2)]
-  --   let expr = Call "int_add" [x, y]
-  --   parse' "%int_add(x, y) " `shouldBe` Right (expr, "")
-  --   format 80 expr `shouldBe` "%int_add(x, y)"
-  --   -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-  --   eval ops (Let env expr) `shouldBe` Int 3
-
-  it "☯ Core.Let 0" $ do
-    let env = [("x", Int 1)]
-    let expr = Let [] x
-    parse' "@{} x " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "@{} x"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` Int 1
-
-  it "☯ Core.Let 1" $ do
-    let env = [("x", Num 3.14)]
-    let expr = Let [("x", Int 1)] x
-    parse' "@{x = 1} x " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "@{x = 1} x"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops expr `shouldBe` Int 1
-
-  it "☯ Core.Let 2" $ do
-    let env = [("x", Num 3.14), ("y", Num 2.71)]
-    let expr = Let [("x", Int 1), ("y", Int 2)] y
-    parse' "@{x = 1, y = 2} y " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "@{x = 1, y = 2} y"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops expr `shouldBe` Int 2
-
-  it "☯ Core.Meta.Location" $ do
-    let env = [("x", Int 1)]
-    let loc = Loc $ Location "file" (Range (Pos 1 2) (Pos 3 4))
-    let expr = Meta loc x
-    parse' "^[file:1:2,3:4](x)" `shouldBe` Right (expr, "")
-    format 80 (expr) `shouldBe` "^[file:1:2,3:4](x)"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` Meta loc (Int 1)
-
-  it "☯ Core.Meta.Comments 1" $ do
-    let env = [("x", Int 1)]
-    let expr = Meta (Comments ["c1"]) x
-    parse' "# c1\nx " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "# c1\nx"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` Meta (Comments ["c1"]) (Int 1)
-
-  it "☯ Core.Meta.Comments 2" $ do
-    let env = [("x", Int 1)]
-    let expr = Meta (Comments ["c1", "c2"]) x
-    parse' "# c1\n# c2\nx " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "# c1\n# c2\nx"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` Meta (Comments ["c1", "c2"]) (Int 1)
-
-  -- TODO: multi-line comments
-
-  it "☯ Core.Meta.TrailingComment" $ do
-    let env = [("x", Int 1)]
-    let expr = Meta (TrailingComment "c") x
-    parse' "x # c" `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "x  # c\n"
-    -- infer ops env expr `shouldBe` Right [((expr, IntT), [])]
-    eval ops (Let env expr) `shouldBe` Meta (TrailingComment "c") (Int 1)
-
-  it "☯ Core.Err" $ do
-    let env = [("x", Int 1)]
-    let expr = err (customError x)
-    parse' "!error(x) " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "!error(x)"
-    -- infer ops env expr `shouldBe` Right []
-    eval ops (Let env expr) `shouldBe` expr
-
-  it "☯ Core.sugar.def" $ do
-    let expr = def (x, y) z
-    parse' "^let x = y; z " `shouldBe` Right (expr, "")
-    format 80 expr `shouldBe` "^let<x> x = y; z"
 
   it "☯ Core.run.App" $ do
     let env = [("x", "42"), ("y", "3.14"), ("a", "a")]
@@ -962,13 +721,27 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ Core.bind" $ do
     let (x, y, z) = (Var "x", Var "y", Var "z")
     bind [] x `shouldBe` x
-    bind [] (Fun x y) `shouldBe` for ["x"] (Fun x y)
+    bind [] (Ann x x) `shouldBe` For "x" (Ann x x)
+    bind [] (Ann x y) `shouldBe` For "y" (Ann x y)
+    bind ["y"] (Ann x y) `shouldBe` Ann x y
+    bind [] (For "x" (Ann x y)) `shouldBe` For "x" (Ann x y)
+    bind [] (For "y" (Ann x y)) `shouldBe` For "y" (Ann x y)
+    bind [] (For "z" (Ann x y)) `shouldBe` Ann x y
+    bind [] (Ann x (For "x" y)) `shouldBe` For "x" (Ann x y)
+    bind [] (Ann x (For "y" y)) `shouldBe` For "y" (Ann x y)
+    bind [] (Ann x (For "z" y)) `shouldBe` Ann x y
+    bind [] (Fun x y) `shouldBe` For "x" (Fun x y)
     bind ["x"] (Fun x y) `shouldBe` Fun x y
-    bind [] (For "x" (Fun x y)) `shouldBe` for ["x"] (Fun x y)
+    bind [] (For "x" (Fun x y)) `shouldBe` For "x" (Fun x y)
+    bind [] (For "y" (Fun x y)) `shouldBe` For "y" (Fun x y)
+    bind [] (For "z" (Fun x y)) `shouldBe` Fun x y
+    bind [] (Fun (For "x" x) y) `shouldBe` For "x" (Fun x y)
+    bind [] (Fun (For "y" x) y) `shouldBe` For "y" (Fun x y)
+    bind [] (Fun (For "z" x) y) `shouldBe` Fun x y
     bind [] (Fun (And x y) z) `shouldBe` for ["x", "y"] (Fun (And x y) z)
     bind [] (Fun (And x (Fun x y)) z) `shouldBe` for ["x", "y"] (Fun (And x (Fun x y)) z)
-    bind [] (Fun x (Fun y z)) `shouldBe` for ["x"] (Fun x (for ["y"] (Fun y z)))
-    bind [] (Fun x (Fun x y)) `shouldBe` for ["x"] (Fun x (for ["x"] (Fun x y)))
+    bind [] (Fun x (Fun y z)) `shouldBe` For "x" (Fun x (for ["y"] (Fun y z)))
+    bind [] (Fun x (Fun x y)) `shouldBe` For "x" (Fun x (for ["x"] (Fun x y)))
 
   it "☯ Core.substitute" $ do
     let s = [("x", i1), ("y", i2)]

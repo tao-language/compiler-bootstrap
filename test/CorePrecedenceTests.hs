@@ -12,7 +12,7 @@ run = describe "--== Core precedence ==--" $ do
   let prec' :: String -> Either String (Expr, String)
       prec' src = case parse 0 "<CorePrecedence>" src of
         Right (a, s) | s.remaining /= "" -> Right (a, "remaining: " ++ s.remaining)
-        Right (a, _) -> Right (a, format 80 a)
+        Right (a, _) -> Right (a, show a)
         Left s -> Left ("syntax error, remaining: " ++ s.remaining)
   let prec :: String -> Either String Expr
       prec src = do
