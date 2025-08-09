@@ -903,11 +903,15 @@ unpackVar xs (a, b) x | Just x' <- varOf a, x == x', x `elem` xs = (x, b)
 unpackVar xs (a, b) x = (x, letP (for' xs a, b) (Var x))
 
 bind :: [String] -> Expr -> Expr
--- bind xs = \case
---   For x a -> For x (bind (x : xs ++ freeVars a) a)
---   a -> apply (bind xs) a
 bind xs = \case
-  For x a -> For x (bind (x : xs ++ freeVars a) a)
+  Ann a b | Just (xs, b) <- asFor b -> do
+    bind xs (for xs (Ann a b))
+  Ann a b -> do
+    let ys = filter (`notElem` xs) (freeVars b)
+    for ys (Ann (bind (xs ++ ys) a) (bind (xs ++ ys) b))
+  For x a -> for' [x] (bind (x : xs ++ freeVars a) a)
+  Fun a b | Just (xs, a) <- asFor a -> do
+    bind xs (for xs (Fun a b))
   Fun a b -> do
     let ys = filter (`notElem` xs) (freeVars a)
     for ys (Fun (bind (xs ++ ys) a) (bind xs b))
