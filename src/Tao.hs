@@ -1275,6 +1275,7 @@ lower = \case
     | otherwise -> C.Fun (lower a) (lower b)
   App a b -> C.App (lower a) (lower b)
   Call op args -> C.Call op (lower (Tuple args))
+  Op1 Neg a -> lower (sub (Int 0) a)
   Op1 op a -> C.app (C.Var $ show op) [lower a]
   Op2 Cons a b -> lower (Tag "::" [a, b])
   Op2 op a b -> C.app (C.Var $ show op) [lower a, lower b]

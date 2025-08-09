@@ -156,6 +156,7 @@ format width indent = G.format grammar width ("  ", indent)
 
 showVar :: String -> String
 showVar = \case
+  "-" -> "(-)"
   x | all (\c -> isAlphaNum c || c `elem` "_-$") x -> x
   x -> "(" ++ x ++ ")"
 
