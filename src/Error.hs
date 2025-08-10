@@ -19,6 +19,8 @@ data Error a
 data TypeError a
   = OccursError String a
   | TypeMismatch a a
+  | TypeInferError a
+  | TypeCheckError a a
   | NotAFunction a a
   | UndefinedVar String
   -- MissingArgs
@@ -75,6 +77,12 @@ occursError x a = TypeError (OccursError x a)
 
 typeMismatch :: a -> a -> Error a
 typeMismatch a b = TypeError (TypeMismatch a b)
+
+typeInferError :: a -> Error a
+typeInferError a = TypeError (TypeInferError a)
+
+typeCheckError :: a -> a -> Error a
+typeCheckError a b = TypeError (TypeCheckError a b)
 
 notAFunction :: a -> a -> Error a
 notAFunction a t = TypeError (NotAFunction a t)
