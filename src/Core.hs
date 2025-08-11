@@ -47,7 +47,7 @@ data Expr
 
 instance Show Expr where
   show :: Expr -> String
-  show = Core.format 120 ""
+  show = Core.format 80 ""
 
 showCtr :: Expr -> String
 showCtr = \case
@@ -315,7 +315,10 @@ grammar = do
             Or a b -> do
               let alt1 = lhs a ++ [PP.Text " | "] ++ rhs b
               let alt2 = lhs a ++ (PP.NewLine : PP.Text "| " : rhs b)
-              return $ if isValue a || isVar a then [PP.Or alt1 alt2] else alt2
+              return $
+                if (isValue a || isVar a) && (not $ isAnn a)
+                  then [PP.Or alt1 alt2]
+                  else alt2
             _ -> Nothing,
           -- Grammar.Fix
           G.Atom (parserDecorator "&" fix) $ layoutDecorator "&" $ \case
@@ -393,6 +396,7 @@ grammar = do
                         let def = PP.Text ("^" ++ show (Var x) ++ " =")
                         let alt1 = PP.Text " " : layout 0 a
                         let alt2 = PP.NewLine : layout 0 a
+                        -- let alt2 = [PP.Text " ..."]
                         if isValue a || isVar a
                           then [def, PP.Indent [PP.Or alt1 alt2], PP.NewLine]
                           else [def, PP.Indent alt2, PP.NewLine]
@@ -758,7 +762,7 @@ err e = Meta (Error e) Err
 -- TODO: centralize into a single kind of errors
 isErr :: Expr -> Bool
 isErr Err = True
-isErr (Ann a _) = isErr a
+isErr (Ann a b) = isErr a || isErr b
 isErr (Meta _ a) = isErr a
 isErr _ = False
 
@@ -1054,7 +1058,12 @@ eval ops a = case reduce ops a of
     Ann a b -> Ann (eval ops a) (eval ops b)
     a -> Ann a (eval ops b)
   And a b -> And (eval ops a) (eval ops b)
-  Or a b -> Or (eval ops a) (eval ops b)
+  Or a b -> case eval ops a of
+    a | isErr a -> eval ops b
+    a | isValue a -> a
+    a -> case eval ops b of
+      b | isErr b -> a
+      b -> Or a b
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)
   Call f a -> Call f (eval ops a)
@@ -1351,29 +1360,25 @@ unify ops env (Tag k a1, Tag k' a2) | k == k' = do
   (a, s) <- unify ops env (a1, a2)
   return (Tag k a, s)
 unify ops env (a, Tag k b) | Just def <- lookup k env = do
-  (ctr, _) <- unify ops env (def, Fun b (Fun a Any))
-  return (eval ops (Let env (curry' ctr [b, a])), [])
+  (ctr, s) <- unify ops env (def, Fun b (Fun a Any))
+  return (eval ops (Let (s `compose` env) (curry' ctr [b, a])), [])
 unify ops env (Tag k a, b) | Just def <- lookup k env = do
-  (ctr, _) <- unify ops env (Fun a (Fun b Any), def)
-  return (eval ops (Let env (curry' ctr [a, b])), [])
+  (ctr, s) <- unify ops env (def, Fun a (Fun b Any))
+  return (eval ops (Let (s `compose` env) (curry' ctr [a, b])), [])
 -- In `For` and `Fix` the generic variable (x/y) cannot be bound
 -- by unify, so we can safely omit it from the result substitution.
-unify ops env (a, For x b) = do
-  let y = newName (freeVars a) x
-  (c, s) <- unify ops ((y, Var y) : env) (a, substitute [(x, Var y)] b)
-  return (for' [x] (substitute [(y, Var x)] c), s)
 unify ops env (For x a, b) = do
   let y = newName (freeVars b) x
   (c, s) <- unify ops ((y, Var y) : env) (substitute [(x, Var y)] a, b)
-  return (for' [x] (substitute [(y, Var x)] c), s)
-unify ops env (a, Fix x b) = do
+  return (for' [x] $ substitute [(y, Var x)] c, s)
+unify ops env (a, For x b) = do
   let y = newName (freeVars a) x
   (c, s) <- unify ops ((y, Var y) : env) (a, substitute [(x, Var y)] b)
-  return (fix' [x] (substitute [(y, Var x)] c), s)
-unify ops env (Fix x a, b) = do
-  let y = newName (freeVars b) x
-  (c, s) <- unify ops ((y, Var y) : env) (substitute [(x, Var y)] a, b)
-  return (fix' [x] (substitute [(y, Var x)] c), s)
+  return (for' [x] $ substitute [(y, Var x)] c, s)
+unify ops env (Fix x a, Fix x' b) | x == x' = do
+  (c, s) <- unify ops ((x, Var x) : env) (a, b)
+  return (fix' [x] c, s)
+unify ops env (Fix x a, Fix y b) = error "TODO: unify Fix with different names"
 unify ops env (Ann a1 t1, Ann a2 t2) = do
   (a, t, s) <- unify2 ops env (a1, a2) (t1, t2)
   return (Ann a t, s)
@@ -1477,7 +1482,8 @@ infer2 ops env a b = do
   return (substitute s2 at, bt, s2 `compose` s1)
 
 check :: Ops -> Env -> (Expr, Type) -> Typed ((Expr, Type), Substitution)
--- check ops env (a, Any) = infer' ops env a
+check ops env (Any, t) = Ok [((Any, t), [])]
+check ops env (a, Any) = infer ops env a
 check ops env (Meta _ a, t) = check ops env (a, t)
 check ops env (a, Meta _ t) = check ops env (a, t)
 check ops env (a, Or t1 t2) = case (check ops env (a, t1), check ops env (a, t2)) of
@@ -1510,7 +1516,7 @@ check ops env (Fix x a, t) | x `occurs` a = do
   return ((fix' [x] a, t), s `compose` [(x, Var x)])
 check ops env (Fix _ a, t) = check ops env (a, t)
 check ops env (Var x, t) = case lookup x env of
-  Just Any -> return ((Var x, t), [(x, Ann (Var x) t)])
+  -- Just Any -> return ((Var x, t), [(x, Ann (Var x) t)])
   Just (Var x') | x == x' -> return ((Var x, t), [(x, Ann (Var x) t)])
   Just (Ann (Var x') ty) | x == x' -> do
     (t, s) <- unify ops env (ty, t)
@@ -1525,6 +1531,11 @@ check ops env (And a b, And ta tb) = do
 check ops env (Fun a b, Fun ta tb) = do
   ((a, ta), (b, tb), s) <- check2 ops env (a, ta) (b, tb)
   return ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
+check ops env (App a b, t2) = do
+  ((b, t1), s1) <- infer ops env b
+  ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun t1 (substitute s1 t2))
+  let s12 = s2 `compose` s1
+  return ((App a (substitute s2 $ Ann b t1), substitute s12 t2), s12)
 check ops env (Let defs a, t) = do
   ((a, t), s) <- check ops (defs ++ env) (a, t)
   return ((Let defs a, t), s)

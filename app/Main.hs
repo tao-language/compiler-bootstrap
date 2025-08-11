@@ -66,8 +66,8 @@ coreCmd filename arg = do
   putStrLn "---- bind"
   print (C.bind [] $ lower expr)
   putStrLn "---- eval"
-  let b = C.eval runtimeOps $ C.let' env a
-  print b
+  -- let b = C.eval runtimeOps $ C.let' env a
+  -- print b
   -- putStrLn "---- eval (untyped)"
   -- printExpr (C.dropTypes b)
   return ()

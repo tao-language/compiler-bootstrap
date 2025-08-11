@@ -8,13 +8,14 @@ import Data.Either (fromRight)
 import Data.Function ((&))
 import Data.List (delete, dropWhileEnd, intercalate, intersect, isPrefixOf, sort, union, unionBy, (\\))
 import Data.Maybe (fromMaybe)
+import Data.Sort (uniqueSort)
 import Debug.Trace (trace)
 import Error
 import Grammar as G
 import Location (Location (Location), Position (Pos), Range (Range))
 import qualified Parser as P
 import qualified PrettyPrint as PP
-import Stdlib (lookupValue, split)
+import Stdlib (distinct, lookupValue, split)
 import System.FilePath (dropTrailingPathSeparator, splitFileName, takeBaseName)
 
 type Parser a = P.Parser String a
@@ -1841,53 +1842,39 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"<=", expr) = do
+  -- compile ctx path (name@"map", expr) = do
   --   let a = C.dropMeta $ C.bind [] $ lower expr
   --   let dependencies = delete name (C.freeVars a `union` C.freeTags a)
   --   let env = compileDefs ctx path dependencies
+  --   -- case C.infer buildOps ((name, C.Var name) : env) a of
+  --   --   C.Ok ats -> do
+  --   --     let alt ((a, t), s) = C.Ann a t
+  --   --     (env, C.or' (map alt ats))
+  --   --   C.Fail err -> error $ show (name, dependencies, map fst env, err)
   --   (error . intercalate "\n")
-  --     [ "compile " ++ show name,
-  --       "expr:  " ++ show (dropMeta expr),
-  --       "lower:  " ++ show (C.dropMeta $ lower expr),
-  --       "bind:  " ++ show (C.dropMeta a),
-  --       "deps: " ++ show dependencies,
-  --       "env: " ++ show (map fst env),
-  --       intercalate "\n" $ map (\(x, a) -> " - " ++ show (C.Var x) ++ ": " ++ show (C.dropLet a)) env,
-  --       "",
+  --     [ "\n\ncompile " ++ name,
+  --       "expr: " ++ show expr,
+  --       "lower: " ++ show (C.dropMeta $ lower expr),
+  --       "bind: " ++ show (C.dropMeta $ C.bind [] $ lower expr),
   --       "infer:",
-  --       case C.infer' buildOps ((name, C.Var name) : env) a of
-  --         Right ((a, t), s) -> do
-  --           let steps = C.steps runtimeOps (C.let' env a)
-  --           let result = snd (last steps)
-  --           (intercalate "\n")
-  --             [ " - a: " ++ show a,
-  --               " - t: " ++ show t,
-  --               " - s: " ++ show s,
-  --               "",
-  --               "steps:",
-  --               intercalate "\n\n" (map (\(r, a) -> "# [" ++ r ++ "] " ++ C.showCtr' 2 a ++ "#\n> " ++ show (C.dropLet a)) steps),
-  --               "",
-  --               "result[" ++ C.showCtr' 2 result ++ "]:",
-  --               "  " ++ show result
-  --             ]
-  --         Left e -> "  ERROR: " ++ show e,
+  --       case C.infer buildOps ((name, C.Var name) : env) a of
+  --         C.Ok ats -> intercalate "\n" (map (\x -> "- " ++ show (fst x)) ats)
+  --         C.Fail err -> show err,
   --       ""
   --     ]
   compile ctx path (name, expr) = do
     let a = C.dropMeta $ C.bind [] $ lower expr
     let dependencies = delete name (C.freeVars a `union` C.freeTags a)
     let env = compileDefs ctx path dependencies
-    -- case C.infer buildOps ((name, C.Var name) : env) a of
-    --   Right ((a, t), s) -> do
-    --     -- let (xs, a') = C.forOf a
-    --     -- (env, C.for' (xs `union` C.freeVars t) (C.Ann a' t))
-    --     (env, a)
     case C.infer buildOps ((name, C.Var name) : env) a of
+      -- C.Ok ats -> do
+      --   let alt ((a, t), s) = do
+      --         let (xs, a') = C.forOf a
+      --         C.for' (xs `union` C.freeVars t) (C.Ann a' t)
+      --   (env, C.or' (map alt ats))
       C.Ok ats -> do
-        let alt ((a, t), s) = do
-              let (xs, a') = C.forOf a
-              C.for' (xs `union` C.freeVars t) (C.Ann a' t)
-        (env, C.or' (map alt ats))
+        let alt ((a, t), s) = C.Ann a t
+        (env, C.or' (distinct $ map alt ats))
       C.Fail err -> error $ show (name, dependencies, map fst env, err)
 
 compileDefs :: Context -> FilePath -> [String] -> C.Env
