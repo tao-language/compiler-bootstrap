@@ -965,6 +965,9 @@ isValue = \case
 
 -- Evaluation
 reduce :: Ops -> Expr -> Expr
+reduce ops (Ann a b) = case reduce ops a of
+  Ann a b -> reduce ops (Ann a b)
+  a -> Ann a b
 reduce ops (App a (Or b1 b2)) = case reduce ops (App a b1) of
   c | isErr c -> reduce ops (App a b2)
   c | isValue c -> c
@@ -1054,9 +1057,7 @@ eval ops a = case reduce ops a of
   Tag k a -> Tag k (eval ops a)
   For x a -> for' [x] (eval ops a)
   Fix x a -> fix' [x] (eval ops a)
-  Ann a b -> case eval ops a of
-    Ann a b -> Ann (eval ops a) (eval ops b)
-    a -> Ann a (eval ops b)
+  Ann a b -> Ann (eval ops a) (eval ops b)
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> case eval ops a of
     a | isErr a -> eval ops b
