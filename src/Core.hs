@@ -599,8 +599,10 @@ asOr (Or a b) = Just (a, b)
 asOr (Meta _ a) = asOr a
 asOr _ = Nothing
 
-ann :: (Expr, Type) -> Expr
-ann (a, t) = Ann a t
+ann :: Expr -> Type -> Expr
+ann a _ | Just (a', t') <- asAnn a = ann a' t'
+ann a t | Just (t', _) <- asAnn t = ann a t'
+ann a t = Ann a t
 
 isAnn :: Expr -> Bool
 isAnn (Ann _ _) = True
@@ -1456,16 +1458,16 @@ infer ops env (Or a b) = case (infer ops env a, infer ops env b) of
   (Fail e1, Fail e2) -> Fail (e1 ++ e2)
 infer ops env (Fun a b) = do
   ((a, ta), (b, tb), s) <- infer2 ops env a b
-  return ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
+  return ((Fun (ann a ta) (ann b tb), Fun ta tb), s)
 infer ops env (App a b) = do
   ((_, tb), s1) <- infer ops env b
   ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun tb Any)
   let s12 = s2 `compose` s1
-  (t1, t2) <- case splitFun ops (s12 `compose` env) ta of
-    Just (t1, t2) -> return (t1, t2)
-    Nothing -> Fail [notAFunction a ta]
-  ((b, tb), s3) <- check ops (s12 `compose` env) (substitute s12 b, t1)
-  return ((App (substitute s3 a) (Ann b tb), substitute s3 t2), s3 `compose` s12)
+  let (t1', t2') = case asFun ta of
+        Just ta -> ta
+        Nothing -> (substitute s2 tb, Any)
+  ((b, tb), s3) <- check ops (s12 `compose` env) (substitute s12 b, t1')
+  return ((App (substitute s3 a) (ann b t1'), substitute s3 t2'), s3 `compose` s12)
 infer ops env (Call op a) = do
   let x = newName ("$" : map fst env) "$"
   ((a, ta), s) <- infer ops ((x, Var x) : env) a
@@ -1531,12 +1533,15 @@ check ops env (And a b, And ta tb) = do
   return ((And a b, And ta tb), s)
 check ops env (Fun a b, Fun ta tb) = do
   ((a, ta), (b, tb), s) <- check2 ops env (a, ta) (b, tb)
-  return ((Fun (Ann a ta) (Ann b tb), Fun ta tb), s)
+  return ((Fun (ann a ta) (ann b tb), Fun ta tb), s)
 check ops env (App a b, t2) = do
   ((b, t1), s1) <- infer ops env b
   ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun t1 (substitute s1 t2))
   let s12 = s2 `compose` s1
-  return ((App a (substitute s2 $ Ann b t1), substitute s12 t2), s12)
+  let (t1', t2') = case asFun ta of
+        Just ta -> ta
+        Nothing -> (substitute s2 t1, substitute s12 t2)
+  return ((App a (ann (substitute s2 b) t1'), t2'), s12)
 check ops env (Let defs a, t) = do
   ((a, t), s) <- check ops (defs ++ env) (a, t)
   return ((Let defs a, t), s)

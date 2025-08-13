@@ -1873,7 +1873,8 @@ instance Compile (String, Expr) where
       --         C.for' (xs `union` C.freeVars t) (C.Ann a' t)
       --   (env, C.or' (map alt ats))
       C.Ok ats -> do
-        let alt ((a, t), s) = C.Ann a t
+        -- let alt ((a, t), s) = C.Ann a t
+        let alt ((a, t), s) = a
         (env, C.or' (distinct $ map alt ats))
       C.Fail err -> error $ show (name, dependencies, map fst env, err)
 
