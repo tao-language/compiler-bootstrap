@@ -89,7 +89,7 @@ layoutLeading :: (String, String) -> (a -> Maybe (a, a)) -> (a -> PP.Layout) -> 
 layoutLeading (op1, op2) match lhs rhs x = do
   (x, y) <- match x
   let alt1 = lhs x ++ [PP.Text op1] ++ rhs y
-  let alt2 = lhs x ++ (PP.NewLine : PP.Text op2 : rhs y)
+  let alt2 = lhs x ++ [PP.NewLine, PP.Text op2, PP.Indent (rhs y)]
   return [PP.Or alt1 alt2]
 
 infixL :: Int -> (Location -> a -> a -> a) -> String -> (a -> Maybe (a, String, a)) -> Operator ctx a
@@ -168,8 +168,9 @@ layout grammar p x = do
             if cond
               then do
                 let (open, close) = grammar.group
+                let alt1 = [PP.Indent x]
                 let alt2 = [PP.Indent (PP.NewLine : x), PP.NewLine]
-                [PP.Text open, PP.Or x alt2, PP.Text close]
+                [PP.Text open, PP.Or alt1 alt2, PP.Text close]
               else x
   -- layoutArgs :: [PP.Layout] -> PP.Layout
   -- layoutArgs [] = [PP.Text "()"]

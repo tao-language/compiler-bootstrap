@@ -219,11 +219,13 @@ parserDecorator op f rhs = do
 layoutDecorator :: String -> (a -> Maybe ([String], a)) -> (a -> PP.Layout) -> a -> Maybe PP.Layout
 layoutDecorator op match rhs a = do
   (xs, a) <- match a
-  let names = map (\x -> [PP.Text x]) xs
-  let decorator = PP.Text op : PP.join [PP.Text " "] names
+  let names = unwords xs
+  let decorator = PP.Text (op ++ names)
   let alt1 = PP.Text ". " : rhs a
   let alt2 = PP.NewLine : rhs a
-  Just (decorator ++ [PP.Indent [PP.Or alt1 alt2]])
+  if length names > 2
+    then Just (decorator : alt2)
+    else Just [decorator, PP.Or alt1 alt2]
 
 grammar :: G.Grammar String Expr
 grammar = do
@@ -314,19 +316,25 @@ grammar = do
           G.InfixR 1 (G.parserLeading "|" (const Or)) $ \lhs rhs -> \case
             Or a b -> do
               let alt1 = lhs a ++ [PP.Text " | "] ++ rhs b
-              let alt2 = lhs a ++ (PP.NewLine : PP.Text "| " : rhs b)
+              let alt2 = [PP.Text "| ", PP.Indent (lhs a), PP.NewLine, PP.Text "| ", PP.Indent (rhs b)]
               return $
-                if (isValue a || isVar a) && (not $ isAnn a)
-                  then [PP.Or alt1 alt2]
-                  else alt2
+                if isFun a
+                  then alt2
+                  else [PP.Or alt1 alt2]
             _ -> Nothing,
           -- Grammar.Fix
           G.Atom (parserDecorator "&" fix) $ layoutDecorator "&" $ \case
             Fix x a -> Just (fixOf (Fix x a))
             _ -> Nothing,
           -- Grammar.Ann
-          G.InfixR 3 (G.parserLeading ":" (const Ann)) $ G.layoutLeading (" : ", ": ") $ \case
-            Ann a b -> Just (a, b)
+          G.InfixR 3 (G.parserLeading ":" (const Ann)) $ \lhs rhs -> \case
+            Ann a b -> do
+              let alt1 = lhs a ++ [PP.Text " : "] ++ rhs b
+              let alt2 = lhs a ++ [PP.NewLine, PP.Text ": ", PP.Indent (rhs b)]
+              return $
+                if isFun a
+                  then alt2
+                  else [PP.Or alt1 alt2]
             _ -> Nothing,
           -- Grammar.For
           G.Prefix 4 (parserDecorator "@" for) $ layoutDecorator "@" $ \case
@@ -337,7 +345,9 @@ grammar = do
             Fun a b -> do
               let alt1 = PP.Text " " : rhs b
               let alt2 = [PP.Indent (PP.NewLine : rhs b)]
-              Just (lhs a ++ [PP.Text " ->", PP.Or alt1 alt2])
+              if isFun b || isApp b
+                then Just (lhs a ++ (PP.Text " ->" : alt2))
+                else Just (lhs a ++ [PP.Text " ->", PP.Or alt1 alt2])
             _ -> Nothing,
           -- Grammar.App
           let parser a _ = do
