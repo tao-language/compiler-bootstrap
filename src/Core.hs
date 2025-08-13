@@ -1442,7 +1442,8 @@ infer ops env (For x a) = do
   let yT = newName (y : map fst env) (y ++ "T")
   let vars = [(yT, Var yT), (y, Ann (Var y) (Var yT))]
   ((a, ta), s) <- infer ops (vars `compose` env) (substitute [(x, Var y)] a)
-  return ((for' [y, yT] a, ta), s `compose` vars)
+  -- return ((for' [y, yT] a, ta), s `compose` vars)
+  return ((for' [x, yT] $ substitute [(y, Var x)] a, ta), s `compose` vars)
 infer ops env (Fix x a) | x `occurs` a = do
   ((a, ta), s) <- infer ops ((x, Var x) : env) a
   return ((Fix x a, ta), s `compose` [(x, Var x)])
@@ -1507,8 +1508,11 @@ check ops env (For x a, t)
       let y = newName (map fst env) x
       ((a, t), s) <- check ops ((y, Var y) : env) (substitute [(x, Var y)] a, t)
       -- let xs = fromMaybe [y] (fmap freeVars (lookup y s))
-      let xs = [y] `intersect` freeVars (Ann a t) `intersect` map fst s
-      return ((for' xs a, t), s `compose` [(y, Var y)])
+      -- let xs = [y] `intersect` freeVars (Ann a t) `intersect` map fst s
+      -- return ((for' xs a, t), s `compose` [(y, Var y)])
+      let a' = substitute [(x, Var y)] a
+      let xs = [x] `intersect` freeVars (Ann a' t) `intersect` map fst s
+      return ((for' xs a', t), s)
 check ops env (a, For x t)
   | x `occurs` a = do
       let y = newName (freeVars (Ann a t)) x
