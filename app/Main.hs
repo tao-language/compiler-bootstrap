@@ -60,7 +60,7 @@ coreCmd filename arg = do
   let path = dropExtension (snd (split2 ':' filename))
   let (env, a) = compile ctx path expr
   putStrLn "---- compile"
-  print (C.Let env a)
+  print (C.let' env a)
   putStrLn "---- lower"
   print (lower expr)
   putStrLn "---- bind"
@@ -70,6 +70,8 @@ coreCmd filename arg = do
   print b
   -- putStrLn "---- eval (untyped)"
   -- printExpr (C.dropTypes b)
+  putStrLn "\n"
+  error "TODO: fix inferred quantifiers on curried functions\n** To reproduce:\n  stack run core prelude 'Maybe(Int)'\n"
   return ()
 
 runCmd :: FilePath -> String -> IO ()

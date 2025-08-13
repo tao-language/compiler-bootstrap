@@ -223,7 +223,7 @@ layoutDecorator op match rhs a = do
   let decorator = PP.Text (op ++ names)
   let alt1 = PP.Text ". " : rhs a
   let alt2 = PP.NewLine : rhs a
-  if length names > 2
+  if length names > 4
     then Just (decorator : alt2)
     else Just [decorator, PP.Or alt1 alt2]
 
@@ -332,7 +332,7 @@ grammar = do
               let alt1 = lhs a ++ [PP.Text " : "] ++ rhs b
               let alt2 = lhs a ++ [PP.NewLine, PP.Text ": ", PP.Indent (rhs b)]
               return $
-                if isFun a
+                if isFun a || isApp a || isOr a
                   then alt2
                   else [PP.Or alt1 alt2]
             _ -> Nothing,
@@ -345,7 +345,7 @@ grammar = do
             Fun a b -> do
               let alt1 = PP.Text " " : rhs b
               let alt2 = [PP.Indent (PP.NewLine : rhs b)]
-              if isFun b || isApp b
+              if isFun b || isApp b || isOr b
                 then Just (lhs a ++ (PP.Text " ->" : alt2))
                 else Just (lhs a ++ [PP.Text " ->", PP.Or alt1 alt2])
             _ -> Nothing,
@@ -398,9 +398,7 @@ grammar = do
                 return (Let env a)
            in G.Prefix 1 parser $ \rhs -> \case
                 Let [] a -> do
-                  let alt1 = PP.Text "^{} " : rhs a
-                  let alt2 = PP.Text "^{}" : PP.NewLine : rhs a
-                  Just [PP.Or alt1 alt2]
+                  Just (PP.Text "^{}" : PP.NewLine : rhs a)
                 Let env a -> do
                   let layoutDef (x, a) = do
                         let def = PP.Text ("^" ++ show (Var x) ++ " =")
@@ -930,7 +928,7 @@ bind xs = \case
     bind xs (for xs (Fun a b))
   Fun a b -> do
     let ys = filter (`notElem` xs) (freeVars a)
-    for ys (Fun (bind (xs ++ ys) a) (bind xs b))
+    for ys (Fun (bind (xs ++ ys) a) (bind (xs ++ ys) b))
   a -> apply (bind xs) a
 
 occurs :: String -> Expr -> Bool
@@ -1366,6 +1364,7 @@ unify _ _ (Int i, Int i') | i == i' = return (Int i, [])
 unify _ _ (Num n, Num n') | n == n' = return (Num n, [])
 unify ops env (Var x, b) = case b of
   Var x' | x == x' -> return (Var x, [])
+  Ann (Var x') t | x == x' -> return (Var x, [])
   b | x `occurs` b -> Fail [occursError x b]
   b -> return (b, [(x, b)])
 unify ops env (a, Var x) = unify ops env (Var x, a)
@@ -1373,11 +1372,13 @@ unify ops env (Tag k a1, Tag k' a2) | k == k' = do
   (a, s) <- unify ops env (a1, a2)
   return (Tag k a, s)
 unify ops env (a, Tag k b) | Just def <- lookup k env = do
-  (ctr, s) <- unify ops env (def, Fun b (Fun a Any))
-  return (eval ops (Let (s `compose` env) (curry' ctr [b, a])), [])
+  ((a, ta), (b, tb), s) <- infer2 ops env a b
+  (ctr, _) <- unify ops env (def, Fun (Ann b tb) (Fun (Ann a ta) Any))
+  return (eval ops (Let (s `compose` env) (curry' ctr [b, a])), s)
 unify ops env (Tag k a, b) | Just def <- lookup k env = do
-  (ctr, s) <- unify ops env (def, Fun a (Fun b Any))
-  return (eval ops (Let (s `compose` env) (curry' ctr [a, b])), [])
+  ((a, ta), (b, tb), s) <- infer2 ops env a b
+  (ctr, _) <- unify ops env (def, Fun (Ann a ta) (Fun (Ann b tb) Any))
+  return (eval ops (Let (s `compose` env) (curry' ctr [a, b])), s)
 -- In `For` and `Fix` the generic variable (x/y) cannot be bound
 -- by unify, so we can safely omit it from the result substitution.
 unify ops env (For x a, b) = do
@@ -1470,13 +1471,23 @@ infer ops env (Or a b) = case (infer ops env a, infer ops env b) of
 infer ops env (Fun a b) = do
   ((a, ta), (b, tb), s) <- infer2 ops env a b
   return ((Fun (ann a ta) (ann b tb), Fun ta tb), s)
+infer ops env (App a@(Var "map") b) = do
+  ((b, tb), s1) <- infer ops env b
+  ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun tb Any)
+  let (t1', t2') = case asFun ta of
+        Just ta -> ta
+        -- Nothing -> (substitute s2 tb, Any)
+        Nothing -> error ("Not a function:\n" ++ show (Ann a ta))
+  -- ((b, tb), s3) <- check ops (s12 `compose` env) (substitute s12 b, t1')
+  return ((App a (ann b t1'), t2'), s2 `compose` s1)
 infer ops env (App a b) = do
   ((_, tb), s1) <- infer ops env b
   ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun tb Any)
   let s12 = s2 `compose` s1
   let (t1', t2') = case asFun ta of
         Just ta -> ta
-        Nothing -> (substitute s2 tb, Any)
+        -- Nothing -> (substitute s2 tb, Any)
+        Nothing -> error ("Not a function:\n" ++ show (Ann a ta))
   ((b, tb), s3) <- check ops (s12 `compose` env) (substitute s12 b, t1')
   return ((App (substitute s3 a) (ann b t1'), substitute s3 t2'), s3 `compose` s12)
 infer ops env (Call op a) = do
@@ -1548,14 +1559,14 @@ check ops env (And a b, And ta tb) = do
 check ops env (Fun a b, Fun ta tb) = do
   ((a, ta), (b, tb), s) <- check2 ops env (a, ta) (b, tb)
   return ((Fun (ann a ta) (ann b tb), Fun ta tb), s)
-check ops env (App a b, t2) = do
-  ((b, t1), s1) <- infer ops env b
-  ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun t1 (substitute s1 t2))
-  let s12 = s2 `compose` s1
-  let (t1', t2') = case asFun ta of
+check ops env (App a b, t) = do
+  ((b, tb), s1) <- infer ops env b
+  ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun tb (substitute s1 t))
+  let (t1, t2) = case asFun ta of
         Just ta -> ta
-        Nothing -> (substitute s2 t1, substitute s12 t2)
-  return ((App a (ann (substitute s2 b) t1'), t2'), s12)
+        -- Nothing -> (substitute s2 t1, substitute s12 t2)
+        Nothing -> error ("Not a function:\n" ++ show (Ann a ta))
+  return ((App a (ann (substitute s2 b) t1), t2), s2 `compose` s1)
 check ops env (Let defs a, t) = do
   ((a, t), s) <- check ops (defs ++ env) (a, t)
   return ((Let defs a, t), s)
