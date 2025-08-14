@@ -1116,7 +1116,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   -- it "☯ Core.check.GADT" $ do
   --   "" `shouldBe` ""
 
-  it "☯ Core.unify" $ do
+  it "☯ Core.type.unify" $ do
     unify [] [] (Any, Any) `shouldBe` Ok [(Any, [])]
     unify [] [] (Any, Unit) `shouldBe` Ok [(Unit, [])]
     unify [] [] (Unit, Any) `shouldBe` Ok [(Unit, [])]
@@ -1188,7 +1188,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     unify [] [] (x, Meta (Comments []) i1) `shouldBe` Ok [(i1, [("x", i1)])]
     unify [] [] (Err, Err) `shouldBe` Ok [(Err, [])]
 
-  it "☯ Core.infer" $ do
+  it "☯ Core.type.infer" $ do
     let (xT, aT) = (Var "xT", Var "aT")
     infer [] [] Any `shouldBe` Ok [((Any, Var "_1"), [("_1", Var "_1")])]
     infer [] [] Unit `shouldBe` Ok [((Unit, Unit), [])]
@@ -1214,8 +1214,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     infer [] [] (Or i1 y) `shouldBe` Ok [((i1, IntT), [])]
     infer [] [] (Or x y) `shouldBe` Fail [undefinedVar "x", undefinedVar "y"]
     infer [] [] (Fun i1 n2) `shouldBe` Ok [((Fun (Ann i1 IntT) (Ann n2 NumT), Fun IntT NumT), [])]
-    infer [] [("x", Any)] (App x i1) `shouldBe` Ok [((App x (Ann i1 IntT), Any), [("x", Ann x (Fun IntT Any))])]
-    infer [] [("a", a)] (App a i1) `shouldBe` Ok [((App a (Ann i1 IntT), Any), [("a", Ann a (Fun IntT Any))])]
+    infer [] [("f", f)] (App f i1) `shouldBe` Ok [((App f (Ann i1 IntT), Any), [("f", Ann f (Fun IntT Any))])]
     infer [] [] (App (Fun i1 n2) i2) `shouldBe` Ok [((App (Fun (Ann i1 IntT) (Ann n2 NumT)) (Ann i2 IntT), NumT), [])]
     infer [] [] (App (Fun n1 i2) i1) `shouldBe` Fail [typeMismatch NumT IntT]
     -- infer [] [("x", i1)] (App (For "a" $ Fun a a) x) `shouldBe` Ok [((App (For "a" $ Fun (Ann a IntT) (Ann a IntT)) (Ann x IntT), IntT), [("a", Ann a IntT), ("aT", IntT)])]
@@ -1227,7 +1226,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- TODO: Meta
     infer [] [] Err `shouldBe` Ok [((Err, Err), [])]
 
-  it "☯ Core.check" $ do
+  it "☯ Core.type.check" $ do
     let xT = Var "xT"
     check [] [] (Any, IntT) `shouldBe` Ok [((Any, IntT), [])]
     check [] [] (i1, Any) `shouldBe` Ok [((i1, IntT), [])]
@@ -1252,7 +1251,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- For String Expr
     -- Fix String Expr
     -- Ann Expr Type
-    let env = [("a", a), ("b", b)]
     check [] [] (And i1 n2, And a b) `shouldBe` Ok [((And i1 n2, And IntT NumT), [("b", NumT), ("a", IntT)])]
     -- check [] (Or i1 i2) IntT `shouldBe` Ok ((Or (Ann i1 IntT) (Ann i2 IntT), IntT), [])
     -- check [] (Or i1 n2) IntT `shouldBe` Ok ((i1, IntT), [])
@@ -1261,6 +1259,9 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- check [("x", x)] x (Or IntT NumT) `shouldBe` Ok ((x, Or IntT NumT), [])
     -- check [("x", x)] (Or n1 i2) IntT `shouldBe` Ok ((i2, IntT), [])
     check [] [] (Fun i1 n2, Fun a b) `shouldBe` Ok [((Fun (Ann i1 IntT) (Ann n2 NumT), Fun IntT NumT), [("b", NumT), ("a", IntT)])]
+    -- let env = [("x", x), ("y", y), ("a", a), ("b", b)]
+    check [] env (for ["x", "y"] $ Fun x y, for ["a", "b"] $ Fun a b) `shouldBe` Ok []
+    check [] [("f", f)] (App f i1, NumT) `shouldBe` Ok [((App f (Ann i1 IntT), NumT), [("f", Ann f (Fun IntT NumT))])]
     -- App Expr Expr
     -- Call String [Expr]
     -- Let [(String, Expr)] Expr

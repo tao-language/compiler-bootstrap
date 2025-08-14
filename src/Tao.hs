@@ -1873,10 +1873,25 @@ instance Compile (String, Expr) where
       --         C.for' (xs `union` C.freeVars t) (C.Ann a' t)
       --   (env, C.or' (map alt ats))
       C.Ok ats -> do
+        -- let alt ((a, t), s) = C.for' (map fst s) (C.Ann a t)
         -- let alt ((a, t), s) = C.for' (map fst s) a
         let alt ((a, t), s) = a
         (env, C.or' (distinct $ map alt ats))
-      C.Fail err -> error $ show (name, dependencies, map fst env, err)
+      C.Fail errors ->
+        (error . intercalate "\n")
+          [ "\n\ncompile " ++ show name,
+            "--- env:",
+            intercalate "\n" (map (\(x, a) -> "- " ++ x ++ " =\n    " ++ C.format 80 "    " a) env),
+            "--- expr:",
+            show (dropMeta expr),
+            "--- lower:",
+            show (C.dropMeta $ lower expr),
+            "--- bind:",
+            show (C.dropMeta $ C.bind [] $ lower expr),
+            "--- errors:",
+            intercalate "\n" (map (\e -> "- " ++ show e) errors),
+            ""
+          ]
 
 compileDefs :: Context -> FilePath -> [String] -> C.Env
 compileDefs _ _ [] = []

@@ -57,21 +57,22 @@ coreCmd filename arg = do
   ctx <- dropMeta <$> include "prelude" pkg
   expr <- dropMeta <$> loadExpr "<core>" arg
   -- TODO: check for errors
+  let printExpr a = putStrLn ("  " ++ C.format 80 "  " a)
   let path = dropExtension (snd (split2 ':' filename))
   let (env, a) = compile ctx path expr
-  putStrLn "---- compile"
-  print (C.let' env a)
-  putStrLn "---- lower"
-  print (lower expr)
-  putStrLn "---- bind"
-  print (C.bind [] $ lower expr)
-  putStrLn "---- eval"
+  putStrLn "---- env ----"
+  printExpr (C.let' env C.Any)
+  putStrLn "---- lower ----"
+  printExpr (lower expr)
+  putStrLn "---- bind ----"
+  printExpr (C.bind [] $ lower expr)
+  putStrLn "---- compile ----"
+  printExpr a
+  putStrLn "---- eval ----"
   let b = C.eval runtimeOps $ C.let' env a
-  print b
+  printExpr b
   -- putStrLn "---- eval (untyped)"
   -- printExpr (C.dropTypes b)
-  putStrLn "\n"
-  error "TODO: fix inferred quantifiers on curried functions\n** To reproduce:\n  stack run core prelude 'Maybe(Int)'\n"
   return ()
 
 runCmd :: FilePath -> String -> IO ()

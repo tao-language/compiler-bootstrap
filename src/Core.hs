@@ -223,7 +223,7 @@ layoutDecorator op match rhs a = do
   let decorator = PP.Text (op ++ names)
   let alt1 = PP.Text ". " : rhs a
   let alt2 = PP.NewLine : rhs a
-  if length names > 4
+  if length names > 3
     then Just (decorator : alt2)
     else Just [decorator, PP.Or alt1 alt2]
 
@@ -1372,23 +1372,33 @@ unify ops env (Tag k a1, Tag k' a2) | k == k' = do
   (a, s) <- unify ops env (a1, a2)
   return (Tag k a, s)
 unify ops env (a, Tag k b) | Just def <- lookup k env = do
-  ((a, ta), (b, tb), s) <- infer2 ops env a b
-  (ctr, _) <- unify ops env (def, Fun (Ann b tb) (Fun (Ann a ta) Any))
-  return (eval ops (Let (s `compose` env) (curry' ctr [b, a])), s)
+  let x = newName ((k ++ "$") : map fst env) (k ++ "$")
+  let env' = (x, Var x) : env
+  ((a, ta), (b, tb), s1) <- infer2 ops env' a b
+  (ctr, s2) <- unify ops (s1 `compose` env') (substitute s1 def, Fun (Ann b tb) (Fun (Ann a ta) (Var x)))
+  let s = s2 `compose` s1 `compose` [(x, Var x)]
+  -- let c = eval ops (Let (env) (curry' ctr [substitute s2 b, substitute s2 a]))
+  let c = fromMaybe (Var x) $ lookup x (s `compose` env)
+  return (dropTypes (eval ops (Let env c)), s)
 unify ops env (Tag k a, b) | Just def <- lookup k env = do
-  ((a, ta), (b, tb), s) <- infer2 ops env a b
-  (ctr, _) <- unify ops env (def, Fun (Ann a ta) (Fun (Ann b tb) Any))
-  return (eval ops (Let (s `compose` env) (curry' ctr [a, b])), s)
--- In `For` and `Fix` the generic variable (x/y) cannot be bound
--- by unify, so we can safely omit it from the result substitution.
+  let x = newName ((k ++ "$") : map fst env) (k ++ "$")
+  let env' = (x, Var x) : env
+  ((a, ta), (b, tb), s1) <- infer2 ops env' a b
+  (ctr, s2) <- unify ops (s1 `compose` env') (substitute s1 def, Fun (Ann a ta) (Fun (Ann b tb) (Var x)))
+  let s = s2 `compose` s1 `compose` [(x, Var x)]
+  -- let c = eval ops (Let (env) (curry' ctr [substitute s2 a, substitute s2 b]))
+  let c = fromMaybe (Var x) $ lookup x (s `compose` env)
+  return (dropTypes (eval ops (Let env c)), s)
 unify ops env (For x a, b) = do
-  let y = newName (freeVars b) x
+  let y = newName (freeVars b `union` map fst env) x
   (c, s) <- unify ops ((y, Var y) : env) (substitute [(x, Var y)] a, b)
-  return (for' [x] $ substitute [(y, Var x)] c, s)
+  -- return (for' [x] $ substitute [(y, Var x)] c, s)
+  return (for' [y] c, s)
 unify ops env (a, For x b) = do
-  let y = newName (freeVars a) x
+  let y = newName (freeVars a `union` map fst env) x
   (c, s) <- unify ops ((y, Var y) : env) (a, substitute [(x, Var y)] b)
-  return (for' [x] $ substitute [(y, Var x)] c, s)
+  -- return (for' [x] $ substitute [(y, Var x)] c, s)
+  return (for' [y] c, s)
 unify ops env (Fix x a, Fix x' b) | x == x' = do
   (c, s) <- unify ops ((x, Var x) : env) (a, b)
   return (fix' [x] c, s)
@@ -1471,7 +1481,7 @@ infer ops env (Or a b) = case (infer ops env a, infer ops env b) of
 infer ops env (Fun a b) = do
   ((a, ta), (b, tb), s) <- infer2 ops env a b
   return ((Fun (ann a ta) (ann b tb), Fun ta tb), s)
-infer ops env (App a@(Var "map") b) = do
+infer ops env (App a b) = do
   ((b, tb), s1) <- infer ops env b
   ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun tb Any)
   let (t1', t2') = case asFun ta of
@@ -1480,16 +1490,16 @@ infer ops env (App a@(Var "map") b) = do
         Nothing -> error ("Not a function:\n" ++ show (Ann a ta))
   -- ((b, tb), s3) <- check ops (s12 `compose` env) (substitute s12 b, t1')
   return ((App a (ann b t1'), t2'), s2 `compose` s1)
-infer ops env (App a b) = do
-  ((_, tb), s1) <- infer ops env b
-  ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun tb Any)
-  let s12 = s2 `compose` s1
-  let (t1', t2') = case asFun ta of
-        Just ta -> ta
-        -- Nothing -> (substitute s2 tb, Any)
-        Nothing -> error ("Not a function:\n" ++ show (Ann a ta))
-  ((b, tb), s3) <- check ops (s12 `compose` env) (substitute s12 b, t1')
-  return ((App (substitute s3 a) (ann b t1'), substitute s3 t2'), s3 `compose` s12)
+-- infer ops env (App a b) = do
+--   ((_, tb), s1) <- infer ops env b
+--   ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun tb Any)
+--   let s12 = s2 `compose` s1
+--   let (t1', t2') = case asFun ta of
+--         Just ta -> ta
+--         -- Nothing -> (substitute s2 tb, Any)
+--         Nothing -> error ("Not a function:\n" ++ show (Ann a ta))
+--   ((b, tb), s3) <- check ops (s12 `compose` env) (substitute s12 b, t1')
+--   return ((App (substitute s3 a) (ann b t1'), substitute s3 t2'), s3 `compose` s12)
 infer ops env (Call op a) = do
   let x = newName ("$" : map fst env) "$"
   ((a, ta), s) <- infer ops ((x, Var x) : env) a
@@ -1559,6 +1569,13 @@ check ops env (And a b, And ta tb) = do
 check ops env (Fun a b, Fun ta tb) = do
   ((a, ta), (b, tb), s) <- check2 ops env (a, ta) (b, tb)
   return ((Fun (ann a ta) (ann b tb), Fun ta tb), s)
+-- check ops env (App a b, t) = do
+--   ((a, ta), s1) <- check ops env (a, Fun Any t)
+--   let (t1, t2) = case asFun ta of
+--         Just ta -> ta
+--         Nothing -> error ("Not a function:\n" ++ show (Ann a ta))
+--   ((b, tb), s2) <- check ops env (substitute s1 b, t1)
+--   return ((App (substitute s2 a) (ann b tb), substitute s2 t2), s2 `compose` s1)
 check ops env (App a b, t) = do
   ((b, tb), s1) <- infer ops env b
   ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun tb (substitute s1 t))
