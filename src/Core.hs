@@ -187,14 +187,14 @@ parseTuple = do
 layoutTuple :: [PP.Layout] -> PP.Layout
 layoutTuple [] = [PP.Text "()"]
 layoutTuple xs = do
-  let alt1 = PP.join [PP.Text ", "] xs
+  let alt1 = [PP.Indent (PP.join [PP.Text ", "] xs)]
   let alt2 = [PP.Indent (PP.Text " " : PP.join [PP.Text ",", PP.NewLine] xs), PP.Text ",", PP.NewLine]
   [PP.Text "(", PP.Or alt1 alt2, PP.Text ")"]
 
 layoutArgs :: [PP.Layout] -> PP.Layout
 layoutArgs [] = [PP.Text "()"]
 layoutArgs xs = do
-  let alt1 = PP.join [PP.Text ", "] xs
+  let alt1 = [PP.Indent (PP.join [PP.Text ", "] xs)]
   let alt2 = [PP.Indent (PP.NewLine : PP.join [PP.Text ",", PP.NewLine] xs), PP.Text ",", PP.NewLine]
   [PP.Text "(", PP.Or alt1 alt2, PP.Text ")"]
 
@@ -922,7 +922,7 @@ bind xs = \case
     bind xs (for xs (Ann a b))
   Ann a b -> do
     let ys = filter (`notElem` xs) (freeVars b)
-    for ys (Ann (bind (xs ++ ys) a) (bind (xs ++ ys) b))
+    for ys (Ann (bind xs a) (bind (xs ++ ys) b))
   For x a -> for' [x] (bind (x : xs ++ freeVars a) a)
   Fun a b | Just (xs, a) <- asFor a -> do
     bind xs (for xs (Fun a b))
@@ -975,9 +975,6 @@ isValue = \case
 
 -- Evaluation
 reduce :: Ops -> Expr -> Expr
-reduce ops (Ann a b) = case reduce ops a of
-  Ann a b -> reduce ops (Ann a b)
-  a -> Ann a b
 reduce ops (App a (Or b1 b2)) = case reduce ops (App a b1) of
   c | isErr c -> reduce ops (App a b2)
   c | isValue c -> c
@@ -1067,7 +1064,9 @@ eval ops a = case reduce ops a of
   Tag k a -> Tag k (eval ops a)
   For x a -> for' [x] (eval ops a)
   Fix x a -> fix' [x] (eval ops a)
-  Ann a b -> Ann (eval ops a) (eval ops b)
+  Ann a b -> case eval ops a of
+    Ann a b -> reduce ops (Ann a b)
+    a -> Ann a b
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> case eval ops a of
     a | isErr a -> eval ops b
@@ -1078,6 +1077,7 @@ eval ops a = case reduce ops a of
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)
   Call f a -> Call f (eval ops a)
+  Meta (Error e) a -> Meta (Error $ fmap (eval ops) e) (eval ops a)
   a -> a
 
 class Substitute a where
@@ -1379,7 +1379,7 @@ unify ops env (a, Tag k b) | Just def <- lookup k env = do
   let s = s2 `compose` s1 `compose` [(x, Var x)]
   -- let c = eval ops (Let (env) (curry' ctr [substitute s2 b, substitute s2 a]))
   let c = fromMaybe (Var x) $ lookup x (s `compose` env)
-  return (dropTypes (eval ops (Let env c)), s)
+  return (dropTypes $ eval ops (Let env c), s)
 unify ops env (Tag k a, b) | Just def <- lookup k env = do
   let x = newName ((k ++ "$") : map fst env) (k ++ "$")
   let env' = (x, Var x) : env
@@ -1388,7 +1388,7 @@ unify ops env (Tag k a, b) | Just def <- lookup k env = do
   let s = s2 `compose` s1 `compose` [(x, Var x)]
   -- let c = eval ops (Let (env) (curry' ctr [substitute s2 a, substitute s2 b]))
   let c = fromMaybe (Var x) $ lookup x (s `compose` env)
-  return (dropTypes (eval ops (Let env c)), s)
+  return (dropTypes $ eval ops (Let env c), s)
 unify ops env (For x a, b) = do
   let y = newName (freeVars b `union` map fst env) x
   (c, s) <- unify ops ((y, Var y) : env) (substitute [(x, Var y)] a, b)

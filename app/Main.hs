@@ -62,6 +62,7 @@ coreCmd filename arg = do
   let (env, a) = compile ctx path expr
   putStrLn "---- env ----"
   printExpr (C.let' env C.Any)
+  putStrLn $ ">> env: " ++ show (map fst env)
   putStrLn "---- lower ----"
   printExpr (lower expr)
   putStrLn "---- bind ----"

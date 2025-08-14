@@ -1874,8 +1874,8 @@ instance Compile (String, Expr) where
       --   (env, C.or' (map alt ats))
       C.Ok ats -> do
         -- let alt ((a, t), s) = C.for' (map fst s) (C.Ann a t)
-        -- let alt ((a, t), s) = C.for' (map fst s) a
-        let alt ((a, t), s) = a
+        -- let alt ((a, _), s) = C.for' (map fst s) a
+        let alt ((a, _), _) = a
         (env, C.or' (distinct $ map alt ats))
       C.Fail errors ->
         (error . intercalate "\n")
