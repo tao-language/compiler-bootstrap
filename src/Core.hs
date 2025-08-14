@@ -928,7 +928,7 @@ bind xs = \case
     bind xs (for xs (Fun a b))
   Fun a b -> do
     let ys = filter (`notElem` xs) (freeVars a)
-    for ys (Fun (bind (xs ++ ys) a) (bind (xs ++ ys) b))
+    for ys (Fun (bind (xs ++ ys) a) (bind xs b))
   a -> apply (bind xs) a
 
 occurs :: String -> Expr -> Bool
