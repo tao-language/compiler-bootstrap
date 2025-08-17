@@ -155,8 +155,23 @@ let map(xs, f) = match xs {
 | [x, ..xs] -> [f(x), ..xs.map(f)]
 }
 
-# flatten
+> [].map(x -> A(x)) ~> []
+> [1, 2, 3].map(x -> A(x)) ~> [A(1), A(2), A(3)]
+
+: (List(a), a -> Bool) -> List(a)
+let filter(xs, f) = match xs {
+| [] -> []
+| [x, ..xs] if f(x) -> [x, ..xs.filter(f)]
+| [_, ..xs] -> else xs.filter(f)
+}
+
+> [1, 2, 3].filter(x -> x < 1) ~> []
+> [1, 2, 3].filter(x -> x < 2) ~> [1]
+> [1, 2, 3].filter(x -> x < 3) ~> [1, 2]
+> [1, 2, 3].filter(x -> x < 4) ~> [1, 2, 3]
+
 # map, filter, flat-map, foldl, foldr
+# flatten
 # push, pop, add, remove
 # all, any, max, min, sum, product, average, count
 # repeat, range, reverse
