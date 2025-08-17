@@ -72,6 +72,7 @@ coreCmd filename arg = do
   putStrLn "---- eval ----"
   let b = C.eval runtimeOps $ C.let' env a
   printExpr b
+  putStrLn ("--- " ++ C.showCtr' 3 b)
   -- putStrLn "---- eval (untyped)"
   -- printExpr (C.dropTypes b)
   return ()

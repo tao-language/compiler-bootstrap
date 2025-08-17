@@ -1066,7 +1066,7 @@ eval ops a = case reduce ops a of
   Fix x a -> fix' [x] (eval ops a)
   Ann a b -> case eval ops a of
     Ann a b -> reduce ops (Ann a b)
-    a -> Ann a b
+    a -> Ann a (eval ops b)
   And a b -> And (eval ops a) (eval ops b)
   Or a b -> case eval ops a of
     a | isErr a -> eval ops b
