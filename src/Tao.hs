@@ -1867,14 +1867,10 @@ instance Compile (String, Expr) where
     let dependencies = delete name (C.freeVars a `union` C.freeTags a)
     let env = compileDefs ctx path dependencies
     case C.infer buildOps ((name, C.Var name) : env) a of
-      -- C.Ok ats -> do
-      --   let alt ((a, t), s) = do
-      --         let (xs, a') = C.forOf a
-      --         C.for' (xs `union` C.freeVars t) (C.Ann a' t)
-      --   (env, C.or' (map alt ats))
       C.Ok ats -> do
         -- let alt ((a, t), s) = C.for' (map fst s) (C.Ann a t)
         -- let alt ((a, _), s) = C.for' (map fst s) a
+        -- let alt ((a, t), _) = C.Ann a t
         let alt ((a, _), _) = a
         (env, C.or' (distinct $ map alt ats))
       C.Fail errors ->
@@ -1899,14 +1895,14 @@ compileDefs ctx path (x : xs) = do
   let defs = map (\(path, a) -> compile ctx path (x, a)) (resolve ctx path x)
   let env1 = foldr (unionBy (\a b -> fst a == fst b)) [] (map fst defs)
   let env2 = compileDefs ctx path xs
+  -- let env = unionBy (\a b -> fst a == fst b) env1 env2
   -- case defs of
-  --   [] -> env2
+  --   [] -> env
   --   defs -> do
-  --     let a = C.let' env1 $ C.or' $ map snd defs
-  --     (x, C.fix' [x] a) : env2
-  let env = unionBy (\a b -> fst a == fst b) env1 env2
+  --     let a = C.or' $ map snd defs
+  --     (x, C.let' env1 $ C.fix' [x] a) : env
   case defs of
-    [] -> env
+    [] -> env2
     defs -> do
-      let a = C.or' $ map snd defs
-      (x, C.let' env1 $ C.fix' [x] a) : env
+      let a = C.let' env1 $ C.or' $ map snd defs
+      (x, C.fix' [x] a) : env2

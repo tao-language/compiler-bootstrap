@@ -1364,13 +1364,19 @@ unify _ _ (Int i, Int i') | i == i' = return (Int i, [])
 unify _ _ (Num n, Num n') | n == n' = return (Num n, [])
 unify ops env (Var x, b) = case b of
   Var x' | x == x' -> return (Var x, [])
-  Ann (Var x') t | x == x' -> return (Var x, [])
+  Ann (Var x') _ | x == x' -> return (Var x, [])
   b | x `occurs` b -> Fail [occursError x b]
+  Tag k b | Just def <- lookup k env -> do
+    return (Tag k b, [(x, Tag k b), (k, def)])
   b -> return (b, [(x, b)])
-unify ops env (a, Var x) = unify ops env (Var x, a)
 unify ops env (Tag k a1, Tag k' a2) | k == k' = do
   (a, s) <- unify ops env (a1, a2)
+  -- let def = case lookup k env of
+  --       Just b -> [(k, b)]
+  --       Nothing -> []
+  -- return (Tag k a, s `compose` def)
   return (Tag k a, s)
+unify ops env (a, Var x) = unify ops env (Var x, a)
 unify ops env (a, Tag k b) | Just def <- lookup k env = do
   let x = newName ((k ++ "$") : map fst env) (k ++ "$")
   let env' = (x, Var x) : env
@@ -1379,7 +1385,7 @@ unify ops env (a, Tag k b) | Just def <- lookup k env = do
   let s = s2 `compose` s1 `compose` [(x, Var x)]
   -- let c = eval ops (Let (env) (curry' ctr [substitute s2 b, substitute s2 a]))
   let c = fromMaybe (Var x) $ lookup x (s `compose` env)
-  return (dropTypes $ eval ops (Let env c), s)
+  return (dropTypes $ eval ops (Let env c), s `compose` [(k, def)])
 unify ops env (Tag k a, b) | Just def <- lookup k env = do
   let x = newName ((k ++ "$") : map fst env) (k ++ "$")
   let env' = (x, Var x) : env
@@ -1388,7 +1394,7 @@ unify ops env (Tag k a, b) | Just def <- lookup k env = do
   let s = s2 `compose` s1 `compose` [(x, Var x)]
   -- let c = eval ops (Let (env) (curry' ctr [substitute s2 a, substitute s2 b]))
   let c = fromMaybe (Var x) $ lookup x (s `compose` env)
-  return (dropTypes $ eval ops (Let env c), s)
+  return (dropTypes $ eval ops (Let env c), s `compose` [(k, def)])
 unify ops env (For x a, b) = do
   let y = newName (freeVars b `union` map fst env) x
   (c, s) <- unify ops ((y, Var y) : env) (substitute [(x, Var y)] a, b)
@@ -1457,6 +1463,10 @@ infer ops env (Var x) = case lookup x env of
   Nothing -> Fail [undefinedVar x]
 infer ops env (Tag k a) = do
   ((a, ta), s) <- infer ops env a
+  -- let def = case lookup k env of
+  --       Just a -> [(k, a)]
+  --       Nothing -> []
+  -- return ((Tag k a, Tag k ta), s `compose` def)
   return ((Tag k a, Tag k ta), s)
 infer ops env (For x a) = do
   let y = newName (map fst env) x
@@ -1486,20 +1496,8 @@ infer ops env (App a b) = do
   ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun tb Any)
   let (t1', t2') = case asFun ta of
         Just ta -> ta
-        -- Nothing -> (substitute s2 tb, Any)
         Nothing -> error ("Not a function:\n" ++ show (Ann a ta))
-  -- ((b, tb), s3) <- check ops (s12 `compose` env) (substitute s12 b, t1')
   return ((App a (ann b t1'), t2'), s2 `compose` s1)
--- infer ops env (App a b) = do
---   ((_, tb), s1) <- infer ops env b
---   ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun tb Any)
---   let s12 = s2 `compose` s1
---   let (t1', t2') = case asFun ta of
---         Just ta -> ta
---         -- Nothing -> (substitute s2 tb, Any)
---         Nothing -> error ("Not a function:\n" ++ show (Ann a ta))
---   ((b, tb), s3) <- check ops (s12 `compose` env) (substitute s12 b, t1')
---   return ((App (substitute s3 a) (ann b t1'), substitute s3 t2'), s3 `compose` s12)
 infer ops env (Call op a) = do
   let x = newName ("$" : map fst env) "$"
   ((a, ta), s) <- infer ops ((x, Var x) : env) a
@@ -1517,8 +1515,8 @@ infer2 ops env a b = do
   return (substitute s2 at, bt, s2 `compose` s1)
 
 check :: Ops -> Env -> (Expr, Type) -> Typed ((Expr, Type), Substitution)
-check ops env (Any, t) = Ok [((Any, t), [])]
-check ops env (a, Any) = infer ops env a
+-- check ops env (Any, t) = Ok [((Any, t), [])]
+-- check ops env (a, Any) = infer ops env a
 check ops env (Meta _ a, t) = check ops env (a, t)
 check ops env (a, Meta _ t) = check ops env (a, t)
 check ops env (a, Or t1 t2) = case (check ops env (a, t1), check ops env (a, t2)) of
@@ -1569,19 +1567,11 @@ check ops env (And a b, And ta tb) = do
 check ops env (Fun a b, Fun ta tb) = do
   ((a, ta), (b, tb), s) <- check2 ops env (a, ta) (b, tb)
   return ((Fun (ann a ta) (ann b tb), Fun ta tb), s)
--- check ops env (App a b, t) = do
---   ((a, ta), s1) <- check ops env (a, Fun Any t)
---   let (t1, t2) = case asFun ta of
---         Just ta -> ta
---         Nothing -> error ("Not a function:\n" ++ show (Ann a ta))
---   ((b, tb), s2) <- check ops env (substitute s1 b, t1)
---   return ((App (substitute s2 a) (ann b tb), substitute s2 t2), s2 `compose` s1)
 check ops env (App a b, t) = do
   ((b, tb), s1) <- infer ops env b
   ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun tb (substitute s1 t))
   let (t1, t2) = case asFun ta of
         Just ta -> ta
-        -- Nothing -> (substitute s2 t1, substitute s12 t2)
         Nothing -> error ("Not a function:\n" ++ show (Ann a ta))
   return ((App a (ann (substitute s2 b) t1), t2), s2 `compose` s1)
 check ops env (Let defs a, t) = do
