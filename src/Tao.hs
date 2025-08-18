@@ -1893,16 +1893,10 @@ compileDefs :: Context -> FilePath -> [String] -> C.Env
 compileDefs _ _ [] = []
 compileDefs ctx path (x : xs) = do
   let defs = map (\(path, a) -> compile ctx path (x, a)) (resolve ctx path x)
-  let env1 = foldr (unionBy (\a b -> fst a == fst b)) [] (map fst defs)
-  let env2 = compileDefs ctx path xs
-  -- let env = unionBy (\a b -> fst a == fst b) env1 env2
-  -- case defs of
-  --   [] -> env
-  --   defs -> do
-  --     let a = C.or' $ map snd defs
-  --     (x, C.let' env1 $ C.fix' [x] a) : env
+  let env = compileDefs ctx path xs
   case defs of
-    [] -> env2
+    [] -> env
     defs -> do
-      let a = C.let' env1 $ C.or' $ map snd defs
-      (x, C.fix' [x] a) : env2
+      let def (env, a) = C.let' env a
+      let a = C.or' (map def defs)
+      (x, C.fix' [x] a) : env
