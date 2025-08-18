@@ -12,52 +12,55 @@ import Test.Hspec
 -- TODO: isolate errors and error reporting into its own test file
 
 filename :: String
-filename = "<test>"
+filename = "<TaoTests>"
 
-fmt :: Expr -> String
-fmt = show . dropLocations
+parse' :: String -> Either ([String], String) (Expr, String)
+parse' text = case parse 0 filename text of
+  Right (a, s) -> Right (a, s.remaining)
+  Left s -> Left (s.context, s.remaining)
 
-core :: C.Expr -> String
-core = show . C.dropMeta
+-- fmt :: Expr -> String
+-- fmt = show . dropLocations
 
-def' :: String -> String -> Stmt
-def' a b = case (parse ("ctx." ++ a) a, parse ("ctx." ++ a) b) of
-  (Right (a, _), Right (b, _)) -> def (a, b)
-  (Left s, _) -> error ("ctx[pattern] syntax error, remaining: " ++ s.remaining)
-  (_, Left s) -> error ("ctx[value] syntax error, remaining: " ++ s.remaining)
+-- core :: C.Expr -> String
+-- core = show . C.dropMeta
 
--- let defOp1 op f = def op (For ["a"] (lambda [Var "a"] (Call f [Var "a"])))
--- let defOp2 op f = def op (For ["a", "b"] (lambda [Var "a", Var "b"] (Call f [Var "a", Var "b"])))
+-- def' :: String -> String -> Stmt
+-- def' a b = case (parse ("ctx." ++ a) a, parse ("ctx." ++ a) b) of
+--   (Right (a, _), Right (b, _)) -> def (a, b)
+--   (Left s, _) -> error ("ctx[pattern] syntax error, remaining: " ++ s.remaining)
+--   (_, Left s) -> error ("ctx[value] syntax error, remaining: " ++ s.remaining)
 
-syntax :: String -> Either String Expr
-syntax src = syntax' src src
+-- -- let defOp1 op f = def op (For ["a"] (lambda [Var "a"] (Call f [Var "a"])))
+-- -- let defOp2 op f = def op (For ["a", "b"] (lambda [Var "a", Var "b"] (Call f [Var "a", Var "b"])))
 
-syntax' :: String -> String -> Either String Expr
-syntax' src expected = case parse filename src of
-  Right (a, _)
-    | fmt a == expected -> Right a
-    | otherwise -> Left ("format error: " ++ expected ++ " != " ++ fmt a)
-  Left s -> Left ("syntax error, remaining: " ++ s.remaining)
+-- syntax :: String -> Either String Expr
+-- syntax src = syntax' src src
 
-check' :: C.Expr -> [(Maybe (Int, Int, Int, Int), Error Expr)]
-check' a = do
-  let f (Just (Location _ (Range start end)), err) = (Just (start.row, start.col, end.row, end.col), err)
-      f (Nothing, err) = (Nothing, err)
-  map f (check (lift a))
+-- syntax' :: String -> String -> Either String Expr
+-- syntax' src expected = case parse filename src of
+--   Right (a, _)
+--     | fmt a == expected -> Right a
+--     | otherwise -> Left ("format error: " ++ expected ++ " != " ++ fmt a)
+--   Left s -> Left ("syntax error, remaining: " ++ s.remaining)
 
-eval' :: C.Env -> C.Expr -> C.Type -> (String, String)
-eval' env expr type' = do
-  let a = eval env expr
-  let t = eval env type'
-  (fmt $ dropTypes a, fmt $ dropTypes t)
+-- check' :: C.Expr -> [(Maybe (Int, Int, Int, Int), Error Expr)]
+-- check' a = do
+--   let f (Just (Location _ (Range start end)), err) = (Just (start.row, start.col, end.row, end.col), err)
+--       f (Nothing, err) = (Nothing, err)
+--   map f (check (lift a))
+
+-- eval' :: C.Env -> C.Expr -> C.Type -> (String, String)
+-- eval' env expr type' = do
+--   let a = eval env expr
+--   let t = eval env type'
+--   (fmt $ dropTypes a, fmt $ dropTypes t)
 
 run :: SpecWith ()
 run = describe "--==☯ Tao ☯==--" $ do
   let loc' r1 c1 r2 c2 = Location filename (Range (Pos r1 c1) (Pos r2 c2))
   let loc r1 c1 r2 c2 = Meta (C.Loc $ loc' r1 c1 r2 c2)
   let any r c = loc r c r (c + 1) Any
-  let intT r c = loc r c r (c + 3) IntT
-  let numT r c = loc r c r (c + 3) NumT
   let int r c i = loc r c r (c + length (show i)) (Int i)
   let num r c n = loc r c r (c + length (show n)) (Num n)
   let char r c ch = loc r c r (c + 4) (Char ch)
@@ -81,523 +84,131 @@ run = describe "--==☯ Tao ☯==--" $ do
   let (a', b', c') = (C.Var "a", C.Var "b", C.Var "c")
   let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
 
-  -- it "☯ Tao.Any" $ do
-  --   let ctx = []
-  --   let expr = any 1 1
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "_" `shouldBe` Right expr
-  --   core a `shouldBe` "_"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("_", "_")
+  it "☯ Tao.grammar.parser" $ do
+    parse' "_ \n" `shouldBe` Right (any 1 1, "\n")
+    parse' "42 \n" `shouldBe` Right (int 1 1 42, "\n")
+    parse' "-42 \n" `shouldBe` Right (int 1 1 (-42), "\n")
+    -- TODO: integer binary: 0b1010 == 10
+    -- TODO: integer octal: 0o52 == 42
+    -- TODO: integer hexadecimal: 0xFEEDCA7 == 267312295
+    parse' "3.14 \n" `shouldBe` Right (num 1 1 3.14, "\n")
+    parse' "-3.14 \n" `shouldBe` Right (num 1 1 (-3.14), "\n")
+    -- TODO: number scientific notation pos: 4.2e1 == 42.0
+    -- TODO: number scientific notation neg: 314e-2 == 3.14
+    parse' "c'x' \n" `shouldBe` Right (char 1 1 'x', "\n")
+    parse' "c\"x\" \n" `shouldBe` Right (char 1 1 'x', "\n")
+    -- TODO: char escape sequence: c'\a'
+    -- TODO: char escape sequence: c'\b'
+    -- TODO: char escape sequence: c'\f'
+    -- TODO: char escape sequence: c'\n'
+    -- TODO: char escape sequence: c'\r'
+    -- TODO: char escape sequence: c'\t'
+    -- TODO: char escape sequence: c'\v'
+    -- TODO: char escape sequence: c'\''
+    -- TODO: char escape sequence: c"\""
+    -- TODO: char escape sequence: c'\0'
+    -- TODO: char escape sequence: c'\oNNN'
+    -- TODO: char escape sequence: c'\xNN'
+    -- TODO: char escape sequence: c'\uHH'
+    parse' "x \n" `shouldBe` Right (x 1 1, "\n")
+    -- TODO: variable escaped: v'x'
+    parse' "A \n" `shouldBe` Right (tag 1 1 "A" [], "\n")
+    parse' "A() \n" `shouldBe` Right (tag 1 1 "A" [], "\n")
+    parse' "A(x) \n" `shouldBe` Right (tag 1 1 "A" [x 1 3], "\n")
+    parse' "A(x,y) \n" `shouldBe` Right (tag 1 1 "A" [x 1 3, y 1 5], "\n")
+    parse' "A(x, y, z) \n" `shouldBe` Right (tag 1 1 "A" [x 1 3, y 1 6, z 1 9], "\n")
+    parse' "A(\nx\n,\ny\n,\n) \n" `shouldBe` Right (tag 1 1 "A" [x 2 1, y 4 1], "\n")
+    -- TODO: tag escaped: t'A'
+    -- TODO: tag escaped: t'A'(x)
+    parse' "() \n" `shouldBe` Right (loc 1 1 1 3 $ Tuple [], "\n")
+    parse' "(x) \n" `shouldBe` Right (x 1 2, "\n")
+    parse' "(x,) \n" `shouldBe` Right (loc 1 1 1 5 $ Tuple [x 1 2], "\n")
+    parse' "(x, y, z) \n" `shouldBe` Right (loc 1 1 1 10 $ Tuple [x 1 2, y 1 5, z 1 8], "\n")
+    parse' "(\nx\n,\ny\n,\n) \n" `shouldBe` Right (loc 1 1 6 2 $ Tuple [x 2 1, y 4 1], "\n")
+    parse' "[] \n" `shouldBe` Right (loc 1 1 1 3 $ List [], "\n")
+    parse' "[x] \n" `shouldBe` Right (loc 1 1 1 4 $ List [x 1 2], "\n")
+    parse' "[x,] \n" `shouldBe` Right (loc 1 1 1 5 $ List [x 1 2], "\n")
+    parse' "[x, y, z] \n" `shouldBe` Right (loc 1 1 1 10 $ List [x 1 2, y 1 5, z 1 8], "\n")
+    parse' "[\nx\n,\ny\n,\n] \n" `shouldBe` Right (loc 1 1 6 2 $ List [x 2 1, y 4 1], "\n")
+    parse' "'' \n" `shouldBe` Right (loc 1 1 1 3 $ String [Str ""], "\n")
+    parse' "'abc' \n" `shouldBe` Right (loc 1 1 1 6 $ String [Str "abc"], "\n")
+    parse' "\"abc\" \n" `shouldBe` Right (loc 1 1 1 6 $ String [Str "abc"], "\n")
+    -- TODO: string escape sequences
+    -- TODO: string interpolation bare: "ab$x c"
+    -- TODO: string interpolation with brackets: "ab${x}c"
+    -- TODO: string multi-line: """\nabc\n"""
+    -- TODO: string multi-line indented
+    -- TODO: string templates: f`abc`
+    -- TODO: string templates multi-line: ```f\nabc\n```
+    parse' "@x.y \n" `shouldBe` Right (loc 1 1 1 3 $ For ["x"] (y 1 4), "\n")
+    parse' "@ x .\ny \n" `shouldBe` Right (loc 1 1 1 4 $ For ["x"] (y 2 1), "\n")
+    parse' "@ x y \nz \n" `shouldBe` Right (loc 1 1 1 6 $ For ["x", "y"] (z 2 1), "\n")
+    parse' "@\nx. y \n" `shouldBe` Left ([], "@\nx. y \n")
+    -- Ann Expr Type
+    -- Or Expr Expr
+    -- Fun Pattern Expr
+    -- App Expr Expr
+    -- Call String [Expr]
+    -- parse' "&x.y \n" `shouldBe` Right (Fix "x" y, "\n")
+    -- parse' "& x .\ny \n" `shouldBe` Right (Fix "x" y, "\n")
+    -- parse' "& x y \nz \n" `shouldBe` Right (fix ["x", "y"] z, "\n")
+    -- parse' "&\nx. y \n" `shouldBe` Left ([], "&\nx. y \n")
+    -- parse' "x:y \n" `shouldBe` Right (Ann x y, "\n")
+    -- parse' "x :\ny \n" `shouldBe` Right (Ann x y, "\n")
+    -- parse' "x\n:\ny \n" `shouldBe` Right (Ann x y, "\n")
+    -- parse' "x : y : z \n" `shouldBe` Right (Ann x (Ann y z), "\n")
+    -- parse' "(x) \n" `shouldBe` Right (x, "\n")
+    -- parse' "(\nx\n) \n" `shouldBe` Right (x, "\n")
+    -- parse' "(x,y) \n" `shouldBe` Right (and' [x, y], "\n")
+    -- parse' "(x, y, z) \n" `shouldBe` Right (and' [x, y, z], "\n")
+    -- parse' "(\nx\n,\ny\n,\n) \n" `shouldBe` Right (and' [x, y], "\n")
+    -- parse' "x|y \n" `shouldBe` Right (Or x y, "\n")
+    -- parse' "x | y | z \n" `shouldBe` Right (Or x (Or y z), "\n")
+    -- parse' "x\n|\ny \n" `shouldBe` Right (Or x y, "\n")
+    -- parse' "x->y \n" `shouldBe` Right (Fun x y, "\n")
+    -- parse' "x -> y -> z \n" `shouldBe` Right (Fun x (Fun y z), "\n")
+    -- parse' "x\n->\ny\n->\nz \n" `shouldBe` Right (Fun x (Fun y z), "\n")
+    -- parse' "a() \n" `shouldBe` Right (app a [], "\n")
+    -- parse' "a(x) \n" `shouldBe` Right (app a [x], "\n")
+    -- parse' "a(x,y) \n" `shouldBe` Right (app a [x, y], "\n")
+    -- parse' "a (x, y, z) \n" `shouldBe` Right (app a [x, y, z], "\n")
+    -- parse' "a(\nx\n,\ny\n,\n) \n" `shouldBe` Right (app a [x, y], "\n")
+    -- parse' "%f \n" `shouldBe` Right (call "f" [], "\n")
+    -- parse' "%f() \n" `shouldBe` Right (call "f" [], "\n")
+    -- parse' "%f(x) \n" `shouldBe` Right (call "f" [x], "\n")
+    -- parse' "%f(x,y) \n" `shouldBe` Right (call "f" [x, y], "\n")
+    -- parse' "%f (x, y, z) \n" `shouldBe` Right (call "f" [x, y, z], "\n")
+    -- parse' "%f(\nx\n,\ny\n,\n) \n" `shouldBe` Right (call "f" [x, y], "\n")
+    -- parse' "^{}y \n" `shouldBe` Right (Let [] y, "\n")
+    -- parse' "^ { } y \n" `shouldBe` Right (Let [] y, "\n")
+    -- parse' "^\n{\n}\ny \n" `shouldBe` Right (Let [] y, "\n")
+    -- parse' "^x=a;y \n" `shouldBe` Right (Let [("x", a)] y, "\n")
+    -- parse' "^ x = a ; ^ y = b ; z \n" `shouldBe` Right (Let [("x", a), ("y", b)] z, "\n")
+    -- parse' "^\nx\n=\na \n^\ny\n=\nb \nz \n" `shouldBe` Right (Let [("x", a), ("y", b)] z, "\n")
+    -- Op1 Op1 Expr
+    -- Op2 Op2 Expr Expr
+    -- Dot Expr String (Maybe [Expr])
+    -- Spread Expr
+    -- Get Expr Expr
+    -- Slice Expr (Expr, Expr)
+    -- Match Expr [Expr]
+    -- MatchFun [Expr]
+    -- Let (Pattern, Expr) Expr
+    -- Bind (Pattern, Expr) Expr
+    -- Record [(String, Expr)]
+    -- Select Expr [(String, Expr)]
+    -- With Expr [(String, Expr)]
+    -- If Expr Expr
+    -- IfElse Expr Expr Expr
+    -- Meta (C.Metadata Expr) Expr
+    -- Err
+    "" `shouldBe` ""
 
-  -- it "☯ Tao.Meta.Location" $ do
-  --   let ctx = []
-  --   let expr = Meta (C.Loc $ Location "file" (Range (Pos 1 2) (Pos 3 4))) (any 1 20)
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "^loc[:1:2,3:4](_)" `shouldBe` Left "syntax error, remaining: :1:2,3:4](_)"
-  --   syntax' "^loc[file:1:2,3:4](_)" "_" `shouldBe` Right expr
-  --   core a `shouldBe` "_"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("_", "_")
+  it "☯ Tao.grammar.parser.errors" $ do
+    parse' "$" `shouldBe` Left ([], "$")
 
-  -- it "☯ Tao.Meta.Comments.1" $ do
-  --   let ctx = []
-  --   let expr = Meta (C.Comments ["c1"]) (any 2 1)
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "# c1\n_" `shouldBe` Right expr
-  --   core a `shouldBe` "_"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("# c1\n_", "_")
-
-  -- it "☯ Tao.Meta.Comments.2" $ do
-  --   let ctx = []
-  --   let expr = Meta (C.Comments ["c1", "c2"]) (any 3 1)
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "# c1\n# c2\n_" `shouldBe` Right expr
-  --   core a `shouldBe` "_"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("# c1\n# c2\n_", "_")
-
-  -- it "☯ Tao.Meta.TrailingComment" $ do
-  --   let ctx = []
-  --   let expr = Meta (C.TrailingComment "c") (any 1 1)
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "_  # c\n" `shouldBe` Right expr
-  --   core a `shouldBe` "_"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("_  # c\n", "_")
-
-  -- -- TODO: multi-line comments
-
-  -- it "☯ Tao.IntT" $ do
-  --   let ctx = []
-  --   let expr = intT 1 1
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "Int" `shouldBe` Right expr
-  --   core a `shouldBe` "^Int"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("Int", "Int")
-
-  -- it "☯ Tao.NumT" $ do
-  --   let ctx = []
-  --   let expr = numT 1 1
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "Num" `shouldBe` Right expr
-  --   core a `shouldBe` "^Num"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("Num", "Num")
-
-  -- it "☯ Tao.Int" $ do
-  --   let ctx = []
-  --   let expr = int 1 1 42
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "42" `shouldBe` Right expr
-  --   core a `shouldBe` "42"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("42", "Int")
-
-  -- it "☯ Tao.Num" $ do
-  --   let ctx = []
-  --   let expr = num 1 1 3.14
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "3.14" `shouldBe` Right expr
-  --   fmt expr `shouldBe` "3.14"
-  --   core a `shouldBe` "3.14"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("3.14", "Num")
-
-  -- it "☯ Tao.Char" $ do
-  --   let ctx = []
-  --   let expr = char 1 1 'x'
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "c'x'" `shouldBe` Right expr
-  --   core a `shouldBe` "Char<120>"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("c'x'", "Char(Int)")
-
-  -- it "☯ Tao.Var.undefined" $ do
-  --   let ctx = []
-  --   let expr = x 1 1
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "x" `shouldBe` Right expr
-  --   core a `shouldBe` "x"
-  --   core t `shouldBe` "!undefined-var(x)"
-  --   check' (C.Ann a t) `shouldBe` [(Just (1, 1, 1, 2), undefinedVar "x")]
-  --   eval' env a t `shouldBe` ("x", "!undefined-var(x)")
-
-  -- it "☯ Tao.Var.direct" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = x 1 1
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "x" `shouldBe` Right expr
-  --   core a `shouldBe` "x"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("42", "Int")
-
-  -- it "☯ Tao.Var.indirect" $ do
-  --   let ctx = [("m", [def' "y" "42", def' "x" "y"])]
-  --   let expr = x 1 1
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "x" `shouldBe` Right expr
-  --   core a `shouldBe` "x"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("42", "Int")
-
-  -- it "☯ Tao.Tag.0" $ do
-  --   let ctx = []
-  --   let expr = tag 1 1 "A" []
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "A" `shouldBe` Right expr
-  --   core a `shouldBe` "A"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("A", "A")
-
-  -- it "☯ Tao.Tag.1" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = tag 1 1 "A" [x 1 3]
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "A(x)" `shouldBe` Right expr
-  --   core a `shouldBe` "A<x>"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("A(42)", "A(Int)")
-
-  -- it "☯ Tao.Tag.2" $ do
-  --   let ctx = [("m", [def' "x" "42", def' "y" "3.14"])]
-  --   let expr = tag 1 1 "A" [x 1 3, y 1 6]
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "A(x, y)" `shouldBe` Right expr
-  --   core a `shouldBe` "A<x, y>"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("A(42, 3.14)", "A(Int, Num)")
-
-  -- it "☯ Tao.Tag.error" $ do
-  --   let ctx = [("m", [])]
-  --   let expr = tag 1 1 "A" [x 1 3]
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "A(x)" `shouldBe` Right expr
-  --   core a `shouldBe` "A<x : !undefined-var(x)>"
-  --   check' (C.Ann a t) `shouldBe` [(Just (1, 3, 1, 4), undefinedVar "x")]
-  --   eval' env a t `shouldBe` ("A(x)", "A(!undefined-var(x))")
-
-  -- it "☯ Tao.Ann.ok" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = ann 1 3 (x 1 1) (intT 1 5)
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "x : Int" `shouldBe` Right expr
-  --   core a `shouldBe` "x"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("42", "Int")
-
-  -- it "☯ Tao.Ann.type-mismatch" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = ann 1 3 (x 1 1) (numT 1 5)
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "x : Num" `shouldBe` Right expr
-  --   core a `shouldBe` "x"
-  --   core t `shouldBe` "!type-mismatch(^Int, ^Num)"
-  --   check' (C.Ann a t) `shouldBe` [(Just (1, 1, 1, 2), typeMismatch IntT NumT)]
-  --   eval' env a t `shouldBe` ("42", "!type-mismatch(Int, Num)")
-
-  -- it "☯ Tao.Tuple.0" $ do
-  --   let ctx = []
-  --   let expr = loc 1 1 1 3 (Tuple [])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "()" `shouldBe` Right expr
-  --   core a `shouldBe` "()"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("()", "()")
-
-  -- it "☯ Tao.Tuple.1" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = loc 1 1 1 3 (Tuple [x 1 2])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax' "(x)" "x" `shouldBe` Right (x 1 2)
-  --   core a `shouldBe` "x"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("42", "Int")
-
-  -- it "☯ Tao.Tuple.2" $ do
-  --   let ctx = [("m", [def' "x" "42", def' "y" "3.14"])]
-  --   let expr = loc 1 1 1 7 (Tuple [x 1 2, y 1 5])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "(x, y)" `shouldBe` Right expr
-  --   core a `shouldBe` "(x, y)"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("(42, 3.14)", "(Int, Num)")
-
-  -- it "☯ Tao.Tuple.error" $ do
-  --   let ctx = [("m", [def' "x" "42", def' "y" "3.14"])]
-  --   let expr = loc 1 1 1 7 (Tuple [x 1 2, z 1 5])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "(x, z)" `shouldBe` Right expr
-  --   core a `shouldBe` "(x, z : !undefined-var(z))"
-  --   check' (C.Ann a t) `shouldBe` [(Just (1, 5, 1, 6), undefinedVar "z")]
-  --   eval' env a t `shouldBe` ("(42, z)", "(Int, !undefined-var(z))")
-
-  -- it "☯ Tao.List.0" $ do
-  --   let ctx = []
-  --   let expr = loc 1 1 1 3 (List [])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "[]" `shouldBe` Right expr
-  --   core a `shouldBe` "[]"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("[]", "[]")
-
-  -- it "☯ Tao.List.1" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = loc 1 1 1 4 (List [x 1 2])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "[x]" `shouldBe` Right expr
-  --   core a `shouldBe` "::<x, []>"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("[42]", "[Int]")
-
-  -- it "☯ Tao.List.2" $ do
-  --   let ctx = [("m", [def' "x" "42", def' "y" "9"])]
-  --   let expr = loc 1 1 1 7 (List [x 1 2, y 1 5])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "[x, y]" `shouldBe` Right expr
-  --   core a `shouldBe` "::<x, ::<y, []>>"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("[42, 9]", "[Int, Int]")
-
-  -- it "☯ Tao.String.empty" $ do
-  --   let ctx = []
-  --   let expr = loc 1 1 1 3 (String [])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "''" `shouldBe` Right expr
-  --   core a `shouldBe` "''"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("''", "''")
-
-  -- -- it "☯ Tao.String literal" $ do
-  -- -- it "☯ Tao.String interpolation" $ do
-
-  -- it "☯ Tao.Or.different" $ do
-  --   let ctx = [("m", [def' "x" "42", def' "y" "3.14"])]
-  --   let expr = or' 1 3 (x 1 1) (y 1 5)
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "x | y" `shouldBe` Right expr
-  --   core a `shouldBe` "x | y"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("42 | 3.14", "Int | Num")
-
-  -- it "☯ Tao.Or.same" $ do
-  --   let ctx = [("m", [def' "x" "42", def' "y" "9"])]
-  --   let expr = or' 1 3 (x 1 1) (y 1 5)
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "x | y" `shouldBe` Right expr
-  --   core a `shouldBe` "x | y"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("42 | 9", "Int")
-
-  -- it "☯ Tao.For.0" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = loc 1 1 1 2 (For [] (x 1 4))
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "@. x" `shouldBe` Right expr
-  --   core a `shouldBe` "x"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("42", "Int")
-
-  -- it "☯ Tao.For.1" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = loc 1 1 1 3 (For ["a"] (x 1 5))
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "@a. x" `shouldBe` Right expr
-  --   core a `shouldBe` "@a. x"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("@a. 42", "Int")
-
-  -- it "☯ Tao.For.2" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = loc 1 1 1 5 (For ["a", "b"] (x 1 7))
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "@a b. x" `shouldBe` Right expr
-  --   core a `shouldBe` "@a b. x"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("@a b. 42", "Int")
-
-  -- it "☯ Tao.Fun.unbound" $ do
-  --   let ctx = [("m", [def' "x" "42", def' "y" "3.14"])]
-  --   let expr = fun 1 3 (x 1 1) (y 1 6)
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "x -> y" `shouldBe` Right expr
-  --   core a `shouldBe` "@x. (x : x1T) -> (y : ^Num)"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("@x. (x : x1T) -> 3.14", "@. x1T -> Num")
-
-  -- it "☯ Tao.Fun.bound" $ do
-  --   let ctx = [("m", [def' "x" "42", def' "y" "3.14"])]
-  --   let expr = loc 1 1 1 2 (For [] $ fun 1 6 (x 1 4) (y 1 9))
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "@. x -> y" `shouldBe` Right expr
-  --   core a `shouldBe` "(x : ^Int) -> (y : ^Num)"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("(42 : Int) -> 3.14", "Int -> Num")
-
-  -- it "☯ Tao.App.empty" $ do
-  --   let ctx = [("m", [def' "x" "() -> 42"])]
-  --   let expr = loc 1 2 1 4 (app (x 1 1) [])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "x()" `shouldBe` Right expr
-  --   core a `shouldBe` "x (() : ())"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("42", "Int")
-
-  -- it "☯ Tao.App.args1" $ do
-  --   let ctx = [("m", [def' "x" "a -> a", def' "y" "42"])]
-  --   let expr = loc 1 2 1 5 (app (x 1 1) [y 1 3])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "x(y)" `shouldBe` Right expr
-  --   core a `shouldBe` "x (y : ^Int)"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("42", "Int")
-
-  -- it "☯ Tao.App.args2" $ do
-  --   let ctx = [("m", [def' "x" "(a, b) -> b", def' "y" "42", def' "z" "3.14"])]
-  --   let expr = loc 1 2 1 8 (app (x 1 1) [y 1 3, z 1 6])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "x(y, z)" `shouldBe` Right expr
-  --   core a `shouldBe` "x ((y, z) : (^Int, ^Num))"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("3.14", "Num")
-
-  -- it "☯ Tao.App.Fun" $ do
-  --   let ctx = [("m", [def' "x" "A -> B", def' "y" "A"])]
-  --   let expr = loc 1 2 1 5 (app (x 1 1) [y 1 3])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "x(y)" `shouldBe` Right expr
-  --   core a `shouldBe` "x (y : A)"
-  --   core t `shouldBe` "B"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("B", "B")
-
-  -- it "☯ Tao.App.Or.first" $ do
-  --   let ctx = [("m", [def' "x" "A -> B | B -> A", def' "y" "A"])]
-  --   let expr = loc 1 2 1 5 (app (x 1 1) [y 1 3])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "x(y)" `shouldBe` Right expr
-  --   core a `shouldBe` "x (y : A)"
-  --   core t `shouldBe` "B"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("B", "B")
-
-  -- it "☯ Tao.App.Or.second" $ do
-  --   let ctx = [("m", [def' "x" "A -> B | B -> A", def' "y" "B"])]
-  --   let expr = loc 1 2 1 5 (app (x 1 1) [y 1 3])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "x(y)" `shouldBe` Right expr
-  --   core a `shouldBe` "x (y : B)"
-  --   core t `shouldBe` "A"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("A", "A")
-
-  -- it "☯ Tao.App.Or.both" $ do
-  --   let ctx = [("m", [def' "x" "A -> B | B -> A", def (Var "y", Var "y")])]
-  --   let expr = loc 1 2 1 5 (app (x 1 1) [y 1 3])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "x(y)" `shouldBe` Right expr
-  --   core a `shouldBe` "x (y : A) | x (y : B)"
-  --   core t `shouldBe` "B | A"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("let A = y\nB | let B = y\nA", "B | A")
-
-  -- -- TODO: App named arguments
-  -- -- TODO: App default values
-
-  -- it "☯ Tao.Call.0" $ do
-  --   let ctx = []
-  --   let expr = loc 1 1 1 3 (Call "f" [])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "%f" `shouldBe` Right expr
-  --   syntax' "%f()" "%f" `shouldBe` Right expr
-  --   core a `shouldBe` "%f()"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("%f", "_")
-
-  -- it "☯ Tao.Call.1" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = loc 1 1 1 9 (Call "int_neg" [x 1 10])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "%int_neg(x)" `shouldBe` Right expr
-  --   core a `shouldBe` "%int_neg(x)"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("-42", "_")
-
-  -- it "☯ Tao.Call.2" $ do
-  --   let ctx = [("m", [def' "x" "40", def' "y" "2"])]
-  --   let expr = loc 1 1 1 9 (Call "int_add" [x 1 10, y 1 13])
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "%int_add(x, y)" `shouldBe` Right expr
-  --   core a `shouldBe` "%int_add(x, y)"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("42", "_")
-
-  -- it "☯ Tao.Match.error.empty" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = match 1 1 (x 1 7) []
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "match x {}" `shouldBe` Right expr
-  --   core a `shouldBe` "!Err (x : ^Int)"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("!cannot-apply(!cannot-apply((), ()), ^loc[<test>:1:7,1:8](^loc[ctx.x:1:1,1:3](42) : Int) : Int)", "_")
-
-  -- it "☯ Tao.Match.error.arg" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = match 1 1 (z 1 7) [fun 2 5 (y 2 3) (x 2 8)]
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "match z {\n| y -> x\n}" `shouldBe` Right expr
-  --   core a `shouldBe` "^let<y> y : !undefined-var<z>(!Err) = z : !undefined-var<z>(!Err); x : ^Int"
-  --   check' (C.Ann a t) `shouldBe` [(Nothing, undefinedVar "z"), (Just (2, 3, 2, 4), undefinedVar "z")]
-  --   -- Undefined since there are errors (should this be removed?)
-  --   -- eval' env a t `shouldBe` ("match z {\n| (y : !undefined-var(z)) -> 42\n}", "Int")
-  --   -- eval' env a t `shouldBe` ("!undefined-var(z)", "Int")
-  --   eval' env a t `shouldBe` ("42", "Int")
-
-  -- it "☯ Tao.Match.error.case" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = match 1 1 (x 1 7) [fun 2 5 (y 2 3) (z 2 8)]
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "match x {\n| y -> z\n}" `shouldBe` Right expr
-  --   core a `shouldBe` "^let<y> y : ^Int = x : ^Int; z : !undefined-var<z>(!Err)"
-  --   check' (C.Ann a t) `shouldBe` [(Just (2, 8, 2, 9), undefinedVar "z")]
-  --   eval' env a t `shouldBe` ("z", "_")
-
-  -- it "☯ Tao.Match.1" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = match 1 1 (x 1 7) [fun 2 5 (a 2 3) (int 2 8 1)]
-  --   -- let (env, (a, t)) = compile' ctx "m" expr
-  --   let (env, (a, t)) = compile' (dropMeta ctx) "m" (dropMeta expr)
-  --   syntax "match x {\n| a -> 1\n}" `shouldBe` Right expr
-  --   core a `shouldBe` "^let<a> a : ^Int = x : ^Int; 1 : ^Int"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("1", "Int")
-
-  -- it "☯ Tao.Match.2" $ do
-  --   let ctx = [("m", [def' "x" "42"])]
-  --   let expr = match 1 1 (x 1 7) [fun 2 5 (a 2 3) (int 2 8 1), fun 3 5 (b 3 3) (int 3 8 2)]
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "match x {\n| a -> 1\n| b -> 2\n}" `shouldBe` Right expr
-  --   core a `shouldBe` "(@a. (a : ^Int) -> (1 : ^Int) | @b. (b : ^Int) -> (2 : ^Int)) (x : ^Int)"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("1", "Int")
-
-  -- it "☯ Tao.Let" $ do
-  --   let ctx = [("m", [def' "y" "42"])]
-  --   let expr = let' 1 1 (x 1 5, y 1 9) (x 2 1)
-  --   let (env, (a, t)) = compile' ctx "m" expr
-  --   syntax "let x = y\nx" `shouldBe` Right expr
-  --   core a `shouldBe` "y"
-  --   check' (C.Ann a t) `shouldBe` []
-  --   eval' env a t `shouldBe` ("42", "Int")
-
-  -- Bind (Pattern, Expr) Expr
-  -- Record [(String, Expr)]
-  -- Select Expr [(String, Expr)]
-  -- With Expr [(String, Expr)]
-  -- Record type definitions
-  -- Record default values
-  -- Record var shortcut
-  -- App named arguments
-  -- App default values
-  -- Spread
-  -- TODO
-  -- Deprecated
-
-  -- let if' r c x y z = loc r c r (c + 2) (If x y z)
-  -- it "☯ Tao.If" $ do
-  --   let ctx =
-  --         [ ( "m",
-  --             [ def' "Bool" (Or (Fun true bool) (Fun true bool)),
-  --               def' "a" (tag 10 10 "True" []),
-  --               def' "b" "1",
-  --               def' "c" "2"
-  --             ]
-  --           )
-  --         ]
-  --   let (bool', true', false') = (C.Tag "Bool", C.Tag "True", C.Tag "False")
-  --   let expr = if' 1 1 (a 1 4) (b 1 11) (c 1 18)
-  --   let (_, expr') = compile ctx "m" expr
-  --   syntax "if a then b else c" `shouldBe` Right expr
-  --   format 80 expr `shouldBe` "if a then b else c"
-  --   -- TODO: fix this
-  --   C.dropMeta expr' `shouldBe` C.Ann (C.App (C.Or (C.Fun (C.Ann true' bool') b') (C.Fun (C.Ann false' bool') c')) (C.Ann a' bool')) C.IntT
-  --   lift expr' `shouldBe` Ann expr IntT
-  --   dropMeta (eval ctx "m" expr) `shouldBe` Int 1
-
-  -- it "☯ Tao.Err" $ do
-  --   syntax "!error _" `shouldBe` Right (loc 1 1 1 7 (Err (customError $ any 1 8)), "")
-  --   format 80 (Err (customError Any)) `shouldBe` "!error _"
-
-  --   let ctx = []
-  --   let expr = loc 1 1 1 7 (Err (customError $ any 1 8))
-  --   let (_, expr') = compile ctx "m" expr
-  --   syntax "!error _" `shouldBe` Right expr
-  --   format 80 expr `shouldBe` "!error _"
-  --   C.dropMeta expr' `shouldBe` C.Ann (C.Err (customError C.Any)) C.Any
-  --   lift expr' `shouldBe` Ann expr Any
-  --   dropMeta (eval ctx "m" expr) `shouldBe` Err (customError $ any 1 8)
+  it "☯ Tao.grammar.layout" $ do
+    "" `shouldBe` ""
 
   it "☯ Tao.resolve" $ do
     let (x, y, z, w) = (Var "x", Var "y", Var "z", Var "w")

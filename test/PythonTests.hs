@@ -23,8 +23,8 @@ run = describe "--==☯ Python ☯==--" $ do
         emit' = emit options
     emit' T.Any `shouldBe` ([], None)
     -- emit' T.Unit `shouldBe` ([], Tuple [])
-    emit' T.IntT `shouldBe` ([], Name "int")
-    emit' T.NumT `shouldBe` ([], Name "float")
+    -- emit' T.IntT `shouldBe` ([], Name "int")
+    -- emit' T.NumT `shouldBe` ([], Name "float")
     emit' (T.Int 42) `shouldBe` ([], Integer 42)
     emit' (T.Num 3.14) `shouldBe` ([], Float 3.14)
     -- emit' (T.Tag "Bool") `shouldBe` ([], Name "bool")

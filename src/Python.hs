@@ -490,11 +490,11 @@ instance Emit T.Expr ([Stmt], Expr) where
   emit :: BuildOptions -> T.Expr -> ([Stmt], Expr)
   emit options = \case
     T.Any -> ([], None)
-    T.IntT -> ([], Name "int")
-    T.NumT -> ([], Name "float")
     T.Int i -> ([], Integer i)
     T.Num n -> ([], Float n)
     T.Tag "Bool" [] -> ([], Name "bool")
+    T.Tag "Int" [] -> ([], Name "int")
+    T.Tag "Num" [] -> ([], Name "float")
     T.Tag "True" [] -> ([], Bool True)
     T.Tag "False" [] -> ([], Bool False)
     T.Tag k [] -> ([], Tuple [String k])

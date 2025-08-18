@@ -168,9 +168,10 @@ layout grammar p x = do
             if cond
               then do
                 let (open, close) = grammar.group
-                let alt1 = [PP.Indent x]
-                let alt2 = [PP.Indent (PP.NewLine : x), PP.NewLine]
-                [PP.Text open, PP.Or alt1 alt2, PP.Text close]
+                -- let alt1 = [PP.Indent x]
+                -- let alt2 = [PP.Indent (PP.NewLine : x), PP.NewLine]
+                -- [PP.Text open, PP.Or alt1 alt2, PP.Text close]
+                [PP.Text open, PP.Indent x, PP.Text close]
               else x
   -- layoutArgs :: [PP.Layout] -> PP.Layout
   -- layoutArgs [] = [PP.Text "()"]

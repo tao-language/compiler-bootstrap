@@ -10,7 +10,7 @@ run = describe "--== Tao precedence ==--" $ do
   let (x, y, z) = (Var "x", Var "y", Var "z")
 
   let prec' :: String -> Either String (Expr, String)
-      prec' src = case parse "<TaoPrecedence>" src of
+      prec' src = case parse 0 "<TaoPrecedence>" src of
         Right (a, s) | s.remaining /= "" -> Right (dropMeta a, "remaining: " ++ s.remaining)
         Right (a, _) -> Right (dropMeta a, show (dropMeta a))
         Left s -> Left ("syntax error, remaining: " ++ s.remaining)

@@ -1,5 +1,6 @@
 module Parser where
 
+-- https://youtu.be/RDalzi7mhdY?si=606x1zQEgpW51Zh-
 -- https://eyalkalderon.com/blog/nom-error-recovery/
 -- https://arxiv.org/pdf/1806.11150.pdf
 
@@ -328,19 +329,25 @@ foldL f initial parser =
 -- Common
 integer :: Parser ctx Int
 integer = do
+  sign <- oneOf [do _ <- char '-'; return (-1), return 1]
+  _ <- spaces
   digits <- oneOrMore digit
   lookaheadNot (char '.')
-  ok (read digits)
+  ok (read digits * sign)
 
 number :: Parser ctx Double
 number = do
+  sign <- oneOf [do _ <- char '-'; return (-1), return 1]
+  _ <- spaces
   int <- oneOrMore digit
-  oneOf
-    [ do
-        fraction <- Parser.concat [text ".", oneOrMore digit]
-        ok (read (int ++ fraction)),
-      ok (read int)
-    ]
+  num <-
+    oneOf
+      [ do
+          fraction <- Parser.concat [text ".", oneOrMore digit]
+          ok (read (int ++ fraction)),
+        ok (read int)
+      ]
+  ok (num * sign)
 
 wordChar :: Parser ctx Char
 wordChar = oneOf [letter, digit, char '_']

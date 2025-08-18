@@ -11,7 +11,7 @@ import Data.Maybe (fromMaybe)
 import Data.Sort (uniqueSort)
 import Debug.Trace (trace)
 import Error
-import Grammar as G
+import qualified Grammar as G
 import Location (Location (Location), Position (Pos), Range (Range))
 import qualified Parser as P
 import qualified PrettyPrint as PP
@@ -22,19 +22,17 @@ type Parser a = P.Parser String a
 
 data Expr
   = Any
-  | IntT
-  | NumT
   | Int Int
   | Num Double
   | Char Char
   | Var String
   | Tag String [Expr]
-  | Ann Expr Type
   | Tuple [Expr]
   | List [Expr]
   | String [Segment]
-  | Or Expr Expr
   | For [String] Expr
+  | Ann Expr Type
+  | Or Expr Expr
   | Fun Pattern Expr
   | App Expr Expr
   | Call String [Expr]
@@ -514,8 +512,6 @@ instance Apply Expr where
   apply :: (Expr -> Expr) -> Expr -> Expr
   apply f = \case
     Any -> Any
-    IntT -> IntT
-    NumT -> NumT
     Int i -> Int i
     Num n -> Num n
     Char c -> Char c
@@ -623,8 +619,6 @@ instance DropTypes Stmt where
 collect :: (Eq a) => (Expr -> [a]) -> Expr -> [a]
 collect f = \case
   Any -> []
-  IntT -> []
-  NumT -> []
   Int _ -> []
   Num _ -> []
   Char _ -> []
@@ -664,15 +658,83 @@ collect f = \case
   where
     unionMap f = foldr (union . f) []
 
-parse :: FilePath -> String -> Either (P.State String) (Expr, P.State String)
-parse = P.parse (parseExpr 0)
+withLoc :: P.State String -> P.State String -> Expr -> Expr
+withLoc start end = Meta (C.Loc (Location start.filename (Range start.pos end.pos)))
+
+parse :: Int -> FilePath -> String -> Either (P.State String) (Expr, P.State String)
+parse prec = P.parse (G.parser grammar prec)
+
+layout :: Int -> Expr -> PP.Layout
+layout prec = G.layout grammar prec
 
 format :: Int -> String -> Expr -> String
 format width indent = G.format grammar width ("  ", indent)
 
+parseCollection :: String -> String -> String -> P.Parser ctx a -> P.Parser ctx [a]
+parseCollection open delim close parser = do
+  _ <- P.text open
+  _ <- P.whitespaces
+  xs <- P.zeroOrMore $ do
+    x <- parser
+    _ <- P.whitespaces
+    _ <- P.text delim
+    _ <- P.whitespaces
+    return x
+  x <- P.zeroOrOne $ do
+    x <- parser
+    _ <- P.whitespaces
+    return x
+  _ <- P.text close
+  return (xs ++ x)
+
+layoutCollection :: String -> String -> String -> [PP.Layout] -> PP.Layout
+layoutCollection open _ close [] = [PP.Text (open ++ close)]
+layoutCollection open delim close xs = do
+  let alt1 = [PP.Indent (PP.join [PP.Text (delim ++ " ")] xs)]
+  let alt2 = [PP.Indent (PP.Text " " : PP.join [PP.Text delim, PP.NewLine] xs), PP.Text delim, PP.NewLine]
+  [PP.Text open, PP.Or alt1 alt2, PP.Text close]
+
+layoutArgs :: [PP.Layout] -> PP.Layout
+layoutArgs [] = [PP.Text "()"]
+layoutArgs xs = do
+  let alt1 = [PP.Indent (PP.join [PP.Text ", "] xs)]
+  let alt2 = [PP.Indent (PP.NewLine : PP.join [PP.Text ",", PP.NewLine] xs), PP.Text ",", PP.NewLine]
+  [PP.Text "(", PP.Or alt1 alt2, PP.Text ")"]
+
+maybeLayoutArgs :: [PP.Layout] -> PP.Layout
+maybeLayoutArgs [] = []
+maybeLayoutArgs args = layoutArgs args
+
+parserDecorator :: String -> ([String] -> Expr -> Expr) -> Parser Expr -> Parser Expr
+parserDecorator op f rhs = do
+  start <- P.getState
+  _ <- P.text op
+  _ <- P.spaces
+  x <- parseNameVar
+  xs <- P.zeroOrMore $ do
+    _ <- P.spaces
+    parseNameVar
+  end <- P.getState
+  _ <- P.spaces
+  _ <- P.oneOf [P.char '.', P.char '\n']
+  _ <- P.whitespaces
+  a <- rhs
+  _ <- P.spaces
+  return (withLoc start end $ f (x : xs) a)
+
+layoutDecorator :: String -> (a -> Maybe ([String], a)) -> (a -> PP.Layout) -> a -> Maybe PP.Layout
+layoutDecorator op match rhs a = do
+  (xs, a) <- match a
+  let names = unwords xs
+  let decorator = PP.Text (op ++ names)
+  let alt1 = PP.Text ". " : rhs a
+  let alt2 = PP.NewLine : rhs a
+  if length names > 3
+    then Just (decorator : alt2)
+    else Just [decorator, PP.Or alt1 alt2]
+
 grammar :: G.Grammar String Expr
 grammar = do
-  let withLoc start end = Meta (C.Loc (Location start.filename (Range start.pos end.pos)))
   let loc0 f location _ = Meta (C.Loc location) f
   let loc1 f location x = Meta (C.Loc location) (f x)
   let loc2 f location x y = Meta (C.Loc location) (f x y)
@@ -684,14 +746,6 @@ grammar = do
         [ -- Grammar.Any
           G.atom (loc0 Any) (P.word "_") $ \_ -> \case
             Any -> Just [PP.Text "_"]
-            _ -> Nothing,
-          -- Grammar.IntT
-          G.atom (loc0 IntT) (P.word "Int") $ \_ -> \case
-            IntT -> Just [PP.Text "Int"]
-            _ -> Nothing,
-          -- Grammar.NumT
-          G.atom (loc0 NumT) (P.word "Num") $ \_ -> \case
-            NumT -> Just [PP.Text "Num"]
             _ -> Nothing,
           -- Grammar.Int
           G.atom (loc1 Int) P.integer $ \_ -> \case
@@ -732,18 +786,15 @@ grammar = do
                 args <- P.oneOf [parseCollection "(" "," ")" expr, return []]
                 _ <- P.spaces
                 return (withLoc start end $ Tag k args)
-           in G.Atom parser $ \layout -> \case
+           in G.Atom parser $ \rhs -> \case
                 Tag k args -> do
                   let showTag = \case
                         "[]" -> "[]"
                         k | all (\c -> isAlphaNum c || c `elem` "_-$") k -> k
-                        k -> "(" ++ k ++ ")"
-                  let showArgs = \case
-                        [] -> []
-                        args -> PP.Text "(" : (collectionLayout layout args) ++ [PP.Text ")"]
-                  Just (PP.Text (showTag k) : showArgs args)
+                        k -> "t'" ++ k ++ "'"
+                  Just (PP.Text (showTag k) : maybeLayoutArgs (map rhs args))
                 _ -> Nothing,
-          -- Grammar.Tuple.empty
+          -- Grammar.Tuple
           let parser expr = do
                 start <- P.getState
                 items <- parseCollection "(" "," ")" expr
@@ -751,8 +802,7 @@ grammar = do
                 _ <- P.spaces
                 return (withLoc start end $ Tuple items)
            in G.Atom parser $ \layout -> \case
-                Tuple items -> do
-                  Just (PP.Text "(" : collectionLayout layout items ++ [PP.Text ")"])
+                Tuple items -> Just (layoutCollection "(" "," ")" (map layout items))
                 _ -> Nothing,
           -- Grammar.List
           let parser expr = do
@@ -762,11 +812,9 @@ grammar = do
                 _ <- P.spaces
                 return (withLoc start end $ List items)
            in G.Atom parser $ \layout -> \case
-                List items -> do
-                  Just (PP.Text "[" : collectionLayout layout items ++ [PP.Text "]"])
+                List items -> Just (layoutCollection "[" "," "]" (map layout items))
                 _ -> Nothing,
           -- Grammar.String
-          -- TODO: support string interpolation
           let parser expr = do
                 start <- P.getState
                 quote <- P.oneOf [P.char '\'', P.char '"']
@@ -775,7 +823,7 @@ grammar = do
                 _ <- P.char quote
                 end <- P.getState
                 _ <- P.spaces
-                let segments = [Str txt | txt /= ""]
+                let segments = [Str txt]
                 return (withLoc start end $ String segments)
            in G.Atom parser $ \layout -> \case
                 String segments -> do
@@ -891,33 +939,9 @@ grammar = do
             Op2 Ge a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.For
-          let prec = 14
-              parser expr = do
-                start <- P.getState
-                _ <- P.char '@'
-                _ <- P.commit "for"
-                xs <-
-                  P.oneOf
-                    [ do
-                        x <- parseNameVar
-                        _ <- P.spaces
-                        xs <- P.zeroOrMore $ do
-                          y <- parseNameVar
-                          _ <- P.spaces
-                          return y
-                        return (x : xs),
-                      return []
-                    ]
-                end <- P.getState
-                _ <- P.oneOf [P.char '.', P.char '\n']
-                _ <- P.whitespaces
-                a <- parseExpr prec
-                _ <- P.spaces
-                return (withLoc start end $ For xs a)
-           in G.Atom parser $ \layout -> \case
-                For xs a ->
-                  Just (PP.Text ('@' : unwords (map (show . Var) xs) ++ ". ") : G.layout grammar prec a)
-                _ -> Nothing,
+          G.Prefix 14 (parserDecorator "@" For) $ layoutDecorator "@" $ \case
+            For xs a -> Just (xs, a)
+            _ -> Nothing,
           -- Grammar.Op2.As
           G.infixL 14 (locOp2 As) "as" $ \case
             Op2 As a b -> Just (a, " ", b)
@@ -1021,7 +1045,7 @@ grammar = do
            in G.InfixL 19 parser $ \lhs rhs -> \case
                 App a b -> do
                   let args = tupleOf b
-                  Just (lhs a ++ PP.Text "(" : collectionLayout (G.layout grammar 0) args ++ [PP.Text ")"])
+                  Just (lhs a ++ layoutCollection "(" "," ")" (map (layout 0) args) ++ [PP.Text ")"])
                 _ -> Nothing,
           -- Grammar.Get | Grammar.Slice
           let parser a expr = do
@@ -1066,7 +1090,7 @@ grammar = do
                 return (withLoc start end $ Dot a x args)
            in G.InfixL 19 parser $ \lhs rhs -> \case
                 Dot a x Nothing -> Just (lhs a ++ [PP.Text ("." ++ x)])
-                Dot a x (Just args) -> Just (lhs a ++ [PP.Text ("." ++ x ++ "(")] ++ collectionLayout (G.layout grammar 0) args ++ [PP.Text ")"])
+                Dot a x (Just args) -> Just (lhs a ++ [PP.Text ("." ++ x)] ++ layoutCollection "(" "," ")" (map (layout 0) args))
                 _ -> Nothing,
           -- Grammar.Spread
           let parser expr = do
@@ -1094,9 +1118,9 @@ grammar = do
                       return []
                     ]
                 return (withLoc start end $ Call f args)
-           in G.Atom parser $ \layout -> \case
+           in G.Atom parser $ \rhs -> \case
                 Call f [] -> Just [PP.Text $ "%" ++ f]
-                Call f args -> Just (PP.Text ("%" ++ f ++ "(") : collectionLayout layout args ++ [PP.Text ")"])
+                Call f args -> Just (PP.Text ("%" ++ f) : layoutCollection "(" "," ")" (map rhs args))
                 _ -> Nothing,
           -- Grammar.Match / Grammar.MatchFun
           let parser expr = do
@@ -1247,21 +1271,16 @@ grammar = do
                 _ -> Nothing
         ]
     }
-  where
-    collectionLayout layout args = do
-      let alt1 = intercalate [PP.Text ", "] (map layout args)
-      let alt2 = [PP.Indent (PP.NewLine : intercalate [PP.NewLine] (map (\a -> layout a ++ [PP.Text ","]) args)), PP.NewLine]
-      [PP.Or alt1 alt2]
 
 lower :: Expr -> C.Expr
 lower = \case
   Any -> C.Any
-  IntT -> C.IntT
-  NumT -> C.NumT
   Int i -> C.Int i
   Num n -> C.Num n
   Char c -> C.tag "Char" [C.Int (ord c)]
   Var x -> C.Var x
+  Tag "Int" [] -> C.IntT
+  Tag "Num" [] -> C.NumT
   Tag k args -> C.tag k (map lower args)
   Ann a b -> C.Ann (lower a) (lower b)
   Tuple items -> C.and' (map lower items)
@@ -1312,8 +1331,8 @@ lift :: C.Expr -> Expr
 lift = \case
   C.Any -> Any
   C.Unit -> Tuple []
-  C.IntT -> IntT
-  C.NumT -> NumT
+  C.IntT -> tag "Int"
+  C.NumT -> tag "Num"
   C.Int i -> Int i
   C.Num n -> Num n
   C.Var x -> Var x
@@ -1375,29 +1394,6 @@ parseExprUntil msg prec delims = do
       end <- P.getState
       let loc = Location start.filename (Range start.pos end.pos)
       return (Meta (C.Error (SyntaxError (loc, msg, txt))) a)
-
-parseCollection :: String -> String -> String -> P.Parser ctx a -> P.Parser ctx [a]
-parseCollection open delim close parser = do
-  _ <- P.text open
-  _ <- P.whitespaces
-  args <-
-    P.oneOf
-      [ do
-          a <- parser
-          _ <- P.whitespaces
-          bs <- P.zeroOrMore $ do
-            _ <- P.text delim
-            _ <- P.whitespaces
-            parser
-          _trailingDelim <- P.maybe' $ do
-            _ <- P.text delim
-            P.whitespaces
-          return (a : bs),
-        return []
-      ]
-  _ <- P.whitespaces
-  _ <- P.text close
-  return args
 
 parseLineBreak :: Parser ()
 parseLineBreak = do
