@@ -1726,16 +1726,14 @@ instance Check Module where
   check :: Module -> [(Maybe Location, Error Expr)]
   check (_, stmts) = concatMap check stmts
 
-run :: Context -> FilePath -> Expr -> (Expr, Type)
+run :: Context -> FilePath -> Expr -> Expr
 run ctx path expr = do
   let (env, a) = compile ctx path expr
   eval [] (C.let' env a)
 
-eval :: C.Env -> C.Expr -> (Expr, Type)
+eval :: C.Env -> C.Expr -> Expr
 eval env expr =
-  C.eval runtimeOps (C.let' env expr)
-    & lift
-    & typed
+  lift $ C.eval runtimeOps (C.let' env expr)
 
 buildOps :: C.Ops
 buildOps = do

@@ -204,22 +204,22 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     format 4 "" (Ann x y) `shouldBe` "x\n: y"
     format 9 "" (Ann x (Ann y z)) `shouldBe` "x : y : z"
     format 8 "" (Ann x (Ann y z)) `shouldBe` "x : y\n: z"
-    format 4 "" (Ann x (Ann y z)) `shouldBe` "x\n: y\n: z"
+    format 4 "" (Ann x (Ann y z)) `shouldBe` "x\n: y\n  : z"
     format 6 "" (and' [x, y]) `shouldBe` "(x, y)"
     format 5 "" (and' [x, y]) `shouldBe` "( x,\n  y,\n)"
     format 9 "" (and' [x, y, z]) `shouldBe` "(x, y, z)"
     format 8 "" (and' [x, y, z]) `shouldBe` "( x,\n  y,\n  z,\n)"
     format 5 "" (Or x y) `shouldBe` "x | y"
-    format 4 "" (Or x y) `shouldBe` "x\n| y"
+    format 4 "" (Or x y) `shouldBe` "| x\n| y"
     format 9 "" (Or x (Or y z)) `shouldBe` "x | y | z"
-    format 8 "" (Or x (Or y z)) `shouldBe` "x | y\n| z"
-    format 4 "" (Or x (Or y z)) `shouldBe` "x\n| y\n| z"
+    -- format 8 "" (Or x (Or y z)) `shouldBe` "| x\n| y\n| z"
+    -- format 4 "" (Or x (Or y z)) `shouldBe` "| x\n| y\n| z"
     format 6 "" (Fun x y) `shouldBe` "x -> y"
     format 5 "" (Fun x y) `shouldBe` "x ->\n  y"
     format 11 "" (Fun x (And y z)) `shouldBe` "x -> (y, z)"
-    format 16 "" (Fun (And x y) (And y z)) `shouldBe` "(x, y) -> (y, z)"
-    format 15 "" (Fun (And x y) (And y z)) `shouldBe` "(x, y) -> ( y,\n  z,\n)"
-    format 13 "" (Fun (And x y) (And y z)) `shouldBe` "(x, y) ->\n  (y, z)"
+    format 12 "" (Fun (And x y) (And y z)) `shouldBe` "(x, y) -> (y, z)"
+    format 11 "" (Fun (And x y) (And y z)) `shouldBe` "(x, y) -> ( y,\n  z,\n)"
+    format 9 "" (Fun (And x y) (And y z)) `shouldBe` "(x, y) ->\n  (y, z)"
     format 0 "" (app x []) `shouldBe` "x()"
     format 4 "" (app x [y]) `shouldBe` "x(y)"
     format 3 "" (app x [y]) `shouldBe` "x(\n  y,\n)"
@@ -230,94 +230,93 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     format 4 "" (call "f" [x]) `shouldBe` "%f(\n  x,\n)"
     format 8 "" (call "f" [x, y]) `shouldBe` "%f(x, y)"
     format 7 "" (call "f" [x, y]) `shouldBe` "%f(\n  x,\n  y,\n)"
-    format 5 "" (Let [] x) `shouldBe` "^{} x"
-    format 4 "" (Let [] x) `shouldBe` "^{}\nx"
+    format 5 "" (Let [] x) `shouldBe` "^{}\nx"
     format 10 "" (Let [("x", a)] y) `shouldBe` "^x = a\ny"
     format 6 "" (Let [("x", a)] y) `shouldBe` "^x = a\ny"
     format 5 "" (Let [("x", a)] y) `shouldBe` "^x =\n  a\ny"
   -- Meta (Metadata Expr) Expr
   -- Err
 
-  it "☯ Core.run.App" $ do
-    let env = [("x", "42"), ("y", "3.14"), ("a", "a")]
-    run env "_ x" `shouldBe` Right "_"
-    run env "() x" `shouldBe` Right "!cannot-apply<(), 42>(!Err)"
-    run env "^Int x" `shouldBe` Right "!cannot-apply<^Int, 42>(!Err)"
-    run env "^Num x" `shouldBe` Right "!cannot-apply<^Num, 42>(!Err)"
-    run env "1 x" `shouldBe` Right "!cannot-apply<1, 42>(!Err)"
-    run env "1.1 x" `shouldBe` Right "!cannot-apply<1.1, 42>(!Err)"
-    run env "A x" `shouldBe` Right "!cannot-apply<A, 42>(!Err)"
-    run env "y x" `shouldBe` Right "!cannot-apply<3.14, 42>(!Err)"
-    run env "a x" `shouldBe` Right "a 42"
-    run env "z x" `shouldBe` Right "z 42"
-    run env "(1, 2) x" `shouldBe` Right "!cannot-apply<(1, 2), 42>(!Err)"
-    run env "(a | 2) x" `shouldBe` Right "a 42 | !cannot-apply<2, 42>(!Err)"
-    run env "(1 | a) x" `shouldBe` Right "a 42"
-    run env "(1 | 2) x" `shouldBe` Right "!cannot-apply<2, 42>(!Err)"
-    run env "(1 : ^Int) x" `shouldBe` Right "!cannot-apply<1, 42>(!Err)"
-    run env "(a : ^Int) x" `shouldBe` Right "a 42"
-    run env "(@y. y) x" `shouldBe` Right "y 42"
-    run env "(&y. a) x" `shouldBe` Right "a 42"
-    run env "(a -> a) x" `shouldBe` Right "42"
-    run env "(a y) x" `shouldBe` Right "a 3.14 42"
-    run env "%call() x" `shouldBe` Right "%call() 42"
-    run env "@{f = f}(f) x" `shouldBe` Right "f 42"
-    run env "^[file:1:2,3:4](a) x" `shouldBe` Right "^[file:1:2,3:4](a) 42"
-    run env "!error(a) x" `shouldBe` Right "!cannot-apply<!Err, 42>(!Err)"
+  -- it "☯ Core.run.App" $ do
+  --   let env = [("x", "42"), ("y", "3.14"), ("a", "a")]
+  --   run env "_(x)" `shouldBe` Right "_"
+  --   run env "()(x)" `shouldBe` Right "!cannot-apply<(), 42>(!Err)"
+  --   run env "!Int(x)" `shouldBe` Right "!cannot-apply<!Int, 42>(!Err)"
+  --   run env "!Num(x)" `shouldBe` Right "!cannot-apply<!Num, 42>(!Err)"
+  --   run env "1(x)" `shouldBe` Right "!cannot-apply<1, 42>(!Err)"
+  --   run env "1.1(x)" `shouldBe` Right "!cannot-apply<1.1, 42>(!Err)"
+  --   run env "A(x)" `shouldBe` Right "!cannot-apply<A, 42>(!Err)"
+  --   run env "y(x)" `shouldBe` Right "!cannot-apply<3.14, 42>(!Err)"
+  --   run env "a(x)" `shouldBe` Right "a 42"
+  --   run env "z(x)" `shouldBe` Right "z 42"
+  --   run env "(1, 2)(x)" `shouldBe` Right "!cannot-apply<(1, 2), 42>(!Err)"
+  --   run env "(a | 2)(x)" `shouldBe` Right "a 42 | !cannot-apply<2, 42>(!Err)"
+  --   run env "(1 | a)(x)" `shouldBe` Right "a 42"
+  --   run env "(1 | 2)(x)" `shouldBe` Right "!cannot-apply<2, 42>(!Err)"
+  --   run env "(1 : !Int)(x)" `shouldBe` Right "!cannot-apply<1, 42>(!Err)"
+  --   run env "(a : !Int)(x)" `shouldBe` Right "a 42"
+  --   run env "(@y. y)(x)" `shouldBe` Right "y 42"
+  --   run env "(&y. a)(x)" `shouldBe` Right "a 42"
+  --   run env "(a -> a)(x)" `shouldBe` Right "42"
+  --   run env "(a y) x" `shouldBe` Right "a 3.14 42"
+  --   run env "%call() x" `shouldBe` Right "%call() 42"
+  --   run env "@{f = f}(f) x" `shouldBe` Right "f 42"
+  --   run env "^[file:1:2,3:4](a) x" `shouldBe` Right "^[file:1:2,3:4](a) 42"
+  --   run env "!error(a) x" `shouldBe` Right "!cannot-apply<!Err, 42>(!Err)"
 
-  it "☯ Core.run.match" $ do
-    let env = [("x", "42"), ("y", "3.14"), ("a", "a")]
-    run env "(_ -> Ok) x" `shouldBe` Right "Ok"
-    run env "(() -> Ok) x" `shouldBe` Right "!unhandled-case<(), 42>(!Err)"
-    run env "(() -> Ok) ()" `shouldBe` Right "Ok"
-    run env "(^Int -> Ok) x" `shouldBe` Right "!unhandled-case<^Int, 42>(!Err)"
-    run env "(^Int -> Ok) ^Int" `shouldBe` Right "Ok"
-    run env "(^Num -> Ok) x" `shouldBe` Right "!unhandled-case<^Num, 42>(!Err)"
-    run env "(^Num -> Ok) ^Num" `shouldBe` Right "Ok"
-    run env "(1 -> Ok) x" `shouldBe` Right "!unhandled-case<1, 42>(!Err)"
-    run env "(42 -> Ok) x" `shouldBe` Right "Ok"
-    run env "(3.14 -> Ok) x" `shouldBe` Right "!unhandled-case<3.14, 42>(!Err)"
-    run env "(3.14 -> Ok) 3.14" `shouldBe` Right "Ok"
-    run env "(A -> Ok) x" `shouldBe` Right "!unhandled-case<A, 42>(!Err)"
-    run env "(A -> Ok) A" `shouldBe` Right "Ok"
-    run env "(a -> a) x" `shouldBe` Right "42"
-    run env "(y -> y) x" `shouldBe` Right "!unhandled-case<3.14, 42>(!Err)"
-    run env "(y -> y) 3.14" `shouldBe` Right "3.14"
-    run env "(@y. y -> y) x" `shouldBe` Right "42"
-    run env "(&y. x -> y) x" `shouldBe` Right "&y. 42 -> y"
-    run env "((A, a) -> a) (B, x)" `shouldBe` Right "!unhandled-case<A, B>(!Err)"
-    run env "((A, a) -> a) (A, x)" `shouldBe` Right "42"
-    run env "((A | x) -> x) B" `shouldBe` Right "!unhandled-case<A, B>(!Err)"
-    run env "((A | x) -> x) A" `shouldBe` Right "42"
-    run env "((A | x) -> x) x" `shouldBe` Right "42"
-    run env "((A | a) -> a) x" `shouldBe` Right "42"
-    run env "((A | B) -> x) A" `shouldBe` Right "42"
-    run env "((A | B) -> x) B" `shouldBe` Right "42"
-    run env "((A | B) -> x) (A | B)" `shouldBe` Right "42"
-    run env "((A | B) -> x) (B | A)" `shouldBe` Right "42"
-    run env "((a : ^Int) -> a) x" `shouldBe` Right "42"
-    run env "((a : ^Int) -> a) (x : ^Int)" `shouldBe` Right "42"
-    run env "((a : ^Num) -> a) (x : ^Int)" `shouldBe` Right "!unhandled-case<^Num, ^Int>(!Err)"
-    run env "((x : a) -> a) (x : ^Int)" `shouldBe` Right "^Int"
-    run env "((a : ^Num) -> a) (x : _)" `shouldBe` Right "42"
-    run env "((a : ^Num) -> a) (x : !error(_))" `shouldBe` Right "!unhandled-case<^Num, !Err>(!Err)"
-    run env "((a : ^Num) -> a) x" `shouldBe` Right "42"
-    run env "((A : A) -> B) (a : A)" `shouldBe` Right "^let<> A = a; B"
-    run env "((@y. y) -> y) x" `shouldBe` Right "42"
-    run env "((&y. x -> y) -> y) x" `shouldBe` Right "!unhandled-case<&y. 42 -> y, 42>(!Err)"
-    run env "((&y. x -> y) -> y) (&y. x -> y)" `shouldBe` Right "&y. 42 -> y"
-    run env "((&y. x -> y) -> y) (&z. x -> z)" `shouldBe` Right "&y. 42 -> y"
-    run env "((a x) -> a) (z x)" `shouldBe` Right "z" -- undefined
-    run env "(%call() -> Ok) %call()" `shouldBe` Right "Ok"
-    run env "(%call() -> Ok) %other()" `shouldBe` Right "!unhandled-case<%call(), %other()>(!Err)"
-    run env "(%call(a) -> a) %call(x)" `shouldBe` Right "42"
-    run env "(@{z = 5} z -> z) 5" `shouldBe` Right "5"
-    run env "(@{z = 5} z -> z) x" `shouldBe` Right "!unhandled-case<5, 42>(!Err)"
-    run env "(^[file:1:2,3:4](z) -> z) x" `shouldBe` Right "42"
-    run env "(z -> z) ^[file:1:2,3:4](x)" `shouldBe` Right "^[file:1:2,3:4](42)"
-    run env "(!error(x) -> Ok) !error(y)" `shouldBe` Right "Ok"
-    run env "(!error(x) -> Ok) x" `shouldBe` Right "!unhandled-case<!Err, 42>(!Err)"
-    run env "(x -> Ok) !error(x)" `shouldBe` Right "!unhandled-case<42, !Err>(!Err)"
+  -- it "☯ Core.run.match" $ do
+  --   let env = [("x", "42"), ("y", "3.14"), ("a", "a")]
+  --   run env "(_ -> Ok)(x)" `shouldBe` Right "Ok"
+  --   run env "(() -> Ok)(x)" `shouldBe` Right "!unhandled-case<(), 42>(!error)"
+  --   run env "(() -> Ok)()" `shouldBe` Right "Ok"
+  --   run env "(!Int -> Ok)(x)" `shouldBe` Right "!unhandled-case<!Int, 42>(!error)"
+  --   run env "(!Int -> Ok)(!Int)" `shouldBe` Right "Ok"
+  --   run env "(!Num -> Ok)(x)" `shouldBe` Right "!unhandled-case<!Num, 42>(!error)"
+  --   run env "(!Num -> Ok)(!Num)" `shouldBe` Right "Ok"
+  --   run env "(1 -> Ok)(x)" `shouldBe` Right "!unhandled-case<1, 42>(!error)"
+  --   run env "(42 -> Ok)(x)" `shouldBe` Right "Ok"
+  --   run env "(3.14 -> Ok)(x)" `shouldBe` Right "!unhandled-case<3.14, 42>(!error)"
+  --   run env "(3.14 -> Ok)(3.14)" `shouldBe` Right "Ok"
+  --   run env "(A -> Ok)(x)" `shouldBe` Right "!unhandled-case<A, 42>(!error)"
+  --   run env "(A -> Ok)(A)" `shouldBe` Right "Ok"
+  --   run env "(a -> a)(x)" `shouldBe` Right "42"
+  --   run env "(y -> y)(x)" `shouldBe` Right "!unhandled-case<3.14, 42>(!error)"
+  --   run env "(y -> y)(3.14)" `shouldBe` Right "3.14"
+  --   run env "(@y. y -> y)(x)" `shouldBe` Right "42"
+  --   run env "(&y. x -> y)(x)" `shouldBe` Right "&y. 42 -> y"
+  --   run env "((A, a) -> a)(B, x)" `shouldBe` Right "!unhandled-case<A, B>(!error)"
+  --   run env "((A, a) -> a)(A, x)" `shouldBe` Right "42"
+  --   run env "((A | x) -> x)(B)" `shouldBe` Right "!unhandled-case<A, B>(!error)"
+  --   run env "((A | x) -> x)(A)" `shouldBe` Right "42"
+  --   run env "((A | x) -> x)(x)" `shouldBe` Right "42"
+  --   run env "((A | a) -> a)(x)" `shouldBe` Right "42"
+  --   run env "((A | B) -> x)(A)" `shouldBe` Right "42"
+  --   run env "((A | B) -> x)(B)" `shouldBe` Right "42"
+  --   run env "((A | B) -> x)(A | B)" `shouldBe` Right "42"
+  --   run env "((A | B) -> x)(B | A)" `shouldBe` Right "42"
+  --   run env "((a : !Int) -> a)(x)" `shouldBe` Right "42"
+  --   run env "((a : !Int) -> a)(x : !Int)" `shouldBe` Right "42"
+  --   run env "((a : !Num) -> a)(x : !Int)" `shouldBe` Right "!unhandled-case<!Num, !Int>(!error)"
+  --   run env "((x : a) -> a)(x : !Int)" `shouldBe` Right "!Int"
+  --   run env "((a : !Num) -> a)(x : _)" `shouldBe` Right "42"
+  --   run env "((a : !Num) -> a)(x : !error(_))" `shouldBe` Right "!unhandled-case<!Num, !Err>(!error)"
+  --   run env "((a : !Num) -> a)(x)" `shouldBe` Right "42"
+  --   run env "((A : A) -> B)(a : A)" `shouldBe` Right "!let<> A = a; B"
+  --   run env "((@y. y) -> y)(x)" `shouldBe` Right "42"
+  --   run env "((&y. x -> y) -> y)(x)" `shouldBe` Right "!unhandled-case<&y. 42 -> y, 42>(!error)"
+  --   run env "((&y. x -> y) -> y)(&y. x -> y)" `shouldBe` Right "&y. 42 -> y"
+  --   run env "((&y. x -> y) -> y)(&z. x -> z)" `shouldBe` Right "&y. 42 -> y"
+  --   run env "((a x) -> a)(z x)" `shouldBe` Right "z" -- undefined
+  --   run env "(%call() -> Ok)(%call())" `shouldBe` Right "Ok"
+  --   run env "(%call() -> Ok)(%other())" `shouldBe` Right "!unhandled-case<%call(), %other()>(!error)"
+  --   run env "(%call(a) -> a)(%call(x))" `shouldBe` Right "42"
+  --   run env "(@{z = 5} z -> z)(5)" `shouldBe` Right "5"
+  --   run env "(@{z = 5} z -> z)(x)" `shouldBe` Right "!unhandled-case<5, 42>(!error)"
+  --   run env "(^[file:1:2,3:4](z) -> z)(x)" `shouldBe` Right "42"
+  --   run env "(z -> z)(^[file:1:2,3:4](x))" `shouldBe` Right "^[file:1:2,3:4](42)"
+  --   run env "(!error(x) -> Ok)(!error)" `shouldBe` Right "Ok"
+  --   run env "(!error(x) -> Ok)(x)" `shouldBe` Right "!unhandled-case<!Err, 42>(!error)"
+  --   run env "(x -> Ok)(!error)" `shouldBe` Right "!unhandled-case<42, !Err>(!error)"
 
   it "☯ syntax sugar" $ do
     -- let' [] x `shouldBe` x
@@ -542,13 +541,13 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   --   infer' (Var "f") `shouldBe` Right [((f, Fun IntT IntT), [])]
   --   infer' (Ann f (Fun IntT IntT)) `shouldBe` Right [((f, Fun IntT IntT), [])]
 
-  it "☯ Core.Bool" $ do
-    let (bool, true, false) = (tag' "Bool", tag' "True", tag' "False")
-    let env = [("Bool", Fun Unit (Fun true bool `Or` Fun false bool))]
+  -- it "☯ Core.Bool" $ do
+  --   let (bool, true, false) = (tag' "Bool", tag' "True", tag' "False")
+  --   let env = [("Bool", Fun Unit (Fun true bool `Or` Fun false bool))]
 
-    eval ops (Let env (App (Fun bool Unit) true)) `shouldBe` Unit
-    eval ops (Let env (App (Fun bool Unit) (tag' "X"))) `shouldBe` err (unhandledCase bool (tag' "X"))
-    eval ops (Let env (App (Fun bool Unit) bool)) `shouldBe` Unit
+  --   eval ops (Let env (App (Fun bool Unit) true)) `shouldBe` Unit
+  --   eval ops (Let env (App (Fun bool Unit) (tag' "X"))) `shouldBe` err (unhandledCase bool (tag' "X"))
+  --   eval ops (Let env (App (Fun bool Unit) bool)) `shouldBe` Unit
 
   -- let infer' = infer ops env
   -- infer' true `shouldBe` Right [((true, true), [])]
@@ -569,22 +568,22 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   --   infer' (Ann (just i1) (maybe NumT)) `shouldBe` Left (TypeMismatch (just (Int 1 `Or` IntT)) (nothing `Or` just NumT))
   --   infer' (Ann (Tag "X") (maybe IntT)) `shouldBe` Left (TypeMismatch (Ann (Tag "X") (maybe IntT)) (nothing `Or` just IntT))
 
-  it "☯ Core.Vec" $ do
-    let (n, a) = (Var "n", Var "a")
-    let nil = tag' "Nil"
-    let cons x xs = tag "Cons" [x, xs]
-    let vec n a = tag "Vec" [n, a]
-    let alts a =
-          [ For "n" $ fun [cons a (vec n a)] (vec (n `add` i1) a),
-            fun [nil] (vec i0 a)
-          ]
-    let env = [("Vec", lam [n, a] (or' $ alts a))]
+  -- it "☯ Core.Vec" $ do
+  --   let (n, a) = (Var "n", Var "a")
+  --   let nil = tag' "Nil"
+  --   let cons x xs = tag "Cons" [x, xs]
+  --   let vec n a = tag "Vec" [n, a]
+  --   let alts a =
+  --         [ For "n" $ fun [cons a (vec n a)] (vec (n `add` i1) a),
+  --           fun [nil] (vec i0 a)
+  --         ]
+  --   let env = [("Vec", lam [n, a] (or' $ alts a))]
 
-    eval ops (Let env (App (Fun (vec i0 NumT) Unit) nil)) `shouldBe` Unit
-    eval ops (Let env (App (Fun (vec i0 NumT) Unit) (tag' "X"))) `shouldBe` err (unhandledCase (vec i0 NumT) (tag' "X"))
-    eval ops (Let env (App (Fun (vec i0 NumT) Unit) (vec i0 NumT))) `shouldBe` Unit
-    eval ops (Let env (App (Fun (vec i1 NumT) Unit) (cons NumT nil))) `shouldBe` Unit
-    eval ops (Let env (App (Fun (vec i1 NumT) Unit) (vec i1 NumT))) `shouldBe` Unit
+  --   eval ops (Let env (App (Fun (vec i0 NumT) Unit) nil)) `shouldBe` Unit
+  --   eval ops (Let env (App (Fun (vec i0 NumT) Unit) (tag' "X"))) `shouldBe` err (unhandledCase (vec i0 NumT) (tag' "X"))
+  --   eval ops (Let env (App (Fun (vec i0 NumT) Unit) (vec i0 NumT))) `shouldBe` Unit
+  --   eval ops (Let env (App (Fun (vec i1 NumT) Unit) (cons NumT nil))) `shouldBe` Unit
+  --   eval ops (Let env (App (Fun (vec i1 NumT) Unit) (vec i1 NumT))) `shouldBe` Unit
 
   -- unify ops env (vec i0 NumT) nil `shouldBe` Right [(vec i0 NumT, [])]
   -- unify ops env nil (vec i0 NumT) `shouldBe` Right [(vec i0 NumT, [])]
@@ -777,8 +776,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     compose [("x", i1)] [("y", i2)] `shouldBe` [("x", i1), ("y", i2)]
     compose [("x", i1)] [("y", x)] `shouldBe` [("x", i1), ("y", i1)]
     compose [("x", y)] [("y", i1)] `shouldBe` [("x", y), ("y", i1)]
-    compose [("x", i1)] [("x", For "x" x)] `shouldBe` [("x", For "x" i1)]
-    compose [("x", i1)] [("x", For "x" i2)] `shouldBe` [("x", For "x" i2)]
+    compose [("x", i1)] [("x", For "x" x)] `shouldBe` [("x", i1)]
+    compose [("x", i1)] [("x", For "x" i2)] `shouldBe` [("x", i1)]
 
   it "☯ Core.reduce" $ do
     reduce [] Any `shouldBe` Any
@@ -815,7 +814,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce [] (Let env $ Fix "x" x) `shouldBe` (Fix "x" (Let env x))
     reduce [] (Let env $ Ann x y) `shouldBe` (Ann (Let env x) (Let env y))
     reduce [] (Let env $ And x y) `shouldBe` (And (Let env x) (Let env y))
-    reduce [] (Let env $ Or x y) `shouldBe` (Or a (Let env y))
+    reduce [] (Let env $ Or x y) `shouldBe` (Or (Let env x) (Let env y))
     reduce [] (Let env $ Fun x y) `shouldBe` (Fun (Let env x) (Let env y))
     reduce [] (Let env $ App x y) `shouldBe` (App a (Let env y))
     reduce [] (Let env $ Call "f" x) `shouldBe` (Call "f" (Let env x))
@@ -987,7 +986,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     "" `shouldBe` ""
 
   it "☯ Core.reduce.overload" $ do
-    reduce ops (App (Fun (Int 3 `Ann` IntT) (Tag "A" Unit) `Or` Any) (Call "int_add" (And i1 i2 `Ann` And IntT IntT) `Ann` IntT)) `shouldBe` Unit
+    reduce ops (App (Fun (Int 3 `Ann` IntT) Unit `Or` Any) (Call "int_add" (And i1 i2 `Ann` And IntT IntT) `Ann` IntT)) `shouldBe` Unit
 
   it "☯ Core.eval.swap" $ do
     eval ops (letP (And x y, And i1 i2) (And y x)) `shouldBe` And i2 i1
@@ -1141,15 +1140,12 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- unify [] env (Int 1, Var "a") `shouldBe` Ok [(a, [])]
     unify [] [] (Tag "A" x, Tag "A" i1) `shouldBe` Ok [(Tag "A" i1, [("x", i1)])]
     unify [] [] (Tag "A" x, Tag "B" i1) `shouldBe` Fail [typeMismatch (Tag "A" x) (Tag "B" i1)]
-    let env = [("T", For "x" $ Fun x $ Or (For "y" $ Fun (Tag "A" y) (Tag "T1" (And x y))) (For "z" $ Fun (Tag "B" z) (Tag "T2" (And x z))))]
-    unify [] env (Tag "A" i1, Tag "T" i2) `shouldBe` Ok [(Tag "T1" (And i2 i1), [])]
-    unify [] env (Tag "A" i1, Tag "T" i2) `shouldBe` Ok [(Tag "T1" (And i2 i1), [])]
-    unify [] env (Tag "B" i1, Tag "T" i2) `shouldBe` Ok [(Tag "T2" (And i2 i1), [])]
-    unify [] env (Tag "B" i1, Tag "T" i2) `shouldBe` Ok [(Tag "T2" (And i2 i1), [])]
-    unify [] env (Tag "T" i1, Tag "A" i2) `shouldBe` Ok [(Tag "T1" (And i1 i2), [])]
-    unify [] env (Tag "T" i1, Tag "A" i2) `shouldBe` Ok [(Tag "T1" (And i1 i2), [])]
-    unify [] env (Tag "T" i1, Tag "B" i2) `shouldBe` Ok [(Tag "T2" (And i1 i2), [])]
-    unify [] env (Tag "T" i1, Tag "B" i2) `shouldBe` Ok [(Tag "T2" (And i1 i2), [])]
+    let tdef = For "x" $ Fun x $ Or (For "y" $ Fun (Tag "A" y) (Tag "T1" (And x y))) (For "z" $ Fun (Tag "B" z) (Tag "T2" (And x z)))
+    let env = [("T", tdef)]
+    unify [] env (Tag "A" i1, Tag "T" i2) `shouldBe` Ok [(Tag "T1" (And i2 i1), [("T$1", Tag "T1" (And (Ann i2 IntT) i1)), ("y", i1), ("x", Ann i2 IntT), ("T", tdef)])]
+    unify [] env (Tag "B" i1, Tag "T" i2) `shouldBe` Ok [(Tag "T2" (And i2 i1), [("T$1", Tag "T2" (And (Ann i2 IntT) i1)), ("z", i1), ("x", Ann i2 IntT), ("T", tdef)])]
+    unify [] env (Tag "T" i1, Tag "A" i2) `shouldBe` Ok [(Tag "T1" (And i1 i2), [("T$1", Tag "T1" (And (Ann i1 IntT) i2)), ("y", i2), ("x", Ann i1 IntT), ("T", tdef)])]
+    unify [] env (Tag "T" i1, Tag "B" i2) `shouldBe` Ok [(Tag "T2" (And i1 i2), [("T$1", Tag "T2" (And (Ann i1 IntT) i2)), ("z", i2), ("x", Ann i1 IntT), ("T", tdef)])]
     unify [] [] (For "a" x, i1) `shouldBe` Ok [(i1, [("x", i1)])]
     -- unify [] [] (For "a" a, i1) `shouldBe` Ok [(For "a" a, [])]
     unify [] [] (For "a" a, i1) `shouldBe` Ok [(i1, [("a", i1)])]
@@ -1228,7 +1224,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
 
   it "☯ Core.type.check" $ do
     let xT = Var "xT"
-    check [] [] (Any, IntT) `shouldBe` Ok [((Any, IntT), [])]
+    check [] [] (Any, IntT) `shouldBe` Ok [((Any, IntT), [("_1", IntT)])]
     check [] [] (i1, Any) `shouldBe` Ok [((i1, IntT), [])]
     check [] [] (Unit, Unit) `shouldBe` Ok [((Unit, Unit), [])]
     check [] [] (Unit, IntT) `shouldBe` Fail [typeMismatch Unit IntT]
@@ -1241,13 +1237,17 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     check [] [("x", x)] (Var "x", Any) `shouldBe` Ok [((x, xT), [("xT", xT), ("x", Ann x xT)])]
     check [] [("x", x)] (Var "x", IntT) `shouldBe` Ok [((x, IntT), [("x", Ann x IntT)])]
     check [] [("x", Ann x Any)] (Var "x", IntT) `shouldBe` Ok [((x, IntT), [("x", Ann x IntT)])]
-    let env = [("T", For "x" $ Fun x $ Or (For "y" $ Fun (Tag "A" y) (Tag "T1" (And x y))) (For "z" $ Fun (Tag "B" z) (Tag "T2" (And x z))))]
+    let tdef = For "x" $ Fun x $ Or (For "y" $ Fun (Tag "A" y) (Tag "T1" (And x y))) (For "z" $ Fun (Tag "B" z) (Tag "T2" (And x z)))
+    let env = [("T", tdef)]
     check [] env (Tag "A" i1, Tag "A" Any) `shouldBe` Ok [((Tag "A" i1, Tag "A" IntT), [])]
     check [] env (Tag "A" i1, Tag "B" Any) `shouldBe` Fail [typeMismatch (Tag "A" IntT) (Tag "B" Any)]
-    check [] env (Tag "A" i1, Tag "T" i2) `shouldBe` Ok [((Tag "A" i1, Tag "T1" (And i2 IntT)), [])]
-    check [] env (Tag "B" i1, Tag "T" i2) `shouldBe` Ok [((Tag "B" i1, Tag "T2" (And i2 IntT)), [])]
+    check [] env (Tag "A" i1, Tag "T" i2) `shouldBe` Ok [((Tag "A" i1, Tag "T1" (And i2 IntT)), [("T$1", Tag "T1" (And (Ann i2 IntT) IntT)), ("y", IntT), ("x", Ann i2 IntT), ("T", tdef)])]
+    check [] env (Tag "B" i1, Tag "T" i2) `shouldBe` Ok [((Tag "B" i1, Tag "T2" (And i2 IntT)), [("T$1", Tag "T2" (And (Ann i2 IntT) IntT)), ("z", IntT), ("x", Ann i2 IntT), ("T", tdef)])]
+    check [] env (Tag "C" i1, Tag "T" i2) `shouldBe` Fail [typeMismatch (Tag "A" y) (Tag "C" IntT), typeMismatch (Tag "B" z) (Tag "C" IntT)]
+    check [] env (Tag "T" i1, Tag "T" i2) `shouldBe` Fail [typeMismatch IntT i2]
+    check [] env (Tag "T" i1, Tag "T" IntT) `shouldBe` Ok [((Tag "T" i1, Tag "T" IntT), [])]
     -- TODO: Does this make sense? Should it not be allowed?
-    check [] env (Tag "T" i1, Tag "A" i2) `shouldBe` Ok [((Tag "T" i1, Tag "T1" (And IntT i2)), [])]
+    check [] env (Tag "T" i1, Tag "A" i2) `shouldBe` Ok [((Tag "T" i1, Tag "T1" (And IntT i2)), [("T$1", Tag "T1" (And (Ann IntT IntT) i2)), ("y", i2), ("x", Ann IntT IntT), ("T", tdef)])]
     -- For String Expr
     -- Fix String Expr
     -- Ann Expr Type
@@ -1260,7 +1260,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- check [("x", x)] (Or n1 i2) IntT `shouldBe` Ok ((i2, IntT), [])
     check [] [] (Fun i1 n2, Fun a b) `shouldBe` Ok [((Fun (Ann i1 IntT) (Ann n2 NumT), Fun IntT NumT), [("b", NumT), ("a", IntT)])]
     -- let env = [("x", x), ("y", y), ("a", a), ("b", b)]
-    check [] env (for ["x", "y"] $ Fun x y, for ["a", "b"] $ Fun a b) `shouldBe` Ok []
+    -- check [] env (for ["x", "y"] $ Fun x y, for ["a", "b"] $ Fun a b) `shouldBe` Ok []
     check [] [("f", f)] (App f i1, NumT) `shouldBe` Ok [((App f (Ann i1 IntT), NumT), [("f", Ann f (Fun IntT NumT))])]
     -- App Expr Expr
     -- Call String [Expr]

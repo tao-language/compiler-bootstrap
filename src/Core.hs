@@ -332,7 +332,7 @@ grammar = do
               let alt1 = lhs a ++ [PP.Text " : "] ++ rhs b
               let alt2 = lhs a ++ [PP.NewLine, PP.Text ": ", PP.Indent (rhs b)]
               return $
-                if isFun a || isApp a || isOr a
+                if isFun a || isOr a
                   then alt2
                   else [PP.Or alt1 alt2]
             _ -> Nothing,
@@ -345,7 +345,7 @@ grammar = do
             Fun a b -> do
               let alt1 = PP.Text " " : rhs b
               let alt2 = [PP.Indent (PP.NewLine : rhs b)]
-              if isFun b || isApp b || isOr b
+              if isFun b || isOr b
                 then Just (lhs a ++ (PP.Text " ->" : alt2))
                 else Just (lhs a ++ [PP.Text " ->", PP.Or alt1 alt2])
             _ -> Nothing,
@@ -1001,6 +1001,7 @@ reduce ops (App a b) = case reduce ops a of
     (_, Any) -> reduce ops c
     (Any, _) -> reduce ops c
     (For x a, b) -> reduce ops $ App (For x (Fun a c)) b
+    (a, For x b) -> reduce ops $ App (For x (Fun a c)) b
     (Or a1 a2, b) -> reduce ops $ App (Or (Fun a1 c) (Fun a2 c)) b
     (Var x, b) -> reduce ops $ Let [(x, b)] c
     (a, Var x) -> reduce ops $ Let [(x, a)] c
@@ -1516,7 +1517,7 @@ infer2 ops env a b = do
 
 check :: Ops -> Env -> (Expr, Type) -> Typed ((Expr, Type), Substitution)
 -- check ops env (Any, t) = Ok [((Any, t), [])]
--- check ops env (a, Any) = infer ops env a
+check ops env (a, Any) = infer ops env a
 check ops env (Meta _ a, t) = check ops env (a, t)
 check ops env (a, Meta _ t) = check ops env (a, t)
 check ops env (a, Or t1 t2) = case (check ops env (a, t1), check ops env (a, t2)) of
