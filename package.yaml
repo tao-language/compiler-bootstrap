@@ -56,6 +56,7 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -j8
     dependencies:
     - compiler-bootstrap
 
