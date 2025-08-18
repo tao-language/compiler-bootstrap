@@ -1,24 +1,24 @@
 module Core where
 
-import Data.Bifunctor (Bifunctor (bimap, second))
+import Data.Bifunctor (Bifunctor (bimap, first, second))
 import Data.Char (isAlphaNum, isLower, isUpper)
+import Data.Either (fromRight, partitionEithers)
 import Data.Function ((&))
-import Data.List (delete, intercalate, sort, union, unionBy)
-import Data.Maybe (fromMaybe)
+import Data.List (delete, intercalate, intersect, nub, nubBy, sort, union, unionBy)
+import Data.Maybe (fromMaybe, maybeToList)
 import Debug.Trace (trace)
 import Error
-import Grammar as G
+import qualified Grammar as G
 import Location (Location (..), Position (..), Range (..))
 import qualified Parser as P
 import qualified PrettyPrint as PP
 import Stdlib
 
--- https://simon.peytonjones.org/verse-calculus
--- https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/gadt-pldi.pdf
--- https://youtu.be/ytPAlhnAKro -- https://github.com/kritzcreek/fby19
--- https://www.youtube.com/live/utyBNDj7s2w
--- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
--- https://mroman42.github.io/mikrokosmos/tutorial.html
+-- Lambda calculus: https://mroman42.github.io/mikrokosmos/tutorial.html
+-- Closure calculus: https://blog.chewxy.com/wp-content/uploads/personal/dissertation31482.pdf
+-- Type inference from scratch: https://youtu.be/ytPAlhnAKro -- https://github.com/kritzcreek/fby19
+-- Bidirectional type checking: https://www.youtube.com/live/utyBNDj7s2w -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
+-- Verse calculus: https://simon.peytonjones.org/verse-calculus
 
 type Parser a = P.Parser String a
 
@@ -29,29 +29,76 @@ data Expr
   | NumT
   | Int Int
   | Num Double
-  | Tag String Expr
   | Var String
-  | And Expr Expr
-  | Or Expr Expr
-  | Ann Expr Type
+  | Tag String Expr
   | For String Expr
   | Fix String Expr
+  | Ann Expr Type
+  | And Expr Expr
+  | Or Expr Expr
   | Fun Expr Expr
   | App Expr Expr
-  | Call String [Expr]
+  | Call String Expr
   | Let [(String, Expr)] Expr
   | Meta (Metadata Expr) Expr
-  | Err (Error Expr)
+  | Err
   -- deriving (Eq, Show)
   deriving (Eq)
 
 instance Show Expr where
   show :: Expr -> String
-  show = Core.format 80
+  show = Core.format 80 ""
+
+showCtr :: Expr -> String
+showCtr = \case
+  Any -> "Any"
+  Unit -> "Unit"
+  IntT -> "IntT"
+  NumT -> "NumT"
+  Int _ -> "Int"
+  Num _ -> "Num"
+  Tag _ a -> "Tag"
+  Var _ -> "Var"
+  And a b -> "And"
+  Or a b -> "Or"
+  Ann a b -> "Ann"
+  For _ a -> "For"
+  Fix _ a -> "Fix"
+  Fun a b -> "Fun"
+  App a b -> "App"
+  Call _ _ -> "Call"
+  Let _ a -> "Let"
+  Meta _ a -> "Meta"
+  Err -> "Err"
+
+showCtr' :: Int -> Expr -> String
+showCtr' 0 = showCtr
+showCtr' i = \case
+  Any -> "Any"
+  Unit -> "Unit"
+  IntT -> "IntT"
+  NumT -> "NumT"
+  Int _ -> "Int"
+  Num _ -> "Num"
+  Tag _ a -> "Tag(" ++ self a ++ ")"
+  Var _ -> "Var"
+  And a b -> "And(" ++ self a ++ ", " ++ self b ++ ")"
+  Or a b -> "Or(" ++ self a ++ ", " ++ self b ++ ")"
+  Ann a b -> "Ann(" ++ self a ++ ", " ++ self b ++ ")"
+  For _ a -> "For(" ++ self a ++ ")"
+  Fix _ a -> "Fix(" ++ self a ++ ")"
+  Fun a b -> "Fun(" ++ self a ++ ", " ++ self b ++ ")"
+  App a b -> "App(" ++ self a ++ ", " ++ self b ++ ")"
+  Call _ _ -> "Call"
+  Let _ a -> "Let(" ++ self a ++ ")"
+  Meta _ a -> "Meta(" ++ self a ++ ")"
+  Err -> "Err"
+  where
+    self = showCtr' (i - 1)
 
 type Type = Expr
 
-type Ops = [(String, (Expr -> Expr) -> [Expr] -> Maybe Expr)]
+type Ops = [(String, (Expr -> Expr) -> Expr -> Maybe Expr)]
 
 type Env = [(String, Expr)]
 
@@ -99,10 +146,86 @@ instance Monad MatchResult where
   (>>=) (NotMatched a b) _ = NotMatched a b
 
 parse :: Int -> FilePath -> String -> Either (P.State String) (Expr, P.State String)
-parse prec = P.parse (parser grammar prec)
+parse prec = P.parse (G.parser grammar prec)
 
-format :: Int -> Expr -> String
-format width = G.format grammar width "  "
+layout :: Int -> Expr -> PP.Layout
+layout prec = G.layout grammar prec
+
+format :: Int -> String -> Expr -> String
+format width indent = G.format grammar width ("  ", indent)
+
+showVar :: String -> String
+showVar = \case
+  "-" -> "(-)"
+  x | all (\c -> isAlphaNum c || c `elem` "_-$") x -> x
+  x -> "(" ++ x ++ ")"
+
+showTag :: String -> String
+showTag = \case
+  "[]" -> "[]"
+  k | all (\c -> isAlphaNum c || c `elem` "_-$") k -> k
+  k -> "(" ++ k ++ ")"
+
+parseTuple :: Parser [Expr]
+parseTuple = do
+  _ <- P.char '('
+  _ <- P.whitespaces
+  xs <- P.zeroOrMore $ do
+    x <- parseExpr 0
+    _ <- P.whitespaces
+    _ <- P.char ','
+    _ <- P.whitespaces
+    return x
+  x <- P.zeroOrOne $ do
+    x <- parseExpr 0
+    _ <- P.whitespaces
+    return x
+  _ <- P.char ')'
+  _ <- P.spaces
+  return (xs ++ x)
+
+layoutTuple :: [PP.Layout] -> PP.Layout
+layoutTuple [] = [PP.Text "()"]
+layoutTuple xs = do
+  let alt1 = [PP.Indent (PP.join [PP.Text ", "] xs)]
+  let alt2 = [PP.Indent (PP.Text " " : PP.join [PP.Text ",", PP.NewLine] xs), PP.Text ",", PP.NewLine]
+  [PP.Text "(", PP.Or alt1 alt2, PP.Text ")"]
+
+layoutArgs :: [PP.Layout] -> PP.Layout
+layoutArgs [] = [PP.Text "()"]
+layoutArgs xs = do
+  let alt1 = [PP.Indent (PP.join [PP.Text ", "] xs)]
+  let alt2 = [PP.Indent (PP.NewLine : PP.join [PP.Text ",", PP.NewLine] xs), PP.Text ",", PP.NewLine]
+  [PP.Text "(", PP.Or alt1 alt2, PP.Text ")"]
+
+maybeLayoutArgs :: [PP.Layout] -> PP.Layout
+maybeLayoutArgs [] = []
+maybeLayoutArgs args = layoutArgs args
+
+parserDecorator :: String -> ([String] -> Expr -> Expr) -> Parser Expr -> Parser Expr
+parserDecorator op f rhs = do
+  _ <- P.text op
+  _ <- P.spaces
+  xs <- P.oneOrMore $ do
+    x <- parseNameVar
+    _ <- P.spaces
+    return x
+  _ <- P.oneOf [P.char '.', P.char '\n']
+  _ <- P.whitespaces
+  a <- rhs
+  _ <- P.spaces
+  return (f xs a)
+
+layoutDecorator :: String -> (a -> Maybe ([String], a)) -> (a -> PP.Layout) -> a -> Maybe PP.Layout
+layoutDecorator op match rhs a = do
+  (xs, a) <- match a
+  let names = unwords xs
+  let decorator = PP.Text (op ++ names)
+  let alt1 = PP.Text ". " : rhs a
+  let alt2 = PP.NewLine : rhs a
+  if length names > 3
+    then Just (decorator : alt2)
+    else Just [decorator, PP.Or alt1 alt2]
 
 grammar :: G.Grammar String Expr
 grammar = do
@@ -119,12 +242,12 @@ grammar = do
                 Unit -> Just [PP.Text "()"]
                 _ -> Nothing,
           -- Grammar.IntT
-          G.atom (\_ _ -> IntT) (P.word "^Int") $ \_ -> \case
-            IntT -> Just [PP.Text "^Int"]
+          G.atom (\_ _ -> IntT) (P.word "!Int") $ \_ -> \case
+            IntT -> Just [PP.Text "!Int"]
             _ -> Nothing,
           -- Grammar.NumT
-          G.atom (\_ _ -> NumT) (P.word "^Num") $ \_ -> \case
-            NumT -> Just [PP.Text "^Num"]
+          G.atom (\_ _ -> NumT) (P.word "!Num") $ \_ -> \case
+            NumT -> Just [PP.Text "!Num"]
             _ -> Nothing,
           -- Grammar.Int
           G.atom (const Int) P.integer $ \_ -> \case
@@ -134,53 +257,29 @@ grammar = do
           G.atom (const Num) P.number $ \_ -> \case
             Num n -> Just [PP.Text $ show n]
             _ -> Nothing,
+          -- Grammar.Var
+          G.atom (const Var) parseNameVar $ \_ -> \case
+            Var x -> Just [PP.Text (showVar x)]
+            _ -> Nothing,
           -- Grammar.Tag
           let parser expr = do
                 k <- parseNameTag
                 _ <- P.spaces
-                args <-
-                  P.oneOf
-                    [ do
-                        _ <- P.char '<'
-                        _ <- P.spaces
-                        arg <- expr
-                        args <- P.zeroOrMore $ do
-                          _ <- P.char ','
-                          _ <- P.spaces
-                          expr
-                        _ <- P.char '>'
-                        _ <- P.spaces
-                        return (arg : args),
-                      return []
-                    ]
+                args <- P.oneOf [parseTuple, return []]
                 return (tag k args)
-           in G.Atom parser $ \layout -> \case
-                Tag k Unit -> Just [PP.Text k]
+           in G.Atom parser $ \rhs -> \case
                 Tag k a -> do
-                  let args = map layout (andOf a)
-                  Just (PP.Text (k ++ "<") : intercalate [PP.Text ", "] args ++ [PP.Text ">"])
+                  let args = map rhs (andOf a)
+                  Just (PP.Text (showTag k) : maybeLayoutArgs args)
                 _ -> Nothing,
-          -- Grammar.Var
-          G.atom (const Var) parseNameVar $ \_ -> \case
-            Var x -> Just [PP.Text x]
-            _ -> Nothing,
           -- Grammar.And
           let parser expr = do
-                _ <- P.char '('
-                _ <- P.whitespaces
-                arg <- expr
-                _ <- P.whitespaces
-                args <- P.oneOrMore $ do
-                  _ <- P.char ','
-                  _ <- P.whitespaces
-                  expr
-                _ <- P.char ')'
-                _ <- P.spaces
-                return (and' (arg : args))
+                items <- parseTuple
+                return (and' items)
            in G.Atom parser $ \layout -> \case
                 And a b -> do
                   let items = map layout (andOf (And a b))
-                  Just (PP.Text "(" : intercalate [PP.Text ", "] items ++ [PP.Text ")"])
+                  Just (layoutTuple items)
                 _ -> Nothing,
           -- Grammar.sugar.def
           let parser expr = do
@@ -208,127 +307,108 @@ grammar = do
                 _ <- P.whitespaces
                 def' (bindings a, a, b) <$> expr
            in G.Atom parser $ \layout -> \case
-                App a b -> case forOf a of
-                  (xs, Fun a c) -> do
-                    Just (PP.Text ("^let<" ++ unwords xs ++ "> ") : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
-                  _ -> Nothing
+                -- App a b -> case forOf a of
+                --   (xs, Fun a c) -> do
+                --     Just (PP.Text ("^let<" ++ unwords xs ++ "> ") : layout a ++ PP.Text " = " : layout b ++ PP.Text "; " : layout c)
+                --   _ -> Nothing
                 _ -> Nothing,
           -- Grammar.Or
-          G.infixR 1 (const Or) "|" $ \case
-            Or a b -> Just (a, " ", b)
+          G.InfixR 1 (G.parserLeading "|" (const Or)) $ \lhs rhs -> \case
+            Or a b -> do
+              let alt1 = lhs a ++ [PP.Text " | "] ++ rhs b
+              let alt2 = [PP.Text "| ", PP.Indent (lhs a), PP.NewLine, PP.Text "| ", PP.Indent (rhs b)]
+              return $
+                if isFun a
+                  then alt2
+                  else [PP.Or alt1 alt2]
             _ -> Nothing,
           -- Grammar.Fix
-          let parser expr = do
-                _ <- P.char '&'
-                _ <- P.spaces
-                xs <- P.oneOrMore $ do
-                  x <- parseNameVar
-                  _ <- P.spaces
-                  return x
-                _ <- P.char '.'
-                _ <- P.whitespaces
-                a <- expr
-                _ <- P.spaces
-                return (fix xs a)
-           in G.Atom parser $ \layout -> \case
-                Fix x a -> do
-                  let (xs, a') = fixOf (Fix x a)
-                  Just (PP.Text ("&" ++ unwords xs ++ ". ") : layout a')
-                _ -> Nothing,
+          G.Atom (parserDecorator "&" fix) $ layoutDecorator "&" $ \case
+            Fix x a -> Just (fixOf (Fix x a))
+            _ -> Nothing,
           -- Grammar.Ann
-          G.infixR 3 (const Ann) ":" $ \case
-            Ann a b -> Just (a, " ", b)
+          G.InfixR 3 (G.parserLeading ":" (const Ann)) $ \lhs rhs -> \case
+            Ann a b -> do
+              let alt1 = lhs a ++ [PP.Text " : "] ++ rhs b
+              let alt2 = lhs a ++ [PP.NewLine, PP.Text ": ", PP.Indent (rhs b)]
+              return $
+                if isFun a || isOr a
+                  then alt2
+                  else [PP.Or alt1 alt2]
             _ -> Nothing,
           -- Grammar.For
-          let parser expr = do
-                _ <- P.char '@'
-                _ <- P.spaces
-                xs <- P.oneOrMore $ do
-                  x <- parseNameVar
-                  _ <- P.spaces
-                  return x
-                _ <- P.oneOf [P.char '.', P.char '\n']
-                _ <- P.whitespaces
-                a <- expr
-                _ <- P.spaces
-                return (for xs a)
-           in G.Prefix 4 parser $ \layout -> \case
-                For x a -> do
-                  let (xs, a') = forOf (For x a)
-                  Just (PP.Text ("@" ++ unwords xs ++ ". ") : layout a')
-                _ -> Nothing,
+          G.Prefix 4 (parserDecorator "@" for) $ layoutDecorator "@" $ \case
+            For x a -> Just (forOf (For x a))
+            _ -> Nothing,
           -- Grammar.Fun
-          G.infixR 4 (const Fun) "->" $ \case
-            Fun a b -> Just (a, " ", b)
+          G.InfixR 4 (G.parserLeading "->" (const Fun)) $ \lhs rhs -> \case
+            Fun a b -> do
+              let alt1 = PP.Text " " : rhs b
+              let alt2 = [PP.Indent (PP.NewLine : rhs b)]
+              if isFun b || isOr b
+                then Just (lhs a ++ (PP.Text " ->" : alt2))
+                else Just (lhs a ++ [PP.Text " ->", PP.Or alt1 alt2])
             _ -> Nothing,
           -- Grammar.App
-          let parser x expr = do
-                y <- expr
-                _ <- P.spaces
-                return (App x y)
+          let parser a _ = do
+                args <- parseTuple
+                return (app a args)
            in G.InfixL 5 parser $ \lhs rhs -> \case
-                App a b -> Just (lhs a ++ PP.Text " " : rhs b)
+                App a b -> do
+                  let args = map (layout 0) (andOf b)
+                  Just (lhs a ++ layoutArgs args)
                 _ -> Nothing,
           -- Grammar.Call
           let parser expr = do
                 _ <- P.char '%'
                 x <- parseNameVar
                 _ <- P.spaces
-                _ <- P.char '('
-                _ <- P.whitespaces
-                args <-
-                  P.oneOf
-                    [ do
-                        arg <- expr
-                        _ <- P.whitespaces
-                        args <- P.zeroOrMore $ do
-                          _ <- P.char ','
-                          _ <- P.whitespaces
-                          arg <- expr
-                          _ <- P.whitespaces
-                          return arg
-                        return (arg : args),
-                      return []
-                    ]
-                _ <- P.char ')'
-                _ <- P.spaces
-                return (Call x args)
-           in G.Atom parser $ \layout -> \case
-                Call f args -> do
-                  Just (PP.Text ("%" ++ f ++ "(") : intercalate [PP.Text ", "] (map layout args) ++ [PP.Text ")"])
+                args <- P.oneOf [parseTuple, return []]
+                return (call x args)
+           in G.Atom parser $ \rhs -> \case
+                Call f a -> do
+                  let args = map rhs (andOf a)
+                  Just (PP.Text ("%" ++ f) : maybeLayoutArgs args)
                 _ -> Nothing,
           -- Grammar.Let
           let parser expr = do
-                _ <- P.text "@{"
-                _ <- P.whitespaces
-                env <- do
-                  let parseDef = do
+                env <-
+                  P.oneOf
+                    [ P.oneOrMore $ do
+                        _ <- P.char '^'
+                        _ <- P.whitespaces
                         x <- parseNameVar
                         _ <- P.whitespaces
                         _ <- P.char '='
                         _ <- P.whitespaces
-                        a <- expr
+                        a <- parseExpr 0
+                        _ <- P.oneOf [P.char ';', P.char '\n']
                         _ <- P.whitespaces
-                        return (x, a)
-                  P.oneOf
-                    [ do
-                        def <- parseDef
-                        defs <- P.zeroOrMore $ do
-                          _ <- P.char ','
-                          _ <- P.whitespaces
-                          parseDef
-                        return (def : defs),
-                      return []
+                        return (x, a),
+                      do
+                        _ <- P.char '^'
+                        _ <- P.whitespaces
+                        _ <- P.char '{'
+                        _ <- P.whitespaces
+                        _ <- P.char '}'
+                        _ <- P.whitespaces
+                        return []
                     ]
-                _ <- P.char '}'
-                _ <- P.whitespaces
                 a <- expr
-                _ <- P.spaces
                 return (Let env a)
-           in G.Atom parser $ \layout -> \case
+           in G.Prefix 1 parser $ \rhs -> \case
+                Let [] a -> do
+                  Just (PP.Text "^{}" : PP.NewLine : rhs a)
                 Let env a -> do
-                  let layoutDef (x, a) = PP.Text (x ++ " = ") : layout a
-                  Just (PP.Text "@{" : intercalate [PP.Text ", "] (map layoutDef env) ++ PP.Text "} " : layout a)
+                  let layoutDef (x, a) = do
+                        let def = PP.Text ("^" ++ show (Var x) ++ " =")
+                        let alt1 = PP.Text " " : layout 0 a
+                        let alt2 = PP.NewLine : layout 0 a
+                        -- let alt2 = [PP.Text " ..."]
+                        if isValue a || isVar a
+                          then [def, PP.Indent [PP.Or alt1 alt2], PP.NewLine]
+                          else [def, PP.Indent alt2, PP.NewLine]
+                  Just (concatMap layoutDef env ++ rhs a)
                 _ -> Nothing,
           -- Grammar.Metadata.Comments
           let parser expr = do
@@ -398,20 +478,20 @@ grammar = do
                 _ <- P.whitespaces
                 _ <- P.char ')'
                 _ <- P.spaces
-                return (err a)
+                return (err $ customError a)
            in G.Atom parser $ \layout -> \case
-                Err e -> case e of
+                Err -> Just [PP.Text "!error"]
+                Meta (Error e) c -> case e of
                   TypeError e -> case e of
-                    UndefinedVar x -> Just [PP.Text $ "!undefined-var(" ++ x ++ ")"]
-                    TypeMismatch a b -> Just (PP.Text "!type-mismatch(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
-                    NotAFunction a b -> Just (PP.Text "!not-a-function(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
+                    UndefinedVar x -> Just (PP.Text ("!undefined-var<" ++ x ++ ">(") : layout c ++ [PP.Text ")"])
+                    TypeMismatch a b -> Just (PP.Text "!type-mismatch<" : layout a ++ PP.Text ", " : layout b ++ PP.Text ">(" : layout c ++ [PP.Text ")"])
+                    NotAFunction a b -> Just (PP.Text "!not-a-function<" : layout a ++ PP.Text ", " : layout b ++ PP.Text ">(" : layout c ++ [PP.Text ")"])
                     e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
                   RuntimeError e -> case e of
-                    UnhandledCase a b -> Just (PP.Text "!unhandled-case(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
-                    CannotApply a b -> Just (PP.Text "!cannot-apply(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
+                    UnhandledCase a b -> Just (PP.Text "!unhandled-case<" : layout a ++ PP.Text ", " : layout b ++ PP.Text ">(" : layout c ++ [PP.Text ")"])
+                    CannotApply a b -> Just (PP.Text "!cannot-apply<" : layout a ++ PP.Text ", " : layout b ++ PP.Text ">(" : layout c ++ [PP.Text ")"])
                     CustomError a -> Just (PP.Text "!error(" : layout a ++ [PP.Text ")"])
                   e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
-                Meta (Error e) a -> Just (PP.Text ("![" ++ show (Err e) ++ "](") : layout a ++ [PP.Text ")"])
                 _ -> Nothing
         ]
     }
@@ -457,6 +537,24 @@ parseNameTag =
     ]
 
 -- Syntax sugar
+asInt :: Expr -> Maybe Int
+asInt (Int i) = Just i
+asInt (Ann a _) = asInt a
+asInt (Meta _ a) = asInt a
+asInt _ = Nothing
+
+asNum :: Expr -> Maybe Double
+asNum (Num n) = Just n
+asNum (Ann a _) = asNum a
+asNum (Meta _ a) = asNum a
+asNum _ = Nothing
+
+isVar :: Expr -> Bool
+isVar (Var _) = True
+isVar (Ann a _) = isVar a
+isVar (Meta _ a) = isVar a
+isVar _ = False
+
 varOf :: Expr -> Maybe String
 varOf (Var x) = Just x
 varOf (Meta _ a) = varOf a
@@ -468,10 +566,22 @@ tag k = Tag k . and'
 tag' :: String -> Expr
 tag' k = Tag k Unit
 
+isTag :: Expr -> Bool
+isTag (Tag _ _) = True
+isTag (Ann a _) = isTag a
+isTag (Meta _ a) = isTag a
+isTag _ = False
+
 and' :: [Expr] -> Expr
 and' [] = Unit
 and' [a] = a
 and' (a : bs) = And a (and' bs)
+
+isAnd :: Expr -> Bool
+isAnd (And _ _) = True
+isAnd (Ann a _) = isAnd a
+isAnd (Meta _ a) = isAnd a
+isAnd _ = False
 
 andOf :: Expr -> [Expr]
 andOf Unit = []
@@ -497,15 +607,20 @@ asOr (Or a b) = Just (a, b)
 asOr (Meta _ a) = asOr a
 asOr _ = Nothing
 
+ann :: Expr -> Type -> Expr
+ann a _ | Just (a', t') <- asAnn a = ann a' t'
+ann a t | Just (t', _) <- asAnn t = ann a t'
+ann a t = Ann a t
+
 isAnn :: Expr -> Bool
 isAnn (Ann _ _) = True
 isAnn (Meta _ a) = isAnn a
 isAnn _ = False
 
-annOf :: Expr -> Maybe (Expr, Expr)
-annOf (Ann a b) = Just (a, b)
-annOf (Meta _ a) = annOf a
-annOf _ = Nothing
+asAnn :: Expr -> Maybe (Expr, Expr)
+asAnn (Ann a b) = Just (a, b)
+asAnn (Meta _ a) = asAnn a
+asAnn _ = Nothing
 
 for :: [String] -> Expr -> Expr
 for xs a = foldr For a xs
@@ -516,8 +631,35 @@ for' (x : xs) a | x `occurs` a = For x (for' xs a)
 for' (_ : xs) a = for' xs a
 
 forOf :: Expr -> ([String], Expr)
-forOf (For x a) = let (xs, b) = forOf a in (x : xs, b)
-forOf a = ([], a)
+forOf = \case
+  For x a -> do
+    let (ys, a') = forOf a
+    (x : ys, a')
+  Meta m a -> do
+    let (xs, a') = forOf a
+    (xs, Meta m a')
+  a -> ([], a)
+
+forOf' :: Expr -> Maybe (String, Expr)
+forOf' = \case
+  For x a -> Just (x, a)
+  Meta _ a -> forOf' a
+  a -> Nothing
+
+asFor :: Expr -> Maybe ([String], Expr)
+asFor = \case
+  For x a -> case asFor a of
+    Just (ys, a') -> Just (x : ys, a')
+    Nothing -> Just ([x], a)
+  Meta m a -> do
+    (xs, a') <- asFor a
+    Just (xs, Meta m a')
+  _ -> Nothing
+
+isFor :: Expr -> Bool
+isFor (For _ _) = True
+isFor (Meta _ a) = isFor a
+isFor _ = False
 
 fix :: [String] -> Expr -> Expr
 fix xs a = foldr Fix a xs
@@ -538,6 +680,19 @@ funOf :: Expr -> ([Expr], Expr)
 funOf (Fun arg ret) = (andOf arg, ret)
 funOf a = ([], a)
 
+isFun :: Expr -> Bool
+isFun (Fun _ _) = True
+isFun (For _ a) = isFun a
+isFun (Ann a _) = isFun a
+isFun (Meta _ a) = isFun a
+isFun _ = False
+
+asFun :: Expr -> Maybe (Expr, Expr)
+asFun (Fun a b) = Just (a, b)
+asFun (Ann a _) = asFun a
+asFun (Meta _ a) = asFun a
+asFun _ = Nothing
+
 lam :: [Expr] -> Expr -> Expr
 lam ps b = for' (freeVars (and' ps)) (fun ps b)
 
@@ -547,6 +702,12 @@ app fun args = App fun (and' args)
 appT :: Expr -> [Expr] -> [Type] -> Expr
 appT fun args types = App fun (Ann (and' args) (and' types))
 
+isApp :: Expr -> Bool
+isApp (App _ _) = True
+isApp (Ann a _) = isApp a
+isApp (Meta _ a) = isApp a
+isApp _ = False
+
 appOf :: Expr -> (Expr, [Expr])
 appOf (App a b) = let (a', bs) = appOf a in (a', bs ++ [b])
 appOf a = (a, [])
@@ -554,10 +715,38 @@ appOf a = (a, [])
 curry' :: Expr -> [Expr] -> Expr
 curry' = foldl App
 
+call :: String -> [Expr] -> Expr
+call f args = Call f (and' args)
+
+isCall :: Expr -> Bool
+isCall (Call _ _) = True
+isCall (Ann a _) = isCall a
+isCall (Meta _ a) = isCall a
+isCall _ = False
+
 let' :: Env -> Expr -> Expr
 let' [] a = a
 let' env (Let env' a) = let' (env ++ env') a
 let' env a = Let env a
+
+letOf :: Expr -> Maybe (Env, Expr)
+letOf (Let env a) = Just (env, a)
+letOf (Ann a _) = letOf a
+letOf (Meta _ a) = letOf a
+letOf _ = Nothing
+
+isLet :: Expr -> Bool
+isLet (Let _ _) = True
+isLet (Meta _ a) = isLet a
+isLet (Ann a _) = isLet a
+isLet _ = False
+
+letP :: (Expr, Expr) -> Expr -> Expr
+letP (a, b) c = App (Fun a c) b
+
+letPs :: [(Expr, Expr)] -> Expr -> Expr
+letPs [] c = c
+letPs (def : defs) c = letP def (letPs defs c)
 
 def :: (Expr, Expr) -> Expr -> Expr
 def (a, b) = def' (freeVars a, a, b)
@@ -577,20 +766,32 @@ matchFun [] = Unit
 matchFun [(ps, b)] = fun ps b
 matchFun ((ps, b) : cases) = fun ps b `Or` matchFun cases
 
-err :: Expr -> Expr
-err a = Err (customError a)
+err :: Error Expr -> Expr
+err e = Meta (Error e) Err
 
 -- TODO: centralize into a single kind of errors
 isErr :: Expr -> Bool
-isErr (Err _) = True
-isErr (Meta (Error _) _) = True
+isErr Err = True
+isErr (Ann a b) = isErr a || isErr b
 isErr (Meta _ a) = isErr a
 isErr _ = False
 
-errOf :: Expr -> Maybe (Error Expr)
-errOf (Err e) = Just e
-errOf (Meta _ a) = errOf a
-errOf _ = Nothing
+hasErr :: Expr -> Bool
+hasErr = \case
+  Tag _ a -> hasErr a
+  And a b -> hasErr a || hasErr b
+  Or a b -> hasErr a || hasErr b
+  Ann a b -> hasErr a || hasErr b
+  For _ a -> hasErr a
+  Fix _ a -> hasErr a
+  Fun a b -> hasErr a || hasErr b
+  App a b -> hasErr a || hasErr b
+  Call _ a -> hasErr a
+  Let _ a -> hasErr a
+  Meta (Error _) _ -> True
+  Meta _ a -> hasErr a
+  Err -> True
+  _ -> False
 
 typed :: Expr -> Type -> Expr
 typed a _ | isAnn a = a
@@ -604,6 +805,81 @@ typedOf (Meta _ a) | isAnn a = typedOf a
 typedOf a = (a, Any)
 
 -- Helper functions
+class Apply a where
+  apply :: (Expr -> Expr) -> a -> a
+
+instance Apply Expr where
+  apply :: (Expr -> Expr) -> Expr -> Expr
+  apply f = \case
+    Any -> Any
+    Unit -> Unit
+    IntT -> IntT
+    NumT -> NumT
+    Int i -> Int i
+    Num n -> Num n
+    Var x -> Var x
+    Tag k a -> Tag k (f a)
+    Ann a b -> Ann (f a) (f b)
+    And a b -> And (f a) (f b)
+    Or a b -> Or (f a) (f b)
+    For x a -> For x (f a)
+    Fix x a -> Fix x (f a)
+    Fun a b -> Fun (f a) (f b)
+    App a b -> App (f a) (f b)
+    Call x a -> Call x (f a)
+    Let env a -> Let (second f <$> env) (f a)
+    Meta m a -> Meta m (f a)
+    Err -> Err
+
+collect :: (Eq a, Show a) => (Expr -> [a]) -> Expr -> [a]
+collect f = \case
+  Any -> []
+  Unit -> []
+  IntT -> []
+  NumT -> []
+  Int _ -> []
+  Num _ -> []
+  Var _ -> []
+  Tag _ a -> f a
+  Ann a b -> f a `union` f b
+  And a b -> f a `union` f b
+  Or a b -> f a `union` f b
+  For _ a -> f a
+  Fix _ a -> f a
+  Fun a b -> f a `union` f b
+  App a b -> f a `union` f b
+  Call _ a -> f a
+  Let env a -> concatMap f (map snd env) `union` f a
+  Meta _ a -> f a
+  Err -> []
+  where
+    unionMap f = foldr (union . f) []
+
+freeVars :: Expr -> [String]
+freeVars = \case
+  Var x -> [x]
+  For x a -> delete x (freeVars a)
+  Fix x a -> delete x (freeVars a)
+  Let env a -> do
+    let collectDef x = case lookup x env of
+          Just b -> freeVars (let' (filter (\(x', _) -> x /= x') env) b)
+          Nothing -> [x]
+    foldr (union . collectDef) [] (freeVars a)
+  a -> collect freeVars a
+
+freeTags :: Expr -> [String]
+freeTags = \case
+  Tag k a -> [k] `union` freeTags a
+  For x a -> delete x (freeTags a)
+  Fix x a -> delete x (freeTags a)
+  Let env a -> do
+    let collectDef x = case lookup x env of
+          Just b -> freeTags (let' (filter (\(x', _) -> x /= x') env) b)
+          Nothing | x `elem` freeTags a -> [x]
+          Nothing -> []
+    foldr (union . collectDef) [] (freeVars a `union` freeTags a)
+  a -> collect freeTags a
+
 pushAll :: [(String, Expr)] -> Env -> Env
 pushAll vars env = foldr (:) env vars
 
@@ -613,56 +889,49 @@ popAll xs env = foldl (flip pop) env xs
 pushVars :: [String] -> Env -> Env
 pushVars xs = pushAll (map (\x -> (x, Var x)) xs)
 
-freeNames :: (Bool, Bool, Bool) -> Expr -> [String]
-freeNames (vars, tags, calls) = \case
-  Any -> []
-  Unit -> []
-  IntT -> []
-  NumT -> []
-  Int _ -> []
-  Num _ -> []
-  Var x
-    | vars -> [x]
-    | otherwise -> []
-  Tag k a
-    | tags -> k : freeNames' a
-    | otherwise -> freeNames' a
-  Ann a b -> freeNames' a `union` freeNames' b
-  And a b -> freeNames' a `union` freeNames' b
-  Or a b -> freeNames' a `union` freeNames' b
-  For x a -> delete x (freeNames' a)
-  Fix x a -> delete x (freeNames' a)
-  Fun a b -> freeNames' a `union` freeNames' b
-  App a b -> freeNames' a `union` freeNames' b
-  Call f args
-    | calls -> foldr (union . freeNames') [f] args
-    | otherwise -> foldr (union . freeNames') [] args
-  -- TODO: This is much more subtle than it appears for Let.
-  --       Free names should be done recursively on definitions used.
-  --       More of a graph traversal problem, visiting nodes (definitions).
-  --       This could also be used to only keep the relevant definitions and drop irrelevant ones.
-  --        e.g. : a -> Bool
-  --             (==) = x -> (y -> True | _ -> False) x
-  -- Let [] b -> freeNames' b
-  -- Let ((x, a) : defs) b -> delete x (freeNames' a `union` freeNames' (Let defs b))
-  -- Let defs b -> filter (`notElem` map fst defs) (foldr ((union . freeNames') . snd) (freeNames' b) defs)
-  -- Let _ b -> freeNames' b
-  Let env b -> freeNames' (reduce [] (Let env b))
-  Meta _ a -> freeNames' a
-  Err _ -> []
-  where
-    freeNames' = freeNames (vars, tags, calls)
+unpack :: (Expr, Expr) -> Env
+unpack (a, b) = case unpackDef (a, b) of
+  (Just xs, a, b) -> do
+    map (unpackVar xs (a, b)) xs
+  (Nothing, a, b) -> do
+    let xs = freeVars a
+    map (unpackVar xs (a, b)) xs
 
-freeVars :: Expr -> [String]
-freeVars = freeNames (True, False, False)
+unpackDef :: (Expr, Expr) -> (Maybe [String], Expr, Expr)
+unpackDef (a, b) = case a of
+  Ann a t -> case unpackDef (a, b) of
+    (Just xs, a', b') -> (Just xs, a', b')
+    (Nothing, a', b') -> (Nothing, a', Ann b' t)
+  App a1 a2 -> unpackDef (a1, Fun a2 b)
+  For x a -> case unpackDef (a, b) of
+    (Just xs, a', b') -> (Just (x : xs), a', b')
+    (Nothing, a', b') -> (Just [x], a', b')
+  Fix x a -> case unpackDef (a, b) of
+    (Just xs, a', b') -> (Just (x : xs), Fix x a', b')
+    (Nothing, a', b') -> (Just [x], Fix x a', b')
+  Meta _ a -> unpackDef (a, b)
+  _ -> (Nothing, a, b)
 
-freeTags :: Expr -> [String]
-freeTags = freeNames (False, True, False)
+unpackVar :: [String] -> (Expr, Expr) -> String -> (String, Expr)
+unpackVar xs (a, b) x | Just x' <- varOf a, x == x', x `elem` xs = (x, b)
+unpackVar xs (a, b) x = (x, letP (for' xs a, b) (Var x))
+
+bind :: [String] -> Expr -> Expr
+bind xs = \case
+  Ann a b | Just (xs, b) <- asFor b -> do
+    bind xs (for xs (Ann a b))
+  Ann a b -> do
+    let ys = filter (`notElem` xs) (freeVars b)
+    for ys (Ann (bind xs a) (bind (xs ++ ys) b))
+  For x a -> for' [x] (bind (x : xs ++ freeVars a) a)
+  Fun a b | Just (xs, a) <- asFor a -> do
+    bind xs (for xs (Fun a b))
+  Fun a b -> do
+    let ys = filter (`notElem` xs) (freeVars a)
+    for ys (Fun (bind (xs ++ ys) a) (bind xs b))
+  a -> apply (bind xs) a
 
 occurs :: String -> Expr -> Bool
-occurs x (Var x') | x == x' = False
-occurs x (Or a b) = occurs x a || occurs x b
-occurs x (Meta _ a) = occurs x a
 occurs x a = x `elem` freeVars a
 
 newName :: [String] -> String -> String
@@ -678,9 +947,9 @@ newNames existing (x : xs) = do
 newNamesStream :: [String] -> String -> [String]
 newNamesStream existing x =
   [ name
-    | i <- [(0 :: Int) ..],
-      let name = if i == 0 then x else x ++ show i,
-      name `notElem` existing
+  | i <- [(0 :: Int) ..],
+    let name = if i == 0 then x else x ++ show i,
+    name `notElem` existing
   ]
 
 isClosed :: Expr -> Bool
@@ -689,149 +958,127 @@ isClosed = null . freeVars
 isOpen :: Expr -> Bool
 isOpen = not . isClosed
 
+isValue :: Expr -> Bool
+isValue = \case
+  Any -> True
+  Unit -> True
+  IntT -> True
+  NumT -> True
+  Int _ -> True
+  Num _ -> True
+  Tag _ _ -> True
+  Ann a _ -> isValue a
+  And _ _ -> True
+  Let _ a -> isValue a
+  Meta _ a -> isValue a
+  _ -> False
+
 -- Evaluation
 reduce :: Ops -> Expr -> Expr
-reduce ops = \case
-  App a b -> reduceApp ops (reduce ops a) (reduce ops b)
-  Let env expr -> reduceLet ops env expr
-  Meta m a -> Meta m (reduce ops a)
-  expr -> expr
-
-reduceLet :: Ops -> Env -> Expr -> Expr
-reduceLet ops env = \case
+reduce ops (App a (Or b1 b2)) = case reduce ops (App a b1) of
+  c | isErr c -> reduce ops (App a b2)
+  c | isValue c -> c
+  c -> Or c (App a b2)
+reduce ops (App a b) = case reduce ops a of
+  Any -> Any
+  a@Var {} -> App a b
+  a@App {} -> App a b
+  a@Call {} -> App a b
+  For x a -> do
+    let y = newName (freeVars b) x
+    case reduce ops $ App (substitute [(x, Var y)] a) b of
+      App a b -> App (for' [y] a) b
+      c -> c
+  Fix x a -> reduce ops $ App (Let [(x, Fix x a)] a) b
+  Ann a _ -> reduce ops $ App a b
+  Or a1 a2 -> case reduce ops (App a1 b) of
+    c | isErr c -> reduce ops (App a2 b)
+    c | isValue c -> c
+    c -> Or c (App a2 b)
+  Fun a c -> case (a, b) of
+    (Let env a, b) -> reduce ops $ letP (reduce ops $ Let env a, b) c
+    (Meta _ a, b) -> reduce ops $ letP (reduce ops a, b) c
+    (_, Any) -> reduce ops c
+    (Any, _) -> reduce ops c
+    (For x a, b) -> reduce ops $ App (For x (Fun a c)) b
+    (a, For x b) -> reduce ops $ App (For x (Fun a c)) b
+    (Or a1 a2, b) -> reduce ops $ App (Or (Fun a1 c) (Fun a2 c)) b
+    (Var x, b) -> reduce ops $ Let [(x, b)] c
+    (a, Var x) -> reduce ops $ Let [(x, a)] c
+    (Unit, Unit) -> reduce ops c
+    (IntT, IntT) -> reduce ops c
+    (NumT, NumT) -> reduce ops c
+    (Int i, Int i') | i == i' -> reduce ops c
+    (Num n, Num n') | n == n' -> reduce ops c
+    (Tag k a, Tag k' b) | k == k' -> reduce ops $ letP (a, b) c
+    (Fix x a, Fix y b) -> do
+      let x' = newName (freeVars (Fix y b)) x
+      let a' = substitute [(x, Var x')] a
+      reduce ops $ letP (a', b) c
+    (Ann a ta, Ann b tb) -> reduce ops $ letPs [(ta, tb), (a, b)] c
+    (And a1 a2, And b1 b2) -> reduce ops $ letPs [(a1, b1), (a2, b2)] c
+    (Fun a1 a2, Fun b1 b2) -> reduce ops $ letPs [(a1, b1), (a2, b2)] c
+    (App a1 a2, App b1 b2) -> reduce ops $ letPs [(a1, b1), (a2, b2)] c
+    (Call f a, Call f' b) | f == f' -> reduce ops $ letP (a, b) c
+    (Err, Err) -> reduce ops c
+    (a, App {}) -> case reduce ops b of
+      b@App {} -> letP (a, b) c
+      b@Call {} -> letP (a, b) c
+      b -> reduce ops (letP (a, b) c)
+    (a, Call {}) -> case reduce ops b of
+      b@App {} -> letP (a, b) c
+      b@Call {} -> letP (a, b) c
+      b -> reduce ops (letP (a, b) c)
+    (a, Let env b) -> reduce ops $ letP (a, reduce ops $ Let env b) c
+    (a, Meta _ b) -> reduce ops $ letP (a, reduce ops b) c
+    (Ann a _, b) -> reduce ops $ letP (a, b) c
+    (a, Ann b _) -> reduce ops $ letP (a, b) c
+    (a, b) -> err $ unhandledCase a b
+  a -> err $ cannotApply a b
+-- reduce ops (Or a b) = Or (reduce ops a) b
+reduce ops (Call f a) = case lookup f ops of
+  Just f | Just result <- f (eval ops) a -> result
+  _ -> Call f a
+reduce ops (Let env a) = case a of
   Var x -> case lookup x env of
     Just (Var x') | x == x' -> Var x
     Just (Ann (Var x') t) | x == x' -> Ann (Var x) t
     Just a -> reduce ops a
     Nothing -> Var x
   Tag k a -> Tag k (Let env a)
-  Ann a b -> Ann (Let env a) (Let env b)
-  And a b -> And (Let env a) (Let env b)
-  Or a b -> Or (Let env a) (Let env b)
   For x a -> For x (Let env a)
   Fix x a -> Fix x (Let env a)
+  Ann a b -> reduce ops $ Ann (Let env a) (Let env b)
+  And a b -> And (Let env a) (Let env b)
+  Or a b -> reduce ops $ Or (Let env a) (Let env b)
   Fun a b -> Fun (Let env a) (Let env b)
-  App a b -> reduceApp ops (reduce ops (Let env a)) (reduce ops (Let env b))
-  Call f args -> case (lookup f ops, Let env <$> args) of
-    (Just call, args) | Just result <- call (eval ops) args -> result
-    (_, args) -> Call f args
-  Let env' a -> reduce ops (Let (env ++ env') a)
-  Meta m a -> Meta m (reduce ops (Let env a))
-  Err e -> Err (Let env <$> e)
-  expr -> expr
-
-reduceApp :: Ops -> Expr -> Expr -> Expr
-reduceApp ops a b = case (a, reduce ops b) of
-  (Any, _) -> Any
-  (a@Var {}, b) -> App a b
-  (a@App {}, b) -> App a b
-  (Ann a _, b) -> reduceApp ops (reduce ops a) b
-  (Or a1 a2, b) -> case reduceApp ops (reduce ops a1) b of
-    Err _ -> reduceApp ops (reduce ops a2) b
-    c@App {} -> Or c (App a2 b)
-    c -> c
-  (For x a, b) -> reduceApp ops (reduce ops (Let [(x, Var x)] a)) b
-  (Fix x a, b) -> reduceApp ops (reduce ops (Let [(x, Fix x a)] a)) b
-  (Fun a c, b) -> case match False ops a b of
-    Matched env -> reduce ops (Let env c)
-    MaybeMatched a b -> App (Fun a c) b
-    NotMatched a b -> Err (unhandledCase a b)
-  (Call f args, b) -> App (Call f args) b
-  (Meta _ a, b) -> reduceApp ops a b
-  _ -> Err (cannotApply a b)
-
-match :: Bool -> Ops -> Expr -> Expr -> MatchResult Env
-match unify ops (Let env (Tag k a)) b = case lookup k env of
-  Just def -> do
-    let b' = curry' (Let env def) [a, b]
-    match True ops (Tag k (Let env a)) (b' `Or` b)
-  Nothing -> match unify ops (Tag k (Let env a)) b
--- match True ops a (Let env (Tag k b)) = case lookup k env of
---   Just def -> do
---     let a' = curry' (Let env def) [b, a]
---     match True ops (a' `Or` a) (Tag k (Let env b))
---   Nothing -> match True ops a (Tag k (Let env b))
-match unify ops (Let env (Meta _ a)) b =
-  match unify ops (Let env a) b
--- match True ops a (Let env (Meta _ b)) =
---   match True ops a (Let env b)
-match unify ops (Let env (Let env' a)) b =
-  match unify ops (Let (env ++ env') a) b
--- match True ops a (Let env (Let env' b)) =
---   match True ops a (Let (env ++ env') b)
-match unify ops a b = case (reduce ops a, reduce ops b) of
-  (Meta _ a, b) -> match unify ops a b
-  (Any, _) -> Matched []
-  (_, Any) | unify -> Matched []
-  (Unit, Unit) -> Matched []
-  (IntT, IntT) -> Matched []
-  (NumT, NumT) -> Matched []
-  (Int i, Int i') | i == i' -> Matched []
-  (Num n, Num n') | n == n' -> Matched []
-  (Tag k a, Tag k' b) | k == k' -> match unify ops a b
-  (Var x, b) -> Matched [(x, b)]
-  (a, Var x)
-    | unify -> Matched [(x, a)]
-    | otherwise -> MaybeMatched a (Var x)
-  (Ann a ta, Ann b tb) -> do
-    env1 <- match True ops ta tb
-    env2 <- match unify ops (Let env1 a) b
-    return (env1 ++ env2)
-  (And a1 a2, And b1 b2) -> do
-    env1 <- match unify ops a1 b1
-    env2 <- match unify ops (Let env1 a2) b2
-    return (env1 ++ env2)
-  (Or a1 a2, b) -> case match unify ops a1 b of
-    Matched env1 -> case match unify ops (Let env1 a2) b of
-      Matched env2 -> Matched (env1 ++ env2)
-      MaybeMatched a2 b -> MaybeMatched (Or a1 a2) b
-      NotMatched _ _ -> Matched env1
-    MaybeMatched a1 b -> MaybeMatched (Or a1 a2) b
-    NotMatched a1 b -> case match unify ops a2 b of
-      Matched env -> Matched env
-      MaybeMatched a2 b -> MaybeMatched a2 b
-      NotMatched a2 b -> NotMatched (Or a1 a2) b
-  (a, Or b1 b2) -> case match unify ops a b1 of
-    Matched env1 -> case match unify ops (Let env1 a) b2 of
-      Matched env2 -> Matched (env1 ++ env2)
-      MaybeMatched a b2 -> MaybeMatched a (Or b1 b2)
-      NotMatched _ _ -> Matched env1
-    MaybeMatched a b1 -> MaybeMatched a (Or b1 b2)
-    NotMatched a b1 -> case match unify ops a b2 of
-      Matched env -> Matched env
-      MaybeMatched a b2 -> MaybeMatched a b2
-      NotMatched a b2 -> NotMatched a (Or b1 b2)
-  (For x a, b) -> match unify ops (Let [(x, Var x)] a) b
-  (a, For x b) -> match unify ops a (Let [(x, Var x)] b)
-  (Fix x a, Fix x' b) | x == x' -> case match unify ops (Let [(x, Var x)] a) (Let [(x', Fix x' b)] b) of
-    Matched env -> Matched env
-    MaybeMatched a b -> MaybeMatched (Fix x a) (Fix x b)
-    NotMatched a b -> NotMatched (Fix x a) (Fix x b)
-  (Fix x a, Fix y b) -> do
-    match unify ops (Fix x a) (Fix x (substitute [(y, Var x)] b))
-  (Fun a1 a2, Fun b1 b2) -> match unify ops (And a1 a2) (And b1 b2)
-  (App a1 a2, App b1 b2) -> match unify ops (And a1 a2) (And b1 b2)
-  (Call x args, Call x' args') | x == x' -> do
-    match unify ops (and' args) (and' args')
-  (_, Meta _ b) -> match unify ops a b
-  (a, Ann b _) -> match unify ops a b
-  (Ann a _, b) -> match unify ops a b
-  (Err _, Err _) -> Matched []
-  (a, b) -> NotMatched a b
+  App a b -> reduce ops $ App (Let env a) (Let env b)
+  Call f a -> reduce ops $ Call f (Let env a)
+  Let env' a -> reduce ops $ Let (env' ++ env) a
+  Meta m a -> reduce ops $ Let env a
+  a -> a
+reduce ops (Meta _ a) = reduce ops a
+reduce ops a = a
 
 eval :: Ops -> Expr -> Expr
-eval ops expr = case reduce ops expr of
+eval ops a = case reduce ops a of
   Tag k a -> Tag k (eval ops a)
-  Ann a b -> Ann (eval ops a) (eval ops b)
+  For x a -> for' [x] (eval ops a)
+  Fix x a -> fix' [x] (eval ops a)
+  Ann a b -> case eval ops a of
+    Ann a b -> reduce ops (Ann a b)
+    a -> Ann a (eval ops b)
   And a b -> And (eval ops a) (eval ops b)
-  Or a b -> Or (eval ops a) (eval ops b)
-  For x a -> For x (eval ops (Let [(x, Var x)] a))
-  Fix x a -> Fix x (eval ops (Let [(x, Var x)] a))
+  Or a b -> case eval ops a of
+    a | isErr a -> eval ops b
+    a | isValue a -> a
+    a -> case eval ops b of
+      b | isErr b -> a
+      b -> Or a b
   Fun a b -> Fun (eval ops a) (eval ops b)
   App a b -> App (eval ops a) (eval ops b)
-  Call f args -> Call f (eval ops <$> args)
-  Meta m a -> Meta m (eval ops a)
-  Err e -> Err (fmap (eval ops) e)
+  Call f a -> Call f (eval ops a)
+  Meta (Error e) a -> Meta (Error $ fmap (eval ops) e) (eval ops a)
   a -> a
 
 class Substitute a where
@@ -845,10 +1092,9 @@ instance Substitute Expr where
   substitute _ NumT = NumT
   substitute _ (Int i) = Int i
   substitute _ (Num n) = Num n
-  substitute [] (Var x) = Var x
-  substitute ((x, a) : _) (Var x') | x == x' = a
-  substitute (_ : s) (Var x) = substitute s (Var x)
-  substitute ((x, a) : s) b | x `occurs` a = error $ "TODO substitute: " ++ x ++ " occurs in  " ++ show a
+  substitute s (Var x) = case lookup x s of
+    Just a | not (x `occurs` a) -> a
+    _ -> Var x
   substitute s (Tag k a) = Tag k (substitute s a)
   substitute s (Ann a b) = Ann (substitute s a) (dropTypes $ substitute s b)
   substitute s (And a b) = And (substitute s a) (substitute s b)
@@ -857,24 +1103,38 @@ instance Substitute Expr where
   substitute s (Fix x a) = Fix x (substitute (filter ((/= x) . fst) s) a)
   substitute s (Fun a b) = Fun (substitute s a) (substitute s b)
   substitute s (App a b) = App (substitute s a) (substitute s b)
-  substitute s (Call op args) = Call op (map (substitute s) args)
+  substitute s (Call op a) = Call op (substitute s a)
   substitute s (Let env b) = do
     let sub (x, a) = (x, substitute s a)
-    let s' = filter (\(x, _) -> x `notElem` map fst env) s
+    let s' = filter ((`notElem` map fst env) . fst) s
     Let (map sub env) (substitute s' b)
   substitute s (Meta m a) = Meta m (substitute s a)
-  substitute s (Err e) = Err (substitute s e)
+  substitute _ Err = Err
+
+instance Substitute (Expr, Expr) where
+  substitute :: Substitution -> (Expr, Expr) -> (Expr, Expr)
+  substitute s (a, b) = (substitute s a, substitute s b)
 
 instance Substitute (Error Expr) where
   substitute :: Substitution -> Error Expr -> Error Expr
   substitute s = fmap (substitute s)
 
+instance (Substitute a) => Substitute [a] where
+  substitute s = map (substitute s)
+
 compose :: Substitution -> Substitution -> Substitution
 compose s1 s2 = do
-  let sub s (x, a) = case lookup x s of
+  let key (x, _) (y, _) = x == y
+  let -- sub s (x, For x' a) | x == x' = (x, For x (substitute s a))
+      sub s (x, a) = case lookup x s of
         Just b -> (x, b)
         Nothing -> (x, substitute s a)
-  unionBy (\a b -> fst a == fst b) s1 (map (sub s1) s2)
+  -- let generic kv = fst kv `elem` map fst (generics s2)
+  -- unionBy key (filter (not . generic) s1) (map (sub s1) s2)
+  unionBy key s1 (map (sub s1) s2)
+
+-- generics :: Env -> Env
+-- generics = filterMap (forOf' . snd)
 
 dropTypes :: Expr -> Expr
 dropTypes (Tag k a) = Tag k (dropTypes a)
@@ -892,7 +1152,7 @@ dropTypes (Fun a b) = Fun (dropTypes a) (dropTypes b)
 --   [Ann tb _] -> App (dropTypes a) (Ann (dropTypes b) (dropTypes tb))
 --   _ -> App (dropTypes a) (Ann (dropTypes b) (dropTypes tb))
 dropTypes (App a b) = App (dropTypes a) (dropTypes b)
-dropTypes (Call op args) = Call op (map dropTypes args)
+dropTypes (Call op a) = Call op (dropTypes a)
 dropTypes (Let defs b) = Let (map (second dropTypes) defs) (dropTypes b)
 dropTypes (Meta m a) = Meta m (dropTypes a)
 dropTypes a = a
@@ -906,10 +1166,11 @@ dropMeta (For x a) = For x (dropMeta a)
 dropMeta (Fix x a) = Fix x (dropMeta a)
 dropMeta (Fun a b) = Fun (dropMeta a) (dropMeta b)
 dropMeta (App a b) = App (dropMeta a) (dropMeta b)
-dropMeta (Call op args) = Call op (map dropMeta args)
+dropMeta (Call op a) = Call op (dropMeta a)
 dropMeta (Let defs b) = Let (map (second dropMeta) defs) (dropMeta b)
+dropMeta (Meta (Error e) a) = Meta (Error e) (dropMeta a)
 dropMeta (Meta _ a) = dropMeta a
-dropMeta (Err e) = Err (fmap dropMeta e)
+dropMeta Err = Err
 dropMeta a = a
 
 dropLet :: Expr -> Expr
@@ -921,9 +1182,9 @@ dropLet (For x a) = For x (dropLet a)
 dropLet (Fix x a) = Fix x (dropLet a)
 dropLet (Fun a b) = Fun (dropLet a) (dropLet b)
 dropLet (App a b) = App (dropLet a) (dropLet b)
-dropLet (Call op args) = Call op (map dropLet args)
+dropLet (Call op a) = Call op (dropLet a)
 dropLet (Let _ b) = dropLet b
-dropLet (Meta m a) = Meta m (dropLet a)
+dropLet (Meta m a) = Meta (fmap dropLet m) (dropLet a)
 dropLet a = a
 
 findLocation :: Expr -> Maybe Location
@@ -931,315 +1192,6 @@ findLocation = \case
   Meta (Loc loc) _ -> Just loc
   Meta _ a -> findLocation a
   _ -> Nothing
-
-unify :: Ops -> Env -> Expr -> Expr -> (Expr, Substitution)
-unify ops env a b = case (a, b) of
-  (a, Meta m b) -> do
-    let (a', s) = unify ops env a b
-    (Meta m a', s)
-  (Meta m a, b) -> do
-    let (a', s) = unify ops env a b
-    (Meta m a', s)
-  (_, Any) -> (Any, [])
-  (Any, _) -> (Any, [])
-  (Unit, Unit) -> (Unit, [])
-  (IntT, IntT) -> (IntT, [])
-  (Int _, IntT) -> (IntT, [])
-  (IntT, Int _) -> (IntT, [])
-  (NumT, NumT) -> (NumT, [])
-  (Num _, NumT) -> (NumT, [])
-  (NumT, Num _) -> (NumT, [])
-  (Int i, Int i') | i == i' -> (Int i, [])
-  (Num n, Num n') | n == n' -> (Num n, [])
-  (Or a1 a2, b) -> case (unify ops env a1 b, unify ops env a2 b) of
-    ((e1, _), (e2, _)) | isErr e1 && isErr e2 -> (Or e1 e2, [])
-    ((c, s), (e, _)) | isErr e -> (c, s)
-    ((e, _), (c, s)) | isErr e -> (c, s)
-    ((c1, s1), (c2, s2)) -> (merge ops env (substitute s2 c1) (substitute s1 c2), merge ops env s1 s2)
-  (a, Or b1 b2) -> case (unify ops env a b1, unify ops env a b2) of
-    ((e1, _), (e2, _)) | isErr e1 && isErr e2 -> (Or e1 e2, [])
-    ((c, s), (e, _)) | isErr e -> (c, s)
-    ((e, _), (c, s)) | isErr e -> (c, s)
-    ((c1, s1), (c2, s2)) -> (merge ops env (substitute s2 c1) (substitute s1 c2), merge ops env s1 s2)
-  (Var x, Var x') | x == x' -> (Var x, [])
-  (Var x, b) | x `occurs` b -> (Err $ occursError x b, [])
-  (Var x, b) -> (b, [(x, b)])
-  (a, Var x) -> unify ops env (Var x) a
-  (Tag k a, Tag k' b) | k == k' -> do
-    let (a', s) = unify ops env a b
-    (Tag k a', s)
-  (a, Tag k b) | Just def <- lookup k env -> do
-    let a' = eval ops (curry' (Let env def) [b, a])
-    let env' = filter (\(x, _) -> x /= k) env
-    let (t, s) = unify ops env' a' (Tag k b)
-    (t, s)
-  (Tag k a, b) | Just def <- lookup k env -> do
-    let b' = eval ops (curry' (Let env def) [a, b])
-    let env' = filter (\(x, _) -> x /= k) env
-    let (t, s) = unify ops env' (Tag k a) b'
-    (t, s)
-  (And a1 b1, And a2 b2) -> case unify2 ops env (a1, a2) (b1, b2) of
-    ((a, b), s) | Just e <- errOf a -> (Meta (Error e) (And a b), s)
-    ((a, b), s) | Just e <- errOf b -> (Meta (Error e) (And a b), s)
-    ((a, b), s) -> (And a b, s)
-  (Ann a ta, Ann b tb) -> do
-    let ((a', ta'), s) = unify2 ops env (a, b) (ta, tb)
-    (Ann a' ta', s)
-  (Ann a _, b) -> unify ops env a b
-  (a, Ann b _) -> unify ops env a b
-  (a, For x b) -> do
-    let (b', s1) = instantiate (freeVars a) (For x b)
-    let (c, s2) = unify ops (s1 `compose` env) a b'
-    (c, s2 `compose` s1)
-  (For x a, b) -> do
-    let (a', s1) = instantiate (freeVars b) (For x a)
-    let (c, s2) = unify ops (s1 `compose` env) a' b
-    (c, s2 `compose` s1)
-  (Fix _ a, b) -> unify ops env a b
-  (a, Fix _ b) -> unify ops env a b
-  (Fun a1 b1, Fun a2 b2) -> case unify2 ops env (a1, a2) (b1, b2) of
-    ((a, _), _) | isErr a -> (a, [])
-    ((_, b), _) | isErr b -> (b, [])
-    ((a, b), s) -> (Fun a b, s)
-  (Call op args, Call op' args') | op == op' -> do
-    let (args'', s) = unifyAll ops env args args'
-    (Call op args'', s)
-  (a, b) -> (Err $ typeMismatch a b, [])
-
-unify2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> ((Expr, Expr), Substitution)
-unify2 ops env (a1, a2) (b1, b2) = do
-  let (ta, s1) = unify ops env a1 a2
-  let (tb, s2) = unify ops env (substitute s1 b1) (substitute s1 b2)
-  ((substitute s2 ta, tb), s2 `compose` s1)
-
-unifyAll :: Ops -> Env -> [Expr] -> [Expr] -> ([Expr], Substitution)
-unifyAll ops env (a : bs) (a' : bs') = do
-  let (ta, s1) = unify ops env a a'
-  let (tbs, s2) = unifyAll ops env (map (substitute s1) bs) (map (substitute s1) bs')
-  (ta : tbs, s2 `compose` s1)
-unifyAll _ _ _ _ = ([], [])
-
-infer :: Ops -> Env -> Expr -> ((Expr, Type), Substitution)
-infer _ env Any = do
-  let y = newName ("_" : map fst env) "_"
-  ((Any, Var y), [(y, Var y)])
-infer _ _ Unit = ((Unit, Unit), [])
-infer _ _ IntT = ((IntT, IntT), [])
-infer _ _ NumT = ((NumT, NumT), [])
-infer _ _ (Int i) = ((Int i, IntT), [])
-infer _ _ (Num n) = ((Num n, NumT), [])
-infer ops env (Tag k a) = do
-  let ((a', ta), s) = infer ops env a
-  ((Tag k a', Tag k ta), s)
-infer ops env (Var x) = do
-  let (ta, s) = case lookup x env of
-        Just (Var x') | x == x' -> do
-          let y = newName (map fst env) (x ++ "T")
-          (Var y, [(y, Var y), (x, Ann (Var x) (Var y))])
-        Just (Ann (Var x') ty) | x == x' -> do
-          instantiate (map fst env) ty
-        -- Just a | x == "==" -> do
-        --   let ((_, ta), s) = infer ops ((x, Var x) : env) a
-        --   (error . intercalate "\n")
-        --     [ "infer " ++ show x ++ " ~> " ++ show a,
-        --       "env: " ++ show (map fst env),
-        --       "ta: " ++ show ta,
-        --       "s: " ++ show s,
-        --       ""
-        --     ]
-        Just a -> do
-          let ((_, ta), s) = infer ops [] a
-          (ta, s)
-        Nothing -> (Err (undefinedVar x), [])
-  ((Var x, ta), s)
-infer ops env (Ann a t) = check ops env a t
-infer ops env (And a b) = do
-  let ((a', ta), (b', tb), s) = infer2 ops env a b
-  ((And a' b', And ta tb), s)
-infer ops env (Or a b) = case (infer ops env a, infer ops env b) of
-  (((a', e1), _), ((b', e2), _)) | isErr e1 && isErr e2 -> ((Or a' b', Or e1 e2), [] :: Substitution)
-  (((a', ta), s), ((_, e), _)) | isErr e -> ((a', ta), s)
-  (((_, e), _), ((b', tb), s)) | isErr e -> ((b', tb), s)
-  (((a', ta), s1), ((b', tb), s2)) -> ((Or a' b', merge ops env ta tb), merge ops env s1 s2)
-infer ops env (For x a) = do
-  let y = newName (map fst env) x
-  let ((a', ta), s) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
-  ((For x (substitute [(y, Var x)] a'), ta), s)
-infer ops env (Fix x a) = do
-  let y = newName (map fst env) x
-  let ((a', ta), s) = infer ops ((y, Var y) : env) (substitute [(x, Var y)] a)
-  ((Fix x (substitute [(y, Var x)] a'), ta), s `compose` [(y, Var y)])
-infer ops env (Fun a b) = do
-  let ((a', ta), (b', tb), s) = infer2 ops env a b
-  ((Fun (typed (dropTypes a') ta) (typed b' tb), Fun ta tb), s)
--- infer ops env (App a b) = do
---   let ((b', tb), s1) = infer ops env b
---   let x = newName ("$" : map fst (s1 ++ env)) "$"
---   let ((a', ta), s2) = check ops ((x, Var x) : s1 `compose` env) (substitute s1 a) (Fun (substitute s1 tb) (Var x))
---   let t = fromMaybe (Var x) (lookup x s2)
---   -- if isErr tb
---   --   then ((substitute s2 tb, t), s2 `compose` s1)
---   --   else ((App a' (typed (substitute s2 b') (substitute s2 tb)), t), s2 `compose` s1)
---   (error . intercalate "\n")
---     [ "infer " ++ show (App a b),
---       "env: " ++ show (map fst env),
---       intercalate "\n" ((\(x, a) -> "  - " ++ show x ++ ": " ++ show (eval ops a)) <$> env),
---       "a: " ++ show a,
---       "a': " ++ show a',
---       "ta: " ++ show ta,
---       "b: " ++ show b,
---       "b': " ++ show b',
---       "tb: " ++ show tb,
---       "s1: " ++ show s1,
---       "s2: " ++ show s2,
---       "check " ++ show a ++ " -- " ++ show (Fun (substitute s1 tb) (Var x)),
---       ""
---     ]
-infer ops env (App a b) = do
-  let ((b', tb), s1) = infer ops env b
-  let x = newName ("$" : map fst (s1 ++ env)) "$"
-  let ((a', ta), s2) = check ops ((x, Var x) : s1 `compose` env) (substitute s1 a) (Fun (substitute s1 tb) (Var x))
-  let t = fromMaybe (Var x) (lookup x s2)
-  if isErr tb
-    then ((substitute s2 tb, t), s2 `compose` s1)
-    else ((App a' (typed (substitute s2 b') (substitute s2 tb)), t), s2 `compose` s1)
-infer ops env (Let defs a) = do
-  let ((a', ta), s) = infer ops (defs ++ env) a
-  ((Let defs a', ta), s)
-infer ops env (Call op args) = do
-  let y = newName ("_" : map fst env) "_"
-  let (args', s) = inferAll ops ((y, Var y) : env) args
-  ((Call op (map fst args'), substitute s (Var y)), s)
-infer ops env (Meta m a) = do
-  let ((a', ta), s) = infer ops env a
-  case (a', ta) of
-    (a', e) | isErr e -> ((Ann (Meta m a') e, e), s)
-    (a', ta) -> ((Meta m a', ta), s)
-infer _ _ (Err e) = ((Err e, Any), [])
-
-infer2 :: Ops -> Env -> Expr -> Expr -> ((Expr, Type), (Expr, Type), Substitution)
-infer2 ops env a b = do
-  let ((a', ta), s1) = infer ops env a
-  let ((b', tb), s2) = infer ops (s1 `compose` env) (substitute s1 b)
-  ((substitute s2 a', substitute s2 ta), (b', tb), s2 `compose` s1)
-
-inferAll :: Ops -> Env -> [Expr] -> ([(Expr, Type)], Substitution)
-inferAll _ _ [] = ([], [])
-inferAll ops env (a : bs) = do
-  let ((a', ta), s1) = infer ops env a
-  let (bts, s2) = inferAll ops (s1 `compose` env) (map (substitute s1) bs)
-  ((substitute s2 a', substitute s2 ta) : bts, s2 `compose` s1)
-
-check :: Ops -> Env -> Expr -> Type -> ((Expr, Type), Substitution)
--- check ops env a (For x@"a" ta) = do
---   let y = newName (map fst env) x
---   let ((a', ta'), s) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] ta)
---   -- ((a', For x (substitute [(y, Var x)] ta')), s)
---   (error . intercalate "\n")
---     [ "check " ++ show a ++ " -- " ++ show (For x ta),
---       "env: " ++ show (map fst env),
---       "y: " ++ y,
---       "a': " ++ show a',
---       "ta': " ++ show ta',
---       "s: " ++ show s,
---       ""
---     ]
-check ops env a (For x ta) = do
-  let y = newName (map fst env) x
-  let ((a', ta'), s) = check ops ((y, Var y) : env) a (substitute [(x, Var y)] ta)
-  ((a', For x (substitute [(y, Var x)] ta')), s)
--- check ops env (Or a b) t@Fun {} = case (check ops env a t, check ops env b t) of
---   (((a', e1), _), ((b', e2), _)) | isErr e1 && isErr e2 -> error $ show ((Or a' b', Or e1 e2), [] :: Substitution)
---   (((a', ta), s), ((_, e), _)) | isErr e -> error $ show ((a', ta), s)
---   (((_, e), _), ((b', tb), s)) | isErr e -> error $ show ((b', tb), s)
---   (((a', ta), s1), ((b', tb), s2)) ->
---     (error . intercalate "\n")
---       [ "check " ++ show (Or a b) ++ " -- " ++ show t,
---         show (Or a' b'),
---         show (merge ops env ta tb),
---         show (merge ops env s1 s2),
---         show s1,
---         show s2,
---         ""
---       ]
-check ops env (Or a b) t = case (check ops env a t, check ops env b t) of
-  (((a', e1), _), ((b', e2), _)) | isErr e1 && isErr e2 -> ((Or a' b', Or e1 e2), [])
-  (((a', ta), s), ((_, e), _)) | isErr e -> ((a', ta), s)
-  (((_, e), _), ((b', tb), s)) | isErr e -> ((b', tb), s)
-  (((a', ta), s1), ((b', tb), s2)) -> ((Or a' b', merge ops env ta tb), merge ops env s1 s2)
-check ops env (For x a) ta = do
-  let y = newName (map fst env) x
-  let ((a', ta'), s) = check ops ((y, Var y) : env) (substitute [(x, Var y)] a) ta
-  ((For x (substitute [(y, Var x)] a'), ta'), s)
--- check ops env (Fun a b@(Tag ":Ok" _)) (Fun ta tb) = do
---   let ((a', ta'), (b', tb'), s) = check2 ops env (a, ta) (b, tb)
---   -- error $ show ((Fun (typed (dropTypes a') ta') (typed b' tb'), Fun ta' tb'), s)
---   (error . intercalate "\n")
---     [ "check " ++ show (Fun a b) ++ " <--> " ++ show (Fun ta tb),
---       show (map fst env),
---       intercalate "\n" $ map (\(x, a) -> "  " ++ show x ++ ": " ++ show (eval ops a)) env,
---       ""
---     ]
-check ops env (Fun a b) (Fun ta tb) = do
-  let ((a', ta'), (b', tb'), s) = check2 ops env (a, ta) (b, tb)
-  ((Fun (typed (dropTypes a') ta') (typed b' tb'), Fun ta' tb'), s)
-check ops env (App a b) t2 = do
-  let ((b', t1), s1) = infer ops env b
-  let ((a', _), s2) = check ops (s1 `compose` env) (substitute s1 a) (Fun t1 (substitute s1 t2))
-  let s = s2 `compose` s1
-  ((App a' (substitute s2 (typed b' t1)), substitute s t2), s)
-check ops env a (Err _) = infer ops env a
-check ops env a (Meta m ta) = do
-  let ((a', ta'), s) = check ops env a ta
-  ((a', Meta m ta'), s)
-check ops env (Meta m a) ta = do
-  let ((a', ta'), s) = check ops env a ta
-  ((Meta m a', ta'), s)
--- check ops env a@(Var "==") t = do
---   let ((a', ta), s1) = infer ops env a
---   let (t', s2) = unify ops (s1 `compose` env) ta (substitute s1 t)
---   -- ((substitute s2 a', t'), s2 `compose` s1)
---   (error . intercalate "\n")
---     [ "check " ++ show a ++ " -- " ++ show t,
---       "a': " ++ show a',
---       "ta: " ++ show ta,
---       "s1: " ++ show s1,
---       "t': " ++ show t',
---       "s2: " ++ show s2,
---       ""
---     ]
-check ops env a t = do
-  let ((a', ta), s1) = infer ops env a
-  let (t', s2) = unify ops (s1 `compose` env) ta (substitute s1 t)
-  ((substitute s2 a', t'), s2 `compose` s1)
-
-check2 :: Ops -> Env -> (Expr, Type) -> (Expr, Type) -> ((Expr, Type), (Expr, Type), Substitution)
-check2 ops env (a, ta) (b, tb) = do
-  let ((a', ta'), s1) = check ops env a ta
-  let ((b', tb'), s2) = check ops (s1 `compose` env) (substitute s1 b) (substitute s1 tb)
-  ((substitute s2 a', substitute s2 ta'), (b', tb'), s2 `compose` s1)
-
-class Merge a where
-  merge :: Ops -> Env -> a -> a -> a
-
-instance Merge Expr where
-  merge :: Ops -> Env -> Expr -> Expr -> Expr
-  merge ops env (Ann a ta) (Ann b tb)
-    | Just x <- varOf a,
-      Just x' <- varOf b,
-      x == x' =
-        Ann a (merge ops env ta tb)
-  merge ops env a b = case unify ops env a b of
-    (a, []) | not (isErr a) -> a
-    _ -> Or a b
-
-instance Merge Substitution where
-  merge :: Ops -> Env -> Substitution -> Substitution -> Substitution
-  merge _ _ [] s = s
-  merge _ _ s [] = s
-  merge ops env ((x, a) : s1) s2 = case pop' x s2 of
-    Just (b, s2) -> (x, merge ops env a b) : merge ops env s1 s2
-    Nothing -> (x, a) : merge ops env s1 s2
 
 instantiate :: [String] -> Expr -> (Expr, Substitution)
 instantiate vars (For x a) | x `occurs` a = do
@@ -1250,76 +1202,389 @@ instantiate vars (For _ a) = instantiate vars a
 instantiate vars (Meta _ a) = instantiate vars a
 instantiate _ a = (a, [])
 
--- -- Core parser
--- type Parser a = P.Parser String a
+collapse :: [String] -> Expr -> Expr
+collapse vars = \case
+  Any -> Var (newName ("_" : vars) "_")
+  Ann a b -> collapse2 vars Ann a b
+  And a b -> collapse2 vars And a b
+  Or a b -> collapse2 vars Or a b
+  Fun a b -> collapse2 vars Fun a b
+  App a b -> collapse2 vars App a b
+  Call f a -> Call f (collapse vars a)
+  Let env a -> Let env (collapse vars a)
+  a -> apply (collapse vars) a
 
--- parseEnv :: Parser Env
--- parseEnv = do
---   env <- P.zeroOrMore parseDef
---   _ <- P.endOfFile
---   return env
+collapse2 :: [String] -> (Expr -> Expr -> Expr) -> Expr -> Expr -> Expr
+collapse2 vars f a b = do
+  let a' = collapse vars a
+  f a' (collapse (freeVars a' `union` vars) b)
 
--- parseDef :: Parser (String, Expr)
--- parseDef = do
---   x <- parseName
---   _ <- P.spaces
---   _ <- P.char '='
---   _ <- P.spaces
---   a <- parseExpr
---   _ <- P.spaces
---   _ <- P.char '\n'
---   _ <- P.whitespaces
---   return (x, a)
+trace1 :: (Show a) => [Char] -> [(String, Expr)] -> Expr -> a -> Bool
+trace1 name env a x = do
+  let xs = filterMap (\(x, a) -> if a == Var x then Just (show $ Var x) else Nothing) env
+  let env' = filterMap (\(x, a) -> if a /= Var x then Just (x, a) else Nothing) env
+  let lines =
+        [ ">> " ++ name ++ "[" ++ showCtr a ++ "]",
+          "   @" ++ unwords xs ++ " @{" ++ intercalate ", " (map show env') ++ "}",
+          "     a: "
+            ++ show (dropLet a),
+          "   " ++ show x
+        ]
+  -- False
+  trace (intercalate "\n" lines) False
 
--- parseName :: Parser String
--- parseName =
---   (P.oneOrMore . P.oneOf)
---     [ P.alphanumeric,
---       P.char '_',
---       P.char '-'
---     ]
+trace2 :: (Show a) => [Char] -> [(String, Expr)] -> Expr -> Expr -> a -> Bool
+trace2 name env a b x = do
+  let xs = filterMap (\(x, a) -> if a == Var x then Just (show $ Var x) else Nothing) env
+  let env' = filterMap (\(x, a) -> if a /= Var x then Just (x, a) else Nothing) env
+  let lines =
+        [ ">> " ++ name ++ "[" ++ showCtr a ++ ":" ++ showCtr b ++ "]",
+          "   @" ++ unwords xs ++ " @{" ++ intercalate ", " (map show env') ++ "}",
+          "     a: "
+            ++ show (dropLet a),
+          "     b: " ++ show (dropLet b),
+          "   " ++ show x
+        ]
+  -- False
+  trace (intercalate "\n" lines) False
 
--- parseExpr :: Parser Expr
--- parseExpr =
---   P.oneOf
---     [ Int <$> P.integer,
---       Num <$> P.number,
---       Tag <$> do
---         _ <- P.char ':'
---         parseName,
---       do
---         name <- parseName
---         let expr = case name of
---               "@IntT" -> IntT
---               "@NumT" -> NumT
---               "@Err" -> Err
---               x -> Var x
---         return expr,
---       do
---         _ <- P.char '('
---         tag <- parseName
---         _ <- P.spaces
---         expr <- case tag of
---           "@Ann" -> expr2 Ann parseExpr parseExpr
---           "@And" -> expr2 And parseExpr parseExpr
---           "@Or" -> expr2 Or parseExpr parseExpr
---           "@For" -> expr2 For parseName parseExpr
---           "@Fix" -> expr2 Fix parseName parseExpr
---           "@Fun" -> expr2 Fun parseExpr parseExpr
---           "@App" -> expr2 App parseExpr parseExpr
---           "@Call" -> do
---             f <- parseName
---             args <- P.zeroOrMore $ do
---               _ <- P.spaces
---               parseExpr
---             return (Call f args)
---           _ -> P.fail'
---         _ <- P.spaces
---         _ <- P.char ')'
---         return expr
---     ]
---   where
---     expr2 f p q = do
---       a <- p
---       _ <- P.spaces
---       f a <$> q
+class (Show a, Show b) => Inspect a b where
+  inspect :: String -> Env -> a -> b -> b
+
+instance (Show a) => Inspect Expr a where
+  inspect :: String -> Env -> Expr -> a -> a
+  inspect name env a x
+    | trace1 name env a x = undefined
+    | otherwise = x
+
+instance (Show a) => Inspect Expr [a] where
+  inspect :: String -> Env -> Expr -> [a] -> [a]
+  inspect name env a xs
+    | trace1 name env a $
+        (intercalate "\n")
+          ( ("--- " ++ show (length xs))
+              : map (\x -> "   - " ++ show x) xs
+          ) =
+        undefined
+    | otherwise = xs
+
+instance (Show a) => Inspect (Expr, Expr) a where
+  inspect :: String -> Env -> (Expr, Expr) -> a -> a
+  inspect name env (a, b) x
+    | trace2 name env a b x = undefined
+    | otherwise = x
+
+instance (Show a) => Inspect (Expr, Expr) [a] where
+  inspect :: String -> Env -> (Expr, Expr) -> [a] -> [a]
+  inspect name env (a, b) xs
+    | trace2 name env a b $
+        (intercalate "\n")
+          ( ("--- " ++ show (length xs))
+              : map (\x -> "   - " ++ show x) xs
+          ) =
+        undefined
+    | otherwise = xs
+
+class Merge a where
+  merge :: Ops -> Env -> a -> a -> a
+
+instance Merge Expr where
+  merge :: Ops -> Env -> Expr -> Expr -> Expr
+  merge ops env a a' | a == a' = a
+  -- merge ops env a b = case unify ops env a b of
+  --   Right (c, []) -> c
+  --   _ -> Or a b
+  merge ops env a b = error $ show "TODO: merge"
+
+instance Merge Substitution where
+  merge :: Ops -> Env -> Substitution -> Substitution -> Substitution
+  merge ops env [] s2 = s2
+  merge ops env ((x, a) : s1) s2 = case pop' x s2 of
+    Just (b, s2) -> (x, Var x) : merge ops env s1 s2
+    Nothing -> (x, a) : merge ops env s1 s2
+
+splitFun :: Ops -> Env -> Expr -> Maybe (Expr, Expr)
+splitFun ops env = \case
+  Or a b -> do
+    (a1, a2) <- splitFun ops env a
+    (b1, b2) <- splitFun ops env b
+    Just (merge ops env a1 b1, merge ops env a2 b2)
+  Fun a b -> Just (a, b)
+  Meta _ a -> splitFun ops env a
+  t -> Nothing
+
+data Typed a
+  = Ok [a]
+  | Fail [Error Expr]
+  deriving (Eq, Show)
+
+instance Functor Typed where
+  fmap :: (a -> b) -> Typed a -> Typed b
+  fmap f mx = do
+    x <- mx
+    return (f x)
+
+instance Applicative Typed where
+  pure :: a -> Typed a
+  pure x = Ok [x]
+
+  (<*>) :: Typed (a -> b) -> Typed a -> Typed b
+  (<*>) mf mx = do
+    f <- mf
+    fmap f mx
+
+instance Monad Typed where
+  (>>=) :: Typed a -> (a -> Typed b) -> Typed b
+  (>>=) (Ok xs) f = do
+    let partition (xs, e1) (Ok ys) = (xs ++ ys, e1)
+        partition (xs, e1) (Fail e2) = (xs, e1 ++ e2)
+    case foldl' partition ([], []) (map f xs) of
+      ([], e) -> Fail e
+      (ys, _) -> Ok ys
+  (>>=) (Fail e) _ = Fail e
+
+unify :: Ops -> Env -> (Expr, Expr) -> Typed (Expr, Substitution)
+unify ops env (Meta _ a, b) = unify ops env (a, b)
+unify ops env (a, Meta _ b) = unify ops env (a, b)
+unify ops env (Or a1 a2, b) = case (unify ops env (a1, b), unify ops env (a2, b)) of
+  (Ok xs, Ok ys) -> Ok (xs `union` ys)
+  (Ok xs, Fail _) -> Ok xs
+  (Fail _, Ok ys) -> Ok ys
+  (Fail e1, Fail e2) -> Fail (e1 ++ e2)
+unify ops env (a, Or b1 b2) = case (unify ops env (a, b1), unify ops env (a, b2)) of
+  (Ok xs, Ok ys) -> Ok (xs `union` ys)
+  (Ok xs, Fail _) -> Ok xs
+  (Fail _, Ok ys) -> Ok ys
+  (Fail e1, Fail e2) -> Fail (e1 ++ e2)
+unify _ _ (a, Any) = return (a, [])
+unify _ _ (Any, b) = return (b, [])
+unify _ _ (Unit, Unit) = return (Unit, [])
+unify _ _ (IntT, IntT) = return (IntT, [])
+unify _ _ (NumT, NumT) = return (NumT, [])
+unify _ _ (Int i, Int i') | i == i' = return (Int i, [])
+unify _ _ (Num n, Num n') | n == n' = return (Num n, [])
+unify ops env (Var x, b) = case b of
+  Var x' | x == x' -> return (Var x, [])
+  Ann (Var x') _ | x == x' -> return (Var x, [])
+  b | x `occurs` b -> Fail [occursError x b]
+  Tag k b | Just def <- lookup k env -> do
+    return (Tag k b, [(x, Tag k b), (k, def)])
+  b -> return (b, [(x, b)])
+unify ops env (Tag k a1, Tag k' a2) | k == k' = do
+  (a, s) <- unify ops env (a1, a2)
+  -- let def = case lookup k env of
+  --       Just b -> [(k, b)]
+  --       Nothing -> []
+  -- return (Tag k a, s `compose` def)
+  return (Tag k a, s)
+unify ops env (a, Var x) = unify ops env (Var x, a)
+unify ops env (a, Tag k b) | Just def <- lookup k env = do
+  let x = newName ((k ++ "$") : map fst env) (k ++ "$")
+  let env' = (x, Var x) : env
+  ((a, ta), (b, tb), s1) <- infer2 ops env' a b
+  (ctr, s2) <- unify ops (s1 `compose` env') (substitute s1 def, Fun (Ann b tb) (Fun (Ann a ta) (Var x)))
+  let s = s2 `compose` s1 `compose` [(x, Var x)]
+  -- let c = eval ops (Let (env) (curry' ctr [substitute s2 b, substitute s2 a]))
+  let c = fromMaybe (Var x) $ lookup x (s `compose` env)
+  return (dropTypes $ eval ops (Let env c), s `compose` [(k, def)])
+unify ops env (Tag k a, b) | Just def <- lookup k env = do
+  let x = newName ((k ++ "$") : map fst env) (k ++ "$")
+  let env' = (x, Var x) : env
+  ((a, ta), (b, tb), s1) <- infer2 ops env' a b
+  (ctr, s2) <- unify ops (s1 `compose` env') (substitute s1 def, Fun (Ann a ta) (Fun (Ann b tb) (Var x)))
+  let s = s2 `compose` s1 `compose` [(x, Var x)]
+  -- let c = eval ops (Let (env) (curry' ctr [substitute s2 a, substitute s2 b]))
+  let c = fromMaybe (Var x) $ lookup x (s `compose` env)
+  return (dropTypes $ eval ops (Let env c), s `compose` [(k, def)])
+unify ops env (For x a, b) = do
+  let y = newName (freeVars b `union` map fst env) x
+  (c, s) <- unify ops ((y, Var y) : env) (substitute [(x, Var y)] a, b)
+  -- return (for' [x] $ substitute [(y, Var x)] c, s)
+  return (for' [y] c, s)
+unify ops env (a, For x b) = do
+  let y = newName (freeVars a `union` map fst env) x
+  (c, s) <- unify ops ((y, Var y) : env) (a, substitute [(x, Var y)] b)
+  -- return (for' [x] $ substitute [(y, Var x)] c, s)
+  return (for' [y] c, s)
+unify ops env (Fix x a, Fix x' b) | x == x' = do
+  (c, s) <- unify ops ((x, Var x) : env) (a, b)
+  return (fix' [x] c, s)
+unify ops env (Fix x a, Fix y b) = error "TODO: unify Fix with different names"
+unify ops env (Ann a1 t1, Ann a2 t2) = do
+  (a, t, s) <- unify2 ops env (a1, a2) (t1, t2)
+  return (Ann a t, s)
+unify ops env (Ann a _, b) = unify ops env (a, b)
+unify ops env (a, Ann b _) = unify ops env (a, b)
+unify ops env (And a1 b1, And a2 b2) = do
+  (a, b, s) <- unify2 ops env (a1, a2) (b1, b2)
+  return (And a b, s)
+unify ops env (Fun a1 b1, Fun a2 b2) = do
+  (a, b, s) <- unify2 ops env (a1, a2) (b1, b2)
+  return (Fun a b, s)
+unify ops env (App a1 b1, App a2 b2) = do
+  (a, b, s) <- unify2 ops env (a1, a2) (b1, b2)
+  return (App a b, s)
+unify ops env (Call op a1, Call op' a2) | op == op' = do
+  (a, s) <- unify ops env (a1, a2)
+  return (Call op a, s)
+-- unify ops env (Let env' a) b = error "TODO: unify Let -- reduce first? also on App and Call?"
+-- unify ops env a (Let env' b) = error "TODO: unify Let -- reduce first? also on App and Call?"
+unify _ _ (Err, Err) = return (Err, [])
+unify _ _ (a, b) = Fail [typeMismatch a b]
+
+unify2 :: Ops -> Env -> (Expr, Expr) -> (Expr, Expr) -> Typed (Expr, Expr, Substitution)
+unify2 ops env aa bb = do
+  (a, s1) <- unify ops env aa
+  (b, s2) <- unify ops (s1 `compose` env) (substitute s1 bb)
+  return (substitute s2 a, b, s2 `compose` s1)
+
+infer :: Ops -> Env -> Expr -> Typed ((Expr, Type), Substitution)
+infer _ env Any = do
+  let y = newName ("_" : map fst env) "_"
+  return ((Any, Var y), [(y, Var y)])
+infer _ _ Unit = return ((Unit, Unit), [])
+infer _ _ IntT = return ((IntT, IntT), [])
+infer _ _ NumT = return ((NumT, NumT), [])
+infer _ _ (Int i) = return ((Int i, IntT), [])
+infer _ _ (Num n) = return ((Num n, NumT), [])
+infer ops env (Var x) = case lookup x env of
+  Just Any -> do
+    let y = newName (map fst env) (x ++ "T")
+    return ((Var x, Var y), [(y, Var y), (x, Ann (Var x) (Var y))])
+  Just (Var x') | x == x' -> do
+    let y = newName (map fst env) (x ++ "T")
+    return ((Var x, Var y), [(y, Var y), (x, Ann (Var x) (Var y))])
+  Just (Ann (Var x') ty) | x == x' -> do
+    return ((Var x, ty), [])
+  Just a -> do
+    -- TODO: does this work when inferring generic functions?
+    -- [ ((Var x, ta), [(x, Ann (Var x) ta)] `compose` s)
+    ((_, ta), s) <- infer ops env a
+    return ((Var x, ta), s)
+  Nothing -> Fail [undefinedVar x]
+infer ops env (Tag k a) = do
+  ((a, ta), s) <- infer ops env a
+  -- let def = case lookup k env of
+  --       Just a -> [(k, a)]
+  --       Nothing -> []
+  -- return ((Tag k a, Tag k ta), s `compose` def)
+  return ((Tag k a, Tag k ta), s)
+infer ops env (For x a) = do
+  let y = newName (map fst env) x
+  let yT = newName (y : map fst env) (y ++ "T")
+  let vars = [(yT, Var yT), (y, Ann (Var y) (Var yT))]
+  ((a, ta), s) <- infer ops (vars `compose` env) (substitute [(x, Var y)] a)
+  -- return ((for' [y, yT] a, ta), s `compose` vars)
+  return ((for' [x, yT] $ substitute [(y, Var x)] a, ta), s `compose` vars)
+infer ops env (Fix x a) | x `occurs` a = do
+  ((a, ta), s) <- infer ops ((x, Var x) : env) a
+  return ((Fix x a, ta), s `compose` [(x, Var x)])
+infer ops env (Fix _ a) = infer ops env a
+infer ops env (Ann a t) = check ops env (a, t)
+infer ops env (And a b) = do
+  ((a, ta), (b, tb), s) <- infer2 ops env a b
+  return ((And a b, And ta tb), s)
+infer ops env (Or a b) = case (infer ops env a, infer ops env b) of
+  (Ok xs, Ok ys) -> Ok (xs `union` ys)
+  (Ok xs, Fail _) -> Ok xs
+  (Fail _, Ok ys) -> Ok ys
+  (Fail e1, Fail e2) -> Fail (e1 ++ e2)
+infer ops env (Fun a b) = do
+  ((a, ta), (b, tb), s) <- infer2 ops env a b
+  return ((Fun (ann a ta) (ann b tb), Fun ta tb), s)
+infer ops env (App a b) = do
+  ((b, tb), s1) <- infer ops env b
+  ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun tb Any)
+  let (t1', t2') = case asFun ta of
+        Just ta -> ta
+        Nothing -> error ("Not a function:\n" ++ show (Ann a ta))
+  return ((App a (ann b t1'), t2'), s2 `compose` s1)
+infer ops env (Call op a) = do
+  let x = newName ("$" : map fst env) "$"
+  ((a, ta), s) <- infer ops ((x, Var x) : env) a
+  return ((Call op (Ann a ta), substitute s (Var x)), s `compose` [(x, Var x)])
+infer ops env (Let defs a) = do
+  ((a, t), s) <- infer ops (defs ++ env) a
+  return ((Let defs a, t), s)
+infer ops env (Meta _ a) = infer ops env a
+infer _ _ Err = return ((Err, Err), [])
+
+infer2 :: Ops -> Env -> Expr -> Expr -> Typed ((Expr, Type), (Expr, Type), Substitution)
+infer2 ops env a b = do
+  (at, s1) <- infer ops env a
+  (bt, s2) <- infer ops (s1 `compose` env) (substitute s1 b)
+  return (substitute s2 at, bt, s2 `compose` s1)
+
+check :: Ops -> Env -> (Expr, Type) -> Typed ((Expr, Type), Substitution)
+-- check ops env (Any, t) = Ok [((Any, t), [])]
+check ops env (a, Any) = infer ops env a
+check ops env (Meta _ a, t) = check ops env (a, t)
+check ops env (a, Meta _ t) = check ops env (a, t)
+check ops env (a, Or t1 t2) = case (check ops env (a, t1), check ops env (a, t2)) of
+  (Ok xs, Ok ys) -> Ok (xs `union` ys)
+  (Ok xs, Fail _) -> Ok xs
+  (Fail _, Ok ys) -> Ok ys
+  (Fail e1, Fail e2) -> Fail (e1 ++ e2)
+check ops env (Or a1 a2, t) = case (check ops env (a1, t), check ops env (a2, t)) of
+  (Ok xs, Ok ys) -> Ok (xs `union` ys)
+  (Ok xs, Fail _) -> Ok xs
+  (Fail _, Ok ys) -> Ok ys
+  (Fail e1, Fail e2) -> Fail (e1 ++ e2)
+check ops env (For x a, t)
+  | x `occurs` t = do
+      let y = newName (freeVars (Ann a t)) x
+      check ops env (For y (substitute [(x, Var y)] a), t)
+  | otherwise = do
+      let y = newName (map fst env) x
+      ((a, t), s) <- check ops ((y, Var y) : env) (substitute [(x, Var y)] a, t)
+      -- let xs = fromMaybe [y] (fmap freeVars (lookup y s))
+      -- let xs = [y] `intersect` freeVars (Ann a t) `intersect` map fst s
+      -- return ((for' xs a, t), s `compose` [(y, Var y)])
+      let a' = substitute [(x, Var y)] a
+      let xs = [x] `intersect` freeVars (Ann a' t) `intersect` map fst s
+      return ((for' xs a', t), s)
+check ops env (a, For x t)
+  | x `occurs` a = do
+      let y = newName (freeVars (Ann a t)) x
+      check ops env (a, for' [y] (substitute [(x, Var y)] t))
+  | otherwise = check ops env (For x a, t)
+check ops env (Fix x a, t) | x `occurs` a = do
+  ((a, t), s) <- check ops ((x, Var x) : env) (a, t)
+  return ((fix' [x] a, t), s `compose` [(x, Var x)])
+check ops env (Fix _ a, t) = check ops env (a, t)
+check ops env (Var x, t) = case lookup x env of
+  -- Just Any -> return ((Var x, t), [(x, Ann (Var x) t)])
+  Just (Var x') | x == x' -> return ((Var x, t), [(x, Ann (Var x) t)])
+  Just (Ann (Var x') ty) | x == x' -> do
+    (t, s) <- unify ops env (ty, t)
+    return ((Var x, t), [(x, Ann (Var x) t)] `compose` s)
+  Just a -> do
+    ((_, ta), s) <- check ops env (a, t)
+    return ((Var x, ta), s)
+  Nothing -> Fail [undefinedVar x]
+check ops env (And a b, And ta tb) = do
+  ((a, ta), (b, tb), s) <- check2 ops env (a, ta) (b, tb)
+  return ((And a b, And ta tb), s)
+check ops env (Fun a b, Fun ta tb) = do
+  ((a, ta), (b, tb), s) <- check2 ops env (a, ta) (b, tb)
+  return ((Fun (ann a ta) (ann b tb), Fun ta tb), s)
+check ops env (App a b, t) = do
+  ((b, tb), s1) <- infer ops env b
+  ((a, ta), s2) <- check ops (s1 `compose` env) (substitute s1 a, Fun tb (substitute s1 t))
+  let (t1, t2) = case asFun ta of
+        Just ta -> ta
+        Nothing -> error ("Not a function:\n" ++ show (Ann a ta))
+  return ((App a (ann (substitute s2 b) t1), t2), s2 `compose` s1)
+check ops env (Let defs a, t) = do
+  ((a, t), s) <- check ops (defs ++ env) (a, t)
+  return ((Let defs a, t), s)
+check ops env (a, t) = do
+  ((a, ta), s1) <- infer ops env a
+  (t, s2) <- unify ops (s1 `compose` env) (ta, substitute s1 t)
+  return ((substitute s2 a, t), s2 `compose` s1)
+
+check2 :: Ops -> Env -> (Expr, Type) -> (Expr, Type) -> Typed ((Expr, Type), (Expr, Type), Substitution)
+check2 ops env at bt = do
+  (at, s1) <- check ops env at
+  (bt, s2) <- check ops (s1 `compose` env) (substitute s1 bt)
+  return (substitute s2 at, bt, s2 `compose` s1)

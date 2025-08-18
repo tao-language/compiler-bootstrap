@@ -1,0 +1,184 @@
+type List(a) =
+| a :: List(a)
+| []
+
+: List(a) -> Bool
+let empty = match {
+| [] -> True
+| _ -> False
+}
+
+> empty([]) ~> True
+> [].empty ~> True
+> [1, 2, 3].empty ~> False
+
+: List(a) -> Int
+let length = match {
+| [] -> 0
+| [x, ..xs] -> 1 + xs.length
+}
+
+> [].length ~> 0
+> [10].length ~> 1
+> [10, 20, 30].length ~> 3
+
+# Access elements
+: (a, List(a)) -> Bool
+let (in) = match {
+| (_, []) -> False
+| (x, [y, ..ys]) if x == y -> True
+| (x, [_, ..ys]) -> x in ys
+}
+
+> 1 in [] ~> False
+> 1 in [1, 2, 3] ~> True
+> 3 in [1, 2, 3] ~> True
+> 0 in [1, 2, 3] ~> False
+> 1 not in [] ~> True
+> 1 not in [1, 2, 3] ~> False
+> 3 not in [1, 2, 3] ~> False
+> 0 not in [1, 2, 3] ~> True
+
+: List(a) -> Maybe(a)
+let first = match {
+| [] -> None
+| [x, ..] -> Some(x)
+}
+
+> [].first() ~> None
+> [1, 2, 3].first() ~> Some(1)
+
+: List(a) -> Maybe(a)
+let last = match {
+| [] -> None
+| [x] -> Some(x)
+| [_, ..xs] -> last(xs)
+}
+
+> [].last() ~> None
+> [1, 2, 3].last() ~> Some(3)
+
+: (List(a), Int) -> Maybe(a)
+let (.[]) = match {
+| ([], _) -> None
+| ([x, ..], 1) -> Some(x)
+| ([_, ..xs], i) -> xs[i - 1]
+}
+
+> [][1] ~> None
+> [10, 20, 30][0] ~> None
+> [10, 20, 30][1] ~> Some(10)
+> [10, 20, 30][2] ~> Some(20)
+> [10, 20, 30][3] ~> Some(30)
+> [10, 20, 30][4] ~> None
+> [10, 20, 30][-1] ~> None
+
+: (List(a), Int) -> Maybe(a)
+let get = match {
+| (xs, i) if i < 0 -> xs[xs.length() + i + 1]
+| (xs, i) -> xs[i]
+}
+
+> [].get(1) ~> None
+> [10, 20, 30].get(0) ~> None
+> [10, 20, 30].get(1) ~> Some(10)
+> [10, 20, 30].get(2) ~> Some(20)
+> [10, 20, 30].get(3) ~> Some(30)
+> [10, 20, 30].get(4) ~> None
+> [10, 20, 30].get(-1) ~> Some(30)
+> [10, 20, 30].get(-2) ~> Some(20)
+> [10, 20, 30].get(-3) ~> Some(10)
+> [10, 20, 30].get(-4) ~> None
+
+# : (List(a), Int, Int) -> Maybe(List(a))
+# let (.[:]) = match {
+# | ([], _, _) -> None
+# | ([x, ..xs], 1, j) -> match (xs, j)
+# }
+
+# > [][1:1] ~> None
+# > [10, 20, 30][0:0] ~> None
+# > [10, 20, 30][1:0] ~> Some([])
+# > [10, 20, 30][1:1] ~> Some([10])
+# > [10, 20, 30][1:2] ~> Some([10, 20])
+# > [10, 20, 30][1:3] ~> Some([10, 20, 30])
+# > [10, 20, 30][1:4] ~> Some([10, 20, 30])
+# > [10, 20, 30][1:4] ~> Some([10, 20, 30])
+# > [10, 20, 30][3:4] ~> Some([30])
+# > [10, 20, 30][4:4] ~> None
+
+# Transformations
+: (List(a), Int) -> List(a)
+let drop = match {
+| (xs, i) if i <= 0 -> xs
+| ([], _) -> []
+| ([_, ..xs], i) -> xs.drop(i - 1)
+}
+
+> [].drop(1) ~> []
+> [1, 2, 3].drop(-1) ~> [1, 2, 3]
+> [1, 2, 3].drop(0) ~> [1, 2, 3]
+> [1, 2, 3].drop(1) ~> [2, 3]
+> [1, 2, 3].drop(2) ~> [3]
+> [1, 2, 3].drop(3) ~> []
+> [1, 2, 3].drop(4) ~> []
+
+: (List(a), Int) -> List(a)
+let take = match {
+| (xs, i) if i <= 0 -> []
+| ([], _) -> []
+| ([x, ..xs], i) -> [x, ..xs.take(i - 1)]
+}
+
+> [].take(1) ~> []
+> [10, 20, 30].take(-1) ~> []
+> [10, 20, 30].take(0) ~> []
+> [10, 20, 30].take(1) ~> [10]
+> [10, 20, 30].take(2) ~> [10, 20]
+> [10, 20, 30].take(3) ~> [10, 20, 30]
+> [10, 20, 30].take(4) ~> [10, 20, 30]
+
+: (List(a), List(a)) -> List(a)
+let (++) = match {
+| ([], ys) -> ys
+| ([x, ..xs], ys) -> x :: (xs ++ ys)
+}
+
+> [] ++ [1, 2, 3] ~> [1, 2, 3]
+> [1] ++ [2, 3] ~> [1, 2, 3]
+> [1, 2] ++ [3] ~> [1, 2, 3]
+> [1, 2, 3] ++ [] ~> [1, 2, 3]
+
+: (List(a), a -> b) -> List(b)
+let map(xs, f) = match xs {
+| [] -> []
+| [x, ..xs] -> [f(x), ..xs.map(f)]
+}
+
+> [].map(x -> A(x)) ~> []
+> [1, 2, 3].map(x -> A(x)) ~> [A(1), A(2), A(3)]
+
+: (List(a), a -> Bool) -> List(a)
+let filter(xs, f) = match xs {
+| [] -> []
+| [x, ..xs] if f(x) -> [x, ..xs.filter(f)]
+| [_, ..xs] -> xs.filter(f)
+}
+
+> [1, 2, 3].filter(x -> x < 1) ~> []
+> [1, 2, 3].filter(x -> x < 2) ~> [1]
+> [1, 2, 3].filter(x -> x < 3) ~> [1, 2]
+> [1, 2, 3].filter(x -> x < 4) ~> [1, 2, 3]
+
+# map, filter, flat-map, foldl, foldr
+# flatten
+# push, pop, add, remove
+# all, any, max, min, sum, product, average, count
+# repeat, range, reverse
+# split, join, intercalate, sort, replace
+# take, drop, pad, trim, partition, zip, unzip
+# starts-with, ends-with
+# find
+# List comprehensions
+
+

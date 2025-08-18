@@ -1,7 +1,4 @@
-type Bool {
-| True
-| False
-}
+type Bool = True | False
 
 : Bool -> Bool
 let (not) = match {
@@ -9,11 +6,19 @@ let (not) = match {
 | _ -> True
 }
 
+> not True ~> False
+> not False ~> True
+
 : (Bool, Bool) -> Bool
 let (and) = match {
 | (True, True) -> True
 | _ -> False
 }
+
+> True and True ~> True
+> True and False ~> False
+> False and True ~> False
+> False and False ~> False
 
 : (Bool, Bool) -> Bool
 let (or) = match {
@@ -21,8 +26,18 @@ let (or) = match {
 | _ -> True
 }
 
+> True or True ~> True
+> True or False ~> True
+> False or True ~> True
+> False or False ~> False
+
 : (Bool, Bool) -> Bool
 let (xor) = match {
 | (x, x) -> False
 | _ -> True
 }
+
+> True xor True ~> False
+> True xor False ~> True
+> False xor True ~> True
+> False xor False ~> False

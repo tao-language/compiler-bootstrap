@@ -1,7 +1,7 @@
 module Stdlib where
 
 import Data.Function ((&))
-import Data.List (isPrefixOf, stripPrefix)
+import Data.List (isPrefixOf, nub, stripPrefix)
 import Data.Maybe (fromMaybe)
 
 replace :: (Eq a) => a -> a -> [a] -> [a]
@@ -84,3 +84,6 @@ lookupValue x = \case
   [] -> Nothing
   (k, v) : _ | v == x -> Just k
   _ : kvs -> lookupValue x kvs
+
+distinct :: (Eq a) => [a] -> [a]
+distinct = nub

@@ -82,7 +82,7 @@ instance ApplyPatch (Context, FilePath, [Rule]) Expr where
 instance ApplyPatch (Context, FilePath, Rule) Expr where
   applyPatch :: (Context, FilePath, Rule) -> Expr -> Expr
   applyPatch (ctx, path, (p, q)) expr = case Run.run ctx path (Let (p, expr) q) of
-    Err _ -> expr
+    Err -> expr
     result -> result
 
 class ApplyStep step a where

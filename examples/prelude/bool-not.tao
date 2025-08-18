@@ -1,7 +1,0 @@
--- T
-> not True
-False
-
--- F
-> not False
-True

@@ -1,8 +1,10 @@
 import Check (checkTypes)
 import Control.Monad (void)
 import qualified Core as C
+import Data.Either (fromRight)
 import Data.Function ((&))
 import Data.List (intercalate, isPrefixOf, isSuffixOf, partition)
+import Data.Maybe (fromMaybe)
 import Error
 import Load (include, load, loadExpr)
 import Patch
@@ -11,11 +13,11 @@ import qualified Python as Py
 import Run (run)
 import Stdlib (split2, splitWith, trimPrefix)
 import qualified System.Environment
-import System.Exit (exitFailure)
+import System.Exit (exitFailure, exitSuccess)
 import System.FilePath ((</>))
 import System.FilePath.Windows (dropExtension, takeBaseName, takeDirectory, takeFileName)
 import Tao
-import Test (testAll)
+import Test (count, testAll)
 
 main :: IO ()
 main = do
@@ -47,41 +49,42 @@ main = do
             buildPythonCmd (map (trimPrefix "-p=") patches) paths
         _ -> putStrLn $ "🛑 Target not supported: " ++ target
       _ -> putStrLn "🛑 Please give me a target."
-    _ -> error "TODO: repl"
+    args -> error "TODO: repl"
 
 coreCmd :: FilePath -> String -> IO ()
 coreCmd filename arg = do
-  pkg <- load [filename]
-  ctx <- include "prelude" pkg
-  arg' <- loadExpr "<core>" arg
+  pkg <- dropMeta <$> load [filename]
+  ctx <- dropMeta <$> include "prelude" pkg
+  expr <- dropMeta <$> loadExpr "<core>" arg
   -- TODO: check for errors
+  let printExpr a = putStrLn ("  " ++ C.format 80 "  " a)
   let path = dropExtension (snd (split2 ':' filename))
-  let a = lower arg'
-  let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
-  let ((a', t), s) = C.infer buildOps env a
-  let fmt = C.format 100 . C.dropMeta
-  putStrLn ("# env (" ++ show (length env) ++ " symbols)")
-  mapM_ (\(x, a) -> putStrLn ("- " ++ fmt (C.Var x) ++ ": " ++ fmt (C.dropLet a))) env
-  putStrLn "\n# expr"
-  putStrLn (fmt a')
-  putStrLn "\n# type"
-  putStrLn (fmt t)
-  putStrLn "\n# type substitutions"
-  mapM_ (\(x, a) -> putStrLn ("- " ++ fmt (C.Var x) ++ ": " ++ fmt a)) s
-  putStrLn "\n# result"
-  putStrLn (fmt (C.eval runtimeOps (C.dropMeta $ C.Let env a')))
-
--- @a x. (x : a) -> (@z. (z : a) -> ^True | (_ : a) -> ^False) (x : a)
---  : (@a. (a -> ^Bool))
+  let (env, a) = compile ctx path expr
+  putStrLn "---- env ----"
+  printExpr (C.let' env C.Any)
+  putStrLn $ ">> env: " ++ show (map fst env)
+  putStrLn "---- lower ----"
+  printExpr (lower expr)
+  putStrLn "---- bind ----"
+  printExpr (C.bind [] $ lower expr)
+  putStrLn "---- compile ----"
+  printExpr a
+  putStrLn "---- eval ----"
+  let b = C.eval runtimeOps $ C.let' env a
+  printExpr b
+  putStrLn ("--- " ++ C.showCtr' 3 b)
+  -- putStrLn "---- eval (untyped)"
+  -- printExpr (C.dropTypes b)
+  return ()
 
 runCmd :: FilePath -> String -> IO ()
 runCmd filename arg = do
   ctx <- load [filename]
   ctx <- include "prelude" ctx
-  arg' <- loadExpr "<run>" arg
+  expr <- loadExpr "<run>" arg
   -- TODO: check for errors
   let path = dropExtension (snd (split2 ':' filename))
-  print (dropTypes $ dropMeta $ Run.run ctx path arg')
+  print (dropTypes $ dropMeta $ Run.run ctx path expr)
 
 checkCmd :: FilePath -> IO ()
 checkCmd filename = do
@@ -106,6 +109,15 @@ testCmd path patterns = do
   -- TODO: display errors
   let results = testAll ctx pkg
   mapM_ (putStr . show) results
+  let (failures, total) = count results
+  putStrLn ""
+  putStrLn $ "Ran " ++ show total ++ " tests"
+  if failures > 0
+    then do
+      putStrLn $ " ✅ " ++ show (total - failures) ++ " passed"
+      putStrLn $ " ❌ " ++ show failures ++ " failed"
+      exitFailure
+    else exitSuccess
 
 patchCmd :: FilePath -> [FilePath] -> [FilePath] -> IO ()
 patchCmd buildDir patches sources = do

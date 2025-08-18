@@ -29,19 +29,15 @@ instance CheckTypes Stmt where
   checkTypes ctx path = \case
     Import {} -> []
     Def (p, b) -> do
-      let a = lower (Let (p, b) (Tuple []))
-      let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
-      let ((a', t), s) = C.infer buildOps env a
-      check (lift (C.Ann a' t))
+      let expr = (Let (p, b) (Tuple []))
+      let (env, a) = compile ctx path expr
+      check $ lift $ C.let' env a
     TypeDef {} -> []
     Test t -> do
-      let a = lower (Tuple [t.expr, t.expect])
-      let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
-      let ((a', t), s) = C.infer buildOps env a
-      check (lift (C.Ann a' t))
+      let expr = (Tuple [t.expr, t.expect])
+      let (env, a) = compile ctx path expr
+      check $ lift $ C.let' env a
     Run expr -> do
-      let a = lower expr
-      let env = concatMap (fst . compile ctx path) (C.freeNames (True, True, False) a)
-      let ((a', t), s) = C.infer buildOps env a
-      check (lift (C.Ann a' t))
+      let (env, a) = compile ctx path expr
+      check $ lift $ C.let' env a
     Comment _ -> []

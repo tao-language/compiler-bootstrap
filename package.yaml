@@ -30,8 +30,10 @@ library:
   source-dirs: src
 
 ghc-options:
-  - -Wall
-  - -Wno-name-shadowing
+  # TODO: re-enable warnings
+  - -w
+  # - -Wall
+  # - -Wno-name-shadowing
   - -j8
   - -XDuplicateRecordFields
   - -XFlexibleContexts
@@ -54,6 +56,7 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -j8
     dependencies:
     - compiler-bootstrap
 

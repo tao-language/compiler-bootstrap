@@ -1,0 +1,39 @@
+type Result(a, e) =
+| Ok(a)
+| Err(e)
+
+: (Result(a, e), a -> b) -> Result(b, e)
+let map(r, f) = match r {
+| Ok(x) -> Ok(f(x))
+| Err(e) -> Err(e)
+}
+
+> map(Ok(1), x -> A(x)) ~> Ok(A(1))
+> Ok(1).map(x -> A(x)) ~> Ok(A(1))
+> Err(0).map(x -> A(x)) ~> Err(0)
+
+: (Result(a, e1), e1 -> e2) -> Result(a, e2)
+let map-error(r, f) = match r {
+| Ok(x) -> Ok(x)
+| Err(e) -> Err(f(e))
+}
+
+> map-error(Ok(1), x -> A(x)) ~> Ok(1)
+> map-error(Err(0), x -> A(x)) ~> Err(A(0))
+> Ok(1).map-error(x -> A(x)) ~> Ok(1)
+> Err(0).map-error(x -> A(x)) ~> Err(A(0))
+
+: (Result(a, e), a -> b) -> Result(b, e)
+let (<-) = map
+
+> let x <- Ok(1); A(x) ~> Ok(A(1))
+> let x <- Err(0); A(x) ~> Err(0)
+
+: (Result(a, e), a) -> a
+let r or y = match r {
+| Ok(x) -> x
+| Err(_) -> y
+}
+
+> Ok(1) or 2 ~> 1
+> Err(0) or 2 ~> 2

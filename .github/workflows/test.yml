@@ -3,7 +3,7 @@ name: λ
 on: push
 
 env:
-  GHC_VERSION: "9.8.2"
+  GHC_VERSION: "9.10.1"
 
 jobs:
   # lint:

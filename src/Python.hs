@@ -570,7 +570,7 @@ instance Emit T.Expr ([Stmt], Expr) where
       -- let (stmts, a') = emit options a
       -- (stmts, Meta (fmap (emit options) m) a')
       error "TODO"
-    T.Err e -> ([], notImplementedError (show e))
+    -- T.Err e -> ([], notImplementedError (show e))
     expr -> error $ "TODO: emit Expr: " ++ show expr
 
 instance Emit (Expr -> Stmt) (T.Expr -> [Stmt]) where
@@ -624,7 +624,7 @@ instance Emit T.Op2 (T.Expr -> T.Expr -> ([Stmt], Expr)) where
           T.Sub -> BinOp a' Sub b'
           T.Mul -> BinOp a' Mult b'
           T.Div -> BinOp a' Div b'
-          T.DivI -> BinOp a' FloorDiv b'
+          T.Div2 -> BinOp a' FloorDiv b'
           -- Mod -- x % y
           T.Pow -> BinOp a' Pow b'
           -- LShift -- x << y
@@ -716,7 +716,7 @@ instance Emit [T.Stmt] [Stmt] where
 
 --- Pretty printing layouts ---
 pretty :: BuildOptions -> PP.Layout -> String
-pretty options = PP.pretty options.maxLineLength options.indent
+pretty options = PP.pretty options.maxLineLength (options.indent, "")
 
 class Layout a where
   layout :: a -> PP.Layout
