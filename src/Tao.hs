@@ -1062,15 +1062,14 @@ grammar = do
           -- Grammar.App
           let parser a expr = do
                 start <- P.getState
-                args <- parseCollection "(" "," ")" $ do
-                  parseExprUntil "app arg" 0 [",", ")", "\n"]
+                args <- parseCollection "(" "," ")" (parseExpr 0)
                 end <- P.getState
                 _ <- P.spaces
-                return (withLoc start end $ app a args)
+                return (withLoc start end $ App a (Tuple args))
            in G.InfixL 19 parser $ \lhs rhs -> \case
                 App a b -> do
-                  let args = tupleOf b
-                  Just (lhs a ++ layoutCollection "(" "," ")" (map (layout 0) args) ++ [PP.Text ")"])
+                  let args = map (layout 0) (tupleOf b)
+                  Just (lhs a ++ layoutArgs args)
                 _ -> Nothing,
           -- Grammar.Get | Grammar.Slice
           let parser a expr = do
