@@ -504,6 +504,18 @@ bound = \case
   Fun a b -> For [] (Fun (bound a) (bound b))
   a -> apply bound a
 
+isSimpleExpr :: Expr -> Bool
+isSimpleExpr = \case
+  For _ _ -> False
+  Or _ _ -> False
+  Fun _ _ -> False
+  Match _ _ -> False
+  MatchFun _ -> False
+  Let _ _ -> False
+  Bind _ _ -> False
+  Meta _ a -> isSimpleExpr a
+  _ -> True
+
 -- Helper functions
 class Apply a where
   apply :: (Expr -> Expr) -> a -> a
@@ -733,6 +745,16 @@ layoutDecorator op match rhs a = do
     then Just (decorator : alt2)
     else Just [decorator, PP.Or alt1 alt2]
 
+layoutLeading :: (String, String) -> (Expr -> Maybe (Expr, Expr)) -> (Expr -> PP.Layout) -> (Expr -> PP.Layout) -> Expr -> Maybe PP.Layout
+layoutLeading (op1, op2) match lhs rhs a = do
+  (x, y) <- match a
+  let alt1 = lhs x ++ [PP.Text " | "] ++ rhs y
+  let alt2 = lhs x ++ [PP.NewLine, PP.Text "| ", PP.Indent (rhs y)]
+  return $
+    if isSimpleExpr x
+      then [PP.Or alt1 alt2]
+      else alt2
+
 grammar :: G.Grammar String Expr
 grammar = do
   let loc0 f location _ = Meta (C.Loc location) f
@@ -856,6 +878,9 @@ grammar = do
                 Bind (a, b) c -> Just (PP.Text "let " : layout a ++ PP.Text " <- " : layout b ++ PP.NewLine : layout c)
                 _ -> Nothing,
           -- Grammar.Ann
+          G.InfixR 1 (G.parserLeading ":" (loc2 Ann)) $ layoutLeading (" : ", ": ") $ \case
+            Ann a b -> Just (a, b)
+            _ -> Nothing,
           G.infixR 1 (loc2 Ann) ":" $ \case
             Ann a b -> Just (a, " ", b)
             _ -> Nothing,
@@ -868,8 +893,8 @@ grammar = do
             Op2 PipeR a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Or
-          G.infixR 3 (loc2 Or) "|" $ \case
-            Or a b -> Just (a, " ", b)
+          G.InfixR 3 (G.parserLeading "|" (loc2 Or)) $ layoutLeading (" | ", "| ") $ \case
+            Or a b -> Just (a, b)
             _ -> Nothing,
           -- Grammar.Op2.ShiftL
           G.infixR 6 (locOp2 ShiftL) "<<" $ \case
@@ -880,8 +905,8 @@ grammar = do
             Op2 ShiftR a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Fun
-          G.infixR 8 (loc2 Fun) "->" $ \case
-            Fun a b -> Just (a, " ", b)
+          G.InfixR 8 (G.parserLeading "->" (loc2 Fun)) $ layoutLeading (" -> ", "->") $ \case
+            Fun a b -> Just (a, b)
             _ -> Nothing,
           -- Grammar.If
           let parser a expr = do
