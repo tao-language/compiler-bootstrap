@@ -5,8 +5,6 @@ import Location (Position (..))
 import Parser
 import Test.Hspec (SpecWith, describe, it, shouldBe)
 
-type Context = String
-
 data Expr -- for `operators`
   = Var String
   | Neg Expr
@@ -31,15 +29,15 @@ instance Show Expr where
 
 run :: SpecWith ()
 run = describe "--==☯ Parser ☯==--" $ do
-  let parse' :: Parser Context a -> String -> Either String (a, String)
+  let parse' :: Parser a -> String -> Either String (a, String)
       parse' parser txt = case parse parser "ParserTests" txt of
         Right (x, state) -> Right (x, state.remaining)
         Left state -> Left state.remaining
-  let parseErrors :: Parser Context a -> String -> (Maybe a, [Context], String)
-      parseErrors parser txt = case parse parser "ParserTests" txt of
-        Right (x, state) -> (Just x, state.context, state.remaining)
-        Left state -> (Nothing, state.context, state.remaining)
-  let parseShow :: (Show a) => Parser Context a -> String -> Maybe String
+  let parseExpected :: Parser a -> String -> (Maybe a, String, String)
+      parseExpected parser txt = case parse parser "ParserTests" txt of
+        Right (x, state) -> (Just x, state.expected, state.remaining)
+        Left state -> (Nothing, state.expected, state.remaining)
+  let parseShow :: (Show a) => Parser a -> String -> Maybe String
       parseShow parser txt = case parse parser "ParserTests" txt of
         Right (x, _) -> Just (show x)
         Left _ -> Nothing
@@ -49,7 +47,7 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "a" `shouldBe` Right (True, "a")
 
   it "☯ fail'" $ do
-    let p = parse' (fail' :: Parser Context ())
+    let p = parse' (fail' :: Parser ())
     p "a" `shouldBe` Left "a"
 
   it "☯ anyChar" $ do
@@ -59,14 +57,14 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "1bc" `shouldBe` Right ('1', "bc")
     p "_bc" `shouldBe` Right ('_', "bc")
 
-  it "☯ getState" $ do
+  it "☯ state" $ do
     let parser = do
-          s1 <- getState
+          s1 <- state
           _ <- anyChar
-          s2 <- getState
+          s2 <- state
           ok (s1, s2)
     let p = parse' parser
-    let s1 = State {remaining = "abc", filename = "ParserTests", pos = Pos 1 1, index = 0, context = []}
+    let s1 = State {remaining = "abc", filename = "ParserTests", pos = Pos 1 1, index = 0, expected = "", committed = False}
     let s2 = s1 {remaining = "bc", index = 1, pos = Pos 1 2}
     p "abc" `shouldBe` Right ((s1, s2), "bc")
 
@@ -251,37 +249,35 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "a" `shouldBe` Right ("a", "")
     p "" `shouldBe` Left ""
 
-  it "☯ commit" $ do
-    let parser = do
-          x <- letter
-          commit "letter"
-          return x
-    let p = parseErrors parser
-    p "" `shouldBe` (Nothing, [], "")
-    p "abc" `shouldBe` (Just 'a', ["letter"], "bc")
-    p "123" `shouldBe` (Nothing, [], "123")
+  it "☯ expect" $ do
+    let p = parseExpected (char 'a')
+    p "abc" `shouldBe` (Just 'a', "", "bc")
+    p "bc" `shouldBe` (Nothing, "'a'", "bc")
 
-  it "☯ LL(k) parser" $ do
+  it "☯ commit" $ do
+    let parser = commit "committed" letter
+    let p = parseExpected parser
+    p "" `shouldBe` (Nothing, "letter", "")
+    p "abc" `shouldBe` (Just 'a', "committed", "bc")
+    p "123" `shouldBe` (Nothing, "letter", "123")
+
+  it "☯ LL(k) parser -- expect + commit + oneOf" $ do
     let letters = do
-          x <- letter
-          commit "letter"
+          x <- commit "letter!" letter
           xs <- oneOrMore letter
-          commit "letters"
           return (x : xs)
     let digits = do
-          x <- digit
-          commit "digit"
+          x <- commit "digit!" digit
           xs <- oneOrMore digit
-          commit "digits"
           return (x : xs)
-    let p = parseErrors (do _ <- commit "init"; oneOf [letters, digits])
-    p "" `shouldBe` (Nothing, ["init"], "")
-    p "a" `shouldBe` (Nothing, ["letter", "init"], "")
-    p "a2" `shouldBe` (Nothing, ["letter", "init"], "2")
-    p "ab" `shouldBe` (Just "ab", ["init"], "")
-    p "1" `shouldBe` (Nothing, ["digit", "init"], "")
-    p "1b" `shouldBe` (Nothing, ["digit", "init"], "b")
-    p "12" `shouldBe` (Just "12", ["init"], "")
+    let p = parseExpected (expect "alphanum" $ oneOf [letters, digits])
+    p "" `shouldBe` (Nothing, "alphanum", "")
+    p "a" `shouldBe` (Nothing, "alphanum", "a")
+    p "a2" `shouldBe` (Nothing, "alphanum", "a2")
+    p "ab" `shouldBe` (Just "ab", "", "")
+    p "1" `shouldBe` (Nothing, "alphanum", "1")
+    p "1b" `shouldBe` (Nothing, "alphanum", "1b")
+    p "12" `shouldBe` (Just "12", "", "")
 
   it "☯ skipTo" $ do
     let p = parse' (skipTo (char '.'))

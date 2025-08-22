@@ -10,6 +10,7 @@ import Debug.Trace (trace)
 import Error
 import qualified Grammar as G
 import Location (Location (..), Position (..), Range (..))
+import Parser (Parser)
 import qualified Parser as P
 import qualified PrettyPrint as PP
 import Stdlib
@@ -19,8 +20,6 @@ import Stdlib
 -- Type inference from scratch: https://youtu.be/ytPAlhnAKro -- https://github.com/kritzcreek/fby19
 -- Bidirectional type checking: https://www.youtube.com/live/utyBNDj7s2w -- https://www.cl.cam.ac.uk/~nk480/bidir.pdf
 -- Verse calculus: https://simon.peytonjones.org/verse-calculus
-
-type Parser a = P.Parser String a
 
 data Expr
   = Any
@@ -145,7 +144,7 @@ instance Monad MatchResult where
   (>>=) (MaybeMatched a b) _ = MaybeMatched a b
   (>>=) (NotMatched a b) _ = NotMatched a b
 
-parse :: Int -> FilePath -> String -> Either (P.State String) (Expr, P.State String)
+parse :: Int -> FilePath -> String -> Either P.State (Expr, P.State)
 parse prec = P.parse (G.parser grammar prec)
 
 layout :: Int -> Expr -> PP.Layout
@@ -227,7 +226,7 @@ layoutDecorator op match rhs a = do
     then Just (decorator : alt2)
     else Just [decorator, PP.Or alt1 alt2]
 
-grammar :: G.Grammar String Expr
+grammar :: G.Grammar Expr
 grammar = do
   G.Grammar
     { group = ("(", ")"),

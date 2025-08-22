@@ -55,10 +55,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
           caseN f = For "x" (Fun x (x `mul` App (Var f) (x `sub` i1)))
 
   let filename = "<CoreTests>"
-  let parse' :: String -> Either ([String], String) (Expr, String)
+  let parse' :: String -> Either (String, String) (Expr, String)
       parse' text = case parse 0 filename text of
         Right (a, s) -> Right (a, s.remaining)
-        Left s -> Left (s.context, s.remaining)
+        Left s -> Left (s.expected, s.remaining)
   let parseWith :: [(String, String)] -> String -> Either String (Env, Expr)
       parseWith envSrc src = do
         let p src = case parse' src of

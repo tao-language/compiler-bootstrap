@@ -14,10 +14,10 @@ import Test.Hspec
 filename :: String
 filename = "<TaoTests>"
 
-parse' :: String -> Either ([String], String) (Expr, String)
+parse' :: String -> Either (String, String) (Expr, String)
 parse' text = case parse 0 filename text of
   Right (a, s) -> Right (a, s.remaining)
-  Left s -> Left (s.context, s.remaining)
+  Left s -> Left (s.expected, s.remaining)
 
 -- fmt :: Expr -> String
 -- fmt = show . dropLocations
@@ -191,7 +191,9 @@ run = describe "--==☯ Tao ☯==--" $ do
     "" `shouldBe` ""
 
   it "☯ Tao.grammar.parser.errors" $ do
-    parse' "$" `shouldBe` Left ([], "$")
+    parse' "$ \n" `shouldBe` Left ([], "$ \n")
+    parse' "($, x) \n" `shouldBe` Right (loc 1 1 1 7 $ Tuple [syntaxError (loc' 1 2 1 3) "tuple item" "$", x 1 5], "\n")
+    parse' "(x, $) \n" `shouldBe` Right (loc 1 1 1 7 $ Tuple [x 1 2, syntaxError (loc' 1 5 1 6) "tuple item" "$"], "\n")
 
   it "☯ Tao.grammar.layout" $ do
     "" `shouldBe` ""

@@ -12,52 +12,50 @@ import Location (Location (..), Position (..), Range (..))
 import qualified Location as Loc
 import Stdlib (filterMap)
 
-newtype Parser ctx a
-  = Parser (State ctx -> Either (State ctx) (a, State ctx))
+newtype Parser a
+  = Parser (State -> Either State (a, State))
 
-data State ctx = State
+data State = State
   { remaining :: String,
     filename :: String,
     pos :: Position,
     index :: Int,
-    context :: [ctx]
+    expected :: String,
+    committed :: Bool
   }
   deriving (Eq, Show)
 
-instance Functor (Parser ctx) where
-  fmap :: (a -> b) -> Parser ctx a -> Parser ctx b
-  fmap f (Parser p) =
-    Parser
-      ( \state -> case p state of
-          Right (x, state) -> Right (f x, state)
-          Left state -> Left state
-      )
+instance Functor Parser where
+  fmap :: (a -> b) -> Parser a -> Parser b
+  fmap f parser = do
+    x <- parser
+    return (f x)
 
-instance Applicative (Parser ctx) where
-  pure :: a -> Parser ctx a
+instance Applicative Parser where
+  pure :: a -> Parser a
   pure = ok
 
-  (<*>) :: Parser ctx (a -> b) -> Parser ctx a -> Parser ctx b
+  (<*>) :: Parser (a -> b) -> Parser a -> Parser b
   parserF <*> parser = do
     f <- parserF
     fmap f parser
 
-instance Monad (Parser ctx) where
-  (>>=) :: Parser ctx a -> (a -> Parser ctx b) -> Parser ctx b
+instance Monad Parser where
+  (>>=) :: Parser a -> (a -> Parser b) -> Parser b
   Parser p >>= f =
     Parser
-      ( \state -> case p state of
-          Right (x, state) -> apply (f x) state
-          Left state -> Left state
+      ( \s1 -> case p s1 of
+          Right (x, s2) -> apply (f x) s2
+          Left s2 -> Left s2
       )
 
-  return :: a -> Parser ctx a
+  return :: a -> Parser a
   return = pure
 
-apply :: Parser ctx a -> State ctx -> Either (State ctx) (a, State ctx)
+apply :: Parser a -> State -> Either State (a, State)
 apply (Parser p) = p
 
-parse :: Parser ctx a -> FilePath -> String -> Either (State ctx) (a, State ctx)
+parse :: Parser a -> FilePath -> String -> Either State (a, State)
 parse (Parser p) filename remaining =
   p
     State
@@ -65,10 +63,11 @@ parse (Parser p) filename remaining =
         filename = filename,
         pos = Pos 1 1,
         index = 0,
-        context = []
+        expected = "",
+        committed = False
       }
 
-parseFrom :: Position -> String -> Parser ctx a -> Parser ctx a
+parseFrom :: Position -> String -> Parser a -> Parser a
 parseFrom pos remaining (Parser p) =
   Parser
     ( \state -> case p state {pos = pos, remaining = remaining} of
@@ -76,17 +75,17 @@ parseFrom pos remaining (Parser p) =
         Left state -> Left state
     )
 
-ok :: a -> Parser ctx a
+ok :: a -> Parser a
 ok x = Parser (\state -> Right (x, state))
 
-fail' :: Parser ctx a
+fail' :: Parser a
 fail' = Parser Left
 
-assert :: Bool -> Parser ctx ()
+assert :: Bool -> Parser ()
 assert True = ok ()
 assert False = fail'
 
-if' :: (a -> Bool) -> Parser ctx a -> Parser ctx a
+if' :: (a -> Bool) -> Parser a -> Parser a
 if' check (Parser p) =
   Parser
     ( \state -> case p state of
@@ -95,17 +94,19 @@ if' check (Parser p) =
         Left state -> Left state
     )
 
-oneOf :: [Parser ctx a] -> Parser ctx a
+oneOf :: [Parser a] -> Parser a
 oneOf [] = fail'
 oneOf (Parser p : choices) =
   Parser
-    ( \state1 -> case p state1 {context = []} of
-        Right (x, state2) -> Right (x, state2 {context = state1.context})
-        Left State {context = []} -> apply (oneOf choices) state1
-        Left state2 -> Left state2 {context = state2.context ++ state1.context}
+    ( \s1 -> case p s1 {committed = False} of
+        Right (x, s2) -> Right (x, s2 {committed = s1.committed})
+        Left State {committed = True} -> Left s1
+        Left _ -> apply (oneOf choices) s1
+        -- Left State {committed = False} -> apply (oneOf choices) s1
+        -- Left s2 -> Left s2
     )
 
-choose :: (a -> a -> Either () ()) -> [Parser ctx a] -> Parser ctx a
+choose :: (a -> a -> Either () ()) -> [Parser a] -> Parser a
 choose _ [] = fail'
 choose _ [p] = p
 choose f (Parser p : ps) = do
@@ -118,29 +119,54 @@ choose f (Parser p : ps) = do
     (Left _, Right result) -> Right result
     (Left _, Left s2) -> Left s2
 
-chooseShortest :: [Parser ctx [a]] -> Parser ctx [a]
+chooseShortest :: [Parser [a]] -> Parser [a]
 chooseShortest = do
   let f [] _ = Left ()
       f _ [] = Right ()
       f (_ : xs) (_ : ys) = f xs ys
   choose f
 
-chooseLongest :: [Parser ctx [a]] -> Parser ctx [a]
+chooseLongest :: [Parser [a]] -> Parser [a]
 chooseLongest = do
   let f _ [] = Left ()
       f [] _ = Right ()
       f (_ : xs) (_ : ys) = f xs ys
   choose f
 
-getState :: Parser ctx (State ctx)
-getState = Parser (\state -> Right (state, state))
+state :: Parser State
+state = Parser (\state -> Right (state, state))
 
 -- Error handling
-commit :: ctx -> Parser ctx ()
-commit ctx = Parser (\state -> Right ((), state {context = ctx : state.context}))
+expect :: String -> Parser a -> Parser a
+expect message (Parser p) =
+  Parser
+    ( \s1 -> case p s1 of
+        Right (x, s2) -> Right (x, s2 {expected = s1.expected})
+        Left s2 -> Left (s2 {expected = message})
+    )
 
-skipTo :: Parser ctx delim -> Parser ctx String
+commit :: String -> Parser a -> Parser a
+commit message (Parser p) =
+  Parser
+    ( \s1 -> case p s1 {expected = message, committed = True} of
+        Right (x, s2) -> Right (x, s2)
+        Left s2 -> Left s2 {committed = s1.committed}
+    )
+
+recover :: [Parser until] -> (State -> String -> a) -> Parser a
+-- Skips at least one character to any of the delimiters in order, but fails if it can't.
+-- To recover from anything, include `endOfFile` to recover to the end of the file.
+recover delims catch = do
+  txt <- skipTo (lookahead $ oneOf delims)
+  case txt of
+    "" -> fail'
+    txt -> do
+      s <- state
+      return (catch s txt)
+
+skipTo :: Parser delim -> Parser String
 skipTo delim =
+  -- Skips to, but does not consume the delimiter
   oneOf
     [ "" <$ lookahead delim,
       do
@@ -149,94 +175,79 @@ skipTo delim =
         ok (c : cs)
     ]
 
-recover :: [Parser ctx until] -> Parser ctx (State ctx, Int)
-recover until = do
-  state1 <- getState
-  _ <- anyChar
-  _ <- skipTo (lookahead $ oneOf until)
-  state2 <- getState
-  return (state1, state2.index - state1.index)
-
-try :: Parser ctx a -> Parser ctx b -> Parser ctx (Either b a)
-try (Parser p) else' =
-  Parser
-    ( \state -> case p state of
-        Right (x, state) -> apply (ok (Right x)) state
-        Left state' -> apply (Left <$> else') state {context = state'.context}
-    )
-
 -- Single characters
-anyChar :: Parser ctx Char
+anyChar :: Parser Char
 anyChar =
-  Parser
-    ( \state -> do
-        case state.remaining of
-          '\n' : src -> Right ('\n', state {remaining = src, index = state.index + 1, pos = Pos (state.pos.row + 1) 1})
-          c : src -> Right (c, state {remaining = src, index = state.index + 1, pos = Pos state.pos.row (state.pos.col + 1)})
-          "" -> Left state
-    )
+  expect "character" $
+    Parser
+      ( \state -> do
+          case state.remaining of
+            '\n' : src -> Right ('\n', state {remaining = src, index = state.index + 1, pos = Pos (state.pos.row + 1) 1})
+            c : src -> Right (c, state {remaining = src, index = state.index + 1, pos = Pos state.pos.row (state.pos.col + 1)})
+            "" -> Left state
+      )
 
-char :: Char -> Parser ctx Char
-char c = charIf (== c)
+char :: Char -> Parser Char
+char c = expect (show c) $ charIf (== c)
 
-charNoCase :: Char -> Parser ctx Char
-charNoCase c = if' (\c' -> Char.toLower c == Char.toLower c') anyChar
+charNoCase :: Char -> Parser Char
+charNoCase c = expect (show c ++ " (case insensitive)") $ if' (\c' -> Char.toLower c == Char.toLower c') anyChar
 
-charIf :: (Char -> Bool) -> Parser ctx Char
+charIf :: (Char -> Bool) -> Parser Char
 charIf f = if' f anyChar
 
-letter :: Parser ctx Char
-letter = if' Char.isLetter anyChar
+letter :: Parser Char
+letter = expect "letter" $ if' Char.isLetter anyChar
 
-lowercase :: Parser ctx Char
-lowercase = if' Char.isLower anyChar
+lowercase :: Parser Char
+lowercase = expect "lowercase letter" $ if' Char.isLower anyChar
 
-uppercase :: Parser ctx Char
-uppercase = if' Char.isUpper anyChar
+uppercase :: Parser Char
+uppercase = expect "uppercase letter" $ if' Char.isUpper anyChar
 
-digit :: Parser ctx Char
-digit = if' Char.isDigit anyChar
+digit :: Parser Char
+digit = expect "digit" $ if' Char.isDigit anyChar
 
-alphanumeric :: Parser ctx Char
-alphanumeric = if' Char.isAlphaNum anyChar
+alphanumeric :: Parser Char
+alphanumeric = expect "letter or digit" $ if' Char.isAlphaNum anyChar
 
-punctuation :: Parser ctx Char
+punctuation :: Parser Char
 punctuation = if' Char.isPunctuation anyChar
 
-space :: Parser ctx Char
+space :: Parser Char
 space = if' (`elem` " \t") anyChar
 
-spaces :: Parser ctx String
+spaces :: Parser String
 spaces = zeroOrMore space
 
-whitespace :: Parser ctx Char
+whitespace :: Parser Char
 whitespace = if' (`elem` " \t\n\r\f\v") anyChar
 
-whitespaces :: Parser ctx String
+whitespaces :: Parser String
 whitespaces = zeroOrMore whitespace
 
-paddedL :: Parser ctx padding -> Parser ctx a -> Parser ctx a
+paddedL :: Parser padding -> Parser a -> Parser a
 paddedL padding parser = do
   _ <- padding
   parser
 
-paddedR :: Parser ctx padding -> Parser ctx a -> Parser ctx a
+paddedR :: Parser padding -> Parser a -> Parser a
 paddedR padding parser = do
   x <- parser
   _ <- padding
   ok x
 
-padded :: Parser ctx padding -> Parser ctx a -> Parser ctx a
+padded :: Parser padding -> Parser a -> Parser a
 padded padding = inbetween padding padding
 
-inbetween :: Parser ctx start -> Parser ctx end -> Parser ctx a -> Parser ctx a
+inbetween :: Parser start -> Parser end -> Parser a -> Parser a
 inbetween start end parser = do
   _ <- start
   x <- parser
   _ <- end
   ok x
 
-endOfFile :: Parser ctx ()
+endOfFile :: Parser ()
 endOfFile =
   Parser
     ( \state -> case state.remaining of
@@ -244,52 +255,52 @@ endOfFile =
         _ -> Left state
     )
 
-endOfLine :: Parser ctx ()
+endOfLine :: Parser ()
 endOfLine = oneOf [void $ char '\n', endOfFile]
 
 -- Sequences
-chain :: [Parser ctx a] -> Parser ctx [a]
+chain :: [Parser a] -> Parser [a]
 chain [] = ok []
 chain (p : ps) = do
   x <- p
   xs <- chain ps
   ok (x : xs)
 
-text :: String -> Parser ctx String
+text :: String -> Parser String
 text str = chain (fmap char str)
 
-textNoCase :: String -> Parser ctx String
+textNoCase :: String -> Parser String
 textNoCase str = chain (fmap charNoCase str)
 
-concat :: [Parser ctx [a]] -> Parser ctx [a]
+concat :: [Parser [a]] -> Parser [a]
 concat parsers = fmap Prelude.concat (chain parsers)
 
-maybe' :: Parser ctx a -> Parser ctx (Maybe a)
+maybe' :: Parser a -> Parser (Maybe a)
 maybe' parser = oneOf [fmap Just parser, ok Nothing]
 
-zeroOrOne :: Parser ctx a -> Parser ctx [a]
+zeroOrOne :: Parser a -> Parser [a]
 zeroOrOne parser = oneOf [fmap (: []) parser, ok []]
 
-zeroOrMore :: Parser ctx a -> Parser ctx [a]
+zeroOrMore :: Parser a -> Parser [a]
 zeroOrMore = foldR (:) []
 
-oneOrMore :: Parser ctx a -> Parser ctx [a]
+oneOrMore :: Parser a -> Parser [a]
 oneOrMore parser = do
   x <- parser
   xs <- zeroOrMore parser
   ok (x : xs)
 
-exactly :: Int -> Parser ctx a -> Parser ctx [a]
+exactly :: Int -> Parser a -> Parser [a]
 exactly n parser = chain (replicate n parser)
 
-atLeast :: Int -> Parser ctx a -> Parser ctx [a]
+atLeast :: Int -> Parser a -> Parser [a]
 atLeast min parser | min <= 0 = zeroOrMore parser
 atLeast min parser = do
   x <- parser
   xs <- atLeast (min - 1) parser
   ok (x : xs)
 
-atMost :: Int -> Parser ctx a -> Parser ctx [a]
+atMost :: Int -> Parser a -> Parser [a]
 atMost max _ | max <= 0 = ok []
 atMost max parser =
   oneOf
@@ -300,14 +311,14 @@ atMost max parser =
       ok []
     ]
 
-between :: Int -> Int -> Parser ctx a -> Parser ctx [a]
+between :: Int -> Int -> Parser a -> Parser [a]
 between min max parser | min <= 0 = atMost max parser
 between min max parser = do
   x <- parser
   xs <- between (min - 1) (max - 1) parser
   ok (x : xs)
 
-foldR :: (a -> b -> b) -> b -> Parser ctx a -> Parser ctx b
+foldR :: (a -> b -> b) -> b -> Parser a -> Parser b
 foldR f final parser =
   oneOf
     [ do
@@ -317,7 +328,7 @@ foldR f final parser =
       ok final
     ]
 
-foldL :: (b -> a -> b) -> b -> Parser ctx a -> Parser ctx b
+foldL :: (b -> a -> b) -> b -> Parser a -> Parser b
 foldL f initial parser =
   oneOf
     [ do
@@ -327,7 +338,7 @@ foldL f initial parser =
     ]
 
 -- Common
-integer :: Parser ctx Int
+integer :: Parser Int
 integer = do
   sign <- oneOf [do _ <- char '-'; return (-1), return 1]
   _ <- spaces
@@ -335,7 +346,7 @@ integer = do
   lookaheadNot (char '.')
   ok (read digits * sign)
 
-number :: Parser ctx Double
+number :: Parser Double
 number = do
   sign <- oneOf [do _ <- char '-'; return (-1), return 1]
   _ <- spaces
@@ -349,22 +360,22 @@ number = do
       ]
   ok (num * sign)
 
-wordChar :: Parser ctx Char
+wordChar :: Parser Char
 wordChar = oneOf [letter, digit, char '_']
 
-wordStart :: Parser ctx ()
+wordStart :: Parser ()
 wordStart = lookahead wordChar
 
-wordEnd :: Parser ctx ()
+wordEnd :: Parser ()
 wordEnd = lookaheadNot wordChar
 
-word :: String -> Parser ctx String
+word :: String -> Parser String
 word txt = do
   x <- text txt
   _ <- wordEnd
   ok x
 
-lookahead :: Parser ctx a -> Parser ctx ()
+lookahead :: Parser a -> Parser ()
 lookahead (Parser p) =
   Parser
     ( \state -> case p state of
@@ -372,7 +383,7 @@ lookahead (Parser p) =
         Left _ -> Left state
     )
 
-lookaheadNot :: Parser ctx a -> Parser ctx ()
+lookaheadNot :: Parser a -> Parser ()
 lookaheadNot (Parser p) =
   Parser
     ( \state -> case p state of
@@ -380,11 +391,11 @@ lookaheadNot (Parser p) =
         Left _ -> Right ((), state)
     )
 
-subparserPartial :: Parser ctx delim -> Parser ctx a -> Parser ctx a
+subparserPartial :: Parser delim -> Parser a -> Parser a
 subparserPartial delim (Parser p) = do
-  before <- getState
+  before <- state
   _ <- zeroOrMore (do _ <- lookaheadNot delim; anyChar)
-  after <- getState
+  after <- state
   let len = length before.remaining - length after.remaining
   Parser
     ( \state -> do
@@ -392,7 +403,7 @@ subparserPartial delim (Parser p) = do
         Right (x, state)
     )
 
-subparser :: Parser ctx delim -> Parser ctx a -> Parser ctx a
+subparser :: Parser delim -> Parser a -> Parser a
 subparser delim parser = subparserPartial delim (do x <- parser; _ <- endOfFile; ok x)
 
 -- TODO: line
@@ -413,18 +424,18 @@ subparser delim parser = subparserPartial delim (do x <- parser; _ <- endOfFile;
 -- TODO: intExp
 -- TODO: numberExp
 -- TODO: quotedText
--- TODO: collection : ([a] -> b) -> Parser open -> Parser ctx a -> Parser delim -> Parser close -> Parser ctx b
+-- TODO: collection : ([a] -> b) -> Parser open -> Parser a -> Parser delim -> Parser close -> Parser b
 -- TODO: comment
 -- TODO: multiLineComment
 
-position :: Parser ctx Position
+position :: Parser Position
 position = do
-  state <- getState
+  state <- state
   return state.pos
 
-location :: Position -> Parser ctx Location
+location :: Position -> Parser Location
 location start = do
-  state <- getState
+  state <- state
   return $
     Location
       { filename = state.filename,
@@ -434,18 +445,18 @@ location start = do
 -- Operator precedence
 -- https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
 -- https://github.com/zesterer/chumsky/blob/main/tutorial.md
-data ExprParser ctx a
-  = Atom (Parser ctx a -> Parser ctx a)
-  | Prefix Int (Parser ctx a -> Parser ctx a)
-  | InfixL Int (a -> Parser ctx a -> Parser ctx a)
-  | InfixR Int (a -> Parser ctx a -> Parser ctx a)
+data ExprParser a
+  = Atom (Parser a -> Parser a)
+  | Prefix Int (Parser a -> Parser a)
+  | InfixL Int (a -> Parser a -> Parser a)
+  | InfixR Int (a -> Parser a -> Parser a)
 
-atom :: (a -> b) -> Parser ctx a -> ExprParser ctx b
+atom :: (a -> b) -> Parser a -> ExprParser b
 atom f p =
   Atom $ \_ -> do
     f <$> p
 
-group :: Parser ctx open -> Parser ctx close -> Parser ctx spaces -> ExprParser ctx a
+group :: Parser open -> Parser close -> Parser spaces -> ExprParser a
 group open close spaces =
   Atom $ \expr -> do
     _ <- open
@@ -455,49 +466,49 @@ group open close spaces =
     _ <- close
     return x
 
-prefix :: (Show op, Show a) => Int -> (Location -> op -> a -> a) -> Parser ctx spaces -> Parser ctx op -> ExprParser ctx a
+prefix :: (Show op, Show a) => Int -> (Location -> op -> a -> a) -> Parser spaces -> Parser op -> ExprParser a
 prefix p f spaces op = do
   Prefix p $ \expr -> do
-    s <- getState
+    s <- state
     op <- op
     end <- position
     _ <- spaces
     let loc = Location s.filename (Range s.pos end)
     f loc op <$> expr
 
-suffix :: (Show op, Show a) => Int -> (Location -> op -> a -> a) -> Parser ctx spaces -> Parser ctx op -> ExprParser ctx a
+suffix :: (Show op, Show a) => Int -> (Location -> op -> a -> a) -> Parser spaces -> Parser op -> ExprParser a
 suffix p f spaces op = do
   InfixL p $ \x _ -> do
     _ <- spaces
-    s <- getState
+    s <- state
     op <- op
     end <- position
     let loc = Location s.filename (Range s.pos end)
     return (f loc op x)
 
-infixL :: Int -> (Location -> op -> a -> a -> a) -> Parser ctx spaces -> Parser ctx op -> ExprParser ctx a
+infixL :: Int -> (Location -> op -> a -> a -> a) -> Parser spaces -> Parser op -> ExprParser a
 infixL p f spaces op =
   InfixL p $ \x expr -> do
     _ <- spaces
-    s <- getState
+    s <- state
     op <- op
     end <- position
     _ <- spaces
     let loc = Location s.filename (Range s.pos end)
     f loc op x <$> expr
 
-infixR :: Int -> (Location -> op -> a -> a -> a) -> Parser ctx spaces -> Parser ctx op -> ExprParser ctx a
+infixR :: Int -> (Location -> op -> a -> a -> a) -> Parser spaces -> Parser op -> ExprParser a
 infixR p f spaces op =
   InfixR p $ \x expr -> do
     _ <- spaces
-    s <- getState
+    s <- state
     op <- op
     end <- position
     _ <- spaces
     let loc = Location s.filename (Range s.pos end)
     f loc op x <$> expr
 
-precedence :: [ExprParser ctx a] -> Int -> Parser ctx a
+precedence :: [ExprParser a] -> Int -> Parser a
 precedence ops p = do
   let unary = \case
         Atom op -> do
