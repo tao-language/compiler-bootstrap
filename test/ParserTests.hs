@@ -1,6 +1,7 @@
 module ParserTests where
 
 import qualified Data.Char as Char
+import Data.Function ((&))
 import Location (Position (..))
 import Parser
 import Test.Hspec (SpecWith, describe, it, shouldBe)
@@ -33,10 +34,10 @@ run = describe "--==☯ Parser ☯==--" $ do
       parse' parser txt = case parse parser "ParserTests" txt of
         Right (x, state) -> Right (x, state.remaining)
         Left state -> Left state.remaining
-  let parseExpected :: Parser a -> String -> (Maybe a, String, String)
-      parseExpected parser txt = case parse parser "ParserTests" txt of
-        Right (x, state) -> (Just x, state.expected, state.remaining)
-        Left state -> (Nothing, state.expected, state.remaining)
+  let parseError :: Parser a -> String -> (Maybe a, String, Bool, String)
+      parseError parser txt = case parse parser "ParserTests" txt of
+        Right (x, state) -> (Just x, state.expected, state.committed, state.remaining)
+        Left state -> (Nothing, state.expected, state.committed, state.remaining)
   let parseShow :: (Show a) => Parser a -> String -> Maybe String
       parseShow parser txt = case parse parser "ParserTests" txt of
         Right (x, _) -> Just (show x)
@@ -250,18 +251,32 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "" `shouldBe` Left ""
 
   it "☯ expect" $ do
-    let p = parseExpected (char 'a')
-    p "abc" `shouldBe` (Just 'a', "", "bc")
-    p "bc" `shouldBe` (Nothing, "'a'", "bc")
+    let p = parseError (expect "expected" $ char 'a')
+    p "abc" `shouldBe` (Just 'a', "", False, "bc")
+    p "bc" `shouldBe` (Nothing, "expected", False, "bc")
 
   it "☯ commit" $ do
-    let parser = commit "committed" letter
-    let p = parseExpected parser
-    p "" `shouldBe` (Nothing, "letter", "")
-    p "abc" `shouldBe` (Just 'a', "committed", "bc")
-    p "123" `shouldBe` (Nothing, "letter", "123")
+    let p = parseError (commit "committed" letter)
+    p "" `shouldBe` (Nothing, "", False, "")
+    p "abc" `shouldBe` (Just 'a', "committed", True, "bc")
+    p "123" `shouldBe` (Nothing, "", False, "123")
 
-  it "☯ LL(k) parser -- expect + commit + oneOf" $ do
+  it "☯ recover.expect" $ do
+    let catch state txt = txt
+    let p = parseError (expect "expected" (text "abc") & recover [] catch)
+    p "" `shouldBe` (Nothing, "expected", False, "")
+    p "ab" `shouldBe` (Nothing, "expected", False, "ab")
+    p "abcd" `shouldBe` (Just "abc", "", False, "d")
+
+  it "☯ recover.commit" $ do
+    let catch state txt = txt
+    let p = parseError (commit "committed" (text "abc") & recover [] catch)
+    p "" `shouldBe` (Nothing, "", False, "")
+    p "ab" `shouldBe` (Nothing, "", False, "ab")
+    p "abcd" `shouldBe` (Just "abc", "committed", True, "d")
+
+  it "☯ LL(k) equivalent" $ do
+    -- expect + commit + oneOf
     let letters = do
           x <- commit "letter!" letter
           xs <- oneOrMore letter
@@ -270,14 +285,14 @@ run = describe "--==☯ Parser ☯==--" $ do
           x <- commit "digit!" digit
           xs <- oneOrMore digit
           return (x : xs)
-    let p = parseExpected (expect "alphanum" $ oneOf [letters, digits])
-    p "" `shouldBe` (Nothing, "alphanum", "")
-    p "a" `shouldBe` (Nothing, "alphanum", "a")
-    p "a2" `shouldBe` (Nothing, "alphanum", "a2")
-    p "ab" `shouldBe` (Just "ab", "", "")
-    p "1" `shouldBe` (Nothing, "alphanum", "1")
-    p "1b" `shouldBe` (Nothing, "alphanum", "1b")
-    p "12" `shouldBe` (Just "12", "", "")
+    let p = parseError (expect "alphanum" $ oneOf [letters, digits])
+    p "" `shouldBe` (Nothing, "alphanum", False, "")
+    p "a" `shouldBe` (Nothing, "alphanum", False, "a")
+    p "a2" `shouldBe` (Nothing, "alphanum", False, "a2")
+    p "ab" `shouldBe` (Just "ab", "", False, "")
+    p "1" `shouldBe` (Nothing, "alphanum", False, "1")
+    p "1b" `shouldBe` (Nothing, "alphanum", False, "1b")
+    p "12" `shouldBe` (Just "12", "", False, "")
 
   it "☯ skipTo" $ do
     let p = parse' (skipTo (char '.'))

@@ -148,21 +148,27 @@ expect message (Parser p) =
 commit :: String -> Parser a -> Parser a
 commit message (Parser p) =
   Parser
-    ( \s1 -> case p s1 {expected = message, committed = True} of
-        Right (x, s2) -> Right (x, s2)
-        Left s2 -> Left s2 {committed = s1.committed}
+    ( \s1 -> case p s1 of
+        Right (x, s2) -> Right (x, s2 {expected = message, committed = True})
+        Left s2 -> Left (s2 {expected = s1.expected, committed = False})
     )
 
-recover :: [Parser until] -> (State -> String -> a) -> Parser a
+recover :: [Parser until] -> (State -> String -> a) -> Parser a -> Parser a
 -- Skips at least one character to any of the delimiters in order, but fails if it can't.
 -- To recover from anything, include `endOfFile` to recover to the end of the file.
-recover delims catch = do
-  txt <- skipTo (lookahead $ oneOf delims)
-  case txt of
-    "" -> fail'
-    txt -> do
-      s <- state
-      return (catch s txt)
+recover delims catch (Parser p) = do
+  let recover' = do
+        txt <- skipTo (lookahead $ oneOf delims)
+        case txt of
+          "" -> fail'
+          txt -> do
+            s <- state
+            return (catch s txt)
+  Parser
+    ( \s1 -> case p s1 of
+        Right (x, s2) -> Right (x, s2)
+        Left s2 -> apply recover' s1 {expected = s2.expected, committed = s2.committed}
+    )
 
 skipTo :: Parser delim -> Parser String
 skipTo delim =
