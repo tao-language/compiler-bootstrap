@@ -684,16 +684,6 @@ layout prec = G.layout grammar prec
 format :: Int -> String -> Expr -> String
 format width indent = G.format grammar width ("  ", indent)
 
--- recover :: [Parser until] -> P.State -> (Location -> String -> String -> a) -> Parser a -> Parser a
--- recover delims start catch parser = do
---   P.recover delims (\end -> catch (locSpan start end) start.expected) parser
-
-expect :: String -> [Parser until] -> (Location -> String -> String -> a) -> Parser a -> Parser a
-expect message delims catch parser = do
-  -- catch: (location, expected, got)
-  P.expect message parser
-    & P.recover delims catch
-
 syntaxError :: Location -> String -> String -> Expr
 syntaxError loc expected got = do
   Meta (C.Error $ SyntaxError (loc, expected, got)) Err
@@ -703,13 +693,13 @@ parseCollection msg open delim close catch parser = do
   _ <- P.text open
   _ <- P.whitespaces
   xs <- P.zeroOrMore $ do
-    x <- expect msg [P.text delim] catch parser
+    x <- P.expect msg parser & P.recover [P.text delim] catch
     _ <- P.whitespaces
     _ <- P.text delim
     _ <- P.whitespaces
     return x
   x <- P.zeroOrOne $ do
-    x <- expect msg [P.text close] catch parser
+    x <- P.expect msg parser & P.recover [P.text close] catch
     _ <- P.whitespaces
     return x
   _ <- P.text close

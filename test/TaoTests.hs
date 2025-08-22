@@ -192,6 +192,7 @@ run = describe "--==☯ Tao ☯==--" $ do
 
   it "☯ Tao.grammar.parser.errors" $ do
     parse' "$ \n" `shouldBe` Left ([], "$ \n")
+    parse' "($) \n" `shouldBe` Right (loc 1 1 1 4 $ Tuple [syntaxError (loc' 1 2 1 3) "tuple item" "$"], "\n")
     parse' "($, x) \n" `shouldBe` Right (loc 1 1 1 7 $ Tuple [syntaxError (loc' 1 2 1 3) "tuple item" "$", x 1 5], "\n")
     parse' "(x, $) \n" `shouldBe` Right (loc 1 1 1 7 $ Tuple [x 1 2, syntaxError (loc' 1 5 1 6) "tuple item" "$"], "\n")
 
