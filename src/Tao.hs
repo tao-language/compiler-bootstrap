@@ -712,17 +712,6 @@ layoutCollection open delim close xs = do
   let alt2 = [PP.Indent (PP.Text " " : PP.join [PP.Text delim, PP.NewLine] xs), PP.Text delim, PP.NewLine]
   [PP.Text open, PP.Or alt1 alt2, PP.Text close]
 
-layoutArgs :: [PP.Layout] -> PP.Layout
-layoutArgs [] = [PP.Text "()"]
-layoutArgs xs = do
-  let alt1 = [PP.Indent (PP.join [PP.Text ", "] xs)]
-  let alt2 = [PP.Indent (PP.NewLine : PP.join [PP.Text ",", PP.NewLine] xs), PP.Text ",", PP.NewLine]
-  [PP.Text "(", PP.Or alt1 alt2, PP.Text ")"]
-
-maybeLayoutArgs :: [PP.Layout] -> PP.Layout
-maybeLayoutArgs [] = []
-maybeLayoutArgs args = layoutArgs args
-
 parserDecorator :: String -> ([String] -> Expr -> Expr) -> Parser Expr -> Parser Expr
 parserDecorator op f rhs = do
   start <- P.state
@@ -811,7 +800,7 @@ grammar = do
                 k <- parseNameTag
                 end <- P.state
                 _ <- P.spaces
-                args <- P.oneOf [parseCollection "tag argument" "(" "," ")" syntaxError expr, return []]
+                args <- P.oneOf [parseCollection "tag argument" "<" "," ">" syntaxError expr, return []]
                 _ <- P.spaces
                 return (withLoc start end $ Tag k args)
            in G.Atom parser $ \rhs -> \case
@@ -820,7 +809,10 @@ grammar = do
                         "[]" -> "[]"
                         k | all (\c -> isAlphaNum c || c `elem` "_-$") k -> k
                         k -> "t'" ++ k ++ "'"
-                  Just (PP.Text (showTag k) : maybeLayoutArgs (map rhs args))
+                  let showArgs = \case
+                        [] -> []
+                        args -> layoutCollection "<" "," ">" (map rhs args)
+                  Just (PP.Text (showTag k) : showArgs args)
                 _ -> Nothing,
           -- Grammar.Tuple
           let parser expr = do
@@ -1075,7 +1067,7 @@ grammar = do
            in G.InfixL 19 parser $ \lhs rhs -> \case
                 App a b -> do
                   let args = map (layout 0) (tupleOf b)
-                  Just (lhs a ++ layoutArgs args)
+                  Just (lhs a ++ layoutCollection "(" "," ")" args)
                 _ -> Nothing,
           -- Grammar.Get | Grammar.Slice
           let parser a expr = do

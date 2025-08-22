@@ -85,118 +85,235 @@ run = describe "--==☯ Tao ☯==--" $ do
   let (a', b', c') = (C.Var "a", C.Var "b", C.Var "c")
   let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
 
-  it "☯ Tao.grammar.parser" $ do
+  it "☯ Tao.grammar.parser.Any" $ do
     parse' "_ \n" `shouldBe` Right (any 1 1, "\n")
+
+  it "☯ Tao.grammar.parser.Int" $ do
     parse' "42 \n" `shouldBe` Right (int 1 1 42, "\n")
     parse' "-42 \n" `shouldBe` Right (int 1 1 (-42), "\n")
-    -- TODO: integer binary: 0b1010 == 10
-    -- TODO: integer octal: 0o52 == 42
-    -- TODO: integer hexadecimal: 0xFEEDCA7 == 267312295
+  -- TODO: integer binary: 0b1010 == 10
+  -- TODO: integer octal: 0o52 == 42
+  -- TODO: integer hexadecimal: 0xFEEDCA7 == 267312295
+
+  it "☯ Tao.grammar.parser.Num" $ do
     parse' "3.14 \n" `shouldBe` Right (num 1 1 3.14, "\n")
     parse' "-3.14 \n" `shouldBe` Right (num 1 1 (-3.14), "\n")
-    -- TODO: number scientific notation pos: 4.2e1 == 42.0
-    -- TODO: number scientific notation neg: 314e-2 == 3.14
+  -- TODO: number scientific notation pos: 4.2e1 == 42.0
+  -- TODO: number scientific notation neg: 314e-2 == 3.14
+
+  it "☯ Tao.grammar.parser.Char" $ do
     parse' "c'x' \n" `shouldBe` Right (char 1 1 'x', "\n")
     parse' "c\"x\" \n" `shouldBe` Right (char 1 1 'x', "\n")
-    -- TODO: char escape sequence: c'\a'
-    -- TODO: char escape sequence: c'\b'
-    -- TODO: char escape sequence: c'\f'
-    -- TODO: char escape sequence: c'\n'
-    -- TODO: char escape sequence: c'\r'
-    -- TODO: char escape sequence: c'\t'
-    -- TODO: char escape sequence: c'\v'
-    -- TODO: char escape sequence: c'\''
-    -- TODO: char escape sequence: c"\""
-    -- TODO: char escape sequence: c'\0'
-    -- TODO: char escape sequence: c'\oNNN'
-    -- TODO: char escape sequence: c'\xNN'
-    -- TODO: char escape sequence: c'\uHH'
+  -- TODO: char escape sequence: c'\a'
+  -- TODO: char escape sequence: c'\b'
+  -- TODO: char escape sequence: c'\f'
+  -- TODO: char escape sequence: c'\n'
+  -- TODO: char escape sequence: c'\r'
+  -- TODO: char escape sequence: c'\t'
+  -- TODO: char escape sequence: c'\v'
+  -- TODO: char escape sequence: c'\''
+  -- TODO: char escape sequence: c"\""
+  -- TODO: char escape sequence: c'\0'
+  -- TODO: char escape sequence: c'\oNNN'
+  -- TODO: char escape sequence: c'\xNN'
+  -- TODO: char escape sequence: c'\uHH'
+
+  it "☯ Tao.grammar.parser.Var" $ do
     parse' "x \n" `shouldBe` Right (x 1 1, "\n")
-    -- TODO: variable escaped: v'x'
+  -- TODO: variable escaped: v'x'
+
+  it "☯ Tao.grammar.parser.Tag" $ do
     parse' "A \n" `shouldBe` Right (tag 1 1 "A" [], "\n")
-    parse' "A() \n" `shouldBe` Right (tag 1 1 "A" [], "\n")
-    parse' "A(x) \n" `shouldBe` Right (tag 1 1 "A" [x 1 3], "\n")
-    parse' "A(x,y) \n" `shouldBe` Right (tag 1 1 "A" [x 1 3, y 1 5], "\n")
-    parse' "A (x, y, z) \n" `shouldBe` Right (tag 1 1 "A" [x 1 4, y 1 7, z 1 10], "\n")
-    parse' "A(\nx\n,\ny\n,\n) \n" `shouldBe` Right (tag 1 1 "A" [x 2 1, y 4 1], "\n")
-    parse' "A\n() \n" `shouldBe` Right (tag 1 1 "A" [], "\n() \n")
+    parse' "A<> \n" `shouldBe` Right (tag 1 1 "A" [], "\n")
+    parse' "A<x> \n" `shouldBe` Right (tag 1 1 "A" [x 1 3], "\n")
+    parse' "A<x,y> \n" `shouldBe` Right (tag 1 1 "A" [x 1 3, y 1 5], "\n")
+    parse' "A <x, y, z> \n" `shouldBe` Right (tag 1 1 "A" [x 1 4, y 1 7, z 1 10], "\n")
+    parse' "A<\nx\n,\ny\n,\n> \n" `shouldBe` Right (tag 1 1 "A" [x 2 1, y 4 1], "\n")
+    parse' "A\n<> \n" `shouldBe` Right (tag 1 1 "A" [], "\n<> \n")
     -- TODO: tag escaped: t'A'
     -- TODO: tag escaped: t'A'(x)
+    -- Error recovery
+    parse' "A<$> \n" `shouldBe` Right (tag 1 1 "A" [syntaxError (loc' 1 3 1 4) "tag argument" "$"], "\n")
+    parse' "A<$, x> \n" `shouldBe` Right (tag 1 1 "A" [syntaxError (loc' 1 3 1 4) "tag argument" "$", x 1 6], "\n")
+    parse' "A<x, $> \n" `shouldBe` Right (tag 1 1 "A" [x 1 3, syntaxError (loc' 1 6 1 7) "tag argument" "$"], "\n")
+
+  it "☯ Tao.grammar.parser.Tuple" $ do
     parse' "() \n" `shouldBe` Right (loc 1 1 1 3 $ Tuple [], "\n")
     parse' "(x) \n" `shouldBe` Right (x 1 2, "\n")
     parse' "(x,) \n" `shouldBe` Right (loc 1 1 1 5 $ Tuple [x 1 2], "\n")
     parse' "(x, y, z) \n" `shouldBe` Right (loc 1 1 1 10 $ Tuple [x 1 2, y 1 5, z 1 8], "\n")
     parse' "(\nx\n,\ny\n,\n) \n" `shouldBe` Right (loc 1 1 6 2 $ Tuple [x 2 1, y 4 1], "\n")
+    -- Error recovery
+    parse' "($) \n" `shouldBe` Right (loc 1 1 1 4 $ Tuple [syntaxError (loc' 1 2 1 3) "tuple item" "$"], "\n")
+    parse' "($, x) \n" `shouldBe` Right (loc 1 1 1 7 $ Tuple [syntaxError (loc' 1 2 1 3) "tuple item" "$", x 1 5], "\n")
+    parse' "(x, $) \n" `shouldBe` Right (loc 1 1 1 7 $ Tuple [x 1 2, syntaxError (loc' 1 5 1 6) "tuple item" "$"], "\n")
+
+  it "☯ Tao.grammar.parser.List" $ do
     parse' "[] \n" `shouldBe` Right (loc 1 1 1 3 $ List [], "\n")
     parse' "[x] \n" `shouldBe` Right (loc 1 1 1 4 $ List [x 1 2], "\n")
     parse' "[x,] \n" `shouldBe` Right (loc 1 1 1 5 $ List [x 1 2], "\n")
     parse' "[x, y, z] \n" `shouldBe` Right (loc 1 1 1 10 $ List [x 1 2, y 1 5, z 1 8], "\n")
     parse' "[\nx\n,\ny\n,\n] \n" `shouldBe` Right (loc 1 1 6 2 $ List [x 2 1, y 4 1], "\n")
+    -- Error recovery
+    parse' "[$] \n" `shouldBe` Right (loc 1 1 1 4 $ List [syntaxError (loc' 1 2 1 3) "list item" "$"], "\n")
+    parse' "[$, x] \n" `shouldBe` Right (loc 1 1 1 7 $ List [syntaxError (loc' 1 2 1 3) "list item" "$", x 1 5], "\n")
+    parse' "[x, $] \n" `shouldBe` Right (loc 1 1 1 7 $ List [x 1 2, syntaxError (loc' 1 5 1 6) "list item" "$"], "\n")
+
+  it "☯ Tao.grammar.parser.String" $ do
     parse' "'' \n" `shouldBe` Right (loc 1 1 1 3 $ String [Str ""], "\n")
     parse' "'abc' \n" `shouldBe` Right (loc 1 1 1 6 $ String [Str "abc"], "\n")
     parse' "\"abc\" \n" `shouldBe` Right (loc 1 1 1 6 $ String [Str "abc"], "\n")
-    -- TODO: string escape sequences
-    -- TODO: string interpolation bare: "ab$x c"
-    -- TODO: string interpolation with brackets: "ab${x}c"
-    -- TODO: string multi-line: """\nabc\n"""
-    -- TODO: string multi-line indented
-    -- TODO: string templates: f`abc`
-    -- TODO: string templates multi-line: ```f\nabc\n```
+  -- TODO: string escape sequences
+  -- TODO: string interpolation bare: "ab$x c"
+  -- TODO: string interpolation with brackets: "ab${x}c"
+  -- TODO: string multi-line: """\nabc\n"""
+  -- TODO: string multi-line indented
+  -- TODO: string templates: f`abc`
+  -- TODO: string templates multi-line: ```f\nabc\n```
+
+  it "☯ Tao.grammar.parser.For" $ do
     parse' "@x.y \n" `shouldBe` Right (loc 1 1 1 3 $ For ["x"] (y 1 4), "\n")
     parse' "@ x .\ny \n" `shouldBe` Right (loc 1 1 1 4 $ For ["x"] (y 2 1), "\n")
     parse' "@ x y \nz \n" `shouldBe` Right (loc 1 1 1 6 $ For ["x", "y"] (z 2 1), "\n")
     parse' "@\nx. y \n" `shouldBe` Left ([], "@\nx. y \n")
+
+  it "☯ Tao.grammar.parser.Ann" $ do
     parse' "x:y \n" `shouldBe` Right (ann 1 2 (x 1 1) (y 1 3), "\n")
     parse' "x : y : z \n" `shouldBe` Right (ann 1 3 (x 1 1) (ann 1 7 (y 1 5) (z 1 9)), "\n")
     parse' "x\n:\ny \n" `shouldBe` Right (ann 2 1 (x 1 1) (y 3 1), "\n")
+
+  it "☯ Tao.grammar.parser.Or" $ do
     parse' "x|y \n" `shouldBe` Right (or' 1 2 (x 1 1) (y 1 3), "\n")
     parse' "x | y | z \n" `shouldBe` Right (or' 1 3 (x 1 1) (or' 1 7 (y 1 5) (z 1 9)), "\n")
     parse' "x\n|\ny \n" `shouldBe` Right (or' 2 1 (x 1 1) (y 3 1), "\n")
+
+  it "☯ Tao.grammar.parser.Fun" $ do
     parse' "x->y \n" `shouldBe` Right (fun 1 2 (x 1 1) (y 1 4), "\n")
     parse' "x -> y -> z \n" `shouldBe` Right (fun 1 3 (x 1 1) (fun 1 8 (y 1 6) (z 1 11)), "\n")
     parse' "x\n->\ny \n" `shouldBe` Right (fun 2 1 (x 1 1) (y 3 1), "\n")
+
+  it "☯ Tao.grammar.parser.App" $ do
     parse' "a() \n" `shouldBe` Right (loc 1 2 1 4 $ app (a 1 1) [], "\n")
     parse' "a(x) \n" `shouldBe` Right (loc 1 2 1 5 $ app (a 1 1) [x 1 3], "\n")
     parse' "a (x, y, z) \n" `shouldBe` Right (loc 1 3 1 12 $ app (a 1 1) [x 1 4, y 1 7, z 1 10], "\n")
     parse' "a(\nx\n,\ny\n,\n) \n" `shouldBe` Right (loc 1 2 6 2 $ app (a 1 1) [x 2 1, y 4 1], "\n")
     parse' "a\n() \n" `shouldBe` Right (a 1 1, "\n() \n")
+
+  it "☯ Tao.grammar.parser.Call" $ do
     parse' "%f() \n" `shouldBe` Right (call 1 1 "f" [], "\n")
     parse' "%f(x) \n" `shouldBe` Right (call 1 1 "f" [x 1 4], "\n")
     parse' "%f (x, y, z) \n" `shouldBe` Right (call 1 1 "f" [x 1 5, y 1 8, z 1 11], "\n")
     parse' "%f(\nx\n,\ny\n,\n) \n" `shouldBe` Right (call 1 1 "f" [x 2 1, y 4 1], "\n")
     parse' "%f\n() \n" `shouldBe` Right (call 1 1 "f" [], "\n() \n")
+
+  it "☯ Tao.grammar.parser.Op1" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.parser.Op2" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.parser.Dot" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.parser.Spread" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.parser.Get" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.parser.Slice" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.parser.Match" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.parser.MatchFun" $ do
+    "" `shouldBe` ""
+
+  it "☯ Tao.grammar.parser.Let" $ do
     -- parse' "^{}y \n" `shouldBe` Right (Let [] y, "\n")
     -- parse' "^ { } y \n" `shouldBe` Right (Let [] y, "\n")
     -- parse' "^\n{\n}\ny \n" `shouldBe` Right (Let [] y, "\n")
     -- parse' "^x=a;y \n" `shouldBe` Right (Let [("x", a)] y, "\n")
     -- parse' "^ x = a ; ^ y = b ; z \n" `shouldBe` Right (Let [("x", a), ("y", b)] z, "\n")
     -- parse' "^\nx\n=\na \n^\ny\n=\nb \nz \n" `shouldBe` Right (Let [("x", a), ("y", b)] z, "\n")
-    -- Op1 Op1 Expr
-    -- Op2 Op2 Expr Expr
-    -- Dot Expr String (Maybe [Expr])
-    -- Spread Expr
-    -- Get Expr Expr
-    -- Slice Expr (Expr, Expr)
-    -- Match Expr [Expr]
-    -- MatchFun [Expr]
-    -- Let (Pattern, Expr) Expr
-    -- Bind (Pattern, Expr) Expr
-    -- Record [(String, Expr)]
-    -- Select Expr [(String, Expr)]
-    -- With Expr [(String, Expr)]
-    -- If Expr Expr
-    -- IfElse Expr Expr Expr
-    -- Meta (C.Metadata Expr) Expr
-    -- Err
     "" `shouldBe` ""
 
-  it "☯ Tao.grammar.parser.errors" $ do
-    parse' "$ \n" `shouldBe` Left ([], "$ \n")
-    parse' "($) \n" `shouldBe` Right (loc 1 1 1 4 $ Tuple [syntaxError (loc' 1 2 1 3) "tuple item" "$"], "\n")
-    parse' "($, x) \n" `shouldBe` Right (loc 1 1 1 7 $ Tuple [syntaxError (loc' 1 2 1 3) "tuple item" "$", x 1 5], "\n")
-    parse' "(x, $) \n" `shouldBe` Right (loc 1 1 1 7 $ Tuple [x 1 2, syntaxError (loc' 1 5 1 6) "tuple item" "$"], "\n")
+  it "☯ Tao.grammar.parser.Bind" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.parser.Record" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.parser.Select" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.parser.With" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.parser.If" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.parser.IfElse" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.parser.Meta" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.parser.Err" $ do
+    "" `shouldBe` ""
 
-  it "☯ Tao.grammar.layout" $ do
+  it "☯ Tao.grammar.layout.Any" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Int" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Num" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Char" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Var" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Tag" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Tuple" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.List" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.String" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.For" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Ann" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Or" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Fun" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.App" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Call" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Let" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Op1" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Op2" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Dot" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Spread" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Get" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Slice" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Match" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.MatchFun" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Let" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Bind" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Record" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Select" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.With" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.If" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.IfElse" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Meta" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.grammar.layout.Err" $ do
     "" `shouldBe` ""
 
   it "☯ Tao.resolve" $ do
