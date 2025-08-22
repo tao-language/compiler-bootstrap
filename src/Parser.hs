@@ -21,7 +21,7 @@ data State = State
     pos :: Position,
     index :: Int,
     expected :: String,
-    committed :: Bool
+    committed :: String
   }
   deriving (Eq, Show)
 
@@ -64,7 +64,7 @@ parse (Parser p) filename remaining =
         pos = Pos 1 1,
         index = 0,
         expected = "",
-        committed = False
+        committed = ""
       }
 
 parseFrom :: Position -> String -> Parser a -> Parser a
@@ -98,10 +98,10 @@ oneOf :: [Parser a] -> Parser a
 oneOf [] = fail'
 oneOf (Parser p : choices) =
   Parser
-    ( \s1 -> case p s1 {committed = False} of
+    ( \s1 -> case p s1 {committed = ""} of
         Right (x, s2) -> Right (x, s2 {committed = s1.committed})
-        Left State {committed = True} -> Left s1
-        Left _ -> apply (oneOf choices) s1
+        Left s2 | s2.committed == "" -> apply (oneOf choices) s1
+        Left _ -> Left s1
         -- Left State {committed = False} -> apply (oneOf choices) s1
         -- Left s2 -> Left s2
     )
@@ -141,24 +141,30 @@ expect :: String -> Parser a -> Parser a
 expect message (Parser p) =
   Parser
     ( \s1 -> case p s1 of
-        Right (x, s2) -> Right (x, s2 {expected = s1.expected})
+        Right (x, s2) -> Right (x, s2)
         Left s2 -> Left (s2 {expected = message})
     )
 
 commit :: String -> Parser a -> Parser a
-commit message (Parser p) =
-  Parser
-    ( \s1 -> case p s1 of
-        Right (x, s2) -> Right (x, s2 {expected = message, committed = True})
-        Left s2 -> Left (s2 {expected = s1.expected, committed = False})
-    )
+commit message parser = do
+  x <- parser
+  commit' message
+  return x
+
+commit' :: String -> Parser ()
+commit' message = Parser (\s -> Right ((), s {committed = message}))
+
+uncommit :: Parser ()
+uncommit = Parser (\s -> Right ((), s {committed = ""}))
 
 recover :: [Parser until] -> (Location -> String -> String -> a) -> Parser a -> Parser a
 recover delims catch (Parser p) = do
   Parser
     ( \s1 -> case p s1 of
         Right (x, s2) -> Right (x, s2)
-        Left s2 -> apply (recover' delims catch) s1 {expected = s2.expected, committed = s2.committed}
+        Left s2 -> do
+          let s1' = s1 {expected = s2.expected}
+          apply (recover' delims catch) s1'
     )
 
 recover' :: [Parser a] -> (Location -> String -> String -> b) -> Parser b
@@ -275,10 +281,10 @@ chain (p : ps) = do
   ok (x : xs)
 
 text :: String -> Parser String
-text str = chain (fmap char str)
+text str = expect (show str) $ chain (fmap char str)
 
 textNoCase :: String -> Parser String
-textNoCase str = chain (fmap charNoCase str)
+textNoCase str = expect (show str ++ " (case insensitive)") $ chain (fmap charNoCase str)
 
 concat :: [Parser [a]] -> Parser [a]
 concat parsers = fmap Prelude.concat (chain parsers)

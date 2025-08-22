@@ -34,7 +34,7 @@ run = describe "--==☯ Parser ☯==--" $ do
       parse' parser txt = case parse parser "ParserTests" txt of
         Right (x, state) -> Right (x, state.remaining)
         Left state -> Left state.remaining
-  let parseError :: Parser a -> String -> (Maybe a, String, Bool, String)
+  let parseError :: Parser a -> String -> (Maybe a, String, String, String)
       parseError parser txt = case parse parser "ParserTests" txt of
         Right (x, state) -> (Just x, state.expected, state.committed, state.remaining)
         Left state -> (Nothing, state.expected, state.committed, state.remaining)
@@ -65,7 +65,7 @@ run = describe "--==☯ Parser ☯==--" $ do
           s2 <- state
           ok (s1, s2)
     let p = parse' parser
-    let s1 = State {remaining = "abc", filename = "ParserTests", pos = Pos 1 1, index = 0, expected = "", committed = False}
+    let s1 = State {remaining = "abc", filename = "ParserTests", pos = Pos 1 1, index = 0, expected = "", committed = ""}
     let s2 = s1 {remaining = "bc", index = 1, pos = Pos 1 2}
     p "abc" `shouldBe` Right ((s1, s2), "bc")
 
@@ -252,34 +252,34 @@ run = describe "--==☯ Parser ☯==--" $ do
 
   it "☯ expect" $ do
     let p = parseError (expect "expected" $ char 'a')
-    p "abc" `shouldBe` (Just 'a', "", False, "bc")
-    p "bc" `shouldBe` (Nothing, "expected", False, "bc")
+    p "abc" `shouldBe` (Just 'a', "", "", "bc")
+    p "bc" `shouldBe` (Nothing, "expected", "", "bc")
 
   it "☯ commit" $ do
     let p = parseError (commit "committed" letter)
-    p "" `shouldBe` (Nothing, "", False, "")
-    p "abc" `shouldBe` (Just 'a', "committed", True, "bc")
-    p "123" `shouldBe` (Nothing, "", False, "123")
+    p "" `shouldBe` (Nothing, "letter", "", "")
+    p "abc" `shouldBe` (Just 'a', "", "committed", "bc")
+    p "123" `shouldBe` (Nothing, "letter", "", "123")
 
   it "☯ recover.expect" $ do
     let catch loc expected got = show loc ++ ": " ++ expected ++ ", " ++ got
     let p = parseError (expect "expected" (text "abc") & recover [char '.'] catch)
-    p "" `shouldBe` (Nothing, "expected", False, "")
-    p "ab" `shouldBe` (Nothing, "expected", False, "ab")
-    p ".abc" `shouldBe` (Nothing, "expected", False, ".abc")
-    p "a.bc" `shouldBe` (Just "ParserTests:1:1,1:2: expected, a", "expected", False, ".bc")
-    p "ab.c" `shouldBe` (Just "ParserTests:1:1,1:3: expected, ab", "expected", False, ".c")
-    p "abc." `shouldBe` (Just "abc", "", False, ".")
+    p "" `shouldBe` (Nothing, "expected", "", "")
+    p "ab" `shouldBe` (Nothing, "expected", "", "ab")
+    p ".abc" `shouldBe` (Nothing, "expected", "", ".abc")
+    p "a.bc" `shouldBe` (Just "ParserTests:1:1,1:2: expected, a", "expected", "", ".bc")
+    p "ab.c" `shouldBe` (Just "ParserTests:1:1,1:3: expected, ab", "expected", "", ".c")
+    p "abc." `shouldBe` (Just "abc", "", "", ".")
 
   it "☯ recover.commit" $ do
     let catch loc expected got = show loc ++ ": " ++ expected ++ ", " ++ got
     let p = parseError (commit "committed" (text "abc") & recover [char '.'] catch)
-    p "" `shouldBe` (Nothing, "", False, "")
-    p "ab" `shouldBe` (Nothing, "", False, "ab")
-    p ".abc" `shouldBe` (Nothing, "", False, ".abc")
-    p "a.bc" `shouldBe` (Just "ParserTests:1:1,1:2: , a", "", False, ".bc")
-    p "ab.c" `shouldBe` (Just "ParserTests:1:1,1:3: , ab", "", False, ".c")
-    p "abc." `shouldBe` (Just "abc", "committed", True, ".")
+    p "" `shouldBe` (Nothing, "\"abc\"", "", "")
+    p "ab" `shouldBe` (Nothing, "\"abc\"", "", "ab")
+    p ".abc" `shouldBe` (Nothing, "\"abc\"", "", ".abc")
+    p "a.bc" `shouldBe` (Just "ParserTests:1:1,1:2: \"abc\", a", "\"abc\"", "", ".bc")
+    p "ab.c" `shouldBe` (Just "ParserTests:1:1,1:3: \"abc\", ab", "\"abc\"", "", ".c")
+    p "abc." `shouldBe` (Just "abc", "", "committed", ".")
 
   it "☯ LL(k) equivalent" $ do
     -- expect + commit + oneOf
@@ -292,13 +292,13 @@ run = describe "--==☯ Parser ☯==--" $ do
           xs <- oneOrMore digit
           return (x : xs)
     let p = parseError (expect "alphanum" $ oneOf [letters, digits])
-    p "" `shouldBe` (Nothing, "alphanum", False, "")
-    p "a" `shouldBe` (Nothing, "alphanum", False, "a")
-    p "a2" `shouldBe` (Nothing, "alphanum", False, "a2")
-    p "ab" `shouldBe` (Just "ab", "", False, "")
-    p "1" `shouldBe` (Nothing, "alphanum", False, "1")
-    p "1b" `shouldBe` (Nothing, "alphanum", False, "1b")
-    p "12" `shouldBe` (Just "12", "", False, "")
+    p "" `shouldBe` (Nothing, "alphanum", "", "")
+    p "a" `shouldBe` (Nothing, "alphanum", "", "a")
+    p "a2" `shouldBe` (Nothing, "alphanum", "", "a2")
+    p "ab" `shouldBe` (Just "ab", "", "", "")
+    p "1" `shouldBe` (Nothing, "alphanum", "", "1")
+    p "1b" `shouldBe` (Nothing, "alphanum", "", "1b")
+    p "12" `shouldBe` (Just "12", "", "", "")
 
   it "☯ skipTo" $ do
     let p = parse' (skipTo (char '.'))
