@@ -262,18 +262,24 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "123" `shouldBe` (Nothing, "", False, "123")
 
   it "☯ recover.expect" $ do
-    let catch state txt = txt
-    let p = parseError (expect "expected" (text "abc") & recover [] catch)
+    let catch loc expected got = show loc ++ ": " ++ expected ++ ", " ++ got
+    let p = parseError (expect "expected" (text "abc") & recover [char '.'] catch)
     p "" `shouldBe` (Nothing, "expected", False, "")
     p "ab" `shouldBe` (Nothing, "expected", False, "ab")
-    p "abcd" `shouldBe` (Just "abc", "", False, "d")
+    p ".abc" `shouldBe` (Nothing, "expected", False, ".abc")
+    p "a.bc" `shouldBe` (Just "ParserTests:1:1,1:2: expected, a", "expected", False, ".bc")
+    p "ab.c" `shouldBe` (Just "ParserTests:1:1,1:3: expected, ab", "expected", False, ".c")
+    p "abc." `shouldBe` (Just "abc", "", False, ".")
 
   it "☯ recover.commit" $ do
-    let catch state txt = txt
-    let p = parseError (commit "committed" (text "abc") & recover [] catch)
+    let catch loc expected got = show loc ++ ": " ++ expected ++ ", " ++ got
+    let p = parseError (commit "committed" (text "abc") & recover [char '.'] catch)
     p "" `shouldBe` (Nothing, "", False, "")
     p "ab" `shouldBe` (Nothing, "", False, "ab")
-    p "abcd" `shouldBe` (Just "abc", "committed", True, "d")
+    p ".abc" `shouldBe` (Nothing, "", False, ".abc")
+    p "a.bc" `shouldBe` (Just "ParserTests:1:1,1:2: , a", "", False, ".bc")
+    p "ab.c" `shouldBe` (Just "ParserTests:1:1,1:3: , ab", "", False, ".c")
+    p "abc." `shouldBe` (Just "abc", "committed", True, ".")
 
   it "☯ LL(k) equivalent" $ do
     -- expect + commit + oneOf

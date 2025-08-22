@@ -153,22 +153,24 @@ commit message (Parser p) =
         Left s2 -> Left (s2 {expected = s1.expected, committed = False})
     )
 
-recover :: [Parser until] -> (State -> String -> a) -> Parser a -> Parser a
--- Skips at least one character to any of the delimiters in order, but fails if it can't.
--- To recover from anything, include `endOfFile` to recover to the end of the file.
+recover :: [Parser until] -> (Location -> String -> String -> a) -> Parser a -> Parser a
 recover delims catch (Parser p) = do
-  let recover' = do
-        txt <- skipTo (lookahead $ oneOf delims)
-        case txt of
-          "" -> fail'
-          txt -> do
-            s <- state
-            return (catch s txt)
   Parser
     ( \s1 -> case p s1 of
         Right (x, s2) -> Right (x, s2)
-        Left s2 -> apply recover' s1 {expected = s2.expected, committed = s2.committed}
+        Left s2 -> apply (recover' delims catch) s1 {expected = s2.expected, committed = s2.committed}
     )
+
+recover' :: [Parser a] -> (Location -> String -> String -> b) -> Parser b
+recover' delims catch = do
+  start <- state
+  txt <- skipTo (lookahead $ oneOf delims)
+  case txt of
+    "" -> fail'
+    txt -> do
+      end <- state
+      let loc = Location start.filename (Range start.pos end.pos)
+      return (catch loc end.expected txt)
 
 skipTo :: Parser delim -> Parser String
 skipTo delim =

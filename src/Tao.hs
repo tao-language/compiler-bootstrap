@@ -684,15 +684,15 @@ layout prec = G.layout grammar prec
 format :: Int -> String -> Expr -> String
 format width indent = G.format grammar width ("  ", indent)
 
-recover :: [Parser until] -> P.State -> (Location -> String -> String -> a) -> Parser a -> Parser a
-recover delims start catch parser = do
-  P.recover delims (\end -> catch (locSpan start end) start.expected) parser
+-- recover :: [Parser until] -> P.State -> (Location -> String -> String -> a) -> Parser a -> Parser a
+-- recover delims start catch parser = do
+--   P.recover delims (\end -> catch (locSpan start end) start.expected) parser
 
 expect :: String -> [Parser until] -> (Location -> String -> String -> a) -> Parser a -> Parser a
 expect message delims catch parser = do
-  start <- P.state
-  recover delims start catch $
-    P.expect message parser
+  -- catch: (location, expected, got)
+  P.expect message parser
+    & P.recover delims catch
 
 syntaxError :: Location -> String -> String -> Expr
 syntaxError loc expected got = do
