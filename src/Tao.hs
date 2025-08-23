@@ -684,15 +684,15 @@ layout prec = G.layout grammar prec
 format :: Int -> String -> Expr -> String
 format width indent = G.format grammar width ("  ", indent)
 
-syntaxError :: Location -> String -> String -> Expr
-syntaxError loc expected got = do
-  Meta (C.Error $ SyntaxError (loc, expected, got)) Err
+syntaxError :: (Location, String, String) -> Expr
+syntaxError err = do
+  Meta (C.Error $ SyntaxError err) Err
 
-syntaxErrorStmt :: Location -> String -> String -> Stmt
-syntaxErrorStmt loc expected got = do
-  Nop (C.Error $ SyntaxError (loc, expected, got))
+syntaxErrorStmt :: (Location, String, String) -> Stmt
+syntaxErrorStmt err = do
+  Nop (C.Error $ SyntaxError err)
 
-parseCollection :: String -> String -> String -> String -> (Location -> String -> String -> a) -> Parser a -> Parser [a]
+parseCollection :: String -> String -> String -> String -> ((Location, String, String) -> a) -> Parser a -> Parser [a]
 parseCollection msg open delim close catch parser = do
   _ <- P.text open
   _ <- P.whitespaces
@@ -703,7 +703,7 @@ parseCollection msg open delim close catch parser = do
     _ <- P.whitespaces
     return x
   x <- P.zeroOrOne $ do
-    x <- P.expect msg parser & P.recover [P.text close] catch
+    x <- P.expect msg parser & P.recoverNotEmpty [P.text close] catch
     _ <- P.whitespaces
     return x
   _ <- P.text close
@@ -1521,6 +1521,7 @@ parseModule name = do
 
 parseStmt :: Parser Stmt
 parseStmt = do
+  _ <- P.lookaheadNot P.endOfFile
   let parsers =
         [ parseImport,
           Def <$> parseDef "=",
@@ -1555,7 +1556,7 @@ parseImport = do
     -- type Name = ([Meta], String)
     -- Import Name Name [(Name, Name)] [Meta]
     P.expect "import module path" parseModulePath
-      & P.recover [P.word "as", P.text "(", "" <$ parseLineBreak] (\loc exp got -> '!' : show (SyntaxError (loc, exp, got) :: Error Expr))
+      & P.recover [P.word "as", P.text "(", "" <$ parseLineBreak] (\err -> '!' : show (SyntaxError err :: Error Expr))
   _ <- P.spaces
   alias <-
     P.oneOf
@@ -1572,7 +1573,7 @@ parseImport = do
   names <-
     P.oneOf
       [ do
-          parseCollection "imported name" "(" "," ")" (\loc got expected -> error "TODO: parseImport error handling") $ do
+          parseCollection "imported name" "(" "," ")" (\err -> error "TODO: parseImport error handling") $ do
             name <- parseName
             _ <- P.spaces
             alias <-
@@ -1621,12 +1622,14 @@ parseTypeDef = do
   _ <- P.whitespaces
   args <-
     P.oneOf
-      [ parseCollection "type argument" "<" "," ">" syntaxError (parseExpr 0)
-          & P.recover [P.char '='] (\loc expected got -> error ("TODO: " ++ show (loc, expected, got))),
-        -- return []
-        error $ "TODO: could not parse type args: " ++ name
+      [ do
+          args <- parseCollection "type argument" "<" "," ">" syntaxError (parseExpr 0)
+          _ <- P.whitespaces
+          return args,
+        P.recover [P.char '='] (\err -> [syntaxError err]) $ do
+          _ <- P.lookahead (P.char '=')
+          return []
       ]
-  _ <- P.whitespaces
   _ <- P.char '='
   _ <- P.whitespaces
   let parseAlt = do

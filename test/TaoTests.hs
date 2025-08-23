@@ -143,9 +143,9 @@ run = describe "--==☯ Tao ☯==--" $ do
     -- TODO: tag escaped: t'A'
     -- TODO: tag escaped: t'A'(x)
     -- Error recovery
-    parse' "A<$> \n" `shouldBe` Right (tag 1 1 "A" [syntaxError (loc' 1 3 1 4) "tag argument" "$"], "\n")
-    parse' "A<$, x> \n" `shouldBe` Right (tag 1 1 "A" [syntaxError (loc' 1 3 1 4) "tag argument" "$", x 1 6], "\n")
-    parse' "A<x, $> \n" `shouldBe` Right (tag 1 1 "A" [x 1 3, syntaxError (loc' 1 6 1 7) "tag argument" "$"], "\n")
+    parse' "A<$> \n" `shouldBe` Right (tag 1 1 "A" [syntaxError (loc' 1 3 1 4, "tag argument", "$")], "\n")
+    parse' "A<$, x> \n" `shouldBe` Right (tag 1 1 "A" [syntaxError (loc' 1 3 1 4, "tag argument", "$"), x 1 6], "\n")
+    parse' "A<x, $> \n" `shouldBe` Right (tag 1 1 "A" [x 1 3, syntaxError (loc' 1 6 1 7, "tag argument", "$")], "\n")
 
   it "☯ Tao.grammar.parser.Tuple" $ do
     parse' "() \n" `shouldBe` Right (loc 1 1 1 3 $ Tuple [], "\n")
@@ -154,9 +154,9 @@ run = describe "--==☯ Tao ☯==--" $ do
     parse' "(x, y, z) \n" `shouldBe` Right (loc 1 1 1 10 $ Tuple [x 1 2, y 1 5, z 1 8], "\n")
     parse' "(\nx\n,\ny\n,\n) \n" `shouldBe` Right (loc 1 1 6 2 $ Tuple [x 2 1, y 4 1], "\n")
     -- Error recovery
-    parse' "($) \n" `shouldBe` Right (loc 1 1 1 4 $ Tuple [syntaxError (loc' 1 2 1 3) "tuple item" "$"], "\n")
-    parse' "($, x) \n" `shouldBe` Right (loc 1 1 1 7 $ Tuple [syntaxError (loc' 1 2 1 3) "tuple item" "$", x 1 5], "\n")
-    parse' "(x, $) \n" `shouldBe` Right (loc 1 1 1 7 $ Tuple [x 1 2, syntaxError (loc' 1 5 1 6) "tuple item" "$"], "\n")
+    parse' "($) \n" `shouldBe` Right (loc 1 1 1 4 $ Tuple [syntaxError (loc' 1 2 1 3, "tuple item", "$")], "\n")
+    parse' "($, x) \n" `shouldBe` Right (loc 1 1 1 7 $ Tuple [syntaxError (loc' 1 2 1 3, "tuple item", "$"), x 1 5], "\n")
+    parse' "(x, $) \n" `shouldBe` Right (loc 1 1 1 7 $ Tuple [x 1 2, syntaxError (loc' 1 5 1 6, "tuple item", "$")], "\n")
 
   it "☯ Tao.grammar.parser.List" $ do
     parse' "[] \n" `shouldBe` Right (loc 1 1 1 3 $ List [], "\n")
@@ -165,9 +165,9 @@ run = describe "--==☯ Tao ☯==--" $ do
     parse' "[x, y, z] \n" `shouldBe` Right (loc 1 1 1 10 $ List [x 1 2, y 1 5, z 1 8], "\n")
     parse' "[\nx\n,\ny\n,\n] \n" `shouldBe` Right (loc 1 1 6 2 $ List [x 2 1, y 4 1], "\n")
     -- Error recovery
-    parse' "[$] \n" `shouldBe` Right (loc 1 1 1 4 $ List [syntaxError (loc' 1 2 1 3) "list item" "$"], "\n")
-    parse' "[$, x] \n" `shouldBe` Right (loc 1 1 1 7 $ List [syntaxError (loc' 1 2 1 3) "list item" "$", x 1 5], "\n")
-    parse' "[x, $] \n" `shouldBe` Right (loc 1 1 1 7 $ List [x 1 2, syntaxError (loc' 1 5 1 6) "list item" "$"], "\n")
+    parse' "[$] \n" `shouldBe` Right (loc 1 1 1 4 $ List [syntaxError (loc' 1 2 1 3, "list item", "$")], "\n")
+    parse' "[$, x] \n" `shouldBe` Right (loc 1 1 1 7 $ List [syntaxError (loc' 1 2 1 3, "list item", "$"), x 1 5], "\n")
+    parse' "[x, $] \n" `shouldBe` Right (loc 1 1 1 7 $ List [x 1 2, syntaxError (loc' 1 5 1 6, "list item", "$")], "\n")
 
   it "☯ Tao.grammar.parser.String" $ do
     parse' "'' \n" `shouldBe` Right (loc 1 1 1 3 $ String [Str ""], "\n")
@@ -261,6 +261,10 @@ run = describe "--==☯ Tao ☯==--" $ do
   it "☯ Tao.grammar.parser.Err" $ do
     "" `shouldBe` ""
 
+  it "☯ Tao.Stmt.parser.empty" $ do
+    let p = parseStmt'
+    p "" `shouldBe` Left ("", "")
+
   it "☯ Tao.Stmt.parser.Import" $ do
     let p = parseStmt'
     p "import m " `shouldBe` Right (Import "m" "m" [], "")
@@ -283,7 +287,12 @@ run = describe "--==☯ Tao ☯==--" $ do
     p "let" `shouldBe` Right (Nop $ syntaxErr 1 1 1 4 "definition pattern" "let", "")
 
   it "☯ Tao.Stmt.parser.TypeDef" $ do
-    "" `shouldBe` ""
+    let p = parseStmt'
+    p "type T = x " `shouldBe` Right (TypeDef ("T", [], [(x 1 10, Nothing)]), "")
+    p "type T $ = x " `shouldBe` Right (TypeDef ("T", [Meta (syntaxErr 1 8 1 10 "" "$ ") Err], [(x 1 12, Nothing)]), "")
+    p "type T<> = x " `shouldBe` Right (TypeDef ("T", [], [(x 1 12, Nothing)]), "")
+    p "type T<x> = y " `shouldBe` Right (TypeDef ("T", [x 1 8], [(y 1 13, Nothing)]), "")
+
   it "☯ Tao.Stmt.parser.Test" $ do
     "" `shouldBe` ""
   it "☯ Tao.Stmt.parser.Run" $ do

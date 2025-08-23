@@ -158,29 +158,33 @@ commit' message = Parser (\s -> Right ((), s {committed = message}))
 uncommit :: Parser ()
 uncommit = Parser (\s -> Right ((), s {committed = ""}))
 
-recover :: [Parser until] -> (Location -> String -> String -> a) -> Parser a -> Parser a
+recover :: [Parser until] -> ((Location, String, String) -> a) -> Parser a -> Parser a
 recover delims catch (Parser p) = do
   Parser
     ( \s1 -> case p s1 of
         Right (x, s2) -> Right (x, s2)
         Left s2 -> do
           let s1' = s1 {expected = s2.expected}
-          apply (recover' delims catch) s1'
+          apply (recover' skipTo delims catch) s1'
     )
 
-recover' :: [Parser a] -> (Location -> String -> String -> b) -> Parser b
-recover' delims catch = do
+recoverNotEmpty :: [Parser until] -> ((Location, String, String) -> a) -> Parser a -> Parser a
+recoverNotEmpty delims catch (Parser p) = do
+  Parser
+    ( \s1 -> case p s1 of
+        Right (x, s2) -> Right (x, s2)
+        Left s2 -> do
+          let s1' = s1 {expected = s2.expected}
+          apply (recover' skipToOneOrMore delims catch) s1'
+    )
+
+recover' :: (Parser () -> Parser String) -> [Parser until] -> ((Location, String, String) -> b) -> Parser b
+recover' consume delims catch = do
   start <- state
-  txt <- skipTo (lookahead $ oneOf delims)
-  -- case txt of
-  --   "" -> fail'
-  --   txt -> do
-  --     end <- state
-  --     let loc = Location start.filename (Range start.pos end.pos)
-  --     return (catch loc end.expected txt)
+  got <- consume (lookahead $ oneOf delims)
   end <- state
   let loc = Location start.filename (Range start.pos end.pos)
-  return (catch loc end.expected txt)
+  return (catch (loc, end.expected, got))
 
 skipTo :: Parser delim -> Parser String
 skipTo delim =
@@ -192,6 +196,13 @@ skipTo delim =
         cs <- skipTo delim
         ok (c : cs)
     ]
+
+skipToOneOrMore :: Parser delim -> Parser String
+skipToOneOrMore delim = do
+  txt <- skipTo delim
+  case txt of
+    "" -> fail'
+    txt -> return txt
 
 -- Single characters
 anyChar :: Parser Char
