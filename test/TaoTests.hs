@@ -263,17 +263,25 @@ run = describe "--==☯ Tao ☯==--" $ do
 
   it "☯ Tao.Stmt.parser.Import" $ do
     let p = parseStmt'
-    p "import" `shouldBe` Right (Nop $ syntaxErr 1 1 1 7 "import module path" "import", "")
-    -- TODO: Handle Meta on import names correctly.
-    p "import $" `shouldBe` Right (Import "![syntax error]TaoTests:1:8: expected import module path, got \"$\"" "" [], "")
     p "import m " `shouldBe` Right (Import "m" "m" [], "")
     p "import m as n " `shouldBe` Right (Import "m" "n" [], "")
     p "import m (x) " `shouldBe` Right (Import "m" "m" [("x", "x")], "")
     p "import m (x as y) " `shouldBe` Right (Import "m" "m" [("x", "y")], "")
     p "import m (x, y) " `shouldBe` Right (Import "m" "m" [("x", "x"), ("y", "y")], "")
+    -- TODO: Handle Meta on import names correctly.
+    p "import $" `shouldBe` Right (Import "![syntax error]TaoTests:1:8,1:9: expected import module path, got \"$\"" "" [], "")
+    p "import" `shouldBe` Right (Import "![syntax error]TaoTests:1:7: expected import module path, got \"\"" "" [], "")
 
   it "☯ Tao.Stmt.parser.Def" $ do
-    "" `shouldBe` ""
+    let p = parseStmt'
+    p "let x = y " `shouldBe` Right (def (x 1 5, y 1 9), "")
+    p "let x = $ " `shouldBe` Right (def (x 1 5, Meta (syntaxErr 1 9 1 11 "definition body" "$ ") Err), "")
+    p "let x $ y " `shouldBe` Right (Nop (syntaxErr 1 1 1 11 "\"=\"" "let x $ y "), "")
+    p "let $ = y " `shouldBe` Right (def (Meta (syntaxErr 1 5 1 7 "definition pattern" "$ ") Err, y 1 9), "")
+    p "let x = " `shouldBe` Right (def (x 1 5, Meta (syntaxErr 1 9 1 9 "definition body" "") Err), "")
+    p "let x " `shouldBe` Right (Nop $ syntaxErr 1 1 1 7 "\"=\"" "let x ", "")
+    p "let" `shouldBe` Right (Nop $ syntaxErr 1 1 1 4 "definition pattern" "let", "")
+
   it "☯ Tao.Stmt.parser.TypeDef" $ do
     "" `shouldBe` ""
   it "☯ Tao.Stmt.parser.Test" $ do

@@ -18,7 +18,7 @@ data Error a
 
 instance (Show a) => Show (Error a) where
   show :: Error a -> String
-  show (SyntaxError (loc, expected, got)) = "[syntax error]" ++ loc.filename ++ ":" ++ show loc.range.start.row ++ ":" ++ show loc.range.start.col ++ ": expected " ++ expected ++ ", got " ++ show got
+  show (SyntaxError (loc, expected, got)) = "[syntax error]" ++ loc.filename ++ ":" ++ show loc.range ++ ": expected " ++ expected ++ ", got " ++ show got
   show (TypeError e) = "[type error]" ++ show e
   show (CaseError e) = "[case error]" ++ show e
   show (RuntimeError e) = "[runtime error]" ++ show e

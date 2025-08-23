@@ -15,6 +15,7 @@ import Stdlib (filterMap)
 newtype Parser a
   = Parser (State -> Either State (a, State))
 
+-- TODO: find a way to keep a stack trace for syntax errors
 data State = State
   { remaining :: String,
     filename :: String,
@@ -171,12 +172,15 @@ recover' :: [Parser a] -> (Location -> String -> String -> b) -> Parser b
 recover' delims catch = do
   start <- state
   txt <- skipTo (lookahead $ oneOf delims)
-  case txt of
-    "" -> fail'
-    txt -> do
-      end <- state
-      let loc = Location start.filename (Range start.pos end.pos)
-      return (catch loc end.expected txt)
+  -- case txt of
+  --   "" -> fail'
+  --   txt -> do
+  --     end <- state
+  --     let loc = Location start.filename (Range start.pos end.pos)
+  --     return (catch loc end.expected txt)
+  end <- state
+  let loc = Location start.filename (Range start.pos end.pos)
+  return (catch loc end.expected txt)
 
 skipTo :: Parser delim -> Parser String
 skipTo delim =

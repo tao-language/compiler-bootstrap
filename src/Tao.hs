@@ -1595,19 +1595,20 @@ parseDef :: String -> Parser (Expr, Expr)
 parseDef "" = error "parseDef delimiter must not be empty"
 parseDef op = do
   typeAnnotation <- P.maybe' $ do
-    _ <- P.char ':'
-    -- P.commit "def type"
+    _ <- P.commit "typed definition" $ P.char ':'
     _ <- P.spaces
     t <- parseExpr 0
     _ <- parseLineBreak
     return t
-  _ <- P.word "let"
-  -- _ <- P.commit "def"
+  _ <- P.commit "definition" $ P.word "let"
   _ <- P.whitespaces
-  a <- parseExpr 0
+  a <- P.recover [P.word op] syntaxError $ do
+    P.expect "definition pattern" (parseExpr 0)
   _ <- P.word op
   _ <- P.whitespaces
-  b <- parseExpr 0
+  b <- P.recover [parseLineBreak] syntaxError $ do
+    P.expect "definition body" (parseExpr 0)
+  _ <- P.spaces
   case typeAnnotation of
     Just t -> return (Ann a t, b)
     Nothing -> return (a, b)
