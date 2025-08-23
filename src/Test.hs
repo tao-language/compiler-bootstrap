@@ -62,7 +62,7 @@ instance TestSome (String, Stmt) where
     Test t | filter t -> testSome ctx filter (path, t)
     Test {} -> []
     Run {} -> []
-    Comment {} -> []
+    Nop {} -> []
 
 instance TestSome (FilePath, UnitTest) where
   testSome :: Context -> (UnitTest -> Bool) -> (FilePath, UnitTest) -> [TestResult]

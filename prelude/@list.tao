@@ -1,4 +1,4 @@
-type List(a) =
+type List<a> =
 | a :: List(a)
 | []
 

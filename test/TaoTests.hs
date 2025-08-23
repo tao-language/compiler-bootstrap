@@ -170,6 +170,8 @@ run = describe "--==☯ Tao ☯==--" $ do
   -- TODO: string multi-line indented
   -- TODO: string templates: f`abc`
   -- TODO: string templates multi-line: ```f\nabc\n```
+  -- Error recovery
+  -- TODO: missing closing quote
 
   it "☯ Tao.grammar.parser.For" $ do
     parse' "@x.y \n" `shouldBe` Right (loc 1 1 1 3 $ For ["x"] (y 1 4), "\n")
@@ -247,6 +249,19 @@ run = describe "--==☯ Tao ☯==--" $ do
   it "☯ Tao.grammar.parser.Meta" $ do
     "" `shouldBe` ""
   it "☯ Tao.grammar.parser.Err" $ do
+    "" `shouldBe` ""
+
+  it "☯ Tao.Stmt.parser.Import" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.Stmt.parser.Def" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.Stmt.parser.TypeDef" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.Stmt.parser.Test" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.Stmt.parser.Run" $ do
+    "" `shouldBe` ""
+  it "☯ Tao.Stmt.parser.Nop" $ do
     "" `shouldBe` ""
 
   it "☯ Tao.grammar.layout.Any" $ do

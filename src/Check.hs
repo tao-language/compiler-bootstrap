@@ -40,4 +40,4 @@ instance CheckTypes Stmt where
     Run expr -> do
       let (env, a) = compile ctx path expr
       check $ lift $ C.let' env a
-    Comment _ -> []
+    Nop m -> check (Meta m Err)

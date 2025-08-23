@@ -165,7 +165,7 @@ data Stmt
   | TypeDef (String, [Expr], [(Expr, Maybe Type)])
   | Test UnitTest
   | Run Expr
-  | Comment String
+  | Nop (C.Metadata Expr)
   deriving (Eq, Show)
 
 data UnitTest = UnitTest
@@ -568,7 +568,7 @@ instance Apply Stmt where
     TypeDef (name, args, alts) -> TypeDef (name, map f args, map (bimap f (fmap f)) alts)
     Test t -> Test (apply f t)
     Run a -> Run (f a)
-    Comment x -> Comment x
+    Nop m -> Nop (fmap f m)
 
 instance Apply UnitTest where
   apply :: (Expr -> Expr) -> UnitTest -> UnitTest
@@ -860,7 +860,7 @@ grammar = do
                 -- _ <- P.commit "let"
                 end <- P.state
                 _ <- P.whitespaces
-                a <- parseExprUntil "let lhs" 0 ["=", "<-", ";", "\n", "~>"]
+                a <- expr
                 _ <- P.whitespaces
                 bind <-
                   P.oneOf
@@ -868,7 +868,7 @@ grammar = do
                       do _ <- P.text "<-"; return Bind
                     ]
                 _ <- P.whitespaces
-                b <- parseExprUntil "let rhs" 0 [";", "\n", "~>"]
+                b <- expr
                 _ <- parseLineBreak
                 withLoc start end . bind (a, b) <$> expr
            in G.Atom parser $ \layout -> \case
@@ -1063,7 +1063,7 @@ grammar = do
                 args <- parseCollection "function argument" "(" "," ")" syntaxError (parseExpr 0)
                 end <- P.state
                 _ <- P.spaces
-                return (withLoc start end $ App a (Tuple args))
+                return (withLoc start end $ app a args)
            in G.InfixL 19 parser $ \lhs rhs -> \case
                 App a b -> do
                   let args = map (layout 0) (tupleOf b)
@@ -1074,13 +1074,13 @@ grammar = do
                 start <- P.state
                 _ <- P.char '['
                 _ <- P.whitespaces
-                b <- parseExprUntil "get/slice 1" 2 ["]", ":", "\n"]
+                b <- parseExpr 2
                 op <-
                   P.oneOf
                     [ do
                         _ <- P.char ':'
                         _ <- P.whitespaces
-                        c <- parseExprUntil "slice 2" 2 ["]", "\n"]
+                        c <- parseExpr 2
                         return (`Slice` (b, c)),
                       return (`Get` b)
                     ]
@@ -1160,7 +1160,7 @@ grammar = do
                 cases <- P.zeroOrMore $ do
                   _ <- P.char '|'
                   _ <- P.spaces
-                  case' <- parseExprUntil "match alt" 1 ["|", "}", "\n"]
+                  case' <- parseExpr 1
                   _ <- P.whitespaces
                   return case'
                 _ <- P.char '}'
@@ -1207,7 +1207,7 @@ grammar = do
           -- Grammar.Metadata.Comments
           let parser expr = do
                 comments <- P.oneOrMore $ do
-                  _ <- P.char '#'
+                  _ <- P.oneOf [P.text "//", P.text "#"]
                   _ <- P.spaces
                   comment <- P.zeroOrMore (P.charIf (/= '\n'))
                   _ <- P.whitespaces
@@ -1405,18 +1405,6 @@ lift = \case
 parseExpr :: Int -> Parser Expr
 parseExpr = G.parser grammar
 
-parseExprUntil :: String -> Int -> [String] -> Parser Expr
-parseExprUntil msg prec delims = do
-  a <- parseExpr prec
-  start <- P.state
-  txt <- P.chooseShortest (map (P.skipTo . P.text) delims)
-  case txt of
-    "" -> return a
-    txt -> do
-      end <- P.state
-      let loc = Location start.filename (Range start.pos end.pos)
-      return (Meta (C.Error (SyntaxError (loc, msg, txt))) a)
-
 parseLineBreak :: Parser ()
 parseLineBreak = do
   _ <- P.oneOf [P.char '\n', P.char ';', '$' <$ P.endOfFile]
@@ -1535,8 +1523,8 @@ parseStmt = do
         Def <$> parseDef "=",
         TypeDef <$> parseTypeDef,
         parseTest,
-        Comment <$> parseComment,
-        Run <$> parseExprUntil "run stmt" 1 [";", "\n"]
+        -- Nop <$> parseComment,
+        Run <$> parseExpr 1
         -- TODO: consider a trailing comment on a syntax error like this
         -- , Run . (\e -> Meta (C.Error e) Err) . SyntaxError <$> recoverSyntaxError "statement" (P.text "\n")
       ]
@@ -1585,45 +1573,44 @@ parseDef op = do
     _ <- P.char ':'
     -- P.commit "def type"
     _ <- P.spaces
-    t <- parseExprUntil "def type" 0 [";", "\n"]
+    t <- parseExpr 0
     _ <- parseLineBreak
     return t
   _ <- P.word "let"
   -- _ <- P.commit "def"
   _ <- P.whitespaces
-  a <- parseExprUntil "def lhs" 0 [op, "\n"]
+  a <- parseExpr 0
   _ <- P.word op
   _ <- P.whitespaces
-  b <- parseExprUntil "def rhs" 0 [";", "\n"]
+  b <- parseExpr 0
   case typeAnnotation of
     Just t -> return (Ann a t, b)
     Nothing -> return (a, b)
 
 parseTypeDef :: Parser (String, [Expr], [(Expr, Maybe Type)])
 parseTypeDef = do
-  _ <- P.word "type"
-  -- _ <- P.commit "type"
+  _ <- P.commit "type definition" $ P.word "type"
   _ <- P.whitespaces
-  name <- parseNameTag
+  name <- P.expect "type name" $ parseNameTag
   _ <- P.whitespaces
   args <-
     P.oneOf
-      [ parseCollection "typedef arg" "(" "," ")" syntaxError $ do
-          -- parseExprUntil "typedef arg" 0 [",", ")", "=", "\n"],
-          parseExpr 0,
-        return []
+      [ parseCollection "type argument" "<" "," ">" syntaxError (parseExpr 0)
+          & P.recover [P.char '='] (\loc expected got -> error ("TODO: " ++ show (loc, expected, got))),
+        -- return []
+        error $ "TODO: could not parse type args: " ++ name
       ]
   _ <- P.whitespaces
   _ <- P.char '='
   _ <- P.whitespaces
   let parseAlt = do
-        a <- parseExprUntil "type alt" 4 ["=>", "|", "\n"]
+        a <- parseExpr 4
         _ <- P.spaces
         mb <- P.maybe' $ do
           _ <- P.whitespaces
           _ <- P.text "=>"
           _ <- P.whitespaces
-          parseExprUntil "type alt-type" 4 ["|", "\n"]
+          parseExpr 4
         return (a, mb)
   _ <- P.maybe' (P.char '|')
   _ <- P.whitespaces
@@ -1651,16 +1638,16 @@ parseTest = do
   _ <- P.char '>'
   _ <- P.oneOrMore P.space
   -- P.commit "test"
-  expr <- parseExprUntil "test expr" 0 ["~>", "\n"]
+  expr <- parseExpr 0
   result <-
     P.oneOf
       [ do
           _ <- parseLineBreak
-          parseExprUntil "test expect newline" 0 ["\n"],
+          parseExpr 0,
         do
           _ <- P.text "~>"
           _ <- P.whitespaces
-          parseExprUntil "test expect =>" 0 ["\n"],
+          parseExpr 0,
         return (Tag "True" [])
       ]
   return (Test (UnitTest s.filename s.pos name expr result))
@@ -1688,14 +1675,6 @@ parseCommentSingleLine = do
 --   _ <- P.whitespaces
 --   error "TODO: parseCommentMultiLine"
 --   return (dropWhileEnd isSpace line)
-
--- recoverSyntaxError :: msg -> Parser delim -> Parser (Location, msg, String)
--- recoverSyntaxError msg delim = do
---   start <- P.state
---   txt <- P.skipTo delim
---   end <- P.state
---   let loc = Location start.filename (Range start.pos end.pos)
---   return (loc, msg, txt)
 
 locOf :: Expr -> Maybe Location
 locOf (Meta (C.Loc loc) _) = Just loc
@@ -1735,7 +1714,7 @@ instance Check Stmt where
     TypeDef (_, args, alts) -> concatMap check args ++ concatMap check alts
     Test t -> concatMap check [t.expr, t.expect]
     Run a -> check a
-    Comment _ -> []
+    Nop m -> check (Meta m Err)
 
 instance (Check a) => Check [a] where
   check :: [a] -> [(Maybe Location, Error Expr)]
