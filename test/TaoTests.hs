@@ -12,10 +12,20 @@ import Test.Hspec
 -- TODO: isolate errors and error reporting into its own test file
 
 filename :: String
-filename = "<TaoTests>"
+filename = "TaoTests"
+
+syntaxErr :: Int -> Int -> Int -> Int -> String -> String -> C.Metadata Expr
+syntaxErr r1 c1 r2 c2 expected got = do
+  let loc = Location filename (Range (Pos r1 c1) (Pos r2 c2))
+  C.Error (SyntaxError (loc, expected, got))
 
 parse' :: String -> Either (String, String) (Expr, String)
 parse' text = case parse 0 filename text of
+  Right (a, s) -> Right (a, s.remaining)
+  Left s -> Left (s.expected, s.remaining)
+
+parseStmt' :: String -> Either (String, String) (Stmt, String)
+parseStmt' text = case P.parse parseStmt filename text of
   Right (a, s) -> Right (a, s.remaining)
   Left s -> Left (s.expected, s.remaining)
 
@@ -252,7 +262,16 @@ run = describe "--==☯ Tao ☯==--" $ do
     "" `shouldBe` ""
 
   it "☯ Tao.Stmt.parser.Import" $ do
-    "" `shouldBe` ""
+    let p = parseStmt'
+    p "import" `shouldBe` Right (Nop $ syntaxErr 1 1 1 7 "import module path" "import", "")
+    -- TODO: Handle Meta on import names correctly.
+    p "import $" `shouldBe` Right (Import "![syntax error]TaoTests:1:8: expected import module path, got \"$\"" "" [], "")
+    p "import m " `shouldBe` Right (Import "m" "m" [], "")
+    p "import m as n " `shouldBe` Right (Import "m" "n" [], "")
+    p "import m (x) " `shouldBe` Right (Import "m" "m" [("x", "x")], "")
+    p "import m (x as y) " `shouldBe` Right (Import "m" "m" [("x", "y")], "")
+    p "import m (x, y) " `shouldBe` Right (Import "m" "m" [("x", "x"), ("y", "y")], "")
+
   it "☯ Tao.Stmt.parser.Def" $ do
     "" `shouldBe` ""
   it "☯ Tao.Stmt.parser.TypeDef" $ do

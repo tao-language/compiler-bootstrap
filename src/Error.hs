@@ -14,7 +14,14 @@ data Error a
   | TypeError (TypeError a)
   | CaseError (CaseError a)
   | RuntimeError (RuntimeError a)
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance (Show a) => Show (Error a) where
+  show :: Error a -> String
+  show (SyntaxError (loc, expected, got)) = "[syntax error]" ++ loc.filename ++ ":" ++ show loc.range.start.row ++ ":" ++ show loc.range.start.col ++ ": expected " ++ expected ++ ", got " ++ show got
+  show (TypeError e) = "[type error]" ++ show e
+  show (CaseError e) = "[case error]" ++ show e
+  show (RuntimeError e) = "[runtime error]" ++ show e
 
 data TypeError a
   = OccursError String a

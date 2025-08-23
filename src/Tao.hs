@@ -688,6 +688,10 @@ syntaxError :: Location -> String -> String -> Expr
 syntaxError loc expected got = do
   Meta (C.Error $ SyntaxError (loc, expected, got)) Err
 
+syntaxErrorStmt :: Location -> String -> String -> Stmt
+syntaxErrorStmt loc expected got = do
+  Nop (C.Error $ SyntaxError (loc, expected, got))
+
 parseCollection :: String -> String -> String -> String -> (Location -> String -> String -> a) -> Parser a -> Parser [a]
 parseCollection msg open delim close catch parser = do
   _ <- P.text open
@@ -1517,54 +1521,75 @@ parseModule name = do
 
 parseStmt :: Parser Stmt
 parseStmt = do
+  let parsers =
+        [ parseImport,
+          Def <$> parseDef "=",
+          TypeDef <$> parseTypeDef,
+          parseTest,
+          -- Nop <$> parseComment,
+          Run <$> parseExpr 1
+          -- TODO: consider a trailing comment on a syntax error like this
+          -- , Run . (\e -> Meta (C.Error e) Err) . SyntaxError <$> recoverSyntaxError "statement" (P.text "\n")
+        ]
   stmt <-
-    P.oneOf
-      [ parseImport,
-        Def <$> parseDef "=",
-        TypeDef <$> parseTypeDef,
-        parseTest,
-        -- Nop <$> parseComment,
-        Run <$> parseExpr 1
-        -- TODO: consider a trailing comment on a syntax error like this
-        -- , Run . (\e -> Meta (C.Error e) Err) . SyntaxError <$> recoverSyntaxError "statement" (P.text "\n")
-      ]
+    P.oneOf parsers
+      & P.recover [parseLineBreak] syntaxErrorStmt
   _ <- parseLineBreak
   return stmt
 
-parseModulePath :: Parser (String, String)
+parseModulePath :: Parser String
 parseModulePath = do
   pkg <- parseNameVar
   path <- P.zeroOrMore $ do
     _ <- P.char '/'
     name <- parseNameVar
     return ('/' : name)
-  let modulePath = concat (pkg : path)
-  return (modulePath, takeBaseName modulePath)
+  return $ concat (pkg : path)
 
 parseImport :: Parser Stmt
 parseImport = do
-  _ <- P.word "import"
-  -- P.commit "import"
+  _ <- P.commit "import statement" $ P.word "import"
   _ <- P.spaces
-  (path, alias) <- parseModulePath
+  path <-
+    -- TODO: Import strings should support a list of Metadata for errors, comments, locations, etc
+    -- type Name = ([Meta], String)
+    -- Import Name Name [(Name, Name)] [Meta]
+    P.expect "import module path" parseModulePath
+      & P.recover [P.word "as", P.text "(", "" <$ parseLineBreak] (\loc exp got -> '!' : show (SyntaxError (loc, exp, got) :: Error Expr))
   _ <- P.spaces
-  exposing <-
+  alias <-
+    P.oneOf
+      [ do
+          _ <- P.commit "import module alias" $ P.word "as"
+          _ <- P.spaces
+          alias <- parseName
+          _ <- P.spaces
+          return alias,
+        return $ case path of
+          '!' : syntaxError -> ""
+          path -> takeBaseName path
+      ]
+  names <-
     P.oneOf
       [ do
           parseCollection "imported name" "(" "," ")" (\loc got expected -> error "TODO: parseImport error handling") $ do
             name <- parseName
             _ <- P.spaces
-            P.oneOf
-              [ do
-                  _ <- P.word "as"
-                  _ <- P.spaces
-                  alias <- parseName
-                  return (name, alias),
-                return (name, name)
-              ],
+            alias <-
+              P.oneOf
+                [ do
+                    _ <- P.commit "import name alias" $ P.word "as"
+                    _ <- P.spaces
+                    alias <- parseName
+                    _ <- P.spaces
+                    return alias,
+                  return name
+                ]
+            return (name, alias),
         return []
       ]
-  return (Import path alias exposing)
+  _ <- P.spaces
+  return (Import path alias names)
 
 parseDef :: String -> Parser (Expr, Expr)
 parseDef "" = error "parseDef delimiter must not be empty"
@@ -1709,6 +1734,9 @@ instance Check (Expr, Maybe Type) where
 instance Check Stmt where
   check :: Stmt -> [(Maybe Location, Error Expr)]
   check = \case
+    -- TODO: check should parse import (path, alias, names) in look for syntax errors (names starting with '!')
+    -- TODO check should verify the import path exists
+    -- TODO check should verify the imported names exist
     Import {} -> []
     Def (a, b) -> check a ++ check b
     TypeDef (_, args, alts) -> concatMap check args ++ concatMap check alts

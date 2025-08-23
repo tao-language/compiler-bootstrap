@@ -101,7 +101,7 @@ oneOf (Parser p : choices) =
     ( \s1 -> case p s1 {committed = ""} of
         Right (x, s2) -> Right (x, s2 {committed = s1.committed})
         Left s2 | s2.committed == "" -> apply (oneOf choices) s1
-        Left _ -> Left s1
+        Left s2 -> Left s1 {expected = s2.expected}
         -- Left State {committed = False} -> apply (oneOf choices) s1
         -- Left s2 -> Left s2
     )
@@ -147,7 +147,7 @@ expect message (Parser p) =
 
 commit :: String -> Parser a -> Parser a
 commit message parser = do
-  x <- parser
+  x <- expect message parser
   commit' message
   return x
 
