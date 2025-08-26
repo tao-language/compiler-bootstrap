@@ -580,7 +580,7 @@ class DropMeta a where
 instance DropMeta Expr where
   dropMeta :: Expr -> Expr
   dropMeta = \case
-    Meta (C.Error e) a -> Meta (C.Error e) (dropMeta a)
+    -- Meta (C.Error e) a -> Meta (C.Error e) (dropMeta a)
     Meta _ a -> dropMeta a
     -- Err e -> Err (fmap dropMeta e)
     a -> apply dropMeta a
@@ -684,15 +684,15 @@ layout prec = G.layout grammar prec
 format :: Int -> String -> Expr -> String
 format width indent = G.format grammar width ("  ", indent)
 
-syntaxError :: (Location, String, String) -> Expr
+syntaxError :: (Location, String, String, String) -> Expr
 syntaxError err = do
   Meta (C.Error $ SyntaxError err) Err
 
-syntaxErrorStmt :: (Location, String, String) -> Stmt
+syntaxErrorStmt :: (Location, String, String, String) -> Stmt
 syntaxErrorStmt err = do
   Nop (C.Error $ SyntaxError err)
 
-parseCollection :: String -> String -> String -> String -> ((Location, String, String) -> a) -> Parser a -> Parser [a]
+parseCollection :: String -> String -> String -> String -> ((Location, String, String, String) -> a) -> Parser a -> Parser [a]
 parseCollection msg open delim close catch parser = do
   _ <- P.text open
   _ <- P.whitespaces
@@ -1265,31 +1265,26 @@ grammar = do
           let parser expr = do
                 start <- P.state
                 _ <- P.word "!error"
+                _ <- P.spaces
+                _ <- P.char '('
+                _ <- P.whitespaces
+                a <- expr
+                _ <- P.whitespaces
+                _ <- P.char ')'
                 end <- P.state
                 _ <- P.spaces
-                a <-
-                  P.oneOf
-                    [ do
-                        _ <- P.char '('
-                        _ <- P.whitespaces
-                        a <- expr
-                        _ <- P.whitespaces
-                        _ <- P.char ')'
-                        return a,
-                      return (withLoc start end Any)
-                    ]
-                _ <- P.spaces
-                return (Meta (C.Error $ customError a) Err)
+                let loc = P.locSpan start end
+                return (Meta (C.Error (customError loc a)) Err)
            in G.Atom parser $ \layout -> \case
                 Err -> Just [PP.Text "!error"]
                 Meta (C.Error e) c -> case e of
-                  SyntaxError (loc, ctx, txt) -> Just [PP.Text $ "!syntax-error[" ++ show loc ++ "|" ++ show ctx ++ "|" ++ show txt ++ "]"]
-                  TypeError e -> case e of
+                  SyntaxError (loc, committed, expected, got) -> Just [PP.Text $ "!syntax-error[" ++ show loc ++ "|" ++ show committed ++ "|" ++ show expected ++ "|" ++ show got ++ "]"]
+                  TypeError (loc, e) -> case e of
                     UndefinedVar x -> Just [PP.Text $ "!undefined-var(" ++ x ++ ")"]
                     TypeMismatch a b -> Just (PP.Text "!type-mismatch(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
                     NotAFunction a b -> Just (PP.Text "!not-a-function(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
                     e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
-                  RuntimeError e -> case e of
+                  RuntimeError (loc, e) -> case e of
                     UnhandledCase a b -> Just (PP.Text "!unhandled-case(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
                     CannotApply a b -> Just (PP.Text "!cannot-apply(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
                     CustomError a -> Just (PP.Text "!error(" : layout a ++ [PP.Text ")"])
@@ -1630,7 +1625,7 @@ parseTypeDef = do
           _ <- P.lookahead (P.char '=')
           return []
       ]
-  _ <- P.char '='
+  _ <- P.expect "=" $ P.char '='
   _ <- P.whitespaces
   let parseAlt = do
         a <- parseExpr 4
@@ -1712,31 +1707,21 @@ locOf (Ann a _) = locOf a
 locOf _ = Nothing
 
 class Check a where
-  check :: a -> [(Maybe Location, Error Expr)]
+  check :: a -> [Error Expr]
 
 instance Check Expr where
-  check :: Expr -> [(Maybe Location, Error Expr)]
+  check :: Expr -> [Error Expr]
   check = \case
-    Ann a b -> case errOf b of
-      Just e -> (locOf a, e) : check a
-      Nothing -> check a
-    Meta (C.Error (SyntaxError (loc, ctx, txt))) a ->
-      (Just loc, SyntaxError (loc, ctx, txt)) : check a
-    Meta (C.Error e) Err | Just a <- Error.mainExpr e -> case locOf a of
-      Just loc -> [(Just loc, e)]
-      Nothing -> [(Nothing, e)]
-    Meta (C.Loc loc) a | Just e <- errOf a -> do
-      [(Just loc, e)]
-    Meta _ a -> check a
+    Meta (C.Error e) a -> e : check a
     a -> collect check a
 
 instance Check (Expr, Maybe Type) where
-  check :: (Expr, Maybe Type) -> [(Maybe Location, Error Expr)]
+  check :: (Expr, Maybe Type) -> [Error Expr]
   check (a, Just t) = check a ++ check t
   check (a, Nothing) = check a
 
 instance Check Stmt where
-  check :: Stmt -> [(Maybe Location, Error Expr)]
+  check :: Stmt -> [Error Expr]
   check = \case
     -- TODO: check should parse import (path, alias, names) in look for syntax errors (names starting with '!')
     -- TODO check should verify the import path exists
@@ -1749,11 +1734,11 @@ instance Check Stmt where
     Nop m -> check (Meta m Err)
 
 instance (Check a) => Check [a] where
-  check :: [a] -> [(Maybe Location, Error Expr)]
+  check :: [a] -> [Error Expr]
   check = concatMap check
 
 instance Check Module where
-  check :: Module -> [(Maybe Location, Error Expr)]
+  check :: Module -> [Error Expr]
   check (_, stmts) = concatMap check stmts
 
 run :: Context -> FilePath -> Expr -> Expr
@@ -1894,7 +1879,8 @@ instance Compile (String, Expr) where
     let a = C.dropMeta $ C.bind [] $ lower expr
     let dependencies = delete name (C.freeVars a `union` C.freeTags a)
     let env = compileDefs ctx path dependencies
-    case C.infer buildOps ((name, C.Var name) : env) a of
+    let loc = Location path (Range (Pos 0 0) (Pos 0 0))
+    case C.infer loc buildOps ((name, C.Var name) : env) a of
       C.Ok ats -> do
         -- let alt ((a, t), s) = C.for' (map fst s) (C.Ann a t)
         -- let alt ((a, _), s) = C.for' (map fst s) a

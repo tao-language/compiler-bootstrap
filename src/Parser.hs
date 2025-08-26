@@ -53,6 +53,9 @@ instance Monad Parser where
   return :: a -> Parser a
   return = pure
 
+locSpan :: State -> State -> Location
+locSpan start end = Location start.filename (Range start.pos end.pos)
+
 apply :: Parser a -> State -> Either State (a, State)
 apply (Parser p) = p
 
@@ -158,7 +161,7 @@ commit' message = Parser (\s -> Right ((), s {committed = message}))
 uncommit :: Parser ()
 uncommit = Parser (\s -> Right ((), s {committed = ""}))
 
-recover :: [Parser until] -> ((Location, String, String) -> a) -> Parser a -> Parser a
+recover :: [Parser until] -> ((Location, String, String, String) -> a) -> Parser a -> Parser a
 recover delims catch (Parser p) = do
   Parser
     ( \s1 -> case p s1 of
@@ -168,7 +171,7 @@ recover delims catch (Parser p) = do
           apply (recover' skipTo delims catch) s1'
     )
 
-recoverNotEmpty :: [Parser until] -> ((Location, String, String) -> a) -> Parser a -> Parser a
+recoverNotEmpty :: [Parser until] -> ((Location, String, String, String) -> a) -> Parser a -> Parser a
 recoverNotEmpty delims catch (Parser p) = do
   Parser
     ( \s1 -> case p s1 of
@@ -178,13 +181,13 @@ recoverNotEmpty delims catch (Parser p) = do
           apply (recover' skipToOneOrMore delims catch) s1'
     )
 
-recover' :: (Parser () -> Parser String) -> [Parser until] -> ((Location, String, String) -> b) -> Parser b
+recover' :: (Parser () -> Parser String) -> [Parser until] -> ((Location, String, String, String) -> b) -> Parser b
 recover' consume delims catch = do
   start <- state
   got <- consume (lookahead $ oneOf delims)
   end <- state
   let loc = Location start.filename (Range start.pos end.pos)
-  return (catch (loc, end.expected, got))
+  return (catch (loc, end.committed, end.expected, got))
 
 skipTo :: Parser delim -> Parser String
 skipTo delim =

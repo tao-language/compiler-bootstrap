@@ -7,10 +7,10 @@ import Location
 import Tao
 
 class CheckTypes a where
-  checkTypes :: Context -> FilePath -> a -> [(Maybe Location, Error Expr)]
+  checkTypes :: Context -> FilePath -> a -> [Error Expr]
 
 instance CheckTypes Context where
-  checkTypes :: Context -> FilePath -> [Module] -> [(Maybe Location, Error Expr)]
+  checkTypes :: Context -> FilePath -> [Module] -> [Error Expr]
   checkTypes ctx path mods = do
     -- let (env, expr') = compile ctx path expr
     -- let (_, _, errors) = C.infer buildOps env expr'
@@ -19,13 +19,13 @@ instance CheckTypes Context where
     concatMap (checkTypes ctx path) mods
 
 instance CheckTypes Module where
-  checkTypes :: Context -> FilePath -> Module -> [(Maybe Location, Error Expr)]
+  checkTypes :: Context -> FilePath -> Module -> [Error Expr]
   checkTypes ctx path (_, stmts) = do
     concatMap (checkTypes ctx path) stmts
 
 -- TODO: there's a lot of duplication here, maybe type classes for each case
 instance CheckTypes Stmt where
-  checkTypes :: Context -> FilePath -> Stmt -> [(Maybe Location, Error Expr)]
+  checkTypes :: Context -> FilePath -> Stmt -> [Error Expr]
   checkTypes ctx path = \case
     Import {} -> []
     Def (p, b) -> do

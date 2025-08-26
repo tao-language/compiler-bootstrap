@@ -64,12 +64,11 @@ loadSource filename = case splitExtension filename of
     let osPath = getOSPath filename
     src <- readFile osPath
     let path = snd (split2 ':' name)
-    let parser = parseModule path
-    case P.parse parser osPath src of
+    case P.parse (parseModule path) osPath src of
       Right (mod, s) -> return (Just mod)
       Left s -> do
         let loc = Location s.filename (Range s.pos s.pos)
-        error ("compiler error, there is a bug in the parser\n ❌ " ++ show loc ++ ": the parser was not able to gracefully recover from an error.\nexpected =" ++ s.expected ++ "\n")
+        error ("compiler error, there is a bug in the parser\n ❌ " ++ show loc ++ ": the parser was not able to gracefully recover from an error.\nexpected: " ++ show s.expected ++ "\ncommitted: " ++ show s.committed ++ "\n")
   _ -> error $ "file extension not supported: " ++ filename
 
 loadExpr :: FilePath -> String -> IO Expr
