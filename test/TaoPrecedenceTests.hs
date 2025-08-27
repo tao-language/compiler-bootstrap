@@ -21,8 +21,8 @@ run = describe "--== Tao precedence ==--" $ do
         Left err -> Left (Any, err)
 
   it "☯ TaoPrecedence.Let" $ do
-    prec "let x = let y = z\na\nb" `shouldBe` Right (Let (x, Let (y, z) a) b)
-    prec "let x = y | z\na" `shouldBe` Right (Let (x, y `Or` z) a)
+    prec "let x = let y = z\na\nb" `shouldBe` Right (let' (x, let' (y, z) a) b)
+    prec "let x = y | z\na" `shouldBe` Right (let' (x, y `Or` z) a)
 
   -- it "☯ TaoPrecedence.Bind" $ do
 

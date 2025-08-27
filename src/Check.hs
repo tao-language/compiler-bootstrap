@@ -28,8 +28,8 @@ instance CheckTypes Stmt where
   checkTypes :: Context -> FilePath -> Stmt -> [Error Expr]
   checkTypes ctx path = \case
     Import {} -> []
-    Def (p, b) -> do
-      let expr = (Let (p, b) (Tuple []))
+    LetDef (p, op, b) -> do
+      let expr = (Let (p, op, b) (Tuple []))
       let (env, a) = compile ctx path expr
       check $ lift $ C.let' env a
     TypeDef {} -> []

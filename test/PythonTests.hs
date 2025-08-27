@@ -63,7 +63,7 @@ run = describe "--==☯ Python ☯==--" $ do
     emit' (T.Import "path-to/mod" "mod" []) `shouldBe` [Import "path_to.mod" Nothing]
     emit' (T.Import "mod" "mod" [("x", "x")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Nothing)]]
     emit' (T.Import "mod" "mod" [("x", "y")]) `shouldBe` [Import "mod" Nothing, ImportFrom "mod" [("x", Just "y")]]
-    emit' (T.def (x, y)) `shouldBe` [Assign [x'] y']
+    emit' (T.letDef (x, y)) `shouldBe` [Assign [x'] y']
     -- emit' (T.Def (T.Var "a", T.Tag "Point" [T.Int 1, T.Int 2])) `shouldBe` [Assign [a'] (call "Point" [Integer 1, Integer 2])]
     -- emit' (var "a" (Tag "Point" [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]
     -- emit' (varT "a" (Var "Point") (record [("y", Int 2), ("", Int 1)])) `shouldBe` [Assign [a'] (Call (Name "Point") [] [("x", Integer 1), ("y", Integer 2)])]

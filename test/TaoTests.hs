@@ -35,14 +35,14 @@ parseStmt' text = case P.parse parseStmt filename text of
 -- core :: C.Expr -> String
 -- core = show . C.dropMeta
 
--- def' :: String -> String -> Stmt
--- def' a b = case (parse ("ctx." ++ a) a, parse ("ctx." ++ a) b) of
---   (Right (a, _), Right (b, _)) -> def (a, b)
+-- letDef' :: String -> String -> Stmt
+-- letDef' a b = case (parse ("ctx." ++ a) a, parse ("ctx." ++ a) b) of
+--   (Right (a, _), Right (b, _)) -> letDef (a, b)
 --   (Left s, _) -> error ("ctx[pattern] syntax error, remaining: " ++ s.remaining)
 --   (_, Left s) -> error ("ctx[value] syntax error, remaining: " ++ s.remaining)
 
--- -- let defOp1 op f = def op (For ["a"] (lambda [Var "a"] (Call f [Var "a"])))
--- -- let defOp2 op f = def op (For ["a", "b"] (lambda [Var "a", Var "b"] (Call f [Var "a", Var "b"])))
+-- -- let defOp1 op f = letDef op (For ["a"] (lambda [Var "a"] (Call f [Var "a"])))
+-- -- let defOp2 op f = letDef op (For ["a", "b"] (lambda [Var "a", Var "b"] (Call f [Var "a", Var "b"])))
 
 -- syntax :: String -> Either String Expr
 -- syntax src = syntax' src src
@@ -83,7 +83,6 @@ run = describe "--==☯ Tao ☯==--" $ do
   let op1 r c op a = loc r c r (c + length (showOp1 op)) (Op1 op a)
   let op2 r c op a b = loc r c r (c + length (showOp2 op)) (Op2 op a b)
   let match r c arg cases = loc r c r (c + length "match") (Match arg cases)
-  let let' r c (x, y) z = loc r c r (c + 3) (Let (x, y) z)
 
   let a r c = var r c "a"
   let b r c = var r c "b"
@@ -276,13 +275,13 @@ run = describe "--==☯ Tao ☯==--" $ do
     p "import $" `shouldBe` Right (Import "![syntax error]TaoTests:1:8,1:9: expected import module path, got \"$\"" "" [], "")
     p "import" `shouldBe` Right (Import "![syntax error]TaoTests:1:7: expected import module path, got \"\"" "" [], "")
 
-  it "☯ Tao.Stmt.parser.Def" $ do
+  it "☯ Tao.Stmt.parser.letDef" $ do
     let p = parseStmt'
-    p "let x = y " `shouldBe` Right (def (x 1 5, y 1 9), "")
-    p "let x = $ " `shouldBe` Right (def (x 1 5, Meta (syntaxErr 1 9 1 11 "" "definition body" "$ ") Err), "")
+    p "let x = y " `shouldBe` Right (letDef (x 1 5, y 1 9), "")
+    p "let x = $ " `shouldBe` Right (letDef (x 1 5, Meta (syntaxErr 1 9 1 11 "" "definition body" "$ ") Err), "")
     p "let x $ y " `shouldBe` Right (Nop (syntaxErr 1 1 1 11 "" "\"=\"" "let x $ y "), "")
-    p "let $ = y " `shouldBe` Right (def (Meta (syntaxErr 1 5 1 7 "" "definition pattern" "$ ") Err, y 1 9), "")
-    p "let x = " `shouldBe` Right (def (x 1 5, Meta (syntaxErr 1 9 1 9 "" "definition body" "") Err), "")
+    p "let $ = y " `shouldBe` Right (letDef (Meta (syntaxErr 1 5 1 7 "" "definition pattern" "$ ") Err, y 1 9), "")
+    p "let x = " `shouldBe` Right (letDef (x 1 5, Meta (syntaxErr 1 9 1 9 "" "definition body" "") Err), "")
     p "let x " `shouldBe` Right (Nop $ syntaxErr 1 1 1 7 "" "\"=\"" "let x ", "")
     p "let" `shouldBe` Right (Nop $ syntaxErr 1 1 1 4 "" "definition pattern" "let", "")
 
@@ -374,44 +373,44 @@ run = describe "--==☯ Tao ☯==--" $ do
 
     -- Stmt
     let ctx = []
-    resolve ctx "m1" ("x", Def (x, y)) `shouldBe` [("m1", y)]
-    resolve ctx "m1" ("x", Def (y, z)) `shouldBe` []
+    resolve ctx "m1" ("x", letDef (x, y)) `shouldBe` [("m1", y)]
+    resolve ctx "m1" ("x", letDef (y, z)) `shouldBe` []
     resolve ctx "m1" ("x", TypeDef ("x", [], [])) `shouldBe` [("m1", Fun (Tuple []) (Tuple []))]
     resolve ctx "m1" ("x", test y z) `shouldBe` []
 
     -- [Stmt]
     let ctx = []
     resolve ctx "m1" ("x", [] :: [Stmt]) `shouldBe` []
-    resolve ctx "m1" ("x", [Def (x, y)]) `shouldBe` [("m1", y)]
-    resolve ctx "m1" ("x", [Def (x, y), Def (x, z)]) `shouldBe` [("m1", y), ("m1", z)]
+    resolve ctx "m1" ("x", [letDef (x, y)]) `shouldBe` [("m1", y)]
+    resolve ctx "m1" ("x", [letDef (x, y), letDef (x, z)]) `shouldBe` [("m1", y), ("m1", z)]
 
     -- Module
     let ctx = []
     resolve ctx "m1" ("x", ("m1", []) :: Module) `shouldBe` []
-    resolve ctx "m1" ("x", ("m1", [Def (x, y)])) `shouldBe` [("m1", y)]
-    resolve ctx "m1" ("x", ("m1", [Def (x, y), Def (x, z)])) `shouldBe` [("m1", y), ("m1", z)]
-    resolve ctx "m1" ("x", ("m2", [Def (x, y)])) `shouldBe` []
+    resolve ctx "m1" ("x", ("m1", [letDef (x, y)])) `shouldBe` [("m1", y)]
+    resolve ctx "m1" ("x", ("m1", [letDef (x, y), letDef (x, z)])) `shouldBe` [("m1", y), ("m1", z)]
+    resolve ctx "m1" ("x", ("m2", [letDef (x, y)])) `shouldBe` []
 
     -- Name
-    let ctx = [("m1", [Def (x, y)]), ("m1/@f1", [Def (x, z)])]
+    let ctx = [("m1", [letDef (x, y)]), ("m1/@f1", [letDef (x, z)])]
     resolve ctx "m1" "x" `shouldBe` [("m1", y), ("m1", z)]
     resolve ctx "m1/@f1" "x" `shouldBe` [("m1", y), ("m1", z)]
     resolve ctx "m1" "y" `shouldBe` []
 
     -- Imports
-    -- let ctx = [("m1", [Def (x, y)]), ("m1/@f1", [Def (x, z)])]
-    -- resolve ctx "m" ("x", [Import "m1" "m1" [("x", "x")], Def (x, w)]) `shouldBe` [("m1", y), ("m1/@f1", z), ("m", w)]
-    -- resolve ctx "m1" ("x", [Import "m1" "m1" [("x", "x")], Def (x, w)]) `shouldBe` [("m1", w)]
-    -- resolve ctx "m1" ("x", [Import "m1/@f1" "m1" [("x", "x")], Def (x, w)]) `shouldBe` [("m1/@f1", z), ("m1", w)]
+    -- let ctx = [("m1", [letDef (x, y)]), ("m1/@f1", [letDef (x, z)])]
+    -- resolve ctx "m" ("x", [Import "m1" "m1" [("x", "x")], letDef (x, w)]) `shouldBe` [("m1", y), ("m1/@f1", z), ("m", w)]
+    -- resolve ctx "m1" ("x", [Import "m1" "m1" [("x", "x")], letDef (x, w)]) `shouldBe` [("m1", w)]
+    -- resolve ctx "m1" ("x", [Import "m1/@f1" "m1" [("x", "x")], letDef (x, w)]) `shouldBe` [("m1/@f1", z), ("m1", w)]
 
     -- Self imports
     let ctx =
-          [ ("m1", [Import "m1" "m1" [("x", "x")], Def (x, i1)]),
-            ("m1/@f1", [Import "m1" "m1" [("x", "x")], Def (x, i2)]),
-            ("m2/@f1", [Import "m2" "m2" [("y", "y")], Def (y, i1)]),
-            ("m2/@f2", [Import "m2" "m2" [("y", "y")], Def (y, i2)]),
-            ("m3/@f1", [Import "m3/@f1" "m3/@f1" [("z", "z")], Def (z, i1)]),
-            ("m3/@f2", [Import "m3/@f1" "m3/@f1" [("z", "z")], Def (z, i2)])
+          [ ("m1", [Import "m1" "m1" [("x", "x")], letDef (x, i1)]),
+            ("m1/@f1", [Import "m1" "m1" [("x", "x")], letDef (x, i2)]),
+            ("m2/@f1", [Import "m2" "m2" [("y", "y")], letDef (y, i1)]),
+            ("m2/@f2", [Import "m2" "m2" [("y", "y")], letDef (y, i2)]),
+            ("m3/@f1", [Import "m3/@f1" "m3/@f1" [("z", "z")], letDef (z, i1)]),
+            ("m3/@f2", [Import "m3/@f1" "m3/@f1" [("z", "z")], letDef (z, i2)])
           ]
     resolve ctx "m1" "x" `shouldBe` [("m1", i1), ("m1", i2)]
     resolve ctx "m2" "y" `shouldBe` [("m2", i1), ("m2", i2)]
@@ -420,8 +419,8 @@ run = describe "--==☯ Tao ☯==--" $ do
     -- resolve ctx "m3/@f1" "z" `shouldBe` [("m3", i1), ("m3", i2)]
 
     -- Import wildcards
-    let ctx = [("m1", [Def (x, y)])]
-    resolve ctx "m" ("x", [Import "m1" "m1" [("*", "")], Def (x, w)]) `shouldBe` [("m1", y), ("m", w)]
+    let ctx = [("m1", [letDef (x, y)])]
+    resolve ctx "m" ("x", [Import "m1" "m1" [("*", "")], letDef (x, w)]) `shouldBe` [("m1", y), ("m", w)]
 
   it "☯ TODO" $ do
     "" `shouldBe` ""

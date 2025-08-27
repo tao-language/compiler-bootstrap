@@ -261,9 +261,9 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "abc" `shouldBe` (Just 'a', "", "committed", "bc")
     p "123" `shouldBe` (Nothing, "committed", "", "123")
 
-  it "☯ recover.expect" $ do
+  it "☯ recoverUntil.expect" $ do
     let catch (loc, committed, expected, got) = show loc ++ "|" ++ committed ++ "|" ++ expected ++ "|" ++ got
-    let p = parseError (expect "expected" (text "abc") & recover [char '.'] catch)
+    let p = parseError (expect "expected" (text "abc") & recoverUntil [char '.'] catch)
     p "" `shouldBe` (Nothing, "expected", "", "")
     p "ab" `shouldBe` (Nothing, "expected", "", "ab")
     p ".abc" `shouldBe` (Just "ParserTests:1:1: expected, ", "expected", "", ".abc")
@@ -271,9 +271,9 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "ab.c" `shouldBe` (Just "ParserTests:1:1,1:3: expected, ab", "expected", "", ".c")
     p "abc." `shouldBe` (Just "abc", "", "", ".")
 
-  it "☯ recover.commit" $ do
+  it "☯ recoverUntil.commit" $ do
     let catch (loc, committed, expected, got) = show loc ++ "|" ++ committed ++ "|" ++ expected ++ "|" ++ got
-    let p = parseError (commit "committed" (text "abc") & recover [char '.'] catch)
+    let p = parseError (commit "committed" (text "abc") & recoverUntil [char '.'] catch)
     p "" `shouldBe` (Nothing, "committed", "", "")
     p "ab" `shouldBe` (Nothing, "committed", "", "ab")
     p ".abc" `shouldBe` (Just "ParserTests:1:1: committed, ", "committed", "", ".abc")

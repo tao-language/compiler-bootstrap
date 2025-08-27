@@ -452,7 +452,7 @@ buildModule options ctx path = do
       return ([], [], [])
 
   -- Source file
-  (emit options (imports ++ map T.Def defs) :: [Stmt])
+  (emit options (imports ++ map T.LetDef defs) :: [Stmt])
     & Module path
     & layout
     & pretty options
@@ -689,7 +689,7 @@ instance Emit T.Stmt [Stmt] where
       let alias' = if path == alias || ('/' : alias) `isSuffixOf` path then Nothing else Just alias
       [Import path' alias' | alias `notElem` map snd names]
         ++ [ImportFrom path' (map nameAlias names) | names /= []]
-    T.Def def -> emit options def
+    -- T.LetDef def -> emit options def
     T.Test t -> do
       let (s1, a') = emit options t.expr
       let (s2, b') = emit options t.expect -- TODO: do a match instead

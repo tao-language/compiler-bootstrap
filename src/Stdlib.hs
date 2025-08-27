@@ -1,7 +1,8 @@
 module Stdlib where
 
+import Data.Char (isSpace)
 import Data.Function ((&))
-import Data.List (isPrefixOf, nub, stripPrefix)
+import Data.List (dropWhileEnd, isPrefixOf, nub, stripPrefix)
 import Data.Maybe (fromMaybe)
 
 replace :: (Eq a) => a -> a -> [a] -> [a]
@@ -78,6 +79,15 @@ split2 delim text = case text of
 
 trimPrefix :: (Eq a) => [a] -> [a] -> [a]
 trimPrefix prefix xs = fromMaybe xs (stripPrefix prefix xs)
+
+trimL :: String -> String
+trimL = dropWhile isSpace
+
+trimR :: String -> String
+trimR = dropWhileEnd isSpace
+
+trim :: String -> String
+trim = trimL . trimR
 
 lookupValue :: (Eq v) => v -> [(k, v)] -> Maybe k
 lookupValue x = \case

@@ -89,6 +89,14 @@ assert :: Bool -> Parser ()
 assert True = ok ()
 assert False = fail'
 
+not' :: Parser a -> Parser ()
+not' (Parser p) =
+  Parser
+    ( \state -> case p state of
+        Right _ -> Left state
+        Left state -> Right ((), state)
+    )
+
 if' :: (a -> Bool) -> Parser a -> Parser a
 if' check (Parser p) =
   Parser
@@ -161,33 +169,26 @@ commit' message = Parser (\s -> Right ((), s {committed = message}))
 uncommit :: Parser ()
 uncommit = Parser (\s -> Right ((), s {committed = ""}))
 
-recover :: [Parser until] -> ((Location, String, String, String) -> a) -> Parser a -> Parser a
-recover delims catch (Parser p) = do
+recoverUntil :: [Parser until] -> ((Location, String, String, String) -> a) -> Parser a -> Parser a
+recoverUntil delims = recoverWith (skipTo $ lookahead $ oneOf delims)
+
+recoverUntilOneOrMore :: [Parser until] -> ((Location, String, String, String) -> a) -> Parser a -> Parser a
+recoverUntilOneOrMore delims = recoverWith (skipToOneOrMore $ lookahead $ oneOf delims)
+
+recoverWhile :: [Parser Char] -> ((Location, String, String, String) -> a) -> Parser a -> Parser a
+recoverWhile delims = recoverUntil (map not' delims)
+
+recoverWith :: Parser String -> ((Location, String, String, String) -> a) -> Parser a -> Parser a
+recoverWith consume catch (Parser p) = do
   Parser
     ( \s1 -> case p s1 of
         Right (x, s2) -> Right (x, s2)
         Left s2 -> do
-          let s1' = s1 {expected = s2.expected}
-          apply (recover' skipTo delims catch) s1'
+          let start = s1 {expected = s2.expected}
+          (got, end) <- apply consume start
+          let loc = Location start.filename (Range start.pos end.pos)
+          Right (catch (loc, s2.committed, s2.expected, got), end)
     )
-
-recoverNotEmpty :: [Parser until] -> ((Location, String, String, String) -> a) -> Parser a -> Parser a
-recoverNotEmpty delims catch (Parser p) = do
-  Parser
-    ( \s1 -> case p s1 of
-        Right (x, s2) -> Right (x, s2)
-        Left s2 -> do
-          let s1' = s1 {expected = s2.expected}
-          apply (recover' skipToOneOrMore delims catch) s1'
-    )
-
-recover' :: (Parser () -> Parser String) -> [Parser until] -> ((Location, String, String, String) -> b) -> Parser b
-recover' consume delims catch = do
-  start <- state
-  got <- consume (lookahead $ oneOf delims)
-  end <- state
-  let loc = Location start.filename (Range start.pos end.pos)
-  return (catch (loc, end.committed, end.expected, got))
 
 skipTo :: Parser delim -> Parser String
 skipTo delim =
