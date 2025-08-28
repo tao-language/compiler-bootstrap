@@ -3,6 +3,8 @@ module Parser where
 -- https://youtu.be/RDalzi7mhdY?si=606x1zQEgpW51Zh-
 -- https://eyalkalderon.com/blog/nom-error-recovery/
 -- https://arxiv.org/pdf/1806.11150.pdf
+-- https://blog.jsbarretto.com/post/parser-combinators-and-error-recovery
+-- https://docs.rs/chumsky/0.10.1/chumsky/guide/index.html
 
 import Control.Monad (void)
 import qualified Data.Char as Char
@@ -11,6 +13,14 @@ import qualified Debug.Trace as Debug
 import Location (Location (..), Position (..), Range (..))
 import qualified Location as Loc
 import Stdlib (filterMap)
+
+-- TODO:
+-- p.delimitedBy(open, close)
+-- p.separatedBy(sep)
+-- p.paddedBy(trim)
+-- p.mapError(f)
+-- p.recoverWith(r)
+-- p.rewind()
 
 newtype Parser a
   = Parser (State -> Either State (a, State))
@@ -88,6 +98,17 @@ fail' = Parser Left
 assert :: Bool -> Parser ()
 assert True = ok ()
 assert False = fail'
+
+ignoreThen :: Parser a -> Parser b -> Parser b
+ignoreThen ignored parser = do
+  _ <- ignored
+  parser
+
+thenIgnore :: Parser a -> Parser b -> Parser a
+thenIgnore parser ignored = do
+  x <- parser
+  _ <- ignored
+  return x
 
 not' :: Parser a -> Parser ()
 not' (Parser p) =
@@ -173,21 +194,28 @@ recoverUntil :: [Parser until] -> ((Location, String, String, String) -> a) -> P
 recoverUntil delims = recoverWith (skipTo $ lookahead $ oneOf delims)
 
 recoverUntilOneOrMore :: [Parser until] -> ((Location, String, String, String) -> a) -> Parser a -> Parser a
-recoverUntilOneOrMore delims = recoverWith (skipToOneOrMore $ lookahead $ oneOf delims)
+recoverUntilOneOrMore delims = do
+  recoverWith (skipToOneOrMore $ lookahead $ oneOf delims)
 
 recoverWhile :: [Parser Char] -> ((Location, String, String, String) -> a) -> Parser a -> Parser a
 recoverWhile delims = recoverUntil (map not' delims)
 
-recoverWith :: Parser String -> ((Location, String, String, String) -> a) -> Parser a -> Parser a
-recoverWith consume catch (Parser p) = do
+recoverWith :: Parser a -> ((Location, String, String, a) -> b) -> Parser b -> Parser b
+recoverWith onError catch parser = do
+  let onErrorWithLoc = do
+        start <- state
+        got <- onError
+        end <- state
+        let loc = Location start.filename (Range start.pos end.pos)
+        return (catch (loc, start.committed, start.expected, got))
+  recover onErrorWithLoc parser
+
+recover :: Parser a -> Parser a -> Parser a
+recover onError (Parser p) =
   Parser
     ( \s1 -> case p s1 of
         Right (x, s2) -> Right (x, s2)
-        Left s2 -> do
-          let start = s1 {expected = s2.expected}
-          (got, end) <- apply consume start
-          let loc = Location start.filename (Range start.pos end.pos)
-          Right (catch (loc, s2.committed, s2.expected, got), end)
+        Left s2 -> apply onError s1 {expected = s2.expected}
     )
 
 skipTo :: Parser delim -> Parser String
