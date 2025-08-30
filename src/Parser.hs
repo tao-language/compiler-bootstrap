@@ -99,17 +99,6 @@ assert :: Bool -> Parser ()
 assert True = ok ()
 assert False = fail'
 
-ignoreThen :: Parser a -> Parser b -> Parser b
-ignoreThen ignored parser = do
-  _ <- ignored
-  parser
-
-thenIgnore :: Parser a -> Parser b -> Parser a
-thenIgnore parser ignored = do
-  x <- parser
-  _ <- ignored
-  return x
-
 not' :: Parser a -> Parser ()
 not' (Parser p) =
   Parser
@@ -190,51 +179,71 @@ commit' message = Parser (\s -> Right ((), s {committed = message}))
 uncommit :: Parser ()
 uncommit = Parser (\s -> Right ((), s {committed = ""}))
 
-recoverUntil :: [Parser until] -> ((Location, String, String, String) -> a) -> Parser a -> Parser a
-recoverUntil delims = recoverWith (skipTo $ lookahead $ oneOf delims)
-
-recoverUntilOneOrMore :: [Parser until] -> ((Location, String, String, String) -> a) -> Parser a -> Parser a
-recoverUntilOneOrMore delims = do
-  recoverWith (skipToOneOrMore $ lookahead $ oneOf delims)
-
-recoverWhile :: [Parser Char] -> ((Location, String, String, String) -> a) -> Parser a -> Parser a
-recoverWhile delims = recoverUntil (map not' delims)
-
-recoverWith :: Parser a -> ((Location, String, String, a) -> b) -> Parser b -> Parser b
-recoverWith onError catch parser = do
-  let onErrorWithLoc = do
-        start <- state
-        got <- onError
-        end <- state
-        let loc = Location start.filename (Range start.pos end.pos)
-        return (catch (loc, start.committed, start.expected, got))
-  recover onErrorWithLoc parser
-
-recover :: Parser a -> Parser a -> Parser a
-recover onError (Parser p) =
+recover :: Parser a -> ((State, State, a) -> b) -> Parser b -> Parser b
+recover recovery catch (Parser p) =
   Parser
     ( \s1 -> case p s1 of
         Right (x, s2) -> Right (x, s2)
-        Left s2 -> apply onError s1 {expected = s2.expected}
+        Left s2 -> do
+          let recover' = do
+                start <- state
+                x <- recovery
+                end <- state
+                return (catch (start, end, x))
+          apply recover' s1 {expected = s2.expected}
     )
 
-skipTo :: Parser delim -> Parser String
-skipTo delim =
-  -- Skips to, but does not consume the delimiter
+skip :: Parser a -> Parser ()
+skip parser = do
+  _ <- parser
+  return ()
+
+thenSkip :: Parser skip -> Parser a -> Parser a
+thenSkip skip parser = do
+  _ <- skip
+  parser
+
+skipThen :: Parser a -> Parser skip -> Parser a
+skipThen parser skip = do
+  x <- parser
+  _ <- skip
+  return x
+
+until' :: Parser stop -> Parser a -> Parser [a]
+until' stop parser =
   oneOf
-    [ "" <$ lookahead delim,
+    [ [] <$ lookahead stop,
       do
-        c <- anyChar
-        cs <- skipTo delim
-        ok (c : cs)
+        x <- parser
+        xs <- until' stop parser
+        return (x : xs)
     ]
 
-skipToOneOrMore :: Parser delim -> Parser String
-skipToOneOrMore delim = do
-  txt <- skipTo delim
-  case txt of
-    "" -> fail'
-    txt -> return txt
+textUntil :: Parser stop -> Parser String
+textUntil stop = until' stop anyChar
+
+untilNested :: ([(open, Parser close)], [(open, close)]) -> Parser stop -> [(Parser open, Parser close)] -> Parser a -> Parser ([a], [open], [(open, close)])
+untilNested (stack, errors) stop groups parser = do
+  oneOf
+    [ ([], map fst stack, errors) <$ lookahead stop,
+      do
+        x <- parser
+        (xs, stack, errors) <- untilNested (stack, errors) stop groups parser
+        return (x : xs, stack, errors)
+    ]
+
+while :: (a -> Bool) -> Parser a -> Parser [a]
+while cond parser = until' (not' $ if' cond parser) parser
+
+textWhile :: (Char -> Bool) -> Parser String
+textWhile cond = while cond anyChar
+
+skipUntil :: Parser skip -> Parser a -> Parser a
+skipUntil skip parser =
+  oneOf
+    [ parser,
+      do _ <- skip; skipUntil skip parser
+    ]
 
 -- Single characters
 anyChar :: Parser Char
@@ -424,7 +433,7 @@ number = do
 wordChar :: Parser Char
 wordChar = oneOf [letter, digit, char '_']
 
-wordStart :: Parser ()
+wordStart :: Parser Char
 wordStart = lookahead wordChar
 
 wordEnd :: Parser ()
@@ -436,11 +445,11 @@ word txt = do
   _ <- wordEnd
   ok x
 
-lookahead :: Parser a -> Parser ()
+lookahead :: Parser a -> Parser a
 lookahead (Parser p) =
   Parser
     ( \state -> case p state of
-        Right _ -> Right ((), state)
+        Right (x, _) -> Right (x, state)
         Left _ -> Left state
     )
 

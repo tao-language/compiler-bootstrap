@@ -78,4 +78,5 @@ run = describe "--==☯ Errors ☯==--" $ do
     checkModuleText "module" " //  comment " `shouldBe` Ok ["// comment"] []
     checkModuleText "module" "let x = y" `shouldBe` Ok ["let x = y"] []
     checkModuleText "module" "let x = $" `shouldBe` Ok ["let x = !error"] [SyntaxError (loc "module" 1 9 1 10, "definition", "body", "$")]
-    checkModuleText "module" "let x $ y" `shouldBe` Ok ["let x $  y"] [SyntaxError (loc "module" 1 7 1 9, "definition", "'=' or '<-'", "$ ")]
+    checkModuleText "module" "let x $ y" `shouldBe` Ok ["let x $ y"] [SyntaxError (loc "module" 1 7 1 9, "definition", "'=' or '<-'", "$ ")]
+    checkModuleText "module" "let $ = y" `shouldBe` Ok ["let !error $ = y"] [SyntaxError (loc "module" 1 7 1 9, "definition", "'=' or '<-'", "$ ")]

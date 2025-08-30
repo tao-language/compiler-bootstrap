@@ -1,5 +1,6 @@
 module ParserTests where
 
+import Data.Char (isLetter)
 import qualified Data.Char as Char
 import Data.Function ((&))
 import Location (Position (..))
@@ -261,25 +262,66 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "abc" `shouldBe` (Just 'a', "", "committed", "bc")
     p "123" `shouldBe` (Nothing, "committed", "", "123")
 
-  it "☯ recoverUntil.expect" $ do
-    let catch (loc, committed, expected, got) = show loc ++ "|" ++ committed ++ "|" ++ expected ++ "|" ++ got
-    let p = parseError (expect "expected" (text "abc") & recoverUntil [char '.'] catch)
+  it "☯ recover.expect" $ do
+    let catch (start, end, got) = show (locSpan start end) ++ ": " ++ got
+    let p = parseError (expect "expected" (text "abc") & recover (textUntil (char '.')) catch)
     p "" `shouldBe` (Nothing, "expected", "", "")
     p "ab" `shouldBe` (Nothing, "expected", "", "ab")
-    p ".abc" `shouldBe` (Just "ParserTests:1:1: expected, ", "expected", "", ".abc")
-    p "a.bc" `shouldBe` (Just "ParserTests:1:1,1:2: expected, a", "expected", "", ".bc")
-    p "ab.c" `shouldBe` (Just "ParserTests:1:1,1:3: expected, ab", "expected", "", ".c")
+    p ".abc" `shouldBe` (Just "ParserTests:1:1: ", "expected", "", ".abc")
+    p "a.bc" `shouldBe` (Just "ParserTests:1:1,1:2: a", "expected", "", ".bc")
+    p "ab.c" `shouldBe` (Just "ParserTests:1:1,1:3: ab", "expected", "", ".c")
     p "abc." `shouldBe` (Just "abc", "", "", ".")
 
-  it "☯ recoverUntil.commit" $ do
-    let catch (loc, committed, expected, got) = show loc ++ "|" ++ committed ++ "|" ++ expected ++ "|" ++ got
-    let p = parseError (commit "committed" (text "abc") & recoverUntil [char '.'] catch)
+  it "☯ recover.commit" $ do
+    let catch (start, end, got) = show (locSpan start end) ++ ": " ++ got
+    let p = parseError (commit "committed" (text "abc") & recover (textUntil (char '.')) catch)
     p "" `shouldBe` (Nothing, "committed", "", "")
     p "ab" `shouldBe` (Nothing, "committed", "", "ab")
-    p ".abc" `shouldBe` (Just "ParserTests:1:1: committed, ", "committed", "", ".abc")
-    p "a.bc" `shouldBe` (Just "ParserTests:1:1,1:2: committed, a", "committed", "", ".bc")
-    p "ab.c" `shouldBe` (Just "ParserTests:1:1,1:3: committed, ab", "committed", "", ".c")
+    p ".abc" `shouldBe` (Just "ParserTests:1:1: ", "committed", "", ".abc")
+    p "a.bc" `shouldBe` (Just "ParserTests:1:1,1:2: a", "committed", "", ".bc")
+    p "ab.c" `shouldBe` (Just "ParserTests:1:1,1:3: ab", "committed", "", ".c")
     p "abc." `shouldBe` (Just "abc", "", "committed", ".")
+
+  it "☯ until'" $ do
+    let p = parse' (until' (char '.') anyChar)
+    p "" `shouldBe` Left ""
+    p ".abc" `shouldBe` Right ("", ".abc")
+    p "a.bc" `shouldBe` Right ("a", ".bc")
+    p "ab.c" `shouldBe` Right ("ab", ".c")
+    p "abc." `shouldBe` Right ("abc", ".")
+    p "abc" `shouldBe` Left "abc"
+
+  it "☯ untilNested" $ do
+    let p = parse' (untilNested ([], []) (char '.') [(char '(', char ')'), (char '[', char ']')] anyChar)
+    p "" `shouldBe` Left ""
+    p ".abc" `shouldBe` Right (("", [], []), ".abc")
+    p "a.bc" `shouldBe` Right (("a", [], []), ".bc")
+    p "ab.c" `shouldBe` Right (("ab", [], []), ".c")
+    p "abc." `shouldBe` Right (("abc", [], []), ".")
+    p "abc" `shouldBe` Left "abc"
+    p "a(.bc" `shouldBe` Right (("a", "(", []), ".bc")
+    p "a([.bc" `shouldBe` Right (("a", "[(", []), ".bc")
+    p "a([].bc" `shouldBe` Right (("a", "(", []), ".bc")
+    p "a([]).bc" `shouldBe` Right (("a", "", []), ".bc")
+    p "a([)].bc" `shouldBe` Right (("a", "[(", [('(', ']'), ('[', ')')]), ".bc")
+
+  it "☯ while" $ do
+    let p = parse' (while isLetter anyChar)
+    p "" `shouldBe` Right ("", "")
+    p ".abc" `shouldBe` Right ("", ".abc")
+    p "a.bc" `shouldBe` Right ("a", ".bc")
+    p "ab.c" `shouldBe` Right ("ab", ".c")
+    p "abc." `shouldBe` Right ("abc", ".")
+    p "abc" `shouldBe` Right ("abc", "")
+
+  it "☯ skipUntil" $ do
+    let p = parse' (skipUntil anyChar (char '.'))
+    p "" `shouldBe` Left ""
+    p ".abc" `shouldBe` Right ('.', "abc")
+    p "a.bc" `shouldBe` Right ('.', "bc")
+    p "ab.c" `shouldBe` Right ('.', "c")
+    p "abc." `shouldBe` Right ('.', "")
+    p "abc" `shouldBe` Left "abc"
 
   it "☯ LL(k) equivalent" $ do
     -- expect + commit + oneOf
@@ -300,15 +342,6 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "1b" `shouldBe` (Nothing, "alphanum", "", "1b")
     p "12" `shouldBe` (Just "12", "", "", "")
 
-  it "☯ skipTo" $ do
-    let p = parse' (skipTo (char '.'))
-    p "" `shouldBe` Left ""
-    p ".abc" `shouldBe` Right ("", ".abc")
-    p "a.bc" `shouldBe` Right ("a", ".bc")
-    p "ab.c" `shouldBe` Right ("ab", ".c")
-    p "abc." `shouldBe` Right ("abc", ".")
-    p "abc" `shouldBe` Left "abc"
-
   it "☯ integer" $ do
     let p = parse' integer
     p "42" `shouldBe` Right (42, "")
@@ -322,7 +355,7 @@ run = describe "--==☯ Parser ☯==--" $ do
 
   it "☯ lookahead" $ do
     let p = parse' (lookahead letter)
-    p "abc" `shouldBe` Right ((), "abc")
+    p "abc" `shouldBe` Right ('a', "abc")
     p "123" `shouldBe` Left "123"
 
   it "☯ lookaheadNot" $ do

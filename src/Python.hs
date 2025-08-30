@@ -452,11 +452,11 @@ buildModule options ctx path = do
       return ([], [], [])
 
   -- Source file
-  (emit options (imports ++ map T.LetDef defs) :: [Stmt])
-    & Module path
-    & layout
-    & pretty options
-    & writeFile (path' ++ ".py")
+  -- (emit options (imports ++ map T.LetDef defs) :: [Stmt])
+  --   & Module path
+  --   & layout
+  --   & pretty options
+  --   & writeFile (path' ++ ".py")
 
   -- Test file
   error "TODO: buildModule tests"

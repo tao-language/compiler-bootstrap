@@ -2,7 +2,7 @@ module Stdlib where
 
 import Data.Char (isSpace)
 import Data.Function ((&))
-import Data.List (dropWhileEnd, isPrefixOf, nub, stripPrefix)
+import Data.List (dropWhileEnd, isPrefixOf, nub, stripPrefix, union)
 import Data.Maybe (fromMaybe)
 
 replace :: (Eq a) => a -> a -> [a] -> [a]
@@ -22,6 +22,9 @@ filterMap _ [] = []
 filterMap f (x : xs) = case f x of
   Just y -> y : filterMap f xs
   Nothing -> filterMap f xs
+
+unionMap :: (Eq b) => (a -> [b]) -> [a] -> [b]
+unionMap f = foldr (union . f) []
 
 push :: a -> [a] -> [a]
 push y = \case

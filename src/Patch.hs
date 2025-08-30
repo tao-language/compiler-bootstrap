@@ -45,9 +45,9 @@ instance Plan (FilePath, [FilePath], Stmt) where
   plan :: [PatchStep] -> (FilePath, [FilePath], Stmt) -> IO [PatchStep]
   plan steps0 (dir, paths, stmt) = case stmt of
     Import path alias names -> plan steps0 (paths, dir ++ ":" ++ path)
-    LetDef (a, LetOp, b) -> case lookup paths steps0 of
-      Just rules -> return (set paths (push (a, b) rules) steps0)
-      Nothing -> return (push (paths, [(a, b)]) steps0)
+    -- LetDef (a, LetOp, b) -> case lookup paths steps0 of
+    --   Just rules -> return (set paths (push (a, b) rules) steps0)
+    --   Nothing -> return (push (paths, [(a, b)]) steps0)
     stmt -> error $ "TODO plan " ++ show (dir, paths) ++ " " ++ show stmt
 
 class ApplyPatch applyStep a where
@@ -65,7 +65,7 @@ instance ApplyPatch (Context, [Rule]) Module where
 instance ApplyPatch (Context, FilePath, [Rule]) Stmt where
   applyPatch :: (Context, FilePath, [Rule]) -> Stmt -> Stmt
   applyPatch (ctx, path, rules) = \case
-    LetDef (p, op, b) -> LetDef (p, op, applyPatch' b)
+    -- LetDef (p, op, b) -> LetDef (p, op, applyPatch' b)
     Test t -> Test (t {expect = applyPatch' t.expect})
     stmt -> error $ "TODO applyPatch " ++ show stmt
     where
@@ -81,9 +81,11 @@ instance ApplyPatch (Context, FilePath, [Rule]) Expr where
 
 instance ApplyPatch (Context, FilePath, Rule) Expr where
   applyPatch :: (Context, FilePath, Rule) -> Expr -> Expr
-  applyPatch (ctx, path, (p, q)) expr = case Run.run ctx path (Let (p, LetOp, expr) q) of
-    Err -> expr
-    result -> result
+  applyPatch (ctx, path, (p, q)) expr =
+    -- case Run.run ctx path (Let (p, LetOp, expr) q) of
+    --   Err -> expr
+    --   result -> result
+    error "TODO: applyPatch"
 
 class ApplyStep step a where
   applyStep :: Context -> step -> a -> [(FilePath, [String], [Stmt])]

@@ -28,16 +28,16 @@ instance CheckTypes Stmt where
   checkTypes :: Context -> FilePath -> Stmt -> [Error Expr]
   checkTypes ctx path = \case
     Import {} -> []
-    LetDef (p, op, b) -> do
-      let expr = (Let (p, op, b) (Tuple []))
-      let (env, a) = compile ctx path expr
-      check $ lift $ C.let' env a
+    -- LetDef (p, op, b) -> do
+    --   let expr = (Let (p, op, b) (Tuple []))
+    --   let (env, a) = compile ctx path expr
+    --   check $ lift $ C.let' env a
     TypeDef {} -> []
     Test t -> do
       let expr = (Tuple [t.expr, t.expect])
       let (env, a) = compile ctx path expr
       check $ lift $ C.let' env a
-    Run expr -> do
-      let (env, a) = compile ctx path expr
-      check $ lift $ C.let' env a
+    -- Run expr -> do
+    --   let (env, a) = compile ctx path expr
+    --   check $ lift $ C.let' env a
     Nop m -> check (Meta m Err)

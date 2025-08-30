@@ -57,7 +57,7 @@ instance TestSome (String, Stmt) where
   testSome :: Context -> (UnitTest -> Bool) -> (String, Stmt) -> [TestResult]
   testSome ctx filter (path, stmt) = case stmt of
     Import {} -> []
-    LetDef {} -> []
+    -- LetDef {} -> []
     TypeDef {} -> []
     Test t | filter t -> testSome ctx filter (path, t)
     Test {} -> []
