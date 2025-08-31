@@ -84,6 +84,8 @@ run = describe "--==☯ Tao ☯==--" $ do
   let op2 r c op a b = loc r c r (c + length (showOp2 op)) (Op2 op a b)
   let match r c arg cases = loc r c r (c + length "match") (Match arg cases)
 
+  let name r c x = MetaName (C.Loc $ loc' r c r (c + length x)) (Name x)
+
   let a r c = var r c "a"
   let b r c = var r c "b"
   let c r c = var r c "c"
@@ -280,17 +282,23 @@ run = describe "--==☯ Tao ☯==--" $ do
     let p = parseStmt'
     p "let x = y " `shouldBe` Right (Let (x 1 5) (y 1 9), "")
     p "let $ = y " `shouldBe` Right (Let (Meta (syntaxErr 1 5 1 7 "definition" "pattern" "$ ") Err) (y 1 9), "")
-    p "let x $ y " `shouldBe` Right (Let (Meta (syntaxErr 1 7 1 9 "definition" "'=' or '<-'" "$ ") (x 1 5)) (y 1 9), "")
+    p "let x $ y " `shouldBe` Right (Let (x 1 5) (Meta (syntaxErr 1 7 1 9 "definition" "'=' or '<-'" "$ ") (y 1 9)), "")
     p "let x = $ " `shouldBe` Right (Let (x 1 5) (Meta (syntaxErr 1 9 1 11 "definition" "body" "$ ") Err), "")
 
   it "☯ Tao.Stmt.parser.Bind" $ do
     let p = parseStmt'
     p "let x <- y " `shouldBe` Right (Bind (x 1 5) (y 1 10), "")
     p "let $ <- y " `shouldBe` Right (Bind (Meta (syntaxErr 1 5 1 7 "definition" "pattern" "$ ") Err) (y 1 10), "")
-    p "let x <$ y " `shouldBe` Right (Let (Meta (syntaxErr 1 7 1 10 "definition" "'=' or '<-'" "<$ ") (x 1 5)) (y 1 10), "")
+    p "let x <$ y " `shouldBe` Right (Let (x 1 5) (Meta (syntaxErr 1 7 1 10 "definition" "'=' or '<-'" "<$ ") (y 1 10)), "")
     p "let x <- $ " `shouldBe` Right (Bind (x 1 5) (Meta (syntaxErr 1 10 1 12 "definition" "body" "$ ") Err), "")
 
-  -- Mut String Expr
+  it "☯ Tao.Stmt.parser.Mut" $ do
+    let p = parseStmt'
+    p "mut x = y " `shouldBe` Right (Mut (name 1 5 "x") (y 1 9), "")
+    p "mut $ = y " `shouldBe` Right (Mut (MetaName (syntaxErr 1 5 1 7 "mutate" "variable name" "$ ") (Name "")) (y 1 9), "")
+    p "mut x $ y " `shouldBe` Right (Mut (name 1 5 "x") (Meta (syntaxErr 1 7 1 9 "mutate" "'='" "$ ") (y 1 9)), "")
+    p "mut x = $ " `shouldBe` Right (Mut (name 1 5 "x") (Meta (syntaxErr 1 9 1 11 "mutate" "body" "$ ") Err), "")
+
   -- Run String [Expr]
   -- Test UnitTest
   -- TypeDef String [Expr] [(Expr, Maybe Type)]

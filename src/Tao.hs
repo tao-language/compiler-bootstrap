@@ -165,6 +165,16 @@ instance Show Op2 where
   show :: Op2 -> String
   show = showOp2
 
+data Name
+  = Name String
+  | MetaName (C.Metadata Expr) Name
+  deriving (Eq)
+
+instance Show Name where
+  show :: Name -> String
+  show (Name x) = show (Var x)
+  show (MetaName m x) = show (Meta m (Var $ show x))
+
 data Block
   = Return [Stmt] Expr
   | Break [Stmt]
@@ -175,7 +185,7 @@ data Stmt
   = Import String String [(String, String)]
   | Let Pattern Expr
   | Bind Pattern Expr
-  | Mut String Expr
+  | Mut Name Expr
   | Run String [Expr]
   | Test UnitTest
   | TypeDef String [Expr] [(Expr, Maybe Type)]
@@ -200,7 +210,7 @@ instance Format Stmt where
       "import " ++ show path ++ alias' ++ names'
     Let a b -> show a ++ " = " ++ show b
     Bind a b -> show a ++ " <- " ++ show b
-    Mut x a -> "mut " ++ x ++ " = " ++ show a
+    Mut x a -> "mut " ++ show x ++ " = " ++ show a
     Run a args -> error "TODO: format Run"
     TypeDef name args alts -> error "TODO: format TypeDef"
     Test t -> error "TODO: format Test"
@@ -737,6 +747,9 @@ syntaxErrorMeta :: (P.State, P.State, String) -> C.Metadata Expr
 syntaxErrorMeta (start, end, got) = do
   let loc = Location start.filename (Range start.pos end.pos)
   C.Error $ SyntaxError (loc, start.committed, start.expected, got)
+
+syntaxErrorName :: (P.State, P.State, String) -> Name
+syntaxErrorName err@(_, _, txt) = MetaName (syntaxErrorMeta err) (Name "")
 
 syntaxErrorExpr :: (P.State, P.State, String) -> Expr
 syntaxErrorExpr err = Meta (syntaxErrorMeta err) Err
@@ -1572,6 +1585,7 @@ parseStmt = do
   let parsers =
         [ parseImport,
           parseDef,
+          parseMut,
           -- TypeDef <$> parseTypeDef,
           -- parseTest,
           -- Run <$> parseExpr 1,
@@ -1662,9 +1676,10 @@ parseDef = do
   a <-
     P.expect "pattern" (parseExpr 0)
       & P.recover (P.textUntil parseDefOp) syntaxErrorExpr
+  _ <- P.whitespaces
   def <-
     P.expect "'=' or '<-'" (P.oneOf [Let <$ P.text "=", Bind <$ P.text "<-"])
-      & P.recover textUntilExpr (\err a -> Let (Meta (syntaxErrorMeta err) a))
+      & P.recover textUntilExpr (\err a b -> Let a (Meta (syntaxErrorMeta err) b))
   _ <- P.whitespaces
   b <-
     P.expect "body" (parseExpr 0)
@@ -1673,6 +1688,32 @@ parseDef = do
   case typeAnnotation of
     Just t -> return (def (Ann a t) b)
     Nothing -> return (def a b)
+
+parseLocName :: Parser String -> Parser Name
+parseLocName parser = do
+  start <- P.state
+  name <- fmap Name parser
+  end <- P.state
+  _ <- P.spaces
+  return (MetaName (C.Loc $ locSpan start end) name)
+
+parseMut :: Parser Stmt
+parseMut = do
+  _ <- P.commit "mutate" $ P.word "mut"
+  _ <- P.whitespaces
+  name <-
+    P.expect "variable name" (parseLocName parseNameVar)
+      & P.recover (P.textUntil (P.char '=')) syntaxErrorName
+  _ <- P.whitespaces
+  mut <-
+    P.expect "'='" (Mut <$ P.text "=")
+      & P.recover textUntilExpr (\err x b -> Mut x (Meta (syntaxErrorMeta err) b))
+  _ <- P.whitespaces
+  b <-
+    P.expect "body" (parseExpr 0)
+      & P.recover (P.textUntil parseLineBreak) syntaxErrorExpr
+  _ <- P.spaces
+  return (mut name b)
 
 parseTypeDef :: Parser (String, [Expr], [(Expr, Maybe Type)])
 parseTypeDef = do
