@@ -3,7 +3,7 @@ module Tao where
 import Control.Monad (void)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap, second))
-import Data.Char (chr, isAlphaNum, isPunctuation, isSpace, ord)
+import Data.Char (chr, isAlphaNum, isDigit, isLetter, isPunctuation, isSpace, ord)
 import Data.Either (fromRight)
 import Data.Function ((&))
 import Data.List (delete, dropWhileEnd, intercalate, intersect, isPrefixOf, sort, union, unionBy, (\\))
@@ -1571,7 +1571,7 @@ parseStmt = do
   _ <- P.lookaheadNot P.endOfFile
   let parsers =
         [ parseImport,
-          -- LetDef <$> parseDef,
+          parseDef,
           -- TypeDef <$> parseTypeDef,
           -- parseTest,
           -- Run <$> parseExpr 1,
@@ -1639,34 +1639,38 @@ parseImport = do
   _ <- P.spaces
   return (Import path alias names)
 
--- parseLet :: Parser Stmt
--- parseLet = do
+parseExprStartChar =
+  P.oneOf
+    [ P.letter,
+      P.digit,
+      P.charOf "_.:([{'\"@-+*/&|^<>%!"
+    ]
 
-parseDef :: Parser (Expr, Expr)
+parseDef :: Parser Stmt
 parseDef = do
-  -- let parseDefOpChar = P.if' (\c -> not (isAlphaNum c)) P.anyChar
-  -- typeAnnotation <- P.maybe' $ do
-  --   _ <- P.commit "type annotation" $ P.char ':'
-  --   _ <- P.spaces
-  --   t <- parseExpr 0
-  --   _ <- parseLineBreak
-  --   return t
-  -- _ <- P.commit "definition" $ P.word "let"
-  -- _ <- P.whitespaces
-  -- a <- P.recover (P.textUntil parseDefOpChar) syntaxErrorExpr $ do
-  --   P.expect "pattern" (parseExpr 0)
-  -- op <-
-  --   P.expect "'=' or '<-'" (P.oneOf [LetOp <$ P.char '=', BindOp <$ P.word "<-"])
-  --     & P.recover (P.textWhile (\c -> isPunctuation c || isSpace c)) syntaxErrorDefOp
-  -- _ <- P.whitespaces
-  -- b <-
-  --   P.expect "body" (parseExpr 0)
-  --     & P.recover (P.textUntil parseLineBreak) syntaxErrorExpr
-  -- _ <- P.spaces
-  -- case typeAnnotation of
-  --   Just t -> return (Ann a t, op, b)
-  --   Nothing -> return (a, op, b)
-  error "TODO: parseDef"
+  let parseDefOp = P.oneOf [P.text "=", P.text "<-"]
+  typeAnnotation <- P.maybe' $ do
+    _ <- P.commit "typed definition" $ P.char ':'
+    _ <- P.spaces
+    t <- parseExpr 0
+    _ <- parseLineBreak
+    return t
+  _ <- P.commit "definition" $ P.word "let"
+  _ <- P.whitespaces
+  a <-
+    P.expect "pattern" (parseExpr 0)
+      & P.recover (P.textUntil parseDefOp) syntaxErrorExpr
+  def <-
+    P.expect "'=' or '<-'" (P.oneOf [Let <$ P.text "=", Bind <$ P.text "<-"])
+      & P.recover (P.textUntil parseExprStartChar) (\err a -> Let (Meta (syntaxErrorMeta err) a))
+  _ <- P.whitespaces
+  b <-
+    P.expect "body" (parseExpr 0)
+      & P.recover (P.textUntil parseLineBreak) syntaxErrorExpr
+  _ <- P.spaces
+  case typeAnnotation of
+    Just t -> return (def (Ann a t) b)
+    Nothing -> return (def a b)
 
 parseTypeDef :: Parser (String, [Expr], [(Expr, Maybe Type)])
 parseTypeDef = do

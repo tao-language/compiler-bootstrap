@@ -279,8 +279,11 @@ run = describe "--==☯ Tao ☯==--" $ do
   -- Import(path, alias, names)
   it "☯ Tao.Stmt.parser.Let" $ do
     let p = parseStmt'
-    -- p "x = y " `shouldBe` Right (0)
-    "" `shouldBe` ""
+    p "let x = y " `shouldBe` Right (Let (x 1 5) (y 1 9), "")
+    p "let x <- y " `shouldBe` Right (Bind (x 1 5) (y 1 10), "")
+    p "let $ = y " `shouldBe` Right (Let (Meta (syntaxErr 1 5 1 7 "definition" "pattern" "$ ") Err) (y 1 9), "")
+    p "let x $ y " `shouldBe` Right (Let (Meta (syntaxErr 1 7 1 9 "definition" "'=' or '<-'" "$ ") (x 1 5)) (y 1 9), "")
+    p "let x = $ " `shouldBe` Right (Let (x 1 5) (Meta (syntaxErr 1 9 1 11 "definition" "body" "$ ") Err), "")
 
   -- Import String String [(String, String)]
   -- Let Pattern Expr

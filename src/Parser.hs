@@ -9,6 +9,7 @@ module Parser where
 import Control.Monad (void)
 import qualified Data.Char as Char
 import Data.Function ((&))
+import Data.List (intercalate)
 import qualified Debug.Trace as Debug
 import Location (Location (..), Position (..), Range (..))
 import qualified Location as Loc
@@ -265,6 +266,12 @@ charNoCase c = expect (show c ++ " (case insensitive)") $ if' (\c' -> Char.toLow
 
 charIf :: (Char -> Bool) -> Parser Char
 charIf f = if' f anyChar
+
+charOf :: [Char] -> Parser Char
+charOf chars =
+  expect
+    ("one of " ++ intercalate ", " (map show chars))
+    (charIf (`elem` chars))
 
 letter :: Parser Char
 letter = expect "letter" $ if' Char.isLetter anyChar
