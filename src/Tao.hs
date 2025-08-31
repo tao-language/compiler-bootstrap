@@ -1639,12 +1639,14 @@ parseImport = do
   _ <- P.spaces
   return (Import path alias names)
 
-parseExprStartChar =
-  P.oneOf
-    [ P.letter,
-      P.digit,
-      P.charOf "_.:([{'\"@-+*/&|^<>%!"
-    ]
+textUntilExpr :: Parser String
+textUntilExpr =
+  P.textUntil $
+    P.oneOf
+      [ P.letter,
+        P.digit,
+        P.charOf "_.:([{'\"@|%!"
+      ]
 
 parseDef :: Parser Stmt
 parseDef = do
@@ -1662,7 +1664,7 @@ parseDef = do
       & P.recover (P.textUntil parseDefOp) syntaxErrorExpr
   def <-
     P.expect "'=' or '<-'" (P.oneOf [Let <$ P.text "=", Bind <$ P.text "<-"])
-      & P.recover (P.textUntil parseExprStartChar) (\err a -> Let (Meta (syntaxErrorMeta err) a))
+      & P.recover textUntilExpr (\err a -> Let (Meta (syntaxErrorMeta err) a))
   _ <- P.whitespaces
   b <-
     P.expect "body" (parseExpr 0)
