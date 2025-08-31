@@ -189,7 +189,15 @@ data Stmt
 instance Format Stmt where
   format :: Int -> String -> Stmt -> String
   format width indent = \case
-    Import path alias names -> error "TODO: format Import"
+    Import path alias names -> do
+      let withAlias = \case
+            (name, alias) | name == alias -> name
+            (name, alias) -> name ++ " as " ++ alias
+      let alias' = withAlias (takeBaseName path, alias)
+      let names' = case names of
+            [] -> ""
+            names -> " (" ++ intercalate ", " (map withAlias names) ++ ")"
+      "import " ++ show path ++ alias' ++ names'
     Let a b -> show a ++ " = " ++ show b
     Bind a b -> show a ++ " <- " ++ show b
     Mut x a -> "mut " ++ x ++ " = " ++ show a
@@ -1630,6 +1638,9 @@ parseImport = do
       ]
   _ <- P.spaces
   return (Import path alias names)
+
+-- parseLet :: Parser Stmt
+-- parseLet = do
 
 parseDef :: Parser (Expr, Expr)
 parseDef = do

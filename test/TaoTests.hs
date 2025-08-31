@@ -264,16 +264,17 @@ run = describe "--==☯ Tao ☯==--" $ do
     let p = parseStmt'
     p "" `shouldBe` Left ("", "")
 
-  -- it "☯ Tao.Stmt.parser.Import" $ do
-  --   let p = parseStmt'
-  --   p "import m " `shouldBe` Right (Import "m" "m" [], "")
-  --   p "import m as n " `shouldBe` Right (Import "m" "n" [], "")
-  --   p "import m (x) " `shouldBe` Right (Import "m" "m" [("x", "x")], "")
-  --   p "import m (x as y) " `shouldBe` Right (Import "m" "m" [("x", "y")], "")
-  --   p "import m (x, y) " `shouldBe` Right (Import "m" "m" [("x", "x"), ("y", "y")], "")
-  --   -- TODO: Handle Meta on import names correctly.
-  --   p "import $" `shouldBe` Right (Import "![syntax error]TaoTests:1:8,1:9: expected import module path, got \"$\"" "" [], "")
-  --   p "import" `shouldBe` Right (Import "![syntax error]TaoTests:1:7: expected import module path, got \"\"" "" [], "")
+  it "☯ Tao.Stmt.parser.Import" $ do
+    let p = parseStmt'
+    p "import m " `shouldBe` Right (Import "m" "m" [], "")
+    p "import m as n " `shouldBe` Right (Import "m" "n" [], "")
+    p "import m (x) " `shouldBe` Right (Import "m" "m" [("x", "x")], "")
+    p "import m (x as y) " `shouldBe` Right (Import "m" "m" [("x", "y")], "")
+    p "import m (x, y) " `shouldBe` Right (Import "m" "m" [("x", "x"), ("y", "y")], "")
+    -- TODO: Handle Meta on import names correctly.
+    -- p "import $" `shouldBe` Right (Import "![syntax error]TaoTests:1:8,1:9: expected import module path, got \"$\"" "" [], "")
+    -- p "import" `shouldBe` Right (Import "![syntax error]TaoTests:1:7: expected import module path, got \"\"" "" [], "")
+    "" `shouldBe` ""
 
   -- Import(path, alias, names)
   it "☯ Tao.Stmt.parser.Let" $ do
