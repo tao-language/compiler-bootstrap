@@ -312,6 +312,15 @@ run = describe "--==☯ Tao ☯==--" $ do
   it "☯ Tao.Stmt.parser.Test" $ do
     let p = parseStmt'
     p "type T = x " `shouldBe` Right (TypeDef (name 1 6 "T") [] (x 1 10), "")
+    p "type $ = x " `shouldBe` Right (TypeDef (MetaName (syntaxErr 1 6 1 8 "type definition" "type name" "$ ") (Name "")) [] (x 1 10), "")
+    p "type T $ = x " `shouldBe` Right (TypeDef (MetaName (syntaxErr 1 8 1 10 "type definition" "" "$ ") $ name 1 6 "T") [] (x 1 12), "")
+    p "type T $ x " `shouldBe` Right (TypeDef (name 1 6 "T") [] (Meta (syntaxErr 1 8 1 10 "type definition" "'='" "$ ") (x 1 10)), "")
+    p "type T() = x " `shouldBe` Right (TypeDef (name 1 6 "T") [] (x 1 12), "")
+    p "type T($ = x " `shouldBe` Right (TypeDef (name 1 6 "T") [] (Meta (syntaxErr 1 7 1 7 "type definition" "'='" "") $ Meta (syntaxErr 1 7 1 14 "type definition" "body" "($ = x ") Err), "")
+    p "type T<>() = x " `shouldBe` Right (TypeDef (MetaName (syntaxErr 1 7 1 9 "type definition" "" "<>") $ name 1 6 "T") [] (x 1 14), "")
+    p "type T(x) = y " `shouldBe` Right (TypeDef (name 1 6 "T") [x 1 8] (y 1 13), "")
+    p "type T(x,) = y " `shouldBe` Right (TypeDef (name 1 6 "T") [x 1 8] (y 1 14), "")
+    p "type T(x, y) = z " `shouldBe` Right (TypeDef (name 1 6 "T") [x 1 8, y 1 11] (z 1 16), "")
 
   -- TODO: next steps
   --  * parse Stmt with error handling

@@ -761,7 +761,7 @@ parseCollection msg open delim close catch parser = do
     _ <- P.whitespaces
     return x
   x <- P.zeroOrOne $ do
-    x <- P.expect msg parser & P.recover (P.textUntil (P.text close)) catch
+    x <- P.expect msg parser
     _ <- P.whitespaces
     return x
   _ <- P.text close
@@ -1565,6 +1565,40 @@ parseNameOpTag = do
 parseName :: Parser String
 parseName = P.oneOf [parseNameVar, parseNameTag]
 
+textUntilExpr :: Parser String
+textUntilExpr = P.textUntil parseExprStart
+
+parseExprStart :: Parser Char
+parseExprStart =
+  P.oneOf
+    [ P.letter,
+      P.digit,
+      P.charOf "_.:([{'\"@|%!"
+    ]
+
+parseNameUntil :: String -> Parser String -> Parser stop -> Parser Name
+parseNameUntil expect parser stop = do
+  name <-
+    P.expect expect (parseLocName parser)
+      & P.recover (P.textUntil stop) syntaxErrorName
+  _ <- P.spaces
+  handleErr <-
+    (id <$ P.lookahead stop)
+      & P.recover (P.textUntil stop) (MetaName . syntaxErrorMeta)
+      & P.recover (P.ok ()) (const id)
+  return (handleErr name)
+
+parseExprUntil :: String -> Int -> Parser stop -> Parser Expr
+parseExprUntil expect prec stop = do
+  expr <-
+    P.expect expect (parseExpr prec)
+      & P.recover (P.textUntil stop) syntaxErrorExpr
+  handleErr <-
+    (id <$ P.lookahead stop)
+      & P.recover (P.textUntil stop) (Meta . syntaxErrorMeta)
+      & P.recover (P.ok ()) (const id)
+  return (handleErr expr)
+
 parseModule :: String -> Parser Module
 parseModule name = do
   _ <- P.whitespaces
@@ -1646,15 +1680,6 @@ parseImport = do
   _ <- P.spaces
   return (Import path alias names)
 
-textUntilExpr :: Parser String
-textUntilExpr =
-  P.textUntil $
-    P.oneOf
-      [ P.letter,
-        P.digit,
-        P.charOf "_.:([{'\"@|%!"
-      ]
-
 parseDef :: Parser Stmt
 parseDef = do
   let parseDefOp = P.oneOf [P.text "=", P.text "<-"]
@@ -1726,7 +1751,7 @@ parseTest = do
         do
           meta <-
             (id <$ P.expect "'~>'" (P.text "~>"))
-              & P.recover textUntilExpr (\err -> Meta (syntaxErrorMeta err))
+              & P.recover textUntilExpr (Meta . syntaxErrorMeta)
           _ <- P.whitespaces
           a <-
             P.expect "result" (parseExpr 0)
@@ -1742,41 +1767,24 @@ parseTypeDef :: Parser Stmt
 parseTypeDef = do
   _ <- P.commit "type definition" $ P.word "type"
   _ <- P.whitespaces
-  name <- P.expect "type name" $ parseLocName parseNameTag
-  _ <- P.whitespaces
+  name <- parseNameUntil "type name" parseNameTag (P.oneOf [P.charOf "(="])
   args <-
     P.oneOf
       [ do
-          args <- parseCollection "type argument" "(" "," ")" syntaxErrorExpr (parseExpr 0)
+          args <- parseCollection "argument" "(" "," ")" syntaxErrorExpr (parseExpr 0)
           _ <- P.whitespaces
           return args,
-        ([] <$ P.lookahead (P.char '='))
-          & P.recover (P.textUntil (P.char '=')) (\err -> [syntaxErrorExpr err])
+        return []
       ]
-  _ <- P.expect "'='" $ P.char '='
+  bodyHandleErr <-
+    P.expect "'='" (id <$ P.char '=')
+      & P.recover textUntilExpr (Meta . syntaxErrorMeta)
   _ <- P.whitespaces
-  b <-
+  body <-
     P.expect "body" (parseExpr 0)
       & P.recover (P.textUntil parseLineBreak) syntaxErrorExpr
   _ <- P.spaces
-  -- let parseAlt = do
-  --       a <- parseExpr 4
-  --       _ <- P.spaces
-  --       mb <- P.maybe' $ do
-  --         _ <- P.whitespaces
-  --         _ <- P.expect "'~>'" $ P.text "~>"
-  --         _ <- P.whitespaces
-  --         parseExpr 4
-  --       return (a, mb)
-  -- _ <- P.maybe' (P.char '|')
-  -- _ <- P.whitespaces
-  -- alt <- parseAlt
-  -- _ <- P.whitespaces
-  -- alts <- P.zeroOrMore $ do
-  --   _ <- P.char '|'
-  --   _ <- P.whitespaces
-  --   parseAlt
-  return (TypeDef name args b)
+  return (TypeDef name args (bodyHandleErr body))
 
 parseCommentMeta :: Parser (C.Metadata Expr)
 parseCommentMeta = do
