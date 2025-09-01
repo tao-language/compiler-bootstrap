@@ -323,7 +323,7 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "abc." `shouldBe` Right ('.', "")
     p "abc" `shouldBe` Left "abc"
 
-  it "☯ LL(k) equivalent" $ do
+  it "☯ commitOneOf -- LL(k) equivalent" $ do
     -- expect + commit + oneOf
     let letters = do
           x <- commit "letter!" letter
@@ -333,7 +333,7 @@ run = describe "--==☯ Parser ☯==--" $ do
           x <- commit "digit!" digit
           xs <- oneOrMore digit
           return (x : xs)
-    let p = parseError (expect "alphanum" $ oneOf [letters, digits])
+    let p = parseError (expect "alphanum" $ commitOneOf [letters, digits])
     p "" `shouldBe` (Nothing, "alphanum", "", "")
     p "a" `shouldBe` (Nothing, "alphanum", "", "a")
     p "a2" `shouldBe` (Nothing, "alphanum", "", "a2")

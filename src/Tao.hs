@@ -187,7 +187,7 @@ data Stmt
   | Bind Pattern Expr
   | Mut Name Expr
   | Run String [Expr]
-  | Test UnitTest
+  | Test String Expr Pattern
   | TypeDef String [Expr] [(Expr, Maybe Type)]
   | IfStmt Expr Block (Maybe Block)
   | While Expr Block
@@ -196,6 +196,7 @@ data Stmt
   | Nop (C.Metadata Expr)
   deriving (Eq)
 
+-- TODO: use layout to indent correctly
 instance Format Stmt where
   format :: Int -> String -> Stmt -> String
   format width indent = \case
@@ -213,7 +214,10 @@ instance Format Stmt where
     Mut x a -> "mut " ++ show x ++ " = " ++ show a
     Run a args -> error "TODO: format Run"
     TypeDef name args alts -> error "TODO: format TypeDef"
-    Test t -> error "TODO: format Test"
+    Test name expr expect -> do
+      let name' = if name /= "" then "// " ++ name ++ "\n" else ""
+      let expect' = if expect == tag "True" then "" else "\n" ++ show expect
+      name' ++ "> " ++ show expr ++ expect'
     Nop (C.Comments comments) ->
       map (\c -> "// " ++ c) comments
         & intercalate "\n"
@@ -223,15 +227,6 @@ instance Format Stmt where
 instance Show Stmt where
   show :: Stmt -> String
   show = format 80 ""
-
-data UnitTest = UnitTest
-  { filename :: FilePath,
-    pos :: Position,
-    name :: String,
-    expr :: Expr,
-    expect :: Pattern
-  }
-  deriving (Eq, Show)
 
 type Module = (FilePath, [Stmt])
 
@@ -608,7 +603,7 @@ instance Apply Stmt where
     Import path alias names -> Import path alias names
     Let a b -> Let (f a) (f b)
     Run x args -> Run x (map f args)
-    Test t -> Test (apply f t)
+    Test name expr expect -> Test name (apply f expr) (apply f expect)
     TypeDef name args alts -> TypeDef name (map f args) (map (bimap f (fmap f)) alts)
     Nop m -> Nop (fmap f m)
 
@@ -618,10 +613,6 @@ instance Apply Block where
     Return stmts a -> Return (map (apply f) stmts) (f a)
     Break stmts -> Break (map (apply f) stmts)
     Continue stmts -> Continue (map (apply f) stmts)
-
-instance Apply UnitTest where
-  apply :: (Expr -> Expr) -> UnitTest -> UnitTest
-  apply f t = t {expr = f t.expr, expect = f t.expect}
 
 class DropMeta a where
   dropMeta :: a -> a
@@ -1587,14 +1578,14 @@ parseStmt = do
           parseDef,
           parseMut,
           -- TypeDef <$> parseTypeDef,
-          -- parseTest,
+          parseTest,
           -- Run <$> parseExpr 1,
           Nop <$> parseCommentMeta
           -- TODO: consider a trailing comment on a syntax error like this
           -- , Run . (\e -> Meta (C.Error e) Err) . SyntaxError <$> recoverSyntaxError "statement" (P.text "\n")
         ]
   stmt <-
-    P.oneOf parsers
+    P.commitOneOf parsers
       & P.recover (P.textUntil parseLineBreak) syntaxErrorStmt
   _ <- parseLineBreak
   return stmt
@@ -1715,6 +1706,36 @@ parseMut = do
   _ <- P.spaces
   return (mut name b)
 
+parseTest :: Parser Stmt
+parseTest = do
+  name <- P.oneOf [parseCommentSingleLine, return ""]
+  s <- P.state
+  _ <- P.commit "test" (P.char '>')
+  _ <- P.zeroOrMore P.space
+  expr <-
+    P.expect "expression" (parseExpr 0)
+      & P.recover (P.textUntil $ P.oneOf [parseLineBreak, () <$ P.text "~>"]) syntaxErrorExpr
+  expect <-
+    P.oneOf
+      [ do
+          _ <- parseLineBreak
+          _ <- P.whitespaces
+          P.expect "result" (parseExpr 0),
+        do
+          meta <-
+            (id <$ P.text "~>")
+              & P.recover textUntilExpr (\err -> Meta (syntaxErrorMeta err))
+          _ <- P.whitespaces
+          a <-
+            P.expect "result" (parseExpr 0)
+              & P.recover (P.textUntil parseLineBreak) syntaxErrorExpr
+          return (meta a),
+        return (tag "True")
+      ]
+  let path = s.filename ++ ":" ++ show s.pos
+  let name' = if name /= "" then name else show (dropMeta expr)
+  return (Test (path ++ ": " ++ name') expr expect)
+
 parseTypeDef :: Parser (String, [Expr], [(Expr, Maybe Type)])
 parseTypeDef = do
   _ <- P.commit "type definition" $ P.word "type"
@@ -1750,36 +1771,6 @@ parseTypeDef = do
     _ <- P.whitespaces
     parseAlt
   return (name, args, alt : alts)
-
-parseTest :: Parser Stmt
-parseTest = do
-  name <-
-    P.oneOf
-      [ do
-          _ <- P.text "--"
-          _ <- P.spaces
-          name <- P.textUntil P.endOfLine
-          _ <- P.whitespaces
-          return name,
-        return ""
-      ]
-  s <- P.state
-  _ <- P.char '>'
-  _ <- P.oneOrMore P.space
-  -- P.commit "test"
-  expr <- parseExpr 0
-  result <-
-    P.oneOf
-      [ do
-          _ <- parseLineBreak
-          parseExpr 0,
-        do
-          _ <- P.text "~>"
-          _ <- P.whitespaces
-          parseExpr 0,
-        return (Tag "True" [])
-      ]
-  return (Test (UnitTest s.filename s.pos name expr result))
 
 parseCommentMeta :: Parser (C.Metadata Expr)
 parseCommentMeta = do
@@ -1844,7 +1835,7 @@ instance Check Stmt where
     Run x args -> do
       -- TODO: check that x is defined
       concatMap check args
-    Test t -> concatMap check [t.expr, t.expect]
+    Test name expr expect -> concatMap check [expr, expect]
     TypeDef _ args alts -> concatMap check args ++ concatMap check alts
     Nop m -> check m
 

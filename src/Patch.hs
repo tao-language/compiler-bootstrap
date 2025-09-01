@@ -66,7 +66,7 @@ instance ApplyPatch (Context, FilePath, [Rule]) Stmt where
   applyPatch :: (Context, FilePath, [Rule]) -> Stmt -> Stmt
   applyPatch (ctx, path, rules) = \case
     -- LetDef (p, op, b) -> LetDef (p, op, applyPatch' b)
-    Test t -> Test (t {expect = applyPatch' t.expect})
+    Test name expr expect -> Test name expr (applyPatch' expect)
     stmt -> error $ "TODO applyPatch " ++ show stmt
     where
       applyPatch' = applyPatch (ctx, path, rules)

@@ -8,19 +8,8 @@ import Location
 import Tao
 
 data TestResult
-  = TestPass
-      { filename :: String,
-        pos :: Position,
-        name :: String
-      }
-  | TestFail
-      { filename :: String,
-        pos :: Position,
-        name :: String,
-        test :: Expr,
-        expected :: Expr,
-        got :: Expr
-      }
+  = TestPass String
+  | TestFail UnitTest Expr
   deriving (Eq)
 
 isFailure :: TestResult -> Bool
@@ -38,8 +27,10 @@ count (result : results) = do
 instance Show TestResult where
   show :: TestResult -> String
   show result = case result of
-    TestPass filename pos name -> "✅ " ++ filename ++ ":" ++ show pos.row ++ ":" ++ show pos.col ++ ": " ++ name ++ "\n"
-    TestFail filename pos name test expect got -> "❌ " ++ filename ++ ":" ++ show pos.row ++ ":" ++ show pos.col ++ ": " ++ name ++ "\n  > " ++ show (dropMeta test) ++ "\n  " ++ show (dropMeta expect) ++ "\n* " ++ show (dropMeta got) ++ "\n"
+    TestPass name -> "✅ " ++ name ++ "\n"
+    TestFail (name, test, expect) got -> "❌ " ++ name ++ "\n  > " ++ show (dropMeta test) ++ "\n  " ++ show (dropMeta expect) ++ "\n* " ++ show (dropMeta got) ++ "\n"
+
+type UnitTest = (String, Expr, Pattern)
 
 class TestSome a where
   testSome :: Context -> (UnitTest -> Bool) -> a -> [TestResult]
@@ -59,29 +50,29 @@ instance TestSome (String, Stmt) where
     Import {} -> []
     -- LetDef {} -> []
     TypeDef {} -> []
-    Test t | filter t -> testSome ctx filter (path, t)
+    Test name expr expect | filter (name, expr, expect) -> testSome ctx filter (path, (name, expr, expect))
     Test {} -> []
     Run {} -> []
     Nop {} -> []
 
 instance TestSome (FilePath, UnitTest) where
   testSome :: Context -> (UnitTest -> Bool) -> (FilePath, UnitTest) -> [TestResult]
-  testSome ctx _ (path, t) = do
-    let name = if t.name == "" then show (dropMeta t.expr) else t.name
+  testSome ctx _ (path, (name, expr, expect)) = do
+    let name = if name == "" then show (dropMeta expr) else name
     let cases =
-          [ Fun t.expect (Tag "Pass" []),
+          [ Fun expect (Tag "Pass" []),
             Fun (Var "got") (Tag "Fail" [Var "got"])
           ]
-    let (env, test') = compile ctx path (Match t.expr cases)
+    let (env, test') = compile ctx path (Match expr cases)
     -- (error . intercalate "\n")
     --   [ "testSome",
-    --     "expr:  " ++ show (dropMeta t.expr),
-    --     "expr': " ++ show (snd $ compile ctx path t.expr),
-    --     "expect: " ++ show (dropMeta t.expect),
+    --     "expr:  " ++ show (dropMeta expr),
+    --     "expr': " ++ show (snd $ compile ctx path expr),
+    --     "expect: " ++ show (dropMeta expect),
     --     "env: " ++ show (map (Var . fst) env),
     --     intercalate "\n" $ map (\(x, a) -> " - " ++ show (Var x) ++ ": " ++ show (C.dropLet a)) env,
-    --     "test: " ++ show (dropMeta $ Match t.expr cases),
-    --     "lower: " ++ show (lower (dropMeta $ Match t.expr cases)),
+    --     "test: " ++ show (dropMeta $ Match expr cases),
+    --     "lower: " ++ show (lower (dropMeta $ Match expr cases)),
     --     "core: " ++ show test',
     --     "steps:",
     --     intercalate "\n\n" (map (\(r, a) -> "# [" ++ r ++ "] " ++ C.showCtr' 2 a ++ "#\n> " ++ show (C.dropLet a)) (C.steps runtimeOps $ C.let' env test')),
@@ -90,13 +81,13 @@ instance TestSome (FilePath, UnitTest) where
     --   ]
     let result = C.eval runtimeOps (C.let' env test')
     case C.typedOf (snd $ C.forOf result) of
-      (C.Tag "Pass" _, _) -> [TestPass t.filename t.pos name]
+      (C.Tag "Pass" _, _) -> [TestPass name]
       -- TODO: Fix this, it's where type errors on tests get reported.
       --       Just check the result for any errors and mark it as failure.
-      -- (_, C.Tag "Err" (C.Err e)) -> [TestFail t.filename t.pos name t.expr t.expect (lift (C.Err e))]
-      (C.Tag "Fail" got, _) -> [TestFail t.filename t.pos name (dropMeta t.expr) (dropMeta t.expect) (lift got)]
-      -- (got, _) -> [TestFail t.filename t.pos t.name t.expr t.expect (lift got)]
-      (got, ty) -> error ("Unreachable " ++ t.filename ++ ":" ++ show t.pos.row ++ ":" ++ show t.pos.col ++ ": " ++ t.name ++ "\ntest:\n" ++ show (C.Let env test') ++ "\ngot: " ++ show got ++ "\nt: " ++ show ty)
+      -- (_, C.Tag "Err" (C.Err e)) -> [TestFail filename pos name expr expect (lift (C.Err e))]
+      (C.Tag "Fail" got, _) -> [TestFail (name, dropMeta expr, dropMeta expect) (lift got)]
+      -- (got, _) -> [TestFail filename pos name expr expect (lift got)]
+      (got, ty) -> error ("Unreachable " ++ name ++ "\ntest:\n" ++ show (C.Let env test') ++ "\ngot: " ++ show got ++ "\nt: " ++ show ty)
 
 testAll :: (TestSome a) => Context -> a -> [TestResult]
 testAll ctx = testSome ctx (const True)

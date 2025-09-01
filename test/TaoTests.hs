@@ -299,6 +299,24 @@ run = describe "--==☯ Tao ☯==--" $ do
     p "mut x $ y " `shouldBe` Right (Mut (name 1 5 "x") (Meta (syntaxErr 1 7 1 9 "mutate" "'='" "$ ") (y 1 9)), "")
     p "mut x = $ " `shouldBe` Right (Mut (name 1 5 "x") (Meta (syntaxErr 1 9 1 11 "mutate" "body" "$ ") Err), "")
 
+  it "☯ Tao.Stmt.parser.Test" $ do
+    let p = parseStmt'
+    p "> x ~> y " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (y 1 8), "")
+    p "> $ ~> y " `shouldBe` Right (Test "TaoTests:1:1: !error" (Meta (syntaxErr 1 3 1 5 "test" "expression" "$ ") Err) (y 1 8), "")
+    p "> x ~$ y " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (Meta (syntaxErr 1 5 1 8 "test" "\"~>\"" "~$ ") (y 1 8)), "")
+    p "> x ~> $ " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (Meta (syntaxErr 1 8 1 10 "test" "result" "$ ") Err), "")
+    p "> x \ny " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (y 2 1), "")
+    p "> $ \ny " `shouldBe` Right (Test "TaoTests:1:1: !error" (Meta (syntaxErr 1 3 1 5 "test" "expression" "$ ") Err) (y 2 1), "")
+    p "> x \n$ " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (Tag "True" []), "$ ")
+
+  -- TODO: next steps
+  --  * parse TypeDef with error handling
+  --  * parse Stmt with error handling
+  --  * parse Module with error handling
+  --  * parse Expr with error handling
+  --  * type checking error reporting
+  --  * keep going with prelude
+
   -- Run String [Expr]
   -- Test UnitTest
   -- TypeDef String [Expr] [(Expr, Maybe Type)]
@@ -402,14 +420,13 @@ run = describe "--==☯ Tao ☯==--" $ do
   it "☯ Tao.resolve" $ do
     let (x, y, z, w) = (Var "x", Var "y", Var "z", Var "w")
     let (i1, i2) = (Int 1, Int 2)
-    let test a b = Test (UnitTest "filename" (Pos 1 2) "name" a b)
 
     -- Stmt
     let ctx = []
     resolve ctx "m1" ("x", Let x y) `shouldBe` [("m1", y)]
     resolve ctx "m1" ("x", Let y z) `shouldBe` []
     resolve ctx "m1" ("x", TypeDef "x" [] []) `shouldBe` [("m1", Fun (Tuple []) (Tuple []))]
-    resolve ctx "m1" ("x", test y z) `shouldBe` []
+    resolve ctx "m1" ("x", Test "name" y z) `shouldBe` []
 
     -- [Stmt]
     let ctx = []

@@ -119,14 +119,21 @@ if' check (Parser p) =
 
 oneOf :: [Parser a] -> Parser a
 oneOf [] = fail'
-oneOf (Parser p : choices) =
+oneOf (Parser p : choices) = do
+  Parser
+    ( \s1 -> case p s1 of
+        Right (x, s2) -> Right (x, s2)
+        Left s2 -> apply (oneOf choices) s1
+    )
+
+commitOneOf :: [Parser a] -> Parser a
+commitOneOf [] = fail'
+commitOneOf (Parser p : choices) = do
   Parser
     ( \s1 -> case p s1 {committed = ""} of
         Right (x, s2) -> Right (x, s2 {committed = s1.committed})
-        Left s2 | s2.committed == "" -> apply (oneOf choices) s1
+        Left s2 | s2.committed == "" -> apply (commitOneOf choices) s1
         Left s2 -> Left s1 {expected = s2.expected}
-        -- Left State {committed = False} -> apply (oneOf choices) s1
-        -- Left s2 -> Left s2
     )
 
 choose :: (a -> a -> Either () ()) -> [Parser a] -> Parser a

@@ -690,24 +690,24 @@ instance Emit T.Stmt [Stmt] where
       [Import path' alias' | alias `notElem` map snd names]
         ++ [ImportFrom path' (map nameAlias names) | names /= []]
     -- T.LetDef def -> emit options def
-    T.Test t -> do
-      let (s1, a') = emit options t.expr
-      let (s2, b') = emit options t.expect -- TODO: do a match instead
-      let def =
-            FunctionDef
-              { name = "test_" ++ Name.snakeCase t.name,
-                args = [("self", Nothing, Nothing)],
-                body =
-                  [ Assign [Name "actual"] a',
-                    Assign [Name "expect"] b',
-                    Assign [] (Call (Attribute (Name "self") "assertEqual") [Name "actual", Name "expect"] [])
-                  ],
-                decorators = [],
-                returns = Nothing,
-                typeParams = [],
-                async = False
-              }
-      s1 ++ s2 ++ [def]
+    -- T.Test t -> do
+    --   let (s1, a') = emit options t.expr
+    --   let (s2, b') = emit options t.expect -- TODO: do a match instead
+    --   let def =
+    --         FunctionDef
+    --           { name = "test_" ++ Name.snakeCase t.name,
+    --             args = [("self", Nothing, Nothing)],
+    --             body =
+    --               [ Assign [Name "actual"] a',
+    --                 Assign [Name "expect"] b',
+    --                 Assign [] (Call (Attribute (Name "self") "assertEqual") [Name "actual", Name "expect"] [])
+    --               ],
+    --             decorators = [],
+    --             returns = Nothing,
+    --             typeParams = [],
+    --             async = False
+    --           }
+    --   s1 ++ s2 ++ [def]
     stmt -> error $ "TODO: emit Stmt: " ++ show stmt
 
 instance Emit [T.Stmt] [Stmt] where
