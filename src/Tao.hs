@@ -1601,11 +1601,24 @@ parseExprUntil expect prec stop = do
   expr <-
     P.expect expect (parseExpr prec)
       & P.recover (P.textUntil stop) syntaxErrorExpr
+  _ <- P.spaces
   handleErr <-
     (id <$ P.lookahead stop)
       & P.recover (P.textUntil stop) (Meta . syntaxErrorMeta)
       & P.recover (P.ok ()) (const id)
   return (handleErr expr)
+
+parseOpUntil :: String -> Parser stop -> Parser (Expr -> Expr)
+parseOpUntil op stop = do
+  handleErr1 <-
+    P.expect ("'" ++ op ++ "'") (id <$ P.text op)
+      & P.recover (P.textUntil stop) (Meta . syntaxErrorMeta)
+  _ <- P.spaces
+  handleErr2 <-
+    (id <$ P.lookahead stop)
+      & P.recover (P.textUntil stop) (Meta . syntaxErrorMeta)
+      & P.recover (P.ok ()) (const id)
+  return (handleErr1 . handleErr2)
 
 parseModule :: String -> Parser Module
 parseModule name = do
@@ -1703,12 +1716,16 @@ parseDef = do
   _ <- P.whitespaces
   def <-
     P.expect "'=' or '<-'" (P.oneOf [Let <$ P.text "=", Bind <$ P.text "<-"])
-      & P.recover textUntilExpr (\err a b -> Let a (Meta (syntaxErrorMeta err) b))
+      & P.recover (P.textUntil parseExprStart) (\err a b -> Let a (Meta (syntaxErrorMeta err) b))
   _ <- P.whitespaces
+  handleErr <-
+    (id <$ P.lookahead parseExprStart)
+      & P.recover (P.textUntil parseExprStart) (Meta . syntaxErrorMeta)
+      & P.recover (P.ok ()) (const id)
   b <- parseExprUntil "body" 0 parseLineBreak
   case typeAnnotation of
-    Just t -> return (def (Ann a t) b)
-    Nothing -> return (def a b)
+    Just t -> return (def (Ann a t) (handleErr b))
+    Nothing -> return (def a (handleErr b))
 
 parseMut :: Parser Stmt
 parseMut = do
@@ -1716,12 +1733,10 @@ parseMut = do
   _ <- P.whitespaces
   name <- parseNameUntil "variable name" parseNameVar (P.char '=')
   _ <- P.whitespaces
-  mut <-
-    P.expect "'='" (Mut <$ P.text "=")
-      & P.recover textUntilExpr (\err x b -> Mut x (Meta (syntaxErrorMeta err) b))
+  handleErr <- parseOpUntil "=" parseExprStart
   _ <- P.whitespaces
   b <- parseExprUntil "body" 0 parseLineBreak
-  return (mut name b)
+  return (Mut name (handleErr b))
 
 parseTest :: Parser Stmt
 parseTest = do
@@ -1737,12 +1752,10 @@ parseTest = do
           _ <- P.whitespaces
           P.expect "result" (parseExpr 0),
         do
-          meta <-
-            (id <$ P.expect "'~>'" (P.text "~>"))
-              & P.recover textUntilExpr (Meta . syntaxErrorMeta)
+          handleErr <- parseOpUntil "~>" parseExprStart
           _ <- P.whitespaces
           a <- parseExprUntil "result" 0 parseLineBreak
-          return (meta a),
+          return (handleErr a),
         return (tag "True")
       ]
   let path = s.filename ++ ":" ++ show s.pos
@@ -1762,12 +1775,10 @@ parseTypeDef = do
           return args,
         return []
       ]
-  bodyHandleErr <-
-    P.expect "'='" (id <$ P.char '=')
-      & P.recover textUntilExpr (Meta . syntaxErrorMeta)
+  handleErr <- parseOpUntil "=" parseExprStart
   _ <- P.whitespaces
   body <- parseExprUntil "body" 0 parseLineBreak
-  return (TypeDef name args (bodyHandleErr body))
+  return (TypeDef name args (handleErr body))
 
 parseCommentMeta :: Parser (C.Metadata Expr)
 parseCommentMeta = do
