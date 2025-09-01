@@ -1565,6 +1565,14 @@ parseNameOpTag = do
 parseName :: Parser String
 parseName = P.oneOf [parseNameVar, parseNameTag]
 
+parseLocName :: Parser String -> Parser Name
+parseLocName parser = do
+  start <- P.state
+  name <- fmap Name parser
+  end <- P.state
+  _ <- P.spaces
+  return (MetaName (C.Loc $ locSpan start end) name)
+
 textUntilExpr :: Parser String
 textUntilExpr = P.textUntil parseExprStart
 
@@ -1686,51 +1694,33 @@ parseDef = do
   typeAnnotation <- P.maybe' $ do
     _ <- P.commit "typed definition" $ P.char ':'
     _ <- P.spaces
-    t <- parseExpr 0
+    t <- parseExprUntil "type annotation" 0 parseLineBreak
     _ <- parseLineBreak
     return t
   _ <- P.commit "definition" $ P.word "let"
   _ <- P.whitespaces
-  a <-
-    P.expect "pattern" (parseExpr 0)
-      & P.recover (P.textUntil parseDefOp) syntaxErrorExpr
+  a <- parseExprUntil "pattern" 0 (P.charOf "=<")
   _ <- P.whitespaces
   def <-
     P.expect "'=' or '<-'" (P.oneOf [Let <$ P.text "=", Bind <$ P.text "<-"])
       & P.recover textUntilExpr (\err a b -> Let a (Meta (syntaxErrorMeta err) b))
   _ <- P.whitespaces
-  b <-
-    P.expect "body" (parseExpr 0)
-      & P.recover (P.textUntil parseLineBreak) syntaxErrorExpr
-  _ <- P.spaces
+  b <- parseExprUntil "body" 0 parseLineBreak
   case typeAnnotation of
     Just t -> return (def (Ann a t) b)
     Nothing -> return (def a b)
-
-parseLocName :: Parser String -> Parser Name
-parseLocName parser = do
-  start <- P.state
-  name <- fmap Name parser
-  end <- P.state
-  _ <- P.spaces
-  return (MetaName (C.Loc $ locSpan start end) name)
 
 parseMut :: Parser Stmt
 parseMut = do
   _ <- P.commit "mutate" $ P.word "mut"
   _ <- P.whitespaces
-  name <-
-    P.expect "variable name" (parseLocName parseNameVar)
-      & P.recover (P.textUntil (P.char '=')) syntaxErrorName
+  name <- parseNameUntil "variable name" parseNameVar (P.char '=')
   _ <- P.whitespaces
   mut <-
     P.expect "'='" (Mut <$ P.text "=")
       & P.recover textUntilExpr (\err x b -> Mut x (Meta (syntaxErrorMeta err) b))
   _ <- P.whitespaces
-  b <-
-    P.expect "body" (parseExpr 0)
-      & P.recover (P.textUntil parseLineBreak) syntaxErrorExpr
-  _ <- P.spaces
+  b <- parseExprUntil "body" 0 parseLineBreak
   return (mut name b)
 
 parseTest :: Parser Stmt
@@ -1739,9 +1729,7 @@ parseTest = do
   s <- P.state
   _ <- P.commit "test" (P.char '>')
   _ <- P.zeroOrMore P.space
-  expr <-
-    P.expect "expression" (parseExpr 0)
-      & P.recover (P.textUntil $ P.oneOf [parseLineBreak, () <$ P.text "~>"]) syntaxErrorExpr
+  expr <- parseExprUntil "expression" 0 (P.oneOf [() <$ P.text "~", () <$ parseExprStart, parseLineBreak])
   expect <-
     P.oneOf
       [ do
@@ -1753,9 +1741,7 @@ parseTest = do
             (id <$ P.expect "'~>'" (P.text "~>"))
               & P.recover textUntilExpr (Meta . syntaxErrorMeta)
           _ <- P.whitespaces
-          a <-
-            P.expect "result" (parseExpr 0)
-              & P.recover (P.textUntil parseLineBreak) syntaxErrorExpr
+          a <- parseExprUntil "result" 0 parseLineBreak
           return (meta a),
         return (tag "True")
       ]
@@ -1780,10 +1766,7 @@ parseTypeDef = do
     P.expect "'='" (id <$ P.char '=')
       & P.recover textUntilExpr (Meta . syntaxErrorMeta)
   _ <- P.whitespaces
-  body <-
-    P.expect "body" (parseExpr 0)
-      & P.recover (P.textUntil parseLineBreak) syntaxErrorExpr
-  _ <- P.spaces
+  body <- parseExprUntil "body" 0 parseLineBreak
   return (TypeDef name args (bodyHandleErr body))
 
 parseCommentMeta :: Parser (C.Metadata Expr)
