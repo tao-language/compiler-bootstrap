@@ -40,7 +40,7 @@ data Expr
   | Call String [Expr]
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
-  | Do Block
+  | Do [Stmt]
   | Dot Expr String (Maybe [Expr])
   | Spread Expr
   | Get Expr Expr
@@ -175,12 +175,6 @@ instance Show Name where
   show (Name x) = show (Var x)
   show (MetaName m x) = show (Meta m (Var $ show x))
 
-data Block
-  = Return [Stmt] Expr
-  | Break [Stmt]
-  | Continue [Stmt]
-  deriving (Eq, Show)
-
 data Stmt
   = Import String String [(String, String)]
   | Let Pattern Expr
@@ -189,10 +183,13 @@ data Stmt
   | Run String [Expr]
   | Test String Expr Pattern
   | TypeDef Name [Expr] Expr
-  | IfStmt Expr Block (Maybe Block)
-  | While Expr Block
-  | Repeat Block Expr
-  | ForStmt Pattern Expr Block
+  | IfStmt Expr [Stmt] (Maybe [Stmt])
+  | While Expr [Stmt]
+  | Repeat [Stmt] Expr
+  | ForStmt Pattern Expr [Stmt]
+  | Break
+  | Continue
+  | Return Expr
   | Nop (C.Metadata Expr)
   deriving (Eq)
 
@@ -223,8 +220,7 @@ instance Format Stmt where
     Nop (C.Comments comments) ->
       map (\c -> "// " ++ c) comments
         & intercalate "\n"
-    Nop (C.Error _) -> "!error"
-    Nop m -> error $ "TODO: format Nop " ++ show m
+    Nop m -> "!nop[" ++ show m ++ "]"
 
 instance Show Stmt where
   show :: Stmt -> String
@@ -312,7 +308,7 @@ let' :: (Pattern, Expr) -> Expr -> Expr
 let' (a, b) = lets [(a, b)]
 
 lets :: [(Pattern, Expr)] -> Expr -> Expr
-lets defs a = Do (Return (map (\(a, b) -> Let a b) defs) a)
+lets defs a = Do ((map (\(a, b) -> Let a b) defs) ++ [Return a])
 
 isErr :: Expr -> Bool
 isErr = \case
@@ -609,12 +605,9 @@ instance Apply Stmt where
     TypeDef name args body -> TypeDef name (map f args) (f body)
     Nop m -> Nop (fmap f m)
 
-instance Apply Block where
-  apply :: (Expr -> Expr) -> Block -> Block
-  apply f = \case
-    Return stmts a -> Return (map (apply f) stmts) (f a)
-    Break stmts -> Break (map (apply f) stmts)
-    Continue stmts -> Continue (map (apply f) stmts)
+instance Apply [Stmt] where
+  apply :: (Expr -> Expr) -> [Stmt] -> [Stmt]
+  apply f = map (apply f)
 
 class DropMeta a where
   dropMeta :: a -> a
@@ -717,12 +710,9 @@ instance Collect Stmt where
   collect f = \case
     stmt -> error $ "TODO: collect " ++ show stmt
 
-instance Collect Block where
-  collect :: (Eq a) => (Expr -> [a]) -> Block -> [a]
-  collect f = \case
-    Return stmts a -> unionMap (collect f) stmts `union` collect f a
-    Break stmts -> unionMap (collect f) stmts
-    Continue stmts -> unionMap (collect f) stmts
+instance Collect [Stmt] where
+  collect :: (Eq b) => (Expr -> [b]) -> [Stmt] -> [b]
+  collect f = unionMap (collect f)
 
 locSpan :: P.State -> P.State -> Location
 locSpan start end = Location start.filename (Range start.pos end.pos)
@@ -1400,11 +1390,16 @@ instance Lower Expr where
     Err -> C.Err
     a -> error $ "TODO: lower " ++ show (dropMeta a)
 
-instance Lower Block where
-  lower :: Block -> C.Expr
+instance Lower [Stmt] where
+  lower :: [Stmt] -> C.Expr
   -- Let (a, b) c | Just x <- varOf c, Just d <- lookup x (C.unpack (lower a, lower b)) -> d
   -- Let (a, b) c -> lower (App (Fun a c) b)
-  lower block = error "TODO: lower Block"
+  lower [] = error "TODO: lower ([] : [Stmt])"
+  lower (Let a b : stmts) = C.letP (lower a, lower b) (lower stmts)
+  lower (Break : stmts) = error "TODO: lower Break" -- TODO: stmts are unreachable
+  lower (Continue : stmts) = error "TODO: lower Continue" -- TODO: stmts are unreachable
+  lower (Return a : stmts) = lower a -- TODO: stmts are unreachable
+  lower (stmt : stmts) = error $ "TODO: lower\n" ++ show (dropMeta stmt)
 
 lift :: C.Expr -> Expr
 lift = \case
@@ -1642,7 +1637,7 @@ parseStmt = do
           -- , Run . (\e -> Meta (C.Error e) Err) . SyntaxError <$> recoverSyntaxError "statement" (P.text "\n")
         ]
   stmt <-
-    P.commitOneOf parsers
+    P.expect "statement" (P.commitOneOf parsers)
       & P.recover (P.textUntil parseLineBreak) syntaxErrorStmt
   _ <- parseLineBreak
   return stmt

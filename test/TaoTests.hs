@@ -29,6 +29,11 @@ parseStmt' text = case P.parse parseStmt filename text of
   Right (a, s) -> Right (a, s.remaining)
   Left s -> Left (s.expected, s.remaining)
 
+parseModule' :: String -> Either (String, String) ([Stmt], String)
+parseModule' text = case P.parse (parseModule "m") filename text of
+  Right ((_, stmts), s) -> Right (stmts, s.remaining)
+  Left s -> Left (s.expected, s.remaining)
+
 -- fmt :: Expr -> String
 -- fmt = show . dropLocations
 
@@ -322,12 +327,17 @@ run = describe "--==☯ Tao ☯==--" $ do
     p "type T(x,) = y " `shouldBe` Right (TypeDef (name 1 6 "T") [x 1 8] (y 1 14), "")
     p "type T(x, y) = z " `shouldBe` Right (TypeDef (name 1 6 "T") [x 1 8, y 1 11] (z 1 16), "")
 
-  -- TODO: next steps
-  --  * parse Stmt with error handling
-  --  * parse Module with error handling
-  --  * parse Expr with error handling
-  --  * type checking error reporting
-  --  * keep going with prelude
+  it "☯ Tao.Stmt.parser.Errors" $ do
+    let p = parseStmt'
+    p "" `shouldBe` Left ("", "")
+    p "$ " `shouldBe` Right (Nop (syntaxErr 1 1 1 3 "" "statement" "$ "), "")
+    p "$ \n " `shouldBe` Right (Nop (syntaxErr 1 1 1 3 "" "statement" "$ "), "")
+    p "$ \n$$ " `shouldBe` Right (Nop (syntaxErr 1 1 1 3 "" "statement" "$ "), "$$ ")
+
+  it "☯ Tao.Module.parser" $ do
+    let p = parseModule'
+    p "" `shouldBe` Right ([], "")
+    p "$ " `shouldBe` Right ([Nop (syntaxErr 1 1 1 3 "" "statement" "$ ")], "")
 
   -- Run String [Expr]
   -- Test UnitTest
