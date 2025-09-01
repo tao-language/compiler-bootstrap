@@ -303,14 +303,17 @@ run = describe "--==☯ Tao ☯==--" $ do
     let p = parseStmt'
     p "> x ~> y " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (y 1 8), "")
     p "> $ ~> y " `shouldBe` Right (Test "TaoTests:1:1: !error" (Meta (syntaxErr 1 3 1 5 "test" "expression" "$ ") Err) (y 1 8), "")
-    p "> x ~$ y " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (Meta (syntaxErr 1 5 1 8 "test" "\"~>\"" "~$ ") (y 1 8)), "")
+    p "> x ~$ y " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (Meta (syntaxErr 1 5 1 8 "test" "'~>'" "~$ ") (y 1 8)), "")
     p "> x ~> $ " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (Meta (syntaxErr 1 8 1 10 "test" "result" "$ ") Err), "")
     p "> x \ny " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (y 2 1), "")
     p "> $ \ny " `shouldBe` Right (Test "TaoTests:1:1: !error" (Meta (syntaxErr 1 3 1 5 "test" "expression" "$ ") Err) (y 2 1), "")
     p "> x \n$ " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (Tag "True" []), "$ ")
 
+  it "☯ Tao.Stmt.parser.Test" $ do
+    let p = parseStmt'
+    p "type T = x " `shouldBe` Right (TypeDef (name 1 6 "T") [] (x 1 10), "")
+
   -- TODO: next steps
-  --  * parse TypeDef with error handling
   --  * parse Stmt with error handling
   --  * parse Module with error handling
   --  * parse Expr with error handling
@@ -425,7 +428,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let ctx = []
     resolve ctx "m1" ("x", Let x y) `shouldBe` [("m1", y)]
     resolve ctx "m1" ("x", Let y z) `shouldBe` []
-    resolve ctx "m1" ("x", TypeDef "x" [] []) `shouldBe` [("m1", Fun (Tuple []) (Tuple []))]
+    resolve ctx "m1" ("x", TypeDef (Name "x") [] y) `shouldBe` [("m1", Fun (Tuple []) y)]
     resolve ctx "m1" ("x", Test "name" y z) `shouldBe` []
 
     -- [Stmt]

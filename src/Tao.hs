@@ -188,7 +188,7 @@ data Stmt
   | Mut Name Expr
   | Run String [Expr]
   | Test String Expr Pattern
-  | TypeDef String [Expr] [(Expr, Maybe Type)]
+  | TypeDef Name [Expr] Expr
   | IfStmt Expr Block (Maybe Block)
   | While Expr Block
   | Repeat Block Expr
@@ -213,7 +213,9 @@ instance Format Stmt where
     Bind a b -> show a ++ " <- " ++ show b
     Mut x a -> "mut " ++ show x ++ " = " ++ show a
     Run a args -> error "TODO: format Run"
-    TypeDef name args alts -> error "TODO: format TypeDef"
+    TypeDef name args body -> do
+      let args' = if args == [] then "" else "(" ++ intercalate ", " (map show args) ++ ")"
+      "type " ++ show name ++ args' ++ " = " ++ show body
     Test name expr expect -> do
       let name' = if name /= "" then "// " ++ name ++ "\n" else ""
       let expect' = if expect == tag "True" then "" else "\n" ++ show expect
@@ -604,7 +606,7 @@ instance Apply Stmt where
     Let a b -> Let (f a) (f b)
     Run x args -> Run x (map f args)
     Test name expr expect -> Test name (apply f expr) (apply f expect)
-    TypeDef name args alts -> TypeDef name (map f args) (map (bimap f (fmap f)) alts)
+    TypeDef name args body -> TypeDef name (map f args) (f body)
     Nop m -> Nop (fmap f m)
 
 instance Apply Block where
@@ -1577,9 +1579,9 @@ parseStmt = do
         [ parseImport,
           parseDef,
           parseMut,
-          -- TypeDef <$> parseTypeDef,
-          parseTest,
           -- Run <$> parseExpr 1,
+          parseTest,
+          parseTypeDef,
           Nop <$> parseCommentMeta
           -- TODO: consider a trailing comment on a syntax error like this
           -- , Run . (\e -> Meta (C.Error e) Err) . SyntaxError <$> recoverSyntaxError "statement" (P.text "\n")
@@ -1723,7 +1725,7 @@ parseTest = do
           P.expect "result" (parseExpr 0),
         do
           meta <-
-            (id <$ P.text "~>")
+            (id <$ P.expect "'~>'" (P.text "~>"))
               & P.recover textUntilExpr (\err -> Meta (syntaxErrorMeta err))
           _ <- P.whitespaces
           a <-
@@ -1736,41 +1738,45 @@ parseTest = do
   let name' = if name /= "" then name else show (dropMeta expr)
   return (Test (path ++ ": " ++ name') expr expect)
 
-parseTypeDef :: Parser (String, [Expr], [(Expr, Maybe Type)])
+parseTypeDef :: Parser Stmt
 parseTypeDef = do
   _ <- P.commit "type definition" $ P.word "type"
   _ <- P.whitespaces
-  name <- P.expect "type name" $ parseNameTag
+  name <- P.expect "type name" $ parseLocName parseNameTag
   _ <- P.whitespaces
   args <-
     P.oneOf
       [ do
-          args <- parseCollection "type argument" "<" "," ">" syntaxErrorExpr (parseExpr 0)
+          args <- parseCollection "type argument" "(" "," ")" syntaxErrorExpr (parseExpr 0)
           _ <- P.whitespaces
           return args,
         ([] <$ P.lookahead (P.char '='))
           & P.recover (P.textUntil (P.char '=')) (\err -> [syntaxErrorExpr err])
       ]
-  _ <- P.expect "=" $ P.char '='
+  _ <- P.expect "'='" $ P.char '='
   _ <- P.whitespaces
-  let parseAlt = do
-        a <- parseExpr 4
-        _ <- P.spaces
-        mb <- P.maybe' $ do
-          _ <- P.whitespaces
-          _ <- P.text "=>"
-          _ <- P.whitespaces
-          parseExpr 4
-        return (a, mb)
-  _ <- P.maybe' (P.char '|')
-  _ <- P.whitespaces
-  alt <- parseAlt
-  _ <- P.whitespaces
-  alts <- P.zeroOrMore $ do
-    _ <- P.char '|'
-    _ <- P.whitespaces
-    parseAlt
-  return (name, args, alt : alts)
+  b <-
+    P.expect "body" (parseExpr 0)
+      & P.recover (P.textUntil parseLineBreak) syntaxErrorExpr
+  _ <- P.spaces
+  -- let parseAlt = do
+  --       a <- parseExpr 4
+  --       _ <- P.spaces
+  --       mb <- P.maybe' $ do
+  --         _ <- P.whitespaces
+  --         _ <- P.expect "'~>'" $ P.text "~>"
+  --         _ <- P.whitespaces
+  --         parseExpr 4
+  --       return (a, mb)
+  -- _ <- P.maybe' (P.char '|')
+  -- _ <- P.whitespaces
+  -- alt <- parseAlt
+  -- _ <- P.whitespaces
+  -- alts <- P.zeroOrMore $ do
+  --   _ <- P.char '|'
+  --   _ <- P.whitespaces
+  --   parseAlt
+  return (TypeDef name args b)
 
 parseCommentMeta :: Parser (C.Metadata Expr)
 parseCommentMeta = do
@@ -1836,7 +1842,7 @@ instance Check Stmt where
       -- TODO: check that x is defined
       concatMap check args
     Test name expr expect -> concatMap check [expr, expect]
-    TypeDef _ args alts -> concatMap check args ++ concatMap check alts
+    TypeDef _ args body -> concatMap check args ++ check body
     Nop m -> check m
 
 instance (Check a) => Check [a] where
@@ -1946,11 +1952,13 @@ instance Resolve (String, Stmt) where
       where
         bindings :: Pattern -> [String]
         bindings p = map fst (C.unpack (lower p, C.Any))
-    TypeDef tname args alts | name == tname -> do
-      let resolveAlt (a, Just b) = Fun a b
-          resolveAlt (a, Nothing) = Fun a (Tag tname args)
-      [(path, fun args (or' $ map resolveAlt alts))]
+    TypeDef tname args body | name == nameOf tname -> do
+      [(path, fun args body)]
     _ -> []
+
+nameOf :: Name -> String
+nameOf (Name name) = name
+nameOf (MetaName _ a) = nameOf a
 
 class Compile a where
   compile :: Context -> FilePath -> a -> (C.Env, C.Expr)
