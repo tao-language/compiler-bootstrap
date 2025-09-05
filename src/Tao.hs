@@ -1381,7 +1381,11 @@ instance Lower Expr where
     a -> error $ "TODO: lower " ++ show (dropMeta a)
 
 desugarDef :: Expr -> Expr -> (Expr, Expr)
-desugarDef (Ann a t) b = desugarDef a (Ann b t)
+desugarDef (Ann a t) b = do
+  -- Desugar everything before re-annotating the type.
+  -- Otherwise, we can get the wrong definitions.
+  let (a', b') = desugarDef a b
+  (a', Ann b' t)
 desugarDef (App a b1) b2 = desugarDef a (Fun b1 b2)
 desugarDef (Op1 op a) b = (Var (show op), Fun a b)
 desugarDef (Op2 op a1 a2) b = (Var (show op), fun [a1, a2] b)
@@ -1966,25 +1970,25 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  compile ctx path (name@"+", expr) = do
-    let a = C.dropMeta $ C.bind [name] $ lower expr
-    let dependencies = delete name (C.freeVars a `union` C.freeTags a)
-    let env = compileDefs ctx path dependencies
-    let loc = Location path (Range (Pos 0 0) (Pos 0 0))
-    (error . intercalate "\n")
-      [ "\n\ncompile " ++ show name,
-        "--- env:",
-        intercalate "\n" (map (\(x, a) -> "- " ++ x ++ " =\n    " ++ C.format 80 "    " a) env),
-        "--- expr:",
-        show (dropMeta expr),
-        "--- lower:",
-        show (C.dropMeta $ lower expr),
-        "--- bind:",
-        show (C.dropMeta $ C.bind [name] $ lower expr),
-        "--- infer:",
-        show $ C.infer loc buildOps ((name, C.Var name) : env) a,
-        ""
-      ]
+  -- compile ctx path (name@"+", expr) = do
+  --   let a = C.dropMeta $ C.bind [name] $ lower expr
+  --   let dependencies = delete name (C.freeVars a `union` C.freeTags a)
+  --   let env = compileDefs ctx path dependencies
+  --   let loc = Location path (Range (Pos 0 0) (Pos 0 0))
+  --   (error . intercalate "\n")
+  --     [ "\n\ncompile " ++ show name,
+  --       "--- env:",
+  --       intercalate "\n" (map (\(x, a) -> "- " ++ x ++ " =\n    " ++ C.format 80 "    " a) env),
+  --       "--- expr:",
+  --       show (dropMeta expr),
+  --       "--- lower:",
+  --       show (C.dropMeta $ lower expr),
+  --       "--- bind:",
+  --       show (C.dropMeta $ C.bind [name] $ lower expr),
+  --       "--- infer:",
+  --       show $ C.infer loc buildOps ((name, C.Var name) : env) a,
+  --       ""
+  --     ]
   compile ctx path (name, expr) = do
     let a = C.dropMeta $ C.bind [name] $ lower expr
     let dependencies = delete name (C.freeVars a `union` C.freeTags a)
