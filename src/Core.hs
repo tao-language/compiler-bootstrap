@@ -480,20 +480,10 @@ grammar = do
                 end <- P.state
                 _ <- P.spaces
                 let loc = P.locSpan start end
-                return (err $ customError loc a)
+                return (err $ customError a)
            in G.Atom parser $ \layout -> \case
                 Err -> Just [PP.Text "!error"]
-                Meta (Error e) c -> case e of
-                  TypeError (loc, e) -> case e of
-                    UndefinedVar x -> Just (PP.Text ("!undefined-var<" ++ x ++ ">(") : layout c ++ [PP.Text ")"])
-                    TypeMismatch a b -> Just (PP.Text "!type-mismatch<" : layout a ++ PP.Text ", " : layout b ++ PP.Text ">(" : layout c ++ [PP.Text ")"])
-                    NotAFunction a b -> Just (PP.Text "!not-a-function<" : layout a ++ PP.Text ", " : layout b ++ PP.Text ">(" : layout c ++ [PP.Text ")"])
-                    e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
-                  RuntimeError (loc, e) -> case e of
-                    UnhandledCase a b -> Just (PP.Text "!unhandled-case<" : layout a ++ PP.Text ", " : layout b ++ PP.Text ">(" : layout c ++ [PP.Text ")"])
-                    CannotApply a b -> Just (PP.Text "!cannot-apply<" : layout a ++ PP.Text ", " : layout b ++ PP.Text ">(" : layout c ++ [PP.Text ")"])
-                    CustomError a -> Just (PP.Text "!error(" : layout a ++ [PP.Text ")"])
-                  e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
+                Meta (Error e) c -> Just (PP.Text ('!' : show e ++ "(") : layout c ++ [PP.Text ")"])
                 _ -> Nothing
         ]
     }
@@ -1035,12 +1025,8 @@ reduce ops (App a b) = case reduce ops a of
     (a, Meta _ b) -> reduce ops $ letP (a, reduce ops b) c
     (Ann a _, b) -> reduce ops $ letP (a, b) c
     (a, Ann b _) -> reduce ops $ letP (a, b) c
-    (a, b) -> do
-      let loc = Location "TODO" (Range (Pos 0 0) (Pos 0 0))
-      err $ unhandledCase loc a b
-  a -> do
-    let loc = Location "TODO" (Range (Pos 0 0) (Pos 0 0))
-    err $ cannotApply loc a b
+    (a, b) -> err $ unhandledCase a b
+  a -> err $ cannotApply a b
 -- reduce ops (Or a b) = Or (reduce ops a) b
 reduce ops (Call f a) = case lookup f ops of
   Just f | Just result <- f (eval ops) a -> result

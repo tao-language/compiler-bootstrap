@@ -494,5 +494,54 @@ run = describe "--==☯ Tao ☯==--" $ do
     let ctx = [("m1", [Let x y])]
     resolve ctx "m" ("x", [Import "m1" "m1" [("*", "")], Let x w]) `shouldBe` [("m1", y), ("m", w)]
 
+  it "☯ Tao.lower" $ do
+    let (x, y, z) = (Var "x", Var "y", Var "z")
+    let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
+    lower Any `shouldBe` C.Any
+    lower (Int 1) `shouldBe` C.Int 1
+    lower (Num 1.1) `shouldBe` C.Num 1.1
+    lower (Char 'a') `shouldBe` C.Tag "Char" (C.Int 97)
+    lower (Var "x") `shouldBe` C.Var "x"
+    lower (Tag "A" []) `shouldBe` C.Tag "A" C.Unit
+    lower (Tag "A" [x]) `shouldBe` C.Tag "A" x'
+    lower (Tag "A" [x, y]) `shouldBe` C.Tag "A" (C.And x' y')
+    lower (Tuple []) `shouldBe` C.Unit
+    lower (Tuple [x]) `shouldBe` x'
+    lower (Tuple [x, y]) `shouldBe` C.And x' y'
+    lower (Tuple [x, y, z]) `shouldBe` C.And x' (C.And y' z')
+    lower (List []) `shouldBe` C.tag' "[]"
+    lower (List [x]) `shouldBe` C.tag "::" [x', C.tag' "[]"]
+    lower (List [x, y]) `shouldBe` C.tag "::" [x', C.tag "::" [y', C.tag' "[]"]]
+    -- String [Segment]
+    -- For [String] Expr
+    -- Ann Expr Type
+    -- Or Expr Expr
+    -- Fun Pattern Expr
+    -- App Expr Expr
+    -- Call String [Expr]
+    -- Op1 Op1 Expr
+    -- Op2 Op2 Expr Expr
+    lower (Do [Return x]) `shouldBe` x'
+    -- Dot Expr String (Maybe [Expr])
+    -- Spread Expr
+    -- Get Expr Expr
+    -- Slice Expr (Expr, Expr)
+    -- Match Expr [Expr]
+    -- MatchFun [Expr]
+    -- Record [(String, Expr)]
+    -- Select Expr [(String, Expr)]
+    -- With Expr [(String, Expr)]
+    -- If Expr Expr
+    -- IfElse Expr Expr Expr
+    -- Meta (C.Metadata Expr) Expr
+    lower Err `shouldBe` C.Err
+
+  it "☯ Tao.lower.Do" $ do
+    let (x, y, z) = (Var "x", Var "y", Var "z")
+    let (x', y', z') = (C.Var "x", C.Var "y", C.Var "z")
+    -- lower (Do []) `shouldBe` C.Err
+    lower (Do [Return x]) `shouldBe` x'
+    lower (Do [Let x y, Return z]) `shouldBe` C.App (C.Fun x' z') y'
+
   it "☯ TODO" $ do
     "" `shouldBe` ""

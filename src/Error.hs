@@ -13,15 +13,15 @@ data Error a
   = SyntaxError (Location, String, String, String) -- (loc, committed, expected, got)
   | TypeError (Location, TypeError a)
   | CaseError (Location, CaseError a)
-  | RuntimeError (Location, RuntimeError a)
-  deriving (Eq, Show)
+  | RuntimeError (RuntimeError a)
+  deriving (Eq)
 
--- instance (Show a) => Show (Error a) where
---   show :: Error a -> String
---   show (SyntaxError (loc, expected, got)) = "[syntax error]" ++ loc.filename ++ ":" ++ show loc.range ++ ": expected " ++ expected ++ ", got " ++ show got
---   show (TypeError e) = "[type error]" ++ show e
---   show (CaseError e) = "[case error]" ++ show e
---   show (RuntimeError e) = "[runtime error]" ++ show e
+instance (Show a) => Show (Error a) where
+  show :: Error a -> String
+  show (SyntaxError (loc, committed, expected, got)) = "syntax-error[" ++ show loc ++ ": [" ++ committed ++ "] expected " ++ expected ++ ", got " ++ show got ++ "]"
+  show (TypeError (loc, e)) = "type-error[" ++ show loc ++ ": " ++ show e ++ "]"
+  show (CaseError (loc, e)) = "case-error[" ++ show loc ++ ": " ++ show e ++ "]"
+  show (RuntimeError e) = "runtime-error[" ++ show e ++ "]"
 
 data TypeError a
   = OccursError String a
@@ -58,10 +58,10 @@ instance Functor Error where
     CaseError (loc, e) -> case e of
       MissingCases cases -> missingCases loc (map f cases)
       RedundantCases cases -> redundantCases loc (map f cases)
-    RuntimeError (loc, e) -> case e of
-      UnhandledCase a b -> unhandledCase loc (f a) (f b)
-      CannotApply a b -> cannotApply loc (f a) (f b)
-      CustomError a -> customError loc (f a)
+    RuntimeError e -> case e of
+      UnhandledCase a b -> unhandledCase (f a) (f b)
+      CannotApply a b -> cannotApply (f a) (f b)
+      CustomError a -> customError (f a)
 
 mainExpr :: Error a -> Maybe a
 mainExpr = \case
@@ -74,7 +74,7 @@ mainExpr = \case
   CaseError (loc, e) -> case e of
     MissingCases cases -> Nothing
     RedundantCases cases -> Nothing
-  RuntimeError (loc, e) -> case e of
+  RuntimeError e -> case e of
     UnhandledCase a b -> Just a
     CannotApply a b -> Just a
     CustomError a -> Just a
@@ -103,14 +103,14 @@ missingCases loc cases = CaseError (loc, MissingCases cases)
 redundantCases :: Location -> [a] -> Error a
 redundantCases loc cases = CaseError (loc, RedundantCases cases)
 
-unhandledCase :: Location -> a -> a -> Error a
-unhandledCase loc a b = RuntimeError (loc, UnhandledCase a b)
+unhandledCase :: a -> a -> Error a
+unhandledCase a b = RuntimeError (UnhandledCase a b)
 
-cannotApply :: Location -> a -> a -> Error a
-cannotApply loc a b = RuntimeError (loc, CannotApply a b)
+cannotApply :: a -> a -> Error a
+cannotApply a b = RuntimeError (CannotApply a b)
 
-customError :: Location -> a -> Error a
-customError loc a = RuntimeError (loc, CustomError a)
+customError :: a -> Error a
+customError a = RuntimeError (CustomError a)
 
 summary :: (Show a) => Error a -> String
 summary = \case
@@ -121,7 +121,7 @@ summary = \case
     NotAFunction {} -> "Not a function"
     UndefinedVar {} -> "Undefined variable"
   CaseError _ -> "Case error"
-  RuntimeError (loc, e) -> case e of
+  RuntimeError e -> case e of
     UnhandledCase {} -> "Unhandled error"
     CannotApply {} -> "Cannot apply"
     CustomError {} -> "User defined error"

@@ -10,13 +10,14 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯️ Core language ☯️==--" $ do
+  let filename = "CoreTests"
   let (i0, i1, i2) = (Int 0, Int 1, Int 2)
   let (n0, n1, n2) = (Num 0.0, Num 1.1, Num 2.2)
   let (a, b, c) = (Var "a", Var "b", Var "c")
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (f, g, h) = (Var "f", Var "g", Var "h")
-  let loc0= Location "null" (Range (Pos 0 0) (Pos 0 0))
-  let loc = Loc $ Location "file" (Range (Pos 1 2) (Pos 3 4))
+  let loc0 = Location filename (Range (Pos 0 0) (Pos 0 0))
+  let loc = Loc $ Location filename (Range (Pos 1 2) (Pos 3 4))
 
   let add a b = Call "int_add" (And a b)
   let sub a b = Call "int_sub" (And a b)
@@ -55,7 +56,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
           case0 = Fun i0 i1
           caseN f = For "x" (Fun x (x `mul` App (Var f) (x `sub` i1)))
 
-  let filename = "<CoreTests>"
   let parse' :: String -> Either (String, String) (Expr, String)
       parse' text = case parse 0 filename text of
         Right (a, s) -> Right (a, s.remaining)
@@ -671,7 +671,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let env = [("f", Or f1 f2)]
     eval ops (Let env f) `shouldBe` Or f1 f2
     eval ops (Let env (App f (Ann i1 IntT))) `shouldBe` i2
-    eval ops (Let env (App f (Ann i2 IntT))) `shouldBe` err (unhandledCase loc0 NumT IntT)
+    eval ops (Let env (App f (Ann i2 IntT))) `shouldBe` err (unhandledCase NumT IntT)
     eval ops (Let env (App f (Ann n1 NumT))) `shouldBe` n2
   -- infer ops env f `shouldBe` Right [((f, Fun IntT IntT `Or` Fun NumT NumT), [])]
   -- infer ops env (App f i1) `shouldBe` Right [((App f (Ann i1 IntT), IntT), [("$1", IntT)])]
@@ -843,20 +843,20 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   it "☯ Core.reduce.App" $ do
     let x1 = Var "x1"
     reduce [] (App Any x) `shouldBe` Any
-    reduce [] (App Unit x) `shouldBe` err (cannotApply loc0 Unit x)
-    reduce [] (App IntT x) `shouldBe` err (cannotApply loc0 IntT x)
-    reduce [] (App NumT x) `shouldBe` err (cannotApply loc0 NumT x)
-    reduce [] (App i0 x) `shouldBe` err (cannotApply loc0 i0 x)
-    reduce [] (App n0 x) `shouldBe` err (cannotApply loc0 n0 x)
+    reduce [] (App Unit x) `shouldBe` err (cannotApply Unit x)
+    reduce [] (App IntT x) `shouldBe` err (cannotApply IntT x)
+    reduce [] (App NumT x) `shouldBe` err (cannotApply NumT x)
+    reduce [] (App i0 x) `shouldBe` err (cannotApply i0 x)
+    reduce [] (App n0 x) `shouldBe` err (cannotApply n0 x)
     reduce [] (App x y) `shouldBe` App x y
-    reduce [] (App (Tag "A" x) y) `shouldBe` err (cannotApply loc0 (Tag "A" x) y)
+    reduce [] (App (Tag "A" x) y) `shouldBe` err (cannotApply (Tag "A" x) y)
     reduce [] (App (For "x" x) x) `shouldBe` App (For "x1" x1) x
     reduce [] (App (For "x" x) y) `shouldBe` App (For "x" x) y
     reduce [] (App (For "x" y) x) `shouldBe` App y x
     reduce [] (App (For "x" y) y) `shouldBe` App y y
     reduce [] (App (Fix "x" y) z) `shouldBe` App y z
     reduce [] (App (Ann x y) z) `shouldBe` App x z
-    reduce [] (App (And x y) z) `shouldBe` err (cannotApply loc0 (And x y) z)
+    reduce [] (App (And x y) z) `shouldBe` err (cannotApply (And x y) z)
     reduce [] (App (Or x y) z) `shouldBe` Or (App x z) (App y z)
     reduce [] (App (Fun x y) z) `shouldBe` y
     reduce [] (App (App x y) z) `shouldBe` App (App x y) z
@@ -865,7 +865,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce [] (App (Let [] x) y) `shouldBe` App x y
     reduce [] (App (Let [("x", y)] x) z) `shouldBe` App y z
     reduce [] (App (Meta (Comments []) x) y) `shouldBe` App x y
-    reduce [] (App Err x) `shouldBe` err (cannotApply loc0 Err x)
+    reduce [] (App Err x) `shouldBe` err (cannotApply Err x)
 
   it "☯ Core.reduce.App.Fun -- pattern matching direct" $ do
     let reduce' a b c = reduce [] (App (Fun a c) b)
@@ -876,23 +876,23 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' Any y x `shouldBe` x
     reduce' Unit Any x `shouldBe` x
     reduce' Unit Unit x `shouldBe` x
-    reduce' Unit IntT x `shouldBe` err (unhandledCase loc0 Unit IntT)
+    reduce' Unit IntT x `shouldBe` err (unhandledCase Unit IntT)
     reduce' Unit x x `shouldBe` Unit
     reduce' Unit b x `shouldBe` x
-    reduce' IntT Unit x `shouldBe` err (unhandledCase loc0 IntT Unit)
+    reduce' IntT Unit x `shouldBe` err (unhandledCase IntT Unit)
     reduce' IntT IntT x `shouldBe` x
     reduce' IntT x x `shouldBe` IntT
     reduce' IntT b x `shouldBe` x
-    reduce' NumT Unit x `shouldBe` err (unhandledCase loc0 NumT Unit)
+    reduce' NumT Unit x `shouldBe` err (unhandledCase NumT Unit)
     reduce' NumT NumT x `shouldBe` x
     reduce' NumT x x `shouldBe` NumT
     reduce' NumT b x `shouldBe` x
     reduce' (Int 0) i0 x `shouldBe` x
-    reduce' (Int 0) i1 x `shouldBe` err (unhandledCase loc0 i0 i1)
+    reduce' (Int 0) i1 x `shouldBe` err (unhandledCase i0 i1)
     reduce' (Int 0) x x `shouldBe` (Int 0)
     reduce' (Int 0) b x `shouldBe` x
     reduce' (Num 0.0) n0 x `shouldBe` x
-    reduce' (Num 0.0) n1 x `shouldBe` err (unhandledCase loc0 n0 n1)
+    reduce' (Num 0.0) n1 x `shouldBe` err (unhandledCase n0 n1)
     reduce' (Num 0.0) x x `shouldBe` (Num 0.0)
     reduce' (Num 0.0) b x `shouldBe` x
     reduce' (Var "x") i1 x `shouldBe` i1
@@ -900,17 +900,17 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' (Var "x") b x `shouldBe` b
     reduce' (Var "x") a a `shouldBe` a
     reduce' (Var "x") b a `shouldBe` a
-    reduce' (Tag "A" x) i1 x `shouldBe` err (unhandledCase loc0 (Tag "A" x) i1)
+    reduce' (Tag "A" x) i1 x `shouldBe` err (unhandledCase (Tag "A" x) i1)
     reduce' (Tag "A" x) a x `shouldBe` x
     reduce' (Tag "A" x) a a `shouldBe` Tag "A" x
-    reduce' (Tag "A" x) (Tag "B" a) x `shouldBe` err (unhandledCase loc0 (Tag "A" x) (Tag "B" a))
+    reduce' (Tag "A" x) (Tag "B" a) x `shouldBe` err (unhandledCase (Tag "A" x) (Tag "B" a))
     reduce' (Tag "A" x) (Tag "A" a) x `shouldBe` a
     reduce' (Tag "A" x) (Tag "A" i1) x `shouldBe` i1
-    reduce' (Tag "A" i0) (Tag "A" i1) x `shouldBe` err (unhandledCase loc0 i0 i1)
+    reduce' (Tag "A" i0) (Tag "A" i1) x `shouldBe` err (unhandledCase i0 i1)
     reduce' (For "x" x) i1 x `shouldBe` i1
     reduce' (For "x" x) a x `shouldBe` a
     reduce' (For "x" x) a a `shouldBe` a
-    reduce' (Fix "x" x) i1 x `shouldBe` err (unhandledCase loc0 (Fix "x" x) i1)
+    reduce' (Fix "x" x) i1 x `shouldBe` err (unhandledCase (Fix "x" x) i1)
     reduce' (Fix "x" x) a x `shouldBe` x
     reduce' (Fix "x" x) a a `shouldBe` Fix "x" x
     reduce' (Fix "x" x) (Fix "a" a) x `shouldBe` a
@@ -921,8 +921,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' (Ann x y) (Ann a IntT) x `shouldBe` a
     reduce' (Ann x y) (Ann a IntT) y `shouldBe` IntT
     reduce' (Ann x IntT) (Ann a IntT) x `shouldBe` a
-    reduce' (Ann x IntT) (Ann a NumT) x `shouldBe` err (unhandledCase loc0 IntT NumT)
-    reduce' (And x y) i1 x `shouldBe` err (unhandledCase loc0 (And x y) i1)
+    reduce' (Ann x IntT) (Ann a NumT) x `shouldBe` err (unhandledCase IntT NumT)
+    reduce' (And x y) i1 x `shouldBe` err (unhandledCase (And x y) i1)
     reduce' (And x y) a x `shouldBe` x
     reduce' (And x y) a a `shouldBe` And x y
     reduce' (And x y) (And i1 i2) x `shouldBe` i1
@@ -930,28 +930,28 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce' (Or x y) i1 x `shouldBe` i1
     reduce' (Or i0 y) i1 y `shouldBe` i1
     reduce' (Or x i0) i1 x `shouldBe` i1
-    reduce' (Or i1 i2) i0 x `shouldBe` err (unhandledCase loc0 i2 i0)
+    reduce' (Or i1 i2) i0 x `shouldBe` err (unhandledCase i2 i0)
     reduce' (Or x y) (Fun a b) x `shouldBe` Or (Fun a b) (letP (y, Fun a b) x)
     reduce' (Or x y) z x `shouldBe` Or z (letP (y, z) x)
     reduce' (Or x y) z z `shouldBe` Or z (letP (y, z) z)
     reduce' i1 (Or x y) x `shouldBe` i1
     reduce' i1 (Or i0 y) y `shouldBe` i1
     reduce' i1 (Or x i0) x `shouldBe` i1
-    reduce' i0 (Or i1 i2) x `shouldBe` err (unhandledCase loc0 i0 i2)
+    reduce' i0 (Or i1 i2) x `shouldBe` err (unhandledCase i0 i2)
     reduce' (Fun a b) (Or x y) x `shouldBe` Or (Fun a b) (letP (Fun a b, y) x)
     reduce' z (Or x y) x `shouldBe` Or x (letP (z, y) x)
     reduce' z (Or x y) z `shouldBe` Or x (letP (z, y) z)
-    reduce' (Fun x y) i1 x `shouldBe` err (unhandledCase loc0 (Fun x y) i1)
+    reduce' (Fun x y) i1 x `shouldBe` err (unhandledCase (Fun x y) i1)
     reduce' (Fun x y) a x `shouldBe` x
     reduce' (Fun x y) a a `shouldBe` Fun x y
     reduce' (Fun x y) (Fun a b) x `shouldBe` a
     reduce' (Fun x y) (Fun a b) y `shouldBe` b
-    reduce' (App x y) i1 x `shouldBe` err (unhandledCase loc0 (App x y) i1)
+    reduce' (App x y) i1 x `shouldBe` err (unhandledCase (App x y) i1)
     reduce' (App x y) a x `shouldBe` x
     reduce' (App x y) a a `shouldBe` App x y
     reduce' (App x y) (App a b) x `shouldBe` a
     reduce' (App x y) (App a b) y `shouldBe` b
-    reduce' (Call "f" x) i1 x `shouldBe` err (unhandledCase loc0 (Call "f" x) i1)
+    reduce' (Call "f" x) i1 x `shouldBe` err (unhandledCase (Call "f" x) i1)
     reduce' (Call "f" x) a x `shouldBe` x
     reduce' (Call "f" x) a a `shouldBe` Call "f" x
     reduce' (Call "f" x) (Call "f" a) x `shouldBe` a
@@ -960,13 +960,13 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- reduce' (Call "f" x) (Call "g" a) x `shouldBe` err (unhandledCase (Call "f" x) (Call "g" a))
     reduce' (Call "f" x) (Call "g" a) x `shouldBe` letP (Call "f" x, Call "g" a) x
     reduce' (Let [] x) i1 x `shouldBe` i1
-    reduce' (Let [("x", i0)] x) i1 x `shouldBe` err (unhandledCase loc0 i0 i1)
+    reduce' (Let [("x", i0)] x) i1 x `shouldBe` err (unhandledCase i0 i1)
     reduce' (Let [] x) a x `shouldBe` a
     reduce' (Let [] x) a a `shouldBe` a
     reduce' (Meta (Comments []) x) i1 x `shouldBe` i1
     reduce' (Meta (Comments []) x) a x `shouldBe` a
     reduce' (Meta (Comments []) x) a a `shouldBe` a
-    reduce' Err i1 x `shouldBe` err (unhandledCase loc0 Err i1)
+    reduce' Err i1 x `shouldBe` err (unhandledCase Err i1)
     reduce' Err a x `shouldBe` x
     reduce' Err a a `shouldBe` Err
     reduce' Err Err x `shouldBe` x
@@ -986,7 +986,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let reduce' a = reduce ops (Let env a)
     reduce' (Var "f") `shouldBe` For "x" (Fun (Ann x IntT) Unit)
     reduce' (App f (Ann y IntT)) `shouldBe` Unit
-    reduce' (App f (Ann y NumT)) `shouldBe` err (unhandledCase loc0 IntT NumT)
+    reduce' (App f (Ann y NumT)) `shouldBe` err (unhandledCase IntT NumT)
 
   it "☯ Core.reduce.App.Fix -- recursion" $ do
     let appFix x a b = reduce [] (App (Fix x a) b)

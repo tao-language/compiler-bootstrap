@@ -252,6 +252,7 @@ keywords =
 
 varOf :: Expr -> Maybe String
 varOf (Var x) = Just x
+varOf (Ann a _) = varOf a
 varOf (Meta _ a) = varOf a
 varOf _ = Nothing
 
@@ -795,8 +796,8 @@ layoutDecorator op match rhs a = do
 layoutLeading :: (String, String) -> (Expr -> Maybe (Expr, Expr)) -> (Expr -> PP.Layout) -> (Expr -> PP.Layout) -> Expr -> Maybe PP.Layout
 layoutLeading (op1, op2) match lhs rhs a = do
   (x, y) <- match a
-  let alt1 = lhs x ++ [PP.Text " | "] ++ rhs y
-  let alt2 = lhs x ++ [PP.NewLine, PP.Text "| ", PP.Indent (rhs y)]
+  let alt1 = lhs x ++ [PP.Text op1] ++ rhs y
+  let alt2 = lhs x ++ [PP.NewLine, PP.Text op2, PP.Indent (rhs y)]
   return $
     if isSimpleExpr x
       then [PP.Or alt1 alt2]
@@ -1312,21 +1313,10 @@ grammar = do
                 end <- P.state
                 _ <- P.spaces
                 let loc = P.locSpan start end
-                return (Meta (C.Error (customError loc a)) Err)
+                return (Meta (C.Error (customError a)) Err)
            in G.Atom parser $ \layout -> \case
                 Err -> Just [PP.Text "!error"]
-                Meta (C.Error e) c -> case e of
-                  SyntaxError (loc, committed, expected, got) -> Just [PP.Text $ "!syntax-error[" ++ show loc ++ "|" ++ show committed ++ "|" ++ show expected ++ "|" ++ show got ++ "]"]
-                  TypeError (loc, e) -> case e of
-                    UndefinedVar x -> Just [PP.Text $ "!undefined-var(" ++ x ++ ")"]
-                    TypeMismatch a b -> Just (PP.Text "!type-mismatch(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
-                    NotAFunction a b -> Just (PP.Text "!not-a-function(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
-                    e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
-                  RuntimeError (loc, e) -> case e of
-                    UnhandledCase a b -> Just (PP.Text "!unhandled-case(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
-                    CannotApply a b -> Just (PP.Text "!cannot-apply(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
-                    CustomError a -> Just (PP.Text "!error(" : layout a ++ [PP.Text ")"])
-                  e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
+                Meta (C.Error e) c -> Just (PP.Text ('!' : show e ++ "(") : layout c ++ [PP.Text ")"])
                 _ -> Nothing
         ]
     }
@@ -1358,7 +1348,7 @@ instance Lower Expr where
       | otherwise -> C.Fun (lower a) (lower b)
     App a b -> C.App (lower a) (lower b)
     Call op args -> C.Call op (lower (Tuple args))
-    Do block -> lower block
+    Do stmts -> lower (dropMeta $ desugarStmt stmts)
     -- Let (a, b) c | Just x <- varOf c, Just d <- lookup x (C.unpack (lower a, lower b)) -> d
     -- Let (a, b) c -> lower (App (Fun a c) b)
     Op1 Neg a -> lower (sub (Int 0) a)
@@ -1390,16 +1380,29 @@ instance Lower Expr where
     Err -> C.Err
     a -> error $ "TODO: lower " ++ show (dropMeta a)
 
-instance Lower [Stmt] where
-  lower :: [Stmt] -> C.Expr
-  -- Let (a, b) c | Just x <- varOf c, Just d <- lookup x (C.unpack (lower a, lower b)) -> d
-  -- Let (a, b) c -> lower (App (Fun a c) b)
-  lower [] = error "TODO: lower ([] : [Stmt])"
-  lower (Let a b : stmts) = C.letP (lower a, lower b) (lower stmts)
-  lower (Break : stmts) = error "TODO: lower Break" -- TODO: stmts are unreachable
-  lower (Continue : stmts) = error "TODO: lower Continue" -- TODO: stmts are unreachable
-  lower (Return a : stmts) = lower a -- TODO: stmts are unreachable
-  lower (stmt : stmts) = error $ "TODO: lower\n" ++ show (dropMeta stmt)
+desugarDef :: Expr -> Expr -> (Expr, Expr)
+desugarDef (Ann a t) b = desugarDef a (Ann b t)
+desugarDef (App a b1) b2 = desugarDef a (Fun b1 b2)
+desugarDef (Op1 op a) b = (Var (show op), Fun a b)
+desugarDef (Op2 op a1 a2) b = (Var (show op), fun [a1, a2] b)
+desugarDef (Meta m a) b = do
+  let (a', b') = desugarDef a b
+  (Meta m a', b')
+desugarDef a b = (a, b)
+
+desugarStmt :: [Stmt] -> Expr
+desugarStmt [] = error "TODO: desugarStmt ([] : [Stmt])"
+desugarStmt (stmt : stmts) = case stmt of
+  -- Let a b | C.isApp (lower a) -> do
+  --   let ((a', b'), c) = (desugarDef a b, desugarStmt stmts)
+  --   error $ show (dropMeta a', dropMeta b', dropMeta c)
+  -- Let a b -> case (desugarDef a b, desugarStmt stmts) of
+  --   ((a', b'), c) | Just x <- varOf a', Just x' <- varOf c, x == x' -> b'
+  --   ((a', b'), c) -> App (Fun a' c) b'
+  Let a b -> do
+    let ((a', b'), c) = (desugarDef a b, desugarStmt stmts)
+    App (Fun a' c) b'
+  Return a -> a
 
 lift :: C.Expr -> Expr
 lift = \case
@@ -1941,16 +1944,13 @@ instance Resolve (String, Stmt) where
         defs ++ resolve ctx path (name, Import path' alias names)
       -- [] | alias == name -> [(path, Tag path' [])]
       [] -> []
-    Let p b
-      | Just x <- varOf p, name == x -> [(path, b)]
-      | name `elem` bindings p -> do
-          [(path, let' (p, b) (Var name))]
-      | otherwise -> []
-      where
-        bindings :: Pattern -> [String]
-        bindings p = map fst (C.unpack (lower p, C.Any))
+    Let p b -> case desugarDef p b of
+      (p, b) | Just x <- varOf p, name == x -> [(path, b)]
+      (p, b) | name `elem` C.freeVars (lower p) -> [(path, let' (p, b) (Var name))]
+      _ -> []
     TypeDef tname args body | name == nameOf tname -> do
-      [(path, fun args body)]
+      -- [(path, fun args body)]
+      error "TODO: make sure TypeDef body arrows to a final type"
     _ -> []
 
 nameOf :: Name -> String
@@ -1966,28 +1966,27 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"map", expr) = do
-  --   let a = C.dropMeta $ C.bind [] $ lower expr
-  --   let dependencies = delete name (C.freeVars a `union` C.freeTags a)
-  --   let env = compileDefs ctx path dependencies
-  --   -- case C.infer buildOps ((name, C.Var name) : env) a of
-  --   --   C.Ok ats -> do
-  --   --     let alt ((a, t), s) = C.Ann a t
-  --   --     (env, C.or' (map alt ats))
-  --   --   C.Fail err -> error $ show (name, dependencies, map fst env, err)
-  --   (error . intercalate "\n")
-  --     [ "\n\ncompile " ++ name,
-  --       "expr: " ++ show expr,
-  --       "lower: " ++ show (C.dropMeta $ lower expr),
-  --       "bind: " ++ show (C.dropMeta $ C.bind [] $ lower expr),
-  --       "infer:",
-  --       case C.infer buildOps ((name, C.Var name) : env) a of
-  --         C.Ok ats -> intercalate "\n" (map (\x -> "- " ++ show (fst x)) ats)
-  --         C.Fail err -> show err,
-  --       ""
-  --     ]
+  compile ctx path (name@"+", expr) = do
+    let a = C.dropMeta $ C.bind [name] $ lower expr
+    let dependencies = delete name (C.freeVars a `union` C.freeTags a)
+    let env = compileDefs ctx path dependencies
+    let loc = Location path (Range (Pos 0 0) (Pos 0 0))
+    (error . intercalate "\n")
+      [ "\n\ncompile " ++ show name,
+        "--- env:",
+        intercalate "\n" (map (\(x, a) -> "- " ++ x ++ " =\n    " ++ C.format 80 "    " a) env),
+        "--- expr:",
+        show (dropMeta expr),
+        "--- lower:",
+        show (C.dropMeta $ lower expr),
+        "--- bind:",
+        show (C.dropMeta $ C.bind [name] $ lower expr),
+        "--- infer:",
+        show $ C.infer loc buildOps ((name, C.Var name) : env) a,
+        ""
+      ]
   compile ctx path (name, expr) = do
-    let a = C.dropMeta $ C.bind [] $ lower expr
+    let a = C.dropMeta $ C.bind [name] $ lower expr
     let dependencies = delete name (C.freeVars a `union` C.freeTags a)
     let env = compileDefs ctx path dependencies
     let loc = Location path (Range (Pos 0 0) (Pos 0 0))
@@ -2008,7 +2007,7 @@ instance Compile (String, Expr) where
             "--- lower:",
             show (C.dropMeta $ lower expr),
             "--- bind:",
-            show (C.dropMeta $ C.bind [] $ lower expr),
+            show (C.dropMeta $ C.bind [name] $ lower expr),
             "--- errors:",
             intercalate "\n" (map (\e -> "- " ++ show e) errors),
             ""
