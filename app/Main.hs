@@ -56,6 +56,7 @@ coreCmd filename arg = do
   pkg <- dropMeta <$> load [filename]
   ctx <- dropMeta <$> include "prelude" pkg
   expr <- dropMeta <$> loadExpr "<core>" arg
+  print pkg
   -- TODO: check for errors
   let printExpr a = putStrLn ("  " ++ C.format 80 "  " a)
   let path = dropExtension (snd (split2 ':' filename))

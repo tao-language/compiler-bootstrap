@@ -18,10 +18,10 @@ let x / y = %int_div(x, y)
 
 > 3 / 2 ~> 1.5
 
-: (Int, Int) -> Int
-let x // y = %int_divi(x, y)
+# : (Int, Int) -> Int
+# let x // y = %int_divi(x, y)
 
-> 3 // 2 ~> 1
+# > 3 // 2 ~> 1
 
 : (Int, Int) -> Int
 let x ^ y = %int_pow(x, y)

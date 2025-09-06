@@ -1970,7 +1970,7 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"+", expr) = do
+  -- compile ctx path (name@"-", expr) = do
   --   let a = C.dropMeta $ C.bind [name] $ lower expr
   --   let dependencies = delete name (C.freeVars a `union` C.freeTags a)
   --   let env = compileDefs ctx path dependencies

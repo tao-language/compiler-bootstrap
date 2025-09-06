@@ -69,7 +69,7 @@ parserTrailing op f x rhs = do
 
 parserLeading :: String -> (Location -> a -> a -> a) -> a -> P.Parser a -> P.Parser a
 parserLeading op f x rhs = do
-  _ <- P.whitespaces
+  _ <- P.spaces
   start <- P.state
   _ <- P.text op
   end <- P.state
