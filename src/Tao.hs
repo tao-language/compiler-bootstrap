@@ -396,6 +396,9 @@ orOf :: Expr -> [Expr]
 orOf = \case
   Err -> []
   Or a b -> a : orOf b
+  Meta m a -> case orOf a of
+    a : bs -> Meta m a : bs
+    bs -> bs
   a -> [a]
 
 lambda :: [Expr] -> Expr -> Expr
@@ -1454,12 +1457,12 @@ lift = \case
       app a (zipWith Ann bs ts)
     (a, b) -> App a b
   C.Call op a -> Call op (tupleOf (lift a))
-  -- C.Let [] b -> lift b
-  -- C.Let ((x, b) : env) c -> Let (Var x, lift b) (lift (C.Let env c))
+  C.Let [] b -> lift b
+  C.Let env b -> Do ((map (\(x, a) -> Let (Var x) (lift a)) env) ++ [Return (lift b)])
   C.Meta (C.Loc _) (C.Meta (C.Loc loc) a) -> Meta (C.Loc loc) (lift a)
   C.Meta m a -> Meta (fmap lift m) (lift a)
   C.Err -> Err
-  a -> error $ "TODO: lift " ++ show a
+  a -> error $ "TODO: lift[" ++ C.showCtr a ++ "] " ++ show a
 
 parseExpr :: Int -> Parser Expr
 parseExpr = G.parser grammar
@@ -1777,7 +1780,8 @@ parseTypeDef = do
           return args,
         return []
       ]
-  handleErr <- parseOpUntil "=" parseExprStart
+  _ <- P.whitespaces
+  handleErr <- parseOpUntil "=" (P.oneOf [() <$ parseExprStart, parseLineBreak])
   _ <- P.whitespaces
   body <- parseExprUntil "body" 0 parseLineBreak
   return (TypeDef name args (handleErr body))
@@ -1823,6 +1827,12 @@ instance Check (C.Metadata Expr) where
     C.Error e -> [e]
     _ -> []
 
+instance Check Name where
+  check :: Name -> [Error Expr]
+  check = \case
+    Name _ -> []
+    MetaName m a -> check m ++ check a
+
 instance Check Expr where
   check :: Expr -> [Error Expr]
   check = \case
@@ -1846,7 +1856,7 @@ instance Check Stmt where
       -- TODO: check that x is defined
       concatMap check args
     Test name expr expect -> concatMap check [expr, expect]
-    TypeDef _ args body -> concatMap check args ++ check body
+    TypeDef name args body -> check name ++ concatMap check args ++ check body
     Nop m -> check m
 
 instance (Check a) => Check [a] where
@@ -1953,8 +1963,10 @@ instance Resolve (String, Stmt) where
       (p, b) | name `elem` C.freeVars (lower p) -> [(path, let' (p, b) (Var name))]
       _ -> []
     TypeDef tname args body | name == nameOf tname -> do
-      -- [(path, fun args body)]
-      error "TODO: make sure TypeDef body arrows to a final type"
+      let alt a = case asFun a of
+            Just _ -> a
+            Nothing -> Fun a (Tag (nameOf tname) args)
+      [(path, fun args (or' $ map alt $ orOf body))]
     _ -> []
 
 nameOf :: Name -> String
