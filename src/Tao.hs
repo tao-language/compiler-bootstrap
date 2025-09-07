@@ -758,31 +758,46 @@ syntaxErrorMeta (start, end, got) = do
   let loc = Location start.filename (Range start.pos end.pos)
   C.Error $ SyntaxError (loc, start.committed, start.expected, got)
 
-syntaxErrorName :: (P.State, P.State, String) -> Name
-syntaxErrorName err@(_, _, txt) = MetaName (syntaxErrorMeta err) (Name "")
+syntaxErrorName :: Name -> (P.State, P.State, String) -> Name
+syntaxErrorName name err@(_, _, txt) = MetaName (syntaxErrorMeta err) name
 
-syntaxErrorExpr :: (P.State, P.State, String) -> Expr
-syntaxErrorExpr err = Meta (syntaxErrorMeta err) Err
+syntaxErrorExpr :: Expr -> (P.State, P.State, String) -> Expr
+syntaxErrorExpr a err = Meta (syntaxErrorMeta err) a
 
 syntaxErrorStmt :: (P.State, P.State, String) -> Stmt
 syntaxErrorStmt err = Nop (syntaxErrorMeta err)
 
-parseCollection :: String -> String -> String -> String -> ((P.State, P.State, String) -> a) -> Parser a -> Parser [a]
-parseCollection msg open delim close catch parser = do
+parseUntil :: String -> Parser stop -> (a -> (P.State, P.State, String) -> a) -> a -> Parser a -> Parser a
+parseUntil expect stop catch err parser = do
+  x <-
+    P.expect expect parser
+      & P.recover (P.textUntil stop) (catch err)
+  _ <- P.spaces
+  handleErr <-
+    (id <$ P.lookahead stop)
+      & P.recover (P.textUntil stop) (\err a -> catch a err)
+      & P.recover (P.ok ()) (const id)
+  return (handleErr x)
+
+parseCollection :: String -> String -> String -> String -> (a -> (P.State, P.State, String) -> a) -> a -> Parser a -> Parser [a]
+parseCollection msg open delim close catch err parser = do
   _ <- P.text open
   _ <- P.whitespaces
-  xs <- P.zeroOrMore $ do
-    x <- P.expect msg parser & P.recover (P.textUntil (P.text delim)) catch
-    _ <- P.whitespaces
+  items <- P.zeroOrMore $ do
+    x <- parseUntil msg (P.text delim) catch err (P.paddedR P.whitespaces parser)
     _ <- P.text delim
     _ <- P.whitespaces
     return x
-  x <- P.zeroOrOne $ do
-    x <- P.expect msg parser
+  last <- P.zeroOrOne $ do
+    x <- P.expect ("last " ++ msg) parser
     _ <- P.whitespaces
     return x
-  _ <- P.text close
-  return (xs ++ x)
+  err <-
+    ([] <$ P.expect ("closing '" ++ close ++ "'") (P.text close))
+      & P.recover (P.textUntilIncluding $ P.textOf [")", "]", "}"]) (\e -> [catch err e])
+      & P.recover (P.textUntil P.endOfLine) (\e -> [catch err e])
+  -- Do not parse trailing spaces to allow other parsers to get (start, end) locations.
+  return (items ++ last ++ err)
 
 layoutCollection :: String -> String -> String -> [PP.Layout] -> PP.Layout
 layoutCollection open _ close [] = [PP.Text (open ++ close)]
@@ -888,8 +903,13 @@ grammar = do
                 start <- P.state
                 k <- parseNameTag
                 end <- P.state
-                _ <- P.spaces
-                args <- P.oneOf [parseCollection "tag argument" "<" "," ">" syntaxErrorExpr expr, return []]
+                args <-
+                  P.oneOf
+                    [ do
+                        _ <- P.whitespaces
+                        parseCollection "tag argument" "(" "," ")" syntaxErrorExpr Err expr,
+                      return []
+                    ]
                 _ <- P.spaces
                 return (withLoc start end $ Tag k args)
            in G.Atom parser $ \rhs -> \case
@@ -906,7 +926,7 @@ grammar = do
           -- Grammar.Tuple
           let parser expr = do
                 start <- P.state
-                items <- parseCollection "tuple item" "(" "," ")" syntaxErrorExpr expr
+                items <- parseCollection "tuple item" "(" "," ")" syntaxErrorExpr Err expr
                 end <- P.state
                 _ <- P.spaces
                 return (withLoc start end $ Tuple items)
@@ -916,7 +936,7 @@ grammar = do
           -- Grammar.List
           let parser expr = do
                 start <- P.state
-                items <- parseCollection "list item" "[" "," "]" syntaxErrorExpr expr
+                items <- parseCollection "list item" "[" "," "]" syntaxErrorExpr Err expr
                 end <- P.state
                 _ <- P.spaces
                 return (withLoc start end $ List items)
@@ -1163,7 +1183,7 @@ grammar = do
           let parser a expr = do
                 _ <- P.whitespaces
                 start <- P.state
-                args <- parseCollection "function argument" "(" "," ")" syntaxErrorExpr (parseExpr 0)
+                args <- parseCollection "function argument" "(" "," ")" syntaxErrorExpr Err (parseExpr 0)
                 end <- P.state
                 _ <- P.spaces
                 return (withLoc start end $ app a args)
@@ -1208,7 +1228,7 @@ grammar = do
                 _ <- P.spaces
                 args <-
                   P.maybe' $ do
-                    args <- parseCollection "method argument" "(" "," ")" syntaxErrorExpr (parseExpr 0)
+                    args <- parseCollection "method argument" "(" "," ")" syntaxErrorExpr Err (parseExpr 0)
                     _ <- P.spaces
                     return args
                 _ <- P.spaces
@@ -1237,7 +1257,7 @@ grammar = do
                   P.oneOf
                     [ do
                         _ <- P.whitespaces
-                        args <- parseCollection "builtin call argument" "(" "," ")" syntaxErrorExpr expr
+                        args <- parseCollection "builtin call argument" "(" "," ")" syntaxErrorExpr Err expr
                         _ <- P.spaces
                         return args,
                       return []
@@ -1642,7 +1662,7 @@ parseNameUntil :: String -> Parser String -> Parser stop -> Parser Name
 parseNameUntil expect parser stop = do
   name <-
     P.expect expect (parseLocName parser)
-      & P.recover (P.textUntil stop) syntaxErrorName
+      & P.recover (P.textUntil stop) (syntaxErrorName (Name ""))
   _ <- P.spaces
   handleErr <-
     (id <$ P.lookahead stop)
@@ -1654,7 +1674,7 @@ parseExprUntil :: String -> Int -> Parser stop -> Parser Expr
 parseExprUntil expect prec stop = do
   expr <-
     P.expect expect (parseExpr prec)
-      & P.recover (P.textUntil stop) syntaxErrorExpr
+      & P.recover (P.textUntil stop) (syntaxErrorExpr Err)
   _ <- P.spaces
   handleErr <-
     (id <$ P.lookahead stop)
@@ -1683,8 +1703,9 @@ parseStmts stop = do
   last <- P.zeroOrOne parseStmt
   _ <- P.whitespaces
   err <-
-    ([] <$ stop)
+    ([] <$ P.lookahead stop)
       & P.recover (P.textUntil stop) (\err -> [Nop (syntaxErrorMeta err)])
+  _ <- stop
   return (stmts ++ last ++ err)
 
 parseModule :: String -> Parser Module
@@ -1747,7 +1768,7 @@ parseImport = do
   names <-
     P.oneOf
       [ do
-          parseCollection "imported name" "(" "," ")" (\err -> error "TODO: parseImport error handling") $ do
+          parseCollection "imported name" "(" "," ")" (\err -> error "TODO: parseImport error handling") ("", "") $ do
             name <- parseName
             _ <- P.spaces
             alias <-
@@ -1831,16 +1852,16 @@ parseTypeDef :: Parser Stmt
 parseTypeDef = do
   _ <- P.commit "type definition" $ P.word "type"
   _ <- P.whitespaces
-  name <- parseNameUntil "type name" parseNameTag (P.oneOf [P.charOf "(="])
+  name <- parseNameUntil "name" parseNameTag (P.oneOf [P.charOf "(="])
+  _ <- P.whitespaces
   args <-
     P.oneOf
       [ do
-          args <- parseCollection "argument" "(" "," ")" syntaxErrorExpr (parseExpr 0)
+          args <- parseCollection "argument" "(" "," ")" syntaxErrorExpr Err (parseExpr 0)
           _ <- P.whitespaces
           return args,
         return []
       ]
-  _ <- P.whitespaces
   handleErr <- parseOpUntil "=" (P.oneOf [() <$ parseExprStart, parseLineBreak])
   _ <- P.whitespaces
   body <- parseExprUntil "body" 0 parseLineBreak

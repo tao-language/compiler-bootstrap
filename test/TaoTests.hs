@@ -24,6 +24,13 @@ parse' text = case parse 0 filename text of
   Right (a, s) -> Right (a, s.remaining)
   Left s -> Left (s.expected, s.remaining)
 
+parseCollection' :: String -> String -> String -> String -> String -> Either (String, String) ([Expr], String)
+parseCollection' msg open delim close text = do
+  let parser = parseCollection msg open delim close syntaxErrorExpr Err (parseExpr 0)
+  case P.parse parser filename text of
+    Right (xs, s) -> Right (xs, s.remaining)
+    Left s -> Left (s.expected, s.remaining)
+
 parseStmt' :: String -> Either (String, String) (Stmt, String)
 parseStmt' text = case P.parse parseStmt filename text of
   Right (a, s) -> Right (a, s.remaining)
@@ -138,14 +145,35 @@ run = describe "--==☯ Tao ☯==--" $ do
     parse' "x \n" `shouldBe` Right (x 1 1, "\n")
   -- TODO: variable escaped: v'x'
 
+  it "☯ Tao.grammar.parser.collection" $ do
+    let p = parseCollection' "item" "[" "," "]"
+    -- Do not parse trailing spaces to allow other parsers to get (start, end) locations.
+    p "[] \n" `shouldBe` Right ([], " \n")
+    p "[x] \n" `shouldBe` Right ([x 1 2], " \n")
+    p "[x,] \n" `shouldBe` Right ([x 1 2], " \n")
+    p "[x,y] \n" `shouldBe` Right ([x 1 2, y 1 4], " \n")
+    p "[x,y,z,] \n" `shouldBe` Right ([x 1 2, y 1 4, z 1 6], " \n")
+    p "[\nx\n,\ny\n] \n" `shouldBe` Right ([x 2 1, y 4 1], " \n")
+    p "[\nx\n,\ny\n,\n] \n" `shouldBe` Right ([x 2 1, y 4 1], " \n")
+    p "[ \n" `shouldBe` Right ([Meta (syntaxErr 2 1 2 1 "" "closing ']'" "") Err], "")
+    p "[ \nx \n" `shouldBe` Right ([x 2 1, Meta (syntaxErr 3 1 3 1 "" "closing ']'" "") Err], "")
+    p "[ \nx \n y \n" `shouldBe` Right ([x 2 1, Meta (syntaxErr 3 2 3 4 "" "closing ']'" "y ") Err], "\n")
+    p "[)] \n" `shouldBe` Right ([Meta (syntaxErr 1 2 1 3 "" "closing ']'" ")") Err], "] \n")
+    p "[x)] \n" `shouldBe` Right ([x 1 2, Meta (syntaxErr 1 3 1 4 "" "closing ']'" ")") Err], "] \n")
+    p "[$)] \n" `shouldBe` Right ([Meta (syntaxErr 1 2 1 4 "" "closing ']'" "$)") Err], "] \n")
+    p "[$] \n" `shouldBe` Right ([Meta (syntaxErr 1 2 1 4 "" "closing ']'" "$]") Err], " \n")
+    p "[x$] \n" `shouldBe` Right ([x 1 2, Meta (syntaxErr 1 3 1 5 "" "closing ']'" "$]") Err], " \n")
+    p "[$, x] \n" `shouldBe` Right ([Meta (syntaxErr 1 2 1 3 "" "item" "$") Err, x 1 5], " \n")
+    p "[x, $] \n" `shouldBe` Right ([x 1 2, Meta (syntaxErr 1 5 1 7 "" "closing ']'" "$]") Err], " \n")
+
   it "☯ Tao.grammar.parser.Tag" $ do
     parse' "A \n" `shouldBe` Right (tag 1 1 "A" [], "\n")
-    parse' "A<> \n" `shouldBe` Right (tag 1 1 "A" [], "\n")
-    parse' "A<x> \n" `shouldBe` Right (tag 1 1 "A" [x 1 3], "\n")
-    parse' "A<x,y> \n" `shouldBe` Right (tag 1 1 "A" [x 1 3, y 1 5], "\n")
-    parse' "A <x, y, z> \n" `shouldBe` Right (tag 1 1 "A" [x 1 4, y 1 7, z 1 10], "\n")
-    parse' "A<\nx\n,\ny\n,\n> \n" `shouldBe` Right (tag 1 1 "A" [x 2 1, y 4 1], "\n")
-    parse' "A\n<> \n" `shouldBe` Right (tag 1 1 "A" [], "\n<> \n")
+    parse' "A() \n" `shouldBe` Right (tag 1 1 "A" [], "\n")
+    parse' "A(x) \n" `shouldBe` Right (tag 1 1 "A" [x 1 3], "\n")
+    parse' "A(x,y) \n" `shouldBe` Right (tag 1 1 "A" [x 1 3, y 1 5], "\n")
+    parse' "A(x, y, z) \n" `shouldBe` Right (tag 1 1 "A" [x 1 3, y 1 6, z 1 9], "\n")
+    parse' "A(\nx\n,\ny\n,\n) \n" `shouldBe` Right (tag 1 1 "A" [x 2 1, y 4 1], "\n")
+    parse' "A\n() \n" `shouldBe` Right (tag 1 1 "A" [], "\n")
   -- TODO: tag escaped: t'A'
   -- TODO: tag escaped: t'A'(x)
   -- Error recovery
@@ -159,10 +187,6 @@ run = describe "--==☯ Tao ☯==--" $ do
     parse' "(x,) \n" `shouldBe` Right (loc 1 1 1 5 $ Tuple [x 1 2], "\n")
     parse' "(x, y, z) \n" `shouldBe` Right (loc 1 1 1 10 $ Tuple [x 1 2, y 1 5, z 1 8], "\n")
     parse' "(\nx\n,\ny\n,\n) \n" `shouldBe` Right (loc 1 1 6 2 $ Tuple [x 2 1, y 4 1], "\n")
-  -- Error recovery
-  -- parse' "($) \n" `shouldBe` Right (loc 1 1 1 4 $ Tuple [syntaxError (loc' 1 2 1 3, "tuple item", "$")], "\n")
-  -- parse' "($, x) \n" `shouldBe` Right (loc 1 1 1 7 $ Tuple [syntaxError (loc' 1 2 1 3, "tuple item", "$"), x 1 5], "\n")
-  -- parse' "(x, $) \n" `shouldBe` Right (loc 1 1 1 7 $ Tuple [x 1 2, syntaxError (loc' 1 5 1 6, "tuple item", "$")], "\n")
 
   it "☯ Tao.grammar.parser.List" $ do
     parse' "[] \n" `shouldBe` Right (loc 1 1 1 3 $ List [], "\n")

@@ -208,14 +208,14 @@ skip parser = do
 
 thenSkip :: Parser skip -> Parser a -> Parser a
 thenSkip skip parser = do
-  _ <- skip
-  parser
-
-skipThen :: Parser a -> Parser skip -> Parser a
-skipThen parser skip = do
   x <- parser
   _ <- skip
   return x
+
+skipThen :: Parser a -> Parser skip -> Parser a
+skipThen parser skip = do
+  _ <- skip
+  parser
 
 until' :: Parser stop -> Parser a -> Parser [a]
 until' stop parser =
@@ -229,6 +229,12 @@ until' stop parser =
 
 textUntil :: Parser stop -> Parser String
 textUntil stop = until' stop anyChar
+
+textUntilIncluding :: Parser String -> Parser String
+textUntilIncluding stop = do
+  x <- textUntil stop
+  y <- stop
+  return (x ++ y)
 
 untilNested :: ([(open, Parser close)], [(open, close)]) -> Parser stop -> [(Parser open, Parser close)] -> Parser a -> Parser ([a], [open], [(open, close)])
 untilNested (stack, errors) stop groups parser = do
@@ -352,6 +358,9 @@ chain (p : ps) = do
 
 text :: String -> Parser String
 text str = expect (show str) $ chain (fmap char str)
+
+textOf :: [String] -> Parser String
+textOf txts = oneOf (map text txts)
 
 textNoCase :: String -> Parser String
 textNoCase str = expect (show str ++ " (case insensitive)") $ chain (fmap charNoCase str)
