@@ -208,7 +208,7 @@ layoutStmt = \case
   -- ForStmt Pattern Expr [Stmt]
   -- Break
   -- Continue
-  -- Return Expr
+  Return a -> PP.Text "return " : layout 0 a
   Nop m -> [PP.Text ("!" ++ show m)]
   stmt -> error $ "TODO: layoutStmt: " ++ show stmt
 
@@ -228,13 +228,20 @@ instance Format Stmt where
     Bind a b -> "let " ++ show a ++ " <- " ++ show b
     Mut x a -> "mut " ++ show x ++ " = " ++ show a
     Run a args -> error "TODO: format Run"
-    TypeDef name args body -> do
-      let args' = if args == [] then "" else "(" ++ intercalate ", " (map show args) ++ ")"
-      "type " ++ show name ++ args' ++ " = " ++ show body
     Test name expr expect -> do
       let name' = if name /= "" then "// " ++ name ++ "\n" else ""
       let expect' = if expect == tag "True" then "" else "\n" ++ show expect
       name' ++ "> " ++ show expr ++ expect'
+    TypeDef name args body -> do
+      let args' = if args == [] then "" else "(" ++ intercalate ", " (map show args) ++ ")"
+      "type " ++ show name ++ args' ++ " = " ++ show body
+    IfStmt cond then' else' -> error "TODO: format IfStmt"
+    While cond body -> error "TODO: format While"
+    Repeat body cond -> error "TODO: format Repeat"
+    ForStmt a b body -> error "TODO: format ForStmt"
+    Break -> error "TODO: format Break"
+    Continue -> error "TODO: format Continue"
+    Return a -> "return " ++ show a
     Nop (C.Comments comments) ->
       map (\c -> "// " ++ c) comments
         & intercalate "\n"
@@ -632,7 +639,7 @@ instance Apply Stmt where
     Bind a b -> Bind (f a) (f b)
     Mut x b -> Mut x (f b)
     Run x args -> Run x (map f args)
-    Test name expr expect -> Test name (apply f expr) (apply f expect)
+    Test name a b -> Test name (f a) (f b)
     TypeDef name args body -> TypeDef name (map f args) (f body)
     -- IfStmt Expr [Stmt] (Maybe [Stmt])
     -- While Expr [Stmt]
@@ -640,7 +647,7 @@ instance Apply Stmt where
     -- ForStmt Pattern Expr [Stmt]
     -- Break
     -- Continue
-    -- Return Expr
+    Return a -> Return (f a)
     Nop m -> Nop (fmap f m)
     stmt -> error $ "TODO: apply " ++ show stmt
 
@@ -780,9 +787,11 @@ locSpan start end = Location start.filename (Range start.pos end.pos)
 withLoc :: P.State -> P.State -> Expr -> Expr
 withLoc start end = Meta (C.Loc (locSpan start end))
 
+-- TODO: rename to parseExpr
 parse :: Int -> FilePath -> String -> Either P.State (Expr, P.State)
 parse prec = P.parse (G.parser grammar prec)
 
+-- TODO: rename to layoutExpr
 layout :: Int -> Expr -> PP.Layout
 layout prec = G.layout grammar prec
 
@@ -1516,7 +1525,7 @@ desugarStmts (stmt : stmts) = case stmt of
     App (Fun a' c) b'
   Bind a b -> do
     let c = desugarStmts stmts
-    App (Fun a c) b
+    app (Var "<-") [b, Fun a c]
   Return a -> a
   Nop m -> Meta m (desugarStmts stmts)
   _ -> error $ "TODO: desugarStmts " ++ show (dropMeta stmt)
@@ -1735,6 +1744,38 @@ parseOpUntil op stop = do
       & P.recover (P.ok ()) (const id)
   return (handleErr1 . handleErr2)
 
+parseModule :: String -> Parser Module
+parseModule name = do
+  _ <- P.whitespaces
+  stmts <- parseStmts P.endOfFile
+  return (name, stmts)
+
+parseStmt :: Parser Stmt
+parseStmt = do
+  _ <- P.lookaheadNot P.endOfFile
+  let parsers =
+        [ parseImport,
+          parseDef, -- parseLet + parseBind
+          parseMut,
+          -- parseRun,
+          parseTest,
+          parseTypeDef,
+          -- parseIfStmt,
+          -- parseWhile,
+          -- parseRepeat,
+          -- parseForStmt,
+          -- parseBreak,
+          -- parseContinue,
+          parseReturn,
+          Nop <$> parseCommentMeta
+          -- TODO: consider a trailing comment on a syntax error like this
+          -- , Run . (\e -> Meta (C.Error e) Err) . SyntaxError <$> recoverSyntaxError "statement" (P.text "\n")
+        ]
+  stmt <-
+    P.expect "statement" (P.commitOneOf parsers)
+      & P.recover (P.textUntil $ P.lookahead $ P.oneOf [parseLineBreak, () <$ P.char '}']) syntaxErrorStmt
+  return stmt
+
 parseStmts :: Parser stop -> Parser [Stmt]
 parseStmts stop = do
   stmts <- P.zeroOrMore $ do
@@ -1748,31 +1789,6 @@ parseStmts stop = do
       & P.recover (P.textUntil stop) (\err -> [Nop (syntaxErrorMeta err)])
   _ <- stop
   return (stmts ++ last ++ err)
-
-parseModule :: String -> Parser Module
-parseModule name = do
-  _ <- P.whitespaces
-  stmts <- parseStmts P.endOfFile
-  return (name, stmts)
-
-parseStmt :: Parser Stmt
-parseStmt = do
-  _ <- P.lookaheadNot P.endOfFile
-  let parsers =
-        [ parseImport,
-          parseDef,
-          parseMut,
-          -- Run <$> parseExpr 1,
-          parseTest,
-          parseTypeDef,
-          Nop <$> parseCommentMeta
-          -- TODO: consider a trailing comment on a syntax error like this
-          -- , Run . (\e -> Meta (C.Error e) Err) . SyntaxError <$> recoverSyntaxError "statement" (P.text "\n")
-        ]
-  stmt <-
-    P.expect "statement" (P.commitOneOf parsers)
-      & P.recover (P.textUntil $ P.lookahead $ P.oneOf [parseLineBreak, () <$ P.char '}']) syntaxErrorStmt
-  return stmt
 
 parseModulePath :: Parser String
 parseModulePath = do
@@ -1849,7 +1865,7 @@ parseDef = do
     (id <$ P.lookahead parseExprStart)
       & P.recover (P.textUntil parseExprStart) (Meta . syntaxErrorMeta)
       & P.recover (P.ok ()) (const id)
-  b <- parseExprUntil "body" 0 parseLineBreak
+  b <- parseExprUntil "body" 0 endOfStmt
   case typeAnnotation of
     Just t -> return (def (Ann a t) (handleErr b))
     Nothing -> return (def a (handleErr b))
@@ -1862,7 +1878,7 @@ parseMut = do
   _ <- P.whitespaces
   handleErr <- parseOpUntil "=" parseExprStart
   _ <- P.whitespaces
-  b <- parseExprUntil "body" 0 parseLineBreak
+  b <- parseExprUntil "body" 0 endOfStmt
   return (Mut name (handleErr b))
 
 parseTest :: Parser Stmt
@@ -1881,7 +1897,7 @@ parseTest = do
         do
           handleErr <- parseOpUntil "~>" parseExprStart
           _ <- P.whitespaces
-          a <- parseExprUntil "result" 0 parseLineBreak
+          a <- parseExprUntil "result" 0 endOfStmt
           return (handleErr a),
         return (tag "True")
       ]
@@ -1903,10 +1919,20 @@ parseTypeDef = do
           return args,
         return []
       ]
-  handleErr <- parseOpUntil "=" (P.oneOf [() <$ parseExprStart, parseLineBreak])
+  handleErr <- parseOpUntil "=" (P.oneOf [() <$ parseExprStart, endOfStmt])
   _ <- P.whitespaces
-  body <- parseExprUntil "body" 0 parseLineBreak
+  body <- parseExprUntil "body" 0 endOfStmt
   return (TypeDef name args (handleErr body))
+
+parseReturn :: Parser Stmt
+parseReturn = do
+  _ <- P.commit "return statement" $ P.word "return"
+  _ <- P.spaces
+  a <- parseExprUntil "expression" 0 endOfStmt
+  return (Return a)
+
+endOfStmt :: Parser ()
+endOfStmt = P.oneOf [parseLineBreak, () <$ P.char '}']
 
 parseCommentMeta :: Parser (C.Metadata Expr)
 parseCommentMeta = do
@@ -1980,6 +2006,7 @@ instance Check Stmt where
       concatMap check args
     Test name expr expect -> concatMap check [expr, expect]
     TypeDef name args body -> check name ++ concatMap check args ++ check body
+    Return a -> check a
     Nop m -> check m
     stmt -> error $ "TODO: check: " ++ show (dropMeta stmt)
 
