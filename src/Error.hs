@@ -112,8 +112,15 @@ cannotApply a b = RuntimeError (CannotApply a b)
 customError :: a -> Error a
 customError a = RuntimeError (CustomError a)
 
-summary :: (Show a) => Error a -> String
-summary = \case
+location :: Error a -> Maybe Location
+location = \case
+  SyntaxError (loc, _, _, _) -> Just loc
+  TypeError (loc, _) -> Just loc
+  CaseError (loc, _) -> Just loc
+  RuntimeError _ -> Nothing
+
+title :: (Show a) => Error a -> String
+title = \case
   SyntaxError _ -> "Syntax error"
   TypeError (loc, e) -> case e of
     OccursError {} -> "Occurs error"
@@ -125,6 +132,15 @@ summary = \case
     UnhandledCase {} -> "Unhandled error"
     CannotApply {} -> "Cannot apply"
     CustomError {} -> "User defined error"
+
+summary :: (Show a) => Error a -> String
+summary = \case
+  SyntaxError (loc, committed, expected, got) -> do
+    let context = case committed of
+          "" -> ""
+          committed -> " while parsing " ++ committed
+    "Expected " ++ expected ++ context
+  e -> "TODO: summary"
 
 description :: (Show a) => Error a -> String
 description = \case
@@ -172,7 +188,7 @@ snippet loc src = do
           & zipWith (showLine . show) [loc.range.start.row + 1 ..]
   intercalate
     "\n"
-    ( (loc.filename ++ ":" ++ show loc.range.start.row ++ ":" ++ show loc.range.start.col)
+    ( (show (loc {range = loc.range {end = loc.range.start}}))
         : linesBefore
         ++ highlight
         ++ linesAfter
@@ -180,29 +196,29 @@ snippet loc src = do
 
 display :: (Show a) => Error a -> IO ()
 display err = do
-  -- putStrLn (replicate 60 '-')
-  -- putStrLn ("🛑 " ++ summary err)
-  -- case mloc of
-  --   Nothing -> return ()
-  --   Just loc -> do
-  --     src <- readFile loc.filename
-  --     putStrLn ""
-  --     putStrLn (snippet loc src)
-  -- case description err of
-  --   "" -> return ()
-  --   description -> do
-  --     putStrLn ""
-  --     putStrLn description
-  -- case suggestion err of
-  --   "" -> return ()
-  --   suggestion -> do
-  --     putStrLn ""
-  --     putStrLn suggestion
-  -- case docsUrl err of
-  --   "" -> return ()
-  --   url -> do
-  --     putStrLn ""
-  --     putStrLn "For more information about this error, see:"
-  --     putStrLn ("  " ++ url)
-  -- putStrLn ""
-  print err
+  putStrLn ("==== " ++ title err ++ " " ++ replicate (60 - length (title err)) '=')
+  putStrLn ""
+  putStrLn ("❌ " ++ summary err)
+  putStrLn ""
+  case location err of
+    Nothing -> return ()
+    Just loc -> do
+      src <- readFile loc.filename
+      putStrLn (snippet loc src)
+      putStrLn ""
+  case description err of
+    "" -> return ()
+    description -> do
+      putStrLn description
+      putStrLn ""
+  case suggestion err of
+    "" -> return ()
+    suggestion -> do
+      putStrLn suggestion
+      putStrLn ""
+  case docsUrl err of
+    "" -> return ()
+    url -> do
+      putStrLn "For more information about this error, see:"
+      putStrLn ("  " ++ url)
+      putStrLn ""

@@ -109,7 +109,7 @@ testCmd path patterns = do
   case check ctx of
     [] -> return ()
     syntaxErrors -> do
-      mapM_ (putStrLn . show) syntaxErrors
+      mapM_ display syntaxErrors
       exitFailure
   let results = testAll ctx pkg
   mapM_ (putStr . show) results

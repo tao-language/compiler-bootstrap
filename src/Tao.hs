@@ -1327,23 +1327,23 @@ grammar = do
            in G.Atom parser $ \layout -> \case
                 IfElse a b c -> Just (PP.Text "if " : layout a ++ PP.Text " then " : layout b ++ PP.Text " else " : layout c)
                 _ -> Nothing,
-          -- Grammar.Metadata.Comments
-          let parser expr = do
-                comments <- parseCommentMeta
-                Meta comments <$> expr
-           in G.Atom parser $ \rhs -> \case
-                Meta (C.Comments comments) a -> do
-                  let comments' = concatMap (\c -> [PP.Text ("// " ++ c), PP.NewLine]) comments
-                  Just (comments' ++ rhs a)
-                _ -> Nothing,
-          -- Grammar.Metadata.TrailingComment
-          let parser a _expr = do
-                comment <- parseCommentSingleLine
-                return (Meta (C.TrailingComment comment) a)
-           in G.InfixL 1 parser $ \lhs _ -> \case
-                Meta (C.TrailingComment comment) a ->
-                  Just (lhs a ++ [PP.Text ("  // " ++ comment), PP.NewLine])
-                _ -> Nothing,
+          -- -- Grammar.Metadata.Comments
+          -- let parser expr = do
+          --       comments <- parseCommentMeta
+          --       Meta comments <$> expr
+          --  in G.Atom parser $ \rhs -> \case
+          --       Meta (C.Comments comments) a -> do
+          --         let comments' = concatMap (\c -> [PP.Text ("// " ++ c), PP.NewLine]) comments
+          --         Just (comments' ++ rhs a)
+          --       _ -> Nothing,
+          -- -- Grammar.Metadata.TrailingComment
+          -- let parser a _expr = do
+          --       comment <- parseCommentSingleLine
+          --       return (Meta (C.TrailingComment comment) a)
+          --  in G.InfixL 1 parser $ \lhs _ -> \case
+          --       Meta (C.TrailingComment comment) a ->
+          --         Just (lhs a ++ [PP.Text ("  // " ++ comment), PP.NewLine])
+          --       _ -> Nothing,
           -- Grammar.Metadata.Location
           let parser expr = do
                 _ <- P.text "^loc["
@@ -1878,8 +1878,7 @@ parseComment = parseCommentSingleLine
 parseCommentSingleLine :: Parser String
 parseCommentSingleLine = do
   _ <- P.text "//"
-  comment <- P.zeroOrMore (P.charIf (/= '\n'))
-  _ <- P.whitespaces
+  comment <- P.textUntil (P.char '\n')
   return (trim comment)
 
 -- parseCommentMultiLine :: Parser String
