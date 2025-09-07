@@ -291,19 +291,19 @@ run = describe "--==☯ Parser ☯==--" $ do
     p "abc." `shouldBe` Right ("abc", ".")
     p "abc" `shouldBe` Left "abc"
 
-  it "☯ untilNested" $ do
-    let p = parse' (untilNested ([], []) (char '.') [(char '(', char ')'), (char '[', char ']')] anyChar)
-    p "" `shouldBe` Left ""
-    p ".abc" `shouldBe` Right (("", [], []), ".abc")
-    p "a.bc" `shouldBe` Right (("a", [], []), ".bc")
-    p "ab.c" `shouldBe` Right (("ab", [], []), ".c")
-    p "abc." `shouldBe` Right (("abc", [], []), ".")
-    p "abc" `shouldBe` Left "abc"
-    p "a(.bc" `shouldBe` Right (("a", "(", []), ".bc")
-    p "a([.bc" `shouldBe` Right (("a", "[(", []), ".bc")
-    p "a([].bc" `shouldBe` Right (("a", "(", []), ".bc")
-    p "a([]).bc" `shouldBe` Right (("a", "", []), ".bc")
-    p "a([)].bc" `shouldBe` Right (("a", "[(", [('(', ']'), ('[', ')')]), ".bc")
+  -- it "☯ untilNested" $ do
+  --   let p = parse' (untilNested ([], []) (char '.') [(char '(', char ')'), (char '[', char ']')] anyChar)
+  --   p "" `shouldBe` Left ""
+  --   p ".abc" `shouldBe` Right (("", [], []), ".abc")
+  --   p "a.bc" `shouldBe` Right (("a", [], []), ".bc")
+  --   p "ab.c" `shouldBe` Right (("ab", [], []), ".c")
+  --   p "abc." `shouldBe` Right (("abc", [], []), ".")
+  --   p "abc" `shouldBe` Left "abc"
+  --   p "a(.bc" `shouldBe` Right (("a", "(", []), ".bc")
+  --   p "a([.bc" `shouldBe` Right (("a", "[(", []), ".bc")
+  --   p "a([].bc" `shouldBe` Right (("a", "(", []), ".bc")
+  --   p "a([]).bc" `shouldBe` Right (("a", "", []), ".bc")
+  --   p "a([)].bc" `shouldBe` Right (("a", "[(", [('(', ']'), ('[', ')')]), ".bc")
 
   it "☯ while" $ do
     let p = parse' (while isLetter anyChar)

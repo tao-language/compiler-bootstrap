@@ -821,8 +821,8 @@ parseUntil expect stop catch err parser = do
       & P.recover (P.ok ()) (const id)
   return (handleErr x)
 
-parseCollection :: String -> String -> String -> String -> (a -> (P.State, P.State, String) -> a) -> a -> Parser a -> Parser [a]
-parseCollection msg open delim close catch err parser = do
+parseCollection :: String -> String -> String -> String -> P.Parser stop -> (a -> (P.State, P.State, String) -> a) -> a -> Parser a -> Parser [a]
+parseCollection msg open delim close stop catch err parser = do
   _ <- P.text open
   _ <- P.whitespaces
   items <- P.zeroOrMore $ do
@@ -837,7 +837,7 @@ parseCollection msg open delim close catch err parser = do
   err <-
     ([] <$ P.expect ("closing '" ++ close ++ "'") (P.text close))
       & P.recover (P.textUntilIncluding $ P.textOf [")", "]", "}"]) (\e -> [catch err e])
-      & P.recover (P.textUntil P.endOfLine) (\e -> [catch err e])
+      & P.recover (P.textUntil stop) (\e -> [catch err e])
   -- Do not parse trailing spaces to allow other parsers to get (start, end) locations.
   return (items ++ last ++ err)
 
@@ -949,7 +949,8 @@ grammar = do
                   P.oneOf
                     [ do
                         _ <- P.whitespaces
-                        parseCollection "tag argument" "(" "," ")" syntaxErrorExpr Err expr,
+                        -- TODO: stop until operator or parseLineBreak
+                        parseCollection "tag argument" "(" "," ")" parseLineBreak syntaxErrorExpr Err expr,
                       return []
                     ]
                 _ <- P.spaces
@@ -968,7 +969,8 @@ grammar = do
           -- Grammar.Tuple
           let parser expr = do
                 start <- P.state
-                items <- parseCollection "tuple item" "(" "," ")" syntaxErrorExpr Err expr
+                -- TODO: stop until operator or parseLineBreak
+                items <- parseCollection "tuple item" "(" "," ")" parseLineBreak syntaxErrorExpr Err expr
                 end <- P.state
                 _ <- P.spaces
                 return (withLoc start end $ Tuple items)
@@ -978,7 +980,8 @@ grammar = do
           -- Grammar.List
           let parser expr = do
                 start <- P.state
-                items <- parseCollection "list item" "[" "," "]" syntaxErrorExpr Err expr
+                -- TODO: stop until operator or parseLineBreak
+                items <- parseCollection "list item" "[" "," "]" parseLineBreak syntaxErrorExpr Err expr
                 end <- P.state
                 _ <- P.spaces
                 return (withLoc start end $ List items)
@@ -1214,7 +1217,7 @@ grammar = do
             Op2 Pow a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Op1.Nop
-          G.prefix 19 (const id) "|" $ \case
+          G.prefix 1 (const id) "|" $ \case
             _ -> Nothing,
           -- Grammar.Op1.Neg
           G.prefix 19 (locOp1 Neg) "-" $ \case
@@ -1228,7 +1231,8 @@ grammar = do
           let parser a expr = do
                 _ <- P.whitespaces
                 start <- P.state
-                args <- parseCollection "function argument" "(" "," ")" syntaxErrorExpr Err (parseExpr 0)
+                -- TODO: stop until operator or parseLineBreak
+                args <- parseCollection "function argument" "(" "," ")" parseLineBreak syntaxErrorExpr Err (parseExpr 0)
                 end <- P.state
                 _ <- P.spaces
                 return (withLoc start end $ app a args)
@@ -1273,7 +1277,8 @@ grammar = do
                 _ <- P.spaces
                 args <-
                   P.maybe' $ do
-                    args <- parseCollection "method argument" "(" "," ")" syntaxErrorExpr Err (parseExpr 0)
+                    -- TODO: stop until operator or parseLineBreak
+                    args <- parseCollection "method argument" "(" "," ")" parseLineBreak syntaxErrorExpr Err (parseExpr 0)
                     _ <- P.spaces
                     return args
                 _ <- P.spaces
@@ -1302,7 +1307,8 @@ grammar = do
                   P.oneOf
                     [ do
                         _ <- P.whitespaces
-                        args <- parseCollection "builtin call argument" "(" "," ")" syntaxErrorExpr Err expr
+                        -- TODO: stop until operator or parseLineBreak
+                        args <- parseCollection "builtin call argument" "(" "," ")" parseLineBreak syntaxErrorExpr Err expr
                         _ <- P.spaces
                         return args,
                       return []
@@ -1825,7 +1831,7 @@ parseImport = do
   names <-
     P.oneOf
       [ do
-          parseCollection "imported name" "(" "," ")" (\err -> error "TODO: parseImport error handling") ("", "") $ do
+          parseCollection "imported name" "(" "," ")" parseLineBreak (\err -> error "TODO: parseImport error handling") ("", "") $ do
             name <- parseName
             _ <- P.spaces
             alias <-
@@ -1883,11 +1889,15 @@ parseMut = do
 
 parseTest :: Parser Stmt
 parseTest = do
-  name <- P.oneOf [parseCommentSingleLine, return ""]
+  maybeName <- P.maybe' $ do
+    _ <- P.char '#'
+    name <- P.textUntil (P.char '\n')
+    _ <- P.whitespaces
+    return (trim name)
   s <- P.state
   _ <- P.commit "test" (P.char '>')
   _ <- P.zeroOrMore P.space
-  expr <- parseExprUntil "expression" 0 (P.oneOf [() <$ P.text "~", () <$ parseExprStart, parseLineBreak])
+  expr <- parseExprUntil "expression" 0 (P.oneOf [() <$ P.text "~", () <$ parseExprStart, endOfStmt])
   expect <-
     P.oneOf
       [ do
@@ -1902,19 +1912,21 @@ parseTest = do
         return (tag "True")
       ]
   let path = s.filename ++ ":" ++ show s.pos
-  let name' = if name /= "" then name else show (dropMeta expr)
-  return (Test (path ++ ": " ++ name') expr expect)
+  let name = case maybeName of
+        Just name -> name
+        Nothing -> show (dropMeta expr)
+  return (Test (path ++ ": " ++ name) expr expect)
 
 parseTypeDef :: Parser Stmt
 parseTypeDef = do
   _ <- P.commit "type definition" $ P.word "type"
   _ <- P.whitespaces
-  name <- parseNameUntil "name" parseNameTag (P.oneOf [P.charOf "(="])
+  name <- parseNameUntil "name" parseNameTag (P.charOf "(=")
   _ <- P.whitespaces
   args <-
     P.oneOf
       [ do
-          args <- parseCollection "argument" "(" "," ")" syntaxErrorExpr Err (parseExpr 0)
+          args <- parseCollection "argument" "(" "," ")" (P.char '=') syntaxErrorExpr Err (parseExpr 0)
           _ <- P.whitespaces
           return args,
         return []

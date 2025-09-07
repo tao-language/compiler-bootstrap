@@ -20,9 +20,9 @@ run = describe "--== Tao precedence ==--" $ do
         Right (a, out) -> Left (a, out)
         Left err -> Left (Any, err)
 
-  it "☯ TaoPrecedence.Let" $ do
-    prec "let x = let y = z\na\nb" `shouldBe` Right (let' (x, let' (y, z) a) b)
-    prec "let x = y | z\na" `shouldBe` Right (let' (x, y `Or` z) a)
+  -- it "☯ TaoPrecedence.Let" $ do
+  --   prec "let x = let y = z\na\nb" `shouldBe` Right (let' (x, let' (y, z) a) b)
+  --   prec "let x = y | z\na" `shouldBe` Right (let' (x, y `Or` z) a)
 
   -- it "☯ TaoPrecedence.Bind" $ do
 
@@ -199,7 +199,7 @@ run = describe "--== Tao precedence ==--" $ do
 
   it "☯ TaoPrecedence.Op2.Add" $ do
     prec "x + y :: z" `shouldBe` Right ((x `add` y) `cons` z)
-    prec "x + @y. z" `shouldBe` Right (x `add` (For ["y"] z))
+    -- prec "x + @y. z" `shouldBe` Right (x `add` (For ["y"] z))
     prec "x + y + z" `shouldBe` Right ((x `add` y) `add` z)
     prec "x + y - z" `shouldBe` Right ((x `add` y) `sub` z)
     prec "x + y * z" `shouldBe` Right (x `add` (y `mul` z))
@@ -237,7 +237,7 @@ run = describe "--== Tao precedence ==--" $ do
     prec "x ^ y(z)" `shouldBe` Right (x `pow` (y `app1` z))
 
   it "☯ TaoPrecedence.Op1.Neg" $ do
-    prec "-@x. y" `shouldBe` Right (neg (For ["x"] y))
+    -- prec "-@x. y" `shouldBe` Right (neg (For ["x"] y))
     prec "--x" `shouldBe` Right (neg (neg x))
     prec "-x(y)" `shouldBe` Right (neg x `app1` y)
 

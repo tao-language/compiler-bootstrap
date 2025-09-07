@@ -26,7 +26,7 @@ parse' text = case parse 0 filename text of
 
 parseCollection' :: String -> String -> String -> String -> String -> Either (String, String) ([Expr], String)
 parseCollection' msg open delim close text = do
-  let parser = parseCollection msg open delim close syntaxErrorExpr Err (parseExpr 0)
+  let parser = parseCollection msg open delim close parseLineBreak syntaxErrorExpr Err (parseExpr 0)
   case P.parse parser filename text of
     Right (xs, s) -> Right (xs, s.remaining)
     Left s -> Left (s.expected, s.remaining)
@@ -301,11 +301,11 @@ run = describe "--==☯ Tao ☯==--" $ do
 
   it "☯ Tao.Stmt.parser.Import" $ do
     let p = parseStmt'
-    p "import m " `shouldBe` Right (Import "m" "m" [], "")
-    p "import m as n " `shouldBe` Right (Import "m" "n" [], "")
-    p "import m (x) " `shouldBe` Right (Import "m" "m" [("x", "x")], "")
-    p "import m (x as y) " `shouldBe` Right (Import "m" "m" [("x", "y")], "")
-    p "import m (x, y) " `shouldBe` Right (Import "m" "m" [("x", "x"), ("y", "y")], "")
+    p "import m \n " `shouldBe` Right (Import "m" "m" [], "\n ")
+    p "import m as n \n " `shouldBe` Right (Import "m" "n" [], "\n ")
+    p "import m (x) \n " `shouldBe` Right (Import "m" "m" [("x", "x")], "\n ")
+    p "import m (x as y) \n " `shouldBe` Right (Import "m" "m" [("x", "y")], "\n ")
+    p "import m (x, y) \n " `shouldBe` Right (Import "m" "m" [("x", "x"), ("y", "y")], "\n ")
     -- TODO: Handle Meta on import names correctly.
     -- p "import $" `shouldBe` Right (Import "![syntax error]TaoTests:1:8,1:9: expected import module path, got \"$\"" "" [], "")
     -- p "import" `shouldBe` Right (Import "![syntax error]TaoTests:1:7: expected import module path, got \"\"" "" [], "")
@@ -313,54 +313,53 @@ run = describe "--==☯ Tao ☯==--" $ do
 
   it "☯ Tao.Stmt.parser.Let" $ do
     let p = parseStmt'
-    p "let x = y " `shouldBe` Right (Let (x 1 5) (y 1 9), "")
-    p "let $ = y " `shouldBe` Right (Let (Meta (syntaxErr 1 5 1 7 "definition" "pattern" "$ ") Err) (y 1 9), "")
-    p "let x $ y " `shouldBe` Right (Let (x 1 5) (Meta (syntaxErr 1 7 1 9 "definition" "'=' or '<-'" "$ ") (y 1 9)), "")
-    p "let x = $ " `shouldBe` Right (Let (x 1 5) (Meta (syntaxErr 1 9 1 11 "definition" "body" "$ ") Err), "")
+    p "let x = y \n " `shouldBe` Right (Let (x 1 5) (y 1 9), "\n ")
+    p "let $ = y \n " `shouldBe` Right (Let (Meta (syntaxErr 1 5 1 7 "definition" "pattern" "$ ") Err) (y 1 9), "\n ")
+    p "let x $ y \n " `shouldBe` Right (Let (x 1 5) (Meta (syntaxErr 1 7 1 9 "definition" "'=' or '<-'" "$ ") (y 1 9)), "\n ")
+    p "let x = $ \n " `shouldBe` Right (Let (x 1 5) (Meta (syntaxErr 1 9 1 11 "definition" "body" "$ ") Err), "\n ")
 
   it "☯ Tao.Stmt.parser.Bind" $ do
     let p = parseStmt'
-    p "let x <- y " `shouldBe` Right (Bind (x 1 5) (y 1 10), "")
-    p "let $ <- y " `shouldBe` Right (Bind (Meta (syntaxErr 1 5 1 7 "definition" "pattern" "$ ") Err) (y 1 10), "")
-    p "let x <$ y " `shouldBe` Right (Let (x 1 5) (Meta (syntaxErr 1 7 1 10 "definition" "'=' or '<-'" "<$ ") (y 1 10)), "")
-    p "let x <- $ " `shouldBe` Right (Bind (x 1 5) (Meta (syntaxErr 1 10 1 12 "definition" "body" "$ ") Err), "")
+    p "let x <- y \n " `shouldBe` Right (Bind (x 1 5) (y 1 10), "\n ")
+    p "let $ <- y \n " `shouldBe` Right (Bind (Meta (syntaxErr 1 5 1 7 "definition" "pattern" "$ ") Err) (y 1 10), "\n ")
+    p "let x <$ y \n " `shouldBe` Right (Let (x 1 5) (Meta (syntaxErr 1 7 1 10 "definition" "'=' or '<-'" "<$ ") (y 1 10)), "\n ")
+    p "let x <- $ \n " `shouldBe` Right (Bind (x 1 5) (Meta (syntaxErr 1 10 1 12 "definition" "body" "$ ") Err), "\n ")
 
   it "☯ Tao.Stmt.parser.Mut" $ do
     let p = parseStmt'
-    p "mut x = y " `shouldBe` Right (Mut (name 1 5 "x") (y 1 9), "")
-    p "mut $ = y " `shouldBe` Right (Mut (MetaName (syntaxErr 1 5 1 7 "mutate" "variable name" "$ ") (Name "")) (y 1 9), "")
-    p "mut x $ y " `shouldBe` Right (Mut (name 1 5 "x") (Meta (syntaxErr 1 7 1 9 "mutate" "'='" "$ ") (y 1 9)), "")
-    p "mut x = $ " `shouldBe` Right (Mut (name 1 5 "x") (Meta (syntaxErr 1 9 1 11 "mutate" "body" "$ ") Err), "")
+    p "mut x = y \n " `shouldBe` Right (Mut (name 1 5 "x") (y 1 9), "\n ")
+    p "mut $ = y \n " `shouldBe` Right (Mut (MetaName (syntaxErr 1 5 1 7 "mutate" "variable name" "$ ") (Name "")) (y 1 9), "\n ")
+    p "mut x $ y \n " `shouldBe` Right (Mut (name 1 5 "x") (Meta (syntaxErr 1 7 1 9 "mutate" "'='" "$ ") (y 1 9)), "\n ")
+    p "mut x = $ \n " `shouldBe` Right (Mut (name 1 5 "x") (Meta (syntaxErr 1 9 1 11 "mutate" "body" "$ ") Err), "\n ")
 
   it "☯ Tao.Stmt.parser.Test" $ do
     let p = parseStmt'
-    p "> x ~> y " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (y 1 8), "")
-    p "> $ ~> y " `shouldBe` Right (Test "TaoTests:1:1: !error" (Meta (syntaxErr 1 3 1 5 "test" "expression" "$ ") Err) (y 1 8), "")
-    p "> x ~$ y " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (Meta (syntaxErr 1 5 1 8 "test" "'~>'" "~$ ") (y 1 8)), "")
-    p "> x ~> $ " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (Meta (syntaxErr 1 8 1 10 "test" "result" "$ ") Err), "")
-    p "> x \ny " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (y 2 1), "")
-    p "> $ \ny " `shouldBe` Right (Test "TaoTests:1:1: !error" (Meta (syntaxErr 1 3 1 5 "test" "expression" "$ ") Err) (y 2 1), "")
-    p "> x \n$ " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (Tag "True" []), "$ ")
+    p "> x ~> y \n " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (y 1 8), "\n ")
+    p "> $ ~> y \n " `shouldBe` Right (Test "TaoTests:1:1: !error" (Meta (syntaxErr 1 3 1 5 "test" "expression" "$ ") Err) (y 1 8), "\n ")
+    p "> x ~$ y \n " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (Meta (syntaxErr 1 5 1 8 "test" "'~>'" "~$ ") (y 1 8)), "\n ")
+    p "> x ~> $ \n " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (Meta (syntaxErr 1 8 1 10 "test" "result" "$ ") Err), "\n ")
+    p "> x \ny \n " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (y 2 1), "\n ")
+    p "> $ \ny \n " `shouldBe` Right (Test "TaoTests:1:1: !error" (Meta (syntaxErr 1 3 1 5 "test" "expression" "$ ") Err) (y 2 1), "\n ")
+    p "> x \n$ \n " `shouldBe` Right (Test "TaoTests:1:1: x" (x 1 3) (Tag "True" []), "\n$ \n ")
 
-  it "☯ Tao.Stmt.parser.Test" $ do
+  it "☯ Tao.Stmt.parser.TypeDef" $ do
     let p = parseStmt'
-    p "type T = x " `shouldBe` Right (TypeDef (name 1 6 "T") [] (x 1 10), "")
-    p "type $ = x " `shouldBe` Right (TypeDef (MetaName (syntaxErr 1 6 1 8 "type definition" "type name" "$ ") (Name "")) [] (x 1 10), "")
-    p "type T $ = x " `shouldBe` Right (TypeDef (MetaName (syntaxErr 1 8 1 10 "type definition" "" "$ ") $ name 1 6 "T") [] (x 1 12), "")
-    p "type T $ x " `shouldBe` Right (TypeDef (name 1 6 "T") [] (Meta (syntaxErr 1 8 1 10 "type definition" "'='" "$ ") (x 1 10)), "")
-    p "type T() = x " `shouldBe` Right (TypeDef (name 1 6 "T") [] (x 1 12), "")
-    p "type T($ = x " `shouldBe` Right (TypeDef (name 1 6 "T") [] (Meta (syntaxErr 1 7 1 7 "type definition" "'='" "") $ Meta (syntaxErr 1 7 1 14 "type definition" "body" "($ = x ") Err), "")
-    p "type T<>() = x " `shouldBe` Right (TypeDef (MetaName (syntaxErr 1 7 1 9 "type definition" "" "<>") $ name 1 6 "T") [] (x 1 14), "")
-    p "type T(x) = y " `shouldBe` Right (TypeDef (name 1 6 "T") [x 1 8] (y 1 13), "")
-    p "type T(x,) = y " `shouldBe` Right (TypeDef (name 1 6 "T") [x 1 8] (y 1 14), "")
-    p "type T(x, y) = z " `shouldBe` Right (TypeDef (name 1 6 "T") [x 1 8, y 1 11] (z 1 16), "")
+    p "type T = x \n " `shouldBe` Right (TypeDef (name 1 6 "T") [] (x 1 10), "\n ")
+    p "type $ = x \n " `shouldBe` Right (TypeDef (MetaName (syntaxErr 1 6 1 8 "type definition" "name" "$ ") (Name "")) [] (x 1 10), "\n ")
+    p "type T $ = x \n " `shouldBe` Right (TypeDef (MetaName (syntaxErr 1 8 1 10 "type definition" "" "$ ") $ name 1 6 "T") [] (x 1 12), "\n ")
+    p "type T $ x \n " `shouldBe` Right (TypeDef (name 1 6 "T") [] (Meta (syntaxErr 1 8 1 10 "type definition" "'='" "$ ") (x 1 10)), "\n ")
+    p "type T() = x \n " `shouldBe` Right (TypeDef (name 1 6 "T") [] (x 1 12), "\n ")
+    p "type T($ = x \n " `shouldBe` Right (TypeDef (name 1 6 "T") [Meta (syntaxErr 1 8 1 10 "type definition" "closing ')'" "$ ") Err] (x 1 12), "\n ")
+    p "type T<>() = x \n " `shouldBe` Right (TypeDef (MetaName (syntaxErr 1 7 1 9 "type definition" "" "<>") $ name 1 6 "T") [] (x 1 14), "\n ")
+    p "type T(x) = y \n " `shouldBe` Right (TypeDef (name 1 6 "T") [x 1 8] (y 1 13), "\n ")
+    p "type T(x,) = y \n " `shouldBe` Right (TypeDef (name 1 6 "T") [x 1 8] (y 1 14), "\n ")
+    p "type T(x, y) = z \n " `shouldBe` Right (TypeDef (name 1 6 "T") [x 1 8, y 1 11] (z 1 16), "\n ")
 
   it "☯ Tao.Stmt.parser.Errors" $ do
     let p = parseStmt'
     p "" `shouldBe` Left ("", "")
     p "$ " `shouldBe` Right (Nop (syntaxErr 1 1 1 3 "" "statement" "$ "), "")
-    p "$ \n " `shouldBe` Right (Nop (syntaxErr 1 1 1 3 "" "statement" "$ "), "")
-    p "$ \n$$ " `shouldBe` Right (Nop (syntaxErr 1 1 1 3 "" "statement" "$ "), "$$ ")
+    p "$ \n " `shouldBe` Right (Nop (syntaxErr 1 1 1 3 "" "statement" "$ "), "\n ")
 
   it "☯ Tao.Module.parser" $ do
     let p = parseModule'
@@ -475,7 +474,7 @@ run = describe "--==☯ Tao ☯==--" $ do
     let ctx = []
     resolve ctx "m1" ("x", Let x y) `shouldBe` [("m1", y)]
     resolve ctx "m1" ("x", Let y z) `shouldBe` []
-    resolve ctx "m1" ("x", TypeDef (Name "x") [] y) `shouldBe` [("m1", Fun (Tuple []) y)]
+    resolve ctx "m1" ("A", TypeDef (Name "A") [] y) `shouldBe` [("m1", Fun (Tuple []) (Fun y (Tag "A" [])))]
     resolve ctx "m1" ("x", Test "name" y z) `shouldBe` []
 
     -- [Stmt]
