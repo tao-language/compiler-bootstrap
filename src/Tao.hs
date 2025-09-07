@@ -784,7 +784,7 @@ parseCollection msg open delim close catch err parser = do
   _ <- P.text open
   _ <- P.whitespaces
   items <- P.zeroOrMore $ do
-    x <- parseUntil msg (P.text delim) catch err (P.paddedR P.whitespaces parser)
+    x <- parseUntil msg (P.textOf [delim, close]) catch err (P.paddedR P.whitespaces parser)
     _ <- P.text delim
     _ <- P.whitespaces
     return x
