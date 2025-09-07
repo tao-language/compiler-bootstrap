@@ -28,7 +28,10 @@ instance Show TestResult where
   show :: TestResult -> String
   show result = case result of
     TestPass name -> "✅ " ++ name ++ "\n"
-    TestFail (name, test, expect) got -> "❌ " ++ name ++ "\n  > " ++ show (dropMeta test) ++ "\n  " ++ show (dropMeta expect) ++ "\n* " ++ show (dropMeta got) ++ "\n"
+    TestFail (name, test, expect) got -> do
+      let fmt = format 80 "    "
+      let errors = concatMap (\e -> show e ++ "\n") (check (Tuple [test, expect]))
+      errors ++ "❌ " ++ name ++ "\n  > " ++ fmt (dropMeta test) ++ "\n  " ++ fmt (dropMeta expect) ++ "\n* " ++ fmt (dropMeta got) ++ "\n"
 
 type UnitTest = (String, Expr, Pattern)
 
@@ -85,7 +88,7 @@ instance TestSome (FilePath, UnitTest) where
       -- TODO: Fix this, it's where type errors on tests get reported.
       --       Just check the result for any errors and mark it as failure.
       -- (_, C.Tag "Err" (C.Err e)) -> [TestFail filename pos name expr expect (lift (C.Err e))]
-      (C.Tag "Fail" got, _) -> [TestFail (name', dropMeta expr, dropMeta expect) (lift got)]
+      (C.Tag "Fail" got, _) -> [TestFail (name', expr, expect) (lift got)]
       -- (got, _) -> [TestFail filename pos name expr expect (lift got)]
       (got, ty) -> error ("Unreachable " ++ name' ++ "\ntest:\n" ++ show (C.Let env test') ++ "\ngot: " ++ show got ++ "\nt: " ++ show ty)
 

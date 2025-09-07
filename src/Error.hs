@@ -138,8 +138,8 @@ summary = \case
   SyntaxError (loc, committed, expected, got) -> do
     let context = case committed of
           "" -> ""
-          committed -> " while parsing " ++ committed
-    "Expected " ++ expected ++ context
+          committed -> " while parsing " ++ show committed
+    "Expected " ++ expected ++ context ++ "."
   e -> "TODO: summary"
 
 description :: (Show a) => Error a -> String

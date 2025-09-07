@@ -62,7 +62,7 @@ instance Format Expr where
 
 instance Show Expr where
   show :: Expr -> String
-  show = Tao.format 80 ""
+  show a = Tao.format 80 "" a
 
 type Type = Expr
 
@@ -608,7 +608,7 @@ instance Apply Expr where
     Call x args -> Call x (map f args)
     Op1 op a -> Op1 op (f a)
     Op2 op a b -> Op2 op (f a) (f b)
-    Do block -> Do (apply f block)
+    Do stmts -> Do (apply f stmts)
     Dot a x Nothing -> Dot (f a) x Nothing
     Dot a x (Just args) -> Dot (f a) x (Just (map f args))
     Spread a -> Spread (f a)
@@ -654,14 +654,19 @@ class DropMeta a where
 instance DropMeta Expr where
   dropMeta :: Expr -> Expr
   dropMeta = \case
-    -- Meta (C.Error e) a -> Meta (C.Error e) (dropMeta a)
+    Do stmts -> Do (dropMeta stmts)
     Meta _ a -> dropMeta a
-    -- Err e -> Err (fmap dropMeta e)
     a -> apply dropMeta a
 
 instance DropMeta Stmt where
   dropMeta :: Stmt -> Stmt
   dropMeta = apply dropMeta
+
+instance DropMeta [Stmt] where
+  dropMeta :: [Stmt] -> [Stmt]
+  dropMeta [] = []
+  dropMeta (Nop _ : stmts) = dropMeta stmts
+  dropMeta (stmt : stmts) = dropMeta stmt : dropMeta stmts
 
 instance DropMeta Module where
   dropMeta :: Module -> Module
@@ -992,7 +997,7 @@ grammar = do
                 _ -> Nothing,
           -- Grammar.Do
           let parser expr = do
-                _ <- P.commit "do" $ P.word "do"
+                _ <- P.commit "do-block" $ P.word "do"
                 _ <- P.whitespaces
                 _ <- P.char '{'
                 _ <- P.whitespaces
@@ -1003,7 +1008,7 @@ grammar = do
                 Do [] -> Just [PP.Text "do {}"]
                 Do stmts -> do
                   let stmts' = PP.join [PP.NewLine] (map layoutStmt stmts)
-                  Just [PP.Text "do {", PP.Indent (PP.NewLine : stmts'), PP.Text "}"]
+                  Just [PP.Text "do {", PP.Indent (PP.NewLine : stmts'), PP.NewLine, PP.Text "}"]
                 _ -> Nothing,
           -- Grammar.Let
           -- Grammar.Bind
@@ -1952,6 +1957,7 @@ instance Check Name where
 instance Check Expr where
   check :: Expr -> [Error Expr]
   check = \case
+    Do stmts -> check stmts
     Meta m a -> check m ++ check a
     a -> collect check a
 
@@ -1968,12 +1974,14 @@ instance Check Stmt where
     -- TODO check should verify the imported names exist
     Import {} -> []
     Let a b -> check a ++ check b
+    Bind a b -> check a ++ check b
     Run x args -> do
       -- TODO: check that x is defined
       concatMap check args
     Test name expr expect -> concatMap check [expr, expect]
     TypeDef name args body -> check name ++ concatMap check args ++ check body
     Nop m -> check m
+    stmt -> error $ "TODO: check: " ++ show (dropMeta stmt)
 
 instance (Check a) => Check [a] where
   check :: [a] -> [Error Expr]
