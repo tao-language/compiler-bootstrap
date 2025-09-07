@@ -241,11 +241,18 @@ keywords =
     "in",
     "is",
     "xor",
+    "do",
     "let",
     "if",
     "then",
     "else",
     "match",
+    "repeat",
+    "while",
+    "for",
+    "break",
+    "continue",
+    "return",
     "type",
     "with"
   ]
@@ -712,6 +719,22 @@ instance Collect Expr where
 instance Collect Stmt where
   collect :: (Eq a) => (Expr -> [a]) -> Stmt -> [a]
   collect f = \case
+    -- Import String String [(String, String)]
+    Let a b -> collect f a `union` collect f b
+    Bind a b -> collect f a `union` collect f b
+    -- Mut Name Expr
+    -- Run String [Expr]
+    -- Test String Expr Pattern
+    -- TypeDef Name [Expr] Expr
+    -- IfStmt Expr [Stmt] (Maybe [Stmt])
+    -- While Expr [Stmt]
+    -- Repeat [Stmt] Expr
+    -- ForStmt Pattern Expr [Stmt]
+    -- Break
+    -- Continue
+    -- Return Expr
+    -- Nop (C.Metadata Expr)
+    Nop m -> [] -- TODO?: collect f m
     stmt -> error $ "TODO: collect " ++ show stmt
 
 instance Collect [Stmt] where
@@ -795,6 +818,16 @@ layoutDecorator op match rhs a = do
   if length names > 3
     then Just (decorator : alt2)
     else Just [decorator, PP.Or alt1 alt2]
+
+layoutTrailing :: (String, String) -> (Expr -> Maybe (Expr, Expr)) -> (Expr -> PP.Layout) -> (Expr -> PP.Layout) -> Expr -> Maybe PP.Layout
+layoutTrailing (op1, op2) match lhs rhs a = do
+  (x, y) <- match a
+  let alt1 = lhs x ++ [PP.Text op1] ++ rhs y
+  let alt2 = lhs x ++ [PP.Text op2, PP.Indent (PP.NewLine : rhs y)]
+  return $
+    if isSimpleExpr x
+      then [PP.Or alt1 alt2]
+      else alt2
 
 layoutLeading :: (String, String) -> (Expr -> Maybe (Expr, Expr)) -> (Expr -> PP.Layout) -> (Expr -> PP.Layout) -> Expr -> Maybe PP.Layout
 layoutLeading (op1, op2) match lhs rhs a = do
@@ -909,6 +942,18 @@ grammar = do
                         Val a -> error "TODO: layout string interpolation"
                   Just ([PP.Text "'"] ++ concatMap layoutSegment segments ++ [PP.Text "'"])
                 _ -> Nothing,
+          -- Grammar.Do
+          let parser expr = do
+                _ <- P.commit "do" $ P.word "do"
+                _ <- P.whitespaces
+                _ <- P.char '{'
+                _ <- P.whitespaces
+                stmts <- parseStmts (P.char '}')
+                _ <- P.spaces
+                return (Do stmts)
+           in G.Atom parser $ \layout -> \case
+                Do stmts -> error "TODO: layout Do"
+                _ -> Nothing,
           -- Grammar.Let
           -- Grammar.Bind
           -- let parser expr = do
@@ -930,8 +975,8 @@ grammar = do
           --       -- Bind (a, b) c -> Just (PP.Text "let " : layout a ++ PP.Text " <- " : layout b ++ PP.NewLine : layout c)
           --       _ -> Nothing,
           -- Grammar.Ann
-          G.InfixR 1 (G.parserLeading ":" (loc2 Ann)) $ layoutLeading (" : ", ": ") $ \case
-            Ann a b -> Just (a, b)
+          G.InfixR 1 (G.parserTrailing ":" (loc2 Ann)) $ \lhs rhs -> \case
+            Ann a b -> Just (lhs a ++ PP.Text " : " : rhs b)
             _ -> Nothing,
           G.infixR 1 (loc2 Ann) ":" $ \case
             Ann a b -> Just (a, " ", b)
@@ -1103,6 +1148,9 @@ grammar = do
           G.infixR 18 (locOp2 Pow) "^" $ \case
             Op2 Pow a b -> Just (a, " ", b)
             _ -> Nothing,
+          -- Grammar.Op1.Nop
+          G.prefix 19 (const id) "|" $ \case
+            _ -> Nothing,
           -- Grammar.Op1.Neg
           G.prefix 19 (locOp1 Neg) "-" $ \case
             Op1 Neg a -> Just ("", a)
@@ -1113,6 +1161,7 @@ grammar = do
             _ -> Nothing,
           -- Grammar.App
           let parser a expr = do
+                _ <- P.whitespaces
                 start <- P.state
                 args <- parseCollection "function argument" "(" "," ")" syntaxErrorExpr (parseExpr 0)
                 end <- P.state
@@ -1181,13 +1230,13 @@ grammar = do
           let parser expr = do
                 start <- P.state
                 _ <- P.char '%'
-                -- _ <- P.commit "call"
                 f <- parseName
                 end <- P.state
                 _ <- P.spaces
                 args <-
                   P.oneOf
                     [ do
+                        _ <- P.whitespaces
                         args <- parseCollection "builtin call argument" "(" "," ")" syntaxErrorExpr expr
                         _ <- P.spaces
                         return args,
@@ -1469,7 +1518,7 @@ parseExpr = G.parser grammar
 
 parseLineBreak :: Parser ()
 parseLineBreak = do
-  _ <- P.oneOf [P.char '\n', P.char ';', '$' <$ P.endOfFile]
+  _ <- P.oneOf [() <$ P.charOf ['\n', ';'], P.endOfFile]
   _ <- P.whitespaces
   return ()
 
@@ -1625,11 +1674,23 @@ parseOpUntil op stop = do
       & P.recover (P.ok ()) (const id)
   return (handleErr1 . handleErr2)
 
+parseStmts :: Parser stop -> Parser [Stmt]
+parseStmts stop = do
+  stmts <- P.zeroOrMore $ do
+    stmt <- parseStmt
+    _ <- parseLineBreak
+    return stmt
+  last <- P.zeroOrOne parseStmt
+  _ <- P.whitespaces
+  err <-
+    ([] <$ stop)
+      & P.recover (P.textUntil stop) (\err -> [Nop (syntaxErrorMeta err)])
+  return (stmts ++ last ++ err)
+
 parseModule :: String -> Parser Module
 parseModule name = do
   _ <- P.whitespaces
-  stmts <- P.zeroOrMore parseStmt
-  _ <- P.endOfFile
+  stmts <- parseStmts P.endOfFile
   return (name, stmts)
 
 parseStmt :: Parser Stmt
@@ -1648,8 +1709,7 @@ parseStmt = do
         ]
   stmt <-
     P.expect "statement" (P.commitOneOf parsers)
-      & P.recover (P.textUntil parseLineBreak) syntaxErrorStmt
-  _ <- parseLineBreak
+      & P.recover (P.textUntil $ P.lookahead $ P.oneOf [parseLineBreak, () <$ P.char '}']) syntaxErrorStmt
   return stmt
 
 parseModulePath :: Parser String
@@ -1897,14 +1957,12 @@ buildOps = do
     intOp2 "int_sub" (\x y -> C.Int (x - y)),
     intOp2 "int_mul" (\x y -> C.Int (x * y)),
     intOp2 "int_div" (\x y -> C.Num (fromIntegral x / fromIntegral y)),
-    intOp2 "int_divi" (\x y -> C.Int (Prelude.div x y)),
     intOp2 "int_pow" (\x y -> C.Int (x ^ y)),
     numOp2 "num_lt" (\x y -> C.tag' (if x < y then "True" else "False")),
     numOp2 "num_add" (\x y -> C.Num (x + y)),
     numOp2 "num_sub" (\x y -> C.Num (x - y)),
     numOp2 "num_mul" (\x y -> C.Num (x * y)),
     numOp2 "num_div" (\x y -> C.Num (x / y)),
-    numOp2 "num_divi" (\x y -> C.Num (fromIntegral (floor (x / y)))),
     numOp2 "num_pow" (\x y -> C.Num (x ** y))
     ]
 

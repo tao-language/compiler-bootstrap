@@ -198,7 +198,8 @@ run = describe "--==☯ Tao ☯==--" $ do
   it "☯ Tao.grammar.parser.Ann" $ do
     parse' "x:y \n" `shouldBe` Right (ann 1 2 (x 1 1) (y 1 3), "\n")
     parse' "x : y : z \n" `shouldBe` Right (ann 1 3 (x 1 1) (ann 1 7 (y 1 5) (z 1 9)), "\n")
-    parse' "x\n:\ny \n" `shouldBe` Right (ann 2 1 (x 1 1) (y 3 1), "\n")
+    parse' "x\n:\ny \n" `shouldBe` Right (x 1 1, "\n:\ny \n")
+    parse' "x :\ny \n" `shouldBe` Right (ann 1 3 (x 1 1) (y 2 1), "\n")
 
   it "☯ Tao.grammar.parser.Or" $ do
     parse' "x|y \n" `shouldBe` Right (or' 1 2 (x 1 1) (y 1 3), "\n")
@@ -215,14 +216,14 @@ run = describe "--==☯ Tao ☯==--" $ do
     parse' "a(x) \n" `shouldBe` Right (loc 1 2 1 5 $ app (a 1 1) [x 1 3], "\n")
     parse' "a (x, y, z) \n" `shouldBe` Right (loc 1 3 1 12 $ app (a 1 1) [x 1 4, y 1 7, z 1 10], "\n")
     parse' "a(\nx\n,\ny\n,\n) \n" `shouldBe` Right (loc 1 2 6 2 $ app (a 1 1) [x 2 1, y 4 1], "\n")
-    parse' "a\n() \n" `shouldBe` Right (a 1 1, "\n() \n")
+    parse' "a\n() \n" `shouldBe` Right (loc 2 1 2 3 $ app (a 1 1) [], "\n")
 
   it "☯ Tao.grammar.parser.Call" $ do
     parse' "%f() \n" `shouldBe` Right (call 1 1 "f" [], "\n")
     parse' "%f(x) \n" `shouldBe` Right (call 1 1 "f" [x 1 4], "\n")
     parse' "%f (x, y, z) \n" `shouldBe` Right (call 1 1 "f" [x 1 5, y 1 8, z 1 11], "\n")
     parse' "%f(\nx\n,\ny\n,\n) \n" `shouldBe` Right (call 1 1 "f" [x 2 1, y 4 1], "\n")
-    parse' "%f\n() \n" `shouldBe` Right (call 1 1 "f" [], "\n() \n")
+    parse' "%f\n() \n" `shouldBe` Right (call 1 1 "f" [], "\n")
 
   it "☯ Tao.grammar.parser.Op1" $ do
     "" `shouldBe` ""
