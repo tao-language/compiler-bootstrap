@@ -193,7 +193,25 @@ data Stmt
   | Nop (C.Metadata Expr)
   deriving (Eq)
 
--- TODO: use layout to indent correctly
+layoutStmt :: Stmt -> PP.Layout
+layoutStmt = \case
+  -- Import String String [(String, String)]
+  Let a b -> [PP.Text "let ", PP.Indent (layout 0 a), PP.Text " = ", PP.Indent (layout 0 b)]
+  Bind a b -> [PP.Text "let ", PP.Indent (layout 0 a), PP.Text " <- ", PP.Indent (layout 0 b)]
+  -- Mut Name Expr
+  -- Run String [Expr]
+  -- Test String Expr Pattern
+  -- TypeDef Name [Expr] Expr
+  -- IfStmt Expr [Stmt] (Maybe [Stmt])
+  -- While Expr [Stmt]
+  -- Repeat [Stmt] Expr
+  -- ForStmt Pattern Expr [Stmt]
+  -- Break
+  -- Continue
+  -- Return Expr
+  Nop m -> [PP.Text ("!" ++ show m)]
+  stmt -> error $ "TODO: layoutStmt: " ++ show stmt
+
 instance Format Stmt where
   format :: Int -> String -> Stmt -> String
   format width indent = \case
@@ -206,8 +224,8 @@ instance Format Stmt where
             [] -> ""
             names -> " (" ++ intercalate ", " (map withAlias names) ++ ")"
       "import " ++ show path ++ alias' ++ names'
-    Let a b -> show a ++ " = " ++ show b
-    Bind a b -> show a ++ " <- " ++ show b
+    Let a b -> "let " ++ show a ++ " = " ++ show b
+    Bind a b -> "let " ++ show a ++ " <- " ++ show b
     Mut x a -> "mut " ++ show x ++ " = " ++ show a
     Run a args -> error "TODO: format Run"
     TypeDef name args body -> do
@@ -611,10 +629,20 @@ instance Apply Stmt where
   apply f = \case
     Import path alias names -> Import path alias names
     Let a b -> Let (f a) (f b)
+    Bind a b -> Bind (f a) (f b)
+    Mut x b -> Mut x (f b)
     Run x args -> Run x (map f args)
     Test name expr expect -> Test name (apply f expr) (apply f expect)
     TypeDef name args body -> TypeDef name (map f args) (f body)
+    -- IfStmt Expr [Stmt] (Maybe [Stmt])
+    -- While Expr [Stmt]
+    -- Repeat [Stmt] Expr
+    -- ForStmt Pattern Expr [Stmt]
+    -- Break
+    -- Continue
+    -- Return Expr
     Nop m -> Nop (fmap f m)
+    stmt -> error $ "TODO: apply " ++ show stmt
 
 instance Apply [Stmt] where
   apply :: (Expr -> Expr) -> [Stmt] -> [Stmt]
@@ -920,7 +948,7 @@ grammar = do
                         k -> "t'" ++ k ++ "'"
                   let showArgs = \case
                         [] -> []
-                        args -> layoutCollection "<" "," ">" (map rhs args)
+                        args -> layoutCollection "(" "," ")" (map rhs args)
                   Just (PP.Text (showTag k) : showArgs args)
                 _ -> Nothing,
           -- Grammar.Tuple
@@ -972,7 +1000,10 @@ grammar = do
                 _ <- P.spaces
                 return (Do stmts)
            in G.Atom parser $ \layout -> \case
-                Do stmts -> error "TODO: layout Do"
+                Do [] -> Just [PP.Text "do {}"]
+                Do stmts -> do
+                  let stmts' = PP.join [PP.NewLine] (map layoutStmt stmts)
+                  Just [PP.Text "do {", PP.Indent (PP.NewLine : stmts'), PP.Text "}"]
                 _ -> Nothing,
           -- Grammar.Let
           -- Grammar.Bind
@@ -1420,7 +1451,7 @@ instance Lower Expr where
       | otherwise -> C.Fun (lower a) (lower b)
     App a b -> C.App (lower a) (lower b)
     Call op args -> C.Call op (lower (Tuple args))
-    Do stmts -> lower (dropMeta $ desugarStmt stmts)
+    Do stmts -> lower (dropMeta $ desugarStmts stmts)
     -- Let (a, b) c | Just x <- varOf c, Just d <- lookup x (C.unpack (lower a, lower b)) -> d
     -- Let (a, b) c -> lower (App (Fun a c) b)
     Op1 Neg a -> lower (sub (Int 0) a)
@@ -1466,19 +1497,24 @@ desugarDef (Meta m a) b = do
   (Meta m a', b')
 desugarDef a b = (a, b)
 
-desugarStmt :: [Stmt] -> Expr
-desugarStmt [] = error "TODO: desugarStmt ([] : [Stmt])"
-desugarStmt (stmt : stmts) = case stmt of
+desugarStmts :: [Stmt] -> Expr
+desugarStmts [] = Err
+desugarStmts (stmt : stmts) = case stmt of
   -- Let a b | C.isApp (lower a) -> do
-  --   let ((a', b'), c) = (desugarDef a b, desugarStmt stmts)
+  --   let ((a', b'), c) = (desugarDef a b, desugarStmts stmts)
   --   error $ show (dropMeta a', dropMeta b', dropMeta c)
-  -- Let a b -> case (desugarDef a b, desugarStmt stmts) of
+  -- Let a b -> case (desugarDef a b, desugarStmts stmts) of
   --   ((a', b'), c) | Just x <- varOf a', Just x' <- varOf c, x == x' -> b'
   --   ((a', b'), c) -> App (Fun a' c) b'
   Let a b -> do
-    let ((a', b'), c) = (desugarDef a b, desugarStmt stmts)
+    let ((a', b'), c) = (desugarDef a b, desugarStmts stmts)
     App (Fun a' c) b'
+  Bind a b -> do
+    let c = desugarStmts stmts
+    App (Fun a c) b
   Return a -> a
+  Nop m -> Meta m (desugarStmts stmts)
+  _ -> error $ "TODO: desugarStmts " ++ show (dropMeta stmt)
 
 lift :: C.Expr -> Expr
 lift = \case
