@@ -10,11 +10,18 @@ import Stdlib (pad, slice)
 -- https://github.com/gleam-lang/gleam/blob/main/compiler-core/src/error.rs
 
 data Error a
-  = SyntaxError (Location, String, String)
-  | TypeError (TypeError a)
-  | CaseError (CaseError a)
+  = SyntaxError (Location, String, String, String) -- (loc, committed, expected, got)
+  | TypeError (Location, TypeError a)
+  | CaseError (Location, CaseError a)
   | RuntimeError (RuntimeError a)
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance (Show a) => Show (Error a) where
+  show :: Error a -> String
+  show (SyntaxError (loc, committed, expected, got)) = "syntax-error[" ++ show loc ++ ": [" ++ committed ++ "] expected " ++ expected ++ ", got " ++ show got ++ "]"
+  show (TypeError (loc, e)) = "type-error[" ++ show loc ++ ": " ++ show e ++ "]"
+  show (CaseError (loc, e)) = "case-error[" ++ show loc ++ ": " ++ show e ++ "]"
+  show (RuntimeError e) = "runtime-error[" ++ show e ++ "]"
 
 data TypeError a
   = OccursError String a
@@ -43,14 +50,14 @@ instance Functor Error where
   fmap :: (a -> b) -> Error a -> Error b
   fmap f = \case
     SyntaxError e -> SyntaxError e
-    TypeError e -> case e of
-      OccursError x a -> occursError x (f a)
-      TypeMismatch a b -> typeMismatch (f a) (f b)
-      NotAFunction a t -> notAFunction (f a) (f t)
-      UndefinedVar x -> undefinedVar x
-    CaseError e -> case e of
-      MissingCases cases -> missingCases (map f cases)
-      RedundantCases cases -> redundantCases (map f cases)
+    TypeError (loc, e) -> case e of
+      OccursError x a -> occursError loc x (f a)
+      TypeMismatch a b -> typeMismatch loc (f a) (f b)
+      NotAFunction a t -> notAFunction loc (f a) (f t)
+      UndefinedVar x -> undefinedVar loc x
+    CaseError (loc, e) -> case e of
+      MissingCases cases -> missingCases loc (map f cases)
+      RedundantCases cases -> redundantCases loc (map f cases)
     RuntimeError e -> case e of
       UnhandledCase a b -> unhandledCase (f a) (f b)
       CannotApply a b -> cannotApply (f a) (f b)
@@ -59,12 +66,12 @@ instance Functor Error where
 mainExpr :: Error a -> Maybe a
 mainExpr = \case
   SyntaxError e -> Nothing
-  TypeError e -> case e of
+  TypeError (loc, e) -> case e of
     OccursError x a -> Just a
     TypeMismatch a b -> Just b
     NotAFunction a t -> Just a
     UndefinedVar x -> Nothing
-  CaseError e -> case e of
+  CaseError (loc, e) -> case e of
     MissingCases cases -> Nothing
     RedundantCases cases -> Nothing
   RuntimeError e -> case e of
@@ -72,29 +79,29 @@ mainExpr = \case
     CannotApply a b -> Just a
     CustomError a -> Just a
 
-occursError :: String -> a -> Error a
-occursError x a = TypeError (OccursError x a)
+occursError :: Location -> String -> a -> Error a
+occursError loc x a = TypeError (loc, OccursError x a)
 
-typeMismatch :: a -> a -> Error a
-typeMismatch a b = TypeError (TypeMismatch a b)
+typeMismatch :: Location -> a -> a -> Error a
+typeMismatch loc a b = TypeError (loc, TypeMismatch a b)
 
-typeInferError :: a -> Error a
-typeInferError a = TypeError (TypeInferError a)
+typeInferError :: Location -> a -> Error a
+typeInferError loc a = TypeError (loc, TypeInferError a)
 
-typeCheckError :: a -> a -> Error a
-typeCheckError a b = TypeError (TypeCheckError a b)
+typeCheckError :: Location -> a -> a -> Error a
+typeCheckError loc a b = TypeError (loc, TypeCheckError a b)
 
-notAFunction :: a -> a -> Error a
-notAFunction a t = TypeError (NotAFunction a t)
+notAFunction :: Location -> a -> a -> Error a
+notAFunction loc a t = TypeError (loc, NotAFunction a t)
 
-undefinedVar :: String -> Error a
-undefinedVar x = TypeError (UndefinedVar x)
+undefinedVar :: Location -> String -> Error a
+undefinedVar loc x = TypeError (loc, UndefinedVar x)
 
-missingCases :: [a] -> Error a
-missingCases cases = CaseError (MissingCases cases)
+missingCases :: Location -> [a] -> Error a
+missingCases loc cases = CaseError (loc, MissingCases cases)
 
-redundantCases :: [a] -> Error a
-redundantCases cases = CaseError (RedundantCases cases)
+redundantCases :: Location -> [a] -> Error a
+redundantCases loc cases = CaseError (loc, RedundantCases cases)
 
 unhandledCase :: a -> a -> Error a
 unhandledCase a b = RuntimeError (UnhandledCase a b)
@@ -105,10 +112,17 @@ cannotApply a b = RuntimeError (CannotApply a b)
 customError :: a -> Error a
 customError a = RuntimeError (CustomError a)
 
-summary :: (Show a) => Error a -> String
-summary = \case
+location :: Error a -> Maybe Location
+location = \case
+  SyntaxError (loc, _, _, _) -> Just loc
+  TypeError (loc, _) -> Just loc
+  CaseError (loc, _) -> Just loc
+  RuntimeError _ -> Nothing
+
+title :: (Show a) => Error a -> String
+title = \case
   SyntaxError _ -> "Syntax error"
-  TypeError e -> case e of
+  TypeError (loc, e) -> case e of
     OccursError {} -> "Occurs error"
     TypeMismatch {} -> "Type mismatch"
     NotAFunction {} -> "Not a function"
@@ -119,9 +133,18 @@ summary = \case
     CannotApply {} -> "Cannot apply"
     CustomError {} -> "User defined error"
 
+summary :: (Show a) => Error a -> String
+summary = \case
+  SyntaxError (loc, committed, expected, got) -> do
+    let context = case committed of
+          "" -> ""
+          committed -> " while parsing " ++ show committed
+    "Expected " ++ expected ++ context ++ "."
+  e -> "TODO: summary"
+
 description :: (Show a) => Error a -> String
 description = \case
-  TypeError e -> case e of
+  TypeError (loc, e) -> case e of
     OccursError x a -> show e
     TypeMismatch got expected ->
       "This expression is of type:\n  "
@@ -165,36 +188,37 @@ snippet loc src = do
           & zipWith (showLine . show) [loc.range.start.row + 1 ..]
   intercalate
     "\n"
-    ( (loc.filename ++ ":" ++ show loc.range.start.row ++ ":" ++ show loc.range.start.col)
+    ( (show (loc {range = loc.range {end = loc.range.start}}))
         : linesBefore
         ++ highlight
         ++ linesAfter
     )
 
-display :: (Show a) => (Maybe Location, Error a) -> IO ()
-display (mloc, err) = do
-  putStrLn (replicate 60 '-')
-  putStrLn ("🛑 " ++ summary err)
-  case mloc of
+display :: (Show a) => Error a -> IO ()
+display err = do
+  putStrLn ("==== " ++ title err ++ " " ++ replicate (60 - length (title err)) '=')
+  putStrLn ""
+  putStrLn ("❌ " ++ summary err)
+  putStrLn ""
+  case location err of
     Nothing -> return ()
     Just loc -> do
       src <- readFile loc.filename
-      putStrLn ""
       putStrLn (snippet loc src)
+      putStrLn ""
   case description err of
     "" -> return ()
     description -> do
-      putStrLn ""
       putStrLn description
+      putStrLn ""
   case suggestion err of
     "" -> return ()
     suggestion -> do
-      putStrLn ""
       putStrLn suggestion
+      putStrLn ""
   case docsUrl err of
     "" -> return ()
     url -> do
-      putStrLn ""
       putStrLn "For more information about this error, see:"
       putStrLn ("  " ++ url)
-  putStrLn ""
+      putStrLn ""

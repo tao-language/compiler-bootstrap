@@ -26,8 +26,8 @@ let map-error(r, f) = match r {
 : (Result(a, e), a -> b) -> Result(b, e)
 let (<-) = map
 
-> let x <- Ok(1); A(x) ~> Ok(A(1))
-> let x <- Err(0); A(x) ~> Err(0)
+> do {let x <- Ok(1); return A(x)} ~> Ok(A(1))
+> do {let x <- Err(0); return A(x)} ~> Err(0)
 
 : (Result(a, e), a) -> a
 let r or y = match r {

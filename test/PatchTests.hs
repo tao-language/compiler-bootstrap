@@ -19,7 +19,7 @@ run = describe "--==☯ PatchTests ☯==--" $ do
     plan steps ["examples/patch:constant", "examples/patch:imports"] `shouldReturn` (steps ++ [(["constant"], [(i1, i2)]), (["imports", "constant"], [(i1, i2)]), (["imports"], [(i2, i3)])])
 
   it "☯ applyPatch Expr" $ do
-    let ctx = [("mod", [def (x, i1)])]
+    let ctx = [("mod", [Let x i1])]
     let apply' rule = dropTypes . applyPatch (ctx, "mod", rule)
     apply' (x, y) x `shouldBe` y
     apply' (x, y) z `shouldBe` z -- Err (undefinedVar "z")
@@ -31,7 +31,7 @@ run = describe "--==☯ PatchTests ☯==--" $ do
   -- apply' (x, y) i2 `shouldBe` i2
 
   it "☯ applyPatch Stmt" $ do
-    let ctx = [("mod", [def (x, i1)])]
+    let ctx = [("mod", [Let x i1])]
     let apply' rule = applyPatch (ctx, "mod", [rule])
     -- apply' (x, y) (def (x, x)) `shouldBe` Def (x, Ann y Any)
     () `shouldBe` () -- TODO

@@ -106,7 +106,11 @@ testCmd :: FilePath -> [String] -> IO ()
 testCmd path patterns = do
   pkg <- load [path]
   ctx <- include "prelude" pkg
-  -- TODO: display errors
+  case check ctx of
+    [] -> return ()
+    syntaxErrors -> do
+      mapM_ display syntaxErrors
+      exitFailure
   let results = testAll ctx pkg
   mapM_ (putStr . show) results
   let (failures, total) = count results

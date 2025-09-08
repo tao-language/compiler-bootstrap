@@ -452,11 +452,11 @@ buildModule options ctx path = do
       return ([], [], [])
 
   -- Source file
-  (emit options (imports ++ map T.Def defs) :: [Stmt])
-    & Module path
-    & layout
-    & pretty options
-    & writeFile (path' ++ ".py")
+  -- (emit options (imports ++ map T.LetDef defs) :: [Stmt])
+  --   & Module path
+  --   & layout
+  --   & pretty options
+  --   & writeFile (path' ++ ".py")
 
   -- Test file
   error "TODO: buildModule tests"
@@ -490,11 +490,11 @@ instance Emit T.Expr ([Stmt], Expr) where
   emit :: BuildOptions -> T.Expr -> ([Stmt], Expr)
   emit options = \case
     T.Any -> ([], None)
-    T.IntT -> ([], Name "int")
-    T.NumT -> ([], Name "float")
     T.Int i -> ([], Integer i)
     T.Num n -> ([], Float n)
     T.Tag "Bool" [] -> ([], Name "bool")
+    T.Tag "Int" [] -> ([], Name "int")
+    T.Tag "Num" [] -> ([], Name "float")
     T.Tag "True" [] -> ([], Bool True)
     T.Tag "False" [] -> ([], Bool False)
     T.Tag k [] -> ([], Tuple [String k])
@@ -689,25 +689,25 @@ instance Emit T.Stmt [Stmt] where
       let alias' = if path == alias || ('/' : alias) `isSuffixOf` path then Nothing else Just alias
       [Import path' alias' | alias `notElem` map snd names]
         ++ [ImportFrom path' (map nameAlias names) | names /= []]
-    T.Def def -> emit options def
-    T.Test t -> do
-      let (s1, a') = emit options t.expr
-      let (s2, b') = emit options t.expect -- TODO: do a match instead
-      let def =
-            FunctionDef
-              { name = "test_" ++ Name.snakeCase t.name,
-                args = [("self", Nothing, Nothing)],
-                body =
-                  [ Assign [Name "actual"] a',
-                    Assign [Name "expect"] b',
-                    Assign [] (Call (Attribute (Name "self") "assertEqual") [Name "actual", Name "expect"] [])
-                  ],
-                decorators = [],
-                returns = Nothing,
-                typeParams = [],
-                async = False
-              }
-      s1 ++ s2 ++ [def]
+    -- T.LetDef def -> emit options def
+    -- T.Test t -> do
+    --   let (s1, a') = emit options t.expr
+    --   let (s2, b') = emit options t.expect -- TODO: do a match instead
+    --   let def =
+    --         FunctionDef
+    --           { name = "test_" ++ Name.snakeCase t.name,
+    --             args = [("self", Nothing, Nothing)],
+    --             body =
+    --               [ Assign [Name "actual"] a',
+    --                 Assign [Name "expect"] b',
+    --                 Assign [] (Call (Attribute (Name "self") "assertEqual") [Name "actual", Name "expect"] [])
+    --               ],
+    --             decorators = [],
+    --             returns = Nothing,
+    --             typeParams = [],
+    --             async = False
+    --           }
+    --   s1 ++ s2 ++ [def]
     stmt -> error $ "TODO: emit Stmt: " ++ show stmt
 
 instance Emit [T.Stmt] [Stmt] where

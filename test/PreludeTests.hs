@@ -27,9 +27,9 @@ instance (Show a) => Show (Result a) where
 test :: Context -> Package -> [String]
 test ctx pkg = do
   let failed = \case
-        TestPass {name} -> Nothing
-        TestFail {filename, pos, name, expected, got} -> do
-          Just (filename ++ ":" ++ show pos.row ++ ":" ++ show pos.col ++ ": " ++ name ++ "\n" ++ show expected ++ "\n" ++ show got ++ "\n")
+        TestPass name -> Nothing
+        TestFail (name, _, expected) got -> do
+          Just (name ++ "\n" ++ show expected ++ "\n" ++ show got ++ "\n")
   filterMap failed (testAll ctx pkg)
 
 run :: SpecWith ()

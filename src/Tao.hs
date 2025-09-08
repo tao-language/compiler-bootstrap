@@ -3,7 +3,7 @@ module Tao where
 import Control.Monad (void)
 import qualified Core as C
 import Data.Bifunctor (Bifunctor (bimap, second))
-import Data.Char (chr, isAlphaNum, isSpace, ord)
+import Data.Char (chr, isAlphaNum, isDigit, isLetter, isPunctuation, isSpace, ord)
 import Data.Either (fromRight)
 import Data.Function ((&))
 import Data.List (delete, dropWhileEnd, intercalate, intersect, isPrefixOf, sort, union, unionBy, (\\))
@@ -11,43 +11,42 @@ import Data.Maybe (fromMaybe)
 import Data.Sort (uniqueSort)
 import Debug.Trace (trace)
 import Error
-import Grammar as G
+import qualified Grammar as G
 import Location (Location (Location), Position (Pos), Range (Range))
+import Parser (Parser)
 import qualified Parser as P
 import qualified PrettyPrint as PP
-import Stdlib (distinct, lookupValue, split)
+import Stdlib (distinct, lookupValue, split, trim, unionMap)
 import System.FilePath (dropTrailingPathSeparator, splitFileName, takeBaseName)
 
-type Parser a = P.Parser String a
+class Format a where
+  format :: Int -> String -> a -> String
 
 data Expr
   = Any
-  | IntT
-  | NumT
   | Int Int
   | Num Double
   | Char Char
   | Var String
   | Tag String [Expr]
-  | Ann Expr Type
   | Tuple [Expr]
   | List [Expr]
   | String [Segment]
-  | Or Expr Expr
   | For [String] Expr
+  | Ann Expr Type
+  | Or Expr Expr
   | Fun Pattern Expr
   | App Expr Expr
   | Call String [Expr]
   | Op1 Op1 Expr
   | Op2 Op2 Expr Expr
+  | Do [Stmt]
   | Dot Expr String (Maybe [Expr])
   | Spread Expr
   | Get Expr Expr
   | Slice Expr (Expr, Expr)
   | Match Expr [Expr]
   | MatchFun [Expr]
-  | Let (Pattern, Expr) Expr
-  | Bind (Pattern, Expr) Expr
   | Record [(String, Expr)]
   | Select Expr [(String, Expr)]
   | With Expr [(String, Expr)]
@@ -57,9 +56,13 @@ data Expr
   | Err
   deriving (Eq)
 
+instance Format Expr where
+  format :: Int -> String -> Expr -> String
+  format width indent = G.format grammar width ("  ", indent)
+
 instance Show Expr where
   show :: Expr -> String
-  show = Tao.format 80 ""
+  show a = Tao.format 80 "" a
 
 type Type = Expr
 
@@ -162,23 +165,91 @@ instance Show Op2 where
   show :: Op2 -> String
   show = showOp2
 
+data Name
+  = Name String
+  | MetaName (C.Metadata Expr) Name
+  deriving (Eq)
+
+instance Show Name where
+  show :: Name -> String
+  show (Name x) = show (Var x)
+  show (MetaName m x) = show (Meta m (Var $ show x))
+
 data Stmt
   = Import String String [(String, String)]
-  | Def (Pattern, Expr)
-  | TypeDef (String, [Expr], [(Expr, Maybe Type)])
-  | Test UnitTest
-  | Run Expr
-  | Comment String
-  deriving (Eq, Show)
+  | Let Pattern Expr
+  | Bind Pattern Expr
+  | Mut Name Expr
+  | Run String [Expr]
+  | Test String Expr Pattern
+  | TypeDef Name [Expr] Expr
+  | IfStmt Expr [Stmt] (Maybe [Stmt])
+  | While Expr [Stmt]
+  | Repeat [Stmt] Expr
+  | ForStmt Pattern Expr [Stmt]
+  | Break
+  | Continue
+  | Return Expr
+  | Nop (C.Metadata Expr)
+  deriving (Eq)
 
-data UnitTest = UnitTest
-  { filename :: FilePath,
-    pos :: Position,
-    name :: String,
-    expr :: Expr,
-    expect :: Pattern
-  }
-  deriving (Eq, Show)
+layoutStmt :: Stmt -> PP.Layout
+layoutStmt = \case
+  -- Import String String [(String, String)]
+  Let a b -> [PP.Text "let ", PP.Indent (layout 0 a), PP.Text " = ", PP.Indent (layout 0 b)]
+  Bind a b -> [PP.Text "let ", PP.Indent (layout 0 a), PP.Text " <- ", PP.Indent (layout 0 b)]
+  -- Mut Name Expr
+  -- Run String [Expr]
+  -- Test String Expr Pattern
+  -- TypeDef Name [Expr] Expr
+  -- IfStmt Expr [Stmt] (Maybe [Stmt])
+  -- While Expr [Stmt]
+  -- Repeat [Stmt] Expr
+  -- ForStmt Pattern Expr [Stmt]
+  -- Break
+  -- Continue
+  Return a -> PP.Text "return " : layout 0 a
+  Nop m -> [PP.Text ("!" ++ show m)]
+  stmt -> error $ "TODO: layoutStmt: " ++ show stmt
+
+instance Format Stmt where
+  format :: Int -> String -> Stmt -> String
+  format width indent = \case
+    Import path alias names -> do
+      let withAlias = \case
+            (name, alias) | name == alias -> name
+            (name, alias) -> name ++ " as " ++ alias
+      let alias' = withAlias (takeBaseName path, alias)
+      let names' = case names of
+            [] -> ""
+            names -> " (" ++ intercalate ", " (map withAlias names) ++ ")"
+      "import " ++ show path ++ alias' ++ names'
+    Let a b -> "let " ++ show a ++ " = " ++ show b
+    Bind a b -> "let " ++ show a ++ " <- " ++ show b
+    Mut x a -> "mut " ++ show x ++ " = " ++ show a
+    Run a args -> error "TODO: format Run"
+    Test name expr expect -> do
+      let name' = if name /= "" then "// " ++ name ++ "\n" else ""
+      let expect' = if expect == tag "True" then "" else "\n" ++ show expect
+      name' ++ "> " ++ show expr ++ expect'
+    TypeDef name args body -> do
+      let args' = if args == [] then "" else "(" ++ intercalate ", " (map show args) ++ ")"
+      "type " ++ show name ++ args' ++ " = " ++ show body
+    IfStmt cond then' else' -> error "TODO: format IfStmt"
+    While cond body -> error "TODO: format While"
+    Repeat body cond -> error "TODO: format Repeat"
+    ForStmt a b body -> error "TODO: format ForStmt"
+    Break -> error "TODO: format Break"
+    Continue -> error "TODO: format Continue"
+    Return a -> "return " ++ show a
+    Nop (C.Comments comments) ->
+      map (\c -> "// " ++ c) comments
+        & intercalate "\n"
+    Nop m -> "!nop[" ++ show m ++ "]"
+
+instance Show Stmt where
+  show :: Stmt -> String
+  show = format 80 ""
 
 type Module = (FilePath, [Stmt])
 
@@ -195,34 +266,31 @@ keywords =
     "in",
     "is",
     "xor",
+    "do",
     "let",
     "if",
     "then",
     "else",
     "match",
+    "repeat",
+    "while",
+    "for",
+    "break",
+    "continue",
+    "return",
     "type",
     "with"
   ]
 
 varOf :: Expr -> Maybe String
 varOf (Var x) = Just x
+varOf (Ann a _) = varOf a
 varOf (Meta _ a) = varOf a
 varOf _ = Nothing
 
 tupleOf :: Expr -> [Expr]
 tupleOf (Tuple items) = items
 tupleOf a = [a]
-
-isTuple :: Expr -> Bool
-isTuple = \case
-  Tuple _ -> True
-  Meta _ a -> isTuple a
-  _ -> False
-
-listOf :: Expr -> Maybe [Expr]
-listOf (List items) = Just items
-listOf (Meta _ a) = listOf a
-listOf _ = Nothing
 
 isOr :: Expr -> Bool
 isOr = \case
@@ -269,9 +337,11 @@ list' [] = tag "[]"
 list' [a] | Just a' <- spreadOf a = a'
 list' (a : bs) = Tag "::" [a, list' bs]
 
+let' :: (Pattern, Expr) -> Expr -> Expr
+let' (a, b) = lets [(a, b)]
+
 lets :: [(Pattern, Expr)] -> Expr -> Expr
-lets [] a = a
-lets (def : defs) a = Let def (lets defs a)
+lets defs a = Do ((map (\(a, b) -> Let a b) defs) ++ [Return a])
 
 isErr :: Expr -> Bool
 isErr = \case
@@ -291,11 +361,8 @@ isTest :: Stmt -> Bool
 isTest Test {} = True
 isTest _ = False
 
-def :: (Expr, Expr) -> Stmt
-def (a, b) = Def (a, b)
-
 asDef :: Stmt -> Maybe (Pattern, Expr)
-asDef (Def def) = Just def
+asDef (Let a b) = Just (a, b)
 asDef _ = Nothing
 
 -- Syntax sugar
@@ -361,6 +428,9 @@ orOf :: Expr -> [Expr]
 orOf = \case
   Err -> []
   Or a b -> a : orOf b
+  Meta m a -> case orOf a of
+    a : bs -> Meta m a : bs
+    bs -> bs
   a -> [a]
 
 lambda :: [Expr] -> Expr -> Expr
@@ -506,6 +576,17 @@ bound = \case
   Fun a b -> For [] (Fun (bound a) (bound b))
   a -> apply bound a
 
+isSimpleExpr :: Expr -> Bool
+isSimpleExpr = \case
+  For _ _ -> False
+  Or _ _ -> False
+  Fun _ _ -> False
+  Match _ _ -> False
+  MatchFun _ -> False
+  Do _ -> False
+  Meta _ a -> isSimpleExpr a
+  _ -> True
+
 -- Helper functions
 class Apply a where
   apply :: (Expr -> Expr) -> a -> a
@@ -514,8 +595,6 @@ instance Apply Expr where
   apply :: (Expr -> Expr) -> Expr -> Expr
   apply f = \case
     Any -> Any
-    IntT -> IntT
-    NumT -> NumT
     Int i -> Int i
     Num n -> Num n
     Char c -> Char c
@@ -536,6 +615,7 @@ instance Apply Expr where
     Call x args -> Call x (map f args)
     Op1 op a -> Op1 op (f a)
     Op2 op a b -> Op2 op (f a) (f b)
+    Do stmts -> Do (apply f stmts)
     Dot a x Nothing -> Dot (f a) x Nothing
     Dot a x (Just args) -> Dot (f a) x (Just (map f args))
     Spread a -> Spread (f a)
@@ -543,8 +623,6 @@ instance Apply Expr where
     Slice a (b, c) -> Slice (f a) (f b, f c)
     Match arg cases -> Match (f arg) (map f cases)
     MatchFun cases -> MatchFun (map f cases)
-    Let (a, b) c -> Let (f a, f b) (f c)
-    Bind (a, b) c -> Bind (f a, f b) (f c)
     Record fields -> Record (second f <$> fields)
     Select a fields -> Select (f a) (second f <$> fields)
     With a fields -> With (f a) (second f <$> fields)
@@ -557,15 +635,25 @@ instance Apply Stmt where
   apply :: (Expr -> Expr) -> Stmt -> Stmt
   apply f = \case
     Import path alias names -> Import path alias names
-    Def (a, b) -> Def (f a, f b)
-    TypeDef (name, args, alts) -> TypeDef (name, map f args, map (bimap f (fmap f)) alts)
-    Test t -> Test (apply f t)
-    Run a -> Run (f a)
-    Comment x -> Comment x
+    Let a b -> Let (f a) (f b)
+    Bind a b -> Bind (f a) (f b)
+    Mut x b -> Mut x (f b)
+    Run x args -> Run x (map f args)
+    Test name a b -> Test name (f a) (f b)
+    TypeDef name args body -> TypeDef name (map f args) (f body)
+    -- IfStmt Expr [Stmt] (Maybe [Stmt])
+    -- While Expr [Stmt]
+    -- Repeat [Stmt] Expr
+    -- ForStmt Pattern Expr [Stmt]
+    -- Break
+    -- Continue
+    Return a -> Return (f a)
+    Nop m -> Nop (fmap f m)
+    stmt -> error $ "TODO: apply " ++ show stmt
 
-instance Apply UnitTest where
-  apply :: (Expr -> Expr) -> UnitTest -> UnitTest
-  apply f t = t {expr = f t.expr, expect = f t.expect}
+instance Apply [Stmt] where
+  apply :: (Expr -> Expr) -> [Stmt] -> [Stmt]
+  apply f = map (apply f)
 
 class DropMeta a where
   dropMeta :: a -> a
@@ -573,14 +661,19 @@ class DropMeta a where
 instance DropMeta Expr where
   dropMeta :: Expr -> Expr
   dropMeta = \case
-    Meta (C.Error e) a -> Meta (C.Error e) (dropMeta a)
+    Do stmts -> Do (dropMeta stmts)
     Meta _ a -> dropMeta a
-    -- Err e -> Err (fmap dropMeta e)
     a -> apply dropMeta a
 
 instance DropMeta Stmt where
   dropMeta :: Stmt -> Stmt
   dropMeta = apply dropMeta
+
+instance DropMeta [Stmt] where
+  dropMeta :: [Stmt] -> [Stmt]
+  dropMeta [] = []
+  dropMeta (Nop _ : stmts) = dropMeta stmts
+  dropMeta (stmt : stmts) = dropMeta stmt : dropMeta stmts
 
 instance DropMeta Module where
   dropMeta :: Module -> Module
@@ -620,59 +713,191 @@ instance DropTypes Stmt where
   dropTypes :: Stmt -> Stmt
   dropTypes = error "TODO: dropTypes Stmt"
 
-collect :: (Eq a) => (Expr -> [a]) -> Expr -> [a]
-collect f = \case
-  Any -> []
-  IntT -> []
-  NumT -> []
-  Int _ -> []
-  Num _ -> []
-  Char _ -> []
-  Var _ -> []
-  Tag _ args -> unionMap f args
-  Ann a b -> f a `union` f b
-  Tuple items -> unionMap f items
-  List items -> unionMap f items
-  String segments -> do
-    let collectSegment = \case
-          Str _ -> []
-          Val a -> f a
-    unionMap collectSegment segments
-  Or a b -> f a `union` f b
-  For _ a -> f a
-  Fun a b -> f a `union` f b
-  App a b -> f a `union` f b
-  Call _ args -> unionMap f args
-  Op1 op a -> f (Var (show op)) `union` f a
-  Op2 op a b -> f (Var (show op)) `union` f a `union` f b
-  Dot a _ Nothing -> f a
-  Dot a _ (Just args) -> f a `union` unionMap f args
-  Spread a -> f a
-  Get a b -> f a `union` f b
-  Slice a (b, c) -> f a `union` f b `union` f c
-  Match arg cases -> f arg `union` unionMap f cases
-  MatchFun cases -> unionMap f cases
-  Let (a, b) c -> f a `union` f b `union` f c
-  Bind (a, b) c -> f a `union` f b `union` f c
-  Record fields -> unionMap (f . snd) fields
-  Select a fields -> f a `union` unionMap (f . snd) fields
-  With a fields -> f a `union` unionMap (f . snd) fields
-  If a b -> f a `union` f b
-  IfElse a b c -> f a `union` f b `union` f c
-  Meta m a -> f a
-  Err -> []
-  where
-    unionMap f = foldr (union . f) []
+class Collect a where
+  collect :: (Eq b) => (Expr -> [b]) -> a -> [b]
 
-parse :: FilePath -> String -> Either (P.State String) (Expr, P.State String)
-parse = P.parse (parseExpr 0)
+instance Collect Expr where
+  collect :: (Eq a) => (Expr -> [a]) -> Expr -> [a]
+  collect f = \case
+    Any -> []
+    Int _ -> []
+    Num _ -> []
+    Char _ -> []
+    Var _ -> []
+    Tag _ args -> unionMap f args
+    Ann a b -> f a `union` f b
+    Tuple items -> unionMap f items
+    List items -> unionMap f items
+    String segments -> do
+      let collectSegment = \case
+            Str _ -> []
+            Val a -> f a
+      unionMap collectSegment segments
+    Or a b -> f a `union` f b
+    For _ a -> f a
+    Fun a b -> f a `union` f b
+    App a b -> f a `union` f b
+    Call _ args -> unionMap f args
+    Op1 op a -> f (Var (show op)) `union` f a
+    Op2 op a b -> f (Var (show op)) `union` f a `union` f b
+    Do block -> collect f block
+    Dot a _ Nothing -> f a
+    Dot a _ (Just args) -> f a `union` unionMap f args
+    Spread a -> f a
+    Get a b -> f a `union` f b
+    Slice a (b, c) -> f a `union` f b `union` f c
+    Match arg cases -> f arg `union` unionMap f cases
+    MatchFun cases -> unionMap f cases
+    Record fields -> unionMap (f . snd) fields
+    Select a fields -> f a `union` unionMap (f . snd) fields
+    With a fields -> f a `union` unionMap (f . snd) fields
+    If a b -> f a `union` f b
+    IfElse a b c -> f a `union` f b `union` f c
+    Meta m a -> f a
+    Err -> []
 
-format :: Int -> String -> Expr -> String
-format width indent = G.format grammar width ("  ", indent)
+instance Collect Stmt where
+  collect :: (Eq a) => (Expr -> [a]) -> Stmt -> [a]
+  collect f = \case
+    -- Import String String [(String, String)]
+    Let a b -> collect f a `union` collect f b
+    Bind a b -> collect f a `union` collect f b
+    -- Mut Name Expr
+    -- Run String [Expr]
+    -- Test String Expr Pattern
+    -- TypeDef Name [Expr] Expr
+    -- IfStmt Expr [Stmt] (Maybe [Stmt])
+    -- While Expr [Stmt]
+    -- Repeat [Stmt] Expr
+    -- ForStmt Pattern Expr [Stmt]
+    -- Break
+    -- Continue
+    -- Return Expr
+    -- Nop (C.Metadata Expr)
+    Nop m -> [] -- TODO?: collect f m
+    stmt -> error $ "TODO: collect " ++ show stmt
 
-grammar :: G.Grammar String Expr
+instance Collect [Stmt] where
+  collect :: (Eq b) => (Expr -> [b]) -> [Stmt] -> [b]
+  collect f = unionMap (collect f)
+
+locSpan :: P.State -> P.State -> Location
+locSpan start end = Location start.filename (Range start.pos end.pos)
+
+withLoc :: P.State -> P.State -> Expr -> Expr
+withLoc start end = Meta (C.Loc (locSpan start end))
+
+-- TODO: rename to parseExpr
+parse :: Int -> FilePath -> String -> Either P.State (Expr, P.State)
+parse prec = P.parse (G.parser grammar prec)
+
+-- TODO: rename to layoutExpr
+layout :: Int -> Expr -> PP.Layout
+layout prec = G.layout grammar prec
+
+syntaxErrorMeta :: (P.State, P.State, String) -> C.Metadata Expr
+syntaxErrorMeta (start, end, got) = do
+  let loc = Location start.filename (Range start.pos end.pos)
+  C.Error $ SyntaxError (loc, start.committed, start.expected, got)
+
+syntaxErrorName :: Name -> (P.State, P.State, String) -> Name
+syntaxErrorName name err@(_, _, txt) = MetaName (syntaxErrorMeta err) name
+
+syntaxErrorExpr :: Expr -> (P.State, P.State, String) -> Expr
+syntaxErrorExpr a err = Meta (syntaxErrorMeta err) a
+
+syntaxErrorStmt :: (P.State, P.State, String) -> Stmt
+syntaxErrorStmt err = Nop (syntaxErrorMeta err)
+
+parseUntil :: String -> Parser stop -> (a -> (P.State, P.State, String) -> a) -> a -> Parser a -> Parser a
+parseUntil expect stop catch err parser = do
+  x <-
+    P.expect expect parser
+      & P.recover (P.textUntil stop) (catch err)
+  _ <- P.spaces
+  handleErr <-
+    (id <$ P.lookahead stop)
+      & P.recover (P.textUntil stop) (\err a -> catch a err)
+      & P.recover (P.ok ()) (const id)
+  return (handleErr x)
+
+parseCollection :: String -> String -> String -> String -> P.Parser stop -> (a -> (P.State, P.State, String) -> a) -> a -> Parser a -> Parser [a]
+parseCollection msg open delim close stop catch err parser = do
+  _ <- P.text open
+  _ <- P.whitespaces
+  items <- P.zeroOrMore $ do
+    x <- parseUntil msg (P.textOf [delim, close]) catch err (P.paddedR P.whitespaces parser)
+    _ <- P.text delim
+    _ <- P.whitespaces
+    return x
+  last <- P.zeroOrOne $ do
+    x <- P.expect ("last " ++ msg) parser
+    _ <- P.whitespaces
+    return x
+  err <-
+    ([] <$ P.expect ("closing '" ++ close ++ "'") (P.text close))
+      & P.recover (P.textUntilIncluding $ P.textOf [")", "]", "}"]) (\e -> [catch err e])
+      & P.recover (P.textUntil stop) (\e -> [catch err e])
+  -- Do not parse trailing spaces to allow other parsers to get (start, end) locations.
+  return (items ++ last ++ err)
+
+layoutCollection :: String -> String -> String -> [PP.Layout] -> PP.Layout
+layoutCollection open _ close [] = [PP.Text (open ++ close)]
+layoutCollection open delim close xs = do
+  let alt1 = [PP.Indent (PP.join [PP.Text (delim ++ " ")] xs)]
+  let alt2 = [PP.Indent (PP.Text " " : PP.join [PP.Text delim, PP.NewLine] xs), PP.Text delim, PP.NewLine]
+  [PP.Text open, PP.Or alt1 alt2, PP.Text close]
+
+parserDecorator :: String -> ([String] -> Expr -> Expr) -> Parser Expr -> Parser Expr
+parserDecorator op f rhs = do
+  start <- P.state
+  _ <- P.text op
+  _ <- P.spaces
+  x <- parseNameVar
+  xs <- P.zeroOrMore $ do
+    _ <- P.spaces
+    parseNameVar
+  end <- P.state
+  _ <- P.spaces
+  _ <- P.oneOf [P.char '.', P.char '\n']
+  _ <- P.whitespaces
+  a <- rhs
+  _ <- P.spaces
+  return (withLoc start end $ f (x : xs) a)
+
+layoutDecorator :: String -> (a -> Maybe ([String], a)) -> (a -> PP.Layout) -> a -> Maybe PP.Layout
+layoutDecorator op match rhs a = do
+  (xs, a) <- match a
+  let names = unwords xs
+  let decorator = PP.Text (op ++ names)
+  let alt1 = PP.Text ". " : rhs a
+  let alt2 = PP.NewLine : rhs a
+  if length names > 3
+    then Just (decorator : alt2)
+    else Just [decorator, PP.Or alt1 alt2]
+
+layoutTrailing :: (String, String) -> (Expr -> Maybe (Expr, Expr)) -> (Expr -> PP.Layout) -> (Expr -> PP.Layout) -> Expr -> Maybe PP.Layout
+layoutTrailing (op1, op2) match lhs rhs a = do
+  (x, y) <- match a
+  let alt1 = lhs x ++ [PP.Text op1] ++ rhs y
+  let alt2 = lhs x ++ [PP.Text op2, PP.Indent (PP.NewLine : rhs y)]
+  return $
+    if isSimpleExpr x
+      then [PP.Or alt1 alt2]
+      else alt2
+
+layoutLeading :: (String, String) -> (Expr -> Maybe (Expr, Expr)) -> (Expr -> PP.Layout) -> (Expr -> PP.Layout) -> Expr -> Maybe PP.Layout
+layoutLeading (op1, op2) match lhs rhs a = do
+  (x, y) <- match a
+  let alt1 = lhs x ++ [PP.Text op1] ++ rhs y
+  let alt2 = lhs x ++ [PP.NewLine, PP.Text op2, PP.Indent (rhs y)]
+  return $
+    if isSimpleExpr x
+      then [PP.Or alt1 alt2]
+      else alt2
+
+grammar :: G.Grammar Expr
 grammar = do
-  let withLoc start end = Meta (C.Loc (Location start.filename (Range start.pos end.pos)))
   let loc0 f location _ = Meta (C.Loc location) f
   let loc1 f location x = Meta (C.Loc location) (f x)
   let loc2 f location x y = Meta (C.Loc location) (f x y)
@@ -685,14 +910,6 @@ grammar = do
           G.atom (loc0 Any) (P.word "_") $ \_ -> \case
             Any -> Just [PP.Text "_"]
             _ -> Nothing,
-          -- Grammar.IntT
-          G.atom (loc0 IntT) (P.word "Int") $ \_ -> \case
-            IntT -> Just [PP.Text "Int"]
-            _ -> Nothing,
-          -- Grammar.NumT
-          G.atom (loc0 NumT) (P.word "Num") $ \_ -> \case
-            NumT -> Just [PP.Text "Num"]
-            _ -> Nothing,
           -- Grammar.Int
           G.atom (loc1 Int) P.integer $ \_ -> \case
             Int i -> Just [PP.Text $ show i]
@@ -703,13 +920,13 @@ grammar = do
             _ -> Nothing,
           -- Grammar.Char
           let parser _ = do
-                start <- P.getState
+                start <- P.state
                 _ <- P.char 'c'
                 quote <- P.oneOf [P.char '\'', P.char '"']
-                _ <- P.commit "char"
+                -- _ <- P.commit "char"
                 ch <- P.anyChar
                 _ <- P.char quote
-                end <- P.getState
+                end <- P.state
                 _ <- P.spaces
                 return (withLoc start end $ Char ch)
            in G.Atom parser $ \_ -> \case
@@ -725,57 +942,63 @@ grammar = do
             _ -> Nothing,
           -- Grammar.Tag
           let parser expr = do
-                start <- P.getState
+                start <- P.state
                 k <- parseNameTag
-                end <- P.getState
-                _ <- P.spaces
-                args <- P.oneOf [parseCollection "(" "," ")" expr, return []]
+                end <- P.state
+                args <-
+                  P.oneOf
+                    [ do
+                        _ <- P.whitespaces
+                        -- TODO: stop until operator or parseLineBreak
+                        parseCollection "tag argument" "(" "," ")" parseLineBreak syntaxErrorExpr Err expr,
+                      return []
+                    ]
                 _ <- P.spaces
                 return (withLoc start end $ Tag k args)
-           in G.Atom parser $ \layout -> \case
+           in G.Atom parser $ \rhs -> \case
                 Tag k args -> do
                   let showTag = \case
                         "[]" -> "[]"
                         k | all (\c -> isAlphaNum c || c `elem` "_-$") k -> k
-                        k -> "(" ++ k ++ ")"
+                        k -> "t'" ++ k ++ "'"
                   let showArgs = \case
                         [] -> []
-                        args -> PP.Text "(" : (collectionLayout layout args) ++ [PP.Text ")"]
+                        args -> layoutCollection "(" "," ")" (map rhs args)
                   Just (PP.Text (showTag k) : showArgs args)
                 _ -> Nothing,
-          -- Grammar.Tuple.empty
+          -- Grammar.Tuple
           let parser expr = do
-                start <- P.getState
-                items <- parseCollection "(" "," ")" expr
-                end <- P.getState
+                start <- P.state
+                -- TODO: stop until operator or parseLineBreak
+                items <- parseCollection "tuple item" "(" "," ")" parseLineBreak syntaxErrorExpr Err expr
+                end <- P.state
                 _ <- P.spaces
                 return (withLoc start end $ Tuple items)
            in G.Atom parser $ \layout -> \case
-                Tuple items -> do
-                  Just (PP.Text "(" : collectionLayout layout items ++ [PP.Text ")"])
+                Tuple items -> Just (layoutCollection "(" "," ")" (map layout items))
                 _ -> Nothing,
           -- Grammar.List
           let parser expr = do
-                start <- P.getState
-                items <- parseCollection "[" "," "]" expr
-                end <- P.getState
+                start <- P.state
+                -- TODO: stop until operator or parseLineBreak
+                items <- parseCollection "list item" "[" "," "]" parseLineBreak syntaxErrorExpr Err expr
+                end <- P.state
                 _ <- P.spaces
                 return (withLoc start end $ List items)
            in G.Atom parser $ \layout -> \case
-                List items -> do
-                  Just (PP.Text "[" : collectionLayout layout items ++ [PP.Text "]"])
+                List items -> Just (layoutCollection "[" "," "]" (map layout items))
                 _ -> Nothing,
           -- Grammar.String
-          -- TODO: support string interpolation
           let parser expr = do
-                start <- P.getState
+                start <- P.state
                 quote <- P.oneOf [P.char '\'', P.char '"']
-                _ <- P.commit "string"
-                txt <- P.skipTo (P.char quote)
+                -- _ <- P.commit "string"
+                -- TODO: make and use a Char parser that accepts escape sequences like \' and \"
+                txt <- P.until' (P.char quote) P.anyChar
                 _ <- P.char quote
-                end <- P.getState
+                end <- P.state
                 _ <- P.spaces
-                let segments = [Str txt | txt /= ""]
+                let segments = [Str txt]
                 return (withLoc start end $ String segments)
            in G.Atom parser $ \layout -> \case
                 String segments -> do
@@ -784,30 +1007,45 @@ grammar = do
                         Val a -> error "TODO: layout string interpolation"
                   Just ([PP.Text "'"] ++ concatMap layoutSegment segments ++ [PP.Text "'"])
                 _ -> Nothing,
+          -- Grammar.Do
+          let parser expr = do
+                _ <- P.commit "do-block" $ P.word "do"
+                _ <- P.whitespaces
+                _ <- P.char '{'
+                _ <- P.whitespaces
+                stmts <- parseStmts (P.char '}')
+                _ <- P.spaces
+                return (Do stmts)
+           in G.Atom parser $ \layout -> \case
+                Do [] -> Just [PP.Text "do {}"]
+                Do stmts -> do
+                  let stmts' = PP.join [PP.NewLine] (map layoutStmt stmts)
+                  Just [PP.Text "do {", PP.Indent (PP.NewLine : stmts'), PP.NewLine, PP.Text "}"]
+                _ -> Nothing,
           -- Grammar.Let
           -- Grammar.Bind
-          let parser expr = do
-                start <- P.getState
-                _ <- P.word "let"
-                _ <- P.commit "let"
-                end <- P.getState
-                _ <- P.whitespaces
-                a <- parseExprUntil "let lhs" 0 ["=", "<-", ";", "\n", "~>"]
-                _ <- P.whitespaces
-                bind <-
-                  P.oneOf
-                    [ do _ <- P.char '='; return Let,
-                      do _ <- P.text "<-"; return Bind
-                    ]
-                _ <- P.whitespaces
-                b <- parseExprUntil "let rhs" 0 [";", "\n", "~>"]
-                _ <- parseLineBreak
-                withLoc start end . bind (a, b) <$> expr
-           in G.Atom parser $ \layout -> \case
-                Let (a, b) c -> Just (PP.Text "let " : layout a ++ PP.Text " = " : layout b ++ PP.NewLine : layout c)
-                Bind (a, b) c -> Just (PP.Text "let " : layout a ++ PP.Text " <- " : layout b ++ PP.NewLine : layout c)
-                _ -> Nothing,
+          -- let parser expr = do
+          --       start <- P.state
+          --       _ <- P.word "let"
+          --       -- _ <- P.commit "let"
+          --       end <- P.state
+          --       _ <- P.whitespaces
+          --       a <- expr
+          --       _ <- P.whitespaces
+          --       op <- P.oneOf [LetOp <$ P.char '=', BindOp <$ P.text "<-"]
+          --       _ <- P.whitespaces
+          --       b <- expr
+          --       _ <- parseLineBreak
+          --       c <- expr
+          --       return $ withLoc start end (Let (a, op, b) c)
+          --  in G.Atom parser $ \layout -> \case
+          --       Let (a, op, b) c -> Just (PP.Text "let " : layout a ++ PP.Text (" " ++ show op ++ " ") : layout b ++ PP.NewLine : layout c)
+          --       -- Bind (a, b) c -> Just (PP.Text "let " : layout a ++ PP.Text " <- " : layout b ++ PP.NewLine : layout c)
+          --       _ -> Nothing,
           -- Grammar.Ann
+          G.InfixR 1 (G.parserTrailing ":" (loc2 Ann)) $ \lhs rhs -> \case
+            Ann a b -> Just (lhs a ++ PP.Text " : " : rhs b)
+            _ -> Nothing,
           G.infixR 1 (loc2 Ann) ":" $ \case
             Ann a b -> Just (a, " ", b)
             _ -> Nothing,
@@ -820,8 +1058,8 @@ grammar = do
             Op2 PipeR a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Or
-          G.infixR 3 (loc2 Or) "|" $ \case
-            Or a b -> Just (a, " ", b)
+          G.InfixR 3 (G.parserLeading "|" (loc2 Or)) $ layoutLeading (" | ", "| ") $ \case
+            Or a b -> Just (a, b)
             _ -> Nothing,
           -- Grammar.Op2.ShiftL
           G.infixR 6 (locOp2 ShiftL) "<<" $ \case
@@ -832,15 +1070,15 @@ grammar = do
             Op2 ShiftR a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.Fun
-          G.infixR 8 (loc2 Fun) "->" $ \case
-            Fun a b -> Just (a, " ", b)
+          G.InfixR 8 (G.parserLeading "->" (loc2 Fun)) $ layoutLeading (" -> ", "->") $ \case
+            Fun a b -> Just (a, b)
             _ -> Nothing,
           -- Grammar.If
           let parser a expr = do
-                start <- P.getState
+                start <- P.state
                 _ <- P.word "if"
-                _ <- P.commit "if"
-                end <- P.getState
+                -- _ <- P.commit "if"
+                end <- P.state
                 _ <- P.spaces
                 b <- expr
                 return (withLoc start end $ If a b)
@@ -869,9 +1107,9 @@ grammar = do
             _ -> Nothing,
           -- Grammar.Op2.Lt
           let parser a expr = do
-                start <- P.getState
+                start <- P.state
                 _ <- P.char '<'
-                end <- P.getState
+                end <- P.state
                 _ <- P.lookaheadNot (P.char '-')
                 _ <- P.spaces
                 withLoc start end . Op2 Lt a <$> expr
@@ -891,33 +1129,9 @@ grammar = do
             Op2 Ge a b -> Just (a, " ", b)
             _ -> Nothing,
           -- Grammar.For
-          let prec = 14
-              parser expr = do
-                start <- P.getState
-                _ <- P.char '@'
-                _ <- P.commit "for"
-                xs <-
-                  P.oneOf
-                    [ do
-                        x <- parseNameVar
-                        _ <- P.spaces
-                        xs <- P.zeroOrMore $ do
-                          y <- parseNameVar
-                          _ <- P.spaces
-                          return y
-                        return (x : xs),
-                      return []
-                    ]
-                end <- P.getState
-                _ <- P.oneOf [P.char '.', P.char '\n']
-                _ <- P.whitespaces
-                a <- parseExpr prec
-                _ <- P.spaces
-                return (withLoc start end $ For xs a)
-           in G.Atom parser $ \layout -> \case
-                For xs a ->
-                  Just (PP.Text ('@' : unwords (map (show . Var) xs) ++ ". ") : G.layout grammar prec a)
-                _ -> Nothing,
+          G.Prefix 14 (parserDecorator "@" For) $ layoutDecorator "@" $ \case
+            For xs a -> Just (xs, a)
+            _ -> Nothing,
           -- Grammar.Op2.As
           G.infixL 14 (locOp2 As) "as" $ \case
             Op2 As a b -> Just (a, " ", b)
@@ -928,7 +1142,7 @@ grammar = do
             _ -> Nothing,
           -- Grammar.Op2.Not.As | Grammar.Op2.Not.In
           let parser a expr = do
-                start <- P.getState
+                start <- P.state
                 _ <- P.word "not"
                 _ <- P.spaces
                 op <-
@@ -936,7 +1150,7 @@ grammar = do
                     [ as <$ P.word "as",
                       in' <$ P.word "in"
                     ]
-                end <- P.getState
+                end <- P.state
                 _ <- P.spaces
                 b <- expr
                 return (withLoc start end $ not' (op a b))
@@ -947,10 +1161,10 @@ grammar = do
                 _ -> Nothing,
           -- Grammar.Op2.Is | Grammar.Op2.Not.Is
           let parser a expr = do
-                start <- P.getState
+                start <- P.state
                 _ <- P.word "is"
                 f <- P.oneOf [do _ <- P.spaces; not' <$ P.word "not", return id]
-                end <- P.getState
+                end <- P.state
                 _ <- P.spaces
                 b <- expr
                 return (withLoc start end $ f (is a b))
@@ -1002,6 +1216,9 @@ grammar = do
           G.infixR 18 (locOp2 Pow) "^" $ \case
             Op2 Pow a b -> Just (a, " ", b)
             _ -> Nothing,
+          -- Grammar.Op1.Nop
+          G.prefix 1 (const id) "|" $ \case
+            _ -> Nothing,
           -- Grammar.Op1.Neg
           G.prefix 19 (locOp1 Neg) "-" $ \case
             Op1 Neg a -> Just ("", a)
@@ -1012,35 +1229,36 @@ grammar = do
             _ -> Nothing,
           -- Grammar.App
           let parser a expr = do
-                start <- P.getState
-                args <- parseCollection "(" "," ")" $ do
-                  parseExprUntil "app arg" 0 [",", ")", "\n"]
-                end <- P.getState
+                _ <- P.whitespaces
+                start <- P.state
+                -- TODO: stop until operator or parseLineBreak
+                args <- parseCollection "function argument" "(" "," ")" parseLineBreak syntaxErrorExpr Err (parseExpr 0)
+                end <- P.state
                 _ <- P.spaces
                 return (withLoc start end $ app a args)
            in G.InfixL 19 parser $ \lhs rhs -> \case
                 App a b -> do
-                  let args = tupleOf b
-                  Just (lhs a ++ PP.Text "(" : collectionLayout (G.layout grammar 0) args ++ [PP.Text ")"])
+                  let args = map (layout 0) (tupleOf b)
+                  Just (lhs a ++ layoutCollection "(" "," ")" args)
                 _ -> Nothing,
           -- Grammar.Get | Grammar.Slice
           let parser a expr = do
-                start <- P.getState
+                start <- P.state
                 _ <- P.char '['
                 _ <- P.whitespaces
-                b <- parseExprUntil "get/slice 1" 2 ["]", ":", "\n"]
+                b <- parseExpr 2
                 op <-
                   P.oneOf
                     [ do
                         _ <- P.char ':'
                         _ <- P.whitespaces
-                        c <- parseExprUntil "slice 2" 2 ["]", "\n"]
+                        c <- parseExpr 2
                         return (`Slice` (b, c)),
                       return (`Get` b)
                     ]
                 _ <- P.whitespaces
                 _ <- P.char ']'
-                end <- P.getState
+                end <- P.state
                 _ <- P.spaces
                 return (withLoc start end $ op a)
            in G.InfixL 19 parser $ \lhs rhs -> \case
@@ -1051,22 +1269,23 @@ grammar = do
                 _ -> Nothing,
           -- Grammar.Dot
           let parser a expr = do
-                start <- P.getState
+                start <- P.state
                 _ <- P.char '.'
-                end <- P.getState
+                end <- P.state
                 _ <- P.whitespaces
                 x <- parseNameVar
                 _ <- P.spaces
                 args <-
                   P.maybe' $ do
-                    args <- parseCollection "(" "," ")" (parseExpr 0)
+                    -- TODO: stop until operator or parseLineBreak
+                    args <- parseCollection "method argument" "(" "," ")" parseLineBreak syntaxErrorExpr Err (parseExpr 0)
                     _ <- P.spaces
                     return args
                 _ <- P.spaces
                 return (withLoc start end $ Dot a x args)
            in G.InfixL 19 parser $ \lhs rhs -> \case
                 Dot a x Nothing -> Just (lhs a ++ [PP.Text ("." ++ x)])
-                Dot a x (Just args) -> Just (lhs a ++ [PP.Text ("." ++ x ++ "(")] ++ collectionLayout (G.layout grammar 0) args ++ [PP.Text ")"])
+                Dot a x (Just args) -> Just (lhs a ++ [PP.Text ("." ++ x)] ++ layoutCollection "(" "," ")" (map (layout 0) args))
                 _ -> Nothing,
           -- Grammar.Spread
           let parser expr = do
@@ -1079,31 +1298,32 @@ grammar = do
                 _ -> Nothing,
           -- Grammar.Call
           let parser expr = do
-                start <- P.getState
+                start <- P.state
                 _ <- P.char '%'
-                _ <- P.commit "call"
                 f <- parseName
-                end <- P.getState
+                end <- P.state
                 _ <- P.spaces
                 args <-
                   P.oneOf
                     [ do
-                        args <- parseCollection "(" "," ")" expr
+                        _ <- P.whitespaces
+                        -- TODO: stop until operator or parseLineBreak
+                        args <- parseCollection "builtin call argument" "(" "," ")" parseLineBreak syntaxErrorExpr Err expr
                         _ <- P.spaces
                         return args,
                       return []
                     ]
                 return (withLoc start end $ Call f args)
-           in G.Atom parser $ \layout -> \case
+           in G.Atom parser $ \rhs -> \case
                 Call f [] -> Just [PP.Text $ "%" ++ f]
-                Call f args -> Just (PP.Text ("%" ++ f ++ "(") : collectionLayout layout args ++ [PP.Text ")"])
+                Call f args -> Just (PP.Text ("%" ++ f) : layoutCollection "(" "," ")" (map rhs args))
                 _ -> Nothing,
           -- Grammar.Match / Grammar.MatchFun
           let parser expr = do
-                start <- P.getState
+                start <- P.state
                 _ <- P.word "match"
-                _ <- P.commit "match"
-                end <- P.getState
+                -- _ <- P.commit "match"
+                end <- P.state
                 _ <- P.whitespaces
                 maybeArg <- P.maybe' $ do
                   arg <- expr
@@ -1114,7 +1334,7 @@ grammar = do
                 cases <- P.zeroOrMore $ do
                   _ <- P.char '|'
                   _ <- P.spaces
-                  case' <- parseExprUntil "match alt" 1 ["|", "}", "\n"]
+                  case' <- parseExpr 1
                   _ <- P.whitespaces
                   return case'
                 _ <- P.char '}'
@@ -1140,10 +1360,10 @@ grammar = do
           -- Grammar.With Expr [(String, Expr)]
           -- Grammar.IfElse
           let parser expr = do
-                start <- P.getState
+                start <- P.state
                 _ <- P.word "if"
-                _ <- P.commit "if"
-                end <- P.getState
+                -- _ <- P.commit "if"
+                end <- P.state
                 _ <- P.spaces
                 a <- expr
                 _ <- P.whitespaces
@@ -1158,35 +1378,27 @@ grammar = do
            in G.Atom parser $ \layout -> \case
                 IfElse a b c -> Just (PP.Text "if " : layout a ++ PP.Text " then " : layout b ++ PP.Text " else " : layout c)
                 _ -> Nothing,
-          -- Grammar.Metadata.Comments
-          let parser expr = do
-                comments <- P.oneOrMore $ do
-                  _ <- P.char '#'
-                  _ <- P.spaces
-                  comment <- P.zeroOrMore (P.charIf (/= '\n'))
-                  _ <- P.whitespaces
-                  return comment
-                Meta (C.Comments comments) <$> expr
-           in G.Atom parser $ \rhs -> \case
-                Meta (C.Comments comments) a -> do
-                  let comments' = concatMap (\c -> [PP.Text ("# " ++ c), PP.NewLine]) comments
-                  Just (comments' ++ rhs a)
-                _ -> Nothing,
-          -- Grammar.Metadata.TrailingComment
-          let parser a _expr = do
-                _ <- P.char '#'
-                _ <- P.spaces
-                comment <- P.zeroOrMore (P.charIf (/= '\n'))
-                _ <- P.whitespaces
-                return (Meta (C.TrailingComment comment) a)
-           in G.InfixL 1 parser $ \lhs _ -> \case
-                Meta (C.TrailingComment comment) a ->
-                  Just (lhs a ++ [PP.Text ("  # " ++ comment), PP.NewLine])
-                _ -> Nothing,
+          -- -- Grammar.Metadata.Comments
+          -- let parser expr = do
+          --       comments <- parseCommentMeta
+          --       Meta comments <$> expr
+          --  in G.Atom parser $ \rhs -> \case
+          --       Meta (C.Comments comments) a -> do
+          --         let comments' = concatMap (\c -> [PP.Text ("// " ++ c), PP.NewLine]) comments
+          --         Just (comments' ++ rhs a)
+          --       _ -> Nothing,
+          -- -- Grammar.Metadata.TrailingComment
+          -- let parser a _expr = do
+          --       comment <- parseCommentSingleLine
+          --       return (Meta (C.TrailingComment comment) a)
+          --  in G.InfixL 1 parser $ \lhs _ -> \case
+          --       Meta (C.TrailingComment comment) a ->
+          --         Just (lhs a ++ [PP.Text ("  // " ++ comment), PP.NewLine])
+          --       _ -> Nothing,
           -- Grammar.Metadata.Location
           let parser expr = do
                 _ <- P.text "^loc["
-                P.commit "Metadata location"
+                -- P.commit "Metadata location"
                 filename <- P.oneOrMore $ P.charIf (/= ':')
                 _ <- P.char ':'
                 row1 <- P.integer
@@ -1213,107 +1425,123 @@ grammar = do
             _ -> Nothing,
           -- Grammar.Err
           let parser expr = do
-                start <- P.getState
+                start <- P.state
                 _ <- P.word "!error"
-                end <- P.getState
                 _ <- P.spaces
-                a <-
-                  P.oneOf
-                    [ do
-                        _ <- P.char '('
-                        _ <- P.whitespaces
-                        a <- expr
-                        _ <- P.whitespaces
-                        _ <- P.char ')'
-                        return a,
-                      return (withLoc start end Any)
-                    ]
+                _ <- P.char '('
+                _ <- P.whitespaces
+                a <- expr
+                _ <- P.whitespaces
+                _ <- P.char ')'
+                end <- P.state
                 _ <- P.spaces
-                return (Meta (C.Error $ customError a) Err)
+                let loc = P.locSpan start end
+                return (Meta (C.Error (customError a)) Err)
            in G.Atom parser $ \layout -> \case
                 Err -> Just [PP.Text "!error"]
-                Meta (C.Error e) c -> case e of
-                  SyntaxError (loc, ctx, txt) -> Just [PP.Text $ "!syntax-error[" ++ show loc ++ "|" ++ show ctx ++ "|" ++ show txt ++ "]"]
-                  TypeError e -> case e of
-                    UndefinedVar x -> Just [PP.Text $ "!undefined-var(" ++ x ++ ")"]
-                    TypeMismatch a b -> Just (PP.Text "!type-mismatch(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
-                    NotAFunction a b -> Just (PP.Text "!not-a-function(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
-                    e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
-                  RuntimeError e -> case e of
-                    UnhandledCase a b -> Just (PP.Text "!unhandled-case(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
-                    CannotApply a b -> Just (PP.Text "!cannot-apply(" : layout a ++ PP.Text ", " : layout b ++ [PP.Text ")"])
-                    CustomError a -> Just (PP.Text "!error(" : layout a ++ [PP.Text ")"])
-                  e -> Just [PP.Text $ "!error(" ++ show e ++ ")"]
+                Meta (C.Error e) c -> Just (PP.Text ('!' : show e ++ "(") : layout c ++ [PP.Text ")"])
                 _ -> Nothing
         ]
     }
-  where
-    collectionLayout layout args = do
-      let alt1 = intercalate [PP.Text ", "] (map layout args)
-      let alt2 = [PP.Indent (PP.NewLine : intercalate [PP.NewLine] (map (\a -> layout a ++ [PP.Text ","]) args)), PP.NewLine]
-      [PP.Or alt1 alt2]
 
-lower :: Expr -> C.Expr
-lower = \case
-  Any -> C.Any
-  IntT -> C.IntT
-  NumT -> C.NumT
-  Int i -> C.Int i
-  Num n -> C.Num n
-  Char c -> C.tag "Char" [C.Int (ord c)]
-  Var x -> C.Var x
-  Tag k args -> C.tag k (map lower args)
-  Ann a b -> C.Ann (lower a) (lower b)
-  Tuple items -> C.and' (map lower items)
-  List items -> lower (list' items)
-  String [] -> C.tag' "''"
-  String [Str txt] -> lower (List (map Char txt))
-  String segments -> error "TODO: lower String interpolation"
-  Or a b -> C.Or (lower a) (lower b)
-  For ys a -> C.for ys (lower a)
-  Fun a b
-    | Just (a, cond) <- ifOf a -> lower (Fun a (If b cond))
-    | otherwise -> C.Fun (lower a) (lower b)
-  App a b -> C.App (lower a) (lower b)
-  Call op args -> C.Call op (lower (Tuple args))
-  Op1 Neg a -> lower (sub (Int 0) a)
-  Op1 op a -> C.app (C.Var $ show op) [lower a]
-  Op2 Cons a b -> lower (Tag "::" [a, b])
-  Op2 op a b -> C.app (C.Var $ show op) [lower a, lower b]
-  Dot a x Nothing -> C.App (C.Var x) (lower a)
-  Dot a x (Just args) -> C.App (C.Var x) (lower $ Tuple (a : args))
-  Spread a -> error $ "TODO: lower Spread " ++ show a
-  Get a b -> lower (app (Var ".[]") [a, b])
-  Slice a (b, c) -> lower (app (Var ".[:]") [a, b, c])
-  Match arg cases -> lower (App (or' cases) arg)
-  MatchFun cases -> lower (or' cases)
-  Let (a, b) c | Just x <- varOf c, Just d <- lookup x (C.unpack (lower a, lower b)) -> d
-  Let (a, b) c -> lower (App (Fun a c) b)
-  Bind (a, b) c -> lower (app (Var "<-") [b, Fun a c])
-  -- Record fields -> do
-  --   let k = '~' : intercalate "," (map fst fields)
-  --   lower (tag k (map snd fields))
-  -- Select a kvs -> do
-  --   let sub = case a of
-  --         Record fields -> map (second lower) fields
-  --         a -> do
-  --           let xs = freeVars (and' (map snd kvs))
-  --           map (\x -> (x, C.App (C.Var x) (lower a))) xs
-  --   let k = '~' : intercalate "," (map fst kvs)
-  --   let args = map ((C.substitute sub . lower) . snd) kvs
-  --   C.tag k args
-  If a b -> lower (Let (Ann true bool, b) a)
-  IfElse a b c -> lower (Match a [Fun (Ann true bool) b, Fun (Ann false bool) c])
-  Meta m a -> C.Meta (fmap lower m) (lower a)
-  Err -> C.Err
-  a -> error $ "TODO: lower " ++ show (dropMeta a)
+class Lower a where
+  lower :: a -> C.Expr
+
+instance Lower Expr where
+  lower :: Expr -> C.Expr
+  lower = \case
+    Any -> C.Any
+    Int i -> C.Int i
+    Num n -> C.Num n
+    Char c -> C.tag "Char" [C.Int (ord c)]
+    Var x -> C.Var x
+    Tag "Int" [] -> C.IntT
+    Tag "Num" [] -> C.NumT
+    Tag k args -> C.tag k (map lower args)
+    Ann a b -> C.Ann (lower a) (lower b)
+    Tuple items -> C.and' (map lower items)
+    List items -> lower (list' items)
+    String [] -> C.tag' "''"
+    String [Str txt] -> lower (List (map Char txt))
+    String segments -> error "TODO: lower String interpolation"
+    Or a b -> C.Or (lower a) (lower b)
+    For ys a -> C.for ys (lower a)
+    Fun a b
+      | Just (a, cond) <- ifOf a -> lower (Fun a (If b cond))
+      | otherwise -> C.Fun (lower a) (lower b)
+    App a b -> C.App (lower a) (lower b)
+    Call op args -> C.Call op (lower (Tuple args))
+    Do stmts -> lower (dropMeta $ desugarStmts stmts)
+    -- Let (a, b) c | Just x <- varOf c, Just d <- lookup x (C.unpack (lower a, lower b)) -> d
+    -- Let (a, b) c -> lower (App (Fun a c) b)
+    Op1 Neg a -> lower (sub (Int 0) a)
+    Op1 op a -> C.app (C.Var $ show op) [lower a]
+    Op2 Cons a b -> lower (Tag "::" [a, b])
+    Op2 op a b -> C.app (C.Var $ show op) [lower a, lower b]
+    Dot a x Nothing -> C.App (C.Var x) (lower a)
+    Dot a x (Just args) -> C.App (C.Var x) (lower $ Tuple (a : args))
+    Spread a -> error $ "TODO: lower Spread " ++ show a
+    Get a b -> lower (app (Var ".[]") [a, b])
+    Slice a (b, c) -> lower (app (Var ".[:]") [a, b, c])
+    Match arg cases -> lower (App (or' cases) arg)
+    MatchFun cases -> lower (or' cases)
+    -- Record fields -> do
+    --   let k = '~' : intercalate "," (map fst fields)
+    --   lower (tag k (map snd fields))
+    -- Select a kvs -> do
+    --   let sub = case a of
+    --         Record fields -> map (second lower) fields
+    --         a -> do
+    --           let xs = freeVars (and' (map snd kvs))
+    --           map (\x -> (x, C.App (C.Var x) (lower a))) xs
+    --   let k = '~' : intercalate "," (map fst kvs)
+    --   let args = map ((C.substitute sub . lower) . snd) kvs
+    --   C.tag k args
+    If a b -> lower (let' (Ann true bool, b) a)
+    IfElse a b c -> lower (Match a [Fun (Ann true bool) b, Fun (Ann false bool) c])
+    Meta m a -> C.Meta (fmap lower m) (lower a)
+    Err -> C.Err
+    a -> error $ "TODO: lower " ++ show (dropMeta a)
+
+desugarDef :: Expr -> Expr -> (Expr, Expr)
+desugarDef (Ann a t) b = do
+  -- Desugar everything before re-annotating the type.
+  -- Otherwise, we can get the wrong definitions.
+  let (a', b') = desugarDef a b
+  (a', Ann b' t)
+desugarDef (App a b1) b2 = desugarDef a (Fun b1 b2)
+desugarDef (Op1 op a) b = (Var (show op), Fun a b)
+desugarDef (Op2 op a1 a2) b = (Var (show op), fun [a1, a2] b)
+desugarDef (Meta m a) b = do
+  let (a', b') = desugarDef a b
+  (Meta m a', b')
+desugarDef a b = (a, b)
+
+desugarStmts :: [Stmt] -> Expr
+desugarStmts [] = Err
+desugarStmts (stmt : stmts) = case stmt of
+  -- Let a b | C.isApp (lower a) -> do
+  --   let ((a', b'), c) = (desugarDef a b, desugarStmts stmts)
+  --   error $ show (dropMeta a', dropMeta b', dropMeta c)
+  -- Let a b -> case (desugarDef a b, desugarStmts stmts) of
+  --   ((a', b'), c) | Just x <- varOf a', Just x' <- varOf c, x == x' -> b'
+  --   ((a', b'), c) -> App (Fun a' c) b'
+  Let a b -> do
+    let ((a', b'), c) = (desugarDef a b, desugarStmts stmts)
+    App (Fun a' c) b'
+  Bind a b -> do
+    let c = desugarStmts stmts
+    app (Var "<-") [b, Fun a c]
+  Return a -> a
+  Nop m -> Meta m (desugarStmts stmts)
+  _ -> error $ "TODO: desugarStmts " ++ show (dropMeta stmt)
 
 lift :: C.Expr -> Expr
 lift = \case
   C.Any -> Any
   C.Unit -> Tuple []
-  C.IntT -> IntT
-  C.NumT -> NumT
+  C.IntT -> tag "Int"
+  C.NumT -> tag "Num"
   C.Int i -> Int i
   C.Num n -> Num n
   C.Var x -> Var x
@@ -1339,7 +1567,7 @@ lift = \case
   C.Fun a b | null (C.freeVars a) -> Fun (lift a) (lift b)
   C.Fun a b -> For [] (Fun (lift a) (lift b))
   C.Fix x a
-    | x `C.occurs` a -> Let (Var x, lift a) (lift a)
+    | x `C.occurs` a -> let' (Var x, lift a) (lift a)
     | otherwise -> lift a
   C.App a b -> case (lift a, lift b) of
     (Err, arg) -> Match arg []
@@ -1347,61 +1575,26 @@ lift = \case
       Op1 op a
     (Var x, Ann (Tuple [a, b]) (Tuple [ta, tb])) | Just op <- lookup x op2s -> do
       Op2 op (Ann a ta) (Ann b tb)
-    (Fun a c, b) -> Let (a, b) c
+    (Fun a c, b) -> let' (a, b) c
     (cases, arg) | isFun cases || isFor cases || isOr cases -> do
       Match arg (orOf cases)
     (a, Ann (Tuple bs) (Tuple ts)) -> do
       app a (zipWith Ann bs ts)
     (a, b) -> App a b
   C.Call op a -> Call op (tupleOf (lift a))
-  -- C.Let [] b -> lift b
-  -- C.Let ((x, b) : env) c -> Let (Var x, lift b) (lift (C.Let env c))
+  C.Let [] b -> lift b
+  C.Let env b -> Do ((map (\(x, a) -> Let (Var x) (lift a)) env) ++ [Return (lift b)])
   C.Meta (C.Loc _) (C.Meta (C.Loc loc) a) -> Meta (C.Loc loc) (lift a)
   C.Meta m a -> Meta (fmap lift m) (lift a)
   C.Err -> Err
-  a -> error $ "TODO: lift " ++ show a
+  a -> error $ "TODO: lift[" ++ C.showCtr a ++ "] " ++ show a
 
 parseExpr :: Int -> Parser Expr
 parseExpr = G.parser grammar
 
-parseExprUntil :: String -> Int -> [String] -> Parser Expr
-parseExprUntil msg prec delims = do
-  a <- parseExpr prec
-  start <- P.getState
-  txt <- P.chooseShortest (map (P.skipTo . P.text) delims)
-  case txt of
-    "" -> return a
-    txt -> do
-      end <- P.getState
-      let loc = Location start.filename (Range start.pos end.pos)
-      return (Meta (C.Error (SyntaxError (loc, msg, txt))) a)
-
-parseCollection :: String -> String -> String -> P.Parser ctx a -> P.Parser ctx [a]
-parseCollection open delim close parser = do
-  _ <- P.text open
-  _ <- P.whitespaces
-  args <-
-    P.oneOf
-      [ do
-          a <- parser
-          _ <- P.whitespaces
-          bs <- P.zeroOrMore $ do
-            _ <- P.text delim
-            _ <- P.whitespaces
-            parser
-          _trailingDelim <- P.maybe' $ do
-            _ <- P.text delim
-            P.whitespaces
-          return (a : bs),
-        return []
-      ]
-  _ <- P.whitespaces
-  _ <- P.text close
-  return args
-
 parseLineBreak :: Parser ()
 parseLineBreak = do
-  _ <- P.oneOf [P.char '\n', P.char ';', '$' <$ P.endOfFile]
+  _ <- P.oneOf [() <$ P.charOf ['\n', ';'], P.endOfFile]
   _ <- P.whitespaces
   return ()
 
@@ -1502,162 +1695,270 @@ parseNameOpTag = do
 parseName :: Parser String
 parseName = P.oneOf [parseNameVar, parseNameTag]
 
+parseLocName :: Parser String -> Parser Name
+parseLocName parser = do
+  start <- P.state
+  name <- fmap Name parser
+  end <- P.state
+  _ <- P.spaces
+  return (MetaName (C.Loc $ locSpan start end) name)
+
+textUntilExpr :: Parser String
+textUntilExpr = P.textUntil parseExprStart
+
+parseExprStart :: Parser Char
+parseExprStart =
+  P.oneOf
+    [ P.letter,
+      P.digit,
+      P.charOf "_.:([{'\"@|%!"
+    ]
+
+parseNameUntil :: String -> Parser String -> Parser stop -> Parser Name
+parseNameUntil expect parser stop = do
+  name <-
+    P.expect expect (parseLocName parser)
+      & P.recover (P.textUntil stop) (syntaxErrorName (Name ""))
+  _ <- P.spaces
+  handleErr <-
+    (id <$ P.lookahead stop)
+      & P.recover (P.textUntil stop) (MetaName . syntaxErrorMeta)
+      & P.recover (P.ok ()) (const id)
+  return (handleErr name)
+
+parseExprUntil :: String -> Int -> Parser stop -> Parser Expr
+parseExprUntil expect prec stop = do
+  expr <-
+    P.expect expect (parseExpr prec)
+      & P.recover (P.textUntil stop) (syntaxErrorExpr Err)
+  _ <- P.spaces
+  handleErr <-
+    (id <$ P.lookahead stop)
+      & P.recover (P.textUntil stop) (Meta . syntaxErrorMeta)
+      & P.recover (P.ok ()) (const id)
+  return (handleErr expr)
+
+parseOpUntil :: String -> Parser stop -> Parser (Expr -> Expr)
+parseOpUntil op stop = do
+  handleErr1 <-
+    P.expect ("'" ++ op ++ "'") (id <$ P.text op)
+      & P.recover (P.textUntil stop) (Meta . syntaxErrorMeta)
+  _ <- P.spaces
+  handleErr2 <-
+    (id <$ P.lookahead stop)
+      & P.recover (P.textUntil stop) (Meta . syntaxErrorMeta)
+      & P.recover (P.ok ()) (const id)
+  return (handleErr1 . handleErr2)
+
 parseModule :: String -> Parser Module
 parseModule name = do
   _ <- P.whitespaces
-  stmts <- P.zeroOrMore parseStmt
-  _ <- P.endOfFile
+  stmts <- parseStmts P.endOfFile
   return (name, stmts)
 
 parseStmt :: Parser Stmt
 parseStmt = do
+  _ <- P.lookaheadNot P.endOfFile
+  let parsers =
+        [ parseImport,
+          parseDef, -- parseLet + parseBind
+          parseMut,
+          -- parseRun,
+          parseTest,
+          parseTypeDef,
+          -- parseIfStmt,
+          -- parseWhile,
+          -- parseRepeat,
+          -- parseForStmt,
+          -- parseBreak,
+          -- parseContinue,
+          parseReturn,
+          Nop <$> parseCommentMeta
+          -- TODO: consider a trailing comment on a syntax error like this
+          -- , Run . (\e -> Meta (C.Error e) Err) . SyntaxError <$> recoverSyntaxError "statement" (P.text "\n")
+        ]
   stmt <-
-    P.oneOf
-      [ parseImport,
-        Def <$> parseDef "=",
-        TypeDef <$> parseTypeDef,
-        parseTest,
-        Comment <$> parseComment,
-        Run <$> parseExprUntil "run stmt" 1 [";", "\n"],
-        -- TODO: consider a trailing comment on a syntax error like this
-        Run . (\e -> Meta (C.Error e) Err) . SyntaxError <$> recoverSyntaxError "statement" (P.text "\n")
-      ]
-  _ <- parseLineBreak
+    P.expect "statement" (P.commitOneOf parsers)
+      & P.recover (P.textUntil $ P.lookahead $ P.oneOf [parseLineBreak, () <$ P.char '}']) syntaxErrorStmt
   return stmt
 
-parseModulePath :: Parser (String, String)
+parseStmts :: Parser stop -> Parser [Stmt]
+parseStmts stop = do
+  stmts <- P.zeroOrMore $ do
+    stmt <- parseStmt
+    _ <- parseLineBreak
+    return stmt
+  last <- P.zeroOrOne parseStmt
+  _ <- P.whitespaces
+  err <-
+    ([] <$ P.lookahead stop)
+      & P.recover (P.textUntil stop) (\err -> [Nop (syntaxErrorMeta err)])
+  _ <- stop
+  return (stmts ++ last ++ err)
+
+parseModulePath :: Parser String
 parseModulePath = do
   pkg <- parseNameVar
   path <- P.zeroOrMore $ do
     _ <- P.char '/'
     name <- parseNameVar
     return ('/' : name)
-  let modulePath = concat (pkg : path)
-  return (modulePath, takeBaseName modulePath)
+  return $ concat (pkg : path)
 
 parseImport :: Parser Stmt
 parseImport = do
-  _ <- P.word "import"
-  P.commit "import"
+  _ <- P.commit "import statement" $ P.word "import"
   _ <- P.spaces
-  (path, alias) <- parseModulePath
+  path <-
+    -- TODO: Import strings should support a list of Metadata for errors, comments, locations, etc
+    -- type Name = ([Meta], String)
+    -- Import Name Name [(Name, Name)] [Meta]
+    P.expect "import module path" parseModulePath
+      & P.recover (P.textUntil $ P.oneOf [P.word "as", P.text "(", "" <$ parseLineBreak]) (\err -> '!' : show (syntaxErrorMeta err))
   _ <- P.spaces
-  exposing <-
+  alias <-
     P.oneOf
       [ do
-          parseCollection "(" "," ")" $ do
+          _ <- P.commit "import module alias" $ P.word "as"
+          _ <- P.spaces
+          alias <- parseName
+          _ <- P.spaces
+          return alias,
+        return $ case path of
+          '!' : syntaxErrorExpr -> ""
+          path -> takeBaseName path
+      ]
+  names <-
+    P.oneOf
+      [ do
+          parseCollection "imported name" "(" "," ")" parseLineBreak (\err -> error "TODO: parseImport error handling") ("", "") $ do
             name <- parseName
             _ <- P.spaces
-            P.oneOf
-              [ do
-                  _ <- P.word "as"
-                  _ <- P.spaces
-                  alias <- parseName
-                  return (name, alias),
-                return (name, name)
-              ],
+            alias <-
+              P.oneOf
+                [ do
+                    _ <- P.commit "import name alias" $ P.word "as"
+                    _ <- P.spaces
+                    alias <- parseName
+                    _ <- P.spaces
+                    return alias,
+                  return name
+                ]
+            return (name, alias),
         return []
       ]
-  return (Import path alias exposing)
+  _ <- P.spaces
+  return (Import path alias names)
 
-parseDef :: String -> Parser (Expr, Expr)
-parseDef "" = error "parseDef delimiter must not be empty"
-parseDef op = do
+parseDef :: Parser Stmt
+parseDef = do
+  let parseDefOp = P.oneOf [P.text "=", P.text "<-"]
   typeAnnotation <- P.maybe' $ do
-    _ <- P.char ':'
-    P.commit "def type"
+    _ <- P.commit "typed definition" $ P.char ':'
     _ <- P.spaces
-    t <- parseExprUntil "def type" 0 [";", "\n"]
+    t <- parseExprUntil "type annotation" 0 parseLineBreak
     _ <- parseLineBreak
     return t
-  _ <- P.word "let"
-  _ <- P.commit "def"
+  _ <- P.commit "definition" $ P.word "let"
   _ <- P.whitespaces
-  a <- parseExprUntil "def lhs" 0 [op, "\n"]
-  _ <- P.word op
+  a <- parseExprUntil "pattern" 0 (P.charOf "=<")
   _ <- P.whitespaces
-  b <- parseExprUntil "def rhs" 0 [";", "\n"]
+  def <-
+    P.expect "'=' or '<-'" (P.oneOf [Let <$ P.text "=", Bind <$ P.text "<-"])
+      & P.recover (P.textUntil parseExprStart) (\err a b -> Let a (Meta (syntaxErrorMeta err) b))
+  _ <- P.whitespaces
+  handleErr <-
+    (id <$ P.lookahead parseExprStart)
+      & P.recover (P.textUntil parseExprStart) (Meta . syntaxErrorMeta)
+      & P.recover (P.ok ()) (const id)
+  b <- parseExprUntil "body" 0 endOfStmt
   case typeAnnotation of
-    Just t -> return (Ann a t, b)
-    Nothing -> return (a, b)
+    Just t -> return (def (Ann a t) (handleErr b))
+    Nothing -> return (def a (handleErr b))
 
-parseTypeDef :: Parser (String, [Expr], [(Expr, Maybe Type)])
-parseTypeDef = do
-  _ <- P.word "type"
-  _ <- P.commit "type"
+parseMut :: Parser Stmt
+parseMut = do
+  _ <- P.commit "mutate" $ P.word "mut"
   _ <- P.whitespaces
-  name <- parseNameTag
+  name <- parseNameUntil "variable name" parseNameVar (P.char '=')
   _ <- P.whitespaces
-  args <-
-    P.oneOf
-      [ parseCollection "(" "," ")" $ do
-          parseExprUntil "typedef arg" 0 [",", ")", "=", "\n"],
-        return []
-      ]
+  handleErr <- parseOpUntil "=" parseExprStart
   _ <- P.whitespaces
-  _ <- P.char '='
-  _ <- P.whitespaces
-  let parseAlt = do
-        a <- parseExprUntil "type alt" 4 ["=>", "|", "\n"]
-        _ <- P.spaces
-        mb <- P.maybe' $ do
-          _ <- P.whitespaces
-          _ <- P.text "=>"
-          _ <- P.whitespaces
-          parseExprUntil "type alt-type" 4 ["|", "\n"]
-        return (a, mb)
-  _ <- P.maybe' (P.char '|')
-  _ <- P.whitespaces
-  alt <- parseAlt
-  _ <- P.whitespaces
-  alts <- P.zeroOrMore $ do
-    _ <- P.char '|'
-    _ <- P.whitespaces
-    parseAlt
-  return (name, args, alt : alts)
+  b <- parseExprUntil "body" 0 endOfStmt
+  return (Mut name (handleErr b))
 
 parseTest :: Parser Stmt
 parseTest = do
-  name <-
-    P.oneOf
-      [ do
-          _ <- P.text "--"
-          _ <- P.spaces
-          name <- P.skipTo P.endOfLine
-          _ <- P.whitespaces
-          return name,
-        return ""
-      ]
-  s <- P.getState
-  _ <- P.char '>'
-  _ <- P.oneOrMore P.space
-  P.commit "test"
-  expr <- parseExprUntil "test expr" 0 ["~>", "\n"]
-  result <-
+  maybeName <- P.maybe' $ do
+    _ <- P.char '#'
+    name <- P.textUntil (P.char '\n')
+    _ <- P.whitespaces
+    return (trim name)
+  s <- P.state
+  _ <- P.commit "test" (P.char '>')
+  _ <- P.zeroOrMore P.space
+  expr <- parseExprUntil "expression" 0 (P.oneOf [() <$ P.text "~", () <$ parseExprStart, endOfStmt])
+  expect <-
     P.oneOf
       [ do
           _ <- parseLineBreak
-          parseExprUntil "test expect newline" 0 ["\n"],
-        do
-          _ <- P.text "~>"
           _ <- P.whitespaces
-          parseExprUntil "test expect =>" 0 ["\n"],
-        return (Tag "True" [])
+          P.expect "result" (parseExpr 0),
+        do
+          handleErr <- parseOpUntil "~>" parseExprStart
+          _ <- P.whitespaces
+          a <- parseExprUntil "result" 0 endOfStmt
+          return (handleErr a),
+        return (tag "True")
       ]
-  return (Test (UnitTest s.filename s.pos name expr result))
+  let path = s.filename ++ ":" ++ show s.pos
+  let name = case maybeName of
+        Just name -> name
+        Nothing -> show (dropMeta expr)
+  return (Test (path ++ ": " ++ name) expr expect)
+
+parseTypeDef :: Parser Stmt
+parseTypeDef = do
+  _ <- P.commit "type definition" $ P.word "type"
+  _ <- P.whitespaces
+  name <- parseNameUntil "name" parseNameTag (P.charOf "(=")
+  _ <- P.whitespaces
+  args <-
+    P.oneOf
+      [ do
+          args <- parseCollection "argument" "(" "," ")" (P.char '=') syntaxErrorExpr Err (parseExpr 0)
+          _ <- P.whitespaces
+          return args,
+        return []
+      ]
+  handleErr <- parseOpUntil "=" (P.oneOf [() <$ parseExprStart, endOfStmt])
+  _ <- P.whitespaces
+  body <- parseExprUntil "body" 0 endOfStmt
+  return (TypeDef name args (handleErr body))
+
+parseReturn :: Parser Stmt
+parseReturn = do
+  _ <- P.commit "return statement" $ P.word "return"
+  _ <- P.spaces
+  a <- parseExprUntil "expression" 0 endOfStmt
+  return (Return a)
+
+endOfStmt :: Parser ()
+endOfStmt = P.oneOf [parseLineBreak, () <$ P.char '}']
+
+parseCommentMeta :: Parser (C.Metadata Expr)
+parseCommentMeta = do
+  comments <- P.oneOrMore parseComment
+  return $ C.Comments comments
 
 parseComment :: Parser String
 parseComment = parseCommentSingleLine
 
 parseCommentSingleLine :: Parser String
 parseCommentSingleLine = do
-  _ <- P.char '#'
-  P.commit "comment-singleline"
-  _ <- P.spaces
-  -- line <- P.skipTo P.endOfLine
-  line <- P.zeroOrMore (P.charIf (/= '\n'))
-  -- _ <- P.whitespaces
-  return (dropWhileEnd isSpace line)
+  _ <- P.text "//"
+  comment <- P.textUntil (P.char '\n')
+  return (trim comment)
 
 -- parseCommentMultiLine :: Parser String
 -- parseCommentMultiLine = do
@@ -1670,14 +1971,6 @@ parseCommentSingleLine = do
 --   error "TODO: parseCommentMultiLine"
 --   return (dropWhileEnd isSpace line)
 
-recoverSyntaxError :: msg -> Parser delim -> Parser (Location, msg, String)
-recoverSyntaxError msg delim = do
-  start <- P.getState
-  txt <- P.skipTo delim
-  end <- P.getState
-  let loc = Location start.filename (Range start.pos end.pos)
-  return (loc, msg, txt)
-
 locOf :: Expr -> Maybe Location
 locOf (Meta (C.Loc loc) _) = Just loc
 locOf (Meta _ a) = locOf a
@@ -1685,45 +1978,56 @@ locOf (Ann a _) = locOf a
 locOf _ = Nothing
 
 class Check a where
-  check :: a -> [(Maybe Location, Error Expr)]
+  check :: a -> [Error Expr]
+
+instance Check (C.Metadata Expr) where
+  check :: C.Metadata Expr -> [Error Expr]
+  check = \case
+    C.Error e -> [e]
+    _ -> []
+
+instance Check Name where
+  check :: Name -> [Error Expr]
+  check = \case
+    Name _ -> []
+    MetaName m a -> check m ++ check a
 
 instance Check Expr where
-  check :: Expr -> [(Maybe Location, Error Expr)]
+  check :: Expr -> [Error Expr]
   check = \case
-    Ann a b -> case errOf b of
-      Just e -> (locOf a, e) : check a
-      Nothing -> check a
-    Meta (C.Error (SyntaxError (loc, ctx, txt))) a ->
-      (Just loc, SyntaxError (loc, ctx, txt)) : check a
-    Meta (C.Error e) Err | Just a <- Error.mainExpr e -> case locOf a of
-      Just loc -> [(Just loc, e)]
-      Nothing -> [(Nothing, e)]
-    Meta (C.Loc loc) a | Just e <- errOf a -> do
-      [(Just loc, e)]
-    Meta _ a -> check a
+    Do stmts -> check stmts
+    Meta m a -> check m ++ check a
     a -> collect check a
 
 instance Check (Expr, Maybe Type) where
-  check :: (Expr, Maybe Type) -> [(Maybe Location, Error Expr)]
+  check :: (Expr, Maybe Type) -> [Error Expr]
   check (a, Just t) = check a ++ check t
   check (a, Nothing) = check a
 
 instance Check Stmt where
-  check :: Stmt -> [(Maybe Location, Error Expr)]
+  check :: Stmt -> [Error Expr]
   check = \case
+    -- TODO: check should parse import (path, alias, names) in look for syntax errors (names starting with '!')
+    -- TODO check should verify the import path exists
+    -- TODO check should verify the imported names exist
     Import {} -> []
-    Def (a, b) -> check a ++ check b
-    TypeDef (_, args, alts) -> concatMap check args ++ concatMap check alts
-    Test t -> concatMap check [t.expr, t.expect]
-    Run a -> check a
-    Comment _ -> []
+    Let a b -> check a ++ check b
+    Bind a b -> check a ++ check b
+    Run x args -> do
+      -- TODO: check that x is defined
+      concatMap check args
+    Test name expr expect -> concatMap check [expr, expect]
+    TypeDef name args body -> check name ++ concatMap check args ++ check body
+    Return a -> check a
+    Nop m -> check m
+    stmt -> error $ "TODO: check: " ++ show (dropMeta stmt)
 
 instance (Check a) => Check [a] where
-  check :: [a] -> [(Maybe Location, Error Expr)]
+  check :: [a] -> [Error Expr]
   check = concatMap check
 
 instance Check Module where
-  check :: Module -> [(Maybe Location, Error Expr)]
+  check :: Module -> [Error Expr]
   check (_, stmts) = concatMap check stmts
 
 run :: Context -> FilePath -> Expr -> Expr
@@ -1756,14 +2060,12 @@ buildOps = do
     intOp2 "int_sub" (\x y -> C.Int (x - y)),
     intOp2 "int_mul" (\x y -> C.Int (x * y)),
     intOp2 "int_div" (\x y -> C.Num (fromIntegral x / fromIntegral y)),
-    intOp2 "int_divi" (\x y -> C.Int (Prelude.div x y)),
     intOp2 "int_pow" (\x y -> C.Int (x ^ y)),
     numOp2 "num_lt" (\x y -> C.tag' (if x < y then "True" else "False")),
     numOp2 "num_add" (\x y -> C.Num (x + y)),
     numOp2 "num_sub" (\x y -> C.Num (x - y)),
     numOp2 "num_mul" (\x y -> C.Num (x * y)),
     numOp2 "num_div" (\x y -> C.Num (x / y)),
-    numOp2 "num_divi" (\x y -> C.Num (fromIntegral (floor (x / y)))),
     numOp2 "num_pow" (\x y -> C.Num (x ** y))
     ]
 
@@ -1817,19 +2119,20 @@ instance Resolve (String, Stmt) where
         defs ++ resolve ctx path (name, Import path' alias names)
       -- [] | alias == name -> [(path, Tag path' [])]
       [] -> []
-    Def (p, b)
-      | Just x <- varOf p, name == x -> [(path, b)]
-      | name `elem` bindings p -> do
-          [(path, Let (p, b) (Var name))]
-      | otherwise -> []
-      where
-        bindings :: Pattern -> [String]
-        bindings p = map fst (C.unpack (lower p, C.Any))
-    TypeDef (tname, args, alts) | name == tname -> do
-      let resolveAlt (a, Just b) = Fun a b
-          resolveAlt (a, Nothing) = Fun a (Tag tname args)
-      [(path, fun args (or' $ map resolveAlt alts))]
+    Let p b -> case desugarDef p b of
+      (p, b) | Just x <- varOf p, name == x -> [(path, b)]
+      (p, b) | name `elem` C.freeVars (lower p) -> [(path, let' (p, b) (Var name))]
+      _ -> []
+    TypeDef tname args body | name == nameOf tname -> do
+      let alt a = case asFun a of
+            Just _ -> a
+            Nothing -> Fun a (Tag (nameOf tname) args)
+      [(path, fun args (or' $ map alt $ orOf body))]
     _ -> []
+
+nameOf :: Name -> String
+nameOf (Name name) = name
+nameOf (MetaName _ a) = nameOf a
 
 class Compile a where
   compile :: Context -> FilePath -> a -> (C.Env, C.Expr)
@@ -1840,31 +2143,31 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"map", expr) = do
-  --   let a = C.dropMeta $ C.bind [] $ lower expr
+  -- compile ctx path (name@"-", expr) = do
+  --   let a = C.dropMeta $ C.bind [name] $ lower expr
   --   let dependencies = delete name (C.freeVars a `union` C.freeTags a)
   --   let env = compileDefs ctx path dependencies
-  --   -- case C.infer buildOps ((name, C.Var name) : env) a of
-  --   --   C.Ok ats -> do
-  --   --     let alt ((a, t), s) = C.Ann a t
-  --   --     (env, C.or' (map alt ats))
-  --   --   C.Fail err -> error $ show (name, dependencies, map fst env, err)
+  --   let loc = Location path (Range (Pos 0 0) (Pos 0 0))
   --   (error . intercalate "\n")
-  --     [ "\n\ncompile " ++ name,
-  --       "expr: " ++ show expr,
-  --       "lower: " ++ show (C.dropMeta $ lower expr),
-  --       "bind: " ++ show (C.dropMeta $ C.bind [] $ lower expr),
-  --       "infer:",
-  --       case C.infer buildOps ((name, C.Var name) : env) a of
-  --         C.Ok ats -> intercalate "\n" (map (\x -> "- " ++ show (fst x)) ats)
-  --         C.Fail err -> show err,
+  --     [ "\n\ncompile " ++ show name,
+  --       "--- env:",
+  --       intercalate "\n" (map (\(x, a) -> "- " ++ x ++ " =\n    " ++ C.format 80 "    " a) env),
+  --       "--- expr:",
+  --       show (dropMeta expr),
+  --       "--- lower:",
+  --       show (C.dropMeta $ lower expr),
+  --       "--- bind:",
+  --       show (C.dropMeta $ C.bind [name] $ lower expr),
+  --       "--- infer:",
+  --       show $ C.infer loc buildOps ((name, C.Var name) : env) a,
   --       ""
   --     ]
   compile ctx path (name, expr) = do
-    let a = C.dropMeta $ C.bind [] $ lower expr
+    let a = C.dropMeta $ C.bind [name] $ lower expr
     let dependencies = delete name (C.freeVars a `union` C.freeTags a)
     let env = compileDefs ctx path dependencies
-    case C.infer buildOps ((name, C.Var name) : env) a of
+    let loc = Location path (Range (Pos 0 0) (Pos 0 0))
+    case C.infer loc buildOps ((name, C.Var name) : env) a of
       C.Ok ats -> do
         -- let alt ((a, t), s) = C.for' (map fst s) (C.Ann a t)
         -- let alt ((a, _), s) = C.for' (map fst s) a
@@ -1881,7 +2184,7 @@ instance Compile (String, Expr) where
             "--- lower:",
             show (C.dropMeta $ lower expr),
             "--- bind:",
-            show (C.dropMeta $ C.bind [] $ lower expr),
+            show (C.dropMeta $ C.bind [name] $ lower expr),
             "--- errors:",
             intercalate "\n" (map (\e -> "- " ++ show e) errors),
             ""

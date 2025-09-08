@@ -10,12 +10,14 @@ import Test.Hspec
 
 run :: SpecWith ()
 run = describe "--==☯️ Core language ☯️==--" $ do
+  let filename = "CoreTests"
   let (i0, i1, i2) = (Int 0, Int 1, Int 2)
   let (n0, n1, n2) = (Num 0.0, Num 1.1, Num 2.2)
   let (a, b, c) = (Var "a", Var "b", Var "c")
   let (x, y, z) = (Var "x", Var "y", Var "z")
   let (f, g, h) = (Var "f", Var "g", Var "h")
-  let loc = Loc $ Location "file" (Range (Pos 1 2) (Pos 3 4))
+  let loc0 = Location filename (Range (Pos 0 0) (Pos 0 0))
+  let loc = Loc $ Location filename (Range (Pos 1 2) (Pos 3 4))
 
   let add a b = Call "int_add" (And a b)
   let sub a b = Call "int_sub" (And a b)
@@ -54,11 +56,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
           case0 = Fun i0 i1
           caseN f = For "x" (Fun x (x `mul` App (Var f) (x `sub` i1)))
 
-  let filename = "<CoreTests>"
-  let parse' :: String -> Either ([String], String) (Expr, String)
+  let parse' :: String -> Either (String, String) (Expr, String)
       parse' text = case parse 0 filename text of
         Right (a, s) -> Right (a, s.remaining)
-        Left s -> Left (s.context, s.remaining)
+        Left s -> Left (s.expected, s.remaining)
   let parseWith :: [(String, String)] -> String -> Either String (Env, Expr)
       parseWith envSrc src = do
         let p src = case parse' src of
@@ -134,6 +135,12 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     parse' "( \n ) \n" `shouldBe` Right (Unit, "\n")
     parse' "!Int \n" `shouldBe` Right (IntT, "\n")
     parse' "!Num \n" `shouldBe` Right (NumT, "\n")
+    parse' "42 \n" `shouldBe` Right (Int 42, "\n")
+    parse' "-42 \n" `shouldBe` Right (Int (-42), "\n")
+    parse' "- 42 \n" `shouldBe` Right (Int (-42), "\n")
+    parse' "3.14 \n" `shouldBe` Right (Num 3.14, "\n")
+    parse' "-3.14 \n" `shouldBe` Right (Num (-3.14), "\n")
+    parse' "- 3.14 \n" `shouldBe` Right (Num (-3.14), "\n")
     parse' "x \n" `shouldBe` Right (Var "x", "\n")
     parse' "A \n" `shouldBe` Right (tag "A" [], "\n")
     parse' "A() \n" `shouldBe` Right (tag "A" [], "\n")
@@ -1116,154 +1123,154 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   --   "" `shouldBe` ""
 
   it "☯ Core.type.unify" $ do
-    unify [] [] (Any, Any) `shouldBe` Ok [(Any, [])]
-    unify [] [] (Any, Unit) `shouldBe` Ok [(Unit, [])]
-    unify [] [] (Unit, Any) `shouldBe` Ok [(Unit, [])]
-    unify [] [] (Unit, Unit) `shouldBe` Ok [(Unit, [])]
-    unify [] [] (Unit, IntT) `shouldBe` Fail [typeMismatch Unit IntT]
-    unify [] [] (IntT, IntT) `shouldBe` Ok [(IntT, [])]
-    unify [] [] (NumT, NumT) `shouldBe` Ok [(NumT, [])]
-    unify [] [] (Int 1, Int 1) `shouldBe` Ok [(Int 1, [])]
-    unify [] [] (Int 1, Int 2) `shouldBe` Fail [typeMismatch i1 i2]
-    unify [] [] (Num 1.1, Num 1.1) `shouldBe` Ok [(Num 1.1, [])]
-    unify [] [] (Num 1.1, Num 2.2) `shouldBe` Fail [typeMismatch (Num 1.1) (Num 2.2)]
+    unify loc0 [] [] (Any, Any) `shouldBe` Ok [(Any, [])]
+    unify loc0 [] [] (Any, Unit) `shouldBe` Ok [(Unit, [])]
+    unify loc0 [] [] (Unit, Any) `shouldBe` Ok [(Unit, [])]
+    unify loc0 [] [] (Unit, Unit) `shouldBe` Ok [(Unit, [])]
+    unify loc0 [] [] (Unit, IntT) `shouldBe` Fail [typeMismatch loc0 Unit IntT]
+    unify loc0 [] [] (IntT, IntT) `shouldBe` Ok [(IntT, [])]
+    unify loc0 [] [] (NumT, NumT) `shouldBe` Ok [(NumT, [])]
+    unify loc0 [] [] (Int 1, Int 1) `shouldBe` Ok [(Int 1, [])]
+    unify loc0 [] [] (Int 1, Int 2) `shouldBe` Fail [typeMismatch loc0 i1 i2]
+    unify loc0 [] [] (Num 1.1, Num 1.1) `shouldBe` Ok [(Num 1.1, [])]
+    unify loc0 [] [] (Num 1.1, Num 2.2) `shouldBe` Fail [typeMismatch loc0 (Num 1.1) (Num 2.2)]
     let env = [("x", Any), ("a", a)]
-    unify [] env (Var "x", Var "x") `shouldBe` Ok [(x, [])]
-    unify [] env (Var "x", Var "y") `shouldBe` Ok [(y, [("x", y)])]
-    unify [] env (Var "x", Var "a") `shouldBe` Ok [(a, [("x", a)])]
-    unify [] env (Var "y", Var "x") `shouldBe` Ok [(x, [("y", x)])]
-    -- unify [] env (Var "a", Var "x") `shouldBe` Ok [(a, [("x", a)])]
-    unify [] env (Var "x", Int 1) `shouldBe` Ok [(i1, [("x", i1)])]
-    -- unify [] env (Var "a", Int 1) `shouldBe` Ok [(a, [])]
-    unify [] env (Var "x", And x x) `shouldBe` Fail [occursError "x" (And x x)]
-    unify [] env (Int 1, Var "x") `shouldBe` Ok [(i1, [("x", i1)])]
-    -- unify [] env (Int 1, Var "a") `shouldBe` Ok [(a, [])]
-    unify [] [] (Tag "A" x, Tag "A" i1) `shouldBe` Ok [(Tag "A" i1, [("x", i1)])]
-    unify [] [] (Tag "A" x, Tag "B" i1) `shouldBe` Fail [typeMismatch (Tag "A" x) (Tag "B" i1)]
+    unify loc0 [] env (Var "x", Var "x") `shouldBe` Ok [(x, [])]
+    unify loc0 [] env (Var "x", Var "y") `shouldBe` Ok [(y, [("x", y)])]
+    unify loc0 [] env (Var "x", Var "a") `shouldBe` Ok [(a, [("x", a)])]
+    unify loc0 [] env (Var "y", Var "x") `shouldBe` Ok [(x, [("y", x)])]
+    -- unify loc0 [] env (Var "a", Var "x") `shouldBe` Ok [(a, [("x", a)])]
+    unify loc0 [] env (Var "x", Int 1) `shouldBe` Ok [(i1, [("x", i1)])]
+    -- unify loc0 [] env (Var "a", Int 1) `shouldBe` Ok [(a, [])]
+    unify loc0 [] env (Var "x", And x x) `shouldBe` Fail [occursError loc0 "x" (And x x)]
+    unify loc0 [] env (Int 1, Var "x") `shouldBe` Ok [(i1, [("x", i1)])]
+    -- unify loc0 [] env (Int 1, Var "a") `shouldBe` Ok [(a, [])]
+    unify loc0 [] [] (Tag "A" x, Tag "A" i1) `shouldBe` Ok [(Tag "A" i1, [("x", i1)])]
+    unify loc0 [] [] (Tag "A" x, Tag "B" i1) `shouldBe` Fail [typeMismatch loc0 (Tag "A" x) (Tag "B" i1)]
     let tdef = For "x" $ Fun x $ Or (For "y" $ Fun (Tag "A" y) (Tag "T1" (And x y))) (For "z" $ Fun (Tag "B" z) (Tag "T2" (And x z)))
     let env = [("T", tdef)]
-    unify [] env (Tag "A" i1, Tag "T" i2) `shouldBe` Ok [(Tag "T1" (And i2 i1), [("T$1", Tag "T1" (And (Ann i2 IntT) i1)), ("y", i1), ("x", Ann i2 IntT), ("T", tdef)])]
-    unify [] env (Tag "B" i1, Tag "T" i2) `shouldBe` Ok [(Tag "T2" (And i2 i1), [("T$1", Tag "T2" (And (Ann i2 IntT) i1)), ("z", i1), ("x", Ann i2 IntT), ("T", tdef)])]
-    unify [] env (Tag "T" i1, Tag "A" i2) `shouldBe` Ok [(Tag "T1" (And i1 i2), [("T$1", Tag "T1" (And (Ann i1 IntT) i2)), ("y", i2), ("x", Ann i1 IntT), ("T", tdef)])]
-    unify [] env (Tag "T" i1, Tag "B" i2) `shouldBe` Ok [(Tag "T2" (And i1 i2), [("T$1", Tag "T2" (And (Ann i1 IntT) i2)), ("z", i2), ("x", Ann i1 IntT), ("T", tdef)])]
-    unify [] [] (For "a" x, i1) `shouldBe` Ok [(i1, [("x", i1)])]
-    -- unify [] [] (For "a" a, i1) `shouldBe` Ok [(For "a" a, [])]
-    unify [] [] (For "a" a, i1) `shouldBe` Ok [(i1, [("a", i1)])]
-    unify [] [] (i1, For "a" x) `shouldBe` Ok [(i1, [("x", i1)])]
-    -- unify [] [] (i1, For "a" a) `shouldBe` Ok [(For "a" a, [])]
-    unify [] [] (For "a" a, For "b" b) `shouldBe` Ok [(For "b" b, [("a", For "b" b)])]
+    unify loc0 [] env (Tag "A" i1, Tag "T" i2) `shouldBe` Ok [(Tag "T1" (And i2 i1), [("T$1", Tag "T1" (And (Ann i2 IntT) i1)), ("y", i1), ("x", Ann i2 IntT), ("T", tdef)])]
+    unify loc0 [] env (Tag "B" i1, Tag "T" i2) `shouldBe` Ok [(Tag "T2" (And i2 i1), [("T$1", Tag "T2" (And (Ann i2 IntT) i1)), ("z", i1), ("x", Ann i2 IntT), ("T", tdef)])]
+    unify loc0 [] env (Tag "T" i1, Tag "A" i2) `shouldBe` Ok [(Tag "T1" (And i1 i2), [("T$1", Tag "T1" (And (Ann i1 IntT) i2)), ("y", i2), ("x", Ann i1 IntT), ("T", tdef)])]
+    unify loc0 [] env (Tag "T" i1, Tag "B" i2) `shouldBe` Ok [(Tag "T2" (And i1 i2), [("T$1", Tag "T2" (And (Ann i1 IntT) i2)), ("z", i2), ("x", Ann i1 IntT), ("T", tdef)])]
+    unify loc0 [] [] (For "a" x, i1) `shouldBe` Ok [(i1, [("x", i1)])]
+    -- unify loc0 [] [] (For "a" a, i1) `shouldBe` Ok [(For "a" a, [])]
+    unify loc0 [] [] (For "a" a, i1) `shouldBe` Ok [(i1, [("a", i1)])]
+    unify loc0 [] [] (i1, For "a" x) `shouldBe` Ok [(i1, [("x", i1)])]
+    -- unify loc0 [] [] (i1, For "a" a) `shouldBe` Ok [(For "a" a, [])]
+    unify loc0 [] [] (For "a" a, For "b" b) `shouldBe` Ok [(For "b" b, [("a", For "b" b)])]
     -- TODO: test Fix
-    -- unify [] [] (Fix "a" x, i1) `shouldBe` Ok [(i1, [("x", i1)])]
-    -- unify [] [] (Fix "a" a, i1) `shouldBe` Ok [(Fix "a" a, [])]
-    -- unify [] [] (i1, Fix "a" x) `shouldBe` Ok [(i1, [("x", i1)])]
-    -- unify [] [] (i1, Fix "a" a) `shouldBe` Ok [(Fix "a" a, [])]
-    -- unify [] [] (i1, Fix "a" a) `shouldBe` Ok [(i1, [("a", i1)])]
-    -- unify [] [] (Fix "a" a, Fix "a" i1) `shouldBe` Ok [(i1, [("a", i1)])]
-    -- unify [] [] (Fix "a" a, Fix "a" a) `shouldBe` Ok [(Fix "a" a, [])]
-    -- unify [] [] (Fix "a" a, Fix "b" b) `shouldBe` Ok [(Fix "b" b, [])]
-    unify [] [] (Ann x y, Ann i1 IntT) `shouldBe` Ok [(Ann i1 IntT, [("y", IntT), ("x", i1)])]
-    unify [] [] (Ann i1 IntT, x) `shouldBe` Ok [(Ann i1 IntT, [("x", Ann i1 IntT)])]
-    unify [] [] (Ann x IntT, i1) `shouldBe` Ok [(i1, [("x", i1)])]
-    unify [] [] (x, Ann i1 IntT) `shouldBe` Ok [(Ann i1 IntT, [("x", Ann i1 IntT)])]
-    unify [] [] (i1, Ann x IntT) `shouldBe` Ok [(i1, [("x", i1)])]
-    unify [] [] (And x y, And i1 i2) `shouldBe` Ok [(And i1 i2, [("y", i2), ("x", i1)])]
-    unify [] [] (Or i1 i2, Any) `shouldBe` Ok [(i1, []), (i2, [])]
-    unify [] [] (Or i1 i2, x) `shouldBe` Ok [(i1, [("x", i1)]), (i2, [("x", i2)])]
-    unify [] [] (Or i1 i1, x) `shouldBe` Ok [(i1, [("x", i1)])]
-    unify [] [] (Or i1 i2, i0) `shouldBe` Fail [typeMismatch i1 i0, typeMismatch i2 i0]
-    unify [] [] (Any, Or i1 i2) `shouldBe` Ok [(i1, []), (i2, [])]
-    unify [] [] (x, Or i1 i2) `shouldBe` Ok [(i1, [("x", i1)]), (i2, [("x", i2)])]
-    unify [] [] (x, Or i1 i1) `shouldBe` Ok [(i1, [("x", i1)])]
-    unify [] [] (i0, Or i1 i2) `shouldBe` Fail [typeMismatch i0 i1, typeMismatch i0 i2]
-    unify [] [] (Fun x y, Fun i1 i2) `shouldBe` Ok [(Fun i1 i2, [("y", i2), ("x", i1)])]
-    unify [] [] (App x y, App z i2) `shouldBe` Ok [(App z i2, [("y", i2), ("x", z)])]
-    unify [] [] (Call "f" x, Call "f" i1) `shouldBe` Ok [(Call "f" i1, [("x", i1)])]
-    unify [] [] (Call "f" x, Call "g" i1) `shouldBe` Fail [typeMismatch (Call "f" x) (Call "g" i1)]
+    -- unify loc0 [] [] (Fix "a" x, i1) `shouldBe` Ok [(i1, [("x", i1)])]
+    -- unify loc0 [] [] (Fix "a" a, i1) `shouldBe` Ok [(Fix "a" a, [])]
+    -- unify loc0 [] [] (i1, Fix "a" x) `shouldBe` Ok [(i1, [("x", i1)])]
+    -- unify loc0 [] [] (i1, Fix "a" a) `shouldBe` Ok [(Fix "a" a, [])]
+    -- unify loc0 [] [] (i1, Fix "a" a) `shouldBe` Ok [(i1, [("a", i1)])]
+    -- unify loc0 [] [] (Fix "a" a, Fix "a" i1) `shouldBe` Ok [(i1, [("a", i1)])]
+    -- unify loc0 [] [] (Fix "a" a, Fix "a" a) `shouldBe` Ok [(Fix "a" a, [])]
+    -- unify loc0 [] [] (Fix "a" a, Fix "b" b) `shouldBe` Ok [(Fix "b" b, [])]
+    unify loc0 [] [] (Ann x y, Ann i1 IntT) `shouldBe` Ok [(Ann i1 IntT, [("y", IntT), ("x", i1)])]
+    unify loc0 [] [] (Ann i1 IntT, x) `shouldBe` Ok [(Ann i1 IntT, [("x", Ann i1 IntT)])]
+    unify loc0 [] [] (Ann x IntT, i1) `shouldBe` Ok [(i1, [("x", i1)])]
+    unify loc0 [] [] (x, Ann i1 IntT) `shouldBe` Ok [(Ann i1 IntT, [("x", Ann i1 IntT)])]
+    unify loc0 [] [] (i1, Ann x IntT) `shouldBe` Ok [(i1, [("x", i1)])]
+    unify loc0 [] [] (And x y, And i1 i2) `shouldBe` Ok [(And i1 i2, [("y", i2), ("x", i1)])]
+    unify loc0 [] [] (Or i1 i2, Any) `shouldBe` Ok [(i1, []), (i2, [])]
+    unify loc0 [] [] (Or i1 i2, x) `shouldBe` Ok [(i1, [("x", i1)]), (i2, [("x", i2)])]
+    unify loc0 [] [] (Or i1 i1, x) `shouldBe` Ok [(i1, [("x", i1)])]
+    unify loc0 [] [] (Or i1 i2, i0) `shouldBe` Fail [typeMismatch loc0 i1 i0, typeMismatch loc0 i2 i0]
+    unify loc0 [] [] (Any, Or i1 i2) `shouldBe` Ok [(i1, []), (i2, [])]
+    unify loc0 [] [] (x, Or i1 i2) `shouldBe` Ok [(i1, [("x", i1)]), (i2, [("x", i2)])]
+    unify loc0 [] [] (x, Or i1 i1) `shouldBe` Ok [(i1, [("x", i1)])]
+    unify loc0 [] [] (i0, Or i1 i2) `shouldBe` Fail [typeMismatch loc0 i0 i1, typeMismatch loc0 i0 i2]
+    unify loc0 [] [] (Fun x y, Fun i1 i2) `shouldBe` Ok [(Fun i1 i2, [("y", i2), ("x", i1)])]
+    unify loc0 [] [] (App x y, App z i2) `shouldBe` Ok [(App z i2, [("y", i2), ("x", z)])]
+    unify loc0 [] [] (Call "f" x, Call "f" i1) `shouldBe` Ok [(Call "f" i1, [("x", i1)])]
+    unify loc0 [] [] (Call "f" x, Call "g" i1) `shouldBe` Fail [typeMismatch loc0 (Call "f" x) (Call "g" i1)]
     -- TODO: Let
-    unify [] [] (Meta (Comments []) i1, x) `shouldBe` Ok [(i1, [("x", i1)])]
-    unify [] [] (x, Meta (Comments []) i1) `shouldBe` Ok [(i1, [("x", i1)])]
-    unify [] [] (Err, Err) `shouldBe` Ok [(Err, [])]
+    unify loc0 [] [] (Meta (Comments []) i1, x) `shouldBe` Ok [(i1, [("x", i1)])]
+    unify loc0 [] [] (x, Meta (Comments []) i1) `shouldBe` Ok [(i1, [("x", i1)])]
+    unify loc0 [] [] (Err, Err) `shouldBe` Ok [(Err, [])]
 
   it "☯ Core.type.infer" $ do
     let (xT, aT) = (Var "xT", Var "aT")
-    infer [] [] Any `shouldBe` Ok [((Any, Var "_1"), [("_1", Var "_1")])]
-    infer [] [] Unit `shouldBe` Ok [((Unit, Unit), [])]
-    infer [] [] IntT `shouldBe` Ok [((IntT, IntT), [])]
-    infer [] [] NumT `shouldBe` Ok [((NumT, NumT), [])]
-    infer [] [] (Int 1) `shouldBe` Ok [((Int 1, IntT), [])]
-    infer [] [] (Num 1.1) `shouldBe` Ok [((Num 1.1, NumT), [])]
-    infer [] [] (Var "x") `shouldBe` Fail [undefinedVar "x"]
+    infer loc0 [] [] Any `shouldBe` Ok [((Any, Var "_1"), [("_1", Var "_1")])]
+    infer loc0 [] [] Unit `shouldBe` Ok [((Unit, Unit), [])]
+    infer loc0 [] [] IntT `shouldBe` Ok [((IntT, IntT), [])]
+    infer loc0 [] [] NumT `shouldBe` Ok [((NumT, NumT), [])]
+    infer loc0 [] [] (Int 1) `shouldBe` Ok [((Int 1, IntT), [])]
+    infer loc0 [] [] (Num 1.1) `shouldBe` Ok [((Num 1.1, NumT), [])]
+    infer loc0 [] [] (Var "x") `shouldBe` Fail [undefinedVar loc0 "x"]
     -- TODO: does this work when inferring generic functions?
     -- infer' [] [("x", i1)] (Var "x") `shouldBe` Ok [((x, IntT), [("x", Ann x IntT)])]
-    infer [] [("x", i1)] (Var "x") `shouldBe` Ok [((x, IntT), [])]
-    infer [] [("a", a)] (Var "a") `shouldBe` Ok [((a, aT), [("aT", aT), ("a", Ann a aT)])]
-    infer [] [] (Tag "A" i1) `shouldBe` Ok [((Tag "A" i1, Tag "A" IntT), [])]
-    infer [] [] (For "a" a) `shouldBe` Ok [((For "a" a, aT), [("aT", aT), ("a", Ann a aT)])]
-    infer [] [] (For "a" i1) `shouldBe` Ok [((i1, IntT), [("aT", aT), ("a", Ann a aT)])]
-    infer [] [] (Fix "a" a) `shouldBe` Ok [((Fix "a" a, aT), [("aT", aT), ("a", Ann a aT)])]
-    infer [] [] (Fix "a" i1) `shouldBe` Ok [((i1, IntT), [])]
-    infer [] [] (Ann i1 IntT) `shouldBe` Ok [((i1, IntT), [])]
-    infer [] [] (And i1 n2) `shouldBe` Ok [((And i1 n2, And IntT NumT), [])]
-    infer [] [] (Or i1 n2) `shouldBe` Ok [((i1, IntT), []), ((n2, NumT), [])]
-    infer [] [] (Or i1 i1) `shouldBe` Ok [((i1, IntT), [])]
-    infer [] [] (Or x i1) `shouldBe` Ok [((i1, IntT), [])]
-    infer [] [] (Or i1 y) `shouldBe` Ok [((i1, IntT), [])]
-    infer [] [] (Or x y) `shouldBe` Fail [undefinedVar "x", undefinedVar "y"]
-    infer [] [] (Fun i1 n2) `shouldBe` Ok [((Fun (Ann i1 IntT) (Ann n2 NumT), Fun IntT NumT), [])]
-    infer [] [("f", f)] (App f i1) `shouldBe` Ok [((App f (Ann i1 IntT), Any), [("f", Ann f (Fun IntT Any))])]
-    infer [] [] (App (Fun i1 n2) i2) `shouldBe` Ok [((App (Fun (Ann i1 IntT) (Ann n2 NumT)) (Ann i2 IntT), NumT), [])]
-    infer [] [] (App (Fun n1 i2) i1) `shouldBe` Fail [typeMismatch NumT IntT]
-    -- infer [] [("x", i1)] (App (For "a" $ Fun a a) x) `shouldBe` Ok [((App (For "a" $ Fun (Ann a IntT) (Ann a IntT)) (Ann x IntT), IntT), [("a", Ann a IntT), ("aT", IntT)])]
+    infer loc0 [] [("x", i1)] (Var "x") `shouldBe` Ok [((x, IntT), [])]
+    infer loc0 [] [("a", a)] (Var "a") `shouldBe` Ok [((a, aT), [("aT", aT), ("a", Ann a aT)])]
+    infer loc0 [] [] (Tag "A" i1) `shouldBe` Ok [((Tag "A" i1, Tag "A" IntT), [])]
+    infer loc0 [] [] (For "a" a) `shouldBe` Ok [((For "a" a, aT), [("aT", aT), ("a", Ann a aT)])]
+    infer loc0 [] [] (For "a" i1) `shouldBe` Ok [((i1, IntT), [("aT", aT), ("a", Ann a aT)])]
+    infer loc0 [] [] (Fix "a" a) `shouldBe` Ok [((Fix "a" a, aT), [("aT", aT), ("a", Ann a aT)])]
+    infer loc0 [] [] (Fix "a" i1) `shouldBe` Ok [((i1, IntT), [])]
+    infer loc0 [] [] (Ann i1 IntT) `shouldBe` Ok [((i1, IntT), [])]
+    infer loc0 [] [] (And i1 n2) `shouldBe` Ok [((And i1 n2, And IntT NumT), [])]
+    infer loc0 [] [] (Or i1 n2) `shouldBe` Ok [((i1, IntT), []), ((n2, NumT), [])]
+    infer loc0 [] [] (Or i1 i1) `shouldBe` Ok [((i1, IntT), [])]
+    infer loc0 [] [] (Or x i1) `shouldBe` Ok [((i1, IntT), [])]
+    infer loc0 [] [] (Or i1 y) `shouldBe` Ok [((i1, IntT), [])]
+    infer loc0 [] [] (Or x y) `shouldBe` Fail [undefinedVar loc0 "x", undefinedVar loc0 "y"]
+    infer loc0 [] [] (Fun i1 n2) `shouldBe` Ok [((Fun (Ann i1 IntT) (Ann n2 NumT), Fun IntT NumT), [])]
+    infer loc0 [] [("f", f)] (App f i1) `shouldBe` Ok [((App f (Ann i1 IntT), Any), [("f", Ann f (Fun IntT Any))])]
+    infer loc0 [] [] (App (Fun i1 n2) i2) `shouldBe` Ok [((App (Fun (Ann i1 IntT) (Ann n2 NumT)) (Ann i2 IntT), NumT), [])]
+    infer loc0 [] [] (App (Fun n1 i2) i1) `shouldBe` Fail [typeMismatch loc0 NumT IntT]
+    -- infer loc0 [] [("x", i1)] (App (For "a" $ Fun a a) x) `shouldBe` Ok [((App (For "a" $ Fun (Ann a IntT) (Ann a IntT)) (Ann x IntT), IntT), [("a", Ann a IntT), ("aT", IntT)])]
     -- @x y. (x, y) -> (<) (y, x) : @a. (a, a) -> Bool
     -- TODO: App
     -- TODO: Call
-    -- infer [] [] (Let [x1] x) `shouldBe` Ok ((Let [x1] x, IntT), [])
-    -- infer [] [("x", n1)] (Let [x1] x) `shouldBe` Ok ((Let [x1] x, IntT), [])
+    -- infer loc0 [] [] (Let [x1] x) `shouldBe` Ok ((Let [x1] x, IntT), [])
+    -- infer loc0 [] [("x", n1)] (Let [x1] x) `shouldBe` Ok ((Let [x1] x, IntT), [])
     -- TODO: Meta
-    infer [] [] Err `shouldBe` Ok [((Err, Err), [])]
+    infer loc0 [] [] Err `shouldBe` Ok [((Err, Err), [])]
 
   it "☯ Core.type.check" $ do
     let xT = Var "xT"
-    check [] [] (Any, IntT) `shouldBe` Ok [((Any, IntT), [("_1", IntT)])]
-    check [] [] (i1, Any) `shouldBe` Ok [((i1, IntT), [])]
-    check [] [] (Unit, Unit) `shouldBe` Ok [((Unit, Unit), [])]
-    check [] [] (Unit, IntT) `shouldBe` Fail [typeMismatch Unit IntT]
-    check [] [] (IntT, IntT) `shouldBe` Ok [((IntT, IntT), [])]
-    check [] [] (NumT, NumT) `shouldBe` Ok [((NumT, NumT), [])]
-    check [] [] (Int 1, IntT) `shouldBe` Ok [((i1, IntT), [])]
-    check [] [] (Num 1.1, NumT) `shouldBe` Ok [((n1, NumT), [])]
-    check [] [] (Var "x", IntT) `shouldBe` Fail [undefinedVar "x"]
-    check [] [("x", i1)] (Var "x", Any) `shouldBe` Ok [((x, IntT), [])]
-    check [] [("x", x)] (Var "x", Any) `shouldBe` Ok [((x, xT), [("xT", xT), ("x", Ann x xT)])]
-    check [] [("x", x)] (Var "x", IntT) `shouldBe` Ok [((x, IntT), [("x", Ann x IntT)])]
-    check [] [("x", Ann x Any)] (Var "x", IntT) `shouldBe` Ok [((x, IntT), [("x", Ann x IntT)])]
+    check loc0 [] [] (Any, IntT) `shouldBe` Ok [((Any, IntT), [("_1", IntT)])]
+    check loc0 [] [] (i1, Any) `shouldBe` Ok [((i1, IntT), [])]
+    check loc0 [] [] (Unit, Unit) `shouldBe` Ok [((Unit, Unit), [])]
+    check loc0 [] [] (Unit, IntT) `shouldBe` Fail [typeMismatch loc0 Unit IntT]
+    check loc0 [] [] (IntT, IntT) `shouldBe` Ok [((IntT, IntT), [])]
+    check loc0 [] [] (NumT, NumT) `shouldBe` Ok [((NumT, NumT), [])]
+    check loc0 [] [] (Int 1, IntT) `shouldBe` Ok [((i1, IntT), [])]
+    check loc0 [] [] (Num 1.1, NumT) `shouldBe` Ok [((n1, NumT), [])]
+    check loc0 [] [] (Var "x", IntT) `shouldBe` Fail [undefinedVar loc0 "x"]
+    check loc0 [] [("x", i1)] (Var "x", Any) `shouldBe` Ok [((x, IntT), [])]
+    check loc0 [] [("x", x)] (Var "x", Any) `shouldBe` Ok [((x, xT), [("xT", xT), ("x", Ann x xT)])]
+    check loc0 [] [("x", x)] (Var "x", IntT) `shouldBe` Ok [((x, IntT), [("x", Ann x IntT)])]
+    check loc0 [] [("x", Ann x Any)] (Var "x", IntT) `shouldBe` Ok [((x, IntT), [("x", Ann x IntT)])]
     let tdef = For "x" $ Fun x $ Or (For "y" $ Fun (Tag "A" y) (Tag "T1" (And x y))) (For "z" $ Fun (Tag "B" z) (Tag "T2" (And x z)))
     let env = [("T", tdef)]
-    check [] env (Tag "A" i1, Tag "A" Any) `shouldBe` Ok [((Tag "A" i1, Tag "A" IntT), [])]
-    check [] env (Tag "A" i1, Tag "B" Any) `shouldBe` Fail [typeMismatch (Tag "A" IntT) (Tag "B" Any)]
-    check [] env (Tag "A" i1, Tag "T" i2) `shouldBe` Ok [((Tag "A" i1, Tag "T1" (And i2 IntT)), [("T$1", Tag "T1" (And (Ann i2 IntT) IntT)), ("y", IntT), ("x", Ann i2 IntT), ("T", tdef)])]
-    check [] env (Tag "B" i1, Tag "T" i2) `shouldBe` Ok [((Tag "B" i1, Tag "T2" (And i2 IntT)), [("T$1", Tag "T2" (And (Ann i2 IntT) IntT)), ("z", IntT), ("x", Ann i2 IntT), ("T", tdef)])]
-    check [] env (Tag "C" i1, Tag "T" i2) `shouldBe` Fail [typeMismatch (Tag "A" y) (Tag "C" IntT), typeMismatch (Tag "B" z) (Tag "C" IntT)]
-    check [] env (Tag "T" i1, Tag "T" i2) `shouldBe` Fail [typeMismatch IntT i2]
-    check [] env (Tag "T" i1, Tag "T" IntT) `shouldBe` Ok [((Tag "T" i1, Tag "T" IntT), [])]
+    check loc0 [] env (Tag "A" i1, Tag "A" Any) `shouldBe` Ok [((Tag "A" i1, Tag "A" IntT), [])]
+    check loc0 [] env (Tag "A" i1, Tag "B" Any) `shouldBe` Fail [typeMismatch loc0 (Tag "A" IntT) (Tag "B" Any)]
+    check loc0 [] env (Tag "A" i1, Tag "T" i2) `shouldBe` Ok [((Tag "A" i1, Tag "T1" (And i2 IntT)), [("T$1", Tag "T1" (And (Ann i2 IntT) IntT)), ("y", IntT), ("x", Ann i2 IntT), ("T", tdef)])]
+    check loc0 [] env (Tag "B" i1, Tag "T" i2) `shouldBe` Ok [((Tag "B" i1, Tag "T2" (And i2 IntT)), [("T$1", Tag "T2" (And (Ann i2 IntT) IntT)), ("z", IntT), ("x", Ann i2 IntT), ("T", tdef)])]
+    check loc0 [] env (Tag "C" i1, Tag "T" i2) `shouldBe` Fail [typeMismatch loc0 (Tag "A" y) (Tag "C" IntT), typeMismatch loc0 (Tag "B" z) (Tag "C" IntT)]
+    check loc0 [] env (Tag "T" i1, Tag "T" i2) `shouldBe` Fail [typeMismatch loc0 IntT i2]
+    check loc0 [] env (Tag "T" i1, Tag "T" IntT) `shouldBe` Ok [((Tag "T" i1, Tag "T" IntT), [])]
     -- TODO: Does this make sense? Should it not be allowed?
-    check [] env (Tag "T" i1, Tag "A" i2) `shouldBe` Ok [((Tag "T" i1, Tag "T1" (And IntT i2)), [("T$1", Tag "T1" (And (Ann IntT IntT) i2)), ("y", i2), ("x", Ann IntT IntT), ("T", tdef)])]
+    check loc0 [] env (Tag "T" i1, Tag "A" i2) `shouldBe` Ok [((Tag "T" i1, Tag "T1" (And IntT i2)), [("T$1", Tag "T1" (And (Ann IntT IntT) i2)), ("y", i2), ("x", Ann IntT IntT), ("T", tdef)])]
     -- For String Expr
     -- Fix String Expr
     -- Ann Expr Type
-    check [] [] (And i1 n2, And a b) `shouldBe` Ok [((And i1 n2, And IntT NumT), [("b", NumT), ("a", IntT)])]
-    -- check [] (Or i1 i2) IntT `shouldBe` Ok ((Or (Ann i1 IntT) (Ann i2 IntT), IntT), [])
-    -- check [] (Or i1 n2) IntT `shouldBe` Ok ((i1, IntT), [])
-    -- check [] (Or n1 i2) IntT `shouldBe` Ok ((i2, IntT), [])
-    -- check [("x", x), ("y", y)] (Or x y) IntT `shouldBe` Ok ((Or (Ann x IntT) (Ann y IntT), IntT), [])
-    -- check [("x", x)] x (Or IntT NumT) `shouldBe` Ok ((x, Or IntT NumT), [])
-    -- check [("x", x)] (Or n1 i2) IntT `shouldBe` Ok ((i2, IntT), [])
-    check [] [] (Fun i1 n2, Fun a b) `shouldBe` Ok [((Fun (Ann i1 IntT) (Ann n2 NumT), Fun IntT NumT), [("b", NumT), ("a", IntT)])]
+    check loc0 [] [] (And i1 n2, And a b) `shouldBe` Ok [((And i1 n2, And IntT NumT), [("b", NumT), ("a", IntT)])]
+    -- check loc0 [] (Or i1 i2) IntT `shouldBe` Ok ((Or (Ann i1 IntT) (Ann i2 IntT), IntT), [])
+    -- check loc0 [] (Or i1 n2) IntT `shouldBe` Ok ((i1, IntT), [])
+    -- check loc0 [] (Or n1 i2) IntT `shouldBe` Ok ((i2, IntT), [])
+    -- check loc0 [("x", x), ("y", y)] (Or x y) IntT `shouldBe` Ok ((Or (Ann x IntT) (Ann y IntT), IntT), [])
+    -- check loc0 [("x", x)] x (Or IntT NumT) `shouldBe` Ok ((x, Or IntT NumT), [])
+    -- check loc0 [("x", x)] (Or n1 i2) IntT `shouldBe` Ok ((i2, IntT), [])
+    check loc0 [] [] (Fun i1 n2, Fun a b) `shouldBe` Ok [((Fun (Ann i1 IntT) (Ann n2 NumT), Fun IntT NumT), [("b", NumT), ("a", IntT)])]
     -- let env = [("x", x), ("y", y), ("a", a), ("b", b)]
-    -- check [] env (for ["x", "y"] $ Fun x y, for ["a", "b"] $ Fun a b) `shouldBe` Ok []
-    check [] [("f", f)] (App f i1, NumT) `shouldBe` Ok [((App f (Ann i1 IntT), NumT), [("f", Ann f (Fun IntT NumT))])]
+    -- check loc0 [] env (for ["x", "y"] $ Fun x y, for ["a", "b"] $ Fun a b) `shouldBe` Ok []
+    check loc0 [] [("f", f)] (App f i1, NumT) `shouldBe` Ok [((App f (Ann i1 IntT), NumT), [("f", Ann f (Fun IntT NumT))])]
     -- App Expr Expr
     -- Call String [Expr]
     -- Let [(String, Expr)] Expr
     -- Meta (Metadata Expr) Expr
-    check [] [] (Err, Err) `shouldBe` Ok [((Err, Err), [])]
+    check loc0 [] [] (Err, Err) `shouldBe` Ok [((Err, Err), [])]
