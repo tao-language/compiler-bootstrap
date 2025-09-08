@@ -30,7 +30,7 @@ instance Show TestResult where
     TestPass name -> "✅ " ++ name ++ "\n"
     TestFail (name, test, expect) got -> do
       let fmt = format 80 "    "
-      let errors = concatMap (\e -> show e ++ "\n") (check (Tuple [test, expect]))
+      let errors = concatMap (\e -> show e ++ "\n") (check [] "" (Tuple [test, expect]))
       errors ++ "❌ " ++ name ++ "\n  > " ++ fmt (dropMeta test) ++ "\n  " ++ fmt (dropMeta expect) ++ "\n* " ++ fmt (dropMeta got) ++ "\n"
 
 type UnitTest = (String, Expr, Pattern)

@@ -1978,57 +1978,59 @@ locOf (Ann a _) = locOf a
 locOf _ = Nothing
 
 class Check a where
-  check :: a -> [Error Expr]
+  check :: Context -> FilePath -> a -> [Error Expr]
 
 instance Check (C.Metadata Expr) where
-  check :: C.Metadata Expr -> [Error Expr]
-  check = \case
+  check :: Context -> FilePath -> C.Metadata Expr -> [Error Expr]
+  check ctx path = \case
     C.Error e -> [e]
     _ -> []
 
 instance Check Name where
-  check :: Name -> [Error Expr]
-  check = \case
+  check :: Context -> FilePath -> Name -> [Error Expr]
+  check ctx path = \case
     Name _ -> []
-    MetaName m a -> check m ++ check a
+    MetaName m a -> check ctx path m ++ check ctx path a
 
 instance Check Expr where
-  check :: Expr -> [Error Expr]
-  check = \case
-    Do stmts -> check stmts
-    Meta m a -> check m ++ check a
-    a -> collect check a
-
-instance Check (Expr, Maybe Type) where
-  check :: (Expr, Maybe Type) -> [Error Expr]
-  check (a, Just t) = check a ++ check t
-  check (a, Nothing) = check a
+  check :: Context -> FilePath -> Expr -> [Error Expr]
+  check ctx path = \case
+    Do stmts -> check ctx path stmts
+    Meta m a -> check ctx path m ++ check ctx path a
+    a -> collect (check ctx path) a
 
 instance Check Stmt where
-  check :: Stmt -> [Error Expr]
-  check = \case
+  check :: Context -> FilePath -> Stmt -> [Error Expr]
+  check ctx path = \case
     -- TODO: check should parse import (path, alias, names) in look for syntax errors (names starting with '!')
     -- TODO check should verify the import path exists
     -- TODO check should verify the imported names exist
     Import {} -> []
-    Let a b -> check a ++ check b
-    Bind a b -> check a ++ check b
+    -- Let a b -> check ctx path a ++ check ctx path b
+    Let a b -> do
+      let (_, term) = compile ctx path (Do [Let a b, Return Any])
+      check ctx path (lift term)
+    Bind a b -> check ctx path a ++ check ctx path b
     Run x args -> do
       -- TODO: check that x is defined
-      concatMap check args
-    Test name expr expect -> concatMap check [expr, expect]
-    TypeDef name args body -> check name ++ concatMap check args ++ check body
-    Return a -> check a
-    Nop m -> check m
+      concatMap (check ctx path) args
+    Test name expr expect -> concatMap (check ctx path) [expr, expect]
+    TypeDef name args body -> check ctx path name ++ concatMap (check ctx path) args ++ check ctx path body
+    Return a -> check ctx path a
+    Nop m -> check ctx path m
     stmt -> error $ "TODO: check: " ++ show (dropMeta stmt)
 
-instance (Check a) => Check [a] where
-  check :: [a] -> [Error Expr]
-  check = concatMap check
+instance Check [Stmt] where
+  check :: Context -> FilePath -> [Stmt] -> [Error Expr]
+  check ctx path = concatMap (check ctx path)
 
 instance Check Module where
-  check :: Module -> [Error Expr]
-  check (_, stmts) = concatMap check stmts
+  check :: Context -> FilePath -> Module -> [Error Expr]
+  check ctx _ (path, stmts) = concatMap (check ctx path) stmts
+
+instance Check Context where
+  check :: Context -> FilePath -> Context -> [Error Expr]
+  check ctx _ = concatMap (check ctx "")
 
 run :: Context -> FilePath -> Expr -> Expr
 run ctx path expr = do
@@ -2163,7 +2165,7 @@ instance Compile (String, Expr) where
   --       ""
   --     ]
   compile ctx path (name, expr) = do
-    let a = C.dropMeta $ C.bind [name] $ lower expr
+    let a = C.bind [name] $ lower expr
     let dependencies = delete name (C.freeVars a `union` C.freeTags a)
     let env = compileDefs ctx path dependencies
     let loc = Location path (Range (Pos 0 0) (Pos 0 0))

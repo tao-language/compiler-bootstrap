@@ -53,25 +53,35 @@ main = do
 
 coreCmd :: FilePath -> String -> IO ()
 coreCmd filename arg = do
-  pkg <- dropMeta <$> load [filename]
-  ctx <- dropMeta <$> include "prelude" pkg
-  expr <- dropMeta <$> loadExpr "<core>" arg
+  pkg <- load [filename]
+  ctx <- include "prelude" pkg
+  case check ctx "" ctx of
+    [] -> return ()
+    syntaxErrors -> do
+      mapM_ display syntaxErrors
+      exitFailure
+  expr <- loadExpr "<core>" arg
+  case check ctx "" expr of
+    [] -> return ()
+    syntaxErrors -> do
+      mapM_ (displayOn arg) syntaxErrors
+      exitFailure
   -- TODO: check for errors
   let printExpr a = putStrLn ("  " ++ C.format 80 "  " a)
   let path = dropExtension (snd (split2 ':' filename))
   let (env, a) = compile ctx path expr
   putStrLn "---- env ----"
-  printExpr (C.let' env C.Any)
+  printExpr (C.dropMeta $ C.let' env C.Any)
   putStrLn $ ">> env: " ++ show (map fst env)
   putStrLn "---- lower ----"
-  printExpr (lower expr)
+  printExpr (C.dropMeta $ lower expr)
   putStrLn "---- bind ----"
-  printExpr (C.bind [] $ lower expr)
+  printExpr (C.dropMeta $ C.bind [] $ lower expr)
   putStrLn "---- compile ----"
-  printExpr a
+  printExpr (C.dropMeta a)
   putStrLn "---- eval ----"
   let b = C.eval runtimeOps $ C.let' env a
-  printExpr b
+  printExpr (C.dropMeta b)
   putStrLn ("--- " ++ C.showCtr' 3 b)
   -- putStrLn "---- eval (untyped)"
   -- printExpr (C.dropTypes b)
@@ -79,11 +89,20 @@ coreCmd filename arg = do
 
 runCmd :: FilePath -> String -> IO ()
 runCmd filename arg = do
-  ctx <- load [filename]
-  ctx <- include "prelude" ctx
-  expr <- loadExpr "<run>" arg
-  -- TODO: check for errors
+  pkg <- load [filename]
+  ctx <- include "prelude" pkg
   let path = dropExtension (snd (split2 ':' filename))
+  case check ctx path ctx of
+    [] -> return ()
+    syntaxErrors -> do
+      mapM_ display syntaxErrors
+      exitFailure
+  expr <- loadExpr "<run>" arg
+  case check ctx "" expr of
+    [] -> return ()
+    syntaxErrors -> do
+      mapM_ display syntaxErrors
+      exitFailure
   print (dropTypes $ dropMeta $ Run.run ctx path expr)
 
 checkCmd :: FilePath -> IO ()
@@ -91,22 +110,28 @@ checkCmd filename = do
   pkg <- load [filename]
   ctx <- include "prelude" pkg
   let path = dropExtension (snd (split2 ':' filename))
-  case checkTypes ctx path pkg of
+  case check ctx path ctx of
     [] -> return ()
-    errors -> do
-      let n = length errors
-      mapM_ display errors
-      putStrLn $ "=== SUMMARY " ++ replicate 50 '='
-      putStrLn filename
-      putStrLn $ "🚨 " ++ show n ++ " error" ++ (if n == 1 then "" else "s")
-      putStrLn ""
+    syntaxErrors -> do
+      mapM_ display syntaxErrors
       exitFailure
+
+-- case check ctx path ctx of
+--   [] -> return ()
+--   errors -> do
+--     let n = length errors
+--     mapM_ display errors
+--     putStrLn $ "=== SUMMARY " ++ replicate 50 '='
+--     putStrLn filename
+--     putStrLn $ "🚨 " ++ show n ++ " error" ++ (if n == 1 then "" else "s")
+--     putStrLn ""
+--     exitFailure
 
 testCmd :: FilePath -> [String] -> IO ()
 testCmd path patterns = do
   pkg <- load [path]
   ctx <- include "prelude" pkg
-  case check ctx of
+  case check ctx "" ctx of
     [] -> return ()
     syntaxErrors -> do
       mapM_ display syntaxErrors
@@ -127,6 +152,11 @@ patchCmd :: FilePath -> [FilePath] -> [FilePath] -> IO ()
 patchCmd buildDir patches sources = do
   steps <- plan [] patches
   ctx <- load sources
+  case check ctx "" ctx of
+    [] -> return ()
+    syntaxErrors -> do
+      mapM_ display syntaxErrors
+      exitFailure
   -- TODO: display errors
   let build = applyStep ctx steps ctx
   let writeFile (path, id, stmts) = do
@@ -142,6 +172,11 @@ buildPythonCmd patches sources = do
   steps <- plan [] patches
   putStrLn $ "steps: " ++ show steps
   ctx <- load sources
+  case check ctx "" ctx of
+    [] -> return ()
+    syntaxErrors -> do
+      mapM_ display syntaxErrors
+      exitFailure
   putStrLn $ "ctx: " ++ show (map fst ctx)
   -- TODO: display errors
   let ctx' =

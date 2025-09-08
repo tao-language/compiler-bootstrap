@@ -33,10 +33,11 @@ instance CheckTypes Stmt where
     --   let (env, a) = compile ctx path expr
     --   check $ lift $ C.let' env a
     TypeDef {} -> []
-    Test name expr expect -> do
-      let (env, a) = compile ctx path (Tuple [expr, expect])
-      check $ lift $ C.let' env a
+    -- Test name expr expect -> do
+    --   let (env, a) = compile ctx path (Tuple [expr, expect])
+    --   check $ lift $ C.let' env a
     -- Run expr -> do
     --   let (env, a) = compile ctx path expr
     --   check $ lift $ C.let' env a
-    Nop m -> check (Meta m Err)
+    -- Nop m -> check (Meta m Err)
+    _ -> error "TODO"

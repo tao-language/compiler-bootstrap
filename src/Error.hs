@@ -1,5 +1,6 @@
 module Error where
 
+import Control.Exception (try)
 import Data.Function ((&))
 import Data.List (intercalate)
 import Location (Location (..), Position (..), Range (..))
@@ -195,7 +196,10 @@ snippet loc src = do
     )
 
 display :: (Show a) => Error a -> IO ()
-display err = do
+display = displayOn ""
+
+displayOn :: (Show a) => String -> Error a -> IO ()
+displayOn src err = do
   putStrLn ("==== " ++ title err ++ " " ++ replicate (60 - length (title err)) '=')
   putStrLn ""
   putStrLn ("❌ " ++ summary err)
@@ -203,8 +207,11 @@ display err = do
   case location err of
     Nothing -> return ()
     Just loc -> do
-      src <- readFile loc.filename
-      putStrLn (snippet loc src)
+      result <- try (readFile loc.filename) :: IO (Either IOError String)
+      let src' = case result of
+            Right src -> src
+            Left _ -> src
+      putStrLn (snippet loc src')
       putStrLn ""
   case description err of
     "" -> return ()

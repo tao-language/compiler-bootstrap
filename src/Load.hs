@@ -8,11 +8,12 @@ import Location (Location (..), Position (..), Range (..))
 import qualified Parser as P
 import Stdlib (replace, split2)
 import System.Directory (doesDirectoryExist, listDirectory)
+import System.Exit (exitFailure)
 import System.FilePath (dropExtension, splitExtension, takeBaseName, takeDirectory, (</>))
 import Tao
 
 load :: [FilePath] -> IO Context
-load = foldM loadModule []
+load paths = foldM loadModule [] paths
 
 include :: FilePath -> Context -> IO Context
 include preludePath ctx = do
@@ -72,11 +73,13 @@ loadSource filename = case splitExtension filename of
   _ -> error $ "file extension not supported: " ++ filename
 
 loadExpr :: FilePath -> String -> IO Expr
-loadExpr path src = case P.parse (parseExpr 0) path src of
-  Right (a, _) -> return a
-  Left s -> do
-    let loc = Location s.filename (Range s.pos s.pos)
-    error ("compiler error, there is a bug in the parser\n ❌ " ++ show loc ++ ": the parser was not able to gracefully recover from an error.\nexpected =" ++ s.expected ++ "\n")
+loadExpr path src = do
+  let parser = parseExprUntil "expression" 0 P.endOfFile
+  case P.parse parser path src of
+    Right (a, _) -> return a
+    Left s -> do
+      let loc = Location s.filename (Range s.pos s.pos)
+      error ("compiler error, there is a bug in the parser\n ❌ " ++ show loc ++ ": the parser was not able to gracefully recover from an error.\nexpected =" ++ s.expected ++ "\n")
 
 -- loadAtom :: String -> String -> IO Expr
 -- loadAtom filename src = case P.parse parseAtom filename src of

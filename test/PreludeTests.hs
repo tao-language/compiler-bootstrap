@@ -37,55 +37,55 @@ run = describe "--==☯ Prelude tests ☯==--" $ do
   let name = "prelude/@arithmetic-int"
   it ("☯ " ++ name) $ do
     pkg <- load [name]
-    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
+    check ctx "" ctx `shouldBe` []
     test ctx pkg `shouldBe` []
 
   let name = "prelude/@arithmetic-num"
   it ("☯ " ++ name) $ do
     pkg <- load [name]
-    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
+    check ctx "" ctx `shouldBe` []
     test ctx pkg `shouldBe` []
 
   let name = "prelude/@bool"
   it ("☯ " ++ name) $ do
     pkg <- load [name]
-    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
+    check ctx "" ctx `shouldBe` []
     test ctx pkg `shouldBe` []
 
   let name = "prelude/@maybe"
   it ("☯ " ++ name) $ do
     pkg <- load [name]
-    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
+    check ctx "" ctx `shouldBe` []
     test ctx pkg `shouldBe` []
 
   let name = "prelude/@result"
   it ("☯ " ++ name) $ do
     pkg <- load [name]
-    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
+    check ctx "" ctx `shouldBe` []
     test ctx pkg `shouldBe` []
 
   let name = "prelude/@comparison"
   it ("☯ " ++ name) $ do
     pkg <- load [name]
-    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
+    check ctx "" ctx `shouldBe` []
     test ctx pkg `shouldBe` []
 
   let name = "prelude/@function"
   it ("☯ " ++ name) $ do
     pkg <- load [name]
-    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
+    check ctx "" ctx `shouldBe` []
     test ctx pkg `shouldBe` []
 
   let name = "prelude/@list"
   it ("☯ " ++ name) $ do
     pkg <- load [name]
-    check pkg `shouldBe` []
     ctx <- include "prelude" pkg
+    check ctx "" ctx `shouldBe` []
     test ctx pkg `shouldBe` []
