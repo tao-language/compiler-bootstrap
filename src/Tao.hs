@@ -1471,7 +1471,7 @@ instance Lower Expr where
       | otherwise -> C.Fun (lower a) (lower b)
     App a b -> C.App (lower a) (lower b)
     Call op args -> C.Call op (lower (Tuple args))
-    Do stmts -> lower (dropMeta $ desugarStmts stmts)
+    Do stmts -> lower (desugarStmts stmts)
     -- Let (a, b) c | Just x <- varOf c, Just d <- lookup x (C.unpack (lower a, lower b)) -> d
     -- Let (a, b) c -> lower (App (Fun a c) b)
     Op1 Neg a -> lower (sub (Int 0) a)
@@ -2178,15 +2178,19 @@ instance Compile (String, Expr) where
         (env, C.or' (distinct $ map alt ats))
       C.Fail errors ->
         (error . intercalate "\n")
-          [ "\n\ncompile " ++ show name,
+          [ "\n\ncompile[" ++ C.showCtr a ++ "] " ++ show name,
             "--- env:",
-            intercalate "\n" (map (\(x, a) -> "- " ++ x ++ " =\n    " ++ C.format 80 "    " a) env),
+            intercalate "\n" (map (\(x, a) -> "- " ++ x ++ " =\n    " ++ C.format 80 "    " (C.dropMeta a)) env),
             "--- expr:",
             show (dropMeta expr),
             "--- lower:",
             show (C.dropMeta $ lower expr),
             "--- bind:",
             show (C.dropMeta $ C.bind [name] $ lower expr),
+            "--- expr (raw):",
+            show expr,
+            "--- core (raw):",
+            show a,
             "--- errors:",
             intercalate "\n" (map (\e -> "- " ++ show e) errors),
             ""

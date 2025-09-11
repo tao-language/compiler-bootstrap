@@ -1022,7 +1022,7 @@ reduce ops (App a b) = case reduce ops a of
       b@Call {} -> letP (a, b) c
       b -> reduce ops (letP (a, b) c)
     (a, Let env b) -> reduce ops $ letP (a, reduce ops $ Let env b) c
-    (a, Meta _ b) -> reduce ops $ letP (a, reduce ops b) c
+    (a, Meta m b) -> error $ show (a, Meta m b)
     (Ann a _, b) -> reduce ops $ letP (a, b) c
     (a, Ann b _) -> reduce ops $ letP (a, b) c
     (a, b) -> err $ unhandledCase a b
@@ -1047,9 +1047,9 @@ reduce ops (Let env a) = case a of
   App a b -> reduce ops $ App (Let env a) (Let env b)
   Call f a -> reduce ops $ Call f (Let env a)
   Let env' a -> reduce ops $ Let (env' ++ env) a
-  Meta m a -> reduce ops $ Let env a
+  Meta m a -> Meta m (reduce ops $ Let env a)
   a -> a
-reduce ops (Meta _ a) = reduce ops a
+reduce ops (Meta m a) = Meta m (reduce ops a)
 reduce ops a = a
 
 eval :: Ops -> Expr -> Expr
@@ -1336,8 +1336,12 @@ instance Monad Typed where
   (>>=) (Fail e) _ = Fail e
 
 unify :: Location -> Ops -> Env -> (Expr, Expr) -> Typed (Expr, Substitution)
-unify loc ops env (Meta _ a, b) = unify loc ops env (a, b)
-unify loc ops env (a, Meta _ b) = unify loc ops env (a, b)
+unify loc ops env (Meta m a, b) = do
+  (c, s) <- unify loc ops env (a, b)
+  return (Meta m c, s)
+unify loc ops env (a, Meta m b) = do
+  (c, s) <- unify loc ops env (a, b)
+  return (c, s)
 unify loc ops env (Or a1 a2, b) = case (unify loc ops env (a1, b), unify loc ops env (a2, b)) of
   (Ok xs, Ok ys) -> Ok (xs `union` ys)
   (Ok xs, Fail _) -> Ok xs
@@ -1498,7 +1502,12 @@ infer loc ops env (Call op a) = do
 infer loc ops env (Let defs a) = do
   ((a, t), s) <- infer loc ops (defs ++ env) a
   return ((Let defs a, t), s)
-infer loc ops env (Meta _ a) = infer loc ops env a
+infer _ ops env (Meta (Loc loc) a) = do
+  ((a, t), s) <- infer loc ops env a
+  return ((Meta (Loc loc) a, t), s)
+infer loc ops env (Meta m a) = do
+  ((a, t), s) <- infer loc ops env a
+  return ((Meta m a, t), s)
 infer _ _ _ Err = return ((Err, Err), [])
 
 infer2 :: Location -> Ops -> Env -> Expr -> Expr -> Typed ((Expr, Type), (Expr, Type), Substitution)
@@ -1510,8 +1519,15 @@ infer2 loc ops env a b = do
 check :: Location -> Ops -> Env -> (Expr, Type) -> Typed ((Expr, Type), Substitution)
 -- check ops env (Any, t) = Ok [((Any, t), [])]
 check loc ops env (a, Any) = infer loc ops env a
-check loc ops env (Meta _ a, t) = check loc ops env (a, t)
-check loc ops env (a, Meta _ t) = check loc ops env (a, t)
+check _ ops env (Meta (Loc loc) a, t) = do
+  ((c, tc), s) <- check loc ops env (a, t)
+  return ((Meta (Loc loc) c, tc), s)
+check loc ops env (Meta m a, t) = do
+  ((c, tc), s) <- check loc ops env (a, t)
+  return ((Meta m c, tc), s)
+check loc ops env (a, Meta m t) = do
+  ((c, tc), s) <- check loc ops env (a, t)
+  return ((c, Meta m tc), s)
 check loc ops env (a, Or t1 t2) = case (check loc ops env (a, t1), check loc ops env (a, t2)) of
   (Ok xs, Ok ys) -> Ok (xs `union` ys)
   (Ok xs, Fail _) -> Ok xs

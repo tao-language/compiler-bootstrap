@@ -18,6 +18,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
   let (f, g, h) = (Var "f", Var "g", Var "h")
   let loc0 = Location filename (Range (Pos 0 0) (Pos 0 0))
   let loc = Loc $ Location filename (Range (Pos 1 2) (Pos 3 4))
+  let err e = Meta (Error e) Err
 
   let add a b = Call "int_add" (And a b)
   let sub a b = Call "int_sub" (And a b)
@@ -1191,6 +1192,14 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     unify loc0 [] [] (x, Meta (Comments []) i1) `shouldBe` Ok [(i1, [("x", i1)])]
     unify loc0 [] [] (Err, Err) `shouldBe` Ok [(Err, [])]
 
+  it "☯ Core.type.unify.errors" $ do
+    let loc1 = Location "file1" (Range (Pos 1 2) (Pos 3 4))
+    let loc2 = Location "file2" (Range (Pos 5 6) (Pos 7 8))
+    let loc1' = Meta (Loc loc1)
+    let loc2' = Meta (Loc loc2)
+    unify loc0 [] [] (IntT, NumT) `shouldBe` Fail [typeMismatch loc0 IntT NumT]
+    "TODO" `shouldBe` ""
+
   it "☯ Core.type.infer" $ do
     let (xT, aT) = (Var "xT", Var "aT")
     infer loc0 [] [] Any `shouldBe` Ok [((Any, Var "_1"), [("_1", Var "_1")])]
@@ -1228,6 +1237,15 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- infer loc0 [] [("x", n1)] (Let [x1] x) `shouldBe` Ok ((Let [x1] x, IntT), [])
     -- TODO: Meta
     infer loc0 [] [] Err `shouldBe` Ok [((Err, Err), [])]
+
+  it "☯ Core.type.infer.errors" $ do
+    let loc1 = Location "file1" (Range (Pos 1 2) (Pos 3 4))
+    let loc2 = Location "file2" (Range (Pos 5 6) (Pos 7 8))
+    let loc1' = Meta (Loc loc1)
+    let loc2' = Meta (Loc loc2)
+    infer loc0 [] [] x `shouldBe` Fail [undefinedVar loc0 "x"]
+    infer loc0 [] [] (loc1' x) `shouldBe` Fail [undefinedVar loc1 "x"]
+    infer loc0 [] [] (Or (loc1' x) (loc2' y)) `shouldBe` Fail [undefinedVar loc1 "x", undefinedVar loc2 "y"]
 
   it "☯ Core.type.check" $ do
     let xT = Var "xT"
@@ -1274,3 +1292,10 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     -- Let [(String, Expr)] Expr
     -- Meta (Metadata Expr) Expr
     check loc0 [] [] (Err, Err) `shouldBe` Ok [((Err, Err), [])]
+
+  it "☯ Core.type.check.errors" $ do
+    let loc1 = Location "file1" (Range (Pos 1 2) (Pos 3 4))
+    let loc2 = Location "file2" (Range (Pos 5 6) (Pos 7 8))
+    let loc1' = Meta (Loc loc1)
+    let loc2' = Meta (Loc loc2)
+    check loc0 [] [] (x, IntT) `shouldBe` Fail [undefinedVar loc0 "x"]
