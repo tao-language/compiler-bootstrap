@@ -95,6 +95,38 @@ showCtr' i = \case
   where
     self = showCtr' (i - 1)
 
+show' :: Int -> Expr -> String
+show' _ Any = "_"
+show' _ Unit = "()"
+show' _ IntT = "!Int"
+show' _ NumT = "!Num"
+show' _ (Int i) = show i
+show' _ (Num n) = show n
+show' i (Tag k a) = k ++ "(" ++ intercalate ", " (map (show' (i - 1)) (andOf a)) ++ ")"
+show' _ (Var x) = show (Var x)
+show' _ Err = "!error"
+show' 0 a = "<" ++ showCtr a ++ ">"
+show' i a = case a of
+  And a b -> args (And a b)
+  Or a b -> do
+    let terms = orOf (Or a b)
+    "(" ++ intercalate " | " (map self terms) ++ ")"
+  Ann a b -> "(" ++ self a ++ " : " ++ self b ++ ")"
+  For x a -> do
+    let (xs, a') = forOf (For x a)
+    "@" ++ unwords (map (show . Var) xs) ++ ". " ++ self a'
+  Fix x a -> do
+    let (xs, a') = fixOf (Fix x a)
+    "&" ++ unwords (map (show . Var) xs) ++ ". " ++ self a'
+  Fun a b -> "(" ++ self a ++ " -> " ++ self b ++ ")"
+  App a b -> self a ++ args b
+  Call f a -> "%" ++ f ++ args a
+  Let env a -> "{" ++ unwords (map (show . Var . fst) env) ++ "} " ++ self a
+  Meta _ a -> show' i a
+  where
+    self = show' (i - 1)
+    args a = "(" ++ intercalate ", " (map self (andOf a)) ++ ")"
+
 type Type = Expr
 
 type Ops = [(String, (Expr -> Expr) -> Expr -> Maybe Expr)]
@@ -419,6 +451,8 @@ grammar = do
                   return comment
                 Meta (Comments comments) <$> expr
            in G.Atom parser $ \rhs -> \case
+                Meta (Comments []) a -> do
+                  Just (PP.Text "/**/ " : rhs a)
                 Meta (Comments comments) a -> do
                   let comments' = concatMap (\c -> [PP.Text ("# " ++ c), PP.NewLine]) comments
                   Just (comments' ++ rhs a)
@@ -759,7 +793,14 @@ matchFun [(ps, b)] = fun ps b
 matchFun ((ps, b) : cases) = fun ps b `Or` matchFun cases
 
 err :: Error Expr -> Expr
-err e = Meta (Error e) Err
+err e = err' e Err
+
+err' :: Error Expr -> Expr -> Expr
+err' e = Meta (Error e)
+
+errors :: [Error Expr] -> Expr -> Expr
+errors [] a = a
+errors (e : es) a = err' e (errors es a)
 
 -- TODO: centralize into a single kind of errors
 isErr :: Expr -> Bool
@@ -914,13 +955,13 @@ bind xs = \case
     bind xs (for xs (Ann a b))
   Ann a b -> do
     let ys = filter (`notElem` xs) (freeVars b)
-    for ys (Ann (bind xs a) (bind (xs ++ ys) b))
+    for ys (Ann (bind (xs ++ ys) a) (bind (xs ++ ys) b))
   For x a -> for' [x] (bind (x : xs ++ freeVars a) a)
   Fun a b | Just (xs, a) <- asFor a -> do
     bind xs (for xs (Fun a b))
   Fun a b -> do
     let ys = filter (`notElem` xs) (freeVars a)
-    for ys (Fun (bind (xs ++ ys) a) (bind xs b))
+    for ys (Fun (bind (xs ++ ys) a) (bind (xs ++ ys) b))
   a -> apply (bind xs) a
 
 occurs :: String -> Expr -> Bool
@@ -1022,10 +1063,11 @@ reduce ops (App a b) = case reduce ops a of
       b@Call {} -> letP (a, b) c
       b -> reduce ops (letP (a, b) c)
     (a, Let env b) -> reduce ops $ letP (a, reduce ops $ Let env b) c
-    (a, Meta m b) -> error $ show (a, Meta m b)
+    (a, Meta _ b) -> reduce ops $ letP (a, b) c
     (Ann a _, b) -> reduce ops $ letP (a, b) c
     (a, Ann b _) -> reduce ops $ letP (a, b) c
     (a, b) -> err $ unhandledCase a b
+  Meta _ a -> reduce ops (App a b)
   a -> err $ cannotApply a b
 -- reduce ops (Or a b) = Or (reduce ops a) b
 reduce ops (Call f a) = case lookup f ops of
@@ -1047,8 +1089,10 @@ reduce ops (Let env a) = case a of
   App a b -> reduce ops $ App (Let env a) (Let env b)
   Call f a -> reduce ops $ Call f (Let env a)
   Let env' a -> reduce ops $ Let (env' ++ env) a
+  Meta _ a -> reduce ops $ Let env a
   Meta m a -> Meta m (reduce ops $ Let env a)
   a -> a
+reduce ops (Meta _ a) = reduce ops a
 reduce ops (Meta m a) = Meta m (reduce ops a)
 reduce ops a = a
 
@@ -1337,11 +1381,13 @@ instance Monad Typed where
 
 unify :: Location -> Ops -> Env -> (Expr, Expr) -> Typed (Expr, Substitution)
 unify loc ops env (Meta m a, b) = do
-  (c, s) <- unify loc ops env (a, b)
-  return (Meta m c, s)
+  --   (c, s) <- unify loc ops env (a, b)
+  --   return (Meta m c, s)
+  unify loc ops env (a, b)
 unify loc ops env (a, Meta m b) = do
-  (c, s) <- unify loc ops env (a, b)
-  return (c, s)
+  -- (c, s) <- unify loc ops env (a, b)
+  -- return (c, s)
+  unify loc ops env (a, b)
 unify loc ops env (Or a1 a2, b) = case (unify loc ops env (a1, b), unify loc ops env (a2, b)) of
   (Ok xs, Ok ys) -> Ok (xs `union` ys)
   (Ok xs, Fail _) -> Ok xs

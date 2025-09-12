@@ -474,9 +474,6 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     let b' = for ["y", "b"] (Fun (Ann y b) y)
     eval' (App (Fun a' i1) b') `shouldBe` i1
 
-  it "☯ -- unify" $ do
-    True `shouldBe` True
-
   -- it "☯ infer const" $ do
   --   infer [] [] IntT `shouldBe` ((IntT, IntT), [])
   --   infer [] [] NumT `shouldBe` ((NumT, NumT), [])
@@ -748,7 +745,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     bind [] (Fun (And x y) z) `shouldBe` for ["x", "y"] (Fun (And x y) z)
     bind [] (Fun (And x (Fun x y)) z) `shouldBe` for ["x", "y"] (Fun (And x (Fun x y)) z)
     bind [] (Fun x (Fun y z)) `shouldBe` For "x" (Fun x (for ["y"] (Fun y z)))
-    bind [] (Fun x (Fun x y)) `shouldBe` For "x" (Fun x (for ["x"] (Fun x y)))
+    bind [] (Fun x (Fun x y)) `shouldBe` For "x" (Fun x (Fun x y))
 
   it "☯ Core.substitute" $ do
     let s = [("x", i1), ("y", i2)]
@@ -805,7 +802,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce [] (App x y) `shouldBe` (App x y)
     reduce [] (Call "f" x) `shouldBe` (Call "f" x)
     reduce [] (Let [] x) `shouldBe` x
-    reduce [] (Meta (Comments []) x) `shouldBe` x
+    reduce [] (Meta (Comments []) x) `shouldBe` Meta (Comments []) x
     reduce [] Err `shouldBe` Err
 
   it "☯ Core.reduce.Let" $ do
@@ -828,7 +825,7 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce [] (Let env $ Call "f" x) `shouldBe` (Call "f" (Let env x))
     reduce [] (Let env $ Let [] x) `shouldBe` a
     reduce [] (Let env $ Let [("x", c)] x) `shouldBe` c
-    reduce [] (Let env $ Meta (Comments []) x) `shouldBe` a
+    reduce [] (Let env $ Meta (Comments []) x) `shouldBe` Meta (Comments []) a
     reduce [] (Let env Err) `shouldBe` Err
 
   it "☯ Core.reduce.Call" $ do

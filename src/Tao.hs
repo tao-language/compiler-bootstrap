@@ -1416,7 +1416,7 @@ grammar = do
                 let loc = Location filename (Range (Pos row1 col1) (Pos row2 col2))
                 return (Meta (C.Loc loc) a)
            in G.Atom parser $ \layout -> \case
-                Meta (C.Loc loc) a -> Just (PP.Text ("^loc[" ++ show loc ++ "](") : layout a ++ [PP.Text ")"])
+                Meta (C.Loc loc) a -> Just (PP.Text ("^loc[" ++ show loc ++ "](") : layout a ++ [PP.Text ")", PP.NewLine])
                 _ -> Nothing,
           -- Grammar.Metadata.SyntaxError
           G.Atom (const P.fail') $ \layout -> \case
@@ -1992,6 +1992,12 @@ instance Check Name where
     Name _ -> []
     MetaName m a -> check ctx path m ++ check ctx path a
 
+define :: Context -> FilePath -> [Stmt] -> Context
+define [] path stmts = [(path, stmts)]
+define (mod : ctx) path stmts = case mod of
+  (path', stmts') | path == path' -> (path, stmts ++ stmts') : ctx
+  mod -> mod : define ctx path stmts
+
 instance Check Expr where
   check :: Context -> FilePath -> Expr -> [Error Expr]
   check ctx path = \case
@@ -2007,9 +2013,7 @@ instance Check Stmt where
     -- TODO check should verify the imported names exist
     Import {} -> []
     -- Let a b -> check ctx path a ++ check ctx path b
-    Let a b -> do
-      let (_, term) = compile ctx path (Do [Let a b, Return Any])
-      check ctx path (lift term)
+    Let a b -> check ctx path (App (Fun a Any) b)
     Bind a b -> check ctx path a ++ check ctx path b
     Run x args -> do
       -- TODO: check that x is defined
@@ -2129,7 +2133,8 @@ instance Resolve (String, Stmt) where
       let alt a = case asFun a of
             Just _ -> a
             Nothing -> Fun a (Tag (nameOf tname) args)
-      [(path, fun args (or' $ map alt $ orOf body))]
+      let def = fun args (or' $ map alt $ orOf body)
+      [(path, def)]
     _ -> []
 
 nameOf :: Name -> String
@@ -2145,7 +2150,7 @@ instance Compile Expr where
 
 instance Compile (String, Expr) where
   compile :: Context -> FilePath -> (String, Expr) -> (C.Env, C.Expr)
-  -- compile ctx path (name@"-", expr) = do
+  -- compile ctx path (name@"Result", expr) = do
   --   let a = C.dropMeta $ C.bind [name] $ lower expr
   --   let dependencies = delete name (C.freeVars a `union` C.freeTags a)
   --   let env = compileDefs ctx path dependencies
@@ -2176,6 +2181,7 @@ instance Compile (String, Expr) where
         -- let alt ((a, t), _) = C.Ann a t
         let alt ((a, _), _) = a
         (env, C.or' (distinct $ map alt ats))
+      C.Fail errors -> (env, C.errors errors a)
       C.Fail errors ->
         (error . intercalate "\n")
           [ "\n\ncompile[" ++ C.showCtr a ++ "] " ++ show name,

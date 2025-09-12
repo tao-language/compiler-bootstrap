@@ -10,6 +10,7 @@ import Tao
 data TestResult
   = TestPass String
   | TestFail UnitTest Expr
+  | TestUnsolved UnitTest Expr
   deriving (Eq)
 
 isFailure :: TestResult -> Bool
@@ -29,9 +30,16 @@ instance Show TestResult where
   show result = case result of
     TestPass name -> "✅ " ++ name ++ "\n"
     TestFail (name, test, expect) got -> do
-      let fmt = format 80 "    "
-      let errors = concatMap (\e -> show e ++ "\n") (check [] "" (Tuple [test, expect]))
-      errors ++ "❌ " ++ name ++ "\n  > " ++ fmt (dropMeta test) ++ "\n  " ++ fmt (dropMeta expect) ++ "\n* " ++ fmt (dropMeta got) ++ "\n"
+      let fmt = format 80 "  "
+      -- let errors = concatMap (\e -> show e ++ "\n") (check [] "" (Tuple [test, expect, got]))
+      let errors = ""
+      errors ++ "❌ " ++ name ++ "\n  > " ++ fmt (dropMeta test) ++ "\n  " ++ fmt (dropMeta expect) ++ "\n* " ++ C.show' 4 (lower got) ++ "\n"
+    TestUnsolved (name, test, expect) got -> do
+      let fmt = format 80 "  "
+      -- let errors = concatMap (\e -> show e ++ "\n") (check [] "" (Tuple [test, expect, got]))
+      -- errors ++ "‼️ " ++ name ++ "\n  > " ++ fmt (dropMeta test) ++ "\n  " ++ fmt (dropMeta expect) ++ "\n* " ++ C.showCtr' 3 (lower got) ++ "\n"
+      let errors = ""
+      errors ++ "‼️ " ++ name ++ "\n  > " ++ fmt (dropMeta test) ++ "\n  " ++ fmt (dropMeta expect) ++ "\n* " ++ C.show' 4 (lower got) ++ "\n"
 
 type UnitTest = (String, Expr, Pattern)
 
@@ -83,14 +91,15 @@ instance TestSome (FilePath, UnitTest) where
     --     "result: " ++ show result,
     --     ""
     --   ]
-    case C.typedOf (snd $ C.forOf result) of
+    case C.typedOf (snd $ C.forOf $ C.dropMeta result) of
       (C.Tag "Pass" _, _) -> [TestPass name']
       -- TODO: Fix this, it's where type errors on tests get reported.
       --       Just check the result for any errors and mark it as failure.
       -- (_, C.Tag "Err" (C.Err e)) -> [TestFail filename pos name expr expect (lift (C.Err e))]
       (C.Tag "Fail" got, _) -> [TestFail (name', expr, expect) (lift got)]
       -- (got, _) -> [TestFail filename pos name expr expect (lift got)]
-      (got, ty) -> error ("Unreachable " ++ name' ++ "\ntest:\n" ++ show (C.Let env test') ++ "\ngot: " ++ show got ++ "\nt: " ++ show ty)
+      -- (err@(C.Meta (C.Error _) _), _) -> [TestFail (name', expr, expect) (lift err)]
+      (got, ty) -> [TestUnsolved (name', expr, expect) (lift got)]
 
 testAll :: (TestSome a) => Context -> a -> [TestResult]
 testAll ctx = testSome ctx (const True)
