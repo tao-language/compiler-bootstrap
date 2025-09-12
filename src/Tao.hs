@@ -789,7 +789,7 @@ withLoc start end = Meta (C.Loc (locSpan start end))
 
 -- TODO: rename to parseExpr
 parse :: Int -> FilePath -> String -> Either P.State (Expr, P.State)
-parse prec = P.parse (G.parser grammar prec)
+parse prec = P.parse (parseExpr prec)
 
 -- TODO: rename to layoutExpr
 layout :: Int -> Expr -> PP.Layout
@@ -2145,12 +2145,12 @@ class Compile a where
   compile :: Context -> FilePath -> a -> (C.Env, C.Expr)
 
 instance Compile Context where
-  compile :: Context -> FilePath -> [Module] -> (C.Env, C.Expr)
-  compile ctx path mods = error "TODO: compile Context"
+  compile :: Context -> FilePath -> Context -> (C.Env, C.Expr)
+  compile ctx path mods = error "TODO: compile Context == [Module]"
 
 instance Compile Module where
   compile :: Context -> FilePath -> Module -> (C.Env, C.Expr)
-  compile ctx path (path', stmts) = error "TODO: compile Module"
+  compile ctx path (path', stmts) = error "TODO: compile Module == (String, [Stmt])"
 
 instance Compile Expr where
   compile :: Context -> FilePath -> Expr -> (C.Env, C.Expr)

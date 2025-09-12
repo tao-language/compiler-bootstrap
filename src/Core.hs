@@ -955,13 +955,13 @@ bind xs = \case
     bind xs (for xs (Ann a b))
   Ann a b -> do
     let ys = filter (`notElem` xs) (freeVars b)
-    for ys (Ann (bind (xs ++ ys) a) (bind (xs ++ ys) b))
+    for ys (Ann (bind xs a) (bind (xs ++ ys) b))
   For x a -> for' [x] (bind (x : xs ++ freeVars a) a)
   Fun a b | Just (xs, a) <- asFor a -> do
     bind xs (for xs (Fun a b))
   Fun a b -> do
     let ys = filter (`notElem` xs) (freeVars a)
-    for ys (Fun (bind (xs ++ ys) a) (bind (xs ++ ys) b))
+    for ys (Fun (bind (xs ++ ys) a) (bind xs b))
   a -> apply (bind xs) a
 
 occurs :: String -> Expr -> Bool
