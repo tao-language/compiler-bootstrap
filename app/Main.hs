@@ -114,6 +114,8 @@ checkCmd filename = do
     syntaxErrors -> do
       mapM_ display syntaxErrors
       exitFailure
+  let (env, a) = compile ctx path ctx
+  error $ "TODO: collectErrors after compile Context: " ++ C.show' 5 (C.let' env a)
 
 -- case collectErrors ctx path ctx of
 --   [] -> return ()

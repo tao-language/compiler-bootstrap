@@ -1471,7 +1471,7 @@ instance Lower Expr where
       | otherwise -> C.Fun (lower a) (lower b)
     App a b -> C.App (lower a) (lower b)
     Call op args -> C.Call op (lower (Tuple args))
-    Do stmts -> lower (desugarStmts stmts)
+    Do stmts -> lower (desugarStmts stmts Err)
     -- Let (a, b) c | Just x <- varOf c, Just d <- lookup x (C.unpack (lower a, lower b)) -> d
     -- Let (a, b) c -> lower (App (Fun a c) b)
     Op1 Neg a -> lower (sub (Int 0) a)
@@ -1517,9 +1517,9 @@ desugarDef (Meta m a) b = do
   (Meta m a', b')
 desugarDef a b = (a, b)
 
-desugarStmts :: [Stmt] -> Expr
-desugarStmts [] = Err
-desugarStmts (stmt : stmts) = case stmt of
+desugarStmts :: [Stmt] -> Expr -> Expr
+desugarStmts [] default' = default'
+desugarStmts (stmt : stmts) default' = case stmt of
   -- Let a b | C.isApp (lower a) -> do
   --   let ((a', b'), c) = (desugarDef a b, desugarStmts stmts)
   --   error $ show (dropMeta a', dropMeta b', dropMeta c)
@@ -1527,13 +1527,13 @@ desugarStmts (stmt : stmts) = case stmt of
   --   ((a', b'), c) | Just x <- varOf a', Just x' <- varOf c, x == x' -> b'
   --   ((a', b'), c) -> App (Fun a' c) b'
   Let a b -> do
-    let ((a', b'), c) = (desugarDef a b, desugarStmts stmts)
+    let ((a', b'), c) = (desugarDef a b, desugarStmts stmts default')
     App (Fun a' c) b'
   Bind a b -> do
-    let c = desugarStmts stmts
+    let c = desugarStmts stmts default'
     app (Var "<-") [b, Fun a c]
   Return a -> a
-  Nop m -> Meta m (desugarStmts stmts)
+  Nop m -> Meta m (desugarStmts stmts default')
   _ -> error $ "TODO: desugarStmts " ++ show (dropMeta stmt)
 
 lift :: C.Expr -> Expr
@@ -2144,6 +2144,14 @@ nameOf (MetaName _ a) = nameOf a
 class Compile a where
   compile :: Context -> FilePath -> a -> (C.Env, C.Expr)
 
+instance Compile Context where
+  compile :: Context -> FilePath -> [Module] -> (C.Env, C.Expr)
+  compile ctx path mods = error "TODO: compile Context"
+
+instance Compile Module where
+  compile :: Context -> FilePath -> Module -> (C.Env, C.Expr)
+  compile ctx path (path', stmts) = error "TODO: compile Module"
+
 instance Compile Expr where
   compile :: Context -> FilePath -> Expr -> (C.Env, C.Expr)
   compile ctx path expr = compile ctx path ("", expr)
@@ -2211,5 +2219,4 @@ compileDefs ctx path (x : xs) = do
     [] -> env
     defs -> do
       let def (env, a) = C.let' env a
-      let a = C.or' (map def defs)
-      (x, C.fix' [x] a) : env
+      (x, C.fix' [x] $ C.or' (map def defs)) : env
