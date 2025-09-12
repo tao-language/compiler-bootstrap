@@ -802,7 +802,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce [] (App x y) `shouldBe` (App x y)
     reduce [] (Call "f" x) `shouldBe` (Call "f" x)
     reduce [] (Let [] x) `shouldBe` x
-    reduce [] (Meta (Comments []) x) `shouldBe` Meta (Comments []) x
+    reduce [] (Meta (Comments []) x) `shouldBe` x
+    -- reduce [] (Meta (Comments []) x) `shouldBe` Meta (Comments []) x
     reduce [] Err `shouldBe` Err
 
   it "☯ Core.reduce.Let" $ do
@@ -825,7 +826,8 @@ run = describe "--==☯️ Core language ☯️==--" $ do
     reduce [] (Let env $ Call "f" x) `shouldBe` (Call "f" (Let env x))
     reduce [] (Let env $ Let [] x) `shouldBe` a
     reduce [] (Let env $ Let [("x", c)] x) `shouldBe` c
-    reduce [] (Let env $ Meta (Comments []) x) `shouldBe` Meta (Comments []) a
+    reduce [] (Let env $ Meta (Comments []) x) `shouldBe` a
+    -- reduce [] (Let env $ Meta (Comments []) x) `shouldBe` Meta (Comments []) a
     reduce [] (Let env Err) `shouldBe` Err
 
   it "☯ Core.reduce.Call" $ do

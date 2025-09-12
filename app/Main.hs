@@ -1,4 +1,3 @@
-import Check (checkTypes)
 import Control.Monad (void)
 import qualified Core as C
 import Data.Either (fromRight)
@@ -31,7 +30,7 @@ main = do
       _ -> putStrLn "🛑 Please give me a path, and an expression to run."
     "check" : args -> case args of
       path : _ -> checkCmd path
-      _ -> putStrLn "🛑 Please give me a path to check."
+      _ -> putStrLn "🛑 Please give me a path to collectErrors."
     "test" : args -> case args of
       [path] -> testCmd path ["*"]
       -- path : patterns -> test path patterns
@@ -55,18 +54,18 @@ coreCmd :: FilePath -> String -> IO ()
 coreCmd filename arg = do
   pkg <- load [filename]
   ctx <- include "prelude" pkg
-  case check ctx "" ctx of
+  case collectErrors ctx "" ctx of
     [] -> return ()
     syntaxErrors -> do
       mapM_ display syntaxErrors
       exitFailure
   expr <- loadExpr "<core>" arg
-  case check ctx "" expr of
+  case collectErrors ctx "" expr of
     [] -> return ()
     syntaxErrors -> do
       mapM_ (displayOn arg) syntaxErrors
       exitFailure
-  -- TODO: check for errors
+  -- TODO: collectErrors for errors
   let printExpr a = putStrLn ("  " ++ C.format 80 "  " a)
   let path = dropExtension (snd (split2 ':' filename))
   let (env, a) = compile ctx path expr
@@ -92,13 +91,13 @@ runCmd filename arg = do
   pkg <- load [filename]
   ctx <- include "prelude" pkg
   let path = dropExtension (snd (split2 ':' filename))
-  case check ctx path ctx of
+  case collectErrors ctx path ctx of
     [] -> return ()
     syntaxErrors -> do
       mapM_ display syntaxErrors
       exitFailure
   expr <- loadExpr "<run>" arg
-  case check ctx "" expr of
+  case collectErrors ctx "" expr of
     [] -> return ()
     syntaxErrors -> do
       mapM_ display syntaxErrors
@@ -110,13 +109,13 @@ checkCmd filename = do
   pkg <- load [filename]
   ctx <- include "prelude" pkg
   let path = dropExtension (snd (split2 ':' filename))
-  case check ctx path ctx of
+  case collectErrors ctx path ctx of
     [] -> return ()
     syntaxErrors -> do
       mapM_ display syntaxErrors
       exitFailure
 
--- case check ctx path ctx of
+-- case collectErrors ctx path ctx of
 --   [] -> return ()
 --   errors -> do
 --     let n = length errors
@@ -131,7 +130,7 @@ testCmd :: FilePath -> [String] -> IO ()
 testCmd path patterns = do
   pkg <- load [path]
   ctx <- include "prelude" pkg
-  case check ctx "" ctx of
+  case collectErrors ctx "" ctx of
     [] -> return ()
     syntaxErrors -> do
       mapM_ display syntaxErrors
@@ -152,7 +151,7 @@ patchCmd :: FilePath -> [FilePath] -> [FilePath] -> IO ()
 patchCmd buildDir patches sources = do
   steps <- plan [] patches
   ctx <- load sources
-  case check ctx "" ctx of
+  case collectErrors ctx "" ctx of
     [] -> return ()
     syntaxErrors -> do
       mapM_ display syntaxErrors
@@ -172,7 +171,7 @@ buildPythonCmd patches sources = do
   steps <- plan [] patches
   putStrLn $ "steps: " ++ show steps
   ctx <- load sources
-  case check ctx "" ctx of
+  case collectErrors ctx "" ctx of
     [] -> return ()
     syntaxErrors -> do
       mapM_ display syntaxErrors

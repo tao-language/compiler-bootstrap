@@ -1977,20 +1977,20 @@ locOf (Meta _ a) = locOf a
 locOf (Ann a _) = locOf a
 locOf _ = Nothing
 
-class Check a where
-  check :: Context -> FilePath -> a -> [Error Expr]
+class CollectErrors a where
+  collectErrors :: Context -> FilePath -> a -> [Error Expr]
 
-instance Check (C.Metadata Expr) where
-  check :: Context -> FilePath -> C.Metadata Expr -> [Error Expr]
-  check ctx path = \case
+instance CollectErrors (C.Metadata Expr) where
+  collectErrors :: Context -> FilePath -> C.Metadata Expr -> [Error Expr]
+  collectErrors ctx path = \case
     C.Error e -> [e]
     _ -> []
 
-instance Check Name where
-  check :: Context -> FilePath -> Name -> [Error Expr]
-  check ctx path = \case
+instance CollectErrors Name where
+  collectErrors :: Context -> FilePath -> Name -> [Error Expr]
+  collectErrors ctx path = \case
     Name _ -> []
-    MetaName m a -> check ctx path m ++ check ctx path a
+    MetaName m a -> collectErrors ctx path m ++ collectErrors ctx path a
 
 define :: Context -> FilePath -> [Stmt] -> Context
 define [] path stmts = [(path, stmts)]
@@ -1998,43 +1998,43 @@ define (mod : ctx) path stmts = case mod of
   (path', stmts') | path == path' -> (path, stmts ++ stmts') : ctx
   mod -> mod : define ctx path stmts
 
-instance Check Expr where
-  check :: Context -> FilePath -> Expr -> [Error Expr]
-  check ctx path = \case
-    Do stmts -> check ctx path stmts
-    Meta m a -> check ctx path m ++ check ctx path a
-    a -> collect (check ctx path) a
+instance CollectErrors Expr where
+  collectErrors :: Context -> FilePath -> Expr -> [Error Expr]
+  collectErrors ctx path = \case
+    Do stmts -> collectErrors ctx path stmts
+    Meta m a -> collectErrors ctx path m ++ collectErrors ctx path a
+    a -> collect (collectErrors ctx path) a
 
-instance Check Stmt where
-  check :: Context -> FilePath -> Stmt -> [Error Expr]
-  check ctx path = \case
-    -- TODO: check should parse import (path, alias, names) in look for syntax errors (names starting with '!')
-    -- TODO check should verify the import path exists
-    -- TODO check should verify the imported names exist
+instance CollectErrors Stmt where
+  collectErrors :: Context -> FilePath -> Stmt -> [Error Expr]
+  collectErrors ctx path = \case
+    -- TODO: collectErrors should parse import (path, alias, names) in look for syntax errors (names starting with '!')
+    -- TODO collectErrors should verify the import path exists
+    -- TODO collectErrors should verify the imported names exist
     Import {} -> []
-    -- Let a b -> check ctx path a ++ check ctx path b
-    Let a b -> check ctx path (App (Fun a Any) b)
-    Bind a b -> check ctx path a ++ check ctx path b
+    -- Let a b -> collectErrors ctx path a ++ collectErrors ctx path b
+    Let a b -> collectErrors ctx path (App (Fun a Any) b)
+    Bind a b -> collectErrors ctx path a ++ collectErrors ctx path b
     Run x args -> do
-      -- TODO: check that x is defined
-      concatMap (check ctx path) args
-    Test name expr expect -> concatMap (check ctx path) [expr, expect]
-    TypeDef name args body -> check ctx path name ++ concatMap (check ctx path) args ++ check ctx path body
-    Return a -> check ctx path a
-    Nop m -> check ctx path m
-    stmt -> error $ "TODO: check: " ++ show (dropMeta stmt)
+      -- TODO: collectErrors that x is defined
+      concatMap (collectErrors ctx path) args
+    Test name expr expect -> concatMap (collectErrors ctx path) [expr, expect]
+    TypeDef name args body -> collectErrors ctx path name ++ concatMap (collectErrors ctx path) args ++ collectErrors ctx path body
+    Return a -> collectErrors ctx path a
+    Nop m -> collectErrors ctx path m
+    stmt -> error $ "TODO: collectErrors: " ++ show (dropMeta stmt)
 
-instance Check [Stmt] where
-  check :: Context -> FilePath -> [Stmt] -> [Error Expr]
-  check ctx path = concatMap (check ctx path)
+instance CollectErrors [Stmt] where
+  collectErrors :: Context -> FilePath -> [Stmt] -> [Error Expr]
+  collectErrors ctx path = concatMap (collectErrors ctx path)
 
-instance Check Module where
-  check :: Context -> FilePath -> Module -> [Error Expr]
-  check ctx _ (path, stmts) = concatMap (check ctx path) stmts
+instance CollectErrors Module where
+  collectErrors :: Context -> FilePath -> Module -> [Error Expr]
+  collectErrors ctx _ (path, stmts) = concatMap (collectErrors ctx path) stmts
 
-instance Check Context where
-  check :: Context -> FilePath -> Context -> [Error Expr]
-  check ctx _ = concatMap (check ctx "")
+instance CollectErrors Context where
+  collectErrors :: Context -> FilePath -> Context -> [Error Expr]
+  collectErrors ctx _ = concatMap (collectErrors ctx "")
 
 run :: Context -> FilePath -> Expr -> Expr
 run ctx path expr = do
