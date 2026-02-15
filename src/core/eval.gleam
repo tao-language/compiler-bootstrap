@@ -9,7 +9,7 @@ import gleam/option.{type Option, None, Some}
 pub type Env =
   List(Value)
 
-fn env_get(env: Env, i: Int) -> Option(Value) {
+pub fn env_get(env: Env, i: Int) -> Option(Value) {
   case env {
     [] -> None
     [x, ..] if i == 0 -> Some(x)
@@ -19,6 +19,8 @@ fn env_get(env: Env, i: Int) -> Option(Value) {
 
 pub fn eval(env: Env, term: Term) -> Value {
   case term.data {
+    Typ(k) -> VTyp(k)
+
     Var(i) ->
       case env_get(env, i) {
         Some(val) -> val
@@ -26,8 +28,6 @@ pub fn eval(env: Env, term: Term) -> Value {
           // panic as "Compiler error: Index out of bounds in eval. Type checker failed."
           VNeut(HVar(i), [])
       }
-
-    Typ(k) -> VTyp(k)
 
     // Closures capture the environment 'env'
     Pi(name, in, out) ->

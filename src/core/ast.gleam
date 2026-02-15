@@ -7,11 +7,11 @@ pub type Term {
 }
 
 pub type TermData {
-  // De Bruijn Index
-  Var(index: Int)
-
   // Type, Type1, ...
   Typ(level: Int)
+
+  // De Bruijn Index
+  Var(index: Int)
 
   // Functions
   Pi(name: String, input: Term, output: Term)

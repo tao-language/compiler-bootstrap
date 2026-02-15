@@ -1,10 +1,11 @@
 import core/ast.{
-  type Term, Ann, App, Ctr, HVar, Lam, Pi, Span, Term, Typ, VCtr, VLam, VNeut,
+  type Case, type Pattern, type Span, type Term, type Value, Ann, App, Ctr, HVar,
+  Hole, Lam, Match, PAny, PCtr, PVar, Pi, Span, Term, Typ, VCtr, VLam, VNeut,
   VPi, VTyp, Var,
 }
-import core/error.{Mismatch, NotAFunction, UnboundVariable}
+import core/error.{Mismatch as TypeMismatch, NotAFunction, UnboundVariable}
 import core/types
-import gleam/option.{None}
+import gleam/option.{None, Some}
 import gleeunit
 import gleeunit/should
 
@@ -42,42 +43,40 @@ fn ann(x, t) {
 }
 
 // --- TESTS ---
+pub fn ctx_get_test() {
+  let a = #("x", VTyp(1))
+  let b = #("y", VTyp(2))
+  types.ctx_get([], 0) |> should.be_none
+  types.ctx_get([a], 0) |> should.equal(Some(a))
+  types.ctx_get([a, b], 0) |> should.equal(Some(a))
+  types.ctx_get([a, b], 1) |> should.equal(Some(b))
+}
 
-pub fn infer_universe_test() {
-  // Typetypype1
-  case types.infer(0, [], typ(0)) {
-    Ok(VTyp(1)) -> True
-    _ -> False
-  }
-  |> should.be_true
+pub fn typ_infer_test() {
+  types.infer(42, [], typ(0)) |> should.equal(Ok(VTyp(1)))
+}
+
+pub fn typ_check_test() {
+  types.check(42, [], typ(0), VTyp(1)) |> should.be_ok
+  types.check(42, [], typ(0), VTyp(2))
+  |> should.equal(Error(TypeMismatch(VTyp(2), VTyp(1), s(), None)))
+}
+
+pub fn var_infer_test() {
+  let ctx = [#("x", VTyp(0))]
+  types.infer(42, ctx, var(0)) |> should.equal(Ok(VTyp(0)))
+  types.infer(42, ctx, var(1))
+  |> should.equal(Error(UnboundVariable(1, s())))
 }
 
 pub fn identity_type_check_test() {
-  // (\x. x) : (A : Type0) -> A -> A
-  // We check the lambda against the Pi type
-
-  // Type: (A : Type0) -> (x : A) -> A
-  // In DB: Pi "A" Type0 (Pi "x" (Var 0) (Var 1))
-  // wait, Var 0 refers to A. Return type is A (Var 1 relative to inner?)
-  // Actually simpler: id : (X: Type0) -> X
-  // Pi "X" Type0 (Var 0)
-
-  // Let's test simple identity: \x. x check against A -> A
-  // We assume A is in context at index 0.
-
-  let type_a = VTyp(0)
-  // Mock value for type A
-  let ctx = [#("A", type_a)]
-
   // Term: \x. x
+  // Type: A -> A
+  let ctx = [#("A", VTyp(0))]
   let term = lam("x", var(0))
-
-  // Expected Type: A -> A
-  // VPi "x" (Value A) (Closure returning Value A)
-  let expected = VPi("x", VNeut(HVar(0), []), fn(_) { VNeut(HVar(0), []) })
-
-  let result = types.check(1, ctx, term, expected)
-  result |> should.be_ok
+  let term_ty = VPi("x", VNeut(HVar(0), []), fn(_) { VNeut(HVar(0), []) })
+  types.check(1, ctx, term, term_ty)
+  |> should.be_ok
 }
 
 pub fn unbound_variable_error_test() {
@@ -94,18 +93,18 @@ pub fn unbound_variable_error_test() {
 
 pub fn application_mismatch_test() {
   // (f : A -> A) applied to (b : B)
-  // Context: A: Type, B: Type, f: A->A, b: B
-
+  let a_ty = VTyp(0)
+  let b_ty = VTyp(1)
   let ctx = [
-    #("b", VTyp(0)),
-    #("f", VPi("_", VTyp(1), fn(_) { VTyp(1) })),
+    #("b", b_ty),
+    #("f", VPi("_", a_ty, fn(_) { a_ty })),
   ]
   let b = var(0)
   let f = var(1)
 
   let term = app(f, b)
   types.infer(4, ctx, term)
-  |> should.equal(Error(Mismatch(VTyp(1), VTyp(0), s(), None)))
+  |> should.equal(Error(TypeMismatch(a_ty, b_ty, s(), None)))
 }
 
 pub fn not_a_function_test() {

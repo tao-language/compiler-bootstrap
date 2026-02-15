@@ -11,7 +11,16 @@ import gleam/result
 pub type Context =
   List(#(String, Value))
 
-fn ctx_get(ctx: Context, i: Int) -> Option(#(String, Value)) {
+pub type CtrSignature {
+  CtrSignature(
+    name: String,
+    parent_type: String,
+    params: List(String),
+    args: List(ast.Term),
+  )
+}
+
+pub fn ctx_get(ctx: Context, i: Int) -> Option(#(String, Value)) {
   case ctx {
     [] -> None
     [x, ..] if i == 0 -> Some(x)

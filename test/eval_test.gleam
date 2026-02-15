@@ -1,5 +1,10 @@
-import core/ast.{App, Case, Ctr, Lam, Match, PCtr, PVar, Span, Term, Typ, Var}
+import core/ast.{
+  type Case, type Pattern, type Span, type Term, type Value, Ann, App, Case, Ctr,
+  HVar, Hole, Lam, Match, PAny, PCtr, PVar, Pi, Span, Term, Typ, VCtr, VLam,
+  VNeut, VPi, VTyp, Var,
+}
 import core/eval
+import gleam/option.{Some}
 import gleeunit
 import gleeunit/should
 
@@ -12,14 +17,16 @@ fn s() {
   Span(0, 0, "test")
 }
 
-// Dummy span
+fn typ(i) {
+  Term(Typ(i), s())
+}
 
 fn var(i) {
   Term(Var(i), s())
 }
 
-fn univ(i) {
-  Term(Typ(i), s())
+fn pi(n, d, c) {
+  Term(Pi(n, d, c), s())
 }
 
 fn lam(n, b) {
@@ -30,8 +37,51 @@ fn app(f, a) {
   Term(App(f, a), s())
 }
 
-fn con(n, args) {
-  Term(Ctr(n, args), s())
+fn ann(x, t) {
+  Term(Ann(x, t), s())
+}
+
+fn ctr(k, args) {
+  Term(Ctr(k, args), s())
+}
+
+pub fn env_get_test() {
+  let a = VTyp(0)
+  let b = VTyp(1)
+  eval.env_get([], 0) |> should.be_none
+  eval.env_get([a], 0) |> should.equal(Some(a))
+  eval.env_get([a, b], 0) |> should.equal(Some(a))
+  eval.env_get([a, b], 1) |> should.equal(Some(b))
+}
+
+pub fn typ_eval_test() {
+  eval.eval([], typ(0)) |> should.equal(VTyp(0))
+  eval.eval([], typ(1)) |> should.equal(VTyp(1))
+}
+
+pub fn var_eval_test() {
+  eval.eval([], var(0)) |> should.equal(VNeut(HVar(0), []))
+  eval.eval([], var(1)) |> should.equal(VNeut(HVar(1), []))
+  eval.eval([VTyp(1)], var(0)) |> should.equal(VTyp(1))
+}
+
+pub fn pi_eval_test() {
+  // Since we can't compare the closure directly, resolve it first.
+  // Capture it into a VCtr to get the name, input, and output.
+  let eval_pi = fn(env, name, input, output) {
+    case eval.eval(env, pi(name, input, output)) {
+      VPi(x, input, output) -> VCtr(x, [input, output(VTyp(42))])
+      value -> value
+    }
+  }
+  eval_pi([], "x", typ(1), typ(2))
+  |> should.equal(VCtr("x", [VTyp(1), VTyp(2)]))
+  eval_pi([], "y", typ(1), var(0))
+  |> should.equal(VCtr("y", [VTyp(1), VTyp(42)]))
+}
+
+pub fn lam_eval_test() {
+  todo
 }
 
 pub fn identity_function_test() {
@@ -74,7 +124,7 @@ pub fn pattern_match_eval_test() {
   let val_a = var(100)
   let val_b = var(200)
 
-  let just_a = con("Just", [val_a])
+  let just_a = ctr("Just", [val_a])
 
   let case_nothing = Case(pattern: PCtr("Nothing", []), body: val_b, span: s())
 
@@ -89,7 +139,6 @@ pub fn pattern_match_eval_test() {
   let expr = Term(Match(just_a, [case_nothing, case_just]), s())
 
   let result = eval.eval([], expr)
-  echo result
 
   // Expect: val_a (Var 100)
   case result {
