@@ -1,7 +1,4 @@
-import core/ast.{
-  App, Case, Constructor, Lam, Match, PConstructor, PVar, Span, Term, Universe,
-  Var,
-}
+import core/ast.{App, Case, Ctr, Lam, Match, PCtr, PVar, Span, Term, Typ, Var}
 import core/eval
 import gleeunit
 import gleeunit/should
@@ -22,7 +19,7 @@ fn var(i) {
 }
 
 fn univ(i) {
-  Term(Universe(i), s())
+  Term(Typ(i), s())
 }
 
 fn lam(n, b) {
@@ -34,7 +31,7 @@ fn app(f, a) {
 }
 
 fn con(n, args) {
-  Term(Constructor(n, args), s())
+  Term(Ctr(n, args), s())
 }
 
 pub fn identity_function_test() {
@@ -79,12 +76,11 @@ pub fn pattern_match_eval_test() {
 
   let just_a = con("Just", [val_a])
 
-  let case_nothing =
-    Case(pattern: PConstructor("Nothing", []), body: val_b, span: s())
+  let case_nothing = Case(pattern: PCtr("Nothing", []), body: val_b, span: s())
 
   let case_just =
     Case(
-      pattern: PConstructor("Just", [PVar("x")]),
+      pattern: PCtr("Just", [PVar("x")]),
       body: var(0),
       // x is bound at index 0 in this scope
       span: s(),

@@ -1,9 +1,10 @@
 import core/ast.{
-  type Term, Ann, App, Constructor, Lam, Pi, Span, Term, Universe, Var,
+  type Term, Ann, App, Ctr, HVar, Lam, Pi, Span, Term, Typ, VCtr, VLam, VNeut,
+  VPi, VTyp, Var,
 }
 import core/error.{Mismatch, NotAFunction, UnboundVariable}
 import core/types
-import gleam/option
+import gleam/option.{None}
 import gleeunit
 import gleeunit/should
 
@@ -16,8 +17,8 @@ fn s() {
   Span(0, 0, "test")
 }
 
-fn type0() {
-  Term(Universe(0), s())
+fn typ(i) {
+  Term(Typ(i), s())
 }
 
 fn var(i) {
@@ -32,6 +33,10 @@ fn lam(n, b) {
   Term(Lam(n, b), s())
 }
 
+fn app(f, a) {
+  Term(App(f, a), s())
+}
+
 fn ann(x, t) {
   Term(Ann(x, t), s())
 }
@@ -39,9 +44,9 @@ fn ann(x, t) {
 // --- TESTS ---
 
 pub fn infer_universe_test() {
-  // Type0 : Type1
-  case types.infer(0, [], type0()) {
-    Ok(ast.VUniverse(1)) -> True
+  // Typetypype1
+  case types.infer(0, [], typ(0)) {
+    Ok(VTyp(1)) -> True
     _ -> False
   }
   |> should.be_true
@@ -60,7 +65,7 @@ pub fn identity_type_check_test() {
   // Let's test simple identity: \x. x check against A -> A
   // We assume A is in context at index 0.
 
-  let type_a = ast.VUniverse(0)
+  let type_a = VTyp(0)
   // Mock value for type A
   let ctx = [#("A", type_a)]
 
@@ -69,10 +74,7 @@ pub fn identity_type_check_test() {
 
   // Expected Type: A -> A
   // VPi "x" (Value A) (Closure returning Value A)
-  let expected =
-    ast.VPi("x", ast.VNeut(ast.HVar(0), []), fn(_) {
-      ast.VNeut(ast.HVar(0), [])
-    })
+  let expected = VPi("x", VNeut(HVar(0), []), fn(_) { VNeut(HVar(0), []) })
 
   let result = types.check(1, ctx, term, expected)
   result |> should.be_ok
@@ -94,41 +96,22 @@ pub fn application_mismatch_test() {
   // (f : A -> A) applied to (b : B)
   // Context: A: Type, B: Type, f: A->A, b: B
 
-  // Setup mock values
-  let type_a = ast.VUniverse(0)
-  let type_b = ast.VUniverse(0)
-
-  // f type: A -> A
-  let f_type = ast.VPi("x", type_a, fn(_) { type_a })
-
   let ctx = [
-    #("b", type_b),
-    #("f", f_type),
-    #("B", ast.VUniverse(1)),
-    #("A", ast.VUniverse(1)),
+    #("b", VTyp(0)),
+    #("f", VPi("_", VTyp(1), fn(_) { VTyp(1) })),
   ]
+  let b = var(0)
+  let f = var(1)
 
-  // Term: f b
-  // Indices: b is 0, f is 1
-  let term = Term(App(var(1), var(0)), s())
-
-  let result = types.infer(4, ctx, term)
-
-  case result {
-    // Should fail because expected A, got B
-    Error(Mismatch(expected, got, _, _)) -> {
-      // In a real test we'd check equality of expected/got values
-      True
-    }
-    _ -> False
-  }
-  |> should.be_true
+  let term = app(f, b)
+  types.infer(4, ctx, term)
+  |> should.equal(Error(Mismatch(VTyp(1), VTyp(0), s(), None)))
 }
 
 pub fn not_a_function_test() {
   // (Type0) Type0
   // Applying Type0 to itself
-  let term = Term(App(type0(), type0()), s())
+  let term = Term(App(typ(0), typ(0)), s())
 
   let result = types.infer(0, [], term)
 

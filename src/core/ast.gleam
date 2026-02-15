@@ -11,7 +11,7 @@ pub type TermData {
   Var(index: Int)
 
   // Type, Type1, ...
-  Universe(level: Int)
+  Typ(level: Int)
 
   // Functions
   Pi(name: String, input: Term, output: Term)
@@ -22,7 +22,7 @@ pub type TermData {
   Ann(val: Term, type_: Term)
 
   // Data & Matching
-  Constructor(name: String, args: List(Term))
+  Ctr(name: String, args: List(Term))
   Match(scrutinee: Term, cases: List(Case))
 
   // '?' for incomplete code
@@ -34,17 +34,17 @@ pub type Case {
 }
 
 pub type Pattern {
+  PAny
   PVar(name: String)
-  PConstructor(name: String, args: List(Pattern))
-  PWildcard
+  PCtr(name: String, args: List(Pattern))
 }
 
 pub type Value {
-  VUniverse(level: Int)
+  VTyp(level: Int)
   VPi(name: String, input: Value, output: fn(Value) -> Value)
   VLam(name: String, body: fn(Value) -> Value)
   VNeut(head: Head, args: List(Value))
-  VConstructor(name: String, args: List(Value))
+  VCtr(name: String, args: List(Value))
 }
 
 pub type Head {
