@@ -1,3 +1,0 @@
-(test
- (name test_compiler_bootstrap)
- (libraries compiler_bootstrap))

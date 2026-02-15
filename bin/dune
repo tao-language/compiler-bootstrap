@@ -1,4 +1,0 @@
-(executable
- (public_name compiler-bootstrap)
- (name main)
- (libraries compiler_bootstrap))
