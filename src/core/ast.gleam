@@ -11,6 +11,7 @@ pub type Term {
 pub type TermData {
   Typ(level: Int)
   Lit(value: Literal)
+  LitT(typ: LiteralType)
   Var(index: Int)
   Pi(name: String, input: Term, output: Term)
   Lam(name: String, body: Term)
@@ -30,6 +31,15 @@ pub type Literal {
   F64(value: Float)
 }
 
+pub type LiteralType {
+  I32T
+  I64T
+  U32T
+  U64T
+  F32T
+  F64T
+}
+
 pub type Case {
   Case(pattern: Pattern, body: Term, span: Span)
 }
@@ -43,6 +53,7 @@ pub type Pattern {
 pub type Value {
   VTyp(level: Int)
   VLit(value: Literal)
+  VLitT(typ: LiteralType)
   VPi(name: String, input: Value, output: fn(Value) -> Value)
   VLam(name: String, body: fn(Value) -> Value)
   VNeut(head: Head, args: List(Value))
