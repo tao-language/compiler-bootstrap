@@ -97,41 +97,36 @@ pub fn lam_eval_test() {
   |> should.equal(VCtr("c", [VErr(ast.UnboundVar(1, s()))]))
 }
 
-pub fn app_eval_test() {
-  let ctx = []
-  eval.eval(ctx, app(typ(0), typ(42)))
-  |> should.equal(VErr(ast.NotAFunction(VTyp(0), s())))
+pub fn ann_eval_test() {
+  let env = [VTyp(42)]
+  eval.eval(env, ann(var(0), typ(1))) |> should.equal(VTyp(42))
 }
-// pub fn identity_function_test() {
-//   // (\x. x) y  ->  y
-//   // In De Bruijn: (\. 0) applied to (Var 99)
-//   let id = lam("x", var(0))
-//   let expr = app(id, var(99))
-//   case eval.eval([], expr) {
-//     ast.VNeut(ast.HVar(99), []) -> True
-//     _ -> False
-//   }
-//   |> should.be_true
-// }
 
-// pub fn const_function_test() {
-//   // (\x. \y. x) a b -> a
-//   // In De Bruijn: (\. \. 1) applied to a, then b
-//   let const_fn = lam("x", lam("y", var(1)))
-//   let a = var(10)
-//   let b = var(20)
-//   let expr = app(app(const_fn, a), b)
+pub fn ctr_eval_test() {
+  let env = [VTyp(42)]
+  eval.eval(env, ctr("A", [var(0)])) |> should.equal(VCtr("A", [VTyp(42)]))
+}
 
-//   let result = eval.eval([], expr)
-
-//   // Expect: a (which is Var 10)
-//   case result {
-//     ast.VNeut(ast.HVar(10), []) -> True
-//     _ -> False
-//   }
-//   |> should.be_true
-// }
-
+pub fn app_eval_test() {
+  let env = [VLam("a", fn(x) { x })]
+  eval.eval(env, app(typ(0), typ(42)))
+  |> should.equal(VErr(ast.NotAFunction(VTyp(0), s())))
+  eval.eval(env, app(var(0), typ(42)))
+  |> should.equal(VTyp(42))
+  eval.eval(env, app(var(1), typ(42)))
+  |> should.equal(VErr(ast.NotAFunction(VErr(ast.UnboundVar(1, s())), s())))
+  case eval.eval(env, app(pi("a", typ(0), typ(1)), typ(42))) {
+    VErr(ast.NotAFunction(_, _)) -> True
+    _ -> False
+  }
+  |> should.equal(True)
+  eval.eval(env, app(lam("a", var(0)), typ(42)))
+  |> should.equal(VTyp(42))
+  eval.eval(env, app(ann(var(0), typ(1)), typ(42)))
+  |> should.equal(VTyp(42))
+  eval.eval(env, app(ctr("A", [typ(1)]), typ(42)))
+  |> should.equal(VErr(ast.NotAFunction(VCtr("A", [VTyp(1)]), s())))
+}
 // pub fn pattern_match_eval_test() {
 //   // match Just(A) { 
 //   //   Nothing -> B 

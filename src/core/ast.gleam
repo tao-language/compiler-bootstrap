@@ -9,25 +9,14 @@ pub type Term {
 }
 
 pub type TermData {
-  // Type, Type1, ...
   Typ(level: Int)
-
-  // De Bruijn Index
   Var(index: Int)
-
-  // Functions
   Pi(name: String, input: Term, output: Term)
   Lam(name: String, body: Term)
-  App(fun: Term, arg: Term)
-
-  // Annotation
   Ann(val: Term, type_: Term)
-
-  // Data & Matching
   Ctr(name: String, args: List(Term))
+  App(fun: Term, arg: Term)
   Match(scrutinee: Term, cases: List(Case))
-
-  // '?' for incomplete code
   Hole
 }
 
