@@ -81,4 +81,5 @@ pub type Error {
 
   // Runtime errors
   EvalHole(span: Span)
+  MatchUnhandledCase(value: Value, span: Span)
 }

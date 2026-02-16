@@ -45,9 +45,12 @@ pub fn eval(env: Env, term: Term) -> Value {
 
     Ctr(name, args) -> VCtr(name, list.map(args, fn(a) { eval(env, a) }))
 
-    Match(scrutinee, cases) -> {
-      let val = eval(env, scrutinee)
-      eval_match(val, cases, env)
+    Match(arg, cases) -> {
+      let val = eval(env, arg)
+      case eval_match(val, cases, env) {
+        Some(result) -> result
+        None -> VErr(ast.MatchUnhandledCase(val, arg.span))
+      }
     }
 
     Hole -> VErr(ast.EvalHole(term.span))
@@ -62,12 +65,12 @@ pub fn eval_apply(vf: Value, va: Value) -> Option(Value) {
   }
 }
 
-pub fn eval_match(val: Value, cases: List(Case), env: Env) -> Value {
+pub fn eval_match(val: Value, cases: List(Case), env: Env) -> Option(Value) {
   case cases {
-    [] -> panic as "Runtime Error: Non-exhaustive match hit at runtime"
+    [] -> None
     [first, ..rest] -> {
       case matches(val, first.pattern) {
-        Some(bindings) -> eval(list.append(bindings, env), first.body)
+        Some(bindings) -> Some(eval(list.append(bindings, env), first.body))
         None -> eval_match(val, rest, env)
       }
     }

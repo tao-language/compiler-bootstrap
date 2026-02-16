@@ -41,16 +41,24 @@ fn lam(n, b) {
   Term(Lam(n, b), s())
 }
 
-fn app(f, a) {
-  Term(App(f, a), s())
-}
-
 fn ann(x, t) {
   Term(Ann(x, t), s())
 }
 
 fn ctr(k, args) {
   Term(Ctr(k, args), s())
+}
+
+fn app(f, a) {
+  Term(App(f, a), s())
+}
+
+fn match(arg, cases) {
+  Term(Match(arg, cases), s())
+}
+
+fn hole() {
+  Term(Hole, s())
 }
 
 pub fn env_get_test() {
@@ -143,36 +151,32 @@ pub fn app_eval_test() {
   eval.eval(env, app(ctr("A", [typ(1)]), typ(42)))
   |> should.equal(VErr(ast.NotAFunction(VCtr("A", [VTyp(1)]), s())))
 }
-// pub fn pattern_match_eval_test() {
-//   // match Just(A) { 
-//   //   Nothing -> B 
-//   //   Just(x) -> x 
-//   // }
-//   // Should evaluate to A
 
-//   let val_a = var(100)
-//   let val_b = var(200)
+pub fn match_eval_test() {
+  let i1 = lit(I32(1))
+  let i2 = lit(I32(2))
+  match(ctr("Just", [i1]), [
+    Case(PCtr("Nothing", []), i2, s()),
+    Case(PCtr("Just", [PVar("x")]), var(0), s()),
+  ])
+  |> eval.eval([], _)
+  |> should.equal(VLit(I32(1)))
 
-//   let just_a = ctr("Just", [val_a])
+  match(ctr("Nothing", []), [
+    Case(PCtr("Nothing", []), i2, s()),
+    Case(PCtr("Just", [PVar("x")]), var(0), s()),
+  ])
+  |> eval.eval([], _)
+  |> should.equal(VLit(I32(2)))
 
-//   let case_nothing = Case(pattern: PCtr("Nothing", []), body: val_b, span: s())
+  match(ctr("Null", []), [
+    Case(PCtr("Nothing", []), i2, s()),
+    Case(PCtr("Just", [PVar("x")]), var(0), s()),
+  ])
+  |> eval.eval([], _)
+  |> should.equal(VErr(ast.MatchUnhandledCase(VCtr("Null", []), s())))
+}
 
-//   let case_just =
-//     Case(
-//       pattern: PCtr("Just", [PVar("x")]),
-//       body: var(0),
-//       // x is bound at index 0 in this scope
-//       span: s(),
-//     )
-
-//   let expr = Term(Match(just_a, [case_nothing, case_just]), s())
-
-//   let result = eval.eval([], expr)
-
-//   // Expect: val_a (Var 100)
-//   case result {
-//     ast.VNeut(ast.HVar(100), []) -> True
-//     _ -> False
-//   }
-//   |> should.be_true
-// }
+pub fn hole_eval_test() {
+  eval.eval([], hole()) |> should.equal(VErr(ast.EvalHole(s())))
+}
