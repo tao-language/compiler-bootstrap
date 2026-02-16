@@ -78,10 +78,22 @@ pub fn pi_eval_test() {
   |> should.equal(VCtr("x", [VTyp(1), VTyp(2)]))
   eval_pi([], "y", typ(1), var(0))
   |> should.equal(VCtr("y", [VTyp(1), VTyp(42)]))
+  eval_pi([], "z", typ(1), var(1))
+  |> should.equal(VCtr("z", [VTyp(1), VNeut(HVar(1), [])]))
 }
 
 pub fn lam_eval_test() {
-  todo
+  // Since we can't compare the closure directly, resolve it first.
+  // Capture it into a VCtr to get the name and output.
+  let eval_lam = fn(env, name, output) {
+    case eval.eval(env, lam(name, output)) {
+      VLam(x, output) -> VCtr(x, [output(VTyp(42))])
+      value -> value
+    }
+  }
+  eval_lam([], "x", typ(1)) |> should.equal(VCtr("x", [VTyp(1)]))
+  eval_lam([], "x", var(0)) |> should.equal(VCtr("x", [VTyp(42)]))
+  eval_lam([], "x", var(1)) |> should.equal(VCtr("x", [VNeut(HVar(1), [])]))
 }
 
 pub fn identity_function_test() {
