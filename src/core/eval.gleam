@@ -1,13 +1,10 @@
 import core/ast.{
-  type Case, type Pattern, type Span, type Term, type Value, Ann, App, Ctr, HVar,
-  Hole, Lam, Match, PAny, PCtr, PVar, Pi, Typ, VCtr, VLam, VNeut, VPi, VTyp, Var,
+  type Case, type Env, type Pattern, type Span, type Term, type Value, Ann, App,
+  Ctr, HVar, Hole, Lam, Match, PAny, PCtr, PVar, Pi, Typ, VCtr, VErr, VLam,
+  VNeut, VPi, VTyp, Var,
 }
 import gleam/list
 import gleam/option.{type Option, None, Some}
-
-// The Environment maps De Bruijn Indices (relative) to Values
-pub type Env =
-  List(Value)
 
 pub fn env_get(env: Env, i: Int) -> Option(Value) {
   case env {
@@ -20,13 +17,11 @@ pub fn env_get(env: Env, i: Int) -> Option(Value) {
 pub fn eval(env: Env, term: Term) -> Value {
   case term.data {
     Typ(k) -> VTyp(k)
-
     Var(i) ->
       case env_get(env, i) {
         Some(val) -> val
-        None ->
-          // panic as "Compiler error: Index out of bounds in eval. Type checker failed."
-          VNeut(HVar(i), [])
+        // None -> VNeut(HVar(i), [])
+        None -> VErr(ast.UnboundVar(i, term.span))
       }
 
     // Closures capture the environment 'env'
@@ -38,7 +33,10 @@ pub fn eval(env: Env, term: Term) -> Value {
     App(f, arg) -> {
       let vf = eval(env, f)
       let va = eval(env, arg)
-      eval_apply(vf, va)
+      case eval_apply(vf, va) {
+        Some(result) -> result
+        None -> VErr(ast.NotAFunction(vf, f.span))
+      }
     }
 
     Ann(t, _) -> eval(env, t)
@@ -50,15 +48,15 @@ pub fn eval(env: Env, term: Term) -> Value {
       eval_match(val, cases, env)
     }
 
-    Hole -> panic as "Runtime Error: Cannot evaluate a Hole"
+    Hole -> VErr(ast.EvalHole(term.span))
   }
 }
 
-pub fn eval_apply(f: Value, arg: Value) -> Value {
-  case f {
-    VLam(_, closure) -> closure(arg)
-    VNeut(head, args) -> VNeut(head, list.append(args, [arg]))
-    _ -> panic as "Runtime Error: Applied non-function"
+pub fn eval_apply(vf: Value, va: Value) -> Option(Value) {
+  case vf {
+    VLam(_, closure) -> Some(closure(va))
+    VNeut(head, args) -> Some(VNeut(head, list.append(args, [va])))
+    _ -> None
   }
 }
 

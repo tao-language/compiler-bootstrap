@@ -3,7 +3,6 @@ import core/ast.{
   Hole, Lam, Match, PAny, PCtr, PVar, Pi, Span, Term, Typ, VCtr, VLam, VNeut,
   VPi, VTyp, Var,
 }
-import core/error.{Mismatch as TypeMismatch, NotAFunction, UnboundVariable}
 import core/types
 import gleam/option.{None, Some}
 import gleeunit
@@ -59,14 +58,14 @@ pub fn typ_infer_test() {
 pub fn typ_check_test() {
   types.check(42, [], typ(0), VTyp(1)) |> should.be_ok
   types.check(42, [], typ(0), VTyp(2))
-  |> should.equal(Error(TypeMismatch(VTyp(2), VTyp(1), s(), None)))
+  |> should.equal(Error(ast.TypeMismatch(VTyp(2), VTyp(1), s(), None)))
 }
 
 pub fn var_infer_test() {
   let ctx = [#("x", VTyp(0))]
   types.infer(42, ctx, var(0)) |> should.equal(Ok(VTyp(0)))
   types.infer(42, ctx, var(1))
-  |> should.equal(Error(UnboundVariable(1, s())))
+  |> should.equal(Error(ast.UnboundVar(1, s())))
 }
 
 pub fn identity_type_check_test() {
@@ -85,7 +84,7 @@ pub fn unbound_variable_error_test() {
   let result = types.infer(0, [], term)
 
   case result {
-    Error(UnboundVariable(0, _)) -> True
+    Error(ast.UnboundVar(0, _)) -> True
     _ -> False
   }
   |> should.be_true
@@ -104,7 +103,7 @@ pub fn application_mismatch_test() {
 
   let term = app(f, b)
   types.infer(4, ctx, term)
-  |> should.equal(Error(TypeMismatch(a_ty, b_ty, s(), None)))
+  |> should.equal(Error(ast.TypeMismatch(a_ty, b_ty, s(), None)))
 }
 
 pub fn not_a_function_test() {
@@ -115,7 +114,7 @@ pub fn not_a_function_test() {
   let result = types.infer(0, [], term)
 
   case result {
-    Error(NotAFunction(_, _)) -> True
+    Error(ast.NotAFunction(_, _)) -> True
     _ -> False
   }
   |> should.be_true

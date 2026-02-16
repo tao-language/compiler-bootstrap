@@ -1,3 +1,5 @@
+import gleam/option.{type Option}
+
 pub type Span {
   Span(start: Int, end: Int, file: String)
 }
@@ -45,9 +47,27 @@ pub type Value {
   VLam(name: String, body: fn(Value) -> Value)
   VNeut(head: Head, args: List(Value))
   VCtr(name: String, args: List(Value))
+  VErr(err: Error)
 }
 
 pub type Head {
   // De Bruijn Level (Absolute)
   HVar(level: Int)
+}
+
+pub type Env =
+  List(Value)
+
+pub type Error {
+  // Type errors
+  TypeMismatch(expected: Value, got: Value, span: Span, context: Option(String))
+  NotAFunction(got: Value, span: Span)
+  UnboundVar(index: Int, span: Span)
+
+  // Exhaustiveness errors
+  NonExhaustiveMatch(missing: List(Pattern), span: Span)
+  RedundantMatch(pattern: Pattern, span: Span)
+
+  // Runtime errors
+  EvalHole(span: Span)
 }

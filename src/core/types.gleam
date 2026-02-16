@@ -1,8 +1,8 @@
 import core/ast.{
-  type Case, type Pattern, type Span, type Term, type Value, Ann, App, Ctr, HVar,
-  Hole, Lam, Match, PAny, PCtr, PVar, Pi, Typ, VCtr, VLam, VNeut, VPi, VTyp, Var,
+  type Case, type Error, type Pattern, type Span, type Term, type Value, Ann,
+  App, Ctr, HVar, Hole, Lam, Match, PAny, PCtr, PVar, Pi, Typ, VCtr, VLam, VNeut,
+  VPi, VTyp, Var,
 }
-import core/error.{type TypeError}
 import core/eval
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -29,12 +29,12 @@ pub fn ctx_get(ctx: Context, i: Int) -> Option(#(String, Value)) {
 }
 
 // --- 1. INFERENCE (Synthesize a type) ---
-pub fn infer(lvl: Int, ctx: Context, term: Term) -> Result(Value, TypeError) {
+pub fn infer(lvl: Int, ctx: Context, term: Term) -> Result(Value, Error) {
   case term.data {
     Var(i) -> {
       case ctx_get(ctx, i) {
         Some(#(_, ty)) -> Ok(ty)
-        None -> Error(error.UnboundVariable(i, term.span))
+        None -> Error(ast.UnboundVar(i, term.span))
       }
     }
 
@@ -56,7 +56,7 @@ pub fn infer(lvl: Int, ctx: Context, term: Term) -> Result(Value, TypeError) {
           let arg_val = eval.eval(ctx_to_env(ctx), arg)
           Ok(output_closure(arg_val))
         }
-        _ -> Error(error.NotAFunction(f_ty, term.span))
+        _ -> Error(ast.NotAFunction(f_ty, term.span))
       }
     }
 
@@ -75,7 +75,7 @@ pub fn infer(lvl: Int, ctx: Context, term: Term) -> Result(Value, TypeError) {
     }
 
     _ ->
-      Error(error.Mismatch(
+      Error(ast.TypeMismatch(
         expected: VTyp(0),
         // Placeholder
         got: VTyp(0),
@@ -91,7 +91,7 @@ pub fn check(
   ctx: Context,
   term: Term,
   expected: Value,
-) -> Result(Nil, TypeError) {
+) -> Result(Nil, Error) {
   case term.data, expected {
     Lam(name, body), VPi(_, domain, range_closure) -> {
       let var = VNeut(HVar(lvl), [])
@@ -107,14 +107,14 @@ pub fn check(
       use inferred <- result_map(infer(lvl, ctx, term))
       case is_convertible(lvl, inferred, expected) {
         True -> Ok(Nil)
-        False -> Error(error.Mismatch(expected, inferred, term.span, None))
+        False -> Error(ast.TypeMismatch(expected, inferred, term.span, None))
       }
     }
   }
 }
 
 // --- 3. EXHAUSTIVENESS (The Safety Net) ---
-fn check_exhaustiveness(cases: List(Case), span: Span) -> Result(Nil, TypeError) {
+fn check_exhaustiveness(cases: List(Case), span: Span) -> Result(Nil, Error) {
   // A "Matrix" is a list of rows, where each row is a list of Patterns
   let patterns = list.map(cases, fn(c) { c.pattern })
 
@@ -123,7 +123,7 @@ fn check_exhaustiveness(cases: List(Case), span: Span) -> Result(Nil, TypeError)
       // If the Wildcard is still "useful" after all user cases, 
       // it means the user missed something.
       // In a real implementation, 'witness' would be the missing constructor.
-      Error(error.NonExhaustiveMatch([PAny], span))
+      Error(ast.NonExhaustiveMatch([PAny], span))
     False -> Ok(Nil)
   }
 }
@@ -155,7 +155,7 @@ fn covers(p1: Pattern, p2: Pattern) -> Bool {
 
 // --- HELPERS ---
 
-fn ctx_to_env(ctx: Context) -> eval.Env {
+fn ctx_to_env(ctx: Context) -> ast.Env {
   // Convert type context to value environment (dummies for checking)
   list.map(ctx, fn(_) { VNeut(HVar(0), []) })
   // Simplified
@@ -204,7 +204,10 @@ pub fn is_convertible(lvl: Int, v1: Value, v2: Value) -> Bool {
     // Allows a lambda to be equal to a neutral term if they behave the same
     VLam(_, body), other | other, VLam(_, body) -> {
       let fresh = VNeut(HVar(lvl), [])
-      is_convertible(lvl + 1, body(fresh), eval.eval_apply(other, fresh))
+      case eval.eval_apply(other, fresh) {
+        Some(result) -> is_convertible(lvl + 1, body(fresh), result)
+        None -> False
+      }
     }
 
     // Fallback: If types are different, they are not convertible
@@ -227,7 +230,7 @@ fn infer_case(
   ctx: Context,
   c: Case,
   scrut_ty: Value,
-) -> Result(Value, TypeError) {
+) -> Result(Value, Error) {
   // 1. Unify pattern with scrutinee type to get new bindings
   // 2. Add bindings to context
   // 3. Infer body
