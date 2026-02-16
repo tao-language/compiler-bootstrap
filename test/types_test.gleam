@@ -61,12 +61,23 @@ pub fn typ_check_test() {
   |> should.equal(Error(ast.TypeMismatch(VTyp(2), VTyp(1), s(), None)))
 }
 
+// Lit
+// LitT
+
 pub fn var_infer_test() {
   let ctx = [#("x", VTyp(0))]
   types.infer(42, ctx, var(0)) |> should.equal(Ok(VTyp(0)))
   types.infer(42, ctx, var(1))
   |> should.equal(Error(ast.UnboundVar(1, s())))
 }
+
+// Pi
+// Lam
+// Ann
+// Ctr
+// App
+// Match
+// Hole
 
 pub fn identity_type_check_test() {
   // Term: \x. x

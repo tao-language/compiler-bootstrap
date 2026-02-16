@@ -25,13 +25,9 @@ pub fn eval(env: Env, term: Term) -> Value {
         // None -> VNeut(HVar(i), [])
         None -> VErr(ast.UnboundVar(i, term.span))
       }
-
-    // Closures capture the environment 'env'
     Pi(name, in, out) ->
       VPi(name, eval(env, in), fn(x) { eval([x, ..env], out) })
-
     Lam(name, body) -> VLam(name, fn(x) { eval([x, ..env], body) })
-
     App(f, arg) -> {
       let vf = eval(env, f)
       let va = eval(env, arg)
@@ -40,11 +36,8 @@ pub fn eval(env: Env, term: Term) -> Value {
         None -> VErr(ast.NotAFunction(vf, f.span))
       }
     }
-
     Ann(t, _) -> eval(env, t)
-
     Ctr(name, args) -> VCtr(name, list.map(args, fn(a) { eval(env, a) }))
-
     Match(arg, cases) -> {
       let val = eval(env, arg)
       case eval_match(val, cases, env) {
@@ -52,7 +45,6 @@ pub fn eval(env: Env, term: Term) -> Value {
         None -> VErr(ast.MatchUnhandledCase(val, arg.span))
       }
     }
-
     Hole -> VErr(ast.EvalHole(term.span))
   }
 }
