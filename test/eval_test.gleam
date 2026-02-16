@@ -1,7 +1,7 @@
 import core/ast.{
   type Case, type Pattern, type Span, type Term, type Value, Ann, App, Case, Ctr,
-  HVar, Hole, Lam, Match, PAny, PCtr, PVar, Pi, Span, Term, Typ, VCtr, VErr,
-  VLam, VNeut, VPi, VTyp, Var,
+  HVar, Hole, I32, Lam, Lit, Match, PAny, PCtr, PVar, Pi, Span, Term, Typ, VCtr,
+  VErr, VLam, VLit, VNeut, VPi, VTyp, Var,
 }
 import core/eval
 import gleam/option.{Some}
@@ -19,6 +19,10 @@ fn s() {
 
 fn typ(i) {
   Term(Typ(i), s())
+}
+
+fn lit(v) {
+  Term(Lit(v), s())
 }
 
 fn var(i) {
@@ -57,6 +61,10 @@ pub fn env_get_test() {
 pub fn typ_eval_test() {
   eval.eval([], typ(0)) |> should.equal(VTyp(0))
   eval.eval([], typ(1)) |> should.equal(VTyp(1))
+}
+
+pub fn lit_eval_test() {
+  eval.eval([], lit(I32(42))) |> should.equal(VLit(I32(42)))
 }
 
 pub fn var_eval_test() {

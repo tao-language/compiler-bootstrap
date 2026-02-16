@@ -1,7 +1,7 @@
 import core/ast.{
   type Case, type Env, type Pattern, type Span, type Term, type Value, Ann, App,
-  Ctr, HVar, Hole, Lam, Match, PAny, PCtr, PVar, Pi, Typ, VCtr, VErr, VLam,
-  VNeut, VPi, VTyp, Var,
+  Ctr, HVar, Hole, Lam, Lit, Match, PAny, PCtr, PVar, Pi, Typ, VCtr, VErr, VLam,
+  VLit, VNeut, VPi, VTyp, Var,
 }
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -17,6 +17,7 @@ pub fn env_get(env: Env, i: Int) -> Option(Value) {
 pub fn eval(env: Env, term: Term) -> Value {
   case term.data {
     Typ(k) -> VTyp(k)
+    Lit(v) -> VLit(v)
     Var(i) ->
       case env_get(env, i) {
         Some(val) -> val

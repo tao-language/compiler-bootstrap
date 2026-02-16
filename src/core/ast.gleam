@@ -10,14 +10,24 @@ pub type Term {
 
 pub type TermData {
   Typ(level: Int)
+  Lit(value: Literal)
   Var(index: Int)
   Pi(name: String, input: Term, output: Term)
   Lam(name: String, body: Term)
-  Ann(val: Term, type_: Term)
+  Ann(term: Term, typ: Term)
   Ctr(name: String, args: List(Term))
   App(fun: Term, arg: Term)
-  Match(scrutinee: Term, cases: List(Case))
+  Match(arg: Term, cases: List(Case))
   Hole
+}
+
+pub type Literal {
+  I32(value: Int)
+  I64(value: Int)
+  U32(value: Int)
+  U64(value: Int)
+  F32(value: Float)
+  F64(value: Float)
 }
 
 pub type Case {
@@ -32,6 +42,7 @@ pub type Pattern {
 
 pub type Value {
   VTyp(level: Int)
+  VLit(value: Literal)
   VPi(name: String, input: Value, output: fn(Value) -> Value)
   VLam(name: String, body: fn(Value) -> Value)
   VNeut(head: Head, args: List(Value))
