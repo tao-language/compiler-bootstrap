@@ -2,7 +2,6 @@ import gleam/int
 import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import gleam/result
 
 pub type Term {
   Term(data: TermData, span: Span)
@@ -79,7 +78,7 @@ pub type Context =
 pub type CtrSignature {
   CtrSignature(
     name: String,
-    parent_type: String,
+    parent: String,
     params: List(String),
     args: List(Term),
   )
@@ -228,7 +227,6 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
       let out_quote = quote(lvl + 1, out_val, out_term.span)
       Term(Pi(name, in_quote, out_quote), s)
     }
-    // _ -> Term(Hole, s)
     VErr(e) -> Term(Err(e), s)
   }
 }
@@ -496,19 +494,7 @@ fn covers(p1: Pattern, p2: Pattern) -> Bool {
   }
 }
 
-fn result_map(res: Result(a, e), f: fn(a) -> Result(b, e)) -> Result(b, e) {
-  case res {
-    Ok(x) -> f(x)
-    Error(e) -> Error(e)
-  }
-}
-
-fn infer_case(
-  lvl: Int,
-  ctx: Context,
-  c: Case,
-  scrut_ty: Value,
-) -> Result(Value, Error) {
+fn infer_case(lvl: Int, ctx: Context, c: Case, scrut_ty: Value) -> Value {
   // 1. Unify pattern with scrutinee type to get new bindings
   // 2. Add bindings to context
   // 3. Infer body

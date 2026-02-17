@@ -60,38 +60,16 @@ pub fn ann_eval_test() {
 }
 
 // --- Lam --- \\
-// pub fn lam_eval_test() {
-//   // Since we can't compare the closure directly, resolve it first.
-//   // Capture it into a VCtr to get the name and output.
-//   let eval_lam = fn(env, name, output) {
-//     case c.eval(env, lam(name, output)) {
-//       VLam(x, output) -> VCtr(x, [output(VTyp(42))])
-//       value -> value
-//     }
-//   }
-//   eval_lam([], "a", typ(1)) |> should.equal(VCtr("a", [VTyp(1)]))
-//   eval_lam([], "b", var(0)) |> should.equal(VCtr("b", [VTyp(42)]))
-//   eval_lam([], "c", var(1))
-//   |> should.equal(VCtr("c", [VErr(c.UnboundVar(1, s()))]))
-// }
+pub fn lam_eval_test() {
+  c.eval([], lam("x", var(0)))
+  |> should.equal(c.VLam("x", [], var(0)))
+}
 
 // --- Pi --- \\
-// pub fn pi_eval_test() {
-//   // Since we can't compare the closure directly, resolve it first.
-//   // Capture it into a VCtr to get the name, input, and output.
-//   let eval_pi = fn(env, name, in, out) {
-//     case c.eval(env, pi(name, in, out)) {
-//       c.VPi(x, env, input, output) -> c.VCtr(x, [input, output(VTyp(42))])
-//       value -> value
-//     }
-//   }
-//   eval_pi([], "a", typ(1), typ(2))
-//   |> should.equal(VCtr("a", [VTyp(1), VTyp(2)]))
-//   eval_pi([], "b", typ(1), var(0))
-//   |> should.equal(VCtr("b", [VTyp(1), VTyp(42)]))
-//   eval_pi([], "c", typ(1), var(1))
-//   |> should.equal(VCtr("c", [VTyp(1), VErr(c.UnboundVar(1, s()))]))
-// }
+pub fn pi_eval_test() {
+  c.eval([], pi("x", typ(0), var(0)))
+  |> should.equal(c.VPi("x", [], c.VTyp(0), var(0)))
+}
 
 // --- App --- \\
 pub fn app_eval_test() {
