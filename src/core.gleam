@@ -86,7 +86,7 @@ pub type CtrSignature {
 
 pub type Error {
   // Type errors
-  TypeMismatch(expected: Value, got: Value, span: Span, context: Option(String))
+  TypeMismatch(expected: Value, got: Value, span: Span)
   TypeAnnotationNeeded(term: Term)
   NotAFunction(got: Value, span: Span)
   UnboundVar(index: Int, span: Span)
@@ -261,7 +261,6 @@ pub fn is_convertible(lvl: Int, v1: Value, v2: Value) -> Bool {
       let range_ok = is_convertible(lvl + 1, range1, range2)
       domain_ok && range_ok
     }
-    // Errors match everything to prevent cascading error messages
     VErr(_), _ -> True
     _, VErr(_) -> True
     _, _ -> False
@@ -447,8 +446,8 @@ pub fn check(lvl: Int, ctx: Context, term: Term, expected_ty: Value) -> Value {
     _, _ -> {
       let term_ty = infer(lvl, ctx, term)
       case is_convertible(lvl, term_ty, expected_ty) {
-        True -> expected_ty
-        False -> VErr(TypeMismatch(expected_ty, term_ty, term.span, None))
+        True -> term_ty
+        False -> VErr(TypeMismatch(expected_ty, term_ty, term.span))
       }
     }
   }

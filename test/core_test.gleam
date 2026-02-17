@@ -22,7 +22,7 @@ pub fn typ_check_test() {
   let lvl = 42
   c.check(lvl, [], typ(0), c.VTyp(1)) |> should.equal(c.VTyp(1))
   c.check(lvl, [], typ(0), c.VTyp(2))
-  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(2), c.VTyp(1), s(), None)))
+  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(2), c.VTyp(1), s())))
 }
 
 // --- Lit --- \\
@@ -83,6 +83,8 @@ pub fn lit_t_infer_test() {
 
 pub fn lit_t_check_test() {
   let lvl = 42
+  c.check(lvl, [], lit_t(c.I32T), c.VTyp(1))
+  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(1), c.VTyp(0), s())))
   c.check(lvl, [], lit_t(c.I32T), c.VTyp(0)) |> should.equal(c.VTyp(0))
   c.check(lvl, [], lit_t(c.I64T), c.VTyp(0)) |> should.equal(c.VTyp(0))
   c.check(lvl, [], lit_t(c.U32T), c.VTyp(0)) |> should.equal(c.VTyp(0))
@@ -102,6 +104,13 @@ pub fn var_infer_test() {
   let ctx = [#("x", c.VTyp(0))]
   c.infer(42, ctx, var(0)) |> should.equal(c.VTyp(0))
   c.infer(42, ctx, var(1))
+  |> should.equal(c.VErr(c.UnboundVar(1, s())))
+}
+
+pub fn var_check_test() {
+  let ctx = [#("x", c.VTyp(0))]
+  c.check(42, ctx, var(0), c.VTyp(0)) |> should.equal(c.VTyp(0))
+  c.check(42, ctx, var(1), c.VTyp(0))
   |> should.equal(c.VErr(c.UnboundVar(1, s())))
 }
 
