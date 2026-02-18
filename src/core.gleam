@@ -16,7 +16,7 @@ pub type TermData {
   Ctr(tag: String, args: List(Term))
   Ann(term: Term, typ: Term)
   Lam(name: String, body: Term)
-  Pi(name: String, in_ty: Term, out_ty: Term)
+  Pi(name: String, in: Term, out: Term)
   App(fun: Term, arg: Term)
   Match(arg: Term, cases: List(Case))
   Err(err: Error)
@@ -70,25 +70,21 @@ pub type Span {
   Span(file: String, row: Int, col: Int)
 }
 
+pub type CtrDef {
+  CtrDef(tag: String, num_params: Int, args: List(Term), ret_ty: Term)
+}
+
+pub type TypeEnv =
+  List(#(String, CtrDef))
+
 pub type Env =
   List(Value)
 
 pub type Context =
   List(#(String, Value))
 
-pub type CtrSig {
-  CtrSig(
-    // The quantification variables
-    params: List(String),
-    // The expected types of the arguments
-    args_ty: List(Term),
-    // The resulting type of the constructor
-    ret_type: Term,
-  )
-}
-
-pub type CtrSigs =
-  List(#(String, CtrSig))
+pub type Subst =
+  List(#(Int, Value))
 
 pub type Error {
   // Type errors
@@ -112,9 +108,9 @@ pub fn app(fun: Term, args: List(Term), s: Span) -> Term {
 
 pub fn eval(env: Env, term: Term) -> Value {
   case term.data {
-    Typ(l) -> VTyp(l)
-    Lit(v) -> VLit(v)
-    LitT(t) -> VLitT(t)
+    Typ(k) -> VTyp(k)
+    Lit(k) -> VLit(k)
+    LitT(k) -> VLitT(k)
     Var(i) ->
       case list_get(env, i) {
         Some(value) -> value
@@ -123,7 +119,7 @@ pub fn eval(env: Env, term: Term) -> Value {
     Ctr(tag, args) -> VCtr(tag, list.map(args, eval(env, _)))
     Ann(term, _) -> eval(env, term)
     Lam(name, body) -> VLam(name, env, body)
-    Pi(name, in_ty, out_ty) -> VPi(name, env, eval(env, in_ty), out_ty)
+    Pi(name, in, out) -> VPi(name, env, eval(env, in), out)
     App(fun, arg) -> {
       let fun_val = eval(env, fun)
       let arg_val = eval(env, arg)
@@ -147,16 +143,17 @@ pub fn eval_apply(fun: Value, arg: Value) -> Option(Value) {
   case fun {
     VLam(_, env, body) -> Some(eval([arg, ..env], body))
     VNeut(head, args) -> Some(VNeut(head, list.append(args, [arg])))
+    VErr(e) -> Some(VErr(e))
     _ -> None
   }
 }
 
-pub fn eval_apply_all(fun: Value, args: List(Value)) -> Option(Value) {
+pub fn eval_apply_list(fun: Value, args: List(Value)) -> Option(Value) {
   case args {
     [] -> Some(fun)
     [arg, ..args] ->
       case eval_apply(fun, arg) {
-        Some(result) -> eval_apply_all(result, args)
+        Some(result) -> eval_apply_list(result, args)
         None -> None
       }
   }
@@ -215,12 +212,17 @@ pub fn matches_ctr(tag_p: String, args_p: List(Pattern), value: Value) {
   }
 }
 
+pub fn normalize(env: Env, term: Term, s: Span) -> Term {
+  let val = eval(env, term)
+  quote(list.length(env), val, s)
+}
+
 // Converts a Value (semantics) back to a Term (syntax).
 pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
   case value {
-    VTyp(l) -> Term(Typ(l), s)
-    VLit(v) -> Term(Lit(v), s)
-    VLitT(t) -> Term(LitT(t), s)
+    VTyp(k) -> Term(Typ(k), s)
+    VLit(k) -> Term(Lit(k), s)
+    VLitT(k) -> Term(LitT(k), s)
     VCtr(tag, args) -> Term(Ctr(tag, list.map(args, quote(lvl, _, s))), s)
     VNeut(head, args_val) -> {
       let args = list.map(args_val, quote(lvl, _, s))
@@ -252,68 +254,106 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
   }
 }
 
-// Checks if two values are equal.
-pub fn is_convertible(lvl: Int, v1: Value, v2: Value) -> Bool {
+pub fn unify(lvl: Int, v1: Value, v2: Value, s: Span) -> Result(Nil, Error) {
   case v1, v2 {
-    VTyp(k1), VTyp(k2) -> k1 == k2
-    VLit(v1), VLit(v2) -> v1 == v2
-    VLitT(t1), VLitT(t2) -> t1 == t2
-    VNeut(HVar(l1), args1), VNeut(HVar(l2), args2) -> {
-      l1 == l2 && is_convertible_list(lvl, args1, args2)
-    }
-    VCtr(tag1, args1), VCtr(tag2, args2) -> {
-      tag1 == tag2 && is_convertible_list(lvl, args1, args2)
-    }
-    VLam(_, _, _), other -> {
+    VTyp(k1), VTyp(k2) if k1 == k2 -> Ok(Nil)
+    VLit(k1), VLit(k2) if k1 == k2 -> Ok(Nil)
+    VLitT(k1), VLitT(k2) if k1 == k2 -> Ok(Nil)
+    VNeut(h1, args1), VNeut(h2, args2) if h1 == h2 ->
+      unify_list(lvl, args1, args2, s)
+    VCtr(k1, args1), VCtr(k2, args2) if k1 == k2 ->
+      unify_list(lvl, args1, args2, s)
+    VLam(_, env1, body1), VLam(_, env2, body2) -> {
       let fresh = VNeut(HVar(lvl), [])
-      case eval_apply(v1, fresh), eval_apply(other, fresh) {
-        Some(b1), Some(b2) -> is_convertible(lvl + 1, b1, b2)
-        _, _ -> False
-      }
+      let a = eval([fresh, ..env1], body1)
+      let b = eval([fresh, ..env2], body2)
+      unify(lvl + 1, a, b, s)
     }
-    _, VLam(_, _, _) -> is_convertible(lvl, v2, v1)
     VPi(_, env1, in1, out1), VPi(_, env2, in2, out2) -> {
-      // 1. Check Domains
-      let domain_ok = is_convertible(lvl, in1, in2)
-      // 2. Check Ranges, with fresh var
+      use _ <- result.try(unify(lvl, in1, in2, s))
       let fresh = VNeut(HVar(lvl), [])
-      let range1 = eval([fresh, ..env1], out1)
-      let range2 = eval([fresh, ..env2], out2)
-      let range_ok = is_convertible(lvl + 1, range1, range2)
-      domain_ok && range_ok
+      let a = eval([fresh, ..env1], out1)
+      let b = eval([fresh, ..env2], out2)
+      unify(lvl + 1, a, b, s)
     }
-    VErr(_), _ -> True
-    _, VErr(_) -> True
-    _, _ -> False
+    // On errors, succeed to prevent cascading noise
+    VErr(_), _ -> Ok(Nil)
+    _, VErr(_) -> Ok(Nil)
+    _, _ -> Error(TypeMismatch(v1, v2, s))
   }
 }
 
-fn is_convertible_list(lvl: Int, l1: List(Value), l2: List(Value)) -> Bool {
+fn unify_list(
+  lvl: Int,
+  l1: List(Value),
+  l2: List(Value),
+  s: Span,
+) -> Result(Nil, Error) {
   case l1, l2 {
-    [], [] -> True
-    [x, ..xs], [y, ..ys] ->
-      is_convertible(lvl, x, y) && is_convertible_list(lvl, xs, ys)
-    _, _ -> False
+    [], [] -> Ok(Nil)
+    [x, ..xs], [y, ..ys] -> {
+      use _ <- result.try(unify(lvl, x, y, s))
+      unify_list(lvl, xs, ys, s)
+    }
+    _, _ -> Error(TODO("Arity mismatch", s))
   }
 }
 
-pub fn normalize(env: Env, term: Term, s: Span) -> Term {
-  let val = eval(env, term)
-  quote(list.length(env), val, s)
-}
+// // Checks if two values are equal.
+// pub fn is_convertible(lvl: Int, v1: Value, v2: Value) -> Bool {
+//   case v1, v2 {
+//     VTyp(k1), VTyp(k2) -> k1 == k2
+//     VLit(v1), VLit(v2) -> v1 == v2
+//     VLitT(t1), VLitT(t2) -> t1 == t2
+//     VNeut(HVar(l1), args1), VNeut(HVar(l2), args2) -> {
+//       l1 == l2 && is_convertible_list(lvl, args1, args2)
+//     }
+//     VCtr(tag1, args1), VCtr(tag2, args2) -> {
+//       tag1 == tag2 && is_convertible_list(lvl, args1, args2)
+//     }
+//     VLam(_, _, _), other -> {
+//       let fresh = VNeut(HVar(lvl), [])
+//       case eval_apply(v1, fresh), eval_apply(other, fresh) {
+//         Some(b1), Some(b2) -> is_convertible(lvl + 1, b1, b2)
+//         _, _ -> False
+//       }
+//     }
+//     _, VLam(_, _, _) -> is_convertible(lvl, v2, v1)
+//     VPi(_, env1, in1, out1), VPi(_, env2, in2, out2) -> {
+//       // 1. Check Domains
+//       let domain_ok = is_convertible(lvl, in1, in2)
+//       // 2. Check Ranges, with fresh var
+//       let fresh = VNeut(HVar(lvl), [])
+//       let range1 = eval([fresh, ..env1], out1)
+//       let range2 = eval([fresh, ..env2], out2)
+//       let range_ok = is_convertible(lvl + 1, range1, range2)
+//       domain_ok && range_ok
+//     }
+//     VErr(_), _ -> True
+//     _, VErr(_) -> True
+//     _, _ -> False
+//   }
+// }
 
-fn ctx_to_env(ctx: Context) -> Env {
-  let len = list.length(ctx)
-  list.index_map(ctx, fn(_, i) {
-    // Map Index 'i' to Level 'len - 1 - i'
-    VNeut(HVar(len - 1 - i), [])
-  })
-}
+// fn is_convertible_list(lvl: Int, l1: List(Value), l2: List(Value)) -> Bool {
+//   case l1, l2 {
+//     [], [] -> True
+//     [x, ..xs], [y, ..ys] ->
+//       is_convertible(lvl, x, y) && is_convertible_list(lvl, xs, ys)
+//     _, _ -> False
+//   }
+// }
 
-pub fn infer(lvl: Int, sigs: CtrSigs, ctx: Context, term: Term) -> Value {
+pub fn infer(
+  lvl: Int,
+  ctx: Context,
+  env: Env,
+  tenv: TypeEnv,
+  term: Term,
+) -> Value {
   case term.data {
-    Typ(l) -> VTyp(l + 1)
-    Lit(v) -> infer_lit(v)
+    Typ(k) -> VTyp(k + 1)
+    Lit(k) -> infer_lit(k)
     LitT(_) -> VTyp(0)
     Var(i) -> {
       case list_get(ctx, i) {
@@ -321,47 +361,48 @@ pub fn infer(lvl: Int, sigs: CtrSigs, ctx: Context, term: Term) -> Value {
         None -> VErr(UnboundVar(i, term.span))
       }
     }
-    Ctr(tag, args) -> VCtr(tag, list.map(args, infer(lvl, sigs, ctx, _)))
+    // Ctr(tag, args) -> VCtr(tag, list.map(args, infer(lvl, ctx, env, tenv, _)))
+    Ctr(_, _) -> VErr(TypeAnnotationNeeded(term))
     Ann(term, ty) -> {
       // Ensure annotation is a type
       // TODO: check(lvl, ctx, ty, VTyp(0))
       let ty_val = eval(ctx_to_env(ctx), ty)
-      check(lvl, sigs, ctx, term, ty_val)
+      check(lvl, ctx, env, tenv, term, ty_val)
     }
     Lam(_, _) -> VErr(TypeAnnotationNeeded(term))
-    Pi(name, in_ty, out_ty) -> {
-      check(lvl, sigs, ctx, in_ty, VTyp(0))
-      let in_val = eval(ctx_to_env(ctx), in_ty)
-      let new_ctx = [#(name, in_val), ..ctx]
-      check(lvl + 1, sigs, new_ctx, out_ty, VTyp(0))
+    Pi(name, in, out) -> {
+      check(lvl, ctx, env, tenv, in, VTyp(0))
+      let fresh = VNeut(HVar(lvl), [])
+      let new_ctx = [#(name, eval(env, in)), ..ctx]
+      infer(lvl + 1, new_ctx, [fresh, ..env], tenv, out)
       VTyp(0)
     }
     App(fun, arg) -> {
-      case infer(lvl, sigs, ctx, fun) {
-        VPi(_, env, in_ty, out_ty) -> {
-          check(lvl, sigs, ctx, arg, in_ty)
-          let arg_val = eval(ctx_to_env(ctx), arg)
-          eval([arg_val, ..env], out_ty)
+      case infer(lvl, ctx, env, tenv, fun) {
+        VPi(_, pi_env, in_ty, out_ty) -> {
+          check(lvl, ctx, env, tenv, arg, in_ty)
+          let arg_val = eval(env, arg)
+          eval([arg_val, ..pi_env], out_ty)
         }
+        VErr(e) -> VErr(e)
         fun_ty -> VErr(NotAFunction(fun_ty, term.span))
       }
     }
     Match(arg, cases) -> {
-      let arg_ty = infer(lvl, sigs, ctx, arg)
+      let arg_ty = infer(lvl, ctx, env, tenv, arg)
       case cases {
         [] -> {
           // Empty matches are only valid for "Void" types
           // TODO: replace this with a more specific error.
           let err = Err(TODO("match without any cases", term.span))
-          infer(lvl, sigs, ctx, Term(err, term.span))
+          infer(lvl, ctx, env, tenv, Term(err, term.span))
         }
-
-        [head, ..cases] -> {
-          let #(lvl_f, ctx_f) = bind_pattern(lvl, ctx, head.pattern, arg_ty)
-          let return_ty = infer(lvl_f, sigs, ctx_f, head.body)
+        [first, ..cases] -> {
+          let #(lvl_f, ctx_f) = bind_pattern(lvl, ctx, first.pattern, arg_ty)
+          let return_ty = infer(lvl_f, ctx_f, env, tenv, first.body)
           list.each(cases, fn(c) {
             let #(lvl_c, ctx_c) = bind_pattern(lvl, ctx, c.pattern, arg_ty)
-            check(lvl_c, sigs, ctx_c, c.body, return_ty)
+            check(lvl_c, ctx_c, env, tenv, c.body, return_ty)
           })
           return_ty
         }
@@ -412,17 +453,24 @@ pub fn infer_lit(lit: Literal) -> Value {
 
 pub fn check(
   lvl: Int,
-  sigs: CtrSigs,
   ctx: Context,
+  env: Env,
+  tenv: TypeEnv,
   term: Term,
   expected_ty: Value,
 ) -> Value {
   case term.data, expected_ty {
-    Lam(name, body), VPi(_, env, in_ty, out_ty) -> {
+    Lam(name, body), VPi(_, pi_env, in, out) -> {
       let fresh = VNeut(HVar(lvl), [])
-      let out_val = eval([fresh, ..env], out_ty)
-      check(lvl + 1, sigs, [#(name, in_ty), ..ctx], body, out_val)
+      let out_val = eval([fresh, ..pi_env], out)
+      let new_ctx = [#(name, in), ..ctx]
+      check(lvl + 1, new_ctx, [fresh, ..env], tenv, body, out_val)
     }
+    Ctr(tag, args), _ ->
+      case check_ctr(lvl, ctx, env, tenv, tag, args, expected_ty, term.span) {
+        Ok(ty) -> ty
+        Error(Nil) -> VErr(TODO("Unknown constructor", term.span))
+      }
     // Holes are always valid types (but warn)
     Err(TODO(msg, s)), _ -> {
       io.print_error(
@@ -438,12 +486,97 @@ pub fn check(
       expected_ty
     }
     _, _ -> {
-      let term_ty = infer(lvl, sigs, ctx, term)
-      case is_convertible(lvl, term_ty, expected_ty) {
-        True -> term_ty
-        False -> VErr(TypeMismatch(expected_ty, term_ty, term.span))
+      let term_ty = infer(lvl, ctx, env, tenv, term)
+      case unify(lvl, term_ty, expected_ty, term.span) {
+        Ok(Nil) -> term_ty
+        Error(e) -> VErr(e)
       }
     }
+  }
+}
+
+fn check_ctr(
+  lvl: Int,
+  ctx: Context,
+  env: Env,
+  tenv: TypeEnv,
+  tag: String,
+  args: List(Term),
+  expected_ty: Value,
+  s: Span,
+) -> Result(Value, Nil) {
+  use ctr <- result.try(list.key_find(tenv, tag))
+  // 1. Create dummy values for the parameters using distinct De Bruijn Levels
+  let param_vals =
+    list.range(0, ctr.num_params - 1)
+    |> list.map(fn(i) { VNeut(HVar(lvl + i), []) })
+    |> list.reverse
+  // 2. Evaluate the return type template (e.g., Vec(n + 1, a))
+  let template_val = eval(list.append(param_vals, env), ctr.ret_ty)
+
+  // 3. Match template against Expected to extract substitution
+  let subst =
+    match_values(lvl, ctr.num_params, template_val, expected_ty, [], s)
+  case subst {
+    Ok(subst) -> {
+      // 4. Extract solved parameters (fallback to VErr if unresolved)
+      let solved_env =
+        list.range(0, ctr.num_params - 1)
+        |> list.map(fn(i) {
+          case list.key_find(subst, i) {
+            Ok(v) -> v
+            Error(_) -> VErr(TODO("Unsolved GADT parameter", s))
+          }
+        })
+        |> list.reverse
+
+      // 5. Evaluate signature arguments with the solved parameters
+      let final_env = list.append(solved_env, env)
+      let check_args = list.zip(args, ctr.args)
+
+      let args_res =
+        list.map(check_args, fn(pair) {
+          let #(arg_term, ctr_arg_term) = pair
+          let expected_arg_ty = eval(final_env, ctr_arg_term)
+          check(lvl, ctx, env, tenv, arg_term, expected_arg_ty)
+        })
+
+      Ok(VCtr(tag, args_res))
+    }
+    Error(e) -> Ok(VErr(e))
+  }
+}
+
+fn match_values(
+  lvl: Int,
+  num_params: Int,
+  template: Value,
+  target: Value,
+  subst: Subst,
+  span: Span,
+) -> Result(Subst, Error) {
+  case template, target {
+    VNeut(HVar(l), []), _ if l >= lvl && l < lvl + num_params -> {
+      let param_idx = l - lvl
+      case list.key_find(subst, param_idx) {
+        Ok(existing) -> {
+          use _ <- result.try(unify(lvl, existing, target, span))
+          Ok(subst)
+        }
+        Error(Nil) -> Ok([#(param_idx, target), ..subst])
+      }
+    }
+    VNeut(h1, args1), VNeut(h2, args2) if h1 == h2 -> {
+      list.try_fold(list.zip(args1, args2), subst, fn(s, pair) {
+        match_values(lvl, num_params, pair.0, pair.1, s, span)
+      })
+    }
+    VCtr(t1, args1), VCtr(t2, args2) if t1 == t2 -> {
+      list.try_fold(list.zip(args1, args2), subst, fn(s, pair) {
+        match_values(lvl, num_params, pair.0, pair.1, s, span)
+      })
+    }
+    _, _ -> Error(TypeMismatch(template, target, span))
   }
 }
 
@@ -495,6 +628,14 @@ pub fn check(
 //   // simplified
 //   todo
 // }
+
+fn ctx_to_env(ctx: Context) -> Env {
+  let len = list.length(ctx)
+  list.index_map(ctx, fn(_, i) {
+    // Map Index 'i' to Level 'len - 1 - i'
+    VNeut(HVar(len - 1 - i), [])
+  })
+}
 
 pub fn list_get(xs: List(a), i: Int) -> Option(a) {
   case xs {
