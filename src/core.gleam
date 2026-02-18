@@ -130,7 +130,7 @@ pub fn eval(env: Env, term: Term) -> Value {
     }
     Match(arg, cases) -> {
       let arg_val = eval(env, arg)
-      case eval_match(env, arg_val, cases) {
+      case eval_match_all(env, arg_val, cases) {
         Some(result) -> result
         None -> VErr(MatchUnhandledCase(arg_val, arg.span))
       }
@@ -139,7 +139,7 @@ pub fn eval(env: Env, term: Term) -> Value {
   }
 }
 
-pub fn eval_apply(fun: Value, arg: Value) -> Option(Value) {
+fn eval_apply(fun: Value, arg: Value) -> Option(Value) {
   case fun {
     VLam(_, env, body) -> Some(eval([arg, ..env], body))
     VNeut(head, args) -> Some(VNeut(head, list.append(args, [arg])))
@@ -148,39 +148,39 @@ pub fn eval_apply(fun: Value, arg: Value) -> Option(Value) {
   }
 }
 
-pub fn eval_apply_list(fun: Value, args: List(Value)) -> Option(Value) {
-  case args {
-    [] -> Some(fun)
-    [arg, ..args] ->
-      case eval_apply(fun, arg) {
-        Some(result) -> eval_apply_list(result, args)
-        None -> None
-      }
-  }
-}
+// fn eval_apply_list(fun: Value, args: List(Value)) -> Option(Value) {
+//   case args {
+//     [] -> Some(fun)
+//     [arg, ..args] ->
+//       case eval_apply(fun, arg) {
+//         Some(result) -> eval_apply_list(result, args)
+//         None -> None
+//       }
+//   }
+// }
 
-pub fn eval_match(env: Env, arg: Value, cases: List(Case)) -> Option(Value) {
+fn eval_match_all(env: Env, arg: Value, cases: List(Case)) -> Option(Value) {
   case cases {
     [] -> None
     [head, ..cases] -> {
-      case matches(head.pattern, arg) {
+      case eval_match_one(head.pattern, arg) {
         Some(bindings) -> Some(eval(list.append(bindings, env), head.body))
-        None -> eval_match(env, arg, cases)
+        None -> eval_match_all(env, arg, cases)
       }
     }
   }
 }
 
 // Returns bindings (in reverse order) if match succeeds
-fn matches(pattern: Pattern, value: Value) -> Option(List(Value)) {
+fn eval_match_one(pattern: Pattern, arg: Value) -> Option(List(Value)) {
   case pattern {
     PAny -> Some([])
-    PVar(_) -> Some([value])
-    PCtr(tag_p, args_p) -> matches_ctr(tag_p, args_p, value)
+    PVar(_) -> Some([arg])
+    PCtr(tag_p, args_p) -> eval_match_ctr(tag_p, args_p, arg)
   }
 }
 
-pub fn matches_ctr(tag_p: String, args_p: List(Pattern), value: Value) {
+pub fn eval_match_ctr(tag_p: String, args_p: List(Pattern), value: Value) {
   case value {
     VCtr(tag_v, args_v) ->
       case tag_p == tag_v && list.length(args_p) == list.length(args_v) {
@@ -188,10 +188,7 @@ pub fn matches_ctr(tag_p: String, args_p: List(Pattern), value: Value) {
           // Zip args and recursively match. 
           let zipped = list.zip(args_p, args_v)
           let results =
-            list.map(zipped, fn(pv) {
-              let #(p, v) = pv
-              matches(p, v)
-            })
+            list.map(zipped, fn(pair) { eval_match_one(pair.0, pair.1) })
           // Check if all matches succeeded
           let bindings =
             list.fold(results, Some([]), fn(match_result, acc) {
@@ -224,17 +221,10 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
     VLit(k) -> Term(Lit(k), s)
     VLitT(k) -> Term(LitT(k), s)
     VCtr(tag, args) -> Term(Ctr(tag, list.map(args, quote(lvl, _, s))), s)
-    VNeut(head, args_val) -> {
+    VNeut(HVar(l), args_val) -> {
+      let fun = Term(Var(lvl - l - 1), s)
       let args = list.map(args_val, quote(lvl, _, s))
-      case head {
-        HVar(l) -> {
-          // Convert Absolute Level (l) back to Relative Index
-          // Index = Current_Depth - Definition_Depth - 1
-          let i = lvl - l - 1
-          let fun = Term(Var(i), s)
-          app(fun, args, s)
-        }
-      }
+      app(fun, args, s)
     }
     VLam(name, env, body) -> {
       let fresh = VNeut(HVar(lvl), [])
@@ -243,7 +233,6 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
       Term(Lam(name, body_quote), s)
     }
     VPi(name, env, in_val, out_term) -> {
-      // Input type doesn't depend on the fresh variable.
       let in_quote = quote(lvl, in_val, s)
       let fresh = VNeut(HVar(lvl + 1), [])
       let out_val = eval([fresh, ..env], out_term)
