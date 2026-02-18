@@ -2,6 +2,7 @@ import gleam/int
 import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/result
 
 pub type Term {
   Term(data: TermData, span: Span)
@@ -75,14 +76,19 @@ pub type Env =
 pub type Context =
   List(#(String, Value))
 
-pub type CtrSignature {
-  CtrSignature(
-    name: String,
-    parent: String,
+pub type CtrSig {
+  CtrSig(
+    // The quantification variables
     params: List(String),
-    args: List(Term),
+    // The expected types of the arguments
+    args_ty: List(Term),
+    // The resulting type of the constructor
+    ret_type: Term,
   )
 }
+
+pub type CtrSigs =
+  List(#(String, CtrSig))
 
 pub type Error {
   // Type errors
@@ -114,7 +120,7 @@ pub fn eval(env: Env, term: Term) -> Value {
         Some(value) -> value
         None -> VErr(UnboundVar(i, term.span))
       }
-    Ctr(tag, args) -> VCtr(tag, list.map(args, fn(arg) { eval(env, arg) }))
+    Ctr(tag, args) -> VCtr(tag, list.map(args, eval(env, _)))
     Ann(term, _) -> eval(env, term)
     Lam(name, body) -> VLam(name, env, body)
     Pi(name, in_ty, out_ty) -> VPi(name, env, eval(env, in_ty), out_ty)
@@ -142,6 +148,17 @@ pub fn eval_apply(fun: Value, arg: Value) -> Option(Value) {
     VLam(_, env, body) -> Some(eval([arg, ..env], body))
     VNeut(head, args) -> Some(VNeut(head, list.append(args, [arg])))
     _ -> None
+  }
+}
+
+pub fn eval_apply_all(fun: Value, args: List(Value)) -> Option(Value) {
+  case args {
+    [] -> Some(fun)
+    [arg, ..args] ->
+      case eval_apply(fun, arg) {
+        Some(result) -> eval_apply_all(result, args)
+        None -> None
+      }
   }
 }
 
@@ -204,14 +221,18 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
     VTyp(l) -> Term(Typ(l), s)
     VLit(v) -> Term(Lit(v), s)
     VLitT(t) -> Term(LitT(t), s)
-    VCtr(tag, args) ->
-      Term(Ctr(tag, list.map(args, fn(arg) { quote(lvl, arg, s) })), s)
-    VNeut(HVar(l), args) -> {
-      // Convert Absolute Level (l) back to Relative Index
-      // Index = Current_Depth - Definition_Depth - 1
-      let i = lvl - 1 - l
-      let fun = Term(Var(i), s)
-      app(fun, list.map(args, fn(arg) { quote(lvl, arg, s) }), s)
+    VCtr(tag, args) -> Term(Ctr(tag, list.map(args, quote(lvl, _, s))), s)
+    VNeut(head, args_val) -> {
+      let args = list.map(args_val, quote(lvl, _, s))
+      case head {
+        HVar(l) -> {
+          // Convert Absolute Level (l) back to Relative Index
+          // Index = Current_Depth - Definition_Depth - 1
+          let i = lvl - l - 1
+          let fun = Term(Var(i), s)
+          app(fun, args, s)
+        }
+      }
     }
     VLam(name, env, body) -> {
       let fresh = VNeut(HVar(lvl), [])
@@ -289,7 +310,7 @@ fn ctx_to_env(ctx: Context) -> Env {
   })
 }
 
-pub fn infer(lvl: Int, ctx: Context, term: Term) -> Value {
+pub fn infer(lvl: Int, sigs: CtrSigs, ctx: Context, term: Term) -> Value {
   case term.data {
     Typ(l) -> VTyp(l + 1)
     Lit(v) -> infer_lit(v)
@@ -300,25 +321,25 @@ pub fn infer(lvl: Int, ctx: Context, term: Term) -> Value {
         None -> VErr(UnboundVar(i, term.span))
       }
     }
-    Ctr(tag, args) -> infer_ctr(lvl, ctx, tag, args, term.span)
+    Ctr(tag, args) -> VCtr(tag, list.map(args, infer(lvl, sigs, ctx, _)))
     Ann(term, ty) -> {
       // Ensure annotation is a type
       // TODO: check(lvl, ctx, ty, VTyp(0))
       let ty_val = eval(ctx_to_env(ctx), ty)
-      check(lvl, ctx, term, ty_val)
+      check(lvl, sigs, ctx, term, ty_val)
     }
     Lam(_, _) -> VErr(TypeAnnotationNeeded(term))
     Pi(name, in_ty, out_ty) -> {
-      check(lvl, ctx, in_ty, VTyp(0))
+      check(lvl, sigs, ctx, in_ty, VTyp(0))
       let in_val = eval(ctx_to_env(ctx), in_ty)
       let new_ctx = [#(name, in_val), ..ctx]
-      check(lvl + 1, new_ctx, out_ty, VTyp(0))
+      check(lvl + 1, sigs, new_ctx, out_ty, VTyp(0))
       VTyp(0)
     }
     App(fun, arg) -> {
-      case infer(lvl, ctx, fun) {
+      case infer(lvl, sigs, ctx, fun) {
         VPi(_, env, in_ty, out_ty) -> {
-          check(lvl, ctx, arg, in_ty)
+          check(lvl, sigs, ctx, arg, in_ty)
           let arg_val = eval(ctx_to_env(ctx), arg)
           eval([arg_val, ..env], out_ty)
         }
@@ -326,21 +347,21 @@ pub fn infer(lvl: Int, ctx: Context, term: Term) -> Value {
       }
     }
     Match(arg, cases) -> {
-      let arg_ty = infer(lvl, ctx, arg)
+      let arg_ty = infer(lvl, sigs, ctx, arg)
       case cases {
         [] -> {
           // Empty matches are only valid for "Void" types
           // TODO: replace this with a more specific error.
           let err = Err(TODO("match without any cases", term.span))
-          infer(lvl, ctx, Term(err, term.span))
+          infer(lvl, sigs, ctx, Term(err, term.span))
         }
 
         [head, ..cases] -> {
           let #(lvl_f, ctx_f) = bind_pattern(lvl, ctx, head.pattern, arg_ty)
-          let return_ty = infer(lvl_f, ctx_f, head.body)
+          let return_ty = infer(lvl_f, sigs, ctx_f, head.body)
           list.each(cases, fn(c) {
             let #(lvl_c, ctx_c) = bind_pattern(lvl, ctx, c.pattern, arg_ty)
-            check(lvl_c, ctx_c, c.body, return_ty)
+            check(lvl_c, sigs, ctx_c, c.body, return_ty)
           })
           return_ty
         }
@@ -389,45 +410,18 @@ pub fn infer_lit(lit: Literal) -> Value {
   }
 }
 
-fn infer_ctr(
+pub fn check(
   lvl: Int,
+  sigs: CtrSigs,
   ctx: Context,
-  tag: String,
-  args: List(Term),
-  span: Span,
+  term: Term,
+  expected_ty: Value,
 ) -> Value {
-  // if list.length(args) != list.length(sig.args) {
-  //    return Error(TypeMismatch(..., Some("Arity mismatch")))
-  // }
-
-  // // 2. Check arguments and resolve parameters
-  // // Example: Just(5). Sig: a -> Maybe(a). Arg: Int.
-  // // We need to realize 'a' is 'Int'.
-
-  // // This is tricky in pure inference without HM variables.
-  // // STRATEGY: 
-  // // If the constructor is generic (like Just), fail inference and ask for annotation.
-  // // If the constructor is concrete (like True), return Bool.
-
-  // if list.is_empty(sig.params) {
-  //   // Simple case: True : Bool
-  //   Ok(eval_type(sig.parent_type)) 
-  // } else {
-  //   // Complex case: Just(5)
-  //   // For a simple compiler, reject this! 
-  //   // Force the user to write: (Just(5) : Maybe(Int))
-  //   // Or use 'check' mode.
-  //   Error(TypeMismatch(..., Some("Cannot infer generic constructor. Use an annotation.")))
-  // }
-  todo
-}
-
-pub fn check(lvl: Int, ctx: Context, term: Term, expected_ty: Value) -> Value {
   case term.data, expected_ty {
     Lam(name, body), VPi(_, env, in_ty, out_ty) -> {
       let fresh = VNeut(HVar(lvl), [])
       let out_val = eval([fresh, ..env], out_ty)
-      check(lvl + 1, [#(name, in_ty), ..ctx], body, out_val)
+      check(lvl + 1, sigs, [#(name, in_ty), ..ctx], body, out_val)
     }
     // Holes are always valid types (but warn)
     Err(TODO(msg, s)), _ -> {
@@ -444,7 +438,7 @@ pub fn check(lvl: Int, ctx: Context, term: Term, expected_ty: Value) -> Value {
       expected_ty
     }
     _, _ -> {
-      let term_ty = infer(lvl, ctx, term)
+      let term_ty = infer(lvl, sigs, ctx, term)
       case is_convertible(lvl, term_ty, expected_ty) {
         True -> term_ty
         False -> VErr(TypeMismatch(expected_ty, term_ty, term.span))
@@ -453,54 +447,54 @@ pub fn check(lvl: Int, ctx: Context, term: Term, expected_ty: Value) -> Value {
   }
 }
 
-// --- 3. EXHAUSTIVENESS (The Safety Net) ---
-fn check_exhaustiveness(cases: List(Case), span: Span) -> Result(Nil, Error) {
-  // A "Matrix" is a list of rows, where each row is a list of Patterns
-  let patterns = list.map(cases, fn(c) { c.pattern })
+// // --- 3. EXHAUSTIVENESS (The Safety Net) ---
+// fn check_exhaustiveness(cases: List(Case), span: Span) -> Result(Nil, Error) {
+//   // A "Matrix" is a list of rows, where each row is a list of Patterns
+//   let patterns = list.map(cases, fn(c) { c.pattern })
 
-  case is_useful(patterns, PAny) {
-    True ->
-      // If the Wildcard is still "useful" after all user cases, 
-      // it means the user missed something.
-      // In a real implementation, 'witness' would be the missing constructor.
-      Error(NonExhaustiveMatch([PAny], span))
-    False -> Ok(Nil)
-  }
-}
+//   case is_useful(patterns, PAny) {
+//     True ->
+//       // If the Wildcard is still "useful" after all user cases, 
+//       // it means the user missed something.
+//       // In a real implementation, 'witness' would be the missing constructor.
+//       Error(NonExhaustiveMatch([PAny], span))
+//     False -> Ok(Nil)
+//   }
+// }
 
-// The core "Is this pattern covered?" logic (Simplified)
-fn is_useful(matrix: List(Pattern), target: Pattern) -> Bool {
-  case matrix {
-    [] -> True
-    // Nothing covers the target, so it is useful
-    [row, ..rest] -> {
-      case covers(row, target) {
-        True ->
-          // Covered by a previous row -> Not useful
-          False
-        False -> is_useful(rest, target)
-      }
-    }
-  }
-}
+// // The core "Is this pattern covered?" logic (Simplified)
+// fn is_useful(matrix: List(Pattern), target: Pattern) -> Bool {
+//   case matrix {
+//     [] -> True
+//     // Nothing covers the target, so it is useful
+//     [row, ..rest] -> {
+//       case covers(row, target) {
+//         True ->
+//           // Covered by a previous row -> Not useful
+//           False
+//         False -> is_useful(rest, target)
+//       }
+//     }
+//   }
+// }
 
-fn covers(p1: Pattern, p2: Pattern) -> Bool {
-  case p1, p2 {
-    PAny, _ -> True
-    PVar(_), _ -> True
-    PCtr(n1, _), PCtr(n2, _) -> n1 == n2
-    _, _ -> False
-  }
-}
+// fn covers(p1: Pattern, p2: Pattern) -> Bool {
+//   case p1, p2 {
+//     PAny, _ -> True
+//     PVar(_), _ -> True
+//     PCtr(n1, _), PCtr(n2, _) -> n1 == n2
+//     _, _ -> False
+//   }
+// }
 
-fn infer_case(lvl: Int, ctx: Context, c: Case, scrut_ty: Value) -> Value {
-  // 1. Unify pattern with scrutinee type to get new bindings
-  // 2. Add bindings to context
-  // 3. Infer body
-  // infer(lvl + 1, ctx, c.body)
-  // simplified
-  todo
-}
+// fn infer_case(lvl: Int, ctx: Context, c: Case, scrut_ty: Value) -> Value {
+//   // 1. Unify pattern with scrutinee type to get new bindings
+//   // 2. Add bindings to context
+//   // 3. Infer body
+//   // infer(lvl + 1, ctx, c.body)
+//   // simplified
+//   todo
+// }
 
 pub fn list_get(xs: List(a), i: Int) -> Option(a) {
   case xs {
