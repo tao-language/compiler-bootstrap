@@ -187,11 +187,8 @@ pub fn app_eval_test() {
   |> should.equal(c.VTyp(42))
   c.eval(env, app(var(1), typ(42)))
   |> should.equal(c.VErr(c.VarUndefined(1, s)))
-  case c.eval(env, app(pi("a", typ(0), typ(1)), typ(42))) {
-    c.VErr(c.NotAFunction(_, _)) -> True
-    _ -> False
-  }
-  |> should.equal(True)
+  c.eval(env, app(pi("a", typ(0), typ(1)), typ(42)))
+  |> should.equal(c.VErr(c.NotAFunction(c.VPi("a", env, c.VTyp(0), typ(1)), s)))
   c.eval(env, app(lam("a", var(0)), typ(42)))
   |> should.equal(c.VTyp(42))
   c.eval(env, app(ann(var(0), typ(1)), typ(42)))
@@ -225,6 +222,9 @@ pub fn match_eval_test() {
   |> c.eval([], _)
   |> should.equal(c.VErr(c.MatchUnhandledCase(c.VCtr("Null", []), s)))
 }
+
+// --- Bad --- \\
+// TODO
 
 // --- Err --- \\
 // TODO
