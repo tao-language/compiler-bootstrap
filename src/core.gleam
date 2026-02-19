@@ -74,7 +74,7 @@ pub type Span {
 }
 
 pub type CtrDef {
-  CtrDef(num_params: Int, args: List(Term), ret_ty: Term)
+  CtrDef(params: List(String), args: List(Term), ret_ty: Term)
 }
 
 pub type TypeEnv =
@@ -94,7 +94,10 @@ pub type Error {
   TypeMismatch(expected: Value, got: Value, span: Span)
   TypeAnnotationNeeded(term: Term)
   NotAFunction(got: Value, span: Span)
-  UnboundVar(index: Int, span: Span)
+  VarUndefined(index: Int, span: Span)
+  CtrUndefined(tag: String, span: Span)
+  CtrTooManyArgs(tag: String, args: List(Term), ctr: CtrDef, span: Span)
+  CtrTooFewArgs(tag: String, args: List(Term), ctr: CtrDef, span: Span)
 
   // Exhaustiveness errors
   NonExhaustiveMatch(missing: List(Pattern), span: Span)
@@ -117,7 +120,7 @@ pub fn eval(env: Env, term: Term) -> Value {
     Var(i) ->
       case list_get(env, i) {
         Some(value) -> value
-        None -> VErr(UnboundVar(i, term.span))
+        None -> VErr(VarUndefined(i, term.span))
       }
     Ctr(tag, args) -> VCtr(tag, list.map(args, eval(env, _)))
     Ann(term, _) -> eval(env, term)
@@ -303,7 +306,7 @@ pub fn infer(
     Var(i) -> {
       case list_get(ctx, i) {
         Some(#(_, ty)) -> ty
-        None -> VErr(UnboundVar(i, term.span))
+        None -> VErr(VarUndefined(i, term.span))
       }
     }
     // Ctr(tag, args) -> VCtr(tag, list.map(args, infer(lvl, ctx, env, tenv, _)))
@@ -413,21 +416,9 @@ pub fn check(
       check(lvl + 1, new_ctx, [fresh, ..env], tenv, body, out_val)
     }
     Ctr(tag, args), _ ->
-      case check_ctr(lvl, ctx, env, tenv, tag, args, expected_ty, term.span) {
-        Ok(ty) -> ty
-        Error(Nil) -> VErr(TODO("Unknown constructor", term.span))
-      }
+      check_ctr(lvl, ctx, env, tenv, tag, args, expected_ty, term.span)
     Err(TODO(msg, s)), _ -> {
-      io.print_error(
-        "["
-        <> s.file
-        <> ":"
-        <> int.to_string(s.row)
-        <> ":"
-        <> int.to_string(s.col)
-        <> "] TODO: "
-        <> msg,
-      )
+      io.print_error(show_msg(s, "TODO: " <> msg))
       expected_ty
     }
     _, _ -> {
@@ -449,34 +440,54 @@ fn check_ctr(
   args: List(Term),
   expected_ty: Value,
   s: Span,
-) -> Result(Value, Nil) {
-  use ctr <- result.try(list.key_find(tenv, tag))
-  let params =
-    range(0, ctr.num_params, 1)
-    |> list.map(fn(i) { VNeut(HMeta(i), []) })
-    |> list.reverse
-  let ctr_ret_ty = eval(list.append(params, env), ctr.ret_ty)
-  case unify(lvl, [], ctr_ret_ty, expected_ty, s) {
-    Ok(sub) -> {
-      let solved_params =
-        range(0, ctr.num_params, 1)
-        |> list.map(fn(i) {
-          list.key_find(sub, i)
-          |> result.unwrap(VErr(TODO("Unsolved param", s)))
-        })
-      let solved_env = list.append(solved_params, env)
-      let arg_errors =
-        list.zip(args, ctr.args)
-        |> list.map(fn(pair) {
-          let #(arg, ctr_arg) = pair
-          let ctr_arg_ty = eval(solved_env, ctr_arg)
-          check(lvl, ctx, env, tenv, arg, ctr_arg_ty)
-        })
-        |> list.flat_map(list_errors)
-      Ok(with_errors(eval(solved_env, ctr.ret_ty), arg_errors))
+) -> Value {
+  case list.key_find(tenv, tag) {
+    Error(Nil) -> VErr(CtrUndefined(tag, s))
+    Ok(ctr) -> {
+      let params = list.index_map(ctr.params, fn(_, i) { VNeut(HMeta(i), []) })
+      let ctr_ret_ty = eval(list.append(params, env), ctr.ret_ty)
+      case unify(lvl, [], ctr_ret_ty, expected_ty, s) {
+        Ok(sub) -> {
+          let params_solved =
+            list.index_map(ctr.params, fn(_, i) {
+              list.key_find(sub, i)
+              |> result.unwrap(VErr(TODO("Unsolved param", s)))
+            })
+          let env_solved = list.append(params_solved, env)
+          let args_ty = list.map(ctr.args, eval(env_solved, _))
+          let errors =
+            check_list(lvl, ctx, env_solved, tenv, args, args_ty)
+            |> list.flat_map(list_errors)
+            |> list.append(case list.length(args), list.length(ctr.args) {
+              args_len, ctr_args_len if args_len > ctr_args_len -> [
+                CtrTooManyArgs(tag, args, ctr, s),
+              ]
+              args_len, ctr_args_len if args_len < ctr_args_len -> [
+                CtrTooFewArgs(tag, args, ctr, s),
+              ]
+              _, _ -> []
+            })
+          with_errors(eval(env_solved, ctr.ret_ty), errors)
+        }
+        Error(e) -> VErr(e)
+      }
     }
-    Error(e) -> Ok(VErr(e))
   }
+}
+
+fn check_list(
+  lvl: Int,
+  ctx: Context,
+  env: Env,
+  tenv: TypeEnv,
+  terms: List(Term),
+  types: List(Value),
+) -> List(Value) {
+  list.zip(terms, types)
+  |> list.map(fn(pair) {
+    let #(term, ty) = pair
+    check(lvl, ctx, env, tenv, term, ty)
+  })
 }
 
 fn with_errors(value: Value, errors: List(Error)) -> Value {
@@ -513,4 +524,18 @@ pub fn range(start: Int, stop: Int, step: Int) -> List(Int) {
     True -> [start, ..range(start + step, stop, step)]
     False -> []
   }
+}
+
+fn show_msg(s: Span, msg: String) -> String {
+  show_span(s) <> " " <> msg
+}
+
+fn show_span(s: Span) -> String {
+  "["
+  <> s.file
+  <> ":"
+  <> int.to_string(s.row)
+  <> ":"
+  <> int.to_string(s.col)
+  <> "]"
 }
