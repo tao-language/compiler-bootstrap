@@ -29,7 +29,7 @@ pub type Value {
   VNeut(head: Head, args: List(Value))
   VCtr(tag: String, args: List(Value))
   VLam(name: String, env: Env, body: Term)
-  VPi(name: String, env: Env, in_ty: Value, out_ty: Term)
+  VPi(name: String, env: Env, in: Value, out: Term)
   VErr(err: Error)
 }
 
@@ -72,7 +72,7 @@ pub type Span {
 }
 
 pub type CtrDef {
-  CtrDef(tag: String, num_params: Int, args: List(Term), ret_ty: Term)
+  CtrDef(num_params: Int, args: List(Term), ret_ty: Term)
 }
 
 pub type TypeEnv =
@@ -93,6 +93,7 @@ pub type Error {
   TypeAnnotationNeeded(term: Term)
   NotAFunction(got: Value, span: Span)
   UnboundVar(index: Int, span: Span)
+  WithErrors(value: Value, errors: List(Error))
 
   // Exhaustiveness errors
   NonExhaustiveMatch(missing: List(Pattern), span: Span)
@@ -279,51 +280,6 @@ fn unify_list(
   }
 }
 
-// // Checks if two values are equal.
-// pub fn is_convertible(lvl: Int, v1: Value, v2: Value) -> Bool {
-//   case v1, v2 {
-//     VTyp(k1), VTyp(k2) -> k1 == k2
-//     VLit(v1), VLit(v2) -> v1 == v2
-//     VLitT(t1), VLitT(t2) -> t1 == t2
-//     VNeut(HVar(l1), args1), VNeut(HVar(l2), args2) -> {
-//       l1 == l2 && is_convertible_list(lvl, args1, args2)
-//     }
-//     VCtr(tag1, args1), VCtr(tag2, args2) -> {
-//       tag1 == tag2 && is_convertible_list(lvl, args1, args2)
-//     }
-//     VLam(_, _, _), other -> {
-//       let fresh = VNeut(HVar(lvl), [])
-//       case eval_apply(v1, fresh), eval_apply(other, fresh) {
-//         Some(b1), Some(b2) -> is_convertible(lvl + 1, b1, b2)
-//         _, _ -> False
-//       }
-//     }
-//     _, VLam(_, _, _) -> is_convertible(lvl, v2, v1)
-//     VPi(_, env1, in1, out1), VPi(_, env2, in2, out2) -> {
-//       // 1. Check Domains
-//       let domain_ok = is_convertible(lvl, in1, in2)
-//       // 2. Check Ranges, with fresh var
-//       let fresh = VNeut(HVar(lvl), [])
-//       let range1 = eval([fresh, ..env1], out1)
-//       let range2 = eval([fresh, ..env2], out2)
-//       let range_ok = is_convertible(lvl + 1, range1, range2)
-//       domain_ok && range_ok
-//     }
-//     VErr(_), _ -> True
-//     _, VErr(_) -> True
-//     _, _ -> False
-//   }
-// }
-
-// fn is_convertible_list(lvl: Int, l1: List(Value), l2: List(Value)) -> Bool {
-//   case l1, l2 {
-//     [], [] -> True
-//     [x, ..xs], [y, ..ys] ->
-//       is_convertible(lvl, x, y) && is_convertible_list(lvl, xs, ys)
-//     _, _ -> False
-//   }
-// }
-
 pub fn infer(
   lvl: Int,
   ctx: Context,
@@ -344,9 +300,8 @@ pub fn infer(
     // Ctr(tag, args) -> VCtr(tag, list.map(args, infer(lvl, ctx, env, tenv, _)))
     Ctr(_, _) -> VErr(TypeAnnotationNeeded(term))
     Ann(term, ty) -> {
-      // Ensure annotation is a type
-      // TODO: check(lvl, ctx, ty, VTyp(0))
-      let ty_val = eval(ctx_to_env(ctx), ty)
+      check(lvl, ctx, env, tenv, ty, VTyp(0))
+      let ty_val = eval(env, ty)
       check(lvl, ctx, env, tenv, term, ty_val)
     }
     Lam(_, _) -> VErr(TypeAnnotationNeeded(term))
@@ -403,10 +358,8 @@ pub fn bind_pattern(
     PVar(name) -> #(lvl + 1, [#(name, expected_ty), ..ctx])
     PCtr(tag, p_args) -> {
       // let sig = get_signature(tag)
-
       // // 2. Simple check: Is the tag valid for the expected type?
       // // (In a real impl, you'd check sig.parent_type == expected_ty)
-
       // // 3. Recursively bind arguments
       // // This assumes sig.args (Terms) are evaluated into Values
       // list.fold(list.zip(p_args, sig.args), #(lvl, ctx), fn(acc, pair) {
@@ -486,71 +439,49 @@ fn check_ctr(
   s: Span,
 ) -> Result(Value, Nil) {
   use ctr <- result.try(list.key_find(tenv, tag))
-  let param_vals =
-    list.range(0, ctr.num_params - 1)
+  let params =
+    int.range(0, ctr.num_params, [], list.prepend)
     |> list.map(fn(i) { VNeut(HMeta(i), []) })
-  let ctr_ret_ty = eval(list.append(param_vals, env), ctr.ret_ty)
+    |> list.reverse
+  let ctr_ret_ty = eval(list.append(params, env), ctr.ret_ty)
   case unify(lvl, [], ctr_ret_ty, expected_ty, s) {
-    Ok(sub) -> todo
+    Ok(sub) -> {
+      let solved_params =
+        int.range(0, ctr.num_params, [], list.prepend)
+        |> list.map(fn(i) {
+          list.key_find(sub, i)
+          |> result.unwrap(VErr(TODO("Unsolved param", s)))
+        })
+      let solved_env = list.append(solved_params, env)
+      let arg_errors =
+        list.zip(args, ctr.args)
+        |> list.map(fn(pair) {
+          let #(arg_term, sig_term) = pair
+          let expected_arg_ty = eval(solved_env, sig_term)
+          check(lvl, ctx, env, tenv, arg_term, expected_arg_ty)
+        })
+        |> list.flat_map(list_errors)
+      let final_ty = eval(solved_env, ctr.ret_ty)
+      case arg_errors {
+        [] -> Ok(final_ty)
+        errors -> Ok(VErr(WithErrors(final_ty, errors)))
+      }
+    }
     Error(e) -> Ok(VErr(e))
   }
 }
 
-// // --- 3. EXHAUSTIVENESS (The Safety Net) ---
-// fn check_exhaustiveness(cases: List(Case), span: Span) -> Result(Nil, Error) {
-//   // A "Matrix" is a list of rows, where each row is a list of Patterns
-//   let patterns = list.map(cases, fn(c) { c.pattern })
-
-//   case is_useful(patterns, PAny) {
-//     True ->
-//       // If the Wildcard is still "useful" after all user cases, 
-//       // it means the user missed something.
-//       // In a real implementation, 'witness' would be the missing constructor.
-//       Error(NonExhaustiveMatch([PAny], span))
-//     False -> Ok(Nil)
-//   }
-// }
-
-// // The core "Is this pattern covered?" logic (Simplified)
-// fn is_useful(matrix: List(Pattern), target: Pattern) -> Bool {
-//   case matrix {
-//     [] -> True
-//     // Nothing covers the target, so it is useful
-//     [row, ..rest] -> {
-//       case covers(row, target) {
-//         True ->
-//           // Covered by a previous row -> Not useful
-//           False
-//         False -> is_useful(rest, target)
-//       }
-//     }
-//   }
-// }
-
-// fn covers(p1: Pattern, p2: Pattern) -> Bool {
-//   case p1, p2 {
-//     PAny, _ -> True
-//     PVar(_), _ -> True
-//     PCtr(n1, _), PCtr(n2, _) -> n1 == n2
-//     _, _ -> False
-//   }
-// }
-
-// fn infer_case(lvl: Int, ctx: Context, c: Case, scrut_ty: Value) -> Value {
-//   // 1. Unify pattern with scrutinee type to get new bindings
-//   // 2. Add bindings to context
-//   // 3. Infer body
-//   // infer(lvl + 1, ctx, c.body)
-//   // simplified
-//   todo
-// }
-
-fn ctx_to_env(ctx: Context) -> Env {
-  let len = list.length(ctx)
-  list.index_map(ctx, fn(_, i) {
-    // Map Index 'i' to Level 'len - 1 - i'
-    VNeut(HVar(len - 1 - i), [])
-  })
+pub fn list_errors(v: Value) -> List(Error) {
+  case v {
+    VTyp(_) -> []
+    VLit(_) -> []
+    VLitT(_) -> []
+    VNeut(_, args) -> list.flat_map(args, list_errors)
+    VCtr(_, args) -> list.flat_map(args, list_errors)
+    VLam(_, env, body) -> todo
+    VPi(_, env, in, out) -> list.append(list_errors(in), todo)
+    VErr(e) -> [e]
+  }
 }
 
 pub fn list_get(xs: List(a), i: Int) -> Option(a) {

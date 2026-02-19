@@ -120,7 +120,9 @@ pub fn ctr_infer_test() {
 }
 
 pub fn ctr_check_test() {
-  todo
+  let tenv = [#("A", c.CtrDef(0, [], typ(42)))]
+  c.check(0, [], [], tenv, ctr("A", []), c.VTyp(42))
+  |> should.equal(c.VTyp(42))
 }
 
 // --- Ann --- \\
