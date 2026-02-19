@@ -19,6 +19,7 @@ pub type TermData {
   Pi(name: String, in: Term, out: Term)
   App(fun: Term, arg: Term)
   Match(arg: Term, cases: List(Case))
+  Bad(term: Term, errors: List(Error))
   Err(err: Error)
 }
 
@@ -30,6 +31,7 @@ pub type Value {
   VCtr(tag: String, args: List(Value))
   VLam(name: String, env: Env, body: Term)
   VPi(name: String, env: Env, in: Value, out: Term)
+  VBad(value: Value, errors: List(Error))
   VErr(err: Error)
 }
 
@@ -93,7 +95,6 @@ pub type Error {
   TypeAnnotationNeeded(term: Term)
   NotAFunction(got: Value, span: Span)
   UnboundVar(index: Int, span: Span)
-  WithErrors(value: Value, errors: List(Error))
 
   // Exhaustiveness errors
   NonExhaustiveMatch(missing: List(Pattern), span: Span)
@@ -137,6 +138,7 @@ pub fn eval(env: Env, term: Term) -> Value {
         None -> VErr(MatchUnhandledCase(arg_val, arg.span))
       }
     }
+    Bad(term, errors) -> VBad(eval(env, term), errors)
     Err(e) -> VErr(e)
   }
 }
@@ -199,12 +201,11 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
     VLit(k) -> Term(Lit(k), s)
     VLitT(k) -> Term(LitT(k), s)
     VCtr(tag, args) -> Term(Ctr(tag, list.map(args, quote(lvl, _, s))), s)
-    VNeut(HVar(l), args_val) -> {
-      let fun = Term(Var(lvl - l - 1), s)
+    VNeut(head, args_val) -> {
+      let fun = quote_head(lvl, head, s)
       let args = list.map(args_val, quote(lvl, _, s))
       app(fun, args, s)
     }
-    VNeut(HMeta(id), args_val) -> todo
     VLam(name, env, body) -> {
       let fresh = VNeut(HVar(lvl), [])
       let body_val = eval([fresh, ..env], body)
@@ -218,7 +219,15 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
       let out_quote = quote(lvl + 1, out_val, out_term.span)
       Term(Pi(name, in_quote, out_quote), s)
     }
+    VBad(value, errors) -> Term(Bad(quote(lvl, value, s), errors), s)
     VErr(e) -> Term(Err(e), s)
+  }
+}
+
+fn quote_head(lvl: Int, head: Head, s: Span) -> Term {
+  case head {
+    HVar(l) -> Term(Var(lvl - l - 1), s)
+    HMeta(id) -> Term(Err(TODO("Unsolved hole " <> int.to_string(id), s)), s)
   }
 }
 
@@ -300,24 +309,33 @@ pub fn infer(
     // Ctr(tag, args) -> VCtr(tag, list.map(args, infer(lvl, ctx, env, tenv, _)))
     Ctr(_, _) -> VErr(TypeAnnotationNeeded(term))
     Ann(term, ty) -> {
-      check(lvl, ctx, env, tenv, ty, VTyp(0))
       let ty_val = eval(env, ty)
-      check(lvl, ctx, env, tenv, term, ty_val)
+      let final_ty = check(lvl, ctx, env, tenv, term, ty_val)
+      case check(lvl, ctx, env, tenv, ty, VTyp(0)) |> list_errors {
+        [] -> final_ty
+        errors -> VBad(final_ty, errors)
+      }
     }
     Lam(_, _) -> VErr(TypeAnnotationNeeded(term))
     Pi(name, in, out) -> {
-      check(lvl, ctx, env, tenv, in, VTyp(0))
+      let e1 = check(lvl, ctx, env, tenv, in, VTyp(0)) |> list_errors
       let fresh = VNeut(HVar(lvl), [])
       let new_ctx = [#(name, eval(env, in)), ..ctx]
-      infer(lvl + 1, new_ctx, [fresh, ..env], tenv, out)
-      VTyp(0)
+      let e2 = infer(lvl + 1, new_ctx, [fresh, ..env], tenv, out) |> list_errors
+      case list.append(e1, e2) {
+        [] -> VTyp(0)
+        errors -> VBad(VTyp(0), errors)
+      }
     }
     App(fun, arg) -> {
       case infer(lvl, ctx, env, tenv, fun) {
         VPi(_, pi_env, in_ty, out_ty) -> {
-          check(lvl, ctx, env, tenv, arg, in_ty)
           let arg_val = eval(env, arg)
-          eval([arg_val, ..pi_env], out_ty)
+          let final_ty = eval([arg_val, ..pi_env], out_ty)
+          case check(lvl, ctx, env, tenv, arg, in_ty) |> list_errors {
+            [] -> final_ty
+            errors -> VBad(final_ty, errors)
+          }
         }
         VErr(e) -> VErr(e)
         fun_ty -> VErr(NotAFunction(fun_ty, term.span))
@@ -343,6 +361,7 @@ pub fn infer(
         }
       }
     }
+    Bad(term, errors) -> VBad(infer(lvl, ctx, env, tenv, term), errors)
     Err(e) -> VErr(e)
   }
 }
@@ -440,14 +459,14 @@ fn check_ctr(
 ) -> Result(Value, Nil) {
   use ctr <- result.try(list.key_find(tenv, tag))
   let params =
-    int.range(0, ctr.num_params, [], list.prepend)
+    range(0, ctr.num_params - 1, 1)
     |> list.map(fn(i) { VNeut(HMeta(i), []) })
     |> list.reverse
   let ctr_ret_ty = eval(list.append(params, env), ctr.ret_ty)
   case unify(lvl, [], ctr_ret_ty, expected_ty, s) {
     Ok(sub) -> {
       let solved_params =
-        int.range(0, ctr.num_params, [], list.prepend)
+        range(0, ctr.num_params - 1, 1)
         |> list.map(fn(i) {
           list.key_find(sub, i)
           |> result.unwrap(VErr(TODO("Unsolved param", s)))
@@ -464,7 +483,7 @@ fn check_ctr(
       let final_ty = eval(solved_env, ctr.ret_ty)
       case arg_errors {
         [] -> Ok(final_ty)
-        errors -> Ok(VErr(WithErrors(final_ty, errors)))
+        errors -> Ok(VBad(final_ty, errors))
       }
     }
     Error(e) -> Ok(VErr(e))
@@ -480,6 +499,7 @@ pub fn list_errors(v: Value) -> List(Error) {
     VCtr(_, args) -> list.flat_map(args, list_errors)
     VLam(_, env, body) -> todo
     VPi(_, env, in, out) -> list.append(list_errors(in), todo)
+    VBad(v, errors) -> list.append(list_errors(v), errors)
     VErr(e) -> [e]
   }
 }
@@ -489,5 +509,12 @@ pub fn list_get(xs: List(a), i: Int) -> Option(a) {
     [] -> None
     [x, ..] if i == 0 -> Some(x)
     [_, ..xs] -> list_get(xs, i - 1)
+  }
+}
+
+pub fn range(start: Int, stop: Int, step: Int) -> List(Int) {
+  case start < stop {
+    True -> [start, ..range(start + step, stop, step)]
+    False -> []
   }
 }

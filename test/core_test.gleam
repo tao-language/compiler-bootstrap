@@ -7,6 +7,13 @@ pub fn main() {
   gleeunit.main()
 }
 
+pub fn range_test() {
+  c.range(0, 0, 1) |> should.equal([])
+  c.range(0, 1, 1) |> should.equal([0])
+  c.range(0, 2, 1) |> should.equal([0, 1])
+  c.range(0, 3, 1) |> should.equal([0, 1, 2])
+}
+
 // --- Typ --- \\
 pub fn typ_eval_test() {
   c.eval([], typ(0)) |> should.equal(c.VTyp(0))
