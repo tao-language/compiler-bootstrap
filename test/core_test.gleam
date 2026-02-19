@@ -96,9 +96,9 @@ pub fn lit_t_check_test() {
 
 // --- Var --- \\
 pub fn var_eval_test() {
-  // c.eval([], var(0)) |> should.equal(VNeut(HVar(0), []))
-  c.eval([], var(0)) |> should.equal(c.VErr(c.UnboundVar(0, s())))
-  c.eval([c.VTyp(1)], var(0)) |> should.equal(c.VTyp(1))
+  let env = [c.VTyp(0)]
+  c.eval(env, var(0)) |> should.equal(c.VTyp(0))
+  c.eval(env, var(1)) |> should.equal(c.VErr(c.UnboundVar(1, s())))
 }
 
 pub fn var_infer_test() {
@@ -117,8 +117,10 @@ pub fn var_check_test() {
 
 // --- Ctr --- \\
 pub fn ctr_eval_test() {
-  let env = [c.VTyp(42)]
-  c.eval(env, ctr("A", [var(0)])) |> should.equal(c.VCtr("A", [c.VTyp(42)]))
+  c.eval([], ctr("A", [])) |> should.equal(c.VCtr("A", []))
+  c.eval([], ctr("A", [typ(0)])) |> should.equal(c.VCtr("A", [c.VTyp(0)]))
+  c.eval([], ctr("A", [typ(0), typ(1)]))
+  |> should.equal(c.VCtr("A", [c.VTyp(0), c.VTyp(1)]))
 }
 
 pub fn ctr_infer_test() {
@@ -127,9 +129,14 @@ pub fn ctr_infer_test() {
 }
 
 pub fn ctr_check_test() {
-  let tenv = [#("A", c.CtrDef(0, [], typ(42)))]
-  c.check(0, [], [], tenv, ctr("A", []), c.VTyp(42))
-  |> should.equal(c.VTyp(42))
+  let tenv = [
+    #("A", c.CtrDef(0, [], typ(0))),
+    #("B", c.CtrDef(1, [var(0)], var(0))),
+  ]
+  c.check(0, [], [], tenv, ctr("A", []), c.VTyp(0))
+  |> should.equal(c.VTyp(0))
+  c.check(0, [], [], tenv, ctr("B", [typ(0)]), c.VTyp(1))
+  |> should.equal(c.VTyp(1))
 }
 
 // --- Ann --- \\

@@ -309,33 +309,27 @@ pub fn infer(
     // Ctr(tag, args) -> VCtr(tag, list.map(args, infer(lvl, ctx, env, tenv, _)))
     Ctr(_, _) -> VErr(TypeAnnotationNeeded(term))
     Ann(term, ty) -> {
+      let errors = check(lvl, ctx, env, tenv, ty, VTyp(0)) |> list_errors
       let ty_val = eval(env, ty)
-      let final_ty = check(lvl, ctx, env, tenv, term, ty_val)
-      case check(lvl, ctx, env, tenv, ty, VTyp(0)) |> list_errors {
-        [] -> final_ty
-        errors -> VBad(final_ty, errors)
-      }
+      with_errors(check(lvl, ctx, env, tenv, term, ty_val), errors)
     }
     Lam(_, _) -> VErr(TypeAnnotationNeeded(term))
     Pi(name, in, out) -> {
-      let e1 = check(lvl, ctx, env, tenv, in, VTyp(0)) |> list_errors
       let fresh = VNeut(HVar(lvl), [])
       let new_ctx = [#(name, eval(env, in)), ..ctx]
-      let e2 = infer(lvl + 1, new_ctx, [fresh, ..env], tenv, out) |> list_errors
-      case list.append(e1, e2) {
-        [] -> VTyp(0)
-        errors -> VBad(VTyp(0), errors)
-      }
+      let errors =
+        list.append(
+          check(lvl, ctx, env, tenv, in, VTyp(0)) |> list_errors,
+          infer(lvl + 1, new_ctx, [fresh, ..env], tenv, out) |> list_errors,
+        )
+      with_errors(VTyp(0), errors)
     }
     App(fun, arg) -> {
       case infer(lvl, ctx, env, tenv, fun) {
         VPi(_, pi_env, in_ty, out_ty) -> {
+          let errors = check(lvl, ctx, env, tenv, arg, in_ty) |> list_errors
           let arg_val = eval(env, arg)
-          let final_ty = eval([arg_val, ..pi_env], out_ty)
-          case check(lvl, ctx, env, tenv, arg, in_ty) |> list_errors {
-            [] -> final_ty
-            errors -> VBad(final_ty, errors)
-          }
+          with_errors(eval([arg_val, ..pi_env], out_ty), errors)
         }
         VErr(e) -> VErr(e)
         fun_ty -> VErr(NotAFunction(fun_ty, term.span))
@@ -423,7 +417,6 @@ pub fn check(
         Ok(ty) -> ty
         Error(Nil) -> VErr(TODO("Unknown constructor", term.span))
       }
-    // Holes are always valid types (but warn)
     Err(TODO(msg, s)), _ -> {
       io.print_error(
         "["
@@ -459,14 +452,14 @@ fn check_ctr(
 ) -> Result(Value, Nil) {
   use ctr <- result.try(list.key_find(tenv, tag))
   let params =
-    range(0, ctr.num_params - 1, 1)
+    range(0, ctr.num_params, 1)
     |> list.map(fn(i) { VNeut(HMeta(i), []) })
     |> list.reverse
   let ctr_ret_ty = eval(list.append(params, env), ctr.ret_ty)
   case unify(lvl, [], ctr_ret_ty, expected_ty, s) {
     Ok(sub) -> {
       let solved_params =
-        range(0, ctr.num_params - 1, 1)
+        range(0, ctr.num_params, 1)
         |> list.map(fn(i) {
           list.key_find(sub, i)
           |> result.unwrap(VErr(TODO("Unsolved param", s)))
@@ -475,18 +468,21 @@ fn check_ctr(
       let arg_errors =
         list.zip(args, ctr.args)
         |> list.map(fn(pair) {
-          let #(arg_term, sig_term) = pair
-          let expected_arg_ty = eval(solved_env, sig_term)
-          check(lvl, ctx, env, tenv, arg_term, expected_arg_ty)
+          let #(arg, ctr_arg) = pair
+          let ctr_arg_ty = eval(solved_env, ctr_arg)
+          check(lvl, ctx, env, tenv, arg, ctr_arg_ty)
         })
         |> list.flat_map(list_errors)
-      let final_ty = eval(solved_env, ctr.ret_ty)
-      case arg_errors {
-        [] -> Ok(final_ty)
-        errors -> Ok(VBad(final_ty, errors))
-      }
+      Ok(with_errors(eval(solved_env, ctr.ret_ty), arg_errors))
     }
     Error(e) -> Ok(VErr(e))
+  }
+}
+
+fn with_errors(value: Value, errors: List(Error)) -> Value {
+  case errors {
+    [] -> value
+    errors -> VBad(value, errors)
   }
 }
 
