@@ -42,6 +42,7 @@ pub type Pattern {
 pub type Head {
   // De Bruijn Level (Absolute)
   HVar(level: Int)
+  HMeta(id: Int)
 }
 
 pub type Case {
@@ -130,7 +131,7 @@ pub fn eval(env: Env, term: Term) -> Value {
     }
     Match(arg, cases) -> {
       let arg_val = eval(env, arg)
-      case eval_match_all(env, arg_val, cases) {
+      case eval_match(env, arg_val, cases) {
         Some(result) -> result
         None -> VErr(MatchUnhandledCase(arg_val, arg.span))
       }
@@ -148,64 +149,40 @@ fn eval_apply(fun: Value, arg: Value) -> Option(Value) {
   }
 }
 
-// fn eval_apply_list(fun: Value, args: List(Value)) -> Option(Value) {
-//   case args {
-//     [] -> Some(fun)
-//     [arg, ..args] ->
-//       case eval_apply(fun, arg) {
-//         Some(result) -> eval_apply_list(result, args)
-//         None -> None
-//       }
-//   }
-// }
-
-fn eval_match_all(env: Env, arg: Value, cases: List(Case)) -> Option(Value) {
+fn eval_match(env: Env, arg: Value, cases: List(Case)) -> Option(Value) {
   case cases {
     [] -> None
-    [head, ..cases] -> {
-      case eval_match_one(head.pattern, arg) {
-        Some(bindings) -> Some(eval(list.append(bindings, env), head.body))
-        None -> eval_match_all(env, arg, cases)
+    [c, ..cases] -> {
+      case match_pattern(c.pattern, arg) {
+        Ok(bindings) -> Some(eval(list.append(bindings, env), c.body))
+        Error(Nil) -> eval_match(env, arg, cases)
       }
     }
   }
 }
 
-// Returns bindings (in reverse order) if match succeeds
-fn eval_match_one(pattern: Pattern, arg: Value) -> Option(List(Value)) {
-  case pattern {
-    PAny -> Some([])
-    PVar(_) -> Some([arg])
-    PCtr(tag_p, args_p) -> eval_match_ctr(tag_p, args_p, arg)
+fn match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
+  case pattern, value {
+    PAny, _ -> Ok([])
+    PVar(_), _ -> Ok([value])
+    PCtr(tag_p, args_p), VCtr(tag_v, args_v) if tag_p == tag_v ->
+      match_pattern_list(args_p, args_v)
+    PCtr(_, _), _ -> Error(Nil)
   }
 }
 
-pub fn eval_match_ctr(tag_p: String, args_p: List(Pattern), value: Value) {
-  case value {
-    VCtr(tag_v, args_v) ->
-      case tag_p == tag_v && list.length(args_p) == list.length(args_v) {
-        True -> {
-          // Zip args and recursively match. 
-          let zipped = list.zip(args_p, args_v)
-          let results =
-            list.map(zipped, fn(pair) { eval_match_one(pair.0, pair.1) })
-          // Check if all matches succeeded
-          let bindings =
-            list.fold(results, Some([]), fn(match_result, acc) {
-              case match_result, acc {
-                Some(bindings), Some(acc_bindings) ->
-                  Some(list.append(bindings, acc_bindings))
-                _, _ -> None
-              }
-            })
-          case bindings {
-            Some(bindings) -> Some(bindings)
-            None -> None
-          }
-        }
-        False -> None
-      }
-    _ -> None
+pub fn match_pattern_list(
+  ps: List(Pattern),
+  vs: List(Value),
+) -> Result(Env, Nil) {
+  case ps, vs {
+    [], [] -> Ok([])
+    [p, ..ps], [v, ..vs] -> {
+      use bindings_first <- result.try(match_pattern(p, v))
+      use bindings_rest <- result.try(match_pattern_list(ps, vs))
+      Ok(list.append(bindings_first, bindings_rest))
+    }
+    _, _ -> Error(Nil)
   }
 }
 
@@ -226,6 +203,7 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
       let args = list.map(args_val, quote(lvl, _, s))
       app(fun, args, s)
     }
+    VNeut(HMeta(id), args_val) -> todo
     VLam(name, env, body) -> {
       let fresh = VNeut(HVar(lvl), [])
       let body_val = eval([fresh, ..env], body)
@@ -243,46 +221,59 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
   }
 }
 
-pub fn unify(lvl: Int, v1: Value, v2: Value, s: Span) -> Result(Nil, Error) {
+pub fn unify(
+  lvl: Int,
+  sub: Subst,
+  v1: Value,
+  v2: Value,
+  s: Span,
+) -> Result(Subst, Error) {
   case v1, v2 {
-    VTyp(k1), VTyp(k2) if k1 == k2 -> Ok(Nil)
-    VLit(k1), VLit(k2) if k1 == k2 -> Ok(Nil)
-    VLitT(k1), VLitT(k2) if k1 == k2 -> Ok(Nil)
+    VTyp(k1), VTyp(k2) if k1 == k2 -> Ok(sub)
+    VLit(k1), VLit(k2) if k1 == k2 -> Ok(sub)
+    VLitT(k1), VLitT(k2) if k1 == k2 -> Ok(sub)
+    VNeut(HMeta(id), []), _ ->
+      case list.key_find(sub, id) {
+        Ok(v) -> unify(lvl + 1, sub, v, v2, s)
+        Error(Nil) -> Ok([#(id, v2), ..sub])
+      }
+    _, VNeut(HMeta(_), []) -> unify(lvl + 1, sub, v2, v1, s)
     VNeut(h1, args1), VNeut(h2, args2) if h1 == h2 ->
-      unify_list(lvl, args1, args2, s)
+      unify_list(lvl, sub, args1, args2, s)
     VCtr(k1, args1), VCtr(k2, args2) if k1 == k2 ->
-      unify_list(lvl, args1, args2, s)
+      unify_list(lvl, sub, args1, args2, s)
     VLam(_, env1, body1), VLam(_, env2, body2) -> {
       let fresh = VNeut(HVar(lvl), [])
       let a = eval([fresh, ..env1], body1)
       let b = eval([fresh, ..env2], body2)
-      unify(lvl + 1, a, b, s)
+      unify(lvl + 1, sub, a, b, s)
     }
     VPi(_, env1, in1, out1), VPi(_, env2, in2, out2) -> {
-      use _ <- result.try(unify(lvl, in1, in2, s))
+      use _ <- result.try(unify(lvl, sub, in1, in2, s))
       let fresh = VNeut(HVar(lvl), [])
       let a = eval([fresh, ..env1], out1)
       let b = eval([fresh, ..env2], out2)
-      unify(lvl + 1, a, b, s)
+      unify(lvl + 1, sub, a, b, s)
     }
     // On errors, succeed to prevent cascading noise
-    VErr(_), _ -> Ok(Nil)
-    _, VErr(_) -> Ok(Nil)
+    VErr(_), _ -> Ok(sub)
+    _, VErr(_) -> Ok(sub)
     _, _ -> Error(TypeMismatch(v1, v2, s))
   }
 }
 
 fn unify_list(
   lvl: Int,
+  sub: Subst,
   l1: List(Value),
   l2: List(Value),
   s: Span,
-) -> Result(Nil, Error) {
+) -> Result(Subst, Error) {
   case l1, l2 {
-    [], [] -> Ok(Nil)
+    [], [] -> Ok(sub)
     [x, ..xs], [y, ..ys] -> {
-      use _ <- result.try(unify(lvl, x, y, s))
-      unify_list(lvl, xs, ys, s)
+      use sub <- result.try(unify(lvl, sub, x, y, s))
+      unify_list(lvl, sub, xs, ys, s)
     }
     _, _ -> Error(TODO("Arity mismatch", s))
   }
@@ -475,9 +466,9 @@ pub fn check(
       expected_ty
     }
     _, _ -> {
-      let term_ty = infer(lvl, ctx, env, tenv, term)
-      case unify(lvl, term_ty, expected_ty, term.span) {
-        Ok(Nil) -> term_ty
+      let inferred_ty = infer(lvl, ctx, env, tenv, term)
+      case unify(lvl, [], inferred_ty, expected_ty, term.span) {
+        Ok(sub) -> inferred_ty
         Error(e) -> VErr(e)
       }
     }
@@ -495,77 +486,13 @@ fn check_ctr(
   s: Span,
 ) -> Result(Value, Nil) {
   use ctr <- result.try(list.key_find(tenv, tag))
-  // 1. Create dummy values for the parameters using distinct De Bruijn Levels
   let param_vals =
     list.range(0, ctr.num_params - 1)
-    |> list.map(fn(i) { VNeut(HVar(lvl + i), []) })
-    |> list.reverse
-  // 2. Evaluate the return type template (e.g., Vec(n + 1, a))
-  let template_val = eval(list.append(param_vals, env), ctr.ret_ty)
-
-  // 3. Match template against Expected to extract substitution
-  let subst =
-    match_values(lvl, ctr.num_params, template_val, expected_ty, [], s)
-  case subst {
-    Ok(subst) -> {
-      // 4. Extract solved parameters (fallback to VErr if unresolved)
-      let solved_env =
-        list.range(0, ctr.num_params - 1)
-        |> list.map(fn(i) {
-          case list.key_find(subst, i) {
-            Ok(v) -> v
-            Error(_) -> VErr(TODO("Unsolved GADT parameter", s))
-          }
-        })
-        |> list.reverse
-
-      // 5. Evaluate signature arguments with the solved parameters
-      let final_env = list.append(solved_env, env)
-      let check_args = list.zip(args, ctr.args)
-
-      let args_res =
-        list.map(check_args, fn(pair) {
-          let #(arg_term, ctr_arg_term) = pair
-          let expected_arg_ty = eval(final_env, ctr_arg_term)
-          check(lvl, ctx, env, tenv, arg_term, expected_arg_ty)
-        })
-
-      Ok(VCtr(tag, args_res))
-    }
+    |> list.map(fn(i) { VNeut(HMeta(i), []) })
+  let ctr_ret_ty = eval(list.append(param_vals, env), ctr.ret_ty)
+  case unify(lvl, [], ctr_ret_ty, expected_ty, s) {
+    Ok(sub) -> todo
     Error(e) -> Ok(VErr(e))
-  }
-}
-
-fn match_values(
-  lvl: Int,
-  num_params: Int,
-  template: Value,
-  target: Value,
-  subst: Subst,
-  span: Span,
-) -> Result(Subst, Error) {
-  case template, target {
-    VNeut(HVar(l), []), _ if l >= lvl && l < lvl + num_params -> {
-      let param_idx = l - lvl
-      case list.key_find(subst, param_idx) {
-        Ok(existing) -> {
-          use _ <- result.try(unify(lvl, existing, target, span))
-          Ok(subst)
-        }
-        Error(Nil) -> Ok([#(param_idx, target), ..subst])
-      }
-    }
-    VNeut(h1, args1), VNeut(h2, args2) if h1 == h2 -> {
-      list.try_fold(list.zip(args1, args2), subst, fn(s, pair) {
-        match_values(lvl, num_params, pair.0, pair.1, s, span)
-      })
-    }
-    VCtr(t1, args1), VCtr(t2, args2) if t1 == t2 -> {
-      list.try_fold(list.zip(args1, args2), subst, fn(s, pair) {
-        match_values(lvl, num_params, pair.0, pair.1, s, span)
-      })
-    }
-    _, _ -> Error(TypeMismatch(template, target, span))
   }
 }
 

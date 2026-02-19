@@ -119,6 +119,10 @@ pub fn ctr_infer_test() {
   |> should.equal(c.VErr(c.TypeAnnotationNeeded(ctr("A", []))))
 }
 
+pub fn ctr_check_test() {
+  todo
+}
+
 // --- Ann --- \\
 pub fn ann_eval_test() {
   let env = [c.VTyp(42)]
