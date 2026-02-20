@@ -105,6 +105,7 @@ pub type Error {
     span: Span,
   )
   AnnNotType(typ: Term, kind: Value)
+  PiInputNotType(in: Term, kind: Value)
 
   // Exhaustiveness errors
   NonExhaustiveMatch(missing: List(Pattern), span: Span)
@@ -221,7 +222,7 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
     }
     VPi(name, env, in_val, out_term) -> {
       let in_quote = quote(lvl, in_val, s)
-      let fresh = VNeut(HVar(lvl + 1), [])
+      let fresh = VNeut(HVar(lvl), [])
       let out_val = eval([fresh, ..env], out_term)
       let out_quote = quote(lvl + 1, out_val, out_term.span)
       Term(Pi(name, in_quote, out_quote), s)
@@ -334,9 +335,13 @@ pub fn infer(
     Pi(name, in, out) -> {
       let fresh = VNeut(HVar(lvl), [])
       let new_ctx = [#(name, eval(env, in)), ..ctx]
+      let in_kind = infer(lvl, ctx, env, tenv, in)
       let errors =
         list.append(
-          check(lvl, ctx, env, tenv, in, VTyp(0)) |> list_errors,
+          case is_vtyp(in_kind) {
+            True -> list_errors(in_kind)
+            False -> [PiInputNotType(in, in_kind), ..list_errors(in_kind)]
+          },
           infer(lvl + 1, new_ctx, [fresh, ..env], tenv, out) |> list_errors,
         )
       with_errors(VTyp(0), errors)
@@ -427,7 +432,8 @@ pub fn check(
       let fresh = VNeut(HVar(lvl), [])
       let out_val = eval([fresh, ..pi_env], out)
       let new_ctx = [#(name, in), ..ctx]
-      check(lvl + 1, new_ctx, [fresh, ..env], tenv, body, out_val)
+      let body_ty = check(lvl + 1, new_ctx, [fresh, ..env], tenv, body, out_val)
+      with_errors(expected_ty, list_errors(body_ty))
     }
     Ctr(tag, args), _ ->
       check_ctr(lvl, ctx, env, tenv, tag, args, expected_ty, term.span)
@@ -518,8 +524,14 @@ pub fn list_errors(v: Value) -> List(Error) {
     VLitT(_) -> []
     VNeut(_, args) -> list.flat_map(args, list_errors)
     VCtr(_, args) -> list.flat_map(args, list_errors)
-    VLam(_, env, body) -> todo
-    VPi(_, env, in, out) -> list.append(list_errors(in), todo)
+    VLam(_, env, body) -> {
+      let fresh = VNeut(HVar(0), [])
+      list_errors(eval([fresh, ..env], body))
+    }
+    VPi(_, env, in, out) -> {
+      let fresh = VNeut(HVar(0), [])
+      list.append(list_errors(in), list_errors(eval([fresh, ..env], out)))
+    }
     VBad(v, errors) -> list.append(list_errors(v), errors)
     VErr(e) -> [e]
   }

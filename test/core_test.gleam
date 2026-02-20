@@ -233,10 +233,43 @@ pub fn lam_eval_test() {
   |> should.equal(c.VLam("x", [], var(0)))
 }
 
+pub fn lam_infer_test() {
+  c.infer(0, [], [], [], lam("x", var(0)))
+  |> should.equal(c.VErr(c.TypeAnnotationNeeded(lam("x", var(0)))))
+}
+
+pub fn lam_check_test() {
+  let ty = c.VPi("x", [], c.VTyp(0), typ(0))
+  c.check(0, [], [], [], lam("x", var(0)), ty)
+  |> should.equal(ty)
+
+  c.check(0, [], [], [], lam("y", var(0)), c.VTyp(0))
+  |> should.equal(c.VErr(c.TypeAnnotationNeeded(lam("y", var(0)))))
+}
+
 // --- Pi --- \\
 pub fn pi_eval_test() {
   c.eval([], pi("x", typ(0), var(0)))
   |> should.equal(c.VPi("x", [], c.VTyp(0), var(0)))
+}
+
+pub fn pi_infer_test() {
+  c.infer(0, [], [], [], pi("x", typ(0), var(0)))
+  |> should.equal(c.VTyp(0))
+
+  c.infer(0, [], [], [], pi("y", lit(c.I32(1)), var(0)))
+  |> should.equal(
+    c.VBad(c.VTyp(0), [c.PiInputNotType(lit(c.I32(1)), c.VLitT(c.I32T))]),
+  )
+}
+
+pub fn pi_check_test() {
+  let term = pi("x", typ(0), typ(1))
+  c.check(0, [], [], [], term, c.VTyp(0))
+  |> should.equal(c.VTyp(0))
+
+  c.check(0, [], [], [], term, c.VTyp(1))
+  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(0), c.VTyp(1), s)))
 }
 
 // --- App --- \\
