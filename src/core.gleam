@@ -361,19 +361,34 @@ pub fn infer(
       let arg_ty = infer(lvl, ctx, env, tenv, arg)
       case cases {
         [] -> {
-          // Empty matches are only valid for "Void" types
-          // TODO: replace this with a more specific error.
           let err = Err(TODO("match without any cases", term.span))
           infer(lvl, ctx, env, tenv, Term(err, term.span))
         }
-        [first, ..cases] -> {
-          let #(lvl_f, ctx_f) = bind_pattern(lvl, ctx, first.pattern, arg_ty)
-          let return_ty = infer(lvl_f, ctx_f, env, tenv, first.body)
-          list.each(cases, fn(c) {
-            let #(lvl_c, ctx_c) = bind_pattern(lvl, ctx, c.pattern, arg_ty)
-            check(lvl_c, ctx_c, env, tenv, c.body, return_ty)
-          })
-          return_ty
+        [first, ..rest] -> {
+          case
+            bind_pattern(lvl, ctx, env, tenv, first.pattern, arg_ty, term.span)
+          {
+            Error(e) -> VErr(e)
+            Ok(#(lvl_f, ctx_f)) -> {
+              let return_ty = infer(lvl_f, ctx_f, env, tenv, first.body)
+
+              // Typecheck the rest of the cases against the first case's return type
+              let errors =
+                list.flat_map(rest, fn(c) {
+                  case
+                    bind_pattern(lvl, ctx, env, tenv, c.pattern, arg_ty, c.span)
+                  {
+                    Error(e) -> [e]
+                    Ok(#(lvl_c, ctx_c)) -> {
+                      let body_ty =
+                        check(lvl_c, ctx_c, env, tenv, c.body, return_ty)
+                      list_errors(body_ty)
+                    }
+                  }
+                })
+              with_errors(return_ty, errors)
+            }
+          }
         }
       }
     }
@@ -385,25 +400,37 @@ pub fn infer(
 fn bind_pattern(
   lvl: Int,
   ctx: Context,
+  env: Env,
+  tenv: TypeEnv,
   pattern: Pattern,
   expected_ty: Value,
-) -> #(Int, Context) {
+  span: Span,
+) -> Result(#(Int, Context), Error) {
   case pattern {
-    PAny -> #(lvl, ctx)
-    PVar(name) -> #(lvl + 1, [#(name, expected_ty), ..ctx])
+    PAny -> Ok(#(lvl, ctx))
+    PVar(name) -> Ok(#(lvl + 1, [#(name, expected_ty), ..ctx]))
     PCtr(tag, p_args) -> {
-      // let sig = get_signature(tag)
-      // // 2. Simple check: Is the tag valid for the expected type?
-      // // (In a real impl, you'd check sig.parent_type == expected_ty)
-      // // 3. Recursively bind arguments
-      // // This assumes sig.args (Terms) are evaluated into Values
-      // list.fold(list.zip(p_args, sig.args), #(lvl, ctx), fn(acc, pair) {
-      //   let #(p, arg_tm) = pair
-      //   let #(current_lvl, current_ctx) = acc
-      //   let arg_ty = eval(ctx_to_env(current_ctx), arg_tm)
-      //   bind_pattern(current_lvl, current_ctx, p, arg_ty)
-      // })
-      todo
+      case list.key_find(tenv, tag) {
+        Error(Nil) -> Error(CtrUndefined(tag, span))
+        Ok(ctr) -> {
+          // Instantiate parameters to evaluate the constructor's expected argument types
+          let params =
+            list.index_map(ctr.params, fn(_, i) { VNeut(HMeta(i), []) })
+          let env_solved = list.append(params, env)
+          let expected_arg_tys = list.map(ctr.args, eval(env_solved, _))
+
+          // Recursively bind all arguments in the pattern
+          list.try_fold(
+            list.zip(p_args, expected_arg_tys),
+            #(lvl, ctx),
+            fn(acc, pair) {
+              let #(current_lvl, current_ctx) = acc
+              let #(p, arg_ty) = pair
+              bind_pattern(current_lvl, current_ctx, env, tenv, p, arg_ty, span)
+            },
+          )
+        }
+      }
     }
   }
 }

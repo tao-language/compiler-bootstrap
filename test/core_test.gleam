@@ -291,6 +291,31 @@ pub fn app_eval_test() {
   |> should.equal(c.VErr(c.NotAFunction(c.VCtr("A", [c.VTyp(1)]), s)))
 }
 
+pub fn app_infer_test() {
+  // Creating an identity function: (\x. x) : (Pi x: I32T. I32T)
+  let id_ty = pi("x", lit_t(c.I32T), lit_t(c.I32T))
+  let id_fun = ann(lam("x", var(0)), id_ty)
+
+  c.infer(0, [], [], [], app(id_fun, lit(c.I32(42))))
+  |> should.equal(c.VLitT(c.I32T))
+
+  // Error case: Trying to apply a literal as if it were a function
+  c.infer(0, [], [], [], app(lit(c.I32(1)), lit(c.I32(2))))
+  |> should.equal(c.VErr(c.NotAFunction(c.VLitT(c.I32T), s)))
+}
+
+pub fn app_check_test() {
+  let id_ty = pi("x", lit_t(c.I32T), lit_t(c.I32T))
+  let id_fun = ann(lam("x", var(0)), id_ty)
+
+  c.check(0, [], [], [], app(id_fun, lit(c.I32(42))), c.VLitT(c.I32T))
+  |> should.equal(c.VLitT(c.I32T))
+
+  // Mismatch case: the function returns I32T, but we check against U32T
+  c.check(0, [], [], [], app(id_fun, lit(c.I32(42))), c.VLitT(c.U32T))
+  |> should.equal(c.VErr(c.TypeMismatch(c.VLitT(c.I32T), c.VLitT(c.U32T), s)))
+}
+
 // --- Match --- \\
 pub fn match_eval_test() {
   let i1 = lit(c.I32(1))
@@ -315,6 +340,51 @@ pub fn match_eval_test() {
   ])
   |> c.eval([], _)
   |> should.equal(c.VErr(c.MatchUnhandledCase(c.VCtr("Null", []), s)))
+}
+
+pub fn match_infer_test() {
+  let cat_ty = typ(0)
+  let tenv = [
+    #("A", c.CtrDef([], [], cat_ty)),
+    #("B", c.CtrDef([], [], cat_ty)),
+    #("C", c.CtrDef([], [], cat_ty)),
+  ]
+
+  // Pattern match assigning "kibble portions" based on the cat
+  let match_expr =
+    match(ann(ctr("C", []), cat_ty), [
+      c.Case(c.PCtr("A", []), lit(c.I32(1)), s),
+      c.Case(c.PCtr("B", []), lit(c.I32(2)), s),
+      c.Case(c.PCtr("C", []), lit(c.I32(100)), s),
+      // Accommodating the insatiable hunger!
+    ])
+
+  c.infer(0, [], [], tenv, match_expr)
+  |> should.equal(c.VLitT(c.I32T))
+}
+
+pub fn match_check_test() {
+  let cat_ty = typ(0)
+  let tenv = [
+    #("A", c.CtrDef([], [], cat_ty)),
+    #("B", c.CtrDef([], [], cat_ty)),
+    #("C", c.CtrDef([], [], cat_ty)),
+  ]
+
+  let match_expr =
+    match(ann(ctr("C", []), cat_ty), [
+      c.Case(c.PCtr("A", []), lit(c.I32(1)), s),
+      c.Case(c.PCtr("B", []), lit(c.I32(2)), s),
+      c.Case(c.PCtr("C", []), lit(c.I32(100)), s),
+    ])
+
+  // Valid bidirectional check
+  c.check(0, [], [], tenv, match_expr, c.VLitT(c.I32T))
+  |> should.equal(c.VLitT(c.I32T))
+
+  // Checking mismatch (Expecting a Float when we returned an Int)
+  c.check(0, [], [], tenv, match_expr, c.VLitT(c.F32T))
+  |> should.equal(c.VErr(c.TypeMismatch(c.VLitT(c.I32T), c.VLitT(c.F32T), s)))
 }
 
 // --- Bad --- \\
