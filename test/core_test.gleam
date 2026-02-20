@@ -29,6 +29,7 @@ pub fn typ_infer_test() {
 
 pub fn typ_check_test() {
   c.check(0, [], [], [], typ(0), c.VTyp(1)) |> should.equal(c.VTyp(1))
+
   c.check(0, [], [], [], typ(0), c.VTyp(2))
   |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(1), c.VTyp(2), s)))
 }
@@ -65,6 +66,9 @@ pub fn lit_check_test() {
   |> should.equal(c.VLitT(c.F32T))
   c.check(0, [], [], [], lit(c.F64(1.0)), c.VLitT(c.F64T))
   |> should.equal(c.VLitT(c.F64T))
+
+  c.check(0, [], [], [], lit(c.I32(1)), c.VLitT(c.I64T))
+  |> should.equal(c.VErr(c.TypeMismatch(c.VLitT(c.I32T), c.VLitT(c.I64T), s)))
 }
 
 // --- LitT --- \\
@@ -87,14 +91,15 @@ pub fn lit_t_infer_test() {
 }
 
 pub fn lit_t_check_test() {
-  c.check(0, [], [], [], lit_t(c.I32T), c.VTyp(1))
-  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(0), c.VTyp(1), s)))
   c.check(0, [], [], [], lit_t(c.I32T), c.VTyp(0)) |> should.equal(c.VTyp(0))
   c.check(0, [], [], [], lit_t(c.I64T), c.VTyp(0)) |> should.equal(c.VTyp(0))
   c.check(0, [], [], [], lit_t(c.U32T), c.VTyp(0)) |> should.equal(c.VTyp(0))
   c.check(0, [], [], [], lit_t(c.U64T), c.VTyp(0)) |> should.equal(c.VTyp(0))
   c.check(0, [], [], [], lit_t(c.F32T), c.VTyp(0)) |> should.equal(c.VTyp(0))
   c.check(0, [], [], [], lit_t(c.F64T), c.VTyp(0)) |> should.equal(c.VTyp(0))
+
+  c.check(0, [], [], [], lit_t(c.I32T), c.VTyp(1))
+  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(0), c.VTyp(1), s)))
 }
 
 // --- Var --- \\
@@ -114,8 +119,11 @@ pub fn var_infer_test() {
 pub fn var_check_test() {
   let ctx = [#("x", c.VTyp(0))]
   c.check(0, ctx, [], [], var(0), c.VTyp(0)) |> should.equal(c.VTyp(0))
+
   c.check(0, ctx, [], [], var(1), c.VTyp(0))
   |> should.equal(c.VErr(c.VarUndefined(1, s)))
+  c.check(0, ctx, [], [], var(0), c.VTyp(1))
+  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(0), c.VTyp(1), s)))
 }
 
 // --- Ctr --- \\
@@ -139,6 +147,10 @@ pub fn ctr_check_test() {
   let tenv = [#("Ctr0", c.CtrDef([], [], typ(0)))]
   c.check(0, [], [], tenv, ctr("Ctr0", []), c.VTyp(0))
   |> should.equal(c.VTyp(0))
+
+  let tenv = [#("Ctr0", c.CtrDef([], [], typ(1)))]
+  c.check(0, [], [], tenv, ctr("Ctr0", []), c.VTyp(0))
+  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(1), c.VTyp(0), s)))
 
   let tenv = [#("UndefVarInCtr", c.CtrDef([], [var(0)], var(0)))]
   c.check(0, [], [], tenv, ctr("UndefVarInCtr", [typ(0)]), c.VTyp(0))
@@ -187,6 +199,32 @@ pub fn ctr_check_test() {
 pub fn ann_eval_test() {
   let env = [c.VTyp(42)]
   c.eval(env, ann(var(0), typ(1))) |> should.equal(c.VTyp(42))
+}
+
+pub fn ann_infer_test() {
+  c.infer(0, [], [], [], ann(lit(c.I32(1)), lit_t(c.I32T)))
+  |> should.equal(c.VLitT(c.I32T))
+
+  c.infer(0, [], [], [], ann(lit_t(c.I32T), lit(c.I32(1))))
+  |> should.equal(
+    c.VBad(c.VErr(c.TypeMismatch(c.VTyp(0), c.VLit(c.I32(1)), s)), [
+      c.AnnNotType(lit(c.I32(1)), c.VLitT(c.I32T)),
+    ]),
+  )
+
+  c.infer(0, [], [], [], ann(typ(0), typ(1)))
+  |> should.equal(c.VTyp(1))
+
+  c.infer(0, [], [], [], ann(typ(1), typ(0)))
+  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(2), c.VTyp(0), s)))
+}
+
+pub fn ann_check_test() {
+  c.check(0, [], [], [], ann(typ(0), typ(1)), c.VTyp(1))
+  |> should.equal(c.VTyp(1))
+
+  c.check(0, [], [], [], ann(typ(0), typ(1)), c.VTyp(0))
+  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(1), c.VTyp(0), s)))
 }
 
 // --- Lam --- \\

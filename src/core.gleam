@@ -104,6 +104,7 @@ pub type Error {
     id: Int,
     span: Span,
   )
+  AnnNotType(typ: Term, kind: Value)
 
   // Exhaustiveness errors
   NonExhaustiveMatch(missing: List(Pattern), span: Span)
@@ -294,6 +295,14 @@ fn unify_list(
   }
 }
 
+fn is_vtyp(value: Value) -> Bool {
+  case value {
+    VTyp(_) -> True
+    VBad(v, _) -> is_vtyp(v)
+    _ -> False
+  }
+}
+
 pub fn infer(
   lvl: Int,
   ctx: Context,
@@ -314,9 +323,12 @@ pub fn infer(
     // Ctr(tag, args) -> VCtr(tag, list.map(args, infer(lvl, ctx, env, tenv, _)))
     Ctr(_, _) -> VErr(TypeAnnotationNeeded(term))
     Ann(term, ty) -> {
-      let errors = check(lvl, ctx, env, tenv, ty, VTyp(0)) |> list_errors
-      let ty_val = eval(env, ty)
-      with_errors(check(lvl, ctx, env, tenv, term, ty_val), errors)
+      let kind = infer(lvl, ctx, env, tenv, ty)
+      let errors = case is_vtyp(kind) {
+        True -> list_errors(kind)
+        False -> [AnnNotType(ty, kind), ..list_errors(kind)]
+      }
+      with_errors(check(lvl, ctx, env, tenv, term, eval(env, ty)), errors)
     }
     Lam(_, _) -> VErr(TypeAnnotationNeeded(term))
     Pi(name, in, out) -> {
