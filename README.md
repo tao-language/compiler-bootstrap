@@ -24,6 +24,12 @@ gleam run   # Run the project
 gleam test  # Run the tests
 ```
 
+If you have `fswatch` installed, you can run tests as files change with:
+
+```sh
+fswatch -or src test | xargs -n1 -I{} gleam test
+```
+
 # Core Language Architecture
 
 Welcome to the documentation for our dependently typed language core.
