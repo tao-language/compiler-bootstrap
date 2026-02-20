@@ -42,7 +42,6 @@ pub type Pattern {
 }
 
 pub type Head {
-  // De Bruijn Level (Absolute)
   HVar(level: Int)
   HMeta(id: Int)
 }
@@ -98,6 +97,13 @@ pub type Error {
   CtrUndefined(tag: String, span: Span)
   CtrTooManyArgs(tag: String, args: List(Term), ctr: CtrDef, span: Span)
   CtrTooFewArgs(tag: String, args: List(Term), ctr: CtrDef, span: Span)
+  CtrUnsolvedParam(
+    tag: String,
+    args: List(Term),
+    ctr: CtrDef,
+    id: Int,
+    span: Span,
+  )
 
   // Exhaustiveness errors
   NonExhaustiveMatch(missing: List(Pattern), span: Span)
@@ -177,10 +183,7 @@ fn match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
   }
 }
 
-pub fn match_pattern_list(
-  ps: List(Pattern),
-  vs: List(Value),
-) -> Result(Env, Nil) {
+fn match_pattern_list(ps: List(Pattern), vs: List(Value)) -> Result(Env, Nil) {
   case ps, vs {
     [], [] -> Ok([])
     [p, ..ps], [v, ..vs] -> {
@@ -268,9 +271,8 @@ pub fn unify(
       let b = eval([fresh, ..env2], out2)
       unify(lvl + 1, sub, a, b, s)
     }
-    // On errors, succeed to prevent cascading noise
-    VErr(_), _ -> Ok(sub)
-    _, VErr(_) -> Ok(sub)
+    VErr(e), _ -> Error(e)
+    _, VErr(e) -> Error(e)
     _, _ -> Error(TypeMismatch(v1, v2, s))
   }
 }
@@ -363,7 +365,7 @@ pub fn infer(
   }
 }
 
-pub fn bind_pattern(
+fn bind_pattern(
   lvl: Int,
   ctx: Context,
   pattern: Pattern,
@@ -389,7 +391,7 @@ pub fn bind_pattern(
   }
 }
 
-pub fn infer_lit(lit: Literal) -> Value {
+fn infer_lit(lit: Literal) -> Value {
   case lit {
     I32(_) -> VLitT(I32T)
     I64(_) -> VLitT(I64T)
@@ -451,7 +453,7 @@ fn check_ctr(
           let params_solved =
             list.index_map(ctr.params, fn(_, i) {
               list.key_find(sub, i)
-              |> result.unwrap(VErr(TODO("Unsolved param", s)))
+              |> result.unwrap(VErr(CtrUnsolvedParam(tag, args, ctr, i, s)))
             })
           let env_solved = list.append(params_solved, env)
           let args_ty = list.map(ctr.args, eval(env_solved, _))

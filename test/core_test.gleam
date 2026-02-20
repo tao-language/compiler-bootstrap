@@ -1,7 +1,10 @@
 import core as c
-import gleam/option.{None, Some}
 import gleeunit
 import gleeunit/should
+
+// TODO: test unify
+// TODO: test quote
+// TODO: test normalize
 
 pub fn main() {
   gleeunit.main()
@@ -129,35 +132,55 @@ pub fn ctr_infer_test() {
 }
 
 pub fn ctr_check_test() {
-  let tenv = [
-    #("A", c.CtrDef([], [], typ(0))),
-    #("B", c.CtrDef([], [var(0)], var(0))),
-    #("C", c.CtrDef(["a"], [var(0)], var(0))),
-    #("D", c.CtrDef(["a", "b"], [var(0), var(1)], var(0))),
-    #("E", c.CtrDef(["a", "b"], [var(0), var(1)], var(1))),
-  ]
-  c.check(0, [], [], tenv, ctr("A", []), c.VTyp(0))
+  let tenv = []
+  c.check(0, [], [], tenv, ctr("Undefined", []), c.VTyp(0))
+  |> should.equal(c.VErr(c.CtrUndefined("Undefined", s)))
+
+  let tenv = [#("Ctr0", c.CtrDef([], [], typ(0)))]
+  c.check(0, [], [], tenv, ctr("Ctr0", []), c.VTyp(0))
   |> should.equal(c.VTyp(0))
-  c.check(0, [], [], tenv, ctr("A", [typ(0)]), c.VTyp(0))
-  |> should.equal(
-    c.VBad(c.VTyp(0), [
-      c.CtrTooManyArgs("A", [typ(0)], c.CtrDef([], [], typ(0)), s),
-    ]),
-  )
-  c.check(0, [], [], tenv, ctr("B", [typ(0)]), c.VTyp(0))
+
+  let tenv = [#("UndefVarInCtr", c.CtrDef([], [var(0)], var(0)))]
+  c.check(0, [], [], tenv, ctr("UndefVarInCtr", [typ(0)]), c.VTyp(0))
   |> should.equal(c.VErr(c.VarUndefined(0, s)))
-  c.check(0, [], [], tenv, ctr("C", []), c.VTyp(1))
+
+  let tenv = [#("Ctr1", c.CtrDef(["a"], [var(0)], var(0)))]
+  c.check(0, [], [], tenv, ctr("Ctr1", [typ(0)]), c.VTyp(1))
+  |> should.equal(c.VTyp(1))
+
+  let ctr_def = c.CtrDef(["a"], [var(0)], var(0))
+  let tenv = [#("TooFewArgs", ctr_def)]
+  c.check(0, [], [], tenv, ctr("TooFewArgs", []), c.VTyp(1))
   |> should.equal(
     c.VBad(c.VTyp(1), [
-      c.CtrTooFewArgs("C", [], c.CtrDef(["a"], [var(0)], var(0)), s),
+      c.CtrTooFewArgs("TooFewArgs", [], ctr_def, s),
     ]),
   )
-  c.check(0, [], [], tenv, ctr("C", [typ(0)]), c.VTyp(1))
-  |> should.equal(c.VTyp(1))
-  c.check(0, [], [], tenv, ctr("D", [typ(0), typ(1)]), c.VTyp(1))
-  |> should.equal(c.VTyp(1))
-  c.check(0, [], [], tenv, ctr("E", [typ(0), typ(1)]), c.VTyp(2))
-  |> should.equal(c.VTyp(2))
+  let ctr_def = c.CtrDef(["a"], [], var(0))
+  let tenv = [#("TooManyArgs", ctr_def)]
+  c.check(0, [], [], tenv, ctr("TooManyArgs", [typ(0)]), c.VTyp(0))
+  |> should.equal(
+    c.VBad(c.VTyp(0), [
+      c.CtrTooManyArgs("TooManyArgs", [typ(0)], ctr_def, s),
+    ]),
+  )
+
+  let ctr_def = c.CtrDef(["a", "b"], [var(0), var(1)], var(0))
+  let tenv = [#("Unsolved", ctr_def)]
+  c.check(0, [], [], tenv, ctr("Unsolved", [typ(0), typ(1)]), c.VTyp(1))
+  |> should.equal(
+    c.VBad(c.VTyp(1), [
+      c.CtrUnsolvedParam("Unsolved", [typ(0), typ(1)], ctr_def, id: 1, span: s),
+    ]),
+  )
+
+  let ctr_def =
+    c.CtrDef(["a", "b"], [var(0), var(1)], ctr("T", [var(0), var(1)]))
+  let tenv = [#("Ctr2", ctr_def)]
+  let term = ctr("Ctr2", [typ(0), typ(1)])
+  let ty = c.VCtr("T", [c.VTyp(1), c.VTyp(2)])
+  c.check(0, [], [], tenv, term, ty)
+  |> should.equal(ty)
 }
 
 // --- Ann --- \\
