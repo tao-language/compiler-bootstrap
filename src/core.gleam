@@ -3,6 +3,7 @@ import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
+import gleam/string
 
 pub type Term {
   Term(data: TermData, span: Span)
@@ -118,8 +119,7 @@ pub type Error {
     id: Int,
     span: Span,
   )
-  AnnNotType(typ: Term, kind: Value)
-  PiInputNotType(in: Term, kind: Value)
+  NotType(term: Term, typ: Value)
 
   // Exhaustiveness errors
   NonExhaustiveMatch(missing: List(Pattern), span: Span)
@@ -314,6 +314,11 @@ pub fn unify(
       unify_elim_list(lvl, sub, spine1, spine2, s)
     VCtr(k1, args1), VCtr(k2, args2) if k1 == k2 ->
       unify_list(lvl, sub, args1, args2, s)
+    VTup(args1), VTup(args2) -> unify_list(lvl, sub, args1, args2, s)
+    VTupT(args1), VTupT(args2) -> unify_list(lvl, sub, args1, args2, s)
+    VRcd(fields1), VRcd(fields2) -> unify_fields(lvl, sub, fields1, fields2, s)
+    VRcdT(fields1), VRcdT(fields2) ->
+      unify_fields(lvl, sub, fields1, fields2, s)
     VLam(_, env1, body1), VLam(_, env2, body2) -> {
       let fresh = VNeut(HVar(lvl), [])
       let a = eval([fresh, ..env1], body1)
@@ -348,6 +353,22 @@ fn unify_list(
     }
     _, _ -> Error(TODO("Arity mismatch", s))
   }
+}
+
+fn unify_fields(
+  lvl: Int,
+  sub: Subst,
+  l1: List(#(String, Value)),
+  l2: List(#(String, Value)),
+  s: Span,
+) -> Result(Subst, Error) {
+  let args1 =
+    list.sort(l1, by: fn(a, b) { string.compare(a.0, b.0) })
+    |> list.map(fn(kv) { kv.1 })
+  let args2 =
+    list.sort(l2, by: fn(a, b) { string.compare(a.0, b.0) })
+    |> list.map(fn(kv) { kv.1 })
+  unify_list(lvl, sub, args1, args2, s)
 }
 
 fn unify_elim(
@@ -408,10 +429,17 @@ pub fn infer(
     }
     // Ctr(tag, args) -> VCtr(tag, list.map(args, infer(lvl, ctx, env, tenv, _)))
     Ctr(_, _) -> VErr(TypeAnnotationNeeded(term))
-    Tup(args) -> VTup(list.map(args, infer(lvl, ctx, env, tenv, _)))
+    Tup(args) -> VTupT(list.map(args, infer(lvl, ctx, env, tenv, _)))
     TupT(args) -> {
-      // TODO: check args
-      VTyp(0)
+      let errors =
+        list.flat_map(args, fn(arg) {
+          let arg_ty = infer(lvl, ctx, env, tenv, arg)
+          case is_vtyp(arg_ty) {
+            True -> list_errors(arg_ty)
+            False -> [NotType(arg, arg_ty), ..list_errors(arg_ty)]
+          }
+        })
+      with_errors(VTyp(0), errors)
     }
     Rcd(fields) -> todo
     RcdT(fields) -> todo
@@ -420,7 +448,7 @@ pub fn infer(
       let kind = infer(lvl, ctx, env, tenv, ty)
       let errors = case is_vtyp(kind) {
         True -> list_errors(kind)
-        False -> [AnnNotType(ty, kind), ..list_errors(kind)]
+        False -> [NotType(ty, kind), ..list_errors(kind)]
       }
       with_errors(check(lvl, ctx, env, tenv, term, eval(env, ty)), errors)
     }
@@ -433,7 +461,7 @@ pub fn infer(
         list.append(
           case is_vtyp(in_kind) {
             True -> list_errors(in_kind)
-            False -> [PiInputNotType(in, in_kind), ..list_errors(in_kind)]
+            False -> [NotType(in, in_kind), ..list_errors(in_kind)]
           },
           infer(lvl + 1, new_ctx, [fresh, ..env], tenv, out) |> list_errors,
         )

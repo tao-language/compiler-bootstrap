@@ -197,68 +197,90 @@ pub fn ctr_check_test() {
 
 // --- Tup --- \\
 pub fn tup_eval_test() {
-  todo
+  c.eval([], tup([])) |> should.equal(c.VTup([]))
+  c.eval([], tup([typ(0)])) |> should.equal(c.VTup([c.VTyp(0)]))
+  c.eval([], tup([typ(0), typ(1)]))
+  |> should.equal(c.VTup([c.VTyp(0), c.VTyp(1)]))
 }
 
 pub fn tup_infer_test() {
-  todo
+  c.infer(0, [], [], [], tup([])) |> should.equal(c.VTupT([]))
+  c.infer(0, [], [], [], tup([typ(0)])) |> should.equal(c.VTupT([c.VTyp(1)]))
+  c.infer(0, [], [], [], tup([typ(0), typ(1)]))
+  |> should.equal(c.VTupT([c.VTyp(1), c.VTyp(2)]))
 }
 
 pub fn tup_check_test() {
-  todo
+  c.check(0, [], [], [], tup([]), c.VTupT([])) |> should.equal(c.VTupT([]))
+  c.check(0, [], [], [], tup([typ(0)]), c.VTupT([c.VTyp(1)]))
+  |> should.equal(c.VTupT([c.VTyp(1)]))
+  c.check(0, [], [], [], tup([typ(0), typ(1)]), c.VTupT([c.VTyp(1), c.VTyp(2)]))
+  |> should.equal(c.VTupT([c.VTyp(1), c.VTyp(2)]))
 }
 
 // --- TupT --- \\
 pub fn tupt_eval_test() {
-  todo
+  c.eval([], tupt([])) |> should.equal(c.VTupT([]))
+  c.eval([], tupt([typ(0)])) |> should.equal(c.VTupT([c.VTyp(0)]))
+  c.eval([], tupt([typ(0), typ(1)]))
+  |> should.equal(c.VTupT([c.VTyp(0), c.VTyp(1)]))
 }
 
 pub fn tupt_infer_test() {
-  todo
+  c.infer(0, [], [], [], tupt([])) |> should.equal(c.VTyp(0))
+  c.infer(0, [], [], [], tupt([typ(0)])) |> should.equal(c.VTyp(0))
+  c.infer(0, [], [], [], tupt([typ(0), typ(1)])) |> should.equal(c.VTyp(0))
+  c.infer(0, [], [], [], tupt([lit(c.I32(1))]))
+  |> should.equal(
+    c.VBad(c.VTyp(0), [c.NotType(lit(c.I32(1)), c.VLitT(c.I32T))]),
+  )
 }
 
 pub fn tupt_check_test() {
-  todo
+  c.check(0, [], [], [], tupt([]), c.VTyp(0)) |> should.equal(c.VTyp(0))
+  c.check(0, [], [], [], tupt([typ(0)]), c.VTyp(0)) |> should.equal(c.VTyp(0))
+  c.check(0, [], [], [], tupt([typ(0), typ(1)]), c.VTyp(0))
+  |> should.equal(c.VTyp(0))
 }
 
 // --- Rcd --- \\
-pub fn rcd_eval_test() {
-  todo
-}
+// pub fn rcd_eval_test() {
+//   todo
+// }
 
-pub fn rcd_infer_test() {
-  todo
-}
+// pub fn rcd_infer_test() {
+//   todo
+// }
 
-pub fn rcd_check_test() {
-  todo
-}
+// pub fn rcd_check_test() {
+//   todo
+// }
 
 // --- RcdT --- \\
-pub fn rcdt_eval_test() {
-  todo
-}
+// pub fn rcdt_eval_test() {
+//   todo
+// }
 
-pub fn rcdt_infer_test() {
-  todo
-}
+// pub fn rcdt_infer_test() {
+//   todo
+// }
 
-pub fn rcdt_check_test() {
-  todo
-}
+// pub fn rcdt_check_test() {
+//   todo
+// }
 
 // --- Dot --- \\
-pub fn dot_eval_test() {
-  todo
-}
+// pub fn dot_eval_test() {
+//   todo
+// }
 
-pub fn dot_infer_test() {
-  todo
-}
+// pub fn dot_infer_test() {
+//   todo
+// }
 
-pub fn dot_check_test() {
-  todo
-}
+// pub fn dot_check_test() {
+//   todo
+// }
 
 // --- Ann --- \\
 pub fn ann_eval_test() {
@@ -273,7 +295,7 @@ pub fn ann_infer_test() {
   c.infer(0, [], [], [], ann(litt(c.I32T), lit(c.I32(1))))
   |> should.equal(
     c.VBad(c.VErr(c.TypeMismatch(c.VTyp(0), c.VLit(c.I32(1)), s)), [
-      c.AnnNotType(lit(c.I32(1)), c.VLitT(c.I32T)),
+      c.NotType(lit(c.I32(1)), c.VLitT(c.I32T)),
     ]),
   )
 
@@ -324,7 +346,7 @@ pub fn pi_infer_test() {
 
   c.infer(0, [], [], [], pi("y", lit(c.I32(1)), var(0)))
   |> should.equal(
-    c.VBad(c.VTyp(0), [c.PiInputNotType(lit(c.I32(1)), c.VLitT(c.I32T))]),
+    c.VBad(c.VTyp(0), [c.NotType(lit(c.I32(1)), c.VLitT(c.I32T))]),
   )
 }
 
@@ -479,6 +501,26 @@ fn var(i) {
 
 fn ctr(k, args) {
   c.Term(c.Ctr(k, args), s)
+}
+
+fn tup(args) {
+  c.Term(c.Tup(args), s)
+}
+
+fn tupt(args) {
+  c.Term(c.TupT(args), s)
+}
+
+fn rcd(fields) {
+  c.Term(c.Rcd(fields), s)
+}
+
+fn rcdt(fields) {
+  c.Term(c.RcdT(fields), s)
+}
+
+fn dot(arg, name) {
+  c.Term(c.Dot(arg, name), s)
 }
 
 fn pi(name, in, out) {
