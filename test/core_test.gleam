@@ -205,65 +205,54 @@ pub fn rcd_eval_test() {
 }
 
 pub fn rcd_infer_test() {
-  c.infer(0, [], [], [], rcd([])) |> should.equal(c.VRcdT([]))
+  c.infer(0, [], [], [], rcd([])) |> should.equal(c.VRcd([]))
   c.infer(0, [], [], [], rcd([#("a", typ(0))]))
-  |> should.equal(c.VRcdT([#("a", c.VTyp(1))]))
+  |> should.equal(c.VRcd([#("a", c.VTyp(1))]))
   c.infer(0, [], [], [], rcd([#("a", typ(0)), #("b", typ(1))]))
-  |> should.equal(c.VRcdT([#("a", c.VTyp(1)), #("b", c.VTyp(2))]))
+  |> should.equal(c.VRcd([#("a", c.VTyp(1)), #("b", c.VTyp(2))]))
 }
 
 pub fn rcd_check_test() {
-  c.check(0, [], [], [], rcd([]), c.VRcdT([])) |> should.equal(c.VRcdT([]))
-  c.check(0, [], [], [], rcd([#("a", typ(0))]), c.VRcdT([#("a", c.VTyp(1))]))
-  |> should.equal(c.VRcdT([#("a", c.VTyp(1))]))
-  let ty = c.VRcdT([#("a", c.VTyp(1)), #("b", c.VTyp(2))])
+  c.check(0, [], [], [], rcd([]), c.VRcd([])) |> should.equal(c.VRcd([]))
+  c.check(0, [], [], [], rcd([#("a", typ(0))]), c.VRcd([#("a", c.VTyp(1))]))
+  |> should.equal(c.VRcd([#("a", c.VTyp(1))]))
+  let ty = c.VRcd([#("a", c.VTyp(1)), #("b", c.VTyp(2))])
   c.check(0, [], [], [], rcd([#("a", typ(0)), #("b", typ(1))]), ty)
   |> should.equal(ty)
   c.check(0, [], [], [], rcd([#("b", typ(1)), #("a", typ(0))]), ty)
   |> should.equal(ty)
 }
 
-// --- RcdT --- \\
-pub fn rcdt_eval_test() {
-  c.eval([], rcdt([])) |> should.equal(c.VRcdT([]))
-  c.eval([], rcdt([#("a", typ(0))]))
-  |> should.equal(c.VRcdT([#("a", c.VTyp(0))]))
-  c.eval([], rcdt([#("a", typ(0)), #("b", typ(1))]))
-  |> should.equal(c.VRcdT([#("a", c.VTyp(0)), #("b", c.VTyp(1))]))
-}
-
-pub fn rcdt_infer_test() {
-  c.infer(0, [], [], [], rcdt([])) |> should.equal(c.VTyp(0))
-  c.infer(0, [], [], [], rcdt([#("a", typ(0))]))
-  |> should.equal(c.VTyp(0))
-  c.infer(0, [], [], [], rcdt([#("a", typ(0)), #("b", typ(1))]))
-  |> should.equal(c.VTyp(0))
-  c.infer(0, [], [], [], rcdt([#("a", lit(c.I32(1)))]))
-  |> should.equal(
-    c.VBad(c.VTyp(0), [c.NotType(lit(c.I32(1)), c.VLitT(c.I32T))]),
-  )
-}
-
-pub fn rcdt_check_test() {
-  c.check(0, [], [], [], rcdt([]), c.VTyp(0)) |> should.equal(c.VTyp(0))
-  c.check(0, [], [], [], rcdt([#("a", typ(0))]), c.VTyp(0))
-  |> should.equal(c.VTyp(0))
-  c.check(0, [], [], [], rcdt([#("a", typ(0)), #("b", typ(1))]), c.VTyp(0))
-  |> should.equal(c.VTyp(0))
-}
-
 // --- Dot --- \\
-// pub fn dot_eval_test() {
-//   todo
-// }
+pub fn dot_eval_test() {
+  c.eval([], dot(typ(0), "a"))
+  |> should.equal(c.VErr(c.DotOnNonRecord(c.VTyp(0), "a", s)))
+  c.eval([], dot(rcd([]), "a"))
+  |> should.equal(c.VErr(c.DotNotFound("a", [], s)))
+  c.eval([], dot(rcd([#("a", typ(0)), #("b", typ(1))]), "a"))
+  |> should.equal(c.VTyp(0))
+  c.eval([], dot(rcd([#("a", typ(0)), #("b", typ(1))]), "b"))
+  |> should.equal(c.VTyp(1))
+}
 
-// pub fn dot_infer_test() {
-//   todo
-// }
+pub fn dot_infer_test() {
+  c.infer(0, [], [], [], dot(typ(0), "a"))
+  |> should.equal(c.VErr(c.DotOnNonRecord(c.VTyp(1), "a", s)))
+  c.infer(0, [], [], [], dot(rcd([]), "a"))
+  |> should.equal(c.VErr(c.DotNotFound("a", [], s)))
+  c.infer(0, [], [], [], dot(rcd([#("a", typ(0)), #("b", typ(1))]), "a"))
+  |> should.equal(c.VTyp(1))
+  c.infer(0, [], [], [], dot(rcd([#("a", typ(0)), #("b", typ(1))]), "b"))
+  |> should.equal(c.VTyp(2))
+}
 
-// pub fn dot_check_test() {
-//   todo
-// }
+pub fn dot_check_test() {
+  let record = rcd([#("a", typ(0)), #("b", typ(1))])
+  c.check(0, [], [], [], dot(record, "a"), c.VTyp(1))
+  |> should.equal(c.VTyp(1))
+  c.check(0, [], [], [], dot(record, "b"), c.VTyp(2))
+  |> should.equal(c.VTyp(2))
+}
 
 // --- Ann --- \\
 pub fn ann_eval_test() {
@@ -488,10 +477,6 @@ fn ctr(k, args) {
 
 fn rcd(fields) {
   c.Term(c.Rcd(fields), s)
-}
-
-fn rcdt(fields) {
-  c.Term(c.RcdT(fields), s)
 }
 
 fn dot(arg, name) {

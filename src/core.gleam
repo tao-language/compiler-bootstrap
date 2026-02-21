@@ -16,7 +16,6 @@ pub type TermData {
   Var(index: Int)
   Ctr(tag: String, args: List(Term))
   Rcd(fields: List(#(String, Term)))
-  RcdT(fields: List(#(String, Term)))
   Dot(term: Term, field: String)
   Ann(term: Term, typ: Term)
   Lam(name: String, body: Term)
@@ -34,7 +33,6 @@ pub type Value {
   VNeut(head: Head, spine: List(Elim))
   VCtr(tag: String, args: List(Value))
   VRcd(fields: List(#(String, Value)))
-  VRcdT(fields: List(#(String, Value)))
   VLam(name: String, env: Env, body: Term)
   VPi(name: String, env: Env, in: Value, out: Term)
   VBad(value: Value, errors: List(Error))
@@ -115,6 +113,8 @@ pub type Error {
     id: Int,
     span: Span,
   )
+  DotNotFound(name: String, fields: List(#(String, Value)), span: Span)
+  DotOnNonRecord(value: Value, name: String, span: Span)
   NotType(term: Term, typ: Value)
 
   // Exhaustiveness errors
@@ -142,7 +142,6 @@ pub fn eval(env: Env, term: Term) -> Value {
       }
     Ctr(tag, args) -> VCtr(tag, list.map(args, eval(env, _)))
     Rcd(fields) -> VRcd(list.map(fields, fn(kv) { #(kv.0, eval(env, kv.1)) }))
-    RcdT(fields) -> VRcdT(list.map(fields, fn(kv) { #(kv.0, eval(env, kv.1)) }))
     Dot(term, name) -> eval_dot(eval(env, term), name, term.span)
     Ann(term, _) -> eval(env, term)
     Lam(name, body) -> VLam(name, env, body)
@@ -170,13 +169,13 @@ pub fn eval(env: Env, term: Term) -> Value {
 fn eval_dot(value: Value, name: String, s: Span) -> Value {
   case value {
     VNeut(head, spine) -> VNeut(head, list.append(spine, [EDot(name)]))
-    VRcd(fields) | VRcdT(fields) ->
+    VRcd(fields) ->
       case list.key_find(fields, name) {
         Ok(v) -> v
-        Error(Nil) -> VErr(TODO("Field not found", s))
+        Error(Nil) -> VErr(DotNotFound(name, fields, s))
       }
     VBad(value, errors) -> VBad(eval_dot(value, name, s), errors)
-    _ -> VErr(TODO("Dot on non-record", s))
+    _ -> VErr(DotOnNonRecord(value, name, s))
   }
 }
 
@@ -184,6 +183,11 @@ fn eval_apply(fun: Value, arg: Value) -> Option(Value) {
   case fun {
     VNeut(head, spine) -> Some(VNeut(head, list.append(spine, [EApp(arg)])))
     VLam(_, env, body) -> Some(eval([arg, ..env], body))
+    VBad(fun, errors) ->
+      case eval_apply(fun, arg) {
+        Some(value) -> Some(VBad(value, errors))
+        None -> None
+      }
     VErr(e) -> Some(VErr(e))
     _ -> None
   }
@@ -241,8 +245,6 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
     VCtr(tag, args) -> Term(Ctr(tag, list.map(args, quote(lvl, _, s))), s)
     VRcd(fields) ->
       Term(Rcd(list.map(fields, fn(kv) { #(kv.0, quote(lvl, kv.1, s)) })), s)
-    VRcdT(fields) ->
-      Term(RcdT(list.map(fields, fn(kv) { #(kv.0, quote(lvl, kv.1, s)) })), s)
     VLam(name, env, body) -> {
       let fresh = VNeut(HVar(lvl), [])
       let body_val = eval([fresh, ..env], body)
@@ -307,8 +309,6 @@ pub fn unify(
     VCtr(k1, args1), VCtr(k2, args2) if k1 == k2 ->
       unify_list(lvl, sub, args1, args2, s)
     VRcd(fields1), VRcd(fields2) -> unify_fields(lvl, sub, fields1, fields2, s)
-    VRcdT(fields1), VRcdT(fields2) ->
-      unify_fields(lvl, sub, fields1, fields2, s)
     VLam(_, env1, body1), VLam(_, env2, body2) -> {
       let fresh = VNeut(HVar(lvl), [])
       let a = eval([fresh, ..env1], body1)
@@ -322,6 +322,8 @@ pub fn unify(
       let b = eval([fresh, ..env2], out2)
       unify(lvl + 1, sub, a, b, s)
     }
+    VBad(v, errors), _ -> todo
+    _, VBad(v, errors) -> todo
     VErr(e), _ -> Error(e)
     _, VErr(e) -> Error(e)
     _, _ -> Error(TypeMismatch(v1, v2, s))
@@ -358,6 +360,7 @@ fn unify_fields(
   let args2 =
     list.sort(l2, by: fn(a, b) { string.compare(a.0, b.0) })
     |> list.map(fn(kv) { kv.1 })
+  // TODO: check for missing fields
   unify_list(lvl, sub, args1, args2, s)
 }
 
@@ -424,21 +427,19 @@ pub fn infer(
         let #(name, arg) = field
         #(name, infer(lvl, ctx, env, tenv, arg))
       }
-      VRcdT(list.map(fields, infer_field))
+      VRcd(list.map(fields, infer_field))
     }
-    RcdT(fields) -> {
-      let errors =
-        list.flat_map(fields, fn(field) {
-          let #(_, arg) = field
-          let arg_ty = infer(lvl, ctx, env, tenv, arg)
-          case is_vtyp(arg_ty) {
-            True -> list_errors(arg_ty)
-            False -> [NotType(arg, arg_ty), ..list_errors(arg_ty)]
+    Dot(term, name) -> {
+      case infer(lvl, ctx, env, tenv, term) {
+        VRcd(fields) ->
+          case list.key_find(fields, name) {
+            Ok(ty) -> ty
+            Error(Nil) -> VErr(DotNotFound(name, fields, term.span))
           }
-        })
-      with_errors(VTyp(0), errors)
+        VBad(value, errors) -> todo
+        ty -> VErr(DotOnNonRecord(ty, name, term.span))
+      }
     }
-    Dot(term, name) -> todo
     Ann(term, ty) -> {
       let kind = infer(lvl, ctx, env, tenv, ty)
       let errors = case is_vtyp(kind) {
@@ -470,6 +471,7 @@ pub fn infer(
           with_errors(eval([arg_val, ..pi_env], out_ty), errors)
         }
         VErr(e) -> VErr(e)
+        VBad(value, errors) -> todo
         fun_ty -> VErr(NotAFunction(fun_ty, term.span))
       }
     }
@@ -668,7 +670,6 @@ pub fn list_errors(v: Value) -> List(Error) {
     VNeut(_, spine) -> list.flat_map(spine, list_errors_elim)
     VCtr(_, args) -> list.flat_map(args, list_errors)
     VRcd(fields) -> list.flat_map(fields, fn(kv) { list_errors(kv.1) })
-    VRcdT(fields) -> list.flat_map(fields, fn(kv) { list_errors(kv.1) })
     VLam(_, env, body) -> {
       let fresh = VNeut(HVar(0), [])
       list_errors(eval([fresh, ..env], body))
