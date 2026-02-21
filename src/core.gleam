@@ -15,8 +15,6 @@ pub type TermData {
   LitT(typ: LiteralType)
   Var(index: Int)
   Ctr(tag: String, args: List(Term))
-  Tup(args: List(Term))
-  TupT(args: List(Term))
   Rcd(fields: List(#(String, Term)))
   RcdT(fields: List(#(String, Term)))
   Dot(term: Term, field: String)
@@ -35,8 +33,6 @@ pub type Value {
   VLitT(typ: LiteralType)
   VNeut(head: Head, spine: List(Elim))
   VCtr(tag: String, args: List(Value))
-  VTup(args: List(Value))
-  VTupT(args: List(Value))
   VRcd(fields: List(#(String, Value)))
   VRcdT(fields: List(#(String, Value)))
   VLam(name: String, env: Env, body: Term)
@@ -145,8 +141,6 @@ pub fn eval(env: Env, term: Term) -> Value {
         None -> VErr(VarUndefined(i, term.span))
       }
     Ctr(tag, args) -> VCtr(tag, list.map(args, eval(env, _)))
-    Tup(args) -> VTup(list.map(args, eval(env, _)))
-    TupT(args) -> VTupT(list.map(args, eval(env, _)))
     Rcd(fields) -> VRcd(list.map(fields, fn(kv) { #(kv.0, eval(env, kv.1)) }))
     RcdT(fields) -> VRcdT(list.map(fields, fn(kv) { #(kv.0, eval(env, kv.1)) }))
     Dot(term, name) -> eval_dot(eval(env, term), name, term.span)
@@ -245,8 +239,6 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
       quote_neut(lvl, head_term, spine, s)
     }
     VCtr(tag, args) -> Term(Ctr(tag, list.map(args, quote(lvl, _, s))), s)
-    VTup(args) -> Term(Tup(list.map(args, quote(lvl, _, s))), s)
-    VTupT(args) -> Term(TupT(list.map(args, quote(lvl, _, s))), s)
     VRcd(fields) ->
       Term(Rcd(list.map(fields, fn(kv) { #(kv.0, quote(lvl, kv.1, s)) })), s)
     VRcdT(fields) ->
@@ -314,8 +306,6 @@ pub fn unify(
       unify_elim_list(lvl, sub, spine1, spine2, s)
     VCtr(k1, args1), VCtr(k2, args2) if k1 == k2 ->
       unify_list(lvl, sub, args1, args2, s)
-    VTup(args1), VTup(args2) -> unify_list(lvl, sub, args1, args2, s)
-    VTupT(args1), VTupT(args2) -> unify_list(lvl, sub, args1, args2, s)
     VRcd(fields1), VRcd(fields2) -> unify_fields(lvl, sub, fields1, fields2, s)
     VRcdT(fields1), VRcdT(fields2) ->
       unify_fields(lvl, sub, fields1, fields2, s)
@@ -429,18 +419,6 @@ pub fn infer(
     }
     // Ctr(tag, args) -> VCtr(tag, list.map(args, infer(lvl, ctx, env, tenv, _)))
     Ctr(_, _) -> VErr(TypeAnnotationNeeded(term))
-    Tup(args) -> VTupT(list.map(args, infer(lvl, ctx, env, tenv, _)))
-    TupT(args) -> {
-      let errors =
-        list.flat_map(args, fn(arg) {
-          let arg_ty = infer(lvl, ctx, env, tenv, arg)
-          case is_vtyp(arg_ty) {
-            True -> list_errors(arg_ty)
-            False -> [NotType(arg, arg_ty), ..list_errors(arg_ty)]
-          }
-        })
-      with_errors(VTyp(0), errors)
-    }
     Rcd(fields) -> {
       let infer_field = fn(field) {
         let #(name, arg) = field
@@ -689,8 +667,6 @@ pub fn list_errors(v: Value) -> List(Error) {
     VLitT(_) -> []
     VNeut(_, spine) -> list.flat_map(spine, list_errors_elim)
     VCtr(_, args) -> list.flat_map(args, list_errors)
-    VTup(args) -> list.flat_map(args, list_errors)
-    VTupT(args) -> list.flat_map(args, list_errors)
     VRcd(fields) -> list.flat_map(fields, fn(kv) { list_errors(kv.1) })
     VRcdT(fields) -> list.flat_map(fields, fn(kv) { list_errors(kv.1) })
     VLam(_, env, body) -> {

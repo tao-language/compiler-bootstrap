@@ -195,54 +195,6 @@ pub fn ctr_check_test() {
   |> should.equal(ty)
 }
 
-// --- Tup --- \\
-pub fn tup_eval_test() {
-  c.eval([], tup([])) |> should.equal(c.VTup([]))
-  c.eval([], tup([typ(0)])) |> should.equal(c.VTup([c.VTyp(0)]))
-  c.eval([], tup([typ(0), typ(1)]))
-  |> should.equal(c.VTup([c.VTyp(0), c.VTyp(1)]))
-}
-
-pub fn tup_infer_test() {
-  c.infer(0, [], [], [], tup([])) |> should.equal(c.VTupT([]))
-  c.infer(0, [], [], [], tup([typ(0)])) |> should.equal(c.VTupT([c.VTyp(1)]))
-  c.infer(0, [], [], [], tup([typ(0), typ(1)]))
-  |> should.equal(c.VTupT([c.VTyp(1), c.VTyp(2)]))
-}
-
-pub fn tup_check_test() {
-  c.check(0, [], [], [], tup([]), c.VTupT([])) |> should.equal(c.VTupT([]))
-  c.check(0, [], [], [], tup([typ(0)]), c.VTupT([c.VTyp(1)]))
-  |> should.equal(c.VTupT([c.VTyp(1)]))
-  c.check(0, [], [], [], tup([typ(0), typ(1)]), c.VTupT([c.VTyp(1), c.VTyp(2)]))
-  |> should.equal(c.VTupT([c.VTyp(1), c.VTyp(2)]))
-}
-
-// --- TupT --- \\
-pub fn tupt_eval_test() {
-  c.eval([], tupt([])) |> should.equal(c.VTupT([]))
-  c.eval([], tupt([typ(0)])) |> should.equal(c.VTupT([c.VTyp(0)]))
-  c.eval([], tupt([typ(0), typ(1)]))
-  |> should.equal(c.VTupT([c.VTyp(0), c.VTyp(1)]))
-}
-
-pub fn tupt_infer_test() {
-  c.infer(0, [], [], [], tupt([])) |> should.equal(c.VTyp(0))
-  c.infer(0, [], [], [], tupt([typ(0)])) |> should.equal(c.VTyp(0))
-  c.infer(0, [], [], [], tupt([typ(0), typ(1)])) |> should.equal(c.VTyp(0))
-  c.infer(0, [], [], [], tupt([lit(c.I32(1))]))
-  |> should.equal(
-    c.VBad(c.VTyp(0), [c.NotType(lit(c.I32(1)), c.VLitT(c.I32T))]),
-  )
-}
-
-pub fn tupt_check_test() {
-  c.check(0, [], [], [], tupt([]), c.VTyp(0)) |> should.equal(c.VTyp(0))
-  c.check(0, [], [], [], tupt([typ(0)]), c.VTyp(0)) |> should.equal(c.VTyp(0))
-  c.check(0, [], [], [], tupt([typ(0), typ(1)]), c.VTyp(0))
-  |> should.equal(c.VTyp(0))
-}
-
 // --- Rcd --- \\
 pub fn rcd_eval_test() {
   c.eval([], rcd([])) |> should.equal(c.VRcd([]))
@@ -532,14 +484,6 @@ fn var(i) {
 
 fn ctr(k, args) {
   c.Term(c.Ctr(k, args), s)
-}
-
-fn tup(args) {
-  c.Term(c.Tup(args), s)
-}
-
-fn tupt(args) {
-  c.Term(c.TupT(args), s)
 }
 
 fn rcd(fields) {
