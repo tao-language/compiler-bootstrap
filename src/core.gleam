@@ -14,6 +14,11 @@ pub type TermData {
   LitT(typ: LiteralType)
   Var(index: Int)
   Ctr(tag: String, args: List(Term))
+  Tup(args: List(Term))
+  TupT(args: List(Term))
+  Rcd(fields: List(#(String, Term)))
+  RcdT(fields: List(#(String, Term)))
+  Dot(term: Term, field: String)
   Ann(term: Term, typ: Term)
   Lam(name: String, body: Term)
   Pi(name: String, in: Term, out: Term)
@@ -27,8 +32,12 @@ pub type Value {
   VTyp(level: Int)
   VLit(value: Literal)
   VLitT(typ: LiteralType)
-  VNeut(head: Head, args: List(Value))
+  VNeut(head: Head, spine: List(Elim))
   VCtr(tag: String, args: List(Value))
+  VTup(args: List(Value))
+  VTupT(args: List(Value))
+  VRcd(fields: List(#(String, Value)))
+  VRcdT(fields: List(#(String, Value)))
   VLam(name: String, env: Env, body: Term)
   VPi(name: String, env: Env, in: Value, out: Term)
   VBad(value: Value, errors: List(Error))
@@ -44,6 +53,11 @@ pub type Pattern {
 pub type Head {
   HVar(level: Int)
   HMeta(id: Int)
+}
+
+pub type Elim {
+  EDot(name: String)
+  EApp(arg: Value)
 }
 
 pub type Case {
@@ -131,6 +145,11 @@ pub fn eval(env: Env, term: Term) -> Value {
         None -> VErr(VarUndefined(i, term.span))
       }
     Ctr(tag, args) -> VCtr(tag, list.map(args, eval(env, _)))
+    Tup(args) -> VTup(list.map(args, eval(env, _)))
+    TupT(args) -> VTupT(list.map(args, eval(env, _)))
+    Rcd(fields) -> VRcd(list.map(fields, fn(kv) { #(kv.0, eval(env, kv.1)) }))
+    RcdT(fields) -> VRcdT(list.map(fields, fn(kv) { #(kv.0, eval(env, kv.1)) }))
+    Dot(term, name) -> eval_dot(eval(env, term), name, term.span)
     Ann(term, _) -> eval(env, term)
     Lam(name, body) -> VLam(name, env, body)
     Pi(name, in, out) -> VPi(name, env, eval(env, in), out)
@@ -154,10 +173,23 @@ pub fn eval(env: Env, term: Term) -> Value {
   }
 }
 
+fn eval_dot(value: Value, name: String, s: Span) -> Value {
+  case value {
+    VNeut(head, spine) -> VNeut(head, list.append(spine, [EDot(name)]))
+    VRcd(fields) | VRcdT(fields) ->
+      case list.key_find(fields, name) {
+        Ok(v) -> v
+        Error(Nil) -> VErr(TODO("Field not found", s))
+      }
+    VBad(value, errors) -> VBad(eval_dot(value, name, s), errors)
+    _ -> VErr(TODO("Dot on non-record", s))
+  }
+}
+
 fn eval_apply(fun: Value, arg: Value) -> Option(Value) {
   case fun {
+    VNeut(head, spine) -> Some(VNeut(head, list.append(spine, [EApp(arg)])))
     VLam(_, env, body) -> Some(eval([arg, ..env], body))
-    VNeut(head, args) -> Some(VNeut(head, list.append(args, [arg])))
     VErr(e) -> Some(VErr(e))
     _ -> None
   }
@@ -208,12 +240,17 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
     VTyp(k) -> Term(Typ(k), s)
     VLit(k) -> Term(Lit(k), s)
     VLitT(k) -> Term(LitT(k), s)
-    VCtr(tag, args) -> Term(Ctr(tag, list.map(args, quote(lvl, _, s))), s)
-    VNeut(head, args_val) -> {
-      let fun = quote_head(lvl, head, s)
-      let args = list.map(args_val, quote(lvl, _, s))
-      app(fun, args, s)
+    VNeut(head, spine) -> {
+      let head_term = quote_head(lvl, head, s)
+      quote_neut(lvl, head_term, spine, s)
     }
+    VCtr(tag, args) -> Term(Ctr(tag, list.map(args, quote(lvl, _, s))), s)
+    VTup(args) -> Term(Tup(list.map(args, quote(lvl, _, s))), s)
+    VTupT(args) -> Term(TupT(list.map(args, quote(lvl, _, s))), s)
+    VRcd(fields) ->
+      Term(Rcd(list.map(fields, fn(kv) { #(kv.0, quote(lvl, kv.1, s)) })), s)
+    VRcdT(fields) ->
+      Term(RcdT(list.map(fields, fn(kv) { #(kv.0, quote(lvl, kv.1, s)) })), s)
     VLam(name, env, body) -> {
       let fresh = VNeut(HVar(lvl), [])
       let body_val = eval([fresh, ..env], body)
@@ -229,6 +266,23 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
     }
     VBad(value, errors) -> Term(Bad(quote(lvl, value, s), errors), s)
     VErr(e) -> Term(Err(e), s)
+  }
+}
+
+fn quote_neut(lvl: Int, head: Term, spine: List(Elim), s: Span) -> Term {
+  case spine {
+    [] -> head
+    [elim, ..spine] -> {
+      let new_head = quote_elim(lvl, head, elim, s)
+      quote_neut(lvl, new_head, spine, s)
+    }
+  }
+}
+
+fn quote_elim(lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
+  case elim {
+    EDot(name) -> Term(Dot(head, name), s)
+    EApp(arg) -> Term(App(head, quote(lvl, arg, s)), s)
   }
 }
 
@@ -256,8 +310,8 @@ pub fn unify(
         Error(Nil) -> Ok([#(id, v2), ..sub])
       }
     _, VNeut(HMeta(_), []) -> unify(lvl + 1, sub, v2, v1, s)
-    VNeut(h1, args1), VNeut(h2, args2) if h1 == h2 ->
-      unify_list(lvl, sub, args1, args2, s)
+    VNeut(h1, spine1), VNeut(h2, spine2) if h1 == h2 ->
+      unify_elim_list(lvl, sub, spine1, spine2, s)
     VCtr(k1, args1), VCtr(k2, args2) if k1 == k2 ->
       unify_list(lvl, sub, args1, args2, s)
     VLam(_, env1, body1), VLam(_, env2, body2) -> {
@@ -296,6 +350,37 @@ fn unify_list(
   }
 }
 
+fn unify_elim(
+  lvl: Int,
+  sub: Subst,
+  e1: Elim,
+  e2: Elim,
+  s: Span,
+) -> Result(Subst, Error) {
+  case e1, e2 {
+    EDot(n1), EDot(n2) if n1 == n2 -> Ok(sub)
+    EApp(a1), EApp(a2) -> unify(lvl, sub, a1, a2, s)
+    _, _ -> Error(TODO("Spine mismatch", s))
+  }
+}
+
+fn unify_elim_list(
+  lvl: Int,
+  sub: Subst,
+  l1: List(Elim),
+  l2: List(Elim),
+  s: Span,
+) -> Result(Subst, Error) {
+  case l1, l2 {
+    [], [] -> Ok(sub)
+    [e1, ..xs], [e2, ..ys] -> {
+      use sub <- result.try(unify_elim(lvl, sub, e1, e2, s))
+      unify_elim_list(lvl, sub, xs, ys, s)
+    }
+    _, _ -> Error(TODO("Arity mismatch", s))
+  }
+}
+
 fn is_vtyp(value: Value) -> Bool {
   case value {
     VTyp(_) -> True
@@ -323,6 +408,14 @@ pub fn infer(
     }
     // Ctr(tag, args) -> VCtr(tag, list.map(args, infer(lvl, ctx, env, tenv, _)))
     Ctr(_, _) -> VErr(TypeAnnotationNeeded(term))
+    Tup(args) -> VTup(list.map(args, infer(lvl, ctx, env, tenv, _)))
+    TupT(args) -> {
+      // TODO: check args
+      VTyp(0)
+    }
+    Rcd(fields) -> todo
+    RcdT(fields) -> todo
+    Dot(term, name) -> todo
     Ann(term, ty) -> {
       let kind = infer(lvl, ctx, env, tenv, ty)
       let errors = case is_vtyp(kind) {
@@ -549,8 +642,12 @@ pub fn list_errors(v: Value) -> List(Error) {
     VTyp(_) -> []
     VLit(_) -> []
     VLitT(_) -> []
-    VNeut(_, args) -> list.flat_map(args, list_errors)
+    VNeut(_, spine) -> list.flat_map(spine, list_errors_elim)
     VCtr(_, args) -> list.flat_map(args, list_errors)
+    VTup(args) -> list.flat_map(args, list_errors)
+    VTupT(args) -> list.flat_map(args, list_errors)
+    VRcd(fields) -> list.flat_map(fields, fn(kv) { list_errors(kv.1) })
+    VRcdT(fields) -> list.flat_map(fields, fn(kv) { list_errors(kv.1) })
     VLam(_, env, body) -> {
       let fresh = VNeut(HVar(0), [])
       list_errors(eval([fresh, ..env], body))
@@ -561,6 +658,13 @@ pub fn list_errors(v: Value) -> List(Error) {
     }
     VBad(v, errors) -> list.append(list_errors(v), errors)
     VErr(e) -> [e]
+  }
+}
+
+pub fn list_errors_elim(elim: Elim) -> List(Error) {
+  case elim {
+    EDot(_) -> []
+    EApp(arg) -> list_errors(arg)
   }
 }
 

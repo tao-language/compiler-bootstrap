@@ -72,33 +72,33 @@ pub fn lit_check_test() {
 }
 
 // --- LitT --- \\
-pub fn lit_t_eval_test() {
-  c.eval([], lit_t(c.I32T)) |> should.equal(c.VLitT(c.I32T))
-  c.eval([], lit_t(c.I64T)) |> should.equal(c.VLitT(c.I64T))
-  c.eval([], lit_t(c.U32T)) |> should.equal(c.VLitT(c.U32T))
-  c.eval([], lit_t(c.U64T)) |> should.equal(c.VLitT(c.U64T))
-  c.eval([], lit_t(c.F32T)) |> should.equal(c.VLitT(c.F32T))
-  c.eval([], lit_t(c.F64T)) |> should.equal(c.VLitT(c.F64T))
+pub fn litt_eval_test() {
+  c.eval([], litt(c.I32T)) |> should.equal(c.VLitT(c.I32T))
+  c.eval([], litt(c.I64T)) |> should.equal(c.VLitT(c.I64T))
+  c.eval([], litt(c.U32T)) |> should.equal(c.VLitT(c.U32T))
+  c.eval([], litt(c.U64T)) |> should.equal(c.VLitT(c.U64T))
+  c.eval([], litt(c.F32T)) |> should.equal(c.VLitT(c.F32T))
+  c.eval([], litt(c.F64T)) |> should.equal(c.VLitT(c.F64T))
 }
 
-pub fn lit_t_infer_test() {
-  c.infer(0, [], [], [], lit_t(c.I32T)) |> should.equal(c.VTyp(0))
-  c.infer(0, [], [], [], lit_t(c.I64T)) |> should.equal(c.VTyp(0))
-  c.infer(0, [], [], [], lit_t(c.U32T)) |> should.equal(c.VTyp(0))
-  c.infer(0, [], [], [], lit_t(c.U64T)) |> should.equal(c.VTyp(0))
-  c.infer(0, [], [], [], lit_t(c.F32T)) |> should.equal(c.VTyp(0))
-  c.infer(0, [], [], [], lit_t(c.F64T)) |> should.equal(c.VTyp(0))
+pub fn litt_infer_test() {
+  c.infer(0, [], [], [], litt(c.I32T)) |> should.equal(c.VTyp(0))
+  c.infer(0, [], [], [], litt(c.I64T)) |> should.equal(c.VTyp(0))
+  c.infer(0, [], [], [], litt(c.U32T)) |> should.equal(c.VTyp(0))
+  c.infer(0, [], [], [], litt(c.U64T)) |> should.equal(c.VTyp(0))
+  c.infer(0, [], [], [], litt(c.F32T)) |> should.equal(c.VTyp(0))
+  c.infer(0, [], [], [], litt(c.F64T)) |> should.equal(c.VTyp(0))
 }
 
-pub fn lit_t_check_test() {
-  c.check(0, [], [], [], lit_t(c.I32T), c.VTyp(0)) |> should.equal(c.VTyp(0))
-  c.check(0, [], [], [], lit_t(c.I64T), c.VTyp(0)) |> should.equal(c.VTyp(0))
-  c.check(0, [], [], [], lit_t(c.U32T), c.VTyp(0)) |> should.equal(c.VTyp(0))
-  c.check(0, [], [], [], lit_t(c.U64T), c.VTyp(0)) |> should.equal(c.VTyp(0))
-  c.check(0, [], [], [], lit_t(c.F32T), c.VTyp(0)) |> should.equal(c.VTyp(0))
-  c.check(0, [], [], [], lit_t(c.F64T), c.VTyp(0)) |> should.equal(c.VTyp(0))
+pub fn litt_check_test() {
+  c.check(0, [], [], [], litt(c.I32T), c.VTyp(0)) |> should.equal(c.VTyp(0))
+  c.check(0, [], [], [], litt(c.I64T), c.VTyp(0)) |> should.equal(c.VTyp(0))
+  c.check(0, [], [], [], litt(c.U32T), c.VTyp(0)) |> should.equal(c.VTyp(0))
+  c.check(0, [], [], [], litt(c.U64T), c.VTyp(0)) |> should.equal(c.VTyp(0))
+  c.check(0, [], [], [], litt(c.F32T), c.VTyp(0)) |> should.equal(c.VTyp(0))
+  c.check(0, [], [], [], litt(c.F64T), c.VTyp(0)) |> should.equal(c.VTyp(0))
 
-  c.check(0, [], [], [], lit_t(c.I32T), c.VTyp(1))
+  c.check(0, [], [], [], litt(c.I32T), c.VTyp(1))
   |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(0), c.VTyp(1), s)))
 }
 
@@ -195,6 +195,71 @@ pub fn ctr_check_test() {
   |> should.equal(ty)
 }
 
+// --- Tup --- \\
+pub fn tup_eval_test() {
+  todo
+}
+
+pub fn tup_infer_test() {
+  todo
+}
+
+pub fn tup_check_test() {
+  todo
+}
+
+// --- TupT --- \\
+pub fn tupt_eval_test() {
+  todo
+}
+
+pub fn tupt_infer_test() {
+  todo
+}
+
+pub fn tupt_check_test() {
+  todo
+}
+
+// --- Rcd --- \\
+pub fn rcd_eval_test() {
+  todo
+}
+
+pub fn rcd_infer_test() {
+  todo
+}
+
+pub fn rcd_check_test() {
+  todo
+}
+
+// --- RcdT --- \\
+pub fn rcdt_eval_test() {
+  todo
+}
+
+pub fn rcdt_infer_test() {
+  todo
+}
+
+pub fn rcdt_check_test() {
+  todo
+}
+
+// --- Dot --- \\
+pub fn dot_eval_test() {
+  todo
+}
+
+pub fn dot_infer_test() {
+  todo
+}
+
+pub fn dot_check_test() {
+  todo
+}
+
 // --- Ann --- \\
 pub fn ann_eval_test() {
   let env = [c.VTyp(42)]
@@ -202,10 +267,10 @@ pub fn ann_eval_test() {
 }
 
 pub fn ann_infer_test() {
-  c.infer(0, [], [], [], ann(lit(c.I32(1)), lit_t(c.I32T)))
+  c.infer(0, [], [], [], ann(lit(c.I32(1)), litt(c.I32T)))
   |> should.equal(c.VLitT(c.I32T))
 
-  c.infer(0, [], [], [], ann(lit_t(c.I32T), lit(c.I32(1))))
+  c.infer(0, [], [], [], ann(litt(c.I32T), lit(c.I32(1))))
   |> should.equal(
     c.VBad(c.VErr(c.TypeMismatch(c.VTyp(0), c.VLit(c.I32(1)), s)), [
       c.AnnNotType(lit(c.I32(1)), c.VLitT(c.I32T)),
@@ -293,7 +358,7 @@ pub fn app_eval_test() {
 
 pub fn app_infer_test() {
   // Creating an identity function: (\x. x) : (Pi x: I32T. I32T)
-  let id_ty = pi("x", lit_t(c.I32T), lit_t(c.I32T))
+  let id_ty = pi("x", litt(c.I32T), litt(c.I32T))
   let id_fun = ann(lam("x", var(0)), id_ty)
 
   c.infer(0, [], [], [], app(id_fun, lit(c.I32(42))))
@@ -305,7 +370,7 @@ pub fn app_infer_test() {
 }
 
 pub fn app_check_test() {
-  let id_ty = pi("x", lit_t(c.I32T), lit_t(c.I32T))
+  let id_ty = pi("x", litt(c.I32T), litt(c.I32T))
   let id_fun = ann(lam("x", var(0)), id_ty)
 
   c.check(0, [], [], [], app(id_fun, lit(c.I32(42))), c.VLitT(c.I32T))
@@ -404,7 +469,7 @@ fn lit(v) {
   c.Term(c.Lit(v), s)
 }
 
-fn lit_t(t) {
+fn litt(t) {
   c.Term(c.LitT(t), s)
 }
 
