@@ -441,8 +441,25 @@ pub fn infer(
         })
       with_errors(VTyp(0), errors)
     }
-    Rcd(fields) -> todo
-    RcdT(fields) -> todo
+    Rcd(fields) -> {
+      let infer_field = fn(field) {
+        let #(name, arg) = field
+        #(name, infer(lvl, ctx, env, tenv, arg))
+      }
+      VRcdT(list.map(fields, infer_field))
+    }
+    RcdT(fields) -> {
+      let errors =
+        list.flat_map(fields, fn(field) {
+          let #(_, arg) = field
+          let arg_ty = infer(lvl, ctx, env, tenv, arg)
+          case is_vtyp(arg_ty) {
+            True -> list_errors(arg_ty)
+            False -> [NotType(arg, arg_ty), ..list_errors(arg_ty)]
+          }
+        })
+      with_errors(VTyp(0), errors)
+    }
     Dot(term, name) -> todo
     Ann(term, ty) -> {
       let kind = infer(lvl, ctx, env, tenv, ty)
@@ -592,7 +609,7 @@ pub fn check(
     _, _ -> {
       let inferred_ty = infer(lvl, ctx, env, tenv, term)
       case unify(lvl, [], inferred_ty, expected_ty, term.span) {
-        Ok(sub) -> inferred_ty
+        Ok(sub) -> with_errors(expected_ty, list_errors(inferred_ty))
         Error(e) -> VErr(e)
       }
     }
