@@ -41,8 +41,11 @@ pub type Value {
 
 pub type Pattern {
   PAny
-  PVar(name: String)
+  PAs(pattern: Pattern, name: String)
+  PTyp(level: Int)
+  PLit(value: Literal)
   PCtr(tag: String, args: List(Pattern))
+  PRcd(fields: List(#(String, Pattern)))
 }
 
 pub type Head {
@@ -53,6 +56,7 @@ pub type Head {
 pub type Elim {
   EDot(name: String)
   EApp(arg: Value)
+  EMatch(env: Env, cases: List(Case))
 }
 
 pub type Case {
@@ -192,34 +196,66 @@ fn eval_apply(fun: Value, arg: Value) -> Option(Value) {
 fn eval_match(env: Env, arg: Value, cases: List(Case)) -> Option(Value) {
   case cases {
     [] -> None
-    [c, ..cases] -> {
-      case match_pattern(c.pattern, arg) {
-        Ok(bindings) -> Some(eval(list.append(bindings, env), c.body))
-        Error(Nil) -> eval_match(env, arg, cases)
+    [c, ..cases] as all_cases ->
+      case arg {
+        VNeut(head, spine) ->
+          Some(VNeut(head, list.append(spine, [EMatch(env, all_cases)])))
+        _ ->
+          case match_pattern(c.pattern, arg) {
+            Ok(bindings) -> Some(eval(list.append(bindings, env), c.body))
+            Error(Nil) -> eval_match(env, arg, cases)
+          }
       }
-    }
   }
 }
 
-fn match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
+pub fn match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
   case pattern, value {
+    _, VBad(v, _) -> match_pattern(pattern, v)
     PAny, _ -> Ok([])
-    PVar(_), _ -> Ok([value])
-    PCtr(tag_p, args_p), VCtr(tag_v, args_v) if tag_p == tag_v ->
-      match_pattern_list(args_p, args_v)
+    PAs(p, _), _ ->
+      case match_pattern(p, value) {
+        Ok(env) -> Ok([value, ..env])
+        Error(Nil) -> Error(Nil)
+      }
+    PTyp(k1), VTyp(k2) if k1 == k2 -> Ok([])
+    PTyp(_), _ -> Error(Nil)
+    PLit(k1), VLit(k2) if k1 == k2 -> Ok([])
+    PLit(_), _ -> Error(Nil)
+    PCtr(ptag, ps), VCtr(vtag, vs) if ptag == vtag -> match_pattern_list(ps, vs)
     PCtr(_, _), _ -> Error(Nil)
+    PRcd(ps), VRcd(vs) -> match_pattern_fields(ps, vs)
+    PRcd(_), _ -> Error(Nil)
   }
 }
 
 fn match_pattern_list(ps: List(Pattern), vs: List(Value)) -> Result(Env, Nil) {
   case ps, vs {
     [], [] -> Ok([])
-    [p, ..ps], [v, ..vs] -> {
-      use bindings_first <- result.try(match_pattern(p, v))
-      use bindings_rest <- result.try(match_pattern_list(ps, vs))
-      Ok(list.append(bindings_first, bindings_rest))
-    }
+    [p, ..ps], [v, ..vs] ->
+      case match_pattern(p, v), match_pattern_list(ps, vs) {
+        Ok(env1), Ok(env2) -> Ok(list.append(env1, env2))
+        _, _ -> Error(Nil)
+      }
     _, _ -> Error(Nil)
+  }
+}
+
+fn match_pattern_fields(
+  ps: List(#(String, Pattern)),
+  vs: List(#(String, Value)),
+) -> Result(Env, Nil) {
+  case ps {
+    [] -> Ok([])
+    [#(x, p), ..ps] ->
+      case list.key_pop(vs, x) {
+        Ok(#(v, vs)) ->
+          case match_pattern(p, v), match_pattern_fields(ps, vs) {
+            Ok(env1), Ok(env2) -> Ok(list.append(env1, env2))
+            _, _ -> Error(Nil)
+          }
+        Error(Nil) -> Error(Nil)
+      }
   }
 }
 
@@ -273,6 +309,7 @@ fn quote_elim(lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
   case elim {
     EDot(name) -> Term(Dot(head, name), s)
     EApp(arg) -> Term(App(head, quote(lvl, arg, s)), s)
+    EMatch(env, cases) -> Term(Match(head, cases), s)
   }
 }
 
@@ -521,8 +558,11 @@ fn bind_pattern(
 ) -> Result(#(Int, Context), Error) {
   case pattern {
     PAny -> Ok(#(lvl, ctx))
-    PVar(name) -> Ok(#(lvl + 1, [#(name, expected_ty), ..ctx]))
-    PCtr(tag, p_args) -> {
+    PAs(p, name) -> todo
+    PTyp(k) -> todo
+    PLit(k) -> todo
+    // PVar(name) -> Ok(#(lvl + 1, [#(name, expected_ty), ..ctx]))
+    PCtr(tag, pargs) -> {
       case list.key_find(tenv, tag) {
         Error(Nil) -> Error(CtrUndefined(tag, span))
         Ok(ctr) -> {
@@ -531,10 +571,9 @@ fn bind_pattern(
             list.index_map(ctr.params, fn(_, i) { VNeut(HMeta(i), []) })
           let env_solved = list.append(params, env)
           let expected_arg_tys = list.map(ctr.args, eval(env_solved, _))
-
           // Recursively bind all arguments in the pattern
           list.try_fold(
-            list.zip(p_args, expected_arg_tys),
+            list.zip(pargs, expected_arg_tys),
             #(lvl, ctx),
             fn(acc, pair) {
               let #(current_lvl, current_ctx) = acc
@@ -545,6 +584,7 @@ fn bind_pattern(
         }
       }
     }
+    PRcd(pfields) -> todo
   }
 }
 
@@ -682,6 +722,7 @@ pub fn list_errors_elim(elim: Elim) -> List(Error) {
   case elim {
     EDot(_) -> []
     EApp(arg) -> list_errors(arg)
+    EMatch(env, cases) -> list.flat_map(cases, fn(c) { todo })
   }
 }
 

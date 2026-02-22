@@ -393,29 +393,51 @@ pub fn app_check_test() {
 }
 
 // --- Match --- \\
+pub fn match_pattern_test() {
+  let pvar = c.PAs(c.PAny, "_")
+  c.match_pattern(c.PAny, v32(1)) |> should.equal(Ok([]))
+  c.match_pattern(pvar, v32(1)) |> should.equal(Ok([v32(1)]))
+  c.match_pattern(c.PTyp(0), c.VTyp(0)) |> should.equal(Ok([]))
+  c.match_pattern(c.PTyp(0), c.VTyp(1)) |> should.equal(Error(Nil))
+  c.match_pattern(c.PLit(c.I32(1)), v32(1)) |> should.equal(Ok([]))
+  c.match_pattern(c.PLit(c.I32(1)), v32(2)) |> should.equal(Error(Nil))
+  c.match_pattern(c.PCtr("A", []), c.VCtr("A", [])) |> should.equal(Ok([]))
+  c.match_pattern(c.PCtr("A", []), c.VCtr("B", [])) |> should.equal(Error(Nil))
+  c.match_pattern(c.PCtr("A", [c.PAny]), c.VCtr("A", []))
+  |> should.equal(Error(Nil))
+  c.match_pattern(c.PCtr("A", []), c.VCtr("A", [v32(1)]))
+  |> should.equal(Error(Nil))
+  c.match_pattern(c.PCtr("A", [pvar]), c.VCtr("A", [v32(1)]))
+  |> should.equal(Ok([v32(1)]))
+  c.match_pattern(c.PCtr("A", [pvar, pvar]), c.VCtr("A", [v32(1), v64(2)]))
+  |> should.equal(Ok([v32(1), v64(2)]))
+  c.match_pattern(c.PRcd([]), c.VRcd([]))
+  |> should.equal(Ok([]))
+  c.match_pattern(c.PRcd([#("a", pvar)]), c.VRcd([]))
+  |> should.equal(Error(Nil))
+  c.match_pattern(c.PRcd([#("a", pvar)]), c.VRcd([#("a", v32(1))]))
+  |> should.equal(Ok([v32(1)]))
+  c.match_pattern(
+    c.PRcd([#("a", pvar), #("b", pvar)]),
+    c.VRcd([#("a", v32(1)), #("b", v64(2))]),
+  )
+  |> should.equal(Ok([v32(1), v64(2)]))
+  c.match_pattern(
+    c.PRcd([#("a", pvar), #("b", pvar)]),
+    c.VRcd([#("b", v64(2)), #("a", v32(1))]),
+  )
+  |> should.equal(Ok([v32(1), v64(2)]))
+  c.match_pattern(c.PTyp(0), c.VBad(c.VTyp(0), [])) |> should.equal(Ok([]))
+}
+
 pub fn match_eval_test() {
-  let i1 = lit(c.I32(1))
-  let i2 = lit(c.I32(2))
-  match(ctr("Just", [i1]), [
-    c.Case(c.PCtr("Nothing", []), i2, s),
-    c.Case(c.PCtr("Just", [c.PVar("x")]), var(0), s),
-  ])
-  |> c.eval([], _)
-  |> should.equal(c.VLit(c.I32(1)))
+  c.eval([], match(i32(1), [case_(c.PAny, i64(2))]))
+  |> should.equal(v64(2))
 
-  match(ctr("Nothing", []), [
-    c.Case(c.PCtr("Nothing", []), i2, s),
-    c.Case(c.PCtr("Just", [c.PVar("x")]), var(0), s),
-  ])
-  |> c.eval([], _)
-  |> should.equal(c.VLit(c.I32(2)))
-
-  match(ctr("Null", []), [
-    c.Case(c.PCtr("Nothing", []), i2, s),
-    c.Case(c.PCtr("Just", [c.PVar("x")]), var(0), s),
-  ])
-  |> c.eval([], _)
-  |> should.equal(c.VErr(c.MatchUnhandledCase(c.VCtr("Null", []), s)))
+  let env = [c.VNeut(c.HVar(0), [])]
+  let cases = [case_(c.PAny, i32(1))]
+  c.eval(env, match(var(0), cases))
+  |> should.equal(c.VNeut(c.HVar(0), [c.EMatch(env, cases)]))
 }
 
 pub fn match_infer_test() {
