@@ -485,7 +485,6 @@ pub fn infer(
             Error(e) -> VErr(e)
             Ok(#(lvl_f, ctx_f)) -> {
               let return_ty = infer(lvl_f, ctx_f, env, tenv, first.body)
-
               // Typecheck the rest of the cases against the first case's return type
               let errors =
                 list.flat_map(rest, fn(c) {
