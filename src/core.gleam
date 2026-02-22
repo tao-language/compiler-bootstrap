@@ -16,7 +16,7 @@ pub type TermData {
   Var(index: Int)
   Ctr(tag: String, args: List(Term))
   Rcd(fields: List(#(String, Term)))
-  Dot(term: Term, field: String)
+  Dot(arg: Term, field: String)
   Ann(term: Term, typ: Term)
   Lam(name: String, body: Term)
   Pi(name: String, in: Term, out: Term)
@@ -119,7 +119,6 @@ pub type Error {
   )
   DotNotFound(name: String, fields: List(#(String, Value)), span: Span)
   DotOnNonRecord(value: Value, name: String, span: Span)
-  NotType(term: Term, typ: Value)
 
   // Exhaustiveness errors
   NonExhaustiveMatch(missing: List(Pattern), span: Span)
@@ -142,7 +141,7 @@ pub fn eval(env: Env, term: Term) -> Value {
       }
     Ctr(tag, args) -> VCtr(tag, list.map(args, eval(env, _)))
     Rcd(fields) -> VRcd(list.map(fields, fn(kv) { #(kv.0, eval(env, kv.1)) }))
-    Dot(term, name) -> eval_dot(eval(env, term), name, term.span)
+    Dot(arg, name) -> eval_dot(eval(env, arg), name, arg.span)
     Ann(term, _) -> eval(env, term)
     Lam(name, body) -> VLam(name, env, body)
     Pi(name, in, out) -> VPi(name, env, eval(env, in), out)
@@ -355,8 +354,8 @@ pub fn unify(
       let b = eval([fresh, ..env2], out2)
       unify(lvl + 1, sub, a, b, s)
     }
-    VBad(v, errors), _ -> todo
-    _, VBad(v, errors) -> todo
+    VBad(v1, _), _ -> unify(lvl, sub, v1, v2, s)
+    _, VBad(v2, _) -> unify(lvl, sub, v1, v2, s)
     VErr(e), _ -> Error(e)
     _, VErr(e) -> Error(e)
     _, _ -> Error(TypeMismatch(v1, v2, s))
@@ -393,8 +392,10 @@ fn unify_fields(
   let args2 =
     list.sort(l2, by: fn(a, b) { string.compare(a.0, b.0) })
     |> list.map(fn(kv) { kv.1 })
-  // TODO: check for missing fields
-  unify_list(lvl, sub, args1, args2, s)
+  case list.length(l1) == list.length(l2) {
+    True -> unify_list(lvl, sub, args1, args2, s)
+    False -> todo
+  }
 }
 
 fn unify_elim(
@@ -462,88 +463,130 @@ pub fn infer(
       }
       VRcd(list.map(fields, infer_field))
     }
-    Dot(term, name) -> {
-      case infer(lvl, ctx, env, tenv, term) {
-        VRcd(fields) ->
-          case list.key_find(fields, name) {
-            Ok(ty) -> ty
-            Error(Nil) -> VErr(DotNotFound(name, fields, term.span))
-          }
-        VBad(value, errors) -> todo
-        ty -> VErr(DotOnNonRecord(ty, name, term.span))
-      }
+    Dot(arg, name) -> {
+      let arg_ty = infer(lvl, ctx, env, tenv, arg)
+      infer_dot(lvl, ctx, env, tenv, arg_ty, name, arg.span)
     }
     Ann(term, ty) -> {
-      let kind = infer(lvl, ctx, env, tenv, ty)
-      let errors = case is_vtyp(kind) {
-        True -> list_errors(kind)
-        False -> [NotType(ty, kind), ..list_errors(kind)]
-      }
+      let errors = infer(lvl, ctx, env, tenv, ty) |> list_errors
       with_errors(check(lvl, ctx, env, tenv, term, eval(env, ty)), errors)
     }
     Lam(_, _) -> VErr(TypeAnnotationNeeded(term))
     Pi(name, in, out) -> {
       let fresh = VNeut(HVar(lvl), [])
       let new_ctx = [#(name, eval(env, in)), ..ctx]
-      let in_kind = infer(lvl, ctx, env, tenv, in)
       let errors =
         list.append(
-          case is_vtyp(in_kind) {
-            True -> list_errors(in_kind)
-            False -> [NotType(in, in_kind), ..list_errors(in_kind)]
-          },
+          infer(lvl, ctx, env, tenv, in) |> list_errors,
           infer(lvl + 1, new_ctx, [fresh, ..env], tenv, out) |> list_errors,
         )
       with_errors(VTyp(0), errors)
     }
     App(fun, arg) -> {
-      case infer(lvl, ctx, env, tenv, fun) {
-        VPi(_, pi_env, in_ty, out_ty) -> {
-          let errors = check(lvl, ctx, env, tenv, arg, in_ty) |> list_errors
-          let arg_val = eval(env, arg)
-          with_errors(eval([arg_val, ..pi_env], out_ty), errors)
-        }
-        VErr(e) -> VErr(e)
-        VBad(value, errors) -> todo
-        fun_ty -> VErr(NotAFunction(fun_ty, term.span))
-      }
+      let fun_ty = infer(lvl, ctx, env, tenv, fun)
+      infer_app(lvl, ctx, env, tenv, fun_ty, arg, term.span)
     }
     Match(arg, cases) -> {
       let arg_ty = infer(lvl, ctx, env, tenv, arg)
-      case cases {
-        [] -> {
-          let err = Err(TODO("match without any cases", term.span))
-          infer(lvl, ctx, env, tenv, Term(err, term.span))
-        }
-        [first, ..rest] -> {
-          case
-            bind_pattern(lvl, ctx, env, tenv, first.pattern, arg_ty, term.span)
-          {
-            Error(e) -> VErr(e)
-            Ok(#(lvl_f, ctx_f)) -> {
-              let return_ty = infer(lvl_f, ctx_f, env, tenv, first.body)
-              // Typecheck the rest of the cases against the first case's return type
-              let errors =
-                list.flat_map(rest, fn(c) {
-                  case
-                    bind_pattern(lvl, ctx, env, tenv, c.pattern, arg_ty, c.span)
-                  {
-                    Error(e) -> [e]
-                    Ok(#(lvl_c, ctx_c)) -> {
-                      let body_ty =
-                        check(lvl_c, ctx_c, env, tenv, c.body, return_ty)
-                      list_errors(body_ty)
-                    }
-                  }
-                })
-              with_errors(return_ty, errors)
-            }
-          }
-        }
-      }
+      infer_match(lvl, ctx, env, tenv, arg_ty, cases, term.span)
     }
     Bad(term, errors) -> VBad(infer(lvl, ctx, env, tenv, term), errors)
     Err(e) -> VErr(e)
+  }
+}
+
+fn infer_lit(lit: Literal) -> Value {
+  case lit {
+    I32(_) -> VLitT(I32T)
+    I64(_) -> VLitT(I64T)
+    U32(_) -> VLitT(U32T)
+    U64(_) -> VLitT(U64T)
+    F32(_) -> VLitT(F32T)
+    F64(_) -> VLitT(F64T)
+  }
+}
+
+fn infer_dot(
+  lvl: Int,
+  ctx: Context,
+  env: Env,
+  tenv: TypeEnv,
+  arg_ty: Value,
+  name: String,
+  s: Span,
+) -> Value {
+  case arg_ty {
+    VRcd(fields) ->
+      case list.key_find(fields, name) {
+        Ok(ty) -> ty
+        Error(Nil) -> VErr(DotNotFound(name, fields, s))
+      }
+    VBad(value, errors) -> {
+      let ty = infer_dot(lvl, ctx, env, tenv, value, name, s)
+      VBad(ty, errors)
+    }
+    _ -> VErr(DotOnNonRecord(arg_ty, name, s))
+  }
+}
+
+fn infer_app(
+  lvl: Int,
+  ctx: Context,
+  env: Env,
+  tenv: TypeEnv,
+  fun_ty: Value,
+  arg: Term,
+  s: Span,
+) -> Value {
+  case fun_ty {
+    VPi(_, pi_env, in_ty, out_ty) -> {
+      let errors = check(lvl, ctx, env, tenv, arg, in_ty) |> list_errors
+      let arg_val = eval(env, arg)
+      with_errors(eval([arg_val, ..pi_env], out_ty), errors)
+    }
+    VBad(fun, errors) -> {
+      let ty = infer_app(lvl, ctx, env, tenv, fun, arg, s)
+      VBad(ty, errors)
+    }
+    VErr(e) -> VErr(e)
+    _ -> VErr(NotAFunction(fun_ty, s))
+  }
+}
+
+fn infer_match(
+  lvl: Int,
+  ctx: Context,
+  env: Env,
+  tenv: TypeEnv,
+  arg_ty: Value,
+  cases: List(Case),
+  s: Span,
+) -> Value {
+  case cases {
+    [] -> VErr(TODO("match without any cases", s))
+    [first, ..rest] -> {
+      case bind_pattern(lvl, ctx, env, tenv, first.pattern, arg_ty, s) {
+        Error(e) -> VErr(e)
+        Ok(#(lvl_f, ctx_f)) -> {
+          let return_ty = infer(lvl_f, ctx_f, env, tenv, first.body)
+          // Typecheck the rest of the cases against the first case's return type
+          let errors =
+            list.flat_map(rest, fn(c) {
+              case
+                bind_pattern(lvl, ctx, env, tenv, c.pattern, arg_ty, c.span)
+              {
+                Error(e) -> [e]
+                Ok(#(lvl_c, ctx_c)) -> {
+                  let body_ty =
+                    check(lvl_c, ctx_c, env, tenv, c.body, return_ty)
+                  list_errors(body_ty)
+                }
+              }
+            })
+          with_errors(return_ty, errors)
+        }
+      }
+    }
   }
 }
 
@@ -585,17 +628,6 @@ fn bind_pattern(
       }
     }
     PRcd(pfields) -> todo
-  }
-}
-
-fn infer_lit(lit: Literal) -> Value {
-  case lit {
-    I32(_) -> VLitT(I32T)
-    I64(_) -> VLitT(I64T)
-    U32(_) -> VLitT(U32T)
-    U64(_) -> VLitT(U64T)
-    F32(_) -> VLitT(F32T)
-    F64(_) -> VLitT(F64T)
   }
 }
 

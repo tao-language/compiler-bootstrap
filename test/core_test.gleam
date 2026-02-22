@@ -259,11 +259,7 @@ pub fn ann_infer_test() {
   |> should.equal(v32t)
 
   c.infer(0, [], [], [], ann(i32t, i32(1)))
-  |> should.equal(
-    c.VBad(c.VErr(c.TypeMismatch(c.VTyp(0), v32(1), s)), [
-      c.NotType(i32(1), v32t),
-    ]),
-  )
+  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(0), v32(1), s)))
 
   c.infer(0, [], [], [], ann(typ(0), typ(1)))
   |> should.equal(c.VTyp(1))
@@ -309,9 +305,10 @@ pub fn pi_eval_test() {
 pub fn pi_infer_test() {
   c.infer(0, [], [], [], pi("x", typ(0), var(0)))
   |> should.equal(c.VTyp(0))
-
-  c.infer(0, [], [], [], pi("y", i32(1), var(0)))
-  |> should.equal(c.VBad(c.VTyp(0), [c.NotType(i32(1), v32t)]))
+  c.infer(0, [], [], [], pi("y", var(1), var(2)))
+  |> should.equal(
+    c.VBad(c.VTyp(0), [c.VarUndefined(1, s), c.VarUndefined(2, s)]),
+  )
 }
 
 pub fn pi_check_test() {
