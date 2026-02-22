@@ -429,14 +429,6 @@ fn unify_elim_list(
   }
 }
 
-fn is_vtyp(value: Value) -> Bool {
-  case value {
-    VTyp(_) -> True
-    VBad(v, _) -> is_vtyp(v)
-    _ -> False
-  }
-}
-
 pub fn infer(
   lvl: Int,
   ctx: Context,
@@ -562,72 +554,111 @@ fn infer_match(
   cases: List(Case),
   s: Span,
 ) -> Value {
-  case cases {
-    [] -> VErr(TODO("match without any cases", s))
-    [first, ..rest] -> {
-      case bind_pattern(lvl, ctx, env, tenv, first.pattern, arg_ty, s) {
-        Error(e) -> VErr(e)
-        Ok(#(lvl_f, ctx_f)) -> {
-          let return_ty = infer(lvl_f, ctx_f, env, tenv, first.body)
-          // Typecheck the rest of the cases against the first case's return type
-          let errors =
-            list.flat_map(rest, fn(c) {
-              case
-                bind_pattern(lvl, ctx, env, tenv, c.pattern, arg_ty, c.span)
-              {
-                Error(e) -> [e]
-                Ok(#(lvl_c, ctx_c)) -> {
-                  let body_ty =
-                    check(lvl_c, ctx_c, env, tenv, c.body, return_ty)
-                  list_errors(body_ty)
-                }
-              }
-            })
-          with_errors(return_ty, errors)
-        }
-      }
-    }
+  let results =
+    list.map(cases, fn(c) {
+      let #(lvl, ctx, errors) =
+        bind_pattern(lvl, ctx, env, tenv, c.pattern, arg_ty, c.span)
+      let body_ty = infer(lvl, ctx, env, tenv, c.body)
+      #(body_ty, errors)
+    })
+  let first_ty = case results {
+    [] -> VErr(TODO("Empty match", s))
+    [#(ty, _), ..] -> ty
   }
+  let #(final_ty, errors) =
+    list.fold(results, #(first_ty, []), fn(acc, res) {
+      let #(acc_ty, acc_errors) = acc
+      let #(body_ty, p_errs) = res
+      let #(final_ty, type_errs) = case unify(lvl, [], body_ty, first_ty, s) {
+        // TODO: apply sub to acc_ty
+        Ok(sub) -> #(acc_ty, [])
+        Error(e) -> #(acc_ty, [e])
+      }
+      let errors = list.flatten([acc_errors, p_errs, type_errs])
+      #(acc_ty, errors)
+    })
+  with_errors(final_ty, errors)
 }
 
-fn bind_pattern(
+// pub apply_sub(sub: Subst, value: Value) -> Value {
+// }
+
+pub fn bind_pattern(
   lvl: Int,
   ctx: Context,
   env: Env,
   tenv: TypeEnv,
   pattern: Pattern,
-  expected_ty: Value,
-  span: Span,
-) -> Result(#(Int, Context), Error) {
+  arg_ty: Value,
+  s: Span,
+) -> #(Int, Context, List(Error)) {
   case pattern {
-    PAny -> Ok(#(lvl, ctx))
-    PAs(p, name) -> todo
-    PTyp(k) -> todo
-    PLit(k) -> todo
-    // PVar(name) -> Ok(#(lvl + 1, [#(name, expected_ty), ..ctx]))
+    PAny -> #(lvl, ctx, [])
+    PAs(p, name) ->
+      bind_pattern(lvl + 1, [#(name, arg_ty), ..ctx], env, tenv, p, arg_ty, s)
+    PTyp(k) -> {
+      let errors =
+        check(lvl, ctx, env, tenv, Term(Typ(k), s), arg_ty)
+        |> list_errors
+      #(lvl, ctx, errors)
+    }
+    PLit(k) -> {
+      let errors =
+        check(lvl, ctx, env, tenv, Term(Lit(k), s), arg_ty)
+        |> list_errors
+      #(lvl, ctx, errors)
+    }
     PCtr(tag, pargs) -> {
       case list.key_find(tenv, tag) {
-        Error(Nil) -> Error(CtrUndefined(tag, span))
+        Error(Nil) -> #(lvl, ctx, [CtrUndefined(tag, s)])
         Ok(ctr) -> {
-          // Instantiate parameters to evaluate the constructor's expected argument types
-          let params =
-            list.index_map(ctr.params, fn(_, i) { VNeut(HMeta(i), []) })
-          let env_solved = list.append(params, env)
-          let expected_arg_tys = list.map(ctr.args, eval(env_solved, _))
-          // Recursively bind all arguments in the pattern
-          list.try_fold(
-            list.zip(pargs, expected_arg_tys),
-            #(lvl, ctx),
+          let #(env, args_ty, _, inst_errors) =
+            instantiate_ctr(lvl, env, ctr, tag, arg_ty, s)
+          list.fold(
+            list.zip(pargs, args_ty),
+            #(lvl, ctx, inst_errors),
             fn(acc, pair) {
-              let #(current_lvl, current_ctx) = acc
-              let #(p, arg_ty) = pair
-              bind_pattern(current_lvl, current_ctx, env, tenv, p, arg_ty, span)
+              let #(lvl, ctx, errors1) = acc
+              let #(p, p_ty) = pair
+              let #(lvl, ctx, errors2) =
+                bind_pattern(lvl, ctx, env, tenv, p, p_ty, s)
+              #(lvl, ctx, list.append(errors1, errors2))
             },
           )
         }
       }
     }
-    PRcd(pfields) -> todo
+    PRcd(pfields) -> {
+      // case arg_ty {
+      //   VRcd(f_tys) -> {
+      //     list.fold(pfields, #(lvl, ctx, []), fn(acc, field) {
+      //       let #(label, p) = field
+      //       case list.key_find(f_tys, label) {
+      //         Ok(f_ty) -> {
+      //           let res = bind_pattern(acc.lvl, acc.ctx, env, tenv, p, f_ty, s)
+      //           #(res.lvl, res.ctx, list.append(acc.errors, res.errors))
+      //         }
+      //         Error(Nil) -> {
+      //           // Label missing in record type, bind to VErr but keep going
+      //           let res =
+      //             bind_pattern(
+      //               acc.lvl,
+      //               acc.ctx,
+      //               env,
+      //               tenv,
+      //               p,
+      //               VErr(TODO("Missing field")),
+      //               s,
+      //             )
+      //           #(res.lvl, res.ctx, [TODO("Label not in record"), ..res.errors])
+      //         }
+      //       }
+      //     })
+      //   }
+      //   _ -> #(lvl, ctx, [TypeMismatch(VRcd([]), arg_ty, s)])
+      // }
+      todo
+    }
   }
 }
 
@@ -676,33 +707,23 @@ fn check_ctr(
   case list.key_find(tenv, tag) {
     Error(Nil) -> VErr(CtrUndefined(tag, s))
     Ok(ctr) -> {
-      let params = list.index_map(ctr.params, fn(_, i) { VNeut(HMeta(i), []) })
-      let ctr_ret_ty = eval(list.append(params, env), ctr.ret_ty)
-      case unify(lvl, [], ctr_ret_ty, expected_ty, s) {
-        Ok(sub) -> {
-          let params_solved =
-            list.index_map(ctr.params, fn(_, i) {
-              list.key_find(sub, i)
-              |> result.unwrap(VErr(CtrUnsolvedParam(tag, args, ctr, i, s)))
-            })
-          let env_solved = list.append(params_solved, env)
-          let args_ty = list.map(ctr.args, eval(env_solved, _))
-          let errors =
-            check_list(lvl, ctx, env_solved, tenv, args, args_ty)
-            |> list.flat_map(list_errors)
-            |> list.append(case list.length(args), list.length(ctr.args) {
-              args_len, ctr_args_len if args_len > ctr_args_len -> [
-                CtrTooManyArgs(tag, args, ctr, s),
-              ]
-              args_len, ctr_args_len if args_len < ctr_args_len -> [
-                CtrTooFewArgs(tag, args, ctr, s),
-              ]
-              _, _ -> []
-            })
-          with_errors(eval(env_solved, ctr.ret_ty), errors)
-        }
-        Error(e) -> VErr(e)
-      }
+      let #(env_solved, args_ty, final_ty, ctr_errors) =
+        instantiate_ctr(lvl, env, ctr, tag, expected_ty, s)
+      let errors =
+        list.flatten([
+          // ctr instantiation errors
+          ctr_errors,
+          // arity errors
+          case list.length(args), list.length(ctr.args) {
+            a, c if a > c -> [CtrTooManyArgs(tag, args, ctr, s)]
+            a, c if a < c -> [CtrTooFewArgs(tag, args, ctr, s)]
+            _, _ -> []
+          },
+          // arg errors
+          check_list(lvl, ctx, env_solved, tenv, args, args_ty)
+            |> list.flat_map(list_errors),
+        ])
+      with_errors(final_ty, errors)
     }
   }
 }
@@ -720,6 +741,53 @@ fn check_list(
     let #(term, ty) = pair
     check(lvl, ctx, env, tenv, term, ty)
   })
+}
+
+fn instantiate_ctr(
+  lvl: Int,
+  env: Env,
+  ctr: CtrDef,
+  tag: String,
+  expected_ty: Value,
+  s: Span,
+) -> #(Env, List(Value), Value, List(Error)) {
+  let params = list.index_map(ctr.params, fn(_, i) { VNeut(HMeta(i), []) })
+  let template_env = list.append(params, env)
+  let ctr_ret_ty = eval(template_env, ctr.ret_ty)
+
+  // 1. Unify, but gracefully degrade to an empty subst on failure
+  let #(sub, unify_errors) = case unify(lvl, [], ctr_ret_ty, expected_ty, s) {
+    Ok(s) -> #(s, [])
+    Error(e) -> #([], [e])
+    // Keep going! We just carry the error forward.
+  }
+
+  // 2. Build the solved parameters, substituting HMetas for missing ones
+  let #(params_solved, param_errors) =
+    list.index_fold(ctr.params, #([], []), fn(acc, _, i) {
+      let #(p_acc, e_acc) = acc
+      case list.key_find(sub, i) {
+        Ok(val) -> #([val, ..p_acc], e_acc)
+        Error(Nil) -> {
+          // Recovery: Leave it as an HMeta so eval doesn't crash, but record the error
+          let err = CtrUnsolvedParam(tag, [], ctr, i, s)
+          #([VNeut(HMeta(i), []), ..p_acc], [err, ..e_acc])
+        }
+      }
+    })
+
+  // (index_fold with consing builds lists backwards, so we reverse them)
+  let params_solved = list.reverse(params_solved)
+  let param_errors = list.reverse(param_errors)
+
+  // 3. Evaluate the final types using whatever we managed to solve
+  let env_solved = list.append(params_solved, env)
+  let args_ty = list.map(ctr.args, eval(env_solved, _))
+  let final_ty = eval(env_solved, ctr.ret_ty)
+
+  let all_inst_errors = list.append(unify_errors, param_errors)
+
+  #(env_solved, args_ty, final_ty, all_inst_errors)
 }
 
 fn with_errors(value: Value, errors: List(Error)) -> Value {

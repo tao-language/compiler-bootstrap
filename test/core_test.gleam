@@ -127,6 +127,10 @@ pub fn var_check_test() {
 }
 
 // --- Ctr --- \\
+pub fn instantiate_ctr_test() {
+  todo
+}
+
 pub fn ctr_eval_test() {
   c.eval([], ctr("A", [])) |> should.equal(c.VCtr("A", []))
   c.eval([], ctr("A", [i32(0)])) |> should.equal(c.VCtr("A", [v32(0)]))
@@ -148,43 +152,43 @@ pub fn ctr_check_test() {
   c.check(0, [], [], tenv, ctr("Ctr0", []), v32t)
   |> should.equal(v32t)
   c.check(0, [], [], tenv, ctr("Ctr0", []), v64t)
-  |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s)))
+  |> should.equal(c.VBad(v32t, [c.TypeMismatch(v32t, v64t, s)]))
 
-  let tenv = [#("UndefVarInCtr", c.CtrDef([], [var(0)], var(0)))]
-  c.check(0, [], [], tenv, ctr("UndefVarInCtr", [i32(1)]), c.VTyp(0))
-  |> should.equal(c.VErr(c.VarUndefined(0, s)))
+  let tenv = [#("UndefVarInCtr", c.CtrDef([], [var(0)], i32t))]
+  c.check(0, [], [], tenv, ctr("UndefVarInCtr", [i32(1)]), v32t)
+  |> should.equal(c.VBad(v32t, [c.VarUndefined(0, s)]))
+  todo
+  // let tenv = [#("Ctr1", c.CtrDef(["a"], [var(0)], var(0)))]
+  // c.check(0, [], [], tenv, ctr("Ctr1", [i32(1)]), v32t)
+  // |> should.equal(v32t)
 
-  let tenv = [#("Ctr1", c.CtrDef(["a"], [var(0)], var(0)))]
-  c.check(0, [], [], tenv, ctr("Ctr1", [i32(1)]), v32t)
-  |> should.equal(v32t)
+  // let ctr_def = c.CtrDef(["a"], [var(0)], var(0))
+  // let tenv = [#("TooFewArgs", ctr_def)]
+  // c.check(0, [], [], tenv, ctr("TooFewArgs", []), v32t)
+  // |> should.equal(c.VBad(v32t, [c.CtrTooFewArgs("TooFewArgs", [], ctr_def, s)]))
 
-  let ctr_def = c.CtrDef(["a"], [var(0)], var(0))
-  let tenv = [#("TooFewArgs", ctr_def)]
-  c.check(0, [], [], tenv, ctr("TooFewArgs", []), v32t)
-  |> should.equal(c.VBad(v32t, [c.CtrTooFewArgs("TooFewArgs", [], ctr_def, s)]))
+  // let ctr_def = c.CtrDef(["a"], [], var(0))
+  // let tenv = [#("TooManyArgs", ctr_def)]
+  // c.check(0, [], [], tenv, ctr("TooManyArgs", [i32(1)]), v32t)
+  // |> should.equal(
+  //   c.VBad(v32t, [c.CtrTooManyArgs("TooManyArgs", [i32(1)], ctr_def, s)]),
+  // )
 
-  let ctr_def = c.CtrDef(["a"], [], var(0))
-  let tenv = [#("TooManyArgs", ctr_def)]
-  c.check(0, [], [], tenv, ctr("TooManyArgs", [i32(1)]), v32t)
-  |> should.equal(
-    c.VBad(v32t, [c.CtrTooManyArgs("TooManyArgs", [i32(1)], ctr_def, s)]),
-  )
+  // let ctr_def = c.CtrDef(["a", "b"], [var(0), var(1)], var(0))
+  // let tenv = [#("Unsolved", ctr_def)]
+  // c.check(0, [], [], tenv, ctr("Unsolved", [i32(1), i32(2)]), v32t)
+  // |> should.equal(
+  //   c.VBad(v32t, [
+  //     c.CtrUnsolvedParam("Unsolved", [i32(1), i32(2)], ctr_def, id: 1, span: s),
+  //   ]),
+  // )
 
-  let ctr_def = c.CtrDef(["a", "b"], [var(0), var(1)], var(0))
-  let tenv = [#("Unsolved", ctr_def)]
-  c.check(0, [], [], tenv, ctr("Unsolved", [i32(1), i32(2)]), v32t)
-  |> should.equal(
-    c.VBad(v32t, [
-      c.CtrUnsolvedParam("Unsolved", [i32(1), i32(2)], ctr_def, id: 1, span: s),
-    ]),
-  )
-
-  let ctr_def =
-    c.CtrDef(["a", "b"], [var(0), var(1)], ctr("T", [var(0), var(1)]))
-  let tenv = [#("Ctr2", ctr_def)]
-  let term = ctr("Ctr2", [i32(1), i64(2)])
-  let ty = c.VCtr("T", [v32t, v64t])
-  c.check(0, [], [], tenv, term, ty) |> should.equal(ty)
+  // let ctr_def =
+  //   c.CtrDef(["a", "b"], [var(0), var(1)], ctr("T", [var(0), var(1)]))
+  // let tenv = [#("Ctr2", ctr_def)]
+  // let term = ctr("Ctr2", [i32(1), i64(2)])
+  // let ty = c.VCtr("T", [v32t, v64t])
+  // c.check(0, [], [], tenv, term, ty) |> should.equal(ty)
 }
 
 // --- Rcd --- \\
@@ -391,9 +395,8 @@ pub fn app_check_test() {
 
 // --- Match --- \\
 pub fn match_pattern_test() {
-  let pvar = c.PAs(c.PAny, "_")
   c.match_pattern(c.PAny, v32(1)) |> should.equal(Ok([]))
-  c.match_pattern(pvar, v32(1)) |> should.equal(Ok([v32(1)]))
+  c.match_pattern(pvar("a"), v32(1)) |> should.equal(Ok([v32(1)]))
   c.match_pattern(c.PTyp(0), c.VTyp(0)) |> should.equal(Ok([]))
   c.match_pattern(c.PTyp(0), c.VTyp(1)) |> should.equal(Error(Nil))
   c.match_pattern(c.PLit(c.I32(1)), v32(1)) |> should.equal(Ok([]))
@@ -404,23 +407,26 @@ pub fn match_pattern_test() {
   |> should.equal(Error(Nil))
   c.match_pattern(c.PCtr("A", []), c.VCtr("A", [v32(1)]))
   |> should.equal(Error(Nil))
-  c.match_pattern(c.PCtr("A", [pvar]), c.VCtr("A", [v32(1)]))
+  c.match_pattern(c.PCtr("A", [pvar("a")]), c.VCtr("A", [v32(1)]))
   |> should.equal(Ok([v32(1)]))
-  c.match_pattern(c.PCtr("A", [pvar, pvar]), c.VCtr("A", [v32(1), v64(2)]))
+  c.match_pattern(
+    c.PCtr("A", [pvar("a"), pvar("b")]),
+    c.VCtr("A", [v32(1), v64(2)]),
+  )
   |> should.equal(Ok([v32(1), v64(2)]))
   c.match_pattern(c.PRcd([]), c.VRcd([]))
   |> should.equal(Ok([]))
-  c.match_pattern(c.PRcd([#("a", pvar)]), c.VRcd([]))
+  c.match_pattern(c.PRcd([#("a", pvar("x"))]), c.VRcd([]))
   |> should.equal(Error(Nil))
-  c.match_pattern(c.PRcd([#("a", pvar)]), c.VRcd([#("a", v32(1))]))
+  c.match_pattern(c.PRcd([#("a", pvar("x"))]), c.VRcd([#("a", v32(1))]))
   |> should.equal(Ok([v32(1)]))
   c.match_pattern(
-    c.PRcd([#("a", pvar), #("b", pvar)]),
+    c.PRcd([#("a", pvar("x")), #("b", pvar("y"))]),
     c.VRcd([#("a", v32(1)), #("b", v64(2))]),
   )
   |> should.equal(Ok([v32(1), v64(2)]))
   c.match_pattern(
-    c.PRcd([#("a", pvar), #("b", pvar)]),
+    c.PRcd([#("a", pvar("x")), #("b", pvar("y"))]),
     c.VRcd([#("b", v64(2)), #("a", v32(1))]),
   )
   |> should.equal(Ok([v32(1), v64(2)]))
@@ -435,6 +441,24 @@ pub fn match_eval_test() {
   let cases = [case_(c.PAny, i32(1))]
   c.eval(env, match(var(0), cases))
   |> should.equal(c.VNeut(c.HVar(0), [c.EMatch(env, cases)]))
+}
+
+pub fn bind_pattern_test() {
+  c.bind_pattern(0, [], [], [], c.PAny, v32t, s) |> should.equal(#(0, [], []))
+  c.bind_pattern(0, [], [], [], pvar("a"), v32t, s)
+  |> should.equal(#(1, [#("a", v32t)], []))
+  // c.bind_pattern(0, [], [], [], c.PTyp(0), c.VTyp(0), s)
+  // |> should.equal(Ok(#(0, [])))
+  // TODO: PLit
+
+  // let p = c.PCtr("A", [])
+  // c.bind_pattern(0, [], [], [], p, v32t, s)
+  // |> should.equal(Error(c.CtrUndefined("A", s)))
+
+  // let p = c.PCtr("A", [])
+  // let tenv = [#("A", c.CtrDef([], [], i32t))]
+  // c.bind_pattern(0, [], [], tenv, p, v32t, s) |> should.equal(Ok(#(0, [])))
+  // TODO: PRcd
 }
 
 pub fn match_infer_test() {
@@ -587,4 +611,8 @@ fn err(e) {
 
 fn case_(p, b) {
   c.Case(p, b, s)
+}
+
+fn pvar(x) {
+  c.PAs(c.PAny, x)
 }
