@@ -126,10 +126,6 @@ pub type Error {
   MatchUnhandledCase(value: Value, span: Span)
 }
 
-pub fn app(fun: Term, args: List(Term), s: Span) -> Term {
-  list.fold(args, fun, fn(fun, arg) { Term(App(fun, arg), s) })
-}
-
 pub fn eval(env: Env, term: Term) -> Value {
   case term.data {
     Typ(k) -> VTyp(k)

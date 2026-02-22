@@ -233,6 +233,8 @@ pub fn dot_eval_test() {
   |> should.equal(c.VTyp(0))
   c.eval([], dot(rcd([#("a", typ(0)), #("b", typ(1))]), "b"))
   |> should.equal(c.VTyp(1))
+  c.eval([c.VNeut(c.HVar(0), [])], dot(var(0), "a"))
+  |> should.equal(c.VNeut(c.HVar(0), [c.EDot("a")]))
 }
 
 pub fn dot_infer_test() {
@@ -333,21 +335,41 @@ pub fn pi_check_test() {
 
 // --- App --- \\
 pub fn app_eval_test() {
-  let env = [c.VLam("a", [], var(0))]
-  c.eval(env, app(typ(0), typ(42)))
+  c.eval([], app(typ(0), typ(1)))
   |> should.equal(c.VErr(c.NotAFunction(c.VTyp(0), s)))
-  c.eval(env, app(var(0), typ(42)))
-  |> should.equal(c.VTyp(42))
-  c.eval(env, app(var(1), typ(42)))
+  c.eval([], app(lit(c.I32(0)), typ(1)))
+  |> should.equal(c.VErr(c.NotAFunction(c.VLit(c.I32(0)), s)))
+  c.eval([], app(litt(c.I32T), typ(1)))
+  |> should.equal(c.VErr(c.NotAFunction(c.VLitT(c.I32T), s)))
+  let env = [c.VLam("a", [], var(0))]
+  c.eval(env, app(var(0), typ(1)))
+  |> should.equal(c.VTyp(1))
+  c.eval(env, app(var(1), typ(1)))
   |> should.equal(c.VErr(c.VarUndefined(1, s)))
-  c.eval(env, app(pi("a", typ(0), typ(1)), typ(42)))
-  |> should.equal(c.VErr(c.NotAFunction(c.VPi("a", env, c.VTyp(0), typ(1)), s)))
-  c.eval(env, app(lam("a", var(0)), typ(42)))
-  |> should.equal(c.VTyp(42))
-  c.eval(env, app(ann(var(0), typ(1)), typ(42)))
-  |> should.equal(c.VTyp(42))
-  c.eval(env, app(ctr("A", [typ(1)]), typ(42)))
-  |> should.equal(c.VErr(c.NotAFunction(c.VCtr("A", [c.VTyp(1)]), s)))
+  c.eval([], app(ctr("A", []), typ(1)))
+  |> should.equal(c.VErr(c.NotAFunction(c.VCtr("A", []), s)))
+  c.eval([], app(rcd([]), typ(1)))
+  |> should.equal(c.VErr(c.NotAFunction(c.VRcd([]), s)))
+  let env = [c.VNeut(c.HVar(0), [])]
+  c.eval(env, app(dot(var(0), "a"), typ(1)))
+  |> should.equal(c.VNeut(c.HVar(0), [c.EDot("a"), c.EApp(c.VTyp(1))]))
+  let env = [c.VLam("a", [], var(0))]
+  c.eval(env, app(ann(var(0), typ(1)), typ(1)))
+  |> should.equal(c.VTyp(1))
+  c.eval([], app(lam("a", var(0)), typ(1)))
+  |> should.equal(c.VTyp(1))
+  c.eval([], app(pi("a", typ(0), typ(1)), typ(1)))
+  |> should.equal(c.VErr(c.NotAFunction(c.VPi("a", [], c.VTyp(0), typ(1)), s)))
+  c.eval([], app(app(lambda(["a", "b"], var(0)), typ(2)), typ(1)))
+  |> should.equal(c.VTyp(1))
+  c.eval([], app(app(lambda(["a", "b"], var(1)), typ(2)), typ(1)))
+  |> should.equal(c.VTyp(2))
+  c.eval([], app(match(typ(0), [case_(c.PAny, lam("a", var(0)))]), typ(1)))
+  |> should.equal(c.VTyp(1))
+  c.eval([], app(bad(lam("a", var(0)), []), typ(1)))
+  |> should.equal(c.VBad(c.VTyp(1), []))
+  c.eval([], app(err(c.TODO("", s)), typ(1)))
+  |> should.equal(c.VErr(c.TODO("", s)))
 }
 
 pub fn app_infer_test() {
@@ -491,6 +513,13 @@ fn lam(name, body) {
   c.Term(c.Lam(name, body), s)
 }
 
+fn lambda(xs, body) -> c.Term {
+  case xs {
+    [] -> body
+    [x, ..xs] -> c.Term(c.Lam(x, lambda(xs, body)), s)
+  }
+}
+
 fn ann(x, t) {
   c.Term(c.Ann(x, t), s)
 }
@@ -499,10 +528,25 @@ fn app(f, a) {
   c.Term(c.App(f, a), s)
 }
 
+fn apply(fun, args) -> c.Term {
+  case args {
+    [] -> fun
+    [arg, ..args] -> apply(c.Term(c.App(fun, arg), s), args)
+  }
+}
+
 fn match(arg, cases) {
   c.Term(c.Match(arg, cases), s)
 }
 
+fn bad(term, errors) {
+  c.Term(c.Bad(term, errors), s)
+}
+
 fn err(e) {
   c.Term(c.Err(e), s)
+}
+
+fn case_(p, b) {
+  c.Case(p, b, s)
 }
