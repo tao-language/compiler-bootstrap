@@ -108,8 +108,8 @@ pub type Error {
   NotAFunction(got: Value, span: Span)
   VarUndefined(index: Int, span: Span)
   CtrUndefined(tag: String, span: Span)
-  CtrTooManyArgs(tag: String, args: List(Term), ctr: CtrDef, span: Span)
-  CtrTooFewArgs(tag: String, args: List(Term), ctr: CtrDef, span: Span)
+  CtrTooManyArgs(tag: String, nargs: Int, ctr: CtrDef, span: Span)
+  CtrTooFewArgs(tag: String, nargs: Int, ctr: CtrDef, span: Span)
   CtrUnsolvedParam(tag: String, ctr: CtrDef, id: Int, span: Span)
   DotNotFound(name: String, fields: List(#(String, Value)), span: Span)
   DotOnNonRecord(value: Value, name: String, span: Span)
@@ -569,13 +569,10 @@ fn infer_match(
         Error(e) -> #(acc_ty, [e])
       }
       let errors = list.flatten([acc_errors, p_errs, type_errs])
-      #(acc_ty, errors)
+      #(final_ty, errors)
     })
   with_errors(final_ty, errors)
 }
-
-// pub apply_sub(sub: Subst, value: Value) -> Value {
-// }
 
 pub fn bind_pattern(
   lvl: Int,
@@ -608,52 +605,50 @@ pub fn bind_pattern(
       case list.key_find(tenv, tag) {
         Error(Nil) -> #(lvl, ctx, [CtrUndefined(tag, s)])
         Ok(ctr) -> {
-          let #(env, args_ty, _, inst_errors) =
+          let #(env, args_ty, _, ctr_errors) =
             instantiate_ctr(lvl, env, ctr, tag, expected_ty, s)
+          let arity_errors = case list.length(pargs), list.length(ctr.args) {
+            a, c if a > c -> [CtrTooManyArgs(tag, a, ctr, s)]
+            a, c if a < c -> [CtrTooFewArgs(tag, a, ctr, s)]
+            _, _ -> []
+          }
           list.fold(
             list.zip(pargs, args_ty),
-            #(lvl, ctx, inst_errors),
+            #(lvl, ctx, list.append(ctr_errors, arity_errors)),
             fn(acc, pair) {
-              let #(lvl, ctx, errors1) = acc
+              let #(lvl, ctx, errors) = acc
               let #(p, p_ty) = pair
-              let #(lvl, ctx, errors2) =
+              let #(lvl, ctx, arg_errors) =
                 bind_pattern(lvl, ctx, env, tenv, p, p_ty, s)
-              #(lvl, ctx, list.append(errors1, errors2))
+              #(lvl, ctx, list.append(errors, arg_errors))
             },
           )
         }
       }
     }
     PRcd(pfields) -> {
-      // case arg_ty {
-      //   VRcd(f_tys) -> {
-      //     list.fold(pfields, #(lvl, ctx, []), fn(acc, field) {
-      //       let #(label, p) = field
-      //       case list.key_find(f_tys, label) {
-      //         Ok(f_ty) -> {
-      //           let res = bind_pattern(acc.lvl, acc.ctx, env, tenv, p, f_ty, s)
-      //           #(res.lvl, res.ctx, list.append(acc.errors, res.errors))
-      //         }
-      //         Error(Nil) -> {
-      //           // Label missing in record type, bind to VErr but keep going
-      //           let res =
-      //             bind_pattern(
-      //               acc.lvl,
-      //               acc.ctx,
-      //               env,
-      //               tenv,
-      //               p,
-      //               VErr(TODO("Missing field")),
-      //               s,
-      //             )
-      //           #(res.lvl, res.ctx, [TODO("Label not in record"), ..res.errors])
-      //         }
-      //       }
-      //     })
-      //   }
-      //   _ -> #(lvl, ctx, [TypeMismatch(VRcd([]), arg_ty, s)])
-      // }
-      todo
+      case expected_ty {
+        VRcd(f_tys) -> {
+          list.fold(pfields, #(lvl, ctx, []), fn(acc, field) {
+            let #(lvl, ctx, errors) = acc
+            let #(label, p) = field
+            case list.key_find(f_tys, label) {
+              Ok(f_ty) -> {
+                let #(lvl, ctx, bind_errors) =
+                  bind_pattern(lvl, ctx, env, tenv, p, f_ty, s)
+                #(lvl, ctx, list.append(errors, bind_errors))
+              }
+              Error(Nil) -> {
+                let err = TODO("Missing field", s)
+                let #(lvl, ctx, bind_errors) =
+                  bind_pattern(lvl, ctx, env, tenv, p, VErr(err), s)
+                #(lvl, ctx, list.append(errors, bind_errors))
+              }
+            }
+          })
+        }
+        _ -> #(lvl, ctx, [TypeMismatch(VRcd([]), expected_ty, s)])
+      }
     }
   }
 }
@@ -705,20 +700,15 @@ fn check_ctr(
     Ok(ctr) -> {
       let #(env_solved, args_ty, final_ty, ctr_errors) =
         instantiate_ctr(lvl, env, ctr, tag, expected_ty, s)
-      let errors =
-        list.flatten([
-          // ctr instantiation errors
-          ctr_errors,
-          // arity errors
-          case list.length(args), list.length(ctr.args) {
-            a, c if a > c -> [CtrTooManyArgs(tag, args, ctr, s)]
-            a, c if a < c -> [CtrTooFewArgs(tag, args, ctr, s)]
-            _, _ -> []
-          },
-          // arg errors
-          check_list(lvl, ctx, env_solved, tenv, args, args_ty)
-            |> list.flat_map(list_errors),
-        ])
+      let arity_errors = case list.length(args), list.length(ctr.args) {
+        a, c if a > c -> [CtrTooManyArgs(tag, a, ctr, s)]
+        a, c if a < c -> [CtrTooFewArgs(tag, a, ctr, s)]
+        _, _ -> []
+      }
+      let args_errors =
+        check_list(lvl, ctx, env_solved, tenv, args, args_ty)
+        |> list.flat_map(list_errors)
+      let errors = list.flatten([ctr_errors, arity_errors, args_errors])
       with_errors(final_ty, errors)
     }
   }

@@ -170,42 +170,42 @@ pub fn ctr_infer_test() {
 
 pub fn ctr_check_test() {
   let tenv = []
-  c.check(0, [], [], tenv, ctr("Undefined", []), v32t)
-  |> should.equal(c.VErr(c.CtrUndefined("Undefined", s)))
+  c.check(0, [], [], tenv, ctr("A", []), v32t)
+  |> should.equal(c.VErr(c.CtrUndefined("A", s)))
 
-  let tenv = [#("Ctr0", c.CtrDef([], [], i32t))]
-  c.check(0, [], [], tenv, ctr("Ctr0", []), v32t)
+  let tenv = [#("A", c.CtrDef([], [], i32t))]
+  c.check(0, [], [], tenv, ctr("A", []), v32t)
   |> should.equal(v32t)
-  c.check(0, [], [], tenv, ctr("Ctr0", []), v64t)
+  c.check(0, [], [], tenv, ctr("A", []), v64t)
   |> should.equal(c.VBad(v32t, [c.TypeMismatch(v32t, v64t, s)]))
 
-  let tenv = [#("UndefVarInCtr", c.CtrDef([], [var(0)], i32t))]
-  c.check(0, [], [], tenv, ctr("UndefVarInCtr", [i32(1)]), v32t)
+  let tenv = [#("A", c.CtrDef([], [var(0)], i32t))]
+  c.check(0, [], [], tenv, ctr("A", [i32(1)]), v32t)
   |> should.equal(c.VBad(v32t, [c.VarUndefined(0, s)]))
-  let tenv = [#("Ctr1", c.CtrDef(["a"], [var(0)], var(0)))]
-  c.check(0, [], [], tenv, ctr("Ctr1", [i32(1)]), v32t)
+
+  let tenv = [#("A", c.CtrDef(["a"], [var(0)], var(0)))]
+  c.check(0, [], [], tenv, ctr("A", [i32(1)]), v32t)
   |> should.equal(v32t)
 
-  let ctr_def = c.CtrDef(["a"], [var(0)], var(0))
-  let tenv = [#("TooFewArgs", ctr_def)]
-  c.check(0, [], [], tenv, ctr("TooFewArgs", []), v32t)
-  |> should.equal(c.VBad(v32t, [c.CtrTooFewArgs("TooFewArgs", [], ctr_def, s)]))
+  let ctr_def = c.CtrDef([], [], i32t)
+  let tenv = [#("A", ctr_def)]
+  c.check(0, [], [], tenv, ctr("A", [i32(1)]), v32t)
+  |> should.equal(c.VBad(v32t, [c.CtrTooManyArgs("A", 1, ctr_def, s)]))
 
-  let ctr_def = c.CtrDef(["a"], [], var(0))
-  let tenv = [#("TooManyArgs", ctr_def)]
-  c.check(0, [], [], tenv, ctr("TooManyArgs", [i32(1)]), v32t)
-  |> should.equal(
-    c.VBad(v32t, [c.CtrTooManyArgs("TooManyArgs", [i32(1)], ctr_def, s)]),
-  )
+  let ctr_def = c.CtrDef([], [i64t], i32t)
+  let tenv = [#("A", ctr_def)]
+  c.check(0, [], [], tenv, ctr("A", []), v32t)
+  |> should.equal(c.VBad(v32t, [c.CtrTooFewArgs("A", 0, ctr_def, s)]))
 
   let ctr_def = c.CtrDef(["a", "b"], [var(0), var(1)], var(0))
-  let tenv = [#("Unsolved", ctr_def)]
-  c.check(0, [], [], tenv, ctr("Unsolved", [i32(1), i32(2)]), v32t)
-  |> should.equal(
-    c.VBad(v32t, [
-      c.CtrUnsolvedParam("Unsolved", ctr_def, id: 1, span: s),
-    ]),
-  )
+  let tenv = [#("A", ctr_def)]
+  c.check(0, [], [], tenv, ctr("A", [i32(1), i64(2)]), v32t)
+  |> should.equal(c.VBad(v32t, [c.CtrUnsolvedParam("A", ctr_def, 1, s)]))
+
+  let ctr_def = c.CtrDef(["a", "b"], [var(0), var(1)], var(1))
+  let tenv = [#("A", ctr_def)]
+  c.check(0, [], [], tenv, ctr("A", [i32(1), i64(2)]), v64t)
+  |> should.equal(c.VBad(v64t, [c.CtrUnsolvedParam("A", ctr_def, 0, s)]))
 
   let ctr_def =
     c.CtrDef(["a", "b"], [var(0), var(1)], ctr("T", [var(0), var(1)]))
@@ -471,17 +471,56 @@ pub fn bind_pattern_test() {
   c.bind_pattern(0, [], [], [], c.PAny, v32t, s) |> should.equal(#(0, [], []))
   c.bind_pattern(0, [], [], [], pvar("a"), v32t, s)
   |> should.equal(#(1, [#("a", v32t)], []))
-  // c.bind_pattern(0, [], [], [], c.PTyp(0), c.VTyp(0), s)
-  // |> should.equal(Ok(#(0, [])))
-  // TODO: PLit
 
-  // let p = c.PCtr("A", [])
-  // c.bind_pattern(0, [], [], [], p, v32t, s)
-  // |> should.equal(Error(c.CtrUndefined("A", s)))
+  c.bind_pattern(0, [], [], [], c.PTyp(0), c.VTyp(0), s)
+  |> should.equal(#(0, [], [c.TypeMismatch(c.VTyp(1), c.VTyp(0), s)]))
+  c.bind_pattern(0, [], [], [], c.PTyp(0), c.VTyp(1), s)
+  |> should.equal(#(0, [], []))
 
-  // let p = c.PCtr("A", [])
-  // let tenv = [#("A", c.CtrDef([], [], i32t))]
-  // c.bind_pattern(0, [], [], tenv, p, v32t, s) |> should.equal(Ok(#(0, [])))
+  c.bind_pattern(0, [], [], [], c.PLit(c.I32(1)), c.VTyp(0), s)
+  |> should.equal(#(0, [], [c.TypeMismatch(v32t, c.VTyp(0), s)]))
+  c.bind_pattern(0, [], [], [], c.PLit(c.I32(1)), v32t, s)
+  |> should.equal(#(0, [], []))
+
+  c.bind_pattern(0, [], [], [], c.PCtr("A", []), v32t, s)
+  |> should.equal(#(0, [], [c.CtrUndefined("A", s)]))
+
+  let tenv = [#("A", c.CtrDef([], [], i32t))]
+  c.bind_pattern(0, [], [], tenv, c.PCtr("A", []), v32t, s)
+  |> should.equal(#(0, [], []))
+
+  let ctr_def = c.CtrDef([], [], i32t)
+  let tenv = [#("A", ctr_def)]
+  c.bind_pattern(0, [], [], tenv, c.PCtr("A", [pvar("a")]), v32t, s)
+  |> should.equal(#(0, [], [c.CtrTooManyArgs("A", 1, ctr_def, s)]))
+
+  let ctr_def = c.CtrDef([], [i64t], i32t)
+  let tenv = [#("A", ctr_def)]
+  c.bind_pattern(0, [], [], tenv, c.PCtr("A", []), v32t, s)
+  |> should.equal(#(0, [], [c.CtrTooFewArgs("A", 0, ctr_def, s)]))
+
+  let ctr_def = c.CtrDef(["a"], [var(0)], var(0))
+  let tenv = [#("A", ctr_def)]
+  c.bind_pattern(0, [], [], tenv, c.PCtr("A", [pvar("x")]), v32t, s)
+  |> should.equal(#(1, [#("x", v32t)], []))
+
+  let ctr_def = c.CtrDef(["a", "b"], [var(0), var(1)], var(0))
+  let tenv = [#("A", ctr_def)]
+  c.bind_pattern(0, [], [], tenv, c.PCtr("A", [pvar("x"), pvar("y")]), v32t, s)
+  |> should.equal(
+    #(2, [#("y", c.VNeut(c.HMeta(1), [])), #("x", v32t)], [
+      c.CtrUnsolvedParam("A", ctr_def, 1, s),
+    ]),
+  )
+
+  let ctr_def = c.CtrDef(["a", "b"], [var(0), var(1)], var(1))
+  let tenv = [#("A", ctr_def)]
+  c.bind_pattern(0, [], [], tenv, c.PCtr("A", [pvar("x"), pvar("y")]), v32t, s)
+  |> should.equal(
+    #(2, [#("y", v32t), #("x", c.VNeut(c.HMeta(0), []))], [
+      c.CtrUnsolvedParam("A", ctr_def, 0, s),
+    ]),
+  )
   // TODO: PRcd
 }
 
