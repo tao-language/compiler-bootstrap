@@ -103,7 +103,7 @@ pub type Subst =
 
 pub type Error {
   // Type errors
-  TypeMismatch(expected: Value, got: Value, span: Span)
+  TypeMismatch(expected: Value, got: Value, span1: Span, span2: Span)
   TypeAnnotationNeeded(term: Term)
   NotAFunction(got: Value, span: Span)
   VarUndefined(index: Int, span: Span)
@@ -111,7 +111,7 @@ pub type Error {
   CtrTooManyArgs(tag: String, nargs: Int, ctr: CtrDef, span: Span)
   CtrTooFewArgs(tag: String, nargs: Int, ctr: CtrDef, span: Span)
   CtrUnsolvedParam(tag: String, ctr: CtrDef, id: Int, span: Span)
-  RcdMissingField(names: List(String), missing: String, span: Span)
+  RcdMissingFields(names: List(String), span: Span)
   DotNotFound(name: String, fields: List(#(String, Value)), span: Span)
   DotOnNonRecord(value: Value, name: String, span: Span)
   MatchEmpty(arg: Value, span: Span)
@@ -320,7 +320,8 @@ pub fn unify(
   sub: Subst,
   v1: Value,
   v2: Value,
-  s: Span,
+  s1: Span,
+  s2: Span,
 ) -> Result(Subst, Error) {
   case v1, v2 {
     VTyp(k1), VTyp(k2) if k1 == k2 -> Ok(sub)
@@ -328,33 +329,34 @@ pub fn unify(
     VLitT(k1), VLitT(k2) if k1 == k2 -> Ok(sub)
     VNeut(HMeta(id), []), _ ->
       case list.key_find(sub, id) {
-        Ok(v) -> unify(lvl + 1, sub, v, v2, s)
+        Ok(v) -> unify(lvl + 1, sub, v, v2, s1, s2)
         Error(Nil) -> Ok([#(id, v2), ..sub])
       }
-    _, VNeut(HMeta(_), []) -> unify(lvl + 1, sub, v2, v1, s)
+    _, VNeut(HMeta(_), []) -> unify(lvl + 1, sub, v2, v1, s1, s2)
     VNeut(h1, spine1), VNeut(h2, spine2) if h1 == h2 ->
-      unify_elim_list(lvl, sub, spine1, spine2, s)
+      unify_elim_list(lvl, sub, spine1, spine2, s1, s2)
     VCtr(k1, args1), VCtr(k2, args2) if k1 == k2 ->
-      unify_list(lvl, sub, args1, args2, s)
-    VRcd(fields1), VRcd(fields2) -> unify_fields(lvl, sub, fields1, fields2, s)
+      unify_list(lvl, sub, args1, args2, s1, s2)
+    VRcd(fields1), VRcd(fields2) ->
+      unify_fields(lvl, sub, fields1, fields2, s1, s2)
     VLam(_, env1, body1), VLam(_, env2, body2) -> {
       let fresh = VNeut(HVar(lvl), [])
       let a = eval([fresh, ..env1], body1)
       let b = eval([fresh, ..env2], body2)
-      unify(lvl + 1, sub, a, b, s)
+      unify(lvl + 1, sub, a, b, s1, s2)
     }
     VPi(_, env1, in1, out1), VPi(_, env2, in2, out2) -> {
-      use _ <- result.try(unify(lvl, sub, in1, in2, s))
+      use _ <- result.try(unify(lvl, sub, in1, in2, s1, s2))
       let fresh = VNeut(HVar(lvl), [])
       let a = eval([fresh, ..env1], out1)
       let b = eval([fresh, ..env2], out2)
-      unify(lvl + 1, sub, a, b, s)
+      unify(lvl + 1, sub, a, b, s1, s2)
     }
-    VBad(v1, _), _ -> unify(lvl, sub, v1, v2, s)
-    _, VBad(v2, _) -> unify(lvl, sub, v1, v2, s)
+    VBad(v1, _), _ -> unify(lvl, sub, v1, v2, s1, s2)
+    _, VBad(v2, _) -> unify(lvl, sub, v1, v2, s1, s2)
     VErr(e), _ -> Error(e)
     _, VErr(e) -> Error(e)
-    _, _ -> Error(TypeMismatch(v1, v2, s))
+    _, _ -> Error(TypeMismatch(v1, v2, s1, s2))
   }
 }
 
@@ -363,15 +365,16 @@ fn unify_list(
   sub: Subst,
   l1: List(Value),
   l2: List(Value),
-  s: Span,
+  s1: Span,
+  s2: Span,
 ) -> Result(Subst, Error) {
   case l1, l2 {
     [], [] -> Ok(sub)
     [x, ..xs], [y, ..ys] -> {
-      use sub <- result.try(unify(lvl, sub, x, y, s))
-      unify_list(lvl, sub, xs, ys, s)
+      use sub <- result.try(unify(lvl, sub, x, y, s1, s2))
+      unify_list(lvl, sub, xs, ys, s1, s2)
     }
-    _, _ -> Error(TODO("Arity mismatch", s))
+    _, _ -> Error(TODO("Arity mismatch", s1))
   }
 }
 
@@ -380,17 +383,28 @@ fn unify_fields(
   sub: Subst,
   l1: List(#(String, Value)),
   l2: List(#(String, Value)),
-  s: Span,
+  s1: Span,
+  s2: Span,
 ) -> Result(Subst, Error) {
-  let args1 =
-    list.sort(l1, by: fn(a, b) { string.compare(a.0, b.0) })
-    |> list.map(fn(kv) { kv.1 })
-  let args2 =
-    list.sort(l2, by: fn(a, b) { string.compare(a.0, b.0) })
-    |> list.map(fn(kv) { kv.1 })
-  case list.length(l1) == list.length(l2) {
-    True -> unify_list(lvl, sub, args1, args2, s)
-    False -> todo
+  case l1 {
+    [] ->
+      case list.map(l2, fn(kv) { kv.0 }) {
+        [] -> Ok([])
+        names -> Error(RcdMissingFields(names, s1))
+      }
+    [#(name, v1), ..l1] ->
+      case list.key_pop(l2, name) {
+        Error(Nil) -> {
+          let names =
+            list.filter(l1, fn(kv) { list.key_find(l2, kv.0) == Error(Nil) })
+            |> list.map(fn(kv) { kv.0 })
+          Error(RcdMissingFields([name, ..names], s2))
+        }
+        Ok(#(v2, l2)) -> {
+          use sub <- result.try(unify(lvl, sub, v1, v2, s1, s2))
+          unify_fields(lvl, sub, l1, l2, s1, s2)
+        }
+      }
   }
 }
 
@@ -399,12 +413,13 @@ fn unify_elim(
   sub: Subst,
   e1: Elim,
   e2: Elim,
-  s: Span,
+  s1: Span,
+  s2: Span,
 ) -> Result(Subst, Error) {
   case e1, e2 {
     EDot(n1), EDot(n2) if n1 == n2 -> Ok(sub)
-    EApp(a1), EApp(a2) -> unify(lvl, sub, a1, a2, s)
-    _, _ -> Error(TODO("Spine mismatch", s))
+    EApp(a1), EApp(a2) -> unify(lvl, sub, a1, a2, s1, s2)
+    _, _ -> Error(TODO("Spine mismatch", s1))
   }
 }
 
@@ -413,15 +428,16 @@ fn unify_elim_list(
   sub: Subst,
   l1: List(Elim),
   l2: List(Elim),
-  s: Span,
+  s1: Span,
+  s2: Span,
 ) -> Result(Subst, Error) {
   case l1, l2 {
     [], [] -> Ok(sub)
     [e1, ..xs], [e2, ..ys] -> {
-      use sub <- result.try(unify_elim(lvl, sub, e1, e2, s))
-      unify_elim_list(lvl, sub, xs, ys, s)
+      use sub <- result.try(unify_elim(lvl, sub, e1, e2, s1, s2))
+      unify_elim_list(lvl, sub, xs, ys, s1, s2)
     }
-    _, _ -> Error(TODO("Arity mismatch", s))
+    _, _ -> Error(TODO("Arity mismatch", s1))
   }
 }
 
@@ -457,7 +473,10 @@ pub fn infer(
     }
     Ann(term, ty) -> {
       let errors = infer(lvl, ctx, env, tenv, ty) |> list_errors
-      with_errors(check(lvl, ctx, env, tenv, term, eval(env, ty)), errors)
+      with_errors(
+        check(lvl, ctx, env, tenv, term, eval(env, ty), ty.span),
+        errors,
+      )
     }
     Lam(_, _) -> VErr(TypeAnnotationNeeded(term))
     Pi(name, in, out) -> {
@@ -528,7 +547,8 @@ fn infer_app(
 ) -> Value {
   case fun_ty {
     VPi(_, pi_env, in_ty, out_ty) -> {
-      let errors = check(lvl, ctx, env, tenv, arg, in_ty) |> list_errors
+      let errors =
+        check(lvl, ctx, env, tenv, arg, in_ty, arg.span) |> list_errors
       let arg_val = eval(env, arg)
       with_errors(eval([arg_val, ..pi_env], out_ty), errors)
     }
@@ -548,24 +568,32 @@ fn infer_match(
   tenv: TypeEnv,
   arg_ty: Value,
   cases: List(Case),
-  s: Span,
+  s1: Span,
 ) -> Value {
   let results =
     list.map(cases, fn(c) {
+      let s1 = c.span
+      let s2 = c.body.span
       let #(lvl, ctx, errors) =
-        bind_pattern(lvl, ctx, env, tenv, c.pattern, arg_ty, c.span)
+        bind_pattern(lvl, ctx, env, tenv, c.pattern, arg_ty, s1, s2)
       let body_ty = infer(lvl, ctx, env, tenv, c.body)
       #(body_ty, errors)
     })
   let first_ty = case results {
-    [] -> VErr(MatchEmpty(arg_ty, s))
+    [] -> VErr(MatchEmpty(arg_ty, s1))
     [#(ty, _), ..] -> ty
+  }
+  let s2 = case cases {
+    [] -> s1
+    [Case(_, b, _), ..] -> b.span
   }
   let #(final_ty, errors) =
     list.fold(results, #(first_ty, []), fn(acc, res) {
       let #(acc_ty, acc_errors) = acc
       let #(body_ty, p_errs) = res
-      let #(final_ty, type_errs) = case unify(lvl, [], body_ty, first_ty, s) {
+      let #(final_ty, type_errs) = case
+        unify(lvl, [], body_ty, first_ty, s1, s2)
+      {
         // TODO: apply sub to acc_ty
         Ok(sub) -> #(acc_ty, [])
         Error(e) -> #(acc_ty, [e])
@@ -583,35 +611,36 @@ pub fn bind_pattern(
   tenv: TypeEnv,
   pattern: Pattern,
   expected_ty: Value,
-  s: Span,
+  s1: Span,
+  s2: Span,
 ) -> #(Int, Context, List(Error)) {
   case pattern {
     PAny -> #(lvl, ctx, [])
     PAs(p, name) -> {
       let ctx = [#(name, expected_ty), ..ctx]
-      bind_pattern(lvl + 1, ctx, env, tenv, p, expected_ty, s)
+      bind_pattern(lvl + 1, ctx, env, tenv, p, expected_ty, s1, s2)
     }
     PTyp(k) -> {
       let errors =
-        check(lvl, ctx, env, tenv, Term(Typ(k), s), expected_ty)
+        check(lvl, ctx, env, tenv, Term(Typ(k), s1), expected_ty, s2)
         |> list_errors
       #(lvl, ctx, errors)
     }
     PLit(k) -> {
       let errors =
-        check(lvl, ctx, env, tenv, Term(Lit(k), s), expected_ty)
+        check(lvl, ctx, env, tenv, Term(Lit(k), s1), expected_ty, s2)
         |> list_errors
       #(lvl, ctx, errors)
     }
     PCtr(tag, pargs) -> {
       case list.key_find(tenv, tag) {
-        Error(Nil) -> #(lvl, ctx, [CtrUndefined(tag, s)])
+        Error(Nil) -> #(lvl, ctx, [CtrUndefined(tag, s1)])
         Ok(ctr) -> {
           let #(env, args_ty, _, ctr_errors) =
-            instantiate_ctr(lvl, env, ctr, tag, expected_ty, s)
+            instantiate_ctr(lvl, env, ctr, tag, expected_ty, s1)
           let arity_errors = case list.length(pargs), list.length(ctr.args) {
-            a, c if a > c -> [CtrTooManyArgs(tag, a, ctr, s)]
-            a, c if a < c -> [CtrTooFewArgs(tag, a, ctr, s)]
+            a, c if a > c -> [CtrTooManyArgs(tag, a, ctr, s1)]
+            a, c if a < c -> [CtrTooFewArgs(tag, a, ctr, s1)]
             _, _ -> []
           }
           list.fold(
@@ -621,7 +650,7 @@ pub fn bind_pattern(
               let #(lvl, ctx, errors) = acc
               let #(p, p_ty) = pair
               let #(lvl, ctx, arg_errors) =
-                bind_pattern(lvl, ctx, env, tenv, p, p_ty, s)
+                bind_pattern(lvl, ctx, env, tenv, p, p_ty, s1, s2)
               #(lvl, ctx, list.append(errors, arg_errors))
             },
           )
@@ -637,20 +666,19 @@ pub fn bind_pattern(
             case list.key_find(vfields, name) {
               Ok(v) -> {
                 let #(lvl, ctx, bind_errors) =
-                  bind_pattern(lvl, ctx, env, tenv, p, v, s)
+                  bind_pattern(lvl, ctx, env, tenv, p, v, s1, s2)
                 #(lvl, ctx, list.append(errors, bind_errors))
               }
               Error(Nil) -> {
-                let names = list.map(vfields, fn(kv) { kv.0 })
-                let err = RcdMissingField(names, missing: name, span: s)
+                let err = RcdMissingFields([name], s1)
                 let #(lvl, ctx, bind_errors) =
-                  bind_pattern(lvl, ctx, env, tenv, p, VErr(err), s)
+                  bind_pattern(lvl, ctx, env, tenv, p, VErr(err), s1, s2)
                 #(lvl, ctx, list.append(errors, bind_errors))
               }
             }
           })
         }
-        _ -> #(lvl, ctx, [TypeMismatch(VRcd([]), expected_ty, s)])
+        _ -> #(lvl, ctx, [TypeMismatch(VRcd([]), expected_ty, s1, s2)])
       }
     }
   }
@@ -663,13 +691,15 @@ pub fn check(
   tenv: TypeEnv,
   term: Term,
   expected_ty: Value,
+  ty_span: Span,
 ) -> Value {
   case term.data, expected_ty {
     Lam(name, body), VPi(_, pi_env, in, out) -> {
       let fresh = VNeut(HVar(lvl), [])
       let out_val = eval([fresh, ..pi_env], out)
       let new_ctx = [#(name, in), ..ctx]
-      let body_ty = check(lvl + 1, new_ctx, [fresh, ..env], tenv, body, out_val)
+      let body_ty =
+        check(lvl + 1, new_ctx, [fresh, ..env], tenv, body, out_val, ty_span)
       with_errors(expected_ty, list_errors(body_ty))
     }
     Ctr(tag, args), _ ->
@@ -680,7 +710,7 @@ pub fn check(
     }
     _, _ -> {
       let inferred_ty = infer(lvl, ctx, env, tenv, term)
-      case unify(lvl, [], inferred_ty, expected_ty, term.span) {
+      case unify(lvl, [], inferred_ty, expected_ty, term.span, ty_span) {
         Ok(sub) -> with_errors(expected_ty, list_errors(inferred_ty))
         Error(e) -> VErr(e)
       }
@@ -702,14 +732,14 @@ fn check_ctr(
     Error(Nil) -> VErr(CtrUndefined(tag, s))
     Ok(ctr) -> {
       let #(env_solved, args_ty, final_ty, ctr_errors) =
-        instantiate_ctr(lvl, env, ctr, tag, expected_ty, s)
+        instantiate_ctr(lvl, env, ctr, tag, expected_ty, ctr.ret_ty.span)
       let arity_errors = case list.length(args), list.length(ctr.args) {
         a, c if a > c -> [CtrTooManyArgs(tag, a, ctr, s)]
         a, c if a < c -> [CtrTooFewArgs(tag, a, ctr, s)]
         _, _ -> []
       }
       let args_errors =
-        check_list(lvl, ctx, env_solved, tenv, args, args_ty)
+        check_list(lvl, ctx, env_solved, tenv, args, args_ty, s)
         |> list.flat_map(list_errors)
       let errors = list.flatten([ctr_errors, arity_errors, args_errors])
       with_errors(final_ty, errors)
@@ -724,11 +754,12 @@ fn check_list(
   tenv: TypeEnv,
   terms: List(Term),
   types: List(Value),
+  s: Span,
 ) -> List(Value) {
   list.zip(terms, types)
   |> list.map(fn(pair) {
     let #(term, ty) = pair
-    check(lvl, ctx, env, tenv, term, ty)
+    check(lvl, ctx, env, tenv, term, ty, s)
   })
 }
 
@@ -742,7 +773,9 @@ pub fn instantiate_ctr(
 ) -> #(Env, List(Value), Value, List(Error)) {
   let params = list.index_map(ctr.params, fn(_, i) { VNeut(HMeta(i), []) })
   let ctr_ret_ty = eval(list.append(params, env), ctr.ret_ty)
-  let #(sub, unify_errors) = case unify(lvl, [], ctr_ret_ty, expected_ty, s) {
+  let #(sub, unify_errors) = case
+    unify(lvl, [], ctr_ret_ty, expected_ty, s, s)
+  {
     Ok(sub) -> #(sub, [])
     Error(e) -> #([], [e])
   }

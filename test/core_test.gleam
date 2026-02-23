@@ -28,10 +28,10 @@ pub fn typ_infer_test() {
 }
 
 pub fn typ_check_test() {
-  c.check(0, [], [], [], typ(0), c.VTyp(1)) |> should.equal(c.VTyp(1))
+  c.check(0, [], [], [], typ(0), c.VTyp(1), s2) |> should.equal(c.VTyp(1))
 
-  c.check(0, [], [], [], typ(1), c.VTyp(0))
-  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(2), c.VTyp(0), s)))
+  c.check(0, [], [], [], typ(1), c.VTyp(0), s2)
+  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(2), c.VTyp(0), s, s2)))
 }
 
 // --- Lit --- \\
@@ -54,21 +54,23 @@ pub fn lit_infer_test() {
 }
 
 pub fn lit_check_test() {
-  c.check(0, [], [], [], lit(c.I32(1)), c.VLitT(c.I32T))
+  c.check(0, [], [], [], lit(c.I32(1)), c.VLitT(c.I32T), s2)
   |> should.equal(c.VLitT(c.I32T))
-  c.check(0, [], [], [], lit(c.I64(1)), c.VLitT(c.I64T))
+  c.check(0, [], [], [], lit(c.I64(1)), c.VLitT(c.I64T), s2)
   |> should.equal(c.VLitT(c.I64T))
-  c.check(0, [], [], [], lit(c.U32(1)), c.VLitT(c.U32T))
+  c.check(0, [], [], [], lit(c.U32(1)), c.VLitT(c.U32T), s2)
   |> should.equal(c.VLitT(c.U32T))
-  c.check(0, [], [], [], lit(c.U64(1)), c.VLitT(c.U64T))
+  c.check(0, [], [], [], lit(c.U64(1)), c.VLitT(c.U64T), s2)
   |> should.equal(c.VLitT(c.U64T))
-  c.check(0, [], [], [], lit(c.F32(1.0)), c.VLitT(c.F32T))
+  c.check(0, [], [], [], lit(c.F32(1.0)), c.VLitT(c.F32T), s2)
   |> should.equal(c.VLitT(c.F32T))
-  c.check(0, [], [], [], lit(c.F64(1.0)), c.VLitT(c.F64T))
+  c.check(0, [], [], [], lit(c.F64(1.0)), c.VLitT(c.F64T), s2)
   |> should.equal(c.VLitT(c.F64T))
 
-  c.check(0, [], [], [], lit(c.I32(1)), c.VLitT(c.I64T))
-  |> should.equal(c.VErr(c.TypeMismatch(c.VLitT(c.I32T), c.VLitT(c.I64T), s)))
+  c.check(0, [], [], [], lit(c.I32(1)), c.VLitT(c.I64T), s2)
+  |> should.equal(
+    c.VErr(c.TypeMismatch(c.VLitT(c.I32T), c.VLitT(c.I64T), s, s2)),
+  )
 }
 
 // --- LitT --- \\
@@ -91,15 +93,15 @@ pub fn litt_infer_test() {
 }
 
 pub fn litt_check_test() {
-  c.check(0, [], [], [], litt(c.I32T), c.VTyp(0)) |> should.equal(c.VTyp(0))
-  c.check(0, [], [], [], litt(c.I64T), c.VTyp(0)) |> should.equal(c.VTyp(0))
-  c.check(0, [], [], [], litt(c.U32T), c.VTyp(0)) |> should.equal(c.VTyp(0))
-  c.check(0, [], [], [], litt(c.U64T), c.VTyp(0)) |> should.equal(c.VTyp(0))
-  c.check(0, [], [], [], litt(c.F32T), c.VTyp(0)) |> should.equal(c.VTyp(0))
-  c.check(0, [], [], [], litt(c.F64T), c.VTyp(0)) |> should.equal(c.VTyp(0))
+  c.check(0, [], [], [], litt(c.I32T), c.VTyp(0), s2) |> should.equal(c.VTyp(0))
+  c.check(0, [], [], [], litt(c.I64T), c.VTyp(0), s2) |> should.equal(c.VTyp(0))
+  c.check(0, [], [], [], litt(c.U32T), c.VTyp(0), s2) |> should.equal(c.VTyp(0))
+  c.check(0, [], [], [], litt(c.U64T), c.VTyp(0), s2) |> should.equal(c.VTyp(0))
+  c.check(0, [], [], [], litt(c.F32T), c.VTyp(0), s2) |> should.equal(c.VTyp(0))
+  c.check(0, [], [], [], litt(c.F64T), c.VTyp(0), s2) |> should.equal(c.VTyp(0))
 
-  c.check(0, [], [], [], litt(c.I32T), c.VTyp(1))
-  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(0), c.VTyp(1), s)))
+  c.check(0, [], [], [], litt(c.I32T), c.VTyp(1), s2)
+  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(0), c.VTyp(1), s, s2)))
 }
 
 // --- Var --- \\
@@ -118,28 +120,28 @@ pub fn var_infer_test() {
 
 pub fn var_check_test() {
   let ctx = [#("x", v32t)]
-  c.check(0, ctx, [], [], var(0), v32t) |> should.equal(v32t)
+  c.check(0, ctx, [], [], var(0), v32t, s2) |> should.equal(v32t)
 
-  c.check(0, ctx, [], [], var(1), v32t)
+  c.check(0, ctx, [], [], var(1), v32t, s2)
   |> should.equal(c.VErr(c.VarUndefined(1, s)))
-  c.check(0, ctx, [], [], var(0), v64t)
-  |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s)))
+  c.check(0, ctx, [], [], var(0), v64t, s2)
+  |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s, s2)))
 }
 
 // --- Ctr --- \\
 pub fn instantiate_ctr_test() {
   let ctr_def = c.CtrDef([], [], i32t)
-  c.instantiate_ctr(0, [], ctr_def, "A", v32t, s)
+  c.instantiate_ctr(0, [], ctr_def, "A", v32t, s2)
   |> should.equal(#([], [], v32t, []))
-  c.instantiate_ctr(0, [], ctr_def, "A", v64t, s)
-  |> should.equal(#([], [], v32t, [c.TypeMismatch(v32t, v64t, s)]))
+  c.instantiate_ctr(0, [], ctr_def, "A", v64t, s2)
+  |> should.equal(#([], [], v32t, [c.TypeMismatch(v32t, v64t, s2, s)]))
 
   let ctr_def = c.CtrDef([], [var(0)], i32t)
-  c.instantiate_ctr(0, [], ctr_def, "A", v32t, s)
+  c.instantiate_ctr(0, [], ctr_def, "A", v32t, s2)
   |> should.equal(#([], [c.VErr(c.VarUndefined(0, s))], v32t, []))
 
   let ctr_def = c.CtrDef(["a"], [var(0)], i32t)
-  c.instantiate_ctr(0, [], ctr_def, "A", v32t, s)
+  c.instantiate_ctr(0, [], ctr_def, "A", v32t, s2)
   |> should.equal(
     #([c.VNeut(c.HMeta(0), [])], [c.VNeut(c.HMeta(0), [])], v32t, [
       c.CtrUnsolvedParam("A", ctr_def, 0, s),
@@ -147,12 +149,12 @@ pub fn instantiate_ctr_test() {
   )
 
   let ctr_def = c.CtrDef(["a"], [var(0)], var(0))
-  c.instantiate_ctr(0, [v64t], ctr_def, "A", v32t, s)
+  c.instantiate_ctr(0, [v64t], ctr_def, "A", v32t, s2)
   |> should.equal(#([v32t, v64t], [v32t], v32t, []))
 
   let ctr_def =
     c.CtrDef(["a", "b"], [var(0), var(1)], ctr("T", [var(0), var(1)]))
-  c.instantiate_ctr(0, [], ctr_def, "A", c.VCtr("T", [v32t, v64t]), s)
+  c.instantiate_ctr(0, [], ctr_def, "A", c.VCtr("T", [v32t, v64t]), s2)
   |> should.equal(#([v32t, v64t], [v32t, v64t], c.VCtr("T", [v32t, v64t]), []))
 }
 
@@ -170,41 +172,41 @@ pub fn ctr_infer_test() {
 
 pub fn ctr_check_test() {
   let tenv = []
-  c.check(0, [], [], tenv, ctr("A", []), v32t)
+  c.check(0, [], [], tenv, ctr("A", []), v32t, s2)
   |> should.equal(c.VErr(c.CtrUndefined("A", s)))
 
   let tenv = [#("A", c.CtrDef([], [], i32t))]
-  c.check(0, [], [], tenv, ctr("A", []), v32t)
+  c.check(0, [], [], tenv, ctr("A", []), v32t, s2)
   |> should.equal(v32t)
-  c.check(0, [], [], tenv, ctr("A", []), v64t)
-  |> should.equal(c.VBad(v32t, [c.TypeMismatch(v32t, v64t, s)]))
+  c.check(0, [], [], tenv, ctr("A", []), v64t, s2)
+  |> should.equal(c.VBad(v32t, [c.TypeMismatch(v32t, v64t, s, s2)]))
 
   let tenv = [#("A", c.CtrDef([], [var(0)], i32t))]
-  c.check(0, [], [], tenv, ctr("A", [i32(1)]), v32t)
+  c.check(0, [], [], tenv, ctr("A", [i32(1)]), v32t, s2)
   |> should.equal(c.VBad(v32t, [c.VarUndefined(0, s)]))
 
   let tenv = [#("A", c.CtrDef(["a"], [var(0)], var(0)))]
-  c.check(0, [], [], tenv, ctr("A", [i32(1)]), v32t)
+  c.check(0, [], [], tenv, ctr("A", [i32(1)]), v32t, s2)
   |> should.equal(v32t)
 
   let ctr_def = c.CtrDef([], [], i32t)
   let tenv = [#("A", ctr_def)]
-  c.check(0, [], [], tenv, ctr("A", [i32(1)]), v32t)
+  c.check(0, [], [], tenv, ctr("A", [i32(1)]), v32t, s2)
   |> should.equal(c.VBad(v32t, [c.CtrTooManyArgs("A", 1, ctr_def, s)]))
 
   let ctr_def = c.CtrDef([], [i64t], i32t)
   let tenv = [#("A", ctr_def)]
-  c.check(0, [], [], tenv, ctr("A", []), v32t)
+  c.check(0, [], [], tenv, ctr("A", []), v32t, s2)
   |> should.equal(c.VBad(v32t, [c.CtrTooFewArgs("A", 0, ctr_def, s)]))
 
   let ctr_def = c.CtrDef(["a", "b"], [var(0), var(1)], var(0))
   let tenv = [#("A", ctr_def)]
-  c.check(0, [], [], tenv, ctr("A", [i32(1), i64(2)]), v32t)
+  c.check(0, [], [], tenv, ctr("A", [i32(1), i64(2)]), v32t, s2)
   |> should.equal(c.VBad(v32t, [c.CtrUnsolvedParam("A", ctr_def, 1, s)]))
 
   let ctr_def = c.CtrDef(["a", "b"], [var(0), var(1)], var(1))
   let tenv = [#("A", ctr_def)]
-  c.check(0, [], [], tenv, ctr("A", [i32(1), i64(2)]), v64t)
+  c.check(0, [], [], tenv, ctr("A", [i32(1), i64(2)]), v64t, s2)
   |> should.equal(c.VBad(v64t, [c.CtrUnsolvedParam("A", ctr_def, 0, s)]))
 
   let ctr_def =
@@ -212,7 +214,7 @@ pub fn ctr_check_test() {
   let tenv = [#("Ctr2", ctr_def)]
   let term = ctr("Ctr2", [i32(1), i64(2)])
   let ty = c.VCtr("T", [v32t, v64t])
-  c.check(0, [], [], tenv, term, ty) |> should.equal(ty)
+  c.check(0, [], [], tenv, term, ty, s2) |> should.equal(ty)
 }
 
 // --- Rcd --- \\
@@ -233,14 +235,18 @@ pub fn rcd_infer_test() {
 }
 
 pub fn rcd_check_test() {
-  c.check(0, [], [], [], rcd([]), c.VRcd([])) |> should.equal(c.VRcd([]))
-  c.check(0, [], [], [], rcd([#("a", i32(1))]), c.VRcd([#("a", v32t)]))
+  c.check(0, [], [], [], rcd([]), c.VRcd([]), s2) |> should.equal(c.VRcd([]))
+  c.check(0, [], [], [], rcd([#("a", i32(1))]), c.VRcd([#("a", v32t)]), s2)
   |> should.equal(c.VRcd([#("a", v32t)]))
   let ty = c.VRcd([#("a", v32t), #("b", v64t)])
-  c.check(0, [], [], [], rcd([#("a", i32(1)), #("b", i64(2))]), ty)
+  c.check(0, [], [], [], rcd([#("a", i32(1)), #("b", i64(2))]), ty, s2)
   |> should.equal(ty)
-  c.check(0, [], [], [], rcd([#("b", i64(2)), #("a", i32(1))]), ty)
+  c.check(0, [], [], [], rcd([#("b", i64(2)), #("a", i32(1))]), ty, s2)
   |> should.equal(ty)
+  c.check(0, [], [], [], rcd([#("a", i32(1)), #("b", i64(2))]), c.VRcd([]), s2)
+  |> should.equal(c.VErr(c.RcdMissingFields(["a", "b"], s)))
+  c.check(0, [], [], [], rcd([]), c.VRcd([#("a", v32t), #("b", v64t)]), s2)
+  |> should.equal(c.VErr(c.RcdMissingFields(["a", "b"], s)))
 }
 
 // --- Dot --- \\
@@ -270,9 +276,9 @@ pub fn dot_infer_test() {
 
 pub fn dot_check_test() {
   let record = rcd([#("a", i32(1)), #("b", i64(2))])
-  c.check(0, [], [], [], dot(record, "a"), v32t)
+  c.check(0, [], [], [], dot(record, "a"), v32t, s2)
   |> should.equal(v32t)
-  c.check(0, [], [], [], dot(record, "b"), v64t)
+  c.check(0, [], [], [], dot(record, "b"), v64t, s2)
   |> should.equal(v64t)
 }
 
@@ -286,22 +292,22 @@ pub fn ann_infer_test() {
   c.infer(0, [], [], [], ann(i32(1), i32t))
   |> should.equal(v32t)
 
-  c.infer(0, [], [], [], ann(i32t, i32(1)))
-  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(0), v32(1), s)))
+  c.infer(0, [], [], [], ann(i32t, i32_2(1)))
+  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(0), v32(1), s, s2)))
 
   c.infer(0, [], [], [], ann(typ(0), typ(1)))
   |> should.equal(c.VTyp(1))
 
-  c.infer(0, [], [], [], ann(typ(1), typ(0)))
-  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(2), c.VTyp(0), s)))
+  c.infer(0, [], [], [], ann(typ(1), c.Term(c.Typ(0), s2)))
+  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(2), c.VTyp(0), s, s2)))
 }
 
 pub fn ann_check_test() {
-  c.check(0, [], [], [], ann(i32(1), i32t), v32t)
+  c.check(0, [], [], [], ann(i32(1), i32t), v32t, s2)
   |> should.equal(v32t)
 
-  c.check(0, [], [], [], ann(i32(1), i32t), v64t)
-  |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s)))
+  c.check(0, [], [], [], ann(i32(1), i32t), v64t, s2)
+  |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s, s2)))
 }
 
 // --- Lam --- \\
@@ -317,10 +323,10 @@ pub fn lam_infer_test() {
 
 pub fn lam_check_test() {
   let ty = c.VPi("x", [], c.VTyp(0), typ(0))
-  c.check(0, [], [], [], lam("x", var(0)), ty)
+  c.check(0, [], [], [], lam("x", var(0)), ty, s2)
   |> should.equal(ty)
 
-  c.check(0, [], [], [], lam("y", var(0)), c.VTyp(0))
+  c.check(0, [], [], [], lam("y", var(0)), c.VTyp(0), s2)
   |> should.equal(c.VErr(c.TypeAnnotationNeeded(lam("y", var(0)))))
 }
 
@@ -341,11 +347,11 @@ pub fn pi_infer_test() {
 
 pub fn pi_check_test() {
   let term = pi("x", typ(0), typ(1))
-  c.check(0, [], [], [], term, c.VTyp(0))
+  c.check(0, [], [], [], term, c.VTyp(0), s2)
   |> should.equal(c.VTyp(0))
 
-  c.check(0, [], [], [], term, c.VTyp(1))
-  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(0), c.VTyp(1), s)))
+  c.check(0, [], [], [], term, c.VTyp(1), s2)
+  |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(0), c.VTyp(1), s, s2)))
 }
 
 // --- App --- \\
@@ -393,7 +399,7 @@ pub fn app_infer_test() {
   c.infer(0, ctx, [], [], var(0)) |> should.equal(ty)
   c.infer(0, ctx, [], [], app(var(0), i32(1))) |> should.equal(v32t)
   c.infer(0, ctx, [], [], app(var(0), i64(1)))
-  |> should.equal(c.VBad(v32t, [c.TypeMismatch(v64t, v32t, s)]))
+  |> should.equal(c.VBad(v32t, [c.TypeMismatch(v64t, v32t, s, s2)]))
 
   let ty = c.VPi("x", [], v32t, i64t)
   let ctx = [#("f", ty)]
@@ -404,17 +410,17 @@ pub fn app_infer_test() {
 pub fn app_check_test() {
   let ty = c.VPi("x", [], v32t, i32t)
   let ctx = [#("f", ty)]
-  c.check(0, ctx, [], [], app(var(0), i32(1)), v32t)
+  c.check(0, ctx, [], [], app(var(0), i32(1)), v32t, s2)
   |> should.equal(v32t)
-  c.check(0, ctx, [], [], app(var(0), i32(1)), v64t)
-  |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s)))
+  c.check(0, ctx, [], [], app(var(0), i32(1)), v64t, s2)
+  |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s, s2)))
 
   let ty = c.VPi("x", [], v32t, i64t)
   let ctx = [#("f", ty)]
-  c.check(0, ctx, [], [], app(var(0), i32(1)), v64t)
+  c.check(0, ctx, [], [], app(var(0), i32(1)), v64t, s2)
   |> should.equal(v64t)
-  c.check(0, ctx, [], [], app(var(0), i32(1)), v32t)
-  |> should.equal(c.VErr(c.TypeMismatch(v64t, v32t, s)))
+  c.check(0, ctx, [], [], app(var(0), i32(1)), v32t, s2)
+  |> should.equal(c.VErr(c.TypeMismatch(v64t, v32t, s, s2)))
 }
 
 // --- Match --- \\
@@ -468,45 +474,55 @@ pub fn match_eval_test() {
 }
 
 pub fn bind_pattern_test() {
-  c.bind_pattern(0, [], [], [], c.PAny, v32t, s) |> should.equal(#(0, [], []))
-  c.bind_pattern(0, [], [], [], pvar("a"), v32t, s)
+  c.bind_pattern(0, [], [], [], c.PAny, v32t, s, s2)
+  |> should.equal(#(0, [], []))
+  c.bind_pattern(0, [], [], [], pvar("a"), v32t, s, s2)
   |> should.equal(#(1, [#("a", v32t)], []))
 
-  c.bind_pattern(0, [], [], [], c.PTyp(0), c.VTyp(0), s)
-  |> should.equal(#(0, [], [c.TypeMismatch(c.VTyp(1), c.VTyp(0), s)]))
-  c.bind_pattern(0, [], [], [], c.PTyp(0), c.VTyp(1), s)
+  c.bind_pattern(0, [], [], [], c.PTyp(0), c.VTyp(0), s, s2)
+  |> should.equal(#(0, [], [c.TypeMismatch(c.VTyp(1), c.VTyp(0), s, s2)]))
+  c.bind_pattern(0, [], [], [], c.PTyp(0), c.VTyp(1), s, s2)
   |> should.equal(#(0, [], []))
 
-  c.bind_pattern(0, [], [], [], c.PLit(c.I32(1)), c.VTyp(0), s)
-  |> should.equal(#(0, [], [c.TypeMismatch(v32t, c.VTyp(0), s)]))
-  c.bind_pattern(0, [], [], [], c.PLit(c.I32(1)), v32t, s)
+  c.bind_pattern(0, [], [], [], c.PLit(c.I32(1)), c.VTyp(0), s, s2)
+  |> should.equal(#(0, [], [c.TypeMismatch(v32t, c.VTyp(0), s, s2)]))
+  c.bind_pattern(0, [], [], [], c.PLit(c.I32(1)), v32t, s, s2)
   |> should.equal(#(0, [], []))
 
-  c.bind_pattern(0, [], [], [], c.PCtr("A", []), v32t, s)
+  c.bind_pattern(0, [], [], [], c.PCtr("A", []), v32t, s, s2)
   |> should.equal(#(0, [], [c.CtrUndefined("A", s)]))
 
   let tenv = [#("A", c.CtrDef([], [], i32t))]
-  c.bind_pattern(0, [], [], tenv, c.PCtr("A", []), v32t, s)
+  c.bind_pattern(0, [], [], tenv, c.PCtr("A", []), v32t, s, s2)
   |> should.equal(#(0, [], []))
 
   let ctr_def = c.CtrDef([], [], i32t)
   let tenv = [#("A", ctr_def)]
-  c.bind_pattern(0, [], [], tenv, c.PCtr("A", [pvar("a")]), v32t, s)
+  c.bind_pattern(0, [], [], tenv, c.PCtr("A", [pvar("a")]), v32t, s, s2)
   |> should.equal(#(0, [], [c.CtrTooManyArgs("A", 1, ctr_def, s)]))
 
   let ctr_def = c.CtrDef([], [i64t], i32t)
   let tenv = [#("A", ctr_def)]
-  c.bind_pattern(0, [], [], tenv, c.PCtr("A", []), v32t, s)
+  c.bind_pattern(0, [], [], tenv, c.PCtr("A", []), v32t, s, s2)
   |> should.equal(#(0, [], [c.CtrTooFewArgs("A", 0, ctr_def, s)]))
 
   let ctr_def = c.CtrDef(["a"], [var(0)], var(0))
   let tenv = [#("A", ctr_def)]
-  c.bind_pattern(0, [], [], tenv, c.PCtr("A", [pvar("x")]), v32t, s)
+  c.bind_pattern(0, [], [], tenv, c.PCtr("A", [pvar("x")]), v32t, s, s2)
   |> should.equal(#(1, [#("x", v32t)], []))
 
   let ctr_def = c.CtrDef(["a", "b"], [var(0), var(1)], var(0))
   let tenv = [#("A", ctr_def)]
-  c.bind_pattern(0, [], [], tenv, c.PCtr("A", [pvar("x"), pvar("y")]), v32t, s)
+  c.bind_pattern(
+    0,
+    [],
+    [],
+    tenv,
+    c.PCtr("A", [pvar("x"), pvar("y")]),
+    v32t,
+    s,
+    s2,
+  )
   |> should.equal(
     #(2, [#("y", c.VNeut(c.HMeta(1), [])), #("x", v32t)], [
       c.CtrUnsolvedParam("A", ctr_def, 1, s),
@@ -515,28 +531,37 @@ pub fn bind_pattern_test() {
 
   let ctr_def = c.CtrDef(["a", "b"], [var(0), var(1)], var(1))
   let tenv = [#("A", ctr_def)]
-  c.bind_pattern(0, [], [], tenv, c.PCtr("A", [pvar("x"), pvar("y")]), v32t, s)
+  c.bind_pattern(
+    0,
+    [],
+    [],
+    tenv,
+    c.PCtr("A", [pvar("x"), pvar("y")]),
+    v32t,
+    s,
+    s2,
+  )
   |> should.equal(
     #(2, [#("y", v32t), #("x", c.VNeut(c.HMeta(0), []))], [
       c.CtrUnsolvedParam("A", ctr_def, 0, s),
     ]),
   )
 
-  c.bind_pattern(0, [], [], [], c.PRcd([]), v32t, s)
-  |> should.equal(#(0, [], [c.TypeMismatch(c.VRcd([]), v32t, s)]))
+  c.bind_pattern(0, [], [], [], c.PRcd([]), v32t, s, s2)
+  |> should.equal(#(0, [], [c.TypeMismatch(c.VRcd([]), v32t, s, s2)]))
 
-  c.bind_pattern(0, [], [], [], c.PRcd([]), c.VRcd([]), s)
+  c.bind_pattern(0, [], [], [], c.PRcd([]), c.VRcd([]), s, s2)
   |> should.equal(#(0, [], []))
 
-  c.bind_pattern(0, [], [], [], c.PRcd([]), c.VRcd([#("a", v32(1))]), s)
+  c.bind_pattern(0, [], [], [], c.PRcd([]), c.VRcd([#("a", v32(1))]), s, s2)
   |> should.equal(#(0, [], []))
 
-  c.bind_pattern(0, [], [], [], c.PRcd([#("a", pvar("x"))]), c.VRcd([]), s)
-  |> should.equal(#(1, [#("x", c.VErr(c.RcdMissingField([], "a", s)))], []))
+  c.bind_pattern(0, [], [], [], c.PRcd([#("a", pvar("x"))]), c.VRcd([]), s, s2)
+  |> should.equal(#(1, [#("x", c.VErr(c.RcdMissingFields(["a"], s)))], []))
 
   let p = c.PRcd([#("a", pvar("x"))])
   let v = c.VRcd([#("a", v32(1))])
-  c.bind_pattern(0, [], [], [], p, v, s)
+  c.bind_pattern(0, [], [], [], p, v, s, s2)
   |> should.equal(#(1, [#("x", v32(1))], []))
 }
 
@@ -549,35 +574,35 @@ pub fn match_infer_test() {
 
   let term = match(i32(1), [case_(c.PAny, i64(2)), case_(c.PAny, typ(0))])
   c.infer(0, [], [], [], term)
-  |> should.equal(c.VBad(v64t, [c.TypeMismatch(c.VTyp(1), v64t, s)]))
+  |> should.equal(c.VBad(v64t, [c.TypeMismatch(c.VTyp(1), v64t, s, s2)]))
 
   c.infer(0, [], [], [], match(i32(1), [case_(pvar("a"), var(0))]))
   |> should.equal(v32t)
 }
 
 pub fn match_check_test() {
-  c.check(0, [], [], [], match(i32(1), []), v64t)
+  c.check(0, [], [], [], match(i32(1), []), v64t, s2)
   |> should.equal(c.VErr(c.MatchEmpty(v32t, s)))
 
-  c.check(0, [], [], [], match(i32(1), [case_(c.PAny, i64(2))]), v64t)
+  c.check(0, [], [], [], match(i32(1), [case_(c.PAny, i64(2))]), v64t, s2)
   |> should.equal(v64t)
 
-  c.check(0, [], [], [], match(i32(1), [case_(c.PAny, i64(2))]), c.VTyp(0))
-  |> should.equal(c.VErr(c.TypeMismatch(v64t, c.VTyp(0), s)))
+  c.check(0, [], [], [], match(i32(1), [case_(c.PAny, i64(2))]), c.VTyp(0), s2)
+  |> should.equal(c.VErr(c.TypeMismatch(v64t, c.VTyp(0), s, s2)))
 
   let term = match(i32(1), [case_(c.PAny, i64(2)), case_(c.PAny, typ(0))])
-  c.check(0, [], [], [], term, v64t)
-  |> should.equal(c.VBad(v64t, [c.TypeMismatch(c.VTyp(1), v64t, s)]))
+  c.check(0, [], [], [], term, v64t, s2)
+  |> should.equal(c.VBad(v64t, [c.TypeMismatch(c.VTyp(1), v64t, s, s2)]))
 
   let term = match(i32(1), [case_(c.PAny, i64(2)), case_(c.PAny, typ(0))])
-  c.check(0, [], [], [], term, c.VTyp(2))
-  |> should.equal(c.VErr(c.TypeMismatch(v64t, c.VTyp(2), s)))
+  c.check(0, [], [], [], term, c.VTyp(2), s2)
+  |> should.equal(c.VErr(c.TypeMismatch(v64t, c.VTyp(2), s, s2)))
 
-  c.check(0, [], [], [], match(i32(1), [case_(pvar("a"), var(0))]), v32t)
+  c.check(0, [], [], [], match(i32(1), [case_(pvar("a"), var(0))]), v32t, s2)
   |> should.equal(v32t)
 
-  c.check(0, [], [], [], match(i32(1), [case_(pvar("a"), var(0))]), v64t)
-  |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s)))
+  c.check(0, [], [], [], match(i32(1), [case_(pvar("a"), var(0))]), v64t, s2)
+  |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s, s2)))
 }
 
 // --- Bad --- \\
@@ -588,6 +613,8 @@ pub fn match_check_test() {
 
 // --- HELPERS to make writing ASTs less painful ---
 const s = c.Span("core_test", 1, 1)
+
+const s2 = c.Span("core_test", 2, 2)
 
 fn typ(l) {
   c.Term(c.Typ(l), s)
@@ -603,6 +630,10 @@ fn litt(t) {
 
 fn i32(v) {
   lit(c.I32(v))
+}
+
+fn i32_2(v) {
+  c.Term(c.Lit(c.I32(v)), s2)
 }
 
 fn i64(v) {
