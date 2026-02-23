@@ -182,38 +182,37 @@ pub fn ctr_check_test() {
   let tenv = [#("UndefVarInCtr", c.CtrDef([], [var(0)], i32t))]
   c.check(0, [], [], tenv, ctr("UndefVarInCtr", [i32(1)]), v32t)
   |> should.equal(c.VBad(v32t, [c.VarUndefined(0, s)]))
-  todo
-  // let tenv = [#("Ctr1", c.CtrDef(["a"], [var(0)], var(0)))]
-  // c.check(0, [], [], tenv, ctr("Ctr1", [i32(1)]), v32t)
-  // |> should.equal(v32t)
+  let tenv = [#("Ctr1", c.CtrDef(["a"], [var(0)], var(0)))]
+  c.check(0, [], [], tenv, ctr("Ctr1", [i32(1)]), v32t)
+  |> should.equal(v32t)
 
-  // let ctr_def = c.CtrDef(["a"], [var(0)], var(0))
-  // let tenv = [#("TooFewArgs", ctr_def)]
-  // c.check(0, [], [], tenv, ctr("TooFewArgs", []), v32t)
-  // |> should.equal(c.VBad(v32t, [c.CtrTooFewArgs("TooFewArgs", [], ctr_def, s)]))
+  let ctr_def = c.CtrDef(["a"], [var(0)], var(0))
+  let tenv = [#("TooFewArgs", ctr_def)]
+  c.check(0, [], [], tenv, ctr("TooFewArgs", []), v32t)
+  |> should.equal(c.VBad(v32t, [c.CtrTooFewArgs("TooFewArgs", [], ctr_def, s)]))
 
-  // let ctr_def = c.CtrDef(["a"], [], var(0))
-  // let tenv = [#("TooManyArgs", ctr_def)]
-  // c.check(0, [], [], tenv, ctr("TooManyArgs", [i32(1)]), v32t)
-  // |> should.equal(
-  //   c.VBad(v32t, [c.CtrTooManyArgs("TooManyArgs", [i32(1)], ctr_def, s)]),
-  // )
+  let ctr_def = c.CtrDef(["a"], [], var(0))
+  let tenv = [#("TooManyArgs", ctr_def)]
+  c.check(0, [], [], tenv, ctr("TooManyArgs", [i32(1)]), v32t)
+  |> should.equal(
+    c.VBad(v32t, [c.CtrTooManyArgs("TooManyArgs", [i32(1)], ctr_def, s)]),
+  )
 
-  // let ctr_def = c.CtrDef(["a", "b"], [var(0), var(1)], var(0))
-  // let tenv = [#("Unsolved", ctr_def)]
-  // c.check(0, [], [], tenv, ctr("Unsolved", [i32(1), i32(2)]), v32t)
-  // |> should.equal(
-  //   c.VBad(v32t, [
-  //     c.CtrUnsolvedParam("Unsolved", [i32(1), i32(2)], ctr_def, id: 1, span: s),
-  //   ]),
-  // )
+  let ctr_def = c.CtrDef(["a", "b"], [var(0), var(1)], var(0))
+  let tenv = [#("Unsolved", ctr_def)]
+  c.check(0, [], [], tenv, ctr("Unsolved", [i32(1), i32(2)]), v32t)
+  |> should.equal(
+    c.VBad(v32t, [
+      c.CtrUnsolvedParam("Unsolved", ctr_def, id: 1, span: s),
+    ]),
+  )
 
-  // let ctr_def =
-  //   c.CtrDef(["a", "b"], [var(0), var(1)], ctr("T", [var(0), var(1)]))
-  // let tenv = [#("Ctr2", ctr_def)]
-  // let term = ctr("Ctr2", [i32(1), i64(2)])
-  // let ty = c.VCtr("T", [v32t, v64t])
-  // c.check(0, [], [], tenv, term, ty) |> should.equal(ty)
+  let ctr_def =
+    c.CtrDef(["a", "b"], [var(0), var(1)], ctr("T", [var(0), var(1)]))
+  let tenv = [#("Ctr2", ctr_def)]
+  let term = ctr("Ctr2", [i32(1), i64(2)])
+  let ty = c.VCtr("T", [v32t, v64t])
+  c.check(0, [], [], tenv, term, ty) |> should.equal(ty)
 }
 
 // --- Rcd --- \\
