@@ -114,6 +114,7 @@ pub type Error {
   RcdMissingField(names: List(String), missing: String, span: Span)
   DotNotFound(name: String, fields: List(#(String, Value)), span: Span)
   DotOnNonRecord(value: Value, name: String, span: Span)
+  MatchEmpty(arg: Value, span: Span)
 
   // Exhaustiveness errors
   NonExhaustiveMatch(missing: List(Pattern), span: Span)
@@ -557,7 +558,7 @@ fn infer_match(
       #(body_ty, errors)
     })
   let first_ty = case results {
-    [] -> VErr(TODO("Empty match", s))
+    [] -> VErr(MatchEmpty(arg_ty, s))
     [#(ty, _), ..] -> ty
   }
   let #(final_ty, errors) =

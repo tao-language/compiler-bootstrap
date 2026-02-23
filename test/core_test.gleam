@@ -541,24 +541,18 @@ pub fn bind_pattern_test() {
 }
 
 pub fn match_infer_test() {
-  let cat_ty = typ(0)
-  let tenv = [
-    #("A", c.CtrDef([], [], cat_ty)),
-    #("B", c.CtrDef([], [], cat_ty)),
-    #("C", c.CtrDef([], [], cat_ty)),
-  ]
+  c.infer(0, [], [], [], match(i32(1), []))
+  |> should.equal(c.VErr(c.MatchEmpty(v32t, s)))
 
-  // Pattern match assigning "kibble portions" based on the cat
-  let match_expr =
-    match(ann(ctr("C", []), cat_ty), [
-      c.Case(c.PCtr("A", []), lit(c.I32(1)), s),
-      c.Case(c.PCtr("B", []), lit(c.I32(2)), s),
-      c.Case(c.PCtr("C", []), lit(c.I32(100)), s),
-      // Accommodating the insatiable hunger!
-    ])
+  c.infer(0, [], [], [], match(i32(1), [case_(c.PAny, i64(2))]))
+  |> should.equal(v64t)
 
-  c.infer(0, [], [], tenv, match_expr)
-  |> should.equal(c.VLitT(c.I32T))
+  let term = match(i32(1), [case_(c.PAny, i64(2)), case_(c.PAny, typ(0))])
+  c.infer(0, [], [], [], term)
+  |> should.equal(c.VBad(v64t, [c.TypeMismatch(c.VTyp(1), v64t, s)]))
+
+  c.infer(0, [], [], [], match(i32(1), [case_(pvar("a"), var(0))]))
+  |> should.equal(v32t)
 }
 
 pub fn match_check_test() {
