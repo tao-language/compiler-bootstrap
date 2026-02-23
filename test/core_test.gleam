@@ -521,7 +521,23 @@ pub fn bind_pattern_test() {
       c.CtrUnsolvedParam("A", ctr_def, 0, s),
     ]),
   )
-  // TODO: PRcd
+
+  c.bind_pattern(0, [], [], [], c.PRcd([]), v32t, s)
+  |> should.equal(#(0, [], [c.TypeMismatch(c.VRcd([]), v32t, s)]))
+
+  c.bind_pattern(0, [], [], [], c.PRcd([]), c.VRcd([]), s)
+  |> should.equal(#(0, [], []))
+
+  c.bind_pattern(0, [], [], [], c.PRcd([]), c.VRcd([#("a", v32(1))]), s)
+  |> should.equal(#(0, [], []))
+
+  c.bind_pattern(0, [], [], [], c.PRcd([#("a", pvar("x"))]), c.VRcd([]), s)
+  |> should.equal(#(1, [#("x", c.VErr(c.RcdMissingField([], "a", s)))], []))
+
+  let p = c.PRcd([#("a", pvar("x"))])
+  let v = c.VRcd([#("a", v32(1))])
+  c.bind_pattern(0, [], [], [], p, v, s)
+  |> should.equal(#(1, [#("x", v32(1))], []))
 }
 
 pub fn match_infer_test() {

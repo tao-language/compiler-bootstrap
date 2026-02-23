@@ -111,6 +111,7 @@ pub type Error {
   CtrTooManyArgs(tag: String, nargs: Int, ctr: CtrDef, span: Span)
   CtrTooFewArgs(tag: String, nargs: Int, ctr: CtrDef, span: Span)
   CtrUnsolvedParam(tag: String, ctr: CtrDef, id: Int, span: Span)
+  RcdMissingField(names: List(String), missing: String, span: Span)
   DotNotFound(name: String, fields: List(#(String, Value)), span: Span)
   DotOnNonRecord(value: Value, name: String, span: Span)
 
@@ -628,18 +629,19 @@ pub fn bind_pattern(
     }
     PRcd(pfields) -> {
       case expected_ty {
-        VRcd(f_tys) -> {
+        VRcd(vfields) -> {
           list.fold(pfields, #(lvl, ctx, []), fn(acc, field) {
             let #(lvl, ctx, errors) = acc
-            let #(label, p) = field
-            case list.key_find(f_tys, label) {
-              Ok(f_ty) -> {
+            let #(name, p) = field
+            case list.key_find(vfields, name) {
+              Ok(v) -> {
                 let #(lvl, ctx, bind_errors) =
-                  bind_pattern(lvl, ctx, env, tenv, p, f_ty, s)
+                  bind_pattern(lvl, ctx, env, tenv, p, v, s)
                 #(lvl, ctx, list.append(errors, bind_errors))
               }
               Error(Nil) -> {
-                let err = TODO("Missing field", s)
+                let names = list.map(vfields, fn(kv) { kv.0 })
+                let err = RcdMissingField(names, missing: name, span: s)
                 let #(lvl, ctx, bind_errors) =
                   bind_pattern(lvl, ctx, env, tenv, p, VErr(err), s)
                 #(lvl, ctx, list.append(errors, bind_errors))
