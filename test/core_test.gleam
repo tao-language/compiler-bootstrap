@@ -128,7 +128,32 @@ pub fn var_check_test() {
 
 // --- Ctr --- \\
 pub fn instantiate_ctr_test() {
-  todo
+  let ctr_def = c.CtrDef([], [], i32t)
+  c.instantiate_ctr(0, [], ctr_def, "A", v32t, s)
+  |> should.equal(#([], [], v32t, []))
+  c.instantiate_ctr(0, [], ctr_def, "A", v64t, s)
+  |> should.equal(#([], [], v32t, [c.TypeMismatch(v32t, v64t, s)]))
+
+  let ctr_def = c.CtrDef([], [var(0)], i32t)
+  c.instantiate_ctr(0, [], ctr_def, "A", v32t, s)
+  |> should.equal(#([], [c.VErr(c.VarUndefined(0, s))], v32t, []))
+
+  let ctr_def = c.CtrDef(["a"], [var(0)], i32t)
+  c.instantiate_ctr(0, [], ctr_def, "A", v32t, s)
+  |> should.equal(
+    #([c.VNeut(c.HMeta(0), [])], [c.VNeut(c.HMeta(0), [])], v32t, [
+      c.CtrUnsolvedParam("A", ctr_def, 0, s),
+    ]),
+  )
+
+  let ctr_def = c.CtrDef(["a"], [var(0)], var(0))
+  c.instantiate_ctr(0, [v64t], ctr_def, "A", v32t, s)
+  |> should.equal(#([v32t, v64t], [v32t], v32t, []))
+
+  let ctr_def =
+    c.CtrDef(["a", "b"], [var(0), var(1)], ctr("T", [var(0), var(1)]))
+  c.instantiate_ctr(0, [], ctr_def, "A", c.VCtr("T", [v32t, v64t]), s)
+  |> should.equal(#([v32t, v64t], [v32t, v64t], c.VCtr("T", [v32t, v64t]), []))
 }
 
 pub fn ctr_eval_test() {

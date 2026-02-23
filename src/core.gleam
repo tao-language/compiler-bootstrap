@@ -110,13 +110,7 @@ pub type Error {
   CtrUndefined(tag: String, span: Span)
   CtrTooManyArgs(tag: String, args: List(Term), ctr: CtrDef, span: Span)
   CtrTooFewArgs(tag: String, args: List(Term), ctr: CtrDef, span: Span)
-  CtrUnsolvedParam(
-    tag: String,
-    args: List(Term),
-    ctr: CtrDef,
-    id: Int,
-    span: Span,
-  )
+  CtrUnsolvedParam(tag: String, ctr: CtrDef, id: Int, span: Span)
   DotNotFound(name: String, fields: List(#(String, Value)), span: Span)
   DotOnNonRecord(value: Value, name: String, span: Span)
 
@@ -589,22 +583,24 @@ pub fn bind_pattern(
   env: Env,
   tenv: TypeEnv,
   pattern: Pattern,
-  arg_ty: Value,
+  expected_ty: Value,
   s: Span,
 ) -> #(Int, Context, List(Error)) {
   case pattern {
     PAny -> #(lvl, ctx, [])
-    PAs(p, name) ->
-      bind_pattern(lvl + 1, [#(name, arg_ty), ..ctx], env, tenv, p, arg_ty, s)
+    PAs(p, name) -> {
+      let ctx = [#(name, expected_ty), ..ctx]
+      bind_pattern(lvl + 1, ctx, env, tenv, p, expected_ty, s)
+    }
     PTyp(k) -> {
       let errors =
-        check(lvl, ctx, env, tenv, Term(Typ(k), s), arg_ty)
+        check(lvl, ctx, env, tenv, Term(Typ(k), s), expected_ty)
         |> list_errors
       #(lvl, ctx, errors)
     }
     PLit(k) -> {
       let errors =
-        check(lvl, ctx, env, tenv, Term(Lit(k), s), arg_ty)
+        check(lvl, ctx, env, tenv, Term(Lit(k), s), expected_ty)
         |> list_errors
       #(lvl, ctx, errors)
     }
@@ -613,7 +609,7 @@ pub fn bind_pattern(
         Error(Nil) -> #(lvl, ctx, [CtrUndefined(tag, s)])
         Ok(ctr) -> {
           let #(env, args_ty, _, inst_errors) =
-            instantiate_ctr(lvl, env, ctr, tag, arg_ty, s)
+            instantiate_ctr(lvl, env, ctr, tag, expected_ty, s)
           list.fold(
             list.zip(pargs, args_ty),
             #(lvl, ctx, inst_errors),
@@ -743,7 +739,7 @@ fn check_list(
   })
 }
 
-fn instantiate_ctr(
+pub fn instantiate_ctr(
   lvl: Int,
   env: Env,
   ctr: CtrDef,
@@ -752,42 +748,27 @@ fn instantiate_ctr(
   s: Span,
 ) -> #(Env, List(Value), Value, List(Error)) {
   let params = list.index_map(ctr.params, fn(_, i) { VNeut(HMeta(i), []) })
-  let template_env = list.append(params, env)
-  let ctr_ret_ty = eval(template_env, ctr.ret_ty)
-
-  // 1. Unify, but gracefully degrade to an empty subst on failure
+  let ctr_ret_ty = eval(list.append(params, env), ctr.ret_ty)
   let #(sub, unify_errors) = case unify(lvl, [], ctr_ret_ty, expected_ty, s) {
-    Ok(s) -> #(s, [])
+    Ok(sub) -> #(sub, [])
     Error(e) -> #([], [e])
-    // Keep going! We just carry the error forward.
   }
-
-  // 2. Build the solved parameters, substituting HMetas for missing ones
   let #(params_solved, param_errors) =
     list.index_fold(ctr.params, #([], []), fn(acc, _, i) {
-      let #(p_acc, e_acc) = acc
+      let #(acc_params, acc_errors) = acc
       case list.key_find(sub, i) {
-        Ok(val) -> #([val, ..p_acc], e_acc)
-        Error(Nil) -> {
-          // Recovery: Leave it as an HMeta so eval doesn't crash, but record the error
-          let err = CtrUnsolvedParam(tag, [], ctr, i, s)
-          #([VNeut(HMeta(i), []), ..p_acc], [err, ..e_acc])
-        }
+        Ok(val) -> #(list.append(acc_params, [val]), acc_errors)
+        Error(Nil) -> #(
+          list.append(acc_params, [VNeut(HMeta(i), [])]),
+          list.append(acc_errors, [CtrUnsolvedParam(tag, ctr, i, s)]),
+        )
       }
     })
-
-  // (index_fold with consing builds lists backwards, so we reverse them)
-  let params_solved = list.reverse(params_solved)
-  let param_errors = list.reverse(param_errors)
-
-  // 3. Evaluate the final types using whatever we managed to solve
   let env_solved = list.append(params_solved, env)
   let args_ty = list.map(ctr.args, eval(env_solved, _))
   let final_ty = eval(env_solved, ctr.ret_ty)
-
-  let all_inst_errors = list.append(unify_errors, param_errors)
-
-  #(env_solved, args_ty, final_ty, all_inst_errors)
+  let errors = list.append(unify_errors, param_errors)
+  #(env_solved, args_ty, final_ty, errors)
 }
 
 fn with_errors(value: Value, errors: List(Error)) -> Value {
