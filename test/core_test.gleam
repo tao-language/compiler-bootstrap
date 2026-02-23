@@ -556,27 +556,28 @@ pub fn match_infer_test() {
 }
 
 pub fn match_check_test() {
-  let cat_ty = typ(0)
-  let tenv = [
-    #("A", c.CtrDef([], [], cat_ty)),
-    #("B", c.CtrDef([], [], cat_ty)),
-    #("C", c.CtrDef([], [], cat_ty)),
-  ]
+  c.check(0, [], [], [], match(i32(1), []), v64t)
+  |> should.equal(c.VErr(c.MatchEmpty(v32t, s)))
 
-  let match_expr =
-    match(ann(ctr("C", []), cat_ty), [
-      c.Case(c.PCtr("A", []), lit(c.I32(1)), s),
-      c.Case(c.PCtr("B", []), lit(c.I32(2)), s),
-      c.Case(c.PCtr("C", []), lit(c.I32(100)), s),
-    ])
+  c.check(0, [], [], [], match(i32(1), [case_(c.PAny, i64(2))]), v64t)
+  |> should.equal(v64t)
 
-  // Valid bidirectional check
-  c.check(0, [], [], tenv, match_expr, c.VLitT(c.I32T))
-  |> should.equal(c.VLitT(c.I32T))
+  c.check(0, [], [], [], match(i32(1), [case_(c.PAny, i64(2))]), c.VTyp(0))
+  |> should.equal(c.VErr(c.TypeMismatch(v64t, c.VTyp(0), s)))
 
-  // Checking mismatch (Expecting a Float when we returned an Int)
-  c.check(0, [], [], tenv, match_expr, c.VLitT(c.F32T))
-  |> should.equal(c.VErr(c.TypeMismatch(c.VLitT(c.I32T), c.VLitT(c.F32T), s)))
+  let term = match(i32(1), [case_(c.PAny, i64(2)), case_(c.PAny, typ(0))])
+  c.check(0, [], [], [], term, v64t)
+  |> should.equal(c.VBad(v64t, [c.TypeMismatch(c.VTyp(1), v64t, s)]))
+
+  let term = match(i32(1), [case_(c.PAny, i64(2)), case_(c.PAny, typ(0))])
+  c.check(0, [], [], [], term, c.VTyp(2))
+  |> should.equal(c.VErr(c.TypeMismatch(v64t, c.VTyp(2), s)))
+
+  c.check(0, [], [], [], match(i32(1), [case_(pvar("a"), var(0))]), v32t)
+  |> should.equal(v32t)
+
+  c.check(0, [], [], [], match(i32(1), [case_(pvar("a"), var(0))]), v64t)
+  |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s)))
 }
 
 // --- Bad --- \\
