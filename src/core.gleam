@@ -491,7 +491,7 @@ pub fn infer(
     }
     App(fun, arg) -> {
       let fun_ty = infer(lvl, ctx, env, tenv, fun)
-      infer_app(lvl, ctx, env, tenv, fun_ty, arg, term.span)
+      infer_app(lvl, ctx, env, tenv, fun_ty, arg, fun.span)
     }
     Match(arg, cases) -> {
       let arg_ty = infer(lvl, ctx, env, tenv, arg)
@@ -543,7 +543,7 @@ fn infer_app(
   tenv: TypeEnv,
   fun_ty: Value,
   arg: Term,
-  s: Span,
+  fun_span: Span,
 ) -> Value {
   case fun_ty {
     VPi(_, pi_env, in_ty, out_ty) -> {
@@ -553,11 +553,11 @@ fn infer_app(
       with_errors(eval([arg_val, ..pi_env], out_ty), errors)
     }
     VBad(fun, errors) -> {
-      let ty = infer_app(lvl, ctx, env, tenv, fun, arg, s)
+      let ty = infer_app(lvl, ctx, env, tenv, fun, arg, fun_span)
       VBad(ty, errors)
     }
     VErr(e) -> VErr(e)
-    _ -> VErr(NotAFunction(fun_ty, s))
+    _ -> VErr(NotAFunction(fun_ty, fun_span))
   }
 }
 
@@ -568,7 +568,7 @@ fn infer_match(
   tenv: TypeEnv,
   arg_ty: Value,
   cases: List(Case),
-  s1: Span,
+  s: Span,
 ) -> Value {
   let results =
     list.map(cases, fn(c) {
@@ -577,20 +577,16 @@ fn infer_match(
       let #(lvl, ctx, errors) =
         bind_pattern(lvl, ctx, env, tenv, c.pattern, arg_ty, s1, s2)
       let body_ty = infer(lvl, ctx, env, tenv, c.body)
-      #(body_ty, errors)
+      #(body_ty, c.body.span, errors)
     })
-  let first_ty = case results {
-    [] -> VErr(MatchEmpty(arg_ty, s1))
-    [#(ty, _), ..] -> ty
-  }
-  let s2 = case cases {
-    [] -> s1
-    [Case(_, b, _), ..] -> b.span
+  let #(first_ty, s2) = case results {
+    [] -> #(VErr(MatchEmpty(arg_ty, s)), s)
+    [#(ty, span, _), ..] -> #(ty, span)
   }
   let #(final_ty, errors) =
     list.fold(results, #(first_ty, []), fn(acc, res) {
       let #(acc_ty, acc_errors) = acc
-      let #(body_ty, p_errs) = res
+      let #(body_ty, s1, p_errs) = res
       let #(final_ty, type_errs) = case
         unify(lvl, [], body_ty, first_ty, s1, s2)
       {
@@ -703,7 +699,7 @@ pub fn check(
       with_errors(expected_ty, list_errors(body_ty))
     }
     Ctr(tag, args), _ ->
-      check_ctr(lvl, ctx, env, tenv, tag, args, expected_ty, term.span)
+      check_ctr(lvl, ctx, env, tenv, tag, args, expected_ty, ty_span)
     Err(TODO(msg, s)), _ -> {
       io.print_error(show_msg(s, "TODO: " <> msg))
       expected_ty
@@ -726,20 +722,20 @@ fn check_ctr(
   tag: String,
   args: List(Term),
   expected_ty: Value,
-  s: Span,
+  ty_span: Span,
 ) -> Value {
   case list.key_find(tenv, tag) {
-    Error(Nil) -> VErr(CtrUndefined(tag, s))
+    Error(Nil) -> VErr(CtrUndefined(tag, ty_span))
     Ok(ctr) -> {
       let #(env_solved, args_ty, final_ty, ctr_errors) =
-        instantiate_ctr(lvl, env, ctr, tag, expected_ty, ctr.ret_ty.span)
+        instantiate_ctr(lvl, env, ctr, tag, expected_ty, ty_span)
       let arity_errors = case list.length(args), list.length(ctr.args) {
-        a, c if a > c -> [CtrTooManyArgs(tag, a, ctr, s)]
-        a, c if a < c -> [CtrTooFewArgs(tag, a, ctr, s)]
+        a, c if a > c -> [CtrTooManyArgs(tag, a, ctr, ty_span)]
+        a, c if a < c -> [CtrTooFewArgs(tag, a, ctr, ty_span)]
         _, _ -> []
       }
       let args_errors =
-        check_list(lvl, ctx, env_solved, tenv, args, args_ty, s)
+        check_list(lvl, ctx, env_solved, tenv, args, args_ty, ty_span)
         |> list.flat_map(list_errors)
       let errors = list.flatten([ctr_errors, arity_errors, args_errors])
       with_errors(final_ty, errors)
@@ -774,7 +770,7 @@ pub fn instantiate_ctr(
   let params = list.index_map(ctr.params, fn(_, i) { VNeut(HMeta(i), []) })
   let ctr_ret_ty = eval(list.append(params, env), ctr.ret_ty)
   let #(sub, unify_errors) = case
-    unify(lvl, [], ctr_ret_ty, expected_ty, s, s)
+    unify(lvl, [], ctr_ret_ty, expected_ty, ctr.ret_ty.span, s)
   {
     Ok(sub) -> #(sub, [])
     Error(e) -> #([], [e])
