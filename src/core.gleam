@@ -3,7 +3,6 @@ import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
-import gleam/string
 
 pub type Term {
   Term(data: TermData, span: Span)
@@ -14,8 +13,7 @@ pub type TermData {
   Lit(value: Literal)
   LitT(typ: LiteralType)
   Var(index: Int)
-  Ctr(tag: String, args: List(Term))
-  Rcd(fields: List(#(String, Term)))
+  Ctr(tag: String, args: List(#(String, Term)))
   Dot(arg: Term, field: String)
   Ann(term: Term, typ: Term)
   Lam(name: String, body: Term)
@@ -31,8 +29,7 @@ pub type Value {
   VLit(value: Literal)
   VLitT(typ: LiteralType)
   VNeut(head: Head, spine: List(Elim))
-  VCtr(tag: String, args: List(Value))
-  VRcd(fields: List(#(String, Value)))
+  VCtr(tag: String, args: List(#(String, Value)))
   VLam(name: String, env: Env, body: Term)
   VPi(name: String, env: Env, in: Value, out: Term)
   VBad(value: Value, errors: List(Error))
@@ -44,8 +41,7 @@ pub type Pattern {
   PAs(pattern: Pattern, name: String)
   PTyp(level: Int)
   PLit(value: Literal)
-  PCtr(tag: String, args: List(Pattern))
-  PRcd(fields: List(#(String, Pattern)))
+  PCtr(tag: String, args: List(#(String, Pattern)))
 }
 
 pub type Head {
@@ -86,7 +82,11 @@ pub type Span {
 }
 
 pub type CtrDef {
-  CtrDef(params: List(String), args: List(Term), ret_ty: Term)
+  CtrDef(
+    params: List(String),
+    args: List(#(String, Term, Option(Term))),
+    ret_ty: Term,
+  )
 }
 
 pub type TypeEnv =
@@ -103,6 +103,7 @@ pub type Subst =
 
 pub type Error {
   // Type errors
+  PatternMismatch(pattern: Pattern, expected_ty: Value, s1: Span, s2: Span)
   TypeMismatch(expected: Value, got: Value, span1: Span, span2: Span)
   TypeAnnotationNeeded(term: Term)
   NotAFunction(got: Value, span: Span)
@@ -111,9 +112,9 @@ pub type Error {
   CtrTooManyArgs(tag: String, nargs: Int, ctr: CtrDef, span: Span)
   CtrTooFewArgs(tag: String, nargs: Int, ctr: CtrDef, span: Span)
   CtrUnsolvedParam(tag: String, ctr: CtrDef, id: Int, span: Span)
-  RcdMissingFields(names: List(String), span: Span)
-  DotNotFound(name: String, fields: List(#(String, Value)), span: Span)
-  DotOnNonRecord(value: Value, name: String, span: Span)
+  CtrMissingArgs(names: List(String), span: Span)
+  DotArgNotFound(name: String, fields: List(#(String, Value)), span: Span)
+  DotOnNonCtr(value: Value, name: String, span: Span)
   MatchEmpty(arg: Value, span: Span)
 
   // Exhaustiveness errors
@@ -135,8 +136,8 @@ pub fn eval(env: Env, term: Term) -> Value {
         Some(value) -> value
         None -> VErr(VarUndefined(i, term.span))
       }
-    Ctr(tag, args) -> VCtr(tag, list.map(args, eval(env, _)))
-    Rcd(fields) -> VRcd(list.map(fields, fn(kv) { #(kv.0, eval(env, kv.1)) }))
+    Ctr(tag, args) ->
+      VCtr(tag, list.map(args, fn(kv) { #(kv.0, eval(env, kv.1)) }))
     Dot(arg, name) -> eval_dot(eval(env, arg), name, arg.span)
     Ann(term, _) -> eval(env, term)
     Lam(name, body) -> VLam(name, env, body)
@@ -164,13 +165,13 @@ pub fn eval(env: Env, term: Term) -> Value {
 fn eval_dot(value: Value, name: String, s: Span) -> Value {
   case value {
     VNeut(head, spine) -> VNeut(head, list.append(spine, [EDot(name)]))
-    VRcd(fields) ->
-      case list.key_find(fields, name) {
+    VCtr(_, args) ->
+      case list.key_find(args, name) {
         Ok(v) -> v
-        Error(Nil) -> VErr(DotNotFound(name, fields, s))
+        Error(Nil) -> VErr(DotArgNotFound(name, args, s))
       }
     VBad(value, errors) -> VBad(eval_dot(value, name, s), errors)
-    _ -> VErr(DotOnNonRecord(value, name, s))
+    _ -> VErr(DotOnNonCtr(value, name, s))
   }
 }
 
@@ -217,22 +218,9 @@ pub fn match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
     PTyp(_), _ -> Error(Nil)
     PLit(k1), VLit(k2) if k1 == k2 -> Ok([])
     PLit(_), _ -> Error(Nil)
-    PCtr(ptag, ps), VCtr(vtag, vs) if ptag == vtag -> match_pattern_list(ps, vs)
+    PCtr(ptag, ps), VCtr(vtag, vs) if ptag == vtag ->
+      match_pattern_fields(ps, vs)
     PCtr(_, _), _ -> Error(Nil)
-    PRcd(ps), VRcd(vs) -> match_pattern_fields(ps, vs)
-    PRcd(_), _ -> Error(Nil)
-  }
-}
-
-fn match_pattern_list(ps: List(Pattern), vs: List(Value)) -> Result(Env, Nil) {
-  case ps, vs {
-    [], [] -> Ok([])
-    [p, ..ps], [v, ..vs] ->
-      case match_pattern(p, v), match_pattern_list(ps, vs) {
-        Ok(env1), Ok(env2) -> Ok(list.append(env1, env2))
-        _, _ -> Error(Nil)
-      }
-    _, _ -> Error(Nil)
   }
 }
 
@@ -269,9 +257,8 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
       let head_term = quote_head(lvl, head, s)
       quote_neut(lvl, head_term, spine, s)
     }
-    VCtr(tag, args) -> Term(Ctr(tag, list.map(args, quote(lvl, _, s))), s)
-    VRcd(fields) ->
-      Term(Rcd(list.map(fields, fn(kv) { #(kv.0, quote(lvl, kv.1, s)) })), s)
+    VCtr(tag, args) ->
+      Term(Ctr(tag, list.map(args, fn(kv) { #(kv.0, quote(lvl, kv.1, s)) })), s)
     VLam(name, env, body) -> {
       let fresh = VNeut(HVar(lvl), [])
       let body_val = eval([fresh, ..env], body)
@@ -332,13 +319,11 @@ pub fn unify(
         Ok(v) -> unify(lvl + 1, sub, v, v2, s1, s2)
         Error(Nil) -> Ok([#(id, v2), ..sub])
       }
-    _, VNeut(HMeta(_), []) -> unify(lvl + 1, sub, v2, v1, s1, s2)
+    _, VNeut(HMeta(_), []) -> unify(lvl + 1, sub, v2, v1, s2, s1)
     VNeut(h1, spine1), VNeut(h2, spine2) if h1 == h2 ->
       unify_elim_list(lvl, sub, spine1, spine2, s1, s2)
     VCtr(k1, args1), VCtr(k2, args2) if k1 == k2 ->
-      unify_list(lvl, sub, args1, args2, s1, s2)
-    VRcd(fields1), VRcd(fields2) ->
-      unify_fields(lvl, sub, fields1, fields2, s1, s2)
+      unify_fields(lvl, sub, args1, args2, s1, s2)
     VLam(_, env1, body1), VLam(_, env2, body2) -> {
       let fresh = VNeut(HVar(lvl), [])
       let a = eval([fresh, ..env1], body1)
@@ -360,49 +345,33 @@ pub fn unify(
   }
 }
 
-fn unify_list(
-  lvl: Int,
-  sub: Subst,
-  l1: List(Value),
-  l2: List(Value),
-  s1: Span,
-  s2: Span,
-) -> Result(Subst, Error) {
-  case l1, l2 {
-    [], [] -> Ok(sub)
-    [x, ..xs], [y, ..ys] -> {
-      use sub <- result.try(unify(lvl, sub, x, y, s1, s2))
-      unify_list(lvl, sub, xs, ys, s1, s2)
-    }
-    _, _ -> Error(TODO("Arity mismatch", s1))
-  }
-}
-
 fn unify_fields(
   lvl: Int,
   sub: Subst,
-  l1: List(#(String, Value)),
-  l2: List(#(String, Value)),
+  args1: List(#(String, Value)),
+  args2: List(#(String, Value)),
   s1: Span,
   s2: Span,
 ) -> Result(Subst, Error) {
-  case l1 {
+  case args1 {
     [] ->
-      case list.map(l2, fn(kv) { kv.0 }) {
-        [] -> Ok([])
-        names -> Error(RcdMissingFields(names, s1))
+      case list.map(args2, fn(kv) { kv.0 }) {
+        [] -> Ok(sub)
+        names -> Error(CtrMissingArgs(names, s1))
       }
-    [#(name, v1), ..l1] ->
-      case list.key_pop(l2, name) {
+    [#(name, v1), ..args1] ->
+      case list.key_pop(args2, name) {
         Error(Nil) -> {
           let names =
-            list.filter(l1, fn(kv) { list.key_find(l2, kv.0) == Error(Nil) })
+            list.filter(args1, fn(kv) {
+              list.key_find(args2, kv.0) == Error(Nil)
+            })
             |> list.map(fn(kv) { kv.0 })
-          Error(RcdMissingFields([name, ..names], s2))
+          Error(CtrMissingArgs([name, ..names], s2))
         }
-        Ok(#(v2, l2)) -> {
+        Ok(#(v2, args2)) -> {
           use sub <- result.try(unify(lvl, sub, v1, v2, s1, s2))
-          unify_fields(lvl, sub, l1, l2, s1, s2)
+          unify_fields(lvl, sub, args1, args2, s1, s2)
         }
       }
   }
@@ -458,14 +427,25 @@ pub fn infer(
         None -> VErr(VarUndefined(i, term.span))
       }
     }
-    // Ctr(tag, args) -> VCtr(tag, list.map(args, infer(lvl, ctx, env, tenv, _)))
-    Ctr(_, _) -> VErr(TypeAnnotationNeeded(term))
-    Rcd(fields) -> {
-      let infer_field = fn(field) {
-        let #(name, arg) = field
-        #(name, infer(lvl, ctx, env, tenv, arg))
+    Ctr("", args) -> {
+      let args_ty =
+        list.map(args, fn(kv) { #(kv.0, infer(lvl, ctx, env, tenv, kv.1)) })
+      VCtr("", args_ty)
+    }
+    Ctr(tag, args) -> {
+      case list.key_find(tenv, tag) {
+        Ok(ctr) -> {
+          let metas =
+            list.index_map(ctr.params, fn(_, i) { VNeut(HMeta(i), []) })
+          let env_with_metas = list.append(metas, env)
+          let ret_ty = eval(env_with_metas, ctr.ret_ty)
+          let #(env, ctr_args, ctr_ret, ctr_errors) =
+            instantiate_ctr(lvl, env, tag, ctr, ret_ty, term.span)
+          let args_errors = []
+          with_errors(ctr_ret, list.append(ctr_errors, args_errors))
+        }
+        Error(Nil) -> VErr(CtrUndefined(tag, term.span))
       }
-      VRcd(list.map(fields, infer_field))
     }
     Dot(arg, name) -> {
       let arg_ty = infer(lvl, ctx, env, tenv, arg)
@@ -523,16 +503,16 @@ fn infer_dot(
   s: Span,
 ) -> Value {
   case arg_ty {
-    VRcd(fields) ->
+    VCtr("", fields) ->
       case list.key_find(fields, name) {
         Ok(ty) -> ty
-        Error(Nil) -> VErr(DotNotFound(name, fields, s))
+        Error(Nil) -> VErr(DotArgNotFound(name, fields, s))
       }
     VBad(value, errors) -> {
       let ty = infer_dot(lvl, ctx, env, tenv, value, name, s)
       VBad(ty, errors)
     }
-    _ -> VErr(DotOnNonRecord(arg_ty, name, s))
+    _ -> VErr(DotOnNonCtr(arg_ty, name, s))
   }
 }
 
@@ -628,56 +608,64 @@ pub fn bind_pattern(
         |> list_errors
       #(lvl, ctx, errors)
     }
+    PCtr("", pargs) ->
+      case expected_ty {
+        VCtr("", vargs) ->
+          bind_pattern_fields(lvl, ctx, env, tenv, pargs, vargs, s1, s2)
+        _ -> #(lvl, ctx, [PatternMismatch(pattern, expected_ty, s1, s2)])
+      }
     PCtr(tag, pargs) -> {
       case list.key_find(tenv, tag) {
         Error(Nil) -> #(lvl, ctx, [CtrUndefined(tag, s1)])
         Ok(ctr) -> {
-          let #(env, args_ty, _, ctr_errors) =
-            instantiate_ctr(lvl, env, ctr, tag, expected_ty, s1)
-          let arity_errors = case list.length(pargs), list.length(ctr.args) {
-            a, c if a > c -> [CtrTooManyArgs(tag, a, ctr, s1)]
-            a, c if a < c -> [CtrTooFewArgs(tag, a, ctr, s1)]
-            _, _ -> []
-          }
-          list.fold(
-            list.zip(pargs, args_ty),
-            #(lvl, ctx, list.append(ctr_errors, arity_errors)),
-            fn(acc, pair) {
-              let #(lvl, ctx, errors) = acc
-              let #(p, p_ty) = pair
-              let #(lvl, ctx, arg_errors) =
-                bind_pattern(lvl, ctx, env, tenv, p, p_ty, s1, s2)
-              #(lvl, ctx, list.append(errors, arg_errors))
-            },
-          )
+          let #(env, ctr_args, _, ctr_errors) =
+            instantiate_ctr(lvl, env, tag, ctr, expected_ty, s1)
+          let vargs =
+            list.map(ctr_args, fn(kv) {
+              let #(name, #(arg, _)) = kv
+              #(name, arg)
+            })
+          let #(lvl, ctx, errors) =
+            bind_pattern_fields(lvl, ctx, env, tenv, pargs, vargs, s1, s2)
+          #(lvl, ctx, list.append(ctr_errors, errors))
         }
-      }
-    }
-    PRcd(pfields) -> {
-      case expected_ty {
-        VRcd(vfields) -> {
-          list.fold(pfields, #(lvl, ctx, []), fn(acc, field) {
-            let #(lvl, ctx, errors) = acc
-            let #(name, p) = field
-            case list.key_find(vfields, name) {
-              Ok(v) -> {
-                let #(lvl, ctx, bind_errors) =
-                  bind_pattern(lvl, ctx, env, tenv, p, v, s1, s2)
-                #(lvl, ctx, list.append(errors, bind_errors))
-              }
-              Error(Nil) -> {
-                let err = RcdMissingFields([name], s1)
-                let #(lvl, ctx, bind_errors) =
-                  bind_pattern(lvl, ctx, env, tenv, p, VErr(err), s1, s2)
-                #(lvl, ctx, list.append(errors, bind_errors))
-              }
-            }
-          })
-        }
-        _ -> #(lvl, ctx, [TypeMismatch(VRcd([]), expected_ty, s1, s2)])
       }
     }
   }
+}
+
+fn bind_pattern_fields(
+  lvl: Int,
+  ctx: Context,
+  env: Env,
+  tenv: TypeEnv,
+  pargs: List(#(String, Pattern)),
+  vargs: List(#(String, Value)),
+  s1: Span,
+  s2: Span,
+) -> #(Int, Context, List(Error)) {
+  let missing =
+    list.filter_map(pargs, fn(kv) {
+      case list.key_find(vargs, kv.0) {
+        Error(Nil) -> Ok(kv.0)
+        Ok(_) -> Error(Nil)
+      }
+    })
+  let errors = case missing {
+    [] -> []
+    _ -> [CtrMissingArgs(missing, s2)]
+  }
+  list.index_fold(pargs, #(lvl, ctx, errors), fn(acc, kv, i) {
+    let #(lvl, ctx, errors) = acc
+    let #(name, p) = kv
+    let v = case list.key_find(vargs, name) {
+      Error(Nil) -> VNeut(HMeta(i), [])
+      Ok(v) -> v
+    }
+    let #(lvl, ctx, bind_errors) =
+      bind_pattern(lvl, ctx, env, tenv, p, v, s1, s2)
+    #(lvl, ctx, list.append(errors, bind_errors))
+  })
 }
 
 pub fn check(
@@ -720,7 +708,7 @@ fn check_ctr(
   env: Env,
   tenv: TypeEnv,
   tag: String,
-  args: List(Term),
+  args: List(#(String, Term)),
   expected_ty: Value,
   ty_span: Span,
 ) -> Value {
@@ -728,49 +716,41 @@ fn check_ctr(
     Error(Nil) -> VErr(CtrUndefined(tag, ty_span))
     Ok(ctr) -> {
       let #(env_solved, args_ty, final_ty, ctr_errors) =
-        instantiate_ctr(lvl, env, ctr, tag, expected_ty, ty_span)
+        instantiate_ctr(lvl, env, tag, ctr, expected_ty, ty_span)
       let arity_errors = case list.length(args), list.length(ctr.args) {
         a, c if a > c -> [CtrTooManyArgs(tag, a, ctr, ty_span)]
         a, c if a < c -> [CtrTooFewArgs(tag, a, ctr, ty_span)]
         _, _ -> []
       }
       let args_errors =
-        check_list(lvl, ctx, env_solved, tenv, args, args_ty, ty_span)
-        |> list.flat_map(list_errors)
+        list.flat_map(args, fn(kv) {
+          let #(name, arg) = kv
+          case list.key_find(args_ty, name) {
+            Ok(#(arg_ty, _)) -> {
+              check(lvl, ctx, env_solved, tenv, arg, arg_ty, arg.span)
+              |> list_errors
+            }
+            Error(Nil) -> []
+          }
+        })
       let errors = list.flatten([ctr_errors, arity_errors, args_errors])
       with_errors(final_ty, errors)
     }
   }
 }
 
-fn check_list(
-  lvl: Int,
-  ctx: Context,
-  env: Env,
-  tenv: TypeEnv,
-  terms: List(Term),
-  types: List(Value),
-  s: Span,
-) -> List(Value) {
-  list.zip(terms, types)
-  |> list.map(fn(pair) {
-    let #(term, ty) = pair
-    check(lvl, ctx, env, tenv, term, ty, s)
-  })
-}
-
 pub fn instantiate_ctr(
   lvl: Int,
   env: Env,
-  ctr: CtrDef,
   tag: String,
-  expected_ty: Value,
+  ctr: CtrDef,
+  ret_ty: Value,
   s: Span,
-) -> #(Env, List(Value), Value, List(Error)) {
+) -> #(Env, List(#(String, #(Value, Option(Value)))), Value, List(Error)) {
   let params = list.index_map(ctr.params, fn(_, i) { VNeut(HMeta(i), []) })
   let ctr_ret_ty = eval(list.append(params, env), ctr.ret_ty)
-  let #(sub, unify_errors) = case
-    unify(lvl, [], ctr_ret_ty, expected_ty, ctr.ret_ty.span, s)
+  let #(sub, ret_errors) = case
+    unify(lvl, [], ctr_ret_ty, ret_ty, ctr.ret_ty.span, s)
   {
     Ok(sub) -> #(sub, [])
     Error(e) -> #([], [e])
@@ -786,11 +766,15 @@ pub fn instantiate_ctr(
         )
       }
     })
-  let env_solved = list.append(params_solved, env)
-  let args_ty = list.map(ctr.args, eval(env_solved, _))
-  let final_ty = eval(env_solved, ctr.ret_ty)
-  let errors = list.append(unify_errors, param_errors)
-  #(env_solved, args_ty, final_ty, errors)
+  let env = list.append(params_solved, env)
+  let final_args =
+    list.map(ctr.args, fn(arg) {
+      let #(name, arg_ty, default) = arg
+      #(name, #(eval(env, arg_ty), option.map(default, eval(env, _))))
+    })
+  let final_ty = eval(env, ctr.ret_ty)
+  let errors = list.append(ret_errors, param_errors)
+  #(env, final_args, final_ty, errors)
 }
 
 fn with_errors(value: Value, errors: List(Error)) -> Value {
@@ -806,8 +790,7 @@ pub fn list_errors(v: Value) -> List(Error) {
     VLit(_) -> []
     VLitT(_) -> []
     VNeut(_, spine) -> list.flat_map(spine, list_errors_elim)
-    VCtr(_, args) -> list.flat_map(args, list_errors)
-    VRcd(fields) -> list.flat_map(fields, fn(kv) { list_errors(kv.1) })
+    VCtr(_, args) -> list.flat_map(args, fn(kv) { list_errors(kv.1) })
     VLam(_, env, body) -> {
       let fresh = VNeut(HVar(0), [])
       list_errors(eval([fresh, ..env], body))
