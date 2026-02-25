@@ -13,6 +13,7 @@ pub type TermData {
   Lit(value: Literal)
   LitT(typ: LiteralType)
   Var(index: Int)
+  Hole(id: Int)
   Ctr(tag: String, arg: Term)
   Rcd(fields: List(#(String, Term)))
   Dot(arg: Term, field: String)
@@ -49,7 +50,7 @@ pub type Pattern {
 
 pub type Head {
   HVar(level: Int)
-  HMeta(id: Int)
+  HHole(id: Int)
 }
 
 pub type Elim {
@@ -109,6 +110,7 @@ pub type Error {
   TypeAnnotationNeeded(term: Term)
   NotAFunction(got: Value, span: Span)
   VarUndefined(index: Int, span: Span)
+  NotImplemented(hole_id: Int, span: Span)
   CtrUndefined(tag: String, span: Span)
   CtrUnsolvedParam(tag: String, ctr: CtrDef, id: Int, span: Span)
   RcdMissingFields(name: List(String), span: Span)
@@ -135,6 +137,7 @@ pub fn eval(env: Env, term: Term) -> Value {
         Some(value) -> value
         None -> VErr(VarUndefined(i, term.span))
       }
+    Hole(id) -> VNeut(HHole(id), [])
     Ctr(tag, arg) -> VCtr(tag, eval(env, arg))
     Rcd(fields) -> VRcd(list.map(fields, fn(kv) { #(kv.0, eval(env, kv.1)) }))
     Dot(arg, name) -> eval_dot(eval(env, arg), name, arg.span)
@@ -299,7 +302,7 @@ fn quote_elim(lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
 fn quote_head(lvl: Int, head: Head, s: Span) -> Term {
   case head {
     HVar(l) -> Term(Var(lvl - l - 1), s)
-    HMeta(id) -> Term(Err(TODO("Unsolved hole " <> int.to_string(id), s)), s)
+    HHole(id) -> Term(Hole(id), s)
   }
 }
 
@@ -315,12 +318,12 @@ pub fn unify(
     VTyp(k1), VTyp(k2) if k1 == k2 -> Ok(sub)
     VLit(k1), VLit(k2) if k1 == k2 -> Ok(sub)
     VLitT(k1), VLitT(k2) if k1 == k2 -> Ok(sub)
-    VNeut(HMeta(id), []), _ ->
+    VNeut(HHole(id), []), _ ->
       case list.key_find(sub, id) {
         Ok(v) -> unify(lvl + 1, sub, v, v2, s1, s2)
         Error(Nil) -> Ok([#(id, v2), ..sub])
       }
-    _, VNeut(HMeta(_), []) -> unify(lvl + 1, sub, v2, v1, s2, s1)
+    _, VNeut(HHole(_), []) -> unify(lvl + 1, sub, v2, v1, s2, s1)
     VNeut(h1, spine1), VNeut(h2, spine2) if h1 == h2 ->
       unify_elim_list(lvl, sub, spine1, spine2, s1, s2)
     VCtr(k1, arg1), VCtr(k2, arg2) if k1 == k2 ->
@@ -424,19 +427,37 @@ pub fn infer(lvl: Int, ctx: Context, tenv: TypeEnv, term: Term) -> Value {
         None -> VErr(VarUndefined(i, term.span))
       }
     }
+    Hole(_) -> VErr(TypeAnnotationNeeded(term))
     Ctr(tag, arg) -> {
       case list.key_find(tenv, tag) {
         Ok(ctr) -> {
-          let metas =
-            list.index_map(ctr.params, fn(_, i) { VNeut(HMeta(i), []) })
-          let env = list.append(metas, ctx2env(ctx))
-          let ret_ty = eval(env, ctr.ret_ty)
-          let #(ctx, ctr_arg_ty, ctr_ret_ty, ctr_errors) =
-            instantiate_ctr(lvl, ctx, tag, ctr, ret_ty, term.span)
-          let arg_errors =
-            check(lvl, ctx, tenv, arg, ctr_arg_ty, arg.span)
-            |> list_errors
-          with_errors(ctr_ret_ty, list.append(ctr_errors, arg_errors))
+          let arg_ty = infer(lvl, ctx, tenv, arg)
+          let params =
+            list.index_map(ctr.params, fn(_, i) { VNeut(HHole(i), []) })
+          let env = list.append(params, ctx2env(ctx))
+          let ctr_arg_ty = eval(env, ctr.arg_ty)
+          let arg_result =
+            unify(lvl, [], ctr_arg_ty, arg_ty, ctr.arg_ty.span, arg.span)
+          let #(sub, arg_errors) = case arg_result {
+            Ok(sub) -> #(sub, [])
+            Error(e) -> #([], [e])
+          }
+          let #(params_solved, param_errors) =
+            list.index_fold(ctr.params, #([], []), fn(acc, _, i) {
+              let #(acc_params, acc_errors) = acc
+              case list.key_find(sub, i) {
+                Ok(val) -> #(list.append(acc_params, [val]), acc_errors)
+                Error(Nil) -> #(
+                  list.append(acc_params, [VNeut(HHole(i), [])]),
+                  list.append(acc_errors, [
+                    CtrUnsolvedParam(tag, ctr, i, term.span),
+                  ]),
+                )
+              }
+            })
+          let env = list.append(params_solved, ctx2env(ctx))
+          let errors = list.append(arg_errors, param_errors)
+          with_errors(eval(env, ctr.ret_ty), errors)
         }
         Error(Nil) -> VErr(CtrUndefined(tag, term.span))
       }
@@ -580,6 +601,7 @@ pub fn check(
       let body_ty = check(lvl + 1, ctx, tenv, body, out_val, ty_span)
       with_errors(expected_ty, list_errors(body_ty))
     }
+    Hole(id), _ -> VBad(expected_ty, [NotImplemented(id, term.span)])
     Ctr(tag, arg), _ ->
       check_ctr(lvl, ctx, tenv, tag, arg, expected_ty, ty_span)
     Err(TODO(msg, s)), _ -> {
@@ -691,7 +713,7 @@ fn bind_pattern_fields(
     let #(lvl, ctx, errors) = acc
     let #(name, p) = kv
     let v = case list.key_find(vargs, name) {
-      Error(Nil) -> VNeut(HMeta(i), [])
+      Error(Nil) -> VNeut(HHole(i), [])
       Ok(v) -> v
     }
     let #(lvl, ctx, bind_errors) = bind_pattern(lvl, ctx, tenv, p, v, s1, s2)
@@ -707,8 +729,9 @@ pub fn instantiate_ctr(
   ret_ty: Value,
   s: Span,
 ) -> #(Context, Value, Value, List(Error)) {
-  let params = list.index_map(ctr.params, fn(_, i) { VNeut(HMeta(i), []) })
-  let ctr_ret_ty = eval(list.append(params, ctx2env(ctx)), ctr.ret_ty)
+  let params = list.index_map(ctr.params, fn(_, i) { VNeut(HHole(i), []) })
+  let env = list.append(params, ctx2env(ctx))
+  let ctr_ret_ty = eval(env, ctr.ret_ty)
   let ret_result = unify(lvl, [], ctr_ret_ty, ret_ty, ctr.ret_ty.span, s)
   let #(sub, ret_errors) = case ret_result {
     Ok(sub) -> #(sub, [])
@@ -720,7 +743,7 @@ pub fn instantiate_ctr(
       case list.key_find(sub, i) {
         Ok(val) -> #(list.append(acc_params, [val]), acc_errors)
         Error(Nil) -> #(
-          list.append(acc_params, [VNeut(HMeta(i), [])]),
+          list.append(acc_params, [VNeut(HHole(i), [])]),
           list.append(acc_errors, [CtrUnsolvedParam(tag, ctr, i, s)]),
         )
       }

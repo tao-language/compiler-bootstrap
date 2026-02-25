@@ -113,9 +113,9 @@ pub fn var_eval_test() {
 }
 
 pub fn var_unify_test() {
-  c.unify(0, [], v32t, hole(1), s, s2) |> should.equal(Ok([#(1, v32t)]))
-  c.unify(0, [], hole(1), v32t, s, s2) |> should.equal(Ok([#(1, v32t)]))
-  c.unify(0, [#(0, v64t)], hole(1), v32t, s, s2)
+  c.unify(0, [], v32t, hhole(1), s, s2) |> should.equal(Ok([#(1, v32t)]))
+  c.unify(0, [], hhole(1), v32t, s, s2) |> should.equal(Ok([#(1, v32t)]))
+  c.unify(0, [#(0, v64t)], hhole(1), v32t, s, s2)
   |> should.equal(Ok([#(1, v32t), #(0, v64t)]))
 }
 
@@ -134,6 +134,22 @@ pub fn var_check_test() {
   |> should.equal(c.VErr(c.VarUndefined(1, s)))
   c.check(0, ctx, [], var(0), v64t, s2)
   |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s, s2)))
+}
+
+// --- Hole --- \\
+pub fn hole_eval_test() {
+  c.eval([], hole(0)) |> should.equal(hhole(0))
+  c.eval([], hole(1)) |> should.equal(hhole(1))
+}
+
+pub fn hole_infer_test() {
+  c.infer(0, [], [], hole(0))
+  |> should.equal(c.VErr(c.TypeAnnotationNeeded(hole(0))))
+}
+
+pub fn hole_check_test() {
+  c.check(0, [], [], hole(0), v32t, s2)
+  |> should.equal(c.VBad(v32t, [c.NotImplemented(0, s)]))
 }
 
 // --- Ctr --- \\
@@ -186,22 +202,42 @@ pub fn instantiate_ctr_arg_unsolved_test() {
   let ctr_def = c.CtrDef(["a"], var(0), i32t)
   c.instantiate_ctr(0, [], "A", ctr_def, v32t, s2)
   |> should.equal(
-    #([], hole(0), v32t, [c.CtrUnsolvedParam("A", ctr_def, 0, s2)]),
+    #([], hhole(0), v32t, [c.CtrUnsolvedParam("A", ctr_def, 0, s2)]),
   )
 }
 
 pub fn ctr_infer_test() {
   c.infer(0, [], [], ctr("A", i32(1)))
-  // |> should.equal(c.VErr(c.TypeAnnotationNeeded(ctr("A", []))))
   |> should.equal(c.VErr(c.CtrUndefined("A", s)))
+
+  let tenv = [#("A", c.CtrDef([], i32t, i64t))]
+  c.infer(0, [], tenv, ctr("A", i32(1)))
+  |> should.equal(v64t)
 }
 
-pub fn ctr_check_undefined_test() {
-  c.check(0, [], [], ctr("A", i32(1)), v32t, s2)
-  |> should.equal(c.VErr(c.CtrUndefined("A", s2)))
+pub fn ctr_infer_arg_bind_test() {
+  let tenv = [#("A", c.CtrDef(["a"], var(0), var(0)))]
+  c.infer(0, [], tenv, ctr("A", i32(1)))
+  |> should.equal(v32t)
+}
+
+pub fn ctr_infer_arg_mismatch_test() {
+  let tenv = [#("A", c.CtrDef([], i32t, i64t))]
+  c.infer(0, [], tenv, ctr("A", typ(0)))
+  |> should.equal(c.VBad(v64t, [c.TypeMismatch(v32t, c.VTyp(1), s, s)]))
+}
+
+pub fn ctr_infer_arg_unsolved_test() {
+  let ctr_def = c.CtrDef(["a"], i32t, var(0))
+  let tenv = [#("A", ctr_def)]
+  c.infer(0, [], tenv, ctr("A", i32(1)))
+  |> should.equal(c.VBad(hhole(0), [c.CtrUnsolvedParam("A", ctr_def, 0, s)]))
 }
 
 pub fn ctr_check_test() {
+  c.check(0, [], [], ctr("A", i32(1)), v32t, s2)
+  |> should.equal(c.VErr(c.CtrUndefined("A", s2)))
+
   let tenv = [#("A", c.CtrDef([], i32t, i64t))]
   c.check(0, [], tenv, ctr("A", i32(1)), v64t, s2)
   |> should.equal(v64t)
@@ -211,6 +247,19 @@ pub fn ctr_check_arg_mismatch_test() {
   let tenv = [#("A", c.CtrDef([], i32t, i64t))]
   c.check(0, [], tenv, ctr("A", i64_2(1)), v64t, s)
   |> should.equal(c.VBad(v64t, [c.TypeMismatch(v64t, v32t, s2, s)]))
+}
+
+pub fn ctr_check_arg_unsolved_test() {
+  let ctr_def = c.CtrDef(["a"], var(0), i64t)
+  let tenv = [#("A", ctr_def)]
+  c.check(0, [], tenv, ctr("A", i32(1)), v64t, s)
+  |> should.equal(c.VBad(v64t, [c.CtrUnsolvedParam("A", ctr_def, 0, s)]))
+}
+
+pub fn ctr_check_ret_bind_test() {
+  let tenv = [#("A", c.CtrDef(["a"], var(0), var(0)))]
+  c.check(0, [], tenv, ctr("A", i32(1)), v32t, s2)
+  |> should.equal(v32t)
 }
 
 pub fn ctr_check_ret_mismatch_test() {
@@ -249,7 +298,7 @@ pub fn rcd_unify_order_test() {
 
 pub fn rcd_unify_bind_test() {
   let a = c.VRcd([#("a", v32t)])
-  let b = c.VRcd([#("a", hole(1))])
+  let b = c.VRcd([#("a", hhole(1))])
   c.unify(0, [], a, b, s, s2) |> should.equal(Ok([#(1, v32t)]))
 }
 
@@ -404,28 +453,28 @@ pub fn app_eval_test() {
 
 pub fn app_infer_test() {
   let ty = c.VPi("x", [], v32t, i32t)
-  let ctx = [#("f", #(hole(0), ty))]
+  let ctx = [#("f", #(hhole(0), ty))]
   c.infer(0, ctx, [], var(0)) |> should.equal(ty)
   c.infer(0, ctx, [], app(var(0), i32(1))) |> should.equal(v32t)
   c.infer(0, ctx, [], app(var(0), i64_2(1)))
   |> should.equal(c.VBad(v32t, [c.TypeMismatch(v64t, v32t, s2, s2)]))
 
   let ty = c.VPi("x", [], v32t, i64t)
-  let ctx = [#("f", #(hole(0), ty))]
+  let ctx = [#("f", #(hhole(0), ty))]
   c.infer(0, ctx, [], var(0)) |> should.equal(ty)
   c.infer(0, ctx, [], app(var(0), i32(1))) |> should.equal(v64t)
 }
 
 pub fn app_check_test() {
   let ty = c.VPi("x", [], v32t, i32t)
-  let ctx = [#("f", #(hole(0), ty))]
+  let ctx = [#("f", #(hhole(0), ty))]
   c.check(0, ctx, [], app(var(0), i32(1)), v32t, s2)
   |> should.equal(v32t)
   c.check(0, ctx, [], app(var(0), i32(1)), v64t, s2)
   |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s, s2)))
 
   let ty = c.VPi("x", [], v32t, i64t)
-  let ctx = [#("f", #(hole(0), ty))]
+  let ctx = [#("f", #(hhole(0), ty))]
   c.check(0, ctx, [], app(var(0), i32(1)), v64t, s2)
   |> should.equal(v64t)
   c.check(0, ctx, [], app(var(0), i32(1)), v32t, s2)
@@ -534,7 +583,7 @@ pub fn bind_pattern_rcd_missing_test() {
   let t = c.VRcd([])
   c.bind_pattern(0, [], [], p, t, s, s2)
   |> should.equal(
-    #(1, [#("x", #(hvar(0), hole(0)))], [c.RcdMissingFields(["a"], s2)]),
+    #(1, [#("x", #(hvar(0), hhole(0)))], [c.RcdMissingFields(["a"], s2)]),
   )
 }
 
@@ -638,6 +687,10 @@ fn var(i) {
   c.Term(c.Var(i), s)
 }
 
+fn hole(id) {
+  c.Term(c.Hole(id), s)
+}
+
 fn ctr(k, arg) {
   c.Term(c.Ctr(k, arg), s)
 }
@@ -704,6 +757,6 @@ fn hvar(i) {
   c.VNeut(c.HVar(i), [])
 }
 
-fn hole(i) {
-  c.VNeut(c.HMeta(i), [])
+fn hhole(i) {
+  c.VNeut(c.HHole(i), [])
 }
