@@ -611,7 +611,7 @@ fn check_ctr(
       let #(ctx, ctr_arg_ty, ctr_ret_ty, ctr_errors) =
         instantiate_ctr(lvl, ctx, tag, ctr, expected_ty, ty_span)
       let arg_errors =
-        check(lvl, ctx, tenv, arg, ctr_arg_ty, arg.span)
+        check(lvl, ctx, tenv, arg, ctr_arg_ty, ctr.arg_ty.span)
         |> list_errors
       with_errors(ctr_ret_ty, list.flatten([ctr_errors, arg_errors]))
     }
