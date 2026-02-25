@@ -302,6 +302,39 @@ pub fn rcd_unify_bind_test() {
   c.unify(0, [], a, b, s, s2) |> should.equal(Ok([#(1, v32t)]))
 }
 
+pub fn rcd_infer_test() {
+  c.infer(0, [], [], rcd([])) |> should.equal(c.VRcd([]))
+  c.infer(0, [], [], rcd([#("a", i32(1))]))
+  |> should.equal(c.VRcd([#("a", v32t)]))
+  c.infer(0, [], [], rcd([#("a", i32(1)), #("b", i64(2))]))
+  |> should.equal(c.VRcd([#("a", v32t), #("b", v64t)]))
+}
+
+pub fn rcd_check_test() {
+  c.check(0, [], [], rcd([]), c.VRcd([]), s2) |> should.equal(c.VRcd([]))
+  c.check(0, [], [], rcd([#("a", i32(1))]), c.VRcd([#("a", v32t)]), s2)
+  |> should.equal(c.VRcd([#("a", v32t)]))
+}
+
+pub fn rcd_check_missing_test() {
+  c.check(0, [], [], rcd([#("a", i32(1)), #("b", i64(2))]), c.VRcd([]), s2)
+  |> should.equal(c.VErr(c.RcdMissingFields(["a", "b"], s2)))
+  c.check(0, [], [], rcd([]), c.VRcd([#("a", v32t), #("b", v64t)]), s2)
+  |> should.equal(c.VErr(c.RcdMissingFields(["a", "b"], s)))
+}
+
+pub fn rcd_check_mismatch_test() {
+  c.check(0, [], [], rcd([#("a", i32(1))]), c.VRcd([#("a", v64t)]), s2)
+  |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s, s2)))
+}
+
+pub fn rcd_check_order_test() {
+  let term = rcd([#("b", i64(2)), #("a", i32(1))])
+  let typ = c.VRcd([#("a", v32t), #("b", v64t)])
+  c.check(0, [], [], term, typ, s2)
+  |> should.equal(typ)
+}
+
 // --- Dot --- \\
 pub fn dot_eval_test() {
   c.eval([], dot(i32(1), "a"))
