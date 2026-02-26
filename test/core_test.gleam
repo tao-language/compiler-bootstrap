@@ -38,75 +38,93 @@ pub fn typ_check_test() {
   |> should.equal(#(c.VErr, [], errors))
 }
 
-// // --- Lit --- \\
-// pub fn lit_eval_test() {
-//   c.eval([], lit(c.I32(1))) |> should.equal(c.VLit(c.I32(1)))
-//   c.eval([], lit(c.I64(1))) |> should.equal(c.VLit(c.I64(1)))
-//   c.eval([], lit(c.U32(1))) |> should.equal(c.VLit(c.U32(1)))
-//   c.eval([], lit(c.U64(1))) |> should.equal(c.VLit(c.U64(1)))
-//   c.eval([], lit(c.F32(1.0))) |> should.equal(c.VLit(c.F32(1.0)))
-//   c.eval([], lit(c.F64(1.0))) |> should.equal(c.VLit(c.F64(1.0)))
-// }
+// --- Lit --- \\
+pub fn lit_eval_test() {
+  c.eval([], lit(c.I32(1), s1)) |> should.equal(c.VLit(c.I32(1)))
+  c.eval([], lit(c.I64(1), s1)) |> should.equal(c.VLit(c.I64(1)))
+  c.eval([], lit(c.U32(1), s1)) |> should.equal(c.VLit(c.U32(1)))
+  c.eval([], lit(c.U64(1), s1)) |> should.equal(c.VLit(c.U64(1)))
+  c.eval([], lit(c.F32(1.0), s1)) |> should.equal(c.VLit(c.F32(1.0)))
+  c.eval([], lit(c.F64(1.0), s1)) |> should.equal(c.VLit(c.F64(1.0)))
+}
 
-// pub fn lit_infer_test() {
-//   c.infer(0, [], [], lit(c.I32(1))) |> should.equal(c.VLitT(c.I32T))
-//   c.infer(0, [], [], lit(c.I64(1))) |> should.equal(c.VLitT(c.I64T))
-//   c.infer(0, [], [], lit(c.U32(1))) |> should.equal(c.VLitT(c.U32T))
-//   c.infer(0, [], [], lit(c.U64(1))) |> should.equal(c.VLitT(c.U64T))
-//   c.infer(0, [], [], lit(c.F32(1.0))) |> should.equal(c.VLitT(c.F32T))
-//   c.infer(0, [], [], lit(c.F64(1.0))) |> should.equal(c.VLitT(c.F64T))
-// }
+pub fn lit_infer_test() {
+  c.infer(0, [], [], [], lit(c.I32(1), s1))
+  |> should.equal(#(c.VLit(c.I32(1)), c.VLitT(c.I32T), [], []))
+  c.infer(0, [], [], [], lit(c.I64(1), s1))
+  |> should.equal(#(c.VLit(c.I64(1)), c.VLitT(c.I64T), [], []))
+  c.infer(0, [], [], [], lit(c.U32(1), s1))
+  |> should.equal(#(c.VLit(c.U32(1)), c.VLitT(c.U32T), [], []))
+  c.infer(0, [], [], [], lit(c.U64(1), s1))
+  |> should.equal(#(c.VLit(c.U64(1)), c.VLitT(c.U64T), [], []))
+  c.infer(0, [], [], [], lit(c.F32(1.0), s1))
+  |> should.equal(#(c.VLit(c.F32(1.0)), c.VLitT(c.F32T), [], []))
+  c.infer(0, [], [], [], lit(c.F64(1.0), s1))
+  |> should.equal(#(c.VLit(c.F64(1.0)), c.VLitT(c.F64T), [], []))
+}
 
-// pub fn lit_check_test() {
-//   c.check(0, [], [], lit(c.I32(1)), c.VLitT(c.I32T), s2)
-//   |> should.equal(c.VLitT(c.I32T))
-//   c.check(0, [], [], lit(c.I64(1)), c.VLitT(c.I64T), s2)
-//   |> should.equal(c.VLitT(c.I64T))
-//   c.check(0, [], [], lit(c.U32(1)), c.VLitT(c.U32T), s2)
-//   |> should.equal(c.VLitT(c.U32T))
-//   c.check(0, [], [], lit(c.U64(1)), c.VLitT(c.U64T), s2)
-//   |> should.equal(c.VLitT(c.U64T))
-//   c.check(0, [], [], lit(c.F32(1.0)), c.VLitT(c.F32T), s2)
-//   |> should.equal(c.VLitT(c.F32T))
-//   c.check(0, [], [], lit(c.F64(1.0)), c.VLitT(c.F64T), s2)
-//   |> should.equal(c.VLitT(c.F64T))
+pub fn lit_check_test() {
+  c.check(0, [], [], [], lit(c.I32(1), s1), c.VLitT(c.I32T), s2)
+  |> should.equal(#(c.VLit(c.I32(1)), [], []))
+  c.check(0, [], [], [], lit(c.I64(1), s1), c.VLitT(c.I64T), s2)
+  |> should.equal(#(c.VLit(c.I64(1)), [], []))
+  c.check(0, [], [], [], lit(c.U32(1), s1), c.VLitT(c.U32T), s2)
+  |> should.equal(#(c.VLit(c.U32(1)), [], []))
+  c.check(0, [], [], [], lit(c.U64(1), s1), c.VLitT(c.U64T), s2)
+  |> should.equal(#(c.VLit(c.U64(1)), [], []))
+  c.check(0, [], [], [], lit(c.F32(1.0), s1), c.VLitT(c.F32T), s2)
+  |> should.equal(#(c.VLit(c.F32(1.0)), [], []))
+  c.check(0, [], [], [], lit(c.F64(1.0), s1), c.VLitT(c.F64T), s2)
+  |> should.equal(#(c.VLit(c.F64(1.0)), [], []))
 
-//   c.check(0, [], [], lit(c.I32(1)), c.VLitT(c.I64T), s2)
-//   |> should.equal(
-//     c.VErr(c.TypeMismatch(c.VLitT(c.I32T), c.VLitT(c.I64T), s, s2)),
-//   )
-// }
+  let errors = [c.TypeMismatch(c.VLitT(c.I32T), c.VLitT(c.I64T), s1, s2)]
+  c.check(0, [], [], [], lit(c.I32(1), s1), c.VLitT(c.I64T), s2)
+  |> should.equal(#(c.VErr, [], errors))
+}
 
-// // --- LitT --- \\
-// pub fn litt_eval_test() {
-//   c.eval([], litt(c.I32T)) |> should.equal(c.VLitT(c.I32T))
-//   c.eval([], litt(c.I64T)) |> should.equal(c.VLitT(c.I64T))
-//   c.eval([], litt(c.U32T)) |> should.equal(c.VLitT(c.U32T))
-//   c.eval([], litt(c.U64T)) |> should.equal(c.VLitT(c.U64T))
-//   c.eval([], litt(c.F32T)) |> should.equal(c.VLitT(c.F32T))
-//   c.eval([], litt(c.F64T)) |> should.equal(c.VLitT(c.F64T))
-// }
+// --- LitT --- \\
+pub fn litt_eval_test() {
+  c.eval([], litt(c.I32T, s1)) |> should.equal(c.VLitT(c.I32T))
+  c.eval([], litt(c.I64T, s1)) |> should.equal(c.VLitT(c.I64T))
+  c.eval([], litt(c.U32T, s1)) |> should.equal(c.VLitT(c.U32T))
+  c.eval([], litt(c.U64T, s1)) |> should.equal(c.VLitT(c.U64T))
+  c.eval([], litt(c.F32T, s1)) |> should.equal(c.VLitT(c.F32T))
+  c.eval([], litt(c.F64T, s1)) |> should.equal(c.VLitT(c.F64T))
+}
 
-// pub fn litt_infer_test() {
-//   c.infer(0, [], [], litt(c.I32T)) |> should.equal(c.VTyp(0))
-//   c.infer(0, [], [], litt(c.I64T)) |> should.equal(c.VTyp(0))
-//   c.infer(0, [], [], litt(c.U32T)) |> should.equal(c.VTyp(0))
-//   c.infer(0, [], [], litt(c.U64T)) |> should.equal(c.VTyp(0))
-//   c.infer(0, [], [], litt(c.F32T)) |> should.equal(c.VTyp(0))
-//   c.infer(0, [], [], litt(c.F64T)) |> should.equal(c.VTyp(0))
-// }
+pub fn litt_infer_test() {
+  c.infer(0, [], [], [], litt(c.I32T, s1))
+  |> should.equal(#(c.VLitT(c.I32T), c.VTyp(0), [], []))
+  c.infer(0, [], [], [], litt(c.I64T, s1))
+  |> should.equal(#(c.VLitT(c.I64T), c.VTyp(0), [], []))
+  c.infer(0, [], [], [], litt(c.U32T, s1))
+  |> should.equal(#(c.VLitT(c.U32T), c.VTyp(0), [], []))
+  c.infer(0, [], [], [], litt(c.U64T, s1))
+  |> should.equal(#(c.VLitT(c.U64T), c.VTyp(0), [], []))
+  c.infer(0, [], [], [], litt(c.F32T, s1))
+  |> should.equal(#(c.VLitT(c.F32T), c.VTyp(0), [], []))
+  c.infer(0, [], [], [], litt(c.F64T, s1))
+  |> should.equal(#(c.VLitT(c.F64T), c.VTyp(0), [], []))
+}
 
-// pub fn litt_check_test() {
-//   c.check(0, [], [], litt(c.I32T), c.VTyp(0), s2) |> should.equal(c.VTyp(0))
-//   c.check(0, [], [], litt(c.I64T), c.VTyp(0), s2) |> should.equal(c.VTyp(0))
-//   c.check(0, [], [], litt(c.U32T), c.VTyp(0), s2) |> should.equal(c.VTyp(0))
-//   c.check(0, [], [], litt(c.U64T), c.VTyp(0), s2) |> should.equal(c.VTyp(0))
-//   c.check(0, [], [], litt(c.F32T), c.VTyp(0), s2) |> should.equal(c.VTyp(0))
-//   c.check(0, [], [], litt(c.F64T), c.VTyp(0), s2) |> should.equal(c.VTyp(0))
+pub fn litt_check_test() {
+  c.check(0, [], [], [], litt(c.I32T, s1), c.VTyp(0), s2)
+  |> should.equal(#(c.VLitT(c.I32T), [], []))
+  c.check(0, [], [], [], litt(c.I64T, s1), c.VTyp(0), s2)
+  |> should.equal(#(c.VLitT(c.I64T), [], []))
+  c.check(0, [], [], [], litt(c.U32T, s1), c.VTyp(0), s2)
+  |> should.equal(#(c.VLitT(c.U32T), [], []))
+  c.check(0, [], [], [], litt(c.U64T, s1), c.VTyp(0), s2)
+  |> should.equal(#(c.VLitT(c.U64T), [], []))
+  c.check(0, [], [], [], litt(c.F32T, s1), c.VTyp(0), s2)
+  |> should.equal(#(c.VLitT(c.F32T), [], []))
+  c.check(0, [], [], [], litt(c.F64T, s1), c.VTyp(0), s2)
+  |> should.equal(#(c.VLitT(c.F64T), [], []))
 
-//   c.check(0, [], [], litt(c.I32T), c.VTyp(1), s2)
-//   |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(0), c.VTyp(1), s, s2)))
-// }
+  let errors = [c.TypeMismatch(c.VTyp(0), c.VTyp(1), s1, s2)]
+  c.check(0, [], [], [], litt(c.I32T, s1), c.VTyp(1), s2)
+  |> should.equal(#(c.VErr, [], errors))
+}
 
 // // --- Var --- \\
 // pub fn var_eval_test() {
