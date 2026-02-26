@@ -126,36 +126,36 @@ pub fn litt_check_test() {
   |> should.equal(#(c.VErr, [], errors))
 }
 
-// // --- Var --- \\
-// pub fn var_eval_test() {
-//   let env = [v32(0)]
-//   c.eval(env, var(0)) |> should.equal(v32(0))
-//   c.eval(env, var(1)) |> should.equal(c.VErr(c.VarUndefined(1, s)))
-// }
+// --- Var --- \\
+pub fn var_eval_test() {
+  let env = [v32(0)]
+  c.eval(env, var(0, s1)) |> should.equal(v32(0))
+  c.eval(env, var(1, s1)) |> should.equal(c.VErr)
+}
 
-// pub fn var_unify_test() {
-//   c.unify(0, [], v32t, hhole(1), s, s2) |> should.equal(Ok([#(1, v32t)]))
-//   c.unify(0, [], hhole(1), v32t, s, s2) |> should.equal(Ok([#(1, v32t)]))
-//   c.unify(0, [#(0, v64t)], hhole(1), v32t, s, s2)
-//   |> should.equal(Ok([#(1, v32t), #(0, v64t)]))
-// }
+pub fn var_unify_test() {
+  c.unify(0, [], v32t, hhole(1), s1, s2) |> should.equal(Ok([#(1, v32t)]))
+  c.unify(0, [], hhole(1), v32t, s1, s2) |> should.equal(Ok([#(1, v32t)]))
+  c.unify(0, [#(0, v64t)], hhole(1), v32t, s1, s2)
+  |> should.equal(Ok([#(1, v32t), #(0, v64t)]))
+}
 
-// pub fn var_infer_test() {
-//   let ctx = [#("x", #(v32(1), v32t))]
-//   c.infer(0, ctx, [], var(0)) |> should.equal(v32t)
-//   c.infer(0, ctx, [], var(1))
-//   |> should.equal(c.VErr(c.VarUndefined(1, s)))
-// }
+pub fn var_infer_test() {
+  let ctx = [#("x", #(v32(1), v32t))]
+  c.infer(0, ctx, [], [], var(0, s1)) |> should.equal(#(v32(1), v32t, [], []))
+  c.infer(0, ctx, [], [], var(1, s1))
+  |> should.equal(#(c.VErr, c.VErr, [], [c.VarUndefined(1, s1)]))
+}
 
-// pub fn var_check_test() {
-//   let ctx = [#("x", #(v32(1), v32t))]
-//   c.check(0, ctx, [], var(0), v32t, s2) |> should.equal(v32t)
-
-//   c.check(0, ctx, [], var(1), v32t, s2)
-//   |> should.equal(c.VErr(c.VarUndefined(1, s)))
-//   c.check(0, ctx, [], var(0), v64t, s2)
-//   |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s, s2)))
-// }
+pub fn var_check_test() {
+  let ctx = [#("x", #(v32(1), v32t))]
+  c.check(0, ctx, [], [], var(0, s1), v32t, s2)
+  |> should.equal(#(v32(1), [], []))
+  c.check(0, ctx, [], [], var(1, s1), v32t, s2)
+  |> should.equal(#(c.VErr, [], [c.VarUndefined(1, s1)]))
+  c.check(0, ctx, [], [], var(0, s1), v64t, s2)
+  |> should.equal(#(c.VErr, [], [c.TypeMismatch(v32t, v64t, s1, s2)]))
+}
 
 // // --- Hole --- \\
 // pub fn hole_eval_test() {

@@ -330,6 +330,8 @@ pub fn unify(
       let b = eval([fresh, ..env2], out2)
       unify(lvl + 1, sub, a, b, s1, s2)
     }
+    VErr, _ -> Ok(sub)
+    _, VErr -> Ok(sub)
     _, _ -> Error(TypeMismatch(v1, v2, s1, s2))
   }
 }
