@@ -109,7 +109,6 @@ pub type Error {
   TypeAnnotationNeeded(term: Term)
   NotAFunction(fun: Term, fun_ty: Value)
   VarUndefined(index: Int, span: Span)
-  NotImplemented(hole_id: Int, span: Span)
   CtrUndefined(tag: String, span: Span)
   CtrUnsolvedParam(tag: String, ctr: CtrDef, id: Int, span: Span)
   RcdMissingFields(name: List(String), span: Span)

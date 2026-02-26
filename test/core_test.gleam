@@ -134,9 +134,9 @@ pub fn var_eval_test() {
 }
 
 pub fn var_unify_test() {
-  c.unify(0, [], v32t, hhole(1), s1, s2) |> should.equal(Ok([#(1, v32t)]))
-  c.unify(0, [], hhole(1), v32t, s1, s2) |> should.equal(Ok([#(1, v32t)]))
-  c.unify(0, [#(0, v64t)], hhole(1), v32t, s1, s2)
+  c.unify(0, [], v32t, vhole(1), s1, s2) |> should.equal(Ok([#(1, v32t)]))
+  c.unify(0, [], vhole(1), v32t, s1, s2) |> should.equal(Ok([#(1, v32t)]))
+  c.unify(0, [#(0, v64t)], vhole(1), v32t, s1, s2)
   |> should.equal(Ok([#(1, v32t), #(0, v64t)]))
 }
 
@@ -157,21 +157,21 @@ pub fn var_check_test() {
   |> should.equal(#(c.VErr, [], [c.TypeMismatch(v32t, v64t, s1, s2)]))
 }
 
-// // --- Hole --- \\
-// pub fn hole_eval_test() {
-//   c.eval([], hole(0)) |> should.equal(hhole(0))
-//   c.eval([], hole(1)) |> should.equal(hhole(1))
-// }
+// --- Hole --- \\
+pub fn hole_eval_test() {
+  c.eval([], hole(0, s1)) |> should.equal(vhole(0))
+  c.eval([], hole(1, s1)) |> should.equal(vhole(1))
+}
 
-// pub fn hole_infer_test() {
-//   c.infer(0, [], [], hole(0))
-//   |> should.equal(c.VErr(c.TypeAnnotationNeeded(hole(0))))
-// }
+pub fn hole_infer_test() {
+  c.infer(0, [], [], [], hole(0, s1))
+  |> should.equal(#(c.VErr, c.VErr, [], [c.TypeAnnotationNeeded(hole(0, s1))]))
+}
 
-// pub fn hole_check_test() {
-//   c.check(0, [], [], hole(0), v32t, s2)
-//   |> should.equal(c.VBad(v32t, [c.NotImplemented(0, s)]))
-// }
+pub fn hole_check_test() {
+  c.check(0, [], [], [], hole(0, s1), v32t, s2)
+  |> should.equal(#(vhole(0), [], []))
+}
 
 // // --- Ctr --- \\
 // pub fn ctr_eval_test() {
@@ -789,6 +789,6 @@ fn hvar(i) {
   c.VNeut(c.HVar(i), [])
 }
 
-fn hhole(i) {
+fn vhole(i) {
   c.VNeut(c.HHole(i), [])
 }
