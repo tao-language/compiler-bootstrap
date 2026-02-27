@@ -19,17 +19,17 @@ pub fn range_test() {
 }
 
 // --- Typ --- \\
-pub fn typ_eval_test() {
+pub fn eval_typ_test() {
   c.eval([], typ(0, s1)) |> should.equal(c.VTyp(0))
   c.eval([], typ(1, s1)) |> should.equal(c.VTyp(1))
 }
 
-pub fn typ_infer_test() {
+pub fn infer_typ_test() {
   c.infer(0, [], [], [], typ(0, s1))
   |> should.equal(#(c.VTyp(0), c.VTyp(1), [], []))
 }
 
-pub fn typ_check_test() {
+pub fn check_typ_test() {
   c.check(0, [], [], [], typ(0, s1), c.VTyp(1), s2)
   |> should.equal(#(c.VTyp(0), [], []))
 
@@ -38,7 +38,7 @@ pub fn typ_check_test() {
 }
 
 // --- Lit --- \\
-pub fn lit_eval_test() {
+pub fn eval_lit_test() {
   c.eval([], lit(c.I32(1), s1)) |> should.equal(c.VLit(c.I32(1)))
   c.eval([], lit(c.I64(1), s1)) |> should.equal(c.VLit(c.I64(1)))
   c.eval([], lit(c.U32(1), s1)) |> should.equal(c.VLit(c.U32(1)))
@@ -47,7 +47,7 @@ pub fn lit_eval_test() {
   c.eval([], lit(c.F64(1.0), s1)) |> should.equal(c.VLit(c.F64(1.0)))
 }
 
-pub fn lit_infer_test() {
+pub fn infer_lit_test() {
   c.infer(0, [], [], [], lit(c.I32(1), s1))
   |> should.equal(#(c.VLit(c.I32(1)), c.VLitT(c.I32T), [], []))
   c.infer(0, [], [], [], lit(c.I64(1), s1))
@@ -62,7 +62,7 @@ pub fn lit_infer_test() {
   |> should.equal(#(c.VLit(c.F64(1.0)), c.VLitT(c.F64T), [], []))
 }
 
-pub fn lit_check_test() {
+pub fn check_lit_test() {
   c.check(0, [], [], [], lit(c.I32(1), s1), c.VLitT(c.I32T), s2)
   |> should.equal(#(c.VLit(c.I32(1)), [], []))
   c.check(0, [], [], [], lit(c.I64(1), s1), c.VLitT(c.I64T), s2)
@@ -83,7 +83,7 @@ pub fn lit_check_test() {
 }
 
 // --- LitT --- \\
-pub fn litt_eval_test() {
+pub fn eval_litt_test() {
   c.eval([], litt(c.I32T, s1)) |> should.equal(c.VLitT(c.I32T))
   c.eval([], litt(c.I64T, s1)) |> should.equal(c.VLitT(c.I64T))
   c.eval([], litt(c.U32T, s1)) |> should.equal(c.VLitT(c.U32T))
@@ -92,7 +92,7 @@ pub fn litt_eval_test() {
   c.eval([], litt(c.F64T, s1)) |> should.equal(c.VLitT(c.F64T))
 }
 
-pub fn litt_infer_test() {
+pub fn infer_litt_test() {
   c.infer(0, [], [], [], litt(c.I32T, s1))
   |> should.equal(#(c.VLitT(c.I32T), c.VTyp(0), [], []))
   c.infer(0, [], [], [], litt(c.I64T, s1))
@@ -107,7 +107,7 @@ pub fn litt_infer_test() {
   |> should.equal(#(c.VLitT(c.F64T), c.VTyp(0), [], []))
 }
 
-pub fn litt_check_test() {
+pub fn check_litt_test() {
   c.check(0, [], [], [], litt(c.I32T, s1), c.VTyp(0), s2)
   |> should.equal(#(c.VLitT(c.I32T), [], []))
   c.check(0, [], [], [], litt(c.I64T, s1), c.VTyp(0), s2)
@@ -126,27 +126,27 @@ pub fn litt_check_test() {
 }
 
 // --- Var --- \\
-pub fn var_eval_test() {
+pub fn eval_var_test() {
   let env = [v32(0)]
   c.eval(env, var(0, s1)) |> should.equal(v32(0))
   c.eval(env, var(1, s1)) |> should.equal(c.VErr)
 }
 
-pub fn var_unify_test() {
+pub fn unify_var_test() {
   c.unify(0, [], v32t, vhole(1), s1, s2) |> should.equal(Ok([#(1, v32t)]))
   c.unify(0, [], vhole(1), v32t, s1, s2) |> should.equal(Ok([#(1, v32t)]))
   c.unify(0, [#(0, v64t)], vhole(1), v32t, s1, s2)
   |> should.equal(Ok([#(1, v32t), #(0, v64t)]))
 }
 
-pub fn var_infer_test() {
+pub fn infer_var_test() {
   let ctx = [#("x", #(v32(1), v32t))]
   c.infer(0, ctx, [], [], var(0, s1)) |> should.equal(#(v32(1), v32t, [], []))
   c.infer(0, ctx, [], [], var(1, s1))
   |> should.equal(#(c.VErr, c.VErr, [], [c.VarUndefined(1, s1)]))
 }
 
-pub fn var_check_test() {
+pub fn check_var_test() {
   let ctx = [#("x", #(v32(1), v32t))]
   c.check(0, ctx, [], [], var(0, s1), v32t, s2)
   |> should.equal(#(v32(1), [], []))
@@ -157,27 +157,27 @@ pub fn var_check_test() {
 }
 
 // --- Hole --- \\
-pub fn hole_eval_test() {
+pub fn eval_hole_test() {
   c.eval([], hole(0, s1)) |> should.equal(vhole(0))
   c.eval([], hole(1, s1)) |> should.equal(vhole(1))
 }
 
-pub fn hole_infer_test() {
+pub fn infer_hole_test() {
   c.infer(0, [], [], [], hole(0, s1))
   |> should.equal(#(c.VErr, c.VErr, [], [c.TypeAnnotationNeeded(hole(0, s1))]))
 }
 
-pub fn hole_check_test() {
+pub fn check_hole_test() {
   c.check(0, [], [], [], hole(0, s1), v32t, s2)
   |> should.equal(#(vhole(0), [], []))
 }
 
 // --- Ctr --- \\
-pub fn ctr_eval_test() {
+pub fn eval_ctr_test() {
   c.eval([], ctr("A", i32(1, s1), s2)) |> should.equal(c.VCtr("A", v32(1)))
 }
 
-pub fn ctr_unify_tag_test() {
+pub fn unify_ctr_tag_test() {
   c.unify(0, [], c.VCtr("A", v32(1)), c.VCtr("A", v32(1)), s1, s2)
   |> should.equal(Ok([]))
   c.unify(0, [], c.VCtr("A", v32(1)), c.VCtr("B", v32(1)), s1, s2)
@@ -190,7 +190,7 @@ pub fn ctr_unify_tag_test() {
 // TODO: check_type_test
 // TODO: ctr_solve_params_test
 
-pub fn ctr_infer_test() {
+pub fn infer_ctr_test() {
   c.infer(0, [], [], [], ctr("A", i32(1, s1), s2))
   |> should.equal(#(c.VErr, c.VErr, [], [c.CtrUndefined("A", s2)]))
 
@@ -199,13 +199,13 @@ pub fn ctr_infer_test() {
   |> should.equal(#(c.VCtr("A", v32(1)), v64t, [], []))
 }
 
-pub fn ctr_infer_arg_bind_test() {
+pub fn infer_ctr_arg_bind_test() {
   let tenv = [#("A", c.CtrDef(["a"], var(0, s1), var(0, s2)))]
   c.infer(0, [], tenv, [], ctr("A", i32(1, s3), s4))
   |> should.equal(#(c.VCtr("A", v32(1)), v32t, [#(0, v32t)], []))
 }
 
-pub fn ctr_infer_arg_mismatch_test() {
+pub fn infer_ctr_arg_mismatch_test() {
   let tenv = [#("A", c.CtrDef([], i32t(s1), i64t(s2)))]
   c.infer(0, [], tenv, [], ctr("A", typ(0, s3), s4))
   |> should.equal(
@@ -215,7 +215,7 @@ pub fn ctr_infer_arg_mismatch_test() {
   )
 }
 
-pub fn ctr_infer_arg_unsolved_test() {
+pub fn infer_ctr_arg_unsolved_test() {
   let ctr_def = c.CtrDef(["a"], i32t(s1), var(0, s2))
   let tenv = [#("A", ctr_def)]
   c.infer(0, [], tenv, [], ctr("A", i32(1, s3), s4))
@@ -226,7 +226,7 @@ pub fn ctr_infer_arg_unsolved_test() {
   )
 }
 
-pub fn ctr_check_test() {
+pub fn check_ctr_test() {
   c.check(0, [], [], [], ctr("A", i32(1, s1), s2), v32t, s2)
   |> should.equal(#(c.VErr, [], [c.CtrUndefined("A", s2)]))
 
@@ -235,7 +235,7 @@ pub fn ctr_check_test() {
   |> should.equal(#(c.VCtr("A", v32(1)), [], []))
 }
 
-pub fn ctr_check_arg_mismatch_test() {
+pub fn check_ctr_arg_mismatch_test() {
   let tenv = [#("A", c.CtrDef([], i32t(s1), i64t(s2)))]
   c.check(0, [], tenv, [], ctr("A", i64(1, s3), s4), v64t, s5)
   |> should.equal(
@@ -243,7 +243,7 @@ pub fn ctr_check_arg_mismatch_test() {
   )
 }
 
-pub fn ctr_check_arg_unsolved_test() {
+pub fn check_ctr_arg_unsolved_test() {
   let ctr_def = c.CtrDef(["a"], var(0, s1), i64t(s2))
   let tenv = [#("A", ctr_def)]
   c.check(0, [], tenv, [], ctr("A", i32(1, s3), s4), v64t, s5)
@@ -254,13 +254,13 @@ pub fn ctr_check_arg_unsolved_test() {
   )
 }
 
-pub fn ctr_check_ret_bind_test() {
+pub fn check_ctr_ret_bind_test() {
   let tenv = [#("A", c.CtrDef(["a"], var(0, s1), var(0, s2)))]
   c.check(0, [], tenv, [], ctr("A", i32(1, s3), s4), v32t, s5)
   |> should.equal(#(c.VCtr("A", v32(1)), [#(0, v32t)], []))
 }
 
-pub fn ctr_check_ret_mismatch_test() {
+pub fn check_ctr_ret_mismatch_test() {
   let tenv = [#("A", c.CtrDef([], i32t(s1), i64t(s2)))]
   c.check(0, [], tenv, [], ctr("A", i32(1, s3), s4), v32t, s5)
   |> should.equal(
@@ -269,7 +269,7 @@ pub fn ctr_check_ret_mismatch_test() {
 }
 
 // --- Rcd --- \\
-pub fn rcd_eval_test() {
+pub fn eval_rcd_test() {
   c.eval([], rcd([], s0)) |> should.equal(c.VRcd([]))
   c.eval([], rcd([#("a", i32t(s1))], s0))
   |> should.equal(c.VRcd([#("a", v32t)]))
@@ -277,7 +277,7 @@ pub fn rcd_eval_test() {
   |> should.equal(c.VRcd([#("a", v32t), #("b", v64t)]))
 }
 
-pub fn rcd_unify_missing_test() {
+pub fn unify_rcd_missing_test() {
   let ab = c.VRcd([#("a", v32t), #("b", v64t)])
   c.unify(0, [], ab, c.VRcd([]), s1, s2)
   |> should.equal(Error(c.RcdMissingFields(["a", "b"], s2)))
@@ -285,25 +285,25 @@ pub fn rcd_unify_missing_test() {
   |> should.equal(Error(c.RcdMissingFields(["a", "b"], s1)))
 }
 
-pub fn rcd_unify_mismatch_test() {
+pub fn unify_rcd_mismatch_test() {
   c.unify(0, [], c.VRcd([#("a", v32t)]), c.VRcd([#("a", v64t)]), s1, s2)
   |> should.equal(Error(c.TypeMismatch(v32t, v64t, s1, s2)))
 }
 
-pub fn rcd_unify_order_test() {
+pub fn unify_rcd_order_test() {
   let ab = c.VRcd([#("a", v32t), #("b", v64t)])
   let ba = c.VRcd([#("b", v64t), #("a", v32t)])
   c.unify(0, [], ab, ab, s1, s2) |> should.equal(Ok([]))
   c.unify(0, [], ab, ba, s1, s2) |> should.equal(Ok([]))
 }
 
-pub fn rcd_unify_bind_test() {
+pub fn unify_rcd_bind_test() {
   let a = c.VRcd([#("a", v32t)])
   let b = c.VRcd([#("a", vhole(1))])
   c.unify(0, [], a, b, s1, s2) |> should.equal(Ok([#(1, v32t)]))
 }
 
-pub fn rcd_infer_test() {
+pub fn infer_rcd_test() {
   c.infer(0, [], [], [], rcd([], s0))
   |> should.equal(#(c.VRcd([]), c.VRcd([]), [], []))
   c.infer(0, [], [], [], rcd([#("a", i32(1, s1))], s0))
@@ -319,7 +319,7 @@ pub fn rcd_infer_test() {
   )
 }
 
-pub fn rcd_check_test() {
+pub fn check_rcd_test() {
   c.check(0, [], [], [], rcd([], s0), c.VRcd([]), s2)
   |> should.equal(#(c.VRcd([]), [], []))
   let ty = c.VRcd([#("a", v32t)])
@@ -327,7 +327,7 @@ pub fn rcd_check_test() {
   |> should.equal(#(c.VRcd([#("a", v32(1))]), [], []))
 }
 
-pub fn rcd_check_missing_test() {
+pub fn check_rcd_missing_test() {
   let term = rcd([#("a", i32(1, s1)), #("b", i64(2, s2))], s0)
   c.check(0, [], [], [], term, c.VRcd([]), s2)
   |> should.equal(#(c.VErr, [], [c.RcdMissingFields(["a", "b"], s2)]))
@@ -336,13 +336,13 @@ pub fn rcd_check_missing_test() {
   |> should.equal(#(c.VErr, [], [c.RcdMissingFields(["a", "b"], s1)]))
 }
 
-pub fn rcd_check_mismatch_test() {
+pub fn check_rcd_mismatch_test() {
   let term = rcd([#("a", i32(1, s1))], s0)
   c.check(0, [], [], [], term, c.VRcd([#("a", v64t)]), s2)
   |> should.equal(#(c.VErr, [], [c.TypeMismatch(v32t, v64t, s0, s2)]))
 }
 
-pub fn rcd_check_order_test() {
+pub fn check_rcd_order_test() {
   let term = rcd([#("b", i64(2, s1)), #("a", i32(1, s2))], s0)
   let typ = c.VRcd([#("a", v32t), #("b", v64t)])
   c.check(0, [], [], [], term, typ, s3)
@@ -350,7 +350,7 @@ pub fn rcd_check_order_test() {
 }
 
 // --- Dot --- \\
-pub fn dot_eval_test() {
+pub fn eval_dot_test() {
   c.eval([], dot(i32(1, s1), "a", s2))
   |> should.equal(c.VErr)
   c.eval([], dot(rcd([], s0), "a", s1))
@@ -365,12 +365,12 @@ pub fn dot_eval_test() {
   |> should.equal(c.VNeut(c.HHole(0), [c.EDot("a")]))
 }
 
-pub fn dot_infer_non_ctr_test() {
+pub fn infer_dot_non_ctr_test() {
   c.infer(0, [], [], [], dot(i32(1, s1), "x", s2))
   |> should.equal(#(c.VErr, c.VErr, [], [c.DotOnNonCtr(v32t, "x", s1)]))
 }
 
-pub fn dot_infer_record_test() {
+pub fn infer_dot_record_test() {
   let record = rcd([#("x", i32(1, s1)), #("y", i64(2, s2))], s0)
   c.infer(0, [], [], [], dot(record, "x", s3))
   |> should.equal(#(v32(1), v32t, [], []))
@@ -379,12 +379,12 @@ pub fn dot_infer_record_test() {
   |> should.equal(#(v64(2), v64t, [], []))
 }
 
-pub fn dot_infer_record_not_found_test() {
+pub fn infer_dot_record_not_found_test() {
   c.infer(0, [], [], [], dot(rcd([], s0), "x", s1))
   |> should.equal(#(c.VErr, c.VErr, [], [c.DotFieldNotFound("x", [], s0)]))
 }
 
-pub fn dot_check_test() {
+pub fn check_dot_test() {
   let ab = rcd([#("a", i32(1, s1)), #("b", i64(2, s2))], s0)
   c.check(0, [], [], [], dot(ab, "a", s3), v32t, s2)
   |> should.equal(#(v32(1), [], []))
@@ -393,33 +393,33 @@ pub fn dot_check_test() {
 }
 
 // --- Ann --- \\
-pub fn ann_eval_test() {
+pub fn eval_ann_test() {
   let env = [v32(1)]
   c.eval(env, ann(var(0, s1), typ(1, s2), s3)) |> should.equal(v32(1))
 }
 
-pub fn ann_infer_test() {
+pub fn infer_ann_test() {
   c.infer(0, [], [], [], ann(i32(1, s1), i32t(s2), s3))
   |> should.equal(#(v32(1), v32t, [], []))
 }
 
-pub fn ann_infer_mismatch_test() {
+pub fn infer_ann_mismatch_test() {
   c.infer(1, [], [], [], ann(i32(1, s1), i64t(s2), s3))
   |> should.equal(#(c.VErr, v64t, [], [c.TypeMismatch(v32t, v64t, s1, s2)]))
 }
 
-pub fn ann_check_test() {
+pub fn check_ann_test() {
   c.check(0, [], [], [], ann(i32(1, s1), i32t(s2), s3), v32t, s2)
   |> should.equal(#(v32(1), [], []))
 }
 
-pub fn ann_check_mismatch_test() {
+pub fn check_ann_mismatch_test() {
   c.check(0, [], [], [], ann(i32(1, s1), i32t(s2), s3), v64t, s4)
   |> should.equal(#(c.VErr, [], [c.TypeMismatch(v32t, v64t, s3, s4)]))
 }
 
 // --- Lam --- \\
-pub fn lam_eval_test() {
+pub fn eval_lam_test() {
   c.eval([], lam("x", var(0, s1), s2))
   |> should.equal(c.VLam("x", [], var(0, s1)))
 }
@@ -430,30 +430,30 @@ pub fn lam_infer_test() {
   |> should.equal(#(c.VErr, c.VErr, [], [c.TypeAnnotationNeeded(term)]))
 }
 
-pub fn lam_check_test() {
+pub fn check_lam_test() {
   let term = lam("x", var(0, s1), s2)
   c.check(0, [], [], [], term, c.VPi("x", [], c.VTyp(0), typ(0, s3)), s4)
   |> should.equal(#(c.VLam("x", [], var(0, s1)), [], []))
 }
 
-pub fn lam_check_mismatch_test() {
+pub fn check_lam_mismatch_test() {
   let term = lam("x", var(0, s1), s2)
   c.check(0, [], [], [], term, c.VTyp(0), s3)
   |> should.equal(#(c.VErr, [], [c.TypeAnnotationNeeded(term)]))
 }
 
 // --- Pi --- \\
-pub fn pi_eval_test() {
+pub fn eval_pi_test() {
   c.eval([], pi("x", i32t(s1), var(0, s2), s3))
   |> should.equal(c.VPi("x", [], v32t, var(0, s2)))
 }
 
-pub fn pi_infer_test() {
+pub fn infer_pi_test() {
   c.infer(0, [], [], [], pi("x", i32t(s1), var(0, s2), s3))
   |> should.equal(#(c.VPi("x", [], v32t, var(0, s2)), c.VTyp(0), [], []))
 }
 
-pub fn pi_infer_undefined_test() {
+pub fn infer_pi_undefined_test() {
   c.infer(0, [], [], [], pi("x", var(1, s1), var(2, s2), s3))
   |> should.equal(
     #(c.VPi("x", [], c.VErr, var(2, s2)), c.VTyp(0), [], [
@@ -463,20 +463,20 @@ pub fn pi_infer_undefined_test() {
   )
 }
 
-pub fn pi_check_test() {
+pub fn check_pi_test() {
   let term = pi("x", i32t(s1), var(0, s2), s3)
   c.check(0, [], [], [], term, c.VTyp(0), s4)
   |> should.equal(#(c.VPi("x", [], v32t, var(0, s2)), [], []))
 }
 
-pub fn pi_check_mismatch_test() {
+pub fn check_pi_mismatch_test() {
   let term = pi("x", i32t(s1), var(0, s2), s3)
   c.check(0, [], [], [], term, c.VTyp(1), s4)
   |> should.equal(#(c.VErr, [], [c.TypeMismatch(c.VTyp(0), c.VTyp(1), s3, s4)]))
 }
 
 // --- App --- \\
-pub fn app_eval_value_test() {
+pub fn eval_app_value_test() {
   c.eval_app(c.VTyp(0), v32(1)) |> should.equal(c.VErr)
   c.eval_app(c.VLit(c.I32(0)), v32(1)) |> should.equal(c.VErr)
   c.eval_app(c.VLitT(c.I32T), v32(1)) |> should.equal(c.VErr)
@@ -492,12 +492,12 @@ pub fn app_eval_value_test() {
   c.eval_app(c.VErr, v32(1)) |> should.equal(c.VErr)
 }
 
-pub fn app_eval_test() {
+pub fn eval_app_test() {
   let fun = lam("x", var(0, s1), s2)
   c.eval([], app(fun, i32(1, s3), s4)) |> should.equal(v32(1))
 }
 
-pub fn app_infer_test() {
+pub fn infer_app_test() {
   let ty = c.VPi("x", [], v32t, i64t(s0))
   let ctx = [#("f", #(c.VLam("x", [], i64(2, s1)), ty))]
   c.infer(0, ctx, [], [], var(0, s2))
@@ -508,7 +508,7 @@ pub fn app_infer_test() {
   |> should.equal(#(v64(2), v64t, [], [c.TypeMismatch(v64t, v32t, s2, s1)]))
 }
 
-pub fn app_check_test() {
+pub fn check_app_test() {
   let ty = c.VPi("x", [], v32t, i64t(s0))
   let ctx = [#("f", #(c.VLam("x", [], i64(2, s1)), ty))]
   c.check(0, ctx, [], [], app(var(0, s2), i32(1, s3), s4), v64t, s2)
@@ -517,7 +517,10 @@ pub fn app_check_test() {
   |> should.equal(#(c.VErr, [], [c.TypeMismatch(v64t, v32t, s4, s2)]))
 }
 
-// // --- Match --- \\
+// --- Match --- \\
+// TODO: eval_match_value_test
+// TODO: eval_match_test
+
 // pub fn match_pattern_any_test() {
 //   c.match_pattern(c.PAny, v32(1)) |> should.equal(Ok([]))
 // }
@@ -557,7 +560,7 @@ pub fn app_check_test() {
 //   c.match_pattern(c.PTyp(0), c.VBad(c.VTyp(0), [])) |> should.equal(Ok([]))
 // }
 
-// pub fn match_eval_test() {
+// pub fn eval_match_test() {
 //   c.eval([], match(i32(1), [case_(c.PAny, i64(2))]))
 //   |> should.equal(v64(2))
 
