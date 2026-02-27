@@ -545,19 +545,19 @@ pub fn app_eval_match_test() {
   |> should.equal(c.VTyp(1))
 }
 
-// pub fn app_infer_test() {
-//   let ty = c.VPi("x", [], v32t, i32t)
-//   let ctx = [#("f", #(hhole(0), ty))]
-//   c.infer(0, ctx, [], var(0)) |> should.equal(ty)
-//   c.infer(0, ctx, [], app(var(0), i32(1))) |> should.equal(v32t)
-//   c.infer(0, ctx, [], app(var(0), i64_2(1)))
-//   |> should.equal(c.VBad(v32t, [c.TypeMismatch(v64t, v32t, s2, s2)]))
-
-//   let ty = c.VPi("x", [], v32t, i64t)
-//   let ctx = [#("f", #(hhole(0), ty))]
-//   c.infer(0, ctx, [], var(0)) |> should.equal(ty)
-//   c.infer(0, ctx, [], app(var(0), i32(1))) |> should.equal(v64t)
-// }
+pub fn app_infer_test() {
+  let ty = c.VPi("x", [], v32t, i64t(s1))
+  let ctx = [#("f", #(vhole(0), ty))]
+  c.infer(0, ctx, [], [], var(0, s2)) |> should.equal(#(vhole(0), ty, [], []))
+  c.infer(0, ctx, [], [], app(var(0, s1), i32(1, s2), s3))
+  |> should.equal(#(c.VNeut(c.HHole(0), [c.EApp(v32(1))]), v64t, [], []))
+  c.infer(0, ctx, [], [], app(var(0, s1), i64(1, s2), s3))
+  |> should.equal(
+    #(c.VNeut(c.HHole(0), [c.EApp(c.VErr)]), v64t, [], [
+      c.TypeMismatch(v64t, v32t, s2, s1),
+    ]),
+  )
+}
 
 // pub fn app_check_test() {
 //   let ty = c.VPi("x", [], v32t, i32t)
