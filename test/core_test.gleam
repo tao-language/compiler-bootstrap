@@ -442,29 +442,38 @@ pub fn lam_check_mismatch_test() {
   |> should.equal(#(c.VErr, [], [c.TypeAnnotationNeeded(term)]))
 }
 
-// // --- Pi --- \\
-// pub fn pi_eval_test() {
-//   c.eval([], pi("x", typ(0), var(0)))
-//   |> should.equal(c.VPi("x", [], c.VTyp(0), var(0)))
-// }
+// --- Pi --- \\
+pub fn pi_eval_test() {
+  c.eval([], pi("x", i32t(s1), var(0, s2), s3))
+  |> should.equal(c.VPi("x", [], v32t, var(0, s2)))
+}
 
-// pub fn pi_infer_test() {
-//   c.infer(0, [], [], pi("x", typ(0), var(0)))
-//   |> should.equal(c.VTyp(0))
-//   c.infer(0, [], [], pi("y", var(1), var(2)))
-//   |> should.equal(
-//     c.VBad(c.VTyp(0), [c.VarUndefined(1, s), c.VarUndefined(2, s)]),
-//   )
-// }
+pub fn pi_infer_test() {
+  c.infer(0, [], [], [], pi("x", i32t(s1), var(0, s2), s3))
+  |> should.equal(#(c.VPi("x", [], v32t, var(0, s2)), c.VTyp(0), [], []))
+}
 
-// pub fn pi_check_test() {
-//   let term = pi("x", typ(0), typ(1))
-//   c.check(0, [], [], term, c.VTyp(0), s2)
-//   |> should.equal(c.VTyp(0))
+pub fn pi_infer_undefined_test() {
+  c.infer(0, [], [], [], pi("x", var(1, s1), var(2, s2), s3))
+  |> should.equal(
+    #(c.VPi("x", [], c.VErr, var(2, s2)), c.VTyp(0), [], [
+      c.VarUndefined(1, s1),
+      c.VarUndefined(2, s2),
+    ]),
+  )
+}
 
-//   c.check(0, [], [], term, c.VTyp(1), s2)
-//   |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(0), c.VTyp(1), s, s2)))
-// }
+pub fn pi_check_test() {
+  let term = pi("x", i32t(s1), var(0, s2), s3)
+  c.check(0, [], [], [], term, c.VTyp(0), s4)
+  |> should.equal(#(c.VPi("x", [], v32t, var(0, s2)), [], []))
+}
+
+pub fn pi_check_mismatch_test() {
+  let term = pi("x", i32t(s1), var(0, s2), s3)
+  c.check(0, [], [], [], term, c.VTyp(1), s4)
+  |> should.equal(#(c.VErr, [], [c.TypeMismatch(c.VTyp(0), c.VTyp(1), s3, s4)]))
+}
 
 // // --- App --- \\
 // pub fn app_eval_test() {
