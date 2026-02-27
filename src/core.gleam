@@ -150,10 +150,7 @@ pub fn eval(env: Env, term: Term) -> Value {
     }
     Match(arg, cases) -> {
       let arg_val = eval(env, arg)
-      case eval_match(env, arg_val, cases) {
-        Some(result) -> result
-        None -> VErr
-      }
+      eval_match(env, arg_val, cases)
     }
   }
 }
@@ -179,16 +176,16 @@ fn eval_app(fun: Value, arg: Value) -> Value {
   }
 }
 
-fn eval_match(env: Env, arg: Value, cases: List(Case)) -> Option(Value) {
+fn eval_match(env: Env, arg: Value, cases: List(Case)) -> Value {
   case cases {
-    [] -> None
+    [] -> VErr
     [c, ..cases] as all_cases ->
       case arg {
         VNeut(head, spine) ->
-          Some(VNeut(head, list.append(spine, [EMatch(env, all_cases)])))
+          VNeut(head, list.append(spine, [EMatch(env, all_cases)]))
         _ ->
           case match_pattern(c.pattern, arg) {
-            Ok(bindings) -> Some(eval(list.append(bindings, env), c.body))
+            Ok(bindings) -> eval(list.append(bindings, env), c.body)
             Error(Nil) -> eval_match(env, arg, cases)
           }
       }
@@ -683,10 +680,6 @@ fn infer_fields(
 //   })
 // }
 
-pub fn substitute(sub: Subst, value: Value) -> Value {
-  todo
-}
-
 pub fn check(
   lvl: Int,
   ctx: Context,
@@ -726,54 +719,122 @@ fn check_ctr(
   sub: Subst,
   tag: String,
   arg: Term,
-  expected_ty: Value,
-  ty_span: Span,
+  ret_ty: Value,
+  ret_span: Span,
 ) -> #(Value, Subst, List(Error)) {
   case list.key_find(tenv, tag) {
     Error(Nil) -> {
-      let err = CtrUndefined(tag, ty_span)
+      let err = CtrUndefined(tag, ret_span)
       #(VErr, [], [err])
     }
     Ok(ctr) -> {
-      let #(ctx, ctr_arg_ty, _, ctr_errors) =
-        instantiate_ctr(lvl, ctx, tag, ctr, expected_ty, ty_span)
+      let #(ctr_ctx, sub, ctr_errors) = check_ctr_def(lvl, ctx, tenv, sub, ctr)
+      let #(_, sub, ret_errors) =
+        check_type(lvl, ctr_ctx, sub, ctr.ret_ty, ret_ty, ret_span)
+      let #(params, param_errors) = ctr_solve_params(sub, ctr, tag, ret_span)
+      let env = list.append(params, ctx2env(ctx))
+      let ctr_arg_ty = eval(env, ctr.arg_ty)
       let #(arg_val, sub, arg_errors) =
         check(lvl, ctx, tenv, sub, arg, ctr_arg_ty, ctr.arg_ty.span)
-      let errors = list.flatten([ctr_errors, arg_errors])
+      let errors =
+        list.flatten([ctr_errors, param_errors, arg_errors, ret_errors])
       #(VCtr(tag, arg_val), sub, errors)
     }
   }
 }
 
+fn check_ctr_def(
+  lvl: Int,
+  ctx: Context,
+  tenv: TypeEnv,
+  sub: Subst,
+  ctr: CtrDef,
+) -> #(Context, Subst, List(Error)) {
+  let params =
+    list.index_map(ctr.params, fn(x, i) {
+      #(x, #(VNeut(HHole(i), []), VTyp(0)))
+    })
+  let ctx = list.append(params, ctx)
+  let #(_, _, sub, arg_errors) = infer(lvl, ctx, tenv, sub, ctr.arg_ty)
+  let #(_, _, sub, ret_errors) = infer(lvl, ctx, tenv, sub, ctr.ret_ty)
+  #(ctx, sub, list.append(arg_errors, ret_errors))
+}
+
+pub fn ctr_params_instantiate(ctx: Context, ctr: CtrDef) -> Env {
+  let params = list.index_map(ctr.params, fn(_, i) { VNeut(HHole(i), []) })
+  list.append(params, ctx2env(ctx))
+}
+
+pub fn check_type(
+  lvl: Int,
+  ctx: Context,
+  sub: Subst,
+  t1: Term,
+  t2_val: Value,
+  t2_span: Span,
+) -> #(Value, Subst, List(Error)) {
+  let t1_val = eval(ctx2env(ctx), t1)
+  case unify(lvl, sub, t1_val, t2_val, t1.span, t2_span) {
+    Ok(sub) -> #(force(sub, t1_val, t1.span), sub, [])
+    Error(e) -> #(t1_val, sub, [e])
+  }
+}
+
+pub fn force(sub: Subst, value: Value, s: Span) -> Value {
+  case value {
+    VNeut(HVar(i), spine) ->
+      case list.key_find(sub, i) {
+        Ok(v) -> force(sub, apply_spine(v, spine, s), s)
+        Error(Nil) -> value
+      }
+    _ -> value
+  }
+}
+
+fn apply_spine(val: Value, spine: List(Elim), s: Span) -> Value {
+  list.fold(spine, val, fn(acc_val, elimination) {
+    case elimination {
+      EDot(field) -> eval_dot(acc_val, field, s)
+      EApp(arg) -> eval_app(acc_val, arg)
+      EMatch(env, cases) -> eval_match(env, acc_val, cases)
+    }
+  })
+}
+
+pub fn ctr_solve_params(
+  sub: Subst,
+  ctr: CtrDef,
+  tag: String,
+  s: Span,
+) -> #(Env, List(Error)) {
+  list.index_fold(ctr.params, #([], []), fn(acc, _, i) {
+    let #(acc_params, acc_errors) = acc
+    case list.key_find(sub, i) {
+      Ok(val) -> #(list.append(acc_params, [val]), acc_errors)
+      Error(Nil) -> #(
+        list.append(acc_params, [VNeut(HHole(i), [])]),
+        list.append(acc_errors, [CtrUnsolvedParam(tag, ctr, i, s)]),
+      )
+    }
+  })
+}
+
 pub fn instantiate_ctr(
   lvl: Int,
   ctx: Context,
+  tenv: TypeEnv,
+  sub: Subst,
   tag: String,
   ctr: CtrDef,
   ret_ty: Value,
-  s: Span,
+  ret_span: Span,
 ) -> #(Context, Value, Value, List(Error)) {
-  let params = list.index_map(ctr.params, fn(_, i) { VNeut(HHole(i), []) })
+  let #(ctr_ctx, sub, ctr_errors) = check_ctr_def(lvl, ctx, tenv, sub, ctr)
+  let #(_, sub, ret_errors) =
+    check_type(lvl, ctr_ctx, sub, ctr.ret_ty, ret_ty, ret_span)
+  let #(params, param_errors) = ctr_solve_params(sub, ctr, tag, ret_span)
   let env = list.append(params, ctx2env(ctx))
-  let ctr_ret_ty = eval(env, ctr.ret_ty)
-  let ret_result = unify(lvl, [], ctr_ret_ty, ret_ty, ctr.ret_ty.span, s)
-  let #(sub, ret_errors) = case ret_result {
-    Ok(sub) -> #(sub, [])
-    Error(e) -> #([], [e])
-  }
-  let #(params_solved, param_errors) =
-    list.index_fold(ctr.params, #([], []), fn(acc, _, i) {
-      let #(acc_params, acc_errors) = acc
-      case list.key_find(sub, i) {
-        Ok(val) -> #(list.append(acc_params, [val]), acc_errors)
-        Error(Nil) -> #(
-          list.append(acc_params, [VNeut(HHole(i), [])]),
-          list.append(acc_errors, [CtrUnsolvedParam(tag, ctr, i, s)]),
-        )
-      }
-    })
-  let env = list.append(params_solved, ctx2env(ctx))
-  let errors = list.append(ret_errors, param_errors)
+  let errors = list.flatten([ctr_errors, ret_errors, param_errors])
   #(ctx, eval(env, ctr.arg_ty), eval(env, ctr.ret_ty), errors)
 }
 

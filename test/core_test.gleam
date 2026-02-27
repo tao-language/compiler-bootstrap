@@ -173,68 +173,32 @@ pub fn hole_check_test() {
   |> should.equal(#(vhole(0), [], []))
 }
 
-// // --- Ctr --- \\
-// pub fn ctr_eval_test() {
-//   c.eval([], ctr("A", i32(1))) |> should.equal(c.VCtr("A", v32(1)))
-// }
+// --- Ctr --- \\
+pub fn ctr_eval_test() {
+  c.eval([], ctr("A", i32(1, s1), s2)) |> should.equal(c.VCtr("A", v32(1)))
+}
 
-// pub fn ctr_unify_tag_test() {
-//   c.unify(0, [], c.VCtr("A", v32(1)), c.VCtr("A", v32(1)), s, s2)
-//   |> should.equal(Ok([]))
-//   c.unify(0, [], c.VCtr("A", v32(1)), c.VCtr("B", v32(1)), s, s2)
-//   |> should.equal(
-//     Error(c.TypeMismatch(c.VCtr("A", v32(1)), c.VCtr("B", v32(1)), s, s2)),
-//   )
-// }
+pub fn ctr_unify_tag_test() {
+  c.unify(0, [], c.VCtr("A", v32(1)), c.VCtr("A", v32(1)), s1, s2)
+  |> should.equal(Ok([]))
+  c.unify(0, [], c.VCtr("A", v32(1)), c.VCtr("B", v32(1)), s1, s2)
+  |> should.equal(
+    Error(c.TypeMismatch(c.VCtr("A", v32(1)), c.VCtr("B", v32(1)), s1, s2)),
+  )
+}
 
-// pub fn instantiate_ctr_ret_test() {
-//   let ctr_def = c.CtrDef([], i32t, i64t)
-//   c.instantiate_ctr(0, [], "A", ctr_def, v64t, s2)
-//   |> should.equal(#([], v32t, v64t, []))
-// }
+// TODO: check_ctr_def_test
+// TODO: check_type_test
+// TODO: ctr_solve_params_test
 
-// pub fn instantiate_ctr_ret_mismatch_test() {
-//   let ctr_def = c.CtrDef([], i32t, i64t)
-//   c.instantiate_ctr(0, [], "A", ctr_def, v32t, s2)
-//   |> should.equal(#([], v32t, v64t, [c.TypeMismatch(v64t, v32t, s, s2)]))
-// }
+pub fn ctr_infer_test() {
+  c.infer(0, [], [], [], ctr("A", i32(1, s1), s2))
+  |> should.equal(#(c.VErr, c.VErr, [], [c.CtrUndefined("A", s2)]))
 
-// pub fn instantiate_ctr_ret_undefined_test() {
-//   let ctr_def = c.CtrDef([], i32t, var(0))
-//   c.instantiate_ctr(0, [], "A", ctr_def, v64t, s2)
-//   |> should.equal(
-//     #([], v32t, c.VErr(c.VarUndefined(0, s)), [c.VarUndefined(0, s)]),
-//   )
-// }
-
-// pub fn instantiate_ctr_ret_bind_test() {
-//   let ctr_def = c.CtrDef(["a"], var(0), var(0))
-//   c.instantiate_ctr(0, [], "A", ctr_def, v64t, s2)
-//   |> should.equal(#([], v64t, v64t, []))
-// }
-
-// pub fn instantiate_ctr_arg_undefined_test() {
-//   let ctr_def = c.CtrDef([], var(0), i32t)
-//   c.instantiate_ctr(0, [], "A", ctr_def, v32t, s2)
-//   |> should.equal(#([], c.VErr(c.VarUndefined(0, s)), v32t, []))
-// }
-
-// pub fn instantiate_ctr_arg_unsolved_test() {
-//   let ctr_def = c.CtrDef(["a"], var(0), i32t)
-//   c.instantiate_ctr(0, [], "A", ctr_def, v32t, s2)
-//   |> should.equal(
-//     #([], hhole(0), v32t, [c.CtrUnsolvedParam("A", ctr_def, 0, s2)]),
-//   )
-// }
-
-// pub fn ctr_infer_test() {
-//   c.infer(0, [], [], ctr("A", i32(1)))
-//   |> should.equal(c.VErr(c.CtrUndefined("A", s)))
-
-//   let tenv = [#("A", c.CtrDef([], i32t, i64t))]
-//   c.infer(0, [], tenv, ctr("A", i32(1)))
-//   |> should.equal(v64t)
-// }
+  let tenv = [#("A", c.CtrDef([], i32t(s1), i64t(s2)))]
+  c.infer(0, [], tenv, [], ctr("A", i32(1, s3), s4))
+  |> should.equal(#(c.VCtr("A", v32(1)), v64t, [], []))
+}
 
 // pub fn ctr_infer_arg_bind_test() {
 //   let tenv = [#("A", c.CtrDef(["a"], var(0), var(0)))]
@@ -693,9 +657,9 @@ const s1 = c.Span("core_test", 1, 1)
 
 const s2 = c.Span("core_test", 2, 2)
 
-const s3 = c.Span("core_test", 2, 2)
+const s3 = c.Span("core_test", 3, 3)
 
-const s4 = c.Span("core_test", 2, 2)
+const s4 = c.Span("core_test", 4, 4)
 
 fn typ(l, s) {
   c.Term(c.Typ(l), s)
