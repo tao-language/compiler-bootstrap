@@ -166,11 +166,10 @@ fn eval_dot(value: Value, name: String, s: Span) -> Value {
   }
 }
 
-fn eval_app(fun: Value, arg: Value) -> Value {
+pub fn eval_app(fun: Value, arg: Value) -> Value {
   case fun {
     VNeut(head, spine) -> VNeut(head, list.append(spine, [EApp(arg)]))
     VLam(_, env, body) -> eval([arg, ..env], body)
-    VErr -> VErr
     _ -> VErr
   }
 }
