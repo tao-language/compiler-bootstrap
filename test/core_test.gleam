@@ -475,42 +475,75 @@ pub fn pi_check_mismatch_test() {
   |> should.equal(#(c.VErr, [], [c.TypeMismatch(c.VTyp(0), c.VTyp(1), s3, s4)]))
 }
 
-// // --- App --- \\
-// pub fn app_eval_test() {
-//   c.eval([], app(typ(0), typ(1)))
-//   |> should.equal(c.VErr(c.NotAFunction(c.VTyp(0), s)))
-//   c.eval([], app(i32(1), typ(1)))
-//   |> should.equal(c.VErr(c.NotAFunction(v32(1), s)))
-//   c.eval([], app(i32t, typ(1)))
-//   |> should.equal(c.VErr(c.NotAFunction(v32t, s)))
-//   let env = [c.VLam("a", [], var(0))]
-//   c.eval(env, app(var(0), typ(1)))
-//   |> should.equal(c.VTyp(1))
-//   c.eval(env, app(var(1), typ(1)))
-//   |> should.equal(c.VErr(c.VarUndefined(1, s)))
-//   c.eval([], app(ctr("A", i32(0)), typ(1)))
-//   |> should.equal(c.VErr(c.NotAFunction(c.VCtr("A", v32(0)), s)))
-//   let env = [c.VNeut(c.HVar(0), [])]
-//   c.eval(env, app(dot(var(0), "a"), typ(1)))
-//   |> should.equal(c.VNeut(c.HVar(0), [c.EDot("a"), c.EApp(c.VTyp(1))]))
-//   let env = [c.VLam("a", [], var(0))]
-//   c.eval(env, app(ann(var(0), typ(1)), typ(1)))
-//   |> should.equal(c.VTyp(1))
-//   c.eval([], app(lam("a", var(0)), typ(1)))
-//   |> should.equal(c.VTyp(1))
-//   c.eval([], app(pi("a", typ(0), typ(1)), typ(1)))
-//   |> should.equal(c.VErr(c.NotAFunction(c.VPi("a", [], c.VTyp(0), typ(1)), s)))
-//   c.eval([], app(app(lambda(["a", "b"], var(0)), typ(2)), typ(1)))
-//   |> should.equal(c.VTyp(1))
-//   c.eval([], app(app(lambda(["a", "b"], var(1)), typ(2)), typ(1)))
-//   |> should.equal(c.VTyp(2))
-//   c.eval([], app(match(typ(0), [case_(c.PAny, lam("a", var(0)))]), typ(1)))
-//   |> should.equal(c.VTyp(1))
-//   c.eval([], app(bad(lam("a", var(0)), []), typ(1)))
-//   |> should.equal(c.VBad(c.VTyp(1), []))
-//   c.eval([], app(err(c.TODO("", s)), typ(1)))
-//   |> should.equal(c.VErr(c.TODO("", s)))
-// }
+// --- App --- \\
+pub fn app_eval_typ_test() {
+  c.eval([], app(typ(0, s1), typ(1, s2), s3))
+  |> should.equal(c.VErr)
+}
+
+pub fn app_eval_lit_test() {
+  c.eval([], app(i32(1, s1), typ(1, s2), s3))
+  |> should.equal(c.VErr)
+}
+
+pub fn app_eval_litt_test() {
+  c.eval([], app(i32t(s1), typ(1, s2), s3))
+  |> should.equal(c.VErr)
+}
+
+pub fn app_eval_var_test() {
+  let env = [c.VLam("a", [], var(0, s0))]
+  c.eval(env, app(var(0, s1), typ(1, s2), s3))
+  |> should.equal(c.VTyp(1))
+  c.eval(env, app(var(1, s1), typ(1, s2), s3))
+  |> should.equal(c.VErr)
+}
+
+pub fn app_eval_hole_test() {
+  c.eval([], app(hole(0, s1), typ(1, s2), s3))
+  |> should.equal(c.VNeut(c.HHole(0), [c.EApp(c.VTyp(1))]))
+}
+
+pub fn app_eval_ctr_test() {
+  c.eval([], app(ctr("A", i32(0, s1), s2), typ(1, s3), s4))
+  |> should.equal(c.VErr)
+}
+
+// TODO: rcd
+
+pub fn app_eval_dot_test() {
+  let env = [c.VNeut(c.HVar(0), [])]
+  c.eval(env, app(dot(var(0, s1), "a", s2), typ(1, s3), s4))
+  |> should.equal(c.VNeut(c.HVar(0), [c.EDot("a"), c.EApp(c.VTyp(1))]))
+}
+
+pub fn app_eval_ann_test() {
+  let env = [c.VLam("a", [], var(0, s0))]
+  c.eval(env, app(ann(var(0, s1), typ(1, s2), s3), typ(1, s4), s5))
+  |> should.equal(c.VTyp(1))
+}
+
+pub fn app_eval_lam_test() {
+  c.eval([], app(lam("a", var(0, s1), s2), typ(1, s3), s4))
+  |> should.equal(c.VTyp(1))
+}
+
+pub fn app_eval_pi_test() {
+  c.eval([], app(pi("a", i32t(s1), i64t(s2), s3), typ(1, s4), s5))
+  |> should.equal(c.VErr)
+}
+
+pub fn app_eval_app_test() {
+  let fun = app(hole(0, s1), typ(1, s2), s3)
+  c.eval([], app(fun, typ(2, s4), s5))
+  |> should.equal(c.VNeut(c.HHole(0), [c.EApp(c.VTyp(1)), c.EApp(c.VTyp(2))]))
+}
+
+pub fn app_eval_match_test() {
+  let fun = match(typ(0, s1), [case_(c.PAny, lam("a", var(0, s2), s3), s4)], s5)
+  c.eval([], app(fun, typ(1, s6), s7))
+  |> should.equal(c.VTyp(1))
+}
 
 // pub fn app_infer_test() {
 //   let ty = c.VPi("x", [], v32t, i32t)
@@ -707,6 +740,10 @@ const s3 = c.Span("core_test", 3, 3)
 const s4 = c.Span("core_test", 4, 4)
 
 const s5 = c.Span("core_test", 5, 5)
+
+const s6 = c.Span("core_test", 6, 6)
+
+const s7 = c.Span("core_test", 7, 7)
 
 fn typ(l, s) {
   c.Term(c.Typ(l), s)
