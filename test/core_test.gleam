@@ -498,34 +498,24 @@ pub fn app_eval_test() {
 }
 
 pub fn app_infer_test() {
-  let ty = c.VPi("x", [], v32t, i64t(s1))
-  let ctx = [#("f", #(vhole(0), ty))]
-  c.infer(0, ctx, [], [], var(0, s2)) |> should.equal(#(vhole(0), ty, [], []))
+  let ty = c.VPi("x", [], v32t, i64t(s0))
+  let ctx = [#("f", #(c.VLam("x", [], i64(2, s1)), ty))]
+  c.infer(0, ctx, [], [], var(0, s2))
+  |> should.equal(#(c.VLam("x", [], i64(2, s1)), ty, [], []))
   c.infer(0, ctx, [], [], app(var(0, s1), i32(1, s2), s3))
-  |> should.equal(#(c.VNeut(c.HHole(0), [c.EApp(v32(1))]), v64t, [], []))
+  |> should.equal(#(v64(2), v64t, [], []))
   c.infer(0, ctx, [], [], app(var(0, s1), i64(1, s2), s3))
-  |> should.equal(
-    #(c.VNeut(c.HHole(0), [c.EApp(c.VErr)]), v64t, [], [
-      c.TypeMismatch(v64t, v32t, s2, s1),
-    ]),
-  )
+  |> should.equal(#(v64(2), v64t, [], [c.TypeMismatch(v64t, v32t, s2, s1)]))
 }
 
-// pub fn app_check_test() {
-//   let ty = c.VPi("x", [], v32t, i32t)
-//   let ctx = [#("f", #(hhole(0), ty))]
-//   c.check(0, ctx, [], app(var(0), i32(1)), v32t, s2)
-//   |> should.equal(v32t)
-//   c.check(0, ctx, [], app(var(0), i32(1)), v64t, s2)
-//   |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s, s2)))
-
-//   let ty = c.VPi("x", [], v32t, i64t)
-//   let ctx = [#("f", #(hhole(0), ty))]
-//   c.check(0, ctx, [], app(var(0), i32(1)), v64t, s2)
-//   |> should.equal(v64t)
-//   c.check(0, ctx, [], app(var(0), i32(1)), v32t, s2)
-//   |> should.equal(c.VErr(c.TypeMismatch(v64t, v32t, s, s2)))
-// }
+pub fn app_check_test() {
+  let ty = c.VPi("x", [], v32t, i64t(s0))
+  let ctx = [#("f", #(c.VLam("x", [], i64(2, s1)), ty))]
+  c.check(0, ctx, [], [], app(var(0, s2), i32(1, s3), s4), v64t, s2)
+  |> should.equal(#(v64(2), [], []))
+  c.check(0, ctx, [], [], app(var(0, s2), i32(1, s3), s4), v32t, s2)
+  |> should.equal(#(c.VErr, [], [c.TypeMismatch(v64t, v32t, s4, s2)]))
+}
 
 // // --- Match --- \\
 // pub fn match_pattern_any_test() {
