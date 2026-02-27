@@ -392,33 +392,31 @@ pub fn dot_check_test() {
   |> should.equal(#(v64(2), [], []))
 }
 
-// // --- Ann --- \\
-// pub fn ann_eval_test() {
-//   let env = [v32(1)]
-//   c.eval(env, ann(var(0), typ(1))) |> should.equal(v32(1))
-// }
+// --- Ann --- \\
+pub fn ann_eval_test() {
+  let env = [v32(1)]
+  c.eval(env, ann(var(0, s1), typ(1, s2), s3)) |> should.equal(v32(1))
+}
 
-// pub fn ann_infer_test() {
-//   c.infer(0, [], [], ann(i32(1), i32t))
-//   |> should.equal(v32t)
+pub fn ann_infer_test() {
+  c.infer(0, [], [], [], ann(i32(1, s1), i32t(s2), s3))
+  |> should.equal(#(v32(1), v32t, [], []))
+}
 
-//   c.infer(0, [], [], ann(i32t, i32_2(1)))
-//   |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(0), v32(1), s, s2)))
+pub fn ann_infer_mismatch_test() {
+  c.infer(1, [], [], [], ann(i32(1, s1), i64t(s2), s3))
+  |> should.equal(#(c.VErr, v64t, [], [c.TypeMismatch(v32t, v64t, s1, s2)]))
+}
 
-//   c.infer(0, [], [], ann(typ(0), typ(1)))
-//   |> should.equal(c.VTyp(1))
+pub fn ann_check_test() {
+  c.check(0, [], [], [], ann(i32(1, s1), i32t(s2), s3), v32t, s2)
+  |> should.equal(#(v32(1), [], []))
+}
 
-//   c.infer(0, [], [], ann(typ(1), c.Term(c.Typ(0), s2)))
-//   |> should.equal(c.VErr(c.TypeMismatch(c.VTyp(2), c.VTyp(0), s, s2)))
-// }
-
-// pub fn ann_check_test() {
-//   c.check(0, [], [], ann(i32(1), i32t), v32t, s2)
-//   |> should.equal(v32t)
-
-//   c.check(0, [], [], ann(i32(1), i32t), v64t, s2)
-//   |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s, s2)))
-// }
+pub fn ann_check_mismatch_test() {
+  c.check(0, [], [], [], ann(i32(1, s1), i32t(s2), s3), v64t, s4)
+  |> should.equal(#(c.VErr, [], [c.TypeMismatch(v32t, v64t, s3, s4)]))
+}
 
 // // --- Lam --- \\
 // pub fn lam_eval_test() {
