@@ -92,7 +92,6 @@ pub type CtrDef {
 pub type TypeEnv =
   List(#(String, CtrDef))
 
-// (Name, Value)
 pub type Env =
   List(Value)
 
@@ -767,7 +766,10 @@ pub fn force(sub: Subst, value: Value, s: Span) -> Value {
   case value {
     VNeut(HVar(i), spine) ->
       case list.key_find(sub, i) {
-        Ok(v) -> force(sub, apply_spine(v, spine, s), s)
+        Ok(v) -> {
+          let forced_val = apply_spine(v, spine, s)
+          force(sub, forced_val, s)
+        }
         Error(Nil) -> value
       }
     _ -> value
