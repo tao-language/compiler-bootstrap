@@ -177,19 +177,6 @@ pub fn do_app(fun: Value, arg: Value) -> Value {
 }
 
 pub fn do_match(env: Env, arg: Value, motive: Value, cases: List(Case)) -> Value {
-  // case cases {
-  //   [] -> VErr
-  //   [c, ..cases] as all_cases ->
-  //     case arg {
-  //       VNeut(head, spine) ->
-  //         VNeut(head, list.append(spine, [EMatch(env, all_cases)]))
-  //       _ ->
-  //         case match_pattern(c.pattern, arg) {
-  //           Ok(bindings) -> eval(list.append(bindings, env), c.body)
-  //           Error(Nil) -> eval_match(env, arg, cases)
-  //         }
-  //     }
-  // }
   case arg {
     VNeut(head, spine) ->
       VNeut(head, list.append(spine, [EMatch(env, motive, cases)]))
@@ -258,45 +245,6 @@ pub fn pattern_to_value(lvl: Int, pat: Pattern) -> #(Int, Value) {
     }
   }
 }
-
-// pub fn match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
-//   case pattern, value {
-//     PAny, _ -> Ok([])
-//     PAs(p, _), _ ->
-//       case match_pattern(p, value) {
-//         Ok(env) -> Ok([value, ..env])
-//         Error(Nil) -> Error(Nil)
-//       }
-//     PTyp(k1), VTyp(k2) if k1 == k2 -> Ok([])
-//     PTyp(_), _ -> Error(Nil)
-//     PLit(k1), VLit(k2) if k1 == k2 -> Ok([])
-//     PLit(_), _ -> Error(Nil)
-//     PLitT(k1), VLitT(k2) if k1 == k2 -> Ok([])
-//     PLitT(_), _ -> Error(Nil)
-//     PCtr(ptag, p), VCtr(vtag, v) if ptag == vtag -> match_pattern(p, v)
-//     PCtr(_, _), _ -> Error(Nil)
-//     PRcd(ps), VRcd(vs) -> match_pattern_fields(ps, vs)
-//     PRcd(_), _ -> Error(Nil)
-//   }
-// }
-
-// fn match_pattern_fields(
-//   ps: List(#(String, Pattern)),
-//   vs: List(#(String, Value)),
-// ) -> Result(Env, Nil) {
-//   case ps {
-//     [] -> Ok([])
-//     [#(x, p), ..ps] ->
-//       case list.key_pop(vs, x) {
-//         Ok(#(v, vs)) ->
-//           case match_pattern(p, v), match_pattern_fields(ps, vs) {
-//             Ok(env1), Ok(env2) -> Ok(list.append(env1, env2))
-//             _, _ -> Error(Nil)
-//           }
-//         Error(Nil) -> Error(Nil)
-//       }
-//   }
-// }
 
 pub fn normalize(env: Env, term: Term, s: Span) -> Term {
   let val = eval(env, term)
@@ -609,7 +557,15 @@ pub fn infer(
       }
       let #(sub, cases_errors) =
         list.fold(cases, #(sub, empty_error), fn(acc, c) {
-          let #(sub, errors) = acc
+          let #(sub, acc_errors) = acc
+          let #(s1, s2) = #(c.span, arg.span)
+          let #(lvl, ctx, sub, pat_errors) =
+            bind_pattern(lvl, ctx, tenv, sub, c.pattern, arg_ty, s1, s2)
+          let #(lvl, pat_val) = pattern_to_value(lvl, c.pattern)
+          let branch_ty = do_app(motive_val, pat_val)
+          let #(_, sub, body_errors) =
+            check(lvl, ctx, tenv, sub, c.body, branch_ty, motive.span)
+          let errors = list.flatten([acc_errors, pat_errors, body_errors])
           #(sub, errors)
         })
       let result_ty = do_app(motive_val, arg_val)
@@ -745,48 +701,34 @@ pub fn bind_pattern(
     PRcd(pfields) ->
       case ret_ty {
         VRcd(vfields) -> {
-          let #(s1, s2) = #(pat_span, ret_span)
-          bind_pattern_fields(lvl, ctx, tenv, sub, pfields, vfields, s1, s2)
+          let missing =
+            list.filter_map(pfields, fn(kv) {
+              case list.key_find(vfields, kv.0) {
+                Error(Nil) -> Ok(kv.0)
+                Ok(_) -> Error(Nil)
+              }
+            })
+          let errors = case missing {
+            [] -> []
+            _ -> [RcdMissingFields(missing, ret_span)]
+          }
+          list.index_fold(pfields, #(lvl, ctx, sub, errors), fn(acc, kv, i) {
+            let #(lvl, ctx, sub, errors) = acc
+            let #(name, p) = kv
+            let v = case list.key_find(vfields, name) {
+              Error(Nil) -> VNeut(HHole(i), [])
+              Ok(v) -> v
+            }
+            let #(lvl, ctx, sub, bind_errors) =
+              bind_pattern(lvl, ctx, tenv, sub, p, v, pat_span, ret_span)
+            #(lvl, ctx, sub, list.append(errors, bind_errors))
+          })
         }
         _ -> #(lvl, ctx, sub, [
           PatternMismatch(pattern, ret_ty, pat_span, ret_span),
         ])
       }
   }
-}
-
-fn bind_pattern_fields(
-  lvl: Int,
-  ctx: Context,
-  tenv: TypeEnv,
-  sub: Subst,
-  pargs: List(#(String, Pattern)),
-  vargs: List(#(String, Value)),
-  s1: Span,
-  s2: Span,
-) -> #(Int, Context, Subst, List(Error)) {
-  let missing =
-    list.filter_map(pargs, fn(kv) {
-      case list.key_find(vargs, kv.0) {
-        Error(Nil) -> Ok(kv.0)
-        Ok(_) -> Error(Nil)
-      }
-    })
-  let errors = case missing {
-    [] -> []
-    _ -> [RcdMissingFields(missing, s2)]
-  }
-  list.index_fold(pargs, #(lvl, ctx, sub, errors), fn(acc, kv, i) {
-    let #(lvl, ctx, sub, errors) = acc
-    let #(name, p) = kv
-    let v = case list.key_find(vargs, name) {
-      Error(Nil) -> VNeut(HHole(i), [])
-      Ok(v) -> v
-    }
-    let #(lvl, ctx, sub, bind_errors) =
-      bind_pattern(lvl, ctx, tenv, sub, p, v, s1, s2)
-    #(lvl, ctx, sub, list.append(errors, bind_errors))
-  })
 }
 
 pub fn check(

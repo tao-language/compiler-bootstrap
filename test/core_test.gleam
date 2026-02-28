@@ -591,68 +591,68 @@ pub fn eval_match_test() {
   )
 }
 
-// pub fn bind_pattern_any_test() {
-//   c.bind_pattern(0, [], [], [], c.PAny, v32t, s1, s2)
-//   |> should.equal(#(0, [], [], []))
-// }
+pub fn bind_pattern_any_test() {
+  c.bind_pattern(0, [], [], [], c.PAny, v32t, s1, s2)
+  |> should.equal(#(0, [], [], []))
+}
 
-// pub fn bind_pattern_as_test() {
-//   c.bind_pattern(0, [], [], [], pvar("x"), v32t, s1, s2)
-//   |> should.equal(#(1, [#("x", #(vvar(0), v32t))], [], []))
-// }
+pub fn bind_pattern_as_test() {
+  c.bind_pattern(0, [], [], [], pvar("x"), v32t, s1, s2)
+  |> should.equal(#(1, [#("x", #(vvar(0), v32t))], [], []))
+}
 
-// pub fn bind_pattern_typ_test() {
-//   c.bind_pattern(0, [], [], [], c.PTyp(0), c.VTyp(0), s1, s2)
-//   |> should.equal(#(0, [], [], [c.TypeMismatch(c.VTyp(1), c.VTyp(0), s1, s2)]))
-//   c.bind_pattern(0, [], [], [], c.PTyp(0), c.VTyp(1), s1, s2)
-//   |> should.equal(#(0, [], [], []))
-// }
+pub fn bind_pattern_typ_test() {
+  c.bind_pattern(0, [], [], [], c.PTyp(0), c.VTyp(0), s1, s2)
+  |> should.equal(#(0, [], [], [c.TypeMismatch(c.VTyp(1), c.VTyp(0), s1, s2)]))
+  c.bind_pattern(0, [], [], [], c.PTyp(0), c.VTyp(1), s1, s2)
+  |> should.equal(#(0, [], [], []))
+}
 
-// pub fn bind_pattern_lit_test() {
-//   c.bind_pattern(0, [], [], [], c.PLit(c.I32(1)), c.VTyp(0), s1, s2)
-//   |> should.equal(#(0, [], [], [c.TypeMismatch(v32t, c.VTyp(0), s1, s2)]))
-//   c.bind_pattern(0, [], [], [], c.PLit(c.I32(1)), v32t, s1, s2)
-//   |> should.equal(#(0, [], [], []))
-// }
+pub fn bind_pattern_lit_test() {
+  c.bind_pattern(0, [], [], [], c.PLit(c.I32(1)), c.VTyp(0), s1, s2)
+  |> should.equal(#(0, [], [], [c.TypeMismatch(v32t, c.VTyp(0), s1, s2)]))
+  c.bind_pattern(0, [], [], [], c.PLit(c.I32(1)), v32t, s1, s2)
+  |> should.equal(#(0, [], [], []))
+}
 
-// pub fn bind_pattern_litt_test() {
-//   c.bind_pattern(0, [], [], [], c.PLitT(c.I32T), v64t, s1, s2)
-//   |> should.equal(#(0, [], [], [c.TypeMismatch(c.VTyp(0), v64t, s1, s2)]))
-//   c.bind_pattern(0, [], [], [], c.PLitT(c.I32T), c.VTyp(0), s1, s2)
-//   |> should.equal(#(0, [], [], []))
-// }
+pub fn bind_pattern_litt_test() {
+  c.bind_pattern(0, [], [], [], c.PLitT(c.I32T), v64t, s1, s2)
+  |> should.equal(#(0, [], [], [c.TypeMismatch(c.VTyp(0), v64t, s1, s2)]))
+  c.bind_pattern(0, [], [], [], c.PLitT(c.I32T), c.VTyp(0), s1, s2)
+  |> should.equal(#(0, [], [], []))
+}
 
-// pub fn bind_pattern_ctr_test() {
-//   let p = c.PCtr("A", c.PAny)
-//   c.bind_pattern(0, [], [], [], p, v32t, s1, s2)
-//   |> should.equal(#(0, [], [], [c.CtrUndefined("A", s1)]))
-//   let tenv = [#("A", c.CtrDef([], i32t(s1), i64t(s2)))]
-//   c.bind_pattern(0, [], tenv, [], p, v32t, s3, s4)
-//   |> should.equal(#(0, [], [], [c.TypeMismatch(v64t, v32t, s2, s4)]))
-//   c.bind_pattern(0, [], tenv, [], p, v64t, s3, s4)
-//   |> should.equal(#(0, [], [], []))
-// }
+pub fn bind_pattern_ctr_test() {
+  let p = c.PCtr("A", c.PAny)
+  c.bind_pattern(0, [], [], [], p, v32t, s1, s2)
+  |> should.equal(#(0, [], [], [c.CtrUndefined("A", s1)]))
+  let tenv = [#("A", c.CtrDef([], i32t(s1), i64t(s2)))]
+  c.bind_pattern(0, [], tenv, [], p, v32t, s3, s4)
+  |> should.equal(#(0, [], [], [c.TypeMismatch(v64t, v32t, s2, s4)]))
+  c.bind_pattern(0, [], tenv, [], p, v64t, s3, s4)
+  |> should.equal(#(0, [], [], []))
+}
 
-// pub fn bind_pattern_rcd_test() {
-//   c.bind_pattern(0, [], [], [], c.PRcd([]), c.VRcd([]), s1, s2)
-//   |> should.equal(#(0, [], [], []))
-// }
+pub fn bind_pattern_rcd_test() {
+  c.bind_pattern(0, [], [], [], c.PRcd([]), c.VRcd([]), s1, s2)
+  |> should.equal(#(0, [], [], []))
+}
 
-// pub fn bind_pattern_rcd_unused_test() {
-//   let p = c.PRcd([])
-//   let t = c.VRcd([#("a", v32t)])
-//   c.bind_pattern(0, [], [], [], p, t, s1, s2)
-//   |> should.equal(#(0, [], [], []))
-// }
+pub fn bind_pattern_rcd_unused_test() {
+  let p = c.PRcd([])
+  let t = c.VRcd([#("a", v32t)])
+  c.bind_pattern(0, [], [], [], p, t, s1, s2)
+  |> should.equal(#(0, [], [], []))
+}
 
-// pub fn bind_pattern_rcd_missing_test() {
-//   let p = c.PRcd([#("a", pvar("x"))])
-//   let t = c.VRcd([])
-//   c.bind_pattern(0, [], [], [], p, t, s1, s2)
-//   |> should.equal(
-//     #(1, [#("x", #(vvar(0), vhole(0)))], [], [c.RcdMissingFields(["a"], s2)]),
-//   )
-// }
+pub fn bind_pattern_rcd_missing_test() {
+  let p = c.PRcd([#("a", pvar("x"))])
+  let t = c.VRcd([])
+  c.bind_pattern(0, [], [], [], p, t, s1, s2)
+  |> should.equal(
+    #(1, [#("x", #(vvar(0), vhole(0)))], [], [c.RcdMissingFields(["a"], s2)]),
+  )
+}
 
 pub fn infer_match_empty_test() {
   let motive = lam("a", i32t(s0), s1)
@@ -660,10 +660,19 @@ pub fn infer_match_empty_test() {
   |> should.equal(#(c.VErr, v32t, [], [c.MatchEmpty(i32(1, s2), motive, s3)]))
 }
 
-// pub fn infer_match_single_test() {
-//   c.infer(0, [], [], [], match(i32(1, s1), [case_(c.PAny, i64(2, s2), s3)], s0))
-//   |> should.equal(#(c.VErr, c.VErr, [], []))
-// }
+pub fn infer_match_any_test() {
+  let motive = lam("a", i32t(s0), s1)
+  let cases = [case_(c.PAny, i32(2, s3), s4)]
+  c.infer(0, [], [], [], match(i32(1, s2), motive, cases, s5))
+  |> should.equal(#(v32(2), v32t, [], []))
+}
+
+pub fn infer_match_motive_mismatch_test() {
+  let motive = lam("a", i32t(s0), s1)
+  let cases = [case_(c.PAny, i64(2, s3), s4)]
+  c.infer(0, [], [], [], match(i32(1, s2), motive, cases, s5))
+  |> should.equal(#(v64(2), v32t, [], [c.TypeMismatch(v64t, v32t, s3, s1)]))
+}
 
 // let term = match(i32(1), [case_(c.PAny, i64_2(2)), case_(c.PAny, typ(0))])
 // c.infer(0, [], [], [], term)
