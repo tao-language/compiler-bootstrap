@@ -174,7 +174,7 @@ pub fn eval_app(fun: Value, arg: Value) -> Value {
   }
 }
 
-fn eval_match(env: Env, arg: Value, cases: List(Case)) -> Value {
+pub fn eval_match(env: Env, arg: Value, cases: List(Case)) -> Value {
   case cases {
     [] -> VErr
     [c, ..cases] as all_cases ->

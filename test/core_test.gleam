@@ -518,57 +518,50 @@ pub fn check_app_test() {
 }
 
 // --- Match --- \\
-// TODO: eval_match_value_test
-// TODO: eval_match_test
+pub fn match_pattern_any_test() {
+  c.match_pattern(c.PAny, v32(1)) |> should.equal(Ok([]))
+}
 
-// pub fn match_pattern_any_test() {
-//   c.match_pattern(c.PAny, v32(1)) |> should.equal(Ok([]))
-// }
+pub fn match_pattern_as_test() {
+  c.match_pattern(pvar("a"), v32(1)) |> should.equal(Ok([v32(1)]))
+}
 
-// pub fn match_pattern_as_test() {
-//   c.match_pattern(pvar("a"), v32(1)) |> should.equal(Ok([v32(1)]))
-// }
+pub fn match_pattern_typ_test() {
+  c.match_pattern(c.PTyp(0), c.VTyp(0)) |> should.equal(Ok([]))
+  c.match_pattern(c.PTyp(0), c.VTyp(1)) |> should.equal(Error(Nil))
+}
 
-// pub fn match_pattern_typ_test() {
-//   c.match_pattern(c.PTyp(0), c.VTyp(0)) |> should.equal(Ok([]))
-//   c.match_pattern(c.PTyp(0), c.VTyp(1)) |> should.equal(Error(Nil))
-// }
+pub fn match_pattern_lit_test() {
+  c.match_pattern(c.PLit(c.I32(1)), v32(1)) |> should.equal(Ok([]))
+  c.match_pattern(c.PLit(c.I32(1)), v32(2)) |> should.equal(Error(Nil))
+}
 
-// pub fn match_pattern_lit_test() {
-//   c.match_pattern(c.PLit(c.I32(1)), v32(1)) |> should.equal(Ok([]))
-//   c.match_pattern(c.PLit(c.I32(1)), v32(2)) |> should.equal(Error(Nil))
-// }
+pub fn match_pattern_ctr_test() {
+  c.match_pattern(c.PCtr("A", pvar("x")), c.VCtr("A", v32(1)))
+  |> should.equal(Ok([v32(1)]))
+  c.match_pattern(c.PCtr("A", pvar("x")), c.VCtr("B", v32(1)))
+  |> should.equal(Error(Nil))
+}
 
-// pub fn match_pattern_ctr_test() {
-//   c.match_pattern(c.PCtr("A", pvar("x")), c.VCtr("A", v32(1)))
-//   |> should.equal(Ok([v32(1)]))
-//   c.match_pattern(c.PCtr("A", pvar("x")), c.VCtr("B", v32(1)))
-//   |> should.equal(Error(Nil))
-// }
+pub fn match_pattern_rcd_test() {
+  c.match_pattern(c.PRcd([#("x", pvar("a"))]), c.VRcd([#("x", v32(1))]))
+  |> should.equal(Ok([v32(1)]))
+  c.match_pattern(
+    c.PRcd([#("x", pvar("a")), #("y", pvar("b"))]),
+    c.VRcd([#("x", v32(1)), #("y", v64(2))]),
+  )
+  |> should.equal(Ok([v32(1), v64(2)]))
+}
 
-// pub fn match_pattern_rcd_test() {
-//   c.match_pattern(c.PRcd([#("x", pvar("a"))]), c.VRcd([#("x", v32(1))]))
-//   |> should.equal(Ok([v32(1)]))
-//   c.match_pattern(
-//     c.PRcd([#("x", pvar("a")), #("y", pvar("b"))]),
-//     c.VRcd([#("x", v32(1)), #("y", v64(2))]),
-//   )
-//   |> should.equal(Ok([v32(1), v64(2)]))
-// }
-
-// pub fn match_pattern_bad_test() {
-//   c.match_pattern(c.PTyp(0), c.VBad(c.VTyp(0), [])) |> should.equal(Ok([]))
-// }
-
-// pub fn eval_match_test() {
-//   c.eval([], match(i32(1), [case_(c.PAny, i64(2))]))
-//   |> should.equal(v64(2))
-
-//   let env = [c.VNeut(c.HVar(0), [])]
-//   let cases = [case_(c.PAny, i32(1))]
-//   c.eval(env, match(var(0), cases))
-//   |> should.equal(c.VNeut(c.HVar(0), [c.EMatch(env, cases)]))
-// }
+pub fn eval_match_test() {
+  c.eval([], match(i32(1, s1), [], s2)) |> should.equal(c.VErr)
+  c.eval([], match(i32(1, s1), [case_(pvar("x"), var(0, s2), s3)], s4))
+  |> should.equal(v32(1))
+  c.eval([], match(hole(0, s1), [case_(pvar("x"), var(0, s2), s3)], s4))
+  |> should.equal(
+    c.VNeut(c.HHole(0), [c.EMatch([], [case_(pvar("x"), var(0, s2), s3)])]),
+  )
+}
 
 // pub fn bind_pattern_any_test() {
 //   c.bind_pattern(0, [], [], c.PAny, v32t, s, s2)
