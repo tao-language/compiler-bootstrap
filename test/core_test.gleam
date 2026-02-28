@@ -593,56 +593,64 @@ pub fn eval_match_test() {
 
 pub fn bind_pattern_any_test() {
   c.bind_pattern(0, [], [], [], c.PAny, v32t, s1, s2)
-  |> should.equal(#(0, [], [], []))
+  |> should.equal(#(1, [#("", #(vvar(0), v32t))], [], vvar(0), []))
 }
 
 pub fn bind_pattern_as_test() {
   c.bind_pattern(0, [], [], [], pvar("x"), v32t, s1, s2)
-  |> should.equal(#(1, [#("x", #(vvar(0), v32t))], [], []))
+  |> should.equal(#(1, [#("x", #(vvar(0), v32t))], [], vvar(0), []))
 }
 
 pub fn bind_pattern_typ_test() {
   c.bind_pattern(0, [], [], [], c.PTyp(0), c.VTyp(0), s1, s2)
-  |> should.equal(#(0, [], [], [c.TypeMismatch(c.VTyp(1), c.VTyp(0), s1, s2)]))
+  |> should.equal(
+    #(0, [], [], c.VTyp(0), [c.TypeMismatch(c.VTyp(1), c.VTyp(0), s1, s2)]),
+  )
   c.bind_pattern(0, [], [], [], c.PTyp(0), c.VTyp(1), s1, s2)
-  |> should.equal(#(0, [], [], []))
+  |> should.equal(#(0, [], [], c.VTyp(0), []))
 }
 
 pub fn bind_pattern_lit_test() {
   c.bind_pattern(0, [], [], [], c.PLit(c.I32(1)), c.VTyp(0), s1, s2)
-  |> should.equal(#(0, [], [], [c.TypeMismatch(v32t, c.VTyp(0), s1, s2)]))
+  |> should.equal(
+    #(0, [], [], v32(1), [c.TypeMismatch(v32t, c.VTyp(0), s1, s2)]),
+  )
   c.bind_pattern(0, [], [], [], c.PLit(c.I32(1)), v32t, s1, s2)
-  |> should.equal(#(0, [], [], []))
+  |> should.equal(#(0, [], [], v32(1), []))
 }
 
 pub fn bind_pattern_litt_test() {
   c.bind_pattern(0, [], [], [], c.PLitT(c.I32T), v64t, s1, s2)
-  |> should.equal(#(0, [], [], [c.TypeMismatch(c.VTyp(0), v64t, s1, s2)]))
+  |> should.equal(#(0, [], [], v32t, [c.TypeMismatch(c.VTyp(0), v64t, s1, s2)]))
   c.bind_pattern(0, [], [], [], c.PLitT(c.I32T), c.VTyp(0), s1, s2)
-  |> should.equal(#(0, [], [], []))
+  |> should.equal(#(0, [], [], v32t, []))
 }
 
 pub fn bind_pattern_ctr_test() {
   let p = c.PCtr("A", c.PAny)
   c.bind_pattern(0, [], [], [], p, v32t, s1, s2)
-  |> should.equal(#(0, [], [], [c.CtrUndefined("A", s1)]))
+  |> should.equal(#(0, [], [], c.VErr, [c.CtrUndefined("A", s1)]))
   let tenv = [#("A", c.CtrDef([], i32t(s1), i64t(s2)))]
   c.bind_pattern(0, [], tenv, [], p, v32t, s3, s4)
-  |> should.equal(#(0, [], [], [c.TypeMismatch(v64t, v32t, s2, s4)]))
+  |> should.equal(
+    #(1, [#("", #(vvar(0), v32t))], [], c.VCtr("A", vvar(0)), [
+      c.TypeMismatch(v64t, v32t, s2, s4),
+    ]),
+  )
   c.bind_pattern(0, [], tenv, [], p, v64t, s3, s4)
-  |> should.equal(#(0, [], [], []))
+  |> should.equal(#(1, [#("", #(vvar(0), v32t))], [], c.VCtr("A", vvar(0)), []))
 }
 
 pub fn bind_pattern_rcd_test() {
   c.bind_pattern(0, [], [], [], c.PRcd([]), c.VRcd([]), s1, s2)
-  |> should.equal(#(0, [], [], []))
+  |> should.equal(#(0, [], [], c.VRcd([]), []))
 }
 
 pub fn bind_pattern_rcd_unused_test() {
   let p = c.PRcd([])
   let t = c.VRcd([#("a", v32t)])
   c.bind_pattern(0, [], [], [], p, t, s1, s2)
-  |> should.equal(#(0, [], [], []))
+  |> should.equal(#(0, [], [], c.VRcd([]), []))
 }
 
 pub fn bind_pattern_rcd_missing_test() {
@@ -650,7 +658,9 @@ pub fn bind_pattern_rcd_missing_test() {
   let t = c.VRcd([])
   c.bind_pattern(0, [], [], [], p, t, s1, s2)
   |> should.equal(
-    #(1, [#("x", #(vvar(0), vhole(0)))], [], [c.RcdMissingFields(["a"], s2)]),
+    #(1, [#("x", #(vvar(0), vhole(0)))], [], c.VRcd([#("a", vvar(0))]), [
+      c.RcdMissingFields(["a"], s2),
+    ]),
   )
 }
 

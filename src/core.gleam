@@ -222,30 +222,6 @@ pub fn do_match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
   }
 }
 
-pub fn pattern_to_value(lvl: Int, pat: Pattern) -> #(Int, Value) {
-  case pat {
-    PAny -> #(lvl + 1, VNeut(HVar(lvl), []))
-    PAs(p, _) -> pattern_to_value(lvl, p)
-    PTyp(k) -> #(lvl, VTyp(k))
-    PLit(k) -> #(lvl, VLit(k))
-    PLitT(k) -> #(lvl, VLitT(k))
-    PCtr(tag, parg) -> {
-      let #(lvl, arg) = pattern_to_value(lvl, parg)
-      #(lvl, VCtr(tag, arg))
-    }
-    PRcd(pfields) -> {
-      let #(lvl, fields) =
-        list.fold(pfields, #(lvl, []), fn(acc, kv) {
-          let #(lvl, fields) = acc
-          let #(name, p) = kv
-          let #(lvl, v) = pattern_to_value(lvl, p)
-          #(lvl, [#(name, v), ..fields])
-        })
-      #(lvl, VRcd(list.reverse(fields)))
-    }
-  }
-}
-
 pub fn normalize(env: Env, term: Term, s: Span) -> Term {
   let val = eval(env, term)
   quote(list.length(env), val, s)
@@ -559,9 +535,8 @@ pub fn infer(
         list.fold(cases, #(sub, empty_error), fn(acc, c) {
           let #(sub, acc_errors) = acc
           let #(s1, s2) = #(c.span, arg.span)
-          let #(lvl, ctx, sub, pat_errors) =
+          let #(lvl, ctx, sub, pat_val, pat_errors) =
             bind_pattern(lvl, ctx, tenv, sub, c.pattern, arg_ty, s1, s2)
-          let #(lvl, pat_val) = pattern_to_value(lvl, c.pattern)
           let branch_ty = do_app(motive_val, pat_val)
           let #(_, sub, body_errors) =
             check(lvl, ctx, tenv, sub, c.body, branch_ty, motive.span)
@@ -645,6 +620,30 @@ fn infer_fields(
 //   with_errors(final_ty, errors)
 // }
 
+pub fn pattern_to_value(lvl: Int, pat: Pattern) -> #(Int, Value) {
+  case pat {
+    PAny -> #(lvl + 1, VNeut(HVar(lvl), []))
+    PAs(p, _) -> pattern_to_value(lvl, p)
+    PTyp(k) -> #(lvl, VTyp(k))
+    PLit(k) -> #(lvl, VLit(k))
+    PLitT(k) -> #(lvl, VLitT(k))
+    PCtr(tag, parg) -> {
+      let #(lvl, arg) = pattern_to_value(lvl, parg)
+      #(lvl, VCtr(tag, arg))
+    }
+    PRcd(pfields) -> {
+      let #(lvl, fields) =
+        list.fold(pfields, #(lvl, []), fn(acc, kv) {
+          let #(lvl, fields) = acc
+          let #(name, p) = kv
+          let #(lvl, v) = pattern_to_value(lvl, p)
+          #(lvl, [#(name, v), ..fields])
+        })
+      #(lvl, VRcd(list.reverse(fields)))
+    }
+  }
+}
+
 pub fn bind_pattern(
   lvl: Int,
   ctx: Context,
@@ -654,9 +653,18 @@ pub fn bind_pattern(
   ret_ty: Value,
   pat_span: Span,
   ret_span: Span,
-) -> #(Int, Context, Subst, List(Error)) {
+) -> #(Int, Context, Subst, Value, List(Error)) {
   case pattern {
-    PAny -> #(lvl, ctx, sub, [])
+    PAny -> {
+      let fresh = VNeut(HVar(lvl), [])
+      let ctx = [#("", #(fresh, ret_ty)), ..ctx]
+      #(lvl + 1, ctx, sub, VNeut(HVar(lvl), []), [])
+    }
+    PAs(PAny, name) -> {
+      let fresh = VNeut(HVar(lvl), [])
+      let ctx = [#(name, #(fresh, ret_ty)), ..ctx]
+      #(lvl + 1, ctx, sub, VNeut(HVar(lvl), []), [])
+    }
     PAs(p, name) -> {
       let fresh = VNeut(HVar(lvl), [])
       let ctx = [#(name, #(fresh, ret_ty)), ..ctx]
@@ -665,21 +673,21 @@ pub fn bind_pattern(
     PTyp(k) -> {
       let #(_, sub, errors) =
         check(lvl, ctx, tenv, sub, Term(Typ(k), pat_span), ret_ty, ret_span)
-      #(lvl, ctx, sub, errors)
+      #(lvl, ctx, sub, VTyp(k), errors)
     }
     PLit(k) -> {
       let #(_, sub, errors) =
         check(lvl, ctx, tenv, sub, Term(Lit(k), pat_span), ret_ty, ret_span)
-      #(lvl, ctx, sub, errors)
+      #(lvl, ctx, sub, VLit(k), errors)
     }
     PLitT(k) -> {
       let #(_, sub, errors) =
         check(lvl, ctx, tenv, sub, Term(LitT(k), pat_span), ret_ty, ret_span)
-      #(lvl, ctx, sub, errors)
+      #(lvl, ctx, sub, VLitT(k), errors)
     }
     PCtr(tag, parg) -> {
       case list.key_find(tenv, tag) {
-        Error(Nil) -> #(lvl, ctx, sub, [CtrUndefined(tag, pat_span)])
+        Error(Nil) -> #(lvl, ctx, sub, VErr, [CtrUndefined(tag, pat_span)])
         Ok(ctr) -> {
           let #(_, ctr_ret_ty, sub, ctr_errors) =
             check_ctr_def(lvl, ctx, tenv, sub, ctr)
@@ -690,11 +698,11 @@ pub fn bind_pattern(
           let env = list.append(params, ctx2env(ctx))
           let ctr_arg_ty = eval(env, ctr.arg_ty)
           let #(s1, s2) = #(pat_span, ctr.arg_ty.span)
-          let #(lvl, ctx, sub, arg_errors) =
+          let #(lvl, ctx, sub, varg, arg_errors) =
             bind_pattern(lvl, ctx, tenv, sub, parg, ctr_arg_ty, s1, s2)
           let errors =
             list.flatten([ctr_errors, param_errors, arg_errors, ret_errors])
-          #(lvl, ctx, sub, errors)
+          #(lvl, ctx, sub, VCtr(tag, varg), errors)
         }
       }
     }
@@ -712,19 +720,27 @@ pub fn bind_pattern(
             [] -> []
             _ -> [RcdMissingFields(missing, ret_span)]
           }
-          list.index_fold(pfields, #(lvl, ctx, sub, errors), fn(acc, kv, i) {
-            let #(lvl, ctx, sub, errors) = acc
-            let #(name, p) = kv
-            let v = case list.key_find(vfields, name) {
-              Error(Nil) -> VNeut(HHole(i), [])
-              Ok(v) -> v
-            }
-            let #(lvl, ctx, sub, bind_errors) =
-              bind_pattern(lvl, ctx, tenv, sub, p, v, pat_span, ret_span)
-            #(lvl, ctx, sub, list.append(errors, bind_errors))
-          })
+          let #(lvl, ctx, sub, fields, errors) =
+            list.index_fold(
+              pfields,
+              #(lvl, ctx, sub, [], errors),
+              fn(acc, kv, i) {
+                let #(lvl, ctx, sub, fields, errors) = acc
+                let #(name, p) = kv
+                let ty = case list.key_find(vfields, name) {
+                  Error(Nil) -> VNeut(HHole(i), [])
+                  Ok(ty) -> ty
+                }
+                let #(lvl, ctx, sub, v, bind_errors) =
+                  bind_pattern(lvl, ctx, tenv, sub, p, ty, pat_span, ret_span)
+                let fields = [#(name, v), ..fields]
+                let errors = list.append(errors, bind_errors)
+                #(lvl, ctx, sub, fields, errors)
+              },
+            )
+          #(lvl, ctx, sub, VRcd(fields), errors)
         }
-        _ -> #(lvl, ctx, sub, [
+        _ -> #(lvl, ctx, sub, VErr, [
           PatternMismatch(pattern, ret_ty, pat_span, ret_span),
         ])
       }
