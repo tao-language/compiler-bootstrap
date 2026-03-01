@@ -116,6 +116,7 @@ pub type Error {
   // Type errors
   PatternMismatch(pattern: Pattern, expected_ty: Type, s1: Span, s2: Span)
   TypeMismatch(expected: Type, got: Type, span1: Span, span2: Span)
+  InfiniteType(hole_id: Int, ty: Type, span1: Span, span2: Span)
   TypeAnnotationNeeded(term: Term)
   NotAFunction(fun: Term, fun_ty: Value)
   VarUndefined(index: Int, span: Span)
@@ -131,7 +132,7 @@ pub type Error {
   RedundantMatch(pattern: Pattern, span: Span)
 
   // Runtime errors
-  TODO(message: String, span: Span)
+  TODO(message: String)
   MatchUnhandledCase(value: Value, span: Span)
   AppNotFunction(value: Value)
 }
@@ -167,7 +168,7 @@ pub fn eval(env: Env, term: Term) -> Value {
 
 fn do_dot(value: Value, name: String) -> Value {
   case value {
-    VNeut(head, spine) -> VNeut(head, list.append(spine, [EDot(name)]))
+    VNeut(head, spine) -> VNeut(head, [EDot(name), ..spine])
     VRcd(fields) ->
       case list.key_find(fields, name) {
         Ok(v) -> v
@@ -179,7 +180,7 @@ fn do_dot(value: Value, name: String) -> Value {
 
 pub fn do_app(fun: Value, arg: Value) -> Value {
   case fun {
-    VNeut(head, spine) -> VNeut(head, list.append(spine, [EApp(arg)]))
+    VNeut(head, spine) -> VNeut(head, [EApp(arg), ..spine])
     VLam(_, env, body) -> eval([arg, ..env], body)
     _ -> VErr
   }
@@ -187,7 +188,7 @@ pub fn do_app(fun: Value, arg: Value) -> Value {
 
 pub fn do_match(env: Env, arg: Value, cases: List(Case)) -> Value {
   case arg {
-    VNeut(head, spine) -> VNeut(head, list.append(spine, [EMatch(env, cases)]))
+    VNeut(head, spine) -> VNeut(head, [EMatch(env, cases), ..spine])
     _ ->
       case do_match_cases(arg, cases) {
         Some(#(bindings, body)) -> eval(list.append(bindings, env), body)
@@ -212,7 +213,7 @@ pub fn do_match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
     PAny, _ -> Ok([])
     PAs(p, name), _ -> {
       use env <- result.try(do_match_pattern(p, value))
-      Ok([value, ..env])
+      Ok(list.append(env, [value]))
     }
     PTyp(pk), VTyp(vk) if pk == vk -> Ok([])
     PLit(pk), VLit(vk) if pk == vk -> Ok([])
@@ -266,13 +267,7 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
 }
 
 fn quote_neut(lvl: Int, head: Term, spine: List(Elim), s: Span) -> Term {
-  case spine {
-    [] -> head
-    [elim, ..spine] -> {
-      let new_head = quote_elim(lvl, head, elim, s)
-      quote_neut(lvl, new_head, spine, s)
-    }
-  }
+  list.fold_right(spine, head, fn(head, elim) { quote_elim(lvl, head, elim, s) })
 }
 
 fn quote_elim(lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
@@ -291,6 +286,28 @@ fn quote_head(lvl: Int, head: Head, s: Span) -> Term {
   }
 }
 
+pub fn occurs(sub: Subst, id: Int, value: Value) -> Bool {
+  case force(sub, value) {
+    VTyp(_) | VLit(_) | VLitT(_) | VErr -> False
+    VNeut(HHole(hole_id), spine) ->
+      id == hole_id || list.any(spine, occurs_elim(sub, id, _))
+    VNeut(_, spine) -> list.any(spine, occurs_elim(sub, id, _))
+    VCtr(_, arg) -> occurs(sub, id, arg)
+    VRcd(fields) -> list.any(fields, fn(kv) { occurs(sub, id, kv.1) })
+    VLam(_, env, _) -> list.any(env, occurs(sub, id, _))
+    VPi(_, env, in, _) ->
+      occurs(sub, id, in) || list.any(env, occurs(sub, id, _))
+  }
+}
+
+pub fn occurs_elim(sub: Subst, id: Int, elim: Elim) -> Bool {
+  case elim {
+    EDot(_) -> False
+    EApp(arg) -> occurs(sub, id, arg)
+    EMatch(env, _) -> list.any(env, occurs(sub, id, _))
+  }
+}
+
 pub fn unify(
   s: State,
   v1: Value,
@@ -302,11 +319,14 @@ pub fn unify(
     VTyp(k1), VTyp(k2) if k1 == k2 -> Ok(s)
     VLit(k1), VLit(k2) if k1 == k2 -> Ok(s)
     VLitT(k1), VLitT(k2) if k1 == k2 -> Ok(s)
-    // TODO: should HHole spines be unified as well?
     VNeut(HHole(id), []), _ ->
       case list.key_find(s.sub, id) {
         Ok(v) -> unify(s, v, v2, s1, s2)
-        Error(Nil) -> Ok(State(..s, sub: [#(id, v2), ..s.sub]))
+        Error(Nil) ->
+          case occurs(s.sub, id, v2) {
+            True -> Error(InfiniteType(id, v2, s1, s2))
+            False -> Ok(State(..s, sub: [#(id, v2), ..s.sub]))
+          }
       }
     _, VNeut(HHole(_), []) -> unify(s, v2, v1, s2, s1)
     VNeut(h1, spine1), VNeut(h2, spine2) if h1 == h2 ->
@@ -373,7 +393,7 @@ fn unify_elim(
   case e1, e2 {
     EDot(n1), EDot(n2) if n1 == n2 -> Ok(s)
     EApp(a1), EApp(a2) -> unify(s, a1, a2, s1, s2)
-    _, _ -> Error(TODO("Spine mismatch", s1))
+    _, _ -> Error(TODO("Spine mismatch"))
   }
 }
 
@@ -390,7 +410,7 @@ fn unify_elim_list(
       use s <- result.try(unify_elim(s, e1, e2, s1, s2))
       unify_elim_list(s, xs, ys, s1, s2)
     }
-    _, _ -> Error(TODO("Arity mismatch", s1))
+    _, _ -> Error(TODO("ArityMismatch"))
   }
 }
 
