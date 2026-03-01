@@ -716,7 +716,7 @@ fn apply_spine(value: Value, spine: List(Elim)) -> Value {
     case elim {
       EDot(field) -> do_dot(value, field)
       EApp(arg) -> do_app(value, arg)
-      EMatch(env, motive, cases) -> do_match(env, motive, value, cases)
+      EMatch(env, motive, cases) -> do_match(env, value, motive, cases)
     }
   })
 }
