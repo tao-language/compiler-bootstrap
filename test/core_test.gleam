@@ -716,50 +716,55 @@ pub fn infer_match_empty_test() {
   ))
 }
 
-pub fn infer_match_any_test() {
-  let cases = [case_(c.PAny, i32(2, s2), s3)]
+pub fn infer_match_unbound_test() {
+  let cases = [case_(c.PAny, i64(2, s2), s3)]
   c.infer(s, match(i32(1, s1), cases, s4))
-  |> should.equal(#(v32(2), v32t, c.State(..s, hole: 1, sub: [#(0, v32t)])))
+  |> should.equal(#(v64(2), v64t, c.State(..s, hole: 1, sub: [#(0, v64t)])))
 }
 
-// pub fn infer_match_motive_mismatch_test() {
-//   let motive = lam("a", i32t(s0), s1)
-//   let cases = [case_(c.PAny, i64(2, s3), s4)]
-//   c.infer(s, match(i32(1, s2), motive, cases, s5))
-//   |> should.equal(#(v64(2), v32t, [], [c.TypeMismatch(v64t, v32t, s3, s1)]))
-// }
+pub fn infer_match_bound_test() {
+  let term = match(i32(1, s1), [case_(pvar("x"), var(0, s2), s3)], s4)
+  c.infer(s, term)
+  |> should.equal(#(
+    v32(1),
+    v32t,
+    c.State(..s, hole: 1, var: 1, ctx: [#("x", #(vvar(0), v32t))], sub: [
+      #(0, v32t),
+    ]),
+  ))
+}
 
-// pub fn match_check_test() {
-//   c.check(0, [], [], match(i32(1), []), v64t, s2)
-//   |> should.equal(c.VErr(c.MatchEmpty(v32t, s)))
+pub fn match_check_empty_test() {
+  c.check(s, match(i32(1, s1), [], s2), v64t, s3)
+  |> should.equal(#(
+    c.VErr,
+    c.State(..s, errors: [c.MatchEmpty(i32(1, s1), s2)]),
+  ))
+}
 
-//   c.check(0, [], [], match(i32(1), [case_(c.PAny, i64(2))]), v64t, s2)
-//   |> should.equal(v64t)
+pub fn match_check_unbound_test() {
+  let term = match(i32(1, s1), [case_(c.PAny, i64(2, s2), s3)], s4)
+  c.check(s, term, v64t, s5)
+  |> should.equal(#(v64(2), s))
+}
 
-//   let term = match(i32(1), [case_(c.PAny, i64(2))])
-//   c.check(0, [], [], term, c.VTyp(0), s2)
-//   |> should.equal(c.VErr(c.TypeMismatch(v64t, c.VTyp(0), s, s2)))
+pub fn match_check_bound_test() {
+  let term = match(i32(1, s1), [case_(pvar("x"), i64(2, s2), s3)], s4)
+  c.check(s, term, v64t, s5)
+  |> should.equal(#(
+    v64(2),
+    c.State(..s, var: 1, ctx: [#("x", #(vvar(0), v32t))]),
+  ))
+}
 
-//   let term = match(i32(1), [case_(c.PAny, i64_2(2)), case_(c.PAny, typ(0))])
-//   c.check(0, [], [], term, v64t, s2)
-//   |> should.equal(c.VBad(v64t, [c.TypeMismatch(c.VTyp(1), v64t, s, s2)]))
-
-//   let term = match(i32(1), [case_(c.PAny, i64(2)), case_(c.PAny, typ(0))])
-//   c.check(0, [], [], term, c.VTyp(2), s2)
-//   |> should.equal(c.VErr(c.TypeMismatch(v64t, c.VTyp(2), s, s2)))
-
-//   c.check(0, [], [], match(i32(1), [case_(pvar("a"), var(0))]), v32t, s2)
-//   |> should.equal(v32t)
-
-//   c.check(0, [], [], match(i32(1), [case_(pvar("a"), var(0))]), v64t, s2)
-//   |> should.equal(c.VErr(c.TypeMismatch(v32t, v64t, s, s2)))
-// }
-
-// // --- Bad --- \\
-// // TODO
-
-// // --- Err --- \\
-// // TODO
+pub fn match_check_mismatch_test() {
+  let term = match(i32(1, s1), [case_(c.PAny, i64(2, s2), s3)], s4)
+  c.check(s, term, c.VTyp(0), s5)
+  |> should.equal(#(
+    v64(2),
+    c.State(..s, errors: [c.TypeMismatch(v64t, c.VTyp(0), s2, s5)]),
+  ))
+}
 
 // --- HELPERS to make writing ASTs less painful ---
 const s = c.State(0, 0, [], [], [], [])
