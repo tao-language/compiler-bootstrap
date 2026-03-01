@@ -293,60 +293,56 @@ fn quote_head(lvl: Int, head: Head, s: Span) -> Term {
 }
 
 pub fn unify(
-  lvl: Int,
-  sub: Subst,
+  s: State,
   v1: Value,
   v2: Value,
   s1: Span,
   s2: Span,
-) -> Result(Subst, Error) {
+) -> Result(State, Error) {
   case v1, v2 {
-    VTyp(k1), VTyp(k2) if k1 == k2 -> Ok(sub)
-    VLit(k1), VLit(k2) if k1 == k2 -> Ok(sub)
-    VLitT(k1), VLitT(k2) if k1 == k2 -> Ok(sub)
+    VTyp(k1), VTyp(k2) if k1 == k2 -> Ok(s)
+    VLit(k1), VLit(k2) if k1 == k2 -> Ok(s)
+    VLitT(k1), VLitT(k2) if k1 == k2 -> Ok(s)
     VNeut(HHole(id), []), _ ->
-      case list.key_find(sub, id) {
-        Ok(v) -> unify(lvl + 1, sub, v, v2, s1, s2)
-        Error(Nil) -> Ok([#(id, v2), ..sub])
+      case list.key_find(s.sub, id) {
+        Ok(v) -> unify(State(..s, hole: s.hole + 1), v, v2, s1, s2)
+        Error(Nil) -> Ok(State(..s, sub: [#(id, v2), ..s.sub]))
       }
-    _, VNeut(HHole(_), []) -> unify(lvl + 1, sub, v2, v1, s2, s1)
+    _, VNeut(HHole(_), []) -> unify(s, v2, v1, s2, s1)
     VNeut(h1, spine1), VNeut(h2, spine2) if h1 == h2 ->
-      unify_elim_list(lvl, sub, spine1, spine2, s1, s2)
-    VCtr(k1, arg1), VCtr(k2, arg2) if k1 == k2 ->
-      unify(lvl, sub, arg1, arg2, s1, s2)
-    VRcd(fields1), VRcd(fields2) ->
-      unify_fields(lvl, sub, fields1, fields2, s1, s2)
+      unify_elim_list(s, spine1, spine2, s1, s2)
+    VCtr(k1, arg1), VCtr(k2, arg2) if k1 == k2 -> unify(s, arg1, arg2, s1, s2)
+    VRcd(fields1), VRcd(fields2) -> unify_fields(s, fields1, fields2, s1, s2)
     VLam(_, env1, body1), VLam(_, env2, body2) -> {
-      let fresh = VNeut(HVar(lvl), [])
+      let #(fresh, s) = new_var(s)
       let a = eval([fresh, ..env1], body1)
       let b = eval([fresh, ..env2], body2)
-      unify(lvl + 1, sub, a, b, s1, s2)
+      unify(s, a, b, s1, s2)
     }
     VPi(_, env1, in1, out1), VPi(_, env2, in2, out2) -> {
-      use _ <- result.try(unify(lvl, sub, in1, in2, s1, s2))
-      let fresh = VNeut(HVar(lvl), [])
+      use _ <- result.try(unify(s, in1, in2, s1, s2))
+      let #(fresh, s) = new_var(s)
       let a = eval([fresh, ..env1], out1)
       let b = eval([fresh, ..env2], out2)
-      unify(lvl + 1, sub, a, b, s1, s2)
+      unify(s, a, b, s1, s2)
     }
-    VErr, _ -> Ok(sub)
-    _, VErr -> Ok(sub)
+    VErr, _ -> Ok(s)
+    _, VErr -> Ok(s)
     _, _ -> Error(TypeMismatch(v1, v2, s1, s2))
   }
 }
 
 fn unify_fields(
-  lvl: Int,
-  sub: Subst,
+  s: State,
   args1: List(#(String, Value)),
   args2: List(#(String, Value)),
   s1: Span,
   s2: Span,
-) -> Result(Subst, Error) {
+) -> Result(State, Error) {
   case args1 {
     [] ->
       case list.map(args2, fn(kv) { kv.0 }) {
-        [] -> Ok(sub)
+        [] -> Ok(s)
         names -> Error(RcdMissingFields(names, s1))
       }
     [#(name, v1), ..args1] ->
@@ -360,41 +356,39 @@ fn unify_fields(
           Error(RcdMissingFields([name, ..names], s2))
         }
         Ok(#(v2, args2)) -> {
-          use sub <- result.try(unify(lvl, sub, v1, v2, s1, s2))
-          unify_fields(lvl, sub, args1, args2, s1, s2)
+          use s <- result.try(unify(s, v1, v2, s1, s2))
+          unify_fields(s, args1, args2, s1, s2)
         }
       }
   }
 }
 
 fn unify_elim(
-  lvl: Int,
-  sub: Subst,
+  s: State,
   e1: Elim,
   e2: Elim,
   s1: Span,
   s2: Span,
-) -> Result(Subst, Error) {
+) -> Result(State, Error) {
   case e1, e2 {
-    EDot(n1), EDot(n2) if n1 == n2 -> Ok(sub)
-    EApp(a1), EApp(a2) -> unify(lvl, sub, a1, a2, s1, s2)
+    EDot(n1), EDot(n2) if n1 == n2 -> Ok(s)
+    EApp(a1), EApp(a2) -> unify(s, a1, a2, s1, s2)
     _, _ -> Error(TODO("Spine mismatch", s1))
   }
 }
 
 fn unify_elim_list(
-  lvl: Int,
-  sub: Subst,
+  s: State,
   l1: List(Elim),
   l2: List(Elim),
   s1: Span,
   s2: Span,
-) -> Result(Subst, Error) {
+) -> Result(State, Error) {
   case l1, l2 {
-    [], [] -> Ok(sub)
+    [], [] -> Ok(s)
     [e1, ..xs], [e2, ..ys] -> {
-      use sub <- result.try(unify_elim(lvl, sub, e1, e2, s1, s2))
-      unify_elim_list(lvl, sub, xs, ys, s1, s2)
+      use s <- result.try(unify_elim(s, e1, e2, s1, s2))
+      unify_elim_list(s, xs, ys, s1, s2)
     }
     _, _ -> Error(TODO("Arity mismatch", s1))
   }
@@ -457,15 +451,19 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(val, s) = check(s, term, ty_val, term_ty.span)
       #(val, ty_val, s)
     }
-    // Lam(_, _) -> {
-    //   let err = TypeAnnotationNeeded(term)
-    //   #(VErr, VErr, sub, [err])
-    // }
-    Lam(_, _) -> todo
+    Lam(name, body) -> {
+      let env = get_env(s)
+      let #(t1_hole, s) = new_hole(s)
+      let #(_, s) = def_var(s, name, t1_hole)
+      let #(_, t2_val, s) = infer(s, body)
+      let t1 = force(s.sub, t1_hole, term.span)
+      let t2 = quote(list.length(env), t2_val, body.span)
+      #(VLam(name, env, body), VPi(name, env, t1, t2), s)
+    }
     Pi(name, in, out) -> {
       let env = get_env(s)
       let #(in_val, _, s) = infer(s, in)
-      let #(_, s) = new_var(s, name, in_val)
+      let #(_, s) = def_var(s, name, in_val)
       let #(_, _, s) = infer(s, out)
       #(VPi(name, env, in_val, out), VTyp(0), s)
     }
@@ -487,20 +485,6 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       #(result, result_ty, s)
     }
   }
-}
-
-fn new_var(s: State, name: String, ty: Type) -> #(Value, State) {
-  let name = case name {
-    "" -> "$" <> int.to_string(s.var)
-    _ -> name
-  }
-  let var = VNeut(HVar(s.var), [])
-  #(var, State(..s, var: s.var + 1, ctx: [#(name, #(var, ty)), ..s.ctx]))
-}
-
-fn new_hole(s: State) -> #(Value, State) {
-  let hole = VNeut(HHole(s.hole), [])
-  #(hole, State(..s, hole: s.hole + 1))
 }
 
 fn typeof_lit(lit: Literal) -> Value {
@@ -528,59 +512,26 @@ fn infer_fields(
   }
 }
 
-pub fn pattern_to_value(lvl: Int, pat: Pattern) -> #(Int, Value) {
-  case pat {
-    PAny -> #(lvl + 1, VNeut(HVar(lvl), []))
-    PAs(p, _) -> pattern_to_value(lvl, p)
-    PTyp(k) -> #(lvl, VTyp(k))
-    PLit(k) -> #(lvl, VLit(k))
-    PLitT(k) -> #(lvl, VLitT(k))
-    PCtr(tag, parg) -> {
-      let #(lvl, arg) = pattern_to_value(lvl, parg)
-      #(lvl, VCtr(tag, arg))
-    }
-    PRcd(pfields) -> {
-      let #(lvl, fields) =
-        list.fold(pfields, #(lvl, []), fn(acc, kv) {
-          let #(lvl, fields) = acc
-          let #(name, p) = kv
-          let #(lvl, v) = pattern_to_value(lvl, p)
-          #(lvl, [#(name, v), ..fields])
-        })
-      #(lvl, VRcd(list.reverse(fields)))
-    }
-  }
-}
-
 pub fn bind_pattern(
   s: State,
   pattern: Pattern,
   ret_ty: Value,
   pat_span: Span,
   ret_span: Span,
-) -> #(Value, State) {
+) -> State {
   case pattern {
-    PAny -> new_var(s, "", ret_ty)
-    PAs(PAny, name) -> new_var(s, name, ret_ty)
+    PAny -> s
+    PAs(PAny, name) -> def_var(s, name, ret_ty).1
     PAs(p, name) -> {
-      let #(_, s) = new_var(s, name, ret_ty)
+      let #(_, s) = def_var(s, name, ret_ty)
       bind_pattern(s, p, ret_ty, pat_span, ret_span)
     }
-    PTyp(k) -> {
-      let #(_, s) = check(s, Term(Typ(k), pat_span), ret_ty, ret_span)
-      #(VTyp(k), s)
-    }
-    PLit(k) -> {
-      let #(_, s) = check(s, Term(Lit(k), pat_span), ret_ty, ret_span)
-      #(VLit(k), s)
-    }
-    PLitT(k) -> {
-      let #(_, s) = check(s, Term(LitT(k), pat_span), ret_ty, ret_span)
-      #(VLitT(k), s)
-    }
+    PTyp(k) -> check(s, Term(Typ(k), pat_span), ret_ty, ret_span).1
+    PLit(k) -> check(s, Term(Lit(k), pat_span), ret_ty, ret_span).1
+    PLitT(k) -> check(s, Term(LitT(k), pat_span), ret_ty, ret_span).1
     PCtr(tag, parg) -> {
       case list.key_find(s.tenv, tag) {
-        Error(Nil) -> #(VErr, with_err(s, CtrUndefined(tag, pat_span)))
+        Error(Nil) -> with_err(s, CtrUndefined(tag, pat_span))
         Ok(ctr) -> {
           let #(params, _, ctr_ret_ty, s) = check_ctr_def(s, ctr)
           let #(_, s) =
@@ -588,9 +539,7 @@ pub fn bind_pattern(
           let #(params, s) = ctr_solve_params(s, ctr, params, tag, pat_span)
           let env = list.append(params, get_env(s))
           let ctr_arg_ty = eval(env, ctr.arg_ty)
-          let #(varg, s) =
-            bind_pattern(s, parg, ctr_arg_ty, pat_span, ctr.arg_ty.span)
-          #(VCtr(tag, varg), s)
+          bind_pattern(s, parg, ctr_arg_ty, pat_span, ctr.arg_ty.span)
         }
       }
     }
@@ -608,24 +557,16 @@ pub fn bind_pattern(
             [] -> s
             _ -> with_err(s, RcdMissingFields(missing, ret_span))
           }
-          let #(fields, s) =
-            list.fold(pfields, #([], s), fn(acc, kv) {
-              let #(fields, s) = acc
-              let #(name, p) = kv
-              let #(ty, s) = case list.key_find(vfields, name) {
-                Error(Nil) -> new_hole(s)
-                Ok(ty) -> #(ty, s)
-              }
-              let #(v, s) = bind_pattern(s, p, ty, pat_span, ret_span)
-              let fields = [#(name, v), ..fields]
-              #(fields, s)
-            })
-          #(VRcd(fields), s)
+          list.fold(pfields, s, fn(s, kv) {
+            let #(name, p) = kv
+            let #(ty, s) = case list.key_find(vfields, name) {
+              Error(Nil) -> new_hole(s)
+              Ok(ty) -> #(ty, s)
+            }
+            bind_pattern(s, p, ty, pat_span, ret_span)
+          })
         }
-        _ -> #(
-          VErr,
-          with_err(s, PatternMismatch(pattern, ret_ty, pat_span, ret_span)),
-        )
+        _ -> with_err(s, PatternMismatch(pattern, ret_ty, pat_span, ret_span))
       }
   }
 }
@@ -639,7 +580,7 @@ pub fn check(
   case term.data, expected_ty {
     Lam(name, body), VPi(_, pi_env, in, out) -> {
       let env = get_env(s)
-      let #(fresh, s) = new_var(s, name, in)
+      let #(fresh, s) = def_var(s, name, in)
       let out_val = eval([fresh, ..pi_env], out)
       let #(_, s) = check(s, body, out_val, ty_span)
       #(VLam(name, env, body), s)
@@ -658,7 +599,7 @@ pub fn check(
       }
       let s =
         list.fold(cases, s, fn(s, c) {
-          let #(_, s) = bind_pattern(s, c.pattern, arg_ty, c.span, arg.span)
+          let s = bind_pattern(s, c.pattern, arg_ty, c.span, arg.span)
           check(s, c.body, expected_ty, ty_span).1
         })
       let match_val = do_match(env, arg_val, cases)
@@ -666,8 +607,8 @@ pub fn check(
     }
     _, _ -> {
       let #(value, inferred_ty, s) = infer(s, term)
-      case unify(s.var, s.sub, inferred_ty, expected_ty, term.span, ty_span) {
-        Ok(sub) -> #(force(sub, value, term.span), State(..s, sub: sub))
+      case unify(s, inferred_ty, expected_ty, term.span, ty_span) {
+        Ok(s) -> #(force(s.sub, value, term.span), s)
         Error(e) -> #(VErr, with_err(s, e))
       }
     }
@@ -718,8 +659,8 @@ pub fn check_type(
   t1_span: Span,
   t2_span: Span,
 ) -> #(Value, State) {
-  case unify(s.var, s.sub, t1, t2, t1_span, t2_span) {
-    Ok(sub) -> #(force(sub, t1, t1_span), State(..s, sub: sub))
+  case unify(s, t1, t2, t1_span, t2_span) {
+    Ok(s) -> #(force(s.sub, t1, t1_span), s)
     Error(e) -> #(t1, with_err(s, e))
   }
 }
@@ -798,4 +739,23 @@ fn show_span(s: Span) -> String {
 
 fn get_env(s: State) -> Env {
   list.map(s.ctx, fn(kv) { kv.1.0 })
+}
+
+fn new_var(s: State) -> #(Value, State) {
+  let var = VNeut(HVar(s.var), [])
+  #(var, State(..s, var: s.var + 1))
+}
+
+fn def_var(s: State, name: String, ty: Type) -> #(Value, State) {
+  let name = case name {
+    "" -> "$" <> int.to_string(s.var)
+    _ -> name
+  }
+  let #(var, s) = new_var(s)
+  #(var, State(..s, ctx: [#(name, #(var, ty)), ..s.ctx]))
+}
+
+fn new_hole(s: State) -> #(Value, State) {
+  let hole = VNeut(HHole(s.hole), [])
+  #(hole, State(..s, hole: s.hole + 1))
 }
