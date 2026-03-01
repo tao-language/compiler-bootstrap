@@ -303,9 +303,10 @@ pub fn unify(
     VTyp(k1), VTyp(k2) if k1 == k2 -> Ok(s)
     VLit(k1), VLit(k2) if k1 == k2 -> Ok(s)
     VLitT(k1), VLitT(k2) if k1 == k2 -> Ok(s)
+    // TODO: should HHole spines be unified as well?
     VNeut(HHole(id), []), _ ->
       case list.key_find(s.sub, id) {
-        Ok(v) -> unify(State(..s, hole: s.hole + 1), v, v2, s1, s2)
+        Ok(v) -> unify(s, v, v2, s1, s2)
         Error(Nil) -> Ok(State(..s, sub: [#(id, v2), ..s.sub]))
       }
     _, VNeut(HHole(_), []) -> unify(s, v2, v1, s2, s1)
@@ -667,8 +668,8 @@ pub fn check_type(
 
 pub fn force(sub: Subst, value: Value, s: Span) -> Value {
   case value {
-    VNeut(HVar(i), spine) ->
-      case list.key_find(sub, i) {
+    VNeut(HHole(id), spine) ->
+      case list.key_find(sub, id) {
         Ok(v) -> {
           let forced_val = apply_spine(v, spine, s)
           force(sub, forced_val, s)
@@ -679,9 +680,9 @@ pub fn force(sub: Subst, value: Value, s: Span) -> Value {
   }
 }
 
-fn apply_spine(val: Value, spine: List(Elim), s: Span) -> Value {
-  list.fold(spine, val, fn(value, elimination) {
-    case elimination {
+fn apply_spine(value: Value, spine: List(Elim), s: Span) -> Value {
+  list.fold(spine, value, fn(value, elim) {
+    case elim {
       EDot(field) -> do_dot(value, field, s)
       EApp(arg) -> do_app(value, arg)
       EMatch(env, cases) -> do_match(env, value, cases)

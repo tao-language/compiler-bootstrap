@@ -141,12 +141,14 @@ pub fn eval_var_test() {
   c.eval(env, var(1, s1)) |> should.equal(c.VErr)
 }
 
-// pub fn unify_var_test() {
-//   c.unify(0, [], v32t, vhole(1), s1, s2) |> should.equal(Ok([#(1, v32t)]))
-//   c.unify(0, [], vhole(1), v32t, s1, s2) |> should.equal(Ok([#(1, v32t)]))
-//   c.unify(0, [#(0, v64t)], vhole(1), v32t, s1, s2)
-//   |> should.equal(Ok([#(1, v32t), #(0, v64t)]))
-// }
+pub fn unify_var_test() {
+  c.unify(s, v32t, vhole(1), s1, s2)
+  |> should.equal(Ok(c.State(..s, sub: [#(1, v32t)])))
+  c.unify(s, vhole(1), v32t, s1, s2)
+  |> should.equal(Ok(c.State(..s, sub: [#(1, v32t)])))
+  c.unify(c.State(..s, sub: [#(0, v64t)]), vhole(1), v32t, s1, s2)
+  |> should.equal(Ok(c.State(..s, sub: [#(1, v32t), #(0, v64t)])))
+}
 
 pub fn infer_var_test() {
   let s = c.State(..s, ctx: [#("x", #(v32(1), v32t))])
@@ -194,14 +196,14 @@ pub fn eval_ctr_test() {
   c.eval([], ctr("A", i32(1, s1), s2)) |> should.equal(c.VCtr("A", v32(1)))
 }
 
-// pub fn unify_ctr_tag_test() {
-//   c.unify(0, [], c.VCtr("A", v32(1)), c.VCtr("A", v32(1)), s1, s2)
-//   |> should.equal(Ok([]))
-//   c.unify(0, [], c.VCtr("A", v32(1)), c.VCtr("B", v32(1)), s1, s2)
-//   |> should.equal(
-//     Error(c.TypeMismatch(c.VCtr("A", v32(1)), c.VCtr("B", v32(1)), s1, s2)),
-//   )
-// }
+pub fn unify_ctr_tag_test() {
+  c.unify(s, c.VCtr("A", v32(1)), c.VCtr("A", v32(1)), s1, s2)
+  |> should.equal(Ok(s))
+  c.unify(s, c.VCtr("A", v32(1)), c.VCtr("B", v32(1)), s1, s2)
+  |> should.equal(
+    Error(c.TypeMismatch(c.VCtr("A", v32(1)), c.VCtr("B", v32(1)), s1, s2)),
+  )
+}
 
 // TODO: check_ctr_def_test
 // TODO: check_type_test
@@ -322,31 +324,31 @@ pub fn eval_rcd_test() {
   |> should.equal(c.VRcd([#("a", v32t), #("b", v64t)]))
 }
 
-// pub fn unify_rcd_missing_test() {
-//   let ab = c.VRcd([#("a", v32t), #("b", v64t)])
-//   c.unify(0, [], ab, c.VRcd([]), s1, s2)
-//   |> should.equal(Error(c.RcdMissingFields(["a", "b"], s2)))
-//   c.unify(0, [], c.VRcd([]), ab, s1, s2)
-//   |> should.equal(Error(c.RcdMissingFields(["a", "b"], s1)))
-// }
+pub fn unify_rcd_missing_test() {
+  let ab = c.VRcd([#("a", v32t), #("b", v64t)])
+  c.unify(s, ab, c.VRcd([]), s1, s2)
+  |> should.equal(Error(c.RcdMissingFields(["a", "b"], s2)))
+  c.unify(s, c.VRcd([]), ab, s1, s2)
+  |> should.equal(Error(c.RcdMissingFields(["a", "b"], s1)))
+}
 
-// pub fn unify_rcd_mismatch_test() {
-//   c.unify(0, [], c.VRcd([#("a", v32t)]), c.VRcd([#("a", v64t)]), s1, s2)
-//   |> should.equal(Error(c.TypeMismatch(v32t, v64t, s1, s2)))
-// }
+pub fn unify_rcd_mismatch_test() {
+  c.unify(s, c.VRcd([#("a", v32t)]), c.VRcd([#("a", v64t)]), s1, s2)
+  |> should.equal(Error(c.TypeMismatch(v32t, v64t, s1, s2)))
+}
 
-// pub fn unify_rcd_order_test() {
-//   let ab = c.VRcd([#("a", v32t), #("b", v64t)])
-//   let ba = c.VRcd([#("b", v64t), #("a", v32t)])
-//   c.unify(0, [], ab, ab, s1, s2) |> should.equal(Ok([]))
-//   c.unify(0, [], ab, ba, s1, s2) |> should.equal(Ok([]))
-// }
+pub fn unify_rcd_order_test() {
+  let ab = c.VRcd([#("a", v32t), #("b", v64t)])
+  let ba = c.VRcd([#("b", v64t), #("a", v32t)])
+  c.unify(s, ab, ab, s1, s2) |> should.equal(Ok(s))
+  c.unify(s, ab, ba, s1, s2) |> should.equal(Ok(s))
+}
 
-// pub fn unify_rcd_bind_test() {
-//   let a = c.VRcd([#("a", v32t)])
-//   let b = c.VRcd([#("a", vhole(1))])
-//   c.unify(0, [], a, b, s1, s2) |> should.equal(Ok([#(1, v32t)]))
-// }
+pub fn unify_rcd_bind_test() {
+  let a = c.VRcd([#("a", v32t)])
+  let b = c.VRcd([#("a", vhole(1))])
+  c.unify(s, a, b, s1, s2) |> should.equal(Ok(c.State(..s, sub: [#(1, v32t)])))
+}
 
 pub fn infer_rcd_test() {
   c.infer(s, rcd([], s0))
@@ -717,11 +719,7 @@ pub fn infer_match_empty_test() {
 pub fn infer_match_any_test() {
   let cases = [case_(c.PAny, i32(2, s2), s3)]
   c.infer(s, match(i32(1, s1), cases, s4))
-  |> should.equal(#(v32(2), v32t, s))
-}
-
-pub fn todo_test() {
-  panic as "TODO: unify should take a State and return a State"
+  |> should.equal(#(v32(2), v32t, c.State(..s, hole: 1, sub: [#(0, v32t)])))
 }
 
 // pub fn infer_match_motive_mismatch_test() {
