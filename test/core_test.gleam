@@ -1,5 +1,4 @@
 import core as c
-import gleam/option.{None, Some}
 import gleeunit
 import gleeunit/should
 
@@ -769,21 +768,25 @@ pub fn match_check_mismatch_test() {
 // --- HELPERS to make writing ASTs less painful ---
 const s = c.State(0, 0, [], [], [], [])
 
-const s0 = c.Span("core_test", 0, 0)
+pub const s0 = c.Span("core_test", 0, 0)
 
-const s1 = c.Span("core_test", 1, 1)
+pub const s1 = c.Span("core_test", 1, 1)
 
-const s2 = c.Span("core_test", 2, 2)
+pub const s2 = c.Span("core_test", 2, 2)
 
-const s3 = c.Span("core_test", 3, 3)
+pub const s3 = c.Span("core_test", 3, 3)
 
-const s4 = c.Span("core_test", 4, 4)
+pub const s4 = c.Span("core_test", 4, 4)
 
-const s5 = c.Span("core_test", 5, 5)
+pub const s5 = c.Span("core_test", 5, 5)
 
-const s6 = c.Span("core_test", 6, 6)
+pub const s6 = c.Span("core_test", 6, 6)
 
-const s7 = c.Span("core_test", 7, 7)
+pub const s7 = c.Span("core_test", 7, 7)
+
+pub const s8 = c.Span("core_test", 8, 8)
+
+pub const s9 = c.Span("core_test", 9, 9)
 
 fn typ(l, s) {
   c.Term(c.Typ(l), s)

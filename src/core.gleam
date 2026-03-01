@@ -1,6 +1,4 @@
-import gleam/dict
 import gleam/int
-import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
@@ -151,7 +149,7 @@ pub fn eval(env: Env, term: Term) -> Value {
     Hole(id) -> VNeut(HHole(id), [])
     Ctr(tag, arg) -> VCtr(tag, eval(env, arg))
     Rcd(fields) -> VRcd(list.map(fields, fn(kv) { #(kv.0, eval(env, kv.1)) }))
-    Dot(arg, name) -> do_dot(eval(env, arg), name, arg.span)
+    Dot(arg, name) -> do_dot(eval(env, arg), name)
     Ann(term, _) -> eval(env, term)
     Lam(name, body) -> VLam(name, env, body)
     Pi(name, in, out) -> VPi(name, env, eval(env, in), out)
@@ -167,7 +165,7 @@ pub fn eval(env: Env, term: Term) -> Value {
   }
 }
 
-fn do_dot(value: Value, name: String, s: Span) -> Value {
+fn do_dot(value: Value, name: String) -> Value {
   case value {
     VNeut(head, spine) -> VNeut(head, list.append(spine, [EDot(name)]))
     VRcd(fields) ->
@@ -212,7 +210,7 @@ pub fn do_match_cases(arg: Value, cases: List(Case)) -> Option(#(Env, Term)) {
 pub fn do_match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
   case pattern, value {
     PAny, _ -> Ok([])
-    PAs(p, x), _ -> {
+    PAs(p, name), _ -> {
       use env <- result.try(do_match_pattern(p, value))
       Ok([value, ..env])
     }
@@ -281,6 +279,7 @@ fn quote_elim(lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
   case elim {
     EDot(name) -> Term(Dot(head, name), s)
     EApp(arg) -> Term(App(head, quote(lvl, arg, s)), s)
+    // TODO: Is it okay to discard this env?
     EMatch(env, cases) -> Term(Match(head, cases), s)
   }
 }
@@ -434,7 +433,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
     }
     Dot(arg, name) -> {
       let #(arg_val, arg_ty, s) = infer(s, arg)
-      let val = do_dot(arg_val, name, term.span)
+      let val = do_dot(arg_val, name)
       case arg_ty {
         VRcd(fields) ->
           case list.key_find(fields, name) {
@@ -457,7 +456,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(t1_hole, s) = new_hole(s)
       let #(_, s) = def_var(s, name, t1_hole)
       let #(_, t2_val, s) = infer(s, body)
-      let t1 = force(s.sub, t1_hole, term.span)
+      let t1 = force(s.sub, t1_hole)
       let t2 = quote(list.length(env), t2_val, body.span)
       #(VLam(name, env, body), VPi(name, env, t1, t2), s)
     }
@@ -482,7 +481,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
     Match(_, _) -> {
       let #(hole, s) = new_hole(s)
       let #(result, s) = check(s, term, hole, term.span)
-      let result_ty = force(s.sub, hole, term.span)
+      let result_ty = force(s.sub, hole)
       #(result, result_ty, s)
     }
   }
@@ -609,7 +608,7 @@ pub fn check(
     _, _ -> {
       let #(value, inferred_ty, s) = infer(s, term)
       case unify(s, inferred_ty, expected_ty, term.span, ty_span) {
-        Ok(s) -> #(force(s.sub, value, term.span), s)
+        Ok(s) -> #(force(s.sub, value), s)
         Error(e) -> #(VErr, with_err(s, e))
       }
     }
@@ -661,18 +660,18 @@ pub fn check_type(
   t2_span: Span,
 ) -> #(Value, State) {
   case unify(s, t1, t2, t1_span, t2_span) {
-    Ok(s) -> #(force(s.sub, t1, t1_span), s)
+    Ok(s) -> #(force(s.sub, t1), s)
     Error(e) -> #(t1, with_err(s, e))
   }
 }
 
-pub fn force(sub: Subst, value: Value, s: Span) -> Value {
+pub fn force(sub: Subst, value: Value) -> Value {
   case value {
     VNeut(HHole(id), spine) ->
       case list.key_find(sub, id) {
         Ok(v) -> {
-          let forced_val = apply_spine(v, spine, s)
-          force(sub, forced_val, s)
+          let forced_val = apply_spine(v, spine)
+          force(sub, forced_val)
         }
         Error(Nil) -> value
       }
@@ -680,10 +679,10 @@ pub fn force(sub: Subst, value: Value, s: Span) -> Value {
   }
 }
 
-fn apply_spine(value: Value, spine: List(Elim), s: Span) -> Value {
+fn apply_spine(value: Value, spine: List(Elim)) -> Value {
   list.fold(spine, value, fn(value, elim) {
     case elim {
-      EDot(field) -> do_dot(value, field, s)
+      EDot(field) -> do_dot(value, field)
       EApp(arg) -> do_app(value, arg)
       EMatch(env, cases) -> do_match(env, value, cases)
     }
@@ -724,11 +723,11 @@ pub fn range(start: Int, stop: Int, step: Int) -> List(Int) {
   }
 }
 
-fn show_msg(s: Span, msg: String) -> String {
+pub fn show_msg(s: Span, msg: String) -> String {
   show_span(s) <> " " <> msg
 }
 
-fn show_span(s: Span) -> String {
+pub fn show_span(s: Span) -> String {
   "["
   <> s.file
   <> ":"
