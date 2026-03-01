@@ -20,7 +20,7 @@ pub type TermData {
   Lam(name: String, body: Term)
   Pi(name: String, in: Term, out: Term)
   App(fun: Term, arg: Term)
-  Match(arg: Term, cases: List(Case))
+  Match(arg: Term, motive: Term, cases: List(Case))
 }
 
 pub type Value {
@@ -56,7 +56,7 @@ pub type Head {
 pub type Elim {
   EDot(name: String)
   EApp(arg: Value)
-  EMatch(env: Env, cases: List(Case))
+  EMatch(env: Env, motive: Value, cases: List(Case))
 }
 
 pub type Case {
@@ -159,9 +159,10 @@ pub fn eval(env: Env, term: Term) -> Value {
       let arg_val = eval(env, arg)
       do_app(fun_val, arg_val)
     }
-    Match(arg, cases) -> {
+    Match(arg, motive, cases) -> {
       let arg_val = eval(env, arg)
-      do_match(env, arg_val, cases)
+      let motive_val = eval(env, motive)
+      do_match(env, arg_val, motive_val, cases)
     }
   }
 }
@@ -186,9 +187,9 @@ pub fn do_app(fun: Value, arg: Value) -> Value {
   }
 }
 
-pub fn do_match(env: Env, arg: Value, cases: List(Case)) -> Value {
+pub fn do_match(env: Env, arg: Value, motive: Value, cases: List(Case)) -> Value {
   case arg {
-    VNeut(head, spine) -> VNeut(head, [EMatch(env, cases), ..spine])
+    VNeut(head, spine) -> VNeut(head, [EMatch(env, motive, cases), ..spine])
     _ ->
       case do_match_cases(arg, cases) {
         Some(#(bindings, body)) -> eval(list.append(bindings, env), body)
@@ -275,7 +276,8 @@ fn quote_elim(lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
     EDot(name) -> Term(Dot(head, name), s)
     EApp(arg) -> Term(App(head, quote(lvl, arg, s)), s)
     // TODO: Is it okay to discard this env?
-    EMatch(env, cases) -> Term(Match(head, cases), s)
+    EMatch(env, motive, cases) ->
+      Term(Match(head, quote(lvl, motive, s), cases), s)
   }
 }
 
@@ -304,7 +306,8 @@ pub fn occurs_elim(sub: Subst, id: Int, elim: Elim) -> Bool {
   case elim {
     EDot(_) -> False
     EApp(arg) -> occurs(sub, id, arg)
-    EMatch(env, _) -> list.any(env, occurs(sub, id, _))
+    EMatch(env, motive, _) ->
+      occurs(sub, id, motive) || list.any(env, occurs(sub, id, _))
   }
 }
 
@@ -498,11 +501,26 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
         _ -> #(VErr, VErr, with_err(s, NotAFunction(fun, fun_ty)))
       }
     }
-    Match(_, _) -> {
-      let #(hole, s) = new_hole(s)
-      let #(result, s) = check(s, term, hole, term.span)
-      let result_ty = force(s.sub, hole)
-      #(result, result_ty, s)
+    Match(arg, motive, cases) -> {
+      let env = get_env(s)
+      let #(arg_val, arg_ty, s) = infer(s, arg)
+      let motive_ty = VPi("_", env, arg_ty, Term(Typ(0), arg.span))
+      let #(motive_val, s) = check(s, motive, motive_ty, motive.span)
+      let s = case cases {
+        [] -> with_err(s, MatchEmpty(arg, term.span))
+        _ -> s
+      }
+      let s =
+        list.fold(cases, s, fn(s, c) {
+          let #(pat_val, branch_s) =
+            bind_pattern(s, c.pattern, arg_ty, c.span, arg.span)
+          let branch_ty = do_app(motive_val, pat_val)
+          let #(_, branch_s) = check(branch_s, c.body, branch_ty, c.span)
+          State(..branch_s, var: s.var, ctx: s.ctx)
+        })
+      let match_val = do_match(env, arg_val, motive_val, cases)
+      let result_ty = do_app(motive_val, arg_val)
+      #(match_val, result_ty, s)
     }
   }
 }
@@ -538,20 +556,20 @@ pub fn bind_pattern(
   ret_ty: Value,
   pat_span: Span,
   ret_span: Span,
-) -> State {
+) -> #(Value, State) {
   case pattern {
-    PAny -> s
-    PAs(PAny, name) -> def_var(s, name, ret_ty).1
+    PAny -> new_hole(s)
+    PAs(PAny, name) -> def_var(s, name, ret_ty)
     PAs(p, name) -> {
       let #(_, s) = def_var(s, name, ret_ty)
       bind_pattern(s, p, ret_ty, pat_span, ret_span)
     }
-    PTyp(k) -> check(s, Term(Typ(k), pat_span), ret_ty, ret_span).1
-    PLit(k) -> check(s, Term(Lit(k), pat_span), ret_ty, ret_span).1
-    PLitT(k) -> check(s, Term(LitT(k), pat_span), ret_ty, ret_span).1
+    PTyp(k) -> check(s, Term(Typ(k), pat_span), ret_ty, ret_span)
+    PLit(k) -> check(s, Term(Lit(k), pat_span), ret_ty, ret_span)
+    PLitT(k) -> check(s, Term(LitT(k), pat_span), ret_ty, ret_span)
     PCtr(tag, parg) -> {
       case list.key_find(s.tenv, tag) {
-        Error(Nil) -> with_err(s, CtrUndefined(tag, pat_span))
+        Error(Nil) -> #(VErr, with_err(s, CtrUndefined(tag, pat_span)))
         Ok(ctr) -> {
           let #(params, _, ctr_ret_ty, s) = check_ctr_def(s, ctr)
           let #(_, s) =
@@ -559,7 +577,9 @@ pub fn bind_pattern(
           let #(params, s) = ctr_solve_params(s, ctr, params, tag, pat_span)
           let env = list.append(params, get_env(s))
           let ctr_arg_ty = eval(env, ctr.arg_ty)
-          bind_pattern(s, parg, ctr_arg_ty, pat_span, ctr.arg_ty.span)
+          let #(varg, s) =
+            bind_pattern(s, parg, ctr_arg_ty, pat_span, ctr.arg_ty.span)
+          #(VCtr(tag, varg), s)
         }
       }
     }
@@ -577,16 +597,23 @@ pub fn bind_pattern(
             [] -> s
             _ -> with_err(s, RcdMissingFields(missing, ret_span))
           }
-          list.fold(pfields, s, fn(s, kv) {
-            let #(name, p) = kv
-            let #(ty, s) = case list.key_find(vfields, name) {
-              Error(Nil) -> new_hole(s)
-              Ok(ty) -> #(ty, s)
-            }
-            bind_pattern(s, p, ty, pat_span, ret_span)
-          })
+          let #(fields, s) =
+            list.fold_right(pfields, #([], s), fn(acc, kv) {
+              let #(fields, s) = acc
+              let #(name, p) = kv
+              let #(ty, s) = case list.key_find(vfields, name) {
+                Error(Nil) -> new_hole(s)
+                Ok(ty) -> #(ty, s)
+              }
+              let #(v, s) = bind_pattern(s, p, ty, pat_span, ret_span)
+              #([#(name, v), ..fields], s)
+            })
+          #(VRcd(fields), s)
         }
-        _ -> with_err(s, PatternMismatch(pattern, ret_ty, pat_span, ret_span))
+        _ -> #(
+          VErr,
+          with_err(s, PatternMismatch(pattern, ret_ty, pat_span, ret_span)),
+        )
       }
   }
 }
@@ -610,21 +637,6 @@ pub fn check(
       #(VNeut(HHole(id), []), s)
     }
     Ctr(tag, arg), _ -> check_ctr(s, tag, arg, expected_ty, ty_span, term.span)
-    Match(arg, cases), _ -> {
-      let env = get_env(s)
-      let #(arg_val, arg_ty, s) = infer(s, arg)
-      let s = case cases {
-        [] -> with_err(s, MatchEmpty(arg, term.span))
-        _ -> s
-      }
-      let s =
-        list.fold(cases, s, fn(s, c) {
-          let s = bind_pattern(s, c.pattern, arg_ty, c.span, arg.span)
-          check(s, c.body, expected_ty, ty_span).1
-        })
-      let match_val = do_match(env, arg_val, cases)
-      #(match_val, s)
-    }
     _, _ -> {
       let #(value, inferred_ty, s) = infer(s, term)
       case unify(s, inferred_ty, expected_ty, term.span, ty_span) {
@@ -704,7 +716,7 @@ fn apply_spine(value: Value, spine: List(Elim)) -> Value {
     case elim {
       EDot(field) -> do_dot(value, field)
       EApp(arg) -> do_app(value, arg)
-      EMatch(env, cases) -> do_match(env, value, cases)
+      EMatch(env, motive, cases) -> do_match(env, motive, value, cases)
     }
   })
 }

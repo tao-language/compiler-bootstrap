@@ -630,84 +630,102 @@ pub fn check_app_test() {
 
 // --- Match --- \\
 pub fn eval_match_test() {
-  c.eval([], match(i32(1, s2), [], s3)) |> should.equal(c.VErr)
-  c.eval([], match(i32(1, s2), [case_(pvar("x"), var(0, s3), s4)], s4))
+  let motive = lam("p", i32t(s0), s1)
+  c.eval([], match(i32(1, s2), motive, [], s3)) |> should.equal(c.VErr)
+  c.eval([], match(i32(1, s2), motive, [case_(pvar("x"), var(0, s3), s4)], s4))
   |> should.equal(v32(1))
-  c.eval([], match(hole(0, s1), [case_(pvar("x"), var(0, s2), s3)], s4))
+  c.eval([], match(hole(0, s1), motive, [case_(pvar("x"), var(0, s2), s3)], s4))
   |> should.equal(
     c.VNeut(c.HHole(0), [
-      c.EMatch([], [case_(pvar("x"), var(0, s2), s3)]),
+      c.EMatch([], c.VLam("p", [], i32t(s0)), [case_(pvar("x"), var(0, s2), s3)]),
     ]),
   )
 }
 
 pub fn bind_pattern_any_test() {
-  c.bind_pattern(s, c.PAny, v32t, s1, s2) |> should.equal(s)
+  c.bind_pattern(s, c.PAny, v32t, s1, s2)
+  |> should.equal(#(vhole(0), s))
 }
 
 pub fn bind_pattern_as_test() {
   c.bind_pattern(s, pvar("x"), v32t, s1, s2)
-  |> should.equal(c.State(..s, var: 1, ctx: [#("x", #(vvar(0), v32t))]))
+  |> should.equal(#(
+    vvar(0),
+    c.State(..s, var: 1, ctx: [#("x", #(vvar(0), v32t))]),
+  ))
 }
 
 pub fn bind_pattern_typ_test() {
-  c.bind_pattern(s, c.PTyp(0), c.VTyp(1), s1, s2) |> should.equal(s)
+  c.bind_pattern(s, c.PTyp(0), c.VTyp(1), s1, s2)
+  |> should.equal(#(c.VTyp(0), s))
   c.bind_pattern(s, c.PTyp(0), c.VTyp(0), s1, s2)
-  |> should.equal(
+  |> should.equal(#(
+    c.VErr,
     c.State(..s, errors: [c.TypeMismatch(c.VTyp(1), c.VTyp(0), s1, s2)]),
-  )
+  ))
 }
 
 pub fn bind_pattern_lit_test() {
-  c.bind_pattern(s, c.PLit(c.I32(1)), v32t, s1, s2) |> should.equal(s)
+  c.bind_pattern(s, c.PLit(c.I32(1)), v32t, s1, s2)
+  |> should.equal(#(v32(1), s))
   c.bind_pattern(s, c.PLit(c.I32(1)), c.VTyp(0), s1, s2)
-  |> should.equal(
+  |> should.equal(#(
+    c.VErr,
     c.State(..s, errors: [c.TypeMismatch(v32t, c.VTyp(0), s1, s2)]),
-  )
+  ))
 }
 
 pub fn bind_pattern_litt_test() {
-  c.bind_pattern(s, c.PLitT(c.I32T), c.VTyp(0), s1, s2) |> should.equal(s)
+  c.bind_pattern(s, c.PLitT(c.I32T), c.VTyp(0), s1, s2)
+  |> should.equal(#(v32t, s))
   c.bind_pattern(s, c.PLitT(c.I32T), v64t, s1, s2)
-  |> should.equal(
+  |> should.equal(#(
+    c.VErr,
     c.State(..s, errors: [c.TypeMismatch(c.VTyp(0), v64t, s1, s2)]),
-  )
+  ))
 }
 
 pub fn bind_pattern_ctr_test() {
   let p = c.PCtr("A", c.PAny)
   c.bind_pattern(s, p, v32t, s1, s2)
-  |> should.equal(c.State(..s, errors: [c.CtrUndefined("A", s1)]))
+  |> should.equal(#(c.VErr, c.State(..s, errors: [c.CtrUndefined("A", s1)])))
   let s = c.State(..s, tenv: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
   c.bind_pattern(s, p, v32t, s3, s4)
-  |> should.equal(c.State(..s, errors: [c.TypeMismatch(v64t, v32t, s2, s4)]))
+  |> should.equal(#(
+    c.VErr,
+    c.State(..s, errors: [c.TypeMismatch(v64t, v32t, s2, s4)]),
+  ))
   c.bind_pattern(s, p, v64t, s3, s4)
-  |> should.equal(s)
+  |> should.equal(#(c.VCtr("A", vhole(0)), c.State(..s, hole: 1)))
 }
 
 pub fn bind_pattern_rcd_test() {
-  c.bind_pattern(s, c.PRcd([]), c.VRcd([]), s1, s2) |> should.equal(s)
+  c.bind_pattern(s, c.PRcd([]), c.VRcd([]), s1, s2)
+  |> should.equal(#(c.VRcd([]), s))
 }
 
 pub fn bind_pattern_rcd_unused_test() {
   let p = c.PRcd([])
   let t = c.VRcd([#("a", v32t)])
-  c.bind_pattern(s, p, t, s1, s2) |> should.equal(s)
+  c.bind_pattern(s, p, t, s1, s2)
+  |> should.equal(#(c.VRcd([]), s))
 }
 
 pub fn bind_pattern_rcd_missing_test() {
   let p = c.PRcd([#("a", pvar("x"))])
   let t = c.VRcd([])
   c.bind_pattern(s, p, t, s1, s2)
-  |> should.equal(
+  |> should.equal(#(
+    c.VErr,
     c.State(..s, hole: 1, var: 1, ctx: [#("x", #(vvar(0), vhole(0)))], errors: [
       c.RcdMissingFields(["a"], s2),
     ]),
-  )
+  ))
 }
 
 pub fn infer_match_empty_test() {
-  c.infer(s, match(i32(1, s1), [], s2))
+  let motive = lam("p", i32t(s0), s1)
+  c.infer(s, match(i32(1, s2), motive, [], s3))
   |> should.equal(#(
     c.VErr,
     vhole(0),
@@ -716,13 +734,15 @@ pub fn infer_match_empty_test() {
 }
 
 pub fn infer_match_unbound_test() {
-  let cases = [case_(c.PAny, i64(2, s2), s3)]
-  c.infer(s, match(i32(1, s1), cases, s4))
+  let motive = lam("p", i32t(s0), s1)
+  let term = match(i32(1, s2), motive, [case_(c.PAny, i64(2, s3), s4)], s5)
+  c.infer(s, term)
   |> should.equal(#(v64(2), v64t, c.State(..s, hole: 1, sub: [#(0, v64t)])))
 }
 
 pub fn infer_match_bound_test() {
-  let term = match(i32(1, s1), [case_(pvar("x"), var(0, s2), s3)], s4)
+  let motive = lam("p", i32t(s0), s1)
+  let term = match(i32(1, s2), motive, [case_(pvar("x"), var(0, s3), s4)], s5)
   c.infer(s, term)
   |> should.equal(#(
     v32(1),
@@ -734,7 +754,8 @@ pub fn infer_match_bound_test() {
 }
 
 pub fn match_check_empty_test() {
-  c.check(s, match(i32(1, s1), [], s2), v64t, s3)
+  let motive = lam("p", i32t(s0), s1)
+  c.check(s, match(i32(1, s2), motive, [], s3), v64t, s4)
   |> should.equal(#(
     c.VErr,
     c.State(..s, errors: [c.MatchEmpty(i32(1, s1), s2)]),
@@ -742,13 +763,15 @@ pub fn match_check_empty_test() {
 }
 
 pub fn match_check_unbound_test() {
-  let term = match(i32(1, s1), [case_(c.PAny, i64(2, s2), s3)], s4)
+  let motive = lam("p", i32t(s0), s1)
+  let term = match(i32(1, s2), motive, [case_(c.PAny, i64(2, s3), s4)], s5)
   c.check(s, term, v64t, s5)
   |> should.equal(#(v64(2), s))
 }
 
 pub fn match_check_bound_test() {
-  let term = match(i32(1, s1), [case_(pvar("x"), i64(2, s2), s3)], s4)
+  let motive = lam("p", i32t(s0), s1)
+  let term = match(i32(1, s2), motive, [case_(pvar("x"), i64(2, s3), s4)], s5)
   c.check(s, term, v64t, s5)
   |> should.equal(#(
     v64(2),
@@ -757,7 +780,8 @@ pub fn match_check_bound_test() {
 }
 
 pub fn match_check_mismatch_test() {
-  let term = match(i32(1, s1), [case_(c.PAny, i64(2, s2), s3)], s4)
+  let motive = lam("p", i64t(s0), s1)
+  let term = match(i32(1, s2), motive, [case_(c.PAny, i64(2, s3), s4)], s5)
   c.check(s, term, c.VTyp(0), s5)
   |> should.equal(#(
     v64(2),
@@ -864,8 +888,8 @@ fn app(f, a, s) {
   c.Term(c.App(f, a), s)
 }
 
-fn match(arg, cases, s) {
-  c.Term(c.Match(arg, cases), s)
+fn match(arg, motive, cases, s) {
+  c.Term(c.Match(arg, motive, cases), s)
 }
 
 fn case_(p, b, s) {
