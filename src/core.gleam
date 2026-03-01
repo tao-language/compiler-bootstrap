@@ -212,7 +212,7 @@ pub fn do_match_cases(arg: Value, cases: List(Case)) -> Option(#(Env, Term)) {
 pub fn do_match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
   case pattern, value {
     PAny, _ -> Ok([])
-    PAs(p, name), _ -> {
+    PAs(p, _), _ -> {
       use env <- result.try(do_match_pattern(p, value))
       Ok(list.append(env, [value]))
     }
@@ -276,7 +276,7 @@ fn quote_elim(lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
     EDot(name) -> Term(Dot(head, name), s)
     EApp(arg) -> Term(App(head, quote(lvl, arg, s)), s)
     // TODO: Is it okay to discard this env?
-    EMatch(env, motive, cases) ->
+    EMatch(_, motive, cases) ->
       Term(Match(head, quote(lvl, motive, s), cases), s)
   }
 }
