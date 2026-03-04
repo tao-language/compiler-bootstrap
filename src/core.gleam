@@ -821,105 +821,95 @@ fn default_matrix(matrix: PMatrix) -> PMatrix {
   })
 }
 
-fn get_heads(matrix: PMatrix) -> List(PHead) {
+fn get_concrete_heads(matrix: PMatrix) -> List(PHead) {
   list.filter_map(matrix, fn(r) {
     case r {
-      [p, ..] -> Ok(deconstruct(p).0)
+      [p, ..] ->
+        case deconstruct(p).0 {
+          HAny -> Error(Nil)
+          h -> Ok(h)
+        }
       _ -> Error(Nil)
     }
   })
   |> list.unique
 }
 
-fn get_missing_heads(s: State, used: List(PHead)) -> List(PHead) {
-  let concrete = list.filter(used, fn(h) { h != HAny })
-  case concrete {
+fn get_missing_heads(s: State, concrete_heads: List(PHead)) -> List(PHead) {
+  case concrete_heads {
     [HCtr(name), ..] -> {
-      // Spans are discarded, so we don't need to pass a real one.
-      let span = Span("", 0, 0)
       let env = get_env(s)
       let target_ty = case list.key_find(s.tenv, name) {
         Ok(d) -> eval(env, d.ret_ty)
         _ -> VErr
       }
-      let all =
+      let span = Span("", 0, 0)
+      let all_possible =
         list.filter_map(s.tenv, fn(def) {
           let #(tag, ctr) = def
-          let ctr_ty = eval(env, ctr.ret_ty)
-          case unify(s, ctr_ty, target_ty, span, span) {
+          case unify(s, eval(env, ctr.ret_ty), target_ty, span, span) {
             Ok(_) -> Ok(HCtr(tag))
             _ -> Error(Nil)
           }
         })
-      list.filter(all, fn(h) { !list.contains(used, h) })
+      list.filter(all_possible, fn(h) { !list.contains(concrete_heads, h) })
     }
     [HRcd(_), ..] -> []
-    [] -> [HAny]
-    _ -> [HAny]
+    [] | _ -> [HAny]
   }
 }
 
-fn is_useful(s: State, matrix: PMatrix, vector: List(Pattern)) -> Bool {
+fn useful(
+  s: State,
+  matrix: PMatrix,
+  vector: List(Pattern),
+) -> Result(List(Pattern), Nil) {
   case matrix, vector {
-    [], _ -> True
-    _, [] -> False
+    [], _ -> Ok(vector)
+    _, [] -> Error(Nil)
     _, [p, ..ps] -> {
-      let #(head, args) = deconstruct(p)
+      let #(head, hargs) = deconstruct(p)
       case head {
         HAny -> {
-          let heads = get_heads(matrix)
-          case get_missing_heads(s, heads) {
-            [_, ..] -> is_useful(s, default_matrix(matrix), ps)
+          let concrete_heads = get_concrete_heads(matrix)
+          case get_missing_heads(s, concrete_heads) {
+            [missing, ..] -> {
+              // Missing heads, construct a witness using the first gap.
+              case useful(s, default_matrix(matrix), ps) {
+                Ok(rest_witness) -> {
+                  let wildcards = list.repeat(PAny, head_arity(missing))
+                  Ok([reconstruct(missing, wildcards), ..rest_witness])
+                }
+                Error(Nil) -> Error(Nil)
+              }
+            }
             [] -> {
-              let concrete = list.filter(heads, fn(h) { h != HAny })
-              list.any(concrete, fn(h) {
-                let rest = list.append(list.repeat(PAny, head_arity(h)), ps)
-                is_useful(s, specialize(matrix, h), rest)
+              // No missing heads, prove usefulness across ALL constructors.
+              list.find_map(concrete_heads, fn(h) {
+                let a = head_arity(h)
+                let expanded_rest = list.append(list.repeat(PAny, a), ps)
+                case useful(s, specialize(matrix, h), expanded_rest) {
+                  Ok(witness_row) -> {
+                    let #(args, rest) = list.split(witness_row, a)
+                    Ok([reconstruct(h, args), ..rest])
+                  }
+                  Error(Nil) -> Error(Nil)
+                }
               })
             }
           }
         }
         _ -> {
-          let rest = list.append(args, ps)
-          is_useful(s, specialize(matrix, head), rest)
-        }
-      }
-    }
-  }
-}
-
-fn get_witness(
-  s: State,
-  matrix: PMatrix,
-  width: Int,
-) -> Result(List(Pattern), Nil) {
-  case matrix {
-    [] -> Ok(list.repeat(PAny, width))
-    _ if width == 0 -> Error(Nil)
-    _ -> {
-      let heads = get_heads(matrix)
-      case get_missing_heads(s, heads) {
-        [missing, ..] -> {
-          case get_witness(s, default_matrix(matrix), width - 1) {
-            Ok(rest_witness) -> {
-              let wildcards = list.repeat(PAny, head_arity(missing))
-              Ok([reconstruct(missing, wildcards), ..rest_witness])
+          // Head is concrete (not HAny), specialize the matrix for it.
+          let expanded_rest = list.append(hargs, ps)
+          case useful(s, specialize(matrix, head), expanded_rest) {
+            Ok(witness_row) -> {
+              let a = head_arity(head)
+              let #(args, rest) = list.split(witness_row, a)
+              Ok([reconstruct(head, args), ..rest])
             }
             Error(Nil) -> Error(Nil)
           }
-        }
-        [] -> {
-          let concrete = list.filter(heads, fn(h) { h != HAny })
-          list.find_map(concrete, fn(h) {
-            let n = head_arity(h)
-            case get_witness(s, specialize(matrix, h), n + width - 1) {
-              Ok(witness_row) -> {
-                let #(args, rest) = list.split(witness_row, n)
-                Ok([reconstruct(h, args), ..rest])
-              }
-              Error(Nil) -> Error(Nil)
-            }
-          })
         }
       }
     }
@@ -934,12 +924,12 @@ pub fn check_exhaustiveness(
   let #(matrix, diags) =
     list.fold(cases, #([], []), fn(acc, c) {
       let #(matrix, diagnostics) = acc
-      case is_useful(s, matrix, [c.pattern]) {
-        True -> #([[c.pattern], ..matrix], diagnostics)
-        False -> #(matrix, [RedundantBranch(c.span), ..diagnostics])
+      case useful(s, matrix, [c.pattern]) {
+        Ok(_) -> #([[c.pattern], ..matrix], diagnostics)
+        Error(Nil) -> #(matrix, [RedundantBranch(c.span), ..diagnostics])
       }
     })
-  case get_witness(s, list.reverse(matrix), 1) {
+  case useful(s, list.reverse(matrix), [PAny]) {
     Ok([witness, ..]) -> [NonExhaustiveMatch(span, witness), ..diags]
     _ -> diags
   }
