@@ -800,6 +800,13 @@ pub fn match_check_mismatch_test() {
   ))
 }
 
+// --- Exhaustiveness checks --- \\
+// pub fn expand_pattern_test() { todo }
+// pub fn head_arity_test() { todo }
+// pub fn build_pattern_test() { todo }
+// pub fn specialize_test() { todo }
+// pub fn default_matrix_test() { todo }
+
 // --- HELPERS to make writing ASTs less painful ---
 const s = c.State(0, 0, [], [], [], [])
 

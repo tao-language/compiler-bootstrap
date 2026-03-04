@@ -1,4 +1,3 @@
-import gleam/dict
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -10,7 +9,7 @@ pub type Term {
 }
 
 pub type TermData {
-  Typ(level: Int)
+  Typ(universe: Int)
   Lit(value: Literal)
   LitT(typ: LiteralType)
   Var(index: Int)
@@ -26,7 +25,7 @@ pub type TermData {
 }
 
 pub type Value {
-  VTyp(level: Int)
+  VTyp(universe: Int)
   VLit(value: Literal)
   VLitT(typ: LiteralType)
   VNeut(head: Head, spine: List(Elim))
@@ -43,7 +42,7 @@ pub type Type =
 pub type Pattern {
   PAny
   PAs(pattern: Pattern, name: String)
-  PTyp(level: Int)
+  PTyp(universe: Int)
   PLit(value: Literal)
   PLitT(value: LiteralType)
   PCtr(tag: String, arg: Pattern)
@@ -114,6 +113,18 @@ pub type State {
   )
 }
 
+type PMatrix =
+  List(List(Pattern))
+
+pub type PHead {
+  HAny
+  HCtr(name: String)
+  HLit(value: Literal)
+  HLitT(value: LiteralType)
+  HTyp(universe: Int)
+  HRcd(fields: List(String))
+}
+
 pub type Error {
   // Type errors
   PatternMismatch(pattern: Pattern, expected_ty: Type, s1: Span, s2: Span)
@@ -128,6 +139,10 @@ pub type Error {
   DotFieldNotFound(name: String, fields: List(#(String, Value)), span: Span)
   DotOnNonCtr(value: Value, name: String, span: Span)
   MatchEmpty(arg: Term, span: Span)
+
+  // Exhaustiveness checks
+  RedundantBranch(Span)
+  NonExhaustiveMatch(Span, Pattern)
 
   // Runtime errors
   TODO(message: String)
@@ -740,95 +755,63 @@ pub fn ctr_solve_params(
 
 // -- Exhaustiveness checks -- \\
 // http://moscova.inria.fr/~maranget/papers/warn/index.html
-
-pub type Diagnostic {
-  RedundantBranch(Span)
-  NonExhaustiveMatch(Span, Pattern)
-}
-
-// 1. --- Pattern Abstraction --- \\
-// We decouple the "Shape" of a pattern from its recursive arguments.
-// This single abstraction replaces all the specialized matrix functions.
-
-pub type PHead {
-  HAny
-  HCtr(String)
-  HLit(Literal)
-  HLitT(LiteralType)
-  HTyp(Int)
-  HRcd(List(String))
-}
-
-fn expand_pattern(p: Pattern) -> #(PHead, List(Pattern)) {
-  case p {
-    PAs(inner, _) -> expand_pattern(inner)
+fn deconstruct(pat: Pattern) -> #(PHead, List(Pattern)) {
+  case pat {
+    PAs(p, _) -> deconstruct(p)
     PAny -> #(HAny, [])
-    PLit(v) -> #(HLit(v), [])
-    PLitT(t) -> #(HLitT(t), [])
-    PTyp(l) -> #(HTyp(l), [])
-    PCtr(name, arg) -> #(HCtr(name), [arg])
-    PRcd(fields) -> {
-      // Sort to ensure robust structural equality regardless of defined order
-      let sorted = list.sort(fields, fn(a, b) { string.compare(a.0, b.0) })
-      let keys = list.map(sorted, fn(f) { f.0 })
-      let vals = list.map(sorted, fn(f) { f.1 })
-      #(HRcd(keys), vals)
+    PCtr(n, p) -> #(HCtr(n), [p])
+    PLit(l) -> #(HLit(l), [])
+    PLitT(l) -> #(HLitT(l), [])
+    PTyp(i) -> #(HTyp(i), [])
+    PRcd(fs) -> {
+      let sorted = list.sort(fs, fn(a, b) { string.compare(a.0, b.0) })
+      let head = HRcd(list.map(sorted, fn(f) { f.0 }))
+      #(head, list.map(sorted, fn(f) { f.1 }))
     }
+  }
+}
+
+fn reconstruct(head: PHead, args: List(Pattern)) -> Pattern {
+  case head {
+    HAny -> PAny
+    HCtr(tag) ->
+      PCtr(tag, list.first(args) |> option.from_result |> option.unwrap(PAny))
+    HLit(l) -> PLit(l)
+    HLitT(l) -> PLitT(l)
+    HTyp(i) -> PTyp(i)
+    HRcd(ks) -> PRcd(list.zip(ks, args))
   }
 }
 
 fn head_arity(head: PHead) -> Int {
   case head {
-    HAny | HLit(_) | HLitT(_) | HTyp(_) -> 0
     HCtr(_) -> 1
-    HRcd(keys) -> list.length(keys)
+    HRcd(fs) -> list.length(fs)
+    _ -> 0
   }
 }
 
-fn build_pattern(head: PHead, args: List(Pattern)) -> Pattern {
-  case head, args {
-    HAny, _ -> PAny
-    HLit(v), [] -> PLit(v)
-    HLitT(t), [] -> PLitT(t)
-    HTyp(l), [] -> PTyp(l)
-    HCtr(name), [arg] -> PCtr(name, arg)
-    HRcd(keys), _ -> PRcd(list.zip(keys, args))
-    _, _ -> PAny
-  }
-}
-
-// 2. --- Matrix Operations --- \\
-
-// Replaces all specialize_matrix_* functions. Extracts rows that match the target_head.
-fn specialize(
-  matrix: List(List(Pattern)),
-  target_head: PHead,
-) -> List(List(Pattern)) {
+fn specialize(matrix: PMatrix, target: PHead) -> PMatrix {
   list.filter_map(matrix, fn(row) {
     case row {
-      [] -> Error(Nil)
       [first, ..rest] -> {
-        let #(head, args) = expand_pattern(first)
-        case head {
-          _ if head == target_head -> Ok(list.append(args, rest))
-          HAny -> {
-            // Wildcards match everything. Replace with N wildcards.
-            let wildcards = list.repeat(PAny, head_arity(target_head))
-            Ok(list.append(wildcards, rest))
-          }
+        let #(h, args) = deconstruct(first)
+        case h {
+          _ if h == target -> Ok(list.append(args, rest))
+          HAny -> Ok(list.append(list.repeat(PAny, head_arity(target)), rest))
           _ -> Error(Nil)
         }
       }
+      _ -> Error(Nil)
     }
   })
 }
 
-// Extracts rows that start with a wildcard (used when evaluating a wildcard pattern).
-fn default_matrix(matrix: List(List(Pattern))) -> List(List(Pattern)) {
+fn default_matrix(matrix: PMatrix) -> PMatrix {
   list.filter_map(matrix, fn(row) {
     case row {
       [first, ..rest] -> {
-        case expand_pattern(first).0 {
+        case deconstruct(first).0 {
           HAny -> Ok(rest)
           _ -> Error(Nil)
         }
@@ -838,226 +821,127 @@ fn default_matrix(matrix: List(List(Pattern))) -> List(List(Pattern)) {
   })
 }
 
-// 3. --- Signature Completeness --- \\
-
-pub type Completeness {
-  Complete
-  Incomplete(List(PHead))
-  Unknown
-}
-
-// 1. --- Type Environment Helpers --- \\
-
-// Pseudo-definition of what we need to extract from your State
-// You will replace these with your actual TEnv lookup logic.
-fn get_ctr_return_type(state: State, ctr_name: String) -> Result(Term, Nil) {
-  // e.g., dict.get(state.tenv, ctr_name) |> result.map(fn(def) { def.return_type })
-  Error(Nil)
-}
-
-// If you have generics/type variables, simple equality (==) is not enough.
-// You must use your unifier to check if the constructor's return type 
-// can unify with the target type we are matching on.
-fn types_are_compatible(state: State, a: Term, b: Term) -> Bool {
-  // e.g., unify(state, a, b) |> result.is_ok
-  a == b
-}
-
-// 2. --- Signature Checking --- \\
-
-fn check_signature(state: State, heads: List(PHead)) -> Completeness {
-  case heads {
-    [] | [HLit(_), ..] | [HLitT(_), ..] | [HTyp(_), ..] -> Unknown
-    [HRcd(_), ..] -> Complete
-
-    // Records always have exactly 1 shape
-    [HCtr(first_name), ..] -> {
-      // Step 1: Discover the target type of this pattern match 
-      // by looking up the first constructor the user provided.
-      case get_ctr_return_type(state, first_name) {
-        Error(_) -> Unknown
-        // Safety fallback if Ctr is missing from TEnv
-        Ok(target_type) -> {
-          // Step 2: Scan the ENTIRE environment for valid constructors.
-          // Any constructor that returns a compatible type belongs to this signature.
-          let all_possible_ctrs =
-            list.fold(state.tenv, [], fn(acc, ctr) {
-              let #(ctr_name, ctr_def) = ctr
-              case types_are_compatible(state, ctr_def.ret_ty, target_type) {
-                True -> [ctr_name, ..acc]
-                False -> acc
-              }
-            })
-
-          // Step 3: Extract the names of the constructors the user actually matched on.
-          let known_names =
-            list.filter_map(heads, fn(h) {
-              case h {
-                HCtr(name) -> Ok(name)
-                _ -> Error(Nil)
-              }
-            })
-
-          // Step 4: Find the difference.
-          // If all_possible_ctrs is ["A", "B", "C"] and known_names is ["A", "B"], 
-          // missing_ctrs will be ["C"].
-          let missing_ctrs =
-            list.filter(all_possible_ctrs, fn(c) {
-              let is_known = list.contains(known_names, c)
-              !is_known
-              // Keep it if it is NOT known
-            })
-
-          case missing_ctrs {
-            [] -> Complete
-            _ -> {
-              // We found specific missing constructors! 
-              // Map them back to HCtr heads so the witness generator can use them.
-              let missing_heads = list.map(missing_ctrs, HCtr)
-              Incomplete(missing_heads)
-            }
-          }
-        }
-      }
-    }
-
-    _ -> Unknown
-  }
-}
-
-fn collect_first_heads(matrix: List(List(Pattern))) -> List(PHead) {
-  list.filter_map(matrix, fn(row) {
-    case row {
-      [first, ..] -> {
-        case expand_pattern(first).0 {
-          HAny -> Error(Nil)
-          h -> Ok(h)
-        }
-      }
-      [] -> Error(Nil)
+fn get_heads(matrix: PMatrix) -> List(PHead) {
+  list.filter_map(matrix, fn(r) {
+    case r {
+      [p, ..] -> Ok(deconstruct(p).0)
+      _ -> Error(Nil)
     }
   })
   |> list.unique
 }
 
-// 4. --- The Core Engine --- \\
+fn get_missing_heads(s: State, used: List(PHead)) -> List(PHead) {
+  let concrete = list.filter(used, fn(h) { h != HAny })
+  case concrete {
+    [HCtr(name), ..] -> {
+      // Spans are discarded, so we don't need to pass a real one.
+      let span = Span("", 0, 0)
+      let env = get_env(s)
+      let target_ty = case list.key_find(s.tenv, name) {
+        Ok(d) -> eval(env, d.ret_ty)
+        _ -> VErr
+      }
+      let all =
+        list.filter_map(s.tenv, fn(def) {
+          let #(tag, ctr) = def
+          let ctr_ty = eval(env, ctr.ret_ty)
+          case unify(s, ctr_ty, target_ty, span, span) {
+            Ok(_) -> Ok(HCtr(tag))
+            _ -> Error(Nil)
+          }
+        })
+      list.filter(all, fn(h) { !list.contains(used, h) })
+    }
+    [HRcd(_), ..] -> []
+    [] -> [HAny]
+    _ -> [HAny]
+  }
+}
 
-// Unified pass: returns `Ok(WitnessArgs)` if the vector covers new ground, `Error` if redundant.
-fn is_useful(
-  state: State,
-  matrix: List(List(Pattern)),
-  vector: List(Pattern),
-) -> Result(List(Pattern), Nil) {
+fn is_useful(s: State, matrix: PMatrix, vector: List(Pattern)) -> Bool {
   case matrix, vector {
-    [], [] -> Ok([])
-    // Useful!
-    _, [] -> Error(Nil)
-
-    // Redundant
-    _, [first, ..rest] -> {
-      let #(target_head, target_args) = expand_pattern(first)
-
-      case target_head {
+    [], _ -> True
+    _, [] -> False
+    _, [p, ..ps] -> {
+      let #(head, args) = deconstruct(p)
+      case head {
         HAny -> {
-          let present_heads = collect_first_heads(matrix)
-          case check_signature(state, present_heads) {
-            Complete -> {
-              // Signature is complete. The wildcard is useful if it is useful 
-              // for AT LEAST ONE of the known constructors.
-              find_useful(state, matrix, present_heads, rest)
-            }
-            Incomplete([missing_head, ..]) -> {
-              // We know exactly what constructor was forgotten! Generate a precise witness.
-              let wildcards = list.repeat(PAny, head_arity(missing_head))
-              case is_useful(state, [], list.append(wildcards, rest)) {
-                Ok(w) -> {
-                  let w_args = list.take(w, head_arity(missing_head))
-                  let w_rest = list.drop(w, head_arity(missing_head))
-                  Ok([build_pattern(missing_head, w_args), ..w_rest])
-                }
-                Error(Nil) -> Error(Nil)
-              }
-            }
-            _ -> {
-              // Infinite space or unknown. Wildcard is useful if default matrix is useful.
-              case is_useful(state, default_matrix(matrix), rest) {
-                Ok(w) -> Ok([PAny, ..w])
-                Error(Nil) -> Error(Nil)
-              }
+          let heads = get_heads(matrix)
+          case get_missing_heads(s, heads) {
+            [_, ..] -> is_useful(s, default_matrix(matrix), ps)
+            [] -> {
+              let concrete = list.filter(heads, fn(h) { h != HAny })
+              list.any(concrete, fn(h) {
+                let rest = list.append(list.repeat(PAny, head_arity(h)), ps)
+                is_useful(s, specialize(matrix, h), rest)
+              })
             }
           }
         }
-
         _ -> {
-          // Checking a concrete pattern (Ctr, Lit, Rcd, Typ)
-          let spec_m = specialize(matrix, target_head)
-          case is_useful(state, spec_m, list.append(target_args, rest)) {
-            Ok(w) -> {
-              let arity = list.length(target_args)
-              let w_args = list.take(w, arity)
-              let w_rest = list.drop(w, arity)
-              Ok([build_pattern(target_head, w_args), ..w_rest])
+          let rest = list.append(args, ps)
+          is_useful(s, specialize(matrix, head), rest)
+        }
+      }
+    }
+  }
+}
+
+fn get_witness(
+  s: State,
+  matrix: PMatrix,
+  width: Int,
+) -> Result(List(Pattern), Nil) {
+  case matrix {
+    [] -> Ok(list.repeat(PAny, width))
+    _ if width == 0 -> Error(Nil)
+    _ -> {
+      let heads = get_heads(matrix)
+      case get_missing_heads(s, heads) {
+        [missing, ..] -> {
+          case get_witness(s, default_matrix(matrix), width - 1) {
+            Ok(rest_witness) -> {
+              let wildcards = list.repeat(PAny, head_arity(missing))
+              Ok([reconstruct(missing, wildcards), ..rest_witness])
             }
             Error(Nil) -> Error(Nil)
           }
         }
-      }
-    }
-  }
-}
-
-// Helper to iterate over heads when the signature is complete
-fn find_useful(
-  state: State,
-  matrix: List(List(Pattern)),
-  heads: List(PHead),
-  rest: List(Pattern),
-) -> Result(List(Pattern), Nil) {
-  case heads {
-    [] -> Error(Nil)
-    [head, ..tail] -> {
-      let wildcards = list.repeat(PAny, head_arity(head))
-      case
-        is_useful(state, specialize(matrix, head), list.append(wildcards, rest))
-      {
-        Ok(w) -> {
-          let w_args = list.take(w, head_arity(head))
-          let w_rest = list.drop(w, head_arity(head))
-          Ok([build_pattern(head, w_args), ..w_rest])
+        [] -> {
+          let concrete = list.filter(heads, fn(h) { h != HAny })
+          list.find_map(concrete, fn(h) {
+            let n = head_arity(h)
+            case get_witness(s, specialize(matrix, h), n + width - 1) {
+              Ok(witness_row) -> {
+                let #(args, rest) = list.split(witness_row, n)
+                Ok([reconstruct(h, args), ..rest])
+              }
+              Error(Nil) -> Error(Nil)
+            }
+          })
         }
-        Error(Nil) -> find_useful(state, matrix, tail, rest)
       }
     }
   }
 }
-
-// 5. --- Public Entry --- \\
 
 pub fn check_exhaustiveness(
-  state: State,
+  s: State,
   cases: List(Case),
-  match_span: Span,
-) -> List(Diagnostic) {
-  // 1. Fold sequentially to find Redundant Branches
-  let #(rev_matrix, diagnostics) =
-    list.fold(cases, #([], []), fn(acc, case_) {
-      let Case(pat, _, span) = case_
-      let #(matrix, diags) = acc
-
-      // We must reverse because `fold` stacks the newest items on top,
-      // but Maranget expects the highest-priority patterns first.
-      case is_useful(state, list.reverse(matrix), [pat]) {
-        Ok(_) -> #([[pat], ..matrix], diags)
-        Error(Nil) -> #(matrix, [RedundantBranch(span), ..diags])
+  span: Span,
+) -> List(Error) {
+  let #(matrix, diags) =
+    list.fold(cases, #([], []), fn(acc, c) {
+      let #(matrix, diagnostics) = acc
+      case is_useful(s, matrix, [c.pattern]) {
+        True -> #([[c.pattern], ..matrix], diagnostics)
+        False -> #(matrix, [RedundantBranch(c.span), ..diagnostics])
       }
     })
-
-  let matrix = list.reverse(rev_matrix)
-
-  // 2. Check Exhaustiveness using a Wildcard
-  case is_useful(state, matrix, [PAny]) {
-    Ok([witness]) -> [NonExhaustiveMatch(match_span, witness), ..diagnostics]
-    _ -> diagnostics
+  case get_witness(s, list.reverse(matrix), 1) {
+    Ok([witness, ..]) -> [NonExhaustiveMatch(span, witness), ..diags]
+    _ -> diags
   }
 }
 
