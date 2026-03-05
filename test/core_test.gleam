@@ -984,22 +984,22 @@ pub fn get_missing_heads_ctr_test() {
 }
 
 pub fn useful_empty_test() {
-  c.useful(s, [], [], []) |> should.equal(Ok([]))
+  c.useful(s, [], [], []) |> should.equal([[]])
 }
 
 pub fn useful_redundant_test() {
-  c.useful(s, [], [[pany]], [ptyp(0)]) |> should.be_error
-  c.useful(s, [], [[ptyp(0)]], [ptyp(0)]) |> should.be_error
+  c.useful(s, [], [[pany]], [ptyp(0)]) |> should.equal([])
+  c.useful(s, [], [[ptyp(0)]], [ptyp(0)]) |> should.equal([])
 }
 
 pub fn useful_witness_test() {
-  c.useful(s, [], [[ptyp(0)]], [pany]) |> should.equal(Ok([pany]))
-  c.useful(s, [], [[ptyp(0)]], [ptyp(1)]) |> should.equal(Ok([ptyp(1)]))
+  c.useful(s, [], [[ptyp(0)]], [pany]) |> should.equal([[pany]])
+  c.useful(s, [], [[ptyp(0)]], [ptyp(1)]) |> should.equal([[ptyp(1)]])
 }
 
 pub fn check_exhaustiveness_empty_test() {
   c.check_exhaustiveness(s, [], s0)
-  |> should.equal([c.NonExhaustiveMatch(s0, c.PAny)])
+  |> should.equal([c.MatchMissingCase(s0, c.PAny)])
 }
 
 pub fn check_exhaustiveness_any_test() {
@@ -1008,13 +1008,13 @@ pub fn check_exhaustiveness_any_test() {
   |> should.equal([])
   let cases = [case_(pany, i32(1, s0), s1), case_(pany, i32(2, s0), s2)]
   c.check_exhaustiveness(s, cases, s0)
-  |> should.equal([c.RedundantBranch(s2)])
+  |> should.equal([c.MatchRedundantCase(s2)])
 }
 
 pub fn check_exhaustiveness_typ_test() {
   let cases = [case_(ptyp(0), i32(1, s0), s1)]
   c.check_exhaustiveness(s, cases, s0)
-  |> should.equal([c.NonExhaustiveMatch(s0, c.PAny)])
+  |> should.equal([c.MatchMissingCase(s0, c.PAny)])
   let cases = [case_(ptyp(0), i32(1, s0), s1), case_(pany, i32(2, s0), s2)]
   c.check_exhaustiveness(s, cases, s0)
   |> should.equal([])
@@ -1023,7 +1023,7 @@ pub fn check_exhaustiveness_typ_test() {
 pub fn check_exhaustiveness_lit_test() {
   let cases = [case_(pi32(0), i32(1, s0), s1)]
   c.check_exhaustiveness(s, cases, s0)
-  |> should.equal([c.NonExhaustiveMatch(s0, c.PAny)])
+  |> should.equal([c.MatchMissingCase(s0, c.PAny)])
   let cases = [case_(pi32(0), i32(1, s0), s1), case_(pany, i32(2, s0), s2)]
   c.check_exhaustiveness(s, cases, s0)
   |> should.equal([])
@@ -1032,7 +1032,7 @@ pub fn check_exhaustiveness_lit_test() {
 pub fn check_exhaustiveness_litt_test() {
   let cases = [case_(pi32t, i32(1, s0), s1)]
   c.check_exhaustiveness(s, cases, s0)
-  |> should.equal([c.NonExhaustiveMatch(s0, c.PAny)])
+  |> should.equal([c.MatchMissingCase(s0, c.PAny)])
   let cases = [case_(pi32t, i32(1, s0), s1), case_(pany, i32(2, s0), s2)]
   c.check_exhaustiveness(s, cases, s0)
   |> should.equal([])
@@ -1044,7 +1044,7 @@ pub fn check_exhaustiveness_rcd_test() {
   |> should.equal([])
   let cases = [case_(prcd([]), i32(1, s0), s1), case_(pany, i32(2, s0), s2)]
   c.check_exhaustiveness(s, cases, s0)
-  |> should.equal([c.RedundantBranch(s2)])
+  |> should.equal([c.MatchRedundantCase(s2)])
 }
 
 pub fn check_exhaustiveness_ctr_undefined_test() {
@@ -1062,11 +1062,11 @@ pub fn check_exhaustiveness_ctr_bool_test() {
 
   let cases = [case_(pctr("True", pany), i32(1, s0), s1)]
   c.check_exhaustiveness(s, cases, s0)
-  |> should.equal([c.NonExhaustiveMatch(s0, pctr("False", pany))])
+  |> should.equal([c.MatchMissingCase(s0, pctr("False", pany))])
 
   let cases = [case_(pctr("False", pany), i32(1, s0), s1)]
   c.check_exhaustiveness(s, cases, s0)
-  |> should.equal([c.NonExhaustiveMatch(s0, pctr("True", pany))])
+  |> should.equal([c.MatchMissingCase(s0, pctr("True", pany))])
 
   let cases = [
     case_(pctr("True", pany), i32(1, s0), s1),
@@ -1088,15 +1088,18 @@ pub fn check_exhaustiveness_ctr_maybe_test() {
 
   let cases = [case_(pctr("None", pany), i32(1, s0), s1)]
   c.check_exhaustiveness(s, cases, s0)
-  |> should.equal([c.NonExhaustiveMatch(s0, pctr("Some", pany))])
+  |> should.equal([c.MatchMissingCase(s0, pctr("Some", pany))])
 
   let cases = [case_(pctr("Some", pany), i32(1, s0), s1)]
   c.check_exhaustiveness(s, cases, s0)
-  |> should.equal([c.NonExhaustiveMatch(s0, pctr("None", pany))])
+  |> should.equal([c.MatchMissingCase(s0, pctr("None", pany))])
 
   let cases = [case_(pctr("Some", pctr("True", pany)), i32(1, s0), s1)]
   c.check_exhaustiveness(s, cases, s0)
-  |> should.equal([c.NonExhaustiveMatch(s0, pctr("None", pany))])
+  |> should.equal([
+    c.MatchMissingCase(s0, pctr("None", pany)),
+    c.MatchMissingCase(s0, pctr("Some", pctr("False", pany))),
+  ])
 }
 
 // --- HELPERS to make writing ASTs less painful ---

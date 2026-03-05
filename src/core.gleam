@@ -144,8 +144,8 @@ pub type Error {
   MatchEmpty(arg: Term, span: Span)
 
   // Exhaustiveness checks
-  RedundantBranch(Span)
-  NonExhaustiveMatch(Span, Pattern)
+  MatchRedundantCase(Span)
+  MatchMissingCase(Span, Pattern)
 
   // Runtime errors
   TODO(message: String)
@@ -878,53 +878,49 @@ pub fn useful(
   index: CtrIndex,
   matrix: PMatrix,
   vector: List(Pattern),
-) -> Result(List(Pattern), Nil) {
+) -> List(List(Pattern)) {
   case matrix, vector {
-    [], _ -> Ok(vector)
-    _, [] -> Error(Nil)
+    // If the matrix is empty, the entire vector is a valid witness
+    [], _ -> [vector]
+    // If we run out of columns to check, there are no witnesses (redundant)
+    _, [] -> []
     _, [p, ..ps] -> {
       let #(head, hargs) = deconstruct(p)
       case head {
         HAny -> {
           let concrete_heads = get_concrete_heads(matrix)
-          case get_missing_heads(s, index, concrete_heads) {
-            [missing, ..] -> {
-              // Missing heads, construct a witness using the first gap.
-              case useful(s, index, default_matrix(matrix), ps) {
-                Ok(rest_witness) -> {
-                  let wildcards = list.repeat(PAny, head_arity(missing))
-                  Ok([reconstruct(missing, wildcards), ..rest_witness])
-                }
-                Error(Nil) -> Error(Nil)
-              }
-            }
-            [] -> {
-              // No missing heads, prove usefulness across ALL constructors.
-              list.find_map(concrete_heads, fn(h) {
-                let a = head_arity(h)
-                let expanded_rest = list.append(list.repeat(PAny, a), ps)
-                case useful(s, index, specialize(matrix, h), expanded_rest) {
-                  Ok(witness_row) -> {
-                    let #(args, rest) = list.split(witness_row, a)
-                    Ok([reconstruct(h, args), ..rest])
-                  }
-                  Error(Nil) -> Error(Nil)
-                }
+          let missing_heads = get_missing_heads(s, index, concrete_heads)
+          let missing_witnesses =
+            list.flat_map(missing_heads, fn(missing) {
+              let rest_witnesses = useful(s, index, default_matrix(matrix), ps)
+              list.map(rest_witnesses, fn(rest) {
+                let wildcards = list.repeat(PAny, head_arity(missing))
+                [reconstruct(missing, wildcards), ..rest]
               })
-            }
-          }
+            })
+          let concrete_witnesses =
+            list.flat_map(concrete_heads, fn(h) {
+              let a = head_arity(h)
+              let expanded_rest = list.append(list.repeat(PAny, a), ps)
+              let sub_witnesses =
+                useful(s, index, specialize(matrix, h), expanded_rest)
+              list.map(sub_witnesses, fn(witness_row) {
+                let #(args, rest) = list.split(witness_row, a)
+                [reconstruct(h, args), ..rest]
+              })
+            })
+          list.append(missing_witnesses, concrete_witnesses)
         }
         _ -> {
-          // Head is concrete (not HAny), specialize the matrix for it.
+          // Head is concrete, specialize the matrix for it.
           let expanded_rest = list.append(hargs, ps)
-          case useful(s, index, specialize(matrix, head), expanded_rest) {
-            Ok(witness_row) -> {
-              let a = head_arity(head)
-              let #(args, rest) = list.split(witness_row, a)
-              Ok([reconstruct(head, args), ..rest])
-            }
-            Error(Nil) -> Error(Nil)
-          }
+          let witnesses =
+            useful(s, index, specialize(matrix, head), expanded_rest)
+          list.map(witnesses, fn(witness_row) {
+            let a = head_arity(head)
+            let #(args, rest) = list.split(witness_row, a)
+            [reconstruct(head, args), ..rest]
+          })
         }
       }
     }
@@ -947,18 +943,21 @@ pub fn check_exhaustiveness(
       let existing = list.key_find(index, ret_tag) |> result.unwrap([])
       list.key_set(index, ret_tag, [#(tag, ctr), ..existing])
     })
-  let #(matrix, diags) =
+  let #(matrix, redundant) =
     list.fold(cases, #([], []), fn(acc, c) {
       let #(matrix, diagnostics) = acc
       case useful(s, index, matrix, [c.pattern]) {
-        Ok(_) -> #([[c.pattern], ..matrix], diagnostics)
-        Error(Nil) -> #(matrix, [RedundantBranch(c.span), ..diagnostics])
+        [] -> #(matrix, [MatchRedundantCase(c.span), ..diagnostics])
+        _ -> #([[c.pattern], ..matrix], diagnostics)
       }
     })
-  case useful(s, index, list.reverse(matrix), [PAny]) {
-    Ok([witness, ..]) -> [NonExhaustiveMatch(span, witness), ..diags]
-    _ -> diags
-  }
+  let missing =
+    useful(s, index, list.reverse(matrix), [PAny])
+    |> list.map(fn(witness_row) {
+      let witness = list.first(witness_row) |> result.unwrap(PAny)
+      MatchMissingCase(span, witness)
+    })
+  list.append(redundant, missing)
 }
 
 // -- Helper functions -- \\
