@@ -781,8 +781,7 @@ fn reconstruct(head: PHead, args: List(Pattern)) -> Pattern {
     HLit(k) -> PLit(k)
     HLitT(k) -> PLitT(k)
     HRcd(ks) -> PRcd(list.zip(ks, args))
-    HCtr(tag) ->
-      PCtr(tag, list.first(args) |> option.from_result |> option.unwrap(PAny))
+    HCtr(tag) -> PCtr(tag, list.first(args) |> result.unwrap(PAny))
   }
 }
 
@@ -849,20 +848,20 @@ pub fn get_missing_heads(
     [HAny, ..] -> []
     [HCtr(name), ..] -> {
       let env = get_env(s)
-      let result_ty = case list.key_find(s.ctrs, name) {
+      let ret_ty = case list.key_find(s.ctrs, name) {
         Ok(d) -> eval(env, d.ret_ty)
         _ -> VErr
       }
       let span = Span("", 0, 0)
-      let result_tag = case result_ty {
+      let ret_tag = case ret_ty {
         VCtr(tag, _) -> tag
         _ -> ""
       }
-      list.key_find(index, result_tag)
+      list.key_find(index, ret_tag)
       |> result.unwrap([])
       |> list.filter_map(fn(entry) {
         let #(tag, ctr) = entry
-        case unify(s, eval(env, ctr.ret_ty), result_ty, span, span) {
+        case unify(s, eval(env, ctr.ret_ty), ret_ty, span, span) {
           Ok(_) -> Ok(HCtr(tag))
           _ -> Error(Nil)
         }
@@ -874,7 +873,7 @@ pub fn get_missing_heads(
   }
 }
 
-fn useful(
+pub fn useful(
   s: State,
   index: CtrIndex,
   matrix: PMatrix,
@@ -937,7 +936,17 @@ pub fn check_exhaustiveness(
   cases: List(Case),
   span: Span,
 ) -> List(Error) {
-  let index = []
+  let env = get_env(s)
+  let index =
+    list.fold(s.ctrs, [], fn(index, entry) {
+      let #(tag, ctr) = entry
+      let ret_tag = case eval(env, ctr.ret_ty) {
+        VCtr(ret_tag, _) -> ret_tag
+        _ -> ""
+      }
+      let existing = list.key_find(index, ret_tag) |> result.unwrap([])
+      list.key_set(index, ret_tag, [#(tag, ctr), ..existing])
+    })
   let #(matrix, diags) =
     list.fold(cases, #([], []), fn(acc, c) {
       let #(matrix, diagnostics) = acc

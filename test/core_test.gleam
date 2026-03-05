@@ -983,6 +983,122 @@ pub fn get_missing_heads_ctr_test() {
   c.get_missing_heads(s, index, [c.HCtr("D")]) |> should.equal([])
 }
 
+pub fn useful_empty_test() {
+  c.useful(s, [], [], []) |> should.equal(Ok([]))
+}
+
+pub fn useful_redundant_test() {
+  c.useful(s, [], [[pany]], [ptyp(0)]) |> should.be_error
+  c.useful(s, [], [[ptyp(0)]], [ptyp(0)]) |> should.be_error
+}
+
+pub fn useful_witness_test() {
+  c.useful(s, [], [[ptyp(0)]], [pany]) |> should.equal(Ok([pany]))
+  c.useful(s, [], [[ptyp(0)]], [ptyp(1)]) |> should.equal(Ok([ptyp(1)]))
+}
+
+pub fn check_exhaustiveness_empty_test() {
+  c.check_exhaustiveness(s, [], s0)
+  |> should.equal([c.NonExhaustiveMatch(s0, c.PAny)])
+}
+
+pub fn check_exhaustiveness_any_test() {
+  let cases = [case_(pany, i32(1, s0), s1)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([])
+  let cases = [case_(pany, i32(1, s0), s1), case_(pany, i32(2, s0), s2)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([c.RedundantBranch(s2)])
+}
+
+pub fn check_exhaustiveness_typ_test() {
+  let cases = [case_(ptyp(0), i32(1, s0), s1)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([c.NonExhaustiveMatch(s0, c.PAny)])
+  let cases = [case_(ptyp(0), i32(1, s0), s1), case_(pany, i32(2, s0), s2)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([])
+}
+
+pub fn check_exhaustiveness_lit_test() {
+  let cases = [case_(pi32(0), i32(1, s0), s1)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([c.NonExhaustiveMatch(s0, c.PAny)])
+  let cases = [case_(pi32(0), i32(1, s0), s1), case_(pany, i32(2, s0), s2)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([])
+}
+
+pub fn check_exhaustiveness_litt_test() {
+  let cases = [case_(pi32t, i32(1, s0), s1)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([c.NonExhaustiveMatch(s0, c.PAny)])
+  let cases = [case_(pi32t, i32(1, s0), s1), case_(pany, i32(2, s0), s2)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([])
+}
+
+pub fn check_exhaustiveness_rcd_test() {
+  let cases = [case_(prcd([]), i32(1, s0), s1)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([])
+  let cases = [case_(prcd([]), i32(1, s0), s1), case_(pany, i32(2, s0), s2)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([c.RedundantBranch(s2)])
+}
+
+pub fn check_exhaustiveness_ctr_undefined_test() {
+  let cases = [case_(pctr("A", pany), i32(1, s0), s1)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([])
+}
+
+pub fn check_exhaustiveness_ctr_bool_test() {
+  let nil = rcd([], s0)
+  let bool = ctr("Bool", nil, s0)
+  let true_def = #("True", c.CtrDef([], nil, bool))
+  let false_def = #("False", c.CtrDef([], nil, bool))
+  let s = c.State(..s, ctrs: [true_def, false_def])
+
+  let cases = [case_(pctr("True", pany), i32(1, s0), s1)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([c.NonExhaustiveMatch(s0, pctr("False", pany))])
+
+  let cases = [case_(pctr("False", pany), i32(1, s0), s1)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([c.NonExhaustiveMatch(s0, pctr("True", pany))])
+
+  let cases = [
+    case_(pctr("True", pany), i32(1, s0), s1),
+    case_(pctr("False", pany), i32(2, s0), s2),
+  ]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([])
+}
+
+pub fn check_exhaustiveness_ctr_maybe_test() {
+  let nil = rcd([], s0)
+  let bool = ctr("Bool", nil, s0)
+  let true_def = #("True", c.CtrDef([], nil, bool))
+  let false_def = #("False", c.CtrDef([], nil, bool))
+  let maybe = fn(a) { ctr("Maybe", a, s0) }
+  let some_def = #("Some", c.CtrDef(["a"], var(0, s0), maybe(var(0, s0))))
+  let none_def = #("None", c.CtrDef(["a"], nil, maybe(var(0, s0))))
+  let s = c.State(..s, ctrs: [true_def, false_def, some_def, none_def])
+
+  let cases = [case_(pctr("None", pany), i32(1, s0), s1)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([c.NonExhaustiveMatch(s0, pctr("Some", pany))])
+
+  let cases = [case_(pctr("Some", pany), i32(1, s0), s1)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([c.NonExhaustiveMatch(s0, pctr("None", pany))])
+
+  let cases = [case_(pctr("Some", pctr("True", pany)), i32(1, s0), s1)]
+  c.check_exhaustiveness(s, cases, s0)
+  |> should.equal([c.NonExhaustiveMatch(s0, pctr("None", pany))])
+}
+
 // --- HELPERS to make writing ASTs less painful ---
 const s = c.State(0, 0, [], [], [], [])
 
