@@ -801,11 +801,116 @@ pub fn match_check_mismatch_test() {
 }
 
 // --- Exhaustiveness checks --- \\
-// pub fn expand_pattern_test() { todo }
-// pub fn head_arity_test() { todo }
-// pub fn build_pattern_test() { todo }
-// pub fn specialize_test() { todo }
-// pub fn default_matrix_test() { todo }
+pub fn specialize_empty_test() {
+  c.specialize([], c.HAny) |> should.equal([])
+  c.specialize([[]], c.HAny) |> should.equal([])
+}
+
+pub fn specialize_any_test() {
+  let m = [[pany, pi32(1)]]
+  c.specialize(m, c.HAny) |> should.equal([[pi32(1)]])
+  c.specialize(m, c.HTyp(0)) |> should.equal([[pi32(1)]])
+  c.specialize(m, c.HLit(c.I32(0))) |> should.equal([[pi32(1)]])
+  c.specialize(m, c.HLitT(c.I32T)) |> should.equal([[pi32(1)]])
+  c.specialize(m, c.HCtr("A")) |> should.equal([[pany, pi32(1)]])
+  c.specialize(m, c.HRcd([])) |> should.equal([[pi32(1)]])
+  c.specialize(m, c.HRcd(["a"])) |> should.equal([[pany, pi32(1)]])
+  c.specialize(m, c.HRcd(["a", "b"])) |> should.equal([[pany, pany, pi32(1)]])
+}
+
+pub fn specialize_as_test() {
+  let m = [[pas(pany, "x"), pi32(1)]]
+  c.specialize(m, c.HAny) |> should.equal([[pi32(1)]])
+  c.specialize(m, c.HTyp(0)) |> should.equal([[pi32(1)]])
+  c.specialize(m, c.HLit(c.I32(0))) |> should.equal([[pi32(1)]])
+  c.specialize(m, c.HLitT(c.I32T)) |> should.equal([[pi32(1)]])
+  c.specialize(m, c.HCtr("A")) |> should.equal([[pany, pi32(1)]])
+  c.specialize(m, c.HRcd([])) |> should.equal([[pi32(1)]])
+  c.specialize(m, c.HRcd(["a"])) |> should.equal([[pany, pi32(1)]])
+  c.specialize(m, c.HRcd(["a", "b"])) |> should.equal([[pany, pany, pi32(1)]])
+}
+
+pub fn specialize_typ_test() {
+  let m = [[ptyp(0), pi32(1)]]
+  c.specialize(m, c.HAny) |> should.equal([])
+  c.specialize(m, c.HTyp(0)) |> should.equal([[pi32(1)]])
+  c.specialize(m, c.HTyp(1)) |> should.equal([])
+  c.specialize(m, c.HLit(c.I32(0))) |> should.equal([])
+  c.specialize(m, c.HLitT(c.I32T)) |> should.equal([])
+  c.specialize(m, c.HCtr("A")) |> should.equal([])
+  c.specialize(m, c.HRcd([])) |> should.equal([])
+  c.specialize(m, c.HRcd(["a"])) |> should.equal([])
+  c.specialize(m, c.HRcd(["a", "b"])) |> should.equal([])
+}
+
+pub fn specialize_lit_test() {
+  let m = [[pi32(0), pi32(1)]]
+  c.specialize(m, c.HAny) |> should.equal([])
+  c.specialize(m, c.HTyp(0)) |> should.equal([])
+  c.specialize(m, c.HLit(c.I32(0))) |> should.equal([[pi32(1)]])
+  c.specialize(m, c.HLit(c.I32(1))) |> should.equal([])
+  c.specialize(m, c.HLitT(c.I32T)) |> should.equal([])
+  c.specialize(m, c.HCtr("A")) |> should.equal([])
+  c.specialize(m, c.HRcd([])) |> should.equal([])
+  c.specialize(m, c.HRcd(["a"])) |> should.equal([])
+  c.specialize(m, c.HRcd(["a", "b"])) |> should.equal([])
+}
+
+pub fn specialize_litt_test() {
+  let m = [[pi32t, pi32(1)]]
+  c.specialize(m, c.HAny) |> should.equal([])
+  c.specialize(m, c.HTyp(0)) |> should.equal([])
+  c.specialize(m, c.HLit(c.I32(0))) |> should.equal([])
+  c.specialize(m, c.HLitT(c.I32T)) |> should.equal([[pi32(1)]])
+  c.specialize(m, c.HLitT(c.I64T)) |> should.equal([])
+  c.specialize(m, c.HCtr("A")) |> should.equal([])
+  c.specialize(m, c.HRcd([])) |> should.equal([])
+  c.specialize(m, c.HRcd(["a"])) |> should.equal([])
+  c.specialize(m, c.HRcd(["a", "b"])) |> should.equal([])
+}
+
+pub fn specialize_ctr_test() {
+  let m = [[pctr("A", pi32(0)), pi32(1)]]
+  c.specialize(m, c.HAny) |> should.equal([])
+  c.specialize(m, c.HTyp(0)) |> should.equal([])
+  c.specialize(m, c.HLit(c.I32(0))) |> should.equal([])
+  c.specialize(m, c.HLitT(c.I32T)) |> should.equal([])
+  c.specialize(m, c.HCtr("A")) |> should.equal([[pi32(0), pi32(1)]])
+  c.specialize(m, c.HRcd([])) |> should.equal([])
+  c.specialize(m, c.HRcd(["a"])) |> should.equal([])
+  c.specialize(m, c.HRcd(["a", "b"])) |> should.equal([])
+}
+
+pub fn specialize_rcd_test() {
+  let m = [[prcd([]), pi32(1)]]
+  c.specialize(m, c.HAny) |> should.equal([])
+  c.specialize(m, c.HTyp(0)) |> should.equal([])
+  c.specialize(m, c.HLit(c.I32(0))) |> should.equal([])
+  c.specialize(m, c.HLitT(c.I32T)) |> should.equal([])
+  c.specialize(m, c.HCtr("A")) |> should.equal([])
+  c.specialize(m, c.HRcd([])) |> should.equal([[pi32(1)]])
+  c.specialize(m, c.HRcd(["a"])) |> should.equal([])
+
+  let m = [[prcd([#("a", pi32(0))]), pi32(1)]]
+  c.specialize(m, c.HRcd([])) |> should.equal([])
+  c.specialize(m, c.HRcd(["a"])) |> should.equal([[pi32(0), pi32(1)]])
+  c.specialize(m, c.HRcd(["a", "b"])) |> should.equal([])
+
+  // NOTE: deconstruct sorts fields by name, so they're always sorted.
+  let m = [[prcd([#("a", pany), #("b", pi32(0))]), pi32(1)]]
+  c.specialize(m, c.HRcd([])) |> should.equal([])
+  c.specialize(m, c.HRcd(["a"])) |> should.equal([])
+  c.specialize(m, c.HRcd(["a", "b"]))
+  |> should.equal([[pany, pi32(0), pi32(1)]])
+  c.specialize(m, c.HRcd(["a", "c"])) |> should.equal([])
+}
+
+pub fn specialize_filter_mismatches_test() {
+  let m = [[pctr("A", pany), pi32(1)], [pctr("B", pany), pi32(2)]]
+  c.specialize(m, c.HCtr("A")) |> should.equal([[pany, pi32(1)]])
+  c.specialize(m, c.HCtr("B")) |> should.equal([[pany, pi32(2)]])
+  c.specialize(m, c.HCtr("C")) |> should.equal([])
+}
 
 // --- HELPERS to make writing ASTs less painful ---
 const s = c.State(0, 0, [], [], [], [])
@@ -924,4 +1029,28 @@ fn vvar(i) {
 
 fn vhole(i) {
   c.VNeut(c.HHole(i), [])
+}
+
+const pany = c.PAny
+
+fn pas(p, x) {
+  c.PAs(p, x)
+}
+
+fn ptyp(k) {
+  c.PTyp(k)
+}
+
+fn pi32(i) {
+  c.PLit(c.I32(i))
+}
+
+const pi32t = c.PLitT(c.I32T)
+
+fn pctr(tag, p) {
+  c.PCtr(tag, p)
+}
+
+fn prcd(fs) {
+  c.PRcd(fs)
 }

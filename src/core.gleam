@@ -118,10 +118,10 @@ type PMatrix =
 
 pub type PHead {
   HAny
-  HCtr(name: String)
+  HTyp(universe: Int)
   HLit(value: Literal)
   HLitT(value: LiteralType)
-  HTyp(universe: Int)
+  HCtr(name: String)
   HRcd(fields: List(String))
 }
 
@@ -757,14 +757,14 @@ pub fn ctr_solve_params(
 // http://moscova.inria.fr/~maranget/papers/warn/index.html
 fn deconstruct(pat: Pattern) -> #(PHead, List(Pattern)) {
   case pat {
-    PAs(p, _) -> deconstruct(p)
     PAny -> #(HAny, [])
-    PCtr(n, p) -> #(HCtr(n), [p])
-    PLit(l) -> #(HLit(l), [])
-    PLitT(l) -> #(HLitT(l), [])
-    PTyp(i) -> #(HTyp(i), [])
-    PRcd(fs) -> {
-      let sorted = list.sort(fs, fn(a, b) { string.compare(a.0, b.0) })
+    PAs(p, _) -> deconstruct(p)
+    PTyp(k) -> #(HTyp(k), [])
+    PLit(k) -> #(HLit(k), [])
+    PLitT(k) -> #(HLitT(k), [])
+    PCtr(tag, p) -> #(HCtr(tag), [p])
+    PRcd(fields) -> {
+      let sorted = list.sort(fields, fn(a, b) { string.compare(a.0, b.0) })
       let head = HRcd(list.map(sorted, fn(f) { f.0 }))
       #(head, list.map(sorted, fn(f) { f.1 }))
     }
@@ -774,11 +774,11 @@ fn deconstruct(pat: Pattern) -> #(PHead, List(Pattern)) {
 fn reconstruct(head: PHead, args: List(Pattern)) -> Pattern {
   case head {
     HAny -> PAny
+    HTyp(k) -> PTyp(k)
+    HLit(k) -> PLit(k)
+    HLitT(k) -> PLitT(k)
     HCtr(tag) ->
       PCtr(tag, list.first(args) |> option.from_result |> option.unwrap(PAny))
-    HLit(l) -> PLit(l)
-    HLitT(l) -> PLitT(l)
-    HTyp(i) -> PTyp(i)
     HRcd(ks) -> PRcd(list.zip(ks, args))
   }
 }
@@ -791,14 +791,16 @@ fn head_arity(head: PHead) -> Int {
   }
 }
 
-fn specialize(matrix: PMatrix, target: PHead) -> PMatrix {
+pub fn specialize(matrix: PMatrix, target: PHead) -> PMatrix {
   list.filter_map(matrix, fn(row) {
     case row {
-      [first, ..rest] -> {
-        let #(h, args) = deconstruct(first)
-        case h {
-          _ if h == target -> Ok(list.append(args, rest))
-          HAny -> Ok(list.append(list.repeat(PAny, head_arity(target)), rest))
+      [p, ..ps] -> {
+        case deconstruct(p) {
+          #(head, args) if head == target -> Ok(list.append(args, ps))
+          #(HAny, _) -> {
+            let qs = list.repeat(PAny, head_arity(target))
+            Ok(list.append(qs, ps))
+          }
           _ -> Error(Nil)
         }
       }
