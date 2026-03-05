@@ -791,6 +791,20 @@ fn head_arity(head: PHead) -> Int {
   }
 }
 
+fn default_matrix(matrix: PMatrix) -> PMatrix {
+  list.filter_map(matrix, fn(row) {
+    case row {
+      [first, ..rest] -> {
+        case deconstruct(first).0 {
+          HAny -> Ok(rest)
+          _ -> Error(Nil)
+        }
+      }
+      [] -> Error(Nil)
+    }
+  })
+}
+
 pub fn specialize(matrix: PMatrix, target: PHead) -> PMatrix {
   list.filter_map(matrix, fn(row) {
     case row {
@@ -809,21 +823,7 @@ pub fn specialize(matrix: PMatrix, target: PHead) -> PMatrix {
   })
 }
 
-fn default_matrix(matrix: PMatrix) -> PMatrix {
-  list.filter_map(matrix, fn(row) {
-    case row {
-      [first, ..rest] -> {
-        case deconstruct(first).0 {
-          HAny -> Ok(rest)
-          _ -> Error(Nil)
-        }
-      }
-      [] -> Error(Nil)
-    }
-  })
-}
-
-fn get_concrete_heads(matrix: PMatrix) -> List(PHead) {
+pub fn get_concrete_heads(matrix: PMatrix) -> List(PHead) {
   list.filter_map(matrix, fn(r) {
     case r {
       [p, ..] ->
@@ -837,7 +837,7 @@ fn get_concrete_heads(matrix: PMatrix) -> List(PHead) {
   |> list.unique
 }
 
-fn get_missing_heads(s: State, concrete_heads: List(PHead)) -> List(PHead) {
+pub fn get_missing_heads(s: State, concrete_heads: List(PHead)) -> List(PHead) {
   case concrete_heads {
     [HCtr(name), ..] -> {
       let env = get_env(s)

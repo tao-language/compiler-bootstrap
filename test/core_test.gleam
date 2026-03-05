@@ -912,6 +912,37 @@ pub fn specialize_filter_mismatches_test() {
   c.specialize(m, c.HCtr("C")) |> should.equal([])
 }
 
+pub fn get_concrete_heads_empty_test() {
+  c.get_concrete_heads([]) |> should.equal([])
+}
+
+pub fn get_concrete_heads_patterns_test() {
+  c.get_concrete_heads([[pany]]) |> should.equal([])
+  c.get_concrete_heads([[ptyp(0)]]) |> should.equal([c.HTyp(0)])
+  c.get_concrete_heads([[pi32(1)]]) |> should.equal([c.HLit(c.I32(1))])
+  c.get_concrete_heads([[pi32t]]) |> should.equal([c.HLitT(c.I32T)])
+  c.get_concrete_heads([[pctr("A", pany)]]) |> should.equal([c.HCtr("A")])
+  c.get_concrete_heads([[prcd([])]]) |> should.equal([c.HRcd([])])
+  c.get_concrete_heads([[prcd([#("a", pany)])]])
+  |> should.equal([c.HRcd(["a"])])
+  c.get_concrete_heads([[prcd([#("a", pany), #("b", pany)])]])
+  |> should.equal([c.HRcd(["a", "b"])])
+}
+
+pub fn get_concrete_heads_only_head_test() {
+  c.get_concrete_heads([[ptyp(0), ptyp(1)]]) |> should.equal([c.HTyp(0)])
+}
+
+pub fn get_concrete_heads_filter_any_test() {
+  c.get_concrete_heads([[pany], [ptyp(0)], [pany], [ptyp(1)], [pany]])
+  |> should.equal([c.HTyp(0), c.HTyp(1)])
+}
+
+pub fn get_concrete_heads_unique_test() {
+  c.get_concrete_heads([[ptyp(0)], [ptyp(1)], [ptyp(0)]])
+  |> should.equal([c.HTyp(0), c.HTyp(1)])
+}
+
 // --- HELPERS to make writing ASTs less painful ---
 const s = c.State(0, 0, [], [], [], [])
 
