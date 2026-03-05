@@ -190,130 +190,6 @@ pub fn check_hole_test() {
   |> should.equal(#(vhole(0), s))
 }
 
-// --- Ctr --- \\
-pub fn eval_ctr_test() {
-  c.eval([], ctr("A", i32(1, s1), s2)) |> should.equal(c.VCtr("A", v32(1)))
-}
-
-pub fn unify_ctr_tag_test() {
-  c.unify(s, c.VCtr("A", v32(1)), c.VCtr("A", v32(1)), s1, s2)
-  |> should.equal(Ok(s))
-  c.unify(s, c.VCtr("A", v32(1)), c.VCtr("B", v32(1)), s1, s2)
-  |> should.equal(
-    Error(c.TypeMismatch(c.VCtr("A", v32(1)), c.VCtr("B", v32(1)), s1, s2)),
-  )
-}
-
-// TODO: check_ctr_def_test
-// TODO: check_type_test
-// TODO: ctr_solve_params_test
-
-pub fn infer_ctr_test() {
-  c.infer(s, ctr("A", i32(1, s1), s2))
-  |> should.equal(#(
-    c.VErr,
-    c.VErr,
-    c.State(..s, errors: [c.CtrUndefined("A", s2)]),
-  ))
-
-  let s = c.State(..s, tenv: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
-  c.infer(s, ctr("A", i32(1, s3), s4))
-  |> should.equal(#(c.VCtr("A", v32(1)), v64t, s))
-}
-
-pub fn infer_ctr_arg_bind_test() {
-  let s = c.State(..s, tenv: [#("A", c.CtrDef(["a"], var(0, s1), var(0, s2)))])
-  c.infer(s, ctr("A", i32(1, s3), s4))
-  |> should.equal(#(
-    c.VCtr("A", v32(1)),
-    v32t,
-    c.State(..s, hole: 1, ctx: [#("a", #(vhole(0), c.VTyp(0)))], sub: [
-      #(0, v32t),
-    ]),
-  ))
-}
-
-pub fn infer_ctr_arg_mismatch_test() {
-  let s = c.State(..s, tenv: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
-  c.infer(s, ctr("A", typ(0, s3), s4))
-  |> should.equal(#(
-    c.VCtr("A", c.VTyp(0)),
-    v64t,
-    c.State(..s, errors: [
-      c.TypeMismatch(c.VTyp(1), v32t, s3, s1),
-    ]),
-  ))
-}
-
-pub fn infer_ctr_arg_unsolved_test() {
-  let ctr_def = c.CtrDef(["a"], i32t(s1), var(0, s2))
-  let s = c.State(..s, tenv: [#("A", ctr_def)])
-  c.infer(s, ctr("A", i32(1, s3), s4))
-  |> should.equal(#(
-    c.VCtr("A", v32(1)),
-    vhole(0),
-    c.State(..s, hole: 1, ctx: [#("a", #(vhole(0), c.VTyp(0)))], errors: [
-      c.CtrUnsolvedParam("A", ctr_def, 0, s4),
-    ]),
-  ))
-}
-
-pub fn check_ctr_test() {
-  c.check(s, ctr("A", i32(1, s1), s2), v32t, s2)
-  |> should.equal(#(c.VErr, c.State(..s, errors: [c.CtrUndefined("A", s2)])))
-
-  let s = c.State(..s, tenv: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
-  c.check(s, ctr("A", i32(1, s3), s4), v64t, s5)
-  |> should.equal(#(c.VCtr("A", v32(1)), s))
-}
-
-pub fn check_ctr_arg_mismatch_test() {
-  let s = c.State(..s, tenv: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
-  c.check(s, ctr("A", i64(1, s3), s4), v64t, s5)
-  |> should.equal(#(
-    c.VCtr("A", c.VErr),
-    c.State(..s, errors: [c.TypeMismatch(v64t, v32t, s3, s1)]),
-  ))
-}
-
-pub fn check_ctr_arg_unsolved_test() {
-  let ctr_def = c.CtrDef(["a"], var(0, s1), i64t(s2))
-  let s = c.State(..s, tenv: [#("A", ctr_def)])
-  c.check(s, ctr("A", i32(1, s3), s4), v64t, s5)
-  |> should.equal(#(
-    c.VCtr("A", v32(1)),
-    c.State(
-      ..s,
-      hole: 1,
-      ctx: [#("a", #(vhole(0), c.VTyp(0)))],
-      sub: [#(0, v32t)],
-      errors: [
-        c.CtrUnsolvedParam("A", ctr_def, 0, s4),
-      ],
-    ),
-  ))
-}
-
-pub fn check_ctr_ret_bind_test() {
-  let s = c.State(..s, tenv: [#("A", c.CtrDef(["a"], var(0, s1), var(0, s2)))])
-  c.check(s, ctr("A", i32(1, s3), s4), v32t, s5)
-  |> should.equal(#(
-    c.VCtr("A", v32(1)),
-    c.State(..s, hole: 1, ctx: [#("a", #(vhole(0), c.VTyp(0)))], sub: [
-      #(0, v32t),
-    ]),
-  ))
-}
-
-pub fn check_ctr_ret_mismatch_test() {
-  let s = c.State(..s, tenv: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
-  c.check(s, ctr("A", i32(1, s3), s4), v32t, s5)
-  |> should.equal(#(
-    c.VCtr("A", v32(1)),
-    c.State(..s, errors: [c.TypeMismatch(v64t, v32t, s2, s5)]),
-  ))
-}
-
 // --- Rcd --- \\
 pub fn eval_rcd_test() {
   c.eval([], rcd([], s0)) |> should.equal(c.VRcd([]))
@@ -399,6 +275,130 @@ pub fn check_rcd_order_test() {
   let typ = c.VRcd([#("a", v32t), #("b", v64t)])
   c.check(s, term, typ, s3)
   |> should.equal(#(c.VRcd([#("b", v64(2)), #("a", v32(1))]), s))
+}
+
+// --- Ctr --- \\
+pub fn eval_ctr_test() {
+  c.eval([], ctr("A", i32(1, s1), s2)) |> should.equal(c.VCtr("A", v32(1)))
+}
+
+pub fn unify_ctr_tag_test() {
+  c.unify(s, c.VCtr("A", v32(1)), c.VCtr("A", v32(1)), s1, s2)
+  |> should.equal(Ok(s))
+  c.unify(s, c.VCtr("A", v32(1)), c.VCtr("B", v32(1)), s1, s2)
+  |> should.equal(
+    Error(c.TypeMismatch(c.VCtr("A", v32(1)), c.VCtr("B", v32(1)), s1, s2)),
+  )
+}
+
+// TODO: check_ctr_def_test
+// TODO: check_type_test
+// TODO: ctr_solve_params_test
+
+pub fn infer_ctr_test() {
+  c.infer(s, ctr("A", i32(1, s1), s2))
+  |> should.equal(#(
+    c.VErr,
+    c.VErr,
+    c.State(..s, errors: [c.CtrUndefined("A", s2)]),
+  ))
+
+  let s = c.State(..s, ctrs: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
+  c.infer(s, ctr("A", i32(1, s3), s4))
+  |> should.equal(#(c.VCtr("A", v32(1)), v64t, s))
+}
+
+pub fn infer_ctr_arg_bind_test() {
+  let s = c.State(..s, ctrs: [#("A", c.CtrDef(["a"], var(0, s1), var(0, s2)))])
+  c.infer(s, ctr("A", i32(1, s3), s4))
+  |> should.equal(#(
+    c.VCtr("A", v32(1)),
+    v32t,
+    c.State(..s, hole: 1, ctx: [#("a", #(vhole(0), c.VTyp(0)))], sub: [
+      #(0, v32t),
+    ]),
+  ))
+}
+
+pub fn infer_ctr_arg_mismatch_test() {
+  let s = c.State(..s, ctrs: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
+  c.infer(s, ctr("A", typ(0, s3), s4))
+  |> should.equal(#(
+    c.VCtr("A", c.VTyp(0)),
+    v64t,
+    c.State(..s, errors: [
+      c.TypeMismatch(c.VTyp(1), v32t, s3, s1),
+    ]),
+  ))
+}
+
+pub fn infer_ctr_arg_unsolved_test() {
+  let ctr_def = c.CtrDef(["a"], i32t(s1), var(0, s2))
+  let s = c.State(..s, ctrs: [#("A", ctr_def)])
+  c.infer(s, ctr("A", i32(1, s3), s4))
+  |> should.equal(#(
+    c.VCtr("A", v32(1)),
+    vhole(0),
+    c.State(..s, hole: 1, ctx: [#("a", #(vhole(0), c.VTyp(0)))], errors: [
+      c.CtrUnsolvedParam("A", ctr_def, 0, s4),
+    ]),
+  ))
+}
+
+pub fn check_ctr_test() {
+  c.check(s, ctr("A", i32(1, s1), s2), v32t, s2)
+  |> should.equal(#(c.VErr, c.State(..s, errors: [c.CtrUndefined("A", s2)])))
+
+  let s = c.State(..s, ctrs: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
+  c.check(s, ctr("A", i32(1, s3), s4), v64t, s5)
+  |> should.equal(#(c.VCtr("A", v32(1)), s))
+}
+
+pub fn check_ctr_arg_mismatch_test() {
+  let s = c.State(..s, ctrs: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
+  c.check(s, ctr("A", i64(1, s3), s4), v64t, s5)
+  |> should.equal(#(
+    c.VCtr("A", c.VErr),
+    c.State(..s, errors: [c.TypeMismatch(v64t, v32t, s3, s1)]),
+  ))
+}
+
+pub fn check_ctr_arg_unsolved_test() {
+  let ctr_def = c.CtrDef(["a"], var(0, s1), i64t(s2))
+  let s = c.State(..s, ctrs: [#("A", ctr_def)])
+  c.check(s, ctr("A", i32(1, s3), s4), v64t, s5)
+  |> should.equal(#(
+    c.VCtr("A", v32(1)),
+    c.State(
+      ..s,
+      hole: 1,
+      ctx: [#("a", #(vhole(0), c.VTyp(0)))],
+      sub: [#(0, v32t)],
+      errors: [
+        c.CtrUnsolvedParam("A", ctr_def, 0, s4),
+      ],
+    ),
+  ))
+}
+
+pub fn check_ctr_ret_bind_test() {
+  let s = c.State(..s, ctrs: [#("A", c.CtrDef(["a"], var(0, s1), var(0, s2)))])
+  c.check(s, ctr("A", i32(1, s3), s4), v32t, s5)
+  |> should.equal(#(
+    c.VCtr("A", v32(1)),
+    c.State(..s, hole: 1, ctx: [#("a", #(vhole(0), c.VTyp(0)))], sub: [
+      #(0, v32t),
+    ]),
+  ))
+}
+
+pub fn check_ctr_ret_mismatch_test() {
+  let s = c.State(..s, ctrs: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
+  c.check(s, ctr("A", i32(1, s3), s4), v32t, s5)
+  |> should.equal(#(
+    c.VCtr("A", v32(1)),
+    c.State(..s, errors: [c.TypeMismatch(v64t, v32t, s2, s5)]),
+  ))
 }
 
 // --- Dot --- \\
@@ -588,8 +588,8 @@ pub fn eval_app_value_test() {
   |> should.equal(c.VNeut(c.HVar(0), [c.EApp(v32(1)), c.EDot("x")]))
   c.do_app(c.VNeut(c.HHole(0), [c.EDot("x")]), v32(1))
   |> should.equal(c.VNeut(c.HHole(0), [c.EApp(v32(1)), c.EDot("x")]))
-  c.do_app(c.VCtr("A", v64t), v32(1)) |> should.equal(c.VErr)
   c.do_app(c.VRcd([]), v32(1)) |> should.equal(c.VErr)
+  c.do_app(c.VCtr("A", v64t), v32(1)) |> should.equal(c.VErr)
   c.do_app(c.VLam("x", [], i64(0, s1)), v32(1)) |> should.equal(v64(0))
   c.do_app(c.VLam("x", [], var(0, s1)), v32(1)) |> should.equal(v32(1))
   c.do_app(c.VPi("x", [], v32t, i64t(s1)), v32(1)) |> should.equal(c.VErr)
@@ -689,7 +689,7 @@ pub fn bind_pattern_ctr_test() {
   let p = c.PCtr("A", c.PAny)
   c.bind_pattern(s, p, v32t, s1, s2)
   |> should.equal(#(c.VErr, c.State(..s, errors: [c.CtrUndefined("A", s1)])))
-  let s = c.State(..s, tenv: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
+  let s = c.State(..s, ctrs: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
   c.bind_pattern(s, p, v32t, s3, s4)
   |> should.equal(#(
     c.VCtr("A", vhole(0)),
@@ -812,10 +812,10 @@ pub fn specialize_any_test() {
   c.specialize(m, c.HTyp(0)) |> should.equal([[pi32(1)]])
   c.specialize(m, c.HLit(c.I32(0))) |> should.equal([[pi32(1)]])
   c.specialize(m, c.HLitT(c.I32T)) |> should.equal([[pi32(1)]])
-  c.specialize(m, c.HCtr("A")) |> should.equal([[pany, pi32(1)]])
   c.specialize(m, c.HRcd([])) |> should.equal([[pi32(1)]])
   c.specialize(m, c.HRcd(["a"])) |> should.equal([[pany, pi32(1)]])
   c.specialize(m, c.HRcd(["a", "b"])) |> should.equal([[pany, pany, pi32(1)]])
+  c.specialize(m, c.HCtr("A")) |> should.equal([[pany, pi32(1)]])
 }
 
 pub fn specialize_as_test() {
@@ -824,10 +824,10 @@ pub fn specialize_as_test() {
   c.specialize(m, c.HTyp(0)) |> should.equal([[pi32(1)]])
   c.specialize(m, c.HLit(c.I32(0))) |> should.equal([[pi32(1)]])
   c.specialize(m, c.HLitT(c.I32T)) |> should.equal([[pi32(1)]])
-  c.specialize(m, c.HCtr("A")) |> should.equal([[pany, pi32(1)]])
   c.specialize(m, c.HRcd([])) |> should.equal([[pi32(1)]])
   c.specialize(m, c.HRcd(["a"])) |> should.equal([[pany, pi32(1)]])
   c.specialize(m, c.HRcd(["a", "b"])) |> should.equal([[pany, pany, pi32(1)]])
+  c.specialize(m, c.HCtr("A")) |> should.equal([[pany, pi32(1)]])
 }
 
 pub fn specialize_typ_test() {
@@ -837,10 +837,10 @@ pub fn specialize_typ_test() {
   c.specialize(m, c.HTyp(1)) |> should.equal([])
   c.specialize(m, c.HLit(c.I32(0))) |> should.equal([])
   c.specialize(m, c.HLitT(c.I32T)) |> should.equal([])
-  c.specialize(m, c.HCtr("A")) |> should.equal([])
   c.specialize(m, c.HRcd([])) |> should.equal([])
   c.specialize(m, c.HRcd(["a"])) |> should.equal([])
   c.specialize(m, c.HRcd(["a", "b"])) |> should.equal([])
+  c.specialize(m, c.HCtr("A")) |> should.equal([])
 }
 
 pub fn specialize_lit_test() {
@@ -850,10 +850,10 @@ pub fn specialize_lit_test() {
   c.specialize(m, c.HLit(c.I32(0))) |> should.equal([[pi32(1)]])
   c.specialize(m, c.HLit(c.I32(1))) |> should.equal([])
   c.specialize(m, c.HLitT(c.I32T)) |> should.equal([])
-  c.specialize(m, c.HCtr("A")) |> should.equal([])
   c.specialize(m, c.HRcd([])) |> should.equal([])
   c.specialize(m, c.HRcd(["a"])) |> should.equal([])
   c.specialize(m, c.HRcd(["a", "b"])) |> should.equal([])
+  c.specialize(m, c.HCtr("A")) |> should.equal([])
 }
 
 pub fn specialize_litt_test() {
@@ -863,22 +863,10 @@ pub fn specialize_litt_test() {
   c.specialize(m, c.HLit(c.I32(0))) |> should.equal([])
   c.specialize(m, c.HLitT(c.I32T)) |> should.equal([[pi32(1)]])
   c.specialize(m, c.HLitT(c.I64T)) |> should.equal([])
+  c.specialize(m, c.HRcd([])) |> should.equal([])
+  c.specialize(m, c.HRcd(["a"])) |> should.equal([])
+  c.specialize(m, c.HRcd(["a", "b"])) |> should.equal([])
   c.specialize(m, c.HCtr("A")) |> should.equal([])
-  c.specialize(m, c.HRcd([])) |> should.equal([])
-  c.specialize(m, c.HRcd(["a"])) |> should.equal([])
-  c.specialize(m, c.HRcd(["a", "b"])) |> should.equal([])
-}
-
-pub fn specialize_ctr_test() {
-  let m = [[pctr("A", pi32(0)), pi32(1)]]
-  c.specialize(m, c.HAny) |> should.equal([])
-  c.specialize(m, c.HTyp(0)) |> should.equal([])
-  c.specialize(m, c.HLit(c.I32(0))) |> should.equal([])
-  c.specialize(m, c.HLitT(c.I32T)) |> should.equal([])
-  c.specialize(m, c.HCtr("A")) |> should.equal([[pi32(0), pi32(1)]])
-  c.specialize(m, c.HRcd([])) |> should.equal([])
-  c.specialize(m, c.HRcd(["a"])) |> should.equal([])
-  c.specialize(m, c.HRcd(["a", "b"])) |> should.equal([])
 }
 
 pub fn specialize_rcd_test() {
@@ -887,9 +875,9 @@ pub fn specialize_rcd_test() {
   c.specialize(m, c.HTyp(0)) |> should.equal([])
   c.specialize(m, c.HLit(c.I32(0))) |> should.equal([])
   c.specialize(m, c.HLitT(c.I32T)) |> should.equal([])
-  c.specialize(m, c.HCtr("A")) |> should.equal([])
   c.specialize(m, c.HRcd([])) |> should.equal([[pi32(1)]])
   c.specialize(m, c.HRcd(["a"])) |> should.equal([])
+  c.specialize(m, c.HCtr("A")) |> should.equal([])
 
   let m = [[prcd([#("a", pi32(0))]), pi32(1)]]
   c.specialize(m, c.HRcd([])) |> should.equal([])
@@ -903,6 +891,18 @@ pub fn specialize_rcd_test() {
   c.specialize(m, c.HRcd(["a", "b"]))
   |> should.equal([[pany, pi32(0), pi32(1)]])
   c.specialize(m, c.HRcd(["a", "c"])) |> should.equal([])
+}
+
+pub fn specialize_ctr_test() {
+  let m = [[pctr("A", pi32(0)), pi32(1)]]
+  c.specialize(m, c.HAny) |> should.equal([])
+  c.specialize(m, c.HTyp(0)) |> should.equal([])
+  c.specialize(m, c.HLit(c.I32(0))) |> should.equal([])
+  c.specialize(m, c.HLitT(c.I32T)) |> should.equal([])
+  c.specialize(m, c.HRcd([])) |> should.equal([])
+  c.specialize(m, c.HRcd(["a"])) |> should.equal([])
+  c.specialize(m, c.HRcd(["a", "b"])) |> should.equal([])
+  c.specialize(m, c.HCtr("A")) |> should.equal([[pi32(0), pi32(1)]])
 }
 
 pub fn specialize_filter_mismatches_test() {
@@ -921,12 +921,12 @@ pub fn get_concrete_heads_patterns_test() {
   c.get_concrete_heads([[ptyp(0)]]) |> should.equal([c.HTyp(0)])
   c.get_concrete_heads([[pi32(1)]]) |> should.equal([c.HLit(c.I32(1))])
   c.get_concrete_heads([[pi32t]]) |> should.equal([c.HLitT(c.I32T)])
-  c.get_concrete_heads([[pctr("A", pany)]]) |> should.equal([c.HCtr("A")])
   c.get_concrete_heads([[prcd([])]]) |> should.equal([c.HRcd([])])
   c.get_concrete_heads([[prcd([#("a", pany)])]])
   |> should.equal([c.HRcd(["a"])])
   c.get_concrete_heads([[prcd([#("a", pany), #("b", pany)])]])
   |> should.equal([c.HRcd(["a", "b"])])
+  c.get_concrete_heads([[pctr("A", pany)]]) |> should.equal([c.HCtr("A")])
 }
 
 pub fn get_concrete_heads_only_head_test() {
@@ -941,6 +941,46 @@ pub fn get_concrete_heads_filter_any_test() {
 pub fn get_concrete_heads_unique_test() {
   c.get_concrete_heads([[ptyp(0)], [ptyp(1)], [ptyp(0)]])
   |> should.equal([c.HTyp(0), c.HTyp(1)])
+}
+
+pub fn get_missing_heads_empty_test() {
+  c.get_missing_heads(s, [], []) |> should.equal([c.HAny])
+}
+
+pub fn get_missing_heads_any_test() {
+  c.get_missing_heads(s, [], [c.HAny]) |> should.equal([])
+}
+
+pub fn get_missing_heads_typ_test() {
+  c.get_missing_heads(s, [], [c.HTyp(0)]) |> should.equal([c.HAny])
+}
+
+pub fn get_missing_heads_lit_test() {
+  c.get_missing_heads(s, [], [c.HLit(c.I32(1))]) |> should.equal([c.HAny])
+}
+
+pub fn get_missing_heads_litt_test() {
+  c.get_missing_heads(s, [], [c.HLitT(c.I32T)]) |> should.equal([c.HAny])
+}
+
+pub fn get_missing_heads_rcd_test() {
+  c.get_missing_heads(s, [], [c.HRcd([])]) |> should.equal([])
+  c.get_missing_heads(s, [], [c.HRcd(["a"])]) |> should.equal([])
+}
+
+pub fn get_missing_heads_ctr_test() {
+  // Trial unification for GADTs.
+  let nil = rcd([], s0)
+  let t = fn(i) { ctr("T", typ(i, s0), s0) }
+  let a = #("A", c.CtrDef([], nil, t(1)))
+  let b = #("B", c.CtrDef([], nil, t(2)))
+  let c = #("C", c.CtrDef([], nil, t(1)))
+  let s = c.State(..s, ctrs: [a, b, c])
+  let index = [#("T", [a, b, c])]
+  c.get_missing_heads(s, index, [c.HCtr("A")]) |> should.equal([c.HCtr("C")])
+  c.get_missing_heads(s, index, [c.HCtr("B")]) |> should.equal([])
+  c.get_missing_heads(s, index, [c.HCtr("C")]) |> should.equal([c.HCtr("A")])
+  c.get_missing_heads(s, index, [c.HCtr("D")]) |> should.equal([])
 }
 
 // --- HELPERS to make writing ASTs less painful ---

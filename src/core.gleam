@@ -14,8 +14,8 @@ pub type TermData {
   LitT(typ: LiteralType)
   Var(index: Int)
   Hole(id: Int)
-  Ctr(tag: String, arg: Term)
   Rcd(fields: List(#(String, Term)))
+  Ctr(tag: String, arg: Term)
   Dot(arg: Term, field: String)
   Ann(term: Term, typ: Term)
   Lam(name: String, body: Term)
@@ -29,8 +29,8 @@ pub type Value {
   VLit(value: Literal)
   VLitT(typ: LiteralType)
   VNeut(head: Head, spine: List(Elim))
-  VCtr(tag: String, arg: Value)
   VRcd(fields: List(#(String, Value)))
+  VCtr(tag: String, arg: Value)
   VLam(name: String, env: Env, body: Term)
   VPi(name: String, env: Env, in: Value, out: Term)
   VErr
@@ -45,8 +45,8 @@ pub type Pattern {
   PTyp(universe: Int)
   PLit(value: Literal)
   PLitT(value: LiteralType)
-  PCtr(tag: String, arg: Pattern)
   PRcd(fields: List(#(String, Pattern)))
+  PCtr(tag: String, arg: Pattern)
 }
 
 pub type Head {
@@ -90,8 +90,11 @@ pub type CtrDef {
   CtrDef(params: List(String), arg_ty: Term, ret_ty: Term)
 }
 
-pub type TypeEnv =
+pub type CtrEnv =
   List(#(String, CtrDef))
+
+pub type CtrIndex =
+  List(#(String, CtrEnv))
 
 pub type Env =
   List(Value)
@@ -106,7 +109,7 @@ pub type State {
   State(
     hole: Int,
     var: Int,
-    tenv: TypeEnv,
+    ctrs: CtrEnv,
     ctx: Context,
     sub: Subst,
     errors: List(Error),
@@ -121,8 +124,8 @@ pub type PHead {
   HTyp(universe: Int)
   HLit(value: Literal)
   HLitT(value: LiteralType)
-  HCtr(name: String)
   HRcd(fields: List(String))
+  HCtr(name: String)
 }
 
 pub type Error {
@@ -133,9 +136,9 @@ pub type Error {
   TypeAnnotationNeeded(term: Term)
   NotAFunction(fun: Term, fun_ty: Value)
   VarUndefined(index: Int, span: Span)
+  RcdMissingFields(name: List(String), span: Span)
   CtrUndefined(tag: String, span: Span)
   CtrUnsolvedParam(tag: String, ctr: CtrDef, id: Int, span: Span)
-  RcdMissingFields(name: List(String), span: Span)
   DotFieldNotFound(name: String, fields: List(#(String, Value)), span: Span)
   DotOnNonCtr(value: Value, name: String, span: Span)
   MatchEmpty(arg: Term, span: Span)
@@ -161,8 +164,8 @@ pub fn eval(env: Env, term: Term) -> Value {
         None -> VErr
       }
     Hole(id) -> VNeut(HHole(id), [])
-    Ctr(tag, arg) -> VCtr(tag, eval(env, arg))
     Rcd(fields) -> VRcd(list.map(fields, fn(kv) { #(kv.0, eval(env, kv.1)) }))
+    Ctr(tag, arg) -> VCtr(tag, eval(env, arg))
     Dot(arg, name) -> do_dot(eval(env, arg), name)
     Ann(term, _) -> eval(env, term)
     Lam(name, body) -> VLam(name, env, body)
@@ -232,8 +235,6 @@ pub fn do_match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
     PTyp(pk), VTyp(vk) if pk == vk -> Ok([])
     PLit(pk), VLit(vk) if pk == vk -> Ok([])
     PLitT(pk), VLitT(vk) if pk == vk -> Ok([])
-    PCtr(ptag, parg), VCtr(vtag, varg) if ptag == vtag ->
-      do_match_pattern(parg, varg)
     PRcd(pfields), VRcd(vfields) ->
       list.try_fold(pfields, [], fn(acc_env, pfield) {
         let #(name, p) = pfield
@@ -241,6 +242,8 @@ pub fn do_match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
         use env <- result.try(do_match_pattern(p, v))
         Ok(list.append(acc_env, env))
       })
+    PCtr(ptag, parg), VCtr(vtag, varg) if ptag == vtag ->
+      do_match_pattern(parg, varg)
     _, _ -> Error(Nil)
   }
 }
@@ -260,9 +263,9 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
       let head_term = quote_head(lvl, head, s)
       quote_neut(lvl, head_term, spine, s)
     }
-    VCtr(tag, arg) -> Term(Ctr(tag, quote(lvl, arg, s)), s)
     VRcd(fields) ->
       Term(Rcd(list.map(fields, fn(kv) { #(kv.0, quote(lvl, kv.1, s)) })), s)
+    VCtr(tag, arg) -> Term(Ctr(tag, quote(lvl, arg, s)), s)
     VLam(name, env, body) -> {
       let fresh = VNeut(HVar(lvl), [])
       let body_val = eval([fresh, ..env], body)
@@ -307,8 +310,8 @@ pub fn occurs(sub: Subst, id: Int, value: Value) -> Bool {
     VNeut(HHole(hole_id), spine) ->
       id == hole_id || list.any(spine, occurs_elim(sub, id, _))
     VNeut(_, spine) -> list.any(spine, occurs_elim(sub, id, _))
-    VCtr(_, arg) -> occurs(sub, id, arg)
     VRcd(fields) -> list.any(fields, fn(kv) { occurs(sub, id, kv.1) })
+    VCtr(_, arg) -> occurs(sub, id, arg)
     VLam(_, env, _) -> list.any(env, occurs(sub, id, _))
     VPi(_, env, in, _) ->
       occurs(sub, id, in) || list.any(env, occurs(sub, id, _))
@@ -347,8 +350,8 @@ pub fn unify(
     _, VNeut(HHole(_), []) -> unify(s, v2, v1, s2, s1)
     VNeut(h1, spine1), VNeut(h2, spine2) if h1 == h2 ->
       unify_elim_list(s, spine1, spine2, s1, s2)
-    VCtr(k1, arg1), VCtr(k2, arg2) if k1 == k2 -> unify(s, arg1, arg2, s1, s2)
     VRcd(fields1), VRcd(fields2) -> unify_fields(s, fields1, fields2, s1, s2)
+    VCtr(k1, arg1), VCtr(k2, arg2) if k1 == k2 -> unify(s, arg1, arg2, s1, s2)
     VLam(_, env1, body1), VLam(_, env2, body2) -> {
       let #(fresh, s) = new_var(s)
       let a = eval([fresh, ..env1], body1)
@@ -449,8 +452,12 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(ty, s) = new_hole(s)
       #(VNeut(HHole(id), []), ty, s)
     }
+    Rcd(fields) -> {
+      let #(fields_val, fields_ty, s) = infer_fields(s, fields)
+      #(VRcd(fields_val), VRcd(fields_ty), s)
+    }
     Ctr(tag, arg) -> {
-      case list.key_find(s.tenv, tag) {
+      case list.key_find(s.ctrs, tag) {
         Error(Nil) -> #(VErr, VErr, with_err(s, CtrUndefined(tag, term.span)))
         Ok(ctr) -> {
           let #(params, ctr_arg_ty, _, s) = check_ctr_def(s, ctr)
@@ -462,10 +469,6 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
           #(VCtr(tag, eval(env, arg)), eval(env, ctr.ret_ty), s)
         }
       }
-    }
-    Rcd(fields) -> {
-      let #(fields_val, fields_ty, s) = infer_fields(s, fields)
-      #(VRcd(fields_val), VRcd(fields_ty), s)
     }
     Dot(arg, name) -> {
       let #(arg_val, arg_ty, s) = infer(s, arg)
@@ -580,22 +583,6 @@ pub fn bind_pattern(
     PTyp(k) -> check(s, Term(Typ(k), pat_span), ret_ty, ret_span)
     PLit(k) -> check(s, Term(Lit(k), pat_span), ret_ty, ret_span)
     PLitT(k) -> check(s, Term(LitT(k), pat_span), ret_ty, ret_span)
-    PCtr(tag, parg) -> {
-      case list.key_find(s.tenv, tag) {
-        Error(Nil) -> #(VErr, with_err(s, CtrUndefined(tag, pat_span)))
-        Ok(ctr) -> {
-          let #(params, _, ctr_ret_ty, s) = check_ctr_def(s, ctr)
-          let #(_, s) =
-            check_type(s, ctr_ret_ty, ret_ty, ctr.ret_ty.span, ret_span)
-          let #(params, s) = ctr_solve_params(s, ctr, params, tag, pat_span)
-          let env = list.append(params, get_env(s))
-          let ctr_arg_ty = eval(env, ctr.arg_ty)
-          let #(varg, s) =
-            bind_pattern(s, parg, ctr_arg_ty, pat_span, ctr.arg_ty.span)
-          #(VCtr(tag, varg), s)
-        }
-      }
-    }
     PRcd(pfields) ->
       case ret_ty {
         VRcd(vfields) -> {
@@ -628,6 +615,22 @@ pub fn bind_pattern(
           with_err(s, PatternMismatch(pattern, ret_ty, pat_span, ret_span)),
         )
       }
+    PCtr(tag, parg) -> {
+      case list.key_find(s.ctrs, tag) {
+        Error(Nil) -> #(VErr, with_err(s, CtrUndefined(tag, pat_span)))
+        Ok(ctr) -> {
+          let #(params, _, ctr_ret_ty, s) = check_ctr_def(s, ctr)
+          let #(_, s) =
+            check_type(s, ctr_ret_ty, ret_ty, ctr.ret_ty.span, ret_span)
+          let #(params, s) = ctr_solve_params(s, ctr, params, tag, pat_span)
+          let env = list.append(params, get_env(s))
+          let ctr_arg_ty = eval(env, ctr.arg_ty)
+          let #(varg, s) =
+            bind_pattern(s, parg, ctr_arg_ty, pat_span, ctr.arg_ty.span)
+          #(VCtr(tag, varg), s)
+        }
+      }
+    }
   }
 }
 
@@ -668,7 +671,7 @@ fn check_ctr(
   ret_span: Span,
   term_span: Span,
 ) -> #(Value, State) {
-  case list.key_find(s.tenv, tag) {
+  case list.key_find(s.ctrs, tag) {
     Error(Nil) -> #(VErr, with_err(s, CtrUndefined(tag, ret_span)))
     Ok(ctr) -> {
       let #(params, _, ctr_ret_ty, s) = check_ctr_def(s, ctr)
@@ -762,12 +765,12 @@ fn deconstruct(pat: Pattern) -> #(PHead, List(Pattern)) {
     PTyp(k) -> #(HTyp(k), [])
     PLit(k) -> #(HLit(k), [])
     PLitT(k) -> #(HLitT(k), [])
-    PCtr(tag, p) -> #(HCtr(tag), [p])
     PRcd(fields) -> {
       let sorted = list.sort(fields, fn(a, b) { string.compare(a.0, b.0) })
       let head = HRcd(list.map(sorted, fn(f) { f.0 }))
       #(head, list.map(sorted, fn(f) { f.1 }))
     }
+    PCtr(tag, p) -> #(HCtr(tag), [p])
   }
 }
 
@@ -777,16 +780,16 @@ fn reconstruct(head: PHead, args: List(Pattern)) -> Pattern {
     HTyp(k) -> PTyp(k)
     HLit(k) -> PLit(k)
     HLitT(k) -> PLitT(k)
+    HRcd(ks) -> PRcd(list.zip(ks, args))
     HCtr(tag) ->
       PCtr(tag, list.first(args) |> option.from_result |> option.unwrap(PAny))
-    HRcd(ks) -> PRcd(list.zip(ks, args))
   }
 }
 
 fn head_arity(head: PHead) -> Int {
   case head {
-    HCtr(_) -> 1
     HRcd(fs) -> list.length(fs)
+    HCtr(_) -> 1
     _ -> 0
   }
 }
@@ -837,32 +840,43 @@ pub fn get_concrete_heads(matrix: PMatrix) -> List(PHead) {
   |> list.unique
 }
 
-pub fn get_missing_heads(s: State, concrete_heads: List(PHead)) -> List(PHead) {
+pub fn get_missing_heads(
+  s: State,
+  index: CtrIndex,
+  concrete_heads: List(PHead),
+) -> List(PHead) {
   case concrete_heads {
+    [HAny, ..] -> []
     [HCtr(name), ..] -> {
       let env = get_env(s)
-      let target_ty = case list.key_find(s.tenv, name) {
+      let result_ty = case list.key_find(s.ctrs, name) {
         Ok(d) -> eval(env, d.ret_ty)
         _ -> VErr
       }
       let span = Span("", 0, 0)
-      let all_possible =
-        list.filter_map(s.tenv, fn(def) {
-          let #(tag, ctr) = def
-          case unify(s, eval(env, ctr.ret_ty), target_ty, span, span) {
-            Ok(_) -> Ok(HCtr(tag))
-            _ -> Error(Nil)
-          }
-        })
-      list.filter(all_possible, fn(h) { !list.contains(concrete_heads, h) })
+      let result_tag = case result_ty {
+        VCtr(tag, _) -> tag
+        _ -> ""
+      }
+      list.key_find(index, result_tag)
+      |> result.unwrap([])
+      |> list.filter_map(fn(entry) {
+        let #(tag, ctr) = entry
+        case unify(s, eval(env, ctr.ret_ty), result_ty, span, span) {
+          Ok(_) -> Ok(HCtr(tag))
+          _ -> Error(Nil)
+        }
+      })
+      |> list.filter(fn(h) { !list.contains(concrete_heads, h) })
     }
     [HRcd(_), ..] -> []
-    [] | _ -> [HAny]
+    _ -> [HAny]
   }
 }
 
 fn useful(
   s: State,
+  index: CtrIndex,
   matrix: PMatrix,
   vector: List(Pattern),
 ) -> Result(List(Pattern), Nil) {
@@ -874,10 +888,10 @@ fn useful(
       case head {
         HAny -> {
           let concrete_heads = get_concrete_heads(matrix)
-          case get_missing_heads(s, concrete_heads) {
+          case get_missing_heads(s, index, concrete_heads) {
             [missing, ..] -> {
               // Missing heads, construct a witness using the first gap.
-              case useful(s, default_matrix(matrix), ps) {
+              case useful(s, index, default_matrix(matrix), ps) {
                 Ok(rest_witness) -> {
                   let wildcards = list.repeat(PAny, head_arity(missing))
                   Ok([reconstruct(missing, wildcards), ..rest_witness])
@@ -890,7 +904,7 @@ fn useful(
               list.find_map(concrete_heads, fn(h) {
                 let a = head_arity(h)
                 let expanded_rest = list.append(list.repeat(PAny, a), ps)
-                case useful(s, specialize(matrix, h), expanded_rest) {
+                case useful(s, index, specialize(matrix, h), expanded_rest) {
                   Ok(witness_row) -> {
                     let #(args, rest) = list.split(witness_row, a)
                     Ok([reconstruct(h, args), ..rest])
@@ -904,7 +918,7 @@ fn useful(
         _ -> {
           // Head is concrete (not HAny), specialize the matrix for it.
           let expanded_rest = list.append(hargs, ps)
-          case useful(s, specialize(matrix, head), expanded_rest) {
+          case useful(s, index, specialize(matrix, head), expanded_rest) {
             Ok(witness_row) -> {
               let a = head_arity(head)
               let #(args, rest) = list.split(witness_row, a)
@@ -923,15 +937,16 @@ pub fn check_exhaustiveness(
   cases: List(Case),
   span: Span,
 ) -> List(Error) {
+  let index = []
   let #(matrix, diags) =
     list.fold(cases, #([], []), fn(acc, c) {
       let #(matrix, diagnostics) = acc
-      case useful(s, matrix, [c.pattern]) {
+      case useful(s, index, matrix, [c.pattern]) {
         Ok(_) -> #([[c.pattern], ..matrix], diagnostics)
         Error(Nil) -> #(matrix, [RedundantBranch(c.span), ..diagnostics])
       }
     })
-  case useful(s, list.reverse(matrix), [PAny]) {
+  case useful(s, index, list.reverse(matrix), [PAny]) {
     Ok([witness, ..]) -> [NonExhaustiveMatch(span, witness), ..diags]
     _ -> diags
   }
