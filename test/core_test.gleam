@@ -187,7 +187,7 @@ pub fn infer_hole_test() {
 
 pub fn check_hole_test() {
   c.check(s, hole(0, s1), v32t, s2)
-  |> should.equal(#(vhole(0), s))
+  |> should.equal(#(vhole(0), c.State(..s, errors: [c.HoleUnsolved(0, s1)])))
 }
 
 // --- Rcd --- \\

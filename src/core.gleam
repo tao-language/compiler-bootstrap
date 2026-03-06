@@ -142,6 +142,7 @@ pub type Error {
   DotFieldNotFound(name: String, fields: List(#(String, Value)), span: Span)
   DotOnNonCtr(value: Value, name: String, span: Span)
   MatchEmpty(arg: Term, span: Span)
+  HoleUnsolved(id: Int, span: Span)
 
   // Exhaustiveness checks
   MatchRedundantCase(Span)
@@ -291,7 +292,10 @@ fn quote_elim(lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
   case elim {
     EDot(name) -> Term(Dot(head, name), s)
     EApp(arg) -> Term(App(head, quote(lvl, arg, s)), s)
-    // TODO: Is it okay to discard this env?
+    // The env is discarded because we're reconstructing syntax, not evaluating.
+    // The cases bodies are already Terms (syntax), not Values, so they don't
+    // need quoting. The env was only needed during evaluation to capture the
+    // closure environment for delayed matching on neutral terms.
     EMatch(_, motive, cases) ->
       Term(Match(head, quote(lvl, motive, s), cases), s)
   }
@@ -649,8 +653,8 @@ pub fn check(
       #(VLam(name, env, body), s)
     }
     Hole(id), _ -> {
-      // TODO: add warning
-      #(VNeut(HHole(id), []), s)
+      // Record unsolved hole as a warning for IDE feedback
+      #(VNeut(HHole(id), []), with_err(s, HoleUnsolved(id, term.span)))
     }
     Ctr(tag, arg), _ -> check_ctr(s, tag, arg, expected_ty, ty_span, term.span)
     _, _ -> {
