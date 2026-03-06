@@ -19,7 +19,6 @@ import core
 import gleam/int
 import gleam/list
 import gleam/string
-import grammar
 
 // ============================================================================
 // MAIN API
@@ -184,36 +183,8 @@ fn format_pattern_record(fields: List(#(String, core.Pattern))) -> String {
           name <> ": " <> do_format_pattern(pattern)
         })
         |> string.join(", ")
-      
+
       "{ " <> field_strings <> " }"
     }
-  }
-}
-
-// ============================================================================
-// GRAMMAR-BASED FORMATTING
-// ============================================================================
-
-/// Format a term using grammar rules (for future extensibility)
-pub fn format_with_grammar(term: core.Term, _grammar: grammar.Grammar) -> String {
-  format(term)
-}
-
-/// Get the grammar rule name for a term (for debugging)
-pub fn get_term_rule_name(term: core.Term) -> String {
-  case term.data {
-    core.Typ(_) -> "typ"
-    core.Lit(_) -> "literal"
-    core.LitT(_) -> "literalType"
-    core.Var(_) -> "identifier"
-    core.Hole(_) -> "hole"
-    core.Rcd(_) -> "record"
-    core.Ctr(_, _) -> "ctrExpr"
-    core.Dot(_, _) -> "appExpr"
-    core.Ann(_, _) -> "annExpr"
-    core.Lam(_, _) -> "lamExpr"
-    core.Pi(_, _, _) -> "lamExpr"
-    core.App(_, _) -> "appExpr"
-    core.Match(_, _, _) -> "matchExpr"
   }
 }

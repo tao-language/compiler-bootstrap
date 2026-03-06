@@ -15,6 +15,7 @@ A dependently typed core language with normalization by evaluation, bidirectiona
 7. [Error Recovery](#error-recovery)
 8. [API Reference](#api-reference)
 9. [References](#references)
+10. [Related Documentation](#related-documentation)
 
 ---
 
@@ -795,6 +796,36 @@ This implementation is based on established research in type theory and programm
 - **Pierce, B. C. (2002).** "Types and Programming Languages." *MIT Press.*  
   Standard reference for type systems.
 
-- **Nordström, B., Petersson, K., & Smith, J. M. (1990).** "Programming in Martin-Löf's Type Theory." *Oxford University Press.*  
+- **Nordström, B., Petersson, K., & Smith, J. M. (1990).** "Programming in Martin-Löf's Type Theory." *Oxford University Press.*
   Dependent types from a programming perspective.
 
+---
+
+## Related Documentation
+
+### Parser and Formatter
+
+- [`docs/parser-formatter.md`](parser-formatter.md) - Complete guide to the lexer, parser, and formatter
+  - Token types and lexical rules
+  - Parsing strategy and grammar
+  - Formatting rules
+  - Usage examples
+  - API reference
+
+### Implementation Files
+
+- [`src/core.gleam`](../src/core.gleam) - Core language implementation (1400+ lines)
+  - Type definitions (Term, Value, Pattern, etc.)
+  - Evaluation and normalization
+  - Unification and type checking
+  - Exhaustiveness checking
+
+- [`src/parser.gleam`](../src/parser.gleam) - Parser implementation (540+ lines)
+  - Lexer (tokenization)
+  - Recursive descent parser
+  - Error handling
+
+- [`src/formatter.gleam`](../src/formatter.gleam) - Formatter implementation (190+ lines)
+  - Term formatting
+  - Pattern formatting
+  - Simple pretty-printing
