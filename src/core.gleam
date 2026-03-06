@@ -4,65 +4,128 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 
+// ============================================================================
+// SYNTAX (Terms)
+// ============================================================================
+// Terms represent the raw Abstract Syntax Tree (AST) as written by the
+// programmer. They use De Bruijn INDICES for variables, where the index
+// represents the relative distance to the binding site (counting outward).
+
 pub type Term {
   Term(data: TermData, span: Span)
 }
 
 pub type TermData {
+  /// Universe type at level k (Type_k)
   Typ(universe: Int)
+  /// Literal value (42, 3.14, etc.)
   Lit(value: Literal)
+  /// Literal type (I32, F64, etc.)
   LitT(typ: LiteralType)
+  /// Bound variable using De Bruijn index (distance to binder)
   Var(index: Int)
+  /// Metavariable (hole) to be solved during type checking
   Hole(id: Int)
+  /// Record with named fields
   Rcd(fields: List(#(String, Term)))
+  /// Constructor application (e.g., Cons, Nil, True, False)
   Ctr(tag: String, arg: Term)
+  /// Field projection (record.field)
   Dot(arg: Term, field: String)
+  /// Type annotation (term : type)
   Ann(term: Term, typ: Term)
+  /// Lambda abstraction (λx. body)
   Lam(name: String, body: Term)
+  /// Dependent function type ((x : A) → B x)
   Pi(name: String, in: Term, out: Term)
+  /// Function application (f x)
   App(fun: Term, arg: Term)
+  /// Pattern matching (match arg with motive returning cases)
   Match(arg: Term, motive: Term, cases: List(Case))
 }
 
+// ============================================================================
+// SEMANTICS (Values)
+// ============================================================================
+// Values represent the evaluated, runtime form of terms. They use De Bruijn
+// LEVELS for variables, where the level is the absolute order of creation.
+// This makes substitution stable (no need to shift indices when moving terms).
+
 pub type Value {
+  /// Evaluated universe type
   VTyp(universe: Int)
+  /// Evaluated literal value
   VLit(value: Literal)
+  /// Evaluated literal type
   VLitT(typ: LiteralType)
+  /// Neutral term: stuck on a variable or hole with pending operations
   VNeut(head: Head, spine: List(Elim))
+  /// Evaluated record
   VRcd(fields: List(#(String, Value)))
+  /// Evaluated constructor
   VCtr(tag: String, arg: Value)
+  /// Closure: lambda with captured environment
   VLam(name: String, env: Env, body: Term)
+  /// Dependent function type with evaluated domain
   VPi(name: String, env: Env, in: Value, out: Term)
+  /// Error value for error recovery (continues checking after errors)
   VErr
 }
 
 pub type Type =
   Value
 
+// ============================================================================
+// PATTERNS
+// ============================================================================
+// Patterns for match expressions and let-bindings.
+
 pub type Pattern {
+  /// Wildcard pattern (_) - matches anything, doesn't bind
   PAny
+  /// As-pattern (x @ pattern) - binds the matched value
   PAs(pattern: Pattern, name: String)
+  /// Type pattern (Type_k)
   PTyp(universe: Int)
+  /// Literal pattern (42)
   PLit(value: Literal)
+  /// Literal type pattern (I32)
   PLitT(value: LiteralType)
+  /// Record pattern {x = p, y = q}
   PRcd(fields: List(#(String, Pattern)))
+  /// Constructor pattern (Cons p)
   PCtr(tag: String, arg: Pattern)
 }
 
+// ============================================================================
+// NEUTRAL TERMS
+// ============================================================================
+// Neutral terms represent computations stuck on unknowns (variables or holes).
+// The head is the variable/hole, and the spine is a list of pending operations.
+
 pub type Head {
+  /// Variable head using De Bruijn level (absolute, stable)
   HVar(level: Int)
+  /// Hole/metavariable head (to be solved by unification)
   HHole(id: Int)
 }
 
 pub type Elim {
+  /// Field projection (.field)
   EDot(name: String)
+  /// Function application
   EApp(arg: Value)
+  /// Delayed match (env captured for later evaluation)
   EMatch(env: Env, motive: Value, cases: List(Case))
 }
 
 pub type Case {
   Case(pattern: Pattern, body: Term, span: Span)
 }
+
+// ============================================================================
+// LITERALS
+// ============================================================================
 
 pub type Literal {
   I32(value: Int)
@@ -82,9 +145,19 @@ pub type LiteralType {
   F64T
 }
 
+// ============================================================================
+// SOURCE LOCATIONS
+// ============================================================================
+
 pub type Span {
   Span(file: String, row: Int, col: Int)
 }
+
+// ============================================================================
+// CONSTRUCTOR DEFINITIONS
+// ============================================================================
+// Constructors can have type parameters and GADT-style return types.
+// The ret_ty can mention the params, enabling indexed types.
 
 pub type CtrDef {
   CtrDef(params: List(String), arg_ty: Term, ret_ty: Term)
@@ -96,25 +169,45 @@ pub type CtrEnv =
 pub type CtrIndex =
   List(#(String, CtrEnv))
 
+// ============================================================================
+// ENVIRONMENTS AND STATE
+// ============================================================================
+
 pub type Env =
   List(Value)
 
+/// Typing context: maps variable names to their (value, type) pairs.
+/// Used during type checking to track bound variables and their types.
 pub type Context =
   List(#(String, #(Value, Type)))
 
+/// Substitution: maps hole IDs to their solved values.
+/// Accumulated during unification to solve metavariables.
 pub type Subst =
   List(#(Int, Value))
 
+/// Type checking state, threading counters, contexts, and error accumulation.
 pub type State {
   State(
+    /// Next fresh hole ID for metavariables
     hole: Int,
+    /// Next fresh variable level for De Bruijn levels
     var: Int,
+    /// Constructor definitions (global environment)
     ctrs: CtrEnv,
+    /// Typing context (local variables)
     ctx: Context,
+    /// Substitution (solved metavariables)
     sub: Subst,
+    /// Accumulated errors (for error recovery and IDE feedback)
     errors: List(Error),
   )
 }
+
+// ============================================================================
+// EXHAUSTIVENESS CHECKING
+// ============================================================================
+// Pattern heads for the matrix algorithm (Maranget's algorithm).
 
 type PMatrix =
   List(List(Pattern))
@@ -127,6 +220,12 @@ pub type PHead {
   HRcd(fields: List(String))
   HCtr(name: String)
 }
+
+// ============================================================================
+// ERRORS
+// ============================================================================
+// Error types for type checking and exhaustiveness checking.
+// Errors are accumulated in State rather than thrown, enabling IDE support.
 
 pub type Error {
   // Type errors
@@ -143,17 +242,32 @@ pub type Error {
   DotOnNonCtr(value: Value, name: String, span: Span)
   MatchEmpty(arg: Term, span: Span)
   HoleUnsolved(id: Int, span: Span)
+  SpineMismatch(span1: Span, span2: Span)
+  ArityMismatch(span1: Span, span2: Span)
 
   // Exhaustiveness checks
   MatchRedundantCase(Span)
   MatchMissingCase(Span, Pattern)
 
-  // Runtime errors
+  // Runtime errors (unexpected)
   TODO(message: String)
   MatchUnhandledCase(value: Value, span: Span)
   AppNotFunction(value: Value)
 }
 
+// ============================================================================
+// EVALUATION
+// ============================================================================
+// Evaluates a Term to a Value in the given environment.
+// This is the "normalization" part of Normalization by Evaluation.
+
+/// Evaluate a term to its normal form in the given environment.
+/// 
+/// The environment maps De Bruijn indices to values. When evaluating:
+/// - Variables look up their index in the environment
+/// - Lambdas become closures (capturing the current environment)
+/// - Applications evaluate the function and argument, then apply
+/// - Neutral terms are created when computation is stuck on unknowns
 pub fn eval(env: Env, term: Term) -> Value {
   case term.data {
     Typ(k) -> VTyp(k)
@@ -184,6 +298,10 @@ pub fn eval(env: Env, term: Term) -> Value {
   }
 }
 
+/// Evaluate a field projection.
+/// 
+/// If the value is neutral (unknown), the projection is added to the spine.
+/// If the value is a record, the field is looked up immediately.
 fn do_dot(value: Value, name: String) -> Value {
   case value {
     VNeut(head, spine) -> VNeut(head, [EDot(name), ..spine])
@@ -196,6 +314,11 @@ fn do_dot(value: Value, name: String) -> Value {
   }
 }
 
+/// Apply a function to an argument.
+/// 
+/// If the function is neutral (unknown), the application is added to the spine.
+/// If the function is a lambda, the argument is substituted into the body.
+/// Otherwise, returns VErr (not a function).
 pub fn do_app(fun: Value, arg: Value) -> Value {
   case fun {
     VNeut(head, spine) -> VNeut(head, [EApp(arg), ..spine])
@@ -204,6 +327,12 @@ pub fn do_app(fun: Value, arg: Value) -> Value {
   }
 }
 
+/// Evaluate a pattern match.
+/// 
+/// If the argument is neutral (unknown), the match is delayed by adding it to
+/// the spine. Otherwise, we try to match the argument against each case.
+/// 
+/// The motive is the return type of the match (for dependent pattern matching).
 pub fn do_match(env: Env, arg: Value, motive: Value, cases: List(Case)) -> Value {
   case arg {
     VNeut(head, spine) -> VNeut(head, [EMatch(env, motive, cases), ..spine])
@@ -215,6 +344,9 @@ pub fn do_match(env: Env, arg: Value, motive: Value, cases: List(Case)) -> Value
   }
 }
 
+/// Try to match a value against a list of cases, returning the first match.
+/// 
+/// Returns the bindings (environment) and body of the matching case.
 pub fn do_match_cases(arg: Value, cases: List(Case)) -> Option(#(Env, Term)) {
   case cases {
     [] -> None
@@ -226,11 +358,17 @@ pub fn do_match_cases(arg: Value, cases: List(Case)) -> Option(#(Env, Term)) {
   }
 }
 
+/// Match a pattern against a value, returning bindings on success.
+/// 
+/// This is runtime pattern matching (used during evaluation), not type checking.
+/// PAny always matches. PAs binds the matched value. Constructors and records
+/// recursively match their contents.
 pub fn do_match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
   case pattern, value {
     PAny, _ -> Ok([])
     PAs(p, _), _ -> {
       use env <- result.try(do_match_pattern(p, value))
+      // PAs binds the matched value (for use in the body)
       Ok(list.append(env, [value]))
     }
     PTyp(pk), VTyp(vk) if pk == vk -> Ok([])
@@ -249,12 +387,30 @@ pub fn do_match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
   }
 }
 
+// ============================================================================
+// NORMALIZATION BY EVALUATION
+// ============================================================================
+// Normalization by Evaluation (NbE) works by:
+// 1. Evaluating a term to its semantic value (normal form)
+// 2. Quoting the value back to syntax
+// 
+// This is more efficient than syntactic reduction and handles alpha-equivalence
+// automatically (since bound variables are represented canonically).
+
+/// Normalize a term by evaluating and quoting back to syntax.
+/// 
+/// This produces the beta-normal, eta-long form of the term.
 pub fn normalize(env: Env, term: Term, s: Span) -> Term {
   let val = eval(env, term)
   quote(list.length(env), val, s)
 }
 
-// Converts a Value (semantics) back to a Term (syntax).
+/// Quote a value back to syntax (reification).
+/// 
+/// The level parameter tracks the current De Bruijn level. When quoting a
+/// lambda, we create a fresh neutral variable at the current level, apply it
+/// to the body, and quote the result. This converts De Bruijn levels back to
+/// indices using the formula: index = lvl - level - 1.
 pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
   case value {
     VTyp(k) -> Term(Typ(k), s)
@@ -268,13 +424,18 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
       Term(Rcd(list.map(fields, fn(kv) { #(kv.0, quote(lvl, kv.1, s)) })), s)
     VCtr(tag, arg) -> Term(Ctr(tag, quote(lvl, arg, s)), s)
     VLam(name, env, body) -> {
+      // Create a fresh neutral variable at the current level
       let fresh = VNeut(HVar(lvl), [])
+      // Apply it to the body and evaluate
       let body_val = eval([fresh, ..env], body)
+      // Quote the result at level + 1
       let body_quote = quote(lvl + 1, body_val, body.span)
       Term(Lam(name, body_quote), s)
     }
     VPi(name, env, in_val, out_term) -> {
+      // Quote the domain (already evaluated)
       let in_quote = quote(lvl, in_val, s)
+      // Create a fresh neutral variable for the codomain
       let fresh = VNeut(HVar(lvl), [])
       let out_val = eval([fresh, ..env], out_term)
       let out_quote = quote(lvl + 1, out_val, out_term.span)
@@ -284,10 +445,12 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
   }
 }
 
+/// Quote a neutral term by reconstructing the head and applying the spine.
 fn quote_neut(lvl: Int, head: Term, spine: List(Elim), s: Span) -> Term {
   list.fold_right(spine, head, fn(head, elim) { quote_elim(lvl, head, elim, s) })
 }
 
+/// Quote a single elimination (spine element).
 fn quote_elim(lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
   case elim {
     EDot(name) -> Term(Dot(head, name), s)
@@ -301,6 +464,13 @@ fn quote_elim(lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
   }
 }
 
+/// Quote a neutral head (variable or hole) back to a term.
+/// 
+/// For variables, converts from De Bruijn level to index:
+/// index = lvl - level - 1
+/// 
+/// For example, at level 5, quoting HVar(2):
+/// index = 5 - 2 - 1 = 2
 fn quote_head(lvl: Int, head: Head, s: Span) -> Term {
   case head {
     HVar(l) -> Term(Var(lvl - l - 1), s)
@@ -308,6 +478,18 @@ fn quote_head(lvl: Int, head: Head, s: Span) -> Term {
   }
 }
 
+// ============================================================================
+// UNIFICATION
+// ============================================================================
+// Unification solves metavariables by comparing two values and accumulating
+// solutions in the substitution. It implements higher-order unification with
+// an occurs check to prevent infinite types.
+
+/// Check if a value contains a specific hole (occurs check).
+/// 
+/// This prevents infinite types like ?0 = ?0 → ?0 by checking if the hole
+/// being solved appears in the solution. The substitution is forced to
+/// check through solved metavariables.
 pub fn occurs(sub: Subst, id: Int, value: Value) -> Bool {
   case force(sub, value) {
     VTyp(_) | VLit(_) | VLitT(_) | VErr -> False
@@ -322,6 +504,7 @@ pub fn occurs(sub: Subst, id: Int, value: Value) -> Bool {
   }
 }
 
+/// Check if an elimination (spine element) contains a specific hole.
 pub fn occurs_elim(sub: Subst, id: Int, elim: Elim) -> Bool {
   case elim {
     EDot(_) -> False
@@ -331,6 +514,21 @@ pub fn occurs_elim(sub: Subst, id: Int, elim: Elim) -> Bool {
   }
 }
 
+/// Unify two values, solving metavariables and accumulating solutions.
+/// 
+/// Returns Ok(state) with updated substitution if unification succeeds.
+/// Returns Error if the values are incompatible (type error).
+/// 
+/// IMPORTANT: `unify` itself is NOT error-resilient—it returns errors
+/// immediately when values don't match. Error recovery happens at the
+/// `infer` and `check` level, which catch unify errors, record them in
+/// the state, and continue with VErr.
+/// 
+/// Key cases:
+/// - Holes: If one side is an unsolved hole, solve it (with occurs check)
+/// - Neutral terms: Unify heads and spines (errors on mismatch)
+/// - Lambdas/Pis: Create fresh variable, apply to both, unify results
+/// - VErr: Always succeeds (propagates errors without blocking)
 pub fn unify(
   s: State,
   v1: Value,
@@ -357,12 +555,14 @@ pub fn unify(
     VRcd(fields1), VRcd(fields2) -> unify_fields(s, fields1, fields2, s1, s2)
     VCtr(k1, arg1), VCtr(k2, arg2) if k1 == k2 -> unify(s, arg1, arg2, s1, s2)
     VLam(_, env1, body1), VLam(_, env2, body2) -> {
+      // Unify lambdas by applying both to a fresh variable
       let #(fresh, s) = new_var(s)
       let a = eval([fresh, ..env1], body1)
       let b = eval([fresh, ..env2], body2)
       unify(s, a, b, s1, s2)
     }
     VPi(_, env1, in1, out1), VPi(_, env2, in2, out2) -> {
+      // Unify Pi types: first domains, then codomains
       use _ <- result.try(unify(s, in1, in2, s1, s2))
       let #(fresh, s) = new_var(s)
       let a = eval([fresh, ..env1], out1)
@@ -375,6 +575,10 @@ pub fn unify(
   }
 }
 
+/// Unify two record field lists.
+/// 
+/// Records are compared by field name (order doesn't matter). Missing fields
+/// produce an error. Fields are sorted by name during comparison.
 fn unify_fields(
   s: State,
   args1: List(#(String, Value)),
@@ -406,6 +610,11 @@ fn unify_fields(
   }
 }
 
+/// Unify two eliminations (spine elements).
+/// 
+/// Returns an error if the eliminations are incompatible (e.g., projection
+/// vs. application). This error will be caught by the caller and recorded
+/// for error recovery.
 fn unify_elim(
   s: State,
   e1: Elim,
@@ -416,10 +625,17 @@ fn unify_elim(
   case e1, e2 {
     EDot(n1), EDot(n2) if n1 == n2 -> Ok(s)
     EApp(a1), EApp(a2) -> unify(s, a1, a2, s1, s2)
-    _, _ -> Error(TODO("Spine mismatch"))
+    // Spine mismatch: incompatible eliminations
+    // Return error - caller will record it and continue with VErr
+    _, _ -> Error(SpineMismatch(s1, s2))
   }
 }
 
+/// Unify two spine lists element-by-element.
+/// 
+/// Returns an error if the spines have different lengths or incompatible
+/// elements. This error will be caught by the caller and recorded for
+/// error recovery.
 fn unify_elim_list(
   s: State,
   l1: List(Elim),
@@ -433,14 +649,54 @@ fn unify_elim_list(
       use s <- result.try(unify_elim(s, e1, e2, s1, s2))
       unify_elim_list(s, xs, ys, s1, s2)
     }
-    _, _ -> Error(TODO("ArityMismatch"))
+    // Arity mismatch: different number of eliminations
+    // Return error - caller will record it and continue with VErr
+    [], _ | _, [] -> Error(ArityMismatch(s1, s2))
   }
 }
 
+/// Add an error to the state's error list.
+/// 
+/// Used throughout type checking to accumulate errors rather than failing
+/// immediately. This enables IDE support where all errors are shown at once.
 pub fn with_err(s: State, err: Error) -> State {
   State(..s, errors: list.append(s.errors, [err]))
 }
 
+// ============================================================================
+// BIDIRECTIONAL TYPE CHECKING
+// ============================================================================
+// Bidirectional typing uses two modes:
+// 
+// 1. INFER (synthesis): Given a term, compute its type
+//    - Used for: variables, literals, applications, holes
+//    - Direction: term → type (bottom-up)
+// 
+// 2. CHECK (verification): Given a term and expected type, verify it matches
+//    - Used for: lambdas, constructors, annotations
+//    - Direction: type → term (top-down)
+// 
+// This allows omitting type annotations where inference is possible.
+//
+// ERROR RECOVERY DESIGN:
+// - `unify` returns errors immediately when types don't match
+// - `infer` and `check` catch these errors, record them via `with_err`,
+//   and continue with `VErr` values
+// - This ensures all errors are reported in one pass (critical for LSP/IDE)
+// - The guarantee: if there are no errors, the program is fully correct
+
+/// Infer the type of a term (synthesis direction).
+/// 
+/// Returns the evaluated value, its type, and the updated state.
+/// 
+/// ERROR HANDLING: On error, records the error in state and returns VErr
+/// for both value and type, allowing checking to continue.
+/// 
+/// Key cases:
+/// - Variables: Look up in context
+/// - Applications: Infer function type, check argument, return result type
+/// - Lambdas: Create a hole for the domain, infer the codomain
+/// - Constructors: Look up definition, solve GADT parameters via unification
 pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
   case term.data {
     Typ(k) -> #(VTyp(k), VTyp(k + 1), s)
@@ -495,6 +751,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       #(val, ty_val, s)
     }
     Lam(name, body) -> {
+      // For lambda inference, we create a hole for the domain type
       let env = get_env(s)
       let #(t1_hole, s) = new_hole(s)
       let #(_, s) = def_var(s, name, t1_hole)
@@ -524,6 +781,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
     Match(arg, motive, cases) -> {
       let env = get_env(s)
       let #(arg_val, arg_ty, s) = infer(s, arg)
+      // The motive type is (x : arg_ty) → Type, where x is the scrutinee
       let motive_ty = VPi("_", env, arg_ty, Term(Typ(0), arg.span))
       let #(motive_val, s) = check(s, motive, motive_ty, motive.span)
       let s = case cases {
@@ -545,6 +803,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
   }
 }
 
+/// Get the type of a literal value.
 fn typeof_lit(lit: Literal) -> Value {
   case lit {
     I32(_) -> VLitT(I32T)
@@ -556,6 +815,7 @@ fn typeof_lit(lit: Literal) -> Value {
   }
 }
 
+/// Infer types for all record fields.
 fn infer_fields(
   s: State,
   fields: List(#(String, Term)),
@@ -570,6 +830,16 @@ fn infer_fields(
   }
 }
 
+/// Bind variables from a pattern against an expected type.
+/// 
+/// This is used during type checking of match branches and let-bindings.
+/// It adds bound variables to the context and returns the matched value.
+/// 
+/// Key cases:
+/// - PAny: Creates a hole (unknown value)
+/// - PAs: Binds the matched value with the given name
+/// - PRcd: Recursively binds fields, reporting missing ones
+/// - PCtr: Solves GADT parameters via unification with the expected type
 pub fn bind_pattern(
   s: State,
   pattern: Pattern,
@@ -638,6 +908,18 @@ pub fn bind_pattern(
   }
 }
 
+/// Check that a term has the expected type (verification direction).
+/// 
+/// Returns the evaluated value and updated state.
+/// 
+/// ERROR HANDLING: On error, records the error in state and returns VErr,
+/// allowing checking to continue. This is how error recovery is implemented.
+/// 
+/// Key cases:
+/// - Lambdas: Extend context with the domain type, check the body
+/// - Holes: Record as unsolved (for IDE feedback)
+/// - Constructors: Delegate to check_ctr for GADT parameter solving
+/// - Default: Infer the type and unify with the expected type
 pub fn check(
   s: State,
   term: Term,
@@ -667,6 +949,11 @@ pub fn check(
   }
 }
 
+/// Check a constructor against an expected type.
+/// 
+/// This handles GADT-style constructors where the return type may index
+/// the type parameters. The expected type is unified with the constructor's
+/// return type to solve for the parameters.
 fn check_ctr(
   s: State,
   tag: String,
@@ -689,6 +976,11 @@ fn check_ctr(
   }
 }
 
+/// Process a constructor definition for type checking.
+/// 
+/// Creates holes for each type parameter and infers the argument and
+/// return types in the extended context. Returns the parameter hole IDs
+/// and the inferred types.
 fn check_ctr_def(s: State, ctr: CtrDef) -> #(List(Int), Value, Value, State) {
   let #(params, s) =
     list.fold(ctr.params, #([], s), fn(acc, name) {
@@ -704,6 +996,13 @@ fn check_ctr_def(s: State, ctr: CtrDef) -> #(List(Int), Value, Value, State) {
   #(params, arg_ty, ret_ty, s)
 }
 
+/// Check that two types are equal by unifying them.
+/// 
+/// Returns the forced (substituted) type and updated state.
+/// 
+/// ERROR HANDLING: On unify failure, records the error and returns.
+/// This is the primary place where unify errors are caught and converted
+/// to error recovery (VErr propagation).
 pub fn check_type(
   s: State,
   t1: Value,
@@ -717,6 +1016,11 @@ pub fn check_type(
   }
 }
 
+/// Force all solved metavariables in a value.
+/// 
+/// This recursively replaces holes with their solutions from the
+/// substitution. If a hole has a spine (pending operations), the
+/// spine is applied to the solution.
 pub fn force(sub: Subst, value: Value) -> Value {
   case value {
     VNeut(HHole(id), spine) ->
@@ -731,6 +1035,9 @@ pub fn force(sub: Subst, value: Value) -> Value {
   }
 }
 
+/// Apply a spine (list of eliminations) to a value.
+/// 
+/// This is used when forcing metavariables that have pending operations.
 fn apply_spine(value: Value, spine: List(Elim)) -> Value {
   list.fold(spine, value, fn(value, elim) {
     case elim {
@@ -741,6 +1048,11 @@ fn apply_spine(value: Value, spine: List(Elim)) -> Value {
   })
 }
 
+/// Solve constructor parameters from the substitution.
+/// 
+/// After unifying a constructor's return type with the expected type,
+/// the parameters should be solved. This function extracts them from
+/// the substitution, recording errors for any unsolved parameters.
 pub fn ctr_solve_params(
   s: State,
   ctr: CtrDef,
@@ -760,8 +1072,22 @@ pub fn ctr_solve_params(
   })
 }
 
-// -- Exhaustiveness checks -- \\
-// http://moscova.inria.fr/~maranget/papers/warn/index.html
+// ============================================================================
+// EXHAUSTIVENESS CHECKING
+// ============================================================================
+// Implementation of Maranget's algorithm for pattern match exhaustiveness.
+// Reference: http://moscova.inria.fr/~maranget/papers/warn/index.html
+//
+// The algorithm uses a matrix where:
+// - Each row is a pattern already matched
+// - We check if a new pattern (vector) is "useful" (covers new cases)
+// - If useful, it's not redundant
+// - If the matrix doesn't cover all cases, we get missing witnesses
+
+/// Deconstruct a pattern into its head constructor and arguments.
+/// 
+/// The head determines which specializations are possible.
+/// For records, fields are sorted by name for canonical comparison.
 fn deconstruct(pat: Pattern) -> #(PHead, List(Pattern)) {
   case pat {
     PAny -> #(HAny, [])
@@ -778,6 +1104,7 @@ fn deconstruct(pat: Pattern) -> #(PHead, List(Pattern)) {
   }
 }
 
+/// Reconstruct a pattern from its head and arguments.
 fn reconstruct(head: PHead, args: List(Pattern)) -> Pattern {
   case head {
     HAny -> PAny
@@ -789,6 +1116,7 @@ fn reconstruct(head: PHead, args: List(Pattern)) -> Pattern {
   }
 }
 
+/// Get the arity (number of arguments) of a pattern head.
 fn head_arity(head: PHead) -> Int {
   case head {
     HRcd(fs) -> list.length(fs)
@@ -797,6 +1125,10 @@ fn head_arity(head: PHead) -> Int {
   }
 }
 
+/// Compute the default matrix by removing patterns that aren't wildcards.
+/// 
+/// Used when the first pattern is a wildcard—we skip it and continue
+/// with the rest of the row.
 fn default_matrix(matrix: PMatrix) -> PMatrix {
   list.filter_map(matrix, fn(row) {
     case row {
@@ -811,6 +1143,12 @@ fn default_matrix(matrix: PMatrix) -> PMatrix {
   })
 }
 
+/// Specialize a matrix for a specific constructor head.
+/// 
+/// For each row:
+/// - If the first pattern matches the target, extract its arguments
+/// - If the first pattern is a wildcard, expand it with wildcards
+/// - Otherwise, the row doesn't apply
 pub fn specialize(matrix: PMatrix, target: PHead) -> PMatrix {
   list.filter_map(matrix, fn(row) {
     case row {
@@ -818,6 +1156,7 @@ pub fn specialize(matrix: PMatrix, target: PHead) -> PMatrix {
         case deconstruct(p) {
           #(head, args) if head == target -> Ok(list.append(args, ps))
           #(HAny, _) -> {
+            // Wildcard expands to match any constructor
             let qs = list.repeat(PAny, head_arity(target))
             Ok(list.append(qs, ps))
           }
@@ -829,6 +1168,9 @@ pub fn specialize(matrix: PMatrix, target: PHead) -> PMatrix {
   })
 }
 
+/// Extract all concrete (non-wildcard) heads from the first column.
+/// 
+/// Used to determine which constructors are already covered.
 pub fn get_concrete_heads(matrix: PMatrix) -> List(PHead) {
   list.filter_map(matrix, fn(r) {
     case r {
@@ -843,6 +1185,11 @@ pub fn get_concrete_heads(matrix: PMatrix) -> List(PHead) {
   |> list.unique
 }
 
+/// Find missing constructor heads for GADT-style exhaustiveness.
+/// 
+/// For constructor patterns, we check which other constructors of the
+/// same type could apply but aren't covered. This handles GADTs where
+/// different constructors may have different return types.
 pub fn get_missing_heads(
   s: State,
   index: CtrIndex,
@@ -877,6 +1224,17 @@ pub fn get_missing_heads(
   }
 }
 
+/// Check if a pattern vector is useful (not redundant) against a matrix.
+/// 
+/// Returns a list of witnesses—patterns that the vector covers but the
+/// matrix doesn't. If empty, the pattern is redundant.
+/// 
+/// Algorithm:
+/// - If matrix is empty, the vector is a witness (useful)
+/// - If vector is empty but matrix isn't, no witnesses (redundant)
+/// - Otherwise, split on the first pattern:
+///   - If wildcard: check missing constructors and concrete heads
+///   - If concrete: specialize matrix and recurse
 pub fn useful(
   s: State,
   index: CtrIndex,
@@ -931,12 +1289,21 @@ pub fn useful(
   }
 }
 
+/// Check a list of match cases for exhaustiveness.
+/// 
+/// Returns a list of errors:
+/// - MatchRedundantCase: A case that's already covered by previous cases
+/// - MatchMissingCase: A pattern that isn't covered by any case
+/// 
+/// The algorithm builds a matrix incrementally, checking each new case
+/// against what's already covered.
 pub fn check_exhaustiveness(
   s: State,
   cases: List(Case),
   span: Span,
 ) -> List(Error) {
   let env = get_env(s)
+  // Build an index of constructors by their return type tag
   let index =
     list.fold(s.ctrs, [], fn(index, entry) {
       let #(tag, ctr) = entry
@@ -947,6 +1314,7 @@ pub fn check_exhaustiveness(
       let existing = list.key_find(index, ret_tag) |> result.unwrap([])
       list.key_set(index, ret_tag, [#(tag, ctr), ..existing])
     })
+  // Check each case for redundancy
   let #(matrix, redundant) =
     list.fold(cases, #([], []), fn(acc, c) {
       let #(matrix, diagnostics) = acc
@@ -955,6 +1323,7 @@ pub fn check_exhaustiveness(
         _ -> #([[c.pattern], ..matrix], diagnostics)
       }
     })
+  // Check for missing cases
   let missing =
     useful(s, index, list.reverse(matrix), [PAny])
     |> list.map(fn(witness_row) {
@@ -964,8 +1333,14 @@ pub fn check_exhaustiveness(
   list.append(redundant, missing)
 }
 
-// -- Helper functions -- \\
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
 
+/// Get element at index i from a list (0-based).
+/// 
+/// Returns None if the index is out of bounds.
+/// This is used for De Bruijn index lookup in environments.
 pub fn list_get(xs: List(a), i: Int) -> Option(a) {
   case xs {
     [] -> None
@@ -974,6 +1349,7 @@ pub fn list_get(xs: List(a), i: Int) -> Option(a) {
   }
 }
 
+/// Generate a list of integers from start to stop (exclusive).
 pub fn range(start: Int, stop: Int, step: Int) -> List(Int) {
   case start < stop {
     True -> [start, ..range(start + step, stop, step)]
@@ -981,10 +1357,12 @@ pub fn range(start: Int, stop: Int, step: Int) -> List(Int) {
   }
 }
 
+/// Format a span and message for error reporting.
 pub fn show_msg(s: Span, msg: String) -> String {
   show_span(s) <> " " <> msg
 }
 
+/// Format a span as a string for error reporting.
 pub fn show_span(s: Span) -> String {
   "["
   <> s.file
@@ -995,15 +1373,27 @@ pub fn show_span(s: Span) -> String {
   <> "]"
 }
 
+/// Extract the runtime environment from the typing context.
+/// 
+/// The context stores (value, type) pairs, but for evaluation we only
+/// need the values. This extracts just the values in order.
 fn get_env(s: State) -> Env {
   list.map(s.ctx, fn(kv) { kv.1.0 })
 }
 
+/// Create a fresh variable for type checking.
+/// 
+/// Returns a neutral term at the current level and increments the counter.
+/// Used when checking lambdas and Pi types to represent bound variables.
 fn new_var(s: State) -> #(Value, State) {
   let var = VNeut(HVar(s.var), [])
   #(var, State(..s, var: s.var + 1))
 }
 
+/// Define a variable in the typing context.
+/// 
+/// Creates a fresh variable and adds it to the context with the given
+/// name and type. Empty names are replaced with a generated name.
 fn def_var(s: State, name: String, ty: Type) -> #(Value, State) {
   let name = case name {
     "" -> "$" <> int.to_string(s.var)
@@ -1013,6 +1403,10 @@ fn def_var(s: State, name: String, ty: Type) -> #(Value, State) {
   #(var, State(..s, ctx: [#(name, #(var, ty)), ..s.ctx]))
 }
 
+/// Create a fresh hole (metavariable) for type checking.
+/// 
+/// Returns a neutral hole term and increments the hole counter.
+/// Used when the type is unknown and should be inferred later.
 fn new_hole(s: State) -> #(Value, State) {
   let hole = VNeut(HHole(s.hole), [])
   #(hole, State(..s, hole: s.hole + 1))
