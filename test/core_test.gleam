@@ -1,14 +1,359 @@
 import core as c
 import gleeunit
 import gleeunit/should
-
-// TODO: test unify
-// TODO: test quote
-// TODO: test normalize
+import gleam/list
 
 pub fn main() {
   gleeunit.main()
 }
+
+// ============================================================================
+// UNIFY TESTS
+// ============================================================================
+
+pub fn unify_typ_equal_test() {
+  c.unify(s, c.VTyp(0), c.VTyp(0), s1, s2) |> should.equal(Ok(s))
+  c.unify(s, c.VTyp(1), c.VTyp(1), s1, s2) |> should.equal(Ok(s))
+}
+
+pub fn unify_typ_mismatch_test() {
+  c.unify(s, c.VTyp(0), c.VTyp(1), s1, s2)
+  |> should.equal(Error(c.TypeMismatch(c.VTyp(0), c.VTyp(1), s1, s2)))
+}
+
+pub fn unify_lit_equal_test() {
+  c.unify(s, v32(1), v32(1), s1, s2) |> should.equal(Ok(s))
+  c.unify(s, v64(2), v64(2), s1, s2) |> should.equal(Ok(s))
+}
+
+pub fn unify_lit_mismatch_test() {
+  c.unify(s, v32(1), v32(2), s1, s2)
+  |> should.equal(Error(c.TypeMismatch(v32(1), v32(2), s1, s2)))
+}
+
+pub fn unify_litt_equal_test() {
+  c.unify(s, v32t, v32t, s1, s2) |> should.equal(Ok(s))
+  c.unify(s, v64t, v64t, s1, s2) |> should.equal(Ok(s))
+}
+
+pub fn unify_litt_mismatch_test() {
+  c.unify(s, v32t, v64t, s1, s2)
+  |> should.equal(Error(c.TypeMismatch(v32t, v64t, s1, s2)))
+}
+
+pub fn unify_hole_solve_test() {
+  // Solving an unsolved hole
+  c.unify(s, vhole(0), v32t, s1, s2)
+  |> should.equal(Ok(c.State(..s, sub: [#(0, v32t)])))
+  
+  // Symmetric case
+  c.unify(s, v32t, vhole(0), s1, s2)
+  |> should.equal(Ok(c.State(..s, sub: [#(0, v32t)])))
+}
+
+pub fn unify_hole_already_solved_test() {
+  // Hole already solved to v32t, unify with v32t succeeds
+  let s = c.State(..s, sub: [#(0, v32t)])
+  c.unify(s, vhole(0), v32t, s1, s2) |> should.equal(Ok(s))
+}
+
+pub fn unify_hole_occurs_check_test() {
+  // Occurs check: hole cannot be solved to a type containing itself
+  // Note: This tests the occurs check through a neutral term spine
+  let val = c.VNeut(c.HHole(0), [c.EApp(v32t)])
+  c.unify(s, vhole(0), val, s1, s2)
+  |> should.equal(Error(c.InfiniteType(0, val, s1, s2)))
+}
+
+pub fn unify_neut_equal_test() {
+  // Same head and spine
+  let v1 = c.VNeut(c.HVar(0), [c.EDot("x")])
+  let v2 = c.VNeut(c.HVar(0), [c.EDot("x")])
+  c.unify(s, v1, v2, s1, s2) |> should.equal(Ok(s))
+}
+
+pub fn unify_neut_head_mismatch_test() {
+  // Different heads should fail
+  let v1 = c.VNeut(c.HVar(0), [])
+  let v2 = c.VNeut(c.HVar(1), [])
+  c.unify(s, v1, v2, s1, s2)
+  |> should.equal(Error(c.TypeMismatch(v1, v2, s1, s2)))
+}
+
+pub fn unify_rcd_equal_test() {
+  let v1 = c.VRcd([#("a", v32t)])
+  let v2 = c.VRcd([#("a", v32t)])
+  c.unify(s, v1, v2, s1, s2) |> should.equal(Ok(s))
+}
+
+pub fn unify_rcd_field_order_test() {
+  // Field order shouldn't matter
+  let v1 = c.VRcd([#("a", v32t), #("b", v64t)])
+  let v2 = c.VRcd([#("b", v64t), #("a", v32t)])
+  c.unify(s, v1, v2, s1, s2) |> should.equal(Ok(s))
+}
+
+pub fn unify_rcd_missing_field_test() {
+  let v1 = c.VRcd([#("a", v32t)])
+  let v2 = c.VRcd([])
+  c.unify(s, v1, v2, s1, s2)
+  |> should.equal(Error(c.RcdMissingFields(["a"], s2)))
+}
+
+pub fn unify_ctr_equal_test() {
+  let v1 = c.VCtr("A", v32t)
+  let v2 = c.VCtr("A", v32t)
+  c.unify(s, v1, v2, s1, s2) |> should.equal(Ok(s))
+}
+
+pub fn unify_ctr_tag_mismatch_test() {
+  let v1 = c.VCtr("A", v32t)
+  let v2 = c.VCtr("B", v32t)
+  c.unify(s, v1, v2, s1, s2)
+  |> should.equal(Error(c.TypeMismatch(v1, v2, s1, s2)))
+}
+
+pub fn unify_lam_equal_test() {
+  let v1 = c.VLam("x", [], c.Term(c.Var(0), s1))
+  let v2 = c.VLam("y", [], c.Term(c.Var(0), s1))
+  c.unify(s, v1, v2, s1, s2)
+  |> should.equal(Ok(c.State(..s, var: 1)))
+}
+
+pub fn unify_pi_equal_test() {
+  let v1 = c.VPi("x", [], v32t, c.Term(c.Var(0), s1))
+  let v2 = c.VPi("y", [], v32t, c.Term(c.Var(0), s1))
+  c.unify(s, v1, v2, s1, s2)
+  |> should.equal(Ok(c.State(..s, var: 1)))
+}
+
+pub fn unify_pi_domain_mismatch_test() {
+  let v1 = c.VPi("x", [], v32t, c.Term(c.Var(0), s1))
+  let v2 = c.VPi("x", [], v64t, c.Term(c.Var(0), s1))
+  c.unify(s, v1, v2, s1, s2)
+  |> should.equal(Error(c.TypeMismatch(v32t, v64t, s1, s2)))
+}
+
+pub fn unify_verr_test() {
+  // VErr always unifies successfully (error recovery)
+  c.unify(s, c.VErr, v32t, s1, s2) |> should.equal(Ok(s))
+  c.unify(s, v32t, c.VErr, s1, s2) |> should.equal(Ok(s))
+  c.unify(s, c.VErr, c.VErr, s1, s2) |> should.equal(Ok(s))
+}
+
+// ============================================================================
+// QUOTE TESTS
+// ============================================================================
+
+pub fn quote_typ_test() {
+  c.quote(0, c.VTyp(0), s1) |> should.equal(c.Term(c.Typ(0), s1))
+  c.quote(0, c.VTyp(1), s1) |> should.equal(c.Term(c.Typ(1), s1))
+}
+
+pub fn quote_lit_test() {
+  c.quote(0, v32(1), s1) |> should.equal(c.Term(c.Lit(c.I32(1)), s1))
+  c.quote(0, v64(2), s1) |> should.equal(c.Term(c.Lit(c.I64(2)), s1))
+}
+
+pub fn quote_litt_test() {
+  c.quote(0, v32t, s1) |> should.equal(c.Term(c.LitT(c.I32T), s1))
+  c.quote(0, v64t, s1) |> should.equal(c.Term(c.LitT(c.I64T), s1))
+}
+
+pub fn quote_var_test() {
+  // At level 1, HVar(0) should become Var(0)
+  c.quote(1, c.VNeut(c.HVar(0), []), s1)
+  |> should.equal(c.Term(c.Var(0), s1))
+  
+  // At level 2, HVar(0) should become Var(1)
+  c.quote(2, c.VNeut(c.HVar(0), []), s1)
+  |> should.equal(c.Term(c.Var(1), s1))
+  
+  // At level 2, HVar(1) should become Var(0)
+  c.quote(2, c.VNeut(c.HVar(1), []), s1)
+  |> should.equal(c.Term(c.Var(0), s1))
+}
+
+pub fn quote_hole_test() {
+  c.quote(0, c.VNeut(c.HHole(0), []), s1)
+  |> should.equal(c.Term(c.Hole(0), s1))
+  c.quote(0, c.VNeut(c.HHole(5), []), s1)
+  |> should.equal(c.Term(c.Hole(5), s1))
+}
+
+pub fn quote_neut_dot_test() {
+  let v = c.VNeut(c.HVar(0), [c.EDot("x")])
+  c.quote(1, v, s1)
+  |> should.equal(c.Term(c.Dot(c.Term(c.Var(0), s1), "x"), s1))
+}
+
+pub fn quote_neut_app_test() {
+  let v = c.VNeut(c.HVar(0), [c.EApp(v32t)])
+  c.quote(1, v, s1)
+  |> should.equal(c.Term(c.App(c.Term(c.Var(0), s1), c.Term(c.LitT(c.I32T), s1)), s1))
+}
+
+pub fn quote_rcd_test() {
+  let v = c.VRcd([#("a", v32t), #("b", v64t)])
+  c.quote(0, v, s1)
+  |> should.equal(c.Term(c.Rcd([#("a", c.Term(c.LitT(c.I32T), s1)), #("b", c.Term(c.LitT(c.I64T), s1))]), s1))
+}
+
+pub fn quote_ctr_test() {
+  let v = c.VCtr("A", v32t)
+  c.quote(0, v, s1)
+  |> should.equal(c.Term(c.Ctr("A", c.Term(c.LitT(c.I32T), s1)), s1))
+}
+
+pub fn quote_lam_test() {
+  // Quoting a lambda creates a fresh variable and quotes the body
+  let v = c.VLam("x", [], c.Term(c.Var(0), s1))
+  c.quote(0, v, s1)
+  |> should.equal(c.Term(c.Lam("x", c.Term(c.Var(0), s1)), s1))
+}
+
+pub fn quote_pi_test() {
+  let v = c.VPi("x", [], v32t, c.Term(c.Var(0), s1))
+  c.quote(0, v, s1)
+  |> should.equal(c.Term(c.Pi("x", c.Term(c.LitT(c.I32T), s1), c.Term(c.Var(0), s1)), s1))
+}
+
+pub fn quote_verr_test() {
+  c.quote(0, c.VErr, s1)
+  |> should.equal(c.Term(c.Hole(-1), s1))
+}
+
+// ============================================================================
+// NORMALIZE TESTS
+// ============================================================================
+
+pub fn normalize_id_test() {
+  // Normalize the identity function
+  let id = c.Term(c.Lam("x", c.Term(c.Var(0), s1)), s1)
+  c.normalize([], id, s1)
+  |> should.equal(c.Term(c.Lam("x", c.Term(c.Var(0), s1)), s1))
+}
+
+pub fn normalize_app_test() {
+  // Normalize (λx. x) y → y
+  let id = c.Term(c.Lam("x", c.Term(c.Var(0), s1)), s1)
+  let arg = c.Term(c.LitT(c.I32T), s1)
+  let app = c.Term(c.App(id, arg), s1)
+  c.normalize([], app, s1)
+  |> should.equal(c.Term(c.LitT(c.I32T), s1))
+}
+
+pub fn normalize_nested_app_test() {
+  // Normalize (λx. λy. x) a b → a
+  let lam_inner = c.Term(c.Lam("y", c.Term(c.Var(1), s1)), s1)
+  let lam1 = c.Term(c.Lam("x", lam_inner), s1)
+  let app1 = c.Term(c.App(lam1, c.Term(c.LitT(c.I32T), s1)), s1)
+  let app2 = c.Term(c.App(app1, c.Term(c.LitT(c.I64T), s1)), s1)
+  c.normalize([], app2, s1)
+  |> should.equal(c.Term(c.LitT(c.I32T), s1))
+}
+
+pub fn normalize_dot_test() {
+  // Normalize {a = 1}.a → 1
+  let rcd = c.Term(c.Rcd([#("a", c.Term(c.Lit(c.I32(1)), s1))]), s1)
+  let dot = c.Term(c.Dot(rcd, "a"), s1)
+  c.normalize([], dot, s1)
+  |> should.equal(c.Term(c.Lit(c.I32(1)), s1))
+}
+
+pub fn normalize_ann_test() {
+  // Normalize (1 : I32) → 1
+  let ann = c.Term(c.Ann(c.Term(c.Lit(c.I32(1)), s1), c.Term(c.LitT(c.I32T), s1)), s1)
+  c.normalize([], ann, s1)
+  |> should.equal(c.Term(c.Lit(c.I32(1)), s1))
+}
+
+// ============================================================================
+// FORCE TESTS
+// ============================================================================
+
+pub fn force_no_hole_test() {
+  // Force on a value without holes returns the same value
+  c.force([], v32t) |> should.equal(v32t)
+  c.force([], c.VTyp(0)) |> should.equal(c.VTyp(0))
+}
+
+pub fn force_unsolved_hole_test() {
+  // Force on unsolved hole returns the hole
+  c.force([], vhole(0)) |> should.equal(vhole(0))
+}
+
+pub fn force_solved_hole_test() {
+  // Force on solved hole returns the solution
+  let sub = [#(0, v32t)]
+  c.force(sub, vhole(0)) |> should.equal(v32t)
+}
+
+pub fn force_hole_with_spine_test() {
+  // Force on solved hole with spine applies the spine
+  let sub = [#(0, c.VLam("x", [], c.Term(c.Var(0), s1)))]
+  let v = c.VNeut(c.HHole(0), [c.EApp(v32t)])
+  c.force(sub, v) |> should.equal(v32t)
+}
+
+pub fn force_nested_hole_test() {
+  // Force recursively resolves nested holes
+  let sub = [#(0, vhole(1)), #(1, v32t)]
+  c.force(sub, vhole(0)) |> should.equal(v32t)
+}
+
+// ============================================================================
+// CHECK_TYPE TESTS
+// ============================================================================
+
+pub fn check_type_equal_test() {
+  c.check_type(s, v32t, v32t, s1, s2)
+  |> should.equal(#(v32t, s))
+}
+
+pub fn check_type_mismatch_test() {
+  c.check_type(s, v32t, v64t, s1, s2)
+  |> should.equal(#(
+    v32t,
+    c.State(..s, errors: [c.TypeMismatch(v32t, v64t, s1, s2)]),
+  ))
+}
+
+pub fn check_type_with_hole_test() {
+  // When one type has a hole, it gets solved
+  c.check_type(s, vhole(0), v32t, s1, s2)
+  |> should.equal(#(v32t, c.State(..s, sub: [#(0, v32t)])))
+}
+
+// ============================================================================
+// ERROR ACCUMULATION TESTS
+// ============================================================================
+
+pub fn infer_multiple_errors_test() {
+  // Create a term with multiple undefined variables
+  // Both errors should be accumulated
+  let term = c.Term(c.App(c.Term(c.Var(0), s1), c.Term(c.Var(1), s1)), s1)
+  let #(_, _, s) = c.infer(s, term)
+  
+  // Should have at least 2 errors (one for each undefined var)
+  case list.length(s.errors) >= 2 {
+    True -> True
+    False -> False
+  }
+  |> should.be_true
+}
+
+pub fn check_accumulates_errors_test() {
+  // Type mismatch should be recorded, not thrown
+  let #(_, s) = c.check(s, c.Term(c.Lit(c.I32(1)), s1), v64t, s2)
+  
+  s.errors
+  |> should.equal([c.TypeMismatch(v32t, v64t, s1, s2)])
+}
+
+// ============================================================================
+// HELPER CONSTANTS AND FUNCTIONS
+// ============================================================================
 
 pub fn range_test() {
   c.range(0, 0, 1) |> should.equal([])
@@ -291,9 +636,21 @@ pub fn unify_ctr_tag_test() {
   )
 }
 
-// TODO: check_ctr_def_test
-// TODO: check_type_test
-// TODO: ctr_solve_params_test
+pub fn ctr_solve_params_solved_test() {
+  let ctr = c.CtrDef([], i32t(s1), i64t(s2))
+  let s_with_sub = c.State(..s, sub: [#(0, v32t)])
+  let #(params, s) = c.ctr_solve_params(s_with_sub, ctr, [], "A", s3)
+  params |> should.equal([])
+  s.errors |> should.equal([])
+}
+
+pub fn ctr_solve_params_unsolved_test() {
+  let ctr = c.CtrDef(["a"], i32t(s1), var(0, s2))
+  // Hole 0 is not solved
+  let #(params, s) = c.ctr_solve_params(s, ctr, [0], "A", s3)
+  params |> should.equal([vhole(0)])
+  s.errors |> should.equal([c.CtrUnsolvedParam("A", ctr, 0, s3)])
+}
 
 pub fn infer_ctr_test() {
   c.infer(s, ctr("A", i32(1, s1), s2))

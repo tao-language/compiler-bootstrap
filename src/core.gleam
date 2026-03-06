@@ -702,12 +702,11 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
     Typ(k) -> #(VTyp(k), VTyp(k + 1), s)
     Lit(k) -> #(VLit(k), typeof_lit(k), s)
     LitT(k) -> #(VLitT(k), VTyp(0), s)
-    Var(i) -> {
-      case list_get(s.ctx, i) {
-        Some(#(_, #(val, ty))) -> #(val, ty, s)
-        None -> #(VErr, VErr, with_err(s, VarUndefined(i, term.span)))
+    Var(i) ->
+      case ctx_get(s.ctx, i) {
+        Some(#(val, ty)) -> #(val, ty, s)
+        None -> infer_error(s, VarUndefined(i, term.span))
       }
-    }
     Hole(id) -> {
       let #(ty, s) = new_hole(s)
       #(VNeut(HHole(id), []), ty, s)
@@ -716,9 +715,9 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(fields_val, fields_ty, s) = infer_fields(s, fields)
       #(VRcd(fields_val), VRcd(fields_ty), s)
     }
-    Ctr(tag, arg) -> {
+    Ctr(tag, arg) ->
       case list.key_find(s.ctrs, tag) {
-        Error(Nil) -> #(VErr, VErr, with_err(s, CtrUndefined(tag, term.span)))
+        Error(Nil) -> infer_error(s, CtrUndefined(tag, term.span))
         Ok(ctr) -> {
           let #(params, ctr_arg_ty, _, s) = check_ctr_def(s, ctr)
           let #(_, arg_ty, s) = infer(s, arg)
@@ -729,7 +728,6 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
           #(VCtr(tag, eval(env, arg)), eval(env, ctr.ret_ty), s)
         }
       }
-    }
     Dot(arg, name) -> {
       let #(arg_val, arg_ty, s) = infer(s, arg)
       let val = do_dot(arg_val, name)
@@ -1341,6 +1339,26 @@ pub fn check_exhaustiveness(
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+// -- Error handling helpers --
+
+/// Create an error result for infer when type checking fails.
+/// 
+/// Returns VErr for both value and type, allowing checking to continue.
+fn infer_error(s: State, err: Error) -> #(Value, Type, State) {
+  #(VErr, VErr, with_err(s, err))
+}
+
+/// Get a binding from the context by De Bruijn index.
+/// 
+/// The context stores (name, (value, type)) tuples, but we only need
+/// the (value, type) pair for type checking.
+fn ctx_get(ctx: Context, index: Int) -> Option(#(Value, Type)) {
+  case list_get(ctx, index) {
+    Some(#(_, pair)) -> Some(pair)
+    None -> None
+  }
+}
 
 /// Get element at index i from a list (0-based).
 /// 
