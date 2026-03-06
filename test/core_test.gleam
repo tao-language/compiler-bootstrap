@@ -1,4 +1,4 @@
-import core as c
+import core/core as c
 import gleeunit
 import gleeunit/should
 import gleam/list

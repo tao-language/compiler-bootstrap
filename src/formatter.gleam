@@ -1,190 +1,420 @@
 // ============================================================================
-// FORMATTER - Pretty Printer for Core Language
+// FORMATTER - Language-Agnostic Pretty Printer Library
 // ============================================================================
-/// Converts a Term AST back to TypeScript-like source code.
+/// A general-purpose pretty-printing library for formatting ASTs into
+/// human-readable source code. Supports both C-style (brace-delimited) and
+/// Python-style (indentation-based) languages.
 ///
-/// This formatter takes an abstract syntax tree and produces readable
-/// source code. It uses simple formatting rules without complex layout
-/// algorithms.
+/// # Overview
+///
+/// This library provides:
+/// - **Document algebra**: Build formatted output from combinators
+/// - **Automatic line breaking**: Wrap lines at configured width
+/// - **Configurable indentation**: Support for different indentation styles
+/// - **Multiple output styles**: C-style, Python-style, etc.
 ///
 /// # Example
 ///
 /// ```gleam
-/// let term = core.Term(core.Lam("x", body), span)
-/// formatter.format(term)
-/// // Returns: "(x: A) => body"
+/// import formatter
+///
+/// // Build a document
+/// let doc = formatter.concat([
+///   formatter.text("let"),
+///   formatter.space,
+///   formatter.text("x"),
+///   formatter.text("="),
+///   formatter.nest(2, formatter.concat([
+///     formatter.line,
+///     formatter.text("42"),
+///   ])),
+/// ])
+///
+/// // Render to string
+/// formatter.render(doc, formatter.c_style_config())
 /// ```
 
-import core
 import gleam/int
 import gleam/list
 import gleam/string
 
 // ============================================================================
-// MAIN API
+// TYPES
 // ============================================================================
 
-/// Format a Term to source code with default options
-pub fn format(term: core.Term) -> String {
-  format_term(term)
+/// A formatted document - can be rendered to a string
+pub type Doc {
+  /// Plain text
+  Text(String)
+  /// Concatenation of documents
+  Concat(List(Doc))
+  /// Line break (becomes space or newline)
+  Line
+  /// Hard line break (always newline)
+  HardLine
+  /// Indentation level
+  Nest(Int, Doc)
+  /// Group that can be broken across lines
+  Group(Doc)
+  /// Conditional - different doc based on line breaking
+  IfBroken(Doc, Doc)
 }
 
-/// Format a Pattern to source code
-pub fn format_pattern(pattern: core.Pattern) -> String {
-  do_format_pattern(pattern)
+/// Formatter configuration for different language styles
+pub type Config {
+  Config(
+    /// Maximum line width before breaking
+    max_width: Int,
+    /// Indentation width in spaces
+    indent_width: Int,
+    /// Use spaces for indentation (vs tabs)
+    spaces: Bool,
+    /// Put opening brace on same line (C-style)
+    brace_style: BraceStyle,
+    /// Add trailing comma in multi-line lists
+    trailing_comma: Bool,
+  )
+}
+
+/// Brace placement style
+pub type BraceStyle {
+  /// Same line: `func() {`
+  SameLine
+  /// Next line: `func()`\n`{`
+  NextLine
+  /// No braces (Python-style)
+  None
 }
 
 // ============================================================================
-// TERM FORMATTING
+// CONFIGURATION
 // ============================================================================
 
-/// Format a term to a string
-fn format_term(term: core.Term) -> String {
-  case term.data {
-    core.Typ(k) -> format_type(k)
-    core.Lit(lit) -> format_literal(lit)
-    core.LitT(lit_type) -> format_literal_type(lit_type)
-    core.Var(_) -> "x"
-    core.Hole(_) -> "?"
-    core.Rcd(fields) -> format_record(fields)
-    core.Ctr(tag, arg) -> format_constructor(tag, arg)
-    core.Dot(arg, field) -> format_term(arg) <> "." <> field
-    core.Ann(term, typ) -> {
-      "(" <> format_term(term) <> ": " <> format_term(typ) <> ")"
+/// Default configuration for C-style languages
+pub fn c_style_config() -> Config {
+  Config(
+    max_width: 80,
+    indent_width: 2,
+    spaces: True,
+    brace_style: SameLine,
+    trailing_comma: False,
+  )
+}
+
+/// Configuration for K&R style (common in C, Java)
+pub fn kr_style_config() -> Config {
+  Config(
+    max_width: 100,
+    indent_width: 4,
+    spaces: True,
+    brace_style: SameLine,
+    trailing_comma: False,
+  )
+}
+
+/// Configuration for Allman style (common in C#, PowerShell)
+pub fn allman_style_config() -> Config {
+  Config(
+    max_width: 100,
+    indent_width: 4,
+    spaces: True,
+    brace_style: NextLine,
+    trailing_comma: False,
+  )
+}
+
+/// Configuration for Python-style languages
+pub fn python_style_config() -> Config {
+  Config(
+    max_width: 88,
+    indent_width: 4,
+    spaces: True,
+    brace_style: None,
+    trailing_comma: False,
+  )
+}
+
+/// Configuration for OCaml-style languages
+pub fn ocaml_style_config() -> Config {
+  Config(
+    max_width: 100,
+    indent_width: 2,
+    spaces: True,
+    brace_style: SameLine,
+    trailing_comma: False,
+  )
+}
+
+// ============================================================================
+// BASIC DOCUMENTS
+// ============================================================================
+
+/// Create a text document
+pub fn text(s: String) -> Doc {
+  Text(s)
+}
+
+/// Create a space character
+pub const space = Text(" ")
+
+/// Create a line break (becomes space or newline based on context)
+pub const line = Line
+
+/// Create a hard line break (always newline)
+pub const hard_line = HardLine
+
+/// Create an empty document
+pub const empty = Text("")
+
+// ============================================================================
+// COMBINATORS
+// ============================================================================
+
+/// Concatenate a list of documents
+pub fn concat(docs: List(Doc)) -> Doc {
+  Concat(docs)
+}
+
+/// Concatenate two documents
+pub fn append(doc1: Doc, doc2: Doc) -> Doc {
+  Concat([doc1, doc2])
+}
+
+/// Nest a document by increasing indentation
+pub fn nest(indent: Int, doc: Doc) -> Doc {
+  Nest(indent, doc)
+}
+
+/// Create a group that can be broken across lines
+pub fn group(doc: Doc) -> Doc {
+  Group(doc)
+}
+
+/// Document that shows differently when broken vs flat
+pub fn if_broken(broken: Doc, flat: Doc) -> Doc {
+  IfBroken(broken, flat)
+}
+
+// ============================================================================
+// SEPARATORS
+// ============================================================================
+
+/// Join documents with a separator
+pub fn join(sep: Doc, docs: List(Doc)) -> Doc {
+  case docs {
+    [] -> empty
+    [d] -> d
+    [d, ..rest] -> append(d, append(sep, join(sep, rest)))
+  }
+}
+
+/// Join documents with comma and space
+pub fn comma_sep(docs: List(Doc)) -> Doc {
+  join(append(Text(","), space), docs)
+}
+
+/// Join documents with space
+pub fn space_sep(docs: List(Doc)) -> Doc {
+  join(space, docs)
+}
+
+/// Join documents with line breaks
+pub fn line_sep(docs: List(Doc)) -> Doc {
+  join(line, docs)
+}
+
+// ============================================================================
+// WRAPPING
+// ============================================================================
+
+/// Wrap text at word boundaries to max width
+pub fn wrap(max_width: Int, text: String) -> Doc {
+  let words = string.split(text, " ")
+  concat(wrap_words(max_width, words))
+}
+
+fn wrap_words(max_width: Int, words: List(String)) -> List(Doc) {
+  case words {
+    [] -> []
+    [word] -> [Text(word)]
+    [word, ..rest] -> {
+      let wrapped = wrap_words(max_width, rest)
+      [Text(word), line, ..wrapped]
     }
-    core.Lam(name, body) -> format_lambda(name, body)
-    core.Pi(name, in_ty, out_ty) -> format_pi(name, in_ty, out_ty)
-    core.App(fun, arg) -> format_application(fun, arg)
-    core.Match(arg, _motive, cases) -> format_match(arg, cases)
   }
-}
-
-/// Format a type
-fn format_type(k: Int) -> String {
-  case k {
-    0 -> "Type"
-    _ -> "Type" <> int.to_string(k)
-  }
-}
-
-/// Format a literal value
-fn format_literal(lit: core.Literal) -> String {
-  case lit {
-    core.I32(v) -> int.to_string(v)
-    core.I64(v) -> int.to_string(v)
-    core.U32(v) -> int.to_string(v)
-    core.U64(v) -> int.to_string(v)
-    core.F32(v) -> float_to_string(v)
-    core.F64(v) -> float_to_string(v)
-  }
-}
-
-/// Format a literal type
-fn format_literal_type(lit_type: core.LiteralType) -> String {
-  case lit_type {
-    core.I32T -> "I32"
-    core.I64T -> "I64"
-    core.U32T -> "U32"
-    core.U64T -> "U64"
-    core.F32T -> "F32"
-    core.F64T -> "F64"
-  }
-}
-
-/// Format a float (simplified)
-fn float_to_string(f: Float) -> String {
-  case f {
-    0.0 -> "0.0"
-    1.0 -> "1.0"
-    3.14 -> "3.14"
-    _ -> "0.0"
-  }
-}
-
-/// Format a record
-fn format_record(fields: List(#(String, core.Term))) -> String {
-  case fields {
-    [] -> "{ }"
-    _ -> {
-      let field_strings =
-        fields
-        |> list.map(fn(field) {
-          let #(name, value) = field
-          name <> ": " <> format_term(value)
-        })
-        |> string.join(", ")
-      
-      "{ " <> field_strings <> " }"
-    }
-  }
-}
-
-/// Format a constructor application
-fn format_constructor(tag: String, arg: core.Term) -> String {
-  tag <> "(" <> format_term(arg) <> ")"
-}
-
-/// Format a lambda abstraction
-fn format_lambda(name: String, body: core.Term) -> String {
-  "(" <> name <> ": A) => " <> format_term(body)
-}
-
-/// Format a Pi type
-fn format_pi(name: String, in_ty: core.Term, out_ty: core.Term) -> String {
-  "(" <> name <> ": " <> format_term(in_ty) <> ") => " <> format_term(out_ty)
-}
-
-/// Format a function application
-fn format_application(fun: core.Term, arg: core.Term) -> String {
-  format_term(fun) <> "(" <> format_term(arg) <> ")"
-}
-
-/// Format a match expression
-fn format_match(arg: core.Term, cases: List(core.Case)) -> String {
-  let cases_str =
-    cases
-    |> list.map(fn(c) { format_case(c) })
-    |> string.join(", ")
-  
-  "match " <> format_term(arg) <> " with { " <> cases_str <> " }"
-}
-
-/// Format a match case
-fn format_case(c: core.Case) -> String {
-  format_pattern(c.pattern) <> " => " <> format_term(c.body)
 }
 
 // ============================================================================
-// PATTERN FORMATTING
+// BLOCK HELPERS
 // ============================================================================
 
-/// Format a pattern to a string
-fn do_format_pattern(pattern: core.Pattern) -> String {
-  case pattern {
-    core.PAny -> "_"
-    core.PAs(p, name) -> name <> " @ " <> do_format_pattern(p)
-    core.PTyp(k) -> format_type(k)
-    core.PLit(lit) -> format_literal(lit)
-    core.PLitT(lit_type) -> format_literal_type(lit_type)
-    core.PRcd(fields) -> format_pattern_record(fields)
-    core.PCtr(tag, arg) -> tag <> "(" <> do_format_pattern(arg) <> ")"
+/// Format a block with braces: `{ ... }`
+pub fn braces(doc: Doc) -> Doc {
+  concat([
+    Text("{"),
+    nest(2, concat([hard_line, doc])),
+    hard_line,
+    Text("}"),
+  ])
+}
+
+/// Format a block with parentheses: `( ... )`
+pub fn parens(doc: Doc) -> Doc {
+  concat([
+    Text("("),
+    nest(2, concat([line, doc])),
+    line,
+    Text(")"),
+  ])
+}
+
+/// Format a block with brackets: `[ ... ]`
+pub fn brackets(doc: Doc) -> Doc {
+  concat([
+    Text("["),
+    nest(2, concat([line, doc])),
+    line,
+    Text("]"),
+  ])
+}
+
+/// Format a block with optional braces based on config
+pub fn block(doc: Doc, config: Config) -> Doc {
+  case config.brace_style {
+    SameLine | NextLine -> braces(doc)
+    None -> nest(config.indent_width, doc)
   }
 }
 
-/// Format a pattern record
-fn format_pattern_record(fields: List(#(String, core.Pattern))) -> String {
-  case fields {
-    [] -> "{ }"
-    _ -> {
-      let field_strings =
-        fields
-        |> list.map(fn(field) {
-          let #(name, pattern) = field
-          name <> ": " <> do_format_pattern(pattern)
-        })
-        |> string.join(", ")
+// ============================================================================
+// LIST HELPERS
+// ============================================================================
 
-      "{ " <> field_strings <> " }"
-    }
+/// Format a list with brackets: `[x, y, z]`
+pub fn list(docs: List(Doc)) -> Doc {
+  brackets(comma_sep(docs))
+}
+
+/// Format a list that breaks across lines
+pub fn broken_list(docs: List(Doc)) -> Doc {
+  brackets(concat([
+    hard_line,
+    nest(2, line_sep(docs)),
+    concat([hard_line, Text(",")]),
+  ]))
+}
+
+/// Format a list that can break across lines
+pub fn flex_list(docs: List(Doc)) -> Doc {
+  group(if_broken(broken_list(docs), list(docs)))
+}
+
+// ============================================================================
+// RENDERING
+// ============================================================================
+
+/// Render a document to a string with the given configuration
+pub fn render(doc: Doc, config: Config) -> String {
+  let state = RenderState(
+    current_width: 0,
+    current_indent: 0,
+    config: config,
+  )
+  render_doc(doc, state) |> string.join("")
+}
+
+type RenderState {
+  RenderState(
+    current_width: Int,
+    current_indent: Int,
+    config: Config,
+  )
+}
+
+fn render_doc(doc: Doc, state: RenderState) -> List(String) {
+  case doc {
+    Text(s) -> [s]
+    Concat(docs) -> list.flat_map(docs, fn(d) { render_doc(d, state) })
+    Line ->
+      case fits(state.current_width, doc, state) {
+        True -> [" "]
+        False -> ["\n" <> indent_string(state.current_indent + state.config.indent_width, state.config)]
+      }
+    HardLine -> ["\n" <> indent_string(state.current_indent + state.config.indent_width, state.config)]
+    Nest(indent, inner) ->
+      render_doc(inner, RenderState(..state, current_indent: state.current_indent + indent))
+    Group(inner) -> render_doc(inner, state)
+    IfBroken(broken, flat) ->
+      case fits(state.current_width, broken, state) {
+        True -> render_doc(flat, state)
+        False -> render_doc(broken, state)
+      }
   }
+}
+
+fn fits(width: Int, doc: Doc, state: RenderState) -> Bool {
+  case doc {
+    Text(s) -> width + string.length(s) <= state.config.max_width
+    Concat(docs) -> fits_list(width, docs, state)
+    Line | HardLine -> True
+    Nest(_, inner) -> fits(width, inner, state)
+    Group(inner) -> fits(width, inner, state)
+    IfBroken(_, flat) -> fits(width, flat, state)
+  }
+}
+
+fn fits_list(width: Int, docs: List(Doc), state: RenderState) -> Bool {
+  case docs {
+    [] -> True
+    [d, ..rest] ->
+      case fits(width, d, state) {
+        True -> fits_list(width, rest, state)
+        False -> False
+      }
+  }
+}
+
+fn indent_string(indent: Int, config: Config) -> String {
+  let ch = case config.spaces {
+    True -> " "
+    False -> "\t"
+  }
+  string.repeat(ch, indent)
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+/// Convert a value to a document
+pub fn from_string(s: String) -> Doc {
+  Text(s)
+}
+
+/// Convert an integer to a document
+pub fn from_int(i: Int) -> Doc {
+  Text(int.to_string(i))
+}
+
+/// Convert a list of values to documents
+pub fn from_list(items: List(a), f: fn(a) -> Doc) -> Doc {
+  list(items |> list.map(f))
+}
+
+/// Add a trailing comma if configured
+pub fn trailing(doc: Doc, config: Config) -> Doc {
+  case config.trailing_comma {
+    True -> append(doc, Text(","))
+    False -> doc
+  }
+}
+
+/// Surround a document with whitespace
+pub fn surround(left: Doc, doc: Doc, right: Doc) -> Doc {
+  concat([left, doc, right])
+}
+
+/// Add parentheses around a document
+pub fn parenthesize(doc: Doc) -> Doc {
+  surround(Text("("), doc, Text(")"))
 }

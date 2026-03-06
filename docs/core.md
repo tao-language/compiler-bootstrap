@@ -814,18 +814,34 @@ This implementation is based on established research in type theory and programm
 
 ### Implementation Files
 
-- [`src/core.gleam`](../src/core.gleam) - Core language implementation (1400+ lines)
+- [`src/core/core.gleam`](../src/core/core.gleam) - Core language implementation (1400+ lines)
   - Type definitions (Term, Value, Pattern, etc.)
   - Evaluation and normalization
   - Unification and type checking
   - Exhaustiveness checking
 
-- [`src/parser.gleam`](../src/parser.gleam) - Parser implementation (540+ lines)
+- [`src/core/parser.gleam`](../src/core/parser.gleam) - Parser implementation (540+ lines)
   - Lexer (tokenization)
   - Recursive descent parser
   - Error handling
 
-- [`src/formatter.gleam`](../src/formatter.gleam) - Formatter implementation (190+ lines)
+- [`src/core/formatter.gleam`](../src/core/formatter.gleam) - Formatter implementation (190+ lines)
   - Term formatting
   - Pattern formatting
   - Simple pretty-printing
+
+### Directory Structure
+
+```
+src/
+├── core/           # Core language implementation
+│   ├── core.gleam      # Type checker, evaluator, unifier
+│   ├── parser.gleam    # Lexer and parser
+│   └── formatter.gleam # Pretty printer
+└── main.gleam      # Entry point (if applicable)
+```
+
+The `src/core/` directory contains all core language-specific code, making it easy to:
+- Add new high-level languages in separate directories
+- Reuse parser/formatter infrastructure for other languages
+- Maintain clear separation between language-agnostic and language-specific code

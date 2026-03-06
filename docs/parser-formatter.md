@@ -35,14 +35,19 @@ Source Code ←→ Lexer → Tokens ←→ Parser → Term ←→ Formatter → 
 
 ## Architecture
 
-### Module Structure
+The parser and formatter provide bidirectional conversion between source code and the core language AST (`Term`).
 
 ```
-src/
+src/core/
 ├── core.gleam       # Core language types and type checker
 ├── parser.gleam     # Lexer and parser
 └── formatter.gleam  # Pretty printer
 ```
+
+The `src/core/` directory contains all core language-specific code. This structure allows:
+- Adding new high-level languages in separate directories
+- Reusing parser/formatter patterns for other languages
+- Clear separation between language-agnostic and language-specific code
 
 ### Data Flow
 
