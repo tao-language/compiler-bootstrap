@@ -1,417 +1,191 @@
 // ============================================================================
-// PARSER - Language-Agnostic Parser Combinator Library
+// PARSER - Simple String Parser Combinators
 // ============================================================================
-/// A general-purpose parser combinator library for building recursive descent
-/// parsers. Supports both C-style (brace-delimited) and Python-style
-/// (indentation-based) languages.
-///
-/// # Overview
-///
-/// This library provides:
-/// - **Token-based parsing**: Work with pre-tokenized input
-/// - **Parser combinators**: Build complex parsers from simple ones
-/// - **Error handling**: Graceful error recovery and reporting
-/// - **Multiple syntax styles**: Support for braces or indentation
-///
-/// # Example
-///
-/// ```gleam
-/// import parser
-///
-/// // Create a simple parser
-/// let ident_parser = parser.token(TokIdent)
-/// let expr_parser = parser.seq2(ident_parser, ident_parser)
-/// ```
 
+/// A simple parser combinator library for parsing string tokens.
+/// Produces parse trees that can be formatted by the formatter.
 import gleam/list
-import gleam/option.{type Option, None, Some}
 import gleam/result
+import gleam/string
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
-/// A token with optional position information
-pub type Token(token) {
-  Token(value: token, pos: Position)
+/// A parse tree node
+pub type ParseTree {
+  /// A token leaf
+  TreeToken(String)
+  /// A named node with children
+  TreeNode(name: String, children: List(ParseTree))
 }
 
-/// Source position for error reporting
-pub type Position {
-  Position(line: Int, column: Int, offset: Int)
-}
-
-/// Parser state - tracks current position in token stream
-pub type State(token) {
-  State(tokens: List(Token(token)), pos: Int)
-}
-
-/// A parser that consumes tokens and produces a value
-/// Returns Ok((value, new_state)) on success, Error(message) on failure
-pub type Parser(token, a) {
-  Parser(run: fn(State(token)) -> Result(#(a, State(token)), String))
-}
-
-/// Parser configuration for different language styles
-pub type Config {
-  Config(
-    /// Use indentation for block structure (Python-style)
-    indent_based: Bool,
-    /// Indentation width in spaces
-    indent_width: Int,
-    /// Token that starts a block (e.g., "{")
-    block_start: Option(String),
-    /// Token that ends a block (e.g., "}")
-    block_end: Option(String),
-    /// Token that separates statements (e.g., ";")
-    statement_sep: Option(String),
-  )
-}
-
-// ============================================================================
-// CONFIGURATION
-// ============================================================================
-
-/// Default configuration for C-style languages (braces, semicolons)
-pub fn c_style_config() -> Config {
-  Config(
-    indent_based: False,
-    indent_width: 2,
-    block_start: Some("{"),
-    block_end: Some("}"),
-    statement_sep: Some(";"),
-  )
-}
-
-/// Configuration for Python-style languages (indentation-based)
-pub fn python_style_config() -> Config {
-  Config(
-    indent_based: True,
-    indent_width: 4,
-    block_start: None,
-    block_end: None,
-    statement_sep: None,
-  )
-}
-
-/// Configuration for OCaml-style languages (begin/end)
-pub fn ocaml_style_config() -> Config {
-  Config(
-    indent_based: False,
-    indent_width: 2,
-    block_start: Some("begin"),
-    block_end: Some("end"),
-    statement_sep: Some(";;"),
-  )
+/// A parser that produces a parse tree
+pub type Parser {
+  Parser(run: fn(List(String)) -> Result(#(ParseTree, List(String)), String))
 }
 
 // ============================================================================
 // BASIC PARSERS
 // ============================================================================
 
-/// Create a parser that matches a specific token
-pub fn token(match_fn: fn(token) -> Bool) -> Parser(token, token) {
-  Parser(fn(state) {
-    case state.tokens {
-      [] -> Error("Unexpected end of input")
-      [Token(t, _), ..rest] ->
-        case match_fn(t) {
-          True -> Ok(#(t, State(rest, state.pos + 1)))
-          False -> Error("Unexpected token")
-        }
+/// Parse a specific token
+pub fn token(value: String) -> Parser {
+  Parser(fn(tokens) {
+    case tokens {
+      [] -> Error("Expected token: " <> value)
+      [t, ..rest] if t == value -> Ok(#(TreeToken(value), rest))
+      [t, ..] -> Error("Expected " <> value <> " but got " <> t)
     }
   })
 }
 
-/// Create a parser that matches a token with a specific value
-pub fn token_eq(value: token) -> Parser(token, token) {
-  token(fn(t) { t == value })
+/// Parse and capture any token as a named node
+pub fn named(name: String) -> Parser {
+  Parser(fn(tokens) {
+    case tokens {
+      [] -> Error("Expected " <> name)
+      [t, ..rest] -> Ok(#(TreeNode(name, [TreeToken(t)]), rest))
+    }
+  })
 }
 
-/// Parser that always succeeds with the given value
-pub fn pure(value: a) -> Parser(token, a) {
-  Parser(fn(state) { Ok(#(value, state)) })
-}
-
-/// Parser that always fails with the given message
-pub fn fail(message: String) -> Parser(token, a) {
-  Parser(fn(_) { Error(message) })
-}
-
-/// Parser that consumes no input and returns the current position
-pub fn position() -> Parser(token, Position) {
-  Parser(fn(state) {
-    case state.tokens {
-      [] -> Ok(#(Position(0, 0, state.pos), state))
-      [Token(_, pos), ..] -> Ok(#(pos, state))
+/// Parse and capture any token
+pub fn any_token() -> Parser {
+  Parser(fn(tokens) {
+    case tokens {
+      [] -> Error("Expected token")
+      [t, ..rest] -> Ok(#(TreeToken(t), rest))
     }
   })
 }
 
 // ============================================================================
-// SEQUENCE COMBINATORS
+// COMBINATORS
 // ============================================================================
 
-/// Parse two values in sequence
-pub fn seq2(p1: Parser(token, a), p2: Parser(token, b)) -> Parser(token, #(a, b)) {
-  Parser(fn(state) {
-    use #(v1, state) <- result.try(p1.run(state))
-    use #(v2, state) <- result.try(p2.run(state))
-    Ok(#(#(v1, v2), state))
+/// Sequence: parse p1 then p2, combine into tree node
+pub fn seq2(p1: Parser, p2: Parser) -> Parser {
+  Parser(fn(tokens) {
+    use #(r1, tokens1) <- result.try(p1.run(tokens))
+    use #(r2, tokens2) <- result.try(p2.run(tokens1))
+    Ok(#(TreeNode("Seq", [r1, r2]), tokens2))
   })
 }
 
-/// Parse three values in sequence
-pub fn seq3(
-  p1: Parser(token, a),
-  p2: Parser(token, b),
-  p3: Parser(token, c),
-) -> Parser(token, #(a, b, c)) {
-  Parser(fn(state) {
-    use #(v1, state) <- result.try(p1.run(state))
-    use #(v2, state) <- result.try(p2.run(state))
-    use #(v3, state) <- result.try(p3.run(state))
-    Ok(#(#(v1, v2, v3), state))
+/// Sequence three parsers
+pub fn seq3(p1: Parser, p2: Parser, p3: Parser) -> Parser {
+  Parser(fn(tokens) {
+    use #(r1, tokens1) <- result.try(p1.run(tokens))
+    use #(r2, tokens2) <- result.try(p2.run(tokens1))
+    use #(r3, tokens3) <- result.try(p3.run(tokens2))
+    Ok(#(TreeNode("Seq", [r1, r2, r3]), tokens3))
   })
 }
 
-/// Parse a value and ignore the result (for separators, etc.)
-pub fn ignore_right(p1: Parser(token, a), p2: Parser(token, b)) -> Parser(token, a) {
-  Parser(fn(state) {
-    use #(v1, state) <- result.try(p1.run(state))
-    use #(_, state) <- result.try(p2.run(state))
-    Ok(#(v1, state))
-  })
-}
-
-/// Parse a value and ignore the first result
-pub fn ignore_left(p1: Parser(token, a), p2: Parser(token, b)) -> Parser(token, b) {
-  Parser(fn(state) {
-    use #(_, state) <- result.try(p1.run(state))
-    use #(v2, state) <- result.try(p2.run(state))
-    Ok(#(v2, state))
-  })
-}
-
-/// Parse three values, keeping only the middle one (for delimited lists)
-pub fn between(
-  open: Parser(token, a),
-  p: Parser(token, b),
-  close: Parser(token, c),
-) -> Parser(token, b) {
-  ignore_right(ignore_left(open, p), close)
-}
-
-// ============================================================================
-// CHOICE COMBINATORS
-// ============================================================================
-
-/// Try the first parser, if it fails try the second
-pub fn or(p1: Parser(token, a), p2: Parser(token, a)) -> Parser(token, a) {
-  Parser(fn(state) {
-    case p1.run(state) {
+/// Choice: try p1, if fails try p2
+pub fn choice(p1: Parser, p2: Parser) -> Parser {
+  Parser(fn(tokens) {
+    case p1.run(tokens) {
       Ok(result) -> Ok(result)
-      Error(_) -> p2.run(state)
+      Error(_) -> p2.run(tokens)
     }
   })
 }
 
-/// Try a list of parsers in order until one succeeds
-pub fn choice(parsers: List(Parser(token, a))) -> Parser(token, a) {
+/// Choice from list of parsers
+pub fn choice_many(parsers: List(Parser)) -> Parser {
+  Parser(fn(tokens) { choice_loop(parsers, tokens) })
+}
+
+fn choice_loop(
+  parsers: List(Parser),
+  tokens: List(String),
+) -> Result(#(ParseTree, List(String)), String) {
   case parsers {
-    [] -> fail("No parser succeeded")
-    [p, ..rest] -> or(p, choice(rest))
-  }
-}
-
-// ============================================================================
-// REPETITION COMBINATORS
-// ============================================================================
-
-/// Parse zero or more occurrences (like regex *)
-pub fn many(p: Parser(token, a)) -> Parser(token, List(a)) {
-  Parser(fn(state) {
-    many_loop(p, state, [])
-  })
-}
-
-fn many_loop(p: Parser(token, a), state: State(token), acc: List(a)) -> Result(#(List(a), State(token)), String) {
-  case p.run(state) {
-    Ok(#(v, rest)) -> many_loop(p, rest, [v, ..acc])
-    Error(_) -> Ok(#(list.reverse(acc), state))
-  }
-}
-
-/// Parse one or more occurrences (like regex +)
-pub fn many1(p: Parser(token, a)) -> Parser(token, List(a)) {
-  Parser(fn(state) {
-    use #(v, rest) <- result.try(p.run(state))
-    case many_loop(p, rest, []) {
-      Ok(#(vs, rest2)) -> Ok(#([v, ..vs], rest2))
-      Error(e) -> Error(e)
-    }
-  })
-}
-
-/// Parse zero or more occurrences separated by a separator
-pub fn sep_by(p: Parser(token, a), sep: Parser(token, b)) -> Parser(token, List(a)) {
-  or(
-    sep_by1(p, sep),
-    pure([]),
-  )
-}
-
-/// Parse one or more occurrences separated by a separator
-pub fn sep_by1(p: Parser(token, a), sep: Parser(token, b)) -> Parser(token, List(a)) {
-  Parser(fn(state) {
-    use #(v, rest) <- result.try(p.run(state))
-    sep_by1_loop(p, sep, rest, [v])
-  })
-}
-
-fn sep_by1_loop(
-  p: Parser(token, a),
-  sep: Parser(token, b),
-  state: State(token),
-  acc: List(a),
-) -> Result(#(List(a), State(token)), String) {
-  case sep.run(state) {
-    Ok(#(_, sep_state)) ->
-      case p.run(sep_state) {
-        Ok(#(v2, rest2)) -> sep_by1_loop(p, sep, rest2, [v2, ..acc])
-        Error(_) -> Ok(#(list.reverse(acc), state))
+    [] -> Error("No alternatives matched")
+    [p, ..rest] -> {
+      case p.run(tokens) {
+        Ok(result) -> Ok(result)
+        Error(_) -> choice_loop(rest, tokens)
       }
-    Error(_) -> Ok(#(list.reverse(acc), state))
+    }
   }
 }
 
-// ============================================================================
-// OPTIONAL COMBINATORS
-// ============================================================================
-
-/// Parse an optional value, returns None if parser fails
-pub fn opt(p: Parser(token, a)) -> Parser(token, Option(a)) {
-  Parser(fn(state) {
-    case p.run(state) {
-      Ok(#(v, rest)) -> Ok(#(Some(v), rest))
-      Error(_) -> Ok(#(None, state))
+/// Optional: parse or return empty token
+pub fn opt(p: Parser) -> Parser {
+  Parser(fn(tokens) {
+    case p.run(tokens) {
+      Ok(result) -> Ok(result)
+      Error(_) -> Ok(#(TreeToken(""), tokens))
     }
   })
 }
 
-// ============================================================================
-// TRANSFORMATION COMBINATORS
-// ============================================================================
-
-/// Transform the result of a parser
-pub fn map(p: Parser(token, a), f: fn(a) -> b) -> Parser(token, b) {
-  Parser(fn(state) {
-    case p.run(state) {
-      Ok(#(v, rest)) -> Ok(#(f(v), rest))
-      Error(e) -> Error(e)
-    }
+/// Zero or more repetitions
+pub fn rep(p: Parser) -> Parser {
+  Parser(fn(tokens) {
+    use #(parts, remaining) <- result.try(rep_loop(p, tokens, []))
+    Ok(#(TreeNode("Rep", parts), remaining))
   })
 }
 
-/// Transform the result with a function that can fail
-pub fn and_then(p: Parser(token, a), f: fn(a) -> Result(b, String)) -> Parser(token, b) {
-  Parser(fn(state) {
-    use #(v, rest) <- result.try(p.run(state))
-    use v2 <- result.try(f(v))
-    Ok(#(v2, rest))
+fn rep_loop(
+  p: Parser,
+  tokens: List(String),
+  acc: List(ParseTree),
+) -> Result(#(List(ParseTree), List(String)), String) {
+  case p.run(tokens) {
+    Ok(#(part, remaining)) -> rep_loop(p, remaining, [part, ..acc])
+    Error(_) -> Ok(#(acc |> list.reverse, tokens))
+  }
+}
+
+/// One or more repetitions
+pub fn rep1(p: Parser) -> Parser {
+  Parser(fn(tokens) {
+    use #(first, remaining) <- result.try(p.run(tokens))
+    use #(parts, remaining2) <- result.try(rep_loop(p, remaining, [first]))
+    Ok(#(TreeNode("Rep1", parts), remaining2))
   })
 }
 
-// ============================================================================
-// BLOCK PARSING
-// ============================================================================
-
-/// Parse a block delimited by start/end tokens
-pub fn block(
-  start: Parser(token, a),
-  body: Parser(token, b),
-  end: Parser(token, c),
-) -> Parser(token, b) {
-  between(start, body, end)
-}
-
-/// Parse an indentation-based block
-pub fn indent_block(
-  indent: Parser(token, Int),
-  body: Parser(token, b),
-  dedent: Parser(token, Int),
-) -> Parser(token, b) {
-  Parser(fn(state) {
-    use #(_, state) <- result.try(indent.run(state))
-    use #(v, state) <- result.try(body.run(state))
-    use #(_, state) <- result.try(dedent.run(state))
-    Ok(#(v, state))
+/// Map parser result
+pub fn map(p: Parser, f: fn(ParseTree) -> ParseTree) -> Parser {
+  Parser(fn(tokens) {
+    use #(result, tokens) <- result.try(p.run(tokens))
+    Ok(#(f(result), tokens))
   })
-}
-
-// ============================================================================
-// LIST PARSING
-// ============================================================================
-
-/// Parse a comma-separated list in braces: { x, y, z }
-pub fn braced_list(
-  open: Parser(token, a),
-  p: Parser(token, b),
-  sep: Parser(token, c),
-  close: Parser(token, d),
-) -> Parser(token, List(b)) {
-  between(open, sep_by(p, sep), close)
 }
 
 // ============================================================================
 // RUNNING PARSERS
 // ============================================================================
 
-/// Run a parser on a list of tokens
-pub fn run(parser: Parser(token, a), tokens: List(Token(token))) -> Result(a, String) {
-  let state = State(tokens, 0)
-  case parser.run(state) {
-    Ok(#(value, _)) -> Ok(value)
+/// Run a parser on a string input
+pub fn parse_string(parser: Parser, input: String) -> Result(ParseTree, String) {
+  let tokens = tokenize(input)
+  case parser.run(tokens) {
+    Ok(#(result, remaining)) ->
+      case remaining {
+        [] -> Ok(result)
+        _ -> Error("Unexpected tokens: " <> string.join(remaining, " "))
+      }
     Error(e) -> Error(e)
   }
 }
 
-/// Run a parser and return both the result and remaining tokens
-pub fn run_with_remaining(
-  parser: Parser(token, a),
-  tokens: List(Token(token)),
-) -> Result(#(a, List(Token(token))), String) {
-  let state = State(tokens, 0)
-  case parser.run(state) {
-    Ok(#(value, rest_state)) -> Ok(#(value, rest_state.tokens))
-    Error(e) -> Error(e)
-  }
-}
-
-// ============================================================================
-// ERROR HANDLING
-// ============================================================================
-
-/// Add context to an error message
-pub fn with_context(parser: Parser(token, a), context: String) -> Parser(token, a) {
-  Parser(fn(state) {
-    case parser.run(state) {
-      Ok(result) -> Ok(result)
-      Error(e) -> Error(context <> ": " <> e)
-    }
-  })
-}
-
-/// Try to parse, if it fails consume one token and try again
-pub fn recover(parser: Parser(token, a)) -> Parser(token, Option(a)) {
-  Parser(fn(state) {
-    case parser.run(state) {
-      Ok(#(v, rest)) -> Ok(#(Some(v), rest))
-      Error(_) ->
-        case state.tokens {
-          [] -> Ok(#(None, state))
-          [_, ..rest] -> Ok(#(None, State(rest, state.pos + 1)))
-        }
-    }
-  })
+/// Tokenize input string
+fn tokenize(input: String) -> List(String) {
+  input
+  |> string.replace("(", " ( ")
+  |> string.replace(")", " ) ")
+  |> string.replace("{", " { ")
+  |> string.replace("}", " } ")
+  |> string.replace("=", " = ")
+  |> string.replace("+", " + ")
+  |> string.replace(",", " , ")
+  |> string.split(" ")
+  |> list.filter(fn(s) { s != "" })
 }
