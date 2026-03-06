@@ -240,7 +240,6 @@ pub type Error {
   CtrUnsolvedParam(tag: String, ctr: CtrDef, id: Int, span: Span)
   DotFieldNotFound(name: String, fields: List(#(String, Value)), span: Span)
   DotOnNonCtr(value: Value, name: String, span: Span)
-  MatchEmpty(arg: Term, span: Span)
   HoleUnsolved(id: Int, span: Span)
   SpineMismatch(span1: Span, span2: Span)
   ArityMismatch(span1: Span, span2: Span)
@@ -697,6 +696,7 @@ pub fn with_err(s: State, err: Error) -> State {
 /// - Applications: Infer function type, check argument, return result type
 /// - Lambdas: Create a hole for the domain, infer the codomain
 /// - Constructors: Look up definition, solve GADT parameters via unification
+/// - Match: Infer scrutinee type, check motive, verify exhaustiveness
 pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
   case term.data {
     Typ(k) -> #(VTyp(k), VTyp(k + 1), s)
@@ -784,10 +784,6 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       // The motive type is (x : arg_ty) → Type, where x is the scrutinee
       let motive_ty = VPi("_", env, arg_ty, Term(Typ(0), arg.span))
       let #(motive_val, s) = check(s, motive, motive_ty, motive.span)
-      let s = case cases {
-        [] -> with_err(s, MatchEmpty(arg, term.span))
-        _ -> s
-      }
       let s =
         list.fold(cases, s, fn(s, c) {
           let #(pat_val, branch_s) =
@@ -796,6 +792,9 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
           let #(_, branch_s) = check(branch_s, c.body, branch_ty, c.span)
           State(..branch_s, var: s.var, ctx: s.ctx)
         })
+      // Run exhaustiveness checking and add any errors to the state
+      let exhaustiveness_errors = check_exhaustiveness(s, cases, term.span)
+      let s = list.fold(exhaustiveness_errors, s, with_err)
       let match_val = do_match(env, arg_val, motive_val, cases)
       let result_ty = do_app(motive_val, arg_val)
       #(match_val, result_ty, s)
@@ -1291,12 +1290,18 @@ pub fn useful(
 
 /// Check a list of match cases for exhaustiveness.
 /// 
+/// This is called during type checking of match expressions to verify that
+/// all possible patterns are covered and no cases are redundant.
+/// 
 /// Returns a list of errors:
 /// - MatchRedundantCase: A case that's already covered by previous cases
 /// - MatchMissingCase: A pattern that isn't covered by any case
 /// 
 /// The algorithm builds a matrix incrementally, checking each new case
-/// against what's already covered.
+/// against what's already covered (Maranget's algorithm).
+/// 
+/// This function is pure and returns a list of errors - the caller is
+/// responsible for adding them to the state via `with_err`.
 pub fn check_exhaustiveness(
   s: State,
   cases: List(Case),

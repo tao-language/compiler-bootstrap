@@ -1,6 +1,6 @@
 # Core Language Specification
 
-A dependently typed core language with normalization by evaluation, bidirectional type checking, and exhaustiveness checking.
+A dependently typed core language with normalization by evaluation, bidirectional type checking, and integrated exhaustiveness checking.
 
 ---
 
@@ -14,6 +14,7 @@ A dependently typed core language with normalization by evaluation, bidirectiona
 6. [Key Algorithms](#key-algorithms)
 7. [Error Recovery](#error-recovery)
 8. [API Reference](#api-reference)
+9. [References](#references)
 
 ---
 
@@ -24,7 +25,7 @@ This core language is designed as a **foundation for higher-level languages**. I
 - **Dependent Types**: Types can depend on values (e.g., `Vec(n, A)` where `n` is a runtime value)
 - **Normalization by Evaluation (NbE)**: Efficient equality checking via evaluation + reification
 - **Bidirectional Type Checking**: Synthesis (`infer`) and checking (`check`) modes for better inference
-- **Exhaustiveness Checking**: Static verification that pattern matches cover all cases
+- **Exhaustiveness Checking**: Integrated static verification that pattern matches cover all cases (Maranget's algorithm)
 - **Error Resilience**: Continues checking after errors to report all issues at once
 
 ### Design Principle
@@ -32,6 +33,25 @@ This core language is designed as a **foundation for higher-level languages**. I
 > **If there are no errors, the program is fully correct. If there are errors, we still check everything to report all issues in one pass.**
 
 This is critical for IDE/LSP support where users need to see all errors, not just the first one.
+
+### Error Handling Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  infer / check  (error-resilient)                           │
+│  - Catches unify errors                                     │
+│  - Records errors via with_err                              │
+│  - Continues with VErr                                      │
+│  - Runs exhaustiveness checking on Match                    │
+└─────────────────────────────────────────────────────────────┘
+                          ↓ calls
+┌─────────────────────────────────────────────────────────────┐
+│  unify  (NOT error-resilient)                               │
+│  - Returns errors immediately on mismatch                   │
+│  - Solves metavariables                                     │
+│  - Checks occurs condition                                  │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -402,25 +422,67 @@ Returns the matched value and a state with new variables in context.
 
 ### Exhaustiveness Checking
 
-Uses a **matrix algorithm** to verify pattern matches:
+The exhaustiveness checker uses **Maranget's matrix algorithm** to statically verify that pattern matches cover all possible cases. It's automatically called during type checking of `Match` expressions.
+
+**Key Functions**:
 
 ```gleam
 useful(s, index, matrix, vector) -> List(List(Pattern))
 ```
 
-- `matrix`: Patterns already matched
+- `matrix`: Patterns already matched (the "coverage matrix")
 - `vector`: New pattern to check
+- `index`: Constructor index grouped by return type (for GADTs)
 - Returns: List of **witnesses** (uncovered cases)
 
-If `useful` returns `[]`, the pattern is redundant.
-If `useful` returns witnesses, those cases are missing.
+**Algorithm**:
+
+| Result | Meaning |
+|--------|---------|
+| `[]` (empty) | Pattern is redundant (already covered) |
+| `[witness, ...]` | These patterns are missing |
+
+**Integration with Type Checking**:
+
+```gleam
+Match(arg, motive, cases) -> {
+  // ... type check each case body ...
+  
+  // Run exhaustiveness checking
+  let exhaustiveness_errors = check_exhaustiveness(s, cases, term.span)
+  let s = list.fold(exhaustiveness_errors, s, with_err)
+  
+  // Continue with match evaluation
+  ...
+}
+```
 
 **Example**:
-```
+```gleam
+-- Missing case
 match b : Bool with
   True -> 1
+
+-- Reports: MatchMissingCase(span, PCtr("False", PAny))
+
+-- Redundant case  
+match b : Bool with
+  True -> 1
+  True -> 2  -- Redundant!
+
+-- Reports: MatchRedundantCase(span)
 ```
-Missing witness: `False`
+
+**GADT Support**:
+
+For GADTs, the checker uses type unification to determine which constructors are possible:
+
+```gleam
+-- For Vec n A, if n = 0, only Nil is possible
+match v : Vec(0, A) with
+  Nil -> ...
+  -- No Cons case needed (type system rules it out)
+```
 
 ---
 
@@ -457,13 +519,19 @@ But checking continues:
 | `VarUndefined(index, span)` | Variable out of scope |
 | `CtrUndefined(tag, span)` | Unknown constructor |
 | `CtrUnsolvedParam(...)` | GADT parameter couldn't be solved |
-| `HoleUnsolved(id, span)` | Metavariable never solved |
-| `MatchEmpty(arg, span)` | Match with no cases |
-| `MatchRedundantCase(span)` | Unreachable pattern |
-| `MatchMissingCase(span, pattern)` | Missing pattern |
+| `HoleUnsolved(id, span)` | Metavariable recorded as unsolved (IDE warning) |
+| `MatchRedundantCase(span)` | Unreachable pattern (covered by previous cases) |
+| `MatchMissingCase(span, pattern)` | Missing pattern (exhaustiveness check) |
 | `RcdMissingFields(names, span)` | Record missing fields |
 | `DotFieldNotFound(name, ...)` | Field doesn't exist |
-| `InfiniteType(hole_id, ty, ...)` | Occurs check failure |
+| `DotOnNonCtr(value, name, span)` | Projection on non-record |
+| `InfiniteType(hole_id, ty, ...)` | Occurs check failure (infinite type) |
+| `SpineMismatch(span1, span2)` | Incompatible spine elements (projection vs application) |
+| `ArityMismatch(span1, span2)` | Different number of spine elements |
+| `NotAFunction(fun, fun_ty)` | Application on non-function |
+| `PatternMismatch(pattern, expected_ty, ...)` | Pattern doesn't match expected type |
+
+**Note**: `MatchEmpty` was removed—empty matches now produce `MatchMissingCase(PAny)` via exhaustiveness checking.
 
 ### Collecting Nested Errors
 
@@ -485,22 +553,43 @@ list_errors(VLam("x", env, body))
 eval(env: Env, term: Term) -> Value
 do_app(fun: Value, arg: Value) -> Value
 do_match(env: Env, arg: Value, motive: Value, cases: List(Case)) -> Value
+do_match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil)
 
--- Normalization
+-- Normalization by Evaluation
 normalize(env: Env, term: Term, span: Span) -> Term
 quote(lvl: Int, value: Value, span: Span) -> Term
 
--- Type Checking
+-- Type Checking (bidirectional)
 infer(s: State, term: Term) -> #(Value, Type, State)
+  -- Returns: (value, type, state with accumulated errors)
+  -- On error: records error, returns VErr, continues checking
 check(s: State, term: Term, expected_ty: Value, ty_span: Span) -> #(Value, State)
+  -- Returns: (value, state with accumulated errors)
+  -- On error: records error, returns VErr, continues checking
 unify(s: State, v1: Value, v2: Value, s1: Span, s2: Span) -> Result(State, Error)
+  -- Returns: Error on mismatch (caught by infer/check)
+  -- Solves metavariables, checks occurs condition
 
 -- Pattern Matching
 bind_pattern(s: State, pattern: Pattern, ret_ty: Value, ...) -> #(Value, State)
+  -- Binds pattern variables to context during match type checking
 
--- Exhaustiveness
+-- Exhaustiveness Checking (Maranget's algorithm)
 check_exhaustiveness(s: State, cases: List(Case), span: Span) -> List(Error)
+  -- Returns: List of MatchRedundantCase and MatchMissingCase errors
+  -- Called automatically by infer during Match type checking
+useful(s: State, index: CtrIndex, matrix: PMatrix, vector: List(Pattern)) -> List(List(Pattern))
+  -- Core algorithm: returns witnesses (uncovered cases)
+specialize(matrix: PMatrix, target: PHead) -> PMatrix
+  -- Specialize matrix for a constructor head
+get_concrete_heads(matrix: PMatrix) -> List(PHead)
+  -- Extract covered constructors from matrix
+get_missing_heads(s: State, index: CtrIndex, concrete_heads: List(PHead)) -> List(PHead)
+  -- Find missing constructors (handles GADTs)
+
+-- Error Collection
 list_errors(value: Value) -> List(Error)
+  -- Extract errors from inside closures (for IDE feedback)
 ```
 
 ### State Management

@@ -730,7 +730,7 @@ pub fn infer_match_empty_test() {
     c.VErr,
     v64t,
     c.State(..s, var: 1, ctx: [#("p", #(vvar(0), v32t))], errors: [
-      c.MatchEmpty(i32(1, s2), s3),
+      c.MatchMissingCase(s3, c.PAny),
     ]),
   ))
 }
@@ -763,7 +763,7 @@ pub fn match_check_empty_test() {
   |> should.equal(#(
     c.VErr,
     c.State(..s, var: 1, ctx: [#("p", #(vvar(0), v32t))], errors: [
-      c.MatchEmpty(i32(1, s2), s3),
+      c.MatchMissingCase(s3, c.PAny),
     ]),
   ))
 }
