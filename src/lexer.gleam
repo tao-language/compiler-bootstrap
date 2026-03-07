@@ -512,7 +512,84 @@ fn tokenize_non_digit(config: Config, char: String, rest: String, state: LexerSt
         Error(_) -> Some(advance_state(state, 1))
       }
     }
-    // Operators and punctuation
+    // Parentheses
+    "(" -> {
+      let token = TokenVal(
+        kind: "LParen",
+        value: "(",
+        location: make_location(state.pos, advance_pos(state.pos, "(")),
+        indent: get_indent(state.indent_stack),
+      )
+      Some(advance_state(state, 1) |> add_token(token))
+    }
+    ")" -> {
+      let token = TokenVal(
+        kind: "RParen",
+        value: ")",
+        location: make_location(state.pos, advance_pos(state.pos, ")")),
+        indent: get_indent(state.indent_stack),
+      )
+      Some(advance_state(state, 1) |> add_token(token))
+    }
+    // Brackets
+    "[" -> {
+      let token = TokenVal(
+        kind: "LBracket",
+        value: "[",
+        location: make_location(state.pos, advance_pos(state.pos, "[")),
+        indent: get_indent(state.indent_stack),
+      )
+      Some(advance_state(state, 1) |> add_token(token))
+    }
+    "]" -> {
+      let token = TokenVal(
+        kind: "RBracket",
+        value: "]",
+        location: make_location(state.pos, advance_pos(state.pos, "]")),
+        indent: get_indent(state.indent_stack),
+      )
+      Some(advance_state(state, 1) |> add_token(token))
+    }
+    // Braces
+    "{" -> {
+      let token = TokenVal(
+        kind: "LBrace",
+        value: "{",
+        location: make_location(state.pos, advance_pos(state.pos, "{")),
+        indent: get_indent(state.indent_stack),
+      )
+      Some(advance_state(state, 1) |> add_token(token))
+    }
+    "}" -> {
+      let token = TokenVal(
+        kind: "RBrace",
+        value: "}",
+        location: make_location(state.pos, advance_pos(state.pos, "}")),
+        indent: get_indent(state.indent_stack),
+      )
+      Some(advance_state(state, 1) |> add_token(token))
+    }
+    // Comma
+    "," -> {
+      let token = TokenVal(
+        kind: "Comma",
+        value: ",",
+        location: make_location(state.pos, advance_pos(state.pos, ",")),
+        indent: get_indent(state.indent_stack),
+      )
+      Some(advance_state(state, 1) |> add_token(token))
+    }
+    // Semicolon
+    ";" -> {
+      let token = TokenVal(
+        kind: "Semicolon",
+        value: ";",
+        location: make_location(state.pos, advance_pos(state.pos, ";")),
+        indent: get_indent(state.indent_stack),
+      )
+      Some(advance_state(state, 1) |> add_token(token))
+    }
+    // Other operators
     _ -> {
       let op = read_operator(state.source)
       let token = TokenVal(
@@ -533,6 +610,10 @@ fn tokenize_non_digit(config: Config, char: String, rest: String, state: LexerSt
       ))
     }
   }
+}
+
+fn add_token(state: LexerState, token: Token) -> LexerState {
+  LexerState(..state, tokens: [token, ..state.tokens])
 }
 
 fn advance_state(state: LexerState, skip: Int) -> LexerState {

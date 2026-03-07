@@ -134,9 +134,9 @@ pub fn hsep(docs: List(Doc)) -> Doc {
   join(space(), docs)
 }
 
-/// Line-separated list
+/// Vertical separation (hard line breaks)
 pub fn vsep(docs: List(Doc)) -> Doc {
-  join(line(), docs)
+  join(hardline(), docs)
 }
 
 /// Comma-separated list

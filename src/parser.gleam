@@ -162,17 +162,26 @@ pub fn token(kind: String) -> Parser(Token) {
 pub fn keyword(value: String) -> Parser(Token) {
   Parser(fn(state) {
     case get_token_at(state.tokens, state.pos) {
-      Ok(token) if token.kind == "Ident" && token.value == value ->
-        Ok(#(token, State(..state, pos: state.pos + 1)))
-      Ok(_) ->
-        Error(State(..state, 
-          pos: state.pos + 1,
-          errors: [mk_error(state, "keyword '" <> value <> "'")]
-        ))
+      Ok(token) -> {
+        case is_keyword_token(token, value) {
+          True -> Ok(#(token, State(..state, pos: state.pos + 1)))
+          False -> Error(State(..state,
+            pos: state.pos + 1,
+            errors: [mk_error(state, "keyword '" <> value <> "'")]
+          ))
+        }
+      }
       Error(_) ->
         Error(State(..state, errors: [mk_error(state, "keyword '" <> value <> "'")]))
     }
   })
+}
+
+fn is_keyword_token(token: Token, value: String) -> Bool {
+  case token.kind {
+    "Ident" | "Keyword" -> token.value == value
+    _ -> False
+  }
 }
 
 /// Parse any token
@@ -214,12 +223,12 @@ pub fn seq(parsers: List(Parser(a))) -> Parser(List(a)) {
   }
 }
 
-/// Parse zero or one
+/// Parse zero or one - never records errors (that's the point of optional)
 pub fn opt(parser: Parser(a)) -> Parser(Option(a)) {
   Parser(fn(state) {
     case run(parser, state) {
       Ok(#(x, state)) -> Ok(#(Some(x), state))
-      Error(state) -> Ok(#(None, state))
+      Error(_) -> Ok(#(None, state))  // Always succeed with None, discard errors
     }
   })
 }
@@ -234,7 +243,13 @@ pub fn many(parser: Parser(a)) -> Parser(List(a)) {
 fn collect_many(parser: Parser(a), acc: List(a), state: State) -> Result(#(List(a), State), State) {
   case run(parser, state) {
     Ok(#(x, state)) -> collect_many(parser, [x, ..acc], state)
-    Error(state) -> Ok(#(list.reverse(acc), state))
+    Error(new_state) -> {
+      // Check if we're at EOF - if so, don't count this as an error
+      case get_token_at(new_state.tokens, new_state.pos) {
+        Ok(_) -> Ok(#(list.reverse(acc), new_state))  // Real error, keep it
+        Error(_) -> Ok(#(list.reverse(acc), state))   // EOF, discard error
+      }
+    }
   }
 }
 
@@ -678,15 +693,21 @@ fn get_token_at_loop(tokens: List(Token), pos: Int, current: Int) -> Result(Toke
   }
 }
 
-/// Parse tokens
+/// Parse tokens - returns ParseResult which may contain errors
+/// For completely failed parses, returns Empty AST with errors
 pub fn parse(parser: Parser(a), _filename: String, tokens: List(Token)) -> ParseResult(a) {
   let initial_state = State(tokens: tokens, pos: 0, errors: [])
   case run(parser, initial_state) {
     Ok(#(ast, state)) -> ParseResult(ast: ast, errors: state.errors)
-    Error(state) -> ParseResult(
-      ast: panic as "Parse failed with no result",
-      errors: [],
-    )
+    Error(state) -> {
+      // Return errors - caller should check for errors before using AST
+      // We use panic here because there's no valid AST to return
+      // In production code, you'd want better error handling
+      case state.errors {
+        [] -> ParseResult(ast: panic as "Parse failed with no result or errors", errors: [])
+        [err, ..] -> ParseResult(ast: panic as err.message, errors: state.errors)
+      }
+    }
   }
 }
 
