@@ -204,92 +204,137 @@ pub fn label(name: String, sym: Symbol) -> Symbol {
 // PARSER GENERATION
 // ============================================================================
 
+/// Compilation state with cache for recursive rules
+type CompileState {
+  CompileState(
+    rules: Dict(String, Rule),
+    compiled: Dict(String, Parser(Tree)),
+  )
+}
+
 /// Convert grammar to parser
 pub fn to_parser(g: Grammar) -> fn(List(Token)) -> ParseResult(Tree) {
   let rules_dict = g.rules
-  let parser = compile_rule(rules_dict, g.start)
+  let initial_state = CompileState(rules: rules_dict, compiled: dict.new())
+  let #(parser, _) = compile_rule(g.start, initial_state)
   fn(tokens) { parser.parse(parser, "input", tokens) }
 }
 
-/// Compile rule to parser
-fn compile_rule(rules: Dict(String, Rule), name: String) -> Parser(Tree) {
-  case dict.get(rules, name) {
-    Ok(rule) -> compile_symbol(rules, rule.definition, name)
-    Error(_) -> parser.fail("undefined rule: " <> name)
+/// Compile rule with caching for recursion
+fn compile_rule(name: String, state: CompileState) -> #(Parser(Tree), CompileState) {
+  // Check if already compiled (handles recursion)
+  case dict.get(state.compiled, name) {
+    Ok(parser) -> #(parser, state)
+    Error(_) -> {
+      // Add placeholder to break recursion cycle
+      let placeholder = parser.fail("compiling: " <> name)
+      let state = CompileState(..state, compiled: dict.insert(state.compiled, name, placeholder))
+      
+      // Get rule definition
+      case dict.get(state.rules, name) {
+        Ok(rule) -> {
+          // Compile the actual parser
+          let #(actual, state) = compile_symbol(rule.definition, name, state)
+          // Update cache with real parser
+          let state = CompileState(..state, compiled: dict.insert(state.compiled, name, actual))
+          #(actual, state)
+        }
+        Error(_) -> {
+          let error_parser = parser.fail("undefined rule: " <> name)
+          #(error_parser, state)
+        }
+      }
+    }
   }
 }
 
 /// Compile symbol to parser
-fn compile_symbol(rules: Dict(String, Rule), sym: Symbol, rule_name: String) -> Parser(Tree) {
+fn compile_symbol(sym: Symbol, rule_name: String, state: CompileState) -> #(Parser(Tree), CompileState) {
   case sym {
-    Token(kind) ->
-      parser.map(parser.token(kind), fn(tok) { parser.Leaf(tok) })
-    Keyword(kw) ->
-      parser.map(parser.keyword(kw), fn(tok) { parser.Leaf(tok) })
-    Ref(name) ->
-      compile_rule(rules, name)
-    Seq(symbols) ->
-      compile_seq(rules, symbols, rule_name)
-    Choice(alts) ->
-      parser.one_of(list.map(alts, fn(s) { compile_symbol(rules, s, rule_name) }))
-    Opt(sym) ->
-      parser.map(parser.opt(compile_symbol(rules, sym, rule_name)), fn(opt) {
+    Token(kind) -> {
+      let p = parser.map(parser.token(kind), fn(tok) { parser.Leaf(tok) })
+      #(p, state)
+    }
+    Keyword(kw) -> {
+      let p = parser.map(parser.keyword(kw), fn(tok) { parser.Leaf(tok) })
+      #(p, state)
+    }
+    Ref(name) -> {
+      compile_rule(name, state)
+    }
+    Seq(symbols) -> {
+      compile_seq(symbols, rule_name, state)
+    }
+    Choice(alts) -> {
+      let #(parsers, state) = compile_symbols(alts, rule_name, state)
+      #(parser.one_of(parsers), state)
+    }
+    Opt(sym) -> {
+      let #(p, state) = compile_symbol(sym, rule_name, state)
+      #(parser.map(parser.opt(p), fn(opt) {
         case opt {
           Some(tree) -> tree
           None -> parser.Empty
         }
-      })
-    Many(sym) ->
-      parser.map(
-        parser.many(compile_symbol(rules, sym, rule_name)),
-        fn(trees) { parser.Node("Many", trees) }
-      )
-    Many1(sym) ->
-      parser.map(
-        parser.many1(compile_symbol(rules, sym, rule_name)),
-        fn(trees) { parser.Node("Many", trees) }
-      )
-    Sep(item, sep_sym) ->
-      parser.map(
-        parser.sep_by(
-          compile_symbol(rules, item, rule_name),
-          compile_symbol(rules, sep_sym, rule_name)
-        ),
-        fn(trees) { parser.Node("Sep", trees) }
-      )
-    Sep1(item, sep_sym) ->
-      parser.map(
-        parser.sep_by1(
-          compile_symbol(rules, item, rule_name),
-          compile_symbol(rules, sep_sym, rule_name)
-        ),
-        fn(trees) { parser.Node("Sep", trees) }
-      )
-    Expr(ops) ->
-      parser.pratt(ops)
-    IndentBlock(sym) ->
-      compile_indent_block(rules, sym, rule_name)
-    Label(name, inner) ->
-      parser.map(
-        compile_symbol(rules, inner, rule_name),
-        fn(tree) { parser.Node(name, [tree]) }
-      )
+      }), state)
+    }
+    Many(sym) -> {
+      let #(p, state) = compile_symbol(sym, rule_name, state)
+      #(parser.map(parser.many(p), fn(trees) { parser.Node("Many", trees) }), state)
+    }
+    Many1(sym) -> {
+      let #(p, state) = compile_symbol(sym, rule_name, state)
+      #(parser.map(parser.many1(p), fn(trees) { parser.Node("Many", trees) }), state)
+    }
+    Sep(item, sep_sym) -> {
+      let #(p_item, state) = compile_symbol(item, rule_name, state)
+      let #(p_sep, state) = compile_symbol(sep_sym, rule_name, state)
+      #(parser.map(parser.sep_by(p_item, p_sep), fn(trees) { parser.Node("Sep", trees) }), state)
+    }
+    Sep1(item, sep_sym) -> {
+      let #(p_item, state) = compile_symbol(item, rule_name, state)
+      let #(p_sep, state) = compile_symbol(sep_sym, rule_name, state)
+      #(parser.map(parser.sep_by1(p_item, p_sep), fn(trees) { parser.Node("Sep", trees) }), state)
+    }
+    Expr(ops) -> {
+      #(parser.pratt(ops), state)
+    }
+    IndentBlock(sym) -> {
+      compile_indent_block(sym, rule_name, state)
+    }
+    Label(name, inner) -> {
+      let #(p, state) = compile_symbol(inner, rule_name, state)
+      #(parser.map(p, fn(tree) { parser.Node(name, [tree]) }), state)
+    }
+  }
+}
+
+/// Compile multiple symbols
+fn compile_symbols(symbols: List(Symbol), rule_name: String, state: CompileState) -> #(List(Parser(Tree)), CompileState) {
+  compile_symbols_loop(symbols, rule_name, state, [])
+}
+
+fn compile_symbols_loop(symbols: List(Symbol), rule_name: String, state: CompileState, acc: List(Parser(Tree))) -> #(List(Parser(Tree)), CompileState) {
+  case symbols {
+    [] -> #(list.reverse(acc), state)
+    [sym, ..rest] -> {
+      let #(p, state) = compile_symbol(sym, rule_name, state)
+      compile_symbols_loop(rest, rule_name, state, [p, ..acc])
+    }
   }
 }
 
 /// Compile sequence
-fn compile_seq(rules: Dict(String, Rule), symbols: List(Symbol), rule_name: String) -> Parser(Tree) {
-  let parsers = list.map(symbols, fn(s) { compile_symbol(rules, s, rule_name) })
-  parser.map(parser.seq(parsers), fn(trees) {
-    parser.Node("Seq", trees)
-  })
+fn compile_seq(symbols: List(Symbol), rule_name: String, state: CompileState) -> #(Parser(Tree), CompileState) {
+  let #(parsers, state) = compile_symbols(symbols, rule_name, state)
+  #(parser.map(parser.seq(parsers), fn(trees) { parser.Node("Seq", trees) }), state)
 }
 
 /// Compile indentation block
-fn compile_indent_block(rules: Dict(String, Rule), sym: Symbol, rule_name: String) -> Parser(Tree) {
+fn compile_indent_block(sym: Symbol, rule_name: String, state: CompileState) -> #(Parser(Tree), CompileState) {
   // For now, just compile the inner symbol
   // Full implementation would track indentation levels
-  compile_symbol(rules, sym, rule_name)
+  compile_symbol(sym, rule_name, state)
 }
 
 // ============================================================================

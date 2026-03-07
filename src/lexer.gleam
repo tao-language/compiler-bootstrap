@@ -589,6 +589,16 @@ fn tokenize_non_digit(config: Config, char: String, rest: String, state: LexerSt
       )
       Some(advance_state(state, 1) |> add_token(token))
     }
+    // Colon
+    ":" -> {
+      let token = TokenVal(
+        kind: "Colon",
+        value: ":",
+        location: make_location(state.pos, advance_pos(state.pos, ":")),
+        indent: get_indent(state.indent_stack),
+      )
+      Some(advance_state(state, 1) |> add_token(token))
+    }
     // Other operators
     _ -> {
       let op = read_operator(state.source)
