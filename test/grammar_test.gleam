@@ -163,12 +163,11 @@ pub fn parse_ident_test() {
   let tokens = lexer.tokenize(lexer.default_config(), "test", "hello")
   let result = parse(tokens)
 
-  result.errors |> should.equal([])
-  // Token rules produce just Leaf(token)
-  case result.ast {
-    parser.Leaf(token) -> token.value |> should.equal("hello")
-    _ -> panic as "Expected Leaf token"
-  }
+  // Check exact AST structure
+  result |> should.equal(parser.ParseResult(
+    ast: parser.Leaf(parser.Token("Ident", "hello", fake_location(), 0)),
+    errors: []
+  ))
 }
 
 pub fn parse_number_test() {
@@ -180,11 +179,10 @@ pub fn parse_number_test() {
   let tokens = lexer.tokenize(lexer.default_config(), "test", "42")
   let result = parse(tokens)
 
-  result.errors |> should.equal([])
-  case result.ast {
-    parser.Leaf(token) -> token.value |> should.equal("42")
-    _ -> panic as "Expected Leaf token"
-  }
+  result |> should.equal(parser.ParseResult(
+    ast: parser.Leaf(parser.Token("Number", "42", fake_location(), 0)),
+    errors: []
+  ))
 }
 
 pub fn parse_sequence_test() {
@@ -199,15 +197,17 @@ pub fn parse_sequence_test() {
   let tokens = lexer.tokenize(lexer.default_config(), "test", "x +")
   let result = parse(tokens)
 
-  result.errors |> should.equal([])
   // Sequence creates Node("Seq", ...)
-  case result.ast {
-    parser.Node("Seq", children) -> list.length(children) |> should.equal(2)
-    _ -> panic as "Expected Seq node with 2 children"
-  }
+  result |> should.equal(parser.ParseResult(
+    ast: parser.Node("Seq", [
+      parser.Leaf(parser.Token("Ident", "x", fake_location(), 0)),
+      parser.Leaf(parser.Token("Operator", "+", fake_location(), 0)),
+    ]),
+    errors: []
+  ))
 }
 
-pub fn parse_choice_test() {
+pub fn parse_choice_ident_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.choice([
@@ -216,19 +216,34 @@ pub fn parse_choice_test() {
     ]))
 
   let parse = grammar.to_parser(g)
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "hello")
+  let result = parse(tokens)
 
-  // Test Ident branch
-  let tokens1 = lexer.tokenize(lexer.default_config(), "test", "hello")
-  let result1 = parse(tokens1)
-  result1.errors |> should.equal([])
-
-  // Test Number branch
-  let tokens2 = lexer.tokenize(lexer.default_config(), "test", "42")
-  let result2 = parse(tokens2)
-  result2.errors |> should.equal([])
+  result |> should.equal(parser.ParseResult(
+    ast: parser.Leaf(parser.Token("Ident", "hello", fake_location(), 0)),
+    errors: []
+  ))
 }
 
-pub fn parse_optional_test() {
+pub fn parse_choice_number_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.choice([
+      grammar.token("Ident"),
+      grammar.token("Number"),
+    ]))
+
+  let parse = grammar.to_parser(g)
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "42")
+  let result = parse(tokens)
+
+  result |> should.equal(parser.ParseResult(
+    ast: parser.Leaf(parser.Token("Number", "42", fake_location(), 0)),
+    errors: []
+  ))
+}
+
+pub fn parse_optional_without_semicolon_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.seq([
@@ -237,34 +252,71 @@ pub fn parse_optional_test() {
     ]))
 
   let parse = grammar.to_parser(g)
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "x")
+  let result = parse(tokens)
 
-  // Without semicolon
-  let tokens1 = lexer.tokenize(lexer.default_config(), "test", "x")
-  let result1 = parse(tokens1)
-  result1.errors |> should.equal([])
-
-  // With semicolon
-  let tokens2 = lexer.tokenize(lexer.default_config(), "test", "x ;")
-  let result2 = parse(tokens2)
-  result2.errors |> should.equal([])
+  result |> should.equal(parser.ParseResult(
+    ast: parser.Node("Seq", [
+      parser.Leaf(parser.Token("Ident", "x", fake_location(), 0)),
+      parser.Empty,
+    ]),
+    errors: []
+  ))
 }
 
-pub fn parse_many_test() {
+pub fn parse_optional_with_semicolon_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.seq([
+      grammar.token("Ident"),
+      grammar.opt(grammar.token("Semicolon")),
+    ]))
+
+  let parse = grammar.to_parser(g)
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "x ;")
+  let result = parse(tokens)
+
+  result |> should.equal(parser.ParseResult(
+    ast: parser.Node("Seq", [
+      parser.Leaf(parser.Token("Ident", "x", fake_location(), 0)),
+      parser.Leaf(parser.Token("Semicolon", ";", fake_location(), 0)),
+    ]),
+    errors: []
+  ))
+}
+
+pub fn parse_many_empty_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.many(grammar.token("Ident")))
 
   let parse = grammar.to_parser(g)
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "")
+  let result = parse(tokens)
 
-  // Empty
-  let tokens1 = lexer.tokenize(lexer.default_config(), "test", "")
-  let result1 = parse(tokens1)
-  result1.errors |> should.equal([])
+  result |> should.equal(parser.ParseResult(
+    ast: parser.Node("Many", []),
+    errors: []
+  ))
+}
 
-  // Multiple
-  let tokens2 = lexer.tokenize(lexer.default_config(), "test", "a b c")
-  let result2 = parse(tokens2)
-  result2.errors |> should.equal([])
+pub fn parse_many_multiple_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.many(grammar.token("Ident")))
+
+  let parse = grammar.to_parser(g)
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "a b c")
+  let result = parse(tokens)
+
+  result |> should.equal(parser.ParseResult(
+    ast: parser.Node("Many", [
+      parser.Leaf(parser.Token("Ident", "a", fake_location(), 0)),
+      parser.Leaf(parser.Token("Ident", "b", fake_location(), 0)),
+      parser.Leaf(parser.Token("Ident", "c", fake_location(), 0)),
+    ]),
+    errors: []
+  ))
 }
 
 pub fn parse_sep_test() {
@@ -273,10 +325,17 @@ pub fn parse_sep_test() {
     |> grammar.rule("Start", grammar.comma_sep(grammar.token("Ident")))
 
   let parse = grammar.to_parser(g)
-
   let tokens = lexer.tokenize(lexer.default_config(), "test", "a , b , c")
   let result = parse(tokens)
-  result.errors |> should.equal([])
+
+  result |> should.equal(parser.ParseResult(
+    ast: parser.Node("Sep", [
+      parser.Leaf(parser.Token("Ident", "a", fake_location(), 0)),
+      parser.Leaf(parser.Token("Ident", "b", fake_location(), 0)),
+      parser.Leaf(parser.Token("Ident", "c", fake_location(), 0)),
+    ]),
+    errors: []
+  ))
 }
 
 // ============================================================================
@@ -329,7 +388,7 @@ pub fn format_sequence_test() {
   result |> should.equal("x +")
 }
 
-pub fn format_choice_test() {
+pub fn format_choice_ident_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.choice([
@@ -338,21 +397,32 @@ pub fn format_choice_test() {
     ]))
 
   let format = grammar.to_formatter(g)
-
-  // Format Ident
-  let tree1 = parser.Node("Start", [
+  let tree = parser.Node("Start", [
     parser.Leaf(parser.Token("Ident", "hello", fake_location(), 0))
   ])
-  format(tree1) |> should.equal("hello")
 
-  // Format Number
-  let tree2 = parser.Node("Start", [
-    parser.Leaf(parser.Token("Number", "42", fake_location(), 0))
-  ])
-  format(tree2) |> should.equal("42")
+  let result = format(tree)
+  result |> should.equal("hello")
 }
 
-pub fn format_optional_test() {
+pub fn format_choice_number_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.choice([
+      grammar.token("Ident"),
+      grammar.token("Number"),
+    ]))
+
+  let format = grammar.to_formatter(g)
+  let tree = parser.Node("Start", [
+    parser.Leaf(parser.Token("Number", "42", fake_location(), 0))
+  ])
+
+  let result = format(tree)
+  result |> should.equal("42")
+}
+
+pub fn format_optional_without_semicolon_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.seq([
@@ -361,40 +431,64 @@ pub fn format_optional_test() {
     ]))
 
   let format = grammar.to_formatter(g)
-
-  // Without semicolon
-  let tree1 = parser.Node("Start", [
+  let tree = parser.Node("Start", [
     parser.Leaf(parser.Token("Ident", "x", fake_location(), 0)),
     parser.Empty,
   ])
-  string.contains(format(tree1), "x") |> should.be_true
 
-  // With semicolon
-  let tree2 = parser.Node("Start", [
+  let result = format(tree)
+  // Formatter adds space after identifier
+  result |> should.equal("x ")
+}
+
+pub fn format_optional_with_semicolon_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.seq([
+      grammar.token("Ident"),
+      grammar.opt(grammar.token("Semicolon")),
+    ]))
+
+  let format = grammar.to_formatter(g)
+  let tree = parser.Node("Start", [
     parser.Leaf(parser.Token("Ident", "x", fake_location(), 0)),
     parser.Leaf(parser.Token("Semicolon", ";", fake_location(), 0)),
   ])
-  string.contains(format(tree2), "x") |> should.be_true
-  string.contains(format(tree2), ";") |> should.be_true
+
+  let result = format(tree)
+  result |> should.equal("x ;")
 }
 
-pub fn format_many_test() {
+pub fn format_many_empty_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.many(grammar.token("Ident")))
 
   let format = grammar.to_formatter(g)
-
-  // Multiple identifiers
   let tree = parser.Node("Start", [
-    parser.Leaf(parser.Token("Ident", "a", fake_location(), 0)),
-    parser.Leaf(parser.Token("Ident", "b", fake_location(), 0)),
-    parser.Leaf(parser.Token("Ident", "c", fake_location(), 0)),
+    parser.Node("Many", [])
   ])
+
   let result = format(tree)
-  string.contains(result, "a") |> should.be_true
-  string.contains(result, "b") |> should.be_true
-  string.contains(result, "c") |> should.be_true
+  result |> should.equal("")
+}
+
+pub fn format_many_multiple_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.many(grammar.token("Ident")))
+
+  let format = grammar.to_formatter(g)
+  let tree = parser.Node("Start", [
+    parser.Node("Many", [
+      parser.Leaf(parser.Token("Ident", "a", fake_location(), 0)),
+      parser.Leaf(parser.Token("Ident", "b", fake_location(), 0)),
+      parser.Leaf(parser.Token("Ident", "c", fake_location(), 0)),
+    ])
+  ])
+
+  let result = format(tree)
+  result |> should.equal("a b c")
 }
 
 pub fn format_sep_test() {
@@ -403,16 +497,17 @@ pub fn format_sep_test() {
     |> grammar.rule("Start", grammar.comma_sep(grammar.token("Ident")))
 
   let format = grammar.to_formatter(g)
-
   let tree = parser.Node("Start", [
-    parser.Leaf(parser.Token("Ident", "a", fake_location(), 0)),
-    parser.Leaf(parser.Token("Ident", "b", fake_location(), 0)),
-    parser.Leaf(parser.Token("Ident", "c", fake_location(), 0)),
+    parser.Node("Sep", [
+      parser.Leaf(parser.Token("Ident", "a", fake_location(), 0)),
+      parser.Leaf(parser.Token("Ident", "b", fake_location(), 0)),
+      parser.Leaf(parser.Token("Ident", "c", fake_location(), 0)),
+    ])
   ])
+
   let result = format(tree)
-  string.contains(result, "a") |> should.be_true
-  string.contains(result, "b") |> should.be_true
-  string.contains(result, "c") |> should.be_true
+  // Formatter uses space separator, not comma
+  result |> should.equal("a b c")
 }
 
 // ============================================================================
@@ -430,10 +525,8 @@ pub fn round_trip_ident_test() {
   let source = "hello"
   let tokens = lexer.tokenize(lexer.default_config(), "test", source)
   let parse_result = parse(tokens)
-
-  parse_result.errors |> should.equal([])
-
   let formatted = format(parse_result.ast)
+
   formatted |> should.equal("hello")
 }
 
@@ -448,10 +541,8 @@ pub fn round_trip_number_test() {
   let source = "42"
   let tokens = lexer.tokenize(lexer.default_config(), "test", source)
   let parse_result = parse(tokens)
-
-  parse_result.errors |> should.equal([])
-
   let formatted = format(parse_result.ast)
+
   formatted |> should.equal("42")
 }
 
@@ -469,16 +560,12 @@ pub fn round_trip_sequence_test() {
   let source = "x +"
   let tokens = lexer.tokenize(lexer.default_config(), "test", source)
   let parse_result = parse(tokens)
-
-  parse_result.errors |> should.equal([])
-
   let formatted = format(parse_result.ast)
-  // Formatted output should contain both tokens
-  string.contains(formatted, "x") |> should.be_true
-  string.contains(formatted, "+") |> should.be_true
+
+  formatted |> should.equal("x +")
 }
 
-pub fn round_trip_choice_test() {
+pub fn round_trip_choice_ident_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.choice([
@@ -489,20 +576,32 @@ pub fn round_trip_choice_test() {
   let parse = grammar.to_parser(g)
   let format = grammar.to_formatter(g)
 
-  // Test Ident branch
-  let tokens1 = lexer.tokenize(lexer.default_config(), "test", "hello")
-  let result1 = parse(tokens1)
-  result1.errors |> should.equal([])
-  format(result1.ast) |> should.equal("hello")
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "hello")
+  let parse_result = parse(tokens)
+  let formatted = format(parse_result.ast)
 
-  // Test Number branch
-  let tokens2 = lexer.tokenize(lexer.default_config(), "test", "42")
-  let result2 = parse(tokens2)
-  result2.errors |> should.equal([])
-  format(result2.ast) |> should.equal("42")
+  formatted |> should.equal("hello")
 }
 
-pub fn round_trip_optional_test() {
+pub fn round_trip_choice_number_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.choice([
+      grammar.token("Ident"),
+      grammar.token("Number"),
+    ]))
+
+  let parse = grammar.to_parser(g)
+  let format = grammar.to_formatter(g)
+
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "42")
+  let parse_result = parse(tokens)
+  let formatted = format(parse_result.ast)
+
+  formatted |> should.equal("42")
+}
+
+pub fn round_trip_optional_without_semicolon_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.seq([
@@ -513,21 +612,32 @@ pub fn round_trip_optional_test() {
   let parse = grammar.to_parser(g)
   let format = grammar.to_formatter(g)
 
-  // Without semicolon
-  let tokens1 = lexer.tokenize(lexer.default_config(), "test", "x")
-  let result1 = parse(tokens1)
-  result1.errors |> should.equal([])
-  string.contains(format(result1.ast), "x") |> should.be_true
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "x")
+  let parse_result = parse(tokens)
+  let formatted = format(parse_result.ast)
 
-  // With semicolon
-  let tokens2 = lexer.tokenize(lexer.default_config(), "test", "x ;")
-  let result2 = parse(tokens2)
-  result2.errors |> should.equal([])
-  string.contains(format(result2.ast), "x") |> should.be_true
-  string.contains(format(result2.ast), ";") |> should.be_true
+  formatted |> should.equal("x")
 }
 
-pub fn round_trip_many_test() {
+pub fn round_trip_optional_with_semicolon_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.seq([
+      grammar.token("Ident"),
+      grammar.opt(grammar.token("Semicolon")),
+    ]))
+
+  let parse = grammar.to_parser(g)
+  let format = grammar.to_formatter(g)
+
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "x ;")
+  let parse_result = parse(tokens)
+  let formatted = format(parse_result.ast)
+
+  formatted |> should.equal("x ;")
+}
+
+pub fn round_trip_many_empty_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.many(grammar.token("Ident")))
@@ -535,15 +645,26 @@ pub fn round_trip_many_test() {
   let parse = grammar.to_parser(g)
   let format = grammar.to_formatter(g)
 
-  // Multiple identifiers
-  let tokens = lexer.tokenize(lexer.default_config(), "test", "a b c")
-  let result = parse(tokens)
-  result.errors |> should.equal([])
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "")
+  let parse_result = parse(tokens)
+  let formatted = format(parse_result.ast)
 
-  let formatted = format(result.ast)
-  string.contains(formatted, "a") |> should.be_true
-  string.contains(formatted, "b") |> should.be_true
-  string.contains(formatted, "c") |> should.be_true
+  formatted |> should.equal("")
+}
+
+pub fn round_trip_many_multiple_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.many(grammar.token("Ident")))
+
+  let parse = grammar.to_parser(g)
+  let format = grammar.to_formatter(g)
+
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "a b c")
+  let parse_result = parse(tokens)
+  let formatted = format(parse_result.ast)
+
+  formatted |> should.equal("a b c")
 }
 
 pub fn round_trip_sep_test() {
@@ -555,13 +676,10 @@ pub fn round_trip_sep_test() {
   let format = grammar.to_formatter(g)
 
   let tokens = lexer.tokenize(lexer.default_config(), "test", "a , b , c")
-  let result = parse(tokens)
-  result.errors |> should.equal([])
+  let parse_result = parse(tokens)
+  let formatted = format(parse_result.ast)
 
-  let formatted = format(result.ast)
-  string.contains(formatted, "a") |> should.be_true
-  string.contains(formatted, "b") |> should.be_true
-  string.contains(formatted, "c") |> should.be_true
+  formatted |> should.equal("a, b, c")
 }
 
 // ============================================================================

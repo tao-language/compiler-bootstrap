@@ -802,9 +802,9 @@ fn get_token_at_loop(tokens: List(Token), pos: Int, current: Int) -> Result(Toke
 
 /// Parse tokens - NEVER PANICS
 /// Returns ParseResult with AST (possibly Empty) and error list
-pub fn parse(parser: Parser(Tree), _filename: String, tokens: List(Token)) -> ParseResult(Tree) {
+pub fn parse(parse_p: Parser(Tree), _filename: String, tokens: List(Token)) -> ParseResult(Tree) {
   let initial_state = State(tokens: tokens, pos: 0, errors: [])
-  case run(parser, initial_state) {
+  case run(parse_p, initial_state) {
     Ok(#(ast, state)) -> ParseResult(ast: ast, errors: state.errors)
     Error(error_state) -> {
       // Return errors with Empty AST - NEVER panic!
