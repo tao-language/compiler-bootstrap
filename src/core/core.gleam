@@ -1,3 +1,4 @@
+import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -42,6 +43,10 @@ pub type TermData {
   App(fun: Term, arg: Term)
   /// Pattern matching (match arg with motive returning cases)
   Match(arg: Term, motive: Term, cases: List(Case))
+  /// Built-in function call (e.g., add, print, read_file)
+  BuiltIn(name: String, args: List(Term))
+  /// Compile-time evaluation block (evaluated during elaboration)
+  Comptime(term: Term)
 }
 
 // ============================================================================
@@ -68,6 +73,13 @@ pub type Value {
   VLam(name: String, env: Env, body: Term)
   /// Dependent function type with evaluated domain
   VPi(name: String, env: Env, in: Value, out: Term)
+  /// Built-in function (first-class, knows its arity)
+  VBuiltIn(
+    name: String,
+    arity: Int,
+    collected_args: List(Value),
+    impl: fn(List(Value), State) -> #(Value, State),
+  )
   /// Error value for error recovery (continues checking after errors)
   VErr
 }
@@ -201,7 +213,206 @@ pub type State {
     sub: Subst,
     /// Accumulated errors (for error recovery and IDE feedback)
     errors: List(Error),
+    /// Host FFI registry (for built-in evaluation)
+    host_registry: HostRegistry,
   )
+}
+
+// ============================================================================
+// HOST FFI AND BUILT-INS
+// ============================================================================
+// Host FFIs allow built-in functions to execute during elaboration.
+// This supports both pure operations (arithmetic) and impure operations
+// (file I/O, environment variables) with permission checking.
+
+/// Permission for compile-time operations
+pub type Permission {
+  AllowRead(path: String)
+  AllowWrite(path: String)
+  AllowEnv(var: String)
+  AllowNet(host: String)
+  AllowExec(cmd: String)
+}
+
+/// Host FFI function definition
+pub type HostFFI {
+  HostFFI(
+    name: String,
+    arity: Int,
+    impl: fn(List(Value), State) -> #(Value, State),
+    required_permissions: List(Permission),
+  )
+}
+
+/// Host FFI registry
+pub type HostRegistry {
+  HostRegistry(ffis: Dict(String, HostFFI))
+}
+
+/// Create default host registry with basic built-ins
+pub fn default_host_registry() -> HostRegistry {
+  HostRegistry(
+    ffis: dict.from_list([
+      // Arithmetic (pure, always allowed)
+      #("add", HostFFI("add", 2, add_impl, [])),
+      #("sub", HostFFI("sub", 2, sub_impl, [])),
+      #("mul", HostFFI("mul", 2, mul_impl, [])),
+      #("div", HostFFI("div", 2, div_impl, [])),
+      #("mod", HostFFI("mod", 2, mod_impl, [])),
+      
+      // Comparison (pure)
+      #("eq", HostFFI("eq", 2, eq_impl, [])),
+      #("neq", HostFFI("neq", 2, neq_impl, [])),
+      #("lt", HostFFI("lt", 2, lt_impl, [])),
+      #("lte", HostFFI("lte", 2, lte_impl, [])),
+      #("gt", HostFFI("gt", 2, gt_impl, [])),
+      #("gte", HostFFI("gte", 2, gte_impl, [])),
+      
+      // Logical (pure)
+      #("and", HostFFI("and", 2, and_impl, [])),
+      #("or", HostFFI("or", 2, or_impl, [])),
+      #("not", HostFFI("not", 1, not_impl, [])),
+    ]),
+  )
+}
+
+// ============================================================================
+// BUILTIN IMPLEMENTATIONS
+// ============================================================================
+
+fn add_impl(args: List(Value), s: State) -> #(Value, State) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(a + b)), s)
+    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(F64(a +. b)), s)
+    [a, b] -> {
+      // Arguments not concrete - return stuck built-in
+      #(
+        VBuiltIn("add", 2, [a, b], add_impl),
+        s,
+      )
+    }
+    _ -> #(VErr, s)
+  }
+}
+
+fn sub_impl(args: List(Value), s: State) -> #(Value, State) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(a - b)), s)
+    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(F64(a -. b)), s)
+    [a, b] -> #(VBuiltIn("sub", 2, [a, b], sub_impl), s)
+    _ -> #(VErr, s)
+  }
+}
+
+fn mul_impl(args: List(Value), s: State) -> #(Value, State) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(a * b)), s)
+    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(F64(a *. b)), s)
+    [a, b] -> #(VBuiltIn("mul", 2, [a, b], mul_impl), s)
+    _ -> #(VErr, s)
+  }
+}
+
+fn div_impl(args: List(Value), s: State) -> #(Value, State) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] if b != 0 -> #(VLit(I32(a / b)), s)
+    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(F64(a /. b)), s)
+    [a, b] -> #(VBuiltIn("div", 2, [a, b], div_impl), s)
+    _ -> #(VErr, s)
+  }
+}
+
+fn mod_impl(args: List(Value), s: State) -> #(Value, State) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] if b != 0 -> #(VLit(I32(a % b)), s)
+    [a, b] -> #(VBuiltIn("mod", 2, [a, b], mod_impl), s)
+    _ -> #(VErr, s)
+  }
+}
+
+fn eq_impl(args: List(Value), s: State) -> #(Value, State) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a == b))), s)
+    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a == b))), s)
+    [a, b] -> #(VBuiltIn("eq", 2, [a, b], eq_impl), s)
+    _ -> #(VErr, s)
+  }
+}
+
+fn neq_impl(args: List(Value), s: State) -> #(Value, State) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a != b))), s)
+    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a != b))), s)
+    [a, b] -> #(VBuiltIn("neq", 2, [a, b], neq_impl), s)
+    _ -> #(VErr, s)
+  }
+}
+
+fn lt_impl(args: List(Value), s: State) -> #(Value, State) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a < b))), s)
+    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a < b))), s)
+    [a, b] -> #(VBuiltIn("lt", 2, [a, b], lt_impl), s)
+    _ -> #(VErr, s)
+  }
+}
+
+fn lte_impl(args: List(Value), s: State) -> #(Value, State) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a <= b))), s)
+    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a <= b))), s)
+    [a, b] -> #(VBuiltIn("lte", 2, [a, b], lte_impl), s)
+    _ -> #(VErr, s)
+  }
+}
+
+fn gt_impl(args: List(Value), s: State) -> #(Value, State) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a > b))), s)
+    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a > b))), s)
+    [a, b] -> #(VBuiltIn("gt", 2, [a, b], gt_impl), s)
+    _ -> #(VErr, s)
+  }
+}
+
+fn gte_impl(args: List(Value), s: State) -> #(Value, State) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a >= b))), s)
+    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a >= b))), s)
+    [a, b] -> #(VBuiltIn("gte", 2, [a, b], gte_impl), s)
+    _ -> #(VErr, s)
+  }
+}
+
+fn and_impl(args: List(Value), s: State) -> #(Value, State) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a != 0 && b != 0))), s)
+    [a, b] -> #(VBuiltIn("and", 2, [a, b], and_impl), s)
+    _ -> #(VErr, s)
+  }
+}
+
+fn or_impl(args: List(Value), s: State) -> #(Value, State) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a != 0 || b != 0))), s)
+    [a, b] -> #(VBuiltIn("or", 2, [a, b], or_impl), s)
+    _ -> #(VErr, s)
+  }
+}
+
+fn not_impl(args: List(Value), s: State) -> #(Value, State) {
+  case args {
+    [VLit(I32(a))] -> #(VLit(I32(bool_to_int(a == 0))), s)
+    [a] -> #(VBuiltIn("not", 1, [a], not_impl), s)
+    _ -> #(VErr, s)
+  }
+}
+
+fn bool_to_int(b: Bool) -> Int {
+  case b {
+    True -> 1
+    False -> 0
+  }
 }
 
 // ============================================================================
@@ -796,6 +1007,65 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let match_val = do_match(env, arg_val, motive_val, cases)
       let result_ty = do_app(motive_val, arg_val)
       #(match_val, result_ty, s)
+    }
+    BuiltIn(name, args) -> {
+      // Look up built-in in host registry
+      case dict.get(s.host_registry.ffis, name) {
+        Ok(builtin) -> {
+          // Evaluate arguments
+          let #(arg_vals, arg_tys, s1) = infer_args(s, args)
+          
+          // Check arity
+          if list.length(arg_vals) != builtin.arity {
+            let err = ArityMismatch(term.span, term.span)
+            #(VErr, VErr, with_err(s1, err))
+          } else {
+            // Try to execute built-in
+            let #(result_val, s2) = builtin.impl(arg_vals, s1)
+            
+            // Compute result type (simplified - assumes all args have same type for arithmetic)
+            let result_ty = case arg_tys {
+              [ty, ..] -> ty
+              [] -> VErr
+            }
+            
+            #(result_val, result_ty, s2)
+          }
+        }
+        Error(Nil) -> {
+          // Unknown built-in
+          #(VErr, VErr, with_err(s, TODO("Unknown built-in: " <> name)))
+        }
+      }
+    }
+    Comptime(term) -> {
+      // Comptime blocks are evaluated during elaboration
+      // For now, just evaluate the inner term normally
+      // (full comptime support will be added later)
+      infer(s, term)
+    }
+  }
+}
+
+/// Infer types for all arguments
+fn infer_args(
+  s: State,
+  args: List(Term),
+) -> #(List(Value), List(Type), State) {
+  infer_args_loop(args, [], [], s)
+}
+
+fn infer_args_loop(
+  args: List(Term),
+  vals: List(Value),
+  tys: List(Type),
+  s: State,
+) -> #(List(Value), List(Type), State) {
+  case args {
+    [] -> #(list.reverse(vals), list.reverse(tys), s)
+    [arg, ..rest] -> {
+      let #(val, ty, s1) = infer(s, arg)
+      infer_args_loop(rest, [val, ..vals], [ty, ..tys], s1)
     }
   }
 }
