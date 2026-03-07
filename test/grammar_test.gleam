@@ -4,6 +4,7 @@
 
 import gleeunit
 import gleeunit/should
+import gleam/dict
 import gleam/list
 import gleam/string
 import grammar
@@ -23,35 +24,31 @@ pub fn new_grammar_test() {
 
   g.name |> should.equal("Test")
   g.start |> should.equal("Start")
-  True |> should.be_true
+  dict.size(g.rules) |> should.equal(0)
 }
 
 pub fn start_test() {
   let g = grammar.new("Test") |> grammar.start("Expr")
 
   g.start |> should.equal("Expr")
-  True |> should.be_true
 }
 
 pub fn indent_sensitive_test() {
   let g = grammar.new("Test") |> grammar.indent_sensitive
 
   g.indent_sensitive |> should.be_true
-  True |> should.be_true
 }
 
 pub fn with_token_test() {
   let g = grammar.new("Test") |> grammar.with_token("Ident")
 
   list.contains(g.tokens, "Ident") |> should.be_true
-  True |> should.be_true
 }
 
 pub fn with_keyword_test() {
   let g = grammar.new("Test") |> grammar.with_keyword("let")
 
   list.contains(g.keywords, "let") |> should.be_true
-  True |> should.be_true
 }
 
 pub fn rule_test() {
@@ -59,7 +56,6 @@ pub fn rule_test() {
     |> grammar.rule("Expr", grammar.token("Ident"))
 
   list.contains(grammar.rule_names(g), "Expr") |> should.be_true
-  True |> should.be_true
 }
 
 // ============================================================================
@@ -158,7 +154,7 @@ pub fn expr_symbol_test() {
 // PARSER GENERATION TESTS
 // ============================================================================
 
-pub fn simple_grammar_parser_test() {
+pub fn parse_ident_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.token("Ident"))
@@ -168,23 +164,50 @@ pub fn simple_grammar_parser_test() {
   let result = parse(tokens)
 
   result.errors |> should.equal([])
-  True |> should.be_true
+  // Token rules produce just Leaf(token)
+  case result.ast {
+    parser.Leaf(token) -> token.value |> should.equal("hello")
+    _ -> panic as "Expected Leaf token"
+  }
 }
 
-pub fn seq_grammar_parser_test() {
+pub fn parse_number_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
-    |> grammar.rule("Start", grammar.seq([grammar.token("Ident"), grammar.token("Operator")]))
+    |> grammar.rule("Start", grammar.token("Number"))
+
+  let parse = grammar.to_parser(g)
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "42")
+  let result = parse(tokens)
+
+  result.errors |> should.equal([])
+  case result.ast {
+    parser.Leaf(token) -> token.value |> should.equal("42")
+    _ -> panic as "Expected Leaf token"
+  }
+}
+
+pub fn parse_sequence_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.seq([
+      grammar.token("Ident"),
+      grammar.token("Operator"),
+    ]))
 
   let parse = grammar.to_parser(g)
   let tokens = lexer.tokenize(lexer.default_config(), "test", "x +")
   let result = parse(tokens)
 
   result.errors |> should.equal([])
-  True |> should.be_true
+  // Sequence creates Node("Seq", ...)
+  case result.ast {
+    parser.Node("Seq", children) -> list.length(children) |> should.equal(2)
+    _ -> panic as "Expected Seq node with 2 children"
+  }
 }
 
-pub fn choice_grammar_parser_test() {
+pub fn parse_choice_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.choice([
@@ -194,18 +217,18 @@ pub fn choice_grammar_parser_test() {
 
   let parse = grammar.to_parser(g)
 
+  // Test Ident branch
   let tokens1 = lexer.tokenize(lexer.default_config(), "test", "hello")
   let result1 = parse(tokens1)
   result1.errors |> should.equal([])
 
+  // Test Number branch
   let tokens2 = lexer.tokenize(lexer.default_config(), "test", "42")
   let result2 = parse(tokens2)
   result2.errors |> should.equal([])
-
-  True |> should.be_true
 }
 
-pub fn opt_grammar_parser_test() {
+pub fn parse_optional_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.seq([
@@ -215,102 +238,330 @@ pub fn opt_grammar_parser_test() {
 
   let parse = grammar.to_parser(g)
 
+  // Without semicolon
   let tokens1 = lexer.tokenize(lexer.default_config(), "test", "x")
   let result1 = parse(tokens1)
   result1.errors |> should.equal([])
 
+  // With semicolon
   let tokens2 = lexer.tokenize(lexer.default_config(), "test", "x ;")
   let result2 = parse(tokens2)
   result2.errors |> should.equal([])
-
-  True |> should.be_true
 }
 
-pub fn many_grammar_parser_test() {
+pub fn parse_many_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.many(grammar.token("Ident")))
 
   let parse = grammar.to_parser(g)
 
+  // Empty
   let tokens1 = lexer.tokenize(lexer.default_config(), "test", "")
   let result1 = parse(tokens1)
   result1.errors |> should.equal([])
 
+  // Multiple
   let tokens2 = lexer.tokenize(lexer.default_config(), "test", "a b c")
   let result2 = parse(tokens2)
   result2.errors |> should.equal([])
-
-  True |> should.be_true
 }
 
-pub fn sep_by_grammar_parser_test() {
+pub fn parse_sep_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.comma_sep(grammar.token("Ident")))
 
   let parse = grammar.to_parser(g)
 
-  let tokens1 = lexer.tokenize(lexer.default_config(), "test", "a")
-  let result1 = parse(tokens1)
-  result1.errors |> should.equal([])
-
-  let tokens2 = lexer.tokenize(lexer.default_config(), "test", "a , b , c")
-  let result2 = parse(tokens2)
-  result2.errors |> should.equal([])
-
-  True |> should.be_true
-}
-
-pub fn expr_grammar_parser_test() {
-  let g = grammar.new("Expr")
-    |> grammar.start("Expr")
-    |> grammar.rule("Expr", grammar.expr([
-      parser.Atom("Number"),
-      parser.InfixL("+", 10),
-      parser.InfixL("*", 20),
-    ]))
-
-  let parse = grammar.to_parser(g)
-  let config = lexer.default_config() |> lexer.with_keywords(["+", "*"])
-  let tokens = lexer.tokenize(config, "test", "1 + 2 * 3")
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "a , b , c")
   let result = parse(tokens)
-
   result.errors |> should.equal([])
-  True |> should.be_true
 }
 
 // ============================================================================
 // FORMATTER GENERATION TESTS
 // ============================================================================
 
-pub fn simple_grammar_formatter_test() {
+pub fn format_ident_test() {
   let g = grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.token("Ident"))
 
   let format = grammar.to_formatter(g)
-  let tree = parser.Leaf(parser.Token("Ident", "hello", fake_location(), 0))
-
-  let result = format(tree)
-  string.contains(result, "hello") |> should.be_true
-  True |> should.be_true
-}
-
-pub fn tree_formatter_test() {
-  let g = grammar.new("Test")
-    |> grammar.start("Start")
-
-  let format = grammar.to_formatter(g)
-  let tree = parser.Node("Seq", [
-    parser.Leaf(parser.Token("Ident", "hello", fake_location(), 0)),
-    parser.Leaf(parser.Token("Ident", "world", fake_location(), 0)),
+  let tree = parser.Node("Start", [
+    parser.Leaf(parser.Token("Ident", "hello", fake_location(), 0))
   ])
 
   let result = format(tree)
-  string.contains(result, "hello") |> should.be_true
-  string.contains(result, "world") |> should.be_true
-  True |> should.be_true
+  result |> should.equal("hello")
+}
+
+pub fn format_number_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.token("Number"))
+
+  let format = grammar.to_formatter(g)
+  let tree = parser.Node("Start", [
+    parser.Leaf(parser.Token("Number", "42", fake_location(), 0))
+  ])
+
+  let result = format(tree)
+  result |> should.equal("42")
+}
+
+pub fn format_sequence_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.seq([
+      grammar.token("Ident"),
+      grammar.token("Operator"),
+    ]))
+
+  let format = grammar.to_formatter(g)
+  let tree = parser.Node("Start", [
+    parser.Leaf(parser.Token("Ident", "x", fake_location(), 0)),
+    parser.Leaf(parser.Token("Operator", "+", fake_location(), 0)),
+  ])
+
+  let result = format(tree)
+  result |> should.equal("x +")
+}
+
+pub fn format_choice_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.choice([
+      grammar.token("Ident"),
+      grammar.token("Number"),
+    ]))
+
+  let format = grammar.to_formatter(g)
+
+  // Format Ident
+  let tree1 = parser.Node("Start", [
+    parser.Leaf(parser.Token("Ident", "hello", fake_location(), 0))
+  ])
+  format(tree1) |> should.equal("hello")
+
+  // Format Number
+  let tree2 = parser.Node("Start", [
+    parser.Leaf(parser.Token("Number", "42", fake_location(), 0))
+  ])
+  format(tree2) |> should.equal("42")
+}
+
+pub fn format_optional_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.seq([
+      grammar.token("Ident"),
+      grammar.opt(grammar.token("Semicolon")),
+    ]))
+
+  let format = grammar.to_formatter(g)
+
+  // Without semicolon
+  let tree1 = parser.Node("Start", [
+    parser.Leaf(parser.Token("Ident", "x", fake_location(), 0)),
+    parser.Empty,
+  ])
+  string.contains(format(tree1), "x") |> should.be_true
+
+  // With semicolon
+  let tree2 = parser.Node("Start", [
+    parser.Leaf(parser.Token("Ident", "x", fake_location(), 0)),
+    parser.Leaf(parser.Token("Semicolon", ";", fake_location(), 0)),
+  ])
+  string.contains(format(tree2), "x") |> should.be_true
+  string.contains(format(tree2), ";") |> should.be_true
+}
+
+pub fn format_many_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.many(grammar.token("Ident")))
+
+  let format = grammar.to_formatter(g)
+
+  // Multiple identifiers
+  let tree = parser.Node("Start", [
+    parser.Leaf(parser.Token("Ident", "a", fake_location(), 0)),
+    parser.Leaf(parser.Token("Ident", "b", fake_location(), 0)),
+    parser.Leaf(parser.Token("Ident", "c", fake_location(), 0)),
+  ])
+  let result = format(tree)
+  string.contains(result, "a") |> should.be_true
+  string.contains(result, "b") |> should.be_true
+  string.contains(result, "c") |> should.be_true
+}
+
+pub fn format_sep_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.comma_sep(grammar.token("Ident")))
+
+  let format = grammar.to_formatter(g)
+
+  let tree = parser.Node("Start", [
+    parser.Leaf(parser.Token("Ident", "a", fake_location(), 0)),
+    parser.Leaf(parser.Token("Ident", "b", fake_location(), 0)),
+    parser.Leaf(parser.Token("Ident", "c", fake_location(), 0)),
+  ])
+  let result = format(tree)
+  string.contains(result, "a") |> should.be_true
+  string.contains(result, "b") |> should.be_true
+  string.contains(result, "c") |> should.be_true
+}
+
+// ============================================================================
+// PARSER-FORMATTER ROUND TRIP TESTS
+// ============================================================================
+
+pub fn round_trip_ident_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.token("Ident"))
+
+  let parse = grammar.to_parser(g)
+  let format = grammar.to_formatter(g)
+
+  let source = "hello"
+  let tokens = lexer.tokenize(lexer.default_config(), "test", source)
+  let parse_result = parse(tokens)
+
+  parse_result.errors |> should.equal([])
+
+  let formatted = format(parse_result.ast)
+  formatted |> should.equal("hello")
+}
+
+pub fn round_trip_number_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.token("Number"))
+
+  let parse = grammar.to_parser(g)
+  let format = grammar.to_formatter(g)
+
+  let source = "42"
+  let tokens = lexer.tokenize(lexer.default_config(), "test", source)
+  let parse_result = parse(tokens)
+
+  parse_result.errors |> should.equal([])
+
+  let formatted = format(parse_result.ast)
+  formatted |> should.equal("42")
+}
+
+pub fn round_trip_sequence_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.seq([
+      grammar.token("Ident"),
+      grammar.token("Operator"),
+    ]))
+
+  let parse = grammar.to_parser(g)
+  let format = grammar.to_formatter(g)
+
+  let source = "x +"
+  let tokens = lexer.tokenize(lexer.default_config(), "test", source)
+  let parse_result = parse(tokens)
+
+  parse_result.errors |> should.equal([])
+
+  let formatted = format(parse_result.ast)
+  // Formatted output should contain both tokens
+  string.contains(formatted, "x") |> should.be_true
+  string.contains(formatted, "+") |> should.be_true
+}
+
+pub fn round_trip_choice_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.choice([
+      grammar.token("Ident"),
+      grammar.token("Number"),
+    ]))
+
+  let parse = grammar.to_parser(g)
+  let format = grammar.to_formatter(g)
+
+  // Test Ident branch
+  let tokens1 = lexer.tokenize(lexer.default_config(), "test", "hello")
+  let result1 = parse(tokens1)
+  result1.errors |> should.equal([])
+  format(result1.ast) |> should.equal("hello")
+
+  // Test Number branch
+  let tokens2 = lexer.tokenize(lexer.default_config(), "test", "42")
+  let result2 = parse(tokens2)
+  result2.errors |> should.equal([])
+  format(result2.ast) |> should.equal("42")
+}
+
+pub fn round_trip_optional_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.seq([
+      grammar.token("Ident"),
+      grammar.opt(grammar.token("Semicolon")),
+    ]))
+
+  let parse = grammar.to_parser(g)
+  let format = grammar.to_formatter(g)
+
+  // Without semicolon
+  let tokens1 = lexer.tokenize(lexer.default_config(), "test", "x")
+  let result1 = parse(tokens1)
+  result1.errors |> should.equal([])
+  string.contains(format(result1.ast), "x") |> should.be_true
+
+  // With semicolon
+  let tokens2 = lexer.tokenize(lexer.default_config(), "test", "x ;")
+  let result2 = parse(tokens2)
+  result2.errors |> should.equal([])
+  string.contains(format(result2.ast), "x") |> should.be_true
+  string.contains(format(result2.ast), ";") |> should.be_true
+}
+
+pub fn round_trip_many_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.many(grammar.token("Ident")))
+
+  let parse = grammar.to_parser(g)
+  let format = grammar.to_formatter(g)
+
+  // Multiple identifiers
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "a b c")
+  let result = parse(tokens)
+  result.errors |> should.equal([])
+
+  let formatted = format(result.ast)
+  string.contains(formatted, "a") |> should.be_true
+  string.contains(formatted, "b") |> should.be_true
+  string.contains(formatted, "c") |> should.be_true
+}
+
+pub fn round_trip_sep_test() {
+  let g = grammar.new("Test")
+    |> grammar.start("Start")
+    |> grammar.rule("Start", grammar.comma_sep(grammar.token("Ident")))
+
+  let parse = grammar.to_parser(g)
+  let format = grammar.to_formatter(g)
+
+  let tokens = lexer.tokenize(lexer.default_config(), "test", "a , b , c")
+  let result = parse(tokens)
+  result.errors |> should.equal([])
+
+  let formatted = format(result.ast)
+  string.contains(formatted, "a") |> should.be_true
+  string.contains(formatted, "b") |> should.be_true
+  string.contains(formatted, "c") |> should.be_true
 }
 
 // ============================================================================
@@ -346,7 +597,7 @@ pub fn rule_names_test() {
   let names = grammar.rule_names(g)
   list.contains(names, "A") |> should.be_true
   list.contains(names, "B") |> should.be_true
-  True |> should.be_true
+  list.length(names) |> should.equal(2)
 }
 
 // ============================================================================

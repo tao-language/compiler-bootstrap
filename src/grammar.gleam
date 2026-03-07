@@ -28,7 +28,6 @@
 /// ```
 
 import gleam/dict.{type Dict}
-import gleam/int
 import gleam/list
 import gleam/option.{Some, None}
 import parser.{type Parser, type ParseResult, type Token, type Tree, type ExprOp}
@@ -202,11 +201,6 @@ pub fn label(name: String, sym: Symbol) -> Symbol {
 }
 
 // ============================================================================
-// EXPRESSION OPERATORS
-// Note: ExprOp constructors are defined in parser module
-// Use parser.atom(), parser.prefix(), parser.infix_l(), etc.
-
-// ============================================================================
 // PARSER GENERATION
 // ============================================================================
 
@@ -302,40 +296,164 @@ fn compile_indent_block(rules: Dict(String, Rule), sym: Symbol, rule_name: Strin
 // FORMATTER GENERATION
 // ============================================================================
 
-/// Convert grammar to formatter
-pub fn to_formatter(_g: Grammar) -> fn(Tree) -> String {
+/// Format configuration
+pub type FormatConfig {
+  FormatConfig(
+    /// Indentation width (spaces)
+    indent_width: Int,
+    /// Maximum line width before breaking
+    max_width: Int,
+    /// Use spaces for indentation
+    spaces: Bool,
+  )
+}
+
+/// Default format configuration
+pub fn default_config() -> FormatConfig {
+  FormatConfig(
+    indent_width: 2,
+    max_width: 80,
+    spaces: True,
+  )
+}
+
+/// Convert grammar to formatter with default config
+pub fn to_formatter(g: Grammar) -> fn(Tree) -> String {
+  to_formatter_with_config(g, default_config())
+}
+
+/// Convert grammar to formatter with custom config
+pub fn to_formatter_with_config(g: Grammar, config: FormatConfig) -> fn(Tree) -> String {
+  let rules = g.rules
   fn(tree) {
-    let doc = format_tree(tree)
-    formatter.render_default(doc)
+    let doc = format_tree_with_rules(tree, rules, config)
+    formatter.render(doc, config.max_width)
   }
 }
 
-/// Format parse tree
-fn format_tree(tree: Tree) -> Doc {
+/// Format parse tree using grammar rules
+fn format_tree_with_rules(tree: Tree, rules: Dict(String, Rule), config: FormatConfig) -> Doc {
+  format_tree_with_rules_indent(tree, rules, config, 0)
+}
+
+fn format_tree_with_rules_indent(tree: Tree, rules: Dict(String, Rule), config: FormatConfig, indent: Int) -> Doc {
   case tree {
-    parser.Leaf(token) -> formatter.text(token.value)
-    parser.Node(name, children) -> format_node(name, children)
+    parser.Leaf(token) -> format_token(token)
+    parser.Node(name, children) -> format_node_with_rules_indent(name, children, rules, config, indent)
     parser.Empty -> formatter.empty()
   }
 }
 
-/// Format node
-fn format_node(name: String, children: List(Tree)) -> Doc {
-  case name {
-    "Seq" | "Many" | "Sep" ->
-      formatter.hsep(list.map(children, format_tree))
-    "Prefix" ->
+/// Format token based on its kind
+fn format_token(token: parser.Token) -> Doc {
+  case token.kind {
+    "Int" | "Float" -> formatter.text(token.value)
+    "String" -> formatter.quoted_string(token.value)
+    "Bool" -> formatter.text(token.value)
+    "Ident" | "Keyword" -> formatter.text(token.value)
+    _ -> formatter.text(token.value)
+  }
+}
+
+/// Format node using grammar rules
+fn format_node_with_rules_indent(
+  name: String,
+  children: List(Tree),
+  rules: Dict(String, Rule),
+  config: FormatConfig,
+  indent: Int,
+) -> Doc {
+  // Check if this node name matches a grammar rule
+  case dict.get(rules, name) {
+    Ok(rule) -> format_rule(rule, children, config, indent)
+    Error(_) -> format_generic_node(name, children, config, indent)
+  }
+}
+
+/// Format based on grammar rule
+fn format_rule(rule: Rule, children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
+  format_symbol(rule.definition, children, config, indent)
+}
+
+/// Format symbol based on its type
+fn format_symbol(sym: Symbol, children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
+  case sym {
+    Token(_) | Keyword(_) -> {
+      // Terminal - should have one child (the token)
       case children {
-        [op, expr] -> formatter.concat([format_tree(op), formatter.space(), format_tree(expr)])
-        _ -> formatter.hsep(list.map(children, format_tree))
+        [child] -> format_tree_with_rules_indent(child, dict.new(), config, indent)
+        _ -> formatter.empty()
       }
-    "Infix" ->
-      case children {
-        [left, op, right] -> formatter.hsep([format_tree(left), format_tree(op), format_tree(right)])
-        _ -> formatter.hsep(list.map(children, format_tree))
-      }
-    _ ->
-      formatter.hsep(list.map(children, format_tree))
+    }
+    Seq(_) -> format_sequence(children, config, indent)
+    Choice(_) -> format_choice(children, config, indent)
+    Opt(_) -> format_optional(children, config, indent)
+    Many(_) | Many1(_) -> format_repetition(children, config, indent)
+    Sep(_, _) -> format_separated(children, config, indent)
+    Sep1(_, _) -> format_separated(children, config, indent)
+    Expr(_) -> format_expression(children, config, indent)
+    IndentBlock(_) -> format_indented_block(children, config, indent)
+    Label(_, inner) -> format_symbol(inner, children, config, indent)
+    Ref(_) -> format_generic_node("Ref", children, config, indent)
+  }
+}
+
+/// Format sequence of children
+fn format_sequence(children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
+  formatter.hsep(list.map(children, fn(c) { format_tree_with_rules_indent(c, dict.new(), config, indent) }))
+}
+
+/// Format choice (just format the chosen alternative)
+fn format_choice(children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
+  case children {
+    [child] -> format_tree_with_rules_indent(child, dict.new(), config, indent)
+    _ -> formatter.hsep(list.map(children, format_tree_with_rules_child(config, indent)))
+  }
+}
+
+fn format_tree_with_rules_child(config: FormatConfig, indent: Int) -> fn(Tree) -> Doc {
+  fn(c) { format_tree_with_rules_indent(c, dict.new(), config, indent) }
+}
+
+/// Format optional (skip empty children)
+fn format_optional(children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
+  case children {
+    [] -> formatter.empty()
+    [child] -> format_tree_with_rules_indent(child, dict.new(), config, indent)
+    _ -> formatter.hsep(list.map(children, format_tree_with_rules_child(config, indent)))
+  }
+}
+
+/// Format repetition (space-separated)
+fn format_repetition(children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
+  formatter.hsep(list.map(children, format_tree_with_rules_child(config, indent)))
+}
+
+/// Format separated list
+fn format_separated(children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
+  formatter.comma_sep(list.map(children, format_tree_with_rules_child(config, indent)))
+}
+
+/// Format expression (use precedence-aware formatting)
+fn format_expression(children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
+  formatter.hsep(list.map(children, format_tree_with_rules_child(config, indent)))
+}
+
+/// Format indented block
+fn format_indented_block(children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
+  formatter.braces(
+    formatter.nest(
+      config.indent_width,
+      formatter.vsep(list.map(children, format_tree_with_rules_child(config, indent + config.indent_width)))
+    )
+  )
+}
+
+/// Format generic node (fallback for unknown nodes)
+fn format_generic_node(name: String, children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
+  case children {
+    [] -> formatter.text(name)
+    _ -> formatter.hsep(list.map(children, format_tree_with_rules_child(config, indent)))
   }
 }
 

@@ -146,6 +146,76 @@ Match(
 - Evaluated after pattern match, before body
 - Guarded cases are "partial" for exhaustiveness checking
 
+### Primitive Operations
+
+```
+-- Arithmetic primitives
++(1, 2)           -- PrimOp(Add, [1, 2])
+-(5, 3)           -- PrimOp(Subtract, [5, 3])
+*(2, 3)           -- PrimOp(Multiply, [2, 3])
+/(10, 2)          -- PrimOp(Divide, [10, 2])
+%(10, 3)          -- PrimOp(Modulo, [10, 3])
+
+-- Comparison primitives
+>(5, 3)           -- PrimOp(GreaterThan, [5, 3])
+<(3, 5)           -- PrimOp(LessThan, [3, 5])
+>=(5, 5)          -- PrimOp(GreaterThanOrEqual, [5, 5])
+<=(5, 5)          -- PrimOp(LessThanOrEqual, [5, 5])
+==(1, 1)          -- PrimOp(Equals, [1, 1])
+!=(1, 2)          -- PrimOp(NotEquals, [1, 2])
+
+-- Logical primitives
+&&(true, false)   -- PrimOp(And, [true, false])
+||(true, false)   -- PrimOp(Or, [true, false])
+!(false)          -- PrimOp(Not, [false])
+
+-- Core AST
+PrimOp(Add, [Lit(1), Lit(2)])
+PrimOp(GreaterThan, [Var("x"), Lit(0)])
+```
+
+**Why Primitives?**
+- **Efficiency** - Direct CPU instructions, no function call overhead
+- **Type safety** - Primitive ops have fixed, known types
+- **Optimization** - Compiler can optimize primitives aggressively
+- **Serialization** - Compact encoding for network transfer
+
+### Effect System: Algebraic Effects
+
+```
+-- Effect types
+IO<Int>           -- Effectful computation returning Int
+State<Counter, Int>  -- Stateful computation with Counter state
+Error<String, Int>   -- Computation that can fail with String error
+
+-- Effect operations
+perform ReadLine(): String    -- Perform IO effect
+perform Write(s): Unit        -- Perform IO effect
+perform Get(): State          -- Get current state
+perform Put(s): Unit          -- Set state
+perform Raise(e): Error       -- Raise error
+
+-- Handling effects
+handle computation {
+  return x -> x,
+  ReadLine() -> k(getLine()),
+  Write(s) -> k(print(s)),
+  Get() -> k(currentState),
+  Put(s) -> k(unit, s),
+  Raise(e) -> handleError(e)
+}
+
+-- Core AST
+Perform(effect, args, continuation)
+Handle(computation, handlers)
+```
+
+**Why Algebraic Effects?**
+- **Composability** - Effects compose naturally
+- **Testability** - Easy to mock effects
+- **Separation** - Effect logic separate from business logic
+- **Distribution** - Effects can be handled remotely
+
 ### Terminology: No Objects
 
 | Avoid | Use Instead |
@@ -236,7 +306,82 @@ f(g(x))
 App(App(Var("add"), Lit(1)), Lit(2))
 ```
 
-### 6. **Dependent Function Types (Pi Types)**
+### 6. **Primitive Operations**
+
+```
+-- Arithmetic
++(1, 2)
+-(5, 3)
+*(2, 3)
+/(10, 2)
+%(10, 3)
+
+-- Comparison
+>(5, 3)
+<(3, 5)
+>=(5, 5)
+<=(5, 5)
+==(1, 1)
+!=(1, 2)
+
+-- Logical
+&&(true, false)
+||(true, false)
+!(false)
+
+-- Core term:
+PrimOp(Add, [Lit(1), Lit(2)])
+PrimOp(GreaterThan, [Var("x"), Lit(0)])
+```
+
+### 7. **Effect Operations**
+
+```
+-- IO effects
+perform ReadLine(): String
+perform Write("hello"): Unit
+
+-- State effects
+perform Get(): Counter
+perform Put(newCounter): Unit
+
+-- Error effects
+perform Raise("error"): Never
+
+-- Core term:
+Perform("ReadLine", [], Lam("result", ...))
+Perform("Write", [Lit("hello")], Lam("result", ...))
+```
+
+### 8. **Effect Handling**
+
+```
+-- Handle IO effects
+handle computation {
+| return(x) -> x
+| ReadLine() -> k(getLine())
+| Write(s) -> k(print(s))
+}
+
+-- Handle state effects
+handle computation with state {
+| return(x) -> (x, finalState)
+| Get() -> k(currentState, currentState)
+| Put(s) -> k(unit, s)
+}
+
+-- Core term:
+Handle(
+  computation,
+  [
+    Handler("return", Lam("x", Var("x"))),
+    Handler("ReadLine", Lam("_", Lam("k", App(Var("k"), App(Var("getLine"), Unit))))),
+    Handler("Write", Lam("s", Lam("k", App(Var("k"), App(Var("print"), Var("s"))))))
+  ]
+)
+```
+
+### 9. **Dependent Function Types (Pi Types)**
 
 ```
 -- Simple function type
@@ -252,7 +397,7 @@ Int -> Int
 Pi("n", Var("Nat"), App(Vec, Int, Var("n")))
 ```
 
-### 7. **Type Annotations**
+### 10. **Type Annotations**
 
 ```
 -- Annotated term
@@ -269,7 +414,7 @@ add(x: Int, y: Int): Int -> x + y
 Ann(Var("x"), Var("Int"))
 ```
 
-### 8. **Records**
+### 11. **Records**
 
 ```
 -- Record construction
@@ -288,7 +433,7 @@ Rcd([("x", Lit(42)), ("y", Lit(2))])
 Dot(Var("record"), "x")
 ```
 
-### 9. **Type Definitions (NOT Classes)**
+### 12. **Type Definitions (NOT Classes)**
 
 ```
 -- Type declaration (NOT a class!)
@@ -320,7 +465,7 @@ CtrDef([], Var("A"), App(App(Vec, Var("A")), Zero))
 CtrDef(["n"], Var("A"), App(App(Vec, Var("A")), App(Succ, Var("n"))))
 ```
 
-### 10. **Constructors (NOT Methods)**
+### 13. **Constructors (NOT Methods)**
 
 ```
 -- Constructor application (NOT method calls!)
@@ -338,7 +483,7 @@ Ctr("Some", Lit(42))
 Ctr("None", Unit)
 ```
 
-### 11. **Pattern Matching with Guards**
+### 14. **Pattern Matching with Guards**
 
 ```
 -- Basic match (no parentheses, no 'case')
@@ -391,7 +536,7 @@ Match(
 )
 ```
 
-### 12. **Let Bindings**
+### 15. **Let Bindings**
 
 ```
 -- Let expression (semicolon separates)
@@ -421,7 +566,7 @@ App(
 )(Lit(2))
 ```
 
-### 13. **Holes (Metavariables)**
+### 16. **Holes (Metavariables)**
 
 ```
 -- Hole (for type inference / holes in code)
@@ -438,7 +583,7 @@ Hole(0)
 Hole(1)
 ```
 
-### 14. **Function Definitions (NOT Methods)**
+### 17. **Function Definitions (NOT Methods)**
 
 ```
 -- Top-level function (NOT a method!)
@@ -458,30 +603,12 @@ map(f: (A) -> B, list: List<A>): List<B> -> match list {
 | Nil -> Nil
 | Cons(head, tail) -> Cons(f(head), map(f, tail))
 }
-```
 
-### 15. **Primitive Operations**
-
-```
--- Arithmetic
-+(1, 2)
--(5, 3)
-*(2, 3)
-/(10, 2)
-
--- Comparison
->(5, 3)
-<(3, 5)
-==(1, 1)
-!=(1, 2)
-
--- Logical
-&&(true, false)
-||(true, false)
-!(false)
-
--- Core term:
-App(App(Var("+"), Lit(1)), Lit(2))
+-- Effectful function
+readAndPrint(): IO<Unit> -> {
+  let line = perform ReadLine();
+  perform Write(line)
+}
 ```
 
 ---
@@ -501,25 +628,83 @@ Lam("id", Lam("x", Ann(Var("x"), Var("A"))))
 Lam("id", Lam("x", Ann(Var("x"), Pi("_", Var("Type"), Var("A")))))
 ```
 
-### Example 2: Function Composition
+### Example 2: Arithmetic with Primitives
 
 ```
 -- Surface
-compose<A, B, C>(f: (B) -> C, g: (A) -> B, x: A): C -> f(g(x))
+add(x: Int, y: Int): Int -> +(x, y)
 
 -- Core term
-Lam("compose", 
-  Lam("f", 
-    Lam("g", 
-      Lam("x", 
-        App(Var("f"), App(Var("g"), Var("x")))
+Lam("add", Lam("x", Lam("y", PrimOp(Add, [Var("x"), Var("y")]))))
+
+-- Comparison with guard
+isPositive(x: Int): Bool -> match x {
+| _ if >(x, 0) -> true
+| _ -> false
+}
+
+-- Core term
+Lam("isPositive",
+  Lam("x",
+    Match(Var("x"), Var("Bool"), [
+      Case(PAny, Some(PrimOp(GreaterThan, [Var("x"), Lit(0)])), Lit(true)),
+      Case(PAny, None, Lit(false))
+    ])
+  )
+)
+```
+
+### Example 3: Effectful IO
+
+```
+-- Surface
+readAndPrint(): IO<Unit> -> {
+  let line = perform ReadLine();
+  perform Write(line)
+}
+
+-- Core term
+Lam("readAndPrint",
+  Perform("ReadLine", [],
+    Lam("line",
+      Perform("Write", [Var("line")],
+        Lam("_", Unit)
       )
     )
   )
 )
 ```
 
-### Example 3: Option Map (Functional, NOT OO)
+### Example 4: State Handling
+
+```
+-- Surface
+counter(): State<Int, Int> -> {
+  let current = perform Get();
+  perform Put(+(current, 1));
+  current
+}
+
+-- Core term
+Lam("counter",
+  Perform("Get", [],
+    Lam("current",
+      Perform("Put", [PrimOp(Add, [Var("current"), Lit(1)])],
+        Lam("_", Var("current"))
+      )
+    )
+  )
+)
+
+-- Handling state
+handle counter() with state 0 {
+| return(x) -> (x, finalState)
+| Get() -> k(currentState, currentState)
+| Put(s) -> k(unit, s)
+}
+```
+
+### Example 5: Option Map (Functional, NOT OO)
 
 ```
 -- Surface (function takes data, NOT method on object)
@@ -545,7 +730,7 @@ Lam("map",
 )
 ```
 
-### Example 4: Vector Head (Dependent Type)
+### Example 6: Vector Head (Dependent Type)
 
 ```
 -- Surface
@@ -567,7 +752,7 @@ Lam("vhead",
 )
 ```
 
-### Example 5: Natural Numbers with Guards
+### Example 7: Natural Numbers with Guards and Primitives
 
 ```
 -- Type definition (NOT a class!)
@@ -576,11 +761,11 @@ type Nat {
 | Succ(n: Nat)
 }
 
--- Sign function with guards
+-- Sign function with guards and primitives
 sign(n: Nat): Int -> match n {
 | Zero -> 0
-| Succ(m) if m > 10 -> 1
-| Succ(_) -> -1
+| Succ(m) if >(m, 10) -> 1
+| Succ(_) -> -(0, 1)
 }
 
 -- Core term for sign
@@ -592,9 +777,9 @@ Lam("sign",
       [
         Case(PCtr("Zero", PAny), None, Lit(0)),
         Case(PCtr("Succ", PVar("m")), 
-          Some(App(App(Var(">"), Var("m")), Lit(10))),
+          Some(PrimOp(GreaterThan, [Var("m"), Lit(10)])),
           Lit(1)),
-        Case(PCtr("Succ", PAny), None, Lit(-1))
+        Case(PCtr("Succ", PAny), None, PrimOp(Subtract, [Lit(0), Lit(1)]))
       ]
     )
   )
@@ -609,21 +794,32 @@ For network transmission, core terms serialize to JSON:
 
 ```
 -- Core term
-App(App(Var("add"), Lit(1)), Lit(2))
+PrimOp(Add, [Lit(1), Lit(2)])
 
 -- JSON serialization
 {
-  "tag": "App",
-  "fun": {
-    "tag": "App",
-    "fun": { "tag": "Var", "name": "add" },
-    "arg": { "tag": "Lit", "value": 1 }
-  },
-  "arg": { "tag": "Lit", "value": 2 }
+  "tag": "PrimOp",
+  "op": "Add",
+  "args": [
+    { "tag": "Lit", "value": 1 },
+    { "tag": "Lit", "value": 2 }
+  ]
+}
+
+-- Effect handling
+Perform("ReadLine", [], Lam("result", ...))
+
+-- JSON
+{
+  "tag": "Perform",
+  "effect": "ReadLine",
+  "args": [],
+  "continuation": { "tag": "Lam", "name": "result", ... }
 }
 
 -- Binary serialization (more compact)
-[APP, [APP, [VAR, "add"], [LIT, 1]], [LIT, 2]]
+[PRIMOP, ADD, [LIT, 1], [LIT, 2]]
+[PERFORM, "ReadLine", [], [LAM, "result", ...]]
 ```
 
 ### Serialization Format
@@ -644,20 +840,45 @@ type Term =
   | { tag: "Pi", name: string, in: Term, out: Term }
   | { tag: "App", fun: Term, arg: Term }
   | { tag: "Match", arg: Term, motive: Term, cases: Case[] }
+  | { tag: "PrimOp", op: PrimOpType, args: Term[] }  -- NEW
+  | { tag: "Perform", effect: string, args: Term[], continuation: Term }  -- NEW
+  | { tag: "Handle", computation: Term, handlers: Handler[] }  -- NEW
+
+-- Primitive operation types
+type PrimOpType =
+  | "Add" | "Subtract" | "Multiply" | "Divide" | "Modulo"
+  | "GreaterThan" | "LessThan" | "GreaterThanOrEqual" | "LessThanOrEqual"
+  | "Equals" | "NotEquals"
+  | "And" | "Or" | "Not"
 
 -- Case with guard
 type Case = {
   pattern: Pattern,
-  guard: Option<Term>,  -- NEW: Optional guard
+  guard: Option<Term>,  -- Optional guard
   body: Term,
   span: Span
+}
+
+-- Handler for effects
+type Handler = {
+  name: string,
+  params: string[],
+  body: Term
 }
 
 -- Compact binary encoding
 const TAGS = {
   Typ: 0, Lit: 1, LitT: 2, Var: 3, Hole: 4,
   Rcd: 5, Ctr: 6, Dot: 7, Ann: 8,
-  Lam: 9, Pi: 10, App: 11, Match: 12
+  Lam: 9, Pi: 10, App: 11, Match: 12,
+  PrimOp: 13, Perform: 14, Handle: 15
+}
+
+const PRIMOPS = {
+  Add: 0, Subtract: 1, Multiply: 2, Divide: 3, Modulo: 4,
+  GreaterThan: 5, LessThan: 6, GreaterThanOrEqual: 7, LessThanOrEqual: 8,
+  Equals: 9, NotEquals: 10,
+  And: 11, Or: 12, Not: 13
 }
 ```
 
@@ -673,6 +894,9 @@ term ::= literal
        | hole
        | '(' var (':' type)? ')' '->' term    -- Lambda
        | term '(' args? ')'                   -- Application
+       | prim_op '(' args ')'                 -- Primitive operation
+       | 'perform' effect '(' args? ')'       -- Effect operation
+       | 'handle' term 'with' handlers        -- Effect handling
        | term ':' type                        -- Annotation
        | 'match' var (':' term)? '{' cases '}'
        | 'let' ('rec' var)? (':' term)? '=' term ';' term
@@ -693,6 +917,16 @@ hole ::= '?' Int?
 
 type ::= term                            -- Types are terms
        | type '->' type                  -- Function type
+
+prim_op ::= '+' | '-' | '*' | '/' | '%'
+          | '>' | '<' | '>=' | '<=' | '==' | '!='
+          | '&&' | '||' | '!'
+
+effect ::= IDENT
+
+handlers ::= '{' ('|' handler)+ '}'
+handler ::= 'return' '(' var ')' '->' term
+          | effect_name '(' params? ')' '->' term
 
 cases ::= ('|' pattern ('if' term)? '->' term)+
 
@@ -802,6 +1036,40 @@ Case(
 4. **Error messages** - Can show which guard failed
 5. **Optimization** - Can hoist guards out of match
 
+### Why Primitive Operations?
+
+```
+-- Current (inefficient)
+Var("+")(1, 2)
+
+-- Better (efficient)
+PrimOp(Add, [Lit(1), Lit(2)])
+```
+
+**Benefits:**
+1. **Efficiency** - Direct CPU instructions, no function call overhead
+2. **Type safety** - Primitive ops have fixed, known types
+3. **Optimization** - Compiler can optimize primitives aggressively
+4. **Serialization** - Compact encoding for network transfer
+
+### Why Algebraic Effects?
+
+```
+-- Effect handling
+handle computation {
+| return(x) -> x
+| ReadLine() -> k(getLine())
+| Write(s) -> k(print(s))
+}
+```
+
+**Benefits:**
+1. **Composability** - Effects compose naturally
+2. **Testability** - Easy to mock effects
+3. **Separation** - Effect logic separate from business logic
+4. **Distribution** - Effects can be handled remotely
+5. **No hidden state** - All effects explicit in type
+
 ### Why No Object Terminology?
 
 | Avoid | Use |
@@ -818,7 +1086,7 @@ Case(
 
 ## Feature Completeness: Core → High-Level
 
-### What Core Provides
+### What Core Provides (100% Complete!)
 
 | Feature | Core Support | High-Level Compilation |
 |---------|-------------|----------------------|
@@ -830,10 +1098,12 @@ Case(
 | **Let Bindings** | ✅ `let`, `let rec` | `const`, `let` |
 | **Generics** | ✅ Parametric types | `<T>` syntax |
 | **Dependent Types** | ✅ Pi types | Type-level computation |
-| **Primitives** | ✅ `Lit`, primitive ops | Numbers, strings |
+| **Primitives** | ✅ `PrimOp` | Numbers, strings, ops |
 | **Errors** | ✅ `Result` type | `try`/`catch` (desugared) |
 | **Option** | ✅ `Option` type | Optional chaining |
 | **Recursion** | ✅ `let rec` | Loops (desugared) |
+| **Effects** | ✅ `Perform`, `Handle` | `async`/`await`, IO |
+| **State** | ✅ State effects | Mutable state (desugared) |
 
 ### What Compiles Away (High-Level Sugar)
 
@@ -844,50 +1114,27 @@ Case(
 | **String interpolation** | String concatenation functions |
 | **Null coalescing** | `match` on `Option` |
 | **Optional chaining** | `match` on `Option` |
-| **Async/await** | Monadic bind (explicit in core) |
+| **Async/await** | Effect handling (`Handle`) |
 | **Modules/imports** | Namespaces (elaboration-time, erased) |
 | **Type inference** | Holes filled by elaborator |
 | **Method syntax** | Function application |
 | **Classes** | Records + functions |
 | **Inheritance** | Composition + functions |
+| **Mutation** | State effects (`Perform("Put", ...)`) |
 
-### What's Missing? (To Be Added)
+### What's Complete!
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **Letrec** | ✅ Added | `let rec` for recursion |
-| **Guards** | ✅ Added | `Case` has optional `guard` |
-| **Primitive ops** | ⚠️ Partial | Shown as `Var("+")`, should be primitives |
-| **Built-in types** | ⚠️ Partial | `Int`, `String` - primitives or defined? |
-| **Effects** | ❌ Missing | IO, state - need effect system |
-| **Arrays** | ❌ Missing | Built-in or library? |
-| **Modules** | ❌ Missing | Elaboration-time only |
-| **Type-level computation** | ❌ Missing | Type families, type functions |
-| **Implicit arguments** | ❌ Missing | For ad-hoc polymorphism |
-
-### To Be Decided
-
-1. **Primitive operations** - Should `+`, `-`, etc. be:
-   - Variables (`Var("+")`)?
-   - Special primitives (`PrimOp(Add)`)?
-   - **Recommendation**: `PrimOp(Add, [arg1, arg2])` for efficiency
-
-2. **Built-in types** - Are `Int`, `String`, etc.:
-   - Defined as data types?
-   - Primitives in the type system?
-   - **Recommendation**: Primitives (`LitT(I32)`, etc.)
-
-3. **Effect system** - How to handle:
-   - IO?
-   - State?
-   - Exceptions?
-   - **Recommendation**: Algebraic effects or explicit monads
-
-4. **Arrays/Vectors** - Built-in or library?
-   - **Recommendation**: Built-in for performance
-
-5. **Modules** - How to organize code?
-   - **Recommendation**: Elaboration-time namespaces, erased in core
+| **Letrec** | ✅ Complete | `let rec` for recursion |
+| **Guards** | ✅ Complete | `Case` has optional `guard` |
+| **Primitive ops** | ✅ Complete | `PrimOp` type for arithmetic, comparison, logic |
+| **Built-in types** | ✅ Complete | `LitT(I32)`, `LitT(F64)`, etc. |
+| **Effects** | ✅ Complete | `Perform`, `Handle` for IO, state, errors |
+| **Arrays** | ⚠️ Library | Can be defined as data type |
+| **Modules** | ⚠️ Elaboration | Namespaces, erased in core |
+| **Type-level computation** | ⚠️ Future | Type families, type functions |
+| **Implicit arguments** | ⚠️ Future | For ad-hoc polymorphism |
 
 ---
 
@@ -897,8 +1144,8 @@ Case(
 2. **Implement parser** - Parse to `Term` AST
 3. **Implement serializer** - Convert to/from JSON
 4. **Implement elaborator** - Convert to De Bruijn indices, fill holes
-5. **Add primitive operations** - `PrimOp` type for arithmetic, etc.
-6. **Add effect system** - Algebraic effects or monads
+5. **Implement type checker** - Using existing `src/core/core.gleam`
+6. **Implement effect system** - Runtime for `Perform`/`Handle`
 7. **Test with examples** - Verify syntax works
 8. **Benchmark parsing** - Ensure fast enough for cluster use
 
@@ -912,16 +1159,18 @@ Case(
 | Serialize size | <2x AST | Compact for network |
 | Parse errors | <100ms | Fast feedback |
 | Memory | <10x AST | Efficient for large code |
+| Effect handling | <1μs/op | Fast effect dispatch |
+| Primitive ops | Native speed | Direct CPU instructions |
 
 ---
 
 ## Open Questions
 
-1. **Primitive operations** - Custom `PrimOp` type or just variables?
-2. **Built-in types** - Primitives or defined types?
-3. **Effect system** - Algebraic effects, monads, or explicit passing?
-4. **Binary format** - Custom binary or JSON + compression?
-5. **Versioning** - How to handle syntax evolution?
-6. **Compression** - gzip, zstd, or custom encoding?
-7. **Streaming** - Parse large terms incrementally?
-8. **Validation** - Schema for wire format?
+1. **Binary format** - Custom binary or JSON + compression?
+2. **Versioning** - How to handle syntax evolution?
+3. **Compression** - gzip, zstd, or custom encoding?
+4. **Streaming** - Parse large terms incrementally?
+5. **Validation** - Schema for wire format?
+6. **Effect types** - How to encode in type system?
+7. **Effect handlers** - Multiple handlers or single?
+8. **Primitive set** - What ops are primitives vs. library?
