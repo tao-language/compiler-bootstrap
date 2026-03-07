@@ -1,86 +1,57 @@
 // ============================================================================
-// FORMATTER - Pretty Printing with Layout Algebra
+// FORMATTER - Simple Pretty Printer
 // ============================================================================
-/// A pretty printing library based on Wadler's "A Prettier Printer" paper.
-///
-/// This library provides:
-/// - Layout algebra for composable document formatting
-/// - Automatic line breaking based on width
+/// A simple pretty printing library with:
+/// - Simple document algebra
+/// - Automatic line breaking
 /// - Configurable indentation
-/// - Precedence-aware expression formatting
 ///
 /// # Example
 ///
 /// ```gleam
-/// import formatter.{type Doc, text, line, group, nest, concat}
+/// import formatter
 ///
 /// // Create a document
-/// let doc = group(
-///   concat(
-///     text("let"),
-///     concat(
-///       line(),
-///       nest(2, concat(text("x"), concat(line(), text("= 42"))))
-///     )
-///   )
-/// )
+/// let doc = formatter.concat([
+///   formatter.text("let "),
+///   formatter.text("x"),
+///   formatter.text(" = "),
+///   formatter.text("42"),
+/// ])
 ///
-/// // Render with 80 character width
-/// let output = formatter.render(doc, 80, "  ")
+/// // Render at 80 characters width
+/// let output = formatter.render(doc, 80)
 /// ```
 
+import gleam/float
 import gleam/int
 import gleam/list
-import gleam/float
 import gleam/string
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
-/// Layout document - can be rendered at different widths
+/// Document type for formatting
 pub type Doc {
   /// Empty document
   Empty
-  /// Text segment (cannot be broken)
+  /// Plain text (no line breaks)
   Text(String)
-  /// Line break (becomes space or newline depending on layout)
+  /// Soft line break (space or newline)
   Line
-  /// Forced line break (always newline)
+  /// Hard line break (always newline)
   HardLine
-  /// Nested/indented document
-  Nest(Int, Doc)
-  /// Choice between compact and expanded layout
-  FlatAlt(Doc, Doc)
-  /// Group: try flat first, expand if doesn't fit
+  /// Group (try flat, expand if needed)
   Group(Doc)
+  /// Nest (increase indentation)
+  Nest(Int, Doc)
   /// Concatenate documents
-  Concat(Doc, Doc)
-}
-
-/// Formatting context
-pub type FormatContext {
-  FormatContext(
-    /// Current line width limit
-    width: Int,
-    /// Current indentation string
-    indent: String,
-    /// Current column position
-    col: Int,
-    /// Whether we're in "flat" mode (trying to fit on one line)
-    is_flat: Bool,
-  )
-}
-
-/// Associativity for expression formatting
-pub type Assoc {
-  Left
-  Right
-  NonAssoc
+  Concat(List(Doc))
 }
 
 // ============================================================================
-// BASIC DOCUMENT CONSTRUCTORS
+// BASIC CONSTRUCTORS
 // ============================================================================
 
 /// Empty document
@@ -88,22 +59,12 @@ pub fn empty() -> Doc {
   Empty
 }
 
-/// Text (cannot be broken)
-pub fn text(str: String) -> Doc {
-  case str == "" {
+/// Text document
+pub fn text(s: String) -> Doc {
+  case s == "" {
     True -> Empty
-    False -> Text(str)
+    False -> Text(s)
   }
-}
-
-/// Line break (space or newline)
-pub fn line() -> Doc {
-  Line
-}
-
-/// Hard line break (always newline)
-pub fn hardline() -> Doc {
-  HardLine
 }
 
 /// Space character
@@ -111,35 +72,47 @@ pub fn space() -> Doc {
   text(" ")
 }
 
-/// Comma followed by optional line break
-pub fn comma() -> Doc {
-  concat(text(","), line())
+/// Soft line break
+pub fn line() -> Doc {
+  Line
 }
 
-/// Semicolon followed by optional line break
-pub fn semi() -> Doc {
-  concat(text(";"), line())
+/// Hard line break
+pub fn hardline() -> Doc {
+  HardLine
 }
 
 // ============================================================================
-// DOCUMENT COMBINATORS
+// COMBINATORS
 // ============================================================================
 
 /// Concatenate documents
-pub fn concat(doc1: Doc, doc2: Doc) -> Doc {
-  case doc1, doc2 {
-    Empty, _ -> doc2
-    _, Empty -> doc1
-    _, _ -> Concat(doc1, doc2)
-  }
-}
-
-/// Concatenate list of documents
-pub fn concat_all(docs: List(Doc)) -> Doc {
+pub fn concat(docs: List(Doc)) -> Doc {
   case docs {
     [] -> Empty
     [d] -> d
-    [d, ..ds] -> concat(d, concat_all(ds))
+    _ -> Concat(docs)
+  }
+}
+
+/// Concatenate two documents
+pub fn append(d1: Doc, d2: Doc) -> Doc {
+  concat([d1, d2])
+}
+
+/// Group for potential line breaking
+pub fn group(doc: Doc) -> Doc {
+  case doc {
+    Empty -> Empty
+    _ -> Group(doc)
+  }
+}
+
+/// Increase indentation
+pub fn nest(indent: Int, doc: Doc) -> Doc {
+  case doc {
+    Empty -> Empty
+    _ -> Nest(indent, doc)
   }
 }
 
@@ -148,110 +121,62 @@ pub fn join(sep: Doc, docs: List(Doc)) -> Doc {
   case docs {
     [] -> Empty
     [d] -> d
-    [d, ..ds] -> concat(d, concat_all(list.map(ds, fn(x) { concat(sep, x) })))
-  }
-}
-
-/// Nest document by indentation
-pub fn nest(indent: Int, doc: Doc) -> Doc {
-  case doc {
-    Empty -> Empty
-    _ -> Nest(indent, doc)
-  }
-}
-
-/// Group: try flat first, expand if doesn't fit
-pub fn group(doc: Doc) -> Doc {
-  case doc {
-    Empty -> Empty
-    _ -> Group(doc)
-  }
-}
-
-/// Flat alternative: use first if fits, otherwise second
-pub fn flat_alt(flat: Doc, expanded: Doc) -> Doc {
-  case flat {
-    Empty -> Empty
-    _ -> FlatAlt(flat, expanded)
+    [d, ..rest] -> concat([d, sep, join(sep, rest)])
   }
 }
 
 // ============================================================================
-// FORMATTING COMBINATORS
+// CONVENIENCE COMBINATORS
 // ============================================================================
 
-/// Format with parentheses if needed
-pub fn parens_if(cond: Bool, doc: Doc) -> Doc {
-  case cond {
-    True -> parens(doc)
-    False -> doc
-  }
-}
-
-/// Format block with braces
-pub fn braces(doc: Doc) -> Doc {
-  concat(text("{"), concat(doc, text("}")))
-}
-
-/// Format block with braces and space
-pub fn braces_space(doc: Doc) -> Doc {
-  concat(text("{ "), concat(doc, text(" }")))
-}
-
-/// Format block with parens
-pub fn parens(doc: Doc) -> Doc {
-  concat(text("("), concat(doc, text(")")))
-}
-
-/// Format block with brackets
-pub fn brackets(doc: Doc) -> Doc {
-  concat(text("["), concat(doc, text("]")))
-}
-
-/// Format angle brackets
-pub fn angles(doc: Doc) -> Doc {
-  concat(text("<"), concat(doc, text(">")))
-}
-
-/// Format comma-separated list
-pub fn comma_sep(docs: List(Doc)) -> Doc {
-  join(comma(), docs)
-}
-
-/// Format space-separated list
-pub fn space_sep(docs: List(Doc)) -> Doc {
+/// Space-separated list
+pub fn hsep(docs: List(Doc)) -> Doc {
   join(space(), docs)
 }
 
-/// Format list with soft line breaks
-pub fn soft_sep(docs: List(Doc)) -> Doc {
-  join(concat(line(), text(" ")), docs)
+/// Line-separated list
+pub fn vsep(docs: List(Doc)) -> Doc {
+  join(line(), docs)
 }
 
-/// Format indented block
-pub fn indented(doc: Doc) -> Doc {
-  nest(2, doc)
+/// Comma-separated list
+pub fn comma_sep(docs: List(Doc)) -> Doc {
+  join(concat([text(","), line()]), docs)
 }
 
-/// Format hanging indent (first line flush, rest indented)
-pub fn hanging_indent(indent: Int, doc: Doc) -> Doc {
-  nest(indent, doc)
+/// Parentheses
+pub fn parens(doc: Doc) -> Doc {
+  concat([text("("), doc, text(")")])
 }
 
-/// Format optional semicolon
-pub fn opt_semi(cond: Bool) -> Doc {
-  case cond {
-    True -> semi()
-    False -> Empty
+/// Braces
+pub fn braces(doc: Doc) -> Doc {
+  concat([text("{"), line(), nest(2, doc), line(), text("}")])
+}
+
+/// Brackets
+pub fn brackets(doc: Doc) -> Doc {
+  concat([text("["), doc, text("]")])
+}
+
+/// Block with braces
+pub fn block(content: Doc) -> Doc {
+  case content {
+    Empty -> text("{}")
+    _ -> braces(content)
   }
 }
 
-/// Fill: like concat but with space between non-empty elements
-pub fn fill(doc1: Doc, doc2: Doc) -> Doc {
-  case doc1, doc2 {
-    Empty, _ -> doc2
-    _, Empty -> doc1
-    _, _ -> concat(doc1, concat(space(), doc2))
+/// Keyword followed by space
+pub fn kw(s: String) -> Doc {
+  concat([text(s), space()])
+}
+
+/// Optional semicolon
+pub fn opt_semi(present: Bool) -> Doc {
+  case present {
+    True -> text(";")
+    False -> Empty
   }
 }
 
@@ -260,96 +185,49 @@ pub fn fill(doc1: Doc, doc2: Doc) -> Doc {
 // ============================================================================
 
 /// Render document to string
-pub fn render(doc: Doc, width: Int, indent: String) -> String {
-  let initial_context = FormatContext(
-    width: width,
-    indent: indent,
-    col: 0,
-    is_flat: True,
-  )
-  render_best(width, indent, [#(0, doc)])
+pub fn render(doc: Doc, width: Int) -> String {
+  render_doc(doc, width, 0, True)
 }
 
-/// Default render with 80 character width and 2-space indent
+/// Render with default width (80)
 pub fn render_default(doc: Doc) -> String {
-  render(doc, 80, "  ")
+  render(doc, 80)
 }
 
-/// Best-fit rendering algorithm
-fn render_best(width: Int, indent: String, docs: List(#(Int, Doc))) -> String {
-  case docs {
-    [] -> ""
-    [#(n, doc), ..rest] ->
-      case doc {
-        Empty -> render_best(width, indent, rest)
-        Text(s) -> s <> render_best(width, indent, advance(n, string.length(s), rest))
-        Line -> " " <> render_best(width, indent, rest)
-        HardLine -> "\n" <> string.repeat(indent, n) <> render_best(width, indent, rest)
-        Nest(i, d) -> render_best(width, indent, [#(n + i, d), ..rest])
-        FlatAlt(flat, _) -> render_best(width, indent, [#(n, flat), ..rest])
-        Group(d) -> {
-          let flat = flatten(d)
-          case fits(width, n, [#(0, flat)]) {
-            True -> render_best(width, indent, [#(n, flat), ..rest])
-            False -> render_best(width, indent, [#(n, d), ..rest])
-          }
-        }
-        Concat(d1, d2) -> render_best(width, indent, [#(n, d1), #(n, d2), ..rest])
-      }
-  }
-}
-
-/// Advance column position
-fn advance(n: Int, len: Int, docs: List(#(Int, Doc))) -> List(#(Int, Doc)) {
-  case docs {
-    [] -> []
-    [#(m, d), ..rest] -> [#(m, d), ..advance(n, len, rest)]
-  }
-}
-
-/// Check if document fits within width
-fn fits(width: Int, col: Int, docs: List(#(Int, Doc))) -> Bool {
-  case col > width {
-    True -> False
-    False ->
-      case docs {
-        [] -> True
-        [#(_, doc), ..rest] ->
-          case doc {
-            Empty -> fits(width, col, rest)
-            Text(s) -> fits(width, col + string.length(s), rest)
-            Line -> True
-            HardLine -> True
-            Nest(_, d) -> fits(width, col, [#(0, d), ..rest])
-            FlatAlt(flat, _) -> fits(width, col, [#(0, flat), ..rest])
-            Group(d) -> fits(width, col, [#(0, flatten(d)), ..rest])
-            Concat(d1, d2) -> fits(width, col, [#(0, d1), #(0, d2), ..rest])
-          }
-      }
-  }
-}
-
-/// Flatten document for single-line rendering
-pub fn flatten(doc: Doc) -> Doc {
+fn render_doc(doc: Doc, width: Int, col: Int, is_flat: Bool) -> String {
   case doc {
-    Empty -> Empty
-    Text(s) -> Text(s)
-    Line -> text(" ")
-    HardLine -> text(" ")
-    Nest(i, d) -> Nest(i, flatten(d))
-    FlatAlt(flat, _) -> flatten(flat)
-    Group(d) -> Group(flatten(d))
-    Concat(d1, d2) -> concat(flatten(d1), flatten(d2))
+    Empty -> ""
+    Text(s) -> s
+    Line ->
+      case is_flat {
+        True -> " "
+        False -> "\n" <> string.repeat(" ", col)
+      }
+    HardLine -> "\n" <> string.repeat(" ", col)
+    Group(inner) -> {
+      // Try flat first
+      let flat = render_doc(inner, width, col, True)
+      case string.length(flat) + col <= width {
+        True -> flat
+        False -> render_doc(inner, width, col, False)
+      }
+    }
+    Nest(indent, inner) -> render_doc(inner, width, col + indent, is_flat)
+    Concat(docs) -> {
+      list.fold(docs, "", fn(acc, d) {
+        acc <> render_doc(d, width, col + string.length(acc), is_flat)
+      })
+    }
   }
 }
 
 // ============================================================================
-// PRECEDENCE-AWARE EXPRESSION FORMATTING
+// EXPRESSION FORMATTING
 // ============================================================================
 
 /// Format expression with precedence-aware parentheses
 pub fn format_expr(
-  expr_doc: Doc,
+  doc: Doc,
   expr_prec: Int,
   parent_prec: Int,
   assoc: Assoc,
@@ -359,14 +237,24 @@ pub fn format_expr(
     Right -> expr_prec < parent_prec
     NonAssoc -> expr_prec <= parent_prec
   }
-  parens_if(needs_parens, expr_doc)
+  case needs_parens {
+    True -> parens(doc)
+    False -> doc
+  }
+}
+
+/// Associativity
+pub type Assoc {
+  Left
+  Right
+  NonAssoc
 }
 
 /// Get associativity from string
 pub fn assoc_from_string(s: String) -> Assoc {
-  case s {
-    "left" | "Left" | "l" -> Left
-    "right" | "Right" | "r" -> Right
+  case string.lowercase(s) {
+    "left" | "l" -> Left
+    "right" | "r" -> Right
     _ -> NonAssoc
   }
 }
@@ -375,131 +263,38 @@ pub fn assoc_from_string(s: String) -> Assoc {
 // UTILITY FUNCTIONS
 // ============================================================================
 
-/// Check if document is multi-line
-pub fn is_multi_line(doc: Doc) -> Bool {
-  case doc {
-    Empty -> False
-    Text(_) -> False
-    Line -> True
-    HardLine -> True
-    Nest(_, d) -> is_multi_line(d)
-    FlatAlt(_, _) -> False
-    Group(d) -> is_multi_line(d)
-    Concat(d1, d2) -> is_multi_line(d1) || is_multi_line(d2)
-  }
-}
-
-/// Check if document is single-line
-pub fn is_single_line(doc: Doc) -> Bool {
-  !is_multi_line(doc)
-}
-
-/// Create a simple text document
-pub fn str(s: String) -> Doc {
-  text(s)
-}
-
-/// Create a document from int
-pub fn int(i: Int) -> Doc {
+/// Convert int to document
+pub fn int_doc(i: Int) -> Doc {
   text(int.to_string(i))
 }
 
-/// Create a document from float
+/// Convert float to document
 pub fn float_doc(f: Float) -> Doc {
   text(float.to_string(f))
 }
 
-/// Wrap document in quotes
-pub fn quoted(doc: Doc) -> Doc {
-  concat(text("\""), concat(doc, text("\"")))
-}
-
-/// Wrap string in quotes
+/// Quoted string
 pub fn quoted_string(s: String) -> Doc {
-  quoted(text(s))
+  concat([text("\""), text(s), text("\"")])
 }
 
-/// Create a block with opening and closing delimiters
-pub fn block(open: Doc, close: Doc, content: Doc) -> Doc {
-  group(
-    concat(
-      open,
-      concat(
-        nest(2, concat(hardline(), content)),
-        concat(hardline(), close)
-      )
-    )
-  )
-}
-
-/// Create a block with braces
-pub fn brace_block(content: Doc) -> Doc {
-  block(text("{"), text("}"), content)
-}
-
-/// Create a block with parens
-pub fn paren_block(content: Doc) -> Doc {
-  block(text("("), text(")"), content)
-}
-
-/// Create a block with brackets
-pub fn bracket_block(content: Doc) -> Doc {
-  block(text("["), text("]"), content)
-}
-
-/// Horizontal concatenation (alias for concat)
-pub fn hcat(docs: List(Doc)) -> Doc {
-  concat_all(docs)
-}
-
-/// Vertical concatenation
-pub fn vcat(docs: List(Doc)) -> Doc {
-  join(hardline(), docs)
-}
-
-/// Fill concatenation (like hcat but with spaces)
-pub fn hsep(docs: List(Doc)) -> Doc {
-  join(space(), docs)
-}
-
-/// Vertical fill (with line breaks)
-pub fn vsep(docs: List(Doc)) -> Doc {
-  join(line(), docs)
-}
-
-/// Create a document that is either flat or expanded
-pub fn enclose_sep(
-  open: Doc,
-  close: Doc,
-  sep: Doc,
-  docs: List(Doc),
-) -> Doc {
-  case docs {
-    [] -> concat(open, close)
-    _ ->
-      group(
-        concat(
-          open,
-          concat(
-            nest(2, concat(line(), join(sep, docs))),
-            concat(line(), close)
-          )
-        )
-      )
+/// Check if document is empty
+pub fn is_empty(doc: Doc) -> Bool {
+  case doc {
+    Empty -> True
+    _ -> False
   }
 }
 
-/// Comma-separated list in brackets
-pub fn brackets_list(docs: List(Doc)) -> Doc {
-  enclose_sep(text("["), text("]"), comma(), docs)
-}
-
-/// Comma-separated list in braces
-pub fn braces_list(docs: List(Doc)) -> Doc {
-  enclose_sep(text("{"), text("}"), comma(), docs)
-}
-
-/// Comma-separated list in parens
-pub fn parens_list(docs: List(Doc)) -> Doc {
-  enclose_sep(text("("), text(")"), comma(), docs)
+/// Get document width (approximate)
+pub fn width(doc: Doc) -> Int {
+  case doc {
+    Empty -> 0
+    Text(s) -> string.length(s)
+    Line -> 1
+    HardLine -> 0
+    Group(d) -> width(d)
+    Nest(_, d) -> width(d)
+    Concat(docs) -> list.fold(docs, 0, fn(acc, d) { acc + width(d) })
+  }
 }
