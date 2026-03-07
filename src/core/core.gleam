@@ -920,7 +920,7 @@ pub fn bind_pattern(
 pub fn check(
   s: State,
   term: Term,
-  expected_ty: Value,
+  expected_ty: Type,
   ty_span: Span,
 ) -> #(Value, State) {
   case term.data, expected_ty {
