@@ -63,7 +63,7 @@ The core language is **"JSON with types, functions, and pattern matching"**:
 
 ### Arrow Style: `->` vs `=>`
 
-**Recommendation: Use `->`**
+**Decision: Use `->`**
 
 | Aspect | `->` | `=>` |
 |--------|------|------|
@@ -81,14 +81,14 @@ The core language is **"JSON with types, functions, and pattern matching"**:
 4. **Clearer semantics** - "maps to" is more precise than "arrow"
 
 ```
--- With -> (RECOMMENDED)
+-- With -> (CHOSEN)
 (x: Int) -> Int
 match x {
 | A(a) -> a
 | B -> 0
 }
 
--- With => (TS-style, rejected)
+-- With => (rejected)
 (x: Int) => Int
 match x {
 | A(a): => a
@@ -96,23 +96,19 @@ match x {
 }
 ```
 
-**Decision: Use `->` everywhere** - functions, types, and pattern matching.
-
 ### Match Syntax: OCaml-Style
 
-Since there's no space application ambiguity, we can simplify:
-
 ```
--- Before (TS-style)
-match(x) {
-  case A(a): => a
-  case B: => 0
+-- OCaml-style (CHOSEN)
+match x {
+| A -> e
+| B -> e
 }
 
--- After (OCaml-style) - CLEANER
-match x {
-| A(a) -> a
-| B -> 0
+-- TS-style (rejected)
+match(x) {
+  case A: => e
+  case B: => e
 }
 ```
 
@@ -121,6 +117,34 @@ match x {
 - No `case` keyword (less noise)
 - `|` clearly separates patterns
 - Same `->` as functions (consistent)
+
+### Pattern Guards
+
+```
+-- With guards
+match n {
+| x if x > 0 -> "positive"
+| x if x < 0 -> "negative"
+| _ -> "zero"
+}
+
+-- Core AST
+Match(
+  Var("n"),
+  Var("String"),
+  [
+    Case(PVar("x"), Some(App(App(Var(">"), Var("x")), Lit(0))), Lit("positive")),
+    Case(PVar("x"), Some(App(App(Var("<"), Var("x")), Lit(0))), Lit("negative")),
+    Case(PAny, None, Lit("zero"))
+  ]
+)
+```
+
+**Implementation:**
+- `Case` has optional `guard: Option(Term)` field
+- Guard must have type `Bool`
+- Evaluated after pattern match, before body
+- Guarded cases are "partial" for exhaustiveness checking
 
 ### Terminology: No Objects
 
@@ -314,7 +338,7 @@ Ctr("Some", Lit(42))
 Ctr("None", Unit)
 ```
 
-### 11. **Pattern Matching (OCaml-Style)**
+### 11. **Pattern Matching with Guards**
 
 ```
 -- Basic match (no parentheses, no 'case')
@@ -327,6 +351,13 @@ match opt {
 match opt: Int {
 | Some(x) -> x
 | None -> 0
+}
+
+-- With guards
+match n {
+| x if x > 0 -> "positive"
+| x if x < 0 -> "negative"
+| _ -> "zero"
 }
 
 -- Multiple patterns
@@ -348,20 +379,14 @@ match list {
 | Nil -> 0
 }
 
--- Guards
-match n {
-| x if x > 0 -> "positive"
-| x if x < 0 -> "negative"
-| _ -> "zero"
-}
-
--- Core term:
+-- Core term with guard:
 Match(
-  Var("opt"),
-  Var("Int"),  -- motive
+  Var("n"),
+  Var("String"),
   [
-    Case(PCtr("Some", PVar("x")), Var("x")),
-    Case(PCtr("None", PAny), Lit(0))
+    Case(PVar("x"), Some(App(App(Var(">"), Var("x")), Lit(0))), Lit("positive")),
+    Case(PVar("x"), Some(App(App(Var("<"), Var("x")), Lit(0))), Lit("negative")),
+    Case(PAny, None, Lit("zero"))
   ]
 )
 ```
@@ -381,6 +406,13 @@ x + 1
 let x = 1;
 let y = 2;
 x + y
+
+-- Recursive let (for mutually recursive functions)
+let rec length = (list): Int -> match list {
+  | Nil -> 0
+  | Cons(_, tail) -> 1 + length(tail)
+};
+length(myList)
 
 -- Core term:
 App(
@@ -406,10 +438,10 @@ Hole(0)
 Hole(1)
 ```
 
-### 14. **Function Definitions**
+### 14. **Function Definitions (NOT Methods)**
 
 ```
--- Top-level function
+-- Top-level function (NOT a method!)
 add(x: Int, y: Int): Int -> x + y
 
 -- Generic function
@@ -421,11 +453,35 @@ length(list): Int -> match list {
 | Cons(_, tail) -> 1 + length(tail)
 }
 
--- Functions operate on data
+-- Functions operate on data (NOT methods on objects)
 map(f: (A) -> B, list: List<A>): List<B> -> match list {
 | Nil -> Nil
 | Cons(head, tail) -> Cons(f(head), map(f, tail))
 }
+```
+
+### 15. **Primitive Operations**
+
+```
+-- Arithmetic
++(1, 2)
+-(5, 3)
+*(2, 3)
+/(10, 2)
+
+-- Comparison
+>(5, 3)
+<(3, 5)
+==(1, 1)
+!=(1, 2)
+
+-- Logical
+&&(true, false)
+||(true, false)
+!(false)
+
+-- Core term:
+App(App(Var("+"), Lit(1)), Lit(2))
 ```
 
 ---
@@ -511,34 +567,35 @@ Lam("vhead",
 )
 ```
 
-### Example 5: Natural Numbers
+### Example 5: Natural Numbers with Guards
 
 ```
--- Type definition
+-- Type definition (NOT a class!)
 type Nat {
 | Zero()
 | Succ(n: Nat)
 }
 
--- Addition
-add(m: Nat, n: Nat): Nat -> match m {
-| Zero -> n
-| Succ(m') -> Succ(add(m', n))
+-- Sign function with guards
+sign(n: Nat): Int -> match n {
+| Zero -> 0
+| Succ(m) if m > 10 -> 1
+| Succ(_) -> -1
 }
 
--- Core term for add
-Lam("add",
-  Lam("m",
-    Lam("n",
-      Match(
-        Var("m"),
-        Var("Nat"),
-        [
-          Case(PCtr("Zero", PAny), Var("n")),
-          Case(PCtr("Succ", PVar("m'")), 
-            Ctr("Succ", App(App(Var("add"), Var("m'")), Var("n"))))
-        ]
-      )
+-- Core term for sign
+Lam("sign",
+  Lam("n",
+    Match(
+      Var("n"),
+      Var("Int"),
+      [
+        Case(PCtr("Zero", PAny), None, Lit(0)),
+        Case(PCtr("Succ", PVar("m")), 
+          Some(App(App(Var(">"), Var("m")), Lit(10))),
+          Lit(1)),
+        Case(PCtr("Succ", PAny), None, Lit(-1))
+      ]
     )
   )
 )
@@ -588,6 +645,14 @@ type Term =
   | { tag: "App", fun: Term, arg: Term }
   | { tag: "Match", arg: Term, motive: Term, cases: Case[] }
 
+-- Case with guard
+type Case = {
+  pattern: Pattern,
+  guard: Option<Term>,  -- NEW: Optional guard
+  body: Term,
+  span: Span
+}
+
 -- Compact binary encoding
 const TAGS = {
   Typ: 0, Lit: 1, LitT: 2, Var: 3, Hole: 4,
@@ -610,7 +675,7 @@ term ::= literal
        | term '(' args? ')'                   -- Application
        | term ':' type                        -- Annotation
        | 'match' var (':' term)? '{' cases '}'
-       | 'let' var (':' term)? '=' term ';' term
+       | 'let' ('rec' var)? (':' term)? '=' term ';' term
        | '{' fields? '}'                      -- Record
        | '{' '...' term ',' fields '}'        -- Record update
        | term '.' var                         -- Field access
@@ -629,7 +694,7 @@ hole ::= '?' Int?
 type ::= term                            -- Types are terms
        | type '->' type                  -- Function type
 
-cases ::= ('|' pattern '->' term)+
+cases ::= ('|' pattern ('if' term)? '->' term)+
 
 pattern ::= '_'
           | var
@@ -712,6 +777,31 @@ type Option<A> {
 2. **Clearer** - `data` is ambiguous (data vs. type)
 3. **Consistent** - Both languages use `type`
 
+### Why Guards in Core?
+
+```
+-- With guards
+match n {
+| x if x > 0 -> "positive"
+| x if x < 0 -> "negative"
+| _ -> "zero"
+}
+
+-- Core AST
+Case(
+  PVar("x"),
+  Some(App(App(Var(">"), Var("x")), Lit(0))),  -- guard
+  Lit("positive")
+)
+```
+
+**Benefits:**
+1. **Explicit** - Guard is visible in AST
+2. **Type checking** - Guard must be `Bool`
+3. **Exhaustiveness** - Guarded cases are "partial"
+4. **Error messages** - Can show which guard failed
+5. **Optimization** - Can hoist guards out of match
+
 ### Why No Object Terminology?
 
 | Avoid | Use |
@@ -726,62 +816,78 @@ type Option<A> {
 
 ---
 
-## Comparison: Functional vs OO
+## Feature Completeness: Core → High-Level
 
-```
--- OO Style (REJECTED)
-class Counter {
-  private count: int = 0;
-  
-  constructor(initial: int = 0) {
-    this.count = initial;
-  }
-  
-  increment(): int {
-    this.count++;  -- MUTATION!
-    return this.count;
-  }
-}
+### What Core Provides
 
--- Functional Style (CHOSEN)
-type Counter { count: Int }
+| Feature | Core Support | High-Level Compilation |
+|---------|-------------|----------------------|
+| **Functions** | ✅ `Lam`, `Pi`, `App` | `function`, `=>` |
+| **Types** | ✅ `Typ`, `Pi`, annotations | Type inference |
+| **Records** | ✅ `Rcd`, `Dot` | Object literals |
+| **Variants** | ✅ `Ctr`, `Match` | `type`, unions |
+| **Pattern Matching** | ✅ `Match`, `Case`, guards | `match`, `switch` |
+| **Let Bindings** | ✅ `let`, `let rec` | `const`, `let` |
+| **Generics** | ✅ Parametric types | `<T>` syntax |
+| **Dependent Types** | ✅ Pi types | Type-level computation |
+| **Primitives** | ✅ `Lit`, primitive ops | Numbers, strings |
+| **Errors** | ✅ `Result` type | `try`/`catch` (desugared) |
+| **Option** | ✅ `Option` type | Optional chaining |
+| **Recursion** | ✅ `let rec` | Loops (desugared) |
 
-Counter(initial: Int): Counter -> { count: initial }
+### What Compiles Away (High-Level Sugar)
 
-increment(c: Counter): (Counter, Int) ->
-  ({ ...c, count: c.count + 1 }, c.count + 1)  -- Immutable update
-```
+| High-Level Feature | Core Normalization |
+|-------------------|-------------------|
+| **If/else** | `Match` on `Bool` |
+| **For/while loops** | Recursion (`let rec`) |
+| **String interpolation** | String concatenation functions |
+| **Null coalescing** | `match` on `Option` |
+| **Optional chaining** | `match` on `Option` |
+| **Async/await** | Monadic bind (explicit in core) |
+| **Modules/imports** | Namespaces (elaboration-time, erased) |
+| **Type inference** | Holes filled by elaborator |
+| **Method syntax** | Function application |
+| **Classes** | Records + functions |
+| **Inheritance** | Composition + functions |
 
-```
--- OO Style (REJECTED)
-for (let i = 0; i < 10; i++) {
-  print(i);  -- Side effect!
-}
+### What's Missing? (To Be Added)
 
--- Functional Style (CHOSEN)
-loop(i: Int): Unit -> match i < 10 {
-| true -> print(i); loop(i + 1)  -- Explicit recursion
-| false -> ()
-}
-loop(0)
-```
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Letrec** | ✅ Added | `let rec` for recursion |
+| **Guards** | ✅ Added | `Case` has optional `guard` |
+| **Primitive ops** | ⚠️ Partial | Shown as `Var("+")`, should be primitives |
+| **Built-in types** | ⚠️ Partial | `Int`, `String` - primitives or defined? |
+| **Effects** | ❌ Missing | IO, state - need effect system |
+| **Arrays** | ❌ Missing | Built-in or library? |
+| **Modules** | ❌ Missing | Elaboration-time only |
+| **Type-level computation** | ❌ Missing | Type families, type functions |
+| **Implicit arguments** | ❌ Missing | For ad-hoc polymorphism |
 
-```
--- OO Style (REJECTED)
-const result = users
-  .filter(u => u.age >= 18)  -- Method chaining
-  .map(u => u.name)
-  .join(", ");
+### To Be Decided
 
--- Functional Style (CHOSEN)
-let adults = join(
-  map(
-    filter(users, (u) => u.age >= 18),  -- Explicit function application
-    (u) => u.name
-  ),
-  ", "
-)
-```
+1. **Primitive operations** - Should `+`, `-`, etc. be:
+   - Variables (`Var("+")`)?
+   - Special primitives (`PrimOp(Add)`)?
+   - **Recommendation**: `PrimOp(Add, [arg1, arg2])` for efficiency
+
+2. **Built-in types** - Are `Int`, `String`, etc.:
+   - Defined as data types?
+   - Primitives in the type system?
+   - **Recommendation**: Primitives (`LitT(I32)`, etc.)
+
+3. **Effect system** - How to handle:
+   - IO?
+   - State?
+   - Exceptions?
+   - **Recommendation**: Algebraic effects or explicit monads
+
+4. **Arrays/Vectors** - Built-in or library?
+   - **Recommendation**: Built-in for performance
+
+5. **Modules** - How to organize code?
+   - **Recommendation**: Elaboration-time namespaces, erased in core
 
 ---
 
@@ -790,9 +896,11 @@ let adults = join(
 1. **Implement lexer** - Tokenize this syntax
 2. **Implement parser** - Parse to `Term` AST
 3. **Implement serializer** - Convert to/from JSON
-4. **Implement elaborator** - Convert to De Bruijn indices
-5. **Test with examples** - Verify syntax works
-6. **Benchmark parsing** - Ensure fast enough for cluster use
+4. **Implement elaborator** - Convert to De Bruijn indices, fill holes
+5. **Add primitive operations** - `PrimOp` type for arithmetic, etc.
+6. **Add effect system** - Algebraic effects or monads
+7. **Test with examples** - Verify syntax works
+8. **Benchmark parsing** - Ensure fast enough for cluster use
 
 ---
 
@@ -809,8 +917,11 @@ let adults = join(
 
 ## Open Questions
 
-1. **Binary format** - Custom binary or JSON + compression?
-2. **Versioning** - How to handle syntax evolution?
-3. **Compression** - gzip, zstd, or custom encoding?
-4. **Streaming** - Parse large terms incrementally?
-5. **Validation** - Schema for wire format?
+1. **Primitive operations** - Custom `PrimOp` type or just variables?
+2. **Built-in types** - Primitives or defined types?
+3. **Effect system** - Algebraic effects, monads, or explicit passing?
+4. **Binary format** - Custom binary or JSON + compression?
+5. **Versioning** - How to handle syntax evolution?
+6. **Compression** - gzip, zstd, or custom encoding?
+7. **Streaming** - Parse large terms incrementally?
+8. **Validation** - Schema for wire format?
