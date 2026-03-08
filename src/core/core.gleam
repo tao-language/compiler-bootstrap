@@ -44,7 +44,7 @@ pub type TermData {
   /// Pattern matching (match arg with motive returning cases)
   Match(arg: Term, motive: Term, cases: List(Case))
   /// Built-in function call (e.g., add, print, read_file)
-  BuiltIn(name: String, args: List(Term))
+  Call(name: String, args: List(Term))
   /// Compile-time evaluation block (evaluated during elaboration)
   Comptime(term: Term)
 }
@@ -74,11 +74,11 @@ pub type Value {
   /// Dependent function type with evaluated domain
   VPi(name: String, env: Env, in: Value, out: Term)
   /// Built-in function (first-class, knows its arity)
-  VBuiltIn(
+  VCall(
     name: String,
     arity: Int,
     collected_args: List(Value),
-    impl: fn(List(Value), State) -> #(Value, State),
+    impl: fn(List(Value)) -> Value,
   )
   /// Error value for error recovery (continues checking after errors)
   VErr
@@ -214,7 +214,7 @@ pub type State {
     /// Accumulated errors (for error recovery and IDE feedback)
     errors: List(Error),
     /// Host FFI registry (for built-in evaluation)
-    host_registry: HostRegistry,
+    ffi: FFI,
   )
 }
 
@@ -235,177 +235,191 @@ pub type Permission {
 }
 
 /// Host FFI function definition
-pub type HostFFI {
-  HostFFI(
+pub type Builtin {
+  Builtin(
     name: String,
     arity: Int,
-    impl: fn(List(Value), State) -> #(Value, State),
+    impl: fn(List(Value)) -> Value,
     required_permissions: List(Permission),
   )
 }
 
 /// Host FFI registry
-pub type HostRegistry {
-  HostRegistry(ffis: List(#(String, HostFFI)))
-}
+pub type FFI =
+  List(#(String, Builtin))
 
-/// Create default host registry with basic built-ins
-pub const default_host_registry = HostRegistry(
-  ffis: [
-    // Arithmetic (pure, always allowed)
-    #("add", HostFFI("add", 2, add_impl, [])),
-    #("sub", HostFFI("sub", 2, sub_impl, [])),
-    #("mul", HostFFI("mul", 2, mul_impl, [])),
-    #("div", HostFFI("div", 2, div_impl, [])),
-    #("mod", HostFFI("mod", 2, mod_impl, [])),
+/// FFI built-ins used at build time, mostly pure functions.
+pub const ffi_build = [
+  // Arithmetic (pure, always allowed)
+  #("add", Builtin("add", 2, add_impl, [])),
+  #("sub", Builtin("sub", 2, sub_impl, [])),
+  #("mul", Builtin("mul", 2, mul_impl, [])),
+  #("div", Builtin("div", 2, div_impl, [])),
+  #("mod", Builtin("mod", 2, mod_impl, [])),
 
-    // Comparison (pure)
-    #("eq", HostFFI("eq", 2, eq_impl, [])),
-    #("neq", HostFFI("neq", 2, neq_impl, [])),
-    #("lt", HostFFI("lt", 2, lt_impl, [])),
-    #("lte", HostFFI("lte", 2, lte_impl, [])),
-    #("gt", HostFFI("gt", 2, gt_impl, [])),
-    #("gte", HostFFI("gte", 2, gte_impl, [])),
+  // Comparison (pure)
+  #("eq", Builtin("eq", 2, eq_impl, [])),
+  #("neq", Builtin("neq", 2, neq_impl, [])),
+  #("lt", Builtin("lt", 2, lt_impl, [])),
+  #("lte", Builtin("lte", 2, lte_impl, [])),
+  #("gt", Builtin("gt", 2, gt_impl, [])),
+  #("gte", Builtin("gte", 2, gte_impl, [])),
 
-    // Logical (pure)
-    #("and", HostFFI("and", 2, and_impl, [])),
-    #("or", HostFFI("or", 2, or_impl, [])),
-    #("not", HostFFI("not", 1, not_impl, [])),
-  ],
-)
+  // Logical (pure)
+  #("and", Builtin("and", 2, and_impl, [])),
+  #("or", Builtin("or", 2, or_impl, [])),
+  #("not", Builtin("not", 1, not_impl, [])),
+]
+
+/// FFI built-ins used at run time, can include functions with side effects.
+pub const ffi_run = [
+  // Arithmetic (pure, always allowed)
+  #("add", Builtin("add", 2, add_impl, [])),
+  #("sub", Builtin("sub", 2, sub_impl, [])),
+  #("mul", Builtin("mul", 2, mul_impl, [])),
+  #("div", Builtin("div", 2, div_impl, [])),
+  #("mod", Builtin("mod", 2, mod_impl, [])),
+
+  // Comparison (pure)
+  #("eq", Builtin("eq", 2, eq_impl, [])),
+  #("neq", Builtin("neq", 2, neq_impl, [])),
+  #("lt", Builtin("lt", 2, lt_impl, [])),
+  #("lte", Builtin("lte", 2, lte_impl, [])),
+  #("gt", Builtin("gt", 2, gt_impl, [])),
+  #("gte", Builtin("gte", 2, gte_impl, [])),
+
+  // Logical (pure)
+  #("and", Builtin("and", 2, and_impl, [])),
+  #("or", Builtin("or", 2, or_impl, [])),
+  #("not", Builtin("not", 1, not_impl, [])),
+]
 
 // ============================================================================
 // BUILTIN IMPLEMENTATIONS
 // ============================================================================
 
-fn add_impl(args: List(Value), s: State) -> #(Value, State) {
+fn add_impl(args: List(Value)) -> Value {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(a + b)), s)
-    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(F64(a +. b)), s)
+    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(a + b))
+    [VLit(F64(a)), VLit(F64(b))] -> VLit(F64(a +. b))
     [a, b] -> {
       // Arguments not concrete - return stuck built-in
-      #(VBuiltIn("add", 2, [a, b], add_impl), s)
+      VCall("add", 2, [a, b], add_impl)
     }
-    _ -> #(VErr, s)
+    _ -> VErr
   }
 }
 
-fn sub_impl(args: List(Value), s: State) -> #(Value, State) {
+fn sub_impl(args: List(Value)) -> Value {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(a - b)), s)
-    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(F64(a -. b)), s)
-    [a, b] -> #(VBuiltIn("sub", 2, [a, b], sub_impl), s)
-    _ -> #(VErr, s)
+    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(a - b))
+    [VLit(F64(a)), VLit(F64(b))] -> VLit(F64(a -. b))
+    [a, b] -> VCall("sub", 2, [a, b], sub_impl)
+    _ -> VErr
   }
 }
 
-fn mul_impl(args: List(Value), s: State) -> #(Value, State) {
+fn mul_impl(args: List(Value)) -> Value {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(a * b)), s)
-    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(F64(a *. b)), s)
-    [a, b] -> #(VBuiltIn("mul", 2, [a, b], mul_impl), s)
-    _ -> #(VErr, s)
+    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(a * b))
+    [VLit(F64(a)), VLit(F64(b))] -> VLit(F64(a *. b))
+    [a, b] -> VCall("mul", 2, [a, b], mul_impl)
+    _ -> VErr
   }
 }
 
-fn div_impl(args: List(Value), s: State) -> #(Value, State) {
+fn div_impl(args: List(Value)) -> Value {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] if b != 0 -> #(VLit(I32(a / b)), s)
-    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(F64(a /. b)), s)
-    [a, b] -> #(VBuiltIn("div", 2, [a, b], div_impl), s)
-    _ -> #(VErr, s)
+    [VLit(I32(a)), VLit(I32(b))] if b != 0 -> VLit(I32(a / b))
+    [VLit(F64(a)), VLit(F64(b))] -> VLit(F64(a /. b))
+    [a, b] -> VCall("div", 2, [a, b], div_impl)
+    _ -> VErr
   }
 }
 
-fn mod_impl(args: List(Value), s: State) -> #(Value, State) {
+fn mod_impl(args: List(Value)) -> Value {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] if b != 0 -> #(VLit(I32(a % b)), s)
-    [a, b] -> #(VBuiltIn("mod", 2, [a, b], mod_impl), s)
-    _ -> #(VErr, s)
+    [VLit(I32(a)), VLit(I32(b))] if b != 0 -> VLit(I32(a % b))
+    [a, b] -> VCall("mod", 2, [a, b], mod_impl)
+    _ -> VErr
   }
 }
 
-fn eq_impl(args: List(Value), s: State) -> #(Value, State) {
+fn eq_impl(args: List(Value)) -> Value {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a == b))), s)
-    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a == b))), s)
-    [a, b] -> #(VBuiltIn("eq", 2, [a, b], eq_impl), s)
-    _ -> #(VErr, s)
+    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a == b)))
+    [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a == b)))
+    [a, b] -> VCall("eq", 2, [a, b], eq_impl)
+    _ -> VErr
   }
 }
 
-fn neq_impl(args: List(Value), s: State) -> #(Value, State) {
+fn neq_impl(args: List(Value)) -> Value {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a != b))), s)
-    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a != b))), s)
-    [a, b] -> #(VBuiltIn("neq", 2, [a, b], neq_impl), s)
-    _ -> #(VErr, s)
+    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a != b)))
+    [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a != b)))
+    [a, b] -> VCall("neq", 2, [a, b], neq_impl)
+    _ -> VErr
   }
 }
 
-fn lt_impl(args: List(Value), s: State) -> #(Value, State) {
+fn lt_impl(args: List(Value)) -> Value {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a < b))), s)
-    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a <. b))), s)
-    [a, b] -> #(VBuiltIn("lt", 2, [a, b], lt_impl), s)
-    _ -> #(VErr, s)
+    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a < b)))
+    [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a <. b)))
+    [a, b] -> VCall("lt", 2, [a, b], lt_impl)
+    _ -> VErr
   }
 }
 
-fn lte_impl(args: List(Value), s: State) -> #(Value, State) {
+fn lte_impl(args: List(Value)) -> Value {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a <= b))), s)
-    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a <=. b))), s)
-    [a, b] -> #(VBuiltIn("lte", 2, [a, b], lte_impl), s)
-    _ -> #(VErr, s)
+    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a <= b)))
+    [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a <=. b)))
+    [a, b] -> VCall("lte", 2, [a, b], lte_impl)
+    _ -> VErr
   }
 }
 
-fn gt_impl(args: List(Value), s: State) -> #(Value, State) {
+fn gt_impl(args: List(Value)) -> Value {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a > b))), s)
-    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a >. b))), s)
-    [a, b] -> #(VBuiltIn("gt", 2, [a, b], gt_impl), s)
-    _ -> #(VErr, s)
+    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a > b)))
+    [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a >. b)))
+    [a, b] -> VCall("gt", 2, [a, b], gt_impl)
+    _ -> VErr
   }
 }
 
-fn gte_impl(args: List(Value), s: State) -> #(Value, State) {
+fn gte_impl(args: List(Value)) -> Value {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a >= b))), s)
-    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a >=. b))), s)
-    [a, b] -> #(VBuiltIn("gte", 2, [a, b], gte_impl), s)
-    _ -> #(VErr, s)
+    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a >= b)))
+    [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a >=. b)))
+    [a, b] -> VCall("gte", 2, [a, b], gte_impl)
+    _ -> VErr
   }
 }
 
-fn and_impl(args: List(Value), s: State) -> #(Value, State) {
+fn and_impl(args: List(Value)) -> Value {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> #(
-      VLit(I32(bool_to_int(a != 0 && b != 0))),
-      s,
-    )
-    [a, b] -> #(VBuiltIn("and", 2, [a, b], and_impl), s)
-    _ -> #(VErr, s)
+    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a != 0 && b != 0)))
+    [a, b] -> VCall("and", 2, [a, b], and_impl)
+    _ -> VErr
   }
 }
 
-fn or_impl(args: List(Value), s: State) -> #(Value, State) {
+fn or_impl(args: List(Value)) -> Value {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> #(
-      VLit(I32(bool_to_int(a != 0 || b != 0))),
-      s,
-    )
-    [a, b] -> #(VBuiltIn("or", 2, [a, b], or_impl), s)
-    _ -> #(VErr, s)
+    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a != 0 || b != 0)))
+    [a, b] -> VCall("or", 2, [a, b], or_impl)
+    _ -> VErr
   }
 }
 
-fn not_impl(args: List(Value), s: State) -> #(Value, State) {
+fn not_impl(args: List(Value)) -> Value {
   case args {
-    [VLit(I32(a))] -> #(VLit(I32(bool_to_int(a == 0))), s)
-    [a] -> #(VBuiltIn("not", 1, [a], not_impl), s)
-    _ -> #(VErr, s)
+    [VLit(I32(a))] -> VLit(I32(bool_to_int(a == 0)))
+    [a] -> VCall("not", 1, [a], not_impl)
+    _ -> VErr
   }
 }
 
@@ -479,7 +493,7 @@ pub type Error {
 /// - Lambdas become closures (capturing the current environment)
 /// - Applications evaluate the function and argument, then apply
 /// - Neutral terms are created when computation is stuck on unknowns
-pub fn eval(env: Env, term: Term) -> Value {
+pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
   case term.data {
     Typ(k) -> VTyp(k)
     Lit(k) -> VLit(k)
@@ -490,28 +504,33 @@ pub fn eval(env: Env, term: Term) -> Value {
         None -> VErr
       }
     Hole(id) -> VNeut(HHole(id), [])
-    Rcd(fields) -> VRcd(list.map(fields, fn(kv) { #(kv.0, eval(env, kv.1)) }))
-    Ctr(tag, arg) -> VCtr(tag, eval(env, arg))
-    Dot(arg, name) -> do_dot(eval(env, arg), name)
-    Ann(term, _) -> eval(env, term)
+    Rcd(fields) ->
+      VRcd(list.map(fields, fn(kv) { #(kv.0, eval(ffi, env, kv.1)) }))
+    Ctr(tag, arg) -> VCtr(tag, eval(ffi, env, arg))
+    Dot(arg, name) -> do_dot(eval(ffi, env, arg), name)
+    Ann(term, _) -> eval(ffi, env, term)
     Lam(name, body) -> VLam(name, env, body)
-    Pi(name, in, out) -> VPi(name, env, eval(env, in), out)
+    Pi(name, in, out) -> VPi(name, env, eval(ffi, env, in), out)
     App(fun, arg) -> {
-      let fun_val = eval(env, fun)
-      let arg_val = eval(env, arg)
-      do_app(fun_val, arg_val)
+      let fun_val = eval(ffi, env, fun)
+      let arg_val = eval(ffi, env, arg)
+      do_app(ffi, fun_val, arg_val)
     }
     Match(arg, motive, cases) -> {
-      let arg_val = eval(env, arg)
-      let motive_val = eval(env, motive)
+      let arg_val = eval(ffi, env, arg)
+      let motive_val = eval(ffi, env, motive)
       do_match(env, arg_val, motive_val, cases)
     }
-    BuiltIn(_, _) -> {
-      // Built-ins require HostRegistry to execute
-      // Pure eval without registry returns VErr
-      VErr
+    Call(name, args) -> {
+      // Evaluate all arguments first
+      let arg_vals = list.map(args, eval(ffi, env, _))
+      // Look up the builtin and call it
+      case list.key_find(ffi, name) {
+        Ok(Builtin(_, _, impl, _)) -> impl(arg_vals)
+        Error(Nil) -> VCall(name, 0, arg_vals, todo as "unknown builtin")
+      }
     }
-    Comptime(term) -> eval(env, term)
+    Comptime(term) -> eval(ffi, env, term)
   }
 }
 
@@ -532,14 +551,14 @@ fn do_dot(value: Value, name: String) -> Value {
 }
 
 /// Apply a function to an argument.
-/// 
+///
 /// If the function is neutral (unknown), the application is added to the spine.
 /// If the function is a lambda, the argument is substituted into the body.
 /// Otherwise, returns VErr (not a function).
-pub fn do_app(fun: Value, arg: Value) -> Value {
+pub fn do_app(ffi: FFI, fun: Value, arg: Value) -> Value {
   case fun {
     VNeut(head, spine) -> VNeut(head, [EApp(arg), ..spine])
-    VLam(_, env, body) -> eval([arg, ..env], body)
+    VLam(_, env, body) -> eval(ffi, [arg, ..env], body)
     _ -> VErr
   }
 }
@@ -555,7 +574,7 @@ pub fn do_match(env: Env, arg: Value, motive: Value, cases: List(Case)) -> Value
     VNeut(head, spine) -> VNeut(head, [EMatch(env, motive, cases), ..spine])
     _ ->
       case do_match_cases(arg, cases) {
-        Some(#(bindings, body)) -> eval(list.append(bindings, env), body)
+        Some(#(bindings, body)) -> eval([], list.append(bindings, env), body)
         None -> VErr
       }
   }
@@ -615,11 +634,11 @@ pub fn do_match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
 // automatically (since bound variables are represented canonically).
 
 /// Normalize a term by evaluating and quoting back to syntax.
-/// 
+///
 /// This produces the beta-normal, eta-long form of the term.
-pub fn normalize(env: Env, term: Term, s: Span) -> Term {
-  let val = eval(env, term)
-  quote(list.length(env), val, s)
+pub fn normalize(ffi: FFI, env: Env, term: Term, s: Span) -> Term {
+  let val = eval(ffi, env, term)
+  quote(ffi, list.length(env), val, s)
 }
 
 /// Quote a value back to syntax (reification).
@@ -628,60 +647,71 @@ pub fn normalize(env: Env, term: Term, s: Span) -> Term {
 /// lambda, we create a fresh neutral variable at the current level, apply it
 /// to the body, and quote the result. This converts De Bruijn levels back to
 /// indices using the formula: index = lvl - level - 1.
-pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
+pub fn quote(ffi: FFI, lvl: Int, value: Value, s: Span) -> Term {
   case value {
     VTyp(k) -> Term(Typ(k), s)
     VLit(k) -> Term(Lit(k), s)
     VLitT(k) -> Term(LitT(k), s)
     VNeut(head, spine) -> {
       let head_term = quote_head(lvl, head, s)
-      quote_neut(lvl, head_term, spine, s)
+      quote_neut(ffi, lvl, head_term, spine, s)
     }
     VRcd(fields) ->
-      Term(Rcd(list.map(fields, fn(kv) { #(kv.0, quote(lvl, kv.1, s)) })), s)
-    VCtr(tag, arg) -> Term(Ctr(tag, quote(lvl, arg, s)), s)
+      Term(
+        Rcd(list.map(fields, fn(kv) { #(kv.0, quote(ffi, lvl, kv.1, s)) })),
+        s,
+      )
+    VCtr(tag, arg) -> Term(Ctr(tag, quote(ffi, lvl, arg, s)), s)
     VLam(name, env, body) -> {
       // Create a fresh neutral variable at the current level
       let fresh = VNeut(HVar(lvl), [])
       // Apply it to the body and evaluate
-      let body_val = eval([fresh, ..env], body)
+      let body_val = eval(ffi, [fresh, ..env], body)
       // Quote the result at level + 1
-      let body_quote = quote(lvl + 1, body_val, body.span)
+      let body_quote = quote(ffi, lvl + 1, body_val, body.span)
       Term(Lam(name, body_quote), s)
     }
     VPi(name, env, in_val, out_term) -> {
       // Quote the domain (already evaluated)
-      let in_quote = quote(lvl, in_val, s)
+      let in_quote = quote(ffi, lvl, in_val, s)
       // Create a fresh neutral variable for the codomain
       let fresh = VNeut(HVar(lvl), [])
-      let out_val = eval([fresh, ..env], out_term)
-      let out_quote = quote(lvl + 1, out_val, out_term.span)
+      let out_val = eval(ffi, [fresh, ..env], out_term)
+      let out_quote = quote(ffi, lvl + 1, out_val, out_term.span)
       Term(Pi(name, in_quote, out_quote), s)
     }
-    VBuiltIn(name, _, args, _) -> {
+    VCall(name, _, args, _) -> {
       // Quote stuck built-in with collected args
-      Term(BuiltIn(name, list.map(args, quote(lvl, _, s))), s)
+      Term(Call(name, list.map(args, fn(a) { quote(ffi, lvl, a, s) })), s)
     }
     VErr -> Term(Hole(-1), s)
   }
 }
 
 /// Quote a neutral term by reconstructing the head and applying the spine.
-fn quote_neut(lvl: Int, head: Term, spine: List(Elim), s: Span) -> Term {
-  list.fold_right(spine, head, fn(head, elim) { quote_elim(lvl, head, elim, s) })
+fn quote_neut(
+  ffi: FFI,
+  lvl: Int,
+  head: Term,
+  spine: List(Elim),
+  s: Span,
+) -> Term {
+  list.fold_right(spine, head, fn(head, elim) {
+    quote_elim(ffi, lvl, head, elim, s)
+  })
 }
 
 /// Quote a single elimination (spine element).
-fn quote_elim(lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
+fn quote_elim(ffi: FFI, lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
   case elim {
     EDot(name) -> Term(Dot(head, name), s)
-    EApp(arg) -> Term(App(head, quote(lvl, arg, s)), s)
+    EApp(arg) -> Term(App(head, quote(ffi, lvl, arg, s)), s)
     // The env is discarded because we're reconstructing syntax, not evaluating.
     // The cases bodies are already Terms (syntax), not Values, so they don't
     // need quoting. The env was only needed during evaluation to capture the
     // closure environment for delayed matching on neutral terms.
     EMatch(_, motive, cases) ->
-      Term(Match(head, quote(lvl, motive, s), cases), s)
+      Term(Match(head, quote(ffi, lvl, motive, s), cases), s)
   }
 }
 
@@ -712,7 +742,7 @@ fn quote_head(lvl: Int, head: Head, s: Span) -> Term {
 /// being solved appears in the solution. The substitution is forced to
 /// check through solved metavariables.
 pub fn occurs(sub: Subst, id: Int, value: Value) -> Bool {
-  case force(sub, value) {
+  case force([], sub, value) {
     VTyp(_) | VLit(_) | VLitT(_) | VErr -> False
     VNeut(HHole(hole_id), spine) ->
       id == hole_id || list.any(spine, occurs_elim(sub, id, _))
@@ -722,7 +752,7 @@ pub fn occurs(sub: Subst, id: Int, value: Value) -> Bool {
     VLam(_, env, _) -> list.any(env, occurs(sub, id, _))
     VPi(_, env, in, _) ->
       occurs(sub, id, in) || list.any(env, occurs(sub, id, _))
-    VBuiltIn(_, _, args, _) -> list.any(args, occurs(sub, id, _))
+    VCall(_, _, args, _) -> list.any(args, occurs(sub, id, _))
   }
 }
 
@@ -779,16 +809,16 @@ pub fn unify(
     VLam(_, env1, body1), VLam(_, env2, body2) -> {
       // Unify lambdas by applying both to a fresh variable
       let #(fresh, s) = new_var(s)
-      let a = eval([fresh, ..env1], body1)
-      let b = eval([fresh, ..env2], body2)
+      let a = eval(s.ffi, [fresh, ..env1], body1)
+      let b = eval(s.ffi, [fresh, ..env2], body2)
       unify(s, a, b, s1, s2)
     }
     VPi(_, env1, in1, out1), VPi(_, env2, in2, out2) -> {
       // Unify Pi types: first domains, then codomains
       use _ <- result.try(unify(s, in1, in2, s1, s2))
       let #(fresh, s) = new_var(s)
-      let a = eval([fresh, ..env1], out1)
-      let b = eval([fresh, ..env2], out2)
+      let a = eval(s.ffi, [fresh, ..env1], out1)
+      let b = eval(s.ffi, [fresh, ..env2], out2)
       unify(s, a, b, s1, s2)
     }
     VErr, _ -> Ok(s)
@@ -949,7 +979,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
             check_type(s, arg_ty, ctr_arg_ty, arg.span, ctr.arg_ty.span)
           let #(params, s) = ctr_solve_params(s, ctr, params, tag, term.span)
           let env = list.append(params, get_env(s))
-          #(VCtr(tag, eval(env, arg)), eval(env, ctr.ret_ty), s)
+          #(VCtr(tag, eval(s.ffi, env, arg)), eval(s.ffi, env, ctr.ret_ty), s)
         }
       }
     Dot(arg, name) -> {
@@ -979,9 +1009,9 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(fresh, s) = def_var(s, name, t1_hole)
       let #(body_val, body_ty, s) = infer(s, body)
       // Quote the body back to preserve structure even if there are errors
-      let body_quoted = quote(list.length(env), body_val, body.span)
-      let t1 = force(s.sub, t1_hole)
-      let t2 = quote(list.length(env), body_ty, body.span)
+      let body_quoted = quote(s.ffi, list.length(env), body_val, body.span)
+      let t1 = force(s.ffi, s.sub, t1_hole)
+      let t2 = quote(s.ffi, list.length(env), body_ty, body.span)
       #(VLam(name, env, body_quoted), VPi(name, env, t1, t2), s)
     }
     Pi(name, in, out) -> {
@@ -996,8 +1026,8 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       case fun_ty {
         VPi(_, pi_env, in, out) -> {
           let #(arg_val, s) = check(s, arg, in, fun.span)
-          let out_val = eval([arg_val, ..pi_env], out)
-          #(do_app(fun_val, arg_val), out_val, s)
+          let out_val = eval(s.ffi, [arg_val, ..pi_env], out)
+          #(do_app(s.ffi, fun_val, arg_val), out_val, s)
         }
         _ -> #(VErr, VErr, with_err(s, NotAFunction(fun, fun_ty)))
       }
@@ -1012,7 +1042,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
         list.fold(cases, s, fn(s, c) {
           let #(pat_val, branch_s) =
             bind_pattern(s, c.pattern, arg_ty, c.span, arg.span)
-          let branch_ty = do_app(motive_val, pat_val)
+          let branch_ty = do_app(s.ffi, motive_val, pat_val)
           let #(_, branch_s) = check(branch_s, c.body, branch_ty, c.span)
           State(..branch_s, var: s.var, ctx: s.ctx)
         })
@@ -1020,12 +1050,12 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let exhaustiveness_errors = check_exhaustiveness(s, cases, term.span)
       let s = list.fold(exhaustiveness_errors, s, with_err)
       let match_val = do_match(env, arg_val, motive_val, cases)
-      let result_ty = do_app(motive_val, arg_val)
+      let result_ty = do_app(s.ffi, motive_val, arg_val)
       #(match_val, result_ty, s)
     }
-    BuiltIn(name, args) -> {
+    Call(name, args) -> {
       // Look up built-in in host registry
-      case list.key_find(s.host_registry.ffis, name) {
+      case list.key_find(s.ffi, name) {
         Ok(builtin) -> {
           // Evaluate arguments
           let #(arg_vals, arg_tys, s1) = infer_args(s, args)
@@ -1033,8 +1063,8 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
           // Check arity
           case list.length(arg_vals) == builtin.arity {
             True -> {
-              // Try to execute built-in
-              let #(result_val, s2) = builtin.impl(arg_vals, s1)
+              // Execute built-in (pure function)
+              let result_val = builtin.impl(arg_vals)
 
               // Compute result type (simplified - assumes all args have same type for arithmetic)
               let result_ty = case arg_tys {
@@ -1042,7 +1072,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
                 [] -> VErr
               }
 
-              #(result_val, result_ty, s2)
+              #(result_val, result_ty, s1)
             }
             False -> {
               let err = ArityMismatch(term.span, term.span)
@@ -1180,7 +1210,7 @@ pub fn bind_pattern(
             check_type(s, ctr_ret_ty, ret_ty, ctr.ret_ty.span, ret_span)
           let #(params, s) = ctr_solve_params(s, ctr, params, tag, pat_span)
           let env = list.append(params, get_env(s))
-          let ctr_arg_ty = eval(env, ctr.arg_ty)
+          let ctr_arg_ty = eval(s.ffi, env, ctr.arg_ty)
           let #(varg, s) =
             bind_pattern(s, parg, ctr_arg_ty, pat_span, ctr.arg_ty.span)
           #(VCtr(tag, varg), s)
@@ -1208,7 +1238,7 @@ pub fn check(
 ) -> #(Value, State) {
   let #(value, inferred_ty, s) = infer(s, term)
   case unify(s, inferred_ty, expected_ty, term.span, ty_span) {
-    Ok(s) -> #(force(s.sub, value), s)
+    Ok(s) -> #(force(s.ffi, s.sub, value), s)
     Error(e) -> #(VErr, with_err(s, e))
   }
 }
@@ -1248,7 +1278,7 @@ pub fn check_type(
   t2_span: Span,
 ) -> #(Value, State) {
   case unify(s, t1, t2, t1_span, t2_span) {
-    Ok(s) -> #(force(s.sub, t1), s)
+    Ok(s) -> #(force(s.ffi, s.sub, t1), s)
     Error(e) -> #(t1, with_err(s, e))
   }
 }
@@ -1258,13 +1288,13 @@ pub fn check_type(
 /// This recursively replaces holes with their solutions from the
 /// substitution. If a hole has a spine (pending operations), the
 /// spine is applied to the solution.
-pub fn force(sub: Subst, value: Value) -> Value {
+pub fn force(ffi: FFI, sub: Subst, value: Value) -> Value {
   case value {
     VNeut(HHole(id), spine) ->
       case list.key_find(sub, id) {
         Ok(v) -> {
-          let forced_val = apply_spine(v, spine)
-          force(sub, forced_val)
+          let forced_val = apply_spine(ffi, v, spine)
+          force(ffi, sub, forced_val)
         }
         Error(Nil) -> value
       }
@@ -1275,11 +1305,11 @@ pub fn force(sub: Subst, value: Value) -> Value {
 /// Apply a spine (list of eliminations) to a value.
 /// 
 /// This is used when forcing metavariables that have pending operations.
-fn apply_spine(value: Value, spine: List(Elim)) -> Value {
+fn apply_spine(ffi: FFI, value: Value, spine: List(Elim)) -> Value {
   list.fold(spine, value, fn(value, elim) {
     case elim {
       EDot(field) -> do_dot(value, field)
-      EApp(arg) -> do_app(value, arg)
+      EApp(arg) -> do_app(ffi, value, arg)
       EMatch(env, motive, cases) -> do_match(env, value, motive, cases)
     }
   })
@@ -1437,7 +1467,7 @@ pub fn get_missing_heads(
     [HCtr(name), ..] -> {
       let env = get_env(s)
       let ret_ty = case list.key_find(s.ctrs, name) {
-        Ok(d) -> eval(env, d.ret_ty)
+        Ok(d) -> eval(s.ffi, env, d.ret_ty)
         _ -> VErr
       }
       let span = Span("", 0, 0)
@@ -1449,7 +1479,7 @@ pub fn get_missing_heads(
       |> result.unwrap([])
       |> list.filter_map(fn(entry) {
         let #(tag, ctr) = entry
-        case unify(s, eval(env, ctr.ret_ty), ret_ty, span, span) {
+        case unify(s, eval(s.ffi, env, ctr.ret_ty), ret_ty, span, span) {
           Ok(_) -> Ok(HCtr(tag))
           _ -> Error(Nil)
         }
@@ -1550,7 +1580,7 @@ pub fn check_exhaustiveness(
   let index =
     list.fold(s.ctrs, [], fn(index, entry) {
       let #(tag, ctr) = entry
-      let ret_tag = case eval(env, ctr.ret_ty) {
+      let ret_tag = case eval(s.ffi, env, ctr.ret_ty) {
         VCtr(ret_tag, _) -> ret_tag
         _ -> ""
       }

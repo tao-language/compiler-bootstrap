@@ -147,50 +147,56 @@ pub fn unify_verr_test() {
 // ============================================================================
 
 pub fn quote_typ_test() {
-  c.quote(0, c.VTyp(0), s1) |> should.equal(c.Term(c.Typ(0), s1))
-  c.quote(0, c.VTyp(1), s1) |> should.equal(c.Term(c.Typ(1), s1))
+  c.quote(c.ffi_build, 0, c.VTyp(0), s1)
+  |> should.equal(c.Term(c.Typ(0), s1))
+  c.quote(c.ffi_build, 0, c.VTyp(1), s1)
+  |> should.equal(c.Term(c.Typ(1), s1))
 }
 
 pub fn quote_lit_test() {
-  c.quote(0, v32(1), s1) |> should.equal(c.Term(c.Lit(c.I32(1)), s1))
-  c.quote(0, v64(2), s1) |> should.equal(c.Term(c.Lit(c.I64(2)), s1))
+  c.quote(c.ffi_build, 0, v32(1), s1)
+  |> should.equal(c.Term(c.Lit(c.I32(1)), s1))
+  c.quote(c.ffi_build, 0, v64(2), s1)
+  |> should.equal(c.Term(c.Lit(c.I64(2)), s1))
 }
 
 pub fn quote_litt_test() {
-  c.quote(0, v32t, s1) |> should.equal(c.Term(c.LitT(c.I32T), s1))
-  c.quote(0, v64t, s1) |> should.equal(c.Term(c.LitT(c.I64T), s1))
+  c.quote(c.ffi_build, 0, v32t, s1)
+  |> should.equal(c.Term(c.LitT(c.I32T), s1))
+  c.quote(c.ffi_build, 0, v64t, s1)
+  |> should.equal(c.Term(c.LitT(c.I64T), s1))
 }
 
 pub fn quote_var_test() {
   // At level 1, HVar(0) should become Var(0)
-  c.quote(1, c.VNeut(c.HVar(0), []), s1)
+  c.quote(c.ffi_build, 1, c.VNeut(c.HVar(0), []), s1)
   |> should.equal(c.Term(c.Var(0), s1))
 
   // At level 2, HVar(0) should become Var(1)
-  c.quote(2, c.VNeut(c.HVar(0), []), s1)
+  c.quote(c.ffi_build, 2, c.VNeut(c.HVar(0), []), s1)
   |> should.equal(c.Term(c.Var(1), s1))
 
   // At level 2, HVar(1) should become Var(0)
-  c.quote(2, c.VNeut(c.HVar(1), []), s1)
+  c.quote(c.ffi_build, 2, c.VNeut(c.HVar(1), []), s1)
   |> should.equal(c.Term(c.Var(0), s1))
 }
 
 pub fn quote_hole_test() {
-  c.quote(0, c.VNeut(c.HHole(0), []), s1)
+  c.quote(c.ffi_build, 0, c.VNeut(c.HHole(0), []), s1)
   |> should.equal(c.Term(c.Hole(0), s1))
-  c.quote(0, c.VNeut(c.HHole(5), []), s1)
+  c.quote(c.ffi_build, 0, c.VNeut(c.HHole(5), []), s1)
   |> should.equal(c.Term(c.Hole(5), s1))
 }
 
 pub fn quote_neut_dot_test() {
   let v = c.VNeut(c.HVar(0), [c.EDot("x")])
-  c.quote(1, v, s1)
+  c.quote(c.ffi_build, 1, v, s1)
   |> should.equal(c.Term(c.Dot(c.Term(c.Var(0), s1), "x"), s1))
 }
 
 pub fn quote_neut_app_test() {
   let v = c.VNeut(c.HVar(0), [c.EApp(v32t)])
-  c.quote(1, v, s1)
+  c.quote(c.ffi_build, 1, v, s1)
   |> should.equal(c.Term(
     c.App(c.Term(c.Var(0), s1), c.Term(c.LitT(c.I32T), s1)),
     s1,
@@ -199,7 +205,7 @@ pub fn quote_neut_app_test() {
 
 pub fn quote_rcd_test() {
   let v = c.VRcd([#("a", v32t), #("b", v64t)])
-  c.quote(0, v, s1)
+  c.quote(c.ffi_build, 0, v, s1)
   |> should.equal(c.Term(
     c.Rcd([
       #("a", c.Term(c.LitT(c.I32T), s1)),
@@ -211,20 +217,20 @@ pub fn quote_rcd_test() {
 
 pub fn quote_ctr_test() {
   let v = c.VCtr("A", v32t)
-  c.quote(0, v, s1)
+  c.quote(c.ffi_build, 0, v, s1)
   |> should.equal(c.Term(c.Ctr("A", c.Term(c.LitT(c.I32T), s1)), s1))
 }
 
 pub fn quote_lam_test() {
   // Quoting a lambda creates a fresh variable and quotes the body
   let v = c.VLam("x", [], c.Term(c.Var(0), s1))
-  c.quote(0, v, s1)
+  c.quote(c.ffi_build, 0, v, s1)
   |> should.equal(c.Term(c.Lam("x", c.Term(c.Var(0), s1)), s1))
 }
 
 pub fn quote_pi_test() {
   let v = c.VPi("x", [], v32t, c.Term(c.Var(0), s1))
-  c.quote(0, v, s1)
+  c.quote(c.ffi_build, 0, v, s1)
   |> should.equal(c.Term(
     c.Pi("x", c.Term(c.LitT(c.I32T), s1), c.Term(c.Var(0), s1)),
     s1,
@@ -232,7 +238,7 @@ pub fn quote_pi_test() {
 }
 
 pub fn quote_verr_test() {
-  c.quote(0, c.VErr, s1)
+  c.quote(c.ffi_build, 0, c.VErr, s1)
   |> should.equal(c.Term(c.Hole(-1), s1))
 }
 
@@ -243,7 +249,7 @@ pub fn quote_verr_test() {
 pub fn normalize_id_test() {
   // Normalize the identity function
   let id = c.Term(c.Lam("x", c.Term(c.Var(0), s1)), s1)
-  c.normalize([], id, s1)
+  c.normalize(c.ffi_build, [], id, s1)
   |> should.equal(c.Term(c.Lam("x", c.Term(c.Var(0), s1)), s1))
 }
 
@@ -252,7 +258,7 @@ pub fn normalize_app_test() {
   let id = c.Term(c.Lam("x", c.Term(c.Var(0), s1)), s1)
   let arg = c.Term(c.LitT(c.I32T), s1)
   let app = c.Term(c.App(id, arg), s1)
-  c.normalize([], app, s1)
+  c.normalize(c.ffi_build, [], app, s1)
   |> should.equal(c.Term(c.LitT(c.I32T), s1))
 }
 
@@ -262,7 +268,7 @@ pub fn normalize_nested_app_test() {
   let lam1 = c.Term(c.Lam("x", lam_inner), s1)
   let app1 = c.Term(c.App(lam1, c.Term(c.LitT(c.I32T), s1)), s1)
   let app2 = c.Term(c.App(app1, c.Term(c.LitT(c.I64T), s1)), s1)
-  c.normalize([], app2, s1)
+  c.normalize(c.ffi_build, [], app2, s1)
   |> should.equal(c.Term(c.LitT(c.I32T), s1))
 }
 
@@ -270,7 +276,7 @@ pub fn normalize_dot_test() {
   // Normalize {a = 1}.a → 1
   let rcd = c.Term(c.Rcd([#("a", c.Term(c.Lit(c.I32(1)), s1))]), s1)
   let dot = c.Term(c.Dot(rcd, "a"), s1)
-  c.normalize([], dot, s1)
+  c.normalize(c.ffi_build, [], dot, s1)
   |> should.equal(c.Term(c.Lit(c.I32(1)), s1))
 }
 
@@ -278,7 +284,7 @@ pub fn normalize_ann_test() {
   // Normalize (1 : I32) → 1
   let ann =
     c.Term(c.Ann(c.Term(c.Lit(c.I32(1)), s1), c.Term(c.LitT(c.I32T), s1)), s1)
-  c.normalize([], ann, s1)
+  c.normalize(c.ffi_build, [], ann, s1)
   |> should.equal(c.Term(c.Lit(c.I32(1)), s1))
 }
 
@@ -288,32 +294,32 @@ pub fn normalize_ann_test() {
 
 pub fn force_no_hole_test() {
   // Force on a value without holes returns the same value
-  c.force([], v32t) |> should.equal(v32t)
-  c.force([], c.VTyp(0)) |> should.equal(c.VTyp(0))
+  c.force(c.ffi_build, [], v32t) |> should.equal(v32t)
+  c.force(c.ffi_build, [], c.VTyp(0)) |> should.equal(c.VTyp(0))
 }
 
 pub fn force_unsolved_hole_test() {
   // Force on unsolved hole returns the hole
-  c.force([], vhole(0)) |> should.equal(vhole(0))
+  c.force(c.ffi_build, [], vhole(0)) |> should.equal(vhole(0))
 }
 
 pub fn force_solved_hole_test() {
   // Force on solved hole returns the solution
   let sub = [#(0, v32t)]
-  c.force(sub, vhole(0)) |> should.equal(v32t)
+  c.force(c.ffi_build, sub, vhole(0)) |> should.equal(v32t)
 }
 
 pub fn force_hole_with_spine_test() {
   // Force on solved hole with spine applies the spine
   let sub = [#(0, c.VLam("x", [], c.Term(c.Var(0), s1)))]
   let v = c.VNeut(c.HHole(0), [c.EApp(v32t)])
-  c.force(sub, v) |> should.equal(v32t)
+  c.force(c.ffi_build, sub, v) |> should.equal(v32t)
 }
 
 pub fn force_nested_hole_test() {
   // Force recursively resolves nested holes
   let sub = [#(0, vhole(1)), #(1, v32t)]
-  c.force(sub, vhole(0)) |> should.equal(v32t)
+  c.force(c.ffi_build, sub, vhole(0)) |> should.equal(v32t)
 }
 
 // ============================================================================
@@ -378,8 +384,8 @@ pub fn range_test() {
 
 // --- Typ --- \\
 pub fn eval_typ_test() {
-  c.eval([], typ(0, s1)) |> should.equal(c.VTyp(0))
-  c.eval([], typ(1, s1)) |> should.equal(c.VTyp(1))
+  c.eval(c.ffi_build, [], typ(0, s1)) |> should.equal(c.VTyp(0))
+  c.eval(c.ffi_build, [], typ(1, s1)) |> should.equal(c.VTyp(1))
 }
 
 pub fn infer_typ_test() {
@@ -400,12 +406,18 @@ pub fn check_typ_test() {
 
 // --- Lit --- \\
 pub fn eval_lit_test() {
-  c.eval([], lit(c.I32(1), s1)) |> should.equal(c.VLit(c.I32(1)))
-  c.eval([], lit(c.I64(1), s1)) |> should.equal(c.VLit(c.I64(1)))
-  c.eval([], lit(c.U32(1), s1)) |> should.equal(c.VLit(c.U32(1)))
-  c.eval([], lit(c.U64(1), s1)) |> should.equal(c.VLit(c.U64(1)))
-  c.eval([], lit(c.F32(1.0), s1)) |> should.equal(c.VLit(c.F32(1.0)))
-  c.eval([], lit(c.F64(1.0), s1)) |> should.equal(c.VLit(c.F64(1.0)))
+  c.eval(c.ffi_build, [], lit(c.I32(1), s1))
+  |> should.equal(c.VLit(c.I32(1)))
+  c.eval(c.ffi_build, [], lit(c.I64(1), s1))
+  |> should.equal(c.VLit(c.I64(1)))
+  c.eval(c.ffi_build, [], lit(c.U32(1), s1))
+  |> should.equal(c.VLit(c.U32(1)))
+  c.eval(c.ffi_build, [], lit(c.U64(1), s1))
+  |> should.equal(c.VLit(c.U64(1)))
+  c.eval(c.ffi_build, [], lit(c.F32(1.0), s1))
+  |> should.equal(c.VLit(c.F32(1.0)))
+  c.eval(c.ffi_build, [], lit(c.F64(1.0), s1))
+  |> should.equal(c.VLit(c.F64(1.0)))
 }
 
 pub fn infer_lit_test() {
@@ -448,12 +460,18 @@ pub fn check_lit_test() {
 
 // --- LitT --- \\
 pub fn eval_litt_test() {
-  c.eval([], litt(c.I32T, s1)) |> should.equal(c.VLitT(c.I32T))
-  c.eval([], litt(c.I64T, s1)) |> should.equal(c.VLitT(c.I64T))
-  c.eval([], litt(c.U32T, s1)) |> should.equal(c.VLitT(c.U32T))
-  c.eval([], litt(c.U64T, s1)) |> should.equal(c.VLitT(c.U64T))
-  c.eval([], litt(c.F32T, s1)) |> should.equal(c.VLitT(c.F32T))
-  c.eval([], litt(c.F64T, s1)) |> should.equal(c.VLitT(c.F64T))
+  c.eval(c.ffi_build, [], litt(c.I32T, s1))
+  |> should.equal(c.VLitT(c.I32T))
+  c.eval(c.ffi_build, [], litt(c.I64T, s1))
+  |> should.equal(c.VLitT(c.I64T))
+  c.eval(c.ffi_build, [], litt(c.U32T, s1))
+  |> should.equal(c.VLitT(c.U32T))
+  c.eval(c.ffi_build, [], litt(c.U64T, s1))
+  |> should.equal(c.VLitT(c.U64T))
+  c.eval(c.ffi_build, [], litt(c.F32T, s1))
+  |> should.equal(c.VLitT(c.F32T))
+  c.eval(c.ffi_build, [], litt(c.F64T, s1))
+  |> should.equal(c.VLitT(c.F64T))
 }
 
 pub fn infer_litt_test() {
@@ -495,8 +513,8 @@ pub fn check_litt_test() {
 // --- Var --- \\
 pub fn eval_var_test() {
   let env = [v32(0)]
-  c.eval(env, var(0, s1)) |> should.equal(v32(0))
-  c.eval(env, var(1, s1)) |> should.equal(c.VErr)
+  c.eval(c.ffi_build, env, var(0, s1)) |> should.equal(v32(0))
+  c.eval(c.ffi_build, env, var(1, s1)) |> should.equal(c.VErr)
 }
 
 pub fn unify_var_test() {
@@ -534,8 +552,8 @@ pub fn check_var_test() {
 
 // --- Hole --- \\
 pub fn eval_hole_test() {
-  c.eval([], hole(0, s1)) |> should.equal(vhole(0))
-  c.eval([], hole(1, s1)) |> should.equal(vhole(1))
+  c.eval(c.ffi_build, [], hole(0, s1)) |> should.equal(vhole(0))
+  c.eval(c.ffi_build, [], hole(1, s1)) |> should.equal(vhole(1))
 }
 
 pub fn infer_hole_test() {
@@ -565,10 +583,10 @@ pub fn check_hole_test() {
 
 // --- Rcd --- \\
 pub fn eval_rcd_test() {
-  c.eval([], rcd([], s0)) |> should.equal(c.VRcd([]))
-  c.eval([], rcd([#("a", i32t(s1))], s0))
+  c.eval(c.ffi_build, [], rcd([], s0)) |> should.equal(c.VRcd([]))
+  c.eval(c.ffi_build, [], rcd([#("a", i32t(s1))], s0))
   |> should.equal(c.VRcd([#("a", v32t)]))
-  c.eval([], rcd([#("a", i32t(s1)), #("b", i64t(s2))], s0))
+  c.eval(c.ffi_build, [], rcd([#("a", i32t(s1)), #("b", i64t(s2))], s0))
   |> should.equal(c.VRcd([#("a", v32t), #("b", v64t)]))
 }
 
@@ -653,7 +671,8 @@ pub fn check_rcd_order_test() {
 
 // --- Ctr --- \\
 pub fn eval_ctr_test() {
-  c.eval([], ctr("A", i32(1, s1), s2)) |> should.equal(c.VCtr("A", v32(1)))
+  c.eval(c.ffi_build, [], ctr("A", i32(1, s1), s2))
+  |> should.equal(c.VCtr("A", v32(1)))
 }
 
 pub fn unify_ctr_tag_test() {
@@ -803,17 +822,25 @@ pub fn check_ctr_ret_mismatch_test() {
 
 // --- Dot --- \\
 pub fn eval_dot_test() {
-  c.eval([], dot(i32(1, s1), "a", s2))
+  c.eval(c.ffi_build, [], dot(i32(1, s1), "a", s2))
   |> should.equal(c.VErr)
-  c.eval([], dot(rcd([], s0), "a", s1))
+  c.eval(c.ffi_build, [], dot(rcd([], s0), "a", s1))
   |> should.equal(c.VErr)
-  c.eval([], dot(rcd([#("a", i32(1, s1)), #("b", i64(2, s2))], s0), "a", s3))
+  c.eval(
+    c.ffi_build,
+    [],
+    dot(rcd([#("a", i32(1, s1)), #("b", i64(2, s2))], s0), "a", s3),
+  )
   |> should.equal(v32(1))
-  c.eval([], dot(rcd([#("a", i32(1, s1)), #("b", i64(2, s2))], s0), "b", s3))
+  c.eval(
+    c.ffi_build,
+    [],
+    dot(rcd([#("a", i32(1, s1)), #("b", i64(2, s2))], s0), "b", s3),
+  )
   |> should.equal(v64(2))
-  c.eval([vvar(0)], dot(var(0, s1), "a", s2))
+  c.eval(c.ffi_build, [vvar(0)], dot(var(0, s1), "a", s2))
   |> should.equal(c.VNeut(c.HVar(0), [c.EDot("a")]))
-  c.eval([vhole(0)], dot(var(0, s1), "a", s2))
+  c.eval(c.ffi_build, [vhole(0)], dot(var(0, s1), "a", s2))
   |> should.equal(c.VNeut(c.HHole(0), [c.EDot("a")]))
 }
 
@@ -855,7 +882,8 @@ pub fn check_dot_test() {
 // --- Ann --- \\
 pub fn eval_ann_test() {
   let env = [v32(1)]
-  c.eval(env, ann(var(0, s1), typ(1, s2), s3)) |> should.equal(v32(1))
+  c.eval(c.ffi_build, env, ann(var(0, s1), typ(1, s2), s3))
+  |> should.equal(v32(1))
 }
 
 pub fn infer_ann_test() {
@@ -887,7 +915,7 @@ pub fn check_ann_mismatch_test() {
 
 // --- Lam --- \\
 pub fn eval_lam_test() {
-  c.eval([], lam("x", var(0, s1), s2))
+  c.eval(c.ffi_build, [], lam("x", var(0, s1), s2))
   |> should.equal(c.VLam("x", [], var(0, s1)))
 }
 
@@ -944,7 +972,7 @@ pub fn check_lam_mismatch_test() {
 
 // --- Pi --- \\
 pub fn eval_pi_test() {
-  c.eval([], pi("x", i32t(s1), var(0, s2), s3))
+  c.eval(c.ffi_build, [], pi("x", i32t(s1), var(0, s2), s3))
   |> should.equal(c.VPi("x", [], v32t, var(0, s2)))
 }
 
@@ -991,24 +1019,29 @@ pub fn check_pi_mismatch_test() {
 
 // --- App --- \\
 pub fn eval_app_value_test() {
-  c.do_app(c.VTyp(0), v32(1)) |> should.equal(c.VErr)
-  c.do_app(c.VLit(c.I32(0)), v32(1)) |> should.equal(c.VErr)
-  c.do_app(c.VLitT(c.I32T), v32(1)) |> should.equal(c.VErr)
-  c.do_app(c.VNeut(c.HVar(0), [c.EDot("x")]), v32(1))
+  c.do_app(c.ffi_build, c.VTyp(0), v32(1)) |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VLit(c.I32(0)), v32(1)) |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VLitT(c.I32T), v32(1)) |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VNeut(c.HVar(0), [c.EDot("x")]), v32(1))
   |> should.equal(c.VNeut(c.HVar(0), [c.EApp(v32(1)), c.EDot("x")]))
-  c.do_app(c.VNeut(c.HHole(0), [c.EDot("x")]), v32(1))
+  c.do_app(c.ffi_build, c.VNeut(c.HHole(0), [c.EDot("x")]), v32(1))
   |> should.equal(c.VNeut(c.HHole(0), [c.EApp(v32(1)), c.EDot("x")]))
-  c.do_app(c.VRcd([]), v32(1)) |> should.equal(c.VErr)
-  c.do_app(c.VCtr("A", v64t), v32(1)) |> should.equal(c.VErr)
-  c.do_app(c.VLam("x", [], i64(0, s1)), v32(1)) |> should.equal(v64(0))
-  c.do_app(c.VLam("x", [], var(0, s1)), v32(1)) |> should.equal(v32(1))
-  c.do_app(c.VPi("x", [], v32t, i64t(s1)), v32(1)) |> should.equal(c.VErr)
-  c.do_app(c.VErr, v32(1)) |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VRcd([]), v32(1)) |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VCtr("A", v64t), v32(1))
+  |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VLam("x", [], i64(0, s1)), v32(1))
+  |> should.equal(v64(0))
+  c.do_app(c.ffi_build, c.VLam("x", [], var(0, s1)), v32(1))
+  |> should.equal(v32(1))
+  c.do_app(c.ffi_build, c.VPi("x", [], v32t, i64t(s1)), v32(1))
+  |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VErr, v32(1)) |> should.equal(c.VErr)
 }
 
 pub fn eval_app_test() {
   let fun = lam("x", var(0, s1), s2)
-  c.eval([], app(fun, i32(1, s3), s4)) |> should.equal(v32(1))
+  c.eval(c.ffi_build, [], app(fun, i32(1, s3), s4))
+  |> should.equal(v32(1))
 }
 
 pub fn infer_app_test() {
@@ -1041,10 +1074,19 @@ pub fn check_app_test() {
 // --- Match --- \\
 pub fn eval_match_test() {
   let motive = lam("p", i32t(s0), s1)
-  c.eval([], match(i32(1, s2), motive, [], s3)) |> should.equal(c.VErr)
-  c.eval([], match(i32(1, s2), motive, [case_(pvar("x"), var(0, s3), s4)], s4))
+  c.eval(c.ffi_build, [], match(i32(1, s2), motive, [], s3))
+  |> should.equal(c.VErr)
+  c.eval(
+    c.ffi_build,
+    [],
+    match(i32(1, s2), motive, [case_(pvar("x"), var(0, s3), s4)], s4),
+  )
   |> should.equal(v32(1))
-  c.eval([], match(hole(0, s1), motive, [case_(pvar("x"), var(0, s2), s3)], s4))
+  c.eval(
+    c.ffi_build,
+    [],
+    match(hole(0, s1), motive, [case_(pvar("x"), var(0, s2), s3)], s4),
+  )
   |> should.equal(
     c.VNeut(c.HHole(0), [
       c.EMatch([], c.VLam("p", [], i32t(s0)), [case_(pvar("x"), var(0, s2), s3)]),
@@ -1532,7 +1574,7 @@ pub fn check_exhaustiveness_ctr_maybe_test() {
 }
 
 // --- HELPERS to make writing ASTs less painful ---
-const s = c.State(0, 0, [], [], [], [], c.default_host_registry)
+const s = c.State(0, 0, [], [], [], [], c.ffi_build)
 
 pub const s0 = c.Span("core_test", 0, 0)
 
