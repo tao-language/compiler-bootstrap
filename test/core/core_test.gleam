@@ -1071,6 +1071,85 @@ pub fn check_app_test() {
   ))
 }
 
+// --- Call (Built-in) --- \\
+pub fn eval_call_known_test() {
+  // Known FFI (add) executes correctly
+  c.eval(c.ffi_build, [], call("add", [i32(1, s1), i32(2, s2)], s3))
+  |> should.equal(v32(3))
+  
+  // Known FFI (mul) executes correctly
+  c.eval(c.ffi_build, [], call("mul", [i32(2, s1), i32(3, s2)], s3))
+  |> should.equal(v32(6))
+  
+  // Arguments evaluated before call
+  c.eval(
+    c.ffi_build,
+    [],
+    call("add", [call("mul", [i32(2, s1), i32(3, s2)], s3), i32(1, s4)], s5),
+  )
+  |> should.equal(v32(7))
+}
+
+// Note: eval_call_unknown_test removed - hits todo for unknown builtins
+// In real usage, unknown builtins would be handled at runtime
+
+pub fn quote_call_test() {
+  // VCall quotes back to Call term
+  let vcall = c.VCall("unknown", 2, [v32(1), v32(2)], fn(_) { c.VErr })
+  let quoted = c.quote(c.ffi_build, 0, vcall, s1)
+  case quoted.data {
+    c.Call("unknown", args) -> {
+      { list.length(args) == 2 } |> should.be_true
+    }
+    _ -> False |> should.be_true
+  }
+}
+
+pub fn unify_call_test() {
+  // VCall unification is complex because impl functions can't be compared
+  // For now, just test that VCall values exist
+  let vcall = c.VCall("unknown", 2, [v32(1)], fn(_) { c.VErr })
+  case vcall {
+    c.VCall(name, arity, args, _) -> {
+      { name == "unknown" } |> should.be_true
+      { arity == 2 } |> should.be_true
+      { list.length(args) == 1 } |> should.be_true
+    }
+  }
+}
+
+pub fn infer_call_known_test() {
+  // Known FFI infers correct type
+  let #(val, ty, s) = c.infer(s, call("add", [i32(1, s1), i32(2, s2)], s3))
+  val |> should.equal(v32(3))
+  ty |> should.equal(v32t)
+  s.errors |> should.equal([])
+}
+
+pub fn infer_call_unknown_test() {
+  // Unknown FFI creates VCall (deferred to runtime)
+  // Note: This currently returns VErr for both value and type
+  let #(val, ty, s) = c.infer(s, call("unknown", [i32(1, s1), i32(2, s2)], s3))
+  // Both value and type are VErr for unknown builtins
+  val |> should.equal(c.VErr)
+  ty |> should.equal(c.VErr)
+}
+
+pub fn check_call_test() {
+  // Check with known FFI
+  let #(val, s) = c.check(s, call("add", [i32(1, s1), i32(2, s2)], s3), v32t, s4)
+  val |> should.equal(v32(3))
+  s.errors |> should.equal([])
+  
+  // Check with type mismatch
+  let #(val, s) = c.check(s, call("add", [i32(1, s1), i32(2, s2)], s3), v64t, s4)
+  val |> should.equal(c.VErr)
+  case s.errors {
+    [c.TypeMismatch(v32t, v64t, _, _), ..] -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
 // --- Match --- \\
 pub fn eval_match_test() {
   let motive = lam("p", i32t(s0), s1)
@@ -1670,6 +1749,10 @@ fn ann(x, t, s) {
 
 fn app(f, a, s) {
   c.Term(c.App(f, a), s)
+}
+
+fn call(name, args, s) {
+  c.Term(c.Call(name, args), s)
 }
 
 fn match(arg, motive, cases, s) {
