@@ -1,4 +1,3 @@
-import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -73,8 +72,9 @@ pub type Value {
   VLam(name: String, env: Env, body: Term)
   /// Dependent function type with evaluated domain
   VPi(name: String, env: Env, in: Value, out: Term)
-  /// Built-in function (first-class, knows its arity)
-  VCall(name: String, args: List(Value), impl: fn(List(Value)) -> Value)
+  /// Built-in function call deferred to runtime
+  /// Created when FFI not found during eval, or when args are not concrete
+  VCall(name: String, args: List(Value))
   /// Error value for error recovery (continues checking after errors)
   VErr
 }
@@ -212,8 +212,6 @@ pub type State {
     ffi: FFI,
     /// Compiler configuration (permissions, target, etc.)
     config: Config,
-    /// Comptime execution errors
-    comptime_errors: List(ComptimeError),
   )
 }
 
@@ -222,42 +220,19 @@ pub type State {
 // ============================================================================
 // Configuration for compilation target and permissions.
 
-/// Compilation target
-pub type Target {
-  JavaScript
-  Python
-  WebAssembly
-  Native(os: String, arch: String)
-}
-
 /// Compiler configuration
 pub type Config {
   Config(
-    target: Target,
+    /// Target backend module name (e.g., "backend/javascript")
+    target: String,
     permissions: List(Permission),
-    /// Path to backend module (None = use default for target)
-    backend_module: Option(String),
-  )
-}
-
-/// Comptime error type
-pub type ComptimeError {
-  ComptimeError(
-    message: String,
-    span: Span,
-    /// Permission that was denied (if applicable)
-    permission: Option(Permission),
   )
 }
 
 /// Default compiler configuration
-pub const default_config = Config(
-  target: JavaScript,
-  permissions: [],
-  backend_module: None,
-)
+pub const default_config = Config(target: "backend/javascript", permissions: [])
 
-/// Create initial state with default configuration
+/// Create initial state with default configuration and builtins
 pub const initial_state = State(
   hole: 0,
   var: 0,
@@ -265,9 +240,8 @@ pub const initial_state = State(
   ctx: [],
   sub: [],
   errors: [],
-  ffi: [],
+  ffi: ffi_build,
   config: default_config,
-  comptime_errors: [],
 )
 
 // ============================================================================
@@ -281,17 +255,13 @@ pub const initial_state = State(
 pub type Permission {
   AllowRead(path: String)
   AllowWrite(path: String)
-  AllowEnv(var: String)
-  AllowNet(host: String)
-  AllowExec(cmd: String)
 }
 
 /// Host FFI function definition
-/// Note: arity is NOT stored here - the implementation handles arity checking
+/// The impl function returns None when arguments are not concrete (deferred to runtime)
 pub type Builtin {
   Builtin(
-    name: String,
-    impl: fn(List(Value)) -> Value,
+    impl: fn(List(Value)) -> Option(Value),
     required_permissions: List(Permission),
   )
 }
@@ -304,152 +274,140 @@ pub type FFI =
 /// These are the standard arithmetic, comparison, and logical operations.
 pub const ffi_build = [
   // Arithmetic (pure, always allowed)
-  #("add", Builtin("add", add_impl, [])),
-  #("sub", Builtin("sub", sub_impl, [])),
-  #("mul", Builtin("mul", mul_impl, [])),
-  #("div", Builtin("div", div_impl, [])),
-  #("mod", Builtin("mod", mod_impl, [])),
+  #("add", Builtin(add_impl, [])),
+  #("sub", Builtin(sub_impl, [])),
+  #("mul", Builtin(mul_impl, [])),
+  #("div", Builtin(div_impl, [])),
+  #("mod", Builtin(mod_impl, [])),
 
   // Comparison (pure)
-  #("eq", Builtin("eq", eq_impl, [])),
-  #("neq", Builtin("neq", neq_impl, [])),
-  #("lt", Builtin("lt", lt_impl, [])),
-  #("lte", Builtin("lte", lte_impl, [])),
-  #("gt", Builtin("gt", gt_impl, [])),
-  #("gte", Builtin("gte", gte_impl, [])),
+  #("eq", Builtin(eq_impl, [])),
+  #("neq", Builtin(neq_impl, [])),
+  #("lt", Builtin(lt_impl, [])),
+  #("lte", Builtin(lte_impl, [])),
+  #("gt", Builtin(gt_impl, [])),
+  #("gte", Builtin(gte_impl, [])),
 
   // Logical (pure)
-  #("and", Builtin("and", and_impl, [])),
-  #("or", Builtin("or", or_impl, [])),
-  #("not", Builtin("not", not_impl, [])),
+  #("and", Builtin(and_impl, [])),
+  #("or", Builtin(or_impl, [])),
+  #("not", Builtin(not_impl, [])),
 ]
 
 // ============================================================================
 // BUILTIN IMPLEMENTATIONS
 // ============================================================================
+// All builtin implementations return Option(Value):
+// - Some(result) when arguments are concrete and computation succeeds
+// - None when arguments are not concrete (deferred to runtime)
 
-fn add_impl(args: List(Value)) -> Value {
+pub fn add_impl(args: List(Value)) -> Option(Value) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(a + b))
-    [VLit(F64(a)), VLit(F64(b))] -> VLit(F64(a +. b))
-    [a, b] -> {
-      // Arguments not concrete - return stuck built-in
-      VCall("add", [a, b], add_impl)
-    }
-    _ -> VErr
+    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(a + b)))
+    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(F64(a +. b)))
+    _ -> None
   }
 }
 
-fn sub_impl(args: List(Value)) -> Value {
+pub fn sub_impl(args: List(Value)) -> Option(Value) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(a - b))
-    [VLit(F64(a)), VLit(F64(b))] -> VLit(F64(a -. b))
-    [a, b] -> VCall("sub", [a, b], sub_impl)
-    _ -> VErr
+    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(a - b)))
+    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(F64(a -. b)))
+    _ -> None
   }
 }
 
-fn mul_impl(args: List(Value)) -> Value {
+pub fn mul_impl(args: List(Value)) -> Option(Value) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(a * b))
-    [VLit(F64(a)), VLit(F64(b))] -> VLit(F64(a *. b))
-    [a, b] -> VCall("mul", [a, b], mul_impl)
-    _ -> VErr
+    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(a * b)))
+    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(F64(a *. b)))
+    _ -> None
   }
 }
 
-fn div_impl(args: List(Value)) -> Value {
+pub fn div_impl(args: List(Value)) -> Option(Value) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] if b != 0 -> VLit(I32(a / b))
-    [VLit(F64(a)), VLit(F64(b))] -> VLit(F64(a /. b))
-    [a, b] -> VCall("div", [a, b], div_impl)
-    _ -> VErr
+    [VLit(I32(a)), VLit(I32(b))] if b != 0 -> Some(VLit(I32(a / b)))
+    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(F64(a /. b)))
+    _ -> None
   }
 }
 
-fn mod_impl(args: List(Value)) -> Value {
+pub fn mod_impl(args: List(Value)) -> Option(Value) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] if b != 0 -> VLit(I32(a % b))
-    [a, b] -> VCall("mod", [a, b], mod_impl)
-    _ -> VErr
+    [VLit(I32(a)), VLit(I32(b))] if b != 0 -> Some(VLit(I32(a % b)))
+    _ -> None
   }
 }
 
-fn eq_impl(args: List(Value)) -> Value {
+pub fn eq_impl(args: List(Value)) -> Option(Value) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a == b)))
-    [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a == b)))
-    [a, b] -> VCall("eq", [a, b], eq_impl)
-    _ -> VErr
+    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(bool_to_int(a == b))))
+    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(I32(bool_to_int(a == b))))
+    _ -> None
   }
 }
 
-fn neq_impl(args: List(Value)) -> Value {
+pub fn neq_impl(args: List(Value)) -> Option(Value) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a != b)))
-    [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a != b)))
-    [a, b] -> VCall("neq", [a, b], neq_impl)
-    _ -> VErr
+    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(bool_to_int(a != b))))
+    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(I32(bool_to_int(a != b))))
+    _ -> None
   }
 }
 
-fn lt_impl(args: List(Value)) -> Value {
+pub fn lt_impl(args: List(Value)) -> Option(Value) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a < b)))
-    [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a <. b)))
-    [a, b] -> VCall("lt", [a, b], lt_impl)
-    _ -> VErr
+    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(bool_to_int(a < b))))
+    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(I32(bool_to_int(a <. b))))
+    _ -> None
   }
 }
 
-fn lte_impl(args: List(Value)) -> Value {
+pub fn lte_impl(args: List(Value)) -> Option(Value) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a <= b)))
-    [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a <=. b)))
-    [a, b] -> VCall("lte", [a, b], lte_impl)
-    _ -> VErr
+    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(bool_to_int(a <= b))))
+    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(I32(bool_to_int(a <=. b))))
+    _ -> None
   }
 }
 
-fn gt_impl(args: List(Value)) -> Value {
+pub fn gt_impl(args: List(Value)) -> Option(Value) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a > b)))
-    [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a >. b)))
-    [a, b] -> VCall("gt", [a, b], gt_impl)
-    _ -> VErr
+    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(bool_to_int(a > b))))
+    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(I32(bool_to_int(a >. b))))
+    _ -> None
   }
 }
 
-fn gte_impl(args: List(Value)) -> Value {
+pub fn gte_impl(args: List(Value)) -> Option(Value) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a >= b)))
-    [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a >=. b)))
-    [a, b] -> VCall("gte", [a, b], gte_impl)
-    _ -> VErr
+    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(bool_to_int(a >= b))))
+    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(I32(bool_to_int(a >=. b))))
+    _ -> None
   }
 }
 
-fn and_impl(args: List(Value)) -> Value {
+pub fn and_impl(args: List(Value)) -> Option(Value) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a != 0 && b != 0)))
-    [a, b] -> VCall("and", [a, b], and_impl)
-    _ -> VErr
+    [VLit(I32(a)), VLit(I32(b))] ->
+      Some(VLit(I32(bool_to_int(a != 0 && b != 0))))
+    _ -> None
   }
 }
 
-fn or_impl(args: List(Value)) -> Value {
+pub fn or_impl(args: List(Value)) -> Option(Value) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a != 0 || b != 0)))
-    [a, b] -> VCall("or", [a, b], or_impl)
-    _ -> VErr
+    [VLit(I32(a)), VLit(I32(b))] ->
+      Some(VLit(I32(bool_to_int(a != 0 || b != 0))))
+    _ -> None
   }
 }
 
-fn not_impl(args: List(Value)) -> Value {
+pub fn not_impl(args: List(Value)) -> Option(Value) {
   case args {
-    [VLit(I32(a))] -> VLit(I32(bool_to_int(a == 0)))
-    [a] -> VCall("not", [a], not_impl)
-    _ -> VErr
+    [VLit(I32(a))] -> Some(VLit(I32(bool_to_int(a == 0))))
+    _ -> None
   }
 }
 
@@ -461,74 +419,43 @@ fn bool_to_int(b: Bool) -> Int {
 }
 
 // ============================================================================
-// HOST EVALUATION (COMPTIME)
+// COMPTIME HOST EVALUATION
 // ============================================================================
 // Host evaluation executes built-in functions during elaboration.
 // This supports both pure operations (arithmetic) and impure operations
 // (file I/O, environment variables) with permission checking.
 
 /// Check if a required permission is granted.
-fn check_permission(required: Permission, granted: List(Permission)) -> Bool {
+/// Permissions match if:
+/// - The permission types are the same, AND
+/// - The granted permission is "*" (wildcard), OR
+/// - The paths/values match exactly
+/// - If required read permission, having that write permission also counts.
+/// - If required write permission, the read permission doesn't count.
+pub fn check_permission(required: Permission, granted: Permission) -> Bool {
   case required {
-    AllowRead(req_path) -> {
-      list.any(granted, fn(p) {
-        case p {
-          AllowRead("*") -> True
-          AllowRead(path) -> string.starts_with(req_path, path)
-          _ -> False
-        }
-      })
-    }
-    AllowWrite(req_path) -> {
-      list.any(granted, fn(p) {
-        case p {
-          AllowWrite("*") -> True
-          AllowWrite(path) -> string.starts_with(req_path, path)
-          _ -> False
-        }
-      })
-    }
-    AllowEnv(req_var) -> {
-      list.any(granted, fn(p) {
-        case p {
-          AllowEnv("*") -> True
-          AllowEnv(var) -> var == req_var
-          _ -> False
-        }
-      })
-    }
-    AllowNet(req_host) -> {
-      list.any(granted, fn(p) {
-        case p {
-          AllowNet("*") -> True
-          AllowNet(host) -> host == req_host
-          _ -> False
-        }
-      })
-    }
-    AllowExec(req_cmd) -> {
-      list.any(granted, fn(p) {
-        case p {
-          AllowExec("*") -> True
-          AllowExec(cmd) -> cmd == req_cmd
-          _ -> False
-        }
-      })
-    }
+    AllowRead(req) ->
+      case granted {
+        AllowRead(grant) -> req == grant || grant == "*"
+        AllowWrite(grant) -> req == grant || grant == "*"
+        _ -> False
+      }
+    AllowWrite(req) ->
+      case granted {
+        AllowWrite(grant) -> req == grant || grant == "*"
+        _ -> False
+      }
   }
 }
 
 /// Check if all required permissions are granted.
-fn all_permissions_granted(
+pub fn all_permissions_granted(
   required: List(Permission),
   granted: List(Permission),
 ) -> Bool {
-  list.all(required, fn(p) { check_permission(p, granted) })
-}
-
-/// Add a comptime error to the state.
-fn add_comptime_error(s: State, err: ComptimeError) -> State {
-  State(..s, comptime_errors: list.append(s.comptime_errors, [err]))
+  list.all(required, fn(r) {
+    list.any(granted, fn(g) { check_permission(r, g) })
+  })
 }
 
 /// Evaluate a term at compile-time (host evaluation).
@@ -536,48 +463,46 @@ fn add_comptime_error(s: State, err: ComptimeError) -> State {
 /// This is used for `comptime` blocks. It executes built-in functions
 /// with permission checking and returns the result.
 ///
-/// Unknown built-ins return VCall (deferred to runtime).
-pub fn host_eval(s: State, term: Term) -> #(Value, State) {
+/// Unknown built-ins or non-concrete args return VCall (deferred to runtime).
+/// Permission errors add ComptimePermissionDenied to State.errors.
+pub fn comptime_eval(s: State, term: Term) -> #(Value, State) {
   case term.data {
     Call(name, args) -> {
       case list.key_find(s.ffi, name) {
-        Ok(Builtin(_, impl, required_perms)) -> {
+        Ok(Builtin(impl, required_perms)) -> {
           // Check permissions
           case all_permissions_granted(required_perms, s.config.permissions) {
             True -> {
               // Evaluate arguments
               let #(arg_vals, _, s1) = infer_args(s, args)
 
-              // Execute (pure function)
-              let result = impl(arg_vals)
-              #(result, s1)
+              // Execute (pure function) - returns None for non-concrete args
+              case impl(arg_vals) {
+                Some(result) -> #(result, s1)
+                None -> {
+                  // Arguments not concrete - defer to runtime
+                  #(VCall(name, arg_vals), s1)
+                }
+              }
             }
             False -> {
-              let perm = case required_perms {
-                [p, ..] -> Some(p)
-                [] -> None
-              }
               let err =
-                ComptimeError(
-                  "Permission denied for comptime operation: " <> name,
-                  term.span,
-                  perm,
-                )
-              #(VErr, add_comptime_error(s, err))
+                ComptimePermissionDenied(name, term.span, required_perms)
+              #(VErr, with_err(s, err))
             }
           }
         }
         Error(Nil) -> {
           // Unknown FFI - return VCall (deferred to runtime)
           let #(arg_vals, _, s1) = infer_args(s, args)
-          #(VCall(name, arg_vals, todo as "unknown"), s1)
+          #(VCall(name, arg_vals), s1)
         }
       }
     }
 
     // Recursively evaluate other terms
     _ -> {
-      let #(val, ty, s1) = infer(s, term)
+      let #(val, _, s1) = infer(s, term)
       #(val, s1)
     }
   }
@@ -622,15 +547,18 @@ pub type Error {
   HoleUnsolved(id: Int, span: Span)
   SpineMismatch(span1: Span, span2: Span)
   ArityMismatch(span1: Span, span2: Span)
+  TODO(message: String)
 
   // Exhaustiveness checks
   MatchRedundantCase(Span)
   MatchMissingCase(Span, Pattern)
 
-  // Runtime errors (unexpected)
-  TODO(message: String)
-  MatchUnhandledCase(value: Value, span: Span)
-  AppNotFunction(value: Value)
+  // Comptime errors
+  ComptimePermissionDenied(
+    operation: String,
+    span: Span,
+    required: List(Permission),
+  )
 }
 
 // ============================================================================
@@ -679,8 +607,13 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
       let arg_vals = list.map(args, eval(ffi, env, _))
       // Look up the builtin and call it
       case list.key_find(ffi, name) {
-        Ok(Builtin(_, impl, _)) -> impl(arg_vals)
-        Error(Nil) -> VCall(name, arg_vals, todo as "unknown builtin")
+        Ok(Builtin(impl, _)) -> {
+          case impl(arg_vals) {
+            Some(result) -> result
+            None -> VCall(name, arg_vals)
+          }
+        }
+        Error(Nil) -> VCall(name, arg_vals)
       }
     }
     Comptime(term) -> eval(ffi, env, term)
@@ -833,7 +766,7 @@ pub fn quote(ffi: FFI, lvl: Int, value: Value, s: Span) -> Term {
       let out_quote = quote(ffi, lvl + 1, out_val, out_term.span)
       Term(Pi(name, in_quote, out_quote), s)
     }
-    VCall(name, args, _) -> {
+    VCall(name, args) -> {
       // Quote stuck built-in with collected args
       Term(Call(name, list.map(args, fn(a) { quote(ffi, lvl, a, s) })), s)
     }
@@ -905,7 +838,7 @@ pub fn occurs(sub: Subst, id: Int, value: Value) -> Bool {
     VLam(_, env, _) -> list.any(env, occurs(sub, id, _))
     VPi(_, env, in, _) ->
       occurs(sub, id, in) || list.any(env, occurs(sub, id, _))
-    VCall(_, args, _) -> list.any(args, occurs(sub, id, _))
+    VCall(_, args) -> list.any(args, occurs(sub, id, _))
   }
 }
 
@@ -1209,20 +1142,29 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
     Call(name, args) -> {
       // Look up built-in in host registry
       case list.key_find(s.ffi, name) {
-        Ok(builtin) -> {
+        Ok(Builtin(impl, _)) -> {
           // Evaluate arguments
           let #(arg_vals, arg_tys, s1) = infer_args(s, args)
 
-          // Execute built-in (pure function)
-          let result_val = builtin.impl(arg_vals)
-
-          // Compute result type (simplified - assumes all args have same type for arithmetic)
-          let result_ty = case arg_tys {
-            [ty, ..] -> ty
-            [] -> VErr
+          // Execute built-in (pure function) - returns None for non-concrete args
+          case impl(arg_vals) {
+            Some(result_val) -> {
+              // Compute result type (simplified - assumes all args have same type)
+              let result_ty = case arg_tys {
+                [ty, ..] -> ty
+                [] -> VErr
+              }
+              #(result_val, result_ty, s1)
+            }
+            None -> {
+              // Arguments not concrete - defer to runtime
+              let result_ty = case arg_tys {
+                [ty, ..] -> ty
+                [] -> VErr
+              }
+              #(VCall(name, arg_vals), result_ty, s1)
+            }
           }
-
-          #(result_val, result_ty, s1)
         }
         Error(Nil) -> {
           // Unknown built-in - return VCall (deferred to runtime)
@@ -1231,14 +1173,14 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
             [ty, ..] -> ty
             [] -> VErr
           }
-          #(VCall(name, arg_vals, todo as "unknown builtin"), result_ty, s1)
+          #(VCall(name, arg_vals), result_ty, s1)
         }
       }
     }
     Comptime(term) -> {
       // Comptime blocks are evaluated during elaboration
-      // Execute with host_eval for permission checking
-      let #(val, s1) = host_eval(s, term)
+      // Execute with comptime_eval for permission checking
+      let #(val, s1) = comptime_eval(s, term)
       // Quote the result back to a term and infer its type
       let quoted = quote(s1.ffi, 0, val, term.span)
       let #(val2, ty, s2) = infer(s1, quoted)

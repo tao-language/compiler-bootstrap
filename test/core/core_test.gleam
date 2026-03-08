@@ -1,6 +1,7 @@
 import core/core as c
 import gleam/dict
 import gleam/list
+import gleam/option.{None, Some}
 import gleeunit
 import gleeunit/should
 
@@ -1095,7 +1096,7 @@ pub fn eval_call_known_test() {
 
 pub fn quote_call_test() {
   // VCall quotes back to Call term
-  let vcall = c.VCall("unknown", [v32(1), v32(2)], fn(_) { c.VErr })
+  let vcall = c.VCall("unknown", [v32(1), v32(2)])
   let quoted = c.quote(c.ffi_build, 0, vcall, s1)
   case quoted.data {
     c.Call("unknown", args) -> {
@@ -1106,11 +1107,10 @@ pub fn quote_call_test() {
 }
 
 pub fn unify_call_test() {
-  // VCall unification is complex because impl functions can't be compared
-  // For now, just test that VCall values exist
-  let vcall = c.VCall("unknown", [v32(1)], fn(_) { c.VErr })
+  // VCall unification - test that VCall values exist
+  let vcall = c.VCall("unknown", [v32(1)])
   case vcall {
-    c.VCall(name, args, _) -> {
+    c.VCall(name, args) -> {
       { name == "unknown" } |> should.be_true
       { list.length(args) == 1 } |> should.be_true
     }
@@ -1127,11 +1127,15 @@ pub fn infer_call_known_test() {
 
 pub fn infer_call_unknown_test() {
   // Unknown FFI creates VCall (deferred to runtime)
-  // Note: This currently returns VErr for both value and type
   let #(val, ty, s) = c.infer(s, call("unknown", [i32(1, s1), i32(2, s2)], s3))
-  // Both value and type are VErr for unknown builtins
-  val |> should.equal(c.VErr)
-  ty |> should.equal(c.VErr)
+  // Unknown builtins return VCall with the args (deferred to runtime)
+  case val {
+    c.VCall("unknown", args) -> { list.length(args) == 2 } |> should.be_true
+    _ -> False |> should.be_true
+  }
+  // Type is inferred from args
+  ty |> should.equal(v32t)
+  s.errors |> should.equal([])
 }
 
 pub fn check_call_test() {
@@ -1147,6 +1151,230 @@ pub fn check_call_test() {
   val |> should.equal(c.VErr)
   case s.errors {
     [c.TypeMismatch(v32t, v64t, _, _), ..] -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+// ============================================================================
+// FFI AND COMPTIME TESTS
+// ============================================================================
+
+// --- Builtin Implementation Tests ---
+
+pub fn builtin_add_concrete_test() {
+  // add with concrete I32 args returns Some
+  c.add_impl([v32(1), v32(2)]) |> should.equal(Some(v32(3)))
+}
+
+pub fn builtin_add_float_test() {
+  // add with concrete F64 args returns Some
+  c.add_impl([vf64(1.5), vf64(2.5)]) |> should.equal(Some(vf64(4.0)))
+}
+
+pub fn builtin_add_non_concrete_test() {
+  // add with non-concrete args returns None (deferred to runtime)
+  c.add_impl([vhole(0), v32(1)]) |> should.equal(None)
+  c.add_impl([vvar(0), v32(1)]) |> should.equal(None)
+}
+
+pub fn builtin_sub_concrete_test() {
+  c.sub_impl([v32(5), v32(3)]) |> should.equal(Some(v32(2)))
+  c.sub_impl([vf64(5.0), vf64(3.0)]) |> should.equal(Some(vf64(2.0)))
+}
+
+pub fn builtin_mul_concrete_test() {
+  c.mul_impl([v32(3), v32(4)]) |> should.equal(Some(v32(12)))
+  c.mul_impl([vf64(2.5), vf64(4.0)]) |> should.equal(Some(vf64(10.0)))
+}
+
+pub fn builtin_div_concrete_test() {
+  c.div_impl([v32(10), v32(2)]) |> should.equal(Some(v32(5)))
+  c.div_impl([vf64(10.0), vf64(2.0)]) |> should.equal(Some(vf64(5.0)))
+}
+
+pub fn builtin_div_by_zero_test() {
+  // Division by zero returns None (not concrete result)
+  c.div_impl([v32(10), v32(0)]) |> should.equal(None)
+}
+
+pub fn builtin_mod_concrete_test() {
+  c.mod_impl([v32(10), v32(3)]) |> should.equal(Some(v32(1)))
+}
+
+pub fn builtin_eq_concrete_test() {
+  c.eq_impl([v32(5), v32(5)]) |> should.equal(Some(v32(1)))
+  c.eq_impl([v32(5), v32(3)]) |> should.equal(Some(v32(0)))
+}
+
+pub fn builtin_lt_concrete_test() {
+  c.lt_impl([v32(3), v32(5)]) |> should.equal(Some(v32(1)))
+  c.lt_impl([v32(5), v32(3)]) |> should.equal(Some(v32(0)))
+}
+
+pub fn builtin_and_concrete_test() {
+  c.and_impl([v32(1), v32(1)]) |> should.equal(Some(v32(1)))
+  c.and_impl([v32(0), v32(1)]) |> should.equal(Some(v32(0)))
+}
+
+pub fn builtin_or_concrete_test() {
+  c.or_impl([v32(0), v32(0)]) |> should.equal(Some(v32(0)))
+  c.or_impl([v32(1), v32(0)]) |> should.equal(Some(v32(1)))
+}
+
+pub fn builtin_not_concrete_test() {
+  c.not_impl([v32(0)]) |> should.equal(Some(v32(1)))
+  c.not_impl([v32(1)]) |> should.equal(Some(v32(0)))
+}
+
+// --- Permission Checking Tests ---
+
+pub fn permission_check_same_type_match_test() {
+  // Same permission types with same values match
+  c.check_permission(c.AllowRead("/foo"), c.AllowRead("/foo"))
+  |> should.be_true
+}
+
+pub fn permission_check_same_type_mismatch_test() {
+  // Same permission types with different values don't match
+  c.check_permission(c.AllowRead("/foo"), c.AllowRead("/bar"))
+  |> should.be_false
+}
+
+pub fn permission_check_wildcard_test() {
+  // Wildcard "*" matches any value of the same type
+  c.check_permission(c.AllowRead("/foo"), c.AllowRead("*"))
+  |> should.be_true
+  c.check_permission(c.AllowWrite("/foo"), c.AllowWrite("*"))
+  |> should.be_true
+}
+
+pub fn permission_check_read_write_test() {
+  c.check_permission(c.AllowWrite("/foo"), c.AllowRead("/foo"))
+  |> should.be_false
+  c.check_permission(c.AllowRead("/foo"), c.AllowWrite("/foo"))
+  |> should.be_true
+}
+
+pub fn all_permissions_granted_all_match_test() {
+  // All required permissions granted
+  let req = [c.AllowRead("/foo"), c.AllowWrite("/bar")]
+  let grant = [c.AllowWrite("/bar"), c.AllowRead("/foo")]
+  c.all_permissions_granted(req, grant) |> should.be_true
+}
+
+pub fn all_permissions_granted_wildcard_test() {
+  // Wildcard grants all of that type
+  c.all_permissions_granted([c.AllowRead("/foo"), c.AllowRead("/bar")], [
+    c.AllowRead("*"),
+  ])
+  |> should.be_true
+}
+
+pub fn all_permissions_granted_missing_test() {
+  // Missing permission returns false
+  let req = [c.AllowRead("/foo"), c.AllowWrite("/bar")]
+  let grant = [c.AllowRead("/bar"), c.AllowRead("/foo")]
+  c.all_permissions_granted(req, grant) |> should.be_false
+}
+
+// --- Comptime Evaluation Tests ---
+
+pub fn comptime_eval_add_test() {
+  // comptime_eval with concrete add returns result
+  let term = call("add", [i32(1, s1), i32(2, s2)], s3)
+  let state = c.State(..s, config: c.default_config)
+  let #(val, s) = c.comptime_eval(state, term)
+  val |> should.equal(v32(3))
+  s.errors |> should.equal([])
+}
+
+pub fn comptime_eval_non_concrete_test() {
+  // comptime_eval with non-concrete args returns VCall
+  let term = call("add", [hole(0, s1), i32(1, s2)], s3)
+  let state = c.State(..s, config: c.default_config)
+  let #(val, s) = c.comptime_eval(state, term)
+  case val {
+    c.VCall("add", args) -> { list.length(args) == 2 } |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+pub fn comptime_eval_unknown_builtin_test() {
+  // comptime_eval with unknown builtin returns VCall
+  let term = call("unknown_fn", [i32(1, s1)], s2)
+  let state = c.State(..s, config: c.default_config)
+  let #(val, s) = c.comptime_eval(state, term)
+  case val {
+    c.VCall("unknown_fn", args) -> { list.length(args) == 1 } |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+pub fn comptime_eval_permission_denied_test() {
+  // comptime_eval with missing permission returns error
+  let term = call("add", [i32(1, s1), i32(2, s2)], s3)
+  // Create a builtin that requires a permission
+  let ffi = [
+    #("read_file", c.Builtin(fn(_) { None }, [c.AllowRead("*")])),
+  ]
+  let state = c.State(..s, ffi: ffi, config: c.default_config)
+  let term2 = call("read_file", [i32(1, s1)], s2)
+  let #(val, s) = c.comptime_eval(state, term2)
+  val |> should.equal(c.VErr)
+  case s.errors {
+    [c.ComptimePermissionDenied("read_file", _, [c.AllowRead("*")]), ..] ->
+      True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+pub fn comptime_eval_permission_granted_test() {
+  // comptime_eval with granted permission succeeds
+  let ffi = [
+    #("read_file", c.Builtin(fn(_) { Some(v32(42)) }, [c.AllowRead("*")])),
+  ]
+  let state =
+    c.State(
+      ..s,
+      ffi: ffi,
+      config: c.Config(c.default_config.target, [c.AllowRead("*")]),
+    )
+  let term = call("read_file", [i32(1, s1)], s2)
+  let #(val, s) = c.comptime_eval(state, term)
+  val |> should.equal(v32(42))
+  s.errors |> should.equal([])
+}
+
+// --- VCall Tests ---
+
+pub fn vcall_creation_test() {
+  // VCall created with name and args
+  let vcall = c.VCall("my_fn", [v32(1), v32(2)])
+  case vcall {
+    c.VCall(name, args) -> {
+      { name == "my_fn" && list.length(args) == 2 } |> should.be_true
+    }
+  }
+}
+
+pub fn vcall_quote_test() {
+  // VCall quotes back to Call term
+  let vcall = c.VCall("unknown", [v32(1), v32(2)])
+  let quoted = c.quote(c.ffi_build, 0, vcall, s1)
+  case quoted.data {
+    c.Call("unknown", args) -> {
+      { list.length(args) == 2 } |> should.be_true
+    }
+    _ -> False |> should.be_true
+  }
+}
+
+pub fn vcall_in_neutral_test() {
+  // VCall in neutral term (via comptime with hole)
+  let term = call("add", [hole(0, s1), i32(1, s2)], s3)
+  let val = c.eval(c.ffi_build, [], term)
+  case val {
+    c.VCall("add", args) -> { list.length(args) == 2 } |> should.be_true
     _ -> False |> should.be_true
   }
 }
@@ -1702,6 +1930,10 @@ fn v32(v) {
 
 fn v64(v) {
   c.VLit(c.I64(v))
+}
+
+fn vf64(v: Float) {
+  c.VLit(c.F64(v))
 }
 
 fn i32t(s) {
