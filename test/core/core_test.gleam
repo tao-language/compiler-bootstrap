@@ -1095,7 +1095,7 @@ pub fn eval_call_known_test() {
 
 pub fn quote_call_test() {
   // VCall quotes back to Call term
-  let vcall = c.VCall("unknown", 2, [v32(1), v32(2)], fn(_) { c.VErr })
+  let vcall = c.VCall("unknown", [v32(1), v32(2)], fn(_) { c.VErr })
   let quoted = c.quote(c.ffi_build, 0, vcall, s1)
   case quoted.data {
     c.Call("unknown", args) -> {
@@ -1108,11 +1108,10 @@ pub fn quote_call_test() {
 pub fn unify_call_test() {
   // VCall unification is complex because impl functions can't be compared
   // For now, just test that VCall values exist
-  let vcall = c.VCall("unknown", 2, [v32(1)], fn(_) { c.VErr })
+  let vcall = c.VCall("unknown", [v32(1)], fn(_) { c.VErr })
   case vcall {
-    c.VCall(name, arity, args, _) -> {
+    c.VCall(name, args, _) -> {
       { name == "unknown" } |> should.be_true
-      { arity == 2 } |> should.be_true
       { list.length(args) == 1 } |> should.be_true
     }
   }

@@ -74,12 +74,7 @@ pub type Value {
   /// Dependent function type with evaluated domain
   VPi(name: String, env: Env, in: Value, out: Term)
   /// Built-in function (first-class, knows its arity)
-  VCall(
-    name: String,
-    arity: Int,
-    collected_args: List(Value),
-    impl: fn(List(Value)) -> Value,
-  )
+  VCall(name: String, args: List(Value), impl: fn(List(Value)) -> Value)
   /// Error value for error recovery (continues checking after errors)
   VErr
 }
@@ -339,7 +334,7 @@ fn add_impl(args: List(Value)) -> Value {
     [VLit(F64(a)), VLit(F64(b))] -> VLit(F64(a +. b))
     [a, b] -> {
       // Arguments not concrete - return stuck built-in
-      VCall("add", 2, [a, b], add_impl)
+      VCall("add", [a, b], add_impl)
     }
     _ -> VErr
   }
@@ -349,7 +344,7 @@ fn sub_impl(args: List(Value)) -> Value {
   case args {
     [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(a - b))
     [VLit(F64(a)), VLit(F64(b))] -> VLit(F64(a -. b))
-    [a, b] -> VCall("sub", 2, [a, b], sub_impl)
+    [a, b] -> VCall("sub", [a, b], sub_impl)
     _ -> VErr
   }
 }
@@ -358,7 +353,7 @@ fn mul_impl(args: List(Value)) -> Value {
   case args {
     [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(a * b))
     [VLit(F64(a)), VLit(F64(b))] -> VLit(F64(a *. b))
-    [a, b] -> VCall("mul", 2, [a, b], mul_impl)
+    [a, b] -> VCall("mul", [a, b], mul_impl)
     _ -> VErr
   }
 }
@@ -367,7 +362,7 @@ fn div_impl(args: List(Value)) -> Value {
   case args {
     [VLit(I32(a)), VLit(I32(b))] if b != 0 -> VLit(I32(a / b))
     [VLit(F64(a)), VLit(F64(b))] -> VLit(F64(a /. b))
-    [a, b] -> VCall("div", 2, [a, b], div_impl)
+    [a, b] -> VCall("div", [a, b], div_impl)
     _ -> VErr
   }
 }
@@ -375,7 +370,7 @@ fn div_impl(args: List(Value)) -> Value {
 fn mod_impl(args: List(Value)) -> Value {
   case args {
     [VLit(I32(a)), VLit(I32(b))] if b != 0 -> VLit(I32(a % b))
-    [a, b] -> VCall("mod", 2, [a, b], mod_impl)
+    [a, b] -> VCall("mod", [a, b], mod_impl)
     _ -> VErr
   }
 }
@@ -384,7 +379,7 @@ fn eq_impl(args: List(Value)) -> Value {
   case args {
     [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a == b)))
     [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a == b)))
-    [a, b] -> VCall("eq", 2, [a, b], eq_impl)
+    [a, b] -> VCall("eq", [a, b], eq_impl)
     _ -> VErr
   }
 }
@@ -393,7 +388,7 @@ fn neq_impl(args: List(Value)) -> Value {
   case args {
     [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a != b)))
     [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a != b)))
-    [a, b] -> VCall("neq", 2, [a, b], neq_impl)
+    [a, b] -> VCall("neq", [a, b], neq_impl)
     _ -> VErr
   }
 }
@@ -402,7 +397,7 @@ fn lt_impl(args: List(Value)) -> Value {
   case args {
     [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a < b)))
     [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a <. b)))
-    [a, b] -> VCall("lt", 2, [a, b], lt_impl)
+    [a, b] -> VCall("lt", [a, b], lt_impl)
     _ -> VErr
   }
 }
@@ -411,7 +406,7 @@ fn lte_impl(args: List(Value)) -> Value {
   case args {
     [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a <= b)))
     [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a <=. b)))
-    [a, b] -> VCall("lte", 2, [a, b], lte_impl)
+    [a, b] -> VCall("lte", [a, b], lte_impl)
     _ -> VErr
   }
 }
@@ -420,7 +415,7 @@ fn gt_impl(args: List(Value)) -> Value {
   case args {
     [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a > b)))
     [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a >. b)))
-    [a, b] -> VCall("gt", 2, [a, b], gt_impl)
+    [a, b] -> VCall("gt", [a, b], gt_impl)
     _ -> VErr
   }
 }
@@ -429,7 +424,7 @@ fn gte_impl(args: List(Value)) -> Value {
   case args {
     [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a >= b)))
     [VLit(F64(a)), VLit(F64(b))] -> VLit(I32(bool_to_int(a >=. b)))
-    [a, b] -> VCall("gte", 2, [a, b], gte_impl)
+    [a, b] -> VCall("gte", [a, b], gte_impl)
     _ -> VErr
   }
 }
@@ -437,7 +432,7 @@ fn gte_impl(args: List(Value)) -> Value {
 fn and_impl(args: List(Value)) -> Value {
   case args {
     [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a != 0 && b != 0)))
-    [a, b] -> VCall("and", 2, [a, b], and_impl)
+    [a, b] -> VCall("and", [a, b], and_impl)
     _ -> VErr
   }
 }
@@ -445,7 +440,7 @@ fn and_impl(args: List(Value)) -> Value {
 fn or_impl(args: List(Value)) -> Value {
   case args {
     [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(bool_to_int(a != 0 || b != 0)))
-    [a, b] -> VCall("or", 2, [a, b], or_impl)
+    [a, b] -> VCall("or", [a, b], or_impl)
     _ -> VErr
   }
 }
@@ -453,7 +448,7 @@ fn or_impl(args: List(Value)) -> Value {
 fn not_impl(args: List(Value)) -> Value {
   case args {
     [VLit(I32(a))] -> VLit(I32(bool_to_int(a == 0)))
-    [a] -> VCall("not", 1, [a], not_impl)
+    [a] -> VCall("not", [a], not_impl)
     _ -> VErr
   }
 }
@@ -575,7 +570,7 @@ pub fn host_eval(s: State, term: Term) -> #(Value, State) {
         Error(Nil) -> {
           // Unknown FFI - return VCall (deferred to runtime)
           let #(arg_vals, _, s1) = infer_args(s, args)
-          #(VCall(name, list.length(arg_vals), arg_vals, todo as "unknown"), s1)
+          #(VCall(name, arg_vals, todo as "unknown"), s1)
         }
       }
     }
@@ -685,13 +680,7 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
       // Look up the builtin and call it
       case list.key_find(ffi, name) {
         Ok(Builtin(_, impl, _)) -> impl(arg_vals)
-        Error(Nil) ->
-          VCall(
-            name,
-            list.length(arg_vals),
-            arg_vals,
-            todo as "unknown builtin",
-          )
+        Error(Nil) -> VCall(name, arg_vals, todo as "unknown builtin")
       }
     }
     Comptime(term) -> eval(ffi, env, term)
@@ -844,7 +833,7 @@ pub fn quote(ffi: FFI, lvl: Int, value: Value, s: Span) -> Term {
       let out_quote = quote(ffi, lvl + 1, out_val, out_term.span)
       Term(Pi(name, in_quote, out_quote), s)
     }
-    VCall(name, _, args, _) -> {
+    VCall(name, args, _) -> {
       // Quote stuck built-in with collected args
       Term(Call(name, list.map(args, fn(a) { quote(ffi, lvl, a, s) })), s)
     }
@@ -916,7 +905,7 @@ pub fn occurs(sub: Subst, id: Int, value: Value) -> Bool {
     VLam(_, env, _) -> list.any(env, occurs(sub, id, _))
     VPi(_, env, in, _) ->
       occurs(sub, id, in) || list.any(env, occurs(sub, id, _))
-    VCall(_, _, args, _) -> list.any(args, occurs(sub, id, _))
+    VCall(_, args, _) -> list.any(args, occurs(sub, id, _))
   }
 }
 
@@ -1242,16 +1231,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
             [ty, ..] -> ty
             [] -> VErr
           }
-          #(
-            VCall(
-              name,
-              list.length(arg_vals),
-              arg_vals,
-              todo as "unknown builtin",
-            ),
-            result_ty,
-            s1,
-          )
+          #(VCall(name, arg_vals, todo as "unknown builtin"), result_ty, s1)
         }
       }
     }
