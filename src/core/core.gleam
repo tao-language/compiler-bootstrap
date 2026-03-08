@@ -931,8 +931,9 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
         None -> infer_error(s, VarUndefined(i, term.span))
       }
     Hole(id) -> {
+      // Record unsolved hole as a warning for IDE feedback
       let #(ty, s) = new_hole(s)
-      #(VNeut(HHole(id), []), ty, s)
+      #(VNeut(HHole(id), []), ty, with_err(s, HoleUnsolved(id, term.span)))
     }
     Rcd(fields) -> {
       let #(fields_val, fields_ty, s) = infer_fields(s, fields)
@@ -975,11 +976,13 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       // For lambda inference, we create a hole for the domain type
       let env = get_env(s)
       let #(t1_hole, s) = new_hole(s)
-      let #(_, s) = def_var(s, name, t1_hole)
-      let #(_, t2_val, s) = infer(s, body)
+      let #(fresh, s) = def_var(s, name, t1_hole)
+      let #(body_val, body_ty, s) = infer(s, body)
+      // Quote the body back to preserve structure even if there are errors
+      let body_quoted = quote(list.length(env), body_val, body.span)
       let t1 = force(s.sub, t1_hole)
-      let t2 = quote(list.length(env), t2_val, body.span)
-      #(VLam(name, env, body), VPi(name, env, t1, t2), s)
+      let t2 = quote(list.length(env), body_ty, body.span)
+      #(VLam(name, env, body_quoted), VPi(name, env, t1, t2), s)
     }
     Pi(name, in, out) -> {
       let env = get_env(s)
@@ -1188,70 +1191,25 @@ pub fn bind_pattern(
 }
 
 /// Check that a term has the expected type (verification direction).
-/// 
+///
 /// Returns the evaluated value and updated state.
-/// 
+///
 /// ERROR HANDLING: On error, records the error in state and returns VErr,
 /// allowing checking to continue. This is how error recovery is implemented.
-/// 
-/// Key cases:
-/// - Lambdas: Extend context with the domain type, check the body
-/// - Holes: Record as unsolved (for IDE feedback)
-/// - Constructors: Delegate to check_ctr for GADT parameter solving
-/// - Default: Infer the type and unify with the expected type
+///
+/// Note: This function now delegates entirely to infer + unify. The bidirectional
+/// structure is kept for API clarity and future extensions, but currently all
+/// terms follow the same infer-then-unify pattern.
 pub fn check(
   s: State,
   term: Term,
   expected_ty: Type,
   ty_span: Span,
 ) -> #(Value, State) {
-  case term.data, expected_ty {
-    Lam(name, body), VPi(_, pi_env, in, out) -> {
-      let env = get_env(s)
-      let #(fresh, s) = def_var(s, name, in)
-      let out_val = eval([fresh, ..pi_env], out)
-      let #(_, s) = check(s, body, out_val, ty_span)
-      #(VLam(name, env, body), s)
-    }
-    Hole(id), _ -> {
-      // Record unsolved hole as a warning for IDE feedback
-      #(VNeut(HHole(id), []), with_err(s, HoleUnsolved(id, term.span)))
-    }
-    Ctr(tag, arg), _ -> check_ctr(s, tag, arg, expected_ty, ty_span, term.span)
-    _, _ -> {
-      let #(value, inferred_ty, s) = infer(s, term)
-      case unify(s, inferred_ty, expected_ty, term.span, ty_span) {
-        Ok(s) -> #(force(s.sub, value), s)
-        Error(e) -> #(VErr, with_err(s, e))
-      }
-    }
-  }
-}
-
-/// Check a constructor against an expected type.
-/// 
-/// This handles GADT-style constructors where the return type may index
-/// the type parameters. The expected type is unified with the constructor's
-/// return type to solve for the parameters.
-fn check_ctr(
-  s: State,
-  tag: String,
-  arg: Term,
-  ret_ty: Value,
-  ret_span: Span,
-  term_span: Span,
-) -> #(Value, State) {
-  case list.key_find(s.ctrs, tag) {
-    Error(Nil) -> #(VErr, with_err(s, CtrUndefined(tag, ret_span)))
-    Ok(ctr) -> {
-      let #(params, _, ctr_ret_ty, s) = check_ctr_def(s, ctr)
-      let #(_, s) = check_type(s, ctr_ret_ty, ret_ty, ctr.ret_ty.span, ret_span)
-      let #(params, s) = ctr_solve_params(s, ctr, params, tag, term_span)
-      let env = list.append(params, get_env(s))
-      let ctr_arg_ty = eval(env, ctr.arg_ty)
-      let #(arg_val, s) = check(s, arg, ctr_arg_ty, ctr.arg_ty.span)
-      #(VCtr(tag, arg_val), s)
-    }
+  let #(value, inferred_ty, s) = infer(s, term)
+  case unify(s, inferred_ty, expected_ty, term.span, ty_span) {
+    Ok(s) -> #(force(s.sub, value), s)
+    Error(e) -> #(VErr, with_err(s, e))
   }
 }
 

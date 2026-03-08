@@ -3,7 +3,6 @@
 // ============================================================================
 
 import core/syntax
-import gleam/string
 import gleeunit
 import gleeunit/should
 import parser
