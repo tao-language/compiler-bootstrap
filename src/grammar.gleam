@@ -27,6 +27,7 @@
 /// let result = grammar.parse(g, "1 + 2")
 /// let formatted = grammar.format(g, result.ast)
 /// ```
+import formatter.{type Doc}
 import gleam/dict.{type Dict}
 import gleam/list
 import gleam/result
@@ -44,6 +45,31 @@ pub type Associativity {
   None
 }
 
+/// Layout style for formatting
+pub type LayoutStyle {
+  /// All on one line: `a + b`
+  Inline
+  /// Break after operator, indent: `a\n  + b`
+  BreakAfterOperator(indent: Int)
+  /// Break before operator: `a\n+ b`
+  BreakBeforeOperator(indent: Int)
+  /// Block style: `{\n  x: 1,\n}`
+  Block(open: String, close: String, indent: Int)
+  /// Custom formatter function
+  Custom
+}
+
+/// Operator information for formatting
+pub type OperatorInfo(a) {
+  OperatorInfo(
+    precedence: Int,
+    associativity: Associativity,
+    separator: String,
+    layout: LayoutStyle,
+    format_fn: fn(a, a, Int, fn(a, Int) -> Doc) -> Doc,
+  )
+}
+
 /// Generic grammar parameterized by AST type
 pub type Grammar(a) {
   Grammar(
@@ -52,6 +78,8 @@ pub type Grammar(a) {
     rules: Dict(String, Rule(a)),
     tokens: List(String),
     keywords: List(String),
+    /// Operator information for formatting (runtime lookup table)
+    operator_info: Dict(String, OperatorInfo(a)),
   )
 }
 
@@ -96,13 +124,16 @@ pub type Symbol(a) {
   LeftAssoc(first: Symbol(a), ops: List(Operator(a)))
 }
 
-/// Operator for left_assoc
-/// Note: Using a generic function type that works with any AST
+/// Operator for left_assoc with full formatting info
 pub type Operator(a) {
   Operator(
     keyword: String,
     constructor: fn(a, a) -> a,
     format_separator: String,
+    precedence: Int,
+    associativity: Associativity,
+    layout: LayoutStyle,
+    format_fn: fn(a, a, Int, fn(a, Int) -> Doc) -> Doc,
   )
 }
 
@@ -123,6 +154,7 @@ pub fn new() -> Grammar(a) {
     rules: dict.new(),
     tokens: [],
     keywords: [],
+    operator_info: dict.new(),
   )
 }
 
@@ -184,16 +216,93 @@ pub fn left_assoc(
   // Build symbol for LeftAssoc
   let definition = LeftAssoc(first, ops)
 
-  rule(g, name, definition, constructor, precedence, TemplateSeq(separators))
+  // Build operator info dict for formatting
+  let operator_info =
+    list.fold(ops, g.operator_info, fn(acc, op) {
+      dict.insert(
+        acc,
+        op.keyword,
+        OperatorInfo(
+          op.precedence,
+          op.associativity,
+          op.format_separator,
+          op.layout,
+          op.format_fn,
+        ),
+      )
+    })
+
+  let g =
+    rule(g, name, definition, constructor, precedence, TemplateSeq(separators))
+  Grammar(..g, operator_info: operator_info)
 }
 
-/// Create operator definition
+/// Create operator definition with full formatting info
 pub fn op(
   keyword: String,
   constructor: fn(a, a) -> a,
   format_separator: String,
+  precedence: Int,
+  associativity: Associativity,
+  layout: LayoutStyle,
 ) -> Operator(a) {
-  Operator(keyword, constructor, format_separator)
+  // Create format function that handles precedence & parenthesization
+  let format_fn = fn(
+    left: a,
+    right: a,
+    parent_prec: Int,
+    format_child: fn(a, Int) -> Doc,
+  ) {
+    let doc = case associativity {
+      Left -> {
+        let l_doc = format_child(left, precedence + 1)
+        let r_doc = format_child(right, precedence)
+        format_binop(
+          l_doc,
+          r_doc,
+          format_separator,
+          precedence,
+          parent_prec,
+          layout,
+        )
+      }
+      Right -> {
+        let l_doc = format_child(left, precedence)
+        let r_doc = format_child(right, precedence + 1)
+        format_binop(
+          l_doc,
+          r_doc,
+          format_separator,
+          precedence,
+          parent_prec,
+          layout,
+        )
+      }
+      None -> {
+        let l_doc = format_child(left, precedence)
+        let r_doc = format_child(right, precedence)
+        format_binop(
+          l_doc,
+          r_doc,
+          format_separator,
+          precedence,
+          parent_prec,
+          layout,
+        )
+      }
+    }
+    doc
+  }
+
+  Operator(
+    keyword,
+    constructor,
+    format_separator,
+    precedence,
+    associativity,
+    layout,
+    format_fn,
+  )
 }
 
 // ============================================================================
@@ -234,6 +343,155 @@ pub fn sep(item: Symbol(a), sep: Symbol(a)) -> Symbol(a) {
 
 pub fn sep1(item: Symbol(a), sep: Symbol(a)) -> Symbol(a) {
   Sep1(item, sep)
+}
+
+// ============================================================================
+// FORMATTER COMBINATORS
+// ============================================================================
+
+/// Generic binary operator formatter with layout support
+pub fn format_binop(
+  left: Doc,
+  right: Doc,
+  separator: String,
+  precedence: Int,
+  parent_prec: Int,
+  layout: LayoutStyle,
+) -> Doc {
+  let doc = case layout {
+    Inline -> {
+      formatter.concat([
+        left,
+        formatter.text(separator),
+        right,
+      ])
+    }
+    BreakAfterOperator(indent) -> {
+      formatter.group(
+        formatter.concat([
+          left,
+          formatter.text(separator),
+          formatter.line(),
+          formatter.nest(indent, right),
+        ]),
+      )
+    }
+    BreakBeforeOperator(indent) -> {
+      formatter.group(
+        formatter.concat([
+          left,
+          formatter.line(),
+          formatter.nest(
+            indent,
+            formatter.concat([
+              formatter.text(separator),
+              right,
+            ]),
+          ),
+        ]),
+      )
+    }
+    Block(_, _, indent) -> {
+      formatter.group(
+        formatter.concat([
+          left,
+          formatter.text(separator),
+          formatter.line(),
+          formatter.nest(indent, right),
+        ]),
+      )
+    }
+    Custom -> {
+      formatter.concat([
+        left,
+        formatter.text(separator),
+        right,
+      ])
+    }
+  }
+  wrap_parens(doc, precedence < parent_prec)
+}
+
+/// Block formatter for records, lists, etc.
+pub fn format_block(
+  open: String,
+  children: List(Doc),
+  close: String,
+  separator: String,
+  indent: Int,
+  parent_prec: Int,
+) -> Doc {
+  let children_doc = case children {
+    [] -> formatter.text("")
+    [first, ..rest] -> {
+      formatter.concat(list.append(
+        [first],
+        list.map(rest, fn(c) {
+          formatter.concat([
+            formatter.text(separator),
+            formatter.line(),
+            c,
+          ])
+        }),
+      ))
+    }
+  }
+  formatter.group(
+    formatter.concat([
+      formatter.text(open),
+      formatter.nest(
+        indent,
+        formatter.concat([
+          formatter.line(),
+          children_doc,
+        ]),
+      ),
+      formatter.line(),
+      formatter.text(close),
+    ]),
+  )
+}
+
+/// Wrap in parens if precedence condition is met
+pub fn wrap_parens(doc: Doc, condition: Bool) -> Doc {
+  case condition {
+    True ->
+      formatter.concat([
+        formatter.text("("),
+        doc,
+        formatter.text(")"),
+      ])
+    False -> doc
+  }
+}
+
+/// Format any binary operator from grammar (with error message including operator name)
+pub fn format_op(
+  g: Grammar(a),
+  op: String,
+  left: a,
+  right: a,
+  parent_prec: Int,
+  format_child: fn(a, Int) -> Doc,
+) -> Doc {
+  case dict.get(g.operator_info, op) {
+    Ok(info) -> info.format_fn(left, right, parent_prec, format_child)
+    Error(_) -> formatter.text("<unknown operator: " <> op <> ">")
+  }
+}
+
+/// Default formatter for block structures (lists, tuples, records)
+pub fn format_block_default(
+  children: List(a),
+  open: String,
+  close: String,
+  separator: String,
+  indent: Int,
+  parent_prec: Int,
+  format_child: fn(a, Int) -> Doc,
+) -> Doc {
+  let child_docs = list.map(children, fn(c) { format_child(c, 0) })
+  format_block(open, child_docs, close, separator, indent, parent_prec)
 }
 
 // ============================================================================

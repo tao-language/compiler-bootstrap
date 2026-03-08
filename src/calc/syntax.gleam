@@ -1,18 +1,22 @@
 // ============================================================================
-// CALCULATOR SYNTAX - Grammar Definition
+// CALCULATOR SYNTAX - Grammar Definition with Formatting
 // ============================================================================
 
 /// Calculator language with +, *, and parentheses
-/// 
+///
 /// Demonstrates the generic grammar system with:
 /// - Left-associative operators
 /// - Operator precedence
 /// - Automatic parser generation
-/// - AST-specific formatting using grammar precedence
+/// - Runtime formatter using grammar lookup
+/// - Pretty-printing with formatter.gleam
 import calc/ast.{type Expr, Add, Int, Mul}
+import formatter.{type Doc}
 import gleam/int
 import gleam/result
-import grammar.{type Grammar, type ParseChild, ChildAST, ChildToken}
+import grammar.{
+  type Grammar, type LayoutStyle, type ParseChild, ChildAST, ChildToken,
+}
 import parser.{type ParseResult}
 
 // ============================================================================
@@ -27,12 +31,20 @@ pub fn calc_grammar() -> Grammar(Expr) {
   |> grammar.with_token("LParen")
   |> grammar.with_token("RParen")
   // expr -> term (('+' | '-') term)*
-  // Left-associative with precedence 10
+  // Left-associative with precedence 10, break after operator with 2-space indent
   |> grammar.left_assoc(
     "Expr",
     grammar.ref("Term"),
     [
-      grammar.op("+", fn(l, r) { Add(l, r) }, " + "),
+      grammar.op(
+        "+",
+        fn(l, r) { Add(l, r) },
+        " +",
+        // No trailing space - formatter.line() adds it
+        10,
+        grammar.Left,
+        grammar.BreakAfterOperator(2),
+      ),
     ],
     10,
   )
@@ -42,7 +54,15 @@ pub fn calc_grammar() -> Grammar(Expr) {
     "Term",
     grammar.ref("Factor"),
     [
-      grammar.op("*", fn(l, r) { Mul(l, r) }, " * "),
+      grammar.op(
+        "*",
+        fn(l, r) { Mul(l, r) },
+        " *",
+        // No trailing space - formatter.line() adds it
+        20,
+        grammar.Left,
+        grammar.BreakAfterOperator(2),
+      ),
     ],
     20,
   )
@@ -79,31 +99,27 @@ pub fn parse(source: String) -> ParseResult(Expr) {
 }
 
 pub fn format(ast: Expr) -> String {
-  format_expr(ast, 0)
+  let g = calc_grammar()
+  let doc = format_expr(g, ast, -1)
+  // -1 = no parent, never wrap parens
+  formatter.render_default(doc)
 }
 
 // ============================================================================
-// FORMATTER - AST-specific using grammar precedence
+// FORMATTER - Uses grammar lookup for operators
 // ============================================================================
 
-fn format_expr(expr: Expr, parent_prec: Int) -> String {
+fn format_expr(g: Grammar(Expr), expr: Expr, parent_prec: Int) -> Doc {
+  // Helper that captures grammar for recursive calls
+  let format_child = fn(child: Expr, prec: Int) -> Doc {
+    format_expr(g, child, prec)
+  }
+
   case expr {
-    Int(n) -> int.to_string(n)
-    Add(l, r) -> {
-      let prec = 10
-      let s = format_expr(l, prec) <> " + " <> format_expr(r, prec + 1)
-      case prec < parent_prec {
-        True -> "(" <> s <> ")"
-        False -> s
-      }
-    }
-    Mul(l, r) -> {
-      let prec = 20
-      let s = format_expr(l, prec) <> " * " <> format_expr(r, prec + 1)
-      case prec < parent_prec {
-        True -> "(" <> s <> ")"
-        False -> s
-      }
-    }
+    Int(n) -> formatter.text(int.to_string(n))
+
+    // Operators use grammar lookup - automatic precedence & layout!
+    Add(l, r) -> grammar.format_op(g, "+", l, r, parent_prec, format_child)
+    Mul(l, r) -> grammar.format_op(g, "*", l, r, parent_prec, format_child)
   }
 }
