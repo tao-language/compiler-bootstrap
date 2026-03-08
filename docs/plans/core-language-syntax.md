@@ -1,6 +1,6 @@
 # Core Language Syntax Specification
 
-> **Status**: Final - Wire format for distributed code
+> **Status**: Implemented - Core functionality complete
 > **Purpose**: Minimal, explicit, fast-to-parse syntax for the core language
 > **Use Case**: Code serialization, cluster distribution, debugging
 
@@ -17,6 +17,7 @@ The core language is **"JSON with types, functions, and pattern matching"**:
 5. **Self-contained** - Can be sent across network and evaluated
 6. **Readable** - Humans can debug when needed
 7. **Functional** - No objects, no mutation, no inheritance
+8. **Error Resilient** - Preserve structure on errors for better IDE support
 
 ---
 
