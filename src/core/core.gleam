@@ -430,8 +430,7 @@ fn bool_to_int(b: Bool) -> Int {
 /// - The permission types are the same, AND
 /// - The granted permission is "*" (wildcard), OR
 /// - The paths/values match exactly
-/// - If required read permission, having that write permission also counts.
-/// - If required write permission, the read permission doesn't count.
+/// - A granted Write permission fulfills a Read request, but not the other way around.
 pub fn check_permission(required: Permission, granted: Permission) -> Bool {
   case required {
     AllowRead(req) ->
