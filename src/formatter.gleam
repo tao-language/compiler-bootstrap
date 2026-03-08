@@ -1,6 +1,7 @@
 // ============================================================================
 // FORMATTER - Simple Pretty Printer
 // ============================================================================
+
 /// A simple pretty printing library with:
 /// - Simple document algebra
 /// - Automatic line breaking
@@ -22,7 +23,6 @@
 /// // Render at 80 characters width
 /// let output = formatter.render(doc, 80)
 /// ```
-
 import gleam/float
 import gleam/int
 import gleam/list

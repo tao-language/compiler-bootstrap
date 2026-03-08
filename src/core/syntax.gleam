@@ -28,83 +28,116 @@ pub fn core_grammar() -> grammar.Grammar {
   |> grammar.with_keyword("handle")
   |> grammar.with_keyword("return")
   |> grammar.with_keyword("if")
-  |> grammar.rule("Expr", grammar.choice([
-    grammar.token("Ident"),
-    grammar.token("Number"),
-    grammar.token("String"),
-    grammar.ref("FnExpr"),
-    grammar.ref("MatchExpr"),
-    grammar.ref("LetExpr"),
-    grammar.ref("DoExpr"),
-    grammar.ref("HandleExpr"),
-    grammar.ref("RecordExpr"),
-    grammar.ref("AppExpr"),
-  ]))
-  |> grammar.rule("AppExpr", grammar.seq([
-    grammar.token("Ident"),
-    grammar.token("LParen"),
-    grammar.opt(grammar.sep(grammar.ref("Expr"), grammar.token("Comma"))),
-    grammar.token("RParen"),
-  ]))
-  |> grammar.rule("FnExpr", grammar.seq([
-    grammar.keyword("fn"),
-    grammar.token("LParen"),
-    grammar.opt(grammar.sep(grammar.token("Ident"), grammar.token("Comma"))),
-    grammar.token("RParen"),
-    grammar.token("Arrow"),
-    grammar.ref("Expr"),
-  ]))
-  |> grammar.rule("MatchExpr", grammar.seq([
-    grammar.keyword("match"),
-    grammar.ref("Expr"),
-    grammar.keyword("{"),
-    grammar.many1(grammar.ref("MatchCase")),
-    grammar.keyword("}"),
-  ]))
-  |> grammar.rule("MatchCase", grammar.seq([
-    grammar.token("Pipe"),
-    grammar.token("Ident"),
-    grammar.token("Arrow"),
-    grammar.ref("Expr"),
-  ]))
-  |> grammar.rule("LetExpr", grammar.seq([
-    grammar.keyword("let"),
-    grammar.token("Ident"),
-    grammar.token("Arrow"),
-    grammar.ref("Expr"),
-  ]))
-  |> grammar.rule("DoExpr", grammar.seq([
-    grammar.keyword("do"),
-    grammar.token("Ident"),
-    grammar.token("LParen"),
-    grammar.token("RParen"),
-  ]))
-  |> grammar.rule("HandleExpr", grammar.seq([
-    grammar.keyword("handle"),
-    grammar.ref("Expr"),
-    grammar.keyword("{"),
-    grammar.many1(grammar.ref("HandlerCase")),
-    grammar.keyword("}"),
-  ]))
-  |> grammar.rule("HandlerCase", grammar.seq([
-    grammar.token("Pipe"),
-    grammar.keyword("return"),
-    grammar.token("LParen"),
-    grammar.token("Ident"),
-    grammar.token("RParen"),
-    grammar.token("Arrow"),
-    grammar.ref("Expr"),
-  ]))
-  |> grammar.rule("RecordExpr", grammar.seq([
-    grammar.token("LBrace"),
-    grammar.opt(grammar.sep1(grammar.ref("Field"), grammar.token("Comma"))),
-    grammar.token("RBrace"),
-  ]))
-  |> grammar.rule("Field", grammar.seq([
-    grammar.token("Ident"),
-    grammar.token("Colon"),
-    grammar.ref("Expr"),
-  ]))
+  |> grammar.rule(
+    "Expr",
+    grammar.choice([
+      grammar.token("Ident"),
+      grammar.token("Number"),
+      grammar.token("String"),
+      grammar.ref("FnExpr"),
+      grammar.ref("MatchExpr"),
+      grammar.ref("LetExpr"),
+      grammar.ref("DoExpr"),
+      grammar.ref("HandleExpr"),
+      grammar.ref("RecordExpr"),
+      grammar.ref("AppExpr"),
+    ]),
+  )
+  |> grammar.rule(
+    "AppExpr",
+    grammar.seq([
+      grammar.token("Ident"),
+      grammar.token("LParen"),
+      grammar.opt(grammar.sep(grammar.ref("Expr"), grammar.token("Comma"))),
+      grammar.token("RParen"),
+    ]),
+  )
+  |> grammar.rule(
+    "FnExpr",
+    grammar.seq([
+      grammar.keyword("fn"),
+      grammar.token("LParen"),
+      grammar.opt(grammar.sep(grammar.token("Ident"), grammar.token("Comma"))),
+      grammar.token("RParen"),
+      grammar.token("Arrow"),
+      grammar.ref("Expr"),
+    ]),
+  )
+  |> grammar.rule(
+    "MatchExpr",
+    grammar.seq([
+      grammar.keyword("match"),
+      grammar.ref("Expr"),
+      grammar.keyword("{"),
+      grammar.many1(grammar.ref("MatchCase")),
+      grammar.keyword("}"),
+    ]),
+  )
+  |> grammar.rule(
+    "MatchCase",
+    grammar.seq([
+      grammar.token("Pipe"),
+      grammar.token("Ident"),
+      grammar.token("Arrow"),
+      grammar.ref("Expr"),
+    ]),
+  )
+  |> grammar.rule(
+    "LetExpr",
+    grammar.seq([
+      grammar.keyword("let"),
+      grammar.token("Ident"),
+      grammar.token("Arrow"),
+      grammar.ref("Expr"),
+    ]),
+  )
+  |> grammar.rule(
+    "DoExpr",
+    grammar.seq([
+      grammar.keyword("do"),
+      grammar.token("Ident"),
+      grammar.token("LParen"),
+      grammar.token("RParen"),
+    ]),
+  )
+  |> grammar.rule(
+    "HandleExpr",
+    grammar.seq([
+      grammar.keyword("handle"),
+      grammar.ref("Expr"),
+      grammar.keyword("{"),
+      grammar.many1(grammar.ref("HandlerCase")),
+      grammar.keyword("}"),
+    ]),
+  )
+  |> grammar.rule(
+    "HandlerCase",
+    grammar.seq([
+      grammar.token("Pipe"),
+      grammar.keyword("return"),
+      grammar.token("LParen"),
+      grammar.token("Ident"),
+      grammar.token("RParen"),
+      grammar.token("Arrow"),
+      grammar.ref("Expr"),
+    ]),
+  )
+  |> grammar.rule(
+    "RecordExpr",
+    grammar.seq([
+      grammar.token("LBrace"),
+      grammar.opt(grammar.sep1(grammar.ref("Field"), grammar.token("Comma"))),
+      grammar.token("RBrace"),
+    ]),
+  )
+  |> grammar.rule(
+    "Field",
+    grammar.seq([
+      grammar.token("Ident"),
+      grammar.token("Colon"),
+      grammar.ref("Expr"),
+    ]),
+  )
 }
 
 pub fn parse(source: String) -> parser.ParseResult(parser.Tree) {

@@ -2,11 +2,11 @@
 // CORE SYNTAX TESTS
 // ============================================================================
 
+import core/syntax
+import gleam/string
 import gleeunit
 import gleeunit/should
-import core/syntax
 import parser
-import gleam/string
 
 pub fn main() -> Nil {
   gleeunit.main()
@@ -24,7 +24,12 @@ fn round_trip(source: String) -> Result(String, List(parser.ParseError)) {
   }
 }
 
-fn expect_parse_error(result: parser.ParseResult(parser.Tree), expected_message: String, expected_row: Int, expected_col: Int) {
+fn expect_parse_error(
+  result: parser.ParseResult(parser.Tree),
+  expected_message: String,
+  expected_row: Int,
+  expected_col: Int,
+) {
   case result.errors {
     [] -> panic as "Expected error but got none"
     [error, ..] -> {

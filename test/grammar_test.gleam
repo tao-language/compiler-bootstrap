@@ -3,10 +3,10 @@
 // Removed redundant tests while maintaining coverage
 // ============================================================================
 
-import gleeunit
-import gleeunit/should
 import gleam/dict
 import gleam/list
+import gleeunit
+import gleeunit/should
 import grammar
 import lexer
 import parser
@@ -69,16 +69,17 @@ pub fn ref_symbol_test() {
 
 pub fn seq_symbol_test() {
   grammar.seq([grammar.token("a"), grammar.token("b")])
-    |> should.equal(grammar.Seq([grammar.Token("a"), grammar.Token("b")]))
+  |> should.equal(grammar.Seq([grammar.Token("a"), grammar.Token("b")]))
 }
 
 pub fn choice_symbol_test() {
   grammar.choice([grammar.token("a"), grammar.token("b")])
-    |> should.equal(grammar.Choice([grammar.Token("a"), grammar.Token("b")]))
+  |> should.equal(grammar.Choice([grammar.Token("a"), grammar.Token("b")]))
 }
 
 pub fn opt_symbol_test() {
-  grammar.opt(grammar.token("x")) |> should.equal(grammar.Opt(grammar.Token("x")))
+  grammar.opt(grammar.token("x"))
+  |> should.equal(grammar.Opt(grammar.Token("x")))
 }
 
 // ============================================================================
@@ -102,7 +103,8 @@ pub fn infix_r_op_test() {
 // ============================================================================
 
 pub fn parse_ident_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.token("Ident"))
 
@@ -118,7 +120,8 @@ pub fn parse_ident_test() {
 }
 
 pub fn parse_number_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.token("Number"))
 
@@ -134,12 +137,16 @@ pub fn parse_number_test() {
 }
 
 pub fn parse_sequence_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
-    |> grammar.rule("Start", grammar.seq([
-      grammar.token("Ident"),
-      grammar.token("Operator"),
-    ]))
+    |> grammar.rule(
+      "Start",
+      grammar.seq([
+        grammar.token("Ident"),
+        grammar.token("Operator"),
+      ]),
+    )
 
   let parse = grammar.to_parser(g)
   let tokens = lexer.tokenize(lexer.default_config(), "test", "x +")
@@ -153,12 +160,16 @@ pub fn parse_sequence_test() {
 }
 
 pub fn parse_choice_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
-    |> grammar.rule("Start", grammar.choice([
-      grammar.token("Ident"),
-      grammar.token("Number"),
-    ]))
+    |> grammar.rule(
+      "Start",
+      grammar.choice([
+        grammar.token("Ident"),
+        grammar.token("Number"),
+      ]),
+    )
 
   let parse = grammar.to_parser(g)
   let tokens = lexer.tokenize(lexer.default_config(), "test", "hello")
@@ -172,12 +183,16 @@ pub fn parse_choice_test() {
 }
 
 pub fn parse_optional_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
-    |> grammar.rule("Start", grammar.seq([
-      grammar.token("Ident"),
-      grammar.opt(grammar.token("Semicolon")),
-    ]))
+    |> grammar.rule(
+      "Start",
+      grammar.seq([
+        grammar.token("Ident"),
+        grammar.opt(grammar.token("Semicolon")),
+      ]),
+    )
 
   let parse = grammar.to_parser(g)
   let tokens = lexer.tokenize(lexer.default_config(), "test", "x")
@@ -191,7 +206,8 @@ pub fn parse_optional_test() {
 }
 
 pub fn parse_many_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.many(grammar.token("Ident")))
 
@@ -207,7 +223,8 @@ pub fn parse_many_test() {
 }
 
 pub fn parse_sep_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.comma_sep(grammar.token("Ident")))
 
@@ -227,117 +244,140 @@ pub fn parse_sep_test() {
 // ============================================================================
 
 pub fn format_ident_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.token("Ident"))
 
   let format = grammar.to_formatter(g)
-  let tree = parser.Node("Start", [
-    parser.Leaf(parser.Token("Ident", "hello", fake_location(), 0))
-  ])
+  let tree =
+    parser.Node("Start", [
+      parser.Leaf(parser.Token("Ident", "hello", fake_location(), 0)),
+    ])
 
   let result = format(tree)
   result |> should.equal("hello")
 }
 
 pub fn format_number_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.token("Number"))
 
   let format = grammar.to_formatter(g)
-  let tree = parser.Node("Start", [
-    parser.Leaf(parser.Token("Number", "42", fake_location(), 0))
-  ])
+  let tree =
+    parser.Node("Start", [
+      parser.Leaf(parser.Token("Number", "42", fake_location(), 0)),
+    ])
 
   let result = format(tree)
   result |> should.equal("42")
 }
 
 pub fn format_sequence_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
-    |> grammar.rule("Start", grammar.seq([
-      grammar.token("Ident"),
-      grammar.token("Operator"),
-    ]))
+    |> grammar.rule(
+      "Start",
+      grammar.seq([
+        grammar.token("Ident"),
+        grammar.token("Operator"),
+      ]),
+    )
 
   let format = grammar.to_formatter(g)
-  let tree = parser.Node("Start", [
-    parser.Leaf(parser.Token("Ident", "x", fake_location(), 0)),
-    parser.Leaf(parser.Token("Operator", "+", fake_location(), 0)),
-  ])
+  let tree =
+    parser.Node("Start", [
+      parser.Leaf(parser.Token("Ident", "x", fake_location(), 0)),
+      parser.Leaf(parser.Token("Operator", "+", fake_location(), 0)),
+    ])
 
   let result = format(tree)
   result |> should.equal("x +")
 }
 
 pub fn format_choice_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
-    |> grammar.rule("Start", grammar.choice([
-      grammar.token("Ident"),
-      grammar.token("Number"),
-    ]))
+    |> grammar.rule(
+      "Start",
+      grammar.choice([
+        grammar.token("Ident"),
+        grammar.token("Number"),
+      ]),
+    )
 
   let format = grammar.to_formatter(g)
-  let tree = parser.Node("Start", [
-    parser.Leaf(parser.Token("Ident", "hello", fake_location(), 0))
-  ])
+  let tree =
+    parser.Node("Start", [
+      parser.Leaf(parser.Token("Ident", "hello", fake_location(), 0)),
+    ])
 
   let result = format(tree)
   result |> should.equal("hello")
 }
 
 pub fn format_optional_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
-    |> grammar.rule("Start", grammar.seq([
-      grammar.token("Ident"),
-      grammar.opt(grammar.token("Semicolon")),
-    ]))
+    |> grammar.rule(
+      "Start",
+      grammar.seq([
+        grammar.token("Ident"),
+        grammar.opt(grammar.token("Semicolon")),
+      ]),
+    )
 
   let format = grammar.to_formatter(g)
-  let tree = parser.Node("Start", [
-    parser.Leaf(parser.Token("Ident", "x", fake_location(), 0)),
-    parser.Leaf(parser.Token("Semicolon", ";", fake_location(), 0)),
-  ])
+  let tree =
+    parser.Node("Start", [
+      parser.Leaf(parser.Token("Ident", "x", fake_location(), 0)),
+      parser.Leaf(parser.Token("Semicolon", ";", fake_location(), 0)),
+    ])
 
   let result = format(tree)
   result |> should.equal("x ;")
 }
 
 pub fn format_many_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.many(grammar.token("Ident")))
 
   let format = grammar.to_formatter(g)
-  let tree = parser.Node("Start", [
-    parser.Node("Many", [
-      parser.Leaf(parser.Token("Ident", "a", fake_location(), 0)),
-      parser.Leaf(parser.Token("Ident", "b", fake_location(), 0)),
-      parser.Leaf(parser.Token("Ident", "c", fake_location(), 0)),
+  let tree =
+    parser.Node("Start", [
+      parser.Node("Many", [
+        parser.Leaf(parser.Token("Ident", "a", fake_location(), 0)),
+        parser.Leaf(parser.Token("Ident", "b", fake_location(), 0)),
+        parser.Leaf(parser.Token("Ident", "c", fake_location(), 0)),
+      ]),
     ])
-  ])
 
   let result = format(tree)
   result |> should.equal("a b c")
 }
 
 pub fn format_sep_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.comma_sep(grammar.token("Ident")))
 
   let format = grammar.to_formatter(g)
-  let tree = parser.Node("Start", [
-    parser.Node("Sep", [
-      parser.Leaf(parser.Token("Ident", "a", fake_location(), 0)),
-      parser.Leaf(parser.Token("Ident", "b", fake_location(), 0)),
-      parser.Leaf(parser.Token("Ident", "c", fake_location(), 0)),
+  let tree =
+    parser.Node("Start", [
+      parser.Node("Sep", [
+        parser.Leaf(parser.Token("Ident", "a", fake_location(), 0)),
+        parser.Leaf(parser.Token("Ident", "b", fake_location(), 0)),
+        parser.Leaf(parser.Token("Ident", "c", fake_location(), 0)),
+      ]),
     ])
-  ])
 
   let result = format(tree)
   result |> should.equal("a b c")
@@ -348,7 +388,8 @@ pub fn format_sep_test() {
 // ============================================================================
 
 pub fn round_trip_ident_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.token("Ident"))
 
@@ -364,7 +405,8 @@ pub fn round_trip_ident_test() {
 }
 
 pub fn round_trip_number_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.token("Number"))
 
@@ -380,12 +422,16 @@ pub fn round_trip_number_test() {
 }
 
 pub fn round_trip_sequence_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
-    |> grammar.rule("Start", grammar.seq([
-      grammar.token("Ident"),
-      grammar.token("Operator"),
-    ]))
+    |> grammar.rule(
+      "Start",
+      grammar.seq([
+        grammar.token("Ident"),
+        grammar.token("Operator"),
+      ]),
+    )
 
   let parse = grammar.to_parser(g)
   let format = grammar.to_formatter(g)
@@ -399,12 +445,16 @@ pub fn round_trip_sequence_test() {
 }
 
 pub fn round_trip_choice_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
-    |> grammar.rule("Start", grammar.choice([
-      grammar.token("Ident"),
-      grammar.token("Number"),
-    ]))
+    |> grammar.rule(
+      "Start",
+      grammar.choice([
+        grammar.token("Ident"),
+        grammar.token("Number"),
+      ]),
+    )
 
   let parse = grammar.to_parser(g)
   let format = grammar.to_formatter(g)
@@ -417,12 +467,16 @@ pub fn round_trip_choice_test() {
 }
 
 pub fn round_trip_optional_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
-    |> grammar.rule("Start", grammar.seq([
-      grammar.token("Ident"),
-      grammar.opt(grammar.token("Semicolon")),
-    ]))
+    |> grammar.rule(
+      "Start",
+      grammar.seq([
+        grammar.token("Ident"),
+        grammar.opt(grammar.token("Semicolon")),
+      ]),
+    )
 
   let parse = grammar.to_parser(g)
   let format = grammar.to_formatter(g)
@@ -435,7 +489,8 @@ pub fn round_trip_optional_test() {
 }
 
 pub fn round_trip_many_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.many(grammar.token("Ident")))
 
@@ -450,7 +505,8 @@ pub fn round_trip_many_test() {
 }
 
 pub fn round_trip_sep_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.comma_sep(grammar.token("Ident")))
 
@@ -469,7 +525,8 @@ pub fn round_trip_sep_test() {
 // ============================================================================
 
 pub fn validate_valid_grammar_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.ref("Expr"))
     |> grammar.rule("Expr", grammar.token("Ident"))
@@ -478,7 +535,8 @@ pub fn validate_valid_grammar_test() {
 }
 
 pub fn validate_invalid_grammar_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.start("Start")
     |> grammar.rule("Start", grammar.ref("Missing"))
 
@@ -490,7 +548,8 @@ pub fn validate_invalid_grammar_test() {
 // ============================================================================
 
 pub fn rule_names_test() {
-  let g = grammar.new("Test")
+  let g =
+    grammar.new("Test")
     |> grammar.rule("A", grammar.token("x"))
     |> grammar.rule("B", grammar.token("y"))
 

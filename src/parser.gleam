@@ -1,6 +1,7 @@
 // ============================================================================
 // PARSER - Production-Ready Parser Combinator Library
 // ============================================================================
+
 /// A complete parser combinator library with:
 /// - Token-based parsing
 /// - Full Pratt parsing for operator precedence (including postfix)
@@ -31,7 +32,6 @@
 /// let result = parser.parse(expr, "test.gleam", tokens)
 /// // Always returns ParseResult - never panics!
 /// ```
-
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -181,12 +181,10 @@ pub fn token(kind: String) -> Parser(Token) {
       Ok(token) if token.kind == kind ->
         Ok(#(token, State(..state, pos: state.pos + 1)))
       Ok(_) ->
-        Error(State(..state, 
-          pos: state.pos + 1,
-          errors: [mk_error(state, kind)]
-        ))
-      Error(_) ->
-        Error(State(..state, errors: [mk_error(state, kind)]))
+        Error(
+          State(..state, pos: state.pos + 1, errors: [mk_error(state, kind)]),
+        )
+      Error(_) -> Error(State(..state, errors: [mk_error(state, kind)]))
     }
   })
 }
@@ -198,14 +196,18 @@ pub fn keyword(value: String) -> Parser(Token) {
       Ok(token) -> {
         case is_keyword_token(token, value) {
           True -> Ok(#(token, State(..state, pos: state.pos + 1)))
-          False -> Error(State(..state,
-            pos: state.pos + 1,
-            errors: [mk_error(state, "keyword '" <> value <> "'")]
-          ))
+          False ->
+            Error(
+              State(..state, pos: state.pos + 1, errors: [
+                mk_error(state, "keyword '" <> value <> "'"),
+              ]),
+            )
         }
       }
       Error(_) ->
-        Error(State(..state, errors: [mk_error(state, "keyword '" <> value <> "'")]))
+        Error(
+          State(..state, errors: [mk_error(state, "keyword '" <> value <> "'")]),
+        )
     }
   })
 }
@@ -229,9 +231,7 @@ pub fn any_token() -> Parser(Token) {
 
 /// Check if at end of input
 pub fn at_end() -> Parser(Bool) {
-  Parser(fn(state) {
-    Ok(#(state.pos >= list.length(state.tokens), state))
-  })
+  Parser(fn(state) { Ok(#(state.pos >= list.length(state.tokens), state)) })
 }
 
 // ============================================================================
@@ -261,26 +261,31 @@ pub fn opt(parser: Parser(a)) -> Parser(Option(a)) {
   Parser(fn(state) {
     case run(parser, state) {
       Ok(#(x, state)) -> Ok(#(Some(x), state))
-      Error(_) -> Ok(#(None, state))  // Always succeed with None
+      Error(_) -> Ok(#(None, state))
+      // Always succeed with None
     }
   })
 }
 
 /// Parse zero or more - handles EOF gracefully
 pub fn many(parser: Parser(a)) -> Parser(List(a)) {
-  Parser(fn(state) {
-    collect_many(parser, [], state)
-  })
+  Parser(fn(state) { collect_many(parser, [], state) })
 }
 
-fn collect_many(parser: Parser(a), acc: List(a), state: State) -> Result(#(List(a), State), State) {
+fn collect_many(
+  parser: Parser(a),
+  acc: List(a),
+  state: State,
+) -> Result(#(List(a), State), State) {
   case run(parser, state) {
     Ok(#(x, state)) -> collect_many(parser, [x, ..acc], state)
     Error(new_state) -> {
       // Check if we're at EOF - if so, don't count this as an error
       case get_token_at(new_state.tokens, new_state.pos) {
-        Ok(_) -> Ok(#(list.reverse(acc), new_state))  // Real error, keep it
-        Error(_) -> Ok(#(list.reverse(acc), state))   // EOF, discard error
+        Ok(_) -> Ok(#(list.reverse(acc), new_state))
+        // Real error, keep it
+        Error(_) -> Ok(#(list.reverse(acc), state))
+        // EOF, discard error
       }
     }
   }
@@ -341,12 +346,17 @@ pub fn sep_by(parser: Parser(a), sep: Parser(b)) -> Parser(List(a)) {
   Parser(fn(state) {
     case run(parser, state) {
       Ok(#(first, state)) ->
-        case many(Parser(fn(s) {
-          case run(sep, s) {
-            Ok(#(_, s)) -> run(parser, s)
-            Error(s) -> Error(s)
-          }
-        })) |> run(state) {
+        case
+          many(
+            Parser(fn(s) {
+              case run(sep, s) {
+                Ok(#(_, s)) -> run(parser, s)
+                Error(s) -> Error(s)
+              }
+            }),
+          )
+          |> run(state)
+        {
           Ok(#(rest, state)) -> Ok(#([first, ..rest], state))
           Error(s) -> Error(s)
         }
@@ -360,12 +370,17 @@ pub fn sep_by1(parser: Parser(a), sep: Parser(b)) -> Parser(List(a)) {
   Parser(fn(state) {
     case run(parser, state) {
       Ok(#(first, state)) ->
-        case many(Parser(fn(s) {
-          case run(sep, s) {
-            Ok(#(_, s)) -> run(parser, s)
-            Error(s) -> Error(s)
-          }
-        })) |> run(state) {
+        case
+          many(
+            Parser(fn(s) {
+              case run(sep, s) {
+                Ok(#(_, s)) -> run(parser, s)
+                Error(s) -> Error(s)
+              }
+            }),
+          )
+          |> run(state)
+        {
           Ok(#(rest, state)) -> Ok(#([first, ..rest], state))
           Error(s) -> Error(s)
         }
@@ -379,7 +394,11 @@ pub fn sep_by1(parser: Parser(a), sep: Parser(b)) -> Parser(List(a)) {
 // ============================================================================
 
 /// Parse between delimiters
-pub fn between(open: Parser(a), close: Parser(a), parser: Parser(b)) -> Parser(b) {
+pub fn between(
+  open: Parser(a),
+  close: Parser(a),
+  parser: Parser(b),
+) -> Parser(b) {
   Parser(fn(state) {
     case run(open, state) {
       Ok(#(_, state)) ->
@@ -506,9 +525,7 @@ pub fn recover(parser: Parser(a), fallback: a) -> Parser(a) {
 /// Sync to specific token kinds (panic mode recovery)
 /// Skips tokens until finding a synchronization point
 pub fn sync_to(kinds: List(String)) -> Parser(Nil) {
-  Parser(fn(state) {
-    sync_loop(state, kinds)
-  })
+  Parser(fn(state) { sync_loop(state, kinds) })
 }
 
 fn sync_loop(state: State, kinds: List(String)) -> Result(#(Nil, State), State) {
@@ -519,19 +536,21 @@ fn sync_loop(state: State, kinds: List(String)) -> Result(#(Nil, State), State) 
         False -> sync_loop(State(..state, pos: state.pos + 1), kinds)
       }
     }
-    Error(_) -> Ok(#(Nil, state))  // End of input
+    Error(_) -> Ok(#(Nil, state))
+    // End of input
   }
 }
 
 /// Sync to keyword
 pub fn sync_to_keyword(kw: String) -> Parser(Nil) {
-  sync_to(["Ident"]) |> then(
+  sync_to(["Ident"])
+  |> then(
     Parser(fn(state) {
       case get_token_at(state.tokens, state.pos) {
         Ok(token) if token.value == kw -> Ok(#(Nil, state))
         _ -> Error(state)
       }
-    })
+    }),
   )
 }
 
@@ -548,7 +567,8 @@ pub fn recover_with_sync(
       Ok(result) -> Ok(result)
       Error(error_state) -> {
         // Add error
-        let error_state = State(..error_state, errors: [mk_error(error_state, error_msg)])
+        let error_state =
+          State(..error_state, errors: [mk_error(error_state, error_msg)])
         // Sync to recovery point
         case sync_loop(error_state, sync_points) {
           Ok(#(_, synced_state)) -> Ok(#(fallback, synced_state))
@@ -570,7 +590,8 @@ pub fn pratt(ops: List(ExprOp)) -> Parser(Tree) {
     let pratt_state = PrattState(tokens: state.tokens, pos: state.pos)
     case parse_expr(pratt_state, ops, 0) {
       Ok(#(tree, pratt_state)) -> {
-        let new_state = State(..state, tokens: pratt_state.tokens, pos: pratt_state.pos)
+        let new_state =
+          State(..state, tokens: pratt_state.tokens, pos: pratt_state.pos)
         Ok(#(tree, new_state))
       }
       Error(_) -> {
@@ -582,7 +603,11 @@ pub fn pratt(ops: List(ExprOp)) -> Parser(Tree) {
 }
 
 /// Parse expression with minimum precedence
-fn parse_expr(state: PrattState, ops: List(ExprOp), min_prec: Int) -> Result(#(Tree, PrattState), PrattState) {
+fn parse_expr(
+  state: PrattState,
+  ops: List(ExprOp),
+  min_prec: Int,
+) -> Result(#(Tree, PrattState), PrattState) {
   // Parse left side (atom or prefix)
   case parse_lhs(state, ops, min_prec) {
     Ok(#(left, state)) -> {
@@ -594,7 +619,11 @@ fn parse_expr(state: PrattState, ops: List(ExprOp), min_prec: Int) -> Result(#(T
 }
 
 /// Parse left-hand side (atom or prefix operator)
-fn parse_lhs(state: PrattState, ops: List(ExprOp), min_prec: Int) -> Result(#(Tree, PrattState), PrattState) {
+fn parse_lhs(
+  state: PrattState,
+  ops: List(ExprOp),
+  min_prec: Int,
+) -> Result(#(Tree, PrattState), PrattState) {
   case ops {
     [] -> Error(state)
     [op, ..rest] -> {
@@ -618,7 +647,11 @@ fn parse_lhs(state: PrattState, ops: List(ExprOp), min_prec: Int) -> Result(#(Tr
               // Parse operand with higher precedence
               case parse_expr(new_state, ops, prec + 1) {
                 Ok(#(operand, new_state)) -> {
-                  let tree = Node("Prefix", [Leaf(Token("Op", op_str, op_loc, 0)), operand])
+                  let tree =
+                    Node("Prefix", [
+                      Leaf(Token("Op", op_str, op_loc, 0)),
+                      operand,
+                    ])
                   Ok(#(tree, new_state))
                 }
                 Error(s) -> Error(s)
@@ -634,7 +667,12 @@ fn parse_lhs(state: PrattState, ops: List(ExprOp), min_prec: Int) -> Result(#(Tr
 }
 
 /// Parse infix operator loop with postfix support
-fn parse_infix_loop(state: PrattState, ops: List(ExprOp), left: Tree, min_prec: Int) -> Result(#(Tree, PrattState), PrattState) {
+fn parse_infix_loop(
+  state: PrattState,
+  ops: List(ExprOp),
+  left: Tree,
+  min_prec: Int,
+) -> Result(#(Tree, PrattState), PrattState) {
   // First check for postfix operators (highest precedence after atoms)
   case parse_postfix(state, ops, left) {
     Ok(#(postfix_tree, state)) -> {
@@ -648,27 +686,40 @@ fn parse_infix_loop(state: PrattState, ops: List(ExprOp), left: Tree, min_prec: 
           let new_state = PrattState(..state, pos: state.pos + 1)
           // Determine next min_prec based on associativity
           let next_min_prec = case assoc {
-            AssocL -> prec + 1  // Left-associative: higher precedence for right side
-            AssocR -> prec      // Right-associative: same precedence for right side
+            AssocL -> prec + 1
+            // Left-associative: higher precedence for right side
+            AssocR -> prec
+            // Right-associative: same precedence for right side
           }
           // Parse right side
           case parse_expr(new_state, ops, next_min_prec) {
             Ok(#(right, new_state)) -> {
-              let tree = Node("Infix", [left, Leaf(Token("Op", op_str, op_loc, 0)), right])
+              let tree =
+                Node("Infix", [
+                  left,
+                  Leaf(Token("Op", op_str, op_loc, 0)),
+                  right,
+                ])
               // Continue parsing more infix operators
               parse_infix_loop(new_state, ops, tree, min_prec)
             }
-            Error(_) -> Ok(#(left, state))  // Return left on error
+            Error(_) -> Ok(#(left, state))
+            // Return left on error
           }
         }
-        None -> Ok(#(left, state))  // No more infix operators
+        None -> Ok(#(left, state))
+        // No more infix operators
       }
     }
   }
 }
 
 /// Parse postfix operators (calls, indexing, postfix ops)
-fn parse_postfix(state: PrattState, ops: List(ExprOp), left: Tree) -> Result(#(Tree, PrattState), PrattState) {
+fn parse_postfix(
+  state: PrattState,
+  ops: List(ExprOp),
+  left: Tree,
+) -> Result(#(Tree, PrattState), PrattState) {
   case ops {
     [] -> Error(state)
     [op, ..rest] -> {
@@ -678,7 +729,8 @@ fn parse_postfix(state: PrattState, ops: List(ExprOp), left: Tree) -> Result(#(T
             Ok(token) if token.value == op_str -> {
               let op_loc = token.location
               let new_state = PrattState(..state, pos: state.pos + 1)
-              let tree = Node("Postfix", [left, Leaf(Token("Op", op_str, op_loc, 0))])
+              let tree =
+                Node("Postfix", [left, Leaf(Token("Op", op_str, op_loc, 0))])
               Ok(#(tree, new_state))
             }
             _ -> parse_postfix(state, rest, left)
@@ -713,36 +765,72 @@ fn parse_postfix(state: PrattState, ops: List(ExprOp), left: Tree) -> Result(#(T
 }
 
 /// Parse function call arguments
-fn parse_call_args(state: PrattState, paren_loc: Location, func: Tree) -> Result(#(Tree, PrattState), PrattState) {
+fn parse_call_args(
+  state: PrattState,
+  paren_loc: Location,
+  func: Tree,
+) -> Result(#(Tree, PrattState), PrattState) {
   // Simplified: just consume tokens until RParen
   parse_until_token(state, "RParen", func, paren_loc)
 }
 
 /// Parse array index
-fn parse_index(state: PrattState, bracket_loc: Location, arr: Tree) -> Result(#(Tree, PrattState), PrattState) {
+fn parse_index(
+  state: PrattState,
+  bracket_loc: Location,
+  arr: Tree,
+) -> Result(#(Tree, PrattState), PrattState) {
   // Simplified: just consume tokens until RBracket
   parse_until_token(state, "RBracket", arr, bracket_loc)
 }
 
 /// Helper to parse until closing token
-fn parse_until_token(state: PrattState, close_kind: String, left: Tree, open_loc: Location) -> Result(#(Tree, PrattState), PrattState) {
+fn parse_until_token(
+  state: PrattState,
+  close_kind: String,
+  left: Tree,
+  open_loc: Location,
+) -> Result(#(Tree, PrattState), PrattState) {
   case get_token_at(state.tokens, state.pos) {
     Ok(token) if token.kind == close_kind -> {
       let close_loc = token.location
       let new_state = PrattState(..state, pos: state.pos + 1)
-      let tree = Node("Call", [left, Leaf(Token("Location", open_loc.filename <> ":" <> int.to_string(open_loc.start.row) <> "-" <> int.to_string(close_loc.end.row), open_loc, 0))])
+      let tree =
+        Node("Call", [
+          left,
+          Leaf(Token(
+            "Location",
+            open_loc.filename
+              <> ":"
+              <> int.to_string(open_loc.start.row)
+              <> "-"
+              <> int.to_string(close_loc.end.row),
+            open_loc,
+            0,
+          )),
+        ])
       Ok(#(tree, new_state))
     }
     Ok(_) -> {
       // Skip this token and continue
-      parse_until_token(PrattState(..state, pos: state.pos + 1), close_kind, left, open_loc)
+      parse_until_token(
+        PrattState(..state, pos: state.pos + 1),
+        close_kind,
+        left,
+        open_loc,
+      )
     }
-    Error(_) -> Ok(#(left, state))  // EOF, return what we have
+    Error(_) -> Ok(#(left, state))
+    // EOF, return what we have
   }
 }
 
 /// Get next infix operator at current position
-fn get_infix_op(state: PrattState, ops: List(ExprOp), min_prec: Int) -> Option(#(String, Int, Assoc, Location)) {
+fn get_infix_op(
+  state: PrattState,
+  ops: List(ExprOp),
+  min_prec: Int,
+) -> Option(#(String, Int, Assoc, Location)) {
   case get_token_at(state.tokens, state.pos) {
     Ok(token) -> {
       find_infix_op_in_list(ops, token.value, min_prec, token.location)
@@ -751,7 +839,12 @@ fn get_infix_op(state: PrattState, ops: List(ExprOp), min_prec: Int) -> Option(#
   }
 }
 
-fn find_infix_op_in_list(ops: List(ExprOp), op_str: String, min_prec: Int, loc: Location) -> Option(#(String, Int, Assoc, Location)) {
+fn find_infix_op_in_list(
+  ops: List(ExprOp),
+  op_str: String,
+  min_prec: Int,
+  loc: Location,
+) -> Option(#(String, Int, Assoc, Location)) {
   case ops {
     [] -> None
     [op, ..rest] -> {
@@ -788,7 +881,11 @@ fn get_token_at(tokens: List(Token), pos: Int) -> Result(Token, Nil) {
   get_token_at_loop(tokens, pos, 0)
 }
 
-fn get_token_at_loop(tokens: List(Token), pos: Int, current: Int) -> Result(Token, Nil) {
+fn get_token_at_loop(
+  tokens: List(Token),
+  pos: Int,
+  current: Int,
+) -> Result(Token, Nil) {
   case tokens {
     [] -> Error(Nil)
     [token, ..rest] -> {
@@ -802,17 +899,18 @@ fn get_token_at_loop(tokens: List(Token), pos: Int, current: Int) -> Result(Toke
 
 /// Parse tokens - NEVER PANICS
 /// Returns ParseResult with AST (possibly Empty) and error list
-pub fn parse(parse_p: Parser(Tree), _filename: String, tokens: List(Token)) -> ParseResult(Tree) {
+pub fn parse(
+  parse_p: Parser(Tree),
+  _filename: String,
+  tokens: List(Token),
+) -> ParseResult(Tree) {
   let initial_state = State(tokens: tokens, pos: 0, errors: [])
   case run(parse_p, initial_state) {
     Ok(#(ast, state)) -> ParseResult(ast: ast, errors: state.errors)
     Error(error_state) -> {
       // Return errors with Empty AST - NEVER panic!
       // This allows callers to handle errors gracefully
-      ParseResult(
-        ast: Empty,
-        errors: error_state.errors,
-      )
+      ParseResult(ast: Empty, errors: error_state.errors)
     }
   }
 }
@@ -832,9 +930,18 @@ fn get_token_location(tokens: List(Token), pos: Int) -> Location {
   get_token_location_loop(tokens, pos, 0)
 }
 
-fn get_token_location_loop(tokens: List(Token), pos: Int, current: Int) -> Location {
+fn get_token_location_loop(
+  tokens: List(Token),
+  pos: Int,
+  current: Int,
+) -> Location {
   case tokens {
-    [] -> Location(filename: "unknown", start: Position(1, 1, 0), end: Position(1, 1, 0))
+    [] ->
+      Location(
+        filename: "unknown",
+        start: Position(1, 1, 0),
+        end: Position(1, 1, 0),
+      )
     [token, ..rest] -> {
       case current == pos {
         True -> token.location
@@ -862,13 +969,25 @@ pub fn format_error(error: ParseError, source: String) -> String {
     SeverityInfo -> "info"
   }
 
-  severity <> ": " <> error.message <> "\n" <>
-  "  ┌─ " <> error.location.filename <> ":" <>
-    int.to_string(row) <> ":" <> int.to_string(error.location.start.col) <> "\n" <>
-  "  │\n" <>
-  int.to_string(row) <> " │ " <> line_content <> "\n" <>
-  "  │ " <> pointer <>
-  format_expected(error.expected)
+  severity
+  <> ": "
+  <> error.message
+  <> "\n"
+  <> "  ┌─ "
+  <> error.location.filename
+  <> ":"
+  <> int.to_string(row)
+  <> ":"
+  <> int.to_string(error.location.start.col)
+  <> "\n"
+  <> "  │\n"
+  <> int.to_string(row)
+  <> " │ "
+  <> line_content
+  <> "\n"
+  <> "  │ "
+  <> pointer
+  <> format_expected(error.expected)
 }
 
 fn get_line(lines: List(String), row: Int) -> String {

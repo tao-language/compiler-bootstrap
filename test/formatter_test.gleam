@@ -2,9 +2,9 @@
 // FORMATTER TESTS (Simplified)
 // ============================================================================
 
+import formatter
 import gleeunit
 import gleeunit/should
-import formatter
 
 pub fn main() -> Nil {
   gleeunit.main()
@@ -44,7 +44,10 @@ pub fn hardline_test() {
 
 pub fn concat_test() {
   let doc = formatter.concat([formatter.text("hello"), formatter.text("world")])
-  doc |> should.equal(formatter.Concat([formatter.Text("hello"), formatter.Text("world")]))
+  doc
+  |> should.equal(
+    formatter.Concat([formatter.Text("hello"), formatter.Text("world")]),
+  )
 }
 
 pub fn concat_empty_test() {
@@ -52,12 +55,16 @@ pub fn concat_empty_test() {
 }
 
 pub fn concat_single_test() {
-  formatter.concat([formatter.text("hello")]) |> should.equal(formatter.Text("hello"))
+  formatter.concat([formatter.text("hello")])
+  |> should.equal(formatter.Text("hello"))
 }
 
 pub fn append_test() {
   let doc = formatter.append(formatter.text("hello"), formatter.text("world"))
-  doc |> should.equal(formatter.Concat([formatter.Text("hello"), formatter.Text("world")]))
+  doc
+  |> should.equal(
+    formatter.Concat([formatter.Text("hello"), formatter.Text("world")]),
+  )
 }
 
 pub fn group_test() {
@@ -71,7 +78,8 @@ pub fn nest_test() {
 }
 
 pub fn join_test() {
-  let doc = formatter.join(formatter.space(), [formatter.text("a"), formatter.text("b")])
+  let doc =
+    formatter.join(formatter.space(), [formatter.text("a"), formatter.text("b")])
   let rendered = formatter.render_default(doc)
   rendered |> should.equal("a b")
 }
@@ -81,7 +89,12 @@ pub fn join_test() {
 // ============================================================================
 
 pub fn hsep_test() {
-  let doc = formatter.hsep([formatter.text("a"), formatter.text("b"), formatter.text("c")])
+  let doc =
+    formatter.hsep([
+      formatter.text("a"),
+      formatter.text("b"),
+      formatter.text("c"),
+    ])
   let rendered = formatter.render_default(doc)
   rendered |> should.equal("a b c")
 }
@@ -161,13 +174,21 @@ pub fn render_text_test() {
 }
 
 pub fn render_concat_test() {
-  let doc = formatter.concat([formatter.text("hello"), formatter.text(" world")])
+  let doc =
+    formatter.concat([formatter.text("hello"), formatter.text(" world")])
   let rendered = formatter.render(doc, 80)
   rendered |> should.equal("hello world")
 }
 
 pub fn render_line_flat_test() {
-  let doc = formatter.group(formatter.concat([formatter.text("hello"), formatter.line(), formatter.text("world")]))
+  let doc =
+    formatter.group(
+      formatter.concat([
+        formatter.text("hello"),
+        formatter.line(),
+        formatter.text("world"),
+      ]),
+    )
   let rendered = formatter.render(doc, 80)
   rendered |> should.equal("hello world")
 }

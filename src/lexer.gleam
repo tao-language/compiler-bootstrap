@@ -1,6 +1,7 @@
 // ============================================================================
 // LEXER - Tokenizer with Comment and Indentation Support
 // ============================================================================
+
 /// A lexer that converts source code to tokens with:
 /// - Configurable token patterns
 /// - Built-in comment handling (single-line and multi-line)
@@ -18,13 +19,14 @@
 /// // Tokenize source
 /// let tokens = lexer.tokenize(config, "main.gleam", source)
 /// ```
-
-import gleam/int
 import gleam/list
-import gleam/option.{type Option, Some, None}
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
-import parser.{type Token, Token as TokenVal, type Location, Location as LocationVal, type Position}
+import parser.{
+  type Location, type Position, type Token, Location as LocationVal,
+  Token as TokenVal,
+}
 
 // ============================================================================
 // TYPES
@@ -83,7 +85,35 @@ pub fn default_config() -> Config {
 /// Python-style configuration
 pub fn python_config() -> Config {
   Config(
-    keywords: ["def", "class", "if", "elif", "else", "for", "while", "return", "import", "from", "as", "with", "try", "except", "finally", "raise", "pass", "break", "continue", "and", "or", "not", "in", "is", "True", "False", "None"],
+    keywords: [
+      "def",
+      "class",
+      "if",
+      "elif",
+      "else",
+      "for",
+      "while",
+      "return",
+      "import",
+      "from",
+      "as",
+      "with",
+      "try",
+      "except",
+      "finally",
+      "raise",
+      "pass",
+      "break",
+      "continue",
+      "and",
+      "or",
+      "not",
+      "in",
+      "is",
+      "True",
+      "False",
+      "None",
+    ],
     line_comment: Some("#"),
     block_comment_start: None,
     block_comment_end: None,
@@ -96,7 +126,25 @@ pub fn python_config() -> Config {
 /// Gleam-style configuration
 pub fn gleam_config() -> Config {
   Config(
-    keywords: ["pub", "fn", "let", "case", "of", "if", "else", "use", "type", "opaque", "import", "as", "const", "todo", "panic", "True", "False"],
+    keywords: [
+      "pub",
+      "fn",
+      "let",
+      "case",
+      "of",
+      "if",
+      "else",
+      "use",
+      "type",
+      "opaque",
+      "import",
+      "as",
+      "const",
+      "todo",
+      "panic",
+      "True",
+      "False",
+    ],
     line_comment: Some("//"),
     block_comment_start: Some("/*"),
     block_comment_end: Some("*/"),
@@ -137,29 +185,32 @@ pub fn with_comments(
 
 /// Tokenize source code
 pub fn tokenize(config: Config, filename: String, source: String) -> List(Token) {
-  let initial_state = LexerState(
-    source: source,
-    filename: filename,
-    pos: parser.Position(1, 1, 0),
-    offset: 0,
-    tokens: [],
-    indent_stack: [0],
-    pending_newlines: 0,
-  )
-  
+  let initial_state =
+    LexerState(
+      source: source,
+      filename: filename,
+      pos: parser.Position(1, 1, 0),
+      offset: 0,
+      tokens: [],
+      indent_stack: [0],
+      pending_newlines: 0,
+    )
+
   let final_state = lex_loop(config, initial_state)
-  
+
   // Add EOF token
-  let eof_token = TokenVal(
-    kind: "EOF",
-    value: "",
-    location: make_location(final_state.pos, final_state.pos),
-    indent: get_indent(final_state.indent_stack),
-  )
-  
+  let eof_token =
+    TokenVal(
+      kind: "EOF",
+      value: "",
+      location: make_location(final_state.pos, final_state.pos),
+      indent: get_indent(final_state.indent_stack),
+    )
+
   // Close any open indentation blocks
-  let tokens_with_dedents = close_indents(final_state.tokens, final_state.indent_stack, final_state.pos)
-  
+  let tokens_with_dedents =
+    close_indents(final_state.tokens, final_state.indent_stack, final_state.pos)
+
   list.reverse([eof_token, ..tokens_with_dedents])
 }
 
@@ -177,7 +228,7 @@ fn lex_loop(config: Config, state: LexerState) -> LexerState {
 
 fn next_token(config: Config, state: LexerState) -> Option(LexerState) {
   let source = state.source
-  
+
   // Skip whitespace (but track newlines for indentation)
   case string.pop_grapheme(source) {
     Error(_) -> None
@@ -221,7 +272,11 @@ fn next_token(config: Config, state: LexerState) -> Option(LexerState) {
   }
 }
 
-fn handle_newline(config: Config, state: LexerState, rest: String) -> Option(LexerState) {
+fn handle_newline(
+  config: Config,
+  state: LexerState,
+  rest: String,
+) -> Option(LexerState) {
   let new_pending = state.pending_newlines + 1
   Some(LexerState(
     source: rest,
@@ -234,35 +289,43 @@ fn handle_newline(config: Config, state: LexerState, rest: String) -> Option(Lex
   ))
 }
 
-fn handle_indent(config: Config, state: LexerState, source: String) -> Option(LexerState) {
+fn handle_indent(
+  config: Config,
+  state: LexerState,
+  source: String,
+) -> Option(LexerState) {
   // Count leading spaces
   let indent = count_indent(source, config.indent_unit)
   let current_indent = get_indent(state.indent_stack)
-  
-  let new_state = LexerState(
-    source: string.drop_start(source, indent),
-    filename: state.filename,
-    pos: parser.Position(state.pos.row, 1 + indent, state.offset + indent),
-    offset: state.offset + indent,
-    tokens: state.tokens,
-    indent_stack: state.indent_stack,
-    pending_newlines: 0,
-  )
-  
+
+  let new_state =
+    LexerState(
+      source: string.drop_start(source, indent),
+      filename: state.filename,
+      pos: parser.Position(state.pos.row, 1 + indent, state.offset + indent),
+      offset: state.offset + indent,
+      tokens: state.tokens,
+      indent_stack: state.indent_stack,
+      pending_newlines: 0,
+    )
+
   case indent > current_indent {
     True -> {
       // Indent - push to stack and add Indent token
-      let indent_token = TokenVal(
-        kind: "Indent",
-        value: "",
-        location: make_location(state.pos, state.pos),
-        indent: indent,
+      let indent_token =
+        TokenVal(
+          kind: "Indent",
+          value: "",
+          location: make_location(state.pos, state.pos),
+          indent: indent,
+        )
+      Some(
+        LexerState(
+          ..new_state,
+          tokens: [indent_token, ..state.tokens],
+          indent_stack: [indent, ..state.indent_stack],
+        ),
       )
-      Some(LexerState(
-        ..new_state,
-        tokens: [indent_token, ..state.tokens],
-        indent_stack: [indent, ..state.indent_stack],
-      ))
     }
     False if indent < current_indent -> {
       // Dedent - pop from stack and add Dedent token(s)
@@ -288,42 +351,60 @@ fn count_indent_loop(source: String, count: Int, unit: Int) -> Int {
   }
 }
 
-fn add_dedents(config: Config, state: LexerState, target_indent: Int) -> Option(LexerState) {
+fn add_dedents(
+  config: Config,
+  state: LexerState,
+  target_indent: Int,
+) -> Option(LexerState) {
   case state.indent_stack {
     [] -> Some(state)
     [current, ..rest] if current > target_indent -> {
-      let dedent_token = TokenVal(
-        kind: "Dedent",
-        value: "",
-        location: make_location(state.pos, state.pos),
-        indent: target_indent,
+      let dedent_token =
+        TokenVal(
+          kind: "Dedent",
+          value: "",
+          location: make_location(state.pos, state.pos),
+          indent: target_indent,
+        )
+      add_dedents(
+        config,
+        LexerState(
+          ..state,
+          tokens: [dedent_token, ..state.tokens],
+          indent_stack: rest,
+        ),
+        target_indent,
       )
-      add_dedents(config, LexerState(
-        ..state,
-        tokens: [dedent_token, ..state.tokens],
-        indent_stack: rest,
-      ), target_indent)
     }
     _ -> Some(state)
   }
 }
 
-fn close_indents(tokens: List(Token), indent_stack: List(Int), pos: Position) -> List(Token) {
+fn close_indents(
+  tokens: List(Token),
+  indent_stack: List(Int),
+  pos: Position,
+) -> List(Token) {
   case indent_stack {
     [] | [0] -> tokens
     [_, ..rest] -> {
-      let dedent_token = TokenVal(
-        kind: "Dedent",
-        value: "",
-        location: make_location(pos, pos),
-        indent: 0,
-      )
+      let dedent_token =
+        TokenVal(
+          kind: "Dedent",
+          value: "",
+          location: make_location(pos, pos),
+          indent: 0,
+        )
       close_indents([dedent_token, ..tokens], rest, pos)
     }
   }
 }
 
-fn try_match_comment(config: Config, source: String, state: LexerState) -> Option(LexerState) {
+fn try_match_comment(
+  config: Config,
+  source: String,
+  state: LexerState,
+) -> Option(LexerState) {
   // Check for line comment
   case config.line_comment {
     Some(prefix) ->
@@ -335,7 +416,11 @@ fn try_match_comment(config: Config, source: String, state: LexerState) -> Optio
   }
 }
 
-fn try_match_block_comment(config: Config, source: String, state: LexerState) -> Option(LexerState) {
+fn try_match_block_comment(
+  config: Config,
+  source: String,
+  state: LexerState,
+) -> Option(LexerState) {
   case config.block_comment_start, config.block_comment_end {
     Some(start), Some(end) ->
       case string.starts_with(source, start) {
@@ -346,7 +431,11 @@ fn try_match_block_comment(config: Config, source: String, state: LexerState) ->
   }
 }
 
-fn skip_line_comment(source: String, prefix: String, state: LexerState) -> LexerState {
+fn skip_line_comment(
+  source: String,
+  prefix: String,
+  state: LexerState,
+) -> LexerState {
   let rest = string.drop_start(source, string.length(prefix))
   // Find newline position manually
   let newline_pos = find_newline_pos(rest, 0)
@@ -370,14 +459,23 @@ fn find_newline_pos(text: String, pos: Int) -> Option(Int) {
   }
 }
 
-fn skip_block_comment(source: String, start: String, end: String, state: LexerState) -> LexerState {
+fn skip_block_comment(
+  source: String,
+  start: String,
+  end: String,
+  state: LexerState,
+) -> LexerState {
   let after_start = string.drop_start(source, string.length(start))
   // Find end position manually
   let end_pos = find_string_pos(after_start, end, 0)
   case end_pos {
     Some(idx) -> {
       let skipped = string.length(start) + idx + string.length(end)
-      advance_state_with_newlines(state, string.slice(after_start, 0, idx), skipped)
+      advance_state_with_newlines(
+        state,
+        string.slice(after_start, 0, idx),
+        skipped,
+      )
     }
     None -> {
       // Unterminated comment - skip to end
@@ -398,7 +496,11 @@ fn find_string_pos(text: String, target: String, pos: Int) -> Option(Int) {
   }
 }
 
-fn advance_state_with_newlines(state: LexerState, text: String, skip: Int) -> LexerState {
+fn advance_state_with_newlines(
+  state: LexerState,
+  text: String,
+  skip: Int,
+) -> LexerState {
   let newlines = count_newlines(text)
   let new_col = case string.pop_grapheme(string.reverse(text)) {
     Ok(#(last, _)) -> state.pos.col + string.length(last)
@@ -427,7 +529,12 @@ fn count_newlines_loop(text: String, count: Int) -> Int {
   }
 }
 
-fn tokenize_char(config: Config, char: String, rest: String, state: LexerState) -> Option(LexerState) {
+fn tokenize_char(
+  config: Config,
+  char: String,
+  rest: String,
+  state: LexerState,
+) -> Option(LexerState) {
   case char {
     // Identifiers and keywords
     _ -> {
@@ -438,12 +545,13 @@ fn tokenize_char(config: Config, char: String, rest: String, state: LexerState) 
             True -> "Keyword"
             False -> "Ident"
           }
-          let token = TokenVal(
-            kind: kind,
-            value: ident,
-            location: make_location(state.pos, advance_pos(state.pos, ident)),
-            indent: get_indent(state.indent_stack),
-          )
+          let token =
+            TokenVal(
+              kind: kind,
+              value: ident,
+              location: make_location(state.pos, advance_pos(state.pos, ident)),
+              indent: get_indent(state.indent_stack),
+            )
           let skip = string.length(ident)
           Some(LexerState(
             source: string.drop_start(state.source, skip),
@@ -461,17 +569,23 @@ fn tokenize_char(config: Config, char: String, rest: String, state: LexerState) 
   }
 }
 
-fn tokenize_non_ident(config: Config, char: String, rest: String, state: LexerState) -> Option(LexerState) {
+fn tokenize_non_ident(
+  config: Config,
+  char: String,
+  rest: String,
+  state: LexerState,
+) -> Option(LexerState) {
   case is_digit(char) {
     // Numbers
     True -> {
       let num = read_number(state.source)
-      let token = TokenVal(
-        kind: "Number",
-        value: num,
-        location: make_location(state.pos, advance_pos(state.pos, num)),
-        indent: get_indent(state.indent_stack),
-      )
+      let token =
+        TokenVal(
+          kind: "Number",
+          value: num,
+          location: make_location(state.pos, advance_pos(state.pos, num)),
+          indent: get_indent(state.indent_stack),
+        )
       let skip = string.length(num)
       Some(LexerState(
         source: string.drop_start(state.source, skip),
@@ -487,18 +601,24 @@ fn tokenize_non_ident(config: Config, char: String, rest: String, state: LexerSt
   }
 }
 
-fn tokenize_non_digit(config: Config, char: String, rest: String, state: LexerState) -> Option(LexerState) {
+fn tokenize_non_digit(
+  config: Config,
+  char: String,
+  rest: String,
+  state: LexerState,
+) -> Option(LexerState) {
   case char {
     // Strings
     "\"" -> {
       case read_string(state.source) {
         Ok(#(str, skip)) -> {
-          let token = TokenVal(
-            kind: "String",
-            value: str,
-            location: make_location(state.pos, advance_pos(state.pos, str)),
-            indent: get_indent(state.indent_stack),
-          )
+          let token =
+            TokenVal(
+              kind: "String",
+              value: str,
+              location: make_location(state.pos, advance_pos(state.pos, str)),
+              indent: get_indent(state.indent_stack),
+            )
           Some(LexerState(
             source: string.drop_start(state.source, skip),
             filename: state.filename,
@@ -514,100 +634,110 @@ fn tokenize_non_digit(config: Config, char: String, rest: String, state: LexerSt
     }
     // Parentheses
     "(" -> {
-      let token = TokenVal(
-        kind: "LParen",
-        value: "(",
-        location: make_location(state.pos, advance_pos(state.pos, "(")),
-        indent: get_indent(state.indent_stack),
-      )
+      let token =
+        TokenVal(
+          kind: "LParen",
+          value: "(",
+          location: make_location(state.pos, advance_pos(state.pos, "(")),
+          indent: get_indent(state.indent_stack),
+        )
       Some(advance_state(state, 1) |> add_token(token))
     }
     ")" -> {
-      let token = TokenVal(
-        kind: "RParen",
-        value: ")",
-        location: make_location(state.pos, advance_pos(state.pos, ")")),
-        indent: get_indent(state.indent_stack),
-      )
+      let token =
+        TokenVal(
+          kind: "RParen",
+          value: ")",
+          location: make_location(state.pos, advance_pos(state.pos, ")")),
+          indent: get_indent(state.indent_stack),
+        )
       Some(advance_state(state, 1) |> add_token(token))
     }
     // Brackets
     "[" -> {
-      let token = TokenVal(
-        kind: "LBracket",
-        value: "[",
-        location: make_location(state.pos, advance_pos(state.pos, "[")),
-        indent: get_indent(state.indent_stack),
-      )
+      let token =
+        TokenVal(
+          kind: "LBracket",
+          value: "[",
+          location: make_location(state.pos, advance_pos(state.pos, "[")),
+          indent: get_indent(state.indent_stack),
+        )
       Some(advance_state(state, 1) |> add_token(token))
     }
     "]" -> {
-      let token = TokenVal(
-        kind: "RBracket",
-        value: "]",
-        location: make_location(state.pos, advance_pos(state.pos, "]")),
-        indent: get_indent(state.indent_stack),
-      )
+      let token =
+        TokenVal(
+          kind: "RBracket",
+          value: "]",
+          location: make_location(state.pos, advance_pos(state.pos, "]")),
+          indent: get_indent(state.indent_stack),
+        )
       Some(advance_state(state, 1) |> add_token(token))
     }
     // Braces
     "{" -> {
-      let token = TokenVal(
-        kind: "LBrace",
-        value: "{",
-        location: make_location(state.pos, advance_pos(state.pos, "{")),
-        indent: get_indent(state.indent_stack),
-      )
+      let token =
+        TokenVal(
+          kind: "LBrace",
+          value: "{",
+          location: make_location(state.pos, advance_pos(state.pos, "{")),
+          indent: get_indent(state.indent_stack),
+        )
       Some(advance_state(state, 1) |> add_token(token))
     }
     "}" -> {
-      let token = TokenVal(
-        kind: "RBrace",
-        value: "}",
-        location: make_location(state.pos, advance_pos(state.pos, "}")),
-        indent: get_indent(state.indent_stack),
-      )
+      let token =
+        TokenVal(
+          kind: "RBrace",
+          value: "}",
+          location: make_location(state.pos, advance_pos(state.pos, "}")),
+          indent: get_indent(state.indent_stack),
+        )
       Some(advance_state(state, 1) |> add_token(token))
     }
     // Comma
     "," -> {
-      let token = TokenVal(
-        kind: "Comma",
-        value: ",",
-        location: make_location(state.pos, advance_pos(state.pos, ",")),
-        indent: get_indent(state.indent_stack),
-      )
+      let token =
+        TokenVal(
+          kind: "Comma",
+          value: ",",
+          location: make_location(state.pos, advance_pos(state.pos, ",")),
+          indent: get_indent(state.indent_stack),
+        )
       Some(advance_state(state, 1) |> add_token(token))
     }
     // Semicolon
     ";" -> {
-      let token = TokenVal(
-        kind: "Semicolon",
-        value: ";",
-        location: make_location(state.pos, advance_pos(state.pos, ";")),
-        indent: get_indent(state.indent_stack),
-      )
+      let token =
+        TokenVal(
+          kind: "Semicolon",
+          value: ";",
+          location: make_location(state.pos, advance_pos(state.pos, ";")),
+          indent: get_indent(state.indent_stack),
+        )
       Some(advance_state(state, 1) |> add_token(token))
     }
     // Colon
     ":" -> {
-      let token = TokenVal(
-        kind: "Colon",
-        value: ":",
-        location: make_location(state.pos, advance_pos(state.pos, ":")),
-        indent: get_indent(state.indent_stack),
-      )
+      let token =
+        TokenVal(
+          kind: "Colon",
+          value: ":",
+          location: make_location(state.pos, advance_pos(state.pos, ":")),
+          indent: get_indent(state.indent_stack),
+        )
       Some(advance_state(state, 1) |> add_token(token))
     }
     // Other operators
     _ -> {
       let op = read_operator(state.source)
-      let token = TokenVal(
-        kind: "Operator",
-        value: op,
-        location: make_location(state.pos, advance_pos(state.pos, op)),
-        indent: get_indent(state.indent_stack),
-      )
+      let token =
+        TokenVal(
+          kind: "Operator",
+          value: op,
+          location: make_location(state.pos, advance_pos(state.pos, op)),
+          indent: get_indent(state.indent_stack),
+        )
       let skip = string.length(op)
       Some(LexerState(
         source: string.drop_start(state.source, skip),
@@ -691,11 +821,59 @@ fn read_ident_loop(source: String, acc: String) -> String {
 
 fn is_ident_start(c: String) -> Bool {
   case c {
-    "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" |
-    "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" |
-    "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" |
-    "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" |
-    "_" -> True
+    "a"
+    | "b"
+    | "c"
+    | "d"
+    | "e"
+    | "f"
+    | "g"
+    | "h"
+    | "i"
+    | "j"
+    | "k"
+    | "l"
+    | "m"
+    | "n"
+    | "o"
+    | "p"
+    | "q"
+    | "r"
+    | "s"
+    | "t"
+    | "u"
+    | "v"
+    | "w"
+    | "x"
+    | "y"
+    | "z"
+    | "A"
+    | "B"
+    | "C"
+    | "D"
+    | "E"
+    | "F"
+    | "G"
+    | "H"
+    | "I"
+    | "J"
+    | "K"
+    | "L"
+    | "M"
+    | "N"
+    | "O"
+    | "P"
+    | "Q"
+    | "R"
+    | "S"
+    | "T"
+    | "U"
+    | "V"
+    | "W"
+    | "X"
+    | "Y"
+    | "Z"
+    | "_" -> True
     _ -> False
   }
 }
@@ -751,7 +929,11 @@ fn read_string(source: String) -> Result(#(String, Int), Nil) {
   }
 }
 
-fn read_string_loop(source: String, acc: String, len: Int) -> Result(#(String, Int), Nil) {
+fn read_string_loop(
+  source: String,
+  acc: String,
+  len: Int,
+) -> Result(#(String, Int), Nil) {
   case string.pop_grapheme(source) {
     Error(_) -> Error(Nil)
     Ok(#("\\", rest)) -> {
@@ -792,8 +974,27 @@ fn get_indent(indent_stack: List(Int)) -> Int {
 
 fn is_operator_char(c: String) -> Bool {
   case c {
-    "+" | "-" | "*" | "/" | "%" | "=" | "<" | ">" | "!" | "&" | "|" | "^" | "~" |
-    "." | "," | ";" | ":" | "?" | "@" | "#" | "$" -> True
+    "+"
+    | "-"
+    | "*"
+    | "/"
+    | "%"
+    | "="
+    | "<"
+    | ">"
+    | "!"
+    | "&"
+    | "|"
+    | "^"
+    | "~"
+    | "."
+    | ","
+    | ";"
+    | ":"
+    | "?"
+    | "@"
+    | "#"
+    | "$" -> True
     _ -> False
   }
 }

@@ -1,6 +1,7 @@
 // ============================================================================
 // GRAMMAR - Declarative Grammar DSL with Pratt Parsing
 // ============================================================================
+
 /// A declarative grammar DSL that generates parsers and formatters.
 ///
 /// Features:
@@ -26,12 +27,11 @@
 /// // Generate parser
 /// let parse = grammar.to_parser(g)
 /// ```
-
+import formatter.{type Doc}
 import gleam/dict.{type Dict}
 import gleam/list
-import gleam/option.{Some, None}
-import parser.{type Parser, type ParseResult, type Token, type Tree, type ExprOp}
-import formatter.{type Doc}
+import gleam/option.{None, Some}
+import parser.{type ExprOp, type ParseResult, type Parser, type Token, type Tree}
 
 // ============================================================================
 // TYPES
@@ -206,10 +206,7 @@ pub fn label(name: String, sym: Symbol) -> Symbol {
 
 /// Compilation state with cache for recursive rules
 type CompileState {
-  CompileState(
-    rules: Dict(String, Rule),
-    compiled: Dict(String, Parser(Tree)),
-  )
+  CompileState(rules: Dict(String, Rule), compiled: Dict(String, Parser(Tree)))
 }
 
 /// Convert grammar to parser
@@ -221,22 +218,33 @@ pub fn to_parser(g: Grammar) -> fn(List(Token)) -> ParseResult(Tree) {
 }
 
 /// Compile rule with caching for recursion
-fn compile_rule(name: String, state: CompileState) -> #(Parser(Tree), CompileState) {
+fn compile_rule(
+  name: String,
+  state: CompileState,
+) -> #(Parser(Tree), CompileState) {
   // Check if already compiled (handles recursion)
   case dict.get(state.compiled, name) {
     Ok(parser) -> #(parser, state)
     Error(_) -> {
       // Add placeholder to break recursion cycle
       let placeholder = parser.fail("compiling: " <> name)
-      let state = CompileState(..state, compiled: dict.insert(state.compiled, name, placeholder))
-      
+      let state =
+        CompileState(
+          ..state,
+          compiled: dict.insert(state.compiled, name, placeholder),
+        )
+
       // Get rule definition
       case dict.get(state.rules, name) {
         Ok(rule) -> {
           // Compile the actual parser
           let #(actual, state) = compile_symbol(rule.definition, name, state)
           // Update cache with real parser
-          let state = CompileState(..state, compiled: dict.insert(state.compiled, name, actual))
+          let state =
+            CompileState(
+              ..state,
+              compiled: dict.insert(state.compiled, name, actual),
+            )
           #(actual, state)
         }
         Error(_) -> {
@@ -249,7 +257,11 @@ fn compile_rule(name: String, state: CompileState) -> #(Parser(Tree), CompileSta
 }
 
 /// Compile symbol to parser
-fn compile_symbol(sym: Symbol, rule_name: String, state: CompileState) -> #(Parser(Tree), CompileState) {
+fn compile_symbol(
+  sym: Symbol,
+  rule_name: String,
+  state: CompileState,
+) -> #(Parser(Tree), CompileState) {
   case sym {
     Token(kind) -> {
       let p = parser.map(parser.token(kind), fn(tok) { parser.Leaf(tok) })
@@ -271,30 +283,49 @@ fn compile_symbol(sym: Symbol, rule_name: String, state: CompileState) -> #(Pars
     }
     Opt(sym) -> {
       let #(p, state) = compile_symbol(sym, rule_name, state)
-      #(parser.map(parser.opt(p), fn(opt) {
-        case opt {
-          Some(tree) -> tree
-          None -> parser.Empty
-        }
-      }), state)
+      #(
+        parser.map(parser.opt(p), fn(opt) {
+          case opt {
+            Some(tree) -> tree
+            None -> parser.Empty
+          }
+        }),
+        state,
+      )
     }
     Many(sym) -> {
       let #(p, state) = compile_symbol(sym, rule_name, state)
-      #(parser.map(parser.many(p), fn(trees) { parser.Node("Many", trees) }), state)
+      #(
+        parser.map(parser.many(p), fn(trees) { parser.Node("Many", trees) }),
+        state,
+      )
     }
     Many1(sym) -> {
       let #(p, state) = compile_symbol(sym, rule_name, state)
-      #(parser.map(parser.many1(p), fn(trees) { parser.Node("Many", trees) }), state)
+      #(
+        parser.map(parser.many1(p), fn(trees) { parser.Node("Many", trees) }),
+        state,
+      )
     }
     Sep(item, sep_sym) -> {
       let #(p_item, state) = compile_symbol(item, rule_name, state)
       let #(p_sep, state) = compile_symbol(sep_sym, rule_name, state)
-      #(parser.map(parser.sep_by(p_item, p_sep), fn(trees) { parser.Node("Sep", trees) }), state)
+      #(
+        parser.map(parser.sep_by(p_item, p_sep), fn(trees) {
+          parser.Node("Sep", trees)
+        }),
+        state,
+      )
     }
     Sep1(item, sep_sym) -> {
       let #(p_item, state) = compile_symbol(item, rule_name, state)
       let #(p_sep, state) = compile_symbol(sep_sym, rule_name, state)
-      #(parser.map(parser.sep_by1(p_item, p_sep), fn(trees) { parser.Node("Sep", trees) }), state)
+      #(
+        parser.map(parser.sep_by1(p_item, p_sep), fn(trees) {
+          parser.Node("Sep", trees)
+        }),
+        state,
+      )
     }
     Expr(ops) -> {
       #(parser.pratt(ops), state)
@@ -310,11 +341,20 @@ fn compile_symbol(sym: Symbol, rule_name: String, state: CompileState) -> #(Pars
 }
 
 /// Compile multiple symbols
-fn compile_symbols(symbols: List(Symbol), rule_name: String, state: CompileState) -> #(List(Parser(Tree)), CompileState) {
+fn compile_symbols(
+  symbols: List(Symbol),
+  rule_name: String,
+  state: CompileState,
+) -> #(List(Parser(Tree)), CompileState) {
   compile_symbols_loop(symbols, rule_name, state, [])
 }
 
-fn compile_symbols_loop(symbols: List(Symbol), rule_name: String, state: CompileState, acc: List(Parser(Tree))) -> #(List(Parser(Tree)), CompileState) {
+fn compile_symbols_loop(
+  symbols: List(Symbol),
+  rule_name: String,
+  state: CompileState,
+  acc: List(Parser(Tree)),
+) -> #(List(Parser(Tree)), CompileState) {
   case symbols {
     [] -> #(list.reverse(acc), state)
     [sym, ..rest] -> {
@@ -325,13 +365,24 @@ fn compile_symbols_loop(symbols: List(Symbol), rule_name: String, state: Compile
 }
 
 /// Compile sequence
-fn compile_seq(symbols: List(Symbol), rule_name: String, state: CompileState) -> #(Parser(Tree), CompileState) {
+fn compile_seq(
+  symbols: List(Symbol),
+  rule_name: String,
+  state: CompileState,
+) -> #(Parser(Tree), CompileState) {
   let #(parsers, state) = compile_symbols(symbols, rule_name, state)
-  #(parser.map(parser.seq(parsers), fn(trees) { parser.Node("Seq", trees) }), state)
+  #(
+    parser.map(parser.seq(parsers), fn(trees) { parser.Node("Seq", trees) }),
+    state,
+  )
 }
 
 /// Compile indentation block
-fn compile_indent_block(sym: Symbol, rule_name: String, state: CompileState) -> #(Parser(Tree), CompileState) {
+fn compile_indent_block(
+  sym: Symbol,
+  rule_name: String,
+  state: CompileState,
+) -> #(Parser(Tree), CompileState) {
   // For now, just compile the inner symbol
   // Full implementation would track indentation levels
   compile_symbol(sym, rule_name, state)
@@ -355,11 +406,7 @@ pub type FormatConfig {
 
 /// Default format configuration
 pub fn default_config() -> FormatConfig {
-  FormatConfig(
-    indent_width: 2,
-    max_width: 80,
-    spaces: True,
-  )
+  FormatConfig(indent_width: 2, max_width: 80, spaces: True)
 }
 
 /// Convert grammar to formatter with default config
@@ -368,7 +415,10 @@ pub fn to_formatter(g: Grammar) -> fn(Tree) -> String {
 }
 
 /// Convert grammar to formatter with custom config
-pub fn to_formatter_with_config(g: Grammar, config: FormatConfig) -> fn(Tree) -> String {
+pub fn to_formatter_with_config(
+  g: Grammar,
+  config: FormatConfig,
+) -> fn(Tree) -> String {
   let rules = g.rules
   fn(tree) {
     let doc = format_tree_with_rules(tree, rules, config)
@@ -377,14 +427,24 @@ pub fn to_formatter_with_config(g: Grammar, config: FormatConfig) -> fn(Tree) ->
 }
 
 /// Format parse tree using grammar rules
-fn format_tree_with_rules(tree: Tree, rules: Dict(String, Rule), config: FormatConfig) -> Doc {
+fn format_tree_with_rules(
+  tree: Tree,
+  rules: Dict(String, Rule),
+  config: FormatConfig,
+) -> Doc {
   format_tree_with_rules_indent(tree, rules, config, 0)
 }
 
-fn format_tree_with_rules_indent(tree: Tree, rules: Dict(String, Rule), config: FormatConfig, indent: Int) -> Doc {
+fn format_tree_with_rules_indent(
+  tree: Tree,
+  rules: Dict(String, Rule),
+  config: FormatConfig,
+  indent: Int,
+) -> Doc {
   case tree {
     parser.Leaf(token) -> format_token(token)
-    parser.Node(name, children) -> format_node_with_rules_indent(name, children, rules, config, indent)
+    parser.Node(name, children) ->
+      format_node_with_rules_indent(name, children, rules, config, indent)
     parser.Empty -> formatter.empty()
   }
 }
@@ -416,17 +476,28 @@ fn format_node_with_rules_indent(
 }
 
 /// Format based on grammar rule
-fn format_rule(rule: Rule, children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
+fn format_rule(
+  rule: Rule,
+  children: List(Tree),
+  config: FormatConfig,
+  indent: Int,
+) -> Doc {
   format_symbol(rule.definition, children, config, indent)
 }
 
 /// Format symbol based on its type
-fn format_symbol(sym: Symbol, children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
+fn format_symbol(
+  sym: Symbol,
+  children: List(Tree),
+  config: FormatConfig,
+  indent: Int,
+) -> Doc {
   case sym {
     Token(_) | Keyword(_) -> {
       // Terminal - should have one child (the token)
       case children {
-        [child] -> format_tree_with_rules_indent(child, dict.new(), config, indent)
+        [child] ->
+          format_tree_with_rules_indent(child, dict.new(), config, indent)
         _ -> formatter.empty()
       }
     }
@@ -444,61 +515,119 @@ fn format_symbol(sym: Symbol, children: List(Tree), config: FormatConfig, indent
 }
 
 /// Format sequence of children
-fn format_sequence(children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
-  formatter.hsep(list.map(children, fn(c) { format_tree_with_rules_indent(c, dict.new(), config, indent) }))
+fn format_sequence(
+  children: List(Tree),
+  config: FormatConfig,
+  indent: Int,
+) -> Doc {
+  formatter.hsep(
+    list.map(children, fn(c) {
+      format_tree_with_rules_indent(c, dict.new(), config, indent)
+    }),
+  )
 }
 
 /// Format choice (just format the chosen alternative)
 fn format_choice(children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
   case children {
     [child] -> format_tree_with_rules_indent(child, dict.new(), config, indent)
-    _ -> formatter.hsep(list.map(children, format_tree_with_rules_child(config, indent)))
+    _ ->
+      formatter.hsep(list.map(
+        children,
+        format_tree_with_rules_child(config, indent),
+      ))
   }
 }
 
-fn format_tree_with_rules_child(config: FormatConfig, indent: Int) -> fn(Tree) -> Doc {
+fn format_tree_with_rules_child(
+  config: FormatConfig,
+  indent: Int,
+) -> fn(Tree) -> Doc {
   fn(c) { format_tree_with_rules_indent(c, dict.new(), config, indent) }
 }
 
 /// Format optional (skip empty children)
-fn format_optional(children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
+fn format_optional(
+  children: List(Tree),
+  config: FormatConfig,
+  indent: Int,
+) -> Doc {
   case children {
     [] -> formatter.empty()
     [child] -> format_tree_with_rules_indent(child, dict.new(), config, indent)
-    _ -> formatter.hsep(list.map(children, format_tree_with_rules_child(config, indent)))
+    _ ->
+      formatter.hsep(list.map(
+        children,
+        format_tree_with_rules_child(config, indent),
+      ))
   }
 }
 
 /// Format repetition (space-separated)
-fn format_repetition(children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
-  formatter.hsep(list.map(children, format_tree_with_rules_child(config, indent)))
+fn format_repetition(
+  children: List(Tree),
+  config: FormatConfig,
+  indent: Int,
+) -> Doc {
+  formatter.hsep(list.map(
+    children,
+    format_tree_with_rules_child(config, indent),
+  ))
 }
 
 /// Format separated list
-fn format_separated(children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
-  formatter.comma_sep(list.map(children, format_tree_with_rules_child(config, indent)))
+fn format_separated(
+  children: List(Tree),
+  config: FormatConfig,
+  indent: Int,
+) -> Doc {
+  formatter.comma_sep(list.map(
+    children,
+    format_tree_with_rules_child(config, indent),
+  ))
 }
 
 /// Format expression (use precedence-aware formatting)
-fn format_expression(children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
-  formatter.hsep(list.map(children, format_tree_with_rules_child(config, indent)))
+fn format_expression(
+  children: List(Tree),
+  config: FormatConfig,
+  indent: Int,
+) -> Doc {
+  formatter.hsep(list.map(
+    children,
+    format_tree_with_rules_child(config, indent),
+  ))
 }
 
 /// Format indented block
-fn format_indented_block(children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
-  formatter.braces(
-    formatter.nest(
-      config.indent_width,
-      formatter.vsep(list.map(children, format_tree_with_rules_child(config, indent + config.indent_width)))
-    )
-  )
+fn format_indented_block(
+  children: List(Tree),
+  config: FormatConfig,
+  indent: Int,
+) -> Doc {
+  formatter.braces(formatter.nest(
+    config.indent_width,
+    formatter.vsep(list.map(
+      children,
+      format_tree_with_rules_child(config, indent + config.indent_width),
+    )),
+  ))
 }
 
 /// Format generic node (fallback for unknown nodes)
-fn format_generic_node(name: String, children: List(Tree), config: FormatConfig, indent: Int) -> Doc {
+fn format_generic_node(
+  name: String,
+  children: List(Tree),
+  config: FormatConfig,
+  indent: Int,
+) -> Doc {
   case children {
     [] -> formatter.text(name)
-    _ -> formatter.hsep(list.map(children, format_tree_with_rules_child(config, indent)))
+    _ ->
+      formatter.hsep(list.map(
+        children,
+        format_tree_with_rules_child(config, indent),
+      ))
   }
 }
 
@@ -520,9 +649,14 @@ pub fn validate(g: Grammar) -> Result(Nil, List(String)) {
   }
 }
 
-fn find_undefined_refs(g: Grammar, rule: String, visited: List(String)) -> List(String) {
+fn find_undefined_refs(
+  g: Grammar,
+  rule: String,
+  visited: List(String),
+) -> List(String) {
   case list.contains(visited, rule) {
-    True -> []  // Already visited, skip
+    True -> []
+    // Already visited, skip
     False ->
       case dict.get(g.rules, rule) {
         Ok(r) -> find_refs_in_symbol(g, r.definition, [rule, ..visited])
@@ -531,23 +665,29 @@ fn find_undefined_refs(g: Grammar, rule: String, visited: List(String)) -> List(
   }
 }
 
-fn find_refs_in_symbol(g: Grammar, sym: Symbol, visited: List(String)) -> List(String) {
+fn find_refs_in_symbol(
+  g: Grammar,
+  sym: Symbol,
+  visited: List(String),
+) -> List(String) {
   case sym {
     Ref(name) -> find_undefined_refs(g, name, visited)
-    Seq(symbols) -> list.flat_map(symbols, fn(s) { find_refs_in_symbol(g, s, visited) })
-    Choice(alts) -> list.flat_map(alts, fn(s) { find_refs_in_symbol(g, s, visited) })
+    Seq(symbols) ->
+      list.flat_map(symbols, fn(s) { find_refs_in_symbol(g, s, visited) })
+    Choice(alts) ->
+      list.flat_map(alts, fn(s) { find_refs_in_symbol(g, s, visited) })
     Opt(s) -> find_refs_in_symbol(g, s, visited)
     Many(s) -> find_refs_in_symbol(g, s, visited)
     Many1(s) -> find_refs_in_symbol(g, s, visited)
-    Sep(item, sep) -> 
+    Sep(item, sep) ->
       list.append(
         find_refs_in_symbol(g, item, visited),
-        find_refs_in_symbol(g, sep, visited)
+        find_refs_in_symbol(g, sep, visited),
       )
-    Sep1(item, sep) -> 
+    Sep1(item, sep) ->
       list.append(
         find_refs_in_symbol(g, item, visited),
-        find_refs_in_symbol(g, sep, visited)
+        find_refs_in_symbol(g, sep, visited),
       )
     Expr(_) -> []
     IndentBlock(s) -> find_refs_in_symbol(g, s, visited)
