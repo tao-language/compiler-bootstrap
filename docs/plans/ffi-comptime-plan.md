@@ -1,17 +1,20 @@
 # FFI and Comptime Implementation Plan
 
-> **Status**: Design Document (Updated for existing architecture)
+> **Status**: Implemented - Core functionality complete
 > **Goal**: Support pure/impure built-ins, compile-time evaluation, and pluggable backends
+> **Last Updated**: After implementing generic grammar system with runtime formatter
 
 ---
 
 ## Design Philosophy
 
-1. **Elaboration**: `infer` and `check` already return normalized `Value` - comptime integrates naturally
-2. **Explicit Comptime**: `comptime` keyword for compile-time evaluation blocks
-3. **Impure Allowed**: Comptime can execute IO with proper permissions
-4. **Error Handling**: Comptime errors return `VErr` + add to `State.errors`
-5. **Backends as Modules**: User-creatable, importable backend modules
+1. **Pure Builtins**: Built-in functions are pure `fn(List(Value)) -> Value` - no State needed
+2. **No Arity Tracking**: Implementation handles arity - no need to store it in Builtin type
+3. **Lazy Evaluation**: Unknown FFI functions return `VCall` (deferred to runtime)
+4. **Explicit Comptime**: `comptime` keyword for compile-time evaluation blocks
+5. **Impure Allowed**: Comptime can execute IO with proper permissions
+6. **Error Handling**: Comptime errors return `VErr` + add to `State.errors`
+7. **Backends as Modules**: User-creatable, importable backend modules
 
 ---
 
@@ -27,17 +30,18 @@
 │                │    └─ Returns #(Value, Type, State)            │
 │                │       - Value is normalized/evaluated          │
 │                │       - Comptime blocks resolved here          │
+│                │       - Unknown FFI → VCall (runtime defer)    │
 │                └─ Raw AST with Comptime blocks                   │
 │                                                                  │
 │  Codegen → Backend Module (user or official)                     │
-│            └─ Maps VBuiltIn to target code                       │
+│            └─ Maps VCall to target runtime calls                 │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 1. Core Data Structures (Aligned with core.gleam)
+## 1. Core Data Structures (Updated)
 
 ### 1.1 Term Extensions
 
@@ -46,10 +50,11 @@
 
 pub type TermData {
   // ... existing constructors
-  
-  /// Built-in function call (runtime)
-  BuiltIn(name: String, args: List(Term))
-  
+
+  /// Built-in function call (runtime or comptime)
+  /// If FFI not found during eval, returns VCall (deferred to runtime)
+  Call(name: String, args: List(Term))
+
   /// Compile-time evaluation block
   Comptime(term: Term)
 }
@@ -62,18 +67,45 @@ pub type TermData {
 
 pub type Value {
   // ... existing constructors
-  
-  /// Built-in function (first-class, knows its arity)
-  VBuiltIn(
+
+  /// Built-in function call deferred to runtime
+  /// Created when FFI not found during eval
+  VCall(
     name: String,
-    arity: Int,
+    arity: Int,  // Inferred from args at runtime
     collected_args: List(Value),
-    impl: fn(List(Value), State) -> #(Value, State),
+    impl: fn(List(Value)) -> Value,  // Pure function
   )
 }
 ```
 
-### 1.3 Compiler Configuration
+**Note**: The `arity` field in `VCall` is for runtime type checking only - it's inferred from the actual arguments passed, not stored in the Builtin definition.
+
+### 1.3 Builtin Type (Simplified)
+
+```gleam
+// In src/core/core.gleam
+
+/// Built-in function definition
+pub type Builtin {
+  Builtin(
+    name: String,
+    impl: fn(List(Value)) -> Value,  // Pure function - no State!
+    required_permissions: List(Permission),
+  )
+}
+
+/// Host FFI registry
+pub type FFI =
+  List(#(String, Builtin))
+```
+
+**Key Changes**:
+- ❌ **Removed**: `arity: Int` - implementation handles arity checking
+- ✅ **Changed**: `impl` is now pure `fn(List(Value)) -> Value`
+- ✅ **Kept**: `required_permissions` for comptime permission checking
+
+### 1.4 Compiler Configuration
 
 ```gleam
 // New module: src/compiler/config.gleam
@@ -106,7 +138,7 @@ pub type Config {
 }
 ```
 
-### 1.4 State Extensions
+### 1.5 State Extensions
 
 ```gleam
 // In src/core/core.gleam (extend existing State)
@@ -114,13 +146,22 @@ pub type Config {
 pub type State {
   State(
     // ... existing fields
+    hole: Int,
+    var: Int,
+    ctrs: CtrEnv,
+    ctx: Context,
+    sub: Subst,
+    errors: List(Error),
     
+    /// Host FFI registry (for built-in evaluation)
+    ffi: FFI,
+
     /// Compiler configuration (for permissions, etc.)
     config: Config,
-    
+
     /// Backend registry (for codegen)
     backend: BackendRegistry,
-    
+
     /// Comptime execution errors
     comptime_errors: List(ComptimeError),
   )
@@ -136,7 +177,7 @@ pub type ComptimeError {
 }
 ```
 
-### 1.5 Backend Registry
+### 1.6 Backend Registry
 
 ```gleam
 // New module: src/backend/registry.gleam
@@ -145,7 +186,6 @@ pub type ComptimeError {
 pub type BuiltinDef {
   BuiltinDef(
     name: String,
-    arity: Int,
     /// Code generation function
     codegen: fn(List(Term), Target) -> Result(String, String),
     /// Platform availability (None = all platforms)
@@ -173,73 +213,71 @@ pub type BackendRegistry {
 ```gleam
 // In src/core/core.gleam
 
-pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
+pub fn infer(ffi: FFI, s: State, term: Term) -> #(Value, Type, State) {
   case term.data {
     // ... existing cases
-    
+
     Comptime(inner_term) -> {
       // 1. Type-check the inner expression
-      let #(inner_val, inner_ty, s1) = infer(s, inner_term)
-      
+      let #(inner_val, inner_ty, s1) = infer(ffi, s, inner_term)
+
       // 2. Evaluate using HOST FFIs (with permission checks)
-      let #(result_val, s2) = host_eval(s1, inner_term)
-      
+      let #(result_val, s2) = host_eval(ffi, s1, inner_term)
+
       // 3. Quote the result back to a Term
-      let quoted_term = quote(0, result_val, s2)
-      
+      let quoted_term = quote(ffi, 0, result_val, s2)
+
       // 4. Return the concrete result (type + value)
       #(result_val, inner_ty, s2)
     }
-    
-    BuiltIn(name, args) -> {
-      case dict.get(s.backend.builtins, name) {
-        Ok(builtin) -> {
-          // Elaborate built-in (lazy execution)
-          elaborate_builtin(s, builtin, args)
-        }
-        Error(_) -> {
-          // Unknown built-in - return error
-          let err = ComptimeError("Unknown built-in: " <> name, term.span, None)
-          #(VErr, VErr, add_comptime_error(s, err))
+
+    Call(name, args) -> {
+      // Evaluate all arguments first
+      let arg_vals = list.map(args, eval(ffi, env, _))
+      
+      // Look up the builtin and call it
+      case list.key_find(ffi, name) {
+        Ok(Builtin(_, impl, _)) -> impl(arg_vals)
+        Error(Nil) -> {
+          // FFI not found - return VCall (deferred to runtime)
+          VCall(name, list.length(arg_vals), arg_vals, todo as "unknown builtin")
         }
       }
     }
-    
+
     // ... other cases
   }
 }
 ```
 
-### 2.2 Check Function (Updated)
+### 2.2 Check Function (Simplified)
 
 ```gleam
 // In src/core/core.gleam
 
+/// Check that a term has the expected type (verification direction).
+///
+/// Note: This function now delegates entirely to infer + unify.
+/// The bidirectional structure is kept for API clarity and future extensions,
+/// but currently all terms follow the same infer-then-unify pattern.
 pub fn check(
+  ffi: FFI,
   s: State,
   term: Term,
-  expected_ty: Value,
+  expected_ty: Type,
   ty_span: Span,
 ) -> #(Value, State) {
-  case term.data {
-    Comptime(inner_term) -> {
-      // Comptime blocks evaluate regardless of check vs infer
-      let #(val, ty, s1) = infer(s, inner_term)
-      
-      // Unify with expected type
-      case unify(ty, expected_ty, s1) {
-        Ok(s2) -> #(val, s2)
-        Error(_) -> {
-          // Type mismatch - return VErr
-          #(VErr, s1)
-        }
-      }
-    }
-    
-    // ... other cases
+  let #(value, inferred_ty, s) = infer(ffi, s, term)
+  case unify(s, inferred_ty, expected_ty, term.span, ty_span) {
+    Ok(s) -> #(force(s.ffi, s.sub, value), s)
+    Error(e) -> #(VErr, with_err(s, e))
   }
 }
 ```
+
+**Note**: `check` is now just `infer` + `unify`. Most check-specific tests can be removed since they're redundant with infer tests. Keep only a handful to verify:
+- Type mismatches are caught
+- Spans are reported correctly for both term and type
 
 ### 2.3 Built-in Elaboration (Lazy Execution)
 
@@ -247,48 +285,37 @@ pub fn check(
 // In src/core/core.gleam
 
 fn elaborate_builtin(
+  ffi: FFI,
   s: State,
-  builtin: BuiltinDef,
+  name: String,
   args: List(Term),
 ) -> #(Value, Type, State) {
   // Evaluate arguments
-  let #(arg_vals, arg_tys, s1) = elaborate_args(s, args)
-  
-  // Check arity
-  if list.length(arg_vals) != builtin.arity {
-    let err = ComptimeError(
-      "Built-in `" <> builtin.name <> "` expects " <> int.to_string(builtin.arity) <> " arguments",
-      args |> list.last |> result.map(fn(t) { t.span }) |> result.unwrap(Span(0, 0)),
-      None,
-    )
-    #(VErr, VErr, add_comptime_error(s1, err))
-  } else {
-    // Try to execute (if host_impl available)
-    case builtin.host_impl {
-      Some(impl) -> {
-        let #(result, s2) = impl(arg_vals, s1)
-        case result {
-          Ok(val) -> #(val, compute_builtin_type(builtin, arg_tys), s2)
-          Error(_) -> #(VErr, VErr, s2)
-        }
-      }
-      None -> {
-        // No host implementation - return stuck built-in
-        #(
-          VBuiltIn(builtin.name, builtin.arity, [], builtin.host_impl),
-          compute_builtin_type(builtin, arg_tys),
-          s1,
-        )
-      }
+  let #(arg_vals, arg_tys, s1) = elaborate_args(ffi, s, args)
+
+  // Try to execute (if impl available)
+  case list.key_find(ffi, name) {
+    Ok(Builtin(_, impl, _)) -> {
+      let result = impl(arg_vals)
+      #(result, compute_builtin_type(name, arg_tys), s1)
+    }
+    Error(Nil) => {
+      // No implementation - return stuck built-in (VCall)
+      #(
+        VCall(name, list.length(arg_vals), arg_vals, todo as "unknown builtin"),
+        compute_builtin_type(name, arg_tys),
+        s1,
+      )
     }
   }
 }
 
-fn elaborate_args(s: State, args: List(Term)) -> #(List(Value), List(Type), State) {
-  elaborate_args_loop(args, [], [], s)
+fn elaborate_args(ffi: FFI, s: State, args: List(Term)) -> #(List(Value), List(Type), State) {
+  elaborate_args_loop(ffi, args, [], [], s)
 }
 
 fn elaborate_args_loop(
+  ffi: FFI,
   args: List(Term),
   vals: List(Value),
   tys: List(Type),
@@ -297,8 +324,8 @@ fn elaborate_args_loop(
   case args {
     [] -> #(list.reverse(vals), list.reverse(tys), s)
     [arg, ..rest] -> {
-      let #(val, ty, s1) = infer(s, arg)
-      elaborate_args_loop(rest, [val, ..vals], [ty, ..tys], s1)
+      let #(val, ty, s1) = infer(ffi, s, arg)
+      elaborate_args_loop(ffi, rest, [val, ..vals], [ty, ..tys], s1)
     }
   }
 }
@@ -311,49 +338,30 @@ fn elaborate_args_loop(
 ### 3.1 Host FFI Registry
 
 ```gleam
-// New module: src/host/ffi.gleam
-
-/// Host FFI function
-pub type HostFFI {
-  HostFFI(
-    name: String,
-    arity: Int,
-    impl: fn(List(Value), State) -> #(Value, State),
-    required_permissions: List(Permission),
-  )
-}
-
-/// Host FFI registry
-pub type HostRegistry {
-  HostRegistry(
-    ffis: Dict(String, HostFFI),
-  )
-}
+// In src/core/core.gleam
 
 /// Default host FFIs
-pub fn default_host_registry() -> HostRegistry {
-  HostRegistry(
-    ffis: dict.from_list([
-      // Arithmetic (pure, always allowed)
-      #("add", HostFFI("add", 2, add_impl, [])),
-      #("sub", HostFFI("sub", 2, sub_impl, [])),
-      #("mul", HostFFI("mul", 2, mul_impl, [])),
-      
-      // String operations (pure)
-      #("concat", HostFFI("concat", 2, concat_impl, [])),
-      
-      // File I/O (requires permission)
-      #("read_file", HostFFI("read_file", 1, read_file_impl, [AllowRead("*")])),
-      #("write_file", HostFFI("write_file", 2, write_file_impl, [AllowWrite("*")])),
-      
-      // Environment (requires permission)
-      #("get_env", HostFFI("get_env", 1, get_env_impl, [AllowEnv("*")])),
-      
-      // Time (impure, but useful for timestamps)
-      #("now", HostFFI("now", 0, now_impl, [])),
-    ]),
-  )
-}
+pub const default_builtins = [
+  // Arithmetic (pure, always allowed)
+  #("add", Builtin("add", add_impl, [])),
+  #("sub", Builtin("sub", sub_impl, [])),
+  #("mul", Builtin("mul", mul_impl, [])),
+  #("div", Builtin("div", div_impl, [])),
+  #("mod", Builtin("mod", mod_impl, [])),
+
+  // Comparison (pure)
+  #("eq", Builtin("eq", eq_impl, [])),
+  #("neq", Builtin("neq", neq_impl, [])),
+  #("lt", Builtin("lt", lt_impl, [])),
+  #("lte", Builtin("lte", lte_impl, [])),
+  #("gt", Builtin("gt", gt_impl, [])),
+  #("gte", Builtin("gte", gte_impl, [])),
+
+  // Logical (pure)
+  #("and", Builtin("and", and_impl, [])),
+  #("or", Builtin("or", or_impl, [])),
+  #("not", Builtin("not", not_impl, [])),
+]
 ```
 
 ### 3.2 Permission Checking
@@ -395,36 +403,38 @@ fn all_permissions_granted(required: List(Permission), granted: List(Permission)
 ```gleam
 // In src/core/core.gleam
 
-fn host_eval(s: State, term: Term) -> #(Value, State) {
+fn host_eval(ffi: FFI, s: State, term: Term) -> #(Value, State) {
   case term.data {
-    BuiltIn(name, args) -> {
-      case dict.get(s.host_registry.ffis, name) {
-        Ok(ffi) -> {
+    Call(name, args) -> {
+      case list.key_find(ffi, name) {
+        Ok(Builtin(_, impl, required_perms)) -> {
           // Check permissions
-          if !all_permissions_granted(ffi.required_permissions, s.config.permissions) {
+          if !all_permissions_granted(required_perms, s.config.permissions) {
             let err = ComptimeError(
               "Permission denied for comptime operation: " <> name,
               term.span,
-              ffi.required_permissions |> list.first,
+              required_perms |> list.first,
             )
             #(VErr, add_comptime_error(s, err))
           } else {
             // Evaluate arguments
-            let #(arg_vals, _, s1) = elaborate_args(s, args)
-            
-            // Execute
-            ffi.impl(arg_vals, s1)
+            let #(arg_vals, _, s1) = elaborate_args(ffi, s, args)
+
+            // Execute (pure function)
+            let result = impl(arg_vals)
+            #(result, s1)
           }
         }
-        Error(_) -> {
-          let err = ComptimeError("Unknown host FFI: " <> name, term.span, None)
-          #(VErr, add_comptime_error(s, err))
+        Error(_) => {
+          // Unknown FFI - return VCall (deferred to runtime)
+          let #(arg_vals, _, s1) = elaborate_args(ffi, s, args)
+          #(VCall(name, list.length(arg_vals), arg_vals, todo as "unknown"), s1)
         }
       }
     }
-    
+
     // Recursively evaluate other terms
-    _ -> infer(s, term)
+    _ => infer(ffi, s, term)
   }
 }
 ```
@@ -432,39 +442,37 @@ fn host_eval(s: State, term: Term) -> #(Value, State) {
 ### 3.4 Example Host Implementations
 
 ```gleam
-// In src/host/ffi.gleam
+// In src/core/core.gleam
 
-fn add_impl(args: List(Value), s: State) -> #(Value, State) {
+fn add_impl(args: List(Value)) -> Value {
   case args {
-    [VLit(Int(a)), VLit(Int(b))] -> #(VLit(Int(a + b)), s)
+    [VLit(I32(a)), VLit(I32(b))] -> VLit(I32(a + b))
+    [VLit(F64(a)), VLit(F64(b))] -> VLit(F64(a +. b))
     [a, b] -> {
-      // Arguments not concrete - return neutral
-      #(VNeut(HBuiltIn("add", [a, b]), []), s)
+      // Arguments not concrete - return stuck built-in
+      VCall("add", 2, [a, b], add_impl)
     }
-    _ -> #(VErr, s)
+    _ -> VErr
   }
 }
 
-fn read_file_impl(args: List(Value), s: State) -> #(Value, State) {
+fn read_file_impl(args: List(Value)) -> Value {
   case args {
     [VLit(String(path))] -> {
       // Read file content
       case file.read(path) {
-        Ok(content) -> #(VLit(String(content)), s)
-        Error(e) -> {
-          let err = ComptimeError("Failed to read file: " <> path <> " - " <> e, Span(0, 0), None)
-          #(VErr, add_comptime_error(s, err))
-        }
+        Ok(content) -> VLit(String(content))
+        Error(e) -> VErr  // Error handled by caller
       }
     }
-    _ -> #(VErr, s)
+    _ -> VErr
   }
 }
 
-fn now_impl(args: List(Value), s: State) -> #(Value, State) {
+fn now_impl(args: List(Value)) -> Value {
   // Get current timestamp (impure, but allowed)
   let timestamp = time.now() |> time.to_unix
-  #(VLit(Int(timestamp)), s)
+  VLit(Int(timestamp))
 }
 ```
 
@@ -475,40 +483,48 @@ fn now_impl(args: List(Value), s: State) -> #(Value, State) {
 ```gleam
 // In src/core/core.gleam
 
-fn quote(lvl: Int, val: Value, s: State) -> Term {
+pub fn quote(ffi: FFI, lvl: Int, val: Value, s: Span) -> Term {
   case val {
-    VLit(literal) -> Term(Lit(literal), Span(0, 0))
+    VTyp(k) -> Term(Typ(k), s)
+    VLit(k) -> Term(Lit(k), s)
+    VLitT(k) -> Term(LitT(k), s)
     
-    VRcd(fields) -> {
-      Term(Rcd(list.map(fields, fn(#(k, v)) { #(k, quote(lvl, v, s)) })), Span(0, 0))
+    VNeut(head, spine) -> {
+      let head_term = quote_head(lvl, head, s)
+      quote_neut(ffi, lvl, head_term, spine, s)
     }
     
-    VCtr(tag, arg) -> {
-      Term(Ctr(tag, quote(lvl, arg, s)), Span(0, 0))
+    VRcd(fields) ->
+      Term(Rcd(list.map(fields, fn(kv) { #(kv.0, quote(ffi, lvl, kv.1, s)) })), s)
+    
+    VCtr(tag, arg) -> Term(Ctr(tag, quote(ffi, lvl, arg, s)), s)
+    
+    VLam(name, env, body) -> {
+      // Create a fresh neutral variable at the current level
+      let fresh = VNeut(HVar(lvl), [])
+      // Apply it to the body and evaluate
+      let body_val = eval(ffi, [fresh, ..env], body)
+      // Quote the result at level + 1
+      let body_quote = quote(ffi, lvl + 1, body_val, body.span)
+      Term(Lam(name, body_quote), s)
     }
     
-    VNeut(HBuiltIn("read_file", [VLit(String(_))]), []) -> {
-      // File reads become string literals (content already read)
-      // The value already contains the content
-      quote(lvl, val, s)
+    VPi(name, env, in_val, out_term) -> {
+      // Quote the domain (already evaluated)
+      let in_quote = quote(ffi, lvl, in_val, s)
+      // Create a fresh neutral variable for the codomain
+      let fresh = VNeut(HVar(lvl), [])
+      let out_val = eval(ffi, [fresh, ..env], out_term)
+      let out_quote = quote(ffi, lvl + 1, out_val, out_term.span)
+      Term(Pi(name, in_quote, out_quote), s)
     }
     
-    VBuiltIn(name, _, _, _) -> {
-      // Built-ins that weren't fully applied
-      Term(BuiltIn(name, []), Span(0, 0))
+    VCall(name, _, args, _) -> {
+      // Quote stuck built-in with collected args
+      Term(Call(name, list.map(args, fn(a) { quote(ffi, lvl, a, s) })), s)
     }
     
-    VErr -> {
-      // Error value - return error term
-      Term(Lit(Int(0)), Span(0, 0)) // Placeholder
-    }
-    
-    _ -> {
-      // Cannot quote closures, functions, etc.
-      // This is a comptime error
-      let err = ComptimeError("Cannot quote value at compile-time", Span(0, 0), None)
-      Term(Lit(Int(0)), Span(0, 0)) // Placeholder
-    }
+    VErr -> Term(Hole(-1), s)
   }
 }
 ```
@@ -530,7 +546,6 @@ pub fn get_registry(target: Target) -> BackendRegistry {
     builtins: dict.from_list([
       #("print", BuiltinDef(
         name: "print",
-        arity: 1,
         codegen: fn(args, _target) {
           Ok("console.log(" <> emit(args[0]) <> ")")
         },
@@ -538,7 +553,6 @@ pub fn get_registry(target: Target) -> BackendRegistry {
       )),
       #("add", BuiltinDef(
         name: "add",
-        arity: 2,
         codegen: fn(args, _target) {
           Ok(emit(args[0]) <> " + " <> emit(args[1]))
         },
@@ -568,7 +582,6 @@ pub fn get_registry() -> BackendRegistry {
     builtins: dict.from_list([
       #("print", BuiltinDef(
         name: "print",
-        arity: 1,
         codegen: fn(args, _target) {
           Ok("console.log(" <> emit_expr(args[0]) <> ")")
         },
@@ -576,7 +589,6 @@ pub fn get_registry() -> BackendRegistry {
       )),
       #("add", BuiltinDef(
         name: "add",
-        arity: 2,
         codegen: fn(args, _target) {
           Ok(emit_expr(args[0]) <> " + " <> emit_expr(args[1]))
         },
@@ -584,7 +596,6 @@ pub fn get_registry() -> BackendRegistry {
       )),
       #("read_file", BuiltinDef(
         name: "read_file",
-        arity: 1,
         codegen: fn(_args, _target) {
           Error("read_file must be used in comptime block for JavaScript target")
         },
@@ -599,7 +610,7 @@ fn emit_expr(term: Term) -> String {
   case term.data {
     Lit(Int(n)) -> int.to_string(n)
     Lit(String(s)) -> "\"" <> string.replace(s, "\"", "\\\"") <> "\""
-    BuiltIn(name, args) -> {
+    Call(name, args) -> {
       // Look up in registry
       // ...
     }
@@ -608,37 +619,45 @@ fn emit_expr(term: Term) -> String {
 }
 ```
 
-### 5.3 Official Backend: WebAssembly
+### 5.3 Handling VCall at Codegen Time
 
 ```gleam
-// src/backend/webassembly.gleam
+// In src/codegen/generator.gleam
 
-import backend/registry
+fn emit_term(term: Term, gen: Generator) -> Result(String, String) {
+  case term.data {
+    Call(name, args) -> {
+      case dict.get(gen.backend.builtins, name) {
+        Ok(builtin) -> {
+          // Check platform availability
+          case builtin.platforms {
+            Some(platforms) -> {
+              if !list.contains(platforms, gen.target) {
+                // Platform not supported - emit runtime error
+                Ok(emit_runtime_error(gen.target, "Unsupported: " <> name))
+              } else {
+                builtin.codegen(args, gen.target)
+              }
+            }
+            None -> builtin.codegen(args, gen.target)
+          }
+        }
+        Error(_) -> {
+          // Unknown built-in at codegen time
+          // This means it was deferred to runtime (VCall)
+          // Emit runtime call
+          Ok(emit_runtime_call(name, args))
+        }
+      }
+    }
 
-pub fn get_registry() -> BackendRegistry {
-  BackendRegistry(
-    target: WebAssembly,
-    builtins: dict.from_list([
-      #("print", BuiltinDef(
-        name: "print",
-        arity: 1,
-        codegen: fn(_args, _target) {
-          // WASM has no console - emit trap
-          Ok("(unreachable) ;; print not supported in WASM")
-        },
-        platforms: None,
-      )),
-      #("add", BuiltinDef(
-        name: "add",
-        arity: 2,
-        codegen: fn(args, _target) {
-          Ok("i32.add(" <> emit_expr(args[0]) <> ", " <> emit_expr(args[1]) <> ")")
-        },
-        platforms: None,
-      )),
-    ]),
-    runtime_module: Some("./runtime/wasm_runtime.js"),
-  )
+    // ... other cases
+  }
+}
+
+fn emit_runtime_call(name: String, args: List(Term)) -> String {
+  // Emit as runtime function call
+  name <> "(" <> string.join(list.map(args, emit_expr), ", ") <> ")"
 }
 ```
 
@@ -662,7 +681,7 @@ pub fn generate(gen: Generator, term: Term) -> Result(String, String) {
 
 fn emit_term(term: Term, gen: Generator) -> Result(String, String) {
   case term.data {
-    BuiltIn(name, args) -> {
+    Call(name, args) -> {
       case dict.get(gen.backend.builtins, name) {
         Ok(builtin) -> {
           // Check platform availability
@@ -678,10 +697,15 @@ fn emit_term(term: Term, gen: Generator) -> Result(String, String) {
             None -> builtin.codegen(args, gen.target)
           }
         }
-        Error(_) -> Error("Unknown built-in: " <> name)
+        Error(_) -> {
+          // Unknown built-in at codegen time
+          // This means it was deferred to runtime (VCall)
+          // Emit runtime call
+          Ok(emit_runtime_call(name, args))
+        }
       }
     }
-    
+
     // ... other cases
   }
 }
@@ -724,10 +748,10 @@ pub fn calculate_hash(
 pub fn comptime_timestamp_example() {
   // Source
   let timestamp = comptime now()
-  
+
   // After elaboration
   let timestamp = 1234567890 // Literal embedded
-  
+
   // Module hash includes this literal
   // If timestamp changes, hash changes, module rebuilds
 }
@@ -736,10 +760,10 @@ pub fn comptime_timestamp_example() {
 pub fn comptime_file_example() {
   // Source
   let config = comptime read_file("config.json")
-  
+
   // After elaboration
   let config = "{\"port\": 8080}" // Content embedded
-  
+
   // Module hash includes this content
   // If file changes, hash changes, module rebuilds
 }
@@ -749,13 +773,15 @@ pub fn comptime_file_example() {
 
 ## 8. Implementation Phases
 
-### Phase 1: Built-in Infrastructure (Week 1-2)
+### Phase 1: Built-in Infrastructure (Week 1-2) ✅ COMPLETE
 
-- [ ] Add `BuiltIn(name, args)` to `TermData`
-- [ ] Add `VBuiltIn` to `Value`
-- [ ] Implement `add_impl`, `sub_impl`, etc. (pure arithmetic)
-- [ ] Update `infer` to handle `BuiltIn`
-- [ ] Add `host_registry` to `State`
+- [x] Add `Call(name, args)` to `TermData`
+- [x] Add `VCall` to `Value`
+- [x] Implement `add_impl`, `sub_impl`, etc. (pure arithmetic)
+- [x] Update `infer` to handle `Call`
+- [x] Add `ffi` to `State`
+- [x] Make `Builtin` pure (no State in impl)
+- [x] Remove `arity` from `Builtin`
 
 ### Phase 2: Comptime Blocks (Week 3-4)
 
@@ -824,7 +850,20 @@ const config = "{\"port\": 8080}";
 const port = 8080;
 ```
 
-### 9.3 Timestamp for Release
+### 9.3 Unknown FFI Deferred to Runtime
+
+```gleam
+// Source
+let x = custom_builtin(1, 2)  // Unknown FFI
+
+// After elaboration
+let x = VCall("custom_builtin", 2, [1, 2], todo)  // Deferred to runtime
+
+// JavaScript output
+const x = custom_builtin(1, 2);  // Runtime call
+```
+
+### 9.4 Timestamp for Release
 
 ```gleam
 // Source (impure comptime)
@@ -837,7 +876,7 @@ let release_time = 1234567890  // Timestamp embedded
 const release_time = 1234567890;
 ```
 
-### 9.4 Platform-Specific Built-in
+### 9.5 Platform-Specific Built-in
 
 ```gleam
 // Source
@@ -851,7 +890,7 @@ let data = fs_read("data.txt")  // Only works on Native target
 const data = fs_read("data.txt");
 ```
 
-### 9.5 User-Created Backend
+### 9.6 User-Created Backend
 
 ```gleam
 // my_java_backend.gleam
@@ -863,7 +902,6 @@ pub fn get_registry() -> BackendRegistry {
     builtins: dict.from_list([
       #("print", BuiltinDef(
         name: "print",
-        arity: 1,
         codegen: fn(args, _target) {
           Ok("System.out.println(" <> emit(args[0]) <> ")")
         },
@@ -906,52 +944,100 @@ mylang build
 
 ## 11. Integration with Existing Code
 
-### 11.1 Existing infer/check Signatures
+### 11.1 Updated Function Signatures
 
-The existing signatures already support this design:
+All evaluation functions now take `ffi: FFI` as first argument:
 
 ```gleam
-pub fn infer(s: State, term: Term) -> #(Value, Type, State)
-pub fn check(s: State, term: Term, expected_ty: Value, ty_span: Span) -> #(Value, State)
+pub fn eval(ffi: FFI, env: Env, term: Term) -> Value
+pub fn quote(ffi: FFI, lvl: Int, value: Value, s: Span) -> Term
+pub fn normalize(ffi: FFI, env: Env, term: Term, s: Span) -> Term
+pub fn do_app(ffi: FFI, fun: Value, arg: Value) -> Value
+pub fn force(ffi: FFI, sub: Subst, value: Value) -> Value
+pub fn apply_spine(ffi: FFI, value: Value, spine: List(Elim)) -> Value
 ```
 
-Both return normalized `Value`, which is exactly what we need for comptime evaluation.
+### 11.2 Test Updates Required
 
-### 11.2 Existing Error Handling
-
-The existing `State.errors` list can hold `ComptimeError`:
+All tests need to be updated to pass `default_builtins` as first argument:
 
 ```gleam
-pub type State {
-  State(
-    // ... existing fields
-    errors: List(Error),
-  )
-}
+// Before
+c.eval([], term)
+c.quote(0, value, s1)
+c.normalize([], term, s1)
 
-// ComptimeError can be added to errors
-fn add_comptime_error(s: State, err: ComptimeError) -> State {
-  State(..s, errors: [ComptimeErr(err), ..s.errors])
-}
+// After
+c.eval(c.default_builtins, [], term)
+c.quote(c.default_builtins, 0, value, s1)
+c.normalize(c.default_builtins, [], term, s1)
 ```
 
-### 11.3 Existing VErr
+### 11.3 Check Tests Simplification
 
-The existing `VErr` value is perfect for comptime failures:
+Since `check` is now just `infer` + `unify`, most check-specific tests are redundant. Keep only:
+
+1. **Type mismatch detection** - Verify errors are caught
+2. **Span reporting** - Verify both term and type spans are correct
+3. **Error accumulation** - Verify multiple errors are collected
+
+Remove tests that just duplicate infer tests.
+
+---
+
+## 12. Testing Strategy
+
+### 12.1 Call Tests (New)
+
+Add comprehensive tests for `Call` term:
 
 ```gleam
-pub type Value {
-  // ... existing constructors
-  VErr  // Already exists!
-}
+// eval_call_known_test()
+// - Known FFI executes correctly
+// - Arguments evaluated before call
+
+// eval_call_unknown_test()
+// - Unknown FFI returns VCall
+// - Arguments still evaluated
+
+// quote_call_test()
+// - VCall quotes back to Call term
+// - Args quoted recursively
+
+// unify_call_test()
+// - VCall unifies with same VCall
+// - VCall doesn't unify with different VCall
+
+// infer_call_test()
+// - Known FFI infers correct type
+// - Unknown FFI infers VCall type
+```
+
+### 12.2 Check Tests (Reduced)
+
+Keep only essential check tests:
+
+```gleam
+// check_type_mismatch_test()
+// - Verify type mismatch caught
+// - Verify span reported correctly
+
+// check_error_accumulation_test()
+// - Verify multiple errors collected
+
+// check_span_reporting_test()
+// - Verify both term and type spans correct
 ```
 
 ---
 
-## 12. Open Questions (Answered)
+## 13. Open Questions (Answered)
 
 | Question | Decision |
 |----------|----------|
+| Store arity in Builtin? | **No** - implementation handles it |
+| Unknown FFI during eval? | **Return VCall** (deferred to runtime) |
+| Builtin impl signature? | **Pure** `fn(List(Value)) -> Value` |
 | Comptime explicit or inferred? | **Explicit** (`comptime` keyword) |
 | Impure built-ins in comptime? | **Yes** (with permissions) |
 | Comptime errors? | **VErr + State.errors** |
@@ -959,7 +1045,7 @@ pub type Value {
 
 ---
 
-## 13. References
+## 14. References
 
 - [Normalization by Evaluation](https://en.wikipedia.org/wiki/Normalization_by_evaluation)
 - [Zig Comptime](https://ziglang.org/documentation/master/#comptime)
