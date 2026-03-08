@@ -215,8 +215,65 @@ pub type State {
     errors: List(Error),
     /// Host FFI registry (for built-in evaluation)
     ffi: FFI,
+    /// Compiler configuration (permissions, target, etc.)
+    config: Config,
+    /// Comptime execution errors
+    comptime_errors: List(ComptimeError),
   )
 }
+
+// ============================================================================
+// COMPILER CONFIGURATION
+// ============================================================================
+// Configuration for compilation target and permissions.
+
+/// Compilation target
+pub type Target {
+  JavaScript
+  Python
+  WebAssembly
+  Native(os: String, arch: String)
+}
+
+/// Compiler configuration
+pub type Config {
+  Config(
+    target: Target,
+    permissions: List(Permission),
+    /// Path to backend module (None = use default for target)
+    backend_module: Option(String),
+  )
+}
+
+/// Comptime error type
+pub type ComptimeError {
+  ComptimeError(
+    message: String,
+    span: Span,
+    /// Permission that was denied (if applicable)
+    permission: Option(Permission),
+  )
+}
+
+/// Default compiler configuration
+pub const default_config = Config(
+  target: JavaScript,
+  permissions: [],
+  backend_module: None,
+)
+
+/// Create initial state with default configuration
+pub const initial_state = State(
+  hole: 0,
+  var: 0,
+  ctrs: [],
+  ctx: [],
+  sub: [],
+  errors: [],
+  ffi: [],
+  config: default_config,
+  comptime_errors: [],
+)
 
 // ============================================================================
 // HOST FFI AND BUILT-INS
@@ -235,10 +292,10 @@ pub type Permission {
 }
 
 /// Host FFI function definition
+/// Note: arity is NOT stored here - the implementation handles arity checking
 pub type Builtin {
   Builtin(
     name: String,
-    arity: Int,
     impl: fn(List(Value)) -> Value,
     required_permissions: List(Permission),
   )
@@ -248,50 +305,28 @@ pub type Builtin {
 pub type FFI =
   List(#(String, Builtin))
 
-/// FFI built-ins used at build time, mostly pure functions.
+/// Default FFI built-ins - pure functions available at compile-time and runtime.
+/// These are the standard arithmetic, comparison, and logical operations.
 pub const ffi_build = [
   // Arithmetic (pure, always allowed)
-  #("add", Builtin("add", 2, add_impl, [])),
-  #("sub", Builtin("sub", 2, sub_impl, [])),
-  #("mul", Builtin("mul", 2, mul_impl, [])),
-  #("div", Builtin("div", 2, div_impl, [])),
-  #("mod", Builtin("mod", 2, mod_impl, [])),
+  #("add", Builtin("add", add_impl, [])),
+  #("sub", Builtin("sub", sub_impl, [])),
+  #("mul", Builtin("mul", mul_impl, [])),
+  #("div", Builtin("div", div_impl, [])),
+  #("mod", Builtin("mod", mod_impl, [])),
 
   // Comparison (pure)
-  #("eq", Builtin("eq", 2, eq_impl, [])),
-  #("neq", Builtin("neq", 2, neq_impl, [])),
-  #("lt", Builtin("lt", 2, lt_impl, [])),
-  #("lte", Builtin("lte", 2, lte_impl, [])),
-  #("gt", Builtin("gt", 2, gt_impl, [])),
-  #("gte", Builtin("gte", 2, gte_impl, [])),
+  #("eq", Builtin("eq", eq_impl, [])),
+  #("neq", Builtin("neq", neq_impl, [])),
+  #("lt", Builtin("lt", lt_impl, [])),
+  #("lte", Builtin("lte", lte_impl, [])),
+  #("gt", Builtin("gt", gt_impl, [])),
+  #("gte", Builtin("gte", gte_impl, [])),
 
   // Logical (pure)
-  #("and", Builtin("and", 2, and_impl, [])),
-  #("or", Builtin("or", 2, or_impl, [])),
-  #("not", Builtin("not", 1, not_impl, [])),
-]
-
-/// FFI built-ins used at run time, can include functions with side effects.
-pub const ffi_run = [
-  // Arithmetic (pure, always allowed)
-  #("add", Builtin("add", 2, add_impl, [])),
-  #("sub", Builtin("sub", 2, sub_impl, [])),
-  #("mul", Builtin("mul", 2, mul_impl, [])),
-  #("div", Builtin("div", 2, div_impl, [])),
-  #("mod", Builtin("mod", 2, mod_impl, [])),
-
-  // Comparison (pure)
-  #("eq", Builtin("eq", 2, eq_impl, [])),
-  #("neq", Builtin("neq", 2, neq_impl, [])),
-  #("lt", Builtin("lt", 2, lt_impl, [])),
-  #("lte", Builtin("lte", 2, lte_impl, [])),
-  #("gt", Builtin("gt", 2, gt_impl, [])),
-  #("gte", Builtin("gte", 2, gte_impl, [])),
-
-  // Logical (pure)
-  #("and", Builtin("and", 2, and_impl, [])),
-  #("or", Builtin("or", 2, or_impl, [])),
-  #("not", Builtin("not", 1, not_impl, [])),
+  #("and", Builtin("and", and_impl, [])),
+  #("or", Builtin("or", or_impl, [])),
+  #("not", Builtin("not", not_impl, [])),
 ]
 
 // ============================================================================
@@ -431,6 +466,129 @@ fn bool_to_int(b: Bool) -> Int {
 }
 
 // ============================================================================
+// HOST EVALUATION (COMPTIME)
+// ============================================================================
+// Host evaluation executes built-in functions during elaboration.
+// This supports both pure operations (arithmetic) and impure operations
+// (file I/O, environment variables) with permission checking.
+
+/// Check if a required permission is granted.
+fn check_permission(required: Permission, granted: List(Permission)) -> Bool {
+  case required {
+    AllowRead(req_path) -> {
+      list.any(granted, fn(p) {
+        case p {
+          AllowRead("*") -> True
+          AllowRead(path) -> string.starts_with(req_path, path)
+          _ -> False
+        }
+      })
+    }
+    AllowWrite(req_path) -> {
+      list.any(granted, fn(p) {
+        case p {
+          AllowWrite("*") -> True
+          AllowWrite(path) -> string.starts_with(req_path, path)
+          _ -> False
+        }
+      })
+    }
+    AllowEnv(req_var) -> {
+      list.any(granted, fn(p) {
+        case p {
+          AllowEnv("*") -> True
+          AllowEnv(var) -> var == req_var
+          _ -> False
+        }
+      })
+    }
+    AllowNet(req_host) -> {
+      list.any(granted, fn(p) {
+        case p {
+          AllowNet("*") -> True
+          AllowNet(host) -> host == req_host
+          _ -> False
+        }
+      })
+    }
+    AllowExec(req_cmd) -> {
+      list.any(granted, fn(p) {
+        case p {
+          AllowExec("*") -> True
+          AllowExec(cmd) -> cmd == req_cmd
+          _ -> False
+        }
+      })
+    }
+  }
+}
+
+/// Check if all required permissions are granted.
+fn all_permissions_granted(
+  required: List(Permission),
+  granted: List(Permission),
+) -> Bool {
+  list.all(required, fn(p) { check_permission(p, granted) })
+}
+
+/// Add a comptime error to the state.
+fn add_comptime_error(s: State, err: ComptimeError) -> State {
+  State(..s, comptime_errors: list.append(s.comptime_errors, [err]))
+}
+
+/// Evaluate a term at compile-time (host evaluation).
+///
+/// This is used for `comptime` blocks. It executes built-in functions
+/// with permission checking and returns the result.
+///
+/// Unknown built-ins return VCall (deferred to runtime).
+pub fn host_eval(s: State, term: Term) -> #(Value, State) {
+  case term.data {
+    Call(name, args) -> {
+      case list.key_find(s.ffi, name) {
+        Ok(Builtin(_, impl, required_perms)) -> {
+          // Check permissions
+          case all_permissions_granted(required_perms, s.config.permissions) {
+            True -> {
+              // Evaluate arguments
+              let #(arg_vals, _, s1) = infer_args(s, args)
+
+              // Execute (pure function)
+              let result = impl(arg_vals)
+              #(result, s1)
+            }
+            False -> {
+              let perm = case required_perms {
+                [p, ..] -> Some(p)
+                [] -> None
+              }
+              let err =
+                ComptimeError(
+                  "Permission denied for comptime operation: " <> name,
+                  term.span,
+                  perm,
+                )
+              #(VErr, add_comptime_error(s, err))
+            }
+          }
+        }
+        Error(Nil) -> {
+          // Unknown FFI - return VCall (deferred to runtime)
+          let #(arg_vals, _, s1) = infer_args(s, args)
+          #(VCall(name, list.length(arg_vals), arg_vals, todo as "unknown"), s1)
+        }
+      }
+    }
+
+    // Recursively evaluate other terms
+    _ -> {
+      let #(val, ty, s1) = infer(s, term)
+      #(val, s1)
+    }
+  }
+}
+
+// ============================================================================
 // EXHAUSTIVENESS CHECKING
 // ============================================================================
 // Pattern heads for the matrix algorithm (Maranget's algorithm).
@@ -487,7 +645,7 @@ pub type Error {
 // This is the "normalization" part of Normalization by Evaluation.
 
 /// Evaluate a term to its normal form in the given environment.
-/// 
+///
 /// The environment maps De Bruijn indices to values. When evaluating:
 /// - Variables look up their index in the environment
 /// - Lambdas become closures (capturing the current environment)
@@ -526,8 +684,14 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
       let arg_vals = list.map(args, eval(ffi, env, _))
       // Look up the builtin and call it
       case list.key_find(ffi, name) {
-        Ok(Builtin(_, _, impl, _)) -> impl(arg_vals)
-        Error(Nil) -> VCall(name, 0, arg_vals, todo as "unknown builtin")
+        Ok(Builtin(_, impl, _)) -> impl(arg_vals)
+        Error(Nil) ->
+          VCall(
+            name,
+            list.length(arg_vals),
+            arg_vals,
+            todo as "unknown builtin",
+          )
       }
     }
     Comptime(term) -> eval(ffi, env, term)
@@ -535,7 +699,7 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
 }
 
 /// Evaluate a field projection.
-/// 
+///
 /// If the value is neutral (unknown), the projection is added to the spine.
 /// If the value is a record, the field is looked up immediately.
 fn do_dot(value: Value, name: String) -> Value {
@@ -564,10 +728,10 @@ pub fn do_app(ffi: FFI, fun: Value, arg: Value) -> Value {
 }
 
 /// Evaluate a pattern match.
-/// 
+///
 /// If the argument is neutral (unknown), the match is delayed by adding it to
 /// the spine. Otherwise, we try to match the argument against each case.
-/// 
+///
 /// The motive is the return type of the match (for dependent pattern matching).
 pub fn do_match(env: Env, arg: Value, motive: Value, cases: List(Case)) -> Value {
   case arg {
@@ -581,7 +745,7 @@ pub fn do_match(env: Env, arg: Value, motive: Value, cases: List(Case)) -> Value
 }
 
 /// Try to match a value against a list of cases, returning the first match.
-/// 
+///
 /// Returns the bindings (environment) and body of the matching case.
 pub fn do_match_cases(arg: Value, cases: List(Case)) -> Option(#(Env, Term)) {
   case cases {
@@ -595,7 +759,7 @@ pub fn do_match_cases(arg: Value, cases: List(Case)) -> Option(#(Env, Term)) {
 }
 
 /// Match a pattern against a value, returning bindings on success.
-/// 
+///
 /// This is runtime pattern matching (used during evaluation), not type checking.
 /// PAny always matches. PAs binds the matched value. Constructors and records
 /// recursively match their contents.
@@ -629,7 +793,7 @@ pub fn do_match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
 // Normalization by Evaluation (NbE) works by:
 // 1. Evaluating a term to its semantic value (normal form)
 // 2. Quoting the value back to syntax
-// 
+//
 // This is more efficient than syntactic reduction and handles alpha-equivalence
 // automatically (since bound variables are represented canonically).
 
@@ -642,7 +806,7 @@ pub fn normalize(ffi: FFI, env: Env, term: Term, s: Span) -> Term {
 }
 
 /// Quote a value back to syntax (reification).
-/// 
+///
 /// The level parameter tracks the current De Bruijn level. When quoting a
 /// lambda, we create a fresh neutral variable at the current level, apply it
 /// to the body, and quote the result. This converts De Bruijn levels back to
@@ -716,10 +880,10 @@ fn quote_elim(ffi: FFI, lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
 }
 
 /// Quote a neutral head (variable or hole) back to a term.
-/// 
+///
 /// For variables, converts from De Bruijn level to index:
 /// index = lvl - level - 1
-/// 
+///
 /// For example, at level 5, quoting HVar(2):
 /// index = 5 - 2 - 1 = 2
 fn quote_head(lvl: Int, head: Head, s: Span) -> Term {
@@ -737,7 +901,7 @@ fn quote_head(lvl: Int, head: Head, s: Span) -> Term {
 // an occurs check to prevent infinite types.
 
 /// Check if a value contains a specific hole (occurs check).
-/// 
+///
 /// This prevents infinite types like ?0 = ?0 → ?0 by checking if the hole
 /// being solved appears in the solution. The substitution is forced to
 /// check through solved metavariables.
@@ -767,15 +931,15 @@ pub fn occurs_elim(sub: Subst, id: Int, elim: Elim) -> Bool {
 }
 
 /// Unify two values, solving metavariables and accumulating solutions.
-/// 
+///
 /// Returns Ok(state) with updated substitution if unification succeeds.
 /// Returns Error if the values are incompatible (type error).
-/// 
+///
 /// IMPORTANT: `unify` itself is NOT error-resilient—it returns errors
 /// immediately when values don't match. Error recovery happens at the
 /// `infer` and `check` level, which catch unify errors, record them in
 /// the state, and continue with VErr.
-/// 
+///
 /// Key cases:
 /// - Holes: If one side is an unsolved hole, solve it (with occurs check)
 /// - Neutral terms: Unify heads and spines (errors on mismatch)
@@ -828,7 +992,7 @@ pub fn unify(
 }
 
 /// Unify two record field lists.
-/// 
+///
 /// Records are compared by field name (order doesn't matter). Missing fields
 /// produce an error. Fields are sorted by name during comparison.
 fn unify_fields(
@@ -863,7 +1027,7 @@ fn unify_fields(
 }
 
 /// Unify two eliminations (spine elements).
-/// 
+///
 /// Returns an error if the eliminations are incompatible (e.g., projection
 /// vs. application). This error will be caught by the caller and recorded
 /// for error recovery.
@@ -884,7 +1048,7 @@ fn unify_elim(
 }
 
 /// Unify two spine lists element-by-element.
-/// 
+///
 /// Returns an error if the spines have different lengths or incompatible
 /// elements. This error will be caught by the caller and recorded for
 /// error recovery.
@@ -908,7 +1072,7 @@ fn unify_elim_list(
 }
 
 /// Add an error to the state's error list.
-/// 
+///
 /// Used throughout type checking to accumulate errors rather than failing
 /// immediately. This enables IDE support where all errors are shown at once.
 pub fn with_err(s: State, err: Error) -> State {
@@ -919,15 +1083,15 @@ pub fn with_err(s: State, err: Error) -> State {
 // BIDIRECTIONAL TYPE CHECKING
 // ============================================================================
 // Bidirectional typing uses two modes:
-// 
+//
 // 1. INFER (synthesis): Given a term, compute its type
 //    - Used for: variables, literals, applications, holes
 //    - Direction: term → type (bottom-up)
-// 
+//
 // 2. CHECK (verification): Given a term and expected type, verify it matches
 //    - Used for: lambdas, constructors, annotations
 //    - Direction: type → term (top-down)
-// 
+//
 // This allows omitting type annotations where inference is possible.
 //
 // ERROR RECOVERY DESIGN:
@@ -938,12 +1102,12 @@ pub fn with_err(s: State, err: Error) -> State {
 // - The guarantee: if there are no errors, the program is fully correct
 
 /// Infer the type of a term (synthesis direction).
-/// 
+///
 /// Returns the evaluated value, its type, and the updated state.
-/// 
+///
 /// ERROR HANDLING: On error, records the error in state and returns VErr
 /// for both value and type, allowing checking to continue.
-/// 
+///
 /// Key cases:
 /// - Variables: Look up in context
 /// - Applications: Infer function type, check argument, return result type
@@ -1060,37 +1224,45 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
           // Evaluate arguments
           let #(arg_vals, arg_tys, s1) = infer_args(s, args)
 
-          // Check arity
-          case list.length(arg_vals) == builtin.arity {
-            True -> {
-              // Execute built-in (pure function)
-              let result_val = builtin.impl(arg_vals)
+          // Execute built-in (pure function)
+          let result_val = builtin.impl(arg_vals)
 
-              // Compute result type (simplified - assumes all args have same type for arithmetic)
-              let result_ty = case arg_tys {
-                [ty, ..] -> ty
-                [] -> VErr
-              }
-
-              #(result_val, result_ty, s1)
-            }
-            False -> {
-              let err = ArityMismatch(term.span, term.span)
-              #(VErr, VErr, with_err(s1, err))
-            }
+          // Compute result type (simplified - assumes all args have same type for arithmetic)
+          let result_ty = case arg_tys {
+            [ty, ..] -> ty
+            [] -> VErr
           }
+
+          #(result_val, result_ty, s1)
         }
         Error(Nil) -> {
-          // Unknown built-in
-          #(VErr, VErr, with_err(s, TODO("Unknown built-in: " <> name)))
+          // Unknown built-in - return VCall (deferred to runtime)
+          let #(arg_vals, arg_tys, s1) = infer_args(s, args)
+          let result_ty = case arg_tys {
+            [ty, ..] -> ty
+            [] -> VErr
+          }
+          #(
+            VCall(
+              name,
+              list.length(arg_vals),
+              arg_vals,
+              todo as "unknown builtin",
+            ),
+            result_ty,
+            s1,
+          )
         }
       }
     }
     Comptime(term) -> {
       // Comptime blocks are evaluated during elaboration
-      // For now, just evaluate the inner term normally
-      // (full comptime support will be added later)
-      infer(s, term)
+      // Execute with host_eval for permission checking
+      let #(val, s1) = host_eval(s, term)
+      // Quote the result back to a term and infer its type
+      let quoted = quote(s1.ffi, 0, val, term.span)
+      let #(val2, ty, s2) = infer(s1, quoted)
+      #(val2, ty, s2)
     }
   }
 }
@@ -1143,10 +1315,10 @@ fn infer_fields(
 }
 
 /// Bind variables from a pattern against an expected type.
-/// 
+///
 /// This is used during type checking of match branches and let-bindings.
 /// It adds bound variables to the context and returns the matched value.
-/// 
+///
 /// Key cases:
 /// - PAny: Creates a hole (unknown value)
 /// - PAs: Binds the matched value with the given name
@@ -1244,7 +1416,7 @@ pub fn check(
 }
 
 /// Process a constructor definition for type checking.
-/// 
+///
 /// Creates holes for each type parameter and infers the argument and
 /// return types in the extended context. Returns the parameter hole IDs
 /// and the inferred types.
@@ -1264,9 +1436,9 @@ fn check_ctr_def(s: State, ctr: CtrDef) -> #(List(Int), Value, Value, State) {
 }
 
 /// Check that two types are equal by unifying them.
-/// 
+///
 /// Returns the forced (substituted) type and updated state.
-/// 
+///
 /// ERROR HANDLING: On unify failure, records the error and returns.
 /// This is the primary place where unify errors are caught and converted
 /// to error recovery (VErr propagation).
@@ -1284,7 +1456,7 @@ pub fn check_type(
 }
 
 /// Force all solved metavariables in a value.
-/// 
+///
 /// This recursively replaces holes with their solutions from the
 /// substitution. If a hole has a spine (pending operations), the
 /// spine is applied to the solution.
@@ -1303,7 +1475,7 @@ pub fn force(ffi: FFI, sub: Subst, value: Value) -> Value {
 }
 
 /// Apply a spine (list of eliminations) to a value.
-/// 
+///
 /// This is used when forcing metavariables that have pending operations.
 fn apply_spine(ffi: FFI, value: Value, spine: List(Elim)) -> Value {
   list.fold(spine, value, fn(value, elim) {
@@ -1316,7 +1488,7 @@ fn apply_spine(ffi: FFI, value: Value, spine: List(Elim)) -> Value {
 }
 
 /// Solve constructor parameters from the substitution.
-/// 
+///
 /// After unifying a constructor's return type with the expected type,
 /// the parameters should be solved. This function extracts them from
 /// the substitution, recording errors for any unsolved parameters.
@@ -1352,7 +1524,7 @@ pub fn ctr_solve_params(
 // - If the matrix doesn't cover all cases, we get missing witnesses
 
 /// Deconstruct a pattern into its head constructor and arguments.
-/// 
+///
 /// The head determines which specializations are possible.
 /// For records, fields are sorted by name for canonical comparison.
 fn deconstruct(pat: Pattern) -> #(PHead, List(Pattern)) {
@@ -1393,7 +1565,7 @@ fn head_arity(head: PHead) -> Int {
 }
 
 /// Compute the default matrix by removing patterns that aren't wildcards.
-/// 
+///
 /// Used when the first pattern is a wildcard—we skip it and continue
 /// with the rest of the row.
 fn default_matrix(matrix: PMatrix) -> PMatrix {
@@ -1411,7 +1583,7 @@ fn default_matrix(matrix: PMatrix) -> PMatrix {
 }
 
 /// Specialize a matrix for a specific constructor head.
-/// 
+///
 /// For each row:
 /// - If the first pattern matches the target, extract its arguments
 /// - If the first pattern is a wildcard, expand it with wildcards
@@ -1436,7 +1608,7 @@ pub fn specialize(matrix: PMatrix, target: PHead) -> PMatrix {
 }
 
 /// Extract all concrete (non-wildcard) heads from the first column.
-/// 
+///
 /// Used to determine which constructors are already covered.
 pub fn get_concrete_heads(matrix: PMatrix) -> List(PHead) {
   list.filter_map(matrix, fn(r) {
@@ -1453,7 +1625,7 @@ pub fn get_concrete_heads(matrix: PMatrix) -> List(PHead) {
 }
 
 /// Find missing constructor heads for GADT-style exhaustiveness.
-/// 
+///
 /// For constructor patterns, we check which other constructors of the
 /// same type could apply but aren't covered. This handles GADTs where
 /// different constructors may have different return types.
@@ -1492,10 +1664,10 @@ pub fn get_missing_heads(
 }
 
 /// Check if a pattern vector is useful (not redundant) against a matrix.
-/// 
+///
 /// Returns a list of witnesses—patterns that the vector covers but the
 /// matrix doesn't. If empty, the pattern is redundant.
-/// 
+///
 /// Algorithm:
 /// - If matrix is empty, the vector is a witness (useful)
 /// - If vector is empty but matrix isn't, no witnesses (redundant)
@@ -1557,17 +1729,17 @@ pub fn useful(
 }
 
 /// Check a list of match cases for exhaustiveness.
-/// 
+///
 /// This is called during type checking of match expressions to verify that
 /// all possible patterns are covered and no cases are redundant.
-/// 
+///
 /// Returns a list of errors:
 /// - MatchRedundantCase: A case that's already covered by previous cases
 /// - MatchMissingCase: A pattern that isn't covered by any case
-/// 
+///
 /// The algorithm builds a matrix incrementally, checking each new case
 /// against what's already covered (Maranget's algorithm).
-/// 
+///
 /// This function is pure and returns a list of errors - the caller is
 /// responsible for adding them to the state via `with_err`.
 pub fn check_exhaustiveness(
@@ -1613,14 +1785,14 @@ pub fn check_exhaustiveness(
 // -- Error handling helpers --
 
 /// Create an error result for infer when type checking fails.
-/// 
+///
 /// Returns VErr for both value and type, allowing checking to continue.
 fn infer_error(s: State, err: Error) -> #(Value, Type, State) {
   #(VErr, VErr, with_err(s, err))
 }
 
 /// Get a binding from the context by De Bruijn index.
-/// 
+///
 /// The context stores (name, (value, type)) tuples, but we only need
 /// the (value, type) pair for type checking.
 fn ctx_get(ctx: Context, index: Int) -> Option(#(Value, Type)) {
@@ -1631,7 +1803,7 @@ fn ctx_get(ctx: Context, index: Int) -> Option(#(Value, Type)) {
 }
 
 /// Get element at index i from a list (0-based).
-/// 
+///
 /// Returns None if the index is out of bounds.
 /// This is used for De Bruijn index lookup in environments.
 pub fn list_get(xs: List(a), i: Int) -> Option(a) {
@@ -1667,7 +1839,7 @@ pub fn show_span(s: Span) -> String {
 }
 
 /// Extract the runtime environment from the typing context.
-/// 
+///
 /// The context stores (value, type) pairs, but for evaluation we only
 /// need the values. This extracts just the values in order.
 fn get_env(s: State) -> Env {
@@ -1675,7 +1847,7 @@ fn get_env(s: State) -> Env {
 }
 
 /// Create a fresh variable for type checking.
-/// 
+///
 /// Returns a neutral term at the current level and increments the counter.
 /// Used when checking lambdas and Pi types to represent bound variables.
 fn new_var(s: State) -> #(Value, State) {
@@ -1684,7 +1856,7 @@ fn new_var(s: State) -> #(Value, State) {
 }
 
 /// Define a variable in the typing context.
-/// 
+///
 /// Creates a fresh variable and adds it to the context with the given
 /// name and type. Empty names are replaced with a generated name.
 fn def_var(s: State, name: String, ty: Type) -> #(Value, State) {
@@ -1697,7 +1869,7 @@ fn def_var(s: State, name: String, ty: Type) -> #(Value, State) {
 }
 
 /// Create a fresh hole (metavariable) for type checking.
-/// 
+///
 /// Returns a neutral hole term and increments the hole counter.
 /// Used when the type is unknown and should be inferred later.
 fn new_hole(s: State) -> #(Value, State) {

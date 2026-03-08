@@ -1076,11 +1076,11 @@ pub fn eval_call_known_test() {
   // Known FFI (add) executes correctly
   c.eval(c.ffi_build, [], call("add", [i32(1, s1), i32(2, s2)], s3))
   |> should.equal(v32(3))
-  
+
   // Known FFI (mul) executes correctly
   c.eval(c.ffi_build, [], call("mul", [i32(2, s1), i32(3, s2)], s3))
   |> should.equal(v32(6))
-  
+
   // Arguments evaluated before call
   c.eval(
     c.ffi_build,
@@ -1137,12 +1137,14 @@ pub fn infer_call_unknown_test() {
 
 pub fn check_call_test() {
   // Check with known FFI
-  let #(val, s) = c.check(s, call("add", [i32(1, s1), i32(2, s2)], s3), v32t, s4)
+  let #(val, s) =
+    c.check(s, call("add", [i32(1, s1), i32(2, s2)], s3), v32t, s4)
   val |> should.equal(v32(3))
   s.errors |> should.equal([])
-  
+
   // Check with type mismatch
-  let #(val, s) = c.check(s, call("add", [i32(1, s1), i32(2, s2)], s3), v64t, s4)
+  let #(val, s) =
+    c.check(s, call("add", [i32(1, s1), i32(2, s2)], s3), v64t, s4)
   val |> should.equal(c.VErr)
   case s.errors {
     [c.TypeMismatch(v32t, v64t, _, _), ..] -> True |> should.be_true
@@ -1653,7 +1655,7 @@ pub fn check_exhaustiveness_ctr_maybe_test() {
 }
 
 // --- HELPERS to make writing ASTs less painful ---
-const s = c.State(0, 0, [], [], [], [], c.ffi_build)
+const s = c.initial_state
 
 pub const s0 = c.Span("core_test", 0, 0)
 
