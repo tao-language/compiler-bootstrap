@@ -1,7 +1,8 @@
 import core/core as c
+import gleam/dict
+import gleam/list
 import gleeunit
 import gleeunit/should
-import gleam/list
 
 pub fn main() {
   gleeunit.main()
@@ -45,7 +46,7 @@ pub fn unify_hole_solve_test() {
   // Solving an unsolved hole
   c.unify(s, vhole(0), v32t, s1, s2)
   |> should.equal(Ok(c.State(..s, sub: [#(0, v32t)])))
-  
+
   // Symmetric case
   c.unify(s, v32t, vhole(0), s1, s2)
   |> should.equal(Ok(c.State(..s, sub: [#(0, v32t)])))
@@ -164,11 +165,11 @@ pub fn quote_var_test() {
   // At level 1, HVar(0) should become Var(0)
   c.quote(1, c.VNeut(c.HVar(0), []), s1)
   |> should.equal(c.Term(c.Var(0), s1))
-  
+
   // At level 2, HVar(0) should become Var(1)
   c.quote(2, c.VNeut(c.HVar(0), []), s1)
   |> should.equal(c.Term(c.Var(1), s1))
-  
+
   // At level 2, HVar(1) should become Var(0)
   c.quote(2, c.VNeut(c.HVar(1), []), s1)
   |> should.equal(c.Term(c.Var(0), s1))
@@ -190,13 +191,22 @@ pub fn quote_neut_dot_test() {
 pub fn quote_neut_app_test() {
   let v = c.VNeut(c.HVar(0), [c.EApp(v32t)])
   c.quote(1, v, s1)
-  |> should.equal(c.Term(c.App(c.Term(c.Var(0), s1), c.Term(c.LitT(c.I32T), s1)), s1))
+  |> should.equal(c.Term(
+    c.App(c.Term(c.Var(0), s1), c.Term(c.LitT(c.I32T), s1)),
+    s1,
+  ))
 }
 
 pub fn quote_rcd_test() {
   let v = c.VRcd([#("a", v32t), #("b", v64t)])
   c.quote(0, v, s1)
-  |> should.equal(c.Term(c.Rcd([#("a", c.Term(c.LitT(c.I32T), s1)), #("b", c.Term(c.LitT(c.I64T), s1))]), s1))
+  |> should.equal(c.Term(
+    c.Rcd([
+      #("a", c.Term(c.LitT(c.I32T), s1)),
+      #("b", c.Term(c.LitT(c.I64T), s1)),
+    ]),
+    s1,
+  ))
 }
 
 pub fn quote_ctr_test() {
@@ -215,7 +225,10 @@ pub fn quote_lam_test() {
 pub fn quote_pi_test() {
   let v = c.VPi("x", [], v32t, c.Term(c.Var(0), s1))
   c.quote(0, v, s1)
-  |> should.equal(c.Term(c.Pi("x", c.Term(c.LitT(c.I32T), s1), c.Term(c.Var(0), s1)), s1))
+  |> should.equal(c.Term(
+    c.Pi("x", c.Term(c.LitT(c.I32T), s1), c.Term(c.Var(0), s1)),
+    s1,
+  ))
 }
 
 pub fn quote_verr_test() {
@@ -263,7 +276,8 @@ pub fn normalize_dot_test() {
 
 pub fn normalize_ann_test() {
   // Normalize (1 : I32) → 1
-  let ann = c.Term(c.Ann(c.Term(c.Lit(c.I32(1)), s1), c.Term(c.LitT(c.I32T), s1)), s1)
+  let ann =
+    c.Term(c.Ann(c.Term(c.Lit(c.I32(1)), s1), c.Term(c.LitT(c.I32T), s1)), s1)
   c.normalize([], ann, s1)
   |> should.equal(c.Term(c.Lit(c.I32(1)), s1))
 }
@@ -334,7 +348,7 @@ pub fn infer_multiple_errors_test() {
   // Both errors should be accumulated
   let term = c.Term(c.App(c.Term(c.Var(0), s1), c.Term(c.Var(1), s1)), s1)
   let #(_, _, s) = c.infer(s, term)
-  
+
   // Should have at least 2 errors (one for each undefined var)
   case list.length(s.errors) >= 2 {
     True -> True
@@ -346,7 +360,7 @@ pub fn infer_multiple_errors_test() {
 pub fn check_accumulates_errors_test() {
   // Type mismatch should be recorded, not thrown
   let #(_, s) = c.check(s, c.Term(c.Lit(c.I32(1)), s1), v64t, s2)
-  
+
   s.errors
   |> should.equal([c.TypeMismatch(v32t, v64t, s1, s2)])
 }
@@ -567,7 +581,8 @@ pub fn unify_rcd_order_test() {
 pub fn unify_rcd_bind_test() {
   let a = c.VRcd([#("a", v32t)])
   let b = c.VRcd([#("a", vhole(1))])
-  c.unify(s, a, b, s1, s2) |> should.equal(Ok(c.State(..s, sub: [#(1, v32t)])))
+  c.unify(s, a, b, s1, s2)
+  |> should.equal(Ok(c.State(..s, sub: [#(1, v32t)])))
 }
 
 pub fn infer_rcd_test() {
@@ -1460,7 +1475,7 @@ pub fn check_exhaustiveness_ctr_maybe_test() {
 }
 
 // --- HELPERS to make writing ASTs less painful ---
-const s = c.State(0, 0, [], [], [], [])
+const s = c.State(0, 0, [], [], [], [], c.default_host_registry)
 
 pub const s0 = c.Span("core_test", 0, 0)
 

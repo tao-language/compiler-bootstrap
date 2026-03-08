@@ -246,35 +246,33 @@ pub type HostFFI {
 
 /// Host FFI registry
 pub type HostRegistry {
-  HostRegistry(ffis: Dict(String, HostFFI))
+  HostRegistry(ffis: List(#(String, HostFFI)))
 }
 
 /// Create default host registry with basic built-ins
-pub fn default_host_registry() -> HostRegistry {
-  HostRegistry(
-    ffis: dict.from_list([
-      // Arithmetic (pure, always allowed)
-      #("add", HostFFI("add", 2, add_impl, [])),
-      #("sub", HostFFI("sub", 2, sub_impl, [])),
-      #("mul", HostFFI("mul", 2, mul_impl, [])),
-      #("div", HostFFI("div", 2, div_impl, [])),
-      #("mod", HostFFI("mod", 2, mod_impl, [])),
-      
-      // Comparison (pure)
-      #("eq", HostFFI("eq", 2, eq_impl, [])),
-      #("neq", HostFFI("neq", 2, neq_impl, [])),
-      #("lt", HostFFI("lt", 2, lt_impl, [])),
-      #("lte", HostFFI("lte", 2, lte_impl, [])),
-      #("gt", HostFFI("gt", 2, gt_impl, [])),
-      #("gte", HostFFI("gte", 2, gte_impl, [])),
-      
-      // Logical (pure)
-      #("and", HostFFI("and", 2, and_impl, [])),
-      #("or", HostFFI("or", 2, or_impl, [])),
-      #("not", HostFFI("not", 1, not_impl, [])),
-    ]),
-  )
-}
+pub const default_host_registry = HostRegistry(
+  ffis: [
+    // Arithmetic (pure, always allowed)
+    #("add", HostFFI("add", 2, add_impl, [])),
+    #("sub", HostFFI("sub", 2, sub_impl, [])),
+    #("mul", HostFFI("mul", 2, mul_impl, [])),
+    #("div", HostFFI("div", 2, div_impl, [])),
+    #("mod", HostFFI("mod", 2, mod_impl, [])),
+
+    // Comparison (pure)
+    #("eq", HostFFI("eq", 2, eq_impl, [])),
+    #("neq", HostFFI("neq", 2, neq_impl, [])),
+    #("lt", HostFFI("lt", 2, lt_impl, [])),
+    #("lte", HostFFI("lte", 2, lte_impl, [])),
+    #("gt", HostFFI("gt", 2, gt_impl, [])),
+    #("gte", HostFFI("gte", 2, gte_impl, [])),
+
+    // Logical (pure)
+    #("and", HostFFI("and", 2, and_impl, [])),
+    #("or", HostFFI("or", 2, or_impl, [])),
+    #("not", HostFFI("not", 1, not_impl, [])),
+  ],
+)
 
 // ============================================================================
 // BUILTIN IMPLEMENTATIONS
@@ -286,10 +284,7 @@ fn add_impl(args: List(Value), s: State) -> #(Value, State) {
     [VLit(F64(a)), VLit(F64(b))] -> #(VLit(F64(a +. b)), s)
     [a, b] -> {
       // Arguments not concrete - return stuck built-in
-      #(
-        VBuiltIn("add", 2, [a, b], add_impl),
-        s,
-      )
+      #(VBuiltIn("add", 2, [a, b], add_impl), s)
     }
     _ -> #(VErr, s)
   }
@@ -351,7 +346,7 @@ fn neq_impl(args: List(Value), s: State) -> #(Value, State) {
 fn lt_impl(args: List(Value), s: State) -> #(Value, State) {
   case args {
     [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a < b))), s)
-    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a < b))), s)
+    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a <. b))), s)
     [a, b] -> #(VBuiltIn("lt", 2, [a, b], lt_impl), s)
     _ -> #(VErr, s)
   }
@@ -360,7 +355,7 @@ fn lt_impl(args: List(Value), s: State) -> #(Value, State) {
 fn lte_impl(args: List(Value), s: State) -> #(Value, State) {
   case args {
     [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a <= b))), s)
-    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a <= b))), s)
+    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a <=. b))), s)
     [a, b] -> #(VBuiltIn("lte", 2, [a, b], lte_impl), s)
     _ -> #(VErr, s)
   }
@@ -369,7 +364,7 @@ fn lte_impl(args: List(Value), s: State) -> #(Value, State) {
 fn gt_impl(args: List(Value), s: State) -> #(Value, State) {
   case args {
     [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a > b))), s)
-    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a > b))), s)
+    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a >. b))), s)
     [a, b] -> #(VBuiltIn("gt", 2, [a, b], gt_impl), s)
     _ -> #(VErr, s)
   }
@@ -378,7 +373,7 @@ fn gt_impl(args: List(Value), s: State) -> #(Value, State) {
 fn gte_impl(args: List(Value), s: State) -> #(Value, State) {
   case args {
     [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a >= b))), s)
-    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a >= b))), s)
+    [VLit(F64(a)), VLit(F64(b))] -> #(VLit(I32(bool_to_int(a >=. b))), s)
     [a, b] -> #(VBuiltIn("gte", 2, [a, b], gte_impl), s)
     _ -> #(VErr, s)
   }
@@ -386,7 +381,10 @@ fn gte_impl(args: List(Value), s: State) -> #(Value, State) {
 
 fn and_impl(args: List(Value), s: State) -> #(Value, State) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a != 0 && b != 0))), s)
+    [VLit(I32(a)), VLit(I32(b))] -> #(
+      VLit(I32(bool_to_int(a != 0 && b != 0))),
+      s,
+    )
     [a, b] -> #(VBuiltIn("and", 2, [a, b], and_impl), s)
     _ -> #(VErr, s)
   }
@@ -394,7 +392,10 @@ fn and_impl(args: List(Value), s: State) -> #(Value, State) {
 
 fn or_impl(args: List(Value), s: State) -> #(Value, State) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> #(VLit(I32(bool_to_int(a != 0 || b != 0))), s)
+    [VLit(I32(a)), VLit(I32(b))] -> #(
+      VLit(I32(bool_to_int(a != 0 || b != 0))),
+      s,
+    )
     [a, b] -> #(VBuiltIn("or", 2, [a, b], or_impl), s)
     _ -> #(VErr, s)
   }
@@ -505,6 +506,12 @@ pub fn eval(env: Env, term: Term) -> Value {
       let motive_val = eval(env, motive)
       do_match(env, arg_val, motive_val, cases)
     }
+    BuiltIn(_, _) -> {
+      // Built-ins require HostRegistry to execute
+      // Pure eval without registry returns VErr
+      VErr
+    }
+    Comptime(term) -> eval(env, term)
   }
 }
 
@@ -651,6 +658,10 @@ pub fn quote(lvl: Int, value: Value, s: Span) -> Term {
       let out_quote = quote(lvl + 1, out_val, out_term.span)
       Term(Pi(name, in_quote, out_quote), s)
     }
+    VBuiltIn(name, _, args, _) -> {
+      // Quote stuck built-in with collected args
+      Term(BuiltIn(name, list.map(args, quote(lvl, _, s))), s)
+    }
     VErr -> Term(Hole(-1), s)
   }
 }
@@ -711,6 +722,7 @@ pub fn occurs(sub: Subst, id: Int, value: Value) -> Bool {
     VLam(_, env, _) -> list.any(env, occurs(sub, id, _))
     VPi(_, env, in, _) ->
       occurs(sub, id, in) || list.any(env, occurs(sub, id, _))
+    VBuiltIn(_, _, args, _) -> list.any(args, occurs(sub, id, _))
   }
 }
 
@@ -1010,26 +1022,29 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
     }
     BuiltIn(name, args) -> {
       // Look up built-in in host registry
-      case dict.get(s.host_registry.ffis, name) {
+      case list.key_find(s.host_registry.ffis, name) {
         Ok(builtin) -> {
           // Evaluate arguments
           let #(arg_vals, arg_tys, s1) = infer_args(s, args)
-          
+
           // Check arity
-          if list.length(arg_vals) != builtin.arity {
-            let err = ArityMismatch(term.span, term.span)
-            #(VErr, VErr, with_err(s1, err))
-          } else {
-            // Try to execute built-in
-            let #(result_val, s2) = builtin.impl(arg_vals, s1)
-            
-            // Compute result type (simplified - assumes all args have same type for arithmetic)
-            let result_ty = case arg_tys {
-              [ty, ..] -> ty
-              [] -> VErr
+          case list.length(arg_vals) == builtin.arity {
+            True -> {
+              // Try to execute built-in
+              let #(result_val, s2) = builtin.impl(arg_vals, s1)
+
+              // Compute result type (simplified - assumes all args have same type for arithmetic)
+              let result_ty = case arg_tys {
+                [ty, ..] -> ty
+                [] -> VErr
+              }
+
+              #(result_val, result_ty, s2)
             }
-            
-            #(result_val, result_ty, s2)
+            False -> {
+              let err = ArityMismatch(term.span, term.span)
+              #(VErr, VErr, with_err(s1, err))
+            }
           }
         }
         Error(Nil) -> {
@@ -1048,10 +1063,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
 }
 
 /// Infer types for all arguments
-fn infer_args(
-  s: State,
-  args: List(Term),
-) -> #(List(Value), List(Type), State) {
+fn infer_args(s: State, args: List(Term)) -> #(List(Value), List(Type), State) {
   infer_args_loop(args, [], [], s)
 }
 
