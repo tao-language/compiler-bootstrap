@@ -543,7 +543,8 @@ pub fn infer_hole_test() {
   let result = c.infer(s, hole(0, s1))
   // Check value is neutral hole and type is a hole
   case result {
-    #(c.VNeut(c.HHole(0), []), c.VNeut(c.HHole(1), []), _) -> True |> should.be_true
+    #(c.VNeut(c.HHole(0), []), c.VNeut(c.HHole(1), []), _) ->
+      True |> should.be_true
     _ -> False |> should.be_true
   }
 }
@@ -905,7 +906,11 @@ pub fn lam_infer_unknown_test() {
   let result = c.infer(s, term)
   // Check value is VLam and type is VPi with hole
   case result {
-    #(c.VLam("x", [], c.Term(c.Var(-1), _)), c.VPi("x", [], c.VNeut(c.HHole(0), []), c.Term(c.Hole(0), _)), _) -> True |> should.be_true
+    #(
+      c.VLam("x", [], c.Term(c.Var(-1), _)),
+      c.VPi("x", [], c.VNeut(c.HHole(0), []), c.Term(c.Hole(0), _)),
+      _,
+    ) -> True |> should.be_true
     _ -> False |> should.be_true
   }
 }

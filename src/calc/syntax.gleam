@@ -1,19 +1,19 @@
 // ============================================================================
 // CALCULATOR SYNTAX - Grammar Definition
 // ============================================================================
+
 /// Calculator language with +, *, and parentheses
 /// 
-/// Grammar:
-///   expr  -> term (('+' | '-') term)*
-///   term  -> factor (('*' | '/') factor)*
-///   factor -> NUMBER | '(' expr ')'
-
+/// Demonstrates the generic grammar system with:
+/// - Left-associative operators
+/// - Operator precedence
+/// - Automatic parser generation
+/// - AST-specific formatting using grammar precedence
 import calc/ast.{type Expr, Add, Int, Mul}
 import gleam/int
-import gleam/list
 import gleam/result
 import grammar.{type Grammar, type ParseChild, ChildAST, ChildToken}
-import parser.{ParseResult, type Token}
+import parser.{type ParseResult}
 
 // ============================================================================
 // GRAMMAR DEFINITION
@@ -26,51 +26,26 @@ pub fn calc_grammar() -> Grammar(Expr) {
   |> grammar.with_token("Operator")
   |> grammar.with_token("LParen")
   |> grammar.with_token("RParen")
-  
-  // expr -> term (('+'' | '-') term)*
-  |> grammar.rule(
+  // expr -> term (('+' | '-') term)*
+  // Left-associative with precedence 10
+  |> grammar.left_assoc(
     "Expr",
-    grammar.seq([
-      grammar.ref("Term"),
-      grammar.many(grammar.seq([
-        grammar.choice([
-          grammar.keyword("+"),
-          grammar.keyword("-"),
-        ]),
-        grammar.ref("Expr"),
-      ])),
-    ]),
-    fn(children) {
-      case children {
-        [ChildAST(left), ..ops] -> fold_ops(left, ops)
-        _ -> panic as "Invalid Expr children"
-      }
-    },
-    10,  // Precedence for + and -
+    grammar.ref("Term"),
+    [
+      grammar.op("+", fn(l, r) { Add(l, r) }, " + "),
+    ],
+    10,
   )
-
   // term -> factor (('*' | '/') factor)*
-  |> grammar.rule(
+  // Left-associative with precedence 20 (binds tighter than +)
+  |> grammar.left_assoc(
     "Term",
-    grammar.seq([
-      grammar.ref("Factor"),
-      grammar.many(grammar.seq([
-        grammar.choice([
-          grammar.keyword("*"),
-          grammar.keyword("/"),
-        ]),
-        grammar.ref("Term"),
-      ])),
-    ]),
-    fn(children) {
-      case children {
-        [ChildAST(left), ..ops] -> fold_ops(left, ops)
-        _ -> panic as "Invalid Term children"
-      }
-    },
-    20,  // Precedence for * and /
+    grammar.ref("Factor"),
+    [
+      grammar.op("*", fn(l, r) { Mul(l, r) }, " * "),
+    ],
+    20,
   )
-  
   // factor -> NUMBER | '(' expr ')'
   |> grammar.rule(
     "Factor",
@@ -89,44 +64,27 @@ pub fn calc_grammar() -> Grammar(Expr) {
         _ -> panic as "Invalid factor"
       }
     },
-    30,  // Highest precedence for atoms
+    30,
+    // Highest precedence for atoms
+    grammar.TemplateSeq([]),
   )
-}
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-fn fold_ops(left: Expr, ops: List(ParseChild(Expr))) -> Expr {
-  // ops should be: [token, operand, token, operand, ...]
-  // Build left-associative tree by processing pairs in order
-  case ops {
-    [] -> left
-    [ChildToken(token), ChildAST(right), ..rest] -> {
-      let new_left = case token.value {
-        "+" -> Add(left, right)
-        "-" -> panic as "Subtraction not implemented"
-        "*" -> Mul(left, right)
-        "/" -> panic as "Division not implemented"
-        _ -> panic as "Unknown operator"
-      }
-      fold_ops(new_left, rest)
-    }
-    _ -> left
-  }
 }
 
 // ============================================================================
 // PUBLIC API
 // ============================================================================
 
-pub fn parse(source: String) -> parser.ParseResult(Expr) {
+pub fn parse(source: String) -> ParseResult(Expr) {
   grammar.parse(calc_grammar(), source)
 }
 
 pub fn format(ast: Expr) -> String {
   format_expr(ast, 0)
 }
+
+// ============================================================================
+// FORMATTER - AST-specific using grammar precedence
+// ============================================================================
 
 fn format_expr(expr: Expr, parent_prec: Int) -> String {
   case expr {

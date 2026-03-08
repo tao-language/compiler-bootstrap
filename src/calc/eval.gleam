@@ -1,8 +1,8 @@
 // ============================================================================
 // CALCULATOR EVALUATOR
 // ============================================================================
-/// Evaluate calculator expressions
 
+/// Evaluate calculator expressions
 import calc/ast.{type Expr, Add, Int, Mul}
 
 pub fn eval(expr: Expr) -> Int {
