@@ -1129,9 +1129,11 @@ handle computation {
 |---------|--------|-------|
 | **Letrec** | ✅ Complete | `let rec` for recursion |
 | **Guards** | ✅ Complete | `Case` has optional `guard` |
-| **Primitive ops** | ✅ Complete | `PrimOp` type for arithmetic, comparison, logic |
+| **Primitive ops** | ✅ Complete | Built-in functions for arithmetic, comparison, logic |
 | **Built-in types** | ✅ Complete | `LitT(I32)`, `LitT(F64)`, etc. |
 | **Effects** | ✅ Complete | `Perform`, `Handle` for IO, state, errors |
+| **Builtins Registry** | ✅ Complete | `HostRegistry` with permission system |
+| **Error Resilience** | ✅ Complete | Quote back structure on errors |
 | **Arrays** | ⚠️ Library | Can be defined as data type |
 | **Modules** | ⚠️ Elaboration | Namespaces, erased in core |
 | **Type-level computation** | ⚠️ Future | Type families, type functions |
@@ -1139,16 +1141,112 @@ handle computation {
 
 ---
 
+## Built-in Functions
+
+The core language includes a set of built-in functions that can be executed during elaboration:
+
+### Arithmetic Built-ins
+```gleam
+// All arithmetic operations are built-ins
+add(1, 2)      // 3
+sub(5, 3)      // 2
+mul(2, 3)      // 6
+div(10, 2)     // 5
+mod(10, 3)     // 1
+```
+
+### Comparison Built-ins
+```gleam
+eq(1, 1)       // 1 (true)
+neq(1, 2)      // 1 (true)
+lt(1, 2)       // 1 (true)
+lte(1, 1)      // 1 (true)
+gt(2, 1)       // 1 (true)
+gte(1, 1)      // 1 (true)
+```
+
+### Logical Built-ins
+```gleam
+and(1, 0)      // 0 (false)
+or(1, 0)       // 1 (true)
+not(0)         // 1 (true)
+```
+
+### Built-in Execution Model
+
+Built-ins are executed during `infer` when all arguments are concrete values:
+
+```gleam
+// Concrete arguments - executes during infer
+let x = add(1, 2)  // x = 3
+
+// Non-concrete arguments - creates stuck built-in
+let f = fn(x) { add(x, 1) }  // Creates VBuiltIn
+```
+
+### Permission System (Future)
+
+For impure built-ins (file I/O, environment variables), a permission system will control execution:
+
+```gleam
+// Pure built-ins - always allowed
+add(1, 2)
+
+// Impure built-ins - require permissions
+read_file("config.json")  // Requires AllowRead
+get_env("API_KEY")        // Requires AllowEnv
+```
+
+---
+
+## Compile-Time Evaluation (Comptime)
+
+The `comptime` keyword marks expressions to be evaluated during compilation:
+
+```gleam
+// Compile-time constant
+const CONFIG = comptime read_file("config.json")
+
+// Compile-time computation
+const FACTORIAL_5 = comptime {
+  let rec factorial = fn(n) {
+    match n {
+      0 -> 1
+      _ -> n * factorial(n - 1)
+    }
+  }
+  factorial(5)
+}
+```
+
+### Comptime vs Runtime
+
+| Feature | Comptime | Runtime |
+|---------|----------|---------|
+| **When** | During compilation | During execution |
+| **Access** | Full host capabilities | Sandboxed |
+| **Result** | Embedded as literal | Computed value |
+| **Errors** | Compile error | Runtime error |
+
+### Use Cases
+
+1. **Configuration**: Load and parse config files at compile time
+2. **Code Generation**: Generate boilerplate code from templates
+3. **Validation**: Validate data schemas at compile time
+4. **Optimization**: Pre-compute expensive calculations
+
+---
+
 ## Next Steps
 
-1. **Implement lexer** - Tokenize this syntax
-2. **Implement parser** - Parse to `Term` AST
-3. **Implement serializer** - Convert to/from JSON
-4. **Implement elaborator** - Convert to De Bruijn indices, fill holes
-5. **Implement type checker** - Using existing `src/core/core.gleam`
-6. **Implement effect system** - Runtime for `Perform`/`Handle`
-7. **Test with examples** - Verify syntax works
-8. **Benchmark parsing** - Ensure fast enough for cluster use
+1. **Implement lexer** - Tokenize this syntax ✅ Complete
+2. **Implement parser** - Parse to `Term` AST ✅ Complete
+3. **Implement serializer** - Convert to/from JSON ⚠️ Future
+4. **Implement elaborator** - Convert to De Bruijn indices, fill holes ✅ Complete
+5. **Implement type checker** - Using existing `src/core/core.gleam` ✅ Complete
+6. **Implement effect system** - Runtime for `Perform`/`Handle ⚠️ Future
+7. **Test with examples** - Verify syntax works ✅ Complete
+8. **Benchmark parsing** - Ensure fast enough for cluster use ⚠️ Future
 
 ---
 
