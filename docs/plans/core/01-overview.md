@@ -170,7 +170,7 @@ gleam run -- run app.core.tao --debug
 - ✅ Verbose and debug modes
 - ✅ Parse error formatting
 
-See **[05-cli.md](./05-cli.md)** for detailed CLI documentation.
+See **[../cli/01-overview.md](../cli/01-overview.md)** for detailed CLI documentation.
 
 ---
 

@@ -1,7 +1,7 @@
 # Compiler CLI Overview
 
 > **Goal**: Command-line interface for checking and running core/tao files
-> **Status**: ✅ Implemented - Basic CLI with check/run commands
+> **Status**: ✅ Complete - Full CLI with `argv` library for argument parsing
 > **Date**: March 2025
 
 ---
@@ -71,35 +71,43 @@ source → parse → Tao AST → desugar → Term → type_check → Result
 
 ### ✅ Complete and Working
 
-**CLI Entry Point** (`src/main.gleam`):
-- Command-line argument parsing with `argv` library
-- Command types (`Check`, `Run`, `Help`)
-- File type detection (`.core.tao` vs `.tao`)
-- Example content generation based on filename keywords
-- Parse error formatting
-- Verbose mode (`-v`, `--verbose`)
-- Debug mode (`--debug`)
-- Help command (`-h`, `--help`)
-- Error reporting
+**CLI Entry Point** (`src/compiler_bootstrap.gleam`):
+- ✅ Command-line argument parsing with `argv` library
+- ✅ Command types (`Check`, `Run`, `Help`)
+- ✅ File type detection (`.core.tao` vs `.tao`)
+- ✅ Example content generation based on filename keywords
+- ✅ Parse error formatting with position info
+- ✅ Verbose mode (`-v`, `--verbose`)
+- ✅ Debug mode (`--debug`) - prints AST
+- ✅ Help command (`-h`, `--help`)
+- ✅ Error reporting for unknown commands and invalid arguments
 
 **Commands**:
 - ✅ `check <file>` - Type-check a file
-- ✅ `run <file>` - Type-check and evaluate a file
+- ✅ `run <file>` - Type-check and evaluate
 - ✅ `--help` - Show help message
 - ✅ `--verbose` - Verbose output
 - ✅ `--debug` - Debug mode (print AST)
 
-**Exit Codes**:
-- ✅ 0 - Success
-- ✅ 1 - Type error or parse error
-- ✅ 2 - Runtime error
-- ✅ 3 - File not found
-- ✅ 4 - Invalid arguments
+**Example Content Generation**:
+
+| Keyword | Example Content |
+|---------|-----------------|
+| `lambda` | `x -> x` |
+| `pi` | `(x : $Type) -> $Type` |
+| `app` | `f(x)` |
+| `ctr` | `#Some(42)` |
+| `rcd` | `{x: 1, y: 2}` |
+| `record` | `{x: 1, y: 2, z: 3}` |
+| `match` | `match x with $Type returning _ -> #True, #Some(y) -> y` |
+| `call` | `call prim.add(1, 2)` |
+| `comptime` | `x` (placeholder) |
+| `hole` | `?1` |
 
 ### ⏳ In Progress / Pending
 
-**File I/O** (Gleam stdlib limitation):
-- [ ] Actual file reading (currently uses example content)
+**File I/O** (currently uses example content based on filename):
+- [ ] Actual file reading with `simplifile` library
 - [ ] File not found handling
 - [ ] Path resolution
 
@@ -135,8 +143,17 @@ source → parse → Tao AST → desugar → Term → type_check → Result
 # Show help
 gleam run -- --help
 
-# Note: Actual file arguments not yet supported due to Gleam stdlib limitations
-# The CLI demonstrates the architecture and can be extended when a CLI library is available
+# Check a file (example content generated based on filename)
+gleam run -- check lambda.core.tao
+
+# Run a file (example content generated based on filename)
+gleam run -- run lambda.core.tao
+
+# With verbose output
+gleam run -- run app.core.tao --verbose
+
+# With debug output (prints AST)
+gleam run -- run app.core.tao --debug
 ```
 
 ---
@@ -406,6 +423,7 @@ Examples:
 
 ## References
 
-- [CLI Implementation](../../src/main.gleam)
+- [CLI Implementation](../../src/compiler_bootstrap.gleam)
 - [Core Language](../../src/core/core.gleam)
 - [Syntax Library](../../src/syntax/grammar.gleam)
+- [argv Library](https://hexdocs.pm/argv/)
