@@ -102,6 +102,16 @@ src/syntax/
 
 ### ⏳ In Progress / Pending
 
+**Grammar Library Enhancements**:
+- [ ] **Sum type layout** - Add `SumType(indent, pipe_on_each)` layout style for multi-line sum types
+  - Example: `type Maybe(a) = | Some(a) | None`
+  - Estimated effort: ~50 lines
+  - **Required for**: Tao sum type definitions
+- [ ] **Semicolon inference** - Add `NewlineSep` layout hint for statement separation
+  - Example: `do { let x = 1; let y = 2; x + y }`
+  - Estimated effort: ~100 lines
+  - **Required for**: Tao imperative blocks
+
 **Automatic Formatter Generation**:
 - [ ] Implement deconstructor functions (currently panics with `"Deconstructor not implemented"`)
 - [ ] Grammar-derived formatting (currently manual formatters per language)
@@ -111,6 +121,7 @@ src/syntax/
 - [ ] Define grammar for all Term variants (Var, Lam, App, Pi, Rcd, Match, Ctr, Hole, Lit, Ann, Call, Comptime)
 - [ ] Integrate with syntax library
 - [ ] See **[../core/01-overview.md](../core/01-overview.md)** for status
+- [ ] See **[../core/04-tao-integration.md](../core/04-tao-integration.md)** for Tao integration requirements
 
 **Error Recovery**:
 - [ ] Sync-point recovery for better error messages
@@ -120,6 +131,33 @@ src/syntax/
 **Documentation**:
 - [ ] User-facing syntax library documentation (`docs/syntax-library.md` draft exists)
 - [ ] More examples beyond calculator
+
+### 📋 Tao Language Grammar Plan
+
+The Tao language grammar will be implemented in three phases:
+
+**Phase 1: Lexer** (`src/tao/lexer.gleam`):
+- Base on existing `syntax/lexer.gleam`
+- Add Tao-specific tokens (IntLit, FloatLit, StringLit, UpperIdent)
+- Handle keywords (let, mut, fn, type, match, if, import, etc.)
+- Track positions for error reporting
+- Estimated effort: ~400 lines, 50+ tests
+
+**Phase 2: Grammar Definition** (`src/tao/grammar.gleam`):
+- Define all grammar rules using syntax library DSL
+- Set up 10 operator precedence levels
+- Handle sum type layout (requires grammar library enhancement)
+- Handle pattern matching syntax (OCaml style with `|`)
+- Handle module syntax (import, as, names)
+- Estimated effort: ~600 lines, 30+ tests
+
+**Phase 3: Parser** (`src/tao/parser.gleam`):
+- Thin wrapper around syntax library parser
+- Error handling and reporting
+- Source location tracking
+- Estimated effort: ~100 lines, 20+ tests
+
+**Total estimated effort**: ~1100 lines, 100+ tests, 2-3 weeks
 
 ---
 

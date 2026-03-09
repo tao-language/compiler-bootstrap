@@ -1,6 +1,6 @@
 # Core Language Overview
 
-> **Status**: ✅ Syntax library complete, ⏳ Core language syntax in progress (minimal skeleton)
+> **Status**: ✅ Complete and tested (263 tests), ⏳ Tao integration planned
 > **Date**: March 2025
 
 ---
@@ -60,15 +60,34 @@ Both parser and formatter are **derived from the same grammar definition**.
 - Grammar DSL - Full layout-aware grammar definition with `Alternative` type
 - Formatter - Document algebra with best-fit rendering
 - Calculator example - Working parser/formatter with +, -, *, /
-- **238 tests passing**
+- **263 tests passing**
 
-**Core Language** (`src/core/`):
+**Core Language** (`src/core/core.gleam`):
 - `Term` types - All 13 constructors (Var, Lam, App, Pi, Rcd, Match, Ctr, Hole, Lit, Ann, Call, Comptime, Dot)
 - `Value` types - Normalization by evaluation
 - Type checker - Bidirectional type checking (infer/check)
 - Unifier - Type unification with occurs check
 - FFI/Comptime - Compile-time evaluation with permissions
+- Exhaustiveness checking - Maranget's algorithm
 - **263 tests passing** for core module
+
+**Tao AST** (`src/tao/ast.gleam`):
+- Complete AST definition (~430 lines)
+- Desugaring to core (~550 lines)
+- **Compiles successfully**
+
+### ⏳ In Progress
+
+**Core Language Changes for Tao Integration**:
+
+| Change | Priority | Effort | Status |
+|--------|----------|--------|--------|
+| Untyped literals | HIGH | ~100 lines | 📋 Planned |
+| Pattern guards | MEDIUM | ~50 lines | 📋 Planned |
+| Coercion term | HIGH | ~30 lines | 📋 Planned |
+| Overload metadata | LOW | ~30 lines | 📋 Planned |
+
+See **[04-tao-integration.md](./04-tao-integration.md)** for detailed integration plan.
 
 **Core Syntax** (`src/core/syntax.gleam`):
 - ✅ Minimal skeleton with 4 Term variants
@@ -80,7 +99,7 @@ Both parser and formatter are **derived from the same grammar definition**.
 - ✅ Round-trip tests (parse → format → parse)
 - **18 tests passing** for core syntax
 
-### ⏳ In Progress
+### 📋 Pending
 
 **Core Syntax Expansion** - Adding remaining Term variants:
 
@@ -93,13 +112,19 @@ Both parser and formatter are **derived from the same grammar definition**.
 | Phase 5 | Match, Call, Comptime | 📋 Planned |
 | Phase 6 | Source location tracking | 📋 Planned |
 
-### 📋 Pending
+**Tao Integration**:
+- [ ] Add untyped literals to `Literal` type
+- [ ] Add `Coerce` term for type coercion
+- [ ] Add pattern guards to `Case` type
+- [ ] Update exhaustiveness checking for guards
+- [ ] Add overload metadata to `State`
+- [ ] Integration tests (Tao → Core → Evaluate)
 
-- **Source location tracking** - Proper `Span` with filename, start/end line/column (see **[../grammar/05-source-location-tracking.md](../grammar/05-source-location-tracking.md)**)
-- **De Bruijn conversion** - Proper name ↔ index conversion (currently all vars become `Var(0)`)
-- **Full Term coverage** - All 13 Term variants with complete parsing/formatting
-- **Pattern grammar** - Full pattern matching syntax
-- **Integration** - Wire up `core/syntax` with `core/core` evaluator and type checker
+**Source location tracking** - Proper `Span` with filename, start/end line/column (see **[../grammar/05-source-location-tracking.md](../grammar/05-source-location-tracking.md)**)
+**De Bruijn conversion** - Proper name ↔ index conversion (currently all vars become `Var(0)`)
+**Full Term coverage** - All 13 Term variants with complete parsing/formatting
+**Pattern grammar** - Full pattern matching syntax
+**Integration** - Wire up `core/syntax` with `core/core` evaluator and type checker
 
 ---
 

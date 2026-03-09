@@ -247,12 +247,17 @@ let y = 5.0 + 3.0  // Desugars: add(F64, 5.0, 3.0)
 - Exhaustiveness checking - Maranget's algorithm
 - **263 tests passing**
 
+**Tao AST** (`src/tao/`):
+- Complete AST definition (~430 lines) ✅
+- Desugaring to core (~550 lines) ✅
+- **Compiles successfully** ✅
+
 ### ⏳ In Progress (Tao Language)
 
 **Phase 1: Lexer** (`src/tao/lexer.gleam`):
 - [ ] Tokenize identifiers (lowercase, Uppercase)
 - [ ] Tokenize keywords (let, mut, fn, type, match, etc.)
-- [ ] Tokenize literals (I32, I64, F32, F64, String, Bool)
+- [ ] Tokenize literals (Int, Float, String - untyped)
 - [ ] Tokenize operators (+, -, *, /, ==, !=, etc.)
 - [ ] Handle comments (line `//`, block `/* */`)
 - [ ] Track positions for error reporting
@@ -260,11 +265,12 @@ let y = 5.0 + 3.0  // Desugars: add(F64, 5.0, 3.0)
 **Phase 2: Grammar** (`src/tao/grammar.gleam`):
 - [ ] Define Tao AST types
 - [ ] Define grammar rules using syntax library
-- [ ] Handle operator precedence
-- [ ] Handle pattern matching syntax
+- [ ] Handle operator precedence (10 levels)
+- [ ] Handle pattern matching syntax (OCaml style with `|`)
 - [ ] Handle type annotations (optional)
 - [ ] Handle attributes (@permission, @effect, etc.)
-- [ ] Handle module syntax (import, export, module)
+- [ ] Handle module syntax (import, as, names)
+- [ ] Handle sum type layout (multi-line with `|`)
 
 **Phase 3: Parser** (`src/tao/parser.gleam`):
 - [ ] Thin wrapper around syntax library parser
@@ -277,10 +283,10 @@ let y = 5.0 + 3.0  // Desugars: add(F64, 5.0, 3.0)
 - [ ] Layout hints for pretty-printing
 
 **Phase 5: Desugaring** (`src/tao/desugar.gleam`):
-- [ ] Convert Tao AST → Core Term
+- [x] Convert Tao AST → Core Term (basic implementation)
 - [ ] Type inference and injection
-- [ ] Operator overloading resolution (NbE)
-- [ ] Mutable variable state threading
+- [ ] Operator overloading resolution (name mangling)
+- [ ] Mutable variable state threading (SSA-style renaming)
 - [ ] Imperative blocks → tail-recursive functions
 - [ ] Early return → ControlFlow enum
 - [ ] Expand `<-` bind operator
@@ -289,8 +295,16 @@ let y = 5.0 + 3.0  // Desugars: add(F64, 5.0, 3.0)
 - [ ] Record update syntax
 - [ ] Module name mangling
 - [ ] Handle attributes (permissions, effects)
+- [ ] Pattern guards support
 
-**Phase 6: Standard Library** (`src/tao/std/`):
+**Phase 6: Core Language Changes** (`src/core/core.gleam`):
+- [ ] Add untyped literals (Int, Float without type suffix)
+- [ ] Add `Coerce` term for literal coercion
+- [ ] Add pattern guards to `Case` type
+- [ ] Update exhaustiveness checking for guards
+- [ ] Add overload metadata to State
+
+**Phase 7: Standard Library** (`src/tao/std/`):
 - [ ] Maybe type (Some, None)
 - [ ] Result type (Ok, Err)
 - [ ] List type and operations
@@ -298,20 +312,22 @@ let y = 5.0 + 3.0  // Desugars: add(F64, 5.0, 3.0)
 - [ ] Result combinators
 - [ ] Common utilities
 
-**Phase 7: Module System**:
+**Phase 8: Module System**:
 - [ ] Import resolution
 - [ ] Circular dependency detection
-- [ ] Public/private visibility
+- [ ] Public/private visibility (_prefix)
 - [ ] Project compilation (topological sort)
+- [ ] Namespace mangling
 
 ### 📋 Planned (Future Enhancements)
 
-- Module system (import/export)
 - Package manager
 - LSP support (autocomplete, go-to-definition, etc.)
 - Documentation generator
-- Performance optimizations
+- Performance optimizations (TCO guarantee)
 - Additional standard library modules
+- Trait/type class system (for operator overloading)
+- Derive macros (@derive(Debug, Clone))
 
 ---
 

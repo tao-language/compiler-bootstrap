@@ -1,7 +1,7 @@
 # Core Language Syntax Specification
 
 > **Goal**: TypeScript-like syntax with C-style application only
-> **Status**: ⏳ In Progress - Minimal skeleton complete (4/13 Term variants)
+> **Status**: ⏳ In Progress - Minimal skeleton complete (4/13 Term variants), ⚠️ Tao integration changes planned
 > **Date**: March 2025
 
 ---
@@ -28,17 +28,32 @@
 - **Dummy spans** - All terms use `Span("input", 0, 0)` instead of real positions
   - See **[../grammar/05-source-location-tracking.md](../grammar/05-source-location-tracking.md)** for planned fix
 
+### Tao Integration Changes Required
+
+The following changes are needed to support the Tao high-level language:
+
+| Change | Priority | Description | Status |
+|--------|----------|-------------|--------|
+| Untyped literals | HIGH | Change `Literal` to untyped `Int(Int)`, `Float(Float)` | 📋 Planned |
+| Coercion term | HIGH | Add `Coerce(term, from, to)` for type coercion | 📋 Planned |
+| Pattern guards | MEDIUM | Add `guard: Option(Term)` to `Case` type | 📋 Planned |
+| Overload metadata | LOW | Track overloaded functions in `State` | 📋 Planned |
+
+See **[04-tao-integration.md](./04-tao-integration.md)** for detailed integration plan.
+
 ### What's Pending
 
 **Phase 2: Simple Terms** (can add in batch)
 - [ ] `Hole` (?)
 - [ ] `Typ(k)` (Type0, Type1)
 - [ ] `LitT(typ)` (I32, F64)
+- [ ] **Tao change**: Untyped literals
 
 **Phase 3: Medium Complexity**
 - [ ] `Ann(term, typ)` - Type annotations
 - [ ] `Dot(arg, field)` - Field access
 - [ ] `Ctr(tag, arg)` - Constructors
+- [ ] **Tao change**: Coercion term
 
 **Phase 4: Complex Terms** (add one at a time)
 - [ ] `Pi(name, in, out)` - Dependent function types
@@ -46,6 +61,7 @@
 - [ ] `Match(arg, motive, cases)` - Pattern matching
 - [ ] `Call(name, args)` - Built-in calls
 - [ ] `Comptime(term)` - Compile-time evaluation
+- [ ] **Tao change**: Pattern guards
 
 **Phase 5: Polish**
 - [ ] Proper De Bruijn name/index conversion
@@ -62,6 +78,7 @@
 ### Related
 
 - See **[01-overview.md](./01-overview.md)** for overall implementation status
+- See **[04-tao-integration.md](./04-tao-integration.md)** for Tao integration plan
 - See **[03-ffi-comptime.md](./03-ffi-comptime.md)** for FFI/comptime details
 - See **[../../syntax-library.md](../../syntax-library.md)** for syntax library usage
 

@@ -1,7 +1,7 @@
 # Tao Desugaring Specification
 
 > **Goal**: Define how Tao syntax desugars to core language terms
-> **Status**: 📋 Designed
+> **Status**: 📋 Designed, ⚠️ Core changes required
 > **Date**: March 2025
 
 ---
@@ -12,20 +12,42 @@
 
 - Desugaring rules designed for all Tao constructs
 - Type inference strategy specified
-- Operator overloading resolution defined
-- State threading for mutable variables specified
+- Operator overloading resolution defined (name mangling approach)
+- State threading for mutable variables specified (SSA-style renaming)
+- Basic AST → Core conversion implemented
 
 ### What's Pending
 
-- **Desugaring implementation** (`src/tao/desugar.gleam`)
+- **Core language changes required** (see "Core Changes Required" below)
+- **Desugaring implementation** (`src/tao/desugar.gleam`) - partial
 - **Type inference implementation**
-- **Operator overloading resolution via NbE**
+- **Operator overloading resolution via name mangling**
 - **Integration tests** (Tao → Core → Evaluate)
+
+### Core Changes Required
+
+The following core language changes are needed for full Tao support:
+
+1. **Untyped Literals** (HIGH PRIORITY)
+   - Change `Literal` type to untyped `Int(Int)` and `Float(Float)`
+   - Add `Coerce` term for type coercion
+   - Update type checker to insert coercions
+
+2. **Pattern Guards** (MEDIUM PRIORITY)
+   - Add `guard: Option(Term)` to `Case` type
+   - Update exhaustiveness checking to handle guards
+
+3. **Operator Overloading Metadata** (LOW PRIORITY)
+   - Add overload tracking to `State`
+   - Support name mangling during type checking
+
+See **[05-comprehensive-analysis.md](./05-comprehensive-analysis.md)** for detailed analysis.
 
 ### Related
 
 - See **[01-overview.md](./01-overview.md)** for overall implementation status
 - See **[02-syntax.md](./02-syntax.md)** for Tao syntax
+- See **[05-comprehensive-analysis.md](./05-comprehensive-analysis.md)** for comprehensive analysis
 - See **[../../docs/core.md](../../docs/core.md)** for core language semantics
 
 ---
