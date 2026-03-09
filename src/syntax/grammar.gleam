@@ -71,7 +71,11 @@ pub type Pattern(a) {
 }
 
 pub type Alternative(a) {
-  Alternative(pattern: Pattern(a), constructor: fn(List(Value(a))) -> a)
+  Alternative(
+    pattern: Pattern(a),
+    constructor: fn(List(Value(a))) -> a,
+    deconstructor: fn(a) -> List(Value(a)),
+  )
 }
 
 pub type Rule(a) {
@@ -218,14 +222,18 @@ fn create_operator_pattern(
       Ref(first_rule),
       Many(op_choice),
     ])
-  Alternative(pattern: pattern, constructor: fn(values) {
-    case values {
-      [AstValue(first), ..rest] -> {
-        fold_operators_multi(first, rest, operators)
+  Alternative(
+    pattern: pattern,
+    constructor: fn(values) {
+      case values {
+        [AstValue(first), ..rest] -> {
+          fold_operators_multi(first, rest, operators)
+        }
+        _ -> panic as "left_assoc constructor: unexpected values"
       }
-      _ -> panic as "left_assoc constructor: unexpected values"
-    }
-  })
+    },
+    deconstructor: fn(_) { panic as "Deconstructor not implemented" },
+  )
 }
 
 fn fold_operators_multi(
@@ -281,13 +289,17 @@ pub fn right_assoc(
   let op_alts =
     list.map(operators, fn(op) {
       let pattern = Seq([Ref(first_rule), Keyword(op.keyword), Ref(name)])
-      Alternative(pattern: pattern, constructor: fn(values) {
-        case values {
-          [AstValue(left), KeywordValue(_), AstValue(right)] ->
-            op.constructor(left, right)
-          _ -> panic as "right_assoc: expected 3 values"
-        }
-      })
+      Alternative(
+        pattern: pattern,
+        constructor: fn(values) {
+          case values {
+            [AstValue(left), KeywordValue(_), AstValue(right)] ->
+              op.constructor(left, right)
+            _ -> panic as "right_assoc: expected 3 values"
+          }
+        },
+        deconstructor: fn(_) { panic as "Deconstructor not implemented" },
+      )
     })
   let first_alt =
     alt(ref(first_rule), fn(values) {
@@ -316,7 +328,21 @@ pub fn alt(
   pattern: Pattern(a),
   constructor: fn(List(Value(a))) -> a,
 ) -> Alternative(a) {
-  Alternative(pattern: pattern, constructor: constructor)
+  Alternative(pattern: pattern, constructor: constructor, deconstructor: fn(_) {
+    panic as "Deconstructor not provided"
+  })
+}
+
+pub fn alt_with_deconstructor(
+  pattern: Pattern(a),
+  constructor: fn(List(Value(a))) -> a,
+  deconstructor: fn(a) -> List(Value(a)),
+) -> Alternative(a) {
+  Alternative(
+    pattern: pattern,
+    constructor: constructor,
+    deconstructor: deconstructor,
+  )
 }
 
 // ============================================================================
@@ -736,39 +762,246 @@ fn get_token(tokens: List(Token), pos: Int) -> Result(Token, Nil) {
 }
 
 // ============================================================================
-// FORMATTER
+// FORMATTER - Generated from Grammar
 // ============================================================================
 
+/// Format an AST using grammar rules.
+/// The grammar is the single source of truth - it defines both
+/// how to parse (constructors) and how to format (deconstructors).
 pub fn format(grammar: Grammar(a), ast: a) -> String {
-  let doc = format_ast(grammar, ast, -1)
-  formatter.render(doc, 80)
+  format_ast(grammar, ast, -1) |> formatter.render_default
 }
 
-fn format_ast(grammar: Grammar(a), ast: a, parent_prec: Int) -> Doc {
-  case find_operator_for_ast(grammar, ast) {
-    Some(op) -> format_by_operator(grammar, op, ast, parent_prec)
-    None -> format_by_rules(grammar, ast, parent_prec)
+pub fn format_with_width(grammar: Grammar(a), ast: a, width: Int) -> String {
+  format_ast(grammar, ast, -1) |> formatter.render(width)
+}
+
+/// Format an AST with precedence for parenthesization
+fn format_ast(grammar, ast, parent_prec) -> Doc {
+  case find_matching_alternative(grammar, ast) {
+    Some(#(rule, alt)) -> {
+      let values = alt.deconstructor(ast)
+      format_pattern(grammar, alt.pattern, values, parent_prec, rule.precedence)
+    }
+    None -> formatter.text("<unknown>")
   }
 }
 
-fn find_operator_for_ast(grammar: Grammar(a), ast: a) -> Option(Operator(a)) {
-  // For now, return None - full implementation would need runtime type inspection
-  option.None
+/// Find which alternative matches this AST by trying deconstructors
+fn find_matching_alternative(grammar, ast) {
+  list.find_map(grammar.rules, fn(rule) {
+    list.find_map(rule.alternatives, fn(alt) {
+      // Try the deconstructor - if it succeeds, this is the match
+      let values = alt.deconstructor(ast)
+      // If we got here without panic, it's a match
+      Some(#(rule, alt))
+    })
+  })
 }
 
-fn format_by_operator(
+/// Format values according to pattern with layout hints
+fn format_pattern(
   grammar: Grammar(a),
-  op: Operator(a),
-  ast: a,
+  pattern: Pattern(a),
+  values: List(Value(a)),
+  parent_prec: Int,
+  rule_prec: Int,
+) -> Doc {
+  case pattern {
+    TokenKind(_) -> format_token_value(values)
+    Keyword(_) -> format_token_value(values)
+    Op(_) -> format_token_value(values)
+    Ref(_) -> format_ref_value(grammar, values, parent_prec)
+    Seq(patterns) -> format_seq(grammar, patterns, values, parent_prec)
+    SeqWithLayout(items) ->
+      format_seq_with_layout(grammar, items, values, parent_prec, rule_prec)
+    Choice(_) -> format_choice_value(grammar, values, parent_prec)
+    Opt(p) -> format_opt(grammar, p, values, parent_prec)
+    Many(p) -> format_many(grammar, p, values, parent_prec)
+    Sep1(item, sep) -> format_sep1(grammar, item, sep, values, parent_prec)
+    Parens(rule) -> format_parens(grammar, rule, values, parent_prec)
+  }
+}
+
+fn format_token_value(values: List(Value(a))) -> Doc {
+  case values {
+    [TokenValue(token)] -> formatter.text(token.value)
+    _ -> formatter.text("<token>")
+  }
+}
+
+fn format_ref_value(
+  grammar: Grammar(a),
+  values: List(Value(a)),
+  parent_prec,
+) -> Doc {
+  case values {
+    [AstValue(ast)] -> format_ast(grammar, ast, parent_prec)
+    _ -> formatter.text("<ref>")
+  }
+}
+
+fn format_seq(
+  grammar: Grammar(a),
+  patterns: List(Pattern(a)),
+  values: List(Value(a)),
   parent_prec: Int,
 ) -> Doc {
-  // Would need deconstructor here - simplified for now
-  formatter.text("<operator>")
+  let docs = format_seq_loop(grammar, patterns, values, parent_prec, [])
+  formatter.concat(list.reverse(docs))
 }
 
-fn format_by_rules(grammar: Grammar(a), ast: a, parent_prec: Int) -> Doc {
-  // Would need to find rule and format - simplified for now
-  formatter.text("<ast>")
+fn format_seq_loop(
+  grammar: Grammar(a),
+  patterns: List(Pattern(a)),
+  values: List(Value(a)),
+  parent_prec: Int,
+  docs: List(Doc),
+) -> List(Doc) {
+  case patterns, values {
+    [p, ..ps], [v, ..vs] -> {
+      let doc = format_pattern(grammar, p, [v], parent_prec, 0)
+      format_seq_loop(grammar, ps, vs, parent_prec, [doc, ..docs])
+    }
+    _, _ -> docs
+  }
+}
+
+fn format_seq_with_layout(
+  grammar: Grammar(a),
+  items: List(SeqItem(a)),
+  values: List(Value(a)),
+  parent_prec: Int,
+  rule_prec: Int,
+) -> Doc {
+  let docs =
+    format_seq_with_layout_loop(
+      grammar,
+      items,
+      values,
+      parent_prec,
+      rule_prec,
+      [],
+    )
+  formatter.concat(list.reverse(docs))
+}
+
+fn format_seq_with_layout_loop(
+  grammar: Grammar(a),
+  items: List(SeqItem(a)),
+  values: List(Value(a)),
+  parent_prec: Int,
+  rule_prec: Int,
+  docs: List(Doc),
+) -> List(Doc) {
+  case items, values {
+    [item, ..items], [v, ..vs] -> {
+      let doc =
+        format_pattern(grammar, item.pattern, [v], parent_prec, rule_prec)
+      let sep = case item.layout_hint {
+        SoftBreak -> formatter.line()
+        HardBreak -> formatter.hardline()
+        Space -> formatter.space()
+        NoSeparator -> formatter.empty()
+      }
+      format_seq_with_layout_loop(grammar, items, vs, parent_prec, rule_prec, [
+        sep,
+        doc,
+        ..docs
+      ])
+    }
+    _, _ -> docs
+  }
+}
+
+fn format_choice_value(
+  grammar: Grammar(a),
+  values: List(Value(a)),
+  parent_prec,
+) -> Doc {
+  case values {
+    [v] -> format_pattern_value(grammar, v, parent_prec)
+    _ -> formatter.text("<choice>")
+  }
+}
+
+fn format_opt(
+  grammar: Grammar(a),
+  pattern: Pattern(a),
+  values: List(Value(a)),
+  parent_prec,
+) -> Doc {
+  case values {
+    [] -> formatter.empty()
+    [v] -> format_pattern(grammar, pattern, [v], parent_prec, 0)
+  }
+}
+
+fn format_many(
+  grammar: Grammar(a),
+  pattern: Pattern(a),
+  values: List(Value(a)),
+  parent_prec,
+) -> Doc {
+  let docs =
+    list.map(values, fn(v) {
+      format_pattern(grammar, pattern, [v], parent_prec, 0)
+    })
+  formatter.concat(docs)
+}
+
+fn format_sep1(
+  grammar: Grammar(a),
+  item: Pattern(a),
+  sep: Pattern(a),
+  values: List(Value(a)),
+  parent_prec: Int,
+) -> Doc {
+  case values {
+    [] -> formatter.empty()
+    [first] -> format_pattern(grammar, item, [first], parent_prec, 0)
+    [first, ..rest] -> {
+      let first_doc = format_pattern(grammar, item, [first], parent_prec, 0)
+      let rest_docs =
+        list.map(rest, fn(v) {
+          let sep_doc = format_pattern(grammar, sep, [], parent_prec, 0)
+          let item_doc = format_pattern(grammar, item, [v], parent_prec, 0)
+          formatter.concat([sep_doc, item_doc])
+        })
+      formatter.concat([first_doc, formatter.concat(rest_docs)])
+    }
+  }
+}
+
+fn format_parens(
+  grammar: Grammar(a),
+  rule: String,
+  values: List(Value(a)),
+  parent_prec,
+) -> Doc {
+  case values {
+    [v] -> {
+      let inner = format_pattern_value(grammar, v, parent_prec)
+      formatter.parens(inner)
+    }
+    _ -> formatter.text("<parens>")
+  }
+}
+
+fn format_pattern_value(
+  grammar: Grammar(a),
+  value: Value(a),
+  parent_prec,
+) -> Doc {
+  case value {
+    TokenValue(token) -> formatter.text(token.value)
+    AstValue(ast) -> format_ast(grammar, ast, parent_prec)
+    ListValue(values) ->
+      formatter.concat(
+        list.map(values, fn(v) { format_pattern_value(grammar, v, parent_prec) }),
+      )
+    KeywordValue(token) -> formatter.text(token.value)
+  }
 }
 
 pub fn format_binop(
