@@ -203,7 +203,23 @@ Keep plans when:
 - Use checkmarks for visual scanning
 - Move items (don't just add new ones)
 
----
+### Things to inclue
+
+- Current status at the very top
+- Overview, goal, and motivation
+- Design decisions
+- Known issues and tradeoffs
+- Alternatives considered with pros and cons
+- Open questions
+- Implementation details
+- Testing strategy
+- Future work
+
+### Things to exclude
+
+- Detailed code snippets
+- Technical jargon
+- Unrelated context
 
 ## Quick Reference
 

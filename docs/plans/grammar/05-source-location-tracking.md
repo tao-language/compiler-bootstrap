@@ -1,7 +1,7 @@
 # Source Location Tracking
 
 > **Goal**: Full source location tracking with filename, start/end positions (line/column)
-> **Status**: 📋 Planned
+> **Status**: ✅ Implemented - All phases complete
 > **Date**: March 2025
 
 ---
@@ -10,18 +10,25 @@
 
 ### What's Working
 
-- ✅ Lexer tracks `line` and `column` during tokenization
-- ✅ Tokens have `start` and `end` character offsets
-- ✅ Parser errors include position information
+- ✅ Token type includes `line` and `column` fields
+- ✅ Lexer stores line/column in all tokens
+- ✅ Position helper functions in grammar DSL
+- ✅ Span type supports start/end positions (line/column)
+- ✅ All grammar constructors use real positions
+- ✅ All tests passing (256 tests)
 
-### What's Pending
+### Implementation Complete
 
-- [ ] Update `Token` type to include `line` and `column`
-- [ ] Update lexer to store line/column in tokens
-- [ ] Add position helper functions to grammar DSL
-- [ ] Update `Span` type to support start/end positions
-- [ ] Update all grammar constructors to use real positions
-- [ ] Update tests for position tracking
+All 6 phases have been completed:
+
+| Phase | Task | Status |
+|-------|------|--------|
+| 1 | Update Token type with line/column | ✅ Complete |
+| 2 | Update lexer to store line/column | ✅ Complete |
+| 3 | Add position helpers to grammar DSL | ✅ Complete |
+| 4 | Update Span type with start/end | ✅ Complete |
+| 5 | Update core syntax constructors | ✅ Complete |
+| 6 | Update tests | ✅ Complete |
 
 ### Related
 
