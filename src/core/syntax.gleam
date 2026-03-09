@@ -1,21 +1,27 @@
 // ============================================================================
-// CORE LANGUAGE SYNTAX - Minimal Skeleton
+// CORE LANGUAGE SYNTAX
 // ============================================================================
-/// Minimal syntax definition supporting:
-/// - Variables: x
-/// - Literals: 42
-/// - Lambda: λx. body
-/// - Application: f(x)
+/// Core language syntax with TypeScript-like surface syntax.
+/// 
+/// Supported terms:
+/// - Variables: `x`
+/// - Literals: `42`
+/// - Lambda: `λx. body`
+/// - Application: `f(x)` (C-style only)
+/// - Type universes: `Type0`, `Type1`, etc.
+/// - Holes: `?` (unsolved metavariables)
+/// - Literal types: `I32`, `I64`, `F64`
 ///
 /// Both parser and formatter are derived from this single grammar definition.
 import core/core.{
-  type Term, App, Hole, I32, Lam, Lit, Term, Var,
+  type Term, App, F32, F32T, F64, F64T, Hole, I32, I32T, I64, I64T, Lam, Lit, LitT, Term, Typ,
+  U32, U32T, U64, U64T, Var,
 }
+import gleam/float
 import gleam/int
-import gleam/list
-import gleam/result
+import gleam/string
 import syntax/formatter
-import syntax/grammar.{type Span, type Value, AstValue, TokenValue}
+import syntax/grammar.{type Span, AstValue, TokenValue}
 import syntax/lexer.{type Token}
 
 // ============================================================================
@@ -47,6 +53,8 @@ pub fn core_grammar() -> grammar.Grammar(Term) {
   |> grammar.token("RParen")
   |> grammar.token("Lambda")
   |> grammar.token("Dot")
+  |> grammar.token("Operator")
+  |> grammar.token("Keyword")
   // Main expression rule (lowest precedence first)
   |> grammar.rule("Expr", [
     grammar.alt(grammar.ref("Lambda"), unwrap, format_term),
@@ -79,12 +87,16 @@ pub fn core_grammar() -> grammar.Grammar(Term) {
       format_term,
     ),
   ])
-  // Atoms
+  // Atoms - the building blocks
   |> grammar.rule("Atom", [
-    // Variable
-    grammar.alt(grammar.token_pattern("Ident"), make_var, format_term),
+    // Variable (identifiers that don't start with "Type")
+    grammar.alt(grammar.token_pattern("Ident"), make_var_or_typ, format_term),
     // Number literal
     grammar.alt(grammar.token_pattern("Number"), make_literal, format_term),
+    // Hole: ? (operator)
+    grammar.alt(grammar.token_pattern("Operator"), make_hole, format_term),
+    // Literal type: I32, I64, F64 (keywords)
+    grammar.alt(grammar.token_pattern("Keyword"), make_literal_type, format_term),
     // Parenthesized expression
     grammar.alt(
       grammar.seq([
@@ -139,6 +151,25 @@ fn make_var(values) {
   }
 }
 
+fn make_var_or_typ(values) {
+  case values {
+    [TokenValue(token)] -> {
+      // Check if it's a type universe (Type0, Type1, etc.)
+      case string.starts_with(token.value, "Type") {
+        True -> {
+          let level_str = string.drop_start(token.value, 4)
+          case int.parse(level_str) {
+            Ok(level) -> Term(Typ(level), grammar.span_from_token(token, "input"))
+            Error(_) -> Term(Typ(0), grammar.span_from_token(token, "input"))
+          }
+        }
+        False -> Term(Var(0), grammar.span_from_token(token, "input"))
+      }
+    }
+    _ -> panic as "Expected identifier"
+  }
+}
+
 fn make_literal(values) {
   case values {
     [TokenValue(token)] -> {
@@ -148,6 +179,36 @@ fn make_literal(values) {
       }
     }
     _ -> panic as "Expected number token"
+  }
+}
+
+fn make_hole(values) {
+  case values {
+    [TokenValue(token)] -> {
+      case token.value {
+        "?" -> Term(Hole(0), grammar.span_from_token(token, "input"))
+        _ -> panic as "Expected ? operator"
+      }
+    }
+    _ -> panic as "Expected hole (?)"
+  }
+}
+
+fn make_literal_type(values) {
+  case values {
+    [TokenValue(token)] -> {
+      let typ = case token.value {
+        "I32" -> I32T
+        "I64" -> I64T
+        "F32" -> F32T
+        "F64" -> F64T
+        "U32" -> U32T
+        "U64" -> U64T
+        _ -> I32T
+      }
+      Term(LitT(typ), grammar.span_from_token(token, "input"))
+    }
+    _ -> panic as "Expected literal type keyword"
   }
 }
 
@@ -165,7 +226,27 @@ fn format_term(term: Term, parent_prec: Int) -> formatter.Doc {
     Lit(value) -> {
       case value {
         I32(n) -> formatter.text(int.to_string(n))
-        _ -> formatter.text("<lit>")
+        I64(n) -> formatter.concat([formatter.text(int.to_string(n)), formatter.text("i64")])
+        U32(n) -> formatter.concat([formatter.text(int.to_string(n)), formatter.text("u32")])
+        U64(n) -> formatter.concat([formatter.text(int.to_string(n)), formatter.text("u64")])
+        F32(f) -> formatter.text(float.to_string(f))
+        F64(f) -> formatter.text(float.to_string(f))
+      }
+    }
+    Typ(level) ->
+      formatter.concat([
+        formatter.text("Type"),
+        formatter.text(int.to_string(level)),
+      ])
+    Hole(_) -> formatter.text("?")
+    LitT(typ) -> {
+      case typ {
+        I32T -> formatter.text("I32")
+        I64T -> formatter.text("I64")
+        U32T -> formatter.text("U32")
+        U64T -> formatter.text("U64")
+        F32T -> formatter.text("F32")
+        F64T -> formatter.text("F64")
       }
     }
     Lam(name, body) -> {

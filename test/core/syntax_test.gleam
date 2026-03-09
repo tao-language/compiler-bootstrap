@@ -2,19 +2,24 @@
 // CORE LANGUAGE SYNTAX TESTS
 // ============================================================================
 /// Tests for the core language syntax (parser and formatter).
-/// 
+///
 /// The core language supports:
 /// - Variables: x
 /// - Literals: 42
 /// - Lambda: λx. body
 /// - Application: f(x)
+/// - Type universes: Type0, Type1, ...
+/// - Holes: ? (unsolved metavariables)
+/// - Literal types: I32, I64, F64, U32, U64
 ///
 /// Both parser and formatter are derived from a single grammar definition.
 /// Round-trip tests verify that parse → format → parse produces consistent output.
 ///
 /// Note: All identifiers currently become `var0` (De Bruijn index placeholder).
 /// Full implementation will need proper name-to-index conversion.
-import core/core.{App, I32, Lam, Lit, Term, Var}
+import core/core.{
+  App, F64T, Hole, I32, I32T, I64T, Lam, Lit, LitT, Term, Typ, U32T, Var,
+}
 import gleam/list
 import syntax/grammar.{Span, type Span}
 import core/syntax
@@ -78,6 +83,74 @@ pub fn parse_lit_large_test() {
   let result = syntax.parse("999999")
   result.errors |> should.equal([])
   result.ast |> should.equal(Term(Lit(I32(999999)), Span("input", 1, 1, 1, 7)))
+}
+
+// ============================================================================
+// PARSING TESTS - TYPE UNIVERSES
+// ============================================================================
+
+pub fn parse_typ_zero_test() {
+  // Type0 parses correctly
+  let result = syntax.parse("Type0")
+  result.errors |> should.equal([])
+  result.ast |> should.equal(Term(Typ(0), Span("input", 1, 1, 1, 6)))
+}
+
+pub fn parse_typ_one_test() {
+  // Type1 parses correctly
+  let result = syntax.parse("Type1")
+  result.errors |> should.equal([])
+  result.ast |> should.equal(Term(Typ(1), Span("input", 1, 1, 1, 6)))
+}
+
+pub fn parse_typ_level_ten_test() {
+  // Type10 parses correctly
+  let result = syntax.parse("Type10")
+  result.errors |> should.equal([])
+  result.ast |> should.equal(Term(Typ(10), Span("input", 1, 1, 1, 7)))
+}
+
+// ============================================================================
+// PARSING TESTS - HOLES
+// ============================================================================
+
+pub fn parse_hole_test() {
+  // Hole (?) parses correctly
+  let result = syntax.parse("?")
+  result.errors |> should.equal([])
+  result.ast |> should.equal(Term(Hole(0), Span("input", 1, 1, 1, 2)))
+}
+
+// ============================================================================
+// PARSING TESTS - LITERAL TYPES
+// ============================================================================
+
+pub fn parse_litt_i32_test() {
+  // I32 literal type parses correctly
+  let result = syntax.parse("I32")
+  result.errors |> should.equal([])
+  result.ast |> should.equal(Term(LitT(I32T), Span("input", 1, 1, 1, 4)))
+}
+
+pub fn parse_litt_i64_test() {
+  // I64 literal type parses correctly
+  let result = syntax.parse("I64")
+  result.errors |> should.equal([])
+  result.ast |> should.equal(Term(LitT(I64T), Span("input", 1, 1, 1, 4)))
+}
+
+pub fn parse_litt_f64_test() {
+  // F64 literal type parses correctly
+  let result = syntax.parse("F64")
+  result.errors |> should.equal([])
+  result.ast |> should.equal(Term(LitT(F64T), Span("input", 1, 1, 1, 4)))
+}
+
+pub fn parse_litt_u32_test() {
+  // U32 literal type parses correctly
+  let result = syntax.parse("U32")
+  result.errors |> should.equal([])
+  result.ast |> should.equal(Term(LitT(U32T), Span("input", 1, 1, 1, 4)))
 }
 
 // ============================================================================
@@ -207,6 +280,66 @@ pub fn format_lit_negative_test() {
   // Negative integer formats with minus sign
   let term = Term(Lit(I32(-10)), test_span())
   syntax.format(term) |> should.equal("-10")
+}
+
+// ============================================================================
+// FORMATTING TESTS - TYPE UNIVERSES
+// ============================================================================
+
+pub fn format_typ_zero_test() {
+  // Type0 formats as "Type0"
+  let term = Term(Typ(0), test_span())
+  syntax.format(term) |> should.equal("Type0")
+}
+
+pub fn format_typ_one_test() {
+  // Type1 formats as "Type1"
+  let term = Term(Typ(1), test_span())
+  syntax.format(term) |> should.equal("Type1")
+}
+
+pub fn format_typ_level_ten_test() {
+  // Type10 formats as "Type10"
+  let term = Term(Typ(10), test_span())
+  syntax.format(term) |> should.equal("Type10")
+}
+
+// ============================================================================
+// FORMATTING TESTS - HOLES
+// ============================================================================
+
+pub fn format_hole_test() {
+  // Hole formats as "?"
+  let term = Term(Hole(0), test_span())
+  syntax.format(term) |> should.equal("?")
+}
+
+// ============================================================================
+// FORMATTING TESTS - LITERAL TYPES
+// ============================================================================
+
+pub fn format_litt_i32_test() {
+  // I32 formats as "I32"
+  let term = Term(LitT(I32T), test_span())
+  syntax.format(term) |> should.equal("I32")
+}
+
+pub fn format_litt_i64_test() {
+  // I64 formats as "I64"
+  let term = Term(LitT(I64T), test_span())
+  syntax.format(term) |> should.equal("I64")
+}
+
+pub fn format_litt_f64_test() {
+  // F64 formats as "F64"
+  let term = Term(LitT(F64T), test_span())
+  syntax.format(term) |> should.equal("F64")
+}
+
+pub fn format_litt_u32_test() {
+  // U32 formats as "U32"
+  let term = Term(LitT(U32T), test_span())
+  syntax.format(term) |> should.equal("U32")
 }
 
 // ============================================================================
@@ -350,6 +483,66 @@ pub fn roundtrip_format_parse_test() {
   let result = syntax.parse(formatted1)
   let formatted2 = syntax.format(result.ast)
   formatted1 |> should.equal(formatted2)
+}
+
+// ============================================================================
+// ROUND-TRIP TESTS - TYPE UNIVERSES
+// ============================================================================
+
+pub fn roundtrip_typ_zero_test() {
+  // Type0 round-trips perfectly
+  let source = "Type0"
+  let result = syntax.parse(source)
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal(source)
+}
+
+pub fn roundtrip_typ_one_test() {
+  // Type1 round-trips perfectly
+  let source = "Type1"
+  let result = syntax.parse(source)
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal(source)
+}
+
+// ============================================================================
+// ROUND-TRIP TESTS - HOLES
+// ============================================================================
+
+pub fn roundtrip_hole_test() {
+  // Hole round-trips perfectly
+  let source = "?"
+  let result = syntax.parse(source)
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal(source)
+}
+
+// ============================================================================
+// ROUND-TRIP TESTS - LITERAL TYPES
+// ============================================================================
+
+pub fn roundtrip_litt_i32_test() {
+  // I32 round-trips perfectly
+  let source = "I32"
+  let result = syntax.parse(source)
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal(source)
+}
+
+pub fn roundtrip_litt_i64_test() {
+  // I64 round-trips perfectly
+  let source = "I64"
+  let result = syntax.parse(source)
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal(source)
+}
+
+pub fn roundtrip_litt_f64_test() {
+  // F64 round-trips perfectly
+  let source = "F64"
+  let result = syntax.parse(source)
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal(source)
 }
 
 // ============================================================================
