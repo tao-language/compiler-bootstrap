@@ -1,6 +1,6 @@
 # Core Language Overview
 
-> **Status**: ✅ FFI/Comptime complete, ⏳ Core language grammar pending
+> **Status**: ✅ Syntax library complete, ⏳ Core language syntax in progress (minimal skeleton)
 > **Date**: March 2025
 
 ---
@@ -11,7 +11,8 @@
 1. What to parse (patterns)
 2. How to construct AST from parsed values (constructors)
 3. How to format values back to source (formatters)
-4. How to handle compile-time evaluation (comptime)
+
+Both parser and formatter are **derived from the same grammar definition**.
 
 ---
 
@@ -19,18 +20,21 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Compiler Pipeline                            │
+│                     Core Language Syntax                         │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  Source → Parse → Elaborate (infer/check) → Codegen            │
-│                │    │                          │                 │
-│                │    └─ Returns #(Value, Type, State)            │
-│                │       - Comptime blocks resolved here          │
-│                │       - Unknown FFI → VCall (runtime defer)    │
-│                └─ Raw AST with Call/Comptime nodes               │
+│  src/core/syntax.gleam (single source of truth)                 │
+│  ├── core_grammar() - Grammar definition                         │
+│  ├── parse() - Parser (generated from grammar)                  │
+│  └── format() - Formatter (generated from grammar)              │
 │                                                                  │
-│  Codegen → Backend Module (user or official)                     │
-│            └─ Maps VCall to target runtime calls                 │
+│  Grammar → Parser + Formatter                                    │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  grammar.alt(pattern, constructor, formatter)            │   │
+│  │  - pattern: what to match                                │   │
+│  │  - constructor: values → AST                             │   │
+│  │  - formatter: AST → Doc                                  │   │
+│  └──────────────────────────────────────────────────────────┘   │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -39,11 +43,11 @@
 
 ## Design Principles
 
-1. **TypeScript-like syntax** - Familiar to web developers
-2. **C-style application only** - `f(x, y)` not `f x y`
-3. **Simple grammar** - No ambiguity between constructs
-4. **Clear precedence** - Obvious grouping without excessive parentheses
-5. **Minimal boilerplate** - No unnecessary keywords
+1. **Single file** - `src/core/syntax.gleam` contains grammar, constructors, and formatters
+2. **Grammar-derived** - Both parser and formatter generated from grammar
+3. **TypeScript-like syntax** - Familiar to web developers
+4. **C-style application only** - `f(x, y)` not `f x y`
+5. **De Bruijn indices** - Internal representation uses indices, not names
 
 ---
 
@@ -52,58 +56,48 @@
 ### ✅ Complete and Working
 
 **Syntax Library** (`src/syntax/`):
-- Lexer (~400 lines) - Tokenizes identifiers, keywords, numbers, strings, comments
-- Grammar DSL (~786 lines) - Full layout-aware grammar definition
-- Formatter (~139 lines) - Document algebra with best-fit rendering
+- Lexer - Tokenizes identifiers, keywords, numbers, strings, comments
+- Grammar DSL - Full layout-aware grammar definition with `Alternative` type
+- Formatter - Document algebra with best-fit rendering
 - Calculator example - Working parser/formatter with +, -, *, /
+- **238 tests passing**
 
 **Core Language** (`src/core/`):
-- `Term` types - Var, Lam, App, Pi, Rcd, Match, Ctr, Hole, Lit, Ann, Call, Comptime
+- `Term` types - All 13 constructors (Var, Lam, App, Pi, Rcd, Match, Ctr, Hole, Lit, Ann, Call, Comptime, Dot)
 - `Value` types - Normalization by evaluation
 - Type checker - Bidirectional type checking (infer/check)
 - Unifier - Type unification with occurs check
 - FFI/Comptime - Compile-time evaluation with permissions
-  - Pure builtins (add, sub, mul, div, eq, lt, etc.)
-  - Permission system (AllowRead, AllowWrite)
-  - `VCall` for deferred runtime calls
-  - **263 tests passing**
+- **263 tests passing** for core module
 
-### ⏳ Pending
+**Core Syntax** (`src/core/syntax.gleam`):
+- ✅ Minimal skeleton with 4 Term variants
+- ✅ Variables: `x` → `Var(0)`
+- ✅ Literals: `42` → `Lit(I32(42))`
+- ✅ Lambda: `λx. x` → `Lam("x", body)`
+- ✅ Application: `f(x)` → `App(fun, arg)`
+- ✅ Precedence-based parenthesization
+- ✅ Round-trip tests (parse → format → parse)
+- **18 tests passing** for core syntax
 
-- **Core language grammar** - Need to create `src/core/grammar.gleam`
-- **Core language parser** - Thin wrapper around syntax library parser
-- **Core language formatter** - Manual formatter using syntax formatter
-- **De Bruijn conversion** - Handle name ↔ index conversion
-- **Integration** - Wire up syntax library with core language
+### ⏳ In Progress
 
----
+**Core Syntax Expansion** - Adding remaining Term variants:
 
-## Syntax Library Status
+| Phase | Terms | Status |
+|-------|-------|--------|
+| Phase 1 | Var, Lit, Lam, App | ✅ Complete |
+| Phase 2 | Hole, Typ, LitT | 📋 Planned |
+| Phase 3 | Ann, Dot, Ctr | 📋 Planned |
+| Phase 4 | Pi, Rcd | 📋 Planned |
+| Phase 5 | Match, Call, Comptime | 📋 Planned |
 
-The syntax library (`src/syntax/`) is **complete and working**:
+### 📋 Pending
 
-- ✅ Lexer with comment handling, position tracking
-- ✅ Grammar DSL with layout hints
-- ✅ Parser with operator precedence
-- ✅ Formatter with document algebra
-- ✅ Calculator example demonstrates full round-trip
-
-See **[../grammar/01-overview.md](../grammar/01-overview.md)** for details.
-
----
-
-## FFI/Comptime Status
-
-The FFI/comptime system is **complete and working**:
-
-- ✅ `Call` and `Comptime` term constructors
-- ✅ `VCall` value for deferred runtime calls
-- ✅ Pure builtins (arithmetic, comparison, logical)
-- ✅ Permission system (AllowRead, AllowWrite)
-- ✅ Write fulfills Read (not vice versa)
-- ✅ **263 tests passing**
-
-See **[03-ffi-comptime.md](./03-ffi-comptime.md)** for details.
+- **De Bruijn conversion** - Proper name ↔ index conversion (currently all vars become `Var(0)`)
+- **Full Term coverage** - All 13 Term variants with complete parsing/formatting
+- **Pattern grammar** - Full pattern matching syntax
+- **Integration** - Wire up `core/syntax` with `core/core` evaluator and type checker
 
 ---
 
@@ -112,16 +106,102 @@ See **[03-ffi-comptime.md](./03-ffi-comptime.md)** for details.
 ```
 src/
 ├── syntax/
-│   ├── grammar.gleam      # Grammar DSL (~786 lines)
-│   ├── lexer.gleam        # Tokenizer (~400 lines)
-│   └── formatter.gleam    # Document algebra (~139 lines)
+│   ├── grammar.gleam      # Grammar DSL with parser/formatter generation
+│   ├── lexer.gleam        # Tokenizer
+│   └── formatter.gleam    # Document algebra
 ├── core/
 │   ├── core.gleam         # Term types, evaluator, type checker, FFI
-│   ├── grammar.gleam      # Core language grammar definition ← TODO
-│   ├── parser.gleam       # Thin wrapper: syntax.parse(core_grammar(), src) ← TODO
-│   └── formatter.gleam    # Manual formatter using syntax formatter ← TODO
-└── examples/
-    └── calc.gleam         # Working calculator example
+│   ├── syntax.gleam       # Core language grammar (single source of truth) ← NEW
+│   └── ...                # Other core modules
+├── examples/
+│   └── calc.gleam         # Working calculator example
+└── ...
+
+test/
+├── core/
+│   ├── core_test.gleam    # Core module tests (263 passing)
+│   └── syntax_test.gleam  # Core syntax tests (18 passing) ← NEW
+└── ...
+
+docs/
+├── syntax-library.md      # Syntax library user documentation ← NEW
+└── plans/
+    ├── grammar/           # Grammar system plans
+    └── core/              # Core language plans
+        ├── 01-overview.md # This file
+        ├── 02-syntax.md   # Syntax specification
+        └── 03-ffi-comptime.md # FFI/comptime docs
+```
+
+---
+
+## Key Concepts
+
+### Grammar-Generated Parser and Formatter
+
+```gleam
+// Single grammar definition
+pub fn core_grammar() -> grammar.Grammar(Term) {
+  use g <- grammar.define
+  g
+  |> grammar.rule("Lambda", [
+    grammar.alt(
+      grammar.seq([/* pattern */]),
+      make_lambda,      // constructor: values → AST
+      format_term,      // formatter: AST → Doc
+    ),
+  ])
+}
+
+// Both parser and formatter derived from grammar
+pub fn parse(source: String) -> grammar.ParseResult(Term) {
+  grammar.parse(core_grammar(), source)
+}
+
+pub fn format(term: Term) -> String {
+  grammar.format(core_grammar(), term)
+}
+```
+
+### Precedence-Based Parenthesization
+
+```gleam
+fn format_term(term, parent_prec) {
+  case term.data {
+    Lam(name, body) -> {
+      let inner = formatter.concat([/* ... */])
+      wrap_parens(inner, 70 < parent_prec)  // Add parens if needed
+    }
+    App(fun, arg) -> {
+      let inner = formatter.concat([/* ... */])
+      wrap_parens(inner, 85 < parent_prec)
+    }
+  }
+}
+```
+
+Example:
+- `format(App(Lam("x", Var(0)), Lit(I32(42))))` → `"(λx. var0)(42)"`
+- `format(Lam("x", App(Var(0), Lit(I32(42)))))` → `"λx. var0(42)"`
+
+---
+
+## Example Usage
+
+```gleam
+import core/syntax
+
+// Parse source code
+let source = "λx. f(x)"
+let result = syntax.parse(source)
+// result.ast = Term(Lam("x", App(Var(0), Var(0))), _)
+
+// Format AST back to source
+let formatted = syntax.format(result.ast)
+// formatted = "λx. var0(var0)"
+
+// Note: Identifiers become var0 (De Bruijn index)
+// Full implementation will preserve names with proper conversion
 ```
 
 ---
@@ -129,7 +209,7 @@ src/
 ## Related Documents
 
 - **[02-syntax.md](./02-syntax.md)** - Detailed syntax specification with grammar rules
-- **[03-ffi-comptime.md](./03-ffi-comptime.md)** - FFI and comptime implementation
+- **[03-ffi-comptime.md](./03-ffi-comptime.md)** - FFI and comptime implementation (✅ complete)
 - **[../grammar/01-overview.md](../grammar/01-overview.md)** - Grammar system overview
 - **[../../syntax-library.md](../../syntax-library.md)** - Syntax library user docs
 
@@ -138,5 +218,7 @@ src/
 ## References
 
 - [Syntax Library](../../src/syntax/grammar.gleam)
+- [Core Syntax](../../src/core/syntax.gleam)
 - [Core Language](../../src/core/core.gleam)
 - [Calculator Example](../../src/examples/calc.gleam)
+- [Syntax Tests](../../test/core/syntax_test.gleam)

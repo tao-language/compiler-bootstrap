@@ -1,7 +1,7 @@
 # FFI and Comptime Implementation
 
 > **Status**: ✅ Implemented - Core functionality complete
-> **Last Updated**: After FFI/comptime implementation with simplified permissions
+> **Last Updated**: March 2025
 
 ---
 
@@ -9,28 +9,29 @@
 
 ### What's Working
 
-- `Call` and `Comptime` term constructors
-- `VCall` value constructor for deferred runtime calls
-- `Builtin` type with `Option(Value)` return
-- `Permission` type (AllowRead, AllowWrite)
-- Permission checking with Write-fulfills-Read
-- Default builtins (arithmetic, comparison, logical)
-- `eval()`, `comptime_eval()`, `infer()` handle Call/Comptime
-- `VCall` quotes to `Call`
-- **263 tests passing**
+- ✅ `Call` and `Comptime` term constructors
+- ✅ `VCall` value constructor for deferred runtime calls
+- ✅ `Builtin` type with `Option(Value)` return
+- ✅ `Permission` type (AllowRead, AllowWrite)
+- ✅ Permission checking with Write-fulfills-Read
+- ✅ Default builtins (arithmetic, comparison, logical)
+- ✅ `eval()`, `comptime_eval()`, `infer()` handle Call/Comptime
+- ✅ `VCall` quotes to `Call`
+- ✅ **263 tests passing**
 
 ### What's Pending
 
-- More permission types (AllowEnv, AllowNet, AllowExec)
-- Impure builtins (read_file, write_file, get_env, now)
-- Backend integration (JavaScript, Python, WebAssembly)
-- Caching and incremental compilation
-- `comptime` keyword in surface syntax
+- [ ] More permission types (AllowEnv, AllowNet, AllowExec)
+- [ ] Impure builtins (read_file, write_file, get_env, now)
+- [ ] Backend integration (JavaScript, Python, WebAssembly)
+- [ ] Caching and incremental compilation
+- [ ] `comptime` keyword in surface syntax (grammar support)
 
 ### Related
 
 - See **[01-overview.md](./01-overview.md)** for overall implementation status
 - See **[02-syntax.md](./02-syntax.md)** for syntax specification
+- See **[../../src/core/syntax.gleam](../../src/core/syntax.gleam)** for grammar-derived syntax
 
 ---
 
@@ -561,7 +562,7 @@ const config = "{\"port\": 8080}";
    - Cache invalidation on permission changes
 
 5. **Syntax Sugar**
-   - `comptime` keyword in surface syntax
+   - `comptime` keyword in surface syntax (grammar support in progress)
    - Compile-time function execution
    - Macro system integration
 

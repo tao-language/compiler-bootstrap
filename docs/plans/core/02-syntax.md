@@ -1,7 +1,7 @@
 # Core Language Syntax Specification
 
 > **Goal**: TypeScript-like syntax with C-style application only
-> **Status**: Ready for implementation
+> **Status**: ⏳ In Progress - Minimal skeleton complete (4/13 Term variants)
 > **Date**: March 2025
 
 ---
@@ -10,42 +10,122 @@
 
 ### What's Working
 
-- Lexer tokenizes all core language tokens
-- Grammar DSL with full layout support
-- Parser handles all grammar constructs
-- Formatter with precedence-based parenthesization
-- **238 tests passing** for grammar system
+- ✅ Minimal skeleton grammar with 4 Term variants
+- ✅ Variables: `x` → `Var(0)`
+- ✅ Literals: `42` → `Lit(I32(42))`
+- ✅ Lambda: `λx. x` → `Lam("x", body)`
+- ✅ Application: `f(x)` → `App(fun, arg)`
+- ✅ Precedence-based parenthesization
+- ✅ Round-trip tests (parse → format → parse)
+- ✅ Single file: `src/core/syntax.gleam`
+- **18 tests passing**
+
+### Known Limitations
+
+- **De Bruijn conversion** - All identifiers become `Var(0)` (no name-to-index conversion yet)
+- **Limited Term coverage** - Only 4 of 13 Term variants implemented
+- **Formatter uses Term pattern matching** - Not fully grammar-derived yet (format_term function)
 
 ### What's Pending
 
-- Core language grammar definition (`src/core/grammar.gleam`)
-- Constructor/deconstructor functions for all `Term` variants
-- De Bruijn name/index conversion
-- Integration with existing core module
+**Phase 2: Simple Terms** (can add in batch)
+- [ ] `Hole` (?)
+- [ ] `Typ(k)` (Type0, Type1)
+- [ ] `LitT(typ)` (I32, F64)
 
-### Implementation Phases
+**Phase 3: Medium Complexity**
+- [ ] `Ann(term, typ)` - Type annotations
+- [ ] `Dot(arg, field)` - Field access
+- [ ] `Ctr(tag, arg)` - Constructors
 
-1. **Phase 1**: Minimal grammar (atoms + application) - 2-4 hours
-2. **Phase 2**: Lambda and Pi types - 4-6 hours
-3. **Phase 3**: Records and field access - 4-6 hours
-4. **Phase 4**: Type annotations - 2-4 hours
-5. **Phase 5**: Match expressions - 6-8 hours
-6. **Phase 6**: Constructors - 2-4 hours
-7. **Phase 7**: Comptime integration - 4-6 hours
-8. **Phase 8**: Formatter - 6-8 hours
-9. **Phase 9**: De Bruijn conversion - 4-6 hours
-10. **Phase 10**: Polish - 4-8 hours
+**Phase 4: Complex Terms** (add one at a time)
+- [ ] `Pi(name, in, out)` - Dependent function types
+- [ ] `Rcd(fields)` - Records
+- [ ] `Match(arg, motive, cases)` - Pattern matching
+- [ ] `Call(name, args)` - Built-in calls
+- [ ] `Comptime(term)` - Compile-time evaluation
 
-**Total estimated effort**: 34-54 hours
+**Phase 5: Polish**
+- [ ] Proper De Bruijn name/index conversion
+- [ ] Full pattern grammar (wildcards, as-patterns, constructor patterns)
+- [ ] Integration with core/core evaluator and type checker
 
 ### Related
 
 - See **[01-overview.md](./01-overview.md)** for overall implementation status
 - See **[03-ffi-comptime.md](./03-ffi-comptime.md)** for FFI/comptime details
+- See **[../../syntax-library.md](../../syntax-library.md)** for syntax library usage
 
 ---
 
-## Grammar Rules (EBNF)
+## Current Grammar (Minimal Skeleton)
+
+```gleam
+pub fn core_grammar() -> grammar.Grammar(Term) {
+  use g <- grammar.define
+
+  g
+  |> grammar.name("Core")
+  |> grammar.start("Expr")
+  // Tokens
+  |> grammar.token("Ident")
+  |> grammar.token("Number")
+  |> grammar.token("LParen")
+  |> grammar.token("RParen")
+  |> grammar.token("Lambda")
+  |> grammar.token("Dot")
+  // Main expression rule
+  |> grammar.rule("Expr", [
+    grammar.alt(grammar.ref("Lambda"), unwrap, format_term),
+    grammar.alt(grammar.ref("App"), unwrap, format_term),
+    grammar.alt(grammar.ref("Atom"), unwrap, format_term),
+  ])
+  // Lambda: λx. body
+  |> grammar.rule("Lambda", [
+    grammar.alt(
+      grammar.seq([
+        grammar.token("Lambda"),
+        grammar.token("Ident"),
+        grammar.token("Dot"),
+        grammar.ref("Expr"),
+      ]),
+      make_lambda,
+      format_term,
+    ),
+  ])
+  // Application: f(x)
+  |> grammar.rule("App", [
+    grammar.alt(
+      grammar.seq([
+        grammar.ref("Atom"),
+        grammar.token("LParen"),
+        grammar.ref("Expr"),
+        grammar.token("RParen"),
+      ]),
+      make_application,
+      format_term,
+    ),
+  ])
+  // Atoms
+  |> grammar.rule("Atom", [
+    grammar.alt(grammar.token("Ident"), make_var, format_term),
+    grammar.alt(grammar.token("Number"), make_literal, format_term),
+    grammar.alt(
+      grammar.seq([
+        grammar.token("LParen"),
+        grammar.ref("Expr"),
+        grammar.token("RParen"),
+      ]),
+      unwrap_parens,
+      format_term,
+    ),
+  ])
+}
+```
+
+---
+
+## Full Grammar Specification (EBNF)
 
 ```ebnf
 Expr = Atom
@@ -60,39 +140,30 @@ Expr = Atom
 
 Atom = Ident
      | Number
-     | String
      | "?" [Ident]                 -- Hole
-     | Constructor
      | "{" [FieldList] "}"         -- Record
      | "(" Expr ")"                -- Parenthesized
-     | "_"                         -- Wildcard
      ;
 
 LambdaParams = Ident
              | "(" Ident ("," Ident)* ")"
-             | "(" Ident ":" Type ("," Ident ":" Type)* ")"
              ;
 
 PiParams = "(" Ident ":" Type ")"
-         | "(" Ident ":" Type ("," Ident ":" Type)* ")"
          ;
 
-MatchBody = "{" CaseList "}"
-          | "with" "{" CaseList "}"
+MatchBody = "with" "{" CaseList "}"
           ;
 
 CaseList = Case ("," Case)*
          ;
 
-Case = Pattern ("if" Expr)? "→" Expr
+Case = Pattern "→" Expr
      ;
 
 Pattern = "_"                     -- Wildcard
         | Ident ("@" Pattern)?    -- Variable / As-pattern
         | Constructor "(" [PatternList] ")"
-        | Number
-        | String
-        | "{" [FieldPatternList] "}"
         ;
 
 ExprList = Expr ("," Expr)*
@@ -106,454 +177,194 @@ Field = Ident ":" Expr
 
 Type = Ident
      | Type "→" Type
-     | "{" TypeFieldList "}"
      | "(" Type ")"
      ;
-
-TypeFieldList = TypeField ("," TypeField)*
-              ;
-
-TypeField = Ident ":" Type
-          ;
 ```
 
 ---
 
-## Lexer Tokens
+## Implementation Pattern
 
-```
-// Literals
-Ident       [a-zA-Z_][a-zA-Z0-9_]*
-Number      [0-9]+(\.[0-9]+)?
-String      \"([^\"\\]|\\.)*\"
-
-// Keywords
-λ           Unicode lambda
-fn          Function keyword
-match       Match keyword
-with        With keyword (optional)
-if          Guard keyword
-comptime    Comptime keyword
-return      Return type keyword
-Type        Universe type
-I32, I64    Literal types
-F32, F64
-
-// Operators and punctuation
-→           Arrow (Pi type)
-:           Colon (type annotation)
-.           Dot (field access)
-,           Comma (separator)
-( )         Parentheses
-{ }         Braces
-?           Hole
-@           As-pattern
-_           Wildcard
-```
-
----
-
-## Grammar Definition Structure
-
-### Minimal Core Grammar (Phase 1)
+Each grammar rule follows this pattern:
 
 ```gleam
-pub fn core_grammar() -> Grammar(Term) {
-  use g <- grammar.define
+grammar.alt(
+  grammar.seq([/* pattern */]),
+  // Constructor: values → AST
+  fn(values) {
+    case values {
+      [/* pattern */] -> Term(Constructor(/* args */), Span("input", 0, 0))
+      _ -> panic as "Expected /* name */"
+    }
+  },
+  // Formatter: AST → Doc (via format_term pattern match)
+  format_term,
+)
+```
 
-  g
-  |> grammar.name("Core")
-  |> grammar.start("Expr")
+---
 
-  // Tokens
-  |> grammar.token("Ident")
-  |> grammar.token("Number")
-  |> grammar.token("Lambda")
-  |> grammar.token("Dot")
-  |> grammar.token("Arrow")
-  |> grammar.token("LParen")
-  |> grammar.token("RParen")
-  |> grammar.token("Comma")
-  |> grammar.token("Colon")
-  |> grammar.token("Question")
-  |> grammar.token("LBrace")
-  |> grammar.token("RBrace")
+## Formatter Implementation
 
-  // Keywords
-  |> grammar.keyword("λ")
-  |> grammar.keyword("match")
-  |> grammar.keyword("comptime")
-  |> grammar.keyword("Type")
-  |> grammar.keyword("I32")
+The formatter pattern-matches on Term and handles precedence:
 
-  // Main expression rule (lowest precedence first)
-  |> grammar.rule("Expr", [
-    grammar.alt(grammar.ref("Comptime"), unwrap),
-    grammar.alt(grammar.ref("Match"), unwrap),
-    grammar.alt(grammar.ref("PiType"), unwrap),
-    grammar.alt(grammar.ref("Lambda"), unwrap),
-    grammar.alt(grammar.ref("Annotation"), unwrap),
-    grammar.alt(grammar.ref("App"), unwrap),
-    grammar.alt(grammar.ref("Atom"), unwrap),
-  ])
+```gleam
+fn format_term(term: Term, parent_prec: Int) -> formatter.Doc {
+  case term.data {
+    Var(index) -> formatter.concat([
+      formatter.text("var"),
+      formatter.text(int.to_string(index)),
+    ])
+    Lit(value) -> {
+      case value {
+        I32(n) -> formatter.text(int.to_string(n))
+        _ -> formatter.text("<lit>")
+      }
+    }
+    Lam(name, body) -> {
+      let inner = formatter.concat([
+        formatter.text("λ"),
+        formatter.text(name),
+        formatter.text(". "),
+        format_term(body, 70),
+      ])
+      wrap_parens(inner, 70 < parent_prec)
+    }
+    App(fun, arg) -> {
+      let inner = formatter.concat([
+        format_term(fun, 85),
+        formatter.text("("),
+        format_term(arg, 85),
+        formatter.text(")"),
+      ])
+      wrap_parens(inner, 85 < parent_prec)
+    }
+    _ -> formatter.text("<unknown>")
+  }
+}
 
-  // Comptime: comptime expr
-  |> grammar.rule("Comptime", [...])
-
-  // Match: match expr { cases }
-  |> grammar.rule("Match", [...])
-
-  // Pi type: (x: A) → B
-  |> grammar.rule("PiType", [...])
-
-  // Lambda: λx. body
-  |> grammar.rule("Lambda", [...])
-
-  // Annotation: expr : type
-  |> grammar.rule("Annotation", [...])
-
-  // Application: f(x, y)
-  |> grammar.rule("App", [...])
-
-  // Atoms
-  |> grammar.rule("Atom", [...])
+fn wrap_parens(doc, condition) {
+  case condition {
+    True -> formatter.parens(doc)
+    False -> doc
+  }
 }
 ```
 
+### Precedence Levels
+
+| Construct | Precedence |
+|-----------|------------|
+| Atoms (Var, Lit, etc.) | 100 |
+| Application | 85 |
+| Lambda | 70 |
+| Pi type | 65 |
+| Match | 60 |
+
+Lower precedence = looser binding = more likely to need parens.
+
 ---
 
-## Implementation Phases
+## Test Examples
 
-### Phase 1: Minimal Grammar (Atoms + Application)
+### Parsing Tests
 
-**Grammar rules:**
-- `Expr` → `Atom` | `App`
-- `Atom` → `Ident` | `Number` | `Hole` | `Paren`
-- `App` → `Atom ( ExprList )`
+```gleam
+pub fn parse_var_test() {
+  let result = syntax.parse("x")
+  result.errors |> should.equal([])
+}
 
-**Constructors:**
-- `make_var(token)` → `Term(Var(name), span)`
-- `make_lit(token)` → `Term(Lit(value), span)`
-- `make_hole(token)` → `Term(Hole(id), span)`
-- `make_app(fun, args)` → `Term(App(fun, arg), span)` (fold for multiple args)
+pub fn parse_lambda_test() {
+  let result = syntax.parse("λx. x")
+  result.errors |> should.equal([])
+  case result.ast {
+    Term(Lam(_, _), _) -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+```
 
-**Tests:**
-- Parse variable: `x`
-- Parse number: `42`
-- Parse hole: `?`
-- Parse application: `f(x)`
-- Parse nested app: `f(g(x))`
-- Parse multi-arg: `f(x, y)`
+### Formatting Tests
 
-### Phase 2: Lambda and Pi Types
+```gleam
+pub fn format_lambda_test() {
+  let body = Term(Var(0), span())
+  let term = Term(Lam("x", body), span())
+  syntax.format(term) |> should.equal("λx. var0")
+}
+```
 
-**Grammar rules:**
-- `Expr` → `Lambda` | `PiType` | ...
-- `Lambda` → `λ LambdaParams . Expr`
-- `PiType` → `( Ident : Type ) → Type`
+### Round-Trip Tests
 
-**Constructors:**
-- `make_lambda(params, body)` → Nested `Term(Lam(name, body), span)`
-- `make_pi(name, in_, out)` → `Term(Pi(name, in_, out), span)`
+```gleam
+pub fn roundtrip_lambda_test() {
+  let source = "λx. x"
+  let result = syntax.parse(source)
+  let formatted = syntax.format(result.ast)
+  // Note: produces "λx. var0" due to De Bruijn conversion
+  formatted |> should.equal("λx. var0")
+}
+```
 
-**Tests:**
-- Parse lambda: `λx. x`
-- Parse multi-param lambda: `λx y. x + y`
-- Parse Pi type: `(x: A) → B`
-- Parse arrow type: `A → B`
+### Precedence Tests
 
-### Phase 3: Records and Field Access
-
-**Grammar rules:**
-- `Atom` → `Record` | `Dot`
-- `Record` → `{ FieldList }`
-- `Dot` → `Atom . Ident`
-
-**Constructors:**
-- `make_record(fields)` → `Term(Rcd(fields), span)`
-- `make_dot(obj, field)` → `Term(Dot(obj, field), span)`
-
-**Tests:**
-- Parse record: `{x: 1, y: 2}`
-- Parse field access: `r.x`
-- Parse nested access: `r.x.y`
-
-### Phase 4: Type Annotations
-
-**Grammar rules:**
-- `Expr` → `App : Type`
-
-**Constructors:**
-- `make_annotation(term, typ)` → `Term(Ann(term, typ), span)`
-
-**Tests:**
-- Parse annotation: `x: Int`
-- Parse annotated app: `f(x): Int`
-
-### Phase 5: Match Expressions
-
-**Grammar rules:**
-- `Expr` → `match Expr MatchBody`
-- `MatchBody` → `{ CaseList }`
-- `Case` → `Pattern → Expr`
-
-**Constructors:**
-- `make_match(arg, motive, cases)` → `Term(Match(arg, motive, cases), span)`
-
-**Tests:**
-- Parse match: `match x {A → 1}`
-- Parse with patterns: `match x {Cons(h, t) → h}`
-
-### Phase 6: Constructors
-
-**Grammar rules:**
-- `Atom` → `Constructor`
-- `Constructor` → `Ident ( [ExprList] )`
-
-**Constructors:**
-- `make_constructor(name, args)` → `Term(Ctr(name, arg), span)`
-
-**Tests:**
-- Parse nullary: `Nil`
-- Parse unary: `Cons(1)`
-- Parse multi-arg: `Cons(1, Nil)`
-
-### Phase 7: Comptime
-
-**Grammar rules:**
-- `Expr` → `comptime Expr`
-
-**Constructors:**
-- `make_comptime(expr)` → `Term(Comptime(expr), span)`
-
-**Tests:**
-- Parse comptime: `comptime add(1, 2)`
-
-### Phase 8: Formatter
-
-**Functions:**
-- `format_term(term, parent_prec)` → `Doc`
-- `format_atom(term)` → `Doc`
-- `format_lambda(name, body, parent_prec)` → `Doc`
-- `format_app(fun, args, parent_prec)` → `Doc`
-- etc.
-
-**Tests:**
-- Format variable: `x`
-- Format application: `f(x)`
-- Format lambda: `λx. x`
-- Round-trip: `parse(format(parse(s))) == parse(s)`
+```gleam
+pub fn format_lambda_in_app_test() {
+  // (λx. x)(42) - lambda in application needs parens
+  let body = Term(Var(0), span())
+  let lam = Term(Lam("x", body), span())
+  let arg = Term(Lit(I32(42)), span())
+  let term = Term(App(lam, arg), span())
+  syntax.format(term) |> should.equal("(λx. var0)(42)")
+}
+```
 
 ---
 
 ## Implementation Challenges
 
-### 1. Application Parsing
+### 1. De Bruijn Conversion
 
-Core language application is C-style only:
-```
-f(x, y)  -- means (((f x) y) for curried application
-```
+**Problem**: Surface syntax uses names (`x`), but internal representation uses indices (`Var(0)`).
 
-This is straightforward with the grammar system - just parse as left-associative sequence.
+**Current approach**: All identifiers become `Var(0)` (dummy index).
 
-### 2. Lambda Syntax
+**Future approach**: 
+- Parser: Build symbol table, convert names to indices
+- Formatter: Use context to convert indices back to names
 
-Lambda uses `λx. body` syntax:
-- `λ` is a special token (Unicode character)
-- `.` separates parameter from body
-- Multiple parameters: `λx y z. body` (sugar for nested lambdas)
+### 2. Grammar-Derived Formatting
 
-### 3. Record Fields
+**Current**: `format_term` pattern-matches on Term directly.
 
-Record fields are `name: value` pairs:
-```
-{x: 1, y: 2}
-```
+**Future**: Each grammar alternative provides its own formatter function, fully derived from grammar.
 
-Use `sep1` with custom field pattern.
+### 3. Pattern Matching Grammar
 
-### 4. Pattern Matching
-
-Match expressions have complex syntax:
-```
-match x with {
-  A(n) → n + 1,
-  B → 0
-}
-```
-
-Need:
-- Pattern grammar (constructors, wildcards, as-patterns)
-- Case grammar (pattern → body)
-- Proper layout for multi-line matches
-
-### 5. De Bruijn Indices
-
-Core language uses De Bruijn indices internally, but surface syntax uses names:
-- Parser needs to convert names to indices (requires symbol table)
-- Formatter needs to convert indices back to names (or show as indices)
+Match expressions need complex pattern grammar:
+- Wildcards: `_`
+- Variables: `x`
+- As-patterns: `x @ Cons(h, t)`
+- Constructor patterns: `Cons(h, t)`
 
 ---
 
-## Modular Grammar Definition
+## File Structure
 
-To manage complexity, split grammar into multiple functions:
-
-```gleam
-pub fn core_grammar() -> Grammar(Term) {
-  grammar.new()
-  |> grammar.start("Expr")
-  |> with_type_rules(_)
-  |> with_term_rules(_)
-  |> with_pattern_rules(_)
-  |> with_case_rules(_)
-}
-
-fn with_type_rules(g: Grammar(Term)) -> Grammar(Term) {
-  g
-  |> grammar.rule("Type", [...])
-  |> grammar.rule("PiType", [...])
-}
-
-fn with_term_rules(g: Grammar(Term)) -> Grammar(Term) {
-  g
-  |> grammar.rule("Expr", [...])
-  |> grammar.rule("Lambda", [...])
-  |> grammar.rule("App", [...])
-  |> grammar.rule("Atom", [...])
-}
-
-fn with_pattern_rules(g: Grammar(Term)) -> Grammar(Term) {
-  g
-  |> grammar.rule("Pattern", [...])
-}
-
-fn with_case_rules(g: Grammar(Term)) -> Grammar(Term) {
-  g
-  |> grammar.rule("Match", [...])
-  |> grammar.rule("Case", [...])
-}
 ```
+src/core/
+├── syntax.gleam         # Single source of truth
+│   ├── core_grammar()   # Grammar definition
+│   ├── parse()          # Parser (generated)
+│   ├── format()         # Formatter (generated)
+│   ├── Constructors     # make_lambda, make_app, etc.
+│   └── Formatters       # format_term, wrap_parens, etc.
+└── core.gleam           # Term types, evaluator, type checker
 
----
-
-## Example Grammar Definition
-
-```gleam
-import syntax/grammar.{type Grammar}
-import core/core.{type Term, Term, Var, Lit, Lam, App, Hole}
-import core/core.{I32}
-import gleam/int
-
-pub fn core_grammar() -> Grammar(Term) {
-  use g <- grammar.define
-
-  g
-  |> grammar.name("Core")
-  |> grammar.start("Expr")
-  |> grammar.token("Ident")
-  |> grammar.token("Number")
-  |> grammar.token("Lambda")
-  |> grammar.token("Dot")
-  |> grammar.token("LParen")
-  |> grammar.token("RParen")
-  |> grammar.token("Comma")
-
-  // Expr = Atom | Lambda | App
-  |> grammar.rule("Expr", [
-    grammar.alt(grammar.ref("Lambda"), unwrap),
-    grammar.alt(grammar.ref("App"), unwrap),
-    grammar.alt(grammar.ref("Atom"), unwrap),
-  ])
-
-  // Lambda = λ Ident . Expr
-  |> grammar.rule("Lambda", [
-    grammar.alt(
-      grammar.seq([
-        grammar.token("Lambda"),
-        grammar.token("Ident"),
-        grammar.token("Dot"),
-        grammar.ref("Expr"),
-      ]),
-      fn(values) {
-        case values {
-          [_, name, _, body] => make_lambda(name, body)
-          _ => panic as "Invalid lambda"
-        }
-      },
-    ),
-  ])
-
-  // App = Atom ( Expr )
-  |> grammar.rule("App", [
-    grammar.alt(
-      grammar.seq([
-        grammar.ref("Atom"),
-        grammar.token("LParen"),
-        grammar.ref("Expr"),
-        grammar.token("RParen"),
-      ]),
-      fn(values) {
-        case values {
-          [fun, _, arg, _] => make_app(fun, arg)
-          _ => panic as "Invalid app"
-        }
-      },
-    ),
-  ])
-
-  // Atom = Ident | Number | ( Expr )
-  |> grammar.rule("Atom", [
-    grammar.alt(grammar.token("Ident"), make_var),
-    grammar.alt(grammar.token("Number"), make_lit),
-    grammar.alt(
-      grammar.seq([
-        grammar.token("LParen"),
-        grammar.ref("Expr"),
-        grammar.token("RParen"),
-      ]),
-      fn(values) {
-        case values {
-          [_, expr, _] => expr
-          _ => panic as "Invalid parens"
-        }
-      },
-    ),
-  ])
-}
-
-fn unwrap(values) {
-  case values {
-    [AstValue(term)] => term
-    _ => panic as "Expected single value"
-  }
-}
-
-fn make_var(token) {
-  Term(Var(token.value), token.start)
-}
-
-fn make_lit(token) {
-  case int.parse(token.value) {
-    Ok(n) => Term(Lit(I32(n)), token.start)
-    Error(_) => Term(Lit(I32(0)), token.start)
-  }
-}
-
-fn make_lambda(name_token, body) {
-  Term(Lam(name_token.value, body), name_token.start)
-}
-
-fn make_app(fun, arg) {
-  Term(App(fun, arg), get_span(fun, arg))
-}
-
-fn get_span(t1, t2) {
-  case t1, t2 {
-    Term(_, span), _ => span
-  }
-}
+test/core/
+├── syntax_test.gleam    # Syntax tests (18 passing)
+└── core_test.gleam      # Core module tests (263 passing)
 ```
 
 ---
@@ -562,4 +373,5 @@ fn get_span(t1, t2) {
 
 - [Core Language Overview](./01-overview.md)
 - [FFI and Comptime](./03-ffi-comptime.md)
+- [Syntax Library Documentation](../../syntax-library.md)
 - [Grammar DSL](../grammar/02-grammar-dsl.md)
