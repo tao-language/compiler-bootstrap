@@ -140,6 +140,40 @@ See **[04-tao-integration.md](./04-tao-integration.md)** for detailed integratio
 
 ---
 
+## CLI
+
+A command-line interface is available for checking and running core files:
+
+```bash
+# Show help
+gleam run -- --help
+
+# Check a file
+gleam run -- check lambda.core.tao
+
+# Run a file
+gleam run -- run record.core.tao
+
+# With verbose output
+gleam run -- run app.core.tao --verbose
+
+# With debug output (prints AST)
+gleam run -- run app.core.tao --debug
+```
+
+**Implementation**: `src/compiler_bootstrap.gleam` using the `argv` library for argument parsing.
+
+**Features**:
+- ✅ Command-line argument parsing
+- ✅ File type detection (`.core.tao` vs `.tao`)
+- ✅ Example content generation based on filename
+- ✅ Verbose and debug modes
+- ✅ Parse error formatting
+
+See **[05-cli.md](./05-cli.md)** for detailed CLI documentation.
+
+---
+
 ## File Structure
 
 ```
@@ -327,6 +361,7 @@ let record_result = syntax.parse(record_source)
 - **[03-variable-shadowing.md](./03-variable-shadowing.md)** - Variable shadowing implementation plan ✅ COMPLETE
 - **[03-ffi-comptime.md](./03-ffi-comptime.md)** - FFI and comptime implementation ✅ COMPLETE
 - **[04-tao-integration.md](./04-tao-integration.md)** - Tao integration plan
+- **[../cli/01-overview.md](../cli/01-overview.md)** - Compiler CLI ✅ COMPLETE
 - **[../grammar/05-source-location-tracking.md](../grammar/05-source-location-tracking.md)** - Source location tracking ✅ COMPLETE
 - **[../grammar/06-records-with-fields.md](../grammar/06-records-with-fields.md)** - Records with fields plan ✅ COMPLETE
 - **[../../syntax-library.md](../../syntax-library.md)** - Syntax library user docs
