@@ -264,6 +264,7 @@ let y = 5.0 + 3.0  // Desugars: add(F64, 5.0, 3.0)
 - [ ] Handle pattern matching syntax
 - [ ] Handle type annotations (optional)
 - [ ] Handle attributes (@permission, @effect, etc.)
+- [ ] Handle module syntax (import, export, module)
 
 **Phase 3: Parser** (`src/tao/parser.gleam`):
 - [ ] Thin wrapper around syntax library parser
@@ -280,9 +281,13 @@ let y = 5.0 + 3.0  // Desugars: add(F64, 5.0, 3.0)
 - [ ] Type inference and injection
 - [ ] Operator overloading resolution (NbE)
 - [ ] Mutable variable state threading
+- [ ] Imperative blocks → tail-recursive functions
+- [ ] Early return → ControlFlow enum
 - [ ] Expand `<-` bind operator
 - [ ] Expand `?.` optional chaining
 - [ ] Expand `?` Result unwrap
+- [ ] Record update syntax
+- [ ] Module name mangling
 - [ ] Handle attributes (permissions, effects)
 
 **Phase 6: Standard Library** (`src/tao/std/`):
@@ -292,6 +297,12 @@ let y = 5.0 + 3.0  // Desugars: add(F64, 5.0, 3.0)
 - [ ] Option combinators (map, and_then, etc.)
 - [ ] Result combinators
 - [ ] Common utilities
+
+**Phase 7: Module System**:
+- [ ] Import resolution
+- [ ] Circular dependency detection
+- [ ] Public/private visibility
+- [ ] Project compilation (topological sort)
 
 ### 📋 Planned (Future Enhancements)
 

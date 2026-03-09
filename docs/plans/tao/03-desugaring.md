@@ -81,25 +81,84 @@ let counter_2 = mul(counter_1, 2)
 2. Thread state explicitly
 3. Replace all uses with latest version
 
-**Algorithm**:
-```gleam
-fn desugar_mutable_let(name, mut assignments) {
-  let mut fresh_name = name <> "_0"
-  let mut result = []
-  
-  for (i, assignment) in assignments.enumerate() {
-    let current_name = name <> "_" <> i
-    let next_name = name <> "_" <> (i + 1)
-    
-    result.append(desugar_let(current_name, assignment))
-    
-    -- Replace all uses of 'name' in subsequent code with 'current_name'
-    substitute(name, current_name, subsequent_code)
+### Imperative Blocks
+
+```tao
+// Tao
+let result = {
+  mut sum = 0
+  mut i = 0
+  while i < 10 {
+    sum = sum + i
+    i = i + 1
   }
+  sum
+}
+
+// Core (tail-recursive function)
+fn loop(sum: I32, i: I32) -> I32 {
+  match i < 10 {
+    True => loop(sum + i, i + 1)
+    False => sum
+  }
+}
+let result = loop(0, 0)
+```
+
+**Desugaring Algorithm**:
+```gleam
+fn desugar_imperative_block(mut_vars, statements, final_expr) {
+  // 1. Collect all mutable variables
+  let var_names = mut_vars.map(fn(v) { v.name })
   
-  result
+  // 2. Create tail-recursive loop function
+  let loop_fn = Lam("loop",
+    Lam(var_names,  -- Parameters: current state
+      Match(
+        -- Loop condition
+        -- Loop body: recursive call with updated state
+        -- Exit: return final_expr
+      )
+    )
+  )
+  
+  // 3. Apply loop with initial values
+  App(loop_fn, initial_values)
 }
 ```
+
+### Early Return
+
+```tao
+// Tao
+let found = {
+  for x in list {
+    if x == target { return Some(x) }
+  }
+  None
+}
+
+// Core (ControlFlow enum bubbling)
+type ControlFlow(a) = Continue(a) | Break(a)
+
+fn loop_body(x: a, acc: List(a)) -> ControlFlow(List(a)) {
+  match x == target {
+    True => Break(Some(x))  -- Early return
+    False => Continue(acc)
+  }
+}
+
+match list.fold(list, Continue(Nil), loop_body) {
+  Break(result) => result
+  Continue(final) => final
+}
+```
+
+**Desugaring**:
+1. Wrap block in `ControlFlow` enum
+2. `return` becomes `Break(value)`
+3. Normal completion becomes `Continue(value)`
+4. Unwrap at block boundary
 
 ---
 
@@ -470,6 +529,54 @@ fn resolve_operator(op, args, ctx) {
 
 ## Types
 
+### Record Construction
+
+```tao
+// Tao
+let p = { x: 1.0, y: 2.0 }
+
+// Core
+Rcd([("x", Lit(F64(1.0))), ("y", Lit(F64(2.0)))])
+```
+
+### Record Update
+
+```tao
+// Tao
+let p2 = { ..p, y: 3.0 }
+
+// Core
+let p_fields = Var("p")
+let new_p = Rcd([
+  ("x", Dot(p_fields, "x")),  -- Copy from original
+  ("y", Lit(F64(3.0)))        -- Override with new value
+])
+```
+
+**Desugaring**:
+1. Expand `..record` to all field projections
+2. Override with explicitly specified fields
+3. Construct new record with merged fields
+
+**Algorithm**:
+```gleam
+fn desugar_record_update(original, updates) {
+  // 1. Get all field names from original record type
+  let all_fields = get_record_fields(original)
+  
+  // 2. For each field, use update value or project from original
+  let fields = all_fields.map(fn(name) {
+    case list.key_find(updates, name) {
+      Ok(new_value) => (name, new_value)
+      Error(_) => (name, Dot(original, name))
+    }
+  })
+  
+  // 3. Construct new record
+  Rcd(fields)
+}
+```
+
 ### Type Annotation
 
 ```tao
@@ -517,7 +624,83 @@ let Vec3 = App(App(Var("Vec"), Lit(I32(3))), LitT(F64T))
 
 ---
 
-## Attributes
+## Modules
+
+### Import Resolution
+
+```tao
+// Tao
+import std/list.{map, filter}
+import my_app/utils as utils
+
+// Core (name mangling)
+let std_list__map = Var("std_list__map")
+let std_list__filter = Var("std_list__filter")
+let utils__helper = Var("utils__helper")
+```
+
+**Desugaring**:
+1. Resolve module paths to file locations
+2. Mangle names: `module__symbol`
+3. Import becomes let-binding in outer scope
+
+### Module Wrapping
+
+```tao
+// utils.tao
+module my_app/utils
+
+pub fn helper() -> Unit { ... }
+fn internal() -> Unit { ... }
+
+// Core (wrapped in module namespace)
+let my_app__utils__helper = Lam("_", ...)  -- pub
+-- my_app__utils__internal is not exported
+```
+
+**Desugaring**:
+1. Prefix all symbols with `module__`
+2. Only export `pub` symbols
+3. Private symbols remain internal
+
+### Project Compilation
+
+```
+// Compiler topologically sorts modules
+main.tao
+  imports utils.tao
+    imports data/tree.tao
+
+// Becomes (pseudocode)
+let data__tree__Node = ...
+let data__tree__Leaf = ...
+let utils__helper = ...
+let main = ...
+```
+
+**Algorithm**:
+```gleam
+fn compile_project(modules) {
+  // 1. Build dependency graph
+  let graph = build_dependency_graph(modules)
+  
+  // 2. Check for cycles (forbid circular imports)
+  case topological_sort(graph) {
+    Ok(sorted) => {
+      // 3. Compile in order
+      let core_terms = sorted.map(fn(m) {
+        compile_module(m)
+      })
+      
+      // 4. Wrap in nested let bindings
+      wrap_in_lets(core_terms)
+    }
+    Error(cycle) => {
+      report_error("Circular import: " <> cycle)
+    }
+  }
+}
+```
 
 ### Permission Attribute
 

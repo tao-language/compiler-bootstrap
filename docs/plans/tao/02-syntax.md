@@ -172,6 +172,35 @@ let Some(value) = maybe    // Destructure Maybe
 let [head, ..tail] = list  // Destructure list
 ```
 
+### Imperative Blocks
+
+```tao
+// Mutable variables in a block (desugars to tail-recursive function)
+let result = {
+  mut sum = 0
+  mut i = 0
+  while i < 10 {
+    sum = sum + i
+    i = i + 1
+  }
+  sum  // Final expression is block value
+}
+
+// With early return
+let found = {
+  for x in list {
+    if x == target { return Some(x) }
+  }
+  None
+}
+
+// For loop (desugars to fold/map)
+let doubled = for x in [1, 2, 3] {
+  x * 2
+}
+// Desugars to: list.map([1, 2, 3], fn(x) { x * 2 })
+```
+
 ---
 
 ## Functions
@@ -270,6 +299,7 @@ person.address?.city  // Optional chaining
 
 ```tao
 let p2 = { ..p, y: 3.0 }  // Copy p, change y
+let person2 = { ..person, age: 31 }  // Copy with update
 ```
 
 ### Sum Type (Enum)
@@ -567,6 +597,9 @@ import io as file_io
 
 // Import all (not recommended)
 import result.*
+
+// Import from nested module
+import my_app/data/tree.{Node, Leaf}
 ```
 
 ### Usage
@@ -574,6 +607,29 @@ import result.*
 ```tao
 let len = list.length(nums)
 let data = file_io.read("file.txt")
+```
+
+### Visibility
+
+```tao
+// Public (exported)
+pub fn helper() -> Unit { ... }
+
+// Private (default, internal to module)
+fn internal() -> Unit { ... }
+```
+
+### Project Structure
+
+```
+my_project/
+├── tao.json          # Project manifest
+├── src/
+│   ├── main.tao      # Entry point
+│   ├── utils.tao     # Module: utils
+│   └── data/
+│       └── tree.tao  # Module: data/tree
+└── lib/              # Third-party dependencies
 ```
 
 ---
