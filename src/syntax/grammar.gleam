@@ -27,6 +27,7 @@ pub type LayoutStyle {
 pub type Pattern {
   TokenKind(kind: String)
   Keyword(value: String)
+  Op(value: String)
   Ref(rule: String)
   Seq(patterns: List(Pattern))
   Choice(alts: List(Pattern))
@@ -163,45 +164,59 @@ pub fn left_assoc(
   operators: List(Operator(a)),
   precedence: Int,
 ) -> GrammarBuilder(a) {
-  let op_alts = create_operator_alternatives(operators, first_rule)
-  let first_alt =
-    alt(ref(first_rule), fn(values) {
-      case values {
-        [AstValue(first)] -> first
-        _ -> panic as "left_assoc: expected single value"
-      }
-    })
-  let rule =
-    Rule(
-      name: name,
-      alternatives: [first_alt, ..op_alts],
-      precedence: precedence,
-    )
+  let op_alt = create_operator_pattern(operators, first_rule)
+  let rule = Rule(name: name, alternatives: [op_alt], precedence: precedence)
   let builder = GrammarBuilder(..builder, rules: [rule, ..builder.rules])
   list.fold(operators, builder, fn(b, op) {
     GrammarBuilder(..b, operators: [op, ..b.operators])
   })
 }
 
-fn create_operator_alternatives(
+fn create_operator_pattern(
   operators: List(Operator(a)),
   first_rule: String,
-) -> List(Alternative(a)) {
-  list.map(operators, fn(op) {
-    let pattern =
-      Seq([
-        Ref(first_rule),
-        Many(Seq([Keyword(op.keyword), Ref(first_rule)])),
-      ])
-    Alternative(pattern: pattern, constructor: fn(values) {
-      case values {
-        [AstValue(first), ListValue(rest_values)] -> {
-          fold_operators(first, rest_values, op.constructor)
-        }
-        _ -> panic as "left_assoc constructor: unexpected values"
+) -> Alternative(a) {
+  let op_choice =
+    Choice(
+      list.map(operators, fn(op) { Seq([Op(op.keyword), Ref(first_rule)]) }),
+    )
+  let pattern =
+    Seq([
+      Ref(first_rule),
+      Many(op_choice),
+    ])
+  Alternative(pattern: pattern, constructor: fn(values) {
+    case values {
+      [AstValue(first), ..rest] -> {
+        fold_operators_multi(first, rest, operators)
       }
-    })
+      _ -> panic as "left_assoc constructor: unexpected values"
+    }
   })
+}
+
+fn fold_operators_multi(
+  first: a,
+  rest_values: List(Value(a)),
+  operators: List(Operator(a)),
+) -> a {
+  case rest_values {
+    [] -> first
+    [op_right, ..more] -> {
+      case op_right {
+        ListValue([TokenValue(op_token), AstValue(right)]) -> {
+          case list.find(operators, fn(op) { op.keyword == op_token.value }) {
+            Ok(op) -> {
+              let new_first = op.constructor(first, right)
+              fold_operators_multi(new_first, more, operators)
+            }
+            Error(_) -> first
+          }
+        }
+        _ -> first
+      }
+    }
+  }
 }
 
 fn fold_operators(
@@ -213,7 +228,7 @@ fn fold_operators(
     [] -> first
     [op_right, ..more] -> {
       case op_right {
-        ListValue([KeywordValue(_), AstValue(right)]) -> {
+        ListValue([TokenValue(_), AstValue(right)]) -> {
           let new_first = apply(first, right)
           fold_operators(new_first, more, apply)
         }
@@ -308,7 +323,7 @@ pub fn sep1(item: Pattern, sep: Pattern) -> Pattern {
 }
 
 pub fn parenthesized(rule_name: String) -> Pattern {
-  seq([token_pattern("LParen"), ref(rule_name), token_pattern("RParen")])
+  Parens(rule_name)
 }
 
 // ============================================================================
@@ -407,6 +422,7 @@ fn parse_pattern(
   case pattern {
     TokenKind(kind) -> parse_token_kind(tokens, pos, kind)
     Keyword(value) -> parse_keyword(tokens, pos, value)
+    Op(value) -> parse_op(tokens, pos, value)
     Ref(rule_name) -> parse_ref(grammar, rule_name, tokens, pos)
     Seq(patterns) -> parse_seq(grammar, patterns, tokens, pos, [])
     Choice(alts) -> parse_choice(grammar, alts, tokens, pos)
@@ -435,6 +451,18 @@ fn parse_keyword(
 ) -> Result(#(List(Value(a)), Int), Nil) {
   case get_token(tokens, pos) {
     Ok(token) if token.value == value -> Ok(#([KeywordValue(token)], pos + 1))
+    _ -> Error(Nil)
+  }
+}
+
+fn parse_op(
+  tokens: List(Token),
+  pos: Int,
+  value: String,
+) -> Result(#(List(Value(a)), Int), Nil) {
+  case get_token(tokens, pos) {
+    Ok(token) if token.kind == "Operator" && token.value == value ->
+      Ok(#([TokenValue(token)], pos + 1))
     _ -> Error(Nil)
   }
 }
@@ -513,7 +541,13 @@ fn parse_many(
 ) -> Result(#(List(Value(a)), Int), Nil) {
   case parse_pattern(grammar, pattern, tokens, pos) {
     Ok(#(parsed, new_pos)) ->
-      parse_many(grammar, pattern, tokens, new_pos, list.append(values, parsed))
+      parse_many(
+        grammar,
+        pattern,
+        tokens,
+        new_pos,
+        list.append(values, [ListValue(parsed)]),
+      )
     Error(_) -> Ok(#(values, pos))
   }
 }

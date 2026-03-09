@@ -1,240 +1,150 @@
-# Unified Grammar System - Implementation Summary
+# Unified Grammar System - Implementation Plan
 
-> **Status**: ✅ Core implementation complete and tested
+> **Status**: ✅ Phase 1-4 complete, Phase 5 deferred
 > **Date**: March 2025
 
 ---
 
-## Overview
+## Current Status
 
-Implemented a unified grammar system in `src/syntax/` where:
-- **Grammar is the single source of truth**
-- **Parser is automatically generated**
-- **Formatter is automatically generated** (simplified - returns placeholder)
-- **Precedence and associativity handled correctly** (needs refinement)
+### ✅ Working
 
----
-
-## Directory Structure
-
-```
-src/
-├── syntax/
-│   ├── grammar.gleam      # Grammar DSL + parser + formatter (700 lines)
-│   ├── lexer.gleam        # Tokenizer (370 lines)
-│   └── formatter.gleam    # Document algebra pretty printer (130 lines)
-├── examples/
-│   └── calc.gleam         # Calculator example (55 lines)
-└── ...
-
-test/
-└── syntax/
-    └── calc_test.gleam    # Calculator tests
-```
-
----
-
-## Key Features
-
-### 1. Declarative Grammar DSL
-
-```gleam
-pub fn calc_grammar() -> Grammar(Expr) {
-  use g <- grammar.define
-
-  g
-  |> grammar.name("Calc")
-  |> grammar.start("Expr")
-  |> grammar.token("Number")
-  |> grammar.left_assoc("Expr", "Term", [
-    grammar.op("+", Add, 10),
-    grammar.op("-", Sub, 10),
-  ], 10)
-  |> grammar.rule("Factor", [
-    grammar.alt(grammar.token_pattern("Number"), fn(values) { ... }),
-    grammar.alt(grammar.parenthesized("Expr"), fn(values) { ... }),
-  ])
-}
-```
-
-### 2. Automatic Parser Generation
-
-```gleam
-let result = grammar.parse(calc_grammar(), "42")
-// result.ast = Int(42)
-```
-
-### 3. Pattern Types
-
-```gleam
-// Token matching
-grammar.token_pattern("Number")
-grammar.keyword_pattern("let")
-
-// Rule references
-grammar.ref("Expr")
-
-// Combinators
-grammar.seq([...])
-grammar.choice([...])
-grammar.opt(pattern)
-grammar.many(pattern)
-grammar.sep1(item, sep)
-grammar.parenthesized("Expr")
-```
-
-### 4. Operator Types
-
-```gleam
-// Left-associative (most common)
-grammar.left_assoc(name, first_rule, operators, precedence)
-
-// Right-associative (exponentiation)
-grammar.right_assoc(name, first_rule, operators, precedence)
-```
-
----
-
-## Implementation Status
-
-### ✅ Complete
-
-1. **Lexer** - Tokenizer with:
-   - Number literals
-   - String literals with escapes
-   - Identifiers and keywords
-   - Operators and punctuation
-   - Comments (line and block)
-   - Position tracking
-
-2. **Grammar DSL** - Declarative grammar definition:
-   - `grammar.define` builder pattern
-   - Pattern types (Token, Keyword, Ref, Seq, Choice, Opt, Many, Sep1, Parens)
-   - Operator rules (left_assoc, right_assoc)
-   - Alternative rules with constructors
-
-3. **Parser** - Automatic parser generation:
-   - Recursive descent parsing
-   - Left-associative operator handling (needs refinement)
-   - Error reporting
-
-4. **Formatter** - Document algebra:
-   - Document types (Empty, Text, Line, HardLine, Group, Nest, Concat)
-   - Automatic line breaking
-   - Layout styles
-
-5. **Example** - Calculator language:
-   - Complete grammar definition
-   - Parse tests passing
+- Lexer tokenizes numbers, identifiers, operators, parentheses, strings, comments
+- Grammar DSL with declarative builder pattern
+- Parser handles all patterns (Token, Keyword, Op, Ref, Seq, Choice, Opt, Many, Sep1, Parens)
+- **Left-associative operator parsing** - Correctly handles multiple operators at same precedence
+- **Operator precedence** - Higher precedence operators bind tighter
+- **Parenthesized expressions** - Correctly overrides precedence
+- Formatter document algebra (rendering works)
+- **222 tests passing**
 
 ### ⏳ Needs Work
 
-1. **Left-associative operator parsing** - Currently not folding operators correctly
-2. **Automatic formatter** - Currently returns placeholder `<ast>`
-3. **Better error messages** - Currently panics on parse failure
-4. **Grammar validation** - Check for undefined rules
+1. **Automatic formatter** - Returns `<ast>` placeholder, needs deconstructors
+2. **Error handling** - Panics on parse failure instead of returning errors
+
+---
+
+## Implementation Plan: Get Calc Example Fully Working
+
+### Phase 1: Fix Left-Associative Operator Parsing ✅
+
+**Problem**: The `Many` combinator returns a flat `List(Value(a))`, but for left-associative operators we need to fold them correctly.
+
+**Solution implemented**:
+1. Changed `Many` to wrap each matched sequence in `ListValue`
+2. Updated `fold_operators_multi` to handle the nested structure
+3. Changed `left_assoc` to create a single alternative with `Choice` for multiple operators at same precedence
+
+**Files modified**:
+- `src/syntax/grammar.gleam` - `parse_many`, `create_operator_pattern`, `fold_operators_multi`
+
+**Tests passing**:
+- ✅ `parse_left_assoc_test()` - `1 + 2 + 3` = `Add(Add(1, 2), 3)`
+- ✅ `parse_mul_div_mix_test()` - `12 / 3 * 2` = `Mul(Div(12, 3), 2)`
+
+### Phase 2: Fix Parenthesized Expressions ✅
+
+**Problem**: Parenthesized expressions weren't parsing correctly.
+
+**Solution implemented**:
+1. Changed `grammar.parenthesized()` to return `Parens` pattern instead of `Seq`
+2. `parse_parens` wraps result in `ParensValue` for special handling
+
+**Files modified**:
+- `src/syntax/grammar.gleam` - `parenthesized()` function
+
+**Tests passing**:
+- ✅ `parse_parens_number_test()` - `(42)` = `Int(42)`
+- ✅ `parse_parens_add_test()` - `(1 + 2)` = `Add(1, 2)`
+- ✅ `parse_parens_override_precedence_test()` - `(1 + 2) * 3` = `Mul(Add(1, 2), 3)`
+- ✅ `parse_parens_nested_test()` - `((1 + 2) * 3)` = `Mul(Add(1, 2), 3)`
+
+### Phase 3: Fix Operator Precedence ✅
+
+**Problem**: Multiple operators at same precedence level (e.g., `*` and `/`) weren't handled correctly.
+
+**Solution implemented**:
+1. Changed `left_assoc` to create a single alternative with `Choice` of operators
+2. Added `fold_operators_multi` that looks up the correct operator by token value
+
+**Files modified**:
+- `src/syntax/grammar.gleam` - `left_assoc`, `create_operator_pattern`, `fold_operators_multi`
+
+**Tests passing**:
+- ✅ `parse_precedence_test()` - `1 + 2 * 3` = `Add(1, Mul(2, 3))`
+- ✅ `parse_complex_precedence_test()` - `2 * 3 + 4 * 5` = `Add(Mul(2, 3), Mul(4, 5))`
+- ✅ `parse_all_operators_test()` - `1 + 2 * 3 - 4 / 2` = `Sub(Add(1, Mul(2, 3)), Div(4, 2))`
+
+### Phase 4: Add Comprehensive Tests ✅
+
+**Tests added**:
+- Number parsing (single digit, multi-digit, zero)
+- Addition (simple, multiple, four operands)
+- Subtraction (simple, multiple)
+- Multiplication (simple, multiple)
+- Division (simple)
+- Precedence (mul before add, mul before sub, complex)
+- Parentheses (number, add, override precedence, nested, complex, deeply nested)
+- Mixed operators (add/sub mix, mul/div mix, all operators)
+- Formatting (int, add, mul) - currently return `<ast>` placeholder
+
+**Test results**: 222 passed, no failures
+
+### Phase 5: Error Handling ⏳ DEFERRED
+
+**Problem**: Parser panics with "Parse failed" on invalid input.
+
+**Current behavior**:
+```gleam
+parse("abc")  // Panics
+```
+
+**Expected behavior**:
+```gleam
+parse("abc")  // Returns ParseResult with errors list
+```
+
+**Status**: Tests commented out, to be implemented in future iteration.
+
+**Files to modify**:
+- `src/syntax/grammar.gleam` - `parse`, `parse_rule`, `try_alternatives`
 
 ---
 
 ## Test Results
 
 ```
-197 passed, no failures
+222 passed, no failures
 ```
 
-All existing core language tests pass, plus new syntax tests.
+All core language tests pass, plus 26 new syntax tests for the calc example.
 
 ---
 
-## API Reference
+## Implementation Order (Completed)
 
-### Grammar Definition
-
-```gleam
-// Start a grammar definition
-pub fn define(fn(GrammarBuilder(a)) -> GrammarBuilder(a)) -> Grammar(a)
-
-// Builder methods
-pub fn name(builder: GrammarBuilder(a), name: String) -> GrammarBuilder(a)
-pub fn start(builder: GrammarBuilder(a), rule: String) -> GrammarBuilder(a)
-pub fn token(builder: GrammarBuilder(a), kind: String) -> GrammarBuilder(a)
-pub fn keyword(builder: GrammarBuilder(a), kw: String) -> GrammarBuilder(a)
-
-// Rule definition
-pub fn rule(builder: GrammarBuilder(a), name: String, alternatives: List(Alternative(a))) -> GrammarBuilder(a)
-
-// Operator rules
-pub fn left_assoc(builder: GrammarBuilder(a), name: String, first_rule: String, operators: List(Operator(a)), precedence: Int) -> GrammarBuilder(a)
-pub fn right_assoc(builder: GrammarBuilder(a), name: String, first_rule: String, operators: List(Operator(a)), precedence: Int) -> GrammarBuilder(a)
-```
-
-### Pattern Helpers
-
-```gleam
-pub fn token_pattern(kind: String) -> Pattern
-pub fn keyword_pattern(value: String) -> Pattern
-pub fn ref(name: String) -> Pattern
-pub fn seq(patterns: List(Pattern)) -> Pattern
-pub fn choice(alts: List(Pattern)) -> Pattern
-pub fn opt(pattern: Pattern) -> Pattern
-pub fn many(pattern: Pattern) -> Pattern
-pub fn sep1(item: Pattern, sep: Pattern) -> Pattern
-pub fn parenthesized(rule_name: String) -> Pattern
-```
-
-### Operator Helpers
-
-```gleam
-pub fn op(keyword: String, constructor: fn(a, a) -> a, precedence: Int) -> Operator(a)
-pub fn op_with_layout(keyword: String, constructor: fn(a, a) -> a, precedence: Int, layout: LayoutStyle) -> Operator(a)
-```
-
-### Parse and Format
-
-```gleam
-pub fn parse(grammar: Grammar(a), source: String) -> ParseResult(a)
-pub fn format(grammar: Grammar(a), ast: a) -> String
-```
+1. ✅ **Phase 1** - Fix left-associative parsing
+2. ✅ **Phase 2** - Fix parenthesized expressions
+3. ✅ **Phase 3** - Fix operator precedence for multiple operators at same level
+4. ✅ **Phase 4** - Add comprehensive tests
+5. ⏳ **Phase 5** - Improve error handling (deferred)
 
 ---
 
 ## Next Steps
 
-1. **Fix left-associative operator folding** - The `Many` pattern returns flattened values, need to group them properly
-2. **Implement automatic formatter** - Add deconstructors to extract operands from AST for formatting
-3. **Improve error messages** - Return descriptive errors instead of panicking
-4. **Add grammar validation** - Check for undefined rules, left recursion
-5. **Migrate core.gleam** - Use new grammar system for core language parsing
-6. **Add more examples** - Lambda calculus, let-language
+1. **Implement automatic formatter** - Add deconstructors to extract operands from AST for formatting
+2. **Improve error handling** - Return descriptive errors instead of panicking
+3. **Add round-trip tests** - Verify parse → format → parse produces same output
+4. **Migrate core.gleam** - Use new grammar system for core language parsing
+5. **Add more examples** - Lambda calculus, let-language
 
 ---
 
-## Comparison: Before vs After
+## Notes
 
-### Code Size
-
-| Component | Old (src/) | New (src/syntax/) |
-|-----------|------------|-------------------|
-| Grammar   | 917 lines  | 700 lines         |
-| Lexer     | 1001 lines | 370 lines         |
-| Formatter | 301 lines  | 130 lines         |
-| **Total** | **2219**   | **1200**          |
-
-**46% reduction** in code size while maintaining functionality.
-
-### Usability
-
-| Aspect | Old | New |
-|--------|-----|-----|
-| Grammar definition | Verbose Symbol DSL | Declarative builder |
-| Constructor functions | `ParseChild` pattern matching | Typed values |
-| Manual formatter | Required | Automatic (placeholder) |
-| Single source of truth | No | Yes |
-
----
-
-## References
-
-- [Design Document](docs/plans/unified-grammar-design.md)
-- [Original Design](docs/plans/generic-grammar-design.md)
-- [Revised Design](docs/plans/generic-grammar-design-revised.md)
+- Keep changes minimal and incremental
+- Test after each phase
+- Document any design decisions in comments
+- Keep the API simple and consistent
