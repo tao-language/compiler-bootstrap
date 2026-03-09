@@ -52,6 +52,7 @@ pub type Operator(a) {
     precedence: Int,
     associativity: Associativity,
     layout: LayoutStyle,
+    separator: String,
   )
 }
 
@@ -334,6 +335,7 @@ pub fn op(
   keyword: String,
   constructor: fn(a, a) -> a,
   precedence: Int,
+  separator: String,
 ) -> Operator(a) {
   Operator(
     keyword: keyword,
@@ -341,6 +343,7 @@ pub fn op(
     precedence: precedence,
     associativity: Left,
     layout: Inline,
+    separator: separator,
   )
 }
 
@@ -349,6 +352,7 @@ pub fn op_with_layout(
   constructor: fn(a, a) -> a,
   precedence: Int,
   layout: LayoutStyle,
+  separator: String,
 ) -> Operator(a) {
   Operator(
     keyword: keyword,
@@ -356,6 +360,7 @@ pub fn op_with_layout(
     precedence: precedence,
     associativity: Left,
     layout: layout,
+    separator: separator,
   )
 }
 
@@ -730,4 +735,66 @@ fn wrap_parens(doc: Doc, condition: Bool) -> Doc {
     True -> formatter.parens(doc)
     False -> doc
   }
+}
+
+// ============================================================================
+// GENERIC FORMATTER HELPERS
+// ============================================================================
+// These helpers use grammar metadata for formatting, enabling automatic
+// precedence-based parenthesization and separator formatting.
+
+/// Format a binary operator using grammar metadata
+pub fn format_binary_op(
+  grammar: Grammar(a),
+  op_name: String,
+  left: a,
+  right: a,
+  parent_prec: Int,
+  format_ast: fn(a, Int) -> Doc,
+) -> Doc {
+  case dict.get(grammar.operators, op_name) {
+    Ok(op) -> {
+      // Calculate precedence for left and right operands based on associativity
+      let left_prec_offset = case op.associativity {
+        Left -> 0
+        Right -> 1
+        NonAssoc -> 1
+      }
+      let right_prec_offset = case op.associativity {
+        Left -> 1
+        Right -> 0
+        NonAssoc -> 1
+      }
+
+      let left_prec = op.precedence + left_prec_offset
+      let right_prec = op.precedence + right_prec_offset
+
+      let left_doc = format_ast(left, left_prec)
+      let right_doc = format_ast(right, right_prec)
+
+      let inner =
+        formatter.concat([
+          left_doc,
+          formatter.text(op.separator),
+          right_doc,
+        ])
+
+      // Add parentheses if operator precedence < parent precedence
+      case op.precedence < parent_prec {
+        True -> formatter.parens(inner)
+        False -> inner
+      }
+    }
+    Error(_) -> formatter.text("<unknown op: " <> op_name <> ">")
+  }
+}
+
+/// Format an atom (number, identifier, etc.)
+pub fn format_atom(value: String) -> Doc {
+  formatter.text(value)
+}
+
+/// Format a parenthesized expression
+pub fn format_parenthesized(inner: Doc) -> Doc {
+  formatter.parens(inner)
 }

@@ -29,8 +29,8 @@ pub fn calc_grammar() -> Grammar(Expr) {
     "Expr",
     "Term",
     [
-      grammar.op("+", Add, 10),
-      grammar.op("-", Sub, 10),
+      grammar.op("+", Add, 10, " + "),
+      grammar.op("-", Sub, 10, " - "),
     ],
     10,
   )
@@ -38,8 +38,8 @@ pub fn calc_grammar() -> Grammar(Expr) {
     "Term",
     "Factor",
     [
-      grammar.op("*", Mul, 20),
-      grammar.op("/", Div, 20),
+      grammar.op("*", Mul, 20, " * "),
+      grammar.op("/", Div, 20, " / "),
     ],
     20,
   )
@@ -68,56 +68,18 @@ pub fn format(ast: Expr) -> String {
 }
 
 fn format_expr(ast: Expr, parent_prec: Int) -> Doc {
+  let grammar = calc_grammar()
   case ast {
     Int(n) -> formatter.text(int.to_string(n))
-    // For left-associative operators:
-    // - Left operand: same prec (no parens for same level)
-    // - Right operand: prec + 1 (parens for same level)
+    // Use generic formatter helper with grammar metadata
+    // Operator keys are the operator keywords ("+", "-", "*", "/")
     Add(l, r) ->
-      format_binop(
-        format_expr(l, 10),
-        format_expr(r, 11),
-        " + ",
-        10,
-        parent_prec,
-      )
+      grammar.format_binary_op(grammar, "+", l, r, parent_prec, format_expr)
     Sub(l, r) ->
-      format_binop(
-        format_expr(l, 10),
-        format_expr(r, 11),
-        " - ",
-        10,
-        parent_prec,
-      )
+      grammar.format_binary_op(grammar, "-", l, r, parent_prec, format_expr)
     Mul(l, r) ->
-      format_binop(
-        format_expr(l, 20),
-        format_expr(r, 21),
-        " * ",
-        20,
-        parent_prec,
-      )
+      grammar.format_binary_op(grammar, "*", l, r, parent_prec, format_expr)
     Div(l, r) ->
-      format_binop(
-        format_expr(l, 20),
-        format_expr(r, 21),
-        " / ",
-        20,
-        parent_prec,
-      )
-  }
-}
-
-fn format_binop(
-  left: Doc,
-  right: Doc,
-  op: String,
-  prec: Int,
-  parent_prec: Int,
-) -> Doc {
-  let doc = formatter.concat([left, formatter.text(op), right])
-  case prec < parent_prec {
-    True -> formatter.parens(doc)
-    False -> doc
+      grammar.format_binary_op(grammar, "/", l, r, parent_prec, format_expr)
   }
 }
