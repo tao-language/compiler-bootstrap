@@ -1,7 +1,7 @@
 # Grammar DSL Specification
 
 > **Goal**: Declarative, type-safe grammar definition with minimal boilerplate
-> **Status**: ✅ Implemented
+> **Status**: ✅ Complete and tested (37 tests passing)
 > **Date**: March 2025
 
 ---
@@ -18,13 +18,17 @@
 - Pattern helpers: `token_pattern`, `keyword_pattern`, `ref`, `seq`, `seq_with_layout`, `parens`
 - Layout hints: `SoftBreak`, `HardBreak`, `Space`, `NoSeparator`
 - Operator layouts: `default_op_layout`, `break_before_op_layout`
+- Position helpers: `span_from_values`, `span_from_token`, `span_from_tokens`
 - Calculator example working with +, -, *, /
+- Full source location tracking (line, column)
 
 ### What's Pending
 
 - **Deconstructor implementation** - Currently panics with `"Deconstructor not implemented"`
+  - Needed for automatic formatter generation
+  - Manual formatters work fine for now
 - **Automatic formatter generation** - Each language implements manual formatters
-- **Core language grammar** - Need to define grammar for core language
+- **Core language grammar** - Need to define grammar for core language Term variants
 
 ### Implementation Details
 
@@ -33,22 +37,27 @@
 **Key Types**:
 - `Grammar(a)` - Parameterized grammar
 - `Alternative(a)` - Pattern + constructor + deconstructor + formatter
-- `Pattern(a)` - Token, Keyword, Ref, Seq, Choice, etc.
+- `Pattern` - Token, Keyword, Ref, Seq, Choice, etc.
 - `Operator(a)` - Keyword + constructor + precedence + layout
 - `Value(a)` - TokenValue, KeywordValue, AstValue, ParensValue, ListValue
+- `Span` - Source location with file, start_line, start_col, end_line, end_col
 
 **Key Functions**:
 - `define()` - Start grammar definition
 - `left_assoc()` - Left-associative operator rules
 - `right_assoc()` - Right-associative operator rules
-- `parse()` - Parse source with grammar
+- `parse()` - Parse source with grammar (returns `ParseResult(a)`)
 - `format()` - Format AST (language-specific)
+- `span_from_values()` - Extract span from parsed values
+- `span_from_token()` - Create span from single token
+- `span_from_tokens()` - Create span covering multiple tokens
 
 ### Related
 
 - See **[01-overview.md](./01-overview.md)** for overall implementation status
 - See **[03-parser-library.md](./03-parser-library.md)** for parser details
 - See **[04-formatter-library.md](./04-formatter-library.md)** for formatter details
+- See **[05-source-location-tracking.md](./05-source-location-tracking.md)** for position tracking
 - See **[../../syntax-library.md](../../syntax-library.md)** for user-facing docs
 
 ---

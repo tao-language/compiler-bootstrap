@@ -1,7 +1,7 @@
 # Parser Library
 
 > **Goal**: Generic, composable parser combinators with Pratt parsing for expressions
-> **Status**: ✅ Implemented
+> **Status**: ✅ Complete and integrated (part of 263 total tests)
 > **Date**: March 2025
 
 ---
@@ -17,13 +17,14 @@
 - Operator precedence handling
 - Parenthesized expressions
 - Error handling with position tracking
-- `ParseError` with position, expected, got
-- `ParseResult` with ast and errors list
+- `ParseResult` with ast and errors list (never panics)
+- Full source location tracking (line, column)
+- Integrated with grammar DSL and lexer
 
 ### What's Pending
 
-- **Error recovery** - Currently panics on parse failure
-- **Sync-point recovery** - Skip to synchronization points on error
+- **Error recovery** - Currently accumulates errors but doesn't have sync-point recovery
+- **Sync-point recovery** - Skip to synchronization points on error for better messages
 - **Rule-specific error messages** - Currently generic "expected X"
 
 ### Implementation Details
@@ -31,22 +32,25 @@
 **File**: `src/syntax/grammar.gleam` (parser functions integrated)
 
 **Key Functions**:
-- `parse()` - Main parse function
+- `parse()` - Main parse function (returns `ParseResult(a)`)
 - `parse_pattern()` - Dispatch on pattern type
 - `parse_seq_with_layout()` - Parse sequences with hints
 - `parse_left_assoc()` - Left-associative operators
 - `parse_right_assoc()` - Right-associative operators
 - `fold_operators_multi()` - Fold multiple operators
+- `span_from_values()` - Extract source span from parsed values
 
 **Key Types**:
-- `ParseError` - position, expected, got
-- `ParseResult(a)` - ast, errors
+- `ParseResult(a)` - ast, errors (always succeeds with accumulated errors)
+- `ParseError` - location, message, expected, severity
+- `Span` - file, start_line, start_col, end_line, end_col
 
 ### Related
 
 - See **[01-overview.md](./01-overview.md)** for overall implementation status
 - See **[02-grammar-dsl.md](./02-grammar-dsl.md)** for grammar definition
 - See **[04-formatter-library.md](./04-formatter-library.md)** for formatter details
+- See **[05-source-location-tracking.md](./05-source-location-tracking.md)** for position tracking
 - See **[../../syntax-library.md](../../syntax-library.md)** for user-facing docs
 
 ---

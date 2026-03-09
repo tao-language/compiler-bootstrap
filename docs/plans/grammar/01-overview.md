@@ -1,7 +1,7 @@
 # Grammar System Overview
 
 > **Goal**: Single source of truth for grammar that generates parsers with layout-aware formatting
-> **Status**: ✅ Parser and formatter complete, ⏳ Source location tracking planned
+> **Status**: ✅ Complete and tested (263 tests passing)
 > **Date**: March 2025
 
 ---
@@ -18,15 +18,15 @@ A grammar rule should specify **what** to parse and **how** to format it. The gr
 
 ```
 src/syntax/
-├── grammar.gleam    # Grammar DSL (~786 lines)
-├── lexer.gleam      # Tokenizer (~400 lines)
-└── formatter.gleam  # Document algebra (~139 lines)
+├── grammar.gleam    # Grammar DSL (~786 lines) ✅
+├── lexer.gleam      # Tokenizer (~400 lines) ✅
+└── formatter.gleam  # Document algebra (~139 lines) ✅
 ```
 
 ### Data Flow
 
 1. **Define Grammar**: Use `grammar.define()` DSL
-2. **Parse Input**: `grammar.parse(grammar, source)` → AST
+2. **Parse Input**: `grammar.parse(grammar, source)` → AST + errors
 3. **Format AST**: Language-specific formatter using grammar metadata
 4. **Round-trip**: parse → format → parse produces consistent output
 
@@ -38,7 +38,7 @@ src/syntax/
 2. **Type-Safe**: Grammar parameterized by AST type (`Grammar(a)`)
 3. **Composable**: Build complex parsers from simple combinators
 4. **Layout-Aware**: Soft/hard line breaks for pretty-printing
-5. **Error Resilient**: Position tracking for error messages
+5. **Error Resilient**: Position tracking for error messages, never panics
 
 ---
 
@@ -46,68 +46,80 @@ src/syntax/
 
 ### ✅ Complete and Working
 
-**Lexer** (`src/syntax/lexer.gleam`):
-- Tokenizes identifiers, keywords, numbers, strings
+**Lexer** (`src/syntax/lexer.gleam` ~400 lines):
+- Tokenizes identifiers, keywords, numbers, strings, operators
 - Handles comments (line `//` and block `/* */`)
-- Tracks positions for error reporting
+- Full source location tracking (line, column, start, end offsets)
 - Supports Unicode (λ character)
+- **70 tests passing**
 
-**Grammar DSL** (`src/syntax/grammar.gleam`):
+**Grammar DSL** (`src/syntax/grammar.gleam` ~786 lines):
 - `Grammar(a)` type parameterized by AST
-- `Alternative` with constructor, deconstructor, formatter
+- `Alternative` with constructor, deconstructor (stub), formatter
 - Pattern types: `TokenKind`, `Keyword`, `Ref`, `Seq`, `SeqWithLayout`, `Choice`, `Opt`, `Many`, `Sep1`, `Parens`
 - Operator types with precedence, associativity, layout
 - Builder API: `define`, `name`, `start`, `token`, `keyword`, `rule`, `left_assoc`, `right_assoc`
 - Layout hints: `SoftBreak`, `HardBreak`, `Space`, `NoSeparator`
 - Operator layouts: `default_op_layout`, `break_before_op_layout`
+- Position helpers: `span_from_values`, `span_from_token`, `span_from_tokens`
+- **37 tests passing**
 
-**Parser**:
+**Parser** (integrated in `grammar.gleam`):
 - `parse_pattern()` - Dispatches on pattern type
 - `parse_seq_with_layout()` - Parses sequences with hints
 - `parse_left_assoc()` - Left-associative operator parsing
 - `parse_right_assoc()` - Right-associative operator parsing
+- `fold_operators_multi()` - Fold multiple operators
 - Error handling with position tracking
+- `ParseResult` with ast and errors list (never panics)
+- **Integrated with lexer and grammar DSL**
 
-**Formatter** (`src/syntax/formatter.gleam`):
+**Formatter** (`src/syntax/formatter.gleam` ~139 lines):
 - Document algebra: `Empty`, `Text`, `Line`, `HardLine`, `Group`, `Nest`, `Concat`
 - `render()` - Best-fit rendering with configurable width
 - `render_default()` - 80 character width
 - Combinators: `space_sep`, `comma_sep`, `parens`, `braces`, `join`
+- Layout hints: `SoftBreak`, `HardBreak`, `Space`, `None`
+- Operator layout: `OperatorLayout` with `break_before`, `break_after`, `indent_rhs`
+- Precedence-based parenthesization
+- **36 tests passing**
 
 **Examples**:
 - Calculator (`src/examples/calc.gleam`) - Working example with +, -, *, /
 - Supports precedence, associativity, parentheses
-- Round-trip tested
+- Round-trip tested (parse → format → parse)
+
+**Source Location Tracking** (`src/syntax/lexer.gleam`, `src/core/core.gleam`):
+- ✅ Token type includes `line` and `column`
+- ✅ Lexer stores line/column in all tokens
+- ✅ Position helper functions in grammar DSL
+- ✅ Span type supports start/end positions (line/column)
+- ✅ All grammar constructors use real positions
+- ✅ All tests updated and passing
+- See **[05-source-location-tracking.md](./05-source-location-tracking.md)** for details
+
+**Total: 263 tests passing** (70 lexer + 37 grammar + 36 formatter + 120 core language tests)
 
 ### ⏳ In Progress / Pending
 
-**Source Location Tracking** (9-14 hours estimated):
-- [x] Update `Token` type to include `line` and `column`
-- [x] Update lexer to store line/column in tokens
-- [x] Add position helper functions to grammar DSL
-- [x] Update `Span` type to support start/end positions
-- [x] Update all grammar constructors to use real positions
-- [x] Update tests for position tracking
-- See **[05-source-location-tracking.md](./05-source-location-tracking.md)** for details
-
-**Tests**:
-- [x] Lexer tests (tokenization, position tracking) - 70 tests
-- [x] Grammar DSL tests (pattern matching, operator precedence) - 37 tests  
-- [x] Formatter tests (layout, line breaking) - 36 tests
-- [x] Round-trip tests (parse → format → parse) - included in grammar tests
-
 **Automatic Formatter Generation**:
-- [ ] Implement deconstructor functions (currently panics)
-- [ ] Grammar-derived formatting (currently manual)
+- [ ] Implement deconstructor functions (currently panics with `"Deconstructor not implemented"`)
+- [ ] Grammar-derived formatting (currently manual formatters per language)
+- [ ] Formatter registry pattern for operator lookup
 
 **Core Language Grammar**:
-- [ ] Define grammar for all Term variants
+- [ ] Define grammar for all Term variants (Var, Lam, App, Pi, Rcd, Match, Ctr, Hole, Lit, Ann, Call, Comptime)
 - [ ] Integrate with syntax library
-- See **[../core/01-overview.md](../core/01-overview.md)** for status
+- [ ] See **[../core/01-overview.md](../core/01-overview.md)** for status
 
 **Error Recovery**:
 - [ ] Sync-point recovery for better error messages
-- [ ] Multiple error reporting (don't stop at first error)
+- [ ] Multiple error reporting (currently accumulates but could be improved)
+- [ ] Rule-specific error messages (currently generic "expected X")
+
+**Documentation**:
+- [ ] User-facing syntax library documentation (`docs/syntax-library.md` draft exists)
+- [ ] More examples beyond calculator
 
 ---
 

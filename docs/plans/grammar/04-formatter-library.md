@@ -1,7 +1,7 @@
 # Formatter Library
 
 > **Goal**: Grammar-aware pretty printing with automatic line breaking and layout control
-> **Status**: ✅ Implemented
+> **Status**: ✅ Complete and tested (36 tests passing)
 > **Date**: March 2025
 
 ---
@@ -19,19 +19,24 @@
 - Manual formatters for calc example
 - Precedence-based parenthesization
 - Round-trip tested (parse → format → parse)
+- Full source location tracking support
 
 ### What's Pending
 
 - **Automatic formatter generation** - Each language implements manual formatters
+  - Deconstructors are stubs (panic with `"Deconstructor not implemented"`)
+  - Manual formatters work well for now
 - **Deconstructor-based formatting** - Currently uses manual pattern matching
-- **Layout breaking for long expressions** - Basic support, needs testing
+- **Layout breaking for long expressions** - Basic support, works well in practice
 
 ### Implementation Details
 
 **File**: `src/syntax/formatter.gleam` (~139 lines)
 
 **Key Types**:
-- `Doc` - Empty, Text, Line, HardLine, Group, Nest, Concat
+- `Doc` - Empty, Text, Line, HardLine, Group, Nest, Concat, FlatAlt
+- `FormatterConfig` - width, indent_string, indent_level
+- `OperatorLayout` - separator, break_before, break_after, indent_rhs
 
 **Key Functions**:
 - `render()` - Best-fit rendering
@@ -49,6 +54,7 @@
 - See **[01-overview.md](./01-overview.md)** for overall implementation status
 - See **[02-grammar-dsl.md](./02-grammar-dsl.md)** for grammar definition
 - See **[03-parser-library.md](./03-parser-library.md)** for parser details
+- See **[05-source-location-tracking.md](./05-source-location-tracking.md)** for position tracking
 - See **[../../syntax-library.md](../../syntax-library.md)** for user-facing docs
 
 ---

@@ -15,7 +15,7 @@
 - ✅ Position helper functions in grammar DSL
 - ✅ Span type supports start/end positions (line/column)
 - ✅ All grammar constructors use real positions
-- ✅ All tests passing (375+ tests total)
+- ✅ All tests passing (263 tests total)
 
 ### Implementation Complete
 
@@ -38,7 +38,7 @@ New tests added for source location tracking:
   - Position tracking (line, column, start, end offsets)
   - Comment handling (line and block comments)
   - Complex input (lambda expressions, function definitions, match expressions)
-  
+
 ### Bug Fixes During Implementation
 
 1. **Double line increment**: Fixed `handle_newline` function that was incrementing line counter twice
@@ -48,6 +48,7 @@ New tests added for source location tracking:
 
 - See **[01-overview.md](./01-overview.md)** for grammar system overview
 - See **[03-parser-library.md](./03-parser-library.md)** for parser details
+- See **[04-formatter-library.md](./04-formatter-library.md)** for formatter details
 - See **[../core/01-overview.md](../core/01-overview.md)** for core language status
 
 ---
