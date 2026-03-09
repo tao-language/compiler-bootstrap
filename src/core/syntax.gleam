@@ -9,13 +9,13 @@
 ///
 /// Both parser and formatter are derived from this single grammar definition.
 import core/core.{
-  type Span, type Term, App, Hole, I32, Lam, Lit, Span, Term, Var,
+  type Term, App, Hole, I32, Lam, Lit, Term, Var,
 }
 import gleam/int
 import gleam/list
 import gleam/result
 import syntax/formatter
-import syntax/grammar.{type Value, AstValue, TokenValue}
+import syntax/grammar.{type Span, type Value, AstValue, TokenValue}
 import syntax/lexer.{type Token}
 
 // ============================================================================
@@ -118,23 +118,23 @@ fn unwrap_parens(values) {
 
 fn make_lambda(values) {
   case values {
-    [_, TokenValue(name_token), _, AstValue(body)] ->
-      Term(Lam(name_token.value, body), Span("input", 1, 1, 1, 1))
+    [TokenValue(lambda_token), TokenValue(name_token), _, AstValue(body)] ->
+      Term(Lam(name_token.value, body), grammar.span_from_token(lambda_token, "input"))
     _ -> panic as "Expected lambda"
   }
 }
 
 fn make_application(values) {
   case values {
-    [AstValue(fun), _, AstValue(arg), _] ->
-      Term(App(fun, arg), Span("input", 1, 1, 1, 1))
+    [AstValue(fun), TokenValue(lparen_token), AstValue(arg), TokenValue(rparen_token)] ->
+      Term(App(fun, arg), grammar.span_from_tokens(lparen_token, rparen_token, "input"))
     _ -> panic as "Expected f(args)"
   }
 }
 
 fn make_var(values) {
   case values {
-    [TokenValue(_)] -> Term(Var(0), Span("input", 1, 1, 1, 1))
+    [TokenValue(token)] -> Term(Var(0), grammar.span_from_token(token, "input"))
     _ -> panic as "Expected identifier"
   }
 }
@@ -143,8 +143,8 @@ fn make_literal(values) {
   case values {
     [TokenValue(token)] -> {
       case int.parse(token.value) {
-        Ok(n) -> Term(Lit(I32(n)), Span("input", 1, 1, 1, 1))
-        Error(_) -> Term(Lit(I32(0)), Span("input", 1, 1, 1, 1))
+        Ok(n) -> Term(Lit(I32(n)), grammar.span_from_token(token, "input"))
+        Error(_) -> Term(Lit(I32(0)), grammar.span_from_token(token, "input"))
       }
     }
     _ -> panic as "Expected number token"

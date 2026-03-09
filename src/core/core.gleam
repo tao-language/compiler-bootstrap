@@ -3,6 +3,7 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
+import syntax/grammar.{Span, type Span}
 
 // ============================================================================
 // SYNTAX (Terms)
@@ -150,20 +151,6 @@ pub type LiteralType {
   U64T
   F32T
   F64T
-}
-
-// ============================================================================
-// SOURCE LOCATIONS
-// ============================================================================
-
-pub type Span {
-  Span(
-    file: String,
-    start_line: Int,    // 1-based
-    start_col: Int,     // 1-based
-    end_line: Int,      // 1-based
-    end_col: Int,       // 1-based
-  )
 }
 
 // ============================================================================

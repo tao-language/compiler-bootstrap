@@ -1,7 +1,8 @@
 // ============================================================================
 // CORE LANGUAGE SYNTAX TESTS
 // ============================================================================
-import core/core.{App, I32, Lam, Lit, Span, Term, Var}
+import core/core.{App, I32, Lam, Lit, Term, Var}
+import syntax/grammar.{Span}
 import core/syntax
 import gleeunit
 import gleeunit/should
@@ -160,5 +161,5 @@ pub fn format_app_in_lambda_test() {
 // ============================================================================
 
 fn span() {
-  Span("test", 0, 0)
+  Span("test", 1, 1, 1, 1)
 }
