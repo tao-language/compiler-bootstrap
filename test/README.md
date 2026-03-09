@@ -623,6 +623,22 @@ result.ast |> should.equal(
 )
 ```
 
+### 8. Test With Dummy Values First
+
+Sometimes it's hard or tricky to know exactly the output, of a function.
+For example, there might be an end-to-end test checking for an error message
+in a medium sized piece of code.
+
+Instead of trying to _guess_ the span (location) of where the error happened,
+you can use a dummy value like `filename:0:0` which **should** fail,
+but the test error message will tell you the actual value that resulted,
+like `test.txt:5:3` for example.
+Just validate that the value makes sense and looks correct, then you can 
+update the test expected result to match.
+
+This way we make sure the spans are collected correctly, and we can catch any
+regressions if some code breaks it.
+
 ---
 
 ## Guide for AI Assistants
