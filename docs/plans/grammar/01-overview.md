@@ -82,19 +82,19 @@ src/syntax/
 ### ⏳ In Progress / Pending
 
 **Source Location Tracking** (9-14 hours estimated):
-- [ ] Update `Token` type to include `line` and `column`
-- [ ] Update lexer to store line/column in tokens
-- [ ] Add position helper functions to grammar DSL
-- [ ] Update `Span` type to support start/end positions
-- [ ] Update all grammar constructors to use real positions
-- [ ] Update tests for position tracking
+- [x] Update `Token` type to include `line` and `column`
+- [x] Update lexer to store line/column in tokens
+- [x] Add position helper functions to grammar DSL
+- [x] Update `Span` type to support start/end positions
+- [x] Update all grammar constructors to use real positions
+- [x] Update tests for position tracking
 - See **[05-source-location-tracking.md](./05-source-location-tracking.md)** for details
 
 **Tests**:
-- [ ] Lexer tests (tokenization, position tracking)
-- [ ] Grammar DSL tests (pattern matching, operator precedence)
-- [ ] Formatter tests (layout, line breaking)
-- [ ] Round-trip tests (parse → format → parse)
+- [x] Lexer tests (tokenization, position tracking) - 70 tests
+- [x] Grammar DSL tests (pattern matching, operator precedence) - 37 tests  
+- [x] Formatter tests (layout, line breaking) - 36 tests
+- [x] Round-trip tests (parse → format → parse) - included in grammar tests
 
 **Automatic Formatter Generation**:
 - [ ] Implement deconstructor functions (currently panics)

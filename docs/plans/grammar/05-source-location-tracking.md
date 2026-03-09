@@ -1,7 +1,7 @@
 # Source Location Tracking
 
 > **Goal**: Full source location tracking with filename, start/end positions (line/column)
-> **Status**: ✅ Implemented - All phases complete
+> **Status**: ✅ Complete - All phases implemented and tested
 > **Date**: March 2025
 
 ---
@@ -15,7 +15,7 @@
 - ✅ Position helper functions in grammar DSL
 - ✅ Span type supports start/end positions (line/column)
 - ✅ All grammar constructors use real positions
-- ✅ All tests passing (256 tests)
+- ✅ All tests passing (375+ tests total)
 
 ### Implementation Complete
 
@@ -29,6 +29,20 @@ All 6 phases have been completed:
 | 4 | Update Span type with start/end | ✅ Complete |
 | 5 | Update core syntax constructors | ✅ Complete |
 | 6 | Update tests | ✅ Complete |
+
+### Test Coverage
+
+New tests added for source location tracking:
+- **Lexer tests** (`test/syntax/lexer_test.gleam`): 70 tests covering:
+  - Token kinds (identifiers, keywords, numbers, strings, operators)
+  - Position tracking (line, column, start, end offsets)
+  - Comment handling (line and block comments)
+  - Complex input (lambda expressions, function definitions, match expressions)
+  
+### Bug Fixes During Implementation
+
+1. **Double line increment**: Fixed `handle_newline` function that was incrementing line counter twice
+2. **String tokenization**: Fixed string tokenizer that was creating extra empty tokens
 
 ### Related
 

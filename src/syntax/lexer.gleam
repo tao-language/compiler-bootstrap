@@ -121,8 +121,7 @@ fn skip_whitespace(state: LexerState) -> LexerState {
 }
 
 fn handle_newline(state: LexerState) -> LexerState {
-  let state = advance(state)
-  LexerState(..state, line: state.line + 1, column: 1)
+  advance(state)
 }
 
 fn skip_line_comment(state: LexerState) -> LexerState {
@@ -153,8 +152,9 @@ fn tokenize_string(state: LexerState) -> LexerState {
   let start_pos = state.pos
   let start_line = state.line
   let start_column = state.column
-  let state = advance(state)
+  let state = advance(state)  // Skip opening quote
   let #(content, state) = read_string_content(state, "")
+  let state = advance(state)  // Skip closing quote
   let end_pos = state.pos
   let token =
     Token(kind: "String", value: content, start: start_pos, end: end_pos, line: start_line, column: start_column)
