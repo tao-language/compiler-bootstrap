@@ -1,3 +1,27 @@
+// ============================================================================
+// CORE LANGUAGE TESTS
+// ============================================================================
+/// Tests for the core language evaluator, type checker, and unifier.
+/// 
+/// The core language is a dependently typed calculus with:
+/// - Universe types (Type_k)
+/// - Literals (I32, I64, F64)
+/// - Variables (De Bruijn indices)
+/// - Holes (for incremental type checking)
+/// - Lambda abstractions and Pi types
+/// - Records and Constructors
+/// - Pattern matching with exhaustiveness checking
+///
+/// Tests are organized by functionality:
+/// - Unification: Type equality and constraint solving
+/// - Quoting: Converting values back to syntax
+/// - Normalization: Reducing terms to normal form
+/// - Type Checking: Bidirectional type inference and checking
+/// - Evaluation: Runtime value computation
+/// - Pattern Matching: Exhaustiveness checking and specialization
+///
+/// Note: Many tests use helper functions (v32, v64, i32, etc.) defined at the
+/// end of this file to reduce boilerplate. The constant `s` is the initial state.
 import core/core as c
 import syntax/grammar.{Span}
 import gleam/dict
@@ -13,33 +37,52 @@ pub fn main() {
 // ============================================================================
 // UNIFY TESTS
 // ============================================================================
+/// Unification checks type equality and solves constraints.
+/// It's the core algorithm for type checking with holes and inference.
 
-pub fn unify_typ_equal_test() {
+pub fn unify_typ_equal_level_zero_test() {
+  // Types at same level unify successfully
   c.unify(s, c.VTyp(0), c.VTyp(0), s1, s2) |> should.equal(Ok(s))
+}
+
+pub fn unify_typ_equal_level_one_test() {
+  // Types at level 1 unify successfully
   c.unify(s, c.VTyp(1), c.VTyp(1), s1, s2) |> should.equal(Ok(s))
 }
 
 pub fn unify_typ_mismatch_test() {
+  // Types at different levels fail to unify
   c.unify(s, c.VTyp(0), c.VTyp(1), s1, s2)
   |> should.equal(Error(c.TypeMismatch(c.VTyp(0), c.VTyp(1), s1, s2)))
 }
 
-pub fn unify_lit_equal_test() {
+pub fn unify_i32_equal_test() {
+  // Same I32 values unify
   c.unify(s, v32(1), v32(1), s1, s2) |> should.equal(Ok(s))
+}
+
+pub fn unify_i64_equal_test() {
+  // Same I64 values unify
   c.unify(s, v64(2), v64(2), s1, s2) |> should.equal(Ok(s))
 }
 
 pub fn unify_lit_mismatch_test() {
+  // Different I32 values fail to unify
   c.unify(s, v32(1), v32(2), s1, s2)
   |> should.equal(Error(c.TypeMismatch(v32(1), v32(2), s1, s2)))
 }
 
-pub fn unify_litt_equal_test() {
+pub fn unify_i32t_equal_test() {
+  // Same literal types unify
   c.unify(s, v32t, v32t, s1, s2) |> should.equal(Ok(s))
+}
+
+pub fn unify_i64t_equal_test() {
   c.unify(s, v64t, v64t, s1, s2) |> should.equal(Ok(s))
 }
 
 pub fn unify_litt_mismatch_test() {
+  // Different literal types fail to unify
   c.unify(s, v32t, v64t, s1, s2)
   |> should.equal(Error(c.TypeMismatch(v32t, v64t, s1, s2)))
 }
@@ -1882,27 +1925,28 @@ pub fn check_exhaustiveness_ctr_maybe_test() {
   ])
 }
 
-// --- HELPERS to make writing ASTs less painful ---
+// ============================================================================
+// TEST HELPERS
+// ============================================================================
+/// Helper functions and constants to reduce boilerplate in tests.
+/// 
+/// These helpers make test code more readable by hiding repetitive construction.
+/// For example, `v32(42)` is clearer than `c.VLit(c.I32(42))`.
+
+/// Initial state for tests that don't modify the context.
 const s = c.initial_state
 
+/// Test spans with fixed positions for consistent error reporting.
+/// Named s0-s9 for convenience in test code.
 pub const s0 = Span("core_test", 0, 0, 0, 0)
-
 pub const s1 = Span("core_test", 1, 1, 1, 1)
-
 pub const s2 = Span("core_test", 2, 2, 2, 2)
-
 pub const s3 = Span("core_test", 3, 3, 3, 3)
-
 pub const s4 = Span("core_test", 4, 4, 4, 4)
-
 pub const s5 = Span("core_test", 5, 5, 5, 5)
-
 pub const s6 = Span("core_test", 6, 6, 6, 6)
-
 pub const s7 = Span("core_test", 7, 7, 7, 7)
-
 pub const s8 = Span("core_test", 8, 8, 8, 8)
-
 pub const s9 = Span("core_test", 9, 9, 9, 9)
 
 fn typ(l, s) {
