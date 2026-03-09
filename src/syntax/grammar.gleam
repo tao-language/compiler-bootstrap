@@ -773,13 +773,11 @@ fn get_token(tokens: List(Token), pos: Int) -> Result(Token, Nil) {
     [] -> Error(Nil)
   }
 }
-
+/// Each language should define its own format function that pattern matches
+/// on its AST type. The grammar provides the structure for parsing, but
+/// formatting is language-specific. See core/formatter.gleam for an example.
 // ============================================================================
 
 // ============================================================================
 // FORMATTER - User-Provided
 // ============================================================================
-/// Each language should define its own format function that pattern matches
-/// on its AST type. The grammar provides the structure for parsing, but
-/// formatting is language-specific. See core/formatter.gleam for an example.
-
