@@ -173,14 +173,14 @@ pub type Expr {
   RecordUpdate(Expr, List(RecordField), Span)
 
   /// List: [1, 2, 3]
-  List(List<Expr>, Span)
+  List(List(Expr), Span)
 
   /// Tuple: (a, b, c)
   /// Unit: ()
-  Tuple(List<Expr>, Span)
+  Tuple(List(Expr), Span)
 
   /// Constructor: Some(x), None, True, False
-  Ctr(String, List<Expr>, Span)
+  Ctr(String, List(Expr), Span)
 
   /// Match expression: match x { | Some(y) -> y | None -> 0 }
   Match(Expr, List(MatchClause), Span)
@@ -189,10 +189,10 @@ pub type Expr {
   LetExpr(LetDecl, Expr, Span)
 
   /// Imperative block: do { mut x = 0; x = x + 1; x }
-  Block(List<BlockStatement>, Span)
+  Block(List(BlockStatement), Span)
 
   /// If expression: if cond { a } else { b }
-  If(Expr, Expr, Option<Expr>, Span)
+  If(Expr, Expr, Option(Expr), Span)
 
   /// Result bind: let x <- e1 in e2
   Bind(String, Expr, Expr, Span)
@@ -228,7 +228,7 @@ pub type MatchClause {
   /// Pattern with optional guard: x if x > 0 -> ...
   MatchClause(
     pattern: Pattern,
-    guard: Option<Expr>,
+    guard: Option(Expr),
     body: Expr,
     span: Span,
   )
@@ -249,19 +249,19 @@ pub type Pattern {
   PLit(Literal, Span)
 
   /// Constructor: Some(x), Cons(h, t), True, False
-  PCtr(String, List<Pattern>, Span)
+  PCtr(String, List(Pattern), Span)
 
   /// Record: { x, y }
-  PRecord(List<String>, Span)
+  PRecord(List(String), Span)
 
   /// Tuple: (a, b)
-  PTuple(List<Pattern>, Span)
+  PTuple(List(Pattern), Span)
 
   /// List: [h, ..t]
-  PList(List<Pattern>, Option<String>, Span)
+  PList(List(Pattern), Option(String), Span)
 
   /// Or pattern: Some(0) | None
-  POr(List<Pattern>, Span)
+  POr(List(Pattern), Span)
 
   /// As pattern: x @ Some(_)
   PAs(Pattern, String, Span)
@@ -276,17 +276,17 @@ pub type Type {
   TVar(String)
 
   /// Type application: Maybe(a), List(Int)
-  TApp(String, List<Type>)
+  TApp(String, List(Type))
 
   /// Function type: (Int, Int) -> Int
-  TFn(List<Type>, Type)
+  TFn(List(Type), Type)
 
   /// Record type: { x: Int, y: Int }
   TRecord(List(#(String, Type)))
 
   /// Tuple type: (Int, String)
   /// Unit type: ()
-  TTuple(List<Type>)
+  TTuple(List(Type))
 
   /// Hole: _
   THole
