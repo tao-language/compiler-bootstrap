@@ -328,21 +328,27 @@ pub fn right_assoc(
 pub fn alt(
   pattern: Pattern(a),
   constructor: fn(List(Value(a))) -> a,
+  formatter: fn(a, Int) -> Doc,
 ) -> Alternative(a) {
-  Alternative(pattern: pattern, constructor: constructor, deconstructor: fn(_) {
-    panic as "Deconstructor not provided"
-  })
+  Alternative(
+    pattern: pattern,
+    constructor: constructor,
+    deconstructor: fn(_) { panic as "Deconstructor not provided" },
+    formatter: formatter,
+  )
 }
 
 pub fn alt_with_deconstructor(
   pattern: Pattern(a),
   constructor: fn(List(Value(a))) -> a,
   deconstructor: fn(a) -> List(Value(a)),
+  formatter: fn(a, Int) -> Doc,
 ) -> Alternative(a) {
   Alternative(
     pattern: pattern,
     constructor: constructor,
     deconstructor: deconstructor,
+    formatter: formatter,
   )
 }
 
@@ -779,19 +785,17 @@ pub fn format_with_width(grammar: Grammar(a), ast: a, width: Int) -> String {
 
 /// Format an AST with precedence for parenthesization
 fn format_ast(grammar, ast, parent_prec) -> Doc {
-  // Find matching alternative by trying each rule's deconstructors
+  // Find matching alternative by trying each rule's formatters
   let match_result =
     list.find_map(grammar.rules, fn(rule) {
       list.find_map(rule.alternatives, fn(alt) {
-        let values = alt.deconstructor(ast)
-        Some(#(rule, alt, values))
+        // Try the formatter - it returns the formatted doc
+        Some(alt.formatter(ast, parent_prec))
       })
     })
 
   case match_result {
-    Some(#(rule, alt, values)) -> {
-      format_pattern(grammar, alt.pattern, values, parent_prec, rule.precedence)
-    }
+    Some(doc) -> doc
     None -> formatter.text("<unknown>")
   }
 }
