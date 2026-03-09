@@ -204,15 +204,119 @@ pub fn parse_all_operators_test() {
 // ============================================================================
 
 pub fn format_int_test() {
-  format(Int(42)) |> should.equal("<ast>")
+  format(Int(42)) |> should.equal("42")
 }
 
 pub fn format_add_test() {
-  format(Add(Int(1), Int(2))) |> should.equal("<ast>")
+  format(Add(Int(1), Int(2))) |> should.equal("1 + 2")
+}
+
+pub fn format_sub_test() {
+  format(Sub(Int(5), Int(3))) |> should.equal("5 - 3")
 }
 
 pub fn format_mul_test() {
-  format(Mul(Int(2), Int(3))) |> should.equal("<ast>")
+  format(Mul(Int(2), Int(3))) |> should.equal("2 * 3")
+}
+
+pub fn format_div_test() {
+  format(Div(Int(10), Int(2))) |> should.equal("10 / 2")
+}
+
+pub fn format_nested_test() {
+  format(Add(Int(1), Mul(Int(2), Int(3)))) |> should.equal("1 + 2 * 3")
+}
+
+pub fn format_parens_needed_test() {
+  format(Mul(Add(Int(1), Int(2)), Int(3))) |> should.equal("(1 + 2) * 3")
+}
+
+pub fn format_complex_test() {
+  format(Sub(Add(Int(1), Mul(Int(2), Int(3))), Div(Int(4), Int(2))))
+  |> should.equal("1 + 2 * 3 - 4 / 2")
+}
+
+// ============================================================================
+// ROUND-TRIP TESTS
+// ============================================================================
+
+pub fn roundtrip_int_test() {
+  let source = "42"
+  let result = parse(source)
+  let formatted = format(result.ast)
+  formatted |> should.equal(source)
+}
+
+pub fn roundtrip_add_test() {
+  let source = "1 + 2"
+  let result = parse(source)
+  let formatted = format(result.ast)
+  formatted |> should.equal(source)
+}
+
+pub fn roundtrip_sub_test() {
+  let source = "5 - 3"
+  let result = parse(source)
+  let formatted = format(result.ast)
+  formatted |> should.equal(source)
+}
+
+pub fn roundtrip_mul_test() {
+  let source = "2 * 3"
+  let result = parse(source)
+  let formatted = format(result.ast)
+  formatted |> should.equal(source)
+}
+
+pub fn roundtrip_div_test() {
+  let source = "10 / 2"
+  let result = parse(source)
+  let formatted = format(result.ast)
+  formatted |> should.equal(source)
+}
+
+pub fn roundtrip_precedence_test() {
+  let source = "1 + 2 * 3"
+  let result = parse(source)
+  let formatted = format(result.ast)
+  formatted |> should.equal(source)
+}
+
+pub fn roundtrip_parens_test() {
+  let source = "(1 + 2) * 3"
+  let result = parse(source)
+  let formatted = format(result.ast)
+  formatted |> should.equal(source)
+}
+
+pub fn roundtrip_nested_parens_test() {
+  // Note: Outer parens are redundant and removed during formatting
+  let source = "((1 + 2) * 3)"
+  let result = parse(source)
+  let formatted = format(result.ast)
+  // The AST is Mul(Add(1, 2), 3), which formats to "(1 + 2) * 3"
+  formatted |> should.equal("(1 + 2) * 3")
+}
+
+pub fn roundtrip_complex_test() {
+  let source = "1 + 2 * 3 - 4 / 2"
+  let result = parse(source)
+  let formatted = format(result.ast)
+  formatted |> should.equal(source)
+}
+
+pub fn roundtrip_all_ops_test() {
+  let source = "1 + 2 - 3 * 4 / 2"
+  let result = parse(source)
+  let formatted = format(result.ast)
+  formatted |> should.equal(source)
+}
+
+pub fn roundtrip_multi_digit_test() {
+  let source = "123 + 456 * 789"
+  let result = parse(source)
+  let formatted = format(result.ast)
+  formatted |> should.equal(source)
 }
 // ============================================================================
 // ERROR TESTS - Note: Current implementation panics on parse failure

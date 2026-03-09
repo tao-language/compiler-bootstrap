@@ -3,6 +3,7 @@
 // ============================================================================
 import gleam/int
 import gleam/result
+import syntax/formatter.{type Doc}
 import syntax/grammar.{
   type Grammar, type Value, AstValue, ParensValue, TokenValue,
 }
@@ -63,5 +64,60 @@ pub fn parse(source: String) -> grammar.ParseResult(Expr) {
 }
 
 pub fn format(ast: Expr) -> String {
-  grammar.format(calc_grammar(), ast)
+  format_expr(ast, -1) |> formatter.render_default
+}
+
+fn format_expr(ast: Expr, parent_prec: Int) -> Doc {
+  case ast {
+    Int(n) -> formatter.text(int.to_string(n))
+    // For left-associative operators:
+    // - Left operand: same prec (no parens for same level)
+    // - Right operand: prec + 1 (parens for same level)
+    Add(l, r) ->
+      format_binop(
+        format_expr(l, 10),
+        format_expr(r, 11),
+        " + ",
+        10,
+        parent_prec,
+      )
+    Sub(l, r) ->
+      format_binop(
+        format_expr(l, 10),
+        format_expr(r, 11),
+        " - ",
+        10,
+        parent_prec,
+      )
+    Mul(l, r) ->
+      format_binop(
+        format_expr(l, 20),
+        format_expr(r, 21),
+        " * ",
+        20,
+        parent_prec,
+      )
+    Div(l, r) ->
+      format_binop(
+        format_expr(l, 20),
+        format_expr(r, 21),
+        " / ",
+        20,
+        parent_prec,
+      )
+  }
+}
+
+fn format_binop(
+  left: Doc,
+  right: Doc,
+  op: String,
+  prec: Int,
+  parent_prec: Int,
+) -> Doc {
+  let doc = formatter.concat([left, formatter.text(op), right])
+  case prec < parent_prec {
+    True -> formatter.parens(doc)
+    False -> doc
+  }
 }
