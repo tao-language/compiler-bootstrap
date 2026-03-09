@@ -81,6 +81,7 @@ src/syntax/
 
 ### ⏳ In Progress / Pending
 
+- **Tests** - Currently only the calc example is tested. Need to add tests for lexer, formatter, and grammar.
 - **Automatic formatter generation** - Currently each language implements manual formatters
 - **Deconstructor implementation** - Currently panics (`"Deconstructor not implemented"`)
 - **Core language grammar** - Need to define grammar for core language
