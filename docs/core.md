@@ -606,6 +606,9 @@ But checking continues:
 | `ArityMismatch(span1, span2)` | Different number of spine elements |
 | `NotAFunction(fun, fun_ty)` | Application on non-function |
 | `PatternMismatch(pattern, expected_ty, ...)` | Pattern doesn't match expected type |
+| `TypeAnnotationNeeded(term)` | Type annotation required |
+| `TODO(message)` | Unimplemented feature |
+| `ComptimePermissionDenied(op, span, required)` | Comptime operation lacks permission |
 
 **Note**: `MatchEmpty` was removed—empty matches now produce `MatchMissingCase(PAny)` via exhaustiveness checking.
 
@@ -626,14 +629,14 @@ list_errors(VLam("x", env, body))
 
 ```gleam
 -- Evaluation
-eval(env: Env, term: Term) -> Value
-do_app(fun: Value, arg: Value) -> Value
+eval(ffi: FFI, env: Env, term: Term) -> Value
+do_app(ffi: FFI, fun: Value, arg: Value) -> Value
 do_match(env: Env, arg: Value, motive: Value, cases: List(Case)) -> Value
 do_match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil)
 
 -- Normalization by Evaluation
-normalize(env: Env, term: Term, span: Span) -> Term
-quote(lvl: Int, value: Value, span: Span) -> Term
+normalize(ffi: FFI, env: Env, term: Term, span: Span) -> Term
+quote(ffi: FFI, lvl: Int, value: Value, span: Span) -> Term
 
 -- Type Checking (bidirectional)
 infer(s: State, term: Term) -> #(Value, Type, State)
@@ -642,9 +645,20 @@ infer(s: State, term: Term) -> #(Value, Type, State)
 check(s: State, term: Term, expected_ty: Value, ty_span: Span) -> #(Value, State)
   -- Returns: (value, state with accumulated errors)
   -- On error: records error, returns VErr, continues checking
+check_type(s: State, term: Term, expected_ty: Value, ty_span: Span) -> #(Value, State)
+  -- Alias for check, used for type-level checking
 unify(s: State, v1: Value, v2: Value, s1: Span, s2: Span) -> Result(State, Error)
   -- Returns: Error on mismatch (caught by infer/check)
   -- Solves metavariables, checks occurs condition
+
+-- Comptime Evaluation
+comptime_eval(s: State, term: Term) -> #(Value, State)
+  -- Evaluate term at compile-time with permission checking
+  -- Returns VCall for deferred runtime operations
+check_permission(required: Permission, granted: Permission) -> Bool
+  -- Check if permission is granted (Write fulfills Read)
+all_permissions_granted(required: List(Permission), granted: List(Permission)) -> Bool
+  -- Check if all required permissions are granted
 
 -- Pattern Matching
 bind_pattern(s: State, pattern: Pattern, ret_ty: Value, ...) -> #(Value, State)
@@ -678,6 +692,13 @@ State(
   ctx: Context,        -- Typing context
   sub: Subst,          -- Metavariable solutions
   errors: List(Error), -- Accumulated errors
+  ffi: FFI,            -- Host FFI registry (built-ins)
+  config: Config,      -- Compiler configuration
+)
+
+Config(
+  target: String,            -- Target backend (e.g., "backend/javascript")
+  permissions: List(Permission), -- Granted permissions
 )
 ```
 
@@ -689,6 +710,8 @@ new_var(s: State) -> #(Value, State)       -- Create fresh variable
 def_var(s: State, name: String, ty: Type) -> #(Value, State)  -- Add to context
 force(sub: Subst, value: Value) -> Value   -- Resolve metavariables
 with_err(s: State, err: Error) -> State    -- Add error to state
+list_get(xs: List(a), i: Int) -> Option(a) -- De Bruijn index lookup
+ctx_get(ctx: Context, index: Int) -> Option(#(Value, Type))  -- Context lookup
 ```
 
 ---
@@ -878,45 +901,66 @@ This implementation is based on established research in type theory and programm
 
 ## Related Documentation
 
-### Parser and Formatter
+### Syntax Library
 
-- [`docs/parser-formatter.md`](parser-formatter.md) - Complete guide to the lexer, parser, and formatter
-  - Token types and lexical rules
-  - Parsing strategy and grammar
-  - Formatting rules
-  - Usage examples
-  - API reference
+- [`docs/syntax-library.md`](syntax-library.md) - User-facing documentation for the syntax library
+  - Grammar DSL for defining languages
+  - Parser combinators with operator precedence
+  - Formatter with document algebra
+  - Calculator example
+
+### Plans
+
+- [`docs/plans/core/01-overview.md`](plans/core/01-overview.md) - Core language implementation plan
+- [`docs/plans/core/02-syntax.md`](plans/core/02-syntax.md) - Syntax specification
+- [`docs/plans/core/03-ffi-comptime.md`](plans/core/03-ffi-comptime.md) - FFI and comptime implementation
+- [`docs/plans/grammar/01-overview.md`](plans/grammar/01-overview.md) - Grammar system overview
 
 ### Implementation Files
 
-- [`src/core/core.gleam`](../src/core/core.gleam) - Core language implementation (1400+ lines)
+- [`src/core/core.gleam`](../src/core/core.gleam) - Core language implementation (~1800 lines)
   - Type definitions (Term, Value, Pattern, etc.)
   - Evaluation and normalization
   - Unification and type checking
   - Exhaustiveness checking
+  - FFI and comptime evaluation
+  - Built-in functions (arithmetic, comparison, logical)
 
-- [`src/core/parser.gleam`](../src/core/parser.gleam) - Parser implementation (540+ lines)
-  - Lexer (tokenization)
-  - Recursive descent parser
-  - Error handling
+- [`src/syntax/grammar.gleam`](../src/syntax/grammar.gleam) - Grammar DSL (~786 lines)
+  - Grammar definition API
+  - Parser with operator precedence
+  - Layout-aware formatting
 
-- [`src/core/formatter.gleam`](../src/core/formatter.gleam) - Formatter implementation (190+ lines)
-  - Term formatting
-  - Pattern formatting
-  - Simple pretty-printing
+- [`src/syntax/lexer.gleam`](../src/syntax/lexer.gleam) - Tokenizer (~400 lines)
+  - Token types and lexical rules
+  - Comment handling
+  - Position tracking
+
+- [`src/syntax/formatter.gleam`](../src/syntax/formatter.gleam) - Document algebra (~139 lines)
+  - Document types (Empty, Text, Line, HardLine, Group, Nest, Concat)
+  - Best-fit rendering
+  - Combinators (parens, braces, comma_sep, etc.)
+
+- [`src/examples/calc.gleam`](../src/examples/calc.gleam) - Calculator example
+  - Working parser/formatter demonstration
+  - Operator precedence example
+  - Round-trip testing
 
 ### Directory Structure
 
 ```
 src/
-├── core/           # Core language implementation
-│   ├── core.gleam      # Type checker, evaluator, unifier
-│   ├── parser.gleam    # Lexer and parser
-│   └── formatter.gleam # Pretty printer
-└── main.gleam      # Entry point (if applicable)
+├── syntax/                    # Language-agnostic syntax library
+│   ├── grammar.gleam          # Grammar DSL + parser
+│   ├── lexer.gleam            # Tokenizer
+│   └── formatter.gleam        # Document algebra pretty printer
+├── core/                      # Core language implementation
+│   └── core.gleam             # Type checker, evaluator, unifier, FFI
+└── examples/
+    └── calc.gleam             # Calculator example using syntax library
 ```
 
-The `src/core/` directory contains all core language-specific code, making it easy to:
-- Add new high-level languages in separate directories
-- Reuse parser/formatter infrastructure for other languages
-- Maintain clear separation between language-agnostic and language-specific code
+### Test Files
+
+- [`test/README.md`](../test/README.md) - Testing guide and best practices
+- Tests integrated in `src/core/core.gleam` (263 tests passing)

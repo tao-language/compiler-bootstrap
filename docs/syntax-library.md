@@ -16,11 +16,20 @@ The syntax library provides a **generic grammar DSL** that generates parsers for
 
 ### Key Features
 
-- **Type-safe** - Grammar is parameterized by AST type
+- **Type-safe** - Grammar is parameterized by AST type (`Grammar(a)`)
 - **Composable** - Build complex parsers from simple combinators
-- **Operator precedence** - Built-in support for left/right/non-associative operators
+- **Operator precedence** - Built-in support for left/right-associative operators
 - **Layout hints** - Soft/hard line breaks for pretty-printing
-- **Error recovery** - Graceful error handling with position tracking
+- **Error handling** - Position tracking for error messages
+
+### Module Structure
+
+```
+src/syntax/
+├── grammar.gleam    # Grammar DSL (~786 lines)
+├── lexer.gleam      # Tokenizer (~400 lines)
+└── formatter.gleam  # Document algebra (~139 lines)
+```
 
 ---
 
@@ -162,6 +171,9 @@ pub fn token(builder: GrammarBuilder(a), kind: String) -> GrammarBuilder(a)
 
 /// Declare a keyword
 pub fn keyword(builder: GrammarBuilder(a), kw: String) -> GrammarBuilder(a)
+
+/// Parse source code with grammar
+pub fn parse(grammar: Grammar(a), source: String) -> ParseResult(a)
 ```
 
 ### Rule Definition
@@ -180,7 +192,17 @@ pub fn alt(
   constructor: fn(List(Value(a))) -> a,
   formatter: fn(a, Int) -> Doc,
 ) -> Alternative(a)
+
+/// Create an alternative with explicit deconstructor
+pub fn alt_with_deconstructor(
+  pattern: Pattern(a),
+  constructor: fn(List(Value(a))) -> a,
+  deconstructor: fn(a) -> List(Value(a)),
+  formatter: fn(a, Int) -> Doc,
+) -> Alternative(a)
 ```
+
+**Note**: The `deconstructor` is currently a stub (panics if called). It's intended for future automatic formatter generation.
 
 ### Pattern Helpers
 
@@ -225,6 +247,22 @@ pub type LayoutHint {
   Space         // Always space
   NoSeparator   // No separator
 }
+
+pub type LayoutStyle {
+  Inline
+  BreakAfterOperator(indent: Int)
+  BreakBeforeOperator(indent: Int)
+  Block(open: String, close: String, indent: Int)
+}
+
+pub type OperatorLayout {
+  OperatorLayout(
+    separator: String,
+    break_before: Bool,
+    break_after: Bool,
+    indent_rhs: Bool,
+  )
+}
 ```
 
 ### Operator Helpers
@@ -248,11 +286,30 @@ pub fn right_assoc(
   precedence: Int,
 ) -> GrammarBuilder(a)
 
-/// Create operator with default layout
+/// Create operator with default layout (break after operator, indent RHS)
 pub fn default_op_layout(separator: String) -> OperatorLayout
 
 /// Create operator with break-before layout (like Haskell's $)
 pub fn break_before_op_layout(separator: String) -> OperatorLayout
+
+/// Create operator with compact layout (never break)
+pub fn compact_op_layout(separator: String) -> OperatorLayout
+
+/// Create operator with custom layout
+pub fn op_with_layout(
+  keyword: String,
+  constructor: fn(a, a) -> a,
+  precedence: Int,
+  layout: OperatorLayout,
+) -> Operator(a)
+
+/// Create operator with default layout
+pub fn op(
+  keyword: String,
+  constructor: fn(a, a) -> a,
+  precedence: Int,
+  layout: OperatorLayout,
+) -> Operator(a)
 ```
 
 ---
@@ -375,6 +432,20 @@ case result {
 }
 ```
 
+**ParseResult**:
+```gleam
+pub type ParseResult(a) {
+  ParseResult(ast: a, errors: List(ParseError))
+}
+```
+
+**ParseError**:
+```gleam
+pub type ParseError {
+  ParseError(position: Int, expected: String, got: String)
+}
+```
+
 ### Format
 
 Each language defines its own format function that pattern matches on its AST:
@@ -417,42 +488,12 @@ Example:
 
 ### Calculator Language
 
-See `src/examples/calc.gleam` for a complete working example.
-
-### Lambda Calculus
-
-```gleam
-pub fn lambda_grammar() -> grammar.Grammar(Expr) {
-  use g <- grammar.define
-
-  g
-  |> grammar.name("Lambda")
-  |> grammar.start("Expr")
-  |> grammar.token("Lambda")  // λ
-  |> grammar.token("Dot")     // .
-  |> grammar.token("Ident")
-  // Expr = App | Lam
-  |> grammar.rule("Expr", [
-    grammar.alt(grammar.ref("Lam"), unwrap, format_lam),
-    grammar.alt(grammar.ref("App"), unwrap, format_app),
-    grammar.alt(grammar.ref("Atom"), unwrap, format_atom),
-  ])
-  // Lam = λ Ident . Expr
-  |> grammar.rule("Lam", [
-    grammar.alt(
-      grammar.seq([
-        grammar.token("Lambda"),
-        grammar.token("Ident"),
-        grammar.token("Dot"),
-        grammar.ref("Expr"),
-      ]),
-      fn(values) { /* constructor */ },
-      fn(ast, _) { /* formatter */ },
-    ),
-  ])
-  // ...
-}
-```
+See `src/examples/calc.gleam` for a complete working example with:
+- Addition, subtraction, multiplication, division
+- Operator precedence (* and / bind tighter than + and -)
+- Left-associative operators
+- Parenthesized expressions
+- Round-trip testing (parse → format → parse)
 
 ---
 
@@ -460,14 +501,48 @@ pub fn lambda_grammar() -> grammar.Grammar(Expr) {
 
 1. **Keep grammar declarative** - Define what to parse, not how
 2. **Use precedence levels** - Higher number = tighter binding
-3. **Provide formatters** - Each alternative needs a formatter function
+3. **Provide formatters** - Each alternative needs a formatter function (even if stub)
 4. **Test round-trips** - Verify parse → format → parse produces same AST
 5. **Use layout hints** - `SoftBreak` for optional line breaks
+6. **Use `alt_with_deconstructor`** - When you need explicit deconstructor (future-proofing)
+
+---
+
+## Implementation Notes
+
+### Deconstructor Stub
+
+The `deconstructor` field in `Alternative` is currently a stub:
+
+```gleam
+deconstructor: fn(_) { panic as "Deconstructor not implemented" }
+```
+
+It's intended for future automatic formatter generation. For now, each language implements manual formatters.
+
+### Layout Configuration
+
+The default operator layout breaks after the operator and indents the RHS:
+
+```gleam
+pub fn default_op_layout(separator: String) -> OperatorLayout {
+  OperatorLayout(
+    separator: separator,
+    break_before: False,
+    break_after: False,  // Currently not used
+    indent_rhs: False,   // Currently not used
+  )
+}
+```
+
+Layout breaking features (`break_before`, `break_after`, `indent_rhs`) are defined but not yet fully implemented in the formatter.
 
 ---
 
 ## References
 
 - [Calculator Example](../src/examples/calc.gleam)
-- [Core Language Grammar](../src/core/grammar.gleam)
-- [Core Language Formatter](../src/core/formatter.gleam)
+- [Grammar Implementation](../src/syntax/grammar.gleam)
+- [Lexer Implementation](../src/syntax/lexer.gleam)
+- [Formatter Implementation](../src/syntax/formatter.gleam)
+- [Plans: Grammar System](plans/grammar/01-overview.md)
