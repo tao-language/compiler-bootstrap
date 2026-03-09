@@ -93,6 +93,29 @@ source → parse → Tao AST → desugar → Term → type_check → Result
 
 ### ⏳ In Progress / Pending
 
+**Type Checking Integration**:
+- [ ] Wire up `core.infer()` in CLI
+- [ ] Format and display type errors
+- [ ] Add type error examples
+
+**Exhaustiveness Checking**:
+- [ ] Fix match expression parsing first
+- [ ] Integrate exhaustiveness checker
+- [ ] Add coverage error examples
+
+**Error Message Improvements**:
+- [ ] Source snippet formatting (like Rust)
+- [ ] Line numbers and column pointers
+- [ ] Context lines (before/after error)
+- [ ] Helpful hints/suggestions
+
+**Exit Codes**:
+- [ ] Exit 0 on success
+- [ ] Exit 1 on parse/type errors
+- [ ] Exit 2 on runtime errors
+- [ ] Exit 3 on file not found
+- [ ] Exit 4 on invalid arguments
+
 **Tao Language Support**:
 - [ ] `.tao` file detection
 - [ ] Tao parser integration
@@ -399,7 +422,9 @@ Examples:
 - **[02-cli-parser.md](./02-cli-parser.md)** - Command-line argument parsing specification
 - **[03-error-reporter.md](./03-error-reporter.md)** - Error reporting and formatting
 - **[../core/01-overview.md](../core/01-overview.md)** - Core language overview
-- **[../core/04-tao-integration.md](../core/04-tao-integration.md)** - Tao integration plan
+- **[../core/06-production-ready.md](../core/06-production-ready.md)** - Production ready plan
+- **[../core/07-fix-match-parsing.md](../core/07-fix-match-parsing.md)** - Fix match parsing
+- **[../core/08-type-checker-integration.md](../core/08-type-checker-integration.md)** - Type checker integration
 
 ---
 

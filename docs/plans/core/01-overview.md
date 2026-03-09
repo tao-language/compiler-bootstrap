@@ -361,7 +361,12 @@ let record_result = syntax.parse(record_source)
 - **[03-variable-shadowing.md](./03-variable-shadowing.md)** - Variable shadowing implementation plan ✅ COMPLETE
 - **[03-ffi-comptime.md](./03-ffi-comptime.md)** - FFI and comptime implementation ✅ COMPLETE
 - **[04-tao-integration.md](./04-tao-integration.md)** - Tao integration plan
+- **[06-production-ready.md](./06-production-ready.md)** - Production ready compiler plan 📋 PLANNED
+- **[07-fix-match-parsing.md](./07-fix-match-parsing.md)** - Fix match expression parsing 📋 PLANNED
+- **[08-type-checker-integration.md](./08-type-checker-integration.md)** - Type checker integration 📋 PLANNED
 - **[../cli/01-overview.md](../cli/01-overview.md)** - Compiler CLI ✅ COMPLETE
+- **[../cli/02-cli-parser.md](../cli/02-cli-parser.md)** - CLI argument parsing
+- **[../cli/03-error-reporter.md](../cli/03-error-reporter.md)** - Error reporting
 - **[../grammar/05-source-location-tracking.md](../grammar/05-source-location-tracking.md)** - Source location tracking ✅ COMPLETE
 - **[../grammar/06-records-with-fields.md](../grammar/06-records-with-fields.md)** - Records with fields plan ✅ COMPLETE
 - **[../../syntax-library.md](../../syntax-library.md)** - Syntax library user docs
