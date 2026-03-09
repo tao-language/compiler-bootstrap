@@ -4,12 +4,24 @@
 import gleam/dict.{type Dict}
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/string
 import syntax/formatter.{type Doc}
 import syntax/lexer.{type Token}
 
 // ============================================================================
 // TYPES
 // ============================================================================
+
+/// Source location span
+pub type Span {
+  Span(
+    file: String,
+    start_line: Int,    // 1-based
+    start_col: Int,     // 1-based
+    end_line: Int,      // 1-based
+    end_col: Int,       // 1-based
+  )
+}
 
 pub type Associativity {
   Left
@@ -773,10 +785,83 @@ fn get_token(tokens: List(Token), pos: Int) -> Result(Token, Nil) {
     [] -> Error(Nil)
   }
 }
-/// Each language should define its own format function that pattern matches
-/// on its AST type. The grammar provides the structure for parsing, but
-/// formatting is language-specific. See core/formatter.gleam for an example.
+
 // ============================================================================
+// POSITION HELPERS
+// ============================================================================
+/// Helper functions for extracting source positions from parsed values.
+/// Use these in grammar constructors to create accurate spans.
+
+/// Extract span from first token in values
+pub fn span_from_values(values: List(Value(a)), filename: String) -> Span {
+  case values {
+    [TokenValue(token), ..] -> span_from_token(token, filename)
+    [AstValue(_), ..] -> Span(filename, 1, 1, 1, 1)  // Default for AST values
+    _ -> Span(filename, 1, 1, 1, 1)  // Default
+  }
+}
+
+/// Create span from single token
+pub fn span_from_token(token: lexer.Token, filename: String) -> Span {
+  Span(
+    file: filename,
+    start_line: token.line,
+    start_col: token.column,
+    end_line: token.line,
+    end_col: token.column + string.length(token.value),
+  )
+}
+
+/// Create span covering first and last token
+pub fn span_from_tokens(
+  first: lexer.Token,
+  last: lexer.Token,
+  filename: String,
+) -> Span {
+  Span(
+    file: filename,
+    start_line: first.line,
+    start_col: first.column,
+    end_line: last.line,
+    end_col: last.column + string.length(last.value),
+  )
+}
+
+/// Extract first token from values
+pub fn first_token(values: List(Value(a))) -> Result(lexer.Token, Nil) {
+  case values {
+    [TokenValue(token), ..] -> Ok(token)
+    _ -> Error(Nil)
+  }
+}
+
+/// Extract last token from values (recursively)
+pub fn last_token(values: List(Value(a))) -> Result(lexer.Token, Nil) {
+  case values {
+    [] -> Error(Nil)
+    [TokenValue(token)] -> Ok(token)
+    [TokenValue(token), ListValue(rest), ..] -> {
+      case last_token(rest) {
+        Ok(last) -> Ok(last)
+        Error(_) -> Ok(token)
+      }
+    }
+    [_, ..rest] -> last_token(rest)
+  }
+}
+
+/// Get span for entire value list
+pub fn span_from_value_list(
+  values: List(Value(a)),
+  filename: String,
+) -> Span {
+  case first_token(values), last_token(values) {
+    Ok(first), Ok(last) -> span_from_tokens(first, last, filename)
+    Ok(first), Error(_) -> span_from_token(first, filename)
+    Error(_), Ok(last) -> span_from_token(last, filename)
+    Error(_), Error(_) -> Span(filename, 1, 1, 1, 1)
+  }
+}
 
 // ============================================================================
 // FORMATTER - User-Provided

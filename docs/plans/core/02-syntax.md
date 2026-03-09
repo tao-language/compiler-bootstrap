@@ -25,6 +25,8 @@
 - **De Bruijn conversion** - All identifiers become `Var(0)` (no name-to-index conversion yet)
 - **Limited Term coverage** - Only 4 of 13 Term variants implemented
 - **Formatter uses Term pattern matching** - Not fully grammar-derived yet (format_term function)
+- **Dummy spans** - All terms use `Span("input", 0, 0)` instead of real positions
+  - See **[../grammar/05-source-location-tracking.md](../grammar/05-source-location-tracking.md)** for planned fix
 
 ### What's Pending
 
@@ -49,6 +51,13 @@
 - [ ] Proper De Bruijn name/index conversion
 - [ ] Full pattern grammar (wildcards, as-patterns, constructor patterns)
 - [ ] Integration with core/core evaluator and type checker
+
+**Phase 6: Source Location Tracking**
+- [ ] Update Token type with line/column
+- [ ] Update Span type with start/end positions
+- [ ] Add position helper functions to grammar DSL
+- [ ] Update all constructors to use real positions
+- See **[../grammar/05-source-location-tracking.md](../grammar/05-source-location-tracking.md)** for details
 
 ### Related
 

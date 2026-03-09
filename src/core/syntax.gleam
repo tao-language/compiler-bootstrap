@@ -119,7 +119,7 @@ fn unwrap_parens(values) {
 fn make_lambda(values) {
   case values {
     [_, TokenValue(name_token), _, AstValue(body)] ->
-      Term(Lam(name_token.value, body), Span("input", 0, 0))
+      Term(Lam(name_token.value, body), Span("input", 1, 1, 1, 1))
     _ -> panic as "Expected lambda"
   }
 }
@@ -127,14 +127,14 @@ fn make_lambda(values) {
 fn make_application(values) {
   case values {
     [AstValue(fun), _, AstValue(arg), _] ->
-      Term(App(fun, arg), Span("input", 0, 0))
+      Term(App(fun, arg), Span("input", 1, 1, 1, 1))
     _ -> panic as "Expected f(args)"
   }
 }
 
 fn make_var(values) {
   case values {
-    [TokenValue(_)] -> Term(Var(0), Span("input", 0, 0))
+    [TokenValue(_)] -> Term(Var(0), Span("input", 1, 1, 1, 1))
     _ -> panic as "Expected identifier"
   }
 }
@@ -143,8 +143,8 @@ fn make_literal(values) {
   case values {
     [TokenValue(token)] -> {
       case int.parse(token.value) {
-        Ok(n) -> Term(Lit(I32(n)), Span("input", 0, 0))
-        Error(_) -> Term(Lit(I32(0)), Span("input", 0, 0))
+        Ok(n) -> Term(Lit(I32(n)), Span("input", 1, 1, 1, 1))
+        Error(_) -> Term(Lit(I32(0)), Span("input", 1, 1, 1, 1))
       }
     }
     _ -> panic as "Expected number token"

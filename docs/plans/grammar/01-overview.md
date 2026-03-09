@@ -1,7 +1,7 @@
 # Grammar System Overview
 
 > **Goal**: Single source of truth for grammar that generates parsers with layout-aware formatting
-> **Status**: ✅ Parser and formatter complete, ⏳ Core language grammar pending
+> **Status**: ✅ Parser and formatter complete, ⏳ Source location tracking planned
 > **Date**: March 2025
 
 ---
@@ -81,11 +81,33 @@ src/syntax/
 
 ### ⏳ In Progress / Pending
 
-- **Tests** - Currently only the calc example is tested. Need to add tests for lexer, formatter, and grammar.
-- **Automatic formatter generation** - Currently each language implements manual formatters
-- **Deconstructor implementation** - Currently panics (`"Deconstructor not implemented"`)
-- **Core language grammar** - Need to define grammar for core language
-- **Error recovery** - Basic position tracking, no sync-point recovery yet
+**Source Location Tracking** (9-14 hours estimated):
+- [ ] Update `Token` type to include `line` and `column`
+- [ ] Update lexer to store line/column in tokens
+- [ ] Add position helper functions to grammar DSL
+- [ ] Update `Span` type to support start/end positions
+- [ ] Update all grammar constructors to use real positions
+- [ ] Update tests for position tracking
+- See **[05-source-location-tracking.md](./05-source-location-tracking.md)** for details
+
+**Tests**:
+- [ ] Lexer tests (tokenization, position tracking)
+- [ ] Grammar DSL tests (pattern matching, operator precedence)
+- [ ] Formatter tests (layout, line breaking)
+- [ ] Round-trip tests (parse → format → parse)
+
+**Automatic Formatter Generation**:
+- [ ] Implement deconstructor functions (currently panics)
+- [ ] Grammar-derived formatting (currently manual)
+
+**Core Language Grammar**:
+- [ ] Define grammar for all Term variants
+- [ ] Integrate with syntax library
+- See **[../core/01-overview.md](../core/01-overview.md)** for status
+
+**Error Recovery**:
+- [ ] Sync-point recovery for better error messages
+- [ ] Multiple error reporting (don't stop at first error)
 
 ---
 

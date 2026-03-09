@@ -6,7 +6,14 @@ import gleam/option.{type Option, None, Some}
 import gleam/string
 
 pub type Token {
-  Token(kind: String, value: String, start: Int, end: Int)
+  Token(
+    kind: String,
+    value: String,
+    start: Int,       // Character offset (0-based)
+    end: Int,         // Character offset (0-based)
+    line: Int,        // Line number (1-based)
+    column: Int,      // Column number (1-based)
+  )
 }
 
 pub type Position {
@@ -144,11 +151,13 @@ fn skip_block_comment(state: LexerState) -> LexerState {
 
 fn tokenize_string(state: LexerState) -> LexerState {
   let start_pos = state.pos
+  let start_line = state.line
+  let start_column = state.column
   let state = advance(state)
   let #(content, state) = read_string_content(state, "")
   let end_pos = state.pos
   let token =
-    Token(kind: "String", value: content, start: start_pos, end: end_pos)
+    Token(kind: "String", value: content, start: start_pos, end: end_pos, line: start_line, column: start_column)
   LexerState(..state, tokens: [token, ..state.tokens])
 }
 
@@ -171,10 +180,12 @@ fn read_string_content(state: LexerState, acc: String) -> #(String, LexerState) 
 
 fn tokenize_number(state: LexerState) -> LexerState {
   let start_pos = state.pos
+  let start_line = state.line
+  let start_column = state.column
   let #(digits, state) = read_digits(state, "")
   let end_pos = state.pos
   let token =
-    Token(kind: "Number", value: digits, start: start_pos, end: end_pos)
+    Token(kind: "Number", value: digits, start: start_pos, end: end_pos, line: start_line, column: start_column)
   LexerState(..state, tokens: [token, ..state.tokens])
 }
 
@@ -198,11 +209,13 @@ fn read_digits(state: LexerState, acc: String) -> #(String, LexerState) {
 
 fn tokenize_ident(state: LexerState) -> LexerState {
   let start_pos = state.pos
+  let start_line = state.line
+  let start_column = state.column
   let #(chars, state) = read_ident_chars(state, [])
   let value = string.concat(chars)
   let kind = get_keyword_kind(value)
   let end_pos = state.pos
-  let token = Token(kind: kind, value: value, start: start_pos, end: end_pos)
+  let token = Token(kind: kind, value: value, start: start_pos, end: end_pos, line: start_line, column: start_column)
   LexerState(..state, tokens: [token, ..state.tokens])
 }
 
@@ -322,9 +335,11 @@ fn is_ident_char(char: String) -> Bool {
 
 fn tokenize_lambda(state: LexerState) -> LexerState {
   let start_pos = state.pos
+  let start_line = state.line
+  let start_column = state.column
   let state = advance(state)
   let end_pos = state.pos
-  let token = Token(kind: "Lambda", value: "λ", start: start_pos, end: end_pos)
+  let token = Token(kind: "Lambda", value: "λ", start: start_pos, end: end_pos, line: start_line, column: start_column)
   LexerState(..state, tokens: [token, ..state.tokens])
 }
 
@@ -332,10 +347,12 @@ fn tokenize_operator(state: LexerState) -> LexerState {
   case peek_char(state) {
     Some(char) -> {
       let start_pos = state.pos
+      let start_line = state.line
+      let start_column = state.column
       let state = advance(state)
       let end_pos = state.pos
       let kind = get_operator_kind(char)
-      let token = Token(kind: kind, value: char, start: start_pos, end: end_pos)
+      let token = Token(kind: kind, value: char, start: start_pos, end: end_pos, line: start_line, column: start_column)
       LexerState(..state, tokens: [token, ..state.tokens])
     }
     None -> state

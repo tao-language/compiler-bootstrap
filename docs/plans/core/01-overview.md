@@ -91,9 +91,11 @@ Both parser and formatter are **derived from the same grammar definition**.
 | Phase 3 | Ann, Dot, Ctr | 📋 Planned |
 | Phase 4 | Pi, Rcd | 📋 Planned |
 | Phase 5 | Match, Call, Comptime | 📋 Planned |
+| Phase 6 | Source location tracking | 📋 Planned |
 
 ### 📋 Pending
 
+- **Source location tracking** - Proper `Span` with filename, start/end line/column (see **[../grammar/05-source-location-tracking.md](../grammar/05-source-location-tracking.md)**)
 - **De Bruijn conversion** - Proper name ↔ index conversion (currently all vars become `Var(0)`)
 - **Full Term coverage** - All 13 Term variants with complete parsing/formatting
 - **Pattern grammar** - Full pattern matching syntax

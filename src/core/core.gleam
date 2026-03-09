@@ -157,7 +157,13 @@ pub type LiteralType {
 // ============================================================================
 
 pub type Span {
-  Span(file: String, row: Int, col: Int)
+  Span(
+    file: String,
+    start_line: Int,    // 1-based
+    start_col: Int,     // 1-based
+    end_line: Int,      // 1-based
+    end_col: Int,       // 1-based
+  )
 }
 
 // ============================================================================
@@ -1563,7 +1569,7 @@ pub fn get_missing_heads(
         Ok(d) -> eval(s.ffi, env, d.ret_ty)
         _ -> VErr
       }
-      let span = Span("", 0, 0)
+      let span = Span("", 1, 1, 1, 1)
       let ret_tag = case ret_ty {
         VCtr(tag, _) -> tag
         _ -> ""
@@ -1753,9 +1759,9 @@ pub fn show_span(s: Span) -> String {
   "["
   <> s.file
   <> ":"
-  <> int.to_string(s.row)
+  <> int.to_string(s.start_line)
   <> ":"
-  <> int.to_string(s.col)
+  <> int.to_string(s.start_col)
   <> "]"
 }
 
