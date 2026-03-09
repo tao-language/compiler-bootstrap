@@ -129,6 +129,28 @@ pub fn roundtrip_lambda_nested_test() {
   formatted |> should.equal(source)
 }
 
+pub fn roundtrip_lambda_shadowing_test() {
+  // This tests that variable shadowing works correctly
+  // x -> y -> x should preserve the reference to outer x
+  let source = "x -> y -> x"
+  let result = syntax.parse(source)
+  result.errors |> should.equal([])
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal(source)
+}
+
+pub fn roundtrip_lambda_self_shadowing_test() {
+  // x -> x -> x should show shadowing: inner x shadows outer x
+  // The innermost x refers to the middle lambda's parameter
+  let source = "x -> x -> x"
+  let result = syntax.parse(source)
+  result.errors |> should.equal([])
+  let formatted = syntax.format(result.ast)
+  // The inner x refers to the middle lambda's x (var0)
+  // The middle x refers to the outer lambda's x (var1)
+  formatted |> should.equal(source)
+}
+
 // ============================================================================
 // PI TYPE TESTS
 // ============================================================================
@@ -374,10 +396,22 @@ pub fn roundtrip_record_empty_test() {
   let source = "{}"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
-  case result.ast {
-    Term(Rcd([]), _) -> True |> should.be_true
-    _ -> False |> should.be_true
-  }
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal(source)
+}
+
+pub fn roundtrip_record_single_field_test() {
+  let source = "{x: 1}"
+  let result = syntax.parse(source)
+  result.errors |> should.equal([])
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal(source)
+}
+
+pub fn roundtrip_record_multiple_fields_test() {
+  let source = "{x: 1, y: 2, z: 3}"
+  let result = syntax.parse(source)
+  result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
   formatted |> should.equal(source)
 }
