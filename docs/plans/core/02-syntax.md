@@ -1,229 +1,8 @@
-# Core Language Syntax Plan
+# Core Language Syntax Specification
 
 > **Goal**: TypeScript-like syntax with C-style application only
 > **Status**: Ready for implementation
 > **Date**: March 2025
-
----
-
-## Design Principles
-
-1. **C-style application only** - `f(x, y)` not `f x y`
-2. **Familiar syntax** - TypeScript/JavaScript developers feel at home
-3. **Simple grammar** - No ambiguity between space app and other constructs
-4. **Clear precedence** - Obvious grouping without excessive parentheses
-5. **Minimal boilerplate** - No unnecessary keywords
-
----
-
-## Syntax Overview
-
-### Atoms
-
-```typescript
-// Variables
-x
-foo
-myVar
-
-// Literals
-42
-3.14
-"hello"
-
-// Holes (metavariables)
-?
-?0
-
-// Parenthesized expressions
-(x)
-((x))
-```
-
-### Application (C-style only)
-
-```typescript
-// Single argument
-f(x)
-
-// Multiple arguments (curried)
-f(x, y)
-// Desugars to: (f(x))(y)
-
-// Nested application
-f(g(x))
-f(g(x), h(y))
-```
-
-### Lambda Abstraction
-
-```typescript
-// Single parameter
-λx. x
-
-// Multiple parameters (sugar for nested lambdas)
-λx y z. x + y + z
-// Desugars to: λx. λy. λz. x + y + z
-
-// With type annotation
-λ(x: Type). x
-```
-
-### Pi Types (Dependent Function Types)
-
-```typescript
-// Basic Pi type
-(x: A) → B
-
-// When x not used in B (regular function type)
-(_: A) → B
-A → B  // Sugar for (_: A) → B
-
-// Multiple parameters (sugar for nested Pi)
-(x: A, y: B) → C
-// Desugars to: (x: A) → (y: B) → C
-```
-
-### Records
-
-```typescript
-// Record type
-{x: Int, y: Int}
-
-// Record value
-{x: 1, y: 2}
-
-// Empty record
-{}
-
-// Field access
-r.x
-r.field
-
-// Nested access
-r.x.y
-```
-
-### Constructors
-
-```typescript
-// Nullary constructor
-Nil
-True
-False
-
-// Unary constructor
-Cons(1)
-Some(42)
-
-// Multiple arguments (curried application)
-Cons(1, Nil)
-// Desugars to: (Cons(1))(Nil)
-```
-
-### Type Annotations
-
-```typescript
-// Term annotation
-x: Type
-(λx. x): (A → B)
-f(x): ReturnType
-```
-
-### Match Expressions
-
-```typescript
-// Basic match
-match x {
-  A → 1,
-  B → 2
-}
-
-// With patterns
-match list {
-  Nil → 0,
-  Cons(head, tail) → 1 + length(tail)
-}
-
-// With guards
-match x {
-  n if n > 0 → "positive",
-  _ → "zero"
-}
-```
-
-### Patterns
-
-```typescript
-// Wildcard
-_
-
-// Variable binding
-x
-
-// As-pattern
-x @ pattern
-
-// Constructor pattern
-Cons(head, tail)
-Some(x)
-
-// Literal pattern
-42
-"hello"
-
-// Record pattern
-{x, y}
-```
-
-### Built-in Calls
-
-```typescript
-// Arithmetic
-add(1, 2)
-sub(5, 3)
-
-// Comparison
-eq(1, 1)
-lt(1, 2)
-
-// Comptime
-comptime add(1, 2)
-```
-
----
-
-## Precedence and Associativity
-
-### Precedence Table (highest to lowest)
-
-| Prec | Operator/Syntax | Assoc | Example |
-|------|-----------------|-------|---------|
-| 100 | Atom | - | `x`, `42`, `λx. x` |
-| 95 | Field access | Left | `r.x.y` |
-| 90 | Constructor app | Left | `Cons(1, Nil)` |
-| 85 | C-style app | Left | `f(x, y)` |
-| 75 | Type annotation | Right | `x: A: B` |
-| 70 | Lambda | Right | `λx. λy. x` |
-| 65 | Pi type | Right | `(x: A) → (y: B) → C` |
-| 60 | Match | - | `match x { ... }` |
-
-### Examples
-
-```typescript
-// Application
-f(x)(y)      // = (f(x))(y)
-f(g(x))      // = f(g(x))
-f(x, y)(z)   // = (f(x, y))(z)
-
-// Lambda vs application
-λx. f(x)     // = λx. (f(x))
-(λx. f)(x)   // = ((λx. f)(x))
-
-// Type annotation
-f(x): T      // = (f(x)): T
-f(x: T)      // = f((x: T))
-```
 
 ---
 
@@ -335,7 +114,76 @@ _           Wildcard
 
 ---
 
-## Implementation Plan
+## Grammar Definition Structure
+
+### Minimal Core Grammar (Phase 1)
+
+```gleam
+pub fn core_grammar() -> Grammar(Term) {
+  use g <- grammar.define
+
+  g
+  |> grammar.name("Core")
+  |> grammar.start("Expr")
+
+  // Tokens
+  |> grammar.token("Ident")
+  |> grammar.token("Number")
+  |> grammar.token("Lambda")
+  |> grammar.token("Dot")
+  |> grammar.token("Arrow")
+  |> grammar.token("LParen")
+  |> grammar.token("RParen")
+  |> grammar.token("Comma")
+  |> grammar.token("Colon")
+  |> grammar.token("Question")
+  |> grammar.token("LBrace")
+  |> grammar.token("RBrace")
+
+  // Keywords
+  |> grammar.keyword("λ")
+  |> grammar.keyword("match")
+  |> grammar.keyword("comptime")
+  |> grammar.keyword("Type")
+  |> grammar.keyword("I32")
+
+  // Main expression rule (lowest precedence first)
+  |> grammar.rule("Expr", [
+    grammar.alt(grammar.ref("Comptime"), unwrap),
+    grammar.alt(grammar.ref("Match"), unwrap),
+    grammar.alt(grammar.ref("PiType"), unwrap),
+    grammar.alt(grammar.ref("Lambda"), unwrap),
+    grammar.alt(grammar.ref("Annotation"), unwrap),
+    grammar.alt(grammar.ref("App"), unwrap),
+    grammar.alt(grammar.ref("Atom"), unwrap),
+  ])
+
+  // Comptime: comptime expr
+  |> grammar.rule("Comptime", [...])
+
+  // Match: match expr { cases }
+  |> grammar.rule("Match", [...])
+
+  // Pi type: (x: A) → B
+  |> grammar.rule("PiType", [...])
+
+  // Lambda: λx. body
+  |> grammar.rule("Lambda", [...])
+
+  // Annotation: expr : type
+  |> grammar.rule("Annotation", [...])
+
+  // Application: f(x, y)
+  |> grammar.rule("App", [...])
+
+  // Atoms
+  |> grammar.rule("Atom", [...])
+}
+```
+
+---
+
+## Implementation Phases
 
 ### Phase 1: Minimal Grammar (Atoms + Application)
 
@@ -459,83 +307,220 @@ _           Wildcard
 
 ---
 
+## Implementation Challenges
+
+### 1. Application Parsing
+
+Core language application is C-style only:
+```
+f(x, y)  -- means (((f x) y) for curried application
+```
+
+This is straightforward with the grammar system - just parse as left-associative sequence.
+
+### 2. Lambda Syntax
+
+Lambda uses `λx. body` syntax:
+- `λ` is a special token (Unicode character)
+- `.` separates parameter from body
+- Multiple parameters: `λx y z. body` (sugar for nested lambdas)
+
+### 3. Record Fields
+
+Record fields are `name: value` pairs:
+```
+{x: 1, y: 2}
+```
+
+Use `sep1` with custom field pattern.
+
+### 4. Pattern Matching
+
+Match expressions have complex syntax:
+```
+match x with {
+  A(n) → n + 1,
+  B → 0
+}
+```
+
+Need:
+- Pattern grammar (constructors, wildcards, as-patterns)
+- Case grammar (pattern → body)
+- Proper layout for multi-line matches
+
+### 5. De Bruijn Indices
+
+Core language uses De Bruijn indices internally, but surface syntax uses names:
+- Parser needs to convert names to indices (requires symbol table)
+- Formatter needs to convert indices back to names (or show as indices)
+
+---
+
+## Modular Grammar Definition
+
+To manage complexity, split grammar into multiple functions:
+
+```gleam
+pub fn core_grammar() -> Grammar(Term) {
+  grammar.new()
+  |> grammar.start("Expr")
+  |> with_type_rules(_)
+  |> with_term_rules(_)
+  |> with_pattern_rules(_)
+  |> with_case_rules(_)
+}
+
+fn with_type_rules(g: Grammar(Term)) -> Grammar(Term) {
+  g
+  |> grammar.rule("Type", [...])
+  |> grammar.rule("PiType", [...])
+}
+
+fn with_term_rules(g: Grammar(Term)) -> Grammar(Term) {
+  g
+  |> grammar.rule("Expr", [...])
+  |> grammar.rule("Lambda", [...])
+  |> grammar.rule("App", [...])
+  |> grammar.rule("Atom", [...])
+}
+
+fn with_pattern_rules(g: Grammar(Term)) -> Grammar(Term) {
+  g
+  |> grammar.rule("Pattern", [...])
+}
+
+fn with_case_rules(g: Grammar(Term)) -> Grammar(Term) {
+  g
+  |> grammar.rule("Match", [...])
+  |> grammar.rule("Case", [...])
+}
+```
+
+---
+
 ## Example Grammar Definition
 
 ```gleam
+import syntax/grammar.{type Grammar}
+import core/core.{type Term, Term, Var, Lit, Lam, App, Hole}
+import core/core.{I32}
+import gleam/int
+
 pub fn core_grammar() -> Grammar(Term) {
   use g <- grammar.define
 
   g
   |> grammar.name("Core")
   |> grammar.start("Expr")
-  
-  // Tokens
   |> grammar.token("Ident")
   |> grammar.token("Number")
   |> grammar.token("Lambda")
-  |> grammar.token("Arrow")
+  |> grammar.token("Dot")
   |> grammar.token("LParen")
   |> grammar.token("RParen")
   |> grammar.token("Comma")
-  |> grammar.token("Dot")
-  |> grammar.token("Colon")
-  |> grammar.token("Question")
-  |> grammar.token("LBrace")
-  |> grammar.token("RBrace")
-  
-  // Keywords
-  |> grammar.keyword("λ")
-  |> grammar.keyword("fn")
-  |> grammar.keyword("match")
-  |> grammar.keyword("with")
-  |> grammar.keyword("comptime")
-  |> grammar.keyword("Type")
-  |> grammar.keyword("I32")
-  
-  // Main expression rule (lowest precedence first)
+
+  // Expr = Atom | Lambda | App
   |> grammar.rule("Expr", [
-    grammar.alt(grammar.ref("Comptime"), unwrap),
-    grammar.alt(grammar.ref("Match"), unwrap),
-    grammar.alt(grammar.ref("PiType"), unwrap),
     grammar.alt(grammar.ref("Lambda"), unwrap),
-    grammar.alt(grammar.ref("Annotation"), unwrap),
     grammar.alt(grammar.ref("App"), unwrap),
     grammar.alt(grammar.ref("Atom"), unwrap),
   ])
-  
-  // Comptime: comptime expr
-  |> grammar.rule("Comptime", [...])
-  
-  // Match: match expr { cases }
-  |> grammar.rule("Match", [...])
-  
-  // Pi type: (x: A) → B
-  |> grammar.rule("PiType", [...])
-  
-  // Lambda: λx. body
-  |> grammar.rule("Lambda", [...])
-  
-  // Annotation: expr : type
-  |> grammar.rule("Annotation", [...])
-  
-  // Application: f(x, y)
-  |> grammar.rule("App", [...])
-  
-  // Atoms
-  |> grammar.rule("Atom", [...])
+
+  // Lambda = λ Ident . Expr
+  |> grammar.rule("Lambda", [
+    grammar.alt(
+      grammar.seq([
+        grammar.token("Lambda"),
+        grammar.token("Ident"),
+        grammar.token("Dot"),
+        grammar.ref("Expr"),
+      ]),
+      fn(values) {
+        case values {
+          [_, name, _, body] => make_lambda(name, body)
+          _ => panic as "Invalid lambda"
+        }
+      },
+    ),
+  ])
+
+  // App = Atom ( Expr )
+  |> grammar.rule("App", [
+    grammar.alt(
+      grammar.seq([
+        grammar.ref("Atom"),
+        grammar.token("LParen"),
+        grammar.ref("Expr"),
+        grammar.token("RParen"),
+      ]),
+      fn(values) {
+        case values {
+          [fun, _, arg, _] => make_app(fun, arg)
+          _ => panic as "Invalid app"
+        }
+      },
+    ),
+  ])
+
+  // Atom = Ident | Number | ( Expr )
+  |> grammar.rule("Atom", [
+    grammar.alt(grammar.token("Ident"), make_var),
+    grammar.alt(grammar.token("Number"), make_lit),
+    grammar.alt(
+      grammar.seq([
+        grammar.token("LParen"),
+        grammar.ref("Expr"),
+        grammar.token("RParen"),
+      ]),
+      fn(values) {
+        case values {
+          [_, expr, _] => expr
+          _ => panic as "Invalid parens"
+        }
+      },
+    ),
+  ])
+}
+
+fn unwrap(values) {
+  case values {
+    [AstValue(term)] => term
+    _ => panic as "Expected single value"
+  }
+}
+
+fn make_var(token) {
+  Term(Var(token.value), token.start)
+}
+
+fn make_lit(token) {
+  case int.parse(token.value) {
+    Ok(n) => Term(Lit(I32(n)), token.start)
+    Error(_) => Term(Lit(I32(0)), token.start)
+  }
+}
+
+fn make_lambda(name_token, body) {
+  Term(Lam(name_token.value, body), name_token.start)
+}
+
+fn make_app(fun, arg) {
+  Term(App(fun, arg), get_span(fun, arg))
+}
+
+fn get_span(t1, t2) {
+  case t1, t2 {
+    Term(_, span), _ => span
+  }
 }
 ```
 
 ---
 
-## Summary
+## See Also
 
-This simplified syntax provides:
-
-1. **Familiarity** - TypeScript developers feel at home
-2. **Simplicity** - C-style application only, no ambiguity
-3. **Clarity** - Obvious precedence and grouping
-4. **Expressiveness** - Full dependent type syntax
-5. **Conciseness** - Minimal boilerplate
-
-The grammar system supports all these constructs. Implementation is a matter of defining the grammar rules and constructor functions following the patterns in the calculator example.
+- [Core Language Overview](./01-overview.md)
+- [FFI and Comptime](./03-ffi-comptime.md)
+- [Grammar DSL](../grammar/02-grammar-dsl.md)

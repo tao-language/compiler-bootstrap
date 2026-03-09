@@ -75,6 +75,7 @@ pub type Alternative(a) {
     pattern: Pattern(a),
     constructor: fn(List(Value(a))) -> a,
     deconstructor: fn(a) -> List(Value(a)),
+    formatter: fn(a, Int) -> Doc,
   )
 }
 
@@ -778,25 +779,21 @@ pub fn format_with_width(grammar: Grammar(a), ast: a, width: Int) -> String {
 
 /// Format an AST with precedence for parenthesization
 fn format_ast(grammar, ast, parent_prec) -> Doc {
-  case find_matching_alternative(grammar, ast) {
-    Some(#(rule, alt)) -> {
-      let values = alt.deconstructor(ast)
+  // Find matching alternative by trying each rule's deconstructors
+  let match_result =
+    list.find_map(grammar.rules, fn(rule) {
+      list.find_map(rule.alternatives, fn(alt) {
+        let values = alt.deconstructor(ast)
+        Some(#(rule, alt, values))
+      })
+    })
+
+  case match_result {
+    Some(#(rule, alt, values)) -> {
       format_pattern(grammar, alt.pattern, values, parent_prec, rule.precedence)
     }
     None -> formatter.text("<unknown>")
   }
-}
-
-/// Find which alternative matches this AST by trying deconstructors
-fn find_matching_alternative(grammar, ast) {
-  list.find_map(grammar.rules, fn(rule) {
-    list.find_map(rule.alternatives, fn(alt) {
-      // Try the deconstructor - if it succeeds, this is the match
-      let values = alt.deconstructor(ast)
-      // If we got here without panic, it's a match
-      Some(#(rule, alt))
-    })
-  })
 }
 
 /// Format values according to pattern with layout hints
