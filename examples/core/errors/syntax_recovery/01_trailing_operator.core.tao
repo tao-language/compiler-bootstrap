@@ -1,0 +1,4 @@
+// Syntax Recovery: Trailing operator
+// The parser should recover after the unexpected + operator
+// and potentially treat this as just the variable x
+x +

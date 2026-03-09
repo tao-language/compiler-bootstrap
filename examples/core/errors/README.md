@@ -1,43 +1,85 @@
-# Parse Error Examples
+# Core Language Error Examples
 
-This directory contains examples of invalid core language syntax that produce parse errors.
+This directory contains examples demonstrating different categories of errors in the core language compiler.
 
-## Usage
+## Directory Structure
 
-Run any example to see the parse error:
+```
+errors/
+├── syntax_errors/          # Parse errors (cannot recover)
+├── syntax_recovery/        # Syntax errors with recovery
+├── type_errors/            # Type checking errors (future)
+└── exhaustiveness_checks/  # Pattern match coverage errors (future)
+```
+
+## Error Categories
+
+### 1. Syntax Errors (`syntax_errors/`)
+
+Examples of invalid syntax that the parser **cannot** recover from.
 
 ```bash
-gleam run -- check examples/core/errors/01_double_arrow.core.tao
+gleam run -- check examples/core/errors/syntax_errors/01_double_arrow.core.tao
 ```
 
-## Error Examples
+**Expected output:** "Parse failed" with stacktrace
 
-| File | Description | Error Type |
-|------|-------------|------------|
-| `01_double_arrow.core.tao` | `-> -> x` | Multiple consecutive arrows |
-| `02_leading_arrow.core.tao` | `-> x` | Arrow without left-hand side |
-| `03_leading_colon.core.tao` | `: $Type` | Colon without annotation context |
-| `04_bare_hash.core.tao` | `#` | Hash without constructor name |
-| `05_bare_dollar.core.tao` | `$` | Dollar without type name |
-| `06_unclosed_paren.core.tao` | `(42` | Opening paren without closing |
-| `07_unclosed_brace.core.tao` | `{x: 1` | Opening brace without closing |
+**Current examples:**
+- `01_double_arrow.core.tao` - Multiple consecutive arrows
+- `02_leading_arrow.core.tao` - Arrow without left-hand side
+- `03_leading_colon.core.tao` - Colon without annotation context
+- `04_bare_hash.core.tao` - Hash without constructor name
+- `05_bare_dollar.core.tao` - Dollar without type name
+- `06_unclosed_paren.core.tao` - Opening paren without closing
+- `07_unclosed_brace.core.tao` - Opening brace without closing
 
-## Expected Output
+### 2. Syntax Recovery (`syntax_recovery/`)
 
-All examples in this directory should produce a "Parse failed" error:
+Examples of invalid syntax that the parser **can** recover from.
 
-```
-Parse failed
-
-stacktrace:
-  syntax/grammar.parse src/syntax/grammar.gleam:497
-  core/syntax.parse src/core/syntax.gleam:219
-  compiler_bootstrap.check_core src/compiler_bootstrap.gleam:209
-  compiler_bootstrap.main src/compiler_bootstrap.gleam:67
+```bash
+gleam run -- check examples/core/errors/syntax_recovery/01_trailing_operator.core.tao
 ```
 
-## Notes
+**Expected output:** Parses successfully (parser ignores/skips invalid tokens)
 
-The core language parser is designed to be resilient and recover from errors where possible.
-Some invalid syntax may be silently ignored (e.g., trailing operators).
-The examples in this directory represent syntax that the parser cannot recover from.
+**Current examples:**
+- `01_trailing_operator.core.tao` - Trailing operator
+- `02_extra_closing_paren.core.tao` - Extra closing parenthesis
+
+### 3. Type Errors (`type_errors/`)
+
+**Status**: Placeholder directory for future implementation.
+
+Examples that parse successfully but fail type checking will be added once the `core/core` type checker is integrated with the CLI.
+
+**Planned examples:**
+- Type mismatch errors
+- Occurs check failures
+- Arity mismatches
+
+### 4. Exhaustiveness Checks (`exhaustiveness_checks/`)
+
+**Status**: Placeholder directory for future implementation.
+
+Examples of pattern matching that fail coverage checking will be added once match expression parsing is fixed and exhaustiveness checking is integrated.
+
+**Planned examples:**
+- Missing case detection
+- Redundant case detection
+- Unreachable pattern detection
+
+## Quick Reference
+
+| Category | Phase | Recoverable | Status |
+|----------|-------|-------------|--------|
+| Syntax Errors | Parsing | ❌ No | ✅ Complete |
+| Syntax Recovery | Parsing | ✅ Yes | ✅ Complete |
+| Type Errors | Type Checking | N/A | 📋 Future |
+| Exhaustiveness | Coverage Check | N/A | 📋 Future |
+
+## Related Documentation
+
+- [Core Language Overview](../../../docs/plans/core/01-overview.md)
+- [CLI Documentation](../../../docs/plans/cli/01-overview.md)
+- [Syntax Specification](../../../docs/plans/core/02-syntax.md)
