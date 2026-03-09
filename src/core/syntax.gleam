@@ -7,10 +7,12 @@
 /// - Variables: `x`
 /// - Literals: `42`
 /// - Lambda: `λx. body`
+/// - Pi types: `(x : A) -> B`
 /// - Application: `f(x)` (C-style only)
 /// - Type annotations: `x : I32`
 /// - Field access: `record.field`
-/// - Constructors: `Some`, `True`, `None`
+/// - Records: `{x = 1, y = 2}`
+/// - Constructors: `Some`, `True`, `False`, `None`
 /// - Type universes: `Type0`, `Type1`, etc.
 /// - Holes: `?` (unsolved metavariables)
 /// - Literal types: `I32`, `I64`, `F64`
@@ -18,10 +20,11 @@
 /// Both parser and formatter are derived from this single grammar definition.
 import core/core.{
   type Term, Ann, App, Ctr, Dot, F32, F32T, F64, F64T, Hole, I32, I32T, I64, I64T, Lam, Lit,
-  LitT, Term, Typ, U32, U32T, U64, U64T, Var,
+  LitT, Pi, Rcd, Term, Typ, U32, U32T, U64, U64T, Var,
 }
 import gleam/float
 import gleam/int
+import gleam/list
 import gleam/string
 import syntax/formatter
 import syntax/grammar.{type Span, AstValue, TokenValue}
@@ -54,14 +57,20 @@ pub fn core_grammar() -> grammar.Grammar(Term) {
   |> grammar.token("Number")
   |> grammar.token("LParen")
   |> grammar.token("RParen")
+  |> grammar.token("LBrace")
+  |> grammar.token("RBrace")
   |> grammar.token("Lambda")
   |> grammar.token("Dot")
   |> grammar.token("Operator")
   |> grammar.token("Keyword")
   |> grammar.token("Colon")
+  |> grammar.token("Equals")
+  |> grammar.token("Comma")
+  |> grammar.token("Arrow")
   // Main expression rule (lowest precedence first)
   |> grammar.rule("Expr", [
     grammar.alt(grammar.ref("Lambda"), unwrap, format_term),
+    grammar.alt(grammar.ref("Pi"), unwrap, format_term),
     grammar.alt(grammar.ref("Ann"), unwrap, format_term),
     grammar.alt(grammar.ref("App"), unwrap, format_term),
     grammar.alt(grammar.ref("Dot"), unwrap, format_term),
@@ -77,6 +86,22 @@ pub fn core_grammar() -> grammar.Grammar(Term) {
         grammar.ref("Expr"),
       ]),
       make_lambda,
+      format_term,
+    ),
+  ])
+  // Pi type: (x : A) → B
+  |> grammar.rule("Pi", [
+    grammar.alt(
+      grammar.seq([
+        grammar.token_pattern("LParen"),
+        grammar.token_pattern("Ident"),
+        grammar.token_pattern("Colon"),
+        grammar.ref("Expr"),
+        grammar.token_pattern("RParen"),
+        grammar.token_pattern("Arrow"),
+        grammar.ref("Expr"),
+      ]),
+      make_pi,
       format_term,
     ),
   ])
@@ -119,6 +144,15 @@ pub fn core_grammar() -> grammar.Grammar(Term) {
   ])
   // Atoms - the building blocks
   |> grammar.rule("Atom", [
+    // Record: {} (empty record for now)
+    grammar.alt(
+      grammar.seq([
+        grammar.token_pattern("LBrace"),
+        grammar.token_pattern("RBrace"),
+      ]),
+      make_empty_record,
+      format_term,
+    ),
     // Literal type: I32, I64, F64 (specific keywords)
     grammar.alt(grammar.token_pattern("Keyword"), make_literal_type_or_constructor, format_term),
     // Variable (identifiers that don't start with "Type")
@@ -260,12 +294,42 @@ fn make_annotation(values) {
   }
 }
 
+fn make_pi(values) {
+  case values {
+    [_, TokenValue(name_token), _, AstValue(in_term), _, _, AstValue(out_term)] ->
+      Term(Pi(name_token.value, in_term, out_term), in_term.span)
+    _ -> panic as "Expected Pi type ((x : A) -> B)"
+  }
+}
+
 fn make_field_access(values) {
   case values {
     [AstValue(arg), _, TokenValue(field_token)] ->
       Term(Dot(arg, field_token.value), arg.span)
     _ -> panic as "Expected field access (expr.field)"
   }
+}
+
+fn make_empty_record(values) {
+  case values {
+    [_, _] -> Term(Rcd([]), grammar.span_from_token(values |> get_first_token, "input"))
+    _ -> panic as "Expected empty record {}"
+  }
+}
+
+fn get_first_token(values: List(grammar.Value(Term))) -> Token {
+  case values {
+    [TokenValue(token), ..] -> token
+    [AstValue(term), ..] -> {
+      let t: Term = term
+      t.span |> span_to_token
+    }
+    _ -> panic as "Expected at least one value"
+  }
+}
+
+fn span_to_token(span: Span) -> Token {
+  lexer.Token("Unknown", "", span.start_line, span.end_col, span.start_line, span.start_col)
 }
 
 // ============================================================================
@@ -325,6 +389,40 @@ fn format_term(term: Term, parent_prec: Int) -> formatter.Doc {
           format_term(typ, 50),
         ])
       wrap_parens(inner, 50 < parent_prec)
+    }
+    Pi(name, in_term, out_term) -> {
+      let inner =
+        formatter.concat([
+          formatter.text("("),
+          formatter.text(name),
+          formatter.text(" : "),
+          format_term(in_term, 50),
+          formatter.text(") → "),
+          format_term(out_term, 65),
+        ])
+      wrap_parens(inner, 65 < parent_prec)
+    }
+    Rcd(fields) -> {
+      case fields {
+        [] -> formatter.text("{}")
+        _ -> {
+          let field_docs =
+            fields
+            |> list.map(fn(field) {
+              let #(name, value) = field
+              formatter.concat([
+                formatter.text(name),
+                formatter.text(" = "),
+                format_term(value, 50),
+              ])
+            })
+          formatter.concat([
+            formatter.text("{"),
+            list.intersperse(field_docs, formatter.text(", ")) |> formatter.concat,
+            formatter.text("}"),
+          ])
+        }
+      }
     }
     Lam(name, body) -> {
       let inner =

@@ -21,7 +21,7 @@
 /// Note: All identifiers currently become `var0` (De Bruijn index placeholder).
 /// Full implementation will need proper name-to-index conversion.
 import core/core.{
-  Ann, App, Ctr, Dot, F64T, Hole, I32, I32T, I64T, Lam, Lit, LitT, Term, Typ, U32T, Var,
+  Ann, App, Ctr, Dot, F64T, Hole, I32, I32T, I64T, Lam, Lit, LitT, Pi, Rcd, Term, Typ, U32T, Var,
 }
 import gleam/list
 import syntax/grammar.{Span, type Span}
@@ -235,6 +235,44 @@ pub fn parse_constructor_none_test() {
   result.errors |> should.equal([])
   case result.ast {
     Term(Ctr("None", _), _) -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+// ============================================================================
+// PARSING TESTS - PI TYPES
+// ============================================================================
+
+pub fn parse_pi_simple_test() {
+  // Simple Pi type: (x : I32) → I32
+  let result = syntax.parse("(x : I32) → I32")
+  result.errors |> should.equal([])
+  case result.ast {
+    Term(Pi(_, _, _), _) -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+pub fn parse_pi_with_type_universe_test() {
+  // Pi type with Type0: (x : Type0) → Type0
+  let result = syntax.parse("(x : Type0) → Type0")
+  result.errors |> should.equal([])
+  case result.ast {
+    Term(Pi(_, Term(Typ(0), _), Term(Typ(0), _)), _) -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+// ============================================================================
+// PARSING TESTS - RECORDS
+// ============================================================================
+
+pub fn parse_record_empty_test() {
+  // Empty record: {}
+  let result = syntax.parse("{}")
+  result.errors |> should.equal([])
+  case result.ast {
+    Term(Rcd([]), _) -> True |> should.be_true
     _ -> False |> should.be_true
   }
 }
@@ -487,6 +525,36 @@ pub fn format_constructor_none_test() {
 }
 
 // ============================================================================
+// FORMATTING TESTS - PI TYPES
+// ============================================================================
+
+pub fn format_pi_simple_test() {
+  // Pi type formats as "(x : A) → B"
+  let in_term = Term(LitT(I32T), test_span())
+  let out_term = Term(LitT(I32T), test_span())
+  let term = Term(Pi("x", in_term, out_term), test_span())
+  syntax.format(term) |> should.equal("(x : I32) → I32")
+}
+
+pub fn format_pi_with_parens_test() {
+  // Pi type in application needs parens
+  let pi = Term(Pi("x", Term(LitT(I32T), test_span()), Term(LitT(I32T), test_span())), test_span())
+  let arg = Term(Lit(I32(42)), test_span())
+  let term = Term(App(pi, arg), test_span())
+  syntax.format(term) |> should.equal("((x : I32) → I32)(42)")
+}
+
+// ============================================================================
+// FORMATTING TESTS - RECORDS
+// ============================================================================
+
+pub fn format_record_empty_test() {
+  // Empty record formats as "{}"
+  let term = Term(Rcd([]), test_span())
+  syntax.format(term) |> should.equal("{}")
+}
+
+// ============================================================================
 // FORMATTING TESTS - LAMBDAS
 // ============================================================================
 
@@ -687,6 +755,30 @@ pub fn roundtrip_constructor_none_test() {
   let result = syntax.parse(source)
   let formatted = syntax.format(result.ast)
   formatted |> should.equal("None")
+}
+
+// ============================================================================
+// ROUND-TRIP TESTS - PI TYPES
+// ============================================================================
+
+pub fn roundtrip_pi_simple_test() {
+  // Pi type round-trips
+  let source = "(x : I32) → I32"
+  let result = syntax.parse(source)
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal("(x : I32) → I32")
+}
+
+// ============================================================================
+// ROUND-TRIP TESTS - RECORDS
+// ============================================================================
+
+pub fn roundtrip_record_empty_test() {
+  // Empty record round-trips
+  let source = "{}"
+  let result = syntax.parse(source)
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal("{}")
 }
 
 // ============================================================================
