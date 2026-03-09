@@ -424,6 +424,8 @@ fn get_operator_kind(char: String) -> String {
     "=" -> "Equal"
     "$" -> "Dollar"
     "#" -> "Hash"
+    "_" -> "Underscore"
+    "@" -> "At"
     "+"
     | "-"
     | "*"
@@ -435,8 +437,7 @@ fn get_operator_kind(char: String) -> String {
     | "<"
     | "&"
     | "^"
-    | "~"
-    | "@" -> "Operator"
+    | "~" -> "Operator"
     "\\" -> "Backslash"
     _ -> "Operator"
   }

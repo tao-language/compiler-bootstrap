@@ -19,8 +19,9 @@
 ///
 /// Both parser and formatter are derived from this single grammar definition.
 import core/core.{
-  type Literal, type LiteralType, type Term, Ann, App, Ctr, Dot, F32, F32T, F64, F64T, Hole, I32, I32T, I64, I64T, Lam, Lit,
-  LitT, Pi, Rcd, Term, Typ, U32, U32T, U64, U64T, Var,
+  type Case, type Literal, type LiteralType, type Pattern, type Term, Ann, App, Call, Case,
+  Comptime, Ctr, Dot, F32, F32T, F64, F64T, Hole, I32, I32T, I64, I64T, Lam, Lit, LitT, Match,
+  PAny, PAs, PCtr, PLit, PLitT, PRcd, PTyp, Pi, Rcd, Term, Typ, U32, U32T, U64, U64T, Var,
 }
 import gleam/float
 import gleam/int
@@ -49,6 +50,28 @@ pub type NamedTerm {
   NHole(id: Int, span: Span)
   NLitT(typ: LiteralType, span: Span)
   NRcd(fields: List(#(String, NamedTerm)), span: Span)
+  /// Pattern matching: match arg with motive returning cases
+  NMatch(arg: NamedTerm, motive: NamedTerm, cases: List(NamedCase), span: Span)
+  /// Built-in call: call name(args)
+  NCall(name: String, args: List(NamedTerm), span: Span)
+  /// Compile-time evaluation: comptime { term }
+  NComptime(term: NamedTerm, span: Span)
+}
+
+/// Pattern in match expressions
+pub type NamedPattern {
+  NPAny(span: Span)
+  NPAs(pattern: NamedPattern, name: String, span: Span)
+  NPTyp(level: Int, span: Span)
+  NPLit(value: Literal, span: Span)
+  NPLitT(typ: LiteralType, span: Span)
+  NPRcd(fields: List(#(String, NamedPattern)), span: Span)
+  NPCtr(tag: String, arg: NamedPattern, span: Span)
+}
+
+/// Case in match expression
+pub type NamedCase {
+  NCase(pattern: NamedPattern, body: NamedTerm, span: Span)
 }
 
 // ============================================================================
@@ -59,6 +82,9 @@ pub type NamedTerm {
 pub type ParseValue {
   AsTerm(NamedTerm)
   AsFields(List(#(String, NamedTerm)))
+  AsCases(List(NamedCase))
+  AsPattern(NamedPattern)
+  AsArgs(List(NamedTerm))
 }
 
 // ============================================================================
@@ -114,6 +140,53 @@ fn named_to_de_bruijn_loop(term: NamedTerm, env: List(String)) -> Term {
       })
       Term(Rcd(fields_db), span)
     }
+    NMatch(arg, motive, cases, span) -> {
+      let arg_db = named_to_de_bruijn_loop(arg, env)
+      let motive_db = named_to_de_bruijn_loop(motive, env)
+      let cases_db = cases |> list.map(fn(c) { named_case_to_de_bruijn(c, env) })
+      Term(Match(arg_db, motive_db, cases_db), span)
+    }
+    NCall(name, args, span) -> {
+      let args_db = args |> list.map(fn(a) { named_to_de_bruijn_loop(a, env) })
+      Term(Call(name, args_db), span)
+    }
+    NComptime(term, span) -> {
+      let term_db = named_to_de_bruijn_loop(term, env)
+      Term(Comptime(term_db), span)
+    }
+  }
+}
+
+/// Convert NamedCase to Case with De Bruijn indices.
+fn named_case_to_de_bruijn(named_case: NamedCase, env: List(String)) -> Case {
+  let NCase(pattern, body, span) = named_case
+  let pattern_db = named_pattern_to_de_bruijn(pattern, env)
+  let body_db = named_to_de_bruijn_loop(body, env)
+  Case(pattern_db, body_db, span)
+}
+
+/// Convert NamedPattern to Pattern with De Bruijn indices.
+fn named_pattern_to_de_bruijn(pattern: NamedPattern, env: List(String)) -> Pattern {
+  case pattern {
+    NPAny(span) -> PAny
+    NPAs(inner, name, span) -> {
+      let inner_db = named_pattern_to_de_bruijn(inner, env)
+      PAs(inner_db, name)
+    }
+    NPTyp(level, span) -> PTyp(level)
+    NPLit(value, span) -> PLit(value)
+    NPLitT(typ, span) -> PLitT(typ)
+    NPRcd(fields, span) -> {
+      let fields_db = fields |> list.map(fn(f) {
+        let #(name, pat) = f
+        #(name, named_pattern_to_de_bruijn(pat, env))
+      })
+      PRcd(fields_db)
+    }
+    NPCtr(tag, arg, span) -> {
+      let arg_db = named_pattern_to_de_bruijn(arg, env)
+      PCtr(tag, arg_db)
+    }
   }
 }
 
@@ -134,6 +207,9 @@ fn parse_value_to_term(value: ParseValue) -> Result(Term, ParseError) {
   case value {
     AsTerm(named_term) -> Ok(named_to_de_bruijn(named_term))
     AsFields(_) -> Error(ParseError(0, "expression", "field list"))
+    AsCases(_) -> Error(ParseError(0, "expression", "case list"))
+    AsPattern(_) -> Error(ParseError(0, "expression", "pattern"))
+    AsArgs(_) -> Error(ParseError(0, "expression", "argument list"))
   }
 }
 
@@ -148,6 +224,18 @@ pub fn parse(source: String) -> grammar.ParseResult(Term) {
         }
         AsFields(_) -> {
           let err = ParseError(0, "expression", "field list")
+          grammar.ParseResult(ast: panic as "Parse failed", errors: [err, ..errors])
+        }
+        AsCases(_) -> {
+          let err = ParseError(0, "expression", "case list")
+          grammar.ParseResult(ast: panic as "Parse failed", errors: [err, ..errors])
+        }
+        AsPattern(_) -> {
+          let err = ParseError(0, "expression", "pattern")
+          grammar.ParseResult(ast: panic as "Parse failed", errors: [err, ..errors])
+        }
+        AsArgs(_) -> {
+          let err = ParseError(0, "expression", "argument list")
           grammar.ParseResult(ast: panic as "Parse failed", errors: [err, ..errors])
         }
       }
@@ -186,6 +274,14 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
   |> grammar.token("Dollar")
   |> grammar.token("Hash")
   |> grammar.token("Question")
+  |> grammar.token("Underscore")
+  |> grammar.token("At")
+  // Keywords
+  |> grammar.keyword("match")
+  |> grammar.keyword("with")
+  |> grammar.keyword("returning")
+  |> grammar.keyword("call")
+  |> grammar.keyword("comptime")
   // Main expression rule (lowest precedence first)
   |> grammar.rule("Expr", [
     grammar.alt(grammar.ref("Lambda"), unwrap, fn(_, p) { formatter.text("") }),
@@ -193,6 +289,9 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
     grammar.alt(grammar.ref("Ann"), unwrap, fn(_, p) { formatter.text("") }),
     grammar.alt(grammar.ref("App"), unwrap, fn(_, p) { formatter.text("") }),
     grammar.alt(grammar.ref("Dot"), unwrap, fn(_, p) { formatter.text("") }),
+    grammar.alt(grammar.ref("Match"), unwrap, fn(_, p) { formatter.text("") }),
+    grammar.alt(grammar.ref("Call"), unwrap, fn(_, p) { formatter.text("") }),
+    grammar.alt(grammar.ref("Comptime"), unwrap, fn(_, p) { formatter.text("") }),
     grammar.alt(grammar.ref("Atom"), unwrap, fn(_, p) { formatter.text("") }),
   ])
   // Lambda: x -> body
@@ -257,6 +356,48 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
         grammar.token_pattern("Ident"),
       ]),
       make_field_access,
+      fn(v, p) { format_value(v, p) },
+    ),
+  ])
+  // Match: match arg with motive returning cases
+  |> grammar.rule("Match", [
+    grammar.alt(
+      grammar.seq([
+        grammar.keyword_pattern("match"),
+        grammar.ref("Expr"),
+        grammar.keyword_pattern("with"),
+        grammar.ref("Expr"),
+        grammar.keyword_pattern("returning"),
+        grammar.ref("Cases"),
+      ]),
+      make_match,
+      fn(v, p) { format_value(v, p) },
+    ),
+  ])
+  // Call: call name(args)
+  |> grammar.rule("Call", [
+    grammar.alt(
+      grammar.seq([
+        grammar.keyword_pattern("call"),
+        grammar.token_pattern("Ident"),
+        grammar.token_pattern("LParen"),
+        grammar.ref("ArgList"),
+        grammar.token_pattern("RParen"),
+      ]),
+      make_call,
+      fn(v, p) { format_value(v, p) },
+    ),
+  ])
+  // Comptime: comptime { term }
+  |> grammar.rule("Comptime", [
+    grammar.alt(
+      grammar.seq([
+        grammar.keyword_pattern("comptime"),
+        grammar.token_pattern("LBrace"),
+        grammar.ref("Expr"),
+        grammar.token_pattern("RBrace"),
+      ]),
+      make_comptime,
       fn(v, p) { format_value(v, p) },
     ),
   ])
@@ -371,6 +512,79 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
         grammar.ref("Expr"),
       ]),
       make_single_field,
+      fn(_, _) { formatter.text("") },
+    ),
+  ])
+  // Cases: pattern -> body, ...
+  |> grammar.rule("Cases", [
+    // Single case: pattern -> body
+    grammar.alt(
+      grammar.seq([
+        grammar.ref("Pattern"),
+        grammar.token_pattern("Arrow"),
+        grammar.ref("Expr"),
+      ]),
+      make_single_case,
+      fn(_, _) { formatter.text("") },
+    ),
+    // Multiple cases: pattern -> body, cases...
+    grammar.alt(
+      grammar.seq([
+        grammar.ref("Pattern"),
+        grammar.token_pattern("Arrow"),
+        grammar.ref("Expr"),
+        grammar.token_pattern("Comma"),
+        grammar.ref("Cases"),
+      ]),
+      make_case_cons,
+      fn(_, _) { formatter.text("") },
+    ),
+  ])
+  // Pattern: _, x @ pat, Type, 42, $I32, {fields}, #Name(pat)
+  |> grammar.rule("Pattern", [
+    // Wildcard: _
+    grammar.alt(grammar.token_pattern("Underscore"), make_pattern_any, fn(_, _) { formatter.text("") }),
+    // As-pattern: x @ pat
+    grammar.alt(
+      grammar.seq([
+        grammar.token_pattern("Ident"),
+        grammar.token_pattern("At"),
+        grammar.ref("Pattern"),
+      ]),
+      make_pattern_as,
+      fn(_, _) { formatter.text("") },
+    ),
+    // Constructor pattern: #Name(pat)
+    grammar.alt(
+      grammar.seq([
+        grammar.token_pattern("Hash"),
+        grammar.token_pattern("Ident"),
+        grammar.token_pattern("LParen"),
+        grammar.ref("Pattern"),
+        grammar.token_pattern("RParen"),
+      ]),
+      make_pattern_ctr,
+      fn(_, _) { formatter.text("") },
+    ),
+    // Literal pattern: 42
+    grammar.alt(grammar.token_pattern("Number"), make_pattern_lit, fn(_, _) { formatter.text("") }),
+  ])
+  // Argument list: expr, expr, ...
+  |> grammar.rule("ArgList", [
+    // Single arg
+    grammar.alt(
+      grammar.seq([grammar.ref("Expr")]),
+      make_single_arg,
+      fn(_, _) { formatter.text("") },
+    ),
+    // Multiple args: expr, args...
+    grammar.alt(
+      grammar.seq([
+        grammar.ref("Expr"),
+        grammar.token_pattern("Comma"),
+        grammar.ref("ArgList"),
+      ]),
+      make_arg_cons,
       fn(_, _) { formatter.text("") },
     ),
   ])
@@ -561,6 +775,100 @@ fn make_field_cons(values) -> ParseValue {
   }
 }
 
+// Match, Call, Comptime constructors
+fn make_match(values) -> ParseValue {
+  case values {
+    [_, AstValue(AsTerm(arg)), _, AstValue(AsTerm(motive)), _, AstValue(AsCases(cases))] ->
+      AsTerm(NMatch(arg, motive, cases, get_span(arg)))
+    _ -> panic as "Expected match expression"
+  }
+}
+
+fn make_call(values) -> ParseValue {
+  case values {
+    [_, TokenValue(name_token), _, _, AstValue(AsArgs(args)), _] ->
+      AsTerm(NCall(name_token.value, args, grammar.span_from_token(name_token, "input")))
+    _ -> panic as "Expected call expression"
+  }
+}
+
+fn make_comptime(values) -> ParseValue {
+  case values {
+    [_, _, AstValue(AsTerm(term)), _] ->
+      AsTerm(NComptime(term, grammar.span_from_token(values |> get_first_token, "input")))
+    _ -> panic as "Expected comptime expression"
+  }
+}
+
+// Cases constructors
+fn make_single_case(values) -> ParseValue {
+  case values {
+    [AstValue(AsPattern(pattern)), _, AstValue(AsTerm(body))] ->
+      AsCases([NCase(pattern, body, get_span(body))])
+    _ -> panic as "Expected single case"
+  }
+}
+
+fn make_case_cons(values) -> ParseValue {
+  case values {
+    [AstValue(AsPattern(pattern)), _, AstValue(AsTerm(body)), _, AstValue(AsCases(rest))] ->
+      AsCases([NCase(pattern, body, get_span(body)), ..rest])
+    _ -> panic as "Expected case list"
+  }
+}
+
+// Pattern constructors
+fn make_pattern_any(values) -> ParseValue {
+  case values {
+    [TokenValue(token)] -> AsPattern(NPAny(grammar.span_from_token(token, "input")))
+    _ -> panic as "Expected wildcard pattern"
+  }
+}
+
+fn make_pattern_as(values) -> ParseValue {
+  case values {
+    [TokenValue(name_token), _, AstValue(AsPattern(pattern))] ->
+      AsPattern(NPAs(pattern, name_token.value, grammar.span_from_token(name_token, "input")))
+    _ -> panic as "Expected as-pattern"
+  }
+}
+
+fn make_pattern_ctr(values) -> ParseValue {
+  case values {
+    [_, TokenValue(tag_token), _, _, AstValue(AsPattern(arg)), _] ->
+      AsPattern(NPCtr(tag_token.value, arg, grammar.span_from_token(tag_token, "input")))
+    _ -> panic as "Expected constructor pattern"
+  }
+}
+
+fn make_pattern_lit(values) -> ParseValue {
+  case values {
+    [TokenValue(token)] -> {
+      case int.parse(token.value) {
+        Ok(n) -> AsPattern(NPLit(I32(n), grammar.span_from_token(token, "input")))
+        Error(_) -> AsPattern(NPLit(I32(0), grammar.span_from_token(token, "input")))
+      }
+    }
+    _ -> panic as "Expected literal pattern"
+  }
+}
+
+// ArgList constructors
+fn make_single_arg(values) -> ParseValue {
+  case values {
+    [AstValue(AsTerm(arg))] -> AsArgs([arg])
+    _ -> panic as "Expected single argument"
+  }
+}
+
+fn make_arg_cons(values) -> ParseValue {
+  case values {
+    [AstValue(AsTerm(arg)), _, AstValue(AsArgs(rest))] ->
+      AsArgs([arg, ..rest])
+    _ -> panic as "Expected argument list"
+  }
+}
+
 fn get_first_token(values: List(grammar.Value(ParseValue))) -> Token {
   case values {
     [TokenValue(token), ..] -> token
@@ -590,6 +898,9 @@ fn get_span(term: NamedTerm) -> Span {
     NHole(_, span) -> span
     NLitT(_, span) -> span
     NRcd(_, span) -> span
+    NMatch(_, _, _, span) -> span
+    NCall(_, _, span) -> span
+    NComptime(_, span) -> span
   }
 }
 
@@ -604,6 +915,9 @@ fn format_value(value: ParseValue, parent_prec: Int) -> formatter.Doc {
       format_term(term, parent_prec, [])
     }
     AsFields(_) -> formatter.text("<fields>")
+    AsCases(_) -> formatter.text("<cases>")
+    AsPattern(_) -> formatter.text("<pattern>")
+    AsArgs(_) -> formatter.text("<args>")
   }
 }
 
@@ -725,7 +1039,97 @@ fn format_term(term: Term, parent_prec: Int, bindings: List(String)) -> formatte
         ])
       wrap_parens(inner, 85 < parent_prec)
     }
+    Match(arg, motive, cases) -> {
+      let case_docs = cases |> list.map(fn(c) {
+        let Case(pattern, body, _) = c
+        formatter.concat([
+          format_pattern(pattern, bindings),
+          formatter.text(" -> "),
+          format_term(body, 70, bindings),
+        ])
+      })
+      let inner = formatter.concat([
+        formatter.text("match "),
+        format_term(arg, 85, bindings),
+        formatter.text(" with "),
+        format_term(motive, 85, bindings),
+        formatter.text(" returning "),
+        list.intersperse(case_docs, formatter.text(", ")) |> formatter.concat,
+      ])
+      wrap_parens(inner, 40 < parent_prec)
+    }
+    Call(name, args) -> {
+      let arg_docs = args |> list.map(fn(a) { format_term(a, 85, bindings) })
+      let inner = formatter.concat([
+        formatter.text("call "),
+        formatter.text(name),
+        formatter.text("("),
+        list.intersperse(arg_docs, formatter.text(", ")) |> formatter.concat,
+        formatter.text(")"),
+      ])
+      wrap_parens(inner, 85 < parent_prec)
+    }
+    Comptime(term) -> {
+      let inner = formatter.concat([
+        formatter.text("comptime { "),
+        format_term(term, -1, bindings),
+        formatter.text(" }"),
+      ])
+      wrap_parens(inner, 50 < parent_prec)
+    }
     _ -> formatter.text("<unknown>")
+  }
+}
+
+/// Format a pattern.
+fn format_pattern(pattern: Pattern, bindings: List(String)) -> formatter.Doc {
+  case pattern {
+    PAny -> formatter.text("_")
+    PAs(inner, name) -> formatter.concat([
+      formatter.text(name),
+      formatter.text(" @ "),
+      format_pattern(inner, bindings),
+    ])
+    PTyp(level) -> {
+      case level {
+        0 -> formatter.text("$Type")
+        _ -> formatter.concat([formatter.text("$Type("), formatter.text(int.to_string(level)), formatter.text(")")])
+      }
+    }
+    PLit(value) -> {
+      case value {
+        I32(n) -> formatter.text(int.to_string(n))
+        _ -> formatter.text("<lit>")
+      }
+    }
+    PLitT(typ) -> {
+      case typ {
+        I32T -> formatter.text("$I32")
+        _ -> formatter.text("<litt>")
+      }
+    }
+    PRcd(fields) -> {
+      let field_docs = fields |> list.map(fn(f) {
+        let #(name, pat) = f
+        formatter.concat([
+          formatter.text(name),
+          formatter.text(": "),
+          format_pattern(pat, bindings),
+        ])
+      })
+      formatter.concat([
+        formatter.text("{"),
+        list.intersperse(field_docs, formatter.text(", ")) |> formatter.concat,
+        formatter.text("}"),
+      ])
+    }
+    PCtr(tag, arg) -> formatter.concat([
+      formatter.text("#"),
+      formatter.text(tag),
+      formatter.text("("),
+      format_pattern(arg, bindings),
+      formatter.text(")"),
+    ])
   }
 }
 

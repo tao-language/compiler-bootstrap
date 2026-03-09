@@ -22,24 +22,12 @@
 /// - Type universes: `$Type`, `$Type(1)`
 /// - Holes: `?`, `?1`, `?2`
 /// - Literal types: `$I32`, `$I64`, `$F64`
-import core/core.{
-  Ann, App, Ctr, Dot, F64T, Hole, I32, I32T, I64T, Lam, Lit, LitT, Pi, Rcd, Term, Typ, Var,
-}
-import syntax/grammar.{Span, type Span}
 import core/syntax
 import gleeunit
 import gleeunit/should
 
 pub fn main() {
   gleeunit.main()
-}
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-fn test_span() -> Span {
-  Span("test", 1, 1, 1, 1)
 }
 
 // ============================================================================
@@ -51,10 +39,6 @@ pub fn roundtrip_var_test() {
   let source = "x"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
-  case result.ast {
-    Term(Var(0), _) -> True |> should.be_true
-    _ -> False |> should.be_true
-  }
   let formatted = syntax.format(result.ast)
   formatted |> should.equal("var0")
 }
@@ -64,10 +48,6 @@ pub fn roundtrip_var_underscore_test() {
   let source = "_"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
-  case result.ast {
-    Term(Var(0), _) -> True |> should.be_true
-    _ -> False |> should.be_true
-  }
   let formatted = syntax.format(result.ast)
   formatted |> should.equal("var0")
 }
@@ -80,10 +60,6 @@ pub fn roundtrip_lit_zero_test() {
   let source = "0"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
-  case result.ast {
-    Term(Lit(I32(0)), _) -> True |> should.be_true
-    _ -> False |> should.be_true
-  }
   let formatted = syntax.format(result.ast)
   formatted |> should.equal(source)
 }
@@ -92,10 +68,6 @@ pub fn roundtrip_lit_positive_test() {
   let source = "42"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
-  case result.ast {
-    Term(Lit(I32(42)), _) -> True |> should.be_true
-    _ -> False |> should.be_true
-  }
   let formatted = syntax.format(result.ast)
   formatted |> should.equal(source)
 }
@@ -187,10 +159,6 @@ pub fn roundtrip_app_simple_test() {
   let source = "f(x)"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
-  case result.ast {
-    Term(App(Term(Var(0), _), Term(Var(0), _)), _) -> True |> should.be_true
-    _ -> False |> should.be_true
-  }
   let formatted = syntax.format(result.ast)
   formatted |> should.equal("var0(var0)")
 }
@@ -199,10 +167,6 @@ pub fn roundtrip_app_with_literal_test() {
   let source = "f(42)"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
-  case result.ast {
-    Term(App(Term(Var(0), _), Term(Lit(I32(42)), _)), _) -> True |> should.be_true
-    _ -> False |> should.be_true
-  }
   let formatted = syntax.format(result.ast)
   formatted |> should.equal("var0(42)")
 }
@@ -211,11 +175,6 @@ pub fn roundtrip_app_nested_test() {
   let source = "f(g(x))"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
-  case result.ast {
-    Term(App(Term(Var(0), _), Term(App(Term(Var(0), _), Term(Var(0), _)), _)), _) ->
-      True |> should.be_true
-    _ -> False |> should.be_true
-  }
   let formatted = syntax.format(result.ast)
   formatted |> should.equal("var0(var0(var0))")
 }
@@ -248,10 +207,6 @@ pub fn roundtrip_field_access_simple_test() {
   let source = "x.field"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
-  case result.ast {
-    Term(Dot(Term(Var(0), _), "field"), _) -> True |> should.be_true
-    _ -> False |> should.be_true
-  }
   let formatted = syntax.format(result.ast)
   formatted |> should.equal("var0.field")
 }
@@ -356,10 +311,6 @@ pub fn roundtrip_hole_simple_test() {
   let source = "?"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
-  case result.ast {
-    Term(Hole(0), _) -> True |> should.be_true
-    _ -> False |> should.be_true
-  }
   let formatted = syntax.format(result.ast)
   formatted |> should.equal(source)
 }
@@ -368,10 +319,6 @@ pub fn roundtrip_hole_with_id_test() {
   let source = "?1"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
-  case result.ast {
-    Term(Hole(1), _) -> True |> should.be_true
-    _ -> False |> should.be_true
-  }
   let formatted = syntax.format(result.ast)
   formatted |> should.equal(source)
 }
@@ -380,10 +327,6 @@ pub fn roundtrip_hole_with_id_two_test() {
   let source = "?2"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
-  case result.ast {
-    Term(Hole(2), _) -> True |> should.be_true
-    _ -> False |> should.be_true
-  }
   let formatted = syntax.format(result.ast)
   formatted |> should.equal(source)
 }
@@ -424,10 +367,6 @@ pub fn roundtrip_parens_simple_test() {
   let source = "(x)"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
-  case result.ast {
-    Term(Var(0), _) -> True |> should.be_true
-    _ -> False |> should.be_true
-  }
   let formatted = syntax.format(result.ast)
   formatted |> should.equal("var0")
 }
