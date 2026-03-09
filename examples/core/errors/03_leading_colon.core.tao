@@ -1,0 +1,3 @@
+// Parse Error: Colon without type annotation context
+// Colon is only valid in type annotations (x : Type) or records ({x: value})
+: $Type

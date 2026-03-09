@@ -1,0 +1,3 @@
+// Parse Error: Dollar without type
+// Dollar must be followed by an identifier (type name)
+$

@@ -1,0 +1,3 @@
+// Constructor with argument
+// Creates a Maybe-like value with content
+#Some(42)
