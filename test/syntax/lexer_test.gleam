@@ -184,7 +184,7 @@ pub fn tokenize_operator_equals_test() {
 }
 
 pub fn tokenize_operator_arrow_test() {
-  tokenize_kinds("→") |> should.equal(["Arrow"])
+  tokenize_kinds("->") |> should.equal(["Arrow"])
 }
 
 pub fn tokenize_operator_lambda_test() {
@@ -408,4 +408,14 @@ pub fn tokenize_comment_only_test() {
 
 pub fn tokenize_block_comment_only_test() {
   lexer.tokenize("/* comment */") |> list.length |> should.equal(0)
+}
+
+pub fn tokenize_dollar_i32_test() {
+  tokenize_kinds("$I32") |> should.equal(["Dollar", "Ident"])
+  tokenize_values("$I32") |> should.equal(["$", "I32"])
+}
+
+pub fn tokenize_hash_true_test() {
+  tokenize_kinds("#True") |> should.equal(["Hash", "Ident"])
+  tokenize_values("#True") |> should.equal(["#", "True"])
 }

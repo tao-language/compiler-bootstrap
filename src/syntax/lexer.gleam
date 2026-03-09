@@ -52,6 +52,7 @@ fn tokenize_loop(state: LexerState) -> LexerState {
         "\"" -> tokenize_string(state) |> tokenize_loop
         "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ->
           tokenize_number(state) |> tokenize_loop
+        "?" -> tokenize_question(state) |> tokenize_loop
         "a"
         | "b"
         | "c"
@@ -230,23 +231,6 @@ fn get_keyword_kind(value: String) -> String {
     | "if"
     | "then"
     | "else"
-    | "true"
-    | "false"
-    | "True"
-    | "False"
-    | "Some"
-    | "None"
-    | "Nil"
-    | "Cons"
-    | "Ok"
-    | "Error"
-    | "Type"
-    | "I32"
-    | "I64"
-    | "U32"
-    | "U64"
-    | "F32"
-    | "F64"
     | "comptime"
     | "pub"
     | "import"
@@ -351,17 +335,75 @@ fn tokenize_lambda(state: LexerState) -> LexerState {
   LexerState(..state, tokens: [token, ..state.tokens])
 }
 
+fn tokenize_question(state: LexerState) -> LexerState {
+  let start_pos = state.pos
+  let start_line = state.line
+  let start_column = state.column
+  let state = advance(state)
+  let end_pos = state.pos
+  let token = Token(kind: "Question", value: "?", start: start_pos, end: end_pos, line: start_line, column: start_column)
+  LexerState(..state, tokens: [token, ..state.tokens])
+}
+
 fn tokenize_operator(state: LexerState) -> LexerState {
   case peek_char(state) {
     Some(char) -> {
       let start_pos = state.pos
       let start_line = state.line
       let start_column = state.column
-      let state = advance(state)
-      let end_pos = state.pos
-      let kind = get_operator_kind(char)
-      let token = Token(kind: kind, value: char, start: start_pos, end: end_pos, line: start_line, column: start_column)
-      LexerState(..state, tokens: [token, ..state.tokens])
+
+      // Check for multi-character operators first
+      let next_char = peek_next_char(state)
+      case char == "-" && next_char == Some(">") {
+        True -> {
+          // Arrow: ->
+          let state = advance(state) |> advance
+          let end_pos = state.pos
+          let token = Token(kind: "Arrow", value: "->", start: start_pos, end: end_pos, line: start_line, column: start_column)
+          LexerState(..state, tokens: [token, ..state.tokens])
+        }
+        False -> {
+          case char == "=" && next_char == Some("=") {
+            True -> {
+              // EqualEqual: ==
+              let state = advance(state) |> advance
+              let end_pos = state.pos
+              let token = Token(kind: "EqualEqual", value: "==", start: start_pos, end: end_pos, line: start_line, column: start_column)
+              LexerState(..state, tokens: [token, ..state.tokens])
+            }
+            False -> {
+              case char == "!" && next_char == Some("=") {
+                True -> {
+                  // NotEqual: !=
+                  let state = advance(state) |> advance
+                  let end_pos = state.pos
+                  let token = Token(kind: "NotEqual", value: "!=", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                  LexerState(..state, tokens: [token, ..state.tokens])
+                }
+                False -> {
+                  case char == "<" && next_char == Some("-") {
+                    True -> {
+                      // Arrow2: <-
+                      let state = advance(state) |> advance
+                      let end_pos = state.pos
+                      let token = Token(kind: "Arrow2", value: "<-", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                      LexerState(..state, tokens: [token, ..state.tokens])
+                    }
+                    False -> {
+                      // Single character operator
+                      let state = advance(state)
+                      let end_pos = state.pos
+                      let kind = get_operator_kind(char)
+                      let token = Token(kind: kind, value: char, start: start_pos, end: end_pos, line: start_line, column: start_column)
+                      LexerState(..state, tokens: [token, ..state.tokens])
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
     None -> state
   }
@@ -380,13 +422,14 @@ fn get_operator_kind(char: String) -> String {
     ";" -> "Semi"
     ":" -> "Colon"
     "=" -> "Equal"
+    "$" -> "Dollar"
+    "#" -> "Hash"
     "+"
     | "-"
     | "*"
     | "/"
     | "%"
     | "!"
-    | "?"
     | "|"
     | ">"
     | "<"
@@ -395,7 +438,6 @@ fn get_operator_kind(char: String) -> String {
     | "~"
     | "@" -> "Operator"
     "\\" -> "Backslash"
-    "→" | "-" -> "Arrow"
     _ -> "Operator"
   }
 }
