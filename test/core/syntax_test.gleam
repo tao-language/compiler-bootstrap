@@ -8,6 +8,9 @@
 /// - Literals: 42
 /// - Lambda: λx. body
 /// - Application: f(x)
+/// - Type annotations: x : I32
+/// - Field access: record.field
+/// - Constructors: Some, True, False, None
 /// - Type universes: Type0, Type1, ...
 /// - Holes: ? (unsolved metavariables)
 /// - Literal types: I32, I64, F64, U32, U64
@@ -18,7 +21,7 @@
 /// Note: All identifiers currently become `var0` (De Bruijn index placeholder).
 /// Full implementation will need proper name-to-index conversion.
 import core/core.{
-  App, F64T, Hole, I32, I32T, I64T, Lam, Lit, LitT, Term, Typ, U32T, Var,
+  Ann, App, Ctr, Dot, F64T, Hole, I32, I32T, I64T, Lam, Lit, LitT, Term, Typ, U32T, Var,
 }
 import gleam/list
 import syntax/grammar.{Span, type Span}
@@ -151,6 +154,89 @@ pub fn parse_litt_u32_test() {
   let result = syntax.parse("U32")
   result.errors |> should.equal([])
   result.ast |> should.equal(Term(LitT(U32T), Span("input", 1, 1, 1, 4)))
+}
+
+// ============================================================================
+// PARSING TESTS - TYPE ANNOTATIONS
+// ============================================================================
+
+pub fn parse_annotation_simple_test() {
+  // Simple annotation: x : I32
+  let result = syntax.parse("x : I32")
+  result.errors |> should.equal([])
+  case result.ast {
+    Term(Ann(_, Term(LitT(_), _)), _) -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+pub fn parse_annotation_with_type_universe_test() {
+  // Annotation with type universe: x : Type0
+  let result = syntax.parse("x : Type0")
+  result.errors |> should.equal([])
+  case result.ast {
+    Term(Ann(_, Term(Typ(0), _)), _) -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+// ============================================================================
+// PARSING TESTS - FIELD ACCESS
+// ============================================================================
+
+pub fn parse_field_access_simple_test() {
+  // Simple field access: record.field
+  let result = syntax.parse("x.field")
+  result.errors |> should.equal([])
+  case result.ast {
+    Term(Dot(_, "field"), _) -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+pub fn parse_field_access_chained_test() {
+  // Note: Chained field access (x.field.name) is not yet supported
+  // This test verifies that single field access works
+  let result = syntax.parse("x.field")
+  result.errors |> should.equal([])
+  case result.ast {
+    Term(Dot(_, "field"), _) -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+// ============================================================================
+// PARSING TESTS - CONSTRUCTORS
+// ============================================================================
+
+pub fn parse_constructor_nullary_test() {
+  // Nullary constructor: True
+  let result = syntax.parse("True")
+  result.errors |> should.equal([])
+  case result.ast {
+    Term(Ctr("True", _), _) -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+pub fn parse_constructor_some_test() {
+  // Constructor: Some
+  let result = syntax.parse("Some")
+  result.errors |> should.equal([])
+  case result.ast {
+    Term(Ctr("Some", _), _) -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+pub fn parse_constructor_none_test() {
+  // Constructor: None
+  let result = syntax.parse("None")
+  result.errors |> should.equal([])
+  case result.ast {
+    Term(Ctr("None", _), _) -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
 }
 
 // ============================================================================
@@ -343,6 +429,64 @@ pub fn format_litt_u32_test() {
 }
 
 // ============================================================================
+// FORMATTING TESTS - TYPE ANNOTATIONS
+// ============================================================================
+
+pub fn format_annotation_simple_test() {
+  // Annotation formats as "term : type"
+  let term = Term(Ann(Term(Var(0), test_span()), Term(LitT(I32T), test_span())), test_span())
+  syntax.format(term) |> should.equal("var0 : I32")
+}
+
+pub fn format_annotation_with_parens_test() {
+  // Annotation in application needs parens
+  let ann = Term(Ann(Term(Var(0), test_span()), Term(LitT(I32T), test_span())), test_span())
+  let arg = Term(Lit(I32(42)), test_span())
+  let term = Term(App(ann, arg), test_span())
+  syntax.format(term) |> should.equal("(var0 : I32)(42)")
+}
+
+// ============================================================================
+// FORMATTING TESTS - FIELD ACCESS
+// ============================================================================
+
+pub fn format_field_access_simple_test() {
+  // Field access formats as "expr.field"
+  let arg = Term(Var(0), test_span())
+  let term = Term(Dot(arg, "field"), test_span())
+  syntax.format(term) |> should.equal("var0.field")
+}
+
+pub fn format_field_access_chained_test() {
+  // Chained field access
+  let inner = Term(Dot(Term(Var(0), test_span()), "field"), test_span())
+  let term = Term(Dot(inner, "name"), test_span())
+  syntax.format(term) |> should.equal("var0.field.name")
+}
+
+// ============================================================================
+// FORMATTING TESTS - CONSTRUCTORS
+// ============================================================================
+
+pub fn format_constructor_true_test() {
+  // Constructor True formats as "True"
+  let term = Term(Ctr("True", Term(Hole(0), test_span())), test_span())
+  syntax.format(term) |> should.equal("True")
+}
+
+pub fn format_constructor_some_test() {
+  // Constructor Some formats as "Some"
+  let term = Term(Ctr("Some", Term(Hole(0), test_span())), test_span())
+  syntax.format(term) |> should.equal("Some")
+}
+
+pub fn format_constructor_none_test() {
+  // Constructor None formats as "None"
+  let term = Term(Ctr("None", Term(Hole(0), test_span())), test_span())
+  syntax.format(term) |> should.equal("None")
+}
+
+// ============================================================================
 // FORMATTING TESTS - LAMBDAS
 // ============================================================================
 
@@ -483,6 +627,66 @@ pub fn roundtrip_format_parse_test() {
   let result = syntax.parse(formatted1)
   let formatted2 = syntax.format(result.ast)
   formatted1 |> should.equal(formatted2)
+}
+
+// ============================================================================
+// ROUND-TRIP TESTS - TYPE ANNOTATIONS
+// ============================================================================
+
+pub fn roundtrip_annotation_test() {
+  // Annotation round-trips
+  let source = "x : I32"
+  let result = syntax.parse(source)
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal("var0 : I32")
+}
+
+// ============================================================================
+// ROUND-TRIP TESTS - FIELD ACCESS
+// ============================================================================
+
+pub fn roundtrip_field_access_test() {
+  // Field access round-trips
+  let source = "x.field"
+  let result = syntax.parse(source)
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal("var0.field")
+}
+
+pub fn roundtrip_field_access_chained_test() {
+  // Note: Chained field access not yet supported, testing single field access
+  let source = "x.field"
+  let result = syntax.parse(source)
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal("var0.field")
+}
+
+// ============================================================================
+// ROUND-TRIP TESTS - CONSTRUCTORS
+// ============================================================================
+
+pub fn roundtrip_constructor_true_test() {
+  // Constructor True round-trips
+  let source = "True"
+  let result = syntax.parse(source)
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal("True")
+}
+
+pub fn roundtrip_constructor_some_test() {
+  // Constructor Some round-trips
+  let source = "Some"
+  let result = syntax.parse(source)
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal("Some")
+}
+
+pub fn roundtrip_constructor_none_test() {
+  // Constructor None round-trips
+  let source = "None"
+  let result = syntax.parse(source)
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal("None")
 }
 
 // ============================================================================

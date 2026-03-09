@@ -2,20 +2,23 @@
 // CORE LANGUAGE SYNTAX
 // ============================================================================
 /// Core language syntax with TypeScript-like surface syntax.
-/// 
+///
 /// Supported terms:
 /// - Variables: `x`
 /// - Literals: `42`
 /// - Lambda: `λx. body`
 /// - Application: `f(x)` (C-style only)
+/// - Type annotations: `x : I32`
+/// - Field access: `record.field`
+/// - Constructors: `Some`, `True`, `None`
 /// - Type universes: `Type0`, `Type1`, etc.
 /// - Holes: `?` (unsolved metavariables)
 /// - Literal types: `I32`, `I64`, `F64`
 ///
 /// Both parser and formatter are derived from this single grammar definition.
 import core/core.{
-  type Term, App, F32, F32T, F64, F64T, Hole, I32, I32T, I64, I64T, Lam, Lit, LitT, Term, Typ,
-  U32, U32T, U64, U64T, Var,
+  type Term, Ann, App, Ctr, Dot, F32, F32T, F64, F64T, Hole, I32, I32T, I64, I64T, Lam, Lit,
+  LitT, Term, Typ, U32, U32T, U64, U64T, Var,
 }
 import gleam/float
 import gleam/int
@@ -55,10 +58,13 @@ pub fn core_grammar() -> grammar.Grammar(Term) {
   |> grammar.token("Dot")
   |> grammar.token("Operator")
   |> grammar.token("Keyword")
+  |> grammar.token("Colon")
   // Main expression rule (lowest precedence first)
   |> grammar.rule("Expr", [
     grammar.alt(grammar.ref("Lambda"), unwrap, format_term),
+    grammar.alt(grammar.ref("Ann"), unwrap, format_term),
     grammar.alt(grammar.ref("App"), unwrap, format_term),
+    grammar.alt(grammar.ref("Dot"), unwrap, format_term),
     grammar.alt(grammar.ref("Atom"), unwrap, format_term),
   ])
   // Lambda: λx. body
@@ -71,6 +77,18 @@ pub fn core_grammar() -> grammar.Grammar(Term) {
         grammar.ref("Expr"),
       ]),
       make_lambda,
+      format_term,
+    ),
+  ])
+  // Type annotation: expr : Type
+  |> grammar.rule("Ann", [
+    grammar.alt(
+      grammar.seq([
+        grammar.ref("Atom"),
+        grammar.token_pattern("Colon"),
+        grammar.ref("Atom"),
+      ]),
+      make_annotation,
       format_term,
     ),
   ])
@@ -87,16 +105,28 @@ pub fn core_grammar() -> grammar.Grammar(Term) {
       format_term,
     ),
   ])
+  // Field access: expr.field
+  |> grammar.rule("Dot", [
+    grammar.alt(
+      grammar.seq([
+        grammar.ref("Atom"),
+        grammar.token_pattern("Dot"),
+        grammar.token_pattern("Ident"),
+      ]),
+      make_field_access,
+      format_term,
+    ),
+  ])
   // Atoms - the building blocks
   |> grammar.rule("Atom", [
+    // Literal type: I32, I64, F64 (specific keywords)
+    grammar.alt(grammar.token_pattern("Keyword"), make_literal_type_or_constructor, format_term),
     // Variable (identifiers that don't start with "Type")
     grammar.alt(grammar.token_pattern("Ident"), make_var_or_typ, format_term),
     // Number literal
     grammar.alt(grammar.token_pattern("Number"), make_literal, format_term),
     // Hole: ? (operator)
     grammar.alt(grammar.token_pattern("Operator"), make_hole, format_term),
-    // Literal type: I32, I64, F64 (keywords)
-    grammar.alt(grammar.token_pattern("Keyword"), make_literal_type, format_term),
     // Parenthesized expression
     grammar.alt(
       grammar.seq([
@@ -194,21 +224,47 @@ fn make_hole(values) {
   }
 }
 
-fn make_literal_type(values) {
+fn make_literal_type_or_constructor(values) {
   case values {
     [TokenValue(token)] -> {
-      let typ = case token.value {
-        "I32" -> I32T
-        "I64" -> I64T
-        "F32" -> F32T
-        "F64" -> F64T
-        "U32" -> U32T
-        "U64" -> U64T
-        _ -> I32T
+      // Check if it's a literal type (I32, I64, etc.)
+      case token.value {
+        "I32" | "I64" | "F32" | "F64" | "U32" | "U64" -> {
+          let typ = case token.value {
+            "I32" -> I32T
+            "I64" -> I64T
+            "F32" -> F32T
+            "F64" -> F64T
+            "U32" -> U32T
+            "U64" -> U64T
+            _ -> I32T
+          }
+          Term(LitT(typ), grammar.span_from_token(token, "input"))
+        }
+        // Otherwise it's a constructor tag
+        _ -> {
+          let hole_span = grammar.span_from_token(token, "input")
+          Term(Ctr(token.value, Term(Hole(0), hole_span)), hole_span)
+        }
       }
-      Term(LitT(typ), grammar.span_from_token(token, "input"))
     }
-    _ -> panic as "Expected literal type keyword"
+    _ -> panic as "Expected keyword"
+  }
+}
+
+fn make_annotation(values) {
+  case values {
+    [AstValue(term), _, AstValue(typ)] ->
+      Term(Ann(term, typ), term.span)
+    _ -> panic as "Expected annotation (term : type)"
+  }
+}
+
+fn make_field_access(values) {
+  case values {
+    [AstValue(arg), _, TokenValue(field_token)] ->
+      Term(Dot(arg, field_token.value), arg.span)
+    _ -> panic as "Expected field access (expr.field)"
   }
 }
 
@@ -248,6 +304,27 @@ fn format_term(term: Term, parent_prec: Int) -> formatter.Doc {
         F32T -> formatter.text("F32")
         F64T -> formatter.text("F64")
       }
+    }
+    Ctr(tag, _) ->
+      // Constructor with Hole arg - just show the tag
+      formatter.text(tag)
+    Dot(arg, field) -> {
+      let inner =
+        formatter.concat([
+          format_term(arg, 90),
+          formatter.text("."),
+          formatter.text(field),
+        ])
+      wrap_parens(inner, 90 < parent_prec)
+    }
+    Ann(term, typ) -> {
+      let inner =
+        formatter.concat([
+          format_term(term, 50),
+          formatter.text(" : "),
+          format_term(typ, 50),
+        ])
+      wrap_parens(inner, 50 < parent_prec)
     }
     Lam(name, body) -> {
       let inner =
