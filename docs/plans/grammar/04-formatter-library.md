@@ -6,6 +6,35 @@
 
 ---
 
+## Status
+
+### What's Working
+
+- Document algebra (`Text`, `Line`, `HardLine`, `Group`, `Nest`, `Concat`)
+- Automatic line breaking based on configured width
+- Configurable indentation styles and levels
+- Precedence-aware parenthesization
+- Layout hints (`SoftBreak`, `HardBreak`, `Space`, `None`)
+- Operator layout configuration (`OperatorLayout`)
+- Generic sequence formatter with layout hints
+- Manual formatters for calc example
+- Round-trip tests passing (parse → format → parse)
+
+### What's Pending
+
+- Automatic formatter generation from grammar
+- Deconstructor-based AST traversal
+- Layout breaking for long expressions
+- Custom layouts (ternary, functions)
+
+### Related
+
+- See **[01-overview.md](./01-overview.md)** for overall implementation status
+- See **[02-grammar-dsl.md](./02-grammar-dsl.md)** for grammar definition
+- See **[03-parser-library.md](./03-parser-library.md)** for parser details
+
+---
+
 ## Overview
 
 The formatter library provides **grammar-aware pretty printing** using layout algebra. It converts ASTs back into formatted source code with:

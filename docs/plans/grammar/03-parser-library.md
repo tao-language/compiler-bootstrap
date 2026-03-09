@@ -6,6 +6,33 @@
 
 ---
 
+## Status
+
+### What's Working
+
+- Token-based parsing with pre-tokenized input
+- Pratt parsing for operator precedence (1000+ lines)
+- All pattern types (Token, Keyword, Ref, Seq, Choice, Opt, Many, Sep1, Parens)
+- Left-associative operator parsing with correct folding
+- Operator precedence handling
+- Parenthesized expressions
+- Error handling with position tracking
+- **238 tests passing**
+
+### What's Pending
+
+- Error recovery (currently panics on invalid input)
+- Rule-specific error messages
+- Sync-point recovery for better error resilience
+
+### Related
+
+- See **[01-overview.md](./01-overview.md)** for overall implementation status
+- See **[02-grammar-dsl.md](./02-grammar-dsl.md)** for grammar definition
+- See **[04-formatter-library.md](./04-formatter-library.md)** for formatter details
+
+---
+
 ## Overview
 
 The parser library provides general-purpose parser combinators that work with any grammar. It uses:

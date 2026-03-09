@@ -6,6 +6,32 @@
 
 ---
 
+## Status
+
+### What's Working
+
+- Grammar type parameterized by AST type (`Grammar(a)`)
+- Rule and Alternative types with constructor/deconstructor
+- Pattern types (Token, Keyword, Ref, Seq, Choice, Opt, Many, Sep1, Parens)
+- Operator types with precedence, associativity, layout
+- Grammar builder API (`define`, `rule`, `left_assoc`, `op`, etc.)
+- Pattern helpers (`token`, `keyword`, `ref`, `seq`, `parens`, etc.)
+- Layout configuration (`LayoutStyle`, `OperatorLayout`)
+
+### What's Pending
+
+- Automatic deconstructor generation for simple cases
+- Typed token helpers (`int_token`, `float_token`, `string_token`)
+- Core language grammar definition using this DSL
+
+### Related
+
+- See **[01-overview.md](./01-overview.md)** for overall implementation status
+- See **[03-parser-library.md](./03-parser-library.md)** for parser details
+- See **[04-formatter-library.md](./04-formatter-library.md)** for formatter details
+
+---
+
 ## Core Types
 
 ```gleam

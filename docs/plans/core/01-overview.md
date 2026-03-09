@@ -304,7 +304,6 @@ src/
 
 - **[02-syntax.md](./02-syntax.md)** - Detailed syntax specification with grammar rules
 - **[03-ffi-comptime.md](./03-ffi-comptime.md)** - FFI and comptime implementation
-- **[04-implementation-plan.md](./04-implementation-plan.md)** - Implementation roadmap
 
 ---
 

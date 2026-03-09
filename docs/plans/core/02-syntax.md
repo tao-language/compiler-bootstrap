@@ -6,6 +6,45 @@
 
 ---
 
+## Status
+
+### What's Working
+
+- Lexer tokenizes all core language tokens
+- Grammar DSL with full layout support
+- Parser handles all grammar constructs
+- Formatter with precedence-based parenthesization
+- **238 tests passing** for grammar system
+
+### What's Pending
+
+- Core language grammar definition (`src/core/grammar.gleam`)
+- Constructor/deconstructor functions for all `Term` variants
+- De Bruijn name/index conversion
+- Integration with existing core module
+
+### Implementation Phases
+
+1. **Phase 1**: Minimal grammar (atoms + application) - 2-4 hours
+2. **Phase 2**: Lambda and Pi types - 4-6 hours
+3. **Phase 3**: Records and field access - 4-6 hours
+4. **Phase 4**: Type annotations - 2-4 hours
+5. **Phase 5**: Match expressions - 6-8 hours
+6. **Phase 6**: Constructors - 2-4 hours
+7. **Phase 7**: Comptime integration - 4-6 hours
+8. **Phase 8**: Formatter - 6-8 hours
+9. **Phase 9**: De Bruijn conversion - 4-6 hours
+10. **Phase 10**: Polish - 4-8 hours
+
+**Total estimated effort**: 34-54 hours
+
+### Related
+
+- See **[01-overview.md](./01-overview.md)** for overall implementation status
+- See **[03-ffi-comptime.md](./03-ffi-comptime.md)** for FFI/comptime details
+
+---
+
 ## Grammar Rules (EBNF)
 
 ```ebnf

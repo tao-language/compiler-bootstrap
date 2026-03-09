@@ -5,6 +5,35 @@
 
 ---
 
+## Status
+
+### What's Working
+
+- `Call` and `Comptime` term constructors
+- `VCall` value constructor for deferred runtime calls
+- `Builtin` type with `Option(Value)` return
+- `Permission` type (AllowRead, AllowWrite)
+- Permission checking with Write-fulfills-Read
+- Default builtins (arithmetic, comparison, logical)
+- `eval()`, `comptime_eval()`, `infer()` handle Call/Comptime
+- `VCall` quotes to `Call`
+- **263 tests passing**
+
+### What's Pending
+
+- More permission types (AllowEnv, AllowNet, AllowExec)
+- Impure builtins (read_file, write_file, get_env, now)
+- Backend integration (JavaScript, Python, WebAssembly)
+- Caching and incremental compilation
+- `comptime` keyword in surface syntax
+
+### Related
+
+- See **[01-overview.md](./01-overview.md)** for overall implementation status
+- See **[02-syntax.md](./02-syntax.md)** for syntax specification
+
+---
+
 ## Design Philosophy
 
 1. **Pure Builtins**: Built-in functions are pure `fn(List(Value)) -> Option(Value)` - no State needed

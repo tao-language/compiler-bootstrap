@@ -162,7 +162,6 @@ let source = grammar.format(grammar, result.ast)
 - **[02-grammar-dsl.md](./02-grammar-dsl.md)** - Grammar DSL specification
 - **[03-parser-library.md](./03-parser-library.md)** - Parser combinator library
 - **[04-formatter-library.md](./04-formatter-library.md)** - Formatter library with layout
-- **[05-implementation-plan.md](./05-implementation-plan.md)** - Implementation roadmap
 
 ---
 
