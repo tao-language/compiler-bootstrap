@@ -13,14 +13,14 @@
 /// gleam run run path/to/file.core.tao     # Type-check and evaluate
 /// gleam run --help                         # Show help
 /// ```
-import argv.{type Argv}
+import argv
 import core/core.{type Term}
 import core/syntax
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/option.{None, Some}
 import gleam/string
+import simplifile
 import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType}
 
 // ============================================================================
@@ -47,6 +47,7 @@ pub type Error {
   TypeError(message: String)
   RuntimeError(message: String)
   FileNotFound(path: String)
+  FileReadError(path: String, error: simplifile.FileError)
   InvalidArguments(message: String)
   UnknownCommand(command: String)
 }
@@ -142,71 +143,14 @@ fn print_help() {
 // FILE LOADING
 // ============================================================================
 
-/// Load a file - for now, returns example content based on file path
-/// In production, this would read from disk
+/// Load a file from disk using simplifile
 fn load_file(path: String) -> Result(File, Error) {
-  // For demonstration, return example content based on file extension
-  let contents = case string.ends_with(path, ".core.tao") {
-    True -> get_example_core(path)
-    False -> "/* Tao not yet implemented */"
-  }
-
   let file_type = detect_file_type(path)
 
-  Ok(File(path, contents, file_type))
-}
-
-/// Get example core content based on filename
-fn get_example_core(path: String) -> String {
-  // Check for keywords in path using nested conditions
-  case string.contains(path, "lambda") {
-    True -> "x -> x"
-    False -> {
-      case string.contains(path, "pi") {
-        True -> "(x : $Type) -> $Type"
-        False -> {
-          case string.contains(path, "app") {
-            True -> "f(x)"
-            False -> {
-              case string.contains(path, "ctr") {
-                True -> "#Some(42)"
-                False -> {
-                  case string.contains(path, "rcd") {
-                    True -> "{x: 1, y: 2}"
-                    False -> {
-                      case string.contains(path, "match") {
-                        True -> "match x with $Type returning _ -> #True, #Some(y) -> y"
-                        False -> {
-                          case string.contains(path, "call") {
-                            True -> "call prim.add(1, 2)"
-                            False -> {
-                              case string.contains(path, "comptime") {
-                                True -> "x"  // comptime parsing has issues, use simple expr for now
-                                False -> {
-                                  case string.contains(path, "record") {
-                                    True -> "{x: 1, y: 2, z: 3}"
-                                    False -> {
-                                      case string.contains(path, "hole") {
-                                        True -> "?1"
-                                        False -> "x -> x"  // Default example
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+  case simplifile.read(from: path) {
+    Ok(contents) -> Ok(File(path, contents, file_type))
+    Error(simplifile.Enoent) -> Error(FileNotFound(path))
+    Error(err) -> Error(FileReadError(path, err))
   }
 }
 
@@ -407,12 +351,32 @@ fn report_error(error: Error) {
     FileNotFound(path) -> {
       io.println("✗ File not found: " <> path)
     }
+    FileReadError(path, err) -> {
+      io.println("✗ File read error:")
+      io.println("  Path: " <> path)
+      io.println("  Error: " <> format_file_error(err))
+    }
     InvalidArguments(message) -> {
       io.println("✗ Invalid arguments: " <> message)
     }
     UnknownCommand(command) -> {
       io.println("✗ Unknown command: " <> command)
     }
+  }
+}
+
+fn format_file_error(err: simplifile.FileError) -> String {
+  case err {
+    simplifile.Enoent -> "File not found"
+    simplifile.Eacces -> "Permission denied"
+    simplifile.Eexist -> "File already exists"
+    simplifile.Eisdir -> "Is a directory"
+    simplifile.Enametoolong -> "Filename too long"
+    simplifile.Enospc -> "No space left on device"
+    simplifile.Enotdir -> "Not a directory"
+    simplifile.Eio -> "I/O error"
+    simplifile.NotUtf8 -> "File is not valid UTF-8"
+    _ -> "Unknown error"
   }
 }
 
@@ -431,62 +395,4 @@ fn file_type_to_string(file_type: FileType) -> String {
     Core -> "Core language (.core.tao)"
     Tao -> "Tao high-level language (.tao)"
   }
-}
-
-// ============================================================================
-// EXAMPLE FILES
-// ============================================================================
-
-/// Create example core files for testing
-pub fn create_examples() {
-  // Example 1: Simple lambda
-  let example1 = "x -> x"
-
-  // Example 2: Pi type
-  let example2 = "(x : $Type) -> x"
-
-  // Example 3: Application
-  let example3 = "f(x)"
-
-  // Example 4: Constructor
-  let example4 = "#Some(42)"
-
-  // Example 5: Record
-  let example5 = "{x: 1, y: 2}"
-
-  // Example 6: Match
-  let example6 = "match x with $Type returning _ -> #True, #Some(y) -> y"
-
-  // Example 7: Call
-  let example7 = "call prim.add(1, 2)"
-
-  // Example 8: Comptime
-  let example8 = "comptime { 1 + 2 }"
-
-  // Print examples
-  io.println("Example core files:")
-  io.println("")
-  io.println("1. Simple lambda:")
-  io.println("   " <> example1)
-  io.println("")
-  io.println("2. Pi type:")
-  io.println("   " <> example2)
-  io.println("")
-  io.println("3. Application:")
-  io.println("   " <> example3)
-  io.println("")
-  io.println("4. Constructor:")
-  io.println("   " <> example4)
-  io.println("")
-  io.println("5. Record:")
-  io.println("   " <> example5)
-  io.println("")
-  io.println("6. Match:")
-  io.println("   " <> example6)
-  io.println("")
-  io.println("7. Call:")
-  io.println("   " <> example7)
-  io.println("")
-  io.println("8. Comptime:")
-  io.println("   " <> example8)
 }

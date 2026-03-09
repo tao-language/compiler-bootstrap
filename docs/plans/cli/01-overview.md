@@ -1,7 +1,7 @@
 # Compiler CLI Overview
 
 > **Goal**: Command-line interface for checking and running core/tao files
-> **Status**: ✅ Complete - Full CLI with `argv` library for argument parsing
+> **Status**: ✅ Complete - Full CLI with `argv` for args and `simplifile` for file I/O
 > **Date**: March 2025
 
 ---
@@ -75,7 +75,9 @@ source → parse → Tao AST → desugar → Term → type_check → Result
 - ✅ Command-line argument parsing with `argv` library
 - ✅ Command types (`Check`, `Run`, `Help`)
 - ✅ File type detection (`.core.tao` vs `.tao`)
-- ✅ Example content generation based on filename keywords
+- ✅ File I/O with `simplifile` library
+- ✅ File not found error handling
+- ✅ File read error handling
 - ✅ Parse error formatting with position info
 - ✅ Verbose mode (`-v`, `--verbose`)
 - ✅ Debug mode (`--debug`) - prints AST
@@ -89,27 +91,7 @@ source → parse → Tao AST → desugar → Term → type_check → Result
 - ✅ `--verbose` - Verbose output
 - ✅ `--debug` - Debug mode (print AST)
 
-**Example Content Generation**:
-
-| Keyword | Example Content |
-|---------|-----------------|
-| `lambda` | `x -> x` |
-| `pi` | `(x : $Type) -> $Type` |
-| `app` | `f(x)` |
-| `ctr` | `#Some(42)` |
-| `rcd` | `{x: 1, y: 2}` |
-| `record` | `{x: 1, y: 2, z: 3}` |
-| `match` | `match x with $Type returning _ -> #True, #Some(y) -> y` |
-| `call` | `call prim.add(1, 2)` |
-| `comptime` | `x` (placeholder) |
-| `hole` | `?1` |
-
 ### ⏳ In Progress / Pending
-
-**File I/O** (currently uses example content based on filename):
-- [ ] Actual file reading with `simplifile` library
-- [ ] File not found handling
-- [ ] Path resolution
 
 **Tao Language Support**:
 - [ ] `.tao` file detection
@@ -143,17 +125,17 @@ source → parse → Tao AST → desugar → Term → type_check → Result
 # Show help
 gleam run -- --help
 
-# Check a file (example content generated based on filename)
-gleam run -- check lambda.core.tao
+# Check a file
+gleam run -- check path/to/file.core.tao
 
-# Run a file (example content generated based on filename)
-gleam run -- run lambda.core.tao
+# Run a file
+gleam run -- run path/to/file.core.tao
 
 # With verbose output
-gleam run -- run app.core.tao --verbose
+gleam run -- run path/to/file.core.tao --verbose
 
 # With debug output (prints AST)
-gleam run -- run app.core.tao --debug
+gleam run -- run path/to/file.core.tao --debug
 ```
 
 ---
@@ -427,3 +409,4 @@ Examples:
 - [Core Language](../../src/core/core.gleam)
 - [Syntax Library](../../src/syntax/grammar.gleam)
 - [argv Library](https://hexdocs.pm/argv/)
+- [simplifile Library](https://hexdocs.pm/simplifile/)
