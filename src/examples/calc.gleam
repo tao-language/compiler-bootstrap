@@ -44,18 +44,31 @@ pub fn calc_grammar() -> Grammar(Expr) {
     20,
   )
   |> grammar.rule("Factor", [
-    grammar.alt(grammar.token_pattern("Number"), fn(values) {
-      case values {
-        [TokenValue(token)] -> Int(int.parse(token.value) |> result.unwrap(0))
-        _ -> panic as "Expected Number"
-      }
-    }),
-    grammar.alt(grammar.parenthesized("Expr"), fn(values) {
-      case values {
-        [ParensValue([AstValue(expr)])] -> expr
-        _ -> panic as "Expected parenthesized expr"
-      }
-    }),
+    grammar.alt(
+      grammar.token_pattern("Number"),
+      fn(values) {
+        case values {
+          [TokenValue(token)] -> Int(int.parse(token.value) |> result.unwrap(0))
+          _ -> panic as "Expected Number"
+        }
+      },
+      fn(ast, _) {
+        case ast {
+          Int(n) -> formatter.text(int.to_string(n))
+          _ -> formatter.text("<num>")
+        }
+      },
+    ),
+    grammar.alt(
+      grammar.parenthesized("Expr"),
+      fn(values) {
+        case values {
+          [ParensValue([AstValue(expr)])] -> expr
+          _ -> panic as "Expected parenthesized expr"
+        }
+      },
+      fn(ast, prec) { format_expr(ast, prec) },
+    ),
   ])
 }
 
@@ -68,18 +81,53 @@ pub fn format(ast: Expr) -> String {
 }
 
 fn format_expr(ast: Expr, parent_prec: Int) -> Doc {
-  let grammar = calc_grammar()
   case ast {
     Int(n) -> formatter.text(int.to_string(n))
-    // Use generic formatter helper with grammar metadata
-    // Operator keys are the operator keywords ("+", "-", "*", "/")
     Add(l, r) ->
-      grammar.format_binary_op(grammar, "+", l, r, parent_prec, format_expr)
+      format_binop(
+        format_expr(l, 10),
+        format_expr(r, 11),
+        " + ",
+        10,
+        parent_prec,
+      )
     Sub(l, r) ->
-      grammar.format_binary_op(grammar, "-", l, r, parent_prec, format_expr)
+      format_binop(
+        format_expr(l, 10),
+        format_expr(r, 11),
+        " - ",
+        10,
+        parent_prec,
+      )
     Mul(l, r) ->
-      grammar.format_binary_op(grammar, "*", l, r, parent_prec, format_expr)
+      format_binop(
+        format_expr(l, 20),
+        format_expr(r, 21),
+        " * ",
+        20,
+        parent_prec,
+      )
     Div(l, r) ->
-      grammar.format_binary_op(grammar, "/", l, r, parent_prec, format_expr)
+      format_binop(
+        format_expr(l, 20),
+        format_expr(r, 21),
+        " / ",
+        20,
+        parent_prec,
+      )
+  }
+}
+
+fn format_binop(
+  left: Doc,
+  right: Doc,
+  op: String,
+  prec: Int,
+  parent_prec: Int,
+) -> Doc {
+  let doc = formatter.concat([left, formatter.text(op), right])
+  case prec < parent_prec {
+    True -> formatter.parens(doc)
+    False -> doc
   }
 }

@@ -10,6 +10,7 @@ import core/core.{
 }
 import gleam/float
 import gleam/int
+import syntax/formatter
 import syntax/grammar.{
   type Grammar, type Value, AstValue, ListValue, NoSeparator, SoftBreak,
   TokenValue,
@@ -30,8 +31,10 @@ pub fn core_grammar() -> Grammar(Term) {
   |> grammar.token("Question")
   // Main expression rule
   |> grammar.rule("Expr", [
-    grammar.alt(grammar.ref("App"), unwrap),
-    grammar.alt(grammar.ref("Atom"), unwrap),
+    grammar.alt(grammar.ref("App"), unwrap, fn(_, _) { formatter.text("<ast>") }),
+    grammar.alt(grammar.ref("Atom"), unwrap, fn(_, _) {
+      formatter.text("<ast>")
+    }),
   ])
   // Application: f(x, y) - left-associative
   |> grammar.rule("App", [
@@ -43,16 +46,23 @@ pub fn core_grammar() -> Grammar(Term) {
         #(grammar.token_pattern("RParen"), NoSeparator),
       ]),
       make_application,
+      fn(_, _) { formatter.text("<app>") },
     ),
   ])
   // Atoms
   |> grammar.rule("Atom", [
     // Variable
-    grammar.alt(grammar.token_pattern("Ident"), make_var),
+    grammar.alt(grammar.token_pattern("Ident"), make_var, fn(_, _) {
+      formatter.text("<ast>")
+    }),
     // Number literal
-    grammar.alt(grammar.token_pattern("Number"), make_literal),
+    grammar.alt(grammar.token_pattern("Number"), make_literal, fn(_, _) {
+      formatter.text("<ast>")
+    }),
     // Hole: ?
-    grammar.alt(grammar.token_pattern("Question"), make_hole),
+    grammar.alt(grammar.token_pattern("Question"), make_hole, fn(_, _) {
+      formatter.text("<ast>")
+    }),
     // Parenthesized expression
     grammar.alt(
       grammar.seq_with_layout([
@@ -61,6 +71,7 @@ pub fn core_grammar() -> Grammar(Term) {
         #(grammar.token_pattern("RParen"), NoSeparator),
       ]),
       unwrap_parens,
+      fn(_, _) { formatter.text("<parens>") },
     ),
   ])
   // Argument list: expr, expr, ...
@@ -68,6 +79,7 @@ pub fn core_grammar() -> Grammar(Term) {
     grammar.alt(
       grammar.sep1(grammar.ref("Expr"), grammar.token_pattern("Comma")),
       make_arg_list,
+      fn(_, _) { formatter.text("<arglist>") },
     ),
   ])
 }
