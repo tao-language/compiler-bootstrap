@@ -1,6 +1,6 @@
 # Core Language Specification
 
-A dependently typed core language with normalization by evaluation, bidirectional type checking, and integrated exhaustiveness checking.
+A dependently typed core language with normalization by evaluation, bidirectional type checking, integrated exhaustiveness checking, and compile-time evaluation (comptime) with FFI support.
 
 ---
 
@@ -27,6 +27,8 @@ This core language is designed as a **foundation for higher-level languages**. I
 - **Normalization by Evaluation (NbE)**: Efficient equality checking via evaluation + reification
 - **Bidirectional Type Checking**: Synthesis (`infer`) and checking (`check`) modes for better inference
 - **Exhaustiveness Checking**: Integrated static verification that pattern matches cover all cases (Maranget's algorithm)
+- **Compile-Time Evaluation (comptime)**: Execute built-in functions during elaboration with permission checking
+- **FFI Support**: Built-in functions (arithmetic, comparison, logical) with runtime defer for unknown operations
 - **Error Resilience**: Continues checking after errors to report all issues at once
 
 ### Design Principle
@@ -53,6 +55,27 @@ This is critical for IDE/LSP support where users need to see all errors, not jus
 │  - Checks occurs condition                                  │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### Implementation Status
+
+**File**: `src/core/core.gleam` (~1800 lines)
+
+**What's Working**:
+- ✅ All term types (Typ, Lit, LitT, Var, Hole, Rcd, Ctr, Dot, Ann, Lam, Pi, App, Match, Call, Comptime)
+- ✅ All value types (VTyp, VLit, VLitT, VNeut, VRcd, VCtr, VLam, VPi, VCall, VErr)
+- ✅ Evaluation with FFI built-ins (arithmetic, comparison, logical operations)
+- ✅ Normalization by evaluation (eval + quote)
+- ✅ Bidirectional type checking (infer/check)
+- ✅ Unification with occurs check
+- ✅ Exhaustiveness checking (Maranget's algorithm)
+- ✅ Comptime evaluation with permission system
+- ✅ VCall for deferred runtime operations
+- ✅ **263 tests passing**
+
+**What's Pending**:
+- ⏳ Core language grammar definition using syntax library
+- ⏳ Core language parser (thin wrapper around syntax library)
+- ⏳ Core language formatter (manual formatter using syntax formatter)
 
 ---
 
@@ -177,6 +200,8 @@ Term(data: TermData, span: Span)
 | `Pi(name, in, out)` | Dependent function | `(x : A) → B x` |
 | `App(fun, arg)` | Application | `f x` |
 | `Match(arg, motive, cases)` | Pattern match | `match x with ...` |
+| `Call(name, args)` | Built-in call | `add(1, 2)` |
+| `Comptime(term)` | Compile-time eval | `comptime add(1, 2)` |
 
 ### Patterns
 
@@ -201,12 +226,13 @@ PCtr(tag, arg)    // Constructor: Cons(p)
 | `VTyp(k)` | Universe type |
 | `VLit(v)` | Literal value |
 | `VLitT(t)` | Literal type |
-| `VNeut(head, spine)` | Neutral term |
+| `VNeut(head, spine)` | Neutral term (stuck on unknown) |
 | `VRcd(fields)` | Record value |
 | `VCtr(tag, arg)` | Constructor value |
-| `VLam(name, env, body)` | Closure (lambda) |
+| `VLam(name, env, body)` | Closure (lambda with captured environment) |
 | `VPi(name, env, in, out)` | Dependent function type |
-| `VErr` | Error (for recovery) |
+| `VCall(name, args)` | Deferred runtime call (FFI not found or non-concrete args) |
+| `VErr` | Error value (for error recovery) |
 
 ### Closures
 
@@ -228,6 +254,55 @@ Env = List(Value)           // Runtime: index → value
 Context = List(#(String, #(Value, Type)))  // Type checking: name → (value, type)
 Subst = List(#(Int, Value)) // Unification: hole_id → solved value
 ```
+
+### State
+
+```gleam
+State(
+  hole: Int,           // Next fresh hole ID
+  var: Int,            // Next fresh variable level
+  ctrs: CtrEnv,        // Constructor definitions
+  ctx: Context,        // Typing context
+  sub: Subst,          // Metavariable solutions
+  errors: List(Error), // Accumulated errors
+  ffi: FFI,            // Host FFI registry (built-ins)
+  config: Config,      // Compiler configuration (permissions, target)
+)
+```
+
+### FFI and Built-ins
+
+```gleam
+// Permission for compile-time operations
+pub type Permission {
+  AllowRead(path: String)
+  AllowWrite(path: String)
+}
+
+// Host FFI function definition
+pub type Builtin {
+  Builtin(
+    impl: fn(List(Value)) -> Option(Value),  // None when args not concrete
+    required_permissions: List(Permission),
+  )
+}
+
+// Built-in functions (pure, always allowed)
+ffi_build = [
+  #("add", Builtin(add_impl, [])),
+  #("sub", Builtin(sub_impl, [])),
+  #("mul", Builtin(mul_impl, [])),
+  #("div", Builtin(div_impl, [])),
+  #("eq", Builtin(eq_impl, [])),
+  #("lt", Builtin(lt_impl, [])),
+  #("and", Builtin(and_impl, [])),
+  #("or", Builtin(or_impl, [])),
+  #("not", Builtin(not_impl, [])),
+  // ... and more
+]
+```
+
+**VCall**: When a built-in function is called with non-concrete arguments (e.g., variables), it returns `VCall(name, args)` which is deferred to runtime.
 
 ---
 
