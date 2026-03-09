@@ -10,26 +10,44 @@
 
 ### What's Working
 
-- Token-based parsing with pre-tokenized input
-- Pratt parsing for operator precedence (1000+ lines)
-- All pattern types (Token, Keyword, Ref, Seq, Choice, Opt, Many, Sep1, Parens)
-- Left-associative operator parsing with correct folding
+- Token-based parsing with pre-tokenized input from lexer
+- All pattern types: `TokenKind`, `Keyword`, `Ref`, `Seq`, `SeqWithLayout`, `Choice`, `Opt`, `Many`, `Sep1`, `Parens`
+- Left-associative operator parsing (`parse_left_assoc`)
+- Right-associative operator parsing (`parse_right_assoc`)
 - Operator precedence handling
 - Parenthesized expressions
 - Error handling with position tracking
-- **238 tests passing**
+- `ParseError` with position, expected, got
+- `ParseResult` with ast and errors list
 
 ### What's Pending
 
-- Error recovery (currently panics on invalid input)
-- Rule-specific error messages
-- Sync-point recovery for better error resilience
+- **Error recovery** - Currently panics on parse failure
+- **Sync-point recovery** - Skip to synchronization points on error
+- **Rule-specific error messages** - Currently generic "expected X"
+
+### Implementation Details
+
+**File**: `src/syntax/grammar.gleam` (parser functions integrated)
+
+**Key Functions**:
+- `parse()` - Main parse function
+- `parse_pattern()` - Dispatch on pattern type
+- `parse_seq_with_layout()` - Parse sequences with hints
+- `parse_left_assoc()` - Left-associative operators
+- `parse_right_assoc()` - Right-associative operators
+- `fold_operators_multi()` - Fold multiple operators
+
+**Key Types**:
+- `ParseError` - position, expected, got
+- `ParseResult(a)` - ast, errors
 
 ### Related
 
 - See **[01-overview.md](./01-overview.md)** for overall implementation status
 - See **[02-grammar-dsl.md](./02-grammar-dsl.md)** for grammar definition
 - See **[04-formatter-library.md](./04-formatter-library.md)** for formatter details
+- See **[../../syntax-library.md](../../syntax-library.md)** for user-facing docs
 
 ---
 

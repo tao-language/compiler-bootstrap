@@ -11,24 +11,45 @@
 ### What's Working
 
 - Grammar type parameterized by AST type (`Grammar(a)`)
-- Rule and Alternative types with constructor/deconstructor
-- Pattern types (Token, Keyword, Ref, Seq, Choice, Opt, Many, Sep1, Parens)
+- `Alternative` with constructor, deconstructor (stub), and formatter
+- Pattern types: `TokenKind`, `Keyword`, `Ref`, `Seq`, `SeqWithLayout`, `Choice`, `Opt`, `Many`, `Sep1`, `Parens`
 - Operator types with precedence, associativity, layout
-- Grammar builder API (`define`, `rule`, `left_assoc`, `op`, etc.)
-- Pattern helpers (`token`, `keyword`, `ref`, `seq`, `parens`, etc.)
-- Layout configuration (`LayoutStyle`, `OperatorLayout`)
+- Grammar builder API: `define`, `name`, `start`, `token`, `keyword`, `rule`, `left_assoc`, `right_assoc`
+- Pattern helpers: `token_pattern`, `keyword_pattern`, `ref`, `seq`, `seq_with_layout`, `parens`
+- Layout hints: `SoftBreak`, `HardBreak`, `Space`, `NoSeparator`
+- Operator layouts: `default_op_layout`, `break_before_op_layout`
+- Calculator example working with +, -, *, /
 
 ### What's Pending
 
-- Automatic deconstructor generation for simple cases
-- Typed token helpers (`int_token`, `float_token`, `string_token`)
-- Core language grammar definition using this DSL
+- **Deconstructor implementation** - Currently panics with `"Deconstructor not implemented"`
+- **Automatic formatter generation** - Each language implements manual formatters
+- **Core language grammar** - Need to define grammar for core language
+
+### Implementation Details
+
+**File**: `src/syntax/grammar.gleam` (~786 lines)
+
+**Key Types**:
+- `Grammar(a)` - Parameterized grammar
+- `Alternative(a)` - Pattern + constructor + deconstructor + formatter
+- `Pattern(a)` - Token, Keyword, Ref, Seq, Choice, etc.
+- `Operator(a)` - Keyword + constructor + precedence + layout
+- `Value(a)` - TokenValue, KeywordValue, AstValue, ParensValue, ListValue
+
+**Key Functions**:
+- `define()` - Start grammar definition
+- `left_assoc()` - Left-associative operator rules
+- `right_assoc()` - Right-associative operator rules
+- `parse()` - Parse source with grammar
+- `format()` - Format AST (language-specific)
 
 ### Related
 
 - See **[01-overview.md](./01-overview.md)** for overall implementation status
 - See **[03-parser-library.md](./03-parser-library.md)** for parser details
 - See **[04-formatter-library.md](./04-formatter-library.md)** for formatter details
+- See **[../../syntax-library.md](../../syntax-library.md)** for user-facing docs
 
 ---
 

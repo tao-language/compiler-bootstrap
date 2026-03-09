@@ -1,7 +1,7 @@
 # Formatter Library
 
 > **Goal**: Grammar-aware pretty printing with automatic line breaking and layout control
-> **Status**: ✅ Manual formatters, ⏳ Automatic generation from grammar
+> **Status**: ✅ Implemented
 > **Date**: March 2025
 
 ---
@@ -10,28 +10,46 @@
 
 ### What's Working
 
-- Document algebra (`Text`, `Line`, `HardLine`, `Group`, `Nest`, `Concat`)
-- Automatic line breaking based on configured width
-- Configurable indentation styles and levels
-- Precedence-aware parenthesization
-- Layout hints (`SoftBreak`, `HardBreak`, `Space`, `None`)
-- Operator layout configuration (`OperatorLayout`)
-- Generic sequence formatter with layout hints
+- Document algebra: `Empty`, `Text`, `Line`, `HardLine`, `Group`, `Nest`, `Concat`
+- `render()` - Best-fit rendering with configurable width
+- `render_default()` - 80 character width
+- Layout hints: `SoftBreak`, `HardBreak`, `Space`, `NoSeparator`
+- Operator layout: `OperatorLayout` with `separator`, `break_before`, `break_after`, `indent_rhs`
+- Sequence formatting with layout hints
 - Manual formatters for calc example
-- Round-trip tests passing (parse → format → parse)
+- Precedence-based parenthesization
+- Round-trip tested (parse → format → parse)
 
 ### What's Pending
 
-- Automatic formatter generation from grammar
-- Deconstructor-based AST traversal
-- Layout breaking for long expressions
-- Custom layouts (ternary, functions)
+- **Automatic formatter generation** - Each language implements manual formatters
+- **Deconstructor-based formatting** - Currently uses manual pattern matching
+- **Layout breaking for long expressions** - Basic support, needs testing
+
+### Implementation Details
+
+**File**: `src/syntax/formatter.gleam` (~139 lines)
+
+**Key Types**:
+- `Doc` - Empty, Text, Line, HardLine, Group, Nest, Concat
+
+**Key Functions**:
+- `render()` - Best-fit rendering
+- `render_default()` - Default 80 char width
+- `space_sep()` - Space-separated list
+- `comma_sep()` - Comma-separated list
+- `parens()` - Wrap in parentheses
+- `braces()` - Wrap in braces
+- `join()` - Join with separator
+- `nest()` - Increase indentation
+- `group()` - Try flat, expand if needed
 
 ### Related
 
 - See **[01-overview.md](./01-overview.md)** for overall implementation status
 - See **[02-grammar-dsl.md](./02-grammar-dsl.md)** for grammar definition
 - See **[03-parser-library.md](./03-parser-library.md)** for parser details
+- See **[../../syntax-library.md](../../syntax-library.md)** for user-facing docs
 
 ---
 
