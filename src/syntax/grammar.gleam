@@ -17,6 +17,38 @@ pub type Associativity {
   NonAssoc
 }
 
+/// Global formatter configuration
+pub type FormatterConfig {
+  FormatterConfig(width: Int, indent_string: String, indent_level: Int)
+}
+
+/// Layout hint for sequence items
+pub type LayoutHint {
+  SoftBreak
+  // Space when flat, newline+indent when broken
+  HardBreak
+  // Always newline+indent
+  Space
+  // Always space
+  NoSeparator
+  // No separator
+}
+
+/// Sequence item with layout hint
+pub type SeqItem(a) {
+  SeqItem(pattern: Pattern(a), layout_hint: LayoutHint)
+}
+
+/// Layout configuration for operators
+pub type OperatorLayout {
+  OperatorLayout(
+    separator: String,
+    break_before: Bool,
+    break_after: Bool,
+    indent_rhs: Bool,
+  )
+}
+
 pub type LayoutStyle {
   Inline
   BreakAfterOperator(indent: Int)
@@ -24,21 +56,22 @@ pub type LayoutStyle {
   Block(open: String, close: String, indent: Int)
 }
 
-pub type Pattern {
+pub type Pattern(a) {
   TokenKind(kind: String)
   Keyword(value: String)
   Op(value: String)
   Ref(rule: String)
-  Seq(patterns: List(Pattern))
-  Choice(alts: List(Pattern))
-  Opt(pattern: Pattern)
-  Many(pattern: Pattern)
-  Sep1(item: Pattern, sep: Pattern)
+  Seq(patterns: List(Pattern(a)))
+  SeqWithLayout(items: List(SeqItem(a)))
+  Choice(alts: List(Pattern(a)))
+  Opt(pattern: Pattern(a))
+  Many(pattern: Pattern(a))
+  Sep1(item: Pattern(a), sep: Pattern(a))
   Parens(rule: String)
 }
 
 pub type Alternative(a) {
-  Alternative(pattern: Pattern, constructor: fn(List(Value(a))) -> a)
+  Alternative(pattern: Pattern(a), constructor: fn(List(Value(a))) -> a)
 }
 
 pub type Rule(a) {
@@ -51,8 +84,7 @@ pub type Operator(a) {
     constructor: fn(a, a) -> a,
     precedence: Int,
     associativity: Associativity,
-    layout: LayoutStyle,
-    separator: String,
+    layout: OperatorLayout,
   )
 }
 
@@ -281,7 +313,7 @@ pub fn right_assoc(
 // ============================================================================
 
 pub fn alt(
-  pattern: Pattern,
+  pattern: Pattern(a),
   constructor: fn(List(Value(a))) -> a,
 ) -> Alternative(a) {
   Alternative(pattern: pattern, constructor: constructor)
@@ -291,39 +323,49 @@ pub fn alt(
 // PATTERN HELPERS
 // ============================================================================
 
-pub fn token_pattern(kind: String) -> Pattern {
+pub fn token_pattern(kind: String) -> Pattern(a) {
   TokenKind(kind)
 }
 
-pub fn keyword_pattern(value: String) -> Pattern {
+pub fn keyword_pattern(value: String) -> Pattern(a) {
   Keyword(value)
 }
 
-pub fn ref(name: String) -> Pattern {
+pub fn ref(name: String) -> Pattern(a) {
   Ref(name)
 }
 
-pub fn seq(patterns: List(Pattern)) -> Pattern {
+pub fn seq(patterns: List(Pattern(a))) -> Pattern(a) {
   Seq(patterns)
 }
 
-pub fn choice(alts: List(Pattern)) -> Pattern {
+/// Create a sequence with layout hints between elements
+pub fn seq_with_layout(items: List(#(Pattern(a), LayoutHint))) -> Pattern(a) {
+  SeqWithLayout(
+    list.map(items, fn(item) {
+      let #(pattern, hint) = item
+      SeqItem(pattern, hint)
+    }),
+  )
+}
+
+pub fn choice(alts: List(Pattern(a))) -> Pattern(a) {
   Choice(alts)
 }
 
-pub fn opt(pattern: Pattern) -> Pattern {
+pub fn opt(pattern: Pattern(a)) -> Pattern(a) {
   Opt(pattern)
 }
 
-pub fn many(pattern: Pattern) -> Pattern {
+pub fn many(pattern: Pattern(a)) -> Pattern(a) {
   Many(pattern)
 }
 
-pub fn sep1(item: Pattern, sep: Pattern) -> Pattern {
+pub fn sep1(item: Pattern(a), sep: Pattern(a)) -> Pattern(a) {
   Sep1(item, sep)
 }
 
-pub fn parenthesized(rule_name: String) -> Pattern {
+pub fn parenthesized(rule_name: String) -> Pattern(a) {
   Parens(rule_name)
 }
 
@@ -331,28 +373,41 @@ pub fn parenthesized(rule_name: String) -> Pattern {
 // OPERATOR CONSTRUCTION
 // ============================================================================
 
+/// Default operator layout (break after operator, indent RHS)
+pub fn default_op_layout(separator: String) -> OperatorLayout {
+  OperatorLayout(
+    separator: separator,
+    break_before: False,
+    break_after: False,
+    indent_rhs: False,
+  )
+}
+
+/// Break before operator layout (like Haskell's $)
+pub fn break_before_op_layout(separator: String) -> OperatorLayout {
+  OperatorLayout(
+    separator: separator,
+    break_before: True,
+    break_after: False,
+    indent_rhs: False,
+  )
+}
+
+/// Compact operator layout (never break)
+pub fn compact_op_layout(separator: String) -> OperatorLayout {
+  OperatorLayout(
+    separator: separator,
+    break_before: False,
+    break_after: False,
+    indent_rhs: False,
+  )
+}
+
 pub fn op(
   keyword: String,
   constructor: fn(a, a) -> a,
   precedence: Int,
-  separator: String,
-) -> Operator(a) {
-  Operator(
-    keyword: keyword,
-    constructor: constructor,
-    precedence: precedence,
-    associativity: Left,
-    layout: Inline,
-    separator: separator,
-  )
-}
-
-pub fn op_with_layout(
-  keyword: String,
-  constructor: fn(a, a) -> a,
-  precedence: Int,
-  layout: LayoutStyle,
-  separator: String,
+  layout: OperatorLayout,
 ) -> Operator(a) {
   Operator(
     keyword: keyword,
@@ -360,7 +415,21 @@ pub fn op_with_layout(
     precedence: precedence,
     associativity: Left,
     layout: layout,
-    separator: separator,
+  )
+}
+
+pub fn op_with_layout(
+  keyword: String,
+  constructor: fn(a, a) -> a,
+  precedence: Int,
+  layout: OperatorLayout,
+) -> Operator(a) {
+  Operator(
+    keyword: keyword,
+    constructor: constructor,
+    precedence: precedence,
+    associativity: Left,
+    layout: layout,
   )
 }
 
@@ -420,7 +489,7 @@ fn try_alternatives(
 
 fn parse_pattern(
   grammar: Grammar(a),
-  pattern: Pattern,
+  pattern: Pattern(a),
   tokens: List(Token),
   pos: Int,
 ) -> Result(#(List(Value(a)), Int), Nil) {
@@ -430,6 +499,8 @@ fn parse_pattern(
     Op(value) -> parse_op(tokens, pos, value)
     Ref(rule_name) -> parse_ref(grammar, rule_name, tokens, pos)
     Seq(patterns) -> parse_seq(grammar, patterns, tokens, pos, [])
+    SeqWithLayout(items) ->
+      parse_seq_with_layout(grammar, items, tokens, pos, [])
     Choice(alts) -> parse_choice(grammar, alts, tokens, pos)
     Opt(p) -> parse_opt(grammar, p, tokens, pos)
     Many(p) -> parse_many(grammar, p, tokens, pos, [])
@@ -491,7 +562,7 @@ fn parse_ref(
 
 fn parse_seq(
   grammar: Grammar(a),
-  patterns: List(Pattern),
+  patterns: List(Pattern(a)),
   tokens: List(Token),
   pos: Int,
   values: List(Value(a)),
@@ -508,9 +579,34 @@ fn parse_seq(
   }
 }
 
+fn parse_seq_with_layout(
+  grammar: Grammar(a),
+  items: List(SeqItem(a)),
+  tokens: List(Token),
+  pos: Int,
+  values: List(Value(a)),
+) -> Result(#(List(Value(a)), Int), Nil) {
+  case items {
+    [] -> Ok(#(values, pos))
+    [item, ..rest] -> {
+      case parse_pattern(grammar, item.pattern, tokens, pos) {
+        Ok(#(parsed, new_pos)) ->
+          parse_seq_with_layout(
+            grammar,
+            rest,
+            tokens,
+            new_pos,
+            list.append(values, parsed),
+          )
+        Error(_) -> Error(Nil)
+      }
+    }
+  }
+}
+
 fn parse_choice(
   grammar: Grammar(a),
-  alts: List(Pattern),
+  alts: List(Pattern(a)),
   tokens: List(Token),
   pos: Int,
 ) -> Result(#(List(Value(a)), Int), Nil) {
@@ -527,7 +623,7 @@ fn parse_choice(
 
 fn parse_opt(
   grammar: Grammar(a),
-  pattern: Pattern,
+  pattern: Pattern(a),
   tokens: List(Token),
   pos: Int,
 ) -> Result(#(List(Value(a)), Int), Nil) {
@@ -539,7 +635,7 @@ fn parse_opt(
 
 fn parse_many(
   grammar: Grammar(a),
-  pattern: Pattern,
+  pattern: Pattern(a),
   tokens: List(Token),
   pos: Int,
   values: List(Value(a)),
@@ -559,8 +655,8 @@ fn parse_many(
 
 fn parse_sep1(
   grammar: Grammar(a),
-  item: Pattern,
-  sep: Pattern,
+  item: Pattern(a),
+  sep: Pattern(a),
   tokens: List(Token),
   pos: Int,
   values: List(Value(a)),
@@ -581,8 +677,8 @@ fn parse_sep1(
 
 fn parse_sep1_loop(
   grammar: Grammar(a),
-  item: Pattern,
-  sep: Pattern,
+  item: Pattern(a),
+  sep: Pattern(a),
   tokens: List(Token),
   pos: Int,
   values: List(Value(a)),
@@ -657,7 +753,7 @@ fn format_ast(grammar: Grammar(a), ast: a, parent_prec: Int) -> Doc {
 
 fn find_operator_for_ast(grammar: Grammar(a), ast: a) -> Option(Operator(a)) {
   // For now, return None - full implementation would need runtime type inspection
-  None
+  option.None
 }
 
 fn format_by_operator(
@@ -743,6 +839,11 @@ fn wrap_parens(doc: Doc, condition: Bool) -> Doc {
 // These helpers use grammar metadata for formatting, enabling automatic
 // precedence-based parenthesization and separator formatting.
 
+/// Default formatter configuration
+pub fn default_formatter_config() -> FormatterConfig {
+  FormatterConfig(width: 80, indent_string: "  ", indent_level: 0)
+}
+
 /// Format a binary operator using grammar metadata
 pub fn format_binary_op(
   grammar: Grammar(a),
@@ -770,12 +871,20 @@ pub fn format_binary_op(
       let right_prec = op.precedence + right_prec_offset
 
       let left_doc = format_ast(left, left_prec)
-      let right_doc = format_ast(right, right_prec)
+
+      // Format separator with spaces around operator
+      let separator_doc = formatter.text(" " <> op.layout.separator <> " ")
+
+      // Format right side with potential indentation
+      let right_doc = case op.layout.indent_rhs {
+        True -> formatter.nest(1, format_ast(right, right_prec))
+        False -> format_ast(right, right_prec)
+      }
 
       let inner =
         formatter.concat([
           left_doc,
-          formatter.text(op.separator),
+          separator_doc,
           right_doc,
         ])
 
@@ -786,6 +895,43 @@ pub fn format_binary_op(
       }
     }
     Error(_) -> formatter.text("<unknown op: " <> op_name <> ">")
+  }
+}
+
+/// Format a sequence with layout hints
+pub fn format_sequence_with_layout(
+  items: List(SeqItem(a)),
+  values: List(Value(a)),
+  format_value: fn(Value(a)) -> Doc,
+) -> Doc {
+  format_sequence_loop(items, values, format_value, [])
+}
+
+fn format_sequence_loop(
+  items: List(SeqItem(a)),
+  values: List(Value(a)),
+  format_value: fn(Value(a)) -> Doc,
+  docs: List(Doc),
+) -> Doc {
+  case items, values {
+    [item, ..rest_items], [value, ..rest_values] -> {
+      let doc = format_value(value)
+      let separator = case item.layout_hint {
+        SoftBreak -> formatter.line()
+        HardBreak -> formatter.hardline()
+        Space -> formatter.space()
+        NoSeparator -> formatter.empty()
+      }
+      format_sequence_loop(
+        rest_items,
+        rest_values,
+        format_value,
+        list.append(docs, [doc, separator]),
+      )
+    }
+    [], [] -> formatter.concat(docs)
+    _, _ -> formatter.concat(docs)
+    // Mismatch, just format what we have
   }
 }
 

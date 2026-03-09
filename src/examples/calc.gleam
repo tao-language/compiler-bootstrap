@@ -29,8 +29,8 @@ pub fn calc_grammar() -> Grammar(Expr) {
     "Expr",
     "Term",
     [
-      grammar.op("+", Add, 10, " + "),
-      grammar.op("-", Sub, 10, " - "),
+      grammar.op("+", Add, 10, grammar.default_op_layout("+")),
+      grammar.op("-", Sub, 10, grammar.default_op_layout("-")),
     ],
     10,
   )
@@ -38,8 +38,8 @@ pub fn calc_grammar() -> Grammar(Expr) {
     "Term",
     "Factor",
     [
-      grammar.op("*", Mul, 20, " * "),
-      grammar.op("/", Div, 20, " / "),
+      grammar.op("*", Mul, 20, grammar.default_op_layout("*")),
+      grammar.op("/", Div, 20, grammar.default_op_layout("/")),
     ],
     20,
   )

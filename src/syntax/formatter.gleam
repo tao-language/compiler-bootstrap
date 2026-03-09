@@ -29,6 +29,10 @@ pub fn line() -> Doc {
   Line
 }
 
+pub fn space() -> Doc {
+  Text(" ")
+}
+
 pub fn hardline() -> Doc {
   HardLine
 }
