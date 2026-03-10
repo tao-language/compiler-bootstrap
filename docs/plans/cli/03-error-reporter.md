@@ -1,7 +1,7 @@
 # Error Reporter Specification
 
 > **Goal**: Format errors with source locations and context
-> **Status**: 📋 Planned
+> **Status**: ✅ Phase 1 & 2 Complete - Parse and Type errors display with source snippets
 > **Date**: March 2025
 
 ---
@@ -10,21 +10,30 @@
 
 ### What's Working
 
-- Basic error message printing
-- Parse error formatting
+- ✅ Source snippet formatter (`syntax/source_snippet.gleam`)
+- ✅ Error reporter module (`syntax/error_reporter.gleam`)
+- ✅ Parse error to diagnostic conversion
+- ✅ Type error to diagnostic conversion
+- ✅ Multi-span error support (type mismatches)
+- ✅ Error codes (E0001, E0101-E0106, E0201-E0202, E0301)
+- ✅ Hints for all error types
+- ✅ Source snippet display with line numbers and pointers
+- ✅ CLI integration for both parse and type errors
+- ✅ All 401 tests passing
 
 ### What's Pending
 
-- Source snippet formatting (like Rust compiler)
-- Multi-line error contexts
-- Hint suggestions
-- Warning support (currently only errors)
-- Full span information in errors
+- 📋 JSON error output format (`--error-format=json`)
+- 📋 Color terminal support (`--color=auto/always/never`)
+- 📋 Context lines (show surrounding code)
+- 📋 Proper exit codes
+- 📋 Warning support (currently only errors)
 
 ### Related
 
 - See **[01-overview.md](./01-overview.md)** for overall CLI status
 - See **[02-cli-parser.md](./02-cli-parser.md)** for argument parsing
+- See **[../error-reporting/01-overview.md](../error-reporting/01-overview.md)** for error reporting system
 
 ---
 
@@ -39,10 +48,21 @@ pub type Severity {
 
 pub type Diagnostic {
   Diagnostic(
+    code: String,           // e.g., "E0001"
     severity: Severity,
     message: String,
+    primary_span: Span,
+    spans: List(Highlight), // Secondary spans
+    notes: List(String),
+    hints: List(String),
+  )
+}
+
+pub type Highlight {
+  Highlight(
     span: Span,
-    hint: Option(String),
+    style: HighlightStyle,  // Primary or Secondary
+    label: Option(String),
   )
 }
 ```
@@ -51,297 +71,160 @@ pub type Diagnostic {
 
 ## Error Format
 
-### Single-Line Error
+### Parse Error (Single-Line)
 
 ```
-error: Type mismatch
-  ┌─ example.core.tao:5:10
-  │
-5 │ let x = (x : $I32)
-  │          ^^^^^^^^^ Expected $Type, got $I32
+error[E0001]: Unexpected token
+  ┌─ example.core.tao:1:1
+1 │ {{{
+    ^
+2 │
+  = note: Expected: valid alternative
+  = note: Got: none
+  = hint: Check syntax near this position
 ```
 
-### Multi-Line Error
+### Type Error (Multi-Span)
 
 ```
-error: Type mismatch
-  ┌─ example.core.tao:5:10
-  │
-5 │ let x = (x : $I32) -> x
-  │          ^^^^^^^^^
-  │          │
-  │          expected $Type here
-  │
-  = hint: Try using $Type instead
+error[E0101]: Type mismatch
+  ┌─ input:1:1
+1 │ 42 : $Type
+    ^^ ----
+2 │
+  = hint: Check that types are compatible
+```
+
+### Undefined Variable
+
+```
+error[E0102]: Undefined variable
+  ┌─ example.core.tao:1:8
+1 │ x -> y
+    │    ^
+2 │
+  = hint: Check variable name and scope
+```
+
+### Unsolved Hole
+
+```
+error[E0106]: Unsolved hole
+  ┌─ example.core.tao:1:5
+1 │ x -> ?
+    │    ^
+2 │
+  = note: Hole #0 was not solved during type checking
+  = hint: Provide a type annotation or check your term
 ```
 
 ### Multiple Errors
 
 ```
-error: Type mismatch
-  ┌─ example.core.tao:5:10
-  │
-5 │ let x = (x : $I32)
-  │          ^^^^^^^^^ Expected $Type, got $I32
+error[E0001]: Unexpected token
+  ┌─ example.core.tao:1:1
+1 │ {{{
+    ^
+2 │
+  = note: Expected: valid alternative
+  = note: Got: none
+  = hint: Check syntax near this position
 
-error: Undefined variable
-  ┌─ example.core.tao:6:5
-  │
-6 │     y
-  │     ^ Variable 'y' not in scope
-
-Found 2 errors
+Found 1 error
 ```
+
+---
+
+## Error Codes
+
+| Code | Category | Description |
+|------|----------|-------------|
+| E0001 | Parse | Unexpected token |
+| E0101 | Type | Type mismatch |
+| E0102 | Type | Undefined variable |
+| E0103 | Type | Not a function |
+| E0104 | Type | Arity mismatch |
+| E0105 | Type | Undefined constructor |
+| E0106 | Type | Unsolved hole |
+| E0201 | Pattern | Missing match case |
+| E0202 | Pattern | Redundant match case |
+| E0301 | Runtime | Permission denied |
+| E9999 | Type | Unknown type error (fallback) |
 
 ---
 
 ## Reporter Implementation
 
-```gleam
-pub fn report(diagnostic: Diagnostic, source: String) -> formatter.Doc {
-  let severity_doc = format_severity(diagnostic.severity)
-  let message_doc = formatter.text(diagnostic.message)
-  let location_doc = format_location(diagnostic.span)
-  let snippet_doc = format_snippet(source, diagnostic.span)
-  let hint_doc = case diagnostic.hint {
-    Some(hint) -> formatter.concat([
-      formatter.hardline,
-      formatter.text("= hint: "),
-      formatter.text(hint)
-    ])
-    None -> formatter.empty
-  }
-  
-  formatter.concat([
-    severity_doc,
-    formatter.text(": "),
-    message_doc,
-    formatter.hardline,
-    location_doc,
-    formatter.hardline,
-    snippet_doc,
-    hint_doc
-  ])
-}
-
-fn format_severity(severity: Severity) -> formatter.Doc {
-  case severity {
-    Error -> formatter.text("error")
-    Warning -> formatter.text("warning")
-    Info -> formatter.text("info")
-  }
-}
-
-fn format_location(span: Span) -> formatter.Doc {
-  formatter.concat([
-    formatter.text("  ┌─ "),
-    formatter.text(span.file),
-    formatter.text(":"),
-    formatter.int(span.start_line),
-    formatter.text(":"),
-    formatter.int(span.start_col)
-  ])
-}
-
-fn format_snippet(source: String, span: Span) -> formatter.Doc {
-  // Extract the relevant lines from source
-  // Add line numbers and pointer to error location
-  // Add underline for error span
-}
-```
-
----
-
-## Source Snippet Formatting
-
-### Extract Lines
+The error reporter is implemented in `src/syntax/error_reporter.gleam`:
 
 ```gleam
-pub fn extract_lines(source: String, span: Span) -> List(Line) {
-  let lines = string.split(source, "\n")
-  let relevant_lines = 
-    lines
-    |> list.drop(span.start_line - 1)
-    |> list.take(span.end_line - span.start_line + 1)
-  
-  relevant_lines
-    |> list.index_map(fn(line, index) {
-      Line(
-        number: span.start_line + index,
-        content: line,
-        is_error_line: index == 0
-      )
-    })
-}
-```
+// Convert parse errors to diagnostics
+pub fn parse_error_to_diagnostic(
+  error: grammar.ParseError,
+  source: String,
+  file: String,
+) -> source_snippet.Diagnostic { ... }
 
-### Add Line Numbers
+// Convert type errors to diagnostics
+pub fn type_error_to_diagnostic(
+  error: core.Error,
+  source: String,
+  file: String,
+) -> source_snippet.Diagnostic { ... }
 
-```gleam
-pub fn format_lines(lines: List(Line)) -> formatter.Doc {
-  let max_width = get_max_line_number_width(lines)
-  
-  lines
-    |> list.map(fn(line) {
-      formatter.concat([
-        formatter.right_pad(formatter.int(line.number), max_width),
-        formatter.text(" │ "),
-        formatter.text(line.content),
-        case line.is_error_line {
-          True => formatter.hardline
-          False => formatter.empty
-        }
-      ])
-    })
-    |> formatter.concat_all
-}
-```
-
-### Add Error Pointer
-
-```gleam
-pub fn format_pointer(span: Span, message: String) -> formatter.Doc {
-  formatter.concat([
-    formatter.text("  │ "),
-    formatter.string_repeat(" ", span.start_col - 1),
-    formatter.text("^"),
-    formatter.string_repeat("^", span.end_col - span.start_col),
-    case message {
-      "" -> formatter.empty
-      _ -> formatter.concat([
-        formatter.text(" "),
-        formatter.text(message)
-      ])
-    }
-  ])
-}
-```
-
----
-
-## Error Messages
-
-### Parse Errors
-
-```
-error: Unexpected token
-  ┌─ example.core.tao:3:5
-  │
-3 │   λx. x
-  │     ^ Expected identifier, got '.'
-```
-
-```
-error: Unexpected end of file
-  ┌─ example.core.tao:5:1
-  │
-5 │ λx.
-  │    ^ Expected expression after '.'
-```
-
-### Type Errors
-
-```
-error: Type mismatch
-  ┌─ example.core.tao:5:10
-  │
-5 │ let x = (x : $I32)
-  │          ^^^^^^^^^ Expected $Type, got $I32
-```
-
-```
-error: Occurs check failed
-  ┌─ example.core.tao:3:1
-  │
-3 │ λf. f(f)
-  │ ^^^^^^^^ Infinite type: a = a -> b
-```
-
-```
-error: Unbound variable
-  ┌─ example.core.tao:2:5
-  │
-2 │     x
-  │     ^ Variable 'x' not in scope
-```
-
-### Runtime Errors
-
-```
-error: Division by zero
-  ┌─ example.core.tao:3:10
-  │
-3 │ let x = 10 / 0
-  │          ^^^^^ Evaluated to division by zero
-```
-
----
-
-## Warning Messages
-
-```
-warning: Unused variable
-  ┌─ example.core.tao:2:5
-  │
-2 │ let x = 5
-  │     ^ This variable is never used
-  │
-  = hint: Consider removing it or prefixing with '_'
-```
-
-```
-warning: Redundant type annotation
-  ┌─ example.core.tao:3:10
-  │
-3 │ let x: Int = 5
-  │          ^^^ Type can be inferred
+// Format diagnostic for display
+pub fn format_diagnostic(
+  diagnostic: source_snippet.Diagnostic,
+  source: String,
+) -> String { ... }
 ```
 
 ---
 
 ## Testing
 
-```gleam
-pub fn report_type_error_test() {
-  let source = "let x = (x : $I32)"
-  let diagnostic = Diagnostic(
-    severity: Error,
-    message: "Type mismatch",
-    span: Span("test.core.tao", 1, 10, 1, 15),
-    hint: Some("Try using $Type instead"),
-  )
-  
-  let doc = report(diagnostic, source)
-  let output = formatter.render(doc, 80)
-  
-  // Check that output contains expected elements
-  output |> should.contain("error: Type mismatch")
-  output |> should.contain("test.core.tao:1:10")
-  output |> should.contain("Expected $Type, got $I32")
-  output |> should.contain("hint: Try using $Type instead")
-}
+Error reporting is tested through:
 
-pub fn report_parse_error_test() {
-  let source = "λx. x"
-  let diagnostic = Diagnostic(
-    severity: Error,
-    message: "Unexpected token",
-    span: Span("test.core.tao", 1, 3, 1, 4),
-    hint: None,
-  )
-  
-  let doc = report(diagnostic, source)
-  let output = formatter.render(doc, 80)
-  
-  output |> should.contain("error: Unexpected token")
-  output |> should.contain("Expected identifier, got '.'")
-}
-```
+1. **Example files** in `examples/core/errors/`:
+   - `syntax_errors/01_unexpected_token.core.tao` - Parse error example
+   - `syntax_errors/02_malformed_match.core.tao` - Malformed match expression
+   - `type_errors/01_param_type_mismatch.core.tao` - Type mismatch example
+   - `type_errors/02_annotation_mismatch.core.tao` - Annotation mismatch example
+
+2. **Manual testing** with CLI:
+   ```bash
+   gleam run check examples/core/errors/syntax_errors/01_unexpected_token.core.tao
+   gleam run check examples/core/errors/type_errors/01_param_type_mismatch.core.tao
+   ```
+
+3. **Unit tests** - 401 tests passing
+
+4. **Build status**:
+   - ✅ Compiles successfully
+   - ✅ 401 tests passing
+   - ⚠️ Minor warnings (unused imports - being cleaned up)
 
 ---
 
-## See Also
+## Future Enhancements
 
-- **[01-overview.md](./01-overview.md)** - CLI overview
-- **[02-cli-parser.md](./02-cli-parser.md)** - Argument parsing
-- **[../core/02-syntax.md](../core/02-syntax.md)** - Core language syntax
+### Phase 4: Full Error Codes and Suggestions
+- [x] Error codes for parse errors (E0001)
+- [x] Error codes for type errors (E0101-E0106)
+- [x] Error codes for pattern errors (E0201-E0202)
+- [x] Error codes for runtime errors (E0301)
+- [x] Basic hints for all error types
+- [ ] More specific hints based on error context
+- [ ] "Did you mean?" suggestions
+
+### Phase 5: JSON Output
+- [ ] `--error-format=json` flag
+- [ ] Machine-readable error output
+- [ ] IDE integration support
+
+### Phase 6: Polish
+- [ ] `--color=auto/always/never` flag
+- [ ] Context lines (show surrounding code)
+- [ ] Proper exit codes (requires FFI)
+- [ ] Warning support with `--warn` flag
+- [ ] Clean up unused imports

@@ -36,12 +36,13 @@
 
 - ✅ Source snippet display in CLI (Phase 1 & 2 complete)
 - ✅ Multi-span error display (Phase 2 - type mismatches)
-- 📋 Error codes for remaining error types (Phase 4)
-- 📋 Suggestions/hints for common errors (Phase 4 - basic hints implemented)
+- ✅ Error codes for error types (Phase 4 - E0001, E0101-E0106, E0201-E0202, E0301)
+- ✅ Suggestions/hints for common errors (Phase 4 - basic hints implemented)
 - 📋 JSON error output format (Phase 5)
 - 📋 Color terminal support (Phase 6)
 - 📋 Context lines (show surrounding code) (Phase 6)
-- 📋 Proper exit codes (Phase 6)
+- 📋 Proper exit codes (Phase 6 - requires FFI)
+- 📋 Clean up unused imports (minor warnings)
 
 ### Bug Fixed
 

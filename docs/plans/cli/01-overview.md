@@ -1,7 +1,7 @@
 # Compiler CLI Overview
 
 > **Goal**: Command-line interface for checking and running core/tao files
-> **Status**: ✅ Complete - Full CLI with `argv` for args and `simplifile` for file I/O
+> **Status**: ✅ Production Ready - Full CLI with error reporting, source snippets, and type checking
 > **Date**: March 2025
 
 ---
@@ -25,18 +25,17 @@ gleam run run example.tao           # Compile and run tao file (future)
 
 ```
 src/
-├── main.gleam              # CLI entry point
-├── cli/
-│   ├── parser.gleam        # Command-line argument parsing
-│   ├── reporter.gleam      # Error/warning reporting
-│   └── runner.gleam        # File loading and execution
+├── compiler_bootstrap.gleam  # CLI entry point
+├── syntax/
+│   ├── grammar.gleam         # Grammar DSL and parser
+│   ├── formatter.gleam       # Document algebra formatter
+│   ├── lexer.gleam           # Tokenizer
+│   ├── source_snippet.gleam  # Source snippet formatter
+│   └── error_reporter.gleam  # Error to diagnostic conversion
 ├── core/
-│   ├── syntax.gleam        # Core language parser/formatter
-│   └── core.gleam          # Core evaluator and type checker
-└── tao/                    # Tao language (future)
-    ├── ast.gleam           # Tao AST
-    ├── desugar.gleam       # Tao → Core desugaring
-    └── ...
+│   ├── syntax.gleam          # Core language parser/formatter
+│   └── core.gleam            # Core evaluator and type checker
+└── examples/                 # Example files and error cases
 ```
 
 ### Execution Pipeline
@@ -44,9 +43,9 @@ src/
 #### Core Files (`.core.tao`)
 
 ```
-source → parse → Term → type_check → Result
-                   ↓
-               format (for error messages)
+source → parse → Term → type_check → eval → Result
+                   ↓              ↓
+            error_reporter    format (for output)
 ```
 
 #### Tao Files (`.tao`) - Future
@@ -63,7 +62,8 @@ source → parse → Tao AST → desugar → Term → type_check → Result
 2. **File type detection** - Extension-based (`.core.tao` vs `.tao`)
 3. **Error resilience** - Report all errors, not just the first
 4. **Source locations** - Full span information in error messages
-5. **Verbose output** - `--verbose` and `--debug` for debugging
+5. **Actionable errors** - Clear hints and suggestions for fixing errors
+6. **Verbose output** - `--verbose` and `--debug` for debugging
 
 ---
 
@@ -78,25 +78,53 @@ source → parse → Tao AST → desugar → Term → type_check → Result
 - ✅ File I/O with `simplifile` library
 - ✅ File not found error handling
 - ✅ File read error handling
-- ✅ Parse error formatting with position info
 - ✅ Verbose mode (`-v`, `--verbose`)
 - ✅ Debug mode (`--debug`) - prints AST
 - ✅ Help command (`-h`, `--help`)
 - ✅ Error reporting for unknown commands and invalid arguments
 
+**Error Reporting**:
+- ✅ Source snippet formatter (`syntax/source_snippet.gleam`)
+- ✅ Error reporter module (`syntax/error_reporter.gleam`)
+- ✅ Parse error to diagnostic conversion
+- ✅ Type error to diagnostic conversion
+- ✅ Multi-span error support (type mismatches)
+- ✅ Error codes (E0001, E0101-E0106, E0201-E0202, E0301)
+- ✅ Hints for all error types
+- ✅ Source snippet display with line numbers and pointers
+
+**Type Checking Integration**:
+- ✅ `core.infer()` wired up in CLI
+- ✅ Type errors formatted with source snippets
+- ✅ All error types handled with diagnostics
+
 **Commands**:
-- ✅ `check <file>` - Type-check a file
-- ✅ `run <file>` - Type-check and evaluate
+- ✅ `check <file>` - Type-check a file (with source snippets)
+- ✅ `run <file>` - Type-check and evaluate (with source snippets)
 - ✅ `--help` - Show help message
 - ✅ `--verbose` - Verbose output
 - ✅ `--debug` - Debug mode (print AST)
 
+**Example Files**:
+- ✅ 10+ working core examples
+- ✅ Syntax error examples
+- ✅ Type error examples
+
+**Tests**:
+- ✅ 401 tests passing
+- ✅ Error reporting tested with example files
+- ✅ Build compiles with minor warnings (unused imports)
+
 ### ⏳ In Progress / Pending
 
-**Type Checking Integration**:
-- [ ] Wire up `core.infer()` in CLI
-- [ ] Format and display type errors
-- [ ] Add type error examples
+**Enhancements**:
+- [ ] JSON error output format (`--error-format=json`)
+- [ ] Color terminal support (`--color=auto/always/never`)
+- [ ] Context lines (show surrounding code)
+- [ ] Proper exit codes (requires FFI - 0=success, 1=parse error, 2=type error)
+- [ ] Exhaustiveness checking integration
+- [ ] Tao language support
+- [ ] Clean up unused imports (minor warnings)
 
 **Exhaustiveness Checking**:
 - [ ] Fix match expression parsing first

@@ -4,7 +4,6 @@
 /// Convert parse and type errors to diagnostics with source snippets.
 import core/core.{ArityMismatch, ComptimePermissionDenied, CtrUndefined, HoleUnsolved, MatchMissingCase, MatchRedundantCase, NotAFunction, type Error as TypeError, TypeMismatch, VarUndefined}
 import gleam/int
-import gleam/list
 import gleam/option.{None}
 import gleam/string
 import syntax/grammar.{ParseError, ParseErrorWithSpan, type Span}
