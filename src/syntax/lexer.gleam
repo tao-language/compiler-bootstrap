@@ -366,9 +366,10 @@ fn tokenize_percent_keyword(state: LexerState) -> LexerState {
   let start_pos = state.pos
   let start_line = state.line
   let start_column = state.column
-  
+
   // Check what follows % by looking at the next characters
-  case peek_n_chars(state, 5) {  // Check for "%match"
+  // %match = 6 chars, %call = 5 chars, %comptime = 9 chars
+  case peek_n_chars(state, 6) {  // Check for "%match"
     "%match" -> {
       // %match
       let state = advance(state)  // %

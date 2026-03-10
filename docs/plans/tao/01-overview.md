@@ -1,7 +1,7 @@
 # Tao Language Overview
 
 > **Goal**: Simple, pragmatic functional language with dependent types—TypeScript-like syntax without the complexity
-> **Status**: 📋 Designed, ⏳ Implementation planning
+> **Status**: 📋 Designed, ✅ AST Complete, ⏳ Ready to implement lexer/grammar/desugarer
 > **Date**: March 2025
 
 ---
@@ -16,6 +16,36 @@ Tao is syntax sugar over the core language. All heavy lifting (type checking, no
 - Result/Maybe sugar (`<-`, `?.`, `?`)
 - Explicit mutability (`let mut`)
 - No OOP, no async/await, no null
+
+---
+
+## Current Status
+
+### ✅ Complete
+
+**Tao AST** (`src/tao/ast.gleam`):
+- ✅ All type definitions (Program, Declaration, Expr, Pattern, Type, etc.)
+- ✅ Span tracking for all nodes
+- ✅ Compiles successfully
+- ⚠️ **No tests yet** - needs test suite
+
+### ⏳ In Progress
+
+**Nothing currently** - ready to start implementation
+
+### 📋 Next Steps
+
+See **[06-implementation-plan.md](./06-implementation-plan.md)** for detailed implementation plan:
+
+1. **Phase 1**: Core language changes (pattern guards, untyped literals) - 1-2 days
+2. **Phase 2**: Tao lexer - 2-3 days
+3. **Phase 3**: Tao grammar - 3-4 days
+4. **Phase 4**: Tao desugarer - 3-4 days
+5. **Phase 5**: Tao formatter - 2-3 days
+6. **Phase 6**: Integration tests - 2-3 days
+7. **Phase 7**: Standard library - 3-4 days
+
+**Total**: 16-23 days for complete implementation
 
 ---
 

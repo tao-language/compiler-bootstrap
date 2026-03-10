@@ -294,14 +294,16 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
   |> grammar.token("Pipe")
   // Main expression rule (lowest precedence first)
   |> grammar.rule("Expr", [
+    // Keywords first (Match, Call, Comptime) - these start with %
+    grammar.alt(grammar.ref("Match"), unwrap, fn(_, _p) { formatter.text("") }),
+    grammar.alt(grammar.ref("Call"), unwrap, fn(_, _p) { formatter.text("") }),
+    grammar.alt(grammar.ref("Comptime"), unwrap, fn(_, _p) { formatter.text("") }),
+    // Then other expressions
     grammar.alt(grammar.ref("Lambda"), unwrap, fn(_, _p) { formatter.text("") }),
     grammar.alt(grammar.ref("Pi"), unwrap, fn(_, _p) { formatter.text("") }),
     grammar.alt(grammar.ref("Ann"), unwrap, fn(_, _p) { formatter.text("") }),
     grammar.alt(grammar.ref("App"), unwrap, fn(_, _p) { formatter.text("") }),
     grammar.alt(grammar.ref("Dot"), unwrap, fn(_, _p) { formatter.text("") }),
-    grammar.alt(grammar.ref("Match"), unwrap, fn(_, _p) { formatter.text("") }),
-    grammar.alt(grammar.ref("Call"), unwrap, fn(_, _p) { formatter.text("") }),
-    grammar.alt(grammar.ref("Comptime"), unwrap, fn(_, _p) { formatter.text("") }),
     grammar.alt(grammar.ref("Atom"), unwrap, fn(_, _p) { formatter.text("") }),
   ])
   // Lambda: x -> body
@@ -775,7 +777,7 @@ fn make_field_cons(values) -> ParseValue {
 // Match, Call, Comptime constructors
 fn make_match(values) -> ParseValue {
   case values {
-    [_, _, AstValue(AsTerm(arg)), _, AstValue(AsTerm(motive)), _, AstValue(AsCases(cases)), _] ->
+    [_, AstValue(AsTerm(arg)), _, AstValue(AsTerm(motive)), _, AstValue(AsCases(cases)), _] ->
       AsTerm(NMatch(arg, motive, cases, get_span(arg)))
     _ -> panic as "Expected match expression"
   }
@@ -783,15 +785,26 @@ fn make_match(values) -> ParseValue {
 
 fn make_call(values) -> ParseValue {
   case values {
-    [_, _, TokenValue(name_token), _, _, AstValue(AsArgs(args)), _] ->
-      AsTerm(NCall(name_token.value, args, grammar.span_from_token(name_token, "input")))
+    [_, AstValue(AsTerm(name_term)), _, AstValue(AsArgs(args)), _] -> {
+      // Extract name from the term (could be NVar, NDot, etc.)
+      let name = term_to_name(name_term)
+      AsTerm(NCall(name, args, get_span(name_term)))
+    }
     _ -> panic as "Expected call expression"
+  }
+}
+
+fn term_to_name(term: NamedTerm) -> String {
+  case term {
+    NVar(name, _) -> name
+    NDot(arg, field, _) -> term_to_name(arg) <> "." <> field
+    _ -> "<unknown>"
   }
 }
 
 fn make_comptime(values) -> ParseValue {
   case values {
-    [_, _, TokenValue(_), AstValue(AsTerm(term))] ->
+    [_, AstValue(AsTerm(term))] ->
       AsTerm(NComptime(term, grammar.span_from_token(values |> get_first_token, "input")))
     _ -> panic as "Expected comptime expression"
   }
