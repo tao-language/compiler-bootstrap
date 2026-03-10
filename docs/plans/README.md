@@ -14,10 +14,15 @@ docs/plans/
 │   ├── 02-grammar-dsl.md  # Grammar DSL specification
 │   ├── 03-parser-library.md
 │   └── 04-formatter-library.md
-└── core/                  # Core language plans
+├── core/                  # Core language plans
+│   ├── 01-overview.md     # Entry point with overall status
+│   ├── 02-syntax.md       # Syntax specification
+│   └── 03-ffi-comptime.md # FFI and comptime
+└── error-reporting/       # Error reporting system
     ├── 01-overview.md     # Entry point with overall status
-    ├── 02-syntax.md       # Syntax specification
-    └── 03-ffi-comptime.md # FFI and comptime
+    ├── 02-error-types.md  # Error type specifications
+    ├── 03-source-snippets.md # Source snippet formatting
+    └── 04-cli-integration.md # CLI integration plan
 ```
 
 ---
