@@ -23,22 +23,25 @@
 - ✅ Source snippet formatter module (`syntax/source_snippet.gleam`)
 - ✅ Enhanced parse error types with spans (`ParseErrorWithSpan`)
 - ✅ Error reporter module (`syntax/error_reporter.gleam`)
-- ✅ CLI integration for parse errors
+- ✅ CLI integration for parse errors with source snippets
 - ✅ Type error formatting (basic)
 - ✅ Error AST nodes (`Term.Err`, `NamedTerm.NErr`) for graceful error recovery
 - ✅ Parser never panics - always returns valid AST with error list
 - ✅ All 401 tests passing
 - ✅ Fixed critical bug: `[..]` pattern matching (matched empty lists incorrectly)
+- ✅ Phase 1 complete: Parse errors display with source snippets in CLI
 
 ### What's Pending
 
-- 📋 Source snippet display in CLI (infrastructure ready, integration needed)
-- 📋 Multi-span error display (e.g., type mismatches)
-- 📋 Error codes for all error types (E0001, E0101, etc.)
-- 📋 Suggestions/hints for common errors
-- 📋 JSON error output format
-- 📋 Color terminal support
-- 📋 Context lines (show surrounding code)
+- ✅ Source snippet display in CLI (Phase 1 complete for parse errors)
+- 📋 Type error display with source snippets (Phase 2)
+- 📋 Multi-span error display (e.g., type mismatches) (Phase 3)
+- 📋 Error codes for all error types (E0001, E0101, etc.) (Phase 4)
+- 📋 Suggestions/hints for common errors (Phase 4)
+- 📋 JSON error output format (Phase 5)
+- 📋 Color terminal support (Phase 6)
+- 📋 Context lines (show surrounding code) (Phase 6)
+- 📋 Proper exit codes (Phase 6)
 
 ### Bug Fixed
 

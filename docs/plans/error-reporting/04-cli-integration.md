@@ -1,7 +1,7 @@
 # CLI Integration Plan
 
 > **Goal**: Integrate rich error reporting into the CLI for both human and AI consumption
-> **Status**: 📋 Planned
+> **Status**: ⏳ In Progress - Infrastructure complete, implementing display
 > **Date**: March 2025
 
 ---
@@ -10,10 +10,54 @@
 
 This document describes how to integrate the error reporting system into the CLI. The goals are:
 
-1. **Human-readable output** - Beautiful terminal errors
-2. **Machine-readable output** - JSON for IDEs and AI
+1. **Human-readable output** - Beautiful terminal errors with source snippets
+2. **Machine-readable output** - JSON for IDEs and AI (future)
 3. **Consistent interface** - Same flags for all commands
-4. **Exit codes** - Proper status codes for scripting
+4. **Exit codes** - Proper status codes for scripting (future)
+
+---
+
+## Implementation Status
+
+### What's Ready
+
+- ✅ Source snippet formatter (`syntax/source_snippet.gleam`)
+- ✅ Error reporter module (`syntax/error_reporter.gleam`)
+- ✅ Parse error to diagnostic conversion
+- ✅ Error AST nodes for graceful recovery
+- ✅ All 401 tests passing
+
+### Implementation Plan
+
+1. **Phase 1**: Basic error display with source snippets (parse errors)
+2. **Phase 2**: Type error display with source snippets
+3. **Phase 3**: Multi-span error support (type mismatches)
+4. **Phase 4**: Error codes and suggestions
+5. **Phase 5**: JSON output format
+6. **Phase 6**: Exit codes
+
+### Current Focus: Phase 1 ✅ COMPLETE
+
+Display parse errors with source snippets in the CLI.
+
+**Example Output:**
+```
+error[E0001]: Unexpected token
+  ┌─ test_error.core.tao:1:1
+1 │ {{{
+    ^
+2 │
+  = note: Expected: valid alternative
+  = note: Got: none
+  = hint: Check syntax near this position
+```
+
+**Implementation:**
+- ✅ Error reporter integration in `compiler_bootstrap.gleam`
+- ✅ Source snippet display for parse errors
+- ✅ Error codes (E0001 for parse errors)
+- ✅ Notes and hints display
+- ✅ All 401 tests passing
 
 ---
 

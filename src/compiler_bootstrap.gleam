@@ -371,10 +371,10 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
       }
 
       // Run type checker
-      let #(type_result, _type_annotation, type_state) = infer(initial_state, parse_result.ast)
+      let #(_type_result, _type_annotation, type_state) = infer(initial_state, parse_result.ast)
 
       case type_state.errors {
-        [err, ..] -> {
+        [_err, ..] -> {
           // Report type errors
           io.println("✗ Type error:")
           type_state.errors |> list.each(fn(e) { io.println(format_type_error(e)) })
