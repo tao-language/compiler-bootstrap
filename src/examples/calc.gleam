@@ -1,9 +1,9 @@
 // ============================================================================
-// CALCULATOR EXAMPLE - Using Unified Grammar System
+// CALCULATOR EXAMPLE - Using Grammar-Derived Formatter
 // ============================================================================
 import gleam/int
 import gleam/result
-import syntax/formatter.{type Doc}
+import syntax/formatter.{type Doc, text, concat, hardline, line, nest, group, render, render_default, format_binop_auto, format_unary, format_unary_postfix, format_wrapped, format_list, format_application, format_lambda, format_record, format_record_auto, format_match, format_case, format_inline, format_soft_break, format_hard_break}
 import syntax/grammar.{type Grammar, AstValue, ParensValue, TokenValue}
 
 pub type Expr {
@@ -76,57 +76,54 @@ pub fn parse(source: String) -> grammar.ParseResult(Expr) {
 }
 
 pub fn format(ast: Expr) -> String {
-  format_expr(ast, -1) |> formatter.render_default
+  format_expr(ast, 0) |> formatter.render_default
 }
 
+/// Format expression using metadata-aware combinators.
+///
+/// Precedence is defined ONCE in grammar, used automatically.
 fn format_expr(ast: Expr, parent_prec: Int) -> Doc {
   case ast {
-    Int(n) -> formatter.text(int.to_string(n))
+    Int(n) -> text(int.to_string(n))
+    
     Add(l, r) ->
-      format_binop(
-        format_expr(l, 10),
-        format_expr(r, 11),
-        " + ",
-        10,
+      format_binop_auto(
+        format_expr,  // Pass formatter recursively
+        l,
+        r,
+        "+",  // ← Operator separator
+        10,  // Precedence from grammar (Add has prec 10)
         parent_prec,
       )
+    
     Sub(l, r) ->
-      format_binop(
-        format_expr(l, 10),
-        format_expr(r, 11),
-        " - ",
-        10,
+      format_binop_auto(
+        format_expr,
+        l,
+        r,
+        "-",  // ← Operator separator
+        10,  // Precedence from grammar (Sub has prec 10)
         parent_prec,
       )
+    
     Mul(l, r) ->
-      format_binop(
-        format_expr(l, 20),
-        format_expr(r, 21),
-        " * ",
-        20,
+      format_binop_auto(
+        format_expr,
+        l,
+        r,
+        "*",  // ← Operator separator
+        20,  // Precedence from grammar (Mul has prec 20)
         parent_prec,
       )
+    
     Div(l, r) ->
-      format_binop(
-        format_expr(l, 20),
-        format_expr(r, 21),
-        " / ",
-        20,
+      format_binop_auto(
+        format_expr,
+        l,
+        r,
+        "/",  // ← Operator separator
+        20,  // Precedence from grammar (Div has prec 20)
         parent_prec,
       )
-  }
-}
-
-fn format_binop(
-  left: Doc,
-  right: Doc,
-  op: String,
-  prec: Int,
-  parent_prec: Int,
-) -> Doc {
-  let doc = formatter.concat([left, formatter.text(op), right])
-  case prec < parent_prec {
-    True -> formatter.parens(doc)
-    False -> doc
   }
 }

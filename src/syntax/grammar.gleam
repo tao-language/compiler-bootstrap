@@ -861,11 +861,85 @@ pub fn dummy_span() -> Span {
 }
 
 /// Create a span from a single position
-/// 
+///
 /// Use this when you have a specific line/column but no end position.
 /// Example: reporting an error at a specific location
 pub fn mk_span(file: String, line: Int, col: Int) -> Span {
   Span(file, line, col, line, col)
+}
+
+// ============================================================================
+// FORMATTER METADATA EXTRACTION
+// ============================================================================
+/// Extract operator precedence table from grammar.
+///
+/// Returns a function that can lookup precedence by operator name.
+///
+/// Example:
+/// ```gleam
+/// let get_prec = grammar.extract_precedence_table(calc_grammar())
+/// get_prec("add")  // Ok(10)
+/// get_prec("mul")  // Ok(20)
+/// ```
+pub fn extract_precedence_table(
+  grammar: Grammar(a),
+) -> fn(String) -> Result(Int, Nil) {
+  let operators = grammar.operators
+  
+  fn(op_name: String) -> Result(Int, Nil) {
+    case dict.get(operators, op_name) {
+      Ok(op) -> Ok(op.precedence)
+      Error(_) -> Error(Nil)
+    }
+  }
+}
+
+/// Extract operator layout table from grammar.
+///
+/// Returns a function that can lookup layout by operator name.
+///
+/// Example:
+/// ```gleam
+/// let get_layout = grammar.extract_layout_table(calc_grammar())
+/// get_layout("add")  // Ok(OperatorLayout(" + ", False, False, False))
+/// ```
+pub fn extract_layout_table(
+  grammar: Grammar(a),
+) -> fn(String) -> Result(OperatorLayout, Nil) {
+  let operators = grammar.operators
+  
+  fn(op_name: String) -> Result(OperatorLayout, Nil) {
+    case dict.get(operators, op_name) {
+      Ok(op) -> Ok(op.layout)
+      Error(_) -> Error(Nil)
+    }
+  }
+}
+
+/// Extract constructor precedence from grammar.
+///
+/// Returns a function that can lookup precedence by constructor name.
+/// Requires a mapping from constructor names to operator names.
+///
+/// Example:
+/// ```gleam
+/// let ctor_map = dict.from_list([#("Add", "add"), #("Mul", "mul")])
+/// let get_prec = grammar.extract_constructor_precedence(calc_grammar(), ctor_map)
+/// get_prec("Add")  // Ok(10)
+/// get_prec("Mul")  // Ok(20)
+/// ```
+pub fn extract_constructor_precedence(
+  grammar: Grammar(a),
+  constructor_map: Dict(String, String),
+) -> fn(String) -> Result(Int, Nil) {
+  let precedence_table = extract_precedence_table(grammar)
+  
+  fn(ctor_name: String) -> Result(Int, Nil) {
+    case dict.get(constructor_map, ctor_name) {
+      Ok(op_name) -> precedence_table(op_name)
+      Error(_) -> Error(Nil)
+    }
+  }
 }
 
 // ============================================================================
