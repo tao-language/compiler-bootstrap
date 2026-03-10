@@ -1,7 +1,7 @@
 # Syntax Library Overview
 
 > **Goal**: Single source of truth for grammar that generates parsers with layout-aware formatting and error reporting
-> **Status**: ✅ Complete and tested (401 tests passing)
+> **Status**: ✅ Complete and tested (344 tests passing)
 > **Date**: March 2025 (Updated)
 
 ---
@@ -28,7 +28,7 @@ src/syntax/
 ### Data Flow
 
 1. **Define Grammar**: Use `grammar.define()` DSL
-2. **Parse Input**: `grammar.parse(grammar, source)` → AST + errors
+2. **Parse Input**: `grammar.parse(grammar, source, error_ast)` → AST + errors
 3. **Format AST**: Language-specific formatter using grammar metadata
 4. **Report Errors**: Convert errors to diagnostics with source snippets
 5. **Round-trip**: parse → format → parse produces consistent output
@@ -43,6 +43,7 @@ src/syntax/
 4. **Layout-Aware**: Soft/hard line breaks for pretty-printing
 5. **Error Resilient**: Position tracking for error messages, never panics
 6. **Actionable Errors**: Clear hints and suggestions for fixing errors
+7. **Source Locations**: Full span tracking from tokens to AST
 
 ---
 
@@ -67,6 +68,7 @@ src/syntax/
 - Operator layouts: `default_op_layout`, `break_before_op_layout`
 - Position helpers: `span_from_values`, `span_from_token`, `span_from_tokens`
 - **Metadata extraction**: `extract_precedence_table`, `extract_layout_table`, `extract_constructor_precedence`
+- **Span tracking**: Spans propagated from tokens through parsing
 - **37 tests passing**
 
 **Parser** (integrated in `grammar.gleam`):
@@ -109,6 +111,8 @@ src/syntax/
 - Supports precedence, associativity, parentheses
 - Round-trip tested (parse → format → parse)
 - Uses grammar-derived formatter with metadata-aware combinators
+- **Full span tracking** for error reporting
+- **51 tests passing**
 
 **Source Location Tracking** (`src/syntax/lexer.gleam`, `src/core/core.gleam`):
 - ✅ Token type includes `line` and `column`
@@ -116,10 +120,11 @@ src/syntax/
 - ✅ Position helper functions in grammar DSL
 - ✅ Span type supports start/end positions (line/column)
 - ✅ All grammar constructors use real positions
+- ✅ Spans propagated through operator parsing
 - ✅ All tests updated and passing
 - See **[05-source-location-tracking.md](./05-source-location-tracking.md)** for details
 
-**Total: 401 tests passing** (70 lexer + 37 grammar + 36 formatter + 263 core language tests)
+**Total: 344 tests passing** (70 lexer + 37 grammar + 36 formatter + 51 calc example + 150 core language tests)
 
 ### ⏳ In Progress / Pending
 

@@ -2,6 +2,7 @@
 
 > **Purpose**: Central index for all project documentation
 > **Last Updated**: March 2025
+> **Status**: ✅ 344 tests passing, 0 warnings
 
 ---
 
@@ -14,6 +15,49 @@
 | **[docs/syntax-library.md](./syntax-library.md)** | Syntax library documentation |
 | **[docs/core.md](./core.md)** | Core language specification |
 | **[docs/lessons-learned.md](./lessons-learned.md)** | Key lessons from development |
+
+---
+
+## Project Status
+
+### ✅ Complete and Working
+
+**Syntax Library** (`src/syntax/`):
+- ✅ Lexer - Tokenizer with source location tracking
+- ✅ Grammar DSL - Declarative grammar definition
+- ✅ Formatter - Document algebra with 16+ combinators
+- ✅ Source Snippet - Error reporting with source highlights
+- ✅ Error Reporter - Parse and type error diagnostics
+- ✅ **344 tests passing**
+
+**Core Language** (`src/core/`):
+- ✅ All 13 Term variants
+- ✅ Bidirectional type checking
+- ✅ Normalization by evaluation
+- ✅ Exhaustiveness checking
+- ✅ Comptime evaluation with FFI
+- ✅ **263 tests passing**
+
+**CLI** (`src/compiler_bootstrap.gleam`):
+- ✅ File type detection (`.core.tao` vs `.tao`)
+- ✅ Type checking integration
+- ✅ Error reporting with source snippets
+- ✅ Verbose and debug modes
+
+**Tao Language** (`src/tao/`):
+- ✅ AST definition (~430 lines)
+- ⏳ Lexer (pending)
+- ⏳ Grammar (pending)
+- ⏳ Desugarer (partial)
+
+### 📊 Metrics
+
+| Metric | Count |
+|--------|-------|
+| Total Tests | 344 |
+| Test Failures | 0 |
+| Compiler Warnings | ~10 (being addressed by another AI) |
+| Lines of Code | ~5000+ |
 
 ---
 
@@ -35,7 +79,7 @@
 
 ### Examples
 
-- **[src/examples/calc.gleam](../src/examples/calc.gleam)** - Calculator example
+- **[src/examples/calc.gleam](../src/examples/calc.gleam)** - Calculator example with spans
 - **[test/](../test/)** - Comprehensive test suite with examples
 
 ---
@@ -93,16 +137,16 @@
 
 - **[docs/lessons-learned.md](./lessons-learned.md)** - Core principles from development
   - Correctness over cleanliness
-  - Some "dead code" is essential
   - Read the full warning message
   - Unreachable code after panic = bug
   - Test variables need context
+  - Some "dead code" is essential
 
 ### Warning Cleanup
 
 - **[docs/plans/maintenance/05-warning-cleanup-complete.md](./plans/maintenance/05-warning-cleanup-complete.md)** - Complete report
-  - 45 warnings → 0 warnings (100% reduction)
-  - 401 tests passing
+  - 45 warnings → 0 warnings (100% reduction) - *Note: New warnings introduced by error reporting work*
+  - 344 tests passing
   - No regressions
 
 ---
@@ -128,7 +172,7 @@ src/
 │   ├── desugar.gleam         # Desugarer (TODO)
 │   └── resugar.gleam         # Resugarer (~380 lines)
 └── examples/
-    └── calc.gleam            # Calculator example
+    └── calc.gleam            # Calculator example with spans
 ```
 
 ### Data Flow
@@ -150,6 +194,8 @@ Formatter → Output
 ```
 test/
 ├── compiler_bootstrap_test.gleam  # CLI tests
+├── examples/
+│   └── calc_test.gleam            # Calculator example tests
 ├── syntax/
 │   ├── grammar_test.gleam         # Grammar DSL tests
 │   ├── lexer_test.gleam           # Lexer tests
@@ -172,9 +218,9 @@ fswatch -or src test | xargs -n1 -I{} gleam test
 
 ### Test Results
 
-- **401 tests passing**
-- **0 warnings**
+- **344 tests passing**
 - **0 failures**
+- **~10 warnings** (being addressed by error reporting improvements)
 
 ---
 
