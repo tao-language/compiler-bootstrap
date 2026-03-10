@@ -470,17 +470,13 @@ pub fn op_with_layout(
 
 pub fn parse(grammar: Grammar(a), source: String) -> ParseResult(a) {
   let tokens = lexer.tokenize(source)
-  case dict.get(grammar.rules, grammar.start) {
-    Ok(rule) -> {
-      case parse_rule(grammar, rule, tokens, 0) {
-        Ok(#(ast, _)) -> ParseResult(ast: ast, errors: [])
-        Error(_err) -> panic as "Parse failed"
-      }
-    }
-    Error(_) ->
-      ParseResult(ast: panic as "No start rule", errors: [
-        ParseError(position: 0, expected: "start rule", got: "none"),
-      ])
+  let rule = case dict.get(grammar.rules, grammar.start) {
+    Ok(rule) -> rule
+    Error(_) -> panic as "Grammar missing start rule"
+  }
+  case parse_rule(grammar, rule, tokens, 0) {
+    Ok(#(ast, _)) -> ParseResult(ast: ast, errors: [])
+    Error(_) -> panic as "Parse failed"
   }
 }
 

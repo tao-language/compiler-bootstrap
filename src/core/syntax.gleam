@@ -158,18 +158,18 @@ fn named_to_de_bruijn_loop(term: NamedTerm, env: List(String)) -> Term {
 /// Convert NamedCase to Case with De Bruijn indices.
 fn named_case_to_de_bruijn(named_case: NamedCase, env: List(String)) -> Case {
   let NCase(pattern, body, span) = named_case
-  let pattern_db = named_pattern_to_de_bruijn(pattern, env)
+  let pattern_db = named_pattern_to_de_bruijn(pattern)
   let body_db = named_to_de_bruijn_loop(body, env)
   Case(pattern_db, body_db, span)
 }
 
 /// Convert NamedPattern to Pattern with De Bruijn indices.
-/// Note: env is passed recursively for nested patterns (not used in base cases)
-fn named_pattern_to_de_bruijn(pattern: NamedPattern, env: List(String)) -> Pattern {
+/// Note: Patterns don't bind variables, so no environment needed.
+fn named_pattern_to_de_bruijn(pattern: NamedPattern) -> Pattern {
   case pattern {
     NPAny(_span) -> PAny
     NPAs(inner, name, _span) -> {
-      let inner_db = named_pattern_to_de_bruijn(inner, env)
+      let inner_db = named_pattern_to_de_bruijn(inner)
       PAs(inner_db, name)
     }
     NPTyp(level, _span) -> PTyp(level)
@@ -178,12 +178,12 @@ fn named_pattern_to_de_bruijn(pattern: NamedPattern, env: List(String)) -> Patte
     NPRcd(fields, _span) -> {
       let fields_db = fields |> list.map(fn(f) {
         let #(name, pat) = f
-        #(name, named_pattern_to_de_bruijn(pat, env))
+        #(name, named_pattern_to_de_bruijn(pat))
       })
       PRcd(fields_db)
     }
     NPCtr(tag, arg, _span) -> {
-      let arg_db = named_pattern_to_de_bruijn(arg, env)
+      let arg_db = named_pattern_to_de_bruijn(arg)
       PCtr(tag, arg_db)
     }
   }
@@ -1014,7 +1014,7 @@ fn format_term(term: Term, parent_prec: Int, bindings: List(String)) -> formatte
         let Case(pattern, body, _) = c
         formatter.concat([
           formatter.text("  | "),
-          format_pattern(pattern, bindings),
+          format_pattern(pattern),
           formatter.text(" -> "),
           format_term(body, 70, bindings),
         ])
@@ -1052,14 +1052,13 @@ fn format_term(term: Term, parent_prec: Int, bindings: List(String)) -> formatte
 }
 
 /// Format a pattern.
-/// Note: bindings is passed recursively for nested patterns (compiler warning is false positive)
-fn format_pattern(pattern: Pattern, bindings: List(String)) -> formatter.Doc {
+fn format_pattern(pattern: Pattern) -> formatter.Doc {
   case pattern {
     PAny -> formatter.text("_")
     PAs(inner, name) -> formatter.concat([
       formatter.text(name),
       formatter.text(" @ "),
-      format_pattern(inner, bindings),
+      format_pattern(inner),
     ])
     PTyp(level) -> {
       case level {
@@ -1085,7 +1084,7 @@ fn format_pattern(pattern: Pattern, bindings: List(String)) -> formatter.Doc {
         formatter.concat([
           formatter.text(name),
           formatter.text(": "),
-          format_pattern(pat, bindings),
+          format_pattern(pat),
         ])
       })
       formatter.concat([
@@ -1098,7 +1097,7 @@ fn format_pattern(pattern: Pattern, bindings: List(String)) -> formatter.Doc {
       formatter.text("#"),
       formatter.text(tag),
       formatter.text("("),
-      format_pattern(arg, bindings),
+      format_pattern(arg),
       formatter.text(")"),
     ])
   }
