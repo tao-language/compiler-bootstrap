@@ -352,8 +352,81 @@ fn tokenize_operator(state: LexerState) -> LexerState {
       let start_line = state.line
       let start_column = state.column
 
-      // Check for multi-character operators first
-      let next_char = peek_next_char(state)
+      // Check for % keywords first (%match, %call, %comptime)
+      case char == "%" {
+        True -> tokenize_percent_keyword(state)
+        False -> tokenize_other_operator(state, start_pos, start_line, start_column)
+      }
+    }
+    None -> state
+  }
+}
+
+fn tokenize_percent_keyword(state: LexerState) -> LexerState {
+  let start_pos = state.pos
+  let start_line = state.line
+  let start_column = state.column
+  
+  // Check what follows % by looking at the next characters
+  case peek_n_chars(state, 5) {  // Check for "%match"
+    "%match" -> {
+      // %match
+      let state = advance(state)  // %
+      let state = advance_n(state, 5)  // match
+      let end_pos = state.pos
+      let token = Token(kind: "PercentMatch", value: "%match", start: start_pos, end: end_pos, line: start_line, column: start_column)
+      LexerState(..state, tokens: [token, ..state.tokens])
+    }
+    _ -> {
+      case peek_n_chars(state, 5) {  // Check for "%call"
+        "%call" -> {
+          // %call
+          let state = advance(state)  // %
+          let state = advance_n(state, 4)  // call
+          let end_pos = state.pos
+          let token = Token(kind: "PercentCall", value: "%call", start: start_pos, end: end_pos, line: start_line, column: start_column)
+          LexerState(..state, tokens: [token, ..state.tokens])
+        }
+        _ -> {
+          case peek_n_chars(state, 9) {  // Check for "%comptime"
+            "%comptime" -> {
+              // %comptime
+              let state = advance(state)  // %
+              let state = advance_n(state, 8)  // comptime
+              let end_pos = state.pos
+              let token = Token(kind: "PercentComptime", value: "%comptime", start: start_pos, end: end_pos, line: start_line, column: start_column)
+              LexerState(..state, tokens: [token, ..state.tokens])
+            }
+            _ -> {
+              // Just %
+              let state = advance(state)
+              let end_pos = state.pos
+              let token = Token(kind: "Percent", value: "%", start: start_pos, end: end_pos, line: start_line, column: start_column)
+              LexerState(..state, tokens: [token, ..state.tokens])
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn peek_n_chars(state: LexerState, n: Int) -> String {
+  string.slice(state.source, state.pos, n)
+}
+
+fn advance_n(state: LexerState, n: Int) -> LexerState {
+  case n <= 0 {
+    True -> state
+    False -> advance_n(advance(state), n - 1)
+  }
+}
+
+fn tokenize_other_operator(state: LexerState, start_pos: Int, start_line: Int, start_column: Int) -> LexerState {
+  // Check for multi-character operators first
+  let next_char = peek_next_char(state)
+  case peek_char(state) {
+    Some(char) -> {
       case char == "-" && next_char == Some(">") {
         True -> {
           // Arrow: ->
@@ -424,20 +497,20 @@ fn get_operator_kind(char: String) -> String {
     "=" -> "Equal"
     "$" -> "Dollar"
     "#" -> "Hash"
+    "%" -> "Percent"
+    "~" -> "Tilde"
+    "|" -> "Pipe"
     "_" -> "Underscore"
     "@" -> "At"
     "+"
     | "-"
     | "*"
     | "/"
-    | "%"
     | "!"
-    | "|"
     | ">"
     | "<"
     | "&"
-    | "^"
-    | "~" -> "Operator"
+    | "^" -> "Operator"
     "\\" -> "Backslash"
     _ -> "Operator"
   }

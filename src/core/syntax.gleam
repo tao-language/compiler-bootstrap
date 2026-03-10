@@ -26,6 +26,7 @@ import core/core.{
 import gleam/float
 import gleam/int
 import gleam/list
+import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 import syntax/formatter
@@ -276,12 +277,12 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
   |> grammar.token("Question")
   |> grammar.token("Underscore")
   |> grammar.token("At")
-  // Keywords
-  |> grammar.keyword("match")
-  |> grammar.keyword("with")
-  |> grammar.keyword("returning")
-  |> grammar.keyword("call")
-  |> grammar.keyword("comptime")
+  |> grammar.token("Percent")
+  |> grammar.token("PercentMatch")
+  |> grammar.token("PercentCall")
+  |> grammar.token("PercentComptime")
+  |> grammar.token("Tilde")
+  |> grammar.token("Pipe")
   // Main expression rule (lowest precedence first)
   |> grammar.rule("Expr", [
     grammar.alt(grammar.ref("Lambda"), unwrap, fn(_, p) { formatter.text("") }),
@@ -359,27 +360,28 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
       fn(v, p) { format_value(v, p) },
     ),
   ])
-  // Match: match arg with motive returning cases
+  // Match: %match arg ~ motive { | pat -> body ... }
   |> grammar.rule("Match", [
     grammar.alt(
       grammar.seq([
-        grammar.keyword_pattern("match"),
+        grammar.token_pattern("PercentMatch"),
         grammar.ref("Expr"),
-        grammar.keyword_pattern("with"),
+        grammar.token_pattern("Tilde"),
         grammar.ref("Expr"),
-        grammar.keyword_pattern("returning"),
+        grammar.token_pattern("LBrace"),
         grammar.ref("Cases"),
+        grammar.token_pattern("RBrace"),
       ]),
       make_match,
       fn(v, p) { format_value(v, p) },
     ),
   ])
-  // Call: call name(args)
+  // Call: %call name(args)
   |> grammar.rule("Call", [
     grammar.alt(
       grammar.seq([
-        grammar.keyword_pattern("call"),
-        grammar.token_pattern("Ident"),
+        grammar.token_pattern("PercentCall"),
+        grammar.ref("Atom"),  // Function name (can be identifier or field access)
         grammar.token_pattern("LParen"),
         grammar.ref("ArgList"),
         grammar.token_pattern("RParen"),
@@ -388,14 +390,12 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
       fn(v, p) { format_value(v, p) },
     ),
   ])
-  // Comptime: comptime { term }
+  // Comptime: %comptime term
   |> grammar.rule("Comptime", [
     grammar.alt(
       grammar.seq([
-        grammar.keyword_pattern("comptime"),
-        grammar.token_pattern("LBrace"),
+        grammar.token_pattern("PercentComptime"),
         grammar.ref("Expr"),
-        grammar.token_pattern("RBrace"),
       ]),
       make_comptime,
       fn(v, p) { format_value(v, p) },
@@ -515,28 +515,16 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
       fn(_, _) { formatter.text("") },
     ),
   ])
-  // Cases: pattern -> body, ...
+  // Cases: single | pattern -> body (multiple cases not yet supported)
   |> grammar.rule("Cases", [
-    // Single case: pattern -> body
     grammar.alt(
       grammar.seq([
+        grammar.token_pattern("Pipe"),
         grammar.ref("Pattern"),
         grammar.token_pattern("Arrow"),
         grammar.ref("Expr"),
       ]),
-      make_single_case,
-      fn(_, _) { formatter.text("") },
-    ),
-    // Multiple cases: pattern -> body, cases...
-    grammar.alt(
-      grammar.seq([
-        grammar.ref("Pattern"),
-        grammar.token_pattern("Arrow"),
-        grammar.ref("Expr"),
-        grammar.token_pattern("Comma"),
-        grammar.ref("Cases"),
-      ]),
-      make_case_cons,
+      make_single_case_list,
       fn(_, _) { formatter.text("") },
     ),
   ])
@@ -778,7 +766,7 @@ fn make_field_cons(values) -> ParseValue {
 // Match, Call, Comptime constructors
 fn make_match(values) -> ParseValue {
   case values {
-    [_, AstValue(AsTerm(arg)), _, AstValue(AsTerm(motive)), _, AstValue(AsCases(cases))] ->
+    [_, _, AstValue(AsTerm(arg)), _, AstValue(AsTerm(motive)), _, AstValue(AsCases(cases)), _] ->
       AsTerm(NMatch(arg, motive, cases, get_span(arg)))
     _ -> panic as "Expected match expression"
   }
@@ -786,7 +774,7 @@ fn make_match(values) -> ParseValue {
 
 fn make_call(values) -> ParseValue {
   case values {
-    [_, TokenValue(name_token), _, _, AstValue(AsArgs(args)), _] ->
+    [_, _, TokenValue(name_token), _, _, AstValue(AsArgs(args)), _] ->
       AsTerm(NCall(name_token.value, args, grammar.span_from_token(name_token, "input")))
     _ -> panic as "Expected call expression"
   }
@@ -794,28 +782,26 @@ fn make_call(values) -> ParseValue {
 
 fn make_comptime(values) -> ParseValue {
   case values {
-    [_, _, AstValue(AsTerm(term)), _] ->
+    [_, _, TokenValue(_), AstValue(AsTerm(term))] ->
       AsTerm(NComptime(term, grammar.span_from_token(values |> get_first_token, "input")))
     _ -> panic as "Expected comptime expression"
   }
 }
 
 // Cases constructors
-fn make_single_case(values) -> ParseValue {
+fn make_single_case_list(values) -> ParseValue {
   case values {
-    [AstValue(AsPattern(pattern)), _, AstValue(AsTerm(body))] ->
+    [_, AstValue(AsPattern(pattern)), _, AstValue(AsTerm(body))] ->
       AsCases([NCase(pattern, body, get_span(body))])
     _ -> panic as "Expected single case"
   }
 }
 
-fn make_case_cons(values) -> ParseValue {
-  case values {
-    [AstValue(AsPattern(pattern)), _, AstValue(AsTerm(body)), _, AstValue(AsCases(rest))] ->
-      AsCases([NCase(pattern, body, get_span(body)), ..rest])
-    _ -> panic as "Expected case list"
-  }
-}
+// Multiple cases support (future):
+// fn make_cases_from_list(values) -> ParseValue { ... }
+// fn parse_rest_cases(values: List(grammar.Value(ParseValue))) -> List(NamedCase) { ... }
+// fn make_single_case(values) -> ParseValue { ... }
+// fn make_case_cons(values) -> ParseValue { ... }
 
 // Pattern constructors
 fn make_pattern_any(values) -> ParseValue {
@@ -1043,25 +1029,27 @@ fn format_term(term: Term, parent_prec: Int, bindings: List(String)) -> formatte
       let case_docs = cases |> list.map(fn(c) {
         let Case(pattern, body, _) = c
         formatter.concat([
+          formatter.text("  | "),
           format_pattern(pattern, bindings),
           formatter.text(" -> "),
           format_term(body, 70, bindings),
         ])
       })
       let inner = formatter.concat([
-        formatter.text("match "),
+        formatter.text("%match "),
         format_term(arg, 85, bindings),
-        formatter.text(" with "),
+        formatter.text(" ~ "),
         format_term(motive, 85, bindings),
-        formatter.text(" returning "),
-        list.intersperse(case_docs, formatter.text(", ")) |> formatter.concat,
+        formatter.text(" {\n"),
+        list.intersperse(case_docs, formatter.text("\n")) |> formatter.concat,
+        formatter.text("\n}"),
       ])
       wrap_parens(inner, 40 < parent_prec)
     }
     Call(name, args) -> {
       let arg_docs = args |> list.map(fn(a) { format_term(a, 85, bindings) })
       let inner = formatter.concat([
-        formatter.text("call "),
+        formatter.text("%call "),
         formatter.text(name),
         formatter.text("("),
         list.intersperse(arg_docs, formatter.text(", ")) |> formatter.concat,
@@ -1071,9 +1059,8 @@ fn format_term(term: Term, parent_prec: Int, bindings: List(String)) -> formatte
     }
     Comptime(term) -> {
       let inner = formatter.concat([
-        formatter.text("comptime { "),
-        format_term(term, -1, bindings),
-        formatter.text(" }"),
+        formatter.text("%comptime "),
+        format_term(term, 50, bindings),
       ])
       wrap_parens(inner, 50 < parent_prec)
     }
