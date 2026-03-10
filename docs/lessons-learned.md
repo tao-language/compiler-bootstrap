@@ -3,6 +3,7 @@
 > **Purpose**: Capture hard-won insights from building the Compiler Bootstrap project
 > **Audience**: Future maintainers, contributors, and AI assistants
 > **Status**: Living document - update as we learn
+> **Last Updated**: March 2025 (Warning cleanup: 45 → 0)
 
 ---
 
@@ -14,7 +15,7 @@
 
 **Example**: We had 45 compiler warnings. After careful analysis:
 - 20 were safe to fix (unused stub parameters)
-- 1 was a false positive (`env` parameter passed recursively)
+- 2 were genuinely unused parameters (removed entirely)
 - 5 test variables looked unused but were actually used in case expressions
 - **Attempting to "fix" test variables broke a test**
 
@@ -79,45 +80,79 @@ In dependent type theory, types ARE values (they inhabit universes). This alias 
 
 ---
 
-### 4. Recursive Parameters Look Unused
+### 4. Read The Full Warning Message
 
-**Lesson**: Parameters passed recursively but not used in base cases trigger false positives.
+**Lesson**: Gleam's warnings are smarter than they first appear.
 
-**Example**:
+**Example**: We initially thought `env` parameter was essential:
 ```gleam
+// ❌ Wrong analysis - added comment but kept parameter
+/// Note: env is passed recursively for nested patterns (not used in base cases)
 fn named_pattern_to_de_bruijn(pattern: NamedPattern, env: List(String)) -> Pattern {
-  case pattern {
-    NPAny(_span) -> PAny  // env not used - WARNING!
-    NPAs(inner, name, _span) -> {
-      let inner_db = named_pattern_to_de_bruijn(inner, env)  // ← env USED here!
-      PAs(inner_db, name)
-    }
-  }
-}
 ```
 
-The `env` parameter is essential - it's threaded through recursive calls for nested patterns.
+But the full warning said:
+```
+This argument is passed to the function when recursing, but it's never used
+for anything.
+```
 
-**Takeaway**: Compiler can't see that a parameter is used indirectly via recursion.
+**Key insight**: "Never used for anything" means it's not consulted in ANY branch - not even passed to other functions. It's just being passed to itself pointlessly.
 
-**Rule**: For recursive functions:
-1. Check if parameter is used in ANY branch
-2. Check if parameter is passed to recursive calls
-3. If yes to both: it's a false positive, add comment explaining
+**Takeaway**: There's a difference between:
+- **False positive**: Parameter used in some branches (like `env` in pattern matching with binders)
+- **Genuinely unused**: Parameter passed recursively but never consulted anywhere
+
+**Rule**: Read the ENTIRE warning message. Gleam distinguishes between:
+- "This variable is never used" → Safe to prefix with `_`
+- "This argument is passed when recursing, but never used for anything" → Safe to REMOVE entirely
 
 ---
 
-### 5. Test Variables Need Context
+### 5. Unreachable Code After Panic Indicates a Bug
+
+**Lesson**: Unreachable code warnings after `panic` often indicate contradictory logic.
+
+**Example**:
+```gleam
+// ❌ Wrong: Both panicking AND returning a value
+Error(_) ->
+  ParseResult(ast: panic as "No start rule", errors: [
+    ParseError(position: 0, expected: "start rule", got: "none"),
+  ])
+```
+
+This tries to both panic and return a `ParseResult` - the return is unreachable.
+
+**Fix**:
+```gleam
+// ✅ Right: Panic is the return value
+let rule = case dict.get(grammar.rules, grammar.start) {
+  Ok(rule) -> rule
+  Error(_) -> panic as "Grammar missing start rule"
+}
+```
+
+**Takeaway**: Unreachable code after panic means you're trying to do two incompatible things.
+
+**Rule**: When you see "unreachable code after panic":
+1. Check if you're both panicking and returning
+2. Restructure so panic IS the return value of that branch
+3. Don't wrap panic in constructors
+
+---
+
+### 6. Test Variables Need Context
 
 **Lesson**: Test variables that look unused may be used in pattern matching.
 
 **Example that broke**:
 ```gleam
 // ❌ This broke the test:
-let #(_val, _s) = c.comptime_eval(state, term)
+let #(_val, _s) = comptime_eval(state, term)  // val used below!
 
 // ✅ The actual usage:
-let #(val, s) = c.comptime_eval(state, term)
+let #(val, s) = comptime_eval(state, term)
 case val {  // ← val used here!
   VCall(name, args) -> { ... }
 }
@@ -133,7 +168,7 @@ case val {  // ← val used here!
 
 ---
 
-### 6. Documentation Strategy Matters
+### 7. Documentation Strategy Matters
 
 **Lesson**: Verbose inline comments clutter code; separate detailed docs are better.
 
@@ -166,7 +201,7 @@ Var(index: Int)
 
 ---
 
-### 7. Gleam Has No `if`
+### 8. Gleam Has No `if`
 
 **Lesson**: Gleam only has `case` expressions - this is by design for explicit pattern matching.
 
@@ -196,7 +231,7 @@ case condition {
 
 ---
 
-### 8. Compiler Warnings Have Blind Spots
+### 9. Compiler Warnings Have Blind Spots
 
 **Lesson**: The compiler can't see:
 - Indirect usage (via recursion, higher-order functions)
@@ -218,8 +253,10 @@ case condition {
 
 1. **Spine structures store deferred computation** - Don't remove "unused" spine constructors
 2. **Neutral terms are critical for NbE** - They represent "stuck" computations
-3. **De Bruijn conversion needs environment threading** - `env` parameters are essential
+3. **De Bruijn conversion needs environment threading** - `env` parameters are essential (when actually used!)
 4. **Stubs are intentional** - Formatter stubs returning placeholder text are placeholders, not bugs
+5. **Pattern formatting doesn't need bindings** - Patterns don't bind variables, only match them
+6. **Warning cleanup is achievable** - We went from 45 warnings to 0!
 
 ### Testing
 
@@ -233,6 +270,14 @@ case condition {
 1. **Tests are documentation** - They should teach how to use the API
 2. **Link, don't duplicate** - Code comments link to `docs/`, not repeat content
 3. **Living documents** - Update lessons learned as you learn
+4. **Document false positives** - If a warning is genuinely a false positive, comment why
+
+### Warning Cleanup
+
+1. **Read the full warning** - Gleam provides context about WHY something is unused
+2. **Distinguish false positives from real issues** - Some parameters really are useless
+3. **Unreachable code after panic = bug** - Indicates contradictory logic
+4. **Measure progress** - Track warning count reduction (we went from 45 to 0!)
 
 ---
 
@@ -249,6 +294,7 @@ case condition {
 1. Reference this document when suggesting changes
 2. Be extra cautious with "unused" code in compilers
 3. Always read context before applying fixes
+4. Read the FULL warning message, not just the first line
 
 ### For Future Maintainers
 
@@ -263,7 +309,9 @@ case condition {
 - **[src/README.md](../src/README.md)** - Code style guide
 - **[test/README.md](../test/README.md)** - Testing guide
 - **[docs/plans/maintenance/](./plans/maintenance/)** - Maintenance plans
-- **[docs/core.md](./core.md)** - Core language specification
+- **[docs/plans/maintenance/04-unused-variable-safety-review.md](./plans/maintenance/04-unused-variable-safety-review.md)** - Safety-critical review
+- **[docs/plans/maintenance/03-warning-analysis.md](./plans/maintenance/03-warning-analysis.md)** - Warning categorization
+- **[docs/plans/maintenance/05-warning-cleanup-complete.md](./plans/maintenance/05-warning-cleanup-complete.md)** - Final cleanup report
 
 ---
 
@@ -271,9 +319,11 @@ case condition {
 
 | Date | Lesson | Context |
 |------|--------|---------|
+| 2025-03 | Read full warning message | `env` parameter looked essential but was genuinely unused |
+| 2025-03 | Unreachable code = bug | Panic + return is contradictory |
+| 2025-03 | Warning cleanup complete | 45 → 0 warnings (100% reduction) |
 | 2025-03 | Don't blindly fix warnings | Test variables broke test |
 | 2025-03 | EMatch is essential | Looked unused but critical for NbE |
 | 2025-03 | Type aliases can be semantic | `Type = Value` documents type theory |
-| 2025-03 | Recursive parameters look unused | `env` parameter false positive |
 | 2025-03 | Documentation belongs in docs/ | Verbose comments clutter code |
 | 2025-03 | Gleam has no `if` | Language design choice |

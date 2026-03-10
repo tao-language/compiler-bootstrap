@@ -2,6 +2,7 @@
 // GRAMMAR - Unified Grammar DSL
 // ============================================================================
 import gleam/dict.{type Dict}
+import gleam/int
 import gleam/list
 import gleam/string
 import syntax/formatter.{type Doc}
@@ -476,7 +477,20 @@ pub fn parse(grammar: Grammar(a), source: String) -> ParseResult(a) {
   }
   case parse_rule(grammar, rule, tokens, 0) {
     Ok(#(ast, _)) -> ParseResult(ast: ast, errors: [])
-    Error(_) -> panic as "Parse failed"
+    Error(parse_error) -> {
+      // Report parse error and panic - caller should check for errors first
+      let error_msg = parse_error_to_string(parse_error)
+      panic as "Parse error: " <> error_msg
+      // Never returns, but type system needs this
+      ParseResult(panic as "unreachable", [])
+    }
+  }
+}
+
+fn parse_error_to_string(err: ParseError) -> String {
+  case err {
+    ParseError(position: pos, expected: exp, got: g) ->
+      "At position " <> int.to_string(pos) <> ": expected " <> exp <> ", got " <> g
   }
 }
 

@@ -206,22 +206,47 @@ pub fn parse(source: String) -> grammar.ParseResult(Term) {
   let parsed: grammar.ParseResult(ParseValue) = grammar.parse(core_grammar(), source)
   case parsed {
     grammar.ParseResult(ast, errors) -> {
-      case ast {
-        AsTerm(named_term) -> {
-          let term = named_to_de_bruijn(named_term)
-          grammar.ParseResult(term, errors)
+      case errors {
+        [err, ..] -> {
+          // Return parse errors with a placeholder term
+          let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
+          grammar.ParseResult(placeholder, errors)
         }
-        AsFields(_) -> {
-          panic as "Parse failed: expected expression, got field list"
-        }
-        AsCases(_) -> {
-          panic as "Parse failed: expected expression, got case list"
-        }
-        AsPattern(_) -> {
-          panic as "Parse failed: expected expression, got pattern"
-        }
-        AsArgs(_) -> {
-          panic as "Parse failed: expected expression, got argument list"
+        [] -> {
+          case ast {
+            AsTerm(named_term) -> {
+              let term = named_to_de_bruijn(named_term)
+              grammar.ParseResult(term, errors)
+            }
+            AsFields(_) -> {
+              let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
+              grammar.ParseResult(
+                placeholder,
+                [grammar.ParseError(0, "expression", "field list")],
+              )
+            }
+            AsCases(_) -> {
+              let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
+              grammar.ParseResult(
+                placeholder,
+                [grammar.ParseError(0, "expression", "case list")],
+              )
+            }
+            AsPattern(_) -> {
+              let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
+              grammar.ParseResult(
+                placeholder,
+                [grammar.ParseError(0, "expression", "pattern")],
+              )
+            }
+            AsArgs(_) -> {
+              let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
+              grammar.ParseResult(
+                placeholder,
+                [grammar.ParseError(0, "expression", "argument list")],
+              )
+            }
+          }
         }
       }
     }
