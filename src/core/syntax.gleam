@@ -204,49 +204,47 @@ pub fn named_to_de_bruijn(term: NamedTerm) -> Term {
 
 pub fn parse(source: String) -> grammar.ParseResult(Term) {
   let parsed: grammar.ParseResult(ParseValue) = grammar.parse(core_grammar(), source)
-  case parsed {
-    grammar.ParseResult(ast, errors) -> {
-      case errors {
-        [err, ..] -> {
-          // Return parse errors with a placeholder term
-          let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
-          grammar.ParseResult(placeholder, errors)
+  // Check errors first before accessing AST
+  case parsed.errors {
+    [err, ..] -> {
+      // Return parse errors with a placeholder term
+      let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
+      grammar.ParseResult(placeholder, parsed.errors)
+    }
+    [] -> {
+      // No errors, safe to access AST
+      case parsed.ast {
+        AsTerm(named_term) -> {
+          let term = named_to_de_bruijn(named_term)
+          grammar.ParseResult(term, [])
         }
-        [] -> {
-          case ast {
-            AsTerm(named_term) -> {
-              let term = named_to_de_bruijn(named_term)
-              grammar.ParseResult(term, errors)
-            }
-            AsFields(_) -> {
-              let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
-              grammar.ParseResult(
-                placeholder,
-                [grammar.ParseError(0, "expression", "field list")],
-              )
-            }
-            AsCases(_) -> {
-              let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
-              grammar.ParseResult(
-                placeholder,
-                [grammar.ParseError(0, "expression", "case list")],
-              )
-            }
-            AsPattern(_) -> {
-              let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
-              grammar.ParseResult(
-                placeholder,
-                [grammar.ParseError(0, "expression", "pattern")],
-              )
-            }
-            AsArgs(_) -> {
-              let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
-              grammar.ParseResult(
-                placeholder,
-                [grammar.ParseError(0, "expression", "argument list")],
-              )
-            }
-          }
+        AsFields(_) -> {
+          let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
+          grammar.ParseResult(
+            placeholder,
+            [grammar.ParseError(0, "expression", "field list")],
+          )
+        }
+        AsCases(_) -> {
+          let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
+          grammar.ParseResult(
+            placeholder,
+            [grammar.ParseError(0, "expression", "case list")],
+          )
+        }
+        AsPattern(_) -> {
+          let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
+          grammar.ParseResult(
+            placeholder,
+            [grammar.ParseError(0, "expression", "pattern")],
+          )
+        }
+        AsArgs(_) -> {
+          let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
+          grammar.ParseResult(
+            placeholder,
+            [grammar.ParseError(0, "expression", "argument list")],
+          )
         }
       }
     }

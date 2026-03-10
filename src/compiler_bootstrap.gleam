@@ -17,7 +17,9 @@ import gleam/io
 import gleam/list
 import gleam/string
 import simplifile
-import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType, Span}
+import syntax/grammar.{ParseError as GrammarParseError, ParseErrorWithSpan as GrammarParseErrorWithSpan, type ParseError as GrammarParseErrorType, Span}
+import syntax/source_snippet
+import syntax/error_reporter
 
 // ============================================================================
 // TYPES
@@ -208,9 +210,11 @@ fn check_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 
   case parse_result.errors {
     [err, ..] -> {
-      // Report parse errors
-      io.println("✗ Parse error:")
-      io.println(format_parse_error(err))
+      // Report parse errors with source snippets
+      io.println("")
+      let diagnostic = error_reporter.parse_error_to_diagnostic(err, file.contents, file.path)
+      io.println(error_reporter.format_diagnostic(diagnostic, file.contents))
+      io.println("")
       Error(ParseError(parse_result.errors |> list.map(format_parse_error)))
     }
     [] -> {
@@ -251,8 +255,15 @@ fn check_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 }
 
 fn format_parse_error(err: GrammarParseErrorType) -> String {
-  let GrammarParseError(position: pos, expected: exp, got: g) = err
-  "Parse error at position " <> int.to_string(pos) <> ": expected " <> exp <> ", got " <> g
+  case err {
+    GrammarParseError(position: pos, expected: exp, got: g) ->
+      "Parse error at position " <> int.to_string(pos) <> ": expected " <> exp <> ", got " <> g
+    GrammarParseErrorWithSpan(span: _, expected: exp, got: g, context: ctx) ->
+      "Parse error" <> case ctx {
+        "" -> ""
+        _ -> " in " <> ctx
+      } <> ": expected " <> exp <> ", got " <> g
+  }
 }
 
 fn format_type_error(err: TypeError) -> String {

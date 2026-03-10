@@ -137,6 +137,7 @@ pub type Value(a) {
 
 pub type ParseError {
   ParseError(position: Int, expected: String, got: String)
+  ParseErrorWithSpan(span: Span, expected: String, got: String, context: String)
 }
 
 pub type ParseResult(a) {
@@ -478,9 +479,13 @@ pub fn parse(grammar: Grammar(a), source: String) -> ParseResult(a) {
   case parse_rule(grammar, rule, tokens, 0) {
     Ok(#(ast, _)) -> ParseResult(ast: ast, errors: [])
     Error(ParseError(position: pos, expected: exp, got: g)) -> {
-      let msg = "Parse error at position " <> int.to_string(pos) <> ": expected " <> exp <> ", got " <> g
-      panic as msg
-      ParseResult(panic as "unreachable", [])
+      // Return parse error - caller must check errors before accessing ast
+      let msg = "Parse error: expected " <> exp <> ", got " <> g <> " at position " <> int.to_string(pos)
+      ParseResult(ast: panic as msg, errors: [ParseError(pos, exp, g)])
+    }
+    Error(ParseErrorWithSpan(span: span, expected: exp, got: g, context: ctx)) -> {
+      let msg = "Parse error in " <> ctx <> ": expected " <> exp <> ", got " <> g
+      ParseResult(ast: panic as msg, errors: [ParseErrorWithSpan(span, exp, g, ctx)])
     }
   }
 }
