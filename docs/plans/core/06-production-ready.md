@@ -1,7 +1,7 @@
 # Production Ready Compiler Plan
 
 > **Goal**: Transform the compiler bootstrap into a production-ready compiler and runtime
-> **Status**: 🚧 In Progress - Major milestones completed
+> **Status**: 🚧 In Progress - Error reporting infrastructure complete
 > **Date**: March 2025
 
 ---
@@ -21,16 +21,18 @@ This document outlines the work needed to transform the compiler bootstrap from 
 - ✅ Grammar DSL with parser/formatter generation
 - ✅ Document algebra formatter
 - ✅ Source location tracking
-- ✅ Error recovery in parser
-- ✅ Variable patterns in match expressions (FIXED!)
+- ✅ Error recovery in parser (never panics - returns error AST nodes)
+- ✅ Variable patterns in match expressions
+- ✅ Source snippet formatter for error display
 
 **Core Language:**
-- ✅ All 13 Term variants implemented
+- ✅ All 14 Term variants implemented (including `Err` for error recovery)
 - ✅ Two-pass parsing with proper variable shadowing
 - ✅ Pattern syntax (wildcards, variables, as-patterns, constructors)
 - ✅ Records with fields
 - ✅ ASCII syntax (`->`, `$Type`, `#Constructor`, `%match`, `%call`, `%comptime`)
-- ✅ 401 tests passing
+- ✅ Error AST nodes (`Term.Err`, `NamedTerm.NErr`) for graceful error recovery
+- ✅ 401 tests passing - ALL TESTS PASS
 
 **CLI:**
 - ✅ Command-line argument parsing with `argv`
@@ -39,12 +41,20 @@ This document outlines the work needed to transform the compiler bootstrap from 
 - ✅ Verbose and debug modes
 - ✅ Type checker integration (`core.infer`)
 - ✅ Evaluator integration (`core.eval` + `core.quote`)
-- ✅ Error reporting with type error formatting
+- ✅ Error reporting infrastructure (source snippets ready)
+- ✅ Parser never panics on invalid input
 
 **Examples:**
 - ✅ 10 working core examples
 - ✅ 7 syntax error examples
 - ✅ 2 syntax recovery examples
+
+**Error Reporting:**
+- ✅ Source snippet formatter (`syntax/source_snippet.gleam`)
+- ✅ Enhanced parse error types with spans (`ParseErrorWithSpan`)
+- ✅ Error reporter module (`syntax/error_reporter.gleam`)
+- ✅ Error AST nodes for graceful recovery
+- 📋 Source snippet display in CLI (infrastructure ready, integration pending)
 
 ### 📋 Pending (Production Readiness)
 
@@ -52,14 +62,19 @@ This document outlines the work needed to transform the compiler bootstrap from 
 1. ✅ Match expression parsing - FIXED (added variable patterns)
 2. ✅ Type checker integrated with CLI
 3. ✅ Evaluator integrated with CLI
-4. ⏳ Exhaustiveness checking in CLI (type checker runs, but exhaustiveness not called)
-5. ⏳ Better error message formatting with source snippets
+4. ✅ Parser never panics - returns error AST nodes
+5. ✅ All 401 tests passing - FIXED pattern matching bug (`[..]` → `[_, ..]`)
+6. ⏳ Source snippet display integration in CLI
+7. ⏳ Exhaustiveness checking in CLI
 
 **Enhancement Areas:**
-- 📋 Better error messages with source snippets
+- 📋 Multi-span error display (e.g., type mismatches)
+- 📋 Error codes for all error types (E0001, E0101, etc.)
+- 📋 Suggestions/hints for common errors
+- 📋 JSON error output format
+- 📋 Color terminal support
 - 📋 FFI and comptime full support
 - 📋 Performance optimizations
-- 📋 Documentation and examples
 
 ---
 

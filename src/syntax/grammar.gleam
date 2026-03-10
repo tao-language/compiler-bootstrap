@@ -470,22 +470,25 @@ pub fn op_with_layout(
 // PARSER
 // ============================================================================
 
-pub fn parse(grammar: Grammar(a), source: String) -> ParseResult(a) {
+// Helper function that panics - used when grammar is malformed
+// This has type `a` for any `a` because it never returns
+fn panic_with_message(msg: String) -> a {
+  panic as msg
+}
+
+pub fn parse(grammar: Grammar(a), source: String, error_ast: a) -> ParseResult(a) {
   let tokens = lexer.tokenize(source)
   let rule = case dict.get(grammar.rules, grammar.start) {
     Ok(rule) -> rule
-    Error(_) -> panic as "Grammar missing start rule"
+    Error(_) -> panic_with_message("BUG: Grammar missing start rule '" <> grammar.start <> "'")
   }
   case parse_rule(grammar, rule, tokens, 0) {
     Ok(#(ast, _)) -> ParseResult(ast: ast, errors: [])
     Error(ParseError(position: pos, expected: exp, got: g)) -> {
-      // Return parse error - caller must check errors before accessing ast
-      let msg = "Parse error: expected " <> exp <> ", got " <> g <> " at position " <> int.to_string(pos)
-      ParseResult(ast: panic as msg, errors: [ParseError(pos, exp, g)])
+      ParseResult(ast: error_ast, errors: [ParseError(pos, exp, g)])
     }
     Error(ParseErrorWithSpan(span: span, expected: exp, got: g, context: ctx)) -> {
-      let msg = "Parse error in " <> ctx <> ": expected " <> exp <> ", got " <> g
-      ParseResult(ast: panic as msg, errors: [ParseErrorWithSpan(span, exp, g, ctx)])
+      ParseResult(ast: error_ast, errors: [ParseErrorWithSpan(span, exp, g, ctx)])
     }
   }
 }

@@ -1,7 +1,7 @@
 # Error Reporting Plan
 
 > **Goal**: Provide clear, actionable error messages with source snippets that help both humans and AI assistants quickly understand and fix errors
-> **Status**: ⏳ In Progress - Foundation implemented, parse error display needs refinement
+> **Status**: ✅ Core Infrastructure Complete - All 401 tests passing
 > **Date**: March 2025
 
 ---
@@ -16,26 +16,6 @@
 
 ---
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Error Reporting Pipeline                 │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  Parse/Type Error  →  Error Type  →  Formatter  →  Output   │
-│       (core)           (rich)         (pretty)     (CLI)     │
-│                          │              │                     │
-│                          ▼              ▼                     │
-│                    + Span info    + Source snippet           │
-│                    + Context        + Suggestions            │
-│                    + Related code   + Color (optional)       │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
 ## Implementation Status
 
 ### What's Working
@@ -43,25 +23,26 @@
 - ✅ Source snippet formatter module (`syntax/source_snippet.gleam`)
 - ✅ Enhanced parse error types with spans (`ParseErrorWithSpan`)
 - ✅ Error reporter module (`syntax/error_reporter.gleam`)
-- ✅ CLI integration for parse errors (foundation)
+- ✅ CLI integration for parse errors
 - ✅ Type error formatting (basic)
-- ✅ 401 tests passing
+- ✅ Error AST nodes (`Term.Err`, `NamedTerm.NErr`) for graceful error recovery
+- ✅ Parser never panics - always returns valid AST with error list
+- ✅ All 401 tests passing
+- ✅ Fixed critical bug: `[..]` pattern matching (matched empty lists incorrectly)
 
 ### What's Pending
 
-- 📋 Parse error display (panics on error - Gleam strict evaluation limitation)
+- 📋 Source snippet display in CLI (infrastructure ready, integration needed)
 - 📋 Multi-span error display (e.g., type mismatches)
-- 📋 Error codes for all error types
+- 📋 Error codes for all error types (E0001, E0101, etc.)
 - 📋 Suggestions/hints for common errors
 - 📋 JSON error output format
 - 📋 Color terminal support
 - 📋 Context lines (show surrounding code)
 
-### Known Issues
+### Bug Fixed
 
-**Parse Error Panic**: Due to Gleam's strict evaluation, `ParseResult` construction evaluates the AST field immediately, causing a panic before error checking can occur. This requires a redesign of the error handling approach.
-
-**Workaround**: For now, valid files work correctly. Parse errors show a panic message with position info. The source snippet formatter is ready and will work once the panic issue is resolved.
+**Pattern Matching Bug**: The `[..]` pattern in Gleam matches ANY list, including empty lists. Changed to `[_, ..]` to only match non-empty lists. This was causing parse errors to be reported even when parsing succeeded.
 
 ---
 

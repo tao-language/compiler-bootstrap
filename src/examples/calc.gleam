@@ -71,7 +71,8 @@ pub fn calc_grammar() -> Grammar(Expr) {
 }
 
 pub fn parse(source: String) -> grammar.ParseResult(Expr) {
-  grammar.parse(calc_grammar(), source)
+  let error_ast = Int(0)  // Dummy error value
+  grammar.parse(calc_grammar(), source, error_ast)
 }
 
 pub fn format(ast: Expr) -> String {

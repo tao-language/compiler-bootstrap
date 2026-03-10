@@ -20,14 +20,14 @@
 /// Both parser and formatter are derived from this single grammar definition.
 import core/core.{
   type Case, type Literal, type LiteralType, type Pattern, type Term, Ann, App, Call, Case,
-  Comptime, Ctr, Dot, F32, F32T, F64, F64T, Hole, I32, I32T, I64, I64T, Lam, Lit, LitT, Match,
+  Comptime, Ctr, Dot, Err, F32, F32T, F64, F64T, Hole, I32, I32T, I64, I64T, Lam, Lit, LitT, Match,
   PAny, PAs, PCtr, PLit, PLitT, PRcd, PTyp, Pi, Rcd, Term, Typ, U32, U32T, U64, U64T, Var,
 }
 import gleam/float
 import gleam/int
 import gleam/list
 import syntax/formatter
-import syntax/grammar.{type Span, AstValue, TokenValue}
+import syntax/grammar.{type Span, AstValue, ParseResult, TokenValue}
 import syntax/lexer.{type Token}
 
 // ============================================================================
@@ -54,6 +54,8 @@ pub type NamedTerm {
   NCall(name: String, args: List(NamedTerm), span: Span)
   /// Compile-time evaluation: comptime { term }
   NComptime(term: NamedTerm, span: Span)
+  /// Error placeholder for parse failures
+  NErr(message: String, span: Span)
 }
 
 /// Pattern in match expressions
@@ -152,6 +154,9 @@ fn named_to_de_bruijn_loop(term: NamedTerm, env: List(String)) -> Term {
       let term_db = named_to_de_bruijn_loop(term, env)
       Term(Comptime(term_db), span)
     }
+    NErr(message, span) -> {
+      Term(core.Err(message), span)
+    }
   }
 }
 
@@ -203,48 +208,47 @@ pub fn named_to_de_bruijn(term: NamedTerm) -> Term {
 }
 
 pub fn parse(source: String) -> grammar.ParseResult(Term) {
-  let parsed: grammar.ParseResult(ParseValue) = grammar.parse(core_grammar(), source)
-  // Check errors first before accessing AST
-  case parsed.errors {
-    [err, ..] -> {
-      // Return parse errors with a placeholder term
-      let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
-      grammar.ParseResult(placeholder, parsed.errors)
-    }
-    [] -> {
-      // No errors, safe to access AST
-      case parsed.ast {
+  // Create an error placeholder AST to use if parsing fails
+  let error_ast = AsTerm(NErr("Parse error", grammar.Span("", 0, 0, 0, 0)))
+  let parsed: grammar.ParseResult(ParseValue) = grammar.parse(core_grammar(), source, error_ast)
+  case parsed {
+    ParseResult(ast: ast, errors: errors) -> {
+      case ast {
+        AsTerm(NErr(msg, _)) -> {
+          // Got error AST from grammar.parse - include the message
+          let placeholder = Term(core.Err("Parse error: " <> msg), grammar.Span("", 0, 0, 0, 0))
+          grammar.ParseResult(ast: placeholder, errors: errors)
+        }
         AsTerm(named_term) -> {
-          let term = named_to_de_bruijn(named_term)
-          grammar.ParseResult(term, [])
+          // Got normal AST - check for errors
+          case errors {
+            [_, ..] -> {
+              // Has errors - return error AST with error list
+              let placeholder = Term(core.Err("Parse error: see errors list"), grammar.Span("", 0, 0, 0, 0))
+              grammar.ParseResult(ast: placeholder, errors: errors)
+            }
+            [] -> {
+              // No errors - process the AST
+              let term = named_to_de_bruijn(named_term)
+              grammar.ParseResult(ast: term, errors: [])
+            }
+          }
         }
         AsFields(_) -> {
-          let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
-          grammar.ParseResult(
-            placeholder,
-            [grammar.ParseError(0, "expression", "field list")],
-          )
+          let placeholder = Term(core.Err("Expected expression, got field list"), grammar.Span("", 0, 0, 0, 0))
+          grammar.ParseResult(ast: placeholder, errors: [grammar.ParseError(0, "expression", "field list")])
         }
         AsCases(_) -> {
-          let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
-          grammar.ParseResult(
-            placeholder,
-            [grammar.ParseError(0, "expression", "case list")],
-          )
+          let placeholder = Term(core.Err("Expected expression, got case list"), grammar.Span("", 0, 0, 0, 0))
+          grammar.ParseResult(ast: placeholder, errors: [grammar.ParseError(0, "expression", "case list")])
         }
         AsPattern(_) -> {
-          let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
-          grammar.ParseResult(
-            placeholder,
-            [grammar.ParseError(0, "expression", "pattern")],
-          )
+          let placeholder = Term(core.Err("Expected expression, got pattern"), grammar.Span("", 0, 0, 0, 0))
+          grammar.ParseResult(ast: placeholder, errors: [grammar.ParseError(0, "expression", "pattern")])
         }
         AsArgs(_) -> {
-          let placeholder = Term(core.Var(0), grammar.Span("", 0, 0, 0, 0))
-          grammar.ParseResult(
-            placeholder,
-            [grammar.ParseError(0, "expression", "argument list")],
-          )
+          let placeholder = Term(core.Err("Expected expression, got argument list"), grammar.Span("", 0, 0, 0, 0))
+          grammar.ParseResult(ast: placeholder, errors: [grammar.ParseError(0, "expression", "argument list")])
         }
       }
     }
@@ -925,6 +929,7 @@ fn get_span(term: NamedTerm) -> Span {
     NMatch(_, _, _, span) -> span
     NCall(_, _, span) -> span
     NComptime(_, span) -> span
+    NErr(_, span) -> span
   }
 }
 
@@ -1102,6 +1107,7 @@ fn format_term(term: Term, parent_prec: Int, bindings: List(String)) -> formatte
       ])
       wrap_parens(inner, 50 < parent_prec)
     }
+    Err(message: msg) -> formatter.concat([formatter.text("<error: "), formatter.text(msg), formatter.text(">")])
   }
 }
 

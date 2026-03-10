@@ -22,18 +22,21 @@ pub type Term {
 pub type TermData {
   /// Universe type at level k. See docs/core.md for details.
   Typ(universe: Int)
-  
+
   /// Literal value (42, 3.14, "hello"). Note: true/false are constructors.
   Lit(value: Literal)
-  
+
   /// Literal type (I32, F64, etc.)
   LitT(typ: LiteralType)
-  
+
   /// Bound variable (De Bruijn index). Index = distance to binder.
   Var(index: Int)
-  
+
   /// Metavariable (hole) to be solved during type checking.
   Hole(id: Int)
+
+  /// Error placeholder - used when parsing fails, allows error recovery
+  Err(message: String)
   
   /// Record with named fields.
   Rcd(fields: List(#(String, Term)))
@@ -654,6 +657,7 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
       }
     }
     Comptime(term) -> eval(ffi, env, term)
+    Err(_) -> VErr  // Error terms evaluate to VErr
   }
 }
 
@@ -1223,6 +1227,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(val2, ty, s2) = infer(s1, quoted)
       #(val2, ty, s2)
     }
+    Err(_) -> #(VErr, VErr, s)  // Error terms have error type
   }
 }
 
