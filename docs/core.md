@@ -914,7 +914,7 @@ This implementation is based on established research in type theory and programm
 - [`docs/plans/core/01-overview.md`](plans/core/01-overview.md) - Core language implementation plan
 - [`docs/plans/core/02-syntax.md`](plans/core/02-syntax.md) - Syntax specification
 - [`docs/plans/core/03-ffi-comptime.md`](plans/core/03-ffi-comptime.md) - FFI and comptime implementation
-- [`docs/plans/grammar/01-overview.md`](plans/grammar/01-overview.md) - Grammar system overview
+- [`docs/plans/syntax/01-overview.md`](plans/syntax/01-overview.md) - Grammar system overview
 
 ### Implementation Files
 

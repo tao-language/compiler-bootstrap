@@ -510,8 +510,8 @@ pub fn format_Expr(ast: Expr, parent_prec: Int) -> Doc {
 ## Related Documents
 
 - **[syntax-library.md](../syntax-library.md)** - Syntax library documentation
-- **[plans/grammar/04-formatter-library.md](plans/grammar/04-formatter-library.md)** - Formatter library status
-- **[plans/grammar/02-grammar-dsl.md](plans/grammar/02-grammar-dsl.md)** - Grammar DSL specification
+- **[plans/syntax/04-formatter-library.md](plans/syntax/04-formatter-library.md)** - Formatter library status
+- **[plans/syntax/02-grammar-dsl.md](plans/syntax/02-grammar-dsl.md)** - Grammar DSL specification
 
 ---
 

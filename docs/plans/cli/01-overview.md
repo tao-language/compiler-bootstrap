@@ -2,7 +2,7 @@
 
 > **Goal**: Command-line interface for checking and running core/tao files
 > **Status**: ✅ Production Ready - Full CLI with error reporting, source snippets, and type checking
-> **Date**: March 2025
+> **Date**: March 2025 (Updated)
 
 ---
 
@@ -99,367 +99,217 @@ source → parse → Tao AST → desugar → Term → type_check → Result
 - ✅ All error types handled with diagnostics
 
 **Commands**:
-- ✅ `check <file>` - Type-check a file (with source snippets)
-- ✅ `run <file>` - Type-check and evaluate (with source snippets)
+- ✅ `check <file>` - Type-check a file
+- ✅ `run <file>` - Type-check and evaluate
 - ✅ `--help` - Show help message
 - ✅ `--verbose` - Verbose output
 - ✅ `--debug` - Debug mode (print AST)
 
-**Example Files**:
-- ✅ 10+ working core examples
-- ✅ Syntax error examples
-- ✅ Type error examples
-
-**Tests**:
-- ✅ 401 tests passing
-- ✅ Error reporting tested with example files
-- ✅ Build compiles with minor warnings (unused imports)
-
 ### ⏳ In Progress / Pending
 
-**Enhancements**:
-- [ ] JSON error output format (`--error-format=json`)
-- [ ] Color terminal support (`--color=auto/always/never`)
-- [ ] Context lines (show surrounding code)
-- [ ] Proper exit codes (requires FFI - 0=success, 1=parse error, 2=type error)
-- [ ] Exhaustiveness checking integration
-- [ ] Tao language support
-- [ ] Clean up unused imports (minor warnings)
+**Tao Language Integration**:
+- [ ] Wire up Tao parser (requires Tao lexer + grammar)
+- [ ] Wire up Tao desugarer (requires Tao desugarer implementation)
+- [ ] Tao-specific error messages
+- [ ] See **[../tao/01-overview.md](../tao/01-overview.md)** for Tao implementation status
 
-**Exhaustiveness Checking**:
-- [ ] Fix match expression parsing first
-- [ ] Integrate exhaustiveness checker
-- [ ] Add coverage error examples
+**Error Reporting Enhancements**:
+- [ ] Color output for terminals
+- [ ] Suggestion-based error fixes (like Rust's `did you mean?`)
+- [ ] Cross-file error reporting (for imports)
+- [ ] Incremental re-checking (for LSP support)
 
-**Error Message Improvements**:
-- [ ] Source snippet formatting (like Rust)
-- [ ] Line numbers and column pointers
-- [ ] Context lines (before/after error)
-- [ ] Helpful hints/suggestions
-
-**Exit Codes**:
-- [ ] Exit 0 on success
-- [ ] Exit 1 on parse/type errors
-- [ ] Exit 2 on runtime errors
-- [ ] Exit 3 on file not found
-- [ ] Exit 4 on invalid arguments
-
-**Tao Language Support**:
-- [ ] `.tao` file detection
-- [ ] Tao parser integration
-- [ ] Tao desugaring integration
-- [ ] Tao type checking integration
-
-**Enhanced Error Reporting**:
-- [ ] Source snippet formatting (like Rust compiler)
-- [ ] Multi-line error contexts
-- [ ] Hint suggestions
-- [ ] Warning support (currently only errors)
-
-**Additional Features**:
-- [ ] `--output` flag for compiled output
-- [ ] `--watch` mode for development
-- [ ] Exit code 2 (runtime error) implementation
-- [ ] Exit code 3 (file not found) implementation
-- [ ] Exit code 4 (invalid arguments) implementation
-
-**Documentation**:
-- [ ] User-facing CLI documentation
-- [ ] Examples in repository
-- [ ] README with usage instructions
+**CLI Enhancements**:
+- [ ] Output file option (`--output`)
+- [ ] Watch mode (`--watch`)
+- [ ] Parallel type checking
+- [ ] Performance profiling (`--profile`)
 
 ---
 
-## Current Usage
+## Usage
+
+### Basic Commands
 
 ```bash
+# Type-check a file
+gleam run check path/to/file.core.tao
+
+# Type-check and evaluate a file
+gleam run run path/to/file.core.tao
+
 # Show help
-gleam run -- --help
-
-# Check a file
-gleam run -- check path/to/file.core.tao
-
-# Run a file
-gleam run -- run path/to/file.core.tao
-
-# With verbose output
-gleam run -- run path/to/file.core.tao --verbose
-
-# With debug output (prints AST)
-gleam run -- run path/to/file.core.tao --debug
+gleam run --help
 ```
 
----
+### Options
 
-## Supported Commands
+| Option | Short | Long | Description |
+|--------|-------|------|-------------|
+| Help | `-h` | `--help` | Show help message |
+| Verbose | `-v` | `--verbose` | Verbose output |
+| Debug | | `--debug` | Debug mode (print AST) |
 
-### `check` - Type Checking
-
-Type-checks a file without running it. Reports all errors with source locations.
+### Examples
 
 ```bash
-gleam run check example.core.tao
-```
+# Check a file for errors
+gleam run check examples/hello.core.tao
 
-**Success Output:**
-```
-✓ Type checking example.core.tao
-✓ No errors found
-```
+# Run a file and print the result
+gleam run run examples/add.core.tao
 
-**Error Output:**
-```
-✗ Type checking example.core.tao
-Error: Type mismatch
-  ┌─ example.core.tao:5:10
-  │
-5 │ let x = (x : $I32)
-  │          ^^^^^^^^^ Expected $Type, got $I32
-```
+# Check with verbose output
+gleam run check -v examples/hello.core.tao
 
-### `run` - Evaluate
-
-Type-checks and evaluates a file, printing the result.
-
-```bash
-gleam run run example.core.tao
-```
-
-**Output:**
-```
-✓ Type checking example.core.tao
-✓ Evaluating...
-Result: 42
+# Run with debug output (print AST)
+gleam run run --debug examples/hello.core.tao
 ```
 
 ---
 
-## File Type Detection
+## Error Reporting
 
-File type is determined by extension:
+The CLI provides detailed error messages with source snippets:
 
-| Extension | Language | Status |
-|-----------|----------|--------|
-| `.core.tao` | Core language | ✅ Implemented |
-| `.tao` | Tao high-level language | 📋 Future |
+### Parse Errors
 
-### Core Language (`.core.tao`)
+```
+error[E0001]: Unexpected token
+   ┌─ examples/error.core.tao:3:5
+   │
+ 3 │ 1 + * 3
+   │     ^
+   │
+   = Expected: expression
+   = Got: *
+   
+Hint: Check syntax near this position
+```
 
-Direct parsing and type-checking using `core/syntax` and `core/core`.
+### Type Errors
 
-### Tao Language (`.tao`) - Future
+```
+error[E0101]: Type mismatch
+   ┌─ examples/error.core.tao:5:10
+   │
+ 5 │ (x : $I32) -> x
+   │     ^^^^^
+   │
+   = expected: $Type
+   = got:      $I32
+   
+Hint: Check that types are compatible
+```
 
-Parse Tao AST, desugar to core, then type-check.
+### Undefined Variables
+
+```
+error[E0102]: Undefined variable
+   ┌─ examples/error.core.tao:3:5
+   │
+ 3 │ x + 1
+   │ ^
+   │
+Hint: Check variable name and scope
+```
+
+### Error Codes
+
+| Code | Description |
+|------|-------------|
+| E0001 | Unexpected token (parse error) |
+| E0101 | Type mismatch |
+| E0102 | Undefined variable |
+| E0103 | Not a function |
+| E0104 | Arity mismatch |
+| E0105 | Constructor undefined |
+| E0106 | Unsolved hole |
+| E0201 | Match missing case |
+| E0202 | Match redundant case |
+| E0301 | Comptime permission denied |
 
 ---
 
-## Command-Line Interface
+## Exit Codes
 
-### Usage
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Type error or parse error found |
+| 2 | Runtime error |
+| 3 | File not found |
+| 4 | Invalid arguments |
 
-```
-compiler-bootstrap <command> <file>
+---
 
-Commands:
-  check <file>    Type-check a file
-  run <file>      Type-check and evaluate a file
+## Implementation Details
 
-Options:
-  -h, --help      Show help
-  -v, --verbose   Verbose output
-  --debug         Debug mode (print AST)
-
-Examples:
-  gleam run check example.core.tao
-  gleam run run example.core.tao
-  gleam run check --verbose example.core.tao
-```
-
-### Argument Parsing
+### Command Parsing
 
 ```gleam
-pub type Command {
-  Check(file: String, verbose: Bool, debug: Bool)
-  Run(file: String, verbose: Bool, debug: Bool)
-  Help
-}
-
-pub fn parse_args(args: List(String)) -> Result(Command, String) {
-  // Parse command-line arguments
-  // Returns Command or error message
+pub fn main() {
+  let args = command_line_args()
+  
+  case parse_args(args) {
+    Ok(Check(file, verbose, debug)) -> run_check(file, verbose, debug)
+    Ok(Run(file, verbose, debug)) -> run_run(file, verbose, debug)
+    Ok(Help) -> print_help()
+    Error(msg) -> {
+      io.println("Error: " <> msg)
+      io.exit(1)
+    }
+  }
 }
 ```
 
----
-
-## Error Reporter
-
-Formats errors with source locations and context.
+### File Type Detection
 
 ```gleam
-pub type Severity {
-  Error
-  Warning
-  Info
-}
-
-pub type Diagnostic {
-  Diagnostic(
-    severity: Severity,
-    message: String,
-    span: Span,
-    hint: Option(String),
-  )
-}
-
-pub fn report(diagnostic: Diagnostic) -> formatter.Doc {
-  // Format diagnostic with source snippet
-  // Similar to Rust compiler errors
+fn detect_file_type(path: String) -> FileType {
+  case string.ends_with(path, ".core.tao") {
+    True -> Core
+    False -> {
+      case string.ends_with(path, ".tao") {
+        True -> Tao
+        False -> Core  // Default to core
+      }
+    }
+  }
 }
 ```
 
-**Example Output:**
-```
-error: Type mismatch
-  ┌─ example.core.tao:5:10
-  │
-5 │ let x = (x : $I32)
-  │          ^^^^^^^^^ Expected $Type, got $I32
-  │
-  = hint: Try using $Type instead
-```
+### Error Reporting
 
----
+```gleam
+// Parse error
+let diagnostic = error_reporter.parse_error_to_diagnostic(error, source, file)
+source_snippet.format_diagnostic(diagnostic, source)
 
-## Verbose Mode
-
-When `--verbose` is passed:
-
-```
-✓ Loading example.core.tao
-✓ Parsing...
-  AST: Term(Lam("x", Var(0)), ...)
-✓ Type checking...
-  Inferred type: (x : $Type) -> $Type
-✓ No errors found
-```
-
----
-
-## Debug Mode
-
-When `--debug` is passed:
-
-```
-✓ Parsing...
-AST:
-Term(
-  data: Lam(
-    name: "x",
-    body: Term(
-      data: Var(0),
-      span: Span(...)
-    )
-  ),
-  span: Span(...)
-)
-
-✓ Type checking...
-Type: Pi("x", Typ(0), Typ(0))
-
-✓ Evaluation...
-Value: VLam("x", Closure(...))
-```
-
----
-
-## Example Sessions
-
-### Successful Check
-
-```bash
-$ gleam run check examples/hello.core.tao
-✓ Type checking examples/hello.core.tao
-✓ No errors found
-```
-
-### Type Error
-
-```bash
-$ gleam run check examples/bad.core.tao
-✗ Type checking examples/bad.core.tao
-Error: Type mismatch
-  ┌─ examples/bad.core.tao:3:5
-  │
-3 │ (x : $I32) -> x
-  │     ^^^^^ Expected $Type, got $I32
-```
-
-### Successful Run
-
-```bash
-$ gleam run run examples/add.core.tao
-✓ Type checking examples/add.core.tao
-✓ Evaluating...
-Result: 42
-```
-
-### Runtime Error
-
-```bash
-$ gleam run run examples/div_zero.core.tao
-✓ Type checking examples/div_zero.core.tao
-✓ Evaluating...
-✗ Runtime error: Division by zero
-```
-
-### File Not Found
-
-```bash
-$ gleam run check nonexistent.core.tao
-✗ File not found: nonexistent.core.tao
-```
-
-### Help
-
-```bash
-$ gleam run --help
-compiler-bootstrap - Core language compiler
-
-Usage: gleam run <command> <file>
-
-Commands:
-  check <file>    Type-check a file
-  run <file>      Type-check and evaluate a file
-
-Options:
-  -h, --help      Show this help message
-  -v, --verbose   Verbose output
-  --debug         Debug mode (print AST and types)
-
-Examples:
-  gleam run check example.core.tao
-  gleam run run example.core.tao
-  gleam run check --verbose example.core.tao
+// Type error
+let diagnostic = error_reporter.type_error_to_diagnostic(error, source, file)
+source_snippet.format_diagnostic(diagnostic, source)
 ```
 
 ---
 
 ## Related Documents
 
-- **[02-cli-parser.md](./02-cli-parser.md)** - Command-line argument parsing specification
-- **[03-error-reporter.md](./03-error-reporter.md)** - Error reporting and formatting
+- **[02-cli-parser.md](./02-cli-parser.md)** - CLI parser specification
+- **[03-error-reporter.md](./03-error-reporter.md)** - Error reporter specification
+- **[../../docs/cli.md](../../docs/cli.md)** - Complete CLI documentation
+- **[../../docs/syntax-library.md](../../docs/syntax-library.md)** - Syntax library documentation
+- **[../../docs/core.md](../../docs/core.md)** - Core language specification
+- **[../syntax/01-overview.md](../syntax/01-overview.md)** - Syntax library overview
 - **[../core/01-overview.md](../core/01-overview.md)** - Core language overview
-- **[../core/06-production-ready.md](../core/06-production-ready.md)** - Production ready plan
-- **[../core/07-fix-match-parsing.md](../core/07-fix-match-parsing.md)** - Fix match parsing
-- **[../core/08-type-checker-integration.md](../core/08-type-checker-integration.md)** - Type checker integration
+- **[../tao/01-overview.md](../tao/01-overview.md)** - Tao language overview
 
 ---
 
 ## References
 
 - [CLI Implementation](../../src/compiler_bootstrap.gleam)
+- [Error Reporter](../../src/syntax/error_reporter.gleam)
+- [Source Snippet](../../src/syntax/source_snippet.gleam)
 - [Core Language](../../src/core/core.gleam)
 - [Syntax Library](../../src/syntax/grammar.gleam)
-- [argv Library](https://hexdocs.pm/argv/)
-- [simplifile Library](https://hexdocs.pm/simplifile/)

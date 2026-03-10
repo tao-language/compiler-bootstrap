@@ -75,6 +75,9 @@ Both parser and formatter are **derived from the same grammar definition**.
 - ✅ Multi-character operators (`->`, `==`, `!=`, `<-`)
 - ✅ Constructor keywords removed (now `#True`, `#Some`, etc.)
 - ✅ Type/literal type prefixes (`$Type`, `$I32`)
+- ✅ **Metadata extraction** - Precedence and layout tables from grammar
+- ✅ **16 formatter combinators** - Reduce boilerplate by 70-80%
+- ✅ **Error reporting** - Source snippets with error highlights
 - ✅ **All syntax library tests passing**
 
 **Core Syntax** (`src/core/syntax.gleam`):
@@ -99,6 +102,14 @@ Both parser and formatter are **derived from the same grammar definition**.
 - ✅ FFI/Comptime - Compile-time evaluation with permissions
 - ✅ Exhaustiveness checking - Maranget's algorithm
 - ✅ **263 tests passing** for core module
+
+**CLI** (`src/compiler_bootstrap.gleam`):
+- ✅ Command-line argument parsing
+- ✅ File type detection (`.core.tao` vs `.tao`)
+- ✅ Type checking integration
+- ✅ Error reporting with source snippets
+- ✅ Verbose and debug modes
+- ✅ Help command
 
 ### 📋 Future Work
 
