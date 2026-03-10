@@ -113,9 +113,27 @@ src/syntax/
   - **Required for**: Tao imperative blocks
 
 **Automatic Formatter Generation**:
-- [ ] Implement deconstructor functions (currently panics with `"Deconstructor not implemented"`)
-- [ ] Grammar-derived formatting (currently manual formatters per language)
-- [ ] Formatter registry pattern for operator lookup
+- ❌ **Full automation NOT feasible** - See [06-automatic-formatter-analysis.md](./06-automatic-formatter-analysis.md)
+- ✅ **Grammar-derived metadata FEASIBLE** - See [08-grammar-derived-formatter-plan.md](./08-grammar-derived-formatter-plan.md)
+- [ ] Implement metadata generation (1-2 days)
+- [ ] Implement metadata-aware combinators (1 day)
+- [ ] Update examples to use new approach (1 day)
+
+See **[06-automatic-formatter-analysis.md](./06-automatic-formatter-analysis.md)** for why full automation is not feasible.
+See **[08-grammar-derived-formatter-plan.md](./08-grammar-derived-formatter-plan.md)** for grammar-derived metadata approach.
+
+**Recommended Approach**:
+
+1. **Generate metadata from grammar** - Precedence table, layout hints
+2. **Single manual format function** - Pattern match once, use combinators
+3. **Combinators lookup metadata** - No precedence duplication
+4. **Exhaustiveness checking** - Compiler verifies all cases covered
+
+**Benefits**:
+- Precedence defined ONCE in grammar (zero duplication)
+- Layout hints from grammar (zero duplication)
+- Full control over formatting (manual pattern match)
+- Automatic pretty-printing (soft/hard breaks, multiple strategies)
 
 **Core Language Grammar**:
 - [ ] Define grammar for all Term variants (Var, Lam, App, Pi, Rcd, Match, Ctr, Hole, Lit, Ann, Call, Comptime)

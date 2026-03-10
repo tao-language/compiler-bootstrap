@@ -1,7 +1,7 @@
 # Error Reporting Plan
 
 > **Goal**: Provide clear, actionable error messages with source snippets that help both humans and AI assistants quickly understand and fix errors
-> **Status**: 📋 Planned
+> **Status**: ⏳ In Progress - Foundation implemented, parse error display needs refinement
 > **Date**: March 2025
 
 ---
@@ -36,72 +36,32 @@
 
 ---
 
-## Design Principles
-
-### 1. **Rich Error Types**
-
-Errors carry maximum context:
-- Full source spans (not just positions)
-- Related spans (e.g., both sides of a type mismatch)
-- Relevant values (e.g., the actual vs expected types)
-- Suggestions (e.g., "did you mean...?")
-
-### 2. **Source Snippets**
-
-Every error shows the problematic code:
-```
-error: Type mismatch
-   ┌─ src/example.core.tao:3:5
-   │
- 3 │ let x : $Type(1) = 42
-   │       ^^^^^^^^^^
-   │
-   = expected: $Type
-   = got:      $Type(1)
-   = hint: Try removing the level annotation or use $Type
-```
-
-### 3. **Consistent Formatting**
-
-All errors follow the same structure:
-```
-[severity]: [error type]
-  [source location]
-  │
-  │ [source snippet with pointer]
-  │
-  = [detailed explanation]
-  = [suggestion 1]
-  = [suggestion 2]
-```
-
-### 4. **Machine Readable**
-
-Errors are structured for AI/IDE consumption:
-- JSON output option (`--error-format=json`)
-- Stable error codes (e.g., `E0001`)
-- Structured spans and suggestions
-
----
-
 ## Implementation Status
 
 ### What's Working
 
-- ✅ Basic error types in `core/core.gleam`
-- ✅ Span information on all errors
-- ✅ CLI error reporting (basic)
+- ✅ Source snippet formatter module (`syntax/source_snippet.gleam`)
+- ✅ Enhanced parse error types with spans (`ParseErrorWithSpan`)
+- ✅ Error reporter module (`syntax/error_reporter.gleam`)
+- ✅ CLI integration for parse errors (foundation)
+- ✅ Type error formatting (basic)
 - ✅ 401 tests passing
 
 ### What's Pending
 
-- 📋 Source snippet formatting
+- 📋 Parse error display (panics on error - Gleam strict evaluation limitation)
 - 📋 Multi-span error display (e.g., type mismatches)
 - 📋 Error codes for all error types
 - 📋 Suggestions/hints for common errors
 - 📋 JSON error output format
 - 📋 Color terminal support
 - 📋 Context lines (show surrounding code)
+
+### Known Issues
+
+**Parse Error Panic**: Due to Gleam's strict evaluation, `ParseResult` construction evaluates the AST field immediately, causing a panic before error checking can occur. This requires a redesign of the error handling approach.
+
+**Workaround**: For now, valid files work correctly. Parse errors show a panic message with position info. The source snippet formatter is ready and will work once the panic issue is resolved.
 
 ---
 
