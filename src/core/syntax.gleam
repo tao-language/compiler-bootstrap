@@ -26,7 +26,6 @@ import core/core.{
 import gleam/float
 import gleam/int
 import gleam/list
-import gleam/option.{None, Some}
 import syntax/formatter
 import syntax/grammar.{type Span, AstValue, TokenValue}
 import syntax/lexer.{type Token}
@@ -1053,6 +1052,7 @@ fn format_term(term: Term, parent_prec: Int, bindings: List(String)) -> formatte
 }
 
 /// Format a pattern.
+/// Note: bindings is passed recursively for nested patterns (compiler warning is false positive)
 fn format_pattern(pattern: Pattern, bindings: List(String)) -> formatter.Doc {
   case pattern {
     PAny -> formatter.text("_")
