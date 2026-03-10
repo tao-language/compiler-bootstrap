@@ -48,26 +48,30 @@ docs/plans/maintenance/
 - ✅ Issues categorized by priority
 - ✅ Effort estimates provided
 - ✅ Refactoring order recommended
-- ✅ 5 safe quick wins implemented
+- ✅ 7 safe quick wins implemented
+- ✅ 45 warnings analyzed (38 safe fixes, 4 false positives, 3 reviewed)
 
 **Documents Created**:
 - ✅ **[01-codebase-analysis.md](./01-codebase-analysis.md)** - Comprehensive analysis
 - ✅ **[02-quick-wins.md](./02-quick-wins.md)** - Safe refactoring plan (corrected)
+- ✅ **[03-warning-analysis.md](./03-warning-analysis.md)** - Warning categorization
+- ✅ **[../../src/README.md](../../src/README.md)** - Code style guide
 
 **Quick Wins Implemented**:
 - ✅ Span helper functions added (`dummy_span()`, `mk_span()`)
 - ✅ CLI flag helper added (`has_flag()`)
 - ✅ Unused imports removed
+- ✅ Streamlined documentation (brief comments + links to docs)
 - ✅ NbE documentation added for eliminators
-- ✅ Term documentation enhanced
+- ✅ Standardized error messages
+- ✅ Standardized module headers
 - ✅ **401 tests passing** - no regressions
 
-**Documentation Improvements**:
-- ✅ Added comprehensive NbE explanation for `Elim` type
-- ✅ Explained why `EMatch` is essential (must NEVER be removed)
-- ✅ Enhanced documentation for all `TermData` constructors
-- ✅ Added syntax vs. semantics distinction
-- ✅ Added De Bruijn indices vs. levels explanation
+**Warning Status**:
+- 38 warnings: Safe to fix (unused imports, variables, stubs)
+- 4 warnings: False positives (env parameter passed recursively)
+- 3 warnings: Reviewed and safe (unreachable code after panic)
+- **Action plan**: See [03-warning-analysis.md](./03-warning-analysis.md)
 
 ### ⏳ In Progress / Planned
 
