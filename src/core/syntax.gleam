@@ -539,8 +539,14 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
       fn(_, _) { formatter.text("") },
     ),
   ])
-  // Pattern: _, x @ pat, Type, 42, $I32, {fields}, #Name(pat)
+  // Pattern: x, _, x @ pat, Type, 42, $I32, {fields}, #Name(pat)
   |> grammar.rule("Pattern", [
+    // Variable pattern: x
+    grammar.alt(
+      grammar.token_pattern("Ident"),
+      make_pattern_var,
+      fn(_, _) { formatter.text("") },
+    ),
     // Wildcard: _
     grammar.alt(grammar.token_pattern("Underscore"), make_pattern_any, fn(_, _) { formatter.text("") }),
     // As-pattern: x @ pat
@@ -826,6 +832,18 @@ fn make_single_case_list(values) -> ParseValue {
 // fn make_case_cons(values) -> ParseValue { ... }
 
 // Pattern constructors
+
+/// Variable pattern: x (binds the matched value to x)
+fn make_pattern_var(values) -> ParseValue {
+  case values {
+    [TokenValue(token)] -> {
+      let span = grammar.span_from_token(token, "input")
+      AsPattern(NPAs(NPAny(span), token.value, span))
+    }
+    _ -> panic as "Expected identifier pattern"
+  }
+}
+
 fn make_pattern_any(values) -> ParseValue {
   case values {
     [TokenValue(token)] -> AsPattern(NPAny(grammar.span_from_token(token, "input")))

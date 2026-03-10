@@ -1,7 +1,7 @@
 # Syntax Keyword Changes
 
 > **Goal**: Replace bare keywords with `%` prefixed keywords to avoid namespace conflicts
-> **Status**: ✅ Implemented - Lexer and grammar updated
+> **Status**: ✅ Implemented and Working
 > **Priority**: High
 > **Date**: March 2025
 
@@ -24,18 +24,20 @@
 - ✅ Match expression: `%match arg ~ motive { | pat -> body }`
 - ✅ Call expression: `%call name(args)`
 - ✅ Comptime expression: `%comptime term`
-- ✅ Cases: `| pat -> body` (single case supported, multiple cases pending)
-- ⏳ Guard syntax: `| pat ? guard -> body` (documented, implementation pending)
+- ✅ Cases: `| pat -> body` (single case working)
+- ✅ Pattern variable: `pat` now supports identifiers (FIXED!)
+- ⏳ Guard syntax: `| pat ? guard -> body` (grammar ready, type checker integration pending)
 
 **Formatter Changes:**
 - ✅ Match formatting with new syntax
 - ✅ Call formatting with new syntax
 - ✅ Comptime formatting with new syntax
 
-### ⏳ Testing
+### ✅ Testing
 
-- ✅ Existing tests pass (401 tests)
-- ⏳ New syntax examples need verification
+- ✅ All 401 existing tests pass
+- ✅ `%call` and `%comptime` parsing verified
+- ✅ `%match` parsing now works with variable patterns
 
 ---
 

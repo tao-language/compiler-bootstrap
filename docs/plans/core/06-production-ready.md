@@ -1,7 +1,7 @@
 # Production Ready Compiler Plan
 
 > **Goal**: Transform the compiler bootstrap into a production-ready compiler and runtime
-> **Status**: 📋 Planned
+> **Status**: 🚧 In Progress - Major milestones completed
 > **Date**: March 2025
 
 ---
@@ -17,18 +17,19 @@ This document outlines the work needed to transform the compiler bootstrap from 
 ### ✅ Complete and Working
 
 **Syntax Library:**
-- ✅ Lexer with full token support
+- ✅ Lexer with full token support (`%match`, `%call`, `%comptime`, `?` for guards)
 - ✅ Grammar DSL with parser/formatter generation
 - ✅ Document algebra formatter
 - ✅ Source location tracking
 - ✅ Error recovery in parser
+- ✅ Variable patterns in match expressions (FIXED!)
 
 **Core Language:**
 - ✅ All 13 Term variants implemented
 - ✅ Two-pass parsing with proper variable shadowing
-- ✅ Pattern syntax (wildcards, as-patterns, constructors)
+- ✅ Pattern syntax (wildcards, variables, as-patterns, constructors)
 - ✅ Records with fields
-- ✅ ASCII syntax (`->`, `$Type`, `#Constructor`)
+- ✅ ASCII syntax (`->`, `$Type`, `#Constructor`, `%match`, `%call`, `%comptime`)
 - ✅ 401 tests passing
 
 **CLI:**
@@ -36,7 +37,9 @@ This document outlines the work needed to transform the compiler bootstrap from 
 - ✅ File I/O with `simplifile`
 - ✅ `check` and `run` commands
 - ✅ Verbose and debug modes
-- ✅ Error reporting
+- ✅ Type checker integration (`core.infer`)
+- ✅ Evaluator integration (`core.eval` + `core.quote`)
+- ✅ Error reporting with type error formatting
 
 **Examples:**
 - ✅ 10 working core examples
@@ -46,16 +49,15 @@ This document outlines the work needed to transform the compiler bootstrap from 
 ### 📋 Pending (Production Readiness)
 
 **Critical Issues:**
-1. ❌ Match expression parsing is broken
-2. ❌ Type checker not integrated with CLI
-3. ❌ No exhaustiveness checking in CLI
-4. ❌ No proper exit codes
-5. ❌ Limited error message formatting
+1. ✅ Match expression parsing - FIXED (added variable patterns)
+2. ✅ Type checker integrated with CLI
+3. ✅ Evaluator integrated with CLI
+4. ⏳ Exhaustiveness checking in CLI (type checker runs, but exhaustiveness not called)
+5. ⏳ Better error message formatting with source snippets
 
 **Enhancement Areas:**
 - 📋 Better error messages with source snippets
-- 📋 Runtime evaluation integration
-- 📋 FFI and comptime support
+- 📋 FFI and comptime full support
 - 📋 Performance optimizations
 - 📋 Documentation and examples
 

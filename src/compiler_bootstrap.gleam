@@ -10,14 +10,14 @@
 /// gleam run --help                         # Show help
 /// ```
 import argv
-import core/core.{type Term}
+import core/core.{type Term, type Error as TypeError, type State, initial_state, infer, eval, quote}
 import core/syntax
 import gleam/int
 import gleam/io
 import gleam/list
 import gleam/string
 import simplifile
-import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType}
+import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType, Span}
 
 // ============================================================================
 // TYPES
@@ -40,7 +40,7 @@ pub type File {
 
 pub type Error {
   ParseError(errors: List(String))
-  TypeError(message: String)
+  TypeError(errors: List(TypeError))
   RuntimeError(message: String)
   FileNotFound(path: String)
   FileReadError(path: String, error: simplifile.FileError)
@@ -230,11 +230,22 @@ fn check_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
         False -> Nil
       }
 
-      // For now, just verify parsing works
-      // Full type checking integration coming soon
-      io.println("✓ Type checking " <> file.path)
-      io.println("✓ No errors found")
-      Ok(Nil)
+      // Run type checker
+      let #(_type_result, _type_annotation, final_state) = infer(initial_state, parse_result.ast)
+
+      case final_state.errors {
+        [err, ..] -> {
+          // Report type errors
+          io.println("✗ Type error:")
+          final_state.errors |> list.each(fn(e) { io.println(format_type_error(e)) })
+          Error(TypeError(final_state.errors))
+        }
+        [] -> {
+          io.println("✓ Type checking " <> file.path)
+          io.println("✓ No errors found")
+          Ok(Nil)
+        }
+      }
     }
   }
 }
@@ -242,6 +253,42 @@ fn check_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 fn format_parse_error(err: GrammarParseErrorType) -> String {
   let GrammarParseError(position: pos, expected: exp, got: g) = err
   "Parse error at position " <> int.to_string(pos) <> ": expected " <> exp <> ", got " <> g
+}
+
+fn format_type_error(err: TypeError) -> String {
+  case err {
+    core.PatternMismatch(_, _, s1, s2) ->
+      "Pattern mismatch at " <> span_to_string(s1)
+    core.TypeMismatch(expected, got, s1, s2) ->
+      "Type mismatch: expected " <> value_to_string(expected) <> ", got " <> value_to_string(got)
+    core.InfiniteType(_, _, _, _) -> "Infinite type detected"
+    core.TypeAnnotationNeeded(_) -> "Type annotation needed"
+    core.NotAFunction(_, _) -> "Not a function"
+    core.VarUndefined(_, span) -> "Undefined variable at " <> span_to_string(span)
+    core.RcdMissingFields(fields, span) ->
+      "Missing record fields: " <> string.join(fields, ", ") <> " at " <> span_to_string(span)
+    core.CtrUndefined(tag, span) -> "Undefined constructor: " <> tag <> " at " <> span_to_string(span)
+    core.CtrUnsolvedParam(_, _, _, _) -> "Constructor parameter unsolved"
+    core.DotFieldNotFound(name, _, span) ->
+      "Field not found: " <> name <> " at " <> span_to_string(span)
+    core.DotOnNonCtr(_, _, span) -> "Dot on non-constructor at " <> span_to_string(span)
+    core.HoleUnsolved(id, span) -> "Unsolved hole #" <> int.to_string(id) <> " at " <> span_to_string(span)
+    core.SpineMismatch(_, _) -> "Spine mismatch"
+    core.ArityMismatch(_, _) -> "Arity mismatch"
+    core.TODO(message) -> "TODO: " <> message
+    core.MatchRedundantCase(span) -> "Redundant match case at " <> span_to_string(span)
+    core.MatchMissingCase(span, _) -> "Missing match case at " <> span_to_string(span)
+    core.ComptimePermissionDenied(op, span, _) ->
+      "Comptime permission denied for " <> op <> " at " <> span_to_string(span)
+  }
+}
+
+fn span_to_string(span: grammar.Span) -> String {
+  "(" <> int.to_string(span.start_line) <> ":" <> int.to_string(span.start_col) <> ")"
+}
+
+fn value_to_string(_value) -> String {
+  "<type>"
 }
 
 fn check_tao(file: File, _verbose: Bool, _debug: Bool) -> Result(Nil, Error) {
@@ -312,15 +359,35 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
         False -> Nil
       }
 
-      // For now, just show that parsing works
-      // Full evaluation coming soon
-      io.println("✓ Type checking " <> file.path)
-      io.println("✓ Evaluating...")
+      // Run type checker
+      let #(type_result, _type_annotation, type_state) = infer(initial_state, parse_result.ast)
 
-      // Format and print the result
-      let formatted = syntax.format(parse_result.ast)
-      io.println("Result: " <> formatted)
-      Ok(Nil)
+      case type_state.errors {
+        [err, ..] -> {
+          // Report type errors
+          io.println("✗ Type error:")
+          type_state.errors |> list.each(fn(e) { io.println(format_type_error(e)) })
+          Error(TypeError(type_state.errors))
+        }
+        [] -> {
+          io.println("✓ Type checking " <> file.path)
+          io.println("✓ Evaluating...")
+
+          // Evaluate the term
+          let env = []
+          let ffi = initial_state.ffi
+          let value = eval(ffi, env, parse_result.ast)
+
+          // Quote back to normal form
+          let span = Span("", 0, 0, 0, 0)
+          let normal_form = quote(ffi, 0, value, span)
+
+          // Format and print the result
+          let formatted = syntax.format(normal_form)
+          io.println("Result: " <> formatted)
+          Ok(Nil)
+        }
+      }
     }
   }
 }
@@ -343,9 +410,9 @@ fn report_error(error: Error) {
       io.println("Parse error:")
       errors |> list.each(fn(e) { io.println("  " <> e) })
     }
-    TypeError(message) -> {
+    TypeError(errors) -> {
       io.println("Type error:")
-      io.println("  " <> message)
+      errors |> list.each(fn(e) { io.println("  " <> format_type_error(e)) })
     }
     RuntimeError(message) -> {
       io.println("Runtime error:")
