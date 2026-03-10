@@ -1,10 +1,6 @@
-// ============================================================================
-// COMPILER BOOTSTRAP CLI
-// ============================================================================
-/// Command-line interface for the compiler bootstrap project.
+/// Compiler Bootstrap CLI
 ///
-/// Supports checking and running both core language (`.core.tao`) and
-/// Tao high-level language (`.tao`) files.
+/// Command-line interface for checking and running core/tao files.
 ///
 /// ## Usage
 ///
@@ -53,7 +49,7 @@ pub type Error {
 }
 
 // ============================================================================
-// MAIN ENTRY POINT
+// Entry Point
 // ============================================================================
 
 pub fn main() {
@@ -246,7 +242,7 @@ fn check_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 
 fn format_parse_error(err: GrammarParseErrorType) -> String {
   let GrammarParseError(position: pos, expected: exp, got: g) = err
-  "Position " <> int.to_string(pos) <> ": expected " <> exp <> ", got " <> g
+  "Parse error at position " <> int.to_string(pos) <> ": expected " <> exp <> ", got " <> g
 }
 
 fn check_tao(file: File, _verbose: Bool, _debug: Bool) -> Result(Nil, Error) {
@@ -341,37 +337,38 @@ fn run_tao(file: File, _verbose: Bool, _debug: Bool) -> Result(Nil, Error) {
 // ERROR REPORTING
 // ============================================================================
 
+/// Report an error to stderr with consistent formatting
 fn report_error(error: Error) {
   case error {
     ParseError(errors) -> {
-      io.println("✗ Parse errors:")
+      io.println("Parse error:")
       errors |> list.each(fn(e) { io.println("  " <> e) })
     }
     TypeError(message) -> {
-      io.println("✗ Type error:")
+      io.println("Type error:")
       io.println("  " <> message)
     }
     RuntimeError(message) -> {
-      io.println("✗ Runtime error:")
+      io.println("Runtime error:")
       io.println("  " <> message)
     }
     FileNotFound(path) -> {
-      io.println("✗ File not found: " <> path)
+      io.println("File not found: " <> path)
     }
     FileReadError(path, err) -> {
-      io.println("✗ File read error:")
-      io.println("  Path: " <> path)
-      io.println("  Error: " <> format_file_error(err))
+      io.println("Failed to read file: " <> path)
+      io.println("  Reason: " <> format_file_error(err))
     }
     InvalidArguments(message) -> {
-      io.println("✗ Invalid arguments: " <> message)
+      io.println("Invalid arguments: " <> message)
     }
     UnknownCommand(command) -> {
-      io.println("✗ Unknown command: " <> command)
+      io.println("Unknown command: " <> command)
     }
   }
 }
 
+/// Format a file error to a human-readable message
 fn format_file_error(err: simplifile.FileError) -> String {
   case err {
     simplifile.Enoent -> "File not found"

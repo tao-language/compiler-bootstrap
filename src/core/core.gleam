@@ -8,138 +8,61 @@ import syntax/grammar.{Span, type Span}
 // ============================================================================
 // SYNTAX (Terms)
 // ============================================================================
-// Terms represent the raw Abstract Syntax Tree (AST) as written by the
-// programmer. They use De Bruijn INDICES for variables, where the index
-// represents the relative distance to the binding site (counting outward).
-//
-// ## Syntax vs. Semantics
-//
-// Terms are SYNTAX - what the user writes. Values (below) are SEMANTICS -
-// what terms mean after evaluation.
-//
-// Key distinction:
-// - Terms use De Bruijn INDICES (relative, shift when moving)
-// - Values use De Bruijn LEVELS (absolute, stable)
-//
-// This separation enables normalization by evaluation:
-// 1. Evaluate Term → Value (syntax to semantics)
-// 2. Quote Value → Term (semantics back to syntax)
-// 3. Compare quoted terms for equality
+/// Terms represent the raw Abstract Syntax Tree (AST) as written by the
+/// programmer. They use De Bruijn INDICES for variables.
+///
+/// For detailed documentation see:
+/// - [Core Language Specification](../../docs/core.md#syntax-terms)
+/// - [Normalization by Evaluation](../../docs/core.md#normalization-by-evaluation)
 
 pub type Term {
-  /// A term with its source location for error reporting
   Term(data: TermData, span: Span)
 }
 
 pub type TermData {
-  /// Universe type at level k (Type_k)
-  /// 
-  /// Represents a universe in the type hierarchy. Type_0 : Type_1 : Type_2 : ...
-  /// Used for predicative polymorphism to avoid Girard's paradox.
+  /// Universe type at level k. See docs/core.md for details.
   Typ(universe: Int)
   
-  /// Literal value (42, 3.14, "hello", etc.)
-  /// 
-  /// Concrete values that evaluate to themselves. Includes integers, floats,
-  /// and strings. Note: true/false are NOT literals - they're constructors.
+  /// Literal value (42, 3.14, "hello"). Note: true/false are constructors.
   Lit(value: Literal)
   
   /// Literal type (I32, F64, etc.)
-  /// 
-  /// The TYPE of a literal. For example, the type of `42` is `I32T`.
   LitT(typ: LiteralType)
   
-  /// Bound variable using De Bruijn index
-  /// 
-  /// Index represents DISTANCE to binding site (counting outward):
-  /// - `Var(0)` = innermost binder (λx. x)
-  /// - `Var(1)` = next outer binder (λx. λy. x)
-  /// 
-  /// Advantage: No variable capture during substitution.
-  /// Disadvantage: Must shift indices when moving terms.
+  /// Bound variable (De Bruijn index). Index = distance to binder.
   Var(index: Int)
   
-  /// Metavariable (hole) to be solved during type checking
-  /// 
-  /// Represents an unknown to be filled in by unification. For example,
-  /// when inferring the type of an expression, we create a hole and
-  /// unify it with the actual type.
-  /// 
-  /// Holes are assigned unique IDs. After unification, we look up the
-  /// solution in the substitution.
+  /// Metavariable (hole) to be solved during type checking.
   Hole(id: Int)
   
-  /// Record with named fields
-  /// 
-  /// Anonymous record: { x = 1, y = 2 }
-  /// Fields are unordered - { x = 1, y = 2 } = { y = 2, x = 1 }
+  /// Record with named fields.
   Rcd(fields: List(#(String, Term)))
   
-  /// Constructor application (e.g., Some(42), Cons(1, Nil))
-  /// 
-  /// Applies a constructor to its argument. Constructors are from sum types
-  /// defined with `data` declarations.
-  /// 
-  /// Example: `Some(42)` = `Ctr("Some", Lit(42))`
+  /// Constructor application (e.g., Some(42), Cons(1, Nil)).
   Ctr(tag: String, arg: Term)
   
-  /// Field projection (record.field)
-  /// 
-  /// Extracts a field from a record. Reduces when the record is known:
-  /// { x = 1, y = 2 }.x → 1
+  /// Field projection (record.field).
   Dot(arg: Term, field: String)
   
-  /// Type annotation (term : type)
-  /// 
-  /// Asserts that a term has a specific type. Used for:
-  /// - Explicit type annotations by the user
-  /// - Guiding type inference
-  /// - Documentation
+  /// Type annotation (term : type).
   Ann(term: Term, typ: Term)
   
-  /// Lambda abstraction (λx. body)
-  /// 
-  /// Anonymous function. The name is for documentation only - alpha-equivalent
-  /// names are considered equal (λx. x = λy. y).
+  /// Lambda abstraction (λx. body).
   Lam(name: String, body: Term)
   
-  /// Dependent function type ((x : A) → B x)
-  /// 
-  /// Function type where the return type can depend on the input value.
-  /// Special cases:
-  /// - Non-dependent: (x : A) → B (B doesn't mention x) = A → B
-  /// - Universe: (x : Type) → Type = Type → Type
+  /// Dependent function type ((x : A) → B x).
   Pi(name: String, in: Term, out: Term)
   
-  /// Function application (f x)
-  /// 
-  /// Applies a function to an argument. Reduces when the function is a lambda:
-  /// (λx. body) arg → body[x := arg]
+  /// Function application (f x).
   App(fun: Term, arg: Term)
   
-  /// Pattern matching (match arg with motive returning cases)
-  /// 
-  /// Dependent pattern matching. The motive is the return type, which can
-  /// depend on the matched value (critical for GADTs).
-  /// 
-  /// Example: match xs { Nil → 0 | Cons(_, _) → 1 }
+  /// Pattern matching with dependent return type.
   Match(arg: Term, motive: Term, cases: List(Case))
   
-  /// Built-in function call (e.g., i32_add, print, read_file)
-  /// 
-  /// FFI functions that are evaluated by the host. Pure operations (arithmetic)
-  /// are evaluated during normalization. Impure operations (I/O) require
-  /// permission checking and are deferred to runtime.
+  /// Built-in function call (FFI).
   Call(name: String, args: List(Term))
   
-  /// Compile-time evaluation block
-  /// 
-  /// Forces evaluation during elaboration (compile-time). Used for:
-  /// - Metaprogramming
-  /// - Constant folding
-  /// - Compile-time computation
-  /// 
-  /// The term inside is evaluated immediately, and the result is substituted.
+  /// Compile-time evaluation block.
   Comptime(term: Term)
 }
 
@@ -202,72 +125,57 @@ pub type Pattern {
 // ============================================================================
 // NEUTRAL TERMS
 // ============================================================================
-// Neutral terms represent computations stuck on unknowns (variables or holes).
-// The head is the variable/hole, and the spine is a list of pending operations.
-//
-// ## Normalization by Evaluation (NbE)
-//
-// Neutral terms are CRITICAL for NbE. When we encounter an unknown value during
-// evaluation, we can't reduce further, so we build a neutral term that records:
-// - What we're stuck on (the head)
-// - What operations are waiting (the spine/eliminations)
-//
-// When the unknown becomes known (via unification), we "force" the neutral term
-// by replaying all pending operations on the now-known value.
-//
-// ## Eliminators (Spine Operations)
-//
-// Eliminators represent operations that can be performed on a value:
-//
-// - `EDot` - Field projection: wait to project `.field` from a record
-// - `EApp` - Function application: wait to apply function to argument
-// - `EMatch` - Pattern matching: wait to match value against patterns
-//
-// These are NOT redundant - they're DELAYED operations. For example:
-// - If `x` is neutral, then `x.field` is also neutral (can't project yet)
-// - The `.field` operation goes in the spine: `VNeut(x, [EDot("field")])`
-// - When `x` becomes known, we replay: `known_value.field`
-//
-// ## Why EMatch is Essential
-//
-// `EMatch` is CRITICAL for dependent pattern matching. When matching on a neutral
-// value, we can't reduce the match, so we store the match operation in the spine:
-//
-// ```gleam
-// // Can't evaluate: match x { ... } when x is neutral
-// do_match(env, VNeut(head, spine), motive, cases)
-//   = VNeut(head, [EMatch(env, motive, cases), ..spine])
-// ```
-//
-// When `x` becomes known, we replay the match with the known value.
-//
-// Without `EMatch`, neutral terms with pending matches would be lost, breaking
-// NbE correctness. This is why `EMatch` must NEVER be removed.
+/// Neutral terms represent computations stuck on unknowns (variables or holes).
+/// The head is the variable/hole, and the spine is a list of pending operations.
+///
+/// ## Role in Normalization by Evaluation (NbE)
+///
+/// When evaluation encounters an unknown value, it can't reduce further.
+/// Instead of failing, it builds a neutral term that records:
+/// - What we're stuck on (the head)
+/// - What operations are waiting (the spine/eliminations)
+///
+/// When the unknown becomes known (via unification), we "force" the neutral
+/// term by replaying all pending operations on the now-known value.
+///
+/// For detailed documentation see:
+/// - [Neutral Terms](../../docs/core.md#neutral-terms)
+/// - [Normalization by Evaluation](../../docs/core.md#normalization-by-evaluation)
 
 pub type Head {
-  /// Variable head using De Bruijn level (absolute, stable)
+  /// Variable head (De Bruijn level - absolute, stable).
   HVar(level: Int)
-  /// Hole/metavariable head (to be solved by unification)
+  /// Hole/metavariable head (to be solved by unification).
   HHole(id: Int)
 }
 
+/// Eliminators (spine operations) for neutral terms.
+///
+/// These are DELAYED operations that will be replayed when the neutral value
+/// becomes known. Critical for NbE correctness.
+///
+/// ## Why EMatch is Essential
+///
+/// `EMatch` is CRITICAL for dependent pattern matching. When matching on a
+/// neutral value, we can't reduce, so we store the match in the spine:
+///
+/// ```gleam
+/// do_match(env, VNeut(head, spine), motive, cases)
+///   = VNeut(head, [EMatch(env, motive, cases), ..spine])
+/// ```
+///
+/// When the value becomes known, we replay the match.
+/// Without `EMatch`, neutral terms with pending matches would be lost,
+/// breaking NbE correctness. **DO NOT REMOVE**.
 pub type Elim {
-  /// Field projection: wait to project `.field` from a record
-  /// 
-  /// When the neutral value becomes a record, this becomes: record.field
+  /// Field projection: wait to project `.field` from a record.
   EDot(name: String)
   
-  /// Function application: wait to apply function to argument
-  /// 
-  /// When the neutral value becomes a lambda, this becomes: (λx. body) arg → body[x := arg]
+  /// Function application: wait to apply function to argument.
   EApp(arg: Value)
   
-  /// Pattern matching: wait to match value against patterns
-  /// 
-  /// CRITICAL for NbE correctness. When the neutral value becomes a constructor,
-  /// this replays the match with the known value.
-  /// 
-  /// DO NOT REMOVE: Without this, matches on neutral terms would be lost.
+  /// Pattern matching: wait to match value against patterns.
+  /// CRITICAL for NbE - DO NOT REMOVE.
   EMatch(env: Env, motive: Value, cases: List(Case))
 }
 

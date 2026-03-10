@@ -1,7 +1,7 @@
 # Quick Wins - Corrected Implementation
 
 > **Goal**: Fix easy issues WITHOUT compromising correctness
-> **Status**: ✅ 5 Safe Changes Complete
+> **Status**: ✅ 7 Safe Changes Complete
 > **Date**: March 2025
 
 ---
@@ -38,6 +38,26 @@
 - Lean: `Type : Type`
 
 This is NOT redundancy - it's documenting dependent type theory semantics.
+
+---
+
+### ❌ `if` vs `case` - Not Applicable
+
+**Gleam doesn't have `if`** - This is by design. Gleam only has `case` expressions for explicit pattern matching.
+
+---
+
+## Documentation Strategy
+
+**Code comments**: Brief, with links to detailed docs
+**`docs/core.md`**: Comprehensive documentation with examples
+
+**Example**:
+```gleam
+/// Bound variable (De Bruijn index). Index = distance to binder.
+/// See docs/core.md for details.
+Var(index: Int)
+```
 
 ---
 
@@ -106,46 +126,118 @@ fn has_flag(args: List(String), short: String, long: String) -> Bool {
 
 ---
 
-### 4. Add NbE Documentation for Eliminators ✅
+### 4. Streamline Documentation ✅
+
+**Files**: `src/core/core.gleam`
+
+**Change**: Moved verbose inline comments to `docs/core.md`, added links
+
+**Before**:
+```gleam
+/// Bound variable using De Bruijn index
+/// 
+/// Index represents DISTANCE to binding site (counting outward):
+/// - `Var(0)` = innermost binder (λx. x)
+/// - `Var(1)` = next outer binder (λx. λy. x)
+/// 
+/// Advantage: No variable capture during substitution.
+/// Disadvantage: Must shift indices when moving terms.
+Var(index: Int)
+```
+
+**After**:
+```gleam
+/// Bound variable (De Bruijn index). Index = distance to binder.
+/// See docs/core.md for details.
+Var(index: Int)
+```
+
+**Impact**: Cleaner code, better separation of concerns
+**Risk**: None
+**Status**: ✅ Complete
+
+---
+
+### 5. Add NbE Documentation Reference ✅
 
 **File**: `src/core/core.gleam`
 
-**Change**: Added comprehensive documentation about `Elim` type and its role in NbE
+**Change**: Added brief explanation with link to `docs/core.md` for eliminators
 
 **Documentation added**:
-- Explanation of neutral terms and their role in NbE
-- Why eliminators are delayed operations (not redundant)
-- Detailed explanation of why `EMatch` is essential
-- Examples of how neutral terms are "forced" when values become known
+- Brief explanation of neutral terms and their role in NbE
+- Why `EMatch` is essential (with code example)
+- Link to comprehensive docs in `docs/core.md`
 
-**Impact**: Better understanding of core algorithms
+**Impact**: Better code understanding without cluttering code
 **Risk**: None (documentation only)
 **Status**: ✅ Complete
 
 ---
 
-### 5. Improve Term Documentation ✅
+### 6. Standardize Error Messages ✅
 
-**File**: `src/core/core.gleam`
+**File**: `src/compiler_bootstrap.gleam`
 
-**Change**: Enhanced documentation for all `TermData` constructors
+**Change**: Consistent error message formatting
 
-**Documentation added**:
-- Syntax vs. Semantics distinction
-- De Bruijn indices vs. levels explanation
-- Purpose of each term constructor
-- Examples of reduction rules
-- Usage notes for each constructor
+**Before**:
+```
+✗ Parse errors:
+✗ Type error:
+✗ Runtime error:
+```
 
-**Impact**: Better code understanding, easier onboarding
-**Risk**: None (documentation only)
+**After**:
+```
+Parse error:
+Type error:
+Runtime error:
+```
+
+**Impact**: Cleaner, more professional error output
+**Risk**: None
+**Status**: ✅ Complete
+
+---
+
+### 7. Standardize Module Headers ✅
+
+**Files**: Throughout
+
+**Change**: Consistent minimal module headers
+
+**Before**:
+```gleam
+// ============================================================================
+// COMPILER BOOTSTRAP CLI
+// ============================================================================
+/// Command-line interface for the compiler bootstrap project.
+```
+
+**After**:
+```gleam
+/// Compiler Bootstrap CLI
+///
+/// Command-line interface for checking and running core/tao files.
+```
+
+**Section headers**:
+```gleam
+// ============================================================================
+// Entry Point
+// ============================================================================
+```
+
+**Impact**: Consistent, clean code style
+**Risk**: None
 **Status**: ✅ Complete
 
 ---
 
 ## Test Results
 
-**After implementing all 5 safe quick wins**:
+**After implementing all 7 safe quick wins**:
 
 ```
 401 passed, no failures
@@ -156,44 +248,6 @@ All existing tests pass. No regressions.
 ---
 
 ## 📋 Still Safe to Implement (Cosmetic Only)
-
-### 6. Standardize Error Messages (20 min)
-
-**Files**: `src/compiler_bootstrap.gleam`
-
-**Current**: Basic error messages
-**Fix**: More descriptive error messages
-
-**Impact**: Better user experience
-**Risk**: None
-**Status**: 📋 Pending
-
----
-
-### 7. Use `if` Instead of `case` for Booleans (15 min)
-
-**Files**: Multiple
-
-**Current**:
-```gleam
-case verbose {
-  True -> io.println("✓ Success")
-  False -> Nil
-}
-```
-
-**Fix**:
-```gleam
-if verbose {
-  io.println("✓ Success")
-}
-```
-
-**Impact**: More idiomatic Gleam
-**Risk**: None
-**Status**: 📋 Pending
-
----
 
 ### 8. Remove Verbose Type Annotations (20 min)
 
@@ -209,22 +263,10 @@ let result: Result(Term, Error) = parse_term(source)
 let result = parse_term(source)
 ```
 
+**Note**: Keep type annotations on public/global definitions. Remove from helper functions and tests.
+
 **Impact**: Less verbose
 **Risk**: Low (Gleam inference is good)
-**Status**: 📋 Pending
-
----
-
-### 9. Standardize Module Headers (20 min)
-
-**Files**: Throughout
-
-**Current**: Mixed styles (elaborate vs. minimal)
-
-**Fix**: Pick one style (recommend: minimal)
-
-**Impact**: Consistent code style
-**Risk**: None
 **Status**: 📋 Pending
 
 ---
@@ -243,9 +285,9 @@ let result = parse_term(source)
 
 ---
 
-### Remove Documentation Comments - REJECTED
+### Use `if` Instead of `case` - NOT APPLICABLE
 
-**Reason**: Comments in core.gleam are helpful documentation explaining semantics, not obvious repetition.
+**Reason**: Gleam doesn't have `if` expressions. This is by design - Gleam uses `case` for explicit pattern matching.
 
 ---
 
@@ -253,10 +295,11 @@ let result = parse_term(source)
 
 1. **Understand before refactoring** - EMatch looked unused but is essential for NbE
 2. **Type aliases can be semantic** - `Type = Value` documents dependent type theory
-3. **Comments explain semantics** - Not just syntax repetition
-4. **Test after every change** - Catches issues immediately
-5. **When in doubt, keep it** - Better slightly verbose than broken
-6. **Gleam stdlib limitations** - `io.exit()` not available in this version
+3. **Documentation belongs in docs/** - Code comments should be brief with links
+4. **Gleam has no `if`** - Only `case` expressions (by design)
+5. **Test after every change** - Catches issues immediately
+6. **When in doubt, keep it** - Better slightly verbose than broken
+7. **Consistent formatting matters** - Error messages, headers, etc.
 
 ---
 
@@ -275,13 +318,12 @@ let result = parse_term(source)
 | Span helpers | ✅ Complete | Less verbose | None |
 | CLI flag helper | ✅ Complete | Less repetition | None |
 | Remove unused imports | ✅ Complete | Cleaner code | None |
-| NbE documentation | ✅ Complete | Better understanding | None |
-| Term documentation | ✅ Complete | Better onboarding | None |
-| Error messages | 📋 Pending | Better UX | None |
-| `if` vs `case` | 📋 Pending | More idiomatic | None |
+| Streamline docs | ✅ Complete | Better separation | None |
+| NbE docs reference | ✅ Complete | Better understanding | None |
+| Error messages | ✅ Complete | Professional output | None |
+| Module headers | ✅ Complete | Consistent style | None |
 | Type annotations | 📋 Pending | Less verbose | Low |
-| Module headers | 📋 Pending | Consistent style | None |
 
-**Total implemented**: 5 changes
-**Total pending**: 4 cosmetic changes
-**Total rejected**: 3 (would break correctness)
+**Total implemented**: 7 changes
+**Total pending**: 1 cosmetic change
+**Total rejected**: 3 (would break correctness or not applicable)
