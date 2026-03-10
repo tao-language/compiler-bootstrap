@@ -29,10 +29,12 @@
 - ✅ Parser never panics - always returns valid AST with error list
 - ✅ 344+ tests passing
 - ✅ Fixed critical bug: `[..]` pattern matching (matched empty lists incorrectly)
+- ✅ Fixed error position reporting (now shows actual token position, not 0)
 - ✅ Error codes implemented (E0001, E0101-E0106, E0201-E0202, E0301)
 - ✅ Multi-span error support (type mismatches show both locations)
 - ✅ Calc example updated with spans for all constructors
 - ✅ Span tests verify source location tracking
+- ✅ Comprehensive error examples in `examples/core/errors/`
 
 ### What's Pending
 

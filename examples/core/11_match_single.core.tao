@@ -1,3 +1,5 @@
+// Match expression example
+// Note: This demonstrates the syntax, type checking may fail due to motive requirements
 %match x ~ $Type {
   | y -> y
 }

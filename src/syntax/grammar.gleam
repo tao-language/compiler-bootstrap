@@ -507,10 +507,16 @@ fn try_alternatives(
   tokens: List(Token),
   pos: Int,
 ) -> Result(#(a, Int), ParseError) {
+  // Get the position of the first token for better error reporting
+  let error_pos = case list.first(tokens) {
+    Ok(token) -> token.start
+    Error(_) -> pos
+  }
+  
   case alternatives {
     [] ->
       Error(ParseError(
-        position: pos,
+        position: error_pos,
         expected: "valid alternative",
         got: "none",
       ))
