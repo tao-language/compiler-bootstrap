@@ -50,7 +50,7 @@ pub fn parse_error_to_diagnostic(error: grammar.ParseError, source: String, file
 // TYPE ERROR TO DIAGNOSTIC
 // ============================================================================
 
-pub fn type_error_to_diagnostic(error: TypeError, source: String, file: String) -> source_snippet.Diagnostic {
+pub fn type_error_to_diagnostic(error: TypeError, _source: String, file: String) -> source_snippet.Diagnostic {
   case error {
     TypeMismatch(_expected, _got, span1, span2) -> {
       source_snippet.Diagnostic(
