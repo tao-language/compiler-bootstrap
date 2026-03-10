@@ -167,24 +167,25 @@ fn named_case_to_de_bruijn(named_case: NamedCase, env: List(String)) -> Case {
 }
 
 /// Convert NamedPattern to Pattern with De Bruijn indices.
+/// Note: env is passed recursively for nested patterns (not used in base cases)
 fn named_pattern_to_de_bruijn(pattern: NamedPattern, env: List(String)) -> Pattern {
   case pattern {
-    NPAny(span) -> PAny
-    NPAs(inner, name, span) -> {
+    NPAny(_span) -> PAny
+    NPAs(inner, name, _span) -> {
       let inner_db = named_pattern_to_de_bruijn(inner, env)
       PAs(inner_db, name)
     }
-    NPTyp(level, span) -> PTyp(level)
-    NPLit(value, span) -> PLit(value)
-    NPLitT(typ, span) -> PLitT(typ)
-    NPRcd(fields, span) -> {
+    NPTyp(level, _span) -> PTyp(level)
+    NPLit(value, _span) -> PLit(value)
+    NPLitT(typ, _span) -> PLitT(typ)
+    NPRcd(fields, _span) -> {
       let fields_db = fields |> list.map(fn(f) {
         let #(name, pat) = f
         #(name, named_pattern_to_de_bruijn(pat, env))
       })
       PRcd(fields_db)
     }
-    NPCtr(tag, arg, span) -> {
+    NPCtr(tag, arg, _span) -> {
       let arg_db = named_pattern_to_de_bruijn(arg, env)
       PCtr(tag, arg_db)
     }
@@ -285,15 +286,15 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
   |> grammar.token("Pipe")
   // Main expression rule (lowest precedence first)
   |> grammar.rule("Expr", [
-    grammar.alt(grammar.ref("Lambda"), unwrap, fn(_, p) { formatter.text("") }),
-    grammar.alt(grammar.ref("Pi"), unwrap, fn(_, p) { formatter.text("") }),
-    grammar.alt(grammar.ref("Ann"), unwrap, fn(_, p) { formatter.text("") }),
-    grammar.alt(grammar.ref("App"), unwrap, fn(_, p) { formatter.text("") }),
-    grammar.alt(grammar.ref("Dot"), unwrap, fn(_, p) { formatter.text("") }),
-    grammar.alt(grammar.ref("Match"), unwrap, fn(_, p) { formatter.text("") }),
-    grammar.alt(grammar.ref("Call"), unwrap, fn(_, p) { formatter.text("") }),
-    grammar.alt(grammar.ref("Comptime"), unwrap, fn(_, p) { formatter.text("") }),
-    grammar.alt(grammar.ref("Atom"), unwrap, fn(_, p) { formatter.text("") }),
+    grammar.alt(grammar.ref("Lambda"), unwrap, fn(_, _p) { formatter.text("") }),
+    grammar.alt(grammar.ref("Pi"), unwrap, fn(_, _p) { formatter.text("") }),
+    grammar.alt(grammar.ref("Ann"), unwrap, fn(_, _p) { formatter.text("") }),
+    grammar.alt(grammar.ref("App"), unwrap, fn(_, _p) { formatter.text("") }),
+    grammar.alt(grammar.ref("Dot"), unwrap, fn(_, _p) { formatter.text("") }),
+    grammar.alt(grammar.ref("Match"), unwrap, fn(_, _p) { formatter.text("") }),
+    grammar.alt(grammar.ref("Call"), unwrap, fn(_, _p) { formatter.text("") }),
+    grammar.alt(grammar.ref("Comptime"), unwrap, fn(_, _p) { formatter.text("") }),
+    grammar.alt(grammar.ref("Atom"), unwrap, fn(_, _p) { formatter.text("") }),
   ])
   // Lambda: x -> body
   |> grammar.rule("Lambda", [

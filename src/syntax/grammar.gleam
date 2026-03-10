@@ -245,7 +245,7 @@ fn create_operator_pattern(
       }
     },
     deconstructor: fn(_) { panic as "Deconstructor not implemented" },
-    formatter: fn(ast, _) { formatter.text("<ast>") },
+    formatter: fn(_ast, _) { formatter.text("<ast>") },
   )
 }
 
@@ -312,7 +312,7 @@ pub fn right_assoc(
           }
         },
         deconstructor: fn(_) { panic as "Deconstructor not implemented" },
-        formatter: fn(ast, _) { formatter.text("<ast>") },
+        formatter: fn(_ast, _) { formatter.text("<ast>") },
       )
     })
   let first_alt =
@@ -324,7 +324,7 @@ pub fn right_assoc(
           _ -> panic as "right_assoc: expected single value"
         }
       },
-      fn(ast, _) { formatter.text("<ast>") },
+      fn(_ast, _) { formatter.text("<ast>") },
     )
   let rule =
     Rule(

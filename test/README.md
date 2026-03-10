@@ -4,6 +4,18 @@
 
 ---
 
+## Important: Read This First
+
+**Before modifying tests**, read **[Lessons Learned](../docs/lessons-learned.md)**.
+
+Key insights for testing:
+- ⚠️ **Test variables may be used in pattern matching** - Don't prefix with `_` without reading full test
+- ⚠️ **One assertion per test** - Makes failures easier to debug
+- ⚠️ **Check structural equality** - Not just success/failure
+- ⚠️ **Test error cases** - Not just happy paths
+
+---
+
 ## Table of Contents
 
 1. [Test Philosophy](#test-philosophy)

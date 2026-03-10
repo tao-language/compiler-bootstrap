@@ -6,6 +6,18 @@
 
 ---
 
+## Important: Read This First
+
+**Before making "cleanup" changes**, read **[Lessons Learned](../docs/lessons-learned.md)**.
+
+Key insights:
+- ⚠️ **Don't blindly apply compiler warnings** - Some "unused" code is essential
+- ⚠️ **Test variables need context** - May be used in pattern matching
+- ⚠️ **Type aliases can be semantic** - `Type = Value` documents type theory
+- ⚠️ **Recursive parameters look unused** - False positives are common
+
+---
+
 ## Documentation Style
 
 ### Code Comments

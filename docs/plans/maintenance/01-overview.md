@@ -201,6 +201,11 @@ docs/plans/maintenance/
 
 - **[01-codebase-analysis.md](./01-codebase-analysis.md)** - Full analysis with findings
 - **[02-quick-wins.md](./02-quick-wins.md)** - Safe refactoring plan (corrected)
+- **[03-warning-analysis.md](./03-warning-analysis.md)** - Warning categorization
+- **[04-unused-variable-safety-review.md](./04-unused-variable-safety-review.md)** - Safety-critical review
+- **[../../docs/lessons-learned.md](../../docs/lessons-learned.md)** - **Key lessons from this work**
+- **[../../src/README.md](../../src/README.md)** - Code style guide
+- **[../../test/README.md](../../test/README.md)** - Testing guide
 - **[../core/01-overview.md](../core/01-overview.md)** - Core language status
 - **[../grammar/01-overview.md](../grammar/01-overview.md)** - Grammar library status
 - **[../tao/01-overview.md](../tao/01-overview.md)** - Tao language status

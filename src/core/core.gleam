@@ -1136,7 +1136,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       // For lambda inference, we create a hole for the domain type
       let env = get_env(s)
       let #(t1_hole, s) = new_hole(s)
-      let #(fresh, s) = def_var(s, name, t1_hole)
+      let #(_fresh, s) = def_var(s, name, t1_hole)
       let #(body_val, body_ty, s) = infer(s, body)
       // Quote the body back to preserve structure even if there are errors
       let body_quoted = quote(s.ffi, list.length(env), body_val, body.span)
