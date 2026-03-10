@@ -3,7 +3,6 @@
 // ============================================================================
 import gleam/dict.{type Dict}
 import gleam/list
-import gleam/option.{type Option, None, Some}
 import gleam/string
 import syntax/formatter.{type Doc}
 import syntax/lexer.{type Token}
@@ -861,6 +860,22 @@ pub fn span_from_value_list(
     Error(_), Ok(last) -> span_from_token(last, filename)
     Error(_), Error(_) -> Span(filename, 1, 1, 1, 1)
   }
+}
+
+/// Create a dummy span for testing or placeholder use
+/// 
+/// Use this when span information is not available or not needed.
+/// Example: creating synthetic terms during desugaring
+pub fn dummy_span() -> Span {
+  Span("input", 0, 0, 0, 0)
+}
+
+/// Create a span from a single position
+/// 
+/// Use this when you have a specific line/column but no end position.
+/// Example: reporting an error at a specific location
+pub fn mk_span(file: String, line: Int, col: Int) -> Span {
+  Span(file, line, col, line, col)
 }
 
 // ============================================================================

@@ -101,18 +101,25 @@ fn parse_args(args: List(String)) -> Result(Command, String) {
     [] -> Ok(Help)
     ["-h"] | ["--help"] -> Ok(Help)
     ["check", file, ..rest] -> {
-      let verbose = list.contains(rest, "-v") || list.contains(rest, "--verbose")
-      let debug = list.contains(rest, "--debug")
+      let verbose = has_flag(rest, "-v", "--verbose")
+      let debug = has_flag(rest, "--debug", "--debug")
       Ok(Check(file, verbose, debug))
     }
     ["run", file, ..rest] -> {
-      let verbose = list.contains(rest, "-v") || list.contains(rest, "--verbose")
-      let debug = list.contains(rest, "--debug")
+      let verbose = has_flag(rest, "-v", "--verbose")
+      let debug = has_flag(rest, "--debug", "--debug")
       Ok(Run(file, verbose, debug))
     }
     [cmd, ..] -> Error("Unknown command: " <> cmd)
     _ -> Error("Invalid arguments")
   }
+}
+
+/// Check if a flag is present in argument list (supports both short and long forms)
+/// 
+/// Example: has_flag(["-v", "--debug"], "-v", "--verbose") -> True
+fn has_flag(args: List(String), short: String, long: String) -> Bool {
+  list.contains(args, short) || list.contains(args, long)
 }
 
 // ============================================================================
