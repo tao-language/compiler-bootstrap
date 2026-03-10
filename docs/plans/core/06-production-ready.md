@@ -54,7 +54,15 @@ This document outlines the work needed to transform the compiler bootstrap from 
 - ✅ Enhanced parse error types with spans (`ParseErrorWithSpan`)
 - ✅ Error reporter module (`syntax/error_reporter.gleam`)
 - ✅ Error AST nodes for graceful recovery
-- 📋 Source snippet display in CLI (infrastructure ready, integration pending)
+- ✅ Phase 1 complete: Parse error display with source snippets
+- ✅ Phase 2 complete: Type error display with source snippets
+- ✅ Phase 3 complete: Multi-span error support
+- ✅ Error codes (E0001, E0101-E0106, E0201-E0202, E0301)
+- ✅ Basic hints for all error types
+- 📋 JSON error output format (Phase 5)
+- 📋 Color terminal support (Phase 6)
+- 📋 Context lines (Phase 6)
+- 📋 Proper exit codes (Phase 6)
 
 ### 📋 Pending (Production Readiness)
 
@@ -64,15 +72,18 @@ This document outlines the work needed to transform the compiler bootstrap from 
 3. ✅ Evaluator integrated with CLI
 4. ✅ Parser never panics - returns error AST nodes
 5. ✅ All 401 tests passing - FIXED pattern matching bug (`[..]` → `[_, ..]`)
-6. ⏳ Source snippet display integration in CLI
-7. ⏳ Exhaustiveness checking in CLI
+6. ✅ Source snippet display integration in CLI (Phase 1 & 2 complete)
+7. ✅ Multi-span error support (Phase 3 complete)
+8. ⏳ Exhaustiveness checking in CLI
+9. ⏳ JSON error output format (Phase 5)
+10. ⏳ Color terminal support, context lines, exit codes (Phase 6)
 
 **Enhancement Areas:**
-- 📋 Multi-span error display (e.g., type mismatches)
-- 📋 Error codes for all error types (E0001, E0101, etc.)
-- 📋 Suggestions/hints for common errors
-- 📋 JSON error output format
-- 📋 Color terminal support
+- ✅ Multi-span error display (Phase 3 complete)
+- ✅ Error codes for error types (E0001, E0101, etc.) - Phase 4 partial
+- ✅ Suggestions/hints for common errors - Phase 4 partial
+- 📋 JSON error output format (Phase 5)
+- 📋 Color terminal support (Phase 6)
 - 📋 FFI and comptime full support
 - 📋 Performance optimizations
 
