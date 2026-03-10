@@ -4,9 +4,7 @@
 import gleam/int
 import gleam/result
 import syntax/formatter.{type Doc}
-import syntax/grammar.{
-  type Grammar, type Value, AstValue, ParensValue, TokenValue,
-}
+import syntax/grammar.{type Grammar, AstValue, ParensValue, TokenValue}
 
 pub type Expr {
   Int(Int)

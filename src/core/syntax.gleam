@@ -27,10 +27,8 @@ import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{None, Some}
-import gleam/result
-import gleam/string
 import syntax/formatter
-import syntax/grammar.{ParseError, type ParseError, type Span, AstValue, TokenValue}
+import syntax/grammar.{type Span, AstValue, TokenValue}
 import syntax/lexer.{type Token}
 
 // ============================================================================
@@ -205,16 +203,6 @@ pub fn named_to_de_bruijn(term: NamedTerm) -> Term {
   named_to_de_bruijn_loop(term, [])
 }
 
-fn parse_value_to_term(value: ParseValue) -> Result(Term, ParseError) {
-  case value {
-    AsTerm(named_term) -> Ok(named_to_de_bruijn(named_term))
-    AsFields(_) -> Error(ParseError(0, "expression", "field list"))
-    AsCases(_) -> Error(ParseError(0, "expression", "case list"))
-    AsPattern(_) -> Error(ParseError(0, "expression", "pattern"))
-    AsArgs(_) -> Error(ParseError(0, "expression", "argument list"))
-  }
-}
-
 pub fn parse(source: String) -> grammar.ParseResult(Term) {
   let parsed: grammar.ParseResult(ParseValue) = grammar.parse(core_grammar(), source)
   case parsed {
@@ -225,20 +213,16 @@ pub fn parse(source: String) -> grammar.ParseResult(Term) {
           grammar.ParseResult(term, errors)
         }
         AsFields(_) -> {
-          let err = ParseError(0, "expression", "field list")
-          grammar.ParseResult(ast: panic as "Parse failed", errors: [err, ..errors])
+          panic as "Parse failed: expected expression, got field list"
         }
         AsCases(_) -> {
-          let err = ParseError(0, "expression", "case list")
-          grammar.ParseResult(ast: panic as "Parse failed", errors: [err, ..errors])
+          panic as "Parse failed: expected expression, got case list"
         }
         AsPattern(_) -> {
-          let err = ParseError(0, "expression", "pattern")
-          grammar.ParseResult(ast: panic as "Parse failed", errors: [err, ..errors])
+          panic as "Parse failed: expected expression, got pattern"
         }
         AsArgs(_) -> {
-          let err = ParseError(0, "expression", "argument list")
-          grammar.ParseResult(ast: panic as "Parse failed", errors: [err, ..errors])
+          panic as "Parse failed: expected expression, got argument list"
         }
       }
     }
@@ -1065,7 +1049,6 @@ fn format_term(term: Term, parent_prec: Int, bindings: List(String)) -> formatte
       ])
       wrap_parens(inner, 50 < parent_prec)
     }
-    _ -> formatter.text("<unknown>")
   }
 }
 

@@ -6,11 +6,9 @@
 /// The grammar DSL allows defining parsers and formatters from a single
 /// grammar definition. Tests verify parsing, operator precedence, and
 /// layout handling.
-import gleam/list
 import gleeunit
 import gleeunit/should
 import examples/calc.{parse, type Expr, Add, Div, Int, Mul, Sub}
-import syntax/grammar.{type ParseResult}
 
 pub fn main() {
   gleeunit.main()

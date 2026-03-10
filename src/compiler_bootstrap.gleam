@@ -107,7 +107,6 @@ fn parse_args(args: List(String)) -> Result(Command, String) {
       Ok(Run(file, verbose, debug))
     }
     [cmd, ..] -> Error("Unknown command: " <> cmd)
-    _ -> Error("Invalid arguments")
   }
 }
 

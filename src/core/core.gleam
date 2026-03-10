@@ -477,18 +477,11 @@ fn bool_to_int(b: Bool) -> Int {
 /// - The paths/values match exactly
 /// - A granted Write permission fulfills a Read request, but not the other way around.
 pub fn check_permission(required: Permission, granted: Permission) -> Bool {
-  case required {
-    AllowRead(req) ->
-      case granted {
-        AllowRead(grant) -> req == grant || grant == "*"
-        AllowWrite(grant) -> req == grant || grant == "*"
-        _ -> False
-      }
-    AllowWrite(req) ->
-      case granted {
-        AllowWrite(grant) -> req == grant || grant == "*"
-        _ -> False
-      }
+  case required, granted {
+    AllowRead(req), AllowRead(grant) -> req == grant || grant == "*"
+    AllowRead(req), AllowWrite(grant) -> req == grant || grant == "*"
+    AllowWrite(req), AllowWrite(grant) -> req == grant || grant == "*"
+    AllowWrite(_), AllowRead(_) -> False
   }
 }
 

@@ -1,4 +1,4 @@
-import syntax/grammar.{Span, type Span}
+import syntax/grammar.{type Span}
 import gleam/option.{type Option}
 
 // ============================================================================

@@ -273,25 +273,6 @@ fn fold_operators_multi(
   }
 }
 
-fn fold_operators(
-  first: a,
-  rest_values: List(Value(a)),
-  apply: fn(a, a) -> a,
-) -> a {
-  case rest_values {
-    [] -> first
-    [op_right, ..more] -> {
-      case op_right {
-        ListValue([TokenValue(_), AstValue(right)]) -> {
-          let new_first = apply(first, right)
-          fold_operators(new_first, more, apply)
-        }
-        _ -> first
-      }
-    }
-  }
-}
-
 pub fn right_assoc(
   builder: GrammarBuilder(a),
   name: String,
@@ -493,7 +474,7 @@ pub fn parse(grammar: Grammar(a), source: String) -> ParseResult(a) {
     Ok(rule) -> {
       case parse_rule(grammar, rule, tokens, 0) {
         Ok(#(ast, _)) -> ParseResult(ast: ast, errors: [])
-        Error(err) -> ParseResult(ast: panic as "Parse failed", errors: [err])
+        Error(_err) -> panic as "Parse failed"
       }
     }
     Error(_) ->

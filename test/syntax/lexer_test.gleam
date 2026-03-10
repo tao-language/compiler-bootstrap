@@ -9,7 +9,6 @@ import gleam/list
 import gleeunit
 import gleeunit/should
 import syntax/lexer.{type Token}
-import syntax/lexer as lexer_module
 
 pub fn main() {
   gleeunit.main()
@@ -21,19 +20,19 @@ pub fn main() {
 
 /// Get token kinds from a source string
 fn tokenize_kinds(source: String) -> List(String) {
-  lexer_module.tokenize(source) |> list.map(fn(t) { t.kind })
+  lexer.tokenize(source) |> list.map(fn(t) { t.kind })
 }
 
 /// Get token values from a source string
 fn tokenize_values(source: String) -> List(String) {
-  lexer_module.tokenize(source) |> list.map(fn(t) { t.value })
+  lexer.tokenize(source) |> list.map(fn(t) { t.value })
 }
 
 /// Get a specific token by index
 fn get_token(source: String, index: Int) -> Token {
-  case list.drop(lexer_module.tokenize(source), index) {
+  case list.drop(lexer.tokenize(source), index) {
     [token, ..] -> token
-    [] -> lexer_module.Token("Error", "", 0, 0, 0, 0)
+    [] -> lexer.Token("Error", "", 0, 0, 0, 0)
   }
 }
 
@@ -115,45 +114,45 @@ pub fn tokenize_number_with_ident_test() {
 
 pub fn tokenize_string_empty_test() {
   // String tokenizer returns the content (without quotes)
-  let tokens = lexer_module.tokenize("\"\"")
+  let tokens = lexer.tokenize("\"\"")
   tokens |> list.length |> should.equal(1)
   tokens |> list.map(fn(t) { t.kind }) |> should.equal(["String"])
   tokens |> list.map(fn(t) { t.value }) |> should.equal([""])
 }
 
 pub fn tokenize_string_simple_test() {
-  let tokens = lexer_module.tokenize("\"hello\"")
+  let tokens = lexer.tokenize("\"hello\"")
   tokens |> list.length |> should.equal(1)
   tokens |> list.map(fn(t) { t.kind }) |> should.equal(["String"])
   tokens |> list.map(fn(t) { t.value }) |> should.equal(["hello"])
 }
 
 pub fn tokenize_string_with_escape_n_test() {
-  let tokens = lexer_module.tokenize("\"hello\\nworld\"")
+  let tokens = lexer.tokenize("\"hello\\nworld\"")
   tokens |> list.map(fn(t) { t.kind }) |> should.equal(["String"])
   tokens |> list.map(fn(t) { t.value }) |> should.equal(["hello\nworld"])
 }
 
 pub fn tokenize_string_with_escape_t_test() {
-  let tokens = lexer_module.tokenize("\"hello\\tworld\"")
+  let tokens = lexer.tokenize("\"hello\\tworld\"")
   tokens |> list.map(fn(t) { t.kind }) |> should.equal(["String"])
   tokens |> list.map(fn(t) { t.value }) |> should.equal(["hello\tworld"])
 }
 
 pub fn tokenize_string_with_escape_quote_test() {
-  let tokens = lexer_module.tokenize("\"hello\\\"world\"")
+  let tokens = lexer.tokenize("\"hello\\\"world\"")
   tokens |> list.map(fn(t) { t.kind }) |> should.equal(["String"])
   tokens |> list.map(fn(t) { t.value }) |> should.equal(["hello\"world"])
 }
 
 pub fn tokenize_string_with_escape_backslash_test() {
-  let tokens = lexer_module.tokenize("\"hello\\\\world\"")
+  let tokens = lexer.tokenize("\"hello\\\\world\"")
   tokens |> list.map(fn(t) { t.kind }) |> should.equal(["String"])
   tokens |> list.map(fn(t) { t.value }) |> should.equal(["hello\\world"])
 }
 
 pub fn tokenize_string_multiple_test() {
-  let tokens = lexer_module.tokenize("\"foo\" \"bar\"")
+  let tokens = lexer.tokenize("\"foo\" \"bar\"")
   tokens |> list.length |> should.equal(2)
   tokens |> list.map(fn(t) { t.kind }) |> should.equal(["String", "String"])
   tokens |> list.map(fn(t) { t.value }) |> should.equal(["foo", "bar"])
@@ -353,7 +352,7 @@ pub fn tokenize_position_column_after_lambda_test() {
 
 pub fn tokenize_lambda_expression_test() {
   let source = "λx. x + 1"
-  let tokens = lexer_module.tokenize(source)
+  let tokens = lexer.tokenize(source)
 
   tokens |> list.length |> should.equal(6)
   tokenize_values(source)
@@ -362,14 +361,14 @@ pub fn tokenize_lambda_expression_test() {
 
 pub fn tokenize_function_definition_test() {
   let source = "fn add(x, y) { x + y }"
-  let tokens = lexer_module.tokenize(source)
+  let tokens = lexer.tokenize(source)
 
   tokens |> list.length |> should.equal(12)
 }
 
 pub fn tokenize_match_expression_test() {
   let source = "match x { A → 1, B → 2 }"
-  let tokens = lexer_module.tokenize(source)
+  let tokens = lexer.tokenize(source)
 
   tokens |> list.length |> should.equal(11)
 }
