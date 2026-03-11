@@ -3,18 +3,18 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
-import syntax/grammar.{Span, type Span}
+import syntax/grammar.{type Span, Span}
 
 // ============================================================================
 // SYNTAX (Terms)
 // ============================================================================
+
 /// Terms represent the raw Abstract Syntax Tree (AST) as written by the
 /// programmer. They use De Bruijn INDICES for variables.
 ///
 /// For detailed documentation see:
 /// - [Core Language Specification](../../docs/core.md#syntax-terms)
 /// - [Normalization by Evaluation](../../docs/core.md#normalization-by-evaluation)
-
 pub type Term {
   Term(data: TermData, span: Span)
 }
@@ -37,31 +37,31 @@ pub type TermData {
 
   /// Error placeholder - used when parsing fails, allows error recovery
   Err(message: String)
-  
+
   /// Record with named fields.
   Rcd(fields: List(#(String, Term)))
-  
+
   /// Constructor application (e.g., Some(42), Cons(1, Nil)).
   Ctr(tag: String, arg: Term)
-  
+
   /// Field projection (record.field).
   Dot(arg: Term, field: String)
-  
+
   /// Type annotation (term : type).
   Ann(term: Term, typ: Term)
-  
+
   /// Lambda abstraction (λx. body).
   Lam(name: String, body: Term)
-  
+
   /// Dependent function type ((x : A) → B x).
   Pi(name: String, in: Term, out: Term)
-  
+
   /// Function application (f x).
   App(fun: Term, arg: Term)
-  
+
   /// Pattern matching with dependent return type.
   Match(arg: Term, motive: Term, cases: List(Case))
-  
+
   /// Built-in function call (FFI).
   Call(name: String, args: List(Term))
 
@@ -128,6 +128,7 @@ pub type Pattern {
 // ============================================================================
 // NEUTRAL TERMS
 // ============================================================================
+
 /// Neutral terms represent computations stuck on unknowns (variables or holes).
 /// The head is the variable/hole, and the spine is a list of pending operations.
 ///
@@ -144,7 +145,6 @@ pub type Pattern {
 /// For detailed documentation see:
 /// - [Neutral Terms](../../docs/core.md#neutral-terms)
 /// - [Normalization by Evaluation](../../docs/core.md#normalization-by-evaluation)
-
 pub type Head {
   /// Variable head (De Bruijn level - absolute, stable).
   HVar(level: Int)
@@ -173,10 +173,10 @@ pub type Head {
 pub type Elim {
   /// Field projection: wait to project `.field` from a record.
   EDot(name: String)
-  
+
   /// Function application: wait to apply function to argument.
   EApp(arg: Value)
-  
+
   /// Pattern matching: wait to match value against patterns.
   /// CRITICAL for NbE - DO NOT REMOVE.
   EMatch(env: Env, motive: Value, cases: List(Case))
@@ -285,12 +285,60 @@ pub const initial_state = State(
   hole: 0,
   var: 0,
   ctrs: [
+    // TODO: This initial state should be defined in the prelude, not hardcoded here.
     // Bool type constructors: #True : Bool, #False : Bool
-    #("True", CtrDef(params: [], arg_ty: Term(Typ(0), Span("", 0, 0, 0, 0)), ret_ty: Term(Typ(0), Span("", 0, 0, 0, 0)))),
-    #("False", CtrDef(params: [], arg_ty: Term(Typ(0), Span("", 0, 0, 0, 0)), ret_ty: Term(Typ(0), Span("", 0, 0, 0, 0)))),
+    #(
+      "True",
+      CtrDef(
+        params: [],
+        arg_ty: Term(Typ(0), Span("", 0, 0, 0, 0)),
+        ret_ty: Term(Typ(0), Span("", 0, 0, 0, 0)),
+      ),
+    ),
+    #(
+      "False",
+      CtrDef(
+        params: [],
+        arg_ty: Term(Typ(0), Span("", 0, 0, 0, 0)),
+        ret_ty: Term(Typ(0), Span("", 0, 0, 0, 0)),
+      ),
+    ),
     // Nat type constructors: #Zero : Nat, #Succ : Nat -> Nat
-    #("Zero", CtrDef(params: [], arg_ty: Term(Typ(0), Span("", 0, 0, 0, 0)), ret_ty: Term(Typ(0), Span("", 0, 0, 0, 0)))),
-    #("Succ", CtrDef(params: ["n"], arg_ty: Term(Typ(0), Span("", 0, 0, 0, 0)), ret_ty: Term(Typ(0), Span("", 0, 0, 0, 0)))),
+    #(
+      "Zero",
+      CtrDef(
+        params: [],
+        arg_ty: Term(Typ(0), Span("", 0, 0, 0, 0)),
+        ret_ty: Term(Typ(0), Span("", 0, 0, 0, 0)),
+      ),
+    ),
+    #(
+      "Succ",
+      CtrDef(
+        params: ["n"],
+        arg_ty: Term(Typ(0), Span("", 0, 0, 0, 0)),
+        ret_ty: Term(Typ(0), Span("", 0, 0, 0, 0)),
+      ),
+    ),
+    // Vec type constructors (length-indexed vectors)
+    // #VNil : Vec A Zero
+    #(
+      "VNil",
+      CtrDef(
+        params: [],
+        arg_ty: Term(Typ(0), Span("", 0, 0, 0, 0)),
+        ret_ty: Term(Typ(0), Span("", 0, 0, 0, 0)),
+      ),
+    ),
+    // #VCons : A -> Vec A n -> Vec A (Succ n)
+    #(
+      "VCons",
+      CtrDef(
+        params: ["a", "n", "v"],
+        arg_ty: Term(Typ(0), Span("", 0, 0, 0, 0)),
+        ret_ty: Term(Typ(0), Span("", 0, 0, 0, 0)),
+      ),
+    ),
   ],
   ctx: [],
   sub: [],
@@ -664,7 +712,8 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
       }
     }
     Comptime(term) -> eval(ffi, env, term)
-    Err(_) -> VErr  // Error terms evaluate to VErr
+    Err(_) -> VErr
+    // Error terms evaluate to VErr
   }
 }
 
@@ -1185,9 +1234,23 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
           let #(result_ty_hole_val, s) = new_hole(s)
           let result_ty_hole_id = s.hole - 1
           // Create the expanded function type: (?2 -> ?3)
-          let fun_ty_expanded = VPi("_", env, arg_ty_hole_val, Term(Hole(result_ty_hole_id), fun.span))
+          let fun_ty_expanded =
+            VPi(
+              "_",
+              env,
+              arg_ty_hole_val,
+              Term(Hole(result_ty_hole_id), fun.span),
+            )
           // Unify the original hole with the expanded type
-          case unify(s, VNeut(HHole(hole_id), []), fun_ty_expanded, fun.span, fun.span) {
+          case
+            unify(
+              s,
+              VNeut(HHole(hole_id), []),
+              fun_ty_expanded,
+              fun.span,
+              fun.span,
+            )
+          {
             Ok(s) -> {
               // Now check the argument against the domain hole
               let #(arg_val, s) = check(s, arg, arg_ty_hole_val, arg.span)
@@ -1277,7 +1340,8 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(val2, ty, s2) = infer(s1, quoted)
       #(val2, ty, s2)
     }
-    Err(_) -> #(VErr, VErr, s)  // Error terms have error type
+    Err(_) -> #(VErr, VErr, s)
+    // Error terms have error type
   }
 }
 

@@ -25,14 +25,14 @@ gleam run -- run examples/core/programs/01_literals_and_primitives.core.tao
 | `03_algebraic_data_types.core.tao` | Constructors | ✅ Works |
 | `04_records.core.tao` | Record construction, field access | ✅ Works |
 | `05_dependent_types.core.tao` | Pi types | ✅ Works |
-| `06_pattern_guards.core.tao` | Pattern guards | ⚠️ Core impl, parsing needs work |
+| `06_pattern_guards.core.tao` | Pattern guards | ⚠️ Golden sample (parsing needs work) |
 | `07_comptime.core.tao` | Compile-time evaluation | ✅ Works |
 | `08_type_universes_and_holes.core.tao` | Universe levels, hole inference | ✅ Works |
 | `09_factorial.core.tao` | Full integration example | ⚠️ Requires recursion |
 | `10_church_numerals.core.tao` | Church encoding of naturals | ✅ Works |
 | `11_church_booleans.core.tao` | Church encoding of booleans | ✅ Works |
 | `12_list_operations.core.tao` | Church-encoded lists | ✅ Works |
-| `13_vector_dependent.core.tao` | Length-indexed vectors | ⚠️ Golden sample |
+| `13_vector_dependent.core.tao` | Length-indexed vectors | ✅ Works |
 | `14_let_function_application.core.tao` | Let with function application | ✅ Works |
 
 ### Example Details

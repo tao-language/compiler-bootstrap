@@ -1,5 +1,6 @@
-// Vector with Dependent Types (Golden Sample)
+// Vector with Dependent Types (Length-Indexed)
 // A vector where the length is part of the type
 
 // Vector of length 2 containing values
-#VCons(42, #VCons(43, #VNil))
+// #VCons takes: element, length index, tail vector
+#VCons(42, #Zero, #VCons(43, #Zero, #VNil))
