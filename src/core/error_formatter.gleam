@@ -15,6 +15,7 @@
 ///    📝 note: $Type and $I32 are incompatible types
 ///    🔧 help: use a type annotation or check your term
 /// ```
+import core/color.{type ColorConfig, should_use_colors, default_config, colorize_error_header, colorize_warning_header, colorize_info_header, colorize_note, colorize_help, strip_ansi_codes}
 import core/core.{
   type Error, type Type, type Pattern, type Value as Val, type LiteralType,
   type Literal, type Head, type Permission, type Term,
@@ -483,13 +484,6 @@ fn float_to_string(f: Float) -> String {
   }
 }
 
-fn bool_to_string(b: Bool) -> String {
-  case b {
-    True -> "true"
-    False -> "false"
-  }
-}
-
 fn head_to_string(head: Head) -> String {
   case head {
     HVar(index) -> "var[" <> int.to_string(index) <> "]"
@@ -530,20 +524,41 @@ fn type_mismatch_hints(expected: Type, got: Type, _source: String, _span: gramma
 // FORMATTED OUTPUT
 // ============================================================================
 
+/// Format an error with default color configuration
 pub fn format_error(error: Error, source: String, file: String) -> String {
-  let diagnostic = error_to_diagnostic(error, source, file)
-  format_diagnostic(diagnostic, source)
+  format_error_with_config(error, source, file, default_config)
 }
 
+/// Format an error with custom color configuration
+pub fn format_error_with_config(
+  error: Error,
+  source: String,
+  file: String,
+  color_config: ColorConfig,
+) -> String {
+  let diagnostic = error_to_diagnostic(error, source, file)
+  format_diagnostic_with_config(diagnostic, source, color_config)
+}
+
+/// Format a diagnostic with default color configuration
 pub fn format_diagnostic(diagnostic: Diagnostic, source: String) -> String {
-  let header = format_header(diagnostic)
-  let snippet = format_snippet(diagnostic, source)
-  let footer = format_footer(diagnostic)
+  format_diagnostic_with_config(diagnostic, source, default_config)
+}
+
+/// Format a diagnostic with custom color configuration
+pub fn format_diagnostic_with_config(
+  diagnostic: Diagnostic,
+  source: String,
+  color_config: ColorConfig,
+) -> String {
+  let header = format_header_with_config(diagnostic, color_config)
+  let snippet = format_snippet_with_config(diagnostic, source, color_config)
+  let footer = format_footer_with_config(diagnostic, color_config)
 
   string.join([header, snippet, footer] |> list.filter(fn(s) { s != "" }), "\n")
 }
 
-fn format_header(diagnostic: Diagnostic) -> String {
+fn format_header_with_config(diagnostic: Diagnostic, config: ColorConfig) -> String {
   let emoji = case diagnostic.severity {
     source_snippet.Error -> emoji_error
     source_snippet.Warning -> emoji_warning
@@ -556,24 +571,48 @@ fn format_header(diagnostic: Diagnostic) -> String {
     source_snippet.Info -> "info"
   }
 
-  emoji <> " " <> severity_str <> "[" <> diagnostic.code <> "]: " <> diagnostic.message
+  let header_text = emoji <> " " <> severity_str <> "[" <> diagnostic.code <> "]: " <> diagnostic.message
+
+  case diagnostic.severity {
+    source_snippet.Error -> colorize_error_header(header_text, config)
+    source_snippet.Warning -> colorize_warning_header(header_text, config)
+    source_snippet.Info -> colorize_info_header(header_text, config)
+  }
 }
 
-fn format_snippet(diagnostic: Diagnostic, source: String) -> String {
-  source_snippet.format_diagnostic(diagnostic, source)
+fn format_snippet_with_config(
+  diagnostic: Diagnostic,
+  source: String,
+  config: ColorConfig,
+) -> String {
+  // Use the source_snippet formatter, then optionally colorize it
+  let snippet = source_snippet.format_diagnostic(diagnostic, source)
+
+  // For now, just return the snippet as-is
+  // Future: could add color to the snippet itself
+  case should_use_colors(config) {
+    True -> snippet  // source_snippet may add its own colors
+    False -> strip_ansi_codes(snippet)
+  }
 }
 
-fn format_footer(diagnostic: Diagnostic) -> String {
+fn format_footer_with_config(diagnostic: Diagnostic, config: ColorConfig) -> String {
   let notes = diagnostic.notes
-  |> list.map(fn(note) { emoji_note <> " note: " <> note })
+  |> list.map(fn(note) {
+    let text = emoji_note <> " note: " <> note
+    colorize_note(text, config)
+  })
 
   let hints = diagnostic.hints
-  |> list.map(fn(hint) { emoji_help <> " help: " <> hint })
+  |> list.map(fn(hint) {
+    let text = emoji_help <> " help: " <> hint
+    colorize_help(text, config)
+  })
 
   let footer_items = list.append(notes, hints)
 
   case footer_items {
     [] -> ""
-    [..] -> "\n" <> string.join(footer_items, "\n")
+    _ -> "\n" <> string.join(footer_items, "\n")
   }
 }
