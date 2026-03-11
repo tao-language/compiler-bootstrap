@@ -762,8 +762,11 @@ fn make_typ_with_level(values) -> ParseValue {
 
 fn make_constructor(values) -> ParseValue {
   case values {
-    [_, TokenValue(token)] ->
-      AsTerm(NCtr(token.value, NHole(0, grammar.span_from_token(token, "input")), grammar.span_from_token(token, "input")))
+    [_, TokenValue(token)] -> {
+      // Constructor without args: use a unit literal as placeholder
+      let span = grammar.span_from_token(token, "input")
+      AsTerm(NCtr(token.value, NLit(I32(0), span), span))
+    }
     _ -> panic as "Expected constructor (#Name)"
   }
 }
