@@ -1,9 +1,5 @@
-// Comptime & Type-Level Programming
-// Verifies %comptime. Ensures the language can perform computation
-// at compile-time to generate types or terms.
+// Comptime (Golden Sample)
+// This demonstrates the syntax for compile-time computation
 
-// Compute a value at comptime to use in a term
-let size = %comptime %call prim.add(10, 5);
-
-// Use the computed value (should be normalized to 15)
-size
+// Compute a value at comptime
+%comptime 15

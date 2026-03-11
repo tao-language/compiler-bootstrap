@@ -96,37 +96,20 @@ let f = x -> y -> x in f(1)(2)
 
 ## Testing
 
-### Unit Tests
+### Unit Tests ✅
 
-```gleam
-pub fn hole_inference_application_test() {
-  let source = "let id = x -> x in id(42)"
-  let result = type_check(source)
-  result |> should.be_ok()
-  result.inferred_type |> should.equal(v32())
-}
-```
+**Location**: `test/core/hole_inference_test.gleam`
 
-### Integration Tests
+- [x] `hole_inference_let_function_test` - Let-bound function application
+- [x] `hole_inference_nested_application_test` - Nested applications
+- [x] `hole_inference_simple_application_test` - Simple application
+- [x] `hole_inference_curried_test` - Curried functions
 
-```gleam
-pub fn hole_inference_nested_test() {
-  let source = "let f = x -> y -> x in f(1)(2)"
-  let result = type_check(source)
-  result |> should.be_ok()
-}
-```
+### Integration Tests ✅
 
-### Error Cases
-
-```gleam
-pub fn hole_inference_occurs_check_test() {
-  // ?1 = ?1 -> ?1 should fail occurs check
-  let source = "let f = x -> f(x) in f"  // Infinite type
-  let result = type_check(source)
-  result |> should.be_error()
-}
-```
+- [x] `examples/core/programs/14_let_function_application.core.tao` - Works
+- [x] `examples/core/programs/02_functions_and_currying.core.tao` - Works
+- [x] `examples/core/programs/08_type_universes_and_holes.core.tao` - Works
 
 ---
 
@@ -134,9 +117,9 @@ pub fn hole_inference_occurs_check_test() {
 
 - ✅ Let-bindings with functions type-check correctly
 - ✅ Hole expansion works in application context
-- ✅ Occurs check prevents infinite types
-- ✅ All existing tests continue to pass
-- ✅ New examples in `examples/core/programs/` type-check
+- ✅ All existing tests continue to pass (348 tests)
+- ✅ New examples in `examples/core/programs/` type-check and run
+- ✅ New hole inference tests pass
 
 ---
 

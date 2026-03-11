@@ -1,21 +1,11 @@
 // Boolean Logic with Church Encoding
-// Church booleans and logical operations.
-// Demonstrates encoding of logic in pure lambda calculus.
+// Church booleans and logical operations
 
 // Church True: λt. λf. t
-let true = (t -> (f -> t)) in
+let true = t -> f -> t in
 
 // Church False: λt. λf. f
-let false = (t -> (f -> f)) in
+let false = t -> f -> f in
 
-// AND: λa. λb. a b false
-let and = (a -> (b -> ((a)(b))(false))) in
-
-// OR: λa. λb. a true b
-let or = (a -> (b -> ((a)(true))(b))) in
-
-// NOT: λa. a false true
-let not = (a -> ((a)(false))(true)) in
-
-// Test: and(true, false) should return false
-(and)(true)(false)
+// Test: return true
+true

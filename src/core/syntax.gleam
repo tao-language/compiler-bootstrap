@@ -397,7 +397,7 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
     grammar.alt(
       grammar.seq([
         grammar.token_pattern("PercentCall"),
-        grammar.ref("Atom"),  // Function name (can be identifier or field access)
+        grammar.token_pattern("Ident"),  // Simple function name for now
         grammar.token_pattern("LParen"),
         grammar.ref("ArgList"),
         grammar.token_pattern("RParen"),

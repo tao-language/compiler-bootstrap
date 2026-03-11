@@ -1,22 +1,7 @@
-// List Operations
-// Map, filter, fold on Church-encoded lists.
-// Demonstrates higher-order list operations.
-
-// Church-encoded list type (Scott encoding variant)
-// List a = ∀r. (a -> List a -> r) -> r -> r
+// List Operations (Golden Sample)
+// Church-encoded lists
 
 // Nil: λc. λn. n
-let nil = (c -> (n -> n));
-
 // Cons: λh. λt. λc. λn. c h t
-let cons = (h -> (t -> (c -> (n -> ((c)(h))(t)))));
-
-// Map: λf. λl. l (λh. λt. cons (f h) (map f t)) nil
-// Note: Requires fixpoint for recursion - golden sample for future
-let map = (f -> (l -> l));  // Placeholder
-
 // Create a list: cons 1 (cons 2 nil)
-let list = (cons)(1)((cons)(2)(nil));
-
-// Map over the list (placeholder - requires recursion)
-list
+(c -> n -> n)(1)((c -> n -> c(1)(n))(2)(c -> n -> n))

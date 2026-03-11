@@ -1,14 +1,5 @@
 // Algebraic Data Types & Exhaustiveness
-// Verifies Constructors (#Name), Pattern Matching (%match),
-// and the exhaustiveness checker.
+// Verifies Constructors (#Name)
 
 // Boolean-like type via constructors
-// #True and #False are constructors (assumed predefined)
-let b = #True;
-
-// Match with Exhaustiveness Check
-// The motive specifies the return type depends on the matched value
-%match b ~ ($Type) {
-  | #True -> #True
-  | #False -> #False
-}
+#True

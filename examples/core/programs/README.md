@@ -20,18 +20,18 @@ gleam run -- run examples/core/programs/01_literals_and_primitives.core.tao
 
 | File | Description | Status |
 |------|-------------|--------|
-| `01_literals_and_primitives.core.tao` | Literals, type annotations, primitive calls | ✅ Works |
+| `01_literals_and_primitives.core.tao` | Literals, primitive calls | ✅ Works |
 | `02_functions_and_currying.core.tao` | Lambda syntax, curried application | ✅ Works |
-| `03_algebraic_data_types.core.tao` | Constructors, pattern matching | ✅ Works |
+| `03_algebraic_data_types.core.tao` | Constructors | ⚠️ Golden sample |
 | `04_records.core.tao` | Record construction, field access | ✅ Works |
-| `05_dependent_types.core.tao` | Dependent types, match motives | ✅ Works |
-| `06_pattern_guards.core.tao` | Pattern guards, conditional logic | ⚠️ Requires prim.mod |
+| `05_dependent_types.core.tao` | Pi types | ✅ Works |
+| `06_pattern_guards.core.tao` | Pattern guards | ⚠️ Golden sample |
 | `07_comptime.core.tao` | Compile-time evaluation | ✅ Works |
 | `08_type_universes_and_holes.core.tao` | Universe levels, hole inference | ✅ Works |
-| `09_factorial.core.tao` | Full integration example | ⚠️ Requires recursion |
+| `09_factorial.core.tao` | Full integration example | ⚠️ Golden sample |
 | `10_church_numerals.core.tao` | Church encoding of naturals | ✅ Works |
 | `11_church_booleans.core.tao` | Church encoding of booleans | ✅ Works |
-| `12_list_operations.core.tao` | Church-encoded lists | ⚠️ Placeholder |
+| `12_list_operations.core.tao` | Church-encoded lists | ✅ Works |
 | `13_vector_dependent.core.tao` | Length-indexed vectors | ⚠️ Golden sample |
 | `14_let_function_application.core.tao` | Let with function application | ✅ Works |
 

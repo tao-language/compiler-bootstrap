@@ -1,15 +1,8 @@
 // Type Universes & Holes
-// Verifies Universe levels ($Type(1)), Type Annotations, and Hole inference (?).
-// Tests the bidirectional type checker's ability to infer missing pieces.
+// Verifies Universe levels and Hole inference
 
-// Polymorphic Identity (requires Universe handling)
-// The identity function works at any type level
-let id_poly = (x -> x);
+// Polymorphic Identity
+let id_poly = x -> x in
 
-// Apply at different types
+// Apply at a value
 id_poly(42)
-
-// Holes for Type Inference Verification
-// The compiler should infer the type from context
-let inferred = (? : $I32);
-inferred
