@@ -1,8 +1,8 @@
 # Syntax Library Documentation
 
-> **Version**: 2.0.0
+> **Version**: 3.0.0
 > **Description**: A generic grammar DSL for building parsers with language-agnostic parser combinators, formatters, and error reporting
-> **Updated**: March 2025 - Now with direct record construction!
+> **Updated**: March 2025 - Now with operator metadata query API!
 
 ---
 
@@ -25,12 +25,13 @@ The syntax library provides a **generic grammar DSL** that generates parsers for
 - **Error reporting** - Source snippets with error highlights
 - **Formatter combinators** - 16+ combinators for easy formatter implementation
 - **Direct construction** - Simple, declarative grammar definition (no Builder pattern!)
+- **Operator metadata query API** - Query operator info from grammar for formatting
 
 ### Module Structure
 
 ```
 src/syntax/
-├── grammar.gleam         # Grammar DSL (~850 lines)
+├── grammar.gleam         # Grammar DSL (~1100 lines)
 ├── lexer.gleam           # Tokenizer (~400 lines)
 ├── formatter.gleam       # Document algebra formatter (~440 lines)
 ├── source_snippet.gleam  # Source snippet formatter (~260 lines)
@@ -66,14 +67,15 @@ pub fn mylang_grammar() -> grammar.Grammar(Expr) {
     tokens: ["Number", "LParen", "RParen"],
     keywords: [],
     operators: [
-      grammar.op("+", Add, 10),
-      grammar.op("*", Mul, 20),
+      // Operators stored as keyed tuples for lookup
+      grammar.infix_binary("+", Add, grammar.InfixLeft, 10, " + "),
+      grammar.infix_binary("*", Mul, grammar.InfixLeft, 20, " * "),
     ],
     rules: [
       // Expr = Term (('+' | '*') Term)*
       grammar.left_assoc_rule("Expr", "Term", [
-        grammar.op("+", Add, 10),
-        grammar.op("*", Mul, 20),
+        grammar.infix_binary("+", Add, grammar.InfixLeft, 10, " + "),
+        grammar.infix_binary("*", Mul, grammar.InfixLeft, 20, " * "),
       ], 10),
       // Term = Number | (Expr)
       grammar.rule("Term", [
@@ -120,17 +122,27 @@ pub fn parse(source: String) -> grammar.ParseResult(Expr) {
 // mylang/formatter.gleam
 import syntax/formatter.{type Doc}
 import syntax/formatter
+import syntax/grammar.{get_operator_precedence}
 import mylang/ast.{type Expr, Add, Int, Mul}
+import mylang/grammar
 
 pub fn format(ast: Expr) -> String {
   format_expr(ast, -1) |> formatter.render_default
 }
 
 fn format_expr(ast: Expr, parent_prec: Int) -> Doc {
+  let grammar = mylang_grammar()
   case ast {
     Int(n) -> formatter.text(int.to_string(n))
-    Add(l, r) -> format_binop(l, r, "+", 10, parent_prec)
-    Mul(l, r) -> format_binop(l, r, "*", 20, parent_prec)
+    Add(l, r) -> {
+      // Query precedence from grammar - defined ONCE!
+      let prec = get_operator_precedence(grammar, "+")
+      format_binop(l, r, "+", prec, parent_prec)
+    }
+    Mul(l, r) -> {
+      let prec = get_operator_precedence(grammar, "*")
+      format_binop(l, r, "*", prec, parent_prec)
+    }
   }
 }
 
@@ -146,6 +158,8 @@ fn format_binop(left: Expr, right: Expr, op: String, prec: Int, parent_prec: Int
   }
 }
 ```
+
+**Key Benefit**: Precedence is defined ONCE in the grammar and queried by the formatter. No duplication!
 
 ### 5. Round-Trip Test
 
@@ -195,7 +209,7 @@ pub type Grammar(a) {
     rules: List(Rule(a)),
     tokens: List(String),
     keywords: List(String),
-    operators: List(Operator(a)),
+    operators: List(#(String, Operator(a))),  // Keyed tuples for lookup
   )
 }
 ```
@@ -206,7 +220,7 @@ pub type Grammar(a) {
 - `rules` - List of grammar rules
 - `tokens` - List of token kinds
 - `keywords` - List of keywords
-- `operators` - List of operators (for formatter metadata)
+- `operators` - List of operators as keyed tuples (for formatter metadata queries)
 
 ### Rule Definition
 
@@ -272,32 +286,130 @@ pub fn parenthesized(rule_name: String) -> Pattern(a)
 ### Operator Helpers
 
 ```gleam
-/// Create an operator with default layout
+/// Create prefix operator: -x, !x, ~x
+pub fn prefix(
+  symbol: String,
+  constructor: fn(a) -> a,
+  precedence: Int,
+) -> #(String, Operator(a))
+
+/// Create postfix operator: x!, x++, x--
+pub fn postfix(
+  symbol: String,
+  constructor: fn(a) -> a,
+  precedence: Int,
+) -> #(String, Operator(a))
+
+/// Create binary infix operator: x + y, x = y
+pub fn infix_binary(
+  symbol: String,
+  constructor: fn(a, a) -> a,
+  kind: OperatorKind,
+  precedence: Int,
+  separator: String,
+) -> #(String, Operator(a))
+
+/// Create wrapped infix operator: a[i], f(x)
+pub fn infix_wrapped(
+  symbol: String,
+  constructor: fn(a, a) -> a,
+  kind: OperatorKind,
+  precedence: Int,
+  open: String,
+  close: String,
+) -> #(String, Operator(a))
+
+/// Create ternary infix operator: a ? b : c
+pub fn infix_ternary(
+  infix_symbol: String,
+  constructor: fn(a, a) -> a,
+  kind: OperatorKind,
+  precedence: Int,
+  sep1: String,
+  sep2: String,
+) -> #(String, Operator(a))
+
+/// Create slice infix operator: a[b:c]
+pub fn infix_slice(
+  open: String,
+  constructor: fn(a, a) -> a,
+  kind: OperatorKind,
+  precedence: Int,
+  sep: String,
+  close: String,
+) -> #(String, Operator(a))
+
+/// Deprecated: Use infix_binary instead
 pub fn op(
   keyword: String,
   constructor: fn(a, a) -> a,
   precedence: Int,
-) -> Operator(a)
-
-/// Create an operator with custom layout
-pub fn op_with_layout(
-  keyword: String,
-  constructor: fn(a, a) -> a,
-  precedence: Int,
-  layout: OperatorLayout,
-) -> Operator(a)
-
-/// Default operator layout
-pub fn default_op_layout(separator: String) -> OperatorLayout
-
-/// Break before operator layout (like Haskell's $)
-pub fn break_before_op_layout(separator: String) -> OperatorLayout
-
-/// Compact operator layout (never break)
-pub fn compact_op_layout(separator: String) -> OperatorLayout
+) -> #(String, Operator(a))
 ```
 
 ### Metadata Extraction (for Formatters)
+
+```gleam
+/// Query API - Get operator by symbol
+pub fn get_operator(
+  grammar: Grammar(a),
+  symbol: String,
+) -> Result(Operator(a), Nil)
+
+/// Get operator precedence by symbol
+pub fn get_operator_precedence(
+  grammar: Grammar(a),
+  symbol: String,
+) -> Int
+
+/// Get operator kind by symbol
+pub fn get_operator_kind(
+  grammar: Grammar(a),
+  symbol: String,
+) -> Result(OperatorKind, Nil)
+
+/// Deprecated: Use get_operator_precedence instead
+pub fn extract_precedence_table(
+  grammar: Grammar(a),
+) -> fn(String) -> Result(Int, Nil)
+
+/// Deprecated: Use get_operator instead
+pub fn extract_layout_table(
+  grammar: Grammar(a),
+) -> fn(String) -> Result(OperatorLayout, Nil)
+```
+
+### Operator Kinds
+
+```gleam
+/// Only 4 operator kinds
+pub type OperatorKind {
+  KindPrefix   // -x, !x, ~x
+  KindPostfix  // x!, x++, x--
+  InfixLeft    // x + y, a[i] (left-associative)
+  InfixRight   // x = y, x -> y (right-associative)
+}
+```
+
+### Postfix Patterns (for Infix Operators)
+
+Infix operators can have structured postfix patterns for complex operators:
+
+```gleam
+pub type PostfixPattern {
+  None                          // x + y (nothing after rhs)
+  Close(token: String)          // a[i] → "]", f(x) → ")"
+  Continue(sep: String, rest: PostfixPattern)  // a ? b : c → Continue(":", None)
+}
+```
+
+**Examples**:
+| Operator | Pattern |
+|----------|---------|
+| `x + y` | `None` |
+| `a[i]` | `Close("]")` |
+| `a ? b : c` | `Continue(":", None)` |
+| `a[b:c]` | `Continue(":", Close("]"))` |
 
 ```gleam
 /// Extract operator precedence table from grammar

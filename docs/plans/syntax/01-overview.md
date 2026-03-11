@@ -1,8 +1,8 @@
 # Syntax Library Overview
 
 > **Goal**: Single source of truth for grammar that generates parsers with layout-aware formatting and error reporting
-> **Status**: ✅ Complete and tested (358 tests passing)
-> **Date**: March 2025 (Updated - v2.0 with direct record construction)
+> **Status**: ✅ Complete and tested (370 tests passing)
+> **Date**: March 2025 (Updated - v3.0 with operator metadata query API)
 
 ---
 
@@ -18,7 +18,7 @@ The grammar is the **single source of truth** for parsing. Formatters are separa
 
 ```
 src/syntax/
-├── grammar.gleam         # Grammar DSL (~850 lines) ✅
+├── grammar.gleam         # Grammar DSL (~1100 lines) ✅
 ├── lexer.gleam           # Tokenizer (~400 lines) ✅
 ├── formatter.gleam       # Document algebra (~440 lines) ✅
 ├── source_snippet.gleam  # Source snippet formatter (~260 lines) ✅
@@ -58,15 +58,15 @@ src/syntax/
 - Supports Unicode (λ character)
 - **70 tests passing**
 
-**Grammar DSL** (`src/syntax/grammar.gleam` ~850 lines):
+**Grammar DSL** (`src/syntax/grammar.gleam` ~1100 lines):
 - `Grammar(a)` type parameterized by AST (direct record construction)
 - `Alternative` with constructor only (no deconstructor/formatter stubs)
 - Pattern types: `TokenKind`, `Keyword`, `Ref`, `Seq`, `SeqWithLayout`, `Choice`, `Opt`, `Many`, `Sep1`, `Parens`
-- Operator types with precedence, associativity, simplified layout
-- Direct API: `Grammar()`, `rule()`, `left_assoc_rule()`, `right_assoc_rule()`, `op()`
+- **Operator types**: `OperatorKind` (4 kinds), `PostfixPattern` (recursive), `Operator` (sum type)
+- **Operator helpers**: `prefix()`, `postfix()`, `infix_binary()`, `infix_wrapped()`, `infix_ternary()`, `infix_slice()`
+- **Query API**: `get_operator()`, `get_operator_precedence()`, `get_operator_kind()`
 - Layout hints: `SoftBreak`, `HardBreak`, `Space`, `NoSeparator`
-- Simplified `OperatorLayout(separator: String)`
-- **Metadata extraction**: `extract_precedence_table`, `extract_layout_table`, `get_precedence_for_constructor`
+- **Metadata extraction**: `extract_precedence_table`, `extract_layout_table` (deprecated)
 - **Grammar-based formatting**: `format_binop_with_grammar`
 - **Span tracking**: Spans propagated from tokens through parsing
 - **All tests passing**

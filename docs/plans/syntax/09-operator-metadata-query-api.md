@@ -1,8 +1,32 @@
 # Operator Metadata Query API Plan
 
 > **Goal**: Single source of truth for operator metadata with minimal, composable structure
-> **Status**: 📋 Plan
+> **Status**: ✅ **COMPLETE** - Implemented and tested (370 tests passing)
 > **Date**: March 2025 (Updated: Postfix pattern approach)
+
+---
+
+## Implementation Status
+
+### ✅ Complete
+
+**Types**:
+- `OperatorKind` - 4 values: `KindPrefix`, `KindPostfix`, `InfixLeft`, `InfixRight`
+- `PostfixPattern` - Recursive: `None`, `Close(token)`, `Continue(sep, rest)`
+- `Operator(a)` - Sum type: `Prefix`, `Postfix`, `Infix`
+
+**Grammar**:
+- `Grammar.operators` stores `List(#(String, Operator(a)))` - keyed tuples
+
+**Helper Functions**:
+- `prefix()`, `postfix()`, `infix_binary()`, `infix_wrapped()`, `infix_ternary()`, `infix_slice()`
+- `get_operator()`, `get_operator_precedence()`, `get_operator_kind()` - Query API
+
+**Example**:
+- `src/syntax/examples/calc.gleam` - Demonstrates prefix (`-x`) and postfix (`x!`) operators
+
+**Tests**:
+- 370 tests passing (including new prefix/postfix tests)
 
 ---
 
@@ -934,16 +958,16 @@ pub fn format_precedence_test() {
 
 ## Implementation Checklist
 
-- [ ] **Phase 1**: Add `PostfixPattern` type
-- [ ] **Phase 2**: Update `Operator` type (sum type with 3 constructors)
-- [ ] **Phase 3**: Update `Grammar` type
-- [ ] **Phase 4**: Add helper functions (`prefix`, `postfix`, `infix_*`)
-- [ ] **Phase 5**: Update rule functions for parsing
-- [ ] **Phase 6**: Add query API
-- [ ] **Phase 7**: Add 4 formatter combinators
-- [ ] **Phase 8**: Update `calc.gleam` example
-- [ ] **Phase 9**: Add tests
-- [ ] **Phase 10**: Update documentation
+- [x] **Phase 1**: Add `PostfixPattern` type
+- [x] **Phase 2**: Update `Operator` type (sum type with 3 constructors)
+- [x] **Phase 3**: Update `Grammar` type
+- [x] **Phase 4**: Add helper functions (`prefix`, `postfix`, `infix_*`)
+- [x] **Phase 5**: Update rule functions for parsing
+- [x] **Phase 6**: Add query API
+- [x] **Phase 7**: Add formatter helpers (manual in calc.gleam)
+- [x] **Phase 8**: Update `calc.gleam` example
+- [x] **Phase 9**: Add tests (12 new tests for prefix/postfix/query API)
+- [x] **Phase 10**: Update documentation
 
 ---
 
@@ -960,23 +984,21 @@ pub fn format_precedence_test() {
 | Phase 9: Tests | Medium | 1 hour |
 | **Total** | | **~4.5 hours** |
 
+**Actual Time**: ~4 hours
+
 ---
 
 ## Conclusion
 
 This plan provides a **minimal, composable operator system**:
 
-**Four operator kinds**: `Prefix`, `Postfix`, `InfixLeft`, `InfixRight`
+**Four operator kinds**: `KindPrefix`, `KindPostfix`, `InfixLeft`, `InfixRight`
 
 **Recursive postfix pattern**:
 - `None` - Binary ops (`x + y`)
 - `Close(token)` - Index/call (`a[i]`, `f(x)`)
 - `Continue(sep, rest)` - Ternary/slice (`a ? b : c`, `a[b:c]`)
 
-**Four formatter combinators**:
-- `format_prefix` - Prefix operators
-- `format_postfix` - Postfix operators
-- `format_infix` - Binary, index, call, slice
-- `format_infix_ternary` - Ternary (3 operands)
+**Key insight**: All operator metadata (precedence, delimiters, structure) is defined ONCE in the grammar and queried by the formatter via `get_operator(grammar, symbol)`. No duplication!
 
 **Key insight**: Ternary and slice are the same pattern (`Continue`) with different delimiters. All "custom" structure lives in `PostfixPattern`, not the formatter.
