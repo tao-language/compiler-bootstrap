@@ -1,0 +1,18 @@
+// Church Numerals
+// Lambda encoding of natural numbers.
+// Demonstrates higher-order functions and polymorphism.
+
+// Church numeral 0: λf. λx. x
+let zero = (f -> (x -> x)) in
+
+// Church numeral 1: λf. λx. f x
+let one = (f -> (x -> f(x))) in
+
+// Church numeral 2: λf. λx. f (f x)
+let two = (f -> (x -> f(f(x)))) in
+
+// Successor: λn. λf. λx. f (n f x)
+let succ = (n -> (f -> (x -> f(((n)(f))(x))))) in
+
+// Apply successor to zero to get one
+succ(zero)

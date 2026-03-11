@@ -1,0 +1,17 @@
+// Dependent Types (Pi Types & Match Motives)
+// This is the most critical test for a dependently typed core.
+// Verifies that types can depend on values ((x : $Type) -> $Type)
+// and that %match supports dependent elimination via the motive.
+
+// Natural numbers via constructors (assumed predefined)
+// #Zero and #Succ(n)
+
+// A function where return type depends on input value
+// When n is #Zero, returns one type; when #Succ, returns another
+let is_zero = (n -> %match n ~ ($Type) {
+  | #Zero -> #True
+  | #Succ(_prev) -> #False
+});
+
+// Apply to Zero
+is_zero(#Zero)

@@ -1,0 +1,5 @@
+// Verify Literal Types and Primitives
+// This tests literal types ($I32), type annotations, and primitive calls
+
+let x = (42 : $I32) in
+%call prim.add(x, x)

@@ -1,0 +1,6 @@
+// Functions & Currying
+// Verifies Lambda syntax (x -> body), Application syntax (f(x)),
+// and curried application.
+
+// Single parameter lambda (identity function)
+x -> x

@@ -1156,6 +1156,27 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
           let out_val = eval(s.ffi, [arg_val, ..pi_env], out)
           #(do_app(s.ffi, fun_val, arg_val), out_val, s)
         }
+        VNeut(HHole(hole_id), []) -> {
+          // Hole expansion: ?1 applied to arg means ?1 = (?2 -> ?3)
+          let env = get_env(s)
+          let #(arg_ty_hole_val, s) = new_hole(s)
+          let arg_ty_hole_id = s.hole - 1
+          let #(result_ty_hole_val, s) = new_hole(s)
+          let result_ty_hole_id = s.hole - 1
+          // Create the expanded function type: (?2 -> ?3)
+          let fun_ty_expanded = VPi("_", env, arg_ty_hole_val, Term(Hole(result_ty_hole_id), fun.span))
+          // Unify the original hole with the expanded type
+          case unify(s, VNeut(HHole(hole_id), []), fun_ty_expanded, fun.span, fun.span) {
+            Ok(s) -> {
+              // Now check the argument against the domain hole
+              let #(arg_val, s) = check(s, arg, arg_ty_hole_val, arg.span)
+              // Result type is the codomain hole (as a value)
+              let out_val = result_ty_hole_val
+              #(do_app(s.ffi, fun_val, arg_val), out_val, s)
+            }
+            Error(_) -> #(VErr, VErr, with_err(s, NotAFunction(fun, fun_ty)))
+          }
+        }
         _ -> #(VErr, VErr, with_err(s, NotAFunction(fun, fun_ty)))
       }
     }

@@ -1,0 +1,13 @@
+// Pattern Guards & Conditional Logic
+// Verifies the ? guard clause in %match.
+// Ensures the core language supports runtime conditions within pattern matching.
+
+// Match with guards (e.g., Even/Odd check)
+// Note: This requires prim.mod to be defined
+let classify = (n -> %match n ~ ($Type) {
+  | k ? (%call prim.mod(k, 2) == 0) -> #True
+  | _k -> #False
+});
+
+// Test with 5 (should be Odd, returns #False)
+classify(5)

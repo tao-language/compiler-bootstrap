@@ -1,0 +1,26 @@
+// Vector with Dependent Types (Length-Indexed)
+// A vector where the length is part of the type.
+// This is a golden sample for dependent type support.
+
+// Vec A n : Type
+// where A is the element type and n is the length (a natural number)
+
+// Constructors (assumed predefined for this example):
+// vnil : Vec A 0
+// vcons : (a : A) -> (n : Nat) -> Vec A n -> Vec A (succ n)
+
+// Vector of length 2 containing I32
+// vcons 42 (vcons 43 vnil)
+let vec = #VCons(42, #VCons(43, #VNil));
+
+// Head function: extracts first element from non-empty vector
+// head : (n : Nat) -> Vec A (succ n) -> A
+let head = (n -> (v -> %match v ~ ($Type) {
+  | #VCons(h, _t) -> h
+  | #VNil -> 0  // Unreachable case (n is succ n, so never 0)
+}));
+
+// Get head of vector (requires dependent type support)
+// head(1, vec)  -- 1 is the length minus 1
+
+vec

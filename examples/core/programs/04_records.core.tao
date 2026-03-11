@@ -1,0 +1,8 @@
+// Records & Product Types
+// Verifies Record construction ({x: expr}) and field access.
+
+// Construct a record
+let point = {x: 10, y: 20};
+
+// Access record field using dot notation
+point.x
