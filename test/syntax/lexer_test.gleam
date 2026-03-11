@@ -70,7 +70,7 @@ pub fn tokenize_ident_multiple_test() {
 // ============================================================================
 
 pub fn tokenize_keyword_let_test() {
-  tokenize_kinds("let") |> should.equal(["Keyword"])
+  tokenize_kinds("let") |> should.equal(["Let"])
 }
 
 pub fn tokenize_keyword_fn_test() {

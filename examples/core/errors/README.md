@@ -63,6 +63,7 @@ gleam run -- check examples/core/errors/type_errors/01_param_type_mismatch.core.
 - `01_param_type_mismatch.core.tao` - Function parameter type mismatch
 - `02_annotation_mismatch.core.tao` - Type annotation mismatch
 - `03_not_a_function.core.tao` - Applying a non-function value
+- `04_let_function_inference.core.tao` - Let binding type inference limitation
 
 ### 4. Exhaustiveness Checks (`exhaustiveness_checks/`)
 

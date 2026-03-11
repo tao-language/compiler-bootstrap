@@ -280,7 +280,7 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
   |> grammar.token("Operator")
   |> grammar.token("Keyword")
   |> grammar.token("Colon")
-  |> grammar.token("Equals")
+  |> grammar.token("Equal")
   |> grammar.token("Comma")
   |> grammar.token("Arrow")
   |> grammar.token("Dollar")
@@ -294,12 +294,15 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
   |> grammar.token("PercentComptime")
   |> grammar.token("Tilde")
   |> grammar.token("Pipe")
+  |> grammar.token("Let")
+  |> grammar.token("In")
   // Main expression rule (lowest precedence first)
   |> grammar.rule("Expr", [
-    // Keywords first (Match, Call, Comptime) - these start with %
+    // Keywords first (Match, Call, Comptime, Let) - these start with special tokens
     grammar.alt(grammar.ref("Match"), unwrap, fn(_, _p) { formatter.text("") }),
     grammar.alt(grammar.ref("Call"), unwrap, fn(_, _p) { formatter.text("") }),
     grammar.alt(grammar.ref("Comptime"), unwrap, fn(_, _p) { formatter.text("") }),
+    grammar.alt(grammar.ref("Let"), unwrap, fn(_, _p) { formatter.text("") }),
     // Then other expressions
     grammar.alt(grammar.ref("Lambda"), unwrap, fn(_, _p) { formatter.text("") }),
     grammar.alt(grammar.ref("Pi"), unwrap, fn(_, _p) { formatter.text("") }),
@@ -411,6 +414,21 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
         grammar.ref("Expr"),
       ]),
       make_comptime,
+      fn(v, p) { format_value(v, p) },
+    ),
+  ])
+  // Let: let name = value in body
+  |> grammar.rule("Let", [
+    grammar.alt(
+      grammar.seq([
+        grammar.token_pattern("Let"),
+        grammar.token_pattern("Ident"),
+        grammar.token_pattern("Equal"),
+        grammar.ref("Expr"),
+        grammar.token_pattern("In"),
+        grammar.ref("Expr"),
+      ]),
+      make_let,
       fn(v, p) { format_value(v, p) },
     ),
   ])
@@ -815,6 +833,20 @@ fn make_comptime(values) -> ParseValue {
     [_, AstValue(AsTerm(term))] ->
       AsTerm(NComptime(term, grammar.span_from_token(values |> get_first_token, "input")))
     _ -> panic as "Expected comptime expression"
+  }
+}
+
+fn make_let(values) -> ParseValue {
+  case values {
+    [_, TokenValue(name_token), _, AstValue(AsTerm(value)), _, AstValue(AsTerm(body))] -> {
+      // Desugar: let name = value in body  →  (name -> body)(value)
+      let name = name_token.value
+      let span = grammar.span_from_token(name_token, "input")
+      let lambda = NLam(name, body, span)
+      let app = NApp(lambda, value, span)
+      AsTerm(app)
+    }
+    _ -> panic as "Expected let binding"
   }
 }
 

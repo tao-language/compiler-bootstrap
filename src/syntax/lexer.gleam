@@ -222,9 +222,9 @@ fn tokenize_ident(state: LexerState) -> LexerState {
 
 fn get_keyword_kind(value: String) -> String {
   case value {
-    "let"
-    | "in"
-    | "fn"
+    "let" -> "Let"
+    "in" -> "In"
+    "fn"
     | "match"
     | "with"
     | "case"

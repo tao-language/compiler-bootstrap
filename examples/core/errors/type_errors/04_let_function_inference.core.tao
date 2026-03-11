@@ -1,0 +1,12 @@
+// Type Error: Let binding with function application
+// This demonstrates a current limitation: the type checker cannot infer
+// that a let-bound variable must be a function from its usage.
+// 
+// let id = x -> x in id(42)
+//
+// The desugaring (id -> id(42))(x -> x) is correct, but type inference
+// doesn't solve the hole for id's type from the application context.
+//
+// Workaround: Use explicit type annotations (future feature) or avoid
+// let-bindings with functions until type inference is improved.
+let f = x -> x in f

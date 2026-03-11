@@ -44,6 +44,8 @@ gleam run -- run examples/core/terms/01_identity.core.tao --debug
 | `08_annotation.core.tao` | Type annotation | ✅ Works |
 | `09_type_universe.core.tao` | Type universe | ✅ Works |
 | `10_literal_type.core.tao` | Literal type (I32) | ✅ Works |
+| `11_let_binding.core.tao` | Let binding `let x = 42 in x` | ✅ Works |
+| `12_let_function.core.tao` | Let with simple value | ✅ Works |
 
 ### Notes on Examples
 

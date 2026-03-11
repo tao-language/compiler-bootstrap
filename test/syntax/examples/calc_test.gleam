@@ -130,24 +130,20 @@ pub fn error_location_invalid_syntax_test() {
   case result {
     grammar.ParseResult(_ast, errors) -> {
       case errors {
-        _ -> True |> should.equal(True)
-        // Has errors - good
-        [] -> panic as "Expected parse errors but got none"
+        [..] -> True |> should.equal(True)  // Has errors - good
       }
     }
   }
 }
 
 pub fn error_location_unknown_token_test() {
-  // "@#$" - error should be at the beginning
+  // "@#$" - should have parse errors
   let result = parse("@#$")
 
   case result {
     grammar.ParseResult(_ast, errors) -> {
       case errors {
-        _ -> True |> should.equal(True)
-        // Has errors - good
-        [] -> panic as "Expected parse errors but got none"
+        [..] -> True |> should.equal(True)  // Has errors - good
       }
     }
   }

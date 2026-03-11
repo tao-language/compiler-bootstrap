@@ -64,7 +64,7 @@ pub type TermData {
   
   /// Built-in function call (FFI).
   Call(name: String, args: List(Term))
-  
+
   /// Compile-time evaluation block.
   Comptime(term: Term)
 }
