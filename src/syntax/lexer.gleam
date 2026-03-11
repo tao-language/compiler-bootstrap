@@ -224,6 +224,7 @@ fn get_keyword_kind(value: String) -> String {
   case value {
     "let" -> "Let"
     "in" -> "In"
+    "rec" -> "Rec"
     "fn"
     | "match"
     | "with"

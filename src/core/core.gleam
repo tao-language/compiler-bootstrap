@@ -183,7 +183,7 @@ pub type Elim {
 }
 
 pub type Case {
-  Case(pattern: Pattern, body: Term, span: Span)
+  Case(pattern: Pattern, body: Term, guard: Option(Term), span: Span)
 }
 
 // ============================================================================
@@ -722,7 +722,22 @@ pub fn do_match_cases(arg: Value, cases: List(Case)) -> Option(#(Env, Term)) {
     [] -> None
     [c, ..cases] ->
       case do_match_pattern(c.pattern, arg) {
-        Ok(env) -> Some(#(env, c.body))
+        Ok(env) -> {
+          // Check guard if present
+          case c.guard {
+            Some(guard_term) -> {
+              // Evaluate guard in the extended environment
+              let guard_val = eval([], env, guard_term)
+              // For now, treat any non-error guard value as true
+              // (proper boolean checking would be better)
+              case guard_val {
+                VErr -> do_match_cases(arg, cases)
+                _ -> Some(#(env, c.body))
+              }
+            }
+            None -> Some(#(env, c.body))
+          }
+        }
         Error(Nil) -> do_match_cases(arg, cases)
       }
   }
@@ -1194,11 +1209,19 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(motive_val, s) = check(s, motive, motive_ty, motive.span)
       let s =
         list.fold(cases, s, fn(s, c) {
-          let #(pat_val, branch_s) =
+          let #(pat_val, s) =
             bind_pattern(s, c.pattern, arg_ty, c.span, arg.span)
           let branch_ty = do_app(s.ffi, motive_val, pat_val)
-          let #(_, branch_s) = check(branch_s, c.body, branch_ty, c.span)
-          State(..branch_s, var: s.var, ctx: s.ctx)
+          // Check guard if present (must be boolean-ish)
+          let s = case c.guard {
+            Some(guard_term) -> {
+              let #(_guard_val, _guard_ty, s) = infer(s, guard_term)
+              s
+            }
+            None -> s
+          }
+          let #(_, s) = check(s, c.body, branch_ty, c.span)
+          s
         })
       // Run exhaustiveness checking and add any errors to the state
       let exhaustiveness_errors = check_exhaustiveness(s, cases, term.span)

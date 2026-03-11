@@ -2036,7 +2036,7 @@ fn match(arg, motive, cases, s) {
 }
 
 fn case_(p, b, s) {
-  c.Case(p, b, s)
+  c.Case(p, b, None, s)
 }
 
 fn pvar(x) {

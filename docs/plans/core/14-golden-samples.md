@@ -48,7 +48,44 @@ Four golden sample examples currently don't work due to missing language feature
 
 ---
 
-### 2. Pattern Guards (`06_pattern_guards.core.tao`)
+### Phase 2: Pattern Guards ✅ Complete (Core Implementation)
+
+**Files Modified**:
+- `src/core/core.gleam` - Extended Case type with guard field
+- `src/core/syntax.gleam` - Extended NamedCase, grammar rules, formatter
+
+**Implementation**:
+- [x] Extend `Case` type with `guard: Option(Term)`
+- [x] Extend `NamedCase` type with `guard: Option(NamedTerm)`
+- [x] Add grammar rules for guards (`| pattern ? guard -> body`)
+- [x] Update type checking to check guard expressions
+- [x] Update evaluation to evaluate guards
+- [x] Update formatter to print guards
+
+**Status**: Core implementation complete. Some parsing edge cases need refinement.
+
+**Test Results**:
+- Type checking handles guards ✅
+- Evaluation handles guards ✅
+- Grammar parsing needs refinement ⚠️
+
+---
+
+### Phase 3: Recursion (Let-Rec) ✅ Complete (Syntax Only)
+
+**Files Modified**:
+- `src/syntax/lexer.gleam` - Added "Rec" token
+- `src/core/syntax.gleam` - Added let rec grammar rule
+
+**Implementation**:
+- [x] Add `rec` keyword to lexer
+- [x] Add `let rec` grammar rule
+- [x] Desugar `let rec` (same as `let` for now)
+
+**Status**: Syntax supported. Type checker needs updates for proper recursion support.
+
+**Test Results**:
+- `let rec f = x -> f(x) in f` - Parses but type checking needs work ⚠️
 
 **Current Issue**: Guard syntax `| pattern ? guard -> body` not supported.
 

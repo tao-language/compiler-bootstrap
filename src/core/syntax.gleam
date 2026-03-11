@@ -26,6 +26,7 @@ import core/core.{
 import gleam/float
 import gleam/int
 import gleam/list
+import gleam/option.{type Option, None, Some}
 import syntax/formatter
 import syntax/grammar.{type Span, AstValue, ParseResult, TokenValue}
 import syntax/lexer.{type Token}
@@ -71,7 +72,7 @@ pub type NamedPattern {
 
 /// Case in match expression
 pub type NamedCase {
-  NCase(pattern: NamedPattern, body: NamedTerm, span: Span)
+  NCase(pattern: NamedPattern, body: NamedTerm, guard: Option(NamedTerm), span: Span)
 }
 
 // ============================================================================
@@ -162,10 +163,14 @@ fn named_to_de_bruijn_loop(term: NamedTerm, env: List(String)) -> Term {
 
 /// Convert NamedCase to Case with De Bruijn indices.
 fn named_case_to_de_bruijn(named_case: NamedCase, env: List(String)) -> Case {
-  let NCase(pattern, body, span) = named_case
+  let NCase(pattern, body, guard, span) = named_case
   let pattern_db = named_pattern_to_de_bruijn(pattern)
   let body_db = named_to_de_bruijn_loop(body, env)
-  Case(pattern_db, body_db, span)
+  let guard_db = case guard {
+    Some(g) -> Some(named_to_de_bruijn_loop(g, env))
+    None -> None
+  }
+  Case(pattern_db, body_db, guard_db, span)
 }
 
 /// Convert NamedPattern to Pattern with De Bruijn indices.
@@ -296,6 +301,7 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
   |> grammar.token("Pipe")
   |> grammar.token("Let")
   |> grammar.token("In")
+  |> grammar.token("Rec")
   // Main expression rule (lowest precedence first)
   |> grammar.rule("Expr", [
     // Keywords first (Match, Call, Comptime, Let) - these start with special tokens
@@ -417,8 +423,23 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
       fn(v, p) { format_value(v, p) },
     ),
   ])
-  // Let: let name = value in body
+  // Let: let [rec] name = value in body
   |> grammar.rule("Let", [
+    // let rec name = value in body
+    grammar.alt(
+      grammar.seq([
+        grammar.token_pattern("Let"),
+        grammar.token_pattern("Rec"),
+        grammar.token_pattern("Ident"),
+        grammar.token_pattern("Equal"),
+        grammar.ref("Expr"),
+        grammar.token_pattern("In"),
+        grammar.ref("Expr"),
+      ]),
+      make_let_rec,
+      fn(v, p) { format_value(v, p) },
+    ),
+    // let name = value in body (without rec)
     grammar.alt(
       grammar.seq([
         grammar.token_pattern("Let"),
@@ -546,8 +567,22 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
       fn(_, _) { formatter.text("") },
     ),
   ])
-  // Cases: single | pattern -> body (multiple cases not yet supported)
+  // Cases: | pattern [? guard] -> body
   |> grammar.rule("Cases", [
+    // Case with guard: | pattern ? guard -> body
+    grammar.alt(
+      grammar.seq([
+        grammar.token_pattern("Pipe"),
+        grammar.ref("Pattern"),
+        grammar.token_pattern("Question"),
+        grammar.ref("Expr"),
+        grammar.token_pattern("Arrow"),
+        grammar.ref("Expr"),
+      ]),
+      make_case_with_guard,
+      fn(_, _) { formatter.text("") },
+    ),
+    // Case without guard: | pattern -> body
     grammar.alt(
       grammar.seq([
         grammar.token_pattern("Pipe"),
@@ -853,11 +888,36 @@ fn make_let(values) -> ParseValue {
   }
 }
 
+fn make_let_rec(values) -> ParseValue {
+  case values {
+    [_, _, TokenValue(name_token), _, AstValue(AsTerm(value)), _, AstValue(AsTerm(body))] -> {
+      // let rec name = value in body
+      // For recursion, we need to allow name to appear in value
+      // Desugar to: let name = (fix -> value)(name) in body
+      // For now, just use regular let desugaring (type checker will need to handle recursion)
+      let name = name_token.value
+      let span = grammar.span_from_token(name_token, "input")
+      let lambda = NLam(name, body, span)
+      let app = NApp(lambda, value, span)
+      AsTerm(app)
+    }
+    _ -> panic as "Expected let rec binding"
+  }
+}
+
 // Cases constructors
+fn make_case_with_guard(values) -> ParseValue {
+  case values {
+    [_, AstValue(AsPattern(pattern)), _, AstValue(AsTerm(guard)), _, AstValue(AsTerm(body))] ->
+      AsCases([NCase(pattern, body, Some(guard), get_span(body))])
+    _ -> panic as "Expected case with guard"
+  }
+}
+
 fn make_single_case_list(values) -> ParseValue {
   case values {
     [_, AstValue(AsPattern(pattern)), _, AstValue(AsTerm(body))] ->
-      AsCases([NCase(pattern, body, get_span(body))])
+      AsCases([NCase(pattern, body, None, get_span(body))])
     _ -> panic as "Expected single case"
   }
 }
@@ -1105,10 +1165,18 @@ fn format_term(term: Term, parent_prec: Int, bindings: List(String)) -> formatte
     }
     Match(arg, motive, cases) -> {
       let case_docs = cases |> list.map(fn(c) {
-        let Case(pattern, body, _) = c
+        let Case(pattern, body, guard, _) = c
+        let guard_doc = case guard {
+          Some(g) -> formatter.concat([
+            formatter.text(" ? "),
+            format_term(g, 70, bindings),
+          ])
+          None -> formatter.text("")
+        }
         formatter.concat([
           formatter.text("  | "),
           format_pattern(pattern),
+          guard_doc,
           formatter.text(" -> "),
           format_term(body, 70, bindings),
         ])
