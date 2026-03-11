@@ -1,18 +1,20 @@
 // ============================================================================
-// CALCULATOR EXAMPLE - Using Grammar-Derived Formatter with Spans
+// CALCULATOR EXAMPLE - Operator Metadata Query API
 // ============================================================================
 /// Calculator example demonstrating grammar-derived parsing and formatting
-/// with source location tracking for error reporting.
+/// with operator metadata query API.
 ///
 /// For detailed documentation see:
-/// - [Syntax Library](../../docs/syntax-library.md)
+/// - [Operator Metadata Query API Plan](../../docs/plans/syntax/09-operator-metadata-query-api.md)
 import gleam/int
 import gleam/result
 import gleam/string
-import syntax/formatter.{type Doc, format_binop_auto, text}
+import syntax/formatter.{type Doc, concat, format_binop_auto, text}
 import syntax/grammar.{
-  type Grammar, type Span, AstValue, ParensValue, TokenValue,
-  left_assoc_rule, rule, alt, token_pattern, parenthesized, op,
+  type Grammar, type OperatorKind, type Span, AstValue, ParensValue, TokenValue, ListValue,
+  InfixLeft, InfixRight, KindPrefix, KindPostfix,
+  left_assoc_rule, rule, alt, token_pattern, parenthesized, seq, ref, keyword_pattern, many,
+  infix_binary, prefix, postfix, get_operator, get_operator_precedence,
 }
 import syntax/lexer.{type Token}
 
@@ -33,6 +35,10 @@ pub type Expr {
   Mul(left: Expr, right: Expr, span: Span)
   /// Division
   Div(left: Expr, right: Expr, span: Span)
+  /// Negation (prefix)
+  Neg(expr: Expr, span: Span)
+  /// Factorial (postfix)
+  Fact(expr: Expr, span: Span)
 }
 
 // ============================================================================
@@ -63,6 +69,26 @@ fn make_div(left: Expr, right: Expr) -> Expr {
   Div(left, right, span)
 }
 
+/// Build a Neg expression with span from operand.
+fn make_neg(expr: Expr) -> Expr {
+  let span = get_span(expr)
+  Neg(expr, span)
+}
+
+/// Build a Fact expression with span from operand.
+fn make_fact(expr: Expr) -> Expr {
+  let span = get_span(expr)
+  Fact(expr, span)
+}
+
+/// Fold multiple factorial operators from left to right.
+fn fold_bangs(base: Expr, bangs: List(grammar.Value(Expr))) -> Expr {
+  case bangs {
+    [] -> base
+    [_bang, ..rest] -> fold_bangs(make_fact(base), rest)
+  }
+}
+
 /// Merge two spans to create a span covering both.
 fn merge_spans(left: Span, right: Span) -> Span {
   grammar.Span(
@@ -80,26 +106,76 @@ pub fn calc_grammar() -> Grammar(Expr) {
     start: "Expr",
     tokens: ["Number", "LParen", "RParen"],
     keywords: [],
-    operators: [],
+    operators: [
+      // Binary infix operators
+      infix_binary("+", make_add, InfixLeft, 10, " + "),
+      infix_binary("-", make_sub, InfixLeft, 10, " - "),
+      infix_binary("*", make_mul, InfixLeft, 20, " * "),
+      infix_binary("/", make_div, InfixLeft, 20, " / "),
+      // Prefix operator
+      prefix("-", make_neg, 100),
+      // Postfix operator
+      postfix("!", make_fact, 100),
+    ],
     rules: [
       left_assoc_rule(
         "Expr",
         "Term",
         [
-          op("+", make_add, 10),
-          op("-", make_sub, 10),
+          infix_binary("+", make_add, InfixLeft, 10, " + "),
+          infix_binary("-", make_sub, InfixLeft, 10, " - "),
         ],
         10,
       ),
       left_assoc_rule(
         "Term",
-        "Factor",
+        "Unary",
         [
-          op("*", make_mul, 20),
-          op("/", make_div, 20),
+          infix_binary("*", make_mul, InfixLeft, 20, " * "),
+          infix_binary("/", make_div, InfixLeft, 20, " / "),
         ],
         20,
       ),
+      rule("Unary", [
+        // Prefix minus: -expr (can chain: --x)
+        alt(
+          seq([keyword_pattern("-"), ref("Unary")]),
+          fn(values) {
+            case values {
+              [_, AstValue(e)] -> make_neg(e)
+              _ -> panic as "Expected -expr"
+            }
+          },
+        ),
+        // Or Postfix (non-recursive ref)
+        alt(
+          ref("Postfix"),
+          fn(values) {
+            case values {
+              [AstValue(e)] -> e
+              _ -> panic as "Expected AstValue"
+            }
+          }
+        ),
+      ]),
+      rule("Postfix", [
+        // Factor followed by optional postfix operators
+        alt(
+          seq([ref("Factor"), many(keyword_pattern("!"))]),
+          fn(values) {
+            // values = [Factor, !, !, ...] or [Factor] or [Factor, !]
+            case values {
+              [first, ..rest] -> {
+                case first {
+                  AstValue(base) -> fold_bangs(base, rest)
+                  _ -> panic as "Expected AstValue as first value"
+                }
+              }
+              _ -> panic as "Expected at least one value in Postfix rule"
+            }
+          }
+        ),
+      ]),
       rule("Factor", [
         alt(
           token_pattern("Number"),
@@ -145,25 +221,46 @@ pub fn format(ast: Expr) -> String {
   format_expr(ast, 0) |> formatter.render_default
 }
 
-/// Format expression using metadata-aware combinators.
+/// Format expression using operator metadata from grammar.
 ///
-/// Precedence is defined ONCE in grammar, used automatically.
+/// Precedence is defined ONCE in grammar, queried automatically.
 fn format_expr(ast: Expr, parent_prec: Int) -> Doc {
+  let grammar = calc_grammar()
+  
   case ast {
     Int(n, _span) -> text(int.to_string(n))
 
-    Add(l, r, _span) ->
-      format_binop_auto(format_expr, l, r, "+", 10, parent_prec)
-
-    Sub(l, r, _span) ->
-      format_binop_auto(format_expr, l, r, "-", 10, parent_prec)
-
-    Mul(l, r, _span) ->
-      format_binop_auto(format_expr, l, r, "*", 20, parent_prec)
-
-    Div(l, r, _span) ->
-      format_binop_auto(format_expr, l, r, "/", 20, parent_prec)
+    Add(l, r, _span) -> format_with_op(grammar, l, r, "+", parent_prec)
+    Sub(l, r, _span) -> format_with_op(grammar, l, r, "-", parent_prec)
+    Mul(l, r, _span) -> format_with_op(grammar, l, r, "*", parent_prec)
+    Div(l, r, _span) -> format_with_op(grammar, l, r, "/", parent_prec)
+    
+    Neg(e, _span) -> {
+      // Prefix operator: -e
+      let prec = get_operator_precedence(grammar, "-")
+      let operand_doc = format_expr(e, prec + 1)
+      concat([text("-"), operand_doc])
+    }
+    
+    Fact(e, _span) -> {
+      // Postfix operator: e!
+      let prec = get_operator_precedence(grammar, "!")
+      let operand_doc = format_expr(e, prec + 1)
+      concat([operand_doc, text("!")])
+    }
   }
+}
+
+/// Format binary operator using metadata from grammar.
+fn format_with_op(
+  grammar: Grammar(Expr),
+  l: Expr,
+  r: Expr,
+  symbol: String,
+  parent_prec: Int,
+) -> Doc {
+  let prec = get_operator_precedence(grammar, symbol)
+  format_binop_auto(format_expr, l, r, symbol, prec, parent_prec)
 }
 
 // ============================================================================
@@ -190,5 +287,7 @@ pub fn get_span(expr: Expr) -> Span {
     Sub(_, _, span) -> span
     Mul(_, _, span) -> span
     Div(_, _, span) -> span
+    Neg(_, span) -> span
+    Fact(_, span) -> span
   }
 }

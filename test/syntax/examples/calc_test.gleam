@@ -10,9 +10,10 @@ import gleam/int
 import gleeunit
 import gleeunit/should
 import syntax/examples/calc.{
-  type Expr, Add, Div, Int, Mul, Sub, format, get_span, parse,
+  type Expr, Add, Div, Int, Mul, Sub, Neg, Fact, format, get_span, parse,
+  calc_grammar,
 }
-import syntax/grammar
+import syntax/grammar.{get_operator, get_operator_precedence}
 
 pub fn main() {
   gleeunit.main()
@@ -193,5 +194,104 @@ pub fn integration_complex_expression_test() {
       }
     }
     _ -> panic as "Expected Add"
+  }
+}
+
+// ============================================================================
+// PREFIX/POSTFIX OPERATOR TESTS
+// ============================================================================
+
+pub fn parse_prefix_negation_test() {
+  // "-5" should parse as Neg(Int(5))
+  let ast = parse_ok("-5")
+  case ast {
+    Neg(Int(5, _), _) -> True |> should.equal(True)
+    _ -> panic as "Expected Neg(Int(5))"
+  }
+}
+
+pub fn parse_prefix_double_negation_test() {
+  // "--5" should parse as Neg(Neg(Int(5)))
+  let ast = parse_ok("--5")
+  case ast {
+    Neg(Neg(Int(5, _), _), _) -> True |> should.equal(True)
+    _ -> panic as "Expected Neg(Neg(Int(5)))"
+  }
+}
+
+pub fn parse_postfix_factorial_test() {
+  // "5!" should parse as Fact(Int(5))
+  let ast = parse_ok("5!")
+  case ast {
+    Fact(Int(5, _), _) -> True |> should.equal(True)
+    _ -> panic as "Expected Fact(Int(5))"
+  }
+}
+
+pub fn parse_postfix_double_factorial_test() {
+  // "5!!" should parse as Fact(Fact(Int(5)))
+  let ast = parse_ok("5!!")
+  case ast {
+    Fact(Fact(Int(5, _), _), _) -> True |> should.equal(True)
+    _ -> panic as "Expected Fact(Fact(Int(5)))"
+  }
+}
+
+pub fn parse_prefix_postfix_combo_test() {
+  // "-5!" should parse as Neg(Fact(Int(5)))
+  let ast = parse_ok("-5!")
+  case ast {
+    Neg(Fact(Int(5, _), _), _) -> True |> should.equal(True)
+    _ -> panic as "Expected Neg(Fact(Int(5)))"
+  }
+}
+
+pub fn format_prefix_negation_test() {
+  let source = "-5"
+  let ast = parse_ok(source)
+  format(ast) |> should.equal(source)
+}
+
+pub fn format_postfix_factorial_test() {
+  let source = "5!"
+  let ast = parse_ok(source)
+  format(ast) |> should.equal(source)
+}
+
+pub fn format_double_factorial_test() {
+  let source = "5!!"
+  let ast = parse_ok(source)
+  format(ast) |> should.equal(source)
+}
+
+pub fn format_prefix_postfix_combo_test() {
+  let source = "-5!"
+  let ast = parse_ok(source)
+  format(ast) |> should.equal(source)
+}
+
+// ============================================================================
+// QUERY API TESTS
+// ============================================================================
+
+pub fn query_api_get_operator_test() {
+  let grammar = calc_grammar()
+  case get_operator(grammar, "+") {
+    Ok(_) -> True |> should.equal(True)
+    Error(_) -> panic as "Expected to find + operator"
+  }
+}
+
+pub fn query_api_get_operator_precedence_test() {
+  let grammar = calc_grammar()
+  get_operator_precedence(grammar, "+") |> should.equal(10)
+  get_operator_precedence(grammar, "*") |> should.equal(20)
+}
+
+pub fn query_api_get_operator_not_found_test() {
+  let grammar = calc_grammar()
+  case get_operator(grammar, "^") {
+    Error(_) -> True |> should.equal(True)
+    Ok(_) -> panic as "Expected ^ operator not to exist"
   }
 }

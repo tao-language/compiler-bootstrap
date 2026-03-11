@@ -29,6 +29,32 @@ pub type Associativity {
   NonAssoc
 }
 
+/// Operator kind - determines parsing direction and formatting
+/// 
+/// Only 4 kinds: Prefix, Postfix, InfixLeft, InfixRight
+/// Complex operators (ternary, slice, index) are Infix with structured postfix.
+pub type OperatorKind {
+  KindPrefix
+  KindPostfix
+  InfixLeft
+  InfixRight
+}
+
+/// Describes what comes AFTER the rhs expression in an infix operator
+/// 
+/// This is recursive to handle ternary, slice, etc.
+/// 
+/// Examples:
+/// - `x + y` → None (nothing after rhs)
+/// - `a[i]` → Close("]") (just closing token)
+/// - `a ? b : c` → Continue(":", None) (separator + nothing more)
+/// - `a[b:c]` → Continue(":", Close("]")) (separator + closing)
+pub type PostfixPattern {
+  None
+  Close(token: String)
+  Continue(separator: String, rest: PostfixPattern)
+}
+
 /// Global formatter configuration
 pub type FormatterConfig {
   FormatterConfig(width: Int, indent_string: String, indent_level: Int)
@@ -51,7 +77,7 @@ pub type SeqItem(a) {
   SeqItem(pattern: Pattern(a), layout_hint: LayoutHint)
 }
 
-/// Layout configuration for operators
+/// Layout configuration for operators (deprecated - use PostfixPattern)
 pub type OperatorLayout {
   OperatorLayout(separator: String)
 }
@@ -88,13 +114,28 @@ pub type Rule(a) {
   Rule(name: String, alternatives: List(Alternative(a)), precedence: Int)
 }
 
+/// Complete operator metadata
+/// 
+/// Contains everything needed to parse and format the operator.
+/// No language-specific assumptions.
 pub type Operator(a) {
-  Operator(
-    keyword: String,
-    constructor: fn(a, a) -> a,
+  /// Prefix operator: <symbol> <expr>
+  Prefix(precedence: Int, symbol: String, constructor: fn(a) -> a)
+  
+  /// Postfix operator: <expr> <symbol>
+  Postfix(precedence: Int, symbol: String, constructor: fn(a) -> a)
+  
+  /// Infix operator: lhs <infix_op> rhs <postfix>
+  /// Examples:
+  /// - x + y: infix_op="+", postfix=None
+  /// - a[i]: infix_op="[", postfix=Close("]")
+  /// - a ? b : c: infix_op="?", postfix=Continue(":", None)
+  Infix(
+    kind: OperatorKind,
     precedence: Int,
-    associativity: Associativity,
-    layout: OperatorLayout,
+    infix_op: String,
+    postfix: PostfixPattern,
+    constructor: fn(a, a) -> a,
   )
 }
 
@@ -105,7 +146,7 @@ pub type Grammar(a) {
     rules: List(Rule(a)),
     tokens: List(String),
     keywords: List(String),
-    operators: List(Operator(a)),
+    operators: List(#(String, Operator(a))),  // Keyed by primary symbol for lookup
   )
 }
 
@@ -134,7 +175,7 @@ pub type ParseResult(a) {
 pub fn left_assoc_rule(
   name: String,
   first_rule: String,
-  operators: List(Operator(a)),
+  operators: List(#(String, Operator(a))),
   precedence: Int,
 ) -> Rule(a) {
   let op_alt = create_operator_pattern(operators, first_rule)
@@ -145,18 +186,22 @@ pub fn left_assoc_rule(
 pub fn right_assoc_rule(
   name: String,
   first_rule: String,
-  operators: List(Operator(a)),
+  operators: List(#(String, Operator(a))),
   precedence: Int,
 ) -> Rule(a) {
   let op_alts =
-    list.map(operators, fn(op) {
-      let pattern = Seq([Ref(first_rule), Keyword(op.keyword), Ref(name)])
+    list.map(operators, fn(item) {
+      let #(symbol, op) = item
+      let pattern = Seq([Ref(first_rule), Keyword(symbol), Ref(name)])
       Alternative(
         pattern: pattern,
         constructor: fn(values) {
           case values {
             [AstValue(left), KeywordValue(_), AstValue(right)] ->
-              op.constructor(left, right)
+              case op {
+                Infix(_, _, _, _, constructor) -> constructor(left, right)
+                _ -> panic as "right_assoc: expected Infix operator"
+              }
             _ -> panic as "right_assoc: expected 3 values"
           }
         },
@@ -189,12 +234,15 @@ pub fn rule(name: String, alternatives: List(Alternative(a))) -> Rule(a) {
 // ============================================================================
 
 fn create_operator_pattern(
-  operators: List(Operator(a)),
+  operators: List(#(String, Operator(a))),
   first_rule: String,
 ) -> Alternative(a) {
   let op_choice =
     Choice(
-      list.map(operators, fn(op) { Seq([Op(op.keyword), Ref(first_rule)]) }),
+      list.map(operators, fn(item) {
+        let #(symbol, _op) = item
+        Seq([Op(symbol), Ref(first_rule)])
+      }),
     )
   let pattern =
     Seq([
@@ -217,17 +265,28 @@ fn create_operator_pattern(
 fn fold_operators_multi(
   first: a,
   rest_values: List(Value(a)),
-  operators: List(Operator(a)),
+  operators: List(#(String, Operator(a))),
 ) -> a {
   case rest_values {
     [] -> first
     [op_right, ..more] -> {
       case op_right {
         ListValue([TokenValue(op_token), AstValue(right)]) -> {
-          case list.find(operators, fn(op) { op.keyword == op_token.value }) {
-            Ok(op) -> {
-              let new_first = op.constructor(first, right)
-              fold_operators_multi(new_first, more, operators)
+          // Find operator by symbol
+          let found = list.find(operators, fn(item) {
+            let #(sym, _) = item
+            sym == op_token.value
+          })
+          case found {
+            Ok(item) -> {
+              let #(_, op): #(String, Operator(a)) = item
+              case op {
+                Infix(_, _, _, _, constructor) -> {
+                  let new_first = constructor(first, right)
+                  fold_operators_multi(new_first, more, operators)
+                }
+                _ -> first
+              }
             }
             Error(_) -> first
           }
@@ -320,34 +379,98 @@ pub fn compact_op_layout(separator: String) -> OperatorLayout {
   OperatorLayout(separator: separator)
 }
 
-/// Create an operator with default layout
+// ============================================================================
+// OPERATOR CONSTRUCTION HELPERS
+// ============================================================================
+
+/// Create prefix operator: <symbol> <expr>
+/// Example: -x, !x, ~x
+pub fn prefix(
+  symbol: String,
+  constructor: fn(a) -> a,
+  precedence: Int,
+) -> #(String, Operator(a)) {
+  #(symbol, Prefix(precedence, symbol, constructor))
+}
+
+/// Create postfix operator: <expr> <symbol>
+/// Example: x!, x++, x--
+pub fn postfix(
+  symbol: String,
+  constructor: fn(a) -> a,
+  precedence: Int,
+) -> #(String, Operator(a)) {
+  #(symbol, Postfix(precedence, symbol, constructor))
+}
+
+/// Create binary infix operator (no postfix): lhs <sep> rhs
+/// Example: x + y, x = y, x |> y
+pub fn infix_binary(
+  symbol: String,
+  constructor: fn(a, a) -> a,
+  kind: OperatorKind,
+  precedence: Int,
+  separator: String,
+) -> #(String, Operator(a)) {
+  #(symbol, Infix(kind, precedence, separator, None, constructor))
+}
+
+/// Create wrapped infix operator (index, call): lhs <open> rhs <close>
+/// Example: a[i], f(x), <x>
+pub fn infix_wrapped(
+  symbol: String,
+  constructor: fn(a, a) -> a,
+  kind: OperatorKind,
+  precedence: Int,
+  open: String,
+  close: String,
+) -> #(String, Operator(a)) {
+  #(symbol, Infix(kind, precedence, open, Close(close), constructor))
+}
+
+/// Create ternary infix operator: lhs <infix_op> mid <sep> rhs
+/// Example: a ? b : c, if a then b else c
+pub fn infix_ternary(
+  infix_symbol: String,
+  constructor: fn(a, a) -> a,
+  kind: OperatorKind,
+  precedence: Int,
+  sep1: String,
+  sep2: String,
+) -> #(String, Operator(a)) {
+  #(infix_symbol, Infix(kind, precedence, infix_symbol, Continue(sep1, Close(sep2)), constructor))
+}
+
+/// Create slice infix operator: lhs <open> start <sep> end <close>
+/// Example: a[b:c], a[b..c]
+pub fn infix_slice(
+  open: String,
+  constructor: fn(a, a) -> a,
+  kind: OperatorKind,
+  precedence: Int,
+  sep: String,
+  close: String,
+) -> #(String, Operator(a)) {
+  #(open, Infix(kind, precedence, open, Continue(sep, Close(close)), constructor))
+}
+
+/// Create an operator with default layout (deprecated - use infix_binary)
 pub fn op(
   keyword: String,
   constructor: fn(a, a) -> a,
   precedence: Int,
-) -> Operator(a) {
-  Operator(
-    keyword: keyword,
-    constructor: constructor,
-    precedence: precedence,
-    associativity: Left,
-    layout: OperatorLayout(separator: keyword),
-  )
+) -> #(String, Operator(a)) {
+  #(keyword, Infix(InfixLeft, precedence, keyword, None, constructor))
 }
 
+/// Create an operator with custom layout (deprecated - use infix_wrapped)
 pub fn op_with_layout(
   keyword: String,
   constructor: fn(a, a) -> a,
   precedence: Int,
   layout: OperatorLayout,
-) -> Operator(a) {
-  Operator(
-    keyword: keyword,
-    constructor: constructor,
-    precedence: precedence,
-    associativity: Left,
-    layout: layout,
-  )
+) -> #(String, Operator(a)) {
+  #(keyword, Infix(InfixLeft, precedence, layout.separator, None, constructor))
 }
 
 // ============================================================================
@@ -764,7 +887,61 @@ pub fn mk_span(file: String, line: Int, col: Int) -> Span {
 }
 
 // ============================================================================
-// FORMATTER METADATA EXTRACTION
+// QUERY API
+// ============================================================================
+
+/// Get operator by symbol from grammar
+///
+/// Example:
+/// ```gleam
+/// case get_operator(grammar, "+") {
+///   Ok(op) -> // use operator metadata
+///   Error(_) -> // operator not found
+/// }
+/// ```
+pub fn get_operator(
+  grammar: Grammar(a),
+  symbol: String,
+) -> Result(Operator(a), Nil) {
+  list.key_find(grammar.operators, symbol)
+}
+
+/// Get operator precedence by symbol
+pub fn get_operator_precedence(
+  grammar: Grammar(a),
+  symbol: String,
+) -> Int {
+  case get_operator(grammar, symbol) {
+    Ok(op) -> {
+      case op {
+        Prefix(prec, _, _) -> prec
+        Postfix(prec, _, _) -> prec
+        Infix(_, prec, _, _, _) -> prec
+      }
+    }
+    Error(_) -> 0
+  }
+}
+
+/// Get operator kind by symbol
+pub fn get_operator_kind(
+  grammar: Grammar(a),
+  symbol: String,
+) -> Result(OperatorKind, Nil) {
+  case get_operator(grammar, symbol) {
+    Ok(op) -> {
+      case op {
+        Prefix(_, _, _) -> Ok(KindPrefix)
+        Postfix(_, _, _) -> Ok(KindPostfix)
+        Infix(kind, _, _, _, _) -> Ok(kind)
+      }
+    }
+    Error(_) -> Error(Nil)
+  }
+}
+
+// ============================================================================
+// FORMATTER METADATA EXTRACTION (deprecated - use get_operator)
 // ============================================================================
 /// Extract operator precedence table from grammar.
 ///
@@ -782,8 +959,19 @@ pub fn extract_precedence_table(
   let operators = grammar.operators
 
   fn(op_name: String) -> Result(Int, Nil) {
-    case list.find(operators, fn(op) { op.keyword == op_name }) {
-      Ok(op) -> Ok(op.precedence)
+    let found = list.find(operators, fn(item) {
+      let #(sym, _) = item
+      sym == op_name
+    })
+    case found {
+      Ok(item) -> {
+        let #(_, op): #(String, Operator(a)) = item
+        case op {
+          Prefix(prec, _, _) -> Ok(prec)
+          Postfix(prec, _, _) -> Ok(prec)
+          Infix(_, prec, _, _, _) -> Ok(prec)
+        }
+      }
       Error(_) -> Error(Nil)
     }
   }
@@ -804,8 +992,19 @@ pub fn extract_layout_table(
   let operators = grammar.operators
 
   fn(op_name: String) -> Result(OperatorLayout, Nil) {
-    case list.find(operators, fn(op) { op.keyword == op_name }) {
-      Ok(op) -> Ok(op.layout)
+    let found = list.find(operators, fn(item) {
+      let #(sym, _) = item
+      sym == op_name
+    })
+    case found {
+      Ok(item) -> {
+        let #(_, op): #(String, Operator(a)) = item
+        case op {
+          Infix(_, _, infix_op, _, _) -> Ok(OperatorLayout(infix_op))
+          Prefix(_, symbol, _) -> Ok(OperatorLayout(symbol))
+          Postfix(_, symbol, _) -> Ok(OperatorLayout(symbol))
+        }
+      }
       Error(_) -> Error(Nil)
     }
   }
@@ -857,8 +1056,22 @@ pub fn get_precedence_for_constructor(
   constructor_key: #(String, fn(a, a) -> a),
 ) -> Int {
   let constructor_fn = constructor_key.1
-  case list.find(grammar.operators, fn(op) { op.constructor == constructor_fn }) {
-    Ok(op) -> op.precedence
+  case list.find(grammar.operators, fn(item) {
+    let #(_, op) = item
+    case op {
+      Infix(_, _, _, _, c) -> c == constructor_fn
+      Prefix(_, _, _) -> False
+      Postfix(_, _, _) -> False
+    }
+  }) {
+    Ok(item) -> {
+      let #(_, op) = item
+      case op {
+        Infix(_, prec, _, _, _) -> prec
+        Prefix(prec, _, _) -> prec
+        Postfix(prec, _, _) -> prec
+      }
+    }
     Error(_) -> 0
   }
 }
@@ -869,8 +1082,22 @@ pub fn get_operator_symbol_for_constructor(
   constructor_key: #(String, fn(a, a) -> a),
 ) -> String {
   let constructor_fn = constructor_key.1
-  case list.find(grammar.operators, fn(op) { op.constructor == constructor_fn }) {
-    Ok(op) -> op.keyword
+  case list.find(grammar.operators, fn(item) {
+    let #(_, op) = item
+    case op {
+      Infix(_, _, _, _, c) -> c == constructor_fn
+      Prefix(_, _, _) -> False
+      Postfix(_, _, _) -> False
+    }
+  }) {
+    Ok(item) -> {
+      let #(_, op) = item
+      case op {
+        Infix(_, _, infix_op, _, _) -> infix_op
+        Prefix(_, symbol, _) -> symbol
+        Postfix(_, symbol, _) -> symbol
+      }
+    }
     Error(_) -> ""
   }
 }
