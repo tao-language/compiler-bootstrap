@@ -1,0 +1,3 @@
+// Simple identity function
+// Demonstrates basic lambda syntax
+n -> n

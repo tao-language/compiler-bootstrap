@@ -1,3 +1,0 @@
-// Type annotation
-// Annotates a variable with its type
-(x : $I32)

@@ -1,47 +1,69 @@
 # Core Language Examples
 
-This directory contains working examples of core language syntax.
+This directory contains working examples of core language syntax and real-world programs.
 
 ## Usage
 
 Check an example (type-check only):
 ```bash
-gleam run -- check examples/core/01_identity.core.tao
+gleam run -- check examples/core/terms/01_identity.core.tao
 ```
 
 Run an example (type-check and evaluate):
 ```bash
-gleam run -- run examples/core/01_identity.core.tao
+gleam run -- run examples/core/terms/01_identity.core.tao
 ```
 
 Run with verbose output:
 ```bash
-gleam run -- run examples/core/01_identity.core.tao --verbose
+gleam run -- run examples/core/terms/01_identity.core.tao --verbose
 ```
 
 Run with debug output (shows AST):
 ```bash
-gleam run -- run examples/core/02_constant.core.tao --debug
+gleam run -- run examples/core/terms/01_identity.core.tao --debug
 ```
 
-## Examples
+## Directory Structure
 
-| File | Description | Expected Output |
-|------|-------------|-----------------|
-| `01_identity.core.tao` | Identity function | `x -> x` |
-| `02_constant.core.tao` | Constant function (K combinator) | `x -> y -> x` |
-| `03_application.core.tao` | Function application | `var0(var0)` |
-| `04_pi_type.core.tao` | Pi type (dependent function type) | `(x : $Type) -> $Type` |
-| `05_constructor.core.tao` | Constructor with argument | `#Some(42)` |
-| `06_record.core.tao` | Record with multiple fields | `{x: 1, y: 2, z: 3}` |
-| `07_hole.core.tao` | Hole with identifier | `?1` |
-| `08_annotation.core.tao` | Type annotation | `var0 : $I32` |
-| `09_type_universe.core.tao` | Type universe | `$Type` |
-| `10_literal_type.core.tao` | Literal type (I32) | `$I32` |
+- `terms/` - Basic term examples demonstrating core language constructs
+- `programs/` - Real-world programs (fibonacci, etc.)
+- `errors/` - Examples of invalid syntax and type errors
 
-## Subdirectories
+## Basic Term Examples (`terms/`)
 
-- `errors/` - Examples of invalid syntax that produce parse errors
+| File | Description | Status |
+|------|-------------|--------|
+| `01_identity.core.tao` | Identity function `x -> x` | ✅ Works |
+| `02_constant.core.tao` | Constant function (K combinator) `x -> y -> x` | ✅ Works |
+| `03_application.core.tao` | Function application `(x -> x)(42)` | ✅ Works |
+| `04_pi_type.core.tao` | Pi type (dependent function type) | ✅ Works |
+| `05_constructor.core.tao` | Constructor with argument | ⚠️ Needs definition |
+| `06_record.core.tao` | Record with multiple fields | ✅ Works |
+| `07_hole.core.tao` | Hole with identifier | ⚠️ Unsolved (expected) |
+| `08_annotation.core.tao` | Type annotation | ✅ Works |
+| `09_type_universe.core.tao` | Type universe | ✅ Works |
+| `10_literal_type.core.tao` | Literal type (I32) | ✅ Works |
+
+### Notes on Examples
+
+- **Constructor (05)**: Constructors must be defined before use. This example shows the syntax but type checking will fail without a constructor definition. Future feature: data type definitions.
+- **Hole (07)**: Holes are metavariables that need to be solved during type checking. This example demonstrates the syntax; the hole remains unsolved (expected behavior).
+
+## Real Programs (`programs/`)
+
+Coming soon:
+- Fibonacci function
+- Vector operations with dependent types
+- List operations
+- Church numerals
+
+## Error Examples (`errors/`)
+
+See [`errors/README.md`](errors/README.md) for examples of:
+- Syntax errors
+- Type errors
+- Exhaustiveness check failures
 
 ## Syntax Reference
 
@@ -91,3 +113,27 @@ $Type(1)            -- Type universe at level 1
 $I32                -- Type of 32-bit integers
 $F64                -- Type of 64-bit floats
 ```
+
+### Match Expression
+```
+%match arg ~ motive {
+  | pattern -> body
+  | pattern -> body
+}
+```
+
+### Built-in Call
+```
+%call prim.add(x, y)
+```
+
+### Comptime
+```
+%comptime term
+```
+
+## Related Documentation
+
+- [Core Language Overview](../../docs/plans/core/01-overview.md)
+- [CLI Documentation](../../docs/plans/cli/01-overview.md)
+- [Error Examples](errors/README.md)

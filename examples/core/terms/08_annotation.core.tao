@@ -1,0 +1,4 @@
+// Type annotation
+// Annotates a lambda parameter with its type
+// The parameter x has type $Type (a universe level)
+(x : $Type) -> x

@@ -1,0 +1,3 @@
+// Function application
+// Applies the identity function to argument 42
+(x -> x)(42)
