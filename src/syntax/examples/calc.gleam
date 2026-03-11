@@ -12,6 +12,7 @@ import gleam/string
 import syntax/formatter.{type Doc, format_binop_auto, text}
 import syntax/grammar.{
   type Grammar, type Span, AstValue, ParensValue, TokenValue,
+  left_assoc_rule, rule, alt, token_pattern, parenthesized, op,
 }
 import syntax/lexer.{type Token}
 
@@ -74,58 +75,57 @@ fn merge_spans(left: Span, right: Span) -> Span {
 }
 
 pub fn calc_grammar() -> Grammar(Expr) {
-  use g <- grammar.define
-
-  g
-  |> grammar.name("Calc")
-  |> grammar.start("Expr")
-  |> grammar.token("Number")
-  |> grammar.token("LParen")
-  |> grammar.token("RParen")
-  |> grammar.left_assoc(
-    "Expr",
-    "Term",
-    [
-      grammar.op("+", make_add, 10, grammar.default_op_layout("+")),
-      grammar.op("-", make_sub, 10, grammar.default_op_layout("-")),
+  grammar.Grammar(
+    name: "Calc",
+    start: "Expr",
+    tokens: ["Number", "LParen", "RParen"],
+    keywords: [],
+    operators: [],
+    rules: [
+      left_assoc_rule(
+        "Expr",
+        "Term",
+        [
+          op("+", make_add, 10),
+          op("-", make_sub, 10),
+        ],
+        10,
+      ),
+      left_assoc_rule(
+        "Term",
+        "Factor",
+        [
+          op("*", make_mul, 20),
+          op("/", make_div, 20),
+        ],
+        20,
+      ),
+      rule("Factor", [
+        alt(
+          token_pattern("Number"),
+          fn(values) {
+            case values {
+              [TokenValue(token)] ->
+                Int(
+                  int.parse(token.value) |> result.unwrap(0),
+                  token_to_span(token),
+                )
+              _ -> panic as "Expected Number"
+            }
+          },
+        ),
+        alt(
+          parenthesized("Expr"),
+          fn(values) {
+            case values {
+              [ParensValue([AstValue(expr)])] -> expr
+              _ -> panic as "Expected parenthesized expr"
+            }
+          },
+        ),
+      ]),
     ],
-    10,
   )
-  |> grammar.left_assoc(
-    "Term",
-    "Factor",
-    [
-      grammar.op("*", make_mul, 20, grammar.default_op_layout("*")),
-      grammar.op("/", make_div, 20, grammar.default_op_layout("/")),
-    ],
-    20,
-  )
-  |> grammar.rule("Factor", [
-    grammar.alt(
-      grammar.token_pattern("Number"),
-      fn(values) {
-        case values {
-          [TokenValue(token)] ->
-            Int(
-              int.parse(token.value) |> result.unwrap(0),
-              token_to_span(token),
-            )
-          _ -> panic as "Expected Number"
-        }
-      },
-      fn(_ast, _prec) { formatter.text("") },
-    ),
-    grammar.alt(
-      grammar.parenthesized("Expr"),
-      fn(values) {
-        case values {
-          [ParensValue([AstValue(expr)])] -> expr
-          _ -> panic as "Expected parenthesized expr"
-        }
-      },
-      fn(_ast, _prec) { formatter.text("") },
-    ),
-  ])
 }
 
 // ============================================================================

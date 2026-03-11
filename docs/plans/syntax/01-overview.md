@@ -1,14 +1,14 @@
 # Syntax Library Overview
 
 > **Goal**: Single source of truth for grammar that generates parsers with layout-aware formatting and error reporting
-> **Status**: ✅ Complete and tested (344 tests passing)
-> **Date**: March 2025 (Updated)
+> **Status**: ✅ Complete and tested (358 tests passing)
+> **Date**: March 2025 (Updated - v2.0 with direct record construction)
 
 ---
 
 ## Core Insight
 
-A grammar rule should specify **what** to parse and **how** to format it. The grammar is the single source of truth for both parsing and formatting.
+The grammar is the **single source of truth** for parsing. Formatters are separate but can extract metadata (precedence, layout) from the grammar to avoid duplication.
 
 ---
 
@@ -18,7 +18,7 @@ A grammar rule should specify **what** to parse and **how** to format it. The gr
 
 ```
 src/syntax/
-├── grammar.gleam         # Grammar DSL (~950 lines) ✅
+├── grammar.gleam         # Grammar DSL (~850 lines) ✅
 ├── lexer.gleam           # Tokenizer (~400 lines) ✅
 ├── formatter.gleam       # Document algebra (~440 lines) ✅
 ├── source_snippet.gleam  # Source snippet formatter (~260 lines) ✅
@@ -27,9 +27,9 @@ src/syntax/
 
 ### Data Flow
 
-1. **Define Grammar**: Use `grammar.define()` DSL
+1. **Define Grammar**: Direct record construction `Grammar(...)`
 2. **Parse Input**: `grammar.parse(grammar, source, error_ast)` → AST + errors
-3. **Format AST**: Language-specific formatter using grammar metadata
+3. **Format AST**: Language-specific formatter (can extract metadata from grammar)
 4. **Report Errors**: Convert errors to diagnostics with source snippets
 5. **Round-trip**: parse → format → parse produces consistent output
 
@@ -49,7 +49,7 @@ src/syntax/
 
 ## Implementation Status
 
-### ✅ Complete and Working
+### ✅ Complete and Working (v2.0)
 
 **Lexer** (`src/syntax/lexer.gleam` ~400 lines):
 - Tokenizes identifiers, keywords, numbers, strings, operators
@@ -58,18 +58,18 @@ src/syntax/
 - Supports Unicode (λ character)
 - **70 tests passing**
 
-**Grammar DSL** (`src/syntax/grammar.gleam` ~950 lines):
-- `Grammar(a)` type parameterized by AST
-- `Alternative` with constructor, deconstructor (stub), formatter
+**Grammar DSL** (`src/syntax/grammar.gleam` ~850 lines):
+- `Grammar(a)` type parameterized by AST (direct record construction)
+- `Alternative` with constructor only (no deconstructor/formatter stubs)
 - Pattern types: `TokenKind`, `Keyword`, `Ref`, `Seq`, `SeqWithLayout`, `Choice`, `Opt`, `Many`, `Sep1`, `Parens`
-- Operator types with precedence, associativity, layout
-- Builder API: `define`, `name`, `start`, `token`, `keyword`, `rule`, `left_assoc`, `right_assoc`
+- Operator types with precedence, associativity, simplified layout
+- Direct API: `Grammar()`, `rule()`, `left_assoc_rule()`, `right_assoc_rule()`, `op()`
 - Layout hints: `SoftBreak`, `HardBreak`, `Space`, `NoSeparator`
-- Operator layouts: `default_op_layout`, `break_before_op_layout`
-- Position helpers: `span_from_values`, `span_from_token`, `span_from_tokens`
-- **Metadata extraction**: `extract_precedence_table`, `extract_layout_table`, `extract_constructor_precedence`
+- Simplified `OperatorLayout(separator: String)`
+- **Metadata extraction**: `extract_precedence_table`, `extract_layout_table`, `get_precedence_for_constructor`
+- **Grammar-based formatting**: `format_binop_with_grammar`
 - **Span tracking**: Spans propagated from tokens through parsing
-- **37 tests passing**
+- **All tests passing**
 
 **Parser** (integrated in `grammar.gleam`):
 - `parse_pattern()` - Dispatches on pattern type
@@ -86,11 +86,9 @@ src/syntax/
 - `render()` - Best-fit rendering with configurable width
 - `render_default()` - 80 character width
 - Combinators: `space_sep`, `comma_sep`, `parens`, `braces`, `join`
-- Layout hints: `SoftBreak`, `HardBreak`, `Space`, `None`
-- Operator layout: `OperatorLayout` with `break_before`, `break_after`, `indent_rhs`
 - Precedence-based parenthesization
-- **16 metadata-aware combinators**: `format_binop_auto`, `format_unary`, `format_wrapped`, `format_list`, `format_application`, `format_lambda`, `format_record`, `format_record_auto`, `format_match`, `format_case`, `format_inline`, `format_soft_break`, `format_hard_break`
-- **36 tests passing**
+- **16+ combinators**: `format_binop_auto`, `format_unary`, `format_wrapped`, `format_list`, `format_application`, `format_lambda`, `format_record`, `format_record_auto`, `format_match`, `format_case`, `format_inline`, `format_soft_break`, `format_hard_break`
+- **All tests passing**
 
 **Source Snippet** (`src/syntax/source_snippet.gleam` ~260 lines):
 - Diagnostic type with code, severity, message, spans, notes, hints
@@ -107,24 +105,14 @@ src/syntax/
 - **Integrated with CLI**
 
 **Examples**:
-- Calculator (`src/examples/calc.gleam`) - Working example with +, -, *, /
+- Calculator (`src/syntax/examples/calc.gleam`) - Working example with +, -, *, /
 - Supports precedence, associativity, parentheses
 - Round-trip tested (parse → format → parse)
 - Uses grammar-derived formatter with metadata-aware combinators
 - **Full span tracking** for error reporting
-- **51 tests passing**
+- **All tests passing**
 
-**Source Location Tracking** (`src/syntax/lexer.gleam`, `src/core/core.gleam`):
-- ✅ Token type includes `line` and `column`
-- ✅ Lexer stores line/column in all tokens
-- ✅ Position helper functions in grammar DSL
-- ✅ Span type supports start/end positions (line/column)
-- ✅ All grammar constructors use real positions
-- ✅ Spans propagated through operator parsing
-- ✅ All tests updated and passing
-- See **[05-source-location-tracking.md](./05-source-location-tracking.md)** for details
-
-**Total: 344 tests passing** (70 lexer + 37 grammar + 36 formatter + 51 calc example + 150 core language tests)
+**Total: 358 tests passing**
 
 ### ⏳ In Progress / Pending
 

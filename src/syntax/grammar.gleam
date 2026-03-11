@@ -3,8 +3,9 @@
 // ============================================================================
 import gleam/dict.{type Dict}
 import gleam/list
+import gleam/result
 import gleam/string
-import syntax/formatter.{type Doc}
+import syntax/formatter.{type Doc, concat, text, parens}
 import syntax/lexer.{type Token}
 
 // ============================================================================
@@ -52,12 +53,7 @@ pub type SeqItem(a) {
 
 /// Layout configuration for operators
 pub type OperatorLayout {
-  OperatorLayout(
-    separator: String,
-    break_before: Bool,
-    break_after: Bool,
-    indent_rhs: Bool,
-  )
+  OperatorLayout(separator: String)
 }
 
 pub type LayoutStyle {
@@ -85,8 +81,6 @@ pub type Alternative(a) {
   Alternative(
     pattern: Pattern(a),
     constructor: fn(List(Value(a))) -> a,
-    deconstructor: fn(a) -> List(Value(a)),
-    formatter: fn(a, Int) -> Doc,
   )
 }
 
@@ -106,17 +100,6 @@ pub type Operator(a) {
 
 pub type Grammar(a) {
   Grammar(
-    name: String,
-    start: String,
-    rules: Dict(String, Rule(a)),
-    tokens: List(String),
-    keywords: List(String),
-    operators: Dict(String, Operator(a)),
-  )
-}
-
-pub type GrammarBuilder(a) {
-  GrammarBuilder(
     name: String,
     start: String,
     rules: List(Rule(a)),
@@ -147,80 +130,63 @@ pub type ParseResult(a) {
 // GRAMMAR DEFINITION API
 // ============================================================================
 
-pub fn define(
-  builder_fn: fn(GrammarBuilder(a)) -> GrammarBuilder(a),
-) -> Grammar(a) {
-  let empty =
-    GrammarBuilder(
-      name: "Grammar",
-      start: "Start",
-      rules: [],
-      tokens: [],
-      keywords: [],
-      operators: [],
-    )
-  let builder = builder_fn(empty)
-  to_grammar(builder)
-}
-
-fn to_grammar(builder: GrammarBuilder(a)) -> Grammar(a) {
-  let rules_dict =
-    list.fold(builder.rules, dict.new(), fn(acc, rule) {
-      dict.insert(acc, rule.name, rule)
-    })
-  let operators_dict =
-    list.fold(builder.operators, dict.new(), fn(acc, op) {
-      dict.insert(acc, op.keyword, op)
-    })
-  Grammar(
-    name: builder.name,
-    start: builder.start,
-    rules: rules_dict,
-    tokens: builder.tokens,
-    keywords: builder.keywords,
-    operators: operators_dict,
-  )
-}
-
-pub fn name(builder: GrammarBuilder(a), name: String) -> GrammarBuilder(a) {
-  GrammarBuilder(..builder, name: name)
-}
-
-pub fn start(builder: GrammarBuilder(a), rule: String) -> GrammarBuilder(a) {
-  GrammarBuilder(..builder, start: rule)
-}
-
-pub fn token(builder: GrammarBuilder(a), kind: String) -> GrammarBuilder(a) {
-  GrammarBuilder(..builder, tokens: [kind, ..builder.tokens])
-}
-
-pub fn keyword(builder: GrammarBuilder(a), kw: String) -> GrammarBuilder(a) {
-  GrammarBuilder(..builder, keywords: [kw, ..builder.keywords])
-}
-
-pub fn rule(
-  builder: GrammarBuilder(a),
-  name: String,
-  alternatives: List(Alternative(a)),
-) -> GrammarBuilder(a) {
-  let rule = Rule(name: name, alternatives: alternatives, precedence: 0)
-  GrammarBuilder(..builder, rules: [rule, ..builder.rules])
-}
-
-pub fn left_assoc(
-  builder: GrammarBuilder(a),
+/// Create a left-associative operator rule
+pub fn left_assoc_rule(
   name: String,
   first_rule: String,
   operators: List(Operator(a)),
   precedence: Int,
-) -> GrammarBuilder(a) {
+) -> Rule(a) {
   let op_alt = create_operator_pattern(operators, first_rule)
-  let rule = Rule(name: name, alternatives: [op_alt], precedence: precedence)
-  let builder = GrammarBuilder(..builder, rules: [rule, ..builder.rules])
-  list.fold(operators, builder, fn(b, op) {
-    GrammarBuilder(..b, operators: [op, ..b.operators])
-  })
+  Rule(name: name, alternatives: [op_alt], precedence: precedence)
 }
+
+/// Create a right-associative operator rule
+pub fn right_assoc_rule(
+  name: String,
+  first_rule: String,
+  operators: List(Operator(a)),
+  precedence: Int,
+) -> Rule(a) {
+  let op_alts =
+    list.map(operators, fn(op) {
+      let pattern = Seq([Ref(first_rule), Keyword(op.keyword), Ref(name)])
+      Alternative(
+        pattern: pattern,
+        constructor: fn(values) {
+          case values {
+            [AstValue(left), KeywordValue(_), AstValue(right)] ->
+              op.constructor(left, right)
+            _ -> panic as "right_assoc: expected 3 values"
+          }
+        },
+      )
+    })
+  let first_alt =
+    alt(
+      ref(first_rule),
+      fn(values) {
+        case values {
+          [AstValue(first)] -> first
+          _ -> panic as "right_assoc: expected single value"
+        }
+      },
+    )
+  Rule(
+    name: name,
+    alternatives: [first_alt, ..op_alts],
+    precedence: precedence,
+  )
+}
+
+/// Create a rule with alternatives
+pub fn rule(name: String, alternatives: List(Alternative(a))) -> Rule(a) {
+  Rule(name: name, alternatives: alternatives, precedence: 0)
+}
+
+// ============================================================================
+// PARSER
+// ============================================================================
 
 fn create_operator_pattern(
   operators: List(Operator(a)),
@@ -245,8 +211,6 @@ fn create_operator_pattern(
         _ -> panic as "left_assoc constructor: unexpected values"
       }
     },
-    deconstructor: fn(_) { panic as "Deconstructor not implemented" },
-    formatter: fn(_ast, _) { formatter.text("<ast>") },
   )
 }
 
@@ -273,53 +237,6 @@ fn fold_operators_multi(
     }
   }
 }
-
-pub fn right_assoc(
-  builder: GrammarBuilder(a),
-  name: String,
-  first_rule: String,
-  operators: List(Operator(a)),
-  precedence: Int,
-) -> GrammarBuilder(a) {
-  let op_alts =
-    list.map(operators, fn(op) {
-      let pattern = Seq([Ref(first_rule), Keyword(op.keyword), Ref(name)])
-      Alternative(
-        pattern: pattern,
-        constructor: fn(values) {
-          case values {
-            [AstValue(left), KeywordValue(_), AstValue(right)] ->
-              op.constructor(left, right)
-            _ -> panic as "right_assoc: expected 3 values"
-          }
-        },
-        deconstructor: fn(_) { panic as "Deconstructor not implemented" },
-        formatter: fn(_ast, _) { formatter.text("<ast>") },
-      )
-    })
-  let first_alt =
-    alt(
-      ref(first_rule),
-      fn(values) {
-        case values {
-          [AstValue(first)] -> first
-          _ -> panic as "right_assoc: expected single value"
-        }
-      },
-      fn(_ast, _) { formatter.text("<ast>") },
-    )
-  let rule =
-    Rule(
-      name: name,
-      alternatives: [first_alt, ..op_alts],
-      precedence: precedence,
-    )
-  let builder = GrammarBuilder(..builder, rules: [rule, ..builder.rules])
-  list.fold(operators, builder, fn(b, op) {
-    GrammarBuilder(..b, operators: [op, ..b.operators])
-  })
-}
-
 // ============================================================================
 // ALTERNATIVE CONSTRUCTION
 // ============================================================================
@@ -327,27 +244,10 @@ pub fn right_assoc(
 pub fn alt(
   pattern: Pattern(a),
   constructor: fn(List(Value(a))) -> a,
-  formatter: fn(a, Int) -> Doc,
 ) -> Alternative(a) {
   Alternative(
     pattern: pattern,
     constructor: constructor,
-    deconstructor: fn(_) { panic as "Deconstructor not provided" },
-    formatter: formatter,
-  )
-}
-
-pub fn alt_with_deconstructor(
-  pattern: Pattern(a),
-  constructor: fn(List(Value(a))) -> a,
-  deconstructor: fn(a) -> List(Value(a)),
-  formatter: fn(a, Int) -> Doc,
-) -> Alternative(a) {
-  Alternative(
-    pattern: pattern,
-    constructor: constructor,
-    deconstructor: deconstructor,
-    formatter: formatter,
   )
 }
 
@@ -405,48 +305,33 @@ pub fn parenthesized(rule_name: String) -> Pattern(a) {
 // OPERATOR CONSTRUCTION
 // ============================================================================
 
-/// Default operator layout (break after operator, indent RHS)
+/// Default operator layout
 pub fn default_op_layout(separator: String) -> OperatorLayout {
-  OperatorLayout(
-    separator: separator,
-    break_before: False,
-    break_after: False,
-    indent_rhs: False,
-  )
+  OperatorLayout(separator: separator)
 }
 
 /// Break before operator layout (like Haskell's $)
 pub fn break_before_op_layout(separator: String) -> OperatorLayout {
-  OperatorLayout(
-    separator: separator,
-    break_before: True,
-    break_after: False,
-    indent_rhs: False,
-  )
+  OperatorLayout(separator: separator)
 }
 
 /// Compact operator layout (never break)
 pub fn compact_op_layout(separator: String) -> OperatorLayout {
-  OperatorLayout(
-    separator: separator,
-    break_before: False,
-    break_after: False,
-    indent_rhs: False,
-  )
+  OperatorLayout(separator: separator)
 }
 
+/// Create an operator with default layout
 pub fn op(
   keyword: String,
   constructor: fn(a, a) -> a,
   precedence: Int,
-  layout: OperatorLayout,
 ) -> Operator(a) {
   Operator(
     keyword: keyword,
     constructor: constructor,
     precedence: precedence,
     associativity: Left,
-    layout: layout,
+    layout: OperatorLayout(separator: keyword),
   )
 }
 
@@ -477,7 +362,7 @@ fn panic_with_message(msg: String) -> a {
 
 pub fn parse(grammar: Grammar(a), source: String, error_ast: a) -> ParseResult(a) {
   let tokens = lexer.tokenize(source)
-  let rule = case dict.get(grammar.rules, grammar.start) {
+  let rule = case get_rule(grammar, grammar.start) {
     Ok(rule) -> rule
     Error(_) -> panic_with_message("BUG: Grammar missing start rule '" <> grammar.start <> "'")
   }
@@ -490,6 +375,11 @@ pub fn parse(grammar: Grammar(a), source: String, error_ast: a) -> ParseResult(a
       ParseResult(ast: error_ast, errors: [ParseErrorWithSpan(span, exp, g, ctx)])
     }
   }
+}
+
+fn get_rule(grammar: Grammar(a), name: String) -> Result(Rule(a), Nil) {
+  list.find(grammar.rules, fn(rule) { rule.name == name })
+  |> result.map_error(fn(_) { Nil })
 }
 
 fn parse_rule(
@@ -594,7 +484,7 @@ fn parse_ref(
   tokens: List(Token),
   pos: Int,
 ) -> Result(#(List(Value(a)), Int), Nil) {
-  case dict.get(grammar.rules, rule_name) {
+  case get_rule(grammar, rule_name) {
     Ok(rule) -> {
       case parse_rule(grammar, rule, tokens, pos) {
         Ok(#(ast, new_pos)) -> Ok(#([AstValue(ast)], new_pos))
@@ -883,16 +773,16 @@ pub fn mk_span(file: String, line: Int, col: Int) -> Span {
 /// Example:
 /// ```gleam
 /// let get_prec = grammar.extract_precedence_table(calc_grammar())
-/// get_prec("add")  // Ok(10)
-/// get_prec("mul")  // Ok(20)
+/// get_prec("+")  // Ok(10)
+/// get_prec("*")  // Ok(20)
 /// ```
 pub fn extract_precedence_table(
   grammar: Grammar(a),
 ) -> fn(String) -> Result(Int, Nil) {
   let operators = grammar.operators
-  
+
   fn(op_name: String) -> Result(Int, Nil) {
-    case dict.get(operators, op_name) {
+    case list.find(operators, fn(op) { op.keyword == op_name }) {
       Ok(op) -> Ok(op.precedence)
       Error(_) -> Error(Nil)
     }
@@ -906,15 +796,15 @@ pub fn extract_precedence_table(
 /// Example:
 /// ```gleam
 /// let get_layout = grammar.extract_layout_table(calc_grammar())
-/// get_layout("add")  // Ok(OperatorLayout(" + ", False, False, False))
+/// get_layout("+")  // Ok(OperatorLayout(" + "))
 /// ```
 pub fn extract_layout_table(
   grammar: Grammar(a),
 ) -> fn(String) -> Result(OperatorLayout, Nil) {
   let operators = grammar.operators
-  
+
   fn(op_name: String) -> Result(OperatorLayout, Nil) {
-    case dict.get(operators, op_name) {
+    case list.find(operators, fn(op) { op.keyword == op_name }) {
       Ok(op) -> Ok(op.layout)
       Error(_) -> Error(Nil)
     }
@@ -928,7 +818,7 @@ pub fn extract_layout_table(
 ///
 /// Example:
 /// ```gleam
-/// let ctor_map = dict.from_list([#("Add", "add"), #("Mul", "mul")])
+/// let ctor_map = dict.from_list([#("Add", "+"), #("Mul", "*")])
 /// let get_prec = grammar.extract_constructor_precedence(calc_grammar(), ctor_map)
 /// get_prec("Add")  // Ok(10)
 /// get_prec("Mul")  // Ok(20)
@@ -938,7 +828,7 @@ pub fn extract_constructor_precedence(
   constructor_map: Dict(String, String),
 ) -> fn(String) -> Result(Int, Nil) {
   let precedence_table = extract_precedence_table(grammar)
-  
+
   fn(ctor_name: String) -> Result(Int, Nil) {
     case dict.get(constructor_map, ctor_name) {
       Ok(op_name) -> precedence_table(op_name)
@@ -950,3 +840,78 @@ pub fn extract_constructor_precedence(
 // ============================================================================
 // FORMATTER - User-Provided
 // ============================================================================
+
+// ============================================================================
+// GRAMMAR-BASED FORMATTER HELPERS
+// ============================================================================
+
+/// Get precedence for a constructor from grammar.
+///
+/// Looks up the constructor by finding the operator with matching constructor function.
+/// Returns 0 if not found (for non-operator constructors).
+///
+/// Note: This uses function reference equality, which works for named functions.
+/// For anonymous functions, you may need to provide a mapping.
+pub fn get_precedence_for_constructor(
+  grammar: Grammar(a),
+  constructor_key: #(String, fn(a, a) -> a),
+) -> Int {
+  let constructor_fn = constructor_key.1
+  case list.find(grammar.operators, fn(op) { op.constructor == constructor_fn }) {
+    Ok(op) -> op.precedence
+    Error(_) -> 0
+  }
+}
+
+/// Get operator symbol for a constructor from grammar.
+pub fn get_operator_symbol_for_constructor(
+  grammar: Grammar(a),
+  constructor_key: #(String, fn(a, a) -> a),
+) -> String {
+  let constructor_fn = constructor_key.1
+  case list.find(grammar.operators, fn(op) { op.constructor == constructor_fn }) {
+    Ok(op) -> op.keyword
+    Error(_) -> ""
+  }
+}
+
+/// Format binary operator with precedence extracted from grammar.
+///
+/// This ensures precedence is defined ONCE in the grammar and reused by the formatter.
+///
+/// Example:
+/// ```gleam
+/// fn format_expr(ast: Expr, parent_prec: Int, grammar: Grammar(Expr)) -> Doc {
+///   case ast {
+///     Add(l, r) ->
+///       format_binop_with_grammar(
+///         grammar,
+///         format_expr,
+///         l,
+///         r,
+///         #("Add", make_add),  // Constructor key to look up in grammar
+///         parent_prec,
+///       )
+///   }
+/// }
+/// ```
+pub fn format_binop_with_grammar(
+  grammar: Grammar(a),
+  format_fn: fn(a, Int, Grammar(a)) -> Doc,
+  left: a,
+  right: a,
+  constructor_key: #(String, fn(a, a) -> a),
+  parent_prec: Int,
+) -> Doc {
+  let prec = get_precedence_for_constructor(grammar, constructor_key)
+  let left_doc = format_fn(left, prec, grammar)
+  let right_doc = format_fn(right, prec + 1, grammar)
+  let separator = get_operator_symbol_for_constructor(grammar, constructor_key)
+
+  let doc = concat([left_doc, text(" "), text(separator), text(" "), right_doc])
+
+  case prec < parent_prec {
+    True -> parens(doc)
+    False -> doc
+  }
+}
