@@ -67,6 +67,9 @@ pub type TermData {
 
   /// Compile-time evaluation block.
   Comptime(term: Term)
+
+  /// Fixpoint operator for recursion (fix f -> body).
+  Fix(name: String, body: Term)
 }
 
 // ============================================================================
@@ -96,6 +99,8 @@ pub type Value {
   /// Built-in function call deferred to runtime
   /// Created when FFI not found during eval, or when args are not concrete
   VCall(name: String, args: List(Value))
+  /// Fixpoint value for recursion (self-referential closure)
+  VFix(name: String, env: Env, body: Term)
   /// Error value for error recovery (continues checking after errors)
   VErr
 }
@@ -284,7 +289,8 @@ pub const default_config = Config(target: "backend/javascript", permissions: [])
 pub const initial_state = State(
   hole: 0,
   var: 0,
-  ctrs: [],  // No predefined constructors - to be defined in prelude
+  ctrs: [],
+  // No predefined constructors - to be defined in prelude
   ctx: [],
   sub: [],
   errors: [],
@@ -657,6 +663,7 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
       }
     }
     Comptime(term) -> eval(ffi, env, term)
+    Fix(name, body) -> VFix(name, env, body)
     Err(_) -> VErr
     // Error terms evaluate to VErr
   }
@@ -682,11 +689,19 @@ fn do_dot(value: Value, name: String) -> Value {
 ///
 /// If the function is neutral (unknown), the application is added to the spine.
 /// If the function is a lambda, the argument is substituted into the body.
+/// If the function is a fixpoint, it unfolds by substituting itself into its body.
 /// Otherwise, returns VErr (not a function).
 pub fn do_app(ffi: FFI, fun: Value, arg: Value) -> Value {
   case fun {
     VNeut(head, spine) -> VNeut(head, [EApp(arg), ..spine])
     VLam(_, env, body) -> eval(ffi, [arg, ..env], body)
+    VFix(name, env, body) -> {
+      // Unfold fixpoint: substitute the fixpoint itself for the name in the body
+      // Then apply to the argument
+      let fix_val = VFix(name, env, body)
+      let lam_val = VLam(name, [fix_val, ..env], body)
+      do_app(ffi, lam_val, arg)
+    }
     _ -> VErr
   }
 }
@@ -827,6 +842,13 @@ pub fn quote(ffi: FFI, lvl: Int, value: Value, s: Span) -> Term {
       // Quote stuck built-in with collected args
       Term(Call(name, list.map(args, fn(a) { quote(ffi, lvl, a, s) })), s)
     }
+    VFix(name, env, body) -> {
+      // Quote fixpoint: create a fresh variable and quote the body
+      let fresh = VNeut(HVar(lvl), [])
+      let body_val = eval(ffi, [fresh, ..env], body)
+      let body_quote = quote(ffi, lvl + 1, body_val, body.span)
+      Term(Fix(name, body_quote), s)
+    }
     VErr -> Term(Hole(-1), s)
   }
 }
@@ -896,6 +918,7 @@ pub fn occurs(sub: Subst, id: Int, value: Value) -> Bool {
     VPi(_, env, in, _) ->
       occurs(sub, id, in) || list.any(env, occurs(sub, id, _))
     VCall(_, args) -> list.any(args, occurs(sub, id, _))
+    VFix(_, env, _) -> list.any(env, occurs(sub, id, _))
   }
 }
 
@@ -1176,9 +1199,8 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
           // Hole expansion: ?1 applied to arg means ?1 = (?2 -> ?3)
           let env = get_env(s)
           let #(arg_ty_hole_val, s) = new_hole(s)
-          let arg_ty_hole_id = s.hole - 1
+          let result_ty_hole_id = s.hole
           let #(result_ty_hole_val, s) = new_hole(s)
-          let result_ty_hole_id = s.hole - 1
           // Create the expanded function type: (?2 -> ?3)
           let fun_ty_expanded =
             VPi(
@@ -1285,6 +1307,20 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let quoted = quote(s1.ffi, 0, val, term.span)
       let #(val2, ty, s2) = infer(s1, quoted)
       #(val2, ty, s2)
+    }
+    Fix(name, body) -> {
+      // Fixpoint: fix f -> body has type A if body : A -> A
+      // We create a hole for the result type and check that body has type hole -> hole
+      let env = get_env(s)
+      let #(result_ty_hole, s) = new_hole(s)
+      // The function type is result_ty -> result_ty
+      let fun_ty = VPi(name, env, result_ty_hole, Term(Hole(s.hole - 1), body.span))
+      // Add the fixpoint variable to the context with the function type
+      let #(_fresh, s) = def_var(s, name, fun_ty)
+      let #(_body_val, s) = check(s, body, result_ty_hole, body.span)
+      // Return the fixpoint value with the result type
+      let fix_val = VFix(name, env, body)
+      #(fix_val, result_ty_hole, s)
     }
     Err(_) -> #(VErr, VErr, s)
     // Error terms have error type

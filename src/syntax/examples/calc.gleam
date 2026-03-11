@@ -9,8 +9,10 @@
 import gleam/int
 import gleam/result
 import gleam/string
-import syntax/formatter.{type Doc, text, format_binop_auto}
-import syntax/grammar.{type Grammar, type Span, AstValue, ParensValue, TokenValue}
+import syntax/formatter.{type Doc, format_binop_auto, text}
+import syntax/grammar.{
+  type Grammar, type Span, AstValue, ParensValue, TokenValue,
+}
 import syntax/lexer.{type Token}
 
 // ============================================================================
@@ -104,7 +106,10 @@ pub fn calc_grammar() -> Grammar(Expr) {
       fn(values) {
         case values {
           [TokenValue(token)] ->
-            Int(int.parse(token.value) |> result.unwrap(0), token_to_span(token))
+            Int(
+              int.parse(token.value) |> result.unwrap(0),
+              token_to_span(token),
+            )
           _ -> panic as "Expected Number"
         }
       },
@@ -148,44 +153,16 @@ fn format_expr(ast: Expr, parent_prec: Int) -> Doc {
     Int(n, _span) -> text(int.to_string(n))
 
     Add(l, r, _span) ->
-      format_binop_auto(
-        format_expr,
-        l,
-        r,
-        "+",
-        10,
-        parent_prec,
-      )
+      format_binop_auto(format_expr, l, r, "+", 10, parent_prec)
 
     Sub(l, r, _span) ->
-      format_binop_auto(
-        format_expr,
-        l,
-        r,
-        "-",
-        10,
-        parent_prec,
-      )
+      format_binop_auto(format_expr, l, r, "-", 10, parent_prec)
 
     Mul(l, r, _span) ->
-      format_binop_auto(
-        format_expr,
-        l,
-        r,
-        "*",
-        20,
-        parent_prec,
-      )
+      format_binop_auto(format_expr, l, r, "*", 20, parent_prec)
 
     Div(l, r, _span) ->
-      format_binop_auto(
-        format_expr,
-        l,
-        r,
-        "/",
-        20,
-        parent_prec,
-      )
+      format_binop_auto(format_expr, l, r, "/", 20, parent_prec)
   }
 }
 

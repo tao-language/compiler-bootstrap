@@ -20,7 +20,7 @@
 /// Both parser and formatter are derived from this single grammar definition.
 import core/core.{
   type Case, type Literal, type LiteralType, type Pattern, type Term, Ann, App, Call, Case,
-  Comptime, Ctr, Dot, Err, F32, F32T, F64, F64T, Hole, I32, I32T, I64, I64T, Lam, Lit, LitT, Match,
+  Comptime, Ctr, Dot, Err, F32, F32T, F64, F64T, Fix, Hole, I32, I32T, I64, I64T, Lam, Lit, LitT, Match,
   PAny, PAs, PCtr, PLit, PLitT, PRcd, PTyp, Pi, Rcd, Term, Typ, U32, U32T, U64, U64T, Var,
 }
 import gleam/float
@@ -28,7 +28,7 @@ import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/formatter
-import syntax/grammar.{type Span, AstValue, ParseResult, TokenValue}
+import syntax/grammar.{type Span, type Value, AstValue, ListValue, ParseResult, TokenValue}
 import syntax/lexer.{type Token}
 
 // ============================================================================
@@ -55,6 +55,8 @@ pub type NamedTerm {
   NCall(name: String, args: List(NamedTerm), span: Span)
   /// Compile-time evaluation: comptime { term }
   NComptime(term: NamedTerm, span: Span)
+  /// Fixpoint for recursion: fix name -> body
+  NFix(name: String, body: NamedTerm, span: Span)
   /// Error placeholder for parse failures
   NErr(message: String, span: Span)
 }
@@ -154,6 +156,10 @@ fn named_to_de_bruijn_loop(term: NamedTerm, env: List(String)) -> Term {
     NComptime(term, span) -> {
       let term_db = named_to_de_bruijn_loop(term, env)
       Term(Comptime(term_db), span)
+    }
+    NFix(name, body, span) -> {
+      let body_db = named_to_de_bruijn_loop(body, [name, ..env])
+      Term(Fix(name, body_db), span)
     }
     NErr(message, span) -> {
       Term(core.Err(message), span)
@@ -302,13 +308,15 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
   |> grammar.token("Let")
   |> grammar.token("In")
   |> grammar.token("Rec")
+  |> grammar.token("Fix")
   // Main expression rule (lowest precedence first)
   |> grammar.rule("Expr", [
-    // Keywords first (Match, Call, Comptime, Let) - these start with special tokens
+    // Keywords first (Match, Call, Comptime, Let, Fix) - these start with special tokens
     grammar.alt(grammar.ref("Match"), unwrap, fn(_, _p) { formatter.text("") }),
     grammar.alt(grammar.ref("Call"), unwrap, fn(_, _p) { formatter.text("") }),
     grammar.alt(grammar.ref("Comptime"), unwrap, fn(_, _p) { formatter.text("") }),
     grammar.alt(grammar.ref("Let"), unwrap, fn(_, _p) { formatter.text("") }),
+    grammar.alt(grammar.ref("Fix"), unwrap, fn(_, _p) { formatter.text("") }),
     // Then other expressions
     grammar.alt(grammar.ref("Lambda"), unwrap, fn(_, _p) { formatter.text("") }),
     grammar.alt(grammar.ref("Pi"), unwrap, fn(_, _p) { formatter.text("") }),
@@ -453,6 +461,19 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
       fn(v, p) { format_value(v, p) },
     ),
   ])
+  // Fix: fix name -> body (fixpoint operator for recursion)
+  |> grammar.rule("Fix", [
+    grammar.alt(
+      grammar.seq([
+        grammar.token_pattern("Fix"),
+        grammar.token_pattern("Ident"),
+        grammar.token_pattern("Arrow"),
+        grammar.ref("Expr"),
+      ]),
+      make_fix,
+      fn(v, p) { format_value(v, p) },
+    ),
+  ])
   // Atoms - the building blocks
   |> grammar.rule("Atom", [
     // Constructor with args: #Name(arg)
@@ -567,8 +588,26 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
       fn(_, _) { formatter.text("") },
     ),
   ])
-  // Cases: | pattern [? guard] -> body
+  // Cases: one or more | pattern [? guard] -> body
   |> grammar.rule("Cases", [
+    // Multiple cases: | pat [? guard] -> body | pat [? guard] -> body ...
+    grammar.alt(
+      grammar.seq([
+        grammar.ref("Case"),
+        grammar.ref("Cases"),
+      ]),
+      make_cases_cons,
+      fn(v, p) { format_value(v, p) },
+    ),
+    // Single case: | pat [? guard] -> body
+    grammar.alt(
+      grammar.ref("Case"),
+      unwrap_cases,
+      fn(v, p) { format_value(v, p) },
+    ),
+  ])
+  // Case: | pattern [? guard] -> body
+  |> grammar.rule("Case", [
     // Case with guard: | pattern ? guard -> body
     grammar.alt(
       grammar.seq([
@@ -590,7 +629,7 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
         grammar.token_pattern("Arrow"),
         grammar.ref("Expr"),
       ]),
-      make_single_case_list,
+      make_single_case,
       fn(_, _) { formatter.text("") },
     ),
   ])
@@ -658,6 +697,21 @@ fn unwrap(values) -> ParseValue {
   case values {
     [AstValue(AsTerm(term))] -> AsTerm(term)
     _ -> panic as "Expected single NamedTerm value"
+  }
+}
+
+fn unwrap_cases(values) -> ParseValue {
+  case values {
+    [AstValue(AsCases(cases))] -> AsCases(cases)
+    _ -> panic as "Expected single Cases value"
+  }
+}
+
+fn make_cases_cons(values) -> ParseValue {
+  case values {
+    [AstValue(AsCases(first)), AstValue(AsCases(rest))] ->
+      AsCases(list.append(first, rest))
+    _ -> panic as "Expected cases cons"
   }
 }
 
@@ -905,6 +959,16 @@ fn make_let_rec(values) -> ParseValue {
   }
 }
 
+fn make_fix(values) -> ParseValue {
+  case values {
+    [_, TokenValue(name_token), _, AstValue(AsTerm(body))] -> {
+      let name = name_token.value
+      AsTerm(NFix(name, body, grammar.span_from_token(name_token, "input")))
+    }
+    _ -> panic as "Expected fix expression"
+  }
+}
+
 // Cases constructors
 fn make_case_with_guard(values) -> ParseValue {
   case values {
@@ -914,7 +978,7 @@ fn make_case_with_guard(values) -> ParseValue {
   }
 }
 
-fn make_single_case_list(values) -> ParseValue {
+fn make_single_case(values) -> ParseValue {
   case values {
     [_, AstValue(AsPattern(pattern)), _, AstValue(AsTerm(body))] ->
       AsCases([NCase(pattern, body, None, get_span(body))])
@@ -1024,6 +1088,7 @@ fn get_span(term: NamedTerm) -> Span {
     NMatch(_, _, _, span) -> span
     NCall(_, _, span) -> span
     NComptime(_, span) -> span
+    NFix(_, _, span) -> span
     NErr(_, span) -> span
   }
 }
@@ -1210,6 +1275,15 @@ fn format_term(term: Term, parent_prec: Int, bindings: List(String)) -> formatte
         format_term(term, 50, bindings),
       ])
       wrap_parens(inner, 50 < parent_prec)
+    }
+    Fix(name, body) -> {
+      let inner = formatter.concat([
+        formatter.text("fix "),
+        formatter.text(name),
+        formatter.text(" -> "),
+        format_term(body, 70, [name, ..bindings]),
+      ])
+      wrap_parens(inner, 70 < parent_prec)
     }
     Err(message: msg) -> formatter.concat([formatter.text("<error: "), formatter.text(msg), formatter.text(">")])
   }
