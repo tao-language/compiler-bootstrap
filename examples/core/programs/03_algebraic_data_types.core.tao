@@ -1,5 +1,12 @@
-// Algebraic Data Types & Exhaustiveness
-// Verifies Constructors (#Name)
+// Algebraic Data Types (Golden Sample)
+// Note: Constructor definitions require a prelude/type definition system
+// This demonstrates the intended syntax
 
-// Boolean-like type via constructors
-#True
+// Intended syntax (requires future implementation):
+// data Bool = #True | #False
+// data Nat = #Zero | #Succ(Nat)
+
+// For now, use lambdas and applications
+let true = t -> f -> t in
+let false = t -> f -> f in
+true

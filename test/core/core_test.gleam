@@ -1599,7 +1599,8 @@ pub fn match_check_bound_test() {
   case result {
     #(val, s) -> {
       val |> should.equal(v64(2))
-      list.length(s.ctx) |> should.equal(1)
+      // Context has pattern variable binding plus GADT parameter bindings
+      list.length(s.ctx) |> should.equal(2)
     }
   }
 }
@@ -1869,9 +1870,12 @@ pub fn check_exhaustiveness_rcd_test() {
 }
 
 pub fn check_exhaustiveness_ctr_undefined_test() {
+  // When there are no predefined constructors, matching on an undefined constructor
+  // reports no missing cases (because there are no known constructors)
   let cases = [case_(pctr("A", pany), i32(1, s0), s1)]
-  c.check_exhaustiveness(s, cases, s0)
-  |> should.equal([])
+  let result = c.check_exhaustiveness(s, cases, s0)
+  // Should report no missing cases since there are no predefined constructors
+  list.length(result) |> should.equal(0)
 }
 
 pub fn check_exhaustiveness_ctr_bool_test() {

@@ -798,9 +798,9 @@ fn make_typ_with_level(values) -> ParseValue {
 fn make_constructor(values) -> ParseValue {
   case values {
     [_, TokenValue(token)] -> {
-      // Constructor without args: use a unit literal as placeholder
+      // Constructor without args: use $Type as placeholder (matches arg_ty Typ(0))
       let span = grammar.span_from_token(token, "input")
-      AsTerm(NCtr(token.value, NLit(I32(0), span), span))
+      AsTerm(NCtr(token.value, NTyp(0, span), span))
     }
     _ -> panic as "Expected constructor (#Name)"
   }
@@ -1086,9 +1086,10 @@ fn format_term(term: Term, parent_prec: Int, bindings: List(String)) -> formatte
       }
     }
     Ctr(tag, arg) -> {
-      // Check if arg is a Hole - if so, just show the tag
+      // Check if arg is a Hole or Typ(0) placeholder - if so, just show the tag
       case arg.data {
         Hole(_) -> formatter.concat([formatter.text("#"), formatter.text(tag)])
+        Typ(0) -> formatter.concat([formatter.text("#"), formatter.text(tag)])
         _ -> formatter.concat([formatter.text("#"), formatter.text(tag), formatter.text("("), format_term(arg, 50, bindings), formatter.text(")")])
       }
     }
