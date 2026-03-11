@@ -1,8 +1,43 @@
-# Tao Error Message Design
+# Error Message Design
 
 > **Goal**: Delightfully helpful error messages with excellent visual feedback
-> **Status**: 📋 Design Complete
-> **Date**: March 2025
+> **Status**: ✅ **Implemented for Core** - 370 tests passing
+> **Date**: March 2025 (Updated: Implementation complete)
+
+---
+
+## Implementation Status
+
+### ✅ Complete (Core Language)
+
+**Module**: `src/core/error_formatter.gleam`
+
+**Features**:
+- Emoji-guided navigation (❌ error, 💡 tip, 📝 note, 🔧 help)
+- Error codes (E0101-E0113, E0201-E0203, E0502, E9999)
+- Type-safe error to diagnostic conversion
+- Contextual hints based on type mismatches
+- Source snippet integration via `syntax/source_snippet`
+
+**Error Types Covered**:
+- TypeMismatch (E0101)
+- VarUndefined (E0102)
+- NotAFunction (E0103)
+- ArityMismatch (E0104)
+- CtrUndefined (E0105)
+- HoleUnsolved (E0106)
+- InfiniteType (E0107)
+- TypeAnnotationNeeded (E0108)
+- RcdMissingFields (E0109)
+- CtrUnsolvedParam (E0110)
+- DotFieldNotFound (E0111)
+- DotOnNonCtr (E0112)
+- SpineMismatch (E0113)
+- MatchMissingCase (E0201)
+- MatchRedundantCase (E0202)
+- PatternMismatch (E0203)
+- ComptimePermissionDenied (E0502)
+- TODO (E9999)
 
 ---
 
