@@ -1,6 +1,8 @@
 ❌ error[E0001]: Syntax error
 error[E0001]: Syntax error
   ┌─ input:0:0
+1 │ // Parse Error: Hash without constructor
+2 │ // Hash must be followed by an identifier (constructor name)
   = note: Expected: valid alternative
   = note: Got: none
 

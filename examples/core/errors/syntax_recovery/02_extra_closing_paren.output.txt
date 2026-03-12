@@ -1,7 +1,15 @@
-❌ error[E0001]: Error
-error[E0001]: Error
-  ┌─ input:0:0
-  = note: Error
+❌ error[E0102]: Undefined variable
+error[E0102]: Undefined variable
+  ┌─ input:4:2
+2 │ // The parser should recover after the extra )
+3 │ // and potentially treat this as just (x)
+4 │ (x))
+     ^
+5 │ 
+  = note: Variable at index 0 is not defined in this scope
+  = hint: Check variable name and scope
+  = hint: Did you forget to define this variable?
 
-📝 note: Error
-🔧 help: Check your code
+📝 note: Variable at index 0 is not defined in this scope
+🔧 help: Check variable name and scope
+🔧 help: Did you forget to define this variable?

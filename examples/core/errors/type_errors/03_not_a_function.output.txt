@@ -1,7 +1,15 @@
-❌ error[E0001]: Type error
-error[E0001]: Type error
-  ┌─ input:0:0
-  = note: Type error
+❌ error[E0103]: Cannot call non-function value
+error[E0103]: Cannot call non-function value
+  ┌─ input:3:1
+1 │ // Type Error: Not a function
+2 │ // Trying to apply a non-function value
+3 │ 42(x)
+    ^^
+4 │ 
+  = note: This value has type $I32, which is not callable
+  = hint: Only functions can be called with parentheses
+  = hint: Check that you're calling a function, not a value
 
-📝 note: Type error
-🔧 help: Check your types
+📝 note: This value has type $I32, which is not callable
+🔧 help: Only functions can be called with parentheses
+🔧 help: Check that you're calling a function, not a value

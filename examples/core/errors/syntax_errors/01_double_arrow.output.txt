@@ -1,6 +1,8 @@
 ❌ error[E0001]: Syntax error
 error[E0001]: Syntax error
   ┌─ input:0:0
+1 │ // Parse Error: Multiple consecutive arrows
+2 │ // This should fail because the grammar doesn't allow multiple arrows in a row
   = note: Expected: valid alternative
   = note: Got: none
 

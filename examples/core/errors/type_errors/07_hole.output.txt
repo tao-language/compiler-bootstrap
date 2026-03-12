@@ -1,7 +1,15 @@
-❌ error[E0001]: Type error
-error[E0001]: Type error
-  ┌─ input:0:0
-  = note: Type error
+❌ error[E0106]: Unsolved hole
+error[E0106]: Unsolved hole
+  ┌─ input:3:2
+1 │ // Hole with identifier
+2 │ // Used as a placeholder during development
+3 │ ?1
+     ^
+4 │ 
+  = note: Hole #1 was not solved during type checking
+  = hint: Holes are placeholders that must be filled
+  = hint: Provide a term of the expected type, or add a type annotation
 
-📝 note: Type error
-🔧 help: Check your types
+📝 note: Hole #1 was not solved during type checking
+🔧 help: Holes are placeholders that must be filled
+🔧 help: Provide a term of the expected type, or add a type annotation

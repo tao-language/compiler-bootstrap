@@ -1,7 +1,16 @@
-❌ error[E0001]: Type error
-error[E0001]: Type error
-  ┌─ input:0:0
-  = note: Type error
+❌ error[E0105]: Constructor not found
+error[E0105]: Constructor not found
+  ┌─ input:6:18
+4 │ // This example shows valid constructor syntax using Church encoding
+5 │ // since full ADT support requires a prelude/type definition system
+6 │ let some = x -> #Some(x) in
+                     ^^^^
+7 │ some(42)
+8 │ 
+  = note: Constructor `Some` is not defined
+  = hint: Check the constructor name for typos
+  = hint: Make sure the constructor is defined in the current scope
 
-📝 note: Type error
-🔧 help: Check your types
+📝 note: Constructor `Some` is not defined
+🔧 help: Check the constructor name for typos
+🔧 help: Make sure the constructor is defined in the current scope
