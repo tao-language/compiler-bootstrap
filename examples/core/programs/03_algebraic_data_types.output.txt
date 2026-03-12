@@ -1,3 +1,2 @@
-✓ Type checking examples/core/programs/03_algebraic_data_types.core.tao
-✓ Evaluating...
+
 Result: t -> f -> t

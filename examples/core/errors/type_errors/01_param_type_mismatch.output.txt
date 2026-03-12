@@ -1,13 +1,8 @@
-❌ error[E0101]: Type mismatch
+
 error[E0101]: Type mismatch
   ┌─ input:1:1
 1 │ 42 : $Type
     ^^ ----
 2 │ 
-  = note: $I32 and Type are incompatible types
-  = hint: Check that the expression has the expected type
-  = hint: Consider adding a type annotation
+  = hint: Check that types are compatible
 
-📝 note: $I32 and Type are incompatible types
-🔧 help: Check that the expression has the expected type
-🔧 help: Consider adding a type annotation

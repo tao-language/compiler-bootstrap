@@ -1,8 +1,8 @@
 # Compiler CLI Overview
 
 > **Goal**: Command-line interface for checking and running core/tao files
-> **Status**: ✅ Production Ready - Full CLI with error reporting, source snippets, and type checking
-> **Date**: March 2025 (Updated)
+> **Status**: ⏳ In Progress - Basic CLI works, output format needs updates
+> **Date**: March 2025 (Updated March 2026)
 
 ---
 
@@ -105,19 +105,34 @@ source → parse → Tao AST → desugar → Term → type_check → Result
 - ✅ `--verbose` - Verbose output
 - ✅ `--debug` - Debug mode (print AST)
 
-### ⏳ In Progress / Pending
+**Testing**:
+- ✅ E2E tests with golden file comparison
+- ✅ **376 tests passing**
+- ✅ Auto-discovery of all examples
+
+### ⏳ In Progress
+
+**CLI Output Format**:
+- [ ] `run` command should output result even on errors
+- [ ] Error output to `stderr`, result to `stdout`
+- [ ] Delimiter between errors and result
+- [ ] Exit code handling (return 1 on errors even with result)
+- [ ] Code snippets with 2-3 lines context (currently minimal)
+
+**Error Message Quality**:
+- [ ] Context lines (2-3 before/after error)
+- [ ] "Did you mean?" suggestions
+- [ ] Better type information in messages
+- [ ] Error explanations (why, not just what)
+- [ ] See **[../testing/05-error-message-improvements.md](../testing/05-error-message-improvements.md)**
+
+### 📋 Planned
 
 **Tao Language Integration**:
 - [ ] Wire up Tao parser (requires Tao lexer + grammar)
 - [ ] Wire up Tao desugarer (requires Tao desugarer implementation)
 - [ ] Tao-specific error messages
 - [ ] See **[../tao/01-overview.md](../tao/01-overview.md)** for Tao implementation status
-
-**Error Reporting Enhancements**:
-- [ ] Color output for terminals
-- [ ] Suggestion-based error fixes (like Rust's `did you mean?`)
-- [ ] Cross-file error reporting (for imports)
-- [ ] Incremental re-checking (for LSP support)
 
 **CLI Enhancements**:
 - [ ] Output file option (`--output`)
@@ -297,12 +312,16 @@ source_snippet.format_diagnostic(diagnostic, source)
 
 - **[02-cli-parser.md](./02-cli-parser.md)** - CLI parser specification
 - **[03-error-reporter.md](./03-error-reporter.md)** - Error reporter specification
+- **[04-check-run-commands.md](./04-check-run-commands.md)** - Check/Run commands spec
 - **[../../docs/cli.md](../../docs/cli.md)** - Complete CLI documentation
 - **[../../docs/syntax-library.md](../../docs/syntax-library.md)** - Syntax library documentation
 - **[../../docs/core.md](../../docs/core.md)** - Core language specification
 - **[../syntax/01-overview.md](../syntax/01-overview.md)** - Syntax library overview
 - **[../core/01-overview.md](../core/01-overview.md)** - Core language overview
 - **[../tao/01-overview.md](../tao/01-overview.md)** - Tao language overview
+- **[../testing/01-overview.md](../testing/01-overview.md)** - Testing overview
+- **[../testing/03-examples-testing.md](../testing/03-examples-testing.md)** - Examples testing spec
+- **[../testing/05-error-message-improvements.md](../testing/05-error-message-improvements.md)** - Error improvements
 
 ---
 

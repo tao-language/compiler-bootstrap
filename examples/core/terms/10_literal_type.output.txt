@@ -1,3 +1,2 @@
-✓ Type checking examples/core/terms/10_literal_type.core.tao
-✓ Evaluating...
+
 Result: $I32

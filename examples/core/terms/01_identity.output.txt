@@ -1,3 +1,2 @@
-✓ Type checking examples/core/terms/01_identity.core.tao
-✓ Evaluating...
+
 Result: x -> x

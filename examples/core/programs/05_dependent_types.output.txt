@@ -1,3 +1,2 @@
-✓ Type checking examples/core/programs/05_dependent_types.core.tao
-✓ Evaluating...
+
 Result: (x : $Type) -> $Type

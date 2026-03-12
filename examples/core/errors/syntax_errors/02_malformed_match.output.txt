@@ -1,4 +1,4 @@
-❌ error[E0001]: Syntax error
+
 error[E0001]: Syntax error
   ┌─ input:0:0
 1 │ %match x ~ $Type {
@@ -6,5 +6,3 @@ error[E0001]: Syntax error
   = note: Expected: valid alternative
   = note: Got: none
 
-📝 note: Expected: valid alternative
-📝 note: Got: none

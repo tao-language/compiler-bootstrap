@@ -1,3 +1,2 @@
-✓ Type checking examples/core/terms/04_pi_type.core.tao
-✓ Evaluating...
+
 Result: (x : $Type) -> $Type

@@ -1,3 +1,2 @@
-✓ Type checking examples/core/programs/04_records.core.tao
-✓ Evaluating...
+
 Result: {x: 10, y: 20}

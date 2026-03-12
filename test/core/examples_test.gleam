@@ -31,8 +31,6 @@
 /// 3. Copy the output to `.output.txt`
 /// 4. The test will automatically pick it up
 import core/core.{type Error, infer, initial_state, SyntaxError, quote}
-import core/color.{no_color}
-import core/error_formatter
 import core/syntax
 import gleam/list
 import gleam/result
@@ -41,6 +39,7 @@ import gleeunit
 import gleeunit/should
 import simplifile
 import syntax/grammar.{ParseError, Span}
+import syntax/error_reporter
 
 // ============================================================================
 // TYPES
@@ -277,7 +276,17 @@ fn syntax_error_to_core_error(parse_error) -> Error {
 fn format_errors(errors: List(Error), source: String, file: String) -> String {
   errors
   |> list.map(fn(err) {
-    error_formatter.format_error_with_config(err, source, file, no_color)
+    case err {
+      SyntaxError(span, expected, got, context) -> {
+        let parse_err = ParseError(span, expected, got, context)
+        let diagnostic = error_reporter.parse_error_to_diagnostic(parse_err, source, file)
+        error_reporter.format_diagnostic(diagnostic, source)
+      }
+      _ -> {
+        let diagnostic = error_reporter.type_error_to_diagnostic(err, source, file)
+        error_reporter.format_diagnostic(diagnostic, source)
+      }
+    }
   })
   |> string.join("\n")
 }

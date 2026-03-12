@@ -1,3 +1,2 @@
-✓ Type checking examples/core/programs/13_vector_dependent.core.tao
-✓ Evaluating...
+
 Result: c -> n -> c(1)((c -> n -> c(2)((c -> n -> n))))

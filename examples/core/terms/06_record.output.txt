@@ -1,3 +1,2 @@
-✓ Type checking examples/core/terms/06_record.core.tao
-✓ Evaluating...
+
 Result: {x: 1, y: 2, z: 3}

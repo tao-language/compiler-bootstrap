@@ -1,3 +1,2 @@
-✓ Type checking examples/core/terms/08_annotation.core.tao
-✓ Evaluating...
+
 Result: (x : $Type) -> x

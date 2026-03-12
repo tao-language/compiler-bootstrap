@@ -31,7 +31,7 @@ File: `examples/core/errors/type_errors/type_mismatch.core.tao`
 Expected output: `examples/core/errors/type_errors/type_mismatch.output.txt`
 ```
 ❌ error[E0101]: Type mismatch
-   ┌─ src/main.tao:5:10
+   ┌─ examples/core/errors/type_errors/type_mismatch.core.tao:2:5
    │
  1 │ // This type annotation doesn't match the value's type.
  2 │ 1 : $Type
@@ -44,6 +44,8 @@ Expected output: `examples/core/errors/type_errors/type_mismatch.output.txt`
 -----------------------------------------------------------
 1
 ```
+
+The code snippet should display some lines before and after, maybe 2-3 lines before and after to give better context.
 
 This should be the exact same output as if you run: `gleam run -- run examples/core/errors/type_errors/type_mismatch.core.tao`
 

@@ -1,3 +1,2 @@
-✓ Type checking examples/core/terms/02_constant.core.tao
-✓ Evaluating...
+
 Result: x -> y -> x

@@ -209,7 +209,7 @@ fn check_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 
   case parse_result.errors {
     [err, ..] -> {
-      // Report parse errors with source snippets
+      // Report parse errors
       io.println("")
       let diagnostic = error_reporter.parse_error_to_diagnostic(err, file.contents, file.path)
       io.println(error_reporter.format_diagnostic(diagnostic, file.contents))
@@ -238,7 +238,7 @@ fn check_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 
       case final_state.errors {
         [_err, ..] -> {
-          // Report type errors with source snippets
+          // Report type errors
           io.println("")
           final_state.errors |> list.each(fn(e) {
             let diagnostic = error_reporter.type_error_to_diagnostic(e, file.contents, file.path)
@@ -312,11 +312,17 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 
   let parse_result = syntax.parse(file.contents)
 
-  case parse_result.errors {
+  // Handle parse errors
+  let parse_errors = parse_result.errors
+  
+  case parse_errors {
     [err, ..] -> {
-      io.println("✗ Parse error:")
-      io.println(format_parse_error(err))
-      Error(ParseError(parse_result.errors |> list.map(format_parse_error)))
+      // Report parse errors
+      io.println("")
+      parse_errors |> list.each(fn(err) {
+        let diagnostic = error_reporter.parse_error_to_diagnostic(err, file.contents, file.path)
+        io.println(error_reporter.format_diagnostic(diagnostic, file.contents))
+      })
     }
     [] -> {
       case debug {
@@ -328,46 +334,69 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
       }
 
       case verbose {
-        True -> {
-          io.println("✓ Parsed successfully")
-          io.println("✓ Type checking...")
-        }
+        True -> io.println("✓ Parsed successfully")
         False -> Nil
       }
+    }
+  }
 
-      // Run type checker
-      let #(_type_result, _type_annotation, type_state) = infer(initial_state, parse_result.ast)
+  // Run type checker (even if parse errors exist, for error accumulation)
+  case verbose {
+    True -> io.println("✓ Type checking...")
+    False -> Nil
+  }
 
-      case type_state.errors {
-        [_err, ..] -> {
-          // Report type errors with source snippets
-          io.println("")
-          type_state.errors |> list.each(fn(e) {
-            let diagnostic = error_reporter.type_error_to_diagnostic(e, file.contents, file.path)
-            io.println(error_reporter.format_diagnostic(diagnostic, file.contents))
-          })
-          io.println("")
-          Error(TypeError(type_state.errors))
-        }
-        [] -> {
-          io.println("✓ Type checking " <> file.path)
-          io.println("✓ Evaluating...")
+  let #(_type_result, _type_annotation, type_state) = infer(initial_state, parse_result.ast)
+  let type_errors = type_state.errors
 
-          // Evaluate the term
-          let env = []
-          let ffi = initial_state.ffi
-          let value = eval(ffi, env, parse_result.ast)
-
-          // Quote back to normal form
-          let span = Span("", 0, 0, 0, 0)
-          let normal_form = quote(ffi, 0, value, span)
-
-          // Format and print the result
-          let formatted = syntax.format(normal_form)
-          io.println("Result: " <> formatted)
-          Ok(Nil)
-        }
+  // Report type errors
+  case type_errors {
+    [..] -> {
+      io.println("")
+      type_errors |> list.each(fn(e) {
+        let diagnostic = error_reporter.type_error_to_diagnostic(e, file.contents, file.path)
+        io.println(error_reporter.format_diagnostic(diagnostic, file.contents))
+      })
+    }
+    [] -> {
+      case verbose {
+        True -> io.println("✓ Type checking " <> file.path)
+        False -> Nil
       }
+    }
+  }
+
+  // Combine all errors
+  let has_errors = { parse_errors |> list.is_empty } == False || { type_errors |> list.is_empty } == False
+
+  // Evaluate the term (even with errors, for debugging)
+  case verbose {
+    True -> io.println("✓ Evaluating...")
+    False -> Nil
+  }
+
+  let env = []
+  let ffi = initial_state.ffi
+  let value = eval(ffi, env, parse_result.ast)
+
+  // Quote back to normal form
+  let span = Span("", 0, 0, 0, 0)
+  let normal_form = quote(ffi, 0, value, span)
+
+  // Format and print the result
+  let formatted = syntax.format(normal_form)
+  
+  // If there were errors, print delimiter before result
+  case has_errors {
+    True -> {
+      io.println("")
+      io.println("-----------------------------------------------------------")
+      io.println(formatted)
+      Error(TypeError(type_errors))
+    }
+    False -> {
+      io.println("Result: " <> formatted)
+      Ok(Nil)
     }
   }
 }

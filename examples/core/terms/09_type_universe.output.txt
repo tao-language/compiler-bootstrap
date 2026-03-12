@@ -1,3 +1,2 @@
-✓ Type checking examples/core/terms/09_type_universe.core.tao
-✓ Evaluating...
+
 Result: $Type

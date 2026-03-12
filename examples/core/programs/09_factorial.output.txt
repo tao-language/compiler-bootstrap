@@ -1,3 +1,2 @@
-✓ Type checking examples/core/programs/09_factorial.core.tao
-✓ Evaluating...
+
 Result: 5

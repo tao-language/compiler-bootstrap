@@ -1,15 +1,7 @@
-❌ error[E0103]: Cannot call non-function value
-error[E0103]: Cannot call non-function value
-  ┌─ input:3:1
+
+error[E0103]: Not a function
+  ┌─ examples/core/errors/type_errors/03_not_a_function.core.tao:0:0
 1 │ // Type Error: Not a function
 2 │ // Trying to apply a non-function value
-3 │ 42(x)
-    ^^
-4 │ 
-  = note: This value has type $I32, which is not callable
-  = hint: Only functions can be called with parentheses
-  = hint: Check that you're calling a function, not a value
+  = hint: Only functions can be applied
 
-📝 note: This value has type $I32, which is not callable
-🔧 help: Only functions can be called with parentheses
-🔧 help: Check that you're calling a function, not a value

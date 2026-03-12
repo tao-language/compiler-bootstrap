@@ -1,3 +1,2 @@
-✓ Type checking examples/core/programs/06_pattern_guards.core.tao
-✓ Evaluating...
+
 Result: t -> f -> t

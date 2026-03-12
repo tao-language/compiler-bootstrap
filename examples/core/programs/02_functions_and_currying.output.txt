@@ -1,3 +1,2 @@
-✓ Type checking examples/core/programs/02_functions_and_currying.core.tao
-✓ Evaluating...
+
 Result: y -> 10

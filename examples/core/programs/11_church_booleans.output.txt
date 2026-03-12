@@ -1,3 +1,2 @@
-✓ Type checking examples/core/programs/11_church_booleans.core.tao
-✓ Evaluating...
+
 Result: t -> f -> t
