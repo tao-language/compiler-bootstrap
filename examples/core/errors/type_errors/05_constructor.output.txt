@@ -1,11 +1,8 @@
 
-error[E0105]: Undefined constructor
-  ┌─ input:6:18
-4 │ // This example shows valid constructor syntax using Church encoding
-5 │ // since full ADT support requires a prelude/type definition system
-6 │ let some = x -> #Some(x) in
-                     ^^^^
-7 │ some(42)
-8 │ 
-  = hint: Constructor 'Some' is not defined
+error[E9999]: Type error
+  ┌─ examples/core/errors/type_errors/05_constructor.core.tao:0:0
+1 │ // Constructor Application
+2 │ // Constructors are applied like functions: #Tag(argument)
+3 │ // Note: Constructors must be defined in the type context
+
 

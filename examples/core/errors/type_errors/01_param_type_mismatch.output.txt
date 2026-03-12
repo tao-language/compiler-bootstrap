@@ -4,5 +4,7 @@ error[E0101]: Type mismatch
 1 │ 42 : $Type
     ^^ ----
 2 │ 
-  = hint: Check that types are compatible
+  = note: Int and $Type(0) are incompatible types
+  = hint: Check that the expression has the expected type
+  = hint: Consider adding a type annotation
 

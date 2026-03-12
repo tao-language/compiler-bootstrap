@@ -3,6 +3,7 @@ error[E0001]: Syntax error
   ┌─ input:0:0
 1 │ // Parse Error: Dollar without type
 2 │ // Dollar must be followed by an identifier (type name)
+3 │ $
   = note: Expected: valid alternative
   = note: Got: none
 

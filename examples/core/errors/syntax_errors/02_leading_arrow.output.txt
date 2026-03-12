@@ -3,6 +3,7 @@ error[E0001]: Syntax error
   ┌─ input:0:0
 1 │ // Parse Error: Arrow without left-hand side
 2 │ // An arrow must be preceded by an identifier (lambda parameter)
+3 │ -> x
   = note: Expected: valid alternative
   = note: Got: none
 

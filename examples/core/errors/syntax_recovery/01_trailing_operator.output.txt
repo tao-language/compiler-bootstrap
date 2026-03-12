@@ -1,10 +1,13 @@
 
 error[E0102]: Undefined variable
   ┌─ input:4:1
+1 │ // Syntax Recovery: Trailing operator
 2 │ // The parser should recover after the unexpected + operator
 3 │ // and potentially treat this as just the variable x
 4 │ x +
     ^
 5 │ 
+  = note: Variable at index 0 is not defined in this scope
   = hint: Check variable name and scope
+  = hint: Did you forget to define this variable?
 

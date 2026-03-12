@@ -7,5 +7,6 @@ error[E0106]: Unsolved hole
      ^
 4 │ 
   = note: Hole #1 was not solved during type checking
-  = hint: Provide a type annotation or check your term
+  = hint: Holes are placeholders that must be filled
+  = hint: Provide a term of the expected type, or add a type annotation
 

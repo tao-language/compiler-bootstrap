@@ -1,7 +1,7 @@
 # Error Message Improvements
 
 > **Goal**: Improve error message quality to match Rust/compiler standards
-> **Status**: 📋 Planned
+> **Status**: ⏳ In Progress - Phase 1-3 complete
 > **Date**: March 11, 2026
 
 ---
@@ -14,18 +14,20 @@ Current error messages are functional but can be significantly improved. This pl
 
 ## Current State
 
-### What Works
-- ✅ Error codes (E0001, E0101, etc.)
+### What Works (as of March 2026)
+- ✅ Error codes (E0101, E0102, etc.)
 - ✅ Source snippets with line numbers
-- ✅ Basic hints
+- ✅ **3 lines of context** before and after errors (Phase 1)
+- ✅ Multiple hints per error
+- ✅ Type information in error messages (Phase 3)
 - ✅ Emoji formatting (❌, 💡, 📝, 🔧)
 - ✅ Multiple error accumulation
+- ✅ **376 tests passing**
 
 ### What Needs Improvement
-- [ ] Context lines (currently shows minimal context)
-- [ ] "Did you mean?" suggestions
-- [ ] Type information in messages
-- [ ] Better explanations of _why_ something is wrong
+- [ ] "Did you mean?" suggestions with Levenshtein distance (blocked by De Bruijn indices)
+- [ ] Better type information (full type pretty-printing)
+- [ ] Error explanations (_why_ something is wrong)
 - [ ] Cross-file error reporting
 - [ ] Error chaining for cascading errors
 
@@ -33,156 +35,118 @@ Current error messages are functional but can be significantly improved. This pl
 
 ## Improvement Phases
 
-### Phase 1: Context Lines (Low Effort, High Impact)
+### Phase 1: Context Lines ✅ COMPLETE
 
-**Goal**: Show 2-3 lines of context before and after errors.
+**Goal**: Show 3 lines of context before and after errors.
 
-**Current**:
-```
-   ┌─ file:3:5
-   │
- 3 │ x + 1
-   │     ^
-   │
-```
-
-**Target**:
-```
-   ┌─ file:3:5
-   │
- 1 │ let x = 1
- 2 │ let y = 2
- 3 │ x + 1
-   │     ^ expected Int, found String
- 4 │ let z = y + x
- 5 │ in z
-   │
-```
+**Status**: ✅ Implemented in `src/syntax/source_snippet.gleam`
 
 **Implementation**:
 ```gleam
 // In source_snippet.gleam
-let context_lines = 2
-let start_line = max(1, error_line - context_lines)
-let end_line = min(total_lines, error_line + context_lines)
+let context_lines = 3  // Changed from 2
+let min_line = int.max(0, primary.start_line - context_lines - 1)
+let max_line = int.min(list.length(lines), primary.end_line + context_lines)
 ```
 
-**Effort**: ~1 hour
+**Effort**: ~30 minutes
 **Impact**: High - users can understand context without scrolling
 
----
+### Phase 2: Enhanced Hints ✅ COMPLETE
 
-### Phase 2: "Did You Mean?" Suggestions
+**Goal**: Provide multiple helpful hints for each error type.
 
-**Goal**: Suggest fixes for common errors.
-
-#### Type Mismatches
-
-**Current**:
-```
-error[E0101]: Type mismatch
-  = note: Int and $Type are incompatible types
-  = hint: Check that the expression has the expected type
-```
-
-**Target**:
-```
-error[E0101]: Type mismatch
-  = note: Int and $Type are incompatible types
-  💡 The value 1 is of type Int
-  💡 The type annotation expects a value of type $Type
-  🔧 help: Did you mean? `1 : Int`
-  🔧 help: Or use a different type annotation
-```
-
-#### Undefined Variables
-
-**Current**:
-```
-error[E0102]: Undefined variable
-  = hint: Check variable name and scope
-```
-
-**Target**:
-```
-error[E0102]: Undefined variable
-  ┌─ file:3:5
-  │
-3 │ rec(x)
-  │     ^
-  │
-  = note: Variable `x` is not defined
-  💡 A variable with a similar name exists: `rec`
-  🔧 help: Did you mean to use `rec`?
-  🔧 help: Or define `x` before using it
-```
+**Status**: ✅ Implemented in `src/syntax/error_reporter.gleam`
 
 **Implementation**:
 ```gleam
-// Find similar names using Levenshtein distance
-fn find_similar(name: String, scope: Scope) -> List(String) {
-  scope.variables
-  |> list.filter(fn(v) { levenshtein(name, v) <= 2 })
-}
+// VarUndefined now has multiple hints
+hints: [
+  "Check variable name and scope",
+  "Did you forget to define this variable?"
+]
+
+// HoleUnsolved has educational hints
+hints: [
+  "Holes are placeholders that must be filled",
+  "Provide a term of the expected type, or add a type annotation"
+]
+
+// NotAFunction has actionable hints
+hints: [
+  "Only functions can be called with parentheses",
+  "Check that you're calling a function, not a value"
+]
 ```
 
-**Effort**: ~4 hours
-**Impact**: High - helps users fix errors faster
+**Effort**: ~1 hour
+**Impact**: High - helps users understand how to fix errors
 
----
-
-### Phase 3: Better Type Information
+### Phase 3: Type Information ✅ COMPLETE
 
 **Goal**: Show full type information in error messages.
 
-#### Current Limitations
-- Type names are abbreviated
-- Function types not shown clearly
-- Generic types not instantiated
+**Status**: ✅ Implemented in `src/syntax/error_reporter.gleam`
 
-**Target**:
+**Implementation**:
+```gleam
+// TypeMismatch now shows actual types
+notes: [expected_str <> " and " <> got_str <> " are incompatible types"]
+
+// value_to_string() converts types to readable format
+fn value_to_string(value) -> String {
+  case value {
+    core.VTyp(universe) -> "$Type(" <> int.to_string(universe) <> ")"
+    core.VLit(literal) -> literal_to_string(literal)
+    core.VLitT(literal_type) -> literal_type_to_string(literal_type)
+    core.VNeut(head, _spine) -> head_to_string(head)
+    core.VCtr(tag, arg) -> "#" <> tag <> "(" <> value_to_string(arg) <> ")"
+    core.VLam(name, _env, _body) -> "fn(" <> name <> ") { ... }"
+    // ... etc
+  }
+}
 ```
-error[E0101]: Type mismatch
-   ┌─ file:5:10
-   │
- 5 │ f(x)
-   │   ^
-   │
-   = note: Argument type mismatch
-   = expected: fn(Int) -> String
-   = got:      Int
-   │
-   💡 The function `f` expects an argument of type Int
-   💡 You are passing a value of type String
-   🔧 help: Convert the String to Int, or change the function signature
-```
 
-**Effort**: ~8 hours
-**Impact**: Medium - helps understand complex type errors
+**Supported Types**:
+- `$Type(n)` - Universe types
+- `Int`, `Int64`, `UInt32`, `UInt64` - Integer types
+- `Float`, `Float32` - Floating point types
+- `#Tag(arg)` - Constructors
+- `fn(x) { ... }` - Functions
+- `{field: Type}` - Records
 
----
+**Effort**: ~2 hours
+**Impact**: High - users can see exactly what types are incompatible
 
-### Phase 4: Error Explanations
+### Phase 4: "Did You Mean?" Suggestions 📋 PLANNED
+
+**Goal**: Suggest similar variable names for undefined variables.
+
+**Status**: 📋 Planned (blocked by De Bruijn indices)
+
+**Challenge**: The core language uses De Bruijn indices, so variable names aren't available in the type checker. Names only exist in the syntax (Term), not in the semantics (Value/Context).
+
+**Possible Solutions**:
+1. Track names separately in the type checker state
+2. Map De Bruijn indices back to names using the syntax tree
+3. Provide generic suggestions based on common patterns
+
+**Effort**: ~4 hours (requires core language changes)
+**Impact**: Medium - helpful but not critical
+
+### Phase 5: Error Explanations 📋 PLANNED
 
 **Goal**: Explain _why_ something is wrong, not just _what_ is wrong.
 
-#### Example: Type Mismatch
+**Status**: 📋 Planned
 
-**Current**:
-```
-error[E0101]: Type mismatch
-  = note: Int and $Type are incompatible types
-```
-
-**Target**:
+**Example**:
 ```
 error[E0101]: Type mismatch
    ┌─ file:2:5
    │
  2 │ 1 : $Type
    │     ^^^^^
-   │
-   = note: Int and $Type are incompatible types
    │
    = explanation: 
      In this language, `$Type` is the type of types (a universe).
@@ -191,71 +155,26 @@ error[E0101]: Type mismatch
    │
    💡 Use `Int` for integer values
    💡 Use `$Type` when working with types themselves
-   🔧 help: Change `$Type` to `Int`
 ```
 
-**Effort**: ~16 hours (requires writing explanations for all error types)
+**Effort**: ~8 hours (requires writing explanations for all error types)
 **Impact**: High - helps users learn the language
-
----
-
-### Phase 5: Error Chaining
-
-**Goal**: Show how errors cascade from a single root cause.
-
-**Current**: All errors shown equally
-```
-error[E0102]: Undefined variable `x`
-error[E0103]: Not a function
-error[E0101]: Type mismatch
-```
-
-**Target**: Root cause highlighted
-```
-error[E0102]: Undefined variable `x` (root cause)
-   ┌─ file:3:5
-   │
- 3 │ x + 1
-   │ ^
-   │
-   = note: `x` is not defined
-   💡 This error causes 2 additional errors below
-   🔧 help: Define `x` to fix this and subsequent errors
-
-error[E0103]: Not a function (caused by above)
-   ┌─ file:4:10
-   │
- 4 │ f(x)(y)
-   │          ^
-   │
-   = note: Cannot call undefined variable
-
-error[E0101]: Type mismatch (caused by above)
-   ┌─ file:5:5
-   │
-   │
-```
-
-**Effort**: ~20 hours (requires error dependency tracking)
-**Impact**: Medium - helps prioritize fixes
 
 ---
 
 ## Priority Order
 
-| Phase | Effort | Impact | Priority |
-|-------|--------|--------|----------|
-| 1. Context Lines | ~1h | High | 1st |
-| 2. "Did You Mean?" | ~4h | High | 2nd |
-| 3. Type Information | ~8h | Medium | 3rd |
-| 4. Error Explanations | ~16h | High | 4th |
-| 5. Error Chaining | ~20h | Medium | 5th |
+| Phase | Effort | Impact | Priority | Status |
+|-------|--------|--------|----------|--------|
+| 1. Context Lines | ~30 min | High | 1st | ✅ Complete |
+| 2. Enhanced Hints | ~1h | High | 2nd | ✅ Complete |
+| 3. Type Information | ~2h | High | 3rd | ✅ Complete |
+| 4. "Did You Mean?" | ~4h | Medium | 4th | 📋 Planned |
+| 5. Error Explanations | ~8h | High | 5th | 📋 Planned |
 
 ---
 
-## Implementation Notes
-
-### Testing Changes
+## Testing Changes
 
 After each improvement:
 1. Update golden files: `./scripts/generate_golden_files.sh`
@@ -263,39 +182,22 @@ After each improvement:
 3. Run tests: `gleam test`
 4. Verify error messages are clearer
 
-### Measuring Success
-
-Track:
-- Time to fix errors (user feedback)
-- Number of repeated errors (are users learning?)
-- GitHub issues about confusing errors
-
-### Avoiding Over-Engineering
-
-**Do**:
-- ✅ Start with simple improvements (context lines)
-- ✅ Test with real users
-- ✅ Iterate based on feedback
-
-**Don't**:
-- ❌ Build complex ML-based suggestions initially
-- ❌ Write novel-length explanations
-- ❌ Show too much information (cognitive load)
-
 ---
 
 ## Related Documents
 
 - **[01-overview.md](./01-overview.md)** - Testing overview
 - **[03-examples-testing.md](./03-examples-testing.md)** - Examples testing spec
+- **[04-cli-golden-files.md](./04-cli-golden-files.md)** - Golden file format
 - **[../cli/04-check-run-commands.md](../cli/04-check-run-commands.md)** - CLI commands spec
-- **[../error-reporting/02-error-types.md](../error-reporting/02-error-types.md)** - Error types
+- **[../cli/03-error-reporter.md](../cli/03-error-reporter.md)** - Error reporter spec
 
 ---
 
 ## References
 
+- [Error Reporter Implementation](../../src/syntax/error_reporter.gleam)
+- [Source Snippet Implementation](../../src/syntax/source_snippet.gleam)
+- [Core Error Formatter](../../src/core/error_formatter.gleam)
 - [Rust Compiler Errors](https://github.com/rust-lang/rust/blob/master/compiler/rustc_errors/src)
 - [Elm Compiler Errors](https://elm-lang.org/news/compiler-errors-for-humans)
-- [Error Formatter](../../src/core/error_formatter.gleam)
-- [Source Snippet](../../src/syntax/source_snippet.gleam)

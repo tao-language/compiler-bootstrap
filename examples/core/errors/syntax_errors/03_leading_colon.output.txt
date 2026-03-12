@@ -3,6 +3,7 @@ error[E0001]: Syntax error
   ┌─ input:0:0
 1 │ // Parse Error: Colon without type annotation context
 2 │ // Colon is only valid in type annotations (x : Type) or records ({x: value})
+3 │ : $Type
   = note: Expected: valid alternative
   = note: Got: none
 

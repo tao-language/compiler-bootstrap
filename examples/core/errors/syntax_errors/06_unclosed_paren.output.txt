@@ -3,6 +3,7 @@ error[E0001]: Syntax error
   ┌─ input:0:0
 1 │ // Parse Error: Opening paren without closing
 2 │ (42
+3 │ 
   = note: Expected: valid alternative
   = note: Got: none
 
