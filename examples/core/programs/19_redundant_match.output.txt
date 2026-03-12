@@ -1,0 +1,12 @@
+
+error[E0001]: Syntax error
+  ┌─ input:0:0
+1 │ // Redundant Match Pattern Test
+2 │ // Demonstrates pattern matching with wildcard
+3 │ // In a language with proper exhaustiveness checking, a second case after wildcard would be redundant
+  = note: Expected: valid alternative
+  = note: Got: none
+
+
+-----------------------------------------------------------
+?-1

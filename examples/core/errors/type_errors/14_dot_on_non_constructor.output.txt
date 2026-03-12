@@ -1,0 +1,8 @@
+
+error[E9999]: Type error
+  ┌─ examples/core/errors/type_errors/14_dot_on_non_constructor.core.tao:0:0
+1 │ // Dot on Non-Constructor
+2 │ // Trying to project a field from a non-record value
+3 │ // This error occurs when using dot notation on a primitive type
+
+

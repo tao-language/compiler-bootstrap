@@ -1,0 +1,8 @@
+
+error[E9999]: Type error
+  ┌─ examples/core/errors/type_errors/12_record_missing_fields.core.tao:0:0
+1 │ // Record Missing Fields
+2 │ // Accessing a field that doesn't exist in the record
+3 │ // This error occurs when projecting a field that wasn't defined
+
+

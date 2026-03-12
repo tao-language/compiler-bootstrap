@@ -1,0 +1,5 @@
+// TODO Error
+// Placeholder for incomplete implementation
+// This error is used during development to mark unfinished code
+// Example: using TODO to mark a function that needs to be implemented
+TODO("implement this function")

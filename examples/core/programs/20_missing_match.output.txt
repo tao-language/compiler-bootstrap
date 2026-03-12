@@ -1,0 +1,12 @@
+
+error[E0001]: Syntax error
+  ┌─ input:0:0
+1 │ // Missing Match Pattern Test
+2 │ // Demonstrates pattern matching
+3 │ // In a language with proper exhaustiveness checking, all constructors must be covered
+  = note: Expected: valid alternative
+  = note: Got: none
+
+
+-----------------------------------------------------------
+?-1

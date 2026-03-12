@@ -1,0 +1,7 @@
+// Missing Match Pattern Test
+// Demonstrates pattern matching
+// In a language with proper exhaustiveness checking, all constructors must be covered
+// This example shows a valid match with a wildcard that covers all cases
+match (True : Bool) {
+  | _ -> 1
+}

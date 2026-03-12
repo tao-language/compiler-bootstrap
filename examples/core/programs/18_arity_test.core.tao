@@ -1,0 +1,6 @@
+// Arity Test
+// Demonstrates function application with correct arity
+// Functions in core language are curried, so f(1, 2) is f applied to (1, 2) as a tuple
+// This example shows proper function application
+let f = x -> x in
+f(42)

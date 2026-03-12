@@ -1,0 +1,8 @@
+
+error[E9999]: Type error
+  ┌─ examples/core/errors/type_errors/10_infinite_type.core.tao:0:0
+1 │ // Infinite Type Error
+2 │ // Occurs when a type would need to contain itself
+3 │ // This happens when unification tries to solve a hole with a type containing that hole
+
+

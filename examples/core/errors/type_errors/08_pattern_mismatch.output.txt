@@ -1,0 +1,9 @@
+
+error[E0001]: Syntax error
+  ┌─ input:0:0
+1 │ // Pattern Type Mismatch
+2 │ // Pattern expects a different type than the matched value
+3 │ // This error occurs when a pattern's type doesn't match the scrutinee
+  = note: Expected: valid alternative
+  = note: Got: none
+

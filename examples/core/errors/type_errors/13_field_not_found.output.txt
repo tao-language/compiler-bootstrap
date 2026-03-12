@@ -1,0 +1,8 @@
+
+error[E9999]: Type error
+  ┌─ examples/core/errors/type_errors/13_field_not_found.core.tao:0:0
+1 │ // Field Not Found
+2 │ // Similar to RcdMissingFields but occurs in a different context
+3 │ // This error happens when a function expects a record with certain fields
+
+

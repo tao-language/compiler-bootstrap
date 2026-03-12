@@ -1,0 +1,7 @@
+// Redundant Match Pattern Test
+// Demonstrates pattern matching with wildcard
+// In a language with proper exhaustiveness checking, a second case after wildcard would be redundant
+// This example shows a valid match with a single wildcard case
+match (42 : Int) {
+  | x -> x
+}
