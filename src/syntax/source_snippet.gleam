@@ -16,7 +16,7 @@
 /// ```
 import gleam/int
 import gleam/list
-import gleam/option.{type Option}
+import gleam/option.{type Option, None, Some}
 import gleam/string
 
 // ============================================================================
@@ -152,10 +152,10 @@ fn format_single_line(
   let line_num_str = int.to_string(line_num)
   let padding = string.repeat(" ", line_num_width - string.length(line_num_str))
   let line_prefix = padding <> line_num_str <> " │ "
-  
+
   // Check if this line has any highlights
   let highlights = get_highlights_for_line(diagnostic.spans, line_num, diagnostic.primary_span)
-  
+
   case highlights {
     [] -> {
       // No highlights, just show the line with a margin bar
@@ -163,7 +163,7 @@ fn format_single_line(
     }
     hs -> {
       // Has highlights, show line and pointer
-      let pointer_line = build_pointer_line(hs, line_content, line_prefix)
+      let pointer_line = build_pointer_line(hs, line_content, line_prefix, None)
       line_prefix <> line_content <> "\n" <> pointer_line
     }
   }
@@ -191,9 +191,10 @@ fn build_pointer_line(
   highlights: List(#(Int, Int, HighlightStyle)),
   line_content: String,
   line_prefix: String,
+  label: Option(String),
 ) -> String {
   let pointer_base = string.repeat(" ", string.length(line_prefix))
-  
+
   let pointers = highlights
   |> list.map(fn(h) {
     let #(start, end, style) = h
@@ -201,20 +202,26 @@ fn build_pointer_line(
       Primary -> "^"
       Secondary -> "-"
     }
-    
+
     let pointer_length = int.max(1, end - start)
     string.repeat(pointer_char, pointer_length)
   })
   |> list.intersperse(string.repeat(" ", 1))
   |> string.join("")
-  
+
   // Pad the pointer to align with the highlight
   let first_highlight = list.first(highlights)
   case first_highlight {
     Ok(h) -> {
       let #(start, _, _) = h
       let padding = string.repeat(" ", start - 1)
-      pointer_base <> padding <> pointers
+      let pointer_line = pointer_base <> padding <> pointers
+      
+      // Add label if present
+      case label {
+        Some(l) -> pointer_line <> " " <> l
+        None -> pointer_line
+      }
     }
     _ -> pointer_base
   }

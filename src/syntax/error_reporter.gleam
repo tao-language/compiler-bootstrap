@@ -58,7 +58,7 @@ pub fn type_error_to_diagnostic(error: TypeError, _source: String, file: String)
             label: None,
           ),
         ],
-        notes: [expected_str <> " and " <> got_str <> " are incompatible types"],
+        notes: [got_str <> " and " <> expected_str <> " are incompatible types"],
         hints: ["Check that the expression has the expected type", "Consider adding a type annotation"],
       )
     }
@@ -84,15 +84,16 @@ pub fn type_error_to_diagnostic(error: TypeError, _source: String, file: String)
         hints: ["Holes are placeholders that must be filled", "Provide a term of the expected type, or add a type annotation"],
       )
     }
-    NotAFunction(fun, _fun_ty) -> {
+    NotAFunction(fun, fun_ty) -> {
       let span = get_term_span(fun)
+      let fun_ty_str = value_to_string(fun_ty)
       source_snippet.Diagnostic(
         code: "E0103",
         severity: source_snippet.Error,
         message: "Cannot call non-function value",
         primary_span: span_to_source_snippet_span(span),
         spans: [],
-        notes: ["This value has a non-function type"],
+        notes: ["This value has type " <> fun_ty_str <> ", which is not callable"],
         hints: ["Only functions can be called with parentheses", "Check that you're calling a function, not a value"],
       )
     }

@@ -4,7 +4,7 @@ error[E0103]: Cannot call non-function value
 1 │ // Type Error: Not a function
 2 │ // Trying to apply a non-function value
 3 │ 42(x)
-  = note: This value has a non-function type
+  = note: This value has type Int, which is not callable
   = hint: Only functions can be called with parentheses
   = hint: Check that you're calling a function, not a value
 
