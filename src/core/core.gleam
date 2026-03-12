@@ -578,6 +578,9 @@ pub type PHead {
 // Errors are accumulated in State rather than thrown, enabling IDE support.
 
 pub type Error {
+  // Syntax errors
+  SyntaxError(span: Span, expected: String, got: String, context: String)
+
   // Type errors
   PatternMismatch(pattern: Pattern, expected_ty: Type, s1: Span, s2: Span)
   TypeMismatch(expected: Type, got: Type, span1: Span, span2: Span)
@@ -1314,7 +1317,8 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let env = get_env(s)
       let #(result_ty_hole, s) = new_hole(s)
       // The function type is result_ty -> result_ty
-      let fun_ty = VPi(name, env, result_ty_hole, Term(Hole(s.hole - 1), body.span))
+      let fun_ty =
+        VPi(name, env, result_ty_hole, Term(Hole(s.hole - 1), body.span))
       // Add the fixpoint variable to the context with the function type
       let #(_fresh, s) = def_var(s, name, fun_ty)
       let #(_body_val, s) = check(s, body, result_ty_hole, body.span)

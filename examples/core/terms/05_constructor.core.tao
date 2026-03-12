@@ -1,5 +1,7 @@
-// Constructor with argument
-// Note: Constructors must be defined before use
-// This example shows the syntax; type checking will fail without constructor definition
-// To define constructors, use a data type definition (future feature)
-#Some(42)
+// Constructor Application
+// Constructors are applied like functions: #Tag(argument)
+// Note: Constructors must be defined in the type context
+// This example shows valid constructor syntax using Church encoding
+// since full ADT support requires a prelude/type definition system
+let some = x -> #Some(x) in
+some(42)

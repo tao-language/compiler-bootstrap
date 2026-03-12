@@ -2,7 +2,7 @@
 // CORE LANGUAGE TESTS
 // ============================================================================
 /// Tests for the core language evaluator, type checker, and unifier.
-/// 
+///
 /// The core language is a dependently typed calculus with:
 /// - Universe types (Type_k)
 /// - Literals (I32, I64, F64)
@@ -23,11 +23,11 @@
 /// Note: Many tests use helper functions (v32, v64, i32, etc.) defined at the
 /// end of this file to reduce boilerplate. The constant `s` is the initial state.
 import core/core as c
-import syntax/grammar.{Span}
 import gleam/list
 import gleam/option.{None, Some}
 import gleeunit
 import gleeunit/should
+import syntax/grammar.{Span}
 
 pub fn main() {
   gleeunit.main()
@@ -36,9 +36,9 @@ pub fn main() {
 // ============================================================================
 // UNIFY TESTS
 // ============================================================================
+
 /// Unification checks type equality and solves constraints.
 /// It's the core algorithm for type checking with holes and inference.
-
 pub fn unify_typ_equal_level_zero_test() {
   // Types at same level unify successfully
   c.unify(s, c.VTyp(0), c.VTyp(0), s1, s2) |> should.equal(Ok(s))
@@ -1930,25 +1930,34 @@ pub fn check_exhaustiveness_ctr_maybe_test() {
 // ============================================================================
 // TEST HELPERS
 // ============================================================================
+
 /// Helper functions and constants to reduce boilerplate in tests.
-/// 
+///
 /// These helpers make test code more readable by hiding repetitive construction.
 /// For example, `v32(42)` is clearer than `c.VLit(c.I32(42))`.
-
 /// Initial state for tests that don't modify the context.
 const s = c.initial_state
 
 /// Test spans with fixed positions for consistent error reporting.
 /// Named s0-s9 for convenience in test code.
 pub const s0 = Span("core_test", 0, 0, 0, 0)
+
 pub const s1 = Span("core_test", 1, 1, 1, 1)
+
 pub const s2 = Span("core_test", 2, 2, 2, 2)
+
 pub const s3 = Span("core_test", 3, 3, 3, 3)
+
 pub const s4 = Span("core_test", 4, 4, 4, 4)
+
 pub const s5 = Span("core_test", 5, 5, 5, 5)
+
 pub const s6 = Span("core_test", 6, 6, 6, 6)
+
 pub const s7 = Span("core_test", 7, 7, 7, 7)
+
 pub const s8 = Span("core_test", 8, 8, 8, 8)
+
 pub const s9 = Span("core_test", 9, 9, 9, 9)
 
 fn typ(l, s) {

@@ -6,6 +6,10 @@
 
 ## Important: Read This First
 
+For Gleam to recognize tests:
+- ⚠️ The filename **must** end with `_test.gleam`.
+- ⚠️ The test function **must** be a `pub fn` and end with `_test()`.
+
 **Before modifying tests**, read **[Lessons Learned](../docs/lessons-learned.md)**.
 
 Key insights for testing:
@@ -13,6 +17,7 @@ Key insights for testing:
 - ⚠️ **One assertion per test** - Makes failures easier to debug
 - ⚠️ **Check structural equality** - Not just success/failure
 - ⚠️ **Test error cases** - Not just happy paths
+
 
 ---
 

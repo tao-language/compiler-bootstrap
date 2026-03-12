@@ -5,7 +5,7 @@ import gleam/dict.{type Dict}
 import gleam/list
 import gleam/result
 import gleam/string
-import syntax/formatter.{type Doc, concat, text, parens}
+import syntax/formatter.{type Doc, concat, parens, text}
 import syntax/lexer.{type Token}
 
 // ============================================================================
@@ -16,10 +16,14 @@ import syntax/lexer.{type Token}
 pub type Span {
   Span(
     file: String,
-    start_line: Int,    // 1-based
-    start_col: Int,     // 1-based
-    end_line: Int,      // 1-based
-    end_col: Int,       // 1-based
+    start_line: Int,
+    // 1-based
+    start_col: Int,
+    // 1-based
+    end_line: Int,
+    // 1-based
+    end_col: Int,
+    // 1-based
   )
 }
 
@@ -30,7 +34,7 @@ pub type Associativity {
 }
 
 /// Operator kind - determines parsing direction and formatting
-/// 
+///
 /// Only 4 kinds: Prefix, Postfix, InfixLeft, InfixRight
 /// Complex operators (ternary, slice, index) are Infix with structured postfix.
 pub type OperatorKind {
@@ -41,9 +45,9 @@ pub type OperatorKind {
 }
 
 /// Describes what comes AFTER the rhs expression in an infix operator
-/// 
+///
 /// This is recursive to handle ternary, slice, etc.
-/// 
+///
 /// Examples:
 /// - `x + y` → None (nothing after rhs)
 /// - `a[i]` → Close("]") (just closing token)
@@ -104,10 +108,7 @@ pub type Pattern(a) {
 }
 
 pub type Alternative(a) {
-  Alternative(
-    pattern: Pattern(a),
-    constructor: fn(List(Value(a))) -> a,
-  )
+  Alternative(pattern: Pattern(a), constructor: fn(List(Value(a))) -> a)
 }
 
 pub type Rule(a) {
@@ -115,16 +116,16 @@ pub type Rule(a) {
 }
 
 /// Complete operator metadata
-/// 
+///
 /// Contains everything needed to parse and format the operator.
 /// No language-specific assumptions.
 pub type Operator(a) {
   /// Prefix operator: <symbol> <expr>
   Prefix(precedence: Int, symbol: String, constructor: fn(a) -> a)
-  
+
   /// Postfix operator: <expr> <symbol>
   Postfix(precedence: Int, symbol: String, constructor: fn(a) -> a)
-  
+
   /// Infix operator: lhs <infix_op> rhs <postfix>
   /// Examples:
   /// - x + y: infix_op="+", postfix=None
@@ -146,7 +147,8 @@ pub type Grammar(a) {
     rules: List(Rule(a)),
     tokens: List(String),
     keywords: List(String),
-    operators: List(#(String, Operator(a))),  // Keyed by primary symbol for lookup
+    operators: List(#(String, Operator(a))),
+    // Keyed by primary symbol for lookup
   )
 }
 
@@ -159,8 +161,7 @@ pub type Value(a) {
 }
 
 pub type ParseError {
-  ParseError(position: Int, expected: String, got: String)
-  ParseErrorWithSpan(span: Span, expected: String, got: String, context: String)
+  ParseError(span: Span, expected: String, got: String, context: String)
 }
 
 pub type ParseResult(a) {
@@ -193,35 +194,25 @@ pub fn right_assoc_rule(
     list.map(operators, fn(item) {
       let #(symbol, op) = item
       let pattern = Seq([Ref(first_rule), Keyword(symbol), Ref(name)])
-      Alternative(
-        pattern: pattern,
-        constructor: fn(values) {
-          case values {
-            [AstValue(left), KeywordValue(_), AstValue(right)] ->
-              case op {
-                Infix(_, _, _, _, constructor) -> constructor(left, right)
-                _ -> panic as "right_assoc: expected Infix operator"
-              }
-            _ -> panic as "right_assoc: expected 3 values"
-          }
-        },
-      )
+      Alternative(pattern: pattern, constructor: fn(values) {
+        case values {
+          [AstValue(left), KeywordValue(_), AstValue(right)] ->
+            case op {
+              Infix(_, _, _, _, constructor) -> constructor(left, right)
+              _ -> panic as "right_assoc: expected Infix operator"
+            }
+          _ -> panic as "right_assoc: expected 3 values"
+        }
+      })
     })
   let first_alt =
-    alt(
-      ref(first_rule),
-      fn(values) {
-        case values {
-          [AstValue(first)] -> first
-          _ -> panic as "right_assoc: expected single value"
-        }
-      },
-    )
-  Rule(
-    name: name,
-    alternatives: [first_alt, ..op_alts],
-    precedence: precedence,
-  )
+    alt(ref(first_rule), fn(values) {
+      case values {
+        [AstValue(first)] -> first
+        _ -> panic as "right_assoc: expected single value"
+      }
+    })
+  Rule(name: name, alternatives: [first_alt, ..op_alts], precedence: precedence)
 }
 
 /// Create a rule with alternatives
@@ -249,17 +240,14 @@ fn create_operator_pattern(
       Ref(first_rule),
       Many(op_choice),
     ])
-  Alternative(
-    pattern: pattern,
-    constructor: fn(values) {
-      case values {
-        [AstValue(first), ..rest] -> {
-          fold_operators_multi(first, rest, operators)
-        }
-        _ -> panic as "left_assoc constructor: unexpected values"
+  Alternative(pattern: pattern, constructor: fn(values) {
+    case values {
+      [AstValue(first), ..rest] -> {
+        fold_operators_multi(first, rest, operators)
       }
-    },
-  )
+      _ -> panic as "left_assoc constructor: unexpected values"
+    }
+  })
 }
 
 fn fold_operators_multi(
@@ -273,10 +261,11 @@ fn fold_operators_multi(
       case op_right {
         ListValue([TokenValue(op_token), AstValue(right)]) -> {
           // Find operator by symbol
-          let found = list.find(operators, fn(item) {
-            let #(sym, _) = item
-            sym == op_token.value
-          })
+          let found =
+            list.find(operators, fn(item) {
+              let #(sym, _) = item
+              sym == op_token.value
+            })
           case found {
             Ok(item) -> {
               let #(_, op): #(String, Operator(a)) = item
@@ -296,6 +285,7 @@ fn fold_operators_multi(
     }
   }
 }
+
 // ============================================================================
 // ALTERNATIVE CONSTRUCTION
 // ============================================================================
@@ -304,10 +294,7 @@ pub fn alt(
   pattern: Pattern(a),
   constructor: fn(List(Value(a))) -> a,
 ) -> Alternative(a) {
-  Alternative(
-    pattern: pattern,
-    constructor: constructor,
-  )
+  Alternative(pattern: pattern, constructor: constructor)
 }
 
 // ============================================================================
@@ -438,7 +425,16 @@ pub fn infix_ternary(
   sep1: String,
   sep2: String,
 ) -> #(String, Operator(a)) {
-  #(infix_symbol, Infix(kind, precedence, infix_symbol, Continue(sep1, Close(sep2)), constructor))
+  #(
+    infix_symbol,
+    Infix(
+      kind,
+      precedence,
+      infix_symbol,
+      Continue(sep1, Close(sep2)),
+      constructor,
+    ),
+  )
 }
 
 /// Create slice infix operator: lhs <open> start <sep> end <close>
@@ -451,7 +447,10 @@ pub fn infix_slice(
   sep: String,
   close: String,
 ) -> #(String, Operator(a)) {
-  #(open, Infix(kind, precedence, open, Continue(sep, Close(close)), constructor))
+  #(
+    open,
+    Infix(kind, precedence, open, Continue(sep, Close(close)), constructor),
+  )
 }
 
 /// Create an operator with default layout (deprecated - use infix_binary)
@@ -483,20 +482,22 @@ fn panic_with_message(msg: String) -> a {
   panic as msg
 }
 
-pub fn parse(grammar: Grammar(a), source: String, error_ast: a) -> ParseResult(a) {
+pub fn parse(
+  grammar: Grammar(a),
+  source: String,
+  error_ast: a,
+) -> ParseResult(a) {
   let tokens = lexer.tokenize(source)
   let rule = case get_rule(grammar, grammar.start) {
     Ok(rule) -> rule
-    Error(_) -> panic_with_message("BUG: Grammar missing start rule '" <> grammar.start <> "'")
+    Error(_) ->
+      panic_with_message(
+        "BUG: Grammar missing start rule '" <> grammar.start <> "'",
+      )
   }
   case parse_rule(grammar, rule, tokens, 0) {
-    Ok(#(ast, _)) -> ParseResult(ast: ast, errors: [])
-    Error(ParseError(position: pos, expected: exp, got: g)) -> {
-      ParseResult(ast: error_ast, errors: [ParseError(pos, exp, g)])
-    }
-    Error(ParseErrorWithSpan(span: span, expected: exp, got: g, context: ctx)) -> {
-      ParseResult(ast: error_ast, errors: [ParseErrorWithSpan(span, exp, g, ctx)])
-    }
+    Ok(#(ast, _)) -> ParseResult(ast, [])
+    Error(e) -> ParseResult(ast: error_ast, errors: [e])
   }
 }
 
@@ -520,19 +521,8 @@ fn try_alternatives(
   tokens: List(Token),
   pos: Int,
 ) -> Result(#(a, Int), ParseError) {
-  // Get the position of the first token for better error reporting
-  let error_pos = case list.first(tokens) {
-    Ok(token) -> token.start
-    Error(_) -> pos
-  }
-  
   case alternatives {
-    [] ->
-      Error(ParseError(
-        position: error_pos,
-        expected: "valid alternative",
-        got: "none",
-      ))
+    [] -> Error(ParseError(expected: "valid alternative", got: "none"))
     [alt, ..rest] -> {
       case parse_pattern(grammar, alt.pattern, tokens, pos) {
         Ok(#(values, new_pos)) -> {
@@ -796,15 +786,17 @@ fn get_token(tokens: List(Token), pos: Int) -> Result(Token, Nil) {
 // ============================================================================
 // POSITION HELPERS
 // ============================================================================
+
 /// Helper functions for extracting source positions from parsed values.
 /// Use these in grammar constructors to create accurate spans.
-
 /// Extract span from first token in values
 pub fn span_from_values(values: List(Value(a)), filename: String) -> Span {
   case values {
     [TokenValue(token), ..] -> span_from_token(token, filename)
-    [AstValue(_), ..] -> Span(filename, 1, 1, 1, 1)  // Default for AST values
-    _ -> Span(filename, 1, 1, 1, 1)  // Default
+    [AstValue(_), ..] -> Span(filename, 1, 1, 1, 1)
+    // Default for AST values
+    _ -> Span(filename, 1, 1, 1, 1)
+    // Default
   }
 }
 
@@ -858,10 +850,7 @@ pub fn last_token(values: List(Value(a))) -> Result(lexer.Token, Nil) {
 }
 
 /// Get span for entire value list
-pub fn span_from_value_list(
-  values: List(Value(a)),
-  filename: String,
-) -> Span {
+pub fn span_from_value_list(values: List(Value(a)), filename: String) -> Span {
   case first_token(values), last_token(values) {
     Ok(first), Ok(last) -> span_from_tokens(first, last, filename)
     Ok(first), Error(_) -> span_from_token(first, filename)
@@ -871,7 +860,7 @@ pub fn span_from_value_list(
 }
 
 /// Create a dummy span for testing or placeholder use
-/// 
+///
 /// Use this when span information is not available or not needed.
 /// Example: creating synthetic terms during desugaring
 pub fn dummy_span() -> Span {
@@ -907,10 +896,7 @@ pub fn get_operator(
 }
 
 /// Get operator precedence by symbol
-pub fn get_operator_precedence(
-  grammar: Grammar(a),
-  symbol: String,
-) -> Int {
+pub fn get_operator_precedence(grammar: Grammar(a), symbol: String) -> Int {
   case get_operator(grammar, symbol) {
     Ok(op) -> {
       case op {
@@ -959,10 +945,11 @@ pub fn extract_precedence_table(
   let operators = grammar.operators
 
   fn(op_name: String) -> Result(Int, Nil) {
-    let found = list.find(operators, fn(item) {
-      let #(sym, _) = item
-      sym == op_name
-    })
+    let found =
+      list.find(operators, fn(item) {
+        let #(sym, _) = item
+        sym == op_name
+      })
     case found {
       Ok(item) -> {
         let #(_, op): #(String, Operator(a)) = item
@@ -992,10 +979,11 @@ pub fn extract_layout_table(
   let operators = grammar.operators
 
   fn(op_name: String) -> Result(OperatorLayout, Nil) {
-    let found = list.find(operators, fn(item) {
-      let #(sym, _) = item
-      sym == op_name
-    })
+    let found =
+      list.find(operators, fn(item) {
+        let #(sym, _) = item
+        sym == op_name
+      })
     case found {
       Ok(item) -> {
         let #(_, op): #(String, Operator(a)) = item
@@ -1056,14 +1044,16 @@ pub fn get_precedence_for_constructor(
   constructor_key: #(String, fn(a, a) -> a),
 ) -> Int {
   let constructor_fn = constructor_key.1
-  case list.find(grammar.operators, fn(item) {
-    let #(_, op) = item
-    case op {
-      Infix(_, _, _, _, c) -> c == constructor_fn
-      Prefix(_, _, _) -> False
-      Postfix(_, _, _) -> False
-    }
-  }) {
+  case
+    list.find(grammar.operators, fn(item) {
+      let #(_, op) = item
+      case op {
+        Infix(_, _, _, _, c) -> c == constructor_fn
+        Prefix(_, _, _) -> False
+        Postfix(_, _, _) -> False
+      }
+    })
+  {
     Ok(item) -> {
       let #(_, op) = item
       case op {
@@ -1082,14 +1072,16 @@ pub fn get_operator_symbol_for_constructor(
   constructor_key: #(String, fn(a, a) -> a),
 ) -> String {
   let constructor_fn = constructor_key.1
-  case list.find(grammar.operators, fn(item) {
-    let #(_, op) = item
-    case op {
-      Infix(_, _, _, _, c) -> c == constructor_fn
-      Prefix(_, _, _) -> False
-      Postfix(_, _, _) -> False
-    }
-  }) {
+  case
+    list.find(grammar.operators, fn(item) {
+      let #(_, op) = item
+      case op {
+        Infix(_, _, _, _, c) -> c == constructor_fn
+        Prefix(_, _, _) -> False
+        Postfix(_, _, _) -> False
+      }
+    })
+  {
     Ok(item) -> {
       let #(_, op) = item
       case op {
