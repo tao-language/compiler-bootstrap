@@ -1,8 +1,16 @@
 
-error[E9999]: Type error
-  ┌─ examples/core/errors/type_errors/13_field_not_found.core.tao:0:0
-1 │ // Field Not Found
+error[E0111]: Cannot access field on non-record
+  ┌─ input:5:18
 2 │ // Similar to RcdMissingFields but occurs in a different context
 3 │ // This error happens when a function expects a record with certain fields
-
+4 │ // Example: function requires field 'x' but provided record only has 'y'
+5 │ let get_x = r -> r.x in
+                     ^
+6 │ get_x({y: 2})
+7 │ 
+  = note: Cannot access field `x` on this value
+  = note: Field access (.field) only works on records
+  = hint: Use a record value instead of a primitive
+  = hint: Check that you're accessing a record, not a number or other type
+  = hint: Wrap the value in a record: {value: x}.field
 

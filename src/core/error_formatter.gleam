@@ -21,7 +21,7 @@ import core/core.{
   type Literal, type Head, type Permission, type Term,
   SyntaxError, TypeMismatch, PatternMismatch, NotAFunction, VarUndefined, HoleUnsolved,
   ArityMismatch, CtrUndefined, MatchRedundantCase, MatchMissingCase,
-  ComptimePermissionDenied, InfiniteType, TypeAnnotationNeeded,
+  ComptimePermissionDenied, InfiniteType,
   RcdMissingFields, CtrUnsolvedParam, DotFieldNotFound, DotOnNonCtr,
   SpineMismatch, TODO,
   PAny, PAs, PTyp, PLit, PLitT, PRcd, PCtr,
@@ -67,17 +67,16 @@ pub fn error_code(error: Error) -> String {
     ArityMismatch(..) -> "E0104"
     CtrUndefined(..) -> "E0105"
     HoleUnsolved(..) -> "E0106"
-    MatchMissingCase(..) -> "E0201"
-    MatchRedundantCase(..) -> "E0202"
-    PatternMismatch(..) -> "E0203"
-    ComptimePermissionDenied(..) -> "E0502"
     InfiniteType(..) -> "E0107"
-    TypeAnnotationNeeded(..) -> "E0108"
-    RcdMissingFields(..) -> "E0109"
-    CtrUnsolvedParam(..) -> "E0110"
-    DotFieldNotFound(..) -> "E0111"
-    DotOnNonCtr(..) -> "E0112"
-    SpineMismatch(..) -> "E0113"
+    RcdMissingFields(..) -> "E0108"
+    CtrUnsolvedParam(..) -> "E0109"
+    DotFieldNotFound(..) -> "E0110"
+    DotOnNonCtr(..) -> "E0111"
+    SpineMismatch(..) -> "E0112"
+    PatternMismatch(..) -> "E0201"
+    MatchMissingCase(..) -> "E0202"
+    MatchRedundantCase(..) -> "E0203"
+    ComptimePermissionDenied(..) -> "E0501"
     TODO(..) -> "E9999"
   }
 }
@@ -91,17 +90,16 @@ pub fn error_message(error: Error) -> String {
     ArityMismatch(..) -> "Wrong number of arguments"
     CtrUndefined(..) -> "Constructor not found"
     HoleUnsolved(..) -> "Unsolved hole"
-    MatchMissingCase(..) -> "Pattern match not exhaustive"
-    MatchRedundantCase(..) -> "Redundant pattern"
-    PatternMismatch(..) -> "Pattern type mismatch"
-    ComptimePermissionDenied(..) -> "Permission denied"
     InfiniteType(..) -> "Infinite type"
-    TypeAnnotationNeeded(..) -> "Type annotation needed"
     RcdMissingFields(..) -> "Missing record fields"
     CtrUnsolvedParam(..) -> "Constructor parameter unsolved"
     DotFieldNotFound(..) -> "Field not found"
     DotOnNonCtr(..) -> "Cannot access field on non-record"
     SpineMismatch(..) -> "Function application mismatch"
+    PatternMismatch(..) -> "Pattern type mismatch"
+    MatchMissingCase(..) -> "Pattern match not exhaustive"
+    MatchRedundantCase(..) -> "Redundant pattern"
+    ComptimePermissionDenied(..) -> "Permission denied"
     TODO(..) -> "TODO: Not yet implemented"
   }
 }
@@ -126,8 +124,15 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         },
         primary_span: to_source_span(span),
         spans: [],
-        notes: ["Expected: " <> expected, "Got: " <> got],
-        hints: [],
+        notes: [
+          "Expected: " <> expected,
+          "Got: " <> got,
+        ],
+        hints: [
+          "Check for typos or missing tokens",
+          "Ensure expressions are well-formed",
+          "Review the syntax documentation",
+        ],
       )
 
     TypeMismatch(expected, got, span1, span2) ->
@@ -145,6 +150,7 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         ],
         notes: [
           type_to_string(expected) <> " and " <> type_to_string(got) <> " are incompatible types",
+          "The expression produces " <> type_to_string(got) <> " but " <> type_to_string(expected) <> " is expected here",
         ],
         hints: type_mismatch_hints(expected, got, source, span1),
       )
@@ -156,10 +162,14 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         message: message,
         primary_span: to_source_span(span),
         spans: [],
-        notes: ["Variable at index " <> int.to_string(index) <> " is not defined in this scope"],
+        notes: [
+          "Variable at index " <> int.to_string(index) <> " is not defined in this scope",
+          "Variables must be defined before they are used, typically in a let binding or lambda parameter",
+        ],
         hints: [
           "Check variable name and scope",
           "Did you forget to define this variable?",
+          "Check for typos in the variable name",
         ],
       )
 
@@ -172,10 +182,12 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         spans: [],
         notes: [
           "This value has type " <> type_to_string(fun_ty) <> ", which is not callable",
+          "Only function values (created with ->) can be called with parentheses",
         ],
         hints: [
           "Only functions can be called with parentheses",
           "Check that you're calling a function, not a value",
+          "If you want a function, use a lambda: x -> expression",
         ],
       )
 
@@ -192,9 +204,14 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
             label: Some("function defined here"),
           ),
         ],
-        notes: ["Expected a different number of arguments"],
+        notes: [
+          "Expected a different number of arguments",
+          "Functions in this language are curried - each parameter needs its own arrow",
+        ],
         hints: [
           "Check the function signature and provide the correct number of arguments",
+          "Remember: f(x, y) applies f to a tuple, while f(x)(y) is curried application",
+          "Use a type annotation to clarify the expected arity",
         ],
       )
 
@@ -205,10 +222,14 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         message: message,
         primary_span: to_source_span(span),
         spans: [],
-        notes: ["Constructor `" <> tag <> "` is not defined"],
+        notes: [
+          "Constructor `" <> tag <> "` is not defined in the current scope",
+          "Constructors must be defined before use, typically in a data type declaration",
+        ],
         hints: [
           "Check the constructor name for typos",
           "Make sure the constructor is defined in the current scope",
+          "Define a type with this constructor first",
         ],
       )
 
@@ -219,10 +240,14 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         message: message,
         primary_span: to_source_span(span),
         spans: [],
-        notes: ["Hole #" <> int.to_string(id) <> " was not solved during type checking"],
+        notes: [
+          "Hole #" <> int.to_string(id) <> " was not solved during type checking",
+          "Holes are development placeholders that must be replaced before the program is complete",
+        ],
         hints: [
           "Holes are placeholders that must be filled",
-          "Provide a term of the expected type, or add a type annotation",
+          "Provide a term of the expected type",
+          "Use holes temporarily during development, then replace them",
         ],
       )
 
@@ -233,10 +258,14 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         message: message,
         primary_span: to_source_span(span),
         spans: [],
-        notes: ["Pattern match is not exhaustive"],
+        notes: [
+          "Pattern match is not exhaustive",
+          "Missing case for: " <> pattern_to_string(pattern),
+        ],
         hints: [
-          "Add a case for the missing pattern: " <> pattern_to_string(pattern),
+          "Add a case for the missing pattern: | " <> pattern_to_string(pattern) <> " -> ...",
           "Consider using a wildcard pattern `_` to handle all remaining cases",
+          "Ensure all constructors are covered for complete safety",
         ],
       )
 
@@ -247,10 +276,14 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         message: message,
         primary_span: to_source_span(span),
         spans: [],
-        notes: ["This case is already handled by a previous pattern"],
+        notes: [
+          "This case is already handled by a previous pattern",
+          "Redundant cases indicate dead code that will never execute",
+        ],
         hints: [
           "Remove the redundant case",
           "Or use a different guard condition",
+          "Reorder cases to put specific patterns before wildcards",
         ],
       )
 
@@ -267,9 +300,14 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
             label: Some("expected " <> type_to_string(expected_ty)),
           ),
         ],
-        notes: ["Pattern has incompatible type"],
+        notes: [
+          "Pattern has incompatible type",
+          "The pattern expects " <> type_to_string(expected_ty) <> " but the matched value has a different type",
+        ],
         hints: [
           "Use a pattern that matches " <> type_to_string(expected_ty),
+          "Check the type of the value being matched",
+          "Consider adding a type annotation to clarify expectations",
         ],
       )
 
@@ -286,6 +324,8 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         ],
         hints: [
           "Add the appropriate permission flag to your comptime block",
+          "Move the operation to runtime (outside comptime)",
+          "Review comptime permission requirements in the documentation",
         ],
       )
 
@@ -305,24 +345,12 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         notes: [
           "Hole #" <> int.to_string(hole_id) <> " would create an infinite type",
           "This happens when a type refers to itself",
+          "Infinite types like T = T -> ? are not allowed",
         ],
         hints: [
           "Check for recursive type definitions",
-          "Use a type annotation to break the cycle",
-        ],
-      )
-
-    TypeAnnotationNeeded(term) ->
-      source_snippet.Diagnostic(
-        code: code,
-        severity: severity,
-        message: message,
-        primary_span: to_source_span(term.span),
-        spans: [],
-        notes: ["Cannot infer type for this expression"],
-        hints: [
-          "Add a type annotation: (term : Type)",
-          "Provide more context for type inference",
+          "Add a type annotation to break the cycle",
+          "Consider using a fixpoint combinator instead",
         ],
       )
 
@@ -333,9 +361,14 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         message: message,
         primary_span: to_source_span(span),
         spans: [],
-        notes: ["Missing fields: " <> string.join(names, ", ")],
+        notes: [
+          "Missing fields: " <> string.join(names, ", "),
+          "Records must include all defined fields",
+        ],
         hints: [
           "Provide all required fields for this record",
+          "Check the record definition for the complete field list",
+          "Add the missing fields with appropriate values",
         ],
       )
 
@@ -348,9 +381,12 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         spans: [],
         notes: [
           "Parameter for constructor `" <> tag <> "` could not be inferred",
+          "Hole #" <> int.to_string(id) <> " remains unsolved",
         ],
         hints: [
           "Add a type annotation to help inference",
+          "Provide more context for the constructor application",
+          "Check that the constructor is fully applied",
         ],
       )
 
@@ -367,6 +403,8 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         ],
         hints: [
           "Check the field name for typos",
+          "Use one of the available fields listed above",
+          "Add the field to the record definition if needed",
         ],
       )
 
@@ -379,9 +417,12 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         spans: [],
         notes: [
           "Cannot access field `" <> name <> "` on this value",
+          "Field access (.field) only works on records",
         ],
         hints: [
-          "Field access only works on records",
+          "Use a record value instead of a primitive",
+          "Check that you're accessing a record, not a number or other type",
+          "Wrap the value in a record: {value: x}.field",
         ],
       )
 
@@ -398,9 +439,14 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
             label: Some("application context"),
           ),
         ],
-        notes: ["Function application has incompatible types"],
+        notes: [
+          "Function application has incompatible types",
+          "The function's expected arguments don't match the provided arguments",
+        ],
         hints: [
           "Check that the function and argument types match",
+          "Review the function's type signature",
+          "Add type annotations to clarify expectations",
         ],
       )
 
@@ -411,8 +457,15 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         message: message,
         primary_span: source_snippet.Span("unknown", 0, 0, 0, 1),
         spans: [],
-        notes: [message],
-        hints: ["This feature is not yet implemented"],
+        notes: [
+          message,
+          "This is a placeholder for incomplete code",
+        ],
+        hints: [
+          "This feature is not yet implemented",
+          "Implement the missing functionality",
+          "Replace TODO with actual implementation",
+        ],
       )
   }
 }

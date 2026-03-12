@@ -5,11 +5,15 @@
 import core/core.{
   type Error as TypeError,
   TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction,
+  ArityMismatch, CtrUndefined, MatchRedundantCase, MatchMissingCase,
+  ComptimePermissionDenied, InfiniteType,
+  RcdMissingFields, CtrUnsolvedParam, DotFieldNotFound, DotOnNonCtr,
+  SpineMismatch, TODO, PatternMismatch, SyntaxError,
 }
 import gleam/float
 import gleam/int
 import gleam/list
-import gleam/option.{None}
+import gleam/option.{None, Some}
 import gleam/string
 import syntax/grammar.{ParseError, Span, type Span}
 import syntax/source_snippet
@@ -122,6 +126,289 @@ pub fn type_error_to_diagnostic(error: TypeError, source: String, file: String) 
           "Only functions can be called with parentheses",
           "Check that you're calling a function, not a value",
           "If you want a function, use a lambda: x -> expression"
+        ],
+      )
+    }
+    ArityMismatch(span1, span2) -> {
+      source_snippet.Diagnostic(
+        code: "E0104",
+        severity: source_snippet.Error,
+        message: "Wrong number of arguments",
+        primary_span: span_to_source_snippet_span(span1),
+        spans: [
+          source_snippet.Highlight(
+            span: span_to_source_snippet_span(span2),
+            style: source_snippet.Secondary,
+            label: Some("function defined here"),
+          ),
+        ],
+        notes: [
+          "Expected a different number of arguments",
+          "Functions in this language are curried - each parameter needs its own arrow"
+        ],
+        hints: [
+          "Check the function signature and provide the correct number of arguments",
+          "Remember: f(x, y) applies f to a tuple, while f(x)(y) is curried application",
+          "Use a type annotation to clarify the expected arity"
+        ],
+      )
+    }
+    CtrUndefined(tag, span) -> {
+      source_snippet.Diagnostic(
+        code: "E0105",
+        severity: source_snippet.Error,
+        message: "Constructor not found",
+        primary_span: span_to_source_snippet_span(span),
+        spans: [],
+        notes: [
+          "Constructor `" <> tag <> "` is not defined in the current scope",
+          "Constructors must be defined before use, typically in a data type declaration"
+        ],
+        hints: [
+          "Check the constructor name for typos",
+          "Make sure the constructor is defined in the current scope",
+          "Define a type with this constructor first"
+        ],
+      )
+    }
+    InfiniteType(hole_id, ty, span1, span2) -> {
+      let ty_str = value_to_string(ty)
+      source_snippet.Diagnostic(
+        code: "E0107",
+        severity: source_snippet.Error,
+        message: "Infinite type",
+        primary_span: span_to_source_snippet_span(span1),
+        spans: [
+          source_snippet.Highlight(
+            span: span_to_source_snippet_span(span2),
+            style: source_snippet.Secondary,
+            label: Some("occurs in " <> ty_str),
+          ),
+        ],
+        notes: [
+          "Hole #" <> int.to_string(hole_id) <> " would create an infinite type",
+          "This happens when a type refers to itself",
+          "Infinite types like T = T -> ? are not allowed"
+        ],
+        hints: [
+          "Check for recursive type definitions",
+          "Add a type annotation to break the cycle",
+          "Consider using a fixpoint combinator instead"
+        ],
+      )
+    }
+    RcdMissingFields(names, span) -> {
+      source_snippet.Diagnostic(
+        code: "E0108",
+        severity: source_snippet.Error,
+        message: "Missing record fields",
+        primary_span: span_to_source_snippet_span(span),
+        spans: [],
+        notes: [
+          "Missing fields: " <> string.join(names, ", "),
+          "Records must include all defined fields"
+        ],
+        hints: [
+          "Provide all required fields for this record",
+          "Check the record definition for the complete field list",
+          "Add the missing fields with appropriate values"
+        ],
+      )
+    }
+    CtrUnsolvedParam(tag, _ctr, id, span) -> {
+      source_snippet.Diagnostic(
+        code: "E0109",
+        severity: source_snippet.Error,
+        message: "Constructor parameter unsolved",
+        primary_span: span_to_source_snippet_span(span),
+        spans: [],
+        notes: [
+          "Parameter for constructor `" <> tag <> "` could not be inferred",
+          "Hole #" <> int.to_string(id) <> " remains unsolved"
+        ],
+        hints: [
+          "Add a type annotation to help inference",
+          "Provide more context for the constructor application",
+          "Check that the constructor is fully applied"
+        ],
+      )
+    }
+    DotFieldNotFound(name, fields, span) -> {
+      let available = list.map(fields, fn(f) { f.0 }) |> string.join(", ")
+      source_snippet.Diagnostic(
+        code: "E0110",
+        severity: source_snippet.Error,
+        message: "Field not found",
+        primary_span: span_to_source_snippet_span(span),
+        spans: [],
+        notes: [
+          "Field `" <> name <> "` not found",
+          "Available fields: " <> available
+        ],
+        hints: [
+          "Check the field name for typos",
+          "Use one of the available fields listed above",
+          "Add the field to the record definition if needed"
+        ],
+      )
+    }
+    DotOnNonCtr(_value, name, span) -> {
+      source_snippet.Diagnostic(
+        code: "E0111",
+        severity: source_snippet.Error,
+        message: "Cannot access field on non-record",
+        primary_span: span_to_source_snippet_span(span),
+        spans: [],
+        notes: [
+          "Cannot access field `" <> name <> "` on this value",
+          "Field access (.field) only works on records"
+        ],
+        hints: [
+          "Use a record value instead of a primitive",
+          "Check that you're accessing a record, not a number or other type",
+          "Wrap the value in a record: {value: x}.field"
+        ],
+      )
+    }
+    SpineMismatch(span1, span2) -> {
+      source_snippet.Diagnostic(
+        code: "E0112",
+        severity: source_snippet.Error,
+        message: "Function application mismatch",
+        primary_span: span_to_source_snippet_span(span1),
+        spans: [
+          source_snippet.Highlight(
+            span: span_to_source_snippet_span(span2),
+            style: source_snippet.Secondary,
+            label: Some("application context"),
+          ),
+        ],
+        notes: [
+          "Function application has incompatible types",
+          "The function's expected arguments don't match the provided arguments"
+        ],
+        hints: [
+          "Check that the function and argument types match",
+          "Review the function's type signature",
+          "Add type annotations to clarify expectations"
+        ],
+      )
+    }
+    PatternMismatch(pattern, expected_ty, span1, span2) -> {
+      let expected_str = value_to_string(expected_ty)
+      source_snippet.Diagnostic(
+        code: "E0201",
+        severity: source_snippet.Error,
+        message: "Pattern type mismatch",
+        primary_span: span_to_source_snippet_span(span1),
+        spans: [
+          source_snippet.Highlight(
+            span: span_to_source_snippet_span(span2),
+            style: source_snippet.Secondary,
+            label: Some("expected " <> expected_str),
+          ),
+        ],
+        notes: [
+          "Pattern has incompatible type",
+          "The pattern expects " <> expected_str <> " but the matched value has a different type"
+        ],
+        hints: [
+          "Use a pattern that matches " <> expected_str,
+          "Check the type of the value being matched",
+          "Consider adding a type annotation to clarify expectations"
+        ],
+      )
+    }
+    MatchMissingCase(span, pattern) -> {
+      source_snippet.Diagnostic(
+        code: "E0202",
+        severity: source_snippet.Error,
+        message: "Pattern match not exhaustive",
+        primary_span: span_to_source_snippet_span(span),
+        spans: [],
+        notes: [
+          "Pattern match is not exhaustive",
+          "Missing case for pattern"
+        ],
+        hints: [
+          "Add a case for the missing pattern",
+          "Consider using a wildcard pattern `_` to handle all remaining cases",
+          "Ensure all constructors are covered for complete safety"
+        ],
+      )
+    }
+    MatchRedundantCase(span) -> {
+      source_snippet.Diagnostic(
+        code: "E0203",
+        severity: source_snippet.Error,
+        message: "Redundant pattern",
+        primary_span: span_to_source_snippet_span(span),
+        spans: [],
+        notes: [
+          "This case is already handled by a previous pattern",
+          "Redundant cases indicate dead code that will never execute"
+        ],
+        hints: [
+          "Remove the redundant case",
+          "Or use a different guard condition",
+          "Reorder cases to put specific patterns before wildcards"
+        ],
+      )
+    }
+    ComptimePermissionDenied(operation, span, required) -> {
+      source_snippet.Diagnostic(
+        code: "E0501",
+        severity: source_snippet.Error,
+        message: "Permission denied",
+        primary_span: span_to_source_snippet_span(span),
+        spans: [],
+        notes: [
+          "Operation '" <> operation <> "' requires permission",
+          "Required permissions: " <> int.to_string(list.length(required))
+        ],
+        hints: [
+          "Add the appropriate permission flag to your comptime block",
+          "Move the operation to runtime (outside comptime)",
+          "Review comptime permission requirements in the documentation"
+        ],
+      )
+    }
+    TODO(message) -> {
+      source_snippet.Diagnostic(
+        code: "E9999",
+        severity: source_snippet.Error,
+        message: "TODO: Not yet implemented",
+        primary_span: source_snippet.Span(file, 0, 0, 0, 1),
+        spans: [],
+        notes: [
+          message,
+          "This is a placeholder for incomplete code"
+        ],
+        hints: [
+          "This feature is not yet implemented",
+          "Implement the missing functionality",
+          "Replace TODO with actual implementation"
+        ],
+      )
+    }
+    SyntaxError(span, expected, got, context) -> {
+      source_snippet.Diagnostic(
+        code: "E0001",
+        severity: source_snippet.Error,
+        message: "Syntax error" <> case context {
+          "" -> ""
+          _ -> " in " <> context
+        },
+        primary_span: span_to_source_snippet_span(span),
+        spans: [],
+        notes: [
+          "Expected: " <> expected,
+          "Got: " <> got
+        ],
+        hints: [
+          "Check for typos or missing tokens",
+          "Ensure expressions are well-formed",
+          "Review the syntax documentation"
         ],
       )
     }

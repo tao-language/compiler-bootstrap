@@ -585,7 +585,6 @@ pub type Error {
   PatternMismatch(pattern: Pattern, expected_ty: Type, s1: Span, s2: Span)
   TypeMismatch(expected: Type, got: Type, span1: Span, span2: Span)
   InfiniteType(hole_id: Int, ty: Type, span1: Span, span2: Span)
-  TypeAnnotationNeeded(term: Term)
   NotAFunction(fun: Term, fun_ty: Value)
   VarUndefined(index: Int, span: Span)
   RcdMissingFields(name: List(String), span: Span)

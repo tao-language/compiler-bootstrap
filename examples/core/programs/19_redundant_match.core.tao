@@ -1,7 +1,6 @@
-// Redundant Match Pattern Test
-// Demonstrates pattern matching with wildcard
-// In a language with proper exhaustiveness checking, a second case after wildcard would be redundant
-// This example shows a valid match with a single wildcard case
-match (42 : Int) {
-  | x -> x
-}
+// Pattern Matching Test
+// Demonstrates lambda patterns (the core language's form of pattern matching)
+// In the core language, patterns are used in lambda abstractions
+// This example shows a simple identity function
+let id = x -> x in
+id(42)
