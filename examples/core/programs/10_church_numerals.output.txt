@@ -1,1 +1,3 @@
-OK
+✓ Type checking examples/core/programs/10_church_numerals.core.tao
+✓ Evaluating...
+Result: f -> x -> f(x)

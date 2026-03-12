@@ -1,1 +1,7 @@
-ERROR
+❌ error[E0001]: Type error
+error[E0001]: Type error
+  ┌─ input:0:0
+  = note: Type error
+
+📝 note: Type error
+🔧 help: Check your types

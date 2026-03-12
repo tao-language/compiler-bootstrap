@@ -1,1 +1,7 @@
-ERROR
+❌ error[E0001]: Error
+error[E0001]: Error
+  ┌─ input:0:0
+  = note: Error
+
+📝 note: Error
+🔧 help: Check your code

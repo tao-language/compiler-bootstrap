@@ -28,6 +28,7 @@ import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/string
 import syntax/formatter
 import syntax/grammar.{
   type ParseResult, ParseError, ParseResult, type Span, type Value, AstValue, ListValue, TokenValue, alt, ref, rule, seq,
@@ -1510,5 +1511,87 @@ fn get_binding(bindings: List(String), index: Int) -> Result(String, Nil) {
     [], _ -> Error(Nil)
     [x, ..], 0 -> Ok(x)
     [_, ..xs], _ -> get_binding(xs, index - 1)
+  }
+}
+
+// ============================================================================
+// TERM TO STRING (for golden file output)
+// ============================================================================
+
+/// Convert a Term to a readable string representation.
+/// Used for displaying evaluation results in golden files.
+pub fn term_to_string(term: Term) -> String {
+  term_to_string_loop(term, [])
+}
+
+fn term_to_string_loop(term: Term, bindings: List(String)) -> String {
+  let data = term.data
+  case data {
+    core.Typ(k) -> "$Type" <> int.to_string(k)
+    core.Lit(literal) -> literal_to_string(literal)
+    core.LitT(literal_type) -> literal_type_to_string(literal_type)
+    core.Var(index) -> {
+      case get_binding(bindings, index) {
+        Ok(name) -> name
+        Error(Nil) -> "var" <> int.to_string(index)
+      }
+    }
+    core.Hole(id) -> "?" <> int.to_string(id)
+    core.Err(msg) -> "Err(" <> msg <> ")"
+    core.Rcd(fields) -> {
+      let field_strs = fields |> list.map(fn(f) { f.0 <> ": " <> term_to_string_loop(f.1, bindings) })
+      "{" <> string.join(field_strs, ", ") <> "}"
+    }
+    core.Ctr(tag, arg) -> "#" <> tag <> "(" <> term_to_string_loop(arg, bindings) <> ")"
+    core.Dot(arg, field) -> term_to_string_loop(arg, bindings) <> "." <> field
+    core.Ann(term, typ) -> "(" <> term_to_string_loop(term, bindings) <> ": " <> term_to_string_loop(typ, bindings) <> ")"
+    core.Lam(name, body) -> {
+      name <> " -> " <> term_to_string_loop(body, [name, ..bindings])
+    }
+    core.Pi(name, in_ty, out_ty) -> {
+      "(" <> name <> ": " <> term_to_string_loop(in_ty, bindings) <> ") -> " <> term_to_string_loop(out_ty, [name, ..bindings])
+    }
+    core.App(fun, arg) -> {
+      term_to_string_loop(fun, bindings) <> "(" <> term_to_string_loop(arg, bindings) <> ")"
+    }
+    core.Match(arg, motive, cases) -> {
+      "match(" <> term_to_string_loop(arg, bindings) <> ") { ... }"
+    }
+    core.Call(name, args) -> {
+      name <> "(" <> string.join(args |> list.map(fn(a) { term_to_string_loop(a, bindings) }), ", ") <> ")"
+    }
+    core.Comptime(term) -> "comptime { " <> term_to_string_loop(term, bindings) <> " }"
+    core.Fix(name, body) -> "fix " <> name <> " -> " <> term_to_string_loop(body, [name, ..bindings])
+  }
+}
+
+fn literal_to_string(literal: core.Literal) -> String {
+  case literal {
+    core.I32(n) -> int.to_string(n)
+    core.I64(n) -> int.to_string(n)
+    core.U32(n) -> int.to_string(n)
+    core.U64(n) -> int.to_string(n)
+    core.F32(f) -> float_to_string(f)
+    core.F64(f) -> float_to_string(f)
+  }
+}
+
+fn literal_type_to_string(literal_type: core.LiteralType) -> String {
+  case literal_type {
+    core.I32T -> "$I32"
+    core.I64T -> "$I64"
+    core.U32T -> "$U32"
+    core.U64T -> "$U64"
+    core.F32T -> "$F32"
+    core.F64T -> "$F64"
+  }
+}
+
+fn float_to_string(f: Float) -> String {
+  // Simple float to string conversion
+  case f {
+    0.0 -> "0.0"
+    1.0 -> "1.0"
+    _ -> "float"
   }
 }

@@ -1,0 +1,3 @@
+✓ Type checking examples/core/programs/15_let_function_application.core.tao
+✓ Evaluating...
+Result: 5
