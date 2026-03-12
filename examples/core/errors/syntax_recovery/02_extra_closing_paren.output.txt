@@ -8,6 +8,8 @@ error[E0102]: Undefined variable
      ^
 5 │ 
   = note: Variable at index 0 is not defined in this scope
+  = note: Variables must be defined before they are used, typically in a let binding or lambda parameter
   = hint: Check variable name and scope
   = hint: Did you forget to define this variable?
+  = hint: Check for typos in the variable name
 

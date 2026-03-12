@@ -1,7 +1,7 @@
 # Testing Plans Overview
 
 > **Goal**: End-to-end testing infrastructure for the compiler
-> **Status**: ⏳ In Progress - E2E tests working, CLI integration pending
+> **Status**: ✅ E2E tests complete, Error improvements complete
 > **Date**: March 11, 2026
 
 ---
@@ -73,6 +73,13 @@ Pass/Fail
 - ✅ Detailed failure messages with expected vs actual
 - ✅ **376 tests passing**
 
+**Error Message Improvements** (`src/syntax/error_reporter.gleam`):
+- ✅ 3 lines of context before/after errors
+- ✅ Type information displayed in error messages
+- ✅ Educational notes explaining WHY errors occur
+- ✅ 3 actionable hints per error type
+- ✅ Better type pretty-printing
+
 **Golden Files**:
 - ✅ All examples have `.output.txt` files
 - ✅ Error messages include emojis and formatting
@@ -81,32 +88,29 @@ Pass/Fail
 
 **Documentation**:
 - ✅ `examples/README.md` - Guidelines for adding examples
-- ✅ `docs/plans/testing/02-e2e-test-enhancement.md` - Implementation plan (complete)
+- ✅ `docs/plans/testing/01-overview.md` - Testing overview
+- ✅ `docs/plans/testing/03-examples-testing.md` - Examples testing spec
+- ✅ `docs/plans/testing/04-cli-golden-files.md` - Golden file format
+- ✅ `docs/plans/testing/05-error-message-improvements.md` - Error improvements (complete)
 
 ### ⏳ In Progress
-
-**CLI Integration**:
-- [ ] `check` command - Type checking + exhaustiveness, exit code 1 on errors
-- [ ] `run` command - Check + evaluate, output result even on errors, exit code 1 on errors
-- [ ] Error output to `stderr`, result to `stdout`
-- [ ] Code snippets with 2-3 lines of context
-
-**Golden File Updates**:
-- [ ] Update all golden files to match new CLI output format
-- [ ] Success examples show normalized term output
-- [ ] Error examples show full error + delimiter + result
-
-### 📋 Planned
 
 **Tao Language Testing**:
 - [ ] Tao example structure
 - [ ] Tao-specific golden files
 - [ ] Integration with core examples
 
+### 📋 Planned
+
 **Enhanced Testing**:
 - [ ] Round-trip tests (parse → format → parse)
 - [ ] Performance benchmarks
 - [ ] Regression test suite for bug fixes
+
+**Future Error Improvements**:
+- [ ] "Did you mean?" suggestions (blocked by De Bruijn indices)
+- [ ] Full type pretty-printing for dependent types
+- [ ] Error chaining for cascading errors
 
 ---
 

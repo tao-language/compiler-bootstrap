@@ -41,7 +41,7 @@ pub fn parse_error_to_diagnostic(error: grammar.ParseError, source: String, file
 // TYPE ERROR TO DIAGNOSTIC
 // ============================================================================
 
-pub fn type_error_to_diagnostic(error: TypeError, _source: String, file: String) -> source_snippet.Diagnostic {
+pub fn type_error_to_diagnostic(error: TypeError, source: String, file: String) -> source_snippet.Diagnostic {
   case error {
     TypeMismatch(expected, got, span1: grammar_span1, span2: grammar_span2) -> {
       let expected_str = type_to_string(expected)
@@ -58,8 +58,15 @@ pub fn type_error_to_diagnostic(error: TypeError, _source: String, file: String)
             label: None,
           ),
         ],
-        notes: [got_str <> " and " <> expected_str <> " are incompatible types"],
-        hints: ["Check that the expression has the expected type", "Consider adding a type annotation"],
+        notes: [
+          got_str <> " and " <> expected_str <> " are incompatible types",
+          "The expression produces " <> got_str <> " but " <> expected_str <> " is expected here"
+        ],
+        hints: [
+          "Check that the expression has the expected type",
+          "Consider adding a type annotation",
+          "Did you mean to use a different expression?"
+        ],
       )
     }
     VarUndefined(index, span) -> {
@@ -69,8 +76,15 @@ pub fn type_error_to_diagnostic(error: TypeError, _source: String, file: String)
         message: "Undefined variable",
         primary_span: span_to_source_snippet_span(span),
         spans: [],
-        notes: ["Variable at index " <> int.to_string(index) <> " is not defined in this scope"],
-        hints: ["Check variable name and scope", "Did you forget to define this variable?"],
+        notes: [
+          "Variable at index " <> int.to_string(index) <> " is not defined in this scope",
+          "Variables must be defined before they are used, typically in a let binding or lambda parameter"
+        ],
+        hints: [
+          "Check variable name and scope",
+          "Did you forget to define this variable?",
+          "Check for typos in the variable name"
+        ],
       )
     }
     HoleUnsolved(id, span) -> {
@@ -80,8 +94,15 @@ pub fn type_error_to_diagnostic(error: TypeError, _source: String, file: String)
         message: "Unsolved hole",
         primary_span: span_to_source_snippet_span(span),
         spans: [],
-        notes: ["Hole #" <> int.to_string(id) <> " was not solved during type checking"],
-        hints: ["Holes are placeholders that must be filled", "Provide a term of the expected type, or add a type annotation"],
+        notes: [
+          "Hole #" <> int.to_string(id) <> " was not solved during type checking",
+          "Holes are development placeholders that must be replaced before the program is complete"
+        ],
+        hints: [
+          "Holes are placeholders that must be filled",
+          "Provide a term of the expected type, or add a type annotation",
+          "Use holes temporarily during development, then replace them"
+        ],
       )
     }
     NotAFunction(fun, fun_ty) -> {
@@ -93,8 +114,15 @@ pub fn type_error_to_diagnostic(error: TypeError, _source: String, file: String)
         message: "Cannot call non-function value",
         primary_span: span_to_source_snippet_span(span),
         spans: [],
-        notes: ["This value has type " <> fun_ty_str <> ", which is not callable"],
-        hints: ["Only functions can be called with parentheses", "Check that you're calling a function, not a value"],
+        notes: [
+          "This value has type " <> fun_ty_str <> ", which is not callable",
+          "Only function values (created with ->) can be called with parentheses"
+        ],
+        hints: [
+          "Only functions can be called with parentheses",
+          "Check that you're calling a function, not a value",
+          "If you want a function, use a lambda: x -> expression"
+        ],
       )
     }
     _ -> {
@@ -128,7 +156,7 @@ fn value_to_string(value) -> String {
     core.VTyp(universe) -> "$Type(" <> int.to_string(universe) <> ")"
     core.VLit(literal) -> literal_to_string(literal)
     core.VLitT(literal_type) -> literal_type_to_string(literal_type)
-    core.VNeut(head, _spine) -> head_to_string(head)
+    core.VNeut(head, spine) -> neutral_to_string(head, spine)
     core.VRcd(fields) -> record_fields_to_string(fields)
     core.VCtr(tag, arg) -> "#" <> tag <> "(" <> value_to_string(arg) <> ")"
     core.VLam(name, _env, _body) -> "fn(" <> name <> ") { ... }"
@@ -140,6 +168,14 @@ fn value_to_string(value) -> String {
     }
     core.VFix(_name, _env, _body) -> "fix(...)"
     core.VErr -> "<error>"
+  }
+}
+
+fn neutral_to_string(head, spine) -> String {
+  let head_str = head_to_string(head)
+  case spine {
+    [] -> head_str
+    [..] -> head_str <> " ⟨" <> int.to_string(list.length(spine)) <> " operations pending⟩"
   }
 }
 
