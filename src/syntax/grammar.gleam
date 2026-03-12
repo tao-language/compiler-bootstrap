@@ -522,7 +522,7 @@ fn try_alternatives(
   pos: Int,
 ) -> Result(#(a, Int), ParseError) {
   case alternatives {
-    [] -> Error(ParseError(expected: "valid alternative", got: "none"))
+    [] -> Error(ParseError(span: Span("input", 0, 0, 0, 1), expected: "valid alternative", got: "none", context: ""))
     [alt, ..rest] -> {
       case parse_pattern(grammar, alt.pattern, tokens, pos) {
         Ok(#(values, new_pos)) -> {

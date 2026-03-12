@@ -19,7 +19,7 @@
 ///
 /// Both parser and formatter are derived from this single grammar definition.
 import core/core.{
-  type Case, type Literal, type LiteralType, type Pattern, type Term, Ann, App,
+  type Case, type Error, type Literal, type LiteralType, type Pattern, type Term, Ann, App,
   Call, Case, Comptime, Ctr, Dot, Err, F32, F32T, F64, F64T, Fix, Hole, I32,
   I32T, I64, I64T, Lam, Lit, LitT, Match, PAny, PAs, PCtr, PLit, PLitT, PRcd,
   PTyp, Pi, Rcd, Term, Typ, U32, U32T, U64, U64T, Var,
@@ -30,7 +30,7 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/formatter
 import syntax/grammar.{
-  type Span, type Value, AstValue, ListValue, TokenValue, alt, ref, rule, seq,
+  type ParseResult, ParseError, ParseResult, type Span, type Value, AstValue, ListValue, TokenValue, alt, ref, rule, seq,
   token_pattern,
 }
 import syntax/lexer.{type Token}
@@ -233,10 +233,10 @@ pub fn named_to_de_bruijn(term: NamedTerm) -> Term {
   named_to_de_bruijn_loop(term, [])
 }
 
-pub fn parse(source: String) -> #(Term, List(Error)) {
+pub fn parse(source: String) -> ParseResult(Term) {
   // Create an error placeholder AST to use if parsing fails
   let error_ast = AsTerm(NErr("Parse error", grammar.Span("", 0, 0, 0, 0)))
-  let parsed: grammar.ParseResult(ParseValue) =
+  let parsed: ParseResult(ParseValue) =
     grammar.parse(core_grammar(), source, error_ast)
   case parsed {
     ParseResult(ast: ast, errors: errors) -> {
@@ -245,7 +245,7 @@ pub fn parse(source: String) -> #(Term, List(Error)) {
           // Got error AST from grammar.parse - include the message
           let placeholder =
             Term(core.Err("Parse error: " <> msg), grammar.Span("", 0, 0, 0, 0))
-          grammar.ParseResult(ast: placeholder, errors: errors)
+          ParseResult(ast: placeholder, errors: errors)
         }
         AsTerm(named_term) -> {
           // Got normal AST - check for errors
@@ -257,12 +257,12 @@ pub fn parse(source: String) -> #(Term, List(Error)) {
                   core.Err("Parse error: see errors list"),
                   grammar.Span("", 0, 0, 0, 0),
                 )
-              grammar.ParseResult(ast: placeholder, errors: errors)
+              ParseResult(ast: placeholder, errors: errors)
             }
             [] -> {
               // No errors - process the AST
               let term = named_to_de_bruijn(named_term)
-              grammar.ParseResult(ast: term, errors: [])
+              ParseResult(ast: term, errors: [])
             }
           }
         }
@@ -272,8 +272,8 @@ pub fn parse(source: String) -> #(Term, List(Error)) {
               core.Err("Expected expression, got field list"),
               grammar.Span("", 0, 0, 0, 0),
             )
-          grammar.ParseResult(ast: placeholder, errors: [
-            grammar.ParseError(0, "expression", "field list"),
+          ParseResult(ast: placeholder, errors: [
+            ParseError(span: grammar.Span("", 0, 0, 0, 0), expected: "expression", got: "field list", context: ""),
           ])
         }
         AsCases(_) -> {
@@ -282,8 +282,8 @@ pub fn parse(source: String) -> #(Term, List(Error)) {
               core.Err("Expected expression, got case list"),
               grammar.Span("", 0, 0, 0, 0),
             )
-          grammar.ParseResult(ast: placeholder, errors: [
-            grammar.ParseError(0, "expression", "case list"),
+          ParseResult(ast: placeholder, errors: [
+            ParseError(span: grammar.Span("", 0, 0, 0, 0), expected: "expression", got: "case list", context: ""),
           ])
         }
         AsPattern(_) -> {
@@ -292,8 +292,8 @@ pub fn parse(source: String) -> #(Term, List(Error)) {
               core.Err("Expected expression, got pattern"),
               grammar.Span("", 0, 0, 0, 0),
             )
-          grammar.ParseResult(ast: placeholder, errors: [
-            grammar.ParseError(0, "expression", "pattern"),
+          ParseResult(ast: placeholder, errors: [
+            ParseError(span: grammar.Span("", 0, 0, 0, 0), expected: "expression", got: "pattern", context: ""),
           ])
         }
         AsArgs(_) -> {
@@ -302,8 +302,8 @@ pub fn parse(source: String) -> #(Term, List(Error)) {
               core.Err("Expected expression, got argument list"),
               grammar.Span("", 0, 0, 0, 0),
             )
-          grammar.ParseResult(ast: placeholder, errors: [
-            grammar.ParseError(0, "expression", "argument list"),
+          ParseResult(ast: placeholder, errors: [
+            ParseError(span: grammar.Span("", 0, 0, 0, 0), expected: "expression", got: "argument list", context: ""),
           ])
         }
       }

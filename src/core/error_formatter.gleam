@@ -19,7 +19,7 @@ import core/color.{type ColorConfig, should_use_colors, default_config, colorize
 import core/core.{
   type Error, type Type, type Pattern, type Value as Val, type LiteralType,
   type Literal, type Head, type Permission, type Term,
-  TypeMismatch, PatternMismatch, NotAFunction, VarUndefined, HoleUnsolved,
+  SyntaxError, TypeMismatch, PatternMismatch, NotAFunction, VarUndefined, HoleUnsolved,
   ArityMismatch, CtrUndefined, MatchRedundantCase, MatchMissingCase,
   ComptimePermissionDenied, InfiniteType, TypeAnnotationNeeded,
   RcdMissingFields, CtrUnsolvedParam, DotFieldNotFound, DotOnNonCtr,
@@ -60,6 +60,7 @@ const emoji_success = "✅"
 
 pub fn error_code(error: Error) -> String {
   case error {
+    SyntaxError(..) -> "E0001"
     TypeMismatch(..) -> "E0101"
     VarUndefined(..) -> "E0102"
     NotAFunction(..) -> "E0103"
@@ -83,6 +84,7 @@ pub fn error_code(error: Error) -> String {
 
 pub fn error_message(error: Error) -> String {
   case error {
+    SyntaxError(..) -> "Syntax error"
     TypeMismatch(..) -> "Type mismatch"
     VarUndefined(..) -> "Undefined variable"
     NotAFunction(..) -> "Cannot call non-function value"
@@ -114,6 +116,20 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
   let severity = source_snippet.Error
 
   case error {
+    SyntaxError(span, expected, got, context) ->
+      source_snippet.Diagnostic(
+        code: code,
+        severity: severity,
+        message: message <> case context {
+          "" -> ""
+          _ -> " in " <> context
+        },
+        primary_span: to_source_span(span),
+        spans: [],
+        notes: ["Expected: " <> expected, "Got: " <> got],
+        hints: [],
+      )
+
     TypeMismatch(expected, got, span1, span2) ->
       source_snippet.Diagnostic(
         code: code,

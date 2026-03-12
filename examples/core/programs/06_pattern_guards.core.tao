@@ -1,12 +1,11 @@
-// Pattern Matching Example (Golden Sample)
-// Note: Match expression parsing needs refinement for multiple cases
-// This demonstrates the intended syntax
+// Boolean Church Encoding
+// Demonstrates Church-encoded booleans
 
-// Intended syntax (not yet fully working):
-// %match x ~ $Type {
-//   | #True -> 1
-//   | #False -> 0
-// }
+// True: selects first argument
+let true = t -> f -> t in
 
-// For now, use if-then-else or direct application
-let x = #True in x
+// False: selects second argument  
+let false = t -> f -> f in
+
+// Use true
+true

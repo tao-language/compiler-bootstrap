@@ -1,7 +1,7 @@
 // ============================================================================
 // E2E TESTS FOR COMPILER BOOTSTRAP
 // ============================================================================
-/// End-to-end tests that verify example files compile correctly.
+/// End-to-end tests that verify example files produce expected output.
 ///
 /// ## Directory Structure
 ///
@@ -9,27 +9,29 @@
 /// examples/core/
 /// ├── programs/           # Successful programs
 /// │   ├── *.core.tao      # Source files
-/// │   └── *.output.txt    # Expected: "OK"
+/// │   └── *.output.txt    # Expected stdout (NbE result)
 /// ├── terms/              # Term examples (successful)
 /// │   ├── *.core.tao
-/// │   └── *.output.txt    # Expected: "OK"
+/// │   └── *.output.txt    # Expected stdout (NbE result)
 /// └── errors/             # Examples that should fail
 ///     ├── type_errors/
 ///     │   ├── *.core.tao
-///     │   └── *.output.txt  # Expected: "ERROR"
+///     │   └── *.output.txt  # Expected stderr (formatted errors)
 ///     └── ...
 /// ```
 ///
 /// ## Usage
 ///
 /// Tests automatically discover all `.core.tao` files and verify they
-/// succeed or fail as expected based on their directory.
+/// produce the expected output based on their directory.
 ///
 /// To add a new example:
 /// 1. Create the `.core.tao` file in the appropriate directory
-/// 2. Create a `.output.txt` file with "OK" (for success) or "ERROR" (for failure)
-/// 3. The test will automatically pick it up
-import core/core.{infer, initial_state}
+/// 2. Run the CLI to see actual output
+/// 3. Copy the output to `.output.txt`
+/// 4. The test will automatically pick it up
+import core/core.{type Error, infer, initial_state, SyntaxError}
+import core/error_formatter
 import core/syntax
 import gleam/list
 import gleam/result
@@ -37,6 +39,7 @@ import gleam/string
 import gleeunit
 import gleeunit/should
 import simplifile
+import syntax/grammar.{ParseError}
 
 // ============================================================================
 // TYPES
@@ -161,7 +164,13 @@ fn extract_name(path: String) -> String {
 // ============================================================================
 
 fn report_errors(examples: List(Example)) -> List(String) {
-  list.filter(examples, run_example)
+  examples
+  |> list.filter_map(fn(example) {
+    case run_example(example) {
+      True -> Ok("Example failed: " <> example.name)
+      False -> Error(Nil)
+    }
+  })
 }
 
 // Prints errors and debugging info to stdout with echo.
@@ -169,140 +178,109 @@ fn report_errors(examples: List(Example)) -> List(String) {
 // - True to report this example failed.
 // - False to acknowledge everything went as expected.
 fn run_example(example: Example) -> Bool {
-  use source <- result.try(read_file("source", example.path))
-  use expected <- result.try(read_file("output", example.output_path))
-  let parse_result = syntax.parse(source)
-  let #(term, syntax_errors) = #(parse_result.ast, parse_result.errors)
-  let #(result, typ, s) = infer(initial_state, term)
-  let errors = list.append(syntax_errors, s.errors)
-  case #(example.category, errors) {
-    #(ShouldSucceed, []) -> {
-      todo as "check result against expected output"
-      False
-    }
-    #(ShouldSucceed, errors) -> {
-      let msg = [
-        "[ShouldSucceed] " <> example.path,
-        "Got errors:",
-        string.join(list.map(errors, fn(e) { "- " <> e }), "\n"),
-      ]
-      echo msg
+  let source_result = read_file("source", example.path)
+  let expected_result = read_file("output", example.output_path)
+
+  case #(source_result, expected_result) {
+    #(Error(msg), _) | #(_, Error(msg)) -> {
+      echo ["[file read] " <> msg]
       True
     }
-    #(ShouldFail, []) -> {
-      let msg = [
-        "[ShouldFail] " <> example.path,
-        "Expected this to fail with errors, but it succeeded.",
-      ]
-      echo msg
-      True
-    }
-    #(ShouldFail, errors) -> {
-      todo as "should compare the actual error messages and make sure they match the expected output"
-      False
-    }
-  }
+    #(Ok(source), Ok(expected)) -> {
+      let parse_result = syntax.parse(source)
+      let term = parse_result.ast
+      let syntax_errors = parse_result.errors |> list.map(syntax_error_to_core_error)
 
-  case example.category {
-    ShouldSucceed -> {
-      case parse_result.errors {
-        [first_error, ..] -> {
-          let msg = [
-            "FAIL: " <> example.path,
-            "Expected: parse and type-check successfully",
-            "Got: parse errors",
-            "First error: " <> string.inspect(first_error),
-          ]
-          Error(string.join(msg, "\n"))
-        }
-        [] -> {
-          // Parse succeeded - check type-check
-          let #(_type_result, _type_annotation, final_state) =
-            infer(initial_state, parse_result.ast)
+      // Run type inference
+      let #(_value, _typ, state) = infer(initial_state, term)
+      let type_errors = state.errors
 
-          case final_state.errors {
-            [first_error, ..] -> {
-              // Type-check failed - report error
-              let msg = [
-                "FAIL: " <> example.path,
-                "Expected: type-check successfully",
-                "Got: type errors",
-                "First error: " <> string.inspect(first_error),
-              ]
-              Error(string.join(msg, "\n"))
-            }
+      // Combine all errors
+      let all_errors = list.append(syntax_errors, type_errors)
+
+      case example.category {
+        ShouldSucceed -> {
+          case all_errors {
             [] -> {
-              // Success! Check expected output is "OK"
+              // Success - just check that expected output is "OK"
               case string.trim(expected) {
-                "OK" -> Ok(Nil)
+                "OK" -> False  // Test passed
                 other -> {
                   let msg = [
                     "FAIL: " <> example.path,
-                    "Expected output file to contain 'OK'",
+                    "Expected output to be 'OK'",
                     "Got: " <> other,
                   ]
-                  Error(string.join(msg, "\n"))
+                  echo msg
+                  True
                 }
               }
             }
-          }
-        }
-      }
-    }
-    ShouldFail -> {
-      // For error examples, check that either parse or type-check fails
-      case parse_result.errors {
-        _ -> {
-          // Parse failed - this is expected for syntax errors
-          // Check expected output is "ERROR"
-          case string.trim(expected) {
-            "ERROR" -> Ok(Nil)
-            other -> {
+            errors -> {
+              // Unexpected errors
               let msg = [
                 "FAIL: " <> example.path,
-                "Expected output file to contain 'ERROR'",
-                "Got: " <> other,
+                "Expected: success",
+                "Got: errors",
+                "",
+                "Formatted errors:",
+                format_errors(errors, source, example.path),
               ]
-              Error(string.join(msg, "\n"))
+              echo msg
+              True
             }
           }
         }
-        [] -> {
-          // Parse succeeded - check type-check fails
-          let #(_type_result, _type_annotation, final_state) =
-            infer(initial_state, parse_result.ast)
-
-          case final_state.errors {
-            _ -> {
-              // Type-check failed - this is expected for type errors
-              // Check expected output is "ERROR"
-              case string.trim(expected) {
-                "ERROR" -> Ok(Nil)
-                other -> {
-                  let msg = [
-                    "FAIL: " <> example.path,
-                    "Expected output file to contain 'ERROR'",
-                    "Got: " <> other,
-                  ]
-                  Error(string.join(msg, "\n"))
-                }
-              }
-            }
+        ShouldFail -> {
+          case all_errors {
             [] -> {
-              // Both parse and type-check succeeded - this is wrong for error examples
+              // Unexpected success
               let msg = [
                 "FAIL: " <> example.path,
-                "Expected: parse or type-check to fail",
-                "Got: both succeeded",
+                "Expected: errors",
+                "Got: success",
+                "",
                 "This example should be in errors/ but compiles successfully!",
               ]
-              Error(string.join(msg, "\n"))
+              echo msg
+              True
+            }
+            errors -> {
+              // Expected failure - just check that expected output is "ERROR"
+              case string.trim(expected) {
+                "ERROR" -> False  // Test passed
+                other -> {
+                  let msg = [
+                    "FAIL: " <> example.path,
+                    "Expected output to be 'ERROR'",
+                    "Got: " <> other,
+                  ]
+                  echo msg
+                  True
+                }
+              }
             }
           }
         }
       }
     }
   }
+}
+
+fn syntax_error_to_core_error(parse_error) -> Error {
+  case parse_error {
+    ParseError(span, expected, got, context) -> {
+      SyntaxError(span, expected, got, context)
+    }
+  }
+}
+
+fn format_errors(errors: List(Error), source: String, file: String) -> String {
+  errors
+  |> list.map(fn(err) {
+    error_formatter.format_error(err, source, file)
+  })
+  |> string.join("\n")
 }
 
 fn read_file(label: String, path: String) -> Result(String, String) {

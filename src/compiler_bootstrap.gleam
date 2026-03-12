@@ -17,7 +17,7 @@ import gleam/io
 import gleam/list
 import gleam/string
 import simplifile
-import syntax/grammar.{ParseError as GrammarParseError, ParseErrorWithSpan as GrammarParseErrorWithSpan, type ParseError as GrammarParseErrorType, Span}
+import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType, Span}
 import syntax/error_reporter
 
 // ============================================================================
@@ -259,9 +259,7 @@ fn check_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 
 fn format_parse_error(err: GrammarParseErrorType) -> String {
   case err {
-    GrammarParseError(position: pos, expected: exp, got: g) ->
-      "Parse error at position " <> int.to_string(pos) <> ": expected " <> exp <> ", got " <> g
-    GrammarParseErrorWithSpan(span: _, expected: exp, got: g, context: ctx) ->
+    GrammarParseError(span: span, expected: exp, got: g, context: ctx) ->
       "Parse error" <> case ctx {
         "" -> ""
         _ -> " in " <> ctx
