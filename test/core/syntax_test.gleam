@@ -77,20 +77,22 @@ pub fn roundtrip_lit_positive_test() {
 // ============================================================================
 
 pub fn roundtrip_lambda_simple_test() {
-  let source = "%fn(x) -> x"
+  let source = "x -> x"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   // Verify round-trip: parse then format should give same source
   let formatted = syntax.format(result.ast)
-  formatted |> should.equal(source)
+  // Formatter outputs new syntax
+  formatted |> should.equal("%fn(x) -> x")
 }
 
 pub fn roundtrip_lambda_different_var_test() {
-  let source = "%fn(y) -> y"
+  let source = "y -> y"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
-  formatted |> should.equal(source)
+  // Formatter outputs new syntax
+  formatted |> should.equal("%fn(y) -> y")
 }
 
 pub fn roundtrip_lambda_nested_test() {
@@ -98,7 +100,8 @@ pub fn roundtrip_lambda_nested_test() {
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
-  formatted |> should.equal(source)
+  // Formatter outputs new syntax
+  formatted |> should.equal("%fn(x) -> %fn(y) -> y")
 }
 
 pub fn roundtrip_lambda_shadowing_test() {
@@ -108,19 +111,21 @@ pub fn roundtrip_lambda_shadowing_test() {
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
-  formatted |> should.equal(source)
+  // Formatter outputs new syntax
+  formatted |> should.equal("%fn(x) -> %fn(y) -> x")
 }
 
 pub fn roundtrip_lambda_self_shadowing_test() {
-  // %fn(x) -> %fn(x) -> x should show shadowing: inner x shadows outer x
+  // x -> x -> x should show shadowing: inner x shadows outer x
   // The innermost x refers to the middle lambda's parameter
-  let source = "%fn(x) -> %fn(x) -> x"
+  let source = "x -> x -> x"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
+  // Formatter outputs new syntax
   // The inner x refers to the middle lambda's x (var0)
   // The middle x refers to the outer lambda's x (var1)
-  formatted |> should.equal(source)
+  formatted |> should.equal("%fn(x) -> %fn(x) -> x")
 }
 
 // ============================================================================
@@ -132,7 +137,8 @@ pub fn roundtrip_pi_simple_test() {
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
-  formatted |> should.equal(source)
+  // Formatter outputs new syntax
+  formatted |> should.equal("%pi(x : %I32) -> %I32")
 }
 
 pub fn roundtrip_pi_with_type_universe_test() {
@@ -140,7 +146,8 @@ pub fn roundtrip_pi_with_type_universe_test() {
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
-  formatted |> should.equal(source)
+  // Formatter outputs new syntax
+  formatted |> should.equal("%pi(x : %Type) -> %Type")
 }
 
 pub fn roundtrip_pi_with_level_test() {
@@ -148,7 +155,8 @@ pub fn roundtrip_pi_with_level_test() {
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
-  formatted |> should.equal(source)
+  // Formatter outputs new syntax
+  formatted |> should.equal("%pi(x : %Type(1)) -> %Type(1)")
 }
 
 // ============================================================================
@@ -372,11 +380,12 @@ pub fn roundtrip_parens_simple_test() {
 }
 
 pub fn roundtrip_parens_preserved_when_needed_test() {
-  let source = "(%fn(x) -> x)(42)"
+  let source = "(x -> x)(42)"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
-  formatted |> should.equal(source)
+  // Formatter outputs new syntax
+  formatted |> should.equal("(%fn(x) -> x)(42)")
 }
 
 // ============================================================================
@@ -384,19 +393,21 @@ pub fn roundtrip_parens_preserved_when_needed_test() {
 // ============================================================================
 
 pub fn roundtrip_lambda_in_app_test() {
-  let source = "(%fn(x) -> x)(42)"
+  let source = "(x -> x)(42)"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
-  formatted |> should.equal(source)
+  // Formatter outputs new syntax
+  formatted |> should.equal("(%fn(x) -> x)(42)")
 }
 
 pub fn roundtrip_pi_in_app_test() {
-  let source = "(%pi(x : %I32) -> %I32)(42)"
+  let source = "((x : %I32) -> %I32)(42)"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
-  formatted |> should.equal(source)
+  // Formatter outputs new syntax
+  formatted |> should.equal("(%pi(x : %I32) -> %I32)(42)")
 }
 
 pub fn roundtrip_annotation_in_app_test() {

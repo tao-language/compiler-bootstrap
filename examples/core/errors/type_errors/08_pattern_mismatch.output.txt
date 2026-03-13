@@ -1,10 +1,9 @@
-
 error[E0102]: Undefined variable
   ┌─ input:5:14
 2 │ // Pattern expects a different type than the matched value
 3 │ // This error occurs when a pattern's type doesn't match the scrutinee
 4 │ // Example: trying to match a type pattern against a value
-5 │ %match (42 : Int) ~ %pi(x : Int) -> %Type {
+5 │ %match (42 : Int) ~ (x : Int) -> %Type {
                  ^^^
 6 │   | _ -> %Type
 7 │ }
@@ -19,7 +18,7 @@ error[E0102]: Undefined variable
 2 │ // Pattern expects a different type than the matched value
 3 │ // This error occurs when a pattern's type doesn't match the scrutinee
 4 │ // Example: trying to match a type pattern against a value
-5 │ %match (42 : Int) ~ %pi(x : Int) -> %Type {
+5 │ %match (42 : Int) ~ (x : Int) -> %Type {
                              ^^^
 6 │   | _ -> %Type
 7 │ }
@@ -34,14 +33,13 @@ error[E0101]: Type mismatch
 2 │ // Pattern expects a different type than the matched value
 3 │ // This error occurs when a pattern's type doesn't match the scrutinee
 4 │ // Example: trying to match a type pattern against a value
-5 │ %match (42 : Int) ~ %pi(x : Int) -> %Type {
+5 │ %match (42 : Int) ~ (x : Int) -> %Type {
                              ^^^ ---
 6 │   | _ -> %Type
 7 │ }
 8 │ 
-  = note: (_: <error>) -> ... and %Type(0) are incompatible types
-  = note: The expression produces (_: <error>) -> ... but %Type(0) is expected here
+  = note: %pi(_: <error>) -> ... and %Type(0) are incompatible types
+  = note: The expression produces %pi(_: <error>) -> ... but %Type(0) is expected here
   = hint: Check that the expression has the expected type
   = hint: Consider adding a type annotation
   = hint: Did you mean to use a different expression?
-
