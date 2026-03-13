@@ -1,14 +1,12 @@
-runtime error: panic
-
-Expected %Type(n)
-
-stacktrace:
-  core/syntax.make_typ_with_level src/core/syntax.gleam:911
-  syntax/grammar.try_alternatives src/syntax/grammar.gleam:538
-  syntax/grammar.parse_ref src/syntax/grammar.gleam:601
-  syntax/grammar.parse_seq src/syntax/grammar.gleam:625
-  syntax/grammar.try_alternatives src/syntax/grammar.gleam:536
-  syntax/grammar.parse_ref src/syntax/grammar.gleam:601
-  syntax/grammar.try_alternatives src/syntax/grammar.gleam:536
-  syntax/grammar.parse_ref src/syntax/grammar.gleam:601
-
+error[E0101]: Type mismatch
+  ┌─ input:3:16
+1 │ // Type Error: Type mismatch
+2 │ // Trying to use %I32 where %Type is expected (function parameter type)
+3 │ (x : %I32) -> (x : %Type(1))
+                   ^ -----
+4 │ 
+  = note: %Type(1) and Int are incompatible types
+  = note: The expression produces %Type(1) but Int is expected here
+  = hint: Check that the expression has the expected type
+  = hint: Consider adding a type annotation
+  = hint: Did you mean to use a different expression?
