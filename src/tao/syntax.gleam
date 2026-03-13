@@ -174,6 +174,18 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
 // PUBLIC API
 // ============================================================================
 
+/// Get span from expression.
+pub fn get_expr_span(expr: MvpExpr) -> Span {
+  case expr {
+    MvpInt(_, span) -> span
+    MvpVar(_, span) -> span
+    MvpAdd(_, _, span) -> span
+    MvpSub(_, _, span) -> span
+    MvpMul(_, _, span) -> span
+    MvpDiv(_, _, span) -> span
+  }
+}
+
 /// Parse Tao source code (MVP).
 pub fn parse(source: String) -> ParseResult(MvpExpr) {
   let error_ast = MvpInt(0, Span("tao", 0, 0, 0, 0))
