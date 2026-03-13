@@ -12,12 +12,14 @@
 /// For detailed documentation see:
 /// - [Tao MVP Plan](../../docs/plans/tao/09-tao-mvp-plan.md)
 /// - [Core Syntax](../../docs/core-syntax.md)
-import tao/syntax.{type MvpExpr, MvpInt, MvpVar, MvpAdd, MvpSub, MvpMul, MvpDiv, get_expr_span}
+import tao/syntax.{type MvpExpr, MvpInt, MvpVar, MvpAdd, MvpSub, MvpMul, MvpDiv, OverloadedFn, OverloadedApp, get_expr_span}
 import core/core.{
-  type Term, Term, Lit, I32, Var, Call,
-  type Literal, type LiteralType, I32T,
+  type Term, Term, Lit, I32, Var, Call, Case, Match, Typ, Lam, Hole,
+  type Literal, type LiteralType, type Case, I32T, I64T, F32T, F64T, PLitT, PAny,
 }
 import syntax/grammar.{type Span, Span}
+import gleam/list
+import gleam/option.{None}
 
 // ============================================================================
 // DESUGAR CONTEXT
@@ -61,6 +63,9 @@ fn desugar_expr(expr: MvpExpr, ctx: DesugarCtx) -> Term {
     MvpSub(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_sub")
     MvpMul(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_mul")
     MvpDiv(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_div")
+    OverloadedFn(name, type_param, param_name, param_type, return_type, body, span) -> 
+      desugar_overloaded_fn(name, type_param, param_name, param_type, return_type, body, span)
+    OverloadedApp(name, args, span) -> desugar_overloaded_app(name, args, span, ctx)
   }
 }
 
@@ -137,4 +142,77 @@ fn merge_spans(left: Span, right: Span) -> Span {
     end_line: right.end_line,
     end_col: right.end_col,
   )
+}
+
+// ============================================================================
+// OVERLOADING DESUGARING
+// ============================================================================
+
+/// Desugar overloaded function definition to Core.
+///
+/// Tao: fn (+)(x: I32) -> I32 { %i32_add(x, y) }
+/// Core: %let (+) = %fn<T>(x) -> %match T { | %I32 -> %i32_add(x, y) }
+fn desugar_overloaded_fn(
+  name: String,
+  type_param: String,
+  param_name: String,
+  param_type: String,
+  return_type: String,
+  body: MvpExpr,
+  span: Span,
+) -> Term {
+  // For now, just return a simple lambda as a placeholder
+  // Full implementation will come later
+  Term(
+    Lam(
+      implicit: [type_param],
+      param: #(param_name, Term(Hole(-1), span)),
+      body: desugar_expr(body, initial_ctx(span)),
+    ),
+    span,
+  )
+}
+
+/// Create a match arm for a specific type.
+fn create_type_match_arm(type_name: String, body: Term) -> Case {
+  let pattern = case type_name {
+    "I32" -> PLitT(I32T)
+    "I64" -> PLitT(I64T)
+    "F32" -> PLitT(F32T)
+    "F64" -> PLitT(F64T)
+    _ -> PAny  // Default case
+  }
+  
+  Case(pattern, body, None, Span("generated", 0, 0, 0, 0))
+}
+
+/// Desugar overloaded function application.
+///
+/// Tao: (+)(1, 2)
+/// Core: %call (+)(1, 2)  -- type inferred during type checking
+fn desugar_overloaded_app(
+  name: String,
+  args: List(MvpExpr),
+  span: Span,
+  ctx: DesugarCtx,
+) -> Term {
+  // Desugar all arguments
+  let arg_terms = list.map(args, fn(arg) { desugar_expr(arg, ctx) })
+  
+  // Create function call (implicit args will be filled during type inference)
+  case arg_terms {
+    [first, ..rest] -> {
+      // For now, create a simple call
+      // Type inference will add implicit type args
+      foldl(rest, first, fn(acc, arg) {
+        Term(Call(name, [acc, arg]), span)
+      })
+    }
+    [] -> Term(Var(0), span)  // No args
+  }
+}
+
+/// Fold left over a list.
+fn foldl(items: List(a), initial: b, func: fn(b, a) -> b) -> b {
+  list.fold(items, initial, func)
 }

@@ -24,9 +24,12 @@ import syntax/grammar.{
 }
 
 // ============================================================================
-// EXPRESSION AST (MVP)
+// EXPRESSION AST (MVP + Overloading)
 // ============================================================================
-/// Simple expression for MVP testing.
+/// Expression for Tao with overloading support.
+///
+/// MVP: Simple arithmetic expressions
+/// Overloading: Support for overloaded operators through implicit type params
 pub type MvpExpr {
   MvpInt(value: Int, span: Span)
   MvpVar(name: String, span: Span)
@@ -34,6 +37,18 @@ pub type MvpExpr {
   MvpSub(left: MvpExpr, right: MvpExpr, span: Span)
   MvpMul(left: MvpExpr, right: MvpExpr, span: Span)
   MvpDiv(left: MvpExpr, right: MvpExpr, span: Span)
+  /// Overloaded function definition (e.g., fn (+)(x: I32) -> I32 { ... })
+  OverloadedFn(
+    name: String,
+    type_param: String,
+    param_name: String,
+    param_type: String,
+    return_type: String,
+    body: MvpExpr,
+    span: Span,
+  )
+  /// Application with potential implicit type args
+  OverloadedApp(name: String, args: List(MvpExpr), span: Span)
 }
 
 // ============================================================================
@@ -108,6 +123,8 @@ fn get_span(expr: MvpExpr) -> Span {
     MvpSub(_, _, span) -> span
     MvpMul(_, _, span) -> span
     MvpDiv(_, _, span) -> span
+    OverloadedFn(_, _, _, _, _, _, span) -> span
+    OverloadedApp(_, _, span) -> span
   }
 }
 
@@ -115,13 +132,13 @@ fn get_span(expr: MvpExpr) -> Span {
 // GRAMMAR DEFINITION
 // ============================================================================
 
-/// Define the Tao grammar (MVP).
+/// Define the Tao grammar (MVP + Overloading).
 pub fn tao_grammar() -> Grammar(MvpExpr) {
   Grammar(
     name: "Tao",
-    start: "Expr",
-    tokens: ["Ident", "Number", "LParen", "RParen", "LBrace", "RBrace"],
-    keywords: lexer.keywords,
+    start: "Program",
+    tokens: ["Ident", "Number", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow"],
+    keywords: ["fn", "let", "mut", "match", "if", "else", "type", "import", "export", "as", "comptime", "true", "false"],
     operators: [
       infix_binary("+", make_add, InfixLeft, 10, " + "),
       infix_binary("-", make_sub, InfixLeft, 10, " - "),
@@ -129,14 +146,57 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
       infix_binary("/", make_div, InfixLeft, 20, " / "),
     ],
     rules: [
-      // Program = Expr
+      // Program = Stmt*
       rule("Program", [
+        alt(
+          many(ref("Stmt")),
+          fn(values) {
+            case values {
+              [ListValue(stmts)] -> {
+                case list.first(stmts) {
+                  Ok(AstValue(e)) -> e
+                  _ -> MvpInt(0, Span("empty", 0, 0, 0, 0))
+                }
+              }
+              _ -> MvpInt(0, Span("empty", 0, 0, 0, 0))
+            }
+          },
+        ),
+      ]),
+      // Stmt = Fn | Expr
+      rule("Stmt", [
+        alt(ref("OverloadedFn"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> MvpInt(0, Span("empty", 0, 0, 0, 0))
+          }
+        }),
         alt(ref("Expr"), fn(values) {
           case values {
             [AstValue(e)] -> e
             _ -> MvpInt(0, Span("empty", 0, 0, 0, 0))
           }
         }),
+      ]),
+      // OverloadedFn = "fn" "(" Ident ")" "(" Ident ":" Type ")" "->" Type "{" Expr "}"
+      rule("OverloadedFn", [
+        alt(
+          seq([
+            keyword_pattern("fn"),
+            token_pattern("LParen"),
+            token_pattern("Ident"),  // operator name
+            token_pattern("RParen"),
+            token_pattern("LParen"),
+            token_pattern("Ident"),  // param name
+            token_pattern("Colon"),
+            token_pattern("Ident"),  // param type
+            token_pattern("RParen"),
+            token_pattern("Arrow"),
+            token_pattern("Ident"),  // return type
+            ref("Expr"),             // body
+          ]),
+          make_overloaded_fn,
+        ),
       ]),
       left_assoc_rule(
         "Expr",
@@ -157,14 +217,33 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
         20,
       ),
       rule("Primary", [
-        alt(token_pattern("Number"), make_int),
-        alt(token_pattern("Ident"), make_var),
-        alt(parenthesized("Expr"), fn(values) {
-          case values {
-            [ParensValue([AstValue(expr)])] -> expr
-            _ -> panic as "Expected (expr)"
-          }
-        }),
+        alt(
+          token_pattern("Number"),
+          fn(values) {
+            case values {
+              [TokenValue(token)] -> make_int([TokenValue(token)])
+              _ -> MvpInt(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+        alt(
+          token_pattern("Ident"),
+          fn(values) {
+            case values {
+              [TokenValue(token)] -> make_var([TokenValue(token)])
+              _ -> MvpInt(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+        alt(
+          parenthesized("Expr"),
+          fn(values) {
+            case values {
+              [ParensValue([AstValue(expr)])] -> expr
+              _ -> MvpInt(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
       ]),
     ],
   )
@@ -183,13 +262,44 @@ pub fn get_expr_span(expr: MvpExpr) -> Span {
     MvpSub(_, _, span) -> span
     MvpMul(_, _, span) -> span
     MvpDiv(_, _, span) -> span
+    OverloadedFn(_, _, _, _, _, _, span) -> span
+    OverloadedApp(_, _, span) -> span
   }
 }
 
-/// Parse Tao source code (MVP).
+/// Parse Tao source code (MVP + Overloading).
 pub fn parse(source: String) -> ParseResult(MvpExpr) {
   let error_ast = MvpInt(0, Span("tao", 0, 0, 0, 0))
   grammar_parse(tao_grammar(), source, error_ast)
+}
+
+/// Helper to create overloaded function AST.
+fn make_overloaded_fn(values) -> MvpExpr {
+  case values {
+    [
+      _,  // "fn"
+      _,  // "("
+      TokenValue(name_token),  // operator name
+      _,  // ")"
+      _,  // "("
+      TokenValue(param_name_token),  // param name
+      _,  // ":"
+      TokenValue(param_type_token),  // param type
+      _,  // ")"
+      _,  // "->"
+      TokenValue(return_type_token),  // return type
+      AstValue(body),  // body
+    ] -> OverloadedFn(
+      name_token.value,
+      "T",  // type param (simplified for now)
+      param_name_token.value,
+      param_type_token.value,
+      return_type_token.value,
+      body,
+      span_from_token(name_token, "tao"),
+    )
+    _ -> panic as "Expected overloaded function definition"
+  }
 }
 
 /// Format MVP expression to string.
@@ -205,6 +315,12 @@ fn format_expr_loop(expr: MvpExpr, parent_prec: Int) -> String {
     MvpSub(l, r, _) -> format_binop(l, r, "-", 10, parent_prec)
     MvpMul(l, r, _) -> format_binop(l, r, "*", 20, parent_prec)
     MvpDiv(l, r, _) -> format_binop(l, r, "/", 20, parent_prec)
+    OverloadedFn(name, type_param, param_name, param_type, return_type, _body, _) -> {
+      "fn (" <> name <> ")(" <> param_name <> ": " <> param_type <> ") -> " <> return_type <> " { ... }"
+    }
+    OverloadedApp(name, args, _) -> {
+      name <> "(" <> string_join(list.map(args, format_expr), ", ") <> ")"
+    }
   }
 }
 
