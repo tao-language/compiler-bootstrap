@@ -338,28 +338,35 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
       "Equal",
       "Comma",
       "Arrow",
-      "Dollar",
       "Hash",
       "Question",
       "Underscore",
       "At",
       "Percent",
+      "PercentType",
+      "PercentI32",
+      "PercentI64",
+      "PercentU32",
+      "PercentU64",
+      "PercentF32",
+      "PercentF64",
       "PercentMatch",
       "PercentCall",
       "PercentComptime",
+      "PercentLet",
+      "PercentFix",
+      "PercentDef",
       "Tilde",
       "Pipe",
-      "Let",
       "In",
       "Rec",
-      "Fix",
     ],
     keywords: [],
     operators: [],
     rules: [
       // Main expression rule (lowest precedence first)
       rule("Expr", [
-        // Keywords first (Match, Call, Comptime, Let, Fix) - these start with special tokens
+        // Keywords first (%match, %call, %comptime, %let, %fix) - these start with % tokens
         alt(ref("Match"), unwrap),
         alt(ref("Call"), unwrap),
         alt(ref("Comptime"), unwrap),
@@ -373,8 +380,19 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
         alt(ref("Dot"), unwrap),
         alt(ref("Atom"), unwrap),
       ]),
-      // Lambda: x -> body
+      // Lambda: x -> body or \x -> body
       rule("Lambda", [
+        // \x -> body (backslash lambda)
+        alt(
+          seq([
+            token_pattern("Backslash"),
+            token_pattern("Ident"),
+            token_pattern("Arrow"),
+            ref("Expr"),
+          ]),
+          make_lambda,
+        ),
+        // x -> body (identifier lambda)
         alt(
           seq([
             token_pattern("Ident"),
@@ -472,12 +490,12 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
           make_comptime,
         ),
       ]),
-      // Let: let [rec] name = value in body
+      // Let: %let [rec] name = value in body
       rule("Let", [
-        // let rec name = value in body
+        // %let rec name = value in body
         alt(
           seq([
-            token_pattern("Let"),
+            token_pattern("PercentLet"),
             token_pattern("Rec"),
             token_pattern("Ident"),
             token_pattern("Equal"),
@@ -487,10 +505,10 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
           ]),
           make_let_rec,
         ),
-        // let name = value in body (without rec)
+        // %let name = value in body (without rec)
         alt(
           seq([
-            token_pattern("Let"),
+            token_pattern("PercentLet"),
             token_pattern("Ident"),
             token_pattern("Equal"),
             ref("Expr"),
@@ -500,13 +518,13 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
           make_let,
         ),
       ]),
-      // Fix: fix name -> body (fixpoint operator for recursion)
+      // Fix: %fix name = term (fixpoint operator for recursion)
       rule("Fix", [
         alt(
           seq([
-            token_pattern("Fix"),
+            token_pattern("PercentFix"),
             token_pattern("Ident"),
-            token_pattern("Arrow"),
+            token_pattern("Equal"),
             ref("Expr"),
           ]),
           make_fix,
@@ -533,25 +551,30 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
           ]),
           make_constructor,
         ),
-        // Type universe with level: $Type(1)
+        // Type universe with level: %Type(1)
         alt(
           seq([
-            token_pattern("Dollar"),
-            token_pattern("Ident"),
+            token_pattern("PercentType"),
             token_pattern("LParen"),
             token_pattern("Number"),
             token_pattern("RParen"),
           ]),
           make_typ_with_level,
         ),
-        // Type universe without level: $Type
+        // Type universe without level: %Type
         alt(
           seq([
-            token_pattern("Dollar"),
-            token_pattern("Ident"),
+            token_pattern("PercentType"),
           ]),
-          make_typ_or_litt,
+          make_typ,
         ),
+        // Literal types: %I32, %I64, %U32, %U64, %F32, %F64
+        alt(token_pattern("PercentI32"), make_i32_type),
+        alt(token_pattern("PercentI64"), make_i64_type),
+        alt(token_pattern("PercentU32"), make_u32_type),
+        alt(token_pattern("PercentU64"), make_u64_type),
+        alt(token_pattern("PercentF32"), make_f32_type),
+        alt(token_pattern("PercentF64"), make_f64_type),
         // Hole with id: ?1
         alt(
           seq([
@@ -882,10 +905,66 @@ fn make_typ_with_level(values) -> ParseValue {
               AsTerm(NTyp(0, grammar.span_from_token(type_token, "input")))
           }
         }
-        _ -> panic as "Expected $Type(n)"
+        _ -> panic as "Expected %Type(n)"
       }
     }
-    _ -> panic as "Expected $Type(n)"
+    _ -> panic as "Expected %Type(n)"
+  }
+}
+
+fn make_typ(values) -> ParseValue {
+  case values {
+    [TokenValue(token)] ->
+      AsTerm(NTyp(0, grammar.span_from_token(token, "input")))
+    _ -> panic as "Expected %Type"
+  }
+}
+
+fn make_i32_type(values) -> ParseValue {
+  case values {
+    [TokenValue(token)] ->
+      AsTerm(NLitT(I32T, grammar.span_from_token(token, "input")))
+    _ -> panic as "Expected %I32"
+  }
+}
+
+fn make_i64_type(values) -> ParseValue {
+  case values {
+    [TokenValue(token)] ->
+      AsTerm(NLitT(I64T, grammar.span_from_token(token, "input")))
+    _ -> panic as "Expected %I64"
+  }
+}
+
+fn make_u32_type(values) -> ParseValue {
+  case values {
+    [TokenValue(token)] ->
+      AsTerm(NLitT(U32T, grammar.span_from_token(token, "input")))
+    _ -> panic as "Expected %U32"
+  }
+}
+
+fn make_u64_type(values) -> ParseValue {
+  case values {
+    [TokenValue(token)] ->
+      AsTerm(NLitT(U64T, grammar.span_from_token(token, "input")))
+    _ -> panic as "Expected %U64"
+  }
+}
+
+fn make_f32_type(values) -> ParseValue {
+  case values {
+    [TokenValue(token)] ->
+      AsTerm(NLitT(F32T, grammar.span_from_token(token, "input")))
+    _ -> panic as "Expected %F32"
+  }
+}
+
+fn make_f64_type(values) -> ParseValue {
+  case values {
+    [TokenValue(token)] ->
+      AsTerm(NLitT(F64T, grammar.span_from_token(token, "input")))
+    _ -> panic as "Expected %F64"
   }
 }
 

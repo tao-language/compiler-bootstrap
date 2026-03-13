@@ -222,18 +222,14 @@ fn tokenize_ident(state: LexerState) -> LexerState {
 
 fn get_keyword_kind(value: String) -> String {
   case value {
-    "let" -> "Let"
     "in" -> "In"
     "rec" -> "Rec"
-    "fix" -> "Fix"
     "fn"
-    | "match"
     | "with"
     | "case"
     | "if"
     | "then"
     | "else"
-    | "comptime"
     | "pub"
     | "import"
     | "type"
@@ -370,42 +366,134 @@ fn tokenize_percent_keyword(state: LexerState) -> LexerState {
   let start_column = state.column
 
   // Check what follows % by looking at the next characters
-  // %match = 6 chars, %call = 5 chars, %comptime = 9 chars
-  case peek_n_chars(state, 6) {  // Check for "%match"
-    "%match" -> {
-      // %match
+  // Check longest keywords first to avoid partial matches
+  case peek_n_chars(state, 10) {  // Check for "%comptime"
+    "%comptime" -> {
+      // %comptime
       let state = advance(state)  // %
-      let state = advance_n(state, 5)  // match
+      let state = advance_n(state, 8)  // comptime
       let end_pos = state.pos
-      let token = Token(kind: "PercentMatch", value: "%match", start: start_pos, end: end_pos, line: start_line, column: start_column)
+      let token = Token(kind: "PercentComptime", value: "%comptime", start: start_pos, end: end_pos, line: start_line, column: start_column)
       LexerState(..state, tokens: [token, ..state.tokens])
     }
     _ -> {
-      case peek_n_chars(state, 5) {  // Check for "%call"
-        "%call" -> {
-          // %call
+      case peek_n_chars(state, 6) {  // Check for "%match"
+        "%match" -> {
+          // %match
           let state = advance(state)  // %
-          let state = advance_n(state, 4)  // call
+          let state = advance_n(state, 5)  // match
           let end_pos = state.pos
-          let token = Token(kind: "PercentCall", value: "%call", start: start_pos, end: end_pos, line: start_line, column: start_column)
+          let token = Token(kind: "PercentMatch", value: "%match", start: start_pos, end: end_pos, line: start_line, column: start_column)
           LexerState(..state, tokens: [token, ..state.tokens])
         }
         _ -> {
-          case peek_n_chars(state, 9) {  // Check for "%comptime"
-            "%comptime" -> {
-              // %comptime
+          case peek_n_chars(state, 5) {  // Check for "%call", "%let", "%fix"
+            "%call" -> {
+              // %call
               let state = advance(state)  // %
-              let state = advance_n(state, 8)  // comptime
+              let state = advance_n(state, 4)  // call
               let end_pos = state.pos
-              let token = Token(kind: "PercentComptime", value: "%comptime", start: start_pos, end: end_pos, line: start_line, column: start_column)
+              let token = Token(kind: "PercentCall", value: "%call", start: start_pos, end: end_pos, line: start_line, column: start_column)
               LexerState(..state, tokens: [token, ..state.tokens])
             }
             _ -> {
-              // Just %
-              let state = advance(state)
-              let end_pos = state.pos
-              let token = Token(kind: "Percent", value: "%", start: start_pos, end: end_pos, line: start_line, column: start_column)
-              LexerState(..state, tokens: [token, ..state.tokens])
+              case peek_n_chars(state, 4) {  // Check for "%let", "%fix", "%def", "%Type"
+                "%let" -> {
+                  // %let
+                  let state = advance(state)  // %
+                  let state = advance_n(state, 3)  // let
+                  let end_pos = state.pos
+                  let token = Token(kind: "PercentLet", value: "%let", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                  LexerState(..state, tokens: [token, ..state.tokens])
+                }
+                "%fix" -> {
+                  // %fix
+                  let state = advance(state)  // %
+                  let state = advance_n(state, 3)  // fix
+                  let end_pos = state.pos
+                  let token = Token(kind: "PercentFix", value: "%fix", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                  LexerState(..state, tokens: [token, ..state.tokens])
+                }
+                "%def" -> {
+                  // %def
+                  let state = advance(state)  // %
+                  let state = advance_n(state, 3)  // def
+                  let end_pos = state.pos
+                  let token = Token(kind: "PercentDef", value: "%def", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                  LexerState(..state, tokens: [token, ..state.tokens])
+                }
+                "%Type" -> {
+                  // %Type
+                  let state = advance(state)  // %
+                  let state = advance_n(state, 4)  // Type
+                  let end_pos = state.pos
+                  let token = Token(kind: "PercentType", value: "%Type", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                  LexerState(..state, tokens: [token, ..state.tokens])
+                }
+                _ -> {
+                  case peek_n_chars(state, 4) {  // Check for "%I32", "%U32", "%F32"
+                    "%I32" -> {
+                      // %I32
+                      let state = advance(state)  // %
+                      let state = advance_n(state, 3)  // I32
+                      let end_pos = state.pos
+                      let token = Token(kind: "PercentI32", value: "%I32", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                      LexerState(..state, tokens: [token, ..state.tokens])
+                    }
+                    "%U32" -> {
+                      // %U32
+                      let state = advance(state)  // %
+                      let state = advance_n(state, 3)  // U32
+                      let end_pos = state.pos
+                      let token = Token(kind: "PercentU32", value: "%U32", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                      LexerState(..state, tokens: [token, ..state.tokens])
+                    }
+                    "%F32" -> {
+                      // %F32
+                      let state = advance(state)  // %
+                      let state = advance_n(state, 3)  // F32
+                      let end_pos = state.pos
+                      let token = Token(kind: "PercentF32", value: "%F32", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                      LexerState(..state, tokens: [token, ..state.tokens])
+                    }
+                    _ -> {
+                      case peek_n_chars(state, 4) {  // Check for "%I64", "%U64", "%F64"
+                        "%I64" -> {
+                          // %I64
+                          let state = advance(state)  // %
+                          let state = advance_n(state, 3)  // I64
+                          let end_pos = state.pos
+                          let token = Token(kind: "PercentI64", value: "%I64", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                          LexerState(..state, tokens: [token, ..state.tokens])
+                        }
+                        "%U64" -> {
+                          // %U64
+                          let state = advance(state)  // %
+                          let state = advance_n(state, 3)  // U64
+                          let end_pos = state.pos
+                          let token = Token(kind: "PercentU64", value: "%U64", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                          LexerState(..state, tokens: [token, ..state.tokens])
+                        }
+                        "%F64" -> {
+                          // %F64
+                          let state = advance(state)  // %
+                          let state = advance_n(state, 3)  // F64
+                          let end_pos = state.pos
+                          let token = Token(kind: "PercentF64", value: "%F64", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                          LexerState(..state, tokens: [token, ..state.tokens])
+                        }
+                        _ -> {
+                          // Just %
+                          let state = advance(state)
+                          let end_pos = state.pos
+                          let token = Token(kind: "Percent", value: "%", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                          LexerState(..state, tokens: [token, ..state.tokens])
+                        }
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         }
