@@ -60,10 +60,13 @@ gleam run check examples/tao/02_precedence.tao
 
 ### 📋 Next Steps (After MVP)
 
-1. **Phase 2**: Expand grammar (function calls, let bindings) - 1-2 weeks
-2. **Phase 3**: Function definitions and pattern matching - 2-3 weeks
-3. **Phase 4**: Type system enhancements - 2-3 weeks
-4. **Phase 5**: Standard library - 2-3 weeks
+1. **Phase 2**: Overloading support (type application, overload resolution) - 5-6 weeks
+2. **Phase 3**: Expand grammar (function calls, let bindings) - 1-2 weeks
+3. **Phase 4**: Function definitions and pattern matching - 2-3 weeks
+4. **Phase 5**: Type system enhancements - 2-3 weeks
+5. **Phase 6**: Standard library - 2-3 weeks
+
+See **[10-overloading-design.md](./10-overloading-design.md)** for overloading design and **[11-overloading-implementation.md](./11-overloading-implementation.md)** for implementation plan.
 
 ---
 
