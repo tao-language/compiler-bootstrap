@@ -72,7 +72,7 @@ gleam run check examples/tao/03_multiple_overloads.tao
 3. **Phase 3**: Standard library (prelude, numeric hierarchy) - 2-3 weeks
 4. **Phase 4**: Advanced features (pattern matching, let bindings) - 2-3 weeks
 
-See **[13-tao-status.md](./13-tao-status.md)** for detailed implementation status and **[10-overloading-design.md](./10-overloading-design.md)** for overloading design.
+See **[10-overloading.md](./10-overloading.md)** for complete overloading specification.
 
 ---
 

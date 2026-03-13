@@ -12,7 +12,7 @@
 /// For detailed documentation see:
 /// - [Tao Overloading](../../docs/plans/tao/10-overloading-design.md)
 /// - [Core Syntax](../../docs/core-syntax.md)
-import tao/syntax.{type MvpExpr, MvpInt, MvpVar, MvpAdd, MvpSub, MvpMul, MvpDiv, OverloadedFn, OverloadedApp, get_expr_span}
+import tao/syntax.{type MvpExpr, MvpInt, MvpVar, MvpAdd, MvpSub, MvpMul, MvpDiv, MvpEq, MvpNeq, MvpLt, MvpGt, MvpLte, MvpGte, OverloadedFn, OverloadedApp, get_expr_span}
 import core/core.{
   type Term, Term, Lit, I32, Var, Call, Case, Match, Typ, Lam, Hole,
   type Literal, type LiteralType, type Case, type Pattern, I32T, I64T, F32T, F64T, U32T, U64T, PLitT, PAny,
@@ -63,7 +63,13 @@ fn desugar_expr(expr: MvpExpr, ctx: DesugarCtx) -> Term {
     MvpSub(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_sub")
     MvpMul(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_mul")
     MvpDiv(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_div")
-    OverloadedFn(name, type_param, param_name, param_type, return_type, body, span) -> 
+    MvpEq(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_eq")
+    MvpNeq(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_neq")
+    MvpLt(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_lt")
+    MvpGt(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_gt")
+    MvpLte(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_lte")
+    MvpGte(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_gte")
+    OverloadedFn(name, type_param, param_name, param_type, return_type, body, span) ->
       desugar_overloaded_fn(name, type_param, param_name, param_type, return_type, body, span)
     OverloadedApp(name, args, span) -> desugar_overloaded_app(name, args, span, ctx)
   }

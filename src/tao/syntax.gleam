@@ -36,6 +36,13 @@ pub type MvpExpr {
   MvpSub(left: MvpExpr, right: MvpExpr, span: Span)
   MvpMul(left: MvpExpr, right: MvpExpr, span: Span)
   MvpDiv(left: MvpExpr, right: MvpExpr, span: Span)
+  /// Comparison operators
+  MvpEq(left: MvpExpr, right: MvpExpr, span: Span)
+  MvpNeq(left: MvpExpr, right: MvpExpr, span: Span)
+  MvpLt(left: MvpExpr, right: MvpExpr, span: Span)
+  MvpGt(left: MvpExpr, right: MvpExpr, span: Span)
+  MvpLte(left: MvpExpr, right: MvpExpr, span: Span)
+  MvpGte(left: MvpExpr, right: MvpExpr, span: Span)
   /// Overloaded function definition (e.g., fn (+)(x: I32) -> I32 { ... })
   OverloadedFn(
     name: String,
@@ -103,6 +110,36 @@ fn make_div(left: MvpExpr, right: MvpExpr) -> MvpExpr {
   MvpDiv(left, right, span)
 }
 
+fn make_eq(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+  let span = merge_spans(get_span(left), get_span(right))
+  MvpEq(left, right, span)
+}
+
+fn make_neq(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+  let span = merge_spans(get_span(left), get_span(right))
+  MvpNeq(left, right, span)
+}
+
+fn make_lt(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+  let span = merge_spans(get_span(left), get_span(right))
+  MvpLt(left, right, span)
+}
+
+fn make_gt(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+  let span = merge_spans(get_span(left), get_span(right))
+  MvpGt(left, right, span)
+}
+
+fn make_lte(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+  let span = merge_spans(get_span(left), get_span(right))
+  MvpLte(left, right, span)
+}
+
+fn make_gte(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+  let span = merge_spans(get_span(left), get_span(right))
+  MvpGte(left, right, span)
+}
+
 fn ast_to_expr(ast) -> MvpExpr {
   case ast {
     AstValue(e) -> e
@@ -122,6 +159,12 @@ fn get_span(expr: MvpExpr) -> Span {
     MvpSub(_, _, span) -> span
     MvpMul(_, _, span) -> span
     MvpDiv(_, _, span) -> span
+    MvpEq(_, _, span) -> span
+    MvpNeq(_, _, span) -> span
+    MvpLt(_, _, span) -> span
+    MvpGt(_, _, span) -> span
+    MvpLte(_, _, span) -> span
+    MvpGte(_, _, span) -> span
     OverloadedFn(_, _, _, _, _, _, span) -> span
     OverloadedApp(_, _, span) -> span
   }
@@ -139,6 +182,14 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
     tokens: ["Ident", "Number", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow"],
     keywords: ["fn", "let", "mut", "match", "if", "else", "type", "import", "export", "as", "comptime", "true", "false"],
     operators: [
+      // Comparison operators (precedence 5)
+      infix_binary("==", make_eq, InfixLeft, 5, " == "),
+      infix_binary("!=", make_neq, InfixLeft, 5, " != "),
+      infix_binary("<", make_lt, InfixLeft, 5, " < "),
+      infix_binary(">", make_gt, InfixLeft, 5, " > "),
+      infix_binary("<=", make_lte, InfixLeft, 5, " <= "),
+      infix_binary(">=", make_gte, InfixLeft, 5, " >= "),
+      // Arithmetic operators (precedence 10-20)
       infix_binary("+", make_add, InfixLeft, 10, " + "),
       infix_binary("-", make_sub, InfixLeft, 10, " - "),
       infix_binary("*", make_mul, InfixLeft, 20, " * "),
@@ -261,6 +312,12 @@ pub fn get_expr_span(expr: MvpExpr) -> Span {
     MvpSub(_, _, span) -> span
     MvpMul(_, _, span) -> span
     MvpDiv(_, _, span) -> span
+    MvpEq(_, _, span) -> span
+    MvpNeq(_, _, span) -> span
+    MvpLt(_, _, span) -> span
+    MvpGt(_, _, span) -> span
+    MvpLte(_, _, span) -> span
+    MvpGte(_, _, span) -> span
     OverloadedFn(_, _, _, _, _, _, span) -> span
     OverloadedApp(_, _, span) -> span
   }
@@ -314,6 +371,12 @@ fn format_expr_loop(expr: MvpExpr, parent_prec: Int) -> String {
     MvpSub(l, r, _) -> format_binop(l, r, "-", 10, parent_prec)
     MvpMul(l, r, _) -> format_binop(l, r, "*", 20, parent_prec)
     MvpDiv(l, r, _) -> format_binop(l, r, "/", 20, parent_prec)
+    MvpEq(l, r, _) -> format_binop(l, r, "==", 5, parent_prec)
+    MvpNeq(l, r, _) -> format_binop(l, r, "!=", 5, parent_prec)
+    MvpLt(l, r, _) -> format_binop(l, r, "<", 5, parent_prec)
+    MvpGt(l, r, _) -> format_binop(l, r, ">", 5, parent_prec)
+    MvpLte(l, r, _) -> format_binop(l, r, "<=", 5, parent_prec)
+    MvpGte(l, r, _) -> format_binop(l, r, ">=", 5, parent_prec)
     OverloadedFn(name, type_param, param_name, param_type, return_type, _body, _) -> {
       "fn (" <> name <> ")(" <> param_name <> ": " <> param_type <> ") -> " <> return_type <> " { ... }"
     }
