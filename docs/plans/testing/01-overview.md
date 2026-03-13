@@ -1,7 +1,7 @@
 # Testing Plans Overview
 
 > **Goal**: End-to-end testing infrastructure for the compiler
-> **Status**: ✅ E2E tests complete, Error improvements complete
+> **Status**: ✅ E2E tests complete
 > **Date**: March 11, 2026
 
 ---
@@ -71,14 +71,7 @@ Pass/Fail
 - ✅ Category-based test grouping (programs, terms, errors/*)
 - ✅ Golden file comparison with `normalize_output()`
 - ✅ Detailed failure messages with expected vs actual
-- ✅ **376 tests passing**
-
-**Error Message Improvements** (`src/syntax/error_reporter.gleam`):
-- ✅ 3 lines of context before/after errors
-- ✅ Type information displayed in error messages
-- ✅ Educational notes explaining WHY errors occur
-- ✅ 3 actionable hints per error type
-- ✅ Better type pretty-printing
+- ✅ **373 tests passing**
 
 **Golden Files**:
 - ✅ All examples have `.output.txt` files
@@ -88,10 +81,9 @@ Pass/Fail
 
 **Documentation**:
 - ✅ `examples/README.md` - Guidelines for adding examples
-- ✅ `docs/plans/testing/01-overview.md` - Testing overview
-- ✅ `docs/plans/testing/03-examples-testing.md` - Examples testing spec
-- ✅ `docs/plans/testing/04-cli-golden-files.md` - Golden file format
-- ✅ `docs/plans/testing/05-error-message-improvements.md` - Error improvements (complete)
+- ✅ `01-overview.md` - Testing overview
+- ✅ `03-examples-testing.md` - Examples testing spec
+- ✅ `04-cli-golden-files.md` - Golden file format
 
 ### ⏳ In Progress
 
@@ -106,11 +98,6 @@ Pass/Fail
 - [ ] Round-trip tests (parse → format → parse)
 - [ ] Performance benchmarks
 - [ ] Regression test suite for bug fixes
-
-**Future Error Improvements**:
-- [ ] "Did you mean?" suggestions (blocked by De Bruijn indices)
-- [ ] Full type pretty-printing for dependent types
-- [ ] Error chaining for cascading errors
 
 ---
 
@@ -129,13 +116,13 @@ Pass/Fail
    ┌─ examples/core/errors/type_errors/type_mismatch.core.tao:2:5
    │
  1 │ // This type annotation doesn't match the value's type.
- 2 │ 1 : $Type
-   │     ^~~~~ value is Int, but it should be $Type
+ 2 │ 1 : %Type
+   │     ^~~~~ value is Int, but it should be %Type
    │
    💡 The value 1 is of type Int
-   💡 The type annotation expects a value of type $Type
-   📝 note: Int and $Type are incompatible types
-   🔧 help: Did you mean? `1 : Int`
+   💡 The type annotation expects a value of type %Type
+   📝 note: Int and %Type are incompatible types
+   🔧 help: Did you mean? `1 : %I32`
 -----------------------------------------------------------
 1
 ```
@@ -158,7 +145,7 @@ Pass/Fail
 ### Adding a New Example
 
 1. **Create the source file**:
-   ```gleam
+   ```core
    // examples/core/programs/16_function_composition.core.tao
    // Function Composition
    // Demonstrates composing two functions: (f ∘ g)(x) = f(g(x))
@@ -195,12 +182,24 @@ gleam test
 
 ---
 
+## Error Message Testing
+
+Error messages are tested via the same golden file mechanism. For error message design specifications, see:
+
+- **[../error-reporting/06-error-message-design.md](../error-reporting/06-error-message-design.md)** - Error message design with examples
+- **[../error-reporting/01-overview.md](../error-reporting/01-overview.md)** - Error reporting overview
+
+All error examples in `examples/core/errors/` have corresponding `.output.txt` golden files that capture the exact CLI output.
+
+---
+
 ## Related Documents
 
 - **[02-e2e-test-enhancement.md](./02-e2e-test-enhancement.md)** - E2E test implementation (complete)
 - **[03-examples-testing.md](./03-examples-testing.md)** - Examples testing specification
 - **[../cli/01-overview.md](../cli/01-overview.md)** - CLI overview
 - **[../cli/04-check-run-commands.md](../cli/04-check-run-commands.md)** - Check/Run commands spec
+- **[../error-reporting/06-error-message-design.md](../error-reporting/06-error-message-design.md)** - Error message design
 - **[../../examples/README.md](../../examples/README.md)** - Examples guide
 
 ---

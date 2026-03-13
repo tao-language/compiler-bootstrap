@@ -1,8 +1,8 @@
 # Error Message Design
 
-> **Goal**: Delightfully helpful error messages with excellent visual feedback
-> **Status**: ✅ **Implemented for Core** - 370 tests passing
-> **Date**: March 2025 (Updated: Implementation complete)
+> **Goal**: Delightfully helpful error messages with excellent visual feedback for both humans and AI assistants
+> **Status**: ✅ **Implemented for Core** - 373 tests passing
+> **Date**: March 2025 (Updated: March 2026)
 
 ---
 
@@ -10,34 +10,41 @@
 
 ### ✅ Complete (Core Language)
 
-**Module**: `src/core/error_formatter.gleam`
+**Module**: `src/core/error_formatter.gleam`, `src/syntax/error_reporter.gleam`
 
 **Features**:
-- Emoji-guided navigation (❌ error, 💡 tip, 📝 note, 🔧 help)
-- Error codes (E0101-E0113, E0201-E0203, E0502, E9999)
-- Type-safe error to diagnostic conversion
-- Contextual hints based on type mismatches
-- Source snippet integration via `syntax/source_snippet`
+- ✅ Emoji-guided navigation (❌ error, 💡 tip, 📝 note, 🔧 help)
+- ✅ Error codes (E0001, E0101-E0113, E0201-E0203, E0502, E9999)
+- ✅ Source snippets with 3 lines of context
+- ✅ Type information displayed in error messages
+- ✅ Educational notes explaining WHY errors occur
+- ✅ 3 actionable hints per error type
+- ✅ Multi-span error support (type mismatches)
+- ✅ Error accumulation (shows all errors, not just first)
+- ✅ **373 tests passing**
 
 **Error Types Covered**:
-- TypeMismatch (E0101)
-- VarUndefined (E0102)
-- NotAFunction (E0103)
-- ArityMismatch (E0104)
-- CtrUndefined (E0105)
-- HoleUnsolved (E0106)
-- InfiniteType (E0107)
-- TypeAnnotationNeeded (E0108)
-- RcdMissingFields (E0109)
-- CtrUnsolvedParam (E0110)
-- DotFieldNotFound (E0111)
-- DotOnNonCtr (E0112)
-- SpineMismatch (E0113)
-- MatchMissingCase (E0201)
-- MatchRedundantCase (E0202)
-- PatternMismatch (E0203)
-- ComptimePermissionDenied (E0502)
-- TODO (E9999)
+| Code | Error Type | Status |
+|------|------------|--------|
+| E0001 | SyntaxError | ✅ |
+| E0101 | TypeMismatch | ✅ |
+| E0102 | VarUndefined | ✅ |
+| E0103 | NotAFunction | ✅ |
+| E0104 | ArityMismatch | ✅ |
+| E0105 | CtrUndefined | ✅ |
+| E0106 | HoleUnsolved | ✅ |
+| E0107 | InfiniteType | ✅ |
+| E0108 | TypeAnnotationNeeded | ✅ |
+| E0109 | RcdMissingFields | ✅ |
+| E0110 | CtrUnsolvedParam | ✅ |
+| E0111 | DotFieldNotFound | ✅ |
+| E0112 | DotOnNonCtr | ✅ |
+| E0113 | SpineMismatch | ✅ |
+| E0201 | MatchMissingCase | ✅ |
+| E0202 | MatchRedundantCase | ✅ |
+| E0203 | PatternMismatch | ✅ |
+| E0502 | ComptimePermissionDenied | ✅ |
+| E9999 | TODO | ✅ |
 
 ---
 
@@ -45,22 +52,18 @@
 
 ### 1. Instant Visual Recognition
 
-**Before**:
-```
-error[E0101]: Type mismatch at line 5
-```
+**Every error should be instantly recognizable**:
 
-**After**:
 ```
 ❌ error[E0101]: Type mismatch
-   ┌─ src/main.tao:5:10
+   ┌─ src/main.core.tao:5:10
    │
- 5 │ let x: Int = "hello"
-   │          ━━┷┷┷┷┷┷━ expected Int, found String
+ 5 │ let x: %I32 = "hello"
+   │          ━━┷┷┷┷┷┷━ expected %I32, found String
    │
-   💡 expected because this is Int
-   📝 note: Int and String are incompatible types
-   🔧 help: Did you mean to use a number? e.g., `let x: Int = 42`
+   💡 expected because this is %I32
+   📝 note: %I32 and String are incompatible types
+   🔧 help: Did you mean to use a number? e.g., `let x: %I32 = 42`
 ```
 
 ---
@@ -82,7 +85,38 @@ error[E0101]: Type mismatch at line 5
 
 ---
 
-### 3. Color Coding (Terminal/IDE)
+### 3. Error Message Structure
+
+**Every error message should answer three questions**:
+
+1. **What went wrong?** - Clear description of the problem
+2. **Where is it?** - Precise source location with visual snippet
+3. **How do I fix it?** - Actionable suggestion or hint
+
+**Standard Format**:
+```
+❌ error[E####]: Error Category
+   ┌─ file:line:col
+   │
+ N │ ... context line -3
+ N │ ... context line -2
+ N │ ... context line -1
+ N │ source code with error
+   │       ^^^^ label explaining what's wrong
+ N │ ... context line +1
+ N │ ... context line +2
+   │
+   = note: First explanation of the issue
+   = note: Second explanation with more detail
+   💡 Why this happens (educational)
+   🔧 Fix suggestion 1
+   🔧 Fix suggestion 2
+   🔧 Fix suggestion 3
+```
+
+---
+
+### 4. Color Coding (Terminal/IDE)
 
 | Element | Color | Purpose |
 |---------|-------|---------|
@@ -96,39 +130,20 @@ error[E0101]: Type mismatch at line 5
 
 ---
 
-### 4. Visual Hierarchy
-
-```
-❌ error[E0101]: Type mismatch                          ← Header (bold, red)
-   ┌─ src/main.tao:5:10                                ← Location
-   │
- 5 │ let x: Int = "hello"                              ← Source code
-   │          ━━┷┷┷┷┷┷━ expected Int, found String     ← Underline + label
-   │
-   💡 expected because this is Int                     ← Explanation (blue)
-   📝 note: Int and String are incompatible types      ← Note (gray)
-   🔧 help: Did you mean...                            ← Suggestion (green)
-      │
-  3 │ let x: Int = 42                                  ← Code example
-      │
-```
-
----
-
-## Enhanced Error Message Examples
+## Error Message Examples
 
 ### Syntax Errors
 
 #### E0001: Unexpected Token
 
-```tao
+```core
 // ❌ Wrong
 let x = 5 +
 ```
 
 ```
 ❌ error[E0001]: Unexpected token
-   ┌─ src/main.tao:3:13
+   ┌─ src/main.core.tao:3:13
    │
  3 │ let x = 5 +
    │             ┷ unexpected end of input
@@ -150,18 +165,17 @@ let x = 5 +
 
 #### E0002: Missing Closing Brace
 
-```tao
+```core
 // ❌ Wrong
-fn add(a: Int, b: Int): Int {
+fn add(a: %I32, b: %I32) -> %I32 {
   a + b
-
 ```
 
 ```
 ❌ error[E0002]: Missing closing brace
-   ┌─ src/main.tao:1:32
+   ┌─ src/main.core.tao:1:32
    │
- 1 │ fn add(a: Int, b: Int): Int {
+ 1 │ fn add(a: %I32, b: %I32) -> %I32 {
    │                                ┚ unclosed brace
    │
  2 │   a + b
@@ -176,60 +190,29 @@ fn add(a: Int, b: Int): Int {
 
 ---
 
-#### E0003: Invalid Identifier
-
-```tao
-// ❌ Wrong
-let 123abc = 5
-```
-
-```
-❌ error[E0003]: Invalid identifier
-   ┌─ src/main.tao:3:5
-   │
- 3 │ let 123abc = 5
-   │     ━━━┷━━ invalid identifier name
-   │
-   📝 note: identifiers cannot start with a number
-   📝 note: identifiers can contain letters, numbers, and underscores
-   🔧 help: use a valid identifier name:
-      │
-    3 │ let abc123 = 5
-      │     ~~~~~~
-      │
-   🔧 help: or use underscore prefix:
-      │
-    3 │ let _123abc = 5
-      │     ~~~~~~~
-      │
-   📚 reference: https://tao-lang.dev/docs/identifiers
-```
-
----
-
 ### Type Errors
 
 #### E0101: Type Mismatch
 
-```tao
+```core
 // ❌ Wrong
-let x: Int = "hello"
+let x: %I32 = "hello"
 ```
 
 ```
 ❌ error[E0101]: Type mismatch
-   ┌─ src/main.tao:3:14
+   ┌─ src/main.core.tao:3:14
    │
- 3 │ let x: Int = "hello"
+ 3 │ let x: %I32 = "hello"
    │     ┬      ━━━┷━━━
    │     │      │
-   │     │      expected Int, found String
-   │     expected because this is Int
+   │     │      expected %I32, found String
+   │     expected because this is %I32
    │
-   📝 note: Int and String are incompatible types
+   📝 note: %I32 and String are incompatible types
    🔧 help: use a number instead:
       │
-    3 │ let x: Int = 42
+    3 │ let x: %I32 = 42
       │              ~~
       │
    🔧 help: or change the type annotation:
@@ -237,23 +220,23 @@ let x: Int = "hello"
     3 │ let x: String = "hello"
       │         ~~~~~~
       │
-   📚 reference: https://tao-lang.dev/docs/types
+   📚 reference: docs/core.md#types
 ```
 
 ---
 
 #### E0102: Undefined Variable
 
-```tao
+```core
 // ❌ Wrong
-fn increment(): Int {
+fn increment() -> %I32 {
   count + 1
 }
 ```
 
 ```
 ❌ error[E0102]: Undefined variable
-   ┌─ src/main.tao:4:3
+   ┌─ src/main.core.tao:4:3
    │
  4 │   count + 1
    │   ━━┷━━
@@ -264,24 +247,24 @@ fn increment(): Int {
    🔍 context: function `increment` defined at line 3
    🔧 help: did you forget to define it?
       │
-    3 │ fn increment(): Int {
+    3 │ fn increment() -> %I32 {
     4 │   let count = 0
       │   +++++++++++++
     5 │   count + 1
       │
    🔧 help: or pass it as a parameter:
       │
-    3 │ fn increment(count: Int): Int {
+    3 │ fn increment(count: %I32) -> %I32 {
       │              ~~~~~~~~~~
       │
-   📚 reference: https://tao-lang.dev/docs/variables
+   📚 reference: docs/core.md#variables
 ```
 
 ---
 
 #### E0103: Not a Function
 
-```tao
+```core
 // ❌ Wrong
 let x = 5
 let y = x(10)
@@ -289,29 +272,29 @@ let y = x(10)
 
 ```
 ❌ error[E0103]: Cannot call non-function value
-   ┌─ src/main.tao:4:11
+   ┌─ src/main.core.tao:4:11
    │
  4 │ let y = x(10)
-   │           ━┛━ cannot call value of type `Int`
+   │           ━┛━ cannot call value of type %I32
    │
-   📝 note: `x` has type `Int`, which is not callable
+   📝 note: `x` has type %I32, which is not callable
    💡 only functions can be called with parentheses
    🔧 help: did you mean to use a different variable?
    🔧 help: or define `x` as a function:
       │
-    2 │ let x = fn(n: Int): Int { n * 2 }
+    2 │ let x = fn(n: %I32) -> %I32 { n * 2 }
       │         ++++++++++++++++++++++++++
       │
-   📚 reference: https://tao-lang.dev/docs/functions
+   📚 reference: docs/core.md#functions
 ```
 
 ---
 
 #### E0104: Arity Mismatch
 
-```tao
+```core
 // ❌ Wrong
-fn add(a: Int, b: Int): Int {
+fn add(a: %I32, b: %I32) -> %I32 {
   a + b
 }
 
@@ -320,76 +303,76 @@ let result = add(5)
 
 ```
 ❌ error[E0104]: Wrong number of arguments
-   ┌─ src/main.tao:6:16
+   ┌─ src/main.core.tao:6:16
    │
  6 │ let result = add(5)
    │              ━━┛━
    │              │
    │              expected 2 arguments, got 1
    │
-   📝 note: function signature is `fn add(a: Int, b: Int): Int`
+   📝 note: function signature is `fn add(a: %I32, b: %I32) -> %I32`
    🔍 context: function defined at line 3
    🔧 help: provide the missing argument:
       │
     6 │ let result = add(5, 10)
       │                    ++++
       │
-   📚 reference: https://tao-lang.dev/docs/functions#arguments
+   📚 reference: docs/core.md#functions#arguments
 ```
 
 ---
 
 #### E0105: Constructor Undefined
 
-```tao
+```core
 // ❌ Wrong
-type Maybe<T> = Some(T) | None
-
-let x = Just(5)
+let x = #Just(5)
 ```
 
 ```
 ❌ error[E0105]: Constructor not found
-   ┌─ src/main.tao:5:9
+   ┌─ src/main.core.tao:3:9
    │
- 5 │ let x = Just(5)
-   │         ━━┛━ constructor not found for type `Maybe`
+ 3 │ let x = #Just(5)
+   │         ━━┛━ constructor not found
    │
-   📝 note: `Just` is not a constructor for type `Maybe<T>`
+   📝 note: `#Just` is not a defined constructor
    🔍 available constructors:
    │
-   │   ✅ Some(T)
-   │   ✅ None
+   │   ✅ #True
+   │   ✅ #False
+   │   ✅ #Some
+   │   ✅ #None
    │
-   💡 you might be thinking of `Some` from the `Maybe` type
+   💡 you might be thinking of `#Some` from the Option type
    🔧 help: use the correct constructor:
       │
-    5 │ let x = Some(5)
+    3 │ let x = #Some(5)
       │         ~~~~
       │
-   📚 reference: https://tao-lang.dev/docs/sum-types
+   📚 reference: docs/core.md#constructors
 ```
 
 ---
 
 #### E0106: Unsolved Hole
 
-```tao
+```core
 // ❌ Wrong
-fn incomplete<T>(x: T): T {
+fn incomplete(x) -> ? {
   ?
 }
 ```
 
 ```
 ❌ error[E0106]: Unsolved hole
-   ┌─ src/main.tao:3:3
+   ┌─ src/main.core.tao:3:3
    │
  3 │   ?
    │   ┷ hole not solved
    │
-   📝 note: hole #1 expects type `T`
-   📝 note: holes must be filled during type checking
+   📝 note: hole #1 was not solved during type checking
+   📝 note: holes are development placeholders that must be replaced
    💡 holes are placeholders that must be inferred or provided
    🔧 help: provide an implementation:
       │
@@ -398,9 +381,9 @@ fn incomplete<T>(x: T): T {
       │
    🔧 help: or use a typed hole:
       │
-    3 │   ?(x: T)
+    3 │   ?(x: %I32)
       │
-   📚 reference: https://tao-lang.dev/docs/holes
+   📚 reference: docs/core.md#holes
 ```
 
 ---
@@ -409,80 +392,72 @@ fn incomplete<T>(x: T): T {
 
 #### E0201: Match Missing Case
 
-```tao
+```core
 // ❌ Wrong
-type Result<T, E> = Ok(T) | Err(E)
-
-fn unwrap<T, E>(result: Result<T, E>): T {
-  match result {
-    Ok(x) -> x,
+fn unwrap(result) -> {
+  %match result {
+    | #Ok(x) -> x
   }
 }
 ```
 
 ```
 ❌ error[E0201]: Pattern match not exhaustive
-   ┌─ src/main.tao:6:3
+   ┌─ src/main.core.tao:6:3
    │
- 6 │ ╭   match result {
- 7 │ │     Ok(x) -> x,
+ 6 │ ╭   %match result {
+ 7 │ │     | #Ok(x) -> x
  8 │ │   }
    │ ╰───┚ not all cases are covered
    │
-   📝 note: type `Result<T, E>` has 2 constructors
-   📝 note: you've covered 1 constructor: `Ok`
+   📝 note: type has 2 constructors
+   📝 note: you've covered 1 constructor: `#Ok`
    🔍 missing constructors:
    │
-   │   ❌ Err(E)
+   │   ❌ #Err
    │
    🔧 help: add the missing case:
       │
-    8 │     Err(e) -> panic("unwrap called on Err"),
+    8 │     | #Err(e) -> panic("unwrap called on Err")
       │
-   🔧 help: or use the `?` operator to propagate:
+   🔧 help: or add a wildcard case:
       │
-    6 │   result?
+    8 │     | _ -> panic("unhandled case")
       │
-   🔧 help: or use `unwrap_or` with a default:
-      │
-    6 │   result.unwrap_or(default)
-      │
-   📚 reference: https://tao-lang.dev/docs/pattern-matching
+   📚 reference: docs/core.md#pattern-matching
 ```
 
 ---
 
 #### E0202: Match Redundant Case
 
-```tao
+```core
 // ❌ Wrong
-type Maybe<T> = Some(T) | None
-
-fn process(m: Maybe<Int>): Int {
-  match m {
-    Some(x) if x > 0 -> x,
-    Some(x) if x > 0 -> 0,  // Redundant!
-    _ -> 0,
+fn process(m) -> {
+  %match m {
+    | #Some(x) if x > 0 -> x
+    | #Some(x) if x > 0 -> 0  // Redundant!
+    | _ -> 0
   }
 }
 ```
 
 ```
 ⚠️ warning[W0202]: Redundant pattern
-   ┌─ src/main.tao:7:5
+   ┌─ src/main.core.tao:7:5
    │
- 7 │     Some(x) if x > 0 -> 0,  // Redundant!
-   │     ━━━━━━━━━━━━━━ this case is already handled
+ 7 │     | #Some(x) if x > 0 -> 0  // Redundant!
+   │       ━━━━━━━━━━━━━━ this case is already handled
    │
    📝 note: this pattern matches the same values as a previous case
    🔍 previous case:
    │
- 6 │     Some(x) if x > 0 -> x,
-   │     ━━━━━━━━━━━━━━
+ 6 │     | #Some(x) if x > 0 -> x
+   │       ━━━━━━━━━━━━━━
    │
    🔧 help: remove the redundant case, or use a different guard:
       │
-    7 │     Some(x) if x <= 0 -> 0,
+    7 │     | #Some(x) if x <= 0 -> 0
       │                ~~~~~~
       │
    💡 redundant cases are safe to remove and won't change behavior
@@ -490,239 +465,14 @@ fn process(m: Maybe<Int>): Int {
 
 ---
 
-#### E0203: Invalid Pattern
-
-```tao
-// ❌ Wrong
-match x {
-  5 + 3 -> "eight",
-  _ -> "other",
-}
-```
-
-```
-❌ error[E0203]: Invalid pattern
-   ┌─ src/main.tao:3:3
-   │
- 3 │   5 + 3 -> "eight",
-   │   ━┛━━━ patterns cannot contain operators
-   │
-   📝 note: patterns must be constructors, literals, or variables
-   📝 note: `5 + 3` is an expression, not a pattern
-   🔧 help: use a literal pattern:
-      │
-    3 │   8 -> "eight",
-      │   ~
-      │
-   🔧 help: or use a guard with a variable:
-      │
-    3 │   n if n == 8 -> "eight",
-      │   ~~~~~~~~~~~
-      │
-   📚 reference: https://tao-lang.dev/docs/patterns
-```
-
----
-
-### Scope Errors
-
-#### E0301: Variable Shadowing (Warning)
-
-```tao
-// ⚠️ Warning (not error, but helpful)
-let x = 5
-let x = "hello"  // Shadows previous `x`
-```
-
-```
-⚠️ warning[W0301]: Variable shadowing
-   ┌─ src/main.tao:4:5
-   │
- 4 │ let x = "hello"
-   │     ┬ this shadows the previous `x`
-   │     
-   │
-   🔍 previous definition:
-   │
- 3 │ let x = 5
-   │     - defined here
-   │
-   📝 note: shadowing is allowed but may be confusing
-   🔧 help: use a different name:
-      │
-    4 │ let message = "hello"
-      │     ~~~~~~~
-      │
-   💡 pass `--allow shadowing` to suppress this warning
-   💡 shadowing can be useful for transforming values: `let x = transform(x)`
-```
-
----
-
-#### E0302: Out of Scope
-
-```tao
-// ❌ Wrong
-{
-  let x = 5
-}
-print(x)
-```
-
-```
-❌ error[E0302]: Variable out of scope
-   ┌─ src/main.tao:5:7
-   │
- 5 │ print(x)
-   │       ┷ this variable is out of scope
-   │
-   📝 note: `x` was defined in a block that has ended
-   🔍 definition location:
-   │
- 2 │ {
- 3 │   let x = 5
-   │       - defined here
- 4 │ }
-   │ - block ends here
-   │
-   🔧 help: move the usage inside the block:
-      │
-    2 │ {
-    3 │   let x = 5
-    4 │   print(x)
-      │   +++++++++
-    5 │ }
-      │
-   🔧 help: or define `x` outside the block:
-      │
-    1 │ let x = 5
-    2 │ {
-    3 │   print(x)
-      │
-   📚 reference: https://tao-lang.dev/docs/scope
-```
-
----
-
-### Mutability Errors
-
-#### E0401: Cannot Assign to Immutable Variable
-
-```tao
-// ❌ Wrong
-let x = 5
-x = 10  // Error: `x` is immutable
-```
-
-```
-❌ error[E0401]: Cannot assign to immutable variable
-   ┌─ src/main.tao:4:1
-   │
- 4 │ x = 10
-   │ ┷ cannot assign to immutable variable
-   │
-   📝 note: `x` was declared as immutable
-   🔍 declaration location:
-   │
- 3 │ let x = 5
-   │     - declared here without `mut`
-   │
-   🔧 help: declare `x` as mutable:
-      │
-    3 │ let mut x = 5
-      │     +++
-      │
-   🔧 help: or create a new variable:
-      │
-    4 │ let y = 10
-      │     ~
-      │
-   💡 in Tao, variables are immutable by default for safety
-   📚 reference: https://tao-lang.dev/docs/mutability
-```
-
----
-
-#### E0402: Mutable Parameter Not Allowed
-
-```tao
-// ❌ Wrong
-fn process(mut x: Int): Int {
-  x + 1
-}
-```
-
-```
-❌ error[E0402]: Mutable parameter not allowed
-   ┌─ src/main.tao:3:14
-   │
- 3 │ fn process(mut x: Int): Int {
-   │              ━┛ parameters are always immutable
-   │
-   📝 note: function parameters cannot be mutable
-   💡 parameters are passed by value and cannot be modified
-   🔧 help: use a local mutable variable instead:
-      │
-    3 │ fn process(x: Int): Int {
-    4 │   mut y = x
-    5 │   y = y + 1
-    6 │   y
-      │
-   🔧 help: or just use the parameter directly:
-      │
-    3 │ fn process(x: Int): Int {
-    4 │   x + 1
-      │
-   📚 reference: https://tao-lang.dev/docs/functions#parameters
-```
-
----
-
 ### Comptime Errors
-
-#### E0501: Comptime Evaluation Failed
-
-```tao
-// ❌ Wrong
-const factorial = comptime {
-  fn fact(n: Int): Int {
-    if n <= 1 { 1 } else { n * fact(n - 1) }
-  }
-  fact(-5)  // Infinite recursion!
-}
-```
-
-```
-❌ error[E0501]: Comptime evaluation failed
-   ┌─ src/main.tao:6:3
-   │
- 6 │   fact(-5)
-   │   ━━━━┛━━━ stack overflow during comptime evaluation
-   │
-   📝 note: maximum recursion depth exceeded (1000 calls)
-   📝 note: comptime evaluation must terminate
-   💡 the base case `n <= 1` is never reached for negative numbers
-   🔧 help: add a check for negative numbers:
-      │
-    4 │   fn fact(n: Int): Int {
-    5 │     if n < 0 { panic("negative") }
-    6 │     if n <= 1 { 1 } else { n * fact(n - 1) }
-      │
-   🔧 help: or use an absolute value:
-      │
-    6 │   fact(n.abs())
-      │
-   📚 reference: https://tao-lang.dev/docs/comptime
-```
-
----
 
 #### E0502: Permission Denied
 
-```tao
+```core
 // ❌ Wrong
 @permission(Read("/etc/passwd"))
-fn read_config(): String {
+fn read_config() -> {
   comptime {
     read_file("/etc/shadow")  // Not allowed!
   }
@@ -731,7 +481,7 @@ fn read_config(): String {
 
 ```
 ❌ error[E0502]: Permission denied
-   ┌─ src/main.tao:5:5
+   ┌─ src/main.core.tao:5:5
    │
  5 │     read_file("/etc/shadow")
    │     ━━━━━━━━━━━━━━━━━━━━━━━━ this operation requires Write("/etc/shadow")
@@ -752,124 +502,7 @@ fn read_config(): String {
     5 │     read_file("/etc/passwd")
       │                 ~~~~~~~~~~~
       │
-   📚 reference: https://tao-lang.dev/docs/permissions
-```
-
----
-
-### Import Errors
-
-#### E0601: Module Not Found
-
-```tao
-// ❌ Wrong
-import nonexistent_module
-```
-
-```
-❌ error[E0601]: Module not found
-   ┌─ src/main.tao:3:8
-   │
- 3 │ import nonexistent_module
-   │        ━━━━━━━━━━━━━━━━━ could not find module `nonexistent_module`
-   │
-   🔍 searched in:
-   │
-   │   ❌ ./src/nonexistent_module.tao
-   │   ❌ ./src/nonexistent_module/index.tao
-   │   ❌ ./lib/nonexistent_module.tao
-   │
-   🔧 help: check the module name and path
-   🔧 help: or create the module file:
-      │
-      │   touch src/nonexistent_module.tao
-      │
-   📚 reference: https://tao-lang.dev/docs/modules
-```
-
----
-
-#### E0602: Import Not Exported
-
-```tao
-// ❌ Wrong
-// utils.tao
-fn helper(): Int { 42 }  // Private by default
-
-// main.tao
-import utils { helper }
-```
-
-```
-❌ error[E0602]: Import not exported
-   ┌─ src/main.tao:3:18
-   │
- 3 │ import utils { helper }
-   │                  ━━━━━━ `helper` is not exported from `utils`
-   │
-   📝 note: `helper` is private (not marked with `pub`)
-   🔍 definition location:
-   │
-   │   // In utils.tao:
-   │   fn helper(): Int { 42 }
-   │   ━━━━━━━━━━━━━━━━━━━━━━━ defined here as private
-   │
-   🔧 help: export the function:
-      │
-      │   // In utils.tao:
-      │   pub fn helper(): Int { 42 }
-      │   +++
-      │
-   🔧 help: or import the private function (if in same package):
-      │
-    3 │ import utils { _helper }
-      │                  ~~~~~~
-      │
-   💡 in Tao, items are private by default for encapsulation
-   📚 reference: https://tao-lang.dev/docs/modules#exports
-```
-
----
-
-### Operator Errors
-
-#### E0701: Operator Overload Not Found
-
-```tao
-// ❌ Wrong
-type Point = { x: Int, y: Int }
-
-let p1 = Point { x: 1, y: 2 }
-let p2 = Point { x: 3, y: 4 }
-let p3 = p1 + p2  // No `add` function for Point
-```
-
-```
-❌ error[E0701]: Operator overload not found
-   ┌─ src/main.tao:6:14
-   │
- 6 │ let p3 = p1 + p2
-   │              ┷ no `add` function for type `Point`
-   │
-   📝 note: the `+` operator desugars to `add(p1, p2)`
-   📝 note: `add` is not defined for type `Point`
-   🔍 operator resolution:
-   │
-   │   `p1 + p2`  →  `add(p1, p2)`
-   │   types: `Point + Point`  →  `add(Point, Point): ?`
-   │
-   🔧 help: define the operator overload:
-      │
-      │ fn add(a: Point, b: Point): Point {
-      │   Point { x: a.x + b.x, y: a.y + b.y }
-      │ }
-      │
-   🔧 help: or use a method:
-      │
-    6 │ let p3 = p1.add(p2)
-      │             ~~~
-      │
-   📚 reference: https://tao-lang.dev/docs/operators
+   📚 reference: docs/core.md#comptime
 ```
 
 ---
@@ -887,507 +520,101 @@ let p3 = p1 + p2  // No `add` function for Point
 | E0104 | ❌ Error | Type | Arity mismatch |
 | E0105 | ❌ Error | Type | Constructor undefined |
 | E0106 | ❌ Error | Type | Unsolved hole |
+| E0107 | ❌ Error | Type | Infinite type |
+| E0108 | ❌ Error | Type | Type annotation needed |
+| E0109 | ❌ Error | Type | Record missing fields |
+| E0110 | ❌ Error | Type | Constructor unsolved param |
+| E0111 | ❌ Error | Type | Dot field not found |
+| E0112 | ❌ Error | Type | Dot on non-constructor |
+| E0113 | ❌ Error | Type | Spine mismatch |
 | E0201 | ❌ Error | Pattern | Match missing case |
 | E0202 | ⚠️ Warning | Pattern | Match redundant case |
 | E0203 | ❌ Error | Pattern | Invalid pattern |
-| E0301 | ⚠️ Warning | Scope | Variable shadowing |
-| E0302 | ❌ Error | Scope | Out of scope |
-| E0401 | ❌ Error | Mutability | Cannot assign to immutable |
-| E0402 | ❌ Error | Mutability | Mutable parameter not allowed |
-| E0501 | ❌ Error | Comptime | Evaluation failed |
 | E0502 | ❌ Error | Comptime | Permission denied |
-| E0601 | ❌ Error | Import | Module not found |
-| E0602 | ❌ Error | Import | Import not exported |
-| E0701 | ❌ Error | Operator | Operator overload not found |
+| E9999 | ❌ Error | General | TODO / Unknown error |
 
 ---
 
-## JSON Schema for LSP/AI Assistants
+## Implementation Details
 
-### Diagnostic Schema
+### Module Structure
 
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Tao Diagnostic",
-  "description": "Error/warning diagnostic for Tao language",
-  "type": "object",
-  "required": ["code", "severity", "message", "location"],
-  "properties": {
-    "code": {
-      "type": "string",
-      "description": "Error code (e.g., 'E0101')",
-      "pattern": "^[EW][0-9]{4}$"
-    },
-    "severity": {
-      "type": "string",
-      "enum": ["error", "warning", "info"],
-      "description": "Severity level"
-    },
-    "message": {
-      "type": "string",
-      "description": "Short error message"
-    },
-    "location": {
-      "$ref": "#/definitions/SourceLocation"
-    },
-    "highlights": {
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/Highlight"
-      },
-      "description": "Highlighted spans in source code"
-    },
-    "explanation": {
-      "type": "string",
-      "description": "Detailed explanation of the error"
-    },
-    "notes": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["message"],
-        "properties": {
-          "message": {
-            "type": "string",
-            "description": "Note message"
-          },
-          "location": {
-            "$ref": "#/definitions/SourceLocation"
-          }
-        }
-      },
-      "description": "Additional context notes"
-    },
-    "suggestions": {
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/Suggestion"
-      },
-      "description": "Suggested fixes"
-    },
-    "references": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["title", "url"],
-        "properties": {
-          "title": {
-            "type": "string",
-            "description": "Reference title"
-          },
-          "url": {
-            "type": "string",
-            "format": "uri",
-            "description": "Reference URL"
-          }
-        }
-      },
-      "description": "Documentation references"
-    },
-    "context": {
-      "type": "object",
-      "properties": {
-        "expectedType": {
-          "type": "string",
-          "description": "Expected type"
-        },
-        "actualType": {
-          "type": "string",
-          "description": "Actual type"
-        },
-        "availableConstructors": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Available constructors"
-        },
-        "missingConstructors": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Missing constructors"
-        }
-      },
-      "description": "Additional context for specific error types"
-    }
-  },
-  "definitions": {
-    "SourceLocation": {
-      "type": "object",
-      "required": ["file", "startLine", "startColumn", "endLine", "endColumn"],
-      "properties": {
-        "file": {
-          "type": "string",
-          "description": "File path"
-        },
-        "startLine": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "1-based start line"
-        },
-        "startColumn": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "1-based start column"
-        },
-        "endLine": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "1-based end line"
-        },
-        "endColumn": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "1-based end column"
-        }
-      }
-    },
-    "Highlight": {
-      "type": "object",
-      "required": ["location", "style"],
-      "properties": {
-        "location": {
-          "$ref": "#/definitions/SourceLocation"
-        },
-        "style": {
-          "type": "string",
-          "enum": ["primary", "secondary"],
-          "description": "Highlight style"
-        },
-        "label": {
-          "type": "string",
-          "description": "Label text for highlight"
-        }
-      }
-    },
-    "Suggestion": {
-      "type": "object",
-      "required": ["message", "edits"],
-      "properties": {
-        "message": {
-          "type": "string",
-          "description": "Suggestion description"
-        },
-        "edits": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["location", "newText"],
-            "properties": {
-              "location": {
-                "$ref": "#/definitions/SourceLocation"
-              },
-              "newText": {
-                "type": "string",
-                "description": "Replacement text"
-              }
-            }
-          },
-          "description": "Text edits to apply"
-        },
-        "priority": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 100,
-          "default": 50,
-          "description": "Suggestion priority (higher = more likely)"
-        }
-      }
-    }
-  }
+```
+src/
+├── core/
+│   └── error_formatter.gleam  # Core error to diagnostic conversion
+└── syntax/
+    ├── error_reporter.gleam   # Error reporting with source snippets
+    └── source_snippet.gleam   # Source snippet formatting
+```
+
+### Diagnostic Type
+
+```gleam
+pub type Diagnostic {
+  Diagnostic(
+    code: String,           // e.g., "E0101"
+    severity: Severity,     // Error, Warning, Info
+    message: String,        // Short description
+    location: Location,     // File, line, column
+    highlights: List(Highlight),  // Pointers in source
+    notes: List(String),    // Additional context
+    hints: List(String),    // Actionable suggestions
+  )
 }
 ```
 
-### Example JSON Diagnostic
+### Error Flow
 
-```json
-{
-  "code": "E0101",
-  "severity": "error",
-  "message": "Type mismatch",
-  "location": {
-    "file": "src/main.tao",
-    "startLine": 3,
-    "startColumn": 14,
-    "endLine": 3,
-    "endColumn": 21
-  },
-  "highlights": [
-    {
-      "location": {
-        "file": "src/main.tao",
-        "startLine": 3,
-        "startColumn": 8,
-        "endLine": 3,
-        "endColumn": 9
-      },
-      "style": "secondary",
-      "label": "expected because this is Int"
-    },
-    {
-      "location": {
-        "file": "src/main.tao",
-        "startLine": 3,
-        "startColumn": 14,
-        "endLine": 3,
-        "endColumn": 21
-      },
-      "style": "primary",
-      "label": "expected Int, found String"
-    }
-  ],
-  "explanation": "The type annotation specifies Int but the value is a String",
-  "notes": [
-    {
-      "message": "Int and String are incompatible types"
-    }
-  ],
-  "suggestions": [
-    {
-      "message": "Use a number instead",
-      "edits": [
-        {
-          "location": {
-            "file": "src/main.tao",
-            "startLine": 3,
-            "startColumn": 14,
-            "endLine": 3,
-            "endColumn": 21
-          },
-          "newText": "42"
-        }
-      ],
-      "priority": 80
-    },
-    {
-      "message": "Change the type annotation",
-      "edits": [
-        {
-          "location": {
-            "file": "src/main.tao",
-            "startLine": 3,
-            "startColumn": 8,
-            "endLine": 3,
-            "endColumn": 11
-          },
-          "newText": "String"
-        }
-      ],
-      "priority": 60
-    }
-  ],
-  "references": [
-    {
-      "title": "Tao Type System",
-      "url": "https://tao-lang.dev/docs/types"
-    }
-  ],
-  "context": {
-    "expectedType": "Int",
-    "actualType": "String"
-  }
-}
+```
+Parse Error / Type Error
+         ↓
+error_reporter.parse_error_to_diagnostic()
+         ↓
+source_snippet.format_diagnostic()
+         ↓
+CLI Output (with emojis, colors)
 ```
 
 ---
 
-## Visual Design Guidelines
+## Testing
 
-### 1. Terminal Output
+All error messages are tested via golden file comparison:
 
-```
-❌ error[E0101]: Type mismatch
-   ┌─ src/main.tao:3:10
-   │
- 3 │ let x: Int = "hello"
-   │          ━━┷┷┷┷┷┷━ expected Int, found String
-   │
-   💡 expected because this is Int
-   📝 note: Int and String are incompatible types
-   🔧 help: Did you mean to use a number? e.g., `let x: Int = 42`
+```bash
+# Run all tests
+gleam test
+
+# Result: 373 tests passing ✅
 ```
 
-**Colors**:
-- ❌ `error` - Bright Red (`\x1b[91m`)
-- ⚠️ `warning` - Yellow (`\x1b[93m`)
-- ℹ️ `info` - Blue (`\x1b[94m`)
-- 🔧 `help` - Green (`\x1b[92m`)
-- 📝 `note` - Gray (`\x1b[90m`)
-- Code - Cyan (`\x1b[96m`)
-- File path - White (`\x1b[97m`)
-
-### 2. IDE Integration
-
-**Inline Display**:
-```
-let x: Int = "hello"
-           ━━━━━━━━
-           ❌ Expected Int, found String
-           💡 Did you mean: 42?
-```
-
-**Hover Tooltip**:
-```
-❌ Type mismatch (E0101)
-
-Expected: Int
-Found:    String
-
-💡 Int and String are incompatible types
-
-🔧 Quick Fix: Use a number (42)
-🔧 Quick Fix: Change type to String
-📚 Read more: tao-lang.dev/docs/types
-```
-
-**Quick Fix Menu**:
-```
-Quick Fixes...
-  ✅ Use a number: 42
-  ✅ Change type to String
-  📖 Open documentation
-  🔍 Find similar errors
-```
-
-### 3. Accessibility
-
-- **Screen Readers**: Provide text alternatives for emojis
-- **Color Blindness**: Don't rely solely on color (use icons too)
-- **High Contrast**: Support high contrast mode
-- **Font Size**: Support scalable fonts
-
----
-
-## Additional Improvements
-
-### 1. Error Grouping
-
-Group related errors together:
-
-```
-❌ 3 errors found in src/main.tao
-
-❌ error[E0101]: Type mismatch (line 5)
-❌ error[E0102]: Undefined variable (line 10)
-❌ error[E0201]: Match missing case (line 15)
-
-💡 tip: Fix errors from top to bottom - later errors may be caused by earlier ones
-```
-
-### 2. Error Chaining
-
-Show cascading errors:
-
-```
-❌ error[E0101]: Type mismatch
-   ┌─ src/main.tao:5:10
-   │
- 5 │ let x: Int = "hello"
-   │          ━━┷┷┷┷┷┷━
-   │
-   💡 this error may be causing 2 other errors below
-
-⚠️ error[E0102]: Undefined variable (possibly caused by error above)
-⚠️ error[E0302]: Out of scope (possibly caused by error above)
-```
-
-### 3. Progress Indicators
-
-For long-running checks:
-
-```
-⏳ Type checking... 45%
-   ✓ Parsing complete
-   ✓ Name resolution complete
-   ⏳ Type checking in progress...
-   ○ Exhaustiveness checking pending
-   ○ Comptime evaluation pending
-```
-
-### 4. Error Statistics
-
-At the end of compilation:
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-❌ 3 errors, ⚠️ 2 warnings found
-
-Error breakdown:
-  Type errors:      2
-  Pattern errors:   1
-
-Most common error: Type mismatch (E0101)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
-### 5. Learning Mode
-
-For beginners, add extra explanations:
-
-```
-❌ error[E0101]: Type mismatch
-   ┌─ src/main.tao:3:14
-   │
- 3 │ let x: Int = "hello"
-   │              ━━━━━━━━
-   │
-   📚 LEARNING MODE:
-   │
-   │ In programming, every value has a type.
-   │ Types include: Int (numbers), String (text), Bool (true/false)
-   │
-   │ You said `x` should be Int (a number),
-   │ but you gave it "hello" (text).
-   │
-   │ This is like putting text in a number-only box!
-   │
-   🔧 help: Use a number: let x: Int = 42
-   📚 reference: https://tao-lang.dev/learn/types
-```
-
----
-
-## Implementation Checklist
-
-### Phase 1: Core Infrastructure
-- [ ] Define JSON schema for diagnostics
-- [ ] Implement diagnostic type in compiler
-- [ ] Add emoji support to terminal output
-- [ ] Implement color coding
-
-### Phase 2: Error Messages
-- [ ] Implement all 23 error types
-- [ ] Add source snippet formatting
-- [ ] Add suggestions with code edits
-- [ ] Add notes and explanations
-
-### Phase 3: IDE Integration
-- [ ] Implement LSP diagnostic conversion
-- [ ] Add quick fix support
-- [ ] Add hover tooltip support
-- [ ] Add inline error display
-
-### Phase 4: Advanced Features
-- [ ] Implement error grouping
-- [ ] Implement error chaining
-- [ ] Add learning mode
-- [ ] Add error statistics
+**Golden Files**:
+- Location: `examples/core/errors/**/*.output.txt`
+- Format: Exact CLI output
+- Update: `./scripts/generate_golden_files.sh`
 
 ---
 
 ## Related Documents
 
-- **[01-overview.md](./01-overview.md)** - Tao language overview
-- **[02-syntax.md](./02-syntax.md)** - Tao syntax specification
-- **[03-desugaring.md](./03-desugaring.md)** - Desugaring rules
+- **[01-overview.md](./01-overview.md)** - Error reporting overview
+- **[02-error-types.md](./02-error-types.md)** - Error type specifications
+- **[03-source-snippets.md](./03-source-snippets.md)** - Source snippet formatting
+- **[04-cli-integration.md](./04-cli-integration.md)** - CLI integration
+- **[05-parse-error-panic-fix.md](./05-parse-error-panic-fix.md)** - Parse error panic fix
+- **[../testing/01-overview.md](../testing/01-overview.md)** - Testing overview
+- **[../testing/05-error-message-improvements.md](../testing/05-error-message-improvements.md)** - Error improvements (complete)
 - **[../../docs/cli.md](../../docs/cli.md)** - CLI documentation
-- **[../../docs/syntax-library.md](../../docs/syntax-library.md)** - Syntax library
+- **[../../docs/core-syntax.md](../../docs/core-syntax.md)** - Core syntax reference
 
 ---
 
 ## References
 
-- [Rust Compiler Errors](https://doc.rust-lang.org/error-index.html) - Gold standard with emojis
-- [Elm Compiler Errors](https://elm-lang.org/news/compiler-errors-for-humans) - Human-friendly errors
-- [Gleam Compiler Errors](https://gleam.run/book/tour/errors.html) - Modern functional errors
-- [TypeScript Errors](https://www.typescriptlang.org/docs/handbook/error.html) - Familiar syntax errors
-- [LSP Diagnostic](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#diagnostic) - Language Server Protocol spec
+- [Error Reporter Implementation](../../src/syntax/error_reporter.gleam)
+- [Core Error Formatter](../../src/core/error_formatter.gleam)
+- [Source Snippet](../../src/syntax/source_snippet.gleam)
+- [Rust Compiler Errors](https://github.com/rust-lang/rust/blob/master/compiler/rustc_errors/src)
+- [Elm Compiler Errors](https://elm-lang.org/news/compiler-errors-for-humans)
+- [TypeScript Errors](https://www.typescriptlang.org/docs/handbook/error.html)
