@@ -34,7 +34,6 @@ pub type MvpExpr {
   MvpSub(left: MvpExpr, right: MvpExpr, span: Span)
   MvpMul(left: MvpExpr, right: MvpExpr, span: Span)
   MvpDiv(left: MvpExpr, right: MvpExpr, span: Span)
-  MvpCall(name: String, args: List(MvpExpr), span: Span)
 }
 
 // ============================================================================
@@ -90,19 +89,6 @@ fn make_div(left: MvpExpr, right: MvpExpr) -> MvpExpr {
   MvpDiv(left, right, span)
 }
 
-fn make_call(values) -> MvpExpr {
-  case values {
-    [TokenValue(name), _, args_value, _] -> {
-      let args = case args_value {
-        ListValue(asts) -> list.map(asts, ast_to_expr)
-        _ -> []
-      }
-      MvpCall(name.value, args, span_from_token(name, "tao"))
-    }
-    _ -> panic as "Expected call"
-  }
-}
-
 fn ast_to_expr(ast) -> MvpExpr {
   case ast {
     AstValue(e) -> e
@@ -122,7 +108,6 @@ fn get_span(expr: MvpExpr) -> Span {
     MvpSub(_, _, span) -> span
     MvpMul(_, _, span) -> span
     MvpDiv(_, _, span) -> span
-    MvpCall(_, _, span) -> span
   }
 }
 
@@ -144,9 +129,18 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
       infix_binary("/", make_div, InfixLeft, 20, " / "),
     ],
     rules: [
+      // Program = Expr
+      rule("Program", [
+        alt(ref("Expr"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> MvpInt(0, Span("empty", 0, 0, 0, 0))
+          }
+        }),
+      ]),
       left_assoc_rule(
         "Expr",
-        "Primary",
+        "Term",
         [
           infix_binary("+", make_add, InfixLeft, 10, " + "),
           infix_binary("-", make_sub, InfixLeft, 10, " - "),
@@ -155,7 +149,7 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
       ),
       left_assoc_rule(
         "Term",
-        "Factor",
+        "Primary",
         [
           infix_binary("*", make_mul, InfixLeft, 20, " * "),
           infix_binary("/", make_div, InfixLeft, 20, " / "),
@@ -171,46 +165,6 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
             _ -> panic as "Expected (expr)"
           }
         }),
-        alt(ref("Call"), fn(values) {
-          case values {
-            [AstValue(expr)] -> expr
-            _ -> panic as "Expected call"
-          }
-        }),
-      ]),
-      rule("Call", [
-        alt(
-          seq([
-            token_pattern("Ident"),
-            token_pattern("LParen"),
-            many(seq([ref("Expr"), token_pattern("Comma")])),
-            opt(ref("Expr")),
-            token_pattern("RParen"),
-          ]),
-          fn(values) {
-            case values {
-              [TokenValue(name), _, ListValue(pairs), last_opt, _] -> {
-                let args_from_pairs = list.flat_map(pairs, fn(pair_val) {
-                  case pair_val {
-                    ListValue(items) -> {
-                      case list.first(items) {
-                        Ok(AstValue(e)) -> [e]
-                        _ -> []
-                      }
-                    }
-                    _ -> []
-                  }
-                })
-                let last_arg = case last_opt {
-                  AstValue(e) -> [e]
-                  _ -> []
-                }
-                MvpCall(name.value, list.append(args_from_pairs, last_arg), span_from_token(name, "tao"))
-              }
-              _ -> panic as "Expected call"
-            }
-          },
-        ),
       ]),
     ],
   )
@@ -239,9 +193,6 @@ fn format_expr_loop(expr: MvpExpr, parent_prec: Int) -> String {
     MvpSub(l, r, _) -> format_binop(l, r, "-", 10, parent_prec)
     MvpMul(l, r, _) -> format_binop(l, r, "*", 20, parent_prec)
     MvpDiv(l, r, _) -> format_binop(l, r, "/", 20, parent_prec)
-    MvpCall(name, args, _) -> {
-      name <> "(" <> string_join(list.map(args, format_expr), ", ") <> ")"
-    }
   }
 }
 
