@@ -77,7 +77,7 @@ pub fn roundtrip_lit_positive_test() {
 // ============================================================================
 
 pub fn roundtrip_lambda_simple_test() {
-  let source = "x -> x"
+  let source = "%fn(x) -> x"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   // Verify round-trip: parse then format should give same source
@@ -86,7 +86,7 @@ pub fn roundtrip_lambda_simple_test() {
 }
 
 pub fn roundtrip_lambda_different_var_test() {
-  let source = "y -> y"
+  let source = "%fn(y) -> y"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
@@ -112,9 +112,9 @@ pub fn roundtrip_lambda_shadowing_test() {
 }
 
 pub fn roundtrip_lambda_self_shadowing_test() {
-  // x -> x -> x should show shadowing: inner x shadows outer x
+  // %fn(x) -> %fn(x) -> x should show shadowing: inner x shadows outer x
   // The innermost x refers to the middle lambda's parameter
-  let source = "x -> x -> x"
+  let source = "%fn(x) -> %fn(x) -> x"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
@@ -372,7 +372,7 @@ pub fn roundtrip_parens_simple_test() {
 }
 
 pub fn roundtrip_parens_preserved_when_needed_test() {
-  let source = "(x -> x)(42)"
+  let source = "(%fn(x) -> x)(42)"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
@@ -384,7 +384,7 @@ pub fn roundtrip_parens_preserved_when_needed_test() {
 // ============================================================================
 
 pub fn roundtrip_lambda_in_app_test() {
-  let source = "(x -> x)(42)"
+  let source = "(%fn(x) -> x)(42)"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
@@ -392,7 +392,7 @@ pub fn roundtrip_lambda_in_app_test() {
 }
 
 pub fn roundtrip_pi_in_app_test() {
-  let source = "((x : %I32) -> %I32)(42)"
+  let source = "(%pi(x : %I32) -> %I32)(42)"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
