@@ -2,5 +2,5 @@
 // Occurs when a type would need to contain itself
 // This happens when unification tries to solve a hole with a type containing that hole
 // Example: applying a function to itself without proper type annotation
-let f = x -> x(x) in
+%let f = x -> x(x) in
 f

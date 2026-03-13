@@ -1,2 +1,2 @@
 
-Result: (x : $Type) -> x
+Result: (x : %Type) -> x

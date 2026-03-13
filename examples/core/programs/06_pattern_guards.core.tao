@@ -2,10 +2,10 @@
 // Demonstrates Church-encoded booleans
 
 // True: selects first argument
-let true = t -> f -> t in
+%let true = t -> f -> t in
 
-// False: selects second argument  
-let false = t -> f -> f in
+// False: selects second argument
+%let false = t -> f -> f in
 
 // Use true
 true

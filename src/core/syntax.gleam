@@ -9,13 +9,13 @@
 /// - Lambda: `x -> body`
 /// - Pi types: `(x : A) -> B`
 /// - Application: `f(x)` (C-style only)
-/// - Type annotations: `x : $I32`
+/// - Type annotations: `x : %I32`
 /// - Field access: `record.field`
 /// - Records: `{}`, `{x: 1}`, `{x: 1, y: 2}`
 /// - Constructors: `#True`, `#Some`, `#Maybe(a)`
-/// - Type universes: `$Type`, `$Type(1)`, `$Type(2)`
+/// - Type universes: `%Type`, `%Type(1)`, `%Type(2)`
 /// - Holes: `?`, `?1`, `?2` (unsolved metavariables)
-/// - Literal types: `$I32`, `$I64`, `$F64`
+/// - Literal types: `%I32`, `%I64`, `%F64`
 ///
 /// Both parser and formatter are derived from this single grammar definition.
 import core/core.{
@@ -677,7 +677,7 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
           make_single_case,
         ),
       ]),
-      // Pattern: x, _, x @ pat, Type, 42, $I32, {fields}, #Name(pat)
+      // Pattern: x, _, x @ pat, %Type, 42, %I32, {fields}, #Name(pat)
       rule("Pattern", [
         // Variable pattern: x
         alt(token_pattern("Ident"), make_pattern_var),
@@ -889,15 +889,15 @@ fn make_typ_or_litt(values) -> ParseValue {
           ))
       }
     }
-    _ -> panic as "Expected $Type or $I32"
+    _ -> panic as "Expected %Type or %I32"
   }
 }
 
 fn make_typ_with_level(values) -> ParseValue {
   case values {
-    [_, TokenValue(type_token), _, TokenValue(level_token), _] -> {
+    [TokenValue(type_token), _, TokenValue(level_token), _] -> {
       case type_token.value {
-        "Type" -> {
+        "%Type" -> {
           case int.parse(level_token.value) {
             Ok(level) ->
               AsTerm(NTyp(level, grammar.span_from_token(type_token, "input")))
@@ -971,7 +971,7 @@ fn make_f64_type(values) -> ParseValue {
 fn make_constructor(values) -> ParseValue {
   case values {
     [_, TokenValue(token)] -> {
-      // Constructor without args: use $Type as placeholder (matches arg_ty Typ(0))
+      // Constructor without args: use %Type as placeholder (matches arg_ty Typ(0))
       let span = grammar.span_from_token(token, "input")
       AsTerm(NCtr(token.value, NTyp(0, span), span))
     }
@@ -1329,10 +1329,10 @@ fn format_term(
     }
     Typ(level) -> {
       case level {
-        0 -> formatter.text("$Type")
+        0 -> formatter.text("%Type")
         _ ->
           formatter.concat([
-            formatter.text("$Type("),
+            formatter.text("%Type("),
             formatter.text(int.to_string(level)),
             formatter.text(")"),
           ])
@@ -1350,12 +1350,12 @@ fn format_term(
     }
     LitT(typ) -> {
       case typ {
-        I32T -> formatter.text("$I32")
-        I64T -> formatter.text("$I64")
-        U32T -> formatter.text("$U32")
-        U64T -> formatter.text("$U64")
-        F32T -> formatter.text("$F32")
-        F64T -> formatter.text("$F64")
+        I32T -> formatter.text("%I32")
+        I64T -> formatter.text("%I64")
+        U32T -> formatter.text("%U32")
+        U64T -> formatter.text("%U64")
+        F32T -> formatter.text("%F32")
+        F64T -> formatter.text("%F64")
       }
     }
     Ctr(tag, arg) -> {
@@ -1501,9 +1501,9 @@ fn format_term(
     Fix(name, body) -> {
       let inner =
         formatter.concat([
-          formatter.text("fix "),
+          formatter.text("%fix "),
           formatter.text(name),
-          formatter.text(" -> "),
+          formatter.text(" = "),
           format_term(body, 70, [name, ..bindings]),
         ])
       wrap_parens(inner, 70 < parent_prec)
@@ -1529,10 +1529,10 @@ fn format_pattern(pattern: Pattern) -> formatter.Doc {
       ])
     PTyp(level) -> {
       case level {
-        0 -> formatter.text("$Type")
+        0 -> formatter.text("%Type")
         _ ->
           formatter.concat([
-            formatter.text("$Type("),
+            formatter.text("%Type("),
             formatter.text(int.to_string(level)),
             formatter.text(")"),
           ])
@@ -1546,7 +1546,7 @@ fn format_pattern(pattern: Pattern) -> formatter.Doc {
     }
     PLitT(typ) -> {
       case typ {
-        I32T -> formatter.text("$I32")
+        I32T -> formatter.text("%I32")
         _ -> formatter.text("<litt>")
       }
     }
@@ -1606,7 +1606,7 @@ pub fn term_to_string(term: Term) -> String {
 fn term_to_string_loop(term: Term, bindings: List(String)) -> String {
   let data = term.data
   case data {
-    core.Typ(k) -> "$Type" <> int.to_string(k)
+    core.Typ(k) -> "%Type" <> int.to_string(k)
     core.Lit(literal) -> literal_to_string(literal)
     core.LitT(literal_type) -> literal_type_to_string(literal_type)
     core.Var(index) -> {
@@ -1657,12 +1657,12 @@ fn literal_to_string(literal: core.Literal) -> String {
 
 fn literal_type_to_string(literal_type: core.LiteralType) -> String {
   case literal_type {
-    core.I32T -> "$I32"
-    core.I64T -> "$I64"
-    core.U32T -> "$U32"
-    core.U64T -> "$U64"
-    core.F32T -> "$F32"
-    core.F64T -> "$F64"
+    core.I32T -> "%I32"
+    core.I64T -> "%I64"
+    core.U32T -> "%U32"
+    core.U64T -> "%U64"
+    core.F32T -> "%F32"
+    core.F64T -> "%F64"
   }
 }
 

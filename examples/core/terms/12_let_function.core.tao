@@ -1,2 +1,2 @@
 // Let binding with simple value
-let x = 42 in x
+%let x = 42 in x

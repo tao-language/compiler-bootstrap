@@ -2,5 +2,5 @@
 // Accessing a field that doesn't exist in the record
 // This error occurs when projecting a field that wasn't defined
 // Example: trying to access field 'z' from a record that only has 'x' and 'y'
-let r = {x: 1, y: 2} in
+%let r = {x: 1, y: 2} in
 r.z

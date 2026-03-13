@@ -1,4 +1,4 @@
-%match x ~ $Type {
+%match x ~ %Type {
   | y -> y
   | #Some(z -> z
 }

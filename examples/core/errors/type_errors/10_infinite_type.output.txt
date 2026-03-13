@@ -1,11 +1,11 @@
 
 error[E0107]: Infinite type
-  ┌─ input:5:16
+  ┌─ input:5:17
 2 │ // Occurs when a type would need to contain itself
 3 │ // This happens when unification tries to solve a hole with a type containing that hole
 4 │ // Example: applying a function to itself without proper type annotation
-5 │ let f = x -> x(x) in
-                   ^ -
+5 │ %let f = x -> x(x) in
+                    ^ -
 6 │ f
 7 │ 
   = note: Hole #2 would create an infinite type

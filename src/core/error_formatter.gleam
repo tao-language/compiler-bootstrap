@@ -8,11 +8,11 @@
 /// ❌ error[E0101]: Type mismatch
 ///    ┌─ src/file.core:3:5
 ///    │
-///  3 │ (x : $I32) -> x
-///    │     ━━━━━ expected $Type, found $I32
+///  3 │ (x : %I32) -> x
+///    │     ━━━━━ expected %Type, found %I32
 ///    │
-///    💡 expected because this is $Type
-///    📝 note: $Type and $I32 are incompatible types
+///    💡 expected because this is %Type
+///    📝 note: %Type and %I32 are incompatible types
 ///    🔧 help: use a type annotation or check your term
 /// ```
 import core/color.{type ColorConfig, should_use_colors, default_config, colorize_error_header, colorize_warning_header, colorize_info_header, colorize_note, colorize_help, strip_ansi_codes}
@@ -497,23 +497,23 @@ fn type_to_string(ty: Type) -> String {
 
 fn literal_type_to_string(lit: LiteralType) -> String {
   case lit {
-    I32T -> "$I32"
-    I64T -> "$I64"
-    U32T -> "$U32"
-    U64T -> "$U64"
-    F32T -> "$F32"
-    F64T -> "$F64"
+    I32T -> "%I32"
+    I64T -> "%I64"
+    U32T -> "%U32"
+    U64T -> "%U64"
+    F32T -> "%F32"
+    F64T -> "%F64"
   }
 }
 
 fn literal_type_from_value(lit: Literal) -> String {
   case lit {
-    I32(_) -> "$I32"
-    I64(_) -> "$I64"
-    U32(_) -> "$U32"
-    U64(_) -> "$U64"
-    F32(_) -> "$F32"
-    F64(_) -> "$F64"
+    I32(_) -> "%I32"
+    I64(_) -> "%I64"
+    U32(_) -> "%U32"
+    U64(_) -> "%U64"
+    F32(_) -> "%F32"
+    F64(_) -> "%F64"
   }
 }
 

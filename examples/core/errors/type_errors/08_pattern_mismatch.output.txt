@@ -1,9 +1,47 @@
 
-error[E0001]: Syntax error
-  ┌─ input:0:0
-1 │ // Pattern Type Mismatch
+error[E0102]: Undefined variable
+  ┌─ input:5:14
 2 │ // Pattern expects a different type than the matched value
 3 │ // This error occurs when a pattern's type doesn't match the scrutinee
-  = note: Expected: valid alternative
-  = note: Got: none
+4 │ // Example: trying to match a type pattern against a value
+5 │ %match (42 : Int) ~ (x : Int) -> %Type {
+                 ^^^
+6 │   | _ -> %Type
+7 │ }
+8 │ 
+  = note: Variable at index 0 is not defined in this scope
+  = note: Variables must be defined before they are used, typically in a let binding or lambda parameter
+  = hint: Check variable name and scope
+  = hint: Did you forget to define this variable?
+  = hint: Check for typos in the variable name
+error[E0102]: Undefined variable
+  ┌─ input:5:26
+2 │ // Pattern expects a different type than the matched value
+3 │ // This error occurs when a pattern's type doesn't match the scrutinee
+4 │ // Example: trying to match a type pattern against a value
+5 │ %match (42 : Int) ~ (x : Int) -> %Type {
+                             ^^^
+6 │   | _ -> %Type
+7 │ }
+8 │ 
+  = note: Variable at index 0 is not defined in this scope
+  = note: Variables must be defined before they are used, typically in a let binding or lambda parameter
+  = hint: Check variable name and scope
+  = hint: Did you forget to define this variable?
+  = hint: Check for typos in the variable name
+error[E0101]: Type mismatch
+  ┌─ input:5:26
+2 │ // Pattern expects a different type than the matched value
+3 │ // This error occurs when a pattern's type doesn't match the scrutinee
+4 │ // Example: trying to match a type pattern against a value
+5 │ %match (42 : Int) ~ (x : Int) -> %Type {
+                             ^^^ ---
+6 │   | _ -> %Type
+7 │ }
+8 │
+  = note: (_: <error>) -> ... and %Type(0) are incompatible types
+  = note: The expression produces (_: <error>) -> ... but %Type(0) is expected here
+  = hint: Check that the expression has the expected type
+  = hint: Consider adding a type annotation
+  = hint: Did you mean to use a different expression?
 

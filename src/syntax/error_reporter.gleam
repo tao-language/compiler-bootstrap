@@ -440,7 +440,7 @@ fn type_to_string(value) -> String {
 // Helper function to convert values to readable strings
 fn value_to_string(value) -> String {
   case value {
-    core.VTyp(universe) -> "$Type(" <> int.to_string(universe) <> ")"
+    core.VTyp(universe) -> "%Type(" <> int.to_string(universe) <> ")"
     core.VLit(literal) -> literal_to_string(literal)
     core.VLitT(literal_type) -> literal_type_to_string(literal_type)
     core.VNeut(head, spine) -> neutral_to_string(head, spine)

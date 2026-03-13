@@ -2,6 +2,6 @@
 // Pattern expects a different type than the matched value
 // This error occurs when a pattern's type doesn't match the scrutinee
 // Example: trying to match a type pattern against a value
-match (42 : Int) {
-  | (x : $Type) -> x
+%match (42 : Int) ~ (x : Int) -> %Type {
+  | _ -> %Type
 }

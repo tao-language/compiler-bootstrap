@@ -1,3 +1,3 @@
 // Type Error: Type mismatch
-// Trying to use $I32 where $Type is expected (function parameter type)
-(x : $I32) -> (x : $Type(1))
+// Trying to use %I32 where %Type is expected (function parameter type)
+(x : %I32) -> (x : %Type(1))

@@ -70,7 +70,7 @@ pub fn tokenize_ident_multiple_test() {
 // ============================================================================
 
 pub fn tokenize_keyword_let_test() {
-  tokenize_kinds("let") |> should.equal(["Let"])
+  tokenize_kinds("%let") |> should.equal(["PercentLet"])
 }
 
 pub fn tokenize_keyword_fn_test() {
@@ -78,12 +78,12 @@ pub fn tokenize_keyword_fn_test() {
 }
 
 pub fn tokenize_keyword_match_test() {
-  tokenize_kinds("match") |> should.equal(["Keyword"])
+  tokenize_kinds("%match") |> should.equal(["PercentMatch"])
 }
 
 pub fn tokenize_keyword_mixed_with_idents_test() {
-  tokenize_values("let x = fn")
-  |> should.equal(["let", "x", "=", "fn"])
+  tokenize_values("%let x = fn")
+  |> should.equal(["%let", "x", "=", "fn"])
 }
 
 // ============================================================================
@@ -409,9 +409,9 @@ pub fn tokenize_block_comment_only_test() {
   lexer.tokenize("/* comment */") |> list.length |> should.equal(0)
 }
 
-pub fn tokenize_dollar_i32_test() {
-  tokenize_kinds("$I32") |> should.equal(["Dollar", "Ident"])
-  tokenize_values("$I32") |> should.equal(["$", "I32"])
+pub fn tokenize_percent_i32_test() {
+  tokenize_kinds("%I32") |> should.equal(["PercentI32"])
+  tokenize_values("%I32") |> should.equal(["%I32"])
 }
 
 pub fn tokenize_hash_true_test() {

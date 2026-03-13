@@ -1,16 +1,16 @@
 
-error[E0105]: Constructor not found
-  ┌─ input:6:18
+error[E0102]: Undefined variable
+  ┌─ input:6:1
 3 │ // Note: Constructors must be defined in the type context
 4 │ // This example shows valid constructor syntax using Church encoding
 5 │ // since full ADT support requires a prelude/type definition system
 6 │ let some = x -> #Some(x) in
-                     ^^^^
+    ^^^
 7 │ some(42)
 8 │ 
-  = note: Constructor `Some` is not defined in the current scope
-  = note: Constructors must be defined before use, typically in a data type declaration
-  = hint: Check the constructor name for typos
-  = hint: Make sure the constructor is defined in the current scope
-  = hint: Define a type with this constructor first
+  = note: Variable at index 0 is not defined in this scope
+  = note: Variables must be defined before they are used, typically in a let binding or lambda parameter
+  = hint: Check variable name and scope
+  = hint: Did you forget to define this variable?
+  = hint: Check for typos in the variable name
 

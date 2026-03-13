@@ -15,13 +15,13 @@
 /// - Lambda: `x -> body`
 /// - Pi types: `(x : A) -> B`
 /// - Application: `f(x)`
-/// - Type annotations: `x : $I32`
+/// - Type annotations: `x : %I32`
 /// - Field access: `record.field`
 /// - Records: `{}`
 /// - Constructors: `#True`, `#Some`, `#Maybe(a)`
-/// - Type universes: `$Type`, `$Type(1)`
+/// - Type universes: `%Type`, `%Type(1)`
 /// - Holes: `?`, `?1`, `?2`
-/// - Literal types: `$I32`, `$I64`, `$F64`
+/// - Literal types: `%I32`, `%I64`, `%F64`
 import core/syntax
 import gleeunit
 import gleeunit/should
@@ -128,7 +128,7 @@ pub fn roundtrip_lambda_self_shadowing_test() {
 // ============================================================================
 
 pub fn roundtrip_pi_simple_test() {
-  let source = "(x : $I32) -> $I32"
+  let source = "(x : %I32) -> %I32"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
@@ -136,7 +136,7 @@ pub fn roundtrip_pi_simple_test() {
 }
 
 pub fn roundtrip_pi_with_type_universe_test() {
-  let source = "(x : $Type) -> $Type"
+  let source = "(x : %Type) -> %Type"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
@@ -144,7 +144,7 @@ pub fn roundtrip_pi_with_type_universe_test() {
 }
 
 pub fn roundtrip_pi_with_level_test() {
-  let source = "(x : $Type(1)) -> $Type(1)"
+  let source = "(x : %Type(1)) -> %Type(1)"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
@@ -184,19 +184,19 @@ pub fn roundtrip_app_nested_test() {
 // ============================================================================
 
 pub fn roundtrip_annotation_simple_test() {
-  let source = "x : $I32"
+  let source = "x : %I32"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
-  formatted |> should.equal("var0 : $I32")
+  formatted |> should.equal("var0 : %I32")
 }
 
 pub fn roundtrip_annotation_with_type_universe_test() {
-  let source = "x : $Type"
+  let source = "x : %Type"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
-  formatted |> should.equal("var0 : $Type")
+  formatted |> should.equal("var0 : %Type")
 }
 
 // ============================================================================
@@ -252,7 +252,7 @@ pub fn roundtrip_constructor_with_arg_test() {
 // ============================================================================
 
 pub fn roundtrip_type_universe_zero_test() {
-  let source = "$Type"
+  let source = "%Type"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
@@ -260,7 +260,7 @@ pub fn roundtrip_type_universe_zero_test() {
 }
 
 pub fn roundtrip_type_universe_one_test() {
-  let source = "$Type(1)"
+  let source = "%Type(1)"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
@@ -268,7 +268,7 @@ pub fn roundtrip_type_universe_one_test() {
 }
 
 pub fn roundtrip_type_universe_two_test() {
-  let source = "$Type(2)"
+  let source = "%Type(2)"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
@@ -280,7 +280,7 @@ pub fn roundtrip_type_universe_two_test() {
 // ============================================================================
 
 pub fn roundtrip_litt_i32_test() {
-  let source = "$I32"
+  let source = "%I32"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
@@ -288,7 +288,7 @@ pub fn roundtrip_litt_i32_test() {
 }
 
 pub fn roundtrip_litt_i64_test() {
-  let source = "$I64"
+  let source = "%I64"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
@@ -296,7 +296,7 @@ pub fn roundtrip_litt_i64_test() {
 }
 
 pub fn roundtrip_litt_f64_test() {
-  let source = "$F64"
+  let source = "%F64"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
@@ -392,7 +392,7 @@ pub fn roundtrip_lambda_in_app_test() {
 }
 
 pub fn roundtrip_pi_in_app_test() {
-  let source = "((x : $I32) -> $I32)(42)"
+  let source = "((x : %I32) -> %I32)(42)"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
@@ -400,9 +400,9 @@ pub fn roundtrip_pi_in_app_test() {
 }
 
 pub fn roundtrip_annotation_in_app_test() {
-  let source = "(x : $I32)(42)"
+  let source = "(x : %I32)(42)"
   let result = syntax.parse(source)
   result.errors |> should.equal([])
   let formatted = syntax.format(result.ast)
-  formatted |> should.equal("(var0 : $I32)(42)")
+  formatted |> should.equal("(var0 : %I32)(42)")
 }

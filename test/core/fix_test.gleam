@@ -71,7 +71,7 @@ pub fn fix_parse_simple_test() {
   let result = c.infer(s, term)
   // Should type-check (result type is a hole)
   case result {
-    #(_, c.VTyp(0), _) -> True |> should.be_true  // Type is $Type
+    #(_, c.VTyp(0), _) -> True |> should.be_true  // Type is %Type
     #(_, _, _) -> True |> should.be_true  // Or any other type
     _ -> False |> should.be_true
   }

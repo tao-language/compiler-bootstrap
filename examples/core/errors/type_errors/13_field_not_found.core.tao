@@ -2,5 +2,5 @@
 // Similar to RcdMissingFields but occurs in a different context
 // This error happens when a function expects a record with certain fields
 // Example: function requires field 'x' but provided record only has 'y'
-let get_x = r -> r.x in
+%let get_x = r -> r.x in
 get_x({y: 2})

@@ -4,6 +4,6 @@
 // For now, use Church encoding
 // nil = λc. λn. n
 // cons = λh. λt. λc. λn. c h t
-let nil = c -> n -> n in
-let cons = h -> t -> c -> n -> ((c)(h))(t) in
+%let nil = c -> n -> n in
+%let cons = h -> t -> c -> n -> ((c)(h))(t) in
 ((cons)(1))(((cons)(2))(nil))

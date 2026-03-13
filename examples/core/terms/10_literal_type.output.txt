@@ -1,2 +1,2 @@
 
-Result: $I32
+Result: %I32
