@@ -1396,9 +1396,15 @@ fn format_term(
         ])
       wrap_parens(inner, 50 < parent_prec)
     }
-    Pi(name, in_term, out_term) -> {
+    Pi(implicit, name, in_term, out_term) -> {
+      let implicit_str = case implicit {
+        [] -> ""
+        _ -> "<" <> string.join(implicit, ", ") <> ">"
+      }
       let inner =
         formatter.concat([
+          formatter.text("%pi"),
+          formatter.text(implicit_str),
           formatter.text("("),
           formatter.text(name),
           formatter.text(" : "),
@@ -1650,8 +1656,12 @@ fn term_to_string_loop(term: Term, bindings: List(String)) -> String {
       }
       "%fn" <> implicit_str <> "(" <> name <> ") -> " <> term_to_string_loop(body, [name, ..bindings])
     }
-    core.Pi(name, in_ty, out_ty) -> {
-      "(" <> name <> ": " <> term_to_string_loop(in_ty, bindings) <> ") -> " <> term_to_string_loop(out_ty, [name, ..bindings])
+    core.Pi(implicit, name, in_ty, out_ty) -> {
+      let implicit_str = case implicit {
+        [] -> ""
+        _ -> "<" <> string.join(implicit, ", ") <> ">"
+      }
+      "%pi" <> implicit_str <> "(" <> name <> ": " <> term_to_string_loop(in_ty, bindings) <> ") -> " <> term_to_string_loop(out_ty, [name, ..bindings])
     }
     core.App(fun, implicit, arg) -> {
       let implicit_str = case implicit {

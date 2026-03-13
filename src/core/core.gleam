@@ -1061,13 +1061,19 @@ pub fn unify(
       let b = eval(s.ffi, [fresh, ..env2], body2)
       unify(s, a, b, s1, s2)
     }
-    VPi(_, env1, in1, out1), VPi(_, env2, in2, out2) -> {
-      // Unify Pi types: first domains, then codomains
-      use _ <- result.try(unify(s, in1, in2, s1, s2))
-      let #(fresh, s) = new_var(s)
-      let a = eval(s.ffi, [fresh, ..env1], out1)
-      let b = eval(s.ffi, [fresh, ..env2], out2)
-      unify(s, a, b, s1, s2)
+    VPi(implicit1, _, env1, in1, out1), VPi(implicit2, _, env2, in2, out2) -> {
+      // First check implicit params match
+      case implicit1 == implicit2 {
+        False -> Error(TypeMismatch(VPi(implicit1, "", [], in1, out1), VPi(implicit2, "", [], in2, out2), s1, s2))
+        True -> {
+          // Unify Pi types: first domains, then codomains
+          use _ <- result.try(unify(s, in1, in2, s1, s2))
+          let #(fresh, s) = new_var(s)
+          let a = eval(s.ffi, [fresh, ..env1], out1)
+          let b = eval(s.ffi, [fresh, ..env2], out2)
+          unify(s, a, b, s1, s2)
+        }
+      }
     }
     VErr, _ -> Ok(s)
     _, VErr -> Ok(s)
@@ -1261,19 +1267,19 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let body_quoted = quote(s.ffi, list.length(env), body_val, body.span)
       let t1 = force(s.ffi, s.sub, t1_hole)
       let t2 = quote(s.ffi, list.length(env), body_ty, body.span)
-      #(VLam(implicit, name, env, body_quoted), VPi(name, env, t1, t2), s)
+      #(VLam(implicit, name, env, body_quoted), VPi(implicit, name, env, t1, t2), s)
     }
-    Pi(name, in, out) -> {
+    Pi(implicit, name, in_term, out_term) -> {
       let env = get_env(s)
-      let #(in_val, _, s) = infer(s, in)
+      let #(in_val, _, s) = infer(s, in_term)
       let #(_, s) = def_var(s, name, in_val)
-      let #(_, _, s) = infer(s, out)
-      #(VPi(name, env, in_val, out), VTyp(0), s)
+      let #(_, _, s) = infer(s, out_term)
+      #(VPi(implicit, name, env, in_val, out_term), VTyp(0), s)
     }
     App(fun, implicit, arg) -> {
       let #(fun_val, fun_ty, s) = infer(s, fun)
       case fun_ty {
-        VPi(_, pi_env, in, out) -> {
+        VPi(_, _, pi_env, in, out) -> {
           let #(arg_val, s) = check(s, arg, in, fun.span)
           let out_val = eval(s.ffi, [arg_val, ..pi_env], out)
           #(do_app(s.ffi, fun_val, arg_val), out_val, s)

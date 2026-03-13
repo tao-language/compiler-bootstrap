@@ -453,11 +453,12 @@ fn value_to_string(value) -> String {
       }
       "%fn" <> implicit_str <> "(" <> name <> ") { ... }"
     }
-    core.VPi(name, _env, in_val, _out) -> {
-      "(" <> name <> ": " <> value_to_string(in_val) <> ") -> ..."
-    }
-    core.VForall(params, _body) -> {
-      "∀" <> string.join(params, ", ") <> ". ..."
+    core.VPi(implicit, name, _env, in_val, _out) -> {
+      let implicit_str = case implicit {
+        [] -> ""
+        _ -> "<" <> string.join(implicit, ", ") <> ">"
+      }
+      "%pi" <> implicit_str <> "(" <> name <> ": " <> value_to_string(in_val) <> ") -> ..."
     }
     core.VRecord(fields) -> {
       "{" <> string.join(list.map(fields, fn(f) { f.0 <> ": ..." }), ", ") <> "}"
