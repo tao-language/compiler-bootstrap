@@ -1,27 +1,15 @@
 # Core Language Specification
 
+> **Status**: ✅ **Complete** - All 13 Term variants implemented
+> **Date**: March 2025 (Updated: March 2026)
+
 A dependently typed core language with normalization by evaluation, bidirectional type checking, integrated exhaustiveness checking, and compile-time evaluation (comptime) with FFI support.
-
----
-
-## Table of Contents
-
-1. [Overview](#overview)
-2. [Core Concepts](#core-concepts)
-3. [Syntax (Terms)](#syntax-terms)
-4. [Semantics (Values)](#semantics-values)
-5. [Type System](#type-system)
-6. [Key Algorithms](#key-algorithms)
-7. [Error Recovery](#error-recovery)
-8. [API Reference](#api-reference)
-9. [References](#references)
-10. [Related Documentation](#related-documentation)
 
 ---
 
 ## Overview
 
-This core language is designed as a **foundation for higher-level languages**. It provides:
+This core language is designed as a **foundation for higher-level languages** like Tao. It provides:
 
 - **Dependent Types**: Types can depend on values (e.g., `Vec(n, A)` where `n` is a runtime value)
 - **Normalization by Evaluation (NbE)**: Efficient equality checking via evaluation + reification
@@ -30,6 +18,7 @@ This core language is designed as a **foundation for higher-level languages**. I
 - **Compile-Time Evaluation (comptime)**: Execute built-in functions during elaboration with permission checking
 - **FFI Support**: Built-in functions (arithmetic, comparison, logical) with runtime defer for unknown operations
 - **Error Resilience**: Continues checking after errors to report all issues at once
+- **Error Messages**: Clear, actionable error messages with source snippets and hints
 
 ### Design Principle
 
@@ -37,7 +26,44 @@ This core language is designed as a **foundation for higher-level languages**. I
 
 This is critical for IDE/LSP support where users need to see all errors, not just the first one.
 
-### Error Handling Architecture
+### Syntax Quick Reference
+
+| Feature | Syntax | Example |
+|---------|--------|---------|
+| **Keywords** | `%` prefix | `%let`, `%match`, `%call`, `%fix`, `%comptime` |
+| **Types** | `%` prefix | `%Type`, `%I32`, `%F64` |
+| **Constructors** | `#` prefix | `#True`, `#Some(x)`, `#Nil` |
+| **Variables** | No prefix | `x`, `f`, `my_var` |
+| **Lambda** | `->` | `x -> x + 1` |
+| **Pi Type** | `(x: A) -> B` | `(n: %I32) -> Vec(n)` |
+| **Application** | `f(x)` | `add(5, 10)` |
+| **FFI Call** | `%call` | `%call i32_add(x, y)` |
+
+**See**: **[docs/core-syntax.md](./core-syntax.md)** for complete syntax reference.
+
+### Implementation Status
+
+**File**: `src/core/core.gleam` (~1800 lines)
+
+**What's Working**:
+- ✅ All term types (Typ, Lit, LitT, Var, Hole, Rcd, Ctr, Dot, Ann, Lam, Pi, App, Match, Call, Comptime, Fix)
+- ✅ All value types (VTyp, VLit, VLitT, VNeut, VRcd, VCtr, VLam, VPi, VCall, VErr)
+- ✅ Evaluation with FFI built-ins (arithmetic, comparison, logical operations)
+- ✅ Normalization by evaluation (eval + quote)
+- ✅ Bidirectional type checking (infer/check)
+- ✅ Unification with occurs check
+- ✅ Exhaustiveness checking (Maranget's algorithm)
+- ✅ Comptime evaluation with permission system
+- ✅ VCall for deferred runtime operations
+- ✅ Error messages with source snippets, notes, and hints
+- ✅ Error codes (E0001, E0101-E0113, E0201-E0203, E0502, E9999)
+
+**What's Pending**:
+- ⏳ Tao language integration (lexer, grammar, desugarer)
+- ⏳ Enhanced error suggestions ("did you mean?")
+- ⏳ Color terminal support for error messages
+
+### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -46,6 +72,7 @@ This is critical for IDE/LSP support where users need to see all errors, not jus
 │  - Records errors via with_err                              │
 │  - Continues with VErr                                      │
 │  - Runs exhaustiveness checking on Match                    │
+│  - Produces error messages with source snippets             │
 └─────────────────────────────────────────────────────────────┘
                           ↓ calls
 ┌─────────────────────────────────────────────────────────────┐
@@ -56,26 +83,19 @@ This is critical for IDE/LSP support where users need to see all errors, not jus
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Implementation Status
+### Error Handling Flow
 
-**File**: `src/core/core.gleam` (~1800 lines)
+```
+Parse Error / Type Error
+         ↓
+error_reporter.parse_error_to_diagnostic() / type_error_to_diagnostic()
+         ↓
+source_snippet.format_diagnostic()
+         ↓
+CLI Output (with emojis ❌💡📝🔧, colors, source snippets)
+```
 
-**What's Working**:
-- ✅ All term types (Typ, Lit, LitT, Var, Hole, Rcd, Ctr, Dot, Ann, Lam, Pi, App, Match, Call, Comptime)
-- ✅ All value types (VTyp, VLit, VLitT, VNeut, VRcd, VCtr, VLam, VPi, VCall, VErr)
-- ✅ Evaluation with FFI built-ins (arithmetic, comparison, logical operations)
-- ✅ Normalization by evaluation (eval + quote)
-- ✅ Bidirectional type checking (infer/check)
-- ✅ Unification with occurs check
-- ✅ Exhaustiveness checking (Maranget's algorithm)
-- ✅ Comptime evaluation with permission system
-- ✅ VCall for deferred runtime operations
-- ✅ **263 tests passing**
-
-**What's Pending**:
-- ⏳ Core language grammar definition using syntax library
-- ⏳ Core language parser (thin wrapper around syntax library)
-- ⏳ Core language formatter (manual formatter using syntax formatter)
+**See**: **[docs/plans/error-reporting/06-error-message-design.md](./plans/error-reporting/06-error-message-design.md)** for error message design.
 
 ---
 

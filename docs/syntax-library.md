@@ -2,7 +2,8 @@
 
 > **Version**: 3.0.0
 > **Description**: A generic grammar DSL for building parsers with language-agnostic parser combinators, formatters, and error reporting
-> **Updated**: March 2025 - Now with operator metadata query API!
+> **Status**: ✅ **Complete** - All features implemented
+> **Updated**: March 2026 - Error reporting complete
 
 ---
 
@@ -17,26 +18,42 @@ The syntax library provides a **generic grammar DSL** that generates parsers for
 
 ### Key Features
 
-- **Type-safe** - Grammar is parameterized by AST type (`Grammar(a)`)
-- **Composable** - Build complex parsers from simple combinators
-- **Operator precedence** - Built-in support for left/right-associative operators
-- **Layout hints** - Soft/hard line breaks for pretty-printing
-- **Error handling** - Position tracking for error messages
-- **Error reporting** - Source snippets with error highlights
-- **Formatter combinators** - 16+ combinators for easy formatter implementation
-- **Direct construction** - Simple, declarative grammar definition (no Builder pattern!)
-- **Operator metadata query API** - Query operator info from grammar for formatting
+- ✅ **Type-safe** - Grammar is parameterized by AST type (`Grammar(a)`)
+- ✅ **Composable** - Build complex parsers from simple combinators
+- ✅ **Operator precedence** - Built-in support for left/right-associative operators
+- ✅ **Layout hints** - Soft/hard line breaks for pretty-printing
+- ✅ **Error handling** - Position tracking for error messages
+- ✅ **Error reporting** - Source snippets with error highlights
+- ✅ **Formatter combinators** - 16+ combinators for easy formatter implementation
+- ✅ **Direct construction** - Simple, declarative grammar definition
+- ✅ **Operator metadata query API** - Query operator info from grammar for formatting
+- ✅ **Source location tracking** - Full span information from tokens to AST
 
 ### Module Structure
 
 ```
 src/syntax/
-├── grammar.gleam         # Grammar DSL (~1100 lines)
-├── lexer.gleam           # Tokenizer (~400 lines)
-├── formatter.gleam       # Document algebra formatter (~440 lines)
-├── source_snippet.gleam  # Source snippet formatter (~260 lines)
-└── error_reporter.gleam  # Error to diagnostic conversion (~220 lines)
+├── grammar.gleam         # Grammar DSL (~1100 lines) ✅
+├── lexer.gleam           # Tokenizer (~400 lines) ✅
+├── formatter.gleam       # Document algebra formatter (~440 lines) ✅
+├── source_snippet.gleam  # Source snippet formatter (~260 lines) ✅
+└── error_reporter.gleam  # Error to diagnostic conversion (~220 lines) ✅
 ```
+
+### Design Principle
+
+> **Keywords use `%` prefix to keep variable namespace clean.**
+> **Constructors use `#` prefix to separate from variables and operations.**
+
+This allows high-level languages like Tao to use `match`, `let`, `case` as keywords while Core keeps all names available as variables.
+
+| Prefix | Purpose | Examples |
+|--------|---------|----------|
+| `%` | Keywords, types, meta-operators | `%let`, `%match`, `%Type`, `%I32`, `%call` |
+| `#` | Constructors (data variants) | `#True`, `#Some(x)`, `#Nil` |
+| (none) | Variables, operations | `x`, `add`, `i32_add`, `Maybe` |
+
+**See**: **[docs/core-syntax.md](./core-syntax.md)** for Core language syntax.
 
 ---
 

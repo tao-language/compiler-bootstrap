@@ -1,7 +1,9 @@
 # Compiler CLI Documentation
 
 > **Version**: 1.0.0
+> **Status**: ✅ **Production Ready** - Full CLI with error reporting and source snippets
 > **Description**: Command-line interface for checking and running core/tao files
+> **Updated**: March 2026
 
 ---
 
@@ -11,12 +13,36 @@ The Compiler Bootstrap CLI provides a unified interface for checking and running
 
 ### Key Features
 
-- **Unified interface** - Same commands for core and Tao
-- **File type detection** - Extension-based (`.core.tao` vs `.tao`)
-- **Error resilience** - Report all errors, not just the first
-- **Source locations** - Full span information in error messages
-- **Actionable errors** - Clear hints and suggestions for fixing errors
-- **Verbose output** - `--verbose` and `--debug` for debugging
+- ✅ **Unified interface** - Same commands for core and Tao
+- ✅ **File type detection** - Extension-based (`.core.tao` vs `.tao`)
+- ✅ **Error resilience** - Report all errors, not just the first
+- ✅ **Source locations** - Full span information in error messages
+- ✅ **Actionable errors** - Clear hints and suggestions for fixing errors
+- ✅ **Error codes** - Unique codes for all error types (E0001, E0101-E0113, etc.)
+- ✅ **Source snippets** - Visual error display with context and pointers
+- ✅ **Emoji-guided** - Easy visual scanning (❌ 💡 📝 🔧)
+- ✅ **Verbose output** - `--verbose` and `--debug` for debugging
+
+### Implementation Status
+
+**File**: `src/compiler_bootstrap.gleam`
+
+**What's Working**:
+- ✅ Command-line argument parsing
+- ✅ File type detection (`.core.tao` vs `.tao`)
+- ✅ Type checking integration
+- ✅ Error reporting with source snippets
+- ✅ Verbose and debug modes
+- ✅ Help command
+- ✅ Error codes (E0001, E0101-E0106, E0201-E0202, E0301)
+- ✅ Multi-span error support
+- ✅ Educational notes and hints
+
+**What's Pending**:
+- ⏳ Tao language integration (lexer, grammar, desugarer)
+- ⏳ Color terminal support
+- ⏳ "Did you mean?" suggestions
+- ⏳ Watch mode (`--watch`)
 
 ---
 
