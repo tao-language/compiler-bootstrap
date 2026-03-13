@@ -2,10 +2,11 @@
 // TAO SYNTAX TESTS (MVP)
 // ============================================================================
 /// Tests for Tao syntax (MVP).
-import tao/syntax.{parse, format_expr, MvpInt, MvpVar, MvpAdd, MvpSub, MvpMul, MvpDiv}
+import tao/syntax.{parse, format_expr, MvpInt, MvpVar, MvpAdd, MvpSub, MvpMul, MvpDiv, MvpCall}
 import gleeunit
 import gleeunit/should
 import syntax/grammar.{type ParseResult, ParseResult, type Span, Span}
+import gleam/string
 
 pub fn main() {
   gleeunit.main()
@@ -60,6 +61,18 @@ pub fn parse_multiplication_test() {
 pub fn parse_division_test() {
   // MVP: Just verify it parses without errors
   let ParseResult(_ast, errors) = parse("20 / 4")
+  errors |> should.equal([])
+}
+
+pub fn parse_call_test() {
+  // MVP: Just verify it parses without errors
+  let ParseResult(_ast, errors) = parse("add(1, 2)")
+  errors |> should.equal([])
+}
+
+pub fn parse_call_no_args_test() {
+  // MVP: Just verify it parses without errors
+  let ParseResult(_ast, errors) = parse("main()")
   errors |> should.equal([])
 }
 
@@ -123,6 +136,21 @@ pub fn format_parentheses_test() {
   format_expr(expr) |> should.equal("(1 + 2) * 3")
 }
 
+pub fn format_call_test() {
+  // MVP: Just verify formatting works
+  let expr = MvpCall("add", [MvpInt(1, todo_span()), MvpInt(2, todo_span())], todo_span())
+  let result = format_expr(expr)
+  // Verify it contains the function name
+  string.contains(result, "add") |> should.be_true()
+}
+
+pub fn format_call_no_args_test() {
+  // MVP: Just verify formatting works
+  let expr = MvpCall("main", [], todo_span())
+  let result = format_expr(expr)
+  string.contains(result, "main") |> should.be_true()
+}
+
 // ============================================================================
 // ROUND-TRIP TESTS
 // ============================================================================
@@ -167,6 +195,14 @@ pub fn roundtrip_parentheses_test() {
   let ParseResult(ast, errors) = parse(source)
   errors |> should.equal([])
   // Just verify it parses and formats without errors
+  let _formatted = format_expr(ast)
+  Nil |> should.equal(Nil)
+}
+
+pub fn roundtrip_call_test() {
+  // MVP: Just verify parsing and formatting work
+  let ParseResult(ast, errors) = parse("add(1, 2)")
+  errors |> should.equal([])
   let _formatted = format_expr(ast)
   Nil |> should.equal(Nil)
 }

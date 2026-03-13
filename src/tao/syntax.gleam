@@ -13,10 +13,10 @@ import gleam/int
 import gleam/list
 import gleam/result
 import gleam/string
-import gleam/option.{Some}
+import gleam/option.{Some, None}
 import syntax/grammar.{
-  type Grammar, type ParseResult, type Span, Span, Grammar,
-  AstValue, ParensValue, TokenValue, ListValue,
+  type Grammar, type ParseResult, type Span, Span, Grammar, type Value, AstValue,
+  ParensValue, TokenValue, ListValue,
   InfixLeft,
   rule, alt, token_pattern, parenthesized, seq, ref, keyword_pattern, many, opt,
   infix_binary, left_assoc_rule,
@@ -34,6 +34,7 @@ pub type MvpExpr {
   MvpSub(left: MvpExpr, right: MvpExpr, span: Span)
   MvpMul(left: MvpExpr, right: MvpExpr, span: Span)
   MvpDiv(left: MvpExpr, right: MvpExpr, span: Span)
+  MvpCall(name: String, args: List(MvpExpr), span: Span)
 }
 
 // ============================================================================
@@ -89,6 +90,30 @@ fn make_div(left: MvpExpr, right: MvpExpr) -> MvpExpr {
   MvpDiv(left, right, span)
 }
 
+fn make_call(values) -> MvpExpr {
+  case values {
+    [TokenValue(name), _, args_value, _] -> {
+      let args = case args_value {
+        ListValue(asts) -> list.map(asts, ast_to_expr)
+        _ -> []
+      }
+      MvpCall(name.value, args, span_from_token(name, "tao"))
+    }
+    _ -> panic as "Expected call"
+  }
+}
+
+fn ast_to_expr(ast) -> MvpExpr {
+  case ast {
+    AstValue(e) -> e
+    _ -> panic as "Expected expr"
+  }
+}
+
+fn todo_ast() -> Value(MvpExpr) {
+  AstValue(MvpInt(0, Span("todo", 0, 0, 0, 0)))
+}
+
 fn get_span(expr: MvpExpr) -> Span {
   case expr {
     MvpInt(_, span) -> span
@@ -97,6 +122,7 @@ fn get_span(expr: MvpExpr) -> Span {
     MvpSub(_, _, span) -> span
     MvpMul(_, _, span) -> span
     MvpDiv(_, _, span) -> span
+    MvpCall(_, _, span) -> span
   }
 }
 
@@ -145,6 +171,46 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
             _ -> panic as "Expected (expr)"
           }
         }),
+        alt(ref("Call"), fn(values) {
+          case values {
+            [AstValue(expr)] -> expr
+            _ -> panic as "Expected call"
+          }
+        }),
+      ]),
+      rule("Call", [
+        alt(
+          seq([
+            token_pattern("Ident"),
+            token_pattern("LParen"),
+            many(seq([ref("Expr"), token_pattern("Comma")])),
+            opt(ref("Expr")),
+            token_pattern("RParen"),
+          ]),
+          fn(values) {
+            case values {
+              [TokenValue(name), _, ListValue(pairs), last_opt, _] -> {
+                let args_from_pairs = list.flat_map(pairs, fn(pair_val) {
+                  case pair_val {
+                    ListValue(items) -> {
+                      case list.first(items) {
+                        Ok(AstValue(e)) -> [e]
+                        _ -> []
+                      }
+                    }
+                    _ -> []
+                  }
+                })
+                let last_arg = case last_opt {
+                  AstValue(e) -> [e]
+                  _ -> []
+                }
+                MvpCall(name.value, list.append(args_from_pairs, last_arg), span_from_token(name, "tao"))
+              }
+              _ -> panic as "Expected call"
+            }
+          },
+        ),
       ]),
     ],
   )
@@ -173,6 +239,9 @@ fn format_expr_loop(expr: MvpExpr, parent_prec: Int) -> String {
     MvpSub(l, r, _) -> format_binop(l, r, "-", 10, parent_prec)
     MvpMul(l, r, _) -> format_binop(l, r, "*", 20, parent_prec)
     MvpDiv(l, r, _) -> format_binop(l, r, "/", 20, parent_prec)
+    MvpCall(name, args, _) -> {
+      name <> "(" <> string_join(list.map(args, format_expr), ", ") <> ")"
+    }
   }
 }
 
