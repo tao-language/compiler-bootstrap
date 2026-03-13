@@ -1,2 +1,2 @@
 
-Result: n -> n
+n -> n

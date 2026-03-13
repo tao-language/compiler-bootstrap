@@ -453,7 +453,7 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 
   // Format and print the result
   let formatted = core_syntax.format(normal_form)
-  
+
   // If there were errors, print delimiter before result
   case has_errors {
     True -> {
@@ -463,7 +463,7 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
       Error(TypeError(type_errors))
     }
     False -> {
-      io.println("Result: " <> formatted)
+      io.println(formatted)
       Ok(Nil)
     }
   }
@@ -575,7 +575,7 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
       Error(TypeError(type_errors))
     }
     False -> {
-      io.println("Result: " <> formatted)
+      io.println(formatted)
       Ok(Nil)
     }
   }

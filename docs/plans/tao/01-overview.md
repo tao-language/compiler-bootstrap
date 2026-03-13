@@ -1,8 +1,8 @@
 # Tao Language Overview
 
 > **Goal**: Simple, pragmatic functional language with dependent types—TypeScript-like syntax without the complexity
-> **Status**: ⏳ **MVP Implementation In Progress** - Starting Week 1 (Lexer + Parser)
-> **Date**: March 2025 (Updated: March 2026 - MVP started)
+> **Status**: ✅ **MVP Complete** - Expressions, desugaring, and CLI integration working
+> **Date**: March 2025 (Updated: March 2026 - MVP Complete)
 
 ---
 
@@ -21,35 +21,49 @@ Tao is syntax sugar over the core language. All heavy lifting (type checking, no
 
 ## Current Status
 
-### ✅ Complete
+### ✅ Complete (MVP)
 
-**Tao AST** (`src/tao/ast.gleam`):
-- ✅ All type definitions (Program, Declaration, Expr, Pattern, Type, etc.)
-- ✅ Span tracking for all nodes
-- ✅ Compiles successfully
-- ⚠️ **No tests yet** - will add during MVP implementation
+**Tao MVP** - Expression parsing, desugaring, and CLI integration:
 
-### ⏳ In Progress
+| Component | Status | Description |
+|-----------|--------|-------------|
+| **Tao Lexer** | ✅ Complete | Tokenizes identifiers, numbers, operators |
+| **Tao Grammar** | ✅ Complete | Parses expressions with correct precedence |
+| **Tao Formatter** | ✅ Complete | Formats expressions back to source |
+| **Tao Desugarer** | ✅ Complete | Transforms Tao → Core terms |
+| **CLI Integration** | ✅ Complete | `gleam run run file.tao` works |
+| **Examples** | ✅ Complete | 2 working examples with golden files |
+| **Tests** | ✅ Complete | 39 tests passing (24 syntax + 15 desugar) |
 
-**Tao MVP Implementation** (2-3 weeks, started March 2026):
+**MVP Features**:
+- ✅ Numbers: `42`, `3.14`
+- ✅ Variables: `x`, `myVar`
+- ✅ Arithmetic: `+`, `-`, `*`, `/`
+- ✅ Correct precedence: `*` binds tighter than `+`
+- ✅ Left associativity: `10 - 5 - 2 = (10 - 5) - 2`
+- ✅ Parentheses: `(1 + 2) * 3`
+- ✅ Desugaring: `x + y` → `%call i32_add(x, y)`
+- ✅ Type checking via Core
+- ✅ Evaluation via Core
 
-| Component | Status | Week |
-|-----------|--------|------|
-| **Tao Lexer** | 📋 Planned | Week 1 |
-| **Tao Grammar** | 📋 Planned | Week 1 |
-| **Tao Desugarer** | 📋 Planned | Week 2 |
-| **CLI Integration** | 📋 Planned | Week 3 |
-| **Examples + Tests** | 📋 Planned | Week 3 |
+**Example Usage**:
+```bash
+# Run a Tao program
+gleam run run examples/tao/01_arithmetic.tao
+# Output: %call i32_add(1, 2)
 
-See **[09-tao-mvp-plan.md](./09-tao-mvp-plan.md)** for detailed MVP implementation plan.
+# Type-check a Tao program
+gleam run check examples/tao/02_precedence.tao
+# Output: ✓ Type checking examples/tao/02_precedence.tao
+#         ✓ No errors found
+```
 
 ### 📋 Next Steps (After MVP)
 
-1. **Phase 1**: Tao MVP (lexer, grammar, desugarer) - 2-3 weeks ⏳ IN PROGRESS
-2. **Phase 2**: Core standard library - 1 week
-3. **Phase 3**: Tao expansion (do blocks, mut, imports) - 2-3 weeks
-4. **Phase 4**: Tao standard library - 2-3 weeks
-5. **Phase 5**: Polish (error suggestions, docs) - Ongoing
+1. **Phase 2**: Expand grammar (function calls, let bindings) - 1-2 weeks
+2. **Phase 3**: Function definitions and pattern matching - 2-3 weeks
+3. **Phase 4**: Type system enhancements - 2-3 weeks
+4. **Phase 5**: Standard library - 2-3 weeks
 
 ---
 

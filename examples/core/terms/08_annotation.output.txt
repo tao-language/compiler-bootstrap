@@ -1,2 +1,2 @@
 
-Result: (x : %Type) -> x
+(x : %Type) -> x

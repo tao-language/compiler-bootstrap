@@ -1,2 +1,2 @@
 
-Result: x -> x
+x -> x
