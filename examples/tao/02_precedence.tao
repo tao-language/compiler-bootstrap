@@ -1,0 +1,5 @@
+// Tao MVP Example: Operator Precedence
+// Demonstrates that * binds tighter than +
+
+// This should evaluate as: 1 + (2 * 3) = 7
+1 + 2 * 3

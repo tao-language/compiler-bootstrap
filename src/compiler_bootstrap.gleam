@@ -11,7 +11,9 @@
 /// ```
 import argv
 import core/core.{type Term, type Error as TypeError, type State, initial_state, infer, eval, quote}
-import core/syntax
+import core/syntax as core_syntax
+import tao/syntax.{parse as tao_parse, get_expr_span}
+import tao/desugar.{desugar as tao_desugar}
 import gleam/int
 import gleam/io
 import gleam/list
@@ -205,7 +207,7 @@ fn check_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     False -> Nil
   }
 
-  let parse_result = syntax.parse(file.contents)
+  let parse_result = core_syntax.parse(file.contents)
 
   case parse_result.errors {
     [err, ..] -> {
@@ -267,11 +269,77 @@ fn format_parse_error(err: GrammarParseErrorType) -> String {
   }
 }
 
-fn check_tao(file: File, _verbose: Bool, _debug: Bool) -> Result(Nil, Error) {
-  // Tao support not yet implemented
-  io.println("✗ Tao language support not yet implemented")
-  io.println("  File: " <> file.path)
-  Error(RuntimeError("Tao not implemented"))
+fn check_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
+  case verbose {
+    True -> io.println("✓ Parsing Tao...")
+    False -> Nil
+  }
+
+  let parse_result = tao_parse(file.contents)
+
+  case parse_result.errors {
+    [err, ..] -> {
+      // Report parse errors
+      io.println("")
+      let diagnostic = error_reporter.parse_error_to_diagnostic(err, file.contents, file.path)
+      io.println(error_reporter.format_diagnostic(diagnostic, file.contents))
+      io.println("")
+      Error(ParseError(parse_result.errors |> list.map(format_parse_error)))
+    }
+    [] -> {
+      case debug {
+        True -> {
+          io.println("Tao AST parsed successfully")
+        }
+        False -> Nil
+      }
+
+      case verbose {
+        True -> {
+          io.println("✓ Parsed Tao successfully")
+          io.println("✓ Desugaring to Core...")
+        }
+        False -> Nil
+      }
+
+      // Desugar Tao to Core
+      let core_term = tao_desugar(parse_result.ast)
+
+      case debug {
+        True -> {
+          io.println("Core term:")
+          io.println(debug_term(core_term))
+        }
+        False -> Nil
+      }
+
+      case verbose {
+        True -> io.println("✓ Desugared to Core")
+        False -> Nil
+      }
+
+      // Run type checker on Core term
+      let #(_type_result, _type_annotation, final_state) = infer(initial_state, core_term)
+
+      case final_state.errors {
+        [_err, ..] -> {
+          // Report type errors
+          io.println("")
+          final_state.errors |> list.each(fn(e) {
+            let diagnostic = error_reporter.type_error_to_diagnostic(e, file.contents, file.path)
+            io.println(error_reporter.format_diagnostic(diagnostic, file.contents))
+          })
+          io.println("")
+          Error(TypeError(final_state.errors))
+        }
+        [] -> {
+          io.println("✓ Type checking " <> file.path)
+          io.println("✓ No errors found")
+          Ok(Nil)
+        }
+      }
+    }
+  }
 }
 
 // ============================================================================
@@ -310,7 +378,7 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     False -> Nil
   }
 
-  let parse_result = syntax.parse(file.contents)
+  let parse_result = core_syntax.parse(file.contents)
 
   // Handle parse errors
   let parse_errors = parse_result.errors
@@ -384,7 +452,7 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   let normal_form = quote(ffi, 0, value, span)
 
   // Format and print the result
-  let formatted = syntax.format(normal_form)
+  let formatted = core_syntax.format(normal_form)
   
   // If there were errors, print delimiter before result
   case has_errors {
@@ -401,11 +469,116 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   }
 }
 
-fn run_tao(file: File, _verbose: Bool, _debug: Bool) -> Result(Nil, Error) {
-  // Tao support not yet implemented
-  io.println("✗ Tao language support not yet implemented")
-  io.println("  File: " <> file.path)
-  Error(RuntimeError("Tao not implemented"))
+fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
+  case verbose {
+    True -> io.println("✓ Parsing Tao...")
+    False -> Nil
+  }
+
+  let parse_result = tao_parse(file.contents)
+
+  // Handle parse errors
+  let parse_errors = parse_result.errors
+
+  case parse_errors {
+    [err, ..] -> {
+      // Report parse errors
+      io.println("")
+      parse_errors |> list.each(fn(err) {
+        let diagnostic = error_reporter.parse_error_to_diagnostic(err, file.contents, file.path)
+        io.println(error_reporter.format_diagnostic(diagnostic, file.contents))
+      })
+    }
+    [] -> {
+      case debug {
+        True -> {
+          io.println("Tao AST parsed successfully")
+        }
+        False -> Nil
+      }
+
+      case verbose {
+        True -> io.println("✓ Parsed Tao successfully")
+        False -> Nil
+      }
+    }
+  }
+
+  // Desugar Tao to Core (even if parse errors exist, for error accumulation)
+  case verbose {
+    True -> io.println("✓ Desugaring to Core...")
+    False -> Nil
+  }
+
+  let core_term = tao_desugar(parse_result.ast)
+
+  case debug {
+    True -> {
+      io.println("Core term:")
+      io.println(debug_term(core_term))
+    }
+    False -> Nil
+  }
+
+  // Run type checker
+  case verbose {
+    True -> io.println("✓ Type checking...")
+    False -> Nil
+  }
+
+  let #(_type_result, _type_annotation, type_state) = infer(initial_state, core_term)
+  let type_errors = type_state.errors
+
+  // Report type errors
+  case type_errors {
+    [..] -> {
+      io.println("")
+      type_errors |> list.each(fn(e) {
+        let diagnostic = error_reporter.type_error_to_diagnostic(e, file.contents, file.path)
+        io.println(error_reporter.format_diagnostic(diagnostic, file.contents))
+      })
+    }
+    [] -> {
+      case verbose {
+        True -> io.println("✓ Type checking " <> file.path)
+        False -> Nil
+      }
+    }
+  }
+
+  // Combine all errors
+  let has_errors = { parse_errors |> list.is_empty } == False || { type_errors |> list.is_empty } == False
+
+  // Evaluate the term (even with errors, for debugging)
+  case verbose {
+    True -> io.println("✓ Evaluating...")
+    False -> Nil
+  }
+
+  let env = []
+  let ffi = initial_state.ffi
+  let value = eval(ffi, env, core_term)
+
+  // Quote back to normal form
+  let span = Span("", 0, 0, 0, 0)
+  let normal_form = quote(ffi, 0, value, span)
+
+  // Format and print the result
+  let formatted = core_syntax.format(normal_form)
+
+  // If there were errors, print delimiter before result
+  case has_errors {
+    True -> {
+      io.println("")
+      io.println("-----------------------------------------------------------")
+      io.println(formatted)
+      Error(TypeError(type_errors))
+    }
+    False -> {
+      io.println("Result: " <> formatted)
+      Ok(Nil)
+    }
+  }
 }
 
 // ============================================================================
@@ -466,7 +639,7 @@ fn format_file_error(err: simplifile.FileError) -> String {
 fn debug_term(term: Term) -> String {
   // Simple debug representation
   // In a full implementation, this would pretty-print the AST
-  syntax.format(term)
+  core_syntax.format(term)
 }
 
 fn file_type_to_string(file_type: FileType) -> String {
