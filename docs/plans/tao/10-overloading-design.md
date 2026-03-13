@@ -1,47 +1,57 @@
-# Tao Overloading Design (Revised)
+# Tao Overloading Design (v2)
 
 > **Goal**: Support function and operator overloading through implicit arguments and NbE
-> **Status**: 📋 **Design Phase** - Revised with unified implicit argument approach
+> **Status**: 📋 **Design Phase** - v2 with separated implicit/explicit parameters
 > **Date**: March 2026
 
 ---
 
 ## Core Insight
 
-**Overloading is type-directed instantiation**. Functions can have implicit type parameters that are inferred from context at call sites.
+**Overloading is type-directed instantiation**. Functions have implicit type parameters inferred from context, with a clean separation between implicit and explicit arguments.
 
 ---
 
 ## Key Design Decisions
 
-### 1. **Unified Implicit Arguments**
-
-All lambdas and applications support implicit arguments uniformly:
+### 1. **Separated Implicit/Explicit Parameters**
 
 ```gleam
-// Core Term
-Lam(params: List(#(String, Bool, Type)), body: Term)
-//               ↑ is_implicit
-
-App(func: Term, args: List(#(Term, Bool)))
-//                            ↑ is_implicit
+pub type Term {
+  // ... existing
+  
+  Lam(
+    implicit: List(String),           // Type params: <a, b>
+    params: List(#(String, Type)),    // Value params: (x: I32, y: I32)
+    body: Term,
+    span: Span,
+  )
+  
+  App(
+    func: Term,
+    implicit: List(Term),             // Type args: <I32, F32>
+    args: List(Term),                 // Value args: (1, 2)
+    span: Span,
+  )
+  
+  // ... rest unchanged
+}
 ```
 
-**Implicit arguments**:
-- Passed during type checking
-- Erased at runtime (zero overhead)
-- Enable type reflection
+**Benefits**:
+- ✅ Clear separation (no mixed flags)
+- ✅ Implicit always first: `f<a, b>(x, y)`
+- ✅ Multiple explicit params supported
+- ✅ Both lists can be empty
 
 ---
 
 ### 2. **Syntax: `f<ty>(x)`**
 
-Clear distinction between type and value application:
-
 ```tao
-f(x)       // Normal application (value arg)
-f<ty>(x)   // Type application (implicit arg)
-f<ty>(x, y) // Mixed: one implicit, two explicit
+f(x)         // Normal application
+f<ty>(x)     // Type application (implicit arg)
+f<a, b>(x, y) // Multiple implicit and explicit
 ```
 
 **Core syntax**:
@@ -54,18 +64,18 @@ func<ty>(arg)          // Application with implicit arg
 
 ### 3. **Hole-Based Inference**
 
-Tao desugars to normal applications with holes; Core inference fills them:
+Tao desugars to normal applications; Core inference fills implicit holes:
 
 ```tao
 // Tao source
 (-)(1)
 
-// Desugared (Tao doesn't know types)
-(-)(1)  -- Normal App, no implicit info
+// Desugared (normal App, no implicit info)
+App(Var("-"), [], [Lit(I32(1))])
 
 // During Core inference
-(-)<?>(1)  -- Hole created for implicit param
-(-)<I32>(1) -- Hole filled based on arg type
+App(Var("-"), [Hole], [Lit(I32(1))])  -- Hole created
+App(Var("-"), [%I32], [Lit(I32(1))])  -- Hole filled
 ```
 
 **Benefit**: Tao desugaring is simple; Core inference handles complexity.
@@ -74,14 +84,15 @@ Tao desugars to normal applications with holes; Core inference fills them:
 
 ### 4. **Polymorphic Types with `Forall`**
 
-Function types encode implicit parameters:
-
 ```gleam
-// Type of overloaded (-)
-Forall(["a"], Fn([Type("a")], Type("a")))  // ∀a. a → a
-
-// Type of non-overloaded function
-Fn([I32], I32)  // I32 → I32 (no Forall)
+pub type Type {
+  // ... existing
+  Var(String)
+  Fn(List(Type), Type)
+  
+  // Polymorphic type (for implicit params)
+  Forall(List(String), Type)  // ∀a. a → a
+}
 ```
 
 **During inference**:
@@ -90,133 +101,245 @@ Fn([I32], I32)  // I32 → I32 (no Forall)
 
 ---
 
-## Complete Example: Unary Negation
+## Complete Examples
 
-### Tao Source
+### Example 1: Unary Negation
 
 ```tao
-// Define overloaded negation
+// Tao source
 fn (-)(x: I32) -> I32 { %i32_neg(x) }
 fn (-)(x: F32) -> F32 { %f32_neg(x) }
 
-// Use it
 let result = -42
-let float_result = -3.14
 ```
 
-### Desugaring (Tao → Core)
+**Core AST**:
+```gleam
+// Overloaded function
+Lam(
+  implicit: ["ty"],
+  params: [#("x", Var("ty"))],
+  body: Match(Var("ty"), [
+    MatchArm(I32T, Call(FFI("i32_neg"), [Var("x")], _), _),
+    MatchArm(F64T, Call(FFI("f64_neg"), [Var("x")], _), _),
+  ], _),
+  span,
+)
+
+// Application: (-)(42)
+App(
+  func: Var("-"),
+  implicit: [Hole],  // Filled with I32 during inference
+  args: [Lit(I32(42))],
+  span,
+)
+```
+
+**Inference**:
+```
+1. (-) : ∀a. a → a
+2. App((-), <?>, [42])
+3. Infer 42 : I32
+4. Unify ? = I32
+5. Result: App((-), <I32>, [42]) : I32
+```
+
+---
+
+### Example 2: Overloaded Addition (Record Arg)
 
 ```tao
-// Overloaded function becomes type-level match
-%let (-) = %fn<ty>(x) -> %match ty {
-  | %I32 -> %i32_neg(x)
-  | %F32 -> %f32_neg(x)
-}
+// Tao source
+fn (+)(x: I32, y: I32) -> I32 { %i32_add(x, y) }
+fn (+)(x: F32, y: F32) -> F32 { %f32_add(x, y) }
 
-// Usage (Tao doesn't know types yet)
-%let result = (-)(42)      -- Normal App
-%let float_result = (-)(3.14)
+let result = 1 + 2
 ```
 
-### Type Inference (Core)
-
-```
-Step 1: Infer type of (-)
-  (-) : ∀a. a → a
-
-Step 2: Infer application (-)(42)
-  - Function has Forall, create hole for implicit
-  - (-)<?>(42)
-  - Infer 42 : I32
-  - Unify hole with I32
-  - Result: (-)<I32>(42) : I32
-
-Step 3: Evaluate
-  (-)<I32>(42)
-  → %match %I32 { | %I32 -> %i32_neg(42) }
-  → %i32_neg(42)
-  → -42
-```
-
-### Core Terms (After Inference)
-
+**Core AST**:
 ```gleam
-Let("-",
-  Lam(
-    [("ty", true, Hole), ("x", false, Var("ty"))],  // ty is implicit
-    Match(Var("ty"), [
-      MatchArm(I32T, Call(FFI("i32_neg"), [Var("x")], _), _),
-      MatchArm(F64T, Call(FFI("f64_neg"), [Var("x")], _), _),
-    ], _),
-    _
-  ),
-  Let("result",
-    App(Var("-"), [(Lit(I32(42)), false)], _),  // App gets upgraded during infer
-    _
-  )
+// Overloaded function with record arg
+Lam(
+  implicit: ["ty"],
+  params: [#("args", RecordType([("x", Var("ty")), ("y", Var("ty"))]))],
+  body: Match(Var("ty"), [
+    MatchArm(
+      I32T,
+      Call(FFI("i32_add"), [Field(Var("args"), "x"), Field(Var("args"), "y")], _),
+      _,
+    ),
+    MatchArm(
+      F64T,
+      Call(FFI("f64_add"), [Field(Var("args"), "x"), Field(Var("args"), "y")], _),
+      _,
+    ),
+  ], _),
+  span,
+)
+
+// Application: (+)(1, 2)
+App(
+  func: Var("+"),
+  implicit: [Hole],  // Filled with I32
+  args: [Record([("x", Lit(I32(1))), ("y", Lit(I32(2)))] )],
+  span,
 )
 ```
 
 ---
 
-## Type Reflection
-
-Implicit arguments enable free type reflection:
+### Example 3: Regular Function (No Implicit)
 
 ```tao
-// Get type of any value
-fn typeof<T>(x: T) -> Type { T }
+// Tao source
+fn double(x: I32) -> I32 { x * 2 }
 
-typeof(42)      // I32
-typeof("hello") // String
-typeof([1,2,3]) // List<I32>
+let result = double(5)
 ```
 
-**Desugars to**:
-```core
-%let typeof = %fn<T>(x) -> T
+**Core AST**:
+```gleam
+// Regular function (no implicit params)
+Lam(
+  implicit: [],
+  params: [#("x", I32)],
+  body: Call(FFI("i32_mul"), [Var("x"), Lit(I32(2))], _),
+  span,
+)
 
-typeof<?> (42)   // Hole created
-typeof<I32>(42)  // Hole filled
-// Returns: %I32
+// Application: double(5)
+App(
+  func: Var("double"),
+  implicit: [],  // No implicit args
+  args: [Lit(I32(5))],
+  span,
+)
 ```
 
 ---
 
-## Overload Resolution
-
-### Multiple Overloads
+### Example 4: Type Reflection
 
 ```tao
-fn (+)(x: I32, y: I32) -> I32 { %i32_add(x, y) }
-fn (+)(x: F32, y: F32) -> F32 { %f32_add(x, y) }
-fn (+)(v1: Vector, v2: Vector) -> Vector { ... }
+// Tao source
+fn typeof<T>(x: T) -> Type { T }
+
+let t = typeof(42)  // I32
 ```
 
-**Core representation**:
-```core
-%let (+) = %fn<ty>(args) -> %match ty {
-  | {x: %I32, y: %I32} -> %call i32_add(args.x, args.y)
-  | {x: %F64, y: %F64} -> %call f64_add(args.x, args.y)
-  | {v1: Vector, v2: Vector} -> ...
+**Core AST**:
+```gleam
+// typeof function
+Lam(
+  implicit: ["T"],
+  params: [#("x", Var("T"))],
+  body: Var("T"),
+  span,
+)
+
+// Application: typeof(42)
+App(
+  func: Var("typeof"),
+  implicit: [Hole],  // Filled with I32
+  args: [Lit(I32(42))],
+  span,
+)
+
+// Result: %I32 (type value)
+```
+
+---
+
+## Inference Algorithm
+
+```gleam
+pub fn infer(state: State, term: Term) -> #(InferResult, State) {
+  case term {
+    App(func, implicit_args, explicit_args, span) => {
+      let #(func_result, state1) = infer(state, func)
+      
+      case func_result.typ {
+        Forall(params, body_ty) => {
+          // Function has implicit params - instantiate them
+          let #(holes, state2) = create_holes(params, state1)
+          let instantiated_term = substitute(func_result.term, params, holes)
+          let instantiated_ty = substitute_type(body_ty, params, holes)
+          
+          // Apply with explicit args
+          apply(instantiated_term, explicit_args, instantiated_ty, span, state2)
+        }
+        
+        _ => {
+          // Normal application (no Forall)
+          apply(func_result.term, explicit_args, func_result.typ, span, state1)
+        }
+      }
+    }
+    
+    // ... rest unchanged
+  }
 }
 ```
 
-### Resolution Process
+---
+
+## Evaluation with Erasure
+
+```gleam
+pub fn eval(ffi: Ffi, env: Env, term: Term) -> Value {
+  case term {
+    App(func, implicit_args, explicit_args, span) => {
+      // Evaluate implicit args (for side effects) but erase
+      let _implicit_vals = list.map(implicit_args, fn(arg) { eval(ffi, env, arg) })
+      
+      // Evaluate explicit args
+      let explicit_vals = list.map(explicit_args, fn(arg) { eval(ffi, env, arg) })
+      
+      let func_val = eval(ffi, env, func)
+      
+      case func_val {
+        VLam(implicit_params, params, body, closure_env) => {
+          // Extend environment with explicit args only
+          // Implicit args are erased at runtime
+          let extended_env = extend_env(closure_env, params, explicit_vals)
+          eval(ffi, extended_env, body)
+        }
+      }
+    }
+    
+    Lam(implicit, params, body, span) => {
+      VLam(implicit, params, body, env)
+    }
+    
+    // ... rest unchanged
+  }
+}
+```
+
+**Key**: Implicit args evaluated but **erased** from runtime environment.
+
+---
+
+## Desugaring Pipeline
 
 ```
-1. Parse: (+)(1, 2)
-
-2. Infer args: 1 : I32, 2 : I32
-
-3. Check function type: (+) : ∀a. {x: a, y: a} → a
-
-4. Instantiate: (+)<?>({x: 1, y: 2})
-
-5. Unify: {x: ?, y: ?} with {x: I32, y: I32}
-   → ? = I32
-
-6. Result: (+)<I32>({x: 1, y: 2}) : I32
+Tao Source
+    ↓
+[Parse]
+    ↓
+Tao AST
+    ↓
+[Desugar]  -- Desugar to App with empty implicit list
+    ↓
+Core Term (pre-inference): App(func, [], [args])
+    ↓
+[Type Infer] -- Upgrade to implicit App, fill holes
+    ↓
+Core Term (post-inference): App(func, [I32], [args])
+    ↓
+[Evaluate] -- Erase implicit args
+    ↓
+Value
 ```
 
 ---
@@ -225,8 +348,8 @@ fn (+)(v1: Vector, v2: Vector) -> Vector { ... }
 
 ```tao
 // prelude.tao
-export fn (+)(x: I32, y: I32) -> I32 { ... }
-export fn (+)(x: F32, y: F32) -> F32 { ... }
+export fn (+)(x: I32, y: I32) -> I32 { %i32_add(x, y) }
+export fn (+)(x: F32, y: F32) -> F32 { %f32_add(x, y) }
 
 // vector.tao
 import prelude
@@ -245,211 +368,10 @@ export fn (+)(v1: Vector, v2: Vector) -> Vector {
 ```core
 // Combined (+) in Core
 %let (+) = %fn<ty>(args) -> %match ty {
-  | {x: %I32, y: %I32} -> ...  // From prelude
-  | {x: %F64, y: %F64} -> ...  // From prelude
+  | {x: %I32, y: %I32} -> %call i32_add(args.x, args.y)  // From prelude
+  | {x: %F64, y: %F64} -> %call f64_add(args.x, args.y)  // From prelude
   | {v1: Vector, v2: Vector} -> ...  // From vector
 }
-```
-
----
-
-## Implementation Architecture
-
-### Core Changes
-
-```gleam
-// src/core/core.gleam
-
-pub type Term {
-  // ... existing
-  Var(index: Int, span: Span)
-  
-  // Unified Lam with implicit params
-  Lam(
-    params: List(#(String, Bool, Term)),  // name, is_implicit, type_annotation
-    body: Term,
-    span: Span,
-  )
-  
-  // Unified App with implicit args
-  App(
-    func: Term,
-    args: List(#(Term, Bool)),  // term, is_implicit
-    span: Span,
-  )
-  
-  // ... rest unchanged
-}
-
-pub type Type {
-  // ... existing
-  Var(String)
-  Fn(List(Type), Type)
-  
-  // Polymorphic type
-  Forall(List(String), Type)  // ∀a. a → a
-}
-```
-
-### Inference Changes
-
-```gleam
-// src/core/core.gleam (infer function)
-
-pub fn infer(state, term) -> #(InferResult, State) {
-  case term {
-    App(func, args, span) => {
-      let #(func_result, state1) = infer(state, func)
-      
-      case func_result.typ {
-        Forall(params, body_ty) => {
-          // Function has implicit params - instantiate them
-          let #(holes, state2) = create_holes(params, state1)
-          let instantiated = substitute(func_result.term, params, holes)
-          apply(instantiated, args, body_ty, span, state2)
-        }
-        _ => {
-          // Normal application
-          apply(func_result.term, args, func_result.typ, span, state1)
-        }
-      }
-    }
-    
-    // ... rest unchanged
-  }
-}
-```
-
-### Evaluation Changes
-
-```gleam
-// src/core/core.gleam (eval function)
-
-pub fn eval(ffi, env, term) -> Value {
-  case term {
-    App(func, args, span) => {
-      // Separate implicit and explicit args
-      let implicit_args = list.filter_map(args, fn(#(arg, is_implicit)) {
-        case is_implicit {
-          True -> Some(eval(ffi, env, arg))  // Evaluate but erase
-          False -> None
-        }
-      })
-      let explicit_args = list.filter_map(args, fn(#(arg, is_implicit)) {
-        case is_implicit {
-          True -> None
-          False -> Some(eval(ffi, env, arg))
-        }
-      })
-      
-      let func_val = eval(ffi, env, func)
-      
-      case func_val {
-        VLam(params, body, closure_env) => {
-          // Match implicit params with implicit args
-          // Extend environment and evaluate body
-        }
-      }
-    }
-    
-    // ... rest unchanged
-  }
-}
-```
-
-**Key**: Implicit args are evaluated (for side effects) but erased from runtime representation.
-
----
-
-## Desugaring Pipeline
-
-```
-Tao Source
-    ↓
-[Parse]
-    ↓
-Tao AST
-    ↓
-[Desugar]  -- Desugar to normal App (no implicit info)
-    ↓
-Core Term (pre-inference)
-    ↓
-[Type Infer] -- Upgrade to implicit App, fill holes
-    ↓
-Core Term (post-inference)
-    ↓
-[Evaluate] -- Erase implicit args
-    ↓
-Value
-```
-
----
-
-## Open Questions & Decisions
-
-### Q1: How to handle match arms with implicit args?
-
-**Answer**: Each arm can bind implicit params:
-
-```core
-%match ty ~ motive {
-  | %I32 -> %fn<a = I32>(x) -> %i32_neg(x)
-  | %F64 -> %fn<a = F64>(x) -> %f64_neg(x)
-}
-```
-
-Arm type includes implicit param binding.
-
----
-
-### Q2: Can implicit params have defaults?
-
-**Answer**: Future extension:
-
-```tao
-fn id<T = I32>(x: T) -> T { x }
-id(42)  // Uses default I32 if context doesn't specify
-```
-
-**Decision**: Not in MVP, add later if needed.
-
----
-
-### Q3: How to handle higher-order functions with implicit params?
-
-```tao
-fn map<T, U>(f: fn(T) -> U, xs: List<T>) -> List<U> { ... }
-map((-), [1, 2, 3])  // What type for (-)?
-```
-
-**Answer**: Contextual inference:
-
-```
-1. xs : List<I32>, so T = I32
-2. f : fn(I32) -> U
-3. (-) : ∀a. a → a
-4. Instantiate (-) with a = I32
-5. Result: map<I32, I32>((-)<I32>, [1, 2, 3])
-```
-
----
-
-### Q4: What about implicit params in records/ADTs?
-
-**Answer**: Same mechanism:
-
-```tao
-type Box<T> = Box(value: T)
-
-fn unwrap<T>(box: Box<T>) -> T { box.value }
-
-unwrap(Box(42))  // T inferred as I32
-```
-
-**Core**:
-```core
-Box : ∀a. a → Box<a>
-unwrap : ∀a. Box<a> → a
 ```
 
 ---
@@ -458,46 +380,76 @@ unwrap : ∀a. Box<a> → a
 
 | Benefit | Description |
 |---------|-------------|
-| **Simplicity** | Single Lam/App, not multiple constructors |
-| **Uniformity** | All functions use same mechanism |
+| **Clean Separation** | Implicit and explicit params are separate lists |
+| **No Mixed Flags** | No `is_implicit` boolean per param |
+| **Implicit First** | Consistent ordering: `f<a>(x)` |
+| **Multiple Explicit** | Supports multi-param functions naturally |
 | **Type Reflection** | Free from implicit argument mechanism |
 | **Zero Overhead** | Implicit args erased at runtime |
 | **Hole Inference** | Leverages existing infrastructure |
-| **Consistency** | Matches Pi types at type level |
-| **Extensibility** | Easy to add more implicit param kinds |
 
 ---
 
 ## Comparison with Alternatives
 
-| Approach | Pros | Cons |
-|----------|------|------|
-| **Explicit Type App** `f(T)(x)` | Simple | Verbose, no inference |
-| **Implicit Args** `f<ty>(x)` | Inferred, clean syntax | More complex inference |
-| **Type Classes** | Powerful | Complex, runtime dictionaries |
-| **Multi-Dispatch** | Flexible | Runtime overhead |
+| Design | Pros | Cons |
+|--------|------|------|
+| **Mixed Flags** `List(#(String, Bool, Type))` | Flexible | Confusing, error-prone |
+| **Separated Lists** `implicit: List, params: List` | Clear, clean | Slightly more fields |
+| **Single Explicit Only** | Simplest | Forces currying/records |
 
-**Decision**: Implicit args provide best balance of simplicity and power.
+**Decision**: Separated lists provide best balance of clarity and flexibility.
+
+---
+
+## Open Questions
+
+### Q1: Should implicit list always be non-empty for overloaded functions?
+
+**Answer**: Convention, not enforced. Regular functions have `implicit: []`.
+
+---
+
+### Q2: Can explicit params be empty?
+
+**Answer**: Technically yes (type-level function), but rare in practice.
+
+```tao
+// Type-level function (no value params)
+fn type_id<T>() -> Type { T }
+```
+
+**Core**:
+```gleam
+Lam(
+  implicit: ["T"],
+  params: [],  // No value params
+  body: Var("T"),
+  span,
+)
+```
+
+---
+
+### Q3: How to handle match arms with implicit params?
+
+**Answer**: Each arm binds implicit params locally:
+
+```core
+%match ty ~ motive {
+  | %I32 -> %fn<a = I32>(x) -> %i32_neg(x)
+  | %F64 -> %fn<a = F64>(x) -> %f64_neg(x)
+}
+```
 
 ---
 
 ## Related Documents
 
-- **[11-overloading-implementation.md](./11-overloading-implementation.md)** - Implementation plan (needs update)
-- **[../core/15-type-application.md](../core/15-type-application.md)** - Core type application (superseded by this)
+- **[11-overloading-implementation.md](./11-overloading-implementation.md)** - Implementation plan
+- **[../core/15-type-application.md](../core/15-type-application.md)** - Superseded
 - **[09-tao-mvp-plan.md](./09-tao-mvp-plan.md)** - Tao MVP (completed)
 
 ---
 
-## Next Steps
-
-1. **Update Core AST** - Add implicit flag to Lam/App
-2. **Add Forall to Type** - Polymorphic type support
-3. **Update Inference** - Instantiate Forall, fill holes
-4. **Update Evaluation** - Erase implicit args
-5. **Update Formatter** - Print `<ty>` syntax
-6. **Tests** - Verify overloading, type reflection
-
----
-
-**This design unifies implicit arguments, overloading, and type reflection elegantly.** 🎯
+**This design provides clean separation of implicit and explicit parameters with minimal complexity.** 🎯

@@ -1,7 +1,7 @@
-# Tao Overloading Implementation Plan (Revised)
+# Tao Overloading Implementation Plan (v2)
 
 > **Goal**: Implement function and operator overloading through implicit arguments
-> **Status**: 📋 **Planned** - Revised with unified implicit argument approach
+> **Status**: 📋 **Planned** - v2 with separated implicit/explicit parameters
 > **Target**: 6-7 weeks
 
 ---
@@ -10,10 +10,10 @@
 
 **Key Changes from Original Plan**:
 
-1. **Unified Lam/App**: Single constructor with implicit flag, not separate TypeApp
-2. **Hole-Based Inference**: Tao desugars to normal App, Core inference upgrades to implicit
-3. **Forall Types**: Polymorphic types encode implicit parameters
-4. **Type Reflection**: Free from implicit argument mechanism
+1. **Separated Implicit/Explicit**: `implicit: List(String)` and `params: List(#(String, Type))`
+2. **No Mixed Flags**: Clean separation, no `is_implicit` boolean per param
+3. **Hole-Based Inference**: Tao desugars to empty implicit, Core inference fills
+4. **Forall Types**: Polymorphic types encode implicit parameters
 
 ---
 
@@ -21,7 +21,7 @@
 
 ### Phase 1: Core AST Extensions (1 week)
 
-**Goal**: Add implicit argument support to Core terms and types
+**Goal**: Add separated implicit/explicit parameters to Core terms and types
 
 #### Day 1-2: Update Term AST
 
@@ -31,17 +31,19 @@
 pub type Term {
   // ... existing constructors
   
-  // UPDATED: Lam with implicit params
+  // UPDATED: Lam with separated implicit/explicit
   Lam(
-    params: List(#(String, Bool, Term)),  // name, is_implicit, type_annotation
+    implicit: List(String),           // Type params: <a, b>
+    params: List(#(String, Type)),    // Value params: (x: I32, y: I32)
     body: Term,
     span: Span,
   )
   
-  // UPDATED: App with implicit args
+  // UPDATED: App with separated implicit/explicit
   App(
     func: Term,
-    args: List(#(Term, Bool)),  // term, is_implicit
+    implicit: List(Term),             // Type args: <I32, F32>
+    args: List(Term),                 // Value args: (1, 2)
     span: Span,
   )
   
@@ -50,13 +52,15 @@ pub type Term {
 ```
 
 **Migration**:
-- Existing code: `Lam(name, body, span)` → `Lam([#(name, false, Hole)], body, span)`
-- Existing code: `App(func, arg, span)` → `App(func, [#(arg, false)], span)`
+- Existing code: `Lam(name, body, span)` → `Lam([], [#(name, Hole)], body, span)`
+- Existing code: `App(func, arg, span)` → `App(func, [], [arg], span)`
 
 **Tests**: `test/core/core_test.gleam`
-- [ ] Create Lam with implicit param
-- [ ] Create App with implicit arg
-- [ ] Backward compatibility (implicit = false)
+- [ ] Create Lam with implicit params
+- [ ] Create Lam without implicit params
+- [ ] Create App with implicit args
+- [ ] Create App without implicit args
+- [ ] Backward compatibility (empty implicit list)
 
 #### Day 3: Update Type AST
 
@@ -91,7 +95,7 @@ Use compiler errors as guide to update all case expressions.
 - [ ] All existing tests pass
 - [ ] No pattern match warnings
 
-**Deliverable**: ✅ Core AST supports implicit arguments
+**Deliverable**: ✅ Core AST supports separated implicit/explicit
 
 ---
 
@@ -138,7 +142,7 @@ fn substitute(
 ```gleam
 pub fn infer(state: State, term: Term) -> #(InferResult, State) {
   case term {
-    App(func, args, span) => {
+    App(func, implicit_args, explicit_args, span) => {
       let #(func_result, state1) = infer(state, func)
       
       case func_result.typ {
@@ -149,12 +153,12 @@ pub fn infer(state: State, term: Term) -> #(InferResult, State) {
           let instantiated_ty = substitute_type(body_ty, params, holes)
           
           // Apply with explicit args
-          apply(instantiated_term, args, instantiated_ty, span, state2)
+          apply(instantiated_term, explicit_args, instantiated_ty, span, state2)
         }
         
         _ => {
           // Normal application (no Forall)
-          apply(func_result.term, args, func_result.typ, span, state1)
+          apply(func_result.term, explicit_args, func_result.typ, span, state1)
         }
       }
     }
@@ -165,7 +169,7 @@ pub fn infer(state: State, term: Term) -> #(InferResult, State) {
 
 fn apply(
   func: Term,
-  args: List(#(Term, Bool)),
+  explicit_args: List(Term),
   func_ty: Type,
   span: Span,
   state: State,
@@ -226,31 +230,20 @@ fn unify(t1: Type, t2: Type, state: State) -> Result(State, Error) {
 ```gleam
 pub fn eval(ffi: Ffi, env: Env, term: Term) -> Value {
   case term {
-    App(func, args, span) => {
-      // Separate implicit and explicit args
-      let implicit_args = list.filter_map(args, fn(#(arg, is_implicit)) {
-        case is_implicit {
-          True -> Some(eval(ffi, env, arg))
-          False -> None
-        }
-      })
-      let explicit_args = list.filter_map(args, fn(#(arg, is_implicit)) {
-        case is_implicit {
-          True -> None
-          False -> Some(eval(ffi, env, arg))
-        }
-      })
+    App(func, implicit_args, explicit_args, span) => {
+      // Evaluate implicit args (for side effects) but erase
+      let _implicit_vals = list.map(implicit_args, fn(arg) { eval(ffi, env, arg) })
+      
+      // Evaluate explicit args
+      let explicit_vals = list.map(explicit_args, fn(arg) { eval(ffi, env, arg) })
       
       let func_val = eval(ffi, env, func)
       
       case func_val {
-        VLam(params, body, closure_env) => {
-          // Match params with args (implicit first, then explicit)
-          let extended_env = extend_env(
-            closure_env,
-            params,
-            list.append(implicit_args, explicit_args),
-          )
+        VLam(implicit_params, params, body, closure_env) => {
+          // Extend environment with explicit args only
+          // Implicit args are erased at runtime
+          let extended_env = extend_env(closure_env, params, explicit_vals)
           eval(ffi, extended_env, body)
         }
         
@@ -258,9 +251,9 @@ pub fn eval(ffi: Ffi, env: Env, term: Term) -> Value {
       }
     }
     
-    Lam(params, body, span) => {
+    Lam(implicit, params, body, span) => {
       // Capture environment with param info
-      VLam(params, body, env)
+      VLam(implicit, params, body, env)
     }
     
     // ... rest unchanged
@@ -268,12 +261,13 @@ pub fn eval(ffi: Ffi, env: Env, term: Term) -> Value {
 }
 ```
 
-**Key Insight**: Implicit args are evaluated (for side effects) but not passed to body.
+**Key Insight**: Implicit args are evaluated (for side effects) but **not passed** to body.
 
 **Tests**: `test/core/eval_test.gleam`
 - [ ] Evaluate App with implicit arg
 - [ ] Implicit arg erased at runtime
 - [ ] Nested implicit apps
+- [ ] App without implicit args (backward compat)
 
 #### Day 3: Type Reflection
 
@@ -281,10 +275,10 @@ pub fn eval(ffi: Ffi, env: Env, term: Term) -> Value {
 
 ```gleam
 // typeof example
-%let typeof = %fn<a>(x) -> a
+%let typeof = %fn<T>(x) -> T
 
 // During evaluation:
-// typeof<?> (42)  -- Hole created
+// typeof<?>(42)  -- Hole created
 // typeof<I32>(42) -- Hole filled with I32
 // Returns: %I32
 ```
@@ -314,12 +308,23 @@ pub fn neg_overloading_test() {
 
 pub fn typeof_reflection_test() {
   let source = "
-    %let typeof = %fn<a>(x) -> a
+    %let typeof = %fn<T>(x) -> T
     typeof(42)
   "
   
   let result = run(source)
   result |> should.equal(%I32)  // Type value
+}
+
+pub fn regular_function_test() {
+  // Test backward compatibility (no implicit params)
+  let source = "
+    %let double = %fn(x) -> %call i32_mul(x, 2)
+    double(5)
+  "
+  
+  let result = run(source)
+  result |> should.equal(10)
 }
 ```
 
@@ -329,7 +334,7 @@ pub fn typeof_reflection_test() {
 
 ### Phase 4: Tao Desugaring (1 week)
 
-**Goal**: Desugar Tao to Core with normal applications
+**Goal**: Desugar Tao to Core with empty implicit lists
 
 #### Day 1-2: Parse Overloaded Functions
 
@@ -370,7 +375,7 @@ pub fn desugar_overloaded_fn(fn_def) -> Term {
   // becomes:
   // %fn<ty>(x) -> %match ty { | %I32 -> %i32_neg(x) }
   
-  let implicit_ty_param = #("ty", true, Hole)
+  let implicit_ty_param = ["ty"]
   
   let match_arms = list.map(fn_def.overloads, fn(overload) {
     MatchArm(
@@ -381,8 +386,9 @@ pub fn desugar_overloaded_fn(fn_def) -> Term {
   
   Term(
     Lam(
-      [implicit_ty_param, #("x", false, Hole)],
-      Match(Var("ty"), match_arms, span),
+      implicit: implicit_ty_param,
+      params: [#("x", Hole)],
+      body: Match(Var("ty"), match_arms, span),
       span,
     ),
     span,
@@ -390,12 +396,29 @@ pub fn desugar_overloaded_fn(fn_def) -> Term {
 }
 
 pub fn desugar_binop(left, op, right, span) -> Term {
-  // (-)(1) desugars to normal App (no implicit info)
-  // Core inference will upgrade to implicit app
+  // (-)(1) desugars to App with empty implicit list
+  // Core inference will fill in implicit args
   Term(
     App(
       Var(op),
-      [#(desugar_expr(left), false), #(desugar_expr(right), false)],
+      [],  // Empty implicit - inference will fill
+      [desugar_expr(left), desugar_expr(right)],
+      span,
+    ),
+    span,
+  )
+}
+
+pub fn desugar_regular_fn(fn_def) -> Term {
+  // fn double(x: I32) -> I32 { x * 2 }
+  // becomes:
+  // %fn(x) -> %call i32_mul(x, 2)
+  
+  Term(
+    Lam(
+      implicit: [],  // No implicit params
+      params: [#("x", Hole)],
+      body: desugar_expr(fn_def.body),
       span,
     ),
     span,
@@ -403,11 +426,12 @@ pub fn desugar_binop(left, op, right, span) -> Term {
 }
 ```
 
-**Key**: Desugar to **normal App**, let Core inference upgrade to implicit.
+**Key**: Desugar to **empty implicit list**, let Core inference fill holes.
 
 **Tests**:
 - [ ] Desugar overloaded negation
 - [ ] Desugar operator usage
+- [ ] Desugar regular function
 - [ ] Desugar preserves structure
 
 #### Day 5: End-to-End Tests
@@ -434,6 +458,16 @@ pub fn neg_f32_test() {
   let result = run_tao(source)
   result |> should.equal(-3.14)
 }
+
+pub fn regular_function_test() {
+  let source = "
+    fn double(x: I32) -> I32 { x * 2 }
+    double(5)
+  "
+  
+  let result = run_tao(source)
+  result |> should.equal(10)
+}
 ```
 
 **Deliverable**: ✅ Tao desugars to Core correctly
@@ -451,49 +485,27 @@ pub fn neg_f32_test() {
 ```gleam
 pub fn format(term: Term) -> String {
   case term {
-    Lam(params, body, _span) => {
-      let implicit_params = list.filter_map(params, fn(#(name, is_implicit, _)) {
-        case is_implicit {
-          True -> Some(name)
-          False -> None
-        }
-      })
-      let explicit_params = list.filter_map(params, fn(#(name, is_implicit, _)) {
-        case is_implicit {
-          True -> None
-          False -> Some(name)
-        }
-      })
-      
-      let implicit_str = case implicit_params {
+    Lam(implicit, params, body, _span) => {
+      let implicit_str = case implicit {
         [] -> ""
-        _ -> "<" <> string_join(implicit_params, ", ") <> ">"
+        _ -> "<" <> string_join(implicit, ", ") <> ">"
       }
-      let explicit_str = string_join(explicit_params, ", ")
+      let param_str = string_join(
+        list.map(params, fn(#(name, _typ)) { name }),
+        ", ",
+      )
       
-      "%fn" <> implicit_str <> "(" <> explicit_str <> ") -> " <> format(body)
+      "%fn" <> implicit_str <> "(" <> param_str <> ") -> " <> format(body)
     }
     
-    App(func, args, _span) => {
-      let implicit_args = list.filter_map(args, fn(#(arg, is_implicit)) {
-        case is_implicit {
-          True -> Some(format(arg))
-          False -> None
-        }
-      })
-      let explicit_args = list.filter_map(args, fn(#(arg, is_implicit)) {
-        case is_implicit {
-          True -> None
-          False -> Some(format(arg))
-        }
-      })
-      
-      let implicit_str = case implicit_args {
+    App(func, implicit, args, _span) => {
+      let implicit_str = case implicit {
         [] -> ""
-        _ -> "<" <> string_join(implicit_args, ", ") <> ">"
+        _ -> "<" <> string_join(list.map(implicit, format), ", ") <> ">"
       }
+      let arg_str = string_join(list.map(args, format), ", ")
       
-      format(func) <> implicit_str <> "(" <> string_join(explicit_args, ", ") <> ")"
+      format(func) <> implicit_str <> "(" <> arg_str <> ")"
     }
     
     // ... rest unchanged
@@ -502,8 +514,10 @@ pub fn format(term: Term) -> String {
 ```
 
 **Tests**:
-- [ ] Format Lam with implicit param
-- [ ] Format App with implicit arg
+- [ ] Format Lam with implicit params
+- [ ] Format Lam without implicit params
+- [ ] Format App with implicit args
+- [ ] Format App without implicit args
 - [ ] Format mixed implicit/explicit
 
 #### Day 3: Update Parser (Optional)
@@ -543,6 +557,7 @@ rule("Lambda", [
 - [ ] `01_negation.tao` - Unary negation
 - [ ] `02_addition.tao` - Overloaded addition
 - [ ] `03_typeof.tao` - Type reflection
+- [ ] `04_regular.tao` - Regular function (no overloading)
 
 **Deliverable**: ✅ Formatter prints implicit syntax
 
@@ -599,11 +614,11 @@ pub fn type_error_to_diagnostic(error, source, file) -> Diagnostic {
 
 | Module | Tests | Focus |
 |--------|-------|-------|
-| `core.gleam` (Term) | 20+ | Implicit Lam/App creation |
+| `core.gleam` (Term) | 25+ | Separated implicit/explicit creation |
 | `core.gleam` (Type) | 15+ | Forall type operations |
 | `core.gleam` (infer) | 40+ | Forall instantiation, hole filling |
 | `core.gleam` (eval) | 25+ | Implicit arg erasure |
-| `syntax.gleam` | 20+ | Format/parse implicit syntax |
+| `syntax.gleam` | 25+ | Format/parse implicit syntax |
 | `desugar.gleam` | 20+ | Tao → Core desugaring |
 
 ### Integration Tests
@@ -617,6 +632,7 @@ pub fn type_error_to_diagnostic(error, source, file) -> Diagnostic {
 | `typeof_list` | Type reflection for List |
 | `higher_order` | Map with overloaded function |
 | `cross_module` | Overloads from multiple modules |
+| `regular_function` | Regular function (backward compat) |
 
 ### Golden File Tests
 
@@ -625,6 +641,7 @@ pub fn type_error_to_diagnostic(error, source, file) -> Diagnostic {
 | `examples/tao/overloading/01_negation.tao` | Negation example |
 | `examples/tao/overloading/02_addition.tao` | Addition example |
 | `examples/tao/overloading/03_typeof.tao` | Type reflection |
+| `examples/tao/overloading/04_regular.tao` | Regular function |
 
 ---
 
@@ -632,12 +649,13 @@ pub fn type_error_to_diagnostic(error, source, file) -> Diagnostic {
 
 Overloading is complete when:
 
-- ✅ Core supports implicit arguments in Lam/App
+- ✅ Core supports separated implicit/explicit params
 - ✅ Forall types instantiate during inference
 - ✅ Implicit args erased at runtime
-- ✅ Tao desugars to normal App
-- ✅ Type inference upgrades to implicit App
+- ✅ Tao desugars with empty implicit list
+- ✅ Type inference fills implicit holes
 - ✅ Type reflection works (typeof)
+- ✅ Backward compatibility (regular functions work)
 - ✅ 150+ tests passing
 - ✅ 5+ working examples
 - ✅ Clear error messages
@@ -648,10 +666,10 @@ Overloading is complete when:
 
 | Phase | Duration | Deliverable |
 |-------|----------|-------------|
-| **Phase 1**: Core AST | 1 week | Implicit Lam/App, Forall Type |
-| **Phase 2**: Inference | 1-2 weeks | Forall instantiation, hole filling |
+| **Phase 1**: Core AST | 1 week | Separated implicit/explicit |
+| **Phase 2**: Inference | 1-2 weeks | Forall instantiation |
 | **Phase 3**: Evaluation | 1 week | Implicit arg erasure |
-| **Phase 4**: Desugaring | 1 week | Tao → Core with normal App |
+| **Phase 4**: Desugaring | 1 week | Tao → Core with empty implicit |
 | **Phase 5**: Formatter | 1 week | `<ty>` syntax printing |
 | **Phase 6**: Polish | 1 week | Docs, examples, tests |
 
@@ -664,7 +682,7 @@ Overloading is complete when:
 | Risk | Impact | Mitigation |
 |------|--------|------------|
 | Inference complexity | High | Start simple, add features incrementally |
-| Backward compatibility | Medium | Support both old/new syntax during transition |
+| Backward compatibility | Medium | Support empty implicit list for existing code |
 | Performance (holes) | Low | Profile and optimize if needed |
 | Match arm implicit params | Medium | Handle in Phase 2 extension |
 
@@ -672,10 +690,10 @@ Overloading is complete when:
 
 ## Related Documents
 
-- **[10-overloading-design.md](./10-overloading-design.md)** - Design specification
-- **[../core/15-type-application.md](../core/15-type-application.md)** - Superseded by this plan
+- **[10-overloading-design.md](./10-overloading-design.md)** - Design specification (v2)
+- **[../core/15-type-application.md](../core/15-type-application.md)** - Superseded
 - **[09-tao-mvp-plan.md](./09-tao-mvp-plan.md)** - Tao MVP (completed)
 
 ---
 
-**This revised plan leverages implicit arguments for a cleaner, more unified implementation.** 🚀
+**This revised plan with separated implicit/explicit parameters provides cleaner AST and simpler inference.** 🚀
