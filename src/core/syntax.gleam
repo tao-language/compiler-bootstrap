@@ -124,7 +124,7 @@ fn named_to_de_bruijn_loop(term: NamedTerm, env: List(String)) -> Term {
     NPi(name, in_type, out_type, span) -> {
       let in_db = named_to_de_bruijn_loop(in_type, env)
       let out_db = named_to_de_bruijn_loop(out_type, [name, ..env])
-      Term(Pi(name, in_db, out_db), span)
+      Term(Pi([], name, in_db, out_db), span)
     }
     NApp(fun, arg, span) -> {
       let fun_db = named_to_de_bruijn_loop(fun, env)

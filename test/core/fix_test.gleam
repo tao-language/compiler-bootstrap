@@ -44,11 +44,11 @@ fn v32t() {
 }
 
 fn lam(name, body, span) {
-  c.Term(c.Lam(name, body), span)
+  c.Term(c.Lam([], #(name, c.Term(c.Hole(-1), s1)), body), span)
 }
 
 fn app(fun, arg, span) {
-  c.Term(c.App(fun, arg), span)
+  c.Term(c.App(fun, [], arg), span)
 }
 
 fn var(i, span) {

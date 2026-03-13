@@ -1293,6 +1293,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
           // Create the expanded function type: (?2 -> ?3)
           let fun_ty_expanded =
             VPi(
+              [],
               "_",
               env,
               arg_ty_hole_val,
@@ -1325,7 +1326,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let env = get_env(s)
       let #(arg_val, arg_ty, s) = infer(s, arg)
       // The motive type is (x : arg_ty) → Type, where x is the scrutinee
-      let motive_ty = VPi("_", env, arg_ty, Term(Typ(0), arg.span))
+      let motive_ty = VPi([], "_", env, arg_ty, Term(Typ(0), arg.span))
       let #(motive_val, s) = check(s, motive, motive_ty, motive.span)
       let s =
         list.fold(cases, s, fn(s, c) {
@@ -1404,7 +1405,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(result_ty_hole, s) = new_hole(s)
       // The function type is result_ty -> result_ty
       let fun_ty =
-        VPi(name, env, result_ty_hole, Term(Hole(s.hole - 1), body.span))
+        VPi([], name, env, result_ty_hole, Term(Hole(s.hole - 1), body.span))
       // Add the fixpoint variable to the context with the function type
       let #(_fresh, s) = def_var(s, name, fun_ty)
       let #(_body_val, s) = check(s, body, result_ty_hole, body.span)

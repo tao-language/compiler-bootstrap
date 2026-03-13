@@ -49,7 +49,7 @@ fn i32t(span) {
 }
 
 fn lam(name, body, span) {
-  c.Term(c.Lam(name, body), span)
+  c.Term(c.Lam([], #(name, c.Term(c.Hole(-1), s1)), body), span)
 }
 
 fn pany() {

@@ -26,7 +26,7 @@ import core/core.{
   SpineMismatch, TODO,
   PAny, PAs, PTyp, PLit, PLitT, PRcd, PCtr,
   HVar, HHole,
-  VTyp, VLit, VLitT, VNeut, VRcd, VCtr, VLam, VPi, VCall, VFix, VErr,
+  VTyp, VLit, VLitT, VNeut, VRcd, VCtr, VLam, VPi, VRecord, VCall, VFix, VErr,
   I32, I64, U32, U64, F32, F64,
   I32T, I64T, U32T, U64T, F32T, F64T,
   AllowRead, AllowWrite,
@@ -486,9 +486,11 @@ fn type_to_string(ty: Type) -> String {
     VNeut(head, _) -> head_to_string(head)
     VRcd(_) -> "{...}"
     VCtr(tag, _) -> tag
-    VLam(_, _, _) -> "λ"
-    VPi(name, _, domain, _) ->
-      "(" <> name <> " : " <> type_to_string(domain) <> ") → ..."
+    VLam(_, _, _, _) -> "λ"
+    VPi(_, _, _, domain, _) ->
+      "(" <> type_to_string(domain) <> ") → ..."
+    VRcd(_) -> "{...}"
+    VRecord(_) -> "Record{...}"
     VCall(name, _) -> name
     VFix(_, _, _) -> "fix"
     VErr -> "⊥"
