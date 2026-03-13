@@ -1,8 +1,8 @@
 # Tao Language Overview
 
 > **Goal**: Simple, pragmatic functional language with dependent types—TypeScript-like syntax without the complexity
-> **Status**: 📋 Designed, ✅ AST Complete, ⏳ Ready to implement lexer/grammar/desugarer
-> **Date**: March 2025
+> **Status**: ⏳ **MVP Implementation In Progress** - Starting Week 1 (Lexer + Parser)
+> **Date**: March 2025 (Updated: March 2026 - MVP started)
 
 ---
 
@@ -27,25 +27,29 @@ Tao is syntax sugar over the core language. All heavy lifting (type checking, no
 - ✅ All type definitions (Program, Declaration, Expr, Pattern, Type, etc.)
 - ✅ Span tracking for all nodes
 - ✅ Compiles successfully
-- ⚠️ **No tests yet** - needs test suite
+- ⚠️ **No tests yet** - will add during MVP implementation
 
 ### ⏳ In Progress
 
-**Nothing currently** - ready to start implementation
+**Tao MVP Implementation** (2-3 weeks, started March 2026):
 
-### 📋 Next Steps
+| Component | Status | Week |
+|-----------|--------|------|
+| **Tao Lexer** | 📋 Planned | Week 1 |
+| **Tao Grammar** | 📋 Planned | Week 1 |
+| **Tao Desugarer** | 📋 Planned | Week 2 |
+| **CLI Integration** | 📋 Planned | Week 3 |
+| **Examples + Tests** | 📋 Planned | Week 3 |
 
-See **[06-implementation-plan.md](./06-implementation-plan.md)** for detailed implementation plan:
+See **[09-tao-mvp-plan.md](./09-tao-mvp-plan.md)** for detailed MVP implementation plan.
 
-1. **Phase 1**: Core language changes (pattern guards, untyped literals) - 1-2 days
-2. **Phase 2**: Tao lexer - 2-3 days
-3. **Phase 3**: Tao grammar - 3-4 days
-4. **Phase 4**: Tao desugarer - 3-4 days
-5. **Phase 5**: Tao formatter - 2-3 days
-6. **Phase 6**: Integration tests - 2-3 days
-7. **Phase 7**: Standard library - 3-4 days
+### 📋 Next Steps (After MVP)
 
-**Total**: 16-23 days for complete implementation
+1. **Phase 1**: Tao MVP (lexer, grammar, desugarer) - 2-3 weeks ⏳ IN PROGRESS
+2. **Phase 2**: Core standard library - 1 week
+3. **Phase 3**: Tao expansion (do blocks, mut, imports) - 2-3 weeks
+4. **Phase 4**: Tao standard library - 2-3 weeks
+5. **Phase 5**: Polish (error suggestions, docs) - Ongoing
 
 ---
 
@@ -56,54 +60,67 @@ See **[06-implementation-plan.md](./06-implementation-plan.md)** for detailed im
 ```
 src/
 ├── tao/
-│   ├── lexer.gleam        # Tao tokenizer (~400 lines) ← TODO
-│   ├── grammar.gleam      # Tao grammar definition (~600 lines) ← TODO
-│   ├── parser.gleam       # Thin wrapper: syntax.parse(tao_grammar(), src) ← TODO
-│   ├── formatter.gleam    # Manual formatter using syntax formatter ← TODO
-│   └── desugar.gleam      # Tao AST → Core Term (~500 lines) ← TODO
-├── syntax/                # Reuse existing syntax library
-│   ├── grammar.gleam      # Grammar DSL (~786 lines) ✅
-│   ├── lexer.gleam        # Tokenizer (~400 lines) ✅
-│   └── formatter.gleam    # Document algebra (~139 lines) ✅
-└── core/                  # Reuse existing core language
-    └── core.gleam         # Type checker, evaluator, unifier (~1800 lines) ✅
+│   ├── ast.gleam              # ✅ Tao AST (~430 lines)
+│   ├── lexer.gleam            # ⏳ TODO (~300 lines)
+│   ├── grammar.gleam          # ⏳ TODO (~400 lines)
+│   └── desugar.gleam          # ⏳ TODO (~300 lines)
+├── syntax/                    # ✅ Reuse existing syntax library
+│   ├── grammar.gleam          # ✅ Grammar DSL (~1100 lines)
+│   ├── lexer.gleam            # ✅ Tokenizer (~400 lines)
+│   ├── formatter.gleam        # ✅ Document algebra (~440 lines)
+│   ├── source_snippet.gleam   # ✅ Source snippet (~260 lines)
+│   └── error_reporter.gleam   # ✅ Error reporting (~220 lines)
+└── core/                      # ✅ Reuse existing core language
+    ├── syntax.gleam           # ✅ Core syntax (~1677 lines)
+    └── core.gleam             # ✅ Type checker, evaluator (~1942 lines)
 ```
 
 ### Compilation Pipeline
 
 ```
+Tao Source (.tao)
+    ↓
+Tao Lexer (src/tao/lexer.gleam)
+    ↓
+Tao Parser (src/tao/grammar.gleam + syntax library)
+    ↓
+Tao AST
+    ↓
+Tao Desugar (src/tao/desugar.gleam)
+    ↓
+Core Term
+    ↓
+Core Type Checker + Evaluator
+    ↓
+Result
+```
+
+### Data Flow
+
+```
 ┌─────────────────────────────────────────────────────────────────┐
 │  Tao Source (.tao)                                              │
+│  fn add(x: Int, y: Int): Int { x + y }                          │
 └─────────────────────────────────────────────────────────────────┘
-                            ↓
+                            ↓ (tokenize)
 ┌─────────────────────────────────────────────────────────────────┐
-│  Lexer (src/tao/lexer.gleam)                                    │
-│  - Tokenize: identifiers, keywords, operators, literals         │
-│  - Handle: comments, strings, numbers                           │
-│  - Track: positions for error reporting                         │
+│  Tokens                                                         │
+│  [Fn, Ident("add"), LParen, Ident("x"), Colon, Int, ...]       │
 └─────────────────────────────────────────────────────────────────┘
-                            ↓
+                            ↓ (parse)
 ┌─────────────────────────────────────────────────────────────────┐
-│  Parser (src/tao/grammar.gleam + syntax library)                │
-│  - Parse: Tao AST with type annotations                         │
-│  - Handle: operator precedence, pattern matching                │
-│  - Return: TaoAst + errors                                      │
+│  Tao AST                                                        │
+│  FnDecl("add", [Param("x", Int), Param("y", Int)], ...)        │
 └─────────────────────────────────────────────────────────────────┘
-                            ↓
+                            ↓ (desugar)
 ┌─────────────────────────────────────────────────────────────────┐
-│  Desugar (src/tao/desugar.gleam)                                │
-│  - Convert: Tao AST → Core Term                                 │
-│  - Inject: Type applications for overloaded operators           │
-│  - Thread: Explicit state for mutable variables                 │
-│  - Expand: `<-`, `?.`, `?` sugar to core operations             │
+│  Core Term                                                      │
+│  Lam("x", Lam("y", Call("i32_add", Var(1), Var(0))))           │
 └─────────────────────────────────────────────────────────────────┘
-                            ↓
+                            ↓ (type check + eval)
 ┌─────────────────────────────────────────────────────────────────┐
-│  Core Language (src/core/core.gleam)                            │
-│  - Type check: Bidirectional (infer/check)                      │
-│  - Normalize: Normalization by evaluation                       │
-│  - Evaluate: With FFI/comptime support                          │
-│  - Return: Typed Core Term + errors                             │
+│  Result                                                         │
+│  VLam("x", ..., Lam("y", ..., Call(...)))                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -111,384 +128,132 @@ src/
 
 ## Design Principles
 
-### 1. Immutable by Default (Rust/OCaml Model)
+### 1. TypeScript-like Syntax
 
+Familiar to web developers:
 ```tao
-let x = 5           // Immutable
-let mut y = 0       // Explicit mutability
-y = y + 1           // OK
+fn add(x: Int, y: Int): Int {
+  x + y
+}
+
+let result = add(5, 10)
 ```
 
-**Desugaring**: Mutable variables become explicit state threading in core.
+### 2. Sensible Defaults
 
-### 2. No OOP / No Inheritance
+99% of code is simple, 1% uses dependent types:
+```tao
+// Simple case (99%)
+let x = 5
+
+// Dependent type case (1%)
+let v: Vec(5, Int) = [1, 2, 3, 4, 5]
+```
+
+### 3. Core as Foundation
+
+Tao desugars to Core, which handles:
+- Type checking
+- Normalization
+- Evaluation
+- Exhaustiveness checking
+
+### 4. Error Messages First
+
+Error messages designed alongside implementation:
+- Clear, actionable hints
+- Source snippets with context
+- Emoji-guided navigation
+
+---
+
+## MVP Features
+
+### In Scope ✅
+
+| Feature | Syntax | Desugars To |
+|---------|--------|-------------|
+| **Functions** | `fn f(x: Int): Int { x }` | Core `Lam` |
+| **Let bindings** | `let x = 5` | Core `Let` |
+| **Pattern match** | `match x { \| Some(y) -> y }` | Core `%match` |
+| **Operators** | `x + y` | Core `%call i32_add` |
+| **If expressions** | `if c { a } else { b }` | Core `Match` |
+| **Basic types** | `Int`, `Bool`, `String` | Core types |
+
+### Out of Scope ❌ (For Now)
+
+| Feature | Why Deferred |
+|---------|--------------|
+| Mutable variables | Complexity, use Core directly |
+| Do blocks | Desugaring complexity |
+| Imports/modules | Single-file programs first |
+| Generics | Core handles polymorphism |
+| Advanced types | Use Core for dependent types |
+
+---
+
+## Example Programs
+
+### Hello World
 
 ```tao
-// ❌ No classes
-// class Animal { ... }  // NOT ALLOWED
-
-// ✅ Plain records
-type Animal = {
-  name: String,
-  age: I32,
-}
-
-// ✅ Functions operate on data
-fn get_name(animal: Animal) -> String {
-  animal.name
+// examples/tao/01_hello.tao
+fn main() {
+  print("Hello, Tao!")
 }
 ```
 
-**Desugaring**: Records map directly to core `Rcd`, functions to core `Lam`.
-
-### 3. GADTs with Full Pattern Matching
+### Factorial
 
 ```tao
-type Vec(n: Nat, a: Type) {
-  Nil: Vec(0, a)
-  Cons: (n: Nat, a, Vec(n, a)) -> Vec(n + 1, a)
-}
-
-fn head(v: Vec(n, a)) -> Maybe(a) {
-  match v {
-    Nil => None
-    Cons(_, x, _) => Some(x)
+// examples/tao/02_factorial.tao
+fn factorial(n: Int): Int {
+  match n {
+    | 0 -> 1
+    | _ -> n * factorial(n - 1)
   }
 }
-```
 
-**Desugaring**: GADTs map to core `Ctr` with `ret_ty`. Match maps to core `Match`.
-
-### 4. Dependent Types with Inference
-
-```tao
-// 99% case: Simple types
-fn add(a: I32, b: I32) -> I32 { a + b }
-
-// 1% case: Full dependent types
-fn matmul(a: Matrix(m, n), b: Matrix(n, p)) -> Matrix(m, p) {
-  // Type checker verifies dimensions
+fn main() {
+  factorial(5)
 }
 ```
 
-**Desugaring**: Type annotations are optional sugar. Type inference injects explicit types.
-
-### 5. No Async/Await
+### Option Type
 
 ```tao
-// ❌ No async/await
-// async fn fetch() { ... }  // NOT ALLOWED
+// examples/tao/03_option.tao
+type Option<a> = Some(a) | None
 
-// ✅ Just functions
-fn fetch_data(url: String) -> Result(String, Error) {
-  // Implementation detail: blocking or non-blocking
-}
-```
-
-**Desugaring**: All functions are core `Lam`. Effects handled by FFI/permissions.
-
-### 6. No NULL, Use Maybe
-
-```tao
-// ❌ No null
-// let x: String = null  // NOT ALLOWED
-
-// ✅ Maybe type
-type Maybe(a) { Some(a), None }
-
-// ✅ Optional chaining
-let name = user?.name  // Maybe(String)
-```
-
-**Desugaring**: `?.` expands to nested `match` expressions.
-
-### 7. Result-Based Error Handling
-
-```tao
-// ❌ No try/catch
-
-// ✅ Result with bind operator
-fn process() -> Result(I32, String) {
-  let x <- parse_int("42")  // Unwraps Ok, returns early on Err
-  let y <- parse_int("10")
-  Ok(x + y)
-}
-
-// ✅ Optional chaining
-let value = result?  // Unwraps Ok, returns early on Err
-```
-
-**Desugaring**: `<-` expands to `and_then`/`flat_map`. `?` expands to `match`.
-
-### 8. No IO Monad (Pragmatic Effects)
-
-```tao
-// ✅ Pure built-ins
-let x = 5 + 3  // i32_add(5, 3)
-
-// ✅ Effects return Result
-fn read_file(path: String) -> Result(String, Error)
-
-// ✅ Permission attributes
-@permission(Read("/tmp"))
-fn read_temp() -> Result(String, Error) {
-  read_file("/tmp/data.txt")
-}
-```
-
-**Desugaring**: Attributes are metadata. Effects handled by core FFI/permissions.
-
-### 9. Operator Overloading via Type Inference
-
-```tao
-// ✅ Operators predefined, cannot create new ones
-// Allowed: +, -, *, /, ==, !=, <, >, <=, >=, &&, ||, !
-
-// ✅ Overloading via pattern matching
-fn add(a: I32, b: I32) -> I32 { i32_add(a, b) }
-fn add(a: F64, b: F64) -> F64 { f64_add(a, b) }
-fn add(a: Vec3, b: Vec3) -> Vec3 { vec3_add(a, b) }
-
-// ✅ Type inference injects type applications
-let x = 5 + 3      // Desugars: add(I32, 5, 3)
-let y = 5.0 + 3.0  // Desugars: add(F64, 5.0, 3.0)
-```
-
-**Desugaring**: NbE resolves overloaded functions at compile-time.
-
----
-
-## Implementation Status
-
-### ✅ Complete and Working (Core Infrastructure)
-
-**Syntax Library** (`src/syntax/`):
-- Lexer (~400 lines) - Tokenizes identifiers, keywords, numbers, strings, comments
-- Grammar DSL (~786 lines) - Full layout-aware grammar definition
-- Formatter (~139 lines) - Document algebra with best-fit rendering
-- Calculator example - Working parser/formatter demonstration
-
-**Core Language** (`src/core/`):
-- Term types - Var, Lam, App, Pi, Rcd, Match, Ctr, Hole, Lit, Ann, Call, Comptime
-- Value types - Normalization by evaluation
-- Type checker - Bidirectional type checking (infer/check)
-- Unifier - Type unification with occurs check
-- FFI/Comptime - Compile-time evaluation with permissions
-- Exhaustiveness checking - Maranget's algorithm
-- **263 tests passing**
-
-**Tao AST** (`src/tao/`):
-- Complete AST definition (~430 lines) ✅
-- Desugaring to core (~550 lines) ✅
-- **Compiles successfully** ✅
-
-### ⏳ In Progress (Tao Language)
-
-**Phase 1: Lexer** (`src/tao/lexer.gleam`):
-- [ ] Tokenize identifiers (lowercase, Uppercase)
-- [ ] Tokenize keywords (let, mut, fn, type, match, etc.)
-- [ ] Tokenize literals (Int, Float, String - untyped)
-- [ ] Tokenize operators (+, -, *, /, ==, !=, etc.)
-- [ ] Handle comments (line `//`, block `/* */`)
-- [ ] Track positions for error reporting
-
-**Phase 2: Grammar** (`src/tao/grammar.gleam`):
-- [ ] Define Tao AST types
-- [ ] Define grammar rules using syntax library
-- [ ] Handle operator precedence (10 levels)
-- [ ] Handle pattern matching syntax (OCaml style with `|`)
-- [ ] Handle type annotations (optional)
-- [ ] Handle attributes (@permission, @effect, etc.)
-- [ ] Handle module syntax (import, as, names)
-- [ ] Handle sum type layout (multi-line with `|`)
-
-**Phase 3: Parser** (`src/tao/parser.gleam`):
-- [ ] Thin wrapper around syntax library parser
-- [ ] Error handling and reporting
-- [ ] Source location tracking
-
-**Phase 4: Formatter** (`src/tao/formatter.gleam`):
-- [ ] Manual formatter for Tao AST
-- [ ] Precedence-based parenthesization
-- [ ] Layout hints for pretty-printing
-
-**Phase 5: Desugaring** (`src/tao/desugar.gleam`):
-- [x] Convert Tao AST → Core Term (basic implementation)
-- [ ] Type inference and injection
-- [ ] Operator overloading resolution (name mangling)
-- [ ] Mutable variable state threading (SSA-style renaming)
-- [ ] Imperative blocks → tail-recursive functions
-- [ ] Early return → ControlFlow enum
-- [ ] Expand `<-` bind operator
-- [ ] Expand `?.` optional chaining
-- [ ] Expand `?` Result unwrap
-- [ ] Record update syntax
-- [ ] Module name mangling
-- [ ] Handle attributes (permissions, effects)
-- [ ] Pattern guards support
-
-**Phase 6: Core Language Changes** (`src/core/core.gleam`):
-- [ ] Add untyped literals (Int, Float without type suffix)
-- [ ] Add `Coerce` term for literal coercion
-- [ ] Add pattern guards to `Case` type
-- [ ] Update exhaustiveness checking for guards
-- [ ] Add overload metadata to State
-
-**Phase 7: Standard Library** (`src/tao/std/`):
-- [ ] Maybe type (Some, None)
-- [ ] Result type (Ok, Err)
-- [ ] List type and operations
-- [ ] Option combinators (map, and_then, etc.)
-- [ ] Result combinators
-- [ ] Common utilities
-
-**Phase 8: Module System**:
-- [ ] Import resolution
-- [ ] Circular dependency detection
-- [ ] Public/private visibility (_prefix)
-- [ ] Project compilation (topological sort)
-- [ ] Namespace mangling
-
-### 📋 Planned (Future Enhancements)
-
-- Package manager
-- LSP support (autocomplete, go-to-definition, etc.)
-- Documentation generator
-- Performance optimizations (TCO guarantee)
-- Additional standard library modules
-- Trait/type class system (for operator overloading)
-- Derive macros (@derive(Debug, Clone))
-
----
-
-## Key Concepts
-
-### 1. Type Inference with NbE Resolution
-
-Type inference injects explicit type applications during normalization:
-
-```tao
-// Source
-fn add(a: I32, b: I32) -> I32 { a + b }
-fn add(a: F64, b: F64) -> F64 { f64_add(a, b) }
-
-let x = 5 + 3  // Inferred: I32
-
-// Desugared (core)
-let x = add(I32, 5, 3)  // Type application injected
-```
-
-**How it works**:
-1. Parse Tao AST
-2. Type check (bidirectional)
-3. During NbE, resolve overloaded functions by matching argument types
-4. Inject type applications in core Term
-
-### 2. Mutable Variable State Threading
-
-```tao
-// Tao source
-let mut counter = 0
-counter = counter + 1
-counter = counter * 2
-
-// Desugared to core (explicit state)
-let counter_0 = 0
-let counter_1 = counter_0 + 1
-let counter_2 = counter_1 * 2
-// Use counter_2 from here on
-```
-
-**How it works**:
-1. Track mutable variables in desugarer
-2. Generate fresh names for each assignment
-3. Thread state explicitly through computations
-
-### 3. Bind Operator (`<-`) Expansion
-
-```tao
-// Tao source
-fn process() -> Result(I32, String) {
-  let x <- parse_int("42")
-  let y <- parse_int("10")
-  Ok(x + y)
-}
-
-// Desugared to core
-fn process() -> Result(I32, String) {
-  and_then(parse_int("42"), fn(x) {
-    and_then(parse_int("10"), fn(y) {
-      Ok(x + y)
-    })
-  })
-}
-```
-
-**How it works**:
-1. Identify `<-` expressions in function body
-2. Convert to chained `and_then` calls
-3. Wrap final expression in appropriate constructor
-
-### 4. Optional Chaining (`?.`) Expansion
-
-```tao
-// Tao source
-let city = user?.address?.city
-
-// Desugared to core
-let city = match user {
-  Some(u) => match u.address {
-    Some(addr) => Some(addr.city)
-    None => None
+fn unwrap(opt: Option<Int>): Int {
+  match opt {
+    | Some(x) -> x
+    | None -> 0
   }
-  None => None
 }
-```
-
-**How it works**:
-1. Identify `?.` chains
-2. Generate nested `match` expressions
-3. Return `None` at first `None`, `Some(value)` at end
-
----
-
-## File Structure
-
-```
-src/
-├── tao/
-│   ├── lexer.gleam        # Tao tokenizer ← TODO
-│   ├── grammar.gleam      # Tao grammar definition ← TODO
-│   ├── parser.gleam       # Parser wrapper ← TODO
-│   ├── formatter.gleam    # Tao formatter ← TODO
-│   ├── desugar.gleam      # Tao → Core desugaring ← TODO
-│   └── std/
-│       ├── maybe.gleam    # Maybe type (Some, None) ← TODO
-│       ├── result.gleam   # Result type (Ok, Err) ← TODO
-│       └── list.gleam     # List type and operations ← TODO
-├── syntax/                # Reuse existing
-│   ├── grammar.gleam      # Grammar DSL (~786 lines) ✅
-│   ├── lexer.gleam        # Tokenizer (~400 lines) ✅
-│   └── formatter.gleam    # Document algebra (~139 lines) ✅
-└── core/                  # Reuse existing
-    └── core.gleam         # Type checker, evaluator (~1800 lines) ✅
 ```
 
 ---
 
 ## Related Documents
 
+- **[09-tao-mvp-plan.md](./09-tao-mvp-plan.md)** - MVP implementation plan ⏳ **START HERE**
+- **[06-implementation-plan.md](./06-implementation-plan.md)** - Full implementation plan
 - **[02-syntax.md](./02-syntax.md)** - Tao syntax specification
-- **[03-desugaring.md](./03-desugaring.md)** - Desugaring rules to core language
-- **[04-standard-library.md](./04-standard-library.md)** - Standard library design
-- **[../grammar/01-overview.md](../grammar/01-overview.md)** - Grammar system overview
-- **[../core/01-overview.md](../core/01-overview.md)** - Core language overview
+- **[03-desugaring.md](./03-desugaring.md)** - Desugaring rules
+- **[07-desugaring-specification.md](./07-desugaring-specification.md)** - Detailed desugaring
+- **[../../docs/core-syntax.md](../../docs/core-syntax.md)** - Core syntax reference
+- **[../../docs/cli.md](../../docs/cli.md)** - CLI documentation
 
 ---
 
 ## References
 
-- [Syntax Library](../../src/syntax/grammar.gleam)
-- [Core Language](../../src/core/core.gleam)
-- [Tao Language Design](../../docs/plans/tao/01-overview.md)
-- [Learn Tao in Y Minutes](../../docs/plans/tao/02-syntax.md#learn-tao-in-y-minutes)
+- [Tao AST](../../src/tao/ast.gleam) - Already complete ✅
+- [Syntax Library](../../src/syntax/grammar.gleam) - Reuse for parsing
+- [Core Language](../../src/core/core.gleam) - Compilation target
+- [CLI](../../src/compiler_bootstrap.gleam) - Integration point
+
+---
+
+**Ready to implement Tao MVP! 🚀**
