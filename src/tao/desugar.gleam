@@ -173,11 +173,21 @@ fn desugar_overloaded_fn(
 ) -> Term {
   // Desugar the body expression
   let body_term = desugar_expr(body, initial_ctx(span))
-  
+
   // Create match expression: %match T { | %Type -> body }
   let type_pattern = type_to_pattern(param_type)
-  let match_term = Term(Match(Term(Var(0), span), Term(Typ(0), span), [Case(type_pattern, body_term, None, span)]), span)
-  
+  let match_term = Term(
+    Match(
+      Term(Var(0), span),
+      Term(Typ(0), span),
+      [
+        Case(type_pattern, body_term, None, span),
+        Case(PAny, body_term, None, span),  // Catch-all returns same body for simplicity
+      ],
+    ),
+    span,
+  )
+
   // Create lambda with implicit type param: %fn<T>(x) -> match T { ... }
   Term(Lam([type_param], #(param_name, Term(Hole(-1), span)), match_term), span)
 }

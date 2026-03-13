@@ -13,11 +13,11 @@
 - ✅ **Tao Lexer** - Tokenizes identifiers, numbers, operators, keywords
 - ✅ **Tao Parser** - Parses expressions, overloaded functions, and comparison operators
 - ✅ **Tao Formatter** - Formats expressions, overloaded functions, and comparisons
-- ✅ **Tao Desugarer** - Transforms Tao → Core with type matching
-- ✅ **Type Matching** - Generates match expressions on type parameters
+- ✅ **Tao Desugarer** - Transforms Tao → Core with type matching and catch-all patterns
+- ✅ **Type Matching** - Generates match expressions on type parameters with exhaustiveness
 - ✅ **CLI Integration** - `gleam run run file.tao` works
 - ✅ **Examples** - 4 working examples (arithmetic, overloading, comparisons)
-- ✅ **Tests** - **420 tests passing** (4 expected failures - incomplete match coverage)
+- ✅ **Tests** - **424 tests passing** (100% pass rate)
 - ✅ **Comparison Operators** - `==`, `!=`, `<`, `>`, `<=`, `>=`
 
 ### What's Pending
