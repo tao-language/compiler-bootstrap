@@ -1,248 +1,147 @@
-# Learn Core in Y Minutes
+# Core Language Syntax Quick Reference (Dependent Types)
 
-A quick reference for the Core language syntax. Core is a minimal dependently-typed calculus that serves as the target for high-level language compilation.
+Core is a dependently-typed target language. It uses `%` for keywords, `#` for constructors, and `%call` for operations to keep the namespace clean.
 
-## Comments
+## 1. Philosophy & Rules
+*   **Keywords** start with `%` (e.g., `%let`, `%match`).
+*   **Constructors** start with `#` (e.g., `#True`, `#Nil`).
+*   **No Infix Operators**: Use `%call` for all operations (e.g., `%call i32_add(x, y)`).
+*   **No `$` Prefix**: Use `%Type` for universes and literal names (e.g., `I32`) for types.
 
+## 2. Comments
 ```text
 // Single line comment
+/* Multi-line comment */
 ```
 
-## Literals
+## 3. Literals & Types
+Literals are values; types describe their structure. Use `%Type` for universes and literal names (e.g., `I32`, `U32`) for types.
 
 ```text
-42          // I32 integer
-3.14        // F64 float
-#True       // Constructor (like an enum variant)
-#Some(42)   // Constructor with argument
+42          // Integer literal (Type: I32)
+#True       // Constructor value (Type: %Type)
+(x : I32)   // Type annotation
 ```
 
-## Variables
+## 4. Functions & Patterns (`->`)
+Functions are lambdas (`x -> body`). This is syntactic sugar for dependent function types (Pi-types).
 
 ```text
-x           // Variable reference
+x -> x       // Identity function
+(x : I32) -> x   // Explicitly typed lambda
+
+// Pi Type (Dependent Function)
+(x : A) -> B   // Return type depends on input value x
 ```
 
-## Lambda Abstraction
+## 5. Pattern Matching (`%match`)
+Pattern matching deconstructs values. The **motive** specifies the return type for each case, which is crucial for dependent types (GADTs).
 
 ```text
-x -> x                      // Identity function
-x -> y -> x                 // Constant function (K combinator)
-x -> y -> %call prim.add(x, y)  // Function using primitive
+%match arg ~ motive { cases }
 ```
 
-## Function Application
+*   **`arg`**: The value to match.
+*   **`motive`**: A function `(input_type) -> return_type`. Tells the checker what type each case returns.
+*   **`cases`**: `| pattern -> body`.
 
+**Example:**
 ```text
-f(x)                        // Apply f to x
-f(x)(y)                     // Curried application
-(x -> x)(42)                // Apply lambda to 42
-```
-
-## Type Annotations
-
-```text
-(x : $I32)                  // x has type I32
-(42 : $I32)                 // Annotate literal with type
-```
-
-## Pi Types (Dependent Function Types)
-
-```text
-(x : $Type) -> $Type        // Function type where domain is $Type
-(x : $I32) -> $Type         // Dependent type: return depends on value
-```
-
-## Type Universe
-
-```text
-$Type                       // Type of small types
-$Type(1)                    // Type universe at level 1
-```
-
-## Literal Types
-
-```text
-$I32                        // Type of 32-bit integers
-$I64                        // Type of 64-bit integers
-$F32                        // Type of 32-bit floats
-$F64                        // Type of 64-bit floats
-```
-
-## Records
-
-```text
-{}                          // Empty record
-{x: 42}                     // Single field
-{x: 42, y: 3.14}            // Multiple fields
-```
-
-## Record Projection
-
-```text
-point.x                     // Access field x of record
-```
-
-## Constructors
-
-```text
-#Some                       // Constructor without argument
-#Some(42)                   // Constructor with argument
-#Cons(h, t)                 // Constructor with multiple args
-```
-
-## Pattern Matching
-
-```text
-%match arg ~ motive {
-  | pattern -> body
-  | pattern -> body
+%match n ~ (k : I32) -> %Type {
+  | #Zero -> k        // Returns type k (depends on n)
+  | _      -> %Type   // Returns universe type
 }
 ```
 
-### Match with Dependent Motive
+## 6. Operations (`%call`)
+Core has no infix operators like `+`. Use `%call` for built-in functions.
 
 ```text
-%match n ~ (k : Nat) -> $Type {
-  | #Zero -> $I32
-  | #Succ(_pred) -> $Type
+%call i32_add(x, y)   // Addition (returns I32)
+%call i32_eq(x, y)    // Equality check (returns Bool)
+```
+
+## 7. Recursion (`%fix`) & Comptime (`%comptime`)
+*   **Recursion**: `%fix name = term`. Defines a recursive function.
+*   **Comptime**: `%comptime term`. Evaluates at compile-time (folds constants).
+
+```text
+%fix fact = \n -> match n with ...
+%comptime 2 + 3       // Evaluates to 5 at compile-time
+```
+
+## 8. Factorial Implementation (`$I32`)
+Here is a recursive factorial function using the `I32` type. Note the use of `%call i32_...` operators and `%fix` for recursion.
+
+```text
+// Define factorial function
+%fix fact = \n -> match n with
+  | #Zero -> 1
+  | _     -> %call i32_mul(n, fact(%call i32_sub(n, 1)))
+
+// Usage: Calculate factorial of 5
+%let result = %comptime fact(5) in result
+
+// Type annotation (Optional but recommended)
+result : I32
+```
+
+## 9. Dependent Types Example: `Vec`
+Vectors in Core are dependent types where the length is a value. To define `Vec`, use `%U32` for the universe level and `%call u32_add` to calculate length.
+
+### Defining `Vec`
+```text
+// Define Nil constructor (Length must be 0)
+%def #Nil : Vec(0, A)
+
+// Define Cons constructor (Length becomes n + 1)
+%def #Cons(n : U32, x) -> Vec(%call u32_add(n, 1), A)
+```
+
+### Using `Vec`
+```text
+// Create a vector of length 2 containing 10 and 20
+%let v = #Cons(2, %call i32_add(10, 20))
+
+// Access head of vector (if length > 0)
+%match v ~ (n : U32, A) -> %Type {
+  | #Nil -> %call i32_sub(0, n)   // Error: Length must be 0
+  | #Cons(n, x) -> x              // Returns element type A
 }
 ```
 
-### Match with Guards
+## 10. Quick Syntax Cheat Sheet
 
+| Feature | Syntax | Description |
+| :--- | :--- | :--- |
+| **Comment** | `//` or `/* */` | Ignored by parser |
+| **Literal** | `42`, `3.14` | Integer or Float value |
+| **Constructor** | `#Name(args)` | Data variant (starts with #) |
+| **Keyword** | `%let`, `%match` | Meta-operators (start with %) |
+| **Lambda** | `x -> body` | Function definition |
+| **FFI Call** | `%call i32_add(x, y)` | Built-in function call |
+| **Recursion** | `%fix name = term` | Recursive definition |
+
+## 11. Key Concepts Explained
+
+### Dependent Types (Pi Types)
+A function type `(x : A) -> B` where `B` can depend on the value of `x`.
 ```text
-%match n ~ ($Type) {
-  | k ? (%call prim.leq(k, 1)) -> 1
-  | k -> %call prim.mul(k, fact(%call prim.sub(k, 1)))
+(x : I32) -> Vec(x, Bool)   // Returns a vector of length x
+```
+
+### Motives (in `%match`)
+The motive `(input_type) -> return_type` tells the type checker what type each branch returns. This is essential for GADTs where constructors return different types based on the input value.
+```text
+%match v ~ (n : U32) -> %Type {
+  | #Nil -> Vec(0, A)   // Case returns type Vec(0, A)
+  | #Cons(n, x) -> Vec(Succ(n), A) // Case returns type Vec(Succ(n), A)
 }
 ```
 
-## Holes (Metavariables)
+### Constructors (`#`) vs Keywords (`%`)
+*   **Constructors** (`#Name`) are values that represent data variants. They must be defined individually using `%def`.
+*   **Keywords** (`%Name`) are meta-operators used for language structure (e.g., `%match`, `%fix`).
 
-```text
-?                           // Anonymous hole (to be inferred)
-?1                          // Named hole #1
-```
-
-## Let Bindings (Syntax Sugar)
-
-```text
-let x = 42 in x             // Desugars to: (x -> x)(42)
-let id = x -> x in id(42)   // Desugars to: (id -> id(42))(x -> x)
-```
-
-## Built-in Calls (FFI)
-
-```text
-%call prim.add(x, y)        // Addition
-%call prim.sub(x, y)        // Subtraction
-%call prim.mul(x, y)        // Multiplication
-%call prim.div(x, y)        // Division
-%call prim.mod(x, y)        // Modulo
-%call prim.eq(x, y)         // Equality
-%call prim.leq(x, y)        // Less than or equal
-```
-
-## Compile-Time Evaluation
-
-```text
-%comptime %call prim.add(10, 5)   // Evaluated at compile-time
-let size = %comptime 15 in size   // Use computed value
-```
-
-## Complete Example
-
-```text
-// Identity function applied to 42
-let id = x -> x in
-id(42)
-
-// Curried addition
-let add = x -> y -> %call prim.add(x, y) in
-add(10)(20)
-
-// Pattern matching on constructors
-let b = #True in
-%match b ~ ($Type) {
-  | #True -> 1
-  | #False -> 0
-}
-
-// Record with projection
-let point = {x: 10, y: 20} in
-point.x
-
-// Dependent match
-%match n ~ ($Type) {
-  | #Zero -> #True
-  | #Succ(_pred) -> #False
-}
-```
-
-## Precedence (Low to High)
-
-1. Lambda/Pi: `x -> body`, `(x : A) -> B`
-2. Let: `let x = v in body`
-3. Match: `%match arg ~ motive { ... }`
-4. Application: `f(x)`
-5. Annotation: `term : type`
-6. Projection: `record.field`
-7. Atoms: variables, literals, constructors, records
-
-## Type Checking Rules
-
-- **Bidirectional**: Terms either *check* against a type or *infer* a type
-- **Holes**: Create metavariables to be solved during type checking
-- **Universes**: `$Type : $Type(1) : $Type(2) : ...`
-
-## Common Patterns
-
-### Polymorphic Identity
-
-```text
-(x -> x) : $Type
-```
-
-### Constant Function (K Combinator)
-
-```text
-x -> y -> x
-```
-
-### Function Composition
-
-```text
-f -> g -> x -> g(f(x))
-```
-
-### Boolean Logic (Church Encoding)
-
-```text
-let true = t -> f -> t in
-let false = t -> f -> f in
-let and = a -> b -> a(b)(false) in
-and(true)(false)
-```
-
-### Natural Numbers (Church Encoding)
-
-```text
-let zero = f -> x -> x in
-let one = f -> x -> f(x) in
-let two = f -> x -> f(f(x)) in
-let succ = n -> f -> x -> f(n(f)(x)) in
-succ(zero)
-```
-
-## Error Handling
-
-- **Parse Errors**: Invalid syntax reported with source location
-- **Type Errors**: Type mismatches reported with expected/got
-- **Hole Errors**: Unsolved holes reported at end of checking
-
-## Related Documentation
-
-- [Core Language Overview](plans/core/01-overview.md)
-- [Error Examples](../examples/core/errors/README.md)
-- [Program Examples](../examples/core/programs/README.md)
+### Error Recovery
+Core reports all errors in a single pass. If an error occurs, checking continues to report other issues (e.g., type mismatches and missing match cases).
