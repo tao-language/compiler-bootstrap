@@ -446,9 +446,21 @@ fn value_to_string(value) -> String {
     core.VNeut(head, spine) -> neutral_to_string(head, spine)
     core.VRcd(fields) -> record_fields_to_string(fields)
     core.VCtr(tag, arg) -> "#" <> tag <> "(" <> value_to_string(arg) <> ")"
-    core.VLam(name, _env, _body) -> "fn(" <> name <> ") { ... }"
+    core.VLam(implicit, name, _env, _body) -> {
+      let implicit_str = case implicit {
+        [] -> ""
+        _ -> "<" <> string.join(implicit, ", ") <> ">"
+      }
+      "%fn" <> implicit_str <> "(" <> name <> ") { ... }"
+    }
     core.VPi(name, _env, in_val, _out) -> {
       "(" <> name <> ": " <> value_to_string(in_val) <> ") -> ..."
+    }
+    core.VForall(params, _body) -> {
+      "∀" <> string.join(params, ", ") <> ". ..."
+    }
+    core.VRecord(fields) -> {
+      "{" <> string.join(list.map(fields, fn(f) { f.0 <> ": ..." }), ", ") <> "}"
     }
     core.VCall(name, args) -> {
       name <> "(" <> args |> list.map(value_to_string) |> string.join(", ") <> ")"

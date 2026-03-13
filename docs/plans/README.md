@@ -219,6 +219,7 @@ Keep plans when:
 - Implementation details
 - Testing strategy
 - Future work
+- Change log: list of changes to the plan with timestamps
 
 ### Things to exclude
 

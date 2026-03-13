@@ -50,14 +50,22 @@ pub type TermData {
   /// Type annotation (term : type).
   Ann(term: Term, typ: Term)
 
-  /// Lambda abstraction (λx. body).
-  Lam(name: String, body: Term)
+  /// Lambda abstraction (λx. body) with optional implicit type params.
+  /// implicit: list of type parameter names (e.g., ["a", "b"] for <a, b>)
+  /// param: #(name, type_annotation) for the single explicit parameter
+  Lam(implicit: List(String), param: #(String, Term), body: Term)
 
-  /// Dependent function type ((x : A) → B x).
-  Pi(name: String, in: Term, out: Term)
+  /// Dependent function type with implicit type params
+  /// implicit: list of type parameter names (e.g., ["T", "U"] for <T, U>)
+  /// name: value parameter name
+  /// in: domain type
+  /// out: codomain type (can mention name)
+  Pi(implicit: List(String), name: String, in_term: Term, out_term: Term)
 
-  /// Function application (f x).
-  App(fun: Term, arg: Term)
+  /// Function application (f x) with optional implicit type args.
+  /// implicit: list of type arguments (e.g., [I32, F32] for <I32, F32>)
+  /// arg: single explicit argument
+  App(fun: Term, implicit: List(Term), arg: Term)
 
   /// Pattern matching with dependent return type.
   Match(arg: Term, motive: Term, cases: List(Case))
@@ -92,10 +100,12 @@ pub type Value {
   VRcd(fields: List(#(String, Value)))
   /// Evaluated constructor
   VCtr(tag: String, arg: Value)
-  /// Closure: lambda with captured environment
-  VLam(name: String, env: Env, body: Term)
-  /// Dependent function type with evaluated domain
-  VPi(name: String, env: Env, in: Value, out: Term)
+  /// Closure: lambda with captured environment and implicit type params
+  VLam(implicit: List(String), name: String, env: Env, body: Term)
+  /// Dependent function type with implicit type params and evaluated domain
+  VPi(implicit: List(String), name: String, env: Env, in_val: Value, out_term: Term)
+  /// Record type with named fields
+  VRecord(fields: List(#(String, Value)))
   /// Built-in function call deferred to runtime
   /// Created when FFI not found during eval, or when args are not concrete
   VCall(name: String, args: List(Value))
@@ -181,6 +191,9 @@ pub type Elim {
 
   /// Function application: wait to apply function to argument.
   EApp(arg: Value)
+
+  /// Implicit type application: wait to apply function to type argument.
+  EAppImplicit(value: Value)
 
   /// Pattern matching: wait to match value against patterns.
   /// CRITICAL for NbE - DO NOT REMOVE.
@@ -638,12 +651,30 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
     Ctr(tag, arg) -> VCtr(tag, eval(ffi, env, arg))
     Dot(arg, name) -> do_dot(eval(ffi, env, arg), name)
     Ann(term, _) -> eval(ffi, env, term)
-    Lam(name, body) -> VLam(name, env, body)
-    Pi(name, in, out) -> VPi(name, env, eval(ffi, env, in), out)
-    App(fun, arg) -> {
+    Lam(implicit, param, body) -> {
+      let #(name, _) = param
+      VLam(implicit, name, env, body)
+    }
+    Pi(implicit, name, in_term, out_term) -> VPi(implicit, name, env, eval(ffi, env, in_term), out_term)
+    App(fun, implicit, arg) -> {
+      // Evaluate function and argument
       let fun_val = eval(ffi, env, fun)
       let arg_val = eval(ffi, env, arg)
-      do_app(ffi, fun_val, arg_val)
+      
+      // Handle implicit arguments recursively
+      case implicit {
+        [] -> {
+          // Base case: no implicit args, apply normally
+          do_app(ffi, fun_val, arg_val)
+        }
+        [implicit_arg, ..rest] -> {
+          // Recursive case: peel off one implicit arg
+          let implicit_val = eval(ffi, env, implicit_arg)
+          // Instantiate function with implicit and recurse
+          let instantiated = do_app_implicit(fun_val, implicit_val)
+          do_app_with_implicit(ffi, instantiated, rest, arg_val)
+        }
+      }
     }
     Match(arg, motive, cases) -> {
       let arg_val = eval(ffi, env, arg)
@@ -696,15 +727,48 @@ fn do_dot(value: Value, name: String) -> Value {
 pub fn do_app(ffi: FFI, fun: Value, arg: Value) -> Value {
   case fun {
     VNeut(head, spine) -> VNeut(head, [EApp(arg), ..spine])
-    VLam(_, env, body) -> eval(ffi, [arg, ..env], body)
+    VLam(_, _, env, body) -> eval(ffi, [arg, ..env], body)
     VFix(name, env, body) -> {
       // Unfold fixpoint: substitute the fixpoint itself for the name in the body
       // Then apply to the argument
       let fix_val = VFix(name, env, body)
-      let lam_val = VLam(name, [fix_val, ..env], body)
+      let lam_val = VLam([], name, [fix_val, ..env], body)
       do_app(ffi, lam_val, arg)
     }
     _ -> VErr
+  }
+}
+
+/// Apply a function with an implicit type argument.
+///
+/// The implicit argument is evaluated but erased at runtime.
+/// For neutral terms, the implicit application is added to the spine.
+fn do_app_implicit(fun: Value, implicit_val: Value) -> Value {
+  case fun {
+    VNeut(head, spine) -> VNeut(head, [EAppImplicit(implicit_val), ..spine])
+    VLam(implicit_params, name, env, body) -> {
+      // Implicit arg is erased - just continue with the lambda
+      // The type info is used at type-checking time, not runtime
+      VLam(list.drop(implicit_params, 1), name, env, body)
+    }
+    _ -> fun
+  }
+}
+
+/// Apply a function with a list of implicit arguments, then an explicit argument.
+///
+/// This recursively handles implicit args until the base case (empty list).
+fn do_app_with_implicit(ffi: FFI, fun: Value, implicit: List(Term), arg: Value) -> Value {
+  case implicit {
+    [] -> do_app(ffi, fun, arg)
+    [implicit_arg, ..rest] -> {
+      // This shouldn't happen in normal evaluation - implicit args should be
+      // handled during the initial App evaluation
+      // But handle it recursively just in case
+      let implicit_val = eval(ffi, [], implicit_arg)
+      let instantiated = do_app_implicit(fun, implicit_val)
+      do_app_with_implicit(ffi, instantiated, rest, arg)
+    }
   }
 }
 
@@ -822,23 +886,30 @@ pub fn quote(ffi: FFI, lvl: Int, value: Value, s: Span) -> Term {
         s,
       )
     VCtr(tag, arg) -> Term(Ctr(tag, quote(ffi, lvl, arg, s)), s)
-    VLam(name, env, body) -> {
+    VLam(implicit, name, env, body) -> {
       // Create a fresh neutral variable at the current level
       let fresh = VNeut(HVar(lvl), [])
       // Apply it to the body and evaluate
       let body_val = eval(ffi, [fresh, ..env], body)
       // Quote the result at level + 1
       let body_quote = quote(ffi, lvl + 1, body_val, body.span)
-      Term(Lam(name, body_quote), s)
+      Term(Lam(implicit, #(name, Term(Hole(-1), s)), body_quote), s)
     }
-    VPi(name, env, in_val, out_term) -> {
+    VPi(implicit, name, env, in_val, out_term) -> {
       // Quote the domain (already evaluated)
       let in_quote = quote(ffi, lvl, in_val, s)
       // Create a fresh neutral variable for the codomain
       let fresh = VNeut(HVar(lvl), [])
       let out_val = eval(ffi, [fresh, ..env], out_term)
       let out_quote = quote(ffi, lvl + 1, out_val, out_term.span)
-      Term(Pi(name, in_quote, out_quote), s)
+      Term(Pi(implicit, name, in_quote, out_quote), s)
+    }
+    VRecord(fields) -> {
+      // Record type - quote each field type
+      Term(
+        Rcd(list.map(fields, fn(kv) { #(kv.0, quote(ffi, lvl, kv.1, s)) })),
+        s,
+      )
     }
     VCall(name, args) -> {
       // Quote stuck built-in with collected args
@@ -872,7 +943,14 @@ fn quote_neut(
 fn quote_elim(ffi: FFI, lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
   case elim {
     EDot(name) -> Term(Dot(head, name), s)
-    EApp(arg) -> Term(App(head, quote(ffi, lvl, arg, s)), s)
+    EApp(arg) -> Term(App(head, [], quote(ffi, lvl, arg, s)), s)
+    EAppImplicit(implicit_val) -> {
+      // Implicit application - add to implicit list
+      // For now, just quote the implicit value
+      // This creates a term like: head<implicit_val>()
+      // We need to handle this specially
+      Term(App(head, [quote(ffi, lvl, implicit_val, s)], Term(Hole(-1), s)), s)
+    }
     // The env is discarded because we're reconstructing syntax, not evaluating.
     // The cases bodies are already Terms (syntax), not Values, so they don't
     // need quoting. The env was only needed during evaluation to capture the
@@ -916,11 +994,12 @@ pub fn occurs(sub: Subst, id: Int, value: Value) -> Bool {
     VNeut(_, spine) -> list.any(spine, occurs_elim(sub, id, _))
     VRcd(fields) -> list.any(fields, fn(kv) { occurs(sub, id, kv.1) })
     VCtr(_, arg) -> occurs(sub, id, arg)
-    VLam(_, env, _) -> list.any(env, occurs(sub, id, _))
-    VPi(_, env, in, _) ->
+    VLam(_, _, env, _) -> list.any(env, occurs(sub, id, _))
+    VPi(_, _, env, in, _) ->
       occurs(sub, id, in) || list.any(env, occurs(sub, id, _))
     VCall(_, args) -> list.any(args, occurs(sub, id, _))
     VFix(_, env, _) -> list.any(env, occurs(sub, id, _))
+    VRecord(fields) -> list.any(fields, fn(kv) { occurs(sub, id, kv.1) })
   }
 }
 
@@ -929,6 +1008,7 @@ pub fn occurs_elim(sub: Subst, id: Int, elim: Elim) -> Bool {
   case elim {
     EDot(_) -> False
     EApp(arg) -> occurs(sub, id, arg)
+    EAppImplicit(arg) -> occurs(sub, id, arg)
     EMatch(env, motive, _) ->
       occurs(sub, id, motive) || list.any(env, occurs(sub, id, _))
   }
@@ -974,7 +1054,7 @@ pub fn unify(
       unify_elim_list(s, spine1, spine2, s1, s2)
     VRcd(fields1), VRcd(fields2) -> unify_fields(s, fields1, fields2, s1, s2)
     VCtr(k1, arg1), VCtr(k2, arg2) if k1 == k2 -> unify(s, arg1, arg2, s1, s2)
-    VLam(_, env1, body1), VLam(_, env2, body2) -> {
+    VLam(_, _, env1, body1), VLam(_, _, env2, body2) -> {
       // Unify lambdas by applying both to a fresh variable
       let #(fresh, s) = new_var(s)
       let a = eval(s.ffi, [fresh, ..env1], body1)
@@ -1170,8 +1250,9 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(val, s) = check(s, term, ty_val, term_ty.span)
       #(val, ty_val, s)
     }
-    Lam(name, body) -> {
+    Lam(implicit, param, body) -> {
       // For lambda inference, we create a hole for the domain type
+      let #(name, _) = param
       let env = get_env(s)
       let #(t1_hole, s) = new_hole(s)
       let #(_fresh, s) = def_var(s, name, t1_hole)
@@ -1180,7 +1261,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let body_quoted = quote(s.ffi, list.length(env), body_val, body.span)
       let t1 = force(s.ffi, s.sub, t1_hole)
       let t2 = quote(s.ffi, list.length(env), body_ty, body.span)
-      #(VLam(name, env, body_quoted), VPi(name, env, t1, t2), s)
+      #(VLam(implicit, name, env, body_quoted), VPi(name, env, t1, t2), s)
     }
     Pi(name, in, out) -> {
       let env = get_env(s)
@@ -1189,7 +1270,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(_, _, s) = infer(s, out)
       #(VPi(name, env, in_val, out), VTyp(0), s)
     }
-    App(fun, arg) -> {
+    App(fun, implicit, arg) -> {
       let #(fun_val, fun_ty, s) = infer(s, fun)
       case fun_ty {
         VPi(_, pi_env, in, out) -> {
@@ -1545,6 +1626,7 @@ fn apply_spine(ffi: FFI, value: Value, spine: List(Elim)) -> Value {
     case elim {
       EDot(field) -> do_dot(value, field)
       EApp(arg) -> do_app(ffi, value, arg)
+      EAppImplicit(_) -> value  // Implicit args are erased at runtime
       EMatch(env, motive, cases) -> do_match(env, value, motive, cases)
     }
   })

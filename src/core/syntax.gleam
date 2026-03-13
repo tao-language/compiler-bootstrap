@@ -119,7 +119,7 @@ fn named_to_de_bruijn_loop(term: NamedTerm, env: List(String)) -> Term {
     NLit(value, span) -> Term(Lit(value), span)
     NLam(name, body, span) -> {
       let body_db = named_to_de_bruijn_loop(body, [name, ..env])
-      Term(Lam(name, body_db), span)
+      Term(Lam([], #(name, Term(Hole(-1), span)), body_db), span)
     }
     NPi(name, in_type, out_type, span) -> {
       let in_db = named_to_de_bruijn_loop(in_type, env)
@@ -129,7 +129,7 @@ fn named_to_de_bruijn_loop(term: NamedTerm, env: List(String)) -> Term {
     NApp(fun, arg, span) -> {
       let fun_db = named_to_de_bruijn_loop(fun, env)
       let arg_db = named_to_de_bruijn_loop(arg, env)
-      Term(App(fun_db, arg_db), span)
+      Term(App(fun_db, [], arg_db), span)
     }
     NAnn(term, typ, span) -> {
       let term_db = named_to_de_bruijn_loop(term, env)
@@ -314,6 +314,11 @@ pub fn parse(source: String) -> ParseResult(Term) {
 
 pub fn format(term: Term) -> String {
   format_term(term, -1, []) |> formatter.render_default
+}
+
+/// Format a term inline (for use in implicit args, etc.)
+fn format_inline(term: Term) -> String {
+  format_term(term, 100, []) |> formatter.render_default
 }
 
 // ============================================================================
@@ -1426,19 +1431,32 @@ fn format_term(
         }
       }
     }
-    Lam(name, body) -> {
+    Lam(implicit, param, body) -> {
+      let #(name, _) = param
+      let implicit_str = case implicit {
+        [] -> ""
+        _ -> "<" <> string.join(implicit, ", ") <> ">"
+      }
       let inner =
         formatter.concat([
+          formatter.text("%fn"),
+          formatter.text(implicit_str),
+          formatter.text("("),
           formatter.text(name),
-          formatter.text(" -> "),
+          formatter.text(") -> "),
           format_term(body, 70, [name, ..bindings]),
         ])
       wrap_parens(inner, 70 < parent_prec)
     }
-    App(fun, arg) -> {
+    App(fun, implicit, arg) -> {
+      let implicit_str = case implicit {
+        [] -> ""
+        _ -> "<" <> string.join(list.map(implicit, format_inline), ", ") <> ">"
+      }
       let inner =
         formatter.concat([
           format_term(fun, 85, bindings),
+          formatter.text(implicit_str),
           formatter.text("("),
           format_term(arg, 85, bindings),
           formatter.text(")"),
@@ -1624,14 +1642,23 @@ fn term_to_string_loop(term: Term, bindings: List(String)) -> String {
     core.Ctr(tag, arg) -> "#" <> tag <> "(" <> term_to_string_loop(arg, bindings) <> ")"
     core.Dot(arg, field) -> term_to_string_loop(arg, bindings) <> "." <> field
     core.Ann(term, typ) -> "(" <> term_to_string_loop(term, bindings) <> ": " <> term_to_string_loop(typ, bindings) <> ")"
-    core.Lam(name, body) -> {
-      name <> " -> " <> term_to_string_loop(body, [name, ..bindings])
+    core.Lam(implicit, param, body) -> {
+      let #(name, _) = param
+      let implicit_str = case implicit {
+        [] -> ""
+        _ -> "<" <> string.join(implicit, ", ") <> ">"
+      }
+      "%fn" <> implicit_str <> "(" <> name <> ") -> " <> term_to_string_loop(body, [name, ..bindings])
     }
     core.Pi(name, in_ty, out_ty) -> {
       "(" <> name <> ": " <> term_to_string_loop(in_ty, bindings) <> ") -> " <> term_to_string_loop(out_ty, [name, ..bindings])
     }
-    core.App(fun, arg) -> {
-      term_to_string_loop(fun, bindings) <> "(" <> term_to_string_loop(arg, bindings) <> ")"
+    core.App(fun, implicit, arg) -> {
+      let implicit_str = case implicit {
+        [] -> ""
+        _ -> "<" <> string.join(list.map(implicit, fn(t) { term_to_string_loop(t, bindings) }), ", ") <> ">"
+      }
+      term_to_string_loop(fun, bindings) <> implicit_str <> "(" <> term_to_string_loop(arg, bindings) <> ")"
     }
     core.Match(arg, motive, cases) -> {
       "match(" <> term_to_string_loop(arg, bindings) <> ") { ... }"
