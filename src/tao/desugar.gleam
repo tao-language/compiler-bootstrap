@@ -10,12 +10,12 @@
 /// - `x` becomes Core variable
 ///
 /// For detailed documentation see:
-/// - [Tao MVP Plan](../../docs/plans/tao/09-tao-mvp-plan.md)
+/// - [Tao Overloading](../../docs/plans/tao/10-overloading-design.md)
 /// - [Core Syntax](../../docs/core-syntax.md)
 import tao/syntax.{type MvpExpr, MvpInt, MvpVar, MvpAdd, MvpSub, MvpMul, MvpDiv, OverloadedFn, OverloadedApp, get_expr_span}
 import core/core.{
   type Term, Term, Lit, I32, Var, Call, Case, Match, Typ, Lam, Hole,
-  type Literal, type LiteralType, type Case, I32T, I64T, F32T, F64T, PLitT, PAny,
+  type Literal, type LiteralType, type Case, type Pattern, I32T, I64T, F32T, F64T, U32T, U64T, PLitT, PAny,
 }
 import syntax/grammar.{type Span, Span}
 import gleam/list
@@ -150,8 +150,12 @@ fn merge_spans(left: Span, right: Span) -> Span {
 
 /// Desugar overloaded function definition to Core.
 ///
-/// Tao: fn (+)(x: I32) -> I32 { %i32_add(x, y) }
-/// Core: %let (+) = %fn<T>(x) -> %match T { | %I32 -> %i32_add(x, y) }
+/// Tao: fn (+)(x: I32) -> I32 { x + 1 }
+/// Core: %let (+) = %fn<T>(x) -> %match T { | %I32 -> %call i32_add(x, 1) }
+///
+/// The implicit type parameter enables type-directed dispatch at compile time.
+/// Type matching happens during type inference, and the appropriate implementation
+/// is selected based on the concrete type.
 fn desugar_overloaded_fn(
   name: String,
   type_param: String,
@@ -161,29 +165,28 @@ fn desugar_overloaded_fn(
   body: MvpExpr,
   span: Span,
 ) -> Term {
-  // For now, just return a simple lambda as a placeholder
-  // Full implementation will come later
-  Term(
-    Lam(
-      implicit: [type_param],
-      param: #(param_name, Term(Hole(-1), span)),
-      body: desugar_expr(body, initial_ctx(span)),
-    ),
-    span,
-  )
+  // Desugar the body expression
+  let body_term = desugar_expr(body, initial_ctx(span))
+  
+  // Create match expression: %match T { | %Type -> body }
+  let type_pattern = type_to_pattern(param_type)
+  let match_term = Term(Match(Term(Var(0), span), Term(Typ(0), span), [Case(type_pattern, body_term, None, span)]), span)
+  
+  // Create lambda with implicit type param: %fn<T>(x) -> match T { ... }
+  Term(Lam([type_param], #(param_name, Term(Hole(-1), span)), match_term), span)
 }
 
-/// Create a match arm for a specific type.
-fn create_type_match_arm(type_name: String, body: Term) -> Case {
-  let pattern = case type_name {
+/// Convert type name to pattern for matching.
+fn type_to_pattern(type_name: String) -> Pattern {
+  case type_name {
     "I32" -> PLitT(I32T)
     "I64" -> PLitT(I64T)
     "F32" -> PLitT(F32T)
     "F64" -> PLitT(F64T)
-    _ -> PAny  // Default case
+    "U32" -> PLitT(U32T)
+    "U64" -> PLitT(U64T)
+    _ -> PAny  // Default case for unknown types
   }
-  
-  Case(pattern, body, None, Span("generated", 0, 0, 0, 0))
 }
 
 /// Desugar overloaded function application.

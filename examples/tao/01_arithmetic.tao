@@ -1,5 +1,4 @@
-// Tao MVP Example: Simple Arithmetic
-// This example demonstrates basic arithmetic expressions in Tao.
+// Tao Example: Simple Arithmetic
+// Demonstrates basic arithmetic expressions
 
-// Simple addition
-1 + 2
+1 + 2 * 3

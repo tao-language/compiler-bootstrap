@@ -8,7 +8,7 @@
 ///
 /// For detailed documentation see:
 /// - [Syntax Library](../../docs/syntax-library.md)
-/// - [Tao MVP Plan](../../docs/plans/tao/09-tao-mvp-plan.md)
+/// - [Tao Overloading](../../docs/plans/tao/10-overloading-design.md)
 import syntax/lexer.{type Token, tokenize as lexer_tokenize}
 import gleam/list
 

@@ -1,13 +1,13 @@
 // ============================================================================
-// TAO SYNTAX - MVP
+// TAO SYNTAX
 // ============================================================================
 /// Tao language grammar using the syntax library.
 ///
-/// MVP: Simple expression language with functions.
+/// Expression language with overloading support.
 ///
 /// For detailed documentation see:
 /// - [Syntax Library](../../docs/syntax-library.md)
-/// - [Tao MVP Plan](../../docs/plans/tao/09-tao-mvp-plan.md)
+/// - [Tao Overloading](../../docs/plans/tao/10-overloading-design.md)
 import tao/lexer
 import gleam/int
 import gleam/list
@@ -24,12 +24,11 @@ import syntax/grammar.{
 }
 
 // ============================================================================
-// EXPRESSION AST (MVP + Overloading)
+// EXPRESSION AST
 // ============================================================================
 /// Expression for Tao with overloading support.
 ///
-/// MVP: Simple arithmetic expressions
-/// Overloading: Support for overloaded operators through implicit type params
+/// Supports: Arithmetic expressions, variables, and overloaded operators
 pub type MvpExpr {
   MvpInt(value: Int, span: Span)
   MvpVar(name: String, span: Span)
@@ -132,7 +131,7 @@ fn get_span(expr: MvpExpr) -> Span {
 // GRAMMAR DEFINITION
 // ============================================================================
 
-/// Define the Tao grammar (MVP + Overloading).
+/// Define the Tao grammar.
 pub fn tao_grammar() -> Grammar(MvpExpr) {
   Grammar(
     name: "Tao",
@@ -267,7 +266,7 @@ pub fn get_expr_span(expr: MvpExpr) -> Span {
   }
 }
 
-/// Parse Tao source code (MVP + Overloading).
+/// Parse Tao source code.
 pub fn parse(source: String) -> ParseResult(MvpExpr) {
   let error_ast = MvpInt(0, Span("tao", 0, 0, 0, 0))
   grammar_parse(tao_grammar(), source, error_ast)
@@ -302,7 +301,7 @@ fn make_overloaded_fn(values) -> MvpExpr {
   }
 }
 
-/// Format MVP expression to string.
+/// Format expression to string.
 pub fn format_expr(expr: MvpExpr) -> String {
   format_expr_loop(expr, 0)
 }

@@ -1,0 +1,6 @@
+// Tao Example: Multiple Overloads
+// Demonstrates defining multiple overloaded versions of the same operator
+
+fn (+)(x: I32) -> I32 { x + 1 }
+
+fn (+)(x: F32) -> F32 { x + 1.0 }

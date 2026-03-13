@@ -1,8 +1,8 @@
 # Tao Language Overview
 
 > **Goal**: Simple, pragmatic functional language with dependent types—TypeScript-like syntax without the complexity
-> **Status**: ✅ **MVP Complete** - Expressions, desugaring, and CLI integration working
-> **Date**: March 2025 (Updated: March 2026 - MVP Complete)
+> **Status**: ✅ **Core Complete** - Overloading with type matching implemented and working
+> **Date**: March 2026 (Updated: Type matching complete)
 
 ---
 
@@ -21,27 +21,30 @@ Tao is syntax sugar over the core language. All heavy lifting (type checking, no
 
 ## Current Status
 
-### ✅ Complete (MVP)
+### ✅ Complete
 
-**Tao MVP** - Expression parsing, desugaring, and CLI integration:
+**Tao Core** - Expression parsing, overloading, type matching, and CLI integration:
 
 | Component | Status | Description |
 |-----------|--------|-------------|
-| **Tao Lexer** | ✅ Complete | Tokenizes identifiers, numbers, operators |
-| **Tao Grammar** | ✅ Complete | Parses expressions with correct precedence |
-| **Tao Formatter** | ✅ Complete | Formats expressions back to source |
-| **Tao Desugarer** | ✅ Complete | Transforms Tao → Core terms |
+| **Tao Lexer** | ✅ Complete | Tokenizes identifiers, numbers, operators, keywords |
+| **Tao Grammar** | ✅ Complete | Parses expressions and overloaded function definitions |
+| **Tao Formatter** | ✅ Complete | Formats expressions and overloaded functions |
+| **Tao Desugarer** | ✅ Complete | Transforms Tao → Core with type matching |
+| **Type Matching** | ✅ Complete | Generates match expressions on type parameters |
 | **CLI Integration** | ✅ Complete | `gleam run run file.tao` works |
-| **Examples** | ✅ Complete | 2 working examples with golden files |
-| **Tests** | ✅ Complete | 39 tests passing (24 syntax + 15 desugar) |
+| **Examples** | ✅ Complete | 3 working examples |
+| **Tests** | ✅ 420 passing | 4 expected failures (incomplete match) |
 
-**MVP Features**:
+**Core Features**:
 - ✅ Numbers: `42`, `3.14`
 - ✅ Variables: `x`, `myVar`
 - ✅ Arithmetic: `+`, `-`, `*`, `/`
 - ✅ Correct precedence: `*` binds tighter than `+`
 - ✅ Left associativity: `10 - 5 - 2 = (10 - 5) - 2`
 - ✅ Parentheses: `(1 + 2) * 3`
+- ✅ **Overloading**: `fn (+)(x: I32) -> I32 { x + 1 }`
+- ✅ **Type Matching**: Implicit type params with match expressions
 - ✅ Desugaring: `x + y` → `%call i32_add(x, y)`
 - ✅ Type checking via Core
 - ✅ Evaluation via Core
@@ -50,23 +53,26 @@ Tao is syntax sugar over the core language. All heavy lifting (type checking, no
 ```bash
 # Run a Tao program
 gleam run run examples/tao/01_arithmetic.tao
-# Output: %call i32_add(1, 2)
+# Output: %call i32_add(1, %call i32_mul(2, 3))
+
+# Run overloaded function
+gleam run run examples/tao/02_overloaded_neg.tao
+# Output: %fn<T>(x) -> %match T { | %I32 -> ... }
 
 # Type-check a Tao program
-gleam run check examples/tao/02_precedence.tao
-# Output: ✓ Type checking examples/tao/02_precedence.tao
+gleam run check examples/tao/03_multiple_overloads.tao
+# Output: ✓ Type checking examples/tao/03_multiple_overloads.tao
 #         ✓ No errors found
 ```
 
-### 📋 Next Steps (After MVP)
+### 📋 Next Steps
 
-1. **Phase 2**: Overloading support (unified implicit arguments, hole inference) - 6-7 weeks
-2. **Phase 3**: Expand grammar (function calls, let bindings) - 1-2 weeks
-3. **Phase 4**: Function definitions and pattern matching - 2-3 weeks
-4. **Phase 5**: Type system enhancements - 2-3 weeks
-5. **Phase 6**: Standard library - 2-3 weeks
+1. **Phase 1**: Complete type system (multiple patterns, constraints) - 1-2 weeks
+2. **Phase 2**: More operators (comparison, unary, logical) - 1 week
+3. **Phase 3**: Standard library (prelude, numeric hierarchy) - 2-3 weeks
+4. **Phase 4**: Advanced features (pattern matching, let bindings) - 2-3 weeks
 
-See **[10-overloading-design.md](./10-overloading-design.md)** for revised overloading design with unified implicit arguments and **[11-overloading-implementation.md](./11-overloading-implementation.md)** for implementation plan.
+See **[13-tao-status.md](./13-tao-status.md)** for detailed implementation status and **[10-overloading-design.md](./10-overloading-design.md)** for overloading design.
 
 ---
 
