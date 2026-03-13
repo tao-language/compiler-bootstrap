@@ -1,8 +1,32 @@
-# Core Type Application Support
+# Core Type Application Support (Superseded)
 
-> **Goal**: Add type application to Core for Tao overloading support
-> **Status**: 📋 **Planned** - Prerequisite for Tao overloading
-> **Priority**: High (blocks Tao Phase 2)
+> **Status**: ⚠️ **SUPERSEDED** - Replaced by unified implicit argument approach
+> **See**: **[../tao/10-overloading-design.md](../tao/10-overloading-design.md)** for revised design
+> **Date**: March 2026
+
+---
+
+## Note: This Plan Has Been Revised
+
+The original type application design has been **superseded** by a more elegant approach:
+
+**Original Design**:
+- Separate `TypeApp` constructor
+- Explicit type application `f(T)(x)`
+- Type application during desugaring
+
+**Revised Design**:
+- Unified `Lam`/`App` with implicit flag
+- Implicit arguments `f<ty>(x)`
+- Hole-based inference fills types
+
+**See [../tao/10-overloading-design.md](../tao/10-overloading-design.md)** for the complete revised design.
+
+---
+
+## Original Plan (Reference)
+
+The original plan below is kept for reference, but **do not implement** - use the revised design instead.
 
 ---
 

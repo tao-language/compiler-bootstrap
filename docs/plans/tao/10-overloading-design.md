@@ -1,610 +1,232 @@
-# Tao Overloading Design
+# Tao Overloading Design (Revised)
 
-> **Goal**: Support function and operator overloading through dependent types and NbE
-> **Status**: 📋 **Design Phase** - Planning before implementation
+> **Goal**: Support function and operator overloading through implicit arguments and NbE
+> **Status**: 📋 **Design Phase** - Revised with unified implicit argument approach
 > **Date**: March 2026
 
 ---
 
 ## Core Insight
 
-**Overloading is type-directed dispatch**. At compile time, we resolve which implementation to use based on the types of arguments. This can be expressed elegantly using dependent types.
-
----
-
-## Design Principles
-
-### 1. **Zero-Cost Overloading**
-
-Overloading resolution happens at **compile time**. Runtime code is as efficient as if you called the specific implementation directly.
-
-### 2. **Explicit in Core, Implicit in Tao**
-
-- **Tao source**: `x + y` (implicit)
-- **Core term**: `%call (+)(I32, I32)(x, y)` (explicit type application)
-
-### 3. **Composable**
-
-Overloads can be defined in multiple modules and composed together.
-
----
-
-## Proposed Design
-
-### Tao Source (High-Level)
-
-```tao
-// Prelude defines overloaded +
-fn (+)(x: I32, y: I32) -> I32 {
-  %i32_add(x, y)
-}
-
-fn (+)(x: F32, y: F32) -> F32 {
-  %f32_add(x, y)
-}
-
-// User code
-let result = 1 + 2  // I32
-let float_result = 1.0 + 2.0  // F32
-```
-
-### Core Target (Low-Level)
-
-```core
-// Overloaded function as a type-level function
-%let (+) = λ(ty: Type) → match ty {
-  | {x: %I32, y: %I32} → λ(args) → %call i32_add(args.x, args.y)
-  | {x: %F32, y: %F32} → λ(args) → %call f32_add(args.x, args.y)
-}
-
-// Usage with type application
-%let result = %call (%call (+)(%I32))(1, 2)
-%let float_result = %call (%call (+)(%F32))(1.0, 2.0)
-```
+**Overloading is type-directed instantiation**. Functions can have implicit type parameters that are inferred from context at call sites.
 
 ---
 
 ## Key Design Decisions
 
-### 1. **Type Application Strategy**
+### 1. **Unified Implicit Arguments**
 
-#### Option A: Explicit Type Arguments (Recommended)
+All lambdas and applications support implicit arguments uniformly:
 
-```tao
-// Tao surface syntax
-1 + 2
+```gleam
+// Core Term
+Lam(params: List(#(String, Bool, Type)), body: Term)
+//               ↑ is_implicit
 
-// Desugared Tao (intermediate)
-(+)(I32, I32)(1, 2)
-
-// Core term
-%call (%call (+)(%I32))(1, 2)
+App(func: Term, args: List(#(Term, Bool)))
+//                            ↑ is_implicit
 ```
 
-**Pros**:
-- Clear and explicit
-- Easy to implement
-- Type checking is straightforward
-- Similar to System F
-
-**Cons**:
-- Verbose in Core
-- Type arguments must be inferred or annotated
-
-#### Option B: Implicit Type Resolution
-
-```tao
-// Tao surface syntax
-1 + 2
-
-// Core term (type inferred from arguments)
-%call (+)(1, 2)
-```
-
-**Pros**:
-- Cleaner Core
-- Less verbose
-
-**Cons**:
-- Requires sophisticated type inference
-- More complex implementation
-- May need constraint solving
-
-**Decision**: Start with **Option A** (explicit), potentially optimize to Option B later.
+**Implicit arguments**:
+- Passed during type checking
+- Erased at runtime (zero overhead)
+- Enable type reflection
 
 ---
 
-### 2. **Overload Resolution Timing**
+### 2. **Syntax: `f<ty>(x)`**
 
-#### Phase 1: Type Checking (Recommended)
+Clear distinction between type and value application:
 
-Resolve overloads during type checking, before code generation.
-
-```
-Tao Source
-    ↓
-Parse → Tao AST
-    ↓
-Type Check + Overload Resolution
-    ↓
-Core Term (resolved)
-    ↓
-Evaluate
+```tao
+f(x)       // Normal application (value arg)
+f<ty>(x)   // Type application (implicit arg)
+f<ty>(x, y) // Mixed: one implicit, two explicit
 ```
 
-**Pros**:
-- Clear separation of concerns
-- Error messages at type-check time
-- No runtime overhead
-
-**Cons**:
-- Requires type information during desugaring
-
-#### Phase 2: Runtime (Not Recommended)
-
-Defer resolution to runtime using type tags.
-
-**Pros**:
-- Simpler compiler
-
-**Cons**:
-- Runtime overhead
-- Loses type safety
-
-**Decision**: **Phase 1** (type-check time resolution).
+**Core syntax**:
+```core
+%fn<a>(x) -> body      // Lambda with implicit param
+func<ty>(arg)          // Application with implicit arg
+```
 
 ---
 
-### 3. **Cross-Module Overloads**
+### 3. **Hole-Based Inference**
 
-#### Problem
+Tao desugars to normal applications with holes; Core inference fills them:
 
 ```tao
-// prelude.tao
-fn (+)(x: I32, y: I32) -> I32 { ... }
+// Tao source
+(-)(1)
 
-// vector.tao
+// Desugared (Tao doesn't know types)
+(-)(1)  -- Normal App, no implicit info
+
+// During Core inference
+(-)<?>(1)  -- Hole created for implicit param
+(-)<I32>(1) -- Hole filled based on arg type
+```
+
+**Benefit**: Tao desugaring is simple; Core inference handles complexity.
+
+---
+
+### 4. **Polymorphic Types with `Forall`**
+
+Function types encode implicit parameters:
+
+```gleam
+// Type of overloaded (-)
+Forall(["a"], Fn([Type("a")], Type("a")))  // ∀a. a → a
+
+// Type of non-overloaded function
+Fn([I32], I32)  // I32 → I32 (no Forall)
+```
+
+**During inference**:
+- If function type is `Forall`, instantiate implicit params
+- If not, normal application
+
+---
+
+## Complete Example: Unary Negation
+
+### Tao Source
+
+```tao
+// Define overloaded negation
+fn (-)(x: I32) -> I32 { %i32_neg(x) }
+fn (-)(x: F32) -> F32 { %f32_neg(x) }
+
+// Use it
+let result = -42
+let float_result = -3.14
+```
+
+### Desugaring (Tao → Core)
+
+```tao
+// Overloaded function becomes type-level match
+%let (-) = %fn<ty>(x) -> %match ty {
+  | %I32 -> %i32_neg(x)
+  | %F32 -> %f32_neg(x)
+}
+
+// Usage (Tao doesn't know types yet)
+%let result = (-)(42)      -- Normal App
+%let float_result = (-)(3.14)
+```
+
+### Type Inference (Core)
+
+```
+Step 1: Infer type of (-)
+  (-) : ∀a. a → a
+
+Step 2: Infer application (-)(42)
+  - Function has Forall, create hole for implicit
+  - (-)<?>(42)
+  - Infer 42 : I32
+  - Unify hole with I32
+  - Result: (-)<I32>(42) : I32
+
+Step 3: Evaluate
+  (-)<I32>(42)
+  → %match %I32 { | %I32 -> %i32_neg(42) }
+  → %i32_neg(42)
+  → -42
+```
+
+### Core Terms (After Inference)
+
+```gleam
+Let("-",
+  Lam(
+    [("ty", true, Hole), ("x", false, Var("ty"))],  // ty is implicit
+    Match(Var("ty"), [
+      MatchArm(I32T, Call(FFI("i32_neg"), [Var("x")], _), _),
+      MatchArm(F64T, Call(FFI("f64_neg"), [Var("x")], _), _),
+    ], _),
+    _
+  ),
+  Let("result",
+    App(Var("-"), [(Lit(I32(42)), false)], _),  // App gets upgraded during infer
+    _
+  )
+)
+```
+
+---
+
+## Type Reflection
+
+Implicit arguments enable free type reflection:
+
+```tao
+// Get type of any value
+fn typeof<T>(x: T) -> Type { T }
+
+typeof(42)      // I32
+typeof("hello") // String
+typeof([1,2,3]) // List<I32>
+```
+
+**Desugars to**:
+```core
+%let typeof = %fn<T>(x) -> T
+
+typeof<?> (42)   // Hole created
+typeof<I32>(42)  // Hole filled
+// Returns: %I32
+```
+
+---
+
+## Overload Resolution
+
+### Multiple Overloads
+
+```tao
+fn (+)(x: I32, y: I32) -> I32 { %i32_add(x, y) }
+fn (+)(x: F32, y: F32) -> F32 { %f32_add(x, y) }
 fn (+)(v1: Vector, v2: Vector) -> Vector { ... }
 ```
 
-How do we combine these?
-
-#### Solution: Overload Sets
-
-Each function name maps to an **overload set** containing all implementations.
-
-```
-OverloadSet(+) = {
-  (I32, I32) → I32: implementation_1,
-  (F32, F32) → F32: implementation_2,
-  (Vector, Vector) → Vector: implementation_3,
-}
-```
-
-#### Resolution Algorithm
-
-1. Collect all overloads for the function name (from all imported modules)
-2. Filter by argument types
-3. If exactly one match, use it
-4. If zero matches, error: "no matching overload"
-5. If multiple matches, error: "ambiguous overload" (or use specificity rules)
-
----
-
-### 4. **Function vs Operator Overloading**
-
-#### Same Mechanism
-
-Both functions and operators use the same overloading mechanism:
-
-```tao
-// Operator
-fn (+)(x: I32, y: I32) -> I32 { ... }
-
-// Function
-fn add(x: I32, y: I32) -> I32 { ... }
-
-// Both desugar to the same Core pattern
-```
-
-#### Difference: Syntax
-
-- Operators can be used in infix position: `x + y`
-- Functions use prefix: `add(x, y)`
-- Both support overloading
-
----
-
-### 5. **Type-Directed Desugaring (Like check_ctr)**
-
-#### Current `check_ctr` Pattern
-
-```gleam
-// CtrDef has params that become holes
-CtrDef(params: [Param], ...)
-
-// During type checking, params are instanced into holes
-// Holes are solved during unification
-```
-
-#### Applying to Overloading
-
-```tao
-// Tao
-fn (+)(x: I32, y: I32) -> I32 { %i32_add(x, y) }
-
-// OverloadDef (similar to CtrDef)
-OverloadDef(
-  name: "+",
-  params: [Param("x", I32), Param("y", I32)],
-  return_type: I32,
-  body: %i32_add(x, y),
-)
-
-// During type checking:
-// 1. Create holes for type parameters
-// 2. Unify with actual argument types
-// 3. Select matching overload
-// 4. Generate Core term
-```
-
-#### Benefit
-
-- Reuses existing hole-solving infrastructure
-- Consistent with other type-checking logic
-- Can leverage unification for type inference
-
----
-
-## Implementation Architecture
-
-### Module Structure
-
-```
-src/
-├── tao/
-│   ├── ast.gleam              # ✅ Existing
-│   ├── lexer.gleam            # ✅ Existing
-│   ├── syntax.gleam           # ✅ Existing
-│   ├── desugar.gleam          # ✅ Existing (needs extension)
-│   ├── overloading/           # 📋 NEW
-│   │   ├── overload_set.gleam # Overload set data structure
-│   │   ├── resolution.gleam   # Overload resolution algorithm
-│   │   └── type_app.gleam     # Type application handling
-│   └── type_check.gleam       # 📋 NEW (type-directed desugaring)
-├── core/
-│   └── core.gleam             # May need extensions for type application
-```
-
-### Data Structures
-
-#### Overload Set
-
-```gleam
-pub type OverloadSet {
-  OverloadSet(
-    name: String,
-    overloads: List(Overload),
-  )
-}
-
-pub type Overload {
-  Overload(
-    param_types: List(Type),
-    return_type: Type,
-    body: Term,  // Core term
-    span: Span,
-  )
-}
-```
-
-#### Type Application Term (Core Extension)
-
-```gleam
-pub type Term {
-  // ... existing constructors
-  TypeApp(term: Term, type_args: List(Type), span: Span)  // NEW
-}
-```
-
----
-
-## Desugaring Pipeline
-
-### Phase 1: Parse
-
-```tao
-// Source
-fn (+)(x: I32, y: I32) -> I32 { %i32_add(x, y) }
-fn (+)(x: F32, y: F32) -> F32 { %f32_add(x, y) }
-
-let result = 1 + 2
-```
-
-```
-Tao AST:
-- FunctionDef("+", [x: I32, y: I32], I32, body1)
-- FunctionDef("+", [x: F32, y: F32], F32, body2)
-- Let("result", BinOp("+", 1, 2))
-```
-
-### Phase 2: Collect Overloads
-
-```
-OverloadEnv:
-  "+": OverloadSet([
-    Overload([I32, I32], I32, body1),
-    Overload([F32, F32], F32, body2),
-  ])
-```
-
-### Phase 3: Type-Directed Desugaring
-
-```tao
-// Expression: 1 + 2
-// Type of 1: I32, Type of 2: I32
-// Resolve: (+)(I32, I32)
-
-// Desugared:
-(+)(I32, I32)(1, 2)
-```
-
-### Phase 4: Core Generation
-
+**Core representation**:
 ```core
-%let (+) = λ(ty: Type) → match ty {
-  | {x: %I32, y: %I32} → λ(args) → %call i32_add(args.x, args.y)
-  | {x: %F32, y: %F32} → λ(args) → %call f32_add(args.x, args.y)
+%let (+) = %fn<ty>(args) -> %match ty {
+  | {x: %I32, y: %I32} -> %call i32_add(args.x, args.y)
+  | {x: %F64, y: %F64} -> %call f64_add(args.x, args.y)
+  | {v1: Vector, v2: Vector} -> ...
 }
+```
 
-%let result = %call (%call (+)(%I32))(1, 2)
+### Resolution Process
+
+```
+1. Parse: (+)(1, 2)
+
+2. Infer args: 1 : I32, 2 : I32
+
+3. Check function type: (+) : ∀a. {x: a, y: a} → a
+
+4. Instantiate: (+)<?>({x: 1, y: 2})
+
+5. Unify: {x: ?, y: ?} with {x: I32, y: I32}
+   → ? = I32
+
+6. Result: (+)<I32>({x: 1, y: 2}) : I32
 ```
 
 ---
 
-## Type Inference Integration
-
-### Problem
-
-How do we infer types for:
-
-```tao
-let x = 1 + 2  // What type is x?
-```
-
-### Solution: Bidirectional Type Checking
-
-```gleam
-// Check mode: verify expression has expected type
-fn check(expr: Expr, expected: Type) -> Result(Term, Error)
-
-// Infer mode: infer type from expression
-fn infer(expr: Expr) -> Result(#(Term, Type), Error)
-
-// For overloaded operators:
-fn infer(BinOp("+", left, right)) {
-  let #(left_term, left_ty) = infer(left)
-  let #(right_term, right_ty) = infer(right)
-  
-  // Resolve overload based on argument types
-  let resolved = resolve_overload("+", [left_ty, right_ty])
-  
-  case resolved {
-    Ok(overload) -> {
-      let term = make_type_app(overload, [left_ty, right_ty], [left_term, right_term])
-      Ok(#(term, overload.return_type))
-    }
-    Error(_) -> Error(NoMatchingOverload)
-  }
-}
-```
-
----
-
-## Open Questions & Decisions
-
-### Q1: Should ALL functions use type application?
-
-**Answer**: No, only overloaded functions.
-
-```tao
-// Non-overloaded function (no type application needed)
-fn double(x: I32) -> I32 { x * 2 }
-double(5)  // Desugars to: %call double(5)
-
-// Overloaded function (type application needed)
-fn (+)(x: I32, y: I32) -> I32 { ... }
-fn (+)(x: F32, y: F32) -> F32 { ... }
-1 + 2  // Desugars to: %call (%call (+)(%I32))(1, 2)
-```
-
-### Q2: When does type augmentation happen?
-
-**Answer**: During Tao type checking (before Core generation).
-
-```
-Tao AST → [Type Check + Overload Resolution] → Core Term
-                                    ↓
-                            Insert type applications
-```
-
-### Q3: How to handle cross-module overloads?
-
-**Answer**: Overload sets are merged at import time.
-
-```tao
-// module_a.tao
-export fn (+)(x: I32, y: I32) -> I32 { ... }
-
-// module_b.tao
-export fn (+)(x: Vector, y: Vector) -> Vector { ... }
-
-// main.tao
-import module_a
-import module_b
-
-// Both + overloads are available
-let x = 1 + 2           // Uses I32 version
-let v = v1 + v2         // Uses Vector version
-```
-
-### Q4: Can we avoid explicit type arguments?
-
-**Answer**: Potentially, using constraint solving (future optimization).
-
-```tao
-// Current (explicit)
-(+)(I32, I32)(1, 2)
-
-// Future (implicit, if feasible)
-(+) { _ = 1, _ = 2 }  // Type inferred from context
-```
-
-This would require:
-1. Constraint generation during type checking
-2. Constraint solving (unification)
-3. Type reconstruction
-
-**Decision**: Start with explicit, add implicit later if needed.
-
----
-
-## Core Changes Required
-
-### 1. Type Application Term
-
-```gleam
-pub type Term {
-  // ... existing
-  TypeApp(term: Term, types: List(Type), span: Span)  // NEW
-}
-```
-
-### 2. Type Application Evaluation
-
-```gleam
-pub fn eval(ffi, env, term) -> Value {
-  case term {
-    TypeApp(func, types, _) -> {
-      // Evaluate type application
-      // Types are erased at runtime, just evaluate the function
-      eval(ffi, env, func)
-    }
-    // ...
-  }
-}
-```
-
-### 3. Type Application in Type Checker
-
-```gleam
-pub fn infer(state, term) -> #(InferResult, State) {
-  case term {
-    TypeApp(func, types, _) -> {
-      // Check that func accepts these type arguments
-      // Return instantiated type
-    }
-    // ...
-  }
-}
-```
-
----
-
-## Implementation Phases
-
-### Phase 1: Core Extensions (1 week)
-
-- [ ] Add `TypeApp` constructor to `Term`
-- [ ] Add `TypeApp` evaluation
-- [ ] Add `TypeApp` type checking
-- [ ] Tests for type application
-
-### Phase 2: Overload Sets (1 week)
-
-- [ ] Define `OverloadSet` data structure
-- [ ] Define `Overload` data structure
-- [ ] Overload collection from AST
-- [ ] Cross-module overload merging
-
-### Phase 3: Overload Resolution (1-2 weeks)
-
-- [ ] Resolution algorithm
-- [ ] Type-directed desugaring
-- [ ] Error reporting (no match, ambiguous)
-- [ ] Tests for resolution
-
-### Phase 4: Tao Integration (1 week)
-
-- [ ] Parse overloaded function definitions
-- [ ] Parse operator usage (infix)
-- [ ] Desugar to type applications
-- [ ] End-to-end tests
-
-### Phase 5: Polish (1 week)
-
-- [ ] Documentation
-- [ ] Examples (Vector, Matrix, etc.)
-- [ ] Performance optimization
-- [ ] Bug fixes
-
-**Total**: 5-6 weeks
-
----
-
-## Examples
-
-### Example 1: Basic Overloading
-
-```tao
-// Source
-fn (+)(x: I32, y: I32) -> I32 { %i32_add(x, y) }
-fn (+)(x: F32, y: F32) -> F32 { %f32_add(x, y) }
-
-let a = 1 + 2
-let b = 1.0 + 2.0
-```
-
-```core
-// Desugared
-%let (+) = λ(ty) → match ty {
-  | {x: %I32, y: %I32} → λ(args) → %call i32_add(args.x, args.y)
-  | {x: %F32, y: %F32} → λ(args) → %call f32_add(args.x, args.y)
-}
-
-%let a = %call (%call (+)(%I32))(1, 2)
-%let b = %call (%call (+)(%F32))(1.0, 2.0)
-```
-
-### Example 2: Vector Addition
-
-```tao
-// vector.tao
-type Vector = Vector(x: F32, y: F32)
-
-fn (+)(v1: Vector, v2: Vector) -> Vector {
-  Vector(x: v1.x + v2.x, y: v1.y + v2.y)
-}
-```
-
-```core
-// Desugared (simplified)
-%let (+) = λ(ty) → match ty {
-  | {v1: Vector, v2: Vector} → λ(args) → 
-      %let v1 = args.v1
-      %let v2 = args.v2
-      %let sum_x = %call (%call (+)(%F32))(v1.x, v2.x)
-      %let sum_y = %call (%call (+)(%F32))(v1.y, v2.y)
-      Vector(sum_x, sum_y)
-}
-```
-
-### Example 3: Cross-Module
+## Cross-Module Overloads
 
 ```tao
 // prelude.tao
-export fn (+)(x: I32, y: I32) -> I32 { %i32_add(x, y) }
-export fn (+)(x: F32, y: F32) -> F32 { %f32_add(x, y) }
+export fn (+)(x: I32, y: I32) -> I32 { ... }
+export fn (+)(x: F32, y: F32) -> F32 { ... }
 
 // vector.tao
 import prelude
@@ -612,54 +234,270 @@ import prelude
 type Vector = Vector(x: F32, y: F32)
 
 export fn (+)(v1: Vector, v2: Vector) -> Vector {
-  // Uses prelude's + for F32 internally
-  Vector(x: v1.x + v2.x, y: v1.y + v2.y)
+  Vector(
+    x: v1.x + v2.x,  // Uses prelude's + for F32
+    y: v1.y + v2.y,
+  )
+}
+```
+
+**Core merges overload sets**:
+```core
+// Combined (+) in Core
+%let (+) = %fn<ty>(args) -> %match ty {
+  | {x: %I32, y: %I32} -> ...  // From prelude
+  | {x: %F64, y: %F64} -> ...  // From prelude
+  | {v1: Vector, v2: Vector} -> ...  // From vector
 }
 ```
 
 ---
 
-## Risks & Mitigations
+## Implementation Architecture
 
-### Risk 1: Complexity
+### Core Changes
 
-**Mitigation**: Start with simple cases (single module, no inference), add complexity incrementally.
+```gleam
+// src/core/core.gleam
 
-### Risk 2: Performance
+pub type Term {
+  // ... existing
+  Var(index: Int, span: Span)
+  
+  // Unified Lam with implicit params
+  Lam(
+    params: List(#(String, Bool, Term)),  // name, is_implicit, type_annotation
+    body: Term,
+    span: Span,
+  )
+  
+  // Unified App with implicit args
+  App(
+    func: Term,
+    args: List(#(Term, Bool)),  // term, is_implicit
+    span: Span,
+  )
+  
+  // ... rest unchanged
+}
 
-**Mitigation**: Type applications are erased at runtime. Resolution happens at compile time.
+pub type Type {
+  // ... existing
+  Var(String)
+  Fn(List(Type), Type)
+  
+  // Polymorphic type
+  Forall(List(String), Type)  // ∀a. a → a
+}
+```
 
-### Risk 3: Error Messages
+### Inference Changes
 
-**Mitigation**: Provide clear error messages for "no matching overload" and "ambiguous overload".
+```gleam
+// src/core/core.gleam (infer function)
 
-### Risk 4: Core Bloat
+pub fn infer(state, term) -> #(InferResult, State) {
+  case term {
+    App(func, args, span) => {
+      let #(func_result, state1) = infer(state, func)
+      
+      case func_result.typ {
+        Forall(params, body_ty) => {
+          // Function has implicit params - instantiate them
+          let #(holes, state2) = create_holes(params, state1)
+          let instantiated = substitute(func_result.term, params, holes)
+          apply(instantiated, args, body_ty, span, state2)
+        }
+        _ => {
+          // Normal application
+          apply(func_result.term, args, func_result.typ, span, state1)
+        }
+      }
+    }
+    
+    // ... rest unchanged
+  }
+}
+```
 
-**Mitigation**: Type applications add some verbosity, but this is acceptable for the flexibility gained.
+### Evaluation Changes
+
+```gleam
+// src/core/core.gleam (eval function)
+
+pub fn eval(ffi, env, term) -> Value {
+  case term {
+    App(func, args, span) => {
+      // Separate implicit and explicit args
+      let implicit_args = list.filter_map(args, fn(#(arg, is_implicit)) {
+        case is_implicit {
+          True -> Some(eval(ffi, env, arg))  // Evaluate but erase
+          False -> None
+        }
+      })
+      let explicit_args = list.filter_map(args, fn(#(arg, is_implicit)) {
+        case is_implicit {
+          True -> None
+          False -> Some(eval(ffi, env, arg))
+        }
+      })
+      
+      let func_val = eval(ffi, env, func)
+      
+      case func_val {
+        VLam(params, body, closure_env) => {
+          // Match implicit params with implicit args
+          // Extend environment and evaluate body
+        }
+      }
+    }
+    
+    // ... rest unchanged
+  }
+}
+```
+
+**Key**: Implicit args are evaluated (for side effects) but erased from runtime representation.
+
+---
+
+## Desugaring Pipeline
+
+```
+Tao Source
+    ↓
+[Parse]
+    ↓
+Tao AST
+    ↓
+[Desugar]  -- Desugar to normal App (no implicit info)
+    ↓
+Core Term (pre-inference)
+    ↓
+[Type Infer] -- Upgrade to implicit App, fill holes
+    ↓
+Core Term (post-inference)
+    ↓
+[Evaluate] -- Erase implicit args
+    ↓
+Value
+```
+
+---
+
+## Open Questions & Decisions
+
+### Q1: How to handle match arms with implicit args?
+
+**Answer**: Each arm can bind implicit params:
+
+```core
+%match ty ~ motive {
+  | %I32 -> %fn<a = I32>(x) -> %i32_neg(x)
+  | %F64 -> %fn<a = F64>(x) -> %f64_neg(x)
+}
+```
+
+Arm type includes implicit param binding.
+
+---
+
+### Q2: Can implicit params have defaults?
+
+**Answer**: Future extension:
+
+```tao
+fn id<T = I32>(x: T) -> T { x }
+id(42)  // Uses default I32 if context doesn't specify
+```
+
+**Decision**: Not in MVP, add later if needed.
+
+---
+
+### Q3: How to handle higher-order functions with implicit params?
+
+```tao
+fn map<T, U>(f: fn(T) -> U, xs: List<T>) -> List<U> { ... }
+map((-), [1, 2, 3])  // What type for (-)?
+```
+
+**Answer**: Contextual inference:
+
+```
+1. xs : List<I32>, so T = I32
+2. f : fn(I32) -> U
+3. (-) : ∀a. a → a
+4. Instantiate (-) with a = I32
+5. Result: map<I32, I32>((-)<I32>, [1, 2, 3])
+```
+
+---
+
+### Q4: What about implicit params in records/ADTs?
+
+**Answer**: Same mechanism:
+
+```tao
+type Box<T> = Box(value: T)
+
+fn unwrap<T>(box: Box<T>) -> T { box.value }
+
+unwrap(Box(42))  // T inferred as I32
+```
+
+**Core**:
+```core
+Box : ∀a. a → Box<a>
+unwrap : ∀a. Box<a> → a
+```
+
+---
+
+## Benefits of This Design
+
+| Benefit | Description |
+|---------|-------------|
+| **Simplicity** | Single Lam/App, not multiple constructors |
+| **Uniformity** | All functions use same mechanism |
+| **Type Reflection** | Free from implicit argument mechanism |
+| **Zero Overhead** | Implicit args erased at runtime |
+| **Hole Inference** | Leverages existing infrastructure |
+| **Consistency** | Matches Pi types at type level |
+| **Extensibility** | Easy to add more implicit param kinds |
+
+---
+
+## Comparison with Alternatives
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **Explicit Type App** `f(T)(x)` | Simple | Verbose, no inference |
+| **Implicit Args** `f<ty>(x)` | Inferred, clean syntax | More complex inference |
+| **Type Classes** | Powerful | Complex, runtime dictionaries |
+| **Multi-Dispatch** | Flexible | Runtime overhead |
+
+**Decision**: Implicit args provide best balance of simplicity and power.
 
 ---
 
 ## Related Documents
 
+- **[11-overloading-implementation.md](./11-overloading-implementation.md)** - Implementation plan (needs update)
+- **[../core/15-type-application.md](../core/15-type-application.md)** - Core type application (superseded by this)
 - **[09-tao-mvp-plan.md](./09-tao-mvp-plan.md)** - Tao MVP (completed)
-- **[03-desugaring.md](./03-desugaring.md)** - Desugaring rules (needs update)
-- **[../../docs/core.md](../../docs/core.md)** - Core language spec (needs update)
-- **[../../docs/plans/core/](../../docs/plans/core/)** - Core plans (may need updates)
 
 ---
 
-## Decision Summary
+## Next Steps
 
-| Question | Decision |
-|----------|----------|
-| Type application strategy | Explicit (Option A) |
-| Resolution timing | Type-check time |
-| Cross-module overloads | Overload sets merged at import |
-| Function vs operator | Same mechanism |
-| Use hole-solving like check_ctr | Yes, leverage existing infrastructure |
-| All functions use type app? | No, only overloaded |
-| Implicit type resolution? | Future optimization |
+1. **Update Core AST** - Add implicit flag to Lam/App
+2. **Add Forall to Type** - Polymorphic type support
+3. **Update Inference** - Instantiate Forall, fill holes
+4. **Update Evaluation** - Erase implicit args
+5. **Update Formatter** - Print `<ty>` syntax
+6. **Tests** - Verify overloading, type reflection
 
 ---
 
-**This design provides a solid foundation for overloading while maintaining simplicity and performance.** 🎯
+**This design unifies implicit arguments, overloading, and type reflection elegantly.** 🎯
