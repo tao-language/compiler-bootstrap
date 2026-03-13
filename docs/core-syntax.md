@@ -1,147 +1,379 @@
-# Core Language Syntax Quick Reference (Dependent Types)
+# Core Language Syntax (5-Minute Guide)
 
-Core is a dependently-typed target language. It uses `%` for keywords, `#` for constructors, and `%call` for operations to keep the namespace clean.
+> **Purpose**: Core is a dependently-typed **compilation target** for high-level languages like Tao
+> **Design**: `%` for keywords, `#` for constructors, clean namespaces
 
-## 1. Philosophy & Rules
-*   **Keywords** start with `%` (e.g., `%let`, `%match`).
-*   **Constructors** start with `#` (e.g., `#True`, `#Nil`).
-*   **No Infix Operators**: Use `%call` for all operations (e.g., `%call i32_add(x, y)`).
-*   **No `$` Prefix**: Use `%Type` for universes and literal names (e.g., `%I32`) for types.
+---
 
-## 2. Comments
+## Quick Rules
+
+| Prefix | Purpose | Examples |
+|--------|---------|----------|
+| `%` | Keywords (meta-operators) | `%let`, `%match`, `%call`, `%fix`, `%comptime`, `%def`, `%Type` |
+| `#` | Constructors (data variants) | `#True`, `#False`, `#Nil`, `#Cons(x)` |
+| (none) | Variables, types, operations | `x`, `add`, `i32_add`, `Maybe` |
+
+**Why?** High-level languages can use `match`, `case`, `let` as keywords. Core keeps all names available for variables.
+
+---
+
+## 1. Comments
+
 ```text
 // Single line comment
-/* Multi-line comment */
+
+/* Multi-line
+   comment */
 ```
 
-## 3. Literals & Types
-Literals are values; types describe their structure. Use `%Type` for universes and literal names (e.g., `%I32`, `%U32`) for types.
+---
+
+## 2. Literals & Types
 
 ```text
-42          // Integer literal (Type: %I32)
-#True       // Constructor value (Type: %Type)
-(x : %I32)   // Type annotation
+42          // Integer literal (type: %I32)
+3.14        // Float literal (type: %F64)
+"hello"     // String literal
+
+// Types use % prefix
+%I32        // 32-bit integer type
+%F64        // 64-bit float type
+%Type       // Universe type (type of types)
 ```
 
-## 4. Functions & Patterns (`->`)
-Functions are lambdas (`x -> body`). This is syntactic sugar for dependent function types (Pi-types).
-
+**Type Annotation**:
 ```text
-x -> x       // Identity function
-(x : %I32) -> x   // Explicitly typed lambda
-
-// Pi Type (Dependent Function)
-(x : A) -> B   // Return type depends on input value x
+(x : %I32)   // x has type I32
 ```
 
-## 5. Pattern Matching (`%match`)
-Pattern matching deconstructs values. The **motive** specifies the return type for each case, which is crucial for dependent types (GADTs).
+---
+
+## 3. Functions (Lambdas)
 
 ```text
-%match arg ~ motive { cases }
+// Identity function
+x -> x
+
+// With type annotation
+(x : %I32) -> x
+
+// Curried function (takes x, returns function that takes y)
+x -> y -> x
+
+// Pi type (dependent function - return type depends on input value)
+(n : %I32) -> Vec(n, A)  // Returns vector of length n
 ```
 
-*   **`arg`**: The value to match.
-*   **`motive`**: A function `(input_type) -> return_type`. Tells the checker what type each case returns.
-*   **`cases`**: `| pattern -> body`.
+---
 
-**Example:**
+## 4. Let Bindings
+
 ```text
-%match n ~ (k : %I32) -> %Type {
-  | #Zero -> k        // Returns type k (depends on n)
-  | _      -> %Type   // Returns universe type
+// Simple let
+%let x = 42
+
+// With type annotation
+%let x : %I32 = 42
+
+// Let in expression
+%let x = 5 in x + x
+```
+
+---
+
+## 5. Operations (`%call`)
+
+Core has **no infix operators**. Use `%call` for built-in operations:
+
+```text
+// Arithmetic (i32)
+%call i32_add(x, y)   // x + y
+%call i32_sub(x, y)   // x - y
+%call i32_mul(x, y)   // x * y
+%call i32_div(x, y)   // x / y
+
+// Arithmetic (i64, u32, u64, f32, f64)
+%call i64_add(x, y)
+%call u32_add(x, y)
+%call f64_add(x, y)
+
+// Comparison
+%call i32_eq(x, y)    // x == y
+%call i32_lt(x, y)    // x < y
+```
+
+---
+
+## 6. Pattern Matching (`%match`)
+
+```text
+%match arg ~ motive {
+  | pattern -> body
+  | pattern -> body
 }
 ```
 
-## 6. Operations (`%call`)
-Core has no infix operators like `+`. Use `%call` for built-in functions.
+- **`arg`**: Value to match
+- **`motive`**: `(input_type) -> return_type` - tells type checker what each case returns
+- **`cases`**: Pattern → body pairs
 
+**Example** (simple):
 ```text
-%call i32_add(x, y)   // Addition (returns %I32)
-%call i32_eq(x, y)    // Equality check (returns Bool)
+%match opt {
+  | #Some(x) -> x
+  | #None -> 0
+}
 ```
 
-## 7. Recursion (`%fix`) & Comptime (`%comptime`)
-*   **Recursion**: `%fix name = term`. Defines a recursive function.
-*   **Comptime**: `%comptime term`. Evaluates at compile-time (folds constants).
-
+**Example** (dependent type with motive):
 ```text
-%fix fact = \n -> match n with ...
-%comptime 2 + 3       // Evaluates to 5 at compile-time
+%match v ~ (n : %I32) -> %Type {
+  | #Nil -> %I32
+  | #Cons(k, x) -> Vec(k, A)
+}
 ```
 
-## 8. Factorial Implementation (`%I32`)
-Here is a recursive factorial function using the `%I32` type. Note the use of `%call i32_...` operators and `%fix` for recursion.
+**Patterns**:
+```text
+_              // Wildcard (matches anything)
+#Some(x)       // Constructor pattern
+x if x > 0     // Guard (conditional match)
+```
+
+---
+
+## 7. Recursion (`%fix`)
 
 ```text
-// Define factorial function
-%fix fact = \n -> match n with
+// Factorial using fixpoint
+%fix fact = \n -> %match n {
   | #Zero -> 1
-  | _     -> %call i32_mul(n, fact(%call i32_sub(n, 1)))
+  | _ -> %call i32_mul(n, fact(%call i32_sub(n, 1)))
+}
+```
+
+**Syntax**: `%fix name = term`
+
+---
+
+## 8. Compile-Time Evaluation (`%comptime`)
+
+```text
+// Evaluate at compile-time
+%comptime fact(5)  // Evaluates to 120
+
+// In type position
+%let v : Vec(%comptime { 2 + 3 }, %I32)  // Vec(5, %I32)
+```
+
+---
+
+## 9. Constructors (`#`)
+
+Constructors are **defined individually** (no type definition sugar):
+
+```text
+// Boolean type
+%def #Bool -> %Type
+%def #True -> #Bool
+%def #False -> #Bool
+
+// Option type (polymorphic)
+%def #Maybe<a>(a) -> %Type
+%def #Some<a>(a) -> #Maybe(a)
+%def #None<a> -> #Maybe(a)
+
+// Vector (dependent type - length is a value)
+%def #Vec(n : %I32, a) -> %Type
+%def #Nil<a> -> #Vec(0, a)
+%def #Cons<a>(n : %I32, x : a) -> #Vec(%call i32_add(n, 1), a)
+```
+
+**Usage**:
+```text
+%let b = #True
+%let opt = #Some(42)
+%let v = #Cons(2, #Cons(1, #Nil))
+```
+
+---
+
+## 10. Complete Example: Factorial
+
+```text
+// Factorial function using %I32
+%fix fact = \n -> %match n {
+  | #Zero -> 1
+  | _ -> %call i32_mul(n, fact(%call i32_sub(n, 1)))
+}
 
 // Usage: Calculate factorial of 5
 %let result = %comptime fact(5) in result
 
-// Type annotation (Optional but recommended)
-result : %I32
+// With type annotation
+%let result : %I32 = %comptime fact(5)
 ```
 
-## 9. Dependent Types Example: `Vec`
-Vectors in Core are dependent types where the length is a value. To define `Vec`, use `%U32` for the universe level and `%call u32_add` to calculate length.
+---
 
-### Defining `Vec`
+## 11. Complete Example: Vectors
+
 ```text
-// Define Nil constructor (Length must be 0)
-%def #Nil : Vec(0, A)
+// Define vector constructors
+%def #Vec(n : %I32, a) -> %Type
+%def #Nil<a> -> #Vec(0, a)
+%def #Cons<a>(n : %I32, x : a) -> #Vec(%call i32_add(n, 1), a)
 
-// Define Cons constructor (Length becomes n + 1)
-%def #Cons(n : %U32, x) -> Vec(%call u32_add(n, 1), A)
+// Create a vector
+%let v = #Cons(2, #Cons(1, #Nil))
+
+// Vector length
+%fix vec_len = \v -> %match v ~ (n : %I32) -> %Type {
+  | #Nil -> 0
+  | #Cons(k, _) -> %call i32_add(k, 1)
+}
+
+// Usage
+%let len = %comptime vec_len(v)  // 3
 ```
 
-### Using `Vec`
-```text
-// Create a vector of length 2 containing 10 and 20
-%let v = #Cons(2, %call i32_add(10, 20))
+---
 
-// Access head of vector (if length > 0)
-%match v ~ (n : %U32, A) -> %Type {
-  | #Nil -> %call i32_sub(0, n)   // Error: Length must be 0
-  | #Cons(n, x) -> x              // Returns element type A
+## 12. Universe Hierarchy
+
+```text
+%Type        // Alias for %Type(0) - type of values
+%Type(0)     // Type of %I32, %F64, etc.
+%Type(1)     // Type of %Type(0)
+%Type(2)     // Type of %Type(1)
+
+// Cumulativity
+%Type(0) : %Type(1)
+%Type(1) : %Type(2)
+```
+
+---
+
+## 13. Holes (Metavariables)
+
+```text
+?      // Anonymous hole (to be solved)
+?1     // Named hole (id = 1)
+?2     // Named hole (id = 2)
+
+// Usage (during development)
+%let add = (x : %I32) -> (y : %I32) -> ?
+```
+
+---
+
+## 14. Application
+
+```text
+// Function application (C-style only)
+f(x)
+add(5, 10)
+fact(5)
+
+// No infix application (f x not supported)
+```
+
+---
+
+## Quick Reference
+
+| Feature | Syntax | Example |
+|---------|--------|---------|
+| **Keyword** | `%name` | `%let`, `%match`, `%call` |
+| **Constructor** | `#Name` | `#True`, `#Some(x)` |
+| **Type** | `%Name` | `%I32`, `%Type`, `%F64` |
+| **Lambda** | `x -> body` | `x -> x + 1` |
+| **Pi Type** | `(x : A) -> B` | `(n : %I32) -> Vec(n)` |
+| **Let** | `%let x = e` | `%let x = 42` |
+| **Match** | `%match arg ~ motive { \| p -> b }` | `%match opt { \| #Some(x) -> x }` |
+| **Fix** | `%fix name = term` | `%fix f = \n -> f(n-1)` |
+| **Comptime** | `%comptime e` | `%comptime fact(5)` |
+| **Call** | `%call op(args)` | `%call i32_add(x, y)` |
+| **Hole** | `?` or `?1` | `let x = ?` |
+
+---
+
+## Key Concepts
+
+### Why `%` Prefix?
+Core is a **compilation target**. High-level languages define their own keywords:
+- Tao: `match`, `case`, `let`
+- Other language: `switch`, `case`, `val`
+
+By using `%match`, `%let`, etc., Core keeps `match`, `let`, `case` available as variable names.
+
+### Why `#` for Constructors?
+Separates data constructors from variables and operations:
+- `#Some(x)` - Constructor (data)
+- `some(x)` - Function call (operation)
+- `Some` - Type name (type)
+
+### Dependent Types
+Types that depend on **values**:
+```text
+(n : %I32) -> Vec(n, A)  // Type includes length value
+```
+
+### Motives
+The motive in `%match` specifies the **return type** for each case (essential for GADTs):
+```text
+%match v ~ (n : %I32) -> %Type {
+  | #Nil -> %I32           // This case returns %I32
+  | #Cons(k, _) -> Vec(k)  // This case returns Vec(k)
 }
 ```
 
-## 10. Quick Syntax Cheat Sheet
+---
 
-| Feature | Syntax | Description |
-| :--- | :--- | :--- |
-| **Comment** | `//` or `/* */` | Ignored by parser |
-| **Literal** | `42`, `3.14` | Integer or Float value |
-| **Constructor** | `#Name(args)` | Data variant (starts with #) |
-| **Keyword** | `%let`, `%match` | Meta-operators (start with %) |
-| **Lambda** | `x -> body` | Function definition |
-| **FFI Call** | `%call i32_add(x, y)` | Built-in function call |
-| **Recursion** | `%fix name = term` | Recursive definition |
+## Built-in Operations
 
-## 11. Key Concepts Explained
-
-### Dependent Types (Pi Types)
-A function type `(x : A) -> B` where `B` can depend on the value of `x`.
+### Integer (i32, i64, u32, u64)
 ```text
-(x : %I32) -> Vec(x, Bool)   // Returns a vector of length x
+%call i32_add(x, y)   // Addition
+%call i32_sub(x, y)   // Subtraction
+%call i32_mul(x, y)   // Multiplication
+%call i32_div(x, y)   // Division
+%call i32_eq(x, y)    // Equality
+%call i32_lt(x, y)    // Less than
+%call i32_gt(x, y)    // Greater than
 ```
 
-### Motives (in `%match`)
-The motive `(input_type) -> return_type` tells the type checker what type each branch returns. This is essential for GADTs where constructors return different types based on the input value.
+### Float (f32, f64)
 ```text
-%match v ~ (n : %U32) -> %Type {
-  | #Nil -> Vec(0, A)   // Case returns type Vec(0, A)
-  | #Cons(n, x) -> Vec(Succ(n), A) // Case returns type Vec(Succ(n), A)
-}
+%call f64_add(x, y)
+%call f64_sub(x, y)
+%call f64_mul(x, y)
+%call f64_div(x, y)
+%call f64_pow(x, y)   // Power
 ```
 
-### Constructors (`#`) vs Keywords (`%`)
-*   **Constructors** (`#Name`) are values that represent data variants. They must be defined individually using `%def`.
-*   **Keywords** (`%Name`) are meta-operators used for language structure (e.g., `%match`, `%fix`).
+---
 
-### Error Recovery
-Core reports all errors in a single pass. If an error occurs, checking continues to report other issues (e.g., type mismatches and missing match cases).
+## Error Recovery
+
+Core reports **all errors** in a single pass:
+```text
+// Multiple errors reported together
+%let x : %I32 = "hello"  // Type mismatch
+%let y = undefined       // Undefined variable
+%match z { }             // Missing cases
+```
+
+---
+
+## Related Documents
+
+- **[docs/core.md](./core.md)** - Complete core language specification
+- **[docs/syntax-library.md](./syntax-library.md)** - Syntax library documentation
+
+---
+
+## References
+
+- [Core Implementation](../src/core/core.gleam)
+- [Core Syntax](../src/core/syntax.gleam)
