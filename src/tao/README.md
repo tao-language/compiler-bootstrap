@@ -1,6 +1,6 @@
-# Tao MVP Implementation
+# Tao Implementation
 
-> **Status**: ⏳ **In Progress** - Week 1 (Lexer + Parser)
+> **Status**: ⏳ **In Progress** - Expression language complete
 > **Started**: March 2026
 > **Target**: 2-3 weeks
 
@@ -153,7 +153,6 @@ fn unwrap(opt: Option<Int>): Int {
 
 ## Related Documents
 
-- **[../../docs/plans/tao/09-tao-mvp-plan.md](../../docs/plans/tao/09-tao-mvp-plan.md)** - MVP implementation plan
 - **[../../docs/plans/tao/01-overview.md](../../docs/plans/tao/01-overview.md)** - Tao language overview
 - **[../../docs/core-syntax.md](../../docs/core-syntax.md)** - Core syntax reference
 - **[../../docs/syntax-library.md](../../docs/syntax-library.md)** - Syntax library

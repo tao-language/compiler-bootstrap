@@ -467,6 +467,7 @@ fn value_to_string(value) -> String {
       name <> "(" <> args |> list.map(value_to_string) |> string.join(", ") <> ")"
     }
     core.VFix(_name, _env, _body) -> "fix(...)"
+    core.VUnit -> "Unit"
     core.VErr -> "<error>"
   }
 }
@@ -511,7 +512,6 @@ fn head_to_string(head) -> String {
 fn ctr_value_to_string(ctr: core.CtrValue) -> String {
   case ctr {
     core.VCtr(tag, arg) -> "#" <> tag <> "(" <> value_to_string(arg) <> ")"
-    core.VCtrNullary(tag) -> "#" <> tag
   }
 }
 

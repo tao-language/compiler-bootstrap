@@ -12,9 +12,9 @@
 /// For detailed documentation see:
 /// - [Tao Overloading](../../docs/plans/tao/10-overloading-design.md)
 /// - [Core Syntax](../../docs/core-syntax.md)
-import tao/syntax.{type MvpExpr, MvpInt, MvpVar, MvpAdd, MvpSub, MvpMul, MvpDiv, MvpEq, MvpNeq, MvpLt, MvpGt, MvpLte, MvpGte, MvpAnd, MvpOr, MvpNot, OverloadedFn, OverloadedApp, get_expr_span}
+import tao/syntax.{type Expr, Int, Var, Add, Sub, Mul, Div, Eq, Neq, Lt, Gt, Lte, Gte, And, Or, Not, OverloadedFn, OverloadedApp, get_expr_span}
 import core/core.{
-  type Term, Term, Lit, I32, Var, Call, Case, Match, Typ, Lam, Hole,
+  type Term, Term, Lit, I32, Var as CoreVar, Call, Case, Match, Typ, Lam, Hole,
   type Literal, type LiteralType, type Case, type Pattern, I32T, I64T, F32T, F64T, U32T, U64T, PLitT, PAny,
 }
 import syntax/grammar.{type Span, Span}
@@ -50,28 +50,28 @@ pub fn initial_ctx(span: Span) -> DesugarCtx {
 /// Desugar Tao expression to Core term.
 ///
 /// This is the main entry point for desugaring.
-pub fn desugar(expr: MvpExpr) -> Term {
+pub fn desugar(expr: Expr) -> Term {
   desugar_expr(expr, initial_ctx(get_expr_span(expr)))
 }
 
 /// Desugar expression with context.
-fn desugar_expr(expr: MvpExpr, ctx: DesugarCtx) -> Term {
+fn desugar_expr(expr: Expr, ctx: DesugarCtx) -> Term {
   case expr {
-    MvpInt(value, span) -> desugar_int(value, span)
-    MvpVar(name, span) -> desugar_var(name, span, ctx)
-    MvpAdd(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_add")
-    MvpSub(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_sub")
-    MvpMul(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_mul")
-    MvpDiv(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_div")
-    MvpEq(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_eq")
-    MvpNeq(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_neq")
-    MvpLt(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_lt")
-    MvpGt(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_gt")
-    MvpLte(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_lte")
-    MvpGte(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_gte")
-    MvpAnd(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_and")
-    MvpOr(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_or")
-    MvpNot(expr, span) -> desugar_not(expr, span, ctx)
+    Int(value, span) -> desugar_int(value, span)
+    Var(name, span) -> desugar_var(name, span, ctx)
+    Add(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_add")
+    Sub(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_sub")
+    Mul(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_mul")
+    Div(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_div")
+    Eq(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_eq")
+    Neq(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_neq")
+    Lt(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_lt")
+    Gt(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_gt")
+    Lte(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_lte")
+    Gte(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_gte")
+    And(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_and")
+    Or(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_or")
+    Not(expr, span) -> desugar_not(expr, span, ctx)
     OverloadedFn(name, type_param, param_name, param_type, return_type, body, span) ->
       desugar_overloaded_fn(name, type_param, param_name, param_type, return_type, body, span)
     OverloadedApp(name, args, span) -> desugar_overloaded_app(name, args, span, ctx)
@@ -90,18 +90,18 @@ fn desugar_int(value: Int, span: Span) -> Term {
 /// Desugar variable reference.
 fn desugar_var(name: String, span: Span, ctx: DesugarCtx) -> Term {
   case find_var(name, ctx.env) {
-    Ok(index) -> Term(Var(index), span)
+    Ok(index) -> Term(CoreVar(index), span)
     Error(_) -> {
       // Free variable - use index 0 (will be an error in type checking)
-      Term(Var(0), span)
+      Term(CoreVar(0), span)
     }
   }
 }
 
 /// Desugar binary operation.
 fn desugar_binop(
-  left: MvpExpr,
-  right: MvpExpr,
+  left: Expr,
+  right: Expr,
   span: Span,
   ctx: DesugarCtx,
   op_name: String,
@@ -112,7 +112,7 @@ fn desugar_binop(
 }
 
 /// Desugar logical NOT.
-fn desugar_not(expr: MvpExpr, span: Span, ctx: DesugarCtx) -> Term {
+fn desugar_not(expr: Expr, span: Span, ctx: DesugarCtx) -> Term {
   let expr_term = desugar_expr(expr, ctx)
   Term(Call("i32_not", [expr_term]), span)
 }
@@ -177,7 +177,7 @@ fn desugar_overloaded_fn(
   param_name: String,
   param_type: String,
   _return_type: String,
-  body: MvpExpr,
+  body: Expr,
   span: Span,
 ) -> Term {
   // Desugar the body expression
@@ -187,7 +187,7 @@ fn desugar_overloaded_fn(
   let type_pattern = type_to_pattern(param_type)
   let match_term = Term(
     Match(
-      Term(Var(0), span),
+      Term(CoreVar(0), span),
       Term(Typ(0), span),
       [
         Case(type_pattern, body_term, None, span),
@@ -220,13 +220,13 @@ fn type_to_pattern(type_name: String) -> Pattern {
 /// Core: %call (+)(1, 2)  -- type inferred during type checking
 fn desugar_overloaded_app(
   name: String,
-  args: List(MvpExpr),
+  args: List(Expr),
   span: Span,
   ctx: DesugarCtx,
 ) -> Term {
   // Desugar all arguments
   let arg_terms = list.map(args, fn(arg) { desugar_expr(arg, ctx) })
-  
+
   // Create function call (implicit args will be filled during type inference)
   case arg_terms {
     [first, ..rest] -> {
@@ -236,7 +236,7 @@ fn desugar_overloaded_app(
         Term(Call(name, [acc, arg]), span)
       })
     }
-    [] -> Term(Var(0), span)  // No args
+    [] -> Term(CoreVar(0), span)  // No args
   }
 }
 

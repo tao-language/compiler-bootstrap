@@ -41,10 +41,12 @@ pub type TermData {
   /// Record with named fields.
   Rcd(fields: List(#(String, Term)))
 
-  /// Constructor application with arg: #Some(42), #Cons(1, Nil)
+  /// Constructor application: #Some(42), #True(Unit), #Cons(1, Nil)
+  /// Nullary constructors use Unit as argument: #True(Unit)
   Ctr(tag: String, arg: Term)
-  /// Nullary constructor: #True, #False, #None
-  CtrNullary(tag: String)
+
+  /// Unit value - used for nullary constructors and void
+  Unit
 
   /// Field projection (record.field).
   Dot(arg: Term, field: String)
@@ -113,6 +115,8 @@ pub type Value {
   VFix(name: String, env: Env, body: Term)
   /// Constructor value (algebraic data)
   VCtrValue(CtrValue)
+  /// Unit value
+  VUnit
   /// Error value for error recovery (continues checking after errors)
   VErr
 }
@@ -121,8 +125,6 @@ pub type Value {
 pub type CtrValue {
   /// Constructor with argument: #Some(value)
   VCtr(tag: String, arg: Value)
-  /// Nullary constructor: #True, #False, #None
-  VCtrNullary(tag: String)
 }
 
 pub type Type =
@@ -146,10 +148,10 @@ pub type Pattern {
   PLitT(value: LiteralType)
   /// Record pattern {x = p, y = q}
   PRcd(fields: List(#(String, Pattern)))
-  /// Constructor pattern with arg: #Some(n)
+  /// Constructor pattern with arg: #Some(n), #True(Unit)
   PCtr(tag: String, arg: Pattern)
-  /// Nullary constructor pattern: #True, #False, #None
-  PCtrNullary(tag: String)
+  /// Unit pattern - matches Unit value
+  PUnit
 }
 
 // ============================================================================
@@ -637,7 +639,6 @@ pub type PHead {
   HLitT(value: LiteralType)
   HRcd(fields: List(String))
   HCtr(name: String)
-  HCtrNullary(name: String)
 }
 
 // ============================================================================
@@ -705,7 +706,7 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
     Rcd(fields) ->
       VRcd(list.map(fields, fn(kv) { #(kv.0, eval(ffi, env, kv.1)) }))
     Ctr(tag, arg) -> VCtrValue(VCtr(tag, eval(ffi, env, arg)))
-    CtrNullary(tag) -> VCtrValue(VCtrNullary(tag))
+    Unit -> VUnit
     Dot(arg, name) -> do_dot(eval(ffi, env, arg), name)
     Ann(term, _) -> eval(ffi, env, term)
     Lam(implicit, param, body) -> {
@@ -900,7 +901,17 @@ pub fn do_match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
       })
     PCtr(ptag, parg), VCtrValue(VCtr(vtag, varg)) if ptag == vtag ->
       do_match_pattern(parg, varg)
-    PCtrNullary(ptag), VCtrValue(VCtrNullary(vtag)) if ptag == vtag ->
+    PCtr("True", PUnit), VCtrValue(VCtr("True", VUnit)) ->
+      Ok([])
+    PCtr("False", PUnit), VCtrValue(VCtr("False", VUnit)) ->
+      Ok([])
+    PCtr("None", PUnit), VCtrValue(VCtr("None", VUnit)) ->
+      Ok([])
+    PCtr("LT", PUnit), VCtrValue(VCtr("LT", VUnit)) ->
+      Ok([])
+    PCtr("EQ", PUnit), VCtrValue(VCtr("EQ", VUnit)) ->
+      Ok([])
+    PCtr("GT", PUnit), VCtrValue(VCtr("GT", VUnit)) ->
       Ok([])
     _, _ -> Error(Nil)
   }
@@ -945,7 +956,7 @@ pub fn quote(ffi: FFI, lvl: Int, value: Value, s: Span) -> Term {
         s,
       )
     VCtrValue(VCtr(tag, arg)) -> Term(Ctr(tag, quote(ffi, lvl, arg, s)), s)
-    VCtrValue(VCtrNullary(tag)) -> Term(CtrNullary(tag), s)
+    VUnit -> Term(Unit, s)
     VLam(implicit, name, env, body) -> {
       // Create a fresh neutral variable at the current level
       let fresh = VNeut(HVar(lvl), [])
@@ -1054,7 +1065,7 @@ pub fn occurs(sub: Subst, id: Int, value: Value) -> Bool {
     VNeut(_, spine) -> list.any(spine, occurs_elim(sub, id, _))
     VRcd(fields) -> list.any(fields, fn(kv) { occurs(sub, id, kv.1) })
     VCtrValue(VCtr(_, arg)) -> occurs(sub, id, arg)
-    VCtrValue(VCtrNullary(_)) -> False
+    VUnit -> False
     VLam(_, _, env, _) -> list.any(env, occurs(sub, id, _))
     VPi(_, _, env, in, _) ->
       occurs(sub, id, in) || list.any(env, occurs(sub, id, _))
@@ -1116,8 +1127,7 @@ pub fn unify(
     VRcd(fields1), VRcd(fields2) -> unify_fields(s, fields1, fields2, s1, s2)
     VCtrValue(VCtr(k1, arg1)), VCtrValue(VCtr(k2, arg2)) if k1 == k2 ->
       unify(s, arg1, arg2, s1, s2)
-    VCtrValue(VCtrNullary(k1)), VCtrValue(VCtrNullary(k2)) if k1 == k2 ->
-      Ok(s)
+    VUnit, VUnit -> Ok(s)
     VLam(_, _, env1, body1), VLam(_, _, env2, body2) -> {
       // Unify lambdas by applying both to a fresh variable
       let #(fresh, s) = new_var(s)
@@ -1300,15 +1310,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
           #(VCtrValue(VCtr(tag, eval(s.ffi, env, arg))), eval(s.ffi, env, ctr.ret_ty), s)
         }
       }
-    CtrNullary(tag) ->
-      case list.key_find(s.ctrs, tag) {
-        Error(Nil) -> infer_error(s, CtrUndefined(tag, term.span))
-        Ok(ctr) -> {
-          let #(params, _, ctr_ret_ty, s) = check_ctr_def(s, ctr)
-          let #(params, s) = ctr_solve_params(s, ctr, params, tag, term.span)
-          #(VCtrValue(VCtrNullary(tag)), ctr_ret_ty, s)
-        }
-      }
+    Unit -> #(VUnit, VTyp(0), s)
     Dot(arg, name) -> {
       let #(arg_val, arg_ty, s) = infer(s, arg)
       let val = do_dot(arg_val, name)
@@ -1642,18 +1644,7 @@ pub fn bind_pattern(
         }
       }
     }
-    PCtrNullary(tag) -> {
-      case list.key_find(s.ctrs, tag) {
-        Error(Nil) -> #(VErr, with_err(s, CtrUndefined(tag, pat_span)))
-        Ok(ctr) -> {
-          let #(params, _, ctr_ret_ty, s) = check_ctr_def(s, ctr)
-          let #(_, s) =
-            check_type(s, ctr_ret_ty, ret_ty, ctr.ret_ty.span, ret_span)
-          let #(_, s) = ctr_solve_params(s, ctr, params, tag, pat_span)
-          #(VCtrValue(VCtrNullary(tag)), s)
-        }
-      }
-    }
+    PUnit -> #(VUnit, s)
   }
 }
 
@@ -1806,7 +1797,7 @@ fn deconstruct(pat: Pattern) -> #(PHead, List(Pattern)) {
       #(head, list.map(sorted, fn(f) { f.1 }))
     }
     PCtr(tag, p) -> #(HCtr(tag), [p])
-    PCtrNullary(tag) -> #(HCtrNullary(tag), [])
+    PUnit -> #(HCtr("Unit"), [])
   }
 }
 
@@ -1819,7 +1810,8 @@ fn reconstruct(head: PHead, args: List(Pattern)) -> Pattern {
     HLitT(k) -> PLitT(k)
     HRcd(ks) -> PRcd(list.zip(ks, args))
     HCtr(tag) -> PCtr(tag, list.first(args) |> result.unwrap(PAny))
-    HCtrNullary(tag) -> PCtrNullary(tag)
+    HCtr("Unit") -> PUnit
+    _ -> PAny
   }
 }
 
@@ -1828,7 +1820,6 @@ fn head_arity(head: PHead) -> Int {
   case head {
     HRcd(fs) -> list.length(fs)
     HCtr(_) -> 1
-    HCtrNullary(_) -> 0
     _ -> 0
   }
 }
@@ -1959,16 +1950,13 @@ pub fn get_missing_heads(
       })
       |> list.filter(fn(h) { !list.contains(concrete_heads, h) })
     }
-    [HCtrNullary(name), ..] -> {
+    [HCtr(name), ..] -> {
       let type_family = get_type_family(s, name)
       list.key_find(index, type_family)
       |> result.unwrap([])
       |> list.filter_map(fn(entry) {
-        let #(tag, ctr) = entry
-        case ctr.arg_ty.data {
-          Typ(0) -> Ok(HCtrNullary(tag))
-          _ -> Ok(HCtr(tag))
-        }
+        let #(tag, _) = entry
+        Ok(HCtr(tag))
       })
       |> list.filter(fn(h) { !list.contains(concrete_heads, h) })
     }

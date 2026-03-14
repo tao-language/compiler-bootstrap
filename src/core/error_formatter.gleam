@@ -24,9 +24,9 @@ import core/core.{
   ComptimePermissionDenied, InfiniteType,
   RcdMissingFields, CtrUnsolvedParam, DotFieldNotFound, DotOnNonCtr,
   SpineMismatch, TODO,
-  PAny, PAs, PTyp, PLit, PLitT, PRcd, PCtr, PCtrNullary,
+  PAny, PAs, PTyp, PLit, PLitT, PRcd, PCtr, PUnit,
   HVar, HHole,
-  VTyp, VLit, VLitT, VNeut, VRcd, VCtrValue, VCtr, VCtrNullary, VLam, VPi, VRecord, VCall, VFix, VErr,
+  VTyp, VLit, VLitT, VNeut, VRcd, VCtrValue, VCtr, VLam, VPi, VRecord, VCall, VFix, VUnit, VErr,
   I32, I64, U32, U64, F32, F64,
   I32T, I64T, U32T, U64T, F32T, F64T,
   AllowRead, AllowWrite,
@@ -493,6 +493,7 @@ fn type_to_string(ty: Type) -> String {
     VRecord(_) -> "Record{...}"
     VCall(name, _) -> name
     VFix(_, _, _) -> "fix"
+    VUnit -> "Unit"
     VErr -> "⊥"
   }
 }
@@ -500,7 +501,6 @@ fn type_to_string(ty: Type) -> String {
 fn ctr_to_string(ctr) -> String {
   case ctr {
     VCtr(tag, _) -> tag
-    VCtrNullary(tag) -> tag
   }
 }
 
@@ -539,7 +539,7 @@ fn pattern_to_string(pattern: Pattern) -> String {
     PLitT(lit) -> literal_type_to_string(lit)
     PRcd(fields) -> "{ " <> list.map(fields, fn(f) { f.0 <> " = ..." }) |> string.join(", ") <> " }"
     PCtr(tag, arg) -> tag <> "(" <> pattern_to_string(arg) <> ")"
-    PCtrNullary(tag) -> tag
+    PUnit -> "Unit"
   }
 }
 

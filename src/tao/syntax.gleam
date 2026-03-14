@@ -29,24 +29,24 @@ import syntax/grammar.{
 /// Expression for Tao with overloading support.
 ///
 /// Supports: Arithmetic expressions, variables, comparison operators, and overloaded operators
-pub type MvpExpr {
-  MvpInt(value: Int, span: Span)
-  MvpVar(name: String, span: Span)
-  MvpAdd(left: MvpExpr, right: MvpExpr, span: Span)
-  MvpSub(left: MvpExpr, right: MvpExpr, span: Span)
-  MvpMul(left: MvpExpr, right: MvpExpr, span: Span)
-  MvpDiv(left: MvpExpr, right: MvpExpr, span: Span)
+pub type Expr {
+  Int(value: Int, span: Span)
+  Var(name: String, span: Span)
+  Add(left: Expr, right: Expr, span: Span)
+  Sub(left: Expr, right: Expr, span: Span)
+  Mul(left: Expr, right: Expr, span: Span)
+  Div(left: Expr, right: Expr, span: Span)
   /// Comparison operators
-  MvpEq(left: MvpExpr, right: MvpExpr, span: Span)
-  MvpNeq(left: MvpExpr, right: MvpExpr, span: Span)
-  MvpLt(left: MvpExpr, right: MvpExpr, span: Span)
-  MvpGt(left: MvpExpr, right: MvpExpr, span: Span)
-  MvpLte(left: MvpExpr, right: MvpExpr, span: Span)
-  MvpGte(left: MvpExpr, right: MvpExpr, span: Span)
+  Eq(left: Expr, right: Expr, span: Span)
+  Neq(left: Expr, right: Expr, span: Span)
+  Lt(left: Expr, right: Expr, span: Span)
+  Gt(left: Expr, right: Expr, span: Span)
+  Lte(left: Expr, right: Expr, span: Span)
+  Gte(left: Expr, right: Expr, span: Span)
   /// Logical operators
-  MvpAnd(left: MvpExpr, right: MvpExpr, span: Span)
-  MvpOr(left: MvpExpr, right: MvpExpr, span: Span)
-  MvpNot(expr: MvpExpr, span: Span)
+  And(left: Expr, right: Expr, span: Span)
+  Or(left: Expr, right: Expr, span: Span)
+  Not(expr: Expr, span: Span)
   /// Overloaded function definition (e.g., fn (+)(x: I32) -> I32 { ... })
   OverloadedFn(
     name: String,
@@ -54,11 +54,11 @@ pub type MvpExpr {
     param_name: String,
     param_type: String,
     return_type: String,
-    body: MvpExpr,
+    body: Expr,
     span: Span,
   )
   /// Application with potential implicit type args
-  OverloadedApp(name: String, args: List(MvpExpr), span: Span)
+  OverloadedApp(name: String, args: List(Expr), span: Span)
 }
 
 // ============================================================================
@@ -75,10 +75,10 @@ fn merge_spans(left: Span, right: Span) -> Span {
   )
 }
 
-fn make_int(values) -> MvpExpr {
+fn make_int(values) -> Expr {
   case values {
     [TokenValue(token)] ->
-      MvpInt(
+      Int(
         int.parse(token.value) |> result.unwrap(0),
         span_from_token(token, "tao"),
       )
@@ -86,106 +86,106 @@ fn make_int(values) -> MvpExpr {
   }
 }
 
-fn make_var(values) -> MvpExpr {
+fn make_var(values) -> Expr {
   case values {
     [TokenValue(token)] ->
-      MvpVar(token.value, span_from_token(token, "tao"))
+      Var(token.value, span_from_token(token, "tao"))
     _ -> panic as "Expected identifier"
   }
 }
 
-fn make_add(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+fn make_add(left: Expr, right: Expr) -> Expr {
   let span = merge_spans(get_span(left), get_span(right))
-  MvpAdd(left, right, span)
+  Add(left, right, span)
 }
 
-fn make_sub(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+fn make_sub(left: Expr, right: Expr) -> Expr {
   let span = merge_spans(get_span(left), get_span(right))
-  MvpSub(left, right, span)
+  Sub(left, right, span)
 }
 
-fn make_mul(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+fn make_mul(left: Expr, right: Expr) -> Expr {
   let span = merge_spans(get_span(left), get_span(right))
-  MvpMul(left, right, span)
+  Mul(left, right, span)
 }
 
-fn make_div(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+fn make_div(left: Expr, right: Expr) -> Expr {
   let span = merge_spans(get_span(left), get_span(right))
-  MvpDiv(left, right, span)
+  Div(left, right, span)
 }
 
-fn make_eq(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+fn make_eq(left: Expr, right: Expr) -> Expr {
   let span = merge_spans(get_span(left), get_span(right))
-  MvpEq(left, right, span)
+  Eq(left, right, span)
 }
 
-fn make_neq(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+fn make_neq(left: Expr, right: Expr) -> Expr {
   let span = merge_spans(get_span(left), get_span(right))
-  MvpNeq(left, right, span)
+  Neq(left, right, span)
 }
 
-fn make_lt(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+fn make_lt(left: Expr, right: Expr) -> Expr {
   let span = merge_spans(get_span(left), get_span(right))
-  MvpLt(left, right, span)
+  Lt(left, right, span)
 }
 
-fn make_gt(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+fn make_gt(left: Expr, right: Expr) -> Expr {
   let span = merge_spans(get_span(left), get_span(right))
-  MvpGt(left, right, span)
+  Gt(left, right, span)
 }
 
-fn make_lte(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+fn make_lte(left: Expr, right: Expr) -> Expr {
   let span = merge_spans(get_span(left), get_span(right))
-  MvpLte(left, right, span)
+  Lte(left, right, span)
 }
 
-fn make_gte(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+fn make_gte(left: Expr, right: Expr) -> Expr {
   let span = merge_spans(get_span(left), get_span(right))
-  MvpGte(left, right, span)
+  Gte(left, right, span)
 }
 
-fn make_and(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+fn make_and(left: Expr, right: Expr) -> Expr {
   let span = merge_spans(get_span(left), get_span(right))
-  MvpAnd(left, right, span)
+  And(left, right, span)
 }
 
-fn make_or(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+fn make_or(left: Expr, right: Expr) -> Expr {
   let span = merge_spans(get_span(left), get_span(right))
-  MvpOr(left, right, span)
+  Or(left, right, span)
 }
 
-fn make_not(expr: MvpExpr) -> MvpExpr {
-  MvpNot(expr, get_span(expr))
+fn make_not(expr: Expr) -> Expr {
+  Not(expr, get_span(expr))
 }
 
-fn ast_to_expr(ast) -> MvpExpr {
+fn ast_to_expr(ast) -> Expr {
   case ast {
     AstValue(e) -> e
     _ -> panic as "Expected expr"
   }
 }
 
-fn todo_ast() -> Value(MvpExpr) {
-  AstValue(MvpInt(0, Span("todo", 0, 0, 0, 0)))
+fn todo_ast() -> Value(Expr) {
+  AstValue(Int(0, Span("todo", 0, 0, 0, 0)))
 }
 
-fn get_span(expr: MvpExpr) -> Span {
+fn get_span(expr: Expr) -> Span {
   case expr {
-    MvpInt(_, span) -> span
-    MvpVar(_, span) -> span
-    MvpAdd(_, _, span) -> span
-    MvpSub(_, _, span) -> span
-    MvpMul(_, _, span) -> span
-    MvpDiv(_, _, span) -> span
-    MvpEq(_, _, span) -> span
-    MvpNeq(_, _, span) -> span
-    MvpLt(_, _, span) -> span
-    MvpGt(_, _, span) -> span
-    MvpLte(_, _, span) -> span
-    MvpGte(_, _, span) -> span
-    MvpAnd(_, _, span) -> span
-    MvpOr(_, _, span) -> span
-    MvpNot(_, span) -> span
+    Int(_, span) -> span
+    Var(_, span) -> span
+    Add(_, _, span) -> span
+    Sub(_, _, span) -> span
+    Mul(_, _, span) -> span
+    Div(_, _, span) -> span
+    Eq(_, _, span) -> span
+    Neq(_, _, span) -> span
+    Lt(_, _, span) -> span
+    Gt(_, _, span) -> span
+    Lte(_, _, span) -> span
+    Gte(_, _, span) -> span
+    And(_, _, span) -> span
+    Or(_, _, span) -> span
+    Not(_, span) -> span
     OverloadedFn(_, _, _, _, _, _, span) -> span
     OverloadedApp(_, _, span) -> span
   }
@@ -196,7 +196,7 @@ fn get_span(expr: MvpExpr) -> Span {
 // ============================================================================
 
 /// Define the Tao grammar.
-pub fn tao_grammar() -> Grammar(MvpExpr) {
+pub fn tao_grammar() -> Grammar(Expr) {
   Grammar(
     name: "Tao",
     start: "Program",
@@ -229,10 +229,10 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
               [ListValue(stmts)] -> {
                 case list.first(stmts) {
                   Ok(AstValue(e)) -> e
-                  _ -> MvpInt(0, Span("empty", 0, 0, 0, 0))
+                  _ -> Int(0, Span("empty", 0, 0, 0, 0))
                 }
               }
-              _ -> MvpInt(0, Span("empty", 0, 0, 0, 0))
+              _ -> Int(0, Span("empty", 0, 0, 0, 0))
             }
           },
         ),
@@ -242,13 +242,13 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
         alt(ref("OverloadedFn"), fn(values) {
           case values {
             [AstValue(e)] -> e
-            _ -> MvpInt(0, Span("empty", 0, 0, 0, 0))
+            _ -> Int(0, Span("empty", 0, 0, 0, 0))
           }
         }),
         alt(ref("Expr"), fn(values) {
           case values {
             [AstValue(e)] -> e
-            _ -> MvpInt(0, Span("empty", 0, 0, 0, 0))
+            _ -> Int(0, Span("empty", 0, 0, 0, 0))
           }
         }),
       ]),
@@ -326,14 +326,14 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
           fn(values) {
             case values {
               [_, AstValue(expr)] -> make_not(expr)
-              _ -> MvpInt(0, Span("error", 0, 0, 0, 0))
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
         ),
         alt(ref("Primary"), fn(values) {
           case values {
             [AstValue(e)] -> e
-            _ -> MvpInt(0, Span("error", 0, 0, 0, 0))
+            _ -> Int(0, Span("error", 0, 0, 0, 0))
           }
         }),
       ]),
@@ -343,7 +343,7 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
           fn(values) {
             case values {
               [TokenValue(token)] -> make_int([TokenValue(token)])
-              _ -> MvpInt(0, Span("error", 0, 0, 0, 0))
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
         ),
@@ -352,7 +352,7 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
           fn(values) {
             case values {
               [TokenValue(token)] -> make_var([TokenValue(token)])
-              _ -> MvpInt(0, Span("error", 0, 0, 0, 0))
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
         ),
@@ -361,7 +361,7 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
           fn(values) {
             case values {
               [ParensValue([AstValue(expr)])] -> expr
-              _ -> MvpInt(0, Span("error", 0, 0, 0, 0))
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
         ),
@@ -375,36 +375,36 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
 // ============================================================================
 
 /// Get span from expression.
-pub fn get_expr_span(expr: MvpExpr) -> Span {
+pub fn get_expr_span(expr: Expr) -> Span {
   case expr {
-    MvpInt(_, span) -> span
-    MvpVar(_, span) -> span
-    MvpAdd(_, _, span) -> span
-    MvpSub(_, _, span) -> span
-    MvpMul(_, _, span) -> span
-    MvpDiv(_, _, span) -> span
-    MvpEq(_, _, span) -> span
-    MvpNeq(_, _, span) -> span
-    MvpLt(_, _, span) -> span
-    MvpGt(_, _, span) -> span
-    MvpLte(_, _, span) -> span
-    MvpGte(_, _, span) -> span
-    MvpAnd(_, _, span) -> span
-    MvpOr(_, _, span) -> span
-    MvpNot(_, span) -> span
+    Int(_, span) -> span
+    Var(_, span) -> span
+    Add(_, _, span) -> span
+    Sub(_, _, span) -> span
+    Mul(_, _, span) -> span
+    Div(_, _, span) -> span
+    Eq(_, _, span) -> span
+    Neq(_, _, span) -> span
+    Lt(_, _, span) -> span
+    Gt(_, _, span) -> span
+    Lte(_, _, span) -> span
+    Gte(_, _, span) -> span
+    And(_, _, span) -> span
+    Or(_, _, span) -> span
+    Not(_, span) -> span
     OverloadedFn(_, _, _, _, _, _, span) -> span
     OverloadedApp(_, _, span) -> span
   }
 }
 
 /// Parse Tao source code.
-pub fn parse(source: String) -> ParseResult(MvpExpr) {
-  let error_ast = MvpInt(0, Span("tao", 0, 0, 0, 0))
+pub fn parse(source: String) -> ParseResult(Expr) {
+  let error_ast = Int(0, Span("tao", 0, 0, 0, 0))
   grammar_parse(tao_grammar(), source, error_ast)
 }
 
 /// Helper to create overloaded function AST.
-fn make_overloaded_fn(values) -> MvpExpr {
+fn make_overloaded_fn(values) -> Expr {
   case values {
     [
       _,  // "fn"
@@ -433,27 +433,27 @@ fn make_overloaded_fn(values) -> MvpExpr {
 }
 
 /// Format expression to string.
-pub fn format_expr(expr: MvpExpr) -> String {
+pub fn format_expr(expr: Expr) -> String {
   format_expr_loop(expr, 0)
 }
 
-fn format_expr_loop(expr: MvpExpr, parent_prec: Int) -> String {
+fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
   case expr {
-    MvpInt(n, _) -> int.to_string(n)
-    MvpVar(name, _) -> name
-    MvpAdd(l, r, _) -> format_binop(l, r, "+", 10, parent_prec)
-    MvpSub(l, r, _) -> format_binop(l, r, "-", 10, parent_prec)
-    MvpMul(l, r, _) -> format_binop(l, r, "*", 20, parent_prec)
-    MvpDiv(l, r, _) -> format_binop(l, r, "/", 20, parent_prec)
-    MvpEq(l, r, _) -> format_binop(l, r, "==", 5, parent_prec)
-    MvpNeq(l, r, _) -> format_binop(l, r, "!=", 5, parent_prec)
-    MvpLt(l, r, _) -> format_binop(l, r, "<", 5, parent_prec)
-    MvpGt(l, r, _) -> format_binop(l, r, ">", 5, parent_prec)
-    MvpLte(l, r, _) -> format_binop(l, r, "<=", 5, parent_prec)
-    MvpGte(l, r, _) -> format_binop(l, r, ">=", 5, parent_prec)
-    MvpAnd(l, r, _) -> format_binop(l, r, "&&", 3, parent_prec)
-    MvpOr(l, r, _) -> format_binop(l, r, "||", 3, parent_prec)
-    MvpNot(e, _) -> "!" <> format_expr_loop(e, 100)
+    Int(n, _) -> int.to_string(n)
+    Var(name, _) -> name
+    Add(l, r, _) -> format_binop(l, r, "+", 10, parent_prec)
+    Sub(l, r, _) -> format_binop(l, r, "-", 10, parent_prec)
+    Mul(l, r, _) -> format_binop(l, r, "*", 20, parent_prec)
+    Div(l, r, _) -> format_binop(l, r, "/", 20, parent_prec)
+    Eq(l, r, _) -> format_binop(l, r, "==", 5, parent_prec)
+    Neq(l, r, _) -> format_binop(l, r, "!=", 5, parent_prec)
+    Lt(l, r, _) -> format_binop(l, r, "<", 5, parent_prec)
+    Gt(l, r, _) -> format_binop(l, r, ">", 5, parent_prec)
+    Lte(l, r, _) -> format_binop(l, r, "<=", 5, parent_prec)
+    Gte(l, r, _) -> format_binop(l, r, ">=", 5, parent_prec)
+    And(l, r, _) -> format_binop(l, r, "&&", 3, parent_prec)
+    Or(l, r, _) -> format_binop(l, r, "||", 3, parent_prec)
+    Not(e, _) -> "!" <> format_expr_loop(e, 100)
     OverloadedFn(name, _type_param, param_name, param_type, _return_type, _body, _) -> {
       "fn (" <> name <> ")(" <> param_name <> ": " <> param_type <> ") -> " <> param_type <> " { ... }"
     }
@@ -463,7 +463,7 @@ fn format_expr_loop(expr: MvpExpr, parent_prec: Int) -> String {
   }
 }
 
-fn format_binop(left: MvpExpr, right: MvpExpr, op: String, prec: Int, parent_prec: Int) -> String {
+fn format_binop(left: Expr, right: Expr, op: String, prec: Int, parent_prec: Int) -> String {
   let need_parens = prec < parent_prec
   let result = format_expr_loop(left, prec) <> " " <> op <> " " <> format_expr_loop(right, prec + 1)
   case need_parens {

@@ -8,9 +8,9 @@
 /// 2. Desugaring produces correct Core terms with implicit params
 /// 3. Type inference instantiates implicit params correctly
 /// 4. Evaluation erases implicit args and produces correct results
-import tao/syntax.{parse, format_expr, MvpInt, MvpVar, MvpAdd, OverloadedFn, OverloadedApp}
+import tao/syntax.{parse, format_expr, Int, Var, Add, OverloadedFn, OverloadedApp}
 import tao/desugar.{desugar}
-import core/core.{initial_state, infer, eval, quote, Lam, Pi, Match, Var, Hole, Typ, Lit, I32, Call}
+import core/core.{initial_state, infer, eval, quote, Lam, Pi, Match, Var as CoreVar, Hole, Typ, Lit, I32, Call}
 import syntax/grammar.{type ParseResult, ParseResult, type Span, Span}
 import gleeunit
 import gleeunit/should
@@ -56,14 +56,14 @@ pub fn parse_overloaded_fn_with_expr_body_test() {
 // ============================================================================
 
 pub fn format_overloaded_fn_test() {
-  let expr = OverloadedFn("+", "T", "x", "I32", "I32", MvpInt(0, todo_span()), todo_span())
+  let expr = OverloadedFn("+", "T", "x", "I32", "I32", Int(0, todo_span()), todo_span())
   let _result = format_expr(expr)
   // Verify format produces output
   True |> should.be_true()
 }
 
 pub fn format_overloaded_app_test() {
-  let expr = OverloadedApp("+", [MvpInt(1, todo_span()), MvpInt(2, todo_span())], todo_span())
+  let expr = OverloadedApp("+", [Int(1, todo_span()), Int(2, todo_span())], todo_span())
   let _result = format_expr(expr)
   True |> should.be_true()
 }
@@ -74,9 +74,9 @@ pub fn format_overloaded_app_test() {
 
 pub fn desugar_overloaded_fn_creates_lam_with_implicit_test() {
   // fn (+)(x: I32) -> I32 { x }
-  let expr = OverloadedFn("+", "T", "x", "I32", "I32", MvpVar("x", todo_span()), todo_span())
+  let expr = OverloadedFn("+", "T", "x", "I32", "I32", Var("x", todo_span()), todo_span())
   let core_term = desugar(expr)
-  
+
   // Should produce a Lam with implicit type param
   case core_term.data {
     Lam(implicit, _param, _body) -> {
@@ -89,10 +89,10 @@ pub fn desugar_overloaded_fn_creates_lam_with_implicit_test() {
 
 pub fn desugar_overloaded_fn_body_test() {
   // fn (+)(x: I32) -> I32 { x + 1 }
-  let body = MvpAdd(MvpVar("x", todo_span()), MvpInt(1, todo_span()), todo_span())
+  let body = Add(Var("x", todo_span()), Int(1, todo_span()), todo_span())
   let expr = OverloadedFn("+", "T", "x", "I32", "I32", body, todo_span())
   let core_term = desugar(expr)
-  
+
   // Should produce a Lam with Match in body
   case core_term.data {
     Lam(_implicit, _param, lam_body) -> {
@@ -108,7 +108,7 @@ pub fn desugar_overloaded_fn_body_test() {
 
 pub fn desugar_overloaded_app_test() {
   // (+)(1, 2)
-  let expr = OverloadedApp("+", [MvpInt(1, todo_span()), MvpInt(2, todo_span())], todo_span())
+  let expr = OverloadedApp("+", [Int(1, todo_span()), Int(2, todo_span())], todo_span())
   let core_term = desugar(expr)
   
   // Should produce a Call
@@ -126,7 +126,7 @@ pub fn desugar_overloaded_app_test() {
 
 pub fn infer_overloaded_fn_type_test() {
   // fn (+)(x: I32) -> I32 { x }
-  let expr = OverloadedFn("+", "T", "x", "I32", "I32", MvpVar("x", todo_span()), todo_span())
+  let expr = OverloadedFn("+", "T", "x", "I32", "I32", Var("x", todo_span()), todo_span())
   let core_term = desugar(expr)
 
   // Type check - verify it produces a result (errors are ok for incomplete patterns)
@@ -138,7 +138,7 @@ pub fn infer_overloaded_fn_type_test() {
 
 pub fn infer_overloaded_fn_i32_body_test() {
   // fn (+)(x: I32) -> I32 { x + 1 }
-  let body = MvpAdd(MvpVar("x", todo_span()), MvpInt(1, todo_span()), todo_span())
+  let body = Add(Var("x", todo_span()), Int(1, todo_span()), todo_span())
   let expr = OverloadedFn("+", "T", "x", "I32", "I32", body, todo_span())
   let core_term = desugar(expr)
 
@@ -155,7 +155,7 @@ pub fn infer_overloaded_fn_i32_body_test() {
 
 pub fn eval_overloaded_fn_i32_test() {
   // fn (+)(x: I32) -> I32 { x + 1 }
-  let body = MvpAdd(MvpVar("x", todo_span()), MvpInt(1, todo_span()), todo_span())
+  let body = Add(Var("x", todo_span()), Int(1, todo_span()), todo_span())
   let expr = OverloadedFn("+", "T", "x", "I32", "I32", body, todo_span())
   let core_term = desugar(expr)
 
@@ -172,7 +172,7 @@ pub fn eval_overloaded_fn_i32_test() {
 pub fn eval_overloaded_app_test() {
   // For now, just verify basic application works
   // Full overloading resolution will be tested in integration tests
-  let expr = MvpAdd(MvpInt(1, todo_span()), MvpInt(2, todo_span()), todo_span())
+  let expr = Add(Int(1, todo_span()), Int(2, todo_span()), todo_span())
   let core_term = desugar(expr)
   
   // Type check

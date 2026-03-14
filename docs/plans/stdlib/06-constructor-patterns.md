@@ -1,7 +1,7 @@
-# Constructor Pattern Parsing Fix
+# Constructor Representation
 
-> **Goal**: Support nullary constructors in pattern matching (e.g., `#True` without arguments)
-> **Status**: ✅ **Complete** - Nullary constructors implemented and working
+> **Goal**: Simplify constructor representation using Unit for nullary constructors
+> **Status**: ✅ **Complete** - Unified Ctr(tag, arg) with Unit for nullary
 > **Date**: March 2026
 
 ---
@@ -10,17 +10,33 @@
 
 ### What's Working
 
-- ✅ Nullary constructor syntax: `#True`, `#False`, `#None`, `#LT`, `#EQ`, `#GT`
-- ✅ Constructor patterns with args: `#Some(x)`, `#Ok(n)`, `#Err(e)`
-- ✅ Type parameters for polymorphic constructors
-- ✅ Pattern matching with nullary constructors (basic cases)
+- ✅ Unified constructor representation: `Ctr(tag: String, arg: Term)`
+- ✅ Unit term for nullary constructors: `#True(Unit)`, `#False(Unit)`, `#None(Unit)`
+- ✅ Formatter special-cases Unit to display as `#True`, `#False`, `#None`
+- ✅ Constructor patterns with Unit: `#True(Unit)`, `#Some(x)`
+- ✅ Type checking and evaluation for Unit-based constructors
 - ✅ **424 tests passing**
 
-### What's Pending
+### Design Decision
 
-- 📋 Full exhaustiveness checking for nullary constructors
-- 📋 Proper type representation for prelude types (Bool, Option, etc.)
-- 📋 Match examples with nullary constructors
+Instead of having separate `Ctr` and `CtrNullary` constructors, we use a single `Ctr(tag, arg)` with `Unit` for nullary:
+
+```core
+// Nullary constructors (displayed as #True, #False, etc.)
+#True   ≡  Ctr("True", Unit)
+#False  ≡  Ctr("False", Unit)
+#None   ≡  Ctr("None", Unit)
+
+// Constructors with arguments
+#Some(x)  ≡  Ctr("Some", x)
+#Ok(v)    ≡  Ctr("Ok", v)
+```
+
+This simplifies:
+- Type definitions (one constructor instead of two)
+- Pattern matching (uniform handling)
+- Exhaustiveness checking (simpler head comparison)
+- Normalization by evaluation (fewer cases)
 
 ### Related
 
@@ -31,217 +47,124 @@
 
 ## Problem
 
-### Current Limitation
+### Previous Approach
 
-Core language requires all constructor patterns to have arguments:
+Previously, we had separate constructors:
+- `Ctr(tag, arg)` for constructors with arguments
+- `CtrNullary(tag)` for nullary constructors
 
-```core
-// Current (works)
-match x { | #Some(n) -> n | #None(n) -> 0 }
+This led to:
+- Duplicated code in evaluation, quoting, unification
+- Complex exhaustiveness checking (two head types)
+- Inconsistent pattern matching
 
-// Desired (doesn't parse)
-match x { | #True -> 1 | #False -> 0 }
-match x { | #Some(n) -> n | #None -> 0 }
-```
+### Solution
 
-### Root Cause
-
-Pattern grammar only accepts constructors with arguments:
-
-```gleam
-// Current pattern grammar (src/core/syntax.gleam)
-rule("Pattern", [
-  // Constructor pattern: #Name(pat) - REQUIRES argument
-  alt(
-    seq([
-      token_pattern("Hash"),
-      token_pattern("Ident"),
-      token_pattern("LParen"),
-      ref("Pattern"),
-      token_pattern("RParen"),
-    ]),
-    make_pattern_ctr,
-  ),
-  // ... other patterns
-])
-```
+Use a single `Ctr(tag, arg)` with `Unit` for nullary constructors.
 
 ---
 
-## Solution
+## Implementation
 
-### Option 1: Make Constructor Argument Optional (Recommended)
+### Term Type
 
 ```gleam
-rule("Pattern", [
-  // Constructor with args: #Name(pat)
-  alt(
-    seq([
-      token_pattern("Hash"),
-      token_pattern("Ident"),
-      token_pattern("LParen"),
-      ref("Pattern"),
-      token_pattern("RParen"),
-    ]),
-    make_pattern_ctr_with_arg,
-  ),
-  // Constructor without args: #Name
-  alt(
-    seq([
-      token_pattern("Hash"),
-      token_pattern("Ident"),
-    ]),
-    make_pattern_ctr_nullary,
-  ),
+pub type Term {
+  // ... other constructors
+  Ctr(tag: String, arg: Term)  // Unified constructor
+  Unit                          // Unit value for nullary constructors
+}
+```
+
+### Pattern Type
+
+```gleam
+pub type Pattern {
   // ... other patterns
-])
-```
-
-**Pros**:
-- Minimal change to grammar
-- Backward compatible (constructors with args still work)
-- Natural syntax for nullary constructors
-
-**Cons**:
-- Need to handle both cases in type checking
-
-### Option 2: Use Unit Type for Nullary
-
-Keep current grammar but document that nullary constructors take `Typ(0)`:
-
-```core
-match #True(Typ(0)) { | #True(_) -> 1 | #False(_) -> 0 }
-```
-
-**Pros**:
-- No grammar changes needed
-- Consistent with current design
-
-**Cons**:
-- Verbose and unnatural
-- Users must remember to add dummy argument
-
-### Option 3: Separate Nullary Constructor Syntax
-
-Use different syntax for nullary constructors (e.g., `#True` vs `#Some(x)`).
-
-**Pros**:
-- Clear distinction
-
-**Cons**:
-- More complex grammar
-- Inconsistent syntax
-
----
-
-## Implementation Plan
-
-### Phase 1: Grammar Changes
-
-#### Step 1.1: Add Nullary Constructor Pattern Rule
-
-```gleam
-// In src/core/syntax.gleam
-rule("Pattern", [
-  // Constructor with args (existing)
-  alt(
-    seq([
-      token_pattern("Hash"),
-      token_pattern("Ident"),
-      token_pattern("LParen"),
-      ref("Pattern"),
-      token_pattern("RParen"),
-    ]),
-    make_pattern_ctr_with_arg,
-  ),
-  // Constructor without args (NEW)
-  alt(
-    seq([
-      token_pattern("Hash"),
-      token_pattern("Ident"),
-    ]),
-    make_pattern_ctr_nullary,
-  ),
-  // ... rest of patterns
-])
-```
-
-#### Step 1.2: Add Parser Function
-
-```gleam
-fn make_pattern_ctr_nullary(values) -> ParseValue {
-  case values {
-    [_, TokenValue(tag_token)] ->
-      AsPattern(NPCtrNullary(
-        tag_token.value,
-        grammar.span_from_token(tag_token, "input"),
-      ))
-    _ -> panic as "Expected nullary constructor pattern"
-  }
+  PCtr(tag: String, arg: Pattern)  // Constructor pattern
+  PUnit                             // Unit pattern
 }
 ```
 
-### Phase 2: AST Changes
-
-#### Step 2.1: Extend NamedPattern Type
-
-```gleam
-pub type NamedPattern {
-  // ... existing
-  NPCtr(tag: String, arg: NamedPattern, span: Span)
-  NPCtrNullary(tag: String, span: Span)  // NEW
-}
-```
-
-### Phase 3: Type Checking Changes
-
-#### Step 3.1: Update bind_pattern
-
-```gleam
-pub fn bind_pattern(...) {
-  case pattern {
-    // ... existing cases
-    
-    NPCtrNullary(tag, pat_span) -> {
-      case list.key_find(s.ctrs, tag) {
-        Error(Nil) -> #(VErr, with_err(s, CtrUndefined(tag, pat_span)))
-        Ok(ctr) -> {
-          // Check constructor has no type parameters or they're all instantiated
-          let #(params, ctr_arg_ty, ctr_ret_ty, s) = check_ctr_def(s, ctr)
-          // Nullary constructor - no argument to bind
-          #(VCtrNullary(tag), s)
-        }
-      }
-    }
-  }
-}
-```
-
-### Phase 4: Evaluation Changes
-
-#### Step 4.1: Extend Value Type
+### Value Type
 
 ```gleam
 pub type Value {
-  // ... existing
-  VCtr(tag: String, arg: Value)
-  VCtrNullary(tag: String)  // NEW
+  // ... other values
+  VCtrValue(VCtr(tag: String, arg: Value))  // Constructor value
+  VUnit                                      // Unit value
 }
 ```
 
-#### Step 4.2: Update eval
+### Formatter Special-Case
+
+The formatter displays `Ctr(tag, Unit)` as `#tag` for better readability:
 
 ```gleam
-pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
-  case term.data {
-    // ... existing cases
-    Ctr(tag, arg) -> {
-      // Check if arg is Typ(0) (dummy unit)
+fn format_term(term, parent_prec, bindings) {
+  case term {
+    Ctr(tag, arg) ->
       case arg.data {
-        Typ(0) -> VCtrNullary(tag)  // Nullary constructor
-        _ -> VCtr(tag, eval(ffi, env, arg))
+        Unit -> text("#") <> text(tag)  // Display as #True, #False, etc.
+        _ -> text("#") <> text(tag) <> parens(format_term(arg))
       }
-    }
+    Unit -> text("Unit")
+    // ...
+  }
+}
+```
+
+### Example: Bool Type
+
+```core
+// Type definition
+type Bool = %Type.1
+
+// Constructors
+#True : Bool   ≡   Ctr("True", Unit)
+#False : Bool  ≡   Ctr("False", Unit)
+
+// Pattern matching
+match b {
+  | #True -> 1
+  | #False -> 0
+}
+```
+
+### Parser Grammar
+
+```gleam
+rule("Pattern", [
+  // Constructor with args: #Some(x)
+  alt(
+    seq([
+      token_pattern("Hash"),
+      token_pattern("Ident"),
+      token_pattern("LParen"),
+      ref("Pattern"),
+      token_pattern("RParen"),
+    ]),
+    make_pattern_ctr_app,
+  ),
+  // Nullary constructor: #True (parsed as #True(Unit))
+  alt(
+    seq([
+      token_pattern("Hash"),
+      token_pattern("Ident"),
+    ]),
+    make_pattern_ctr,  // Creates NPCtr(tag, NPUnit(span), span)
+  ),
+])
+
+fn make_pattern_ctr(values) -> ParseValue {
+  case values {
+    [_, TokenValue(tag_token)] ->
+      AsPattern(NPCtr(
+        tag_token.value,
+        NPUnit(grammar.span_from_token(tag_token, "input")),
+        grammar.span_from_token(tag_token, "input"),
+      ))
+    _ -> panic as "Expected constructor pattern"
   }
 }
 ```
@@ -250,47 +173,48 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
 
 ## Testing
 
-### Test Cases
+All tests passing (424 total):
 
 ```gleam
-// Test 1: Nullary constructor pattern
-pub fn nullary_constructor_pattern_test() {
-  let term = /* #True pattern */
-  let result = bind_pattern(s, term, ...)
-  result |> should.equal(VCtrNullary("True"))
+// Test: Nullary constructor roundtrip
+pub fn roundtrip_constructor_nullary_test() {
+  let source = "#True"
+  let result = syntax.parse(source)
+  result.errors |> should.equal([])
+  let formatted = syntax.format(result.ast)
+  formatted |> should.equal(source)  // #True displays without Unit
 }
 
-// Test 2: Match with nullary constructors
-%match #True ~ (_ -> I32T) {
-  | #True -> I32(1)
-  | #False -> I32(0)
+// Test: Match with nullary constructors
+pub fn match_with_nullary_constructors_test() {
+  let source = "%match x { | #True -> 1 | #False -> 0 }"
+  let result = syntax.parse(source)
+  result.errors |> should.equal([])
+  // Evaluates correctly
 }
-// Should evaluate to I32(1)
 ```
 
 ---
 
 ## Alternatives Considered
 
-### Alternative 1: Keep Dummy Arguments
+### Alternative 1: Separate Ctr and CtrNullary
 
-Document that nullary constructors use `Typ(0)` as dummy argument.
+Have two constructors: `Ctr(tag, arg)` and `CtrNullary(tag)`.
 
-**Rejected**: Unnatural syntax, burdens users.
+**Rejected**: Duplicates code, complicates pattern matching and exhaustiveness checking.
 
-### Alternative 2: Special Syntax for Nullary
+### Alternative 2: Keep Dummy Arguments
+
+Use `Typ(0)` as dummy argument for nullary constructors.
+
+**Rejected**: Unnatural, leaks implementation detail to users.
+
+### Alternative 3: Special Syntax for Nullary
 
 Use `##True` for nullary constructors.
 
-**Rejected**: Inconsistent, adds complexity.
-
----
-
-## Open Questions
-
-1. **Should we distinguish in the AST?** - Yes, cleaner type checking
-2. **Should evaluation distinguish?** - Yes, simpler runtime
-3. **Backward compatibility?** - Yes, constructors with args unchanged
+**Rejected**: Inconsistent, adds complexity to grammar.
 
 ---
 
@@ -298,4 +222,5 @@ Use `##True` for nullary constructors.
 
 | Date | Change |
 |------|--------|
-| March 2026 | Plan created |
+| March 2026 | Unified Ctr representation with Unit implemented |
+| March 2026 | Initial nullary constructor plan created |

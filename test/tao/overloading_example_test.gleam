@@ -7,7 +7,7 @@
 /// through type-directed dispatch at compile time.
 
 import tao/desugar.{desugar}
-import tao/syntax.{MvpInt, MvpAdd}
+import tao/syntax.{Int, Add}
 import core/core.{initial_state, infer, eval}
 import syntax/grammar.{type Span, Span}
 import gleeunit
@@ -40,7 +40,7 @@ pub fn polymorphic_identity_example_test() {
 pub fn add_i32_example_test() {
   // Tao: 1 + 2
   // Desugars to: %call i32_add(1, 2)
-  let expr = MvpAdd(MvpInt(1, todo_span()), MvpInt(2, todo_span()), todo_span())
+  let expr = Add(Int(1, todo_span()), Int(2, todo_span()), todo_span())
   let core_term = desugar(expr)
   
   // Type check and evaluate
