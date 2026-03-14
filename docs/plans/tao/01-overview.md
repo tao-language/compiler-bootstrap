@@ -262,6 +262,8 @@ fn unwrap(opt: Option<Int>): Int {
 
 ## Related Documents
 
+- **[12-import-system.md](./12-import-system.md)** - Import system specification 📋 **NEW**
+- **[11-test-system.md](./11-test-system.md)** - Test system specification ✅ **IMPLEMENTED**
 - **[09-tao-mvp-plan.md](./09-tao-mvp-plan.md)** - MVP implementation plan ⏳ **START HERE**
 - **[06-implementation-plan.md](./06-implementation-plan.md)** - Full implementation plan
 - **[02-syntax.md](./02-syntax.md)** - Tao syntax specification
