@@ -3,7 +3,7 @@
 // ============================================================================
 /// Convert parse and type errors to diagnostics with source snippets.
 import core/core.{
-  type Error as TypeError,
+  type CtrValue, type Error as TypeError,
   TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction,
   ArityMismatch, CtrUndefined, MatchRedundantCase, MatchMissingCase,
   ComptimePermissionDenied, InfiniteType,
@@ -445,7 +445,7 @@ fn value_to_string(value) -> String {
     core.VLitT(literal_type) -> literal_type_to_string(literal_type)
     core.VNeut(head, spine) -> neutral_to_string(head, spine)
     core.VRcd(fields) -> record_fields_to_string(fields)
-    core.VCtr(tag, arg) -> "#" <> tag <> "(" <> value_to_string(arg) <> ")"
+    core.VCtrValue(ctr) -> ctr_value_to_string(ctr)
     core.VLam(implicit, name, _env, _body) -> {
       let implicit_str = case implicit {
         [] -> ""
@@ -505,6 +505,13 @@ fn head_to_string(head) -> String {
   case head {
     core.HVar(level) -> "var[" <> int.to_string(level) <> "]"
     core.HHole(id) -> "?" <> int.to_string(id)
+  }
+}
+
+fn ctr_value_to_string(ctr: core.CtrValue) -> String {
+  case ctr {
+    core.VCtr(tag, arg) -> "#" <> tag <> "(" <> value_to_string(arg) <> ")"
+    core.VCtrNullary(tag) -> "#" <> tag
   }
 }
 

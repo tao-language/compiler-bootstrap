@@ -146,14 +146,14 @@ pub fn unify_rcd_missing_field_test() {
 }
 
 pub fn unify_ctr_equal_test() {
-  let v1 = c.VCtr("A", v32t)
-  let v2 = c.VCtr("A", v32t)
+  let v1 = c.VCtrValue(c.VCtr("A", v32t))
+  let v2 = c.VCtrValue(c.VCtr("A", v32t))
   c.unify(s, v1, v2, s1, s2) |> should.equal(Ok(s))
 }
 
 pub fn unify_ctr_tag_mismatch_test() {
-  let v1 = c.VCtr("A", v32t)
-  let v2 = c.VCtr("B", v32t)
+  let v1 = c.VCtrValue(c.VCtr("A", v32t))
+  let v2 = c.VCtrValue(c.VCtr("B", v32t))
   c.unify(s, v1, v2, s1, s2)
   |> should.equal(Error(c.TypeMismatch(v1, v2, s1, s2)))
 }
@@ -260,7 +260,7 @@ pub fn quote_rcd_test() {
 }
 
 pub fn quote_ctr_test() {
-  let v = c.VCtr("A", v32t)
+  let v = c.VCtrValue(c.VCtr("A", v32t))
   c.quote(c.ffi_build, 0, v, s1)
   |> should.equal(c.Term(c.Ctr("A", c.Term(c.LitT(c.I32T), s1)), s1))
 }
@@ -716,15 +716,15 @@ pub fn check_rcd_order_test() {
 // --- Ctr --- \\
 pub fn eval_ctr_test() {
   c.eval(c.ffi_build, [], ctr("A", i32(1, s1), s2))
-  |> should.equal(c.VCtr("A", v32(1)))
+  |> should.equal(c.VCtrValue(c.VCtr("A", v32(1))))
 }
 
 pub fn unify_ctr_tag_test() {
-  c.unify(s, c.VCtr("A", v32(1)), c.VCtr("A", v32(1)), s1, s2)
+  c.unify(s, c.VCtrValue(c.VCtr("A", v32(1))), c.VCtrValue(c.VCtr("A", v32(1))), s1, s2)
   |> should.equal(Ok(s))
-  c.unify(s, c.VCtr("A", v32(1)), c.VCtr("B", v32(1)), s1, s2)
+  c.unify(s, c.VCtrValue(c.VCtr("A", v32(1))), c.VCtrValue(c.VCtr("B", v32(1))), s1, s2)
   |> should.equal(
-    Error(c.TypeMismatch(c.VCtr("A", v32(1)), c.VCtr("B", v32(1)), s1, s2)),
+    Error(c.TypeMismatch(c.VCtrValue(c.VCtr("A", v32(1))), c.VCtrValue(c.VCtr("B", v32(1))), s1, s2)),
   )
 }
 
@@ -754,14 +754,14 @@ pub fn infer_ctr_test() {
 
   let s = c.State(..s, ctrs: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
   c.infer(s, ctr("A", i32(1, s3), s4))
-  |> should.equal(#(c.VCtr("A", v32(1)), v64t, s))
+  |> should.equal(#(c.VCtrValue(c.VCtr("A", v32(1))), v64t, s))
 }
 
 pub fn infer_ctr_arg_bind_test() {
   let s = c.State(..s, ctrs: [#("A", c.CtrDef(["a"], var(0, s1), var(0, s2)))])
   c.infer(s, ctr("A", i32(1, s3), s4))
   |> should.equal(#(
-    c.VCtr("A", v32(1)),
+    c.VCtrValue(c.VCtr("A", v32(1))),
     v32t,
     c.State(..s, hole: 1, ctx: [#("a", #(vhole(0), c.VTyp(0)))], sub: [
       #(0, v32t),
@@ -773,7 +773,7 @@ pub fn infer_ctr_arg_mismatch_test() {
   let s = c.State(..s, ctrs: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
   c.infer(s, ctr("A", typ(0, s3), s4))
   |> should.equal(#(
-    c.VCtr("A", c.VTyp(0)),
+    c.VCtrValue(c.VCtr("A", c.VTyp(0))),
     v64t,
     c.State(..s, errors: [
       c.TypeMismatch(c.VTyp(1), v32t, s3, s1),
@@ -786,7 +786,7 @@ pub fn infer_ctr_arg_unsolved_test() {
   let s = c.State(..s, ctrs: [#("A", ctr_def)])
   c.infer(s, ctr("A", i32(1, s3), s4))
   |> should.equal(#(
-    c.VCtr("A", v32(1)),
+    c.VCtrValue(c.VCtr("A", v32(1))),
     vhole(0),
     c.State(..s, hole: 1, ctx: [#("a", #(vhole(0), c.VTyp(0)))], errors: [
       c.CtrUnsolvedParam("A", ctr_def, 0, s4),
@@ -800,7 +800,7 @@ pub fn check_ctr_test() {
 
   let s = c.State(..s, ctrs: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
   c.check(s, ctr("A", i32(1, s3), s4), v64t, s5)
-  |> should.equal(#(c.VCtr("A", v32(1)), s))
+  |> should.equal(#(c.VCtrValue(c.VCtr("A", v32(1))), s))
 }
 
 pub fn check_ctr_arg_mismatch_test() {
@@ -808,7 +808,7 @@ pub fn check_ctr_arg_mismatch_test() {
   let result = c.check(s, ctr("A", i64(1, s3), s4), v64t, s5)
   // Check value is VCtr and TypeMismatch error is recorded
   case result {
-    #(c.VCtr("A", c.VLit(c.I64(1))), s) -> {
+    #(c.VCtrValue(c.VCtr("A", c.VLit(c.I64(1)))), s) -> {
       case s.errors {
         [c.TypeMismatch(_, _, _, _), ..] -> True |> should.be_true
         _ -> False |> should.be_true
@@ -824,7 +824,7 @@ pub fn check_ctr_arg_unsolved_test() {
   let result = c.check(s, ctr("A", i32(1, s3), s4), v64t, s5)
   // Check value is VCtr and context has the type parameter
   case result {
-    #(c.VCtr("A", c.VLit(c.I32(1))), s) -> {
+    #(c.VCtrValue(c.VCtr("A", c.VLit(c.I32(1)))), s) -> {
       case list.length(s.ctx) == 1 {
         True -> True |> should.be_true
         False -> False |> should.be_true
@@ -839,7 +839,7 @@ pub fn check_ctr_ret_bind_test() {
   let result = c.check(s, ctr("A", i32(1, s3), s4), v32t, s5)
   // Check value is VCtr and context has the type parameter
   case result {
-    #(c.VCtr("A", c.VLit(c.I32(1))), s) -> {
+    #(c.VCtrValue(c.VCtr("A", c.VLit(c.I32(1)))), s) -> {
       case list.length(s.ctx) == 1 {
         True -> True |> should.be_true
         False -> False |> should.be_true
@@ -1071,7 +1071,7 @@ pub fn eval_app_value_test() {
   c.do_app(c.ffi_build, c.VNeut(c.HHole(0), [c.EDot("x")]), v32(1))
   |> should.equal(c.VNeut(c.HHole(0), [c.EApp(v32(1)), c.EDot("x")]))
   c.do_app(c.ffi_build, c.VRcd([]), v32(1)) |> should.equal(c.VErr)
-  c.do_app(c.ffi_build, c.VCtr("A", v64t), v32(1))
+  c.do_app(c.ffi_build, c.VCtrValue(c.VCtr("A", v64t)), v32(1))
   |> should.equal(c.VErr)
   c.do_app(c.ffi_build, c.VLam([], "x", [], i64(0, s1)), v32(1))
   |> should.equal(v64(0))
@@ -1494,11 +1494,11 @@ pub fn bind_pattern_ctr_test() {
   let s = c.State(..s, ctrs: [#("A", c.CtrDef([], i32t(s1), i64t(s2)))])
   c.bind_pattern(s, p, v32t, s3, s4)
   |> should.equal(#(
-    c.VCtr("A", vhole(0)),
+    c.VCtrValue(c.VCtr("A", vhole(0))),
     c.State(..s, hole: 1, errors: [c.TypeMismatch(v64t, v32t, s2, s4)]),
   ))
   c.bind_pattern(s, p, v64t, s3, s4)
-  |> should.equal(#(c.VCtr("A", vhole(0)), c.State(..s, hole: 1)))
+  |> should.equal(#(c.VCtrValue(c.VCtr("A", vhole(0))), c.State(..s, hole: 1)))
 }
 
 pub fn bind_pattern_rcd_test() {

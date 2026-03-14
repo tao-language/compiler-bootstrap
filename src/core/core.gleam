@@ -41,8 +41,10 @@ pub type TermData {
   /// Record with named fields.
   Rcd(fields: List(#(String, Term)))
 
-  /// Constructor application (e.g., Some(42), Cons(1, Nil)).
+  /// Constructor application with arg: #Some(42), #Cons(1, Nil)
   Ctr(tag: String, arg: Term)
+  /// Nullary constructor: #True, #False, #None
+  CtrNullary(tag: String)
 
   /// Field projection (record.field).
   Dot(arg: Term, field: String)
@@ -98,8 +100,6 @@ pub type Value {
   VNeut(head: Head, spine: List(Elim))
   /// Evaluated record
   VRcd(fields: List(#(String, Value)))
-  /// Evaluated constructor
-  VCtr(tag: String, arg: Value)
   /// Closure: lambda with captured environment and implicit type params
   VLam(implicit: List(String), name: String, env: Env, body: Term)
   /// Dependent function type with implicit type params and evaluated domain
@@ -111,8 +111,18 @@ pub type Value {
   VCall(name: String, args: List(Value))
   /// Fixpoint value for recursion (self-referential closure)
   VFix(name: String, env: Env, body: Term)
+  /// Constructor value (algebraic data)
+  VCtrValue(CtrValue)
   /// Error value for error recovery (continues checking after errors)
   VErr
+}
+
+/// Constructor value (runtime representation of algebraic data)
+pub type CtrValue {
+  /// Constructor with argument: #Some(value)
+  VCtr(tag: String, arg: Value)
+  /// Nullary constructor: #True, #False, #None
+  VCtrNullary(tag: String)
 }
 
 pub type Type =
@@ -136,8 +146,10 @@ pub type Pattern {
   PLitT(value: LiteralType)
   /// Record pattern {x = p, y = q}
   PRcd(fields: List(#(String, Pattern)))
-  /// Constructor pattern (Cons p)
+  /// Constructor pattern with arg: #Some(n)
   PCtr(tag: String, arg: Pattern)
+  /// Nullary constructor pattern: #True, #False, #None
+  PCtrNullary(tag: String)
 }
 
 // ============================================================================
@@ -316,7 +328,7 @@ pub const default_config = Config(target: "backend/javascript", permissions: [])
 const prelude_ctrs = [
   // Bool type: data Bool = True | False
   // Bool : Type(0), True/False : Bool
-  // True/False take Typ(0) as dummy unit argument
+  // True/False are nullary constructors (no arguments)
   #("True", CtrDef([], Term(Typ(0), no_span), Term(Typ(0), no_span))),
   #("False", CtrDef([], Term(Typ(0), no_span), Term(Typ(0), no_span))),
 
@@ -324,7 +336,7 @@ const prelude_ctrs = [
   // Option : Type(0) -> Type(0), represented as Typ(1)
   // Some : (a : Type(0)) -> a -> Option(a)
   #("Some", CtrDef(["a"], Term(Var(0), no_span), Term(Typ(0), no_span))),
-  // None : (a : Type(0)) -> Typ(0) -> Option(a) (takes dummy arg)
+  // None : (a : Type(0)) -> Option(a) (nullary, uses type param)
   #("None", CtrDef(["a"], Term(Typ(0), no_span), Term(Typ(0), no_span))),
 
   // Result type: data Result(a, e) = Ok(a) | Err(e)
@@ -333,7 +345,7 @@ const prelude_ctrs = [
   #("Err", CtrDef(["a", "e"], Term(Var(0), no_span), Term(Typ(0), no_span))),
 
   // Ordering type: data Ordering = LT | EQ | GT
-  // LT/EQ/GT take Typ(0) as dummy unit argument
+  // LT/EQ/GT are nullary constructors
   #("LT", CtrDef([], Term(Typ(0), no_span), Term(Typ(0), no_span))),
   #("EQ", CtrDef([], Term(Typ(0), no_span), Term(Typ(0), no_span))),
   #("GT", CtrDef([], Term(Typ(0), no_span), Term(Typ(0), no_span))),
@@ -625,6 +637,7 @@ pub type PHead {
   HLitT(value: LiteralType)
   HRcd(fields: List(String))
   HCtr(name: String)
+  HCtrNullary(name: String)
 }
 
 // ============================================================================
@@ -691,7 +704,8 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
     Hole(id) -> VNeut(HHole(id), [])
     Rcd(fields) ->
       VRcd(list.map(fields, fn(kv) { #(kv.0, eval(ffi, env, kv.1)) }))
-    Ctr(tag, arg) -> VCtr(tag, eval(ffi, env, arg))
+    Ctr(tag, arg) -> VCtrValue(VCtr(tag, eval(ffi, env, arg)))
+    CtrNullary(tag) -> VCtrValue(VCtrNullary(tag))
     Dot(arg, name) -> do_dot(eval(ffi, env, arg), name)
     Ann(term, _) -> eval(ffi, env, term)
     Lam(implicit, param, body) -> {
@@ -884,8 +898,10 @@ pub fn do_match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
         use env <- result.try(do_match_pattern(p, v))
         Ok(list.append(acc_env, env))
       })
-    PCtr(ptag, parg), VCtr(vtag, varg) if ptag == vtag ->
+    PCtr(ptag, parg), VCtrValue(VCtr(vtag, varg)) if ptag == vtag ->
       do_match_pattern(parg, varg)
+    PCtrNullary(ptag), VCtrValue(VCtrNullary(vtag)) if ptag == vtag ->
+      Ok([])
     _, _ -> Error(Nil)
   }
 }
@@ -928,7 +944,8 @@ pub fn quote(ffi: FFI, lvl: Int, value: Value, s: Span) -> Term {
         Rcd(list.map(fields, fn(kv) { #(kv.0, quote(ffi, lvl, kv.1, s)) })),
         s,
       )
-    VCtr(tag, arg) -> Term(Ctr(tag, quote(ffi, lvl, arg, s)), s)
+    VCtrValue(VCtr(tag, arg)) -> Term(Ctr(tag, quote(ffi, lvl, arg, s)), s)
+    VCtrValue(VCtrNullary(tag)) -> Term(CtrNullary(tag), s)
     VLam(implicit, name, env, body) -> {
       // Create a fresh neutral variable at the current level
       let fresh = VNeut(HVar(lvl), [])
@@ -1036,7 +1053,8 @@ pub fn occurs(sub: Subst, id: Int, value: Value) -> Bool {
       id == hole_id || list.any(spine, occurs_elim(sub, id, _))
     VNeut(_, spine) -> list.any(spine, occurs_elim(sub, id, _))
     VRcd(fields) -> list.any(fields, fn(kv) { occurs(sub, id, kv.1) })
-    VCtr(_, arg) -> occurs(sub, id, arg)
+    VCtrValue(VCtr(_, arg)) -> occurs(sub, id, arg)
+    VCtrValue(VCtrNullary(_)) -> False
     VLam(_, _, env, _) -> list.any(env, occurs(sub, id, _))
     VPi(_, _, env, in, _) ->
       occurs(sub, id, in) || list.any(env, occurs(sub, id, _))
@@ -1096,7 +1114,10 @@ pub fn unify(
     VNeut(h1, spine1), VNeut(h2, spine2) if h1 == h2 ->
       unify_elim_list(s, spine1, spine2, s1, s2)
     VRcd(fields1), VRcd(fields2) -> unify_fields(s, fields1, fields2, s1, s2)
-    VCtr(k1, arg1), VCtr(k2, arg2) if k1 == k2 -> unify(s, arg1, arg2, s1, s2)
+    VCtrValue(VCtr(k1, arg1)), VCtrValue(VCtr(k2, arg2)) if k1 == k2 ->
+      unify(s, arg1, arg2, s1, s2)
+    VCtrValue(VCtrNullary(k1)), VCtrValue(VCtrNullary(k2)) if k1 == k2 ->
+      Ok(s)
     VLam(_, _, env1, body1), VLam(_, _, env2, body2) -> {
       // Unify lambdas by applying both to a fresh variable
       let #(fresh, s) = new_var(s)
@@ -1276,7 +1297,16 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
             check_type(s, arg_ty, ctr_arg_ty, arg.span, ctr.arg_ty.span)
           let #(params, s) = ctr_solve_params(s, ctr, params, tag, term.span)
           let env = list.append(params, get_env(s))
-          #(VCtr(tag, eval(s.ffi, env, arg)), eval(s.ffi, env, ctr.ret_ty), s)
+          #(VCtrValue(VCtr(tag, eval(s.ffi, env, arg))), eval(s.ffi, env, ctr.ret_ty), s)
+        }
+      }
+    CtrNullary(tag) ->
+      case list.key_find(s.ctrs, tag) {
+        Error(Nil) -> infer_error(s, CtrUndefined(tag, term.span))
+        Ok(ctr) -> {
+          let #(params, _, ctr_ret_ty, s) = check_ctr_def(s, ctr)
+          let #(params, s) = ctr_solve_params(s, ctr, params, tag, term.span)
+          #(VCtrValue(VCtrNullary(tag)), ctr_ret_ty, s)
         }
       }
     Dot(arg, name) -> {
@@ -1608,7 +1638,19 @@ pub fn bind_pattern(
           let ctr_arg_ty = eval(s.ffi, env, ctr.arg_ty)
           let #(varg, s) =
             bind_pattern(s, parg, ctr_arg_ty, pat_span, ctr.arg_ty.span)
-          #(VCtr(tag, varg), s)
+          #(VCtrValue(VCtr(tag, varg)), s)
+        }
+      }
+    }
+    PCtrNullary(tag) -> {
+      case list.key_find(s.ctrs, tag) {
+        Error(Nil) -> #(VErr, with_err(s, CtrUndefined(tag, pat_span)))
+        Ok(ctr) -> {
+          let #(params, _, ctr_ret_ty, s) = check_ctr_def(s, ctr)
+          let #(_, s) =
+            check_type(s, ctr_ret_ty, ret_ty, ctr.ret_ty.span, ret_span)
+          let #(_, s) = ctr_solve_params(s, ctr, params, tag, pat_span)
+          #(VCtrValue(VCtrNullary(tag)), s)
         }
       }
     }
@@ -1764,6 +1806,7 @@ fn deconstruct(pat: Pattern) -> #(PHead, List(Pattern)) {
       #(head, list.map(sorted, fn(f) { f.1 }))
     }
     PCtr(tag, p) -> #(HCtr(tag), [p])
+    PCtrNullary(tag) -> #(HCtrNullary(tag), [])
   }
 }
 
@@ -1776,6 +1819,7 @@ fn reconstruct(head: PHead, args: List(Pattern)) -> Pattern {
     HLitT(k) -> PLitT(k)
     HRcd(ks) -> PRcd(list.zip(ks, args))
     HCtr(tag) -> PCtr(tag, list.first(args) |> result.unwrap(PAny))
+    HCtrNullary(tag) -> PCtrNullary(tag)
   }
 }
 
@@ -1784,6 +1828,7 @@ fn head_arity(head: PHead) -> Int {
   case head {
     HRcd(fs) -> list.length(fs)
     HCtr(_) -> 1
+    HCtrNullary(_) -> 0
     _ -> 0
   }
 }
@@ -1868,7 +1913,8 @@ pub fn get_missing_heads(
       }
       let span = Span("", 1, 1, 1, 1)
       let ret_tag = case ret_ty {
-        VCtr(tag, _) -> tag
+        VCtrValue(VCtr(tag, _)) -> tag
+        VCtrValue(VCtrNullary(tag)) -> tag
         _ -> ""
       }
       list.key_find(index, ret_tag)
@@ -1977,7 +2023,8 @@ pub fn check_exhaustiveness(
     list.fold(s.ctrs, [], fn(index, entry) {
       let #(tag, ctr) = entry
       let ret_tag = case eval(s.ffi, env, ctr.ret_ty) {
-        VCtr(ret_tag, _) -> ret_tag
+        VCtrValue(VCtr(ret_tag, _)) -> ret_tag
+        VCtrValue(VCtrNullary(ret_tag)) -> ret_tag
         _ -> ""
       }
       let existing = list.key_find(index, ret_tag) |> result.unwrap([])

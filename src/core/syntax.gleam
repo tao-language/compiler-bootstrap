@@ -20,8 +20,8 @@
 /// Both parser and formatter are derived from this single grammar definition.
 import core/core.{
   type Case, type Error, type Literal, type LiteralType, type Pattern, type Term, Ann, App,
-  Call, Case, Comptime, Ctr, Dot, Err, F32, F32T, F64, F64T, Fix, Hole, I32,
-  I32T, I64, I64T, Lam, Lit, LitT, Match, PAny, PAs, PCtr, PLit, PLitT, PRcd,
+  Call, Case, Comptime, Ctr, CtrNullary, Dot, Err, F32, F32T, F64, F64T, Fix, Hole, I32,
+  I32T, I64, I64T, Lam, Lit, LitT, Match, PAny, PAs, PCtr, PCtrNullary, PLit, PLitT, PRcd,
   PTyp, Pi, Rcd, Term, Typ, U32, U32T, U64, U64T, Var,
 }
 import gleam/float
@@ -49,7 +49,10 @@ pub type NamedTerm {
   NApp(fun: NamedTerm, arg: NamedTerm, span: Span)
   NAnn(term: NamedTerm, typ: NamedTerm, span: Span)
   NDot(arg: NamedTerm, field: String, span: Span)
+  /// Constructor with arg: #Some(42)
   NCtr(tag: String, arg: NamedTerm, span: Span)
+  /// Nullary constructor: #True, #False
+  NCtrNullary(tag: String, span: Span)
   NTyp(level: Int, span: Span)
   NHole(id: Int, span: Span)
   NLitT(typ: LiteralType, span: Span)
@@ -74,7 +77,10 @@ pub type NamedPattern {
   NPLit(value: Literal, span: Span)
   NPLitT(typ: LiteralType, span: Span)
   NPRcd(fields: List(#(String, NamedPattern)), span: Span)
+  /// Constructor pattern with arg: #Some(n)
   NPCtr(tag: String, arg: NamedPattern, span: Span)
+  /// Nullary constructor pattern: #True, #False
+  NPCtrNullary(tag: String, span: Span)
 }
 
 /// Case in match expression
@@ -144,6 +150,7 @@ fn named_to_de_bruijn_loop(term: NamedTerm, env: List(String)) -> Term {
       let arg_db = named_to_de_bruijn_loop(arg, env)
       Term(Ctr(tag, arg_db), span)
     }
+    NCtrNullary(tag, span) -> Term(CtrNullary(tag), span)
     NTyp(level, span) -> Term(Typ(level), span)
     NHole(id, span) -> Term(Hole(id), span)
     NLitT(typ, span) -> Term(LitT(typ), span)
@@ -218,6 +225,7 @@ fn named_pattern_to_de_bruijn(pattern: NamedPattern) -> Pattern {
       let arg_db = named_pattern_to_de_bruijn(arg)
       PCtr(tag, arg_db)
     }
+    NPCtrNullary(tag, _span) -> PCtrNullary(tag)
   }
 }
 
@@ -697,7 +705,7 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
           ]),
           make_pattern_as,
         ),
-        // Constructor pattern: #Name(pat)
+        // Constructor pattern with arg: #Name(pat)
         alt(
           seq([
             token_pattern("Hash"),
@@ -707,6 +715,14 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
             token_pattern("RParen"),
           ]),
           make_pattern_ctr,
+        ),
+        // Nullary constructor pattern: #Name
+        alt(
+          seq([
+            token_pattern("Hash"),
+            token_pattern("Ident"),
+          ]),
+          make_pattern_ctr_nullary,
         ),
         // Literal pattern: 42
         alt(token_pattern("Number"), make_pattern_lit),
@@ -976,9 +992,8 @@ fn make_f64_type(values) -> ParseValue {
 fn make_constructor(values) -> ParseValue {
   case values {
     [_, TokenValue(token)] -> {
-      // Constructor without args: use %Type as placeholder (matches arg_ty Typ(0))
       let span = grammar.span_from_token(token, "input")
-      AsTerm(NCtr(token.value, NTyp(0, span), span))
+      AsTerm(NCtrNullary(token.value, span))
     }
     _ -> panic as "Expected constructor (#Name)"
   }
@@ -1204,6 +1219,17 @@ fn make_pattern_ctr(values) -> ParseValue {
   }
 }
 
+fn make_pattern_ctr_nullary(values) -> ParseValue {
+  case values {
+    [_, TokenValue(tag_token)] ->
+      AsPattern(NPCtrNullary(
+        tag_token.value,
+        grammar.span_from_token(tag_token, "input"),
+      ))
+    _ -> panic as "Expected nullary constructor pattern"
+  }
+}
+
 fn make_pattern_lit(values) -> ParseValue {
   case values {
     [TokenValue(token)] -> {
@@ -1265,6 +1291,7 @@ fn get_span(term: NamedTerm) -> Span {
     NAnn(_, _, span) -> span
     NDot(_, _, span) -> span
     NCtr(_, _, span) -> span
+    NCtrNullary(_, span) -> span
     NTyp(_, span) -> span
     NHole(_, span) -> span
     NLitT(_, span) -> span
@@ -1378,6 +1405,7 @@ fn format_term(
           ])
       }
     }
+    CtrNullary(tag) -> formatter.concat([formatter.text("#"), formatter.text(tag)])
     Dot(arg, field) -> {
       let inner =
         formatter.concat([
@@ -1599,6 +1627,11 @@ fn format_pattern(pattern: Pattern) -> formatter.Doc {
         format_pattern(arg),
         formatter.text(")"),
       ])
+    PCtrNullary(tag) ->
+      formatter.concat([
+        formatter.text("#"),
+        formatter.text(tag),
+      ])
   }
 }
 
@@ -1646,6 +1679,7 @@ fn term_to_string_loop(term: Term, bindings: List(String)) -> String {
       "{" <> string.join(field_strs, ", ") <> "}"
     }
     core.Ctr(tag, arg) -> "#" <> tag <> "(" <> term_to_string_loop(arg, bindings) <> ")"
+    core.CtrNullary(tag) -> "#" <> tag
     core.Dot(arg, field) -> term_to_string_loop(arg, bindings) <> "." <> field
     core.Ann(term, typ) -> "(" <> term_to_string_loop(term, bindings) <> ": " <> term_to_string_loop(typ, bindings) <> ")"
     core.Lam(implicit, param, body) -> {

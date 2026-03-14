@@ -1,7 +1,7 @@
 # Standard Library Overview
 
 > **Goal**: Provide a minimal, pragmatic standard library for Tao with essential types and operations
-> **Status**: ⏳ **In Progress** - Phase 1 (Prelude) type parameters complete
+> **Status**: ⏳ **In Progress** - Phase 1 (Prelude) nullary constructors complete
 > **Date**: March 2026
 
 ---
@@ -16,16 +16,18 @@
 - ✅ **424 tests passing**
 - ✅ Prelude library files created (`lib/prelude/*.core.tao`)
 - ✅ Prelude constructors auto-imported with type parameters
-  - `True`, `False` : Bool (with dummy Typ(0) argument)
-  - `Some`, `None` : Option(a) (polymorphic)
-  - `Ok`, `Err` : Result(a,e) (polymorphic)
-  - `LT`, `EQ`, `GT` : Ordering (with dummy Typ(0) argument)
+  - `True`, `False` : Bool (nullary constructors)
+  - `Some`, `None` : Option(a) (polymorphic, Some takes arg, None nullary)
+  - `Ok`, `Err` : Result(a,e) (polymorphic, both take args)
+  - `LT`, `EQ`, `GT` : Ordering (nullary constructors)
 - ✅ Type parameter instantiation for constructors
+- ✅ Nullary constructor syntax and pattern matching
 
 ### What's Pending
 
-- 📋 **Constructor Pattern Parsing** - Core language requires all constructor patterns to have arguments
-- 📋 **Working Match Examples** - Examples awaiting constructor pattern parsing fix
+- 📋 **Exhaustiveness Checking** - Full support for nullary constructors in match
+- 📋 **Proper Type Representation** - Define Bool, Option, Result as proper types
+- 📋 **Working Match Examples** - Examples with full type checking
 - 📋 **Phase 2: Numeric Hierarchy** - Type classes for numeric operations
 - 📋 **Phase 3: Collections** - List, Vector, Map
 - 📋 **Phase 4: String and I/O** - String operations, file I/O
