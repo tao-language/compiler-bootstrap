@@ -1,2 +1,1 @@
-// Prelude Bool Example                                                        
-%let a = 10 in a == a
+%let x = #True in x

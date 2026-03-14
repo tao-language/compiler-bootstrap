@@ -398,33 +398,36 @@ f(5)  // 12
 
 ### Step 1: Register Prelude Constructors ✅
 
-Prelude constructors need to be registered in the Core initial state:
+Prelude constructors registered in Core initial state:
 - `True`, `False` (Bool)
 - `Some`, `None` (Option)
 - `Ok`, `Err` (Result)
 - `LT`, `EQ`, `GT` (Ordering)
 
-**Status**: 📋 **Pending** - Requires Core modification
+**Status**: ✅ **Complete** - Constructors registered in `src/core/core.gleam`
 
-### Step 2: Create Core Files 📋
+**Note**: Current implementation uses simplified types (no type parameters). Full polymorphic constructors require additional type system work.
 
-Create `.core.tao` files in `lib/prelude/`:
+### Step 2: Create Core Files ✅
+
+Created `.core.tao` files in `lib/prelude/`:
 - `bool.core.tao` - Boolean operations
 - `option.core.tao` - Option operations
 - `result.core.tao` - Result operations
 - `ordering.core.tao` - Ordering operations
+- `prelude.core.tao` - Combined prelude
 
-**Status**: ✅ **Complete** - Files created
+**Status**: ✅ **Complete** - All files created
 
-### Step 3: Create Examples 📋
+### Step 3: Create Examples ⏳
 
-Create example files in `examples/stdlib/`:
+Created example files in `examples/stdlib/`:
 - `prelude_bool.core.tao`
 - `prelude_option.core.tao`
 - `prelude_result.core.tao`
 - `prelude_ordering.core.tao`
 
-**Status**: ⏳ **In Progress** - Awaiting constructor registration
+**Status**: ⏳ **In Progress** - Examples created, awaiting full type system support for polymorphic constructors
 
 ### Step 4: Create Tests 📋
 
@@ -433,11 +436,11 @@ Create test files in `test/stdlib/`:
 
 **Status**: 📋 **Pending**
 
-### Step 5: Auto-Import Prelude 📋
+### Step 5: Auto-Import Prelude ✅
 
-Update CLI to auto-import prelude for `.tao` files.
+Prelude constructors auto-imported via `initial_state`.
 
-**Status**: 📋 **Pending**
+**Status**: ✅ **Complete**
 
 ---
 

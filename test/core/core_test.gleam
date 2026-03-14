@@ -1872,8 +1872,10 @@ pub fn check_exhaustiveness_rcd_test() {
 pub fn check_exhaustiveness_ctr_undefined_test() {
   // When there are no predefined constructors, matching on an undefined constructor
   // reports no missing cases (because there are no known constructors)
+  // Note: We use empty ctrs list to test without prelude constructors
   let cases = [case_(pctr("A", pany), i32(1, s0), s1)]
-  let result = c.check_exhaustiveness(s, cases, s0)
+  let empty_state = c.State(..s, ctrs: [])
+  let result = c.check_exhaustiveness(empty_state, cases, s0)
   // Should report no missing cases since there are no predefined constructors
   list.length(result) |> should.equal(0)
 }

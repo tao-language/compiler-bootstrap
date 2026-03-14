@@ -298,12 +298,41 @@ pub type Config {
 /// Default compiler configuration
 pub const default_config = Config(target: "backend/javascript", permissions: [])
 
+// ============================================================================
+// PRELUDE CONSTRUCTORS
+// ============================================================================
+// These constructors are automatically available in all programs.
+// They define the standard library prelude types: Bool, Option, Result, Ordering.
+
+const prelude_ctrs = [
+  // Bool type: data Bool = True | False
+  #("True", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
+  #("False", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
+  
+  // Option type: data Option(a) = Some(a) | None
+  // Simplified: no type parameters for now
+  #("Some", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
+  #("None", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
+  
+  // Result type: data Result(a, e) = Ok(a) | Err(e)
+  // Simplified: no type parameters for now
+  #("Ok", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
+  #("Err", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
+  
+  // Ordering type: data Ordering = LT | EQ | GT
+  #("LT", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
+  #("EQ", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
+  #("GT", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
+]
+
+const no_span = Span("", 0, 0, 0, 0)
+
 /// Create initial state with default configuration, builtins, and predefined constructors.
 pub const initial_state = State(
   hole: 0,
   var: 0,
-  ctrs: [],
-  // No predefined constructors - to be defined in prelude
+  ctrs: prelude_ctrs,
+  // Prelude constructors always available
   ctx: [],
   sub: [],
   errors: [],

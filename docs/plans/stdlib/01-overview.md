@@ -1,7 +1,7 @@
 # Standard Library Overview
 
 > **Goal**: Provide a minimal, pragmatic standard library for Tao with essential types and operations
-> **Status**: ⏳ **In Progress** - Phase 1 (Prelude) library files created, constructor registration pending
+> **Status**: ⏳ **In Progress** - Phase 1 (Prelude) constructors registered, library files created
 > **Date**: March 2026
 
 ---
@@ -15,11 +15,12 @@
 - ✅ CLI integration for running Tao files
 - ✅ **424 tests passing**
 - ✅ Prelude library files created (`lib/prelude/*.core.tao`)
+- ✅ Prelude constructors auto-imported (`True`, `False`, `Some`, `None`, `Ok`, `Err`, `LT`, `EQ`, `GT`)
 
 ### What's Pending
 
-- 📋 **Prelude Constructor Registration** - Register `True`, `False`, `Some`, `None`, `Ok`, `Err`, `LT`, `EQ`, `GT` in Core initial state
-- 📋 **Prelude Examples** - Working examples awaiting constructor registration
+- 📋 **Polymorphic Constructors** - Full type parameter support for `Option(a)`, `Result(a,e)`
+- 📋 **Working Examples** - Examples awaiting full type system support
 - 📋 **Phase 2: Numeric Hierarchy** - Type classes for numeric operations
 - 📋 **Phase 3: Collections** - List, Vector, Map
 - 📋 **Phase 4: String and I/O** - String operations, file I/O
