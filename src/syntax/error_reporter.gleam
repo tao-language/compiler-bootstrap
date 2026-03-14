@@ -22,7 +22,7 @@ import syntax/source_snippet
 // PARSE ERROR TO DIAGNOSTIC
 // ============================================================================
 
-pub fn parse_error_to_diagnostic(error: grammar.ParseError, source: String, file: String) -> source_snippet.Diagnostic {
+pub fn parse_error_to_diagnostic(error: grammar.ParseError, _source: String, _file: String) -> source_snippet.Diagnostic {
   case error {
     ParseError(span: span, expected: exp, got: g, context: ctx) -> {
       source_snippet.Diagnostic(
@@ -294,7 +294,7 @@ pub fn type_error_to_diagnostic(error: TypeError, source: String, file: String) 
         ],
       )
     }
-    PatternMismatch(pattern, expected_ty, span1, span2) -> {
+    PatternMismatch(_pattern, expected_ty, span1, span2) -> {
       let expected_str = value_to_string(expected_ty)
       source_snippet.Diagnostic(
         code: "E0201",
@@ -319,7 +319,7 @@ pub fn type_error_to_diagnostic(error: TypeError, source: String, file: String) 
         ],
       )
     }
-    MatchMissingCase(span, pattern) -> {
+    MatchMissingCase(span, _pattern) -> {
       source_snippet.Diagnostic(
         code: "E0202",
         severity: source_snippet.Error,
@@ -516,7 +516,7 @@ fn record_fields_to_string(fields: List(#(String, core.Value))) -> String {
 }
 
 // Helper function to get span from a term
-fn get_term_span(term) -> grammar.Span {
+fn get_term_span(_term) -> grammar.Span {
   // Extract span from term - simplified implementation
   // In a full implementation, this would traverse the term to find the span
   grammar.Span("", 0, 0, 0, 0)

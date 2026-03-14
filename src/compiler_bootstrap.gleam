@@ -261,7 +261,7 @@ fn check_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 
 fn format_parse_error(err: GrammarParseErrorType) -> String {
   case err {
-    GrammarParseError(span: span, expected: exp, got: g, context: ctx) ->
+    GrammarParseError(span: _span, expected: exp, got: g, context: ctx) ->
       "Parse error" <> case ctx {
         "" -> ""
         _ -> " in " <> ctx
@@ -384,7 +384,7 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   let parse_errors = parse_result.errors
   
   case parse_errors {
-    [err, ..] -> {
+    [_err, ..] -> {
       // Report parse errors
       io.println("")
       parse_errors |> list.each(fn(err) {
@@ -481,7 +481,7 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   let parse_errors = parse_result.errors
 
   case parse_errors {
-    [err, ..] -> {
+    [_err, ..] -> {
       // Report parse errors
       io.println("")
       parse_errors |> list.each(fn(err) {

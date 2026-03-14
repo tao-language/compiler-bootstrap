@@ -287,7 +287,7 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         ],
       )
 
-    PatternMismatch(pattern, expected_ty, span1, span2) ->
+    PatternMismatch(_pattern, expected_ty, span1, span2) ->
       source_snippet.Diagnostic(
         code: code,
         severity: severity,

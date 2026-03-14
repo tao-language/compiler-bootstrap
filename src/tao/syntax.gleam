@@ -454,8 +454,8 @@ fn format_expr_loop(expr: MvpExpr, parent_prec: Int) -> String {
     MvpAnd(l, r, _) -> format_binop(l, r, "&&", 3, parent_prec)
     MvpOr(l, r, _) -> format_binop(l, r, "||", 3, parent_prec)
     MvpNot(e, _) -> "!" <> format_expr_loop(e, 100)
-    OverloadedFn(name, type_param, param_name, param_type, return_type, _body, _) -> {
-      "fn (" <> name <> ")(" <> param_name <> ": " <> param_type <> ") -> " <> return_type <> " { ... }"
+    OverloadedFn(name, _type_param, param_name, param_type, _return_type, _body, _) -> {
+      "fn (" <> name <> ")(" <> param_name <> ": " <> param_type <> ") -> " <> param_type <> " { ... }"
     }
     OverloadedApp(name, args, _) -> {
       name <> "(" <> string_join(list.map(args, format_expr), ", ") <> ")"

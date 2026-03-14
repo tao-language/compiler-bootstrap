@@ -189,7 +189,7 @@ fn get_highlights_for_line(
 
 fn build_pointer_line(
   highlights: List(#(Int, Int, HighlightStyle)),
-  line_content: String,
+  _line_content: String,
   line_prefix: String,
   label: Option(String),
 ) -> String {

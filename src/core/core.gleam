@@ -368,28 +368,46 @@ pub const ffi_build = [
 // - Some(result) when arguments are concrete and computation succeeds
 // - None when arguments are not concrete (deferred to runtime)
 
-pub fn add_impl(args: List(Value)) -> Option(Value) {
+// ============================================================================
+// Helper functions for builtin implementations
+
+fn binop_i32_f64(
+  args: List(Value),
+  i32_op: fn(Int, Int) -> Int,
+  f64_op: fn(Float, Float) -> Float,
+) -> Option(Value) {
   case args {
-    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(a + b)))
-    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(F64(a +. b)))
+    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(i32_op(a, b))))
+    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(F64(f64_op(a, b))))
     _ -> None
   }
+}
+
+fn cmp_i32_f64(
+  args: List(Value),
+  i32_cmp: fn(Int, Int) -> Bool,
+  f64_cmp: fn(Float, Float) -> Bool,
+) -> Option(Value) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(bool_to_int(i32_cmp(a, b)))))
+    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(I32(bool_to_int(f64_cmp(a, b)))))
+    _ -> None
+  }
+}
+
+// ============================================================================
+// Arithmetic operations
+
+pub fn add_impl(args: List(Value)) -> Option(Value) {
+  binop_i32_f64(args, fn(a, b) { a + b }, fn(a, b) { a +. b })
 }
 
 pub fn sub_impl(args: List(Value)) -> Option(Value) {
-  case args {
-    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(a - b)))
-    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(F64(a -. b)))
-    _ -> None
-  }
+  binop_i32_f64(args, fn(a, b) { a - b }, fn(a, b) { a -. b })
 }
 
 pub fn mul_impl(args: List(Value)) -> Option(Value) {
-  case args {
-    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(a * b)))
-    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(F64(a *. b)))
-    _ -> None
-  }
+  binop_i32_f64(args, fn(a, b) { a * b }, fn(a, b) { a *. b })
 }
 
 pub fn div_impl(args: List(Value)) -> Option(Value) {
@@ -407,53 +425,35 @@ pub fn mod_impl(args: List(Value)) -> Option(Value) {
   }
 }
 
+// ============================================================================
+// Comparison operations
+
 pub fn eq_impl(args: List(Value)) -> Option(Value) {
-  case args {
-    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(bool_to_int(a == b))))
-    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(I32(bool_to_int(a == b))))
-    _ -> None
-  }
+  cmp_i32_f64(args, fn(a, b) { a == b }, fn(a, b) { a == b })
 }
 
 pub fn neq_impl(args: List(Value)) -> Option(Value) {
-  case args {
-    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(bool_to_int(a != b))))
-    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(I32(bool_to_int(a != b))))
-    _ -> None
-  }
+  cmp_i32_f64(args, fn(a, b) { a != b }, fn(a, b) { a != b })
 }
 
 pub fn lt_impl(args: List(Value)) -> Option(Value) {
-  case args {
-    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(bool_to_int(a < b))))
-    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(I32(bool_to_int(a <. b))))
-    _ -> None
-  }
+  cmp_i32_f64(args, fn(a, b) { a < b }, fn(a, b) { a <. b })
 }
 
 pub fn lte_impl(args: List(Value)) -> Option(Value) {
-  case args {
-    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(bool_to_int(a <= b))))
-    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(I32(bool_to_int(a <=. b))))
-    _ -> None
-  }
+  cmp_i32_f64(args, fn(a, b) { a <= b }, fn(a, b) { a <=. b })
 }
 
 pub fn gt_impl(args: List(Value)) -> Option(Value) {
-  case args {
-    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(bool_to_int(a > b))))
-    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(I32(bool_to_int(a >. b))))
-    _ -> None
-  }
+  cmp_i32_f64(args, fn(a, b) { a > b }, fn(a, b) { a >. b })
 }
 
 pub fn gte_impl(args: List(Value)) -> Option(Value) {
-  case args {
-    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(bool_to_int(a >= b))))
-    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(I32(bool_to_int(a >=. b))))
-    _ -> None
-  }
+  cmp_i32_f64(args, fn(a, b) { a >= b }, fn(a, b) { a >=. b })
 }
+
+// ============================================================================
+// Logical operations
 
 pub fn and_impl(args: List(Value)) -> Option(Value) {
   case args {
@@ -1276,7 +1276,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(_, _, s) = infer(s, out_term)
       #(VPi(implicit, name, env, in_val, out_term), VTyp(0), s)
     }
-    App(fun, implicit, arg) -> {
+    App(fun, _implicit, arg) -> {
       let #(fun_val, fun_ty, s) = infer(s, fun)
       case fun_ty {
         VPi(_, _, pi_env, in, out) -> {

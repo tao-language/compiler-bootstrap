@@ -172,11 +172,11 @@ fn merge_spans(left: Span, right: Span) -> Span {
 /// Type matching happens during type inference, and the appropriate implementation
 /// is selected based on the concrete type.
 fn desugar_overloaded_fn(
-  name: String,
+  _name: String,
   type_param: String,
   param_name: String,
   param_type: String,
-  return_type: String,
+  _return_type: String,
   body: MvpExpr,
   span: Span,
 ) -> Term {

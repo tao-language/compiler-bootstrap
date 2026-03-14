@@ -1670,7 +1670,7 @@ fn term_to_string_loop(term: Term, bindings: List(String)) -> String {
       }
       term_to_string_loop(fun, bindings) <> implicit_str <> "(" <> term_to_string_loop(arg, bindings) <> ")"
     }
-    core.Match(arg, motive, cases) -> {
+    core.Match(arg, _motive, _cases) -> {
       "match(" <> term_to_string_loop(arg, bindings) <> ") { ... }"
     }
     core.Call(name, args) -> {
