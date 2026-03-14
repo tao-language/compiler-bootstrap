@@ -142,13 +142,9 @@ fn parse_test_blocks(
             None -> {
               // Check for test expression: `> ...`
               case trimmed {
-                ">" <> rest_content -> {
-                  // Single `>` without space, skip
-                  parse_test_blocks(rest, file, acc_tests, acc_errors, pending_annotation)
-                }
-                _ -> {
+                "> " <> rest_content -> {
                   // Check if it's a single-line test with `~>`
-                  case string.contains(trimmed, "~>") {
+                  case string.contains(rest_content, "~>") {
                     True -> {
                       // Single-line test: `> expr ~> expected`
                       case parse_single_line_test(trimmed, line_num, file, option.unwrap(pending_annotation, [])) {
@@ -173,10 +169,19 @@ fn parse_test_blocks(
                       }
                     }
                     False -> {
-                      // Not a test line, continue
+                      // Multi-line test expression, will be handled by parse_test_body
+                      // For now, skip lines starting with `> ` (they need a test name first)
                       parse_test_blocks(rest, file, acc_tests, acc_errors, pending_annotation)
                     }
                   }
+                }
+                ">" <> _ -> {
+                  // Single `>` without space, skip
+                  parse_test_blocks(rest, file, acc_tests, acc_errors, pending_annotation)
+                }
+                _ -> {
+                  // Not a test line, continue
+                  parse_test_blocks(rest, file, acc_tests, acc_errors, pending_annotation)
                 }
               }
             }

@@ -319,6 +319,12 @@ case condition {
 
 | Date | Lesson | Context |
 |------|--------|---------|
+| 2026-03 | Gleam has no `string.find` | Implemented custom substring search |
+| 2026-03 | Reserved keywords matter | `test` is reserved - use `test_item` |
+| 2026-03 | Constructor imports needed | Pattern match needs `Skip` not `type Skip` |
+| 2026-03 | Record field access limits | Destructure before case arm returns |
+| 2026-03 | Duplicate imports error | Combine into single import line |
+| 2026-03 | Option vs Result unwrap | Different signatures, check docs |
 | 2025-03 | Read full warning message | `env` parameter looked essential but was genuinely unused |
 | 2025-03 | Unreachable code = bug | Panic + return is contradictory |
 | 2025-03 | Warning cleanup complete | 45 → 0 warnings (100% reduction) |
@@ -327,3 +333,132 @@ case condition {
 | 2025-03 | Type aliases can be semantic | `Type = Value` documents type theory |
 | 2025-03 | Documentation belongs in docs/ | Verbose comments clutter code |
 | 2025-03 | Gleam has no `if` | Language design choice |
+
+---
+
+## Gleam-Specific Implementation Lessons (2026)
+
+### 1. String API Limitations
+
+**Lesson**: `gleam/string` lacks common functions like `find` and `drop_left`.
+
+**Example**:
+```gleam
+// ❌ Doesn't exist:
+string.find(text, substring)
+string.drop_left(text, 2)
+
+// ✅ Workaround:
+fn find_substring(text: String, substring: String) -> Option(Int) {
+  find_index(text, substring, 0)
+}
+
+fn find_index(text: String, substring: String, offset: Int) -> Option(Int) {
+  case string.starts_with(text, substring) {
+    True -> Some(offset)
+    False -> find_index(string.drop_start(text, 1), substring, offset + 1)
+  }
+}
+```
+
+**Takeaway**: Check stdlib API before assuming functions exist. Implement helpers when needed.
+
+---
+
+### 2. Reserved Keywords
+
+**Lesson**: `test` is a reserved keyword in Gleam (used for test blocks).
+
+**Example**:
+```gleam
+// ❌ Syntax error:
+list.filter(tests, fn(test) { test.name == "foo" })
+
+// ✅ Works:
+list.filter(tests, fn(test_item) { test_item.name == "foo" })
+```
+
+**Takeaway**: When variable names conflict with Gleam keywords, use descriptive alternatives.
+
+---
+
+### 3. Constructor Imports for Pattern Matching
+
+**Lesson**: To pattern match on custom type variants, import constructors unqualified.
+
+**Example**:
+```gleam
+// ❌ Can't pattern match:
+import tao/test_parser.{type Annotation}
+case ann {
+  Annotation.Skip(_) -> ...  // Error: Annotation not in scope
+}
+
+// ✅ Works:
+import tao/test_parser.{type Annotation, Skip, Timeout, Group}
+case ann {
+  Skip(_) -> ...  // Works!
+}
+```
+
+**Takeaway**: Import both `type TypeName` and constructor names for pattern matching.
+
+---
+
+### 4. Record Field Access in Case Arms
+
+**Lesson**: Can't use `acc.field` expressions directly in case arm return values.
+
+**Example**:
+```gleam
+// ❌ Syntax error:
+case ann {
+  Skip(_) -> AnnotationCounts(acc.total + 1, acc.skip + 1, ...)
+}
+
+// ✅ Works:
+case ann {
+  Skip(_) -> {
+    let AnnotationCounts(total, skip, timeout, group, io) = acc
+    AnnotationCounts(total + 1, skip + 1, timeout, group, io)
+  }
+}
+```
+
+**Takeaway**: Destructure records before using fields in case expressions.
+
+---
+
+### 5. Duplicate Import Errors
+
+**Lesson**: Can't import same module twice, even for different things.
+
+**Example**:
+```gleam
+// ❌ Duplicate import error:
+import gleam/option.{Some, None}
+import gleam/option.{type Option}
+
+// ✅ Works:
+import gleam/option.{Some, None, type Option}
+```
+
+**Takeaway**: Combine all imports from same module into one line.
+
+---
+
+### 6. Option vs Result for unwrap
+
+**Lesson**: `option.unwrap` and `result.unwrap` have different signatures.
+
+**Example**:
+```gleam
+// ❌ Wrong:
+first_span |> result.unwrap(default)  // result.unwrap expects Error type
+first_span |> option.unwrap(default)  // Wrong argument order
+
+// ✅ Correct:
+option.unwrap(first_span, default)  // Function form, not pipe
+```
+
+**Takeaway**: Check function signatures - some use pipe, some don't.
