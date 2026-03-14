@@ -25,7 +25,7 @@ import core/core.{
   RcdMissingFields, CtrUnsolvedParam, DotFieldNotFound, DotOnNonCtr,
   SpineMismatch, TODO,
   PAny, PAs, PTyp, PLit, PLitT, PRcd, PCtr, PUnit,
-  HVar, HHole,
+  HVar, HHole, get_span,
   VTyp, VLit, VLitT, VNeut, VRcd, VCtrValue, VCtr, VLam, VPi, VRecord, VCall, VFix, VUnit, VErr,
   I32, I64, U32, U64, F32, F64,
   I32T, I64T, U32T, U64T, F32T, F64T,
@@ -178,7 +178,7 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         code: code,
         severity: severity,
         message: message,
-        primary_span: to_source_span(fun.span),
+        primary_span: to_source_span(get_span(fun)),
         spans: [],
         notes: [
           "This value has type " <> type_to_string(fun_ty) <> ", which is not callable",

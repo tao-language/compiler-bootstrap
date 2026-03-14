@@ -32,7 +32,7 @@ const s2 = Span("fix_test", 2, 2, 2, 2)
 const s3 = Span("fix_test", 3, 3, 3, 3)
 
 fn i32(n, span) {
-  c.Term(c.Lit(c.I32(n)), span)
+  c.Lit(c.I32(n), span)
 }
 
 fn v32(n) {
@@ -44,19 +44,19 @@ fn v32t() {
 }
 
 fn lam(name, body, span) {
-  c.Term(c.Lam([], #(name, c.Term(c.Hole(-1), s1)), body), span)
+  c.Lam([], #(name, c.Hole(-1, s1)), body, span)
 }
 
 fn app(fun, arg, span) {
-  c.Term(c.App(fun, [], arg), span)
+  c.App(fun, [], arg, span)
 }
 
 fn var(i, span) {
-  c.Term(c.Var(i), span)
+  c.Var(i, span)
 }
 
 fn fix(name, body, span) {
-  c.Term(c.Fix(name, body), span)
+  c.Fix(name, body, span)
 }
 
 // ============================================================================
@@ -124,8 +124,8 @@ pub fn fix_quote_roundtrip_test() {
   // Quote the value back
   let quoted = c.quote(state.ffi, 0, c.VFix("f", [], body), s0)
   // Should quote back to a Fix term
-  case quoted.data {
-    c.Fix(_, _) -> True |> should.be_true
+  case quoted {
+    c.Fix(_, _, _) -> True |> should.be_true
     _ -> False |> should.be_true
   }
 }

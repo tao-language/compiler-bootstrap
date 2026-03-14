@@ -37,7 +37,7 @@ const s4 = Span("pattern_match_test", 4, 4, 4, 4)
 const s5 = Span("pattern_match_test", 5, 5, 5, 5)
 
 fn i32(n, span) {
-  c.Term(c.Lit(c.I32(n)), span)
+  c.Lit(c.I32(n), span)
 }
 
 fn v32(n) {
@@ -45,11 +45,11 @@ fn v32(n) {
 }
 
 fn i32t(span) {
-  c.Term(c.LitT(c.I32T), span)
+  c.LitT(c.I32T, span)
 }
 
 fn lam(name, body, span) {
-  c.Term(c.Lam([], #(name, c.Term(c.Hole(-1), s1)), body), span)
+  c.Lam([], #(name, c.Hole(-1, s1)), body, span)
 }
 
 fn pany() {
@@ -65,7 +65,7 @@ fn case_(p, b, s) {
 }
 
 fn match_(arg, motive, cases, s) {
-  c.Term(c.Match(arg, motive, cases), s)
+  c.Match(arg, motive, cases, s)
 }
 
 // ============================================================================

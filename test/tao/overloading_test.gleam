@@ -78,8 +78,8 @@ pub fn desugar_overloaded_fn_creates_lam_with_implicit_test() {
   let core_term = desugar(expr)
 
   // Should produce a Lam with implicit type param
-  case core_term.data {
-    Lam(implicit, _param, _body) -> {
+  case core_term {
+    Lam(implicit, _param, _body, _) -> {
       // Should have one implicit type param
       implicit |> should.equal(["T"])
     }
@@ -94,11 +94,11 @@ pub fn desugar_overloaded_fn_body_test() {
   let core_term = desugar(expr)
 
   // Should produce a Lam with Match in body
-  case core_term.data {
-    Lam(_implicit, _param, lam_body) -> {
+  case core_term {
+    Lam(_implicit, _param, lam_body, _) -> {
       // Body should be a Match expression for type matching
-      case lam_body.data {
-        Match(_arg, _motive, _cases) -> Nil  // Expected: Match on type param
+      case lam_body {
+        Match(_arg, _motive, _cases, _) -> Nil  // Expected: Match on type param
         _ -> panic as "Expected Match in body"
       }
     }
@@ -112,8 +112,8 @@ pub fn desugar_overloaded_app_test() {
   let core_term = desugar(expr)
   
   // Should produce a Call
-  case core_term.data {
-    Call(name, _args) -> {
+  case core_term {
+    Call(name, _args, _) -> {
       name |> should.equal("+")
     }
     _ -> panic as "Expected Call"

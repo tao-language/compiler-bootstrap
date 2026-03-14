@@ -159,22 +159,22 @@ pub fn unify_ctr_tag_mismatch_test() {
 }
 
 pub fn unify_lam_equal_test() {
-  let v1 = c.VLam([], "x", [], c.Term(c.Var(0), s1))
-  let v2 = c.VLam([], "y", [], c.Term(c.Var(0), s1))
+  let v1 = c.VLam([], "x", [], c.Var(0, s1))
+  let v2 = c.VLam([], "y", [], c.Var(0, s1))
   c.unify(s, v1, v2, s1, s2)
   |> should.equal(Ok(c.State(..s, var: 1)))
 }
 
 pub fn unify_pi_equal_test() {
-  let v1 = c.VPi([], "x", [], v32t, c.Term(c.Var(0), s1))
-  let v2 = c.VPi([], "y", [], v32t, c.Term(c.Var(0), s1))
+  let v1 = c.VPi([], "x", [], v32t, c.Var(0, s1))
+  let v2 = c.VPi([], "y", [], v32t, c.Var(0, s1))
   c.unify(s, v1, v2, s1, s2)
   |> should.equal(Ok(c.State(..s, var: 1)))
 }
 
 pub fn unify_pi_domain_mismatch_test() {
-  let v1 = c.VPi([], "x", [], v32t, c.Term(c.Var(0), s1))
-  let v2 = c.VPi([], "x", [], v64t, c.Term(c.Var(0), s1))
+  let v1 = c.VPi([], "x", [], v32t, c.Var(0, s1))
+  let v2 = c.VPi([], "x", [], v64t, c.Var(0, s1))
   c.unify(s, v1, v2, s1, s2)
   |> should.equal(Error(c.TypeMismatch(v32t, v64t, s1, s2)))
 }
@@ -192,98 +192,89 @@ pub fn unify_verr_test() {
 
 pub fn quote_typ_test() {
   c.quote(c.ffi_build, 0, c.VTyp(0), s1)
-  |> should.equal(c.Term(c.Typ(0), s1))
+  |> should.equal(c.Typ(0, s1))
   c.quote(c.ffi_build, 0, c.VTyp(1), s1)
-  |> should.equal(c.Term(c.Typ(1), s1))
+  |> should.equal(c.Typ(1, s1))
 }
 
 pub fn quote_lit_test() {
   c.quote(c.ffi_build, 0, v32(1), s1)
-  |> should.equal(c.Term(c.Lit(c.I32(1)), s1))
+  |> should.equal(c.Lit(c.I32(1), s1))
   c.quote(c.ffi_build, 0, v64(2), s1)
-  |> should.equal(c.Term(c.Lit(c.I64(2)), s1))
+  |> should.equal(c.Lit(c.I64(2), s1))
 }
 
 pub fn quote_litt_test() {
   c.quote(c.ffi_build, 0, v32t, s1)
-  |> should.equal(c.Term(c.LitT(c.I32T), s1))
+  |> should.equal(c.LitT(c.I32T, s1))
   c.quote(c.ffi_build, 0, v64t, s1)
-  |> should.equal(c.Term(c.LitT(c.I64T), s1))
+  |> should.equal(c.LitT(c.I64T, s1))
 }
 
 pub fn quote_var_test() {
   // At level 1, HVar(0) should become Var(0)
   c.quote(c.ffi_build, 1, c.VNeut(c.HVar(0), []), s1)
-  |> should.equal(c.Term(c.Var(0), s1))
+  |> should.equal(c.Var(0, s1))
 
   // At level 2, HVar(0) should become Var(1)
   c.quote(c.ffi_build, 2, c.VNeut(c.HVar(0), []), s1)
-  |> should.equal(c.Term(c.Var(1), s1))
+  |> should.equal(c.Var(1, s1))
 
   // At level 2, HVar(1) should become Var(0)
   c.quote(c.ffi_build, 2, c.VNeut(c.HVar(1), []), s1)
-  |> should.equal(c.Term(c.Var(0), s1))
+  |> should.equal(c.Var(0, s1))
 }
 
 pub fn quote_hole_test() {
   c.quote(c.ffi_build, 0, c.VNeut(c.HHole(0), []), s1)
-  |> should.equal(c.Term(c.Hole(0), s1))
+  |> should.equal(c.Hole(0, s1))
   c.quote(c.ffi_build, 0, c.VNeut(c.HHole(5), []), s1)
-  |> should.equal(c.Term(c.Hole(5), s1))
+  |> should.equal(c.Hole(5, s1))
 }
 
 pub fn quote_neut_dot_test() {
   let v = c.VNeut(c.HVar(0), [c.EDot("x")])
   c.quote(c.ffi_build, 1, v, s1)
-  |> should.equal(c.Term(c.Dot(c.Term(c.Var(0), s1), "x"), s1))
+  |> should.equal(c.Dot(c.Var(0, s1), "x", s1))
 }
 
 pub fn quote_neut_app_test() {
   let v = c.VNeut(c.HVar(0), [c.EApp(v32t)])
   c.quote(c.ffi_build, 1, v, s1)
-  |> should.equal(c.Term(
-    c.App(c.Term(c.Var(0), s1), [], c.Term(c.LitT(c.I32T), s1)),
-    s1,
-  ))
+  |> should.equal(c.App(c.Var(0, s1), [], c.LitT(c.I32T, s1), s1))
 }
 
 pub fn quote_rcd_test() {
   let v = c.VRcd([#("a", v32t), #("b", v64t)])
   c.quote(c.ffi_build, 0, v, s1)
-  |> should.equal(c.Term(
-    c.Rcd([
-      #("a", c.Term(c.LitT(c.I32T), s1)),
-      #("b", c.Term(c.LitT(c.I64T), s1)),
-    ]),
-    s1,
-  ))
+  |> should.equal(c.Rcd([
+    #("a", c.LitT(c.I32T, s1)),
+    #("b", c.LitT(c.I64T, s1)),
+  ], s1))
 }
 
 pub fn quote_ctr_test() {
   let v = c.VCtrValue(c.VCtr("A", v32t))
   c.quote(c.ffi_build, 0, v, s1)
-  |> should.equal(c.Term(c.Ctr("A", c.Term(c.LitT(c.I32T), s1)), s1))
+  |> should.equal(c.Ctr("A", c.LitT(c.I32T, s1), s1))
 }
 
 pub fn quote_lam_test() {
   // Quoting a lambda creates a fresh variable and quotes the body
-  let v = c.VLam([], "x", [], c.Term(c.Var(0), s1))
+  let v = c.VLam([], "x", [], c.Var(0, s1))
   c.quote(c.ffi_build, 0, v, s1)
-  |> should.equal(c.Term(c.Lam([], #("x", c.Term(c.Hole(-1), s1)), c.Term(c.Var(0), s1)), s1))
+  |> should.equal(c.Lam([], #("x", c.Hole(-1, s1)), c.Var(0, s1), s1))
 }
 
 pub fn quote_pi_test() {
-  let v = c.VPi([], "x", [], v32t, c.Term(c.Var(0), s1))
+  let v = c.VPi([], "x", [], v32t, c.Var(0, s1))
   c.quote(c.ffi_build, 0, v, s1)
-  |> should.equal(c.Term(
-    c.Pi([], "x", c.Term(c.LitT(c.I32T), s1), c.Term(c.Var(0), s1)),
-    s1,
-  ))
+  |> should.equal(c.Pi([], "x", c.LitT(c.I32T, s1), c.Var(0, s1), s1))
 }
 
 pub fn quote_verr_test() {
   c.quote(c.ffi_build, 0, c.VErr, s1)
-  |> should.equal(c.Term(c.Hole(-1), s1))
+  |> should.equal(c.Hole(-1, s1))
 }
 
 // ============================================================================
@@ -292,44 +283,44 @@ pub fn quote_verr_test() {
 
 pub fn normalize_id_test() {
   // Normalize the identity function
-  let id = c.Term(c.Lam([], #("x", c.Term(c.Hole(-1), s1)), c.Term(c.Var(0), s1)), s1)
+  let id = c.Lam([], #("x", c.Hole(-1, s1)), c.Var(0, s1), s1)
   c.normalize(c.ffi_build, [], id, s1)
-  |> should.equal(c.Term(c.Lam([], #("x", c.Term(c.Hole(-1), s1)), c.Term(c.Var(0), s1)), s1))
+  |> should.equal(c.Lam([], #("x", c.Hole(-1, s1)), c.Var(0, s1), s1))
 }
 
 pub fn normalize_app_test() {
   // Normalize (λx. x) y → y
-  let id = c.Term(c.Lam([], #("x", c.Term(c.Hole(-1), s1)), c.Term(c.Var(0), s1)), s1)
-  let arg = c.Term(c.LitT(c.I32T), s1)
-  let app = c.Term(c.App(id, [], arg), s1)
+  let id = c.Lam([], #("x", c.Hole(-1, s1)), c.Var(0, s1), s1)
+  let arg = c.LitT(c.I32T, s1)
+  let app = c.App(id, [], arg, s1)
   c.normalize(c.ffi_build, [], app, s1)
-  |> should.equal(c.Term(c.LitT(c.I32T), s1))
+  |> should.equal(c.LitT(c.I32T, s1))
 }
 
 pub fn normalize_nested_app_test() {
   // Normalize (λx. λy. x) a b → a
-  let lam_inner = c.Term(c.Lam([], #("y", c.Term(c.Hole(-1), s1)), c.Term(c.Var(1), s1)), s1)
-  let lam1 = c.Term(c.Lam([], #("x", c.Term(c.Hole(-1), s1)), lam_inner), s1)
-  let app1 = c.Term(c.App(lam1, [], c.Term(c.LitT(c.I32T), s1)), s1)
-  let app2 = c.Term(c.App(app1, [], c.Term(c.LitT(c.I64T), s1)), s1)
+  let lam_inner = c.Lam([], #("y", c.Hole(-1, s1)), c.Var(1, s1), s1)
+  let lam1 = c.Lam([], #("x", c.Hole(-1, s1)), lam_inner, s1)
+  let app1 = c.App(lam1, [], c.LitT(c.I32T, s1), s1)
+  let app2 = c.App(app1, [], c.LitT(c.I64T, s1), s1)
   c.normalize(c.ffi_build, [], app2, s1)
-  |> should.equal(c.Term(c.LitT(c.I32T), s1))
+  |> should.equal(c.LitT(c.I32T, s1))
 }
 
 pub fn normalize_dot_test() {
   // Normalize {a = 1}.a → 1
-  let rcd = c.Term(c.Rcd([#("a", c.Term(c.Lit(c.I32(1)), s1))]), s1)
-  let dot = c.Term(c.Dot(rcd, "a"), s1)
+  let rcd = c.Rcd([#("a", c.Lit(c.I32(1), s1))], s1)
+  let dot = c.Dot(rcd, "a", s1)
   c.normalize(c.ffi_build, [], dot, s1)
-  |> should.equal(c.Term(c.Lit(c.I32(1)), s1))
+  |> should.equal(c.Lit(c.I32(1), s1))
 }
 
 pub fn normalize_ann_test() {
   // Normalize (1 : I32) → 1
   let ann =
-    c.Term(c.Ann(c.Term(c.Lit(c.I32(1)), s1), c.Term(c.LitT(c.I32T), s1)), s1)
+    c.Ann(c.Lit(c.I32(1), s1), c.LitT(c.I32T, s1), s1)
   c.normalize(c.ffi_build, [], ann, s1)
-  |> should.equal(c.Term(c.Lit(c.I32(1)), s1))
+  |> should.equal(c.Lit(c.I32(1), s1))
 }
 
 // ============================================================================
@@ -355,7 +346,7 @@ pub fn force_solved_hole_test() {
 
 pub fn force_hole_with_spine_test() {
   // Force on solved hole with spine applies the spine
-  let sub = [#(0, c.VLam([], "x", [], c.Term(c.Var(0), s1)))]
+  let sub = [#(0, c.VLam([], "x", [], c.Var(0, s1)))]
   let v = c.VNeut(c.HHole(0), [c.EApp(v32t)])
   c.force(c.ffi_build, sub, v) |> should.equal(v32t)
 }
@@ -396,7 +387,7 @@ pub fn check_type_with_hole_test() {
 pub fn infer_multiple_errors_test() {
   // Create a term with multiple undefined variables
   // Both errors should be accumulated
-  let term = c.Term(c.App(c.Term(c.Var(0), s1), [], c.Term(c.Var(1), s1)), s1)
+  let term = c.App(c.Var(0, s1), [], c.Var(1, s1), s1)
   let #(_, _, s) = c.infer(s, term)
 
   // Should have at least 2 errors (one for each undefined var)
@@ -409,7 +400,7 @@ pub fn infer_multiple_errors_test() {
 
 pub fn check_accumulates_errors_test() {
   // Type mismatch should be recorded, not thrown
-  let #(_, s) = c.check(s, c.Term(c.Lit(c.I32(1)), s1), v64t, s2)
+  let #(_, s) = c.check(s, c.Lit(c.I32(1), s1), v64t, s2)
 
   s.errors
   |> should.equal([c.TypeMismatch(v32t, v64t, s1, s2)])
@@ -979,8 +970,8 @@ pub fn lam_infer_unknown_test() {
   // Check value is VLam and type is VPi with hole
   case result {
     #(
-      c.VLam([], "x", [], c.Term(c.Var(-1), _)),
-      c.VPi([], "x", [], c.VNeut(c.HHole(0), []), c.Term(c.Hole(0), _)),
+      c.VLam([], "x", [], c.Var(-1, _)),
+      c.VPi([], "x", [], c.VNeut(c.HHole(0), []), c.Hole(0, _)),
       _,
     ) -> True |> should.be_true
     _ -> False |> should.be_true
@@ -992,7 +983,7 @@ pub fn check_lam_test() {
   let result = c.check(s, term, c.VPi([], "x", [], c.VTyp(0), typ(0, s3)), s4)
   // Check value is VLam and context has the variable
   case result {
-    #(c.VLam([], "x", [], c.Term(c.Var(-1), _)), s) -> {
+    #(c.VLam([], "x", [], c.Var(-1, _)), s) -> {
       case list.length(s.ctx) == 1 {
         True -> True |> should.be_true
         False -> False |> should.be_true
@@ -1004,7 +995,7 @@ pub fn check_lam_test() {
 
 pub fn check_lam_mismatch_test() {
   let term = lam("x", var(0, s1), s2)
-  let term_ty = c.VPi([], "x", [], vhole(0), c.Term(c.Hole(0), s1))
+  let term_ty = c.VPi([], "x", [], vhole(0), c.Hole(0, s1))
   c.check(s, term, v32t, s3)
   |> should.equal(#(
     c.VErr,
@@ -1141,8 +1132,8 @@ pub fn quote_call_test() {
   // VCall quotes back to Call term
   let vcall = c.VCall("unknown", [v32(1), v32(2)])
   let quoted = c.quote(c.ffi_build, 0, vcall, s1)
-  case quoted.data {
-    c.Call("unknown", args) -> {
+  case quoted {
+    c.Call("unknown", args, _) -> {
       { list.length(args) == 2 } |> should.be_true
     }
     _ -> False |> should.be_true
@@ -1403,8 +1394,8 @@ pub fn vcall_quote_test() {
   // VCall quotes back to Call term
   let vcall = c.VCall("unknown", [v32(1), v32(2)])
   let quoted = c.quote(c.ffi_build, 0, vcall, s1)
-  case quoted.data {
-    c.Call("unknown", args) -> {
+  case quoted {
+    c.Call("unknown", args, _) -> {
       { list.length(args) == 2 } |> should.be_true
     }
     _ -> False |> should.be_true
@@ -1831,7 +1822,7 @@ pub fn check_exhaustiveness_any_test() {
   |> should.equal([])
   let cases = [case_(pany, i32(1, s0), s1), case_(pany, i32(2, s0), s2)]
   c.check_exhaustiveness(s, cases, s0)
-  |> should.equal([c.MatchRedundantCase(s2)])
+  |> should.equal([c.MatchRedundantCase(s0)])
 }
 
 pub fn check_exhaustiveness_typ_test() {
@@ -1867,7 +1858,7 @@ pub fn check_exhaustiveness_rcd_test() {
   |> should.equal([])
   let cases = [case_(prcd([]), i32(1, s0), s1), case_(pany, i32(2, s0), s2)]
   c.check_exhaustiveness(s, cases, s0)
-  |> should.equal([c.MatchRedundantCase(s2)])
+  |> should.equal([c.MatchRedundantCase(s0)])
 }
 
 pub fn check_exhaustiveness_ctr_undefined_test() {
@@ -1964,15 +1955,15 @@ pub const s8 = Span("core_test", 8, 8, 8, 8)
 pub const s9 = Span("core_test", 9, 9, 9, 9)
 
 fn typ(l, s) {
-  c.Term(c.Typ(l), s)
+  c.Typ(l, s)
 }
 
 fn lit(v, s) {
-  c.Term(c.Lit(v), s)
+  c.Lit(v, s)
 }
 
 fn litt(t, s) {
-  c.Term(c.LitT(t), s)
+  c.LitT(t, s)
 }
 
 fn i32(v, s) {
@@ -1996,59 +1987,59 @@ fn vf64(v: Float) {
 }
 
 fn i32t(s) {
-  c.Term(c.LitT(c.I32T), s)
+  c.LitT(c.I32T, s)
 }
 
 const v32t = c.VLitT(c.I32T)
 
 fn i64t(s) {
-  c.Term(c.LitT(c.I64T), s)
+  c.LitT(c.I64T, s)
 }
 
 const v64t = c.VLitT(c.I64T)
 
 fn var(i, s) {
-  c.Term(c.Var(i), s)
+  c.Var(i, s)
 }
 
 fn hole(id, s) {
-  c.Term(c.Hole(id), s)
+  c.Hole(id, s)
 }
 
 fn ctr(k, arg, s) {
-  c.Term(c.Ctr(k, arg), s)
+  c.Ctr(k, arg, s)
 }
 
 fn rcd(fields, s) {
-  c.Term(c.Rcd(fields), s)
+  c.Rcd(fields, s)
 }
 
 fn dot(arg, name, s) {
-  c.Term(c.Dot(arg, name), s)
+  c.Dot(arg, name, s)
 }
 
 fn pi(name, in, out, s) {
-  c.Term(c.Pi([], name, in, out), s)
+  c.Pi([], name, in, out, s)
 }
 
 fn lam(name, body, s) {
-  c.Term(c.Lam([], #(name, c.Term(c.Hole(-1), s1)), body), s)
+  c.Lam([], #(name, c.Hole(-1, s1)), body, s)
 }
 
 fn ann(x, t, s) {
-  c.Term(c.Ann(x, t), s)
+  c.Ann(x, t, s)
 }
 
 fn app(f, a, s) {
-  c.Term(c.App(f, [], a), s)
+  c.App(f, [], a, s)
 }
 
 fn call(name, args, s) {
-  c.Term(c.Call(name, args), s)
+  c.Call(name, args, s)
 }
 
 fn match(arg, motive, cases, s) {
-  c.Term(c.Match(arg, motive, cases), s)
+  c.Match(arg, motive, cases, s)
 }
 
 fn case_(p, b, s) {
