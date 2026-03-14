@@ -306,23 +306,25 @@ pub const default_config = Config(target: "backend/javascript", permissions: [])
 
 const prelude_ctrs = [
   // Bool type: data Bool = True | False
-  #("True", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
-  #("False", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
+  // For now, True/False return I32T as a placeholder
+  #("True", CtrDef([], Term(LitT(I32T), no_span), Term(LitT(I32T), no_span))),
+  #("False", CtrDef([], Term(LitT(I32T), no_span), Term(LitT(I32T), no_span))),
   
   // Option type: data Option(a) = Some(a) | None
-  // Simplified: no type parameters for now
-  #("Some", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
-  #("None", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
+  // Some : (a : Type) -> a -> Option(a)
+  // For now, simplified: returns I32T
+  #("Some", CtrDef(["a"], Term(Var(0), no_span), Term(LitT(I32T), no_span))),
+  // None : (a : Type) -> Option(a)
+  #("None", CtrDef(["a"], Term(LitT(I32T), no_span), Term(LitT(I32T), no_span))),
   
   // Result type: data Result(a, e) = Ok(a) | Err(e)
-  // Simplified: no type parameters for now
-  #("Ok", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
-  #("Err", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
+  #("Ok", CtrDef(["a", "e"], Term(Var(1), no_span), Term(LitT(I32T), no_span))),
+  #("Err", CtrDef(["a", "e"], Term(Var(0), no_span), Term(LitT(I32T), no_span))),
   
   // Ordering type: data Ordering = LT | EQ | GT
-  #("LT", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
-  #("EQ", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
-  #("GT", CtrDef([], Term(Typ(0), no_span), Term(Typ(1), no_span))),
+  #("LT", CtrDef([], Term(LitT(I32T), no_span), Term(LitT(I32T), no_span))),
+  #("EQ", CtrDef([], Term(LitT(I32T), no_span), Term(LitT(I32T), no_span))),
+  #("GT", CtrDef([], Term(LitT(I32T), no_span), Term(LitT(I32T), no_span))),
 ]
 
 const no_span = Span("", 0, 0, 0, 0)

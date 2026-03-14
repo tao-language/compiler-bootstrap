@@ -1,1 +1,1 @@
-%let x = #True in x
+%let x = #True in match(x, I32T, [(#True, None, I32(1)), (#False, None, I32(0))])
