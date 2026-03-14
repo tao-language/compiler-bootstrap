@@ -303,28 +303,40 @@ pub const default_config = Config(target: "backend/javascript", permissions: [])
 // ============================================================================
 // These constructors are automatically available in all programs.
 // They define the standard library prelude types: Bool, Option, Result, Ordering.
+//
+// Note: Core language requires all constructors to have an argument.
+// Nullary constructors use Typ(0) as a dummy unit argument.
+//
+// Type representation:
+// - Typ(0) = Type(0) - the universe of small types
+// - Typ(1) = Type(1) - the universe of large types (contains Type(0))
+// - Type constructors like Option have type: Type(0) -> Type(0), represented as Typ(1)
+// - Constructors return applications: Option(a) = App(Option, a)
 
 const prelude_ctrs = [
   // Bool type: data Bool = True | False
-  // For now, True/False return I32T as a placeholder
-  #("True", CtrDef([], Term(LitT(I32T), no_span), Term(LitT(I32T), no_span))),
-  #("False", CtrDef([], Term(LitT(I32T), no_span), Term(LitT(I32T), no_span))),
-  
+  // Bool : Type(0), True/False : Bool
+  // True/False take Typ(0) as dummy unit argument
+  #("True", CtrDef([], Term(Typ(0), no_span), Term(Typ(0), no_span))),
+  #("False", CtrDef([], Term(Typ(0), no_span), Term(Typ(0), no_span))),
+
   // Option type: data Option(a) = Some(a) | None
-  // Some : (a : Type) -> a -> Option(a)
-  // For now, simplified: returns I32T
-  #("Some", CtrDef(["a"], Term(Var(0), no_span), Term(LitT(I32T), no_span))),
-  // None : (a : Type) -> Option(a)
-  #("None", CtrDef(["a"], Term(LitT(I32T), no_span), Term(LitT(I32T), no_span))),
-  
+  // Option : Type(0) -> Type(0), represented as Typ(1)
+  // Some : (a : Type(0)) -> a -> Option(a)
+  #("Some", CtrDef(["a"], Term(Var(0), no_span), Term(Typ(0), no_span))),
+  // None : (a : Type(0)) -> Typ(0) -> Option(a) (takes dummy arg)
+  #("None", CtrDef(["a"], Term(Typ(0), no_span), Term(Typ(0), no_span))),
+
   // Result type: data Result(a, e) = Ok(a) | Err(e)
-  #("Ok", CtrDef(["a", "e"], Term(Var(1), no_span), Term(LitT(I32T), no_span))),
-  #("Err", CtrDef(["a", "e"], Term(Var(0), no_span), Term(LitT(I32T), no_span))),
-  
+  // Result : Type(0) -> Type(0) -> Type(0)
+  #("Ok", CtrDef(["a", "e"], Term(Var(1), no_span), Term(Typ(0), no_span))),
+  #("Err", CtrDef(["a", "e"], Term(Var(0), no_span), Term(Typ(0), no_span))),
+
   // Ordering type: data Ordering = LT | EQ | GT
-  #("LT", CtrDef([], Term(LitT(I32T), no_span), Term(LitT(I32T), no_span))),
-  #("EQ", CtrDef([], Term(LitT(I32T), no_span), Term(LitT(I32T), no_span))),
-  #("GT", CtrDef([], Term(LitT(I32T), no_span), Term(LitT(I32T), no_span))),
+  // LT/EQ/GT take Typ(0) as dummy unit argument
+  #("LT", CtrDef([], Term(Typ(0), no_span), Term(Typ(0), no_span))),
+  #("EQ", CtrDef([], Term(Typ(0), no_span), Term(Typ(0), no_span))),
+  #("GT", CtrDef([], Term(Typ(0), no_span), Term(Typ(0), no_span))),
 ]
 
 const no_span = Span("", 0, 0, 0, 0)

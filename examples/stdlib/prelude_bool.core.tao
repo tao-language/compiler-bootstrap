@@ -1,1 +1,1 @@
-%let x = #True in match(x, I32T, [(#True, None, I32(1)), (#False, None, I32(0))])
+%match #True ~ (x: Typ(0)) -> Typ(0) { | #True -> I32(1) | #False -> I32(0) }

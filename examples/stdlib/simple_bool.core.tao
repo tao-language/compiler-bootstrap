@@ -1,0 +1,1 @@
+%let dummy = Typ(0) in %match #True(dummy) ~ (x: Typ(0)) -> Typ(0) { | #True(x) -> I32(1) | #False(x) -> I32(0) }
