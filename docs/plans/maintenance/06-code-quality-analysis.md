@@ -3,8 +3,8 @@
 > **Date**: March 2026
 > **Scope**: `src/core/` and `src/tao/`
 > **Goal**: Identify improvements before standard library implementation
-> **Status**: ✅ **Phase 1 Complete** - All 4/4 tasks done
-> **Last Updated**: March 14, 2026
+> **Status**: ✅ **Phase 1 Complete** + Term Flattening Complete
+> **Last Updated**: March 14, 2026 (Term Flattening Complete)
 
 ---
 
@@ -31,27 +31,29 @@
 |--------|--------|-------|
 | Unified Ctr representation | ✅ **Complete** | Replaced `Ctr`/`CtrNullary` with single `Ctr(tag, arg)` + `Unit` |
 | Removed Mvp prefixes | ✅ **Complete** | Renamed `MvpExpr` → `Expr` in Tao |
+| **Flattened Term type** | ✅ **Complete** | Removed `TermData` wrapper, span now direct parameter |
 | Tests | ✅ **424 passing** | All tests pass after refactoring |
 
 ---
 
 ## Executive Summary
 
-The codebase is **functional and well-tested** (424 tests passing), but has several areas that would benefit from refactoring before implementing the standard library. The main issues are:
+The codebase is **functional and well-tested** (424 tests passing). Major refactoring completed:
 
-1. **Code duplication** in builtin implementations
-2. **Inconsistent naming** conventions
-3. **Missing abstractions** for common patterns
-4. **Overly complex grammar** structure in Tao
-5. **Hardcoded type assumptions** throughout
+✅ **Term Flattening Complete** (March 14, 2026):
+- Removed `Term(TermData, Span)` indirection
+- All 17 Term constructors now include span directly
+- Added `get_span(term: Term) -> Span` helper
+- Updated ~4000 lines across core, syntax, error_formatter, tao, and tests
+- **Benefits**: Simpler patterns, direct construction, better performance
 
-**Priority**: Address critical issues (Phase 1) before standard library, then incremental improvements.
+**Priority**: Address remaining Phase 1 items before standard library, then incremental improvements.
 
 ---
 
 ## Analysis by File
 
-### `src/core/core.gleam` (2030 lines)
+### `src/core/core.gleam` (2190 lines)
 
 #### ✅ Strengths
 - Well-documented with clear type theory foundations
@@ -250,6 +252,8 @@ fn map_literal(
 
 ##### 5. **Term/ TermData Indirection** (MEDIUM PRIORITY)
 
+**Status**: ✅ **COMPLETE** (March 14, 2026)
+
 **Problem**: Current Term type uses wrapper pattern:
 
 ```gleam
@@ -303,9 +307,16 @@ pub type Term {
 
 **Recommendation**: Do this refactoring in a dedicated branch before major feature work. The simplification will make all future development easier.
 
+**✅ Completed**: March 14, 2026
+- Flattened all 17 Term constructors
+- Added `get_span(term: Term) -> Span` helper
+- Updated all pattern matches: `case term.data { ... }` → `case term { ... }`
+- Updated all constructions: `Term(X(...), span)` → `X(..., span)`
+- All 424 tests passing
+
 ---
 
-### `src/core/syntax.gleam` (1713 lines)
+### `src/core/syntax.gleam` (1746 lines)
 
 #### ✅ Strengths
 - Comprehensive formatter with document algebra
