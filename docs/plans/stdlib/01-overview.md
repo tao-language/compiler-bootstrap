@@ -1,7 +1,7 @@
 # Standard Library Overview
 
 > **Goal**: Provide a minimal, pragmatic standard library for Tao with essential types and operations
-> **Status**: ⏳ **In Progress** - Phase 1 (Prelude) nullary constructors complete
+> **Status**: ⏳ **In Progress** - Phase 1 (Prelude) nullary constructors implemented, match motive type needs proper type definitions
 > **Date**: March 2026
 
 ---
@@ -22,12 +22,14 @@
   - `LT`, `EQ`, `GT` : Ordering (nullary constructors)
 - ✅ Type parameter instantiation for constructors
 - ✅ Nullary constructor syntax and pattern matching
+- ✅ Nullary constructor evaluation and type inference
+- ✅ Exhaustiveness checking with type family grouping
 
 ### What's Pending
 
-- 📋 **Exhaustiveness Checking** - Full support for nullary constructors in match
-- 📋 **Proper Type Representation** - Define Bool, Option, Result as proper types
-- 📋 **Working Match Examples** - Examples with full type checking
+- 📋 **Proper Type Representation** - Define Bool, Option, Result as proper types (not Typ(0))
+- 📋 **Working Match Examples** - Match expressions need proper type definitions for motive
+- 📋 **Unit Tests** - Tests for nullary constructors
 - 📋 **Phase 2: Numeric Hierarchy** - Type classes for numeric operations
 - 📋 **Phase 3: Collections** - List, Vector, Map
 - 📋 **Phase 4: String and I/O** - String operations, file I/O

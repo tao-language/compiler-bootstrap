@@ -1893,11 +1893,55 @@ pub fn get_concrete_heads(matrix: PMatrix) -> List(PHead) {
   |> list.unique
 }
 
+/// Get the type family for a constructor.
+/// For prelude types, use hardcoded mapping. For custom types, use return type.
+fn get_type_family(s: State, tag: String) -> String {
+  case tag {
+    "True" | "False" -> "bool"
+    "Some" | "None" -> "option"
+    "Ok" | "Err" -> "result"
+    "LT" | "EQ" | "GT" -> "ordering"
+    _ -> {
+      // For custom constructors, use the return type structure
+      case list.key_find(s.ctrs, tag) {
+        Ok(ctr) -> {
+          case ctr.ret_ty.data {
+            Typ(k) -> "typ_" <> int.to_string(k)
+            // For App types like App(Var(1), [Var(0)], span), use the function part
+            App(fun, _, _) -> {
+              case fun.data {
+                Var(i) -> "app_var_" <> int.to_string(i)
+                _ -> "app"
+              }
+            }
+            // For Ctr types like Ctr("T", Typ(1)), use the tag and arg type
+            Ctr(type_tag, arg) -> {
+              case arg.data {
+                Typ(k) -> "ctr_" <> type_tag <> "_" <> int.to_string(k)
+                _ -> "ctr_" <> type_tag
+              }
+            }
+            _ -> "unknown"
+          }
+        }
+        Error(Nil) -> "unknown"
+      }
+    }
+  }
+}
+
 /// Find missing constructor heads for GADT-style exhaustiveness.
 ///
 /// For constructor patterns, we check which other constructors of the
 /// same type could apply but aren't covered. This handles GADTs where
 /// different constructors may have different return types.
+///
+/// Note: For prelude types (all returning Typ(0)), we use a hardcoded
+/// mapping to group constructors by their type family:
+/// - True, False -> Bool
+/// - Some, None -> Option
+/// - Ok, Err -> Result
+/// - LT, EQ, GT -> Ordering
 pub fn get_missing_heads(
   s: State,
   index: CtrIndex,
@@ -1906,24 +1950,24 @@ pub fn get_missing_heads(
   case concrete_heads {
     [HAny, ..] -> []
     [HCtr(name), ..] -> {
-      let env = get_env(s)
-      let ret_ty = case list.key_find(s.ctrs, name) {
-        Ok(d) -> eval(s.ffi, env, d.ret_ty)
-        _ -> VErr
-      }
-      let span = Span("", 1, 1, 1, 1)
-      let ret_tag = case ret_ty {
-        VCtrValue(VCtr(tag, _)) -> tag
-        VCtrValue(VCtrNullary(tag)) -> tag
-        _ -> ""
-      }
-      list.key_find(index, ret_tag)
+      let type_family = get_type_family(s, name)
+      list.key_find(index, type_family)
+      |> result.unwrap([])
+      |> list.filter_map(fn(entry) {
+        let #(tag, _) = entry
+        Ok(HCtr(tag))
+      })
+      |> list.filter(fn(h) { !list.contains(concrete_heads, h) })
+    }
+    [HCtrNullary(name), ..] -> {
+      let type_family = get_type_family(s, name)
+      list.key_find(index, type_family)
       |> result.unwrap([])
       |> list.filter_map(fn(entry) {
         let #(tag, ctr) = entry
-        case unify(s, eval(s.ffi, env, ctr.ret_ty), ret_ty, span, span) {
-          Ok(_) -> Ok(HCtr(tag))
-          _ -> Error(Nil)
+        case ctr.arg_ty.data {
+          Typ(0) -> Ok(HCtrNullary(tag))
+          _ -> Ok(HCtr(tag))
         }
       })
       |> list.filter(fn(h) { !list.contains(concrete_heads, h) })
@@ -2017,18 +2061,13 @@ pub fn check_exhaustiveness(
   cases: List(Case),
   span: Span,
 ) -> List(Error) {
-  let env = get_env(s)
-  // Build an index of constructors by their return type tag
+  // Build an index of constructors by their type family
   let index =
     list.fold(s.ctrs, [], fn(index, entry) {
-      let #(tag, ctr) = entry
-      let ret_tag = case eval(s.ffi, env, ctr.ret_ty) {
-        VCtrValue(VCtr(ret_tag, _)) -> ret_tag
-        VCtrValue(VCtrNullary(ret_tag)) -> ret_tag
-        _ -> ""
-      }
-      let existing = list.key_find(index, ret_tag) |> result.unwrap([])
-      list.key_set(index, ret_tag, [#(tag, ctr), ..existing])
+      let #(tag, _) = entry
+      let type_family = get_type_family(s, tag)
+      let existing = list.key_find(index, type_family) |> result.unwrap([])
+      list.key_set(index, type_family, [#(tag, entry.1), ..existing])
     })
   // Check each case for redundancy
   let #(matrix, redundant) =

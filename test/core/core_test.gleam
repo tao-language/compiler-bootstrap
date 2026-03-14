@@ -1794,11 +1794,12 @@ pub fn get_missing_heads_ctr_test() {
   // Trial unification for GADTs.
   let nil = rcd([], s0)
   let t = fn(i) { ctr("T", typ(i, s0), s0) }
-  let a = #("A", c.CtrDef([], nil, t(1)))
-  let b = #("B", c.CtrDef([], nil, t(2)))
-  let c = #("C", c.CtrDef([], nil, t(1)))
-  let s = c.State(..s, ctrs: [a, b, c])
-  let index = [#("T", [a, b, c])]
+  let a_def = c.CtrDef([], nil, t(1))
+  let b_def = c.CtrDef([], nil, t(2))
+  let c_def = c.CtrDef([], nil, t(1))
+  let s = c.State(..s, ctrs: [#("A", a_def), #("B", b_def), #("C", c_def)])
+  // Index should group by return type: A and C return t(1)=Ctr("T",Typ(1)), B returns t(2)=Ctr("T",Typ(2))
+  let index = [#("ctr_T_1", [#("A", a_def), #("C", c_def)]), #("ctr_T_2", [#("B", b_def)])]
   c.get_missing_heads(s, index, [c.HCtr("A")]) |> should.equal([c.HCtr("C")])
   c.get_missing_heads(s, index, [c.HCtr("B")]) |> should.equal([])
   c.get_missing_heads(s, index, [c.HCtr("C")]) |> should.equal([c.HCtr("A")])
