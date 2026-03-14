@@ -28,7 +28,7 @@ import syntax/grammar.{
 // ============================================================================
 /// Expression for Tao with overloading support.
 ///
-/// Supports: Arithmetic expressions, variables, and overloaded operators
+/// Supports: Arithmetic expressions, variables, comparison operators, and overloaded operators
 pub type MvpExpr {
   MvpInt(value: Int, span: Span)
   MvpVar(name: String, span: Span)
@@ -43,6 +43,10 @@ pub type MvpExpr {
   MvpGt(left: MvpExpr, right: MvpExpr, span: Span)
   MvpLte(left: MvpExpr, right: MvpExpr, span: Span)
   MvpGte(left: MvpExpr, right: MvpExpr, span: Span)
+  /// Logical operators
+  MvpAnd(left: MvpExpr, right: MvpExpr, span: Span)
+  MvpOr(left: MvpExpr, right: MvpExpr, span: Span)
+  MvpNot(expr: MvpExpr, span: Span)
   /// Overloaded function definition (e.g., fn (+)(x: I32) -> I32 { ... })
   OverloadedFn(
     name: String,
@@ -140,6 +144,20 @@ fn make_gte(left: MvpExpr, right: MvpExpr) -> MvpExpr {
   MvpGte(left, right, span)
 }
 
+fn make_and(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+  let span = merge_spans(get_span(left), get_span(right))
+  MvpAnd(left, right, span)
+}
+
+fn make_or(left: MvpExpr, right: MvpExpr) -> MvpExpr {
+  let span = merge_spans(get_span(left), get_span(right))
+  MvpOr(left, right, span)
+}
+
+fn make_not(expr: MvpExpr) -> MvpExpr {
+  MvpNot(expr, get_span(expr))
+}
+
 fn ast_to_expr(ast) -> MvpExpr {
   case ast {
     AstValue(e) -> e
@@ -165,6 +183,9 @@ fn get_span(expr: MvpExpr) -> Span {
     MvpGt(_, _, span) -> span
     MvpLte(_, _, span) -> span
     MvpGte(_, _, span) -> span
+    MvpAnd(_, _, span) -> span
+    MvpOr(_, _, span) -> span
+    MvpNot(_, span) -> span
     OverloadedFn(_, _, _, _, _, _, span) -> span
     OverloadedApp(_, _, span) -> span
   }
@@ -182,6 +203,9 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
     tokens: ["Ident", "Number", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow"],
     keywords: ["fn", "let", "mut", "match", "if", "else", "type", "import", "export", "as", "comptime", "true", "false"],
     operators: [
+      // Logical operators (precedence 3)
+      infix_binary("&&", make_and, InfixLeft, 3, " && "),
+      infix_binary("||", make_or, InfixLeft, 3, " || "),
       // Comparison operators (precedence 5)
       infix_binary("==", make_eq, InfixLeft, 5, " == "),
       infix_binary("!=", make_neq, InfixLeft, 5, " != "),
@@ -213,7 +237,7 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
           },
         ),
       ]),
-      // Stmt = Fn | Expr
+      // Stmt = Fn | Expr (top-level expression)
       rule("Stmt", [
         alt(ref("OverloadedFn"), fn(values) {
           case values {
@@ -248,6 +272,41 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
           make_overloaded_fn,
         ),
       ]),
+      // Logic level: && and || (precedence 3)
+      left_assoc_rule(
+        "Logic",
+        "Comparison",
+        [
+          infix_binary("&&", make_and, InfixLeft, 3, " && "),
+          infix_binary("||", make_or, InfixLeft, 3, " || "),
+        ],
+        3,
+      ),
+      // Comparison level: ==, !=, <, >, <=, >= (precedence 5)
+      left_assoc_rule(
+        "Comparison",
+        "Term",
+        [
+          infix_binary("==", make_eq, InfixLeft, 5, " == "),
+          infix_binary("!=", make_neq, InfixLeft, 5, " != "),
+          infix_binary("<", make_lt, InfixLeft, 5, " < "),
+          infix_binary(">", make_gt, InfixLeft, 5, " > "),
+          infix_binary("<=", make_lte, InfixLeft, 5, " <= "),
+          infix_binary(">=", make_gte, InfixLeft, 5, " >= "),
+        ],
+        5,
+      ),
+      // Term level: * and / (precedence 20)
+      left_assoc_rule(
+        "Term",
+        "Unary",
+        [
+          infix_binary("*", make_mul, InfixLeft, 20, " * "),
+          infix_binary("/", make_div, InfixLeft, 20, " / "),
+        ],
+        20,
+      ),
+      // Expr level: + and - (precedence 10) - TOP LEVEL
       left_assoc_rule(
         "Expr",
         "Term",
@@ -257,15 +316,27 @@ pub fn tao_grammar() -> Grammar(MvpExpr) {
         ],
         10,
       ),
-      left_assoc_rule(
-        "Term",
-        "Primary",
-        [
-          infix_binary("*", make_mul, InfixLeft, 20, " * "),
-          infix_binary("/", make_div, InfixLeft, 20, " / "),
-        ],
-        20,
-      ),
+      // Unary operators (prefix)
+      rule("Unary", [
+        alt(
+          seq([
+            keyword_pattern("!"),
+            ref("Primary"),
+          ]),
+          fn(values) {
+            case values {
+              [_, AstValue(expr)] -> make_not(expr)
+              _ -> MvpInt(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+        alt(ref("Primary"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> MvpInt(0, Span("error", 0, 0, 0, 0))
+          }
+        }),
+      ]),
       rule("Primary", [
         alt(
           token_pattern("Number"),
@@ -318,6 +389,9 @@ pub fn get_expr_span(expr: MvpExpr) -> Span {
     MvpGt(_, _, span) -> span
     MvpLte(_, _, span) -> span
     MvpGte(_, _, span) -> span
+    MvpAnd(_, _, span) -> span
+    MvpOr(_, _, span) -> span
+    MvpNot(_, span) -> span
     OverloadedFn(_, _, _, _, _, _, span) -> span
     OverloadedApp(_, _, span) -> span
   }
@@ -377,6 +451,9 @@ fn format_expr_loop(expr: MvpExpr, parent_prec: Int) -> String {
     MvpGt(l, r, _) -> format_binop(l, r, ">", 5, parent_prec)
     MvpLte(l, r, _) -> format_binop(l, r, "<=", 5, parent_prec)
     MvpGte(l, r, _) -> format_binop(l, r, ">=", 5, parent_prec)
+    MvpAnd(l, r, _) -> format_binop(l, r, "&&", 3, parent_prec)
+    MvpOr(l, r, _) -> format_binop(l, r, "||", 3, parent_prec)
+    MvpNot(e, _) -> "!" <> format_expr_loop(e, 100)
     OverloadedFn(name, type_param, param_name, param_type, return_type, _body, _) -> {
       "fn (" <> name <> ")(" <> param_name <> ": " <> param_type <> ") -> " <> return_type <> " { ... }"
     }

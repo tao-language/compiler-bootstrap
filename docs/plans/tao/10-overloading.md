@@ -11,14 +11,15 @@
 ### What's Working
 
 - ✅ **Tao Lexer** - Tokenizes identifiers, numbers, operators, keywords
-- ✅ **Tao Parser** - Parses expressions, overloaded functions, and comparison operators
-- ✅ **Tao Formatter** - Formats expressions, overloaded functions, and comparisons
+- ✅ **Tao Parser** - Parses expressions, overloaded functions, comparison and logical operators
+- ✅ **Tao Formatter** - Formats all expression types with correct precedence
 - ✅ **Tao Desugarer** - Transforms Tao → Core with type matching and catch-all patterns
 - ✅ **Type Matching** - Generates match expressions on type parameters with exhaustiveness
 - ✅ **CLI Integration** - `gleam run run file.tao` works
-- ✅ **Examples** - 4 working examples (arithmetic, overloading, comparisons)
+- ✅ **Examples** - 5 working examples (arithmetic, overloading, comparisons, logical)
 - ✅ **Tests** - **424 tests passing** (100% pass rate)
 - ✅ **Comparison Operators** - `==`, `!=`, `<`, `>`, `<=`, `>=`
+- ✅ **Logical Operators** - `&&`, `||`, `!`
 
 ### What's Pending
 
@@ -357,16 +358,49 @@ let b = (+)(5.0)    // Uses F32 version: 6.0
 
 ---
 
+### Example 5: Logical Operators
+
+**File**: `examples/tao/05_logical.tao`
+
+```tao
+// Tao Example: Logical Operators
+
+// && has higher precedence than ||
+// true || false && false  means  true || (false && false)
+1 || 0 && 0
+
+// Parentheses for clarity
+(1 || 0) && 0
+
+// NOT operator
+!0
+
+// Combined
+!0 && 1 || 0
+```
+
+**Desugars to Core**:
+```core
+%call i32_or(Lit(I32(1)), %call i32_and(Lit(I32(0)), Lit(I32(0))))
+```
+
+**Precedence**:
+- Logical operators have precedence 3 (lowest)
+- Full precedence: `*`, `/` (20) > `+`, `-` (10) > comparisons (5) > `&&`, `||` (3)
+- Unary `!` has highest precedence (binds tightest)
+
+---
+
 ## Supported Types
 
-| Type | Pattern | Arithmetic FFI | Comparison FFI |
-|------|---------|----------------|----------------|
-| `I32` | `%I32` | `i32_add`, `i32_sub`, `i32_mul`, `i32_div` | `i32_eq`, `i32_neq`, `i32_lt`, `i32_gt`, `i32_lte`, `i32_gte` |
-| `I64` | `%I64` | `i64_add`, `i64_sub`, `i64_mul`, `i64_div` | `i64_eq`, `i64_neq`, `i64_lt`, `i64_gt`, `i64_lte`, `i64_gte` |
-| `F32` | `%F32` | `f32_add`, `f32_sub`, `f32_mul`, `f32_div` | `f32_eq`, `f32_neq`, `f32_lt`, `f32_gt`, `f32_lte`, `f32_gte` |
-| `F64` | `%F64` | `f64_add`, `f64_sub`, `f64_mul`, `f64_div` | `f64_eq`, `f64_neq`, `f64_lt`, `f64_gt`, `f64_lte`, `f64_gte` |
-| `U32` | `%U32` | `u32_add`, `u32_sub`, `u32_mul`, `u32_div` | `u32_eq`, `u32_neq`, `u32_lt`, `u32_gt`, `u32_lte`, `u32_gte` |
-| `U64` | `%U64` | `u64_add`, `u64_sub`, `u64_mul`, `u64_div` | `u64_eq`, `u64_neq`, `u64_lt`, `u64_gt`, `u64_lte`, `u64_gte` |
+| Type | Pattern | Arithmetic FFI | Comparison FFI | Logical FFI |
+|------|---------|----------------|----------------|-------------|
+| `I32` | `%I32` | `i32_add`, `i32_sub`, `i32_mul`, `i32_div` | `i32_eq`, `i32_neq`, `i32_lt`, `i32_gt`, `i32_lte`, `i32_gte` | `i32_and`, `i32_or`, `i32_not` |
+| `I64` | `%I64` | `i64_add`, `i64_sub`, `i64_mul`, `i64_div` | `i64_eq`, `i64_neq`, `i64_lt`, `i64_gt`, `i64_lte`, `i64_gte` | `i64_and`, `i64_or`, `i64_not` |
+| `F32` | `%F32` | `f32_add`, `f32_sub`, `f32_mul`, `f32_div` | `f32_eq`, `f32_neq`, `f32_lt`, `f32_gt`, `f32_lte`, `f32_gte` | `f32_and`, `f32_or`, `f32_not` |
+| `F64` | `%F64` | `f64_add`, `f64_sub`, `f64_mul`, `f64_div` | `f64_eq`, `f64_neq`, `f64_lt`, `f64_gt`, `f64_lte`, `f64_gte` | `f64_and`, `f64_or`, `f64_not` |
+| `U32` | `%U32` | `u32_add`, `u32_sub`, `u32_mul`, `u32_div` | `u32_eq`, `u32_neq`, `u32_lt`, `u32_gt`, `u32_lte`, `u32_gte` | `u32_and`, `u32_or`, `u32_not` |
+| `U64` | `%U64` | `u64_add`, `u64_sub`, `u64_mul`, `u64_div` | `u64_eq`, `u64_neq`, `u64_lt`, `u64_gt`, `u64_lte`, `u64_gte` | `u64_and`, `u64_or`, `u64_not` |
 
 ---
 

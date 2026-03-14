@@ -12,7 +12,7 @@
 /// For detailed documentation see:
 /// - [Tao Overloading](../../docs/plans/tao/10-overloading-design.md)
 /// - [Core Syntax](../../docs/core-syntax.md)
-import tao/syntax.{type MvpExpr, MvpInt, MvpVar, MvpAdd, MvpSub, MvpMul, MvpDiv, MvpEq, MvpNeq, MvpLt, MvpGt, MvpLte, MvpGte, OverloadedFn, OverloadedApp, get_expr_span}
+import tao/syntax.{type MvpExpr, MvpInt, MvpVar, MvpAdd, MvpSub, MvpMul, MvpDiv, MvpEq, MvpNeq, MvpLt, MvpGt, MvpLte, MvpGte, MvpAnd, MvpOr, MvpNot, OverloadedFn, OverloadedApp, get_expr_span}
 import core/core.{
   type Term, Term, Lit, I32, Var, Call, Case, Match, Typ, Lam, Hole,
   type Literal, type LiteralType, type Case, type Pattern, I32T, I64T, F32T, F64T, U32T, U64T, PLitT, PAny,
@@ -69,6 +69,9 @@ fn desugar_expr(expr: MvpExpr, ctx: DesugarCtx) -> Term {
     MvpGt(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_gt")
     MvpLte(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_lte")
     MvpGte(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_gte")
+    MvpAnd(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_and")
+    MvpOr(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_or")
+    MvpNot(expr, span) -> desugar_not(expr, span, ctx)
     OverloadedFn(name, type_param, param_name, param_type, return_type, body, span) ->
       desugar_overloaded_fn(name, type_param, param_name, param_type, return_type, body, span)
     OverloadedApp(name, args, span) -> desugar_overloaded_app(name, args, span, ctx)
@@ -106,6 +109,12 @@ fn desugar_binop(
   let left_term = desugar_expr(left, ctx)
   let right_term = desugar_expr(right, ctx)
   Term(Call(op_name, [left_term, right_term]), span)
+}
+
+/// Desugar logical NOT.
+fn desugar_not(expr: MvpExpr, span: Span, ctx: DesugarCtx) -> Term {
+  let expr_term = desugar_expr(expr, ctx)
+  Term(Call("i32_not", [expr_term]), span)
 }
 
 // ============================================================================
