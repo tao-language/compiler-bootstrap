@@ -107,7 +107,7 @@ source → parse → Tao AST → desugar → Term → type_check → Result
 
 **Testing**:
 - ✅ E2E tests with golden file comparison
-- ✅ **376 tests passing**
+- ✅ **424 tests passing**
 - ✅ Auto-discovery of all examples
 
 ### ⏳ In Progress
@@ -127,6 +127,14 @@ source → parse → Tao AST → desugar → Term → type_check → Result
 - [ ] See **[../testing/05-error-message-improvements.md](../testing/05-error-message-improvements.md)**
 
 ### 📋 Planned
+
+**Test Command**:
+- [ ] `test <file|directory>` - Run example-based tests
+- [ ] Recursive directory traversal
+- [ ] Test result reporting with pass/fail
+- [ ] Continue on check errors (like `run`)
+- [ ] Exit code 1 on test failures
+- [ ] See **[../tao/11-test-system.md](../tao/11-test-system.md)** for test system specification
 
 **Tao Language Integration**:
 - [ ] Wire up Tao parser (requires Tao lexer + grammar)
@@ -152,6 +160,10 @@ gleam run check path/to/file.core.tao
 
 # Type-check and evaluate a file
 gleam run run path/to/file.core.tao
+
+# Run example-based tests
+gleam run test path/to/tests.tao
+gleam run test path/to/tests/  # Test directory recursively
 
 # Show help
 gleam run --help
@@ -250,8 +262,8 @@ Hint: Check variable name and scope
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success |
-| 1 | Type error or parse error found |
+| 0 | Success (no errors, all tests pass) |
+| 1 | Type error, parse error, or test failure |
 | 2 | Runtime error |
 | 3 | File not found |
 | 4 | Invalid arguments |
@@ -319,6 +331,7 @@ source_snippet.format_diagnostic(diagnostic, source)
 - **[../syntax/01-overview.md](../syntax/01-overview.md)** - Syntax library overview
 - **[../core/01-overview.md](../core/01-overview.md)** - Core language overview
 - **[../tao/01-overview.md](../tao/01-overview.md)** - Tao language overview
+- **[../tao/11-test-system.md](../tao/11-test-system.md)** - Test system specification
 - **[../testing/01-overview.md](../testing/01-overview.md)** - Testing overview
 - **[../testing/03-examples-testing.md](../testing/03-examples-testing.md)** - Examples testing spec
 - **[../testing/05-error-message-improvements.md](../testing/05-error-message-improvements.md)** - Error improvements

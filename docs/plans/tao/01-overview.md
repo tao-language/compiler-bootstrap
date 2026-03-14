@@ -71,8 +71,10 @@ gleam run check examples/tao/03_multiple_overloads.tao
 2. **Phase 2**: More operators (comparison, unary, logical) - 1 week
 3. **Phase 3**: Standard library (prelude, numeric hierarchy) - 2-3 weeks
 4. **Phase 4**: Advanced features (pattern matching, let bindings) - 2-3 weeks
+5. **Phase 5**: Test system (example-based tests) - 1-2 weeks
 
 See **[10-overloading.md](./10-overloading.md)** for complete overloading specification.
+See **[11-test-system.md](./11-test-system.md)** for test system specification.
 
 ---
 
