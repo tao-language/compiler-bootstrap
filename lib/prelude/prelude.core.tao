@@ -1,0 +1,368 @@
+// Prelude - Core types and operations
+// Part of the Tao Standard Library
+//
+// This module re-exports all prelude types and functions.
+// In the future, this will be auto-imported for all Tao programs.
+
+// ============================================================================
+// RE-EXPORTS
+// ============================================================================
+
+// Note: Currently, all prelude types are defined inline since Tao's import
+// system is still under development. In the future, this will use:
+//
+//   export bool.{Bool, True, False, not, (&&), (||)}
+//   export option.{Option, Some, None, is_some, is_none, unwrap, map, and_then}
+//   export result.{Result, Ok, Err, is_ok, is_err, unwrap, map, and_then}
+//   export ordering.{Ordering, LT, EQ, GT, compare, reverse}
+
+// ============================================================================
+// BOOL TYPE
+// ============================================================================
+
+type Bool = True | False
+
+fn (&&)(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> b
+    | False -> False
+  }
+}
+
+fn (||)(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> True
+    | False -> b
+  }
+}
+
+fn not(a: Bool) -> Bool {
+  match a {
+    | True -> False
+    | False -> True
+  }
+}
+
+fn xor(a: Bool, b: Bool) -> Bool {
+  (a || b) && !(a && b)
+}
+
+fn to_int(b: Bool) -> I32 {
+  match b {
+    | True -> 1
+    | False -> 0
+  }
+}
+
+fn to_string(b: Bool) -> String {
+  match b {
+    | True -> "true"
+    | False -> "false"
+  }
+}
+
+// ============================================================================
+// OPTION TYPE
+// ============================================================================
+
+type Option(a) = Some(a) | None
+
+fn is_some<T>(opt: Option(T)) -> Bool {
+  match opt {
+    | Some(_) -> True
+    | None -> False
+  }
+}
+
+fn is_none<T>(opt: Option(T)) -> Bool {
+  match opt {
+    | Some(_) -> False
+    | None -> True
+  }
+}
+
+fn unwrap<T>(opt: Option(T)) -> T {
+  match opt {
+    | Some(x) -> x
+    | None -> panic("unwrap called on None")
+  }
+}
+
+fn unwrap_or<T>(opt: Option(T), default: T) -> T {
+  match opt {
+    | Some(x) -> x
+    | None -> default
+  }
+}
+
+fn unwrap_or_else<T>(opt: Option(T), f: fn() -> T) -> T {
+  match opt {
+    | Some(x) -> x
+    | None -> f()
+  }
+}
+
+fn map<T, U>(opt: Option(T), f: fn(T) -> U) -> Option(U) {
+  match opt {
+    | Some(x) -> Some(f(x))
+    | None -> None
+  }
+}
+
+fn and_then<T, U>(opt: Option(T), f: fn(T) -> Option(U)) -> Option(U) {
+  match opt {
+    | Some(x) -> f(x)
+    | None -> None
+  }
+}
+
+fn filter<T>(opt: Option(T), pred: fn(T) -> Bool) -> Option(T) {
+  match opt {
+    | Some(x) -> if pred(x) { Some(x) } else { None }
+    | None -> None
+  }
+}
+
+fn or<T>(opt: Option(T), other: Option(T)) -> Option(T) {
+  match opt {
+    | Some(_) -> opt
+    | None -> other
+  }
+}
+
+fn or_else<T>(opt: Option(T), f: fn() -> Option(T)) -> Option(T) {
+  match opt {
+    | Some(_) -> opt
+    | None -> f()
+  }
+}
+
+fn ok_or<T, E>(opt: Option(T), err: E) -> Result(T, E) {
+  match opt {
+    | Some(x) -> Ok(x)
+    | None -> Err(err)
+  }
+}
+
+fn ok_or_else<T, E>(opt: Option(T), f: fn() -> E) -> Result(T, E) {
+  match opt {
+    | Some(x) -> Ok(x)
+    | None -> Err(f())
+  }
+}
+
+// ============================================================================
+// RESULT TYPE
+// ============================================================================
+
+type Result(a, e) = Ok(a) | Err(e)
+
+fn is_ok<T, E>(result: Result(T, E)) -> Bool {
+  match result {
+    | Ok(_) -> True
+    | Err(_) -> False
+  }
+}
+
+fn is_err<T, E>(result: Result(T, E)) -> Bool {
+  match result {
+    | Ok(_) -> False
+    | Err(_) -> True
+  }
+}
+
+fn unwrap<T, E>(result: Result(T, E)) -> T {
+  match result {
+    | Ok(x) -> x
+    | Err(_) -> panic("unwrap called on Err")
+  }
+}
+
+fn unwrap_or<T, E>(result: Result(T, E), default: T) -> T {
+  match result {
+    | Ok(x) -> x
+    | Err(_) -> default
+  }
+}
+
+fn unwrap_or_else<T, E>(result: Result(T, E), f: fn(E) -> T) -> T {
+  match result {
+    | Ok(x) -> x
+    | Err(e) -> f(e)
+  }
+}
+
+fn map<T, E, U>(result: Result(T, E), f: fn(T) -> U) -> Result(U, E) {
+  match result {
+    | Ok(x) -> Ok(f(x))
+    | Err(e) -> Err(e)
+  }
+}
+
+fn map_err<T, E, F>(result: Result(T, E), f: fn(E) -> F) -> Result(T, F) {
+  match result {
+    | Ok(x) -> Ok(x)
+    | Err(e) -> Err(f(e))
+  }
+}
+
+fn and_then<T, E, U>(result: Result(T, E), f: fn(T) -> Result(U, E)) -> Result(U, E) {
+  match result {
+    | Ok(x) -> f(x)
+    | Err(e) -> Err(e)
+  }
+}
+
+fn or_else<T, E>(result: Result(T, E), f: fn(E) -> Result(T, E)) -> Result(T, E) {
+  match result {
+    | Ok(x) -> Ok(x)
+    | Err(e) -> f(e)
+  }
+}
+
+fn ok<T, E>(result: Result(T, E)) -> Option(T) {
+  match result {
+    | Ok(x) -> Some(x)
+    | Err(_) -> None
+  }
+}
+
+fn err<T, E>(result: Result(T, E)) -> Option(E) {
+  match result {
+    | Ok(_) -> None
+    | Err(e) -> Some(e)
+  }
+}
+
+fn from_option<T, E>(opt: Option(T), err: E) -> Result(T, E) {
+  match opt {
+    | Some(x) -> Ok(x)
+    | None -> Err(err)
+  }
+}
+
+fn flip<T, E>(result: Result(T, E)) -> Result(E, T) {
+  match result {
+    | Ok(x) -> Err(x)
+    | Err(e) -> Ok(e)
+  }
+}
+
+// ============================================================================
+// ORDERING TYPE
+// ============================================================================
+
+type Ordering = LT | EQ | GT
+
+fn compare_i32(a: I32, b: I32) -> Ordering {
+  if a < b {
+    LT
+  } else if a > b {
+    GT
+  } else {
+    EQ
+  }
+}
+
+fn compare_f64(a: F64, b: F64) -> Ordering {
+  if a <. b {
+    LT
+  } else if a >. b {
+    GT
+  } else {
+    EQ
+  }
+}
+
+fn reverse(ord: Ordering) -> Ordering {
+  match ord {
+    | LT -> GT
+    | EQ -> EQ
+    | GT -> LT
+  }
+}
+
+fn to_string(ord: Ordering) -> String {
+  match ord {
+    | LT -> "LT"
+    | EQ -> "EQ"
+    | GT -> "GT"
+  }
+}
+
+fn to_int(ord: Ordering) -> I32 {
+  match ord {
+    | LT -> -1
+    | EQ -> 0
+    | GT -> 1
+  }
+}
+
+fn then(ord1: Ordering, ord2: Ordering) -> Ordering {
+  match ord1 {
+    | EQ -> ord2
+    | _ -> ord1
+  }
+}
+
+// ============================================================================
+// FUNCTION COMBINATORS
+// ============================================================================
+
+// Identity function
+fn id<T>(x: T) -> T {
+  x
+}
+
+// Function composition: (f ∘ g)(x) = f(g(x))
+fn compose<T, U, V>(f: fn(U) -> V, g: fn(T) -> U) -> fn(T) -> V {
+  fn(x: T) -> V {
+    f(g(x))
+  }
+}
+
+// Flip function arguments
+fn flip_fn<T, U, V>(f: fn(T) -> fn(U) -> V) -> fn(U) -> fn(T) -> V {
+  fn(y: U) -> fn(T) -> V {
+    fn(x: T) -> V {
+      f(x)(y)
+    }
+  }
+}
+
+// Constant function (returns first argument, ignores second)
+fn const_fn<T, U>(x: T) -> fn(U) -> T {
+  fn(_: U) -> T {
+    x
+  }
+}
+
+// Apply function to argument
+fn apply<T, U>(f: fn(T) -> U, x: T) -> U {
+  f(x)
+}
+
+// ============================================================================
+// EXAMPLE USAGE
+// ============================================================================
+
+// // Option examples
+// let x: Option(I32) = Some(42)
+// let y: Option(I32) = None
+// is_some(x)  // True
+// map(x, fn(n) { n * 2 })  // Some(84)
+//
+// // Result examples
+// let r: Result(I32, String) = Ok(42)
+// is_ok(r)  // True
+// map(r, fn(n) { n * 2 })  // Ok(84)
+//
+// // Ordering examples
+// compare_i32(1, 2)  // LT
+// reverse(GT)  // LT
+//
+// // Function combinators
+// let double = fn(x: I32) -> I32 { x * 2 }
+// let add_one = fn(x: I32) -> I32 { x + 1 }
+// let f = compose(double, add_one)
+// f(5)  // 12
