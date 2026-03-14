@@ -4,6 +4,7 @@
 > **Scope**: `src/core/` and `src/tao/`
 > **Goal**: Identify improvements before standard library implementation
 > **Status**: ✅ **Phase 1 Complete** - All 4/4 tasks done
+> **Last Updated**: March 14, 2026
 
 ---
 
@@ -23,6 +24,14 @@
 - **Code Quality**: All warnings fixed
 - **Maintainability**: Error types now consistent, infer function modularized
 - **Tests**: 424 passing ✅
+
+### Recent Refactoring (March 2026)
+
+| Change | Status | Notes |
+|--------|--------|-------|
+| Unified Ctr representation | ✅ **Complete** | Replaced `Ctr`/`CtrNullary` with single `Ctr(tag, arg)` + `Unit` |
+| Removed Mvp prefixes | ✅ **Complete** | Renamed `MvpExpr` → `Expr` in Tao |
+| Tests | ✅ **424 passing** | All tests pass after refactoring |
 
 ---
 
@@ -236,6 +245,63 @@ fn map_literal(
   }
 }
 ```
+
+---
+
+##### 5. **Term/ TermData Indirection** (MEDIUM PRIORITY)
+
+**Problem**: Current Term type uses wrapper pattern:
+
+```gleam
+pub type Term {
+  Term(data: TermData, span: Span)
+}
+
+pub type TermData {
+  Typ(universe: Int)
+  Lit(value: Literal)
+  Ctr(tag: String, arg: Term)
+  // ... 15 more constructors
+}
+```
+
+This creates:
+- **Extra indirection**: Every pattern match requires `case term.data { ... }`
+- **Double allocation**: `Term(Ctr(tag, arg), span)` vs `Ctr(tag, arg, span)`
+- **Verbose construction**: Building terms requires wrapping in `Term()`
+- **Pattern matching overhead**: Must unwrap twice to access constructor data
+
+**Impact**:
+- Every function in `core.gleam` (2000+ lines) uses `term.data`
+- Construction is verbose throughout codebase
+- Performance overhead from extra allocation
+
+**Solution**: Flatten Term type to include span in each constructor:
+
+```gleam
+pub type Term {
+  Typ(universe: Int, span: Span)
+  Lit(value: Literal, span: Span)
+  Ctr(tag: String, arg: Term, span: Span)
+  Unit(span: Span)
+  // ... all constructors include span directly
+}
+```
+
+**Benefits**:
+- **Simpler patterns**: `case term { Ctr(tag, arg, span) -> ... }`
+- **Direct construction**: `Ctr(tag, arg, span)` instead of `Term(Ctr(tag, arg), span)`
+- **Better performance**: One allocation instead of two
+- **Cleaner code**: No more `term.data` everywhere
+
+**Estimated effort**: 4-6 hours
+- Update `core.gleam` (~2000 lines)
+- Update `syntax.gleam` (~1700 lines)
+- Update `error_formatter.gleam` (~700 lines)
+- Update `error_reporter.gleam` (~500 lines)
+- Update all test files
+
+**Recommendation**: Do this refactoring in a dedicated branch before major feature work. The simplification will make all future development easier.
 
 ---
 
