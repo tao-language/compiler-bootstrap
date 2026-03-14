@@ -22,7 +22,7 @@ import core/core.{
   type Case, type Error, type Literal, type LiteralType, type Pattern, type Term, Ann, App,
   Call, Case, Comptime, Ctr, Dot, Err, F32, F32T, F64, F64T, Fix, Hole, I32,
   I32T, I64, I64T, Lam, Lit, LitT, Match, PAny, PAs, PCtr, PUnit, PLit, PLitT, PRcd,
-  PTyp, Pi, Rcd, Term as CoreTerm, Typ, U32, U32T, U64, U64T, Var, Unit,
+  PTyp, Pi, Rcd, Typ, U32, U32T, U64, U64T, Var, Unit,
 }
 import gleam/float
 import gleam/int
@@ -117,43 +117,43 @@ fn named_to_de_bruijn_loop(term: NamedTerm, env: List(String)) -> Term {
     NVar(name, span) -> {
       // Find the variable in the environment (0 = innermost)
       case find_in_env(env, name, 0) {
-        Ok(index) -> CoreTerm(Var(index), span)
-        Error(_) -> CoreTerm(Var(0), span)
+        Ok(index) -> Var(index, span)
+        Error(_) -> Var(0, span)
         // Free variable
       }
     }
-    NLit(value, span) -> CoreTerm(Lit(value), span)
+    NLit(value, span) -> Lit(value, span)
     NLam(name, body, span) -> {
       let body_db = named_to_de_bruijn_loop(body, [name, ..env])
-      CoreTerm(Lam([], #(name, CoreTerm(Hole(-1), span)), body_db), span)
+      Lam([], #(name, Hole(-1, span)), body_db, span)
     }
     NPi(name, in_type, out_type, span) -> {
       let in_db = named_to_de_bruijn_loop(in_type, env)
       let out_db = named_to_de_bruijn_loop(out_type, [name, ..env])
-      CoreTerm(Pi([], name, in_db, out_db), span)
+      Pi([], name, in_db, out_db, span)
     }
     NApp(fun, arg, span) -> {
       let fun_db = named_to_de_bruijn_loop(fun, env)
       let arg_db = named_to_de_bruijn_loop(arg, env)
-      CoreTerm(App(fun_db, [], arg_db), span)
+      App(fun_db, [], arg_db, span)
     }
     NAnn(term, typ, span) -> {
       let term_db = named_to_de_bruijn_loop(term, env)
       let typ_db = named_to_de_bruijn_loop(typ, env)
-      CoreTerm(Ann(term_db, typ_db), span)
+      Ann(term_db, typ_db, span)
     }
     NDot(arg, field, span) -> {
       let arg_db = named_to_de_bruijn_loop(arg, env)
-      CoreTerm(Dot(arg_db, field), span)
+      Dot(arg_db, field, span)
     }
     NCtr(tag, arg, span) -> {
       let arg_db = named_to_de_bruijn_loop(arg, env)
-      CoreTerm(Ctr(tag, arg_db), span)
+      Ctr(tag, arg_db, span)
     }
-    NUnit(span) -> CoreTerm(Unit, span)
-    NTyp(level, span) -> CoreTerm(Typ(level), span)
-    NHole(id, span) -> CoreTerm(Hole(id), span)
-    NLitT(typ, span) -> CoreTerm(LitT(typ), span)
+    NUnit(span) -> Unit(span)
+    NTyp(level, span) -> Typ(level, span)
+    NHole(id, span) -> Hole(id, span)
+    NLitT(typ, span) -> LitT(typ, span)
     NRcd(fields, span) -> {
       let fields_db =
         fields
@@ -161,29 +161,29 @@ fn named_to_de_bruijn_loop(term: NamedTerm, env: List(String)) -> Term {
           let #(name, value) = f
           #(name, named_to_de_bruijn_loop(value, env))
         })
-      CoreTerm(Rcd(fields_db), span)
+      Rcd(fields_db, span)
     }
     NMatch(arg, motive, cases, span) -> {
       let arg_db = named_to_de_bruijn_loop(arg, env)
       let motive_db = named_to_de_bruijn_loop(motive, env)
       let cases_db =
         cases |> list.map(fn(c) { named_case_to_de_bruijn(c, env) })
-      CoreTerm(Match(arg_db, motive_db, cases_db), span)
+      Match(arg_db, motive_db, cases_db, span)
     }
     NCall(name, args, span) -> {
       let args_db = args |> list.map(fn(a) { named_to_de_bruijn_loop(a, env) })
-      CoreTerm(Call(name, args_db), span)
+      Call(name, args_db, span)
     }
     NComptime(term, span) -> {
       let term_db = named_to_de_bruijn_loop(term, env)
-      CoreTerm(Comptime(term_db), span)
+      Comptime(term_db, span)
     }
     NFix(name, body, span) -> {
       let body_db = named_to_de_bruijn_loop(body, [name, ..env])
-      CoreTerm(Fix(name, body_db), span)
+      Fix(name, body_db, span)
     }
     NErr(message, span) -> {
-      CoreTerm(core.Err(message), span)
+      Err(message, span)
     }
   }
 }
@@ -253,7 +253,7 @@ pub fn parse(source: String) -> ParseResult(Term) {
         AsCoreTerm(NErr(msg, _)) -> {
           // Got error AST from grammar.parse - include the message
           let placeholder =
-            CoreTerm(core.Err("Parse error: " <> msg), grammar.Span("", 0, 0, 0, 0))
+            Err("Parse error: " <> msg, grammar.Span("", 0, 0, 0, 0))
           ParseResult(ast: placeholder, errors: errors)
         }
         AsCoreTerm(named_term) -> {
@@ -262,8 +262,8 @@ pub fn parse(source: String) -> ParseResult(Term) {
             [_, ..] -> {
               // Has errors - return error AST with error list
               let placeholder =
-                CoreTerm(
-                  core.Err("Parse error: see errors list"),
+                
+                  core.Err("Parse error: see errors list",
                   grammar.Span("", 0, 0, 0, 0),
                 )
               ParseResult(ast: placeholder, errors: errors)
@@ -277,8 +277,8 @@ pub fn parse(source: String) -> ParseResult(Term) {
         }
         AsFields(_) -> {
           let placeholder =
-            CoreTerm(
-              core.Err("Expected expression, got field list"),
+            
+              core.Err("Expected expression, got field list",
               grammar.Span("", 0, 0, 0, 0),
             )
           ParseResult(ast: placeholder, errors: [
@@ -287,8 +287,8 @@ pub fn parse(source: String) -> ParseResult(Term) {
         }
         AsCases(_) -> {
           let placeholder =
-            CoreTerm(
-              core.Err("Expected expression, got case list"),
+            
+              core.Err("Expected expression, got case list",
               grammar.Span("", 0, 0, 0, 0),
             )
           ParseResult(ast: placeholder, errors: [
@@ -297,8 +297,8 @@ pub fn parse(source: String) -> ParseResult(Term) {
         }
         AsPattern(_) -> {
           let placeholder =
-            CoreTerm(
-              core.Err("Expected expression, got pattern"),
+            
+              core.Err("Expected expression, got pattern",
               grammar.Span("", 0, 0, 0, 0),
             )
           ParseResult(ast: placeholder, errors: [
@@ -307,8 +307,8 @@ pub fn parse(source: String) -> ParseResult(Term) {
         }
         AsArgs(_) -> {
           let placeholder =
-            CoreTerm(
-              core.Err("Expected expression, got argument list"),
+            
+              core.Err("Expected expression, got argument list",
               grammar.Span("", 0, 0, 0, 0),
             )
           ParseResult(ast: placeholder, errors: [
@@ -784,7 +784,7 @@ fn make_lambda(values) -> ParseValue {
       AsCoreTerm(NLam(
         name_token.value,
         body,
-        grammar.span_from_token(name_token, "input"),
+        grammar.span_from_token(name_token, "input")
       ))
     _ -> panic as "Expected lambda (x -> body)"
   }
@@ -1005,7 +1005,7 @@ fn make_constructor_app(values) -> ParseValue {
       AsCoreTerm(NCtr(
         name_token.value,
         arg,
-        grammar.span_from_token(name_token, "input"),
+        grammar.span_from_token(name_token, "input")
       ))
     _ -> panic as "Expected constructor application (#Name(arg))"
   }
@@ -1201,7 +1201,7 @@ fn make_pattern_as(values) -> ParseValue {
       AsPattern(NPAs(
         pattern,
         name_token.value,
-        grammar.span_from_token(name_token, "input"),
+        grammar.span_from_token(name_token, "input")
       ))
     _ -> panic as "Expected as-pattern"
   }
@@ -1327,8 +1327,8 @@ fn format_term(
   parent_prec: Int,
   bindings: List(String),
 ) -> formatter.Doc {
-  case term.data {
-    Var(index) -> {
+  case term {
+    Var(index, _) -> {
       case get_binding(bindings, index) {
         Ok(name) -> formatter.text(name)
         Error(_) ->
@@ -1338,7 +1338,7 @@ fn format_term(
           ])
       }
     }
-    Lit(value) -> {
+    Lit(value, _) -> {
       case value {
         I32(n) -> formatter.text(int.to_string(n))
         I64(n) ->
@@ -1360,7 +1360,7 @@ fn format_term(
         F64(f) -> formatter.text(float.to_string(f))
       }
     }
-    Typ(level) -> {
+    Typ(level, _) -> {
       case level {
         0 -> formatter.text("%Type")
         _ ->
@@ -1371,7 +1371,7 @@ fn format_term(
           ])
       }
     }
-    Hole(id) -> {
+    Hole(id, _) -> {
       case id {
         0 -> formatter.text("?")
         _ ->
@@ -1381,7 +1381,7 @@ fn format_term(
           ])
       }
     }
-    LitT(typ) -> {
+    LitT(typ, _) -> {
       case typ {
         I32T -> formatter.text("%I32")
         I64T -> formatter.text("%I64")
@@ -1391,12 +1391,12 @@ fn format_term(
         F64T -> formatter.text("%F64")
       }
     }
-    Ctr(tag, arg) -> {
+    Ctr(tag, arg, _) -> {
       // Check if arg is a Hole or Typ(0) placeholder - if so, just show the tag
-      case arg.data {
-        Hole(_) -> formatter.concat([formatter.text("#"), formatter.text(tag)])
-        Typ(0) -> formatter.concat([formatter.text("#"), formatter.text(tag)])
-        Unit -> formatter.concat([formatter.text("#"), formatter.text(tag)])
+      case arg {
+        Hole(_, _) -> formatter.concat([formatter.text("#"), formatter.text(tag)])
+        Typ(0, _) -> formatter.concat([formatter.text("#"), formatter.text(tag)])
+        Unit(_) -> formatter.concat([formatter.text("#"), formatter.text(tag)])
         _ ->
           formatter.concat([
             formatter.text("#"),
@@ -1407,8 +1407,8 @@ fn format_term(
           ])
       }
     }
-    Unit -> formatter.text("Unit")
-    Dot(arg, field) -> {
+    Unit(_) -> formatter.text("Unit")
+    Dot(arg, field, _) -> {
       let inner =
         formatter.concat([
           format_term(arg, 90, bindings),
@@ -1417,7 +1417,7 @@ fn format_term(
         ])
       wrap_parens(inner, 90 < parent_prec)
     }
-    Ann(term, typ) -> {
+    Ann(term, typ, _) -> {
       let inner =
         formatter.concat([
           format_term(term, 50, bindings),
@@ -1426,7 +1426,7 @@ fn format_term(
         ])
       wrap_parens(inner, 50 < parent_prec)
     }
-    Pi(implicit, name, in_term, out_term) -> {
+    Pi(implicit, name, in_term, out_term, _) -> {
       let implicit_str = case implicit {
         [] -> ""
         _ -> "<" <> string.join(implicit, ", ") <> ">"
@@ -1444,7 +1444,7 @@ fn format_term(
         ])
       wrap_parens(inner, 65 < parent_prec)
     }
-    Rcd(fields) -> {
+    Rcd(fields, _) -> {
       case fields {
         [] -> formatter.text("{}")
         _ -> {
@@ -1467,7 +1467,7 @@ fn format_term(
         }
       }
     }
-    Lam(implicit, param, body) -> {
+    Lam(implicit, param, body, _) -> {
       let #(name, _) = param
       let implicit_str = case implicit {
         [] -> ""
@@ -1484,7 +1484,7 @@ fn format_term(
         ])
       wrap_parens(inner, 70 < parent_prec)
     }
-    App(fun, implicit, arg) -> {
+    App(fun, implicit, arg, _) -> {
       let implicit_str = case implicit {
         [] -> ""
         _ -> "<" <> string.join(list.map(implicit, format_inline), ", ") <> ">"
@@ -1499,7 +1499,7 @@ fn format_term(
         ])
       wrap_parens(inner, 85 < parent_prec)
     }
-    Match(arg, motive, cases) -> {
+    Match(arg, motive, cases, _) -> {
       let case_docs =
         cases
         |> list.map(fn(c) {
@@ -1532,7 +1532,7 @@ fn format_term(
         ])
       wrap_parens(inner, 40 < parent_prec)
     }
-    Call(name, args) -> {
+    Call(name, args, _) -> {
       let arg_docs = args |> list.map(fn(a) { format_term(a, 85, bindings) })
       let inner =
         formatter.concat([
@@ -1544,7 +1544,7 @@ fn format_term(
         ])
       wrap_parens(inner, 85 < parent_prec)
     }
-    Comptime(term) -> {
+    Comptime(term, _) -> {
       let inner =
         formatter.concat([
           formatter.text("%comptime "),
@@ -1552,7 +1552,7 @@ fn format_term(
         ])
       wrap_parens(inner, 50 < parent_prec)
     }
-    Fix(name, body) -> {
+    Fix(name, body, _) -> {
       let inner =
         formatter.concat([
           formatter.text("%fix "),
@@ -1562,7 +1562,7 @@ fn format_term(
         ])
       wrap_parens(inner, 70 < parent_prec)
     }
-    Err(message: msg) ->
+    Err(msg, _) ->
       formatter.concat([
         formatter.text("<error: "),
         formatter.text(msg),
@@ -1660,28 +1660,28 @@ pub fn term_to_string(term: Term) -> String {
 }
 
 fn term_to_string_loop(term: Term, bindings: List(String)) -> String {
-  let data = term.data
+  let data = term
   case data {
-    core.Typ(k) -> "%Type" <> int.to_string(k)
-    core.Lit(literal) -> literal_to_string(literal)
-    core.LitT(literal_type) -> literal_type_to_string(literal_type)
-    core.Var(index) -> {
+    core.Typ(k, _) -> "%Type" <> int.to_string(k)
+    core.Lit(literal, _) -> literal_to_string(literal)
+    core.LitT(literal_type, _) -> literal_type_to_string(literal_type)
+    core.Var(index, _) -> {
       case get_binding(bindings, index) {
         Ok(name) -> name
         Error(Nil) -> "var" <> int.to_string(index)
       }
     }
-    core.Hole(id) -> "?" <> int.to_string(id)
-    core.Err(msg) -> "Err(" <> msg <> ")"
-    core.Rcd(fields) -> {
+    core.Hole(id, _) -> "?" <> int.to_string(id)
+    core.Err(msg, _) -> "Err(" <> msg <> ")"
+    core.Rcd(fields, _) -> {
       let field_strs = fields |> list.map(fn(f) { f.0 <> ": " <> term_to_string_loop(f.1, bindings) })
       "{" <> string.join(field_strs, ", ") <> "}"
     }
-    core.Ctr(tag, arg) -> "#" <> tag <> "(" <> term_to_string_loop(arg, bindings) <> ")"
-    core.Unit -> "#Unit"
-    core.Dot(arg, field) -> term_to_string_loop(arg, bindings) <> "." <> field
-    core.Ann(term, typ) -> "(" <> term_to_string_loop(term, bindings) <> ": " <> term_to_string_loop(typ, bindings) <> ")"
-    core.Lam(implicit, param, body) -> {
+    core.Ctr(tag, arg, _) -> "#" <> tag <> "(" <> term_to_string_loop(arg, bindings) <> ")"
+    core.Unit(_) -> "#Unit"
+    core.Dot(arg, field, _) -> term_to_string_loop(arg, bindings) <> "." <> field
+    core.Ann(term, typ, _) -> "(" <> term_to_string_loop(term, bindings) <> ": " <> term_to_string_loop(typ, bindings) <> ")"
+    core.Lam(implicit, param, body, _) -> {
       let #(name, _) = param
       let implicit_str = case implicit {
         [] -> ""
@@ -1689,28 +1689,28 @@ fn term_to_string_loop(term: Term, bindings: List(String)) -> String {
       }
       "%fn" <> implicit_str <> "(" <> name <> ") -> " <> term_to_string_loop(body, [name, ..bindings])
     }
-    core.Pi(implicit, name, in_ty, out_ty) -> {
+    core.Pi(implicit, name, in_ty, out_ty, _) -> {
       let implicit_str = case implicit {
         [] -> ""
         _ -> "<" <> string.join(implicit, ", ") <> ">"
       }
       "%pi" <> implicit_str <> "(" <> name <> ": " <> term_to_string_loop(in_ty, bindings) <> ") -> " <> term_to_string_loop(out_ty, [name, ..bindings])
     }
-    core.App(fun, implicit, arg) -> {
+    core.App(fun, implicit, arg, _) -> {
       let implicit_str = case implicit {
         [] -> ""
         _ -> "<" <> string.join(list.map(implicit, fn(t) { term_to_string_loop(t, bindings) }), ", ") <> ">"
       }
       term_to_string_loop(fun, bindings) <> implicit_str <> "(" <> term_to_string_loop(arg, bindings) <> ")"
     }
-    core.Match(arg, _motive, _cases) -> {
+    core.Match(arg, _motive, _cases, _) -> {
       "match(" <> term_to_string_loop(arg, bindings) <> ") { ... }"
     }
-    core.Call(name, args) -> {
+    core.Call(name, args, _) -> {
       name <> "(" <> string.join(args |> list.map(fn(a) { term_to_string_loop(a, bindings) }), ", ") <> ")"
     }
-    core.Comptime(term) -> "comptime { " <> term_to_string_loop(term, bindings) <> " }"
-    core.Fix(name, body) -> "fix " <> name <> " -> " <> term_to_string_loop(body, [name, ..bindings])
+    core.Comptime(term, _) -> "comptime { " <> term_to_string_loop(term, bindings) <> " }"
+    core.Fix(name, body, _) -> "fix " <> name <> " -> " <> term_to_string_loop(body, [name, ..bindings])
   }
 }
 

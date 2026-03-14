@@ -16,72 +16,92 @@ import syntax/grammar.{type Span, Span}
 /// - [Core Language Specification](../../docs/core.md#syntax-terms)
 /// - [Normalization by Evaluation](../../docs/core.md#normalization-by-evaluation)
 pub type Term {
-  Term(data: TermData, span: Span)
-}
-
-pub type TermData {
   /// Universe type at level k. See docs/core.md for details.
-  Typ(universe: Int)
+  Typ(universe: Int, span: Span)
 
   /// Literal value (42, 3.14, "hello"). Note: true/false are constructors.
-  Lit(value: Literal)
+  Lit(value: Literal, span: Span)
 
   /// Literal type (I32, F64, etc.)
-  LitT(typ: LiteralType)
+  LitT(typ: LiteralType, span: Span)
 
   /// Bound variable (De Bruijn index). Index = distance to binder.
-  Var(index: Int)
+  Var(index: Int, span: Span)
 
   /// Metavariable (hole) to be solved during type checking.
-  Hole(id: Int)
+  Hole(id: Int, span: Span)
 
   /// Error placeholder - used when parsing fails, allows error recovery
-  Err(message: String)
+  Err(message: String, span: Span)
 
   /// Record with named fields.
-  Rcd(fields: List(#(String, Term)))
+  Rcd(fields: List(#(String, Term)), span: Span)
 
   /// Constructor application: #Some(42), #True(Unit), #Cons(1, Nil)
   /// Nullary constructors use Unit as argument: #True(Unit)
-  Ctr(tag: String, arg: Term)
+  Ctr(tag: String, arg: Term, span: Span)
 
   /// Unit value - used for nullary constructors and void
-  Unit
+  Unit(span: Span)
 
   /// Field projection (record.field).
-  Dot(arg: Term, field: String)
+  Dot(arg: Term, field: String, span: Span)
 
   /// Type annotation (term : type).
-  Ann(term: Term, typ: Term)
+  Ann(term: Term, typ: Term, span: Span)
 
   /// Lambda abstraction (λx. body) with optional implicit type params.
   /// implicit: list of type parameter names (e.g., ["a", "b"] for <a, b>)
   /// param: #(name, type_annotation) for the single explicit parameter
-  Lam(implicit: List(String), param: #(String, Term), body: Term)
+  Lam(implicit: List(String), param: #(String, Term), body: Term, span: Span)
 
   /// Dependent function type with implicit type params
   /// implicit: list of type parameter names (e.g., ["T", "U"] for <T, U>)
   /// name: value parameter name
   /// in: domain type
   /// out: codomain type (can mention name)
-  Pi(implicit: List(String), name: String, in_term: Term, out_term: Term)
+  Pi(implicit: List(String), name: String, in_term: Term, out_term: Term, span: Span)
 
   /// Function application (f x) with optional implicit type args.
   /// implicit: list of type arguments (e.g., [I32, F32] for <I32, F32>)
   /// arg: single explicit argument
-  App(fun: Term, implicit: List(Term), arg: Term)
+  App(fun: Term, implicit: List(Term), arg: Term, span: Span)
 
   /// Pattern matching with dependent return type.
-  Match(arg: Term, motive: Term, cases: List(Case))
+  Match(arg: Term, motive: Term, cases: List(Case), span: Span)
 
   /// Built-in function call (FFI).
-  Call(name: String, args: List(Term))
+  Call(name: String, args: List(Term), span: Span)
 
   /// Compile-time evaluation block.
-  Comptime(term: Term)
+  Comptime(term: Term, span: Span)
 
   /// Fixpoint operator for recursion (fix f -> body).
-  Fix(name: String, body: Term)
+  Fix(name: String, body: Term, span: Span)
+}
+
+/// Get the span from a Term.
+pub fn get_span(term: Term) -> Span {
+  case term {
+    Typ(_, span) -> span
+    Lit(_, span) -> span
+    LitT(_, span) -> span
+    Var(_, span) -> span
+    Hole(_, span) -> span
+    Err(_, span) -> span
+    Rcd(_, span) -> span
+    Ctr(_, _, span) -> span
+    Unit(span) -> span
+    Dot(_, _, span) -> span
+    Ann(_, _, span) -> span
+    Lam(_, _, _, span) -> span
+    Pi(_, _, _, _, span) -> span
+    App(_, _, _, span) -> span
+    Match(_, _, _, span) -> span
+    Call(_, _, span) -> span
+    Comptime(_, span) -> span
+    Fix(_, _, span) -> span
+  }
 }
 
 // ============================================================================
@@ -331,26 +351,26 @@ const prelude_ctrs = [
   // Bool type: data Bool = True | False
   // Bool : Type(0), True/False : Bool
   // True/False are nullary constructors (no arguments)
-  #("True", CtrDef([], Term(Typ(0), no_span), Term(Typ(0), no_span))),
-  #("False", CtrDef([], Term(Typ(0), no_span), Term(Typ(0), no_span))),
+  #("True", CtrDef([], Typ(0, no_span), Typ(0, no_span))),
+  #("False", CtrDef([], Typ(0, no_span), Typ(0, no_span))),
 
   // Option type: data Option(a) = Some(a) | None
   // Option : Type(0) -> Type(0), represented as Typ(1)
   // Some : (a : Type(0)) -> a -> Option(a)
-  #("Some", CtrDef(["a"], Term(Var(0), no_span), Term(Typ(0), no_span))),
+  #("Some", CtrDef(["a"], Var(0, no_span), Typ(0, no_span))),
   // None : (a : Type(0)) -> Option(a) (nullary, uses type param)
-  #("None", CtrDef(["a"], Term(Typ(0), no_span), Term(Typ(0), no_span))),
+  #("None", CtrDef(["a"], Typ(0, no_span), Typ(0, no_span))),
 
   // Result type: data Result(a, e) = Ok(a) | Err(e)
   // Result : Type(0) -> Type(0) -> Type(0)
-  #("Ok", CtrDef(["a", "e"], Term(Var(1), no_span), Term(Typ(0), no_span))),
-  #("Err", CtrDef(["a", "e"], Term(Var(0), no_span), Term(Typ(0), no_span))),
+  #("Ok", CtrDef(["a", "e"], Var(1, no_span), Typ(0, no_span))),
+  #("Err", CtrDef(["a", "e"], Var(0, no_span), Typ(0, no_span))),
 
   // Ordering type: data Ordering = LT | EQ | GT
   // LT/EQ/GT are nullary constructors
-  #("LT", CtrDef([], Term(Typ(0), no_span), Term(Typ(0), no_span))),
-  #("EQ", CtrDef([], Term(Typ(0), no_span), Term(Typ(0), no_span))),
-  #("GT", CtrDef([], Term(Typ(0), no_span), Term(Typ(0), no_span))),
+  #("LT", CtrDef([], Typ(0, no_span), Typ(0, no_span))),
+  #("EQ", CtrDef([], Typ(0, no_span), Typ(0, no_span))),
+  #("GT", CtrDef([], Typ(0, no_span), Typ(0, no_span))),
 ]
 
 const no_span = Span("", 0, 0, 0, 0)
@@ -582,8 +602,8 @@ pub fn all_permissions_granted(
 /// Unknown built-ins or non-concrete args return VCall (deferred to runtime).
 /// Permission errors add ComptimePermissionDenied to State.errors.
 pub fn comptime_eval(s: State, term: Term) -> #(Value, State) {
-  case term.data {
-    Call(name, args) -> {
+  case term {
+    Call(name, args, _) -> {
       case list.key_find(s.ffi, name) {
         Ok(Builtin(impl, required_perms)) -> {
           // Check permissions
@@ -603,7 +623,7 @@ pub fn comptime_eval(s: State, term: Term) -> #(Value, State) {
             }
             False -> {
               let err =
-                ComptimePermissionDenied(name, term.span, required_perms)
+                ComptimePermissionDenied(name, get_span(term), required_perms)
               #(VErr, with_err(s, err))
             }
           }
@@ -693,28 +713,28 @@ pub type Error {
 /// - Applications evaluate the function and argument, then apply
 /// - Neutral terms are created when computation is stuck on unknowns
 pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
-  case term.data {
-    Typ(k) -> VTyp(k)
-    Lit(k) -> VLit(k)
-    LitT(k) -> VLitT(k)
-    Var(i) ->
+  case term {
+    Typ(k, _) -> VTyp(k)
+    Lit(k, _) -> VLit(k)
+    LitT(k, _) -> VLitT(k)
+    Var(i, _) ->
       case list_get(env, i) {
         Some(value) -> value
         None -> VErr
       }
-    Hole(id) -> VNeut(HHole(id), [])
-    Rcd(fields) ->
+    Hole(id, _) -> VNeut(HHole(id), [])
+    Rcd(fields, _) ->
       VRcd(list.map(fields, fn(kv) { #(kv.0, eval(ffi, env, kv.1)) }))
-    Ctr(tag, arg) -> VCtrValue(VCtr(tag, eval(ffi, env, arg)))
-    Unit -> VUnit
-    Dot(arg, name) -> do_dot(eval(ffi, env, arg), name)
-    Ann(term, _) -> eval(ffi, env, term)
-    Lam(implicit, param, body) -> {
+    Ctr(tag, arg, _) -> VCtrValue(VCtr(tag, eval(ffi, env, arg)))
+    Unit(_) -> VUnit
+    Dot(arg, name, _) -> do_dot(eval(ffi, env, arg), name)
+    Ann(term, _, _) -> eval(ffi, env, term)
+    Lam(implicit, param, body, _) -> {
       let #(name, _) = param
       VLam(implicit, name, env, body)
     }
-    Pi(implicit, name, in_term, out_term) -> VPi(implicit, name, env, eval(ffi, env, in_term), out_term)
-    App(fun, implicit, arg) -> {
+    Pi(implicit, name, in_term, out_term, _) -> VPi(implicit, name, env, eval(ffi, env, in_term), out_term)
+    App(fun, implicit, arg, _) -> {
       // Evaluate function and argument
       let fun_val = eval(ffi, env, fun)
       let arg_val = eval(ffi, env, arg)
@@ -734,12 +754,12 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
         }
       }
     }
-    Match(arg, motive, cases) -> {
+    Match(arg, motive, cases, _) -> {
       let arg_val = eval(ffi, env, arg)
       let motive_val = eval(ffi, env, motive)
       do_match(env, arg_val, motive_val, cases)
     }
-    Call(name, args) -> {
+    Call(name, args, _) -> {
       // Evaluate all arguments first
       let arg_vals = list.map(args, eval(ffi, env, _))
       // Look up the builtin and call it
@@ -753,9 +773,9 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
         Error(Nil) -> VCall(name, arg_vals)
       }
     }
-    Comptime(term) -> eval(ffi, env, term)
-    Fix(name, body) -> VFix(name, env, body)
-    Err(_) -> VErr
+    Comptime(term, _) -> eval(ffi, env, term)
+    Fix(name, body, _) -> VFix(name, env, body)
+    Err(_, _) -> VErr
     // Error terms evaluate to VErr
   }
 }
@@ -943,28 +963,25 @@ pub fn normalize(ffi: FFI, env: Env, term: Term, s: Span) -> Term {
 /// indices using the formula: index = lvl - level - 1.
 pub fn quote(ffi: FFI, lvl: Int, value: Value, s: Span) -> Term {
   case value {
-    VTyp(k) -> Term(Typ(k), s)
-    VLit(k) -> Term(Lit(k), s)
-    VLitT(k) -> Term(LitT(k), s)
+    VTyp(k) -> Typ(k, s)
+    VLit(k) -> Lit(k, s)
+    VLitT(k) -> LitT(k, s)
     VNeut(head, spine) -> {
       let head_term = quote_head(lvl, head, s)
       quote_neut(ffi, lvl, head_term, spine, s)
     }
     VRcd(fields) ->
-      Term(
-        Rcd(list.map(fields, fn(kv) { #(kv.0, quote(ffi, lvl, kv.1, s)) })),
-        s,
-      )
-    VCtrValue(VCtr(tag, arg)) -> Term(Ctr(tag, quote(ffi, lvl, arg, s)), s)
-    VUnit -> Term(Unit, s)
+      Rcd(list.map(fields, fn(kv) { #(kv.0, quote(ffi, lvl, kv.1, s)) }), s)
+    VCtrValue(VCtr(tag, arg)) -> Ctr(tag, quote(ffi, lvl, arg, s), s)
+    VUnit -> Unit(s)
     VLam(implicit, name, env, body) -> {
       // Create a fresh neutral variable at the current level
       let fresh = VNeut(HVar(lvl), [])
       // Apply it to the body and evaluate
       let body_val = eval(ffi, [fresh, ..env], body)
       // Quote the result at level + 1
-      let body_quote = quote(ffi, lvl + 1, body_val, body.span)
-      Term(Lam(implicit, #(name, Term(Hole(-1), s)), body_quote), s)
+      let body_quote = quote(ffi, lvl + 1, body_val, get_span(body))
+      Lam(implicit, #(name, Hole(-1, s)), body_quote, s)
     }
     VPi(implicit, name, env, in_val, out_term) -> {
       // Quote the domain (already evaluated)
@@ -972,28 +989,25 @@ pub fn quote(ffi: FFI, lvl: Int, value: Value, s: Span) -> Term {
       // Create a fresh neutral variable for the codomain
       let fresh = VNeut(HVar(lvl), [])
       let out_val = eval(ffi, [fresh, ..env], out_term)
-      let out_quote = quote(ffi, lvl + 1, out_val, out_term.span)
-      Term(Pi(implicit, name, in_quote, out_quote), s)
+      let out_quote = quote(ffi, lvl + 1, out_val, get_span(out_term))
+      Pi(implicit, name, in_quote, out_quote, s)
     }
     VRecord(fields) -> {
       // Record type - quote each field type
-      Term(
-        Rcd(list.map(fields, fn(kv) { #(kv.0, quote(ffi, lvl, kv.1, s)) })),
-        s,
-      )
+      Rcd(list.map(fields, fn(kv) { #(kv.0, quote(ffi, lvl, kv.1, s)) }), s)
     }
     VCall(name, args) -> {
       // Quote stuck built-in with collected args
-      Term(Call(name, list.map(args, fn(a) { quote(ffi, lvl, a, s) })), s)
+      Call(name, list.map(args, fn(a) { quote(ffi, lvl, a, s) }), s)
     }
     VFix(name, env, body) -> {
       // Quote fixpoint: create a fresh variable and quote the body
       let fresh = VNeut(HVar(lvl), [])
       let body_val = eval(ffi, [fresh, ..env], body)
-      let body_quote = quote(ffi, lvl + 1, body_val, body.span)
-      Term(Fix(name, body_quote), s)
+      let body_quote = quote(ffi, lvl + 1, body_val, get_span(body))
+      Fix(name, body_quote, s)
     }
-    VErr -> Term(Hole(-1), s)
+    VErr -> Hole(-1, s)
   }
 }
 
@@ -1013,21 +1027,21 @@ fn quote_neut(
 /// Quote a single elimination (spine element).
 fn quote_elim(ffi: FFI, lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
   case elim {
-    EDot(name) -> Term(Dot(head, name), s)
-    EApp(arg) -> Term(App(head, [], quote(ffi, lvl, arg, s)), s)
+    EDot(name) -> Dot(head, name, s)
+    EApp(arg) -> App(head, [], quote(ffi, lvl, arg, s), s)
     EAppImplicit(implicit_val) -> {
       // Implicit application - add to implicit list
       // For now, just quote the implicit value
       // This creates a term like: head<implicit_val>()
       // We need to handle this specially
-      Term(App(head, [quote(ffi, lvl, implicit_val, s)], Term(Hole(-1), s)), s)
+      App(head, [quote(ffi, lvl, implicit_val, s)], Hole(-1, s), s)
     }
     // The env is discarded because we're reconstructing syntax, not evaluating.
     // The cases bodies are already Terms (syntax), not Values, so they don't
     // need quoting. The env was only needed during evaluation to capture the
     // closure environment for delayed matching on neutral terms.
     EMatch(_, motive, cases) ->
-      Term(Match(head, quote(ffi, lvl, motive, s), cases), s)
+      Match(head, quote(ffi, lvl, motive, s), cases, s)
   }
 }
 
@@ -1040,8 +1054,8 @@ fn quote_elim(ffi: FFI, lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
 /// index = 5 - 2 - 1 = 2
 fn quote_head(lvl: Int, head: Head, s: Span) -> Term {
   case head {
-    HVar(l) -> Term(Var(lvl - l - 1), s)
-    HHole(id) -> Term(Hole(id), s)
+    HVar(l) -> Var(lvl - l - 1, s)
+    HHole(id) -> Hole(id, s)
   }
 }
 
@@ -1279,39 +1293,39 @@ pub fn with_err(s: State, err: Error) -> State {
 /// - Constructors: Look up definition, solve GADT parameters via unification
 /// - Match: Infer scrutinee type, check motive, verify exhaustiveness
 pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
-  case term.data {
-    Typ(k) -> #(VTyp(k), VTyp(k + 1), s)
-    Lit(k) -> #(VLit(k), typeof_lit(k), s)
-    LitT(k) -> #(VLitT(k), VTyp(0), s)
-    Var(i) ->
+  case term {
+    Typ(k, _) -> #(VTyp(k), VTyp(k + 1), s)
+    Lit(k, _) -> #(VLit(k), typeof_lit(k), s)
+    LitT(k, _) -> #(VLitT(k), VTyp(0), s)
+    Var(i, _) ->
       case ctx_get(s.ctx, i) {
         Some(#(val, ty)) -> #(val, ty, s)
-        None -> infer_error(s, VarUndefined(i, term.span))
+        None -> infer_error(s, VarUndefined(i, get_span(term)))
       }
-    Hole(id) -> {
+    Hole(id, _) -> {
       // Record unsolved hole as a warning for IDE feedback
       let #(ty, s) = new_hole(s)
-      #(VNeut(HHole(id), []), ty, with_err(s, HoleUnsolved(id, term.span)))
+      #(VNeut(HHole(id), []), ty, with_err(s, HoleUnsolved(id, get_span(term))))
     }
-    Rcd(fields) -> {
+    Rcd(fields, _) -> {
       let #(fields_val, fields_ty, s) = infer_fields(s, fields)
       #(VRcd(fields_val), VRcd(fields_ty), s)
     }
-    Ctr(tag, arg) ->
+    Ctr(tag, arg, _) ->
       case list.key_find(s.ctrs, tag) {
-        Error(Nil) -> infer_error(s, CtrUndefined(tag, term.span))
+        Error(Nil) -> infer_error(s, CtrUndefined(tag, get_span(term)))
         Ok(ctr) -> {
           let #(params, ctr_arg_ty, _, s) = check_ctr_def(s, ctr)
           let #(_, arg_ty, s) = infer(s, arg)
           let #(_, s) =
-            check_type(s, arg_ty, ctr_arg_ty, arg.span, ctr.arg_ty.span)
-          let #(params, s) = ctr_solve_params(s, ctr, params, tag, term.span)
+            check_type(s, arg_ty, ctr_arg_ty, get_span(arg), get_span(ctr.arg_ty))
+          let #(params, s) = ctr_solve_params(s, ctr, params, tag, get_span(term))
           let env = list.append(params, get_env(s))
           #(VCtrValue(VCtr(tag, eval(s.ffi, env, arg))), eval(s.ffi, env, ctr.ret_ty), s)
         }
       }
-    Unit -> #(VUnit, VTyp(0), s)
-    Dot(arg, name) -> {
+    Unit(_) -> #(VUnit, VTyp(0), s)
+    Dot(arg, name, _) -> {
       let #(arg_val, arg_ty, s) = infer(s, arg)
       let val = do_dot(arg_val, name)
       case arg_ty {
@@ -1319,19 +1333,19 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
           case list.key_find(fields, name) {
             Ok(ty) -> #(val, ty, s)
             Error(Nil) -> {
-              let s = with_err(s, DotFieldNotFound(name, fields, arg.span))
+              let s = with_err(s, DotFieldNotFound(name, fields, get_span(arg)))
               #(val, VErr, s)
             }
           }
-        _ -> #(val, VErr, with_err(s, DotOnNonCtr(arg_ty, name, arg.span)))
+        _ -> #(val, VErr, with_err(s, DotOnNonCtr(arg_ty, name, get_span(arg))))
       }
     }
-    Ann(term, term_ty) -> {
+    Ann(term, term_ty, _) -> {
       let #(ty_val, _, s) = infer(s, term_ty)
-      let #(val, s) = check(s, term, ty_val, term_ty.span)
+      let #(val, s) = check(s, term, ty_val, get_span(term_ty))
       #(val, ty_val, s)
     }
-    Lam(implicit, param, body) -> {
+    Lam(implicit, param, body, _) -> {
       // For lambda inference, we create a hole for the domain type
       let #(name, _) = param
       let env = get_env(s)
@@ -1339,21 +1353,21 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(_fresh, s) = def_var(s, name, t1_hole)
       let #(body_val, body_ty, s) = infer(s, body)
       // Quote the body back to preserve structure even if there are errors
-      let body_quoted = quote(s.ffi, list.length(env), body_val, body.span)
+      let body_quoted = quote(s.ffi, list.length(env), body_val, get_span(body))
       let t1 = force(s.ffi, s.sub, t1_hole)
-      let t2 = quote(s.ffi, list.length(env), body_ty, body.span)
+      let t2 = quote(s.ffi, list.length(env), body_ty, get_span(body))
       #(VLam(implicit, name, env, body_quoted), VPi(implicit, name, env, t1, t2), s)
     }
-    Pi(implicit, name, in_term, out_term) -> {
+    Pi(implicit, name, in_term, out_term, _) -> {
       let env = get_env(s)
       let #(in_val, _, s) = infer(s, in_term)
       let #(_, s) = def_var(s, name, in_val)
       let #(_, _, s) = infer(s, out_term)
       #(VPi(implicit, name, env, in_val, out_term), VTyp(0), s)
     }
-    App(fun, implicit, arg) -> infer_app(s, fun, implicit, arg, term.span)
-    Match(arg, motive, cases) -> infer_match(s, arg, motive, cases, term.span)
-    Call(name, args) -> {
+    App(fun, implicit, arg, _) -> infer_app(s, fun, implicit, arg, get_span(term))
+    Match(arg, motive, cases, _) -> infer_match(s, arg, motive, cases, get_span(term))
+    Call(name, args, _) -> {
       // Look up built-in in host registry
       case list.key_find(s.ffi, name) {
         Ok(Builtin(impl, _)) -> {
@@ -1391,31 +1405,31 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
         }
       }
     }
-    Comptime(term) -> {
+    Comptime(term, _) -> {
       // Comptime blocks are evaluated during elaboration
       // Execute with comptime_eval for permission checking
       let #(val, s1) = comptime_eval(s, term)
       // Quote the result back to a term and infer its type
-      let quoted = quote(s1.ffi, 0, val, term.span)
+      let quoted = quote(s1.ffi, 0, val, get_span(term))
       let #(val2, ty, s2) = infer(s1, quoted)
       #(val2, ty, s2)
     }
-    Fix(name, body) -> {
+    Fix(name, body, _) -> {
       // Fixpoint: fix f -> body has type A if body : A -> A
       // We create a hole for the result type and check that body has type hole -> hole
       let env = get_env(s)
       let #(result_ty_hole, s) = new_hole(s)
       // The function type is result_ty -> result_ty
       let fun_ty =
-        VPi([], name, env, result_ty_hole, Term(Hole(s.hole - 1), body.span))
+        VPi([], name, env, result_ty_hole, Hole(s.hole - 1, get_span(body)))
       // Add the fixpoint variable to the context with the function type
       let #(_fresh, s) = def_var(s, name, fun_ty)
-      let #(_body_val, s) = check(s, body, result_ty_hole, body.span)
+      let #(_body_val, s) = check(s, body, result_ty_hole, get_span(body))
       // Return the fixpoint value with the result type
       let fix_val = VFix(name, env, body)
       #(fix_val, result_ty_hole, s)
     }
-    Err(_) -> #(VErr, VErr, s)
+    Err(_, _) -> #(VErr, VErr, s)
     // Error terms have error type
   }
 }
@@ -1439,7 +1453,7 @@ fn infer_app(
   let #(fun_val, fun_ty, s) = infer(s, fun)
   case fun_ty {
     VPi(_, _, pi_env, in, out) -> {
-      let #(arg_val, s) = check(s, arg, in, fun.span)
+      let #(arg_val, s) = check(s, arg, in, get_span(fun))
       let out_val = eval(s.ffi, [arg_val, ..pi_env], out)
       #(do_app(s.ffi, fun_val, arg_val), out_val, s)
     }
@@ -1456,7 +1470,7 @@ fn infer_app(
           "_",
           env,
           arg_ty_hole_val,
-          Term(Hole(result_ty_hole_id), fun.span),
+          Hole(result_ty_hole_id, get_span(fun)),
         )
       // Unify the original hole with the expanded type
       case
@@ -1464,13 +1478,13 @@ fn infer_app(
           s,
           VNeut(HHole(hole_id), []),
           fun_ty_expanded,
-          fun.span,
-          fun.span,
+          get_span(fun),
+          get_span(fun),
         )
       {
         Ok(s) -> {
           // Now check the argument against the domain hole
-          let #(arg_val, s) = check(s, arg, arg_ty_hole_val, arg.span)
+          let #(arg_val, s) = check(s, arg, arg_ty_hole_val, get_span(arg))
           // Result type is the codomain hole (as a value)
           let out_val = result_ty_hole_val
           #(do_app(s.ffi, fun_val, arg_val), out_val, s)
@@ -1496,12 +1510,12 @@ fn infer_match(
   let env = get_env(s)
   let #(arg_val, arg_ty, s) = infer(s, arg)
   // The motive type is (x : arg_ty) → Type, where x is the scrutinee
-  let motive_ty = VPi([], "_", env, arg_ty, Term(Typ(0), arg.span))
-  let #(motive_val, s) = check(s, motive, motive_ty, motive.span)
+  let motive_ty = VPi([], "_", env, arg_ty, Typ(0, get_span(arg)))
+  let #(motive_val, s) = check(s, motive, motive_ty, get_span(motive))
   let s =
     list.fold(cases, s, fn(s, c) {
       let #(pat_val, s) =
-        bind_pattern(s, c.pattern, arg_ty, c.span, arg.span)
+        bind_pattern(s, c.pattern, arg_ty, get_span(c.body), get_span(arg))
       let branch_ty = do_app(s.ffi, motive_val, pat_val)
       // Check guard if present (must be boolean-ish)
       let s = case c.guard {
@@ -1511,7 +1525,7 @@ fn infer_match(
         }
         None -> s
       }
-      let #(_, s) = check(s, c.body, branch_ty, c.span)
+      let #(_, s) = check(s, c.body, branch_ty, get_span(c.body))
       s
     })
   // Run exhaustiveness checking and add any errors to the state
@@ -1593,9 +1607,9 @@ pub fn bind_pattern(
       let #(_, s) = def_var(s, name, ret_ty)
       bind_pattern(s, p, ret_ty, pat_span, ret_span)
     }
-    PTyp(k) -> check(s, Term(Typ(k), pat_span), ret_ty, ret_span)
-    PLit(k) -> check(s, Term(Lit(k), pat_span), ret_ty, ret_span)
-    PLitT(k) -> check(s, Term(LitT(k), pat_span), ret_ty, ret_span)
+    PTyp(k) -> check(s, Typ(k, pat_span), ret_ty, ret_span)
+    PLit(k) -> check(s, Lit(k, pat_span), ret_ty, ret_span)
+    PLitT(k) -> check(s, LitT(k, pat_span), ret_ty, ret_span)
     PRcd(pfields) ->
       case ret_ty {
         VRcd(vfields) -> {
@@ -1634,12 +1648,12 @@ pub fn bind_pattern(
         Ok(ctr) -> {
           let #(params, _, ctr_ret_ty, s) = check_ctr_def(s, ctr)
           let #(_, s) =
-            check_type(s, ctr_ret_ty, ret_ty, ctr.ret_ty.span, ret_span)
+            check_type(s, ctr_ret_ty, ret_ty, get_span(ctr.ret_ty), ret_span)
           let #(params, s) = ctr_solve_params(s, ctr, params, tag, pat_span)
           let env = list.append(params, get_env(s))
           let ctr_arg_ty = eval(s.ffi, env, ctr.arg_ty)
           let #(varg, s) =
-            bind_pattern(s, parg, ctr_arg_ty, pat_span, ctr.arg_ty.span)
+            bind_pattern(s, parg, ctr_arg_ty, pat_span, get_span(ctr.arg_ty))
           #(VCtrValue(VCtr(tag, varg)), s)
         }
       }
@@ -1665,7 +1679,7 @@ pub fn check(
   ty_span: Span,
 ) -> #(Value, State) {
   let #(value, inferred_ty, s) = infer(s, term)
-  case unify(s, inferred_ty, expected_ty, term.span, ty_span) {
+  case unify(s, inferred_ty, expected_ty, get_span(term), ty_span) {
     Ok(s) -> #(force(s.ffi, s.sub, value), s)
     Error(e) -> #(VErr, with_err(s, e))
   }
@@ -1896,19 +1910,19 @@ fn get_type_family(s: State, tag: String) -> String {
       // For custom constructors, use the return type structure
       case list.key_find(s.ctrs, tag) {
         Ok(ctr) -> {
-          case ctr.ret_ty.data {
-            Typ(k) -> "typ_" <> int.to_string(k)
+          case ctr.ret_ty {
+            Typ(k, _) -> "typ_" <> int.to_string(k)
             // For App types like App(Var(1), [Var(0)], span), use the function part
-            App(fun, _, _) -> {
-              case fun.data {
-                Var(i) -> "app_var_" <> int.to_string(i)
+            App(fun, _, _, _) -> {
+              case fun {
+                Var(i, _) -> "app_var_" <> int.to_string(i)
                 _ -> "app"
               }
             }
             // For Ctr types like Ctr("T", Typ(1)), use the tag and arg type
-            Ctr(type_tag, arg) -> {
-              case arg.data {
-                Typ(k) -> "ctr_" <> type_tag <> "_" <> int.to_string(k)
+            Ctr(type_tag, arg, _) -> {
+              case arg {
+                Typ(k, _) -> "ctr_" <> type_tag <> "_" <> int.to_string(k)
                 _ -> "ctr_" <> type_tag
               }
             }
@@ -2062,7 +2076,7 @@ pub fn check_exhaustiveness(
     list.fold(cases, #([], []), fn(acc, c) {
       let #(matrix, diagnostics) = acc
       case useful(s, index, matrix, [c.pattern]) {
-        [] -> #(matrix, [MatchRedundantCase(c.span), ..diagnostics])
+        [] -> #(matrix, [MatchRedundantCase(get_span(c.body)), ..diagnostics])
         _ -> #([[c.pattern], ..matrix], diagnostics)
       }
     })

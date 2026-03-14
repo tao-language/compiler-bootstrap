@@ -12,9 +12,9 @@
 /// For detailed documentation see:
 /// - [Tao Overloading](../../docs/plans/tao/10-overloading-design.md)
 /// - [Core Syntax](../../docs/core-syntax.md)
-import tao/syntax.{type Expr, Int, Var, Add, Sub, Mul, Div, Eq, Neq, Lt, Gt, Lte, Gte, And, Or, Not, OverloadedFn, OverloadedApp, get_expr_span}
+import tao/syntax.{type Expr, Int, Var as TaoVar, Add, Sub, Mul, Div, Eq, Neq, Lt, Gt, Lte, Gte, And, Or, Not, OverloadedFn, OverloadedApp, get_expr_span}
 import core/core.{
-  type Term, Term, Lit, I32, Var as CoreVar, Call, Case, Match, Typ, Lam, Hole,
+  type Term, Lit, I32, Var, Call, Case, Match, Typ, Lam, Hole,
   type Literal, type LiteralType, type Case, type Pattern, I32T, I64T, F32T, F64T, U32T, U64T, PLitT, PAny,
 }
 import syntax/grammar.{type Span, Span}
@@ -58,7 +58,7 @@ pub fn desugar(expr: Expr) -> Term {
 fn desugar_expr(expr: Expr, ctx: DesugarCtx) -> Term {
   case expr {
     Int(value, span) -> desugar_int(value, span)
-    Var(name, span) -> desugar_var(name, span, ctx)
+    TaoVar(name, span) -> desugar_var(name, span, ctx)
     Add(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_add")
     Sub(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_sub")
     Mul(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_mul")
@@ -84,16 +84,16 @@ fn desugar_expr(expr: Expr, ctx: DesugarCtx) -> Term {
 
 /// Desugar integer literal.
 fn desugar_int(value: Int, span: Span) -> Term {
-  Term(Lit(I32(value)), span)
+  Lit(I32(value), span)
 }
 
 /// Desugar variable reference.
 fn desugar_var(name: String, span: Span, ctx: DesugarCtx) -> Term {
   case find_var(name, ctx.env) {
-    Ok(index) -> Term(CoreVar(index), span)
+    Ok(index) -> Var(index, span)
     Error(_) -> {
       // Free variable - use index 0 (will be an error in type checking)
-      Term(CoreVar(0), span)
+      Var(0, span)
     }
   }
 }
@@ -108,13 +108,13 @@ fn desugar_binop(
 ) -> Term {
   let left_term = desugar_expr(left, ctx)
   let right_term = desugar_expr(right, ctx)
-  Term(Call(op_name, [left_term, right_term]), span)
+  Call(op_name, [left_term, right_term], span)
 }
 
 /// Desugar logical NOT.
 fn desugar_not(expr: Expr, span: Span, ctx: DesugarCtx) -> Term {
   let expr_term = desugar_expr(expr, ctx)
-  Term(Call("i32_not", [expr_term]), span)
+  Call("i32_not", [expr_term], span)
 }
 
 // ============================================================================
@@ -185,20 +185,18 @@ fn desugar_overloaded_fn(
 
   // Create match expression: %match T { | %Type -> body }
   let type_pattern = type_to_pattern(param_type)
-  let match_term = Term(
-    Match(
-      Term(CoreVar(0), span),
-      Term(Typ(0), span),
-      [
-        Case(type_pattern, body_term, None, span),
-        Case(PAny, body_term, None, span),  // Catch-all returns same body for simplicity
-      ],
-    ),
+  let match_term = Match(
+    Var(0, span),
+    Typ(0, span),
+    [
+      Case(type_pattern, body_term, None, span),
+      Case(PAny, body_term, None, span),  // Catch-all returns same body for simplicity
+    ],
     span,
   )
 
   // Create lambda with implicit type param: %fn<T>(x) -> match T { ... }
-  Term(Lam([type_param], #(param_name, Term(Hole(-1), span)), match_term), span)
+  Lam([type_param], #(param_name, Hole(-1, span)), match_term, span)
 }
 
 /// Convert type name to pattern for matching.
@@ -233,10 +231,10 @@ fn desugar_overloaded_app(
       // For now, create a simple call
       // Type inference will add implicit type args
       foldl(rest, first, fn(acc, arg) {
-        Term(Call(name, [acc, arg]), span)
+        Call(name, [acc, arg], span)
       })
     }
-    [] -> Term(CoreVar(0), span)  // No args
+    [] -> Var(0, span)  // No args
   }
 }
 
