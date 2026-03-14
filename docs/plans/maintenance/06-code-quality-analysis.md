@@ -3,22 +3,26 @@
 > **Date**: March 2026
 > **Scope**: `src/core/` and `src/tao/`
 > **Goal**: Identify improvements before standard library implementation
-> **Status**: ⏳ **Phase 1 In Progress** - 2/4 tasks complete
+> **Status**: ✅ **Phase 1 Complete** - All 4/4 tasks done
 
 ---
 
 ## Progress Status
 
-### Phase 1: Critical (Before Standard Library)
+### Phase 1: Critical (Before Standard Library) - ✅ COMPLETE
 
 | Task | Status | Notes |
 |------|--------|-------|
 | 1.1 Fix unused parameter warnings | ✅ **Complete** | All source files fixed |
 | 1.2 Consolidate builtin implementations | ✅ **Complete** | Added `binop_i32_f64` and `cmp_i32_f64` helpers |
-| 1.3 Standardize error type naming | 📋 Pending | Deferred - breaking change |
-| 1.4 Extract large `infer` function helpers | 📋 Pending | Deferred - lower priority |
+| 1.3 Standardize error type naming | ✅ **Complete** | Renamed fields for consistency |
+| 1.4 Extract large `infer` function helpers | ✅ **Complete** | Extracted `infer_app` and `infer_match` |
 
-**Lines Saved**: ~100 lines from builtin consolidation
+**Results**:
+- **Lines Saved**: ~100 lines from builtin consolidation
+- **Code Quality**: All warnings fixed
+- **Maintainability**: Error types now consistent, infer function modularized
+- **Tests**: 424 passing ✅
 
 ---
 

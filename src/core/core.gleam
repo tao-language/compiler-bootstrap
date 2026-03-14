@@ -594,9 +594,9 @@ pub type Error {
   // Syntax errors
   SyntaxError(span: Span, expected: String, got: String, context: String)
 
-  // Type errors
-  PatternMismatch(pattern: Pattern, expected_ty: Type, s1: Span, s2: Span)
-  TypeMismatch(expected: Type, got: Type, span1: Span, span2: Span)
+  // Type errors - consistent naming: Problem + Context
+  TypeMismatch(expected: Type, got: Type, expected_span: Span, got_span: Span)
+  PatternMismatch(pattern: Pattern, expected_type: Type, pattern_span: Span, value_span: Span)
   InfiniteType(hole_id: Int, ty: Type, span1: Span, span2: Span)
   NotAFunction(fun: Term, fun_ty: Value)
   VarUndefined(index: Int, span: Span)
@@ -610,9 +610,9 @@ pub type Error {
   ArityMismatch(span1: Span, span2: Span)
   TODO(message: String)
 
-  // Exhaustiveness checks
-  MatchRedundantCase(Span)
-  MatchMissingCase(Span, Pattern)
+  // Exhaustiveness checks - consistent naming: Match + Issue
+  MatchMissingCase(span: Span, pattern: Pattern)
+  MatchRedundantCase(span: Span)
 
   // Comptime errors
   ComptimePermissionDenied(
@@ -1276,81 +1276,8 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(_, _, s) = infer(s, out_term)
       #(VPi(implicit, name, env, in_val, out_term), VTyp(0), s)
     }
-    App(fun, _implicit, arg) -> {
-      let #(fun_val, fun_ty, s) = infer(s, fun)
-      case fun_ty {
-        VPi(_, _, pi_env, in, out) -> {
-          let #(arg_val, s) = check(s, arg, in, fun.span)
-          let out_val = eval(s.ffi, [arg_val, ..pi_env], out)
-          #(do_app(s.ffi, fun_val, arg_val), out_val, s)
-        }
-        VNeut(HHole(hole_id), []) -> {
-          // Hole expansion: ?1 applied to arg means ?1 = (?2 -> ?3)
-          let env = get_env(s)
-          let #(arg_ty_hole_val, s) = new_hole(s)
-          let result_ty_hole_id = s.hole
-          let #(result_ty_hole_val, s) = new_hole(s)
-          // Create the expanded function type: (?2 -> ?3)
-          let fun_ty_expanded =
-            VPi(
-              [],
-              "_",
-              env,
-              arg_ty_hole_val,
-              Term(Hole(result_ty_hole_id), fun.span),
-            )
-          // Unify the original hole with the expanded type
-          case
-            unify(
-              s,
-              VNeut(HHole(hole_id), []),
-              fun_ty_expanded,
-              fun.span,
-              fun.span,
-            )
-          {
-            Ok(s) -> {
-              // Now check the argument against the domain hole
-              let #(arg_val, s) = check(s, arg, arg_ty_hole_val, arg.span)
-              // Result type is the codomain hole (as a value)
-              let out_val = result_ty_hole_val
-              #(do_app(s.ffi, fun_val, arg_val), out_val, s)
-            }
-            Error(_) -> #(VErr, VErr, with_err(s, NotAFunction(fun, fun_ty)))
-          }
-        }
-        _ -> #(VErr, VErr, with_err(s, NotAFunction(fun, fun_ty)))
-      }
-    }
-    Match(arg, motive, cases) -> {
-      let env = get_env(s)
-      let #(arg_val, arg_ty, s) = infer(s, arg)
-      // The motive type is (x : arg_ty) → Type, where x is the scrutinee
-      let motive_ty = VPi([], "_", env, arg_ty, Term(Typ(0), arg.span))
-      let #(motive_val, s) = check(s, motive, motive_ty, motive.span)
-      let s =
-        list.fold(cases, s, fn(s, c) {
-          let #(pat_val, s) =
-            bind_pattern(s, c.pattern, arg_ty, c.span, arg.span)
-          let branch_ty = do_app(s.ffi, motive_val, pat_val)
-          // Check guard if present (must be boolean-ish)
-          let s = case c.guard {
-            Some(guard_term) -> {
-              let #(_guard_val, _guard_ty, s) = infer(s, guard_term)
-              s
-            }
-            None -> s
-          }
-          let #(_, s) = check(s, c.body, branch_ty, c.span)
-          s
-        })
-      // Run exhaustiveness checking and add any errors to the state
-      let exhaustiveness_errors = check_exhaustiveness(s, cases, term.span)
-      let s = list.fold(exhaustiveness_errors, s, with_err)
-      let match_val = do_match(env, arg_val, motive_val, cases)
-      let result_ty = do_app(s.ffi, motive_val, arg_val)
-      #(match_val, result_ty, s)
-    }
+    App(fun, implicit, arg) -> infer_app(s, fun, implicit, arg, term.span)
+    Match(arg, motive, cases) -> infer_match(s, arg, motive, cases, term.span)
     Call(name, args) -> {
       // Look up built-in in host registry
       case list.key_find(s.ffi, name) {
@@ -1416,6 +1343,108 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
     Err(_) -> #(VErr, VErr, s)
     // Error terms have error type
   }
+}
+
+// ============================================================================
+// INFER HELPERS
+// ============================================================================
+
+/// Infer type for function application.
+///
+/// Handles both normal applications and hole expansion:
+/// - VPi: Apply function to argument, return result type
+/// - Hole: Expand hole to function type, unify, then apply
+fn infer_app(
+  s: State,
+  fun: Term,
+  implicit: List(Term),
+  arg: Term,
+  span: Span,
+) -> #(Value, Type, State) {
+  let #(fun_val, fun_ty, s) = infer(s, fun)
+  case fun_ty {
+    VPi(_, _, pi_env, in, out) -> {
+      let #(arg_val, s) = check(s, arg, in, fun.span)
+      let out_val = eval(s.ffi, [arg_val, ..pi_env], out)
+      #(do_app(s.ffi, fun_val, arg_val), out_val, s)
+    }
+    VNeut(HHole(hole_id), []) -> {
+      // Hole expansion: ?1 applied to arg means ?1 = (?2 -> ?3)
+      let env = get_env(s)
+      let #(arg_ty_hole_val, s) = new_hole(s)
+      let result_ty_hole_id = s.hole
+      let #(result_ty_hole_val, s) = new_hole(s)
+      // Create the expanded function type: (?2 -> ?3)
+      let fun_ty_expanded =
+        VPi(
+          [],
+          "_",
+          env,
+          arg_ty_hole_val,
+          Term(Hole(result_ty_hole_id), fun.span),
+        )
+      // Unify the original hole with the expanded type
+      case
+        unify(
+          s,
+          VNeut(HHole(hole_id), []),
+          fun_ty_expanded,
+          fun.span,
+          fun.span,
+        )
+      {
+        Ok(s) -> {
+          // Now check the argument against the domain hole
+          let #(arg_val, s) = check(s, arg, arg_ty_hole_val, arg.span)
+          // Result type is the codomain hole (as a value)
+          let out_val = result_ty_hole_val
+          #(do_app(s.ffi, fun_val, arg_val), out_val, s)
+        }
+        Error(_) -> #(VErr, VErr, with_err(s, NotAFunction(fun, fun_ty)))
+      }
+    }
+    _ -> #(VErr, VErr, with_err(s, NotAFunction(fun, fun_ty)))
+  }
+}
+
+/// Infer type for match expression.
+///
+/// The motive type is (x : arg_ty) → Type, where x is the scrutinee.
+/// Each case is checked against the branch type, and exhaustiveness is verified.
+fn infer_match(
+  s: State,
+  arg: Term,
+  motive: Term,
+  cases: List(Case),
+  span: Span,
+) -> #(Value, Type, State) {
+  let env = get_env(s)
+  let #(arg_val, arg_ty, s) = infer(s, arg)
+  // The motive type is (x : arg_ty) → Type, where x is the scrutinee
+  let motive_ty = VPi([], "_", env, arg_ty, Term(Typ(0), arg.span))
+  let #(motive_val, s) = check(s, motive, motive_ty, motive.span)
+  let s =
+    list.fold(cases, s, fn(s, c) {
+      let #(pat_val, s) =
+        bind_pattern(s, c.pattern, arg_ty, c.span, arg.span)
+      let branch_ty = do_app(s.ffi, motive_val, pat_val)
+      // Check guard if present (must be boolean-ish)
+      let s = case c.guard {
+        Some(guard_term) -> {
+          let #(_guard_val, _guard_ty, s) = infer(s, guard_term)
+          s
+        }
+        None -> s
+      }
+      let #(_, s) = check(s, c.body, branch_ty, c.span)
+      s
+    })
+  // Run exhaustiveness checking and add any errors to the state
+  let exhaustiveness_errors = check_exhaustiveness(s, cases, span)
+  let s = list.fold(exhaustiveness_errors, s, with_err)
+  let match_val = do_match(env, arg_val, motive_val, cases)
+  let result_ty = do_app(s.ffi, motive_val, arg_val)
+  #(match_val, result_ty, s)
 }
 
 /// Infer types for all arguments

@@ -135,15 +135,15 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         ],
       )
 
-    TypeMismatch(expected, got, span1, span2) ->
+    TypeMismatch(expected, got, expected_span, got_span) ->
       source_snippet.Diagnostic(
         code: code,
         severity: severity,
         message: message,
-        primary_span: to_source_span(span1),
+        primary_span: to_source_span(expected_span),
         spans: [
           source_snippet.Highlight(
-            span: to_source_span(span2),
+            span: to_source_span(got_span),
             style: source_snippet.Secondary,
             label: Some("expected " <> type_to_string(expected) <> ", found " <> type_to_string(got)),
           ),
@@ -152,7 +152,7 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
           type_to_string(expected) <> " and " <> type_to_string(got) <> " are incompatible types",
           "The expression produces " <> type_to_string(got) <> " but " <> type_to_string(expected) <> " is expected here",
         ],
-        hints: type_mismatch_hints(expected, got, source, span1),
+        hints: type_mismatch_hints(expected, got, source, expected_span),
       )
 
     VarUndefined(index, span) ->
@@ -287,25 +287,25 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         ],
       )
 
-    PatternMismatch(_pattern, expected_ty, span1, span2) ->
+    PatternMismatch(_pattern, expected_type, pattern_span, value_span) ->
       source_snippet.Diagnostic(
         code: code,
         severity: severity,
         message: message,
-        primary_span: to_source_span(span1),
+        primary_span: to_source_span(pattern_span),
         spans: [
           source_snippet.Highlight(
-            span: to_source_span(span2),
+            span: to_source_span(value_span),
             style: source_snippet.Secondary,
-            label: Some("expected " <> type_to_string(expected_ty)),
+            label: Some("expected " <> type_to_string(expected_type)),
           ),
         ],
         notes: [
           "Pattern has incompatible type",
-          "The pattern expects " <> type_to_string(expected_ty) <> " but the matched value has a different type",
+          "The pattern expects " <> type_to_string(expected_type) <> " but the matched value has a different type",
         ],
         hints: [
-          "Use a pattern that matches " <> type_to_string(expected_ty),
+          "Use a pattern that matches " <> type_to_string(expected_type),
           "Check the type of the value being matched",
           "Consider adding a type annotation to clarify expectations",
         ],

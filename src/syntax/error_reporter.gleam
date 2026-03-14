@@ -47,7 +47,7 @@ pub fn parse_error_to_diagnostic(error: grammar.ParseError, _source: String, _fi
 
 pub fn type_error_to_diagnostic(error: TypeError, source: String, file: String) -> source_snippet.Diagnostic {
   case error {
-    TypeMismatch(expected, got, span1: grammar_span1, span2: grammar_span2) -> {
+    TypeMismatch(expected, got, expected_span: grammar_span1, got_span: grammar_span2) -> {
       let expected_str = type_to_string(expected)
       let got_str = type_to_string(got)
       source_snippet.Diagnostic(
@@ -294,16 +294,16 @@ pub fn type_error_to_diagnostic(error: TypeError, source: String, file: String) 
         ],
       )
     }
-    PatternMismatch(_pattern, expected_ty, span1, span2) -> {
-      let expected_str = value_to_string(expected_ty)
+    PatternMismatch(_pattern, expected_type, pattern_span, value_span) -> {
+      let expected_str = value_to_string(expected_type)
       source_snippet.Diagnostic(
         code: "E0201",
         severity: source_snippet.Error,
         message: "Pattern type mismatch",
-        primary_span: span_to_source_snippet_span(span1),
+        primary_span: span_to_source_snippet_span(pattern_span),
         spans: [
           source_snippet.Highlight(
-            span: span_to_source_snippet_span(span2),
+            span: span_to_source_snippet_span(value_span),
             style: source_snippet.Secondary,
             label: Some("expected " <> expected_str),
           ),
