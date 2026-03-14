@@ -2,7 +2,7 @@
 // TAO SYNTAX TESTS (MVP)
 // ============================================================================
 /// Tests for Tao syntax (MVP).
-import tao/syntax.{parse, format_expr, Int, Var, Add, Sub, Mul, Div}
+import tao/syntax.{parse, format_expr, Int, Var, Add, Sub, Mul, Div, BinOp, UnaryOp, Not}
 import gleeunit
 import gleeunit/should
 import syntax/grammar.{type ParseResult, ParseResult, type Span, Span}
@@ -37,8 +37,8 @@ pub fn parse_addition_test() {
   let ParseResult(ast, errors) = parse("1 + 2")
   errors |> should.equal([])
   case ast {
-    Add(Int(1, _), Int(2, _), _) -> Nil
-    _ -> panic as "Expected Add(Int(1), Int(2))"
+    BinOp(Int(1, _), Add, Int(2, _), _) -> Nil
+    _ -> panic as "Expected BinOp(Int(1), Add, Int(2))"
   }
 }
 
@@ -46,8 +46,8 @@ pub fn parse_subtraction_test() {
   let ParseResult(ast, errors) = parse("10 - 5")
   errors |> should.equal([])
   case ast {
-    Sub(Int(10, _), Int(5, _), _) -> Nil
-    _ -> panic as "Expected Sub(Int(10), Int(5))"
+    BinOp(Int(10, _), Sub, Int(5, _), _) -> Nil
+    _ -> panic as "Expected BinOp(Int(10), Sub, Int(5))"
   }
 }
 
@@ -94,20 +94,21 @@ pub fn format_variable_test() {
 }
 
 pub fn format_addition_test() {
-  format_expr(Add(Int(1, todo_span()), Int(2, todo_span()), todo_span()))
+  format_expr(BinOp(Int(1, todo_span()), Add, Int(2, todo_span()), todo_span()))
   |> should.equal("1 + 2")
 }
 
 pub fn format_multiplication_test() {
-  format_expr(Mul(Int(3, todo_span()), Int(4, todo_span()), todo_span()))
+  format_expr(BinOp(Int(3, todo_span()), Mul, Int(4, todo_span()), todo_span()))
   |> should.equal("3 * 4")
 }
 
 pub fn format_precedence_test() {
   // 1 + (2 * 3) - MVP doesn't track precedence in AST, just format as-is
-  let expr = Add(
+  let expr = BinOp(
     Int(1, todo_span()),
-    Mul(Int(2, todo_span()), Int(3, todo_span()), todo_span()),
+    Add,
+    BinOp(Int(2, todo_span()), Mul, Int(3, todo_span()), todo_span()),
     todo_span(),
   )
   format_expr(expr) |> should.equal("1 + 2 * 3")
@@ -115,8 +116,9 @@ pub fn format_precedence_test() {
 
 pub fn format_parentheses_test() {
   // (1 + 2) * 3 needs parens because + has lower precedence than *
-  let expr = Mul(
-    Add(Int(1, todo_span()), Int(2, todo_span()), todo_span()),
+  let expr = BinOp(
+    BinOp(Int(1, todo_span()), Add, Int(2, todo_span()), todo_span()),
+    Mul,
     Int(3, todo_span()),
     todo_span(),
   )
@@ -168,8 +170,8 @@ pub fn roundtrip_parentheses_test() {
   errors |> should.equal([])
   // Verify AST has correct structure: (1+2) * 3, not 1 + (2*3)
   case ast {
-    Mul(Add(Int(1, _), Int(2, _), _), Int(3, _), _) -> Nil
-    _ -> panic as "Expected Mul(Add(1,2), 3) structure"
+    BinOp(BinOp(Int(1, _), Add, Int(2, _), _), Mul, Int(3, _), _) -> Nil
+    _ -> panic as "Expected BinOp(BinOp(1,Add,2), Mul, 3) structure"
   }
 }
 

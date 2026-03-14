@@ -9,10 +9,24 @@
 /// - `42` becomes Core literal
 /// - `x` becomes Core variable
 ///
+/// ## Type Assumptions (TODO: Type-Directed Desugaring)
+///
+/// Currently, all binary operators are hardcoded to use I32 types:
+/// - Arithmetic: `i32_add`, `i32_sub`, `i32_mul`, `i32_div`
+/// - Comparison: `i32_eq`, `i32_neq`, `i32_lt`, etc.
+/// - Logical: `i32_and`, `i32_or`, `i32_not`
+///
+/// This is a **temporary limitation**. Future work should implement:
+/// 1. Type inference during desugaring
+/// 2. Polymorphic Core terms with type-directed resolution
+/// 3. Support for F32, F64, I64, U32, U64 types
+///
+/// See: [docs/plans/maintenance/06-code-quality-analysis.md](../../docs/plans/maintenance/06-code-quality-analysis.md)
+///
 /// For detailed documentation see:
 /// - [Tao Overloading](../../docs/plans/tao/10-overloading-design.md)
 /// - [Core Syntax](../../docs/core-syntax.md)
-import tao/syntax.{type Expr, Int, Var as TaoVar, Add, Sub, Mul, Div, Eq, Neq, Lt, Gt, Lte, Gte, And, Or, Not, OverloadedFn, OverloadedApp, get_expr_span}
+import tao/syntax.{type Expr, type BinOp, BinOp, type UnaryOp, UnaryOp, Int, Var as TaoVar, Add, Sub, Mul, Div, Eq, Neq, Lt, Gt, Lte, Gte, And, Or, Not, OverloadedFn, OverloadedApp, get_expr_span}
 import core/core.{
   type Term, Lit, I32, Var, Call, Case, Match, Typ, Lam, Hole,
   type Literal, type LiteralType, type Case, type Pattern, I32T, I64T, F32T, F64T, U32T, U64T, PLitT, PAny,
@@ -20,6 +34,20 @@ import core/core.{
 import syntax/grammar.{type Span, Span}
 import gleam/list
 import gleam/option.{None}
+
+// ============================================================================
+// TYPE ASSUMPTIONS (TODO: Make configurable via type inference)
+// ============================================================================
+
+/// Default type for numeric literals and operations.
+/// TODO: Infer from context during type checking.
+const default_numeric_type = "i32"
+
+/// Get the FFI operation name for a binary operator.
+/// TODO: Make this type-directed (e.g., "f64_add" for floats).
+fn binop_to_ffi(op: String) -> String {
+  default_numeric_type <> "_" <> op
+}
 
 // ============================================================================
 // DESUGAR CONTEXT
@@ -59,22 +87,37 @@ fn desugar_expr(expr: Expr, ctx: DesugarCtx) -> Term {
   case expr {
     Int(value, span) -> desugar_int(value, span)
     TaoVar(name, span) -> desugar_var(name, span, ctx)
-    Add(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_add")
-    Sub(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_sub")
-    Mul(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_mul")
-    Div(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_div")
-    Eq(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_eq")
-    Neq(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_neq")
-    Lt(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_lt")
-    Gt(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_gt")
-    Lte(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_lte")
-    Gte(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_gte")
-    And(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_and")
-    Or(left, right, span) -> desugar_binop(left, right, span, ctx, "i32_or")
-    Not(expr, span) -> desugar_not(expr, span, ctx)
+    BinOp(left, op, right, span) -> desugar_binop_expr(left, op, right, span, ctx)
+    UnaryOp(op, expr, span) -> desugar_unary_op(op, expr, span, ctx)
     OverloadedFn(name, type_param, param_name, param_type, return_type, body, span) ->
       desugar_overloaded_fn(name, type_param, param_name, param_type, return_type, body, span)
     OverloadedApp(name, args, span) -> desugar_overloaded_app(name, args, span, ctx)
+  }
+}
+
+/// Desugar binary operator expression.
+fn desugar_binop_expr(left: Expr, op: BinOp, right: Expr, span: Span, ctx: DesugarCtx) -> Term {
+  let op_name = case op {
+    Add -> "add"
+    Sub -> "sub"
+    Mul -> "mul"
+    Div -> "div"
+    Eq -> "eq"
+    Neq -> "neq"
+    Lt -> "lt"
+    Gt -> "gt"
+    Lte -> "lte"
+    Gte -> "gte"
+    And -> "and"
+    Or -> "or"
+  }
+  desugar_binop(left, right, span, ctx, op_name)
+}
+
+/// Desugar unary operator expression.
+fn desugar_unary_op(op: UnaryOp, expr: Expr, span: Span, ctx: DesugarCtx) -> Term {
+  case op {
+    Not -> desugar_not(expr, span, ctx)
   }
 }
 
@@ -83,6 +126,8 @@ fn desugar_expr(expr: Expr, ctx: DesugarCtx) -> Term {
 // ============================================================================
 
 /// Desugar integer literal.
+///
+/// TODO: Infer numeric type from context (currently defaults to I32).
 fn desugar_int(value: Int, span: Span) -> Term {
   Lit(I32(value), span)
 }
@@ -99,22 +144,26 @@ fn desugar_var(name: String, span: Span, ctx: DesugarCtx) -> Term {
 }
 
 /// Desugar binary operation.
+///
+/// TODO: Make type-directed by inferring operand types.
 fn desugar_binop(
   left: Expr,
   right: Expr,
   span: Span,
   ctx: DesugarCtx,
-  op_name: String,
+  op: String,
 ) -> Term {
   let left_term = desugar_expr(left, ctx)
   let right_term = desugar_expr(right, ctx)
-  Call(op_name, [left_term, right_term], span)
+  Call(binop_to_ffi(op), [left_term, right_term], span)
 }
 
 /// Desugar logical NOT.
+///
+/// TODO: Make type-directed based on operand type.
 fn desugar_not(expr: Expr, span: Span, ctx: DesugarCtx) -> Term {
   let expr_term = desugar_expr(expr, ctx)
-  Call("i32_not", [expr_term], span)
+  Call(binop_to_ffi("not"), [expr_term], span)
 }
 
 // ============================================================================

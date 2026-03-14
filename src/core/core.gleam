@@ -448,6 +448,45 @@ pub const ffi_build = [
 // ============================================================================
 // Helper functions for builtin implementations
 
+/// Generic binary operation helper for all numeric types.
+fn binop_all(
+  args: List(Value),
+  i32_op: fn(Int, Int) -> Int,
+  i64_op: fn(Int, Int) -> Int,
+  u32_op: fn(Int, Int) -> Int,
+  u64_op: fn(Int, Int) -> Int,
+  f32_op: fn(Float, Float) -> Float,
+  f64_op: fn(Float, Float) -> Float,
+) -> Option(Value) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(i32_op(a, b))))
+    [VLit(I64(a)), VLit(I64(b))] -> Some(VLit(I64(i64_op(a, b))))
+    [VLit(U32(a)), VLit(U32(b))] -> Some(VLit(U32(u32_op(a, b))))
+    [VLit(U64(a)), VLit(U64(b))] -> Some(VLit(U64(u64_op(a, b))))
+    [VLit(F32(a)), VLit(F32(b))] -> Some(VLit(F32(f32_op(a, b))))
+    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(F64(f64_op(a, b))))
+    _ -> None
+  }
+}
+
+/// Binary operation helper for integer types only (I32, I64, U32, U64).
+fn binop_int(
+  args: List(Value),
+  i32_op: fn(Int, Int) -> Int,
+  i64_op: fn(Int, Int) -> Int,
+  u32_op: fn(Int, Int) -> Int,
+  u64_op: fn(Int, Int) -> Int,
+) -> Option(Value) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(i32_op(a, b))))
+    [VLit(I64(a)), VLit(I64(b))] -> Some(VLit(I64(i64_op(a, b))))
+    [VLit(U32(a)), VLit(U32(b))] -> Some(VLit(U32(u32_op(a, b))))
+    [VLit(U64(a)), VLit(U64(b))] -> Some(VLit(U64(u64_op(a, b))))
+    _ -> None
+  }
+}
+
+/// Binary operation helper for I32 and F64 only (legacy helper).
 fn binop_i32_f64(
   args: List(Value),
   i32_op: fn(Int, Int) -> Int,
@@ -460,6 +499,28 @@ fn binop_i32_f64(
   }
 }
 
+/// Generic comparison helper for all numeric types.
+fn cmp_all(
+  args: List(Value),
+  i32_cmp: fn(Int, Int) -> Bool,
+  i64_cmp: fn(Int, Int) -> Bool,
+  u32_cmp: fn(Int, Int) -> Bool,
+  u64_cmp: fn(Int, Int) -> Bool,
+  f32_cmp: fn(Float, Float) -> Bool,
+  f64_cmp: fn(Float, Float) -> Bool,
+) -> Option(Value) {
+  case args {
+    [VLit(I32(a)), VLit(I32(b))] -> Some(VLit(I32(bool_to_int(i32_cmp(a, b)))))
+    [VLit(I64(a)), VLit(I64(b))] -> Some(VLit(I32(bool_to_int(i64_cmp(a, b)))))
+    [VLit(U32(a)), VLit(U32(b))] -> Some(VLit(I32(bool_to_int(u32_cmp(a, b)))))
+    [VLit(U64(a)), VLit(U64(b))] -> Some(VLit(I32(bool_to_int(u64_cmp(a, b)))))
+    [VLit(F32(a)), VLit(F32(b))] -> Some(VLit(I32(bool_to_int(f32_cmp(a, b)))))
+    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(I32(bool_to_int(f64_cmp(a, b)))))
+    _ -> None
+  }
+}
+
+/// Comparison helper for I32 and F64 only (legacy helper).
 fn cmp_i32_f64(
   args: List(Value),
   i32_cmp: fn(Int, Int) -> Bool,
@@ -476,57 +537,58 @@ fn cmp_i32_f64(
 // Arithmetic operations
 
 pub fn add_impl(args: List(Value)) -> Option(Value) {
-  binop_i32_f64(args, fn(a, b) { a + b }, fn(a, b) { a +. b })
+  binop_all(args, fn(a, b) { a + b }, fn(a, b) { a + b }, fn(a, b) { a + b }, fn(a, b) { a + b }, fn(a, b) { a +. b }, fn(a, b) { a +. b })
 }
 
 pub fn sub_impl(args: List(Value)) -> Option(Value) {
-  binop_i32_f64(args, fn(a, b) { a - b }, fn(a, b) { a -. b })
+  binop_all(args, fn(a, b) { a - b }, fn(a, b) { a - b }, fn(a, b) { a - b }, fn(a, b) { a - b }, fn(a, b) { a -. b }, fn(a, b) { a -. b })
 }
 
 pub fn mul_impl(args: List(Value)) -> Option(Value) {
-  binop_i32_f64(args, fn(a, b) { a * b }, fn(a, b) { a *. b })
+  binop_all(args, fn(a, b) { a * b }, fn(a, b) { a * b }, fn(a, b) { a * b }, fn(a, b) { a * b }, fn(a, b) { a *. b }, fn(a, b) { a *. b })
 }
 
 pub fn div_impl(args: List(Value)) -> Option(Value) {
   case args {
     [VLit(I32(a)), VLit(I32(b))] if b != 0 -> Some(VLit(I32(a / b)))
-    [VLit(F64(a)), VLit(F64(b))] -> Some(VLit(F64(a /. b)))
+    [VLit(I64(a)), VLit(I64(b))] if b != 0 -> Some(VLit(I64(a / b)))
+    [VLit(U32(a)), VLit(U32(b))] if b != 0 -> Some(VLit(U32(a / b)))
+    [VLit(U64(a)), VLit(U64(b))] if b != 0 -> Some(VLit(U64(a / b)))
+    [VLit(F32(a)), VLit(F32(b))] if b != 0.0 -> Some(VLit(F32(a /. b)))
+    [VLit(F64(a)), VLit(F64(b))] if b != 0.0 -> Some(VLit(F64(a /. b)))
     _ -> None
   }
 }
 
 pub fn mod_impl(args: List(Value)) -> Option(Value) {
-  case args {
-    [VLit(I32(a)), VLit(I32(b))] if b != 0 -> Some(VLit(I32(a % b)))
-    _ -> None
-  }
+  binop_int(args, fn(a, b) { a % b }, fn(a, b) { a % b }, fn(a, b) { a % b }, fn(a, b) { a % b })
 }
 
 // ============================================================================
 // Comparison operations
 
 pub fn eq_impl(args: List(Value)) -> Option(Value) {
-  cmp_i32_f64(args, fn(a, b) { a == b }, fn(a, b) { a == b })
+  cmp_all(args, fn(a, b) { a == b }, fn(a, b) { a == b }, fn(a, b) { a == b }, fn(a, b) { a == b }, fn(a, b) { a == b }, fn(a, b) { a == b })
 }
 
 pub fn neq_impl(args: List(Value)) -> Option(Value) {
-  cmp_i32_f64(args, fn(a, b) { a != b }, fn(a, b) { a != b })
+  cmp_all(args, fn(a, b) { a != b }, fn(a, b) { a != b }, fn(a, b) { a != b }, fn(a, b) { a != b }, fn(a, b) { a != b }, fn(a, b) { a != b })
 }
 
 pub fn lt_impl(args: List(Value)) -> Option(Value) {
-  cmp_i32_f64(args, fn(a, b) { a < b }, fn(a, b) { a <. b })
+  cmp_all(args, fn(a, b) { a < b }, fn(a, b) { a < b }, fn(a, b) { a < b }, fn(a, b) { a < b }, fn(a, b) { a <. b }, fn(a, b) { a <. b })
 }
 
 pub fn lte_impl(args: List(Value)) -> Option(Value) {
-  cmp_i32_f64(args, fn(a, b) { a <= b }, fn(a, b) { a <=. b })
+  cmp_all(args, fn(a, b) { a <= b }, fn(a, b) { a <= b }, fn(a, b) { a <= b }, fn(a, b) { a <= b }, fn(a, b) { a <=. b }, fn(a, b) { a <=. b })
 }
 
 pub fn gt_impl(args: List(Value)) -> Option(Value) {
-  cmp_i32_f64(args, fn(a, b) { a > b }, fn(a, b) { a >. b })
+  cmp_all(args, fn(a, b) { a > b }, fn(a, b) { a > b }, fn(a, b) { a > b }, fn(a, b) { a > b }, fn(a, b) { a >. b }, fn(a, b) { a >. b })
 }
 
 pub fn gte_impl(args: List(Value)) -> Option(Value) {
-  cmp_i32_f64(args, fn(a, b) { a >= b }, fn(a, b) { a >=. b })
+  cmp_all(args, fn(a, b) { a >= b }, fn(a, b) { a >= b }, fn(a, b) { a >= b }, fn(a, b) { a >= b }, fn(a, b) { a >=. b }, fn(a, b) { a >=. b })
 }
 
 // ============================================================================

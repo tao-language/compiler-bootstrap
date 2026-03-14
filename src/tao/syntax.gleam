@@ -29,24 +29,54 @@ import syntax/grammar.{
 /// Expression for Tao with overloading support.
 ///
 /// Supports: Arithmetic expressions, variables, comparison operators, and overloaded operators
+///
+/// Binary and unary operators are represented using enums to reduce constructor
+/// explosion and make pattern matching more maintainable.
+
+/// Binary operators for Tao expressions.
+pub type BinOp {
+  /// Arithmetic: +
+  Add
+  /// Arithmetic: -
+  Sub
+  /// Arithmetic: *
+  Mul
+  /// Arithmetic: /
+  Div
+  /// Comparison: ==
+  Eq
+  /// Comparison: !=
+  Neq
+  /// Comparison: <
+  Lt
+  /// Comparison: >
+  Gt
+  /// Comparison: <=
+  Lte
+  /// Comparison: >=
+  Gte
+  /// Logical: &&
+  And
+  /// Logical: ||
+  Or
+}
+
+/// Unary operators for Tao expressions.
+pub type UnaryOp {
+  /// Logical: !
+  Not
+}
+
+/// Expression for Tao with overloading support.
 pub type Expr {
+  /// Integer literal (e.g., 42)
   Int(value: Int, span: Span)
+  /// Variable reference (e.g., x)
   Var(name: String, span: Span)
-  Add(left: Expr, right: Expr, span: Span)
-  Sub(left: Expr, right: Expr, span: Span)
-  Mul(left: Expr, right: Expr, span: Span)
-  Div(left: Expr, right: Expr, span: Span)
-  /// Comparison operators
-  Eq(left: Expr, right: Expr, span: Span)
-  Neq(left: Expr, right: Expr, span: Span)
-  Lt(left: Expr, right: Expr, span: Span)
-  Gt(left: Expr, right: Expr, span: Span)
-  Lte(left: Expr, right: Expr, span: Span)
-  Gte(left: Expr, right: Expr, span: Span)
-  /// Logical operators
-  And(left: Expr, right: Expr, span: Span)
-  Or(left: Expr, right: Expr, span: Span)
-  Not(expr: Expr, span: Span)
+  /// Binary operation (e.g., x + y)
+  BinOp(left: Expr, op: BinOp, right: Expr, span: Span)
+  /// Unary operation (e.g., !x)
+  UnaryOp(op: UnaryOp, expr: Expr, span: Span)
   /// Overloaded function definition (e.g., fn (+)(x: I32) -> I32 { ... })
   OverloadedFn(
     name: String,
@@ -94,68 +124,62 @@ fn make_var(values) -> Expr {
   }
 }
 
-fn make_add(left: Expr, right: Expr) -> Expr {
+fn make_not(expr: Expr) -> Expr {
+  let span = get_expr_span(expr)
+  UnaryOp(Not, expr, span)
+}
+
+fn make_binop(left: Expr, op: BinOp, right: Expr) -> Expr {
   let span = merge_spans(get_span(left), get_span(right))
-  Add(left, right, span)
+  BinOp(left, op, right, span)
+}
+
+fn make_add(left: Expr, right: Expr) -> Expr {
+  make_binop(left, Add, right)
 }
 
 fn make_sub(left: Expr, right: Expr) -> Expr {
-  let span = merge_spans(get_span(left), get_span(right))
-  Sub(left, right, span)
+  make_binop(left, Sub, right)
 }
 
 fn make_mul(left: Expr, right: Expr) -> Expr {
-  let span = merge_spans(get_span(left), get_span(right))
-  Mul(left, right, span)
+  make_binop(left, Mul, right)
 }
 
 fn make_div(left: Expr, right: Expr) -> Expr {
-  let span = merge_spans(get_span(left), get_span(right))
-  Div(left, right, span)
+  make_binop(left, Div, right)
 }
 
 fn make_eq(left: Expr, right: Expr) -> Expr {
-  let span = merge_spans(get_span(left), get_span(right))
-  Eq(left, right, span)
+  make_binop(left, Eq, right)
 }
 
 fn make_neq(left: Expr, right: Expr) -> Expr {
-  let span = merge_spans(get_span(left), get_span(right))
-  Neq(left, right, span)
+  make_binop(left, Neq, right)
 }
 
 fn make_lt(left: Expr, right: Expr) -> Expr {
-  let span = merge_spans(get_span(left), get_span(right))
-  Lt(left, right, span)
+  make_binop(left, Lt, right)
 }
 
 fn make_gt(left: Expr, right: Expr) -> Expr {
-  let span = merge_spans(get_span(left), get_span(right))
-  Gt(left, right, span)
+  make_binop(left, Gt, right)
 }
 
 fn make_lte(left: Expr, right: Expr) -> Expr {
-  let span = merge_spans(get_span(left), get_span(right))
-  Lte(left, right, span)
+  make_binop(left, Lte, right)
 }
 
 fn make_gte(left: Expr, right: Expr) -> Expr {
-  let span = merge_spans(get_span(left), get_span(right))
-  Gte(left, right, span)
+  make_binop(left, Gte, right)
 }
 
 fn make_and(left: Expr, right: Expr) -> Expr {
-  let span = merge_spans(get_span(left), get_span(right))
-  And(left, right, span)
+  make_binop(left, And, right)
 }
 
 fn make_or(left: Expr, right: Expr) -> Expr {
-  let span = merge_spans(get_span(left), get_span(right))
-  Or(left, right, span)
-}
-
-fn make_not(expr: Expr) -> Expr {
-  Not(expr, get_span(expr))
+  make_binop(left, Or, right)
 }
 
 fn ast_to_expr(ast) -> Expr {
@@ -173,19 +197,8 @@ fn get_span(expr: Expr) -> Span {
   case expr {
     Int(_, span) -> span
     Var(_, span) -> span
-    Add(_, _, span) -> span
-    Sub(_, _, span) -> span
-    Mul(_, _, span) -> span
-    Div(_, _, span) -> span
-    Eq(_, _, span) -> span
-    Neq(_, _, span) -> span
-    Lt(_, _, span) -> span
-    Gt(_, _, span) -> span
-    Lte(_, _, span) -> span
-    Gte(_, _, span) -> span
-    And(_, _, span) -> span
-    Or(_, _, span) -> span
-    Not(_, span) -> span
+    BinOp(_, _, _, span) -> span
+    UnaryOp(_, _, span) -> span
     OverloadedFn(_, _, _, _, _, _, span) -> span
     OverloadedApp(_, _, span) -> span
   }
@@ -379,19 +392,8 @@ pub fn get_expr_span(expr: Expr) -> Span {
   case expr {
     Int(_, span) -> span
     Var(_, span) -> span
-    Add(_, _, span) -> span
-    Sub(_, _, span) -> span
-    Mul(_, _, span) -> span
-    Div(_, _, span) -> span
-    Eq(_, _, span) -> span
-    Neq(_, _, span) -> span
-    Lt(_, _, span) -> span
-    Gt(_, _, span) -> span
-    Lte(_, _, span) -> span
-    Gte(_, _, span) -> span
-    And(_, _, span) -> span
-    Or(_, _, span) -> span
-    Not(_, span) -> span
+    BinOp(_, _, _, span) -> span
+    UnaryOp(_, _, span) -> span
     OverloadedFn(_, _, _, _, _, _, span) -> span
     OverloadedApp(_, _, span) -> span
   }
@@ -441,19 +443,8 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
   case expr {
     Int(n, _) -> int.to_string(n)
     Var(name, _) -> name
-    Add(l, r, _) -> format_binop(l, r, "+", 10, parent_prec)
-    Sub(l, r, _) -> format_binop(l, r, "-", 10, parent_prec)
-    Mul(l, r, _) -> format_binop(l, r, "*", 20, parent_prec)
-    Div(l, r, _) -> format_binop(l, r, "/", 20, parent_prec)
-    Eq(l, r, _) -> format_binop(l, r, "==", 5, parent_prec)
-    Neq(l, r, _) -> format_binop(l, r, "!=", 5, parent_prec)
-    Lt(l, r, _) -> format_binop(l, r, "<", 5, parent_prec)
-    Gt(l, r, _) -> format_binop(l, r, ">", 5, parent_prec)
-    Lte(l, r, _) -> format_binop(l, r, "<=", 5, parent_prec)
-    Gte(l, r, _) -> format_binop(l, r, ">=", 5, parent_prec)
-    And(l, r, _) -> format_binop(l, r, "&&", 3, parent_prec)
-    Or(l, r, _) -> format_binop(l, r, "||", 3, parent_prec)
-    Not(e, _) -> "!" <> format_expr_loop(e, 100)
+    BinOp(l, op, r, _) -> format_binop_op(l, op, r, parent_prec)
+    UnaryOp(Not, e, _) -> "!" <> format_expr_loop(e, 100)
     OverloadedFn(name, _type_param, param_name, param_type, _return_type, _body, _) -> {
       "fn (" <> name <> ")(" <> param_name <> ": " <> param_type <> ") -> " <> param_type <> " { ... }"
     }
@@ -461,6 +452,24 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
       name <> "(" <> string_join(list.map(args, format_expr), ", ") <> ")"
     }
   }
+}
+
+fn format_binop_op(left: Expr, op: BinOp, right: Expr, parent_prec: Int) -> String {
+  let #(op_str, prec) = case op {
+    Add -> #("+", 10)
+    Sub -> #("-", 10)
+    Mul -> #("*", 20)
+    Div -> #("/", 20)
+    Eq -> #("==", 5)
+    Neq -> #("!=", 5)
+    Lt -> #("<", 5)
+    Gt -> #(">", 5)
+    Lte -> #("<=", 5)
+    Gte -> #(">=", 5)
+    And -> #("&&", 3)
+    Or -> #("||", 3)
+  }
+  format_binop(left, right, op_str, prec, parent_prec)
 }
 
 fn format_binop(left: Expr, right: Expr, op: String, prec: Int, parent_prec: Int) -> String {

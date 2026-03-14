@@ -3,7 +3,7 @@
 // ============================================================================
 /// Tests for Tao desugarer.
 import tao/desugar.{desugar}
-import tao/syntax.{Int, Var, Add, Sub, Mul, Div}
+import tao/syntax.{Int, Var, Add, Sub, Mul, Div, Eq, Neq, Lt, Gt, Lte, Gte, And, Or, Not, BinOp, UnaryOp}
 import syntax/grammar.{type Span, Span}
 import gleeunit
 import gleeunit/should
@@ -51,25 +51,25 @@ pub fn desugar_variable_name_test() {
 // ============================================================================
 
 pub fn desugar_addition_test() {
-  let expr = Add(Int(1, todo_span()), Int(2, todo_span()), todo_span())
+  let expr = BinOp(Int(1, todo_span()), Add, Int(2, todo_span()), todo_span())
   let term = desugar(expr)
   True |> should.be_true()
 }
 
 pub fn desugar_subtraction_test() {
-  let expr = Sub(Int(10, todo_span()), Int(5, todo_span()), todo_span())
+  let expr = BinOp(Int(10, todo_span()), Sub, Int(5, todo_span()), todo_span())
   let term = desugar(expr)
   True |> should.be_true()
 }
 
 pub fn desugar_multiplication_test() {
-  let expr = Mul(Int(3, todo_span()), Int(4, todo_span()), todo_span())
+  let expr = BinOp(Int(3, todo_span()), Mul, Int(4, todo_span()), todo_span())
   let term = desugar(expr)
   True |> should.be_true()
 }
 
 pub fn desugar_division_test() {
-  let expr = Div(Int(20, todo_span()), Int(4, todo_span()), todo_span())
+  let expr = BinOp(Int(20, todo_span()), Div, Int(4, todo_span()), todo_span())
   let term = desugar(expr)
   True |> should.be_true()
 }
@@ -80,8 +80,9 @@ pub fn desugar_division_test() {
 
 pub fn desugar_nested_addition_test() {
   // (1 + 2) + 3
-  let expr = Add(
-    Add(Int(1, todo_span()), Int(2, todo_span()), todo_span()),
+  let expr = BinOp(
+    BinOp(Int(1, todo_span()), Add, Int(2, todo_span()), todo_span()),
+    Add,
     Int(3, todo_span()),
     todo_span(),
   )
@@ -91,9 +92,10 @@ pub fn desugar_nested_addition_test() {
 
 pub fn desugar_mixed_operations_test() {
   // 1 + 2 * 3
-  let expr = Add(
+  let expr = BinOp(
     Int(1, todo_span()),
-    Mul(Int(2, todo_span()), Int(3, todo_span()), todo_span()),
+    Add,
+    BinOp(Int(2, todo_span()), Mul, Int(3, todo_span()), todo_span()),
     todo_span(),
   )
   let term = desugar(expr)
@@ -102,14 +104,14 @@ pub fn desugar_mixed_operations_test() {
 
 pub fn desugar_variable_in_binop_test() {
   // x + 5
-  let expr = Add(Var("x", todo_span()), Int(5, todo_span()), todo_span())
+  let expr = BinOp(Var("x", todo_span()), Add, Int(5, todo_span()), todo_span())
   let term = desugar(expr)
   True |> should.be_true()
 }
 
 pub fn desugar_two_variables_test() {
   // x + y
-  let expr = Add(Var("x", todo_span()), Var("y", todo_span()), todo_span())
+  let expr = BinOp(Var("x", todo_span()), Add, Var("y", todo_span()), todo_span())
   let term = desugar(expr)
   True |> should.be_true()
 }
@@ -120,9 +122,10 @@ pub fn desugar_two_variables_test() {
 
 pub fn desugar_complex_expression_test() {
   // (x + y) * (a - b)
-  let expr = Mul(
-    Add(Var("x", todo_span()), Var("y", todo_span()), todo_span()),
-    Sub(Var("a", todo_span()), Var("b", todo_span()), todo_span()),
+  let expr = BinOp(
+    BinOp(Var("x", todo_span()), Add, Var("y", todo_span()), todo_span()),
+    Mul,
+    BinOp(Var("a", todo_span()), Sub, Var("b", todo_span()), todo_span()),
     todo_span(),
   )
   let term = desugar(expr)
@@ -131,12 +134,14 @@ pub fn desugar_complex_expression_test() {
 
 pub fn desugar_chain_test() {
   // 1 + 2 + 3 + 4
-  let expr = Add(
-    Add(
-      Add(Int(1, todo_span()), Int(2, todo_span()), todo_span()),
+  let expr = BinOp(
+    BinOp(
+      BinOp(Int(1, todo_span()), Add, Int(2, todo_span()), todo_span()),
+      Add,
       Int(3, todo_span()),
       todo_span(),
     ),
+    Add,
     Int(4, todo_span()),
     todo_span(),
   )
