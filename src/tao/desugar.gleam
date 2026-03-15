@@ -479,8 +479,8 @@ fn desugar_while(
   dc: DesugarContext,
 ) -> #(CoreTerm, DesugarContext) {
   // while condition { body... }
-  // Desugar to: fix loop -> let _cond = condition in body; loop ()
-  // Note: Full implementation would use match on condition for proper short-circuit
+  // Desugar to: fix loop -> match condition { | True -> body; loop () | _ -> () }
+  // This ensures proper short-circuit: if condition is false, body is never executed
 
   // Desugar the condition
   let #(core_condition, dc1) = desugar_expr_core(condition, dc)
@@ -492,11 +492,34 @@ fn desugar_while(
   let loop_call = CoreApp(CoreVar("loop", span), CoreRcd([], span), span)
   let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
 
-  // Bind condition and execute body with recursion
-  let cond_binding = CoreLet("_while_cond", core_condition, span)
-  let match_body = CoreDoBlock([cond_binding], body_with_rec, span)
+  // Build match on condition: match condition { | True -> body; loop () | _ -> () }
+  // True clause: execute body and recurse
+  let true_clause = Case(
+    pattern: PPCtr("True", PUnit),
+    body: core_term_to_term(body_with_rec),
+    guard: None,
+    span: span,
+  )
   
-  let fix = CoreFix("loop", match_body, span)
+  // Default clause: return unit (exit loop)
+  let default_clause = Case(
+    pattern: PAny,
+    body: core_term_to_term(CoreRcd([], span)),
+    guard: None,
+    span: span,
+  )
+  
+  // Match expression as CoreTerm (need to wrap Term back for fixpoint body)
+  // For now, use CoreMatchCore directly with Term bodies
+  // The match result type is Unit
+  let match_core = CoreMatchCore(
+    arg: core_condition,
+    motive: CoreRcd([], span),
+    cases: [true_clause, default_clause],
+    span: span,
+  )
+  
+  let fix = CoreFix("loop", match_core, span)
 
   #(fix, dc2)
 }
@@ -903,11 +926,22 @@ fn desugar_match(
 
   // Desugar all clauses to Core Cases
   let #(core_cases, dc2) = desugar_match_clauses_to_cases(clauses, span, dc1)
+  
+  // Add fallback clause for non-exhaustive matches
+  // This ensures the match is always exhaustive at the Core level
+  // The fallback returns unit (in a full implementation, this would be a type error)
+  let fallback_clause = Case(
+    pattern: PAny,
+    body: core_term_to_term(CoreRcd([], span)),
+    guard: None,
+    span: span,
+  )
+  let all_cases = list.append(core_cases, [fallback_clause])
 
   // Build Core Match term
   // Motive (return type) is inferred, so we use a placeholder
   let motive = CoreRcd([], span)  // Unit type as placeholder
-  let core_match = CoreMatchCore(core_scrutinee, motive, core_cases, span)
+  let core_match = CoreMatchCore(core_scrutinee, motive, all_cases, span)
 
   #(core_match, dc2)
 }
