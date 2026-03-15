@@ -80,4 +80,8 @@ pub const operators = [
   "??",
   // Optional chaining
   "?.",
+  // Import path separator
+  "/",
+  // Wildcard
+  "*",
 ]

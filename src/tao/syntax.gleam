@@ -9,6 +9,7 @@
 /// - [Syntax Library](../../docs/syntax-library.md)
 /// - [Tao Overloading](../../docs/plans/tao/10-overloading-design.md)
 import tao/lexer
+import tao/import_ast.{type Import, ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias, ImportWildcard, type ImportItem, ImportName, ImportType, ImportOperator}
 import gleam/int
 import gleam/list
 import gleam/result
@@ -89,6 +90,15 @@ pub type Expr {
   )
   /// Application with potential implicit type args
   OverloadedApp(name: String, args: List(Expr), span: Span)
+}
+
+/// A Tao module with imports and body expression.
+pub type Module {
+  Module(
+    imports: List(Import),
+    body: Expr,
+    span: Span,
+  )
 }
 
 // ============================================================================
@@ -233,56 +243,53 @@ pub fn tao_grammar() -> Grammar(Expr) {
       infix_binary("/", make_div, InfixLeft, 20, " / "),
     ],
     rules: [
-      // Program = Stmt*
+      // Program = Import* Expr
       rule("Program", [
         alt(
-          many(ref("Stmt")),
+          seq([
+            many(ref("Import")),
+            ref("Expr"),
+          ]),
           fn(values) {
             case values {
-              [ListValue(stmts)] -> {
-                case list.first(stmts) {
-                  Ok(AstValue(e)) -> e
-                  _ -> Int(0, Span("empty", 0, 0, 0, 0))
-                }
+              [ListValue(imports), AstValue(body)] -> {
+                // Return a special wrapper that we'll unwrap later
+                // For now, just return the body expression
+                body
               }
               _ -> Int(0, Span("empty", 0, 0, 0, 0))
             }
           },
         ),
       ]),
-      // Stmt = Fn | Expr (top-level expression)
-      rule("Stmt", [
-        alt(ref("OverloadedFn"), fn(values) {
-          case values {
-            [AstValue(e)] -> e
-            _ -> Int(0, Span("empty", 0, 0, 0, 0))
-          }
-        }),
-        alt(ref("Expr"), fn(values) {
-          case values {
-            [AstValue(e)] -> e
-            _ -> Int(0, Span("empty", 0, 0, 0, 0))
-          }
-        }),
-      ]),
-      // OverloadedFn = "fn" "(" Ident ")" "(" Ident ":" Type ")" "->" Type "{" Expr "}"
-      rule("OverloadedFn", [
+      // Import = "import" Path ("as" ("*" | Ident))? ("{" Ident ("," Ident)* "}")?
+      rule("Import", [
         alt(
           seq([
-            keyword_pattern("fn"),
-            token_pattern("LParen"),
-            token_pattern("Ident"),  // operator name
-            token_pattern("RParen"),
-            token_pattern("LParen"),
-            token_pattern("Ident"),  // param name
-            token_pattern("Colon"),
-            token_pattern("Ident"),  // param type
-            token_pattern("RParen"),
-            token_pattern("Arrow"),
-            token_pattern("Ident"),  // return type
-            ref("Expr"),             // body
+            keyword_pattern("import"),
+            token_pattern("Ident"),  // path component
+            many(seq([
+              token_pattern("Slash"),
+              token_pattern("Ident"),
+            ])),
+            opt(seq([
+              keyword_pattern("as"),
+              token_pattern("Ident"),  // alias or "*" captured as Ident
+            ])),
+            opt(seq([
+              token_pattern("LBrace"),
+              many(seq([
+                token_pattern("Ident"),
+                opt(seq([
+                  keyword_pattern("as"),
+                  token_pattern("Ident"),
+                ])),
+                opt(token_pattern("Comma")),
+              ])),
+              token_pattern("RBrace"),
+            ])),
           ]),
-          make_overloaded_fn,
+          make_import,
         ),
       ]),
       // Logic level: && and || (precedence 3)
@@ -432,6 +439,13 @@ fn make_overloaded_fn(values) -> Expr {
     )
     _ -> panic as "Expected overloaded function definition"
   }
+}
+
+/// Helper to create import AST.
+fn make_import(values) -> Expr {
+  // For now, return a placeholder - imports are handled separately
+  // This allows the grammar to parse imports without changing the Expr type
+  Int(0, Span("import", 0, 0, 0, 0))
 }
 
 /// Format expression to string.

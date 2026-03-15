@@ -14,10 +14,14 @@ import core/core.{type Term, type Error as TypeError, type State, initial_state,
 import core/syntax as core_syntax
 import tao/syntax.{parse as tao_parse, get_expr_span}
 import tao/desugar.{desugar as tao_desugar}
+import tao/test_parser.{parse_tests, type Test}
+import tao/test_filter.{filter_tests, file_base_name}
+import tao/test_runner.{run_tests, calculate_summary, get_failures, all_passed, type TestResult, Fail, Error as TestError, TimedOut}
 import gleam/int
 import gleam/io
 import gleam/list
 import gleam/string
+import gleam/option.{Some, None}
 import simplifile
 import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType, Span}
 import syntax/error_reporter
@@ -29,6 +33,7 @@ import syntax/error_reporter
 pub type Command {
   Check(file: String, verbose: Bool, debug: Bool)
   Run(file: String, verbose: Bool, debug: Bool)
+  Test(paths: List(String), match_pattern: String, list_tests: Bool, verbose: Bool, debug: Bool)
   Help
 }
 
@@ -73,6 +78,9 @@ pub fn main() {
             Error(_) -> Nil
           }
         }
+        Test(paths, match_pattern, list_tests, verbose, debug) -> {
+          run_test_command(paths, match_pattern, list_tests, verbose, debug)
+        }
         Help -> {
           print_help()
         }
@@ -109,7 +117,48 @@ fn parse_args(args: List(String)) -> Result(Command, String) {
       let debug = has_flag(rest, "--debug", "--debug")
       Ok(Run(file, verbose, debug))
     }
+    ["test", ..rest] -> {
+      let paths = get_paths(rest)
+      let match_pattern = get_option_value(rest, "--match", "-m") |> option.unwrap("")
+      let list_tests = has_flag(rest, "--list", "-l")
+      let verbose = has_flag(rest, "-v", "--verbose")
+      let debug = has_flag(rest, "--debug", "--debug")
+      Ok(Test(paths, match_pattern, list_tests, verbose, debug))
+    }
     [cmd, ..] -> Error("Unknown command: " <> cmd)
+  }
+}
+
+/// Get positional arguments (paths) from argument list
+fn get_paths(args: List(String)) -> List(String) {
+  list.filter(args, fn(arg) {
+    string.starts_with(arg, "-") == False
+  })
+}
+
+/// Get value for an option (e.g., --match "pattern")
+fn get_option_value(args: List(String), long: String, short: String) -> option.Option(String) {
+  find_option_value(args, long, short, False)
+}
+
+fn find_option_value(
+  args: List(String),
+  long: String,
+  short: String,
+  found_flag: Bool,
+) -> option.Option(String) {
+  case args {
+    [] -> None
+    [flag, value, ..rest] if flag == long || flag == short -> {
+      case found_flag {
+        True -> Some(value)
+        False -> find_option_value(rest, long, short, False)
+      }
+    }
+    [flag, ..rest] if flag == long || flag == short -> {
+      find_option_value(rest, long, short, True)
+    }
+    [_, ..rest] -> find_option_value(rest, long, short, found_flag)
   }
 }
 
@@ -127,21 +176,25 @@ fn has_flag(args: List(String), short: String, long: String) -> Bool {
 fn print_help() {
   io.println("compiler-bootstrap - Core language compiler")
   io.println("")
-  io.println("Usage: gleam run <command> <file>")
+  io.println("Usage: gleam run <command> [options] [paths...]")
   io.println("")
   io.println("Commands:")
   io.println("  check <file>    Type-check a file")
   io.println("  run <file>      Type-check and evaluate a file")
+  io.println("  test [paths]    Run tests in specified files or directories")
   io.println("")
-  io.println("Options:")
-  io.println("  -h, --help      Show this help message")
-  io.println("  -v, --verbose   Verbose output")
-  io.println("  --debug         Debug mode (print AST and types)")
+  io.println("Test Options:")
+  io.println("  -m, --match <pattern>   Filter tests by name pattern (wildcards supported)")
+  io.println("  -l, --list              List all tests without running")
+  io.println("  -v, --verbose           Verbose output")
+  io.println("  --debug                 Debug mode (print AST and types)")
   io.println("")
   io.println("Examples:")
   io.println("  gleam run check example.core.tao")
   io.println("  gleam run run example.core.tao")
-  io.println("  gleam run check --verbose example.core.tao")
+  io.println("  gleam run test lib/prelude/")
+  io.println("  gleam run test --match \"* addition\"")
+  io.println("  gleam run test --list")
 }
 
 // ============================================================================
@@ -168,6 +221,160 @@ fn detect_file_type(path: String) -> FileType {
         False -> Core  // Default to core for unknown extensions
       }
     }
+  }
+}
+
+// ============================================================================
+// TEST COMMAND
+// ============================================================================
+
+fn run_test_command(
+  paths: List(String),
+  match_pattern: String,
+  list_tests: Bool,
+  verbose: Bool,
+  _debug: Bool,
+) -> Nil {
+  // Default to lib/prelude/ if no paths specified
+  let test_paths = case paths {
+    [] -> ["lib/prelude/"]
+    _ -> paths
+  }
+
+  // Collect all tests from all paths
+  let all_tests = collect_tests_from_paths(test_paths, verbose)
+
+  // Filter tests by pattern
+  let filtered_tests = case match_pattern {
+    "" -> all_tests
+    pattern -> {
+      // Filter by pattern (match against test name or filename)
+      list.map(all_tests, fn(pair) {
+        let #(tests, file) = pair
+        #(filter_tests(tests, [pattern], file), file)
+      })
+    }
+  }
+
+  // List tests or run them
+  case list_tests {
+    True -> list_all_tests(filtered_tests)
+    False -> run_and_report_tests(filtered_tests, verbose)
+  }
+}
+
+/// Collect tests from all paths
+fn collect_tests_from_paths(paths: List(String), verbose: Bool) -> List(#(List(Test), String)) {
+  list.flat_map(paths, fn(path) {
+    collect_tests_from_path(path, verbose)
+  })
+}
+
+/// Collect tests from a single path (file or directory)
+fn collect_tests_from_path(path: String, verbose: Bool) -> List(#(List(Test), String)) {
+  // Check if it's a directory or file
+  case simplifile.read(from: path) {
+    Ok(contents) -> {
+      // It's a file
+      let parse_result = parse_tests(contents, path)
+      case verbose {
+        True -> {
+          io.println("✓ Found " <> int.to_string(list.length(parse_result.tests)) <> " tests in " <> path)
+          Nil
+        }
+        False -> Nil
+      }
+      [#(parse_result.tests, path)]
+    }
+    Error(_) -> {
+      // Might be a directory, try to read it
+      collect_tests_from_directory(path, verbose)
+    }
+  }
+}
+
+/// Collect tests from a directory
+fn collect_tests_from_directory(dir_path: String, verbose: Bool) -> List(#(List(Test), String)) {
+  // For now, just return empty list - directory reading needs simplifile.list_dir
+  // This is a placeholder for now
+  case verbose {
+    True -> {
+      io.println("⚠ Directory reading not yet implemented: " <> dir_path)
+      Nil
+    }
+    False -> Nil
+  }
+  []
+}
+
+/// List all tests
+fn list_all_tests(tests_with_files: List(#(List(Test), String))) -> Nil {
+  list.each(tests_with_files, fn(pair) {
+    let #(tests, file) = pair
+    io.println("\n" <> file <> ":")
+    list.each(tests, fn(test_item) {
+      io.println("  " <> test_item.name)
+    })
+  })
+}
+
+/// Run tests and report results
+fn run_and_report_tests(tests_with_files: List(#(List(Test), String)), verbose: Bool) -> Nil {
+  // Flatten all tests
+  let all_tests = list.flat_map(tests_with_files, fn(pair) {
+    let #(tests, _) = pair
+    tests
+  })
+
+  // Run tests
+  let results = run_tests(all_tests)
+  let summary = calculate_summary(results)
+
+  // Report results
+  io.println("")
+  io.println("Test Results:")
+  io.println("  Total:   " <> int.to_string(summary.total))
+  io.println("  Passed:  " <> int.to_string(summary.passed))
+  io.println("  Failed:  " <> int.to_string(summary.failed))
+  io.println("  Skipped: " <> int.to_string(summary.skipped))
+  io.println("")
+
+  // Report failures
+  let failures = get_failures(results)
+  case failures {
+    [] -> Nil
+    [..] -> {
+      io.println("Failures:")
+      list.each(failures, fn(result) {
+        report_test_failure(result)
+      })
+    }
+  }
+
+  // Final status
+  case all_passed(results) {
+    True -> io.println("✓ All tests passed!")
+    False -> io.println("✗ Some tests failed")
+  }
+}
+
+/// Report a single test failure
+fn report_test_failure(result: TestResult) -> Nil {
+  case result {
+    Fail(test_item, expected, got) -> {
+      io.println("  ✗ " <> test_item.name)
+      io.println("      Expected: " <> expected)
+      io.println("      Got:      " <> got)
+    }
+    TestError(test_item, message) -> {
+      io.println("  ✗ " <> test_item.name)
+      io.println("      Error: " <> message)
+    }
+    TimedOut(test_item, timeout_ms) -> {
+      io.println("  ✗ " <> test_item.name)
+      io.println("      Timed out after " <> int.to_string(timeout_ms) <> "ms")
+    }
+    _ -> Nil
   }
 }
 
