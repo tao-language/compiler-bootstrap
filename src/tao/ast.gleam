@@ -1,19 +1,130 @@
 import syntax/grammar.{type Span}
-import gleam/option.{type Option}
+import gleam/option.{type Option, Some, None}
+import gleam/string
+import gleam/list
+import tao/import_ast.{type Import}
 
 // ============================================================================
 // TAO ABSTRACT SYNTAX TREE
 // ============================================================================
 // High-level syntax tree for Tao language following the updated syntax design:
-// - Untyped literals (Int, Float, String only)
-// - Bool is a sum type (True | False), not a literal
-// - Explicit type parameters: fn<a>(x: a) -> a
-// - Sum types: type Maybe(a) = Some(a) | None
-// - Pattern matching: match x { | Some(y) -> y | None -> 0 }
-// - Modules: _prefix = private, everything else public
+// - Modules are Records of public names
+// - Imports are let aliases (desugared)
+// - Everything is a Stmt (uniform treatment)
 // - do { ... } for imperative blocks
 // - comptime expr (use comptime do { } for blocks)
 
+// ============================================================================
+// MODULE
+// ============================================================================
+/// A module (file) is a list of statements that returns a Record of public names.
+pub type Module {
+  Module(
+    path: String,
+    body: List(Stmt),
+    span: Span,
+  )
+}
+
+// ============================================================================
+// STATEMENTS
+// ============================================================================
+/// Statements - everything in a module body is a statement.
+pub type Stmt {
+  /// let [mut] x [: Type] = expr
+  StmtLet(
+    name: String,
+    mutable: Bool,
+    type_ann: Option(Type),
+    value: Expr,
+    span: Span,
+  )
+  
+  /// fn name(params) [: Type] { body }
+  StmtFn(
+    name: String,
+    type_params: List(String),
+    params: List(Param),
+    return_type: Option(Type),
+    body: Expr,
+    span: Span,
+  )
+  
+  /// import path [as alias] {names}
+  StmtImport(
+    import_item: Import,
+    span: Span,
+  )
+  
+  /// for pattern in collection { body... }
+  StmtFor(
+    pattern: Pattern,
+    collection: Expr,
+    body: List(Stmt),
+    span: Span,
+  )
+  
+  /// while condition { body... }
+  StmtWhile(
+    condition: Expr,
+    body: List(Stmt),
+    span: Span,
+  )
+  
+  /// loop { body... }
+  StmtLoop(
+    body: List(Stmt),
+    span: Span,
+  )
+  
+  /// break
+  StmtBreak(
+    span: Span,
+  )
+  
+  /// continue
+  StmtContinue(
+    span: Span,
+  )
+  
+  /// return [expr]
+  StmtReturn(
+    value: Option(Expr),
+    span: Span,
+  )
+  
+  /// yield expr (for generators/streams)
+  StmtYield(
+    value: Expr,
+    span: Span,
+  )
+  
+  /// expr (expression statement, result discarded)
+  StmtExpr(
+    value: Expr,
+    span: Span,
+  )
+  
+  /// <- pattern = expr (monadic bind)
+  StmtBind(
+    pattern: Pattern,
+    value: Expr,
+    span: Span,
+  )
+  
+  /// mut target = expr (reassignment, e.g., mut x = 5 or mut x += 1)
+  StmtMut(
+    target: Expr,
+    value: Expr,
+    span: Span,
+  )
+}
+
+// ============================================================================
+// IMPORTS (legacy - kept for compatibility, use import_ast.Import)
+// ============================================================================
+/// Legacy Program type - deprecated, use Module instead.
+@deprecated("Use Module type instead")
 pub type Program {
   Program(
     module: Option(String),
@@ -22,15 +133,7 @@ pub type Program {
   )
 }
 
-pub type Import {
-  /// import math
-  /// import math as m
-  /// import math { min, max }
-  /// import math as m { min, max }
-  /// import math *
-  Import(module: String, alias: Option(String), names: Option(ImportNames))
-}
-
+@deprecated("Use StmtImport instead")
 pub type ImportNames {
   /// import math *
   ImportAll
@@ -39,10 +142,12 @@ pub type ImportNames {
   ImportSome(List(ImportName))
 }
 
+@deprecated("Use import_ast.ImportName instead")
 pub type ImportName {
   ImportName(name: String, alias: Option(String))
 }
 
+@deprecated("Use Stmt instead")
 pub type Declaration {
   /// let x = 5
   /// let mut counter = 0
@@ -217,11 +322,11 @@ pub type RecordField {
 
 pub type BlockStatement {
   /// Mutable let: mut x = 0
-  StmtLet(LetDecl)
+  BlockStmtLet(LetDecl)
   /// Assignment: x = value
-  StmtAssign(String, Expr)
+  BlockStmtAssign(String, Expr)
   /// Expression statement: print(x)
-  StmtExpr(Expr)
+  BlockStmtExpr(Expr)
 }
 
 pub type MatchClause {
@@ -423,5 +528,74 @@ pub fn span_from_pattern(pattern: Pattern) -> Span {
     PList(_, _, span) -> span
     POr(_, span) -> span
     PAs(_, _, span) -> span
+  }
+}
+
+// ============================================================================
+// STMT SPAN HELPERS
+// ============================================================================
+
+pub fn span_from_stmt(stmt: Stmt) -> Span {
+  case stmt {
+    StmtLet(_, _, _, _, span) -> span
+    StmtFn(_, _, _, _, _, span) -> span
+    StmtImport(_, span) -> span
+    StmtFor(_, _, _, span) -> span
+    StmtWhile(_, _, span) -> span
+    StmtLoop(_, span) -> span
+    StmtBreak(span) -> span
+    StmtContinue(span) -> span
+    StmtReturn(_, span) -> span
+    StmtYield(_, span) -> span
+    StmtExpr(_, span) -> span
+    StmtBind(_, _, span) -> span
+    StmtMut(_, _, span) -> span
+  }
+}
+
+pub fn span_from_module(module: Module) -> Span {
+  module.span
+}
+
+// ============================================================================
+// STMT HELPERS
+// ============================================================================
+
+/// Get the name from a definition statement (Let or Fn).
+pub fn get_stmt_name(stmt: Stmt) -> Option(String) {
+  case stmt {
+    StmtLet(name, _, _, _, _) -> Some(name)
+    StmtFn(name, _, _, _, _, _) -> Some(name)
+    _ -> None
+  }
+}
+
+/// Check if a statement is public (doesn't start with _).
+pub fn is_public_stmt(stmt: Stmt) -> Bool {
+  case get_stmt_name(stmt) {
+    Some(name) -> !string.starts_with(name, "_")
+    None -> False
+  }
+}
+
+/// Get all public statement names from a module body.
+pub fn get_public_names(body: List(Stmt)) -> List(String) {
+  get_public_names_helper(body, [])
+}
+
+fn get_public_names_helper(body: List(Stmt), acc: List(String)) -> List(String) {
+  case body {
+    [] -> list.reverse(acc)
+    [stmt, ..rest] -> {
+      case get_stmt_name(stmt) {
+        Some(name) -> {
+          case string.starts_with(name, "_") {
+            False -> get_public_names_helper(rest, [name, ..acc])
+            True -> get_public_names_helper(rest, acc)
+          }
+        }
+        None -> get_public_names_helper(rest, acc)
+      }
+    }
   }
 }

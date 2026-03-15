@@ -15,14 +15,17 @@
 - ✅ Tao expression parsing (arithmetic, variables, overloaded functions)
 - ✅ Test system (parser, filter, runner, CLI integration)
 - ✅ Import system design (AST types, resolution, directory imports, prelude handling)
+- ✅ Stmt type implemented (all statement variants)
+- ✅ Module type updated (body: List(Stmt))
 - **425 tests passing**
 
 ### What's Pending
 
-- ⏳ Stmt type implementation (Let, Fn, Import, control flow)
-- ⏳ Pattern type for destructuring
-- ⏳ Module → DoBlock desugaring
+- ⏳ Remove duplicate Expr from syntax.gleam
+- ⏳ Parser for Stmt forms
+- ⏳ Global context for module placeholders
 - ⏳ Import → let alias desugaring
+- ⏳ Module → DoBlock desugaring
 - ⏳ Directory aggregate records
 - ⏳ Implicit prelude injection
 
@@ -162,6 +165,8 @@ pub type Stmt {
 | March 14, 2026 | Directory imports (auto-import public files) | ✅ Complete |
 | March 14, 2026 | Prelude self-imports (no-op for prelude files) | ✅ Complete |
 | March 14, 2026 | Stmt system design finalized | ✅ Designed |
+| March 14, 2026 | Stmt type implemented (all variants) | ✅ Complete |
+| March 14, 2026 | Module type updated (body: List(Stmt)) | ✅ Complete |
 | March 14, 2026 | AST unification plan (remove duplicate Expr) | 📋 Planned |
 | March 14, 2026 | Import → let desugaring plan | 📋 Planned |
 
@@ -209,9 +214,9 @@ fn foo() {
 
 | Step | Task | Files | Status |
 |------|------|-------|--------|
-| **6.0** | Add Stmt type | `ast.gleam` | 📋 Planned |
-| **6.1** | Add Pattern type | `ast.gleam` | 📋 Planned |
-| **6.2** | Update Module type | `ast.gleam` | 📋 Planned |
+| **6.0** | Add Stmt type | `ast.gleam` | ✅ Complete |
+| **6.1** | Add Pattern type | `ast.gleam` | ✅ Already existed |
+| **6.2** | Update Module type | `ast.gleam` | ✅ Complete |
 | **6.3** | Remove duplicate Expr | `syntax.gleam` | 📋 Planned |
 | **6.4** | Parser for Stmt | `syntax.gleam` | 📋 Planned |
 | **6.5** | Global context | New file | 📋 Planned |
