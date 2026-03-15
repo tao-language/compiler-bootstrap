@@ -84,12 +84,16 @@ fn format_header(diagnostic: Diagnostic) -> String {
 
 fn format_snippet(diagnostic: Diagnostic, source: String) -> String {
   let lines = string.split(source, "\n")
+  let num_lines = list.length(lines)
   let primary = diagnostic.primary_span
 
   // Calculate which lines to show (context around the error)
   let context_lines = 3
-  let min_line = int.max(0, primary.start_line - context_lines - 1)
-  let max_line = int.min(list.length(lines), primary.end_line + context_lines)
+  // Clamp line numbers to actual source bounds
+  let start_line = int.max(0, int.min(num_lines, primary.start_line) - context_lines - 1)
+  let end_line = int.min(num_lines, primary.end_line + context_lines)
+  let min_line = int.max(0, start_line)
+  let max_line = int.max(min_line, end_line)
 
   // Find the max line number width for alignment
   let max_line_num = int.to_string(max_line) |> string.length

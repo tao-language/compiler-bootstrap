@@ -1,5 +1,5 @@
-// TODO Error
-// Placeholder for incomplete implementation
-// This error is used during development to mark unfinished code
-// Example: using TODO to mark a function that needs to be implemented
-TODO("implement this function")
+// Undefined Variable Error
+// Using a variable that is not defined in scope
+// This error occurs when referencing an undefined identifier
+// Example: using TODO as a placeholder for incomplete code
+TODO

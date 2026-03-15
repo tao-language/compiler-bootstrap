@@ -1,15 +1,11 @@
 
-error[E0102]: Undefined variable
-  ┌─ input:4:1
-1 │ // Syntax Recovery: Trailing operator
-2 │ // The parser should recover after the unexpected + operator
-3 │ // and potentially treat this as just the variable x
-4 │ x +
-    ^
+error[E0001]: Syntax error in unexpected token after successful parse
+  ┌─ input:159:4
+2 │ // The parser should handle incomplete function application
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+3 │ // and report an error for the unexpected end of input
+4 │ x(
 5 │ 
-  = note: Variable at index 0 is not defined in this scope
-  = note: Variables must be defined before they are used, typically in a let binding or lambda parameter
-  = hint: Check variable name and scope
-  = hint: Did you forget to define this variable?
-  = hint: Check for typos in the variable name
+  = note: Expected: end of input
+  = note: Got: (
 

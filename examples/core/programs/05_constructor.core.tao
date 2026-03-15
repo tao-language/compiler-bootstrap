@@ -3,5 +3,5 @@
 // Note: Constructors must be defined in the type context
 // This example shows valid constructor syntax using Church encoding
 // since full ADT support requires a prelude/type definition system
-let some = x -> #Some(x) in
+%let some = x -> #Some(x) in
 some(42)
