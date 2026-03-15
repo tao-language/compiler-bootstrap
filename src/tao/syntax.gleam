@@ -10,10 +10,11 @@
 /// - [Tao Overloading](../../docs/plans/tao/10-overloading-design.md)
 import tao/ast.{
   type Expr as AstExpr, Var as AstVar, Lit as AstLit, BinOp as AstBinOpExpr,
-  UnaryOp as AstUnaryOp, Lambda as AstLambda, Call as AstCall,
+  UnaryOp as AstUnaryOp, Lambda as AstLambda, Call as AstCall, Block as AstBlock,
   type BinOperator, OpAdd, OpSub, OpMul, OpDiv, OpEq, OpNeq, OpLt, OpGt, OpLte, OpGte, OpAnd, OpOr,
   type UnaryOperator, OpNot,
   Int as AstInt, type Param as AstParamType, Param as AstParam, TVar,
+  BlockStmtExpr, BlockStmtLet, LetDecl, Immutable, Mutable, type BlockStatement,
 }
 import tao/import_ast.{type Import, ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias, ImportWildcard, type ImportItem, ImportName, ImportType, ImportOperator}
 import gleam/int
@@ -99,6 +100,8 @@ pub type Expr {
   OverloadedApp(name: String, args: List(Expr), span: Span)
   /// Let binding (e.g., let x = 10)
   Let(name: String, mutable: Bool, type_annotation: Option(String), value: Expr, span: Span)
+  /// Block expression (e.g., { let x = 10; x + 1 })
+  Block(stmts: List(Expr), span: Span)
 }
 
 // ============================================================================
@@ -139,6 +142,12 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
       // This case should not be reached for top-level lets
       AstVar(name, span)
     }
+    Block(stmts, span) -> {
+      // Convert block statements to AST
+      // Let expressions become BlockStmtLet, others become BlockStmtExpr
+      let ast_stmts = list.map(stmts, expr_to_block_stmt)
+      AstBlock(ast_stmts, span)
+    }
   }
 }
 
@@ -156,6 +165,23 @@ fn binop_to_ast(op: BinOp) -> BinOperator {
     Gte -> OpGte
     And -> OpAnd
     Or -> OpOr
+  }
+}
+
+fn expr_to_block_stmt(expr: Expr) -> BlockStatement {
+  case expr {
+    Let(name, mutable, type_annotation, value, span) -> {
+      let mutability = case mutable {
+        True -> Mutable
+        False -> Immutable
+      }
+      let ast_type = case type_annotation {
+        Some(t) -> Some(TVar(t))
+        None -> None
+      }
+      BlockStmtLet(LetDecl(name, mutability, ast_type, expr_to_ast_loop(value), span))
+    }
+    _ -> BlockStmtExpr(expr_to_ast_loop(expr))
   }
 }
 
@@ -280,6 +306,7 @@ fn get_span(expr: Expr) -> Span {
     OverloadedFn(_, _, _, _, _, _, span) -> span
     OverloadedApp(_, _, span) -> span
     Let(_, _, _, _, span) -> span
+    Block(_, span) -> span
   }
 }
 
@@ -312,23 +339,24 @@ pub fn tao_grammar() -> Grammar(Expr) {
       infix_binary("/", make_div, InfixLeft, 20, " / "),
     ],
     rules: [
-      // Program = Stmt*
+      // Program = Stmt* (wrapped in a block)
       rule("Program", [
         alt(
           many(ref("Stmt")),
           fn(values) {
-            // many() returns a flat list of ListValue wrapped items
-            // e.g., [ListValue(AstValue(stmt1)), ListValue(AstValue(stmt2)), ...]
-            case list.first(values) {
-              Ok(ListValue(stmts)) -> {
-                // Get the first statement
-                case list.first(stmts) {
-                  Ok(AstValue(e)) -> e
-                  _ -> Int(0, Span("empty", 0, 0, 0, 0))
+            // many() returns a list of wrapped statements
+            // Extract all statements and wrap in a block
+            let stmts = extract_stmts(values, [])
+            let span = case list.first(values), list.last(values) {
+              Ok(ListValue([first_val])), Ok(ListValue([last_val])) ->
+                case first_val, last_val {
+                  AstValue(first_e), AstValue(last_e) ->
+                    merge_spans(get_span(first_e), get_span(last_e))
+                  _, _ -> Span("program", 0, 0, 0, 0)
                 }
-              }
-              _ -> Int(0, Span("empty", 0, 0, 0, 0))
+              _, _ -> Span("program", 0, 0, 0, 0)
             }
+            Block(stmts, span)
           },
         ),
       ]),
@@ -523,16 +551,24 @@ pub fn tao_grammar() -> Grammar(Expr) {
             }
           },
         ),
-      ]),
-      // Expr = Unary (binary operators would go here)
-      // For now, just use Unary as Expr
-      rule("Expr", [
-        alt(ref("Unary"), fn(values) {
+        // Block: { stmts }
+        alt(ref("Block"), fn(values) {
           case values {
             [AstValue(e)] -> e
             _ -> Int(0, Span("error", 0, 0, 0, 0))
           }
         }),
+      ]),
+      // Block = "{" Stmt* "}"
+      rule("Block", [
+        alt(
+          seq([
+            token_pattern("LBrace"),
+            many(ref("Stmt")),
+            token_pattern("RBrace"),
+          ]),
+          make_block,
+        ),
       ]),
     ],
   )
@@ -552,6 +588,7 @@ pub fn get_expr_span(expr: Expr) -> Span {
     OverloadedFn(_, _, _, _, _, _, span) -> span
     OverloadedApp(_, _, span) -> span
     Let(_, _, _, _, span) -> span
+    Block(_, span) -> span
   }
 }
 
@@ -660,6 +697,33 @@ fn make_let(values) -> Expr {
   Let(name, False, type_annotation, value_expr, Span("let", 0, 0, 0, 0))
 }
 
+fn make_block(values) -> Expr {
+  // values = [LBrace, stmts (ListValue), RBrace]
+  // stmts is a list of ListValue(AstValue(expr))
+  case values {
+    [_, ListValue(stmt_values), _] -> {
+      // Extract expressions from the wrapped values
+      let stmts = extract_stmts(stmt_values, [])
+      let span = case list.first(values), list.last(values) {
+        Ok(TokenValue(start)), Ok(TokenValue(end)) ->
+          Span("tao", start.start, start.line, start.column, end.end)
+        _, _ -> Span("block", 0, 0, 0, 0)
+      }
+      Block(stmts, span)
+    }
+    _ -> Int(0, Span("error", 0, 0, 0, 0))
+  }
+}
+
+fn extract_stmts(values: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
+  case values {
+    [] -> list.reverse(acc)
+    [ListValue([AstValue(e)]), ..rest] -> extract_stmts(rest, [e, ..acc])
+    [AstValue(e), ..rest] -> extract_stmts(rest, [e, ..acc])
+    [_, ..rest] -> extract_stmts(rest, acc)
+  }
+}
+
 /// Find the name token in a let binding.
 fn find_name(values: List(Value(Expr))) -> #(String, List(Value(Expr))) {
   case values {
@@ -696,6 +760,9 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
         None -> ""
       }
       "let " <> mut_str <> name <> type_str <> " = " <> format_expr(value)
+    }
+    Block(stmts, _) -> {
+      "{ " <> string_join(list.map(stmts, format_expr), "; ") <> " }"
     }
   }
 }

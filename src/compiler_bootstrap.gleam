@@ -12,7 +12,7 @@
 import argv
 import core/core.{type Term, type Error as TypeError, type State, initial_state, infer, eval, quote, Err}
 import core/syntax as core_syntax
-import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var as TaoVar, Int as TaoInt, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, expr_to_ast}
+import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var as TaoVar, Int as TaoInt, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, expr_to_ast}
 import tao/desugar.{desugar_module}
 import tao/global_context.{new_context, with_prelude, set_current_module}
 import tao/compiler.{compile_files, compile_single_file, type CompileResult, type CompileErrorType, ParseError as CompilerParseError, ImportError as CompilerImportError, CircularImport as CompilerCircularImport, ModuleNotFound as CompilerModuleNotFound}
@@ -898,6 +898,7 @@ fn get_expr_span_from_syntax(expr: TaoExpr) -> Span {
     TaoOverloadedFn(_, _, _, _, _, _, span) -> span
     TaoOverloadedApp(_, _, span) -> span
     TaoLet(_, _, _, _, span) -> span
+    TaoBlock(_, span) -> span
   }
 }
 
