@@ -26,7 +26,7 @@ import syntax/grammar.{
   type Grammar, type ParseResult, type Span, Span, Grammar, type Value, AstValue,
   ParensValue, TokenValue, ListValue,
   InfixLeft,
-  rule, alt, token_pattern, parenthesized, seq, ref, keyword_pattern, many, opt,
+  rule, alt, token_pattern, parenthesized, seq, ref, keyword_pattern, many, opt, sep1,
   infix_binary, left_assoc_rule,
   span_from_values, span_from_token, parse as grammar_parse,
   ParseResult as ParseResultVal,
@@ -96,6 +96,14 @@ pub type Expr {
     body: Expr,
     span: Span,
   )
+  /// Simple function definition (e.g., fn add(x, y) { x + y })
+  SimpleFn(
+    name: String,
+    params: List(#(String, Option(String))),  // (name, type_annotation)
+    return_type: Option(String),
+    body: Expr,
+    span: Span,
+  )
   /// Application with potential implicit type args
   OverloadedApp(name: String, args: List(Expr), span: Span)
   /// Let binding (e.g., let x = 10)
@@ -147,6 +155,37 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
       // Let expressions become BlockStmtLet, others become BlockStmtExpr
       let ast_stmts = list.map(stmts, expr_to_block_stmt)
       AstBlock(ast_stmts, span)
+    }
+    SimpleFn(name, params, _return_type, body, span) -> {
+      // Simple functions become Lambda in AST
+      // For now, convert first param to lambda param and body to AST
+      let ast_body = block_to_ast(body)
+      let ast_params = params_to_ast(params, span)
+      AstLambda([], ast_params, ast_body, span)
+    }
+  }
+}
+
+fn params_to_ast(params: List(#(String, Option(String))), span: Span) -> List(AstParamType) {
+  list.map(params, fn(param) {
+    let #(name, type_ann) = param
+    let ast_type = case type_ann {
+      Some(t) -> Some(TVar(t))
+      None -> None
+    }
+    AstParam(name, ast_type, span)
+  })
+}
+
+fn block_to_ast(block_expr: Expr) -> AstExpr {
+  case block_expr {
+    Block(stmts, span) -> {
+      let ast_stmts = list.map(stmts, expr_to_block_stmt)
+      AstBlock(ast_stmts, span)
+    }
+    _ -> {
+      let default_span = Span("error", 0, 0, 0, 0)
+      AstBlock([], default_span)
     }
   }
 }
@@ -307,6 +346,7 @@ fn get_span(expr: Expr) -> Span {
     OverloadedApp(_, _, span) -> span
     Let(_, _, _, _, span) -> span
     Block(_, span) -> span
+    SimpleFn(_, _, _, _, span) -> span
   }
 }
 
@@ -438,8 +478,28 @@ pub fn tao_grammar() -> Grammar(Expr) {
           fn(values) { make_let(values) },
         ),
       ]),
-      // Fn = "fn" "(" Ident ")" "(" Ident ":" Type ")" "->" Type "{" Expr "}"
+      // Fn = "fn" name "(" params ")" "{" body "}"  OR  "fn" "(" op ")" "(" param ":" type ")" "->" type "{" body "}"
       rule("Fn", [
+        // Simple function: fn name(params) { body }
+        alt(
+          seq([
+            keyword_pattern("fn"),
+            token_pattern("Ident"),  // function name
+            token_pattern("LParen"),
+            many(seq([
+              token_pattern("Ident"),  // param name
+              opt(token_pattern("Comma")),
+            ])),
+            token_pattern("RParen"),
+            opt(seq([
+              token_pattern("Arrow"),
+              token_pattern("Ident"),  // return type
+            ])),
+            ref("Block"),  // body
+          ]),
+          make_simple_fn,
+        ),
+        // Overloaded function: fn (+)(x: I32) -> I32 { body }
         alt(
           seq([
             keyword_pattern("fn"),
@@ -590,6 +650,7 @@ pub fn get_expr_span(expr: Expr) -> Span {
     OverloadedApp(_, _, span) -> span
     Let(_, _, _, _, span) -> span
     Block(_, span) -> span
+    SimpleFn(_, _, _, _, span) -> span
   }
 }
 
@@ -618,7 +679,73 @@ pub fn parse_module(source: String) -> ParseResult(List(Expr)) {
   }
 }
 
-/// Helper to create overloaded function AST.
+/// Helper to create simple function AST.
+fn make_simple_fn(values) -> Expr {
+  // Find the function name (second token, first is "fn")
+  let name_token = case values {
+    [_, TokenValue(t), ..] -> t
+    _ -> panic as "Expected function name"
+  }
+  
+  // Find the body (last AstValue)
+  let body_expr = case list.last(values) {
+    Ok(AstValue(e)) -> e
+    _ -> panic as "Expected function body"
+  }
+  
+  // Extract params from many result
+  // Structure: [fn, name, (, ListValue([ListValue([Ident, opt(Comma)]), ...]), ), block]
+  let params = case values {
+    [_, _, _, ListValue(params_many), _, _, _] -> {
+      // Each param in params_many is a ListValue([TokenValue(name), opt(Comma)])
+      extract_params_from_many(params_many, [])
+    }
+    _ -> []
+  }
+  
+  // No return type for now (simplified)
+  let return_type = None
+  
+  let body_span = get_expr_span(body_expr)
+  let span = merge_spans(span_from_token(name_token, "tao"), body_span)
+  SimpleFn(name_token.value, params, return_type, body_expr, span)
+}
+
+fn extract_params_from_many(params_many: List(Value(Expr)), acc: List(#(String, Option(String)))) -> List(#(String, Option(String))) {
+  case params_many {
+    [] -> list.reverse(acc)
+    [ListValue([TokenValue(name_tok), _]), ..rest] ->
+      extract_params_from_many(rest, [#(name_tok.value, None), ..acc])
+    [_, ..rest] -> extract_params_from_many(rest, acc)
+  }
+}
+
+fn extract_params(param_list: List(Value(Expr)), acc: List(#(String, Option(String)))) -> List(#(String, Option(String))) {
+  case param_list {
+    [] -> list.reverse(acc)
+    [ListValue(items), ..rest] -> {
+      // Each param is [TokenValue(name), opt([":", TokenValue(type)])]
+      case items {
+        [TokenValue(name_tok), TokenValue(_colon), TokenValue(type_tok)] ->
+          extract_params(rest, [#(name_tok.value, Some(type_tok.value)), ..acc])
+        [TokenValue(name_tok)] ->
+          extract_params(rest, [#(name_tok.value, None), ..acc])
+        _ -> extract_params(rest, acc)
+      }
+    }
+    // Handle case where params are not wrapped in ListValue
+    [TokenValue(name_tok), ..rest] -> {
+      // Single token without type annotation
+      extract_params(rest, [#(name_tok.value, None), ..acc])
+    }
+    // Handle case with type annotation but not wrapped
+    [TokenValue(name_tok), TokenValue(_colon), TokenValue(type_tok), ..rest] -> {
+      extract_params(rest, [#(name_tok.value, Some(type_tok.value)), ..acc])
+    }
+    [_, ..rest] -> extract_params(rest, acc)
+  }
+}
+
 fn make_overloaded_fn(values) -> Expr {
   case values {
     [
@@ -773,6 +900,23 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
     }
     Block(stmts, _) -> {
       "{ " <> string_join(list.map(stmts, format_expr), "; ") <> " }"
+    }
+    SimpleFn(name, params, return_type, _body, _) -> {
+      let params_str = string_join(
+        list.map(params, fn(p) {
+          let #(pname, ptype) = p
+          pname <> case ptype {
+            Some(t) -> ": " <> t
+            None -> ""
+          }
+        }),
+        ", ",
+      )
+      let ret_str = case return_type {
+        Some(t) -> " -> " <> t
+        None -> ""
+      }
+      "fn " <> name <> "(" <> params_str <> ")" <> ret_str <> " { ... }"
     }
   }
 }
