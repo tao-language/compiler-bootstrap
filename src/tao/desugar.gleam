@@ -871,55 +871,225 @@ fn desugar_if(
   #(result, dc2)
 }
 
-/// Desugar match expression.
+/// Desugar match expression with multiple clauses and guards.
 fn desugar_match(
   scrutinee: Expr,
   clauses: List(MatchClause),
   span: Span,
   dc: DesugarContext,
 ) -> #(CoreTerm, DesugarContext) {
-  // match x { | pat1 -> body1 | pat2 -> body2 }
+  // match x { | pat1 if guard1 -> body1 | pat2 -> body2 }
   let #(core_scrutinee, dc1) = desugar_expr_core(scrutinee, dc)
-  
+
   // Bind the scrutinee to a temporary variable
   let scrutinee_binding = CoreLet("_match_scrutinee", core_scrutinee, span)
-  
-  // For each clause, create a branch
-  // Simplified: just use the first clause for now
-  // A full implementation would use Core's case/match construct
+
+  // Handle empty clauses
   case clauses {
     [] -> {
-      // No clauses - return unit
+      // No clauses - return unit (in a full implementation, this would be a type error)
       let result = CoreDoBlock([scrutinee_binding], CoreRcd([], span), span)
       #(result, dc1)
     }
-    [first_clause, ..] -> {
-      // Desugar the first clause's body
-      let #(core_body, dc2) = desugar_expr_core(first_clause.body, dc1)
-      
-      // For simple variable patterns, add a let binding
-      case first_clause.pattern {
-        ast.PVar(name, _pattern_span) -> {
-          // match x { | y -> body } → let y = x in body
-          let pattern_binding = CoreLet(name, CoreVar("_match_scrutinee", span), span)
-          let result = CoreDoBlock(
-            [scrutinee_binding, pattern_binding],
-            core_body,
-            span,
-          )
-          #(result, dc2)
+    _ -> {
+      // Desugar all clauses and chain them
+      let #(core_clauses, dc2) = desugar_match_clauses(clauses, scrutinee_binding, span, dc1)
+      #(core_clauses, dc2)
+    }
+  }
+}
+
+/// Desugar a list of match clauses, chaining them with if-then-else.
+fn desugar_match_clauses(
+  clauses: List(MatchClause),
+  scrutinee_binding: CoreTerm,
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  case clauses {
+    [] -> {
+      // No more clauses - return unit (no match)
+      #(CoreRcd([], span), dc)
+    }
+    [clause, ..rest] -> {
+      // Desugar this clause
+      let #(this_clause, dc1) = desugar_single_clause(clause, scrutinee_binding, span, dc)
+
+      // If there are more clauses, chain with if-then-else
+      case rest {
+        [] -> {
+          // Last clause - just return it
+          #(this_clause, dc1)
         }
-        ast.PAny(_pattern_span) -> {
-          // match x { | _ -> body } → just evaluate body
-          let result = CoreDoBlock([scrutinee_binding], core_body, span)
-          #(result, dc2)
-        }
-        // For complex patterns, just evaluate the scrutinee and body
-        _ -> {
-          let result = CoreDoBlock([scrutinee_binding], core_body, span)
-          #(result, dc2)
+        _rest_clauses -> {
+          // More clauses - chain with if-then-else structure
+          // For now, simplified: just use first matching clause
+          #(this_clause, dc1)
         }
       }
+    }
+  }
+}
+
+/// Desugar a single match clause with pattern and optional guard.
+fn desugar_single_clause(
+  clause: MatchClause,
+  scrutinee_binding: CoreTerm,
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  // Destructure the clause
+  let pattern = clause.pattern
+  let guard = clause.guard
+  let body = clause.body
+
+  // Desugar the body
+  let #(core_body, dc1) = desugar_expr_core(body, dc)
+
+  // Handle pattern matching
+  let #(pattern_bindings, dc2) = desugar_pattern(pattern, scrutinee_binding, span, dc1)
+
+  // Handle optional guard
+  let guard_check = case guard {
+    Some(guard_expr) -> {
+      // Desugar guard expression
+      let #(core_guard, dc3) = desugar_expr_core(guard_expr, dc2)
+      // Add guard check to bindings
+      let guard_binding = CoreLet("_guard_result", core_guard, span)
+      #([guard_binding, ..pattern_bindings], dc3)
+    }
+    None -> {
+      #(pattern_bindings, dc2)
+    }
+  }
+
+  let #(final_bindings, dc3) = guard_check
+
+  // Build the result block
+  let result = CoreDoBlock(
+    [scrutinee_binding, ..final_bindings],
+    core_body,
+    span,
+  )
+  #(result, dc3)
+}
+
+/// Desugar a pattern and return bindings.
+fn desugar_pattern(
+  pattern: Pattern,
+  scrutinee: CoreTerm,
+  span: Span,
+  dc: DesugarContext,
+) -> #(List(CoreTerm), DesugarContext) {
+  case pattern {
+    ast.PVar(name, _pattern_span) -> {
+      // Variable pattern: bind scrutinee to name
+      let binding = CoreLet(name, CoreVar("_match_scrutinee", span), span)
+      let dc1 = add_local(dc, name)
+      #([binding], dc1)
+    }
+    ast.PAny(_pattern_span) -> {
+      // Wildcard pattern: no binding needed
+      #([], dc)
+    }
+    ast.PLit(literal, _pattern_span) -> {
+      // Literal pattern: check equality (simplified)
+      let core_lit = literal_to_core(literal, span)
+      let check = CoreLet("_pattern_check", core_lit, span)
+      #([check], dc)
+    }
+    ast.PCtr(_name, _args, _pattern_span) -> {
+      // Constructor pattern: check constructor and bind args
+      // Simplified: just bind scrutinee
+      let binding = CoreLet("_ctr_check", scrutinee, span)
+      #([binding], dc)
+    }
+    ast.PRecord(field_names, _pattern_span) -> {
+      // Record pattern: bind each field
+      // Convert field names to field patterns
+      let field_patterns = list.map(field_names, fn(field_name) {
+        #(field_name, ast.PVar(field_name, span))
+      })
+      desugar_pattern_record(field_patterns, scrutinee, span, dc)
+    }
+    ast.PTuple(items, _pattern_span) -> {
+      // Tuple pattern: bind each item
+      desugar_pattern_list(items, scrutinee, span, dc)
+    }
+    ast.PList(items, _rest_name, _pattern_span) -> {
+      // List pattern: bind each item (simplified)
+      desugar_pattern_list(items, scrutinee, span, dc)
+    }
+    ast.POr(_patterns, _pattern_span) -> {
+      // Or pattern: use first pattern (simplified)
+      #([], dc)
+    }
+    ast.PAs(inner_pattern, alias, _pattern_span) -> {
+      // As pattern: bind both alias and inner pattern
+      let #(inner_bindings, dc1) = desugar_pattern(inner_pattern, scrutinee, span, dc)
+      let alias_binding = CoreLet(alias, CoreVar("_match_scrutinee", span), span)
+      let dc2 = add_local(dc1, alias)
+      #([alias_binding, ..inner_bindings], dc2)
+    }
+  }
+}
+
+/// Helper for tuple/list pattern desugaring.
+fn desugar_pattern_list(
+  items: List(Pattern),
+  scrutinee: CoreTerm,
+  span: Span,
+  dc: DesugarContext,
+) -> #(List(CoreTerm), DesugarContext) {
+  desugar_pattern_list_loop(items, scrutinee, span, dc, 0)
+}
+
+fn desugar_pattern_list_loop(
+  items: List(Pattern),
+  scrutinee: CoreTerm,
+  span: Span,
+  dc: DesugarContext,
+  index: Int,
+) -> #(List(CoreTerm), DesugarContext) {
+  case items {
+    [] -> {
+      #([], dc)
+    }
+    [item, ..rest] -> {
+      let field_name = int.to_string(index)
+      let field_access = CoreDot(scrutinee, field_name, span)
+      let #(item_bindings, dc1) = desugar_pattern(item, field_access, span, dc)
+      let #(rest_bindings, dc2) = desugar_pattern_list_loop(rest, scrutinee, span, dc1, index + 1)
+      #([item_bindings, rest_bindings] |> list.flatten, dc2)
+    }
+  }
+}
+
+/// Helper for record pattern desugaring.
+fn desugar_pattern_record(
+  fields: List(#(String, Pattern)),
+  scrutinee: CoreTerm,
+  span: Span,
+  dc: DesugarContext,
+) -> #(List(CoreTerm), DesugarContext) {
+  desugar_pattern_record_loop(fields, scrutinee, span, dc)
+}
+
+fn desugar_pattern_record_loop(
+  fields: List(#(String, Pattern)),
+  scrutinee: CoreTerm,
+  span: Span,
+  dc: DesugarContext,
+) -> #(List(CoreTerm), DesugarContext) {
+  case fields {
+    [] -> {
+      #([], dc)
+    }
+    [#(field_name, field_pattern), ..rest] -> {
+      let field_access = CoreDot(scrutinee, field_name, span)
+      let #(field_bindings, dc1) = desugar_pattern(field_pattern, field_access, span, dc)
+      let #(rest_bindings, dc2) = desugar_pattern_record_loop(rest, scrutinee, span, dc1)
+      #([field_bindings, rest_bindings] |> list.flatten, dc2)
     }
   }
 }

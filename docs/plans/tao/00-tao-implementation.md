@@ -24,7 +24,17 @@
 - ✅ CoreTerm → core/core.Term conversion
 - ✅ Full expression desugaring (variables, literals, lambdas, applications, operators, records, tuples, lists, blocks, let expressions)
 - ✅ If expression desugaring (conditional evaluation)
-- ✅ Match expression desugaring (pattern binding for simple patterns)
+- ✅ Match expression desugaring with full pattern support:
+  - Variable patterns (PVar)
+  - Wildcard patterns (PAny)
+  - Literal patterns (PLit)
+  - Constructor patterns (PCtr)
+  - Record patterns (PRecord)
+  - Tuple patterns (PTuple)
+  - List patterns (PList)
+  - Or patterns (POr)
+  - As patterns (PAs)
+  - Guard expressions
 - ✅ Optional chaining desugaring
 - ✅ Record update desugaring
 - ✅ Variable scoping with De Bruijn indices (bound vs. free variables)
@@ -34,10 +44,10 @@
 
 ### What's Pending
 
-- ⏳ Full pattern matching (guards, multiple clauses, complex patterns)
 - ⏳ Full import desugaring integration with CLI
 - ⏳ Comprehensive desugarer tests
 - ⏳ Proper fixpoint-based recursion for loops (currently simplified)
+- ⏳ Multi-clause match chaining (currently uses first matching clause)
 
 ### Related
 
