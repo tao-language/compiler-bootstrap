@@ -53,6 +53,9 @@ pub type CoreTerm {
   /// Variable reference
   CoreVar(name: String, span: Span)
 
+  /// Builtin function call (add, sub, mul, etc.)
+  CoreCall(name: String, args: List(CoreTerm), span: Span)
+
   /// Module reference (@path)
   CoreModuleRef(path: String, span: Span)
 
@@ -146,38 +149,56 @@ pub fn desugar_module(
   // Desugar all statements
   let #(core_stmts, dc1) = desugar_stmts(module.body, dc)
 
-  // Get public names for return record
-  let public_names = get_public_names(module.body)
-  
-  // If there are public names, return a record of them
-  // Otherwise, return the last statement's value (for expression-style modules)
-  let result = case public_names {
-    [] -> {
-      // No public names - return the last statement value
-      // For empty modules, return unit
+  // Check if the last statement is an expression (for expression-style modules)
+  let last_is_expr = is_last_stmt_expr(module.body)
+
+  // Determine the result term
+  let result = case last_is_expr {
+    True -> {
+      // Expression-style module - return the last expression value
       case core_stmts {
         [] -> CoreRcd([], module.span)
         _ -> {
-          // Get the last statement
+          // Get the last statement (should be an expression)
           get_last_statement(core_stmts, CoreRcd([], module.span))
         }
       }
     }
-    names -> {
-      // Return record of public names
-      let return_fields = list.map(names, fn(name) {
-        #(name, CoreVar(name, module.span))
-      })
-      CoreRcd(return_fields, module.span)
+    False -> {
+      // Declaration-style module - return a record of public names
+      let public_names = get_public_names(module.body)
+      case public_names {
+        [] -> CoreRcd([], module.span)
+        names -> {
+          let return_fields = list.map(names, fn(name) {
+            #(name, CoreVar(name, module.span))
+          })
+          CoreRcd(return_fields, module.span)
+        }
+      }
     }
   }
-  
+
   let core_term = CoreDoBlock(core_stmts, result, module.span)
 
   // Convert to core/core.Term
   let term = core_term_to_term(core_term)
 
   #(term, dc1)
+}
+
+/// Check if the last statement in a list is an expression statement.
+fn is_last_stmt_expr(stmts: List(Stmt)) -> Bool {
+  case stmts {
+    [] -> False
+    [stmt] -> {
+      case stmt {
+        StmtExpr(_, _) -> True
+        _ -> False
+      }
+    }
+    [_, ..rest] -> is_last_stmt_expr(rest)
+  }
 }
 
 /// Get the last statement from a list, or return default if empty.
@@ -201,23 +222,23 @@ fn build_sequential_term(
 
 fn build_sequential_loop(
   stmts: List(CoreTerm),
-  acc: CoreTerm,
+  result: CoreTerm,
   span: Span,
 ) -> CoreTerm {
   case stmts {
-    [] -> acc
+    [] -> result
     [stmt, ..rest] -> {
       case stmt {
         CoreLet(name, value, _let_span) -> {
-          // let x = e in rest  =>  (λx. rest) e
-          let lam = CoreLam(name, acc, span)
-          let app = CoreApp(lam, value, span)
-          build_sequential_loop(rest, app, span)
+          // let x = e in rest  =>  (λx. process_rest) e
+          // First process the rest to get the body
+          let body = build_sequential_loop(rest, result, span)
+          let lam = CoreLam(name, body, span)
+          CoreApp(lam, value, span)
         }
         _ -> {
-          // Non-let statements (like StmtExpr) are just evaluated and discarded
-          // For now, we just continue with the accumulator
-          build_sequential_loop(rest, acc, span)
+          // Non-let statements in the middle are just evaluated and discarded
+          build_sequential_loop(rest, result, span)
         }
       }
     }
@@ -856,19 +877,15 @@ fn desugar_binop(
   span: Span,
   dc: DesugarContext,
 ) -> #(CoreTerm, DesugarContext) {
-  // Convert operator to function name
+  // Convert operator to builtin function name
   let op_name = binop_to_name(op)
-  
+
   // Desugar operands
   let #(core_left, dc1) = desugar_expr_core(left, dc)
   let #(core_right, dc2) = desugar_expr_core(right, dc1)
-  
-  // Build call: op_name(left, right)
-  let op_var = CoreVar(op_name, span)
-  let app1 = CoreApp(op_var, core_left, span)
-  let app2 = CoreApp(app1, core_right, span)
-  
-  #(app2, dc2)
+
+  // Build call: op_name(left, right) using CoreCall
+  #(CoreCall(op_name, [core_left, core_right], span), dc2)
 }
 
 /// Convert binary operator to function name.
@@ -901,11 +918,9 @@ fn desugar_unaryop(
 ) -> #(CoreTerm, DesugarContext) {
   let op_name = unaryop_to_name(op)
   let #(core_expr, dc1) = desugar_expr_core(expr, dc)
-  
-  let op_var = CoreVar(op_name, span)
-  let app = CoreApp(op_var, core_expr, span)
-  
-  #(app, dc1)
+
+  // Build call: op_name(expr) using CoreCall
+  #(CoreCall(op_name, [core_expr], span), dc1)
 }
 
 /// Convert unary operator to function name.
@@ -1496,6 +1511,10 @@ pub fn core_term_to_term(term: CoreTerm) -> Term {
 fn core_term_to_term_loop(term: CoreTerm) -> Term {
   case term {
     CoreVar(_name, span) -> Var(index: 0, span: span)  // Simplified: always use index 0
+    CoreCall(name, args, span) -> {
+      // Convert CoreCall to core/core.Call for FFI builtin
+      Call(name, list.map(args, core_term_to_term_loop), span)
+    }
     CoreModuleRef(_path, span) -> Var(index: 0, span: span)  // Simplified: module refs become vars
     CoreLam(param, body, span) -> {
       // Simplified lambda - no implicit params, no type annotation
@@ -1580,6 +1599,7 @@ fn core_case_to_case(core_case: CoreCaseType) -> core.Case {
 fn value_span(term: CoreTerm) -> Span {
   case term {
     CoreVar(_, span) -> span
+    CoreCall(_, _, span) -> span
     CoreModuleRef(_, span) -> span
     CoreLam(_, _, span) -> span
     CoreApp(_, _, span) -> span
