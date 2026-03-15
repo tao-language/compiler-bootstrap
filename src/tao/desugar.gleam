@@ -41,7 +41,7 @@ import tao/import_ast.{
   ImportSelectiveAlias, ImportWildcard,
   type ImportItem, ImportName, ImportType, ImportOperator,
 }
-import core/core.{type Term, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32}
+import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseAliasType, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, Match as CoreMatch, Case, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit}
 
 // ============================================================================
 // CORE TERM TYPES (simplified for desugaring)
@@ -52,31 +52,34 @@ import core/core.{type Term, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ,
 pub type CoreTerm {
   /// Variable reference
   CoreVar(name: String, span: Span)
-  
+
   /// Module reference (@path)
   CoreModuleRef(path: String, span: Span)
-  
+
   /// Lambda abstraction
   CoreLam(param: String, body: CoreTerm, span: Span)
-  
+
   /// Function application
   CoreApp(fun: CoreTerm, arg: CoreTerm, span: Span)
-  
+
   /// Record construction
   CoreRcd(fields: List(#(String, CoreTerm)), span: Span)
-  
+
   /// Field projection
   CoreDot(record: CoreTerm, field: String, span: Span)
-  
+
   /// Let binding (in DoBlock)
   CoreLet(name: String, value: CoreTerm, span: Span)
-  
+
   /// DoBlock (sequence of statements)
   CoreDoBlock(stmts: List(CoreTerm), result: CoreTerm, span: Span)
-  
+
   /// Literal
   CoreLit(value: String, span: Span)
-  
+
+  /// Pattern match with cases
+  CoreMatchCore(arg: CoreTerm, motive: CoreTerm, cases: List(CoreCaseAliasType), span: Span)
+
   /// Error placeholder
   CoreErr(message: String, span: Span)
 }
@@ -661,7 +664,16 @@ fn desugar_exprs_loop(
   }
 }
 
-/// Convert a literal to Core.
+/// Convert a Tao literal to a Core literal.
+fn tao_literal_to_core_literal(literal: Literal) -> CoreLiteral {
+  case literal {
+    Int(n) -> core.I32(n)
+    Float(f) -> core.F64(f)
+    String(_s) -> core.I32(0)  // Strings not directly supported in core literals
+  }
+}
+
+/// Convert a literal to Core term.
 fn literal_to_core(literal: Literal, span: Span) -> CoreTerm {
   case literal {
     Int(n) -> CoreLit(int.to_string(n), span)
@@ -871,7 +883,7 @@ fn desugar_if(
   #(result, dc2)
 }
 
-/// Desugar match expression with multiple clauses and guards.
+/// Desugar match expression with full Core Match support.
 fn desugar_match(
   scrutinee: Expr,
   clauses: List(MatchClause),
@@ -881,307 +893,251 @@ fn desugar_match(
   // match x { | pat1 if guard1 -> body1 | pat2 -> body2 }
   let #(core_scrutinee, dc1) = desugar_expr_core(scrutinee, dc)
 
-  // Bind the scrutinee to a temporary variable
-  let scrutinee_binding = CoreLet("_match_scrutinee", core_scrutinee, span)
+  // Desugar all clauses to Core Cases
+  let #(core_cases, dc2) = desugar_match_clauses_to_cases(clauses, span, dc1)
 
-  // Handle empty clauses
-  case clauses {
-    [] -> {
-      // No clauses - return unit (in a full implementation, this would be a type error)
-      let result = CoreDoBlock([scrutinee_binding], CoreRcd([], span), span)
-      #(result, dc1)
-    }
-    _ -> {
-      // Desugar all clauses and chain them
-      let #(core_clauses, dc2) = desugar_match_clauses(clauses, scrutinee_binding, span, dc1)
-      #(core_clauses, dc2)
-    }
-  }
+  // Build Core Match term
+  // Motive (return type) is inferred, so we use a placeholder
+  let motive = CoreRcd([], span)  // Unit type as placeholder
+  let core_match = CoreMatchCore(core_scrutinee, motive, core_cases, span)
+
+  #(core_match, dc2)
 }
 
-/// Desugar a list of match clauses, chaining them properly.
-fn desugar_match_clauses(
+/// Desugar match clauses to Core Cases.
+fn desugar_match_clauses_to_cases(
   clauses: List(MatchClause),
-  scrutinee_binding: CoreTerm,
   span: Span,
   dc: DesugarContext,
-) -> #(CoreTerm, DesugarContext) {
+) -> #(List(CoreCaseAliasType), DesugarContext) {
+  desugar_cases_loop(clauses, [], span, dc)
+}
+
+fn desugar_cases_loop(
+  clauses: List(MatchClause),
+  acc: List(CoreCaseAliasType),
+  span: Span,
+  dc: DesugarContext,
+) -> #(List(CoreCaseAliasType), DesugarContext) {
   case clauses {
-    [] -> {
-      // No more clauses - return unit (no match)
-      // In a full implementation, this would be a type error (non-exhaustive)
-      #(CoreRcd([], span), dc)
-    }
+    [] -> #(list.reverse(acc), dc)
     [clause, ..rest] -> {
-      // Desugar this clause
-      let #(this_clause_result, dc1) = desugar_single_clause_with_fallback(
-        clause,
-        scrutinee_binding,
-        span,
-        dc,
-        rest,
-      )
-      #(this_clause_result, dc1)
+      let #(core_case, dc1) = desugar_single_case(clause, span, dc)
+      desugar_cases_loop(rest, [core_case, ..acc], span, dc1)
     }
   }
 }
 
-/// Desugar a single clause with fallback to remaining clauses.
-fn desugar_single_clause_with_fallback(
+/// Desugar a single match clause to a Core Case.
+fn desugar_single_case(
   clause: MatchClause,
-  scrutinee_binding: CoreTerm,
   span: Span,
   dc: DesugarContext,
-  fallback_clauses: List(MatchClause),
-) -> #(CoreTerm, DesugarContext) {
+) -> #(CoreCaseAliasType, DesugarContext) {
   let pattern = clause.pattern
   let guard = clause.guard
   let body = clause.body
 
-  // Desugar the body
+  // Desugar the body to CoreTerm
   let #(core_body, dc1) = desugar_expr_core(body, dc)
 
-  // Handle pattern matching and generate fallback
-  let #(pattern_result, dc2) = desugar_pattern_with_fallback(
-    pattern,
-    scrutinee_binding,
-    core_body,
-    span,
-    dc1,
-    fallback_clauses,
-    scrutinee_binding,
-    span,
-  )
+  // Convert Tao pattern to Core pattern
+  let #(core_pattern, dc2) = tao_pattern_to_core_pattern(pattern, dc1)
 
-  // Handle optional guard
-  case guard {
+  // Convert optional guard to Term (core/core.Case expects Option(Term))
+  let core_guard = case guard {
     Some(guard_expr) -> {
-      // With guard: if guard then body else fallback
-      let #(core_guard, dc3) = desugar_expr_core(guard_expr, dc2)
-      
-      // Build: let _guard = guard in if _guard then body else fallback
-      let guard_binding = CoreLet("_guard_result", core_guard, span)
-      
-      // For now, simplified: just include guard in bindings
-      // Full implementation would use Core's if-then-else
-      let result = CoreDoBlock(
-        [scrutinee_binding, guard_binding, ..pattern_result],
-        core_body,
-        span,
-      )
-      #(result, dc3)
+      let #(core_guard_term, dc3) = desugar_expr_core(guard_expr, dc2)
+      Some(core_term_to_term(core_guard_term))
     }
-    None -> {
-      // No guard: just pattern match
-      let result = CoreDoBlock(
-        [scrutinee_binding, ..pattern_result],
-        core_body,
-        span,
-      )
-      #(result, dc2)
-    }
+    None -> None
   }
+
+  // Convert body to Term
+  let core_body_term = core_term_to_term(core_body)
+
+  let core_case = Case(core_pattern, core_body_term, core_guard, span)
+  #(core_case, dc2)
 }
 
-/// Desugar pattern with fallback to next clause if pattern doesn't match.
-fn desugar_pattern_with_fallback(
+/// Convert a Tao pattern to a Core pattern.
+fn tao_pattern_to_core_pattern(
   pattern: Pattern,
-  scrutinee: CoreTerm,
-  body: CoreTerm,
-  span: Span,
   dc: DesugarContext,
-  fallback_clauses: List(MatchClause),
-  original_scrutinee: CoreTerm,
-  original_span: Span,
-) -> #(List(CoreTerm), DesugarContext) {
+) -> #(CorePattern, DesugarContext) {
   case pattern {
     ast.PVar(name, _pattern_span) -> {
-      // Variable pattern: always matches, bind scrutinee to name
-      let binding = CoreLet(name, CoreVar("_match_scrutinee", span), span)
+      // Variable pattern: bind to as-pattern
+      let core_pattern = PAs(PAny, name)
       let dc1 = add_local(dc, name)
-      #([binding], dc1)
+      #(core_pattern, dc1)
     }
     ast.PAny(_pattern_span) -> {
-      // Wildcard: always matches, no binding
-      #([], dc)
+      // Wildcard pattern
+      #(PAny, dc)
     }
     ast.PLit(literal, _pattern_span) -> {
-      // Literal: check equality, fallback if not equal
-      let core_lit = literal_to_core(literal, span)
-      let check = CoreLet("_pattern_check", core_lit, span)
-      #([check], dc)
+      // Literal pattern
+      let core_lit = tao_literal_to_core_literal(literal)
+      #(PPlit(core_lit), dc)
     }
-    ast.PCtr(_name, _args, _pattern_span) -> {
-      // Constructor: check tag, fallback if wrong constructor
-      let binding = CoreLet("_ctr_check", scrutinee, span)
-      #([binding], dc)
+    ast.PCtr(name, args, _pattern_span) -> {
+      // Constructor pattern
+      tao_ctr_pattern_to_core(name, args, dc)
     }
     ast.PRecord(field_names, _pattern_span) -> {
-      // Record: bind each field
-      let field_patterns = list.map(field_names, fn(field_name) {
-        #(field_name, ast.PVar(field_name, span))
+      // Record pattern: {x, y} → {x = x, y = y}
+      let core_fields = list.map(field_names, fn(field_name) {
+        #(field_name, PAs(PAny, field_name))
       })
-      desugar_pattern_record(field_patterns, scrutinee, span, dc)
+      let dc1 = list.fold(field_names, dc, fn(acc, name) {
+        add_local(acc, name)
+      })
+      #(PRcd(core_fields), dc1)
     }
     ast.PTuple(items, _pattern_span) -> {
-      // Tuple: bind each item
-      desugar_pattern_list(items, scrutinee, span, dc)
+      // Tuple pattern: (a, b) → record with numeric fields
+      tao_tuple_pattern_to_core(items, dc)
     }
-    ast.PList(items, _rest_name, _pattern_span) -> {
-      // List: bind each item
-      desugar_pattern_list(items, scrutinee, span, dc)
-    }
-    ast.POr(patterns, _pattern_span) -> {
-      // Or pattern: try first pattern that matches
-      case patterns {
-        [first, ..] -> desugar_pattern_with_fallback(
-          first,
-          scrutinee,
-          body,
-          span,
-          dc,
-          fallback_clauses,
-          original_scrutinee,
-          original_span,
-        )
-        [] -> #([], dc)
-      }
-    }
-    ast.PAs(inner_pattern, alias, _pattern_span) -> {
-      // As pattern: bind alias and inner pattern
-      let #(inner_bindings, dc1) = desugar_pattern_with_fallback(
-        inner_pattern,
-        scrutinee,
-        body,
-        span,
-        dc,
-        fallback_clauses,
-        original_scrutinee,
-        original_span,
-      )
-      let alias_binding = CoreLet(alias, CoreVar("_match_scrutinee", span), span)
-      let dc2 = add_local(dc1, alias)
-      #([alias_binding, ..inner_bindings], dc2)
-    }
-  }
-}
-
-/// Desugar a pattern and return bindings.
-fn desugar_pattern(
-  pattern: Pattern,
-  scrutinee: CoreTerm,
-  span: Span,
-  dc: DesugarContext,
-) -> #(List(CoreTerm), DesugarContext) {
-  case pattern {
-    ast.PVar(name, _pattern_span) -> {
-      // Variable pattern: bind scrutinee to name
-      let binding = CoreLet(name, CoreVar("_match_scrutinee", span), span)
-      let dc1 = add_local(dc, name)
-      #([binding], dc1)
-    }
-    ast.PAny(_pattern_span) -> {
-      // Wildcard pattern: no binding needed
-      #([], dc)
-    }
-    ast.PLit(literal, _pattern_span) -> {
-      // Literal pattern: check equality (simplified)
-      let core_lit = literal_to_core(literal, span)
-      let check = CoreLet("_pattern_check", core_lit, span)
-      #([check], dc)
-    }
-    ast.PCtr(_name, _args, _pattern_span) -> {
-      // Constructor pattern: check constructor and bind args
-      // Simplified: just bind scrutinee
-      let binding = CoreLet("_ctr_check", scrutinee, span)
-      #([binding], dc)
-    }
-    ast.PRecord(field_names, _pattern_span) -> {
-      // Record pattern: bind each field
-      // Convert field names to field patterns
-      let field_patterns = list.map(field_names, fn(field_name) {
-        #(field_name, ast.PVar(field_name, span))
-      })
-      desugar_pattern_record(field_patterns, scrutinee, span, dc)
-    }
-    ast.PTuple(items, _pattern_span) -> {
-      // Tuple pattern: bind each item
-      desugar_pattern_list(items, scrutinee, span, dc)
-    }
-    ast.PList(items, _rest_name, _pattern_span) -> {
-      // List pattern: bind each item (simplified)
-      desugar_pattern_list(items, scrutinee, span, dc)
+    ast.PList(items, rest_name, _pattern_span) -> {
+      // List pattern: [h, ..t] or [a, b, c]
+      tao_list_pattern_to_core(items, rest_name, dc)
     }
     ast.POr(_patterns, _pattern_span) -> {
-      // Or pattern: use first pattern (simplified)
-      #([], dc)
+      // Or pattern: simplified to PAny
+      #(PAny, dc)
     }
     ast.PAs(inner_pattern, alias, _pattern_span) -> {
-      // As pattern: bind both alias and inner pattern
-      let #(inner_bindings, dc1) = desugar_pattern(inner_pattern, scrutinee, span, dc)
-      let alias_binding = CoreLet(alias, CoreVar("_match_scrutinee", span), span)
+      // As pattern: x @ Some(_)
+      let #(core_inner, dc1) = tao_pattern_to_core_pattern(inner_pattern, dc)
+      let core_pattern = PAs(core_inner, alias)
       let dc2 = add_local(dc1, alias)
-      #([alias_binding, ..inner_bindings], dc2)
+      #(core_pattern, dc2)
     }
   }
 }
 
-/// Helper for tuple/list pattern desugaring.
-fn desugar_pattern_list(
-  items: List(Pattern),
-  scrutinee: CoreTerm,
-  span: Span,
+/// Convert constructor pattern to Core.
+fn tao_ctr_pattern_to_core(
+  name: String,
+  args: List(Pattern),
   dc: DesugarContext,
-) -> #(List(CoreTerm), DesugarContext) {
-  desugar_pattern_list_loop(items, scrutinee, span, dc, 0)
+) -> #(CorePattern, DesugarContext) {
+  case args {
+    [] -> {
+      // Nullary constructor
+      #(PPCtr(name, PUnit), dc)
+    }
+    [first, ..rest] -> {
+      // Build nested constructor pattern
+      tao_ctr_pattern_to_core_loop(name, [first, ..rest], dc)
+    }
+  }
 }
 
-fn desugar_pattern_list_loop(
-  items: List(Pattern),
-  scrutinee: CoreTerm,
-  span: Span,
+fn tao_ctr_pattern_to_core_loop(
+  name: String,
+  args: List(Pattern),
   dc: DesugarContext,
+) -> #(CorePattern, DesugarContext) {
+  case args {
+    [] -> {
+      #(PUnit, dc)
+    }
+    [first] -> {
+      // Last argument
+      let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
+      #(PPCtr(name, core_first), dc1)
+    }
+    [first, ..rest] -> {
+      // Build nested pattern
+      let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
+      let #(core_rest, dc2) = tao_ctr_pattern_to_core_loop(name, rest, dc1)
+      #(PPCtr(name, core_first), dc2)
+    }
+  }
+}
+
+/// Convert tuple pattern to Core (tuple = record with numeric fields).
+fn tao_tuple_pattern_to_core(
+  items: List(Pattern),
+  dc: DesugarContext,
+) -> #(CorePattern, DesugarContext) {
+  tao_tuple_pattern_loop(items, 0, [], dc)
+}
+
+fn tao_tuple_pattern_loop(
+  items: List(Pattern),
   index: Int,
-) -> #(List(CoreTerm), DesugarContext) {
+  acc: List(#(String, CorePattern)),
+  dc: DesugarContext,
+) -> #(CorePattern, DesugarContext) {
   case items {
     [] -> {
-      #([], dc)
+      #(PRcd(list.reverse(acc)), dc)
     }
     [item, ..rest] -> {
       let field_name = int.to_string(index)
-      let field_access = CoreDot(scrutinee, field_name, span)
-      let #(item_bindings, dc1) = desugar_pattern(item, field_access, span, dc)
-      let #(rest_bindings, dc2) = desugar_pattern_list_loop(rest, scrutinee, span, dc1, index + 1)
-      #([item_bindings, rest_bindings] |> list.flatten, dc2)
+      let #(core_item, dc1) = tao_pattern_to_core_pattern(item, dc)
+      tao_tuple_pattern_loop(rest, index + 1, [#(field_name, core_item), ..acc], dc1)
     }
   }
 }
 
-/// Helper for record pattern desugaring.
-fn desugar_pattern_record(
-  fields: List(#(String, Pattern)),
-  scrutinee: CoreTerm,
-  span: Span,
+/// Convert list pattern to Core.
+fn tao_list_pattern_to_core(
+  items: List(Pattern),
+  rest_name: Option(String),
   dc: DesugarContext,
-) -> #(List(CoreTerm), DesugarContext) {
-  desugar_pattern_record_loop(fields, scrutinee, span, dc)
+) -> #(CorePattern, DesugarContext) {
+  case items {
+    [] -> {
+      // Empty list: Nil
+      case rest_name {
+        Some(name) -> {
+          // [..rest] or [] with rest
+          let core_pattern = PPCtr("Nil", PUnit)
+          let dc1 = add_local(dc, name)
+          #(PAs(core_pattern, name), dc1)
+        }
+        None -> {
+          #(PPCtr("Nil", PUnit), dc)
+        }
+      }
+    }
+    [first, ..rest] -> {
+      // Non-empty list: Cons(h, t)
+      let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
+      let #(core_rest, dc2) = tao_list_rest_pattern_to_core(rest, rest_name, dc1)
+      #(PPCtr("Cons", core_first), dc2)
+    }
+  }
 }
 
-fn desugar_pattern_record_loop(
-  fields: List(#(String, Pattern)),
-  scrutinee: CoreTerm,
-  span: Span,
+fn tao_list_rest_pattern_to_core(
+  rest: List(Pattern),
+  rest_name: Option(String),
   dc: DesugarContext,
-) -> #(List(CoreTerm), DesugarContext) {
-  case fields {
+) -> #(CorePattern, DesugarContext) {
+  case rest {
     [] -> {
-      #([], dc)
+      // End of list
+      case rest_name {
+        Some(name) -> {
+          let core_pattern = PPCtr("Nil", PUnit)
+          let dc1 = add_local(dc, name)
+          #(PAs(core_pattern, name), dc1)
+        }
+        None -> {
+          #(PPCtr("Nil", PUnit), dc)
+        }
+      }
     }
-    [#(field_name, field_pattern), ..rest] -> {
-      let field_access = CoreDot(scrutinee, field_name, span)
-      let #(field_bindings, dc1) = desugar_pattern(field_pattern, field_access, span, dc)
-      let #(rest_bindings, dc2) = desugar_pattern_record_loop(rest, scrutinee, span, dc1)
-      #([field_bindings, rest_bindings] |> list.flatten, dc2)
+    [first, ..inner_rest] -> {
+      // Continue building Cons chain
+      let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
+      let #(core_inner_rest, dc2) = tao_list_rest_pattern_to_core(inner_rest, rest_name, dc1)
+      #(PPCtr("Cons", core_first), dc2)
     }
   }
 }
@@ -1484,8 +1440,30 @@ fn core_term_to_term_loop(term: CoreTerm) -> Term {
         Error(_) -> Lit(value: I32(0), span: span)
       }
     }
+    CoreMatchCore(arg, motive, cases, span) -> {
+      // Convert CoreMatchCore to core/core.Match
+      CoreMatch(
+        arg: core_term_to_term_loop(arg),
+        motive: core_term_to_term_loop(motive),
+        cases: list.map(cases, fn(core_case) {
+          core_case_to_case(core_case)
+        }),
+        span: span,
+      )
+    }
     CoreErr(message, span) -> Err(message: message, span: span)
   }
+}
+
+/// Convert CoreCaseAliasType to core/core.Case.
+fn core_case_to_case(core_case: CoreCaseAliasType) -> core.Case {
+  let Case(core_pattern, core_body, core_guard, span) = core_case
+  core.Case(
+    pattern: core_pattern,
+    body: core_body,
+    guard: core_guard,
+    span: span,
+  )
 }
 
 fn value_span(term: CoreTerm) -> Span {
@@ -1499,6 +1477,7 @@ fn value_span(term: CoreTerm) -> Span {
     CoreLet(_, _, span) -> span
     CoreDoBlock(_, _, span) -> span
     CoreLit(_, span) -> span
+    CoreMatchCore(_, _, _, span) -> span
     CoreErr(_, span) -> span
   }
 }

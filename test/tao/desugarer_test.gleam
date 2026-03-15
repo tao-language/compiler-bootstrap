@@ -5,13 +5,13 @@
 
 import gleeunit
 import gleeunit/should
-import gleam/option.{None}
+import gleam/option.{None, Some}
 import tao/desugar.{desugar_module}
 import tao/global_context.{new_context, with_prelude}
 import tao/ast.{
   type Module, type Stmt, type Expr, type Pattern, type Param,
   StmtLet, StmtExpr, StmtFor, StmtWhile, StmtLoop,
-  Var, Lit, Lambda, Match,
+  Var, Lit, Lambda, Match, BinOp, OpGt,
   PVar,
   Int, MatchClause,
   Module as ModuleCtr, Param as ParamCtr,
@@ -112,12 +112,39 @@ pub fn variable_scoping_test() {
 
 pub fn lambda_scoping_test() {
   let ctx = new_context() |> with_prelude()
-  
+
   let param = ParamCtr("x", None, Span("test", 0, 0, 0, 0))
   let body = Var("x", Span("test", 0, 0, 0, 0))
   let lambda = Lambda([], [param], body, Span("test", 0, 0, 0, 0))
-  
+
   let module = create_module([StmtExpr(lambda, Span("test", 0, 0, 0, 0))])
+  let #(_term, _dc) = desugar_module(module, ctx)
+  True |> should.be_true()
+}
+
+// ============================================================================
+// MATCH GUARDS TESTS
+// ============================================================================
+
+pub fn match_guards_test() {
+  let ctx = new_context() |> with_prelude()
+
+  // match x { | y if y > 0 -> y | _ -> 0 }
+  let scrutinee = Var("x", Span("test", 0, 0, 0, 0))
+  
+  // First clause: y if y > 0 -> y
+  let pattern1 = PVar("y", Span("test", 0, 0, 0, 0))
+  let guard_expr = BinOp(Var("y", Span("test", 0, 0, 0, 0)), OpGt, Lit(Int(0), Span("test", 0, 0, 0, 0)), Span("test", 0, 0, 0, 0))
+  let body1 = Var("y", Span("test", 0, 0, 0, 0))
+  let clause1 = MatchClause(pattern1, Some(guard_expr), body1, Span("test", 0, 0, 0, 0))
+  
+  // Second clause: _ -> 0
+  let pattern2 = PVar("_", Span("test", 0, 0, 0, 0))
+  let body2 = Lit(Int(0), Span("test", 0, 0, 0, 0))
+  let clause2 = MatchClause(pattern2, None, body2, Span("test", 0, 0, 0, 0))
+  
+  let match_expr = Match(scrutinee, [clause1, clause2], Span("test", 0, 0, 0, 0))
+  let module = create_module([StmtExpr(match_expr, Span("test", 0, 0, 0, 0))])
   let #(_term, _dc) = desugar_module(module, ctx)
   True |> should.be_true()
 }
