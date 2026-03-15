@@ -41,7 +41,7 @@ import tao/import_ast.{
   ImportSelectiveAlias, ImportWildcard,
   type ImportItem, ImportName, ImportType, ImportOperator,
 }
-import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit}
+import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT}
 
 // ============================================================================
 // CORE TERM TYPES (simplified for desugaring)
@@ -227,11 +227,24 @@ fn build_sequential_loop(
 ) -> CoreTerm {
   case stmts {
     [] -> result
+    [stmt] -> {
+      // Last statement - incorporate it into the result
+      case stmt {
+        CoreLet(name, value, _let_span) -> {
+          // let x = e as last statement  =>  (λx. result) e
+          let lam = CoreLam(name, result, span)
+          CoreApp(lam, value, span)
+        }
+        _ -> {
+          // Expression statement as last statement - use it as result
+          stmt
+        }
+      }
+    }
     [stmt, ..rest] -> {
       case stmt {
         CoreLet(name, value, _let_span) -> {
           // let x = e in rest  =>  (λx. process_rest) e
-          // First process the rest to get the body
           let body = build_sequential_loop(rest, result, span)
           let lam = CoreLam(name, body, span)
           CoreApp(lam, value, span)
@@ -1505,60 +1518,63 @@ pub fn make_module_field(
 
 /// Convert a simplified CoreTerm to core/core.Term.
 pub fn core_term_to_term(term: CoreTerm) -> Term {
-  core_term_to_term_loop(term)
+  core_term_to_term_loop(term, [])
 }
 
-fn core_term_to_term_loop(term: CoreTerm) -> Term {
+fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
   case term {
-    CoreVar(_name, span) -> Var(index: 0, span: span)  // Simplified: always use index 0
+    CoreVar(name, span) -> {
+      // Look up variable name in environment to get De Bruijn index
+      // Index is the position in the environment list (0 = most recent)
+      case find_var_index(env, name, 0) {
+        Some(index) -> Var(index: index, span: span)
+        None -> Var(index: 0, span: span)  // Undefined variable
+      }
+    }
     CoreCall(name, args, span) -> {
       // Convert CoreCall to core/core.Call for FFI builtin
-      Call(name, list.map(args, core_term_to_term_loop), span)
+      Call(name, list.map(args, fn(a) { core_term_to_term_loop(a, env) }), span)
     }
-    CoreModuleRef(_path, span) -> Var(index: 0, span: span)  // Simplified: module refs become vars
+    CoreModuleRef(_path, span) -> Var(index: 0, span: span)
     CoreLam(param, body, span) -> {
-      // Simplified lambda - no implicit params, no type annotation
+      // Add parameter to environment for the body
       Lam(
         implicit: [],
         param: #(param, Typ(universe: 0, span: span)),
-        body: core_term_to_term_loop(body),
+        body: core_term_to_term_loop(body, [param, ..env]),
         span: span,
       )
     }
     CoreApp(fun, arg, span) -> {
       App(
-        fun: core_term_to_term_loop(fun),
+        fun: core_term_to_term_loop(fun, env),
         implicit: [],
-        arg: core_term_to_term_loop(arg),
+        arg: core_term_to_term_loop(arg, env),
         span: span,
       )
     }
     CoreRcd(fields, span) -> {
       Rcd(
         fields: list.map(fields, fn(pair) {
-          #(pair.0, core_term_to_term_loop(pair.1))
+          #(pair.0, core_term_to_term_loop(pair.1, env))
         }),
         span: span,
       )
     }
     CoreDot(record, field, span) -> {
       Dot(
-        arg: core_term_to_term_loop(record),
+        arg: core_term_to_term_loop(record, env),
         field: field,
         span: span,
       )
     }
     CoreLet(name, value, span) -> {
-      // Let bindings: let x = e1 in e2  desugars to  (λx. e2) e1
-      // For now, we need the body from the parent DoBlock
-      // This is handled by CoreDoBlock below
-      CoreRcd([], span) |> core_term_to_term_loop
+      // Let bindings are handled by CoreDoBlock
+      CoreRcd([], span) |> core_term_to_term_loop(env)
     }
     CoreDoBlock(stmts, result, span) -> {
-      // DoBlock: sequence statements and return result
-      // Each let x = e becomes a lambda application
       let sequential_core = build_sequential_term(stmts, result, span)
-      core_term_to_term_loop(sequential_core)
+      core_term_to_term_loop(sequential_core, env)
     }
     CoreLit(value, span) -> {
       case int.parse(value) {
@@ -1568,32 +1584,34 @@ fn core_term_to_term_loop(term: CoreTerm) -> Term {
     }
     CoreMatchCore(arg, motive, cases, span) -> {
       // Convert CoreMatchCore to core/core.Match
+      // Cases are already core.Case with Term bodies
       CoreMatch(
-        arg: core_term_to_term_loop(arg),
-        motive: core_term_to_term_loop(motive),
-        cases: list.map(cases, fn(core_case) {
-          core_case_to_case(core_case)
-        }),
+        arg: core_term_to_term_loop(arg, env),
+        motive: core_term_to_term_loop(motive, env),
+        cases: cases,
         span: span,
       )
     }
     CoreFix(name, body, span) -> {
       // Convert CoreFix to core/core.Fix
-      Fix(name, core_term_to_term_loop(body), span)
+      Fix(name, core_term_to_term_loop(body, [name, ..env]), span)
     }
     CoreErr(message, span) -> Err(message: message, span: span)
   }
 }
 
-/// Convert CoreCaseType to core/core.Case.
-fn core_case_to_case(core_case: CoreCaseType) -> core.Case {
-  let Case(core_pattern, core_body, core_guard, span) = core_case
-  core.Case(
-    pattern: core_pattern,
-    body: core_body,
-    guard: core_guard,
-    span: span,
-  )
+/// Find the De Bruijn index of a variable name in the environment.
+/// Returns the index (0 = most recent binding) or None if not found.
+fn find_var_index(env: List(String), name: String, index: Int) -> Option(Int) {
+  case env {
+    [] -> None
+    [head, ..tail] -> {
+      case head == name {
+        True -> Some(index)
+        False -> find_var_index(tail, name, index + 1)
+      }
+    }
+  }
 }
 
 fn value_span(term: CoreTerm) -> Span {
