@@ -44,12 +44,12 @@
   - While loops (fixpoint with condition check)
   - Infinite loops (fixpoint recursion)
   - Break, Continue, Return, Yield markers
-- ✅ Comprehensive desugarer tests (7 tests covering expressions, patterns, control flow, scoping, guards, fixpoint)
-- **440 tests passing**
+- ✅ Comprehensive desugarer tests (13 tests covering expressions, patterns, control flow, scoping, guards, fixpoint, imports)
+- **446 tests passing**
 
 ### What's Pending
 
-- ⏳ Full import desugaring integration with CLI (import_resolver → desugarer integration)
+- ⏳ CLI integration for multi-file compilation with import resolution
 - ⏳ More comprehensive desugarer tests (edge cases, error handling, integration tests)
 - ⏳ Multi-clause match chaining (proper if-then-else structure for non-exhaustive matches)
 - ⏳ While loop condition short-circuit (proper match-based condition check in fixpoint)
