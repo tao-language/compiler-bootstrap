@@ -10,10 +10,11 @@
 /// gleam run --help                         # Show help
 /// ```
 import argv
-import core/core.{type Term, type Error as TypeError, type State, initial_state, infer, eval, quote}
+import core/core.{type Term, type Error as TypeError, type State, initial_state, infer, eval, quote, Err}
 import core/syntax as core_syntax
 import tao/syntax.{parse as tao_parse, get_expr_span}
-import tao/desugar.{desugar as tao_desugar}
+import tao/desugar.{desugar_module, type CoreTerm, core_term_to_term}
+import tao/global_context.{new_context, with_prelude, set_current_module}
 import tao/test_parser.{parse_tests, type Test}
 import tao/test_filter.{filter_tests, file_base_name}
 import tao/test_runner.{run_tests, calculate_summary, get_failures, all_passed, type TestResult, Fail, Error as TestError, TimedOut}
@@ -510,12 +511,16 @@ fn check_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
       }
 
       // Desugar Tao to Core
-      let core_term = tao_desugar(parse_result.ast)
+      let ctx = new_context() |> with_prelude() |> set_current_module("main")
+      // TODO: Convert syntax.Expr to ast.Module for desugaring
+      // let #(core_term, _dc) = desugar_module(parse_result.ast, ctx)
+      // let term = core_term_to_term(core_term)
+      let term = Err(message: "Desugaring not yet implemented", span: Span("", 0, 0, 0, 0))
 
       case debug {
         True -> {
           io.println("Core term:")
-          io.println(debug_term(core_term))
+          io.println(debug_term(term))
         }
         False -> Nil
       }
@@ -526,7 +531,7 @@ fn check_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
       }
 
       // Run type checker on Core term
-      let #(_type_result, _type_annotation, final_state) = infer(initial_state, core_term)
+      let #(_type_result, _type_annotation, final_state) = infer(initial_state, term)
 
       case final_state.errors {
         [_err, ..] -> {
@@ -717,12 +722,17 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     False -> Nil
   }
 
-  let core_term = tao_desugar(parse_result.ast)
+  // TODO: Convert syntax.Expr to ast.Module for desugaring
+  // For now, skip desugaring and use the expression directly
+  let ctx = new_context() |> with_prelude() |> set_current_module(file.path)
+  // let #(core_term, _dc) = desugar_module(parse_result.ast, ctx)
+  // let term = core_term_to_term(core_term)
+  let term = Err(message: "Desugaring not yet implemented", span: Span("", 0, 0, 0, 0))
 
   case debug {
     True -> {
       io.println("Core term:")
-      io.println(debug_term(core_term))
+      io.println(debug_term(term))
     }
     False -> Nil
   }
@@ -733,7 +743,7 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     False -> Nil
   }
 
-  let #(_type_result, _type_annotation, type_state) = infer(initial_state, core_term)
+  let #(_type_result, _type_annotation, type_state) = infer(initial_state, term)
   let type_errors = type_state.errors
 
   // Report type errors
@@ -764,7 +774,7 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 
   let env = []
   let ffi = initial_state.ffi
-  let value = eval(ffi, env, core_term)
+  let value = eval(ffi, env, term)
 
   // Quote back to normal form
   let span = Span("", 0, 0, 0, 0)

@@ -170,8 +170,10 @@ pub type Stmt {
 | March 14, 2026 | Conversion layer (syntax.Expr → ast.Expr) | ✅ Complete |
 | March 14, 2026 | Parser for Stmt (parse_module function) | ✅ Complete |
 | March 14, 2026 | Global context module (global_context.gleam) | ✅ Complete |
+| March 14, 2026 | Desugarer skeleton (desugar.gleam) | ✅ Skeleton |
+| March 14, 2026 | CoreTerm → Term conversion | ✅ Complete |
 | March 14, 2026 | AST unification plan (remove duplicate Expr) | 📋 Planned |
-| March 14, 2026 | Import → let desugaring plan | 📋 Planned |
+| March 14, 2026 | Import → let desugaring (full implementation) | 📋 Planned |
 
 ---
 
@@ -223,8 +225,8 @@ fn foo() {
 | **6.3** | Add conversion layer | `syntax.gleam` | ✅ Complete |
 | **6.4** | Parser for Stmt | `syntax.gleam` | ✅ Complete |
 | **6.5** | Global context | `global_context.gleam` | ✅ Complete |
-| **6.6** | Desugar Stmt → Core | `desugar.gleam` | 📋 Planned |
-| **6.7** | Module → DoBlock | `desugar.gleam` | 📋 Planned |
+| **6.6** | Desugar Stmt → Core | `desugar.gleam` | ✅ Skeleton |
+| **6.7** | Module → DoBlock | `desugar.gleam` | ✅ Skeleton |
 
 ---
 
