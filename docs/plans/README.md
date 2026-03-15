@@ -18,11 +18,24 @@ docs/plans/
 │   ├── 01-overview.md     # Entry point with overall status
 │   ├── 02-syntax.md       # Syntax specification
 │   └── 03-ffi-comptime.md # FFI and comptime
-└── error-reporting/       # Error reporting system
+├── error-reporting/       # Error reporting system
+│   ├── 01-overview.md     # Entry point with overall status
+│   ├── 02-error-types.md  # Error type specifications
+│   ├── 03-source-snippets.md # Source snippet formatting
+│   └── 04-cli-integration.md # CLI integration plan
+└── tao/                   # Tao language plans
+    ├── 00-tao-implementation.md  # Overall implementation roadmap
     ├── 01-overview.md     # Entry point with overall status
-    ├── 02-error-types.md  # Error type specifications
-    ├── 03-source-snippets.md # Source snippet formatting
-    └── 04-cli-integration.md # CLI integration plan
+    ├── 02-syntax.md       # Tao syntax specification
+    ├── 03-desugaring.md   # Desugaring rules
+    ├── 04-standard-library.md
+    ├── 06-implementation-plan.md
+    ├── 07-desugaring-specification.md
+    ├── 09-tao-mvp-plan.md
+    ├── 10-overloading-design.md
+    ├── 11-test-system.md  # Test system specification
+    ├── 12-import-system.md # Import system specification
+    └── 13-stmt-system.md  # Stmt system design
 ```
 
 ---

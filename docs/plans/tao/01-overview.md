@@ -1,8 +1,8 @@
 # Tao Language Overview
 
 > **Goal**: Simple, pragmatic functional language with dependent types—TypeScript-like syntax without the complexity
-> **Status**: ✅ **Core Complete** - Overloading with type matching implemented and working
-> **Date**: March 2026 (Updated: Type matching complete)
+> **Status**: ⏳ **In Progress** - Stmt system and import integration in progress
+> **Date**: March 2026 (Updated: Stmt design finalized)
 
 ---
 
@@ -15,6 +15,8 @@ Tao is syntax sugar over the core language. All heavy lifting (type checking, no
 - Operator overloading via type inference
 - Result/Maybe sugar (`<-`, `?.`, `?`)
 - Explicit mutability (`let mut`)
+- **Modules as Records** - every module returns a Record of public names
+- **Imports as Let Aliases** - all imports desugar to `let` bindings
 - No OOP, no async/await, no null
 
 ---
@@ -262,13 +264,24 @@ fn unwrap(opt: Option<Int>): Int {
 
 ## Related Documents
 
-- **[12-import-system.md](./12-import-system.md)** - Import system specification 📋 **NEW**
-- **[11-test-system.md](./11-test-system.md)** - Test system specification ✅ **IMPLEMENTED**
-- **[09-tao-mvp-plan.md](./09-tao-mvp-plan.md)** - MVP implementation plan ⏳ **START HERE**
+### Implementation Plans
+
+- **[00-tao-implementation.md](./00-tao-implementation.md)** - Implementation roadmap 📋 **NEW**
+- **[13-stmt-system.md](./13-stmt-system.md)** - Stmt system design 📋 **NEW**
+- **[12-import-system.md](./12-import-system.md)** - Import system specification ✅ **Complete**
+- **[11-test-system.md](./11-test-system.md)** - Test system specification ✅ **Implemented**
+- **[09-tao-mvp-plan.md](./09-tao-mvp-plan.md)** - MVP implementation plan ⏳
 - **[06-implementation-plan.md](./06-implementation-plan.md)** - Full implementation plan
+
+### Specifications
+
 - **[02-syntax.md](./02-syntax.md)** - Tao syntax specification
 - **[03-desugaring.md](./03-desugaring.md)** - Desugaring rules
 - **[07-desugaring-specification.md](./07-desugaring-specification.md)** - Detailed desugaring
+- **[10-overloading-design.md](./10-overloading-design.md)** - Overloading design
+
+### Related
+
 - **[../../docs/core-syntax.md](../../docs/core-syntax.md)** - Core syntax reference
 - **[../../docs/cli.md](../../docs/cli.md)** - CLI documentation
 
