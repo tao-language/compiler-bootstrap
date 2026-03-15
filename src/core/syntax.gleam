@@ -31,7 +31,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/string
 import syntax/formatter
 import syntax/grammar.{
-  type ParseResult, ParseError, ParseResult, type Span, type Value, AstValue, ListValue, TokenValue, alt, ref, rule, seq,
+  type ParseResult, ParseError, ParseResult, type Span, type Value, AstValue, ListValue, TokenValue, alt, ref, rule, seq, many,
   token_pattern,
 }
 import syntax/lexer.{type Token}
@@ -389,8 +389,8 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
         alt(ref("Lambda"), unwrap),
         alt(ref("Pi"), unwrap),
         alt(ref("Ann"), unwrap),
-        alt(ref("App"), unwrap),
         alt(ref("Dot"), unwrap),
+        alt(ref("App"), unwrap),
         alt(ref("Atom"), unwrap),
       ]),
       // Lambda: x -> body or \x -> body
@@ -434,27 +434,66 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
       rule("Ann", [
         alt(
           seq([
-            ref("Atom"),
+            ref("App"),
             token_pattern("Colon"),
-            ref("Atom"),
+            ref("Expr"),
           ]),
           make_annotation,
         ),
       ]),
-      // Application: f(x)
+      // Application: f(x) or f(x)(y) - left associative via iteration
       rule("App", [
         alt(
           seq([
             ref("Atom"),
-            token_pattern("LParen"),
-            ref("Expr"),
-            token_pattern("RParen"),
+            many(seq([
+              token_pattern("LParen"),
+              ref("Expr"),
+              token_pattern("RParen"),
+            ])),
           ]),
-          make_application,
+          fn(values) {
+            // values = [Atom, ...] where ... could be ListValue or individual items
+            case values {
+              [first, ListValue(app_lists), ..] -> {
+                // many() matched at least once
+                let base = case first {
+                  AstValue(b) -> b
+                  _ -> panic as "Expected Atom"
+                }
+                fold_apps(base, app_lists)
+              }
+              [first, ..rest] -> {
+                // many() matched but returned items directly (flattened)
+                let base = case first {
+                  AstValue(b) -> b
+                  _ -> panic as "Expected Atom"
+                }
+                fold_apps(base, rest)
+              }
+              [first] -> {
+                // No applications, just the atom
+                case first {
+                  AstValue(b) -> b
+                  _ -> panic as "Expected Atom"
+                }
+              }
+              _ -> panic as "Expected Atom and optional apps"
+            }
+          },
         ),
       ]),
       // Field access: expr.field
       rule("Dot", [
+        alt(
+          seq([
+            ref("App"),
+            token_pattern("Dot"),
+            token_pattern("Ident"),
+          ]),
+          make_field_access,
+        ),
+        // Also allow field access on atoms (variables, records, etc.)
         alt(
           seq([
             ref("Atom"),
@@ -822,6 +861,25 @@ fn make_application(values) -> ParseValue {
         grammar.span_from_token(values |> get_first_token, "input"),
       ))
     _ -> panic as "Expected f(args)"
+  }
+}
+
+fn fold_apps(base, app_values) -> ParseValue {
+  // app_values is a flat list: [LParen, Expr, RParen, LParen, Expr, RParen, ...]
+  case app_values {
+    [_, AstValue(AsCoreTerm(arg)), _, ..rest] -> {
+      let new_app = AsCoreTerm(NApp(
+        case base {
+          AsCoreTerm(t) -> t
+          _ -> panic as "Expected core term"
+        },
+        arg,
+        grammar.Span("input", 0, 0, 0, 0),
+      ))
+      fold_apps(new_app, rest)
+    }
+    [] -> base
+    _ -> panic as "Expected application args"
   }
 }
 
