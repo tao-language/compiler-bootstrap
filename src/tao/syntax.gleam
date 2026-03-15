@@ -9,6 +9,13 @@
 /// - [Syntax Library](../../docs/syntax-library.md)
 /// - [Tao Overloading](../../docs/plans/tao/10-overloading-design.md)
 import tao/lexer
+import tao/ast.{
+  type Expr as AstExpr, Var as AstVar, Lit as AstLit, BinOp as AstBinOpExpr,
+  UnaryOp as AstUnaryOp, Lambda as AstLambda, Call as AstCall,
+  type BinOperator, OpAdd, OpSub, OpMul, OpDiv, OpEq, OpNeq, OpLt, OpGt, OpLte, OpGte, OpAnd, OpOr,
+  type UnaryOperator, OpNot,
+  Int as AstInt, type Param as AstParamType, Param as AstParam, TVar,
+}
 import tao/import_ast.{type Import, ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias, ImportWildcard, type ImportItem, ImportName, ImportType, ImportOperator}
 import gleam/int
 import gleam/list
@@ -92,13 +99,67 @@ pub type Expr {
   OverloadedApp(name: String, args: List(Expr), span: Span)
 }
 
-/// A Tao module with imports and body expression.
-pub type Module {
-  Module(
-    imports: List(Import),
-    body: Expr,
-    span: Span,
-  )
+// ============================================================================
+// CONVERSION TO AST.GLEAM
+// ============================================================================
+/// Convert syntax.Expr to ast.Expr for integration with the main AST.
+
+pub fn expr_to_ast(expr: Expr) -> AstExpr {
+  expr_to_ast_loop(expr)
+}
+
+fn expr_to_ast_loop(expr: Expr) -> AstExpr {
+  case expr {
+    Int(value, span) -> AstLit(AstInt(value), span)
+    Var(name, span) -> AstVar(name, span)
+    BinOp(left, op, right, span) -> {
+      let ast_op = binop_to_ast(op)
+      let ast_left = expr_to_ast_loop(left)
+      let ast_right = expr_to_ast_loop(right)
+      AstBinOpExpr(ast_left, ast_op, ast_right, span)
+    }
+    UnaryOp(op, expr, span) -> {
+      let ast_op = unaryop_to_ast(op)
+      let ast_expr = expr_to_ast_loop(expr)
+      AstUnaryOp(ast_op, ast_expr, span)
+    }
+    OverloadedFn(name, type_param, param_name, param_type, return_type, body, span) -> {
+      // Overloaded functions become Lambda in ast
+      let ast_body = expr_to_ast_loop(body)
+      AstLambda([type_param], [param(param_name, param_type, span)], ast_body, span)
+    }
+    OverloadedApp(name, args, span) -> {
+      let ast_args = list.map(args, expr_to_ast_loop)
+      AstCall(AstVar(name, span), ast_args, span)
+    }
+  }
+}
+
+fn binop_to_ast(op: BinOp) -> BinOperator {
+  case op {
+    Add -> OpAdd
+    Sub -> OpSub
+    Mul -> OpMul
+    Div -> OpDiv
+    Eq -> OpEq
+    Neq -> OpNeq
+    Lt -> OpLt
+    Gt -> OpGt
+    Lte -> OpLte
+    Gte -> OpGte
+    And -> OpAnd
+    Or -> OpOr
+  }
+}
+
+fn unaryop_to_ast(op: UnaryOp) -> UnaryOperator {
+  case op {
+    Not -> OpNot
+  }
+}
+
+fn param(name: String, type_: String, span: Span) -> AstParamType {
+  AstParam(name, Some(TVar(type_)), span)
 }
 
 // ============================================================================
