@@ -1,8 +1,8 @@
 # Tao Language Implementation Plans
 
 > **Goal**: Simple, pragmatic functional language with dependent types—TypeScript-like syntax without the complexity
-> **Status**: ⏳ **In Progress** - Stmt system and import integration in progress
-> **Date**: March 14, 2026 (Updated: Stmt design finalized)
+> **Status**: ⏳ **In Progress** - Import integration and comprehensive testing in progress
+> **Date**: March 14, 2026 (Updated: Native match guards and fixpoint recursion complete)
 
 ---
 
@@ -34,21 +34,25 @@
   - List patterns (PList)
   - Or patterns (POr)
   - As patterns (PAs)
-  - Guard expressions
+  - **Native guard expressions** (evaluated by core language)
 - ✅ Optional chaining desugaring
 - ✅ Record update desugaring
 - ✅ Variable scoping with De Bruijn indices (bound vs. free variables)
 - ✅ Lambda scoping (parameters added to scope for body)
-- ✅ Control flow statements (For, While, Loop, Break, Continue, Return, Yield)
-- ✅ Comprehensive desugarer tests (5 new tests covering expressions, patterns, control flow, scoping)
-- **437 tests passing**
+- ✅ Control flow statements with **fixpoint-based recursion**:
+  - For loops (foldl-based)
+  - While loops (fixpoint with condition check)
+  - Infinite loops (fixpoint recursion)
+  - Break, Continue, Return, Yield markers
+- ✅ Comprehensive desugarer tests (7 tests covering expressions, patterns, control flow, scoping, guards, fixpoint)
+- **440 tests passing**
 
 ### What's Pending
 
-- ⏳ Full import desugaring integration with CLI
-- ⏳ More comprehensive desugarer tests (edge cases, error handling)
-- ⏳ Proper fixpoint-based recursion for loops (currently simplified)
-- ⏳ Multi-clause match chaining (currently uses first matching clause)
+- ⏳ Full import desugaring integration with CLI (import_resolver → desugarer integration)
+- ⏳ More comprehensive desugarer tests (edge cases, error handling, integration tests)
+- ⏳ Multi-clause match chaining (proper if-then-else structure for non-exhaustive matches)
+- ⏳ While loop condition short-circuit (proper match-based condition check in fixpoint)
 
 ### Related
 

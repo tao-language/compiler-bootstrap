@@ -148,3 +148,30 @@ pub fn match_guards_test() {
   let #(_term, _dc) = desugar_module(module, ctx)
   True |> should.be_true()
 }
+
+// ============================================================================
+// FIXPOINT-BASED LOOP TESTS
+// ============================================================================
+
+pub fn fixpoint_loop_test() {
+  let ctx = new_context() |> with_prelude()
+
+  // loop { x }
+  let loop_body = [StmtExpr(Var("x", Span("test", 0, 0, 0, 0)), Span("test", 0, 0, 0, 0))]
+  let loop_stmt = StmtLoop(loop_body, Span("test", 0, 0, 0, 0))
+  let module = create_module([loop_stmt])
+  let #(_term, _dc) = desugar_module(module, ctx)
+  True |> should.be_true()
+}
+
+pub fn fixpoint_while_test() {
+  let ctx = new_context() |> with_prelude()
+
+  // while cond { x }
+  let condition = Var("cond", Span("test", 0, 0, 0, 0))
+  let while_body = [StmtExpr(Var("x", Span("test", 0, 0, 0, 0)), Span("test", 0, 0, 0, 0))]
+  let while_stmt = StmtWhile(condition, while_body, Span("test", 0, 0, 0, 0))
+  let module = create_module([while_stmt])
+  let #(_term, _dc) = desugar_module(module, ctx)
+  True |> should.be_true()
+}

@@ -41,7 +41,7 @@ import tao/import_ast.{
   ImportSelectiveAlias, ImportWildcard,
   type ImportItem, ImportName, ImportType, ImportOperator,
 }
-import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseAliasType, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, Match as CoreMatch, Case, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit}
+import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit}
 
 // ============================================================================
 // CORE TERM TYPES (simplified for desugaring)
@@ -78,7 +78,10 @@ pub type CoreTerm {
   CoreLit(value: String, span: Span)
 
   /// Pattern match with cases
-  CoreMatchCore(arg: CoreTerm, motive: CoreTerm, cases: List(CoreCaseAliasType), span: Span)
+  CoreMatchCore(arg: CoreTerm, motive: CoreTerm, cases: List(CoreCaseType), span: Span)
+
+  /// Fixpoint operator for recursion
+  CoreFix(name: String, body: CoreTerm, span: Span)
 
   /// Error placeholder
   CoreErr(message: String, span: Span)
@@ -476,24 +479,26 @@ fn desugar_while(
   dc: DesugarContext,
 ) -> #(CoreTerm, DesugarContext) {
   // while condition { body... }
-  // Desugar to: recursive function that checks condition
-  
+  // Desugar to: fix loop -> let _cond = condition in body; loop ()
+  // Note: Full implementation would use match on condition for proper short-circuit
+
   // Desugar the condition
   let #(core_condition, dc1) = desugar_expr_core(condition, dc)
-  
+
   // Desugar the body statements
   let #(core_body_stmts, dc2) = desugar_stmts(body, dc1)
-  
-  // Bind the condition result
+
+  // Body block that ends with recursive call
+  let loop_call = CoreApp(CoreVar("loop", span), CoreRcd([], span), span)
+  let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
+
+  // Bind condition and execute body with recursion
   let cond_binding = CoreLet("_while_cond", core_condition, span)
+  let match_body = CoreDoBlock([cond_binding], body_with_rec, span)
   
-  // Body block
-  let body_block = CoreDoBlock(core_body_stmts, CoreRcd([], span), span)
-  
-  // Simplified: just evaluate condition and body once
-  // A full implementation would use fixpoint for recursion
-  let result = CoreDoBlock([cond_binding], body_block, span)
-  #(result, dc2)
+  let fix = CoreFix("loop", match_body, span)
+
+  #(fix, dc2)
 }
 
 /// Desugar an infinite loop.
@@ -503,17 +508,20 @@ fn desugar_loop(
   dc: DesugarContext,
 ) -> #(CoreTerm, DesugarContext) {
   // loop { body... }
-  // Desugar to: infinite recursion using fixpoint
-  
+  // Desugar to: fixpoint that recursively executes body
+  // fix loop -> (body; loop ())
+
   // Desugar the body statements
   let #(core_body_stmts, dc1) = desugar_stmts(body, dc)
-  
-  // Body block
-  let body_block = CoreDoBlock(core_body_stmts, CoreRcd([], span), span)
-  
-  // Simplified: just evaluate body once
-  // A full implementation would use fixpoint for infinite recursion
-  #(body_block, dc1)
+
+  // Body block that ends with recursive call
+  let loop_call = CoreApp(CoreVar("loop", span), CoreRcd([], span), span)
+  let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
+
+  // Wrap in fixpoint
+  let fix = CoreFix("loop", body_with_rec, span)
+
+  #(fix, dc1)
 }
 
 // ============================================================================
@@ -909,16 +917,16 @@ fn desugar_match_clauses_to_cases(
   clauses: List(MatchClause),
   span: Span,
   dc: DesugarContext,
-) -> #(List(CoreCaseAliasType), DesugarContext) {
+) -> #(List(CoreCaseType), DesugarContext) {
   desugar_cases_loop(clauses, [], span, dc)
 }
 
 fn desugar_cases_loop(
   clauses: List(MatchClause),
-  acc: List(CoreCaseAliasType),
+  acc: List(CoreCaseType),
   span: Span,
   dc: DesugarContext,
-) -> #(List(CoreCaseAliasType), DesugarContext) {
+) -> #(List(CoreCaseType), DesugarContext) {
   case clauses {
     [] -> #(list.reverse(acc), dc)
     [clause, ..rest] -> {
@@ -933,7 +941,7 @@ fn desugar_single_case(
   clause: MatchClause,
   span: Span,
   dc: DesugarContext,
-) -> #(CoreCaseAliasType, DesugarContext) {
+) -> #(CoreCaseType, DesugarContext) {
   let pattern = clause.pattern
   let guard = clause.guard
   let body = clause.body
@@ -1451,12 +1459,16 @@ fn core_term_to_term_loop(term: CoreTerm) -> Term {
         span: span,
       )
     }
+    CoreFix(name, body, span) -> {
+      // Convert CoreFix to core/core.Fix
+      Fix(name, core_term_to_term_loop(body), span)
+    }
     CoreErr(message, span) -> Err(message: message, span: span)
   }
 }
 
-/// Convert CoreCaseAliasType to core/core.Case.
-fn core_case_to_case(core_case: CoreCaseAliasType) -> core.Case {
+/// Convert CoreCaseType to core/core.Case.
+fn core_case_to_case(core_case: CoreCaseType) -> core.Case {
   let Case(core_pattern, core_body, core_guard, span) = core_case
   core.Case(
     pattern: core_pattern,
@@ -1478,6 +1490,7 @@ fn value_span(term: CoreTerm) -> Span {
     CoreDoBlock(_, _, span) -> span
     CoreLit(_, span) -> span
     CoreMatchCore(_, _, _, span) -> span
+    CoreFix(_, _, span) -> span
     CoreErr(_, span) -> span
   }
 }
