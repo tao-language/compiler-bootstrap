@@ -602,19 +602,18 @@ pub fn parse(source: String) -> ParseResult(Expr) {
 /// Parse Tao module (list of statements).
 /// Returns all statements parsed from the source.
 pub fn parse_module(source: String) -> ParseResult(List(Expr)) {
-  // Parse using the grammar - the Program rule returns the first statement
-  // But we can extract all statements from the parse result
+  // Parse using the grammar - the Program rule returns a Block with all statements
   let error_ast = Int(0, Span("tao", 0, 0, 0, 0))
   let result = grammar_parse(tao_grammar(), source, error_ast)
-  
-  // The grammar's Program rule uses many(ref("Stmt")), which collects all statements
-  // But the constructor returns only the first one. We need to re-parse to get all.
-  // For now, just return what we have (single statement in a list)
+
+  // Extract statements from the Block
   case result {
     ParseResultVal(ast: expr, errors: errors) -> {
-      // TODO: Fix grammar to return all statements
-      // For now, return the single expression in a list
-      ParseResultVal(ast: [expr], errors: errors)
+      let stmts = case expr {
+        Block(stmts, _) -> stmts
+        _ -> [expr]
+      }
+      ParseResultVal(ast: stmts, errors: errors)
     }
   }
 }
@@ -665,11 +664,21 @@ fn make_let(values) -> Expr {
   //   With mut only:     ["let", "mut", name, "=", expr] (5 values)
   //   With type only:    ["let", name, ":", type, "=", expr] (6 values)
   //   Neither:           ["let", name, "=", expr] (4 values)
-  
-  // Find the name (first TokenValue after "let")
-  let name_and_rest = find_name(list.drop(values, 1))
+
+  // Check for "mut" keyword
+  let mutable = case list.first(list.drop(values, 1)) {
+    Ok(TokenValue(token)) if token.value == "mut" -> True
+    _ -> False
+  }
+
+  // Find the name (first TokenValue after "let" and optional "mut")
+  let start_idx = case mutable {
+    True -> 2
+    False -> 1
+  }
+  let name_and_rest = find_name(list.drop(values, start_idx))
   let #(name, rest_after_name) = name_and_rest
-  
+
   // Check if next is ":" (has type) or "=" (no type)
   let #(type_annotation, after_eq) = case list.first(rest_after_name) {
     Ok(TokenValue(token)) if token.value == ":" -> {
@@ -688,14 +697,14 @@ fn make_let(values) -> Expr {
       #(None, list.drop(rest_after_name, 1))
     }
   }
-  
+
   // Next should be the expression
   let value_expr = case list.first(after_eq) {
     Ok(AstValue(e)) -> e
     _ -> Int(0, Span("error", 0, 0, 0, 0))
   }
-  
-  Let(name, False, type_annotation, value_expr, Span("let", 0, 0, 0, 0))
+
+  Let(name, mutable, type_annotation, value_expr, Span("let", 0, 0, 0, 0))
 }
 
 fn make_block(values) -> Expr {
