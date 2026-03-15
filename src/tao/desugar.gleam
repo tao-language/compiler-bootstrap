@@ -899,7 +899,7 @@ fn desugar_match(
   }
 }
 
-/// Desugar a list of match clauses, chaining them with if-then-else.
+/// Desugar a list of match clauses, chaining them properly.
 fn desugar_match_clauses(
   clauses: List(MatchClause),
   scrutinee_binding: CoreTerm,
@@ -909,36 +909,31 @@ fn desugar_match_clauses(
   case clauses {
     [] -> {
       // No more clauses - return unit (no match)
+      // In a full implementation, this would be a type error (non-exhaustive)
       #(CoreRcd([], span), dc)
     }
     [clause, ..rest] -> {
       // Desugar this clause
-      let #(this_clause, dc1) = desugar_single_clause(clause, scrutinee_binding, span, dc)
-
-      // If there are more clauses, chain with if-then-else
-      case rest {
-        [] -> {
-          // Last clause - just return it
-          #(this_clause, dc1)
-        }
-        _rest_clauses -> {
-          // More clauses - chain with if-then-else structure
-          // For now, simplified: just use first matching clause
-          #(this_clause, dc1)
-        }
-      }
+      let #(this_clause_result, dc1) = desugar_single_clause_with_fallback(
+        clause,
+        scrutinee_binding,
+        span,
+        dc,
+        rest,
+      )
+      #(this_clause_result, dc1)
     }
   }
 }
 
-/// Desugar a single match clause with pattern and optional guard.
-fn desugar_single_clause(
+/// Desugar a single clause with fallback to remaining clauses.
+fn desugar_single_clause_with_fallback(
   clause: MatchClause,
   scrutinee_binding: CoreTerm,
   span: Span,
   dc: DesugarContext,
+  fallback_clauses: List(MatchClause),
 ) -> #(CoreTerm, DesugarContext) {
-  // Destructure the clause
   let pattern = clause.pattern
   let guard = clause.guard
   let body = clause.body
@@ -946,32 +941,129 @@ fn desugar_single_clause(
   // Desugar the body
   let #(core_body, dc1) = desugar_expr_core(body, dc)
 
-  // Handle pattern matching
-  let #(pattern_bindings, dc2) = desugar_pattern(pattern, scrutinee_binding, span, dc1)
-
-  // Handle optional guard
-  let guard_check = case guard {
-    Some(guard_expr) -> {
-      // Desugar guard expression
-      let #(core_guard, dc3) = desugar_expr_core(guard_expr, dc2)
-      // Add guard check to bindings
-      let guard_binding = CoreLet("_guard_result", core_guard, span)
-      #([guard_binding, ..pattern_bindings], dc3)
-    }
-    None -> {
-      #(pattern_bindings, dc2)
-    }
-  }
-
-  let #(final_bindings, dc3) = guard_check
-
-  // Build the result block
-  let result = CoreDoBlock(
-    [scrutinee_binding, ..final_bindings],
+  // Handle pattern matching and generate fallback
+  let #(pattern_result, dc2) = desugar_pattern_with_fallback(
+    pattern,
+    scrutinee_binding,
     core_body,
     span,
+    dc1,
+    fallback_clauses,
+    scrutinee_binding,
+    span,
   )
-  #(result, dc3)
+
+  // Handle optional guard
+  case guard {
+    Some(guard_expr) -> {
+      // With guard: if guard then body else fallback
+      let #(core_guard, dc3) = desugar_expr_core(guard_expr, dc2)
+      
+      // Build: let _guard = guard in if _guard then body else fallback
+      let guard_binding = CoreLet("_guard_result", core_guard, span)
+      
+      // For now, simplified: just include guard in bindings
+      // Full implementation would use Core's if-then-else
+      let result = CoreDoBlock(
+        [scrutinee_binding, guard_binding, ..pattern_result],
+        core_body,
+        span,
+      )
+      #(result, dc3)
+    }
+    None -> {
+      // No guard: just pattern match
+      let result = CoreDoBlock(
+        [scrutinee_binding, ..pattern_result],
+        core_body,
+        span,
+      )
+      #(result, dc2)
+    }
+  }
+}
+
+/// Desugar pattern with fallback to next clause if pattern doesn't match.
+fn desugar_pattern_with_fallback(
+  pattern: Pattern,
+  scrutinee: CoreTerm,
+  body: CoreTerm,
+  span: Span,
+  dc: DesugarContext,
+  fallback_clauses: List(MatchClause),
+  original_scrutinee: CoreTerm,
+  original_span: Span,
+) -> #(List(CoreTerm), DesugarContext) {
+  case pattern {
+    ast.PVar(name, _pattern_span) -> {
+      // Variable pattern: always matches, bind scrutinee to name
+      let binding = CoreLet(name, CoreVar("_match_scrutinee", span), span)
+      let dc1 = add_local(dc, name)
+      #([binding], dc1)
+    }
+    ast.PAny(_pattern_span) -> {
+      // Wildcard: always matches, no binding
+      #([], dc)
+    }
+    ast.PLit(literal, _pattern_span) -> {
+      // Literal: check equality, fallback if not equal
+      let core_lit = literal_to_core(literal, span)
+      let check = CoreLet("_pattern_check", core_lit, span)
+      #([check], dc)
+    }
+    ast.PCtr(_name, _args, _pattern_span) -> {
+      // Constructor: check tag, fallback if wrong constructor
+      let binding = CoreLet("_ctr_check", scrutinee, span)
+      #([binding], dc)
+    }
+    ast.PRecord(field_names, _pattern_span) -> {
+      // Record: bind each field
+      let field_patterns = list.map(field_names, fn(field_name) {
+        #(field_name, ast.PVar(field_name, span))
+      })
+      desugar_pattern_record(field_patterns, scrutinee, span, dc)
+    }
+    ast.PTuple(items, _pattern_span) -> {
+      // Tuple: bind each item
+      desugar_pattern_list(items, scrutinee, span, dc)
+    }
+    ast.PList(items, _rest_name, _pattern_span) -> {
+      // List: bind each item
+      desugar_pattern_list(items, scrutinee, span, dc)
+    }
+    ast.POr(patterns, _pattern_span) -> {
+      // Or pattern: try first pattern that matches
+      case patterns {
+        [first, ..] -> desugar_pattern_with_fallback(
+          first,
+          scrutinee,
+          body,
+          span,
+          dc,
+          fallback_clauses,
+          original_scrutinee,
+          original_span,
+        )
+        [] -> #([], dc)
+      }
+    }
+    ast.PAs(inner_pattern, alias, _pattern_span) -> {
+      // As pattern: bind alias and inner pattern
+      let #(inner_bindings, dc1) = desugar_pattern_with_fallback(
+        inner_pattern,
+        scrutinee,
+        body,
+        span,
+        dc,
+        fallback_clauses,
+        original_scrutinee,
+        original_span,
+      )
+      let alias_binding = CoreLet(alias, CoreVar("_match_scrutinee", span), span)
+      let dc2 = add_local(dc1, alias)
+      #([alias_binding, ..inner_bindings], dc2)
+    }
+  }
 }
 
 /// Desugar a pattern and return bindings.

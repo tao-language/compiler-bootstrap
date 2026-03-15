@@ -40,12 +40,13 @@
 - ✅ Variable scoping with De Bruijn indices (bound vs. free variables)
 - ✅ Lambda scoping (parameters added to scope for body)
 - ✅ Control flow statements (For, While, Loop, Break, Continue, Return, Yield)
-- **432 tests passing**
+- ✅ Comprehensive desugarer tests (5 new tests covering expressions, patterns, control flow, scoping)
+- **437 tests passing**
 
 ### What's Pending
 
 - ⏳ Full import desugaring integration with CLI
-- ⏳ Comprehensive desugarer tests
+- ⏳ More comprehensive desugarer tests (edge cases, error handling)
 - ⏳ Proper fixpoint-based recursion for loops (currently simplified)
 - ⏳ Multi-clause match chaining (currently uses first matching clause)
 
