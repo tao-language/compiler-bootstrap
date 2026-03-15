@@ -1,0 +1,1 @@
+✓ Type checking examples/tao/programs/02-functions/lambda.tao\n✓ No errors found

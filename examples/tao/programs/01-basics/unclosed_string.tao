@@ -1,0 +1,6 @@
+// Unclosed string literal
+// Expected error: Parse error - unterminated string
+
+let message = "hello world
+
+message

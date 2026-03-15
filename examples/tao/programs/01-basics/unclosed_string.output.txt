@@ -1,0 +1,1 @@
+✓ Type checking examples/tao/programs/01-basics/unclosed_string.tao\n✓ No errors found

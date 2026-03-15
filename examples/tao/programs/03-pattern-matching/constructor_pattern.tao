@@ -1,0 +1,8 @@
+// Constructor pattern: Option type
+// Expected output: 42
+
+let some_value = Some(42)
+match some_value {
+  | Some(x) -> x
+  | None -> 0
+}

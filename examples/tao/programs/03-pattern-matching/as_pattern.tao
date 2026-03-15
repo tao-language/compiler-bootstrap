@@ -1,0 +1,8 @@
+// As-pattern: bind both the whole value and its parts
+// Expected output: 42
+
+let opt = Some(42)
+match opt {
+  | result @ Some(x) -> x
+  | None -> 0
+}

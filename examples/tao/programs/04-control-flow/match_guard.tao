@@ -1,0 +1,10 @@
+// Match with guards: conditional pattern matching
+// Expected output: "positive small number"
+
+let x = 5
+match x {
+  | n if n > 0 && n < 10 -> "positive small number"
+  | n if n > 0 -> "positive large number"
+  | n if n < 0 -> "negative"
+  | _ -> "zero"
+}

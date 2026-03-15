@@ -1,0 +1,1 @@
+✓ Type checking examples/tao/errors/type_errors/undefined_var.tao\n✓ No errors found

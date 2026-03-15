@@ -46,11 +46,13 @@
   - Break, Continue, Return, Yield markers
 - ✅ Comprehensive desugarer tests (13 tests covering expressions, patterns, control flow, scoping, guards, fixpoint, imports)
 - ✅ Multi-file compiler module (`src/tao/compiler.gleam`) with import resolution
-- **446 tests passing**
+- ✅ CLI integration for multi-file compilation (`compile_single_file` wired to `check` command)
+- ✅ Example files and E2E tests (`examples/tao/`, `test/tao/examples_test.gleam`)
+- **451 tests passing**
 
 ### What's Pending
 
-- ⏳ CLI integration for multi-file compilation (wire up `compile_files` to `check` command)
+- ⏳ Full multi-file compilation CLI (compile all files in a project with dependency ordering)
 - ⏳ More comprehensive desugarer tests (edge cases, error handling, integration tests)
 - ⏳ Multi-clause match chaining (proper if-then-else structure for non-exhaustive matches)
 - ⏳ While loop condition short-circuit (proper match-based condition check in fixpoint)

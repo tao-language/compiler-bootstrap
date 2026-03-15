@@ -1,0 +1,8 @@
+// Simple function definition and call
+// Expected output: 42
+
+fn add(x, y) {
+  x + y
+}
+
+add(20, 22)

@@ -1,0 +1,5 @@
+// Undefined variable: using a variable that was never bound
+// Expected error: Type error - unbound variable
+
+let x = y
+x

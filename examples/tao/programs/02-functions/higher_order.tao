@@ -1,0 +1,18 @@
+// Higher-order functions: functions that take functions as arguments
+// Expected output: 30
+
+fn apply(f, x) {
+  f(x)
+}
+
+fn double(x) {
+  x * 2
+}
+
+fn add_ten(x) {
+  x + 10
+}
+
+// apply(double, 10) = 20
+// apply(add_ten, 20) = 30
+apply(add_ten, apply(double, 10))

@@ -15,6 +15,7 @@ import core/syntax as core_syntax
 import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var as TaoVar, Int as TaoInt, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, expr_to_ast}
 import tao/desugar.{desugar_module}
 import tao/global_context.{new_context, with_prelude, set_current_module}
+import tao/compiler.{compile_files, compile_single_file, type CompileResult, type CompileErrorType, ParseError as CompilerParseError, ImportError as CompilerImportError, CircularImport as CompilerCircularImport, ModuleNotFound as CompilerModuleNotFound}
 import tao/ast.{type Stmt as TaoStmt, StmtExpr as TaoStmtExpr, Module as TaoModule}
 import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType, type Span, Span}
 import tao/test_parser.{parse_tests, type Test}
@@ -56,6 +57,7 @@ pub type Error {
   FileReadError(path: String, error: simplifile.FileError)
   InvalidArguments(message: String)
   UnknownCommand(command: String)
+  CompileError(errors: List(CompileErrorType))
 }
 
 // ============================================================================
@@ -484,25 +486,18 @@ fn check_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     False -> Nil
   }
 
-  let parse_result = tao_parse(file.contents)
+  // Use multi-file compiler (single file mode)
+  let #(ctx, module, compile_errors) = compile_single_file(file.path, file.contents, ".")
 
-  case parse_result.errors {
+  case compile_errors {
     [err, ..] -> {
-      // Report parse errors
+      // Report compile errors
       io.println("")
-      let diagnostic = error_reporter.parse_error_to_diagnostic(err, file.contents, file.path)
-      io.println(error_reporter.format_diagnostic(diagnostic, file.contents))
+      report_compile_error(err)
       io.println("")
-      Error(ParseError(parse_result.errors |> list.map(format_parse_error)))
+      Error(CompileError(compile_errors))
     }
     [] -> {
-      case debug {
-        True -> {
-          io.println("Tao AST parsed successfully")
-        }
-        False -> Nil
-      }
-
       case verbose {
         True -> {
           io.println("✓ Parsed Tao successfully")
@@ -511,15 +506,7 @@ fn check_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
         False -> Nil
       }
 
-      // Convert parsed expressions to Module
-      let module = TaoModule(
-        path: "main",
-        body: exprs_to_stmts([parse_result.ast]),
-        span: get_expr_span(parse_result.ast),
-      )
-
       // Desugar Tao to Core
-      let ctx = new_context() |> with_prelude() |> set_current_module("main")
       let #(term, _dc) = desugar_module(module, ctx)
 
       case debug {
@@ -837,6 +824,28 @@ fn report_error(error: Error) {
     }
     UnknownCommand(command) -> {
       io.println("Unknown command: " <> command)
+    }
+    CompileError(_errors) -> {
+      io.println("Compile error:")
+      io.println("  See above for details")
+    }
+  }
+}
+
+/// Report a compile error to stderr
+fn report_compile_error(error: CompileErrorType) {
+  case error {
+    CompilerParseError(message, _span) -> {
+      io.println("Parse error: " <> message)
+    }
+    CompilerImportError(message, _span) -> {
+      io.println("Import error: " <> message)
+    }
+    CompilerCircularImport(cycle, _span) -> {
+      io.println("Circular import detected: " <> string.join(cycle, " -> "))
+    }
+    CompilerModuleNotFound(path, _span) -> {
+      io.println("Module not found: " <> path)
     }
   }
 }

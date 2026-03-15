@@ -1,0 +1,19 @@
+// Binary operators: arithmetic, comparison, logical
+// Expected output: 15
+
+let sum = 10 + 5
+let diff = 10 - 5
+let prod = 10 * 5
+let quot = 10 / 5
+
+// Comparison
+let eq = 10 == 10
+let neq = 10 != 5
+let lt = 5 < 10
+let gt = 10 > 5
+
+// Logical
+let and = true && true
+let or = false || true
+
+sum

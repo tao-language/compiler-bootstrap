@@ -1,0 +1,20 @@
+// Nested function calls
+// Expected output: 15
+
+fn double(x) {
+  x * 2
+}
+
+fn add_one(x) {
+  x + 1
+}
+
+// Composition: double(add_one(7)) = double(8) = 16
+// Wait, let me recalculate: add_one(7) = 8, double(8) = 16
+// Let me use different values for 15
+
+fn triple(x) {
+  x * 3
+}
+
+triple(add_one(4))

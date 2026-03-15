@@ -1,0 +1,9 @@
+// While loop: condition-based iteration
+// Note: This example shows the syntax, actual output depends on loop implementation
+// Expected output: 0 (after counting down from 5)
+
+let count = 5
+while count > 0 {
+  let count = count - 1
+}
+count

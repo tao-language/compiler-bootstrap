@@ -1,0 +1,7 @@
+// Wildcard pattern: matches anything without binding
+// Expected output: 100
+
+let x = 100
+match x {
+  | _ -> 100
+}

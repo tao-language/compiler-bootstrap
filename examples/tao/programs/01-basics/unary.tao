@@ -1,0 +1,6 @@
+// Unary operators: negation, logical not
+// Expected output: -5
+
+let x = 5
+let negated = -x
+negated

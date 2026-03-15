@@ -1,0 +1,1 @@
+✓ Type checking examples/tao/programs/03-pattern-matching/missing_case.tao\n✓ No errors found

@@ -1,0 +1,1 @@
+✓ Type checking examples/tao/programs/01-basics/blocks.tao\n✓ No errors found

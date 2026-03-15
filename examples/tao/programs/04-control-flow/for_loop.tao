@@ -1,0 +1,9 @@
+// For loop: collection iteration
+// Expected output: 15 (sum of 1+2+3+4+5)
+
+let numbers = [1, 2, 3, 4, 5]
+let sum = 0
+for n in numbers {
+  let sum = sum + n
+}
+sum

@@ -1,0 +1,7 @@
+// Non-exhaustive pattern match: missing case for None
+// Expected error: Exhaustiveness error - missing pattern for None
+
+let opt = Some(42)
+match opt {
+  | Some(x) -> x
+}

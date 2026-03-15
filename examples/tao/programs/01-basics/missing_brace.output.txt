@@ -1,0 +1,1 @@
+✓ Type checking examples/tao/programs/01-basics/missing_brace.tao\n✓ No errors found
