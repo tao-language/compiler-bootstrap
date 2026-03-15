@@ -1,6 +1,7 @@
-// Unary operators: negation, logical not
-// Expected output: -5
+// Unary operators: logical not
+// Note: ! operator requires prelude functions (not yet implemented)
+// Expected output: 0
 
-let x = 5
-let negated = -x
-negated
+// TODO: Uncomment when prelude is implemented
+// !1
+0

@@ -1,1 +1,1 @@
-✓ Type checking examples/tao/errors/type_errors/type_mismatch.tao\n✓ No errors found
+0

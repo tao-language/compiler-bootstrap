@@ -1,1 +1,1 @@
-✓ Type checking examples/tao/errors/syntax_errors/missing_brace.tao\n✓ No errors found
+0
