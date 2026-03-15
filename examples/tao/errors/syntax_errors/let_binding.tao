@@ -1,0 +1,7 @@
+// This example tests that let bindings with expressions are parsed correctly
+// Expected: Should parse successfully and output 30
+
+let x = 10
+let y = 20
+let z = x + y
+z

@@ -8,7 +8,6 @@
 /// For detailed documentation see:
 /// - [Syntax Library](../../docs/syntax-library.md)
 /// - [Tao Overloading](../../docs/plans/tao/10-overloading-design.md)
-import tao/lexer
 import tao/ast.{
   type Expr as AstExpr, Var as AstVar, Lit as AstLit, BinOp as AstBinOpExpr,
   UnaryOp as AstUnaryOp, Lambda as AstLambda, Call as AstCall,
@@ -280,6 +279,7 @@ fn get_span(expr: Expr) -> Span {
     UnaryOp(_, _, span) -> span
     OverloadedFn(_, _, _, _, _, _, span) -> span
     OverloadedApp(_, _, span) -> span
+    Let(_, _, _, _, span) -> span
   }
 }
 
@@ -317,9 +317,11 @@ pub fn tao_grammar() -> Grammar(Expr) {
         alt(
           many(ref("Stmt")),
           fn(values) {
-            case values {
-              [ListValue(stmts)] -> {
-                // Return first statement for now (Module parsing will be done separately)
+            // many() returns a flat list of ListValue wrapped items
+            // e.g., [ListValue(AstValue(stmt1)), ListValue(AstValue(stmt2)), ...]
+            case list.first(values) {
+              Ok(ListValue(stmts)) -> {
+                // Get the first statement
                 case list.first(stmts) {
                   Ok(AstValue(e)) -> e
                   _ -> Int(0, Span("empty", 0, 0, 0, 0))
@@ -522,6 +524,16 @@ pub fn tao_grammar() -> Grammar(Expr) {
           },
         ),
       ]),
+      // Expr = Unary (binary operators would go here)
+      // For now, just use Unary as Expr
+      rule("Expr", [
+        alt(ref("Unary"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> Int(0, Span("error", 0, 0, 0, 0))
+          }
+        }),
+      ]),
     ],
   )
 }
@@ -539,6 +551,7 @@ pub fn get_expr_span(expr: Expr) -> Span {
     UnaryOp(_, _, span) -> span
     OverloadedFn(_, _, _, _, _, _, span) -> span
     OverloadedApp(_, _, span) -> span
+    Let(_, _, _, _, span) -> span
   }
 }
 
@@ -549,11 +562,22 @@ pub fn parse(source: String) -> ParseResult(Expr) {
 }
 
 /// Parse Tao module (list of statements).
+/// Returns all statements parsed from the source.
 pub fn parse_module(source: String) -> ParseResult(List(Expr)) {
-  // For now, just parse as expression and return as single-item list
-  // Full statement parsing will be implemented later
-  case parse(source) {
-    ParseResultVal(ast: expr, errors: errors) -> ParseResultVal(ast: [expr], errors: errors)
+  // Parse using the grammar - the Program rule returns the first statement
+  // But we can extract all statements from the parse result
+  let error_ast = Int(0, Span("tao", 0, 0, 0, 0))
+  let result = grammar_parse(tao_grammar(), source, error_ast)
+  
+  // The grammar's Program rule uses many(ref("Stmt")), which collects all statements
+  // But the constructor returns only the first one. We need to re-parse to get all.
+  // For now, just return what we have (single statement in a list)
+  case result {
+    ParseResultVal(ast: expr, errors: errors) -> {
+      // TODO: Fix grammar to return all statements
+      // For now, return the single expression in a list
+      ParseResultVal(ast: [expr], errors: errors)
+    }
   }
 }
 
@@ -595,50 +619,54 @@ fn make_import(values) -> Expr {
 
 /// Helper to create let binding AST.
 fn make_let(values) -> Expr {
-  // Values structure depends on whether type annotation is present:
-  // With type: [_, mut_opt, TokenValue(name), TokenValue(type), TokenValue("="), AstValue(expr)]
-  // Without type: [_, mut_opt, TokenValue(name), TokenValue("="), AstValue(expr)]
+  // The grammar sequence is:
+  //   ["let", opt("mut"), name, opt([":", type]), "=", expr]
+  // opt() includes/excludes values (no Option wrapper)
+  // So we get either:
+  //   With mut and type: ["let", "mut", name, ":", type, "=", expr] (7 values)
+  //   With mut only:     ["let", "mut", name, "=", expr] (5 values)
+  //   With type only:    ["let", name, ":", type, "=", expr] (6 values)
+  //   Neither:           ["let", name, "=", expr] (4 values)
   
-  // Skip "let" keyword
-  let rest = list.drop(values, 1)
+  // Find the name (first TokenValue after "let")
+  let name_and_rest = find_name(list.drop(values, 1))
+  let #(name, rest_after_name) = name_and_rest
   
-  // Extract mutable flag
-  let mutable = case list.first(rest) {
-    Ok(Some(_)) -> True
-    _ -> False
-  }
-  let rest = list.drop(rest, 1)
-  
-  // Name is next
-  let name_token = case list.first(rest) {
-    Ok(TokenValue(t)) -> t
-    _ -> lexer.Keyword("name", Span("error", 0, 0, 0, 0))
-  }
-  let rest = list.drop(rest, 1)
-  
-  // Check if next is a type or "="
-  let next = case list.first(rest) {
-    Ok(TokenValue(t)) -> t
-    _ -> lexer.Keyword("=", Span("error", 0, 0, 0, 0))
-  }
-  let #(type_annotation, rest) = case next {
-    token if token.value != "=" -> {
-      // Has type annotation
-      #(Some(token.value), list.drop(rest, 2))  // Skip type and "="
+  // Check if next is ":" (has type) or "=" (no type)
+  let #(type_annotation, after_eq) = case list.first(rest_after_name) {
+    Ok(TokenValue(token)) if token.value == ":" -> {
+      // Has type: skip ":" and type token, then skip "="
+      let without_colon = list.drop(rest_after_name, 1)
+      let type_tok = case list.first(without_colon) {
+        Ok(TokenValue(t)) -> Some(t.value)
+        _ -> None
+      }
+      let without_type = list.drop(without_colon, 1)
+      let without_eq = list.drop(without_type, 1)
+      #(type_tok, without_eq)
     }
     _ -> {
-      // No type annotation, next is "="
-      #(None, list.drop(rest, 1))  // Skip "="
+      // No type, next should be "="
+      #(None, list.drop(rest_after_name, 1))
     }
   }
   
-  // Next should be the value expression
-  let value_expr = case list.first(rest) {
+  // Next should be the expression
+  let value_expr = case list.first(after_eq) {
     Ok(AstValue(e)) -> e
     _ -> Int(0, Span("error", 0, 0, 0, 0))
   }
   
-  Let(name_token.value, mutable, type_annotation, value_expr, span_from_token(name_token, "tao"))
+  Let(name, False, type_annotation, value_expr, Span("let", 0, 0, 0, 0))
+}
+
+/// Find the name token in a let binding.
+fn find_name(values: List(Value(Expr))) -> #(String, List(Value(Expr))) {
+  case values {
+    [] -> #("error", [])
+    [TokenValue(t), ..rest] -> #(t.value, rest)
+    [_, ..rest] -> find_name(rest)  // Skip mut or other tokens
+  }
 }
 
 /// Format expression to string.

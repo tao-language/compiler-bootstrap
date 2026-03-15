@@ -14,10 +14,11 @@ import tao/ast.{type Module, type Stmt, Module as ModuleCtr, StmtImport, StmtLet
 import tao/import_ast.{type Import, type ImportContext, type ResolvedImport}
 import tao/import_resolver.{resolve_imports}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module, register_module}
-import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, BinOp, UnaryOp, OverloadedFn, OverloadedApp, expr_to_ast}
+import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, expr_to_ast}
 import syntax/grammar.{type Span, Span}
 import gleam/dict.{type Dict}
 import gleam/list
+import gleam/option.{Some, None}
 import simplifile
 
 // ============================================================================
@@ -228,9 +229,20 @@ fn get_imports(body: List(Stmt)) -> List(Import) {
 
 /// Convert parsed expressions to statements.
 fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(Stmt) {
-  list.map(exprs, fn(expr) {
-    let ast_expr = expr_to_ast(expr)
-    StmtExpr(ast_expr, get_expr_span(expr))
+  list.flat_map(exprs, fn(expr) {
+    case expr {
+      Let(name, mutable, _type_annotation, value, span) -> {
+        // Convert let expression to StmtLet
+        // Note: Type annotations are not yet parsed, so we ignore them for now
+        let ast_value = expr_to_ast(value)
+        [StmtLet(name, mutable, None, ast_value, span)]
+      }
+      _ -> {
+        // Other expressions become StmtExpr
+        let ast_expr = expr_to_ast(expr)
+        [StmtExpr(ast_expr, get_expr_span(expr))]
+      }
+    }
   })
 }
 
@@ -243,6 +255,7 @@ fn get_expr_span(expr: TaoExpr) -> Span {
     UnaryOp(_, _, span) -> span
     OverloadedFn(_, _, _, _, _, _, span) -> span
     OverloadedApp(_, _, span) -> span
+    Let(_, _, _, _, span) -> span
   }
 }
 

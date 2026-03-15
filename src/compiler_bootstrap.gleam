@@ -874,18 +874,11 @@ fn format_file_error(err: simplifile.FileError) -> String {
 fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(TaoStmt) {
   list.flat_map(exprs, fn(expr) {
     case expr {
-      TaoLet(name, mutable, type_annotation, value, span) -> {
+      TaoLet(name, mutable, _type_annotation, value, span) -> {
         // Convert let expression to StmtLet
-        let mutability = case mutable {
-          True -> tao/ast.Mutable
-          False -> tao/ast.Immutable
-        }
-        let type_ann = case type_annotation {
-          Some(t) -> Some(tao/ast.Type(t, span))
-          None -> None
-        }
+        // Note: Type annotations are not yet parsed, so we ignore them for now
         let ast_value = expr_to_ast(value)
-        [TaoStmtLet(name, mutability, type_ann, ast_value, span)]
+        [TaoStmtLet(name, mutable, None, ast_value, span)]
       }
       _ -> {
         // Other expressions become StmtExpr
