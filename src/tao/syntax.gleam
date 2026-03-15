@@ -106,6 +106,8 @@ pub type Expr {
   )
   /// Application with potential implicit type args
   OverloadedApp(name: String, args: List(Expr), span: Span)
+  /// Regular function application (e.g., add(1, 2))
+  App(func: Expr, args: List(Expr), span: Span)
   /// Let binding (e.g., let x = 10)
   Let(name: String, mutable: Bool, type_annotation: Option(String), value: Expr, span: Span)
   /// Block expression (e.g., { let x = 10; x + 1 })
@@ -163,6 +165,11 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
       let ast_params = params_to_ast(params, span)
       AstLambda([], ast_params, ast_body, span)
     }
+    App(func, args, span) -> {
+      let ast_func = expr_to_ast_loop(func)
+      let ast_args = list.map(args, expr_to_ast_loop)
+      AstCall(ast_func, ast_args, span)
+    }
   }
 }
 
@@ -219,6 +226,13 @@ fn expr_to_block_stmt(expr: Expr) -> BlockStatement {
         None -> None
       }
       BlockStmtLet(LetDecl(name, mutability, ast_type, expr_to_ast_loop(value), span))
+    }
+    SimpleFn(name, params, return_type, body, span) -> {
+      // Function definitions become let bindings with lambdas
+      let ast_body = block_to_ast(body)
+      let ast_params = params_to_ast(params, span)
+      let lambda = AstLambda([], ast_params, ast_body, span)
+      BlockStmtLet(LetDecl(name, Immutable, None, lambda, span))
     }
     _ -> BlockStmtExpr(expr_to_ast_loop(expr))
   }
@@ -347,6 +361,7 @@ fn get_span(expr: Expr) -> Span {
     Let(_, _, _, _, span) -> span
     Block(_, span) -> span
     SimpleFn(_, _, _, _, span) -> span
+    App(_, _, span) -> span
   }
 }
 
@@ -567,7 +582,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
         alt(
           seq([
             keyword_pattern("!"),
-            ref("Primary"),
+            ref("Application"),
           ]),
           fn(values) {
             case values {
@@ -575,6 +590,29 @@ pub fn tao_grammar() -> Grammar(Expr) {
               _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
+        ),
+        alt(ref("Application"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> Int(0, Span("error", 0, 0, 0, 0))
+          }
+        }),
+      ]),
+      // Application = Primary ("(" Args ")")*
+      rule("Application", [
+        alt(
+          seq([
+            ref("Primary"),
+            many(seq([
+              token_pattern("LParen"),
+              many(seq([
+                ref("Expr"),
+                opt(token_pattern("Comma")),
+              ])),
+              token_pattern("RParen"),
+            ])),
+          ]),
+          make_app,
         ),
         alt(ref("Primary"), fn(values) {
           case values {
@@ -651,6 +689,7 @@ pub fn get_expr_span(expr: Expr) -> Span {
     Let(_, _, _, _, span) -> span
     Block(_, span) -> span
     SimpleFn(_, _, _, _, span) -> span
+    App(_, _, span) -> span
   }
 }
 
@@ -743,6 +782,35 @@ fn extract_params(param_list: List(Value(Expr)), acc: List(#(String, Option(Stri
       extract_params(rest, [#(name_tok.value, Some(type_tok.value)), ..acc])
     }
     [_, ..rest] -> extract_params(rest, acc)
+  }
+}
+
+/// Helper to create function application AST.
+fn make_app(values) -> Expr {
+  case values {
+    [AstValue(func), ListValue(calls)] -> {
+      // Process each call: [LParen, args, RParen]
+      // For now, just handle the first call
+      case list.first(calls) {
+        Ok(ListValue([_, ListValue(args_list), _])) -> {
+          // Extract args from the list
+          let args = extract_args(args_list, [])
+          let span = get_expr_span(func)
+          App(func, args, span)
+        }
+        _ -> func
+      }
+    }
+    [AstValue(func)] -> func
+    _ -> Int(0, Span("error", 0, 0, 0, 0))
+  }
+}
+
+fn extract_args(args_list: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
+  case args_list {
+    [] -> list.reverse(acc)
+    [AstValue(e), ..rest] -> extract_args(rest, [e, ..acc])
+    [_, ..rest] -> extract_args(rest, acc)
   }
 }
 
@@ -917,6 +985,9 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
         None -> ""
       }
       "fn " <> name <> "(" <> params_str <> ")" <> ret_str <> " { ... }"
+    }
+    App(func, args, _) -> {
+      format_expr(func) <> "(" <> string_join(list.map(args, format_expr), ", ") <> ")"
     }
   }
 }
