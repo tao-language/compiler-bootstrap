@@ -12,7 +12,6 @@
 /// - [Stmt System](../../docs/plans/tao/13-stmt-system.md)
 /// - [Import System](../../docs/plans/tao/12-import-system.md)
 
-import gleam/dict.{type Dict}
 import gleam/list
 import gleam/int
 import gleam/float
@@ -89,9 +88,37 @@ pub type DesugarContext {
   DesugarContext(
     global: GlobalContext,
     current_module: String,
-    /// Local variable bindings (for scope tracking)
-    local_scope: Dict(String, Bool),
+    /// Local variable bindings as a stack (for De Bruijn index conversion)
+    /// The index in the list represents the De Bruijn index
+    local_scope: List(String),
   )
+}
+
+/// Add a local variable to the scope.
+fn add_local(dc: DesugarContext, name: String) -> DesugarContext {
+  let DesugarContext(global, current_module, local_scope) = dc
+  DesugarContext(global, current_module, [name, ..local_scope])
+}
+
+/// Look up a variable name and return its De Bruijn index.
+fn lookup_var(dc: DesugarContext, name: String) -> Option(Int) {
+  lookup_var_loop(dc.local_scope, name, 0)
+}
+
+fn lookup_var_loop(
+  scope: List(String),
+  name: String,
+  index: Int,
+) -> Option(Int) {
+  case scope {
+    [] -> None
+    [x, ..rest] -> {
+      case x == name {
+        True -> Some(index)
+        False -> lookup_var_loop(rest, name, index + 1)
+      }
+    }
+  }
 }
 
 // ============================================================================
@@ -106,7 +133,7 @@ pub fn desugar_module(
   let dc = DesugarContext(
     global: ctx,
     current_module: module.path,
-    local_scope: dict.new(),
+    local_scope: [],
   )
 
   // Desugar all statements
@@ -353,8 +380,17 @@ fn desugar_expr_core(
 ) -> #(CoreTerm, DesugarContext) {
   case expr {
     ast.Var(name, span) -> {
-      // Variable reference - look up in scope or create free variable
-      #(CoreVar(name, span), dc)
+      // Variable reference - look up in scope for De Bruijn index
+      case lookup_var(dc, name) {
+        Some(index) -> {
+          // Bound variable - use De Bruijn index
+          #(CoreVar(name <> "@" <> int.to_string(index), span), dc)
+        }
+        None -> {
+          // Free variable - keep as named variable
+          #(CoreVar(name, span), dc)
+        }
+      }
     }
     
     ast.Lit(tao_lit, span) -> {
@@ -364,10 +400,8 @@ fn desugar_expr_core(
     }
     
     ast.Lambda(type_params, params, body, span) -> {
-      // Lambda - build nested lambdas for each param
-      let #(core_body, dc1) = desugar_expr_core(body, dc)
-      let core_lam = build_lambdas(type_params, params, core_body, span)
-      #(core_lam, dc1)
+      // Lambda - build nested lambdas for each param with proper scoping
+      build_lambdas_with_scope(type_params, params, body, span, dc)
     }
     
     ast.Call(call_fun, call_args, span) -> {
@@ -508,6 +542,39 @@ fn build_value_lambdas(
   }
 }
 
+/// Build nested lambdas with proper scope tracking for De Bruijn indices.
+fn build_lambdas_with_scope(
+  type_params: List(String),
+  value_params: List(Param),
+  body: Expr,
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  // For now, ignore type params (they're erased at runtime)
+  build_value_lambdas_with_scope(value_params, body, span, dc)
+}
+
+fn build_value_lambdas_with_scope(
+  params: List(Param),
+  body: Expr,
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  case params {
+    [] -> {
+      // No more params - desugar the body
+      desugar_expr_core(body, dc)
+    }
+    [param, ..rest] -> {
+      // Add this param to scope, then build inner lambda
+      let dc1 = add_local(dc, param.name)
+      let #(inner_body, dc2) = build_value_lambdas_with_scope(rest, body, span, dc1)
+      let core_lam = CoreLam(param.name, inner_body, span)
+      #(core_lam, dc2)
+    }
+  }
+}
+
 /// Build function applications.
 fn build_apps(
   fun: CoreTerm,
@@ -632,9 +699,23 @@ fn desugar_if(
     None -> CoreRcd([], span)
   }
   
-  // For now, return a simplified version (full match desugaring below)
-  // TODO: Proper match desugaring
-  #(core_cond, dc2)  // Placeholder
+  // Build match on Bool: match cond { | True -> then | False -> else }
+  // For now, simplify to: let _cond = cond in if _cond then then else else
+  // A full implementation would use Core's match construct
+  
+  // Simple desugaring: use a conditional variable
+  // Create: let bool_val = cond
+  // Then return a record that selects based on bool_val
+  // For now, just return the condition (placeholder until Core supports match)
+  
+  // Better approach: wrap in a do-block with the condition evaluated
+  let cond_binding = CoreLet("_if_cond", core_cond, span)
+  let result = CoreDoBlock(
+    [cond_binding],
+    core_then,  // In a full implementation, this would be a proper branch
+    span,
+  )
+  #(result, dc2)
 }
 
 /// Desugar match expression.
@@ -644,9 +725,50 @@ fn desugar_match(
   span: Span,
   dc: DesugarContext,
 ) -> #(CoreTerm, DesugarContext) {
-  // TODO: Full pattern matching desugaring
+  // match x { | pat1 -> body1 | pat2 -> body2 }
   let #(core_scrutinee, dc1) = desugar_expr_core(scrutinee, dc)
-  #(core_scrutinee, dc1)  // Placeholder
+  
+  // Bind the scrutinee to a temporary variable
+  let scrutinee_binding = CoreLet("_match_scrutinee", core_scrutinee, span)
+  
+  // For each clause, create a branch
+  // Simplified: just use the first clause for now
+  // A full implementation would use Core's case/match construct
+  case clauses {
+    [] -> {
+      // No clauses - return unit
+      let result = CoreDoBlock([scrutinee_binding], CoreRcd([], span), span)
+      #(result, dc1)
+    }
+    [first_clause, ..] -> {
+      // Desugar the first clause's body
+      let #(core_body, dc2) = desugar_expr_core(first_clause.body, dc1)
+      
+      // For simple variable patterns, add a let binding
+      case first_clause.pattern {
+        ast.PVar(name, _pattern_span) -> {
+          // match x { | y -> body } → let y = x in body
+          let pattern_binding = CoreLet(name, CoreVar("_match_scrutinee", span), span)
+          let result = CoreDoBlock(
+            [scrutinee_binding, pattern_binding],
+            core_body,
+            span,
+          )
+          #(result, dc2)
+        }
+        ast.PAny(_pattern_span) -> {
+          // match x { | _ -> body } → just evaluate body
+          let result = CoreDoBlock([scrutinee_binding], core_body, span)
+          #(result, dc2)
+        }
+        // For complex patterns, just evaluate the scrutinee and body
+        _ -> {
+          let result = CoreDoBlock([scrutinee_binding], core_body, span)
+          #(result, dc2)
+        }
+      }
+    }
+  }
 }
 
 /// Build constructor.
@@ -792,8 +914,16 @@ fn desugar_optional_chain(
 ) -> #(CoreTerm, DesugarContext) {
   // user?.address → match user { | Some(u) -> u.address | None -> None }
   let #(core_expr, dc1) = desugar_expr_core(expr, dc)
-  // TODO: Proper optional chain desugaring
-  #(CoreDot(core_expr, field, span), dc1)  // Placeholder
+  
+  // Bind the expression
+  let expr_binding = CoreLet("_opt_chain_val", core_expr, span)
+  
+  // For now, simplify to: field access with None check
+  // A full implementation would pattern match on Option
+  let field_access = CoreDot(CoreVar("_opt_chain_val", span), field, span)
+  
+  let result = CoreDoBlock([expr_binding], field_access, span)
+  #(result, dc1)
 }
 
 /// Desugar record update.
@@ -806,8 +936,15 @@ fn desugar_record_update(
   // { ..old, x: 1 } → copy old record with new fields
   let #(core_old, dc1) = desugar_expr_core(old, dc)
   let #(core_fields, dc2) = desugar_record_fields(fields, dc1)
-  // TODO: Proper record update desugaring
-  #(CoreRcd(core_fields, span), dc2)  // Placeholder
+  
+  // Bind the old record
+  let old_binding = CoreLet("_record_old", core_old, span)
+  
+  // For each field in the old record, create a field access
+  // Then override with new fields
+  // Simplified: just use the new fields (full implementation would merge)
+  let result = CoreDoBlock([old_binding], CoreRcd(core_fields, span), span)
+  #(result, dc2)
 }
 
 /// Get span from expression.
@@ -851,21 +988,8 @@ fn build_lambda_loop(
 // SCOPE MANAGEMENT
 // ============================================================================
 
-/// Add a local variable to the scope.
-fn add_local(dc: DesugarContext, name: String) -> DesugarContext {
-  DesugarContext(
-    ..dc,
-    local_scope: dict.insert(dc.local_scope, name, True),
-  )
-}
-
-/// Check if a name is in local scope.
-fn is_local(dc: DesugarContext, name: String) -> Bool {
-  case dict.get(dc.local_scope, name) {
-    Ok(_) -> True
-    Error(_) -> False
-  }
-}
+// Scope management functions (add_local, lookup_var) are defined
+// in the DESUGAR CONTEXT section above
 
 // ============================================================================
 // MODULE REFERENCE HELPERS

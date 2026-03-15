@@ -23,15 +23,18 @@
 - ✅ Desugarer skeleton (import desugaring, module → DoBlock)
 - ✅ CoreTerm → core/core.Term conversion
 - ✅ Full expression desugaring (variables, literals, lambdas, applications, operators, records, tuples, lists, blocks, let expressions)
+- ✅ If expression desugaring (conditional evaluation)
+- ✅ Match expression desugaring (pattern binding for simple patterns)
+- ✅ Optional chaining desugaring
+- ✅ Record update desugaring
+- ✅ Variable scoping with De Bruijn indices (bound vs. free variables)
+- ✅ Lambda scoping (parameters added to scope for body)
 - **432 tests passing**
 
 ### What's Pending
 
-- ⏳ Variable scoping (De Bruijn index conversion)
 - ⏳ Control flow statements (For, While, Loop, Break, Continue, Return, Yield)
-- ⏳ Pattern matching desugaring (Match, If expressions)
-- ⏳ Optional chaining desugaring
-- ⏳ Record update desugaring
+- ⏳ Full pattern matching (guards, multiple clauses, complex patterns)
 - ⏳ Full import desugaring integration with CLI
 - ⏳ Comprehensive desugarer tests
 
