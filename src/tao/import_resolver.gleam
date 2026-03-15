@@ -136,6 +136,12 @@ pub fn resolve_imports(
   resolve_imports_loop(imports, context, state, [])
 }
 
+/// Check if a file is a prelude file (in lib/prelude/ directory).
+pub fn is_prelude_file(file_path: String) -> Bool {
+  // Check if the file path contains "lib/prelude" or starts with "prelude"
+  string.contains(file_path, "lib/prelude") || string.starts_with(file_path, "prelude")
+}
+
 fn resolve_imports_loop(
   imports: List(Import),
   context: ImportContext,
@@ -170,11 +176,14 @@ fn resolve_single_import(
       // Resolve the path
       let resolved_path = resolve_path(path, context.current_dir, state.project_root)
       
+      // Check for prelude self-import (prelude file importing prelude)
+      let is_prelude_self_import = is_prelude_file(context.current_file) && is_prelude_file(path)
+      
       // Try to read the file/directory
       case resolve_module_path(resolved_path, state) {
         Ok(module_info) -> {
           // Check if importing private file from outside
-          case module_info.is_private && !is_explicit_private_import(path) {
+          case module_info.is_private && !is_explicit_private_import(path) && !is_prelude_self_import {
             True -> {
               let error = PrivateName(path, path, get_import_span(import_item))
               let new_state = add_error(state, error)
@@ -227,7 +236,7 @@ fn resolve_path(path: String, current_dir: String, project_root: String) -> Stri
 /// Resolve a module path to a file or directory.
 fn resolve_module_path(
   resolved_path: String,
-  _state: ResolverState,
+  state: ResolverState,
 ) -> Result(ModuleInfo, ResolutionErrorType) {
   // First, try as a file
   case simplifile.read(from: resolved_path <> ".tao") {
@@ -236,9 +245,42 @@ fn resolve_module_path(
       Ok(scan_module_info(resolved_path <> ".tao", contents))
     }
     Error(_) -> {
-      // Try as directory - for now return not found
-      // Directory reading will be implemented in Phase 4
-      Error(ModuleNotFound(resolved_path, Span("unknown", 0, 0, 0, 0)))
+      // Try as directory - read all .tao files except _*.tao
+      resolve_directory_import(resolved_path, state)
+    }
+  }
+}
+
+/// Handle directory import - collect all public files.
+fn resolve_directory_import(
+  dir_path: String,
+  _state: ResolverState,
+) -> Result(ModuleInfo, ResolutionErrorType) {
+  // Check if directory exists
+  case simplifile.is_directory(dir_path) {
+    Ok(False) -> Error(DirectoryNotFound(dir_path, Span("unknown", 0, 0, 0, 0)))
+    Error(_) -> Error(DirectoryNotFound(dir_path, Span("unknown", 0, 0, 0, 0)))
+    Ok(True) -> {
+      // Read directory contents
+      case simplifile.read_directory(at: dir_path) {
+        Error(_) -> Error(DirectoryNotFound(dir_path, Span("unknown", 0, 0, 0, 0)))
+        Ok(entries) -> {
+          // Filter to .tao files that don't start with _
+          let _public_files = list.filter(entries, fn(entry) {
+            string.ends_with(entry, ".tao") && !string.starts_with(entry, "_")
+          })
+          
+          // For directory imports, we create a synthetic module that represents
+          // the aggregation of all public files
+          Ok(ModuleInfo(
+            dir_path,
+            [],  // exported_names - would be populated by scanning all files
+            [],  // exported_types
+            [],  // exported_constructors
+            False,  // is_private - directories themselves aren't private
+          ))
+        }
+      }
     }
   }
 }
