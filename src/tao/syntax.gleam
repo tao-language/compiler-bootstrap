@@ -243,26 +243,45 @@ pub fn tao_grammar() -> Grammar(Expr) {
       infix_binary("/", make_div, InfixLeft, 20, " / "),
     ],
     rules: [
-      // Program = Import* Expr
+      // Program = Stmt*
       rule("Program", [
         alt(
-          seq([
-            many(ref("Import")),
-            ref("Expr"),
-          ]),
+          many(ref("Stmt")),
           fn(values) {
             case values {
-              [ListValue(imports), AstValue(body)] -> {
-                // Return a special wrapper that we'll unwrap later
-                // For now, just return the body expression
-                body
+              [ListValue(stmts)] -> {
+                case list.first(stmts) {
+                  Ok(AstValue(e)) -> e
+                  _ -> Int(0, Span("empty", 0, 0, 0, 0))
+                }
               }
               _ -> Int(0, Span("empty", 0, 0, 0, 0))
             }
           },
         ),
       ]),
-      // Import = "import" Path ("as" ("*" | Ident))? ("{" Ident ("," Ident)* "}")?
+      // Stmt = Import | OverloadedFn | Expr
+      rule("Stmt", [
+        alt(ref("Import"), fn(values) {
+          case values {
+            [_] -> Int(0, Span("import", 0, 0, 0, 0))  // Import statement (ignored in expression context)
+            _ -> Int(0, Span("empty", 0, 0, 0, 0))
+          }
+        }),
+        alt(ref("OverloadedFn"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> Int(0, Span("empty", 0, 0, 0, 0))
+          }
+        }),
+        alt(ref("Expr"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> Int(0, Span("empty", 0, 0, 0, 0))
+          }
+        }),
+      ]),
+      // Import = "import" Path ("as" Ident)? ("{" Ident ("," Ident)* "}")?
       rule("Import", [
         alt(
           seq([
@@ -274,7 +293,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
             ])),
             opt(seq([
               keyword_pattern("as"),
-              token_pattern("Ident"),  // alias or "*" captured as Ident
+              token_pattern("Ident"),  // alias
             ])),
             opt(seq([
               token_pattern("LBrace"),
@@ -290,6 +309,26 @@ pub fn tao_grammar() -> Grammar(Expr) {
             ])),
           ]),
           make_import,
+        ),
+      ]),
+      // OverloadedFn = "fn" "(" Ident ")" "(" Ident ":" Type ")" "->" Type "{" Expr "}"
+      rule("OverloadedFn", [
+        alt(
+          seq([
+            keyword_pattern("fn"),
+            token_pattern("LParen"),
+            token_pattern("Ident"),  // operator name
+            token_pattern("RParen"),
+            token_pattern("LParen"),
+            token_pattern("Ident"),  // param name
+            token_pattern("Colon"),
+            token_pattern("Ident"),  // param type
+            token_pattern("RParen"),
+            token_pattern("Arrow"),
+            token_pattern("Ident"),  // return type
+            ref("Expr"),             // body
+          ]),
+          make_overloaded_fn,
         ),
       ]),
       // Logic level: && and || (precedence 3)
