@@ -12,11 +12,11 @@
 import argv
 import core/core.{type Term, type Error as TypeError, type State, initial_state, infer, eval, quote, Err}
 import core/syntax as core_syntax
-import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var as TaoVar, Int as TaoInt, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, expr_to_ast}
+import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var as TaoVar, Int as TaoInt, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, expr_to_ast}
 import tao/desugar.{desugar_module}
 import tao/global_context.{new_context, with_prelude, set_current_module}
 import tao/compiler.{compile_files, compile_single_file, type CompileResult, type CompileErrorType, ParseError as CompilerParseError, ImportError as CompilerImportError, CircularImport as CompilerCircularImport, ModuleNotFound as CompilerModuleNotFound}
-import tao/ast.{type Stmt as TaoStmt, StmtExpr as TaoStmtExpr, Module as TaoModule}
+import tao/ast.{type Stmt as TaoStmt, StmtExpr as TaoStmtExpr, StmtLet as TaoStmtLet, Module as TaoModule}
 import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType, type Span, Span}
 import tao/test_parser.{parse_tests, type Test}
 import tao/test_filter.{filter_tests, file_base_name}
@@ -623,7 +623,7 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 
   // Report type errors
   case type_errors {
-    [..] -> {
+    _ -> {
       io.println("")
       type_errors |> list.each(fn(e) {
         let diagnostic = error_reporter.type_error_to_diagnostic(e, file.contents, file.path)
@@ -743,7 +743,7 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 
   // Report type errors
   case type_errors {
-    [..] -> {
+    _ -> {
       io.println("")
       type_errors |> list.each(fn(e) {
         let diagnostic = error_reporter.type_error_to_diagnostic(e, file.contents, file.path)
@@ -872,9 +872,27 @@ fn format_file_error(err: simplifile.FileError) -> String {
 
 /// Convert parsed expressions to statements.
 fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(TaoStmt) {
-  list.map(exprs, fn(expr) {
-    let ast_expr = expr_to_ast(expr)
-    TaoStmtExpr(ast_expr, get_expr_span_from_syntax(expr))
+  list.flat_map(exprs, fn(expr) {
+    case expr {
+      TaoLet(name, mutable, type_annotation, value, span) -> {
+        // Convert let expression to StmtLet
+        let mutability = case mutable {
+          True -> tao/ast.Mutable
+          False -> tao/ast.Immutable
+        }
+        let type_ann = case type_annotation {
+          Some(t) -> Some(tao/ast.Type(t, span))
+          None -> None
+        }
+        let ast_value = expr_to_ast(value)
+        [TaoStmtLet(name, mutability, type_ann, ast_value, span)]
+      }
+      _ -> {
+        // Other expressions become StmtExpr
+        let ast_expr = expr_to_ast(expr)
+        [TaoStmtExpr(ast_expr, get_expr_span_from_syntax(expr))]
+      }
+    }
   })
 }
 
@@ -886,6 +904,7 @@ fn get_expr_span_from_syntax(expr: TaoExpr) -> Span {
     TaoUnaryOp(_, _, span) -> span
     TaoOverloadedFn(_, _, _, _, _, _, span) -> span
     TaoOverloadedApp(_, _, span) -> span
+    TaoLet(_, _, _, _, span) -> span
   }
 }
 

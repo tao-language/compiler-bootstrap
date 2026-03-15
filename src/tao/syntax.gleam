@@ -19,9 +19,9 @@ import tao/ast.{
 import tao/import_ast.{type Import, ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias, ImportWildcard, type ImportItem, ImportName, ImportType, ImportOperator}
 import gleam/int
 import gleam/list
+import gleam/option.{type Option, Some, None}
 import gleam/result
 import gleam/string
-import gleam/option.{Some, None}
 import syntax/grammar.{
   type Grammar, type ParseResult, type Span, Span, Grammar, type Value, AstValue,
   ParensValue, TokenValue, ListValue,
@@ -98,6 +98,8 @@ pub type Expr {
   )
   /// Application with potential implicit type args
   OverloadedApp(name: String, args: List(Expr), span: Span)
+  /// Let binding (e.g., let x = 10)
+  Let(name: String, mutable: Bool, type_annotation: Option(String), value: Expr, span: Span)
 }
 
 // ============================================================================
@@ -132,6 +134,11 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
     OverloadedApp(name, args, span) -> {
       let ast_args = list.map(args, expr_to_ast_loop)
       AstCall(AstVar(name, span), ast_args, span)
+    }
+    Let(name, _mutable, _type_annotation, _value, span) -> {
+      // Let bindings are handled at the statement level, not expression level
+      // This case should not be reached for top-level lets
+      AstVar(name, span)
     }
   }
 }
@@ -398,7 +405,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
             token_pattern("="),
             ref("Expr"),
           ]),
-          make_let,
+          fn(values) { make_let(values) },
         ),
       ]),
       // Fn = "fn" "(" Ident ")" "(" Ident ":" Type ")" "->" Type "{" Expr "}"
@@ -588,9 +595,50 @@ fn make_import(values) -> Expr {
 
 /// Helper to create let binding AST.
 fn make_let(values) -> Expr {
-  // For now, return a placeholder - let bindings are handled in Stmt
-  // This allows the grammar to parse let without changing the Expr type
-  Int(0, Span("let", 0, 0, 0, 0))
+  // Values structure depends on whether type annotation is present:
+  // With type: [_, mut_opt, TokenValue(name), TokenValue(type), TokenValue("="), AstValue(expr)]
+  // Without type: [_, mut_opt, TokenValue(name), TokenValue("="), AstValue(expr)]
+  
+  // Skip "let" keyword
+  let rest = list.drop(values, 1)
+  
+  // Extract mutable flag
+  let mutable = case list.first(rest) {
+    Ok(Some(_)) -> True
+    _ -> False
+  }
+  let rest = list.drop(rest, 1)
+  
+  // Name is next
+  let name_token = case list.first(rest) {
+    Ok(TokenValue(t)) -> t
+    _ -> lexer.Keyword("name", Span("error", 0, 0, 0, 0))
+  }
+  let rest = list.drop(rest, 1)
+  
+  // Check if next is a type or "="
+  let next = case list.first(rest) {
+    Ok(TokenValue(t)) -> t
+    _ -> lexer.Keyword("=", Span("error", 0, 0, 0, 0))
+  }
+  let #(type_annotation, rest) = case next {
+    token if token.value != "=" -> {
+      // Has type annotation
+      #(Some(token.value), list.drop(rest, 2))  // Skip type and "="
+    }
+    _ -> {
+      // No type annotation, next is "="
+      #(None, list.drop(rest, 1))  // Skip "="
+    }
+  }
+  
+  // Next should be the value expression
+  let value_expr = case list.first(rest) {
+    Ok(AstValue(e)) -> e
+    _ -> Int(0, Span("error", 0, 0, 0, 0))
+  }
+  
+  Let(name_token.value, mutable, type_annotation, value_expr, span_from_token(name_token, "tao"))
 }
 
 /// Format expression to string.
@@ -609,6 +657,17 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
     }
     OverloadedApp(name, args, _) -> {
       name <> "(" <> string_join(list.map(args, format_expr), ", ") <> ")"
+    }
+    Let(name, mutable, type_annotation, value, _) -> {
+      let mut_str = case mutable {
+        True -> "mut "
+        False -> ""
+      }
+      let type_str = case type_annotation {
+        Some(t) -> ": " <> t
+        None -> ""
+      }
+      "let " <> mut_str <> name <> type_str <> " = " <> format_expr(value)
     }
   }
 }
