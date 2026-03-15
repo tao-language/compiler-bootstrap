@@ -37,7 +37,8 @@
 import tao/compiler.{compile_single_file, type CompileErrorType, ParseError as CompilerParseError, ImportError as CompilerImportError, CircularImport as CompilerCircularImport, ModuleNotFound as CompilerModuleNotFound}
 import tao/desugar.{desugar_module}
 import tao/global_context.{new_context, with_prelude}
-import core/core.{type Error as TypeError, type State, initial_state, infer, quote}
+import core/core.{type Error as TypeError, type State, initial_state, infer, eval, quote}
+import core/syntax as core_syntax
 import gleam/list
 import gleam/result
 import gleam/string
@@ -45,6 +46,7 @@ import gleam/int
 import gleeunit
 import gleeunit/should
 import simplifile
+import syntax/grammar.{type Span, Span}
 
 // ============================================================================
 // TYPES
@@ -269,7 +271,7 @@ fn run_example(example: Example) -> Bool {
           True
         }
         #([], ShouldSucceed) -> {
-          // Success - desugar and type check
+          // Success - desugar, type check, and evaluate
           let #(term, _dc) = desugar_module(module, ctx)
 
           // Run type inference
@@ -277,7 +279,32 @@ fn run_example(example: Example) -> Bool {
           let type_errors = state.errors
 
           case type_errors {
-            [] -> False  // Test passed
+            [] -> {
+              // Evaluate and compare output
+              let value = eval(initial_state.ffi, [], term)
+              let span = Span("", 0, 0, 0, 0)
+              let normal_form = quote(initial_state.ffi, 0, value, span)
+              let actual_output = core_syntax.format(normal_form)
+              
+              case normalize_output(actual_output) == normalize_output(expected) {
+                True -> False  // Test passed
+                False -> {
+                  let msg = [
+                    "FAIL: " <> example.path,
+                    "Expected output:",
+                    "```",
+                    string.trim(expected),
+                    "```",
+                    "Actual output:",
+                    "```",
+                    string.trim(actual_output),
+                    "```",
+                  ]
+                  echo msg
+                  True
+                }
+              }
+            }
             errors -> {
               // Unexpected type errors
               let msg = [

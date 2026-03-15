@@ -1,1 +1,1 @@
-✓ Type checking examples/tao/programs/01-basics/variables.tao\n✓ No errors found
+0

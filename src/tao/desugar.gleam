@@ -148,18 +148,80 @@ pub fn desugar_module(
 
   // Get public names for return record
   let public_names = get_public_names(module.body)
-  let return_fields = list.map(public_names, fn(name) {
-    #(name, CoreVar(name, module.span))
-  })
-
-  // Build DoBlock with Record return
-  let result = CoreRcd(return_fields, module.span)
-  let core_term = CoreDoBlock(core_stmts, result, module.span)
   
+  // If there are public names, return a record of them
+  // Otherwise, return the last statement's value (for expression-style modules)
+  let result = case public_names {
+    [] -> {
+      // No public names - return the last statement value
+      // For empty modules, return unit
+      case core_stmts {
+        [] -> CoreRcd([], module.span)
+        _ -> {
+          // Get the last statement
+          get_last_statement(core_stmts, CoreRcd([], module.span))
+        }
+      }
+    }
+    names -> {
+      // Return record of public names
+      let return_fields = list.map(names, fn(name) {
+        #(name, CoreVar(name, module.span))
+      })
+      CoreRcd(return_fields, module.span)
+    }
+  }
+  
+  let core_term = CoreDoBlock(core_stmts, result, module.span)
+
   // Convert to core/core.Term
   let term = core_term_to_term(core_term)
 
   #(term, dc1)
+}
+
+/// Get the last statement from a list, or return default if empty.
+fn get_last_statement(stmts: List(CoreTerm), default: CoreTerm) -> CoreTerm {
+  case stmts {
+    [] -> default
+    [last] -> last
+    [_, ..rest] -> get_last_statement(rest, default)
+  }
+}
+
+/// Build a sequential term from statements and result.
+/// Each let x = e becomes a lambda application: (λx. rest) e
+fn build_sequential_term(
+  stmts: List(CoreTerm),
+  result: CoreTerm,
+  span: Span,
+) -> CoreTerm {
+  build_sequential_loop(stmts, result, span)
+}
+
+fn build_sequential_loop(
+  stmts: List(CoreTerm),
+  acc: CoreTerm,
+  span: Span,
+) -> CoreTerm {
+  case stmts {
+    [] -> acc
+    [stmt, ..rest] -> {
+      case stmt {
+        CoreLet(name, value, _let_span) -> {
+          // let x = e in rest  =>  (λx. rest) e
+          let lam = CoreLam(name, acc, span)
+          let app = CoreApp(lam, value, span)
+          build_sequential_loop(rest, app, span)
+        }
+        _ -> {
+          // Non-let statements (like StmtExpr) are just evaluated and discarded
+          // For now, we just continue with the accumulator
+          build_sequential_loop(rest, acc, span)
+        }
+      }
+    }
+  }
 }
 
 /// Desugar a list of statements.
@@ -1467,14 +1529,17 @@ fn core_term_to_term_loop(term: CoreTerm) -> Term {
         span: span,
       )
     }
-    CoreLet(_name, _value, span) -> {
-      // Let bindings are handled by DoBlock - return unit
+    CoreLet(name, value, span) -> {
+      // Let bindings: let x = e1 in e2  desugars to  (λx. e2) e1
+      // For now, we need the body from the parent DoBlock
+      // This is handled by CoreDoBlock below
       CoreRcd([], span) |> core_term_to_term_loop
     }
-    CoreDoBlock(_stmts, result, _span) -> {
-      // DoBlock becomes a sequence in Core (simplified: just return result)
-      // A full implementation would use Fixpoint for proper sequencing
-      core_term_to_term_loop(result)
+    CoreDoBlock(stmts, result, span) -> {
+      // DoBlock: sequence statements and return result
+      // Each let x = e becomes a lambda application
+      let sequential_core = build_sequential_term(stmts, result, span)
+      core_term_to_term_loop(sequential_core)
     }
     CoreLit(value, span) -> {
       case int.parse(value) {

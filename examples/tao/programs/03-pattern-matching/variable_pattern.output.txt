@@ -1,1 +1,1 @@
-✓ Type checking examples/tao/programs/03-pattern-matching/variable_pattern.tao\n✓ No errors found
+0

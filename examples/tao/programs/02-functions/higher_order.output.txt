@@ -1,1 +1,1 @@
-✓ Type checking examples/tao/programs/02-functions/higher_order.tao\n✓ No errors found
+0

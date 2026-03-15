@@ -1,1 +1,1 @@
-✓ Type checking examples/tao/programs/04-control-flow/match_guard.tao\n✓ No errors found
+0

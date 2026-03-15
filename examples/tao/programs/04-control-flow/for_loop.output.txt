@@ -1,1 +1,1 @@
-✓ Type checking examples/tao/programs/04-control-flow/for_loop.tao\n✓ No errors found
+0

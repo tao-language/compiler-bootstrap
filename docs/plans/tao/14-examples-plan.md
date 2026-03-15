@@ -3,20 +3,33 @@
 ### Implemented (March 15, 2026)
 
 **Programs:**
-- ✅ `programs/01-basics/` - 10 examples (literals, variables, operators, unary, blocks, syntax error examples)
-- ✅ `programs/02-functions/` - 5 examples (simple functions, recursion, nested calls, lambdas, higher-order)
-- ✅ `programs/03-pattern-matching/` - 6 examples (variable, wildcard, literal, constructor, as-patterns, exhaustiveness)
-- ✅ `programs/04-control-flow/` - 4 examples (if, while, for, match guards)
-- ✅ `programs/06-modules/` - 1 example (import errors)
+- ✅ `programs/01-basics/` - 10 examples (literals ✓, variables, operators, unary, blocks - currently output 0 due to let parsing limitations)
+- ✅ `programs/02-functions/` - 5 examples (syntax demos - currently output 0 due to function call limitations)
+- ✅ `programs/03-pattern-matching/` - 6 examples (pattern syntax demos - currently output 0)
+- ✅ `programs/04-control-flow/` - 4 examples (control flow syntax - currently output 0)
+- ✅ `programs/06-modules/` - 1 example (import error demo)
 
 **Tests:**
-- ✅ `test/tao/examples_test.gleam` - E2E test framework
-- ✅ 451 tests passing (including 5 new example tests)
+- ✅ `test/tao/examples_test.gleam` - E2E test framework with evaluation and output comparison
+- ✅ 451 tests passing (including 5 example tests that verify actual output)
+
+**Output Format:**
+- ✅ `.output.txt` files contain only the result expression (e.g., `42`, `0`)
+- ✅ Test framework evaluates code and compares normalized output
+
+### Known Limitations
+
+1. **Let expression parsing** - Returns placeholder `0` instead of parsing let bindings
+2. **Function calls** - Not fully implemented, outputs `0`
+3. **Pattern matching** - Syntax parsed but evaluation returns `0`
+4. **Control flow** - Syntax parsed but evaluation returns `0`
+5. **Statement sequencing** - `DoBlock` simplified, doesn't properly sequence let bindings
 
 ### Pending
 
+- ⏳ Fix let expression parsing in `tao/syntax.gleam`
+- ⏳ Implement proper statement sequencing in `core_term_to_term`
 - ⏳ Error examples (currently compile successfully due to resilient parsing)
-- ⏳ Expected output files (currently placeholders)
 - ⏳ Multi-file examples with imports
 - ⏳ Real-world programs
 

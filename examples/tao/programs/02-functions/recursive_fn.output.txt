@@ -1,1 +1,1 @@
-✓ Type checking examples/tao/programs/02-functions/recursive_fn.tao\n✓ No errors found
+0

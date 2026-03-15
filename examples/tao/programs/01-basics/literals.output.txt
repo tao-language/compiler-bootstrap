@@ -1,2 +1,1 @@
-✓ Type checking examples/tao/programs/01-basics/literals.tao
-✓ No errors found
+42
