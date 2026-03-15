@@ -29,6 +29,7 @@ import syntax/grammar.{
   rule, alt, token_pattern, parenthesized, seq, ref, keyword_pattern, many, opt,
   infix_binary, left_assoc_rule,
   span_from_values, span_from_token, parse as grammar_parse,
+  ParseResult as ParseResultVal,
 }
 
 // ============================================================================
@@ -284,8 +285,8 @@ pub fn tao_grammar() -> Grammar(Expr) {
   Grammar(
     name: "Tao",
     start: "Program",
-    tokens: ["Ident", "Number", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow"],
-    keywords: ["fn", "let", "mut", "match", "if", "else", "type", "import", "export", "as", "comptime", "true", "false"],
+    tokens: ["Ident", "Number", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow", "Slash", "Star", "Comma"],
+    keywords: ["fn", "let", "mut", "match", "if", "else", "type", "import", "export", "as", "comptime", "true", "false", "for", "in", "while", "loop", "break", "continue", "return", "yield"],
     operators: [
       // Logical operators (precedence 3)
       infix_binary("&&", make_and, InfixLeft, 3, " && "),
@@ -311,6 +312,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
           fn(values) {
             case values {
               [ListValue(stmts)] -> {
+                // Return first statement for now (Module parsing will be done separately)
                 case list.first(stmts) {
                   Ok(AstValue(e)) -> e
                   _ -> Int(0, Span("empty", 0, 0, 0, 0))
@@ -321,20 +323,30 @@ pub fn tao_grammar() -> Grammar(Expr) {
           },
         ),
       ]),
-      // Stmt = Import | OverloadedFn | Expr
+      // Stmt = Import | Fn | Let | For | While | Loop | Break | Continue | Return | Yield | Expr
       rule("Stmt", [
+        // Import statement
         alt(ref("Import"), fn(values) {
           case values {
-            [_] -> Int(0, Span("import", 0, 0, 0, 0))  // Import statement (ignored in expression context)
+            [_] -> Int(0, Span("import", 0, 0, 0, 0))
             _ -> Int(0, Span("empty", 0, 0, 0, 0))
           }
         }),
-        alt(ref("OverloadedFn"), fn(values) {
+        // Function definition
+        alt(ref("Fn"), fn(values) {
           case values {
             [AstValue(e)] -> e
             _ -> Int(0, Span("empty", 0, 0, 0, 0))
           }
         }),
+        // Let binding
+        alt(ref("Let"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> Int(0, Span("empty", 0, 0, 0, 0))
+          }
+        }),
+        // Expression statement
         alt(ref("Expr"), fn(values) {
           case values {
             [AstValue(e)] -> e
@@ -372,8 +384,25 @@ pub fn tao_grammar() -> Grammar(Expr) {
           make_import,
         ),
       ]),
-      // OverloadedFn = "fn" "(" Ident ")" "(" Ident ":" Type ")" "->" Type "{" Expr "}"
-      rule("OverloadedFn", [
+      // Let = "let" ["mut"] Ident [":" Type] "=" Expr
+      rule("Let", [
+        alt(
+          seq([
+            keyword_pattern("let"),
+            opt(keyword_pattern("mut")),
+            token_pattern("Ident"),  // name
+            opt(seq([
+              token_pattern("Colon"),
+              token_pattern("Ident"),  // type annotation
+            ])),
+            token_pattern("="),
+            ref("Expr"),
+          ]),
+          make_let,
+        ),
+      ]),
+      // Fn = "fn" "(" Ident ")" "(" Ident ":" Type ")" "->" Type "{" Expr "}"
+      rule("Fn", [
         alt(
           seq([
             keyword_pattern("fn"),
@@ -506,10 +535,19 @@ pub fn get_expr_span(expr: Expr) -> Span {
   }
 }
 
-/// Parse Tao source code.
+/// Parse Tao source code (expression).
 pub fn parse(source: String) -> ParseResult(Expr) {
   let error_ast = Int(0, Span("tao", 0, 0, 0, 0))
   grammar_parse(tao_grammar(), source, error_ast)
+}
+
+/// Parse Tao module (list of statements).
+pub fn parse_module(source: String) -> ParseResult(List(Expr)) {
+  // For now, just parse as expression and return as single-item list
+  // Full statement parsing will be implemented later
+  case parse(source) {
+    ParseResultVal(ast: expr, errors: errors) -> ParseResultVal(ast: [expr], errors: errors)
+  }
 }
 
 /// Helper to create overloaded function AST.
@@ -546,6 +584,13 @@ fn make_import(values) -> Expr {
   // For now, return a placeholder - imports are handled separately
   // This allows the grammar to parse imports without changing the Expr type
   Int(0, Span("import", 0, 0, 0, 0))
+}
+
+/// Helper to create let binding AST.
+fn make_let(values) -> Expr {
+  // For now, return a placeholder - let bindings are handled in Stmt
+  // This allows the grammar to parse let without changing the Expr type
+  Int(0, Span("let", 0, 0, 0, 0))
 }
 
 /// Format expression to string.
