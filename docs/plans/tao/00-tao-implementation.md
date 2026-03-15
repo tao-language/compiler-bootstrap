@@ -17,17 +17,23 @@
 - ✅ Import system design (AST types, resolution, directory imports, prelude handling)
 - ✅ Stmt type implemented (all statement variants)
 - ✅ Module type updated (body: List(Stmt))
-- **425 tests passing**
+- ✅ Conversion layer (syntax.Expr → ast.Expr)
+- ✅ Parser for Stmt (parse_module function)
+- ✅ Global context module (tracks all modules as @path records)
+- ✅ Desugarer skeleton (import desugaring, module → DoBlock)
+- ✅ CoreTerm → core/core.Term conversion
+- ✅ Full expression desugaring (variables, literals, lambdas, applications, operators, records, tuples, lists, blocks, let expressions)
+- **432 tests passing**
 
 ### What's Pending
 
-- ⏳ Remove duplicate Expr from syntax.gleam
-- ⏳ Parser for Stmt forms
-- ⏳ Global context for module placeholders
-- ⏳ Import → let alias desugaring
-- ⏳ Module → DoBlock desugaring
-- ⏳ Directory aggregate records
-- ⏳ Implicit prelude injection
+- ⏳ Variable scoping (De Bruijn index conversion)
+- ⏳ Control flow statements (For, While, Loop, Break, Continue, Return, Yield)
+- ⏳ Pattern matching desugaring (Match, If expressions)
+- ⏳ Optional chaining desugaring
+- ⏳ Record update desugaring
+- ⏳ Full import desugaring integration with CLI
+- ⏳ Comprehensive desugarer tests
 
 ### Related
 

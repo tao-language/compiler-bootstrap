@@ -15,13 +15,21 @@
 import gleam/dict.{type Dict}
 import gleam/list
 import gleam/int
+import gleam/float
 import gleam/option.{type Option, Some, None}
 import gleam/string
 import syntax/grammar.{type Span, Span}
 import tao/ast.{
   type Module, type Stmt, type Expr, type Param, type Pattern,
+  type Literal, type BinOperator, type UnaryOperator,
+  type RecordField, type MatchClause, type BlockStatement, type LetDecl,
   StmtLet, StmtFn, StmtImport, StmtExpr,
-  get_public_names, get_stmt_name,
+  BlockStmtLet, BlockStmtAssign, BlockStmtExpr,
+  OpAdd, OpSub, OpMul, OpDiv, OpMod, OpEq, OpNeq, OpLt, OpGt, OpLte, OpGte,
+  OpAnd, OpOr, OpConcat, OpPipe, OpNegate, OpNot,
+  Int, Float, String,
+  RecordUpdate, OptionalChain, LetExpr,
+  get_public_names, get_stmt_name, span_from_expr,
 }
 import tao/global_context.{
   type GlobalContext, type ModuleRef,
@@ -94,27 +102,30 @@ pub type DesugarContext {
 pub fn desugar_module(
   module: Module,
   ctx: GlobalContext,
-) -> #(CoreTerm, DesugarContext) {
+) -> #(Term, DesugarContext) {
   let dc = DesugarContext(
     global: ctx,
     current_module: module.path,
     local_scope: dict.new(),
   )
-  
+
   // Desugar all statements
   let #(core_stmts, dc1) = desugar_stmts(module.body, dc)
-  
+
   // Get public names for return record
   let public_names = get_public_names(module.body)
   let return_fields = list.map(public_names, fn(name) {
     #(name, CoreVar(name, module.span))
   })
-  
+
   // Build DoBlock with Record return
   let result = CoreRcd(return_fields, module.span)
   let core_term = CoreDoBlock(core_stmts, result, module.span)
   
-  #(core_term, dc1)
+  // Convert to core/core.Term
+  let term = core_term_to_term(core_term)
+
+  #(term, dc1)
 }
 
 /// Desugar a list of statements.
@@ -146,7 +157,7 @@ pub fn desugar_stmt(
 ) -> #(CoreTerm, DesugarContext) {
   case stmt {
     StmtLet(name, mutable, type_ann, value, span) -> {
-      let #(core_value, dc1) = desugar_expr(value, dc)
+      let #(core_value, dc1) = desugar_expr_core(value, dc)
       let core_let = CoreLet(name, core_value, span)
       let dc2 = add_local(dc1, name)
       #(core_let, dc2)
@@ -154,7 +165,7 @@ pub fn desugar_stmt(
     
     StmtFn(name, type_params, params, return_type, body, span) -> {
       // Function → let name = λparam1. λparam2. ... body
-      let #(core_body, dc1) = desugar_expr(body, dc)
+      let #(core_body, dc1) = desugar_expr_core(body, dc)
       let core_lam = build_lambda(params, core_body, span)
       let core_let = CoreLet(name, core_lam, span)
       let dc2 = add_local(dc1, name)
@@ -177,7 +188,7 @@ pub fn desugar_stmt(
     }
     
     StmtExpr(value, span) -> {
-      let #(core_expr, dc1) = desugar_expr(value, dc)
+      let #(core_expr, dc1) = desugar_expr_core(value, dc)
       #(core_expr, dc1)
     }
     
@@ -330,18 +341,483 @@ fn add_import_bindings(
 pub fn desugar_expr(
   expr: Expr,
   dc: DesugarContext,
+) -> #(Term, DesugarContext) {
+  let #(core_term, dc1) = desugar_expr_core(expr, dc)
+  #(core_term_to_term(core_term), dc1)
+}
+
+/// Desugar an expression to a CoreTerm (internal).
+fn desugar_expr_core(
+  expr: Expr,
+  dc: DesugarContext,
 ) -> #(CoreTerm, DesugarContext) {
   case expr {
-    // TODO: Implement full expression desugaring
-    // For now, return placeholders
-    _ -> #(CoreErr("Expression desugaring not yet implemented", get_expr_span(expr)), dc)
+    ast.Var(name, span) -> {
+      // Variable reference - look up in scope or create free variable
+      #(CoreVar(name, span), dc)
+    }
+    
+    ast.Lit(tao_lit, span) -> {
+      // Literal - convert to Core literal
+      let core_lit = literal_to_core(tao_lit, span)
+      #(core_lit, dc)
+    }
+    
+    ast.Lambda(type_params, params, body, span) -> {
+      // Lambda - build nested lambdas for each param
+      let #(core_body, dc1) = desugar_expr_core(body, dc)
+      let core_lam = build_lambdas(type_params, params, core_body, span)
+      #(core_lam, dc1)
+    }
+    
+    ast.Call(call_fun, call_args, span) -> {
+      // Function call - desugar function and args
+      let #(core_fun, dc1) = desugar_expr_core(call_fun, dc)
+      let #(core_args, dc2) = desugar_exprs(call_args, dc1)
+      let core_app = build_apps(core_fun, core_args, span)
+      #(core_app, dc2)
+    }
+    
+    ast.BinOp(left, op, right, span) -> {
+      // Binary operator - convert to function call
+      desugar_binop(left, op, right, span, dc)
+    }
+    
+    ast.UnaryOp(op, expr, span) -> {
+      // Unary operator - convert to function call
+      desugar_unaryop(op, expr, span, dc)
+    }
+    
+    ast.FieldAccess(record, field, span) -> {
+      // Field access - desugar to Dot
+      let #(core_record, dc1) = desugar_expr_core(record, dc)
+      #(CoreDot(core_record, field, span), dc1)
+    }
+    
+    ast.Record(fields, span) -> {
+      // Record construction
+      let #(core_fields, dc1) = desugar_record_fields(fields, dc)
+      #(CoreRcd(core_fields, span), dc1)
+    }
+    
+    ast.If(cond, then_expr, else_expr, span) -> {
+      // If expression - convert to match on Bool
+      desugar_if(cond, then_expr, else_expr, span, dc)
+    }
+    
+    ast.Match(scrutinee, clauses, span) -> {
+      // Match expression
+      desugar_match(scrutinee, clauses, span, dc)
+    }
+    
+    ast.Ctr(name, args, span) -> {
+      // Constructor - convert to Ctr
+      let #(core_args, dc1) = desugar_exprs(args, dc)
+      let core_ctr = build_ctr(name, core_args, span)
+      #(core_ctr, dc1)
+    }
+    
+    ast.Tuple(exprs, span) -> {
+      // Tuple - convert to Record with numeric fields
+      desugar_tuple(exprs, span, dc)
+    }
+    
+    ast.List(list_exprs, span) -> {
+      // List - convert to nested Cons/Nil
+      desugar_list(list_exprs, span, dc)
+    }
+    
+    ast.Block(block_stmts, span) -> {
+      // Block - desugar statements and return last expr
+      desugar_block(block_stmts, span, dc)
+    }
+    
+    ast.LetExpr(let_decl, body, span) -> {
+      // Let expression - desugar binding and body
+      desugar_let_expr(let_decl, body, span, dc)
+    }
+    
+    ast.OptionalChain(expr, field, span) -> {
+      // Optional chaining - convert to match on Option
+      desugar_optional_chain(expr, field, span, dc)
+    }
+    
+    ast.RecordUpdate(old, fields, span) -> {
+      // Record update - copy old record with new fields
+      desugar_record_update(old, fields, span, dc)
+    }
+    
+    // Placeholder for unimplemented expressions
+    _ -> #(CoreErr("Expression not yet implemented", get_expr_span(expr)), dc)
   }
+}
+
+/// Desugar a list of expressions.
+fn desugar_exprs(
+  exprs: List(Expr),
+  dc: DesugarContext,
+) -> #(List(CoreTerm), DesugarContext) {
+  desugar_exprs_loop(exprs, [], dc)
+}
+
+fn desugar_exprs_loop(
+  exprs: List(Expr),
+  acc: List(CoreTerm),
+  dc: DesugarContext,
+) -> #(List(CoreTerm), DesugarContext) {
+  case exprs {
+    [] -> #(list.reverse(acc), dc)
+    [expr, ..rest] -> {
+      let #(core_expr, dc1) = desugar_expr_core(expr, dc)
+      desugar_exprs_loop(rest, [core_expr, ..acc], dc1)
+    }
+  }
+}
+
+/// Convert a literal to Core.
+fn literal_to_core(literal: Literal, span: Span) -> CoreTerm {
+  case literal {
+    Int(n) -> CoreLit(int.to_string(n), span)
+    Float(f) -> CoreLit(float.to_string(f), span)
+    String(s) -> CoreLit(s, span)
+  }
+}
+
+/// Build nested lambdas from type params and value params.
+fn build_lambdas(
+  type_params: List(String),
+  value_params: List(Param),
+  body: CoreTerm,
+  span: Span,
+) -> CoreTerm {
+  // For now, ignore type params (they're erased at runtime)
+  build_value_lambdas(value_params, body, span)
+}
+
+fn build_value_lambdas(
+  params: List(Param),
+  body: CoreTerm,
+  span: Span,
+) -> CoreTerm {
+  case params {
+    [] -> body
+    [param, ..rest] -> {
+      let inner = build_value_lambdas(rest, body, span)
+      CoreLam(param.name, inner, span)
+    }
+  }
+}
+
+/// Build function applications.
+fn build_apps(
+  fun: CoreTerm,
+  args: List(CoreTerm),
+  span: Span,
+) -> CoreTerm {
+  case args {
+    [] -> fun
+    [arg, ..rest] -> {
+      let app = CoreApp(fun, arg, span)
+      build_apps(app, rest, span)
+    }
+  }
+}
+
+/// Desugar binary operator to function call.
+fn desugar_binop(
+  left: Expr,
+  op: BinOperator,
+  right: Expr,
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  // Convert operator to function name
+  let op_name = binop_to_name(op)
+  
+  // Desugar operands
+  let #(core_left, dc1) = desugar_expr_core(left, dc)
+  let #(core_right, dc2) = desugar_expr_core(right, dc1)
+  
+  // Build call: op_name(left, right)
+  let op_var = CoreVar(op_name, span)
+  let app1 = CoreApp(op_var, core_left, span)
+  let app2 = CoreApp(app1, core_right, span)
+  
+  #(app2, dc2)
+}
+
+/// Convert binary operator to function name.
+fn binop_to_name(op: BinOperator) -> String {
+  case op {
+    OpAdd -> "add"
+    OpSub -> "sub"
+    OpMul -> "mul"
+    OpDiv -> "div"
+    OpMod -> "mod"
+    OpEq -> "eq"
+    OpNeq -> "neq"
+    OpLt -> "lt"
+    OpGt -> "gt"
+    OpLte -> "lte"
+    OpGte -> "gte"
+    OpAnd -> "and"
+    OpOr -> "or"
+    OpConcat -> "concat"
+    OpPipe -> "pipe"
+  }
+}
+
+/// Desugar unary operator to function call.
+fn desugar_unaryop(
+  op: UnaryOperator,
+  expr: Expr,
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  let op_name = unaryop_to_name(op)
+  let #(core_expr, dc1) = desugar_expr_core(expr, dc)
+  
+  let op_var = CoreVar(op_name, span)
+  let app = CoreApp(op_var, core_expr, span)
+  
+  #(app, dc1)
+}
+
+/// Convert unary operator to function name.
+fn unaryop_to_name(op: UnaryOperator) -> String {
+  case op {
+    OpNegate -> "negate"
+    OpNot -> "not"
+  }
+}
+
+/// Desugar record fields.
+fn desugar_record_fields(
+  fields: List(RecordField),
+  dc: DesugarContext,
+) -> #(List(#(String, CoreTerm)), DesugarContext) {
+  desugar_record_fields_loop(fields, [], dc)
+}
+
+fn desugar_record_fields_loop(
+  fields: List(RecordField),
+  acc: List(#(String, CoreTerm)),
+  dc: DesugarContext,
+) -> #(List(#(String, CoreTerm)), DesugarContext) {
+  case fields {
+    [] -> #(list.reverse(acc), dc)
+    [field, ..rest] -> {
+      let #(core_value, dc1) = desugar_expr_core(field.value, dc)
+      desugar_record_fields_loop(rest, [#(field.name, core_value), ..acc], dc1)
+    }
+  }
+}
+
+/// Desugar if expression to match on Bool.
+fn desugar_if(
+  cond: Expr,
+  then_expr: Expr,
+  else_expr: Option(Expr),
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  // if cond { then } else { else } → match cond { | True -> then | False -> else }
+  let #(core_cond, dc1) = desugar_expr_core(cond, dc)
+  let #(core_then, dc2) = desugar_expr_core(then_expr, dc1)
+  let core_else = case else_expr {
+    Some(e) -> {
+      let #(core_e, dc3) = desugar_expr_core(e, dc2)
+      core_e
+    }
+    None -> CoreRcd([], span)
+  }
+  
+  // For now, return a simplified version (full match desugaring below)
+  // TODO: Proper match desugaring
+  #(core_cond, dc2)  // Placeholder
+}
+
+/// Desugar match expression.
+fn desugar_match(
+  scrutinee: Expr,
+  clauses: List(MatchClause),
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  // TODO: Full pattern matching desugaring
+  let #(core_scrutinee, dc1) = desugar_expr_core(scrutinee, dc)
+  #(core_scrutinee, dc1)  // Placeholder
+}
+
+/// Build constructor.
+fn build_ctr(
+  name: String,
+  args: List(CoreTerm),
+  span: Span,
+) -> CoreTerm {
+  // Constructors are curried: #Some(x) → App(App(#Some, Unit), x)
+  build_ctr_loop(name, args, span)
+}
+
+fn build_ctr_loop(
+  name: String,
+  args: List(CoreTerm),
+  span: Span,
+) -> CoreTerm {
+  case args {
+    [] -> {
+      // Nullary constructor: #True(Unit)
+      let ctr_var = CoreVar(name, span)
+      CoreApp(ctr_var, CoreRcd([], span), span)
+    }
+    [arg, ..rest] -> {
+      let inner = build_ctr_loop(name, rest, span)
+      CoreApp(inner, arg, span)
+    }
+  }
+}
+
+/// Desugar tuple to Record.
+fn desugar_tuple(
+  exprs: List(Expr),
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  let #(core_exprs, dc1) = desugar_exprs(exprs, dc)
+  let fields = list.index_map(core_exprs, fn(expr, i) {
+    #(int.to_string(i), expr)
+  })
+  #(CoreRcd(fields, span), dc1)
+}
+
+/// Desugar list to nested Cons/Nil.
+fn desugar_list(
+  exprs: List(Expr),
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  desugar_list_loop(exprs, span, dc)
+}
+
+fn desugar_list_loop(
+  exprs: List(Expr),
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  case exprs {
+    [] -> {
+      // Nil
+      #(CoreVar("Nil", span), dc)
+    }
+    [expr, ..rest] -> {
+      let #(core_expr, dc1) = desugar_expr_core(expr, dc)
+      let #(core_rest, dc2) = desugar_list_loop(rest, span, dc1)
+      // Cons(expr, rest)
+      let cons = CoreVar("Cons", span)
+      let app1 = CoreApp(cons, core_expr, span)
+      let app2 = CoreApp(app1, core_rest, span)
+      #(app2, dc2)
+    }
+  }
+}
+
+/// Desugar block.
+fn desugar_block(
+  stmts: List(BlockStatement),
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  case stmts {
+    [] -> #(CoreRcd([], span), dc)
+    [stmt] -> desugar_block_stmt(stmt, dc)
+    [stmt, ..rest] -> {
+      // Multiple statements - create a DoBlock
+      let #(core_stmt, dc1) = desugar_block_stmt(stmt, dc)
+      let #(core_rest, dc2) = desugar_block(rest, span, dc1)
+      #(CoreDoBlock([core_stmt], core_rest, span), dc2)
+    }
+  }
+}
+
+/// Desugar block statement.
+fn desugar_block_stmt(
+  stmt: BlockStatement,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  case stmt {
+    BlockStmtLet(let_decl) -> {
+      desugar_let_decl(let_decl, dc)
+    }
+    BlockStmtAssign(name, expr) -> {
+      let #(core_expr, dc1) = desugar_expr_core(expr, dc)
+      // Assignment becomes a let binding
+      #(CoreLet(name, core_expr, expr_span(expr)), dc1)
+    }
+    BlockStmtExpr(expr) -> {
+      desugar_expr_core(expr, dc)
+    }
+  }
+}
+
+/// Desugar let declaration.
+fn desugar_let_decl(
+  let_decl: ast.LetDecl,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  let #(core_value, dc1) = desugar_expr_core(let_decl.value, dc)
+  let core_let = CoreLet(let_decl.name, core_value, let_decl.span)
+  let dc2 = add_local(dc1, let_decl.name)
+  #(core_let, dc2)
+}
+
+/// Desugar let expression.
+fn desugar_let_expr(
+  let_decl: ast.LetDecl,
+  body: Expr,
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  let #(core_let, dc1) = desugar_let_decl(let_decl, dc)
+  let #(core_body, dc2) = desugar_expr_core(body, dc1)
+  // Let expression becomes a DoBlock
+  #(CoreDoBlock([core_let], core_body, span), dc2)
+}
+
+/// Desugar optional chain.
+fn desugar_optional_chain(
+  expr: Expr,
+  field: String,
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  // user?.address → match user { | Some(u) -> u.address | None -> None }
+  let #(core_expr, dc1) = desugar_expr_core(expr, dc)
+  // TODO: Proper optional chain desugaring
+  #(CoreDot(core_expr, field, span), dc1)  // Placeholder
+}
+
+/// Desugar record update.
+fn desugar_record_update(
+  old: Expr,
+  fields: List(RecordField),
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  // { ..old, x: 1 } → copy old record with new fields
+  let #(core_old, dc1) = desugar_expr_core(old, dc)
+  let #(core_fields, dc2) = desugar_record_fields(fields, dc1)
+  // TODO: Proper record update desugaring
+  #(CoreRcd(core_fields, span), dc2)  // Placeholder
 }
 
 /// Get span from expression.
 fn get_expr_span(expr: Expr) -> Span {
-  // TODO: Implement proper span extraction
-  Span("expr", 0, 0, 0, 0)
+  span_from_expr(expr)
+}
+
+/// Get span from expression for assignment.
+fn expr_span(expr: Expr) -> Span {
+  span_from_expr(expr)
 }
 
 // ============================================================================
@@ -456,7 +932,7 @@ fn core_term_to_term_loop(term: CoreTerm) -> Term {
     }
     CoreLet(_name, _value, span) -> {
       // Let bindings are handled by DoBlock - return unit
-      Unit(span)
+      CoreRcd([], span) |> core_term_to_term_loop
     }
     CoreDoBlock(_stmts, result, _span) -> {
       // DoBlock becomes a sequence in Core (simplified: just return result)

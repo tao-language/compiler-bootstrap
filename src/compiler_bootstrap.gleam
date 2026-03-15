@@ -12,9 +12,11 @@
 import argv
 import core/core.{type Term, type Error as TypeError, type State, initial_state, infer, eval, quote, Err}
 import core/syntax as core_syntax
-import tao/syntax.{parse as tao_parse, get_expr_span}
-import tao/desugar.{desugar_module, type CoreTerm, core_term_to_term}
+import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var as TaoVar, Int as TaoInt, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, expr_to_ast}
+import tao/desugar.{desugar_module}
 import tao/global_context.{new_context, with_prelude, set_current_module}
+import tao/ast.{type Stmt as TaoStmt, StmtExpr as TaoStmtExpr, Module as TaoModule}
+import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType, type Span, Span}
 import tao/test_parser.{parse_tests, type Test}
 import tao/test_filter.{filter_tests, file_base_name}
 import tao/test_runner.{run_tests, calculate_summary, get_failures, all_passed, type TestResult, Fail, Error as TestError, TimedOut}
@@ -24,7 +26,6 @@ import gleam/list
 import gleam/string
 import gleam/option.{Some, None}
 import simplifile
-import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType, Span}
 import syntax/error_reporter
 
 // ============================================================================
@@ -510,12 +511,16 @@ fn check_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
         False -> Nil
       }
 
+      // Convert parsed expressions to Module
+      let module = TaoModule(
+        path: "main",
+        body: exprs_to_stmts([parse_result.ast]),
+        span: get_expr_span(parse_result.ast),
+      )
+
       // Desugar Tao to Core
       let ctx = new_context() |> with_prelude() |> set_current_module("main")
-      // TODO: Convert syntax.Expr to ast.Module for desugaring
-      // let #(core_term, _dc) = desugar_module(parse_result.ast, ctx)
-      // let term = core_term_to_term(core_term)
-      let term = Err(message: "Desugaring not yet implemented", span: Span("", 0, 0, 0, 0))
+      let #(term, _dc) = desugar_module(module, ctx)
 
       case debug {
         True -> {
@@ -722,12 +727,15 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     False -> Nil
   }
 
-  // TODO: Convert syntax.Expr to ast.Module for desugaring
-  // For now, skip desugaring and use the expression directly
+  // Convert parsed expressions to Module
+  let module = TaoModule(
+    path: file.path,
+    body: exprs_to_stmts([parse_result.ast]),
+    span: get_expr_span(parse_result.ast),
+  )
+
   let ctx = new_context() |> with_prelude() |> set_current_module(file.path)
-  // let #(core_term, _dc) = desugar_module(parse_result.ast, ctx)
-  // let term = core_term_to_term(core_term)
-  let term = Err(message: "Desugaring not yet implemented", span: Span("", 0, 0, 0, 0))
+  let #(term, _dc) = desugar_module(module, ctx)
 
   case debug {
     True -> {
@@ -852,6 +860,25 @@ fn format_file_error(err: simplifile.FileError) -> String {
 // ============================================================================
 // DEBUG OUTPUT
 // ============================================================================
+
+/// Convert parsed expressions to statements.
+fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(TaoStmt) {
+  list.map(exprs, fn(expr) {
+    let ast_expr = expr_to_ast(expr)
+    TaoStmtExpr(ast_expr, get_expr_span_from_syntax(expr))
+  })
+}
+
+fn get_expr_span_from_syntax(expr: TaoExpr) -> Span {
+  case expr {
+    TaoVar(_, span) -> span
+    TaoInt(_, span) -> span
+    TaoBinOp(_, _, _, span) -> span
+    TaoUnaryOp(_, _, span) -> span
+    TaoOverloadedFn(_, _, _, _, _, _, span) -> span
+    TaoOverloadedApp(_, _, span) -> span
+  }
+}
 
 fn debug_term(term: Term) -> String {
   // Simple debug representation
