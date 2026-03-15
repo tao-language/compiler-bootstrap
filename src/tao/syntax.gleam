@@ -534,15 +534,6 @@ pub fn tao_grammar() -> Grammar(Expr) {
           },
         ),
         alt(
-          token_pattern("Ident"),
-          fn(values) {
-            case values {
-              [TokenValue(token)] -> make_var([TokenValue(token)])
-              _ -> Int(0, Span("error", 0, 0, 0, 0))
-            }
-          },
-        ),
-        alt(
           parenthesized("Expr"),
           fn(values) {
             case values {

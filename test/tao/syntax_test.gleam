@@ -549,7 +549,7 @@ pub fn format_division_test() {
 
 pub fn format_negation_test() {
   format_expr(UnaryOp(Not, Int(5, todo_span()), todo_span()))
-  |> should.equal("-5")
+  |> should.equal("!5")
 }
 
 pub fn format_precedence_test() {

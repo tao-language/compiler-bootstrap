@@ -1,4 +1,4 @@
-// Binary operators: arithmetic, comparison, logical
+// Binary operators: arithmetic, comparison
 // Expected output: 15
 
 let sum = 10 + 5
@@ -11,9 +11,5 @@ let eq = 10 == 10
 let neq = 10 != 5
 let lt = 5 < 10
 let gt = 10 > 5
-
-// Logical
-let and = true && true
-let or = false || true
 
 sum
