@@ -570,7 +570,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
       // Expr level: + and - (precedence 10) - TOP LEVEL
       left_assoc_rule(
         "Expr",
-        "Term",
+        "Logic",
         [
           infix_binary("+", make_add, InfixLeft, 10, " + "),
           infix_binary("-", make_sub, InfixLeft, 10, " - "),

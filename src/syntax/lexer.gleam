@@ -536,7 +536,7 @@ fn tokenize_other_operator(state: LexerState, start_pos: Int, start_line: Int, s
               // EqualEqual: ==
               let state = advance(state) |> advance
               let end_pos = state.pos
-              let token = Token(kind: "EqualEqual", value: "==", start: start_pos, end: end_pos, line: start_line, column: start_column)
+              let token = Token(kind: "Operator", value: "==", start: start_pos, end: end_pos, line: start_line, column: start_column)
               LexerState(..state, tokens: [token, ..state.tokens])
             }
             False -> {
@@ -545,7 +545,7 @@ fn tokenize_other_operator(state: LexerState, start_pos: Int, start_line: Int, s
                   // NotEqual: !=
                   let state = advance(state) |> advance
                   let end_pos = state.pos
-                  let token = Token(kind: "NotEqual", value: "!=", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                  let token = Token(kind: "Operator", value: "!=", start: start_pos, end: end_pos, line: start_line, column: start_column)
                   LexerState(..state, tokens: [token, ..state.tokens])
                 }
                 False -> {
@@ -563,7 +563,7 @@ fn tokenize_other_operator(state: LexerState, start_pos: Int, start_line: Int, s
                           // LogicalOr: ||
                           let state = advance(state) |> advance
                           let end_pos = state.pos
-                          let token = Token(kind: "LogicalOr", value: "||", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                          let token = Token(kind: "Operator", value: "||", start: start_pos, end: end_pos, line: start_line, column: start_column)
                           LexerState(..state, tokens: [token, ..state.tokens])
                         }
                         False -> {
@@ -572,7 +572,7 @@ fn tokenize_other_operator(state: LexerState, start_pos: Int, start_line: Int, s
                               // LogicalAnd: &&
                               let state = advance(state) |> advance
                               let end_pos = state.pos
-                              let token = Token(kind: "LogicalAnd", value: "&&", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                              let token = Token(kind: "Operator", value: "&&", start: start_pos, end: end_pos, line: start_line, column: start_column)
                               LexerState(..state, tokens: [token, ..state.tokens])
                             }
                             False -> {
@@ -581,7 +581,7 @@ fn tokenize_other_operator(state: LexerState, start_pos: Int, start_line: Int, s
                                   // LessEqual: <=
                                   let state = advance(state) |> advance
                                   let end_pos = state.pos
-                                  let token = Token(kind: "LessEqual", value: "<=", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                                  let token = Token(kind: "Operator", value: "<=", start: start_pos, end: end_pos, line: start_line, column: start_column)
                                   LexerState(..state, tokens: [token, ..state.tokens])
                                 }
                                 False -> {
@@ -590,7 +590,7 @@ fn tokenize_other_operator(state: LexerState, start_pos: Int, start_line: Int, s
                                       // GreaterEqual: >=
                                       let state = advance(state) |> advance
                                       let end_pos = state.pos
-                                      let token = Token(kind: "GreaterEqual", value: ">=", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                                      let token = Token(kind: "Operator", value: ">=", start: start_pos, end: end_pos, line: start_line, column: start_column)
                                       LexerState(..state, tokens: [token, ..state.tokens])
                                     }
                                     False -> {
