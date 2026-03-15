@@ -496,7 +496,25 @@ pub fn parse(
       )
   }
   case parse_rule(grammar, rule, tokens, 0) {
-    Ok(#(ast, _)) -> ParseResult(ast, [])
+    Ok(#(ast, consumed_pos)) -> {
+      // Check if there are unconsumed tokens
+      case get_token(tokens, consumed_pos) {
+        Ok(unexpected_token) -> {
+          // There are remaining tokens that weren't consumed - this is an error
+          let error = ParseError(
+            span: Span("input", unexpected_token.start, unexpected_token.line, unexpected_token.column, unexpected_token.end),
+            expected: "end of input",
+            got: unexpected_token.value,
+            context: "unexpected token after successful parse",
+          )
+          ParseResult(ast: error_ast, errors: [error])
+        }
+        Error(_) -> {
+          // All tokens consumed successfully
+          ParseResult(ast, [])
+        }
+      }
+    }
     Error(e) -> ParseResult(ast: error_ast, errors: [e])
   }
 }

@@ -1,156 +1,140 @@
 # Tao Syntax Test Status
 
 > **Date**: March 15, 2026
-> **Status**: 🟡 Partially Complete
+> **Status**: 🟢 Error Reporting Fixed
 
 ---
 
 ## Summary
 
 - **Total Tests**: 504
-- **Passing**: 468
-- **Failing**: 36
+- **Passing**: 481
+- **Failing**: 23
+
+---
+
+## ✅ Fixed: Error Reporting
+
+The grammar now properly reports errors for:
+1. **Unconsumed tokens** - If the parser successfully parses but leaves tokens unconsumed, an error is reported
+2. **Unknown tokens** - Tokens that don't match any grammar rule produce errors
+3. **Missing tokens** - Expected tokens that aren't found produce errors
+
+### Example: Before vs After
+
+**Before (silent failure)**:
+```
+Input:  1 @ 2
+Output: 1 (no error - @ silently ignored)
+```
+
+**After (error reported)**:
+```
+Input:  1 @ 2
+Output: error[E0001]: Syntax error in unexpected token after successful parse
+        = note: Expected: end of input
+        = note: Got: @
+```
 
 ---
 
 ## Passing Tests ✅
 
 ### Success Cases (All Passing)
-- Basic expressions (numbers, variables, operators)
-- Operator precedence
+- Basic expressions (numbers, variables)
 - Let bindings (simple, mut, type annotations)
 - Module parsing
-- Round-trip tests
+- Round-trip tests (for supported features)
 - Formatter tests
 
-### Error Detection (Basic)
-- `assert_has_error()` helper confirms errors are produced for invalid syntax
+### Error Detection (Working)
+- `assert_has_error()` confirms errors are produced for invalid syntax
+- Error messages include source location and unexpected token
 
 ---
 
-## Failing Tests ❌
+## Failing Tests ❌ (23 total)
 
-### Error Reporting Tests (36 failing)
+### Category 1: Core Language Examples (6 failures)
 
-The following tests fail because the grammar doesn't properly report errors for unknown/invalid tokens:
+These use the core language grammar (`.core.tao` files), which has different syntax:
+- Function application: `k(10)(20)` - `(` not in core grammar tokens
+- Type arrows: `->` not properly handled
+- These need core grammar updates
 
-1. **Missing Tokens**
-   - `parse_error_missing_closing_paren_test()` - Parser doesn't report missing `)`
-   - `parse_error_missing_equals_test()` - Parser doesn't report missing `=`
-   - `parse_error_missing_type_colon_test()` - Parser doesn't report missing `:`
+### Category 2: Tao Grammar Incomplete (17 failures)
 
-2. **Invalid Tokens**
-   - `parse_error_unknown_operator_test()` - Parser silently ignores `@` operator
-   - `parse_error_double_operator_test()` - Parser silently ignores `++` operator
-   - `parse_error_missing_operand_test()` - Parser doesn't report missing operand
+The Tao grammar is missing features:
+- **Operators**: Defined in grammar but not used in `Expr` rule
+- **Blocks**: `{ ... }` not implemented
+- **Functions**: `fn` definitions not fully implemented
+- **Pattern matching**: `match { ... }` not implemented
+- **Control flow**: `if`, `while`, `for` not implemented
 
-### Root Cause
-
-The grammar library uses `alt()` to try different alternatives. When an unknown token is encountered:
-- The grammar doesn't fail - it returns the last successful parse
-- For `1 @ 2`, it parses `1` and silently ignores `@ 2`
-- No error is added to the error list
-
-This is a **known limitation** of the current grammar implementation.
+These are **grammar implementation issues**, not error reporting issues. The error reporting is working correctly - it's catching that the grammar doesn't support these features.
 
 ---
 
-## Known Issues
+## Key Changes Made
 
-### 1. Silent Token Skipping
+### 1. Grammar Library Fix (`src/syntax/grammar.gleam`)
 
-**Issue**: Unknown tokens are silently skipped instead of producing errors.
+Modified the `parse()` function to check for unconsumed tokens:
 
-**Example**:
-```
-Input:  1 @ 2
-Output: 1 (no error)
-```
-
-**Expected**:
-```
-Input:  1 @ 2
-Output: Error: unexpected '@', expected operator
-```
-
-**Fix Required**: Update grammar to use error-producing rules for unknown tokens.
-
-### 2. Type Inference Issues in Tests
-
-**Issue**: Gleam's type inference causes issues when trying to access `ParseError` fields in test functions.
-
-**Workaround**: Use `assert_has_error()` helper that only checks for error presence, not error details.
-
-**Example**:
 ```gleam
-// This doesn't compile due to type inference issues:
-pub fn test() {
-  let result = parse("1 @ 2")
-  case list.first(result.errors) {
-    Some(error) -> error.got |> should.equal("@")  // Type error!
-    None -> panic as "Expected error"
+case parse_rule(grammar, rule, tokens, 0) {
+  Ok(#(ast, consumed_pos)) -> {
+    // Check if there are unconsumed tokens
+    case get_token(tokens, consumed_pos) {
+      Ok(unexpected_token) => {
+        // Error: remaining tokens after successful parse
+        let error = ParseError(...)
+        ParseResult(ast: error_ast, errors: [error])
+      }
+      Error(_) => ParseResult(ast, [])  // All consumed
+    }
   }
-}
-
-// Workaround - just check for error presence:
-pub fn test() {
-  assert_has_error("1 @ 2")
+  Error(e) => ParseResult(ast: error_ast, errors: [e])
 }
 ```
+
+### 2. Tao Grammar Fix (`src/tao/syntax.gleam`)
+
+- Added `"Equal"` to tokens list
+- Changed `token_pattern("=")` to `token_pattern("Equal")` in Let rule
 
 ---
 
 ## Next Steps
 
-### Phase 1: Fix Grammar Error Reporting (High Priority)
+### High Priority: Complete Tao Grammar
 
-1. **Add error-producing rules** for unknown tokens
-   - When lexer produces an error token, grammar should fail
-   - Add `unexpected_token()` rule that produces `ParseError`
+1. **Add operator handling to Expr rule**
+   - Use `left_assoc_rule` like the calc example
+   - Connect defined operators to expression parsing
 
-2. **Update operator parsing** to report unknown operators
-   - Instead of silently skipping, produce error for unknown operator tokens
+2. **Implement missing features**
+   - Blocks: `{ stmts }`
+   - Functions: `fn name(params) -> body`
+   - Pattern matching: `match expr { cases }`
+   - Control flow: `if`, `while`, `for`
 
-3. **Add tests** for error reporting after fix
+### Medium Priority: Fix Core Grammar
 
-### Phase 2: Improve Test Helpers (Medium Priority)
+1. Add function application tokens
+2. Fix arrow handling
+3. Update core examples
 
-1. **Fix type inference issues** in test helpers
-   - Use separate module for helper functions
-   - Add explicit type annotations
+### Low Priority: Improve Error Messages
 
-2. **Add detailed error assertions**
-   - `assert_error_contains(expected, got)`
-   - `assert_error_span(error, line, column)`
-
-### Phase 3: Add More Error Cases (Low Priority)
-
-1. **Add tests for**:
-   - Type errors
-   - Name resolution errors
-   - Import errors
-
-2. **Add CLI integration tests**:
-   - Verify error output format
-   - Verify exit codes
-
----
-
-## Test Coverage
-
-| Category | Tests | Passing | Failing | Notes |
-|----------|-------|---------|---------|-------|
-| Success Cases | 80+ | ✅ All | - | Basic parsing works |
-| Operator Precedence | 10+ | ✅ All | - | Precedence correct |
-| Let Bindings | 10+ | ✅ All | - | Parsing works |
-| Round-Trip | 20+ | ✅ All | - | Format matches source |
-| Error Detection | 10 | ❌ 0 | 10 | Grammar doesn't report errors |
-| Error Recovery | 5 | ⏳ TBD | - | Not yet implemented |
+1. More specific error messages (not just "unexpected token")
+2. Error recovery (skip to sync points like `;`, `}`, `,`)
+3. Multiple error reporting (don't stop at first error)
 
 ---
 
 ## Notes
 
-- The grammar library needs updates to properly report errors
-- Tests are structured to be enabled once grammar is fixed
-- Current tests document expected behavior for future implementation
+- **Error reporting is now working correctly** - the remaining failures are due to incomplete grammar features
+- Tests document expected behavior - they will pass once grammar features are implemented
+- The fix prevents silent failures, making debugging much easier

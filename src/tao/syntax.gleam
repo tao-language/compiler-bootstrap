@@ -292,7 +292,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
   Grammar(
     name: "Tao",
     start: "Program",
-    tokens: ["Ident", "Number", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow", "Slash", "Star", "Comma"],
+    tokens: ["Ident", "Number", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow", "Slash", "Star", "Comma", "Equal"],
     keywords: ["fn", "let", "mut", "match", "if", "else", "type", "import", "export", "as", "comptime", "true", "false", "for", "in", "while", "loop", "break", "continue", "return", "yield"],
     operators: [
       // Logical operators (precedence 3)
@@ -404,7 +404,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
               token_pattern("Colon"),
               token_pattern("Ident"),  // type annotation
             ])),
-            token_pattern("="),
+            token_pattern("Equal"),
             ref("Expr"),
           ]),
           fn(values) { make_let(values) },
