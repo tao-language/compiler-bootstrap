@@ -15,6 +15,8 @@ import tao/ast.{
   type UnaryOperator, OpNot,
   Int as AstInt, type Param as AstParamType, Param as AstParam, TVar,
   BlockStmtExpr, BlockStmtLet, LetDecl, Immutable, Mutable, type BlockStatement,
+  Match as AstMatch, MatchClause as AstMatchClause,
+  type Pattern as AstPattern, PAny, PVar as AstPVar, PLit as AstPLit, PCtr as AstPCtr,
 }
 import tao/import_ast.{type Import, ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias, ImportWildcard, type ImportItem, ImportName, ImportType, ImportOperator}
 import gleam/int
@@ -115,6 +117,25 @@ pub type Expr {
   Block(stmts: List(Expr), span: Span)
   /// Lambda expression (e.g., fn(x, y) { x + y })
   Lambda(type_params: List(String), params: List(#(String, Option(String))), body: Expr, span: Span)
+  /// Match expression (e.g., match x { | 0 -> 1 | _ -> x })
+  Match(scrutinee: Expr, clauses: List(MatchClause), span: Span)
+}
+
+/// A single match clause with pattern, optional guard, and body.
+pub type MatchClause {
+  MatchClause(pattern: Pattern, guard: Option(Expr), body: Expr, span: Span)
+}
+
+/// Pattern for match expressions.
+pub type Pattern {
+  /// Wildcard: _
+  PWild(span: Span)
+  /// Variable: x
+  PVar(name: String, span: Span)
+  /// Literal: 42
+  PLit(value: Int, span: Span)
+  /// Constructor: Some(x), None
+  PCtr(name: String, args: List(Pattern), span: Span)
 }
 
 // ============================================================================
@@ -182,6 +203,32 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
       let ast_params = params_to_ast(params, span)
       AstLambda([], ast_params, ast_body, span)
     }
+    Match(scrutinee, clauses, span) -> {
+      // Match expression becomes ast.Match
+      let ast_scrutinee = expr_to_ast_loop(scrutinee)
+      let ast_clauses = list.map(clauses, clause_to_ast)
+      AstMatch(ast_scrutinee, ast_clauses, span)
+    }
+  }
+}
+
+fn clause_to_ast(clause: MatchClause) -> ast.MatchClause {
+  let MatchClause(pattern, guard, body, span) = clause
+  let ast_pattern = pattern_to_ast(pattern)
+  let ast_guard = case guard {
+    Some(g) -> Some(expr_to_ast_loop(g))
+    None -> None
+  }
+  let ast_body = expr_to_ast_loop(body)
+  ast.MatchClause(ast_pattern, ast_guard, ast_body, span)
+}
+
+fn pattern_to_ast(pattern: Pattern) -> ast.Pattern {
+  case pattern {
+    PWild(span) -> PAny(span)
+    PVar(name, span) -> AstPVar(name, span)
+    PLit(value, span) -> AstPLit(AstInt(value), span)
+    PCtr(name, args, span) -> AstPCtr(name, list.map(args, pattern_to_ast), span)
   }
 }
 
@@ -389,6 +436,7 @@ fn get_span(expr: Expr) -> Span {
     SimpleFn(_, _, _, _, span) -> span
     App(_, _, span) -> span
     Lambda(_, _, _, span) -> span
+    Match(_, _, span) -> span
   }
 }
 
@@ -401,7 +449,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
   Grammar(
     name: "Tao",
     start: "Program",
-    tokens: ["Ident", "Number", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow", "Slash", "Star", "Comma", "Equal"],
+    tokens: ["Ident", "Number", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow", "Slash", "Star", "Comma", "Equal", "Pipe"],
     keywords: ["fn", "let", "mut", "match", "if", "else", "type", "import", "export", "as", "comptime", "true", "false", "for", "in", "while", "loop", "break", "continue", "return", "yield"],
     operators: [
       // Logical operators (precedence 3)
@@ -698,6 +746,26 @@ pub fn tao_grammar() -> Grammar(Expr) {
             _ -> Int(0, Span("error", 0, 0, 0, 0))
           }
         }),
+        // Match expression: match scrutinee { | pattern -> body }
+        alt(
+          seq([
+            keyword_pattern("match"),
+            ref("Expr"),  // scrutinee
+            token_pattern("LBrace"),
+            many(seq([
+              token_pattern("Pipe"),  // |
+              ref("Expr"),  // pattern (parsed as expression, converted to pattern)
+              opt(seq([
+                keyword_pattern("if"),
+                ref("Expr"),  // guard
+              ])),
+              token_pattern("Arrow"),
+              ref("Expr"),  // body
+            ])),
+            token_pattern("RBrace"),
+          ]),
+          make_match,
+        ),
       ]),
       // Block = "{" Stmt* "}"
       rule("Block", [
@@ -732,6 +800,7 @@ pub fn get_expr_span(expr: Expr) -> Span {
     SimpleFn(_, _, _, _, span) -> span
     App(_, _, span) -> span
     Lambda(_, _, _, span) -> span
+    Match(_, _, span) -> span
   }
 }
 
@@ -817,6 +886,82 @@ fn make_inline_lambda(values) -> Expr {
     _ -> Span("error", 0, 0, 0, 0)
   }
   Lambda([], params, body_expr, span)
+}
+
+/// Helper to create match expression AST.
+fn make_match(values) -> Expr {
+  // Structure: [match, scrutinee, {, many([|, pattern, opt([if, guard]), ->, body]), }]
+  let #(scrutinee, clauses, span) = case values {
+    [KeywordValue(match_kw), AstValue(scrut), _, ListValue(clause_values), _] -> {
+      let cs = extract_clauses(clause_values, [])
+      let start_span = Span("tao", match_kw.line, match_kw.column, match_kw.line, match_kw.column + 5)
+      let end_span = get_expr_span(scrut)
+      let full_span = Span(start_span.file, start_span.start_line, start_span.start_col, end_span.end_line, end_span.end_col)
+      #(scrut, cs, full_span)
+    }
+    _ -> panic as "Expected match expression"
+  }
+  Match(scrutinee, clauses, span)
+}
+
+fn extract_clauses(clause_values: List(Value(Expr)), acc: List(MatchClause)) -> List(MatchClause) {
+  case clause_values {
+    [] -> list.reverse(acc)
+    [ListValue(clause_items), ..rest] -> {
+      // clause_items: [|, pattern, (opt: [if, guard]), ->, body]
+      // or: [|, pattern, ->, body] (no guard)
+      let clause_result = extract_single_clause(clause_items, [])
+      case clause_result {
+        Some(#(pattern, guard, body, remaining)) -> {
+          let span = get_expr_span(body)
+          let clause = MatchClause(pattern, guard, body, span)
+          extract_clauses(rest, [clause, ..acc])
+        }
+        None -> extract_clauses(rest, acc)
+      }
+    }
+    [_, ..rest] -> extract_clauses(rest, acc)
+  }
+}
+
+fn extract_single_clause(
+  items: List(Value(Expr)),
+  acc: List(Value(Expr)),
+) -> Option(#(Pattern, Option(Expr), Expr, List(Value(Expr)))) {
+  case items {
+    [TokenValue(_pipe), AstValue(pattern_ast), ..rest_items] -> {
+      let pattern = pattern_ast_to_pattern(pattern_ast)
+      extract_clause_guard(rest_items, pattern, acc)
+    }
+    _ -> None
+  }
+}
+
+fn extract_clause_guard(
+  items: List(Value(Expr)),
+  pattern: Pattern,
+  acc: List(Value(Expr)),
+) -> Option(#(Pattern, Option(Expr), Expr, List(Value(Expr)))) {
+  case items {
+    [KeywordValue(_if), AstValue(guard_expr), TokenValue(_arrow), AstValue(body), ..rest] -> {
+      Some(#(pattern, Some(guard_expr), body, rest))
+    }
+    [TokenValue(_arrow), AstValue(body), ..rest] -> {
+      Some(#(pattern, None, body, rest))
+    }
+    _ -> None
+  }
+}
+
+fn pattern_ast_to_pattern(expr: Expr) -> Pattern {
+  case expr {
+    Var("_", span) -> PWild(span)
+    Var(name, span) -> PVar(name, span)
+    Int(value, span) -> PLit(value, span)
+    // Constructor patterns like Some(x) would need more complex parsing
+    // For now, all other expressions become wildcards
+    _ -> PWild(Span("error", 0, 0, 0, 0))
+  }
 }
 
 fn extract_params_from_many(params_many: List(Value(Expr)), acc: List(#(String, Option(String)))) -> List(#(String, Option(String))) {
@@ -1070,6 +1215,35 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
         ", ",
       )
       "fn(" <> params_str <> ") { ... }"
+    }
+    Match(scrutinee, clauses, _) -> {
+      let clauses_str = string_join(
+        list.map(clauses, fn(clause) {
+          let MatchClause(pattern, guard, body, _) = clause
+          let pattern_str = format_pattern(pattern)
+          let guard_str = case guard {
+            Some(g) -> " if " <> format_expr(g)
+            None -> ""
+          }
+          "| " <> pattern_str <> guard_str <> " -> " <> format_expr(body)
+        }),
+        " ",
+      )
+      "match " <> format_expr(scrutinee) <> " { " <> clauses_str <> " }"
+    }
+  }
+}
+
+fn format_pattern(pattern: Pattern) -> String {
+  case pattern {
+    PWild(_) -> "_"
+    PVar(name, _) -> name
+    PLit(value, _) -> int.to_string(value)
+    PCtr(name, args, _) -> {
+      case args {
+        [] -> name
+        _ -> name <> "(" <> string_join(list.map(args, format_pattern), ", ") <> ")"
+      }
     }
   }
 }

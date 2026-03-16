@@ -14,7 +14,7 @@ import tao/ast.{type Module, type Stmt, Module as ModuleCtr, StmtImport, StmtLet
 import tao/import_ast.{type Import, type ImportContext, type ResolvedImport}
 import tao/import_resolver.{resolve_imports}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module, register_module}
-import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, expr_to_ast}
+import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, expr_to_ast}
 import syntax/grammar.{type Span, Span}
 import gleam/dict.{type Dict}
 import gleam/list
@@ -260,6 +260,7 @@ fn get_expr_span(expr: TaoExpr) -> Span {
     SimpleFn(_, _, _, _, span) -> span
     App(_, _, span) -> span
     Lambda(_, _, _, span) -> span
+    Match(_, _, span) -> span
   }
 }
 
