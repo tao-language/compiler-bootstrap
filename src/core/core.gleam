@@ -1571,44 +1571,37 @@ fn infer_match(
 ) -> #(Value, Type, State) {
   let env = get_env(s)
   let #(arg_val, arg_ty, s) = infer(s, arg)
-  
+
   // The motive type is (x : arg_ty) → Type, where x is the scrutinee
   let motive_ty = VPi([], "_", env, arg_ty, Typ(0, get_span(arg)))
   let #(motive_val, s) = check(s, motive, motive_ty, get_span(motive))
-  
+
   // Apply the motive to the scrutinee to get the result type
   let result_ty = do_app(s.ffi, motive_val, arg_val)
-  
+
   case cases {
     [] -> {
-      // No clauses - just check exhaustiveness and return
-      let s = list.fold(cases, s, fn(s, c) {
-        let #(pat_val, s) =
-          bind_pattern(s, c.pattern, arg_ty, get_span(c.body), get_span(arg))
-        let branch_ty = do_app(s.ffi, motive_val, pat_val)
-        let s = case c.guard {
-          Some(guard_term) -> {
-            let #(_guard_val, _guard_ty, s) = infer(s, guard_term)
-            s
-          }
-          None -> s
-        }
-        let #(_, s) = check(s, c.body, branch_ty, get_span(c.body))
-        s
-      })
+      // No clauses - exhaustiveness error
+      let s = with_err(s, MatchMissingCase(span, PAny))
       let exhaustiveness_errors = check_exhaustiveness(s, cases, span)
       let s = list.fold(exhaustiveness_errors, s, with_err)
-      let match_val = do_match(env, arg_val, motive_val, cases)
-      #(match_val, result_ty, s)
+      #(VErr, result_ty, s)
     }
+
     [first_case, ..rest_cases] -> {
       // Check if the result type is a hole (non-dependent match with hole motive)
       case result_ty {
         VNeut(HHole(hole_id), []) -> {
-          // Result type is a hole - infer from the first clause body
-          // First, bind the pattern and check the guard
+          // Hole motive: infer result type from first clause body via unification.
+          // 
+          // The key insight: when we check the first body against branch_ty (which
+          // contains the hole), unification solves the hole automatically.
+          //
+          // Step 1: Bind pattern variables
           let #(first_pat_val, s) =
             bind_pattern(s, first_case.pattern, arg_ty, get_span(first_case.body), get_span(arg))
+          
+          // Step 2: Check guard if present
           let s = case first_case.guard {
             Some(guard_term) -> {
               let #(_guard_val, _guard_ty, s) = infer(s, guard_term)
@@ -1616,30 +1609,29 @@ fn infer_match(
             }
             None -> s
           }
-          
-          // Infer the first clause body to get its type
-          let #(_first_body_val, inferred_result_ty, s) = infer(s, first_case.body)
-          
-          // Quote the inferred result type to a type term
-          // The motive body should be a type, not a value
-          let result_type_term = quote(s.ffi, list.length(env), inferred_result_ty, get_span(first_case.body))
-          let arg_type_term = quote(s.ffi, list.length(env), arg_ty, get_span(arg))
-          
-          // Construct a concrete motive with the inferred result type
-          let concrete_motive_term = Lam([], #("_", arg_type_term), result_type_term, get_span(motive))
-          let concrete_motive_ty = VPi([], "_", env, arg_ty, result_type_term)
-          let #(concrete_motive_val, s) = check(s, concrete_motive_term, concrete_motive_ty, get_span(motive))
-          
-          // Check the first clause body against the concrete branch type
-          let first_branch_ty = do_app(s.ffi, concrete_motive_val, first_pat_val)
-          let s = check(s, first_case.body, first_branch_ty, get_span(first_case.body)).1
-          
-          // Check remaining clauses with the concrete motive
+
+          // Step 3: Compute branch type (contains the hole)
+          // branch_ty = motive(first_pat_val) = ?R (the hole)
+          let branch_ty = do_app(s.ffi, motive_val, first_pat_val)
+
+          // Step 4: Check first body against branch_ty
+          // This UNIFIES the hole with the body's inferred type.
+          // After this, s.sub contains: hole_id ↦ body_type
+          let #(first_body_val, s) = check(s, first_case.body, branch_ty, get_span(first_case.body))
+
+          // Step 5: Force motive_val through substitution to get solved motive
+          // This replaces VNeut(HHole(hole_id), []) with the solved type
+          let solved_motive_val = force(s.ffi, s.sub, motive_val)
+
+          // Step 6: Compute solved result type
+          let solved_result_ty = do_app(s.ffi, solved_motive_val, arg_val)
+
+          // Step 7: Check remaining clauses with solved motive
           let s =
             list.fold(rest_cases, s, fn(s, c) {
               let #(pat_val, s) =
                 bind_pattern(s, c.pattern, arg_ty, get_span(c.body), get_span(arg))
-              let branch_ty = do_app(s.ffi, concrete_motive_val, pat_val)
+              let branch_ty = do_app(s.ffi, solved_motive_val, pat_val)
               let s = case c.guard {
                 Some(guard_term) -> {
                   let #(_guard_val, _guard_ty, s) = infer(s, guard_term)
@@ -1650,21 +1642,20 @@ fn infer_match(
               let #(_, s) = check(s, c.body, branch_ty, get_span(c.body))
               s
             })
+
+          // Step 8: Exhaustiveness check
           let exhaustiveness_errors = check_exhaustiveness(s, cases, span)
           let s = list.fold(exhaustiveness_errors, s, with_err)
-          let match_val = do_match(env, arg_val, concrete_motive_val, cases)
-          let final_result_ty = do_app(s.ffi, concrete_motive_val, arg_val)
-          // Filter out the unsolved hole error for the original hole ID
-          let s = State(..s, errors: list.filter(s.errors, fn(e) {
-            case e {
-              HoleUnsolved(id, _) -> id != hole_id
-              _ -> True
-            }
-          }))
-          #(match_val, final_result_ty, s)
+
+          // Step 9: Compute match value
+          let match_val = do_match(env, arg_val, solved_motive_val, cases)
+
+          // NO error filtering! If the hole wasn't solved, there's a real type error.
+          #(match_val, solved_result_ty, s)
         }
+
         _ -> {
-          // Result type is concrete - use it as-is (dependent or non-dependent match)
+          // Concrete motive: use as-is (dependent or explicit non-dependent match)
           let s =
             list.fold(cases, s, fn(s, c) {
               let #(pat_val, s) =
@@ -1680,9 +1671,14 @@ fn infer_match(
               let #(_, s) = check(s, c.body, branch_ty, get_span(c.body))
               s
             })
+
+          // Exhaustiveness check
           let exhaustiveness_errors = check_exhaustiveness(s, cases, span)
           let s = list.fold(exhaustiveness_errors, s, with_err)
+
+          // Compute match value
           let match_val = do_match(env, arg_val, motive_val, cases)
+
           #(match_val, result_ty, s)
         }
       }

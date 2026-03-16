@@ -371,7 +371,8 @@ let record_result = syntax.parse(record_source)
 - **[02-syntax.md](./02-syntax.md)** - Detailed syntax specification with grammar rules ✅ UPDATED
 - **[03-variable-shadowing.md](./03-variable-shadowing.md)** - Variable shadowing implementation plan ✅ COMPLETE
 - **[03-ffi-comptime.md](./03-ffi-comptime.md)** - FFI and comptime implementation ✅ COMPLETE
-- **[04-tao-integration.md](./04-tao-integration.md)** - Tao integration plan
+- **[04-match-type-inference.md](./04-match-type-inference.md)** - Match type inference with hole motives ⏳ IN PROGRESS
+- **[05-tao-integration.md](./05-tao-integration.md)** - Tao integration plan
 - **[06-production-ready.md](./06-production-ready.md)** - Production ready compiler plan 📋 PLANNED
 - **[07-fix-match-parsing.md](./07-fix-match-parsing.md)** - Fix match expression parsing 📋 PLANNED
 - **[08-type-checker-integration.md](./08-type-checker-integration.md)** - Type checker integration 📋 PLANNED
