@@ -40,12 +40,24 @@ fn i32(n, span) {
   c.Lit(c.I32(n), span)
 }
 
+fn i64(n, span) {
+  c.Lit(c.I64(n), span)
+}
+
 fn v32(n) {
   c.VLit(c.I32(n))
 }
 
+fn v64(n) {
+  c.VLit(c.I64(n))
+}
+
 fn i32t(span) {
   c.LitT(c.I32T, span)
+}
+
+fn i64t(span) {
+  c.LitT(c.I64T, span)
 }
 
 fn lam(name, body, span) {
@@ -58,6 +70,10 @@ fn pany() {
 
 fn pvar(x) {
   c.PAs(c.PAny, x)
+}
+
+fn var(i, span) {
+  c.Var(i, span)
 }
 
 fn case_(p, b, s) {
@@ -141,6 +157,106 @@ pub fn match_guard_true_test() {
   // Should type-check successfully
   case result {
     #(c.VLit(c.I32(1)), _, _) -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+// ============================================================================
+// HOLE MOTIVE INFERENCE TESTS (Non-dependent matches)
+// ============================================================================
+
+pub fn match_hole_motive_infer_int_test() {
+  // Non-dependent match with hole motive - should infer Int result type
+  // This is the common case for Tao: match 0 { | 0 -> 1 | _ -> 2 }
+  let motive = lam("p", c.Hole(-1, s0), s0)  // Hole motive
+  let cases = [
+    case_(c.PLit(c.I32(0)), i32(1, s1), s1),
+    case_(pany(), i32(2, s2), s2),
+  ]
+  let term = match_(i32(0, s3), motive, cases, s4)
+  let result = c.infer(s, term)
+  // Should infer Int result type and evaluate to 1
+  case result {
+    #(c.VLit(c.I32(1)), c.VLitT(c.I32T), _) -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+pub fn match_hole_motive_infer_mismatch_test() {
+  // Non-dependent match with hole motive - type mismatch between clauses
+  // First clause returns Int, second returns I64 - should report error
+  let motive = lam("p", c.Hole(-1, s0), s0)  // Hole motive
+  let cases = [
+    case_(c.PLit(c.I32(0)), i32(1, s1), s1),
+    case_(pany(), i64(2, s2), s2),  // Different type!
+  ]
+  let term = match_(i32(0, s3), motive, cases, s4)
+  let result = c.infer(s, term)
+  // Should have type mismatch error
+  case result {
+    #(_, _, state) -> {
+      list.any(state.errors, fn(e) {
+        case e {
+          c.TypeMismatch(_, _, _, _) -> True
+          _ -> False
+        }
+      }) |> should.be_true
+    }
+    _ -> False |> should.be_true
+  }
+}
+
+pub fn match_hole_motive_infer_string_test() {
+  // Non-dependent match with hole motive - infer I64 result type
+  // (Using I64 instead of String since core doesn't have string literals)
+  let motive = lam("p", c.Hole(-1, s0), s0)  // Hole motive
+  let cases = [
+    case_(c.PLit(c.I32(0)), i64(100, s1), s1),
+    case_(pany(), i64(200, s2), s2),
+  ]
+  let term = match_(i32(0, s3), motive, cases, s4)
+  let result = c.infer(s, term)
+  // Should infer I64 result type
+  case result {
+    #(c.VLit(c.I64(100)), c.VLitT(c.I64T), _) -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+// ============================================================================
+// DEPENDENT MATCH TESTS
+// ============================================================================
+
+pub fn match_dependent_motive_explicit_test() {
+  // Dependent match with explicit motive that references scrutinee
+  // The motive fn(x: Int) -> if x == 0 then Int else I64
+  // For simplicity, we use a concrete dependent type here
+  let motive = lam("p", i32t(s0), s0)  // Non-dependent, but explicitly provided
+  let cases = [
+    case_(c.PLit(c.I32(0)), i32(1, s1), s1),
+    case_(pany(), i32(2, s2), s2),
+  ]
+  let term = match_(i32(0, s3), motive, cases, s4)
+  let result = c.infer(s, term)
+  // Should use the explicit motive and evaluate correctly
+  case result {
+    #(c.VLit(c.I32(1)), c.VLitT(c.I32T), _) -> True |> should.be_true
+    _ -> False |> should.be_true
+  }
+}
+
+pub fn match_dependent_motive_with_var_test() {
+  // Dependent match where body uses the bound variable from pattern
+  let motive = lam("p", i32t(s0), s0)
+  let cases = [
+    // Pattern binds x, body uses x
+    case_(pvar("x"), var(0, s1), s1),
+  ]
+  let term = match_(i32(42, s2), motive, cases, s3)
+  let result = c.infer(s, term)
+  // Should return 42 (the scrutinee value)
+  case result {
+    #(c.VLit(c.I32(42)), c.VLitT(c.I32T), _) -> True |> should.be_true
     _ -> False |> should.be_true
   }
 }

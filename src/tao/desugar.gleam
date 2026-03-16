@@ -1027,17 +1027,6 @@ fn desugar_match(
   // Desugar all clauses to Core Cases
   let #(core_cases, dc2) = desugar_match_clauses_to_cases(clauses, span, dc1)
 
-  // Add fallback clause for non-exhaustive matches
-  // This ensures the match is always exhaustive at the Core level
-  // The fallback returns unit (in a full implementation, this would be a type error)
-  let fallback_clause = Case(
-    pattern: PAny,
-    body: core_term_to_term(CoreRcd([], span)),
-    guard: None,
-    span: span,
-  )
-  let all_cases = list.append(core_cases, [fallback_clause])
-
   // Build Core Match term
   // For non-dependent matches, the motive is a constant function that returns the result type.
   // We use a lambda with a hole body: fn(_) -> ?ResultType
@@ -1045,7 +1034,7 @@ fn desugar_match(
   // Note: Using a negative hole ID to avoid conflicts with type checker's hole counter.
   let result_type_hole = CoreHole(-100, span)
   let motive = CoreLam("_", result_type_hole, span)
-  let core_match = CoreMatchCore(core_scrutinee, motive, all_cases, span)
+  let core_match = CoreMatchCore(core_scrutinee, motive, core_cases, span)
 
   #(core_match, dc2)
 }
