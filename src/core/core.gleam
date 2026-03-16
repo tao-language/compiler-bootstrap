@@ -1620,19 +1620,17 @@ fn infer_match(
           // After this, s.sub contains: hole_id ↦ body_type
           let #(first_body_val, s) = check(s, first_case.body, branch_ty, get_span(first_case.body))
 
-          // Step 5: Force motive_val through substitution to get solved motive
-          // This replaces VNeut(HHole(hole_id), []) with the solved type
-          let solved_motive_val = force(s.ffi, s.sub, motive_val)
+          // Step 5: Force the result type through substitution to get the solved type.
+          // The hole in result_ty is now bound in s.sub, so forcing it gives us the
+          // actual result type inferred from the first clause body.
+          let solved_result_ty = force(s.ffi, s.sub, result_ty)
 
-          // Step 6: Compute solved result type
-          let solved_result_ty = do_app(s.ffi, solved_motive_val, arg_val)
-
-          // Step 7: Check remaining clauses with solved motive
+          // Step 6: Check remaining clauses with the solved result type.
+          // For non-dependent matches (hole motive), all branches have the same type.
           let s =
             list.fold(rest_cases, s, fn(s, c) {
               let #(pat_val, s) =
                 bind_pattern(s, c.pattern, arg_ty, get_span(c.body), get_span(arg))
-              let branch_ty = do_app(s.ffi, solved_motive_val, pat_val)
               let s = case c.guard {
                 Some(guard_term) -> {
                   let #(_guard_val, _guard_ty, s) = infer(s, guard_term)
@@ -1640,15 +1638,18 @@ fn infer_match(
                 }
                 None -> s
               }
-              let #(_, s) = check(s, c.body, branch_ty, get_span(c.body))
+              let #(_, s) = check(s, c.body, solved_result_ty, get_span(c.body))
               s
             })
 
-          // Step 8: Exhaustiveness check
+          // Step 7: Exhaustiveness check
           let exhaustiveness_errors = check_exhaustiveness(s, cases, span)
           let s = list.fold(exhaustiveness_errors, s, with_err)
 
-          // Step 9: Compute match value
+          // Step 8: Compute match value
+          // For the runtime match, we still need the motive. Force it to get the
+          // solved lambda (with hole in body replaced).
+          let solved_motive_val = force(s.ffi, s.sub, motive_val)
           let match_val = do_match(env, arg_val, solved_motive_val, cases)
 
           // Filter out HoleUnsolved errors for holes that are now solved in the substitution.
@@ -1894,6 +1895,11 @@ pub fn check_type(
 /// This recursively replaces holes with their solutions from the
 /// substitution. If a hole has a spine (pending operations), the
 /// spine is applied to the solution.
+///
+/// For structured values (records, constructors, calls, etc.), we recurse
+/// into their Value components to replace any holes they contain.
+/// Note: VLam, VPi, VFix have Term bodies, not Value bodies, so they
+/// are not recursed into here. The terms will be forced when evaluated.
 pub fn force(ffi: FFI, sub: Subst, value: Value) -> Value {
   case value {
     VNeut(HHole(id), spine) ->
@@ -1904,7 +1910,37 @@ pub fn force(ffi: FFI, sub: Subst, value: Value) -> Value {
         }
         Error(Nil) -> value
       }
-    _ -> value
+    VNeut(h, spine) -> VNeut(h, list.map(spine, fn(elim) { force_elim(ffi, sub, elim) }))
+    VLam(_, _, _, _) -> value  // Body is a Term, not a Value
+    VPi(implicit1, name1, env1, in_val, out) -> {
+      // in_val is Value, out is Term
+      VPi(implicit1, name1, env1, force(ffi, sub, in_val), out)
+    }
+    VRcd(fields) -> {
+      VRcd(list.map(fields, fn(kv) { #(kv.0, force(ffi, sub, kv.1)) }))
+    }
+    VCtrValue(VCtr(tag, arg)) -> {
+      VCtrValue(VCtr(tag, force(ffi, sub, arg)))
+    }
+    VCall(name, args) -> {
+      VCall(name, list.map(args, fn(a) { force(ffi, sub, a) }))
+    }
+    VFix(_, _, _) -> value  // Body is a Term, not a Value
+    VRecord(fields) -> {
+      VRecord(list.map(fields, fn(kv) { #(kv.0, force(ffi, sub, kv.1)) }))
+    }
+    // These are already in normal form
+    VTyp(_) | VLit(_) | VLitT(_) | VUnit | VErr -> value
+  }
+}
+
+/// Force an elimination (spine element).
+fn force_elim(ffi: FFI, sub: Subst, elim: Elim) -> Elim {
+  case elim {
+    EDot(field) -> EDot(field)
+    EApp(arg) -> EApp(force(ffi, sub, arg))
+    EAppImplicit(arg) -> EAppImplicit(force(ffi, sub, arg))
+    EMatch(env, motive, cases) -> EMatch(env, motive, cases)  // motive is Term
   }
 }
 

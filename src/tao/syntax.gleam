@@ -915,23 +915,32 @@ fn make_inline_lambda(values) -> Expr {
 fn make_match(values) -> Expr {
   // The structure is: [match_kw, scrut, LBrace, pipe1, pattern1, (opt: if, guard), arrow1, body1, ...]
   // We need to find the RBrace at the end and extract clauses
-  
+
   // First, find the scrutinee (should be the second element, an AstValue)
   let scrut = case values {
     [_, AstValue(s), ..] -> s
     _ -> panic as "Match: expected scrutinee"
   }
-  
+
   // Find the match keyword for span
   let match_kw = case values {
     [KeywordValue(kw), ..] -> kw
     _ -> panic as "Match: expected keyword"
   }
-  
+
   // Extract clauses: try both ListValue-wrapped and flat structures
+  // The structure might be: [match, scrut, LBrace, ListValue(clauses), ListValue(more), RBrace]
+  // or: [match, scrut, LBrace, ListValue(clauses), RBrace]
   let clauses = case values {
-    [_, _, _, ListValue(clause_values), _] -> extract_clauses(clause_values, [])
-    _ -> extract_match_clauses(values, [])
+    [_, _, _, ListValue(clause_values1), ListValue(clause_values2), _] -> {
+      list.append(extract_clauses(clause_values1, []), extract_clauses(clause_values2, []))
+    }
+    [_, _, _, ListValue(clause_values), _] -> {
+      extract_clauses(clause_values, [])
+    }
+    _ -> {
+      extract_match_clauses(values, [])
+    }
   }
   
   let start_span = Span("tao", match_kw.line, match_kw.column, match_kw.line, match_kw.column + 5)
