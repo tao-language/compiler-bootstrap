@@ -231,8 +231,12 @@ fn expr_to_block_stmt(expr: Expr) -> BlockStatement {
       // Function definitions become let bindings with lambdas
       let ast_body = block_to_ast(body)
       let ast_params = params_to_ast(params, span)
+      let ast_return_type = case return_type {
+        Some(t) -> Some(TVar(t))
+        None -> None
+      }
       let lambda = AstLambda([], ast_params, ast_body, span)
-      BlockStmtLet(LetDecl(name, Immutable, None, lambda, span))
+      BlockStmtLet(LetDecl(name, Immutable, ast_return_type, lambda, span))
     }
     _ -> BlockStmtExpr(expr_to_ast_loop(expr))
   }
@@ -725,26 +729,26 @@ fn make_simple_fn(values) -> Expr {
     [_, TokenValue(t), ..] -> t
     _ -> panic as "Expected function name"
   }
-  
+
   // Find the body (last AstValue)
   let body_expr = case list.last(values) {
     Ok(AstValue(e)) -> e
     _ -> panic as "Expected function body"
   }
-  
+
   // Extract params from many result
-  // Structure: [fn, name, (, ListValue([ListValue([Ident, opt(Comma)]), ...]), ), block]
+  // Structure: [fn, name, (, ListValue([ListValue([Ident, opt(Comma)]), ...]), ), opt([->, type]), block]
   let params = case values {
-    [_, _, _, ListValue(params_many), _, _, _] -> {
+    [_, _, _, ListValue(params_many), ..] -> {
       // Each param in params_many is a ListValue([TokenValue(name), opt(Comma)])
       extract_params_from_many(params_many, [])
     }
     _ -> []
   }
-  
-  // No return type for now (simplified)
+
+  // Return type is parsed but not used yet (type inference handles it)
   let return_type = None
-  
+
   let body_span = get_expr_span(body_expr)
   let span = merge_spans(span_from_token(name_token, "tao"), body_span)
   SimpleFn(name_token.value, params, return_type, body_expr, span)

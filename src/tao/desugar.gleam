@@ -295,8 +295,8 @@ pub fn desugar_stmt(
     
     StmtFn(name, type_params, params, return_type, body, span) -> {
       // Function → let name = λparam1. λparam2. ... body
-      let #(core_body, dc1) = desugar_expr_core(body, dc)
-      let core_lam = build_lambda(params, core_body, span)
+      // Use build_lambdas_with_scope to properly handle param scoping
+      let #(core_lam, dc1) = build_lambdas_with_scope(type_params, params, body, span, dc)
       let core_let = CoreLet(name, core_lam, span)
       let dc2 = add_local(dc1, name)
       #(core_let, dc2)
