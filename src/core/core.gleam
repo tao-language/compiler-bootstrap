@@ -1594,14 +1594,14 @@ fn infer_match(
       case result_ty {
         VNeut(HHole(hole_id), []) -> {
           // Hole motive: infer result type from first clause body via unification.
-          // 
+          //
           // The key insight: when we check the first body against branch_ty (which
           // contains the hole), unification solves the hole automatically.
           //
           // Step 1: Bind pattern variables
           let #(first_pat_val, s) =
             bind_pattern(s, first_case.pattern, arg_ty, get_span(first_case.body), get_span(arg))
-          
+
           // Step 2: Check guard if present
           let s = case first_case.guard {
             Some(guard_term) -> {
@@ -2103,7 +2103,12 @@ fn get_type_family(s: State, tag: String) -> String {
 ///
 /// For constructor patterns, we check which other constructors of the
 /// same type could apply but aren't covered. This handles GADTs where
-/// different constructors may have different return types.
+/// Get the missing constructor heads for a type family.
+///
+/// Given the concrete heads already covered, return the heads that are missing.
+/// For constructor types, returns all constructors of that type family not in concrete_heads.
+/// For literal types, returns [HAny] since we can't enumerate all literal values.
+/// For record types, returns empty (records are exhaustive).
 ///
 /// Note: For prelude types (all returning Typ(0)), we use a hardcoded
 /// mapping to group constructors by their type family:
@@ -2117,7 +2122,7 @@ pub fn get_missing_heads(
   concrete_heads: List(PHead),
 ) -> List(PHead) {
   case concrete_heads {
-    [HAny, ..] -> []
+    [HAny, ..] -> []  // Wildcard already covers everything
     [HCtr(name), ..] -> {
       let type_family = get_type_family(s, name)
       list.key_find(index, type_family)
@@ -2128,18 +2133,10 @@ pub fn get_missing_heads(
       })
       |> list.filter(fn(h) { !list.contains(concrete_heads, h) })
     }
-    [HCtr(name), ..] -> {
-      let type_family = get_type_family(s, name)
-      list.key_find(index, type_family)
-      |> result.unwrap([])
-      |> list.filter_map(fn(entry) {
-        let #(tag, _) = entry
-        Ok(HCtr(tag))
-      })
-      |> list.filter(fn(h) { !list.contains(concrete_heads, h) })
-    }
-    [HRcd(_), ..] -> []
-    _ -> [HAny]
+    [HLit(_), ..] -> [HAny]  // Literals: wildcard covers remaining values
+    [HLitT(_), ..] -> [HAny]  // Literal types: wildcard covers remaining values
+    [HRcd(_), ..] -> []  // Records are exhaustive
+    _ -> []  // Default: no missing heads
   }
 }
 
@@ -2152,7 +2149,7 @@ pub fn get_missing_heads(
 /// - If matrix is empty, the vector is a witness (useful)
 /// - If vector is empty but matrix isn't, no witnesses (redundant)
 /// - Otherwise, split on the first pattern:
-///   - If wildcard: check missing constructors and concrete heads
+///   - If wildcard: check if matrix has wildcard (redundant if so)
 ///   - If concrete: specialize matrix and recurse
 pub fn useful(
   s: State,
@@ -2169,28 +2166,34 @@ pub fn useful(
       let #(head, hargs) = deconstruct(p)
       case head {
         HAny -> {
-          let concrete_heads = get_concrete_heads(matrix)
-          let missing_heads = get_missing_heads(s, index, concrete_heads)
-          let missing_witnesses =
-            list.flat_map(missing_heads, fn(missing) {
-              let rest_witnesses = useful(s, index, default_matrix(matrix), ps)
-              list.map(rest_witnesses, fn(rest) {
-                let wildcards = list.repeat(PAny, head_arity(missing))
-                [reconstruct(missing, wildcards), ..rest]
+          // Vector has wildcard. Check if matrix already has a wildcard.
+          let matrix_has_wildcard = list.any(matrix, fn(row) {
+            case row {
+              [first_pattern, ..] -> {
+                case deconstruct(first_pattern).0 {
+                  HAny -> True
+                  _ -> False
+                }
+              }
+              [] -> False
+            }
+          })
+          case matrix_has_wildcard {
+            // Matrix has wildcard, so vector is redundant (no witnesses)
+            True -> []
+            // Matrix doesn't have wildcard, find missing constructors
+            False -> {
+              let concrete_heads = get_concrete_heads(matrix)
+              let missing_heads = get_missing_heads(s, index, concrete_heads)
+              list.flat_map(missing_heads, fn(missing) {
+                let rest_witnesses = useful(s, index, default_matrix(matrix), ps)
+                list.map(rest_witnesses, fn(rest) {
+                  let wildcards = list.repeat(PAny, head_arity(missing))
+                  [reconstruct(missing, wildcards), ..rest]
+                })
               })
-            })
-          let concrete_witnesses =
-            list.flat_map(concrete_heads, fn(h) {
-              let a = head_arity(h)
-              let expanded_rest = list.append(list.repeat(PAny, a), ps)
-              let sub_witnesses =
-                useful(s, index, specialize(matrix, h), expanded_rest)
-              list.map(sub_witnesses, fn(witness_row) {
-                let #(args, rest) = list.split(witness_row, a)
-                [reconstruct(h, args), ..rest]
-              })
-            })
-          list.append(missing_witnesses, concrete_witnesses)
+            }
+          }
         }
         _ -> {
           // Head is concrete, specialize the matrix for it.
