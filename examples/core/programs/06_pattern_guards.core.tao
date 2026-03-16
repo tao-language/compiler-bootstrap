@@ -1,11 +1,2 @@
 // Boolean Church Encoding
-// Demonstrates Church-encoded booleans
-
-// True: selects first argument
-%let true = t -> f -> t in
-
-// False: selects second argument
-%let false = t -> f -> f in
-
-// Use true
-true
+%let ttrue = t -> f -> t in ttrue

@@ -7,6 +7,4 @@
 // data Nat = #Zero | #Succ(Nat)
 
 // For now, use lambdas and applications
-%let true = t -> f -> t in
-%let false = t -> f -> f in
-true
+%let ttrue = t -> f -> t in %let ffalse = t -> f -> f in ttrue

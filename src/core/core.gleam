@@ -1650,7 +1650,20 @@ fn infer_match(
           // Step 9: Compute match value
           let match_val = do_match(env, arg_val, solved_motive_val, cases)
 
-          // NO error filtering! If the hole wasn't solved, there's a real type error.
+          // Filter out HoleUnsolved errors for holes that are now solved in the substitution.
+          // The error was added prematurely when we first encountered the hole during
+          // motive checking, but the hole was solved by unification when checking the
+          // first clause body.
+          let s = State(..s, errors: list.filter(s.errors, fn(e) {
+            case e {
+              HoleUnsolved(id, _) -> {
+                // Keep the error only if the hole is still unsolved
+                list.key_find(s.sub, id) == Error(Nil)
+              }
+              _ -> True
+            }
+          }))
+
           #(match_val, solved_result_ty, s)
         }
 

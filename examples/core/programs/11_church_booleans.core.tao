@@ -2,10 +2,6 @@
 // Church booleans and logical operations
 
 // Church True: λt. λf. t
-%let true = t -> f -> t in
-
 // Church False: λt. λf. f
-%let false = t -> f -> f in
-
 // Test: return true
-true
+%let ttrue = t -> f -> t in %let ffalse = t -> f -> f in ttrue

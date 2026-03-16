@@ -161,15 +161,18 @@ pub fn desugar_module(
   // Check if the last statement is an expression (for expression-style modules)
   let last_is_expr = is_last_stmt_expr(module.body)
 
-  // Determine the result term
-  let result = case last_is_expr {
+  // Determine the result term and statements for the do block
+  let #(stmts_for_block, result) = case last_is_expr {
     True -> {
       // Expression-style module - return the last expression value
       case core_stmts {
-        [] -> CoreRcd([], module.span)
+        [] -> #([], CoreRcd([], module.span))
+        [last] -> #([], last)  // Single expression - no statements in block
         _ -> {
-          // Get the last statement (should be an expression)
-          get_last_statement(core_stmts, CoreRcd([], module.span))
+          // Multiple statements - split off the last one as result
+          let all_but_last = list.take(core_stmts, list.length(core_stmts) - 1)
+          let last = get_last_statement(core_stmts, CoreRcd([], module.span))
+          #(all_but_last, last)
         }
       }
     }
@@ -177,18 +180,18 @@ pub fn desugar_module(
       // Declaration-style module - return a record of public names
       let public_names = get_public_names(module.body)
       case public_names {
-        [] -> CoreRcd([], module.span)
+        [] -> #([], CoreRcd([], module.span))
         names -> {
           let return_fields = list.map(names, fn(name) {
             #(name, CoreVar(name, module.span))
           })
-          CoreRcd(return_fields, module.span)
+          #(core_stmts, CoreRcd(return_fields, module.span))
         }
       }
     }
   }
 
-  let core_term = CoreDoBlock(core_stmts, result, module.span)
+  let core_term = CoreDoBlock(stmts_for_block, result, module.span)
 
   // Convert to core/core.Term
   let term = core_term_to_term(core_term)
