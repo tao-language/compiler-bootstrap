@@ -13,7 +13,7 @@ import tao/ast.{
   UnaryOp as AstUnaryOp, Lambda as AstLambda, Call as AstCall, Block as AstBlock,
   type BinOperator, OpAdd, OpSub, OpMul, OpDiv, OpEq, OpNeq, OpLt, OpGt, OpLte, OpGte, OpAnd, OpOr,
   type UnaryOperator, OpNot,
-  Int as AstInt, type Param as AstParamType, Param as AstParam, TVar,
+  Int as AstInt, String as AstString, type Param as AstParamType, Param as AstParam, TVar,
   BlockStmtExpr, BlockStmtLet, LetDecl, Immutable, Mutable, type BlockStatement,
   Match as AstMatch, MatchClause as AstMatchClause,
   type Pattern as AstPattern, PAny, PVar as AstPVar, PLit as AstPLit, PCtr as AstPCtr,
@@ -83,6 +83,8 @@ pub type UnaryOp {
 pub type Expr {
   /// Integer literal (e.g., 42)
   Int(value: Int, span: Span)
+  /// String literal (e.g., "hello")
+  Str(value: String, span: Span)
   /// Variable reference (e.g., x)
   Var(name: String, span: Span)
   /// Binary operation (e.g., x + y)
@@ -150,6 +152,7 @@ pub fn expr_to_ast(expr: Expr) -> AstExpr {
 fn expr_to_ast_loop(expr: Expr) -> AstExpr {
   case expr {
     Int(value, span) -> AstLit(AstInt(value), span)
+    Str(value, span) -> AstLit(AstString(value), span)
     Var(name, span) -> AstVar(name, span)
     BinOp(left, op, right, span) -> {
       let ast_op = binop_to_ast(op)
@@ -354,6 +357,14 @@ fn make_var(values) -> Expr {
   }
 }
 
+fn make_str(values) -> Expr {
+  case values {
+    [TokenValue(token)] ->
+      Str(token.value, span_from_token(token, "tao"))
+    _ -> panic as "Expected string"
+  }
+}
+
 fn make_not(expr: Expr) -> Expr {
   let span = get_expr_span(expr)
   UnaryOp(Not, expr, span)
@@ -437,6 +448,7 @@ fn get_span(expr: Expr) -> Span {
     App(_, _, span) -> span
     Lambda(_, _, _, span) -> span
     Match(_, _, span) -> span
+    Str(_, span) -> span
   }
 }
 
@@ -449,7 +461,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
   Grammar(
     name: "Tao",
     start: "Program",
-    tokens: ["Ident", "Number", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow", "Slash", "Star", "Comma", "Equal", "Pipe"],
+    tokens: ["Ident", "Number", "String", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow", "Slash", "Star", "Comma", "Equal", "Pipe"],
     keywords: ["fn", "let", "mut", "match", "if", "else", "type", "import", "export", "as", "comptime", "true", "false", "for", "in", "while", "loop", "break", "continue", "return", "yield"],
     operators: [
       // Logical operators (precedence 3)
@@ -706,6 +718,16 @@ pub fn tao_grammar() -> Grammar(Expr) {
             }
           },
         ),
+        // String literal
+        alt(
+          token_pattern("String"),
+          fn(values) {
+            case values {
+              [TokenValue(token)] -> make_str([TokenValue(token)])
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
         // Variable reference
         alt(
           token_pattern("Ident"),
@@ -801,6 +823,7 @@ pub fn get_expr_span(expr: Expr) -> Span {
     App(_, _, span) -> span
     Lambda(_, _, _, span) -> span
     Match(_, _, span) -> span
+    Str(_, span) -> span
   }
 }
 
@@ -890,18 +913,64 @@ fn make_inline_lambda(values) -> Expr {
 
 /// Helper to create match expression AST.
 fn make_match(values) -> Expr {
-  // Structure: [match, scrutinee, {, many([|, pattern, opt([if, guard]), ->, body]), }]
-  let #(scrutinee, clauses, span) = case values {
-    [KeywordValue(match_kw), AstValue(scrut), _, ListValue(clause_values), _] -> {
-      let cs = extract_clauses(clause_values, [])
-      let start_span = Span("tao", match_kw.line, match_kw.column, match_kw.line, match_kw.column + 5)
-      let end_span = get_expr_span(scrut)
-      let full_span = Span(start_span.file, start_span.start_line, start_span.start_col, end_span.end_line, end_span.end_col)
-      #(scrut, cs, full_span)
-    }
-    _ -> panic as "Expected match expression"
+  // The structure is: [match_kw, scrut, LBrace, pipe1, pattern1, (opt: if, guard), arrow1, body1, ...]
+  // We need to find the RBrace at the end and extract clauses
+  
+  // First, find the scrutinee (should be the second element, an AstValue)
+  let scrut = case values {
+    [_, AstValue(s), ..] -> s
+    _ -> panic as "Match: expected scrutinee"
   }
-  Match(scrutinee, clauses, span)
+  
+  // Find the match keyword for span
+  let match_kw = case values {
+    [KeywordValue(kw), ..] -> kw
+    _ -> panic as "Match: expected keyword"
+  }
+  
+  // Extract clauses: find all pipe tokens and extract pattern/arrow/body triples
+  let clauses = extract_match_clauses(values, [])
+  
+  let start_span = Span("tao", match_kw.line, match_kw.column, match_kw.line, match_kw.column + 5)
+  let end_span = get_expr_span(scrut)
+  let full_span = Span(start_span.file, start_span.start_line, start_span.start_col, end_span.end_line, end_span.end_col)
+  Match(scrut, clauses, full_span)
+}
+
+fn extract_match_clauses(values: List(Value(Expr)), acc: List(MatchClause)) -> List(MatchClause) {
+  case values {
+    [] -> list.reverse(acc)
+    [TokenValue(pipe), AstValue(pattern), TokenValue(arrow), AstValue(body), ..rest] if pipe.value == "|" && arrow.value == "->" -> {
+      let p = pattern_ast_to_pattern(pattern)
+      let span = get_expr_span(body)
+      let clause = MatchClause(p, None, body, span)
+      extract_match_clauses(rest, [clause, ..acc])
+    }
+    [TokenValue(pipe), AstValue(pattern), KeywordValue(_if), AstValue(guard), TokenValue(arrow), AstValue(body), ..rest] if pipe.value == "|" && arrow.value == "->" -> {
+      let p = pattern_ast_to_pattern(pattern)
+      let span = get_expr_span(body)
+      let clause = MatchClause(p, Some(guard), body, span)
+      extract_match_clauses(rest, [clause, ..acc])
+    }
+    [_ , ..rest] -> {
+      // Skip non-clause tokens (match, scrutinee, braces)
+      extract_match_clauses(rest, acc)
+    }
+  }
+}
+
+fn inspect_values(values: List(Value(Expr))) -> String {
+  values
+  |> list.map(fn(v) {
+    case v {
+      KeywordValue(t) -> "KeywordValue(" <> t.value <> ")"
+      AstValue(_) -> "AstValue(...)"
+      ListValue(_) -> "ListValue(...)"
+      TokenValue(t) -> "TokenValue(" <> t.value <> ")"
+      ParensValue(_) -> "ParensValue(...)"
+    }
+  })
+  |> string.join(", ")
 }
 
 fn extract_clauses(clause_values: List(Value(Expr)), acc: List(MatchClause)) -> List(MatchClause) {
@@ -921,6 +990,29 @@ fn extract_clauses(clause_values: List(Value(Expr)), acc: List(MatchClause)) -> 
       }
     }
     [_, ..rest] -> extract_clauses(rest, acc)
+  }
+}
+
+fn extract_clauses_direct(clause_values: List(Value(Expr)), acc: List(MatchClause)) -> List(MatchClause) {
+  // Handle clauses that are direct values (not wrapped in ListValue)
+  case clause_values {
+    [] -> list.reverse(acc)
+    [TokenValue(_pipe), AstValue(pattern_ast), opt_if, TokenValue(_arrow), AstValue(body), ..rest] -> {
+      let pattern = pattern_ast_to_pattern(pattern_ast)
+      let guard = case opt_if {
+        KeywordValue(_) -> {
+          case rest {
+            [AstValue(g), ..] -> Some(g)
+            _ -> None
+          }
+        }
+        _ -> None
+      }
+      let span = get_expr_span(body)
+      let clause = MatchClause(pattern, guard, body, span)
+      extract_clauses_direct(rest, [clause, ..acc])
+    }
+    [_, ..rest] -> extract_clauses_direct(rest, acc)
   }
 }
 
@@ -1160,6 +1252,7 @@ pub fn format_expr(expr: Expr) -> String {
 fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
   case expr {
     Int(n, _) -> int.to_string(n)
+    Str(s, _) -> "\"" <> s <> "\""
     Var(name, _) -> name
     BinOp(l, op, r, _) -> format_binop_op(l, op, r, parent_prec)
     UnaryOp(Not, e, _) -> "!" <> format_expr_loop(e, 100)
