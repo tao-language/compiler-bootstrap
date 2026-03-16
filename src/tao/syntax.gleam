@@ -928,8 +928,11 @@ fn make_match(values) -> Expr {
     _ -> panic as "Match: expected keyword"
   }
   
-  // Extract clauses: find all pipe tokens and extract pattern/arrow/body triples
-  let clauses = extract_match_clauses(values, [])
+  // Extract clauses: try both ListValue-wrapped and flat structures
+  let clauses = case values {
+    [_, _, _, ListValue(clause_values), _] -> extract_clauses(clause_values, [])
+    _ -> extract_match_clauses(values, [])
+  }
   
   let start_span = Span("tao", match_kw.line, match_kw.column, match_kw.line, match_kw.column + 5)
   let end_span = get_expr_span(scrut)
@@ -940,12 +943,14 @@ fn make_match(values) -> Expr {
 fn extract_match_clauses(values: List(Value(Expr)), acc: List(MatchClause)) -> List(MatchClause) {
   case values {
     [] -> list.reverse(acc)
+    // No guard: | pattern -> body
     [TokenValue(pipe), AstValue(pattern), TokenValue(arrow), AstValue(body), ..rest] if pipe.value == "|" && arrow.value == "->" -> {
       let p = pattern_ast_to_pattern(pattern)
       let span = get_expr_span(body)
       let clause = MatchClause(p, None, body, span)
       extract_match_clauses(rest, [clause, ..acc])
     }
+    // With guard: | pattern if guard -> body
     [TokenValue(pipe), AstValue(pattern), KeywordValue(_if), AstValue(guard), TokenValue(arrow), AstValue(body), ..rest] if pipe.value == "|" && arrow.value == "->" -> {
       let p = pattern_ast_to_pattern(pattern)
       let span = get_expr_span(body)
@@ -976,20 +981,25 @@ fn inspect_values(values: List(Value(Expr))) -> String {
 fn extract_clauses(clause_values: List(Value(Expr)), acc: List(MatchClause)) -> List(MatchClause) {
   case clause_values {
     [] -> list.reverse(acc)
-    [ListValue(clause_items), ..rest] -> {
-      // clause_items: [|, pattern, (opt: [if, guard]), ->, body]
-      // or: [|, pattern, ->, body] (no guard)
-      let clause_result = extract_single_clause(clause_items, [])
+    // Handle ListValue-wrapped clauses (from many(seq(...)))
+    [ListValue(items), ..rest] -> {
+      // Recursively extract from the wrapped items
+      let sub_clauses = extract_clauses(items, [])
+      extract_clauses(rest, list.append(sub_clauses, acc))
+    }
+    // Handle flat list: | pattern -> body | pattern -> body ...
+    [TokenValue(pipe), AstValue(pattern_ast), ..rest_items] if pipe.value == "|" -> {
+      let clause_result = extract_single_clause(clause_values, [])
       case clause_result {
         Some(#(pattern, guard, body, remaining)) -> {
           let span = get_expr_span(body)
           let clause = MatchClause(pattern, guard, body, span)
-          extract_clauses(rest, [clause, ..acc])
+          extract_clauses(remaining, [clause, ..acc])
         }
-        None -> extract_clauses(rest, acc)
+        None -> extract_clauses(rest_items, acc)
       }
     }
-    [_, ..rest] -> extract_clauses(rest, acc)
+    [_ , ..rest] -> extract_clauses(rest, acc)
   }
 }
 

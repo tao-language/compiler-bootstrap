@@ -41,7 +41,7 @@ import tao/import_ast.{
   ImportSelectiveAlias, ImportWildcard,
   type ImportItem, ImportName, ImportType, ImportOperator,
 }
-import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT}
+import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole}
 
 // ============================================================================
 // CORE TERM TYPES (simplified for desugaring)
@@ -76,6 +76,15 @@ pub type CoreTerm {
 
   /// DoBlock (sequence of statements)
   CoreDoBlock(stmts: List(CoreTerm), result: CoreTerm, span: Span)
+
+  /// Type universe (Typ(n) represents Type(n))
+  CoreTyp(universe: Int, span: Span)
+
+  /// Builtin type reference (e.g., "String", "Int")
+  CoreBuiltinType(name: String, span: Span)
+
+  /// Hole/metavariable for type inference
+  CoreHole(id: Int, span: Span)
 
   /// Literal
   CoreLit(value: String, span: Span)
@@ -1017,7 +1026,7 @@ fn desugar_match(
 
   // Desugar all clauses to Core Cases
   let #(core_cases, dc2) = desugar_match_clauses_to_cases(clauses, span, dc1)
-  
+
   // Add fallback clause for non-exhaustive matches
   // This ensures the match is always exhaustive at the Core level
   // The fallback returns unit (in a full implementation, this would be a type error)
@@ -1030,8 +1039,12 @@ fn desugar_match(
   let all_cases = list.append(core_cases, [fallback_clause])
 
   // Build Core Match term
-  // Motive (return type) is inferred, so we use a placeholder
-  let motive = CoreRcd([], span)  // Unit type as placeholder
+  // For non-dependent matches, the motive is a constant function that returns the result type.
+  // We use a lambda with a hole body: fn(_) -> ?ResultType
+  // The hole will be unified with the result type when checking clause bodies.
+  // Note: Using a negative hole ID to avoid conflicts with type checker's hole counter.
+  let result_type_hole = CoreHole(-100, span)
+  let motive = CoreLam("_", result_type_hole, span)
   let core_match = CoreMatchCore(core_scrutinee, motive, all_cases, span)
 
   #(core_match, dc2)
@@ -1585,6 +1598,19 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
       let sequential_core = build_sequential_term(stmts, result, span)
       core_term_to_term_loop(sequential_core, env)
     }
+    CoreTyp(universe, span) -> {
+      // Convert CoreTyp to core/core.Typ (type universe)
+      Typ(universe: universe, span: span)
+    }
+    CoreBuiltinType(name, span) -> {
+      // Convert CoreBuiltinType to a type variable
+      // For now, use a hole as a placeholder
+      Hole(id: -1, span: span)
+    }
+    CoreHole(id, span) -> {
+      // Convert CoreHole to core/core.Hole (metavariable)
+      Hole(id: id, span: span)
+    }
     CoreLit(value, span) -> {
       case int.parse(value) {
         Ok(n) -> Lit(value: I32(n), span: span)
@@ -1634,6 +1660,9 @@ fn value_span(term: CoreTerm) -> Span {
     CoreDot(_, _, span) -> span
     CoreLet(_, _, span) -> span
     CoreDoBlock(_, _, span) -> span
+    CoreTyp(_, span) -> span
+    CoreBuiltinType(_, span) -> span
+    CoreHole(_, span) -> span
     CoreLit(_, span) -> span
     CoreMatchCore(_, _, _, span) -> span
     CoreFix(_, _, span) -> span
