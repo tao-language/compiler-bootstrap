@@ -2,6 +2,6 @@
 // Expected error: Exhaustiveness error - missing pattern for None
 
 let opt = Some(42)
-match opt {
+match opt -> I32 {
   | Some(x) -> x
 }

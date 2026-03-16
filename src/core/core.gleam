@@ -800,7 +800,7 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
       // Evaluate function and argument
       let fun_val = eval(ffi, env, fun)
       let arg_val = eval(ffi, env, arg)
-      
+
       // Handle implicit arguments recursively
       case implicit {
         [] -> {
@@ -1517,7 +1517,8 @@ fn infer_app(
     VPi(_, _, pi_env, in, out) -> {
       let #(arg_val, s) = check(s, arg, in, get_span(fun))
       let out_val = eval(s.ffi, [arg_val, ..pi_env], out)
-      #(do_app(s.ffi, fun_val, arg_val), out_val, s)
+      let out_val_forced = force(s.ffi, s.sub, out_val)
+      #(do_app(s.ffi, fun_val, arg_val), out_val_forced, s)
     }
     VNeut(HHole(hole_id), []) -> {
       // Hole expansion: ?1 applied to arg means ?1 = (?2 -> ?3)

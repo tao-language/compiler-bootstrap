@@ -10,11 +10,11 @@
 /// - Compiling modules in correct order
 /// - Detecting circular imports
 
-import tao/ast.{type Module, type Stmt, Module as ModuleCtr, StmtImport, StmtLet, StmtFn, StmtFor, StmtWhile, StmtLoop, StmtBreak, StmtContinue, StmtReturn, StmtYield, StmtExpr, StmtBind, StmtMut}
+import tao/ast.{type Module, type Stmt, type Param, type Type, Module as ModuleCtr, StmtImport, StmtLet, StmtFn, StmtFor, StmtWhile, StmtLoop, StmtBreak, StmtContinue, StmtReturn, StmtYield, StmtExpr, StmtBind, StmtMut, Param, TVar}
 import tao/import_ast.{type Import, type ImportContext, type ResolvedImport}
 import tao/import_resolver.{resolve_imports}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module, register_module}
-import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, expr_to_ast}
+import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, expr_to_ast, block_to_ast}
 import syntax/grammar.{type Span, Span}
 import gleam/dict.{type Dict}
 import gleam/list
@@ -236,6 +236,23 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(Stmt) {
         // Note: Type annotations are not yet parsed, so we ignore them for now
         let ast_value = expr_to_ast(value)
         [StmtLet(name, mutable, None, ast_value, span)]
+      }
+      SimpleFn(name, params, return_type, body, span) -> {
+        // Convert function definition to StmtFn
+        let ast_params = list.map(params, fn(param) {
+          let #(pname, ptype) = param
+          let ast_type = case ptype {
+            Some(t) -> Some(TVar(t))
+            None -> None
+          }
+          Param(pname, ast_type, span)
+        })
+        let ast_body = block_to_ast(body)
+        let ast_return_type = case return_type {
+          Some(t) -> Some(TVar(t))
+          None -> None
+        }
+        [StmtFn(name, [], ast_params, ast_return_type, ast_body, span)]
       }
       _ -> {
         // Other expressions become StmtExpr

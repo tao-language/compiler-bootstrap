@@ -246,7 +246,7 @@ fn params_to_ast(params: List(#(String, Option(String))), span: Span) -> List(As
   })
 }
 
-fn block_to_ast(block_expr: Expr) -> AstExpr {
+pub fn block_to_ast(block_expr: Expr) -> AstExpr {
   case block_expr {
     Block(stmts, span) -> {
       let ast_stmts = list.map(stmts, expr_to_block_stmt)

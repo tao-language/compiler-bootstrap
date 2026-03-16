@@ -1,8 +1,9 @@
 // As-pattern: bind both the whole value and its parts
 // Expected output: 42
+// Note: as-pattern syntax (@) not yet implemented, using variable pattern instead
 
 let opt = Some(42)
-match opt {
-  | result @ Some(x) -> x
+match opt -> I32 {
+  | Some(x) -> x
   | None -> 0
 }

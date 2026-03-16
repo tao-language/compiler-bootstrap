@@ -1,11 +1,11 @@
 // Nested function calls
 // Expected output: 15
 
-fn double(x) {
+fn double(x: I32) -> I32 {
   x * 2
 }
 
-fn add_one(x) {
+fn add_one(x: I32) -> I32 {
   x + 1
 }
 
@@ -13,7 +13,7 @@ fn add_one(x) {
 // Wait, let me recalculate: add_one(7) = 8, double(8) = 16
 // Let me use different values for 15
 
-fn triple(x) {
+fn triple(x: I32) -> I32 {
   x * 3
 }
 

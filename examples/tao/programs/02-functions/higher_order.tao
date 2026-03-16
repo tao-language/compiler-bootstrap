@@ -1,15 +1,15 @@
 // Higher-order functions: functions that take functions as arguments
 // Expected output: 30
 
-fn apply(f, x) {
+fn apply(f: fn(I32) -> I32, x: I32) -> I32 {
   f(x)
 }
 
-fn double(x) {
+fn double(x: I32) -> I32 {
   x * 2
 }
 
-fn add_ten(x) {
+fn add_ten(x: I32) -> I32 {
   x + 10
 }
 

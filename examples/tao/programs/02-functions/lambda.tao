@@ -1,5 +1,5 @@
 // Lambda expressions (anonymous functions)
 // Expected output: 25
 
-let add = fn(x, y) { x + y }
+let add = fn(x: I32, y: I32) -> I32 { x + y }
 add(10, 15)
