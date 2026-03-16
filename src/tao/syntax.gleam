@@ -24,13 +24,14 @@ import gleam/result
 import gleam/string
 import syntax/grammar.{
   type Grammar, type ParseResult, type Span, Span, Grammar, type Value, AstValue,
-  ParensValue, TokenValue, ListValue,
+  ParensValue, TokenValue, ListValue, KeywordValue,
   InfixLeft,
   rule, alt, token_pattern, parenthesized, seq, ref, keyword_pattern, many, opt, sep1,
   infix_binary, left_assoc_rule,
   span_from_values, span_from_token, parse as grammar_parse,
   ParseResult as ParseResultVal,
 }
+import syntax/lexer.{type Token, Token}
 
 // ============================================================================
 // EXPRESSION AST
@@ -112,6 +113,8 @@ pub type Expr {
   Let(name: String, mutable: Bool, type_annotation: Option(String), value: Expr, span: Span)
   /// Block expression (e.g., { let x = 10; x + 1 })
   Block(stmts: List(Expr), span: Span)
+  /// Lambda expression (e.g., fn(x, y) { x + y })
+  Lambda(type_params: List(String), params: List(#(String, Option(String))), body: Expr, span: Span)
 }
 
 // ============================================================================
@@ -169,6 +172,15 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
       let ast_func = expr_to_ast_loop(func)
       let ast_args = list.map(args, expr_to_ast_loop)
       AstCall(ast_func, ast_args, span)
+    }
+    Lambda(_type_params, params, body, span) -> {
+      // Lambda expressions become AstLambda
+      let ast_body = case body {
+        Block(_, _) -> block_to_ast(body)
+        _ -> expr_to_ast_loop(body)
+      }
+      let ast_params = params_to_ast(params, span)
+      AstLambda([], ast_params, ast_body, span)
     }
   }
 }
@@ -237,6 +249,16 @@ fn expr_to_block_stmt(expr: Expr) -> BlockStatement {
       }
       let lambda = AstLambda([], ast_params, ast_body, span)
       BlockStmtLet(LetDecl(name, Immutable, ast_return_type, lambda, span))
+    }
+    Lambda(_type_params, params, body, span) -> {
+      // Lambda expressions in blocks become AstLambda expressions
+      let ast_body = case body {
+        Block(_, _) -> block_to_ast(body)
+        _ -> expr_to_ast_loop(body)
+      }
+      let ast_params = params_to_ast(params, span)
+      let lambda = AstLambda([], ast_params, ast_body, span)
+      BlockStmtExpr(lambda)
     }
     _ -> BlockStmtExpr(expr_to_ast_loop(expr))
   }
@@ -366,6 +388,7 @@ fn get_span(expr: Expr) -> Span {
     Block(_, span) -> span
     SimpleFn(_, _, _, _, span) -> span
     App(_, _, span) -> span
+    Lambda(_, _, _, span) -> span
   }
 }
 
@@ -645,6 +668,20 @@ pub fn tao_grammar() -> Grammar(Expr) {
             }
           },
         ),
+        // Inline lambda: fn(params) { body }
+        alt(
+          seq([
+            keyword_pattern("fn"),
+            token_pattern("LParen"),
+            many(seq([
+              token_pattern("Ident"),  // param name
+              opt(token_pattern("Comma")),
+            ])),
+            token_pattern("RParen"),
+            ref("Block"),  // body
+          ]),
+          make_inline_lambda,
+        ),
         alt(
           parenthesized("Expr"),
           fn(values) {
@@ -694,6 +731,7 @@ pub fn get_expr_span(expr: Expr) -> Span {
     Block(_, span) -> span
     SimpleFn(_, _, _, _, span) -> span
     App(_, _, span) -> span
+    Lambda(_, _, _, span) -> span
   }
 }
 
@@ -752,6 +790,33 @@ fn make_simple_fn(values) -> Expr {
   let body_span = get_expr_span(body_expr)
   let span = merge_spans(span_from_token(name_token, "tao"), body_span)
   SimpleFn(name_token.value, params, return_type, body_expr, span)
+}
+
+/// Helper to create inline lambda AST.
+fn make_inline_lambda(values) -> Expr {
+  // Find the body (last AstValue)
+  let body_expr = case list.last(values) {
+    Ok(AstValue(e)) -> e
+    _ -> panic as "Expected lambda body"
+  }
+
+  // Extract params: [fn, (, ListValue([ListValue([Ident, opt(Comma)]), ...]), ), block]
+  let params = case values {
+    [_, _, ListValue(params_many), _, _] -> {
+      extract_params_from_many(params_many, [])
+    }
+    _ -> []
+  }
+
+  let body_span = get_expr_span(body_expr)
+  let span = case values {
+    [KeywordValue(k), ..] -> {
+      let Token(_, _, _, _, line, column) = k
+      Span("tao", line, column, line, column + 1)
+    }
+    _ -> Span("error", 0, 0, 0, 0)
+  }
+  Lambda([], params, body_expr, span)
 }
 
 fn extract_params_from_many(params_many: List(Value(Expr)), acc: List(#(String, Option(String)))) -> List(#(String, Option(String))) {
@@ -992,6 +1057,19 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
     }
     App(func, args, _) -> {
       format_expr(func) <> "(" <> string_join(list.map(args, format_expr), ", ") <> ")"
+    }
+    Lambda(_type_params, params, _body, _) -> {
+      let params_str = string_join(
+        list.map(params, fn(p) {
+          let #(pname, ptype) = p
+          pname <> case ptype {
+            Some(t) -> ": " <> t
+            None -> ""
+          }
+        }),
+        ", ",
+      )
+      "fn(" <> params_str <> ") { ... }"
     }
   }
 }
