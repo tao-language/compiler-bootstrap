@@ -666,11 +666,12 @@ fn desugar_expr_core(
       // Variable reference - look up in scope for De Bruijn index
       case lookup_var(dc, name) {
         Some(index) -> {
-          // Bound variable - use De Bruijn index
-          #(CoreVar(name <> "@" <> int.to_string(index), span), dc)
+          // Bound variable - use De Bruijn index directly
+          // The index is stored in the CoreVar name as "idx"
+          #(CoreVar(int.to_string(index), span), dc)
         }
         None -> {
-          // Free variable - keep as named variable
+          // Free variable - keep as named variable (will be error)
           #(CoreVar(name, span), dc)
         }
       }
@@ -1524,11 +1525,19 @@ pub fn core_term_to_term(term: CoreTerm) -> Term {
 fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
   case term {
     CoreVar(name, span) -> {
-      // Look up variable name in environment to get De Bruijn index
-      // Index is the position in the environment list (0 = most recent)
-      case find_var_index(env, name, 0) {
-        Some(index) -> Var(index: index, span: span)
-        None -> Var(index: 0, span: span)  // Undefined variable
+      // Check if name is a numeric De Bruijn index
+      case int.parse(name) {
+        Ok(index) -> {
+          // Already a De Bruijn index - use directly
+          Var(index: index, span: span)
+        }
+        Error(_) -> {
+          // Named variable - look up in environment
+          case find_var_index(env, name, 0) {
+            Some(index) -> Var(index: index, span: span)
+            None -> Var(index: 0, span: span)  // Undefined variable
+          }
+        }
       }
     }
     CoreCall(name, args, span) -> {
