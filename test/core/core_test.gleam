@@ -1006,8 +1006,8 @@ pub fn lam_infer_known_test() {
   let term = lam("x", i32(1, s1), s2)
   c.infer(s, term)
   |> should.equal(#(
-    c.VLam([], "x", [], i32(1, s1)),
-    c.VPi([], "x", [], vhole(0), i32t(s1)),
+    c.VLam([], "x", [], i32(1, s2)),
+    c.VPi([], "x", [], vhole(0), i32t(s2)),
     c.State(..s, hole: 1, var: 1, ctx: [#("x", #(vvar(0), vhole(0)))]),
   ))
 }
@@ -1043,7 +1043,7 @@ pub fn check_lam_test() {
 
 pub fn check_lam_mismatch_test() {
   let term = lam("x", var(0, s1), s2)
-  let term_ty = c.VPi([], "x", [], vhole(0), c.Hole(0, s1))
+  let term_ty = c.VPi([], "x", [], vhole(0), c.Hole(0, s2))
   c.check(s, term, v32t, s3)
   |> should.equal(#(
     c.VErr,

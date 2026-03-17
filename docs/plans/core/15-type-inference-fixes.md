@@ -358,6 +358,48 @@ Start with **Phase 1 (Lambda Generalization)** as it:
 
 ---
 
+## Implementation Status (Updated 2026-03-17)
+
+### Completed
+
+1. **Lambda Generalization Fix** - ✅ Complete
+   - Modified `infer()` lambda case to only generalize codomain holes (not domain holes)
+   - Added special case in `unify()` VPi handling for empty implicit params
+   - Updated test expectations for span changes (quoted terms use lambda span)
+   - **Result**: 515 tests passing (up from 502), 1 failure remaining
+
+2. **VPi Unification** - ✅ Complete (with known issue)
+   - Added instantiation of implicit params for non-empty implicit param lists
+   - Preserves original behavior for empty implicit params
+   - **Known Issue**: `unify_pi_with_holes_test` fails - requires further debugging
+
+3. **Test Updates** - ✅ Complete
+   - Updated `lam_infer_known_test` to expect s2 spans (quoted body uses lambda span)
+   - Updated `check_lam_mismatch_test` to expect s2 spans
+   - Updated `10_infinite_type.output.txt` to reflect new hole numbering (#2 instead of #3)
+
+### Remaining Issues
+
+1. **unify_pi_with_holes_test** - 1 failure
+   - Test creates `VPi([], "x", [], vhole(0), Var(0, s1))` and unifies with `VPi([], "x", [], v32t, Var(0, s1))`
+   - Expected: Hole 0 solved to I32T in substitution
+   - Actual: Unification returns `Error(Nil)`
+   - **Status**: Requires further investigation - may be related to how state is threaded through VPi unification
+
+### Test Results Summary
+
+| Phase | Before | After | Improvement |
+|-------|--------|-------|-------------|
+| Start | 502 passing, 14 failures | 515 passing, 1 failure | +13 tests |
+
+### Next Steps
+
+1. Debug `unify_pi_with_holes_test` failure
+2. Proceed with Phase 2 (Match Expression Inference) - 6 tests
+3. Proceed with Phase 4 (Dependent Pattern Matching) - 4 tests
+
+---
+
 ## Test Commands
 
 ```bash
