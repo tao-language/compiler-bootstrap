@@ -1479,6 +1479,114 @@ fn subst_case_with_hole_vars(subst: List(#(Int, Int)), case_val: Case) -> Case {
   Case(case_val.pattern, subst_term_with_hole_vars(subst, case_val.body), option.map(case_val.guard, subst_term_with_hole_vars(subst, _)), case_val.span)
 }
 
+/// Instantiate implicit type parameters with fresh holes.
+/// Returns a substitution list mapping implicit param indices to hole IDs.
+fn instantiate_implicit_params(implicit_params: List(String), s: State) -> #(List(#(Int, Int)), State) {
+  instantiate_implicit_params_loop(implicit_params, 0, [], s)
+}
+
+fn instantiate_implicit_params_loop(
+  params: List(String),
+  index: Int,
+  acc: List(#(Int, Int)),
+  s: State,
+) -> #(List(#(Int, Int)), State) {
+  case params {
+    [] -> #(list.reverse(acc), s)
+    [_, ..rest] -> {
+      let #(hole_val, s) = new_hole(s)
+      // Extract hole ID from the value
+      let hole_id = case hole_val {
+        VNeut(HHole(id), []) -> id
+        _ -> 0  // Should not happen
+      }
+      instantiate_implicit_params_loop(rest, index + 1, [#(index, hole_id), ..acc], s)
+    }
+  }
+}
+
+/// Substitute implicit type variables (HVar) with holes in a Value.
+fn subst_value_with_implicit_vars(subst: List(#(Int, Int)), value: Value) -> Value {
+  case value {
+    VNeut(HVar(index), []) -> {
+      case list.key_find(subst, index) {
+        Ok(hole_id) -> VNeut(HHole(hole_id), [])
+        Error(Nil) -> value
+      }
+    }
+    VNeut(HVar(index), spine) -> {
+      case list.key_find(subst, index) {
+        Ok(hole_id) -> VNeut(HHole(hole_id), list.map(spine, subst_elim_with_implicit_vars(subst, _)))
+        Error(Nil) -> VNeut(HVar(index), list.map(spine, subst_elim_with_implicit_vars(subst, _)))
+      }
+    }
+    VNeut(head, spine) -> VNeut(head, list.map(spine, subst_elim_with_implicit_vars(subst, _)))
+    VRcd(fields) -> VRcd(list.map(fields, fn(kv) { #(kv.0, subst_value_with_implicit_vars(subst, kv.1)) }))
+    VCtrValue(VCtr(tag, arg)) -> VCtrValue(VCtr(tag, subst_value_with_implicit_vars(subst, arg)))
+    VLam(impl, name, env, body) -> VLam(impl, name, env, subst_term_with_implicit_vars(subst, body))
+    VPi(impl, name, env, in_val, out) ->
+      VPi(impl, name, env, subst_value_with_implicit_vars(subst, in_val), subst_term_with_implicit_vars(subst, out))
+    VCall(name, args) -> VCall(name, list.map(args, subst_value_with_implicit_vars(subst, _)))
+    VFix(name, env, body) -> VFix(name, env, subst_term_with_implicit_vars(subst, body))
+    VRecord(fields) -> VRecord(list.map(fields, fn(kv) { #(kv.0, subst_value_with_implicit_vars(subst, kv.1)) }))
+    _ -> value
+  }
+}
+
+/// Substitute implicit type variables in an elimination.
+fn subst_elim_with_implicit_vars(subst: List(#(Int, Int)), elim: Elim) -> Elim {
+  case elim {
+    EDot(name) -> EDot(name)
+    EApp(arg) -> EApp(subst_value_with_implicit_vars(subst, arg))
+    EAppImplicit(arg) -> EAppImplicit(subst_value_with_implicit_vars(subst, arg))
+    EMatch(env, motive, cases) -> EMatch(env, subst_value_with_implicit_vars(subst, motive), cases)
+  }
+}
+
+/// Substitute implicit type variables (Var) in a Term.
+fn subst_term_with_implicit_vars(subst: List(#(Int, Int)), term: Term) -> Term {
+  case term {
+    Var(index, span) -> {
+      // Check if this Var refers to an implicit type variable
+      // Implicit type variables are at indices 0..n where n is the number of implicit params
+      case list.key_find(subst, index) {
+        Ok(hole_id) -> Hole(hole_id, span)
+        Error(Nil) -> term
+      }
+    }
+    App(fun, impl, arg, span) ->
+      App(
+        subst_term_with_implicit_vars(subst, fun),
+        list.map(impl, subst_term_with_implicit_vars(subst, _)),
+        subst_term_with_implicit_vars(subst, arg),
+        span,
+      )
+    Pi(impl, name, in_t, out_t, span) ->
+      Pi(impl, name, subst_term_with_implicit_vars(subst, in_t), subst_term_with_implicit_vars(subst, out_t), span)
+    Lam(impl, param, body, span) -> Lam(impl, param, subst_term_with_implicit_vars(subst, body), span)
+    Match(arg, motive, cases, span) ->
+      Match(
+        subst_term_with_implicit_vars(subst, arg),
+        subst_term_with_implicit_vars(subst, motive),
+        list.map(cases, subst_case_with_implicit_vars(subst, _)),
+        span,
+      )
+    Rcd(fields, span) -> Rcd(list.map(fields, fn(kv) { #(kv.0, subst_term_with_implicit_vars(subst, kv.1)) }), span)
+    Ctr(tag, arg, span) -> Ctr(tag, subst_term_with_implicit_vars(subst, arg), span)
+    Dot(arg, name, span) -> Dot(subst_term_with_implicit_vars(subst, arg), name, span)
+    Ann(t, ty, span) -> Ann(subst_term_with_implicit_vars(subst, t), subst_term_with_implicit_vars(subst, ty), span)
+    Call(name, args, span) -> Call(name, list.map(args, subst_term_with_implicit_vars(subst, _)), span)
+    Comptime(t, span) -> Comptime(subst_term_with_implicit_vars(subst, t), span)
+    Fix(name, body, span) -> Fix(name, subst_term_with_implicit_vars(subst, body), span)
+    _ -> term
+  }
+}
+
+/// Substitute implicit type variables in a Case.
+fn subst_case_with_implicit_vars(subst: List(#(Int, Int)), case_val: Case) -> Case {
+  Case(case_val.pattern, subst_term_with_implicit_vars(subst, case_val.body), option.map(case_val.guard, subst_term_with_implicit_vars(subst, _)), case_val.span)
+}
+
 /// Check if a value contains a specific hole (occurs check).
 ///
 /// This prevents infinite types like ?0 = ?0 → ?0 by checking if the hole
@@ -1898,9 +2006,18 @@ fn infer_app(
 ) -> #(Value, Type, State) {
   let #(fun_val, fun_ty, s) = infer(s, fun)
   case fun_ty {
-    VPi(_, _, pi_env, in, out) -> {
-      let #(arg_val, s) = check(s, arg, in, get_span(fun))
-      let out_val = eval(s.ffi, [arg_val, ..pi_env], out)
+    VPi(implicit_params, _, pi_env, domain, codomain) -> {
+      // Instantiate implicit type variables with fresh holes
+      let #(implicit_subst, s) = instantiate_implicit_params(implicit_params, s)
+      
+      // Apply substitution to domain and codomain
+      let domain_instantiated = subst_value_with_implicit_vars(implicit_subst, domain)
+      let codomain_instantiated = subst_term_with_implicit_vars(implicit_subst, codomain)
+      
+      // Check argument against instantiated domain
+      let #(arg_val, s) = check(s, arg, domain_instantiated, get_span(fun))
+      // Evaluate codomain with argument in environment
+      let out_val = eval(s.ffi, [arg_val, ..pi_env], codomain_instantiated)
       let out_val_forced = force(s.ffi, s.sub, out_val)
       #(do_app(s.ffi, fun_val, arg_val), out_val_forced, s)
     }

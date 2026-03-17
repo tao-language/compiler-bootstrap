@@ -481,24 +481,30 @@ pub fn tao_grammar() -> Grammar(Expr) {
       infix_binary("/", make_div, InfixLeft, 20, " / "),
     ],
     rules: [
-      // Program = Stmt* (wrapped in a block)
+      // Program = Stmt* (returned as list, no Block wrapper)
       rule("Program", [
         alt(
           many(ref("Stmt")),
           fn(values) {
-            // many() returns a list of wrapped statements
-            // Extract all statements and wrap in a block
+            // many() returns a list of expressions (statements)
+            // Return as list - no Block wrapper needed
             let stmts = extract_stmts(values, [])
-            let span = case list.first(values), list.last(values) {
-              Ok(ListValue([first_val])), Ok(ListValue([last_val])) ->
-                case first_val, last_val {
-                  AstValue(first_e), AstValue(last_e) ->
-                    merge_spans(get_span(first_e), get_span(last_e))
-                  _, _ -> Span("program", 0, 0, 0, 0)
-                }
-              _, _ -> Span("program", 0, 0, 0, 0)
+            // Return list directly - caller decides how to handle it
+            // For single expression, return the expression itself
+            // For multiple statements, return as Block
+            case stmts {
+              [single] -> single
+              [] -> Int(0, Span("program", 0, 0, 0, 0))
+              _ -> Block(stmts, case list.first(values), list.last(values) {
+                Ok(ListValue([first_val])), Ok(ListValue([last_val])) ->
+                  case first_val, last_val {
+                    AstValue(first_e), AstValue(last_e) ->
+                      merge_spans(get_span(first_e), get_span(last_e))
+                    _, _ -> Span("program", 0, 0, 0, 0)
+                  }
+                _, _ -> Span("program", 0, 0, 0, 0)
+              })
             }
-            Block(stmts, span)
           },
         ),
       ]),
@@ -852,16 +858,17 @@ pub fn parse(source: String) -> ParseResult(Expr) {
 /// Parse Tao module (list of statements).
 /// Returns all statements parsed from the source.
 pub fn parse_module(source: String) -> ParseResult(List(Expr)) {
-  // Parse using the grammar - the Program rule returns a Block with all statements
+  // Parse using the grammar - Program now returns expressions directly
   let error_ast = Int(0, Span("tao", 0, 0, 0, 0))
   let result = grammar_parse(tao_grammar(), source, error_ast)
 
-  // Extract statements from the Block
+  // Extract statements - Program returns single expr or Block of multiple
   case result {
     ParseResultVal(ast: expr, errors: errors) -> {
       let stmts = case expr {
         Block(stmts, _) -> stmts
-        _ -> [expr]
+        Int(0, Span("program", _, _, _, _)) -> []  // Empty program
+        single -> [single]  // Single expression/statement
       }
       ParseResultVal(ast: stmts, errors: errors)
     }
@@ -1228,9 +1235,9 @@ fn make_let(values) -> Expr {
   //   With type only:    ["let", name, ":", type_string, "=", expr] (6 values)
   //   Neither:           ["let", name, "=", expr] (4 values)
 
-  // Check for "mut" keyword
+  // Check for "mut" keyword (second element, as KeywordValue)
   let mutable = case list.first(list.drop(values, 1)) {
-    Ok(TokenValue(token)) if token.value == "mut" -> True
+    Ok(KeywordValue(token)) if token.value == "mut" -> True
     _ -> False
   }
 
