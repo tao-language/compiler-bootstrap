@@ -1197,6 +1197,288 @@ fn free_holes_elim(sub: Subst, elim: Elim) -> List(Int) {
   }
 }
 
+/// Collect free hole IDs in a value WITHOUT forcing substitution.
+/// This is used during generalization to find holes before they're solved.
+fn free_holes_in_value(sub: Subst, value: Value) -> List(Int) {
+  case value {
+    VTyp(_) | VLit(_) | VLitT(_) | VErr | VUnit -> []
+    VNeut(HHole(hole_id), spine) ->
+      list.append([hole_id], list.flat_map(spine, free_holes_in_elim(sub, _)))
+    VNeut(_, spine) -> list.flat_map(spine, free_holes_in_elim(sub, _))
+    VRcd(fields) -> list.flat_map(fields, fn(kv) { free_holes_in_value(sub, kv.1) })
+    VCtrValue(VCtr(_, arg)) -> free_holes_in_value(sub, arg)
+    VLam(_, _, env, body) ->
+      list.append(list.flat_map(env, free_holes_in_value(sub, _)), free_holes_in_term_direct(body))
+    VPi(_, _, env, in_val, out_term) ->
+      list.append(
+        list.flat_map(env, free_holes_in_value(sub, _)),
+        list.append(free_holes_in_value(sub, in_val), free_holes_in_term_direct(out_term))
+      )
+    VCall(_, args) -> list.flat_map(args, free_holes_in_value(sub, _))
+    VFix(_, env, body) ->
+      list.append(list.flat_map(env, free_holes_in_value(sub, _)), free_holes_in_term_direct(body))
+    VRecord(fields) -> list.flat_map(fields, fn(kv) { free_holes_in_value(sub, kv.1) })
+  }
+}
+
+/// Collect free hole IDs in a term directly (no substitution needed).
+fn free_holes_in_term_direct(term: Term) -> List(Int) {
+  case term {
+    Typ(_, _) | Lit(_, _) | LitT(_, _) | Var(_, _) | Unit(_) -> []
+    Hole(id, _) -> [id]
+    Err(_, _) -> []
+    Rcd(fields, _) -> list.flat_map(fields, fn(kv) { free_holes_in_term_direct(kv.1) })
+    Ctr(_, arg, _) -> free_holes_in_term_direct(arg)
+    Dot(arg, _, _) -> free_holes_in_term_direct(arg)
+    Ann(term, typ, _) -> list.append(free_holes_in_term_direct(term), free_holes_in_term_direct(typ))
+    Lam(_, _, body, _) -> free_holes_in_term_direct(body)
+    Pi(_, _, in_term, out_term, _) ->
+      list.append(free_holes_in_term_direct(in_term), free_holes_in_term_direct(out_term))
+    App(fun, implicit, arg, _) ->
+      list.append(
+        free_holes_in_term_direct(fun),
+        list.append(list.flat_map(implicit, free_holes_in_term_direct), free_holes_in_term_direct(arg))
+      )
+    Match(arg, motive, cases, _) ->
+      list.append(
+        free_holes_in_term_direct(arg),
+        list.append(free_holes_in_term_direct(motive), list.flat_map(cases, fn(c) { free_holes_in_term_direct(c.body) }))
+      )
+    Call(_, args, _) -> list.flat_map(args, free_holes_in_term_direct)
+    Comptime(term, _) -> free_holes_in_term_direct(term)
+    Fix(_, body, _) -> free_holes_in_term_direct(body)
+  }
+}
+
+/// Collect free holes in an elimination without forcing substitution.
+fn free_holes_in_elim(sub: Subst, elim: Elim) -> List(Int) {
+  case elim {
+    EDot(_) -> []
+    EApp(arg) -> free_holes_in_value(sub, arg)
+    EAppImplicit(arg) -> free_holes_in_value(sub, arg)
+    EMatch(env, motive, cases) ->
+      list.append(
+        list.flat_map(env, free_holes_in_value(sub, _)),
+        free_holes_in_value(sub, motive)
+      )
+  }
+}
+
+/// Collect all existing names (implicit params and value vars) from a term and implicit list.
+/// Used to generate unique names that don't shadow existing ones.
+fn collect_existing_names(implicit: List(String), term: Term) -> List(String) {
+  list.append(implicit, collect_names_from_term(term))
+}
+
+fn collect_names_from_term(term: Term) -> List(String) {
+  collect_names_from_term_acc(term, [])
+}
+
+fn collect_names_from_term_acc(term: Term, acc: List(String)) -> List(String) {
+  case term {
+    Typ(_, _) | Lit(_, _) | LitT(_, _) | Var(_, _) | Hole(_, _) | Err(_, _) | Unit(_) -> acc
+    Rcd(fields, _) -> collect_names_from_fields_acc(fields, acc)
+    Ctr(_, arg, _) -> collect_names_from_term_acc(arg, acc)
+    Dot(arg, _, _) -> collect_names_from_term_acc(arg, acc)
+    Ann(term, typ, _) -> {
+      let acc1 = collect_names_from_term_acc(term, acc)
+      collect_names_from_term_acc(typ, acc1)
+    }
+    Lam(impl, #(name, _), body, _) -> {
+      let acc1 = list.append(acc, impl)
+      let acc2 = [name, ..acc1]
+      collect_names_from_term_acc(body, acc2)
+    }
+    Pi(impl, name, in_term, out_term, _) -> {
+      let acc1 = list.append(acc, impl)
+      let acc2 = [name, ..acc1]
+      let acc3 = collect_names_from_term_acc(in_term, acc2)
+      collect_names_from_term_acc(out_term, acc3)
+    }
+    App(fun, implicit, arg, _) -> {
+      let acc1 = collect_names_from_term_acc(fun, acc)
+      let acc2 = collect_names_from_terms_acc(implicit, acc1)
+      collect_names_from_term_acc(arg, acc2)
+    }
+    Match(arg, motive, cases, _) -> {
+      let acc1 = collect_names_from_term_acc(arg, acc)
+      let acc2 = collect_names_from_term_acc(motive, acc1)
+      collect_names_from_cases_acc(cases, acc2)
+    }
+    Call(_, args, _) -> collect_names_from_terms_acc(args, acc)
+    Comptime(term, _) -> collect_names_from_term_acc(term, acc)
+    Fix(name, body, _) -> collect_names_from_term_acc(body, [name, ..acc])
+  }
+}
+
+fn collect_names_from_terms_acc(terms: List(Term), acc: List(String)) -> List(String) {
+  case terms {
+    [] -> acc
+    [term, ..rest] -> {
+      let acc1 = collect_names_from_term_acc(term, acc)
+      collect_names_from_terms_acc(rest, acc1)
+    }
+  }
+}
+
+fn collect_names_from_cases_acc(cases: List(Case), acc: List(String)) -> List(String) {
+  case cases {
+    [] -> acc
+    [c, ..rest] -> {
+      let acc1 = collect_names_from_term_acc(c.body, acc)
+      collect_names_from_cases_acc(rest, acc1)
+    }
+  }
+}
+
+fn collect_names_from_fields_acc(fields: List(#(String, Term)), acc: List(String)) -> List(String) {
+  case fields {
+    [] -> acc
+    [#(_, term), ..rest] -> {
+      let acc1 = collect_names_from_term_acc(term, acc)
+      collect_names_from_fields_acc(rest, acc1)
+    }
+  }
+}
+
+/// Generalize holes by replacing them with fresh implicit type variables.
+/// Returns: #(new_implicit_names, generalized_domain, generalized_codomain)
+fn generalize_holes(
+  holes: List(Int),
+  existing_implicit: List(String),
+  domain: Value,
+  codomain: Term,
+  s: State,
+) -> #(List(String), Value, Term) {
+  case holes {
+    [] -> #(existing_implicit, domain, codomain)
+    _ -> {
+      // Collect all existing names to avoid shadowing
+      let existing_names = collect_existing_names(existing_implicit, codomain)
+      
+      // Generate unique names for each hole
+      let new_names = generate_unique_names(list.length(holes), existing_names, 0)
+      
+      // Create substitution: hole_id -> type variable (as a neutral term with HVar)
+      // The index is the position in the new implicit list
+      let base_index = list.length(existing_implicit)
+      let hole_subst = create_hole_to_var_subst(holes, base_index)
+      
+      // Apply substitution to domain and codomain
+      let generalized_domain = subst_value_with_hole_vars(hole_subst, domain)
+      let generalized_codomain = subst_term_with_hole_vars(hole_subst, codomain)
+      
+      #(list.append(existing_implicit, new_names), generalized_domain, generalized_codomain)
+    }
+  }
+}
+
+/// Generate unique names like _0, _1, _2, ... that don't conflict with existing names.
+fn generate_unique_names(n: Int, existing: List(String), counter: Int) -> List(String) {
+  case n <= 0 {
+    True -> []
+    False -> {
+      let name = "_" <> int.to_string(counter)
+      case list.contains(existing, name) {
+        True -> generate_unique_names(n, existing, counter + 1)
+        False -> [name, ..generate_unique_names(n - 1, existing, counter + 1)]
+      }
+    }
+  }
+}
+
+/// Create substitution mapping hole IDs to De Bruijn indices for new type variables.
+fn create_hole_to_var_subst(holes: List(Int), base_index: Int) -> List(#(Int, Int)) {
+  create_hole_to_var_subst_loop(holes, base_index, [])
+}
+
+fn create_hole_to_var_subst_loop(holes: List(Int), index: Int, acc: List(#(Int, Int))) -> List(#(Int, Int)) {
+  case holes {
+    [] -> list.reverse(acc)
+    [hole, ..rest] -> create_hole_to_var_subst_loop(rest, index + 1, [#(hole, index), ..acc])
+  }
+}
+
+/// Substitute holes with type variables (as HVar) in a Value.
+fn subst_value_with_hole_vars(subst: List(#(Int, Int)), value: Value) -> Value {
+  case value {
+    VNeut(HHole(id), []) -> {
+      case list.key_find(subst, id) {
+        Ok(index) -> VNeut(HVar(index), [])
+        Error(Nil) -> value
+      }
+    }
+    VNeut(HHole(id), spine) -> {
+      case list.key_find(subst, id) {
+        Ok(index) -> VNeut(HVar(index), list.map(spine, subst_elim_with_hole_vars(subst, _)))
+        Error(Nil) -> VNeut(HHole(id), list.map(spine, subst_elim_with_hole_vars(subst, _)))
+      }
+    }
+    VNeut(head, spine) -> VNeut(head, list.map(spine, subst_elim_with_hole_vars(subst, _)))
+    VRcd(fields) -> VRcd(list.map(fields, fn(kv) { #(kv.0, subst_value_with_hole_vars(subst, kv.1)) }))
+    VCtrValue(VCtr(tag, arg)) -> VCtrValue(VCtr(tag, subst_value_with_hole_vars(subst, arg)))
+    VLam(impl, name, env, body) -> VLam(impl, name, env, subst_term_with_hole_vars(subst, body))
+    VPi(impl, name, env, in_val, out) ->
+      VPi(impl, name, env, subst_value_with_hole_vars(subst, in_val), subst_term_with_hole_vars(subst, out))
+    VCall(name, args) -> VCall(name, list.map(args, subst_value_with_hole_vars(subst, _)))
+    VFix(name, env, body) -> VFix(name, env, subst_term_with_hole_vars(subst, body))
+    VRecord(fields) -> VRecord(list.map(fields, fn(kv) { #(kv.0, subst_value_with_hole_vars(subst, kv.1)) }))
+    _ -> value
+  }
+}
+
+/// Substitute holes with type variables in an elimination.
+fn subst_elim_with_hole_vars(subst: List(#(Int, Int)), elim: Elim) -> Elim {
+  case elim {
+    EDot(name) -> EDot(name)
+    EApp(arg) -> EApp(subst_value_with_hole_vars(subst, arg))
+    EAppImplicit(arg) -> EAppImplicit(subst_value_with_hole_vars(subst, arg))
+    EMatch(env, motive, cases) -> EMatch(env, subst_value_with_hole_vars(subst, motive), cases)
+  }
+}
+
+/// Substitute holes with type variables (as Var) in a Term.
+fn subst_term_with_hole_vars(subst: List(#(Int, Int)), term: Term) -> Term {
+  case term {
+    Hole(id, span) -> {
+      case list.key_find(subst, id) {
+        Ok(index) -> Var(index, span)
+        Error(Nil) -> Hole(id, span)
+      }
+    }
+    App(fun, impl, arg, span) ->
+      App(
+        subst_term_with_hole_vars(subst, fun),
+        list.map(impl, subst_term_with_hole_vars(subst, _)),
+        subst_term_with_hole_vars(subst, arg),
+        span,
+      )
+    Pi(impl, name, in_t, out_t, span) ->
+      Pi(impl, name, subst_term_with_hole_vars(subst, in_t), subst_term_with_hole_vars(subst, out_t), span)
+    Lam(impl, param, body, span) -> Lam(impl, param, subst_term_with_hole_vars(subst, body), span)
+    Match(arg, motive, cases, span) ->
+      Match(
+        subst_term_with_hole_vars(subst, arg),
+        subst_term_with_hole_vars(subst, motive),
+        list.map(cases, subst_case_with_hole_vars(subst, _)),
+        span,
+      )
+    Rcd(fields, span) -> Rcd(list.map(fields, fn(kv) { #(kv.0, subst_term_with_hole_vars(subst, kv.1)) }), span)
+    Ctr(tag, arg, span) -> Ctr(tag, subst_term_with_hole_vars(subst, arg), span)
+    Dot(arg, name, span) -> Dot(subst_term_with_hole_vars(subst, arg), name, span)
+    Ann(t, ty, span) -> Ann(subst_term_with_hole_vars(subst, t), subst_term_with_hole_vars(subst, ty), span)
+    Call(name, args, span) -> Call(name, list.map(args, subst_term_with_hole_vars(subst, _)), span)
+    Comptime(t, span) -> Comptime(subst_term_with_hole_vars(subst, t), span)
+    Fix(name, body, span) -> Fix(name, subst_term_with_hole_vars(subst, body), span)
+    _ -> term
+  }
+}
+
+/// Substitute holes in a Case.
+fn subst_case_with_hole_vars(subst: List(#(Int, Int)), case_val: Case) -> Case {
+  Case(case_val.pattern, subst_term_with_hole_vars(subst, case_val.body), option.map(case_val.guard, subst_term_with_hole_vars(subst, _)), case_val.span)
+}
+
 /// Check if a value contains a specific hole (occurs check).
 ///
 /// This prevents infinite types like ?0 = ?0 → ?0 by checking if the hole
@@ -1490,23 +1772,37 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       #(val, ty_val, s)
     }
     Lam(implicit, param, body, span) -> {
-      // For lambda inference:
+      // For lambda inference with generalization:
       // 1. Create a hole for the domain type
       // 2. Infer the body type
-      // 3. Return Pi type with hole (NOT forced - hole will be solved by unification during application)
+      // 3. Collect free holes in the result type
+      // 4. Generalize by replacing holes with fresh implicit type variables
       let #(name, _) = param
       let env = get_env(s)
+      let holes_before = s.hole
       let #(t1_hole, s) = new_hole(s)
       let #(_fresh, s) = def_var(s, name, t1_hole)
       let #(body_val, body_ty, s) = infer(s, body)
-      
+
       // Quote the body
       let body_quoted = quote(s.ffi, list.length(env), body_val, span)
       // Keep t1_hole as-is (don't force) so it can be unified during application
-      let t2 = quote(s.ffi, list.length(env), body_ty, span)
-      
-      // Return the lambda value and its type (with hole that will be solved later)
-      #(VLam(implicit, name, env, body_quoted), VPi(implicit, name, env, t1_hole, t2), s)
+      let t2_pre = quote(s.ffi, list.length(env), body_ty, span)
+
+      // Collect free holes in the type (both domain and codomain)
+      let domain_holes = free_holes_in_value(s.sub, t1_hole)
+      let codomain_holes = free_holes_in_term_direct(t2_pre)
+      let all_holes = list.unique(list.append(domain_holes, codomain_holes))
+
+      // Filter to only holes created during this lambda's inference
+      let holes_to_generalize = list.filter(all_holes, fn(id) { id >= holes_before })
+
+      // Generate generalization: replace holes with implicit type variables
+      let #(generalized_implicit, generalized_t1, generalized_t2) =
+        generalize_holes(holes_to_generalize, implicit, t1_hole, t2_pre, s)
+
+      // Return the lambda value and its generalized type
+      #(VLam(implicit, name, env, body_quoted), VPi(generalized_implicit, name, env, generalized_t1, generalized_t2), s)
     }
     Pi(implicit, name, in_term, out_term, _) -> {
       let env = get_env(s)
