@@ -1,1 +1,1 @@
-0
+%call mul(%call add(%call mul(?-1, 2), 1), 3)
