@@ -680,13 +680,13 @@ pub fn tao_grammar() -> Grammar(Expr) {
         ],
         10,
       ),
-      // Unary operators (prefix)
+      // Unary operators (prefix) - right associative for chaining
       rule("Unary", [
-        // Prefix negation: -expr
+        // Prefix negation: -expr (can chain: --x)
         alt(
           seq([
             keyword_pattern("-"),
-            ref("Application"),
+            ref("Unary"),  // Reference Unary for chaining
           ]),
           fn(values) {
             case values {
@@ -695,11 +695,11 @@ pub fn tao_grammar() -> Grammar(Expr) {
             }
           },
         ),
-        // Prefix logical not: !expr
+        // Prefix logical not: !expr (can chain: !!x)
         alt(
           seq([
             keyword_pattern("!"),
-            ref("Application"),
+            ref("Unary"),  // Reference Unary for chaining
           ]),
           fn(values) {
             case values {
@@ -708,7 +708,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
             }
           },
         ),
-        // Or just the application
+        // Or just the application (base case)
         alt(ref("Application"), fn(values) {
           case values {
             [AstValue(e)] -> e
