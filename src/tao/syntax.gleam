@@ -12,7 +12,7 @@ import tao/ast.{
   type Expr as AstExpr, Var as AstVar, Lit as AstLit, BinOp as AstBinOpExpr,
   UnaryOp as AstUnaryOp, Lambda as AstLambda, Call as AstCall, Block as AstBlock,
   type BinOperator, OpAdd, OpSub, OpMul, OpDiv, OpEq, OpNeq, OpLt, OpGt, OpLte, OpGte, OpAnd, OpOr,
-  type UnaryOperator, OpNot,
+  type UnaryOperator, OpNot, OpNegate,
   Int as AstInt, String as AstString, type Param as AstParamType, Param as AstParam, TVar,
   BlockStmtExpr, BlockStmtLet, LetDecl, Immutable, Mutable, type BlockStatement,
   Match as AstMatch, MatchClause as AstMatchClause,
@@ -77,6 +77,8 @@ pub type BinOp {
 pub type UnaryOp {
   /// Logical: !
   Not
+  /// Arithmetic: -
+  OpNeg
 }
 
 /// Expression for Tao with overloading support.
@@ -317,6 +319,7 @@ fn expr_to_block_stmt(expr: Expr) -> BlockStatement {
 fn unaryop_to_ast(op: UnaryOp) -> UnaryOperator {
   case op {
     Not -> OpNot
+    OpNeg -> OpNegate
   }
 }
 
@@ -461,7 +464,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
   Grammar(
     name: "Tao",
     start: "Program",
-    tokens: ["Ident", "Number", "String", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow", "Slash", "Star", "Comma", "Equal", "Pipe"],
+    tokens: ["Ident", "Number", "String", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow", "Slash", "Star", "Comma", "Equal", "Pipe", "Semi"],
     keywords: ["fn", "let", "mut", "match", "if", "else", "type", "import", "export", "as", "comptime", "true", "false", "for", "in", "while", "loop", "break", "continue", "return", "yield"],
     operators: [
       // Logical operators (precedence 3)
@@ -484,11 +487,14 @@ pub fn tao_grammar() -> Grammar(Expr) {
       // Program = Stmt* (returned as list, no Block wrapper)
       rule("Program", [
         alt(
-          many(ref("Stmt")),
+          many(seq([
+            ref("Stmt"),
+            opt(token_pattern("Semi")),  // Optional semicolon separator
+          ])),
           fn(values) {
-            // many() returns a list of expressions (statements)
-            // Return as list - no Block wrapper needed
-            let stmts = extract_stmts(values, [])
+            // many() returns a list of (Stmt, opt(Semi)) pairs
+            // Extract statements and ignore semicolons
+            let stmts = extract_stmts_with_semicolons(values, [])
             // Return list directly - caller decides how to handle it
             // For single expression, return the expression itself
             // For multiple statements, return as Block
@@ -581,7 +587,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
               token_pattern("Ident"),  // type annotation (simple type name)
             ])),
             token_pattern("Equal"),
-            ref("Expr"),
+            opt(ref("Expr")),  // Optional expr for error recovery
           ]),
           fn(values) { make_let(values) },
         ),
@@ -676,6 +682,20 @@ pub fn tao_grammar() -> Grammar(Expr) {
       ),
       // Unary operators (prefix)
       rule("Unary", [
+        // Prefix negation: -expr
+        alt(
+          seq([
+            keyword_pattern("-"),
+            ref("Application"),
+          ]),
+          fn(values) {
+            case values {
+              [_, AstValue(expr)] -> UnaryOp(OpNeg, expr, merge_spans(Span("unary", 0, 0, 0, 0), get_span(expr)))
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+        // Prefix logical not: !expr
         alt(
           seq([
             keyword_pattern("!"),
@@ -688,6 +708,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
             }
           },
         ),
+        // Or just the application
         alt(ref("Application"), fn(values) {
           case values {
             [AstValue(e)] -> e
@@ -1304,6 +1325,33 @@ fn extract_stmts(values: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
   }
 }
 
+/// Extract statements from values that may include semicolons.
+/// Values are ListValue containing [Stmt, opt(Semicolon)]
+fn extract_stmts_with_semicolons(values: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
+  case values {
+    [] -> list.reverse(acc)
+    [ListValue(stmt_semi_list), ..rest] -> {
+      // stmt_semi_list contains [Stmt, opt(Semicolon)]
+      // Extract the statement (first element that's an AstValue)
+      case extract_first_ast_value(stmt_semi_list, None) {
+        Some(e) -> extract_stmts_with_semicolons(rest, [e, ..acc])
+        None -> extract_stmts_with_semicolons(rest, acc)
+      }
+    }
+    [_, ..rest] -> extract_stmts_with_semicolons(rest, acc)
+  }
+}
+
+/// Helper to extract the first AstValue from a list.
+fn extract_first_ast_value(values: List(Value(Expr)), found: Option(Expr)) -> Option(Expr) {
+  case values {
+    [] -> found
+    [AstValue(e), ..] -> Some(e)
+    [ListValue([AstValue(e)]), ..] -> Some(e)
+    [_, ..rest] -> extract_first_ast_value(rest, found)
+  }
+}
+
 /// Find the name token in a let binding.
 fn find_name(values: List(Value(Expr))) -> #(String, List(Value(Expr))) {
   case values {
@@ -1325,6 +1373,7 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
     Var(name, _) -> name
     BinOp(l, op, r, _) -> format_binop_op(l, op, r, parent_prec)
     UnaryOp(Not, e, _) -> "!" <> format_expr_loop(e, 100)
+    UnaryOp(OpNeg, e, _) -> "-" <> format_expr_loop(e, 100)
     OverloadedFn(name, _type_param, param_name, param_type, _return_type, _body, _) -> {
       "fn (" <> name <> ")(" <> param_name <> ": " <> param_type <> ") -> " <> param_type <> " { ... }"
     }

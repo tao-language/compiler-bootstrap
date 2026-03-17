@@ -2673,7 +2673,8 @@ pub fn get_missing_heads(
     [HLit(_), ..] -> [HAny]  // Literals: wildcard covers remaining values
     [HLitT(_), ..] -> [HAny]  // Literal types: wildcard covers remaining values
     [HRcd(_), ..] -> []  // Records are exhaustive
-    _ -> []  // Default: no missing heads
+    [] -> [HAny]  // No heads: wildcard covers everything
+    _ -> [HAny]  // Default: wildcard covers remaining
   }
 }
 
