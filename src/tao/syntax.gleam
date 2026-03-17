@@ -572,7 +572,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
             token_pattern("Ident"),  // name
             opt(seq([
               token_pattern("Colon"),
-              token_pattern("Ident"),  // type annotation
+              token_pattern("Ident"),  // type annotation (simple type name)
             ])),
             token_pattern("Equal"),
             ref("Expr"),
@@ -590,12 +590,16 @@ pub fn tao_grammar() -> Grammar(Expr) {
             token_pattern("LParen"),
             many(seq([
               token_pattern("Ident"),  // param name
+              opt(seq([
+                token_pattern("Colon"),
+                token_pattern("Ident"),  // param type annotation (simple type name)
+              ])),
               opt(token_pattern("Comma")),
             ])),
             token_pattern("RParen"),
             opt(seq([
               token_pattern("Arrow"),
-              token_pattern("Ident"),  // return type
+              token_pattern("Ident"),  // return type (simple type name)
             ])),
             ref("Block"),  // body
           ]),
@@ -611,10 +615,10 @@ pub fn tao_grammar() -> Grammar(Expr) {
             token_pattern("LParen"),
             token_pattern("Ident"),  // param name
             token_pattern("Colon"),
-            token_pattern("Ident"),  // param type
+            token_pattern("Ident"),  // param type (simple type name)
             token_pattern("RParen"),
             token_pattern("Arrow"),
-            token_pattern("Ident"),  // return type
+            token_pattern("Ident"),  // return type (simple type name)
             ref("Expr"),             // body
           ]),
           make_overloaded_fn,
@@ -738,16 +742,24 @@ pub fn tao_grammar() -> Grammar(Expr) {
             }
           },
         ),
-        // Inline lambda: fn(params) { body }
+        // Inline lambda: fn(params) { body } or fn(params) -> Type { body }
         alt(
           seq([
             keyword_pattern("fn"),
             token_pattern("LParen"),
             many(seq([
               token_pattern("Ident"),  // param name
+              opt(seq([
+                token_pattern("Colon"),
+                token_pattern("Ident"),  // type annotation (simple type name)
+              ])),
               opt(token_pattern("Comma")),
             ])),
             token_pattern("RParen"),
+            opt(seq([
+              token_pattern("Arrow"),
+              token_pattern("Ident"),  // return type (simple type name)
+            ])),
             ref("Block"),  // body
           ]),
           make_inline_lambda,
@@ -768,11 +780,15 @@ pub fn tao_grammar() -> Grammar(Expr) {
             _ -> Int(0, Span("error", 0, 0, 0, 0))
           }
         }),
-        // Match expression: match scrutinee { | pattern -> body }
+        // Match expression: match scrutinee { | pattern -> body } or match scrutinee -> Type { ... }
         alt(
           seq([
             keyword_pattern("match"),
             ref("Expr"),  // scrutinee
+            opt(seq([
+              token_pattern("Arrow"),
+              token_pattern("Ident"),  // result type annotation (simple type name)
+            ])),
             token_pattern("LBrace"),
             many(seq([
               token_pattern("Pipe"),  // |
@@ -867,11 +883,13 @@ fn make_simple_fn(values) -> Expr {
   }
 
   // Extract params from many result
-  // Structure: [fn, name, (, ListValue([ListValue([Ident, opt(Comma)]), ...]), ), opt([->, type]), block]
+  // Structure: [fn, name, (, ListValue([Ident, opt([":", Type])]), ...), ), opt([->, Type]), block]
   let params = case values {
     [_, _, _, ListValue(params_many), ..] -> {
-      // Each param in params_many is a ListValue([TokenValue(name), opt(Comma)])
-      extract_params_from_many(params_many, [])
+      // Each param in params_many is either:
+      // - ListValue([TokenValue(name), opt(Comma)]) - no type
+      // - ListValue([TokenValue(name), ":", AstValue(type), opt(Comma)]) - with type
+      extract_params_from_many_with_types(params_many, [])
     }
     _ -> []
   }
@@ -892,15 +910,14 @@ fn make_inline_lambda(values) -> Expr {
     _ -> panic as "Expected lambda body"
   }
 
-  // Extract params: [fn, (, ListValue([ListValue([Ident, opt(Comma)]), ...]), ), block]
+  // Extract params: [fn, (, ListValue(params), ), opt(Arrow, Type), Block]
   let params = case values {
-    [_, _, ListValue(params_many), _, _] -> {
+    [_, _, ListValue(params_many), _, ..] -> {
       extract_params_from_many(params_many, [])
     }
     _ -> []
   }
 
-  let body_span = get_expr_span(body_expr)
   let span = case values {
     [KeywordValue(k), ..] -> {
       let Token(_, _, _, _, line, column) = k
@@ -913,7 +930,8 @@ fn make_inline_lambda(values) -> Expr {
 
 /// Helper to create match expression AST.
 fn make_match(values) -> Expr {
-  // The structure is: [match_kw, scrut, LBrace, pipe1, pattern1, (opt: if, guard), arrow1, body1, ...]
+  // The structure is: [match_kw, scrut, opt(Arrow, Type), LBrace, ListValue(clauses), ListValue(more), RBrace]
+  // or: [match_kw, scrut, LBrace, ListValue(clauses), RBrace]
   // We need to find the RBrace at the end and extract clauses
 
   // First, find the scrutinee (should be the second element, an AstValue)
@@ -928,21 +946,27 @@ fn make_match(values) -> Expr {
     _ -> panic as "Match: expected keyword"
   }
 
-  // Extract clauses: try both ListValue-wrapped and flat structures
-  // The structure might be: [match, scrut, LBrace, ListValue(clauses), ListValue(more), RBrace]
-  // or: [match, scrut, LBrace, ListValue(clauses), RBrace]
+  // Extract clauses: try different structures based on optional type annotation
+  // With type: [match, scrut, Arrow, Type, LBrace, ListValue, ListValue, RBrace]
+  // Without type: [match, scrut, LBrace, ListValue, ListValue, RBrace]
   let clauses = case values {
-    [_, _, _, ListValue(clause_values1), ListValue(clause_values2), _] -> {
+    [_, _, _, _, TokenValue(lbrace), ListValue(clause_values1), ListValue(clause_values2), _] if lbrace.value == "{" -> {
       list.append(extract_clauses(clause_values1, []), extract_clauses(clause_values2, []))
     }
-    [_, _, _, ListValue(clause_values), _] -> {
+    [_, _, TokenValue(lbrace), ListValue(clause_values1), ListValue(clause_values2), _] if lbrace.value == "{" -> {
+      list.append(extract_clauses(clause_values1, []), extract_clauses(clause_values2, []))
+    }
+    [_, _, _, _, TokenValue(lbrace), ListValue(clause_values), _] if lbrace.value == "{" -> {
+      extract_clauses(clause_values, [])
+    }
+    [_, _, TokenValue(lbrace), ListValue(clause_values), _] if lbrace.value == "{" -> {
       extract_clauses(clause_values, [])
     }
     _ -> {
       extract_match_clauses(values, [])
     }
   }
-  
+
   let start_span = Span("tao", match_kw.line, match_kw.column, match_kw.line, match_kw.column + 5)
   let end_span = get_expr_span(scrut)
   let full_span = Span(start_span.file, start_span.start_line, start_span.start_col, end_span.end_line, end_span.end_col)
@@ -1084,6 +1108,25 @@ fn extract_params_from_many(params_many: List(Value(Expr)), acc: List(#(String, 
   }
 }
 
+/// Extract params with type annotations from many result.
+/// Each param is: ListValue([TokenValue(name), opt([":", TokenValue(type_name)])])
+fn extract_params_from_many_with_types(params_many: List(Value(Expr)), acc: List(#(String, Option(String)))) -> List(#(String, Option(String))) {
+  case params_many {
+    [] -> list.reverse(acc)
+    [ListValue(items), ..rest] -> {
+      // Each param is [TokenValue(name), opt([":", TokenValue(type_name)])]
+      case items {
+        [TokenValue(name_tok), TokenValue(_colon), TokenValue(type_tok), ..] ->
+          extract_params_from_many_with_types(rest, [#(name_tok.value, Some(type_tok.value)), ..acc])
+        [TokenValue(name_tok), ..] ->
+          extract_params_from_many_with_types(rest, [#(name_tok.value, None), ..acc])
+        _ -> extract_params_from_many_with_types(rest, acc)
+      }
+    }
+    [_, ..rest] -> extract_params_from_many_with_types(rest, acc)
+  }
+}
+
 fn extract_params(param_list: List(Value(Expr)), acc: List(#(String, Option(String)))) -> List(#(String, Option(String))) {
   case param_list {
     [] -> list.reverse(acc)
@@ -1177,12 +1220,12 @@ fn make_import(values) -> Expr {
 /// Helper to create let binding AST.
 fn make_let(values) -> Expr {
   // The grammar sequence is:
-  //   ["let", opt("mut"), name, opt([":", type]), "=", expr]
-  // opt() includes/excludes values (no Option wrapper)
+  //   ["let", opt("mut"), name, opt([":", Type]), "=", expr]
+  // Type returns a String (the type name)
   // So we get either:
-  //   With mut and type: ["let", "mut", name, ":", type, "=", expr] (7 values)
+  //   With mut and type: ["let", "mut", name, ":", type_string, "=", expr] (7 values)
   //   With mut only:     ["let", "mut", name, "=", expr] (5 values)
-  //   With type only:    ["let", name, ":", type, "=", expr] (6 values)
+  //   With type only:    ["let", name, ":", type_string, "=", expr] (6 values)
   //   Neither:           ["let", name, "=", expr] (4 values)
 
   // Check for "mut" keyword
@@ -1205,7 +1248,7 @@ fn make_let(values) -> Expr {
       // Has type: skip ":" and type token, then skip "="
       let without_colon = list.drop(rest_after_name, 1)
       let type_tok = case list.first(without_colon) {
-        Ok(TokenValue(t)) -> Some(t.value)
+        Ok(TokenValue(t)) -> Some(t.value)  // Simple type name
         _ -> None
       }
       let without_type = list.drop(without_colon, 1)

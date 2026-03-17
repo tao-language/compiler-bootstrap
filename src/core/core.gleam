@@ -1128,6 +1128,75 @@ fn quote_head(lvl: Int, head: Head, s: Span) -> Term {
 // solutions in the substitution. It implements higher-order unification with
 // an occurs check to prevent infinite types.
 
+/// Collect all free hole IDs in a value (after forcing the substitution).
+pub fn free_holes(sub: Subst, value: Value) -> List(Int) {
+  free_holes_value(sub, value)
+}
+
+/// Collect free hole IDs in a value (alias for free_holes).
+pub fn free_holes_value(sub: Subst, value: Value) -> List(Int) {
+  case force([], sub, value) {
+    VTyp(_) | VLit(_) | VLitT(_) | VErr | VUnit -> []
+    VNeut(HHole(hole_id), spine) ->
+      list.append([hole_id], list.flat_map(spine, free_holes_elim(sub, _)))
+    VNeut(_, spine) -> list.flat_map(spine, free_holes_elim(sub, _))
+    VRcd(fields) -> list.flat_map(fields, fn(kv) { free_holes_value(sub, kv.1) })
+    VCtrValue(VCtr(_, arg)) -> free_holes_value(sub, arg)
+    VLam(_, _, env, body) ->
+      list.append(list.flat_map(env, free_holes_value(sub, _)), free_holes_term(sub, body))
+    VPi(_, _, env, in_val, out_term) ->
+      list.append(
+        list.flat_map(env, free_holes_value(sub, _)),
+        list.append(free_holes_value(sub, in_val), free_holes_term(sub, out_term))
+      )
+    VCall(_, args) -> list.flat_map(args, free_holes_value(sub, _))
+    VFix(_, env, body) ->
+      list.append(list.flat_map(env, free_holes_value(sub, _)), free_holes_term(sub, body))
+    VRecord(fields) -> list.flat_map(fields, fn(kv) { free_holes_value(sub, kv.1) })
+  }
+}
+
+/// Collect free hole IDs in a term.
+fn free_holes_term(sub: Subst, term: Term) -> List(Int) {
+  case term {
+    Typ(_, _) | Lit(_, _) | LitT(_, _) | Var(_, _) | Hole(_, _) | Err(_, _) | Unit(_) -> []
+    Rcd(fields, _) -> list.flat_map(fields, fn(kv) { free_holes_term(sub, kv.1) })
+    Ctr(_, arg, _) -> free_holes_term(sub, arg)
+    Dot(arg, _, _) -> free_holes_term(sub, arg)
+    Ann(term, typ, _) -> list.append(free_holes_term(sub, term), free_holes_term(sub, typ))
+    Lam(_, _, body, _) -> free_holes_term(sub, body)
+    Pi(_, _, in_term, out_term, _) ->
+      list.append(free_holes_term(sub, in_term), free_holes_term(sub, out_term))
+    App(fun, implicit, arg, _) ->
+      list.append(
+        free_holes_term(sub, fun),
+        list.append(list.flat_map(implicit, free_holes_term(sub, _)), free_holes_term(sub, arg))
+      )
+    Match(arg, motive, cases, _) ->
+      list.append(
+        free_holes_term(sub, arg),
+        list.append(free_holes_term(sub, motive), list.flat_map(cases, fn(c) { free_holes_term(sub, c.body) }))
+      )
+    Call(_, args, _) -> list.flat_map(args, free_holes_term(sub, _))
+    Comptime(term, _) -> free_holes_term(sub, term)
+    Fix(_, body, _) -> free_holes_term(sub, body)
+  }
+}
+
+/// Collect free holes in an elimination (spine element).
+fn free_holes_elim(sub: Subst, elim: Elim) -> List(Int) {
+  case elim {
+    EDot(_) -> []
+    EApp(arg) -> free_holes(sub, arg)
+    EAppImplicit(arg) -> free_holes(sub, arg)
+    EMatch(env, motive, cases) ->
+      list.append(
+        list.flat_map(env, free_holes(sub, _)),
+        free_holes(sub, motive)
+      )
+  }
+}
+
 /// Check if a value contains a specific hole (occurs check).
 ///
 /// This prevents infinite types like ?0 = ?0 → ?0 by checking if the hole
@@ -1162,6 +1231,26 @@ pub fn occurs_elim(sub: Subst, id: Int, elim: Elim) -> Bool {
   }
 }
 
+/// Build a generalized Pi type by wrapping in implicit Pi for each hole.
+/// 
+/// For now, this just returns the original Pi type. Proper generalization
+/// requires substituting holes with bound variables, which is complex.
+fn build_generalized_pi(
+  holes: List(Int),
+  implicit: List(String),
+  param_name: String,
+  env: Env,
+  domain: Value,
+  codomain: Term,
+  span: Span,
+  s: State,
+) -> Type {
+  // TODO: Implement proper generalization
+  // For now, just return the Pi type as-is
+  // The holes will be solved by unification during application
+  VPi(implicit, param_name, env, domain, codomain)
+}
+
 /// Unify two values, solving metavariables and accumulating solutions.
 ///
 /// Returns Ok(state) with updated substitution if unification succeeds.
@@ -1191,11 +1280,20 @@ pub fn unify(
     VNeut(HHole(id), []), _ ->
       case list.key_find(s.sub, id) {
         Ok(v) -> unify(s, v, v2, s1, s2)
-        Error(Nil) ->
-          case occurs(s.sub, id, v2) {
-            True -> Error(InfiniteType(id, v2, s1, s2))
-            False -> Ok(State(..s, sub: [#(id, v2), ..s.sub]))
+        Error(Nil) -> {
+          // Check if we're unifying the hole with itself (already equal)
+          case v2 {
+            VNeut(HHole(id2), []) if id == id2 -> Ok(s)  // Same hole, already unified
+            _ -> {
+              // Check if the hole occurs in v2
+              // (we already handled the case where v2 is the same hole above)
+              case occurs(s.sub, id, v2) {
+                True -> Error(InfiniteType(id, v2, s1, s2))
+                False -> Ok(State(..s, sub: [#(id, v2), ..s.sub]))
+              }
+            }
           }
+        }
       }
     _, VNeut(HHole(_), []) -> unify(s, v2, v1, s2, s1)
     VNeut(h1, spine1), VNeut(h2, spine2) if h1 == h2 ->
@@ -1407,18 +1505,34 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(val, s) = check(s, term, ty_val, get_span(term_ty))
       #(val, ty_val, s)
     }
-    Lam(implicit, param, body, _) -> {
-      // For lambda inference, we create a hole for the domain type
+    Lam(implicit, param, body, span) -> {
+      // For lambda inference with generalization:
+      // 1. Create a hole for the domain type
+      // 2. Infer the body type
+      // 3. Generalize over free holes in the result type
       let #(name, _) = param
       let env = get_env(s)
+      let holes_before = s.hole
       let #(t1_hole, s) = new_hole(s)
       let #(_fresh, s) = def_var(s, name, t1_hole)
       let #(body_val, body_ty, s) = infer(s, body)
-      // Quote the body back to preserve structure even if there are errors
-      let body_quoted = quote(s.ffi, list.length(env), body_val, get_span(body))
+      
+      // Collect free holes in the body type
+      let free_holes_in_body = free_holes_value(s.sub, body_ty)
+      
+      // Holes to generalize: free holes in body that weren't in context before
+      // (i.e., holes created during this lambda's inference)
+      let holes_to_generalize = list.filter(free_holes_in_body, fn(id) { id >= holes_before })
+      
+      // Quote the body and domain
+      let body_quoted = quote(s.ffi, list.length(env), body_val, span)
       let t1 = force(s.ffi, s.sub, t1_hole)
-      let t2 = quote(s.ffi, list.length(env), body_ty, get_span(body))
-      #(VLam(implicit, name, env, body_quoted), VPi(implicit, name, env, t1, t2), s)
+      
+      // Build the result type, wrapping in Pi for each generalized hole
+      let result_type = build_generalized_pi(holes_to_generalize, implicit, name, env, t1, body_quoted, span, s)
+      
+      // Return the lambda value and its generalized type
+      #(VLam(implicit, name, env, body_quoted), result_type, s)
     }
     Pi(implicit, name, in_term, out_term, _) -> {
       let env = get_env(s)
@@ -1524,6 +1638,7 @@ fn infer_app(
       // Hole expansion: ?1 applied to arg means ?1 = (?2 -> ?3)
       let env = get_env(s)
       let #(arg_ty_hole_val, s) = new_hole(s)
+      let arg_ty_hole_id = s.hole - 1
       let result_ty_hole_id = s.hole
       let #(result_ty_hole_val, s) = new_hole(s)
       // Create the expanded function type: (?2 -> ?3)
@@ -1834,19 +1949,103 @@ pub fn bind_pattern(
 /// ERROR HANDLING: On error, records the error in state and returns VErr,
 /// allowing checking to continue. This is how error recovery is implemented.
 ///
-/// Note: This function now delegates entirely to infer + unify. The bidirectional
-/// structure is kept for API clarity and future extensions, but currently all
-/// terms follow the same infer-then-unify pattern.
+/// For lambdas, we use the expected type to check the body directly,
+/// which avoids the infinite type problem that arises from infer-then-unify.
+/// For all other terms, we infer the type and unify with the expected type.
 pub fn check(
   s: State,
   term: Term,
   expected_ty: Type,
   ty_span: Span,
 ) -> #(Value, State) {
-  let #(value, inferred_ty, s) = infer(s, term)
-  case unify(s, inferred_ty, expected_ty, get_span(term), ty_span) {
-    Ok(s) -> #(force(s.ffi, s.sub, value), s)
-    Error(e) -> #(VErr, with_err(s, e))
+  case term {
+    // Special case for lambdas: use expected type to check body directly
+    Lam(implicit, param, body, span) -> {
+      check_lam(s, implicit, param, body, expected_ty, span, ty_span)
+    }
+    // For all other terms, infer then unify
+    _ -> {
+      let #(value, inferred_ty, s) = infer(s, term)
+      case unify(s, inferred_ty, expected_ty, get_span(term), ty_span) {
+        Ok(s) -> #(force(s.ffi, s.sub, value), s)
+        Error(e) -> #(VErr, with_err(s, e))
+      }
+    }
+  }
+}
+
+/// Check a lambda against an expected function type.
+///
+/// This implements the bidirectional type checking rule for lambdas:
+/// To check λx. body against A → B, check body against B with x : A.
+///
+/// If the expected type is a hole or not a function type, we fall back
+/// to infer-then-unify (which may fail with infinite type error).
+fn check_lam(
+  s: State,
+  implicit: List(String),
+  param: #(String, Term),
+  body: Term,
+  expected_ty: Type,
+  span: Span,
+  ty_span: Span,
+) -> #(Value, State) {
+  let #(name, _param_ty) = param
+  let env = get_env(s)
+  
+  case expected_ty {
+    VPi(_, _, pi_env, domain, codomain) -> {
+      // Expected type is a function type A → B
+      // Check the body against B with x : A
+      let domain_val = force(s.ffi, s.sub, domain)
+      let #(_fresh, s) = def_var(s, name, domain_val)
+      // Evaluate codomain in the extended context
+      let codomain_val = eval(s.ffi, [domain_val, ..pi_env], codomain)
+      let #(body_val, s) = check(s, body, codomain_val, ty_span)
+
+      // Quote the body and domain for the lambda value
+      let body_quoted = quote(s.ffi, list.length(env), body_val, span)
+      let domain_quoted = quote(s.ffi, list.length(env), domain_val, span)
+
+      let lam_val = VLam(implicit, name, env, body_quoted)
+      #(lam_val, s)
+    }
+    VNeut(HHole(hole_id), []) -> {
+      // Expected type is a hole - expand it to a function type
+      let #(domain_hole, s) = new_hole(s)
+      let codomain_hole_id = s.hole
+      let #(codomain_hole, s) = new_hole(s)
+      
+      // Create expanded function type: domain_hole → codomain_hole
+      let fun_ty_expanded = VPi(implicit, name, env, domain_hole, Hole(codomain_hole_id, span))
+      
+      // Unify the original hole with the expanded type
+      case unify(s, VNeut(HHole(hole_id), []), fun_ty_expanded, span, ty_span) {
+        Ok(s1) -> {
+          // Now check the body with the domain
+          let domain_val = force(s1.ffi, s1.sub, domain_hole)
+          let #(_fresh, s2) = def_var(s1, name, domain_val)
+          // The codomain is a hole value
+          let #(body_val, s3) = check(s2, body, codomain_hole, ty_span)
+          
+          // Quote the body and domain
+          let body_quoted = quote(s3.ffi, list.length(env), body_val, span)
+          let domain_quoted = quote(s3.ffi, list.length(env), domain_val, span)
+          
+          let lam_val = VLam(implicit, name, env, body_quoted)
+          #(lam_val, s3)
+        }
+        Error(e) -> #(VErr, with_err(s, e))
+      }
+    }
+    _ -> {
+      // Expected type is not a function type - fall back to infer-then-unify
+      let #(value, inferred_ty, s) = infer(s, Lam(implicit, param, body, span))
+      case unify(s, inferred_ty, expected_ty, span, ty_span) {
+        Ok(s) -> #(force(s.ffi, s.sub, value), s)
+        Error(e) -> #(VErr, with_err(s, e))
+      }
+    }
   }
 }
 
