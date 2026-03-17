@@ -10,7 +10,7 @@
 /// gleam run --help                         # Show help
 /// ```
 import argv
-import core/core.{type Term, type Error as TypeError, type State, initial_state, infer, eval, quote, Err}
+import core/core.{type Term, type Error as TypeError, type State, initial_state, infer, eval, quote, Err, force}
 import core/syntax as core_syntax
 import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var as TaoVar, Int as TaoInt, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, Str as TaoStr, expr_to_ast}
 import tao/desugar.{desugar_module}
@@ -650,10 +650,12 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   let env = []
   let ffi = initial_state.ffi
   let value = eval(ffi, env, parse_result.ast)
+  // Force the value with the substitution from type checking to solve any holes
+  let forced_value = force(ffi, type_state.sub, value)
 
   // Quote back to normal form
   let span = Span("", 0, 0, 0, 0)
-  let normal_form = quote(ffi, 0, value, span)
+  let normal_form = quote(ffi, 0, forced_value, span)
 
   // Format and print the result
   let formatted = core_syntax.format(normal_form)
@@ -770,10 +772,12 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   let env = []
   let ffi = initial_state.ffi
   let value = eval(ffi, env, term)
+  // Force the value with the substitution from type checking to solve any holes
+  let forced_value = force(ffi, type_state.sub, value)
 
   // Quote back to normal form
   let span = Span("", 0, 0, 0, 0)
-  let normal_form = quote(ffi, 0, value, span)
+  let normal_form = quote(ffi, 0, forced_value, span)
 
   // Format and print the result
   let formatted = core_syntax.format(normal_form)

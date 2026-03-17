@@ -1552,9 +1552,10 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
     CoreModuleRef(_path, span) -> Var(index: 0, span: span)
     CoreLam(param, body, span) -> {
       // Add parameter to environment for the body
+      // Use a hole for the parameter type to enable type inference
       Lam(
         implicit: [],
-        param: #(param, Typ(universe: 0, span: span)),
+        param: #(param, Hole(-1, span)),
         body: core_term_to_term_loop(body, [param, ..env]),
         span: span,
       )

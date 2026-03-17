@@ -186,6 +186,54 @@ pub fn unify_verr_test() {
   c.unify(s, c.VErr, c.VErr, s1, s2) |> should.equal(Ok(s))
 }
 
+pub fn unify_hole_with_itself_test() {
+  // A hole unifying with itself should succeed (no infinite type error)
+  // This is critical for lambda type inference: λx. x should work
+  c.unify(s, vhole(0), vhole(0), s1, s2) |> should.equal(Ok(s))
+}
+
+pub fn unify_hole_with_neutral_hole_test() {
+  // Hole unifying with neutral term containing same hole should fail
+  let val = c.VNeut(c.HHole(0), [c.EApp(v32t)])
+  c.unify(s, vhole(0), val, s1, s2)
+  |> should.equal(Error(c.InfiniteType(0, val, s1, s2)))
+}
+
+pub fn unify_hole_with_different_hole_test() {
+  // Two different holes should unify (first solves to second)
+  let result = c.unify(s, vhole(0), vhole(1), s1, s2)
+  case result {
+    Ok(s) -> {
+      // Hole 0 should be solved to hole 1
+      list.key_find(s.sub, 0) |> should.equal(Ok(vhole(1)))
+    }
+    Error(_) -> should.fail()
+  }
+}
+
+pub fn unify_pi_with_holes_test() {
+  // Pi types with holes should unify correctly
+  let v1 = c.VPi([], "x", [], vhole(0), c.Var(0, s1))
+  let v2 = c.VPi([], "x", [], v32t, c.Var(0, s1))
+  let result = c.unify(s, v1, v2, s1, s2)
+  case result {
+    Ok(s) -> {
+      // Hole 0 should be solved to I32 type
+      list.key_find(s.sub, 0) |> should.equal(Ok(v32t))
+    }
+    Error(_) -> should.fail()
+  }
+}
+
+pub fn unify_lam_with_holes_test() {
+  // Lambda types with holes should unify
+  let env = []
+  let v1 = c.VLam([], "x", env, c.Var(0, s1))
+  let v2 = c.VLam([], "y", env, c.Var(0, s1))
+  c.unify(s, v1, v2, s1, s2)
+  |> should.equal(Ok(c.State(..s, var: 1)))
+}
+
 // ============================================================================
 // QUOTE TESTS
 // ============================================================================
