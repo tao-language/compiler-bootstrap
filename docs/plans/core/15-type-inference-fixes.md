@@ -390,13 +390,20 @@ Start with **Phase 1 (Lambda Generalization)** as it:
 
 | Phase | Before | After | Improvement |
 |-------|--------|-------|-------------|
-| Start | 502 passing, 14 failures | 515 passing, 1 failure | +13 tests |
+| Start | 502 passing, 14 failures | 514 passing, 2 failures | +12 tests |
+
+### Remaining Failures (2)
+
+1. **`unify_pi_with_holes_test`** - Tests Pi type unification with holes. Currently fails because state threading in VPi unification is only implemented for non-empty implicit params. Full implementation requires fixing state threading for all cases without breaking existing code.
+
+2. **`lam_infer_unknown_test`** - Pattern match failure due to context structure differences. The test logic is correct but the expected context structure needs updating.
 
 ### Next Steps
 
-1. Debug `unify_pi_with_holes_test` failure
-2. Proceed with Phase 2 (Match Expression Inference) - 6 tests
-3. Proceed with Phase 4 (Dependent Pattern Matching) - 4 tests
+1. Fix `unify_pi_with_holes_test` by implementing full state threading in VPi unification
+2. Fix `lam_infer_unknown_test` by updating expected context structure
+3. Proceed with Phase 2 (Match Expression Inference) - 6 tests
+4. Proceed with Phase 4 (Dependent Pattern Matching) - 4 tests
 
 ---
 

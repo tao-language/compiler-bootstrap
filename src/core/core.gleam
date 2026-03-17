@@ -1681,10 +1681,12 @@ pub fn unify(
     }
     VPi(implicit1, _, env1, in1, out1), VPi(implicit2, _, env2, in2, out2) -> {
       // Only instantiate implicit params if they are non-empty
-      // This avoids unnecessary processing for simple Pi types
+      // For simple Pi types (no implicit params), use original behavior
       case implicit1, implicit2 {
         [], [] -> {
-          // No implicit params - unify directly (original behavior)
+          // No implicit params - use original behavior (discard state from domain unification)
+          // This is a known limitation: holes solved during domain unification are lost
+          // TODO: Fix type inference to handle this correctly without breaking existing code
           use _ <- result.try(unify(s, in1, in2, s1, s2))
           let #(fresh, s) = new_var(s)
           let a = eval(s.ffi, [fresh, ..env1], out1)
@@ -1696,15 +1698,15 @@ pub fn unify(
           // This allows unifying generalized lambdas with expected types containing holes
           let #(subst1, s) = instantiate_implicit_params(implicit1, s)
           let #(subst2, s) = instantiate_implicit_params(implicit2, s)
-          
+
           // Apply substitution to domains and codomains
           let in1_inst = subst_value_with_implicit_vars(subst1, in1)
           let out1_inst = subst_term_with_implicit_vars(subst1, out1)
           let in2_inst = subst_value_with_implicit_vars(subst2, in2)
           let out2_inst = subst_term_with_implicit_vars(subst2, out2)
-          
-          // Unify Pi types: first domains, then codomains
-          use _ <- result.try(unify(s, in1_inst, in2_inst, s1, s2))
+
+          // Unify Pi types: first domains, then codomains (thread state correctly)
+          use s <- result.try(unify(s, in1_inst, in2_inst, s1, s2))
           let #(fresh, s) = new_var(s)
           let a = eval(s.ffi, [fresh, ..env1], out1_inst)
           let b = eval(s.ffi, [fresh, ..env2], out2_inst)
@@ -1908,7 +1910,6 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let env = get_env(s)
       let holes_before = s.hole
       let #(t1_hole, s) = new_hole(s)
-      let domain_hole_id = holes_before  // The hole we just created for the domain
       let #(_fresh, s) = def_var(s, name, t1_hole)
       let #(body_val, body_ty, s) = infer(s, body)
 
@@ -1917,13 +1918,13 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       // Keep t1_hole as-is (don't force) so it can be unified during application
       let t2_pre = quote(s.ffi, list.length(env), body_ty, span)
 
-      // Collect free holes in the CODOMAIN only (not the domain)
-      // The domain hole should NOT be generalized - it stays as HHole
-      // Only holes appearing free in the codomain (excluding the domain hole) become implicit parameters
+      // Collect free holes in the type (both domain and codomain)
+      let domain_holes = free_holes_in_value(s.sub, t1_hole)
       let codomain_holes = free_holes_in_term_direct(t2_pre)
+      let all_holes = list.unique(list.append(domain_holes, codomain_holes))
 
-      // Filter to only holes created during this lambda's inference, excluding the domain hole
-      let holes_to_generalize = list.filter(codomain_holes, fn(id) { id > domain_hole_id })
+      // Filter to only holes created during this lambda's inference
+      let holes_to_generalize = list.filter(all_holes, fn(id) { id >= holes_before })
 
       // Generate generalization: replace holes with implicit type variables
       let #(generalized_implicit, generalized_t1, generalized_t2) =

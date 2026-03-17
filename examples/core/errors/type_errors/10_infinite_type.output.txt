@@ -7,7 +7,7 @@ error[E0107]: Infinite type
                     ^ -
 6 │ f
 7 │ 
-  = note: Hole #2 would create an infinite type
+  = note: Hole #3 would create an infinite type
   = note: This happens when a type refers to itself
   = note: Infinite types like T = T -> ? are not allowed
   = hint: Check for recursive type definitions
