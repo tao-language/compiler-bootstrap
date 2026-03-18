@@ -17,6 +17,7 @@ import tao/ast.{
   BlockStmtExpr, BlockStmtLet, LetDecl, Immutable, Mutable, type BlockStatement,
   Match as AstMatch, MatchClause as AstMatchClause,
   type Pattern as AstPattern, PAny, PVar as AstPVar, PLit as AstPLit, PCtr as AstPCtr,
+  type Type as AstType, TFn, TApp, TRecord, TTuple, THole,
 }
 import tao/import_ast.{type Import, ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias, ImportWildcard, type ImportItem, ImportName, ImportType, ImportOperator}
 import gleam/int
@@ -620,6 +621,55 @@ pub fn tao_grammar() -> Grammar(Expr) {
           make_import,
         ),
       ]),
+      // Type = Ident | "fn" "(" [Type ("," Type)*] ")" "->" Type | Ident "(" [Type ("," Type)*] ")"
+      rule("Type", [
+        // Simple type: I32, String, etc. - check first to avoid matching as generic
+        alt(
+          token_pattern("Ident"),
+          fn(v) {
+            case v {
+              [TokenValue(t)] -> Var(t.value, Span(t.kind, t.line, t.column, t.line, t.column))
+              _ -> Var("Unknown", Span("unknown", 0, 0, 0, 0))
+            }
+          },
+        ),
+        // Function type: fn(I32, I32) -> I32 - return dummy expr, helper extracts from values
+        alt(
+          seq([
+            keyword_pattern("fn"),
+            token_pattern("LParen"),
+            opt(seq([
+              ref("Type"),
+              many(seq([
+                token_pattern("Comma"),
+                ref("Type"),
+              ])),
+            ])),
+            token_pattern("RParen"),
+            token_pattern("Arrow"),
+            ref("Type"),
+          ]),
+          fn(values) { Var("fn_type", Span("type", 0, 0, 0, 0)) },  // Dummy expr
+        ),
+        // Generic type: List(Int) - return dummy expr with actual type name
+        alt(
+          seq([
+            token_pattern("Ident"),
+            opt(seq([
+              token_pattern("LParen"),
+              sep1(ref("Type"), token_pattern("Comma")),
+              token_pattern("RParen"),
+            ])),
+          ]),
+          fn(values) {
+            // Extract the type name from the first token
+            case values {
+              [TokenValue(t), ..] -> Var(t.value, Span(t.kind, t.line, t.column, t.line, t.column))
+              _ -> Var("generic_type", Span("type", 0, 0, 0, 0))
+            }
+          },
+        ),
+      ]),
       // Let = "let" ["mut"] Ident [":" Type] "=" Expr
       rule("Let", [
         alt(
@@ -629,7 +679,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
             token_pattern("Ident"),  // name
             opt(seq([
               token_pattern("Colon"),
-              token_pattern("Ident"),  // type annotation (simple type name)
+              ref("Type"),  // type annotation
             ])),
             token_pattern("Equal"),
             opt(ref("Expr")),  // Optional expr for error recovery
@@ -688,14 +738,14 @@ pub fn tao_grammar() -> Grammar(Expr) {
               token_pattern("Ident"),  // param name
               opt(seq([
                 token_pattern("Colon"),
-                token_pattern("Ident"),  // param type annotation (simple type name)
+                ref("Type"),  // param type annotation
               ])),
               opt(token_pattern("Comma")),
             ])),
             token_pattern("RParen"),
             opt(seq([
               token_pattern("Arrow"),
-              token_pattern("Ident"),  // return type (simple type name)
+              ref("Type"),  // return type
             ])),
             ref("Block"),  // body
           ]),
@@ -711,10 +761,10 @@ pub fn tao_grammar() -> Grammar(Expr) {
             token_pattern("LParen"),
             token_pattern("Ident"),  // param name
             token_pattern("Colon"),
-            token_pattern("Ident"),  // param type (simple type name)
+            ref("Type"),  // param type
             token_pattern("RParen"),
             token_pattern("Arrow"),
-            token_pattern("Ident"),  // return type (simple type name)
+            ref("Type"),  // return type
             ref("Expr"),             // body
           ]),
           make_overloaded_fn,
@@ -1002,18 +1052,40 @@ fn make_simple_fn(values) -> Expr {
     [_, _, _, ListValue(params_many), ..] -> {
       // Each param in params_many is either:
       // - ListValue([TokenValue(name), opt(Comma)]) - no type
-      // - ListValue([TokenValue(name), ":", AstValue(type), opt(Comma)]) - with type
+      // - ListValue([TokenValue(name), ":", TokenValue(type), opt(Comma)]) - with type
       extract_params_from_many_with_types(params_many, [])
     }
     _ -> []
   }
 
-  // Return type is parsed but not used yet (type inference handles it)
-  let return_type = None
+  // Return type - extract from opt([Arrow, TokenValue(type_string)])
+  // The structure varies based on whether params and return type are present
+  let return_type = extract_return_type_from_values(values)
 
   let body_span = get_expr_span(body_expr)
   let span = merge_spans(span_from_token(name_token, "tao"), body_span)
   SimpleFn(name_token.value, params, return_type, body_expr, span)
+}
+
+/// Extract return type from function values.
+fn extract_return_type_from_values(values: List(Value(Expr))) -> Option(String) {
+  case find_arrow_and_return_type(values, False) {
+    Some(type_values) -> Some(reconstruct_type_string(type_values))
+    None -> None
+  }
+}
+
+fn find_arrow_and_return_type(values: List(Value(Expr)), found_arrow: Bool) -> Option(List(Value(Expr))) {
+  case values {
+    [] -> None
+    [TokenValue(t), ..rest] -> {
+      case t.value == "->" {
+        True -> Some(rest)  // Return everything after "->"
+        False -> find_arrow_and_return_type(rest, False)
+      }
+    }
+    [_, ..rest] -> find_arrow_and_return_type(rest, False)
+  }
 }
 
 /// Helper to create inline lambda AST.
@@ -1223,21 +1295,65 @@ fn extract_params_from_many(params_many: List(Value(Expr)), acc: List(#(String, 
 }
 
 /// Extract params with type annotations from many result.
-/// Each param is: ListValue([TokenValue(name), opt([":", TokenValue(type_name)])])
+/// Each param is: ListValue([TokenValue(name), opt([":", TypeRuleResult])])
+/// TypeRuleResult contains nested structure with full type info
 fn extract_params_from_many_with_types(params_many: List(Value(Expr)), acc: List(#(String, Option(String)))) -> List(#(String, Option(String))) {
   case params_many {
     [] -> list.reverse(acc)
     [ListValue(items), ..rest] -> {
-      // Each param is [TokenValue(name), opt([":", TokenValue(type_name)])]
+      // Each param is [TokenValue(name), opt([":", TypeResult])]
       case items {
-        [TokenValue(name_tok), TokenValue(_colon), TokenValue(type_tok), ..] ->
-          extract_params_from_many_with_types(rest, [#(name_tok.value, Some(type_tok.value)), ..acc])
+        [TokenValue(name_tok), TokenValue(_colon), ..type_values] -> {
+          // Reconstruct type string from type_values
+          let type_str = reconstruct_type_string(type_values)
+          extract_params_from_many_with_types(rest, [#(name_tok.value, Some(type_str)), ..acc])
+        }
         [TokenValue(name_tok), ..] ->
           extract_params_from_many_with_types(rest, [#(name_tok.value, None), ..acc])
         _ -> extract_params_from_many_with_types(rest, acc)
       }
     }
     [_, ..rest] -> extract_params_from_many_with_types(rest, acc)
+  }
+}
+
+/// Reconstruct type string from Type rule values.
+fn reconstruct_type_string(type_values: List(Value(Expr))) -> String {
+  reconstruct_type_loop(type_values, "")
+}
+
+fn reconstruct_type_loop(type_values: List(Value(Expr)), acc: String) -> String {
+  case type_values {
+    [] -> acc
+    [TokenValue(t), ..rest] -> {
+      case t.kind {
+        "fn" -> reconstruct_type_loop(rest, acc <> "fn(")
+        "LParen" -> reconstruct_type_loop(rest, acc <> "(")
+        "RParen" -> reconstruct_type_loop(rest, acc <> ")")
+        "Arrow" -> reconstruct_type_loop(rest, acc <> " -> ")
+        "Comma" -> reconstruct_type_loop(rest, acc <> ", ")
+        "Ident" -> reconstruct_type_loop(rest, acc <> t.value)
+        _ -> reconstruct_type_loop(rest, acc)
+      }
+    }
+    [KeywordValue(t), ..rest] -> {
+      // Handle keywords like "fn"
+      case t.kind {
+        "fn" -> reconstruct_type_loop(rest, acc <> "fn(")
+        _ -> reconstruct_type_loop(rest, acc)
+      }
+    }
+    [ListValue(nested), ..rest] -> {
+      // Handle nested type (e.g., function type params)
+      let nested_str = reconstruct_type_loop(nested, "")
+      reconstruct_type_loop(rest, acc <> nested_str)
+    }
+    [ParensValue(nested), ..rest] -> {
+      // Handle parenthesized types
+      let nested_str = reconstruct_type_loop(nested, "")
+      reconstruct_type_loop(rest, acc <> nested_str)
+    }
+    [_, ..rest] -> reconstruct_type_loop(rest, acc)
   }
 }
 
@@ -1359,15 +1475,16 @@ fn make_let(values) -> Expr {
   // Check if next is ":" (has type) or "=" (no type)
   let #(type_annotation, after_eq) = case list.first(rest_after_name) {
     Ok(TokenValue(token)) if token.value == ":" -> {
-      // Has type: skip ":" and type token, then skip "="
+      // Has type: skip ":" and extract type from Type rule result
       let without_colon = list.drop(rest_after_name, 1)
-      let type_tok = case list.first(without_colon) {
-        Ok(TokenValue(t)) -> Some(t.value)  // Simple type name
+      let type_annotation = case list.first(without_colon) {
+        Ok(AstValue(Var(type_name, _))) -> Some(type_name)  // Simple type from Var
+        Ok(TokenValue(t)) -> Some(t.value)  // Fallback for simple token
         _ -> None
       }
       let without_type = list.drop(without_colon, 1)
       let without_eq = list.drop(without_type, 1)
-      #(type_tok, without_eq)
+      #(type_annotation, without_eq)
     }
     _ -> {
       // No type, next should be "="
@@ -1583,5 +1700,28 @@ fn string_join(strings: List(String), sep: String) -> String {
     [] -> ""
     [first] -> first
     [first, ..rest] -> first <> sep <> string_join(rest, sep)
+  }
+}
+
+// ============================================================================
+// TYPE HELPERS
+// ============================================================================
+
+/// Convert AstType to string representation.
+fn type_to_string(t: AstType) -> String {
+  case t {
+    TVar(name) -> name
+    TApp(name, args) -> {
+      case args {
+        [] -> name
+        _ -> name <> "(" <> string_join(list.map(args, type_to_string), ", ") <> ")"
+      }
+    }
+    TFn(params, ret) -> {
+      "fn(" <> string_join(list.map(params, type_to_string), ", ") <> ") -> " <> type_to_string(ret)
+    }
+    TRecord(_) -> "{...}"
+    TTuple(_) -> "(...)"
+    THole -> "_"
   }
 }
