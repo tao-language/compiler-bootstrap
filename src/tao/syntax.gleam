@@ -623,17 +623,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
       ]),
       // Type = Ident | "fn" "(" [Type ("," Type)*] ")" "->" Type | Ident "(" [Type ("," Type)*] ")"
       rule("Type", [
-        // Simple type: I32, String, etc. - check first to avoid matching as generic
-        alt(
-          token_pattern("Ident"),
-          fn(v) {
-            case v {
-              [TokenValue(t)] -> Var(t.value, Span(t.kind, t.line, t.column, t.line, t.column))
-              _ -> Var("Unknown", Span("unknown", 0, 0, 0, 0))
-            }
-          },
-        ),
-        // Function type: fn(I32, I32) -> I32 - return dummy expr, helper extracts from values
+        // Function type: fn(I32, I32) -> I32 - most specific, check first
         alt(
           seq([
             keyword_pattern("fn"),
@@ -651,21 +641,31 @@ pub fn tao_grammar() -> Grammar(Expr) {
           ]),
           fn(values) { Var("fn_type", Span("type", 0, 0, 0, 0)) },  // Dummy expr
         ),
-        // Generic type: List(Int) - return dummy expr with actual type name
+        // Generic type: List(Int) - check before simple type
         alt(
           seq([
             token_pattern("Ident"),
-            opt(seq([
+            seq([
               token_pattern("LParen"),
               sep1(ref("Type"), token_pattern("Comma")),
               token_pattern("RParen"),
-            ])),
+            ]),
           ]),
           fn(values) {
             // Extract the type name from the first token
             case values {
               [TokenValue(t), ..] -> Var(t.value, Span(t.kind, t.line, t.column, t.line, t.column))
               _ -> Var("generic_type", Span("type", 0, 0, 0, 0))
+            }
+          },
+        ),
+        // Simple type: I32, String, etc. - check last (least specific)
+        alt(
+          token_pattern("Ident"),
+          fn(v) {
+            case v {
+              [TokenValue(t)] -> Var(t.value, Span(t.kind, t.line, t.column, t.line, t.column))
+              _ -> Var("Unknown", Span("unknown", 0, 0, 0, 0))
             }
           },
         ),

@@ -1,27 +1,27 @@
--- Test function type parsing
--- This file tests that function types can be parsed in parameter annotations
+// Test function type parsing
+// This file tests that function types can be parsed in parameter annotations
 
--- Simple function type parameter
+// Simple function type parameter
 fn apply(f: fn(I32) -> I32, x: I32) -> I32 {
   f(x)
 }
 
--- Multiple function type parameters
+// Multiple function type parameters
 fn compose(f: fn(I32) -> I32, g: fn(I32) -> I32, x: I32) -> I32 {
   f(g(x))
 }
 
--- Function type with multiple parameters
+// Function type with multiple parameters
 fn combine(f: fn(I32, I32) -> I32, x: I32, y: I32) -> I32 {
   f(x, y)
 }
 
--- Nested function types
+// Nested function types
 fn apply_twice(f: fn(I32) -> I32, x: I32) -> I32 {
   f(f(x))
 }
 
--- Generic type with function
+// Generic type with function
 fn map_option(opt: Option(Int), f: fn(Int) -> Int) -> Option(Int) {
   match opt {
     | Some(x) -> Some(f(x))
@@ -29,12 +29,12 @@ fn map_option(opt: Option(Int), f: fn(Int) -> Int) -> Option(Int) {
   }
 }
 
--- Function returning a function type
+// Function returning a function type
 fn make_adder(x: I32) -> fn(I32) -> I32 {
   fn(y) { x + y }
 }
 
--- Test cases
+// Test cases
 test "apply function" {
   apply(fn(n) { n * 2 }, 5)
   10
