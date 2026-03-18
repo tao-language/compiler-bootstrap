@@ -1,0 +1,2 @@
+// Lambda with type annotation
+fn(x: I32) { x }(5)

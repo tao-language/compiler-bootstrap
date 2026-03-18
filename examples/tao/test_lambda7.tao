@@ -1,0 +1,2 @@
+// Just a lambda
+fn(x) { x }

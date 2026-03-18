@@ -1,0 +1,2 @@
+// Lambda with parentheses
+(fn(x) { x })(5)

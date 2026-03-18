@@ -344,10 +344,14 @@ pub fn desugar_stmt(
     }
     
     StmtFn(name, type_params, params, return_type, body, span) -> {
-      // Function → let name = λparam1. λparam2. ... body
-      // Use build_lambdas_with_scope to properly handle param scoping
-      let #(core_lam, dc1) = build_lambdas_with_scope(type_params, params, body, span, dc)
-      let core_let = CoreLet(name, core_lam, span)
+      // Function → let name = fix name -> λparam1. λparam2. ... body
+      // For recursive functions, wrap the lambda in a fixpoint
+      // Add name to scope BEFORE building lambda so recursive calls can find it
+      let dc_with_name = add_local(dc, name)
+      let #(core_lam, dc1) = build_lambdas_with_scope(type_params, params, body, span, dc_with_name)
+      // Wrap lambda in fixpoint: fix name -> core_lam
+      let core_fix = CoreFix(name, core_lam, span)
+      let core_let = CoreLet(name, core_fix, span)
       let dc2 = add_local(dc1, name)
       #(core_let, dc2)
     }

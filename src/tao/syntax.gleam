@@ -13,7 +13,7 @@ import tao/ast.{
   UnaryOp as AstUnaryOp, Lambda as AstLambda, Call as AstCall, Block as AstBlock,
   type BinOperator, OpAdd, OpSub, OpMul, OpDiv, OpEq, OpNeq, OpLt, OpGt, OpLte, OpGte, OpAnd, OpOr,
   type UnaryOperator, OpNot, OpNegate,
-  Int as AstInt, Float as AstFloat, String as AstString, type Param as AstParamType, Param as AstParam, TVar,
+  Int as AstInt, Float as AstFloat, String as AstString, type Param, Param as AstParam, TVar,
   BlockStmtExpr, BlockStmtLet, LetDecl, Immutable, Mutable, type BlockStatement,
   Match as AstMatch, MatchClause as AstMatchClause, If as AstIf,
   type Pattern as AstPattern, PAny, PVar as AstPVar, PLit as AstPLit, PCtr as AstPCtr,
@@ -311,7 +311,7 @@ pub fn pattern_to_ast(pattern: Pattern) -> ast.Pattern {
   }
 }
 
-fn params_to_ast(params: List(#(String, Option(String))), span: Span) -> List(AstParamType) {
+fn params_to_ast(params: List(#(String, Option(String))), span: Span) -> List(Param) {
   list.map(params, fn(param) {
     let #(name, type_ann) = param
     let ast_type = case type_ann {
@@ -405,7 +405,7 @@ fn unaryop_to_ast(op: UnaryOp) -> UnaryOperator {
   }
 }
 
-fn param(name: String, type_: String, span: Span) -> AstParamType {
+fn param(name: String, type_: String, span: Span) -> Param {
   AstParam(name, Some(TVar(type_)), span)
 }
 
@@ -1299,17 +1299,8 @@ fn make_simple_fn(values) -> Expr {
     _ -> panic as "Expected function body"
   }
 
-  // Extract params from many result
-  // Structure: [fn, name, (, ListValue([Ident, opt([":", Type])]), ...), ), opt([->, Type]), block]
-  let params = case values {
-    [_, _, _, ListValue(params_many), ..] -> {
-      // Each param in params_many is either:
-      // - ListValue([TokenValue(name), opt(Comma)]) - no type
-      // - ListValue([TokenValue(name), ":", TokenValue(type), opt(Comma)]) - with type
-      extract_params_from_many_with_types(params_many, [])
-    }
-    _ -> []
-  }
+  // Extract params from values - params are ListValue items between ( and )
+  let params = extract_fn_params(values, [])
 
   // Return type - extract from opt([Arrow, TokenValue(type_string)])
   // The structure varies based on whether params and return type are present
@@ -1349,13 +1340,9 @@ fn make_inline_lambda(values) -> Expr {
     _ -> panic as "Expected lambda body"
   }
 
-  // Extract params: [fn, (, ListValue(params), ), opt(Arrow, Type), Block]
-  let params = case values {
-    [_, _, ListValue(params_many), _, ..] -> {
-      extract_params_from_many(params_many, [])
-    }
-    _ -> []
-  }
+  // Extract params from the values
+  // Structure: [KeywordValue(fn), TokenValue(LParen), ListValue(param1), ListValue(param2), ..., TokenValue(RParen), opt(Arrow, Type), AstValue(Block)]
+  let params = extract_lambda_params(values, [])
 
   let span = case values {
     [KeywordValue(k), ..] -> {
@@ -1365,6 +1352,100 @@ fn make_inline_lambda(values) -> Expr {
     _ -> Span("error", 0, 0, 0, 0)
   }
   Lambda([], params, body_expr, span)
+}
+
+fn extract_fn_params(
+  values: List(Value(Expr)),
+  acc: List(#(String, Option(String))),
+) -> List(#(String, Option(String))) {
+  case values {
+    [] -> list.reverse(acc)
+    [ListValue(items), ..rest] -> {
+      // This is a param - extract it
+      let param = extract_single_fn_param(items)
+      case param {
+        Some(p) -> extract_fn_params(rest, [p, ..acc])
+        None -> extract_fn_params(rest, acc)
+      }
+    }
+    [_, ..rest] -> {
+      // Skip non-param values
+      extract_fn_params(rest, acc)
+    }
+  }
+}
+
+fn extract_single_fn_param(items: List(Value(Expr))) -> Option(#(String, Option(String))) {
+  case items {
+    [TokenValue(name_tok), TokenValue(_colon), ..type_values] -> {
+      let type_str = reconstruct_type_string(type_values)
+      Some(#(name_tok.value, Some(type_str)))
+    }
+    [TokenValue(name_tok), ..] -> {
+      Some(#(name_tok.value, None))
+    }
+    _ -> None
+  }
+}
+
+fn extract_lambda_params(
+  values: List(Value(Expr)),
+  acc: List(#(String, Option(String))),
+) -> List(#(String, Option(String))) {
+  case values {
+    [] -> list.reverse(acc)
+    [ListValue(items), ..rest] -> {
+      // This is a param - extract it
+      let param = extract_single_param_with_span(items, values)
+      case param {
+        Some(p) -> extract_lambda_params(rest, [p, ..acc])
+        None -> extract_lambda_params(rest, acc)
+      }
+    }
+    [_, ..rest] -> {
+      // Skip non-param values (fn keyword, parens, etc.)
+      extract_lambda_params(rest, acc)
+    }
+  }
+}
+
+fn extract_params_from_many_with_spans(
+  params_many: List(Value(Expr)),
+  acc: List(#(String, Option(String))),
+  all_values: List(Value(Expr)),
+) -> List(#(String, Option(String))) {
+  case params_many {
+    [] -> list.reverse(acc)
+    [ListValue(items), ..rest] -> {
+      let param = extract_single_param_with_span(items, all_values)
+      case param {
+        Some(p) -> extract_params_from_many_with_spans(rest, [p, ..acc], all_values)
+        None -> extract_params_from_many_with_spans(rest, acc, all_values)
+      }
+    }
+    [_, ..rest] -> extract_params_from_many_with_spans(rest, acc, all_values)
+  }
+}
+
+fn extract_single_param_with_span(
+  items: List(Value(Expr)),
+  all_values: List(Value(Expr)),
+) -> Option(#(String, Option(String))) {
+  case items {
+    [TokenValue(name_tok)] -> {
+      Some(#(name_tok.value, None))
+    }
+    [TokenValue(name_tok), TokenValue(_colon), TokenValue(type_tok)] -> {
+      Some(#(name_tok.value, Some(type_tok.value)))
+    }
+    [TokenValue(name_tok), _] -> {
+      Some(#(name_tok.value, None))
+    }
+    [TokenValue(name_tok), _, _] -> {
+      Some(#(name_tok.value, None))
+    }
+    _ -> None
+  }
 }
 
 /// Helper to create if expression AST.
@@ -1576,9 +1657,25 @@ pub fn pattern_ast_to_pattern(expr: Expr) -> Pattern {
 fn extract_params_from_many(params_many: List(Value(Expr)), acc: List(#(String, Option(String)))) -> List(#(String, Option(String))) {
   case params_many {
     [] -> list.reverse(acc)
-    [ListValue([TokenValue(name_tok), _]), ..rest] ->
-      extract_params_from_many(rest, [#(name_tok.value, None), ..acc])
+    [ListValue(items), ..rest] -> {
+      // Each param is wrapped in a ListValue
+      // Extract the param name from items
+      let param = extract_single_param(items)
+      case param {
+        Some(name) -> extract_params_from_many(rest, [#(name, None), ..acc])
+        None -> extract_params_from_many(rest, acc)
+      }
+    }
     [_, ..rest] -> extract_params_from_many(rest, acc)
+  }
+}
+
+fn extract_single_param(items: List(Value(Expr))) -> Option(String) {
+  case items {
+    [TokenValue(name_tok)] -> Some(name_tok.value)
+    [TokenValue(name_tok), _] -> Some(name_tok.value)
+    [TokenValue(name_tok), _, _] -> Some(name_tok.value)
+    _ -> None
   }
 }
 
