@@ -1,0 +1,12 @@
+// Test and Run statements example
+// Expected output: test passes and run output
+
+test "addition" {
+  2 + 2
+}
+
+test "multiplication" {
+  3 * 4
+}
+
+run 42

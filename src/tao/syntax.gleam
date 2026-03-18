@@ -123,6 +123,10 @@ pub type Expr {
   Lambda(type_params: List(String), params: List(#(String, Option(String))), body: Expr, span: Span)
   /// Match expression (e.g., match x { | 0 -> 1 | _ -> x })
   Match(scrutinee: Expr, clauses: List(MatchClause), span: Span)
+  /// Test statement (e.g., test "name" { expr })
+  Test(name: String, body: Expr, span: Span)
+  /// Run statement (e.g., run expr)
+  Run(value: Expr, span: Span)
 }
 
 /// A single match clause with pattern, optional guard, and body.
@@ -213,6 +217,18 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
       let ast_scrutinee = expr_to_ast_loop(scrutinee)
       let ast_clauses = list.map(clauses, clause_to_ast)
       AstMatch(ast_scrutinee, ast_clauses, span)
+    }
+    Test(name, body, span) -> {
+      // Test statements become a block with the test body
+      // The test name is stored in a comment or metadata (for now, just the body)
+      let ast_body = expr_to_ast_loop(body)
+      // For now, tests are just the body expression
+      // A proper implementation would wrap in a test harness
+      ast_body
+    }
+    Run(value, span) -> {
+      // Run statements just evaluate the value
+      expr_to_ast_loop(value)
     }
   }
 }
@@ -452,6 +468,21 @@ fn get_span(expr: Expr) -> Span {
     Lambda(_, _, _, span) -> span
     Match(_, _, span) -> span
     Str(_, span) -> span
+    Test(_, _, span) -> span
+    Run(_, span) -> span
+  }
+}
+
+/// Convert block to test body expression (last statement or block itself).
+fn block_to_test_body(block: Expr) -> Expr {
+  case block {
+    Block(stmts, span) -> {
+      case list.last(stmts) {
+        Ok(last) -> last
+        Error(_) -> Int(0, span)
+      }
+    }
+    _ -> block
   }
 }
 
@@ -465,7 +496,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
     name: "Tao",
     start: "Program",
     tokens: ["Ident", "Number", "String", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow", "Slash", "Star", "Comma", "Equal", "Pipe", "Semi"],
-    keywords: ["fn", "let", "mut", "match", "if", "else", "type", "import", "export", "as", "comptime", "true", "false", "for", "in", "while", "loop", "break", "continue", "return", "yield"],
+    keywords: ["fn", "let", "mut", "match", "if", "else", "type", "import", "export", "as", "comptime", "true", "false", "for", "in", "while", "loop", "break", "continue", "return", "yield", "test", "run"],
     operators: [
       // Logical operators (precedence 3)
       infix_binary("&&", make_and, InfixLeft, 3, " && "),
@@ -514,7 +545,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
           },
         ),
       ]),
-      // Stmt = Import | Fn | Let | For | While | Loop | Break | Continue | Return | Yield | Expr
+      // Stmt = Import | Fn | Let | Test | Run | For | While | Loop | Break | Continue | Return | Yield | Expr
       rule("Stmt", [
         // Import statement
         alt(ref("Import"), fn(values) {
@@ -532,6 +563,20 @@ pub fn tao_grammar() -> Grammar(Expr) {
         }),
         // Let binding
         alt(ref("Let"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> Int(0, Span("empty", 0, 0, 0, 0))
+          }
+        }),
+        // Test statement: test "name" { expr }
+        alt(ref("Test"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> Int(0, Span("empty", 0, 0, 0, 0))
+          }
+        }),
+        // Run statement: run expr
+        alt(ref("Run"), fn(values) {
           case values {
             [AstValue(e)] -> e
             _ -> Int(0, Span("empty", 0, 0, 0, 0))
@@ -590,6 +635,45 @@ pub fn tao_grammar() -> Grammar(Expr) {
             opt(ref("Expr")),  // Optional expr for error recovery
           ]),
           fn(values) { make_let(values) },
+        ),
+      ]),
+      // Test = "test" String "{" Expr "}"
+      rule("Test", [
+        alt(
+          seq([
+            keyword_pattern("test"),
+            token_pattern("String"),  // test name
+            ref("Block"),  // test body
+          ]),
+          fn(values) {
+            case values {
+              [_, TokenValue(name_token), AstValue(body_expr)] -> {
+                // Extract string content (remove quotes)
+                let name = string.slice(name_token.value, 1, string.length(name_token.value) - 2)
+                let span = span_from_token(name_token, "tao")
+                Test(name, block_to_test_body(body_expr), span)
+              }
+              _ -> Int(0, Span("empty", 0, 0, 0, 0))
+            }
+          },
+        ),
+      ]),
+      // Run = "run" Expr
+      rule("Run", [
+        alt(
+          seq([
+            keyword_pattern("run"),
+            ref("Expr"),
+          ]),
+          fn(values) {
+            case values {
+              [_, AstValue(e)] -> {
+                let span = get_expr_span(e)
+                Run(e, span)
+              }
+              _ -> Int(0, Span("empty", 0, 0, 0, 0))
+            }
+          },
         ),
       ]),
       // Fn = "fn" name "(" params ")" "{" body "}"  OR  "fn" "(" op ")" "(" param ":" type ")" "->" type "{" body "}"
@@ -867,6 +951,8 @@ pub fn get_expr_span(expr: Expr) -> Span {
     Lambda(_, _, _, span) -> span
     Match(_, _, span) -> span
     Str(_, span) -> span
+    Test(_, _, span) -> span
+    Run(_, span) -> span
   }
 }
 
@@ -1441,6 +1527,12 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
         " ",
       )
       "match " <> format_expr(scrutinee) <> " { " <> clauses_str <> " }"
+    }
+    Test(name, body, _) -> {
+      "test \"" <> name <> "\" " <> format_expr(body)
+    }
+    Run(value, _) -> {
+      "run " <> format_expr(value)
     }
   }
 }
