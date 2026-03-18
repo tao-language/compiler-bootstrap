@@ -1680,14 +1680,13 @@ pub fn unify(
       unify(s, a, b, s1, s2)
     }
     VPi(implicit1, _, env1, in1, out1), VPi(implicit2, _, env2, in2, out2) -> {
-      // Only instantiate implicit params if they are non-empty
-      // For simple Pi types (no implicit params), use original behavior
+      // Unify Pi types by comparing domains and codomains
+      // State is threaded through both unifications to preserve hole solutions
       case implicit1, implicit2 {
         [], [] -> {
-          // No implicit params - use original behavior (discard state from domain unification)
-          // This is a known limitation: holes solved during domain unification are lost
-          // TODO: Fix type inference to handle this correctly without breaking existing code
-          use _ <- result.try(unify(s, in1, in2, s1, s2))
+          // No implicit params - unify domains and codomains directly
+          // State is threaded through to preserve hole solutions from domain unification
+          use s <- result.try(unify(s, in1, in2, s1, s2))
           let #(fresh, s) = new_var(s)
           let a = eval(s.ffi, [fresh, ..env1], out1)
           let b = eval(s.ffi, [fresh, ..env2], out2)

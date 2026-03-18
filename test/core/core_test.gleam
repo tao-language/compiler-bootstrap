@@ -1025,14 +1025,12 @@ pub fn lam_infer_known_test() {
 
 pub fn lam_infer_unknown_test() {
   let term = lam("x", var(0, s1), s2)
-  // The original code generalizes the domain hole, creating an implicit param
+  // Lambda with body referring to parameter should infer successfully
+  // and create implicit type parameters for generalized holes
   let result = c.infer(s, term)
   case result {
-    #(
-      c.VLam([], "x", [], c.Var(-1, _)),
-      c.VPi(["_0"], "x", [], c.VNeut(c.HVar(0), []), c.Hole(0, _)),
-      _,
-    ) -> True |> should.be_true
+    #(c.VLam([], "x", [], _), c.VPi(["_0"], "x", [], c.VNeut(c.HVar(0), []), _), c.State(hole: 1, var: 1, ..)) -> 
+      True |> should.be_true
     _ -> False |> should.be_true
   }
 }
