@@ -65,6 +65,11 @@ The Tao language implementation is **functional** with core features working:
    - Hole generalization
    - Implicit parameter instantiation
 
+7. **Test/Run Statements** ✅ **NEW**
+   - Test definitions: `test "name" { expr }`
+   - Run statements: `run expr`
+   - Parser and AST support complete
+
 ### ⏳ Partially Working
 
 1. **Control Flow**
@@ -80,9 +85,9 @@ The Tao language implementation is **functional** with core features working:
 
 ### ❌ Not Yet Implemented
 
-1. **Test/Run Statements**
-   - `test "name" { expr }` (AST defined, parser needed)
-   - `run expr` (AST defined, parser needed)
+1. **Function Types in Parameters**
+   - `fn(f: fn(I32) -> I32)` - Parser doesn't support function types
+   - See: [function-type-parsing-plan.md](function-type-parsing-plan.md)
 
 2. **Advanced Patterns**
    - As patterns: `x as Some(y)`
