@@ -15,7 +15,7 @@ import tao/ast.{
   type UnaryOperator, OpNot, OpNegate,
   Int as AstInt, String as AstString, type Param as AstParamType, Param as AstParam, TVar,
   BlockStmtExpr, BlockStmtLet, LetDecl, Immutable, Mutable, type BlockStatement,
-  Match as AstMatch, MatchClause as AstMatchClause,
+  Match as AstMatch, MatchClause as AstMatchClause, If as AstIf,
   type Pattern as AstPattern, PAny, PVar as AstPVar, PLit as AstPLit, PCtr as AstPCtr,
   type Type as AstType, TFn, TApp, TRecord, TTuple, THole,
 }
@@ -124,6 +124,8 @@ pub type Expr {
   Lambda(type_params: List(String), params: List(#(String, Option(String))), body: Expr, span: Span)
   /// Match expression (e.g., match x { | 0 -> 1 | _ -> x })
   Match(scrutinee: Expr, clauses: List(MatchClause), span: Span)
+  /// If expression (e.g., if cond { then } else { else })
+  If(condition: Expr, then_branch: Expr, else_branch: Option(Expr), span: Span)
   /// Test statement (e.g., test "name" { expr })
   Test(name: String, body: Expr, span: Span)
   /// Run statement (e.g., run expr)
@@ -219,6 +221,16 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
       let ast_clauses = list.map(clauses, clause_to_ast)
       AstMatch(ast_scrutinee, ast_clauses, span)
     }
+    If(cond, then_expr, else_expr, span) -> {
+      // If expression becomes ast.If
+      let ast_cond = expr_to_ast_loop(cond)
+      let ast_then = expr_to_ast_loop(then_expr)
+      let ast_else = case else_expr {
+        Some(e) -> Some(expr_to_ast_loop(e))
+        None -> None
+      }
+      AstIf(ast_cond, ast_then, ast_else, span)
+    }
     Test(name, body, span) -> {
       // Test statements become a block with the test body
       // The test name is stored in a comment or metadata (for now, just the body)
@@ -270,6 +282,10 @@ pub fn block_to_ast(block_expr: Expr) -> AstExpr {
     Block(stmts, span) -> {
       let ast_stmts = list.map(stmts, expr_to_block_stmt)
       AstBlock(ast_stmts, span)
+    }
+    If(_, _, _, _) -> {
+      // If expressions are kept as-is
+      expr_to_ast_loop(block_expr)
     }
     _ -> {
       let default_span = Span("error", 0, 0, 0, 0)
@@ -328,6 +344,10 @@ fn expr_to_block_stmt(expr: Expr) -> BlockStatement {
       let ast_params = params_to_ast(params, span)
       let lambda = AstLambda([], ast_params, ast_body, span)
       BlockStmtExpr(lambda)
+    }
+    If(_, _, _, _) -> {
+      // If expressions are kept as-is
+      BlockStmtExpr(expr_to_ast_loop(expr))
     }
     _ -> BlockStmtExpr(expr_to_ast_loop(expr))
   }
@@ -468,6 +488,7 @@ fn get_span(expr: Expr) -> Span {
     App(_, _, span) -> span
     Lambda(_, _, _, span) -> span
     Match(_, _, span) -> span
+    If(_, _, _, span) -> span
     Str(_, span) -> span
     Test(_, _, span) -> span
     Run(_, span) -> span
@@ -481,6 +502,19 @@ fn block_to_test_body(block: Expr) -> Expr {
       case list.last(stmts) {
         Ok(last) -> last
         Error(_) -> Int(0, span)
+      }
+    }
+    _ -> block
+  }
+}
+
+/// Convert block to expression (for if/else branches).
+fn block_to_expr(block: Expr) -> Expr {
+  case block {
+    Block(stmts, span) -> {
+      case list.last(stmts) {
+        Ok(last) -> last
+        Error(_) -> Block([], span)
       }
     }
     _ -> block
@@ -941,6 +975,17 @@ pub fn tao_grammar() -> Grammar(Expr) {
             _ -> Int(0, Span("error", 0, 0, 0, 0))
           }
         }),
+        // If expression: if cond { then } else { else }
+        alt(
+          seq([
+            keyword_pattern("if"),
+            ref("Expr"),  // condition
+            ref("Block"),  // then branch
+            keyword_pattern("else"),
+            ref("Block"),  // else branch
+          ]),
+          make_if,
+        ),
         // Match expression: match scrutinee { | pattern -> body } or match scrutinee -> Type { ... }
         alt(
           seq([
@@ -1000,6 +1045,7 @@ pub fn get_expr_span(expr: Expr) -> Span {
     App(_, _, span) -> span
     Lambda(_, _, _, span) -> span
     Match(_, _, span) -> span
+    If(_, _, _, span) -> span
     Str(_, span) -> span
     Test(_, _, span) -> span
     Run(_, span) -> span
@@ -1112,6 +1158,41 @@ fn make_inline_lambda(values) -> Expr {
     _ -> Span("error", 0, 0, 0, 0)
   }
   Lambda([], params, body_expr, span)
+}
+
+/// Helper to create if expression AST.
+fn make_if(values) -> Expr {
+  // The structure is: [if_kw, cond, then_block, else_kw, else_block]
+  let cond = case values {
+    [_, AstValue(c), ..] -> c
+    _ -> panic as "If: expected condition"
+  }
+
+  let then_block = case values {
+    [_, _, AstValue(b), ..] -> b
+    _ -> panic as "If: expected then block"
+  }
+
+  let else_block = case values {
+    [_, _, _, _, AstValue(b)] -> b
+    _ -> panic as "If: expected else block"
+  }
+
+  // Get span from if keyword
+  let if_kw = case values {
+    [KeywordValue(kw), ..] -> kw
+    _ -> panic as "If: expected keyword"
+  }
+
+  let start_span = Span("tao", if_kw.line, if_kw.column, if_kw.line, if_kw.column + 2)
+  let end_span = get_expr_span(else_block)
+  let full_span = Span(start_span.file, start_span.start_line, start_span.start_col, end_span.end_line, end_span.end_col)
+
+  // Convert blocks to expressions
+  let then_expr = block_to_expr(then_block)
+  let else_expr = block_to_expr(else_block)
+
+  If(cond, then_expr, Some(else_expr), full_span)
 }
 
 /// Helper to create match expression AST.
@@ -1644,6 +1725,13 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
         " ",
       )
       "match " <> format_expr(scrutinee) <> " { " <> clauses_str <> " }"
+    }
+    If(cond, then_expr, else_expr, _) -> {
+      let else_str = case else_expr {
+        Some(e) -> " else { " <> format_expr(e) <> " }"
+        None -> ""
+      }
+      "if " <> format_expr(cond) <> " { " <> format_expr(then_expr) <> " }" <> else_str
     }
     Test(name, body, _) -> {
       "test \"" <> name <> "\" " <> format_expr(body)

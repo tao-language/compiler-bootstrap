@@ -6,7 +6,7 @@
 /// For detailed documentation see:
 /// - **[../plans/tao/11-test-system.md](../plans/tao/11-test-system.md)** - Test system specification
 import tao/test_parser.{type Test, type ExpectedResult, Expression, Pattern, type Annotation, Skip, Timeout}
-import tao/syntax.{type Expr, Int, Var, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, Test as SyntaxTest, Run as SyntaxRun}
+import tao/syntax.{type Expr, Int, Var, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, Test as SyntaxTest, Run as SyntaxRun, If}
 import core/core.{type Term, type State, initial_state, eval, quote, type Value, Err}
 import core/syntax as core_syntax
 import syntax/grammar.{type Span, Span}
@@ -148,6 +148,7 @@ fn get_expr_span(expr: Expr) -> Span {
     App(_, _, span) -> span
     Lambda(_, _, _, span) -> span
     Match(_, _, span) -> span
+    If(_, _, _, span) -> span
     Str(_, span) -> span
     SyntaxTest(_, _, span) -> span
     SyntaxRun(_, span) -> span
