@@ -12,11 +12,11 @@
 import argv
 import core/core.{type Term, type Error as TypeError, type State, initial_state, infer, eval, quote, Err, force}
 import core/syntax as core_syntax
-import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var as TaoVar, Int as TaoInt, Float as TaoFloat, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, Str as TaoStr, Test as TaoTest, Run as TaoRun, If as TaoIf, For, While, Loop, Break, Continue, expr_to_ast}
+import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var as TaoVar, Int as TaoInt, Float as TaoFloat, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlockExpr, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, Str as TaoStr, Test as TaoTest, Run as TaoRun, If as TaoIf, For, While, Loop, Break, Continue, expr_to_ast}
 import tao/desugar.{desugar_module}
 import tao/global_context.{new_context, with_prelude, set_current_module}
 import tao/compiler.{compile_files, compile_single_file, type CompileResult, type CompileErrorType, ParseError as CompilerParseError, ImportError as CompilerImportError, CircularImport as CompilerCircularImport, ModuleNotFound as CompilerModuleNotFound}
-import tao/ast.{type Stmt as TaoStmt, StmtExpr as TaoStmtExpr, StmtLet as TaoStmtLet, Module as TaoModule}
+import tao/ast.{type Stmt as TaoStmt, StmtExpr as TaoStmtExpr, StmtLet as TaoStmtLet, Module as TaoModule, StmtFn as TaoStmtFn, type Param as TaoAstParam, Param as TaoAstParamConstructor, type Expr as TaoAstExpr, Block as TaoAstAstBlock, BlockStmtExpr as TaoAstBlockStmtExpr, TVar}
 import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType, type Span, Span}
 import tao/test_parser.{parse_tests, type Test}
 import tao/test_filter.{filter_tests, file_base_name}
@@ -848,6 +848,41 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(TaoStmt) {
         let ast_value = expr_to_ast(value)
         [TaoStmtLet(name, mutable, None, ast_value, span)]
       }
+      TaoSimpleFn(name, params, return_type, body, span) -> {
+        // Function definitions become StmtFn
+        let ast_params = params_to_ast_params(params, span)
+        let ast_body = expr_to_ast(body)
+        let ast_return_type = case return_type {
+          Some(t) -> Some(TVar(t))
+          None -> None
+        }
+        [TaoStmtFn(name, [], ast_params, ast_return_type, ast_body, span)]
+      }
+      TaoBlockExpr(stmts, _span) -> {
+        // Blocks contain statements - convert each statement
+        list.flat_map(stmts, fn(stmt_expr) {
+          case stmt_expr {
+            TaoLet(name, mutable, _type_annotation, value, span) -> {
+              let ast_value = expr_to_ast(value)
+              [TaoStmtLet(name, mutable, None, ast_value, span)]
+            }
+            TaoSimpleFn(name, params, return_type, body, span) -> {
+              // Function definitions become StmtFn
+              let ast_params = params_to_ast_params(params, span)
+              let ast_body = expr_to_ast(body)
+              let ast_return_type = case return_type {
+                Some(t) -> Some(TVar(t))
+                None -> None
+              }
+              [TaoStmtFn(name, [], ast_params, ast_return_type, ast_body, span)]
+            }
+            _ -> {
+              let ast_expr = expr_to_ast(stmt_expr)
+              [TaoStmtExpr(ast_expr, get_expr_span_from_syntax(stmt_expr))]
+            }
+          }
+        })
+      }
       TaoIf(_, _, _, _) -> {
         // If expressions become StmtExpr
         let ast_expr = expr_to_ast(expr)
@@ -862,6 +897,17 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(TaoStmt) {
   })
 }
 
+fn params_to_ast_params(params: List(#(String, option.Option(String))), span: Span) -> List(TaoAstParam) {
+  list.map(params, fn(param) {
+    let #(name, type_opt) = param
+    let type_ann = case type_opt {
+      Some(t) -> Some(TVar(t))
+      None -> None
+    }
+    TaoAstParamConstructor(name, type_ann, span)
+  })
+}
+
 fn get_expr_span_from_syntax(expr: TaoExpr) -> Span {
   case expr {
     TaoVar(_, span) -> span
@@ -872,7 +918,7 @@ fn get_expr_span_from_syntax(expr: TaoExpr) -> Span {
     TaoOverloadedFn(_, _, _, _, _, _, span) -> span
     TaoOverloadedApp(_, _, span) -> span
     TaoLet(_, _, _, _, span) -> span
-    TaoBlock(_, span) -> span
+    TaoBlockExpr(_, span) -> span
     TaoSimpleFn(_, _, _, _, span) -> span
     TaoApp(_, _, span) -> span
     TaoLambda(_, _, _, span) -> span

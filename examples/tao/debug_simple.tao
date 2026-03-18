@@ -1,0 +1,3 @@
+// Simple function test
+fn add(x: I32, y: I32) -> I32 { x + y }
+add(1, 2)

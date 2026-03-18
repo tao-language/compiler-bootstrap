@@ -286,8 +286,9 @@ fn build_sequential_loop(
           CoreApp(lam, value, span)
         }
         _ -> {
-          // Expression statement as last statement - use it as result
-          stmt
+          // Expression statement as last statement - discard it and use result
+          // The result already contains the value of the last expression
+          result
         }
       }
     }
