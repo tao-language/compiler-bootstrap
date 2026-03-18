@@ -1063,7 +1063,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
             many(seq([
               token_pattern("LParen"),
               many(seq([
-                ref("Expr"),
+                ref("Primary"),  // Use Primary instead of Expr to avoid left recursion
                 opt(token_pattern("Comma")),
               ])),
               token_pattern("RParen"),
@@ -1780,42 +1780,43 @@ fn extract_params(param_list: List(Value(Expr)), acc: List(#(String, Option(Stri
 /// Helper to create function application AST.
 fn make_app(values) -> Expr {
   case values {
-    [AstValue(func), ListValue(calls)] -> {
-      // Check if calls is empty
-      case list.is_empty(calls) {
-        True -> {
-          // No calls, just return the function
-          func
-        }
-        False -> {
-          // calls is a list of [LParen, args, RParen]
-          // For now, just handle the first call
-          case list.first(calls) {
-            Ok(ListValue(call_items)) -> {
-              // call_items is [LParen, args, RParen]
-              // Skip the first element (LParen) and get the second (args)
-              let args_wrapped_opt = case list.rest(call_items) {
-                Ok(rest) -> list.first(rest)
-                Error(_) -> Error(Nil)
-              }
-              case args_wrapped_opt {
-                Ok(ListValue(args_wrapped)) -> {
-                  // args_wrapped is [[arg1, opt_comma], [arg2, opt_comma], ...]
-                  // Extract the args from the wrapped structure
-                  let args = extract_wrapped_args(args_wrapped, [])
-                  let span = get_expr_span(func)
-                  App(func, args, span)
-                }
-                _ -> func
-              }
-            }
-            _ -> func
-          }
-        }
-      }
+    [AstValue(func), ListValue(call_items)] -> {
+      // call_items is flattened: [LParen, ListValue(arg1_items), ListValue(arg2_items), RParen]
+      // Extract the args (everything between LParen and RParen)
+      let args = extract_args_from_flattened_call(call_items, [])
+      let span = get_expr_span(func)
+      App(func, args, span)
     }
     [AstValue(func)] -> func
     _ -> Int(0, Span("error", 0, 0, 0, 0))
+  }
+}
+
+fn extract_args_from_flattened_call(
+  call_items: List(Value(Expr)),
+  acc: List(Expr),
+) -> List(Expr) {
+  case call_items {
+    [] -> list.reverse(acc)
+    [TokenValue(t), ..rest] if t.value == "(" -> {
+      // Skip LParen, start collecting args
+      extract_args_from_flattened_call(rest, acc)
+    }
+    [TokenValue(t), ..rest] if t.value == ")" -> {
+      // End of args
+      list.reverse(acc)
+    }
+    [ListValue(arg_items), ..rest] -> {
+      // arg_items is [Expr, opt_comma] or just [Expr]
+      case list.first(arg_items) {
+        Ok(AstValue(e)) -> extract_args_from_flattened_call(rest, [e, ..acc])
+        _ -> extract_args_from_flattened_call(rest, acc)
+      }
+    }
+    [_, ..rest] -> {
+      // Skip other items
+      extract_args_from_flattened_call(rest, acc)
+    }
   }
 }
 

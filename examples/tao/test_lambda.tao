@@ -1,2 +1,0 @@
-// Simple lambda application
-(fn(x: I32): I32 { x + 1 })(5)

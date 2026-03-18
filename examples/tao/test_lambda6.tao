@@ -1,3 +1,0 @@
-// Lambda applied with parentheses
-let f = fn(x) { x }
-f(5)

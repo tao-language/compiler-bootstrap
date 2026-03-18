@@ -1,2 +1,0 @@
-// Lambda application
-(fn(x: I32): I32 { x })(5)

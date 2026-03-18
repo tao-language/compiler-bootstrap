@@ -1,2 +1,0 @@
-// Simple lambda
-fn(x) { x }(5)
