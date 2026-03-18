@@ -21,6 +21,7 @@ import syntax/grammar.{ParseError as GrammarParseError, type ParseError as Gramm
 import tao/test_parser.{parse_tests, type Test}
 import tao/test_filter.{filter_tests, file_base_name}
 import tao/test_runner.{run_tests, calculate_summary, get_failures, all_passed, type TestResult, Fail, Error as TestError, TimedOut}
+import tao/test_reporter.{report_results, report_final_status, list_test_names}
 import gleam/int
 import gleam/io
 import gleam/list
@@ -313,13 +314,12 @@ fn collect_tests_from_directory(dir_path: String, verbose: Bool) -> List(#(List(
 
 /// List all tests
 fn list_all_tests(tests_with_files: List(#(List(Test), String))) -> Nil {
-  list.each(tests_with_files, fn(pair) {
-    let #(tests, file) = pair
-    io.println("\n" <> file <> ":")
-    list.each(tests, fn(test_item) {
-      io.println("  " <> test_item.name)
-    })
+  // Flatten all tests for listing
+  let all_tests = list.flat_map(tests_with_files, fn(pair) {
+    let #(tests, _) = pair
+    tests
   })
+  list_test_names(all_tests)
 }
 
 /// Run tests and report results
@@ -334,32 +334,12 @@ fn run_and_report_tests(tests_with_files: List(#(List(Test), String)), verbose: 
   let results = run_tests(all_tests)
   let summary = calculate_summary(results)
 
-  // Report results
+  // Report results using enhanced reporter
   io.println("")
-  io.println("Test Results:")
-  io.println("  Total:   " <> int.to_string(summary.total))
-  io.println("  Passed:  " <> int.to_string(summary.passed))
-  io.println("  Failed:  " <> int.to_string(summary.failed))
-  io.println("  Skipped: " <> int.to_string(summary.skipped))
-  io.println("")
-
-  // Report failures
-  let failures = get_failures(results)
-  case failures {
-    [] -> Nil
-    [..] -> {
-      io.println("Failures:")
-      list.each(failures, fn(result) {
-        report_test_failure(result)
-      })
-    }
-  }
+  report_results(results, summary, verbose, "")
 
   // Final status
-  case all_passed(results) {
-    True -> io.println("✓ All tests passed!")
-    False -> io.println("✗ Some tests failed")
-  }
+  report_final_status(all_passed(results))
 }
 
 /// Report a single test failure
