@@ -26,6 +26,7 @@ import gleam/list
 import gleam/option.{type Option, Some, None}
 import gleam/result
 import gleam/string
+import gleam/io
 import syntax/grammar.{
   type Grammar, type ParseResult, type Span, Span, Grammar, type Value, AstValue,
   ParensValue, TokenValue, ListValue, KeywordValue,
@@ -1770,22 +1771,94 @@ fn extract_params(param_list: List(Value(Expr)), acc: List(#(String, Option(Stri
 
 /// Helper to create function application AST.
 fn make_app(values) -> Expr {
+  io.println("DEBUG make_app: values length = " <> int.to_string(list.length(values)))
   case values {
     [AstValue(func), ListValue(calls)] -> {
-      // Process each call: [LParen, args, RParen]
-      // For now, just handle the first call
-      case list.first(calls) {
-        Ok(ListValue([_, ListValue(args_list), _])) -> {
-          // Extract args from the list
-          let args = extract_args(args_list, [])
-          let span = get_expr_span(func)
-          App(func, args, span)
+      io.println("DEBUG make_app: matched [AstValue(func), ListValue(calls)]")
+      io.println("DEBUG make_app: calls length = " <> int.to_string(list.length(calls)))
+      // The calls is flattened: [TokenValue(LParen), ListValue(arg1), ListValue(arg2), TokenValue(RParen), ...]
+      // We need to find the LParen and collect args until RParen
+      let args = extract_args_from_flattened(calls, False, [])
+      io.println("DEBUG make_app: extracted " <> int.to_string(list.length(args)) <> " args from flattened calls")
+      let span = get_expr_span(func)
+      App(func, args, span)
+    }
+    [AstValue(func)] -> {
+      io.println("DEBUG make_app: matched [AstValue(func)] - no calls")
+      func
+    }
+    other -> {
+      io.println("DEBUG make_app: didn't match, got " <> int.to_string(list.length(other)) <> " values")
+      Int(0, Span("error", 0, 0, 0, 0))
+    }
+  }
+}
+
+fn extract_args_from_flattened(
+  calls: List(Value(Expr)),
+  in_parens: Bool,
+  acc: List(Expr),
+) -> List(Expr) {
+  case calls {
+    [] -> {
+      io.println("DEBUG extract_args: empty calls, returning " <> int.to_string(list.length(acc)) <> " args")
+      list.reverse(acc)
+    }
+    [TokenValue(t), ..rest] if t.value == "(" -> {
+      io.println("DEBUG extract_args: found LParen")
+      // Start of args
+      extract_args_from_flattened(rest, True, acc)
+    }
+    [TokenValue(t), ..rest] if t.value == ")" -> {
+      io.println("DEBUG extract_args: found RParen, returning " <> int.to_string(list.length(acc)) <> " args")
+      // End of args - return what we have
+      list.reverse(acc)
+    }
+    [ListValue([AstValue(e)]), ..rest] if in_parens -> {
+      io.println("DEBUG extract_args: found wrapped arg (single)")
+      // Wrapped arg
+      extract_args_from_flattened(rest, in_parens, [e, ..acc])
+    }
+    [ListValue(items), ..rest] if in_parens -> {
+      io.println("DEBUG extract_args: found ListValue with " <> int.to_string(list.length(items)) <> " items")
+      // Print item types
+      items |> list.each(fn(item) {
+        case item {
+          AstValue(_) -> io.println("DEBUG extract_args:   item is AstValue")
+          ListValue(_) -> io.println("DEBUG extract_args:   item is ListValue")
+          TokenValue(_) -> io.println("DEBUG extract_args:   item is TokenValue")
+          _ -> io.println("DEBUG extract_args:   item is Other")
         }
-        _ -> func
+      })
+      // Try to extract from multi-item ListValue
+      case items {
+        [AstValue(e)] -> extract_args_from_flattened(rest, in_parens, [e, ..acc])
+        [AstValue(e), ..] -> {
+          io.println("DEBUG extract_args: extracting first AstValue from multi-item ListValue")
+          extract_args_from_flattened(rest, in_parens, [e, ..acc])
+        }
+        _ -> extract_args_from_flattened(rest, in_parens, acc)
       }
     }
-    [AstValue(func)] -> func
-    _ -> Int(0, Span("error", 0, 0, 0, 0))
+    [AstValue(e), ..rest] if in_parens -> {
+      io.println("DEBUG extract_args: found unwrapped arg")
+      // Unwrapped arg
+      extract_args_from_flattened(rest, in_parens, [e, ..acc])
+    }
+    [_, ..rest] -> {
+      io.println("DEBUG extract_args: skipping item")
+      // Skip other items
+      extract_args_from_flattened(rest, in_parens, acc)
+    }
+  }
+}
+
+fn extract_wrapped_args(args_wrapped: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
+  case args_wrapped {
+    [] -> list.reverse(acc)
+    [ListValue([AstValue(e)]), ..rest] -> extract_wrapped_args(rest, [e, ..acc])
+    [AstValue(e), ..rest] -> extract_wrapped_args(rest, [e, ..acc])
+    [_, ..rest] -> extract_wrapped_args(rest, acc)
   }
 }
 

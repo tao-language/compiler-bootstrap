@@ -16,7 +16,7 @@ import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var 
 import tao/desugar.{desugar_module}
 import tao/global_context.{new_context, with_prelude, set_current_module}
 import tao/compiler.{compile_files, compile_single_file, type CompileResult, type CompileErrorType, ParseError as CompilerParseError, ImportError as CompilerImportError, CircularImport as CompilerCircularImport, ModuleNotFound as CompilerModuleNotFound}
-import tao/ast.{type Stmt as TaoStmt, StmtExpr as TaoStmtExpr, StmtLet as TaoStmtLet, Module as TaoModule, StmtFn as TaoStmtFn, type Param as TaoAstParam, Param as TaoAstParamConstructor, type Expr as TaoAstExpr, Block as TaoAstAstBlock, BlockStmtExpr as TaoAstBlockStmtExpr, TVar}
+import tao/ast.{type Stmt as TaoStmt, StmtExpr as TaoStmtExpr, StmtLet as TaoStmtLet, Module as TaoModule, StmtFn as TaoStmtFn, type Param as TaoAstParam, Param as TaoAstParamConstructor, type Expr as TaoAstExpr, Call as TaoAstCall, Var as TaoAstVar, Block as TaoAstAstBlock, BlockStmtExpr as TaoAstBlockStmtExpr, TVar}
 import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType, type Span, Span}
 import tao/test_parser.{parse_tests, type Test}
 import tao/test_filter.{filter_tests, file_base_name}
@@ -686,6 +686,22 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     body: exprs_to_stmts([parse_result.ast]),
     span: get_expr_span(parse_result.ast),
   )
+  
+  // Debug: print the statements
+  case debug {
+    True -> {
+      io.println("Module body statements:")
+      module.body |> list.each(fn(stmt) {
+        case stmt {
+          TaoStmtFn(name, _, _, _, _, _) -> io.println("  StmtFn: " <> name)
+          TaoStmtLet(name, _, _, _, _) -> io.println("  StmtLet: " <> name)
+          TaoStmtExpr(_, _) -> io.println("  StmtExpr")
+          _ -> io.println("  Other")
+        }
+      })
+    }
+    False -> Nil
+  }
 
   let ctx = new_context() |> with_prelude() |> set_current_module(file.path)
   let #(term, _dc) = desugar_module(module, ctx)
@@ -860,6 +876,7 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(TaoStmt) {
       }
       TaoBlockExpr(stmts, _span) -> {
         // Blocks contain statements - convert each statement
+        io.println("DEBUG: TaoBlockExpr with " <> int.to_string(list.length(stmts)) <> " stmts")
         list.flat_map(stmts, fn(stmt_expr) {
           case stmt_expr {
             TaoLet(name, mutable, _type_annotation, value, span) -> {
@@ -877,7 +894,19 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(TaoStmt) {
               [TaoStmtFn(name, [], ast_params, ast_return_type, ast_body, span)]
             }
             _ -> {
+              // Debug: check what type of syntax expression we have
+              case stmt_expr {
+                TaoApp(_, _, _) -> io.println("DEBUG: stmt_expr is TaoApp")
+                TaoVar(_, _) -> io.println("DEBUG: stmt_expr is TaoVar")
+                _ -> io.println("DEBUG: stmt_expr is Other")
+              }
               let ast_expr = expr_to_ast(stmt_expr)
+              // Debug: check what type of AST expression we got
+              case ast_expr {
+                TaoAstCall(_, _, _) -> io.println("DEBUG: StmtExpr is AstCall")
+                TaoAstVar(_, _) -> io.println("DEBUG: StmtExpr is AstVar")
+                _ -> io.println("DEBUG: StmtExpr is Other")
+              }
               [TaoStmtExpr(ast_expr, get_expr_span_from_syntax(stmt_expr))]
             }
           }
