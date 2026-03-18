@@ -1,1 +1,0 @@
-✓ Type checking examples/tao/programs/06-modules/*.tao\n✓ No errors found

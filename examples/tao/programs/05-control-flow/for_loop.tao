@@ -1,0 +1,6 @@
+// For loop: collection iteration
+// Expected output: last value in collection
+
+for n in items {
+  n
+}

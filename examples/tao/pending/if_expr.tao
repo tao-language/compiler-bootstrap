@@ -1,9 +1,0 @@
-// If expression: conditional evaluation
-// Expected output: "positive"
-// Note: if expression syntax not yet implemented, using match instead
-
-let x = 5
-match x > 0 {
-  | true -> "positive"
-  | false -> "non-positive"
-}

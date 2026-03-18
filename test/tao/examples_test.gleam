@@ -103,18 +103,34 @@ pub fn programs_pattern_matching_test() {
   |> should.equal([])
 }
 
-/// Test all examples in programs/04-control-flow/ directory
-pub fn programs_control_flow_test() {
-  "examples/tao/programs/04-control-flow"
-  |> discover_examples(ShouldSucceed, "programs/04-control-flow")
+/// Test all examples in programs/03-test-run/ directory
+pub fn programs_test_run_test() {
+  "examples/tao/programs/03-test-run"
+  |> discover_examples(ShouldSucceed, "programs/03-test-run")
   |> run_examples
   |> should.equal([])
 }
 
-/// Test all examples in programs/06-modules/ directory
+/// Test all examples in programs/04-recursion/ directory
+pub fn programs_recursion_test() {
+  "examples/tao/programs/04-recursion"
+  |> discover_examples(ShouldSucceed, "programs/04-recursion")
+  |> run_examples
+  |> should.equal([])
+}
+
+/// Test all examples in programs/05-control-flow/ directory
+pub fn programs_control_flow_test() {
+  "examples/tao/programs/05-control-flow"
+  |> discover_examples(ShouldSucceed, "programs/05-control-flow")
+  |> run_examples
+  |> should.equal([])
+}
+
+/// Test all examples in programs/07-modules/ directory
 pub fn programs_modules_test() {
-  "examples/tao/programs/06-modules"
-  |> discover_examples(ShouldSucceed, "programs/06-modules")
+  "examples/tao/programs/07-modules"
+  |> discover_examples(ShouldSucceed, "programs/07-modules")
   |> run_examples
   |> should.equal([])
 }

@@ -679,6 +679,27 @@ pub fn tao_grammar() -> Grammar(Expr) {
             _ -> Int(0, Span("empty", 0, 0, 0, 0))
           }
         }),
+        // For loop: for pattern in collection { body... }
+        alt(ref("For"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> Int(0, Span("empty", 0, 0, 0, 0))
+          }
+        }),
+        // While loop: while condition { body... }
+        alt(ref("While"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> Int(0, Span("empty", 0, 0, 0, 0))
+          }
+        }),
+        // Loop: loop { body... }
+        alt(ref("Loop"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> Int(0, Span("empty", 0, 0, 0, 0))
+          }
+        }),
         // Break statement
         alt(
           keyword_pattern("break"),
@@ -847,6 +868,40 @@ pub fn tao_grammar() -> Grammar(Expr) {
               _ -> Int(0, Span("empty", 0, 0, 0, 0))
             }
           },
+        ),
+      ]),
+      // For = "for" Pattern "in" Expr Block
+      rule("For", [
+        alt(
+          seq([
+            keyword_pattern("for"),
+            ref("Expr"),  // pattern (parsed as expr, converted to pattern)
+            keyword_pattern("in"),
+            ref("Expr"),  // collection
+            ref("Block"),  // body
+          ]),
+          make_for,
+        ),
+      ]),
+      // While = "while" Expr Block
+      rule("While", [
+        alt(
+          seq([
+            keyword_pattern("while"),
+            ref("Expr"),  // condition
+            ref("Block"),  // body
+          ]),
+          make_while,
+        ),
+      ]),
+      // Loop = "loop" Block
+      rule("Loop", [
+        alt(
+          seq([
+            keyword_pattern("loop"),
+            ref("Block"),  // body
+          ]),
+          make_loop,
         ),
       ]),
       // Fn = "fn" name "(" params ")" "{" body "}"  OR  "fn" "(" op ")" "(" param ":" type ")" "->" type "{" body "}"

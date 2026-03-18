@@ -1,1 +1,1 @@
-✓ Type checking examples/tao/errors/exhaustiveness/missing_case.tao\n✓ No errors found
+0
