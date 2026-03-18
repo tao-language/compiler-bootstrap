@@ -25,6 +25,7 @@ fn create_desugar_context(ctx: GlobalContext) -> DesugarContext {
     global: ctx,
     current_module: "test",
     local_scope: [],
+    loop_stack: [],
   )
 }
 

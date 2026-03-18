@@ -103,6 +103,18 @@ pub type CoreTerm {
 // DESUGAR CONTEXT
 // ============================================================================
 
+/// Loop context for tracking break/continue targets.
+pub type LoopContext {
+  /// Inside a loop with a given fixpoint name.
+  InLoop(fix_name: String, break_target: BreakTarget)
+}
+
+/// Where should break jump to?
+pub type BreakTarget {
+  /// Break exits the current loop and returns a value.
+  BreakReturns
+}
+
 pub type DesugarContext {
   DesugarContext(
     global: GlobalContext,
@@ -110,13 +122,38 @@ pub type DesugarContext {
     /// Local variable bindings as a stack (for De Bruijn index conversion)
     /// The index in the list represents the De Bruijn index
     local_scope: List(String),
+    /// Stack of loop contexts (for nested loops)
+    loop_stack: List(LoopContext),
   )
 }
 
 /// Add a local variable to the scope.
 fn add_local(dc: DesugarContext, name: String) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope) = dc
-  DesugarContext(global, current_module, [name, ..local_scope])
+  let DesugarContext(global, current_module, local_scope, loop_stack) = dc
+  DesugarContext(global, current_module, [name, ..local_scope], loop_stack)
+}
+
+/// Enter a loop context.
+fn enter_loop(dc: DesugarContext, fix_name: String) -> DesugarContext {
+  let DesugarContext(global, current_module, local_scope, loop_stack) = dc
+  DesugarContext(global, current_module, local_scope, [InLoop(fix_name, BreakReturns), ..loop_stack])
+}
+
+/// Exit the current loop context.
+fn exit_loop(dc: DesugarContext) -> DesugarContext {
+  let DesugarContext(global, current_module, local_scope, loop_stack) = dc
+  case loop_stack {
+    [] -> dc  // Should not happen if well-formed
+    [_loop, ..rest] -> DesugarContext(global, current_module, local_scope, rest)
+  }
+}
+
+/// Check if we're inside a loop.
+fn in_loop(dc: DesugarContext) -> Bool {
+  case dc.loop_stack {
+    [] -> False
+    [_loop, ..] -> True
+  }
 }
 
 /// Look up a variable name and return its De Bruijn index.
@@ -153,6 +190,7 @@ pub fn desugar_module(
     global: ctx,
     current_module: module.path,
     local_scope: [],
+    loop_stack: [],
   )
 
   // Desugar all statements
@@ -354,19 +392,32 @@ pub fn desugar_stmt(
 
     StmtBreak(span) -> {
       // break - exit current loop
-      // Desugar to: special break marker (simplified: return unit)
-      #(CoreRcd([], span), dc)
+      // Desugar to: return unit (exits the fixpoint)
+      // The loop context tracks the fixpoint name for proper handling
+      case in_loop(dc) {
+        True -> #(CoreRcd([], span), dc)
+        False -> #(CoreErr("break outside of loop", span), dc)
+      }
     }
 
     StmtContinue(span) -> {
       // continue - skip to next iteration
-      // Desugar to: special continue marker (simplified: return unit)
-      #(CoreRcd([], span), dc)
+      // Desugar to: recursive call to the current loop's fixpoint
+      case dc.loop_stack {
+        [InLoop(fix_name, _break_target), ..] -> {
+          // Make recursive call to the loop fixpoint
+          #(CoreApp(CoreVar(fix_name, span), CoreRcd([], span), span), dc)
+        }
+        [] -> {
+          #(CoreErr("continue outside of loop", span), dc)
+        }
+      }
     }
 
     StmtReturn(value, span) -> {
       // return [expr] - return from function
       // Desugar to: the return value (or unit if none)
+      // Note: This returns from the enclosing function, not just the loop
       case value {
         Some(expr) -> desugar_expr_core(expr, dc)
         None -> #(CoreRcd([], span), dc)
@@ -376,6 +427,8 @@ pub fn desugar_stmt(
     StmtYield(value, span) -> {
       // yield expr - produce a value in a generator
       // Desugar to: the yielded expression
+      // Note: Full generator support requires continuation-passing style
+      // For now, just return the expression
       desugar_expr_core(value, dc)
     }
 
@@ -540,41 +593,104 @@ fn desugar_for(
   dc: DesugarContext,
 ) -> #(CoreTerm, DesugarContext) {
   // for pattern in collection { body... }
-  // Desugar to: foldl/foreach over collection
-  
+  // Desugar to: fixpoint that iterates over collection
+  // fix for_loop -> match collection { | [] -> () | x::xs -> let pattern = x in body; for_loop() }
+
   // Desugar the collection expression
   let #(core_collection, dc1) = desugar_expr_core(collection, dc)
-  
+
+  // Enter loop context for break/continue handling
+  let dc2 = enter_loop(dc1, "for_loop")
+
   // Desugar the body statements
-  let #(core_body_stmts, dc2) = desugar_stmts(body, dc1)
-  
+  let #(core_body_stmts, dc3) = desugar_stmts(body, dc2)
+
+  // Exit loop context
+  let dc4 = exit_loop(dc3)
+
   // Bind the collection
   let collection_binding = CoreLet("_for_collection", core_collection, span)
+
+  // Build the fixpoint body: match collection { | [] -> () | x::xs -> ... }
+  // Empty list case: return unit (loop done)
+  let nil_clause = Case(
+    pattern: PPCtr("Nil", PUnit),
+    body: core_term_to_term(CoreRcd([], span)),
+    guard: None,
+    span: span,
+  )
+
+  // Cons case: bind head to pattern, execute body, recurse
+  // for x in xs { body } → match xs { | x::rest -> body; for_loop() | _ -> () }
+  let loop_call = CoreApp(CoreVar("for_loop", span), CoreRcd([], span), span)
   
-  // For simple variable patterns, add pattern binding
   case pattern {
     ast.PVar(name, _pattern_span) -> {
-      // for x in collection { body } → let x = _for_collection[i] in body
-      let pattern_binding = CoreLet(name, CoreVar("_for_collection", span), span)
-      let body_block = CoreDoBlock(core_body_stmts, CoreRcd([], span), span)
-      let result = CoreDoBlock(
-        [collection_binding, pattern_binding],
-        body_block,
-        span,
+      // for x in collection { body } → match collection { | x::rest -> body; for_loop() | _ -> () }
+      let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
+      
+      // Use PAs to bind the head to the pattern variable
+      let cons_clause = Case(
+        pattern: PPCtr("Cons", PAs(PAny, name)),
+        body: core_term_to_term(body_with_rec),
+        guard: None,
+        span: span,
       )
-      #(result, dc2)
+      
+      let match_core = CoreMatchCore(
+        arg: CoreVar("_for_collection", span),
+        motive: CoreRcd([], span),
+        cases: [cons_clause, nil_clause],
+        span: span,
+      )
+      
+      let fix = CoreFix("for_loop", match_core, span)
+      let result = CoreDoBlock([collection_binding], fix, span)
+      #(result, dc4)
     }
     ast.PAny(_pattern_span) -> {
-      // for _ in collection { body } → just evaluate body
-      let body_block = CoreDoBlock(core_body_stmts, CoreRcd([], span), span)
-      let result = CoreDoBlock([collection_binding], body_block, span)
-      #(result, dc2)
+      // for _ in collection { body } → match collection { | _::rest -> body; for_loop() | _ -> () }
+      let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
+      
+      let cons_clause = Case(
+        pattern: PPCtr("Cons", PAs(PAny, "_for_head")),
+        body: core_term_to_term(body_with_rec),
+        guard: None,
+        span: span,
+      )
+      
+      let match_core = CoreMatchCore(
+        arg: CoreVar("_for_collection", span),
+        motive: CoreRcd([], span),
+        cases: [cons_clause, nil_clause],
+        span: span,
+      )
+      
+      let fix = CoreFix("for_loop", match_core, span)
+      let result = CoreDoBlock([collection_binding], fix, span)
+      #(result, dc4)
     }
-    // For complex patterns, just bind collection and evaluate body
+    // For complex patterns, use wildcard
     _ -> {
-      let body_block = CoreDoBlock(core_body_stmts, CoreRcd([], span), span)
-      let result = CoreDoBlock([collection_binding], body_block, span)
-      #(result, dc2)
+      let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
+      
+      let cons_clause = Case(
+        pattern: PPCtr("Cons", PAs(PAny, "_for_head")),
+        body: core_term_to_term(body_with_rec),
+        guard: None,
+        span: span,
+      )
+      
+      let match_core = CoreMatchCore(
+        arg: CoreVar("_for_collection", span),
+        motive: CoreRcd([], span),
+        cases: [cons_clause, nil_clause],
+        span: span,
+      )
+      
+      let fix = CoreFix("for_loop", match_core, span)
+      let result = CoreDoBlock([collection_binding], fix, span)
+      #(result, dc4)
     }
   }
 }
@@ -593,11 +709,17 @@ fn desugar_while(
   // Desugar the condition
   let #(core_condition, dc1) = desugar_expr_core(condition, dc)
 
+  // Enter loop context for break/continue handling
+  let dc2 = enter_loop(dc1, "while_loop")
+
   // Desugar the body statements
-  let #(core_body_stmts, dc2) = desugar_stmts(body, dc1)
+  let #(core_body_stmts, dc3) = desugar_stmts(body, dc2)
+
+  // Exit loop context
+  let dc4 = exit_loop(dc3)
 
   // Body block that ends with recursive call
-  let loop_call = CoreApp(CoreVar("loop", span), CoreRcd([], span), span)
+  let loop_call = CoreApp(CoreVar("while_loop", span), CoreRcd([], span), span)
   let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
 
   // Build match on condition: match condition { | True -> body; loop () | _ -> () }
@@ -608,7 +730,7 @@ fn desugar_while(
     guard: None,
     span: span,
   )
-  
+
   // Default clause: return unit (exit loop)
   let default_clause = Case(
     pattern: PAny,
@@ -616,7 +738,7 @@ fn desugar_while(
     guard: None,
     span: span,
   )
-  
+
   // Match expression as CoreTerm (need to wrap Term back for fixpoint body)
   // For now, use CoreMatchCore directly with Term bodies
   // The match result type is Unit
@@ -626,10 +748,10 @@ fn desugar_while(
     cases: [true_clause, default_clause],
     span: span,
   )
-  
-  let fix = CoreFix("loop", match_core, span)
 
-  #(fix, dc2)
+  let fix = CoreFix("while_loop", match_core, span)
+
+  #(fix, dc4)
 }
 
 /// Desugar an infinite loop.
@@ -642,8 +764,14 @@ fn desugar_loop(
   // Desugar to: fixpoint that recursively executes body
   // fix loop -> (body; loop ())
 
+  // Enter loop context for break/continue handling
+  let dc1 = enter_loop(dc, "loop")
+
   // Desugar the body statements
-  let #(core_body_stmts, dc1) = desugar_stmts(body, dc)
+  let #(core_body_stmts, dc2) = desugar_stmts(body, dc1)
+
+  // Exit loop context
+  let dc3 = exit_loop(dc2)
 
   // Body block that ends with recursive call
   let loop_call = CoreApp(CoreVar("loop", span), CoreRcd([], span), span)
@@ -652,7 +780,7 @@ fn desugar_loop(
   // Wrap in fixpoint
   let fix = CoreFix("loop", body_with_rec, span)
 
-  #(fix, dc1)
+  #(fix, dc3)
 }
 
 // ============================================================================

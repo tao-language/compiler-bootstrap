@@ -10,7 +10,7 @@ import tao/desugar.{desugar_module}
 import tao/global_context.{new_context, with_prelude}
 import tao/ast.{
   type Module, type Stmt, type Expr, type Pattern, type Param,
-  StmtLet, StmtExpr, StmtFor, StmtWhile, StmtLoop,
+  StmtLet, StmtExpr, StmtFor, StmtWhile, StmtLoop, StmtBreak, StmtContinue, StmtReturn, StmtYield,
   Var, Lit, Lambda, Match, BinOp, OpGt,
   PVar,
   Int, MatchClause,
@@ -63,7 +63,7 @@ pub fn pattern_matching_test() {
 
 pub fn control_flow_test() {
   let ctx = new_context() |> with_prelude()
-  
+
   // For loop
   let collection = Var("items", Span("test", 0, 0, 0, 0))
   let pattern = PVar("x", Span("test", 0, 0, 0, 0))
@@ -72,7 +72,7 @@ pub fn control_flow_test() {
   let module = create_module([for_stmt])
   let #(_term, _dc) = desugar_module(module, ctx)
   True |> should.be_true()
-  
+
   // While loop
   let condition = Var("cond", Span("test", 0, 0, 0, 0))
   let while_body = [StmtExpr(Var("x", Span("test", 0, 0, 0, 0)), Span("test", 0, 0, 0, 0))]
@@ -80,12 +80,108 @@ pub fn control_flow_test() {
   let module2 = create_module([while_stmt])
   let #(_term2, _dc2) = desugar_module(module2, ctx)
   True |> should.be_true()
-  
+
   // Loop
   let loop_body = [StmtExpr(Var("x", Span("test", 0, 0, 0, 0)), Span("test", 0, 0, 0, 0))]
   let loop_stmt = StmtLoop(loop_body, Span("test", 0, 0, 0, 0))
   let module3 = create_module([loop_stmt])
   let #(_term3, _dc3) = desugar_module(module3, ctx)
+  True |> should.be_true()
+}
+
+// ============================================================================
+// BREAK/CONTINUE TESTS
+// ============================================================================
+
+pub fn break_continue_test() {
+  let ctx = new_context() |> with_prelude()
+
+  // Loop with break
+  let break_stmt = StmtBreak(Span("test", 0, 0, 0, 0))
+  let loop_body_with_break = [StmtExpr(Var("x", Span("test", 0, 0, 0, 0)), Span("test", 0, 0, 0, 0)), break_stmt]
+  let loop_with_break = StmtLoop(loop_body_with_break, Span("test", 0, 0, 0, 0))
+  let module = create_module([loop_with_break])
+  let #(_term, _dc) = desugar_module(module, ctx)
+  True |> should.be_true()
+
+  // Loop with continue
+  let continue_stmt = StmtContinue(Span("test", 0, 0, 0, 0))
+  let loop_body_with_continue = [StmtExpr(Var("x", Span("test", 0, 0, 0, 0)), Span("test", 0, 0, 0, 0)), continue_stmt]
+  let loop_with_continue = StmtLoop(loop_body_with_continue, Span("test", 0, 0, 0, 0))
+  let module2 = create_module([loop_with_continue])
+  let #(_term2, _dc2) = desugar_module(module2, ctx)
+  True |> should.be_true()
+
+  // While loop with break
+  let condition = Var("cond", Span("test", 0, 0, 0, 0))
+  let while_body_with_break = [break_stmt]
+  let while_with_break = StmtWhile(condition, while_body_with_break, Span("test", 0, 0, 0, 0))
+  let module3 = create_module([while_with_break])
+  let #(_term3, _dc3) = desugar_module(module3, ctx)
+  True |> should.be_true()
+
+  // For loop with continue
+  let collection = Var("items", Span("test", 0, 0, 0, 0))
+  let pattern = PVar("x", Span("test", 0, 0, 0, 0))
+  let for_body_with_continue = [continue_stmt]
+  let for_with_continue = StmtFor(pattern, collection, for_body_with_continue, Span("test", 0, 0, 0, 0))
+  let module4 = create_module([for_with_continue])
+  let #(_term4, _dc4) = desugar_module(module4, ctx)
+  True |> should.be_true()
+}
+
+// ============================================================================
+// RETURN/YIELD TESTS
+// ============================================================================
+
+pub fn return_yield_test() {
+  let ctx = new_context() |> with_prelude()
+
+  // Return with value
+  let return_stmt = StmtReturn(Some(Var("x", Span("test", 0, 0, 0, 0))), Span("test", 0, 0, 0, 0))
+  let module = create_module([return_stmt])
+  let #(_term, _dc) = desugar_module(module, ctx)
+  True |> should.be_true()
+
+  // Return without value
+  let return_unit = StmtReturn(None, Span("test", 0, 0, 0, 0))
+  let module2 = create_module([return_unit])
+  let #(_term2, _dc2) = desugar_module(module2, ctx)
+  True |> should.be_true()
+
+  // Yield
+  let yield_stmt = StmtYield(Var("x", Span("test", 0, 0, 0, 0)), Span("test", 0, 0, 0, 0))
+  let module3 = create_module([yield_stmt])
+  let #(_term3, _dc3) = desugar_module(module3, ctx)
+  True |> should.be_true()
+}
+
+// ============================================================================
+// NESTED LOOP TESTS
+// ============================================================================
+
+pub fn nested_loop_test() {
+  let ctx = new_context() |> with_prelude()
+
+  // Nested loops
+  let inner_loop_body = [StmtExpr(Var("y", Span("test", 0, 0, 0, 0)), Span("test", 0, 0, 0, 0))]
+  let inner_loop = StmtLoop(inner_loop_body, Span("test", 0, 0, 0, 0))
+  let outer_loop_body = [inner_loop]
+  let outer_loop = StmtLoop(outer_loop_body, Span("test", 0, 0, 0, 0))
+  let module = create_module([outer_loop])
+  let #(_term, _dc) = desugar_module(module, ctx)
+  True |> should.be_true()
+
+  // While inside for
+  let condition = Var("cond", Span("test", 0, 0, 0, 0))
+  let while_body = [StmtExpr(Var("x", Span("test", 0, 0, 0, 0)), Span("test", 0, 0, 0, 0))]
+  let while_stmt = StmtWhile(condition, while_body, Span("test", 0, 0, 0, 0))
+  let for_body = [while_stmt]
+  let collection = Var("items", Span("test", 0, 0, 0, 0))
+  let pattern = PVar("x", Span("test", 0, 0, 0, 0))
+  let for_stmt = StmtFor(pattern, collection, for_body, Span("test", 0, 0, 0, 0))
+  let module2 = create_module([for_stmt])
+  let #(_term2, _dc2) = desugar_module(module2, ctx)
   True |> should.be_true()
 }
 
