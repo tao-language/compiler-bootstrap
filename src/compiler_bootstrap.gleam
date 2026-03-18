@@ -12,7 +12,7 @@
 import argv
 import core/core.{type Term, type Error as TypeError, type State, initial_state, infer, eval, quote, Err, force}
 import core/syntax as core_syntax
-import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var as TaoVar, Int as TaoInt, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, Str as TaoStr, Test as TaoTest, Run as TaoRun, If as TaoIf, For, While, Loop, Break, Continue, expr_to_ast}
+import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var as TaoVar, Int as TaoInt, Float as TaoFloat, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, Str as TaoStr, Test as TaoTest, Run as TaoRun, If as TaoIf, For, While, Loop, Break, Continue, expr_to_ast}
 import tao/desugar.{desugar_module}
 import tao/global_context.{new_context, with_prelude, set_current_module}
 import tao/compiler.{compile_files, compile_single_file, type CompileResult, type CompileErrorType, ParseError as CompilerParseError, ImportError as CompilerImportError, CircularImport as CompilerCircularImport, ModuleNotFound as CompilerModuleNotFound}
@@ -866,6 +866,7 @@ fn get_expr_span_from_syntax(expr: TaoExpr) -> Span {
   case expr {
     TaoVar(_, span) -> span
     TaoInt(_, span) -> span
+    TaoFloat(_, span) -> span
     TaoBinOp(_, _, _, span) -> span
     TaoUnaryOp(_, _, span) -> span
     TaoOverloadedFn(_, _, _, _, _, _, span) -> span

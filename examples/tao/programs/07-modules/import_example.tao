@@ -1,0 +1,15 @@
+// Import example - using prelude types
+
+import prelude/bool.{Bool, True, False, not}
+
+fn is_even(n: Int) -> Bool {
+  not(n % 2 == 1)
+}
+
+test "is_even with 4" {
+  is_even(4) == True
+}
+
+test "is_even with 3" {
+  is_even(3) == False
+}

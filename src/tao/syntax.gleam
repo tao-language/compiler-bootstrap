@@ -13,7 +13,7 @@ import tao/ast.{
   UnaryOp as AstUnaryOp, Lambda as AstLambda, Call as AstCall, Block as AstBlock,
   type BinOperator, OpAdd, OpSub, OpMul, OpDiv, OpEq, OpNeq, OpLt, OpGt, OpLte, OpGte, OpAnd, OpOr,
   type UnaryOperator, OpNot, OpNegate,
-  Int as AstInt, String as AstString, type Param as AstParamType, Param as AstParam, TVar,
+  Int as AstInt, Float as AstFloat, String as AstString, type Param as AstParamType, Param as AstParam, TVar,
   BlockStmtExpr, BlockStmtLet, LetDecl, Immutable, Mutable, type BlockStatement,
   Match as AstMatch, MatchClause as AstMatchClause, If as AstIf,
   type Pattern as AstPattern, PAny, PVar as AstPVar, PLit as AstPLit, PCtr as AstPCtr,
@@ -21,6 +21,7 @@ import tao/ast.{
 }
 import tao/import_ast.{type Import, ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias, ImportWildcard, type ImportItem, ImportName, ImportType, ImportOperator}
 import gleam/int
+import gleam/float
 import gleam/list
 import gleam/option.{type Option, Some, None}
 import gleam/result
@@ -86,6 +87,8 @@ pub type UnaryOp {
 pub type Expr {
   /// Integer literal (e.g., 42)
   Int(value: Int, span: Span)
+  /// Float literal (e.g., 3.14)
+  Float(value: Float, span: Span)
   /// String literal (e.g., "hello")
   Str(value: String, span: Span)
   /// Variable reference (e.g., x)
@@ -171,6 +174,7 @@ pub fn expr_to_ast(expr: Expr) -> AstExpr {
 fn expr_to_ast_loop(expr: Expr) -> AstExpr {
   case expr {
     Int(value, span) -> AstLit(AstInt(value), span)
+    Float(value, span) -> AstLit(AstFloat(value), span)
     Str(value, span) -> AstLit(AstString(value), span)
     Var(name, span) -> AstVar(name, span)
     BinOp(left, op, right, span) -> {
@@ -430,6 +434,17 @@ fn make_int(values) -> Expr {
   }
 }
 
+fn make_float(values) -> Expr {
+  case values {
+    [TokenValue(token)] ->
+      Float(
+        float.parse(token.value) |> result.unwrap(0.0),
+        span_from_token(token, "tao"),
+      )
+    _ -> panic as "Expected float"
+  }
+}
+
 fn make_var(values) -> Expr {
   case values {
     [TokenValue(token)] ->
@@ -518,6 +533,7 @@ fn todo_ast() -> Value(Expr) {
 fn get_span(expr: Expr) -> Span {
   case expr {
     Int(_, span) -> span
+    Float(_, span) -> span
     Var(_, span) -> span
     BinOp(_, _, _, span) -> span
     UnaryOp(_, _, span) -> span
@@ -697,21 +713,22 @@ pub fn tao_grammar() -> Grammar(Expr) {
           }
         }),
       ]),
-      // Import = "import" Path ("as" Ident)? ("{" Ident ("," Ident)* "}")?
+      // Import = "import" Path ("as" Ident)? ("." "{" Ident ("," Ident)* "}")?
       rule("Import", [
         alt(
           seq([
             keyword_pattern("import"),
             token_pattern("Ident"),  // path component
             many(seq([
-              token_pattern("Slash"),
-              token_pattern("Ident"),
+              token_pattern("Operator"),  // / slash
+              token_pattern("Ident"),  // path component
             ])),
             opt(seq([
               keyword_pattern("as"),
               token_pattern("Ident"),  // alias
             ])),
             opt(seq([
+              token_pattern("Dot"),  // . dot for selective import
               token_pattern("LBrace"),
               many(seq([
                 token_pattern("Ident"),
@@ -998,11 +1015,22 @@ pub fn tao_grammar() -> Grammar(Expr) {
         }),
       ]),
       rule("Primary", [
+        // Integer literal
         alt(
           token_pattern("Number"),
           fn(values) {
             case values {
               [TokenValue(token)] -> make_int([TokenValue(token)])
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+        // Float literal
+        alt(
+          token_pattern("Float"),
+          fn(values) {
+            case values {
+              [TokenValue(token)] -> make_float([TokenValue(token)])
               _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
@@ -1152,6 +1180,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
 pub fn get_expr_span(expr: Expr) -> Span {
   case expr {
     Int(_, span) -> span
+    Float(_, span) -> span
     Var(_, span) -> span
     BinOp(_, _, _, span) -> span
     UnaryOp(_, _, span) -> span
@@ -1839,6 +1868,7 @@ pub fn format_expr(expr: Expr) -> String {
 fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
   case expr {
     Int(n, _) -> int.to_string(n)
+    Float(f, _) -> float.to_string(f)
     Str(s, _) -> "\"" <> s <> "\""
     Var(name, _) -> name
     BinOp(l, op, r, _) -> format_binop_op(l, op, r, parent_prec)

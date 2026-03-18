@@ -183,11 +183,37 @@ fn tokenize_number(state: LexerState) -> LexerState {
   let start_pos = state.pos
   let start_line = state.line
   let start_column = state.column
-  let #(digits, state) = read_digits(state, "")
-  let end_pos = state.pos
-  let token =
-    Token(kind: "Number", value: digits, start: start_pos, end: end_pos, line: start_line, column: start_column)
-  LexerState(..state, tokens: [token, ..state.tokens])
+  let #(digits, state1) = read_digits(state, "")
+  
+  // Check for decimal point followed by digits (float literal)
+  case peek_char(state1) {
+    Some(".") -> {
+      case peek_next_char(state1) {
+        Some("0") | Some("1") | Some("2") | Some("3") | Some("4")
+        | Some("5") | Some("6") | Some("7") | Some("8") | Some("9") -> {
+          // This is a float literal
+          let state2 = advance(state1)  // consume "."
+          let #(frac_digits, state3) = read_digits(state2, "")
+          let value = digits <> "." <> frac_digits
+          let end_pos = state3.pos
+          let token = Token(kind: "Float", value: value, start: start_pos, end: end_pos, line: start_line, column: start_column)
+          LexerState(..state3, tokens: [token, ..state3.tokens])
+        }
+        _ -> {
+          // Just a decimal point, not a float
+          let end_pos = state1.pos
+          let token = Token(kind: "Number", value: digits, start: start_pos, end: end_pos, line: start_line, column: start_column)
+          LexerState(..state1, tokens: [token, ..state1.tokens])
+        }
+      }
+    }
+    _ -> {
+      // Integer literal
+      let end_pos = state1.pos
+      let token = Token(kind: "Number", value: digits, start: start_pos, end: end_pos, line: start_line, column: start_column)
+      LexerState(..state1, tokens: [token, ..state1.tokens])
+    }
+  }
 }
 
 fn read_digits(state: LexerState, acc: String) -> #(String, LexerState) {

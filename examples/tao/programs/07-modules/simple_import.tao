@@ -1,0 +1,7 @@
+// Simple import example
+
+import prelude/bool
+
+let x = True
+
+x

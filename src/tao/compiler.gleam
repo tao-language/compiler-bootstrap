@@ -14,7 +14,7 @@ import tao/ast.{type Module, type Stmt, type Param, type Type, Module as ModuleC
 import tao/import_ast.{type Import, type ImportContext, type ResolvedImport}
 import tao/import_resolver.{resolve_imports}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module, register_module}
-import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, Test, Run, If, For, While, Loop, Break, Continue, expr_to_ast, block_to_ast, pattern_to_ast}
+import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, Float as TaoFloat, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, Test, Run, If, For, While, Loop, Break, Continue, expr_to_ast, block_to_ast, pattern_to_ast}
 import syntax/grammar.{type Span, Span}
 import gleam/dict.{type Dict}
 import gleam/list
@@ -297,6 +297,7 @@ fn get_expr_span(expr: TaoExpr) -> Span {
   case expr {
     Var(_, span) -> span
     TaoInt(_, span) -> span
+    TaoFloat(_, span) -> span
     BinOp(_, _, _, span) -> span
     UnaryOp(_, _, span) -> span
     OverloadedFn(_, _, _, _, _, _, span) -> span

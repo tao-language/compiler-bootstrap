@@ -1,0 +1,7 @@
+// Test Float literals
+
+let x = 3.14
+let y = 1.0
+let z = 0.5
+
+x
