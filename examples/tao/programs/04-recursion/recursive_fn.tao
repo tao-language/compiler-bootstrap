@@ -1,0 +1,11 @@
+// Recursive function: factorial
+// Expected output: 120
+
+fn factorial(n: I32) -> I32 {
+  match n {
+    | 0 -> 1
+    | _ -> n * factorial(n - 1)
+  }
+}
+
+factorial(5)
