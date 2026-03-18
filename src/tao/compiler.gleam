@@ -14,7 +14,7 @@ import tao/ast.{type Module, type Stmt, type Param, type Type, Module as ModuleC
 import tao/import_ast.{type Import, type ImportContext, type ResolvedImport}
 import tao/import_resolver.{resolve_imports}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module, register_module}
-import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, Test, Run, If, expr_to_ast, block_to_ast}
+import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, Test, Run, If, For, While, Loop, Break, Continue, expr_to_ast, block_to_ast, pattern_to_ast}
 import syntax/grammar.{type Span, Span}
 import gleam/dict.{type Dict}
 import gleam/list
@@ -259,6 +259,30 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(Stmt) {
         let ast_expr = expr_to_ast(expr)
         [StmtExpr(ast_expr, get_expr_span(expr))]
       }
+      For(pattern, collection, body, span) -> {
+        // For loops become StmtFor
+        let ast_pattern = pattern_to_ast(pattern)
+        let ast_collection = expr_to_ast(collection)
+        let ast_body = exprs_to_stmts(body)
+        [StmtFor(ast_pattern, ast_collection, ast_body, span)]
+      }
+      While(condition, body, span) -> {
+        // While loops become StmtWhile
+        let ast_condition = expr_to_ast(condition)
+        let ast_body = exprs_to_stmts(body)
+        [StmtWhile(ast_condition, ast_body, span)]
+      }
+      Loop(body, span) -> {
+        // Loops become StmtLoop
+        let ast_body = exprs_to_stmts(body)
+        [StmtLoop(ast_body, span)]
+      }
+      Break(span) -> {
+        [StmtBreak(span)]
+      }
+      Continue(span) -> {
+        [StmtContinue(span)]
+      }
       _ -> {
         // Other expressions become StmtExpr
         let ast_expr = expr_to_ast(expr)
@@ -284,6 +308,11 @@ fn get_expr_span(expr: TaoExpr) -> Span {
     Lambda(_, _, _, span) -> span
     Match(_, _, span) -> span
     If(_, _, _, span) -> span
+    For(_, _, _, span) -> span
+    While(_, _, span) -> span
+    Loop(_, span) -> span
+    Break(span) -> span
+    Continue(span) -> span
     Str(_, span) -> span
     Test(_, _, span) -> span
     Run(_, span) -> span

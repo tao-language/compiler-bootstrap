@@ -126,6 +126,16 @@ pub type Expr {
   Match(scrutinee: Expr, clauses: List(MatchClause), span: Span)
   /// If expression (e.g., if cond { then } else { else })
   If(condition: Expr, then_branch: Expr, else_branch: Option(Expr), span: Span)
+  /// For loop (e.g., for x in xs { ... })
+  For(pattern: Pattern, collection: Expr, body: List(Expr), span: Span)
+  /// While loop (e.g., while cond { ... })
+  While(condition: Expr, body: List(Expr), span: Span)
+  /// Infinite loop (e.g., loop { ... })
+  Loop(body: List(Expr), span: Span)
+  /// Break statement
+  Break(span: Span)
+  /// Continue statement
+  Continue(span: Span)
   /// Test statement (e.g., test "name" { expr })
   Test(name: String, body: Expr, span: Span)
   /// Run statement (e.g., run expr)
@@ -243,6 +253,37 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
       // Run statements just evaluate the value
       expr_to_ast_loop(value)
     }
+    For(pattern, collection, body, span) -> {
+      // For loop becomes a fold/map in AST
+      let ast_collection = expr_to_ast_loop(collection)
+      let ast_body = block_to_ast(Block(body, span))
+      // Placeholder: for now just return the collection
+      // Full implementation would create a fold expression
+      ast_collection
+    }
+    While(condition, body, span) -> {
+      // While loop becomes a fixpoint in AST
+      let ast_condition = expr_to_ast_loop(condition)
+      let ast_body = block_to_ast(Block(body, span))
+      // Placeholder: for now just return the condition
+      // Full implementation would create a fixpoint expression
+      ast_condition
+    }
+    Loop(body, span) -> {
+      // Loop becomes a fixpoint in AST
+      let ast_body = block_to_ast(Block(body, span))
+      // Placeholder: for now return unit
+      // Full implementation would create a fixpoint expression
+      AstBlock([], span)
+    }
+    Break(span) -> {
+      // Break becomes a return of unit
+      AstBlock([], span)
+    }
+    Continue(span) -> {
+      // Continue becomes a return of unit
+      AstBlock([], span)
+    }
   }
 }
 
@@ -257,7 +298,7 @@ fn clause_to_ast(clause: MatchClause) -> ast.MatchClause {
   ast.MatchClause(ast_pattern, ast_guard, ast_body, span)
 }
 
-fn pattern_to_ast(pattern: Pattern) -> ast.Pattern {
+pub fn pattern_to_ast(pattern: Pattern) -> ast.Pattern {
   case pattern {
     PWild(span) -> PAny(span)
     PVar(name, span) -> AstPVar(name, span)
@@ -489,6 +530,11 @@ fn get_span(expr: Expr) -> Span {
     Lambda(_, _, _, span) -> span
     Match(_, _, span) -> span
     If(_, _, _, span) -> span
+    For(_, _, _, span) -> span
+    While(_, _, span) -> span
+    Loop(_, span) -> span
+    Break(span) -> span
+    Continue(span) -> span
     Str(_, span) -> span
     Test(_, _, span) -> span
     Run(_, span) -> span
@@ -617,6 +663,32 @@ pub fn tao_grammar() -> Grammar(Expr) {
             _ -> Int(0, Span("empty", 0, 0, 0, 0))
           }
         }),
+        // Break statement
+        alt(
+          keyword_pattern("break"),
+          fn(values) {
+            case values {
+              [KeywordValue(kw)] -> {
+                let span = Span("tao", kw.line, kw.column, kw.line, kw.column + 5)
+                Break(span)
+              }
+              _ -> Break(Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+        // Continue statement
+        alt(
+          keyword_pattern("continue"),
+          fn(values) {
+            case values {
+              [KeywordValue(kw)] -> {
+                let span = Span("tao", kw.line, kw.column, kw.line, kw.column + 8)
+                Continue(span)
+              }
+              _ -> Continue(Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
         // Expression statement
         alt(ref("Expr"), fn(values) {
           case values {
@@ -986,6 +1058,34 @@ pub fn tao_grammar() -> Grammar(Expr) {
           ]),
           make_if,
         ),
+        // For loop: for pattern in collection { body... }
+        alt(
+          seq([
+            keyword_pattern("for"),
+            ref("Expr"),  // pattern (parsed as expression, converted to pattern)
+            keyword_pattern("in"),
+            ref("Expr"),  // collection
+            ref("Block"),  // body
+          ]),
+          make_for,
+        ),
+        // While loop: while condition { body... }
+        alt(
+          seq([
+            keyword_pattern("while"),
+            ref("Expr"),  // condition
+            ref("Block"),  // body
+          ]),
+          make_while,
+        ),
+        // Loop: loop { body... }
+        alt(
+          seq([
+            keyword_pattern("loop"),
+            ref("Block"),  // body
+          ]),
+          make_loop,
+        ),
         // Match expression: match scrutinee { | pattern -> body } or match scrutinee -> Type { ... }
         alt(
           seq([
@@ -1046,6 +1146,11 @@ pub fn get_expr_span(expr: Expr) -> Span {
     Lambda(_, _, _, span) -> span
     Match(_, _, span) -> span
     If(_, _, _, span) -> span
+    For(_, _, _, span) -> span
+    While(_, _, span) -> span
+    Loop(_, span) -> span
+    Break(span) -> span
+    Continue(span) -> span
     Str(_, span) -> span
     Test(_, _, span) -> span
     Run(_, span) -> span
@@ -1355,7 +1460,7 @@ fn extract_clause_guard(
   }
 }
 
-fn pattern_ast_to_pattern(expr: Expr) -> Pattern {
+pub fn pattern_ast_to_pattern(expr: Expr) -> Pattern {
   case expr {
     Var("_", span) -> PWild(span)
     Var(name, span) -> PVar(name, span)
@@ -1600,6 +1705,55 @@ fn make_block(values) -> Expr {
   }
 }
 
+/// Helper to create for loop AST.
+fn make_for(values) -> Expr {
+  // values = [for_kw, pattern_expr, in_kw, collection_expr, block]
+  case values {
+    [_, AstValue(pattern_expr), _, AstValue(collection), AstValue(block_expr)] -> {
+      let pattern = pattern_ast_to_pattern(pattern_expr)
+      let body = case block_expr {
+        Block(stmts, _) -> stmts
+        _ -> [block_expr]
+      }
+      let span = Span("tao", 0, 0, 0, 0)  // TODO: get proper span
+      For(pattern, collection, body, span)
+    }
+    _ -> Int(0, Span("error", 0, 0, 0, 0))
+  }
+}
+
+/// Helper to create while loop AST.
+fn make_while(values) -> Expr {
+  // values = [while_kw, condition_expr, block]
+  case values {
+    [_, AstValue(condition), AstValue(block_expr)] -> {
+      let body = case block_expr {
+        Block(stmts, _) -> stmts
+        _ -> [block_expr]
+      }
+      let span = Span("tao", 0, 0, 0, 0)  // TODO: get proper span
+      While(condition, body, span)
+    }
+    _ -> Int(0, Span("error", 0, 0, 0, 0))
+  }
+}
+
+/// Helper to create loop AST.
+fn make_loop(values) -> Expr {
+  // values = [loop_kw, block]
+  case values {
+    [_, AstValue(block_expr)] -> {
+      let body = case block_expr {
+        Block(stmts, _) -> stmts
+        _ -> [block_expr]
+      }
+      let span = Span("tao", 0, 0, 0, 0)  // TODO: get proper span
+      Loop(body, span)
+    }
+    _ -> Int(0, Span("error", 0, 0, 0, 0))
+  }
+}
+
 fn extract_stmts(values: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
   case values {
     [] -> list.reverse(acc)
@@ -1733,6 +1887,21 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
       }
       "if " <> format_expr(cond) <> " { " <> format_expr(then_expr) <> " }" <> else_str
     }
+    For(pattern, collection, body, _) -> {
+      let pattern_str = format_pattern(pattern)
+      let body_str = string_join(list.map(body, format_expr), "; ")
+      "for " <> pattern_str <> " in " <> format_expr(collection) <> " { " <> body_str <> " }"
+    }
+    While(condition, body, _) -> {
+      let body_str = string_join(list.map(body, format_expr), "; ")
+      "while " <> format_expr(condition) <> " { " <> body_str <> " }"
+    }
+    Loop(body, _) -> {
+      let body_str = string_join(list.map(body, format_expr), "; ")
+      "loop { " <> body_str <> " }"
+    }
+    Break(_) -> "break"
+    Continue(_) -> "continue"
     Test(name, body, _) -> {
       "test \"" <> name <> "\" " <> format_expr(body)
     }
