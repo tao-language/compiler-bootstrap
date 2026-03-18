@@ -6,8 +6,8 @@
 /// For detailed documentation see:
 /// - **[../plans/tao/enhanced-test-framework-plan.md](../plans/tao/enhanced-test-framework-plan.md)** - Implementation plan
 import tao/test_parser.{type Test, Test}
-import tao/test_runner.{type TestResult, type TestSummary, TestSummary, Pass, Fail, Error, Skipped, TimedOut}
-import syntax/grammar.{type Span}
+import tao/test_runner.{type TestResult, type TestSummary, TestSummary, Pass, Fail, Error as TestErr, Skipped, TimedOut}
+import syntax/grammar.{type Span, Span}
 import gleam/list
 import gleam/int
 import gleam/io
@@ -44,22 +44,17 @@ fn report_result_verbose(result: TestResult) -> Nil {
         }
       }
     }
-    Fail(t, expected, got) -> {
+    Fail(t, expected, got, source) -> {
       case t {
-        Test(name, _, _, _, _) -> {
-          io.println("✗ FAIL: " <> name)
-          io.println("    Expected: " <> expected)
-          io.println("    Got:      " <> got)
-          io.println("")
+        Test(name, _, _, span, _) -> {
+          report_failure_with_snippet(name, expected, got, span, source)
         }
       }
     }
-    Error(t, message) -> {
+    TestErr(t, message, source) -> {
       case t {
-        Test(name, _, _, _, _) -> {
-          io.println("⚠ ERROR: " <> name)
-          io.println("    Message: " <> message)
-          io.println("")
+        Test(name, _, _, span, _) -> {
+          report_error_with_snippet(name, message, span, source)
         }
       }
     }
@@ -88,22 +83,17 @@ fn report_result_verbose(result: TestResult) -> Nil {
 fn report_result_condensed(result: TestResult) -> Nil {
   case result {
     Pass(_, _) -> Nil  // Skip passed tests in condensed mode
-    Fail(t, expected, got) -> {
+    Fail(t, expected, got, source) -> {
       case t {
-        Test(name, _, _, _, _) -> {
-          io.println("✗ FAIL: " <> name)
-          io.println("    Expected: " <> expected)
-          io.println("    Got:      " <> got)
-          io.println("")
+        Test(name, _, _, span, _) -> {
+          report_failure_with_snippet(name, expected, got, span, source)
         }
       }
     }
-    Error(t, message) -> {
+    TestErr(t, message, source) -> {
       case t {
-        Test(name, _, _, _, _) -> {
-          io.println("⚠ ERROR: " <> name)
-          io.println("    Message: " <> message)
-          io.println("")
+        Test(name, _, _, span, _) -> {
+          report_error_with_snippet(name, message, span, source)
         }
       }
     }
@@ -119,6 +109,75 @@ fn report_result_condensed(result: TestResult) -> Nil {
         Test(name, _, _, _, _) -> {
           io.println("⚠ TIMEOUT: " <> name <> " (" <> int.to_string(timeout_ms) <> "ms)")
         }
+      }
+    }
+  }
+}
+
+/// Report a test failure with source snippet.
+fn report_failure_with_snippet(
+  name: String,
+  expected: String,
+  got: String,
+  span: Span,
+  source: String,
+) -> Nil {
+  io.println("✗ FAIL: " <> name)
+  
+  // Show source snippet
+  io.println("   ┌─ " <> span.file <> ":" <> int.to_string(span.start_line) <> ":" <> int.to_string(span.start_col))
+  io.println("   │")
+  
+  // Get the failing line
+  let lines = string.split(source, "\n")
+  let line_num = span.start_line - 1
+  let line_content = get_line(lines, line_num)
+  
+  io.println(" " <> int.to_string(span.start_line) <> " │ " <> line_content)
+  io.println("   │ " <> string.repeat("^", span.end_col - span.start_col + 1))
+  io.println("   │")
+  io.println("   = expected: " <> expected)
+  io.println("   = got:      " <> got)
+  io.println("")
+}
+
+/// Report a test error with source snippet.
+fn report_error_with_snippet(
+  name: String,
+  message: String,
+  span: Span,
+  source: String,
+) -> Nil {
+  io.println("⚠ ERROR: " <> name)
+  
+  // Show source snippet
+  io.println("   ┌─ " <> span.file <> ":" <> int.to_string(span.start_line) <> ":" <> int.to_string(span.start_col))
+  io.println("   │")
+  
+  // Get the error line
+  let lines = string.split(source, "\n")
+  let line_num = span.start_line - 1
+  let line_content = get_line(lines, line_num)
+  
+  io.println(" " <> int.to_string(span.start_line) <> " │ " <> line_content)
+  io.println("   │ " <> string.repeat("^", span.end_col - span.start_col + 1))
+  io.println("   │")
+  io.println("   = " <> message)
+  io.println("")
+}
+
+/// Get a line from a list of lines by index.
+fn get_line(lines: List(String), index: Int) -> String {
+  get_line_loop(lines, index, 0)
+}
+
+fn get_line_loop(lines: List(String), index: Int, current: Int) -> String {
+  case lines {
+    [] -> ""
+    [line, ..rest] -> {
+      case current == index {
+        True -> line
+        False -> get_line_loop(rest, index, current + 1)
       }
     }
   }

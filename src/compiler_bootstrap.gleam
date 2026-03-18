@@ -324,42 +324,26 @@ fn list_all_tests(tests_with_files: List(#(List(Test), String))) -> Nil {
 
 /// Run tests and report results
 fn run_and_report_tests(tests_with_files: List(#(List(Test), String)), verbose: Bool) -> Nil {
-  // Flatten all tests
-  let all_tests = list.flat_map(tests_with_files, fn(pair) {
-    let #(tests, _) = pair
-    tests
+  // Run tests for each file with its source
+  let all_results = list.flat_map(tests_with_files, fn(pair) {
+    let #(tests, source) = pair
+    run_tests(tests, source)
   })
 
-  // Run tests
-  let results = run_tests(all_tests)
-  let summary = calculate_summary(results)
+  let summary = calculate_summary(all_results)
 
   // Report results using enhanced reporter
   io.println("")
-  report_results(results, summary, verbose, "")
+  report_results(all_results, summary, verbose, "")
 
   // Final status
-  report_final_status(all_passed(results))
+  report_final_status(all_passed(all_results))
 }
 
-/// Report a single test failure
-fn report_test_failure(result: TestResult) -> Nil {
-  case result {
-    Fail(test_item, expected, got) -> {
-      io.println("  ✗ " <> test_item.name)
-      io.println("      Expected: " <> expected)
-      io.println("      Got:      " <> got)
-    }
-    TestError(test_item, message) -> {
-      io.println("  ✗ " <> test_item.name)
-      io.println("      Error: " <> message)
-    }
-    TimedOut(test_item, timeout_ms) -> {
-      io.println("  ✗ " <> test_item.name)
-      io.println("      Timed out after " <> int.to_string(timeout_ms) <> "ms")
-    }
-    _ -> Nil
-  }
+/// Report a single test failure (legacy - kept for compatibility)
+fn report_test_failure(_result: TestResult) -> Nil {
+  // This function is now obsolete - use test_reporter instead
+  Nil
 }
 
 // ============================================================================

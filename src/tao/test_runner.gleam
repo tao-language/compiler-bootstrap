@@ -22,9 +22,9 @@ pub type TestResult {
   /// Test passed
   Pass(test_item: Test, result: Value)
   /// Test failed - pattern didn't match
-  Fail(test_item: Test, expected: String, got: String)
+  Fail(test_item: Test, expected: String, got: String, source: String)
   /// Test failed - runtime error
-  Error(test_item: Test, message: String)
+  Error(test_item: Test, message: String, source: String)
   /// Test skipped (via @skip annotation)
   Skipped(test_item: Test, reason: String)
   /// Test timed out
@@ -48,21 +48,21 @@ pub type TestSummary {
 // ============================================================================
 
 /// Run all tests and return results.
-pub fn run_tests(tests: List(Test)) -> List(TestResult) {
-  list.map(tests, run_single_test)
+pub fn run_tests(tests: List(Test), source: String) -> List(TestResult) {
+  list.map(tests, fn(t) { run_single_test(t, source) })
 }
 
 /// Run a single test.
-fn run_single_test(test_item: Test) -> TestResult {
+fn run_single_test(test_item: Test, source: String) -> TestResult {
   // Check for skip annotation
   case get_skip_annotation(test_item.annotations) {
     Some(reason) -> Skipped(test_item, reason)
     None -> {
       // Get timeout
       let timeout = get_timeout_annotation(test_item.annotations) |> option.unwrap(5000)
-      
+
       // Run the test (timeout not yet implemented - would need IO)
-      run_test_expression(test_item, timeout)
+      run_test_expression(test_item, timeout, source)
     }
   }
 }
@@ -94,26 +94,26 @@ fn find_timeout(annotations: List(Annotation)) -> option.Option(Int) {
 }
 
 /// Run the test expression and compare with expected result.
-fn run_test_expression(test_item: Test, _timeout: Int) -> TestResult {
+fn run_test_expression(test_item: Test, _timeout: Int, source: String) -> TestResult {
   // Evaluate the expression
   let env = []
   let ffi = initial_state.ffi
   let expr_term = desugar_expression(test_item.expression)
-  
+
   let value = eval(ffi, env, expr_term)
-  
+
   // Compare with expected
   case test_item.expected {
     Expression(expected_expr) -> {
       let expected_term = desugar_expression(expected_expr)
       let expected_value = eval(ffi, env, expected_term)
-      
+
       case values_equal(value, expected_value) {
         True -> Pass(test_item, value)
         False -> {
           let got_str = format_value(value)
           let expected_str = format_value(expected_value)
-          Fail(test_item, expected_str, got_str)
+          Fail(test_item, expected_str, got_str, source)
         }
       }
     }
@@ -182,8 +182,8 @@ pub fn calculate_summary(results: List(TestResult)) -> TestSummary {
   list.fold(results, TestSummary(0, 0, 0, 0, 0, 0), fn(acc, result) {
     case result {
       Pass(_, _) -> TestSummary(acc.total + 1, acc.passed + 1, acc.failed, acc.skipped, acc.timed_out, acc.errored)
-      Fail(_, _, _) -> TestSummary(acc.total + 1, acc.passed, acc.failed + 1, acc.skipped, acc.timed_out, acc.errored)
-      Error(_, _) -> TestSummary(acc.total + 1, acc.passed, acc.failed, acc.skipped, acc.timed_out, acc.errored + 1)
+      Fail(_, _, _, _) -> TestSummary(acc.total + 1, acc.passed, acc.failed + 1, acc.skipped, acc.timed_out, acc.errored)
+      Error(_, _, _) -> TestSummary(acc.total + 1, acc.passed, acc.failed, acc.skipped, acc.timed_out, acc.errored + 1)
       Skipped(_, _) -> TestSummary(acc.total + 1, acc.passed, acc.failed, acc.skipped + 1, acc.timed_out, acc.errored)
       TimedOut(_, _) -> TestSummary(acc.total + 1, acc.passed, acc.failed, acc.skipped, acc.timed_out + 1, acc.errored)
     }
