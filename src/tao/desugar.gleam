@@ -17,7 +17,6 @@ import gleam/int
 import gleam/float
 import gleam/option.{type Option, Some, None}
 import gleam/string
-import gleam/io
 import syntax/grammar.{type Span, Span}
 import tao/ast.{
   type Module, type Stmt, type Expr, type Param, type Pattern,
@@ -199,12 +198,6 @@ pub fn desugar_module(
 
   // Check if the last statement is an expression (for expression-style modules)
   let last_is_expr = is_last_stmt_expr(module.body)
-  
-  // Debug output
-  let _ = case last_is_expr {
-    True -> io.println("DEBUG: last_is_expr = True")
-    False -> io.println("DEBUG: last_is_expr = False")
-  }
 
   // Determine the result term and statements for the do block
   let #(stmts_for_block, result) = case last_is_expr {
@@ -234,16 +227,6 @@ pub fn desugar_module(
         }
       }
     }
-  }
-  
-  // Debug output
-  let _ = io.println("DEBUG: stmts_for_block length = " <> int.to_string(list.length(stmts_for_block)))
-  let _ = case result {
-    CoreLet(_, _, _) -> io.println("DEBUG: result = CoreLet")
-    CoreApp(_, _, _) -> io.println("DEBUG: result = CoreApp")
-    CoreVar(_, _) -> io.println("DEBUG: result = CoreVar")
-    CoreCall(_, _, _) -> io.println("DEBUG: result = CoreCall")
-    _ -> io.println("DEBUG: result = Other")
   }
 
   let core_term = CoreDoBlock(stmts_for_block, result, module.span)
@@ -1067,21 +1050,21 @@ fn desugar_binop(
 /// Convert binary operator to function name.
 fn binop_to_name(op: BinOperator) -> String {
   case op {
-    OpAdd -> "add"
-    OpSub -> "sub"
-    OpMul -> "mul"
-    OpDiv -> "div"
-    OpMod -> "mod"
-    OpEq -> "eq"
-    OpNeq -> "neq"
-    OpLt -> "lt"
-    OpGt -> "gt"
-    OpLte -> "lte"
-    OpGte -> "gte"
-    OpAnd -> "and"
-    OpOr -> "or"
-    OpConcat -> "concat"
-    OpPipe -> "pipe"
+    OpAdd -> "%add"
+    OpSub -> "%sub"
+    OpMul -> "%mul"
+    OpDiv -> "%div"
+    OpMod -> "%mod"
+    OpEq -> "%eq"
+    OpNeq -> "%neq"
+    OpLt -> "%lt"
+    OpGt -> "%gt"
+    OpLte -> "%lte"
+    OpGte -> "%gte"
+    OpAnd -> "%and"
+    OpOr -> "%or"
+    OpConcat -> "%concat"
+    OpPipe -> "%pipe"
   }
 }
 
@@ -1102,8 +1085,8 @@ fn desugar_unaryop(
 /// Convert unary operator to function name.
 fn unaryop_to_name(op: UnaryOperator) -> String {
   case op {
-    OpNegate -> "negate"
-    OpNot -> "not"
+    OpNegate -> "%negate"
+    OpNot -> "%not"
   }
 }
 

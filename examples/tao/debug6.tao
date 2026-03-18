@@ -1,3 +1,0 @@
-// Debug test 6 - simple application
-let add = fn(x, y) { x + y }
-add(1, 2)

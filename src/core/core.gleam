@@ -418,24 +418,25 @@ pub type FFI =
 /// These are the standard arithmetic, comparison, and logical operations.
 pub const ffi_build = [
   // Arithmetic (pure, always allowed)
-  #("add", Builtin(add_impl, [])),
-  #("sub", Builtin(sub_impl, [])),
-  #("mul", Builtin(mul_impl, [])),
-  #("div", Builtin(div_impl, [])),
-  #("mod", Builtin(mod_impl, [])),
+  #("%add", Builtin(add_impl, [])),
+  #("%sub", Builtin(sub_impl, [])),
+  #("%mul", Builtin(mul_impl, [])),
+  #("%div", Builtin(div_impl, [])),
+  #("%mod", Builtin(mod_impl, [])),
 
   // Comparison (pure)
-  #("eq", Builtin(eq_impl, [])),
-  #("neq", Builtin(neq_impl, [])),
-  #("lt", Builtin(lt_impl, [])),
-  #("lte", Builtin(lte_impl, [])),
-  #("gt", Builtin(gt_impl, [])),
-  #("gte", Builtin(gte_impl, [])),
+  #("%eq", Builtin(eq_impl, [])),
+  #("%neq", Builtin(neq_impl, [])),
+  #("%lt", Builtin(lt_impl, [])),
+  #("%lte", Builtin(lte_impl, [])),
+  #("%gt", Builtin(gt_impl, [])),
+  #("%gte", Builtin(gte_impl, [])),
 
   // Logical (pure)
-  #("and", Builtin(and_impl, [])),
-  #("or", Builtin(or_impl, [])),
-  #("not", Builtin(not_impl, [])),
+  #("%and", Builtin(and_impl, [])),
+  #("%or", Builtin(or_impl, [])),
+  #("%not", Builtin(not_impl, [])),
+  #("%negate", Builtin(negate_impl, [])),
 ]
 
 // ============================================================================
@@ -617,6 +618,16 @@ pub fn not_impl(args: List(Value)) -> Option(Value) {
   }
 }
 
+pub fn negate_impl(args: List(Value)) -> Option(Value) {
+  case args {
+    [VLit(I32(a))] -> Some(VLit(I32(-a)))
+    [VLit(I64(a))] -> Some(VLit(I64(-a)))
+    [VLit(F32(a))] -> Some(VLit(F32(0.0 -. a)))
+    [VLit(F64(a))] -> Some(VLit(F64(0.0 -. a)))
+    _ -> None
+  }
+}
+
 fn bool_to_int(b: Bool) -> Int {
   case b {
     True -> 1
@@ -767,6 +778,45 @@ pub type Error {
 // Evaluates a Term to a Value in the given environment.
 // This is the "normalization" part of Normalization by Evaluation.
 
+/// Shift all free variable indices in a term by a given amount.
+/// This is used when adding a new binder to the environment.
+fn shift_term_indices(term: Term, shift: Int) -> Term {
+  case term {
+    Var(i, span) -> Var(i + shift, span)
+    Lam(implicit, param, body, span) -> {
+      Lam(implicit, param, shift_term_indices(body, shift), span)
+    }
+    Pi(implicit, name, in_term, out_term, span) -> {
+      Pi(implicit, name, shift_term_indices(in_term, shift), shift_term_indices(out_term, shift), span)
+    }
+    App(fun, implicit, arg, span) -> {
+      App(shift_term_indices(fun, shift), implicit, shift_term_indices(arg, shift), span)
+    }
+    Match(arg, motive, cases, span) -> {
+      Match(shift_term_indices(arg, shift), shift_term_indices(motive, shift), list.map(cases, fn(c) { shift_case_indices(c, shift) }), span)
+    }
+    Hole(id, span) -> Hole(id, span)
+    Typ(k, span) -> Typ(k, span)
+    Lit(k, span) -> Lit(k, span)
+    LitT(k, span) -> LitT(k, span)
+    Rcd(fields, span) -> Rcd(list.map(fields, fn(kv) { #(kv.0, shift_term_indices(kv.1, shift)) }), span)
+    Ctr(tag, arg, span) -> Ctr(tag, shift_term_indices(arg, shift), span)
+    Unit(span) -> Unit(span)
+    Dot(arg, name, span) -> Dot(shift_term_indices(arg, shift), name, span)
+    Ann(term, type_ann, span) -> Ann(shift_term_indices(term, shift), shift_term_indices(type_ann, shift), span)
+    Call(name, args, span) -> Call(name, list.map(args, fn(a) { shift_term_indices(a, shift) }), span)
+    Comptime(term, span) -> Comptime(shift_term_indices(term, shift), span)
+    Fix(name, body, span) -> Fix(name, shift_term_indices(body, shift), span)
+    Err(msg, span) -> Err(msg, span)
+  }
+}
+
+fn shift_case_indices(case_val: Case, shift: Int) -> Case {
+  case case_val {
+    Case(pattern, body, guard, span) -> Case(pattern, shift_term_indices(body, shift), option.map(guard, fn(g) { shift_term_indices(g, shift) }), span)
+  }
+}
+
 /// Evaluate a term to its normal form in the given environment.
 ///
 /// The environment maps De Bruijn indices to values. When evaluating:
@@ -871,6 +921,10 @@ pub fn do_app(ffi: FFI, fun: Value, arg: Value) -> Value {
     VFix(name, env, body) -> {
       // Unfold fixpoint: substitute the fixpoint itself for the name in the body
       // Then apply to the argument
+      // The body's De Bruijn indices are relative to env, and the fixpoint is added
+      // at the front of the environment, so we need to shift indices by 1
+      // However, the body is a lambda, and the lambda's binders will shift the indices
+      // when evaluated, so we don't need to shift here
       let fix_val = VFix(name, env, body)
       let lam_val = VLam([], name, [fix_val, ..env], body)
       do_app(ffi, lam_val, arg)
