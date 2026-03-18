@@ -834,6 +834,42 @@ pub fn tao_grammar() -> Grammar(Expr) {
       ]),
       // Fn = "fn" name "(" params ")" "{" body "}"  OR  "fn" "(" op ")" "(" param ":" type ")" "->" type "{" body "}"
       rule("Fn", [
+        // Overloaded function with Ident name: fn (add)(x: I32) -> I32 { body }
+        alt(
+          seq([
+            keyword_pattern("fn"),
+            token_pattern("LParen"),
+            token_pattern("Ident"),  // operator name
+            token_pattern("RParen"),
+            token_pattern("LParen"),
+            token_pattern("Ident"),  // param name
+            token_pattern("Colon"),
+            ref("Type"),  // param type
+            token_pattern("RParen"),
+            token_pattern("Arrow"),
+            ref("Type"),  // return type
+            ref("Block"),  // body
+          ]),
+          make_overloaded_fn,
+        ),
+        // Overloaded function with Operator name: fn (+)(x: I32) -> I32 { body }
+        alt(
+          seq([
+            keyword_pattern("fn"),
+            token_pattern("LParen"),
+            token_pattern("Operator"),  // operator name
+            token_pattern("RParen"),
+            token_pattern("LParen"),
+            token_pattern("Ident"),  // param name
+            token_pattern("Colon"),
+            ref("Type"),  // param type
+            token_pattern("RParen"),
+            token_pattern("Arrow"),
+            ref("Type"),  // return type
+            ref("Block"),  // body
+          ]),
+          make_overloaded_fn,
+        ),
         // Simple function: fn name(params) { body }
         alt(
           seq([
@@ -856,24 +892,6 @@ pub fn tao_grammar() -> Grammar(Expr) {
             ref("Block"),  // body
           ]),
           make_simple_fn,
-        ),
-        // Overloaded function: fn (+)(x: I32) -> I32 { body }
-        alt(
-          seq([
-            keyword_pattern("fn"),
-            token_pattern("LParen"),
-            token_pattern("Ident"),  // operator name
-            token_pattern("RParen"),
-            token_pattern("LParen"),
-            token_pattern("Ident"),  // param name
-            token_pattern("Colon"),
-            ref("Type"),  // param type
-            token_pattern("RParen"),
-            token_pattern("Arrow"),
-            ref("Type"),  // return type
-            ref("Expr"),             // body
-          ]),
-          make_overloaded_fn,
         ),
       ]),
       // Logic level: && and || (precedence 3)
@@ -1608,21 +1626,35 @@ fn make_overloaded_fn(values) -> Expr {
       _,  // "("
       TokenValue(param_name_token),  // param name
       _,  // ":"
-      TokenValue(param_type_token),  // param type
+      AstValue(param_type_expr),  // param type (parsed as Expr)
       _,  // ")"
       _,  // "->"
-      TokenValue(return_type_token),  // return type
+      AstValue(return_type_expr),  // return type (parsed as Expr)
       AstValue(body),  // body
-    ] -> OverloadedFn(
-      name_token.value,
-      "T",  // type param (simplified for now)
-      param_name_token.value,
-      param_type_token.value,
-      return_type_token.value,
-      body,
-      span_from_token(name_token, "tao"),
-    )
+    ] -> {
+      // Extract type names from expressions
+      let param_type_str = expr_to_type_string(param_type_expr)
+      let return_type_str = expr_to_type_string(return_type_expr)
+      OverloadedFn(
+        name_token.value,
+        "T",  // type param (simplified for now)
+        param_name_token.value,
+        param_type_str,
+        return_type_str,
+        body,
+        span_from_token(name_token, "tao"),
+      )
+    }
     _ -> panic as "Expected overloaded function definition"
+  }
+}
+
+/// Extract type name from a type expression.
+fn expr_to_type_string(expr: Expr) -> String {
+  case expr {
+    Var(name, _) -> name
+    Int(n, _) -> int.to_string(n)
+    _ -> "Unknown"
   }
 }
 
