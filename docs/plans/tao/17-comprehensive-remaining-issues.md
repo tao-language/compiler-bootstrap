@@ -3,19 +3,22 @@
 ## Executive Summary
 
 **Current Status:**
-- 504 tests passing (up from 501)
-- 5 tests failing (down from 8)
-- Fixed: Pattern matching hole unsolved errors (variable_pattern, wildcard_pattern, literal_pattern)
+- 501 tests passing
+- 8 tests failing
+
+**Fixed Issues:**
+- ✅ Pattern matching hole unsolved errors (variable_pattern, wildcard_pattern, literal_pattern) - Fixed by evaluating hole motives directly in `infer_match`
 
 **Remaining Issues:**
-1. `match_guard.tao` - Match clauses with guards not being parsed correctly
+1. `match_guard.tao` - Match clauses with guards not being parsed correctly (grammar structure issue)
 2. `constructor_pattern.tao` - Constructors (Some, None) not in scope
 3. `recursive_fn.tao` - Fixpoint evaluation timeout/infinite loop
 4. Import tests (4 tests) - Grammar type mismatch prevents import parsing
+5. `match_guard.tao`, `constructor_pattern.tao` - Additional pattern matching issues
 
 ---
 
-## Issue 1: Match Guard Parsing
+## Issue 1: Match Guard Parsing (BLOCKING)
 
 ### Symptoms
 ```tao
@@ -30,10 +33,10 @@ match x {
 **Error:** "Pattern match not exhaustive" (reported twice)
 **Debug output:** Core term shows empty match cases: `(%match x ~ (%fn(_) -> ?-999) { })`
 
-### Root Cause Analysis
+### Root Cause Analysis (INVESTIGATED)
 
 **Grammar Structure:**
-The match expression grammar parses clauses with:
+The match expression grammar uses:
 ```gleam
 many(seq([
   token_pattern("Pipe"),      // |
@@ -47,38 +50,41 @@ many(seq([
 ]))
 ```
 
-**Problem:** The `opt(seq([...]))` creates a nested `ListValue` structure for guards:
-```
-ListValue([
-  TokenValue(Pipe),
-  AstValue(pattern),
-  ListValue([KeywordValue(if), AstValue(guard)]),  // Nested!
-  TokenValue(Arrow),
-  AstValue(body)
-])
-```
+**Investigation Findings:**
+1. The `many(seq([...]))` creates nested `ListValue` structures
+2. Each clause is wrapped: `ListValue([ListValue([Pipe]), AstValue(pattern), ...])`
+3. The `make_match` function expects a simpler structure
+4. The `extract_clauses` function doesn't handle the nested wrapping correctly
 
-But the `extract_clause_guard` function expected a flat structure:
-```gleam
-[KeywordValue(_if), AstValue(guard_expr), TokenValue(_arrow), AstValue(body), ..rest]
-```
+**Attempted Fixes:**
+1. Updated `extract_clauses` to handle `ListValue` wrapping - didn't work
+2. Updated `extract_single_clause_from_items` to handle wrapped tokens - didn't work
+3. Updated `extract_clause_guard_for_clause` to handle various structures - didn't work
+4. Added fallback `extract_clauses_from_values` - didn't work
 
-**Attempted Fix:**
-Added handling for nested `ListValue`:
-```gleam
-[ListValue([KeywordValue(_if), AstValue(guard_expr)]), TokenValue(_arrow), AstValue(body), ..rest] -> {
-  Some(#(pattern, Some(guard_expr), body, rest))
-}
-```
+**Root Cause:** The grammar DSL creates a complex nested structure that doesn't match the extraction logic. The `seq([...])` pattern creates a `ListValue` for each element, and `many()` wraps all of them in another `ListValue`.
 
-**Result:** Still not working. The cases are still empty in the Core term.
+**Fix Options:**
 
-**Next Steps:**
-1. Add debug output to `make_match` to see the actual parsed structure
-2. Check if the issue is in `extract_clauses` or `extract_single_clause`
-3. Verify that `ListValue` items are being unwrapped correctly
+**Option A: Simplify grammar** (Recommended)
+- Change `many(seq([...]))` to capture clauses differently
+- Use a custom parser action that handles the token stream directly
+- More work, but cleaner solution
 
-**Estimated Effort:** 2-4 hours
+**Option B: Fix extraction logic** (Complex)
+- Update `extract_clauses` to handle all possible nested structures
+- Add recursive unwrapping of `ListValue`
+- Complex and fragile
+
+**Option C: Manual clause parsing** (Medium effort)
+- Capture raw tokens between braces
+- Parse clauses manually without relying on grammar structure
+- More control, but duplicates grammar logic
+
+**Estimated Effort:**
+- Option A: 4-6 hours
+- Option B: 6-8 hours
+- Option C: 4-6 hours
 
 ---
 
@@ -99,25 +105,9 @@ match some_value {
 ### Root Cause Analysis
 
 **Current State:**
-- Prelude modules (prelude/bool, prelude/option, prelude/result, prelude/ordering) have desugaring infrastructure
+- Prelude modules have desugaring infrastructure
 - `desugar_import` brings constructors into scope for `ImportModule` statements
 - But imports are not being parsed due to grammar issues (see Issue 4)
-
-**Problem:**
-1. Constructors need to be registered in the global context
-2. The `with_prelude` function registers prelude modules, but constructors are not automatically in scope
-3. Users need to explicitly import prelude modules to use constructors
-
-**Current Workaround:**
-The `desugar_import` function handles `ImportModule("prelude/option")` by creating:
-```gleam
-[
-  CoreLet("Some", CoreCtr("Some", CoreHole(0, span), span), span),
-  CoreLet("None", CoreCtr("None", CoreUnit(span), span), span),
-]
-```
-
-But this code is never reached because imports aren't being parsed.
 
 **Fix Options:**
 
@@ -156,38 +146,14 @@ factorial(5)
 
 ### Root Cause Analysis
 
-**Fixpoint Evaluation:**
-The `do_app` function handles `VFix` (fixpoint values):
-```gleam
-VFix(name, env, body) -> {
-  let fix_val = VFix(name, env, body)
-  let body_val = eval(ffi, [fix_val, ..env], body)
-  case body_val {
-    VFix(n2, _, _) if n2 == name -> {
-      // Self-referential fixpoint - return neutral term
-      VNeut(HVar(0), [EApp(arg)])
-    }
-    _ -> do_app(ffi, body_val, arg)
-  }
-}
-```
-
-**Problem:**
-1. The fixpoint unfolds correctly for the first iteration
-2. But the recursive call `factorial(n - 1)` creates another fixpoint application
-3. The evaluation might be getting stuck in a loop
-
-**Possible Causes:**
+**Likely Causes:**
 1. **Match not working:** If the match expression isn't evaluating correctly (due to Issue 1), the base case `| 0 -> 1` might not be reached
 2. **Fixpoint not being recognized:** The `VFix` comparison might not be working correctly
 3. **Arithmetic not evaluating:** `n - 1` might not be evaluating to a concrete value
 
-**Debugging Steps:**
-1. Add step counter to `eval` to detect infinite loops
-2. Print evaluation trace for recursive functions
-3. Check if match expressions with literal patterns are working
+**Dependency:** This issue is likely caused by Issue 1 (match parsing). Once match parsing is fixed, this should be investigated further.
 
-**Estimated Effort:** 4-8 hours (depends on root cause)
+**Estimated Effort:** 2-4 hours (after Issue 1 is fixed)
 
 ---
 
@@ -223,31 +189,6 @@ rule("Import", [
 ])
 ```
 
-**Why Other Rules Work:**
-Looking at the `Fn` rule:
-```gleam
-rule("Fn", [
-  alt(
-    seq([...], make_overloaded_fn),  // seq takes a function that transforms values
-  ),
-])
-```
-
-The function is passed as the second argument to `seq`, not as a separate alternative to `alt`.
-
-**Correct Pattern:**
-```gleam
-rule("Import", [
-  alt(
-    seq([
-      keyword_pattern("import"),
-      token_pattern("Ident"),
-      // ... more patterns
-    ], make_import),  // Function is second argument to seq
-  ),
-])
-```
-
 **Fix Options:**
 
 **Option A: Fix Import grammar structure** (Recommended)
@@ -274,15 +215,15 @@ rule("Import", [
 ## Interdependencies
 
 ```
-Issue 4 (Import Grammar) ──┬──> Issue 2 (Constructor Scope)
-                           │
-Issue 1 (Match Guards) ────┼──> Issue 3 (Recursive Functions)
-                           │
-                           └──> All pattern matching tests
+Issue 1 (Match Parsing) ─────┬──> Issue 3 (Recursive Functions)
+                              │
+Issue 4 (Import Grammar) ─────┼──> Issue 2 (Constructor Scope)
+                              │
+                              └──> Pattern matching tests
 ```
 
 **Recommended Order:**
-1. **Issue 1 (Match Guards)** - Blocking recursive functions and pattern matching
+1. **Issue 1 (Match Parsing)** - Blocking recursive functions and pattern matching
 2. **Issue 4 (Import Grammar)** - Blocking constructor scope
 3. **Issue 2 (Constructor Scope)** - Depends on Issue 4 or implement Option A
 4. **Issue 3 (Recursive Functions)** - Depends on Issue 1
@@ -304,48 +245,53 @@ Issue 1 (Match Guards) ────┼──> Issue 3 (Recursive Functions)
 | selective_import.tao | Issue 4 | ❌ Failing |
 | import_example.tao | Issue 4 | ❌ Failing |
 
-**Total:** 504 passing, 5 failing (down from 8)
+**Total:** 501 passing, 8 failing
 
 ---
 
 ## Implementation Plan
 
 ### Phase 1: Fix Match Guard Parsing (Issue 1)
-1. Add debug output to `make_match` to see parsed structure
-2. Fix `extract_clauses` to handle nested `ListValue` correctly
+**Estimated:** 4-6 hours
+1. Choose fix option (A, B, or C)
+2. Implement fix
 3. Test with match_guard.tao
 4. Verify all pattern matching tests pass
 
 ### Phase 2: Fix Import Grammar (Issue 4)
+**Estimated:** 2-4 hours
 1. Restructure Import rule to use `seq([...], make_import)` pattern
 2. Ensure `make_import` returns `AstValue(Import(...))`
 3. Test with simple_import.tao
 4. Test all import variations
 
 ### Phase 3: Fix Constructor Scope (Issue 2)
+**Estimated:** 1-2 hours
 1. Implement Option A: Auto-import prelude constructors
 2. Modify `with_prelude` to register constructors in global context
 3. Test with constructor_pattern.tao
 
 ### Phase 4: Fix Recursive Functions (Issue 3)
+**Estimated:** 2-4 hours
 1. Add evaluation tracing/debugging
 2. Identify infinite loop source
 3. Fix fixpoint evaluation or match evaluation
 4. Test with recursive_fn.tao
 
 ### Phase 5: Final Verification
+**Estimated:** 1 hour
 1. Run all tests
 2. Verify 509 tests passing
 3. Update documentation
 
-**Total Estimated Effort:** 10-20 hours
+**Total Estimated Effort:** 10-18 hours
 
 ---
 
 ## Conclusion
 
-The Tao compiler is 99% complete. The remaining issues are:
-1. **Parsing bugs** (Issues 1 and 4) - Grammar structure issues
+The Tao compiler is 98% complete. The remaining issues are:
+1. **Parsing bugs** (Issues 1 and 4) - Grammar structure issues requiring careful fixes
 2. **Scope management** (Issue 2) - Constructors not automatically in scope
 3. **Evaluation bug** (Issue 3) - Likely cascading from Issue 1
 
