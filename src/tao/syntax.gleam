@@ -650,9 +650,15 @@ pub fn tao_grammar() -> Grammar(Expr) {
           },
         ),
       ]),
-      // Stmt = Fn | Let | Test | Run | For | While | Loop | Break | Continue | Return | Yield | Expr
-      // Note: Import statement is not yet implemented in the grammar
+      // Stmt = Import | Fn | Let | Test | Run | For | While | Loop | Break | Continue | Return | Yield | Expr
       rule("Stmt", [
+        // Import statement
+        alt(ref("Import"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> Int(0, Span("empty", 0, 0, 0, 0))
+          }
+        }),
         // Function definition
         alt(ref("Fn"), fn(values) {
           case values {
@@ -736,9 +742,37 @@ pub fn tao_grammar() -> Grammar(Expr) {
           }
         }),
       ]),
-      // Import statement - TODO: implement full import grammar
-      // Currently imports are not supported in the grammar
-      // rule("Import", [...]),
+      // Import statement: import path [as alias] [.{name1, name2, ...}]
+      rule("Import", [
+        alt(
+          seq([
+            keyword_pattern("import"),
+            token_pattern("Ident"),  // path component
+            many(seq([
+              token_pattern("Operator"),  // / slash
+              token_pattern("Ident"),  // path component
+            ])),
+            opt(seq([
+              keyword_pattern("as"),
+              token_pattern("Ident"),  // alias
+            ])),
+            opt(seq([
+              token_pattern("Dot"),  // . dot for selective import
+              token_pattern("LBrace"),
+              many(seq([
+                token_pattern("Ident"),
+                opt(seq([
+                  keyword_pattern("as"),
+                  token_pattern("Ident"),
+                ])),
+                opt(token_pattern("Comma")),
+              ])),
+              token_pattern("RBrace"),
+            ])),
+          ]),
+          make_import,
+        ),
+      ]),
       // Type = Ident | "fn" "(" [Type ("," Type)*] ")" "->" Type | Ident "(" [Type ("," Type)*] ")"
       rule("Type", [
         // Function type: fn(I32, I32) -> I32 - most specific, check first
@@ -2017,7 +2051,7 @@ fn expr_to_type_string(expr: Expr) -> String {
 fn make_import(values) -> Expr {
   // Check if the values contain LBrace (selective import)
   let has_selective = has_lbrace(values)
-  
+
   case has_selective {
     True -> {
       // Parse selective import

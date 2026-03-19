@@ -1957,8 +1957,9 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
       )
     }
     CoreLet(name, value, span) -> {
-      // Let bindings are handled by CoreDoBlock
-      CoreRcd([], span) |> core_term_to_term_loop(env)
+      // Let bindings are handled by CoreDoBlock - this shouldn't be reached
+      // Just convert the value and ignore the binding
+      core_term_to_term_loop(value, env)
     }
     CoreDoBlock(stmts, result, span) -> {
       let sequential_core = build_sequential_term(stmts, result, span)

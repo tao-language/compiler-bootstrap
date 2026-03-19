@@ -8,13 +8,105 @@
 
 **Fixed Issues:**
 - ✅ Pattern matching hole unsolved errors (variable_pattern, wildcard_pattern, literal_pattern) - Fixed by evaluating hole motives directly in `infer_match`
+- ✅ Import grammar implemented - Added full import grammar with path, alias, and selective imports
 
 **Remaining Issues:**
 1. `match_guard.tao` - Match clauses with guards not being parsed correctly (grammar structure issue)
 2. `constructor_pattern.tao` - Constructors (Some, None) not in scope
 3. `recursive_fn.tao` - Fixpoint evaluation timeout/infinite loop
-4. Import tests (4 tests) - Grammar type mismatch prevents import parsing
+4. Import tests (4 tests) - Import desugaring creates CoreLet bindings but type checker context not populated correctly
 5. `match_guard.tao`, `constructor_pattern.tao` - Additional pattern matching issues
+
+---
+
+## Issue 4: Import Desugaring (INVESTIGATED)
+
+### Symptoms
+```tao
+import prelude/bool
+
+True
+```
+
+**Error:** "Variable at index 0 is not defined in this scope"
+**Expected:** `True` constructor should be available after import
+
+### Root Cause Analysis
+
+**Import Grammar:**
+Successfully implemented full import grammar:
+```gleam
+rule("Import", [
+  alt(
+    seq([
+      keyword_pattern("import"),
+      token_pattern("Ident"),  // path component
+      many(seq([
+        token_pattern("Operator"),  // / slash
+        token_pattern("Ident"),  // path component
+      ])),
+      opt(seq([
+        keyword_pattern("as"),
+        token_pattern("Ident"),  // alias
+      ])),
+      opt(seq([
+        token_pattern("Dot"),  // . dot for selective import
+        token_pattern("LBrace"),
+        many(seq([
+          token_pattern("Ident"),
+          opt(seq([
+            keyword_pattern("as"),
+            token_pattern("Ident"),
+          ])),
+          opt(token_pattern("Comma")),
+        ])),
+        token_pattern("RBrace"),
+      ])),
+    ]),
+    make_import,
+  ),
+])
+```
+
+**Desugaring:**
+The `desugar_import` function creates CoreLet bindings:
+```gleam
+"prelude/bool" -> {
+  [
+    CoreLet("True", CoreCtr("True", CoreUnit(span), span), span),
+    CoreLet("False", CoreCtr("False", CoreUnit(span), span), span),
+  ]
+}
+```
+
+**Conversion:**
+The CoreLet bindings are converted to lambda applications by `build_sequential_term`:
+```
+CoreApp(CoreLam("True", CoreApp(CoreLam("False", CoreVar("True")), v2)), v1)
+```
+
+**Problem:**
+When converted to core/core terms, the CoreVar("True") should be converted to Var(1, span) because the environment is ["False", "True"]. However, the error shows Var(0, span), suggesting the environment is not being populated correctly.
+
+**Hypothesis:**
+The CoreLam terms might not be adding variables to the environment correctly during conversion, or the environment is being reset somewhere.
+
+### Fix Options
+
+**Option A: Debug and fix environment handling (recommended)**
+- Add debug output to core_term_to_term_loop to trace environment
+- Verify CoreLam adds variables to environment correctly
+- Estimated: 2-3 hours
+
+**Option B: Use direct constructor references**
+- Modify desugarer to resolve constructor names to CoreCtr directly
+- Bypass let bindings for known constructors
+- Estimated: 3-4 hours
+
+**Option C: Register constructors in global scope**
+- Add prelude constructors to initial type checker context
+- Import statements become no-ops for prelude modules
+- Estimated: 1-2 hours
 
 ---
 
