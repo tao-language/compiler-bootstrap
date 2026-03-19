@@ -11,10 +11,10 @@
 /// - Detecting circular imports
 
 import tao/ast.{type Module, type Stmt, type Param, type Type, Module as ModuleCtr, StmtImport, StmtLet, StmtFn, StmtFor, StmtWhile, StmtLoop, StmtBreak, StmtContinue, StmtReturn, StmtYield, StmtExpr, StmtBind, StmtMut, Param, TVar}
-import tao/import_ast.{type Import, type ImportContext, type ResolvedImport}
+import tao/import_ast.{type Import as ImportType, type ImportContext, type ResolvedImport}
 import tao/import_resolver.{resolve_imports}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module, register_module}
-import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, Float as TaoFloat, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, Test, Run, If, For, While, Loop, Break, Continue, expr_to_ast, block_to_ast, pattern_to_ast}
+import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, Float as TaoFloat, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, Test, Run, If, For, While, Loop, Break, Continue, Import, expr_to_ast, block_to_ast, pattern_to_ast}
 import syntax/grammar.{type Span, Span}
 import gleam/dict.{type Dict}
 import gleam/list
@@ -220,7 +220,7 @@ fn compile_single(
 }
 
 /// Extract all imports from a module body.
-fn get_imports(body: List(Stmt)) -> List(Import) {
+fn get_imports(body: List(Stmt)) -> List(ImportType) {
   list.flat_map(body, fn(stmt) {
     case stmt {
       StmtImport(import_item, _) -> [import_item]
@@ -285,6 +285,10 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(Stmt) {
       Continue(span) -> {
         [StmtContinue(span)]
       }
+      Import(import_item, span) -> {
+        // Import expression becomes StmtImport
+        [StmtImport(import_item, span)]
+      }
       _ -> {
         // Other expressions become StmtExpr
         let ast_expr = expr_to_ast(expr)
@@ -319,6 +323,7 @@ fn get_expr_span(expr: TaoExpr) -> Span {
     Str(_, span) -> span
     Test(_, _, span) -> span
     Run(_, span) -> span
+    Import(_, span) -> span
   }
 }
 

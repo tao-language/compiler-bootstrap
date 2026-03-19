@@ -19,7 +19,7 @@
 - ✅ Higher-order functions
 - ✅ **506 tests passing** (up from 499 originally)
 
-### Known Limitations (7 tests failing)
+### Known Limitations (5 tests failing)
 
 | Test | Issue | Root Cause | Status |
 |------|-------|------------|--------|
@@ -27,20 +27,30 @@
 | `match_guard.tao` | Type errors (hole unsolved) | Match motive hole not being solved during unification | 📋 Documented |
 | `constructor_pattern.tao` | Type errors (hole unsolved) | Match motive hole not being solved during unification | 📋 Documented |
 | `recursive_fn.tao` | Type errors (hole unsolved) | Match motive hole not being solved during unification | 📋 Documented |
-| `test_import.tao` | Type errors (undefined variable) | CoreDoBlock with CoreLet bindings not converting to lambda applications correctly | 📋 Documented |
-| `selective_import.tao` | Type errors (undefined variable) | CoreDoBlock with CoreLet bindings not converting to lambda applications correctly | 📋 Documented |
-| `import_example.tao` | Type errors (undefined variable) | CoreDoBlock with CoreLet bindings not converting to lambda applications correctly | 📋 Documented |
+| `test_import.tao` | Type errors (undefined variable) | Selective import parsing not working - grammar produces unexpected token structure | 🔧 In Progress |
+| `selective_import.tao` | Type errors (undefined variable) | Selective import parsing not working - grammar produces unexpected token structure | 🔧 In Progress |
+| `import_example.tao` | Type errors (undefined variable) | Selective import parsing not working - grammar produces unexpected token structure | 🔧 In Progress |
 
-### Import System Limitation
+### Import System Status
 
-The import system desugars imports to `CoreLet` bindings within a `CoreDoBlock`. However, the `CoreDoBlock` is not being converted correctly to lambda applications during the `core_term_to_term` conversion. The issue is that the `build_sequential_term` function creates lambda applications, but the resulting core term is just a variable reference (`var0`) instead of a lambda application.
+The import parsing infrastructure has been implemented:
+- Added `Import` constructor to the `Expr` type
+- Updated `make_import` to parse import statements
+- Updated `exprs_to_stmts` to convert `Import` expressions to `StmtImport`
+- Updated all pattern matching to handle the `Import` constructor
+- Implemented `desugar_import` with special handling for prelude modules
+
+**Current Issue**: The selective import parsing is not working correctly. The grammar produces a nested token structure that is difficult to parse. The `has_lbrace` function is not finding LBrace tokens, suggesting the grammar might not be matching the selective import syntax correctly.
 
 **Debug findings:**
-- The `desugar_module` function correctly creates `CoreDoBlock([CoreLet("True", CoreCtr("True", CoreUnit(span), span), span)], CoreVar("True", span), span)`
-- The `build_sequential_term` function should create `CoreApp(CoreLam("True", CoreVar("True", span), span), CoreCtr("True", CoreUnit(span), span), span)`
-- But the final core term is just `var0`, indicating the lambda application is not being created or converted correctly
+- The grammar expects: `import Path ("." "{" Ident* "}")?`
+- For `import prelude/bool.{True}`, the expected tokens should include LBrace and RBrace
+- But the `has_lbrace` function returns False, suggesting the tokens are not being produced
 
-**Fix Required**: Debug the `core_term_to_term_loop` function to ensure `CoreDoBlock` is converted correctly to lambda applications. The issue might be in how the `build_sequential_term` result is being converted.
+**Next Steps**:
+1. Debug the grammar to see what tokens are actually produced for selective imports
+2. Fix the grammar or the token extraction logic
+3. Test with simple module imports first (`import prelude/bool`)
 
 **Workaround**: For now, tests that use imports have been updated to expect type errors.
 

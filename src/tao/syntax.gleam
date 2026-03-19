@@ -143,6 +143,8 @@ pub type Expr {
   Test(name: String, body: Expr, span: Span)
   /// Run statement (e.g., run expr)
   Run(value: Expr, span: Span)
+  /// Import statement (e.g., import prelude/bool.{True, False})
+  Import(import_item: Import, span: Span)
 }
 
 /// A single match clause with pattern, optional guard, and body.
@@ -286,6 +288,11 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
     }
     Continue(span) -> {
       // Continue becomes a return of unit
+      AstBlock([], span)
+    }
+    Import(_, span) -> {
+      // Imports are handled at the statement level
+      // Return a placeholder
       AstBlock([], span)
     }
   }
@@ -554,6 +561,7 @@ fn get_span(expr: Expr) -> Span {
     Str(_, span) -> span
     Test(_, _, span) -> span
     Run(_, span) -> span
+    Import(_, span) -> span
   }
 }
 
@@ -1284,6 +1292,7 @@ pub fn get_expr_span(expr: Expr) -> Span {
     Str(_, span) -> span
     Test(_, _, span) -> span
     Run(_, span) -> span
+    Import(_, span) -> span
   }
 }
 
@@ -2034,9 +2043,103 @@ fn expr_to_type_string(expr: Expr) -> String {
 
 /// Helper to create import AST.
 fn make_import(values) -> Expr {
-  // For now, return a placeholder - imports are handled separately
-  // This allows the grammar to parse imports without changing the Expr type
-  Int(0, Span("import", 0, 0, 0, 0))
+  // Check if the values contain LBrace (selective import)
+  let has_selective = has_lbrace(values)
+  
+  case has_selective {
+    True -> {
+      // Parse selective import
+      let path = extract_module_path(values)
+      let names = extract_selective_names_from_values(values)
+      let import_item = ImportSelective(path, names, Span("import", 0, 0, 0, 0))
+      Import(import_item, get_import_span(values))
+    }
+    False -> {
+      // Simple module import
+      let path = extract_module_path(values)
+      let import_item = ImportModule(path, Span("import", 0, 0, 0, 0))
+      Import(import_item, get_import_span(values))
+    }
+  }
+}
+
+fn has_lbrace(values: List(Value(a))) -> Bool {
+  list.any(values, fn(v) {
+    case v {
+      TokenValue(t) if t.kind == "LBrace" -> True
+      ListValue(inner) -> has_lbrace(inner)
+      _ -> False
+    }
+  })
+}
+
+fn extract_module_path(values: List(Value(a))) -> String {
+  // Extract Ident tokens until we hit LBrace or end
+  extract_path_until_brace(values, [])
+  |> string.join("/")
+}
+
+fn extract_path_until_brace(values: List(Value(a)), acc: List(String)) -> List(String) {
+  case values {
+    [] -> list.reverse(acc)
+    [TokenValue(t), ..rest] if t.kind == "LBrace" -> list.reverse(acc)
+    [TokenValue(t), ..rest] if t.kind == "Ident" -> {
+      extract_path_until_brace(rest, [t.value, ..acc])
+    }
+    [ListValue(inner), ..rest] -> {
+      // Check if inner contains LBrace
+      case has_lbrace(inner) {
+        True -> list.reverse(acc)
+        False -> {
+          let inner_parts = extract_path_until_brace(inner, [])
+          extract_path_until_brace(rest, list.append(inner_parts, acc))
+        }
+      }
+    }
+    [_v, ..rest] -> {
+      extract_path_until_brace(rest, acc)
+    }
+  }
+}
+
+fn extract_selective_names_from_values(values: List(Value(a))) -> List(ImportItem) {
+  // Find LBrace and extract Ident tokens until RBrace
+  extract_names_after_lbrace(values, False, [])
+}
+
+fn extract_names_after_lbrace(
+  values: List(Value(a)),
+  in_braces: Bool,
+  acc: List(ImportItem),
+) -> List(ImportItem) {
+  case values {
+    [] -> list.reverse(acc)
+    [TokenValue(t), ..rest] if t.kind == "LBrace" -> {
+      extract_names_after_lbrace(rest, True, acc)
+    }
+    [TokenValue(t), ..rest] if t.kind == "RBrace" -> {
+      list.reverse(acc)
+    }
+    [TokenValue(t), ..rest] if in_braces && t.kind == "Ident" -> {
+      extract_names_after_lbrace(rest, in_braces, [ImportName(t.value, None), ..acc])
+    }
+    [ListValue(inner), ..rest] -> {
+      let inner_names = extract_names_after_lbrace(inner, in_braces, [])
+      extract_names_after_lbrace(rest, in_braces, list.append(inner_names, acc))
+    }
+    [_v, ..rest] -> {
+      extract_names_after_lbrace(rest, in_braces, acc)
+    }
+  }
+}
+
+fn get_import_span(values: List(Value(a))) -> Span {
+  case values {
+    [TokenValue(t), ..] -> Span("import", t.line, t.column, t.line, t.column + string.length(t.value))
+    [KeywordValue(t), ..] -> Span("import", t.line, t.column, t.line, t.column + string.length(t.value))
+    [ListValue(inner), ..] -> get_import_span(inner)
+    _ -> Span("import", 0, 0, 0, 0)
+  }
 }
 
 /// Helper to create let binding AST.
@@ -2315,6 +2418,9 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
     Run(value, _) -> {
       "run " <> format_expr(value)
     }
+    Import(import_item, _) -> {
+      "import " <> format_import_item(import_item)
+    }
   }
 }
 
@@ -2329,6 +2435,31 @@ fn format_pattern(pattern: Pattern) -> String {
         _ -> name <> "(" <> string_join(list.map(args, format_pattern), ", ") <> ")"
       }
     }
+  }
+}
+
+fn format_import_item(item: Import) -> String {
+  case item {
+    ImportModule(path, _) -> path
+    ImportAlias(path, alias, _) -> path <> " as " <> alias
+    ImportSelective(path, names, _) -> {
+      path <> ".{ " <> string_join(list.map(names, format_import_name), ", ") <> " }"
+    }
+    ImportSelectiveAlias(path, alias, names, _) -> {
+      path <> " as " <> alias <> ".{ " <> string_join(list.map(names, format_import_name), ", ") <> " }"
+    }
+    ImportWildcard(path, _) -> path <> " as *"
+  }
+}
+
+fn format_import_name(item: ImportItem) -> String {
+  case item {
+    ImportName(name, None) -> name
+    ImportName(name, Some(alias)) -> name <> " as " <> alias
+    ImportType(name, None) -> name
+    ImportType(name, Some(alias)) -> name <> " as " <> alias
+    ImportOperator(name, None) -> name
+    ImportOperator(name, Some(alias)) -> name <> " as " <> alias
   }
 }
 

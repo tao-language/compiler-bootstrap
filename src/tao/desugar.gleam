@@ -1863,6 +1863,8 @@ pub fn core_term_to_term(term: CoreTerm) -> Term {
 }
 
 fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
+  // Debug: print the term being converted
+  // io.println("Converting: " <> debug_core_term(term) <> " with env: " <> inspect(env))
   case term {
     CoreVar(name, span) -> {
       // Check if name is a numeric De Bruijn index
