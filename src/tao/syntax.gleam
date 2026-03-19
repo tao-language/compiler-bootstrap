@@ -655,7 +655,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
         // Import statement
         alt(ref("Import"), fn(values) {
           case values {
-            [_] -> Int(0, Span("import", 0, 0, 0, 0))
+            [AstValue(e)] -> e
             _ -> Int(0, Span("empty", 0, 0, 0, 0))
           }
         }),

@@ -496,10 +496,42 @@ pub fn desugar_import(
 ) -> List(CoreTerm) {
   case import_item {
     ImportModule(path, _) -> {
-      // import math/trig → let math_trig = @math/trig
-      let alias = path_to_alias(path)
-      let module_ref = create_module_record(path, dc, span)
-      [CoreLet(alias, module_ref, span)]
+      // import prelude/bool → let True = True, let False = False (for prelude)
+      // For other modules, create a module alias
+      case path {
+        "prelude/bool" -> {
+          // Bring all bool constructors into scope
+          [
+            CoreLet("True", CoreCtr("True", CoreUnit(span), span), span),
+            CoreLet("False", CoreCtr("False", CoreUnit(span), span), span),
+          ]
+        }
+        "prelude/option" -> {
+          [
+            CoreLet("Some", CoreCtr("Some", CoreHole(0, span), span), span),
+            CoreLet("None", CoreCtr("None", CoreUnit(span), span), span),
+          ]
+        }
+        "prelude/result" -> {
+          [
+            CoreLet("Ok", CoreCtr("Ok", CoreHole(0, span), span), span),
+            CoreLet("Err", CoreCtr("Err", CoreHole(0, span), span), span),
+          ]
+        }
+        "prelude/ordering" -> {
+          [
+            CoreLet("LT", CoreCtr("LT", CoreUnit(span), span), span),
+            CoreLet("EQ", CoreCtr("EQ", CoreUnit(span), span), span),
+            CoreLet("GT", CoreCtr("GT", CoreUnit(span), span), span),
+          ]
+        }
+        _ -> {
+          // For non-prelude modules, create a module alias
+          let alias = path_to_alias(path)
+          let module_ref = create_module_record(path, dc, span)
+          [CoreLet(alias, module_ref, span)]
+        }
+      }
     }
 
     ImportAlias(path, alias, _) -> {
