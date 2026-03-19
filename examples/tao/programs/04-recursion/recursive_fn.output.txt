@@ -1,1 +1,1 @@
-%call mul(?-1, ?-1)
+Parse error: end of input

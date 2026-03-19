@@ -920,12 +920,19 @@ pub fn do_app(ffi: FFI, fun: Value, arg: Value) -> Value {
     VLam(_, _, env, body) -> eval(ffi, [arg, ..env], body)
     VFix(name, env, body) -> {
       // Unfold fixpoint: evaluate the body with the fixpoint in the environment.
-      // For recursive functions, the body is a lambda, so this just creates a closure.
-      // For self-referential fixpoints like (fix f -> f), this would loop, but that's
-      // expected behavior for such terms.
+      // For recursive functions, the body is a lambda, so this creates a closure.
+      // For self-referential fixpoints like (fix f -> f), we detect the loop and
+      // return a neutral term to avoid infinite recursion.
       let fix_val = VFix(name, env, body)
       let body_val = eval(ffi, [fix_val, ..env], body)
-      do_app(ffi, body_val, arg)
+      // Check if body evaluated to the same fixpoint (self-reference)
+      case body_val {
+        VFix(n2, _, _) if n2 == name -> {
+          // Self-referential fixpoint - return neutral term to avoid infinite loop
+          VNeut(HVar(0), [EApp(arg)])
+        }
+        _ -> do_app(ffi, body_val, arg)
+      }
     }
     _ -> VErr
   }
