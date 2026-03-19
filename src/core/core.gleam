@@ -2155,8 +2155,20 @@ fn infer_match(
   let #(arg_val, arg_ty, s) = infer(s, arg)
 
   // The motive type is (x : arg_ty) → Type, where x is the scrutinee
-  let motive_ty = VPi([], "_", env, arg_ty, Typ(0, get_span(arg)))
-  let #(motive_val, s) = check(s, motive, motive_ty, get_span(motive))
+  // For hole motives (lambdas with hole bodies), evaluate directly to preserve the hole ID
+  let #(motive_val, s) = case motive {
+    Lam(_, _, Hole(_, _), _) -> {
+      // Hole motive: evaluate directly to get the lambda with the hole
+      let motive_val = eval(s.ffi, env, motive)
+      #(motive_val, s)
+    }
+    _ -> {
+      // Regular motive: check against the expected type
+      let motive_ty = VPi([], "_", env, arg_ty, Typ(0, get_span(arg)))
+      let #(motive_val, s) = check(s, motive, motive_ty, get_span(motive))
+      #(motive_val, s)
+    }
+  }
 
   // Apply the motive to the scrutinee to get the result type
   let result_ty = do_app(s.ffi, motive_val, arg_val)
