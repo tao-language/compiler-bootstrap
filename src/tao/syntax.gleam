@@ -1612,23 +1612,20 @@ fn make_match(values) -> Expr {
     _ -> panic as "Match: expected keyword"
   }
 
-  // Extract clauses: try different structures based on optional type annotation
-  // With type: [match, scrut, Arrow, Type, LBrace, ListValue, ListValue, RBrace]
-  // Without type: [match, scrut, LBrace, ListValue, ListValue, RBrace]
+  // Extract clauses: the structure is [match, scrut, LBrace, ListValue(clauses), RBrace]
+  // or [match, scrut, Arrow, Type, LBrace, ListValue(clauses), RBrace] with type annotation
+  // Note: many(seq(...)) creates ListValue([ListValue(clause1), ListValue(clause2), ...])
   let clauses = case values {
-    [_, _, _, _, TokenValue(lbrace), ListValue(clause_values1), ListValue(clause_values2), _] if lbrace.value == "{" -> {
-      list.append(extract_clauses(clause_values1, []), extract_clauses(clause_values2, []))
+    [_, _, TokenValue(lbrace), ListValue(nested), _] if lbrace.value == "{" -> {
+      // No type annotation: [match, scrut, LBrace, ListValue, RBrace]
+      extract_clauses_from_nested(nested, [])
     }
-    [_, _, TokenValue(lbrace), ListValue(clause_values1), ListValue(clause_values2), _] if lbrace.value == "{" -> {
-      list.append(extract_clauses(clause_values1, []), extract_clauses(clause_values2, []))
-    }
-    [_, _, _, _, TokenValue(lbrace), ListValue(clause_values), _] if lbrace.value == "{" -> {
-      extract_clauses(clause_values, [])
-    }
-    [_, _, TokenValue(lbrace), ListValue(clause_values), _] if lbrace.value == "{" -> {
-      extract_clauses(clause_values, [])
+    [_, _, _, _, TokenValue(lbrace), ListValue(nested), _] if lbrace.value == "{" -> {
+      // With type annotation: [match, scrut, Arrow, Type, LBrace, ListValue, RBrace]
+      extract_clauses_from_nested(nested, [])
     }
     _ -> {
+      // Fallback: try to extract clauses directly from values
       extract_match_clauses(values, [])
     }
   }
@@ -1637,6 +1634,38 @@ fn make_match(values) -> Expr {
   let end_span = get_expr_span(scrut)
   let full_span = Span(start_span.file, start_span.start_line, start_span.start_col, end_span.end_line, end_span.end_col)
   Match(scrut, clauses, full_span)
+}
+
+fn extract_clauses_from_nested(nested_values: List(Value(Expr)), acc: List(MatchClause)) -> List(MatchClause) {
+  // nested_values could be:
+  // 1. ListValue([ListValue(clause1), ListValue(clause2), ...]) - nested
+  // 2. ListValue([Pipe, pattern, opt_if, Arrow, body, Pipe, pattern, ...]) - flat
+  // Try to detect which case and handle accordingly
+  case nested_values {
+    [] -> list.reverse(acc)
+    [ListValue(items), ..rest] -> {
+      // Check if items looks like a clause (starts with Pipe)
+      case items {
+        [TokenValue(pipe), ..] if pipe.value == "|" -> {
+          // Nested case: each item is a clause
+          let clause_clauses = extract_clauses(items, [])
+          extract_clauses_from_nested(rest, list.append(clause_clauses, acc))
+        }
+        _ -> {
+          // Not a clause, try flat case
+          extract_clauses(nested_values, acc)
+        }
+      }
+    }
+    [TokenValue(pipe), ..] if pipe.value == "|" -> {
+      // Flat case: all clauses are in the same list
+      extract_clauses(nested_values, acc)
+    }
+    [_v, ..rest] -> {
+      // Skip non-clause items
+      extract_clauses_from_nested(rest, acc)
+    }
+  }
 }
 
 fn extract_match_clauses(values: List(Value(Expr)), acc: List(MatchClause)) -> List(MatchClause) {
