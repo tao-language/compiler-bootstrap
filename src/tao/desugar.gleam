@@ -27,8 +27,8 @@ import tao/ast.{
   BlockStmtLet, BlockStmtAssign, BlockStmtExpr,
   OpAdd, OpSub, OpMul, OpDiv, OpMod, OpEq, OpNeq, OpLt, OpGt, OpLte, OpGte,
   OpAnd, OpOr, OpConcat, OpPipe, OpNegate, OpNot,
-  Int, Float, String,
-  RecordUpdate, OptionalChain, LetExpr,
+  Int as LitInt, Float as LitFloat, String as LitString,
+  RecordUpdate, OptionalChain, LetExpr, Var as ExprVar,
   get_public_names, get_stmt_name, span_from_expr,
 }
 import tao/global_context.{
@@ -193,48 +193,66 @@ pub fn desugar_module(
     loop_stack: [],
   )
 
-  // Desugar all statements
-  let #(core_stmts, dc1) = desugar_stmts(module.body, dc)
-
   // Check if the last statement is an expression (for expression-style modules)
   let last_is_expr = is_last_stmt_expr(module.body)
 
-  // Determine the result term and statements for the do block
-  let #(stmts_for_block, result) = case last_is_expr {
+  case last_is_expr {
     True -> {
-      // Expression-style module - return the last expression value
-      case core_stmts {
-        [] -> #([], CoreRcd([], module.span))
-        [last] -> #([], last)  // Single expression - no statements in block
-        _ -> {
-          // Multiple statements - split off the last one as result
-          let all_but_last = list.take(core_stmts, list.length(core_stmts) - 1)
-          let last = get_last_statement(core_stmts, CoreRcd([], module.span))
-          #(all_but_last, last)
+      // Expression-style module: separate the last expression from the bindings
+      // First, desugar all statements EXCEPT the last one
+      let all_but_last = drop_last(module.body)
+      let #(core_stmts, dc1) = desugar_stmts(all_but_last, dc)
+      
+      // Then, desugar the last expression with the accumulated scope
+      let last_stmt = get_last_stmt(module.body)
+      let #(core_result, _dc2) = case last_stmt {
+        StmtExpr(value, span) -> {
+          desugar_expr_core(value, dc1)
         }
+        _ -> #(CoreRcd([], module.span), dc1)
       }
+      
+      let core_term = CoreDoBlock(core_stmts, core_result, module.span)
+      let term = core_term_to_term(core_term)
+      #(term, dc1)
     }
     False -> {
-      // Declaration-style module - return a record of public names
+      // Declaration-style module: desugar all statements and return a record
+      let #(core_stmts, dc1) = desugar_stmts(module.body, dc)
       let public_names = get_public_names(module.body)
       case public_names {
-        [] -> #([], CoreRcd([], module.span))
+        [] -> {
+          let core_term = CoreDoBlock(core_stmts, CoreRcd([], module.span), module.span)
+          let term = core_term_to_term(core_term)
+          #(term, dc1)
+        }
         names -> {
           let return_fields = list.map(names, fn(name) {
             #(name, CoreVar(name, module.span))
           })
-          #(core_stmts, CoreRcd(return_fields, module.span))
+          let core_term = CoreDoBlock(core_stmts, CoreRcd(return_fields, module.span), module.span)
+          let term = core_term_to_term(core_term)
+          #(term, dc1)
         }
       }
     }
   }
+}
 
-  let core_term = CoreDoBlock(stmts_for_block, result, module.span)
+fn drop_last(list: List(a)) -> List(a) {
+  case list {
+    [] -> []
+    [_] -> []
+    [x, ..rest] -> [x, ..drop_last(rest)]
+  }
+}
 
-  // Convert to core/core.Term
-  let term = core_term_to_term(core_term)
-
-  #(term, dc1)
+fn get_last_stmt(list: List(Stmt)) -> Stmt {
+  case list {
+    [] -> StmtExpr(ExprVar("__error__", Span("error", 0, 0, 0, 0)), Span("error", 0, 0, 0, 0))
+    [x] -> x
+    [_x, ..rest] -> get_last_stmt(rest)
+  }
 }
 
 /// Check if the last statement in a list is an expression statement.
@@ -349,11 +367,11 @@ pub fn desugar_stmt(
       // For recursive functions, wrap the lambda in a fixpoint
       // Add name to scope BEFORE building lambda so recursive calls can find it
       let dc_with_name = add_local(dc, name)
-      let #(core_lam, dc1) = build_lambdas_with_scope(type_params, params, body, span, dc_with_name)
+      let #(core_lam, _dc1) = build_lambdas_with_scope(type_params, params, body, span, dc_with_name)
       // Wrap lambda in fixpoint: fix name -> core_lam
       let core_fix = CoreFix(name, core_lam, span)
       let core_let = CoreLet(name, core_fix, span)
-      let dc2 = add_local(dc1, name)
+      let dc2 = add_local(dc, name)
       #(core_let, dc2)
     }
     
@@ -940,18 +958,18 @@ fn desugar_exprs_loop(
 /// Convert a Tao literal to a Core literal.
 fn tao_literal_to_core_literal(literal: Literal) -> CoreLiteral {
   case literal {
-    Int(n) -> core.I32(n)
-    Float(f) -> core.F64(f)
-    String(_s) -> core.I32(0)  // Strings not directly supported in core literals
+    LitInt(n) -> core.I32(n)
+    LitFloat(f) -> core.F64(f)
+    LitString(_s) -> core.I32(0)  // Strings not directly supported in core literals
   }
 }
 
 /// Convert a literal to Core term.
 fn literal_to_core(literal: Literal, span: Span) -> CoreTerm {
   case literal {
-    Int(n) -> CoreLit(int.to_string(n), span)
-    Float(f) -> CoreLit(float.to_string(f), span)
-    String(s) -> CoreLit(s, span)
+    LitInt(n) -> CoreLit(int.to_string(n), span)
+    LitFloat(f) -> CoreLit(float.to_string(f), span)
+    LitString(s) -> CoreLit(s, span)
   }
 }
 

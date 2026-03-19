@@ -1,1 +1,1 @@
-Parse error: end of input
+Type errors: 1

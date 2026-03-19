@@ -1055,22 +1055,41 @@ pub fn tao_grammar() -> Grammar(Expr) {
           }
         }),
       ]),
-      // Application = Primary ("(" Args ")")*
+      // Application = Atom ("(" Args ")")*
+      // Atom = Primary | "(" Expr ")"
+      // This allows nested applications like f(g(x))
       rule("Application", [
         alt(
           seq([
-            ref("Primary"),
+            ref("Atom"),
             many(seq([
               token_pattern("LParen"),
-              many(seq([
-                ref("Primary"),  // Use Primary instead of Expr to avoid left recursion
-                opt(token_pattern("Comma")),
-              ])),
+              sep1(ref("Expr"), token_pattern("Comma")),
               token_pattern("RParen"),
             ])),
           ]),
           make_app,
         ),
+        alt(ref("Atom"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> Int(0, Span("error", 0, 0, 0, 0))
+          }
+        }),
+      ]),
+      // Atom = Primary | "(" Expr ")"
+      rule("Atom", [
+        // Parenthesized expression
+        alt(
+          parenthesized("Expr"),
+          fn(values) {
+            case values {
+              [ParensValue([AstValue(expr)])] -> expr
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+        // Primary (fallback)
         alt(ref("Primary"), fn(values) {
           case values {
             [AstValue(e)] -> e
@@ -1403,18 +1422,92 @@ fn extract_lambda_params(
 ) -> List(#(String, Option(String))) {
   case values {
     [] -> list.reverse(acc)
-    [ListValue(items), ..rest] -> {
-      // This is a param - extract it
-      let param = extract_single_param_with_span(items, values)
-      case param {
-        Some(p) -> extract_lambda_params(rest, [p, ..acc])
-        None -> extract_lambda_params(rest, acc)
-      }
+    // Handle nested list from many(seq(...))
+    [ListValue(nested_list), ..rest] -> {
+      // Extract all params from the nested list
+      let params = extract_params_from_nested_list(nested_list, [])
+      extract_lambda_params(rest, list.append(params, acc))
+    }
+    // Handle the case where params are in a nested list (from many(seq(...)))
+    [AstValue(_), ..rest] -> {
+      // Skip AstValue (body, blocks, etc.)
+      extract_lambda_params(rest, acc)
     }
     [_, ..rest] -> {
       // Skip non-param values (fn keyword, parens, etc.)
       extract_lambda_params(rest, acc)
     }
+  }
+}
+
+fn extract_params_from_nested_list(
+  nested_list: List(Value(Expr)),
+  acc: List(#(String, Option(String))),
+) -> List(#(String, Option(String))) {
+  case nested_list {
+    [] -> acc
+    // Handle grouped param items (from seq(...))
+    // Each group is: [TokenValue(name), opt_type_ann, opt_comma]
+    // We need to process groups, not individual items
+    [TokenValue(name_tok), opt_type_ann, opt_comma, ..rest] -> {
+      // Extract type annotation from opt_type_ann
+      let type_ann = case opt_type_ann {
+        ListValue(type_items) -> extract_type_from_inner(type_items)
+        _ -> None
+      }
+      // Skip comma if present
+      let remaining = case opt_comma {
+        TokenValue(t) if t.value == "," -> rest
+        _ -> nested_list |> list.drop(1) |> list.drop(1) |> list.drop(1)
+      }
+      extract_params_from_nested_list(remaining, [ #(name_tok.value, type_ann), ..acc])
+    }
+    // Handle single param without type annotation or comma
+    [TokenValue(name_tok), ..rest] -> {
+      extract_params_from_nested_list(rest, [ #(name_tok.value, None), ..acc])
+    }
+    [ListValue(items), ..rest] -> {
+      // This is a param wrapped in ListValue - extract it
+      let param = extract_single_param_with_span(items, nested_list)
+      case param {
+        Some(p) -> extract_params_from_nested_list(rest, [p, ..acc])
+        None -> extract_params_from_nested_list(rest, acc)
+      }
+    }
+    [_, ..rest] -> {
+      // Skip non-param values
+      extract_params_from_nested_list(rest, acc)
+    }
+  }
+}
+
+fn extract_type_and_skip_comma(items: List(Value(Expr))) -> #(Option(String), List(Value(Expr))) {
+  case items {
+    // Type annotation (wrapped in ListValue from seq) followed by comma
+    [ListValue(type_items), TokenValue(comma_tok), ..rest] if comma_tok.value == "," -> {
+      #(extract_type_from_inner(type_items), rest)
+    }
+    // Type annotation (wrapped in ListValue from seq) without comma
+    [ListValue(type_items), ..rest] -> {
+      #(extract_type_from_inner(type_items), rest)
+    }
+    // Comma without type annotation (shouldn't happen, but handle it)
+    [TokenValue(comma_tok), ..rest] if comma_tok.value == "," -> {
+      #(None, rest)
+    }
+    // No type annotation, no comma - return items as remaining
+    _ -> {
+      #(None, items)
+    }
+  }
+}
+
+fn extract_type_from_inner(inner_list: List(Value(Expr))) -> Option(String) {
+  case inner_list {
+    [TokenValue(_colon), TokenValue(type_tok), ..] -> Some(type_tok.value)
+    [TokenValue(type_tok), ..] -> Some(type_tok.value)
+    [_, ..rest] -> extract_type_from_inner(rest)
+    [] -> None
   }
 }
 
@@ -1806,17 +1899,33 @@ fn extract_args_from_flattened_call(
       // End of args
       list.reverse(acc)
     }
+    [TokenValue(t), ..rest] if t.value == "," -> {
+      // Skip comma
+      extract_args_from_flattened_call(rest, acc)
+    }
+    [AstValue(e), ..rest] -> {
+      // Direct expression
+      extract_args_from_flattened_call(rest, [e, ..acc])
+    }
     [ListValue(arg_items), ..rest] -> {
-      // arg_items is [Expr, opt_comma] or just [Expr]
-      case list.first(arg_items) {
-        Ok(AstValue(e)) -> extract_args_from_flattened_call(rest, [e, ..acc])
-        _ -> extract_args_from_flattened_call(rest, acc)
-      }
+      // arg_items is [Expr, opt_comma] or nested structures
+      // Extract all AstValue from arg_items
+      let extracted = extract_all_exprs(arg_items, [])
+      extract_args_from_flattened_call(rest, list.append(list.reverse(extracted), acc))
     }
     [_, ..rest] -> {
       // Skip other items
       extract_args_from_flattened_call(rest, acc)
     }
+  }
+}
+
+fn extract_all_exprs(items: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
+  case items {
+    [] -> acc
+    [AstValue(e), ..rest] -> extract_all_exprs(rest, [e, ..acc])
+    [ListValue(nested), ..rest] -> extract_all_exprs(rest, list.append(extract_all_exprs(nested, []), acc))
+    [_, ..rest] -> extract_all_exprs(rest, acc)
   }
 }
 
