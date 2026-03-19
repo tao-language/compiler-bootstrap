@@ -650,15 +650,9 @@ pub fn tao_grammar() -> Grammar(Expr) {
           },
         ),
       ]),
-      // Stmt = Import | Fn | Let | Test | Run | For | While | Loop | Break | Continue | Return | Yield | Expr
+      // Stmt = Fn | Let | Test | Run | For | While | Loop | Break | Continue | Return | Yield | Expr
+      // Note: Import statement is not yet implemented in the grammar
       rule("Stmt", [
-        // Import statement
-        alt(ref("Import"), fn(values) {
-          case values {
-            [AstValue(e)] -> e
-            _ -> Int(0, Span("empty", 0, 0, 0, 0))
-          }
-        }),
         // Function definition
         alt(ref("Fn"), fn(values) {
           case values {
@@ -742,37 +736,9 @@ pub fn tao_grammar() -> Grammar(Expr) {
           }
         }),
       ]),
-      // Import = "import" Path ("as" Ident)? ("." "{" Ident ("," Ident)* "}")?
-      rule("Import", [
-        alt(
-          seq([
-            keyword_pattern("import"),
-            token_pattern("Ident"),  // path component
-            many(seq([
-              token_pattern("Operator"),  // / slash
-              token_pattern("Ident"),  // path component
-            ])),
-            opt(seq([
-              keyword_pattern("as"),
-              token_pattern("Ident"),  // alias
-            ])),
-            opt(seq([
-              token_pattern("Dot"),  // . dot for selective import
-              token_pattern("LBrace"),
-              many(seq([
-                token_pattern("Ident"),
-                opt(seq([
-                  keyword_pattern("as"),
-                  token_pattern("Ident"),
-                ])),
-                opt(token_pattern("Comma")),
-              ])),
-              token_pattern("RBrace"),
-            ])),
-          ]),
-          make_import,
-        ),
-      ]),
+      // Import statement - TODO: implement full import grammar
+      // Currently imports are not supported in the grammar
+      // rule("Import", [...]),
       // Type = Ident | "fn" "(" [Type ("," Type)*] ")" "->" Type | Ident "(" [Type ("," Type)*] ")"
       rule("Type", [
         // Function type: fn(I32, I32) -> I32 - most specific, check first
