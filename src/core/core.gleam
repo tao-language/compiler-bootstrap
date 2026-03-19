@@ -2859,6 +2859,22 @@ pub fn check_exhaustiveness(
   cases: List(Case),
   span: Span,
 ) -> List(Error) {
+  // If the last case is a wildcard without a guard, the match is exhaustive
+  case list.last(cases) {
+    Ok(Case(pattern: PAny, guard: None, ..)) -> []
+    Ok(Case(pattern: PAs(PAny, _), guard: None, ..)) -> []
+    _ -> {
+      // Continue with normal exhaustiveness checking
+      check_exhaustiveness_loop(s, cases, span)
+    }
+  }
+}
+
+fn check_exhaustiveness_loop(
+  s: State,
+  cases: List(Case),
+  span: Span,
+) -> List(Error) {
   // Build an index of constructors by their type family
   let index =
     list.fold(s.ctrs, [], fn(index, entry) {

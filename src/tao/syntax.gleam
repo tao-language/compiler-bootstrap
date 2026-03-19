@@ -1710,9 +1710,15 @@ fn extract_clause_guard(
   acc: List(Value(Expr)),
 ) -> Option(#(Pattern, Option(Expr), Expr, List(Value(Expr)))) {
   case items {
+    // Guard wrapped in ListValue (from seq([keyword_pattern("if"), ref("Expr")]))
+    [ListValue([KeywordValue(_if), AstValue(guard_expr)]), TokenValue(_arrow), AstValue(body), ..rest] -> {
+      Some(#(pattern, Some(guard_expr), body, rest))
+    }
+    // Guard as flat list
     [KeywordValue(_if), AstValue(guard_expr), TokenValue(_arrow), AstValue(body), ..rest] -> {
       Some(#(pattern, Some(guard_expr), body, rest))
     }
+    // No guard
     [TokenValue(_arrow), AstValue(body), ..rest] -> {
       Some(#(pattern, None, body, rest))
     }
