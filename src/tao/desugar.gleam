@@ -1182,12 +1182,11 @@ fn desugar_match(
   let #(core_cases, dc2) = desugar_match_clauses_to_cases(clauses, span, dc1)
 
   // Build Core Match term
-  // For non-dependent matches, the motive is a constant function that returns the result type.
-  // We use a lambda with a hole body: fn(_) -> ?ResultType
-  // The hole will be unified with the result type when checking clause bodies.
-  // Note: Using a negative hole ID to avoid conflicts with type checker's hole counter.
-  let result_type_hole = CoreHole(-100, span)
-  let motive = CoreLam("_", result_type_hole, span)
+  // For non-dependent matches, use a hole motive that will be unified with the result type.
+  // The hole ID -999 is used as a placeholder - the type checker will unify it with the
+  // actual result type inferred from the clause bodies.
+  // Using a large negative ID to avoid conflicts with type checker's hole counter.
+  let motive = CoreLam("_", CoreHole(-999, span), span)
   let core_match = CoreMatchCore(core_scrutinee, motive, core_cases, span)
 
   #(core_match, dc2)

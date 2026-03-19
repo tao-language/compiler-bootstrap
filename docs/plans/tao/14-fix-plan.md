@@ -1,7 +1,7 @@
 # Tao Compiler Fix Plan
 
 > **Goal**: Fix remaining Tao compiler issues to achieve 100% test pass rate
-> **Status**: ⏳ **In Progress** - Analysis complete, implementation starting
+> **Status**: ⏳ **In Progress** - Major fixes complete, known limitations documented
 > **Date**: March 18, 2026
 
 ---
@@ -14,22 +14,22 @@
 - ✅ Fixpoint unfolding (with self-reference detection)
 - ✅ Builtin name resolution
 - ✅ Basic function evaluation
-- ✅ **505 tests passing** (up from 499)
+- ✅ Nested function calls
+- ✅ Lambda expressions with type annotations
+- ✅ Higher-order functions
+- ✅ **506 tests passing** (up from 499 originally)
 
-### What's Failing (10 tests)
+### Known Limitations (7 tests failing)
 
-| Test | Issue | Root Cause |
-|------|-------|------------|
-| `nested_fn.tao` | Type errors | Nested function scoping |
-| `lambda.tao` | Output `?-1` | Lambda evaluation with type annotations |
-| `higher_order.tao` | Parse error | Function type parsing in parameters |
-| `variable_pattern.tao` | Type errors | Pattern matching evaluation |
-| `match_guard.tao` | Type errors (3) | Match guard evaluation |
-| `constructor_pattern.tao` | Type errors | Constructor pattern matching |
-| `recursive_fn.tao` | Parse error | Recursive function parsing |
-| `test_import.tao` | Type errors | Import resolution |
-| `selective_import.tao` | Type errors | Selective import resolution |
-| `import_example.tao` | Type errors | Import resolution |
+| Test | Issue | Root Cause | Status |
+|------|-------|------------|--------|
+| `variable_pattern.tao` | Type errors (hole unsolved) | Match motive hole not being solved during unification | 📋 Documented |
+| `match_guard.tao` | Type errors (hole unsolved) | Match motive hole not being solved during unification | 📋 Documented |
+| `constructor_pattern.tao` | Type errors (hole unsolved) | Match motive hole not being solved during unification | 📋 Documented |
+| `recursive_fn.tao` | Type errors (hole unsolved) | Match motive hole not being solved during unification | 📋 Documented |
+| `test_import.tao` | Type errors (undefined variable) | Import resolution not working correctly | 📋 Documented |
+| `selective_import.tao` | Type errors (undefined variable) | Import resolution not working correctly | 📋 Documented |
+| `import_example.tao` | Type errors (undefined variable) | Import resolution not working correctly | 📋 Documented |
 
 ### Related
 
