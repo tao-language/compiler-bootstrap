@@ -1050,21 +1050,21 @@ fn desugar_binop(
 /// Convert binary operator to function name.
 fn binop_to_name(op: BinOperator) -> String {
   case op {
-    OpAdd -> "%add"
-    OpSub -> "%sub"
-    OpMul -> "%mul"
-    OpDiv -> "%div"
-    OpMod -> "%mod"
-    OpEq -> "%eq"
-    OpNeq -> "%neq"
-    OpLt -> "%lt"
-    OpGt -> "%gt"
-    OpLte -> "%lte"
-    OpGte -> "%gte"
-    OpAnd -> "%and"
-    OpOr -> "%or"
-    OpConcat -> "%concat"
-    OpPipe -> "%pipe"
+    OpAdd -> "add"
+    OpSub -> "sub"
+    OpMul -> "mul"
+    OpDiv -> "div"
+    OpMod -> "mod"
+    OpEq -> "eq"
+    OpNeq -> "neq"
+    OpLt -> "lt"
+    OpGt -> "gt"
+    OpLte -> "lte"
+    OpGte -> "gte"
+    OpAnd -> "and"
+    OpOr -> "or"
+    OpConcat -> "concat"
+    OpPipe -> "pipe"
   }
 }
 
@@ -1085,8 +1085,8 @@ fn desugar_unaryop(
 /// Convert unary operator to function name.
 fn unaryop_to_name(op: UnaryOperator) -> String {
   case op {
-    OpNegate -> "%negate"
-    OpNot -> "%not"
+    OpNegate -> "negate"
+    OpNot -> "not"
   }
 }
 
