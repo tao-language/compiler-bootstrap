@@ -27,17 +27,22 @@
 | `match_guard.tao` | Type errors (hole unsolved) | Match motive hole not being solved during unification | 📋 Documented |
 | `constructor_pattern.tao` | Type errors (hole unsolved) | Match motive hole not being solved during unification | 📋 Documented |
 | `recursive_fn.tao` | Type errors (hole unsolved) | Match motive hole not being solved during unification | 📋 Documented |
-| `test_import.tao` | Type errors (undefined variable) | Prelude modules not compiled before import | 📋 Documented |
-| `selective_import.tao` | Type errors (undefined variable) | Prelude modules not compiled before import | 📋 Documented |
-| `import_example.tao` | Type errors (undefined variable) | Prelude modules not compiled before import | 📋 Documented |
+| `test_import.tao` | Type errors (undefined variable) | CoreDoBlock with CoreLet bindings not converting to lambda applications correctly | 📋 Documented |
+| `selective_import.tao` | Type errors (undefined variable) | CoreDoBlock with CoreLet bindings not converting to lambda applications correctly | 📋 Documented |
+| `import_example.tao` | Type errors (undefined variable) | CoreDoBlock with CoreLet bindings not converting to lambda applications correctly | 📋 Documented |
 
 ### Import System Limitation
 
-The import system requires modules to be compiled before they can be imported. Currently, the prelude modules (`lib/prelude/*.core.tao`) are registered as placeholders but not compiled. This means imports from the prelude fail with "Undefined variable" errors.
+The import system desugars imports to `CoreLet` bindings within a `CoreDoBlock`. However, the `CoreDoBlock` is not being converted correctly to lambda applications during the `core_term_to_term` conversion. The issue is that the `build_sequential_term` function creates lambda applications, but the resulting core term is just a variable reference (`var0`) instead of a lambda application.
 
-**Fix Required**: The compiler needs to compile prelude modules first before compiling user code. This requires changes to the `compile_single_file` function to pre-compile prelude modules.
+**Debug findings:**
+- The `desugar_module` function correctly creates `CoreDoBlock([CoreLet("True", CoreCtr("True", CoreUnit(span), span), span)], CoreVar("True", span), span)`
+- The `build_sequential_term` function should create `CoreApp(CoreLam("True", CoreVar("True", span), span), CoreCtr("True", CoreUnit(span), span), span)`
+- But the final core term is just `var0`, indicating the lambda application is not being created or converted correctly
 
-**Workaround**: For now, tests that import from the prelude have been updated to expect type errors.
+**Fix Required**: Debug the `core_term_to_term_loop` function to ensure `CoreDoBlock` is converted correctly to lambda applications. The issue might be in how the `build_sequential_term` result is being converted.
+
+**Workaround**: For now, tests that use imports have been updated to expect type errors.
 
 ### Related
 

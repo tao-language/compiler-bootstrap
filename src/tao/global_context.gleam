@@ -296,21 +296,51 @@ pub fn register_error_module(
 
 /// Initialize global context with prelude modules.
 pub fn with_prelude(ctx: GlobalContext) -> GlobalContext {
-  // Register prelude as a placeholder - it will be compiled first
-  let prelude_ref = ModuleRef(
-    path: "prelude",
-    public_names: [
-      "Result", "Ok", "Err",
-      "Option", "Some", "None",
-      "Bool", "True", "False",
-      "Ordering", "LT", "EQ", "GT",
-    ],
+  // Register prelude modules as placeholders with their full paths
+  // Each module has its own path (e.g., "prelude/bool", "prelude/option")
+  let bool_ref = ModuleRef(
+    path: "prelude/bool",
+    public_names: ["Bool", "True", "False", "not", "and", "or", "xor", "to_int", "from_int", "to_string"],
     value: None,
     source: None,
   )
-  
-  GlobalContext(
+
+  let option_ref = ModuleRef(
+    path: "prelude/option",
+    public_names: ["Option", "Some", "None", "is_some", "is_none", "unwrap", "map", "and_then", "unwrap_or"],
+    value: None,
+    source: None,
+  )
+
+  let result_ref = ModuleRef(
+    path: "prelude/result",
+    public_names: ["Result", "Ok", "Err", "is_ok", "is_err", "unwrap", "map", "and_then", "unwrap_or"],
+    value: None,
+    source: None,
+  )
+
+  let ordering_ref = ModuleRef(
+    path: "prelude/ordering",
+    public_names: ["Ordering", "LT", "EQ", "GT", "compare", "reverse"],
+    value: None,
+    source: None,
+  )
+
+  // Insert all prelude modules
+  let ctx1 = GlobalContext(
     ..ctx,
-    modules: dict.insert(ctx.modules, "prelude", prelude_ref),
+    modules: dict.insert(ctx.modules, "prelude/bool", bool_ref),
+  )
+  let ctx2 = GlobalContext(
+    ..ctx1,
+    modules: dict.insert(ctx1.modules, "prelude/option", option_ref),
+  )
+  let ctx3 = GlobalContext(
+    ..ctx2,
+    modules: dict.insert(ctx2.modules, "prelude/result", result_ref),
+  )
+  GlobalContext(
+    ..ctx3,
+    modules: dict.insert(ctx3.modules, "prelude/ordering", ordering_ref),
   )
 }

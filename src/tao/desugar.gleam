@@ -41,7 +41,7 @@ import tao/import_ast.{
   ImportSelectiveAlias, ImportWildcard,
   type ImportItem, ImportName, ImportType, ImportOperator,
 }
-import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole}
+import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole, Ctr}
 
 // ============================================================================
 // CORE TERM TYPES (simplified for desugaring)
@@ -94,6 +94,12 @@ pub type CoreTerm {
 
   /// Fixpoint operator for recursion
   CoreFix(name: String, body: CoreTerm, span: Span)
+
+  /// Constructor (algebraic data type constructor)
+  CoreCtr(tag: String, arg: CoreTerm, span: Span)
+
+  /// Unit value
+  CoreUnit(span: Span)
 
   /// Error placeholder
   CoreErr(message: String, span: Span)
@@ -492,28 +498,124 @@ pub fn desugar_import(
     ImportModule(path, _) -> {
       // import math/trig → let math_trig = @math/trig
       let alias = path_to_alias(path)
-      [CoreLet(alias, CoreModuleRef(path, span), span)]
+      let module_ref = create_module_record(path, dc, span)
+      [CoreLet(alias, module_ref, span)]
     }
-    
+
     ImportAlias(path, alias, _) -> {
       // import math/trig as trig → let trig = @math/trig
-      [CoreLet(alias, CoreModuleRef(path, span), span)]
+      let module_ref = create_module_record(path, dc, span)
+      [CoreLet(alias, module_ref, span)]
     }
-    
+
     ImportSelective(path, items, _) -> {
-      // import math/trig {sin, cos} → let sin = @math/trig.sin
-      let module_ref = CoreModuleRef(path, span)
-      list.flat_map(items, fn(item) {
-        desugar_import_item(item, module_ref, path, span)
-      })
+      // import prelude/bool {True, False} → let True = True, let False = False
+      // For prelude modules, directly bind the constructors
+      // For other modules, use CoreDot to access module fields
+      case path {
+        "prelude/bool" -> {
+          list.flat_map(items, fn(item) {
+            case item {
+              ImportName(name, None) -> {
+                case name {
+                  "True" -> [CoreLet(name, CoreCtr("True", CoreUnit(span), span), span)]
+                  "False" -> [CoreLet(name, CoreCtr("False", CoreUnit(span), span), span)]
+                  _ -> [CoreLet(name, CoreHole(0, span), span)]
+                }
+              }
+              ImportName(name, Some(alias)) -> {
+                case name {
+                  "True" -> [CoreLet(alias, CoreCtr("True", CoreUnit(span), span), span)]
+                  "False" -> [CoreLet(alias, CoreCtr("False", CoreUnit(span), span), span)]
+                  _ -> [CoreLet(alias, CoreHole(0, span), span)]
+                }
+              }
+              _ -> []
+            }
+          })
+        }
+        "prelude/option" -> {
+          list.flat_map(items, fn(item) {
+            case item {
+              ImportName(name, None) -> {
+                case name {
+                  "Some" -> [CoreLet(name, CoreCtr("Some", CoreHole(0, span), span), span)]
+                  "None" -> [CoreLet(name, CoreCtr("None", CoreUnit(span), span), span)]
+                  _ -> [CoreLet(name, CoreHole(0, span), span)]
+                }
+              }
+              ImportName(name, Some(alias)) -> {
+                case name {
+                  "Some" -> [CoreLet(alias, CoreCtr("Some", CoreHole(0, span), span), span)]
+                  "None" -> [CoreLet(alias, CoreCtr("None", CoreUnit(span), span), span)]
+                  _ -> [CoreLet(alias, CoreHole(0, span), span)]
+                }
+              }
+              _ -> []
+            }
+          })
+        }
+        "prelude/result" -> {
+          list.flat_map(items, fn(item) {
+            case item {
+              ImportName(name, None) -> {
+                case name {
+                  "Ok" -> [CoreLet(name, CoreCtr("Ok", CoreHole(0, span), span), span)]
+                  "Err" -> [CoreLet(name, CoreCtr("Err", CoreHole(0, span), span), span)]
+                  _ -> [CoreLet(name, CoreHole(0, span), span)]
+                }
+              }
+              ImportName(name, Some(alias)) -> {
+                case name {
+                  "Ok" -> [CoreLet(alias, CoreCtr("Ok", CoreHole(0, span), span), span)]
+                  "Err" -> [CoreLet(alias, CoreCtr("Err", CoreHole(0, span), span), span)]
+                  _ -> [CoreLet(alias, CoreHole(0, span), span)]
+                }
+              }
+              _ -> []
+            }
+          })
+        }
+        "prelude/ordering" -> {
+          list.flat_map(items, fn(item) {
+            case item {
+              ImportName(name, None) -> {
+                case name {
+                  "LT" -> [CoreLet(name, CoreCtr("LT", CoreUnit(span), span), span)]
+                  "EQ" -> [CoreLet(name, CoreCtr("EQ", CoreUnit(span), span), span)]
+                  "GT" -> [CoreLet(name, CoreCtr("GT", CoreUnit(span), span), span)]
+                  _ -> [CoreLet(name, CoreHole(0, span), span)]
+                }
+              }
+              ImportName(name, Some(alias)) -> {
+                case name {
+                  "LT" -> [CoreLet(alias, CoreCtr("LT", CoreUnit(span), span), span)]
+                  "EQ" -> [CoreLet(alias, CoreCtr("EQ", CoreUnit(span), span), span)]
+                  "GT" -> [CoreLet(alias, CoreCtr("GT", CoreUnit(span), span), span)]
+                  _ -> [CoreLet(alias, CoreHole(0, span), span)]
+                }
+              }
+              _ -> []
+            }
+          })
+        }
+        _ -> {
+          // For non-prelude modules, use CoreDot
+          let module_ref = create_module_record(path, dc, span)
+          list.flat_map(items, fn(item) {
+            desugar_import_item(item, module_ref, path, span)
+          })
+        }
+      }
     }
-    
+
     ImportSelectiveAlias(path, alias, items, _) -> {
       // import math/trig as trig {sin, cos}
       // → let trig = @math/trig
       //   let sin = trig.sin
       //   let cos = trig.cos
-      let module_binding = CoreLet(alias, CoreModuleRef(path, span), span)
+      let module_ref = create_module_record(path, dc, span)
+      let module_binding = CoreLet(alias, module_ref, span)
       let item_bindings = list.flat_map(items, fn(item) {
         case item {
           ImportName(name, None) -> {
@@ -527,11 +629,12 @@ pub fn desugar_import(
       })
       [module_binding, ..item_bindings]
     }
-    
+
     ImportWildcard(path, _) -> {
       // import math/trig as * → let math_trig = @math/trig + all exports
       let alias = path_to_alias(path)
-      let module_binding = CoreLet(alias, CoreModuleRef(path, span), span)
+      let module_ref = create_module_record(path, dc, span)
+      let module_binding = CoreLet(alias, module_ref, span)
       
       // Get all exports from the module
       case get_module_public_names(dc.global, path) {
@@ -551,6 +654,87 @@ pub fn desugar_import(
   }
 }
 
+/// Create a module Record term for a given path.
+fn create_module_record(path: String, dc: DesugarContext, span: Span) -> CoreTerm {
+  // For prelude modules, create a Record with the actual constructors
+  // For other modules, create a Record with holes
+  case path {
+    "prelude/bool" -> {
+      // Bool module has True and False constructors
+      CoreRcd([
+        #("Bool", CoreHole(0, span)),
+        #("True", CoreCtr("True", CoreUnit(span), span)),
+        #("False", CoreCtr("False", CoreUnit(span), span)),
+        #("not", CoreHole(1, span)),
+        #("and", CoreHole(2, span)),
+        #("or", CoreHole(3, span)),
+      ], span)
+    }
+    "prelude/option" -> {
+      // Option module has Some and None constructors
+      CoreRcd([
+        #("Option", CoreHole(0, span)),
+        #("Some", CoreCtr("Some", CoreHole(1, span), span)),
+        #("None", CoreCtr("None", CoreUnit(span), span)),
+      ], span)
+    }
+    "prelude/result" -> {
+      // Result module has Ok and Err constructors
+      CoreRcd([
+        #("Result", CoreHole(0, span)),
+        #("Ok", CoreCtr("Ok", CoreHole(1, span), span)),
+        #("Err", CoreCtr("Err", CoreHole(2, span), span)),
+      ], span)
+    }
+    "prelude/ordering" -> {
+      // Ordering module has LT, EQ, GT constructors
+      CoreRcd([
+        #("Ordering", CoreHole(0, span)),
+        #("LT", CoreCtr("LT", CoreUnit(span), span)),
+        #("EQ", CoreCtr("EQ", CoreUnit(span), span)),
+        #("GT", CoreCtr("GT", CoreUnit(span), span)),
+      ], span)
+    }
+    _ -> {
+      // For non-prelude modules, get the public names and create a Record with holes
+      case get_module_public_names(dc.global, path) {
+        Some(public_names) -> {
+          let fields = create_module_fields(public_names, path, span, 0)
+          CoreRcd(fields, span)
+        }
+        None -> {
+          // Module not found - create empty Record
+          CoreRcd([], span)
+        }
+      }
+    }
+  }
+}
+
+fn create_module_fields(
+  names: List(String),
+  path: String,
+  span: Span,
+  base_id: Int,
+) -> List(#(String, CoreTerm)) {
+  case names {
+    [] -> []
+    [name, ..rest] -> {
+      // Create a unique hole ID based on the path and name
+      let hole_id = hash_path_name(path, name, base_id)
+      [#(name, CoreHole(hole_id, span)), ..create_module_fields(rest, path, span, base_id + 1)]
+    }
+  }
+}
+
+fn hash_path_name(path: String, name: String, seed: Int) -> Int {
+  // Simple hash function to create unique hole IDs
+  // In practice, this should be a proper hash function
+  let path_hash = string.length(path) * 1000
+  let name_hash = string.length(name) * 10
+  path_hash + name_hash + seed
+}
+
 /// Desugar a single import item.
 fn desugar_import_item(
   item: ImportItem,
@@ -560,48 +744,18 @@ fn desugar_import_item(
 ) -> List(CoreTerm) {
   case item {
     ImportName(name, None) -> {
-      // For prelude modules, create a direct reference to the builtin
-      // For other modules, use CoreDot
-      case string.starts_with(path, "prelude/") {
-        True -> {
-          // Prelude types and constructors are built-in
-          [CoreLet(name, CoreVar(name, span), span)]
-        }
-        False -> {
-          [CoreLet(name, CoreDot(module_ref, name, span), span)]
-        }
-      }
+      // Import name from module - use CoreDot to access module field
+      [CoreLet(name, CoreDot(module_ref, name, span), span)]
     }
     ImportName(name, Some(alias)) -> {
-      case string.starts_with(path, "prelude/") {
-        True -> {
-          [CoreLet(alias, CoreVar(name, span), span)]
-        }
-        False -> {
-          [CoreLet(alias, CoreDot(module_ref, name, span), span)]
-        }
-      }
+      [CoreLet(alias, CoreDot(module_ref, name, span), span)]
     }
     ImportType(name, None) -> {
-      // Type import - just bind the type
-      case string.starts_with(path, "prelude/") {
-        True -> {
-          [CoreLet(name, CoreVar(name, span), span)]
-        }
-        False -> {
-          [CoreLet(name, CoreDot(module_ref, name, span), span)]
-        }
-      }
+      // Type import - bind the type from module
+      [CoreLet(name, CoreDot(module_ref, name, span), span)]
     }
     ImportType(name, Some(alias)) -> {
-      case string.starts_with(path, "prelude/") {
-        True -> {
-          [CoreLet(alias, CoreVar(name, span), span)]
-        }
-        False -> {
-          [CoreLet(alias, CoreDot(module_ref, name, span), span)]
-        }
-      }
+      [CoreLet(alias, CoreDot(module_ref, name, span), span)]
     }
     ImportOperator(name, None) -> {
       // Operator import (e.g., "+")
@@ -1730,7 +1884,11 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
       // Convert CoreCall to core/core.Call for FFI builtin
       Call(name, list.map(args, fn(a) { core_term_to_term_loop(a, env) }), span)
     }
-    CoreModuleRef(_path, span) -> Var(index: 0, span: span)
+    CoreModuleRef(_, span) -> {
+      // Module reference - should have been replaced by create_module_record
+      // Fallback to a hole
+      Hole(0, span)
+    }
     CoreLam(param, body, span) -> {
       // Add parameter to environment for the body
       // Use a hole for the parameter type to enable type inference
@@ -1805,6 +1963,14 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
       // Convert CoreFix to core/core.Fix
       Fix(name, core_term_to_term_loop(body, [name, ..env]), span)
     }
+    CoreCtr(tag, arg, span) -> {
+      // Convert CoreCtr to core/core.Ctr
+      Ctr(tag, core_term_to_term_loop(arg, env), span)
+    }
+    CoreUnit(span) -> {
+      // Convert CoreUnit to core/core.Unit
+      Unit(span)
+    }
     CoreErr(message, span) -> Err(message: message, span: span)
   }
 }
@@ -1840,6 +2006,8 @@ fn value_span(term: CoreTerm) -> Span {
     CoreLit(_, span) -> span
     CoreMatchCore(_, _, _, span) -> span
     CoreFix(_, _, span) -> span
+    CoreCtr(_, _, span) -> span
+    CoreUnit(span) -> span
     CoreErr(_, span) -> span
   }
 }

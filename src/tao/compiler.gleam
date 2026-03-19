@@ -91,11 +91,13 @@ pub fn compile_single_file(
   contents: String,
   _project_root: String,
 ) -> #(GlobalContext, Module, List(CompileErrorType)) {
-  let ctx = new_context() |> with_prelude() |> set_current_module(path)
-  
+  // Register prelude modules as built-in placeholders
+  let ctx = new_context() |> with_prelude()
+  let ctx = ctx |> set_current_module(path)
+
   // Parse the file
   let parse_result = tao_parse_module(contents)
-  
+
   case parse_result.errors {
     [err, ..] -> {
       let error = ParseError(
@@ -108,10 +110,10 @@ pub fn compile_single_file(
       // Convert expressions to statements
       let body = exprs_to_stmts(parse_result.ast)
       let module = ModuleCtr(path, body, get_module_span(body, path))
-      
+
       // Register module in global context
       let ctx2 = register_module(ctx, path, module)
-      
+
       #(ctx2, module, [])
     }
   }
