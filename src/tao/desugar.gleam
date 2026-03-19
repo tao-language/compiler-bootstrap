@@ -343,8 +343,8 @@ fn desugar_stmts_loop(
   case stmts {
     [] -> #(list.reverse(acc), dc)
     [stmt, ..rest] -> {
-      let #(core_stmt, dc1) = desugar_stmt(stmt, dc)
-      desugar_stmts_loop(rest, [core_stmt, ..acc], dc1)
+      let #(core_stmts, dc1) = desugar_stmt(stmt, dc)
+      desugar_stmts_loop(rest, list.append(core_stmts, acc), dc1)
     }
   }
 }
@@ -353,15 +353,15 @@ fn desugar_stmts_loop(
 pub fn desugar_stmt(
   stmt: Stmt,
   dc: DesugarContext,
-) -> #(CoreTerm, DesugarContext) {
+) -> #(List(CoreTerm), DesugarContext) {
   case stmt {
     StmtLet(name, mutable, type_ann, value, span) -> {
       let #(core_value, dc1) = desugar_expr_core(value, dc)
       let core_let = CoreLet(name, core_value, span)
       let dc2 = add_local(dc1, name)
-      #(core_let, dc2)
+      #([core_let], dc2)
     }
-    
+
     StmtFn(name, type_params, params, return_type, body, span) -> {
       // Function → let name = fix name -> λparam1. λparam2. ... body
       // For recursive functions, wrap the lambda in a fixpoint
@@ -372,45 +372,41 @@ pub fn desugar_stmt(
       let core_fix = CoreFix(name, core_lam, span)
       let core_let = CoreLet(name, core_fix, span)
       let dc2 = add_local(dc, name)
-      #(core_let, dc2)
+      #([core_let], dc2)
     }
-    
+
     StmtImport(import_item, span) -> {
       // Import → let aliases
       let core_terms = desugar_import(import_item, dc, span)
-      // Return first term, rest are handled separately
-      case core_terms {
-        [first, ..rest] -> {
-          // For now, just return the first binding
-          // In a full implementation, we'd handle multiple bindings
-          let dc1 = add_import_bindings(dc, core_terms)
-          #(first, dc1)
-        }
-        [] -> #(CoreErr("Empty import", span), dc)
-      }
+      // Add all bindings to the context
+      let dc1 = add_import_bindings(dc, core_terms)
+      #(core_terms, dc1)
     }
     
     StmtExpr(value, span) -> {
       let #(core_expr, dc1) = desugar_expr_core(value, dc)
-      #(core_expr, dc1)
+      #([core_expr], dc1)
     }
 
     StmtFor(pattern, collection, body, span) -> {
       // for pattern in collection { body... }
       // Desugar to: iterate over collection, binding pattern for each iteration
-      desugar_for(pattern, collection, body, span, dc)
+      let #(core_term, dc1) = desugar_for(pattern, collection, body, span, dc)
+      #([core_term], dc1)
     }
 
     StmtWhile(condition, body, span) -> {
       // while condition { body... }
       // Desugar to: recursive fixpoint that checks condition and executes body
-      desugar_while(condition, body, span, dc)
+      let #(core_term, dc1) = desugar_while(condition, body, span, dc)
+      #([core_term], dc1)
     }
 
     StmtLoop(body, span) -> {
       // loop { body... }
       // Desugar to: infinite loop using fixpoint
-      desugar_loop(body, span, dc)
+      let #(core_term, dc1) = desugar_loop(body, span, dc)
+      #([core_term], dc1)
     }
 
     StmtBreak(span) -> {
@@ -418,8 +414,8 @@ pub fn desugar_stmt(
       // Desugar to: return unit (exits the fixpoint)
       // The loop context tracks the fixpoint name for proper handling
       case in_loop(dc) {
-        True -> #(CoreRcd([], span), dc)
-        False -> #(CoreErr("break outside of loop", span), dc)
+        True -> #([CoreRcd([], span)], dc)
+        False -> #([CoreErr("break outside of loop", span)], dc)
       }
     }
 
@@ -429,10 +425,10 @@ pub fn desugar_stmt(
       case dc.loop_stack {
         [InLoop(fix_name, _break_target), ..] -> {
           // Make recursive call to the loop fixpoint
-          #(CoreApp(CoreVar(fix_name, span), CoreRcd([], span), span), dc)
+          #([CoreApp(CoreVar(fix_name, span), CoreRcd([], span), span)], dc)
         }
         [] -> {
-          #(CoreErr("continue outside of loop", span), dc)
+          #([CoreErr("continue outside of loop", span)], dc)
         }
       }
     }
@@ -442,8 +438,11 @@ pub fn desugar_stmt(
       // Desugar to: the return value (or unit if none)
       // Note: This returns from the enclosing function, not just the loop
       case value {
-        Some(expr) -> desugar_expr_core(expr, dc)
-        None -> #(CoreRcd([], span), dc)
+        Some(expr) -> {
+          let #(core_expr, dc1) = desugar_expr_core(expr, dc)
+          #([core_expr], dc1)
+        }
+        None -> #([CoreRcd([], span)], dc)
       }
     }
 
@@ -452,11 +451,12 @@ pub fn desugar_stmt(
       // Desugar to: the yielded expression
       // Note: Full generator support requires continuation-passing style
       // For now, just return the expression
-      desugar_expr_core(value, dc)
+      let #(core_expr, dc1) = desugar_expr_core(value, dc)
+      #([core_expr], dc1)
     }
 
     // Fallback for unimplemented statements
-    _ -> #(CoreErr("Statement not yet implemented", get_stmt_span(stmt)), dc)
+    _ -> #([CoreErr("Statement not yet implemented", get_stmt_span(stmt))], dc)
   }
 }
 
@@ -560,17 +560,48 @@ fn desugar_import_item(
 ) -> List(CoreTerm) {
   case item {
     ImportName(name, None) -> {
-      [CoreLet(name, CoreDot(module_ref, name, span), span)]
+      // For prelude modules, create a direct reference to the builtin
+      // For other modules, use CoreDot
+      case string.starts_with(path, "prelude/") {
+        True -> {
+          // Prelude types and constructors are built-in
+          [CoreLet(name, CoreVar(name, span), span)]
+        }
+        False -> {
+          [CoreLet(name, CoreDot(module_ref, name, span), span)]
+        }
+      }
     }
     ImportName(name, Some(alias)) -> {
-      [CoreLet(alias, CoreDot(module_ref, name, span), span)]
+      case string.starts_with(path, "prelude/") {
+        True -> {
+          [CoreLet(alias, CoreVar(name, span), span)]
+        }
+        False -> {
+          [CoreLet(alias, CoreDot(module_ref, name, span), span)]
+        }
+      }
     }
     ImportType(name, None) -> {
       // Type import - just bind the type
-      [CoreLet(name, CoreDot(module_ref, name, span), span)]
+      case string.starts_with(path, "prelude/") {
+        True -> {
+          [CoreLet(name, CoreVar(name, span), span)]
+        }
+        False -> {
+          [CoreLet(name, CoreDot(module_ref, name, span), span)]
+        }
+      }
     }
     ImportType(name, Some(alias)) -> {
-      [CoreLet(alias, CoreDot(module_ref, name, span), span)]
+      case string.starts_with(path, "prelude/") {
+        True -> {
+          [CoreLet(alias, CoreVar(name, span), span)]
+        }
+        False -> {
+          [CoreLet(alias, CoreDot(module_ref, name, span), span)]
+        }
+      }
     }
     ImportOperator(name, None) -> {
       // Operator import (e.g., "+")

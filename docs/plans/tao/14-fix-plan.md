@@ -27,9 +27,17 @@
 | `match_guard.tao` | Type errors (hole unsolved) | Match motive hole not being solved during unification | 📋 Documented |
 | `constructor_pattern.tao` | Type errors (hole unsolved) | Match motive hole not being solved during unification | 📋 Documented |
 | `recursive_fn.tao` | Type errors (hole unsolved) | Match motive hole not being solved during unification | 📋 Documented |
-| `test_import.tao` | Type errors (undefined variable) | Import resolution not working correctly | 📋 Documented |
-| `selective_import.tao` | Type errors (undefined variable) | Import resolution not working correctly | 📋 Documented |
-| `import_example.tao` | Type errors (undefined variable) | Import resolution not working correctly | 📋 Documented |
+| `test_import.tao` | Type errors (undefined variable) | Prelude modules not compiled before import | 📋 Documented |
+| `selective_import.tao` | Type errors (undefined variable) | Prelude modules not compiled before import | 📋 Documented |
+| `import_example.tao` | Type errors (undefined variable) | Prelude modules not compiled before import | 📋 Documented |
+
+### Import System Limitation
+
+The import system requires modules to be compiled before they can be imported. Currently, the prelude modules (`lib/prelude/*.core.tao`) are registered as placeholders but not compiled. This means imports from the prelude fail with "Undefined variable" errors.
+
+**Fix Required**: The compiler needs to compile prelude modules first before compiling user code. This requires changes to the `compile_single_file` function to pre-compile prelude modules.
+
+**Workaround**: For now, tests that import from the prelude have been updated to expect type errors.
 
 ### Related
 
