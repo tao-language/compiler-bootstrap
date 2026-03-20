@@ -1112,12 +1112,6 @@ pub fn tao_grammar() -> Grammar(Expr) {
           ]),
           make_app,
         ),
-        alt(ref("Atom"), fn(values) {
-          case values {
-            [AstValue(e)] -> e
-            _ -> Int(0, Span("error", 0, 0, 0, 0))
-          }
-        }),
       ]),
       // Atom = Primary | "(" Expr ")"
       rule("Atom", [
@@ -2116,7 +2110,7 @@ fn make_app(values) -> Expr {
       // Extract the args (everything between LParen and RParen)
       let args = extract_args_from_flattened_call_simple(call_items, [])
       let span = get_expr_span(func)
-      
+
       // Check if func is a constructor
       case func {
         Ctr(name, _, _) -> {
@@ -2466,20 +2460,32 @@ fn make_let(values) -> Expr {
 }
 
 fn make_block(values) -> Expr {
-  // values = [LBrace, stmts (ListValue), RBrace]
-  // stmts is a list of ListValue(AstValue(expr))
+  // values = [LBrace, ListValue(stmt1), ListValue(stmt2), ..., RBrace]
+  // Each statement is wrapped in its own ListValue by parse_many
   case values {
-    [_, ListValue(stmt_values), _] -> {
-      // Extract expressions from the wrapped values
-      let stmts = extract_stmts(stmt_values, [])
-      let span = case list.first(values), list.last(values) {
-        Ok(TokenValue(start)), Ok(TokenValue(end)) ->
-          Span("tao", start.start, start.line, start.column, end.end)
-        _, _ -> Span("block", 0, 0, 0, 0)
-      }
+    [TokenValue(lbrace), ..rest] -> {
+      // Extract all ListValue items (statements) until RBrace
+      let stmt_values = extract_list_values_until_rbrace(rest, [])
+      let stmts = list.flat_map(stmt_values, fn(lv) {
+        extract_stmts(lv, [])
+      })
+      let span = Span("tao", lbrace.line, lbrace.column, lbrace.line, lbrace.column + 1)
       Block(stmts, span)
     }
     _ -> Int(0, Span("error", 0, 0, 0, 0))
+  }
+}
+
+/// Extract all ListValue items from a list until we hit RBrace token.
+fn extract_list_values_until_rbrace(
+  items: List(Value(Expr)),
+  acc: List(List(Value(Expr))),
+) -> List(List(Value(Expr))) {
+  case items {
+    [] -> list.reverse(acc)
+    [TokenValue(t), ..] if t.kind == "RBrace" -> list.reverse(acc)
+    [ListValue(lv), ..rest] -> extract_list_values_until_rbrace(rest, [lv, ..acc])
+    [_, ..rest] -> extract_list_values_until_rbrace(rest, acc)
   }
 }
 
