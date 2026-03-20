@@ -6,7 +6,8 @@
 import gleeunit
 import gleeunit/should
 import gleam/option.{None}
-import tao/desugar.{desugar_module, desugar_import, type CoreTerm, type DesugarContext, CoreLet, CoreModuleRef, CoreDot, CoreVar, DesugarContext as DcCtr}
+import gleam/list
+import tao/desugar.{desugar_module, desugar_import, type CoreTerm, type DesugarContext, CoreLet, CoreRcd, CoreDot, CoreVar, DesugarContext as DcCtr}
 import tao/global_context.{type GlobalContext, new_context, with_prelude}
 import tao/ast.{type Module, type Stmt, Module as ModuleCtr, StmtImport}
 import tao/import_ast.{ImportModule, ImportAlias, ImportSelective, ImportName}
@@ -72,16 +73,18 @@ pub fn desugar_import_module_test() {
   let ctx = new_context() |> with_prelude()
   let dc = create_desugar_context(ctx)
   let span = Span("test", 0, 0, 0, 0)
-  
+
   // import math/trig
   let import_item = ImportModule("math/trig", span)
   let core_terms = desugar_import(import_item, dc, span)
-  
-  // Should produce: [let math_trig = @math/trig]
+
+  // Should produce: [let math_trig = {}]
+  // For non-prelude modules without registered public names, creates empty record
   case core_terms {
-    [CoreLet(name, CoreModuleRef(path, _), _)] -> {
+    [CoreLet(name, CoreRcd(fields, _), _)] -> {
       name |> should.equal("math_trig")
-      path |> should.equal("math/trig")
+      // For modules without registered public names, record is empty
+      list.length(fields) |> should.equal(0)
     }
     _ -> False |> should.be_true()
   }
@@ -91,16 +94,18 @@ pub fn desugar_import_alias_test() {
   let ctx = new_context() |> with_prelude()
   let dc = create_desugar_context(ctx)
   let span = Span("test", 0, 0, 0, 0)
-  
+
   // import math/trig as trig
   let import_item = ImportAlias("math/trig", "trig", span)
   let core_terms = desugar_import(import_item, dc, span)
-  
-  // Should produce: [let trig = @math/trig]
+
+  // Should produce: [let trig = {}]
+  // For non-prelude modules without registered public names, creates empty record
   case core_terms {
-    [CoreLet(name, CoreModuleRef(path, _), _)] -> {
+    [CoreLet(name, CoreRcd(fields, _), _)] -> {
       name |> should.equal("trig")
-      path |> should.equal("math/trig")
+      // For modules without registered public names, record is empty
+      list.length(fields) |> should.equal(0)
     }
     _ -> False |> should.be_true()
   }

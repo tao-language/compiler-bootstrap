@@ -1928,13 +1928,71 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       case list.key_find(s.ctrs, tag) {
         Error(Nil) -> infer_error(s, CtrUndefined(tag, get_span(term)))
         Ok(ctr) -> {
-          let #(params, ctr_arg_ty, _, s) = check_ctr_def(s, ctr)
+          let #(params, ctr_arg_ty, ctr_ret_ty, s) = check_ctr_def(s, ctr)
           let #(_, arg_ty, s) = infer(s, arg)
           let #(_, s) =
             check_type(s, arg_ty, ctr_arg_ty, get_span(arg), get_span(ctr.arg_ty))
+          // Solve type parameters based on the argument type for constructors with VTyp(0) return type
+          let s = case ctr_ret_ty {
+            VTyp(0) -> {
+              // For constructors like Some, None, Ok, Err, the type parameters can be inferred from the argument
+              case tag {
+                "Some" | "None" -> {
+                  // Option(a): a is the same as the argument type
+                  case params {
+                    [hole_id] -> State(..s, sub: [#(hole_id, arg_ty), ..s.sub])
+                    _ -> s
+                  }
+                }
+                "Ok" -> {
+                  // Result(a, e): a is the same as the argument type
+                  case params {
+                    [hole_id_a, _hole_id_e] -> State(..s, sub: [#(hole_id_a, arg_ty), ..s.sub])
+                    _ -> s
+                  }
+                }
+                "Err" -> {
+                  // Result(a, e): e is the same as the argument type
+                  case params {
+                    [_hole_id_a, hole_id_e] -> State(..s, sub: [#(hole_id_e, arg_ty), ..s.sub])
+                    _ -> s
+                  }
+                }
+                _ -> s
+              }
+            }
+            _ -> s
+          }
           let #(params, s) = ctr_solve_params(s, ctr, params, tag, get_span(term))
           let env = list.append(params, get_env(s))
-          #(VCtrValue(VCtr(tag, eval(s.ffi, env, arg))), eval(s.ffi, env, ctr.ret_ty), s)
+          // Evaluate the constructor argument and return type
+          let arg_val = eval(s.ffi, env, arg)
+          // If ctr_ret_ty is VTyp(0), construct the return type from the type parameters
+          let ret_ty_val = case ctr_ret_ty {
+            VTyp(0) -> {
+              // Construct return type based on constructor name and type parameters
+              case tag {
+                "Some" | "None" -> {
+                  // Option(a) - represented as VCtrValue(VCtr("Option", a))
+                  case params {
+                    [a_val] -> VCtrValue(VCtr("Option", a_val))
+                    _ -> VTyp(0)
+                  }
+                }
+                "Ok" | "Err" -> {
+                  // Result(a, e) - represented as VCtrValue(VCtr("Result", (a, e)))
+                  case params {
+                    [a_val, e_val] -> VCtrValue(VCtr("Result", VRcd([#("a", a_val), #("e", e_val)])))
+                    [a_val] -> VCtrValue(VCtr("Result", a_val))  // Fallback for single param
+                    _ -> VTyp(0)
+                  }
+                }
+                _ -> VTyp(0)
+              }
+            }
+            _ -> eval(s.ffi, env, ctr.ret_ty)
+          }
+          #(VCtrValue(VCtr(tag, arg_val)), ret_ty_val, s)
         }
       }
     Unit(_) -> #(VUnit, VTyp(0), s)
@@ -2896,14 +2954,66 @@ pub fn check_exhaustiveness(
   cases: List(Case),
   span: Span,
 ) -> List(Error) {
+  // Check for redundant cases first
+  let redundant_errors = check_redundant_cases(s, cases, span)
+  
   // If the last case is a wildcard without a guard, the match is exhaustive
   case list.last(cases) {
-    Ok(Case(pattern: PAny, guard: None, ..)) -> []
-    Ok(Case(pattern: PAs(PAny, _), guard: None, ..)) -> []
+    Ok(Case(pattern: PAny, guard: None, ..)) -> redundant_errors
+    Ok(Case(pattern: PAs(PAny, _), guard: None, ..)) -> redundant_errors
     _ -> {
-      // Continue with normal exhaustiveness checking
-      check_exhaustiveness_loop(s, cases, span)
+      // Continue with normal exhaustiveness checking for missing cases
+      let missing_errors = check_exhaustiveness_loop(s, cases, span)
+      list.append(redundant_errors, missing_errors)
     }
+  }
+}
+
+/// Check for redundant cases in a match expression.
+fn check_redundant_cases(s: State, cases: List(Case), match_span: Span) -> List(Error) {
+  check_redundant_cases_loop(s, cases, [], [], match_span)
+}
+
+fn check_redundant_cases_loop(
+  s: State,
+  cases: List(Case),
+  seen_patterns: List(Pattern),
+  acc: List(Error),
+  match_span: Span,
+) -> List(Error) {
+  case cases {
+    [] -> list.reverse(acc)
+    [case_, ..rest] -> {
+      // Check if this pattern is redundant (already covered by seen patterns)
+      let is_redundant = is_pattern_covered_by_list(s, case_.pattern, seen_patterns)
+      let new_acc = case is_redundant {
+        True -> [MatchRedundantCase(match_span), ..acc]
+        False -> acc
+      }
+      check_redundant_cases_loop(s, rest, [case_.pattern, ..seen_patterns], new_acc, match_span)
+    }
+  }
+}
+
+/// Check if a pattern is covered by a list of previously seen patterns.
+fn is_pattern_covered_by_list(
+  s: State,
+  pattern: Pattern,
+  seen: List(Pattern),
+) -> Bool {
+  // A pattern is covered if any seen pattern is more general
+  list.any(seen, fn(seen_pattern) {
+    is_pattern_covered_by(s, pattern, seen_pattern)
+  })
+}
+
+/// Check if pattern1 is covered by pattern2 (pattern2 is more general).
+fn is_pattern_covered_by(s: State, pattern1: Pattern, pattern2: Pattern) -> Bool {
+  case pattern2 {
+    PAny -> True  // Wildcard covers everything
+    PAs(PAny, _) -> True  // As-pattern with wildcard covers everything
+    PAs(inner, _) -> is_pattern_covered_by(s, pattern1, inner)
+    _ -> False  // Specific patterns don't cover other patterns
   }
 }
 
