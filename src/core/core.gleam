@@ -2405,8 +2405,45 @@ pub fn bind_pattern(
         Error(Nil) -> #(VErr, with_err(s, CtrUndefined(tag, pat_span)))
         Ok(ctr) -> {
           let #(params, _, ctr_ret_ty, s) = check_ctr_def(s, ctr)
-          let #(_, s) =
-            check_type(s, ctr_ret_ty, ret_ty, get_span(ctr.ret_ty), ret_span)
+          // If ctr_ret_ty is just VTyp(0), the constructor definition doesn't properly
+          // encode its return type. In this case, extract type arguments from ret_ty directly.
+          let s = case ctr_ret_ty {
+            VTyp(0) -> {
+              // Constructor return type not properly specified. Try to extract type
+              // arguments from ret_ty if it's a type application.
+              case ret_ty {
+                VCtrValue(VCtr(_, arg)) -> {
+                  // ret_ty is a constructor application like Option(I32).
+                  // The arg (e.g., I32) should be used to solve the type parameter.
+                  case params {
+                    [hole_id] -> {
+                      // Single type parameter - solve it with the arg
+                      State(..s, sub: [#(hole_id, arg), ..s.sub])
+                    }
+                    _ -> s  // Multiple params - can't infer, leave unsolved
+                  }
+                }
+                VNeut(_, [EApp(arg), ..]) -> {
+                  // ret_ty is a type application like Option(I32) represented as VNeut.
+                  // The arg (e.g., I32) should be used to solve the type parameter.
+                  case params {
+                    [hole_id] -> {
+                      // Single type parameter - solve it with the arg
+                      State(..s, sub: [#(hole_id, arg), ..s.sub])
+                    }
+                    _ -> s  // Multiple params - can't infer, leave unsolved
+                  }
+                }
+                _ -> s  // ret_ty not a constructor/type application - leave params unsolved
+              }
+            }
+            _ -> {
+              // Constructor has proper return type - unify as normal
+              let #(_, s) =
+                check_type(s, ctr_ret_ty, ret_ty, get_span(ctr.ret_ty), ret_span)
+              s
+            }
+          }
           let #(params, s) = ctr_solve_params(s, ctr, params, tag, pat_span)
           let env = list.append(params, get_env(s))
           let ctr_arg_ty = eval(s.ffi, env, ctr.arg_ty)

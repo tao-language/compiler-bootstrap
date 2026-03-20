@@ -41,7 +41,7 @@ import tao/import_ast.{
   ImportSelectiveAlias, ImportWildcard,
   type ImportItem, ImportName, ImportType, ImportOperator,
 }
-import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, F64, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole, Ctr}
+import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, F64, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole, Ctr, Ann}
 
 // ============================================================================
 // CORE TERM TYPES (simplified for desugaring)
@@ -97,6 +97,9 @@ pub type CoreTerm {
 
   /// Constructor (algebraic data type constructor)
   CoreCtr(tag: String, arg: CoreTerm, span: Span)
+
+  /// Type annotation (for explicit type signatures)
+  CoreAnn(term: CoreTerm, typ: CoreTerm, span: Span)
 
   /// Unit value
   CoreUnit(span: Span)
@@ -363,7 +366,15 @@ pub fn desugar_stmt(
   case stmt {
     StmtLet(name, mutable, type_ann, value, span) -> {
       let #(core_value, dc1) = desugar_expr_core(value, dc)
-      let core_let = CoreLet(name, core_value, span)
+      // If there's a type annotation, wrap the value in a CoreAnn
+      let core_let_value = case type_ann {
+        Some(type_ast) -> {
+          let #(core_type, _dc2) = desugar_type_ast(type_ast, dc1)
+          CoreAnn(core_value, core_type, span)
+        }
+        None -> core_value
+      }
+      let core_let = CoreLet(name, core_let_value, span)
       let dc2 = add_local(dc1, name)
       #([core_let], dc2)
     }
@@ -1148,6 +1159,86 @@ fn desugar_expr_core(
     // Placeholder for unimplemented expressions
     _ -> #(CoreErr("Expression not yet implemented", get_expr_span(expr)), dc)
   }
+}
+
+/// Desugar a type AST to a CoreTerm.
+fn desugar_type_ast(
+  type_ast: ast.Type,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  // Type ASTs are converted to Core terms
+  // For now, just convert to a variable or application
+  case type_ast {
+    ast.TVar(name) -> {
+      // Type variable - use a hole for now
+      #(CoreHole(0, Span(name, 0, 0, 0, 0)), dc)
+    }
+    ast.TApp(name, args) -> {
+      // Type application - build nested applications
+      let #(core_args, dc1) = desugar_type_args(args, dc)
+      let base = case name {
+        "I32" -> CoreBuiltinType("I32T", Span(name, 0, 0, 0, 0))
+        "I64" -> CoreBuiltinType("I64T", Span(name, 0, 0, 0, 0))
+        "U32" -> CoreBuiltinType("U32T", Span(name, 0, 0, 0, 0))
+        "U64" -> CoreBuiltinType("U64T", Span(name, 0, 0, 0, 0))
+        "F32" -> CoreBuiltinType("F32T", Span(name, 0, 0, 0, 0))
+        "F64" -> CoreBuiltinType("F64T", Span(name, 0, 0, 0, 0))
+        "Bool" -> CoreVar("Bool", Span(name, 0, 0, 0, 0))
+        "Option" -> CoreVar("Option", Span(name, 0, 0, 0, 0))
+        "Result" -> CoreVar("Result", Span(name, 0, 0, 0, 0))
+        _ -> CoreVar(name, Span(name, 0, 0, 0, 0))
+      }
+      let core_type = build_type_app(base, core_args, Span(name, 0, 0, 0, 0))
+      #(core_type, dc1)
+    }
+    ast.TFn(_, _) -> {
+      // Function type - use a hole for now
+      #(CoreHole(0, Span("fn", 0, 0, 0, 0)), dc)
+    }
+    ast.TRecord(_) -> {
+      // Record type - use a hole for now
+      #(CoreHole(0, Span("record", 0, 0, 0, 0)), dc)
+    }
+    ast.TTuple(_) -> {
+      // Tuple type - use a hole for now
+      #(CoreHole(0, Span("tuple", 0, 0, 0, 0)), dc)
+    }
+    ast.THole -> {
+      // Hole - use a hole
+      #(CoreHole(0, Span("_", 0, 0, 0, 0)), dc)
+    }
+  }
+}
+
+fn desugar_type_args(
+  args: List(ast.Type),
+  dc: DesugarContext,
+) -> #(List(CoreTerm), DesugarContext) {
+  list.fold(args, #([], dc), fn(acc, arg) {
+    let #(core_args, dc1) = acc
+    let #(core_arg, dc2) = desugar_type_ast(arg, dc1)
+    #([core_arg, ..core_args], dc2)
+  })
+}
+
+fn build_type_app(base: CoreTerm, args: List(CoreTerm), span: Span) -> CoreTerm {
+  case args {
+    [] -> base
+    [arg, ..rest] -> {
+      let inner = build_type_app(base, rest, span)
+      CoreApp(inner, arg, span)
+    }
+  }
+}
+
+/// Desugar a type expression to a CoreTerm.
+fn desugar_type_expr(
+  type_expr: Expr,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  // Type expressions are simplified - just desugar as a regular expression
+  // The type checker will handle the actual type semantics
+  desugar_expr_core(type_expr, dc)
 }
 
 /// Desugar a list of expressions.
@@ -2013,6 +2104,14 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
       // Convert CoreCtr to core/core.Ctr
       Ctr(tag, core_term_to_term_loop(arg, env), span)
     }
+    CoreAnn(term, typ, span) -> {
+      // Convert CoreAnn to core/core.Ann (type annotation)
+      Ann(
+        core_term_to_term_loop(term, env),
+        core_term_to_term_loop(typ, env),
+        span,
+      )
+    }
     CoreUnit(span) -> {
       // Convert CoreUnit to core/core.Unit
       Unit(span)
@@ -2053,6 +2152,7 @@ fn value_span(term: CoreTerm) -> Span {
     CoreMatchCore(_, _, _, span) -> span
     CoreFix(_, _, span) -> span
     CoreCtr(_, _, span) -> span
+    CoreAnn(_, _, span) -> span
     CoreUnit(span) -> span
     CoreErr(_, span) -> span
   }
