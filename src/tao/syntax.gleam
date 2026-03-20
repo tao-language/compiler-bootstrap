@@ -31,7 +31,7 @@ import syntax/grammar.{
   type Grammar, type ParseResult, type Span, Span, Grammar, type Value, AstValue,
   ParensValue, TokenValue, ListValue, KeywordValue,
   InfixLeft,
-  rule, alt, token_pattern, parenthesized, seq, ref, keyword_pattern, many, opt, sep1,
+  rule, alt, token_pattern, parenthesized, seq, ref, keyword_pattern, many, opt, sep1, delimited,
   infix_binary, left_assoc_rule,
   span_from_values, span_from_token, parse as grammar_parse,
   ParseResult as ParseResultVal,
@@ -1100,6 +1100,10 @@ pub fn tao_grammar() -> Grammar(Expr) {
         }),
       ]),
       // Application = Atom ("(" Args ")")*
+      // Note: Uses sep1 which requires at least one argument. For empty calls, use f(Unit).
+      // TODO: Fix to support empty argument lists without causing infinite recursion
+      // The issue is that Primary -> Application creates a recursive grammar that
+      // combined with opt/many causes infinite backtracking.
       rule("Application", [
         alt(
           seq([
@@ -2102,13 +2106,138 @@ fn extract_params(param_list: List(Value(Expr)), acc: List(#(String, Option(Stri
   }
 }
 
+/// Helper to create function application AST (v3 - supports empty args with opt(sep1)).
+fn make_app_v3(values) -> Expr {
+  case values {
+    [AstValue(func), ListValue(call_items)] -> {
+      // call_items structure: [opt(sep1), ...]
+      let args = extract_args_from_opt_sep1(call_items, [])
+      let span = get_expr_span(func)
+      make_app_expr(func, args, span)
+    }
+    [AstValue(func)] -> func
+    _ -> Int(0, Span("error", 0, 0, 0, 0))
+  }
+}
+
+/// Extract arguments from opt(sep1) structure.
+fn extract_args_from_opt_sep1(items: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
+  case items {
+    [] -> list.reverse(acc)
+    [ListValue(sep1_items), ..rest] -> {
+      // sep1_items: [Primary, [Comma, Primary], ...] or []
+      let args_from_sep1 = extract_args_from_sep1_items(sep1_items, [])
+      extract_args_from_opt_sep1(rest, list.append(args_from_sep1, acc))
+    }
+    [AstValue(e), ..rest] -> {
+      // Direct Primary (when opt matches just the Primary without wrapping)
+      extract_args_from_opt_sep1(rest, [e, ..acc])
+    }
+    [_, ..rest] -> extract_args_from_opt_sep1(rest, acc)
+  }
+}
+
+/// Extract arguments from sep1 items.
+fn extract_args_from_sep1_items(items: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
+  case items {
+    [] -> list.reverse(acc)
+    [AstValue(e), ..rest] -> {
+      // Primary
+      extract_args_from_sep1_items(rest, [e, ..acc])
+    }
+    [ListValue(_), ..rest] -> {
+      // [Comma, Primary] - skip the comma, Primary will be extracted in next iteration
+      extract_args_from_sep1_items(rest, acc)
+    }
+    [_, ..rest] -> extract_args_from_sep1_items(rest, acc)
+  }
+}
+
+/// Helper to create function application AST (v2 - supports empty args).
+fn make_app_v2(values) -> Expr {
+  case values {
+    [AstValue(func), ListValue(call_items)] -> {
+      // call_items structure: [opt([Primary, many([Comma, Primary])]), ...]
+      let args = extract_args_from_opt_parens(call_items, [])
+      let span = get_expr_span(func)
+      make_app_expr(func, args, span)
+    }
+    [AstValue(func)] -> func
+    _ -> Int(0, Span("error", 0, 0, 0, 0))
+  }
+}
+
+/// Extract arguments from opt parens structure.
+fn extract_args_from_opt_parens(items: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
+  case items {
+    [] -> list.reverse(acc)
+    [ListValue(opt_items), ..rest] -> {
+      // opt_items: [Primary, many([Comma, Primary])] or []
+      let args_from_opt = extract_args_from_opt_items_v2(opt_items, [])
+      extract_args_from_opt_parens(rest, list.append(args_from_opt, acc))
+    }
+    [AstValue(e), ..rest] -> {
+      // Direct Primary (when opt matches just the Primary without many)
+      extract_args_from_opt_parens(rest, [e, ..acc])
+    }
+    [_, ..rest] -> extract_args_from_opt_parens(rest, acc)
+  }
+}
+
+/// Extract arguments from opt items.
+fn extract_args_from_opt_items_v2(opt_items: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
+  case opt_items {
+    [] -> list.reverse(acc)
+    [AstValue(e), ..rest] -> {
+      // First Primary
+      extract_args_from_opt_items_v2(rest, [e, ..acc])
+    }
+    [ListValue(comma_arg), ..rest] -> {
+      // many([Comma, Primary]) - extract the Primary (second element)
+      case comma_arg {
+        [_, AstValue(e)] -> extract_args_from_opt_items_v2(rest, [e, ..acc])
+        _ -> extract_args_from_opt_items_v2(rest, acc)
+      }
+    }
+    [_, ..rest] -> extract_args_from_opt_items_v2(rest, acc)
+  }
+}
+
+/// Helper to create application expression.
+fn make_app_expr(func: Expr, args: List(Expr), span) -> Expr {
+  case func {
+    Ctr(name, _, _) -> Ctr(name, args, span)
+    Var(name, _) -> {
+      case is_capitalized_name(name) {
+        True -> Ctr(name, args, span)
+        False -> App(func, args, span)
+      }
+    }
+    _ -> App(func, args, span)
+  }
+}
+
+/// Check if a name is capitalized (potential constructor).
+fn is_capitalized_name(name: String) -> Bool {
+  case string.first(name) {
+    Ok(c) -> {
+      // Check if the first character is an uppercase letter A-Z
+      case c {
+        "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" -> True
+        _ -> False
+      }
+    }
+    Error(Nil) -> False
+  }
+}
+
 /// Helper to create function application AST.
 fn make_app(values) -> Expr {
   case values {
     [AstValue(func), ListValue(call_items)] -> {
-      // call_items is flattened: [LParen, Expr1, Expr2, ..., RParen]
-      // Extract the args (everything between LParen and RParen)
-      let args = extract_args_from_flattened_call_simple(call_items, [])
+      // call_items from delimited: list of [Primary, opt(Comma)] or just Primary values
+      // Extract the args from the delimited structure
+      let args = extract_args_from_delimited(call_items, [])
       let span = get_expr_span(func)
 
       // Check if func is a constructor
@@ -2129,6 +2258,26 @@ fn make_app(values) -> Expr {
     }
     [AstValue(func)] -> func
     _ -> Int(0, Span("error", 0, 0, 0, 0))
+  }
+}
+
+/// Extract arguments from delimited list structure.
+fn extract_args_from_delimited(items: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
+  case items {
+    [] -> list.reverse(acc)
+    [AstValue(e), ..rest] -> {
+      // Direct expression (Primary)
+      extract_args_from_delimited(rest, [e, ..acc])
+    }
+    [ListValue(nested), ..rest] -> {
+      // Nested structure - extract recursively
+      let nested_args = extract_args_from_delimited(nested, [])
+      extract_args_from_delimited(rest, list.append(nested_args, acc))
+    }
+    [_, ..rest] -> {
+      // Skip separators and other tokens
+      extract_args_from_delimited(rest, acc)
+    }
   }
 }
 

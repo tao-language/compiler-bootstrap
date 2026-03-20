@@ -105,6 +105,10 @@ pub type Pattern(a) {
   Many(pattern: Pattern(a))
   Sep1(item: Pattern(a), sep: Pattern(a))
   Parens(rule: String)
+  /// Delimited list: open item (sep item)* close
+  /// Supports empty lists, single items, and multiple items
+  /// Examples: (), (x), (x, y, z), [x, y], {x: a, y: b}
+  Delimited(open: Pattern(a), item: Pattern(a), sep: Pattern(a), close: Pattern(a))
 }
 
 pub type Alternative(a) {
@@ -343,6 +347,29 @@ pub fn sep1(item: Pattern(a), sep: Pattern(a)) -> Pattern(a) {
   Sep1(item, sep)
 }
 
+/// Create a delimited list pattern.
+///
+/// Parses: open item (sep item)* close
+/// 
+/// Supports:
+/// - Empty lists: ()
+/// - Single items: (x)
+/// - Multiple items: (x, y, z)
+///
+/// Examples:
+/// - Function args: delimited(LParen, Primary, Comma, RParen)
+/// - Array literals: delimited(LBracket, Expr, Comma, RBracket)
+/// - Record fields: delimited(LBrace, Field, Comma, RBrace)
+/// - Block statements: delimited(LBrace, Stmt, Semi, RBrace)
+pub fn delimited(
+  open: Pattern(a),
+  item: Pattern(a),
+  sep: Pattern(a),
+  close: Pattern(a),
+) -> Pattern(a) {
+  Delimited(open, item, sep, close)
+}
+
 pub fn parenthesized(rule_name: String) -> Pattern(a) {
   Parens(rule_name)
 }
@@ -572,6 +599,8 @@ fn parse_pattern(
     Many(p) -> parse_many(grammar, p, tokens, pos, [])
     Sep1(item, sep) -> parse_sep1(grammar, item, sep, tokens, pos, [])
     Parens(rule_name) -> parse_parens(grammar, rule_name, tokens, pos)
+    Delimited(open, item, sep, close) ->
+      parse_delimited(grammar, open, item, sep, close, tokens, pos)
   }
 }
 
@@ -790,6 +819,104 @@ fn parse_parens(
       }
     }
     Error(_) -> Error(Nil)
+  }
+}
+
+/// Parse a delimited list: open item (sep item)* close
+///
+/// Supports:
+/// - Empty lists: ()
+/// - Single items: (x)
+/// - Multiple items: (x, y, z)
+/// - Optional trailing separator: (x, y, z,)
+fn parse_delimited(
+  grammar: Grammar(a),
+  open: Pattern(a),
+  item: Pattern(a),
+  sep: Pattern(a),
+  close: Pattern(a),
+  tokens: List(Token),
+  pos: Int,
+) -> Result(#(List(Value(a)), Int), Nil) {
+  // Parse opening token
+  case parse_pattern(grammar, open, tokens, pos) {
+    Ok(#(_, open_pos)) -> {
+      // Try to parse items
+      parse_delimited_items(grammar, item, sep, close, tokens, open_pos, [])
+    }
+    Error(_) -> Error(Nil)
+  }
+}
+
+/// Parse items in a delimited list (after opening token)
+fn parse_delimited_items(
+  grammar: Grammar(a),
+  item: Pattern(a),
+  sep: Pattern(a),
+  close: Pattern(a),
+  tokens: List(Token),
+  pos: Int,
+  acc: List(Value(a)),
+) -> Result(#(List(Value(a)), Int), Nil) {
+  // First, try to parse the closing token (handles empty list or end of items)
+  case parse_pattern(grammar, close, tokens, pos) {
+    Ok(#(_, close_pos)) -> {
+      // Successfully parsed closing token, return accumulated items
+      Ok(#(acc, close_pos))
+    }
+    Error(_) -> {
+      // Not a closing token, try to parse an item
+      case parse_pattern(grammar, item, tokens, pos) {
+        Ok(#(item_values, item_pos)) -> {
+          // Successfully parsed an item, add to accumulator
+          let new_acc = list.append(acc, item_values)
+          // Now try to parse separator (required after item, unless it's the last)
+          parse_delimited_after_item(
+            grammar, item, sep, close, tokens, item_pos, new_acc,
+          )
+        }
+        Error(_) -> {
+          // Can't parse item and can't parse close - parse error
+          Error(Nil)
+        }
+      }
+    }
+  }
+}
+
+/// Parse after an item in a delimited list
+/// Try separator + more items, or just closing token
+fn parse_delimited_after_item(
+  grammar: Grammar(a),
+  item: Pattern(a),
+  sep: Pattern(a),
+  close: Pattern(a),
+  tokens: List(Token),
+  pos: Int,
+  acc: List(Value(a)),
+) -> Result(#(List(Value(a)), Int), Nil) {
+  // Try to parse separator
+  case parse_pattern(grammar, sep, tokens, pos) {
+    Ok(#(_, sep_pos)) -> {
+      // Successfully parsed separator, try to parse another item
+      // (or closing token for trailing separator support)
+      parse_delimited_items(
+        grammar, item, sep, close, tokens, sep_pos, acc,
+      )
+    }
+    Error(_) -> {
+      // No separator, try closing token
+      case parse_pattern(grammar, close, tokens, pos) {
+        Ok(#(_, close_pos)) -> {
+          // Successfully parsed closing token
+          Ok(#(acc, close_pos))
+        }
+        Error(_) -> {
+          // No separator and no closing token - parse error
+          Error(Nil)
+        }
+      }
+    }
   }
 }
 
