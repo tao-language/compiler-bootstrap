@@ -41,7 +41,7 @@ import tao/import_ast.{
   ImportSelectiveAlias, ImportWildcard,
   type ImportItem, ImportName, ImportType, ImportOperator,
 }
-import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole, Ctr}
+import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, F64, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole, Ctr}
 
 // ============================================================================
 // CORE TERM TYPES (simplified for desugaring)
@@ -1134,7 +1134,7 @@ fn desugar_expr_core(
       // Let expression - desugar binding and body
       desugar_let_expr(let_decl, body, span, dc)
     }
-    
+
     ast.OptionalChain(expr, field, span) -> {
       // Optional chaining - convert to match on Option
       desugar_optional_chain(expr, field, span, dc)
@@ -1979,9 +1979,21 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
       Hole(id: id, span: span)
     }
     CoreLit(value, span) -> {
+      // Try to parse as integer first
       case int.parse(value) {
         Ok(n) -> Lit(value: I32(n), span: span)
-        Error(_) -> Lit(value: I32(0), span: span)
+        Error(_) -> {
+          // Not an integer - try float
+          case float.parse(value) {
+            Ok(f) -> Lit(value: F64(f), span: span)
+            Error(_) -> {
+              // String literal - core language doesn't support strings directly
+              // For now, represent as unit to avoid type errors
+              // A full implementation would represent strings as arrays of characters
+              Unit(span)
+            }
+          }
+        }
       }
     }
     CoreMatchCore(arg, motive, cases, span) -> {

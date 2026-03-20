@@ -462,8 +462,9 @@ fn make_var(values) -> Expr {
 
 fn make_str(values) -> Expr {
   case values {
-    [TokenValue(token)] ->
+    [TokenValue(token)] -> {
       Str(token.value, span_from_token(token, "tao"))
+    }
     _ -> panic as "Expected string"
   }
 }
@@ -1676,21 +1677,56 @@ fn extract_clauses_after_lbrace(
 }
 
 fn extract_single_clause_from_list(items: List(Value(Expr))) -> Option(MatchClause) {
-  // items should be: [Pipe, pattern, opt_if, Arrow, body]
-  // But structure might vary based on grammar
+  // Simplified clause extraction - handle basic case first
+  // Expected structure from grammar: [Pipe, pattern_Expr, opt_if, Arrow, body_Expr]
+  // But items might be wrapped differently
+  
+  // First, find the Pipe token
+  let pipe_pos = find_pipe_position(items, 0)
+  case pipe_pos {
+    Some(pos) -> {
+      // Found pipe, extract pattern (should be next item)
+      let pattern_items = list.drop(items, pos + 1) |> list.take(1)
+      let pattern = case pattern_items {
+        [AstValue(expr)] -> pattern_ast_to_pattern(expr)
+        _ -> PWild(Span("error", 0, 0, 0, 0))
+      }
+      
+      // Find Arrow token after pattern
+      let after_pattern = list.drop(items, pos + 2)
+      let arrow_pos = find_arrow_position(after_pattern, 0)
+      case arrow_pos {
+        Some(arrow_idx) -> {
+          // Body should be after arrow
+          let body_items = list.drop(after_pattern, arrow_idx + 1) |> list.take(1)
+          case body_items {
+            [AstValue(body_expr)] -> {
+              let span = get_expr_span(body_expr)
+              Some(MatchClause(pattern, None, body_expr, span))
+            }
+            _ -> None
+          }
+        }
+        None -> None
+      }
+    }
+    None -> None
+  }
+}
+
+fn find_pipe_position(items: List(Value(Expr)), pos: Int) -> Option(Int) {
   case items {
-    [TokenValue(pipe), AstValue(pattern_ast), TokenValue(arrow), AstValue(body), ..] if pipe.value == "|" && arrow.value == "->" -> {
-      // Simple case: no guard, pattern and body are AstValues
-      let pattern = pattern_ast_to_pattern(pattern_ast)
-      let span = get_expr_span(body)
-      Some(MatchClause(pattern, None, body, span))
-    }
-    [TokenValue(pipe), AstValue(pattern_ast), ..rest] if pipe.value == "|" -> {
-      // Pattern extracted, rest contains opt_if, Arrow, body
-      let pattern = pattern_ast_to_pattern(pattern_ast)
-      extract_clause_guard_simple(rest, pattern)
-    }
-    _ -> None
+    [] -> None
+    [TokenValue(t), ..rest] if t.value == "|" -> Some(pos)
+    [_v, ..rest] -> find_pipe_position(rest, pos + 1)
+  }
+}
+
+fn find_arrow_position(items: List(Value(Expr)), pos: Int) -> Option(Int) {
+  case items {
+    [] -> None
+    [TokenValue(t), ..rest] if t.value == "->" -> Some(pos)
+    [_v, ..rest] -> find_arrow_position(rest, pos + 1)
   }
 }
 
@@ -1698,6 +1734,20 @@ fn extract_clause_guard_simple(
   items: List(Value(Expr)),
   pattern: Pattern,
 ) -> Option(MatchClause) {
+  // Debug: print items structure
+  let items_debug = list.take(items, 5)
+    |> list.map(fn(v) {
+      case v {
+        TokenValue(t) -> "T:" <> t.kind
+        KeywordValue(t) -> "K:" <> t.value
+        AstValue(_) -> "A"
+        ListValue(inner) -> "L(" <> int.to_string(list.length(inner)) <> ")"
+        ParensValue(_) -> "P"
+      }
+    })
+    |> string.join(",")
+  let _ = panic as "DEBUG items: " <> items_debug
+  
   case items {
     // Guard wrapped in ListValue (from seq([keyword_pattern("if"), ref("Expr")]))
     [ListValue([KeywordValue(_if), AstValue(guard_expr)]), TokenValue(_arrow), AstValue(body), ..] -> {
