@@ -1965,22 +1965,22 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
           }
           let #(params, s) = ctr_solve_params(s, ctr, params, tag, get_span(term))
           let env = list.append(params, get_env(s))
-          // Evaluate the constructor argument and return type
+          // Evaluate the constructor argument
           let arg_val = eval(s.ffi, env, arg)
-          // If ctr_ret_ty is VTyp(0), construct the return type from the type parameters
+          // If ctr_ret_ty is VTyp(0), construct the return type from the solved params
           let ret_ty_val = case ctr_ret_ty {
             VTyp(0) -> {
-              // Construct return type based on constructor name and type parameters
+              // Construct return type based on constructor name and solved type parameters
               case tag {
                 "Some" | "None" -> {
-                  // Option(a) - represented as VCtrValue(VCtr("Option", a))
+                  // Option(a) - use the first solved type parameter directly
                   case params {
                     [a_val] -> VCtrValue(VCtr("Option", a_val))
                     _ -> VTyp(0)
                   }
                 }
                 "Ok" | "Err" -> {
-                  // Result(a, e) - represented as VCtrValue(VCtr("Result", (a, e)))
+                  // Result(a, e) - use the solved type parameters
                   case params {
                     [a_val, e_val] -> VCtrValue(VCtr("Result", VRcd([#("a", a_val), #("e", e_val)])))
                     [a_val] -> VCtrValue(VCtr("Result", a_val))  // Fallback for single param
