@@ -1665,8 +1665,7 @@ fn build_ctr_loop(
   case args {
     [] -> {
       // Nullary constructor: #True(Unit)
-      let ctr_var = CoreVar(name, span)
-      CoreApp(ctr_var, CoreRcd([], span), span)
+      CoreCtr(name, CoreUnit(span), span)
     }
     [arg, ..rest] -> {
       let inner = build_ctr_loop(name, rest, span)

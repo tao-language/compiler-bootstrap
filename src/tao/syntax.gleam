@@ -17,6 +17,7 @@ import tao/ast.{
   BlockStmtExpr, BlockStmtLet, LetDecl, Immutable, Mutable, type BlockStatement,
   Match as AstMatch, MatchClause as AstMatchClause, If as AstIf,
   type Pattern as AstPattern, PAny, PVar as AstPVar, PLit as AstPLit, PCtr as AstPCtr,
+  Ctr as AstCtr,
   type Type as AstType, TFn, TApp, TRecord, TTuple, THole,
 }
 import tao/import_ast.{type Import, ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias, ImportWildcard, type ImportItem, ImportName, ImportType, ImportOperator}
@@ -145,6 +146,8 @@ pub type Expr {
   Run(value: Expr, span: Span)
   /// Import statement (e.g., import prelude/bool.{True, False})
   Import(import_item: Import, span: Span)
+  /// Constructor application (e.g., True, False, Some(x), None)
+  Ctr(name: String, args: List(Expr), span: Span)
 }
 
 /// A single match clause with pattern, optional guard, and body.
@@ -294,6 +297,11 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
       // Imports are handled at the statement level
       // Return a placeholder
       AstBlock([], span)
+    }
+    Ctr(name, args, span) -> {
+      // Constructor application
+      let ast_args = list.map(args, expr_to_ast_loop)
+      AstCtr(name, ast_args, span)
     }
   }
 }
@@ -460,6 +468,32 @@ fn make_var(values) -> Expr {
   }
 }
 
+fn make_ctr(values) -> Expr {
+  case values {
+    [TokenValue(token)] -> {
+      // Constructor with no arguments - use Unit as the argument
+      Ctr(token.value, [], span_from_token(token, "tao"))
+    }
+    _ -> panic as "Expected identifier for constructor"
+  }
+}
+
+fn is_uppercase_start(s: String) -> Bool {
+  // Check if string starts with uppercase letter
+  case string.is_empty(s) {
+    True -> False
+    False -> {
+      let first = string.slice(s, 0, 1)
+      first == "A" || first == "B" || first == "C" || first == "D" || first == "E"
+      || first == "F" || first == "G" || first == "H" || first == "I" || first == "J"
+      || first == "K" || first == "L" || first == "M" || first == "N" || first == "O"
+      || first == "P" || first == "Q" || first == "R" || first == "S" || first == "T"
+      || first == "U" || first == "V" || first == "W" || first == "X" || first == "Y"
+      || first == "Z"
+    }
+  }
+}
+
 fn make_str(values) -> Expr {
   case values {
     [TokenValue(token)] -> {
@@ -563,6 +597,7 @@ fn get_span(expr: Expr) -> Span {
     Test(_, _, span) -> span
     Run(_, span) -> span
     Import(_, span) -> span
+    Ctr(_, _, span) -> span
   }
 }
 
@@ -1137,12 +1172,18 @@ pub fn tao_grammar() -> Grammar(Expr) {
             }
           },
         ),
-        // Variable reference
+        // Constructor reference (capitalized identifier): True, False, Some, None
         alt(
           token_pattern("Ident"),
           fn(values) {
             case values {
-              [TokenValue(token)] -> make_var([TokenValue(token)])
+              [TokenValue(token)] -> {
+                // Check if identifier starts with uppercase letter (constructor)
+                case is_uppercase_start(token.value) {
+                  True -> make_ctr([TokenValue(token)])
+                  False -> make_var([TokenValue(token)])
+                }
+              }
               _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
@@ -1294,6 +1335,7 @@ pub fn get_expr_span(expr: Expr) -> Span {
     Test(_, _, span) -> span
     Run(_, span) -> span
     Import(_, span) -> span
+    Ctr(_, _, span) -> span
   }
 }
 
@@ -2622,6 +2664,12 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
     }
     Import(import_item, _) -> {
       "import " <> format_import_item(import_item)
+    }
+    Ctr(name, args, _) -> {
+      case args {
+        [] -> name
+        _ -> name <> "(" <> string_join(list.map(args, format_expr), ", ") <> ")"
+      }
     }
   }
 }
