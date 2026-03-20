@@ -812,7 +812,7 @@ pub fn infer_ctr_arg_bind_test() {
   |> should.equal(#(
     c.VCtrValue(c.VCtr("A", v32(1))),
     v32t,
-    c.State(..s, hole: 1, ctx: [#("a", #(vhole(0), c.VTyp(0)))], sub: [
+    c.State(..s, hole: 1, ctx: [#("a", #(vhole(0), vhole(0)))], sub: [
       #(0, v32t),
     ]),
   ))
@@ -837,7 +837,7 @@ pub fn infer_ctr_arg_unsolved_test() {
   |> should.equal(#(
     c.VCtrValue(c.VCtr("A", v32(1))),
     vhole(0),
-    c.State(..s, hole: 1, ctx: [#("a", #(vhole(0), c.VTyp(0)))], errors: [
+    c.State(..s, hole: 1, ctx: [#("a", #(vhole(0), vhole(0)))], errors: [
       c.CtrUnsolvedParam("A", ctr_def, 0, s4),
     ]),
   ))

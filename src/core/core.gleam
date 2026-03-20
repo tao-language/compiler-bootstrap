@@ -2249,9 +2249,12 @@ fn infer_match(
           // The key insight: when we check the first body against branch_ty (which
           // contains the hole), unification solves the hole automatically.
           //
+          // Force arg_ty to get any solved type from the substitution
+          let forced_arg_ty = force(s.ffi, s.sub, arg_ty)
+          
           // Step 1: Bind pattern variables
           let #(first_pat_val, s) =
-            bind_pattern(s, first_case.pattern, arg_ty, get_span(first_case.body), get_span(arg))
+            bind_pattern(s, first_case.pattern, forced_arg_ty, get_span(first_case.body), get_span(arg))
 
           // Step 2: Check guard if present
           let s = case first_case.guard {
@@ -2281,7 +2284,7 @@ fn infer_match(
           let s =
             list.fold(rest_cases, s, fn(s, c) {
               let #(pat_val, s) =
-                bind_pattern(s, c.pattern, arg_ty, get_span(c.body), get_span(arg))
+                bind_pattern(s, c.pattern, forced_arg_ty, get_span(c.body), get_span(arg))
               let s = case c.guard {
                 Some(guard_term) -> {
                   let #(_guard_val, _guard_ty, s) = infer(s, guard_term)
@@ -2322,10 +2325,12 @@ fn infer_match(
 
         _ -> {
           // Concrete motive: use as-is (dependent or explicit non-dependent match)
+          // Force arg_ty to get any solved type from the substitution
+          let forced_arg_ty = force(s.ffi, s.sub, arg_ty)
           let s =
             list.fold(cases, s, fn(s, c) {
               let #(pat_val, s) =
-                bind_pattern(s, c.pattern, arg_ty, get_span(c.body), get_span(arg))
+                bind_pattern(s, c.pattern, forced_arg_ty, get_span(c.body), get_span(arg))
               let branch_ty = do_app(s.ffi, motive_val, pat_val)
               let s = case c.guard {
                 Some(guard_term) -> {
@@ -2549,7 +2554,9 @@ fn check_ctr_def(s: State, ctr: CtrDef) -> #(List(Int), Value, Value, State) {
       let id = s.hole
       let #(hole, s) = new_hole(s)
       let params = [id, ..params]
-      let s = State(..s, ctx: [#(name, #(hole, VTyp(0))), ..s.ctx])
+      // The type parameter should have the hole as both its value and type
+      // This allows the type to be unified with the actual type later
+      let s = State(..s, ctx: [#(name, #(hole, hole)), ..s.ctx])
       #(params, s)
     })
   let #(arg_ty, _, s) = infer(s, ctr.arg_ty)

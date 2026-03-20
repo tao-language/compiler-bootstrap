@@ -511,30 +511,24 @@ pub fn desugar_import(
       // For other modules, create a module alias
       case path {
         "prelude/bool" -> {
-          // Bring all bool constructors into scope as nullary constructors
-          [
-            CoreLet("True", CoreCtr("True", CoreUnit(span), span), span),
-            CoreLet("False", CoreCtr("False", CoreUnit(span), span), span),
-          ]
+          // Prelude constructors are available by name in the core language
+          // No need to create bindings - they're looked up in s.ctrs during type checking
+          []
         }
         "prelude/option" -> {
-          [
-            CoreLet("Some", CoreCtr("Some", CoreHole(0, span), span), span),
-            CoreLet("None", CoreCtr("None", CoreUnit(span), span), span),
-          ]
+          // Prelude constructors are available by name in the core language
+          // No need to create bindings - they're looked up in s.ctrs during type checking
+          []
         }
         "prelude/result" -> {
-          [
-            CoreLet("Ok", CoreCtr("Ok", CoreHole(0, span), span), span),
-            CoreLet("Err", CoreCtr("Err", CoreHole(0, span), span), span),
-          ]
+          // Prelude constructors are available by name in the core language
+          // No need to create bindings - they're looked up in s.ctrs during type checking
+          []
         }
         "prelude/ordering" -> {
-          [
-            CoreLet("LT", CoreCtr("LT", CoreUnit(span), span), span),
-            CoreLet("EQ", CoreCtr("EQ", CoreUnit(span), span), span),
-            CoreLet("GT", CoreCtr("GT", CoreUnit(span), span), span),
-          ]
+          // Prelude constructors are available by name in the core language
+          // No need to create bindings - they're looked up in s.ctrs during type checking
+          []
         }
         _ -> {
           // For non-prelude modules, create a module alias
@@ -552,95 +546,12 @@ pub fn desugar_import(
     }
 
     ImportSelective(path, items, _) -> {
-      // import prelude/bool {True, False} → let True = True, let False = False
-      // For prelude modules, directly bind the constructors
-      // For other modules, use CoreDot to access module fields
+      // import prelude/bool {True, False, not} → constructors and builtins already available
+      // For prelude modules, constructors are in s.ctrs and builtins are in s.ffi
+      // No need to create any bindings - everything is looked up by name during type checking
       case path {
-        "prelude/bool" -> {
-          list.flat_map(items, fn(item) {
-            case item {
-              ImportName(name, None) -> {
-                case name {
-                  "True" -> [CoreLet(name, CoreCtr("True", CoreUnit(span), span), span)]
-                  "False" -> [CoreLet(name, CoreCtr("False", CoreUnit(span), span), span)]
-                  _ -> [CoreLet(name, CoreHole(0, span), span)]
-                }
-              }
-              ImportName(name, Some(alias)) -> {
-                case name {
-                  "True" -> [CoreLet(alias, CoreCtr("True", CoreUnit(span), span), span)]
-                  "False" -> [CoreLet(alias, CoreCtr("False", CoreUnit(span), span), span)]
-                  _ -> [CoreLet(alias, CoreHole(0, span), span)]
-                }
-              }
-              _ -> []
-            }
-          })
-        }
-        "prelude/option" -> {
-          list.flat_map(items, fn(item) {
-            case item {
-              ImportName(name, None) -> {
-                case name {
-                  "Some" -> [CoreLet(name, CoreCtr("Some", CoreHole(0, span), span), span)]
-                  "None" -> [CoreLet(name, CoreCtr("None", CoreUnit(span), span), span)]
-                  _ -> [CoreLet(name, CoreHole(0, span), span)]
-                }
-              }
-              ImportName(name, Some(alias)) -> {
-                case name {
-                  "Some" -> [CoreLet(alias, CoreCtr("Some", CoreHole(0, span), span), span)]
-                  "None" -> [CoreLet(alias, CoreCtr("None", CoreUnit(span), span), span)]
-                  _ -> [CoreLet(alias, CoreHole(0, span), span)]
-                }
-              }
-              _ -> []
-            }
-          })
-        }
-        "prelude/result" -> {
-          list.flat_map(items, fn(item) {
-            case item {
-              ImportName(name, None) -> {
-                case name {
-                  "Ok" -> [CoreLet(name, CoreCtr("Ok", CoreHole(0, span), span), span)]
-                  "Err" -> [CoreLet(name, CoreCtr("Err", CoreHole(0, span), span), span)]
-                  _ -> [CoreLet(name, CoreHole(0, span), span)]
-                }
-              }
-              ImportName(name, Some(alias)) -> {
-                case name {
-                  "Ok" -> [CoreLet(alias, CoreCtr("Ok", CoreHole(0, span), span), span)]
-                  "Err" -> [CoreLet(alias, CoreCtr("Err", CoreHole(0, span), span), span)]
-                  _ -> [CoreLet(alias, CoreHole(0, span), span)]
-                }
-              }
-              _ -> []
-            }
-          })
-        }
-        "prelude/ordering" -> {
-          list.flat_map(items, fn(item) {
-            case item {
-              ImportName(name, None) -> {
-                case name {
-                  "LT" -> [CoreLet(name, CoreCtr("LT", CoreUnit(span), span), span)]
-                  "EQ" -> [CoreLet(name, CoreCtr("EQ", CoreUnit(span), span), span)]
-                  "GT" -> [CoreLet(name, CoreCtr("GT", CoreUnit(span), span), span)]
-                  _ -> [CoreLet(name, CoreHole(0, span), span)]
-                }
-              }
-              ImportName(name, Some(alias)) -> {
-                case name {
-                  "LT" -> [CoreLet(alias, CoreCtr("LT", CoreUnit(span), span), span)]
-                  "EQ" -> [CoreLet(alias, CoreCtr("EQ", CoreUnit(span), span), span)]
-                  "GT" -> [CoreLet(alias, CoreCtr("GT", CoreUnit(span), span), span)]
-                  _ -> [CoreLet(alias, CoreHole(0, span), span)]
-                }
-              }
-              _ -> []
-            }
-          })
+        "prelude/bool" | "prelude/option" | "prelude/result" | "prelude/ordering" -> {
+          []
         }
         _ -> {
           // For non-prelude modules, use CoreDot
