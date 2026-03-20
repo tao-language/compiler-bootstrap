@@ -500,7 +500,7 @@ pub fn desugar_import(
       // For other modules, create a module alias
       case path {
         "prelude/bool" -> {
-          // Bring all bool constructors into scope
+          // Bring all bool constructors into scope as nullary constructors
           [
             CoreLet("True", CoreCtr("True", CoreUnit(span), span), span),
             CoreLet("False", CoreCtr("False", CoreUnit(span), span), span),
