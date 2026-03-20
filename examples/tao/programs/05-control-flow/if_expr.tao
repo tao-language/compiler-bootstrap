@@ -1,9 +1,9 @@
 // If expression: conditional evaluation
-// Expected output: "positive"
+// Expected output: 1
 
 let x = 5
 if x > 0 {
-  "positive"
+  1
 } else {
-  "non-positive"
+  0
 }

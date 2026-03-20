@@ -1100,15 +1100,13 @@ pub fn tao_grammar() -> Grammar(Expr) {
         }),
       ]),
       // Application = Atom ("(" Args ")")*
-      // Atom = Primary | "(" Expr ")"
-      // This allows nested applications like f(g(x))
       rule("Application", [
         alt(
           seq([
             ref("Atom"),
             many(seq([
               token_pattern("LParen"),
-              sep1(ref("Expr"), token_pattern("Comma")),
+              sep1(ref("Primary"), token_pattern("Comma")),
               token_pattern("RParen"),
             ])),
           ]),
@@ -1177,13 +1175,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
           token_pattern("Ident"),
           fn(values) {
             case values {
-              [TokenValue(token)] -> {
-                // Check if identifier starts with uppercase letter (constructor)
-                case is_uppercase_start(token.value) {
-                  True -> make_ctr([TokenValue(token)])
-                  False -> make_var([TokenValue(token)])
-                }
-              }
+              [TokenValue(token)] -> make_var([TokenValue(token)])
               _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
@@ -1642,7 +1634,7 @@ fn make_match(values) -> Expr {
   // The structure from grammar is:
   // [match_kw, scrut, opt_result, LBrace, ListValue(clause1), ListValue(clause2), ..., RBrace]
   // where each ListValue contains: [Pipe, pattern, opt_if, Arrow, body]
-  // 
+  //
   // Note: many(seq([...])) creates flat ListValue items in the parent seq, not nested!
   // parse_many wraps each seq match in ListValue, but these are appended to the parent seq's values.
 
@@ -1688,6 +1680,7 @@ fn inspect_value_short(v: Value(Expr)) -> String {
     ListValue(_) -> "L"
     TokenValue(t) -> "T(" <> t.value <> ")"
     ParensValue(_) -> "P"
+    _ -> "Unknown"
   }
 }
 
@@ -1722,7 +1715,7 @@ fn extract_single_clause_from_list(items: List(Value(Expr))) -> Option(MatchClau
   // Simplified clause extraction - handle basic case first
   // Expected structure from grammar: [Pipe, pattern_Expr, opt_if, Arrow, body_Expr]
   // But items might be wrapped differently
-  
+
   // First, find the Pipe token
   let pipe_pos = find_pipe_position(items, 0)
   case pipe_pos {
@@ -1733,7 +1726,7 @@ fn extract_single_clause_from_list(items: List(Value(Expr))) -> Option(MatchClau
         [AstValue(expr)] -> pattern_ast_to_pattern(expr)
         _ -> PWild(Span("error", 0, 0, 0, 0))
       }
-      
+
       // Find Arrow token after pattern
       let after_pattern = list.drop(items, pos + 2)
       let arrow_pos = find_arrow_position(after_pattern, 0)
@@ -1776,20 +1769,6 @@ fn extract_clause_guard_simple(
   items: List(Value(Expr)),
   pattern: Pattern,
 ) -> Option(MatchClause) {
-  // Debug: print items structure
-  let items_debug = list.take(items, 5)
-    |> list.map(fn(v) {
-      case v {
-        TokenValue(t) -> "T:" <> t.kind
-        KeywordValue(t) -> "K:" <> t.value
-        AstValue(_) -> "A"
-        ListValue(inner) -> "L(" <> int.to_string(list.length(inner)) <> ")"
-        ParensValue(_) -> "P"
-      }
-    })
-    |> string.join(",")
-  let _ = panic as "DEBUG items: " <> items_debug
-  
   case items {
     // Guard wrapped in ListValue (from seq([keyword_pattern("if"), ref("Expr")]))
     [ListValue([KeywordValue(_if), AstValue(guard_expr)]), TokenValue(_arrow), AstValue(body), ..] -> {
@@ -2003,7 +1982,11 @@ pub fn pattern_ast_to_pattern(expr: Expr) -> Pattern {
     Var("_", span) -> PWild(span)
     Var(name, span) -> PVar(name, span)
     Int(value, span) -> PLit(value, span)
-    // Constructor patterns like Some(x) would need more complex parsing
+    Ctr(name, args, span) -> {
+      // Constructor pattern: Some(x), None, True, False
+      let pattern_args = list.map(args, pattern_ast_to_pattern)
+      PCtr(name, pattern_args, span)
+    }
     // For now, all other expressions become wildcards
     _ -> PWild(Span("error", 0, 0, 0, 0))
   }
@@ -2127,14 +2110,54 @@ fn extract_params(param_list: List(Value(Expr)), acc: List(#(String, Option(Stri
 fn make_app(values) -> Expr {
   case values {
     [AstValue(func), ListValue(call_items)] -> {
-      // call_items is flattened: [LParen, ListValue(arg1_items), ListValue(arg2_items), RParen]
+      // call_items is flattened: [LParen, Expr1, Expr2, ..., RParen]
       // Extract the args (everything between LParen and RParen)
-      let args = extract_args_from_flattened_call(call_items, [])
+      let args = extract_args_from_flattened_call_simple(call_items, [])
       let span = get_expr_span(func)
-      App(func, args, span)
+      
+      // Check if func is a constructor
+      case func {
+        Ctr(name, _, _) -> {
+          // Constructor application: Some(42) -> Ctr("Some", [42])
+          Ctr(name, args, span)
+        }
+        Var(name, _) -> {
+          // Check if it's a constructor (capitalized identifier)
+          case string.starts_with(name, "A") || string.starts_with(name, "B") || string.starts_with(name, "C") || string.starts_with(name, "D") || string.starts_with(name, "E") || string.starts_with(name, "F") || string.starts_with(name, "G") || string.starts_with(name, "H") || string.starts_with(name, "I") || string.starts_with(name, "J") || string.starts_with(name, "K") || string.starts_with(name, "L") || string.starts_with(name, "M") || string.starts_with(name, "N") || string.starts_with(name, "O") || string.starts_with(name, "P") || string.starts_with(name, "Q") || string.starts_with(name, "R") || string.starts_with(name, "S") || string.starts_with(name, "T") || string.starts_with(name, "U") || string.starts_with(name, "V") || string.starts_with(name, "W") || string.starts_with(name, "X") || string.starts_with(name, "Y") || string.starts_with(name, "Z") {
+            True -> Ctr(name, args, span)
+            False -> App(func, args, span)
+          }
+        }
+        _ -> App(func, args, span)
+      }
     }
     [AstValue(func)] -> func
     _ -> Int(0, Span("error", 0, 0, 0, 0))
+  }
+}
+
+fn extract_args_from_flattened_call_simple(
+  call_items: List(Value(Expr)),
+  acc: List(Expr),
+) -> List(Expr) {
+  case call_items {
+    [] -> list.reverse(acc)
+    [TokenValue(t), ..rest] if t.value == "(" -> {
+      // Skip LParen, start collecting args
+      extract_args_from_flattened_call_simple(rest, acc)
+    }
+    [TokenValue(t), ..rest] if t.value == ")" -> {
+      // End of args
+      list.reverse(acc)
+    }
+    [AstValue(e), ..rest] -> {
+      // Direct expression
+      extract_args_from_flattened_call_simple(rest, [e, ..acc])
+    }
+    [_, ..rest] -> {
+      // Skip other items
+      extract_args_from_flattened_call_simple(rest, acc)
+    }
   }
 }
 

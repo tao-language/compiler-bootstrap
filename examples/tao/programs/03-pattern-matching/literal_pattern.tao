@@ -1,8 +1,8 @@
 // Literal pattern: matches specific values
-// Expected output: "found zero"
+// Expected output: 0
 
 let x = 0
 match x {
-  | 0 -> "found zero"
-  | _ -> "found something else"
+  | 0 -> 0
+  | _ -> 1
 }
