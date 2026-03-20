@@ -1175,7 +1175,12 @@ pub fn tao_grammar() -> Grammar(Expr) {
           token_pattern("Ident"),
           fn(values) {
             case values {
-              [TokenValue(token)] -> make_var([TokenValue(token)])
+              [TokenValue(token)] -> {
+                case is_uppercase_start(token.value) {
+                  True -> make_ctr([TokenValue(token)])
+                  False -> make_var([TokenValue(token)])
+                }
+              }
               _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
@@ -1269,7 +1274,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
             token_pattern("LBrace"),
             many(seq([
               token_pattern("Pipe"),  // |
-              ref("Expr"),  // pattern (parsed as expression, converted to pattern)
+              ref("Expr"),  // pattern (use Expr to match any expression)
               opt(seq([
                 keyword_pattern("if"),
                 ref("Expr"),  // guard
