@@ -2547,6 +2547,10 @@ pub fn check(
 /// Creates holes for each type parameter and infers the argument and
 /// return types in the extended context. Returns the parameter hole IDs
 /// and the inferred types.
+///
+/// KEY FIX: For constructor definitions like CtrDef(["a"], Var(0), Typ(0)),
+/// the Var(0) references the type parameter. After creating the hole for
+/// the parameter, we substitute the hole value into the arg_ty and ret_ty.
 fn check_ctr_def(s: State, ctr: CtrDef) -> #(List(Int), Value, Value, State) {
   let #(params, s) =
     list.fold(ctr.params, #([], s), fn(acc, name) {
@@ -2559,9 +2563,46 @@ fn check_ctr_def(s: State, ctr: CtrDef) -> #(List(Int), Value, Value, State) {
       let s = State(..s, ctx: [#(name, #(hole, hole)), ..s.ctx])
       #(params, s)
     })
-  let #(arg_ty, _, s) = infer(s, ctr.arg_ty)
-  let #(ret_ty, _, s) = infer(s, ctr.ret_ty)
+  
+  // Substitute parameter holes into arg_ty and ret_ty
+  // For Var(n) that references a parameter, replace with the hole value
+  let arg_ty = subst_param_vars(ctr.arg_ty, params, s)
+  let ret_ty = subst_param_vars(ctr.ret_ty, params, s)
+  
   #(params, arg_ty, ret_ty, s)
+}
+
+/// Substitute parameter variables with their hole values.
+/// Var(n) where n < length(params) is replaced with the corresponding hole.
+fn subst_param_vars(term: Term, params: List(Int), s: State) -> Value {
+  case term {
+    Var(index, _) -> {
+      // Look up the hole for this parameter index
+      case get_param_hole(params, index, s) {
+        Some(hole) -> hole
+        None -> VErr
+      }
+    }
+    Typ(k, _) -> VTyp(k)
+    Lit(k, _) -> VLit(k)
+    LitT(k, _) -> VLitT(k)
+    Hole(id, _) -> VNeut(HHole(id), [])
+    _ -> VErr
+  }
+}
+
+/// Get the hole value for a parameter at the given index.
+fn get_param_hole(params: List(Int), index: Int, s: State) -> Option(Value) {
+  case list_get(params, index) {
+    Some(id) -> {
+      // Look up the hole in the substitution (it might already be solved)
+      case list.key_find(s.sub, id) {
+        Ok(val) -> Some(val)
+        Error(Nil) -> Some(VNeut(HHole(id), []))
+      }
+    }
+    None -> None
+  }
 }
 
 /// Check that two types are equal by unifying them.

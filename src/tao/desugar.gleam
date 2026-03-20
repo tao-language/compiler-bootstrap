@@ -546,12 +546,90 @@ pub fn desugar_import(
     }
 
     ImportSelective(path, items, _) -> {
-      // import prelude/bool {True, False, not} → constructors and builtins already available
-      // For prelude modules, constructors are in s.ctrs and builtins are in s.ffi
-      // No need to create any bindings - everything is looked up by name during type checking
+      // import prelude/bool {True, False, not}
+      // Constructors (True, False) are in s.ctrs - no binding needed
+      // Builtin functions (not) need a binding that refers to them by name
       case path {
-        "prelude/bool" | "prelude/option" | "prelude/result" | "prelude/ordering" -> {
-          []
+        "prelude/bool" -> {
+          // Filter out constructor names and create bindings for functions
+          list.flat_map(items, fn(item) {
+            case item {
+              ImportName(name, alias) -> {
+                case name {
+                  "True" | "False" -> []  // Constructors - no binding needed
+                  _ -> {
+                    // Function/type - create a binding
+                    let binding_name = case alias {
+                      Some(a) -> a
+                      None -> name
+                    }
+                    [CoreLet(binding_name, CoreVar(name, span), span)]
+                  }
+                }
+              }
+              _ -> []
+            }
+          })
+        }
+        "prelude/option" -> {
+          // Some, None are constructors - no binding needed
+          list.flat_map(items, fn(item) {
+            case item {
+              ImportName(name, alias) -> {
+                case name {
+                  "Some" | "None" -> []  // Constructors
+                  _ -> {
+                    let binding_name = case alias {
+                      Some(a) -> a
+                      None -> name
+                    }
+                    [CoreLet(binding_name, CoreVar(name, span), span)]
+                  }
+                }
+              }
+              _ -> []
+            }
+          })
+        }
+        "prelude/result" -> {
+          // Ok, Err are constructors - no binding needed
+          list.flat_map(items, fn(item) {
+            case item {
+              ImportName(name, alias) -> {
+                case name {
+                  "Ok" | "Err" -> []  // Constructors
+                  _ -> {
+                    let binding_name = case alias {
+                      Some(a) -> a
+                      None -> name
+                    }
+                    [CoreLet(binding_name, CoreVar(name, span), span)]
+                  }
+                }
+              }
+              _ -> []
+            }
+          })
+        }
+        "prelude/ordering" -> {
+          // LT, EQ, GT are constructors - no binding needed
+          list.flat_map(items, fn(item) {
+            case item {
+              ImportName(name, alias) -> {
+                case name {
+                  "LT" | "EQ" | "GT" -> []  // Constructors
+                  _ -> {
+                    let binding_name = case alias {
+                      Some(a) -> a
+                      None -> name
+                    }
+                    [CoreLet(binding_name, CoreVar(name, span), span)]
+                  }
+                }
+              }
+              _ -> []
+            }
+          })
         }
         _ -> {
           // For non-prelude modules, use CoreDot
@@ -1650,16 +1728,9 @@ fn tao_list_rest_pattern_to_core(
 }
 
 /// Build constructor.
+/// For constructors with arguments, creates CoreCtr directly.
+/// For constructors without arguments, creates CoreCtr with Unit.
 fn build_ctr(
-  name: String,
-  args: List(CoreTerm),
-  span: Span,
-) -> CoreTerm {
-  // Constructors are curried: #Some(x) → App(App(#Some, Unit), x)
-  build_ctr_loop(name, args, span)
-}
-
-fn build_ctr_loop(
   name: String,
   args: List(CoreTerm),
   span: Span,
@@ -1669,9 +1740,36 @@ fn build_ctr_loop(
       // Nullary constructor: #True(Unit)
       CoreCtr(name, CoreUnit(span), span)
     }
+    [first, ..rest] -> {
+      // Constructor with arguments: build nested CoreCtr
+      // For Some(x, y): CoreCtr("Some", CoreRcd([("0", x), ("1", y)]), span)
+      // For simplicity, use tuple for multiple args
+      case rest {
+        [] -> {
+          // Single argument: CoreCtr(name, arg, span)
+          CoreCtr(name, first, span)
+        }
+        _ -> {
+          // Multiple arguments: use record with numeric fields
+          let fields = build_tuple_fields([first, ..rest], 0, [])
+          CoreCtr(name, CoreRcd(fields, span), span)
+        }
+      }
+    }
+  }
+}
+
+/// Build tuple fields for constructor with multiple arguments.
+fn build_tuple_fields(
+  args: List(CoreTerm),
+  index: Int,
+  acc: List(#(String, CoreTerm)),
+) -> List(#(String, CoreTerm)) {
+  case args {
+    [] -> list.reverse(acc)
     [arg, ..rest] -> {
-      let inner = build_ctr_loop(name, rest, span)
-      CoreApp(inner, arg, span)
+      let field_name = int.to_string(index)
+      build_tuple_fields(rest, index + 1, [#(field_name, arg), ..acc])
     }
   }
 }
