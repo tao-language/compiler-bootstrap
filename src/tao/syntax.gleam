@@ -1596,9 +1596,12 @@ fn make_if(values) -> Expr {
 
 /// Helper to create match expression AST.
 fn make_match(values) -> Expr {
-  // The structure is: [match_kw, scrut, opt(Arrow, Type), LBrace, ListValue(clauses), ListValue(more), RBrace]
-  // or: [match_kw, scrut, LBrace, ListValue(clauses), RBrace]
-  // We need to find the RBrace at the end and extract clauses
+  // The structure from grammar is:
+  // [match_kw, scrut, opt_result, LBrace, ListValue(clause1), ListValue(clause2), ..., RBrace]
+  // where each ListValue contains: [Pipe, pattern, opt_if, Arrow, body]
+  // 
+  // Note: many(seq([...])) creates flat ListValue items in the parent seq, not nested!
+  // parse_many wraps each seq match in ListValue, but these are appended to the parent seq's values.
 
   // First, find the scrutinee (should be the second element, an AstValue)
   let scrut = case values {
@@ -1612,28 +1615,142 @@ fn make_match(values) -> Expr {
     _ -> panic as "Match: expected keyword"
   }
 
-  // Extract clauses: the structure is [match, scrut, LBrace, ListValue(clauses), RBrace]
-  // or [match, scrut, Arrow, Type, LBrace, ListValue(clauses), RBrace] with type annotation
-  // Note: many(seq(...)) creates ListValue([ListValue(clause1), ListValue(clause2), ...])
-  let clauses = case values {
-    [_, _, TokenValue(lbrace), ListValue(nested), _] if lbrace.value == "{" -> {
-      // No type annotation: [match, scrut, LBrace, ListValue, RBrace]
-      extract_clauses_from_nested(nested, [])
-    }
-    [_, _, _, _, TokenValue(lbrace), ListValue(nested), _] if lbrace.value == "{" -> {
-      // With type annotation: [match, scrut, Arrow, Type, LBrace, ListValue, RBrace]
-      extract_clauses_from_nested(nested, [])
-    }
-    _ -> {
-      // Fallback: try to extract clauses directly from values
-      extract_match_clauses(values, [])
-    }
-  }
+  // Extract clauses: find LBrace and collect all ListValue items until RBrace
+  let clauses = extract_clauses_after_lbrace(values, False, [])
 
   let start_span = Span("tao", match_kw.line, match_kw.column, match_kw.line, match_kw.column + 5)
   let end_span = get_expr_span(scrut)
   let full_span = Span(start_span.file, start_span.start_line, start_span.start_col, end_span.end_line, end_span.end_col)
   Match(scrut, clauses, full_span)
+}
+
+fn inspect_values_short(values: List(Value(Expr))) -> String {
+  values
+  |> list.map(fn(v) {
+    case v {
+      KeywordValue(t) -> "K(" <> t.value <> ")"
+      AstValue(_) -> "A"
+      ListValue(_) -> "L"
+      TokenValue(t) -> "T(" <> t.value <> ")"
+      ParensValue(_) -> "P"
+    }
+  })
+  |> string.join(",")
+}
+
+fn inspect_value_short(v: Value(Expr)) -> String {
+  case v {
+    KeywordValue(t) -> "K(" <> t.value <> ")"
+    AstValue(_) -> "A"
+    ListValue(_) -> "L"
+    TokenValue(t) -> "T(" <> t.value <> ")"
+    ParensValue(_) -> "P"
+  }
+}
+
+fn extract_clauses_after_lbrace(
+  values: List(Value(Expr)),
+  in_braces: Bool,
+  acc: List(MatchClause),
+) -> List(MatchClause) {
+  case values {
+    [] -> list.reverse(acc)
+    [TokenValue(t), ..rest] if t.kind == "LBrace" -> {
+      extract_clauses_after_lbrace(rest, True, acc)
+    }
+    [TokenValue(t), ..rest] if t.kind == "RBrace" -> {
+      list.reverse(acc)
+    }
+    [ListValue(clause_items), ..rest] if in_braces -> {
+      // Each clause is wrapped in ListValue by parse_many
+      // Structure: [Pipe, pattern_expr, opt_if, Arrow, body_expr]
+      case extract_single_clause_from_list(clause_items) {
+        Some(clause) -> extract_clauses_after_lbrace(rest, in_braces, [clause, ..acc])
+        None -> extract_clauses_after_lbrace(rest, in_braces, acc)
+      }
+    }
+    [_v, ..rest] -> {
+      extract_clauses_after_lbrace(rest, in_braces, acc)
+    }
+  }
+}
+
+fn extract_single_clause_from_list(items: List(Value(Expr))) -> Option(MatchClause) {
+  // items should be: [Pipe, pattern, opt_if, Arrow, body]
+  // But structure might vary based on grammar
+  case items {
+    [TokenValue(pipe), AstValue(pattern_ast), TokenValue(arrow), AstValue(body), ..] if pipe.value == "|" && arrow.value == "->" -> {
+      // Simple case: no guard, pattern and body are AstValues
+      let pattern = pattern_ast_to_pattern(pattern_ast)
+      let span = get_expr_span(body)
+      Some(MatchClause(pattern, None, body, span))
+    }
+    [TokenValue(pipe), AstValue(pattern_ast), ..rest] if pipe.value == "|" -> {
+      // Pattern extracted, rest contains opt_if, Arrow, body
+      let pattern = pattern_ast_to_pattern(pattern_ast)
+      extract_clause_guard_simple(rest, pattern)
+    }
+    _ -> None
+  }
+}
+
+fn extract_clause_guard_simple(
+  items: List(Value(Expr)),
+  pattern: Pattern,
+) -> Option(MatchClause) {
+  case items {
+    // Guard wrapped in ListValue (from seq([keyword_pattern("if"), ref("Expr")]))
+    [ListValue([KeywordValue(_if), AstValue(guard_expr)]), TokenValue(_arrow), AstValue(body), ..] -> {
+      let span = get_expr_span(body)
+      Some(MatchClause(pattern, Some(guard_expr), body, span))
+    }
+    // Guard as flat list
+    [KeywordValue(_if), AstValue(guard_expr), TokenValue(_arrow), AstValue(body), ..] -> {
+      let span = get_expr_span(body)
+      Some(MatchClause(pattern, Some(guard_expr), body, span))
+    }
+    // No guard - structure: [Arrow, body]
+    [TokenValue(_arrow), AstValue(body), ..] -> {
+      let span = get_expr_span(body)
+      Some(MatchClause(pattern, None, body, span))
+    }
+    // Try alternative: pattern might be wrapped differently
+    [TokenValue(pipe), AstValue(pattern_ast), TokenValue(arrow), AstValue(body), ..] if pipe.value == "|" && arrow.value == "->" -> {
+      // Pattern was not extracted, handle here
+      let p = pattern_ast_to_pattern(pattern_ast)
+      let span = get_expr_span(body)
+      Some(MatchClause(p, None, body, span))
+    }
+    _ -> None
+  }
+}
+
+fn inspect_items_short(items: List(Value(Expr))) -> String {
+  items
+  |> list.map(fn(v) {
+    case v {
+      KeywordValue(t) -> "K(" <> t.value <> ")"
+      AstValue(_) -> "A"
+      ListValue(_) -> "L"
+      TokenValue(t) -> "T(" <> t.value <> ")"
+      ParensValue(_) -> "P"
+    }
+  })
+  |> string.join(",")
+}
+
+fn inspect_match_values(values: List(Value(Expr))) -> String {
+  values
+  |> list.map(fn(v) {
+    case v {
+      KeywordValue(t) -> "KeywordValue(" <> t.value <> ")"
+      AstValue(_) -> "AstValue(...)"
+      ListValue(_) -> "ListValue(...)"
+      TokenValue(t) -> "TokenValue(" <> t.value <> ")"
+      ParensValue(_) -> "ParensValue(...)"
+    }
+  })
+  |> string.join(", ")
 }
 
 fn extract_clauses_from_nested(nested_values: List(Value(Expr)), acc: List(MatchClause)) -> List(MatchClause) {

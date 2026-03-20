@@ -110,7 +110,7 @@ The CoreLam terms might not be adding variables to the environment correctly dur
 
 ---
 
-## Issue 1: Match Guard Parsing (BLOCKING)
+## Issue 1: Match Guard Parsing (BLOCKING) - UPDATED ANALYSIS
 
 ### Symptoms
 ```tao
@@ -125,7 +125,12 @@ match x {
 **Error:** "Pattern match not exhaustive" (reported twice)
 **Debug output:** Core term shows empty match cases: `(%match x ~ (%fn(_) -> ?-999) { })`
 
-### Root Cause Analysis (INVESTIGATED)
+**Updated Symptoms (after fix attempt):**
+- Match clauses ARE being extracted (no longer empty)
+- BUT body expressions are converted to `0` instead of actual values
+- Core term: `(%match x ~ (%fn(_) -> ?-999) { | 1 -> 0 | 2 -> 0 | _ -> 0 })`
+
+### Root Cause Analysis (INVESTIGATED - DEEPER)
 
 **Grammar Structure:**
 The match expression grammar uses:
@@ -142,11 +147,63 @@ many(seq([
 ]))
 ```
 
-**Investigation Findings:**
-1. The `many(seq([...]))` creates nested `ListValue` structures
-2. Each clause is wrapped: `ListValue([ListValue([Pipe]), AstValue(pattern), ...])`
-3. The `make_match` function expects a simpler structure
-4. The `extract_clauses` function doesn't handle the nested wrapping correctly
+**Investigation Findings (Updated):**
+
+1. **Grammar DSL Behavior:**
+   - `many(seq([...]))` creates: `[ListValue(clause1_items), ListValue(clause2_items), ...]`
+   - Each clause items: `[Pipe, pattern_expr, opt_if, Arrow, body_expr]`
+   - The `parse_many` function wraps each `seq` match in `ListValue`
+
+2. **Extraction Logic:**
+   - `extract_clauses_after_lbrace` correctly finds `ListValue` items
+   - `extract_single_clause_from_list` matches `[Pipe, AstValue(pattern), ...]`
+   - BUT the body `AstValue` is not being extracted correctly
+
+3. **Body Expression Issue:**
+   - String literals `"one"` should parse as `Str(value, span)`
+   - Grammar rule: `token_pattern("String")` with `make_str` constructor
+   - `make_str` expects `[TokenValue(token)]` and creates `Str(token.value, span)`
+   - BUT the body is showing as `0` in Core term
+
+4. **Hypothesis:**
+   - The body expression might be parsed as `Int(0, Span("error", ...))` fallback
+   - This happens when `values` doesn't match `[TokenValue(token)]` in Primary rule
+   - Possible cause: String token kind mismatch or parsing context issue
+
+### Fix Options (Updated)
+
+**Option A: Debug string literal parsing (recommended first step)**
+- Add debug output in `make_str` to see actual `values` structure
+- Check if string tokens are being created correctly by lexer
+- Verify token kind is "String" (not something else)
+- Estimated: 1-2 hours
+
+**Option B: Simplify match clause extraction**
+- Bypass complex extraction logic
+- Directly pattern match on expected structure
+- Handle only simple case (no guards) first
+- Estimated: 2-3 hours
+
+**Option C: Fix grammar structure**
+- Change `many(seq([...]))` to different structure
+- Use `sep1` or custom parsing to avoid nested ListValue
+- More invasive change, requires grammar restructuring
+- Estimated: 4-6 hours
+
+### Current Status
+
+- Import grammar: ✅ Implemented and working
+- Match clause extraction: ⚠️ Partially working (clauses extracted, bodies incorrect)
+- String literal parsing: ❓ Needs investigation
+- Test status: 501 passing, 8 failing (same as before)
+
+### Next Steps
+
+1. Add debug output to `make_str` to see actual values structure
+2. Verify lexer creates correct String tokens
+3. If string parsing is correct, fix extraction logic
+4. Test with simple match (no guards) first
+5. Then add guard support
 
 **Attempted Fixes:**
 1. Updated `extract_clauses` to handle `ListValue` wrapping - didn't work
