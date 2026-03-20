@@ -1274,7 +1274,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
             token_pattern("LBrace"),
             many(seq([
               token_pattern("Pipe"),  // |
-              ref("Expr"),  // pattern (use Expr to match any expression)
+              ref("Application"),  // pattern (use Application to match constructor applications)
               opt(seq([
                 keyword_pattern("if"),
                 ref("Expr"),  // guard
@@ -1636,28 +1636,25 @@ fn make_if(values) -> Expr {
 
 /// Helper to create match expression AST.
 fn make_match(values) -> Expr {
-  // The structure from grammar is:
-  // [match_kw, scrut, opt_result, LBrace, ListValue(clause1), ListValue(clause2), ..., RBrace]
-  // where each ListValue contains: [Pipe, pattern, opt_if, Arrow, body]
-  //
-  // Note: many(seq([...])) creates flat ListValue items in the parent seq, not nested!
-  // parse_many wraps each seq match in ListValue, but these are appended to the parent seq's values.
-
-  // First, find the scrutinee (should be the second element, an AstValue)
+  // values structure:
+  // [KeywordValue(match_kw), AstValue(scrutinee), opt_type..., TokenValue(lbrace), ListValue(clause1), ListValue(clause2), ..., TokenValue(rbrace)]
+  // opt_type is either [] (no type annotation) or [TokenValue(arrow), TokenValue(ident)] (with type annotation)
+  
+  // Find the scrutinee - it's the first AstValue after the match keyword
   let scrut = case values {
     [_, AstValue(s), ..] -> s
     _ -> panic as "Match: expected scrutinee"
   }
-
+  
   // Find the match keyword for span
   let match_kw = case values {
     [KeywordValue(kw), ..] -> kw
     _ -> panic as "Match: expected keyword"
   }
-
+  
   // Extract clauses: find LBrace and collect all ListValue items until RBrace
   let clauses = extract_clauses_after_lbrace(values, False, [])
-
+  
   let start_span = Span("tao", match_kw.line, match_kw.column, match_kw.line, match_kw.column + 5)
   let end_span = get_expr_span(scrut)
   let full_span = Span(start_span.file, start_span.start_line, start_span.start_col, end_span.end_line, end_span.end_col)
