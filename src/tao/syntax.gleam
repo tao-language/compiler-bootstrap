@@ -655,17 +655,16 @@ pub fn tao_grammar() -> Grammar(Expr) {
     ],
     rules: [
       // Program = Stmt* (returned as list, no Block wrapper)
-      // Use simple many without seq for better backtracking
+      // Statements separated by optional semicolons for error recovery
       rule("Program", [
         alt(
-          many(ref("Stmt")),
+          // Parse statements with optional semicolons between them
+          // This allows error recovery when a statement has a missing value
+          many(seq([ref("Stmt"), opt(token_pattern("Semi"))])),
           fn(values) {
-            // many(ref("Stmt")) produces ListValue([Stmt, Stmt, ...])
-            // values is the ListValue, need to extract items from it
-            let stmts = case values {
-              [ListValue(items)] -> extract_stmts_from_list(items, [])
-              _ -> extract_stmts_from_list(values, [])
-            }
+            // many(seq([Stmt, opt(Semi)])) produces ListValue([ListValue([Stmt, opt(Semi)]), ...])
+            // Extract statements, ignoring semicolons
+            let stmts = extract_stmts_with_semicolons(values, [])
             // For single statement, return it directly
             // For multiple statements, return as Block (Expr type, not AstBlock)
             case stmts {
