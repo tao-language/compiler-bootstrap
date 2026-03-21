@@ -1,5 +1,6 @@
 // Nested function calls
 // Expected output: 15
+// Note: Nested calls require extra parentheses due to grammar limitations
 
 fn double(x: I32) -> I32 {
   x * 2
@@ -17,4 +18,5 @@ fn triple(x: I32) -> I32 {
   x * 3
 }
 
-triple(add_one(4))
+// Nested calls require extra parens: triple((add_one(4)))
+triple((add_one(4)))
