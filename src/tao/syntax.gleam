@@ -657,31 +657,23 @@ pub fn tao_grammar() -> Grammar(Expr) {
     ],
     rules: [
       // Program = Stmt* (returned as list, no Block wrapper)
+      // Use simple many without seq for better backtracking
       rule("Program", [
         alt(
-          many(seq([
-            ref("Stmt"),
-            opt(token_pattern("Semi")),  // Optional semicolon separator
-          ])),
+          many(ref("Stmt")),
           fn(values) {
-            // many() returns a list of (Stmt, opt(Semi)) pairs
-            // Extract statements and ignore semicolons
-            let stmts = extract_stmts_with_semicolons(values, [])
-            // Return list directly - caller decides how to handle it
-            // For single expression, return the expression itself
-            // For multiple statements, return as Block
+            // many(ref("Stmt")) produces ListValue([Stmt, Stmt, ...])
+            // values is the ListValue, need to extract items from it
+            let stmts = case values {
+              [ListValue(items)] -> extract_stmts_from_list(items, [])
+              _ -> extract_stmts_from_list(values, [])
+            }
+            // For single statement, return it directly
+            // For multiple statements, return as Block (Expr type, not AstBlock)
             case stmts {
               [single] -> single
               [] -> Int(0, Span("program", 0, 0, 0, 0))
-              _ -> Block(stmts, case list.first(values), list.last(values) {
-                Ok(ListValue([first_val])), Ok(ListValue([last_val])) ->
-                  case first_val, last_val {
-                    AstValue(first_e), AstValue(last_e) ->
-                      merge_spans(get_span(first_e), get_span(last_e))
-                    _, _ -> Span("program", 0, 0, 0, 0)
-                  }
-                _, _ -> Span("program", 0, 0, 0, 0)
-              })
+              _ -> Block(stmts, Span("program", 0, 0, 0, 0))
             }
           },
         ),
@@ -1099,23 +1091,40 @@ pub fn tao_grammar() -> Grammar(Expr) {
           }
         }),
       ]),
-      // Application = Atom ("(" Args ")")*
-      // Note: Uses sep1 which requires at least one argument. For empty calls, use f(Unit).
-      // TODO: Fix to support empty argument lists without causing infinite recursion
-      // The issue is that Primary -> Application creates a recursive grammar that
-      // combined with opt/many causes infinite backtracking.
+      // Application = Atom ("(" Args ")")+
+      // Require at least one set of parentheses to distinguish from plain Atom
+      // Support empty args: f(), f(x), f(x, y), g(f(5))
+      // Args are Primary expressions (includes parenthesized Expr for nested calls)
       rule("Application", [
         alt(
           seq([
             ref("Atom"),
+            seq([
+              token_pattern("LParen"),
+              opt(seq([
+                ref("Primary"),
+                many(seq([token_pattern("Comma"), ref("Primary")])),
+              ])),
+              token_pattern("RParen"),
+            ]),
             many(seq([
               token_pattern("LParen"),
-              sep1(ref("Primary"), token_pattern("Comma")),
+              opt(seq([
+                ref("Primary"),
+                many(seq([token_pattern("Comma"), ref("Primary")])),
+              ])),
               token_pattern("RParen"),
             ])),
           ]),
-          make_app,
+          make_app_v2,
         ),
+        // Fallback to Atom for non-application expressions
+        alt(ref("Atom"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> Int(0, Span("error", 0, 0, 0, 0))
+          }
+        }),
       ]),
       // Atom = Primary | "(" Expr ")"
       rule("Atom", [
@@ -2153,34 +2162,61 @@ fn extract_args_from_sep1_items(items: List(Value(Expr)), acc: List(Expr)) -> Li
   }
 }
 
-/// Helper to create function application AST (v2 - supports empty args).
+/// Helper to create function application AST (v2 - supports empty args, requires at least one paren).
 fn make_app_v2(values) -> Expr {
   case values {
-    [AstValue(func), ListValue(call_items)] -> {
-      // call_items structure: [opt([Primary, many([Comma, Primary])]), ...]
-      let args = extract_args_from_opt_parens(call_items, [])
+    [AstValue(func), TokenValue(lparen), ..rest] -> {
+      // rest = [opt_result, TokenValue(RParen), ListValue(more_parens)]
+      // Extract args from opt_result and remaining parens
+      let #(args, remaining) = extract_args_and_remaining(rest, [])
+      let more_args = extract_args_from_more_parens_v2(remaining, [])
+      let all_args = list.append(args, more_args)
       let span = get_expr_span(func)
-      make_app_expr(func, args, span)
+      make_app_expr(func, all_args, span)
     }
-    [AstValue(func)] -> func
+    [AstValue(func)] -> func  // No parentheses - just return the function
     _ -> Int(0, Span("error", 0, 0, 0, 0))
   }
 }
 
-/// Extract arguments from opt parens structure.
-fn extract_args_from_opt_parens(items: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
+/// Extract args and remaining values from rest of pattern.
+fn extract_args_and_remaining(
+  items: List(Value(Expr)),
+  acc: List(Expr),
+) -> #(List(Expr), List(Value(Expr))) {
   case items {
-    [] -> list.reverse(acc)
+    [] -> #(list.reverse(acc), [])
+    [TokenValue(t), ..rest] if t.kind == "RParen" -> {
+      // Found RParen, rest contains more parens
+      #(list.reverse(acc), rest)
+    }
+    [TokenValue(_), ..rest] -> {
+      // Skip LParen
+      extract_args_and_remaining(rest, acc)
+    }
     [ListValue(opt_items), ..rest] -> {
       // opt_items: [Primary, many([Comma, Primary])] or []
       let args_from_opt = extract_args_from_opt_items_v2(opt_items, [])
-      extract_args_from_opt_parens(rest, list.append(args_from_opt, acc))
+      extract_args_and_remaining(rest, list.append(args_from_opt, acc))
     }
     [AstValue(e), ..rest] -> {
-      // Direct Primary (when opt matches just the Primary without many)
-      extract_args_from_opt_parens(rest, [e, ..acc])
+      // Direct Primary
+      extract_args_and_remaining(rest, [e, ..acc])
     }
-    [_, ..rest] -> extract_args_from_opt_parens(rest, acc)
+    [_, ..rest] -> extract_args_and_remaining(rest, acc)
+  }
+}
+
+/// Extract arguments from more parens: [TokenValue(LParen), opt_result, TokenValue(RParen), ...]
+fn extract_args_from_more_parens_v2(items: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
+  case items {
+    [] -> list.reverse(acc)
+    [ListValue(paren_items), ..rest] -> {
+      // paren_items: [TokenValue(LParen), opt_result, TokenValue(RParen)]
+      let #(args, remaining) = extract_args_and_remaining(paren_items, [])
+      extract_args_from_more_parens_v2(list.append(remaining, rest), list.append(args, acc))
+    }
+    [_, ..rest] -> extract_args_from_more_parens_v2(rest, acc)
   }
 }
 
@@ -2609,32 +2645,35 @@ fn make_let(values) -> Expr {
 }
 
 fn make_block(values) -> Expr {
-  // values = [LBrace, ListValue(stmt1), ListValue(stmt2), ..., RBrace]
-  // Each statement is wrapped in its own ListValue by parse_many
+  // values = [LBrace, ListValue([Stmt, Stmt, ...]), RBrace]
+  // many(ref("Stmt")) produces a single ListValue containing all statements
   case values {
-    [TokenValue(lbrace), ..rest] -> {
-      // Extract all ListValue items (statements) until RBrace
-      let stmt_values = extract_list_values_until_rbrace(rest, [])
-      let stmts = list.flat_map(stmt_values, fn(lv) {
-        extract_stmts(lv, [])
-      })
-      let span = Span("tao", lbrace.line, lbrace.column, lbrace.line, lbrace.column + 1)
+    [TokenValue(lbrace), ListValue(stmts_list), TokenValue(rbrace)] -> {
+      // Extract all statements from the ListValue
+      let stmts = extract_stmts_from_list(stmts_list, [])
+      let span = Span("tao", lbrace.line, lbrace.column, lbrace.line, rbrace.column + 1)
       Block(stmts, span)
+    }
+    [TokenValue(lbrace), TokenValue(rbrace)] -> {
+      // Empty block
+      let span = Span("tao", lbrace.line, lbrace.column, lbrace.line, rbrace.column + 1)
+      Block([], span)
     }
     _ -> Int(0, Span("error", 0, 0, 0, 0))
   }
 }
 
-/// Extract all ListValue items from a list until we hit RBrace token.
-fn extract_list_values_until_rbrace(
-  items: List(Value(Expr)),
-  acc: List(List(Value(Expr))),
-) -> List(List(Value(Expr))) {
+/// Extract statements from a ListValue produced by many(ref("Stmt")).
+fn extract_stmts_from_list(items: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
   case items {
     [] -> list.reverse(acc)
-    [TokenValue(t), ..] if t.kind == "RBrace" -> list.reverse(acc)
-    [ListValue(lv), ..rest] -> extract_list_values_until_rbrace(rest, [lv, ..acc])
-    [_, ..rest] -> extract_list_values_until_rbrace(rest, acc)
+    [AstValue(e), ..rest] -> extract_stmts_from_list(rest, [e, ..acc])
+    [ListValue(nested), ..rest] -> {
+      // Handle nested structures (e.g., from seq patterns)
+      let nested_stmts = extract_stmts_from_list(nested, [])
+      extract_stmts_from_list(rest, list.append(nested_stmts, acc))
+    }
+    [_, ..rest] -> extract_stmts_from_list(rest, acc)
   }
 }
 
@@ -2697,17 +2736,22 @@ fn extract_stmts(values: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
 }
 
 /// Extract statements from values that may include semicolons.
-/// Values are ListValue containing [Stmt, opt(Semicolon)]
+/// Values from many(seq([Stmt, opt(Semi)])) are:
+/// ListValue([ListValue([Stmt, opt(Semi)]), ListValue([Stmt, opt(Semi)]), ...])
 fn extract_stmts_with_semicolons(values: List(Value(Expr)), acc: List(Expr)) -> List(Expr) {
   case values {
     [] -> list.reverse(acc)
     [ListValue(stmt_semi_list), ..rest] -> {
       // stmt_semi_list contains [Stmt, opt(Semicolon)]
-      // Extract the statement (first element that's an AstValue)
+      // Extract the statement (first AstValue)
       case extract_first_ast_value(stmt_semi_list, None) {
         Some(e) -> extract_stmts_with_semicolons(rest, [e, ..acc])
         None -> extract_stmts_with_semicolons(rest, acc)
       }
+    }
+    [AstValue(e), ..rest] -> {
+      // Direct statement (when not wrapped in seq)
+      extract_stmts_with_semicolons(rest, [e, ..acc])
     }
     [_, ..rest] -> extract_stmts_with_semicolons(rest, acc)
   }

@@ -313,9 +313,8 @@ fn build_sequential_loop(
           CoreApp(lam, value, span)
         }
         _ -> {
-          // Expression statement as last statement - discard it and use result
-          // The result already contains the value of the last expression
-          result
+          // Expression statement as last statement - use it as the result
+          stmt
         }
       }
     }
@@ -384,7 +383,12 @@ pub fn desugar_stmt(
       // For recursive functions, wrap the lambda in a fixpoint
       // Add name to scope BEFORE building lambda so recursive calls can find it
       let dc_with_name = add_local(dc, name)
-      let #(core_lam, _dc1) = build_lambdas_with_scope(type_params, params, body, span, dc_with_name)
+      // Functions with no params need a dummy param for Unit to support f() calls
+      let params_with_unit = case params {
+        [] -> [ast.Param("_unit", None, span)]
+        _ -> params
+      }
+      let #(core_lam, _dc1) = build_lambdas_with_scope(type_params, params_with_unit, body, span, dc_with_name)
       // Wrap lambda in fixpoint: fix name -> core_lam
       let core_fix = CoreFix(name, core_lam, span)
       let core_let = CoreLet(name, core_fix, span)
@@ -1072,7 +1076,11 @@ fn desugar_expr_core(
       // Function call - desugar function and args
       let #(core_fun, dc1) = desugar_expr_core(call_fun, dc)
       let #(core_args, dc2) = desugar_exprs(call_args, dc1)
-      let core_app = build_apps(core_fun, core_args, span)
+      // Empty calls f() become f(Unit), non-empty calls f(x) become f(x)
+      let core_app = case core_args {
+        [] -> CoreApp(core_fun, CoreRcd([], span), span)
+        _ -> build_apps(core_fun, core_args, span)
+      }
       #(core_app, dc2)
     }
     
@@ -1335,8 +1343,10 @@ fn build_apps(
   span: Span,
 ) -> CoreTerm {
   case args {
-    [] -> fun
+    [] -> fun  // No args - return the function as-is
+    [arg] -> CoreApp(fun, arg, span)  // Single arg - one application
     [arg, ..rest] -> {
+      // Multiple args - build nested applications
       let app = CoreApp(fun, arg, span)
       build_apps(app, rest, span)
     }
