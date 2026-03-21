@@ -1115,23 +1115,23 @@ pub fn check_pi_mismatch_test() {
 
 // --- App --- \\
 pub fn eval_app_value_test() {
-  c.do_app(c.ffi_build, c.VTyp(0), v32(1), 0, 100000) |> should.equal(c.VErr)
-  c.do_app(c.ffi_build, c.VLit(c.I32(0)), v32(1), 0, 100000) |> should.equal(c.VErr)
-  c.do_app(c.ffi_build, c.VLitT(c.I32T), v32(1), 0, 100000) |> should.equal(c.VErr)
-  c.do_app(c.ffi_build, c.VNeut(c.HVar(0), [c.EDot("x")]), v32(1), 0, 100000)
+  c.do_app(c.ffi_build, c.VTyp(0), v32(1), 0, 1000000) |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VLit(c.I32(0)), v32(1), 0, 1000000) |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VLitT(c.I32T), v32(1), 0, 1000000) |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VNeut(c.HVar(0), [c.EDot("x")]), v32(1), 0, 1000000)
   |> should.equal(c.VNeut(c.HVar(0), [c.EApp(v32(1)), c.EDot("x")]))
-  c.do_app(c.ffi_build, c.VNeut(c.HHole(0), [c.EDot("x")]), v32(1), 0, 100000)
+  c.do_app(c.ffi_build, c.VNeut(c.HHole(0), [c.EDot("x")]), v32(1), 0, 1000000)
   |> should.equal(c.VNeut(c.HHole(0), [c.EApp(v32(1)), c.EDot("x")]))
-  c.do_app(c.ffi_build, c.VRcd([]), v32(1), 0, 100000) |> should.equal(c.VErr)
-  c.do_app(c.ffi_build, c.VCtrValue(c.VCtr("A", v64t)), v32(1), 0, 100000)
+  c.do_app(c.ffi_build, c.VRcd([]), v32(1), 0, 1000000) |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VCtrValue(c.VCtr("A", v64t)), v32(1), 0, 1000000)
   |> should.equal(c.VErr)
-  c.do_app(c.ffi_build, c.VLam([], "x", [], i64(0, s1)), v32(1), 0, 100000)
+  c.do_app(c.ffi_build, c.VLam([], "x", [], i64(0, s1)), v32(1), 0, 1000000)
   |> should.equal(v64(0))
-  c.do_app(c.ffi_build, c.VLam([], "x", [], var(0, s1)), v32(1), 0, 100000)
+  c.do_app(c.ffi_build, c.VLam([], "x", [], var(0, s1)), v32(1), 0, 1000000)
   |> should.equal(v32(1))
-  c.do_app(c.ffi_build, c.VPi([], "x", [], v32t, i64t(s1)), v32(1), 0, 100000)
+  c.do_app(c.ffi_build, c.VPi([], "x", [], v32t, i64t(s1)), v32(1), 0, 1000000)
   |> should.equal(c.VErr)
-  c.do_app(c.ffi_build, c.VErr, v32(1), 0, 100000) |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VErr, v32(1), 0, 1000000) |> should.equal(c.VErr)
 }
 
 pub fn eval_app_test() {

@@ -835,7 +835,7 @@ fn shift_case(case_val: Case, shift: Int) -> Case {
 /// - Applications evaluate the function and argument, then apply
 /// - Neutral terms are created when computation is stuck on unknowns
 pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
-  eval_with_steps(ffi, env, term, 100000)  // Increased step limit for deep recursion
+  eval_with_steps(ffi, env, term, 1000000)  // Increased step limit for deep recursion
 }
 
 /// Evaluate a term to a value with a step limit to prevent infinite loops.
@@ -1104,24 +1104,38 @@ pub fn normalize(ffi: FFI, env: Env, term: Term, s: Span) -> Term {
   quote(ffi, list.length(env), val, s)
 }
 
-/// Quote a value back to syntax (reification).
+/// Quote a value back to syntax (reification) with default step limit.
 ///
 /// The level parameter tracks the current De Bruijn level. When quoting a
 /// lambda, we create a fresh neutral variable at the current level, apply it
 /// to the body, and quote the result. This converts De Bruijn levels back to
 /// indices using the formula: index = lvl - level - 1.
 pub fn quote(ffi: FFI, lvl: Int, value: Value, s: Span) -> Term {
+  quote_with_steps(ffi, lvl, value, s, 1000000)  // High step limit for deep trees
+}
+
+/// Quote a value back to syntax with a step counter to prevent infinite loops.
+///
+/// When the step limit is exceeded, returns a neutral term with HStepLimit head.
+fn quote_with_steps(ffi: FFI, lvl: Int, value: Value, s: Span, steps: Int) -> Term {
+  case steps {
+    0 -> VNeut(HStepLimit, []) |> quote(ffi, lvl, _, s)  // Return stuck term
+    _ -> quote_loop(ffi, lvl, value, s, steps)
+  }
+}
+
+fn quote_loop(ffi: FFI, lvl: Int, value: Value, s: Span, steps: Int) -> Term {
   case value {
     VTyp(k) -> Typ(k, s)
     VLit(k) -> Lit(k, s)
     VLitT(k) -> LitT(k, s)
     VNeut(head, spine) -> {
       let head_term = quote_head(lvl, head, s)
-      quote_neut(ffi, lvl, head_term, spine, s)
+      quote_neut_with_steps(ffi, lvl, head_term, spine, s, steps)
     }
     VRcd(fields) ->
-      Rcd(list.map(fields, fn(kv) { #(kv.0, quote(ffi, lvl, kv.1, s)) }), s)
-    VCtrValue(VCtr(tag, arg)) -> Ctr(tag, quote(ffi, lvl, arg, s), s)
+      Rcd(list.map(fields, fn(kv) { #(kv.0, quote_with_steps(ffi, lvl, kv.1, s, steps - 1)) }), s)
+    VCtrValue(VCtr(tag, arg)) -> Ctr(tag, quote_with_steps(ffi, lvl, arg, s, steps - 1), s)
     VUnit -> Unit(s)
     VLam(implicit, name, env, body) -> {
       // Create a fresh neutral variable at the current level
@@ -1129,31 +1143,31 @@ pub fn quote(ffi: FFI, lvl: Int, value: Value, s: Span) -> Term {
       // Apply it to the body and evaluate
       let body_val = eval(ffi, [fresh, ..env], body)
       // Quote the result at level + 1
-      let body_quote = quote(ffi, lvl + 1, body_val, get_span(body))
+      let body_quote = quote_with_steps(ffi, lvl + 1, body_val, get_span(body), steps - 1)
       Lam(implicit, #(name, Hole(-1, s)), body_quote, s)
     }
     VPi(implicit, name, env, in_val, out_term) -> {
       // Quote the domain (already evaluated)
-      let in_quote = quote(ffi, lvl, in_val, s)
+      let in_quote = quote_with_steps(ffi, lvl, in_val, s, steps - 1)
       // Create a fresh neutral variable for the codomain
       let fresh = VNeut(HVar(lvl), [])
       let out_val = eval(ffi, [fresh, ..env], out_term)
-      let out_quote = quote(ffi, lvl + 1, out_val, get_span(out_term))
+      let out_quote = quote_with_steps(ffi, lvl + 1, out_val, get_span(out_term), steps - 1)
       Pi(implicit, name, in_quote, out_quote, s)
     }
     VRecord(fields) -> {
       // Record type - quote each field type
-      Rcd(list.map(fields, fn(kv) { #(kv.0, quote(ffi, lvl, kv.1, s)) }), s)
+      Rcd(list.map(fields, fn(kv) { #(kv.0, quote_with_steps(ffi, lvl, kv.1, s, steps - 1)) }), s)
     }
     VCall(name, args) -> {
       // Quote stuck built-in with collected args
-      Call(name, list.map(args, fn(a) { quote(ffi, lvl, a, s) }), s)
+      Call(name, list.map(args, fn(a) { quote_with_steps(ffi, lvl, a, s, steps - 1) }), s)
     }
     VFix(name, env, body) -> {
       // Quote fixpoint: create a fresh variable and quote the body
       let fresh = VNeut(HVar(lvl), [])
       let body_val = eval(ffi, [fresh, ..env], body)
-      let body_quote = quote(ffi, lvl + 1, body_val, get_span(body))
+      let body_quote = quote_with_steps(ffi, lvl + 1, body_val, get_span(body), steps - 1)
       Fix(name, body_quote, s)
     }
     VErr -> Hole(-1, s)
@@ -1170,6 +1184,20 @@ fn quote_neut(
 ) -> Term {
   list.fold_right(spine, head, fn(head, elim) {
     quote_elim(ffi, lvl, head, elim, s)
+  })
+}
+
+/// Quote a neutral term with step counter.
+fn quote_neut_with_steps(
+  ffi: FFI,
+  lvl: Int,
+  head: Term,
+  spine: List(Elim),
+  s: Span,
+  steps: Int,
+) -> Term {
+  list.fold_right(spine, head, fn(head, elim) {
+    quote_elim_with_steps(ffi, lvl, head, elim, s, steps)
   })
 }
 
@@ -1191,6 +1219,19 @@ fn quote_elim(ffi: FFI, lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
     // closure environment for delayed matching on neutral terms.
     EMatch(_, motive, cases) ->
       Match(head, quote(ffi, lvl, motive, s), cases, s)
+  }
+}
+
+/// Quote a single elimination (spine element) with step counter.
+fn quote_elim_with_steps(ffi: FFI, lvl: Int, head: Term, elim: Elim, s: Span, steps: Int) -> Term {
+  case elim {
+    EDot(name) -> Dot(head, name, s)
+    EApp(arg) -> App(head, [], quote_with_steps(ffi, lvl, arg, s, steps - 1), s)
+    EAppImplicit(implicit_val) -> {
+      App(head, [quote_with_steps(ffi, lvl, implicit_val, s, steps - 1)], Hole(-1, s), s)
+    }
+    EMatch(_, motive, cases) ->
+      Match(head, quote_with_steps(ffi, lvl, motive, s, steps - 1), cases, s)
   }
 }
 
