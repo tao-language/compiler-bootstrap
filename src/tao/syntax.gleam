@@ -17,7 +17,7 @@ import tao/ast.{
   BlockStmtExpr, BlockStmtLet, LetDecl, Immutable, Mutable, type BlockStatement,
   Match as AstMatch, MatchClause as AstMatchClause, If as AstIf,
   type Pattern as AstPattern, PAny, PVar as AstPVar, PLit as AstPLit, PCtr as AstPCtr,
-  Ctr as AstCtr,
+  Ctr as AstCtr, Test as AstTest, Run as AstRun,
   type Type as AstType, TFn, TApp, TRecord, TTuple, THole,
 }
 import tao/import_ast.{type Import, ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias, ImportWildcard, type ImportItem, ImportName, ImportType, ImportOperator}
@@ -251,16 +251,14 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
       AstIf(ast_cond, ast_then, ast_else, span)
     }
     Test(name, body, span) -> {
-      // Test statements become a block with the test body
-      // The test name is stored in a comment or metadata (for now, just the body)
+      // Test statements preserve the test semantics
       let ast_body = expr_to_ast_loop(body)
-      // For now, tests are just the body expression
-      // A proper implementation would wrap in a test harness
-      ast_body
+      AstTest(name, ast_body, span)
     }
     Run(value, span) -> {
-      // Run statements just evaluate the value
-      expr_to_ast_loop(value)
+      // Run statements preserve the run semantics
+      let ast_value = expr_to_ast_loop(value)
+      AstRun(ast_value, span)
     }
     For(pattern, collection, body, span) -> {
       // For loop becomes a fold/map in AST

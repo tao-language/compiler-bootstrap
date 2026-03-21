@@ -24,6 +24,7 @@ import tao/ast.{
   type RecordField, type MatchClause, type BlockStatement, type LetDecl,
   StmtLet, StmtFn, StmtImport, StmtExpr,
   StmtFor, StmtWhile, StmtLoop, StmtBreak, StmtContinue, StmtReturn, StmtYield,
+  StmtTest, StmtRun,
   BlockStmtLet, BlockStmtAssign, BlockStmtExpr,
   OpAdd, OpSub, OpMul, OpDiv, OpMod, OpEq, OpNeq, OpLt, OpGt, OpLte, OpGte,
   OpAnd, OpOr, OpConcat, OpPipe, OpNegate, OpNot,
@@ -211,16 +212,25 @@ pub fn desugar_module(
       // First, desugar all statements EXCEPT the last one
       let all_but_last = drop_last(module.body)
       let #(core_stmts, dc1) = desugar_stmts(all_but_last, dc)
-      
+
       // Then, desugar the last expression with the accumulated scope
       let last_stmt = get_last_stmt(module.body)
       let #(core_result, _dc2) = case last_stmt {
-        StmtExpr(value, span) -> {
+        StmtExpr(value, _span) -> {
           desugar_expr_core(value, dc1)
+        }
+        StmtRun(value, run_span) -> {
+          // Run statement: evaluate and return as module result
+          desugar_expr_core(value, dc1)
+        }
+        StmtTest(test_name, body, test_span) -> {
+          // Test statement: evaluate body but return Unit
+          let #(core_body, dc_test) = desugar_expr_core(body, dc1)
+          #(CoreDoBlock([core_body], CoreUnit(test_span), test_span), dc_test)
         }
         _ -> #(CoreRcd([], module.span), dc1)
       }
-      
+
       let core_term = CoreDoBlock(core_stmts, core_result, module.span)
       let term = core_term_to_term(core_term)
       #(term, dc1)
@@ -271,6 +281,7 @@ fn is_last_stmt_expr(stmts: List(Stmt)) -> Bool {
     [stmt] -> {
       case stmt {
         StmtExpr(_, _) -> True
+        StmtRun(_, _) -> True  // Run statement also determines module output
         _ -> False
       }
     }
@@ -304,20 +315,6 @@ fn build_sequential_loop(
 ) -> CoreTerm {
   case stmts {
     [] -> result
-    [stmt] -> {
-      // Last statement - incorporate it into the result
-      case stmt {
-        CoreLet(name, value, _let_span) -> {
-          // let x = e as last statement  =>  (λx. result) e
-          let lam = CoreLam(name, result, span)
-          CoreApp(lam, value, span)
-        }
-        _ -> {
-          // Expression statement as last statement - use it as the result
-          stmt
-        }
-      }
-    }
     [stmt, ..rest] -> {
       case stmt {
         CoreLet(name, value, _let_span) -> {
@@ -327,7 +324,7 @@ fn build_sequential_loop(
           CoreApp(lam, value, span)
         }
         _ -> {
-          // Non-let statements in the middle are just evaluated and discarded
+          // Non-let statements are evaluated and discarded, continue with rest
           build_sequential_loop(rest, result, span)
         }
       }
@@ -476,6 +473,21 @@ pub fn desugar_stmt(
       #([core_expr], dc1)
     }
 
+    StmtTest(test_name, body, test_span) -> {
+      // Test statement: evaluate the body
+      // The test name is for the test harness, not the compiler
+      let #(core_body, dc1) = desugar_expr_core(body, dc)
+      // Return Unit to indicate test completed
+      #([CoreDoBlock([core_body], CoreUnit(test_span), test_span)], dc1)
+    }
+
+    StmtRun(value, span) -> {
+      // Run statement: evaluate and return the value
+      // This is handled specially in desugar_module for module output
+      let #(core_value, dc1) = desugar_expr_core(value, dc)
+      #([core_value], dc1)
+    }
+
     // Fallback for unimplemented statements
     _ -> #([CoreErr("Statement not yet implemented", get_stmt_span(stmt))], dc)
   }
@@ -495,6 +507,8 @@ fn get_stmt_span(stmt: Stmt) -> Span {
     StmtContinue(span) -> span
     StmtReturn(_, span) -> span
     StmtYield(_, span) -> span
+    StmtTest(_, _, span) -> span
+    StmtRun(_, span) -> span
     _ -> Span("unknown", 0, 0, 0, 0)
   }
 }
@@ -1152,7 +1166,21 @@ fn desugar_expr_core(
       // Record update - copy old record with new fields
       desugar_record_update(old, fields, span, dc)
     }
-    
+
+    ast.Test(test_name, body, test_span) -> {
+      // Test statement: evaluate the body
+      // The test name is for the test harness, not the compiler
+      // Tests evaluate their body but return Unit
+      let #(core_body, dc1) = desugar_expr_core(body, dc)
+      // Return Unit to indicate test completed
+      #(CoreDoBlock([core_body], CoreUnit(test_span), test_span), dc1)
+    }
+
+    ast.Run(value, span) -> {
+      // Run statement: evaluate and return the value as module result
+      desugar_expr_core(value, dc)
+    }
+
     // Placeholder for unimplemented expressions
     _ -> #(CoreErr("Expression not yet implemented", get_expr_span(expr)), dc)
   }

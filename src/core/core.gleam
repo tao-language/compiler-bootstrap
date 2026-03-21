@@ -371,6 +371,14 @@ const prelude_ctrs = [
   #("LT", CtrDef([], Typ(0, no_span), Typ(0, no_span))),
   #("EQ", CtrDef([], Typ(0, no_span), Typ(0, no_span))),
   #("GT", CtrDef([], Typ(0, no_span), Typ(0, no_span))),
+
+  // List type: data List(a) = Cons(a, List(a)) | Nil
+  // List : Type(0) -> Type(0), represented as Typ(1)
+  // Cons : (a : Type(0)) -> {head: a, tail: List(a)} -> List(a)
+  // For simplicity, use a hole for the recursive List reference
+  #("Cons", CtrDef(["a"], Rcd([#("head", Var(0, no_span)), #("tail", Hole(0, no_span))], no_span), Typ(0, no_span))),
+  // Nil : (a : Type(0)) -> Unit -> List(a) (nullary, uses type param)
+  #("Nil", CtrDef(["a"], Unit(no_span), Typ(0, no_span))),
 ]
 
 const no_span = Span("", 0, 0, 0, 0)
@@ -2105,20 +2113,19 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(val2, ty, s2) = infer(s1, quoted)
       #(val2, ty, s2)
     }
-    Fix(name, body, _) -> {
-      // Fixpoint: fix f -> body has type A if body : A -> A
-      // We create a hole for the result type and check that body has type hole -> hole
+    Fix(name, body, span) -> {
+      // Fixpoint: fix f -> body
+      // The fixpoint allows f to be referenced in body with the same type as the fixpoint
       let env = get_env(s)
       let #(result_ty_hole, s) = new_hole(s)
-      // The function type is result_ty -> result_ty
-      let fun_ty =
-        VPi([], name, env, result_ty_hole, Hole(s.hole - 1, get_span(body)))
-      // Add the fixpoint variable to the context with the function type
-      let #(_fresh, s) = def_var(s, name, fun_ty)
-      let #(_body_val, s) = check(s, body, result_ty_hole, get_span(body))
-      // Return the fixpoint value with the result type
+      // Add the fixpoint variable to the context with the hole type
+      let #(_fresh, s) = def_var(s, name, result_ty_hole)
+      // Check the body against the hole type
+      let #(body_val, s) = check(s, body, result_ty_hole, span)
+      // Force the hole to get the solved type
+      let solved_ty = force(s.ffi, s.sub, result_ty_hole)
       let fix_val = VFix(name, env, body)
-      #(fix_val, result_ty_hole, s)
+      #(fix_val, solved_ty, s)
     }
     Err(_, _) -> #(VErr, VErr, s)
     // Error terms have error type

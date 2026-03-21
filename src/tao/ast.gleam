@@ -118,6 +118,19 @@ pub type Stmt {
     value: Expr,
     span: Span,
   )
+
+  /// test "name" { body }
+  StmtTest(
+    name: String,
+    body: Expr,
+    span: Span,
+  )
+
+  /// run expr
+  StmtRun(
+    value: Expr,
+    span: Span,
+  )
 }
 
 // ============================================================================
@@ -314,6 +327,12 @@ pub type Expr {
 
   /// Hole: _
   Hole(Span)
+
+  /// Test statement: test "name" { body }
+  Test(name: String, body: Expr, span: Span)
+
+  /// Run statement: run expr
+  Run(value: Expr, span: Span)
 }
 
 pub type RecordField {
@@ -514,6 +533,8 @@ pub fn span_from_expr(expr: Expr) -> Span {
     Annotated(_, _, span) -> span
     Comptime(_, span) -> span
     Hole(span) -> span
+    Test(_, _, span) -> span
+    Run(_, span) -> span
   }
 }
 
@@ -550,6 +571,8 @@ pub fn span_from_stmt(stmt: Stmt) -> Span {
     StmtExpr(_, span) -> span
     StmtBind(_, _, span) -> span
     StmtMut(_, _, span) -> span
+    StmtTest(_, _, span) -> span
+    StmtRun(_, span) -> span
   }
 }
 

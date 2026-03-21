@@ -326,6 +326,13 @@ pub fn with_prelude(ctx: GlobalContext) -> GlobalContext {
     source: None,
   )
 
+  let list_ref = ModuleRef(
+    path: "prelude/list",
+    public_names: ["List", "Cons", "Nil", "head", "tail", "is_empty", "length", "map", "fold"],
+    value: None,
+    source: None,
+  )
+
   // Insert all prelude modules
   let ctx1 = GlobalContext(
     ..ctx,
@@ -339,8 +346,12 @@ pub fn with_prelude(ctx: GlobalContext) -> GlobalContext {
     ..ctx2,
     modules: dict.insert(ctx2.modules, "prelude/result", result_ref),
   )
-  GlobalContext(
+  let ctx4 = GlobalContext(
     ..ctx3,
     modules: dict.insert(ctx3.modules, "prelude/ordering", ordering_ref),
+  )
+  GlobalContext(
+    ..ctx4,
+    modules: dict.insert(ctx4.modules, "prelude/list", list_ref),
   )
 }

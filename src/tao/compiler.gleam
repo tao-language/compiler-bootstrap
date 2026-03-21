@@ -10,7 +10,7 @@
 /// - Compiling modules in correct order
 /// - Detecting circular imports
 
-import tao/ast.{type Module, type Stmt, type Param, type Type, Module as ModuleCtr, StmtImport, StmtLet, StmtFn, StmtFor, StmtWhile, StmtLoop, StmtBreak, StmtContinue, StmtReturn, StmtYield, StmtExpr, StmtBind, StmtMut, Param, TVar}
+import tao/ast.{type Module, type Stmt, type Param, type Type, Module as ModuleCtr, StmtImport, StmtLet, StmtFn, StmtFor, StmtWhile, StmtLoop, StmtBreak, StmtContinue, StmtReturn, StmtYield, StmtExpr, StmtBind, StmtMut, StmtTest, StmtRun, Param, TVar}
 import tao/import_ast.{type Import as ImportType, type ImportContext, type ResolvedImport}
 import tao/import_resolver.{resolve_imports}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module, register_module}
@@ -289,6 +289,16 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(Stmt) {
         // Import expression becomes StmtImport
         [StmtImport(import_item, span)]
       }
+      Test(name, body, span) -> {
+        // Test expression becomes StmtTest
+        let ast_body = expr_to_ast(body)
+        [StmtTest(name, ast_body, span)]
+      }
+      Run(value, span) -> {
+        // Run expression becomes StmtRun
+        let ast_value = expr_to_ast(value)
+        [StmtRun(ast_value, span)]
+      }
       _ -> {
         // Other expressions become StmtExpr
         let ast_expr = expr_to_ast(expr)
@@ -361,5 +371,7 @@ fn get_stmt_span(stmt: Stmt) -> Span {
     StmtExpr(_, span) -> span
     StmtBind(_, _, span) -> span
     StmtMut(_, _, span) -> span
+    StmtTest(_, _, span) -> span
+    StmtRun(_, span) -> span
   }
 }
