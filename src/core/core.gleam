@@ -897,7 +897,7 @@ fn eval_step(ffi: FFI, env: Env, term: Term, steps: Int, max_steps: Int) -> Valu
     Match(arg, motive, cases, _) -> {
       let arg_val = eval_loop(ffi, env, arg, steps + 1, max_steps)
       let motive_val = eval_loop(ffi, env, motive, steps + 1, max_steps)
-      do_match(env, arg_val, motive_val, cases, steps + 1, max_steps)
+      do_match(ffi, env, arg_val, motive_val, cases, steps + 1, max_steps)
     }
     Call(name, args, _) -> {
       // Evaluate all arguments first
@@ -1005,12 +1005,12 @@ fn do_app_with_implicit(ffi: FFI, fun: Value, implicit: List(Term), arg: Value, 
 /// the spine. Otherwise, we try to match the argument against each case.
 ///
 /// The motive is the return type of the match (for dependent pattern matching).
-pub fn do_match(env: Env, arg: Value, motive: Value, cases: List(Case), steps: Int, max_steps: Int) -> Value {
+pub fn do_match(ffi: FFI, env: Env, arg: Value, motive: Value, cases: List(Case), steps: Int, max_steps: Int) -> Value {
   case arg {
     VNeut(head, spine) -> VNeut(head, [EMatch(env, motive, cases), ..spine])
     _ ->
       case do_match_cases(arg, cases, steps + 1, max_steps) {
-        Some(#(bindings, body)) -> eval_loop([], list.append(bindings, env), body, steps + 1, max_steps)
+        Some(#(bindings, body)) -> eval_loop(ffi, list.append(bindings, env), body, steps + 1, max_steps)
         None -> VErr
       }
   }
@@ -1138,21 +1138,20 @@ fn quote_loop(ffi: FFI, lvl: Int, value: Value, s: Span, steps: Int) -> Term {
     VCtrValue(VCtr(tag, arg)) -> Ctr(tag, quote_with_steps(ffi, lvl, arg, s, steps - 1), s)
     VUnit -> Unit(s)
     VLam(implicit, name, env, body) -> {
-      // Create a fresh neutral variable at the current level
+      // Quote the body term directly without re-evaluation.
+      // Re-evaluation causes exponential blowup for recursive functions.
+      // Extend env with a fresh neutral for the parameter (Var(0) in the body).
       let fresh = VNeut(HVar(lvl), [])
-      // Apply it to the body and evaluate
-      let body_val = eval(ffi, [fresh, ..env], body)
-      // Quote the result at level + 1
-      let body_quote = quote_with_steps(ffi, lvl + 1, body_val, get_span(body), steps - 1)
+      let body_quote = quote_term_in_env(ffi, lvl + 1, body, [fresh, ..env], get_span(body), steps - 1)
       Lam(implicit, #(name, Hole(-1, s)), body_quote, s)
     }
     VPi(implicit, name, env, in_val, out_term) -> {
       // Quote the domain (already evaluated)
       let in_quote = quote_with_steps(ffi, lvl, in_val, s, steps - 1)
-      // Create a fresh neutral variable for the codomain
+      // Quote the codomain term directly without re-evaluation
+      // Extend env with a fresh neutral for the domain variable (Var(0) in out_term).
       let fresh = VNeut(HVar(lvl), [])
-      let out_val = eval(ffi, [fresh, ..env], out_term)
-      let out_quote = quote_with_steps(ffi, lvl + 1, out_val, get_span(out_term), steps - 1)
+      let out_quote = quote_term_in_env(ffi, lvl + 1, out_term, [fresh, ..env], get_span(out_term), steps - 1)
       Pi(implicit, name, in_quote, out_quote, s)
     }
     VRecord(fields) -> {
@@ -1164,10 +1163,10 @@ fn quote_loop(ffi: FFI, lvl: Int, value: Value, s: Span, steps: Int) -> Term {
       Call(name, list.map(args, fn(a) { quote_with_steps(ffi, lvl, a, s, steps - 1) }), s)
     }
     VFix(name, env, body) -> {
-      // Quote fixpoint: create a fresh variable and quote the body
-      let fresh = VNeut(HVar(lvl), [])
-      let body_val = eval(ffi, [fresh, ..env], body)
-      let body_quote = quote_with_steps(ffi, lvl + 1, body_val, get_span(body), steps - 1)
+      // Quote the body term directly without re-evaluation.
+      // Re-evaluation causes exponential blowup for recursive functions.
+      let fix_val = VFix(name, env, body)
+      let body_quote = quote_term_in_env(ffi, lvl + 1, body, [fix_val, ..env], get_span(body), steps - 1)
       Fix(name, body_quote, s)
     }
     VErr -> Hole(-1, s)
@@ -1247,6 +1246,119 @@ fn quote_head(lvl: Int, head: Head, s: Span) -> Term {
     HVar(l) -> Var(lvl - l - 1, s)
     HHole(id) -> Hole(id, s)
     HStepLimit -> Hole(-1, s)  // Step limit exceeded - represent as hole
+  }
+}
+
+/// Quote a term that represents a value in a given environment.
+///
+/// This is used for quoting lambda/fix bodies without re-evaluation.
+/// The environment provides the values for free variables in the term.
+///
+/// CRITICAL: This function does NOT evaluate - it only quotes terms to syntax.
+/// This prevents exponential blowup when quoting recursive functions.
+fn quote_term_in_env(
+  ffi: FFI,
+  lvl: Int,
+  term: Term,
+  env: Env,
+  s: Span,
+  steps: Int,
+) -> Term {
+  case steps {
+    0 -> Hole(-1, s)
+    _ -> quote_term_in_env_loop(ffi, lvl, term, env, s, steps)
+  }
+}
+
+fn quote_term_in_env_loop(
+  ffi: FFI,
+  lvl: Int,
+  term: Term,
+  env: Env,
+  s: Span,
+  steps: Int,
+) -> Term {
+  case term {
+    Var(i, span) -> {
+      // Look up in environment and quote the value
+      case list_get(env, i) {
+        Some(value) -> quote_with_steps(ffi, lvl, value, span, steps - 1)
+        None -> Var(i, span)
+      }
+    }
+
+    Lam(implicit, param, body, span) -> {
+      // Extend environment with a fresh neutral for the parameter
+      let fresh = VNeut(HVar(lvl), [])
+      let body_quote = quote_term_in_env(ffi, lvl + 1, body, [fresh, ..env], span, steps - 1)
+      Lam(implicit, param, body_quote, span)
+    }
+
+    Pi(implicit, name, in_term, out_term, span) -> {
+      let in_quote = quote_term_in_env(ffi, lvl, in_term, env, span, steps - 1)
+      let fresh = VNeut(HVar(lvl), [])
+      let out_quote = quote_term_in_env(ffi, lvl + 1, out_term, [fresh, ..env], span, steps - 1)
+      Pi(implicit, name, in_quote, out_quote, span)
+    }
+
+    Fix(name, body, span) -> {
+      // Fix in a term - extend env with the fix itself
+      let fix_val = VFix(name, env, body)
+      let body_quote = quote_term_in_env(ffi, lvl + 1, body, [fix_val, ..env], span, steps - 1)
+      Fix(name, body_quote, span)
+    }
+
+    App(fun, implicit, arg, span) -> {
+      let fun_quote = quote_term_in_env(ffi, lvl, fun, env, span, steps - 1)
+      let arg_quote = quote_term_in_env(ffi, lvl, arg, env, span, steps - 1)
+      let implicit_quote = list.map(implicit, quote_term_in_env(ffi, lvl, _, env, span, steps - 1))
+      App(fun_quote, implicit_quote, arg_quote, span)
+    }
+
+    Match(arg, motive, cases, span) -> {
+      let arg_quote = quote_term_in_env(ffi, lvl, arg, env, span, steps - 1)
+      let motive_quote = quote_term_in_env(ffi, lvl, motive, env, span, steps - 1)
+      let cases_quote = list.map(cases, fn(c) {
+        Case(c.pattern, quote_term_in_env(ffi, lvl, c.body, env, c.span, steps - 1), c.guard, c.span)
+      })
+      Match(arg_quote, motive_quote, cases_quote, span)
+    }
+
+    Call(name, args, span) -> {
+      let args_quote = list.map(args, quote_term_in_env(ffi, lvl, _, env, span, steps - 1))
+      Call(name, args_quote, span)
+    }
+
+    Rcd(fields, span) -> {
+      let fields_quote = list.map(fields, fn(kv) {
+        #(kv.0, quote_term_in_env(ffi, lvl, kv.1, env, span, steps - 1))
+      })
+      Rcd(fields_quote, span)
+    }
+
+    Ctr(tag, arg, span) -> {
+      Ctr(tag, quote_term_in_env(ffi, lvl, arg, env, span, steps - 1), span)
+    }
+
+    Dot(arg, name, span) -> {
+      Dot(quote_term_in_env(ffi, lvl, arg, env, span, steps - 1), name, span)
+    }
+
+    Ann(inner, typ, span) -> {
+      Ann(quote_term_in_env(ffi, lvl, inner, env, span, steps - 1), typ, span)
+    }
+
+    Comptime(inner, span) -> {
+      Comptime(quote_term_in_env(ffi, lvl, inner, env, span, steps - 1), span)
+    }
+
+    // For literal/value terms, quote directly
+    Lit(k, span) -> Lit(k, span)
+    Typ(k, span) -> Typ(k, span)
+    LitT(k, span) -> LitT(k, span)
+    Hole(id, span) -> Hole(id, span)
+    Unit(span) -> Unit(span)
+    Err(msg, span) -> Err(msg, span)
   }
 }
 
@@ -2384,7 +2496,7 @@ fn infer_match(
           // For the runtime match, we still need the motive. Force it to get the
           // solved lambda (with hole in body replaced).
           let solved_motive_val = force(s.ffi, s.sub, motive_val)
-          let match_val = do_match(env, arg_val, solved_motive_val, cases, 0, 100000)
+          let match_val = do_match(s.ffi, env, arg_val, solved_motive_val, cases, 0, 100000)
 
           // Filter out HoleUnsolved errors for holes that are now solved in the substitution.
           // The error was added prematurely when we first encountered the hole during
@@ -2433,7 +2545,7 @@ fn infer_match(
           let s = list.fold(exhaustiveness_errors, s, with_err)
 
           // Compute match value
-          let match_val = do_match(env, arg_val, motive_val, cases, 0, 100000)
+          let match_val = do_match(s.ffi, env, arg_val, motive_val, cases, 0, 100000)
 
           #(match_val, result_ty, s)
         }
@@ -2795,7 +2907,7 @@ fn apply_spine_loop(ffi: FFI, value: Value, spine: List(Elim), steps: Int, max_s
       EDot(field) -> do_dot(ffi, value, field, steps + 1, max_steps)
       EApp(arg) -> do_app(ffi, value, arg, steps + 1, max_steps)
       EAppImplicit(_) -> value  // Implicit args are erased at runtime
-      EMatch(env, motive, cases) -> do_match(env, value, motive, cases, steps + 1, max_steps)
+      EMatch(env, motive, cases) -> do_match(ffi, env, value, motive, cases, steps + 1, max_steps)
     }
   })
 }
