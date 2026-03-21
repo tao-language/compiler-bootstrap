@@ -1744,7 +1744,10 @@ fn extract_single_clause_from_list(items: List(Value(Expr))) -> Option(MatchClau
           case body_items {
             [AstValue(body_expr)] -> {
               let span = get_expr_span(body_expr)
-              Some(MatchClause(pattern, None, body_expr, span))
+              // Check for guard between pattern and arrow
+              let between_pattern_and_arrow = list.take(after_pattern, arrow_idx)
+              let guard = extract_guard_from_items(between_pattern_and_arrow)
+              Some(MatchClause(pattern, guard, body_expr, span))
             }
             _ -> None
           }
@@ -1753,6 +1756,17 @@ fn extract_single_clause_from_list(items: List(Value(Expr))) -> Option(MatchClau
       }
     }
     None -> None
+  }
+}
+
+fn extract_guard_from_items(items: List(Value(Expr))) -> Option(Expr) {
+  case items {
+    // Guard wrapped in ListValue (from seq([keyword_pattern("if"), ref("Expr")]))
+    [ListValue([KeywordValue(_if), AstValue(guard_expr)])] -> Some(guard_expr)
+    // Guard as flat list
+    [KeywordValue(_if), AstValue(guard_expr)] -> Some(guard_expr)
+    // No guard
+    _ -> None
   }
 }
 

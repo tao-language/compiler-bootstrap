@@ -2,52 +2,256 @@
 
 ## Executive Summary
 
-This document provides a detailed implementation plan to fix the 6 remaining test failures in the compiler-bootstrap project. The failures fall into 5 categories requiring fixes across the type checker, desugarer, and runtime.
+This document provides a detailed implementation plan to fix the remaining test failures in the compiler-bootstrap project. 
 
-**Current Status:** 513 passed, 6 failures  
-**Target:** 519 passed, 0 failures
+**Current Status:** 421 passed, 4 failures (as of 2026-03-20)
+**Target:** 519+ passed, 0 failures
 
 ---
 
-## Failure Analysis Summary
+## Completed Fixes ✅
+
+### Phase 1: Quick Wins (DONE)
+1. ✅ **List constructors** - Added `Cons` and `Nil` to prelude
+2. ✅ **Test/Run desugaring** - Implemented full support for test and run statements
+
+### Phase 2: Type Inference (DONE)
+3. ✅ **Fix type inference** - Implemented assume-and-verify approach for recursive functions
+
+**Results:** Fixed `test_example.tao`, `simple_for.tao`, `for_loop.tao`, `while_loop.tao`, `loop.tao`, `recursive_fn.tao`
+
+---
+
+## Remaining Failures Analysis
 
 | # | Test | Category | Root Cause | Priority | Est. Effort |
 |---|------|----------|------------|----------|-------------|
-| 1 | `simple_for.tao` | Missing Prelude | Cons/Nil constructors not in scope | P0 | 1-2 hours |
-| 2 | `for_loop.tao` | Missing Prelude | Cons/Nil constructors not in scope | P0 | (same as #1) |
-| 3 | `test_example.tao` | Missing Feature | Test/Run statements not desugared | P0 | 2-3 hours |
-| 4 | `recursive_fn.tao` | Type Inference | Fix type inference broken | P1 | 3-4 hours |
-| 5 | `while_loop.tao` | Type Inference | Fix type inference broken | P1 | (same as #4) |
-| 6 | `for_loop.tao` | Type Inference | Fix type inference broken | P1 | (same as #4) |
-| 7 | `match_guard.tao` | Exhaustiveness | Guard conditions not handled | P2 | 4-6 hours |
-| 8 | `loop.tao` | Runtime | Infinite loop evaluation | P2 | 2-3 hours |
+| 1 | `match_guard.tao` | Exhaustiveness | Guard conditions not considered | P1 | 4-6 hours |
+| 2 | Recursion tests | Runtime | Infinite loop during normalization | P1 | 3-4 hours |
 
 ---
 
-## Phase 1: Quick Wins (P0)
+## Phase 3: Advanced Fixes (P1)
 
-### 1.1 Add Prelude Constructors to Global Context
+### 3.1 Fix Exhaustiveness Checking with Guards
 
-**Affected Tests:** `simple_for.tao`, `for_loop.tao`
+**Affected Test:** `match_guard.tao`
 
-**Problem:** The for loop desugaring uses `Cons` and `Nil` constructors for list pattern matching, but these are not registered in the prelude.
+**Problem:** The exhaustiveness checker (Maranget's algorithm) treats patterns with guards as if they have no guards, leading to false positives for redundant patterns.
 
-**Current Prelude (src/tao/global_context.gleam):**
-```gleam
-pub fn with_prelude(ctx: GlobalContext) -> GlobalContext {
-  // Only registers: Bool, Option, Result, Ordering
-  // Missing: List (Cons, Nil)
+**Example:**
+```tao
+match x {
+  | n if n > 0 && n < 10 -> 1  // Handles (0, 10)
+  | n if n > 0 -> 2            // Should handle [10, ∞), but flagged as redundant
+  | n if n < 0 -> 3            // Handles (-∞, 0)
+  | _ -> 0                     // Handles 0
 }
 ```
 
-**Required Changes:**
+**Root Cause:** The `is_pattern_covered_by` function in `src/core/core.gleam` only compares pattern structure, not guard conditions.
 
-#### File: `src/core/core.gleam`
-
-Add List constructors to `prelude_ctrs` constant (around line 350):
-
+**Current Implementation (line ~3084):**
 ```gleam
-const prelude_ctrs = [
+fn is_pattern_covered_by(s: State, pattern1: Pattern, pattern2: Pattern) -> Bool {
+  // Only checks if pattern2's constructor covers pattern1's constructor
+  // Does NOT consider guard conditions
+}
+```
+
+**Solution Options:**
+
+#### Option A: Conservative Skip (Recommended for MVP)
+When a pattern has a guard, skip exhaustiveness checking for that pattern and all subsequent patterns.
+
+**Pros:**
+- Simple implementation
+- No false positives
+- Safe (may miss some real redundancies, but won't report false ones)
+
+**Cons:**
+- Less precise exhaustiveness checking when guards are present
+
+**Implementation:**
+```gleam
+fn check_exhaustiveness(clauses: List(Clause), ty: Type) -> List(Error) {
+  list.fold(clauses, [], fn(acc, clause) {
+    case clause.guard {
+      Some(_) -> {
+        // Guard present - skip exhaustiveness for this and remaining clauses
+        // Add warning that exhaustiveness is not checked with guards
+        acc
+      }
+      None -> {
+        // No guard - check normally
+        check_clause_coverage(clause, acc, ty)
+      }
+    }
+  })
+}
+```
+
+#### Option B: Guard-Aware Checking (Full Solution)
+Extend Maranget's algorithm to track guard conditions and reason about their logical relationships.
+
+**Pros:**
+- Precise exhaustiveness checking
+- Can detect real redundancies even with guards
+
+**Cons:**
+- Complex implementation
+- Requires SMT solver or constraint reasoning
+- May be slow for complex guards
+
+**Implementation Approach:**
+1. Represent guards as logical formulas
+2. Use constraint solving to check if guard1 ∨ guard2 ∨ ... covers all cases
+3. For simple comparisons (>, <, ==), use interval arithmetic
+
+---
+
+### 3.2 Handle Infinite Loops in Evaluation
+
+**Affected Tests:** Recursion tests that timeout during normalization
+
+**Problem:** The `do_app` function's fixpoint unfolding can cause infinite recursion for certain recursive functions during normalization/evaluation.
+
+**Current Implementation (line ~926):**
+```gleam
+fn do_app(ffi: FFI, fun: Value, arg: Value) -> Value {
+  case fun {
+    VFix(name, env, body) -> {
+      let fix_val = VFix(name, env, body)
+      let body_val = eval(ffi, [fix_val, ..env], body)
+      // Only checks if body evaluates to same fixpoint
+      case body_val {
+        VFix(n2, _, _) if n2 == name -> VNeut(HVar(0), [EApp(arg)])
+        _ -> do_app(ffi, body_val, arg)  // Can still loop infinitely
+      }
+    }
+    ...
+  }
+}
+```
+
+**Root Cause:** The self-reference check only catches the case where `body_val` is the same fixpoint. It doesn't catch:
+1. Indirect recursion (A calls B calls A)
+2. Deep recursion that eventually loops
+3. Normalization of recursive types
+
+**Solution Options:**
+
+#### Option A: Step Counter (Recommended)
+Add a step counter to the evaluation that returns a neutral term after N steps.
+
+**Pros:**
+- Simple implementation
+- Guaranteed termination
+- Configurable limit
+
+**Cons:**
+- May stop legitimate long computations
+- Need to choose appropriate limit
+
+**Implementation:**
+```gleam
+pub type EvalState {
+  EvalState(
+    ffi: FFI,
+    env: Env,
+    steps: Int,
+    max_steps: Int,
+  )
+}
+
+pub fn eval_with_limit(ffi: FFI, env: Env, term: Term, max_steps: Int) -> Value {
+  let state = EvalState(ffi: ffi, env: env, steps: 0, max_steps: max_steps)
+  eval_loop(state, term)
+}
+
+fn eval_loop(state: EvalState, term: Term) -> Value {
+  case state.steps >= state.max_steps {
+    True -> VNeut(HStepLimit, [])  // Return neutral term
+    False -> {
+      let new_state = EvalState(..state, steps: state.steps + 1)
+      // ... evaluate normally with new_state
+    }
+  }
+}
+```
+
+#### Option B: Fuel-Based Evaluation
+Pass "fuel" that decreases with each evaluation step.
+
+**Pros:**
+- Similar to step counter
+- More composable
+
+**Cons:**
+- Same limitations as step counter
+
+#### Option C: Lazy Normalization
+Only normalize when necessary for type checking.
+
+**Pros:**
+- Avoids unnecessary computation
+- More efficient
+
+**Cons:**
+- Complex implementation
+- May delay errors
+
+---
+
+## Implementation Plan
+
+### Step 1: Fix Exhaustiveness with Guards (Conservative Approach)
+**File:** `src/core/core.gleam`
+**Function:** `infer_match` and related exhaustiveness checking
+
+1. Add guard detection to clause processing
+2. Skip exhaustiveness checking when guards are present
+3. Optionally add a warning that exhaustiveness is not checked
+
+**Estimated time:** 2-3 hours
+
+### Step 2: Add Step Counter to Evaluation
+**File:** `src/core/core.gleam`
+**Functions:** `eval`, `do_app`, `do_match`, etc.
+
+1. Add `EvalConfig` with `max_steps` field
+2. Thread step counter through all evaluation functions
+3. Return neutral term when limit exceeded
+4. Update `normalize` to use step-limited evaluation
+
+**Estimated time:** 3-4 hours
+
+### Step 3: Test and Verify
+1. Run full test suite
+2. Verify no new failures
+3. Check that previously failing tests now pass
+
+**Estimated time:** 1 hour
+
+---
+
+## Risk Assessment
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| Step counter too low | Medium | False errors | Make configurable, start with 10000 |
+| Step counter too high | Low | Slow tests | Profile and adjust |
+| Guard checking too conservative | Medium | Miss real errors | Add warning messages |
+| Performance regression | Low | Slow type checking | Benchmark before/after |
+
+---
+
+## Success Criteria
+
+- [ ] `match_guard.tao` type checks without errors
+- [ ] All recursion tests complete without timeout
+- [ ] No new test failures introduced
+- [ ] Total tests: 519+ passing
   // ... existing constructors ...
   
   // List type: data List(a) = Cons(a, List(a)) | Nil

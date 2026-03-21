@@ -25,7 +25,7 @@ import core/core.{
   RcdMissingFields, CtrUnsolvedParam, DotFieldNotFound, DotOnNonCtr,
   SpineMismatch, TODO,
   PAny, PAs, PTyp, PLit, PLitT, PRcd, PCtr, PUnit,
-  HVar, HHole, get_span,
+  HVar, HHole, HStepLimit, get_span,
   VTyp, VLit, VLitT, VNeut, VRcd, VCtrValue, VCtr, VLam, VPi, VRecord, VCall, VFix, VUnit, VErr,
   I32, I64, U32, U64, F32, F64,
   I32T, I64T, U32T, U64T, F32T, F64T,
@@ -567,6 +567,7 @@ fn head_to_string(head: Head) -> String {
   case head {
     HVar(index) -> "var[" <> int.to_string(index) <> "]"
     HHole(id) -> "hole[" <> int.to_string(id) <> "]"
+    HStepLimit -> "<step-limit>"
   }
 }
 

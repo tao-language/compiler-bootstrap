@@ -506,6 +506,7 @@ fn head_to_string(head) -> String {
   case head {
     core.HVar(level) -> "var[" <> int.to_string(level) <> "]"
     core.HHole(id) -> "?" <> int.to_string(id)
+    core.HStepLimit -> "<step-limit>"
   }
 }
 
