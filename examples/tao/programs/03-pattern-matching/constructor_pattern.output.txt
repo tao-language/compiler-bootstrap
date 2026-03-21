@@ -1,1 +1,1 @@
-Type errors: 2
+42

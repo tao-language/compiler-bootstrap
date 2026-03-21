@@ -2497,6 +2497,23 @@ pub fn bind_pattern(
                     _ -> s  // Multiple params - can't infer, leave unsolved
                   }
                 }
+                VNeut(HHole(ret_hole_id), _spine) -> {
+                  // ret_ty is an unsolved hole. This happens when the scrutinee type
+                  // wasn't fully inferred (e.g., due to lambda body being checked before
+                  // application). Create a fresh hole for the type parameter and set
+                  // up the constructor type. Unification during body checking will solve it.
+                  case params {
+                    [param_hole_id] -> {
+                      // Single type parameter - create fresh hole for the argument type
+                      let #(arg_hole, s) = new_hole(s)
+                      // Set ret_ty to be Option(arg_hole), which will unify with the body type
+                      // Also unify the param hole with arg_hole so they're solved together
+                      let s = State(..s, sub: [#(ret_hole_id, VCtrValue(VCtr(tag, arg_hole))), ..s.sub])
+                      State(..s, sub: [#(param_hole_id, arg_hole), ..s.sub])
+                    }
+                    _ -> s  // Multiple params - can't infer, leave unsolved
+                  }
+                }
                 _ -> s  // ret_ty not a constructor/type application - leave params unsolved
               }
             }
