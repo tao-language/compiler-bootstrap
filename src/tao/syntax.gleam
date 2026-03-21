@@ -1094,7 +1094,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
       // Application = Atom ("(" Args ")")+
       // Require at least one set of parentheses to distinguish from plain Atom
       // Support empty args: f(), f(x), f(x, y), g(f(5))
-      // Args are Primary expressions (includes parenthesized Expr for nested calls)
+      // Args are Expr expressions (supports nested calls and binary ops)
       rule("Application", [
         alt(
           seq([
@@ -1102,16 +1102,16 @@ pub fn tao_grammar() -> Grammar(Expr) {
             seq([
               token_pattern("LParen"),
               opt(seq([
-                ref("Primary"),
-                many(seq([token_pattern("Comma"), ref("Primary")])),
+                ref("Expr"),
+                many(seq([token_pattern("Comma"), ref("Expr")])),
               ])),
               token_pattern("RParen"),
             ]),
             many(seq([
               token_pattern("LParen"),
               opt(seq([
-                ref("Primary"),
-                many(seq([token_pattern("Comma"), ref("Primary")])),
+                ref("Expr"),
+                many(seq([token_pattern("Comma"), ref("Expr")])),
               ])),
               token_pattern("RParen"),
             ])),

@@ -1,6 +1,5 @@
 // Higher-order functions: functions that take functions as arguments
 // Expected output: 30
-// Note: Nested calls require extra parentheses due to grammar limitations
 
 fn apply(f: fn(I32) -> I32, x: I32) -> I32 {
   f(x)
@@ -16,5 +15,4 @@ fn add_ten(x: I32) -> I32 {
 
 // apply(double, 10) = 20
 // apply(add_ten, 20) = 30
-// Nested calls require extra parens
-apply(add_ten, (apply(double, 10)))
+apply(add_ten, apply(double, 10))
