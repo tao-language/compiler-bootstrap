@@ -16,7 +16,7 @@ import tao/ast.{
   Int as AstInt, Float as AstFloat, String as AstString, type Param, Param as AstParam, TVar,
   BlockStmtExpr, BlockStmtLet, LetDecl, Immutable, Mutable, type BlockStatement,
   Match as AstMatch, MatchClause as AstMatchClause, If as AstIf,
-  type Pattern as AstPattern, PAny, PVar as AstPVar, PLit as AstPLit, PCtr as AstPCtr,
+  type Pattern as AstPattern, PAny as AstPAny, PVar as AstPVar, PLit as AstPLit, PCtr as AstPCtr,
   PRecord as AstPRecord, PTuple as AstPTuple, PList as AstPList, POr as AstPOr, PAs as AstPAs,
   Ctr as AstCtr, Test as AstTest, Run as AstRun,
   type Type as AstType, TFn, TApp, TRecord, TTuple, THole,
@@ -328,7 +328,7 @@ fn clause_to_ast(clause: MatchClause) -> ast.MatchClause {
 
 pub fn pattern_to_ast(pattern: Pattern) -> ast.Pattern {
   case pattern {
-    PWild(span) -> PAny(span)
+    PWild(span) -> AstPAny(span)
     PVar(name, span) -> AstPVar(name, span)
     PLit(value, span) -> AstPLit(AstInt(value), span)
     PCtr(name, args, span) -> AstPCtr(name, list.map(args, pattern_to_ast), span)
@@ -2279,7 +2279,7 @@ fn extract_clause_guard(
 
 pub fn pattern_ast_to_pattern(expr: Expr) -> Pattern {
   case expr {
-    Var("_", span) -> PWild(span)
+    Var("_", span) -> PWild(span)  // Wildcard
     Var(name, span) -> PVar(name, span)
     Int(value, span) -> PLit(value, span)
     Ctr(name, args, span) -> {
