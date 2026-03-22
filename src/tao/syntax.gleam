@@ -17,6 +17,7 @@ import tao/ast.{
   BlockStmtExpr, BlockStmtLet, LetDecl, Immutable, Mutable, type BlockStatement,
   Match as AstMatch, MatchClause as AstMatchClause, If as AstIf,
   type Pattern as AstPattern, PAny, PVar as AstPVar, PLit as AstPLit, PCtr as AstPCtr,
+  PRecord as AstPRecord, PTuple as AstPTuple, PList as AstPList, POr as AstPOr, PAs as AstPAs,
   Ctr as AstCtr, Test as AstTest, Run as AstRun,
   type Type as AstType, TFn, TApp, TRecord, TTuple, THole,
 }
@@ -165,6 +166,16 @@ pub type Pattern {
   PLit(value: Int, span: Span)
   /// Constructor: Some(x), None, True, False
   PCtr(name: String, args: List(Pattern), span: Span)
+  /// Record: { x, y }
+  PRecord(fields: List(String), span: Span)
+  /// Tuple: (a, b)
+  PTuple(args: List(Pattern), span: Span)
+  /// List: [h, ..t]
+  PList(items: List(Pattern), rest: Option(String), span: Span)
+  /// Or pattern: Some(0) | None
+  POr(patterns: List(Pattern), span: Span)
+  /// As pattern: x @ Some(_)
+  PAs(pattern: Pattern, name: String, span: Span)
 }
 
 // ============================================================================
@@ -321,6 +332,11 @@ pub fn pattern_to_ast(pattern: Pattern) -> ast.Pattern {
     PVar(name, span) -> AstPVar(name, span)
     PLit(value, span) -> AstPLit(AstInt(value), span)
     PCtr(name, args, span) -> AstPCtr(name, list.map(args, pattern_to_ast), span)
+    PRecord(fields, span) -> AstPRecord(fields, span)
+    PTuple(args, span) -> AstPTuple(list.map(args, pattern_to_ast), span)
+    PList(items, rest, span) -> AstPList(list.map(items, pattern_to_ast), rest, span)
+    POr(patterns, span) -> AstPOr(list.map(patterns, pattern_to_ast), span)
+    PAs(inner, name, span) -> AstPAs(pattern_to_ast(inner), name, span)
   }
 }
 
@@ -2932,6 +2948,12 @@ fn format_pattern(pattern: Pattern) -> String {
         _ -> name <> "(" <> string_join(list.map(args, format_pattern), ", ") <> ")"
       }
     }
+    PRecord(fields, _) -> "{ " <> string_join(fields, ", ") <> " }"
+    PTuple(args, _) -> "(" <> string_join(list.map(args, format_pattern), ", ") <> ")"
+    PList(items, None, _) -> "[" <> string_join(list.map(items, format_pattern), ", ") <> "]"
+    PList(items, Some(rest), _) -> "[" <> string_join(list.map(items, format_pattern), ", ") <> ", .." <> rest <> "]"
+    POr(patterns, _) -> string_join(list.map(patterns, format_pattern), " | ")
+    PAs(inner, name, _) -> name <> " @ " <> format_pattern(inner)
   }
 }
 

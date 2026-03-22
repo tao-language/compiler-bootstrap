@@ -374,6 +374,21 @@ pub type Pattern {
 
   /// Constructor: Some(x), Cons(h, t), True, False
   PCtr(String, List(Pattern), Span)
+
+  /// Record: { x, y }
+  PRecord(List(String), Span)
+
+  /// Tuple: (a, b)
+  PTuple(List(Pattern), Span)
+
+  /// List: [h, ..t]
+  PList(List(Pattern), Option(String), Span)
+
+  /// Or pattern: Some(0) | None
+  POr(List(Pattern), Span)
+
+  /// As pattern: x @ Some(_)
+  PAs(Pattern, String, Span)
 }
 
 // ============================================================================
@@ -529,6 +544,11 @@ pub fn span_from_pattern(pattern: Pattern) -> Span {
     PVar(_, span) -> span
     PLit(_, span) -> span
     PCtr(_, _, span) -> span
+    PRecord(_, span) -> span
+    PTuple(_, span) -> span
+    PList(_, _, span) -> span
+    POr(_, span) -> span
+    PAs(_, _, span) -> span
   }
 }
 

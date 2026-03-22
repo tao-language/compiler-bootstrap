@@ -1616,6 +1616,35 @@ fn tao_pattern_to_core_pattern(
       // Constructor pattern
       tao_ctr_pattern_to_core(name, args, dc)
     }
+    ast.PRecord(field_names, _pattern_span) -> {
+      // Record pattern: {x, y} → {x = x, y = y}
+      let core_fields = list.map(field_names, fn(field_name) {
+        #(field_name, PAs(PAny, field_name))
+      })
+      let dc1 = list.fold(field_names, dc, fn(acc, name) {
+        add_local(acc, name)
+      })
+      #(PRcd(core_fields), dc1)
+    }
+    ast.PTuple(items, _pattern_span) -> {
+      // Tuple pattern: (a, b) → record with numeric fields
+      tao_tuple_pattern_to_core(items, dc)
+    }
+    ast.PList(items, rest_name, _pattern_span) -> {
+      // List pattern: [h, ..t] or [a, b, c]
+      tao_list_pattern_to_core(items, rest_name, dc)
+    }
+    ast.POr(_patterns, _pattern_span) -> {
+      // Or pattern: simplified to PAny (full support needs core changes)
+      #(PAny, dc)
+    }
+    ast.PAs(inner_pattern, alias, _pattern_span) -> {
+      // As pattern: x @ Some(_)
+      let #(core_inner, dc1) = tao_pattern_to_core_pattern(inner_pattern, dc)
+      let core_pattern = PAs(core_inner, alias)
+      let dc2 = add_local(dc1, alias)
+      #(core_pattern, dc2)
+    }
   }
 }
 
@@ -1656,6 +1685,90 @@ fn tao_ctr_pattern_to_core_loop(
       let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
       let #(core_rest, dc2) = tao_ctr_pattern_to_core_loop(name, rest, dc1)
       #(PPCtr(name, core_first), dc2)
+    }
+  }
+}
+
+/// Convert tuple pattern to Core (tuple = record with numeric fields).
+fn tao_tuple_pattern_to_core(
+  items: List(Pattern),
+  dc: DesugarContext,
+) -> #(CorePattern, DesugarContext) {
+  tao_tuple_pattern_loop(items, 0, [], dc)
+}
+
+fn tao_tuple_pattern_loop(
+  items: List(Pattern),
+  index: Int,
+  acc: List(#(String, CorePattern)),
+  dc: DesugarContext,
+) -> #(CorePattern, DesugarContext) {
+  case items {
+    [] -> {
+      #(PRcd(list.reverse(acc)), dc)
+    }
+    [item, ..rest] -> {
+      let field_name = int.to_string(index)
+      let #(core_item, dc1) = tao_pattern_to_core_pattern(item, dc)
+      tao_tuple_pattern_loop(rest, index + 1, [#(field_name, core_item), ..acc], dc1)
+    }
+  }
+}
+
+/// Convert list pattern to Core.
+fn tao_list_pattern_to_core(
+  items: List(Pattern),
+  rest_name: Option(String),
+  dc: DesugarContext,
+) -> #(CorePattern, DesugarContext) {
+  case items {
+    [] -> {
+      // Empty list: Nil
+      case rest_name {
+        Some(name) -> {
+          // [..rest] or [] with rest
+          let core_pattern = PPCtr("Nil", PUnit)
+          let dc1 = add_local(dc, name)
+          #(PAs(core_pattern, name), dc1)
+        }
+        None -> {
+          #(PPCtr("Nil", PUnit), dc)
+        }
+      }
+    }
+    [first, ..rest] -> {
+      // Non-empty list: Cons(h, t)
+      let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
+      let #(core_rest, dc2) = tao_list_rest_pattern_to_core(rest, rest_name, dc1)
+      #(PPCtr("Cons", core_first), dc2)
+    }
+  }
+}
+
+fn tao_list_rest_pattern_to_core(
+  rest: List(Pattern),
+  rest_name: Option(String),
+  dc: DesugarContext,
+) -> #(CorePattern, DesugarContext) {
+  case rest {
+    [] -> {
+      // End of list: Nil
+      case rest_name {
+        Some(name) -> {
+          let core_pattern = PPCtr("Nil", PUnit)
+          let dc1 = add_local(dc, name)
+          #(PAs(core_pattern, name), dc1)
+        }
+        None -> {
+          #(PPCtr("Nil", PUnit), dc)
+        }
+      }
+    }
+    [first, ..rest_rest] -> {
+      // More elements: Cons(h, t)
+      let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
+      let #(core_rest, dc2) = tao_list_rest_pattern_to_core(rest_rest, rest_name, dc1)
+      #(PPCtr("Cons", core_first), dc2)
     }
   }
 }
