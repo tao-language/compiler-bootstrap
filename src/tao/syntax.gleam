@@ -17,7 +17,6 @@ import tao/ast.{
   BlockStmtExpr, BlockStmtLet, LetDecl, Immutable, Mutable, type BlockStatement,
   Match as AstMatch, MatchClause as AstMatchClause, If as AstIf,
   type Pattern as AstPattern, PAny, PVar as AstPVar, PLit as AstPLit, PCtr as AstPCtr,
-  PRecord as AstPRecord, PTuple as AstPTuple, PList as AstPList, POr as AstPOr, PAs as AstPAs,
   Ctr as AstCtr, Test as AstTest, Run as AstRun,
   type Type as AstType, TFn, TApp, TRecord, TTuple, THole,
 }
@@ -166,16 +165,6 @@ pub type Pattern {
   PLit(value: Int, span: Span)
   /// Constructor: Some(x), None, True, False
   PCtr(name: String, args: List(Pattern), span: Span)
-  /// Record: { x, y }
-  PRecord(fields: List(String), span: Span)
-  /// Tuple: (a, b)
-  PTuple(args: List(Pattern), span: Span)
-  /// List: [h, ..t]
-  PList(items: List(Pattern), rest: Option(String), span: Span)
-  /// Or pattern: Some(0) | None
-  POr(patterns: List(Pattern), span: Span)
-  /// As pattern: x @ Some(_)
-  PAs(pattern: Pattern, name: String, span: Span)
 }
 
 // ============================================================================
@@ -332,11 +321,6 @@ pub fn pattern_to_ast(pattern: Pattern) -> ast.Pattern {
     PVar(name, span) -> AstPVar(name, span)
     PLit(value, span) -> AstPLit(AstInt(value), span)
     PCtr(name, args, span) -> AstPCtr(name, list.map(args, pattern_to_ast), span)
-    PRecord(fields, span) -> AstPRecord(fields, span)
-    PTuple(args, span) -> AstPTuple(list.map(args, pattern_to_ast), span)
-    PList(items, rest, span) -> AstPList(list.map(items, pattern_to_ast), rest, span)
-    POr(patterns, span) -> AstPOr(list.map(patterns, pattern_to_ast), span)
-    PAs(inner, name, span) -> AstPAs(pattern_to_ast(inner), name, span)
   }
 }
 
@@ -2035,29 +2019,8 @@ pub fn pattern_ast_to_pattern(expr: Expr) -> Pattern {
       PCtr(name, pattern_args, span)
     }
     // For now, all other expressions become wildcards
-    // TODO: Add support for tuple, record, list, or, as patterns
-    Block(_, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    Int(_, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    Float(_, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    Str(_, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    BinOp(_, _, _, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    UnaryOp(_, _, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    OverloadedFn(_, _, _, _, _, _, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    OverloadedApp(_, _, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    Let(_, _, _, _, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    SimpleFn(_, _, _, _, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    App(_, _, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    Lambda(_, _, _, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    Match(_, _, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    If(_, _, _, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    Test(_, _, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    Run(_, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    For(_, _, _, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    While(_, _, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    Loop(_, _) -> PWild(Span("todo", 0, 0, 0, 0))
-    Break(_) -> PWild(Span("todo", 0, 0, 0, 0))
-    Continue(_) -> PWild(Span("todo", 0, 0, 0, 0))
-    Import(_, _) -> PWild(Span("todo", 0, 0, 0, 0))
+    // Advanced patterns (tuple, record, list, or, as) need grammar support
+    _ -> PWild(Span("todo", 0, 0, 0, 0))
   }
 }
 
@@ -2969,12 +2932,6 @@ fn format_pattern(pattern: Pattern) -> String {
         _ -> name <> "(" <> string_join(list.map(args, format_pattern), ", ") <> ")"
       }
     }
-    PRecord(fields, _) -> "{ " <> string_join(fields, ", ") <> " }"
-    PTuple(args, _) -> "(" <> string_join(list.map(args, format_pattern), ", ") <> ")"
-    PList(items, None, _) -> "[" <> string_join(list.map(items, format_pattern), ", ") <> "]"
-    PList(items, Some(rest), _) -> "[" <> string_join(list.map(items, format_pattern), ", ") <> ", .." <> rest <> "]"
-    POr(patterns, _) -> string_join(list.map(patterns, format_pattern), " | ")
-    PAs(inner, name, _) -> name <> " @ " <> format_pattern(inner)
   }
 }
 
