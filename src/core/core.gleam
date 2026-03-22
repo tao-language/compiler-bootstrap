@@ -3234,6 +3234,8 @@ pub fn check_exhaustiveness(
       case list.last(cases) {
         Ok(Case(pattern: PAny, guard: None, ..)) -> redundant_errors
         Ok(Case(pattern: PAs(PAny, _), guard: None, ..)) -> redundant_errors
+        // Also check for PWild (syntax wildcard that wasn't converted)
+        Ok(Case(pattern: PWild(_), guard: None, ..)) -> redundant_errors
         _ -> {
           // Continue with normal exhaustiveness checking for missing cases
           let missing_errors = check_exhaustiveness_loop(s, cases, span)

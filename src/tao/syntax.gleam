@@ -328,7 +328,7 @@ fn clause_to_ast(clause: MatchClause) -> ast.MatchClause {
 
 pub fn pattern_to_ast(pattern: Pattern) -> ast.Pattern {
   case pattern {
-    PWild(span) -> AstPAny(span)
+    PWild(span) -> AstPAny(span)  // Convert syntax wildcard to AST wildcard
     PVar(name, span) -> AstPVar(name, span)
     PLit(value, span) -> AstPLit(AstInt(value), span)
     PCtr(name, args, span) -> AstPCtr(name, list.map(args, pattern_to_ast), span)
@@ -2279,7 +2279,7 @@ fn extract_clause_guard(
 
 pub fn pattern_ast_to_pattern(expr: Expr) -> Pattern {
   case expr {
-    Var("_", span) -> PWild(span)  // Wildcard
+    Var("_", span) -> PWild(span)  // Wildcard: _
     Var(name, span) -> PVar(name, span)
     Int(value, span) -> PLit(value, span)
     Ctr(name, args, span) -> {
@@ -2345,7 +2345,7 @@ pub fn pattern_ast_to_pattern(expr: Expr) -> Pattern {
       }
     }
     // For now, all other expressions become wildcards
-    _ -> PWild(Span("todo", 0, 0, 0, 0))
+    _ -> PWild(span_from_expr(expr))
   }
 }
 

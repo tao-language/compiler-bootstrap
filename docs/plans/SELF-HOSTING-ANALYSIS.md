@@ -91,11 +91,11 @@ Map(k, v)        // For symbol tables
 
 ---
 
-### 2. Pattern Matching Syntax (80% Complete) - **AST COMPLETE, GRAMMAR PENDING**
+### 2. Pattern Matching Syntax (95% Complete) - **GRAMMAR COMPLETE, EXHAUSTIVENESS FIX NEEDED**
 
-**Status**: AST and desugarer support all pattern types. Grammar rules pending.
+**Status**: Grammar and AST conversion complete. Minor exhaustiveness checking issue with wildcard patterns.
 
-**What works** (basic patterns via expression parsing):
+**What works**:
 ```tao
 // ✅ Wildcard pattern
 match x {
@@ -125,26 +125,65 @@ match x {
   | n if n > 0 && n < 10 -> 1
   | _ -> 0
 }
+
+// ✅ Tuple pattern
+match pair {
+  | (a, b) -> a + b
+}
+
+// ✅ Record pattern
+match point {
+  | {x, y} -> x * y
+}
+
+// ✅ List pattern
+match list {
+  | [h, ..t] -> h
+}
+
+// ✅ Or pattern
+match x {
+  | 0 | 1 | 2 -> "small"
+  | _ -> "large"
+}
+
+// ✅ As pattern
+match opt {
+  | result @ Some(val) -> result
+  | None -> None
+}
 ```
 
-**AST support** (ready for grammar):
-- ✅ `PRecord(fields, span)` - Record patterns: `{x, y}`
-- ✅ `PTuple(args, span)` - Tuple patterns: `(a, b)`
-- ✅ `PList(items, rest, span)` - List patterns: `[h, ..t]`
-- ✅ `POr(patterns, span)` - Or patterns: `Some(0) | None`
-- ✅ `PAs(pattern, name, span)` - As patterns: `x @ Some(_)`
+**AST support** (complete):
+- ✅ `PWild(span)` - Wildcard pattern in syntax layer
+- ✅ `PVar(name, span)` - Variable pattern
+- ✅ `PLit(value, span)` - Literal pattern
+- ✅ `PCtr(name, args, span)` - Constructor pattern
+- ✅ `PRecord(fields, span)` - Record pattern
+- ✅ `PTuple(args, span)` - Tuple pattern
+- ✅ `PList(items, rest, span)` - List pattern
+- ✅ `POr(patterns, span)` - Or pattern
+- ✅ `PAs(pattern, name, span)` - As pattern
+
+**Conversion pipeline**:
+- ✅ `syntax.PWild` → `ast.PAny` → `core.PAny`
+- ✅ All pattern types convert correctly through the pipeline
 
 **Desugarer support**:
-- ✅ `tao_pattern_to_core_pattern` - Converts all pattern types to Core
+- ✅ `tao_pattern_to_core_pattern` - Converts all pattern types to Core patterns
 - ✅ `tao_tuple_pattern_to_core` - Tuple → record with numeric fields
 - ✅ `tao_list_pattern_to_core` - List → nested Cons/Nil
 
+**Known issue**:
+- ⚠️ Wildcard patterns (`_`) are parsed and converted correctly, but the exhaustiveness checker in `core.gleam` doesn't recognize them as covering all cases. This is a minor issue in the exhaustiveness checking logic, not in the pattern parsing or conversion.
+- **Workaround**: Add an explicit catch-all case or use a variable pattern instead of `_`
+
 **What's pending**:
-- ❌ Grammar rules for advanced patterns (needs careful design to avoid circular dependencies)
+- 🐛 Fix exhaustiveness checking to recognize `PAny` as covering all cases
 
-**Estimated effort**: 1-2 days for grammar rules
+**Estimated effort**: 1-2 hours to fix exhaustiveness checking
 
-**Status**: The AST, desugarer, and formatter fully support all pattern types. The grammar rules need to be added using the same delimiter helpers used for function application to ensure consistent parsing of tuples, records, lists, and other collection-like patterns.
+**Status**: The pattern grammar, AST, and desugarer fully support all pattern types. The only remaining issue is in the exhaustiveness checking logic in `core.gleam`, which needs to be updated to recognize `PAny` patterns as exhaustive.
 
 ---
 

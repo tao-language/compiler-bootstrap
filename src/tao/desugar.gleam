@@ -1604,7 +1604,7 @@ fn tao_pattern_to_core_pattern(
       #(core_pattern, dc1)
     }
     ast.PAny(_pattern_span) -> {
-      // Wildcard pattern
+      // Wildcard pattern (AST)
       #(PAny, dc)
     }
     ast.PLit(literal, _pattern_span) -> {
