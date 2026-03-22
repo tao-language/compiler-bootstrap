@@ -1293,7 +1293,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
           make_loop,
         ),
         // Match expression: match scrutinee { | pattern -> body }
-        // Patterns are parsed as expressions and converted in pattern_ast_to_pattern
+        // Patterns are parsed using the Pattern rule (defined below as top-level rule)
         alt(
           seq([
             keyword_pattern("match"),
@@ -1305,7 +1305,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
             token_pattern("LBrace"),
             many(seq([
               token_pattern("Pipe"),  // |
-              ref("Expr"),  // pattern (parsed as expression, converted later)
+              ref("Pattern"),  // pattern (top-level rule)
               opt(seq([
                 keyword_pattern("if"),
                 ref("Expr"),  // guard
@@ -1316,6 +1316,259 @@ pub fn tao_grammar() -> Grammar(Expr) {
             token_pattern("RBrace"),
           ]),
           make_match,
+        ),
+      ]),
+      // Pattern rules for match expressions (top-level rules, referenced by Match above)
+      // Pattern = OrPattern (supports p1 | p2 | p3)
+      rule("Pattern", [
+        alt(ref("OrPattern"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> Int(0, Span("error", 0, 0, 0, 0))
+          }
+        }),
+      ]),
+      // OrPattern = AsPattern ("|" AsPattern)*
+      rule("OrPattern", [
+        alt(
+          seq([
+            ref("AsPattern"),
+            many(seq([token_pattern("Pipe"), ref("AsPattern")])),
+          ]),
+          fn(values) {
+            case values {
+              [AstValue(first), rest, ..] -> {
+                // rest from many() is ListValue([ListValue([Pipe, AsPattern]), ...])
+                let rest_patterns = case rest {
+                  ListValue(items) -> {
+                    list.flat_map(items, fn(item) {
+                      case item {
+                        ListValue([_, AstValue(p)], ..) -> [p]
+                        _ -> []
+                      }
+                    })
+                  }
+                  _ -> []
+                }
+                let patterns = [first, ..rest_patterns]
+                case patterns {
+                  [single] -> single
+                  _ -> {
+                    // Wrap as Or constructor for later conversion
+                    Ctr("Or", patterns, Span("or", 0, 0, 0, 0))
+                  }
+                }
+              }
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+      ]),
+      // AsPattern = PrimaryPattern ("@" Ident)?
+      rule("AsPattern", [
+        alt(
+          seq([
+            ref("PrimaryPattern"),
+            opt(seq([token_pattern("At"), token_pattern("Ident")])),
+          ]),
+          fn(values) {
+            case values {
+              [AstValue(p), ListValue([_, TokenValue(name)]), ..] -> {
+                // Wrap as As constructor for later conversion
+                Ctr("As", [Var(name.value, Span("as", 0, 0, 0, 0)), p], Span("as", 0, 0, 0, 0))
+              }
+              [AstValue(p), ..] -> p
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+      ]),
+      // PrimaryPattern = Wildcard | Variable | Literal | Constructor | Record | Tuple | List
+      rule("PrimaryPattern", [
+        // Wildcard: _
+        alt(
+          token_pattern("Underscore"),
+          fn(_) { Var("_", Span("_", 0, 0, 0, 0)) },
+        ),
+        // Variable: x (lowercase identifier)
+        alt(
+          token_pattern("Ident"),
+          fn(values) {
+            case values {
+              [TokenValue(t)] -> {
+                case is_uppercase_start(t.value) {
+                  True -> Int(0, Span("error", 0, 0, 0, 0))  // Constructor, not variable
+                  False -> Var(t.value, Span("var", t.line, t.column, t.line, t.column + string.length(t.value)))
+                }
+              }
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+        // Literal: 42
+        alt(
+          ref("Integer"),
+          fn(values) {
+            case values {
+              [TokenValue(t)] -> Int(int.parse(t.value) |> result.unwrap(0), Span("lit", t.line, t.column, t.line, t.column + string.length(t.value)))
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+        // Constructor: Some(x), None, True, False
+        alt(
+          ref("ConstructorPattern"),
+          fn(values) {
+            case values {
+              [AstValue(p)] -> p
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+        // Record: { x, y, z } - use seq with many for consistent parsing
+        alt(
+          seq([
+            token_pattern("LBrace"),
+            ref("Ident"),
+            many(seq([token_pattern("Comma"), ref("Ident")])),
+            token_pattern("RBrace"),
+          ]),
+          fn(values) {
+            case values {
+              [_, TokenValue(first), rest, ..] -> {
+                // rest from many() is ListValue([ListValue([Comma, Ident]), ...])
+                let rest_names = case rest {
+                  ListValue(items) -> {
+                    list.flat_map(items, fn(item) {
+                      case item {
+                        ListValue([_, TokenValue(t)], ..) -> [t.value]
+                        _ -> []
+                      }
+                    })
+                  }
+                  _ -> []
+                }
+                let field_names = [first.value, ..rest_names]
+                // Wrap as Record constructor for later conversion
+                let args = list.map(field_names, fn(name) { Var(name, Span("field", 0, 0, 0, 0)) })
+                Ctr("Record", args, Span("rec", 0, 0, 0, 0))
+              }
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+        // Tuple: (a, b, c) - use seq with many for comma-separated patterns
+        alt(
+          seq([
+            token_pattern("LParen"),
+            ref("Pattern"),
+            many(seq([token_pattern("Comma"), ref("Pattern")])),
+            token_pattern("RParen"),
+          ]),
+          fn(values) {
+            case values {
+              [_, AstValue(first), rest, ..] -> {
+                // rest from many() is ListValue([ListValue([Comma, Pattern]), ...])
+                let rest_patterns = case rest {
+                  ListValue(items) -> {
+                    list.flat_map(items, fn(item) {
+                      case item {
+                        ListValue([_, AstValue(p)], ..) -> [p]
+                        _ -> []
+                      }
+                    })
+                  }
+                  _ -> []
+                }
+                let patterns = [first, ..rest_patterns]
+                case patterns {
+                  [single] -> single  // Single element = just the pattern
+                  _ -> {
+                    // Wrap as Tuple constructor for later conversion
+                    Ctr("Tuple", patterns, Span("tup", 0, 0, 0, 0))
+                  }
+                }
+              }
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+        // List: [a, b, c] or [h, ..t]
+        alt(
+          seq([
+            token_pattern("LBracket"),
+            ref("Pattern"),
+            many(seq([token_pattern("Comma"), ref("Pattern")])),
+            opt(seq([
+              token_pattern("Comma"),
+              token_pattern("DotDot"),
+              token_pattern("Ident"),
+            ])),
+            token_pattern("RBracket"),
+          ]),
+          fn(values) {
+            case values {
+              [_, AstValue(first), rest, opt_rest, ..] -> {
+                // rest from many() is ListValue([ListValue([Comma, Pattern]), ...])
+                let rest_patterns = case rest {
+                  ListValue(items) -> {
+                    list.flat_map(items, fn(item) {
+                      case item {
+                        ListValue([_, AstValue(p)], ..) -> [p]
+                        _ -> []
+                      }
+                    })
+                  }
+                  _ -> []
+                }
+                let items = [first, ..rest_patterns]
+                case opt_rest {
+                  ListValue([_, _, TokenValue(rest_name)], ..) -> {
+                    let all_items = list.append(items, [Var(rest_name.value, Span("rest", 0, 0, 0, 0))])
+                    Ctr("ListRest", all_items, Span("list", 0, 0, 0, 0))
+                  }
+                  _ -> Ctr("List", items, Span("list", 0, 0, 0, 0))
+                }
+              }
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+      ]),
+      // ConstructorPattern = Ident ("(" Pattern ("," Pattern)* ")")?
+      rule("ConstructorPattern", [
+        alt(
+          seq([
+            token_pattern("Ident"),
+            opt(seq([
+              token_pattern("LParen"),
+              ref("Pattern"),
+              many(seq([token_pattern("Comma"), ref("Pattern")])),
+              token_pattern("RParen"),
+            ])),
+          ]),
+          fn(values) {
+            case values {
+              [TokenValue(name)] -> Ctr(name.value, [], Span("ctr", name.line, name.column, name.line, name.column + string.length(name.value)))
+              [TokenValue(name), ListValue([_, AstValue(first), rest, ..]), ..] -> {
+                // rest from many() is ListValue([ListValue([Comma, Pattern]), ...])
+                let rest_patterns = case rest {
+                  ListValue(items) -> {
+                    list.flat_map(items, fn(item) {
+                      case item {
+                        ListValue([_, AstValue(p)], ..) -> [p]
+                        _ -> []
+                      }
+                    })
+                  }
+                  _ -> []
+                }
+                let args = [first, ..rest_patterns]
+                Ctr(name.value, args, Span("ctr", name.line, name.column, name.line, name.column + string.length(name.value)))
+              }
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
+            }
+          },
         ),
       ]),
       // Block = "{" Stmt* "}"
@@ -2030,12 +2283,68 @@ pub fn pattern_ast_to_pattern(expr: Expr) -> Pattern {
     Var(name, span) -> PVar(name, span)
     Int(value, span) -> PLit(value, span)
     Ctr(name, args, span) -> {
-      // Constructor pattern: Some(x), None, True, False
-      let pattern_args = list.map(args, pattern_ast_to_pattern)
-      PCtr(name, pattern_args, span)
+      case name {
+        // Tuple pattern: (a, b, c)
+        "Tuple" -> {
+          let pattern_args = list.map(args, pattern_ast_to_pattern)
+          PTuple(pattern_args, span)
+        }
+        // Record pattern: {x, y, z}
+        "Record" -> {
+          let field_names = list.map(args, fn(arg) {
+            case arg {
+              Var(n, _) -> n
+              _ -> ""
+            }
+          })
+          PRecord(field_names, span)
+        }
+        // List pattern without rest: [a, b, c]
+        "List" -> {
+          let pattern_items = list.map(args, pattern_ast_to_pattern)
+          PList(pattern_items, None, span)
+        }
+        // List pattern with rest: [h, ..t]
+        "ListRest" -> {
+          // Get all but last as items, last as rest
+          let len = list.length(args)
+          case len {
+            0 -> PList([], None, span)
+            _ -> {
+              let rest_var = list.last(args)
+              let items = list.take(args, len - 1)
+              let rest_name = case rest_var {
+                Ok(Var(n, _)) -> Some(n)
+                _ -> None
+              }
+              let pattern_items = list.map(items, pattern_ast_to_pattern)
+              PList(pattern_items, rest_name, span)
+            }
+          }
+        }
+        // As pattern: x @ pattern
+        "As" -> {
+          case args {
+            [Var(alias, _), inner] -> {
+              let inner_pattern = pattern_ast_to_pattern(inner)
+              PAs(inner_pattern, alias, span)
+            }
+            _ -> PWild(span)
+          }
+        }
+        // Or pattern: p1 | p2 | p3
+        "Or" -> {
+          let patterns = list.map(args, pattern_ast_to_pattern)
+          POr(patterns, span)
+        }
+        // Regular constructor pattern: Some(x), None, True, False
+        _ -> {
+          let pattern_args = list.map(args, pattern_ast_to_pattern)
+          PCtr(name, pattern_args, span)
+        }
+      }
     }
     // For now, all other expressions become wildcards
-    // Advanced patterns (tuple, record, list, or, as) need grammar support
     _ -> PWild(Span("todo", 0, 0, 0, 0))
   }
 }
@@ -2352,6 +2661,26 @@ fn extract_args_from_delimited(items: List(Value(Expr)), acc: List(Expr)) -> Lis
     [_, ..rest] -> {
       // Skip separators and other tokens
       extract_args_from_delimited(rest, acc)
+    }
+  }
+}
+
+/// Extract field names from delimited list (for record patterns).
+fn extract_field_names_from_delimited(items: List(Value(Expr)), acc: List(String)) -> List(String) {
+  case items {
+    [] -> list.reverse(acc)
+    [TokenValue(t), ..rest] -> {
+      // Field name identifier
+      extract_field_names_from_delimited(rest, [t.value, ..acc])
+    }
+    [ListValue(nested), ..rest] -> {
+      // Nested structure - extract recursively
+      let nested_names = extract_field_names_from_delimited(nested, [])
+      extract_field_names_from_delimited(rest, list.append(nested_names, acc))
+    }
+    [_, ..rest] -> {
+      // Skip separators and other tokens
+      extract_field_names_from_delimited(rest, acc)
     }
   }
 }
