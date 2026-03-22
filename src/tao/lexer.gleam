@@ -73,7 +73,7 @@ pub const operators = [
   // Delimiters
   "(", ")", "{", "}", "[", "]",
   // Pattern matching
-  "|",
+  "|", "@", "..",
   // Type system
   "<", ">",
   // Null coalescing

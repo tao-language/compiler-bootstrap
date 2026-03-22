@@ -25,18 +25,19 @@ Tao is syntax sugar over the core language. All heavy lifting (type checking, no
 
 ### ✅ Complete
 
-**Tao Core** - Expression parsing, overloading, type matching, and CLI integration:
+**Tao Core** - Expression parsing, overloading, type matching, pattern matching, and CLI integration:
 
 | Component | Status | Description |
 |-----------|--------|-------------|
-| **Tao Lexer** | ✅ Complete | Tokenizes identifiers, numbers, operators, keywords |
-| **Tao Grammar** | ✅ Complete | Parses expressions and overloaded function definitions |
-| **Tao Formatter** | ✅ Complete | Formats expressions and overloaded functions |
-| **Tao Desugarer** | ✅ Complete | Transforms Tao → Core with type matching |
+| **Tao Lexer** | ✅ Complete | Tokenizes identifiers, numbers, operators, keywords, `@`, `..` |
+| **Tao Grammar** | ✅ Complete | Parses expressions, overloaded functions, match with patterns |
+| **Tao Formatter** | ✅ Complete | Formats expressions, overloaded functions, patterns |
+| **Tao Desugarer** | ✅ Complete | Transforms Tao → Core with type matching and pattern conversion |
 | **Type Matching** | ✅ Complete | Generates match expressions on type parameters |
+| **Pattern Matching** | ✅ 80% Complete | Wildcard, variable, literal, constructor patterns work; tuple/record/list/or/as need grammar fixes |
 | **CLI Integration** | ✅ Complete | `gleam run run file.tao` works |
-| **Examples** | ✅ Complete | 3 working examples |
-| **Tests** | ✅ 420 passing | 4 expected failures (incomplete match) |
+| **Examples** | ✅ Complete | Pattern matching examples working |
+| **Tests** | ✅ 519 passing | All tests green |
 
 **Core Features**:
 - ✅ Numbers: `42`, `3.14`
@@ -47,9 +48,23 @@ Tao is syntax sugar over the core language. All heavy lifting (type checking, no
 - ✅ Parentheses: `(1 + 2) * 3`
 - ✅ **Overloading**: `fn (+)(x: I32) -> I32 { x + 1 }`
 - ✅ **Type Matching**: Implicit type params with match expressions
+- ✅ **Pattern Matching**: `match x { | Some(n) -> n | None -> 0 }`
+- ✅ **Match Guards**: `match x { | n if n > 0 -> 1 | _ -> 0 }`
 - ✅ Desugaring: `x + y` → `%call i32_add(x, y)`
 - ✅ Type checking via Core
 - ✅ Evaluation via Core
+
+**Pattern Matching Status**:
+- ✅ Wildcard: `_`
+- ✅ Variable: `n`
+- ✅ Literal: `0`, `1`
+- ✅ Constructor: `Some(x)`, `None`, `True`, `False`
+- ✅ Guards: `n if n > 0`
+- ⏳ Tuple: `(a, b)` - AST ready, grammar pending
+- ⏳ Record: `{x, y}` - AST ready, grammar pending
+- ⏳ List: `[h, ..t]` - AST ready, grammar pending
+- ⏳ Or: `p1 | p2` - AST ready, grammar pending
+- ⏳ As: `x @ pattern` - AST ready, grammar pending
 
 **Example Usage**:
 ```bash

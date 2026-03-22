@@ -635,12 +635,23 @@ fn tokenize_other_operator(state: LexerState, start_pos: Int, start_line: Int, s
                                       LexerState(..state, tokens: [token, ..state.tokens])
                                     }
                                     False -> {
-                                      // Single character operator
-                                      let state = advance(state)
-                                      let end_pos = state.pos
-                                      let kind = get_operator_kind(char)
-                                      let token = Token(kind: kind, value: char, start: start_pos, end: end_pos, line: start_line, column: start_column)
-                                      LexerState(..state, tokens: [token, ..state.tokens])
+                                      case char == "." && next_char == Some(".") {
+                                        True -> {
+                                          // DotDot: ..
+                                          let state = advance(state) |> advance
+                                          let end_pos = state.pos
+                                          let token = Token(kind: "DotDot", value: "..", start: start_pos, end: end_pos, line: start_line, column: start_column)
+                                          LexerState(..state, tokens: [token, ..state.tokens])
+                                        }
+                                        False -> {
+                                          // Single character operator
+                                          let state = advance(state)
+                                          let end_pos = state.pos
+                                          let kind = get_operator_kind(char)
+                                          let token = Token(kind: kind, value: char, start: start_pos, end: end_pos, line: start_line, column: start_column)
+                                          LexerState(..state, tokens: [token, ..state.tokens])
+                                        }
+                                      }
                                     }
                                   }
                                 }

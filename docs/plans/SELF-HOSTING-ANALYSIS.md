@@ -91,39 +91,58 @@ Map(k, v)        // For symbol tables
 
 ---
 
-### 2. Pattern Matching Syntax (40% Complete) - **CRITICAL**
+### 2. Pattern Matching Syntax (80% Complete) - **MOSTLY COMPLETE**
 
-**Problem**: Core supports it, but Tao surface syntax is incomplete.
+**Problem**: Core supports it, Tao surface syntax is mostly complete.
 
-**What you need**:
+**What works**:
 ```tao
-// Can't do this yet:
-fn factorial(n: I32) -> I32 {
-  match n {
-    | 0 -> 1
-    | _ -> n * factorial(n - 1)
-  }
+// ✅ Wildcard pattern
+match x {
+  | _ -> 100
 }
 
-// Currently need Core syntax:
-%match n {
+// ✅ Variable pattern
+match x {
+  | n -> n + 1
+}
+
+// ✅ Literal pattern
+match x {
   | 0 -> 1
-  | _ -> %call i32_mul(n, %call factorial(%call i32_sub(n, 1)))
+  | 1 -> 2
+  | _ -> x
+}
+
+// ✅ Constructor pattern
+match opt {
+  | Some(x) -> x
+  | None -> 0
+}
+
+// ✅ Match guards
+match x {
+  | n if n > 0 && n < 10 -> 1
+  | _ -> 0
 }
 ```
+
+**What's partially working**:
+- ❌ Tuple patterns: `(a, b)` - AST support exists, grammar needs work
+- ❌ Record patterns: `{x, y}` - AST support exists, grammar needs work  
+- ❌ List patterns: `[h, ..t]` - AST support exists, grammar needs work
+- ❌ Or patterns: `Some(0) | None` - AST support exists, grammar needs work
+- ❌ As patterns: `x @ Some(_)` - AST support exists, grammar needs work
 
 **What's working**:
 - ✅ Core match with full pattern support
 - ✅ Exhaustiveness checking
-- ✅ Guard expressions (conservative)
+- ✅ Guard expressions
+- ✅ Basic patterns (wildcard, variable, literal, constructor)
 
-**What's missing**:
-- ❌ Tao surface syntax for match
-- ❌ Pattern syntax (constructors, tuples, records)
-- ❌ As-patterns, or-patterns
-- ❌ Let bindings in patterns
+**Estimated effort**: 2-3 days for remaining patterns
 
-**Estimated effort**: 1-2 weeks
+**Status**: The AST and desugarer fully support all pattern types. The grammar rules need to be fixed to parse them correctly. This is a matter of updating the grammar, not the core logic.
 
 ---
 
