@@ -91,9 +91,9 @@ Map(k, v)        // For symbol tables
 
 ---
 
-### 2. Pattern Matching Syntax (80% Complete) - **MOSTLY COMPLETE**
+### 2. Pattern Matching Syntax (60% Complete) - **BASIC PATTERNS WORK**
 
-**Problem**: Core supports it, Tao surface syntax is mostly complete.
+**Status**: Basic patterns work, advanced patterns need grammar redesign.
 
 **What works**:
 ```tao
@@ -127,12 +127,12 @@ match x {
 }
 ```
 
-**What's partially working**:
-- ❌ Tuple patterns: `(a, b)` - AST support exists, grammar needs work
-- ❌ Record patterns: `{x, y}` - AST support exists, grammar needs work  
-- ❌ List patterns: `[h, ..t]` - AST support exists, grammar needs work
-- ❌ Or patterns: `Some(0) | None` - AST support exists, grammar needs work
-- ❌ As patterns: `x @ Some(_)` - AST support exists, grammar needs work
+**What's pending**:
+- ❌ Tuple patterns: `(a, b)` - needs grammar redesign
+- ❌ Record patterns: `{x, y}` - needs grammar redesign
+- ❌ List patterns: `[h, ..t]` - needs grammar redesign
+- ❌ Or patterns: `Some(0) | None` - needs grammar redesign
+- ❌ As patterns: `x @ Some(_)` - needs grammar redesign
 
 **What's working**:
 - ✅ Core match with full pattern support
@@ -140,9 +140,9 @@ match x {
 - ✅ Guard expressions
 - ✅ Basic patterns (wildcard, variable, literal, constructor)
 
-**Estimated effort**: 2-3 days for remaining patterns
+**Estimated effort**: 1-2 weeks for advanced patterns (requires careful grammar design)
 
-**Status**: The AST and desugarer fully support all pattern types. The grammar rules need to be fixed to parse them correctly. This is a matter of updating the grammar, not the core logic.
+**Status**: The AST and desugarer fully support all pattern types. The grammar rules need to be redesigned to avoid circular dependencies between expressions and patterns. The current approach of adding pattern rules to the expression grammar causes infinite recursion.
 
 ---
 
