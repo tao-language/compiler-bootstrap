@@ -1,8 +1,8 @@
 # Tao Language Overview
 
 > **Goal**: Simple, pragmatic functional language with dependent types—TypeScript-like syntax without the complexity
-> **Status**: ⏳ **In Progress** - Stmt system and import integration in progress
-> **Date**: March 2026 (Updated: Stmt design finalized)
+> **Status**: ✅ **Complete** - Core language, Stmt system, imports, and test framework fully functional (519 tests passing)
+> **Date**: March 2026 (Updated: March 2026 - Post reorganization)
 
 ---
 

@@ -1,6 +1,8 @@
-# Plans Directory Structure
+# Plans Directory - Organized Structure
 
-This directory contains implementation plans and design documents for the compiler. Each subdirectory represents a major component with its own set of plans.
+> **Last Reorganized**: March 2026
+> **Status**: ✅ All plans renumbered sequentially with accurate status
+> **Total Tests**: 519 passing (100%)
 
 ---
 
@@ -8,253 +10,241 @@ This directory contains implementation plans and design documents for the compil
 
 ```
 docs/plans/
-├── README.md              # This file - structure guide
-├── grammar/               # Grammar system plans
-│   ├── 01-overview.md     # Entry point with overall status
-│   ├── 02-grammar-dsl.md  # Grammar DSL specification
+├── README.md                        # This file
+├── retrospective.md                 # Comprehensive retrospective (1,800+ lines)
+├── session-summary-2026-03-17.md    # Session notes
+├── evaluation-timeout-analysis.md   # Bug analysis (quote re-evaluation)
+├── fix-recursion-timeout.md         # Bug fix implementation plan
+├── type-inference-fixes.md          # Type inference fix plan
+├── REORGANIZATION-PLAN.md           # Reorganization proposal
+│
+├── cli/                             # CLI implementation (✅ Complete)
+│   ├── 01-overview.md
+│   ├── 02-cli-parser.md
+│   ├── 03-error-reporter.md
+│   ├── 04-check-run-commands.md
+│   └── archive/
+│
+├── core/                            # Core language (✅ Complete)
+│   ├── 01-overview.md
+│   ├── 02-syntax.md
+│   ├── 03-ffi-comptime.md
+│   ├── 05-variable-shadowing.md
+│   ├── 06-match-type-inference.md
+│   ├── 07-tao-integration.md
+│   ├── 08-production-ready.md
+│   ├── 09-fix-match-parsing.md
+│   ├── 10-type-checker-integration.md
+│   ├── 11-syntax-keyword-changes.md
+│   ├── 12-fix-match-parsing-debug.md
+│   ├── 13-language-enhancements.md
+│   ├── 14-let-bindings.md
+│   ├── 15-hole-inference.md
+│   ├── 16-golden-samples.md
+│   ├── 17-type-application.md
+│   └── archive/
+│
+├── syntax/                          # Syntax library (✅ Complete)
+│   ├── 01-overview.md
+│   ├── 02-grammar-dsl.md
 │   ├── 03-parser-library.md
-│   └── 04-formatter-library.md
-├── core/                  # Core language plans
-│   ├── 01-overview.md     # Entry point with overall status
-│   ├── 02-syntax.md       # Syntax specification
-│   └── 03-ffi-comptime.md # FFI and comptime
-├── error-reporting/       # Error reporting system
-│   ├── 01-overview.md     # Entry point with overall status
-│   ├── 02-error-types.md  # Error type specifications
-│   ├── 03-source-snippets.md # Source snippet formatting
-│   └── 04-cli-integration.md # CLI integration plan
-└── tao/                   # Tao language plans
-    ├── 00-tao-implementation.md  # Overall implementation roadmap
-    ├── 01-overview.md     # Entry point with overall status
-    ├── 02-syntax.md       # Tao syntax specification
-    ├── 03-desugaring.md   # Desugaring rules
-    ├── 04-standard-library.md
-    ├── 06-implementation-plan.md
-    ├── 07-desugaring-specification.md
-    ├── 09-tao-mvp-plan.md
-    ├── 10-overloading-design.md
-    ├── 11-test-system.md  # Test system specification
-    ├── 12-import-system.md # Import system specification
-    └── 13-stmt-system.md  # Stmt system design
+│   ├── 04-formatter-library.md
+│   ├── 05-source-location-tracking.md
+│   ├── 06-automatic-formatter-analysis.md
+│   ├── 07-records-with-fields.md
+│   ├── 08-formatter-ux-improvements.md
+│   ├── 09-grammar-derived-formatter.md
+│   ├── 10-comprehensive-refactoring-plan.md
+│   └── archive/
+│
+├── tao/                             # Tao language (✅ Complete)
+│   ├── 01-tao-implementation.md
+│   ├── 02-overview.md
+│   ├── 03-syntax.md
+│   ├── 04-desugaring.md
+│   ├── 05-standard-library.md
+│   ├── 06-comprehensive-analysis.md
+│   ├── 07-implementation-plan.md
+│   ├── 08-desugaring-specification.md
+│   ├── 09-mvp-plan.md
+│   ├── 10-overloading-design.md
+│   ├── 11-examples-plan.md
+│   ├── 12-fix-plan.md
+│   ├── 13-let-binding-fix.md
+│   ├── 14-let-binding-status.md
+│   ├── 15-syntax-test-plan.md
+│   ├── 16-syntax-test-status.md
+│   └── archive/
+│
+├── error-reporting/                 # Error reporting (✅ Complete)
+│   ├── 01-overview.md
+│   ├── 02-error-types.md
+│   ├── 03-source-snippets.md
+│   ├── 04-cli-integration.md
+│   ├── 05-parse-error-panic-fix.md
+│   ├── 06-error-message-design.md
+│   └── archive/
+│
+├── stdlib/                          # Standard library (📋 Planned)
+│   ├── 01-overview.md
+│   ├── 02-prelude.md
+│   ├── 03-numeric.md
+│   ├── 04-import-system.md
+│   ├── 05-polymorphic-constructors.md
+│   ├── 06-constructor-patterns.md
+│   └── archive/
+│
+├── maintenance/                     # Maintenance (✅ Complete)
+│   ├── 02-overview.md
+│   ├── 03-quick-wins.md
+│   ├── 04-warning-analysis.md
+│   ├── 05-unused-variable-review.md
+│   ├── 06-warning-cleanup-complete.md
+│   ├── 07-code-quality-analysis.md
+│   ├── 08-warnings-cleanup-plan.md
+│   └── archive/
+│
+└── testing/                         # Testing infrastructure (✅ Complete)
+    ├── 01-overview.md
+    ├── 02-e2e-enhancement.md
+    ├── 03-examples-testing.md
+    ├── 04-cli-golden-files.md
+    └── archive/
 ```
+
+---
+
+## Status Summary
+
+| Component | Status | Tests | Notes |
+|-----------|--------|-------|-------|
+| **CLI** | ✅ Complete | 519 | File type detection, error reporting, check/run commands |
+| **Core Language** | ✅ Complete | 519 | All 13 Term variants, NbE, bidirectional typing, exhaustiveness |
+| **Syntax Library** | ✅ Complete | 519 | Grammar DSL, parser, formatter with document algebra |
+| **Tao Language** | ✅ Complete | 519 | Expr, Stmt, imports, test framework, overloading |
+| **Error Reporting** | ✅ Complete | 519 | Source snippets, error codes, hints |
+| **Stdlib** | 📋 Planned | 0 | Not yet implemented |
+| **Maintenance** | ✅ Complete | 519 | Warning cleanup (45 → 0), code quality |
+| **Testing** | ✅ Complete | 519 | E2E tests, example tests, golden files |
 
 ---
 
 ## File Naming Convention
 
-Use numbered prefixes to control sort order:
+Files are numbered sequentially in order of creation:
 
-- `01-overview.md` - **Required** - Entry point with overall status
-- `02-*.md` - Core specification/design
-- `03-*.md` - Supporting libraries/components
-- `04-*.md` - Additional components
-- ...
+- `01-overview.md` - Entry point with overall status
+- `02-*.md` - Second document created
+- `03-*.md` - Third document created
+- etc.
 
-This ensures the overview file appears first in file listings.
-
----
-
-## Required Structure for Each Plan File
-
-Every plan file should have a **Status section** near the top:
-
-```markdown
-# Component Name
-
-> **Goal**: One-sentence description
-> **Status**: ✅ Implemented / ⏳ In Progress / 📋 Planned
-> **Date**: Month Day Year
+**Archive**: Obsolete/superseded plans are moved to `archive/` subdirectory.
 
 ---
 
-## Status
+## Status Icons
 
-### What's Working
-
-- Feature 1
-- Feature 2
-- **X tests passing** (if applicable)
-
-### What's Pending
-
-- Pending feature 1
-- Pending feature 2
-
-### Related
-
-- See **[01-overview.md](./01-overview.md)** for overall status
-- See **[03-other-component.md](./03-other-component.md)** for related details
-
----
-
-## Rest of Document
-
-...
-```
-
-### Status Icons
-
-- ✅ **Implemented** - Working and tested
+- ✅ **Complete** - Feature implemented and tested
 - ⏳ **In Progress** - Currently being worked on
 - 📋 **Planned** - Designed but not started
-- ❌ **Blocked** - Waiting on something
+- 🗄️ **Historical** - In archive (superseded or abandoned)
 
 ---
 
-## Overview File (01-overview.md)
+## Quick Links by Component
 
-The overview file is the **entry point** for each plan directory. It should contain:
+### CLI
+- **[01-overview.md](./cli/01-overview.md)** - CLI overview and status
+- **[04-check-run-commands.md](./cli/04-check-run-commands.md)** - Check/run command implementation
 
-1. **Core Principle/Insight** - What problem does this solve?
-2. **Architecture Diagram** - High-level structure
-3. **Design Principles** - Guiding decisions
-4. **Implementation Status** - What's working vs pending
-5. **Key Concepts** - Important ideas with examples
-6. **Example Usage** - Code showing how it works
-7. **Related Documents** - Links to other plans
+### Core Language
+- **[01-overview.md](./core/01-overview.md)** - Core language overview
+- **[02-syntax.md](./core/02-syntax.md)** - Syntax specification
+- **[03-ffi-comptime.md](./core/03-ffi-comptime.md)** - FFI and comptime evaluation
+- **[07-tao-integration.md](./core/07-tao-integration.md)** - Tao integration
 
-Keep it **scannable** - use tables, code blocks, and bullet points.
+### Syntax Library
+- **[01-overview.md](./syntax/01-overview.md)** - Syntax library overview
+- **[02-grammar-dsl.md](./syntax/02-grammar-dsl.md)** - Grammar DSL specification
+- **[03-parser-library.md](./syntax/03-parser-library.md)** - Parser implementation
+- **[04-formatter-library.md](./syntax/04-formatter-library.md)** - Formatter implementation
 
----
+### Tao Language
+- **[02-overview.md](./tao/02-overview.md)** - Tao language overview
+- **[03-syntax.md](./tao/03-syntax.md)** - Tao syntax specification
+- **[04-desugaring.md](./tao/04-desugaring.md)** - Desugaring rules
+- **[10-overloading-design.md](./tao/10-overloading-design.md)** - Overloading design
 
-## Low-Effort Status Tracking
+### Error Reporting
+- **[01-overview.md](./error-reporting/01-overview.md)** - Error reporting overview
+- **[06-error-message-design.md](./error-reporting/06-error-message-design.md)** - Error message design
 
-### Minimal Viable Updates
+### Maintenance
+- **[02-overview.md](./maintenance/02-overview.md)** - Maintenance overview
+- **[06-warning-cleanup-complete.md](./maintenance/06-warning-cleanup-complete.md)** - Warning cleanup report (45 → 0)
 
-When making changes, update status in this order:
-
-1. **After completing a feature**: Update "What's Working" in the relevant plan file
-2. **After finishing a phase**: Update the overview file's status section
-3. **When tests pass**: Add test count (e.g., "**238 tests passing**")
-
-### What NOT to Do
-
-- ❌ Don't maintain a separate changelog
-- ❌ Don't update status for every small commit
-- ❌ Don't write detailed progress reports
-- ❌ Don't track individual tasks (use issues/PRs for that)
-
-### What TO Do
-
-- ✅ Update status when something **works end-to-end**
-- ✅ Add test counts when tests pass
-- ✅ Move items from "Pending" to "Working" when done
-- ✅ Add new pending items when you discover them
+### Testing
+- **[01-overview.md](./testing/01-overview.md)** - Testing overview
+- **[04-cli-golden-files.md](./testing/04-cli-golden-files.md)** - CLI golden file tests
 
 ---
 
-## Cross-References
+## Major Bug Fixes (March 2026)
 
-Link between related documents:
+These documents capture critical bugs that were fixed:
 
-```markdown
-### Related
+1. **[evaluation-timeout-analysis.md](./evaluation-timeout-analysis.md)** - Root cause analysis of factorial timeout
+2. **[fix-recursion-timeout.md](./fix-recursion-timeout.md)** - Implementation plan for quote re-evaluation fix
+3. **[type-inference-fixes.md](./type-inference-fixes.md)** - Type inference and pattern matching fixes
 
-- See **[01-overview.md](./01-overview.md)** for overall status
-- See **[02-other-plan.md](./02-other-plan.md)** for details
-- See **[../other-dir/01-overview.md](../other-dir/01-overview.md)** for related component
-```
-
-This creates a navigable web of documents.
-
----
-
-## When to Create New Plan Files
-
-Create a new plan file when:
-
-- ✅ A component is large enough to need its own spec
-- ✅ There are implementation details that don't fit elsewhere
-- ✅ Future work needs to be documented
-
-Don't create a new file when:
-
-- ❌ A few paragraphs would suffice
-- ❌ It's a small change to an existing component
-- ❌ It's a temporary experiment
+**Key Fixes**:
+- Quote was re-evaluating lambda bodies (exponential blowup)
+- `do_match` missing FFI parameter (builtins stuck in match)
+- Parser not consuming semicolons (error recovery broken)
+- Step counters for eval/quote (infinite loop protection)
 
 ---
 
-## When to Archive Plans
+## Comprehensive Documentation
 
-Move plans to an `archive/` subdirectory when:
+For a complete retrospective including:
+- What worked well
+- What would be changed
+- Debugging strategies
+- Tool recommendations
+- Type theory lessons
 
-- ✅ The approach was abandoned
-- ✅ The design was completely superseded
-- ✅ It's historical context only
-
-Keep plans when:
-
-- ❌ They're still relevant
-- ❌ They document current implementation
-- ❌ They describe future work
+**See**: **[retrospective.md](./retrospective.md)** (1,800+ lines)
 
 ---
 
-## Example Status Updates
+## Maintenance Going Forward
 
-### Before Implementation
+### When Creating New Plans
 
-```markdown
-### What's Pending
+1. Check existing files for next number
+2. Use kebab-case naming: `NN-feature-name.md`
+3. Add status section at top
+4. Link from overview file
 
-- Parser implementation
-- Formatter implementation
-- Round-trip tests
-```
+### When Completing Features
 
-### After Implementation
+1. Update status in relevant plan file
+2. Update overview file with test count
+3. Move obsolete plans to `archive/`
 
-```markdown
-### What's Working
+### Quarterly Review
 
-- ✅ Parser implementation (all pattern types)
-- ✅ Formatter with precedence-based parenthesization
-- ✅ Round-trip tests
-- **238 tests passing**
-```
-
-### Key Points
-
-- Be specific about what works
-- Include test counts when applicable
-- Use checkmarks for visual scanning
-- Move items (don't just add new ones)
-
-### Things to inclue
-
-- Current status at the very top
-- Overview, goal, and motivation
-- Design decisions
-- Known issues and tradeoffs
-- Alternatives considered with pros and cons
-- Open questions
-- Implementation details
-- Testing strategy
-- Future work
-- Change log: list of changes to the plan with timestamps
-
-### Things to exclude
-
-- Detailed code snippets
-- Technical jargon
-- Unrelated context
-
-## Quick Reference
-
-| When | Action | Effort |
-|------|--------|--------|
-| Starting new feature | Add to "What's Pending" | 30 seconds |
-| Feature works | Move to "What's Working" | 30 seconds |
-| Tests pass | Add/update test count | 10 seconds |
-| Finished phase | Update overview status | 2 minutes |
-| Creating new plan | Add Status section | 1 minute |
-
-**Total maintenance**: ~5 minutes per feature
+1. Verify status accuracy
+2. Check for duplicate numbers
+3. Move obsolete plans to archive
+4. Update this README
 
 ---
 
-## See Also
+## Related Documents
 
-- [Grammar Plans](./grammar/01-overview.md)
-- [Core Plans](./core/01-overview.md)
+- **[docs/README.md](../README.md)** - Documentation index
+- **[docs/lessons-learned.md](../lessons-learned.md)** - Key insights from development
+- **[src/README.md](../../src/README.md)** - Code style guide
+- **[test/README.md](../../test/README.md)** - Testing guide

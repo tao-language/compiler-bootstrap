@@ -1,8 +1,8 @@
 # Syntax Library Overview
 
 > **Goal**: Single source of truth for grammar that generates parsers with layout-aware formatting and error reporting
-> **Status**: ✅ Complete and tested (370 tests passing)
-> **Date**: March 2025 (Updated - v3.0 with operator metadata query API)
+> **Status**: ✅ Complete and tested (519 tests passing)
+> **Date**: March 2025 (Updated: March 2026 - Post reorganization)
 
 ---
 
