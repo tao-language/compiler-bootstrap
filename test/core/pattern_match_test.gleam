@@ -282,3 +282,54 @@ pub fn match_exhaustiveness_redundant_case_test() {
     }
   }) |> should.be_true
 }
+
+pub fn match_exhaustiveness_wildcard_is_exhaustive_test() {
+  // Wildcard pattern should be recognized as exhaustive
+  let motive = lam("p", i32t(s0), s0)
+  let cases = [
+    case_(pany(), i32(100, s1), s1),
+  ]
+  let term = match_(i32(5, s2), motive, cases, s3)
+  let #(_, _, state) = c.infer(s, term)
+  // Should NOT have exhaustiveness error
+  list.any(state.errors, fn(e) {
+    case e {
+      c.MatchMissingCase(_, _) -> True
+      _ -> False
+    }
+  }) |> should.be_false
+}
+
+pub fn match_exhaustiveness_as_wildcard_is_exhaustive_test() {
+  // As-pattern with wildcard should be recognized as exhaustive
+  let motive = lam("p", i32t(s0), s0)
+  let cases = [
+    case_(c.PAs(c.PAny, "x"), i32(100, s1), s1),
+  ]
+  let term = match_(i32(5, s2), motive, cases, s3)
+  let #(_, _, state) = c.infer(s, term)
+  // Should NOT have exhaustiveness error
+  list.any(state.errors, fn(e) {
+    case e {
+      c.MatchMissingCase(_, _) -> True
+      _ -> False
+    }
+  }) |> should.be_false
+}
+
+pub fn match_exhaustiveness_missing_case_test() {
+  // Missing wildcard should produce exhaustiveness error
+  let motive = lam("p", i32t(s0), s0)
+  let cases = [
+    case_(c.PLit(c.I32(0)), i32(1, s1), s1),
+  ]
+  let term = match_(i32(5, s2), motive, cases, s3)
+  let #(_, _, state) = c.infer(s, term)
+  // Should have exhaustiveness error
+  list.any(state.errors, fn(e) {
+    case e {
+      c.MatchMissingCase(_, _) -> True
+      _ -> False
+    }
+  }) |> should.be_true
+}

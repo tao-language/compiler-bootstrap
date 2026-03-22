@@ -91,18 +91,13 @@ Map(k, v)        // For symbol tables
 
 ---
 
-### 2. Pattern Matching Syntax (95% Complete) - **GRAMMAR COMPLETE, EXHAUSTIVENESS FIX NEEDED**
+### 2. Pattern Matching Syntax (90% Complete) - **GRAMMAR COMPLETE, EXHAUSTIVENESS BUG**
 
-**Status**: Grammar and AST conversion complete. Minor exhaustiveness checking issue with wildcard patterns.
+**Status**: Grammar and AST conversion complete. Bug in exhaustiveness checking prevents wildcard patterns from working.
 
 **What works**:
 ```tao
-// ✅ Wildcard pattern
-match x {
-  | _ -> 100
-}
-
-// ✅ Variable pattern
+// ✅ Variable pattern (works as workaround)
 match x {
   | n -> n + 1
 }
@@ -111,7 +106,7 @@ match x {
 match x {
   | 0 -> 1
   | 1 -> 2
-  | _ -> x
+  | n -> n  // Use variable instead of _
 }
 
 // ✅ Constructor pattern
@@ -123,7 +118,7 @@ match opt {
 // ✅ Match guards
 match x {
   | n if n > 0 && n < 10 -> 1
-  | _ -> 0
+  | n -> 0  // Use variable instead of _
 }
 
 // ✅ Tuple pattern
@@ -144,13 +139,21 @@ match list {
 // ✅ Or pattern
 match x {
   | 0 | 1 | 2 -> "small"
-  | _ -> "large"
+  | n -> "large"  // Use variable instead of _
 }
 
 // ✅ As pattern
 match opt {
   | result @ Some(val) -> result
-  | None -> None
+  | n -> None  // Use variable instead of _
+}
+```
+
+**What doesn't work**:
+```tao
+// ❌ Wildcard pattern - produces exhaustiveness error
+match x {
+  | _ -> 100  // Error: Pattern match not exhaustive
 }
 ```
 
@@ -166,7 +169,7 @@ match opt {
 - ✅ `PAs(pattern, name, span)` - As pattern
 
 **Conversion pipeline**:
-- ✅ `syntax.PWild` → `ast.PAny` → `core.PAny`
+- ✅ `syntax.PWild` → `ast.PAny` → `core.PAny` (conversion is correct)
 - ✅ All pattern types convert correctly through the pipeline
 
 **Desugarer support**:
@@ -175,15 +178,18 @@ match opt {
 - ✅ `tao_list_pattern_to_core` - List → nested Cons/Nil
 
 **Known issue**:
-- ⚠️ Wildcard patterns (`_`) are parsed and converted correctly, but the exhaustiveness checker in `core.gleam` doesn't recognize them as covering all cases. This is a minor issue in the exhaustiveness checking logic, not in the pattern parsing or conversion.
-- **Workaround**: Add an explicit catch-all case or use a variable pattern instead of `_`
+- 🐛 Wildcard patterns (`_`) produce exhaustiveness errors even though they should cover all cases
+- **Root cause**: Pattern extraction in `extract_single_clause_from_list` doesn't handle all grammar structures correctly
+- **Workaround**: Use a variable pattern instead of `_` (e.g., `| n -> 100` instead of `| _ -> 100`)
+- **See**: **[docs/plans/core/18-exhaustiveness-wildcard-bug.md](../plans/core/18-exhaustiveness-wildcard-bug.md)** for detailed analysis
 
 **What's pending**:
-- 🐛 Fix exhaustiveness checking to recognize `PAny` as covering all cases
+- 🐛 Fix pattern extraction in `extract_single_clause_from_list`
+- 🐛 Verify exhaustiveness checking recognizes `PAny` correctly
 
-**Estimated effort**: 1-2 hours to fix exhaustiveness checking
+**Estimated effort**: 2-4 hours to fix
 
-**Status**: The pattern grammar, AST, and desugarer fully support all pattern types. The only remaining issue is in the exhaustiveness checking logic in `core.gleam`, which needs to be updated to recognize `PAny` patterns as exhaustive.
+**Status**: The pattern grammar, AST, and desugarer fully support all pattern types. The issue is in the pattern extraction logic in `extract_single_clause_from_list`, which doesn't handle all grammar structures correctly. This causes the pattern to be extracted incorrectly, leading to exhaustiveness checking failures.
 
 ---
 

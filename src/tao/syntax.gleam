@@ -2007,9 +2007,11 @@ fn extract_single_clause_from_list(items: List(Value(Expr))) -> Option(MatchClau
   case pipe_pos {
     Some(pos) -> {
       // Found pipe, extract pattern (should be next item)
+      // Pattern might be wrapped in ListValue due to grammar structure
       let pattern_items = list.drop(items, pos + 1) |> list.take(1)
       let pattern = case pattern_items {
         [AstValue(expr)] -> pattern_ast_to_pattern(expr)
+        [ListValue([AstValue(expr)])] -> pattern_ast_to_pattern(expr)  // Handle wrapped pattern
         _ -> PWild(Span("error", 0, 0, 0, 0))
       }
 
@@ -2345,7 +2347,7 @@ pub fn pattern_ast_to_pattern(expr: Expr) -> Pattern {
       }
     }
     // For now, all other expressions become wildcards
-    _ -> PWild(span_from_expr(expr))
+    _ -> PWild(get_expr_span(expr))
   }
 }
 

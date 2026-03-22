@@ -3232,10 +3232,28 @@ pub fn check_exhaustiveness(
 
       // If the last case is a wildcard without a guard, the match is exhaustive
       case list.last(cases) {
-        Ok(Case(pattern: PAny, guard: None, ..)) -> redundant_errors
-        Ok(Case(pattern: PAs(PAny, _), guard: None, ..)) -> redundant_errors
-        // Also check for PWild (syntax wildcard that wasn't converted)
-        Ok(Case(pattern: PWild(_), guard: None, ..)) -> redundant_errors
+        Ok(Case(pattern: PAny, guard: None, ..)) -> {
+          // PAny found - should be exhaustive
+          redundant_errors
+        }
+        Ok(Case(pattern: PAs(PAny, _), guard: None, ..)) -> {
+          // PAs(PAny, _) found - should be exhaustive
+          redundant_errors
+        }
+        Ok(Case(pattern: p, guard: g, ..)) -> {
+          // Check what pattern we got - might be a different wildcard representation
+          case p {
+            PAny -> redundant_errors  // Should not reach here
+            PAs(PAny, _) -> redundant_errors  // Should not reach here
+            // Check for other wildcard-like patterns
+            PAs(inner, _) if inner == PAny -> redundant_errors
+            _ -> {
+              // Not a wildcard - continue with exhaustiveness checking
+              let missing_errors = check_exhaustiveness_loop(s, cases, span)
+              list.append(redundant_errors, missing_errors)
+            }
+          }
+        }
         _ -> {
           // Continue with normal exhaustiveness checking for missing cases
           let missing_errors = check_exhaustiveness_loop(s, cases, span)
