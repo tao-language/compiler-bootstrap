@@ -91,11 +91,11 @@ Map(k, v)        // For symbol tables
 
 ---
 
-### 2. Pattern Matching Syntax (60% Complete) - **BASIC PATTERNS WORK**
+### 2. Pattern Matching Syntax (80% Complete) - **AST COMPLETE, GRAMMAR PENDING**
 
-**Status**: Basic patterns work, advanced patterns need grammar redesign.
+**Status**: AST and desugarer support all pattern types. Grammar rules pending.
 
-**What works**:
+**What works** (basic patterns via expression parsing):
 ```tao
 // ✅ Wildcard pattern
 match x {
@@ -127,22 +127,24 @@ match x {
 }
 ```
 
+**AST support** (ready for grammar):
+- ✅ `PRecord(fields, span)` - Record patterns: `{x, y}`
+- ✅ `PTuple(args, span)` - Tuple patterns: `(a, b)`
+- ✅ `PList(items, rest, span)` - List patterns: `[h, ..t]`
+- ✅ `POr(patterns, span)` - Or patterns: `Some(0) | None`
+- ✅ `PAs(pattern, name, span)` - As patterns: `x @ Some(_)`
+
+**Desugarer support**:
+- ✅ `tao_pattern_to_core_pattern` - Converts all pattern types to Core
+- ✅ `tao_tuple_pattern_to_core` - Tuple → record with numeric fields
+- ✅ `tao_list_pattern_to_core` - List → nested Cons/Nil
+
 **What's pending**:
-- ❌ Tuple patterns: `(a, b)` - needs grammar redesign
-- ❌ Record patterns: `{x, y}` - needs grammar redesign
-- ❌ List patterns: `[h, ..t]` - needs grammar redesign
-- ❌ Or patterns: `Some(0) | None` - needs grammar redesign
-- ❌ As patterns: `x @ Some(_)` - needs grammar redesign
+- ❌ Grammar rules for advanced patterns (needs careful design to avoid circular dependencies)
 
-**What's working**:
-- ✅ Core match with full pattern support
-- ✅ Exhaustiveness checking
-- ✅ Guard expressions
-- ✅ Basic patterns (wildcard, variable, literal, constructor)
+**Estimated effort**: 1-2 days for grammar rules
 
-**Estimated effort**: 1-2 weeks for advanced patterns (requires careful grammar design)
-
-**Status**: The AST and desugarer fully support all pattern types. The grammar rules need to be redesigned to avoid circular dependencies between expressions and patterns. The current approach of adding pattern rules to the expression grammar causes infinite recursion.
+**Status**: The AST, desugarer, and formatter fully support all pattern types. The grammar rules need to be added using the same delimiter helpers used for function application to ensure consistent parsing of tuples, records, lists, and other collection-like patterns.
 
 ---
 
