@@ -240,10 +240,33 @@ fn tokenize_ident(state: LexerState) -> LexerState {
   let start_column = state.column
   let #(chars, state) = read_ident_chars(state, [])
   let value = string.concat(chars)
-  let kind = get_keyword_kind(value)
+  let kind = get_ident_kind(value)
   let end_pos = state.pos
   let token = Token(kind: kind, value: value, start: start_pos, end: end_pos, line: start_line, column: start_column)
   LexerState(..state, tokens: [token, ..state.tokens])
+}
+
+fn get_ident_kind(value: String) -> String {
+  // Check if it's a keyword first
+  let keyword_kind = get_keyword_kind(value)
+  case keyword_kind != "Ident" {
+    True -> keyword_kind
+    False -> {
+      // Not a keyword, check if uppercase or lowercase
+      case string.is_empty(value) {
+        True -> "Ident"
+        False -> {
+          let first = string.slice(value, 0, 1)
+          case first {
+            "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J"
+            | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T"
+            | "U" | "V" | "W" | "X" | "Y" | "Z" -> "UIdent"
+            _ -> "LIdent"
+          }
+        }
+      }
+    }
+  }
 }
 
 fn get_keyword_kind(value: String) -> String {

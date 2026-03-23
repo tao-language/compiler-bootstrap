@@ -1408,14 +1408,48 @@ pub fn tao_grammar() -> Grammar(Expr) {
             }
           },
         ),
-        // Constructor: Some(x), None, True, False
+        // Constructor: Some(x), None, True, False (uppercase identifier with optional args)
         // Must come before Ident to match constructor applications first
-        // ConstructorPattern returns Expr directly
         alt(
-          ref("ConstructorPattern"),
+          seq([
+            token_pattern("Ident"),
+            opt(seq([
+              token_pattern("LParen"),
+              ref("Pattern"),
+              many(seq([token_pattern("Comma"), ref("Pattern")])),
+              token_pattern("RParen"),
+            ])),
+          ]),
           fn(values) {
             case values {
-              [AstValue(p)] -> p  // p is already Expr from ConstructorPattern
+              [TokenValue(name)] -> {
+                // Only uppercase identifiers are constructors
+                case is_uppercase_start(name.value) {
+                  True -> Ctr(name.value, [], Span("ctr", name.line, name.column, name.line, name.column + string.length(name.value)))
+                  False -> Int(0, Span("error", 0, 0, 0, 0))  // Lowercase, not a constructor
+                }
+              }
+              [TokenValue(name), ListValue([_, AstValue(first), rest, ..]), ..] -> {
+                // Only uppercase identifiers are constructors
+                case is_uppercase_start(name.value) {
+                  True -> {
+                    let rest_patterns = case rest {
+                      ListValue(items) -> {
+                        list.flat_map(items, fn(item) {
+                          case item {
+                            ListValue([_, AstValue(p)], ..) -> [p]
+                            _ -> []
+                          }
+                        })
+                      }
+                      _ -> []
+                    }
+                    let args = [first, ..rest_patterns]
+                    Ctr(name.value, args, Span("ctr", name.line, name.column, name.line, name.column + string.length(name.value)))
+                  }
+                  False -> Int(0, Span("error", 0, 0, 0, 0))  // Lowercase, not a constructor
+                }
+              }
               _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
@@ -1557,10 +1591,11 @@ pub fn tao_grammar() -> Grammar(Expr) {
       ]),
       // ConstructorPattern = Ident ("(" Pattern ("," Pattern)* ")")?
       // Returns Expr directly (not wrapped in AstValue)
+      // Only matches uppercase identifiers (constructors)
       rule("ConstructorPattern", [
         alt(
           seq([
-            token_pattern("Ident"),
+            token_pattern("UIdent"),  // Only uppercase identifiers
             opt(seq([
               token_pattern("LParen"),
               ref("Pattern"),
