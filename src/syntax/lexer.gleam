@@ -104,8 +104,8 @@ fn tokenize_loop(state: LexerState) -> LexerState {
         | "W"
         | "X"
         | "Y"
-        | "Z"
-        | "_" -> tokenize_ident(state) |> tokenize_loop
+        | "Z" -> tokenize_ident(state) |> tokenize_loop
+        "_" -> tokenize_operator(state) |> tokenize_loop
         "λ" -> tokenize_lambda(state) |> tokenize_loop
         _ -> tokenize_operator(state) |> tokenize_loop
       }

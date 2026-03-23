@@ -328,7 +328,11 @@ fn clause_to_ast(clause: MatchClause) -> ast.MatchClause {
 
 pub fn pattern_to_ast(pattern: Pattern) -> ast.Pattern {
   case pattern {
-    PWild(span) -> AstPAny(span)  // Convert syntax wildcard to AST wildcard
+    PWild(span) -> {
+      // DEBUG: Wildcard pattern
+      // io.println("DEBUG pattern_to_ast: PWild -> AstPAny")
+      AstPAny(span)  // Convert syntax wildcard to AST wildcard
+    }
     PVar(name, span) -> AstPVar(name, span)
     PLit(value, span) -> AstPLit(AstInt(value), span)
     PCtr(name, args, span) -> AstPCtr(name, list.map(args, pattern_to_ast), span)
@@ -1362,6 +1366,10 @@ pub fn tao_grammar() -> Grammar(Expr) {
                   }
                 }
               }
+              [AstValue(first)] -> {
+                // No | patterns, just return the first pattern
+                first
+              }
               _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
@@ -1388,6 +1396,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
         ),
       ]),
       // PrimaryPattern = Wildcard | Variable | Literal | Constructor | Record | Tuple | List
+      // Order matters! More specific patterns (Constructor) should come before general patterns (Ident)
       rule("PrimaryPattern", [
         // Wildcard: _
         alt(
@@ -1396,6 +1405,18 @@ pub fn tao_grammar() -> Grammar(Expr) {
             case values {
               [TokenValue(_)] -> Var("_", Span("_", 0, 0, 0, 0))
               _ -> Var("_", Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+        // Constructor: Some(x), None, True, False
+        // Must come before Ident to match constructor applications first
+        // ConstructorPattern returns Expr directly
+        alt(
+          ref("ConstructorPattern"),
+          fn(values) {
+            case values {
+              [AstValue(p)] -> p  // p is already Expr from ConstructorPattern
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
         ),
@@ -1420,17 +1441,6 @@ pub fn tao_grammar() -> Grammar(Expr) {
           fn(values) {
             case values {
               [TokenValue(t)] -> Int(int.parse(t.value) |> result.unwrap(0), Span("lit", t.line, t.column, t.line, t.column + string.length(t.value)))
-              _ -> Int(0, Span("error", 0, 0, 0, 0))
-            }
-          },
-        ),
-        // Constructor: Some(x), None, True, False
-        // ConstructorPattern returns Expr directly
-        alt(
-          ref("ConstructorPattern"),
-          fn(values) {
-            case values {
-              [AstValue(p)] -> p  // p is already Expr from ConstructorPattern
               _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
@@ -2019,9 +2029,6 @@ fn extract_clauses_after_lbrace(
 }
 
 fn extract_single_clause_from_list(items: List(Value(Expr))) -> Option(MatchClause) {
-  // DEBUG: Print the structure of the clause items
-  // io.println("DEBUG clause items: " <> inspect_items_short(items))
-  
   // Simplified clause extraction - handle basic case first
   // Expected structure from grammar: [Pipe, pattern_Expr, opt_if, Arrow, body_Expr]
   // But items might be wrapped differently
@@ -2034,9 +2041,6 @@ fn extract_single_clause_from_list(items: List(Value(Expr))) -> Option(MatchClau
       // Pattern might be wrapped in multiple ListValue layers due to grammar structure
       // Try multiple extraction strategies
       let pattern = extract_pattern_from_clause_items(items, pos)
-      
-      // DEBUG: Print the extracted pattern
-      // io.println("DEBUG extracted pattern: " <> inspect_pattern_short(pattern))
 
       // Find Arrow token after pattern
       let after_pattern = list.drop(items, pos + 2)
