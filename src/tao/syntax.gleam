@@ -1986,9 +1986,19 @@ fn extract_clauses_after_lbrace(
     [ListValue(clause_items), ..rest] if in_braces -> {
       // Each clause is wrapped in ListValue by parse_many
       // Structure: [Pipe, pattern_expr, opt_if, Arrow, body_expr]
+      // But the structure might be different - try to extract clause
       case extract_single_clause_from_list(clause_items) {
         Some(clause) -> extract_clauses_after_lbrace(rest, in_braces, [clause, ..acc])
-        None -> extract_clauses_after_lbrace(rest, in_braces, acc)
+        None -> {
+          // Try to extract from nested ListValue
+          case extract_clauses_from_nested(clause_items, []) {
+            [clause, ..more_clauses] -> {
+              let new_acc = list.reverse([clause, ..more_clauses])
+              extract_clauses_after_lbrace(rest, in_braces, list.append(new_acc, acc))
+            }
+            [] -> extract_clauses_after_lbrace(rest, in_braces, acc)
+          }
+        }
       }
     }
     [_v, ..rest] -> {
@@ -2007,13 +2017,9 @@ fn extract_single_clause_from_list(items: List(Value(Expr))) -> Option(MatchClau
   case pipe_pos {
     Some(pos) -> {
       // Found pipe, extract pattern (should be next item)
-      // Pattern might be wrapped in ListValue due to grammar structure
-      let pattern_items = list.drop(items, pos + 1) |> list.take(1)
-      let pattern = case pattern_items {
-        [AstValue(expr)] -> pattern_ast_to_pattern(expr)
-        [ListValue([AstValue(expr)])] -> pattern_ast_to_pattern(expr)  // Handle wrapped pattern
-        _ -> PWild(Span("error", 0, 0, 0, 0))
-      }
+      // Pattern might be wrapped in multiple ListValue layers due to grammar structure
+      // Try multiple extraction strategies
+      let pattern = extract_pattern_from_clause_items(items, pos)
 
       // Find Arrow token after pattern
       let after_pattern = list.drop(items, pos + 2)
@@ -2037,6 +2043,36 @@ fn extract_single_clause_from_list(items: List(Value(Expr))) -> Option(MatchClau
       }
     }
     None -> None
+  }
+}
+
+/// Extract pattern from match clause items, handling various wrapping levels.
+fn extract_pattern_from_clause_items(items: List(Value(Expr)), pipe_pos: Int) -> Pattern {
+  let pattern_items = list.drop(items, pipe_pos + 1) |> list.take(1)
+  case pattern_items {
+    // Direct Expr
+    [AstValue(expr)] -> pattern_ast_to_pattern(expr)
+    // Single ListValue wrapping
+    [ListValue([AstValue(expr)])] -> pattern_ast_to_pattern(expr)
+    // Double ListValue wrapping
+    [ListValue([ListValue([AstValue(expr)])])] -> pattern_ast_to_pattern(expr)
+    // Expr wrapped in ListValue with other items
+    [ListValue(items_inner)] -> {
+      // Try to find AstValue in the inner list
+      find_ast_value_in_list(items_inner) |> pattern_ast_to_pattern
+    }
+    // Fallback
+    _ -> PWild(Span("error", 0, 0, 0, 0))
+  }
+}
+
+/// Find the first AstValue in a list, handling nested ListValues.
+fn find_ast_value_in_list(items: List(Value(Expr))) -> Expr {
+  case items {
+    [] -> Var("_", Span("error", 0, 0, 0, 0))
+    [AstValue(e), ..] -> e
+    [ListValue(inner), ..] -> find_ast_value_in_list(inner)
+    [_, ..rest] -> find_ast_value_in_list(rest)
   }
 }
 

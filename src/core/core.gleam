@@ -3232,30 +3232,28 @@ pub fn check_exhaustiveness(
 
       // If the last case is a wildcard without a guard, the match is exhaustive
       case list.last(cases) {
-        Ok(Case(pattern: PAny, guard: None, ..)) -> {
-          // PAny found - should be exhaustive
-          redundant_errors
-        }
-        Ok(Case(pattern: PAs(PAny, _), guard: None, ..)) -> {
-          // PAs(PAny, _) found - should be exhaustive
-          redundant_errors
-        }
-        Ok(Case(pattern: p, guard: g, ..)) -> {
-          // Check what pattern we got - might be a different wildcard representation
-          case p {
-            PAny -> redundant_errors  // Should not reach here
-            PAs(PAny, _) -> redundant_errors  // Should not reach here
-            // Check for other wildcard-like patterns
-            PAs(inner, _) if inner == PAny -> redundant_errors
-            _ -> {
-              // Not a wildcard - continue with exhaustiveness checking
+        Ok(last_case) -> {
+          // Debug: Check what pattern we actually got
+          case last_case.pattern {
+            PAny -> {
+              // PAny found - should be exhaustive
+              redundant_errors
+            }
+            PAs(PAny, _) -> {
+              // PAs(PAny, _) found - should be exhaustive
+              redundant_errors
+            }
+            // Check for other patterns that should be exhaustive
+            p -> {
+              // Not a recognized wildcard - continue with exhaustiveness checking
+              // This is where the bug manifests - we're getting a pattern that's not PAny
               let missing_errors = check_exhaustiveness_loop(s, cases, span)
               list.append(redundant_errors, missing_errors)
             }
           }
         }
         _ -> {
-          // Continue with normal exhaustiveness checking for missing cases
+          // No cases - continue with normal exhaustiveness checking
           let missing_errors = check_exhaustiveness_loop(s, cases, span)
           list.append(redundant_errors, missing_errors)
         }
