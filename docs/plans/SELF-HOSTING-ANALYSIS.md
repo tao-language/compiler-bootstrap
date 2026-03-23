@@ -91,9 +91,9 @@ Map(k, v)        // For symbol tables
 
 ---
 
-### 2. Pattern Matching Syntax (90% Complete) - **GRAMMAR COMPLETE, EXHAUSTIVENESS BUG**
+### 2. Pattern Matching Syntax (85% Complete) - **GRAMMAR COMPLETE, WILDCARD EXHAUSTIVENESS BUG**
 
-**Status**: Grammar and AST conversion complete. Bug in exhaustiveness checking prevents wildcard patterns from working.
+**Status**: Grammar and AST conversion complete. Bug in pattern extraction prevents wildcard patterns from being recognized as exhaustive.
 
 **What works**:
 ```tao
@@ -179,17 +179,18 @@ match x {
 
 **Known issue**:
 - 🐛 Wildcard patterns (`_`) produce exhaustiveness errors even though they should cover all cases
-- **Root cause**: Pattern extraction in `extract_single_clause_from_list` doesn't handle all grammar structures correctly
+- **Root cause**: Pattern extraction in `extract_single_clause_from_list` doesn't handle the grammar structure correctly
+- **Grammar structure**: `many(seq([Pipe, Pattern, ...]))` wraps each clause in ListValue, and Pattern returns Expr which may be wrapped differently
 - **Workaround**: Use a variable pattern instead of `_` (e.g., `| n -> 100` instead of `| _ -> 100`)
 - **See**: **[docs/plans/core/18-exhaustiveness-wildcard-bug.md](../plans/core/18-exhaustiveness-wildcard-bug.md)** for detailed analysis
 
 **What's pending**:
-- 🐛 Fix pattern extraction in `extract_single_clause_from_list`
-- 🐛 Verify exhaustiveness checking recognizes `PAny` correctly
+- 🐛 Fix pattern extraction to handle grammar structure correctly
+- 🐛 Verify exhaustiveness checking recognizes `PAny` from wildcard patterns
 
 **Estimated effort**: 2-4 hours to fix
 
-**Status**: The pattern grammar, AST, and desugarer fully support all pattern types. The issue is in the pattern extraction logic in `extract_single_clause_from_list`, which doesn't handle all grammar structures correctly. This causes the pattern to be extracted incorrectly, leading to exhaustiveness checking failures.
+**Status**: The pattern grammar, AST, and desugarer fully support all pattern types. The issue is in the pattern extraction logic in `extract_single_clause_from_list`, which doesn't correctly handle the grammar structure produced by `many(seq([...]))`. The pattern is wrapped in multiple ListValue layers, and the extraction logic needs to be updated to handle this correctly.
 
 ---
 

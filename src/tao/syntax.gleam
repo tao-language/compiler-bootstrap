@@ -1320,10 +1320,11 @@ pub fn tao_grammar() -> Grammar(Expr) {
       ]),
       // Pattern rules for match expressions (top-level rules, referenced by Match above)
       // Pattern = OrPattern (supports p1 | p2 | p3)
+      // Note: OrPattern returns Expr directly, Pattern rule wraps it
       rule("Pattern", [
         alt(ref("OrPattern"), fn(values) {
           case values {
-            [AstValue(e)] -> e
+            [AstValue(e)] -> e  // OrPattern wrapped in AstValue
             _ -> Int(0, Span("error", 0, 0, 0, 0))
           }
         }),
@@ -1365,6 +1366,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
         ),
       ]),
       // AsPattern = PrimaryPattern ("@" Ident)?
+      // Returns Expr directly (not wrapped in AstValue)
       rule("AsPattern", [
         alt(
           seq([
@@ -1377,7 +1379,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
                 // Wrap as As constructor for later conversion
                 Ctr("As", [Var(name.value, Span("as", 0, 0, 0, 0)), p], Span("as", 0, 0, 0, 0))
               }
-              [AstValue(p), ..] -> p
+              [AstValue(p), ..] -> p  // p is already Expr
               _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
@@ -1416,11 +1418,12 @@ pub fn tao_grammar() -> Grammar(Expr) {
           },
         ),
         // Constructor: Some(x), None, True, False
+        // ConstructorPattern returns Expr directly
         alt(
           ref("ConstructorPattern"),
           fn(values) {
             case values {
-              [AstValue(p)] -> p
+              [AstValue(p)] -> p  // p is already Expr from ConstructorPattern
               _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
@@ -1536,6 +1539,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
         ),
       ]),
       // ConstructorPattern = Ident ("(" Pattern ("," Pattern)* ")")?
+      // Returns Expr directly (not wrapped in AstValue)
       rule("ConstructorPattern", [
         alt(
           seq([
