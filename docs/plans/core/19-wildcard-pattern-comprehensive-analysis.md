@@ -4,6 +4,7 @@
 > **Status**: 🐛 Root Cause Identified (Pattern Extraction Logic)
 > **Test Status**: 520/522 tests passing (99.6%)
 > **Severity**: High - prevents wildcard patterns from working
+> **Fix Plan**: [docs/plans/core/20-wildcard-pattern-fix-plan.md](./20-wildcard-pattern-fix-plan.md)
 
 ---
 
@@ -21,6 +22,8 @@ The clause items structure is correct: `Pipe, AstValue(pattern), Arrow, AstValue
 But the extracted pattern is `PLit(0)` instead of `PWild`!
 
 This suggests the extraction logic is finding the wrong AstValue, possibly from a different part of the parsed structure (like the prelude or another file).
+
+**See**: **[docs/plans/core/20-wildcard-pattern-fix-plan.md](./20-wildcard-pattern-fix-plan.md)** for comprehensive fix plan with step-by-step instructions and testing strategy.
 
 ---
 
