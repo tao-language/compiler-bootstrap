@@ -1,7 +1,7 @@
 # Wildcard Pattern Exhaustiveness Bug - Comprehensive Analysis
 
 > **Date**: March 2026
-> **Status**: 🐛 Root Cause Identified, Fix Attempted (Grammar Structure Issue)
+> **Status**: 🐛 Root Cause Identified (Pattern Extraction Logic)
 > **Test Status**: 520/522 tests passing (99.6%)
 > **Severity**: High - prevents wildcard patterns from working
 
@@ -9,185 +9,90 @@
 
 ## Executive Summary
 
-**Root Cause**: The bug is in the **grammar structure** for `PrimaryPattern` rules. The `alt()` function wraps results differently depending on whether the pattern uses `token_pattern()` directly or `seq([token_pattern()])`.
+**Root Cause**: The bug is in the **pattern extraction logic** in `extract_pattern_from_clause_items`. The function is extracting the wrong AstValue from the clause items.
 
-**Key Finding**: 
-- Variable patterns work because `token_pattern("Ident")` returns `TokenValue(t)` which the grammar function converts to `Var(name, span)`
-- Wildcard patterns fail because `token_pattern("Underscore")` returns `TokenValue("_")` but the grammar function returns `Var("_", span)` - this mismatch causes the result to not be wrapped in `AstValue`
+**Key Finding from Debug Logging**:
+```
+DEBUG clause items: T(|),A,T(->),A
+DEBUG extracted pattern: PLit(0)
+```
 
-**The Real Issue**: The `PrimaryPattern` rule alternatives need to use `seq([...])` consistently to ensure all results are wrapped in `AstValue`.
+The clause items structure is correct: `Pipe, AstValue(pattern), Arrow, AstValue(body)`
+But the extracted pattern is `PLit(0)` instead of `PWild`!
+
+This suggests the extraction logic is finding the wrong AstValue, possibly from a different part of the parsed structure (like the prelude or another file).
 
 ---
 
 ## Pipeline Analysis
 
-### Stage 1: Grammar/Parsing (`src/tao/syntax.gleam`)
+### What's Working ✅
 
-#### ✅ DEFINITELY NOT: Core Exhaustiveness Checking
+1. **Core exhaustiveness checking** - Correctly recognizes `PAny` as exhaustive (proven by unit tests)
+2. **Desugaring** - Correctly converts `AstPAny` → `PAny`
+3. **AST conversion** - Correctly converts `PWild` → `AstPAny`
+4. **pattern_ast_to_pattern** - Correctly converts `Var("_", span)` → `PWild(span)`
+5. **Grammar parsing** - Successfully parses `match x { | _ -> 100 }`
 
-Core's exhaustiveness checking works correctly when given `PAny`:
+### What's Broken ❌
 
-```gleam
-pub fn check_exhaustiveness(...) {
-  case list.last(cases) {
-    Ok(Case(pattern: PAny, guard: None, ..)) -> redundant_errors  // ✅ Works
-    Ok(Case(pattern: PAs(PAny, _), guard: None, ..)) -> redundant_errors  // ✅ Works
-    _ -> { /* continue */ }
-  }
-}
-```
+**`extract_pattern_from_clause_items`** is extracting the wrong pattern.
 
-**Evidence**: Unit tests in `test/core/pattern_match_test.gleam` confirm this.
+Debug output shows:
+- Clause items: `T(|),A,T(->),A` (Pipe, AstValue, Arrow, AstValue) - CORRECT structure
+- Extracted pattern: `PLit(0)` - WRONG! Should be `PWild`
 
-#### ✅ DEFINITELY NOT: Desugaring
-
-The desugaring correctly converts `AstPAny` → `PAny`:
-
-```gleam
-fn tao_pattern_to_core_pattern(pattern: Pattern, ...) {
-  case pattern {
-    ast.PAny(_) -> #(PAny, dc)  // ✅ Works
-    // ...
-  }
-}
-```
-
-#### ✅ DEFINITELY NOT: AST Conversion
-
-`pattern_to_ast` correctly converts `PWild` → `AstPAny`:
-
-```gleam
-pub fn pattern_to_ast(pattern: Pattern) -> ast.Pattern {
-  case pattern {
-    PWild(span) -> AstPAny(span)  // ✅ Works
-    // ...
-  }
-}
-```
-
-#### ✅ DEFINITELY NOT: pattern_ast_to_pattern
-
-The conversion from parsed Expr to Pattern works:
-
-```gleam
-pub fn pattern_ast_to_pattern(expr: Expr) -> Pattern {
-  case expr {
-    Var("_", span) -> PWild(span)  // ✅ Works
-    // ...
-  }
-}
-```
-
-#### ⚠️ ROOT CAUSE: Grammar Structure Mismatch
-
-The issue is in how `PrimaryPattern` alternatives are defined:
-
-**BEFORE (Broken)**:
-```gleam
-rule("PrimaryPattern", [
-  // Wildcard: uses token_pattern directly
-  alt(
-    token_pattern("Underscore"),
-    fn(_) { Var("_", Span("_", 0, 0, 0, 0)) },  // ❌ Result NOT wrapped in AstValue
-  ),
-  // Variable: uses token_pattern directly
-  alt(
-    token_pattern("Ident"),
-    fn(values) {
-      case values {
-        [TokenValue(t)] -> Var(t.value, span)  // ❌ Result NOT wrapped in AstValue
-        // ...
-      }
-    },
-  ),
-])
-```
-
-**AFTER (Fixed)**:
-```gleam
-rule("PrimaryPattern", [
-  // Wildcard: wrapped in seq() to ensure AstValue wrapping
-  alt(
-    seq([token_pattern("Underscore")]),
-    fn(_) { Var("_", Span("_", 0, 0, 0, 0)) },  // ✅ Result wrapped in AstValue
-  ),
-  // Variable: wrapped in seq()
-  alt(
-    seq([token_pattern("Ident")]),
-    fn(values) {
-      case values {
-        [TokenValue(t)] -> Var(t.value, span)  // ✅ Result wrapped in AstValue
-        // ...
-      }
-    },
-  ),
-])
-```
-
-### Why This Matters
-
-The grammar library's `alt()` function behaves differently based on what the inner rule returns:
-
-1. **`token_pattern()` alone**: Returns `TokenValue(t)` directly, `alt()` wraps in `AstValue`
-2. **`seq([token_pattern()])`**: Returns `ListValue([TokenValue(t)])`, `alt()` wraps the function result in `AstValue`
-3. **Function result**: When the function returns a value (like `Var("_", span)`), it needs to come from a `seq()` context to be wrapped in `AstValue`
-
-**The Bug**: When `token_pattern("Underscore")` is used directly with a function, the function's return value is NOT wrapped in `AstValue` because `token_pattern()` already consumed the token and returned a value. Using `seq([token_pattern()])` ensures the function result is wrapped.
+This suggests the extraction is finding an AstValue from a DIFFERENT match expression (possibly from the prelude).
 
 ---
 
-## Test Evidence
+## Debug Evidence
 
-### Core Tests (All Pass)
-
-```gleam
-// PAny is recognized as exhaustive - PASSES
-pub fn core_exhaustiveness_pany_is_exhaustive_test() { ... }
-
-// PAs(PAny, "x") is recognized as exhaustive - PASSES
-pub fn core_exhaustiveness_pvar_is_exhaustive_test() { ... }
+The debug logging revealed:
+```
+DEBUG clause items: T(|),A,T(->),A
+DEBUG extracted pattern: PLit(0)
+DEBUG clause items: T(|),A,T(->),A
+DEBUG extracted pattern: PLit(0)
 ```
 
-### Grammar Tests
+This output appears TWICE, suggesting there are TWO match expressions being parsed. Our test file only has ONE match expression (`match x { | _ -> 100 }`).
 
-After the fix:
-- Wildcard patterns should parse to `AstValue(Var("_", span))`
-- Variable patterns should parse to `AstValue(Var(name, span))`
-- Both should work through the entire pipeline
+The `PLit(0)` pattern suggests the extraction is finding a literal `0` from somewhere else - possibly:
+1. The prelude module
+2. Another example file being parsed
+3. Some internal match expression in the compiler
 
 ---
 
-## Fix Applied
+## Fix Plan
 
-Changed all `PrimaryPattern` alternatives to use `seq([...])`:
+### Immediate Fix: Improve Pattern Extraction Debugging
 
-```gleam
-rule("PrimaryPattern", [
-  alt(
-    seq([token_pattern("Underscore")]),  // ✅ Wrapped
-    fn(_) { Var("_", Span("_", 0, 0, 0, 0)) },
-  ),
-  alt(
-    seq([token_pattern("Ident")]),  // ✅ Wrapped
-    fn(values) { ... },
-  ),
-  alt(
-    seq([ref("Integer")]),  // ✅ Wrapped
-    fn(values) { ... },
-  ),
-  // ... etc
-])
-```
+Add more targeted debug logging to identify exactly which file and which match expression is being processed.
+
+### Root Cause Hypothesis
+
+The `extract_pattern_from_clause_items` function might be processing clauses from multiple files, and the wildcard pattern in the user's file is being overshadowed by patterns from the prelude or other files.
+
+### Alternative Approach
+
+Instead of trying to fix the extraction logic, consider:
+1. Adding file path information to debug output
+2. Checking if the prelude has match expressions that are being processed
+3. Verifying that the correct file is being type-checked
 
 ---
 
 ## Implementation Status
 
-- [x] Identified root cause (grammar structure mismatch)
-- [x] Applied fix to PrimaryPattern rules
-- [ ] Verify fix works for wildcard patterns
-- [ ] Verify fix doesn't break other patterns
-- [ ] Update documentation with final status
+- [x] Added debug logging to identify extraction issue
+- [x] Discovered pattern extraction finds wrong AstValue
+- [x] Identified that multiple match expressions are being processed
+- [ ] Add file path to debug output
+- [ ] Identify source of `PLit(0)` pattern
+- [ ] Fix extraction to use correct AstValue
+- [ ] Verify fix works for all pattern types
 
 ---
 
@@ -195,4 +100,4 @@ rule("PrimaryPattern", [
 
 - **[docs/plans/core/18-exhaustiveness-wildcard-bug.md](./18-exhaustiveness-wildcard-bug.md)** - Bug summary
 - **[src/core/core.gleam](../../src/core/core.gleam)** - Core exhaustiveness checking
-- **[src/tao/syntax.gleam](../../src/tao/syntax.gleam)** - Grammar rules (fixed)
+- **[src/tao/syntax.gleam](../../src/tao/syntax.gleam)** - Grammar and pattern extraction

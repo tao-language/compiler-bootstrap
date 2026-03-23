@@ -28,6 +28,7 @@ import gleam/list
 import gleam/option.{type Option, Some, None}
 import gleam/result
 import gleam/string
+// import gleam/io  // Only needed for debug logging
 import syntax/grammar.{
   type Grammar, type ParseResult, type Span, Span, Grammar, type Value, AstValue,
   ParensValue, TokenValue, ListValue, KeywordValue,
@@ -2014,6 +2015,9 @@ fn extract_clauses_after_lbrace(
 }
 
 fn extract_single_clause_from_list(items: List(Value(Expr))) -> Option(MatchClause) {
+  // DEBUG: Print the structure of the clause items
+  // io.println("DEBUG clause items: " <> inspect_items_short(items))
+  
   // Simplified clause extraction - handle basic case first
   // Expected structure from grammar: [Pipe, pattern_Expr, opt_if, Arrow, body_Expr]
   // But items might be wrapped differently
@@ -2026,6 +2030,9 @@ fn extract_single_clause_from_list(items: List(Value(Expr))) -> Option(MatchClau
       // Pattern might be wrapped in multiple ListValue layers due to grammar structure
       // Try multiple extraction strategies
       let pattern = extract_pattern_from_clause_items(items, pos)
+      
+      // DEBUG: Print the extracted pattern
+      // io.println("DEBUG extracted pattern: " <> inspect_pattern_short(pattern))
 
       // Find Arrow token after pattern
       let after_pattern = list.drop(items, pos + 2)
