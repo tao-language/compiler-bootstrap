@@ -1320,16 +1320,17 @@ pub fn tao_grammar() -> Grammar(Expr) {
       ]),
       // Pattern rules for match expressions (top-level rules, referenced by Match above)
       // Pattern = OrPattern (supports p1 | p2 | p3)
-      // Note: OrPattern returns Expr directly, Pattern rule wraps it
+      // Note: OrPattern returns Expr directly, Pattern wraps it in AstValue
       rule("Pattern", [
         alt(ref("OrPattern"), fn(values) {
           case values {
-            [AstValue(e)] -> e  // OrPattern wrapped in AstValue
+            [AstValue(e)] -> e  // OrPattern wrapped in AstValue by seq()
             _ -> Int(0, Span("error", 0, 0, 0, 0))
           }
         }),
       ]),
       // OrPattern = AsPattern ("|" AsPattern)*
+      // seq() wraps the result in AstValue
       rule("OrPattern", [
         alt(
           seq([
@@ -1339,12 +1340,13 @@ pub fn tao_grammar() -> Grammar(Expr) {
           fn(values) {
             case values {
               [AstValue(first), rest, ..] -> {
+                // first is Expr from AsPattern (wrapped by seq())
                 // rest from many() is ListValue([ListValue([Pipe, AsPattern]), ...])
                 let rest_patterns = case rest {
                   ListValue(items) -> {
                     list.flat_map(items, fn(item) {
                       case item {
-                        ListValue([_, AstValue(p)], ..) -> [p]
+                        ListValue([_, AstValue(p)], ..) -> [p]  // p wrapped by seq()
                         _ -> []
                       }
                     })
@@ -1389,12 +1391,12 @@ pub fn tao_grammar() -> Grammar(Expr) {
       rule("PrimaryPattern", [
         // Wildcard: _
         alt(
-          token_pattern("Underscore"),
+          seq([token_pattern("Underscore")]),
           fn(_) { Var("_", Span("_", 0, 0, 0, 0)) },
         ),
         // Variable: x (lowercase identifier)
         alt(
-          token_pattern("Ident"),
+          seq([token_pattern("Ident")]),
           fn(values) {
             case values {
               [TokenValue(t)] -> {
@@ -1409,7 +1411,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
         ),
         // Literal: 42
         alt(
-          ref("Integer"),
+          seq([ref("Integer")]),
           fn(values) {
             case values {
               [TokenValue(t)] -> Int(int.parse(t.value) |> result.unwrap(0), Span("lit", t.line, t.column, t.line, t.column + string.length(t.value)))
@@ -2052,21 +2054,55 @@ fn extract_single_clause_from_list(items: List(Value(Expr))) -> Option(MatchClau
 
 /// Extract pattern from match clause items, handling various wrapping levels.
 fn extract_pattern_from_clause_items(items: List(Value(Expr)), pipe_pos: Int) -> Pattern {
+  // Pattern should be the item right after the Pipe
   let pattern_items = list.drop(items, pipe_pos + 1) |> list.take(1)
   case pattern_items {
-    // Direct Expr
+    // Direct Expr (most common case)
     [AstValue(expr)] -> pattern_ast_to_pattern(expr)
     // Single ListValue wrapping
     [ListValue([AstValue(expr)])] -> pattern_ast_to_pattern(expr)
     // Double ListValue wrapping
     [ListValue([ListValue([AstValue(expr)])])] -> pattern_ast_to_pattern(expr)
-    // Expr wrapped in ListValue with other items
-    [ListValue(items_inner)] -> {
-      // Try to find AstValue in the inner list
-      find_ast_value_in_list(items_inner) |> pattern_ast_to_pattern
+    // Expr wrapped in ListValue with other items - search for it
+    [ListValue(inner_items)] -> {
+      find_ast_value_in_list(inner_items) |> pattern_ast_to_pattern
     }
-    // Fallback
-    _ -> PWild(Span("error", 0, 0, 0, 0))
+    // Try to extract from the next few items (pattern might be offset)
+    _ -> {
+      // Look ahead to find any AstValue that looks like a pattern
+      let look_ahead = list.drop(items, pipe_pos + 1) |> list.take(5)
+      find_any_pattern(look_ahead)
+    }
+  }
+}
+
+/// Find any pattern in a list of items, searching through nested structures.
+fn find_any_pattern(items: List(Value(Expr))) -> Pattern {
+  find_any_pattern_loop(items, 0)
+}
+
+fn find_any_pattern_loop(items: List(Value(Expr)), depth: Int) -> Pattern {
+  // Limit search depth to avoid infinite loops
+  case depth > 10 {
+    True -> PWild(Span("error", 0, 0, 0, 0))
+    False -> {
+      case items {
+        [] -> PWild(Span("error", 0, 0, 0, 0))
+        [AstValue(expr), ..] -> {
+          // Found an AstValue, try to convert it to a pattern
+          pattern_ast_to_pattern(expr)
+        }
+        [ListValue(inner), ..] -> {
+          // Search in nested list first
+          let nested_pattern = find_any_pattern_loop(inner, depth + 1)
+          case nested_pattern {
+            PWild(span) if span.file == "error" -> find_any_pattern_loop(list.drop(items, 1), depth)
+            p -> p
+          }
+        }
+        [_, ..rest] -> find_any_pattern_loop(rest, depth)
+      }
+    }
   }
 }
 
