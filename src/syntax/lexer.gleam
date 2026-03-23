@@ -251,21 +251,7 @@ fn get_ident_kind(value: String) -> String {
   let keyword_kind = get_keyword_kind(value)
   case keyword_kind != "Ident" {
     True -> keyword_kind
-    False -> {
-      // Not a keyword, check if uppercase or lowercase
-      case string.is_empty(value) {
-        True -> "Ident"
-        False -> {
-          let first = string.slice(value, 0, 1)
-          case first {
-            "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J"
-            | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T"
-            | "U" | "V" | "W" | "X" | "Y" | "Z" -> "UIdent"
-            _ -> "LIdent"
-          }
-        }
-      }
-    }
+    False -> "Ident"  // Produce "Ident" for all non-keyword identifiers
   }
 }
 

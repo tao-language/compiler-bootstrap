@@ -1194,7 +1194,9 @@ pub fn tao_grammar() -> Grammar(Expr) {
             }
           },
         ),
-        // Constructor reference (capitalized identifier): True, False, Some, None
+        // Constructor reference (uppercase identifier): True, False, Some, None
+        // Variable reference (lowercase identifier): x, y, z
+        // Use Ident for both, distinguish in action function
         alt(
           token_pattern("Ident"),
           fn(values) {
@@ -1408,8 +1410,9 @@ pub fn tao_grammar() -> Grammar(Expr) {
             }
           },
         ),
+        // Identifier pattern: can be Constructor (uppercase) or Variable (lowercase)
         // Constructor: Some(x), None, True, False (uppercase identifier with optional args)
-        // Must come before Ident to match constructor applications first
+        // Variable: x, y, z (lowercase identifier)
         alt(
           seq([
             token_pattern("Ident"),
@@ -1423,14 +1426,14 @@ pub fn tao_grammar() -> Grammar(Expr) {
           fn(values) {
             case values {
               [TokenValue(name)] -> {
-                // Only uppercase identifiers are constructors
+                // Single identifier - check if uppercase (constructor) or lowercase (variable)
                 case is_uppercase_start(name.value) {
                   True -> Ctr(name.value, [], Span("ctr", name.line, name.column, name.line, name.column + string.length(name.value)))
-                  False -> Int(0, Span("error", 0, 0, 0, 0))  // Lowercase, not a constructor
+                  False -> Var(name.value, Span("var", name.line, name.column, name.line, name.column + string.length(name.value)))
                 }
               }
               [TokenValue(name), ListValue([_, AstValue(first), rest, ..]), ..] -> {
-                // Only uppercase identifiers are constructors
+                // Constructor with arguments - must be uppercase
                 case is_uppercase_start(name.value) {
                   True -> {
                     let rest_patterns = case rest {
@@ -1447,22 +1450,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
                     let args = [first, ..rest_patterns]
                     Ctr(name.value, args, Span("ctr", name.line, name.column, name.line, name.column + string.length(name.value)))
                   }
-                  False -> Int(0, Span("error", 0, 0, 0, 0))  // Lowercase, not a constructor
-                }
-              }
-              _ -> Int(0, Span("error", 0, 0, 0, 0))
-            }
-          },
-        ),
-        // Variable: x (lowercase identifier)
-        alt(
-          token_pattern("Ident"),
-          fn(values) {
-            case values {
-              [TokenValue(t)] -> {
-                case is_uppercase_start(t.value) {
-                  True -> Int(0, Span("error", 0, 0, 0, 0))  // Constructor, not variable
-                  False -> Var(t.value, Span("var", t.line, t.column, t.line, t.column + string.length(t.value)))
+                  False -> Int(0, Span("error", 0, 0, 0, 0))  // Lowercase with args is invalid
                 }
               }
               _ -> Int(0, Span("error", 0, 0, 0, 0))

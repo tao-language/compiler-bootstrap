@@ -3,9 +3,6 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
-import gleam/io
-import gleam/bool
-import gleam/float
 import syntax/grammar.{type Span, Span}
 
 // ============================================================================
@@ -3236,24 +3233,18 @@ pub fn check_exhaustiveness(
       // If the last case is a wildcard without a guard, the match is exhaustive
       case list.last(cases) {
         Ok(last_case) -> {
-          // Debug: Check what pattern we actually got
-          io.println("DEBUG check_exhaustiveness: last pattern = " <> inspect_pattern_short(last_case.pattern))
           case last_case.pattern {
             PAny -> {
               // PAny found - should be exhaustive
-              io.println("DEBUG check_exhaustiveness: PAny found - exhaustive")
               redundant_errors
             }
             PAs(PAny, _) -> {
               // PAs(PAny, _) found - should be exhaustive
-              io.println("DEBUG check_exhaustiveness: PAs(PAny, _) found - exhaustive")
               redundant_errors
             }
             // Check for other patterns that should be exhaustive
-            p -> {
+            _ -> {
               // Not a recognized wildcard - continue with exhaustiveness checking
-              // This is where the bug manifests - we're getting a pattern that's not PAny
-              io.println("DEBUG check_exhaustiveness: pattern not recognized as exhaustive: " <> inspect_pattern_short(p))
               let missing_errors = check_exhaustiveness_loop(s, cases, span)
               list.append(redundant_errors, missing_errors)
             }
@@ -3446,29 +3437,4 @@ fn def_var(s: State, name: String, ty: Type) -> #(Value, State) {
 fn new_hole(s: State) -> #(Value, State) {
   let hole = VNeut(HHole(s.hole), [])
   #(hole, State(..s, hole: s.hole + 1))
-}
-
-/// Debug helper to inspect patterns.
-fn inspect_pattern_short(pattern: Pattern) -> String {
-  case pattern {
-    PAny -> "PAny"
-    PAs(inner, name) -> "PAs(" <> inspect_pattern_short(inner) <> ", " <> name <> ")"
-    PTyp(_) -> "PTyp"
-    PLit(lit) -> "PLit(" <> inspect_literal_short(lit) <> ")"
-    PLitT(_) -> "PLitT"
-    PRcd(fields) -> "PRcd(" <> int.to_string(list.length(fields)) <> " fields)"
-    PCtr(tag, arg) -> "PCtr(" <> tag <> ", " <> inspect_pattern_short(arg) <> ")"
-    PUnit -> "PUnit"
-  }
-}
-
-fn inspect_literal_short(literal: Literal) -> String {
-  case literal {
-    I32(value) -> "I32(" <> int.to_string(value) <> ")"
-    I64(value) -> "I64(" <> int.to_string(value) <> ")"
-    U32(value) -> "U32(" <> int.to_string(value) <> ")"
-    U64(value) -> "U64(" <> int.to_string(value) <> ")"
-    F32(value) -> "F32(" <> float.to_string(value) <> ")"
-    F64(value) -> "F64(" <> float.to_string(value) <> ")"
-  }
 }
