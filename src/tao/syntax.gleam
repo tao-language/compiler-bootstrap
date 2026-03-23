@@ -28,7 +28,6 @@ import gleam/list
 import gleam/option.{type Option, Some, None}
 import gleam/result
 import gleam/string
-// import gleam/io  // Only needed for debug logging
 import syntax/grammar.{
   type Grammar, type ParseResult, type Span, Span, Grammar, type Value, AstValue,
   ParensValue, TokenValue, ListValue, KeywordValue,
@@ -1392,12 +1391,17 @@ pub fn tao_grammar() -> Grammar(Expr) {
       rule("PrimaryPattern", [
         // Wildcard: _
         alt(
-          seq([token_pattern("Underscore")]),
-          fn(_) { Var("_", Span("_", 0, 0, 0, 0)) },
+          token_pattern("Underscore"),
+          fn(values) {
+            case values {
+              [TokenValue(_)] -> Var("_", Span("_", 0, 0, 0, 0))
+              _ -> Var("_", Span("error", 0, 0, 0, 0))
+            }
+          },
         ),
         // Variable: x (lowercase identifier)
         alt(
-          seq([token_pattern("Ident")]),
+          token_pattern("Ident"),
           fn(values) {
             case values {
               [TokenValue(t)] -> {
@@ -1412,7 +1416,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
         ),
         // Literal: 42
         alt(
-          seq([ref("Integer")]),
+          token_pattern("Number"),
           fn(values) {
             case values {
               [TokenValue(t)] -> Int(int.parse(t.value) |> result.unwrap(0), Span("lit", t.line, t.column, t.line, t.column + string.length(t.value)))
@@ -2059,67 +2063,42 @@ fn extract_single_clause_from_list(items: List(Value(Expr))) -> Option(MatchClau
   }
 }
 
-/// Extract pattern from match clause items, handling various wrapping levels.
+/// Extract pattern from match clause items.
+/// 
+/// Expected clause structure: [Pipe, AstValue(pattern), opt_if, Arrow, AstValue(body)]
+/// The pattern is the FIRST AstValue after the Pipe token.
+/// 
+/// IMPORTANT: We only look for the first AstValue at the top level.
+/// We do NOT search recursively into nested ListValue structures,
+/// because that could find AstValue from unrelated expressions (like the body).
 fn extract_pattern_from_clause_items(items: List(Value(Expr)), pipe_pos: Int) -> Pattern {
-  // Pattern should be the item right after the Pipe
-  let pattern_items = list.drop(items, pipe_pos + 1) |> list.take(1)
-  case pattern_items {
-    // Direct Expr (most common case)
-    [AstValue(expr)] -> pattern_ast_to_pattern(expr)
-    // Single ListValue wrapping
-    [ListValue([AstValue(expr)])] -> pattern_ast_to_pattern(expr)
-    // Double ListValue wrapping
-    [ListValue([ListValue([AstValue(expr)])])] -> pattern_ast_to_pattern(expr)
-    // Expr wrapped in ListValue with other items - search for it
-    [ListValue(inner_items)] -> {
-      find_ast_value_in_list(inner_items) |> pattern_ast_to_pattern
-    }
-    // Try to extract from the next few items (pattern might be offset)
-    _ -> {
-      // Look ahead to find any AstValue that looks like a pattern
-      let look_ahead = list.drop(items, pipe_pos + 1) |> list.take(5)
-      find_any_pattern(look_ahead)
-    }
-  }
+  // Get items after the Pipe
+  let after_pipe = list.drop(items, pipe_pos + 1)
+  
+  // Find the first AstValue (the pattern)
+  // Skip TokenValue, KeywordValue, and ListValue - they are not the pattern
+  find_first_ast_value(after_pipe)
+  |> pattern_ast_to_pattern
 }
 
-/// Find any pattern in a list of items, searching through nested structures.
-fn find_any_pattern(items: List(Value(Expr))) -> Pattern {
-  find_any_pattern_loop(items, 0)
-}
-
-fn find_any_pattern_loop(items: List(Value(Expr)), depth: Int) -> Pattern {
-  // Limit search depth to avoid infinite loops
-  case depth > 10 {
-    True -> PWild(Span("error", 0, 0, 0, 0))
-    False -> {
-      case items {
-        [] -> PWild(Span("error", 0, 0, 0, 0))
-        [AstValue(expr), ..] -> {
-          // Found an AstValue, try to convert it to a pattern
-          pattern_ast_to_pattern(expr)
-        }
-        [ListValue(inner), ..] -> {
-          // Search in nested list first
-          let nested_pattern = find_any_pattern_loop(inner, depth + 1)
-          case nested_pattern {
-            PWild(span) if span.file == "error" -> find_any_pattern_loop(list.drop(items, 1), depth)
-            p -> p
-          }
-        }
-        [_, ..rest] -> find_any_pattern_loop(rest, depth)
-      }
-    }
-  }
-}
-
-/// Find the first AstValue in a list, handling nested ListValues.
-fn find_ast_value_in_list(items: List(Value(Expr))) -> Expr {
+/// Find the first AstValue in a list of items.
+/// Only searches at the top level - does NOT recurse into ListValue.
+/// This ensures we get the pattern AstValue, not an AstValue from the body or guard.
+fn find_first_ast_value(items: List(Value(Expr))) -> Expr {
   case items {
     [] -> Var("_", Span("error", 0, 0, 0, 0))
+    // Found it! This is the pattern.
     [AstValue(e), ..] -> e
-    [ListValue(inner), ..] -> find_ast_value_in_list(inner)
-    [_, ..rest] -> find_ast_value_in_list(rest)
+    // Skip tokens (Pipe, Arrow, etc.)
+    [TokenValue(_), ..rest] -> find_first_ast_value(rest)
+    // Skip keywords (if, etc.)
+    [KeywordValue(_), ..rest] -> find_first_ast_value(rest)
+    // Skip ListValue (guard expressions, nested structures)
+    // This is KEY: we don't search inside ListValue because that's where
+    // guard expressions and body expressions live
+    [ListValue(_), ..rest] -> find_first_ast_value(rest)
+    // Skip other value types
+    [_, ..rest] -> find_first_ast_value(rest)
   }
 }
 
