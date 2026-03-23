@@ -1,9 +1,10 @@
 # Exhaustiveness Checking Bug: Wildcard Pattern Not Recognized
 
-> **Status**: 🐛 Bug identified, partial fix in progress
+> **Status**: 🐛 Root Cause Identified
 > **Date**: March 2026 (Updated)
 > **Severity**: High - prevents wildcard patterns from working
 > **Test Status**: 520/522 tests passing (99.6%)
+> **See Also**: [docs/plans/core/19-wildcard-pattern-comprehensive-analysis.md](./19-wildcard-pattern-comprehensive-analysis.md)
 
 ---
 
@@ -26,115 +27,57 @@ match x {
 
 ---
 
-## Root Cause Analysis
+## Root Cause (IDENTIFIED)
 
-### Pattern Conversion Pipeline
+**The bug is in the pattern extraction logic** in `extract_single_clause_from_list` (`src/tao/syntax.gleam`).
 
-The pattern goes through multiple conversion stages:
+### What's Working ✅
 
-1. **Parsing** (`src/tao/syntax.gleam`):
-   - Source `_` → `Var("_", span)` (Expr)
-   - `pattern_ast_to_pattern(Var("_", span))` → `PWild(span)` (syntax.Pattern)
+1. **Grammar Rules**: Correctly parse `_` as `Var("_", span)`
+2. **pattern_ast_to_pattern**: Correctly converts `Var("_", span)` → `PWild(span)`
+3. **pattern_to_ast**: Correctly converts `PWild(span)` → `AstPAny(span)`
+4. **tao_pattern_to_core_pattern**: Correctly converts `AstPAny(span)` → `PAny`
+5. **check_exhaustiveness**: Correctly recognizes `PAny` as exhaustive (proven by unit tests)
 
-2. **AST Conversion** (`src/tao/syntax.gleam`):
-   - `pattern_to_ast(PWild(span))` → `AstPAny(span)` (ast.Pattern)
+### What's Broken ❌
 
-3. **Desugaring** (`src/tao/desugar.gleam`):
-   - `tao_pattern_to_core_pattern(AstPAny(span))` → `core.PAny` (core.Pattern)
-
-4. **Exhaustiveness Checking** (`src/core/core.gleam`):
-   - `check_exhaustiveness` checks if last case has `pattern: PAny`
-
-### Identified Issues
-
-#### Issue 1: Grammar Structure Complexity
-
-The match clause grammar uses `many(seq([...]))` which creates nested ListValue structures:
-
-```gleam
-many(seq([
-  token_pattern("Pipe"),  // |
-  ref("Pattern"),  // pattern
-  opt(seq([...]))  // optional guard
-  token_pattern("Arrow"),
-  ref("Expr"),  // body
-]))
-```
-
-This produces:
-```
-ListValue([
-  ListValue([Pipe, Pattern, opt_if, Arrow, Body]),
-  ListValue([Pipe, Pattern, opt_if, Arrow, Body]),
-  ...
-])
-```
-
-Where `Pattern` is an Expr that may be wrapped differently depending on how the pattern rules return values.
-
-#### Issue 2: Pattern Rule Return Values
-
-Pattern rules (`OrPattern`, `AsPattern`, `ConstructorPattern`, etc.) return `Expr` directly, but the grammar structure wraps them inconsistently:
-
-- Some rules return `AstValue(Expr)`
-- Some rules return `Expr` directly
-- The `Pattern` rule needs to handle both cases
-
-#### Issue 3: Pattern Extraction
-
-The `extract_single_clause_from_list` function tries to extract patterns from the clause structure, but the wrapping varies:
+**`extract_single_clause_from_list`** doesn't correctly extract the pattern from the grammar structure, returning `PWild(Span("error", ...))` instead of the actual pattern.
 
 ```gleam
 let pattern = case pattern_items {
   [AstValue(expr)] -> pattern_ast_to_pattern(expr)
   [ListValue([AstValue(expr)])] -> pattern_ast_to_pattern(expr)
-  _ -> PWild(Span("error", 0, 0, 0, 0))  // Fallback produces error pattern
+  _ -> PWild(Span("error", 0, 0, 0, 0))  // ❌ This fallback is hit for wildcards
 }
 ```
 
-When the extraction fails, it returns `PWild(Span("error", ...))` instead of the actual pattern, causing the exhaustiveness checker to see an error pattern instead of `PAny`.
+### Why Variable Patterns Work
+
+Variable patterns (`| n -> ...`) may have a slightly different grammar structure that happens to match the extraction cases, while wildcard patterns (`| _ -> ...`) have a structure that doesn't match, triggering the error fallback.
+
+---
+
+## Pipeline Analysis
+
+| Stage | Component | Status | Notes |
+|-------|-----------|--------|-------|
+| 1. Grammar | `src/tao/syntax.gleam` | ✅ Working | Parses `_` correctly |
+| 2. Pattern Extraction | `extract_single_clause_from_list` | ❌ Broken | Returns error pattern |
+| 3. AST Conversion | `pattern_to_ast` | ✅ Working | Converts correctly |
+| 4. Desugaring | `tao_pattern_to_core_pattern` | ✅ Working | Converts correctly |
+| 5. Exhaustiveness | `check_exhaustiveness` | ✅ Working | Recognizes `PAny` |
 
 ---
 
 ## Fix Plan
 
-### Step 1: Simplify Pattern Rules ✅
+### Immediate Fix: Improve Pattern Extraction
 
-Updated pattern rules to only handle `AstValue(Expr)` case:
+See `docs/plans/core/19-wildcard-pattern-comprehensive-analysis.md` for detailed fix plan.
 
-```gleam
-rule("Pattern", [
-  alt(ref("OrPattern"), fn(values) {
-    case values {
-      [AstValue(e)] -> e  // Only handle AstValue case
-      _ -> Int(0, Span("error", 0, 0, 0, 0))
-    }
-  }),
-]),
-```
+### Debug Step: Add Logging
 
-### Step 2: Simplify Pattern Extraction
-
-Update `extract_single_clause_from_list` to handle the actual grammar structure:
-
-```gleam
-fn extract_pattern_from_clause_items(items: List(Value(Expr)), pipe_pos: Int) -> Pattern {
-  let pattern_items = list.drop(items, pipe_pos + 1) |> list.take(1)
-  case pattern_items {
-    [AstValue(expr)] -> pattern_ast_to_pattern(expr)
-    [ListValue([AstValue(expr)])] -> pattern_ast_to_pattern(expr)
-    _ -> PWild(Span("error", 0, 0, 0, 0))
-  }
-}
-```
-
-### Step 3: Debug Grammar Structure
-
-Add debug output to see what structure is actually being produced for a simple wildcard pattern. This will help identify the exact wrapping pattern.
-
-### Step 4: Fix Pattern Rules Consistently
-
-Ensure all pattern rules (`OrPattern`, `AsPattern`, `ConstructorPattern`, `Tuple`, `List`) return values consistently wrapped in `AstValue`.
+Add debug output to see the actual grammar structure being produced for wildcards vs variables.
 
 ---
 
@@ -142,28 +85,19 @@ Ensure all pattern rules (`OrPattern`, `AsPattern`, `ConstructorPattern`, `Tuple
 
 - [x] Added tests to reproduce the issue
 - [x] Identified pattern extraction issue
-- [x] Added handling for multiple ListValue wrapping levels
-- [x] Simplified pattern rules to only handle AstValue case
-- [x] Updated documentation with current status
-- [ ] Debug grammar structure to see actual wrapping
-- [ ] Fix all pattern rules to return consistent wrapping
+- [x] Confirmed Core exhaustiveness checking works correctly
+- [x] Confirmed desugaring works correctly
+- [x] Confirmed AST conversion works correctly
+- [x] Created comprehensive analysis document
+- [ ] Add debug logging to identify exact grammar structure
+- [ ] Fix pattern extraction to handle all structures
 - [ ] Verify fix works for all pattern types
 
 ---
 
 ## Related Documents
 
-- **[docs/core.md](../core.md)** - Core language specification
-- **[docs/plans/core/03-evaluator.md](./03-evaluator.md)** - Evaluator implementation
-- **[src/core/core.gleam](../../src/core/core.gleam)** - Core language implementation (exhaustiveness checking)
+- **[docs/plans/core/19-wildcard-pattern-comprehensive-analysis.md](./19-wildcard-pattern-comprehensive-analysis.md)** - Comprehensive analysis with pipeline breakdown
+- **[src/core/core.gleam](../../src/core/core.gleam)** - Core language implementation
 - **[src/tao/syntax.gleam](../../src/tao/syntax.gleam)** - Tao syntax (pattern parsing)
-- **[src/tao/desugar.gleam](../../src/tao/desugar.gleam)** - Tao desugarer (pattern conversion)
-
----
-
-## Notes
-
-The issue is complex because the grammar structure produces nested ListValue wrappers that vary depending on the pattern type. The fix requires understanding the exact structure being produced and updating both the pattern rules and the extraction logic to handle it consistently.
-
-Current test status: **520/522 tests passing** (99.6%)
-The 2 failures are pattern matching examples that fail due to this extraction issue.
+- **[src/tao/desugar.gleam](../../src/tao/desugar.gleam)** - Tao desugarer
