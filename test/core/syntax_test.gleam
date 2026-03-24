@@ -44,12 +44,13 @@ pub fn roundtrip_var_test() {
 }
 
 pub fn roundtrip_var_underscore_test() {
-  // Underscore also formats as var0 (free variable)
+  // Underscore is a wildcard pattern, not a standalone expression
+  // It's only valid in pattern contexts (match clauses, lambda patterns)
+  // This test verifies that underscore alone is NOT a valid expression
   let source = "_"
   let result = syntax.parse(source)
-  result.errors |> should.equal([])
-  let formatted = syntax.format(result.ast)
-  formatted |> should.equal("var0")
+  // Underscore alone is not a valid expression - it's a pattern
+  result.errors |> should.not_equal([])
 }
 
 // ============================================================================

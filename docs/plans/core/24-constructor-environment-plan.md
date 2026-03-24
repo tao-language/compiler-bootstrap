@@ -1,42 +1,111 @@
 # Constructor Environment for Exhaustiveness Checking - Implementation Plan
 
-> **Date**: March 2026
+> **Date**: March 2026 (Updated)
 > **Status**: 📝 Planning
-> **Goal**: Populate State.ctrs during Tao→Core conversion for proper exhaustiveness checking
+> **Goal**: Populate State.ctrs from Tao type definitions (no hardcoded prelude)
 
 ---
 
-## Problem
+## Architecture Principle
 
-The exhaustiveness checker in `core.gleam` uses `State.ctrs` (constructor environment) to determine which constructors belong to which types. Currently, `State.ctrs` only contains hardcoded prelude types (Bool, Option, Result, Ordering, List).
+**State should NOT have hardcoded constructor definitions.** Constructor definitions should be derived from Tao's type definitions in the source code.
 
-When checking constructor patterns like:
-```tao
-match opt {
-  | Some(x) -> x
-  | None -> 0
-}
+### Why No Hardcoded Prelude?
+
+1. **Separation of concerns**: The core language shouldn't know about specific types
+2. **Testability**: Examples should define their own types, not rely on prelude
+3. **Correctness**: The prelude should be written in Tao, not hardcoded in Gleam
+4. **Bootstrapping**: We need the language to work before writing the prelude
+
+### Correct Flow
+
 ```
-
-The exhaustiveness checker doesn't know that `Some` and `None` are the only constructors of `Option`, so it reports "Pattern match not exhaustive".
-
-## Solution
-
-Populate `State.ctrs` with constructor definitions during Tao→Core conversion. Since Tao doesn't have user-defined type definitions yet, we'll:
-
-1. **Extend prelude types**: Add more constructor definitions to `core.gleam`'s `prelude_ctrs`
-2. **Pass ctrs through DesugarContext**: Thread the constructor environment through the desugaring process
-3. **Initialize State with ctrs**: When creating the initial State for type checking, include the constructor definitions
+Tao Source → Parse → Tao AST → Desugar → Core Term → Type Check
+                ↓                        ↑
+          Type Definitions        State.ctrs populated
+          (type T = A | B)        from Tao type defs
+```
 
 ---
 
 ## Implementation Plan
 
-### Step 1: Extend DesugarContext with ctrs field
+### Step 1: Remove Hardcoded Prelude from core.gleam
+
+**File**: `src/core/core.gleam`
+
+Remove `prelude_ctrs` constant and use empty list:
+
+```gleam
+/// Initial state with empty constructor environment.
+/// Constructors are populated from Tao type definitions during desugaring.
+pub const initial_state = State(
+  hole: 0,
+  var: 0,
+  ctrs: [],  // Empty - populated from Tao type definitions
+  ctx: [],
+  sub: [],
+  errors: [],
+  ffi: ffi_build,
+  config: default_config,
+)
+```
+
+### Step 2: Add Type Definition Support to Tao AST
+
+**File**: `src/tao/ast.gleam`
+
+Add `StmtType` for type definitions:
+
+```gleam
+/// type Name(params) = Constructor1 | Constructor2 | ...
+StmtType(
+  name: String,
+  type_params: List(String),
+  constructors: List(Constructor),
+  span: Span,
+)
+
+pub type Constructor {
+  Constructor(
+    name: String,
+    fields: List(#(Option(String), Type)),  // Optional field name, type
+    span: Span,
+  )
+}
+```
+
+### Step 3: Parse Type Definitions
+
+**File**: `src/tao/syntax.gleam`
+
+Add grammar rule for type definitions:
+
+```gleam
+// Type = "type" Ident ["(" Ident ("," Ident)* ")"] "=" Constructor ("|" Constructor)*
+rule("Type", [
+  seq([
+    keyword_pattern("type"),
+    token_pattern("Ident"),  // type name
+    opt(seq([
+      token_pattern("LParen"),
+      token_pattern("Ident"),  // type param
+      many(seq([token_pattern("Comma"), token_pattern("Ident")])),
+      token_pattern("RParen"),
+    ])),
+    token_pattern("Equal"),
+    ref("Constructor"),
+    many(seq([token_pattern("Pipe"), ref("Constructor")])),
+  ]),
+  fn(values) { ... make_type_def(values) },
+])
+```
+
+### Step 4: Collect Type Definitions During Desugaring
 
 **File**: `src/tao/desugar.gleam`
 
-Add a `ctrs` field to `DesugarContext` to track constructor definitions:
+Add `ctrs` field to `DesugarContext` and populate from type definitions:
 
 ```gleam
 pub type DesugarContext {
@@ -45,102 +114,196 @@ pub type DesugarContext {
     current_module: String,
     local_scope: List(String),
     loop_stack: List(LoopInfo),
-    ctrs: CtrEnv,  // NEW: Constructor definitions
+    ctrs: CtrEnv,  // Populated from Tao type definitions
   )
 }
-```
 
-### Step 2: Initialize ctrs in desugar_module
-
-**File**: `src/tao/desugar.gleam`
-
-Initialize `DesugarContext` with prelude constructors:
-
-```gleam
 pub fn desugar_module(module: Module, ctx: GlobalContext) -> #(Term, DesugarContext) {
+  // Start with empty ctrs
   let dc = DesugarContext(
     global: ctx,
     current_module: module.path,
     local_scope: [],
     loop_stack: [],
-    ctrs: core_prelude_ctrs,  // Import from core
+    ctrs: [],
   )
-  ...
+  
+  // Process type definitions first to populate ctrs
+  let dc_with_types = process_type_definitions(module.body, dc)
+  
+  // Then desugar rest of module with populated ctrs
+  desugar_stmts(module.body, dc_with_types)
+}
+
+fn process_type_definitions(stmts: List(Stmt), dc: DesugarContext) -> DesugarContext {
+  list.fold(stmts, dc, fn(acc_dc, stmt) {
+    case stmt {
+      StmtType(name, type_params, constructors, _span) => {
+        // Convert Tao type definition to Core CtrDef entries
+        let new_ctrs = tao_type_to_core_ctrs(name, type_params, constructors)
+        DesugarContext(..acc_dc, ctrs: list.append(acc_dc.ctrs, new_ctrs))
+      }
+      _ => acc_dc
+    }
+  })
 }
 ```
 
-### Step 3: Export prelude_ctrs from core.gleam
+### Step 5: Convert Tao Type to Core CtrDef
 
-**File**: `src/core/core.gleam`
-
-Make `prelude_ctrs` public so it can be imported:
+**File**: `src/tao/desugar.gleam`
 
 ```gleam
-pub const prelude_ctrs = [
-  #("True", CtrDef([], Typ(0, no_span), Typ(0, no_span))),
-  #("False", CtrDef([], Typ(0, no_span), Typ(0, no_span))),
-  #("Some", CtrDef(["a"], Var(0, no_span), Typ(0, no_span))),
-  #("None", CtrDef(["a"], Typ(0, no_span), Typ(0, no_span))),
-  ...
-]
+fn tao_type_to_core_ctrs(
+  type_name: String,
+  type_params: List(String),
+  constructors: List(Constructor),
+) -> CtrEnv {
+  list.map(constructors, fn(ctr) {
+    let ctr_def = CtrDef(
+      type_params: type_params,
+      field_types: extract_field_types(ctr.fields),
+      return_type: build_return_type(type_name, type_params),
+    )
+    #(ctr.name, ctr_def)
+  })
+}
 ```
 
-### Step 4: Use ctrs in type checking
+### Step 6: Pass ctrs to Type Checking
 
-**File**: `src/tao/compiler.gleam` or wherever type checking is invoked
+**File**: `src/compiler_bootstrap.gleam` or wherever type checking is invoked
 
-When creating the initial State for type checking, include the ctrs:
+When creating the initial State for type checking, use ctrs from desugaring:
 
 ```gleam
-let initial_state = core.initial_state(
+// After desugaring
+let #(term, dc) = desugar_module(module, ctx)
+
+// Create state with ctrs from desugaring
+let initial_state_with_ctrs = core.State(
   hole: 0,
   var: 0,
-  ctrs: dc.ctrs,  // Use ctrs from desugaring
+  ctrs: dc.ctrs,  // Use ctrs from Tao type definitions
   ctx: [],
   sub: [],
   errors: [],
   ffi: core.ffi_build,
   config: core.default_config,
 )
+
+// Run type checking
+let #(_type_result, _type_annotation, final_state) = core.infer(initial_state_with_ctrs, term)
 ```
 
 ---
 
-## Alternative: Simpler Approach
+## Example: User-Defined Type
 
-Since Tao doesn't have user-defined types yet, we can simply ensure the prelude ctrs are used:
+```tao
+// Define a simple enum type
+type Option(a) = Some(a) | None
 
-1. Keep `prelude_ctrs` in `core.gleam` (already done)
-2. Ensure `initial_state` uses `prelude_ctrs` (already done)
-3. The issue might be that the State isn't being passed correctly to the exhaustiveness checker
+// Use it with pattern matching
+let x = Some(42)
+match x {
+  | Some(v) -> v
+  | None -> 0
+}
+```
 
-Let me investigate where the State is created for type checking...
-
----
-
-## Investigation Findings
-
-Looking at the code:
-
-1. `core.initial_state` already uses `prelude_ctrs` ✅
-2. The exhaustiveness checker uses `s.ctrs` from the State ✅
-3. The issue might be in how the State is created during type checking
-
-Need to trace where the State is created for type checking match expressions...
+This should:
+1. Parse the type definition
+2. Create CtrDef entries for `Some` and `None`
+3. Populate `State.ctrs` with these definitions
+4. Type checking recognizes `Some` + `None` as exhaustive for `Option`
 
 ---
 
-## Next Steps
+## Testing Strategy
 
-1. Trace State creation in type checking
-2. Verify ctrs is being passed correctly
-3. Test with constructor patterns
-4. Document findings
+### Test 1: Simple Enum
+
+```tao
+type Color = Red | Green | Blue
+
+let c = Red
+match c {
+  | Red -> 1
+  | Green -> 2
+  | Blue -> 3
+}
+```
+
+Expected: No exhaustiveness errors
+
+### Test 2: Missing Constructor
+
+```tao
+type Color = Red | Green | Blue
+
+let c = Red
+match c {
+  | Red -> 1
+  | Green -> 2
+}
+```
+
+Expected: "Pattern match not exhaustive - missing Blue"
+
+### Test 3: Polymorphic Type
+
+```tao
+type Option(a) = Some(a) | None
+
+let x = Some(42)
+match x {
+  | Some(v) -> v
+  | None -> 0
+}
+```
+
+Expected: No exhaustiveness errors
+
+---
+
+## Files to Modify
+
+1. **`src/core/core.gleam`** - Remove `prelude_ctrs`, use empty list
+2. **`src/tao/ast.gleam`** - Add `StmtType` and `Constructor` types
+3. **`src/tao/syntax.gleam`** - Add type definition grammar
+4. **`src/tao/desugar.gleam`** - Add `ctrs` field, process type definitions
+5. **`src/compiler_bootstrap.gleam`** - Pass ctrs from desugaring to type checking
+6. **`examples/tao/programs/`** - Update examples to define their own types
+
+---
+
+## Migration Path
+
+### Current State
+
+- `core.gleam` has hardcoded `prelude_ctrs` with Bool, Option, Result, etc.
+- Examples rely on these hardcoded definitions
+- Constructor pattern exhaustiveness doesn't work
+
+### After Fix
+
+- `core.gleam` has empty `ctrs`
+- Examples define their own types
+- Constructor pattern exhaustiveness works from Tao type definitions
+
+### Future: Prelude
+
+Once the language works correctly:
+1. Write prelude in Tao (`lib/prelude/option.tao`, etc.)
+2. Auto-import prelude modules
+3. Prelude types become available automatically
 
 ---
 
 ## Related Documents
 
-- **[docs/plans/core/23-pattern-exhaustiveness-final-fix.md](./23-pattern-exhaustiveness-final-fix.md)** - Previous fix summary
-- **[src/core/core.gleam](../../src/core/core.gleam)** - Core language with exhaustiveness checking
+- **[docs/plans/core/23-pattern-exhaustiveness-final-fix.md](./23-pattern-exhaustiveness-final-fix.md)** - Wildcard/variable fix
+- **[docs/plans/core/25-pattern-exhaustiveness-status.md](./25-pattern-exhaustiveness-status.md)** - Current status
+- **[src/core/core.gleam](../../src/core/core.gleam)** - Core language
 - **[src/tao/desugar.gleam](../../src/tao/desugar.gleam)** - Tao to Core desugaring

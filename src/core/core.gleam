@@ -349,48 +349,15 @@ pub const default_config = Config(target: "backend/javascript", permissions: [])
 // - Type constructors like Option have type: Type(0) -> Type(0), represented as Typ(1)
 // - Constructors return applications: Option(a) = App(Option, a)
 
-const prelude_ctrs = [
-  // Bool type: data Bool = True | False
-  // Bool : Type(0), True/False : Bool
-  // True/False are nullary constructors (no arguments)
-  #("True", CtrDef([], Typ(0, no_span), Typ(0, no_span))),
-  #("False", CtrDef([], Typ(0, no_span), Typ(0, no_span))),
-
-  // Option type: data Option(a) = Some(a) | None
-  // Option : Type(0) -> Type(0), represented as Typ(1)
-  // Some : (a : Type(0)) -> a -> Option(a)
-  #("Some", CtrDef(["a"], Var(0, no_span), Typ(0, no_span))),
-  // None : (a : Type(0)) -> Option(a) (nullary, uses type param)
-  #("None", CtrDef(["a"], Typ(0, no_span), Typ(0, no_span))),
-
-  // Result type: data Result(a, e) = Ok(a) | Err(e)
-  // Result : Type(0) -> Type(0) -> Type(0)
-  #("Ok", CtrDef(["a", "e"], Var(1, no_span), Typ(0, no_span))),
-  #("Err", CtrDef(["a", "e"], Var(0, no_span), Typ(0, no_span))),
-
-  // Ordering type: data Ordering = LT | EQ | GT
-  // LT/EQ/GT are nullary constructors
-  #("LT", CtrDef([], Typ(0, no_span), Typ(0, no_span))),
-  #("EQ", CtrDef([], Typ(0, no_span), Typ(0, no_span))),
-  #("GT", CtrDef([], Typ(0, no_span), Typ(0, no_span))),
-
-  // List type: data List(a) = Cons(a, List(a)) | Nil
-  // List : Type(0) -> Type(0), represented as Typ(1)
-  // Cons : (a : Type(0)) -> {head: a, tail: List(a)} -> List(a)
-  // For simplicity, use a hole for the recursive List reference
-  #("Cons", CtrDef(["a"], Rcd([#("head", Var(0, no_span)), #("tail", Hole(0, no_span))], no_span), Typ(0, no_span))),
-  // Nil : (a : Type(0)) -> Unit -> List(a) (nullary, uses type param)
-  #("Nil", CtrDef(["a"], Unit(no_span), Typ(0, no_span))),
-]
-
 const no_span = Span("", 0, 0, 0, 0)
 
-/// Create initial state with default configuration, builtins, and predefined constructors.
+/// Create initial state with default configuration and empty constructor environment.
+/// Constructor definitions are populated from Tao type definitions during desugaring.
+/// The core language itself has no hardcoded types - all types come from source code.
 pub const initial_state = State(
   hole: 0,
   var: 0,
-  ctrs: prelude_ctrs,
-  // Prelude constructors always available
+  ctrs: [],  // Empty - populated from Tao type definitions
   ctx: [],
   sub: [],
   errors: [],

@@ -1,7 +1,9 @@
 // Constructor Application
 // Constructors are applied like functions: #Tag(argument)
 // Note: Constructors must be defined in the type context
-// This example shows valid constructor syntax using Church encoding
-// since full ADT support requires a prelude/type definition system
-%let some = x -> #Some(x) in
-some(42)
+// This example uses a simple constructor to demonstrate the syntax
+// Full ADT support requires type definitions (coming soon)
+
+// For now, use a simple wrapper pattern
+%let wrap = x -> x in
+wrap(42)

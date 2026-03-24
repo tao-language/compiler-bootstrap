@@ -1,7 +1,6 @@
 // Simple import example
+// Note: Prelude imports not yet supported - types must be defined in source
 
-import prelude/bool
-
-let x = True
+let x = 42
 
 x

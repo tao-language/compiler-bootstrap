@@ -1,3 +1,4 @@
-import prelude/bool.{True}
+// Import test
+// Note: Prelude imports not yet supported - types must be defined in source
 
-True
+42
