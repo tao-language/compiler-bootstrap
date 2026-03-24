@@ -1,8 +1,8 @@
-# Constructor Environment for Exhaustiveness Checking - Implementation Plan
+# Constructor Environment for Exhaustiveness Checking - Implementation Status
 
-> **Date**: March 2026 (Updated)
-> **Status**: 📝 Planning
-> **Goal**: Populate State.ctrs from Tao type definitions (no hardcoded prelude)
+> **Date**: March 2026
+> **Status**: ✅ Core Infrastructure Complete, ⏳ Grammar Parsing Needs Refinement
+> **Goal**: Populate State.ctrs from Tao type definitions for constructor pattern exhaustiveness
 
 ---
 
@@ -10,300 +10,185 @@
 
 **State should NOT have hardcoded constructor definitions.** Constructor definitions should be derived from Tao's type definitions in the source code.
 
-### Why No Hardcoded Prelude?
+---
 
-1. **Separation of concerns**: The core language shouldn't know about specific types
-2. **Testability**: Examples should define their own types, not rely on prelude
-3. **Correctness**: The prelude should be written in Tao, not hardcoded in Gleam
-4. **Bootstrapping**: We need the language to work before writing the prelude
+## Current Status
 
-### Correct Flow
+### ✅ Completed
 
-```
-Tao Source → Parse → Tao AST → Desugar → Core Term → Type Check
-                ↓                        ↑
-          Type Definitions        State.ctrs populated
-          (type T = A | B)        from Tao type defs
-```
+1. **Type Definition AST** - Added `StmtType`, `Constructor`, `ConstructorField`, `TypeAst` to `src/tao/ast.gleam`
+2. **Desugar Context** - Added `ctrs` field to `DesugarContext`
+3. **Type Processing** - Added `process_type_definitions()` to populate constructor environment
+4. **Integration** - Pass `ctrs` from desugaring to type checking in `compiler_bootstrap.gleam`
+5. **Exhaustiveness** - Updated `get_type_family()` to use custom constructor definitions
+
+### ⏳ Known Issues
+
+1. **Grammar Parsing for Constructor Fields** - Gleam's pattern matching limitations with nested case expressions cause type inference issues. The grammar rule for `Constructor` needs refinement.
+
+2. **Type Parameters Not Supported** - Only simple types work (e.g., `type Option = Some(Int) | None`). Type parameters like `type Option(a)` are not yet supported.
+
+3. **Named Constructor Fields Not Supported** - Only unnamed fields work (e.g., `Some(Int)`). Named fields like `Cons { head: Int, tail: List }` need additional work.
 
 ---
 
-## Implementation Plan
+## Implementation Learnings
 
-### Step 1: Remove Hardcoded Prelude from core.gleam
+### Learning 1: Grammar Rule Return Types Must Match
 
-**File**: `src/core/core.gleam`
+The grammar rule for `Type` returns `Stmt`, but nested rules like `Constructor` return `Constructor`. When using `ref("Constructor")` inside the `Type` rule, the values are wrapped in `AstValue(Constructor)`, not returned directly.
 
-Remove `prelude_ctrs` constant and use empty list:
+**Solution**: Extract the inner value using pattern matching on `AstValue`.
 
-```gleam
-/// Initial state with empty constructor environment.
-/// Constructors are populated from Tao type definitions during desugaring.
-pub const initial_state = State(
-  hole: 0,
-  var: 0,
-  ctrs: [],  // Empty - populated from Tao type definitions
-  ctx: [],
-  sub: [],
-  errors: [],
-  ffi: ffi_build,
-  config: default_config,
-)
-```
+### Learning 2: Gleam Case Pattern Matching Limitations
 
-### Step 2: Add Type Definition Support to Tao AST
+Gleam doesn't support complex nested pattern matching in case expressions when dealing with grammar values. The `Value` type wrapper causes type inference issues.
 
-**File**: `src/tao/ast.gleam`
+**Workaround**: Use helper functions that extract values step by step, avoiding nested case expressions.
 
-Add `StmtType` for type definitions:
+### Learning 3: List Value Structure from Grammar
+
+The `many()` combinator returns `ListValue(List([TokenValue, TokenValue]))`, not a plain list. Each element is wrapped in `Value`.
+
+**Solution**: Unwrap `ListValue` before processing, use helper functions to extract token values.
+
+### Learning 4: AstValue Wrapping
+
+When a rule returns a value through `alt()`, it's wrapped in `AstValue`. This means:
 
 ```gleam
-/// type Name(params) = Constructor1 | Constructor2 | ...
-StmtType(
-  name: String,
-  type_params: List(String),
-  constructors: List(Constructor),
-  span: Span,
-)
-
-pub type Constructor {
-  Constructor(
-    name: String,
-    fields: List(#(Option(String), Type)),  // Optional field name, type
-    span: Span,
-  )
-}
+// Constructor rule returns: AstValue(Constructor)
+// But Type rule expects: Constructor directly
 ```
 
-### Step 3: Parse Type Definitions
+**Solution**: Unwrap `AstValue` in the parent rule's action function.
 
-**File**: `src/tao/syntax.gleam`
+### Learning 5: Type Inference with Polymorphic Grammar
 
-Add grammar rule for type definitions:
+The grammar is `Grammar(Expr)`, but rules can return different types (Stmt, Constructor, etc.). Type inference can get confused when action functions return different types than expected.
 
-```gleam
-// Type = "type" Ident ["(" Ident ("," Ident)* ")"] "=" Constructor ("|" Constructor)*
-rule("Type", [
-  seq([
-    keyword_pattern("type"),
-    token_pattern("Ident"),  // type name
-    opt(seq([
-      token_pattern("LParen"),
-      token_pattern("Ident"),  // type param
-      many(seq([token_pattern("Comma"), token_pattern("Ident")])),
-      token_pattern("RParen"),
-    ])),
-    token_pattern("Equal"),
-    ref("Constructor"),
-    many(seq([token_pattern("Pipe"), ref("Constructor")])),
-  ]),
-  fn(values) { ... make_type_def(values) },
-])
-```
-
-### Step 4: Collect Type Definitions During Desugaring
-
-**File**: `src/tao/desugar.gleam`
-
-Add `ctrs` field to `DesugarContext` and populate from type definitions:
-
-```gleam
-pub type DesugarContext {
-  DesugarContext(
-    global: GlobalContext,
-    current_module: String,
-    local_scope: List(String),
-    loop_stack: List(LoopInfo),
-    ctrs: CtrEnv,  // Populated from Tao type definitions
-  )
-}
-
-pub fn desugar_module(module: Module, ctx: GlobalContext) -> #(Term, DesugarContext) {
-  // Start with empty ctrs
-  let dc = DesugarContext(
-    global: ctx,
-    current_module: module.path,
-    local_scope: [],
-    loop_stack: [],
-    ctrs: [],
-  )
-  
-  // Process type definitions first to populate ctrs
-  let dc_with_types = process_type_definitions(module.body, dc)
-  
-  // Then desugar rest of module with populated ctrs
-  desugar_stmts(module.body, dc_with_types)
-}
-
-fn process_type_definitions(stmts: List(Stmt), dc: DesugarContext) -> DesugarContext {
-  list.fold(stmts, dc, fn(acc_dc, stmt) {
-    case stmt {
-      StmtType(name, type_params, constructors, _span) => {
-        // Convert Tao type definition to Core CtrDef entries
-        let new_ctrs = tao_type_to_core_ctrs(name, type_params, constructors)
-        DesugarContext(..acc_dc, ctrs: list.append(acc_dc.ctrs, new_ctrs))
-      }
-      _ => acc_dc
-    }
-  })
-}
-```
-
-### Step 5: Convert Tao Type to Core CtrDef
-
-**File**: `src/tao/desugar.gleam`
-
-```gleam
-fn tao_type_to_core_ctrs(
-  type_name: String,
-  type_params: List(String),
-  constructors: List(Constructor),
-) -> CtrEnv {
-  list.map(constructors, fn(ctr) {
-    let ctr_def = CtrDef(
-      type_params: type_params,
-      field_types: extract_field_types(ctr.fields),
-      return_type: build_return_type(type_name, type_params),
-    )
-    #(ctr.name, ctr_def)
-  })
-}
-```
-
-### Step 6: Pass ctrs to Type Checking
-
-**File**: `src/compiler_bootstrap.gleam` or wherever type checking is invoked
-
-When creating the initial State for type checking, use ctrs from desugaring:
-
-```gleam
-// After desugaring
-let #(term, dc) = desugar_module(module, ctx)
-
-// Create state with ctrs from desugaring
-let initial_state_with_ctrs = core.State(
-  hole: 0,
-  var: 0,
-  ctrs: dc.ctrs,  // Use ctrs from Tao type definitions
-  ctx: [],
-  sub: [],
-  errors: [],
-  ffi: core.ffi_build,
-  config: core.default_config,
-)
-
-// Run type checking
-let #(_type_result, _type_annotation, final_state) = core.infer(initial_state_with_ctrs, term)
-```
+**Workaround**: Keep action functions simple, use helper functions for complex transformations.
 
 ---
 
-## Example: User-Defined Type
+## Technical Details
+
+### Type Definition Syntax (Current)
 
 ```tao
-// Define a simple enum type
-type Option(a) = Some(a) | None
+// Simple type without parameters
+type Option = Some(Int) | None
 
-// Use it with pattern matching
-let x = Some(42)
-match x {
-  | Some(v) -> v
-  | None -> 0
-}
+// Constructor with unnamed fields
+type Result = Ok(Int) | Err(String)
+
+// Nullary constructor
+type Bool = True | False
 ```
 
-This should:
-1. Parse the type definition
-2. Create CtrDef entries for `Some` and `None`
-3. Populate `State.ctrs` with these definitions
-4. Type checking recognizes `Some` + `None` as exhaustive for `Option`
+### Type Definition Syntax (Future)
+
+```tao
+// With type parameters (not yet supported)
+type Option(a) = Some(a) | None
+
+// With named fields (not yet supported)
+type List(a) = Cons { head: a, tail: List(a) } | Nil
+```
+
+### Core CtrDef Structure
+
+```gleam
+CtrDef(
+  params: List(String),      // Type parameters: ["a", "e"]
+  arg_ty: Term,              // Argument type (fields)
+  ret_ty: Term,              // Return type (type application)
+)
+```
+
+---
+
+## Files Modified
+
+| File | Changes |
+|------|---------|
+| `src/tao/ast.gleam` | Added `StmtType`, `Constructor`, `ConstructorField`, `TypeAst` |
+| `src/tao/desugar.gleam` | Added `ctrs` field, `process_type_definitions()` |
+| `src/compiler_bootstrap.gleam` | Added `update_state_ctrs()` |
+| `src/core/core.gleam` | Updated `get_type_family()` to use custom constructors |
+
+### Files Needing Work
+
+| File | Issue |
+|------|-------|
+| `src/tao/syntax.gleam` | Constructor grammar rule needs refinement for proper type inference |
+
+---
+
+## Next Steps
+
+### Immediate (Fix Grammar Parsing)
+
+1. **Simplify Constructor rule** - Use a simpler grammar structure that avoids nested pattern matching
+2. **Test incrementally** - Build after each small change
+3. **Consider alternative approaches** - Maybe parse constructors differently
+
+### Short Term (Add Features)
+
+1. **Add type parameter support** - Parse `(a, b)` in `type Name(a, b) = ...`
+2. **Add named field support** - Parse `{ field: Type }` syntax
+3. **Improve error messages** - Better diagnostics for type definition errors
+
+### Long Term (Complete Feature)
+
+1. **Test exhaustiveness checking** - Verify constructor patterns are checked correctly
+2. **Add prelude types** - Write Option, Result, etc. in Tao
+3. **Auto-import prelude** - Make prelude types available by default
 
 ---
 
 ## Testing Strategy
 
-### Test 1: Simple Enum
+### Unit Tests
+
+1. Parse simple type: `type Bool = True | False`
+2. Parse type with fields: `type Option = Some(Int) | None`
+3. Parse nullary constructor: `None`
+4. Parse unary constructor: `Some(Int)`
+
+### Integration Tests
+
+1. Type check match with exhaustive patterns
+2. Type check match with missing patterns (should error)
+3. Type check match with wildcard (should be exhaustive)
+
+### Example Programs
 
 ```tao
-type Color = Red | Green | Blue
-
-let c = Red
-match c {
-  | Red -> 1
-  | Green -> 2
-  | Blue -> 3
-}
-```
-
-Expected: No exhaustiveness errors
-
-### Test 2: Missing Constructor
-
-```tao
-type Color = Red | Green | Blue
-
-let c = Red
-match c {
-  | Red -> 1
-  | Green -> 2
-}
-```
-
-Expected: "Pattern match not exhaustive - missing Blue"
-
-### Test 3: Polymorphic Type
-
-```tao
-type Option(a) = Some(a) | None
+// test_exhaustive.tao
+type Option = Some(Int) | None
 
 let x = Some(42)
 match x {
   | Some(v) -> v
-  | None -> 0
+  | None -> 0  // Exhaustive - no error
 }
 ```
 
-Expected: No exhaustiveness errors
+```tao
+// test_missing.tao
+type Option = Some(Int) | None
 
----
-
-## Files to Modify
-
-1. **`src/core/core.gleam`** - Remove `prelude_ctrs`, use empty list
-2. **`src/tao/ast.gleam`** - Add `StmtType` and `Constructor` types
-3. **`src/tao/syntax.gleam`** - Add type definition grammar
-4. **`src/tao/desugar.gleam`** - Add `ctrs` field, process type definitions
-5. **`src/compiler_bootstrap.gleam`** - Pass ctrs from desugaring to type checking
-6. **`examples/tao/programs/`** - Update examples to define their own types
-
----
-
-## Migration Path
-
-### Current State
-
-- `core.gleam` has hardcoded `prelude_ctrs` with Bool, Option, Result, etc.
-- Examples rely on these hardcoded definitions
-- Constructor pattern exhaustiveness doesn't work
-
-### After Fix
-
-- `core.gleam` has empty `ctrs`
-- Examples define their own types
-- Constructor pattern exhaustiveness works from Tao type definitions
-
-### Future: Prelude
-
-Once the language works correctly:
-1. Write prelude in Tao (`lib/prelude/option.tao`, etc.)
-2. Auto-import prelude modules
-3. Prelude types become available automatically
+let x = Some(42)
+match x {
+  | Some(v) -> v  // Missing None - should error
+}
+```
 
 ---
 
 ## Related Documents
 
+- **[docs/plans/core/24-constructor-environment-plan.md](./24-constructor-environment-plan.md)** - This document
+- **[docs/plans/core/25-pattern-exhaustiveness-status.md](./25-pattern-exhaustiveness-status.md)** - Previous status
 - **[docs/plans/core/23-pattern-exhaustiveness-final-fix.md](./23-pattern-exhaustiveness-final-fix.md)** - Wildcard/variable fix
-- **[docs/plans/core/25-pattern-exhaustiveness-status.md](./25-pattern-exhaustiveness-status.md)** - Current status
-- **[src/core/core.gleam](../../src/core/core.gleam)** - Core language
-- **[src/tao/desugar.gleam](../../src/tao/desugar.gleam)** - Tao to Core desugaring
