@@ -341,6 +341,9 @@ pub type Expr {
 
   /// Run statement: run expr
   Run(value: Expr, span: Span)
+
+  /// Type definition: type Name = Ctor | Ctor
+  TypeDecl(Stmt, Span)
 }
 
 pub type RecordField {
@@ -543,6 +546,7 @@ pub fn span_from_expr(expr: Expr) -> Span {
     Hole(span) -> span
     Test(_, _, span) -> span
     Run(_, span) -> span
+    TypeDecl(_, span) -> span
   }
 }
 

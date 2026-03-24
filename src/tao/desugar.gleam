@@ -18,9 +18,8 @@ import gleam/float
 import gleam/option.{type Option, Some, None}
 import gleam/string
 import syntax/grammar.{type Span, Span}
-import tao/ast as ast
 import tao/ast.{
-  type Module, type Stmt, type Expr, type Param, type Pattern,
+  type Module, type Stmt, type Expr, type Param, Param, type Pattern,
   type Literal, type BinOperator, type UnaryOperator,
   type RecordField, type MatchClause, type BlockStatement, type LetDecl,
   StmtLet, StmtFn, StmtImport, StmtExpr,
@@ -32,7 +31,8 @@ import tao/ast.{
   Int as LitInt, Float as LitFloat, String as LitString,
   RecordUpdate, OptionalChain, LetExpr, Var as ExprVar,
   get_public_names, get_stmt_name, span_from_expr,
-  type Constructor, type ConstructorField, type TypeAst,
+  type Constructor, Constructor, type ConstructorField, NamedField, UnnamedField, type TypeAst,
+  TVar, TApp, TFn, TRecord, TTuple, THole,
   StmtType,
 }
 import tao/global_context.{
@@ -45,7 +45,7 @@ import tao/import_ast.{
   ImportSelectiveAlias, ImportWildcard,
   type ImportItem, ImportName, ImportType, ImportOperator,
 }
-import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, type CtrDef, type CtrEnv, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, F64, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole, Ctr, Ann}
+import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, type CtrDef, CtrDef, type CtrEnv, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, F64, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole, Ctr, Ann}
 
 // ============================================================================
 // CORE TERM TYPES (simplified for desugaring)
@@ -261,9 +261,10 @@ fn constructor_field_to_type(field: ConstructorField) -> Term {
 
 /// Build type application: TypeName(param1, param2, ...)
 fn build_type_app(type_name: String, type_params: List(String)) -> Term {
+  let span = Span("type_app", 0, 0, 0, 0)
   case type_params {
-    [] -> Ctr(type_name, Unit(Span("unit", 0, 0, 0, 0)))
-    _params -> Ctr(type_name, Unit(Span("unit", 0, 0, 0, 0)))
+    [] -> Ctr(type_name, Unit(span), span)
+    _params -> Ctr(type_name, Unit(span), span)
   }
 }
 
@@ -271,7 +272,7 @@ fn build_type_app(type_name: String, type_params: List(String)) -> Term {
 fn type_ast_to_core(t: TypeAst) -> Term {
   case t {
     TVar(_name) -> Hole(0, Span("type_var", 0, 0, 0, 0))
-    TApp(name, _args) -> Ctr(name, Unit(Span("unit", 0, 0, 0, 0)))
+    TApp(name, _args) -> Ctr(name, Unit(Span("unit", 0, 0, 0, 0)), Span("tapp", 0, 0, 0, 0))
     TFn(_params, _ret) -> Typ(1, Span("fn", 0, 0, 0, 0))
     TRecord(_fields) -> Typ(0, Span("rcd", 0, 0, 0, 0))
     TTuple(_elems) -> Typ(0, Span("tuple", 0, 0, 0, 0))
@@ -473,7 +474,7 @@ pub fn desugar_stmt(
       let dc_with_name = add_local(dc, name)
       // Functions with no params need a dummy param for Unit to support f() calls
       let params_with_unit = case params {
-        [] -> [ast.Param("_unit", None, span)]
+        [] -> [Param("_unit", None, span)]
         _ -> params
       }
       let #(core_lam, _dc1) = build_lambdas_with_scope(type_params, params_with_unit, body, span, dc_with_name)
@@ -1294,7 +1295,7 @@ fn desugar_expr_core(
 
 /// Desugar a type AST to a CoreTerm.
 fn desugar_type_ast(
-  type_ast: ast.Type,
+  type_ast: TypeAst,
   dc: DesugarContext,
 ) -> #(CoreTerm, DesugarContext) {
   // Type ASTs are converted to Core terms
@@ -1319,7 +1320,7 @@ fn desugar_type_ast(
         "Result" -> CoreVar("Result", Span(name, 0, 0, 0, 0))
         _ -> CoreVar(name, Span(name, 0, 0, 0, 0))
       }
-      let core_type = build_type_app(base, core_args, Span(name, 0, 0, 0, 0))
+      let core_type = build_core_type_app(base, core_args, Span(name, 0, 0, 0, 0))
       #(core_type, dc1)
     }
     ast.TFn(_, _) -> {
@@ -1342,7 +1343,7 @@ fn desugar_type_ast(
 }
 
 fn desugar_type_args(
-  args: List(ast.Type),
+  args: List(TypeAst),
   dc: DesugarContext,
 ) -> #(List(CoreTerm), DesugarContext) {
   list.fold(args, #([], dc), fn(acc, arg) {
@@ -1352,11 +1353,11 @@ fn desugar_type_args(
   })
 }
 
-fn build_type_app(base: CoreTerm, args: List(CoreTerm), span: Span) -> CoreTerm {
+fn build_core_type_app(base: CoreTerm, args: List(CoreTerm), span: Span) -> CoreTerm {
   case args {
     [] -> base
     [arg, ..rest] -> {
-      let inner = build_type_app(base, rest, span)
+      let inner = build_core_type_app(base, rest, span)
       CoreApp(inner, arg, span)
     }
   }

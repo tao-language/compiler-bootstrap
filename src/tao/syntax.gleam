@@ -151,6 +151,17 @@ pub type Expr {
   Import(import_item: Import, span: Span)
   /// Constructor application (e.g., True, False, Some(x), None)
   Ctr(name: String, args: List(Expr), span: Span)
+  /// Type definition (e.g., type Option = Some(Int) | None)
+  TypeDecl(name: String, constructors: List(ConstructorDecl), span: Span)
+}
+
+/// Constructor definition for type declarations.
+pub type ConstructorDecl {
+  ConstructorDecl(
+    name: String,
+    fields: List(String),  // Field types as strings (simplified)
+    span: Span,
+  )
 }
 
 /// A single match clause with pattern, optional guard, and body.
@@ -313,6 +324,19 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
       // Constructor application
       let ast_args = list.map(args, expr_to_ast_loop)
       AstCtr(name, ast_args, span)
+    }
+    TypeDecl(name, constructors, span) -> {
+      // Type definition - convert to AST StmtType
+      let ast_constructors = list.map(constructors, fn(ctr) {
+        let ConstructorDecl(ctr_name, fields, ctr_span) = ctr
+        let ast_fields = list.map(fields, fn(field_type) {
+          // For now, treat field types as type variables
+          AstTVar(field_type)
+        })
+        ast.Constructor(ctr_name, list.map(ast_fields, UnnamedField), ctr_span)
+      })
+      let stmt_type = ast.StmtType(name, [], ast_constructors, span)
+      ast.TypeDecl(stmt_type, span)
     }
   }
 }
@@ -618,6 +642,7 @@ fn get_span(expr: Expr) -> Span {
     Run(_, span) -> span
     Import(_, span) -> span
     Ctr(_, _, span) -> span
+    TypeDecl(_, _, span) -> span
   }
 }
 
@@ -735,7 +760,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
           }
         }),
         // Type definition: type Name(params) = Ctor | Ctor
-        alt(ref("Type"), fn(values) {
+        alt(ref("TypeDecl"), fn(values) {
           case values {
             [AstValue(e)] -> e
             _ -> Int(0, Span("empty", 0, 0, 0, 0))
@@ -933,64 +958,54 @@ pub fn tao_grammar() -> Grammar(Expr) {
         ),
       ]),
       // Type = "type" Ident "=" Constructor ("|" Constructor)*
+      // Type definition: type Name = Constructor | Constructor
       // Simplified: no type parameters for now
-      rule("Type", [
+      rule("TypeDecl", [
         alt(
           seq([
             keyword_pattern("type"),
             token_pattern("Ident"),  // type name
             token_pattern("Equal"),
-            ref("Constructor"),  // first constructor
-            many(seq([token_pattern("Pipe"), ref("Constructor")])),  // more constructors
-          ]),
-          fn(values) {
-            case values {
-              [_, TokenValue(name_token), _, first_ctr, more_ctrs] -> {
-                let type_name = name_token.value
-                let constructors = [
-                  first_ctr,
-                  ..list.flat_map(more_ctrs, fn(pair_list) {
-                    case pair_list {
-                      [_, ctr] -> [ctr]
-                      _ -> []
-                    }
-                  })
-                ]
-                let span = span_from_token(name_token, "tao")
-                StmtType(type_name, [], constructors, span)
-              }
-              _ -> StmtType("", [], [], Span("empty", 0, 0, 0, 0))
-            }
-          },
-        ),
-      ]),
-      // Constructor = Ident ["(" Type ("," Type)* ")"] | Ident "{" Field ("," Field)* "}"
-      // Simplified: only unnamed fields for now
-      rule("Constructor", [
-        alt(
-          seq([
-            token_pattern("Ident"),  // constructor name
-            alt(
-              // Constructor with unnamed fields: Some(a)
-              seq([
+            // First constructor: Ident ["(" Ident ("," Ident)* ")"]
+            seq([
+              token_pattern("Ident"),  // constructor name
+              opt(seq([
                 token_pattern("LParen"),
-                token_pattern("Ident"),  // first field type (simplified)
+                token_pattern("Ident"),  // first field type
                 many(seq([token_pattern("Comma"), token_pattern("Ident")])),  // more field types
                 token_pattern("RParen"),
+              ])),
+            ]),
+            many(seq([
+              token_pattern("Pipe"),
+              // More constructors: Ident ["(" Ident ("," Ident)* ")"]
+              seq([
+                token_pattern("Ident"),  // constructor name
+                opt(seq([
+                  token_pattern("LParen"),
+                  token_pattern("Ident"),  // first field type
+                  many(seq([token_pattern("Comma"), token_pattern("Ident")])),  // more field types
+                  token_pattern("RParen"),
+                ])),
               ]),
-              // Nullary constructor: None
-              empty([]),
-            ),
+            ])),
           ]),
           fn(values) {
             case values {
-              [TokenValue(name_token), fields_opt] -> {
-                let ctr_name = name_token.value
-                let fields = parse_constructor_fields(fields_opt)
+              [_, TokenValue(name_token), _, ListValue(first_ctr_vals), more_ctrs_val] -> {
+                let type_name = name_token.value
+                // Parse first constructor
+                let first_ctr = parse_local_constructor_from_vals(ListValue(first_ctr_vals))
+                // Parse more constructors
+                // more_ctrs_val is ListValue([ListValue([Pipe, ListValue([name, opt])]), ...])
+                let constructors = [
+                  first_ctr,
+                  ..extract_local_constructors_from_more(more_ctrs_val)
+                ]
                 let span = span_from_token(name_token, "tao")
-                CtrDef(ctr_name, fields, span)
+                TypeDecl(type_name, constructors, span)
               }
-              _ -> CtrDef("", [], Span("empty", 0, 0, 0, 0))
+              _ -> TypeDecl("", [], Span("empty", 0, 0, 0, 0))
             }
           },
         ),
@@ -1733,6 +1748,7 @@ pub fn get_expr_span(expr: Expr) -> Span {
     Run(_, span) -> span
     Import(_, span) -> span
     Ctr(_, _, span) -> span
+    TypeDecl(_, _, span) -> span
   }
 }
 
@@ -3426,6 +3442,19 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
         _ -> name <> "(" <> string_join(list.map(args, format_expr), ", ") <> ")"
       }
     }
+    TypeDecl(name, constructors, _) -> {
+      let ctors_str = string_join(
+        list.map(constructors, fn(ctr) {
+          let ConstructorDecl(ctr_name, fields, _) = ctr
+          case fields {
+            [] -> ctr_name
+            _ -> ctr_name <> "(" <> string_join(fields, ", ") <> ")"
+          }
+        }),
+        " | ",
+      )
+      "type " <> name <> " = " <> ctors_str
+    }
   }
 }
 
@@ -3513,24 +3542,159 @@ fn string_join(strings: List(String), sep: String) -> String {
 // TYPE HELPERS
 // ============================================================================
 
-/// Parse constructor fields from grammar values.
-fn parse_constructor_fields(fields_opt: List(Value)) -> List(ConstructorField) {
-  // fields_opt might be wrapped in AstValue from the alt()
+/// Extract additional type names from constructor field list.
+/// Takes the result of many(seq([Comma, Ident])) and returns list of ConstructorField.
+fn extract_more_types(more_list: List(Value(a))) -> List(ConstructorField) {
+  list.flat_map(more_list, fn(item) {
+    // Each item is ListValue([Comma, Ident])
+    let pair = case item {
+      ListValue(p) -> p
+      _ -> []
+    }
+    let tok_value = get_token_value_from_pair(pair)
+    case tok_value {
+      "" -> []
+      v -> [UnnamedField(AstTVar(v))]
+    }
+  })
+}
+
+/// Parse constructor fields list: [LParen, first_type, more_types, RParen]
+fn parse_fields_list(fields_list: List(Value(a))) -> List(ConstructorField) {
+  case fields_list {
+    [_, TokenValue(first_type_tok), ListValue(more_list), _] -> {
+      let first_type = AstTVar(first_type_tok.value)
+      let more_types = extract_more_types(more_list)
+      [UnnamedField(first_type), ..more_types]
+    }
+    _ -> []
+  }
+}
+
+/// Get token value from a pair [_, TokenValue], or empty string.
+fn get_token_value_from_pair(pair: List(Value(a))) -> String {
+  case pair {
+    [_, TokenValue(t)] -> t.value
+    _ -> ""
+  }
+}
+
+/// Parse constructor fields option: [] (no parens) or ListValue([...]) (with parens)
+fn parse_constructor_fields_opt(fields_opt: Value(a)) -> List(ConstructorField) {
   case fields_opt {
-    [AstValue(inner_list)] -> parse_constructor_fields(inner_list)
-    [_, first_type_token, more_list, _] -> {
-      let first_type = case first_type_token {
-        TokenValue(t) -> AstTVar(t.value)
-        _ -> AstTHole
+    ListValue(inner) -> parse_fields_list(inner)
+    _ -> []
+  }
+}
+
+/// Parse constructor from grammar values: ListValue([TokenValue(name), fields_opt])
+/// where fields_opt is [] (no parens) or ListValue([...]) (with parens)
+fn parse_constructor_from_vals(ctr_vals: Value(Expr)) -> Constructor {
+  case ctr_vals {
+    ListValue(vals) -> {
+      case vals {
+        [TokenValue(name_tok), fields_opt] -> {
+          let ctr_name = name_tok.value
+          let fields = parse_constructor_fields_opt(fields_opt)
+          let span = span_from_token(name_tok, "tao")
+          CtrDef(ctr_name, fields, span)
+        }
+        _ -> CtrDef("", [], Span("empty", 0, 0, 0, 0))
       }
-      // more_list is List([Comma, Ident])
-      let more_types = list.flat_map(more_list, fn(pair_list) {
-        case pair_list {
-          [_, TokenValue(t)] -> [UnnamedField(AstTVar(t.value))]
+    }
+    _ -> CtrDef("", [], Span("empty", 0, 0, 0, 0))
+  }
+}
+
+/// Extract constructors from more_ctrs value.
+/// more_ctrs_val is ListValue([ListValue([Pipe, ListValue([name, opt])]), ...])
+fn extract_constructors_from_more(more_ctrs_val: Value(Expr)) -> List(Constructor) {
+  case more_ctrs_val {
+    ListValue(outer_list) -> {
+      list.flat_map(outer_list, fn(item) {
+        case item {
+          ListValue(inner_list) -> {
+            case inner_list {
+              [_, ListValue(ctr_vals)] -> [parse_constructor_from_vals(ListValue(ctr_vals))]
+              _ -> []
+            }
+          }
           _ -> []
         }
       })
-      [UnnamedField(first_type), ..more_types]
+    }
+    _ -> []
+  }
+}
+
+/// Parse local constructor from grammar values: ListValue([TokenValue(name), fields_opt])
+fn parse_local_constructor_from_vals(ctr_vals: Value(Expr)) -> ConstructorDecl {
+  case ctr_vals {
+    ListValue(vals) -> {
+      case vals {
+        [TokenValue(name_tok), fields_opt] -> {
+          let ctr_name = name_tok.value
+          let fields = parse_local_constructor_fields_opt(fields_opt)
+          let span = span_from_token(name_tok, "tao")
+          ConstructorDecl(ctr_name, fields, span)
+        }
+        _ -> ConstructorDecl("", [], Span("empty", 0, 0, 0, 0))
+      }
+    }
+    _ -> ConstructorDecl("", [], Span("empty", 0, 0, 0, 0))
+  }
+}
+
+/// Parse local constructor fields option: [] (no parens) or ListValue([...]) (with parens)
+fn parse_local_constructor_fields_opt(fields_opt: Value(Expr)) -> List(String) {
+  case fields_opt {
+    ListValue(inner) -> parse_local_fields_list(inner)
+    _ -> []
+  }
+}
+
+/// Parse local constructor fields list: [LParen, first_type, more_types, RParen]
+fn parse_local_fields_list(fields_list: List(Value(Expr))) -> List(String) {
+  case fields_list {
+    [_, TokenValue(first_type_tok), ListValue(more_list), _] -> {
+      let first_type = first_type_tok.value
+      let more_types = extract_local_more_types(more_list)
+      [first_type, ..more_types]
+    }
+    _ -> []
+  }
+}
+
+/// Extract additional type names from local constructor field list.
+fn extract_local_more_types(more_list: List(Value(Expr))) -> List(String) {
+  list.flat_map(more_list, fn(item) {
+    case item {
+      ListValue(pair) -> {
+        case pair {
+          [_, TokenValue(t)] -> [t.value]
+          _ -> []
+        }
+      }
+      _ -> []
+    }
+  })
+}
+
+/// Extract local constructors from more_ctrs value.
+fn extract_local_constructors_from_more(more_ctrs_val: Value(Expr)) -> List(ConstructorDecl) {
+  case more_ctrs_val {
+    ListValue(outer_list) -> {
+      list.flat_map(outer_list, fn(item) {
+        case item {
+          ListValue(inner_list) -> {
+            case inner_list {
+              [_, ListValue(ctr_vals)] -> [parse_local_constructor_from_vals(ListValue(ctr_vals))]
+              _ -> []
+            }
+          }
+          _ -> []
+        }
+      })
     }
     _ -> []
   }

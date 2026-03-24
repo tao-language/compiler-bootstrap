@@ -10,11 +10,11 @@
 /// - Compiling modules in correct order
 /// - Detecting circular imports
 
-import tao/ast.{type Module, type Stmt, type Param, type TypeAst, Module as ModuleCtr, StmtImport, StmtLet, StmtFn, StmtFor, StmtWhile, StmtLoop, StmtBreak, StmtContinue, StmtReturn, StmtYield, StmtExpr, StmtBind, StmtMut, StmtTest, StmtRun, Param, TVar}
+import tao/ast.{type Module, type Stmt, type Param, type TypeAst, Module as ModuleCtr, StmtImport, StmtLet, StmtFn, StmtFor, StmtWhile, StmtLoop, StmtBreak, StmtContinue, StmtReturn, StmtYield, StmtExpr, StmtBind, StmtMut, StmtTest, StmtRun, StmtType, Param, TVar}
 import tao/import_ast.{type Import as ImportType, type ImportContext, type ResolvedImport}
 import tao/import_resolver.{resolve_imports}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module, register_module}
-import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, Float as TaoFloat, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, Test, Run, If, For, While, Loop, Break, Continue, Import, Ctr, expr_to_ast, block_to_ast, pattern_to_ast}
+import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, Float as TaoFloat, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, Test, Run, If, For, While, Loop, Break, Continue, Import, Ctr, TypeDecl, expr_to_ast, block_to_ast, pattern_to_ast}
 import syntax/grammar.{type Span, Span}
 import gleam/dict.{type Dict}
 import gleam/list
@@ -335,6 +335,7 @@ fn get_expr_span(expr: TaoExpr) -> Span {
     Run(_, span) -> span
     Import(_, span) -> span
     Ctr(_, _, span) -> span
+    TypeDecl(_, _, span) -> span
   }
 }
 
