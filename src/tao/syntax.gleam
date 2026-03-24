@@ -19,7 +19,9 @@ import tao/ast.{
   type Pattern as AstPattern, PAny as AstPAny, PVar as AstPVar, PLit as AstPLit, PCtr as AstPCtr,
   PRecord as AstPRecord, PTuple as AstPTuple, PList as AstPList, POr as AstPOr, PAs as AstPAs,
   Ctr as AstCtr, Test as AstTest, Run as AstRun,
-  type Type as AstType, TFn, TApp, TRecord, TTuple, THole,
+  type TypeAst, TVar as AstTVar, TFn as AstTFn, TApp as AstTApp, TRecord as AstTRecord, TTuple as AstTTuple, THole as AstTHole,
+  type Constructor, Constructor as CtrDef, type ConstructorField, UnnamedField, NamedField,
+  StmtType,
 }
 import tao/import_ast.{type Import, ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias, ImportWildcard, type ImportItem, ImportName, ImportType, ImportOperator}
 import gleam/int
@@ -732,6 +734,13 @@ pub fn tao_grammar() -> Grammar(Expr) {
             _ -> Int(0, Span("empty", 0, 0, 0, 0))
           }
         }),
+        // Type definition: type Name(params) = Ctor | Ctor
+        alt(ref("Type"), fn(values) {
+          case values {
+            [AstValue(e)] -> e
+            _ -> Int(0, Span("empty", 0, 0, 0, 0))
+          }
+        }),
         // For loop: for pattern in collection { body... }
         alt(ref("For"), fn(values) {
           case values {
@@ -919,6 +928,69 @@ pub fn tao_grammar() -> Grammar(Expr) {
                 Run(e, span)
               }
               _ -> Int(0, Span("empty", 0, 0, 0, 0))
+            }
+          },
+        ),
+      ]),
+      // Type = "type" Ident "=" Constructor ("|" Constructor)*
+      // Simplified: no type parameters for now
+      rule("Type", [
+        alt(
+          seq([
+            keyword_pattern("type"),
+            token_pattern("Ident"),  // type name
+            token_pattern("Equal"),
+            ref("Constructor"),  // first constructor
+            many(seq([token_pattern("Pipe"), ref("Constructor")])),  // more constructors
+          ]),
+          fn(values) {
+            case values {
+              [_, TokenValue(name_token), _, first_ctr, more_ctrs] -> {
+                let type_name = name_token.value
+                let constructors = [
+                  first_ctr,
+                  ..list.flat_map(more_ctrs, fn(pair_list) {
+                    case pair_list {
+                      [_, ctr] -> [ctr]
+                      _ -> []
+                    }
+                  })
+                ]
+                let span = span_from_token(name_token, "tao")
+                StmtType(type_name, [], constructors, span)
+              }
+              _ -> StmtType("", [], [], Span("empty", 0, 0, 0, 0))
+            }
+          },
+        ),
+      ]),
+      // Constructor = Ident ["(" Type ("," Type)* ")"] | Ident "{" Field ("," Field)* "}"
+      // Simplified: only unnamed fields for now
+      rule("Constructor", [
+        alt(
+          seq([
+            token_pattern("Ident"),  // constructor name
+            alt(
+              // Constructor with unnamed fields: Some(a)
+              seq([
+                token_pattern("LParen"),
+                token_pattern("Ident"),  // first field type (simplified)
+                many(seq([token_pattern("Comma"), token_pattern("Ident")])),  // more field types
+                token_pattern("RParen"),
+              ]),
+              // Nullary constructor: None
+              empty([]),
+            ),
+          ]),
+          fn(values) {
+            case values {
+              [TokenValue(name_token), fields_opt] -> {
+                let ctr_name = name_token.value
+                let fields = parse_constructor_fields(fields_opt)
+                let span = span_from_token(name_token, "tao")
+                CtrDef(ctr_name, fields, span)
+              }
+              _ -> CtrDef("", [], Span("empty", 0, 0, 0, 0))
             }
           },
         ),
@@ -3441,21 +3513,58 @@ fn string_join(strings: List(String), sep: String) -> String {
 // TYPE HELPERS
 // ============================================================================
 
+/// Parse constructor fields from grammar values.
+fn parse_constructor_fields(fields_opt: List(Value)) -> List(ConstructorField) {
+  // fields_opt might be wrapped in AstValue from the alt()
+  case fields_opt {
+    [AstValue(inner_list)] -> parse_constructor_fields(inner_list)
+    [_, first_type_token, more_list, _] -> {
+      let first_type = case first_type_token {
+        TokenValue(t) -> AstTVar(t.value)
+        _ -> AstTHole
+      }
+      // more_list is List([Comma, Ident])
+      let more_types = list.flat_map(more_list, fn(pair_list) {
+        case pair_list {
+          [_, TokenValue(t)] -> [UnnamedField(AstTVar(t.value))]
+          _ -> []
+        }
+      })
+      [UnnamedField(first_type), ..more_types]
+    }
+    _ -> []
+  }
+}
+
+/// Convert an Expr (type expression) to TypeAst.
+fn expr_to_type_ast(expr: AstExpr) -> TypeAst {
+  case expr {
+    AstVar(name, _span) -> AstTVar(name)
+    AstCall(fun, args, _span) -> {
+      case fun {
+        AstVar(name, _span2) -> AstTApp(name, list.map(args, expr_to_type_ast))
+        _ -> AstTHole
+      }
+    }
+    _ -> AstTHole
+  }
+}
+
 /// Convert AstType to string representation.
-fn type_to_string(t: AstType) -> String {
+fn type_to_string(t: TypeAst) -> String {
   case t {
-    TVar(name) -> name
-    TApp(name, args) -> {
+    AstTVar(name) -> name
+    AstTApp(name, args) -> {
       case args {
         [] -> name
         _ -> name <> "(" <> string_join(list.map(args, type_to_string), ", ") <> ")"
       }
     }
-    TFn(params, ret) -> {
+    AstTFn(params, ret) -> {
       "fn(" <> string_join(list.map(params, type_to_string), ", ") <> ") -> " <> type_to_string(ret)
     }
-    TRecord(_) -> "{...}"
-    TTuple(_) -> "(...)"
-    THole -> "_"
+    AstTRecord(_) -> "{...}"
+    AstTTuple(_) -> "(...)"
+    AstTHole -> "_"
   }
 }

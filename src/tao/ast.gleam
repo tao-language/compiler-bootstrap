@@ -35,7 +35,7 @@ pub type Stmt {
   StmtLet(
     name: String,
     mutable: Bool,
-    type_ann: Option(Type),
+    type_ann: Option(TypeAst),
     value: Expr,
     span: Span,
   )
@@ -45,7 +45,7 @@ pub type Stmt {
     name: String,
     type_params: List(String),
     params: List(Param),
-    return_type: Option(Type),
+    return_type: Option(TypeAst),
     body: Expr,
     span: Span,
   )
@@ -55,7 +55,15 @@ pub type Stmt {
     import_item: Import,
     span: Span,
   )
-  
+
+  /// type Name(params) = Constructor | Constructor(params) | ...
+  StmtType(
+    name: String,
+    type_params: List(String),
+    constructors: List(Constructor),
+    span: Span,
+  )
+
   /// for pattern in collection { body... }
   StmtFor(
     pattern: Pattern,
@@ -183,7 +191,7 @@ pub type LetDecl {
   LetDecl(
     name: String,
     mutability: Mutability,
-    type_annotation: Option(Type),
+    type_annotation: Option(TypeAst),
     value: Expr,
     span: Span,
   )
@@ -204,7 +212,7 @@ pub type FnDecl {
     /// Explicit type parameters: <a, b>
     type_params: List(String),
     params: List(Param),
-    return_type: Option(Type),
+    return_type: Option(TypeAst),
     body: Expr,
     attributes: List(Attribute),
     span: Span,
@@ -212,7 +220,7 @@ pub type FnDecl {
 }
 
 pub type Param {
-  Param(name: String, type_annotation: Option(Type), span: Span)
+  Param(name: String, type_annotation: Option(TypeAst), span: Span)
 }
 
 // ============================================================================
@@ -223,7 +231,7 @@ pub type TypeAliasDecl {
   TypeAliasDecl(
     name: String,
     type_params: List(String),
-    type_: Type,
+    type_: TypeAst,
     span: Span,
   )
 }
@@ -248,9 +256,9 @@ pub type Constructor {
 
 pub type ConstructorField {
   /// Named field: Some(value: a)
-  NamedField(name: String, type_: Type)
+  NamedField(name: String, type_: TypeAst)
   /// Unnamed field: Some(a)
-  UnnamedField(type_: Type)
+  UnnamedField(type_: TypeAst)
 }
 
 // ============================================================================
@@ -319,7 +327,7 @@ pub type Expr {
   ResultUnwrap(Expr, Span)
 
   /// Type annotation: (e: T)
-  Annotated(Expr, Type, Span)
+  Annotated(Expr, TypeAst, Span)
 
   /// Comptime expression: comptime factorial(5)
   /// Comptime block: comptime do { ... }
@@ -395,22 +403,22 @@ pub type Pattern {
 // TYPES
 // ============================================================================
 
-pub type Type {
+pub type TypeAst {
   /// Type variable: a, b, t
   TVar(String)
 
   /// Type application: Maybe(a), List(Int)
-  TApp(String, List(Type))
+  TApp(String, List(TypeAst))
 
   /// Function type: (Int, Int) -> Int
-  TFn(List(Type), Type)
+  TFn(List(TypeAst), TypeAst)
 
   /// Record type: { x: Int, y: Int }
-  TRecord(List(#(String, Type)))
+  TRecord(List(#(String, TypeAst)))
 
   /// Tuple type: (Int, String)
   /// Unit type: ()
-  TTuple(List(Type))
+  TTuple(List(TypeAst))
 
   /// Hole: _
   THole
@@ -561,6 +569,7 @@ pub fn span_from_stmt(stmt: Stmt) -> Span {
     StmtLet(_, _, _, _, span) -> span
     StmtFn(_, _, _, _, _, span) -> span
     StmtImport(_, span) -> span
+    StmtType(_, _, _, span) -> span
     StmtFor(_, _, _, span) -> span
     StmtWhile(_, _, span) -> span
     StmtLoop(_, span) -> span
@@ -589,6 +598,7 @@ pub fn get_stmt_name(stmt: Stmt) -> Option(String) {
   case stmt {
     StmtLet(name, _, _, _, _) -> Some(name)
     StmtFn(name, _, _, _, _, _) -> Some(name)
+    StmtType(name, _, _, _) -> Some(name)
     _ -> None
   }
 }

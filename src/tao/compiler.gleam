@@ -10,7 +10,7 @@
 /// - Compiling modules in correct order
 /// - Detecting circular imports
 
-import tao/ast.{type Module, type Stmt, type Param, type Type, Module as ModuleCtr, StmtImport, StmtLet, StmtFn, StmtFor, StmtWhile, StmtLoop, StmtBreak, StmtContinue, StmtReturn, StmtYield, StmtExpr, StmtBind, StmtMut, StmtTest, StmtRun, Param, TVar}
+import tao/ast.{type Module, type Stmt, type Param, type TypeAst, Module as ModuleCtr, StmtImport, StmtLet, StmtFn, StmtFor, StmtWhile, StmtLoop, StmtBreak, StmtContinue, StmtReturn, StmtYield, StmtExpr, StmtBind, StmtMut, StmtTest, StmtRun, Param, TVar}
 import tao/import_ast.{type Import as ImportType, type ImportContext, type ResolvedImport}
 import tao/import_resolver.{resolve_imports}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module, register_module}
@@ -361,6 +361,7 @@ fn get_stmt_span(stmt: Stmt) -> Span {
     StmtLet(_, _, _, _, span) -> span
     StmtFn(_, _, _, _, _, span) -> span
     StmtImport(_, span) -> span
+    StmtType(_, _, _, span) -> span
     StmtFor(_, _, _, span) -> span
     StmtWhile(_, _, span) -> span
     StmtLoop(_, span) -> span

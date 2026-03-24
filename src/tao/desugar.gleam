@@ -18,6 +18,7 @@ import gleam/float
 import gleam/option.{type Option, Some, None}
 import gleam/string
 import syntax/grammar.{type Span, Span}
+import tao/ast as ast
 import tao/ast.{
   type Module, type Stmt, type Expr, type Param, type Pattern,
   type Literal, type BinOperator, type UnaryOperator,
@@ -31,6 +32,8 @@ import tao/ast.{
   Int as LitInt, Float as LitFloat, String as LitString,
   RecordUpdate, OptionalChain, LetExpr, Var as ExprVar,
   get_public_names, get_stmt_name, span_from_expr,
+  type Constructor, type ConstructorField, type TypeAst,
+  StmtType,
 }
 import tao/global_context.{
   type GlobalContext, type ModuleRef,
@@ -42,7 +45,7 @@ import tao/import_ast.{
   ImportSelectiveAlias, ImportWildcard,
   type ImportItem, ImportName, ImportType, ImportOperator,
 }
-import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, F64, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole, Ctr, Ann}
+import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, type CtrDef, type CtrEnv, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, F64, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole, Ctr, Ann}
 
 // ============================================================================
 // CORE TERM TYPES (simplified for desugaring)
@@ -134,27 +137,29 @@ pub type DesugarContext {
     local_scope: List(String),
     /// Stack of loop contexts (for nested loops)
     loop_stack: List(LoopContext),
+    /// Constructor definitions from type declarations
+    ctrs: CtrEnv,
   )
 }
 
 /// Add a local variable to the scope.
 fn add_local(dc: DesugarContext, name: String) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope, loop_stack) = dc
-  DesugarContext(global, current_module, [name, ..local_scope], loop_stack)
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs) = dc
+  DesugarContext(global, current_module, [name, ..local_scope], loop_stack, ctrs)
 }
 
 /// Enter a loop context.
 fn enter_loop(dc: DesugarContext, fix_name: String) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope, loop_stack) = dc
-  DesugarContext(global, current_module, local_scope, [InLoop(fix_name, BreakReturns), ..loop_stack])
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs) = dc
+  DesugarContext(global, current_module, local_scope, [InLoop(fix_name, BreakReturns), ..loop_stack], ctrs)
 }
 
 /// Exit the current loop context.
 fn exit_loop(dc: DesugarContext) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope, loop_stack) = dc
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs) = dc
   case loop_stack {
     [] -> dc  // Should not happen if well-formed
-    [_loop, ..rest] -> DesugarContext(global, current_module, local_scope, rest)
+    [_loop, ..rest] -> DesugarContext(global, current_module, local_scope, rest, ctrs)
   }
 }
 
@@ -191,6 +196,89 @@ fn lookup_var_loop(
 // PUBLIC API
 // ============================================================================
 
+/// Process type definitions to populate constructor environment.
+fn process_type_definitions(
+  stmts: List(Stmt),
+  dc: DesugarContext,
+) -> DesugarContext {
+  list.fold(stmts, dc, fn(acc_dc, stmt) {
+    case stmt {
+      StmtType(name, type_params, constructors, _span) -> {
+        let new_ctrs = tao_type_to_core_ctrs(name, type_params, constructors)
+        DesugarContext(..acc_dc, ctrs: list.append(acc_dc.ctrs, new_ctrs))
+      }
+      _ -> acc_dc
+    }
+  })
+}
+
+/// Convert a Tao type definition to Core constructor definitions.
+fn tao_type_to_core_ctrs(
+  type_name: String,
+  type_params: List(String),
+  constructors: List(Constructor),
+) -> CtrEnv {
+  list.map(constructors, fn(ctr) {
+    let ctr_def = tao_constructor_to_ctr_def(type_name, type_params, ctr)
+    #(ctr.name, ctr_def)
+  })
+}
+
+/// Convert a Tao constructor to a Core CtrDef.
+fn tao_constructor_to_ctr_def(
+  type_name: String,
+  type_params: List(String),
+  constructor: Constructor,
+) -> CtrDef {
+  let Constructor(_name, fields, _span) = constructor
+  
+  let arg_ty = case fields {
+    [] -> Unit(Span("unit", 0, 0, 0, 0))
+    [field] -> constructor_field_to_type(field)
+    fields -> {
+      let field_types = list.index_map(fields, fn(field, index) {
+        case field {
+          UnnamedField(t) -> #("field_" <> int.to_string(index), type_ast_to_core(t))
+          NamedField(name, t) -> #(name, type_ast_to_core(t))
+        }
+      })
+      Rcd(field_types, Span("rcd", 0, 0, 0, 0))
+    }
+  }
+  
+  let ret_ty = build_type_app(type_name, type_params)
+  
+  CtrDef(params: type_params, arg_ty: arg_ty, ret_ty: ret_ty)
+}
+
+/// Convert a constructor field to a Core type.
+fn constructor_field_to_type(field: ConstructorField) -> Term {
+  case field {
+    UnnamedField(t) -> type_ast_to_core(t)
+    NamedField(_name, t) -> type_ast_to_core(t)
+  }
+}
+
+/// Build type application: TypeName(param1, param2, ...)
+fn build_type_app(type_name: String, type_params: List(String)) -> Term {
+  case type_params {
+    [] -> Ctr(type_name, Unit(Span("unit", 0, 0, 0, 0)))
+    _params -> Ctr(type_name, Unit(Span("unit", 0, 0, 0, 0)))
+  }
+}
+
+/// Convert Tao TypeAst to Core Term.
+fn type_ast_to_core(t: TypeAst) -> Term {
+  case t {
+    TVar(_name) -> Hole(0, Span("type_var", 0, 0, 0, 0))
+    TApp(name, _args) -> Ctr(name, Unit(Span("unit", 0, 0, 0, 0)))
+    TFn(_params, _ret) -> Typ(1, Span("fn", 0, 0, 0, 0))
+    TRecord(_fields) -> Typ(0, Span("rcd", 0, 0, 0, 0))
+    TTuple(_elems) -> Typ(0, Span("tuple", 0, 0, 0, 0))
+    THole -> Hole(0, Span("hole", 0, 0, 0, 0))
+  }
+}
+
 /// Desugar a Tao module to a Core term.
 pub fn desugar_module(
   module: Module,
@@ -201,7 +289,10 @@ pub fn desugar_module(
     current_module: module.path,
     local_scope: [],
     loop_stack: [],
+    ctrs: [],
   )
+
+  let dc_with_types = process_type_definitions(module.body, dc)
 
   // Check if the last statement is an expression (for expression-style modules)
   let last_is_expr = is_last_stmt_expr(module.body)
@@ -211,7 +302,7 @@ pub fn desugar_module(
       // Expression-style module: separate the last expression from the bindings
       // First, desugar all statements EXCEPT the last one
       let all_but_last = drop_last(module.body)
-      let #(core_stmts, dc1) = desugar_stmts(all_but_last, dc)
+      let #(core_stmts, dc1) = desugar_stmts(all_but_last, dc_with_types)
 
       // Then, desugar the last expression with the accumulated scope
       let last_stmt = get_last_stmt(module.body)
@@ -237,7 +328,7 @@ pub fn desugar_module(
     }
     False -> {
       // Declaration-style module: desugar all statements and return a record
-      let #(core_stmts, dc1) = desugar_stmts(module.body, dc)
+      let #(core_stmts, dc1) = desugar_stmts(module.body, dc_with_types)
       let public_names = get_public_names(module.body)
       case public_names {
         [] -> {
@@ -400,7 +491,13 @@ pub fn desugar_stmt(
       let dc1 = add_import_bindings(dc, core_terms)
       #(core_terms, dc1)
     }
-    
+
+    StmtType(_name, _type_params, _constructors, _span) -> {
+      // Type definitions are processed in process_type_definitions
+      // They don't produce Core terms - just populate the constructor environment
+      #([], dc)
+    }
+
     StmtExpr(value, span) -> {
       let #(core_expr, dc1) = desugar_expr_core(value, dc)
       #([core_expr], dc1)
@@ -499,6 +596,7 @@ fn get_stmt_span(stmt: Stmt) -> Span {
     StmtLet(_, _, _, _, span) -> span
     StmtFn(_, _, _, _, _, span) -> span
     StmtImport(_, span) -> span
+    StmtType(_, _, _, span) -> span
     StmtExpr(_, span) -> span
     StmtFor(_, _, _, span) -> span
     StmtWhile(_, _, span) -> span

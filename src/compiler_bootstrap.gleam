@@ -346,6 +346,11 @@ fn report_test_failure(_result: TestResult) -> Nil {
   Nil
 }
 
+/// Update State.ctrs with constructor definitions from desugaring.
+fn update_state_ctrs(state: core.State, ctrs: core.CtrEnv) -> core.State {
+  core.State(..state, ctrs: ctrs)
+}
+
 // ============================================================================
 // CHECK COMMAND
 // ============================================================================
@@ -487,7 +492,9 @@ fn check_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
       }
 
       // Run type checker on Core term
-      let #(_type_result, _type_annotation, final_state) = infer(initial_state, term)
+      // Use ctrs from desugaring for exhaustiveness checking
+      let initial_state_with_ctrs = core.initial_state |> update_state_ctrs(dc.ctrs)
+      let #(_type_result, _type_annotation, final_state) = infer(initial_state_with_ctrs, term)
 
       case final_state.errors {
         [_err, ..] -> {
