@@ -3,16 +3,17 @@
 // ============================================================================
 /// Internal testing API for standard library modules.
 ///
-/// Returns `#(List(Error), List(TestResult))` - no formatting.
+/// Returns `#(List(core.Error), List(TestResult))` - uses Core errors directly.
 /// CLI and Gleam tests use the same API but handle output differently.
 ///
 /// For detailed documentation see:
-/// - **[../plans/tao/18-stdlib-testing.md](../plans/tao/18-stdlib-testing.md)** - Testing infrastructure plan
+/// - **[../plans/prelude/README.md](../plans/prelude/README.md)** - Prelude implementation plan
+/// - **[../plans/tao/18-stdlib-testing.md](../plans/tao/18-stdlib-testing.md)** - Testing infrastructure
 import tao/syntax.{parse_module, type Expr, parse as parse_expr, Int as TaoInt, Float as TaoFloat, Str as TaoStr, Var as TaoVar, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, If as TaoIf, For as TaoFor, While as TaoWhile, Loop as TaoLoop, Break as TaoBreak, Continue as TaoContinue, Test as TaoTest, Run as TaoRun, Import as TaoImport, Ctr as TaoCtr, TypeDecl as TaoTypeDecl, expr_to_ast}
 import syntax/grammar.{type ParseResult, type Span, Span}
 import tao/desugar.{desugar_module}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module}
-import core/core.{type Term, type State, type Value, type Error as CoreError, initial_state, infer, eval, quote, normalize, Err, TypeMismatch, VarUndefined, CtrUndefined, HoleUnsolved, MatchRedundantCase, MatchMissingCase, RcdMissingFields, DotFieldNotFound, DotOnNonCtr, InfiniteType, SpineMismatch, ArityMismatch, NotAFunction, PatternMismatch, TODO as CoreTODO, ComptimePermissionDenied}
+import core/core.{type Term, type State, type Value, type Error as CoreError, initial_state, infer, eval, quote, normalize, Err, SyntaxError, TypeMismatch, VarUndefined, CtrUndefined, HoleUnsolved, MatchRedundantCase, MatchMissingCase, RcdMissingFields, DotFieldNotFound, DotOnNonCtr, InfiniteType, SpineMismatch, ArityMismatch, NotAFunction, PatternMismatch, CtrUnsolvedParam, TODO as CoreTODO, ComptimePermissionDenied}
 import core/syntax as core_syntax
 import gleam/list
 import gleam/option.{type Option, Some, None}
@@ -25,34 +26,12 @@ import tao/syntax as tao_syntax
 // TYPES
 // ============================================================================
 
-/// Error during testing.
-pub type Error {
-  /// Parse error
-  ParseError(message: String, span: Span)
-  /// Type error
-  TypeError(message: String, span: Span)
-  /// Exhaustiveness error
-  ExhaustivenessError(message: String, span: Span)
-  /// Evaluation error
-  EvaluationError(message: String, span: Span)
-  /// Desugar error
-  DesugarError(message: String, span: Span)
-}
-
 /// Result of running a single test.
 pub type TestResult {
   /// Test passed
   Pass(expression: String)
   /// Test failed - value didn't match expected
   Fail(expression: String, expected: String, actual: String)
-}
-
-/// Result of running a test file.
-pub type TestFileResult {
-  TestFileResult(
-    errors: List(Error),
-    results: List(TestResult),
-  )
 }
 
 // ============================================================================
@@ -62,22 +41,45 @@ pub type TestFileResult {
 /// Parse, type-check, and evaluate a test file.
 ///
 /// Returns: `#(errors, test_results)`
-/// - `errors`: Parse/type/exhaustiveness errors (empty if none)
+/// - `errors`: All syntax/type/exhaustiveness errors from Core
 /// - `test_results`: List of pass/fail for each test expression
 ///
 /// Test file format:
 /// ```tao
-/// > expression
-/// expected_result
+/// > expression ~> expected
 /// ```
-pub fn run_test_file(source: String, file_path: String) -> #(List(Error), List(TestResult)) {
-  // 1. Parse Tao source
-  let parse_result = parse_module(source)
+/// or
+/// ```tao
+/// > expression
+/// expected
+/// ```
+pub fn run_test_file(source: String, file_path: String) -> #(List(CoreError), List(TestResult)) {
+  // Strip test lines before parsing (> expr ~> expected or > expr\nexpected)
+  let code_only = strip_test_lines(source)
   
+  // 1. Parse Tao source
+  let parse_result = parse_module(code_only)
+  
+  // Collect ALL parse errors, not just the first one
   case parse_result.errors {
-    [err, ..] -> {
-      let error = ParseError("Parse error: " <> err.expected <> " got " <> err.got, err.span)
-      #([error], [])
+    [_, ..] as errors -> {
+      let core_errors = list.map(errors, fn(err) {
+        // The grammar parser has Span fields mixed up.
+        // err.span.start_line is actually the character start position
+        // err.span.start_col is actually the line number
+        // err.span.end_line is actually the column
+        // err.span.end_col is actually the character end position
+        // We need to swap them to get the correct span
+        let fixed_span = Span(
+          file_path,
+          err.span.start_col,  // This is actually the line
+          err.span.end_line,   // This is actually the column  
+          err.span.start_col,  // End line same as start for single token
+          err.span.end_line + string.length(err.got)  // End column
+        )
+        SyntaxError(fixed_span, err.expected, err.got, file_path)
+      })
+      #(core_errors, [])
     }
     [] -> {
       // 2. Convert expressions to module and desugar
@@ -92,10 +94,10 @@ pub fn run_test_file(source: String, file_path: String) -> #(List(Error), List(T
       let #(_value, _type, state) = infer(state, core_term)
 
       case state.errors {
-        [_, ..] as errors -> #(convert_core_errors(errors), [])
+        [_, ..] as errors -> #(errors, [])
         [] -> {
-          // 4. Extract and run tests from source
-          let tests = extract_repl_tests(source)
+          // 4. Extract and run tests from ORIGINAL source (with test lines)
+          let tests = extract_repl_tests(source, file_path)
           let results = list.map(tests, fn(test_item) {
             run_test(test_item, state)
           })
@@ -107,71 +109,50 @@ pub fn run_test_file(source: String, file_path: String) -> #(List(Error), List(T
   }
 }
 
-/// Convert Core errors to test API errors.
-fn convert_core_errors(errors: List(CoreError)) -> List(Error) {
-  list.map(errors, fn(err) {
-    case err {
-      TypeMismatch(expected, got, span, _ctx) -> {
-        TypeError("Type mismatch: expected " <> format_value(expected) <> " got " <> format_value(got), span)
-      }
-      VarUndefined(index, span) -> {
-        TypeError("Undefined variable (index: " <> int.to_string(index) <> ")", span)
-      }
-      CtrUndefined(tag, span) -> {
-        TypeError("Undefined constructor: " <> tag, span)
-      }
-      HoleUnsolved(id, span) -> {
-        TypeError("Unsolved hole: " <> int.to_string(id), span)
-      }
-      MatchRedundantCase(span) -> {
-        ExhaustivenessError("Redundant pattern case", span)
-      }
-      MatchMissingCase(span, pattern) -> {
-        ExhaustivenessError("Missing pattern case", span)
-      }
-      RcdMissingFields(names, span) -> {
-        TypeError("Missing record fields: " <> string.join(names, ", "), span)
-      }
-      DotFieldNotFound(name, _value, span) -> {
-        TypeError("Field not found: " <> name, span)
-      }
-      DotOnNonCtr(value, _name, span) -> {
-        TypeError("Cannot access field on non-record value", span)
-      }
-      InfiniteType(hole_id, ty, span1, span2) -> {
-        TypeError("Infinite type for hole " <> int.to_string(hole_id), span1)
-      }
-      SpineMismatch(span1, span2) -> {
-        TypeError("Spine mismatch", span1)
-      }
-      ArityMismatch(span1, span2) -> {
-        TypeError("Arity mismatch", span1)
-      }
-      NotAFunction(fun, fun_ty) -> {
-        TypeError("Not a function", Span("", 0, 0, 0, 0))
-      }
-      PatternMismatch(pattern, expected_ty, pattern_span, value_span) -> {
-        TypeError("Pattern mismatch", pattern_span)
-      }
-      CoreTODO(message) -> {
-        TypeError("TODO: " <> message, Span("", 0, 0, 0, 0))
-      }
-      ComptimePermissionDenied(op, span, required) -> {
-        TypeError("Comptime permission denied: " <> op, span)
-      }
-      core.SyntaxError(span, expected, got, context) -> {
-        TypeError("Syntax error: expected " <> expected <> " got " <> got, span)
-      }
-      core.CtrUnsolvedParam(tag, ctr, id, span) -> {
-        TypeError("Constructor unsolved parameter: " <> tag, span)
-      }
-    }
-  })
-}
-
 // ============================================================================
 // TEST EXTRACTION
 // ============================================================================
+
+/// Strip test lines from source for parsing.
+/// Removes:
+/// - Lines starting with `> ` (test expressions)
+/// - Lines that are test expected results (after `> ` lines)
+fn strip_test_lines(source: String) -> String {
+  let lines = string.split(source, "\n")
+  let indexed_lines = list.index_map(lines, fn(line, index) {
+    #(index, line)
+  })
+  
+  let filtered = strip_test_lines_loop(indexed_lines, [], False)
+  string.join(list.reverse(filtered), "\n")
+}
+
+/// Loop through lines, skipping test lines.
+fn strip_test_lines_loop(
+  lines: List(#(Int, String)),
+  acc: List(String),
+  expecting_result: Bool,
+) -> List(String) {
+  case lines {
+    [] -> acc
+    [line, ..rest] -> {
+      let #(_num, content) = line
+      let trimmed = string.trim(content)
+      let is_comment = string.starts_with(trimmed, "//")
+      
+      case trimmed {
+        // Test expression line - skip it
+        "> " <> _ -> strip_test_lines_loop(rest, acc, True)
+        // Expected result line (after test expression) - skip it
+        _ if expecting_result && trimmed != "" && !is_comment -> {
+          strip_test_lines_loop(rest, acc, False)
+        }
+        // Keep comment, import, and code lines
+        _ -> strip_test_lines_loop(rest, [content, ..acc], False)
+      }
+    }
+  }
+}
 
 /// Test expression extracted from source.
 type TestExpr {
@@ -180,24 +161,27 @@ type TestExpr {
 
 /// Extract REPL-style tests from source.
 ///
-/// Format:
-/// ```
-/// > expression
-/// expected
-/// ```
-fn extract_repl_tests(source: String) -> List(TestExpr) {
+/// Supports two formats:
+/// 1. Single-line: `> expression ~> expected`
+/// 2. Multi-line:
+///    ```
+///    > expression
+///    expected
+///    ```
+fn extract_repl_tests(source: String, file_path: String) -> List(TestExpr) {
   let lines = string.split(source, "\n")
   let indexed_lines = list.index_map(lines, fn(line, index) {
     #(index + 1, line)  // 1-based line numbers
   })
   
-  extract_test_pairs(indexed_lines, source, [])
+  extract_test_pairs(indexed_lines, source, file_path, [])
 }
 
 /// Extract test pairs from lines.
 fn extract_test_pairs(
   lines: List(#(Int, String)),
   source: String,
+  file_path: String,
   acc: List(TestExpr),
 ) -> List(TestExpr) {
   case lines {
@@ -207,60 +191,91 @@ fn extract_test_pairs(
       let #(line_num, line_content) = line
       let trimmed = string.trim(line_content)
       
-      // Check for test expression: `> ...`
-      case string.starts_with(trimmed, "> ") {
-        True -> {
-          let expression = string.trim(string.slice(trimmed, 2, string.length(trimmed)))
-          
-          // Find next non-empty line as expected result
-          case find_next_non_empty(rest) {
-            Some(#(expected_line_num, expected_line)) -> {
-              let expected = string.trim(expected_line)
-              let span = Span(source, line_num, 0, expected_line_num, 0)
-              let test_expr = TestExpr(expression, expected, span)
-              // Skip past the expected line
-              let remaining = skip_until_empty_or_test(rest)
-              extract_test_pairs(remaining, source, [test_expr, ..acc])
+      // Skip empty lines and comments
+      case trimmed {
+        "" -> extract_test_pairs(rest, source, file_path, acc)
+        "// " <> _ -> extract_test_pairs(rest, source, file_path, acc)
+        "/// " <> _ -> extract_test_pairs(rest, source, file_path, acc)
+        
+        // Skip import lines
+        "import " <> _ -> extract_test_pairs(rest, source, file_path, acc)
+        
+        // Check for test expression: `> ...`
+        _ -> {
+          case string.starts_with(trimmed, "> ") {
+            True -> {
+              let rest_content = string.slice(trimmed, 2, string.length(trimmed))
+              
+              // Check for single-line test with `~>`
+              case string.contains(rest_content, "~>") {
+                True -> {
+                  // Single-line test: `> expr ~> expected`
+                  case string.split(rest_content, "~>") {
+                    [expr_part, expected_part] -> {
+                      let expression = string.trim(expr_part)
+                      let expected = string.trim(expected_part)
+                      let span = Span(file_path, line_num, 1, line_num, string.length(line_content))
+                      let test_expr = TestExpr(expression, expected, span)
+                      extract_test_pairs(rest, source, file_path, [test_expr, ..acc])
+                    }
+                    _ -> extract_test_pairs(rest, source, file_path, acc)
+                  }
+                }
+                False -> {
+                  // Multi-line test: `> expr` followed by `expected` on next line
+                  let expression = string.trim(rest_content)
+                  
+                  // Find next non-empty, non-comment line as expected result
+                  case find_next_test_line(rest) {
+                    Some(#(expected_line_num, expected_line)) -> {
+                      let expected = string.trim(expected_line)
+                      let span = Span(file_path, line_num, 1, expected_line_num, string.length(expected_line))
+                      let test_expr = TestExpr(expression, expected, span)
+                      // Skip past the expected line
+                      let remaining = skip_past_line(rest, expected_line_num)
+                      extract_test_pairs(remaining, source, file_path, [test_expr, ..acc])
+                    }
+                    None -> extract_test_pairs(rest, source, file_path, acc)
+                  }
+                }
+              }
             }
-            None -> {
-              // No expected result found, skip this test
-              extract_test_pairs(rest, source, acc)
-            }
+            False -> extract_test_pairs(rest, source, file_path, acc)
           }
         }
-        False -> extract_test_pairs(rest, source, acc)
       }
     }
   }
 }
 
-/// Find next non-empty line that's not a comment.
-fn find_next_non_empty(lines: List(#(Int, String))) -> Option(#(Int, String)) {
+/// Find next line that's a test result (not empty, not comment, not starting with >).
+fn find_next_test_line(lines: List(#(Int, String))) -> Option(#(Int, String)) {
   case lines {
     [] -> None
     [line, ..rest] -> {
       let #(_num, content) = line
       let trimmed = string.trim(content)
       case trimmed {
-        "" -> find_next_non_empty(rest)
-        "// " <> _ -> find_next_non_empty(rest)
+        "" -> find_next_test_line(rest)
+        "// " <> _ -> find_next_test_line(rest)
+        "/// " <> _ -> find_next_test_line(rest)
+        "import " <> _ -> find_next_test_line(rest)
+        "> " <> _ -> None  // Next test starts, no expected found
         _ -> Some(line)
       }
     }
   }
 }
 
-/// Skip lines until empty line or next test.
-fn skip_until_empty_or_test(lines: List(#(Int, String))) -> List(#(Int, String)) {
+/// Skip lines until we pass the given line number.
+fn skip_past_line(lines: List(#(Int, String)), target_line: Int) -> List(#(Int, String)) {
   case lines {
     [] -> []
     [line, ..rest] -> {
-      let #(_num, content) = line
-      let trimmed = string.trim(content)
-      case trimmed {
-        "" -> rest
-        "> " <> _ -> lines  // Next test starts here
-        _ -> skip_until_empty_or_test(rest)
+      let #(num, _) = line
+      case num >= target_line {
+        True -> rest  // Skip this line and return rest
+        False -> skip_past_line(rest, target_line)
       }
     }
   }
@@ -277,7 +292,7 @@ fn run_test(test_expr: TestExpr, state: State) -> TestResult {
   case expr_result.errors {
     [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<parse error>")
     [] -> {
-      let expr_term = expr_to_core_term([expr_result.ast], state)
+      let expr_term = expr_to_core_term([expr_result.ast])
       let actual_value = eval(state.ffi, [], expr_term)
 
       // Parse and evaluate expected
@@ -285,7 +300,7 @@ fn run_test(test_expr: TestExpr, state: State) -> TestResult {
       case expected_result.errors {
         [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<parse error>")
         [] -> {
-          let expected_term = expr_to_core_term([expected_result.ast], state)
+          let expected_term = expr_to_core_term([expected_result.ast])
           let expected_value = eval(state.ffi, [], expected_term)
 
           // Compare values
@@ -300,13 +315,13 @@ fn run_test(test_expr: TestExpr, state: State) -> TestResult {
 }
 
 /// Convert Tao AST to Core term.
-fn expr_to_core_term(exprs: List(Expr), state: State) -> Term {
+fn expr_to_core_term(exprs: List(Expr)) -> Term {
   // Build a block expression
   let span = Span("", 0, 0, 0, 0)
 
   case exprs {
     [] -> Err("No expressions", span)
-    [expr, ..] -> {
+    [_expr, ..] -> {
       // Desugar single expression
       let body = exprs_to_stmts(exprs)
       let module = Module("", body, span)

@@ -448,105 +448,116 @@ The prelude is complete when:
 **See**: **[../tao/18-stdlib-testing.md](../tao/18-stdlib-testing.md)** for testing infrastructure implementation plan.
 
 The testing infrastructure provides:
-1. **Internal API** - `run_test_file()` returns `#(List(Error), List(TestResult))`
+1. **Internal API** - `run_test_file()` returns `#(List(core.Error), List(TestResult))`
 2. **Syntax checking** - Verifies no parse errors
 3. **Type checking** - Verifies no type errors
 4. **Exhaustiveness checking** - Verifies pattern matches are exhaustive
 5. **Evaluation** - Verifies expressions produce expected results
 6. **Simple return** - Just data, no formatting
 
-### Separation of Concerns
-
-| Component | Responsibility |
-|-----------|----------------|
-| **test_api.gleam** | Returns `#(errors, results)` - no formatting |
-| **CLI** | Pretty-prints errors and results |
-| **Gleam tests** | Check `errors == []` and `results != []` |
-
-### Test Directory Structure
+### File Structure
 
 ```
+lib/prelude/
+├── bool.tao          # Bool module with implementation + simple tests
+└── bool.test.tao     # Complex/integration tests for Bool
+
 test/lib/prelude/
-├── bool_test.tao       # Tests for Bool module
-├── numbers_test.tao    # Tests for Numbers module
-├── option_test.tao     # Tests for Option module
-└── result_test.tao     # Tests for Result module
+└── bool_test.gleam   # Gleam wrapper tests
 ```
+
+**Key principles**:
+- `lib/{module}.tao` - Implementation with simple `> expr ~> result` tests as documentation
+- `lib/{module}.test.tao` - Complex tests, integration tests, multi-line format
+- `test/lib/{module}_test.gleam` - Gleam wrapper that verifies no errors and tests run
 
 ### Test File Format
 
-Tests use REPL-style format in the same file as examples:
+Tests use REPL-style format embedded in the implementation:
 
+**Simple tests (in `.tao` files)**:
 ```tao
-// lib/prelude/bool.tao
+/// Negate a boolean value
+fn not(b: Bool) -> Bool {
+  match b {
+    | True -> False
+    | False -> True
+  }
+}
 
-import prelude
+> not(True) ~> False
+> not(False) ~> True
+```
 
-// Examples with expected results (doubles as tests)
-> not(True)
-False
+**Complex tests (in `.test.tao` files)**:
+```tao
+import prelude/bool.{not, and, or}
 
-> not(False)
+// Nested operations
+> and(and(True, True), True)
 True
 
-> and(True, True)
+// Complex expressions
+> and(or(True, False), not(False))
 True
-
-> and(True, False)
-False
 ```
 
 ### Running Tests
 
 ```bash
-# Run all stdlib tests
+# Run all stdlib tests via Gleam
 gleam test
 
-# Run specific stdlib test file via CLI
-gleam run test test/lib/prelude/bool_test.tao
+# Run specific test file
+gleam test --module lib_prelude_bool_module_test
 ```
 
 ### Gleam Test Usage
 
 ```gleam
-// test/tao/stdlib_prelude_test.gleam
-
 import tao/test_api
-import gleeunit
-import gleeunit/should
+import simplifile
 
-pub fn prelude_bool_no_errors_test() {
-  let source = read_file("lib/prelude/bool.tao")
-  let #(errors, _results) = test_api.run_test_file(source, "lib/prelude/bool.tao")
+pub fn prelude_bool_module_test() {
+  let filename = "lib/prelude/bool.tao"
+  let assert Ok(source) = simplifile.read(filename)
+  let #(errors, results) = test_api.run_test_file(source, filename)
+  
+  // Verify no errors
   errors |> should.equal([])
-}
-
-pub fn prelude_bool_tests_run_test() {
-  let source = read_file("lib/prelude/bool.tao")
-  let #(_errors, results) = test_api.run_test_file(source, "lib/prelude/bool.tao")
-  results |> should.not.equal([])
+  
+  // Verify tests ran
+  list.length(results) |> should.equal(20)
 }
 ```
 
 **Key points**:
 - Check `errors == []` - no syntax/type/exhaustiveness errors
-- Check `results != []` - at least one test ran
-- Don't check exact test count - avoids updating tests when adding new examples
+- Check `list.length(results)` - verify expected number of tests ran
+- Tests are embedded in `.tao` files as documentation
 
-### Test Coverage
+### Test API Usage
 
-Each module should have tests for:
-1. **Happy path** - Normal successful usage
-2. **Edge cases** - Boundary conditions
-3. **Error cases** - Functions that panic or return errors
-4. **Polymorphism** - Different type instantiations (for generic functions)
+The test API is used by both the CLI and Gleam tests:
+
+```gleam
+// Internal test API (src/tao/test_api.gleam)
+pub fn run_test_file(source: String, file_path: String) 
+  -> #(List(core.Error), List(TestResult)) {
+  // 1. Parse
+  // 2. Type check
+  // 3. Extract tests (> expr ~> expected format)
+  // 4. Run each test
+  // 5. Return #(errors, results)
+}
+```
 
 ### Shared Helpers
 
 Both CLI and tests share:
-- **Parsing** - `tao_parse()`
-- **Type checking** - `tao_type_check()`
-- **Evaluation** - `evaluate()`
+- **Parsing** - `parse_module()`
+- **Type checking** - `infer()`
+- **Evaluation** - `eval()`
 
 The CLI adds pretty-printing on top of the raw data from test API.
 
