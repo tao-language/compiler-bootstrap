@@ -2,7 +2,7 @@
 // LEXER TESTS
 // ============================================================================
 /// Tests for the syntax/lexer module.
-/// 
+///
 /// The lexer tokenizes source code into tokens with position information.
 /// Each token has: kind, value, start, end, line, column
 import gleam/list
@@ -105,7 +105,8 @@ pub fn tokenize_number_multiple_test() {
 
 pub fn tokenize_number_with_ident_test() {
   tokenize_values("x42")
-  |> should.equal(["x42"])  // Should be identifier, not number
+  |> should.equal(["x42"])
+  // Should be identifier, not number
 }
 
 // ============================================================================
@@ -343,7 +344,8 @@ pub fn tokenize_position_lambda_test() {
 pub fn tokenize_position_column_after_lambda_test() {
   // Column after unicode lambda
   let token = get_token("λx. x", 1)
-  token.column |> should.equal(2)  // After λ (1 char)
+  token.column |> should.equal(2)
+  // After λ (1 char)
 }
 
 // ============================================================================
@@ -376,14 +378,14 @@ pub fn tokenize_match_expression_test() {
 pub fn tokenize_record_test() {
   let source = "{x: 1, y: 2}"
   let tokens = lexer.tokenize(source)
-  
+
   tokens |> list.length |> should.equal(9)
 }
 
 pub fn tokenize_nested_parens_test() {
   let source = "((x))"
   let tokens = lexer.tokenize(source)
-  
+
   tokens |> list.length |> should.equal(5)
   tokenize_values(source)
   |> should.equal(["(", "(", "x", ")", ")"])

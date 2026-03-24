@@ -441,36 +441,138 @@ The prelude is complete when:
 
 ## Testing
 
-### Run Tests
+### Test Infrastructure
+
+**Critical**: Before implementing prelude modules, the testing infrastructure must be in place.
+
+**See**: **[../tao/18-stdlib-testing.md](../tao/18-stdlib-testing.md)** for testing infrastructure implementation plan.
+
+The testing infrastructure provides:
+1. **Internal API** - `run_test_file()` returns `#(List(Error), List(TestResult))`
+2. **Syntax checking** - Verifies no parse errors
+3. **Type checking** - Verifies no type errors
+4. **Exhaustiveness checking** - Verifies pattern matches are exhaustive
+5. **Evaluation** - Verifies expressions produce expected results
+6. **Simple return** - Just data, no formatting
+
+### Separation of Concerns
+
+| Component | Responsibility |
+|-----------|----------------|
+| **test_api.gleam** | Returns `#(errors, results)` - no formatting |
+| **CLI** | Pretty-prints errors and results |
+| **Gleam tests** | Check `errors == []` and `results != []` |
+
+### Test Directory Structure
+
+```
+test/lib/prelude/
+├── bool_test.tao       # Tests for Bool module
+├── numbers_test.tao    # Tests for Numbers module
+├── option_test.tao     # Tests for Option module
+└── result_test.tao     # Tests for Result module
+```
+
+### Test File Format
+
+Tests use REPL-style format in the same file as examples:
+
+```tao
+// lib/prelude/bool.tao
+
+import prelude
+
+// Examples with expected results (doubles as tests)
+> not(True)
+False
+
+> not(False)
+True
+
+> and(True, True)
+True
+
+> and(True, False)
+False
+```
+
+### Running Tests
 
 ```bash
-# Run all prelude tests
+# Run all stdlib tests
 gleam test
 
-# Run specific test
-gleam run run test/prelude/bool_test.tao
-
-# Generate golden files
-./scripts/generate_golden_files.sh
+# Run specific stdlib test file via CLI
+gleam run test test/lib/prelude/bool_test.tao
 ```
+
+### Gleam Test Usage
+
+```gleam
+// test/tao/stdlib_prelude_test.gleam
+
+import tao/test_api
+import gleeunit
+import gleeunit/should
+
+pub fn prelude_bool_no_errors_test() {
+  let source = read_file("lib/prelude/bool.tao")
+  let #(errors, _results) = test_api.run_test_file(source, "lib/prelude/bool.tao")
+  errors |> should.equal([])
+}
+
+pub fn prelude_bool_tests_run_test() {
+  let source = read_file("lib/prelude/bool.tao")
+  let #(_errors, results) = test_api.run_test_file(source, "lib/prelude/bool.tao")
+  results |> should.not.equal([])
+}
+```
+
+**Key points**:
+- Check `errors == []` - no syntax/type/exhaustiveness errors
+- Check `results != []` - at least one test ran
+- Don't check exact test count - avoids updating tests when adding new examples
 
 ### Test Coverage
 
-Each function must have tests for:
+Each module should have tests for:
 1. **Happy path** - Normal successful usage
 2. **Edge cases** - Boundary conditions
-3. **Error cases** - Failure modes
-4. **Polymorphism** - Different type instantiations
+3. **Error cases** - Functions that panic or return errors
+4. **Polymorphism** - Different type instantiations (for generic functions)
+
+### Shared Helpers
+
+Both CLI and tests share:
+- **Parsing** - `tao_parse()`
+- **Type checking** - `tao_type_check()`
+- **Evaluation** - `evaluate()`
+
+The CLI adds pretty-printing on top of the raw data from test API.
 
 ---
 
 ## Related Documents
 
 - **[01-bool.md](./01-bool.md)** - Bool implementation plan (START HERE)
+- **[02-numbers.md](./02-numbers.md)** - Numbers implementation plan
+- **[../tao/18-stdlib-testing.md](../tao/18-stdlib-testing.md)** - Testing infrastructure (MUST BE DONE FIRST)
 - **[../stdlib/01-overview.md](../stdlib/01-overview.md)** - Standard library overview
 - **[../stdlib/02-prelude.md](../stdlib/02-prelude.md)** - Existing prelude specification
 - **[../SELF-HOSTING-ANALYSIS.md](../SELF-HOSTING-ANALYSIS.md)** - Self-hosting roadmap
 - **[../tao/03-syntax.md](../tao/03-syntax.md)** - Tao syntax specification
+
+---
+
+## Implementation Order
+
+**CRITICAL**: Testing infrastructure must be implemented before prelude modules.
+
+1. **[../tao/18-stdlib-testing.md](../tao/18-stdlib-testing.md)** - Testing infrastructure (PREREQUISITE)
+2. **[01-bool.md](./01-bool.md)** - Bool module (first prelude module)
+3. **[02-numbers.md](./02-numbers.md)** - Numbers module (tests operator overloading)
+4. Option module - After Bool and Numbers are working
+5. Result module - After Option is working
 
 ---
 

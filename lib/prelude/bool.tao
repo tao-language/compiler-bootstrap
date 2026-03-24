@@ -1,0 +1,39 @@
+// Prelude Bool module
+// Boolean type and logical operations
+
+/// Boolean type with two constructors
+type Bool = True | False
+
+/// Negate a boolean value
+pub fn not(b: Bool) -> Bool {
+  match b {
+    | True -> False
+    | False -> True
+  }
+}
+
+/// Logical AND with short-circuit evaluation
+pub fn and(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> b
+    | False -> False
+  }
+}
+
+/// Logical OR with short-circuit evaluation
+pub fn or(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> True
+    | False -> b
+  }
+}
+
+/// Exclusive OR: true if exactly one operand is true
+pub fn xor(a: Bool, b: Bool) -> Bool {
+  and(or(a, b), not(and(a, b)))
+}
+
+/// Logical implication: if a then b
+pub fn implies(a: Bool, b: Bool) -> Bool {
+  or(not(a), b)
+}

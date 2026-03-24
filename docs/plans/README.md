@@ -76,6 +76,7 @@ docs/plans/
 │   ├── 15-syntax-test-plan.md
 │   ├── 16-syntax-test-status.md
 │   ├── 17-generic-equality.md
+│   ├── 18-stdlib-testing.md
 │   └── archive/
 │
 ├── error-reporting/                 # Error reporting (✅ Complete)
@@ -190,6 +191,7 @@ Files are numbered sequentially in order of creation:
 - **[04-desugaring.md](./tao/04-desugaring.md)** - Desugaring rules
 - **[10-overloading-design.md](./tao/10-overloading-design.md)** - Overloading design
 - **[17-generic-equality.md](./tao/17-generic-equality.md)** - Generic equality for ADTs
+- **[18-stdlib-testing.md](./tao/18-stdlib-testing.md)** - Standard library testing infrastructure
 
 ### Error Reporting
 - **[01-overview.md](./error-reporting/01-overview.md)** - Error reporting overview
