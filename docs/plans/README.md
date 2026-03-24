@@ -19,6 +19,7 @@ docs/plans/
 ├── REORGANIZATION-PLAN.md           # Reorganization proposal
 │
 ├── cli/                             # CLI implementation (✅ Complete)
+│   ├── README.md                    # Directory overview (some dirs use README)
 │   ├── 01-overview.md
 │   ├── 02-cli-parser.md
 │   ├── 03-error-reporter.md
@@ -74,6 +75,7 @@ docs/plans/
 │   ├── 14-let-binding-status.md
 │   ├── 15-syntax-test-plan.md
 │   ├── 16-syntax-test-status.md
+│   ├── 17-generic-equality.md
 │   └── archive/
 │
 ├── error-reporting/                 # Error reporting (✅ Complete)
@@ -86,6 +88,7 @@ docs/plans/
 │   └── archive/
 │
 ├── stdlib/                          # Standard library (📋 Planned)
+│   ├── README.md                    # Standard library overview
 │   ├── 01-overview.md
 │   ├── 02-prelude.md
 │   ├── 03-numeric.md
@@ -93,6 +96,12 @@ docs/plans/
 │   ├── 05-polymorphic-constructors.md
 │   ├── 06-constructor-patterns.md
 │   └── archive/
+│
+├── prelude/                         # Prelude implementation (📋 Planned)
+│   ├── README.md                    # Prelude overview with status and dogfooding plan
+│   ├── 01-bool.md                   # Bool module implementation plan
+│   ├── 02-option.md                 # Option module implementation plan (TODO)
+│   └── 03-result.md                 # Result module implementation plan (TODO)
 │
 ├── maintenance/                     # Maintenance (✅ Complete)
 │   ├── 02-overview.md
@@ -124,6 +133,7 @@ docs/plans/
 | **Tao Language** | ✅ Complete | 519 | Expr, Stmt, imports, test framework, overloading |
 | **Error Reporting** | ✅ Complete | 519 | Source snippets, error codes, hints |
 | **Stdlib** | 📋 Planned | 0 | Not yet implemented |
+| **Prelude** | 📋 Planned | 0 | Bool module in progress |
 | **Maintenance** | ✅ Complete | 519 | Warning cleanup (45 → 0), code quality |
 | **Testing** | ✅ Complete | 519 | E2E tests, example tests, golden files |
 
@@ -133,10 +143,15 @@ docs/plans/
 
 Files are numbered sequentially in order of creation:
 
-- `01-overview.md` - Entry point with overall status
+- `README.md` - Directory overview with status and plans (some subdirectories)
+- `01-overview.md` - Entry point with overall status (older convention)
 - `02-*.md` - Second document created
 - `03-*.md` - Third document created
 - etc.
+
+**Module-specific plans**: For implementation plans (e.g., prelude), use `NN-module.md` format:
+- `01-bool.md` - Bool module implementation plan
+- `02-option.md` - Option module implementation plan
 
 **Archive**: Obsolete/superseded plans are moved to `archive/` subdirectory.
 
@@ -174,6 +189,7 @@ Files are numbered sequentially in order of creation:
 - **[03-syntax.md](./tao/03-syntax.md)** - Tao syntax specification
 - **[04-desugaring.md](./tao/04-desugaring.md)** - Desugaring rules
 - **[10-overloading-design.md](./tao/10-overloading-design.md)** - Overloading design
+- **[17-generic-equality.md](./tao/17-generic-equality.md)** - Generic equality for ADTs
 
 ### Error Reporting
 - **[01-overview.md](./error-reporting/01-overview.md)** - Error reporting overview
@@ -186,6 +202,10 @@ Files are numbered sequentially in order of creation:
 ### Testing
 - **[01-overview.md](./testing/01-overview.md)** - Testing overview
 - **[04-cli-golden-files.md](./testing/04-cli-golden-files.md)** - CLI golden file tests
+
+### Prelude
+- **[README.md](./prelude/README.md)** - Prelude overview with status and dogfooding plan
+- **[01-bool.md](./prelude/01-bool.md)** - Bool module implementation plan
 
 ---
 
