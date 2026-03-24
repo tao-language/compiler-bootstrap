@@ -12,6 +12,9 @@ pub fn not(b: Bool) -> Bool {
   }
 }
 
+> not(True) ~> False
+> not(False) ~> True
+
 /// Logical AND with short-circuit evaluation
 pub fn and(a: Bool, b: Bool) -> Bool {
   match a {
@@ -19,6 +22,11 @@ pub fn and(a: Bool, b: Bool) -> Bool {
     | False -> False
   }
 }
+
+> and(True, True) ~> True
+> and(True, False) ~> False
+> and(False, True) ~> False
+> and(False, False) ~> False
 
 /// Logical OR with short-circuit evaluation
 pub fn or(a: Bool, b: Bool) -> Bool {
@@ -28,12 +36,27 @@ pub fn or(a: Bool, b: Bool) -> Bool {
   }
 }
 
+> or(True, True) ~> True
+> or(True, False) ~> True
+> or(False, True) ~> True
+> or(False, False) ~> False
+
 /// Exclusive OR: true if exactly one operand is true
 pub fn xor(a: Bool, b: Bool) -> Bool {
   and(or(a, b), not(and(a, b)))
 }
 
+> xor(True, True) ~> False
+> xor(True, False) ~> True
+> xor(False, True) ~> True
+> xor(False, False) ~> False
+
 /// Logical implication: if a then b
 pub fn implies(a: Bool, b: Bool) -> Bool {
   or(not(a), b)
 }
+
+> implies(True, True) ~> True
+> implies(True, False) ~> False
+> implies(False, True) ~> False
+> implies(False, False) ~> False

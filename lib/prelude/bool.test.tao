@@ -1,0 +1,21 @@
+import prelude/bool {and, or, not}
+
+// Nested operations
+> and(and(True, True), True)
+True
+
+> or(or(False, False), False)
+False
+
+// Complex expressions
+> and(or(True, False), not(False))
+True
+
+> or(and(True, False), not(False))
+True
+
+> not(not(True))
+True
+
+> not(not(not(False)))
+True
