@@ -2416,15 +2416,34 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       // Fixpoint: fix f -> body
       // The fixpoint allows f to be referenced in body with the same type as the fixpoint
       let env = get_env(s)
-      let #(result_ty_hole, s) = new_hole(s)
-      // Add the fixpoint variable to the context with the hole type
-      let #(_fresh, s) = def_var(s, name, result_ty_hole)
-      // Check the body against the hole type
-      let #(body_val, s) = check(s, body, result_ty_hole, span)
-      // Force the hole to get the solved type
-      let solved_ty = force(s.ffi, s.sub, result_ty_hole)
-      let fix_val = VFix(name, env, body)
-      #(fix_val, solved_ty, s)
+      
+      // KEY FIX: Check if body is an annotation. If so, use the annotated type directly
+      // instead of creating a hole. This avoids InfiniteType errors for annotated functions.
+      case body {
+        Ann(lam, ann_ty, _ann_span) -> {
+          // Body has type annotation: evaluate the annotation and check the lambda
+          let ann_ty_val = eval(s.ffi, env, ann_ty)
+          // Add the fixpoint variable to the context with the annotated type
+          let #(_fresh, s) = def_var(s, name, ann_ty_val)
+          // Check the lambda against the annotated type
+          let #(body_val, s) = check(s, lam, ann_ty_val, span)
+          // Return the annotated type (don't infer/generalize)
+          let fix_val = VFix(name, env, body)
+          #(fix_val, ann_ty_val, s)
+        }
+        _ -> {
+          // No annotation: create a hole and infer as usual
+          let #(result_ty_hole, s) = new_hole(s)
+          // Add the fixpoint variable to the context with the hole type
+          let #(_fresh, s) = def_var(s, name, result_ty_hole)
+          // Check the body against the hole type
+          let #(body_val, s) = check(s, body, result_ty_hole, span)
+          // Force the hole to get the solved type
+          let solved_ty = force(s.ffi, s.sub, result_ty_hole)
+          let fix_val = VFix(name, env, body)
+          #(fix_val, solved_ty, s)
+        }
+      }
     }
     Err(_, _) -> #(VErr, VErr, s)
     // Error terms have error type
