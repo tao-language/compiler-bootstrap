@@ -1,11 +1,9 @@
 // Prelude Bool module
 // Boolean type and logical operations
-
-/// Boolean type with two constructors
-type Bool = True | False
+// Note: Bool type is built-in to the core language
 
 /// Negate a boolean value
-pub fn not(b: Bool) -> Bool {
+fn not(b: Bool) -> Bool {
   match b {
     | True -> False
     | False -> True
@@ -16,7 +14,7 @@ pub fn not(b: Bool) -> Bool {
 > not(False) ~> True
 
 /// Logical AND with short-circuit evaluation
-pub fn and(a: Bool, b: Bool) -> Bool {
+fn and(a: Bool, b: Bool) -> Bool {
   match a {
     | True -> b
     | False -> False
@@ -29,7 +27,7 @@ pub fn and(a: Bool, b: Bool) -> Bool {
 > and(False, False) ~> False
 
 /// Logical OR with short-circuit evaluation
-pub fn or(a: Bool, b: Bool) -> Bool {
+fn or(a: Bool, b: Bool) -> Bool {
   match a {
     | True -> True
     | False -> b
@@ -42,7 +40,7 @@ pub fn or(a: Bool, b: Bool) -> Bool {
 > or(False, False) ~> False
 
 /// Exclusive OR: true if exactly one operand is true
-pub fn xor(a: Bool, b: Bool) -> Bool {
+fn xor(a: Bool, b: Bool) -> Bool {
   and(or(a, b), not(and(a, b)))
 }
 
@@ -52,7 +50,7 @@ pub fn xor(a: Bool, b: Bool) -> Bool {
 > xor(False, False) ~> False
 
 /// Logical implication: if a then b
-pub fn implies(a: Bool, b: Bool) -> Bool {
+fn implies(a: Bool, b: Bool) -> Bool {
   or(not(a), b)
 }
 

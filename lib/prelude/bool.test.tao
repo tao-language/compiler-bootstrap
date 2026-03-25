@@ -1,4 +1,4 @@
-import prelude/bool {and, or, not}
+import prelude/bool.{and, or, not}
 
 // Nested operations
 > and(and(True, True), True)

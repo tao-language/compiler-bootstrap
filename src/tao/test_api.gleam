@@ -9,7 +9,7 @@
 /// For detailed documentation see:
 /// - **[../plans/prelude/README.md](../plans/prelude/README.md)** - Prelude implementation plan
 /// - **[../plans/tao/18-stdlib-testing.md](../plans/tao/18-stdlib-testing.md)** - Testing infrastructure
-import tao/syntax.{parse_module, type Expr, parse as parse_expr, Int as TaoInt, Float as TaoFloat, Str as TaoStr, Var as TaoVar, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, If as TaoIf, For as TaoFor, While as TaoWhile, Loop as TaoLoop, Break as TaoBreak, Continue as TaoContinue, Test as TaoTest, Run as TaoRun, Import as TaoImport, Ctr as TaoCtr, TypeDecl as TaoTypeDecl, expr_to_ast}
+import tao/syntax.{parse_module, type Expr, parse as parse_expr, Int as TaoInt, Float as TaoFloat, Str as TaoStr, Var as TaoVar, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, If as TaoIf, For as TaoFor, While as TaoWhile, Loop as TaoLoop, Break as TaoBreak, Continue as TaoContinue, Test as TaoTest, Run as TaoRun, Import as TaoImport, Ctr as TaoCtr, TypeDecl as TaoTypeDecl, ConstructorDecl as TaoCtrDecl, expr_to_ast}
 import syntax/grammar.{type ParseResult, type Span, Span}
 import tao/desugar.{desugar_module}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module}
@@ -18,9 +18,7 @@ import core/syntax as core_syntax
 import gleam/list
 import gleam/option.{type Option, Some, None}
 import gleam/string
-import gleam/int
-import tao/ast.{type Stmt, Module, StmtExpr, StmtLet, StmtFn, StmtBind, StmtMut, StmtTest, StmtRun, StmtType, StmtFor, StmtWhile, StmtLoop, StmtBreak, StmtContinue, StmtReturn, StmtYield, StmtImport}
-import tao/syntax as tao_syntax
+import tao/ast.{type Stmt, Module, StmtExpr, StmtLet, StmtFn, StmtBind, StmtMut, StmtTest, StmtRun, StmtType, StmtFor, StmtWhile, StmtLoop, StmtBreak, StmtContinue, StmtReturn, StmtYield, StmtImport, Constructor}
 
 // ============================================================================
 // TYPES
@@ -56,7 +54,7 @@ pub type TestResult {
 pub fn run_test_file(source: String, file_path: String) -> #(List(CoreError), List(TestResult)) {
   // Strip test lines before parsing (> expr ~> expected or > expr\nexpected)
   let code_only = strip_test_lines(source)
-  
+
   // 1. Parse Tao source
   let parse_result = parse_module(code_only)
   
@@ -117,7 +115,7 @@ pub fn run_test_file(source: String, file_path: String) -> #(List(CoreError), Li
 /// Removes:
 /// - Lines starting with `> ` (test expressions)
 /// - Lines that are test expected results (after `> ` lines)
-fn strip_test_lines(source: String) -> String {
+pub fn strip_test_lines(source: String) -> String {
   let lines = string.split(source, "\n")
   let indexed_lines = list.index_map(lines, fn(line, index) {
     #(index, line)
@@ -139,10 +137,28 @@ fn strip_test_lines_loop(
       let #(_num, content) = line
       let trimmed = string.trim(content)
       let is_comment = string.starts_with(trimmed, "//")
+      let is_test_expr = string.starts_with(trimmed, "> ")
+      let has_arrow = string.contains(trimmed, "~>")
+      let is_single_line_test = is_test_expr && has_arrow
+      
+      // Determine next expecting_result state
+      let next_expecting_result = case is_test_expr {
+        True -> {
+          // For single-line tests, don't expect result line
+          // For multi-line tests, expect next non-empty line to be result
+          case is_single_line_test {
+            True -> False
+            False -> True
+          }
+        }
+        False -> expecting_result
+      }
       
       case trimmed {
         // Test expression line - skip it
-        "> " <> _ -> strip_test_lines_loop(rest, acc, True)
+        _ if is_test_expr -> {
+          strip_test_lines_loop(rest, acc, next_expecting_result)
+        }
         // Expected result line (after test expression) - skip it
         _ if expecting_result && trimmed != "" && !is_comment -> {
           strip_test_lines_loop(rest, acc, False)
@@ -357,7 +373,22 @@ fn format_value(value: Value) -> String {
 /// Convert expressions to statements.
 fn exprs_to_stmts(exprs: List(Expr)) -> List(Stmt) {
   list.map(exprs, fn(expr) {
-    StmtExpr(expr_to_ast(expr), get_expr_span(expr))
+    case expr {
+      TaoTypeDecl(name, constructors, span) -> {
+        // Type declarations should be StmtType, not StmtExpr
+        // Convert ConstructorDecl to Constructor
+        StmtType(name, [], list.map(constructors, fn(ctr) {
+          case ctr {
+            TaoCtrDecl(ctr_name, _fields, ctr_span) -> {
+              // For nullary constructors (True, False), ignore fields
+              // This is a simplification - proper type handling would require parsing field types
+              Constructor(ctr_name, [], ctr_span)
+            }
+          }
+        }), span)
+      }
+      _ -> StmtExpr(expr_to_ast(expr), get_expr_span(expr))
+    }
   })
 }
 
