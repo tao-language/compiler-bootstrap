@@ -1556,6 +1556,9 @@ fn collect_names_from_fields_acc(fields: List(#(String, Term)), acc: List(String
 /// 
 /// KEY FIX: Accept Value for both domain and codomain to properly substitute
 /// holes in nested lambda types. The codomain is quoted to Term after substitution.
+/// 
+/// IMPORTANT: The domain is ALWAYS substituted, even if there are no holes to
+/// generalize. This ensures the domain hole is replaced with an HVar.
 fn generalize_holes(
   holes: List(Int),
   existing_implicit: List(String),
@@ -1566,8 +1569,17 @@ fn generalize_holes(
   lvl: Int,
   span: Span,
 ) -> #(List(String), Value, Term) {
+  // Create substitution: hole_id -> type variable (as a neutral term with HVar)
+  // The index is the position in the new implicit list
+  let base_index = list.length(existing_implicit)
+  let hole_subst = create_hole_to_var_subst(holes, base_index)
+
+  // ALWAYS substitute holes in domain, even if holes list is empty
+  // This ensures the domain hole is replaced with an HVar
+  let generalized_domain = subst_value_with_hole_vars(hole_subst, domain)
+  
   case holes {
-    [] -> #(existing_implicit, domain, quote(ffi, lvl, codomain, span))
+    [] -> #(existing_implicit, generalized_domain, quote(ffi, lvl, codomain, span))
     _ -> {
       // Collect all existing names to avoid shadowing
       let codomain_term = quote(ffi, lvl, codomain, span)
@@ -1576,16 +1588,11 @@ fn generalize_holes(
       // Generate unique names for each hole
       let new_names = generate_unique_names(list.length(holes), existing_names, 0)
 
-      // Create substitution: hole_id -> type variable (as a neutral term with HVar)
-      // The index is the position in the new implicit list
-      let base_index = list.length(existing_implicit)
-      let hole_subst = create_hole_to_var_subst(holes, base_index)
-
-      // Apply substitution to domain and codomain (both Values)
-      let generalized_domain = subst_value_with_hole_vars(hole_subst, domain)
+      // Apply substitution to codomain (Value)
       let generalized_codomain_val = subst_value_with_hole_vars(hole_subst, codomain)
       let generalized_codomain = quote(ffi, lvl, generalized_codomain_val, span)
 
+      // Return generalized domain (with holes substituted) and generalized codomain
       #(list.append(existing_implicit, new_names), generalized_domain, generalized_codomain)
     }
   }
@@ -2300,9 +2307,10 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       // 3. Collect free holes in the result type
       // 4. Generalize by replacing holes with fresh implicit type variables
       //
-      // KEY FIX: Shift HVar indices in body_ty by the number of new implicit params
-      // to handle nested lambdas correctly. Without this, nested lambda types have
-      // HVar indices that refer to the wrong implicit params.
+      // KEY FIX: Always include t1_hole in holes_to_generalize.
+      // The domain hole represents the parameter's type and should always be
+      // generalized to an implicit type variable, even if it doesn't appear
+      // in the body type (e.g., constant functions like fn(x) { 42 }).
       let #(name, _) = param
       let env = get_env(s)
       let holes_before = s.hole
@@ -2317,6 +2325,17 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
 
       // Filter to only holes created during this lambda's inference
       let holes_to_generalize = list.filter(all_holes, fn(id) { id >= holes_before })
+      
+      // KEY FIX: Always include t1_hole in holes_to_generalize
+      // Extract t1_hole's ID and ensure it's in the list
+      let t1_hole_id = case t1_hole {
+        VNeut(HHole(id), []) -> id
+        _ -> holes_before  // Should not happen
+      }
+      let holes_to_generalize = case list.contains(holes_to_generalize, t1_hole_id) {
+        True -> holes_to_generalize
+        False -> [t1_hole_id, ..holes_to_generalize]
+      }
 
       // KEY FIX: Shift HVar indices in body_ty by the number of new implicit params
       // This ensures nested lambda types have correct HVar indices in the outer context
