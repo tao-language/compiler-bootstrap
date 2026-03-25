@@ -1553,31 +1553,39 @@ fn collect_names_from_fields_acc(fields: List(#(String, Term)), acc: List(String
 
 /// Generalize holes by replacing them with fresh implicit type variables.
 /// Returns: #(new_implicit_names, generalized_domain, generalized_codomain)
+/// 
+/// KEY FIX: Accept Value for both domain and codomain to properly substitute
+/// holes in nested lambda types. The codomain is quoted to Term after substitution.
 fn generalize_holes(
   holes: List(Int),
   existing_implicit: List(String),
   domain: Value,
-  codomain: Term,
+  codomain: Value,
   s: State,
+  ffi: FFI,
+  lvl: Int,
+  span: Span,
 ) -> #(List(String), Value, Term) {
   case holes {
-    [] -> #(existing_implicit, domain, codomain)
+    [] -> #(existing_implicit, domain, quote(ffi, lvl, codomain, span))
     _ -> {
       // Collect all existing names to avoid shadowing
-      let existing_names = collect_existing_names(existing_implicit, codomain)
-      
+      let codomain_term = quote(ffi, lvl, codomain, span)
+      let existing_names = collect_existing_names(existing_implicit, codomain_term)
+
       // Generate unique names for each hole
       let new_names = generate_unique_names(list.length(holes), existing_names, 0)
-      
+
       // Create substitution: hole_id -> type variable (as a neutral term with HVar)
       // The index is the position in the new implicit list
       let base_index = list.length(existing_implicit)
       let hole_subst = create_hole_to_var_subst(holes, base_index)
-      
-      // Apply substitution to domain and codomain
+
+      // Apply substitution to domain and codomain (both Values)
       let generalized_domain = subst_value_with_hole_vars(hole_subst, domain)
-      let generalized_codomain = subst_term_with_hole_vars(hole_subst, codomain)
-      
+      let generalized_codomain_val = subst_value_with_hole_vars(hole_subst, codomain)
+      let generalized_codomain = quote(ffi, lvl, generalized_codomain_val, span)
+
       #(list.append(existing_implicit, new_names), generalized_domain, generalized_codomain)
     }
   }
@@ -2181,6 +2189,9 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       // 2. Infer the body type
       // 3. Collect free holes in the result type
       // 4. Generalize by replacing holes with fresh implicit type variables
+      //
+      // KEY FIX: Pass body_ty (Value) to generalize_holes instead of t2_pre (Term)
+      // to properly substitute holes in nested lambda types.
       let #(name, _) = param
       let env = get_env(s)
       let holes_before = s.hole
@@ -2188,22 +2199,21 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(_fresh, s) = def_var(s, name, t1_hole)
       let #(body_val, body_ty, s) = infer(s, body)
 
-      // Quote the body
-      let body_quoted = quote(s.ffi, list.length(env), body_val, span)
-      // Keep t1_hole as-is (don't force) so it can be unified during application
-      let t2_pre = quote(s.ffi, list.length(env), body_ty, span)
-
       // Collect free holes in the type (both domain and codomain)
       let domain_holes = free_holes_in_value(s.sub, t1_hole)
-      let codomain_holes = free_holes_in_term_direct(t2_pre)
+      let codomain_holes = free_holes_in_value(s.sub, body_ty)
       let all_holes = list.unique(list.append(domain_holes, codomain_holes))
 
       // Filter to only holes created during this lambda's inference
       let holes_to_generalize = list.filter(all_holes, fn(id) { id >= holes_before })
 
       // Generate generalization: replace holes with implicit type variables
+      // Pass body_ty (Value) instead of quoted term to properly handle nested lambdas
       let #(generalized_implicit, generalized_t1, generalized_t2) =
-        generalize_holes(holes_to_generalize, implicit, t1_hole, t2_pre, s)
+        generalize_holes(holes_to_generalize, implicit, t1_hole, body_ty, s, s.ffi, list.length(env), span)
+
+      // Quote the body with the generalized type
+      let body_quoted = quote(s.ffi, list.length(env), body_val, span)
 
       // Return the lambda value and its generalized type
       #(VLam(implicit, name, env, body_quoted), VPi(generalized_implicit, name, env, generalized_t1, generalized_t2), s)
