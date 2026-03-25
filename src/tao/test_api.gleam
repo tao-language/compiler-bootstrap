@@ -11,7 +11,7 @@
 /// - **[../plans/tao/18-stdlib-testing.md](../plans/tao/18-stdlib-testing.md)** - Testing infrastructure
 import tao/syntax.{parse_module, type Expr, parse as parse_expr, Int as TaoInt, Float as TaoFloat, Str as TaoStr, Var as TaoVar, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, If as TaoIf, For as TaoFor, While as TaoWhile, Loop as TaoLoop, Break as TaoBreak, Continue as TaoContinue, Test as TaoTest, Run as TaoRun, Import as TaoImport, Ctr as TaoCtr, TypeDecl as TaoTypeDecl, ConstructorDecl as TaoCtrDecl, expr_to_ast}
 import syntax/grammar.{type ParseResult, type Span, Span}
-import tao/desugar.{desugar_module}
+import tao/desugar.{desugar_module, type DesugarContext}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module}
 import core/core.{type Term, type State, type Value, type Error as CoreError, initial_state, infer, eval, quote, normalize, Err, SyntaxError, TypeMismatch, VarUndefined, CtrUndefined, HoleUnsolved, MatchRedundantCase, MatchMissingCase, RcdMissingFields, DotFieldNotFound, DotOnNonCtr, InfiniteType, SpineMismatch, ArityMismatch, NotAFunction, PatternMismatch, CtrUnsolvedParam, TODO as CoreTODO, ComptimePermissionDenied}
 import core/syntax as core_syntax
@@ -85,10 +85,10 @@ pub fn run_test_file(source: String, file_path: String) -> #(List(CoreError), Li
       let module = Module(file_path, body, get_module_span(body, file_path))
       let ctx = new_context() |> with_prelude()
 
-      let #(core_term, _desugar_ctx) = desugar_module(module, ctx)
+      let #(core_term, desugar_ctx) = desugar_module(module, ctx)
 
-      // 3. Type check
-      let state = initial_state
+      // 3. Initialize state with constructor environment from desugaring
+      let state = state_with_constructors(desugar_ctx, initial_state)
       let #(_value, _type, state) = infer(state, core_term)
 
       case state.errors {
@@ -448,4 +448,18 @@ fn get_module_span(body: List(Stmt), path: String) -> Span {
       }
     }
   }
+}
+
+// ============================================================================
+// STATE INITIALIZATION WITH CONSTRUCTORS (Phase 2)
+// ============================================================================
+
+/// Initialize Core State with constructor environment from desugaring.
+/// Merges DesugarContext.ctrs into State.ctrs for type checking.
+fn state_with_constructors(dc: DesugarContext, initial: core.State) -> core.State {
+  // Merge DesugarContext.ctrs into State.ctrs
+  // Both are CtrEnv (List(#(String, CtrDef)))
+  // Prepend desugar context constructors so they take precedence
+  let merged_ctrs = list.append(dc.ctrs, initial.ctrs)
+  core.State(..initial, ctrs: merged_ctrs)
 }

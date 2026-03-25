@@ -204,8 +204,12 @@ fn process_type_definitions(
   list.fold(stmts, dc, fn(acc_dc, stmt) {
     case stmt {
       StmtType(name, type_params, constructors, _span) -> {
+        // Add the type itself as a constructor (types are constructors of universes)
+        // The type constructor has no arguments and returns Typ(0) (the universe)
+        let type_ctr = #(name, CtrDef(params: type_params, arg_ty: Unit(Span("unit", 0, 0, 0, 0)), ret_ty: Typ(0, Span("type", 0, 0, 0, 0))))
         let new_ctrs = tao_type_to_core_ctrs(name, type_params, constructors)
-        DesugarContext(..acc_dc, ctrs: list.append(acc_dc.ctrs, new_ctrs))
+        let all_ctrs = [type_ctr, ..new_ctrs]
+        DesugarContext(..acc_dc, ctrs: list.append(acc_dc.ctrs, all_ctrs))
       }
       _ -> acc_dc
     }
@@ -269,6 +273,8 @@ fn build_type_app(type_name: String, type_params: List(String)) -> Term {
 }
 
 /// Convert Tao TypeAst to Core Term.
+/// Note: This is a simplified version that doesn't handle type parameters.
+/// Use build_core_type_from_ast for full type annotation support.
 fn type_ast_to_core(t: TypeAst) -> Term {
   case t {
     TVar(name) -> {
@@ -287,6 +293,103 @@ fn type_ast_to_core(t: TypeAst) -> Term {
     TRecord(_fields) -> Typ(0, Span("rcd", 0, 0, 0, 0))
     TTuple(_elems) -> Typ(0, Span("tuple", 0, 0, 0, 0))
     THole -> Hole(0, Span("hole", 0, 0, 0, 0))
+  }
+}
+
+// ============================================================================
+// TYPE ANNOTATION BUILDING (Phase 1)
+// ============================================================================
+
+/// Convert Tao TypeAst to Core type term for type annotations.
+/// Returns the Core type and updated context.
+fn build_core_type_from_ast(t: TypeAst, dc: DesugarContext, span: Span) -> #(CoreTerm, DesugarContext) {
+  case t {
+    TVar(name) -> {
+      // Check if this is a known builtin type or a type variable
+      case name {
+        "I32" -> #(CoreBuiltinType("I32T", span), dc)
+        "I64" -> #(CoreBuiltinType("I64T", span), dc)
+        "F32" -> #(CoreBuiltinType("F32T", span), dc)
+        "F64" -> #(CoreBuiltinType("F64T", span), dc)
+        "Bool" -> #(CoreCtr("Bool", CoreUnit(span), span), dc)
+        "Option" -> #(CoreCtr("Option", CoreUnit(span), span), dc)
+        "Result" -> #(CoreCtr("Result", CoreUnit(span), span), dc)
+        "String" -> #(CoreBuiltinType("String", span), dc)
+        _ -> {
+          // Check if it's a type defined in the current context
+          case lookup_type_in_ctrs(dc.ctrs, name) {
+            True -> #(CoreCtr(name, CoreUnit(span), span), dc)
+            False -> #(CoreHole(0, span), dc)  // Unknown type, use hole
+          }
+        }
+      }
+    }
+    TApp(type_name, args) -> {
+      // Type application: Option(Bool), List(I32), etc.
+      let base = case lookup_type_in_ctrs(dc.ctrs, type_name) {
+        True -> CoreCtr(type_name, CoreUnit(span), span)
+        False -> CoreHole(0, span)
+      }
+      let #(core_args, dc1) = build_core_type_args(args, dc, span)
+      #(build_type_applications(base, core_args, span), dc1)
+    }
+    TFn(params, ret) -> {
+      // Function type: (I32, Bool) -> Bool
+      // For now, use a simple Pi type representation
+      let #(core_params, dc1) = build_core_type_args(params, dc, span)
+      let #(core_ret, dc2) = build_core_type_from_ast(ret, dc1, span)
+      let fn_type = build_fn_type(core_params, core_ret, span)
+      #(fn_type, dc2)
+    }
+    TRecord(_fields) -> {
+      // Record type - use hole for now
+      #(CoreHole(0, span), dc)
+    }
+    TTuple(_elems) -> {
+      // Tuple type - use hole for now
+      #(CoreHole(0, span), dc)
+    }
+    THole -> {
+      // Type hole - let inference fill it in
+      #(CoreHole(0, span), dc)
+    }
+  }
+}
+
+/// Build type applications: Base(Arg1, Arg2, ...)
+fn build_type_applications(base: CoreTerm, args: List(CoreTerm), span: Span) -> CoreTerm {
+  case args {
+    [] -> base
+    [arg] -> CoreApp(base, arg, span)
+    [arg, ..rest] -> {
+      let app = CoreApp(base, arg, span)
+      build_type_applications(app, rest, span)
+    }
+  }
+}
+
+/// Build list of type arguments.
+fn build_core_type_args(args: List(TypeAst), dc: DesugarContext, span: Span) -> #(List(CoreTerm), DesugarContext) {
+  let #(reversed_terms, final_dc) = list.fold(args, #([], dc), fn(acc, arg) {
+    let #(terms, dc_acc) = acc
+    let #(core_term, dc_new) = build_core_type_from_ast(arg, dc_acc, span)
+    #([core_term, ..terms], dc_new)
+  })
+  #(list.reverse(reversed_terms), final_dc)
+}
+
+/// Build function type from parameter types and return type.
+fn build_fn_type(param_types: List(CoreTerm), ret_type: CoreTerm, span: Span) -> CoreTerm {
+  // For now, represent function types as holes
+  // TODO: Build proper Pi types
+  CoreHole(0, span)
+}
+
+/// Check if a type name exists in the constructor environment.
+fn lookup_type_in_ctrs(ctrs: CtrEnv, type_name: String) -> Bool {
+  case list.find(ctrs, fn(ctr) { ctr.0 == type_name }) {
+    Ok(_) -> True
+    Error(_) -> False
   }
 }
 
@@ -487,11 +590,19 @@ pub fn desugar_stmt(
         [] -> [Param("_unit", None, span)]
         _ -> params
       }
-      let #(core_lam, _dc1) = build_lambdas_with_scope(type_params, params_with_unit, body, span, dc_with_name)
+      // Build lambda (type annotations are handled by the type checker via constructor environment)
+      let #(core_lam, dc1) = build_lambdas_with_annotations(type_params, params_with_unit, body, span, dc_with_name)
+      
+      // Note: We don't add CoreAnn for return types here because:
+      // 1. The lambda's type is a Pi type (Bool -> Bool), not just the return type (Bool)
+      // 2. The type checker can infer the correct type from the constructor environment
+      // 3. Adding CoreAnn with just the return type causes type mismatches
+      // TODO: Build proper function type annotations (Pi types)
+      
       // Wrap lambda in fixpoint: fix name -> core_lam
       let core_fix = CoreFix(name, core_lam, span)
       let core_let = CoreLet(name, core_fix, span)
-      let dc2 = add_local(dc, name)
+      let dc2 = add_local(dc1, name)
       #([core_let], dc2)
     }
 
@@ -1475,6 +1586,50 @@ fn build_value_lambdas_with_scope(
       // Add this param to scope, then build inner lambda
       let dc1 = add_local(dc, param.name)
       let #(inner_body, dc2) = build_value_lambdas_with_scope(rest, body, span, dc1)
+      let core_lam = CoreLam(param.name, inner_body, span)
+      #(core_lam, dc2)
+    }
+  }
+}
+
+// ============================================================================
+// TYPE ANNOTATION LAMBDAS (Phase 1)
+// ============================================================================
+
+/// Build nested lambdas with type annotations on parameters.
+fn build_lambdas_with_annotations(
+  type_params: List(String),
+  value_params: List(Param),
+  body: Expr,
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  // For now, ignore type params (they're erased at runtime)
+  build_value_lambdas_with_annotations(value_params, body, span, dc)
+}
+
+fn build_value_lambdas_with_annotations(
+  params: List(Param),
+  body: Expr,
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  case params {
+    [] -> {
+      // No more params - desugar the body
+      desugar_expr_core(body, dc)
+    }
+    [param, ..rest] -> {
+      // Add this param to scope, then build inner lambda
+      let dc1 = add_local(dc, param.name)
+      let #(inner_body, dc2) = build_value_lambdas_with_annotations(rest, body, span, dc1)
+
+      // Note: Parameter type annotations are NOT added as CoreAnn on the body.
+      // In dependent type theory, parameter types are part of the function type (Pi type),
+      // not annotations on the body. For now, we skip parameter annotations and only
+      // use return type annotations.
+      // TODO: Build proper Pi types with parameter type information
+
       let core_lam = CoreLam(param.name, inner_body, span)
       #(core_lam, dc2)
     }

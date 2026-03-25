@@ -2168,7 +2168,10 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       }
     }
     Ann(term, term_ty, _) -> {
-      let #(ty_val, _, s) = infer(s, term_ty)
+      // Type annotation: evaluate the annotation type and check the term against it.
+      // Note: We eval (not infer) the annotation because it's already a type expression.
+      // For Ctr("Bool", Unit), eval gives us VCtrValue(VCtr("Bool", VUnit)), which is the type Bool.
+      let ty_val = eval(s.ffi, get_env(s), term_ty)
       let #(val, s) = check(s, term, ty_val, get_span(term_ty))
       #(val, ty_val, s)
     }
