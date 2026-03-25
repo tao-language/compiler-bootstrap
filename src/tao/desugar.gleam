@@ -45,7 +45,7 @@ import tao/import_ast.{
   ImportSelectiveAlias, ImportWildcard,
   type ImportItem, ImportName, ImportType, ImportOperator,
 }
-import core/core.{type Term, type Literal as CoreLiteral, type LiteralType, I32T, I64T, F32T, F64T, type Pattern as CorePattern, type Case as CoreCaseType, type CtrDef, CtrDef, type CtrEnv, Err, Var, Rcd, Dot, Lit, LitT, Unit, Call, Lam, App, Typ, I32, F64, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole, Ctr, Ann}
+import core/core.{type Term, type Literal as CoreLiteral, type LiteralType, I32T, I64T, F32T, F64T, type Pattern as CorePattern, type Case as CoreCaseType, type CtrDef, CtrDef, type CtrEnv, Err, Var, Rcd, Dot, Lit, LitT, Unit, Call, Lam, App, Typ, I32, F64, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole, Ctr, Ann, Pi}
 
 // ============================================================================
 // CORE TERM TYPES (simplified for desugaring)
@@ -104,6 +104,9 @@ pub type CoreTerm {
 
   /// Type annotation (for explicit type signatures)
   CoreAnn(term: CoreTerm, typ: CoreTerm, span: Span)
+
+  /// Pi type (dependent function type)
+  CorePi(implicit: List(String), name: String, domain: CoreTerm, codomain: CoreTerm, span: Span)
 
   /// Unit value
   CoreUnit(span: Span)
@@ -379,10 +382,14 @@ fn build_core_type_args(args: List(TypeAst), dc: DesugarContext, span: Span) -> 
 }
 
 /// Build function type from parameter types and return type.
+/// For a function (a: A, b: B) -> C, builds: Pi(_, A, Pi(_, B, C))
 fn build_fn_type(param_types: List(CoreTerm), ret_type: CoreTerm, span: Span) -> CoreTerm {
-  // For now, represent function types as holes
-  // TODO: Build proper Pi types
-  CoreHole(0, span)
+  // Build nested Pi types: Pi(_, param1, Pi(_, param2, ... ret_type))
+  // Using fold with reverse to simulate foldr
+  let reversed = list.reverse(param_types)
+  list.fold(reversed, ret_type, fn(acc, param_ty) {
+    CorePi([], "_", param_ty, acc, span)
+  })
 }
 
 /// Check if a type name exists in the constructor environment.
@@ -590,17 +597,33 @@ pub fn desugar_stmt(
         [] -> [Param("_unit", None, span)]
         _ -> params
       }
-      // Build lambda (type annotations are handled by the type checker via constructor environment)
+      // Build lambda with parameter type annotations
       let #(core_lam, dc1) = build_lambdas_with_annotations(type_params, params_with_unit, body, span, dc_with_name)
+
+      // Wrap fixpoint with function type annotation if return type is present
+      // This helps the type checker avoid creating holes for recursive functions
+      let core_fix = case return_type {
+        Some(ret_ty_ast) -> {
+          let #(core_ret_ty, _dc2) = build_core_type_from_ast(ret_ty_ast, dc1, span)
+          // Build parameter types (use holes for missing annotations)
+          let param_types = list.map(params_with_unit, fn(p) {
+            case p.type_annotation {
+              Some(ty_ast) -> {
+                let #(core_ty, _) = build_core_type_from_ast(ty_ast, dc1, span)
+                core_ty
+              }
+              None -> CoreHole(0, span)
+            }
+          })
+          // Build function type: Pi(param1_type, Pi(param2_type, ... ret_type))
+          let core_fn_ty = build_fn_type(param_types, core_ret_ty, span)
+          // Annotate the fixpoint with the function type
+          let core_fix_untyped = CoreFix(name, core_lam, span)
+          CoreAnn(core_fix_untyped, core_fn_ty, span)
+        }
+        None -> CoreFix(name, core_lam, span)
+      }
       
-      // Note: We don't add CoreAnn for return types here because:
-      // 1. The lambda's type is a Pi type (Bool -> Bool), not just the return type (Bool)
-      // 2. The type checker can infer the correct type from the constructor environment
-      // 3. Adding CoreAnn with just the return type causes type mismatches
-      // TODO: Build proper function type annotations (Pi types)
-      
-      // Wrap lambda in fixpoint: fix name -> core_lam
-      let core_fix = CoreFix(name, core_lam, span)
       let core_let = CoreLet(name, core_fix, span)
       let dc2 = add_local(dc1, name)
       #([core_let], dc2)
@@ -2391,6 +2414,16 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
       // Convert CoreCtr to core/core.Ctr
       Ctr(tag, core_term_to_term_loop(arg, env), span)
     }
+    CorePi(implicit, name, domain, codomain, span) -> {
+      // Convert CorePi to core/core.Pi (dependent function type)
+      Pi(
+        implicit: implicit,
+        name: name,
+        in_term: core_term_to_term_loop(domain, env),
+        out_term: core_term_to_term_loop(codomain, env),
+        span: span,
+      )
+    }
     CoreAnn(term, typ, span) -> {
       // Convert CoreAnn to core/core.Ann (type annotation)
       Ann(
@@ -2439,6 +2472,7 @@ fn value_span(term: CoreTerm) -> Span {
     CoreMatchCore(_, _, _, span) -> span
     CoreFix(_, _, span) -> span
     CoreCtr(_, _, span) -> span
+    CorePi(_, _, _, _, span) -> span
     CoreAnn(_, _, span) -> span
     CoreUnit(span) -> span
     CoreErr(_, span) -> span

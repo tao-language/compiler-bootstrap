@@ -2713,16 +2713,57 @@ pub fn bind_pattern(
 ///
 /// Simple implementation: infer the type and unify with expected type.
 /// The infer function handles generalization for lambdas automatically.
+///
+/// SPECIAL CASE: For Fix with expected type, use the expected type directly
+/// to avoid InfiniteType errors in recursive functions.
 pub fn check(
   s: State,
   term: Term,
   expected_ty: Type,
   ty_span: Span,
 ) -> #(Value, State) {
-  let #(value, inferred_ty, s) = infer(s, term)
-  case unify(s, inferred_ty, expected_ty, get_span(term), ty_span) {
-    Ok(s) -> #(force(s.ffi, s.sub, value), s)
-    Error(e) -> #(VErr, with_err(s, e))
+  case term {
+    Fix(name, body, span) -> {
+      // Fixpoint with expected type: use the expected type instead of creating a hole
+      // This avoids the InfiniteType error for recursive functions
+      let env = get_env(s)
+      // Add the fixpoint variable to the context with the expected type
+      let #(_fresh, s) = def_var(s, name, expected_ty)
+      // Check the body against the expected type
+      let #(body_val, s) = check(s, body, expected_ty, span)
+      let fix_val = VFix(name, env, body)
+      #(fix_val, s)
+    }
+    Lam(implicit, param, body, span) -> {
+      // Lambda with expected VPi type: use the domain type from the VPi
+      case expected_ty {
+        VPi(exp_implicit, exp_name, pi_env, domain, codomain) -> {
+          // Use the domain type from the expected VPi
+          let #(_fresh, s) = def_var(s, param.0, domain)
+          // Check the body against the codomain (which is a Term, need to evaluate)
+          let codomain_val = eval(s.ffi, get_env(s), codomain)
+          let #(body_val, s) = check(s, body, codomain_val, span)
+          let lam_val = VLam(implicit, param.0, get_env(s), body)
+          #(lam_val, s)
+        }
+        _ -> {
+          // No expected VPi type: infer and unify as usual
+          let #(value, inferred_ty, s) = infer(s, term)
+          case unify(s, inferred_ty, expected_ty, get_span(term), ty_span) {
+            Ok(s) -> #(force(s.ffi, s.sub, value), s)
+            Error(e) -> #(VErr, with_err(s, e))
+          }
+        }
+      }
+    }
+    _ -> {
+      // For other terms, infer and unify as usual
+      let #(value, inferred_ty, s) = infer(s, term)
+      case unify(s, inferred_ty, expected_ty, get_span(term), ty_span) {
+        Ok(s) -> #(force(s.ffi, s.sub, value), s)
+        Error(e) -> #(VErr, with_err(s, e))
+      }
+    }
   }
 }
 
