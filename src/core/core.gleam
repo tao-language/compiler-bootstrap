@@ -2307,10 +2307,10 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       // 3. Collect free holes in the result type
       // 4. Generalize by replacing holes with fresh implicit type variables
       //
-      // KEY FIX: Always include t1_hole in holes_to_generalize.
-      // The domain hole represents the parameter's type and should always be
-      // generalized to an implicit type variable, even if it doesn't appear
-      // in the body type (e.g., constant functions like fn(x) { 42 }).
+      // KEY FIX: Don't shift body_ty before generalization. Collect holes from
+      // the unshifted type, generalize, then shift the result. This ensures
+      // holes from outer contexts (like hole 4 from outer lambda) are properly
+      // substituted before shifting.
       let #(name, _) = param
       let env = get_env(s)
       let holes_before = s.hole
@@ -2319,6 +2319,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(body_val, body_ty, s) = infer(s, body)
 
       // Collect free holes in the type (both domain and codomain)
+      // Use unshifted body_ty to ensure we collect ALL holes
       let domain_holes = free_holes_in_value(s.sub, t1_hole)
       let codomain_holes = free_holes_in_value(s.sub, body_ty)
       let all_holes = list.unique(list.append(domain_holes, codomain_holes))
@@ -2327,7 +2328,9 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let holes_to_generalize = list.filter(all_holes, fn(id) { id >= holes_before })
       
       // KEY FIX: Always include t1_hole in holes_to_generalize
-      // Extract t1_hole's ID and ensure it's in the list
+      // The domain hole represents the parameter's type and should always be
+      // generalized to an implicit type variable, even if it doesn't appear
+      // in the body type (e.g., constant functions like fn(x) { 42 }).
       let t1_hole_id = case t1_hole {
         VNeut(HHole(id), []) -> id
         _ -> holes_before  // Should not happen
@@ -2337,21 +2340,21 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
         False -> [t1_hole_id, ..holes_to_generalize]
       }
 
-      // KEY FIX: Shift HVar indices in body_ty by the number of new implicit params
-      // This ensures nested lambda types have correct HVar indices in the outer context
-      let num_new_implicit = list.length(holes_to_generalize)
-      let body_ty_shifted = shift_hvar_in_value(body_ty, num_new_implicit)
-
-      // Generate generalization: replace holes with implicit type variables
-      // Use the shifted body_ty to ensure correct HVar indices
+      // KEY FIX: Generalize BEFORE shifting
+      // This ensures holes from outer contexts are properly substituted
       let #(generalized_implicit, generalized_t1, generalized_t2) =
-        generalize_holes(holes_to_generalize, implicit, t1_hole, body_ty_shifted, s, s.ffi, list.length(env), span)
+        generalize_holes(holes_to_generalize, implicit, t1_hole, body_ty, s, s.ffi, list.length(env), span)
+
+      // NOW shift the generalized codomain for the outer context
+      // generalized_t2 is a Term, so use shift_hvar_in_term
+      let num_new_implicit = list.length(generalized_implicit) - list.length(implicit)
+      let generalized_t2_shifted = shift_hvar_in_term(generalized_t2, num_new_implicit)
 
       // Quote the body with the generalized type
       let body_quoted = quote(s.ffi, list.length(env), body_val, span)
 
-      // Return the lambda value and its generalized type
-      #(VLam(implicit, name, env, body_quoted), VPi(generalized_implicit, name, env, generalized_t1, generalized_t2), s)
+      // Return the lambda value and its generalized type (with shifted codomain)
+      #(VLam(implicit, name, env, body_quoted), VPi(generalized_implicit, name, env, generalized_t1, generalized_t2_shifted), s)
     }
     Pi(implicit, name, in_term, out_term, _) -> {
       let env = get_env(s)

@@ -600,15 +600,22 @@ pub fn desugar_stmt(
       // Build lambda with parameter type annotations
       let #(core_lam, dc1) = build_lambdas_with_annotations(type_params, params_with_unit, body, span, dc_with_name)
 
-      // Note: We don't add type annotations here. The type checker's check(Fix) and
-      // check(Lam) fixes handle recursive functions by using expected types from context.
-      // Type annotations on parameters are handled by build_lambdas_with_annotations.
-      // The constructor environment provides type information for known types.
-      let core_fix = CoreFix(name, core_lam, span)
-      
+      // KEY FIX: Build the full function type from parameter and return type annotations.
+      // This allows the type checker to CHECK the lambda against the expected function type,
+      // which provides domain types for each parameter.
+      let core_fix = case return_type {
+        Some(ret_ty_ast) -> {
+          // Build function type: param1_ty -> param2_ty -> ... -> return_ty
+          let #(core_ret_ty, _dc2) = build_core_type_from_ast(ret_ty_ast, dc1, span)
+          let function_type = build_function_type(params_with_unit, core_ret_ty, span, dc1)
+          CoreFix(name, CoreAnn(core_lam, function_type, span), span)
+        }
+        None -> CoreFix(name, core_lam, span)
+      }
+
       let core_let = CoreLet(name, core_fix, span)
-      let dc2 = add_local(dc1, name)
-      #([core_let], dc2)
+      let dc3 = add_local(dc1, name)
+      #([core_let], dc3)
     }
 
     StmtImport(import_item, span) -> {
@@ -1629,14 +1636,38 @@ fn build_value_lambdas_with_annotations(
       let dc1 = add_local(dc, param.name)
       let #(inner_body, dc2) = build_value_lambdas_with_annotations(rest, body, span, dc1)
 
-      // Note: Parameter type annotations are NOT added as CoreAnn on the body.
-      // In dependent type theory, parameter types are part of the function type (Pi type),
-      // not annotations on the body. For now, we skip parameter annotations and only
-      // use return type annotations.
-      // TODO: Build proper Pi types with parameter type information
-
+      // KEY FIX: Don't wrap the inner lambda with CoreAnn. Instead, just build
+      // the lambda normally. Parameter type annotations will be used during
+      // type checking via check(Lam) with expected VPi type.
+      // The return type annotation (if any) should be on the outermost fixpoint.
       let core_lam = CoreLam(param.name, inner_body, span)
       #(core_lam, dc2)
+    }
+  }
+}
+
+/// Build the full function type from parameter and return type annotations.
+/// Returns: param1_ty -> param2_ty -> ... -> return_ty
+fn build_function_type(
+  params: List(Param),
+  return_ty: CoreTerm,
+  span: Span,
+  dc: DesugarContext,
+) -> CoreTerm {
+  case params {
+    [] -> return_ty
+    [param, ..rest] -> {
+      // Build domain type from parameter annotation (or hole if no annotation)
+      let domain_ty = case param.type_annotation {
+        Some(ty_ast) -> {
+          let #(core_ty, _dc) = build_core_type_from_ast(ty_ast, dc, span)
+          core_ty
+        }
+        None -> CoreHole(-1, span)  // Placeholder hole, will be filled by type checker
+      }
+      // Build Pi type: domain -> codomain
+      let codomain_ty = build_function_type(rest, return_ty, span, dc)
+      CorePi([], param.name, domain_ty, codomain_ty, span)
     }
   }
 }
