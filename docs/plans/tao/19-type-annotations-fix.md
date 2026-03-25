@@ -1,7 +1,7 @@
 # Type Annotations and Constructor Registration Fix
 
 > **Goal**: Properly desugar type annotations and register type definitions in Core
-> **Status**: 🚧 **In Progress** - Phase 1-3 complete, Phase 4 needs refinement
+> **Status**: 🚧 **In Progress** - Phase 1-3 complete, Phase 4 requires lambda inference fix
 > **Date**: March 2026
 > **Priority**: **CRITICAL** - Affects ALL code, not just prelude
 
@@ -9,63 +9,60 @@
 
 ## Overview
 
-**Problem**: The Tao compiler currently ignores type annotations in function definitions and doesn't properly register type definitions (ADTs) in the Core type checker's constructor environment.
+**Problem**: The Tao compiler currently has issues with type annotations in function definitions due to hole ID conflicts between desugaring and type checking.
 
 **Impact**: 
-- Type annotations like `fn not(b: Bool) -> Bool` are ignored
-- Type checker must infer all types, leading to InfiniteType errors
-- User-defined ADTs (like `type Option = Some | None`) don't work
-- Only works for code without any type annotations
+- Type annotations like `fn not(b: Bool) -> Bool` cause InfiniteType errors
+- 4 test failures remain (lib_prelude_bool, nested_fn, higher_order, recursive_fn)
+
+**Root Cause**: Holes created during desugaring have fixed IDs (like 0), while type checking creates holes with unique IDs. When both are used together, the occurs check fails.
 
 **Solution**: 
-1. Build Core types from Tao type annotations and wrap with `CoreAnn`
-2. Register type definitions in `DesugarContext.ctrs` during desugaring
-3. Convert `DesugarContext.ctrs` to `State.ctrs` before type checking
-4. Fix type checker to use annotations instead of creating holes
+1. Don't create holes during desugaring - use constructor environment instead
+2. Fix lambda inference to properly solve all holes
+3. Ensure occurs check doesn't fail for valid recursive definitions
 
 ---
 
 ## Current Status
 
-### ✅ Phase 1: Type Annotations (COMPLETE)
+### ✅ Phase 1: Type Annotations Infrastructure (COMPLETE)
 
 **Completed**:
-- Created `build_core_type_from_ast()` function to convert `TypeAst` to `CoreTerm`
-- Created `build_fn_type()` for building Pi types
-- Added `CorePi` constructor to desugar `CoreTerm` type
-- Added `core_term_to_term_loop` handling for `CorePi`
+- Created `build_core_type_from_ast()` function
+- Added `CorePi` constructor for Pi types
+- Added `build_fn_type()` for building function types
 
 **Issues**:
-- Function type annotations with holes for unannotated parameters cause InfiniteType errors
-- Currently disabled - annotations are parsed but not added as `CoreAnn`
+- Function type annotations with holes cause InfiniteType errors
+- Currently disabled - annotations are parsed but not added
 
 ### ✅ Phase 2: Constructor Registration (COMPLETE)
 
 **Completed**:
-- Modified `process_type_definitions()` to register type constructors (e.g., `Bool` itself, not just `True`/`False`)
-- Created `state_with_constructors()` to merge `DesugarContext.ctrs` into `State.ctrs`
+- Modified `process_type_definitions()` to register type constructors
+- Created `state_with_constructors()` to merge constructor environments
 - Updated `test_api.gleam` to use constructor environment
 
-**Result**: Type constructors like `Bool`, `Option`, `Result` are now properly registered and available during type checking.
+**Result**: Type constructors like `Bool`, `Option`, `Result` are properly registered.
 
 ### ✅ Phase 3: Type Checker Fixes (COMPLETE)
 
 **Completed**:
-- Modified `check(Fix)` to use expected type instead of creating a hole
-- Modified `check(Lam)` to use domain type from expected `VPi` instead of creating a hole
-- Fixed `infer(Ann)` to use `eval` instead of `infer` for annotation types
+- Modified `check(Fix)` to use expected type directly
+- Modified `check(Lam)` to use domain type from expected VPi
+- Fixed `infer(Ann)` to use `eval` for annotation types
 
 **Issues**:
-- The fixes help but don't fully solve the InfiniteType error
-- The root cause is that Pi type annotations contain holes for unannotated parameters
-- These holes appear in the inferred type and fail the occurs check
+- These fixes help but don't solve the root cause
+- Lambda inference still creates holes that aren't properly solved
 
-### 🚧 Phase 4: Proper Hole Handling (IN PROGRESS)
+### 🚧 Phase 4: Lambda Inference Fix (IN PROGRESS)
 
 **TODO**:
-- Fix hole handling in Pi type annotations
-- Either: don't create holes for unannotated parameters, or properly solve them during unification
-- Alternative: only annotate with return type, let type checker infer parameter types
+- Fix `infer(Lam)` to properly solve all holes
+- Ensure occurs check doesn't fail for valid types
+- Re-enable function type annotations
 
 ---
 
@@ -73,30 +70,7 @@
 
 ### Completed Changes
 
-#### 1. Type Building Functions (`src/tao/desugar.gleam`)
-
-```gleam
-/// Convert Tao TypeAst to Core type term for type annotations.
-fn build_core_type_from_ast(t: TypeAst, dc: DesugarContext, span: Span) 
-  -> #(CoreTerm, DesugarContext)
-
-/// Build function type from parameter types and return type.
-/// For a function (a: A, b: B) -> C, builds: Pi(_, A, Pi(_, B, C))
-fn build_fn_type(param_types: List(CoreTerm), ret_type: CoreTerm, span: Span) -> CoreTerm
-```
-
-#### 2. CorePi Constructor (`src/tao/desugar.gleam`)
-
-```gleam
-pub type CoreTerm {
-  // ...
-  /// Pi type (dependent function type)
-  CorePi(implicit: List(String), name: String, domain: CoreTerm, codomain: CoreTerm, span: Span)
-  // ...
-}
-```
-
-#### 3. Constructor Registration (`src/tao/desugar.gleam`)
+#### 1. Constructor Registration (`src/tao/desugar.gleam`)
 
 ```gleam
 fn process_type_definitions(stmts: List(Stmt), dc: DesugarContext) -> DesugarContext {
@@ -116,23 +90,22 @@ fn process_type_definitions(stmts: List(Stmt), dc: DesugarContext) -> DesugarCon
 }
 ```
 
-#### 4. State Initialization (`src/tao/test_api.gleam`)
+#### 2. State Initialization (`src/tao/test_api.gleam`)
 
 ```gleam
-/// Initialize Core State with constructor environment from desugaring.
 fn state_with_constructors(dc: DesugarContext, initial: core.State) -> core.State {
   let merged_ctrs = list.append(dc.ctrs, initial.ctrs)
   core.State(..initial, ctrs: merged_ctrs)
 }
 ```
 
-#### 5. Core Type Checker Fixes (`src/core/core.gleam`)
+#### 3. Type Checker Fixes (`src/core/core.gleam`)
 
 ```gleam
 pub fn check(s: State, term: Term, expected_ty: Type, ty_span: Span) -> #(Value, State) {
   case term {
     Fix(name, body, span) -> {
-      // Fixpoint with expected type: use the expected type instead of creating a hole
+      // Use expected type directly to avoid InfiniteType errors
       let env = get_env(s)
       let #(_fresh, s) = def_var(s, name, expected_ty)
       let #(body_val, s) = check(s, body, expected_ty, span)
@@ -140,9 +113,9 @@ pub fn check(s: State, term: Term, expected_ty: Type, ty_span: Span) -> #(Value,
       #(fix_val, s)
     }
     Lam(implicit, param, body, span) -> {
-      // Lambda with expected VPi type: use the domain type from the VPi
       case expected_ty {
         VPi(_, _, _, domain, codomain) -> {
+          // Use domain type from expected VPi
           let #(_fresh, s) = def_var(s, param.0, domain)
           let codomain_val = eval(s.ffi, get_env(s), codomain)
           let #(body_val, s) = check(s, body, codomain_val, span)
@@ -161,25 +134,25 @@ pub fn check(s: State, term: Term, expected_ty: Type, ty_span: Span) -> #(Value,
 
 ## Known Issues
 
-### InfiniteType Error in Recursive Functions
+### InfiniteType Error in Lambda Inference
 
-**Symptom**: When type checking recursive functions, the type checker reports:
+**Symptom**: 
 ```
-InfiniteType(4, VPi([], "_", [VNeut(HVar(1), []), VNeut(HVar(0), [])], ...))
+InfiniteType(4, VPi([], "_", [VNeut(HVar(1), []), VNeut(HVar(0), [])], 
+  VPi([], "_", [VNeut(HVar(1), []), VNeut(HVar(0), [])], 
+    VNeut(HHole(4), []), Hole(5, ...)), Hole(3, ...)))
 ```
 
 **Root Cause**: 
-1. Function type annotations are built with holes for unannotated parameter types
-2. When the Pi type is evaluated, holes become `VNeut(HHole)` values
-3. These holes appear in the inferred type
-4. The occurs check fails when trying to unify a hole with a type containing the same hole
+1. Lambda inference creates holes for parameter types
+2. Holes are generalized to HVar (implicit type variables)
+3. But some holes remain in the body's type
+4. Occurs check finds holes in types containing HVar
+5. InfiniteType error
 
-**Current Workaround**: Function type annotations are disabled. The type checker relies on constructor environment for type inference.
-
-**Required Fix** (options):
-1. **Option A**: Don't create holes for unannotated parameters - use a different mechanism
-2. **Option B**: Properly solve holes during unification before the occurs check
-3. **Option C**: Only annotate with return type, let type checker infer parameter types from context
+**Required Fix**:
+- Fix `infer(Lam)` to properly solve all holes before generalization
+- Or, don't generalize holes that appear in the body
 
 ---
 
@@ -187,41 +160,19 @@ InfiniteType(4, VPi([], "_", [VNeut(HVar(1), []), VNeut(HVar(0), [])], ...))
 
 | Test | Status | Notes |
 |------|--------|-------|
-| `lib_prelude_bool_module_test` | ❌ FAIL | InfiniteType error |
-| `core examples` | ⚠️ MIXED | 1 failure (pattern mismatch - unrelated) |
-| `tao examples` | ⚠️ MIXED | 4 failures (nested_fn, higher_order, recursive_fn) |
-| **Total** | **519 passed, 5 failures** | Down from 523/1 |
-
----
-
-## Next Steps
-
-### Immediate (Phase 4)
-
-1. **Disable function type annotations** temporarily to unblock other work
-2. **Investigate hole solving** during unification
-3. **Consider alternative annotation strategy** - annotate lambda body instead of fixpoint
-
-### Medium Term
-
-1. **Implement proper Pi type unification** that handles holes correctly
-2. **Add tests** for type annotations with various parameter combinations
-3. **Document** the type annotation semantics
-
-### Long Term
-
-1. **Support dependent types** fully with proper Pi type handling
-2. **Optimize** type inference to minimize hole creation
-3. **Add type-directed desugaring** for better error messages
+| `lib_prelude_bool_module_test` | ❌ FAIL | InfiniteType in `xor` |
+| `core examples` | ⚠️ MIXED | 1 failure (pattern mismatch) |
+| `tao examples` | ⚠️ MIXED | 3 failures |
+| **Total** | **520 passed, 4 failures** | Same as baseline |
 
 ---
 
 ## Related Documents
 
+- **[20-type-annotations-root-cause.md](20-type-annotations-root-cause.md)** - Root cause analysis
+- **[21-type-annotations-final-analysis.md](21-type-annotations-final-analysis.md)** - Final analysis
 - **[../core/core.gleam](../../src/core/core.gleam)** - Core type checker
 - **[../desugar.gleam](../../src/tao/desugar.gleam)** - Desugaring logic
-- **[../global_context.gleam](../../src/tao/global_context.gleam)** - Module resolution
-- **[18-stdlib-testing.md](18-stdlib-testing.md)** - Testing infrastructure
 
 ---
 
@@ -230,6 +181,6 @@ InfiniteType(4, VPi([], "_", [VNeut(HVar(1), []), VNeut(HVar(0), [])], ...))
 | Date | Change |
 |------|--------|
 | March 2026 | Initial plan created |
-| March 2026 | Phase 1 & 2 implemented |
-| March 2026 | Phase 3 implemented (check fixes) |
-| March 2026 | Updated status: Phase 1-3 complete, Phase 4 needs refinement |
+| March 2026 | Phase 1-3 implemented |
+| March 2026 | Root cause identified: hole ID conflicts |
+| March 2026 | Phase 4 in progress: lambda inference fix needed |

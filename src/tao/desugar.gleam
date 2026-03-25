@@ -600,29 +600,11 @@ pub fn desugar_stmt(
       // Build lambda with parameter type annotations
       let #(core_lam, dc1) = build_lambdas_with_annotations(type_params, params_with_unit, body, span, dc_with_name)
 
-      // Wrap fixpoint with function type annotation if return type is present
-      // This helps the type checker avoid creating holes for recursive functions
-      let core_fix = case return_type {
-        Some(ret_ty_ast) -> {
-          let #(core_ret_ty, _dc2) = build_core_type_from_ast(ret_ty_ast, dc1, span)
-          // Build parameter types (use holes for missing annotations)
-          let param_types = list.map(params_with_unit, fn(p) {
-            case p.type_annotation {
-              Some(ty_ast) -> {
-                let #(core_ty, _) = build_core_type_from_ast(ty_ast, dc1, span)
-                core_ty
-              }
-              None -> CoreHole(0, span)
-            }
-          })
-          // Build function type: Pi(param1_type, Pi(param2_type, ... ret_type))
-          let core_fn_ty = build_fn_type(param_types, core_ret_ty, span)
-          // Annotate the fixpoint with the function type
-          let core_fix_untyped = CoreFix(name, core_lam, span)
-          CoreAnn(core_fix_untyped, core_fn_ty, span)
-        }
-        None -> CoreFix(name, core_lam, span)
-      }
+      // Note: We don't add type annotations here. The type checker's check(Fix) and
+      // check(Lam) fixes handle recursive functions by using expected types from context.
+      // Type annotations on parameters are handled by build_lambdas_with_annotations.
+      // The constructor environment provides type information for known types.
+      let core_fix = CoreFix(name, core_lam, span)
       
       let core_let = CoreLet(name, core_fix, span)
       let dc2 = add_local(dc1, name)
