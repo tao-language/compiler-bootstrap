@@ -19,6 +19,35 @@
 
 ---
 
+## Known Issues
+
+### InfiniteType Error in Type Checker
+
+**Status**: 🔍 **Investigating** - Root cause identified, fix in progress
+
+**Symptom**: When type checking `lib/prelude/bool.tao`, the type checker reports:
+```
+InfiniteType(4, VPi([], "_", [VNeut(HVar(1), []), VNeut(HVar(0), [])], ...))
+```
+
+**Root Cause**: 
+1. Type annotations in function definitions (`fn not(b: Bool) -> Bool`) are not being used during type checking
+2. The type checker infers types from the body, creating holes for parameter and return types
+3. The occurs check fails when unifying a hole with a type that contains the same hole
+
+**Required Fix**:
+1. Add type annotations to desugared function definitions (use `CoreAnn`)
+2. Ensure type checker uses annotations instead of inferring when available
+3. Properly register prelude type definitions (Bool, Option, Result) in the global context
+
+**Workaround**: Currently, the test infrastructure is working correctly - it's the type checker that has this bug. The test API correctly:
+- Strips test lines before parsing
+- Fixes spans to use correct filenames
+- Converts type declarations to statements
+- Returns all errors (not just the first one)
+
+---
+
 ## Requirements
 
 ### Functional Requirements

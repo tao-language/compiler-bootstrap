@@ -821,7 +821,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
           }
         }),
       ]),
-      // Import statement: import path [as alias] [.{name1, name2, ...}]
+      // Import statement: import path [as alias] [{name1, name2, ...}]
       rule("Import", [
         alt(
           seq([
@@ -836,7 +836,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
               token_pattern("Ident"),  // alias
             ])),
             opt(seq([
-              token_pattern("Dot"),  // . dot for selective import
+              opt(token_pattern("Dot")),  // optional . dot for selective import
               token_pattern("LBrace"),
               many(seq([
                 token_pattern("Ident"),
@@ -1758,23 +1758,67 @@ pub fn parse(source: String) -> ParseResult(Expr) {
   grammar_parse(tao_grammar(), source, error_ast)
 }
 
-/// Parse Tao module (list of statements).
-/// Returns all statements parsed from the source.
-pub fn parse_module(source: String) -> ParseResult(List(Expr)) {
+/// Parse Tao module (list of statements) with filename for spans.
+pub fn parse_module(source: String, file: String) -> ParseResult(List(Expr)) {
   // Parse using the grammar - Program now returns expressions directly
-  let error_ast = Int(0, Span("tao", 0, 0, 0, 0))
+  let error_ast = Int(0, Span(file, 0, 0, 0, 0))
   let result = grammar_parse(tao_grammar(), source, error_ast)
 
   // Extract statements - Program returns single expr or Block of multiple
   case result {
     ParseResultVal(ast: expr, errors: errors) -> {
       let stmts = case expr {
-        Block(stmts, _) -> stmts
+        Block(stmts, _) -> list.map(stmts, fn(s) { fix_expr_file(s, file) })
         Int(0, Span("program", _, _, _, _)) -> []  // Empty program
-        single -> [single]  // Single expression/statement
+        single -> [fix_expr_file(single, file)]  // Single expression/statement
       }
       ParseResultVal(ast: stmts, errors: errors)
     }
+  }
+}
+
+/// Fix all spans in an expression to use the correct filename.
+fn fix_expr_file(expr: Expr, file: String) -> Expr {
+  case expr {
+    Int(v, s) -> Int(v, Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    Float(v, s) -> Float(v, Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    Str(v, s) -> Str(v, Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    Var(v, s) -> Var(v, Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    BinOp(l, op, r, s) -> BinOp(fix_expr_file(l, file), op, fix_expr_file(r, file), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    UnaryOp(op, e, s) -> UnaryOp(op, fix_expr_file(e, file), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    OverloadedFn(n, tp, pn, pt, rt, b, s) -> OverloadedFn(n, tp, pn, pt, rt, fix_expr_file(b, file), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    OverloadedApp(n, args, s) -> OverloadedApp(n, list.map(args, fn(a) { fix_expr_file(a, file) }), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    Let(n, m, ta, v, s) -> Let(n, m, ta, fix_expr_file(v, file), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    Block(stmts, s) -> Block(list.map(stmts, fn(st) { fix_expr_file(st, file) }), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    SimpleFn(n, ps, rt, b, s) -> SimpleFn(n, ps, rt, fix_expr_file(b, file), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    App(f, args, s) -> App(fix_expr_file(f, file), list.map(args, fn(a) { fix_expr_file(a, file) }), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    Lambda(tp, ps, b, s) -> Lambda(tp, ps, fix_expr_file(b, file), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    Match(scrut, clauses, s) -> Match(fix_expr_file(scrut, file), list.map(clauses, fn(c) { fix_match_clause_file(c, file) }), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    If(c, t, e, s) -> If(fix_expr_file(c, file), fix_expr_file(t, file), option.map(e, fn(ex) { fix_expr_file(ex, file) }), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    For(p, c, b, s) -> For(p, fix_expr_file(c, file), list.map(b, fn(ex) { fix_expr_file(ex, file) }), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    While(c, b, s) -> While(fix_expr_file(c, file), list.map(b, fn(ex) { fix_expr_file(ex, file) }), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    Loop(b, s) -> Loop(list.map(b, fn(ex) { fix_expr_file(ex, file) }), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    Break(s) -> Break(Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    Continue(s) -> Continue(Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    Test(n, b, s) -> Test(n, fix_expr_file(b, file), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    Run(e, s) -> Run(fix_expr_file(e, file), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    Import(i, s) -> Import(i, Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    Ctr(n, args, s) -> Ctr(n, list.map(args, fn(a) { fix_expr_file(a, file) }), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    TypeDecl(n, ctrs, s) -> TypeDecl(n, list.map(ctrs, fix_ctr_decl_file(_, file)), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+  }
+}
+
+/// Fix spans in a match clause.
+fn fix_match_clause_file(clause: MatchClause, file: String) -> MatchClause {
+  case clause {
+    MatchClause(p, g, b, s) -> MatchClause(p, option.map(g, fn(ex) { fix_expr_file(ex, file) }), fix_expr_file(b, file), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+  }
+}
+
+/// Fix spans in a constructor declaration.
+fn fix_ctr_decl_file(ctr: ConstructorDecl, file: String) -> ConstructorDecl {
+  case ctr {
+    ConstructorDecl(n, fs, s) -> ConstructorDecl(n, fs, Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
   }
 }
 

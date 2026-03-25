@@ -96,7 +96,7 @@ pub fn compile_single_file(
   let ctx = ctx |> set_current_module(path)
 
   // Parse the file
-  let parse_result = tao_parse_module(contents)
+  let parse_result = tao_parse_module(contents, path)
 
   case parse_result.errors {
     [err, ..] -> {
@@ -167,8 +167,8 @@ fn compile_single(
     }
     Ok(contents) -> {
       // Parse the file
-      let parse_result = tao_parse_module(contents)
-      
+      let parse_result = tao_parse_module(contents, path)
+
       case parse_result.errors {
         [err, ..] -> {
           let error = ParseError(

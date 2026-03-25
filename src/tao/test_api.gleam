@@ -55,9 +55,9 @@ pub fn run_test_file(source: String, file_path: String) -> #(List(CoreError), Li
   // Strip test lines before parsing (> expr ~> expected or > expr\nexpected)
   let code_only = strip_test_lines(source)
 
-  // 1. Parse Tao source
-  let parse_result = parse_module(code_only)
-  
+  // 1. Parse Tao source with correct filename
+  let parse_result = parse_module(code_only, file_path)
+
   // Collect ALL parse errors, not just the first one
   case parse_result.errors {
     [_, ..] as errors -> {
@@ -71,7 +71,7 @@ pub fn run_test_file(source: String, file_path: String) -> #(List(CoreError), Li
         let fixed_span = Span(
           file_path,
           err.span.start_col,  // This is actually the line
-          err.span.end_line,   // This is actually the column  
+          err.span.end_line,   // This is actually the column
           err.span.start_col,  // End line same as start for single token
           err.span.end_line + string.length(err.got)  // End column
         )

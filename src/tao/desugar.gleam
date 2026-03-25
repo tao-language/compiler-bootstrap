@@ -45,7 +45,7 @@ import tao/import_ast.{
   ImportSelectiveAlias, ImportWildcard,
   type ImportItem, ImportName, ImportType, ImportOperator,
 }
-import core/core.{type Term, type Literal as CoreLiteral, type Pattern as CorePattern, type Case as CoreCaseType, type CtrDef, CtrDef, type CtrEnv, Err, Var, Rcd, Dot, Lit, Unit, Call, Lam, App, Typ, I32, F64, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole, Ctr, Ann}
+import core/core.{type Term, type Literal as CoreLiteral, type LiteralType, I32T, I64T, F32T, F64T, type Pattern as CorePattern, type Case as CoreCaseType, type CtrDef, CtrDef, type CtrEnv, Err, Var, Rcd, Dot, Lit, LitT, Unit, Call, Lam, App, Typ, I32, F64, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole, Ctr, Ann}
 
 // ============================================================================
 // CORE TERM TYPES (simplified for desugaring)
@@ -271,7 +271,17 @@ fn build_type_app(type_name: String, type_params: List(String)) -> Term {
 /// Convert Tao TypeAst to Core Term.
 fn type_ast_to_core(t: TypeAst) -> Term {
   case t {
-    TVar(_name) -> Hole(0, Span("type_var", 0, 0, 0, 0))
+    TVar(name) -> {
+      // Check if this is a known builtin type
+      case name {
+        "I32" -> LitT(I32T, Span("i32", 0, 0, 0, 0))
+        "I64" -> LitT(I64T, Span("i64", 0, 0, 0, 0))
+        "F32" -> LitT(F32T, Span("f32", 0, 0, 0, 0))
+        "F64" -> LitT(F64T, Span("f64", 0, 0, 0, 0))
+        "Bool" -> Ctr("Bool", Unit(Span("unit", 0, 0, 0, 0)), Span("bool", 0, 0, 0, 0))
+        _ -> Hole(0, Span("type_var", 0, 0, 0, 0))
+      }
+    }
     TApp(name, _args) -> Ctr(name, Unit(Span("unit", 0, 0, 0, 0)), Span("tapp", 0, 0, 0, 0))
     TFn(_params, _ret) -> Typ(1, Span("fn", 0, 0, 0, 0))
     TRecord(_fields) -> Typ(0, Span("rcd", 0, 0, 0, 0))

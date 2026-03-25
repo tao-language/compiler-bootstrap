@@ -321,7 +321,7 @@ pub fn parse_let_mut_with_type_test() {
 // ============================================================================
 
 pub fn parse_module_single_let_test() {
-  let ParseResult(ast, errors) = parse_module("let x = 10")
+  let ParseResult(ast, errors) = parse_module("let x = 10", "test")
   errors |> should.equal([])
   case ast {
     [Let("x", False, None, Int(10, _), _)] -> Nil
@@ -330,7 +330,7 @@ pub fn parse_module_single_let_test() {
 }
 
 pub fn parse_module_multiple_lets_test() {
-  let ParseResult(ast, errors) = parse_module("let x = 10 let y = 20")
+  let ParseResult(ast, errors) = parse_module("let x = 10 let y = 20", "test")
   errors |> should.equal([])
   case ast {
     [Let("x", False, None, Int(10, _), _), Let("y", False, None, Int(20, _), _)] -> Nil
@@ -339,7 +339,7 @@ pub fn parse_module_multiple_lets_test() {
 }
 
 pub fn parse_module_let_then_expr_test() {
-  let ParseResult(ast, errors) = parse_module("let x = 10 x")
+  let ParseResult(ast, errors) = parse_module("let x = 10 x", "test")
   errors |> should.equal([])
   case ast {
     [Let("x", False, None, Int(10, _), _), Var("x", _)] -> Nil
@@ -393,7 +393,7 @@ pub fn parse_error_missing_operand_test() {
 
 pub fn parse_recovery_let_missing_value_test() {
   // Parser should recover and continue after missing value
-  let ParseResult(ast, errors) = parse_module("let x = ; let y = 20")
+  let ParseResult(ast, errors) = parse_module("let x = ; let y = 20", "test")
   // Parser recovers by using placeholder value (no error reported currently)
   // Should still parse second let
   case ast {
@@ -404,7 +404,7 @@ pub fn parse_recovery_let_missing_value_test() {
 
 pub fn parse_recovery_multiple_errors_test() {
   // Multiple missing values should all be recovered with placeholders
-  let ParseResult(ast, errors) = parse_module("let x = ; let y = ; let z = 30")
+  let ParseResult(ast, errors) = parse_module("let x = ; let y = ; let z = 30", "test")
   // Parser recovers by using placeholder values (no errors reported currently)
   // Should parse all three lets
   case ast {

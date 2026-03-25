@@ -65,14 +65,14 @@ pub fn parse_overloaded_fn_div_test() {
 pub fn parse_multiple_overloads_i32_test() {
   // Two overloaded versions with I32
   let source = "fn (+)(x: I32) -> I32 { x + 1 }\nfn (+)(y: I32) -> I32 { y + 2 }"
-  let ParseResult(_ast, errors) = parse_module(source)
+  let ParseResult(_ast, errors) = parse_module(source, "test")
   errors |> should.equal([])
 }
 
 pub fn parse_multiple_overloads_different_ops_test() {
   // Different operators
   let source = "fn (+)(x: I32) -> I32 { x + 1 }\nfn (-)(x: I32) -> I32 { x - 1 }"
-  let ParseResult(_ast, errors) = parse_module(source)
+  let ParseResult(_ast, errors) = parse_module(source, "test")
   errors |> should.equal([])
 }
 

@@ -1,6 +1,8 @@
 // Prelude Bool module
 // Boolean type and logical operations
-// Note: Bool type is built-in to the core language
+
+/// Boolean type with two constructors
+type Bool = True | False
 
 /// Negate a boolean value
 fn not(b: Bool) -> Bool {
