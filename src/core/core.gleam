@@ -1724,6 +1724,116 @@ fn instantiate_implicit_params_loop(
   }
 }
 
+// ============================================================================
+// HVAR SHIFTING FOR NESTED LAMBDAS
+// ============================================================================
+
+/// Shift HVar indices in a Value by a given offset.
+/// Used when embedding a nested lambda's type in an outer context.
+fn shift_hvar_in_value(value: Value, offset: Int) -> Value {
+  case value {
+    VNeut(HVar(level), []) -> VNeut(HVar(level + offset), [])
+    VNeut(HVar(level), spine) ->
+      VNeut(HVar(level + offset), list.map(spine, shift_hvar_in_elim(offset, _)))
+    VNeut(head, spine) -> VNeut(head, list.map(spine, shift_hvar_in_elim(offset, _)))
+    VPi(implicit, name, env, in_val, out_term) ->
+      VPi(
+        implicit,
+        name,
+        list.map(env, shift_hvar_in_value(_, offset)),
+        shift_hvar_in_value(in_val, offset),
+        shift_hvar_in_term(out_term, offset),
+      )
+    VLam(implicit, name, env, body) ->
+      VLam(
+        implicit,
+        name,
+        list.map(env, shift_hvar_in_value(_, offset)),
+        shift_hvar_in_term(body, offset),
+      )
+    VRcd(fields) -> VRcd(list.map(fields, fn(kv) { #(kv.0, shift_hvar_in_value(kv.1, offset)) }))
+    VCtrValue(VCtr(tag, arg)) -> VCtrValue(VCtr(tag, shift_hvar_in_value(arg, offset)))
+    VCall(name, args) -> VCall(name, list.map(args, shift_hvar_in_value(_, offset)))
+    VFix(name, env, body) -> VFix(name, list.map(env, shift_hvar_in_value(_, offset)), shift_hvar_in_term(body, offset))
+    VRecord(fields) -> VRecord(list.map(fields, fn(kv) { #(kv.0, shift_hvar_in_value(kv.1, offset)) }))
+    VTyp(_) | VLit(_) | VLitT(_) | VErr | VUnit -> value
+  }
+}
+
+/// Shift HVar indices in an elimination by a given offset.
+fn shift_hvar_in_elim(offset: Int, elim: Elim) -> Elim {
+  case elim {
+    EDot(name) -> EDot(name)
+    EApp(arg) -> EApp(shift_hvar_in_value(arg, offset))
+    EAppImplicit(arg) -> EAppImplicit(shift_hvar_in_value(arg, offset))
+    EMatch(env, motive, cases) ->
+      EMatch(
+        list.map(env, shift_hvar_in_value(_, offset)),
+        shift_hvar_in_value(motive, offset),  // motive is a Value, not Term
+        list.map(cases, shift_hvar_in_case(offset, _)),
+      )
+  }
+}
+
+/// Shift HVar indices in a Term by a given offset.
+fn shift_hvar_in_term(term: Term, offset: Int) -> Term {
+  case term {
+    Var(index, span) -> Var(index, span)  // De Bruijn indices don't shift
+    Hole(id, span) -> Hole(id, span)  // Hole IDs don't shift
+    Typ(k, span) -> Typ(k, span)
+    Lit(k, span) -> Lit(k, span)
+    LitT(k, span) -> LitT(k, span)
+    Unit(span) -> Unit(span)
+    Err(msg, span) -> Err(msg, span)
+    Lam(implicit, param, body, span) ->
+      Lam(implicit, param, shift_hvar_in_term(body, offset), span)
+    Pi(implicit, name, in_term, out_term, span) ->
+      Pi(implicit, name, shift_hvar_in_term(in_term, offset), shift_hvar_in_term(out_term, offset), span)
+    App(fun, impl, arg, span) ->
+      App(
+        shift_hvar_in_term(fun, offset),
+        list.map(impl, shift_hvar_in_term(_, offset)),
+        shift_hvar_in_term(arg, offset),
+        span,
+      )
+    Rcd(fields, span) ->
+      Rcd(list.map(fields, fn(kv) { #(kv.0, shift_hvar_in_term(kv.1, offset)) }), span)
+    Dot(arg, name, span) -> Dot(shift_hvar_in_term(arg, offset), name, span)
+    Ann(t, ty, span) -> Ann(shift_hvar_in_term(t, offset), shift_hvar_in_term(ty, offset), span)
+    Call(name, args, span) -> Call(name, list.map(args, shift_hvar_in_term(_, offset)), span)
+    Comptime(t, span) -> Comptime(shift_hvar_in_term(t, offset), span)
+    Fix(name, body, span) -> Fix(name, shift_hvar_in_term(body, offset), span)
+    Ctr(tag, arg, span) -> Ctr(tag, shift_hvar_in_term(arg, offset), span)
+    Match(arg, motive, cases, span) ->
+      Match(
+        shift_hvar_in_term(arg, offset),
+        shift_hvar_in_term(motive, offset),
+        list.map(cases, shift_hvar_in_case_term(offset, _)),
+        span,
+      )
+  }
+}
+
+/// Shift HVar indices in a Case by a given offset.
+fn shift_hvar_in_case(offset: Int, case_val: Case) -> Case {
+  Case(
+    case_val.pattern,  // Patterns don't have HVar
+    shift_hvar_in_term(case_val.body, offset),
+    option.map(case_val.guard, fn(g) { shift_hvar_in_term(g, offset) }),
+    case_val.span,
+  )
+}
+
+/// Shift HVar indices in a Case (Term version) by a given offset.
+fn shift_hvar_in_case_term(offset: Int, case_val: Case) -> Case {
+  Case(
+    case_val.pattern,
+    shift_hvar_in_term(case_val.body, offset),
+    option.map(case_val.guard, fn(g) { shift_hvar_in_term(g, offset) }),
+    case_val.span,
+  )
+}
+
 /// Substitute implicit type variables (HVar) with holes in a Value.
 fn subst_value_with_implicit_vars(subst: List(#(Int, Int)), value: Value) -> Value {
   case value {
@@ -2190,8 +2300,9 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       // 3. Collect free holes in the result type
       // 4. Generalize by replacing holes with fresh implicit type variables
       //
-      // KEY FIX: Pass body_ty (Value) to generalize_holes instead of t2_pre (Term)
-      // to properly substitute holes in nested lambda types.
+      // KEY FIX: Shift HVar indices in body_ty by the number of new implicit params
+      // to handle nested lambdas correctly. Without this, nested lambda types have
+      // HVar indices that refer to the wrong implicit params.
       let #(name, _) = param
       let env = get_env(s)
       let holes_before = s.hole
@@ -2207,10 +2318,15 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       // Filter to only holes created during this lambda's inference
       let holes_to_generalize = list.filter(all_holes, fn(id) { id >= holes_before })
 
+      // KEY FIX: Shift HVar indices in body_ty by the number of new implicit params
+      // This ensures nested lambda types have correct HVar indices in the outer context
+      let num_new_implicit = list.length(holes_to_generalize)
+      let body_ty_shifted = shift_hvar_in_value(body_ty, num_new_implicit)
+
       // Generate generalization: replace holes with implicit type variables
-      // Pass body_ty (Value) instead of quoted term to properly handle nested lambdas
+      // Use the shifted body_ty to ensure correct HVar indices
       let #(generalized_implicit, generalized_t1, generalized_t2) =
-        generalize_holes(holes_to_generalize, implicit, t1_hole, body_ty, s, s.ffi, list.length(env), span)
+        generalize_holes(holes_to_generalize, implicit, t1_hole, body_ty_shifted, s, s.ffi, list.length(env), span)
 
       // Quote the body with the generalized type
       let body_quoted = quote(s.ffi, list.length(env), body_val, span)
