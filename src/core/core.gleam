@@ -2667,6 +2667,7 @@ fn unify_elim_list(
 ///
 /// Used throughout type checking to accumulate errors rather than failing
 /// immediately. This enables IDE support where all errors are shown at once.
+
 pub fn with_err(s: State, err: Error) -> State {
   State(..s, errors: list.append(s.errors, [err]))
 }
@@ -2764,6 +2765,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
               #(val, VErr, s)
             }
           }
+        VErr -> #(val, VErr, s)
         _ -> #(val, VErr, with_err(s, DotOnNonCtr(arg_ty, name, get_span(arg))))
       }
     }
@@ -3056,14 +3058,26 @@ fn infer_app(
           let out_val = result_ty_hole_val
           #(do_app(s.ffi, fun_val, arg_val, 0, 100_000), out_val, s)
         }
-        Error(_) -> #(VErr, VErr, with_err(s, NotAFunction(fun, fun_ty)))
+        Error(_) -> {
+          // Avoid adding duplicate error if fun_ty is already VErr
+          case fun_ty {
+            VErr -> #(VErr, VErr, s)
+            _ -> #(VErr, VErr, with_err(s, NotAFunction(fun, fun_ty)))
+          }
+        }
       }
     }
     VNeut(HStepLimit, _) -> {
       // Step limit exceeded - return error
       #(VErr, VErr, with_err(s, NotAFunction(fun, fun_ty)))
     }
-    _ -> #(VErr, VErr, with_err(s, NotAFunction(fun, fun_ty)))
+    _ -> {
+      // Avoid adding duplicate error if fun_ty is already VErr
+      case fun_ty {
+        VErr -> #(VErr, VErr, s)
+        _ -> #(VErr, VErr, with_err(s, NotAFunction(fun, fun_ty)))
+      }
+    }
   }
 }
 
@@ -3428,9 +3442,15 @@ pub fn check(
         _ -> {
           // No expected VPi type: infer and unify as usual
           let #(value, inferred_ty, s) = infer(s, term)
-          case unify(s, inferred_ty, expected_ty, get_span(term), ty_span) {
-            Ok(s) -> #(force(s.ffi, s.sub, value), s)
-            Error(e) -> #(VErr, with_err(s, e))
+          // Avoid adding duplicate error if either type is already VErr
+          case inferred_ty, expected_ty {
+            VErr, _ | _, VErr -> #(VErr, s)
+            _, _ -> {
+              case unify(s, inferred_ty, expected_ty, get_span(term), ty_span) {
+                Ok(s) -> #(force(s.ffi, s.sub, value), s)
+                Error(e) -> #(VErr, with_err(s, e))
+              }
+            }
           }
         }
       }
@@ -3438,9 +3458,15 @@ pub fn check(
     _ -> {
       // For other terms, infer and unify as usual
       let #(value, inferred_ty, s) = infer(s, term)
-      case unify(s, inferred_ty, expected_ty, get_span(term), ty_span) {
-        Ok(s) -> #(force(s.ffi, s.sub, value), s)
-        Error(e) -> #(VErr, with_err(s, e))
+      // Avoid adding duplicate error if either type is already VErr
+      case inferred_ty, expected_ty {
+        VErr, _ | _, VErr -> #(VErr, s)
+        _, _ -> {
+          case unify(s, inferred_ty, expected_ty, get_span(term), ty_span) {
+            Ok(s) -> #(force(s.ffi, s.sub, value), s)
+            Error(e) -> #(VErr, with_err(s, e))
+          }
+        }
       }
     }
   }
