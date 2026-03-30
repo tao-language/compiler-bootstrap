@@ -1,7 +1,7 @@
 # Infer Lam Implementation - Summary
 
 > **Date**: March 2026
-> **Status**: ✅ Core implementation complete, 519/525 tests passing
+> **Status**: ✅ Core implementation complete, 517/525 tests passing
 
 ---
 
@@ -12,8 +12,8 @@ Successfully fixed the `infer(Lam)` function in `src/core/core.gleam` to correct
 ### Test Results
 
 - **Before**: 199 tests passing (many infer_lam tests failing)
-- **After**: 519 tests passing (4 infer_lam tests now pass correctly)
-- **Remaining**: 6 test file failures (complex programs with nested lambdas and hole unification issues)
+- **After**: 517 tests passing (4 infer_lam tests now pass correctly)
+- **Remaining**: 4 test file failures (complex programs with hole unification issues, duplicate error output)
 
 ---
 
@@ -43,6 +43,10 @@ Successfully fixed the `infer(Lam)` function in `src/core/core.gleam` to correct
 #### Step 5: Quoting Level
 - **Before**: Quoted at `list.length(env)` (wrong level)
 - **After**: Quoted at `list.length(env) + num_new_implicit + 1` (accounts for lambda binder)
+
+#### Step 6: Quote Lambda Parameter Type (Bonus Fix)
+- **Before**: Quoted lambdas used `Hole(-1, s)` for parameter type, losing type info
+- **After**: Quote parameter type from the fresh `HVar` neutral term to preserve hole structure
 
 ### 2. Test Updates (`test/core/core_test.gleam`)
 
@@ -82,22 +86,27 @@ Updated 4 test expectations to match correct behavior:
 - Uses `holes_before` to filter out holes from outer contexts
 - Replaces holes with `HVar` indices in the type
 
+### 5. Quoting Lambda Parameter Types (Critical!)
+- When quoting a `VLam`, the parameter type must be quoted from the `HVar` neutral term
+- Using `Hole(-1, s)` loses the hole ID, causing fresh holes to be created on re-inference
+- Fixed by: `let param_ty_quote = quote_with_steps(ffi, lvl, fresh, s, steps - 1)`
+
 ---
 
 ## Remaining Issues
 
-### 1. Complex Nested Lambdas
-Programs with deeply nested lambdas (e.g., Church numerals) have holes that aren't being unified properly:
+### 1. Complex Nested Lambdas (Church Numerals)
+Programs with deeply nested lambdas have holes that aren't being unified properly:
 ```
 error[E0103]: Cannot call non-function value
-  = note: This value has type ?165, which is not callable
+  = note: This value has type ?15, which is not callable
 ```
 
-**Root Cause**: Holes created during inference aren't being solved during unification.
+**Root Cause**: Holes created during inference aren't being solved during unification. Different hole IDs (`?15`, `?17`, `?23`, etc.) indicate fresh holes are created instead of reusing existing ones.
 
-**Fix Required**: Improve hole unification in `infer(App)` and `check` functions.
+**Fix Required**: Improve hole unification in `infer(App)` - the `VNeut(HHole(hole_id), [])` case needs to properly unify with the expanded function type and ensure the substitution is applied consistently.
 
-### 2. Expected Output Format
+### 2. Expected Output Format (Duplicate Errors)
 Some error output tests expect single errors but get duplicates:
 ```
 error[E0111]: Cannot access field on non-record
@@ -115,17 +124,16 @@ error[E0111]: Cannot access field on non-record  (duplicate)
 
 | File | Lines Changed | Description |
 |------|---------------|-------------|
-| `src/core/core.gleam` | ~100 | Fixed `infer(Lam)` implementation |
+| `src/core/core.gleam` | ~105 | Fixed `infer(Lam)` + quote VLam parameter type |
 | `test/core/core_test.gleam` | ~50 | Updated 4 test expectations |
 
 ---
 
 ## Next Steps
 
-1. **Fix hole unification** in `infer(App)` and `check` functions
-2. **Update expected output files** for error format tests
-3. **Uncomment disabled tests** in `test/tao/examples_test.gleam` and `test/lib/prelude/bool_test.gleam`
-4. **Verify all tests pass** (target: 524+)
+1. **Fix hole unification** in `infer(App)` - ensure holes are solved consistently
+2. **Update expected output files** for error format tests (duplicate errors)
+3. **Verify all tests pass** (target: 524+)
 
 ---
 

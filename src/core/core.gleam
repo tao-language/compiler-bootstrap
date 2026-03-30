@@ -1320,7 +1320,9 @@ fn quote_loop(ffi: FFI, lvl: Int, value: Value, s: Span, steps: Int) -> Term {
           get_span(body),
           steps - 1,
         )
-      Lam(implicit, #(name, Hole(-1, s)), body_quote, s)
+      // Quote the parameter type from the fresh variable to preserve hole info
+      let param_ty_quote = quote_with_steps(ffi, lvl, fresh, s, steps - 1)
+      Lam(implicit, #(name, param_ty_quote), body_quote, s)
     }
     VPi(implicit, name, env, in_val, out_term) -> {
       // Quote the domain (already evaluated)
