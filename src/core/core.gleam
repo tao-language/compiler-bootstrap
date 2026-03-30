@@ -1326,14 +1326,17 @@ fn quote_loop(ffi: FFI, lvl: Int, value: Value, s: Span, steps: Int) -> Term {
     }
     VPi(implicit, name, env, in_val, out_term) -> {
       // Quote the domain (already evaluated)
-      let in_quote = quote_with_steps(ffi, lvl, in_val, s, steps - 1)
+      // For HVar in the domain, we need to convert to Var that references implicit params
+      // HVar(i) should become Var(num_implicit - 1 - i) to reference the i-th implicit param
+      let num_implicit = list.length(implicit)
+      let in_quote = quote_domain_with_implicit(ffi, num_implicit, in_val, s, steps - 1)
       // Quote the codomain term directly without re-evaluation
       // Extend env with a fresh neutral for the domain variable (Var(0) in out_term).
-      let fresh = VNeut(HVar(lvl), [])
+      let fresh = VNeut(HVar(lvl + num_implicit), [])
       let out_quote =
         quote_term_in_env(
           ffi,
-          lvl + 1,
+          lvl + num_implicit + 1,
           out_term,
           [fresh, ..env],
           get_span(out_term),
@@ -1457,6 +1460,105 @@ fn quote_elim_with_steps(
 ///
 /// For example, at level 5, quoting HVar(2):
 /// index = 5 - 2 - 1 = 2
+/// Quote a domain value, converting HVar(i) to Var(num_implicit - 1 - i).
+///
+/// This is used for quoting VPi domains where HVar indices reference implicit parameters.
+fn quote_domain_with_implicit(
+  ffi: FFI,
+  num_implicit: Int,
+  value: Value,
+  s: Span,
+  steps: Int,
+) -> Term {
+  case steps {
+    0 -> Hole(-1, s)
+    _ -> quote_domain_with_implicit_loop(ffi, num_implicit, value, s, steps)
+  }
+}
+
+fn quote_domain_with_implicit_loop(
+  ffi: FFI,
+  num_implicit: Int,
+  value: Value,
+  s: Span,
+  steps: Int,
+) -> Term {
+  case value {
+    VTyp(k) -> Typ(k, s)
+    VLit(k) -> Lit(k, s)
+    VLitT(k) -> LitT(k, s)
+    VNeut(head, spine) -> {
+      let head_term = quote_domain_head(num_implicit, head, s)
+      quote_neut_with_steps(ffi, num_implicit, head_term, spine, s, steps)
+    }
+    VRcd(fields) ->
+      Rcd(
+        list.map(fields, fn(kv) {
+          #(kv.0, quote_domain_with_implicit(ffi, num_implicit, kv.1, s, steps - 1))
+        }),
+        s,
+      )
+    VCtrValue(VCtr(tag, arg)) ->
+      Ctr(tag, quote_domain_with_implicit(ffi, num_implicit, arg, s, steps - 1), s)
+    VUnit -> Unit(s)
+    VLam(implicit, name, env, body) -> {
+      // For lambda in domain, HVar indices reference the OUTER implicit params
+      let fresh = VNeut(HVar(num_implicit), [])
+      let body_quote =
+        quote_term_in_env(
+          ffi,
+          num_implicit + 1,
+          body,
+          [fresh, ..env],
+          get_span(body),
+          steps - 1,
+        )
+      let param_ty_quote = quote_domain_with_implicit(ffi, num_implicit, fresh, s, steps - 1)
+      Lam(implicit, #(name, param_ty_quote), body_quote, s)
+    }
+    VPi(impl, name, env, in_val, out_term) -> {
+      // For nested VPi, HVar indices still reference the OUTER implicit params
+      // So we use num_implicit (not inner_num_implicit) for quoting the domain
+      let in_quote = quote_domain_with_implicit(ffi, num_implicit, in_val, s, steps - 1)
+      // For the codomain term, extend the context with the new binder
+      let fresh = VNeut(HVar(num_implicit + list.length(impl)), [])
+      let out_quote =
+        quote_term_in_env(
+          ffi,
+          num_implicit + list.length(impl) + 1,
+          out_term,
+          [fresh, ..env],
+          get_span(out_term),
+          steps - 1,
+        )
+      Pi(impl, name, in_quote, out_quote, s)
+    }
+    VCall(name, args) ->
+      Call(name, list.map(args, fn(a) { quote_domain_with_implicit(ffi, num_implicit, a, s, steps - 1) }), s)
+    VFix(name, env, body) ->
+      Fix(name, body, s)
+    VRecord(fields) ->
+      Rcd(
+        list.map(fields, fn(kv) {
+          #(kv.0, quote_domain_with_implicit(ffi, num_implicit, kv.1, s, steps - 1))
+        }),
+        s,
+      )
+    VErr -> Err("quote_domain: VErr", s)
+  }
+}
+
+/// Quote a domain head, converting HVar(i) to Var(i) directly.
+/// HVar(i) references the i-th implicit parameter, which in De Bruijn notation
+/// is Var(i) when the implicit params are the outermost binders.
+fn quote_domain_head(num_implicit: Int, head: Head, s: Span) -> Term {
+  case head {
+    HVar(l) -> Var(l, s)
+    HHole(id) -> Hole(id, s)
+    HStepLimit -> Hole(-1, s)
+  }
+}
+
 fn quote_head(lvl: Int, head: Head, s: Span) -> Term {
   case head {
     HVar(l) -> Var(lvl - l - 1, s)
@@ -1932,7 +2034,9 @@ fn generalize_holes(
       // Apply substitution to codomain (Value)
       let generalized_codomain_val =
         subst_value_with_hole_vars(hole_subst, codomain)
-      let generalized_codomain = quote(ffi, lvl, generalized_codomain_val, span)
+      // Quote the codomain, converting HVar(i) to Var for the new implicit parameters
+      let num_new_implicit = list.length(holes)
+      let generalized_codomain = quote_domain_with_implicit(ffi, num_new_implicit, generalized_codomain_val, span, 100_000)
 
       // Return generalized domain (with holes substituted) and generalized codomain
       #(
@@ -2815,7 +2919,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let has_holes = list.length(holes_to_generalize) > 0
       let #(final_implicit, final_t1, final_t2_term) = case has_holes {
         True -> {
-          // Quote codomain at level + 1 to account for the implicit parameter binder
+          // Quote codomain at level + 1 to account for the lambda's parameter binder
           let quote_lvl = list.length(env) + 1
           generalize_holes(
             holes_to_generalize,
