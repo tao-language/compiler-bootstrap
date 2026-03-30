@@ -3023,11 +3023,11 @@ fn infer_app(
       let out_val_forced = force(s.ffi, s.sub, out_val)
       #(do_app(s.ffi, fun_val, arg_val, 0, 100_000), out_val_forced, s)
     }
-    VNeut(HHole(hole_id), []) -> {
+    VNeut(HHole(hole_id), spine) -> {
       // Hole expansion: ?1 applied to arg means ?1 = (?2 -> ?3)
+      // Spine elements are already-evaluated values, handled by do_app
       let env = get_env(s)
       let #(arg_ty_hole_val, s) = new_hole(s)
-      let arg_ty_hole_id = s.hole - 1
       let result_ty_hole_id = s.hole
       let #(result_ty_hole_val, s) = new_hole(s)
       // Create the expanded function type: (?2 -> ?3)
@@ -3050,9 +3050,9 @@ fn infer_app(
         )
       {
         Ok(s) -> {
-          // Now check the argument against the domain hole
+          // Check the argument against the domain hole
           let #(arg_val, s) = check(s, arg, arg_ty_hole_val, get_span(arg))
-          // Result type is the codomain hole (as a value)
+          // Result type is the codomain hole (spine will be applied by do_app)
           let out_val = result_ty_hole_val
           #(do_app(s.ffi, fun_val, arg_val, 0, 100_000), out_val, s)
         }
@@ -3066,6 +3066,7 @@ fn infer_app(
     _ -> #(VErr, VErr, with_err(s, NotAFunction(fun, fun_ty)))
   }
 }
+
 
 /// Infer type for match expression.
 ///
