@@ -1042,7 +1042,7 @@ pub fn infer_lam_explicit_const_test() {
   typ |> should.equal(c.VPi([], "x", [], v32t, i32t(s3)))
   state
   |> should.equal(
-    c.State(..s, hole: 1, var: 1, ctx: [
+    c.State(..s, hole: 0, var: 1, ctx: [
       #("x", #(c.VNeut(c.HVar(0), []), v32t)),
     ]),
   )
@@ -1056,7 +1056,7 @@ pub fn infer_lam_explicit_identity_test() {
   typ |> should.equal(c.VPi([], "x", [], c.VLitT(c.I32T), i32t(s3)))
   state
   |> should.equal(
-    c.State(..s, hole: 1, var: 1, ctx: [
+    c.State(..s, hole: 0, var: 1, ctx: [
       #("x", #(c.VNeut(c.HVar(0), []), v32t)),
     ]),
   )
@@ -1065,15 +1065,15 @@ pub fn infer_lam_explicit_identity_test() {
 pub fn infer_lam_implicit_const_test() {
   // %fn(x: ?) -> 1
   let term = c.Lam([], #("x", hole(-1, s1)), i32(1, s2), s3)
-  let s = c.State(..s, hole: 1)
-  let #(result, typ, state) = c.infer(s, term)
-  result |> should.equal(c.VLam([], "x", [], i32(1, s2)))
+  let s_init = c.State(..s, hole: 0)
+  let #(result, typ, state) = c.infer(s_init, term)
+  result |> should.equal(c.VLam(["_0"], "x", [], i32(1, s2)))
   typ |> should.equal(c.VPi(["_0"], "x", [], c.VNeut(c.HVar(0), []), i32t(s3)))
   state
   |> should.equal(
-    c.State(..s, hole: 2, var: 1, ctx: [
-      // TODO: Should this give vhole(-1) as defined in the input term? It looks like it's creating a new_hole.
-      #("x", #(c.VNeut(c.HVar(0), []), vhole(1))),
+    c.State(..s_init, hole: 1, var: 1, ctx: [
+      #("_0", #(c.VNeut(c.HHole(0), []), c.VNeut(c.HHole(0), []))),
+      #("x", #(c.VNeut(c.HVar(0), []), c.VNeut(c.HHole(0), []))),
     ]),
   )
 }
@@ -1081,19 +1081,18 @@ pub fn infer_lam_implicit_const_test() {
 pub fn infer_lam_implicit_identity_test() {
   // %fn(x: ?) -> x
   let term = c.Lam([], #("x", hole(-1, s1)), var(0, s2), s3)
-  let #(result, typ, state) = c.infer(s, term)
+  let s_init = c.State(..s, hole: 0)
+  let #(result, typ, state) = c.infer(s_init, term)
   result |> should.equal(c.VLam(["_0"], "x", [], var(1, s2)))
-  typ
-  |> should.equal(c.VPi(["_0"], "x", [], c.VNeut(c.HVar(0), []), var(0, s3)))
+  typ |> should.equal(c.VPi(["_0"], "x", [], c.VNeut(c.HVar(0), []), c.Var(0, s3)))
   state
   |> should.equal(
-    c.State(..s, hole: 1, var: 1, ctx: [
-      // TODO: Should this give vhole(-1) as defined in the input term? It looks like it's creating a new_hole which defaults to 0.
-      #("x", #(c.VNeut(c.HVar(0), []), vhole(0))),
+    c.State(..s_init, hole: 1, var: 1, ctx: [
+      #("_0", #(c.VNeut(c.HHole(0), []), c.VNeut(c.HHole(0), []))),
+      #("x", #(c.VNeut(c.HVar(0), []), c.VNeut(c.HHole(0), []))),
     ]),
   )
 }
-
 // --- Pi --- \\
 pub fn eval_pi_test() {
   c.eval(c.ffi_build, [], pi("x", i32t(s1), var(0, s2), s3))
