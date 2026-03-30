@@ -1517,10 +1517,12 @@ fn quote_domain_with_implicit_loop(
       Lam(implicit, #(name, param_ty_quote), body_quote, s)
     }
     VPi(impl, name, env, in_val, out_term) -> {
-      // For nested VPi, HVar indices still reference the OUTER implicit params
-      // So we use num_implicit (not inner_num_implicit) for quoting the domain
+      // For nested VPi, HVar indices in in_val reference the OUTER implicit params
+      // But HVar indices in out_term may reference the INNER implicit params
+      // We need to quote in_val with num_implicit, and out_term with num_implicit + list.length(impl)
       let in_quote = quote_domain_with_implicit(ffi, num_implicit, in_val, s, steps - 1)
       // For the codomain term, extend the context with the new binder
+      // HVar indices in out_term reference params at offset num_implicit
       let fresh = VNeut(HVar(num_implicit + list.length(impl)), [])
       let out_quote =
         quote_term_in_env(
@@ -3158,8 +3160,10 @@ fn infer_app(
         Ok(s) -> {
           // Check the argument against the domain hole
           let #(arg_val, s) = check(s, arg, arg_ty_hole_val, get_span(arg))
-          // Result type is the codomain hole (spine will be applied by do_app)
-          let out_val = result_ty_hole_val
+          // Force the result hole through substitution to get the solved type
+          // The hole was unified with the function type, so the substitution
+          // now contains the solved result type
+          let out_val = force(s.ffi, s.sub, result_ty_hole_val)
           #(do_app(s.ffi, fun_val, arg_val, 0, 100_000), out_val, s)
         }
         Error(_) -> {
