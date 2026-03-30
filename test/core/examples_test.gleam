@@ -30,7 +30,7 @@
 /// 2. Run the CLI to see actual output
 /// 3. Copy the output to `.output.txt`
 /// 4. The test will automatically pick it up
-import core/core.{type Error, infer, initial_state, SyntaxError, quote}
+import core/core.{type Error, SyntaxError, infer, initial_state, quote}
 import core/syntax
 import gleam/list
 import gleam/result
@@ -38,8 +38,8 @@ import gleam/string
 import gleeunit
 import gleeunit/should
 import simplifile
-import syntax/grammar.{ParseError, Span}
 import syntax/error_reporter
+import syntax/grammar.{ParseError, Span}
 
 // ============================================================================
 // TYPES
@@ -189,7 +189,8 @@ fn run_example(example: Example) -> Bool {
     #(Ok(source), Ok(expected)) -> {
       let parse_result = syntax.parse(source)
       let term = parse_result.ast
-      let syntax_errors = parse_result.errors |> list.map(syntax_error_to_core_error)
+      let syntax_errors =
+        parse_result.errors |> list.map(syntax_error_to_core_error)
 
       // Run type inference
       let #(value, typ, state) = infer(initial_state, term)
@@ -204,7 +205,8 @@ fn run_example(example: Example) -> Bool {
             [] -> {
               // Success - for now just check that it compiles
               // TODO: Compare actual NbE output once term_to_string is fixed
-              False  // Test passed
+              False
+              // Test passed
             }
             errors -> {
               // Unexpected errors
@@ -239,8 +241,11 @@ fn run_example(example: Example) -> Bool {
               // Expected failure - compare actual error messages
               let actual_output = format_errors(errors, source, example.path)
 
-              case normalize_output(actual_output) == normalize_output(expected) {
-                True -> False  // Test passed
+              case
+                normalize_output(actual_output) == normalize_output(expected)
+              {
+                True -> False
+                // Test passed
                 False -> {
                   let msg = [
                     "FAIL: " <> example.path,
@@ -279,11 +284,13 @@ fn format_errors(errors: List(Error), source: String, file: String) -> String {
     case err {
       SyntaxError(span, expected, got, context) -> {
         let parse_err = ParseError(span, expected, got, context)
-        let diagnostic = error_reporter.parse_error_to_diagnostic(parse_err, source, file)
+        let diagnostic =
+          error_reporter.parse_error_to_diagnostic(parse_err, source, file)
         error_reporter.format_diagnostic(diagnostic, source)
       }
       _ -> {
-        let diagnostic = error_reporter.type_error_to_diagnostic(err, source, file)
+        let diagnostic =
+          error_reporter.type_error_to_diagnostic(err, source, file)
         error_reporter.format_diagnostic(diagnostic, source)
       }
     }

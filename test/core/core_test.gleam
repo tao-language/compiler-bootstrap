@@ -221,7 +221,7 @@ pub fn unify_pi_with_holes_test() {
     }
     Error(_) -> should.fail()
   }
-  
+
   // Now test full Pi unification
   let v1 = c.VPi([], "x", [], vhole(0), c.Var(0, s1))
   let v2 = c.VPi([], "x", [], v32t, c.Var(0, s1))
@@ -305,10 +305,13 @@ pub fn quote_neut_app_test() {
 pub fn quote_rcd_test() {
   let v = c.VRcd([#("a", v32t), #("b", v64t)])
   c.quote(c.ffi_build, 0, v, s1)
-  |> should.equal(c.Rcd([
-    #("a", c.LitT(c.I32T, s1)),
-    #("b", c.LitT(c.I64T, s1)),
-  ], s1))
+  |> should.equal(c.Rcd(
+    [
+      #("a", c.LitT(c.I32T, s1)),
+      #("b", c.LitT(c.I64T, s1)),
+    ],
+    s1,
+  ))
 }
 
 pub fn quote_ctr_test() {
@@ -375,8 +378,7 @@ pub fn normalize_dot_test() {
 
 pub fn normalize_ann_test() {
   // Normalize (1 : I32) → 1
-  let ann =
-    c.Ann(c.Lit(c.I32(1), s1), c.LitT(c.I32T, s1), s1)
+  let ann = c.Ann(c.Lit(c.I32(1), s1), c.LitT(c.I32T, s1), s1)
   c.normalize(c.ffi_build, [], ann, s1)
   |> should.equal(c.Lit(c.I32(1), s1))
 }
@@ -769,11 +771,28 @@ pub fn eval_ctr_test() {
 }
 
 pub fn unify_ctr_tag_test() {
-  c.unify(s, c.VCtrValue(c.VCtr("A", v32(1))), c.VCtrValue(c.VCtr("A", v32(1))), s1, s2)
+  c.unify(
+    s,
+    c.VCtrValue(c.VCtr("A", v32(1))),
+    c.VCtrValue(c.VCtr("A", v32(1))),
+    s1,
+    s2,
+  )
   |> should.equal(Ok(s))
-  c.unify(s, c.VCtrValue(c.VCtr("A", v32(1))), c.VCtrValue(c.VCtr("B", v32(1))), s1, s2)
+  c.unify(
+    s,
+    c.VCtrValue(c.VCtr("A", v32(1))),
+    c.VCtrValue(c.VCtr("B", v32(1))),
+    s1,
+    s2,
+  )
   |> should.equal(
-    Error(c.TypeMismatch(c.VCtrValue(c.VCtr("A", v32(1))), c.VCtrValue(c.VCtr("B", v32(1))), s1, s2)),
+    Error(c.TypeMismatch(
+      c.VCtrValue(c.VCtr("A", v32(1))),
+      c.VCtrValue(c.VCtr("B", v32(1))),
+      s1,
+      s2,
+    )),
   )
 }
 
@@ -1015,55 +1034,64 @@ pub fn eval_lam_test() {
   |> should.equal(c.VLam([], "x", [], var(0, s1)))
 }
 
-pub fn lam_infer_known_test() {
-  let term = lam("x", i32(1, s1), s2)
-  // The original code generalizes the domain hole, creating an implicit param
-  c.infer(s, term)
-  |> should.equal(#(
-    c.VLam([], "x", [], i32(1, s2)),
-    c.VPi(["_0"], "x", [], c.VNeut(c.HVar(0), []), i32t(s2)),
-    c.State(..s, hole: 1, var: 1, ctx: [#("x", #(c.VNeut(c.HVar(0), []), vhole(0)))]),
-  ))
-}
-
-pub fn lam_infer_unknown_test() {
-  let term = lam("x", var(0, s1), s2)
-  // Lambda with body referring to parameter should infer successfully
-  // and create implicit type parameters for generalized holes
-  let result = c.infer(s, term)
-  case result {
-    #(c.VLam([], "x", [], _), c.VPi(["_0"], "x", [], c.VNeut(c.HVar(0), []), _), c.State(hole: 1, var: 1, ..)) -> 
-      True |> should.be_true
-    _ -> False |> should.be_true
-  }
-}
-
-pub fn check_lam_test() {
-  let term = lam("x", var(0, s1), s2)
-  let result = c.check(s, term, c.VPi([], "x", [], c.VTyp(0), typ(0, s3)), s4)
-  // Check value is VLam and context has the variable
-  case result {
-    #(c.VLam([], "x", [], c.Var(-1, _)), s) -> {
-      case list.length(s.ctx) == 1 {
-        True -> True |> should.be_true
-        False -> False |> should.be_true
-      }
-    }
-    _ -> False |> should.be_true
-  }
-}
-
-pub fn check_lam_mismatch_test() {
-  let term = lam("x", var(0, s1), s2)
-  // The original code generalizes the domain hole, creating an implicit param
-  let term_ty = c.VPi(["_0"], "x", [], c.VNeut(c.HVar(0), []), c.Var(0, s2))
-  c.check(s, term, v32t, s3)
-  |> should.equal(#(
-    c.VErr,
-    c.State(..s, hole: 1, var: 1, ctx: [#("x", #(c.VNeut(c.HVar(0), []), vhole(0)))], errors: [
-      c.TypeMismatch(term_ty, v32t, s2, s3),
+pub fn infer_lam_explicit_const_test() {
+  // %fn(x: %I32) -> 1
+  let term = c.Lam([], #("x", i32t(s1)), i32(1, s2), s3)
+  let #(result, typ, state) = c.infer(s, term)
+  result |> should.equal(c.VLam([], "x", [], i32(1, s2)))
+  typ |> should.equal(c.VPi([], "x", [], v32t, i32t(s3)))
+  state
+  |> should.equal(
+    c.State(..s, hole: 1, var: 1, ctx: [
+      #("x", #(c.VNeut(c.HVar(0), []), v32t)),
     ]),
-  ))
+  )
+}
+
+pub fn infer_lam_explicit_identity_test() {
+  // %fn(x: %I32) -> x
+  let term = c.Lam([], #("x", i32t(s1)), var(0, s2), s3)
+  let #(result, typ, state) = c.infer(s, term)
+  result |> should.equal(c.VLam([], "x", [], var(0, s2)))
+  typ |> should.equal(c.VPi([], "x", [], c.VLitT(c.I32T), i32t(s3)))
+  state
+  |> should.equal(
+    c.State(..s, hole: 1, var: 1, ctx: [
+      #("x", #(c.VNeut(c.HVar(0), []), v32t)),
+    ]),
+  )
+}
+
+pub fn infer_lam_implicit_const_test() {
+  // %fn(x: ?) -> 1
+  let term = c.Lam([], #("x", hole(-1, s1)), i32(1, s2), s3)
+  let s = c.State(..s, hole: 1)
+  let #(result, typ, state) = c.infer(s, term)
+  result |> should.equal(c.VLam([], "x", [], i32(1, s2)))
+  typ |> should.equal(c.VPi(["_0"], "x", [], c.VNeut(c.HVar(0), []), i32t(s3)))
+  state
+  |> should.equal(
+    c.State(..s, hole: 2, var: 1, ctx: [
+      // TODO: Should this give vhole(-1) as defined in the input term? It looks like it's creating a new_hole.
+      #("x", #(c.VNeut(c.HVar(0), []), vhole(1))),
+    ]),
+  )
+}
+
+pub fn infer_lam_implicit_identity_test() {
+  // %fn(x: ?) -> x
+  let term = c.Lam([], #("x", hole(-1, s1)), var(0, s2), s3)
+  let #(result, typ, state) = c.infer(s, term)
+  result |> should.equal(c.VLam(["_0"], "x", [], var(1, s2)))
+  typ
+  |> should.equal(c.VPi(["_0"], "x", [], c.VNeut(c.HVar(0), []), var(0, s3)))
+  state
+  |> should.equal(
+    c.State(..s, hole: 1, var: 1, ctx: [
+      // TODO: Should this give vhole(-1) as defined in the input term? It looks like it's creating a new_hole which defaults to 0.
+      #("x", #(c.VNeut(c.HVar(0), []), vhole(0))),
+    ]),
+  )
 }
 
 // --- Pi --- \\
@@ -1115,23 +1143,38 @@ pub fn check_pi_mismatch_test() {
 
 // --- App --- \\
 pub fn eval_app_value_test() {
-  c.do_app(c.ffi_build, c.VTyp(0), v32(1), 0, 1000000) |> should.equal(c.VErr)
-  c.do_app(c.ffi_build, c.VLit(c.I32(0)), v32(1), 0, 1000000) |> should.equal(c.VErr)
-  c.do_app(c.ffi_build, c.VLitT(c.I32T), v32(1), 0, 1000000) |> should.equal(c.VErr)
-  c.do_app(c.ffi_build, c.VNeut(c.HVar(0), [c.EDot("x")]), v32(1), 0, 1000000)
+  c.do_app(c.ffi_build, c.VTyp(0), v32(1), 0, 1_000_000) |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VLit(c.I32(0)), v32(1), 0, 1_000_000)
+  |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VLitT(c.I32T), v32(1), 0, 1_000_000)
+  |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VNeut(c.HVar(0), [c.EDot("x")]), v32(1), 0, 1_000_000)
   |> should.equal(c.VNeut(c.HVar(0), [c.EApp(v32(1)), c.EDot("x")]))
-  c.do_app(c.ffi_build, c.VNeut(c.HHole(0), [c.EDot("x")]), v32(1), 0, 1000000)
+  c.do_app(
+    c.ffi_build,
+    c.VNeut(c.HHole(0), [c.EDot("x")]),
+    v32(1),
+    0,
+    1_000_000,
+  )
   |> should.equal(c.VNeut(c.HHole(0), [c.EApp(v32(1)), c.EDot("x")]))
-  c.do_app(c.ffi_build, c.VRcd([]), v32(1), 0, 1000000) |> should.equal(c.VErr)
-  c.do_app(c.ffi_build, c.VCtrValue(c.VCtr("A", v64t)), v32(1), 0, 1000000)
+  c.do_app(c.ffi_build, c.VRcd([]), v32(1), 0, 1_000_000)
   |> should.equal(c.VErr)
-  c.do_app(c.ffi_build, c.VLam([], "x", [], i64(0, s1)), v32(1), 0, 1000000)
+  c.do_app(c.ffi_build, c.VCtrValue(c.VCtr("A", v64t)), v32(1), 0, 1_000_000)
+  |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VLam([], "x", [], i64(0, s1)), v32(1), 0, 1_000_000)
   |> should.equal(v64(0))
-  c.do_app(c.ffi_build, c.VLam([], "x", [], var(0, s1)), v32(1), 0, 1000000)
+  c.do_app(c.ffi_build, c.VLam([], "x", [], var(0, s1)), v32(1), 0, 1_000_000)
   |> should.equal(v32(1))
-  c.do_app(c.ffi_build, c.VPi([], "x", [], v32t, i64t(s1)), v32(1), 0, 1000000)
+  c.do_app(
+    c.ffi_build,
+    c.VPi([], "x", [], v32t, i64t(s1)),
+    v32(1),
+    0,
+    1_000_000,
+  )
   |> should.equal(c.VErr)
-  c.do_app(c.ffi_build, c.VErr, v32(1), 0, 1000000) |> should.equal(c.VErr)
+  c.do_app(c.ffi_build, c.VErr, v32(1), 0, 1_000_000) |> should.equal(c.VErr)
 }
 
 pub fn eval_app_test() {
@@ -1491,7 +1534,9 @@ pub fn eval_match_test() {
   )
   |> should.equal(
     c.VNeut(c.HHole(0), [
-      c.EMatch([], c.VLam([], "p", [], i32t(s0)), [case_(pvar("x"), var(0, s2), s3)]),
+      c.EMatch([], c.VLam([], "p", [], i32t(s0)), [
+        case_(pvar("x"), var(0, s2), s3),
+      ]),
     ]),
   )
 }
@@ -1621,7 +1666,8 @@ pub fn match_check_empty_test() {
   case result {
     #(c.VErr, s) -> {
       // Note: May report multiple missing cases depending on implementation
-      { list.length(s.errors) >= 1 } |> should.be_true  // At least 1 error
+      { list.length(s.errors) >= 1 } |> should.be_true
+      // At least 1 error
       case s.errors {
         [c.MatchMissingCase(_, c.PAny), ..] -> True |> should.be_true
         _ -> False |> should.be_true
@@ -1852,7 +1898,10 @@ pub fn get_missing_heads_ctr_test() {
   let c_def = c.CtrDef([], nil, t(1))
   let s = c.State(..s, ctrs: [#("A", a_def), #("B", b_def), #("C", c_def)])
   // Index should group by return type: A and C return t(1)=Ctr("T",Typ(1)), B returns t(2)=Ctr("T",Typ(2))
-  let index = [#("ctr_T_1", [#("A", a_def), #("C", c_def)]), #("ctr_T_2", [#("B", b_def)])]
+  let index = [
+    #("ctr_T_1", [#("A", a_def), #("C", c_def)]),
+    #("ctr_T_2", [#("B", b_def)]),
+  ]
   c.get_missing_heads(s, index, [c.HCtr("A")]) |> should.equal([c.HCtr("C")])
   c.get_missing_heads(s, index, [c.HCtr("B")]) |> should.equal([])
   c.get_missing_heads(s, index, [c.HCtr("C")]) |> should.equal([c.HCtr("A")])

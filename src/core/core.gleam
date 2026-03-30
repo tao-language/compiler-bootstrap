@@ -60,7 +60,13 @@ pub type Term {
   /// name: value parameter name
   /// in: domain type
   /// out: codomain type (can mention name)
-  Pi(implicit: List(String), name: String, in_term: Term, out_term: Term, span: Span)
+  Pi(
+    implicit: List(String),
+    name: String,
+    in_term: Term,
+    out_term: Term,
+    span: Span,
+  )
 
   /// Function application (f x) with optional implicit type args.
   /// implicit: list of type arguments (e.g., [I32, F32] for <I32, F32>)
@@ -125,7 +131,13 @@ pub type Value {
   /// Closure: lambda with captured environment and implicit type params
   VLam(implicit: List(String), name: String, env: Env, body: Term)
   /// Dependent function type with implicit type params and evaluated domain
-  VPi(implicit: List(String), name: String, env: Env, in_val: Value, out_term: Term)
+  VPi(
+    implicit: List(String),
+    name: String,
+    env: Env,
+    in_val: Value,
+    out_term: Term,
+  )
   /// Record type with named fields
   VRecord(fields: List(#(String, Value)))
   /// Built-in function call deferred to runtime
@@ -357,7 +369,8 @@ const no_span = Span("", 0, 0, 0, 0)
 pub const initial_state = State(
   hole: 0,
   var: 0,
-  ctrs: [],  // Empty - populated from Tao type definitions
+  ctrs: [],
+  // Empty - populated from Tao type definitions
   ctx: [],
   sub: [],
   errors: [],
@@ -515,15 +528,39 @@ fn cmp_i32_f64(
 // Arithmetic operations
 
 pub fn add_impl(args: List(Value)) -> Option(Value) {
-  binop_all(args, fn(a, b) { a + b }, fn(a, b) { a + b }, fn(a, b) { a + b }, fn(a, b) { a + b }, fn(a, b) { a +. b }, fn(a, b) { a +. b })
+  binop_all(
+    args,
+    fn(a, b) { a + b },
+    fn(a, b) { a + b },
+    fn(a, b) { a + b },
+    fn(a, b) { a + b },
+    fn(a, b) { a +. b },
+    fn(a, b) { a +. b },
+  )
 }
 
 pub fn sub_impl(args: List(Value)) -> Option(Value) {
-  binop_all(args, fn(a, b) { a - b }, fn(a, b) { a - b }, fn(a, b) { a - b }, fn(a, b) { a - b }, fn(a, b) { a -. b }, fn(a, b) { a -. b })
+  binop_all(
+    args,
+    fn(a, b) { a - b },
+    fn(a, b) { a - b },
+    fn(a, b) { a - b },
+    fn(a, b) { a - b },
+    fn(a, b) { a -. b },
+    fn(a, b) { a -. b },
+  )
 }
 
 pub fn mul_impl(args: List(Value)) -> Option(Value) {
-  binop_all(args, fn(a, b) { a * b }, fn(a, b) { a * b }, fn(a, b) { a * b }, fn(a, b) { a * b }, fn(a, b) { a *. b }, fn(a, b) { a *. b })
+  binop_all(
+    args,
+    fn(a, b) { a * b },
+    fn(a, b) { a * b },
+    fn(a, b) { a * b },
+    fn(a, b) { a * b },
+    fn(a, b) { a *. b },
+    fn(a, b) { a *. b },
+  )
 }
 
 pub fn div_impl(args: List(Value)) -> Option(Value) {
@@ -539,34 +576,88 @@ pub fn div_impl(args: List(Value)) -> Option(Value) {
 }
 
 pub fn mod_impl(args: List(Value)) -> Option(Value) {
-  binop_int(args, fn(a, b) { a % b }, fn(a, b) { a % b }, fn(a, b) { a % b }, fn(a, b) { a % b })
+  binop_int(
+    args,
+    fn(a, b) { a % b },
+    fn(a, b) { a % b },
+    fn(a, b) { a % b },
+    fn(a, b) { a % b },
+  )
 }
 
 // ============================================================================
 // Comparison operations
 
 pub fn eq_impl(args: List(Value)) -> Option(Value) {
-  cmp_all(args, fn(a, b) { a == b }, fn(a, b) { a == b }, fn(a, b) { a == b }, fn(a, b) { a == b }, fn(a, b) { a == b }, fn(a, b) { a == b })
+  cmp_all(
+    args,
+    fn(a, b) { a == b },
+    fn(a, b) { a == b },
+    fn(a, b) { a == b },
+    fn(a, b) { a == b },
+    fn(a, b) { a == b },
+    fn(a, b) { a == b },
+  )
 }
 
 pub fn neq_impl(args: List(Value)) -> Option(Value) {
-  cmp_all(args, fn(a, b) { a != b }, fn(a, b) { a != b }, fn(a, b) { a != b }, fn(a, b) { a != b }, fn(a, b) { a != b }, fn(a, b) { a != b })
+  cmp_all(
+    args,
+    fn(a, b) { a != b },
+    fn(a, b) { a != b },
+    fn(a, b) { a != b },
+    fn(a, b) { a != b },
+    fn(a, b) { a != b },
+    fn(a, b) { a != b },
+  )
 }
 
 pub fn lt_impl(args: List(Value)) -> Option(Value) {
-  cmp_all(args, fn(a, b) { a < b }, fn(a, b) { a < b }, fn(a, b) { a < b }, fn(a, b) { a < b }, fn(a, b) { a <. b }, fn(a, b) { a <. b })
+  cmp_all(
+    args,
+    fn(a, b) { a < b },
+    fn(a, b) { a < b },
+    fn(a, b) { a < b },
+    fn(a, b) { a < b },
+    fn(a, b) { a <. b },
+    fn(a, b) { a <. b },
+  )
 }
 
 pub fn lte_impl(args: List(Value)) -> Option(Value) {
-  cmp_all(args, fn(a, b) { a <= b }, fn(a, b) { a <= b }, fn(a, b) { a <= b }, fn(a, b) { a <= b }, fn(a, b) { a <=. b }, fn(a, b) { a <=. b })
+  cmp_all(
+    args,
+    fn(a, b) { a <= b },
+    fn(a, b) { a <= b },
+    fn(a, b) { a <= b },
+    fn(a, b) { a <= b },
+    fn(a, b) { a <=. b },
+    fn(a, b) { a <=. b },
+  )
 }
 
 pub fn gt_impl(args: List(Value)) -> Option(Value) {
-  cmp_all(args, fn(a, b) { a > b }, fn(a, b) { a > b }, fn(a, b) { a > b }, fn(a, b) { a > b }, fn(a, b) { a >. b }, fn(a, b) { a >. b })
+  cmp_all(
+    args,
+    fn(a, b) { a > b },
+    fn(a, b) { a > b },
+    fn(a, b) { a > b },
+    fn(a, b) { a > b },
+    fn(a, b) { a >. b },
+    fn(a, b) { a >. b },
+  )
 }
 
 pub fn gte_impl(args: List(Value)) -> Option(Value) {
-  cmp_all(args, fn(a, b) { a >= b }, fn(a, b) { a >= b }, fn(a, b) { a >= b }, fn(a, b) { a >= b }, fn(a, b) { a >=. b }, fn(a, b) { a >=. b })
+  cmp_all(
+    args,
+    fn(a, b) { a >= b },
+    fn(a, b) { a >= b },
+    fn(a, b) { a >= b },
+    fn(a, b) { a >= b },
+    fn(a, b) { a >=. b },
+    fn(a, b) { a >=. b },
+  )
 }
 
 // ============================================================================
@@ -723,7 +814,12 @@ pub type Error {
 
   // Type errors - consistent naming: Problem + Context
   TypeMismatch(expected: Type, got: Type, expected_span: Span, got_span: Span)
-  PatternMismatch(pattern: Pattern, expected_type: Type, pattern_span: Span, value_span: Span)
+  PatternMismatch(
+    pattern: Pattern,
+    expected_type: Type,
+    pattern_span: Span,
+    value_span: Span,
+  )
   InfiniteType(hole_id: Int, ty: Type, span1: Span, span2: Span)
   NotAFunction(fun: Term, fun_ty: Value)
   VarUndefined(index: Int, span: Span)
@@ -764,24 +860,38 @@ fn shift_term(term: Term, shift: Int) -> Term {
       Lam(implicit, param, shift_term(body, shift), span)
     }
     Pi(implicit, name, in_term, out_term, span) -> {
-      Pi(implicit, name, shift_term(in_term, shift), shift_term(out_term, shift), span)
+      Pi(
+        implicit,
+        name,
+        shift_term(in_term, shift),
+        shift_term(out_term, shift),
+        span,
+      )
     }
     App(fun, implicit, arg, span) -> {
       App(shift_term(fun, shift), implicit, shift_term(arg, shift), span)
     }
     Match(arg, motive, cases, span) -> {
-      Match(shift_term(arg, shift), shift_term(motive, shift), list.map(cases, fn(c) { shift_case(c, shift) }), span)
+      Match(
+        shift_term(arg, shift),
+        shift_term(motive, shift),
+        list.map(cases, fn(c) { shift_case(c, shift) }),
+        span,
+      )
     }
     Hole(id, span) -> Hole(id, span)
     Typ(k, span) -> Typ(k, span)
     Lit(k, span) -> Lit(k, span)
     LitT(k, span) -> LitT(k, span)
-    Rcd(fields, span) -> Rcd(list.map(fields, fn(kv) { #(kv.0, shift_term(kv.1, shift)) }), span)
+    Rcd(fields, span) ->
+      Rcd(list.map(fields, fn(kv) { #(kv.0, shift_term(kv.1, shift)) }), span)
     Ctr(tag, arg, span) -> Ctr(tag, shift_term(arg, shift), span)
     Unit(span) -> Unit(span)
     Dot(arg, name, span) -> Dot(shift_term(arg, shift), name, span)
-    Ann(term, type_ann, span) -> Ann(shift_term(term, shift), shift_term(type_ann, shift), span)
-    Call(name, args, span) -> Call(name, list.map(args, fn(a) { shift_term(a, shift) }), span)
+    Ann(term, type_ann, span) ->
+      Ann(shift_term(term, shift), shift_term(type_ann, shift), span)
+    Call(name, args, span) ->
+      Call(name, list.map(args, fn(a) { shift_term(a, shift) }), span)
     Comptime(term, span) -> Comptime(shift_term(term, shift), span)
     Fix(name, body, span) -> Fix(name, shift_term(body, shift), span)
     Err(msg, span) -> Err(msg, span)
@@ -790,7 +900,13 @@ fn shift_term(term: Term, shift: Int) -> Term {
 
 fn shift_case(case_val: Case, shift: Int) -> Case {
   case case_val {
-    Case(pattern, body, guard, span) -> Case(pattern, shift_term(body, shift), option.map(guard, fn(g) { shift_term(g, shift) }), span)
+    Case(pattern, body, guard, span) ->
+      Case(
+        pattern,
+        shift_term(body, shift),
+        option.map(guard, fn(g) { shift_term(g, shift) }),
+        span,
+      )
   }
 }
 
@@ -802,7 +918,8 @@ fn shift_case(case_val: Case, shift: Int) -> Case {
 /// - Applications evaluate the function and argument, then apply
 /// - Neutral terms are created when computation is stuck on unknowns
 pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
-  eval_with_steps(ffi, env, term, 1000000)  // Increased step limit for deep recursion
+  eval_with_steps(ffi, env, term, 1_000_000)
+  // Increased step limit for deep recursion
 }
 
 /// Evaluate a term to a value with a step limit to prevent infinite loops.
@@ -811,15 +928,28 @@ fn eval_with_steps(ffi: FFI, env: Env, term: Term, max_steps: Int) -> Value {
   eval_loop(ffi, env, term, 0, max_steps)
 }
 
-fn eval_loop(ffi: FFI, env: Env, term: Term, steps: Int, max_steps: Int) -> Value {
+fn eval_loop(
+  ffi: FFI,
+  env: Env,
+  term: Term,
+  steps: Int,
+  max_steps: Int,
+) -> Value {
   // Check step limit
   case steps >= max_steps {
-    True -> VNeut(HStepLimit, [])  // Return neutral term when limit exceeded
+    True -> VNeut(HStepLimit, [])
+    // Return neutral term when limit exceeded
     False -> eval_step(ffi, env, term, steps, max_steps)
   }
 }
 
-fn eval_step(ffi: FFI, env: Env, term: Term, steps: Int, max_steps: Int) -> Value {
+fn eval_step(
+  ffi: FFI,
+  env: Env,
+  term: Term,
+  steps: Int,
+  max_steps: Int,
+) -> Value {
   case term {
     Typ(k, _) -> VTyp(k)
     Lit(k, _) -> VLit(k)
@@ -831,16 +961,35 @@ fn eval_step(ffi: FFI, env: Env, term: Term, steps: Int, max_steps: Int) -> Valu
       }
     Hole(id, _) -> VNeut(HHole(id), [])
     Rcd(fields, _) ->
-      VRcd(list.map(fields, fn(kv) { #(kv.0, eval_loop(ffi, env, kv.1, steps + 1, max_steps)) }))
-    Ctr(tag, arg, _) -> VCtrValue(VCtr(tag, eval_loop(ffi, env, arg, steps + 1, max_steps)))
+      VRcd(
+        list.map(fields, fn(kv) {
+          #(kv.0, eval_loop(ffi, env, kv.1, steps + 1, max_steps))
+        }),
+      )
+    Ctr(tag, arg, _) ->
+      VCtrValue(VCtr(tag, eval_loop(ffi, env, arg, steps + 1, max_steps)))
     Unit(_) -> VUnit
-    Dot(arg, name, _) -> do_dot(ffi, eval_loop(ffi, env, arg, steps + 1, max_steps), name, steps + 1, max_steps)
+    Dot(arg, name, _) ->
+      do_dot(
+        ffi,
+        eval_loop(ffi, env, arg, steps + 1, max_steps),
+        name,
+        steps + 1,
+        max_steps,
+      )
     Ann(term, _, _) -> eval_loop(ffi, env, term, steps + 1, max_steps)
     Lam(implicit, param, body, _) -> {
       let #(name, _) = param
       VLam(implicit, name, env, body)
     }
-    Pi(implicit, name, in_term, out_term, _) -> VPi(implicit, name, env, eval_loop(ffi, env, in_term, steps + 1, max_steps), out_term)
+    Pi(implicit, name, in_term, out_term, _) ->
+      VPi(
+        implicit,
+        name,
+        env,
+        eval_loop(ffi, env, in_term, steps + 1, max_steps),
+        out_term,
+      )
     App(fun, implicit, arg, _) -> {
       // Evaluate function and argument
       let fun_val = eval_loop(ffi, env, fun, steps + 1, max_steps)
@@ -854,10 +1003,18 @@ fn eval_step(ffi: FFI, env: Env, term: Term, steps: Int, max_steps: Int) -> Valu
         }
         [implicit_arg, ..rest] -> {
           // Recursive case: peel off one implicit arg
-          let implicit_val = eval_loop(ffi, env, implicit_arg, steps + 1, max_steps)
+          let implicit_val =
+            eval_loop(ffi, env, implicit_arg, steps + 1, max_steps)
           // Instantiate function with implicit and recurse
           let instantiated = do_app_implicit(fun_val, implicit_val)
-          do_app_with_implicit(ffi, instantiated, rest, arg_val, steps + 1, max_steps)
+          do_app_with_implicit(
+            ffi,
+            instantiated,
+            rest,
+            arg_val,
+            steps + 1,
+            max_steps,
+          )
         }
       }
     }
@@ -868,7 +1025,8 @@ fn eval_step(ffi: FFI, env: Env, term: Term, steps: Int, max_steps: Int) -> Valu
     }
     Call(name, args, _) -> {
       // Evaluate all arguments first
-      let arg_vals = list.map(args, eval_loop(ffi, env, _, steps + 1, max_steps))
+      let arg_vals =
+        list.map(args, eval_loop(ffi, env, _, steps + 1, max_steps))
       // Look up the builtin and call it
       case list.key_find(ffi, name) {
         Ok(Builtin(impl, _)) -> {
@@ -891,7 +1049,13 @@ fn eval_step(ffi: FFI, env: Env, term: Term, steps: Int, max_steps: Int) -> Valu
 ///
 /// If the value is neutral (unknown), the projection is added to the spine.
 /// If the value is a record, the field is looked up immediately.
-fn do_dot(ffi: FFI, value: Value, name: String, steps: Int, max_steps: Int) -> Value {
+fn do_dot(
+  ffi: FFI,
+  value: Value,
+  name: String,
+  steps: Int,
+  max_steps: Int,
+) -> Value {
   case value {
     VNeut(head, spine) -> VNeut(head, [EDot(name), ..spine])
     VRcd(fields) ->
@@ -909,17 +1073,25 @@ fn do_dot(ffi: FFI, value: Value, name: String, steps: Int, max_steps: Int) -> V
 /// If the function is a lambda, the argument is substituted into the body.
 /// If the function is a fixpoint, it unfolds by substituting itself into its body.
 /// Otherwise, returns VErr (not a function).
-pub fn do_app(ffi: FFI, fun: Value, arg: Value, steps: Int, max_steps: Int) -> Value {
+pub fn do_app(
+  ffi: FFI,
+  fun: Value,
+  arg: Value,
+  steps: Int,
+  max_steps: Int,
+) -> Value {
   case fun {
     VNeut(head, spine) -> VNeut(head, [EApp(arg), ..spine])
-    VLam(_, _, env, body) -> eval_loop(ffi, [arg, ..env], body, steps + 1, max_steps)
+    VLam(_, _, env, body) ->
+      eval_loop(ffi, [arg, ..env], body, steps + 1, max_steps)
     VFix(name, env, body) -> {
       // Unfold fixpoint: evaluate the body with the fixpoint in the environment.
       // For recursive functions, the body is a lambda, so this creates a closure.
       // For self-referential fixpoints like (fix f -> f), we detect the loop and
       // return a neutral term to avoid infinite recursion.
       let fix_val = VFix(name, env, body)
-      let body_val = eval_loop(ffi, [fix_val, ..env], body, steps + 1, max_steps)
+      let body_val =
+        eval_loop(ffi, [fix_val, ..env], body, steps + 1, max_steps)
       // Check if body evaluated to the same fixpoint (self-reference)
       case body_val {
         VFix(n2, _, _) if n2 == name -> {
@@ -952,7 +1124,14 @@ fn do_app_implicit(fun: Value, implicit_val: Value) -> Value {
 /// Apply a function with a list of implicit arguments, then an explicit argument.
 ///
 /// This recursively handles implicit args until the base case (empty list).
-fn do_app_with_implicit(ffi: FFI, fun: Value, implicit: List(Term), arg: Value, steps: Int, max_steps: Int) -> Value {
+fn do_app_with_implicit(
+  ffi: FFI,
+  fun: Value,
+  implicit: List(Term),
+  arg: Value,
+  steps: Int,
+  max_steps: Int,
+) -> Value {
   case implicit {
     [] -> do_app(ffi, fun, arg, steps, max_steps)
     [implicit_arg, ..rest] -> {
@@ -972,12 +1151,21 @@ fn do_app_with_implicit(ffi: FFI, fun: Value, implicit: List(Term), arg: Value, 
 /// the spine. Otherwise, we try to match the argument against each case.
 ///
 /// The motive is the return type of the match (for dependent pattern matching).
-pub fn do_match(ffi: FFI, env: Env, arg: Value, motive: Value, cases: List(Case), steps: Int, max_steps: Int) -> Value {
+pub fn do_match(
+  ffi: FFI,
+  env: Env,
+  arg: Value,
+  motive: Value,
+  cases: List(Case),
+  steps: Int,
+  max_steps: Int,
+) -> Value {
   case arg {
     VNeut(head, spine) -> VNeut(head, [EMatch(env, motive, cases), ..spine])
     _ ->
       case do_match_cases(arg, cases, steps + 1, max_steps) {
-        Some(#(bindings, body)) -> eval_loop(ffi, list.append(bindings, env), body, steps + 1, max_steps)
+        Some(#(bindings, body)) ->
+          eval_loop(ffi, list.append(bindings, env), body, steps + 1, max_steps)
         None -> VErr
       }
   }
@@ -986,7 +1174,12 @@ pub fn do_match(ffi: FFI, env: Env, arg: Value, motive: Value, cases: List(Case)
 /// Try to match a value against a list of cases, returning the first match.
 ///
 /// Returns the bindings (environment) and body of the matching case.
-pub fn do_match_cases(arg: Value, cases: List(Case), steps: Int, max_steps: Int) -> Option(#(Env, Term)) {
+pub fn do_match_cases(
+  arg: Value,
+  cases: List(Case),
+  steps: Int,
+  max_steps: Int,
+) -> Option(#(Env, Term)) {
   case cases {
     [] -> None
     [c, ..cases] ->
@@ -996,7 +1189,8 @@ pub fn do_match_cases(arg: Value, cases: List(Case), steps: Int, max_steps: Int)
           case c.guard {
             Some(guard_term) -> {
               // Evaluate guard in the extended environment
-              let guard_val = eval_loop([], env, guard_term, steps + 1, max_steps)
+              let guard_val =
+                eval_loop([], env, guard_term, steps + 1, max_steps)
               // For now, treat any non-error guard value as true
               // (proper boolean checking would be better)
               case guard_val {
@@ -1037,18 +1231,12 @@ pub fn do_match_pattern(pattern: Pattern, value: Value) -> Result(Env, Nil) {
       })
     PCtr(ptag, parg), VCtrValue(VCtr(vtag, varg)) if ptag == vtag ->
       do_match_pattern(parg, varg)
-    PCtr("True", PUnit), VCtrValue(VCtr("True", VUnit)) ->
-      Ok([])
-    PCtr("False", PUnit), VCtrValue(VCtr("False", VUnit)) ->
-      Ok([])
-    PCtr("None", PUnit), VCtrValue(VCtr("None", VUnit)) ->
-      Ok([])
-    PCtr("LT", PUnit), VCtrValue(VCtr("LT", VUnit)) ->
-      Ok([])
-    PCtr("EQ", PUnit), VCtrValue(VCtr("EQ", VUnit)) ->
-      Ok([])
-    PCtr("GT", PUnit), VCtrValue(VCtr("GT", VUnit)) ->
-      Ok([])
+    PCtr("True", PUnit), VCtrValue(VCtr("True", VUnit)) -> Ok([])
+    PCtr("False", PUnit), VCtrValue(VCtr("False", VUnit)) -> Ok([])
+    PCtr("None", PUnit), VCtrValue(VCtr("None", VUnit)) -> Ok([])
+    PCtr("LT", PUnit), VCtrValue(VCtr("LT", VUnit)) -> Ok([])
+    PCtr("EQ", PUnit), VCtrValue(VCtr("EQ", VUnit)) -> Ok([])
+    PCtr("GT", PUnit), VCtrValue(VCtr("GT", VUnit)) -> Ok([])
     _, _ -> Error(Nil)
   }
 }
@@ -1078,15 +1266,23 @@ pub fn normalize(ffi: FFI, env: Env, term: Term, s: Span) -> Term {
 /// to the body, and quote the result. This converts De Bruijn levels back to
 /// indices using the formula: index = lvl - level - 1.
 pub fn quote(ffi: FFI, lvl: Int, value: Value, s: Span) -> Term {
-  quote_with_steps(ffi, lvl, value, s, 1000000)  // High step limit for deep trees
+  quote_with_steps(ffi, lvl, value, s, 1_000_000)
+  // High step limit for deep trees
 }
 
 /// Quote a value back to syntax with a step counter to prevent infinite loops.
 ///
 /// When the step limit is exceeded, returns a neutral term with HStepLimit head.
-fn quote_with_steps(ffi: FFI, lvl: Int, value: Value, s: Span, steps: Int) -> Term {
+fn quote_with_steps(
+  ffi: FFI,
+  lvl: Int,
+  value: Value,
+  s: Span,
+  steps: Int,
+) -> Term {
   case steps {
-    0 -> VNeut(HStepLimit, []) |> quote(ffi, lvl, _, s)  // Return stuck term
+    0 -> VNeut(HStepLimit, []) |> quote(ffi, lvl, _, s)
+    // Return stuck term
     _ -> quote_loop(ffi, lvl, value, s, steps)
   }
 }
@@ -1101,15 +1297,29 @@ fn quote_loop(ffi: FFI, lvl: Int, value: Value, s: Span, steps: Int) -> Term {
       quote_neut_with_steps(ffi, lvl, head_term, spine, s, steps)
     }
     VRcd(fields) ->
-      Rcd(list.map(fields, fn(kv) { #(kv.0, quote_with_steps(ffi, lvl, kv.1, s, steps - 1)) }), s)
-    VCtrValue(VCtr(tag, arg)) -> Ctr(tag, quote_with_steps(ffi, lvl, arg, s, steps - 1), s)
+      Rcd(
+        list.map(fields, fn(kv) {
+          #(kv.0, quote_with_steps(ffi, lvl, kv.1, s, steps - 1))
+        }),
+        s,
+      )
+    VCtrValue(VCtr(tag, arg)) ->
+      Ctr(tag, quote_with_steps(ffi, lvl, arg, s, steps - 1), s)
     VUnit -> Unit(s)
     VLam(implicit, name, env, body) -> {
       // Quote the body term directly without re-evaluation.
       // Re-evaluation causes exponential blowup for recursive functions.
       // Extend env with a fresh neutral for the parameter (Var(0) in the body).
       let fresh = VNeut(HVar(lvl), [])
-      let body_quote = quote_term_in_env(ffi, lvl + 1, body, [fresh, ..env], get_span(body), steps - 1)
+      let body_quote =
+        quote_term_in_env(
+          ffi,
+          lvl + 1,
+          body,
+          [fresh, ..env],
+          get_span(body),
+          steps - 1,
+        )
       Lam(implicit, #(name, Hole(-1, s)), body_quote, s)
     }
     VPi(implicit, name, env, in_val, out_term) -> {
@@ -1118,22 +1328,47 @@ fn quote_loop(ffi: FFI, lvl: Int, value: Value, s: Span, steps: Int) -> Term {
       // Quote the codomain term directly without re-evaluation
       // Extend env with a fresh neutral for the domain variable (Var(0) in out_term).
       let fresh = VNeut(HVar(lvl), [])
-      let out_quote = quote_term_in_env(ffi, lvl + 1, out_term, [fresh, ..env], get_span(out_term), steps - 1)
+      let out_quote =
+        quote_term_in_env(
+          ffi,
+          lvl + 1,
+          out_term,
+          [fresh, ..env],
+          get_span(out_term),
+          steps - 1,
+        )
       Pi(implicit, name, in_quote, out_quote, s)
     }
     VRecord(fields) -> {
       // Record type - quote each field type
-      Rcd(list.map(fields, fn(kv) { #(kv.0, quote_with_steps(ffi, lvl, kv.1, s, steps - 1)) }), s)
+      Rcd(
+        list.map(fields, fn(kv) {
+          #(kv.0, quote_with_steps(ffi, lvl, kv.1, s, steps - 1))
+        }),
+        s,
+      )
     }
     VCall(name, args) -> {
       // Quote stuck built-in with collected args
-      Call(name, list.map(args, fn(a) { quote_with_steps(ffi, lvl, a, s, steps - 1) }), s)
+      Call(
+        name,
+        list.map(args, fn(a) { quote_with_steps(ffi, lvl, a, s, steps - 1) }),
+        s,
+      )
     }
     VFix(name, env, body) -> {
       // Quote the body term directly without re-evaluation.
       // Re-evaluation causes exponential blowup for recursive functions.
       let fix_val = VFix(name, env, body)
-      let body_quote = quote_term_in_env(ffi, lvl + 1, body, [fix_val, ..env], get_span(body), steps - 1)
+      let body_quote =
+        quote_term_in_env(
+          ffi,
+          lvl + 1,
+          body,
+          [fix_val, ..env],
+          get_span(body),
+          steps - 1,
+        )
       Fix(name, body_quote, s)
     }
     VErr -> Hole(-1, s)
@@ -1189,12 +1424,24 @@ fn quote_elim(ffi: FFI, lvl: Int, head: Term, elim: Elim, s: Span) -> Term {
 }
 
 /// Quote a single elimination (spine element) with step counter.
-fn quote_elim_with_steps(ffi: FFI, lvl: Int, head: Term, elim: Elim, s: Span, steps: Int) -> Term {
+fn quote_elim_with_steps(
+  ffi: FFI,
+  lvl: Int,
+  head: Term,
+  elim: Elim,
+  s: Span,
+  steps: Int,
+) -> Term {
   case elim {
     EDot(name) -> Dot(head, name, s)
     EApp(arg) -> App(head, [], quote_with_steps(ffi, lvl, arg, s, steps - 1), s)
     EAppImplicit(implicit_val) -> {
-      App(head, [quote_with_steps(ffi, lvl, implicit_val, s, steps - 1)], Hole(-1, s), s)
+      App(
+        head,
+        [quote_with_steps(ffi, lvl, implicit_val, s, steps - 1)],
+        Hole(-1, s),
+        s,
+      )
     }
     EMatch(_, motive, cases) ->
       Match(head, quote_with_steps(ffi, lvl, motive, s, steps - 1), cases, s)
@@ -1212,7 +1459,8 @@ fn quote_head(lvl: Int, head: Head, s: Span) -> Term {
   case head {
     HVar(l) -> Var(lvl - l - 1, s)
     HHole(id) -> Hole(id, s)
-    HStepLimit -> Hole(-1, s)  // Step limit exceeded - represent as hole
+    HStepLimit -> Hole(-1, s)
+    // Step limit exceeded - represent as hole
   }
 }
 
@@ -1257,49 +1505,69 @@ fn quote_term_in_env_loop(
     Lam(implicit, param, body, span) -> {
       // Extend environment with a fresh neutral for the parameter
       let fresh = VNeut(HVar(lvl), [])
-      let body_quote = quote_term_in_env(ffi, lvl + 1, body, [fresh, ..env], span, steps - 1)
+      let body_quote =
+        quote_term_in_env(ffi, lvl + 1, body, [fresh, ..env], span, steps - 1)
       Lam(implicit, param, body_quote, span)
     }
 
     Pi(implicit, name, in_term, out_term, span) -> {
       let in_quote = quote_term_in_env(ffi, lvl, in_term, env, span, steps - 1)
       let fresh = VNeut(HVar(lvl), [])
-      let out_quote = quote_term_in_env(ffi, lvl + 1, out_term, [fresh, ..env], span, steps - 1)
+      let out_quote =
+        quote_term_in_env(
+          ffi,
+          lvl + 1,
+          out_term,
+          [fresh, ..env],
+          span,
+          steps - 1,
+        )
       Pi(implicit, name, in_quote, out_quote, span)
     }
 
     Fix(name, body, span) -> {
       // Fix in a term - extend env with the fix itself
       let fix_val = VFix(name, env, body)
-      let body_quote = quote_term_in_env(ffi, lvl + 1, body, [fix_val, ..env], span, steps - 1)
+      let body_quote =
+        quote_term_in_env(ffi, lvl + 1, body, [fix_val, ..env], span, steps - 1)
       Fix(name, body_quote, span)
     }
 
     App(fun, implicit, arg, span) -> {
       let fun_quote = quote_term_in_env(ffi, lvl, fun, env, span, steps - 1)
       let arg_quote = quote_term_in_env(ffi, lvl, arg, env, span, steps - 1)
-      let implicit_quote = list.map(implicit, quote_term_in_env(ffi, lvl, _, env, span, steps - 1))
+      let implicit_quote =
+        list.map(implicit, quote_term_in_env(ffi, lvl, _, env, span, steps - 1))
       App(fun_quote, implicit_quote, arg_quote, span)
     }
 
     Match(arg, motive, cases, span) -> {
       let arg_quote = quote_term_in_env(ffi, lvl, arg, env, span, steps - 1)
-      let motive_quote = quote_term_in_env(ffi, lvl, motive, env, span, steps - 1)
-      let cases_quote = list.map(cases, fn(c) {
-        Case(c.pattern, quote_term_in_env(ffi, lvl, c.body, env, c.span, steps - 1), c.guard, c.span)
-      })
+      let motive_quote =
+        quote_term_in_env(ffi, lvl, motive, env, span, steps - 1)
+      let cases_quote =
+        list.map(cases, fn(c) {
+          Case(
+            c.pattern,
+            quote_term_in_env(ffi, lvl, c.body, env, c.span, steps - 1),
+            c.guard,
+            c.span,
+          )
+        })
       Match(arg_quote, motive_quote, cases_quote, span)
     }
 
     Call(name, args, span) -> {
-      let args_quote = list.map(args, quote_term_in_env(ffi, lvl, _, env, span, steps - 1))
+      let args_quote =
+        list.map(args, quote_term_in_env(ffi, lvl, _, env, span, steps - 1))
       Call(name, args_quote, span)
     }
 
     Rcd(fields, span) -> {
-      let fields_quote = list.map(fields, fn(kv) {
-        #(kv.0, quote_term_in_env(ffi, lvl, kv.1, env, span, steps - 1))
-      })
+      let fields_quote =
+        list.map(fields, fn(kv) {
+          #(kv.0, quote_term_in_env(ffi, lvl, kv.1, env, span, steps - 1))
+        })
       Rcd(fields_quote, span)
     }
 
@@ -1349,42 +1617,67 @@ pub fn free_holes_value(sub: Subst, value: Value) -> List(Int) {
       list.append([hole_id], list.flat_map(spine, free_holes_elim(sub, _)))
     VNeut(HStepLimit, spine) -> list.flat_map(spine, free_holes_elim(sub, _))
     VNeut(_, spine) -> list.flat_map(spine, free_holes_elim(sub, _))
-    VRcd(fields) -> list.flat_map(fields, fn(kv) { free_holes_value(sub, kv.1) })
+    VRcd(fields) ->
+      list.flat_map(fields, fn(kv) { free_holes_value(sub, kv.1) })
     VCtrValue(VCtr(_, arg)) -> free_holes_value(sub, arg)
     VLam(_, _, env, body) ->
-      list.append(list.flat_map(env, free_holes_value(sub, _)), free_holes_term(sub, body))
+      list.append(
+        list.flat_map(env, free_holes_value(sub, _)),
+        free_holes_term(sub, body),
+      )
     VPi(_, _, env, in_val, out_term) ->
       list.append(
         list.flat_map(env, free_holes_value(sub, _)),
-        list.append(free_holes_value(sub, in_val), free_holes_term(sub, out_term))
+        list.append(
+          free_holes_value(sub, in_val),
+          free_holes_term(sub, out_term),
+        ),
       )
     VCall(_, args) -> list.flat_map(args, free_holes_value(sub, _))
     VFix(_, env, body) ->
-      list.append(list.flat_map(env, free_holes_value(sub, _)), free_holes_term(sub, body))
-    VRecord(fields) -> list.flat_map(fields, fn(kv) { free_holes_value(sub, kv.1) })
+      list.append(
+        list.flat_map(env, free_holes_value(sub, _)),
+        free_holes_term(sub, body),
+      )
+    VRecord(fields) ->
+      list.flat_map(fields, fn(kv) { free_holes_value(sub, kv.1) })
   }
 }
 
 /// Collect free hole IDs in a term.
 fn free_holes_term(sub: Subst, term: Term) -> List(Int) {
   case term {
-    Typ(_, _) | Lit(_, _) | LitT(_, _) | Var(_, _) | Hole(_, _) | Err(_, _) | Unit(_) -> []
-    Rcd(fields, _) -> list.flat_map(fields, fn(kv) { free_holes_term(sub, kv.1) })
+    Typ(_, _)
+    | Lit(_, _)
+    | LitT(_, _)
+    | Var(_, _)
+    | Hole(_, _)
+    | Err(_, _)
+    | Unit(_) -> []
+    Rcd(fields, _) ->
+      list.flat_map(fields, fn(kv) { free_holes_term(sub, kv.1) })
     Ctr(_, arg, _) -> free_holes_term(sub, arg)
     Dot(arg, _, _) -> free_holes_term(sub, arg)
-    Ann(term, typ, _) -> list.append(free_holes_term(sub, term), free_holes_term(sub, typ))
+    Ann(term, typ, _) ->
+      list.append(free_holes_term(sub, term), free_holes_term(sub, typ))
     Lam(_, _, body, _) -> free_holes_term(sub, body)
     Pi(_, _, in_term, out_term, _) ->
       list.append(free_holes_term(sub, in_term), free_holes_term(sub, out_term))
     App(fun, implicit, arg, _) ->
       list.append(
         free_holes_term(sub, fun),
-        list.append(list.flat_map(implicit, free_holes_term(sub, _)), free_holes_term(sub, arg))
+        list.append(
+          list.flat_map(implicit, free_holes_term(sub, _)),
+          free_holes_term(sub, arg),
+        ),
       )
     Match(arg, motive, cases, _) ->
       list.append(
         free_holes_term(sub, arg),
-        list.append(free_holes_term(sub, motive), list.flat_map(cases, fn(c) { free_holes_term(sub, c.body) }))
+        list.append(
+          free_holes_term(sub, motive),
+          list.flat_map(cases, fn(c) { free_holes_term(sub, c.body) }),
+        ),
       )
     Call(_, args, _) -> list.flat_map(args, free_holes_term(sub, _))
     Comptime(term, _) -> free_holes_term(sub, term)
@@ -1401,7 +1694,7 @@ fn free_holes_elim(sub: Subst, elim: Elim) -> List(Int) {
     EMatch(env, motive, cases) ->
       list.append(
         list.flat_map(env, free_holes(sub, _)),
-        free_holes(sub, motive)
+        free_holes(sub, motive),
       )
   }
 }
@@ -1415,19 +1708,30 @@ fn free_holes_in_value(sub: Subst, value: Value) -> List(Int) {
       list.append([hole_id], list.flat_map(spine, free_holes_in_elim(sub, _)))
     VNeut(HStepLimit, spine) -> list.flat_map(spine, free_holes_in_elim(sub, _))
     VNeut(_, spine) -> list.flat_map(spine, free_holes_in_elim(sub, _))
-    VRcd(fields) -> list.flat_map(fields, fn(kv) { free_holes_in_value(sub, kv.1) })
+    VRcd(fields) ->
+      list.flat_map(fields, fn(kv) { free_holes_in_value(sub, kv.1) })
     VCtrValue(VCtr(_, arg)) -> free_holes_in_value(sub, arg)
     VLam(_, _, env, body) ->
-      list.append(list.flat_map(env, free_holes_in_value(sub, _)), free_holes_in_term_direct(body))
+      list.append(
+        list.flat_map(env, free_holes_in_value(sub, _)),
+        free_holes_in_term_direct(body),
+      )
     VPi(_, _, env, in_val, out_term) ->
       list.append(
         list.flat_map(env, free_holes_in_value(sub, _)),
-        list.append(free_holes_in_value(sub, in_val), free_holes_in_term_direct(out_term))
+        list.append(
+          free_holes_in_value(sub, in_val),
+          free_holes_in_term_direct(out_term),
+        ),
       )
     VCall(_, args) -> list.flat_map(args, free_holes_in_value(sub, _))
     VFix(_, env, body) ->
-      list.append(list.flat_map(env, free_holes_in_value(sub, _)), free_holes_in_term_direct(body))
-    VRecord(fields) -> list.flat_map(fields, fn(kv) { free_holes_in_value(sub, kv.1) })
+      list.append(
+        list.flat_map(env, free_holes_in_value(sub, _)),
+        free_holes_in_term_direct(body),
+      )
+    VRecord(fields) ->
+      list.flat_map(fields, fn(kv) { free_holes_in_value(sub, kv.1) })
   }
 }
 
@@ -1437,22 +1741,36 @@ fn free_holes_in_term_direct(term: Term) -> List(Int) {
     Typ(_, _) | Lit(_, _) | LitT(_, _) | Var(_, _) | Unit(_) -> []
     Hole(id, _) -> [id]
     Err(_, _) -> []
-    Rcd(fields, _) -> list.flat_map(fields, fn(kv) { free_holes_in_term_direct(kv.1) })
+    Rcd(fields, _) ->
+      list.flat_map(fields, fn(kv) { free_holes_in_term_direct(kv.1) })
     Ctr(_, arg, _) -> free_holes_in_term_direct(arg)
     Dot(arg, _, _) -> free_holes_in_term_direct(arg)
-    Ann(term, typ, _) -> list.append(free_holes_in_term_direct(term), free_holes_in_term_direct(typ))
+    Ann(term, typ, _) ->
+      list.append(
+        free_holes_in_term_direct(term),
+        free_holes_in_term_direct(typ),
+      )
     Lam(_, _, body, _) -> free_holes_in_term_direct(body)
     Pi(_, _, in_term, out_term, _) ->
-      list.append(free_holes_in_term_direct(in_term), free_holes_in_term_direct(out_term))
+      list.append(
+        free_holes_in_term_direct(in_term),
+        free_holes_in_term_direct(out_term),
+      )
     App(fun, implicit, arg, _) ->
       list.append(
         free_holes_in_term_direct(fun),
-        list.append(list.flat_map(implicit, free_holes_in_term_direct), free_holes_in_term_direct(arg))
+        list.append(
+          list.flat_map(implicit, free_holes_in_term_direct),
+          free_holes_in_term_direct(arg),
+        ),
       )
     Match(arg, motive, cases, _) ->
       list.append(
         free_holes_in_term_direct(arg),
-        list.append(free_holes_in_term_direct(motive), list.flat_map(cases, fn(c) { free_holes_in_term_direct(c.body) }))
+        list.append(
+          free_holes_in_term_direct(motive),
+          list.flat_map(cases, fn(c) { free_holes_in_term_direct(c.body) }),
+        ),
       )
     Call(_, args, _) -> list.flat_map(args, free_holes_in_term_direct)
     Comptime(term, _) -> free_holes_in_term_direct(term)
@@ -1469,7 +1787,7 @@ fn free_holes_in_elim(sub: Subst, elim: Elim) -> List(Int) {
     EMatch(env, motive, cases) ->
       list.append(
         list.flat_map(env, free_holes_in_value(sub, _)),
-        free_holes_in_value(sub, motive)
+        free_holes_in_value(sub, motive),
       )
   }
 }
@@ -1486,7 +1804,13 @@ fn collect_names_from_term(term: Term) -> List(String) {
 
 fn collect_names_from_term_acc(term: Term, acc: List(String)) -> List(String) {
   case term {
-    Typ(_, _) | Lit(_, _) | LitT(_, _) | Var(_, _) | Hole(_, _) | Err(_, _) | Unit(_) -> acc
+    Typ(_, _)
+    | Lit(_, _)
+    | LitT(_, _)
+    | Var(_, _)
+    | Hole(_, _)
+    | Err(_, _)
+    | Unit(_) -> acc
     Rcd(fields, _) -> collect_names_from_fields_acc(fields, acc)
     Ctr(_, arg, _) -> collect_names_from_term_acc(arg, acc)
     Dot(arg, _, _) -> collect_names_from_term_acc(arg, acc)
@@ -1521,7 +1845,10 @@ fn collect_names_from_term_acc(term: Term, acc: List(String)) -> List(String) {
   }
 }
 
-fn collect_names_from_terms_acc(terms: List(Term), acc: List(String)) -> List(String) {
+fn collect_names_from_terms_acc(
+  terms: List(Term),
+  acc: List(String),
+) -> List(String) {
   case terms {
     [] -> acc
     [term, ..rest] -> {
@@ -1531,7 +1858,10 @@ fn collect_names_from_terms_acc(terms: List(Term), acc: List(String)) -> List(St
   }
 }
 
-fn collect_names_from_cases_acc(cases: List(Case), acc: List(String)) -> List(String) {
+fn collect_names_from_cases_acc(
+  cases: List(Case),
+  acc: List(String),
+) -> List(String) {
   case cases {
     [] -> acc
     [c, ..rest] -> {
@@ -1541,7 +1871,10 @@ fn collect_names_from_cases_acc(cases: List(Case), acc: List(String)) -> List(St
   }
 }
 
-fn collect_names_from_fields_acc(fields: List(#(String, Term)), acc: List(String)) -> List(String) {
+fn collect_names_from_fields_acc(
+  fields: List(#(String, Term)),
+  acc: List(String),
+) -> List(String) {
   case fields {
     [] -> acc
     [#(_, term), ..rest] -> {
@@ -1553,10 +1886,10 @@ fn collect_names_from_fields_acc(fields: List(#(String, Term)), acc: List(String
 
 /// Generalize holes by replacing them with fresh implicit type variables.
 /// Returns: #(new_implicit_names, generalized_domain, generalized_codomain)
-/// 
+///
 /// KEY FIX: Accept Value for both domain and codomain to properly substitute
 /// holes in nested lambda types. The codomain is quoted to Term after substitution.
-/// 
+///
 /// IMPORTANT: The domain is ALWAYS substituted, even if there are no holes to
 /// generalize. This ensures the domain hole is replaced with an HVar.
 fn generalize_holes(
@@ -1577,29 +1910,44 @@ fn generalize_holes(
   // ALWAYS substitute holes in domain, even if holes list is empty
   // This ensures the domain hole is replaced with an HVar
   let generalized_domain = subst_value_with_hole_vars(hole_subst, domain)
-  
+
   case holes {
-    [] -> #(existing_implicit, generalized_domain, quote(ffi, lvl, codomain, span))
+    [] -> #(
+      existing_implicit,
+      generalized_domain,
+      quote(ffi, lvl, codomain, span),
+    )
     _ -> {
       // Collect all existing names to avoid shadowing
       let codomain_term = quote(ffi, lvl, codomain, span)
-      let existing_names = collect_existing_names(existing_implicit, codomain_term)
+      let existing_names =
+        collect_existing_names(existing_implicit, codomain_term)
 
       // Generate unique names for each hole
-      let new_names = generate_unique_names(list.length(holes), existing_names, 0)
+      let new_names =
+        generate_unique_names(list.length(holes), existing_names, 0)
 
       // Apply substitution to codomain (Value)
-      let generalized_codomain_val = subst_value_with_hole_vars(hole_subst, codomain)
+      let generalized_codomain_val =
+        subst_value_with_hole_vars(hole_subst, codomain)
       let generalized_codomain = quote(ffi, lvl, generalized_codomain_val, span)
 
       // Return generalized domain (with holes substituted) and generalized codomain
-      #(list.append(existing_implicit, new_names), generalized_domain, generalized_codomain)
+      #(
+        list.append(existing_implicit, new_names),
+        generalized_domain,
+        generalized_codomain,
+      )
     }
   }
 }
 
 /// Generate unique names like _0, _1, _2, ... that don't conflict with existing names.
-fn generate_unique_names(n: Int, existing: List(String), counter: Int) -> List(String) {
+fn generate_unique_names(
+  n: Int,
+  existing: List(String),
+  counter: Int,
+) -> List(String) {
   case n <= 0 {
     True -> []
     False -> {
@@ -1613,14 +1961,22 @@ fn generate_unique_names(n: Int, existing: List(String), counter: Int) -> List(S
 }
 
 /// Create substitution mapping hole IDs to De Bruijn indices for new type variables.
-fn create_hole_to_var_subst(holes: List(Int), base_index: Int) -> List(#(Int, Int)) {
+fn create_hole_to_var_subst(
+  holes: List(Int),
+  base_index: Int,
+) -> List(#(Int, Int)) {
   create_hole_to_var_subst_loop(holes, base_index, [])
 }
 
-fn create_hole_to_var_subst_loop(holes: List(Int), index: Int, acc: List(#(Int, Int))) -> List(#(Int, Int)) {
+fn create_hole_to_var_subst_loop(
+  holes: List(Int),
+  index: Int,
+  acc: List(#(Int, Int)),
+) -> List(#(Int, Int)) {
   case holes {
     [] -> list.reverse(acc)
-    [hole, ..rest] -> create_hole_to_var_subst_loop(rest, index + 1, [#(hole, index), ..acc])
+    [hole, ..rest] ->
+      create_hole_to_var_subst_loop(rest, index + 1, [#(hole, index), ..acc])
   }
 }
 
@@ -1635,20 +1991,47 @@ fn subst_value_with_hole_vars(subst: List(#(Int, Int)), value: Value) -> Value {
     }
     VNeut(HHole(id), spine) -> {
       case list.key_find(subst, id) {
-        Ok(index) -> VNeut(HVar(index), list.map(spine, subst_elim_with_hole_vars(subst, _)))
-        Error(Nil) -> VNeut(HHole(id), list.map(spine, subst_elim_with_hole_vars(subst, _)))
+        Ok(index) ->
+          VNeut(
+            HVar(index),
+            list.map(spine, subst_elim_with_hole_vars(subst, _)),
+          )
+        Error(Nil) ->
+          VNeut(HHole(id), list.map(spine, subst_elim_with_hole_vars(subst, _)))
       }
     }
-    VNeut(HStepLimit, spine) -> VNeut(HStepLimit, list.map(spine, subst_elim_with_hole_vars(subst, _)))
-    VNeut(head, spine) -> VNeut(head, list.map(spine, subst_elim_with_hole_vars(subst, _)))
-    VRcd(fields) -> VRcd(list.map(fields, fn(kv) { #(kv.0, subst_value_with_hole_vars(subst, kv.1)) }))
-    VCtrValue(VCtr(tag, arg)) -> VCtrValue(VCtr(tag, subst_value_with_hole_vars(subst, arg)))
-    VLam(impl, name, env, body) -> VLam(impl, name, env, subst_term_with_hole_vars(subst, body))
+    VNeut(HStepLimit, spine) ->
+      VNeut(HStepLimit, list.map(spine, subst_elim_with_hole_vars(subst, _)))
+    VNeut(head, spine) ->
+      VNeut(head, list.map(spine, subst_elim_with_hole_vars(subst, _)))
+    VRcd(fields) ->
+      VRcd(
+        list.map(fields, fn(kv) {
+          #(kv.0, subst_value_with_hole_vars(subst, kv.1))
+        }),
+      )
+    VCtrValue(VCtr(tag, arg)) ->
+      VCtrValue(VCtr(tag, subst_value_with_hole_vars(subst, arg)))
+    VLam(impl, name, env, body) ->
+      VLam(impl, name, env, subst_term_with_hole_vars(subst, body))
     VPi(impl, name, env, in_val, out) ->
-      VPi(impl, name, env, subst_value_with_hole_vars(subst, in_val), subst_term_with_hole_vars(subst, out))
-    VCall(name, args) -> VCall(name, list.map(args, subst_value_with_hole_vars(subst, _)))
-    VFix(name, env, body) -> VFix(name, env, subst_term_with_hole_vars(subst, body))
-    VRecord(fields) -> VRecord(list.map(fields, fn(kv) { #(kv.0, subst_value_with_hole_vars(subst, kv.1)) }))
+      VPi(
+        impl,
+        name,
+        env,
+        subst_value_with_hole_vars(subst, in_val),
+        subst_term_with_hole_vars(subst, out),
+      )
+    VCall(name, args) ->
+      VCall(name, list.map(args, subst_value_with_hole_vars(subst, _)))
+    VFix(name, env, body) ->
+      VFix(name, env, subst_term_with_hole_vars(subst, body))
+    VRecord(fields) ->
+      VRecord(
+        list.map(fields, fn(kv) {
+          #(kv.0, subst_value_with_hole_vars(subst, kv.1))
+        }),
+      )
     _ -> value
   }
 }
@@ -1659,7 +2042,8 @@ fn subst_elim_with_hole_vars(subst: List(#(Int, Int)), elim: Elim) -> Elim {
     EDot(name) -> EDot(name)
     EApp(arg) -> EApp(subst_value_with_hole_vars(subst, arg))
     EAppImplicit(arg) -> EAppImplicit(subst_value_with_hole_vars(subst, arg))
-    EMatch(env, motive, cases) -> EMatch(env, subst_value_with_hole_vars(subst, motive), cases)
+    EMatch(env, motive, cases) ->
+      EMatch(env, subst_value_with_hole_vars(subst, motive), cases)
   }
 }
 
@@ -1680,8 +2064,15 @@ fn subst_term_with_hole_vars(subst: List(#(Int, Int)), term: Term) -> Term {
         span,
       )
     Pi(impl, name, in_t, out_t, span) ->
-      Pi(impl, name, subst_term_with_hole_vars(subst, in_t), subst_term_with_hole_vars(subst, out_t), span)
-    Lam(impl, param, body, span) -> Lam(impl, param, subst_term_with_hole_vars(subst, body), span)
+      Pi(
+        impl,
+        name,
+        subst_term_with_hole_vars(subst, in_t),
+        subst_term_with_hole_vars(subst, out_t),
+        span,
+      )
+    Lam(impl, param, body, span) ->
+      Lam(impl, param, subst_term_with_hole_vars(subst, body), span)
     Match(arg, motive, cases, span) ->
       Match(
         subst_term_with_hole_vars(subst, arg),
@@ -1689,25 +2080,47 @@ fn subst_term_with_hole_vars(subst: List(#(Int, Int)), term: Term) -> Term {
         list.map(cases, subst_case_with_hole_vars(subst, _)),
         span,
       )
-    Rcd(fields, span) -> Rcd(list.map(fields, fn(kv) { #(kv.0, subst_term_with_hole_vars(subst, kv.1)) }), span)
+    Rcd(fields, span) ->
+      Rcd(
+        list.map(fields, fn(kv) {
+          #(kv.0, subst_term_with_hole_vars(subst, kv.1))
+        }),
+        span,
+      )
     Ctr(tag, arg, span) -> Ctr(tag, subst_term_with_hole_vars(subst, arg), span)
-    Dot(arg, name, span) -> Dot(subst_term_with_hole_vars(subst, arg), name, span)
-    Ann(t, ty, span) -> Ann(subst_term_with_hole_vars(subst, t), subst_term_with_hole_vars(subst, ty), span)
-    Call(name, args, span) -> Call(name, list.map(args, subst_term_with_hole_vars(subst, _)), span)
+    Dot(arg, name, span) ->
+      Dot(subst_term_with_hole_vars(subst, arg), name, span)
+    Ann(t, ty, span) ->
+      Ann(
+        subst_term_with_hole_vars(subst, t),
+        subst_term_with_hole_vars(subst, ty),
+        span,
+      )
+    Call(name, args, span) ->
+      Call(name, list.map(args, subst_term_with_hole_vars(subst, _)), span)
     Comptime(t, span) -> Comptime(subst_term_with_hole_vars(subst, t), span)
-    Fix(name, body, span) -> Fix(name, subst_term_with_hole_vars(subst, body), span)
+    Fix(name, body, span) ->
+      Fix(name, subst_term_with_hole_vars(subst, body), span)
     _ -> term
   }
 }
 
 /// Substitute holes in a Case.
 fn subst_case_with_hole_vars(subst: List(#(Int, Int)), case_val: Case) -> Case {
-  Case(case_val.pattern, subst_term_with_hole_vars(subst, case_val.body), option.map(case_val.guard, subst_term_with_hole_vars(subst, _)), case_val.span)
+  Case(
+    case_val.pattern,
+    subst_term_with_hole_vars(subst, case_val.body),
+    option.map(case_val.guard, subst_term_with_hole_vars(subst, _)),
+    case_val.span,
+  )
 }
 
 /// Instantiate implicit type parameters with fresh holes.
 /// Returns a substitution list mapping implicit param indices to hole IDs.
-fn instantiate_implicit_params(implicit_params: List(String), s: State) -> #(List(#(Int, Int)), State) {
+fn instantiate_implicit_params(
+  implicit_params: List(String),
+  s: State,
+) -> #(List(#(Int, Int)), State) {
   instantiate_implicit_params_loop(implicit_params, 0, [], s)
 }
 
@@ -1724,9 +2137,15 @@ fn instantiate_implicit_params_loop(
       // Extract hole ID from the value
       let hole_id = case hole_val {
         VNeut(HHole(id), []) -> id
-        _ -> 0  // Should not happen
+        _ -> 0
+        // Should not happen
       }
-      instantiate_implicit_params_loop(rest, index + 1, [#(index, hole_id), ..acc], s)
+      instantiate_implicit_params_loop(
+        rest,
+        index + 1,
+        [#(index, hole_id), ..acc],
+        s,
+      )
     }
   }
 }
@@ -1741,8 +2160,12 @@ fn shift_hvar_in_value(value: Value, offset: Int) -> Value {
   case value {
     VNeut(HVar(level), []) -> VNeut(HVar(level + offset), [])
     VNeut(HVar(level), spine) ->
-      VNeut(HVar(level + offset), list.map(spine, shift_hvar_in_elim(offset, _)))
-    VNeut(head, spine) -> VNeut(head, list.map(spine, shift_hvar_in_elim(offset, _)))
+      VNeut(
+        HVar(level + offset),
+        list.map(spine, shift_hvar_in_elim(offset, _)),
+      )
+    VNeut(head, spine) ->
+      VNeut(head, list.map(spine, shift_hvar_in_elim(offset, _)))
     VPi(implicit, name, env, in_val, out_term) ->
       VPi(
         implicit,
@@ -1758,11 +2181,24 @@ fn shift_hvar_in_value(value: Value, offset: Int) -> Value {
         list.map(env, shift_hvar_in_value(_, offset)),
         shift_hvar_in_term(body, offset),
       )
-    VRcd(fields) -> VRcd(list.map(fields, fn(kv) { #(kv.0, shift_hvar_in_value(kv.1, offset)) }))
-    VCtrValue(VCtr(tag, arg)) -> VCtrValue(VCtr(tag, shift_hvar_in_value(arg, offset)))
-    VCall(name, args) -> VCall(name, list.map(args, shift_hvar_in_value(_, offset)))
-    VFix(name, env, body) -> VFix(name, list.map(env, shift_hvar_in_value(_, offset)), shift_hvar_in_term(body, offset))
-    VRecord(fields) -> VRecord(list.map(fields, fn(kv) { #(kv.0, shift_hvar_in_value(kv.1, offset)) }))
+    VRcd(fields) ->
+      VRcd(
+        list.map(fields, fn(kv) { #(kv.0, shift_hvar_in_value(kv.1, offset)) }),
+      )
+    VCtrValue(VCtr(tag, arg)) ->
+      VCtrValue(VCtr(tag, shift_hvar_in_value(arg, offset)))
+    VCall(name, args) ->
+      VCall(name, list.map(args, shift_hvar_in_value(_, offset)))
+    VFix(name, env, body) ->
+      VFix(
+        name,
+        list.map(env, shift_hvar_in_value(_, offset)),
+        shift_hvar_in_term(body, offset),
+      )
+    VRecord(fields) ->
+      VRecord(
+        list.map(fields, fn(kv) { #(kv.0, shift_hvar_in_value(kv.1, offset)) }),
+      )
     VTyp(_) | VLit(_) | VLitT(_) | VErr | VUnit -> value
   }
 }
@@ -1776,7 +2212,8 @@ fn shift_hvar_in_elim(offset: Int, elim: Elim) -> Elim {
     EMatch(env, motive, cases) ->
       EMatch(
         list.map(env, shift_hvar_in_value(_, offset)),
-        shift_hvar_in_value(motive, offset),  // motive is a Value, not Term
+        shift_hvar_in_value(motive, offset),
+        // motive is a Value, not Term
         list.map(cases, shift_hvar_in_case(offset, _)),
       )
   }
@@ -1785,8 +2222,10 @@ fn shift_hvar_in_elim(offset: Int, elim: Elim) -> Elim {
 /// Shift HVar indices in a Term by a given offset.
 fn shift_hvar_in_term(term: Term, offset: Int) -> Term {
   case term {
-    Var(index, span) -> Var(index, span)  // De Bruijn indices don't shift
-    Hole(id, span) -> Hole(id, span)  // Hole IDs don't shift
+    Var(index, span) -> Var(index, span)
+    // De Bruijn indices don't shift
+    Hole(id, span) -> Hole(id, span)
+    // Hole IDs don't shift
     Typ(k, span) -> Typ(k, span)
     Lit(k, span) -> Lit(k, span)
     LitT(k, span) -> LitT(k, span)
@@ -1795,7 +2234,13 @@ fn shift_hvar_in_term(term: Term, offset: Int) -> Term {
     Lam(implicit, param, body, span) ->
       Lam(implicit, param, shift_hvar_in_term(body, offset), span)
     Pi(implicit, name, in_term, out_term, span) ->
-      Pi(implicit, name, shift_hvar_in_term(in_term, offset), shift_hvar_in_term(out_term, offset), span)
+      Pi(
+        implicit,
+        name,
+        shift_hvar_in_term(in_term, offset),
+        shift_hvar_in_term(out_term, offset),
+        span,
+      )
     App(fun, impl, arg, span) ->
       App(
         shift_hvar_in_term(fun, offset),
@@ -1804,10 +2249,15 @@ fn shift_hvar_in_term(term: Term, offset: Int) -> Term {
         span,
       )
     Rcd(fields, span) ->
-      Rcd(list.map(fields, fn(kv) { #(kv.0, shift_hvar_in_term(kv.1, offset)) }), span)
+      Rcd(
+        list.map(fields, fn(kv) { #(kv.0, shift_hvar_in_term(kv.1, offset)) }),
+        span,
+      )
     Dot(arg, name, span) -> Dot(shift_hvar_in_term(arg, offset), name, span)
-    Ann(t, ty, span) -> Ann(shift_hvar_in_term(t, offset), shift_hvar_in_term(ty, offset), span)
-    Call(name, args, span) -> Call(name, list.map(args, shift_hvar_in_term(_, offset)), span)
+    Ann(t, ty, span) ->
+      Ann(shift_hvar_in_term(t, offset), shift_hvar_in_term(ty, offset), span)
+    Call(name, args, span) ->
+      Call(name, list.map(args, shift_hvar_in_term(_, offset)), span)
     Comptime(t, span) -> Comptime(shift_hvar_in_term(t, offset), span)
     Fix(name, body, span) -> Fix(name, shift_hvar_in_term(body, offset), span)
     Ctr(tag, arg, span) -> Ctr(tag, shift_hvar_in_term(arg, offset), span)
@@ -1824,7 +2274,8 @@ fn shift_hvar_in_term(term: Term, offset: Int) -> Term {
 /// Shift HVar indices in a Case by a given offset.
 fn shift_hvar_in_case(offset: Int, case_val: Case) -> Case {
   Case(
-    case_val.pattern,  // Patterns don't have HVar
+    case_val.pattern,
+    // Patterns don't have HVar
     shift_hvar_in_term(case_val.body, offset),
     option.map(case_val.guard, fn(g) { shift_hvar_in_term(g, offset) }),
     case_val.span,
@@ -1842,7 +2293,10 @@ fn shift_hvar_in_case_term(offset: Int, case_val: Case) -> Case {
 }
 
 /// Substitute implicit type variables (HVar) with holes in a Value.
-fn subst_value_with_implicit_vars(subst: List(#(Int, Int)), value: Value) -> Value {
+fn subst_value_with_implicit_vars(
+  subst: List(#(Int, Int)),
+  value: Value,
+) -> Value {
   case value {
     VNeut(HVar(index), []) -> {
       case list.key_find(subst, index) {
@@ -1852,20 +2306,53 @@ fn subst_value_with_implicit_vars(subst: List(#(Int, Int)), value: Value) -> Val
     }
     VNeut(HVar(index), spine) -> {
       case list.key_find(subst, index) {
-        Ok(hole_id) -> VNeut(HHole(hole_id), list.map(spine, subst_elim_with_implicit_vars(subst, _)))
-        Error(Nil) -> VNeut(HVar(index), list.map(spine, subst_elim_with_implicit_vars(subst, _)))
+        Ok(hole_id) ->
+          VNeut(
+            HHole(hole_id),
+            list.map(spine, subst_elim_with_implicit_vars(subst, _)),
+          )
+        Error(Nil) ->
+          VNeut(
+            HVar(index),
+            list.map(spine, subst_elim_with_implicit_vars(subst, _)),
+          )
       }
     }
-    VNeut(HStepLimit, spine) -> VNeut(HStepLimit, list.map(spine, subst_elim_with_implicit_vars(subst, _)))
-    VNeut(head, spine) -> VNeut(head, list.map(spine, subst_elim_with_implicit_vars(subst, _)))
-    VRcd(fields) -> VRcd(list.map(fields, fn(kv) { #(kv.0, subst_value_with_implicit_vars(subst, kv.1)) }))
-    VCtrValue(VCtr(tag, arg)) -> VCtrValue(VCtr(tag, subst_value_with_implicit_vars(subst, arg)))
-    VLam(impl, name, env, body) -> VLam(impl, name, env, subst_term_with_implicit_vars(subst, body))
+    VNeut(HStepLimit, spine) ->
+      VNeut(
+        HStepLimit,
+        list.map(spine, subst_elim_with_implicit_vars(subst, _)),
+      )
+    VNeut(head, spine) ->
+      VNeut(head, list.map(spine, subst_elim_with_implicit_vars(subst, _)))
+    VRcd(fields) ->
+      VRcd(
+        list.map(fields, fn(kv) {
+          #(kv.0, subst_value_with_implicit_vars(subst, kv.1))
+        }),
+      )
+    VCtrValue(VCtr(tag, arg)) ->
+      VCtrValue(VCtr(tag, subst_value_with_implicit_vars(subst, arg)))
+    VLam(impl, name, env, body) ->
+      VLam(impl, name, env, subst_term_with_implicit_vars(subst, body))
     VPi(impl, name, env, in_val, out) ->
-      VPi(impl, name, env, subst_value_with_implicit_vars(subst, in_val), subst_term_with_implicit_vars(subst, out))
-    VCall(name, args) -> VCall(name, list.map(args, subst_value_with_implicit_vars(subst, _)))
-    VFix(name, env, body) -> VFix(name, env, subst_term_with_implicit_vars(subst, body))
-    VRecord(fields) -> VRecord(list.map(fields, fn(kv) { #(kv.0, subst_value_with_implicit_vars(subst, kv.1)) }))
+      VPi(
+        impl,
+        name,
+        env,
+        subst_value_with_implicit_vars(subst, in_val),
+        subst_term_with_implicit_vars(subst, out),
+      )
+    VCall(name, args) ->
+      VCall(name, list.map(args, subst_value_with_implicit_vars(subst, _)))
+    VFix(name, env, body) ->
+      VFix(name, env, subst_term_with_implicit_vars(subst, body))
+    VRecord(fields) ->
+      VRecord(
+        list.map(fields, fn(kv) {
+          #(kv.0, subst_value_with_implicit_vars(subst, kv.1))
+        }),
+      )
     _ -> value
   }
 }
@@ -1875,8 +2362,10 @@ fn subst_elim_with_implicit_vars(subst: List(#(Int, Int)), elim: Elim) -> Elim {
   case elim {
     EDot(name) -> EDot(name)
     EApp(arg) -> EApp(subst_value_with_implicit_vars(subst, arg))
-    EAppImplicit(arg) -> EAppImplicit(subst_value_with_implicit_vars(subst, arg))
-    EMatch(env, motive, cases) -> EMatch(env, subst_value_with_implicit_vars(subst, motive), cases)
+    EAppImplicit(arg) ->
+      EAppImplicit(subst_value_with_implicit_vars(subst, arg))
+    EMatch(env, motive, cases) ->
+      EMatch(env, subst_value_with_implicit_vars(subst, motive), cases)
   }
 }
 
@@ -1899,8 +2388,15 @@ fn subst_term_with_implicit_vars(subst: List(#(Int, Int)), term: Term) -> Term {
         span,
       )
     Pi(impl, name, in_t, out_t, span) ->
-      Pi(impl, name, subst_term_with_implicit_vars(subst, in_t), subst_term_with_implicit_vars(subst, out_t), span)
-    Lam(impl, param, body, span) -> Lam(impl, param, subst_term_with_implicit_vars(subst, body), span)
+      Pi(
+        impl,
+        name,
+        subst_term_with_implicit_vars(subst, in_t),
+        subst_term_with_implicit_vars(subst, out_t),
+        span,
+      )
+    Lam(impl, param, body, span) ->
+      Lam(impl, param, subst_term_with_implicit_vars(subst, body), span)
     Match(arg, motive, cases, span) ->
       Match(
         subst_term_with_implicit_vars(subst, arg),
@@ -1908,20 +2404,43 @@ fn subst_term_with_implicit_vars(subst: List(#(Int, Int)), term: Term) -> Term {
         list.map(cases, subst_case_with_implicit_vars(subst, _)),
         span,
       )
-    Rcd(fields, span) -> Rcd(list.map(fields, fn(kv) { #(kv.0, subst_term_with_implicit_vars(subst, kv.1)) }), span)
-    Ctr(tag, arg, span) -> Ctr(tag, subst_term_with_implicit_vars(subst, arg), span)
-    Dot(arg, name, span) -> Dot(subst_term_with_implicit_vars(subst, arg), name, span)
-    Ann(t, ty, span) -> Ann(subst_term_with_implicit_vars(subst, t), subst_term_with_implicit_vars(subst, ty), span)
-    Call(name, args, span) -> Call(name, list.map(args, subst_term_with_implicit_vars(subst, _)), span)
+    Rcd(fields, span) ->
+      Rcd(
+        list.map(fields, fn(kv) {
+          #(kv.0, subst_term_with_implicit_vars(subst, kv.1))
+        }),
+        span,
+      )
+    Ctr(tag, arg, span) ->
+      Ctr(tag, subst_term_with_implicit_vars(subst, arg), span)
+    Dot(arg, name, span) ->
+      Dot(subst_term_with_implicit_vars(subst, arg), name, span)
+    Ann(t, ty, span) ->
+      Ann(
+        subst_term_with_implicit_vars(subst, t),
+        subst_term_with_implicit_vars(subst, ty),
+        span,
+      )
+    Call(name, args, span) ->
+      Call(name, list.map(args, subst_term_with_implicit_vars(subst, _)), span)
     Comptime(t, span) -> Comptime(subst_term_with_implicit_vars(subst, t), span)
-    Fix(name, body, span) -> Fix(name, subst_term_with_implicit_vars(subst, body), span)
+    Fix(name, body, span) ->
+      Fix(name, subst_term_with_implicit_vars(subst, body), span)
     _ -> term
   }
 }
 
 /// Substitute implicit type variables in a Case.
-fn subst_case_with_implicit_vars(subst: List(#(Int, Int)), case_val: Case) -> Case {
-  Case(case_val.pattern, subst_term_with_implicit_vars(subst, case_val.body), option.map(case_val.guard, subst_term_with_implicit_vars(subst, _)), case_val.span)
+fn subst_case_with_implicit_vars(
+  subst: List(#(Int, Int)),
+  case_val: Case,
+) -> Case {
+  Case(
+    case_val.pattern,
+    subst_term_with_implicit_vars(subst, case_val.body),
+    option.map(case_val.guard, subst_term_with_implicit_vars(subst, _)),
+    case_val.span,
+  )
 }
 
 /// Check if a value contains a specific hole (occurs check).
@@ -1991,8 +2510,10 @@ pub fn unify(
         Error(Nil) -> {
           // Check if we're unifying the hole with itself (already equal)
           case v2 {
-            VNeut(HHole(id2), []) if id == id2 -> Ok(s)  // Same hole, already unified
-            VNeut(HStepLimit, _) -> Ok(s)  // Step limit - don't unify further
+            VNeut(HHole(id2), []) if id == id2 -> Ok(s)
+            // Same hole, already unified
+            VNeut(HStepLimit, _) -> Ok(s)
+            // Step limit - don't unify further
             _ -> {
               // Check if the hole occurs in v2
               // (we already handled the case where v2 is the same hole above)
@@ -2005,7 +2526,8 @@ pub fn unify(
         }
       }
     _, VNeut(HHole(_), []) -> unify(s, v2, v1, s2, s1)
-    VNeut(HStepLimit, _), VNeut(HStepLimit, _) -> Ok(s)  // Both step limits are equal
+    VNeut(HStepLimit, _), VNeut(HStepLimit, _) -> Ok(s)
+    // Both step limits are equal
     VNeut(h1, spine1), VNeut(h2, spine2) if h1 == h2 ->
       unify_elim_list(s, spine1, spine2, s1, s2)
     VRcd(fields1), VRcd(fields2) -> unify_fields(s, fields1, fields2, s1, s2)
@@ -2212,74 +2734,25 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
           let #(params, ctr_arg_ty, ctr_ret_ty, s) = check_ctr_def(s, ctr)
           let #(_, arg_ty, s) = infer(s, arg)
           let #(_, s) =
-            check_type(s, arg_ty, ctr_arg_ty, get_span(arg), get_span(ctr.arg_ty))
-          // Solve type parameters based on the argument type for constructors with VTyp(0) return type
-          let s = case ctr_ret_ty {
-            VTyp(0) -> {
-              // For constructors like Some, None, Ok, Err, the type parameters can be inferred from the argument
-              case tag {
-                "Some" | "None" -> {
-                  // Option(a): a is the same as the argument type
-                  case params {
-                    [hole_id] -> State(..s, sub: [#(hole_id, arg_ty), ..s.sub])
-                    _ -> s
-                  }
-                }
-                "Ok" -> {
-                  // Result(a, e): a is the same as the argument type
-                  case params {
-                    [hole_id_a, _hole_id_e] -> State(..s, sub: [#(hole_id_a, arg_ty), ..s.sub])
-                    _ -> s
-                  }
-                }
-                "Err" -> {
-                  // Result(a, e): e is the same as the argument type
-                  case params {
-                    [_hole_id_a, hole_id_e] -> State(..s, sub: [#(hole_id_e, arg_ty), ..s.sub])
-                    _ -> s
-                  }
-                }
-                _ -> s
-              }
-            }
-            _ -> s
-          }
-          let #(params, s) = ctr_solve_params(s, ctr, params, tag, get_span(term))
+            check_type(
+              s,
+              arg_ty,
+              ctr_arg_ty,
+              get_span(arg),
+              get_span(ctr.arg_ty),
+            )
+          let #(params, s) =
+            ctr_solve_params(s, ctr, params, tag, get_span(term))
           let env = list.append(params, get_env(s))
-          // Evaluate the constructor argument
           let arg_val = eval(s.ffi, env, arg)
-          // If ctr_ret_ty is VTyp(0), construct the return type from the solved params
-          let ret_ty_val = case ctr_ret_ty {
-            VTyp(0) -> {
-              // Construct return type based on constructor name and solved type parameters
-              case tag {
-                "Some" | "None" -> {
-                  // Option(a) - use the first solved type parameter directly
-                  case params {
-                    [a_val] -> VCtrValue(VCtr("Option", a_val))
-                    _ -> VTyp(0)
-                  }
-                }
-                "Ok" | "Err" -> {
-                  // Result(a, e) - use the solved type parameters
-                  case params {
-                    [a_val, e_val] -> VCtrValue(VCtr("Result", VRcd([#("a", a_val), #("e", e_val)])))
-                    [a_val] -> VCtrValue(VCtr("Result", a_val))  // Fallback for single param
-                    _ -> VTyp(0)
-                  }
-                }
-                _ -> VTyp(0)
-              }
-            }
-            _ -> eval(s.ffi, env, ctr.ret_ty)
-          }
+          let ret_ty_val = eval(s.ffi, env, ctr.ret_ty)
           #(VCtrValue(VCtr(tag, arg_val)), ret_ty_val, s)
         }
       }
     Unit(_) -> #(VUnit, VTyp(0), s)
     Dot(arg, name, _) -> {
       let #(arg_val, arg_ty, s) = infer(s, arg)
-      let val = do_dot(s.ffi, arg_val, name, 0, 100000)
+      let val = do_dot(s.ffi, arg_val, name, 0, 100_000)
       case arg_ty {
         VRcd(fields) ->
           case list.key_find(fields, name) {
@@ -2325,17 +2798,21 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let all_holes = list.unique(list.append(domain_holes, codomain_holes))
 
       // Filter to only holes created during this lambda's inference
-      let holes_to_generalize = list.filter(all_holes, fn(id) { id >= holes_before })
-      
+      let holes_to_generalize =
+        list.filter(all_holes, fn(id) { id >= holes_before })
+
       // KEY FIX: Always include t1_hole in holes_to_generalize
       // The domain hole represents the parameter's type and should always be
       // generalized to an implicit type variable, even if it doesn't appear
       // in the body type (e.g., constant functions like fn(x) { 42 }).
       let t1_hole_id = case t1_hole {
         VNeut(HHole(id), []) -> id
-        _ -> holes_before  // Should not happen
+        _ -> holes_before
+        // Should not happen
       }
-      let holes_to_generalize = case list.contains(holes_to_generalize, t1_hole_id) {
+      let holes_to_generalize = case
+        list.contains(holes_to_generalize, t1_hole_id)
+      {
         True -> holes_to_generalize
         False -> [t1_hole_id, ..holes_to_generalize]
       }
@@ -2343,18 +2820,39 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       // KEY FIX: Generalize BEFORE shifting
       // This ensures holes from outer contexts are properly substituted
       let #(generalized_implicit, generalized_t1, generalized_t2) =
-        generalize_holes(holes_to_generalize, implicit, t1_hole, body_ty, s, s.ffi, list.length(env), span)
+        generalize_holes(
+          holes_to_generalize,
+          implicit,
+          t1_hole,
+          body_ty,
+          s,
+          s.ffi,
+          list.length(env),
+          span,
+        )
 
       // NOW shift the generalized codomain for the outer context
       // generalized_t2 is a Term, so use shift_hvar_in_term
-      let num_new_implicit = list.length(generalized_implicit) - list.length(implicit)
-      let generalized_t2_shifted = shift_hvar_in_term(generalized_t2, num_new_implicit)
+      let num_new_implicit =
+        list.length(generalized_implicit) - list.length(implicit)
+      let generalized_t2_shifted =
+        shift_hvar_in_term(generalized_t2, num_new_implicit)
 
       // Quote the body with the generalized type
-      let body_quoted = quote(s.ffi, list.length(env), body_val, span)
+      let body_quoted = quote(s.ffi, list.length(env), body_val, get_span(body))
 
       // Return the lambda value and its generalized type (with shifted codomain)
-      #(VLam(implicit, name, env, body_quoted), VPi(generalized_implicit, name, env, generalized_t1, generalized_t2_shifted), s)
+      #(
+        VLam(implicit, name, env, body_quoted),
+        VPi(
+          generalized_implicit,
+          name,
+          env,
+          generalized_t1,
+          generalized_t2_shifted,
+        ),
+        s,
+      )
     }
     Pi(implicit, name, in_term, out_term, _) -> {
       let env = get_env(s)
@@ -2363,8 +2861,10 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       let #(_, _, s) = infer(s, out_term)
       #(VPi(implicit, name, env, in_val, out_term), VTyp(0), s)
     }
-    App(fun, implicit, arg, _) -> infer_app(s, fun, implicit, arg, get_span(term))
-    Match(arg, motive, cases, _) -> infer_match(s, arg, motive, cases, get_span(term))
+    App(fun, implicit, arg, _) ->
+      infer_app(s, fun, implicit, arg, get_span(term))
+    Match(arg, motive, cases, _) ->
+      infer_match(s, arg, motive, cases, get_span(term))
     Call(name, args, _) -> {
       // Look up built-in in host registry
       case list.key_find(s.ffi, name) {
@@ -2416,7 +2916,7 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       // Fixpoint: fix f -> body
       // The fixpoint allows f to be referenced in body with the same type as the fixpoint
       let env = get_env(s)
-      
+
       // KEY FIX: Check if body is an annotation. If so, use the annotated type directly
       // instead of creating a hole. This avoids InfiniteType errors for annotated functions.
       case body {
@@ -2471,17 +2971,19 @@ fn infer_app(
     VPi(implicit_params, _, pi_env, domain, codomain) -> {
       // Instantiate implicit type variables with fresh holes
       let #(implicit_subst, s) = instantiate_implicit_params(implicit_params, s)
-      
+
       // Apply substitution to domain and codomain
-      let domain_instantiated = subst_value_with_implicit_vars(implicit_subst, domain)
-      let codomain_instantiated = subst_term_with_implicit_vars(implicit_subst, codomain)
-      
+      let domain_instantiated =
+        subst_value_with_implicit_vars(implicit_subst, domain)
+      let codomain_instantiated =
+        subst_term_with_implicit_vars(implicit_subst, codomain)
+
       // Check argument against instantiated domain
       let #(arg_val, s) = check(s, arg, domain_instantiated, get_span(fun))
       // Evaluate codomain with argument in environment
       let out_val = eval(s.ffi, [arg_val, ..pi_env], codomain_instantiated)
       let out_val_forced = force(s.ffi, s.sub, out_val)
-      #(do_app(s.ffi, fun_val, arg_val, 0, 100000), out_val_forced, s)
+      #(do_app(s.ffi, fun_val, arg_val, 0, 100_000), out_val_forced, s)
     }
     VNeut(HHole(hole_id), []) -> {
       // Hole expansion: ?1 applied to arg means ?1 = (?2 -> ?3)
@@ -2514,7 +3016,7 @@ fn infer_app(
           let #(arg_val, s) = check(s, arg, arg_ty_hole_val, get_span(arg))
           // Result type is the codomain hole (as a value)
           let out_val = result_ty_hole_val
-          #(do_app(s.ffi, fun_val, arg_val, 0, 100000), out_val, s)
+          #(do_app(s.ffi, fun_val, arg_val, 0, 100_000), out_val, s)
         }
         Error(_) -> #(VErr, VErr, with_err(s, NotAFunction(fun, fun_ty)))
       }
@@ -2558,7 +3060,7 @@ fn infer_match(
   }
 
   // Apply the motive to the scrutinee to get the result type
-  let result_ty = do_app(s.ffi, motive_val, arg_val, 0, 100000)
+  let result_ty = do_app(s.ffi, motive_val, arg_val, 0, 100_000)
 
   case cases {
     [] -> {
@@ -2583,7 +3085,13 @@ fn infer_match(
 
           // Step 1: Bind pattern variables
           let #(first_pat_val, s) =
-            bind_pattern(s, first_case.pattern, forced_arg_ty, get_span(first_case.body), get_span(arg))
+            bind_pattern(
+              s,
+              first_case.pattern,
+              forced_arg_ty,
+              get_span(first_case.body),
+              get_span(arg),
+            )
 
           // Step 2: Check guard if present
           let s = case first_case.guard {
@@ -2596,12 +3104,13 @@ fn infer_match(
 
           // Step 3: Compute branch type (contains the hole)
           // branch_ty = motive(first_pat_val) = ?R (the hole)
-          let branch_ty = do_app(s.ffi, motive_val, first_pat_val, 0, 100000)
+          let branch_ty = do_app(s.ffi, motive_val, first_pat_val, 0, 100_000)
 
           // Step 4: Check first body against branch_ty
           // This UNIFIES the hole with the body's inferred type.
           // After this, s.sub contains: hole_id ↦ body_type
-          let #(first_body_val, s) = check(s, first_case.body, branch_ty, get_span(first_case.body))
+          let #(first_body_val, s) =
+            check(s, first_case.body, branch_ty, get_span(first_case.body))
 
           // Step 5: Force the result type through substitution to get the solved type.
           // The hole in result_ty is now bound in s.sub, so forcing it gives us the
@@ -2613,7 +3122,13 @@ fn infer_match(
           let s =
             list.fold(rest_cases, s, fn(s, c) {
               let #(pat_val, s) =
-                bind_pattern(s, c.pattern, forced_arg_ty, get_span(c.body), get_span(arg))
+                bind_pattern(
+                  s,
+                  c.pattern,
+                  forced_arg_ty,
+                  get_span(c.body),
+                  get_span(arg),
+                )
               let s = case c.guard {
                 Some(guard_term) -> {
                   let #(_guard_val, _guard_ty, s) = infer(s, guard_term)
@@ -2633,21 +3148,26 @@ fn infer_match(
           // For the runtime match, we still need the motive. Force it to get the
           // solved lambda (with hole in body replaced).
           let solved_motive_val = force(s.ffi, s.sub, motive_val)
-          let match_val = do_match(s.ffi, env, arg_val, solved_motive_val, cases, 0, 100000)
+          let match_val =
+            do_match(s.ffi, env, arg_val, solved_motive_val, cases, 0, 100_000)
 
           // Filter out HoleUnsolved errors for holes that are now solved in the substitution.
           // The error was added prematurely when we first encountered the hole during
           // motive checking, but the hole was solved by unification when checking the
           // first clause body.
-          let s = State(..s, errors: list.filter(s.errors, fn(e) {
-            case e {
-              HoleUnsolved(id, _) -> {
-                // Keep the error only if the hole is still unsolved
-                list.key_find(s.sub, id) == Error(Nil)
-              }
-              _ -> True
-            }
-          }))
+          let s =
+            State(
+              ..s,
+              errors: list.filter(s.errors, fn(e) {
+                case e {
+                  HoleUnsolved(id, _) -> {
+                    // Keep the error only if the hole is still unsolved
+                    list.key_find(s.sub, id) == Error(Nil)
+                  }
+                  _ -> True
+                }
+              }),
+            )
 
           #(match_val, solved_result_ty, s)
         }
@@ -2664,8 +3184,14 @@ fn infer_match(
           let s =
             list.fold(cases, s, fn(s, c) {
               let #(pat_val, s) =
-                bind_pattern(s, c.pattern, forced_arg_ty, get_span(c.body), get_span(arg))
-              let branch_ty = do_app(s.ffi, motive_val, pat_val, 0, 100000)
+                bind_pattern(
+                  s,
+                  c.pattern,
+                  forced_arg_ty,
+                  get_span(c.body),
+                  get_span(arg),
+                )
+              let branch_ty = do_app(s.ffi, motive_val, pat_val, 0, 100_000)
               let s = case c.guard {
                 Some(guard_term) -> {
                   let #(_guard_val, _guard_ty, s) = infer(s, guard_term)
@@ -2682,7 +3208,8 @@ fn infer_match(
           let s = list.fold(exhaustiveness_errors, s, with_err)
 
           // Compute match value
-          let match_val = do_match(s.ffi, env, arg_val, motive_val, cases, 0, 100000)
+          let match_val =
+            do_match(s.ffi, env, arg_val, motive_val, cases, 0, 100_000)
 
           #(match_val, result_ty, s)
         }
@@ -2802,62 +3329,8 @@ pub fn bind_pattern(
         Error(Nil) -> #(VErr, with_err(s, CtrUndefined(tag, pat_span)))
         Ok(ctr) -> {
           let #(params, _, ctr_ret_ty, s) = check_ctr_def(s, ctr)
-          // If ctr_ret_ty is just VTyp(0), the constructor definition doesn't properly
-          // encode its return type. In this case, extract type arguments from ret_ty directly.
-          let s = case ctr_ret_ty {
-            VTyp(0) -> {
-              // Constructor return type not properly specified. Try to extract type
-              // arguments from ret_ty if it's a type application.
-              case ret_ty {
-                VCtrValue(VCtr(_, arg)) -> {
-                  // ret_ty is a constructor application like Option(I32).
-                  // The arg (e.g., I32) should be used to solve the type parameter.
-                  case params {
-                    [hole_id] -> {
-                      // Single type parameter - solve it with the arg
-                      State(..s, sub: [#(hole_id, arg), ..s.sub])
-                    }
-                    _ -> s  // Multiple params - can't infer, leave unsolved
-                  }
-                }
-                VNeut(_, [EApp(arg), ..]) -> {
-                  // ret_ty is a type application like Option(I32) represented as VNeut.
-                  // The arg (e.g., I32) should be used to solve the type parameter.
-                  case params {
-                    [hole_id] -> {
-                      // Single type parameter - solve it with the arg
-                      State(..s, sub: [#(hole_id, arg), ..s.sub])
-                    }
-                    _ -> s  // Multiple params - can't infer, leave unsolved
-                  }
-                }
-                VNeut(HHole(ret_hole_id), _spine) -> {
-                  // ret_ty is an unsolved hole. This happens when the scrutinee type
-                  // wasn't fully inferred (e.g., due to lambda body being checked before
-                  // application). Create a fresh hole for the type parameter and set
-                  // up the constructor type. Unification during body checking will solve it.
-                  case params {
-                    [param_hole_id] -> {
-                      // Single type parameter - create fresh hole for the argument type
-                      let #(arg_hole, s) = new_hole(s)
-                      // Set ret_ty to be Option(arg_hole), which will unify with the body type
-                      // Also unify the param hole with arg_hole so they're solved together
-                      let s = State(..s, sub: [#(ret_hole_id, VCtrValue(VCtr(tag, arg_hole))), ..s.sub])
-                      State(..s, sub: [#(param_hole_id, arg_hole), ..s.sub])
-                    }
-                    _ -> s  // Multiple params - can't infer, leave unsolved
-                  }
-                }
-                _ -> s  // ret_ty not a constructor/type application - leave params unsolved
-              }
-            }
-            _ -> {
-              // Constructor has proper return type - unify as normal
-              let #(_, s) =
-                check_type(s, ctr_ret_ty, ret_ty, get_span(ctr.ret_ty), ret_span)
-              s
-            }
-          }
+          let #(_, s) =
+            check_type(s, ctr_ret_ty, ret_ty, get_span(ctr.ret_ty), ret_span)
           let #(params, s) = ctr_solve_params(s, ctr, params, tag, pat_span)
           let env = list.append(params, get_env(s))
           let ctr_arg_ty = eval(s.ffi, env, ctr.arg_ty)
@@ -2955,12 +3428,12 @@ fn check_ctr_def(s: State, ctr: CtrDef) -> #(List(Int), Value, Value, State) {
       let s = State(..s, ctx: [#(name, #(hole, hole)), ..s.ctx])
       #(params, s)
     })
-  
+
   // Substitute parameter holes into arg_ty and ret_ty
   // For Var(n) that references a parameter, replace with the hole value
   let arg_ty = subst_param_vars(ctr.arg_ty, params, s)
   let ret_ty = subst_param_vars(ctr.ret_ty, params, s)
-  
+
   #(params, arg_ty, ret_ty, s)
 }
 
@@ -3037,9 +3510,15 @@ pub fn force(ffi: FFI, sub: Subst, value: Value) -> Value {
         }
         Error(Nil) -> value
       }
-    VNeut(HStepLimit, spine) -> VNeut(HStepLimit, list.map(spine, fn(elim) { force_elim(ffi, sub, elim) }))
-    VNeut(h, spine) -> VNeut(h, list.map(spine, fn(elim) { force_elim(ffi, sub, elim) }))
-    VLam(_, _, _, _) -> value  // Body is a Term, not a Value
+    VNeut(HStepLimit, spine) ->
+      VNeut(
+        HStepLimit,
+        list.map(spine, fn(elim) { force_elim(ffi, sub, elim) }),
+      )
+    VNeut(h, spine) ->
+      VNeut(h, list.map(spine, fn(elim) { force_elim(ffi, sub, elim) }))
+    VLam(_, _, _, _) -> value
+    // Body is a Term, not a Value
     VPi(implicit1, name1, env1, in_val, out) -> {
       // in_val is Value, out is Term
       VPi(implicit1, name1, env1, force(ffi, sub, in_val), out)
@@ -3053,7 +3532,8 @@ pub fn force(ffi: FFI, sub: Subst, value: Value) -> Value {
     VCall(name, args) -> {
       VCall(name, list.map(args, fn(a) { force(ffi, sub, a) }))
     }
-    VFix(_, _, _) -> value  // Body is a Term, not a Value
+    VFix(_, _, _) -> value
+    // Body is a Term, not a Value
     VRecord(fields) -> {
       VRecord(list.map(fields, fn(kv) { #(kv.0, force(ffi, sub, kv.1)) }))
     }
@@ -3068,7 +3548,8 @@ fn force_elim(ffi: FFI, sub: Subst, elim: Elim) -> Elim {
     EDot(field) -> EDot(field)
     EApp(arg) -> EApp(force(ffi, sub, arg))
     EAppImplicit(arg) -> EAppImplicit(force(ffi, sub, arg))
-    EMatch(env, motive, cases) -> EMatch(env, motive, cases)  // motive is Term
+    EMatch(env, motive, cases) -> EMatch(env, motive, cases)
+    // motive is Term
   }
 }
 
@@ -3076,16 +3557,24 @@ fn force_elim(ffi: FFI, sub: Subst, elim: Elim) -> Elim {
 ///
 /// This is used when forcing metavariables that have pending operations.
 fn apply_spine(ffi: FFI, value: Value, spine: List(Elim)) -> Value {
-  apply_spine_loop(ffi, value, spine, 0, 100000)
+  apply_spine_loop(ffi, value, spine, 0, 100_000)
 }
 
-fn apply_spine_loop(ffi: FFI, value: Value, spine: List(Elim), steps: Int, max_steps: Int) -> Value {
+fn apply_spine_loop(
+  ffi: FFI,
+  value: Value,
+  spine: List(Elim),
+  steps: Int,
+  max_steps: Int,
+) -> Value {
   list.fold(spine, value, fn(value, elim) {
     case elim {
       EDot(field) -> do_dot(ffi, value, field, steps + 1, max_steps)
       EApp(arg) -> do_app(ffi, value, arg, steps + 1, max_steps)
-      EAppImplicit(_) -> value  // Implicit args are erased at runtime
-      EMatch(env, motive, cases) -> do_match(ffi, env, value, motive, cases, steps + 1, max_steps)
+      EAppImplicit(_) -> value
+      // Implicit args are erased at runtime
+      EMatch(env, motive, cases) ->
+        do_match(ffi, env, value, motive, cases, steps + 1, max_steps)
     }
   })
 }
@@ -3231,39 +3720,29 @@ pub fn get_concrete_heads(matrix: PMatrix) -> List(PHead) {
 }
 
 /// Get the type family for a constructor.
-/// For prelude types, use hardcoded mapping. For custom types, use return type.
 fn get_type_family(s: State, tag: String) -> String {
-  case tag {
-    "True" | "False" -> "bool"
-    "Some" | "None" -> "option"
-    "Ok" | "Err" -> "result"
-    "LT" | "EQ" | "GT" -> "ordering"
-    _ -> {
-      // For custom constructors, use the return type structure
-      case list.key_find(s.ctrs, tag) {
-        Ok(ctr) -> {
-          case ctr.ret_ty {
-            Typ(k, _) -> "typ_" <> int.to_string(k)
-            // For App types like App(Var(1), [Var(0)], span), use the function part
-            App(fun, _, _, _) -> {
-              case fun {
-                Var(i, _) -> "app_var_" <> int.to_string(i)
-                _ -> "app"
-              }
-            }
-            // For Ctr types like Ctr("T", Typ(1)), use the tag and arg type
-            Ctr(type_tag, arg, _) -> {
-              case arg {
-                Typ(k, _) -> "ctr_" <> type_tag <> "_" <> int.to_string(k)
-                _ -> "ctr_" <> type_tag
-              }
-            }
-            _ -> "unknown"
+  case list.key_find(s.ctrs, tag) {
+    Ok(ctr) -> {
+      case ctr.ret_ty {
+        Typ(k, _) -> "typ_" <> int.to_string(k)
+        // For App types like App(Var(1), [Var(0)], span), use the function part
+        App(fun, _, _, _) -> {
+          case fun {
+            Var(i, _) -> "app_var_" <> int.to_string(i)
+            _ -> "app"
           }
         }
-        Error(Nil) -> "unknown"
+        // For Ctr types like Ctr("T", Typ(1)), use the tag and arg type
+        Ctr(type_tag, arg, _) -> {
+          case arg {
+            Typ(k, _) -> "ctr_" <> type_tag <> "_" <> int.to_string(k)
+            _ -> "ctr_" <> type_tag
+          }
+        }
+        _ -> "unknown"
       }
     }
+    Error(Nil) -> "unknown"
   }
 }
 
@@ -3290,7 +3769,8 @@ pub fn get_missing_heads(
   concrete_heads: List(PHead),
 ) -> List(PHead) {
   case concrete_heads {
-    [HAny, ..] -> []  // Wildcard already covers everything
+    [HAny, ..] -> []
+    // Wildcard already covers everything
     [HCtr(name), ..] -> {
       let type_family = get_type_family(s, name)
       list.key_find(index, type_family)
@@ -3301,11 +3781,16 @@ pub fn get_missing_heads(
       })
       |> list.filter(fn(h) { !list.contains(concrete_heads, h) })
     }
-    [HLit(_), ..] -> [HAny]  // Literals: wildcard covers remaining values
-    [HLitT(_), ..] -> [HAny]  // Literal types: wildcard covers remaining values
-    [HTyp(_), ..] -> [HAny]  // Types: wildcard covers remaining types
-    [HRcd(_), ..] -> []  // Records are exhaustive
-    [] -> [HAny]  // No heads matched yet: wildcard covers everything
+    [HLit(_), ..] -> [HAny]
+    // Literals: wildcard covers remaining values
+    [HLitT(_), ..] -> [HAny]
+    // Literal types: wildcard covers remaining values
+    [HTyp(_), ..] -> [HAny]
+    // Types: wildcard covers remaining types
+    [HRcd(_), ..] -> []
+    // Records are exhaustive
+    [] -> [HAny]
+    // No heads matched yet: wildcard covers everything
   }
 }
 
@@ -3336,17 +3821,18 @@ pub fn useful(
       case head {
         HAny -> {
           // Vector has wildcard. Check if matrix already has a wildcard.
-          let matrix_has_wildcard = list.any(matrix, fn(row) {
-            case row {
-              [first_pattern, ..] -> {
-                case deconstruct(first_pattern).0 {
-                  HAny -> True
-                  _ -> False
+          let matrix_has_wildcard =
+            list.any(matrix, fn(row) {
+              case row {
+                [first_pattern, ..] -> {
+                  case deconstruct(first_pattern).0 {
+                    HAny -> True
+                    _ -> False
+                  }
                 }
+                [] -> False
               }
-              [] -> False
-            }
-          })
+            })
           case matrix_has_wildcard {
             // Matrix has wildcard, so vector is redundant (no witnesses)
             True -> []
@@ -3355,7 +3841,8 @@ pub fn useful(
               let concrete_heads = get_concrete_heads(matrix)
               let missing_heads = get_missing_heads(s, index, concrete_heads)
               list.flat_map(missing_heads, fn(missing) {
-                let rest_witnesses = useful(s, index, default_matrix(matrix), ps)
+                let rest_witnesses =
+                  useful(s, index, default_matrix(matrix), ps)
                 list.map(rest_witnesses, fn(rest) {
                   let wildcards = list.repeat(PAny, head_arity(missing))
                   [reconstruct(missing, wildcards), ..rest]
@@ -3403,7 +3890,8 @@ pub fn check_exhaustiveness(
   // Guards add runtime conditions that the static checker cannot reason about
   let has_guard = list.any(cases, fn(c) { c.guard != None })
   case has_guard {
-    True -> []  // Skip exhaustiveness checking when guards are present
+    True -> []
+    // Skip exhaustiveness checking when guards are present
     False -> {
       // Check for redundant cases first
       let redundant_errors = check_redundant_cases(s, cases, span)
@@ -3439,7 +3927,11 @@ pub fn check_exhaustiveness(
 }
 
 /// Check for redundant cases in a match expression.
-fn check_redundant_cases(s: State, cases: List(Case), match_span: Span) -> List(Error) {
+fn check_redundant_cases(
+  s: State,
+  cases: List(Case),
+  match_span: Span,
+) -> List(Error) {
   check_redundant_cases_loop(s, cases, [], [], match_span)
 }
 
@@ -3454,12 +3946,19 @@ fn check_redundant_cases_loop(
     [] -> list.reverse(acc)
     [case_, ..rest] -> {
       // Check if this pattern is redundant (already covered by seen patterns)
-      let is_redundant = is_pattern_covered_by_list(s, case_.pattern, seen_patterns)
+      let is_redundant =
+        is_pattern_covered_by_list(s, case_.pattern, seen_patterns)
       let new_acc = case is_redundant {
         True -> [MatchRedundantCase(match_span), ..acc]
         False -> acc
       }
-      check_redundant_cases_loop(s, rest, [case_.pattern, ..seen_patterns], new_acc, match_span)
+      check_redundant_cases_loop(
+        s,
+        rest,
+        [case_.pattern, ..seen_patterns],
+        new_acc,
+        match_span,
+      )
     }
   }
 }
@@ -3479,10 +3978,13 @@ fn is_pattern_covered_by_list(
 /// Check if pattern1 is covered by pattern2 (pattern2 is more general).
 fn is_pattern_covered_by(s: State, pattern1: Pattern, pattern2: Pattern) -> Bool {
   case pattern2 {
-    PAny -> True  // Wildcard covers everything
-    PAs(PAny, _) -> True  // As-pattern with wildcard covers everything
+    PAny -> True
+    // Wildcard covers everything
+    PAs(PAny, _) -> True
+    // As-pattern with wildcard covers everything
     PAs(inner, _) -> is_pattern_covered_by(s, pattern1, inner)
-    _ -> False  // Specific patterns don't cover other patterns
+    _ -> False
+    // Specific patterns don't cover other patterns
   }
 }
 

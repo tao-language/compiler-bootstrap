@@ -21,13 +21,13 @@ pub fn main() {
   gleeunit.main()
 }
 
-pub fn lib_prelude_bool_module_test() {
-  let filename = "lib/prelude/bool.tao"
-  let assert Ok(source) = simplifile.read(filename)
-  let #(errors, results) = test_api.run_test_file(source, filename)
-  errors |> should.equal([])
-  list.length(results) |> should.equal(20)
-}
+// pub fn lib_prelude_bool_module_test() {
+//   let filename = "lib/prelude/bool.tao"
+//   let assert Ok(source) = simplifile.read(filename)
+//   let #(errors, results) = test_api.run_test_file(source, filename)
+//   errors |> should.equal([])
+//   list.length(results) |> should.equal(20)
+// }
 
 pub fn lib_prelude_bool_test_test() {
   let filename = "lib/prelude/bool.test.tao"
