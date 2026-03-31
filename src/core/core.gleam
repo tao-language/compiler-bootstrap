@@ -1327,11 +1327,10 @@ fn quote_loop(ffi: FFI, lvl: Int, value: Value, s: Span, steps: Int) -> Term {
     VPi(implicit, name, env, in_val, out_term) -> {
       // Quote the domain (already evaluated)
       // For HVar in the domain, we need to convert to Var that references implicit params
-      // HVar(i) should become Var(num_implicit - 1 - i) to reference the i-th implicit param
       let num_implicit = list.length(implicit)
       let in_quote = quote_domain_with_implicit(ffi, num_implicit, in_val, s, steps - 1)
-      // Quote the codomain term directly without re-evaluation
-      // Extend env with a fresh neutral for the domain variable (Var(0) in out_term).
+      // Quote the codomain term using the stored env
+      // The env should have been constructed correctly at VPi creation time
       let fresh = VNeut(HVar(lvl + num_implicit), [])
       let out_quote =
         quote_term_in_env(
@@ -1570,6 +1569,22 @@ fn quote_head(lvl: Int, head: Head, s: Span) -> Term {
   }
 }
 
+/// Create a list of fresh neutral terms for implicit parameters.
+/// Each neutral is HVar at successive levels starting from base_lvl.
+fn create_fresh_neuts(base_lvl: Int, n: Int) -> List(Value) {
+  create_fresh_neuts_loop(base_lvl, n, [])
+}
+
+fn create_fresh_neuts_loop(base_lvl: Int, n: Int, acc: List(Value)) -> List(Value) {
+  case n <= 0 {
+    True -> list.reverse(acc)
+    False -> {
+      let fresh = VNeut(HVar(base_lvl + list.length(acc)), [])
+      create_fresh_neuts_loop(base_lvl, n - 1, [fresh, ..acc])
+    }
+  }
+}
+
 /// Quote a term that represents a value in a given environment.
 ///
 /// This is used for quoting lambda/fix bodies without re-evaluation.
@@ -1609,22 +1624,30 @@ fn quote_term_in_env_loop(
     }
 
     Lam(implicit, param, body, span) -> {
-      // Extend environment with a fresh neutral for the parameter
-      let fresh = VNeut(HVar(lvl), [])
+      // Extend environment with fresh neutrals for implicit params first, then explicit param
+      // Implicit params are binders just like the explicit param - they all go in the context
+      let impl_freshs = create_fresh_neuts(lvl, list.length(implicit))
+      let explicit_fresh = VNeut(HVar(lvl + list.length(implicit)), [])
+      let extended_env = list.append(impl_freshs, [explicit_fresh, ..env])
+      let new_lvl = lvl + list.length(implicit) + 1
       let body_quote =
-        quote_term_in_env(ffi, lvl + 1, body, [fresh, ..env], span, steps - 1)
+        quote_term_in_env(ffi, new_lvl, body, extended_env, span, steps - 1)
       Lam(implicit, param, body_quote, span)
     }
 
     Pi(implicit, name, in_term, out_term, span) -> {
       let in_quote = quote_term_in_env(ffi, lvl, in_term, env, span, steps - 1)
-      let fresh = VNeut(HVar(lvl), [])
+      // Extend environment with fresh neutrals for implicit params first, then explicit param
+      let impl_freshs = create_fresh_neuts(lvl, list.length(implicit))
+      let explicit_fresh = VNeut(HVar(lvl + list.length(implicit)), [])
+      let extended_env = list.append(impl_freshs, [explicit_fresh, ..env])
+      let new_lvl = lvl + list.length(implicit) + 1
       let out_quote =
         quote_term_in_env(
           ffi,
-          lvl + 1,
+          new_lvl,
           out_term,
-          [fresh, ..env],
+          extended_env,
           span,
           steps - 1,
         )
@@ -1998,6 +2021,51 @@ fn collect_names_from_fields_acc(
 ///
 /// IMPORTANT: The domain is ALWAYS substituted, even if there are no holes to
 /// generalize. This ensures the domain hole is replaced with an HVar.
+/// Create context bindings for implicit parameters as hole placeholders.
+/// Returns list of bindings and updated state with new hole IDs.
+/// Each binding maps a name to a (Value, Type) pair where both are HHole.
+pub fn create_implicit_bindings(
+  implicit: List(String),
+  s: State,
+) -> #(List(#(String, #(Value, Type))), State) {
+  create_implicit_bindings_loop(implicit, s, [])
+}
+
+fn create_implicit_bindings_loop(
+  implicit: List(String),
+  s: State,
+  acc: List(#(String, #(Value, Type))),
+) -> #(List(#(String, #(Value, Type))), State) {
+  case implicit {
+    [] -> #(list.reverse(acc), s)
+    [name, ..rest] -> {
+      let #(hole_val, new_s) = new_hole(s)
+      let binding = #(name, #(hole_val, hole_val))
+      create_implicit_bindings_loop(rest, new_s, [binding, ..acc])
+    }
+  }
+}
+
+/// Create bindings for implicit params as HVar values (for use in VPi env after generalization).
+fn create_implicit_hvar_bindings(implicit: List(String)) -> List(#(String, #(Value, Type))) {
+  create_implicit_hvar_bindings_loop(implicit, 0, [])
+}
+
+fn create_implicit_hvar_bindings_loop(
+  implicit: List(String),
+  idx: Int,
+  acc: List(#(String, #(Value, Type))),
+) -> List(#(String, #(Value, Type))) {
+  case implicit {
+    [] -> list.reverse(acc)
+    [name, ..rest] -> {
+      let hvar_val = VNeut(HVar(idx), [])
+      let binding = #(name, #(hvar_val, hvar_val))
+      create_implicit_hvar_bindings_loop(rest, idx + 1, [binding, ..acc])
+    }
+  }
+}
+
 fn generalize_holes(
   holes: List(Int),
   existing_implicit: List(String),
@@ -2886,43 +2954,50 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
     Lam(implicit, param, body, span) -> {
       // Lambda type inference with generalization for holes.
       // 
+      // KEY FIX: Add implicit param placeholders to context BEFORE inferring body.
+      // This ensures Var/HVar indices in nested lambdas reference correct positions.
+      //
       // Unified approach: eval(param.1) handles all cases:
       // - Hole(_, _) -> VNeut(HHole(id), []) (type to be inferred)
       // - LitT, Typ, etc. -> explicit type value
       // - Complex types with holes -> VCtr/VRcd with embedded holes
-      //
-      // Generalization only happens when holes are present in domain or codomain.
       let #(name, _) = param
       let env = get_env(s)
       let holes_before = s.hole
       
-      // Step 1: Evaluate the type annotation
-      // - Hole(_, _) means "infer this type" - create a fresh hole
-      // - Explicit types are evaluated to their values
+      // Step 1: Create implicit param placeholders FIRST
+      // These are hole bindings that will be generalized if used in the body
+      let #(implicit_bindings, s) = create_implicit_bindings(implicit, s)
+      let implicit_hole_ids = 
+        list.range(holes_before, holes_before + list.length(implicit) - 1)
+      let s = State(..s, ctx: list.append(implicit_bindings, s.ctx))
+      
+      // Step 2: Evaluate the type annotation for explicit param
       let #(domain_val, s) = case param.1 {
         Hole(_, _) -> new_hole(s)
         _ -> #(eval(s.ffi, get_env(s), param.1), s)
       }
       let #(_fresh, s) = def_var(s, name, domain_val)
       
-      // Step 2: Infer the body
+      // Step 3: Infer the body (now sees implicit params in context)
       let #(body_val, body_ty, s) = infer(s, body)
 
-      // Step 3: Collect free holes from both domain and codomain
+      // Step 4: Collect free holes from domain and codomain
       let domain_holes = free_holes_in_value(s.sub, domain_val)
       let codomain_holes = free_holes_in_value(s.sub, body_ty)
       let all_holes = list.unique(list.append(domain_holes, codomain_holes))
 
-      // Filter to only holes created during this lambda's inference
+      // Filter to only holes from body inference (exclude implicit param placeholders)
+      let body_holes_start = holes_before + list.length(implicit)
       let holes_to_generalize =
-        list.filter(all_holes, fn(id) { id >= holes_before })
+        list.filter(all_holes, fn(id) { id >= body_holes_start })
 
-      // Step 4: Conditional generalization based on whether holes exist
+      // Step 5: Conditional generalization based on whether holes exist
       let has_holes = list.length(holes_to_generalize) > 0
       let #(final_implicit, final_t1, final_t2_term) = case has_holes {
         True -> {
-          // Quote codomain at level + 1 to account for the lambda's parameter binder
-          let quote_lvl = list.length(env) + 1
+          // Quote codomain at correct level accounting for implicit + explicit binders
+          let quote_lvl = list.length(env) + list.length(implicit) + 1
           generalize_holes(
             holes_to_generalize,
             implicit,
@@ -2937,63 +3012,43 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
         False -> #(
           implicit,
           domain_val,
-          quote(s.ffi, list.length(env), body_ty, span),
+          quote(s.ffi, list.length(env) + list.length(implicit), body_ty, span),
         )
       }
 
-      // Step 5: Calculate number of new implicit parameters
+      // Step 6: Calculate number of new implicit parameters
       let num_new_implicit = list.length(final_implicit) - list.length(implicit)
 
-      // Step 6: Create value bindings for new implicit parameters
-      let ext_s = case num_new_implicit > 0 {
-        True -> {
-          // Create hole bindings for each new implicit parameter
-          // These go BEFORE the explicit parameter in the context
-          let #(bindings, new_s) = list.fold(
-            holes_to_generalize,
-            #([], s),
-            fn(acc, hole_id) {
-              let #(acc_bindings, acc_s) = acc
-              let hole_val = VNeut(HHole(hole_id), [])
-              // Generate name like "_0", "_1", etc.
-              let idx = list.length(acc_bindings)
-              let binding = #("_" <> int.to_string(idx), #(hole_val, hole_val))
-              #([binding, ..acc_bindings], acc_s)
-            },
-          )
-          // Prepend new bindings to context (reverse to maintain order)
-          State(..new_s, ctx: list.append(list.reverse(bindings), new_s.ctx))
-        }
-        False -> s
-      }
+      // Step 7: Use already-generalized body value and type
+      // Don't re-evaluate - that would create new holes instead of using generalized ones
+      let final_body_val = body_val
+      let final_body_ty = body_ty
+      let final_s = s
 
-      // Step 7: Shift body term and re-evaluate if implicit params were added
-      let #(final_body_val, final_body_ty, final_s) = case num_new_implicit > 0 {
-        True -> {
-          // Shift body term by number of new implicit parameters
-          let shifted_body = shift_term(body, num_new_implicit)
-          // Re-evaluate in extended context
-          infer(ext_s, shifted_body)
-        }
-        False -> #(body_val, body_ty, s)
-      }
-      let s = case num_new_implicit > 0 { True -> final_s False -> s }
-
-      // Step 8: Quote the body at the correct level
-      // Add 1 for the lambda's own binder (the parameter)
-      let quote_lvl = list.length(env) + num_new_implicit + 1
+      // Step 9: Quote the body at the correct level
+      // Account for implicit params + explicit param binders
+      let quote_lvl = list.length(env) + list.length(implicit) + num_new_implicit + 1
       let body_quoted = quote(s.ffi, quote_lvl, final_body_val, get_span(body))
 
-      // Step 9: Shift the codomain term for the outer context
+      // Step 10: Shift the codomain term for the outer context
       let final_t2_shifted = shift_hvar_in_term(final_t2_term, num_new_implicit)
 
       // Return the lambda value and its type (with shifted codomain)
+      // KEY FIX: Construct VPi env from implicit params + forced outer scope
+      // Force original env values through substitution to get solved holes
+      let implicit_values = list.map(
+        list.range(0, list.length(final_implicit) - 1),
+        fn(idx) { VNeut(HVar(idx), []) },
+      )
+      // Force outer scope values through substitution (solves holes)
+      let forced_outer = list.map(env, fn(v) { force(s.ffi, s.sub, v) })
+      let vpi_env = list.append(implicit_values, forced_outer)
       #(
         VLam(final_implicit, name, env, body_quoted),
         VPi(
           final_implicit,
           name,
-          env,
+          vpi_env,
           final_t1,
           final_t2_shifted,
         ),
