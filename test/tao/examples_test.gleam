@@ -93,14 +93,6 @@ pub fn programs_basics_test() {
   |> should.equal([])
 }
 
-// /// Test all examples in programs/02-functions/ directory
-// pub fn programs_functions_test() {
-//   "examples/tao/programs/02-functions"
-//   |> discover_examples(ShouldSucceed, "programs/02-functions")
-//   |> run_examples
-//   |> should.equal([])
-// }
-
 /// Test all examples in programs/03-pattern-matching/ directory
 pub fn programs_pattern_matching_test() {
   "examples/tao/programs/03-pattern-matching"
@@ -116,14 +108,6 @@ pub fn programs_test_run_test() {
   |> run_examples
   |> should.equal([])
 }
-
-// /// Test all examples in programs/04-recursion/ directory
-// pub fn programs_recursion_test() {
-//   "examples/tao/programs/04-recursion"
-//   |> discover_examples(ShouldSucceed, "programs/04-recursion")
-//   |> run_examples
-//   |> should.equal([])
-// }
 
 /// Test all examples in programs/05-control-flow/ directory
 pub fn programs_control_flow_test() {
@@ -141,42 +125,7 @@ pub fn programs_modules_test() {
   |> should.equal([])
 }
 
-// TODO: Re-enable error tests when error reporting is implemented
-// /// Test all examples in errors/syntax_errors/ directory
-// pub fn errors_syntax_test() {
-//   "examples/tao/errors/syntax_errors"
-//   |> discover_examples(ShouldFail, "errors/syntax_errors")
-//   |> run_examples
-//   |> should.equal([])
-// }
-
-// TODO: Re-enable error tests when type checking is fully implemented
-// /// Test all examples in errors/type_errors/ directory
-// pub fn errors_type_test() {
-//   "examples/tao/errors/type_errors"
-//   |> discover_examples(ShouldFail, "errors/type_errors")
-//   |> run_examples
-//   |> should.equal([])
-// }
-
-// TODO: Re-enable error tests when import resolution is fully implemented
-// /// Test all examples in errors/import_errors/ directory
-// pub fn errors_import_test() {
-//   "examples/tao/errors/import_errors"
-//   |> discover_examples(ShouldFail, "errors/import_errors")
-//   |> run_examples
-//   |> should.equal([])
-// }
-
-// TODO: Re-enable error tests when exhaustiveness checking is implemented
-// /// Test all examples in errors/exhaustiveness/ directory
-// pub fn errors_exhaustiveness_test() {
-//   "examples/tao/errors/exhaustiveness"
-//   |> discover_examples(ShouldFail, "errors/exhaustiveness")
-//   |> run_examples
-//   |> should.equal([])
-// }
-
+// Note: Error tests (syntax, type, import, exhaustiveness) are pending feature implementation
 // ============================================================================
 // EXAMPLE DISCOVERY
 // ============================================================================
