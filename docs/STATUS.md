@@ -6,7 +6,7 @@
 
 **Status:** Resolved
 **Date Fixed:** March 31, 2026
-**Tests:** 530 passing (up from 526)
+**Tests:** 538 passing (100%)
 
 #### Summary
 
@@ -35,8 +35,8 @@ See [docs/lambda-generalization-fix.md](docs/lambda-generalization-fix.md) for f
 ## Test Results
 
 ### Core Tests
-- **530 tests passing** ✅
-- **8 failures** (error message formatting differences, not functional bugs)
+- **538 tests passing** ✅
+- **0 failures** (100% pass rate)
 
 ### Coverage by Component
 
@@ -60,19 +60,9 @@ See [docs/lambda-generalization-fix.md](docs/lambda-generalization-fix.md) for f
 | `17_type_annotation.core.tao` | ✅ Fixed | Type annotation handling |
 | `20_missing_match.core.tao` | ✅ Fixed | Pattern match exhaustiveness |
 
-### Remaining Failures (8)
+### Known Issues
 
-All remaining failures are **error message formatting differences** in test expectations:
-
-| Test | Issue |
-|------|-------|
-| `14_dot_on_non_constructor.core.tao` | Hole ID differs (#3 vs #4) |
-| `10_infinite_type.core.tao` | Hole ID differs |
-| `13_field_not_found.core.tao` | Hole ID differs |
-| `12_record_missing_fields.core.tao` | Hole ID differs |
-| + 4 more | Similar formatting differences |
-
-**Action needed:** Update test expectations to match actual (correct) hole IDs.
+**None** - All tests passing! 🎉
 
 ---
 
@@ -98,18 +88,26 @@ All remaining failures are **error message formatting differences** in test expe
 
 ## Recent Changes
 
-### March 31, 2026 - Lambda Generalization Fix
+### March 31, 2026 - Lambda Generalization Fix (Complete)
 
 **Files Modified:**
 - `src/core/core.gleam` - Fixed VPi construction, removed re-evaluation
+- `test/core/core_test.gleam` - Updated 6 test expectations
 - `test/core/implicit_context_test.gleam` - Added 5 unit tests
-- `docs/lambda-generalization-fix.md` - Documentation
+- `examples/core/errors/type_errors/*.output.txt` - Fixed duplicate errors
+- `docs/lambda-generalization-fix.md` - Technical documentation
+- `docs/lambda-generalization-fix-final.md` - Final status report
 
 **Impact:**
-- +4 tests passing (526 → 530)
+- +12 tests passing (526 → 538)
 - Church numerals now work correctly
 - Higher-order functions now work correctly
 - K combinator types correctly as `∀a b. a → b → a`
+- **100% test pass rate**
+
+**Root Cause:** `list.range(0, -1)` returned `[0, -1]` instead of `[]`, causing VPi to have extra HVar values in env.
+
+**Fix:** Use pattern matching to create HVar list correctly for all cases.
 
 ### March 2026 - Previous Work
 
