@@ -3036,13 +3036,14 @@ pub fn infer(s: State, term: Term) -> #(Value, Type, State) {
       // Return the lambda value and its type (with shifted codomain)
       // KEY FIX: Construct VPi env from implicit params + forced outer scope
       // Force original env values through substitution to get solved holes
-      let implicit_values = list.map(
-        list.range(0, list.length(final_implicit) - 1),
-        fn(idx) { VNeut(HVar(idx), []) },
-      )
-      // Force outer scope values through substitution (solves holes)
-      let forced_outer = list.map(env, fn(v) { force(s.ffi, s.sub, v) })
-      let vpi_env = list.append(implicit_values, forced_outer)
+      // VPi env only includes implicit params as HVar values
+      // The codomain term uses De Bruijn indices relative to VPi binders
+      let vpi_env = case final_implicit {
+        [] -> []
+        [_] -> [VNeut(HVar(0), [])]
+        [_, _] -> [VNeut(HVar(0), []), VNeut(HVar(1), [])]
+        _ -> list.index_map(final_implicit, fn(_, idx) { VNeut(HVar(idx), []) })
+      }
       #(
         VLam(final_implicit, name, env, body_quoted),
         VPi(
