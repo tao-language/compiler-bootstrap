@@ -10,8 +10,8 @@
 /// gleam run --help                         # Show help
 /// ```
 import argv
-import core/ast.{type Term, Err as CoreErr}
-import core/state.{type Error as TypeError, type State, initial_state}
+import core/ast as ast
+import core/state.{type Error as TypeError, State, type State, initial_state, initial_ffis}
 import core/infer.{infer}
 import core/eval.{eval}
 import core/quote.{quote}
@@ -21,7 +21,7 @@ import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var 
 import tao/desugar.{desugar_module}
 import tao/global_context.{new_context, with_prelude, set_current_module}
 import tao/compiler.{compile_files, compile_single_file, type CompileResult, type CompileErrorType, ParseError as CompilerParseError, ImportError as CompilerImportError, CircularImport as CompilerCircularImport, ModuleNotFound as CompilerModuleNotFound}
-import tao/ast.{type Stmt as TaoStmt, StmtExpr as TaoStmtExpr, StmtLet as TaoStmtLet, Module as TaoModule, StmtFn as TaoStmtFn, type Param as TaoAstParam, Param as TaoAstParamConstructor, type Expr as TaoAstExpr, Call as TaoAstCall, Var as TaoAstVar, Block as TaoAstAstBlock, BlockStmtExpr as TaoAstBlockStmtExpr, TVar}
+import tao/ast as tao_ast
 import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType, type Span, Span}
 import tao/test_parser.{parse_tests, type Test}
 import tao/test_filter.{filter_tests, file_base_name}
@@ -421,7 +421,7 @@ fn check_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
       }
 
       // Run type checker
-      let #(_type_result, _type_annotation, final_state) = infer(initial_state, parse_result.ast)
+      let #(_type_result, _type_annotation, final_state) = infer(initial_state(), parse_result.ast)
 
       case final_state.errors {
         [_err, ..] -> {
@@ -498,7 +498,7 @@ fn check_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 
       // Run type checker on Core term
       // Use ctrs from desugaring for exhaustiveness checking
-      let initial_state_with_ctrs = core.initial_state |> update_state_ctrs(dc.ctrs)
+      let initial_state_with_ctrs = initial_state() |> update_state_ctrs(dc.ctrs)
       let #(_type_result, _type_annotation, final_state) = infer(initial_state_with_ctrs, term)
 
       case final_state.errors {
@@ -594,7 +594,7 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     False -> Nil
   }
 
-  let #(_type_result, _type_annotation, type_state) = infer(initial_state, parse_result.ast)
+  let #(_type_result, _type_annotation, type_state) = infer(initial_state(), parse_result.ast)
   let type_errors = type_state.errors
 
   // Report type errors
@@ -624,10 +624,10 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   }
 
   let env = []
-  let ffi = initial_state.ffi
+  let ffi = initial_ffis()
   let value = eval(ffi, env, parse_result.ast)
   // Force the value with the substitution from type checking to solve any holes
-  let forced_value = force(ffi, type_state.sub, value)
+  let forced_value = force(ffi, type_state.subst, value)
 
   // Quote back to normal form
   let span = Span("", 0, 0, 0, 0)
@@ -693,7 +693,7 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   }
 
   // Convert parsed expressions to Module
-  let module = TaoModule(
+  let module = tao_ast.Module(
     path: file.path,
     body: exprs_to_stmts([parse_result.ast]),
     span: get_expr_span(parse_result.ast),
@@ -716,7 +716,7 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     False -> Nil
   }
 
-  let #(_type_result, _type_annotation, type_state) = infer(initial_state, term)
+  let #(_type_result, _type_annotation, type_state) = infer(initial_state(), term)
   let type_errors = type_state.errors
 
   // Report type errors
@@ -746,10 +746,10 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   }
 
   let env = []
-  let ffi = initial_state.ffi
+  let ffi = initial_ffis()
   let value = eval(ffi, env, term)
   // Force the value with the substitution from type checking to solve any holes
-  let forced_value = force(ffi, type_state.sub, value)
+  let forced_value = force(ffi, type_state.subst, value)
 
   // Quote back to normal form
   let span = Span("", 0, 0, 0, 0)
@@ -851,24 +851,24 @@ fn format_file_error(err: simplifile.FileError) -> String {
 // ============================================================================
 
 /// Convert parsed expressions to statements.
-fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(TaoStmt) {
+fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(tao_ast.Stmt) {
   list.flat_map(exprs, fn(expr) {
     case expr {
       TaoLet(name, mutable, _type_annotation, value, span) -> {
         // Convert let expression to StmtLet
         // Note: Type annotations are not yet parsed, so we ignore them for now
         let ast_value = expr_to_ast(value)
-        [TaoStmtLet(name, mutable, None, ast_value, span)]
+        [tao_ast.StmtLet(name, mutable, None, ast_value, span)]
       }
       TaoSimpleFn(name, params, return_type, body, span) -> {
         // Function definitions become StmtFn
         let ast_params = params_to_ast_params(params, span)
         let ast_body = expr_to_ast(body)
         let ast_return_type = case return_type {
-          Some(t) -> Some(TVar(t))
+          Some(t) -> Some(tao_ast.TVar(t))
           None -> None
         }
-        [TaoStmtFn(name, [], ast_params, ast_return_type, ast_body, span)]
+        [tao_ast.StmtFn(name, [], ast_params, ast_return_type, ast_body, span)]
       }
       TaoBlockExpr(stmts, _span) -> {
         // Blocks contain statements - convert each statement
@@ -876,21 +876,21 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(TaoStmt) {
           case stmt_expr {
             TaoLet(name, mutable, _type_annotation, value, span) -> {
               let ast_value = expr_to_ast(value)
-              [TaoStmtLet(name, mutable, None, ast_value, span)]
+              [tao_ast.StmtLet(name, mutable, None, ast_value, span)]
             }
             TaoSimpleFn(name, params, return_type, body, span) -> {
               // Function definitions become StmtFn
               let ast_params = params_to_ast_params(params, span)
               let ast_body = expr_to_ast(body)
               let ast_return_type = case return_type {
-                Some(t) -> Some(TVar(t))
+                Some(t) -> Some(tao_ast.TVar(t))
                 None -> None
               }
-              [TaoStmtFn(name, [], ast_params, ast_return_type, ast_body, span)]
+              [tao_ast.StmtFn(name, [], ast_params, ast_return_type, ast_body, span)]
             }
             _ -> {
               let ast_expr = expr_to_ast(stmt_expr)
-              [TaoStmtExpr(ast_expr, get_expr_span_from_syntax(stmt_expr))]
+              [tao_ast.StmtExpr(ast_expr, get_expr_span_from_syntax(stmt_expr))]
             }
           }
         })
@@ -898,25 +898,25 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(TaoStmt) {
       TaoIf(_, _, _, _) -> {
         // If expressions become StmtExpr
         let ast_expr = expr_to_ast(expr)
-        [TaoStmtExpr(ast_expr, get_expr_span_from_syntax(expr))]
+        [tao_ast.StmtExpr(ast_expr, get_expr_span_from_syntax(expr))]
       }
       _ -> {
         // Other expressions become StmtExpr
         let ast_expr = expr_to_ast(expr)
-        [TaoStmtExpr(ast_expr, get_expr_span_from_syntax(expr))]
+        [tao_ast.StmtExpr(ast_expr, get_expr_span_from_syntax(expr))]
       }
     }
   })
 }
 
-fn params_to_ast_params(params: List(#(String, option.Option(String))), span: Span) -> List(TaoAstParam) {
+fn params_to_ast_params(params: List(#(String, option.Option(String))), span: Span) -> List(tao_ast.Param) {
   list.map(params, fn(param) {
     let #(name, type_opt) = param
     let type_ann = case type_opt {
-      Some(t) -> Some(TVar(t))
+      Some(t) -> Some(tao_ast.TVar(t))
       None -> None
     }
-    TaoAstParamConstructor(name, type_ann, span)
+    tao_ast.Param(name, type_ann, span)
   })
 }
 
@@ -950,7 +950,7 @@ fn get_expr_span_from_syntax(expr: TaoExpr) -> Span {
   }
 }
 
-fn debug_term(term: Term) -> String {
+fn debug_term(term: ast.Term) -> String {
   // Simple debug representation
   // In a full implementation, this would pretty-print the AST
   core_syntax.format(term)
