@@ -9,7 +9,9 @@
 // TODO: Update for new desugarer API
 // import tao/desugar.{desugar}
 import tao/syntax.{Int, BinOp, Add}
-import core/core.{initial_state, infer, eval}
+import core/state.{initial_state}
+import core/infer.{infer}
+import core/eval.{eval}
 import syntax/grammar.{type Span, Span}
 import gleeunit
 import gleeunit/should

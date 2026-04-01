@@ -14,7 +14,7 @@ import syntax/grammar.{type ParseResult, type Span, Span}
 import tao/desugar.{desugar_module, type DesugarContext}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module}
 import core/ast.{type Term, type Value, Err as CoreErr}
-import core/state.{type State, type Error as CoreError, initial_state, SyntaxError, TypeMismatch, VarUndefined, CtrUndefined, HoleUnsolved, MatchRedundantCase, MatchMissingCase, RcdMissingFields, DotFieldNotFound, DotOnNonCtr, InfiniteType, SpineMismatch, ArityMismatch, NotAFunction, PatternMismatch, CtrUnsolvedParam, TODO as CoreTODO, ComptimePermissionDenied}
+import core/state.{type State, State, type Error as CoreError, initial_state, SyntaxError, TypeMismatch, VarUndefined, CtrUndefined, HoleUnsolved, MatchRedundantCase, MatchMissingCase, RcdMissingFields, DotFieldNotFound, DotOnNonCtr, InfiniteType, SpineMismatch, ArityMismatch, NotAFunction, PatternMismatch, CtrUnsolvedParam, TODO as CoreTODO, ComptimePermissionDenied}
 import core/infer.{infer}
 import core/eval.{eval}
 import core/quote.{quote, normalize}
@@ -22,7 +22,7 @@ import core/syntax as core_syntax
 import gleam/list
 import gleam/option.{type Option, Some, None}
 import gleam/string
-import tao/ast.{type Stmt, Module, StmtExpr, StmtLet, StmtFn, StmtBind, StmtMut, StmtTest, StmtRun, StmtType, StmtFor, StmtWhile, StmtLoop, StmtBreak, StmtContinue, StmtReturn, StmtYield, StmtImport, Constructor}
+import tao/ast as t
 
 // ============================================================================
 // TYPES
@@ -86,7 +86,7 @@ pub fn run_test_file(source: String, file_path: String) -> #(List(CoreError), Li
     [] -> {
       // 2. Convert expressions to module and desugar
       let body = exprs_to_stmts(parse_result.ast)
-      let module = Module(file_path, body, get_module_span(body, file_path))
+      let module = t.Module(file_path, body, get_module_span(body, file_path))
       let ctx = new_context() |> with_prelude()
 
       let #(core_term, desugar_ctx) = desugar_module(module, ctx)
@@ -313,7 +313,7 @@ fn run_test(test_expr: TestExpr, state: State) -> TestResult {
     [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<parse error>")
     [] -> {
       let expr_term = expr_to_core_term([expr_result.ast])
-      let actual_value = eval(state.ffi, [], expr_term)
+      let actual_value = eval([], [], expr_term)
 
       // Parse and evaluate expected
       let expected_result: ParseResult(Expr) = parse_expr(test_expr.expected)
@@ -321,7 +321,7 @@ fn run_test(test_expr: TestExpr, state: State) -> TestResult {
         [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<parse error>")
         [] -> {
           let expected_term = expr_to_core_term([expected_result.ast])
-          let expected_value = eval(state.ffi, [], expected_term)
+          let expected_value = eval([], [], expected_term)
 
           // Compare values
           case values_equal(actual_value, expected_value) {
@@ -344,7 +344,7 @@ fn expr_to_core_term(exprs: List(Expr)) -> Term {
     [_expr, ..] -> {
       // Desugar single expression
       let body = exprs_to_stmts(exprs)
-      let module = Module("", body, span)
+      let module = t.Module("", body, span)
       let ctx = new_context() |> with_prelude()
       let #(term, _ctx) = desugar_module(module, ctx)
       term
@@ -361,7 +361,7 @@ fn values_equal(v1: Value, v2: Value) -> Bool {
 /// Convert value to string for comparison.
 fn value_to_string(value: Value) -> String {
   let span = Span("", 0, 0, 0, 0)
-  let term = quote(initial_state.ffi, 0, value, span)
+  let term = quote([], 0, value, span)
   core_syntax.format(term)
 }
 
@@ -375,23 +375,23 @@ fn format_value(value: Value) -> String {
 // ============================================================================
 
 /// Convert expressions to statements.
-fn exprs_to_stmts(exprs: List(Expr)) -> List(Stmt) {
+fn exprs_to_stmts(exprs: List(Expr)) -> List(t.Stmt) {
   list.map(exprs, fn(expr) {
     case expr {
       TaoTypeDecl(name, constructors, span) -> {
         // Type declarations should be StmtType, not StmtExpr
         // Convert ConstructorDecl to Constructor
-        StmtType(name, [], list.map(constructors, fn(ctr) {
+        t.StmtType(name, [], list.map(constructors, fn(ctr) {
           case ctr {
             TaoCtrDecl(ctr_name, _fields, ctr_span) -> {
               // For nullary constructors (True, False), ignore fields
               // This is a simplification - proper type handling would require parsing field types
-              Constructor(ctr_name, [], ctr_span)
+              t.Constructor(ctr_name, [], ctr_span)
             }
           }
         }), span)
       }
-      _ -> StmtExpr(expr_to_ast(expr), get_expr_span(expr))
+      _ -> t.StmtExpr(expr_to_ast(expr), get_expr_span(expr))
     }
   })
 }
@@ -428,27 +428,27 @@ fn get_expr_span(expr: Expr) -> Span {
 }
 
 /// Get module span from body.
-fn get_module_span(body: List(Stmt), path: String) -> Span {
+fn get_module_span(body: List(t.Stmt), path: String) -> Span {
   case body {
     [] -> Span(path, 0, 0, 0, 0)
     [stmt, ..] -> {
       case stmt {
-        StmtExpr(_, span) -> span
-        StmtLet(_, _, _, _, span) -> span
-        StmtFn(_, _, _, _, _, span) -> span
-        StmtBind(_, _, span) -> span
-        StmtMut(_, _, span) -> span
-        StmtTest(_, _, span) -> span
-        StmtRun(_, span) -> span
-        StmtType(_, _, _, span) -> span
-        StmtFor(_, _, _, span) -> span
-        StmtWhile(_, _, span) -> span
-        StmtLoop(_, span) -> span
-        StmtBreak(span) -> span
-        StmtContinue(span) -> span
-        StmtReturn(_, span) -> span
-        StmtYield(_, span) -> span
-        StmtImport(_, span) -> span
+        t.StmtExpr(_, span) -> span
+        t.StmtLet(_, _, _, _, span) -> span
+        t.StmtFn(_, _, _, _, _, span) -> span
+        t.StmtBind(_, _, span) -> span
+        t.StmtMut(_, _, span) -> span
+        t.StmtTest(_, _, span) -> span
+        t.StmtRun(_, span) -> span
+        t.StmtType(_, _, _, span) -> span
+        t.StmtFor(_, _, _, span) -> span
+        t.StmtWhile(_, _, span) -> span
+        t.StmtLoop(_, span) -> span
+        t.StmtBreak(span) -> span
+        t.StmtContinue(span) -> span
+        t.StmtReturn(_, span) -> span
+        t.StmtYield(_, span) -> span
+        t.StmtImport(_, span) -> span
       }
     }
   }
@@ -460,10 +460,10 @@ fn get_module_span(body: List(Stmt), path: String) -> Span {
 
 /// Initialize Core State with constructor environment from desugaring.
 /// Merges DesugarContext.ctrs into State.ctrs for type checking.
-fn state_with_constructors(dc: DesugarContext, initial: core.State) -> core.State {
+fn state_with_constructors(dc: DesugarContext, initial: State) -> State {
   // Merge DesugarContext.ctrs into State.ctrs
   // Both are CtrEnv (List(#(String, CtrDef)))
   // Prepend desugar context constructors so they take precedence
   let merged_ctrs = list.append(dc.ctrs, initial.ctrs)
-  core.State(..initial, ctrs: merged_ctrs)
+  State(..initial, ctrs: merged_ctrs)
 }

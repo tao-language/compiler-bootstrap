@@ -15,6 +15,7 @@
 /// - Comments for non-obvious tests
 import core/ast as ast
 import core/state as state
+import core/infer.{infer}
 import syntax/grammar.{Span}
 
 const s = state.initial_state
@@ -196,8 +197,8 @@ pub fn match_hole_motive_infer_mismatch_test() {
   let result = infer(s, term)
   // Should have type mismatch error
   case result {
-    #(_, _, state) -> {
-      list.any(state.errors, fn(e) {
+    #(_, _, s2) -> {
+      list.any(s2.errors, fn(e) {
         case e {
           state.TypeMismatch(_, _, _, _) -> True
           _ -> False
@@ -275,9 +276,9 @@ pub fn match_exhaustiveness_redundant_case_test() {
     case_(pany(), i32(2, s2), s2),
   ]
   let term = match_(i32(5, s3), motive, cases, s4)
-  let #(_, _, state) = infer(s, term)
+  let #(_, _, s2) = infer(s, term)
   // Should have redundant case warning
-  list.any(state.errors, fn(e) {
+  list.any(s2.errors, fn(e) {
     case e {
       state.MatchRedundantCase(_) -> True
       _ -> False
@@ -292,9 +293,9 @@ pub fn match_exhaustiveness_wildcard_is_exhaustive_test() {
     case_(pany(), i32(100, s1), s1),
   ]
   let term = match_(i32(5, s2), motive, cases, s3)
-  let #(_, _, state) = infer(s, term)
+  let #(_, _, s2) = infer(s, term)
   // Should NOT have exhaustiveness error
-  list.any(state.errors, fn(e) {
+  list.any(s2.errors, fn(e) {
     case e {
       state.MatchMissingCase(_, _) -> True
       _ -> False
@@ -309,9 +310,9 @@ pub fn match_exhaustiveness_as_wildcard_is_exhaustive_test() {
     case_(ast.PAs(ast.PAny, "x"), i32(100, s1), s1),
   ]
   let term = match_(i32(5, s2), motive, cases, s3)
-  let #(_, _, state) = infer(s, term)
+  let #(_, _, s2) = infer(s, term)
   // Should NOT have exhaustiveness error
-  list.any(state.errors, fn(e) {
+  list.any(s2.errors, fn(e) {
     case e {
       state.MatchMissingCase(_, _) -> True
       _ -> False
@@ -326,9 +327,9 @@ pub fn match_exhaustiveness_missing_case_test() {
     case_(ast.PLit(ast.I32(0)), i32(1, s1), s1),
   ]
   let term = match_(i32(5, s2), motive, cases, s3)
-  let #(_, _, state) = infer(s, term)
+  let #(_, _, s2) = infer(s, term)
   // Should have exhaustiveness error
-  list.any(state.errors, fn(e) {
+  list.any(s2.errors, fn(e) {
     case e {
       state.MatchMissingCase(_, _) -> True
       _ -> False

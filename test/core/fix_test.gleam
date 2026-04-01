@@ -122,7 +122,7 @@ pub fn fix_quote_roundtrip_test() {
   // fix f -> f should quote back correctly
   let body = var(0, s0)
   let term = fix("f", body, s1)
-  let #(_val, _ty, state) = infer(state.initial_state, term)
+  let #(_, _, s2) = infer(state.initial_state, term)
   // Quote the value back
   let quoted = quote(state.initial_ffis(), 0, ast.VFix("f", [], body), s0)
   // Should quote back to a Fix term
@@ -140,7 +140,7 @@ pub fn fix_occurs_check_test() {
   // Fixpoint should not cause infinite loops in occurs check
   let body = var(0, s0)
   let term = fix("f", body, s1)
-  let #(_val, _ty, state) = infer(state.initial_state, term)
+  let #(_, _, s2) = infer(state.initial_state, term)
   // Should complete without infinite loop
   True |> should.be_true
 }

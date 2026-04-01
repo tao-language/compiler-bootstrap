@@ -34,9 +34,10 @@
 /// 2. Run the CLI to see actual output
 /// 3. Copy the output to `.output.txt`
 /// 4. The test will automatically pick it up
-import core/core.{
-  type Error as TypeError, type State, eval, infer, initial_state, quote,
-}
+import core/state.{type Error as TypeError, type State, initial_state}
+import core/infer.{infer}
+import core/eval.{eval}
+import core/quote.{quote}
 import core/syntax as core_syntax
 import gleam/int
 import gleam/list
@@ -249,15 +250,15 @@ fn run_example(example: Example) -> Bool {
           let #(term, _dc) = desugar_module(module, ctx)
 
           // Run type inference
-          let #(_value, _typ, state) = infer(initial_state, term)
-          let type_errors = state.errors
+          let #(_value, _typ, s2) = infer(initial_state, term)
+          let type_errors = s2.errors
 
           case type_errors {
             [] -> {
               // Evaluate and compare output
-              let value = eval(initial_state.ffi, [], term)
+              let value = eval([], [], term)
               let span = Span("", 0, 0, 0, 0)
-              let normal_form = quote(initial_state.ffi, 0, value, span)
+              let normal_form = quote([], 0, value, span)
               let actual_output = core_syntax.format(normal_form)
 
               case

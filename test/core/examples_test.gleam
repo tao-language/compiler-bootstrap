@@ -196,8 +196,8 @@ fn run_example(example: Example) -> Bool {
         parse_result.errors |> list.map(syntax_error_to_core_error)
 
       // Run type inference
-      let #(value, typ, state) = infer(initial_state, term)
-      let type_errors = state.errors
+      let #(_, _, s2) = infer(initial_state, term)
+      let type_errors = s2.errors
 
       // Combine all errors
       let all_errors = list.append(syntax_errors, type_errors)
