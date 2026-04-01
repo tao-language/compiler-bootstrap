@@ -21,7 +21,7 @@ const s = state.initial_state
 
 /// Test that create_implicit_bindings creates correct number of holes
 pub fn create_implicit_bindings_count_test() {
-  let initial_holes = s.hole
+  let initial_holes = get_s().hole
   let #(bindings, new_s) = c.create_implicit_bindings(["_0", "_1"], s)
   
   list.length(bindings) |> should.equal(2)
@@ -71,7 +71,7 @@ pub fn create_implicit_bindings_hole_values_test() {
 
 /// Test empty implicit list
 pub fn create_implicit_bindings_empty_test() {
-  let initial_holes = s.hole
+  let initial_holes = get_s().hole
   let #(bindings, new_s) = c.create_implicit_bindings([], s)
   
   list.length(bindings) |> should.equal(0)

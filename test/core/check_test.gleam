@@ -73,7 +73,7 @@ pub fn infer_multiple_errors_test() {
   let #(_, _, s) = infer(s, term)
 
   // Should have at least 1 error (VarUndefined)
-  case list.length(s.errors) >= 1 {
+  case list.length(get_s().errors) >= 1 {
     True -> True
     False -> False
   }
@@ -84,6 +84,6 @@ pub fn check_accumulates_errors_test() {
   // Type mismatch should be recorded, not thrown
   let #(_, s) = check(s, ast.Lit(ast.I32(1), s1), v64t, s2)
 
-  s.errors
+  get_s().errors
   |> should.equal([state.TypeMismatch(v32t, v64t, s1, s2)])
 }

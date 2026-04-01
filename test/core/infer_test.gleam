@@ -21,7 +21,7 @@ pub fn main() {
 // TEST HELPERS
 // ============================================================================
 
-const s = state.initial_state()
+fn get_s() { state.initial_state() }
 
 const s0 = Span("infer_test", 0, 0, 0, 0)
 
