@@ -23,7 +23,7 @@ pub fn main() {
 // TEST HELPERS
 // ============================================================================
 
-const s = state.initial_state
+const s = state.initial_state()
 
 const s1 = Span("eval_test", 1, 1, 1, 1)
 

@@ -21,7 +21,7 @@ pub fn main() {
 // TEST HELPERS (shared with other test modules)
 // ============================================================================
 
-const s = state.initial_state
+const s = state.initial_state()
 
 const s1 = Span("unify_test", 1, 1, 1, 1)
 

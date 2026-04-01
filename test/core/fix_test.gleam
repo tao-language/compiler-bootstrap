@@ -26,7 +26,7 @@ pub fn main() {
 // HELPER FUNCTIONS
 // ============================================================================
 
-const s = state.initial_state
+const s = state.initial_state()
 const s0 = Span("fix_test", 0, 0, 0, 0)
 const s1 = Span("fix_test", 1, 1, 1, 1)
 const s2 = Span("fix_test", 2, 2, 2, 2)

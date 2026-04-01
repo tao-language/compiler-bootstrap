@@ -29,7 +29,7 @@ pub fn main() {
 // HELPER FUNCTIONS
 // ============================================================================
 
-const s = state.initial_state
+const s = state.initial_state()
 const s0 = Span("pattern_match_test", 0, 0, 0, 0)
 const s1 = Span("pattern_match_test", 1, 1, 1, 1)
 const s2 = Span("pattern_match_test", 2, 2, 2, 2)

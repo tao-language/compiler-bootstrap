@@ -6,6 +6,8 @@ import gleam/option.{Some, None}
 import syntax/grammar.{type Span}
 import core/ast as ast
 import core/state as state
+import core/unify as unify
+import core/subst as subst
 
 pub fn check(
   s: state.State,
@@ -14,6 +16,18 @@ pub fn check(
   steps: Int,
 ) -> #(ast.Value, ast.Type, state.State) {
   #(ast.VErr, expected, s)
+}
+
+
+pub fn check_type(
+  s: state.State,
+  t1: ast.Value,
+  t2: ast.Value,
+  t1_span: Span,
+  t2_span: Span,
+) -> #(ast.Value, state.State) {
+  let #(new_subst, new_s) = unify.unify(s, 0, t1, t2, t1_span, t2_span)
+  #(subst.force(state.initial_ffis(), new_subst, t1), new_s)
 }
 
 pub fn bind_pattern(
