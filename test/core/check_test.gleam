@@ -82,7 +82,7 @@ pub fn infer_multiple_errors_test() {
 
 pub fn check_accumulates_errors_test() {
   // Type mismatch should be recorded, not thrown
-  let #(_, _, s) = check(s, ast.Lit(ast.I32(1), s1), v64t, 0)
+  let #(_, _, s) = check(s, ast.Lit(ast.I32(1), s1), v64t, s1)
 
   s.errors
   |> should.equal([state.TypeMismatch(v32t, v64t, s1, s2)])

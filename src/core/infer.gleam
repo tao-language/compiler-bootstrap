@@ -86,7 +86,9 @@ pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.Sta
       let env = get_env(s)
       let holes_before = s.hole_counter
 
-      let #(implicit_bindings, s) = create_implicit_bindings(implicit, s)
+      // Create implicit param placeholders (holes) for each implicit name
+      let #(implicit_hole_ids, s) = create_implicit_holes(implicit, s)
+      let implicit_bindings = create_implicit_bindings_from_holes(implicit, implicit_hole_ids)
       let s = state.State(..s, vars: list.append(implicit_bindings, s.vars))
 
       let #(domain_val, s) = case param_ty_term {
@@ -186,15 +188,16 @@ fn infer_app(
   let #(arg_val, arg_ty, s) = infer(s, arg)
   
   case fun_ty {
-    ast.VPi(_, _, _, domain, codomain) -> {
+    ast.VPi(_, _, env, domain, codomain) -> {
       let #(_, s) = check_type(s, arg_ty, domain, get_span(arg), span)
-      let result_ty = subst.force(s.ffi, s.subst, codomain)
+      let codomain_val = eval.eval(s.ffi, env, codomain)
+      let result_ty = subst.force(s.ffi, s.subst, codomain_val)
       let app_val = ast.VNeut(ast.HVar(0), [ast.EApp(arg_val)])
       #(app_val, result_ty, s)
     }
     ast.VErr -> #(ast.VErr, ast.VErr, s)
     _ -> {
-      let s = state.State(..s, errors: [state.NotAFunction(fun_val, fun_ty), ..s.errors])
+      let s = state.State(..s, errors: [state.NotAFunction(fun, fun_ty), ..s.errors])
       #(ast.VErr, ast.VErr, s)
     }
   }
@@ -235,7 +238,8 @@ fn infer_cases_loop(
   case cases {
     [] -> #(list.reverse(acc), s)
     [c, ..rest] -> {
-      let #(patterns, body) = c
+      let patterns = [c.pattern]
+      let body = c.body
       let #(pattern_vals, s) = infer_patterns(s, patterns, arg_ty)
       let #(body_val, _, s) = infer(s, body)
       infer_cases_loop(s, rest, arg_ty, motive_val, [c, ..acc])
@@ -462,7 +466,7 @@ fn get_env(s: state.State) -> ast.Env {
 
 fn def_var(s: state.State, name: String, ty: ast.Value) -> #(ast.Value, state.State) {
   let index = list.length(s.vars)
-  let var_val = ast.Var(index, Span("", 0, 0, 0, 0))
+  let var_val = ast.VNeut(ast.HVar(index), [])
   let s = state.State(..s, vars: [#(name, #(ty, ty)), ..s.vars])
   #(var_val, s)
 }
@@ -474,36 +478,55 @@ fn new_hole(s: state.State) -> #(ast.Type, state.State) {
   #(hole_ty, s)
 }
 
-fn create_implicit_bindings(implicit: List(ast.Term), s: state.State) -> #(List(#(String, #(ast.Value, ast.Type))), state.State) {
-  create_implicit_bindings_loop(implicit, s, [])
+fn create_implicit_holes(implicit: List(String), s: state.State) -> #(List(Int), state.State) {
+  create_implicit_holes_loop(implicit, s, [])
+}
+
+fn create_implicit_holes_loop(
+  implicit: List(String),
+  s: state.State,
+  acc: List(Int),
+) -> #(List(Int), state.State) {
+  case implicit {
+    [] -> #(list.reverse(acc), s)
+    [_name, ..rest] -> {
+      let id = s.hole_counter
+      let s = state.State(..s, hole_counter: id + 1)
+      create_implicit_holes_loop(rest, s, [id, ..acc])
+    }
+  }
+}
+
+fn create_implicit_bindings_from_holes(implicit: List(String), hole_ids: List(Int)) -> List(#(String, #(ast.Value, ast.Type))) {
+  create_implicit_bindings_loop(implicit, hole_ids, [])
 }
 
 fn create_implicit_bindings_loop(
-  implicit: List(ast.Term),
-  s: state.State,
+  implicit: List(String),
+  hole_ids: List(Int),
   acc: List(#(String, #(ast.Value, ast.Type))),
-) -> #(List(#(String, #(ast.Value, ast.Type))), state.State) {
-  case implicit {
-    [] -> #(list.reverse(acc), s)
-    [ast.Hole(id, _), ..rest] -> {
+) -> List(#(String, #(ast.Value, ast.Type))) {
+  case implicit, hole_ids {
+    [], _ -> list.reverse(acc)
+    _, [] -> list.reverse(acc)
+    [name, ..names], [id, ..ids] -> {
       let hole_val = ast.VNeut(ast.HHole(id), [])
-      let binding = #("", #(hole_val, hole_val))
-      create_implicit_bindings_loop(rest, s, [binding, ..acc])
+      let binding = #(name, #(hole_val, hole_val))
+      create_implicit_bindings_loop(names, ids, [binding, ..acc])
     }
-    [_, ..rest] -> create_implicit_bindings_loop(rest, s, acc)
   }
 }
 
 fn generalize_holes_wrapper(
   holes: List(Int),
-  implicit: List(ast.Term),
+  implicit: List(String),
   domain: ast.Value,
   codomain: ast.Type,
   s: state.State,
   ffi: state.FFI,
   lvl: Int,
   span: Span,
-) -> #(List(ast.Term), ast.Value, ast.Term) {
+) -> #(List(String), ast.Value, ast.Term) {
   // Simplified generalization - just return the inputs for now
   #(implicit, domain, quote.quote(ffi, lvl, codomain, span))
 }
@@ -542,11 +565,10 @@ fn shift_hvar_in_term(term: ast.Term, shift: Int) -> ast.Term {
       ast.Match(
         shift_hvar_in_term(arg, shift),
         shift_hvar_in_term(motive, shift),
-        list.flat_map(cases, fn(case_pair) {
-          let #(case_patterns, case_body) = case_pair
-          let shifted_patterns = list.map(case_patterns, fn(p) { shift_hvar_in_pattern(p, shift) })
-          let shifted_body = shift_hvar_in_term(case_body, shift + list.length(case_patterns))
-          [#(shifted_patterns, shifted_body)]
+        list.map(cases, fn(c) {
+          let shifted_pattern = shift_hvar_in_pattern(c.pattern, shift)
+          let shifted_body = shift_hvar_in_term(c.body, shift + 1)
+          ast.Case(pattern: shifted_pattern, body: shifted_body, guard: c.guard, span: c.span)
         }),
         span,
       )

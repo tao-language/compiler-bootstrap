@@ -94,8 +94,8 @@ fn collect_names_from_fields_acc(fields: List(#(String, ast.Term)), acc: List(St
 fn collect_names_from_cases_acc(cases: List(ast.Case), acc: List(String)) -> List(String) {
   case cases {
     [] -> acc
-    [#(patterns, body), ..rest] -> {
-      collect_names_from_cases_acc(rest, collect_names_from_term_acc(body, acc))
+    [c, ..rest] -> {
+      collect_names_from_cases_acc(rest, collect_names_from_term_acc(c.body, acc))
     }
   }
 }
@@ -239,8 +239,12 @@ fn subst_term_with_hole_vars(subst: List(#(Int, Int)), term: ast.Term) -> ast.Te
         subst_term_with_hole_vars(subst, arg),
         subst_term_with_hole_vars(subst, motive),
         list.map(cases, fn(c) {
-          let #(patterns, body) = c
-          #(patterns, subst_term_with_hole_vars(subst, body))
+          ast.Case(
+            pattern: subst_pattern_with_hole_vars(subst, c.pattern),
+            body: subst_term_with_hole_vars(subst, c.body),
+            guard: c.guard,
+            span: c.span
+          )
         }),
         span,
       )
@@ -251,6 +255,22 @@ fn subst_term_with_hole_vars(subst: List(#(Int, Int)), term: ast.Term) -> ast.Te
     ast.Fix(name, body, span) ->
       ast.Fix(name, subst_term_with_hole_vars(subst, body), span)
     ast.Typ(_, _) | ast.Lit(_, _) | ast.LitT(_, _) | ast.Var(_, _) | ast.Unit(_) | ast.Err(_, _) -> term
+  }
+}
+
+
+fn subst_pattern_with_hole_vars(subst: List(#(Int, Int)), pattern: ast.Pattern) -> ast.Pattern {
+  case pattern {
+    ast.PAs(inner, name) -> ast.PAs(subst_pattern_with_hole_vars(subst, inner), name)
+    ast.PCtr(tag, arg) -> ast.PCtr(tag, subst_pattern_with_hole_vars(subst, arg))
+    ast.PLit(_) -> pattern
+    ast.PLitT(_) -> pattern
+    ast.PTyp(_) -> pattern
+    ast.PRcd(fields) -> ast.PRcd(list.map(fields, fn(pair) {
+      #(pair.0, subst_pattern_with_hole_vars(subst, pair.1))
+    }))
+    ast.PUnit -> pattern
+    ast.PAny -> pattern
   }
 }
 
@@ -273,7 +293,7 @@ fn quote_with_implicit_loop(
   steps: Int,
 ) -> ast.Term {
   case steps <= 0 {
-    True -> ast.Err(s, "Step limit exceeded")
+    True -> ast.Err("Step limit exceeded", s)
     False -> case value {
       ast.VNeut(ast.HVar(index), []) if index < num_implicit -> ast.Var(index, s)
       ast.VNeut(ast.HVar(index), spine) if index < num_implicit -> {
@@ -294,7 +314,7 @@ fn quote_with_implicit_loop(
       ast.VNeut(head, spine) -> {
         quote_spine_with_implicit(ffi, num_implicit, head, spine, s, lvl, steps)
       }
-      _ -> ast.Err(s, "Cannot quote value")
+      _ -> ast.Err("Cannot quote value", s)
     }
   }
 }
@@ -313,7 +333,7 @@ fn quote_spine_with_implicit(
       case head {
         ast.HVar(index) -> ast.Var(index, s)
         ast.HHole(id) -> ast.Hole(id, s)
-        ast.HStepLimit -> ast.Err(s, "Step limit")
+        ast.HStepLimit -> ast.Err("Step limit", s)
       }
     }
     [ast.EDot(name), ..rest] -> {
