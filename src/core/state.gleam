@@ -33,6 +33,7 @@ pub type State {
     var_counter: Int,
     step_counter: Int,
     max_steps: Int,
+    ffi: FFI,
   )
 }
 
@@ -93,6 +94,7 @@ pub const initial_state = State(
   var_counter: 0,
   step_counter: 0,
   max_steps: 10000,
+  ffi: [],
 )
 
 // ============================================================================
