@@ -78,7 +78,7 @@ pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.Sta
     }
     ast.Ann(inner, ann_ty, span) -> {
       let ty_val = eval.eval(s.ffi, get_env(s), ann_ty)
-      let #(val, s) = check(s, inner, ty_val, span)
+      let #(val, _ty, s) = check(s, inner, ty_val, span)
       #(val, ty_val, s)
     }
     ast.Lam(implicit, param, body, span) -> {
@@ -166,10 +166,12 @@ pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.Sta
 
 fn typeof_lit(literal: ast.Literal) -> ast.Type {
   case literal {
-    ast.Int(_) -> ast.VCtr("Int", ast.VUnit)
-    ast.Float(_) -> ast.VCtr("Float", ast.VUnit)
-    ast.Str(_) -> ast.VCtr("String", ast.VUnit)
-    ast.Bool(_) -> ast.VCtr("Bool", ast.VUnit)
+    ast.I32(_) -> ast.VCtrValue(ast.VCtr("Int", ast.VUnit))
+    ast.I64(_) -> ast.VCtrValue(ast.VCtr("Int", ast.VUnit))
+    ast.U32(_) -> ast.VCtrValue(ast.VCtr("Int", ast.VUnit))
+    ast.U64(_) -> ast.VCtrValue(ast.VCtr("Int", ast.VUnit))
+    ast.F32(_) -> ast.VCtrValue(ast.VCtr("Float", ast.VUnit))
+    ast.F64(_) -> ast.VCtrValue(ast.VCtr("Float", ast.VUnit))
   }
 }
 
@@ -380,13 +382,13 @@ fn infer_fix(
     ast.Ann(lam, ann_ty, _ann_span) -> {
       let ann_ty_val = eval.eval(s.ffi, env, ann_ty)
       let #(_fresh, s) = def_var(s, name, ann_ty_val)
-      let #(body_val, s) = check(s, lam, ann_ty_val, span)
+      let #(body_val, _ty, s) = check(s, lam, ann_ty_val, span)
       #(ast.VFix(name, env, body), ann_ty_val, s)
     }
     _ -> {
       let #(result_ty_hole, s) = new_hole(s)
       let #(_fresh, s) = def_var(s, name, result_ty_hole)
-      let #(body_val, s) = check(s, body, result_ty_hole, span)
+      let #(body_val, _ty, s) = check(s, body, result_ty_hole, span)
       let solved_ty = subst.force(s.ffi, s.subst, result_ty_hole)
       #(ast.VFix(name, env, body), solved_ty, s)
     }
