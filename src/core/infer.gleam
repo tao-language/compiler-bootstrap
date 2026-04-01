@@ -270,12 +270,12 @@ fn infer_pattern(
   expected_ty: ast.Type,
 ) -> #(ast.Value, state.State) {
   case pattern {
-    ast.PatternVar(name, span) -> {
+    ast.PAs(inner_pattern, name) -> {
       let hole_val = ast.VNeut(ast.HHole(0), [])
       let #(_fresh, s) = def_var(s, name, expected_ty)
-      #(hole_val, s)
+      infer_pattern(s, inner_pattern, expected_ty)
     }
-    ast.PatternCtr(tag, arg_pattern, span) -> {
+    ast.PCtr(tag, arg_pattern) -> {
       case list.key_find(s.ctrs, tag) {
         Ok(ctr) -> {
           let #(params, ctr_arg_ty, ctr_ret_ty, s) = check_ctr_def(s, ctr)
@@ -284,23 +284,51 @@ fn infer_pattern(
           #(ast.VCtrValue(ast.VCtr(tag, arg_val)), s)
         }
         Error(Nil) -> {
-          let s = state.State(..s, errors: [state.CtrUndefined(tag, span), ..s.errors])
+          let s = state.State(..s, errors: [state.CtrUndefined(tag, Span("", 0, 0, 0, 0)), ..s.errors])
           #(ast.VErr, s)
         }
       }
     }
-    ast.PatternLit(literal, span) -> {
+    ast.PLit(literal) -> {
       let val = case literal {
-        ast.Int(n) -> ast.VLit(ast.Int(n))
-        ast.Float(f) -> ast.VLit(ast.Float(f))
-        ast.Str(str) -> ast.VLit(ast.Str(str))
-        ast.Bool(b) -> ast.VLit(ast.Bool(b))
+        ast.I32(n) -> ast.VLit(ast.I32(n))
+        ast.I64(n) -> ast.VLit(ast.I64(n))
+        ast.U32(n) -> ast.VLit(ast.U32(n))
+        ast.U64(n) -> ast.VLit(ast.U64(n))
+        ast.F32(f) -> ast.VLit(ast.F32(f))
+        ast.F64(f) -> ast.VLit(ast.F64(f))
       }
       #(val, s)
     }
-    ast.PatternUnit(span) -> #(ast.VUnit, s)
-    ast.PatternHole(span) -> #(ast.VNeut(ast.HHole(0), []), s)
-    ast.PatternErr(_, span) -> #(ast.VErr, s)
+    ast.PLitT(lit_type) -> #(ast.VLitT(lit_type), s)
+    ast.PTyp(k) -> #(ast.VTyp(k), s)
+    ast.PRcd(fields) -> {
+      let #(field_vals, s) = infer_pattern_fields(s, fields)
+      #(ast.VRcd(field_vals), s)
+    }
+    ast.PUnit -> #(ast.VUnit, s)
+    ast.PAny -> #(ast.VNeut(ast.HHole(0), []), s)
+  }
+}
+
+fn infer_pattern_fields(
+  s: state.State,
+  fields: List(#(String, ast.Pattern)),
+) -> #(List(#(String, ast.Value)), state.State) {
+  infer_pattern_fields_loop(s, fields, [])
+}
+
+fn infer_pattern_fields_loop(
+  s: state.State,
+  fields: List(#(String, ast.Pattern)),
+  acc: List(#(String, ast.Value)),
+) -> #(List(#(String, ast.Value)), state.State) {
+  case fields {
+    [] -> #(list.reverse(acc), s)
+    [#(name, pattern), ..rest] -> {
+      let #(val, s) = infer_pattern(s, pattern, ast.VErr)
+      infer_pattern_fields_loop(s, rest, [#(name, val), ..acc])
+    }
   }
 }
 
@@ -512,9 +540,11 @@ fn shift_hvar_in_term(term: ast.Term, shift: Int) -> ast.Term {
       ast.Match(
         shift_hvar_in_term(arg, shift),
         shift_hvar_in_term(motive, shift),
-        list.map(cases, fn(c) {
-          let #(patterns, body) = c
-          #(list.map(patterns, fn(p) { shift_hvar_in_pattern(p, shift) }), shift_hvar_in_term(body, shift + list.length(patterns)))
+        list.flat_map(cases, fn(case_pair) {
+          let #(case_patterns, case_body) = case_pair
+          let shifted_patterns = list.map(case_patterns, fn(p) { shift_hvar_in_pattern(p, shift) })
+          let shifted_body = shift_hvar_in_term(case_body, shift + list.length(case_patterns))
+          [#(shifted_patterns, shifted_body)]
         }),
         span,
       )
@@ -534,14 +564,16 @@ fn shift_hvar_in_term(term: ast.Term, shift: Int) -> ast.Term {
 
 fn shift_hvar_in_pattern(pattern: ast.Pattern, shift: Int) -> ast.Pattern {
   case pattern {
-    ast.PatternVar(name, span) -> ast.PatternVar(name, span)
-    ast.PatternCtr(tag, arg, span) -> {
-      ast.PatternCtr(tag, shift_hvar_in_pattern(arg, shift), span)
-    }
-    ast.PatternLit(_, _) -> pattern
-    ast.PatternUnit(_) -> pattern
-    ast.PatternHole(_) -> pattern
-    ast.PatternErr(_, _) -> pattern
+    ast.PAs(inner, name) -> ast.PAs(shift_hvar_in_pattern(inner, shift), name)
+    ast.PCtr(tag, arg) -> ast.PCtr(tag, shift_hvar_in_pattern(arg, shift))
+    ast.PLit(_) -> pattern
+    ast.PLitT(_) -> pattern
+    ast.PTyp(_) -> pattern
+    ast.PRcd(fields) -> ast.PRcd(list.map(fields, fn(pair) {
+      #(pair.0, shift_hvar_in_pattern(pair.1, shift))
+    }))
+    ast.PUnit -> pattern
+    ast.PAny -> pattern
   }
 }
 

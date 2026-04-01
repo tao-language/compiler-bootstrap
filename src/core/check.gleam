@@ -4,12 +4,14 @@
 /// Bidirectional type checking: verify terms have expected types.
 import gleam/list
 import gleam/result
+import gleam/option.{type Option, Some, None}
 import syntax/grammar.{type Span, Span}
 import core/ast as ast
 import core/state as state
 import core/eval as eval
 import core/subst as subst
 import core/unify as unify
+import core/quote as quote
 
 pub fn check(
   s: state.State,
@@ -96,15 +98,16 @@ pub fn check(
       }
     }
     ast.App(fun, implicit, arg, span) -> {
-      let #(_fun_val, fun_ty, s) = check(s, fun, ast.VErr, span)
+      let #(fun_val, fun_ty, s) = check(s, fun, ast.VErr, span)
       case fun_ty {
-        ast.VPi(_, _, _, domain, codomain) -> {
+        ast.VPi(_, _, env, domain, codomain) -> {
           let #(_arg_val, _, s) = check(s, arg, domain, span)
-          let #(_new_subst, s) = unify.unify(s, 0, codomain, expected_ty, span, ty_span)
+          let codomain_val = eval.eval(s.ffi, env, codomain)
+          let #(_new_subst, s) = unify.unify(s, 0, codomain_val, expected_ty, span, ty_span)
           #(ast.VErr, expected_ty, s)
         }
         _ -> {
-          let s = state.State(..s, errors: [state.NotAFunction(ast.VErr, fun_ty), ..s.errors])
+          let s = state.State(..s, errors: [state.NotAFunction(fun, fun_ty), ..s.errors])
           #(ast.VErr, expected_ty, s)
         }
       }
@@ -260,22 +263,24 @@ fn bind_pattern_loop(
   acc: List(#(String, ast.Value)),
 ) -> #(state.State, List(#(String, ast.Value))) {
   case pattern {
-    ast.PatternVar(name, _) -> {
+    ast.PAs(inner_pattern, name) -> {
       let s = state.State(..s, vars: [#(name, #(value, expected)), ..s.vars])
-      #(s, [#(name, value), ..acc])
+      bind_pattern_loop(s, inner_pattern, value, expected, [#(name, value), ..acc])
     }
-    ast.PatternCtr(tag, arg_pattern, _) -> {
+    ast.PCtr(tag, arg_pattern) -> {
       case value {
-        ast.VCtrValue(ast.VCtr(_, arg_val)) -> {
+        ast.VCtrValue(ast.VCtr(actual_tag, arg_val)) if actual_tag == tag -> {
           bind_pattern_loop(s, arg_pattern, arg_val, expected, acc)
         }
         _ -> #(s, acc)
       }
     }
-    ast.PatternLit(_, _) -> #(s, acc)
-    ast.PatternUnit(_) -> #(s, acc)
-    ast.PatternHole(_) -> #(s, acc)
-    ast.PatternErr(_, _) -> #(s, acc)
+    ast.PLit(literal) -> #(s, acc)
+    ast.PLitT(lit_type) -> #(s, acc)
+    ast.PTyp(_) -> #(s, acc)
+    ast.PRcd(_) -> #(s, acc)
+    ast.PUnit -> #(s, acc)
+    ast.PAny -> #(s, acc)
   }
 }
 
@@ -366,9 +371,29 @@ fn get_env(s: state.State) -> ast.Env {
   list.map(s.vars, fn(pair) { pair.1.0 })
 }
 
+fn ctx_get(ctx: ast.Context, index: Int) -> Option(#(ast.Value, ast.Type)) {
+  ctx_get_loop(ctx, index, 0)
+}
+
+fn ctx_get_loop(
+  ctx: ast.Context,
+  index: Int,
+  current: Int,
+) -> Option(#(ast.Value, ast.Type)) {
+  case ctx {
+    [] -> None
+    [#(_, val_ty), ..rest] -> {
+      case current == index {
+        True -> Some(val_ty)
+        False -> ctx_get_loop(rest, index, current + 1)
+      }
+    }
+  }
+}
+
 fn def_var(s: state.State, name: String, ty: ast.Value) -> #(ast.Value, state.State) {
   let index = list.length(s.vars)
-  let var_val = ast.Var(index, Span("", 0, 0, 0, 0))
+  let var_val = ast.VNeut(ast.HVar(index), [])
   let s = state.State(..s, vars: [#(name, #(ty, ty)), ..s.vars])
   #(var_val, s)
 }
@@ -405,11 +430,11 @@ fn get_span(term: ast.Term) -> Span {
 
 fn typeof_lit(literal: ast.Literal) -> ast.Type {
   case literal {
-    ast.I32(_) -> ast.VCtr("Int", ast.VUnit)
-    ast.I64(_) -> ast.VCtr("Int", ast.VUnit)
-    ast.U32(_) -> ast.VCtr("Int", ast.VUnit)
-    ast.U64(_) -> ast.VCtr("Int", ast.VUnit)
-    ast.F32(_) -> ast.VCtr("Float", ast.VUnit)
-    ast.F64(_) -> ast.VCtr("Float", ast.VUnit)
+    ast.I32(_) -> ast.VCtrValue(ast.VCtr("Int", ast.VUnit))
+    ast.I64(_) -> ast.VCtrValue(ast.VCtr("Int", ast.VUnit))
+    ast.U32(_) -> ast.VCtrValue(ast.VCtr("Int", ast.VUnit))
+    ast.U64(_) -> ast.VCtrValue(ast.VCtr("Int", ast.VUnit))
+    ast.F32(_) -> ast.VCtrValue(ast.VCtr("Float", ast.VUnit))
+    ast.F64(_) -> ast.VCtrValue(ast.VCtr("Float", ast.VUnit))
   }
 }
