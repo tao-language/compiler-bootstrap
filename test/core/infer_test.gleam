@@ -21,7 +21,6 @@ pub fn main() {
 // TEST HELPERS
 // ============================================================================
 
-fn get_s() { state.initial_state() }
 
 const s0 = Span("infer_test", 0, 0, 0, 0)
 
@@ -143,13 +142,13 @@ pub fn infer_litt_test() {
 // ============================================================================
 
 pub fn infer_var_test() {
-  let s = state.State(..s, ctx: [#("x", #(v32(1), v32t))])
+  let s = state.State(..state.initial_state, ctx: [#("x", #(v32(1), v32t))])
   infer(s, var(0, s1)) |> should.equal(#(v32(1), v32t, s))
   infer(s, var(1, s1))
   |> should.equal(#(
     ast.VErr,
     ast.VErr,
-    state.State(..s, errors: [state.VarUndefined(1, s1)]),
+    state.State(..state.initial_state, errors: [state.VarUndefined(1, s1)]),
   ))
 }
 
@@ -158,7 +157,7 @@ pub fn infer_var_test() {
 // ============================================================================
 
 pub fn infer_hole_test() {
-  let state_with_hole = state.State(..s, hole: 1)
+  let state_with_hole = state.State(..state.initial_state, hole: 1)
   let result = infer(state_with_hole, hole(0, s1))
   // Check result is a tuple with 3 elements
   case result {
@@ -198,7 +197,7 @@ pub fn infer_ctr_test() {
 
 pub fn infer_ctr_arg_bind_test() {
   // Constructor argument binds the implicit type parameter
-  let state_with_hole = state.State(..s, hole: 1)
+  let state_with_hole = state.State(..state.initial_state, hole: 1)
   let term = ctr("Some", i32(42, s1), s2)
   let result = infer(state_with_hole, term)
 
@@ -210,7 +209,7 @@ pub fn infer_ctr_arg_bind_test() {
 
 pub fn infer_ctr_multiple_args_test() {
   // Constructor with multiple arguments
-  let state_with_hole = state.State(..s, hole: 1)
+  let state_with_hole = state.State(..state.initial_state, hole: 1)
   let term = ctr("Pair", rcd([#("fst", i32(1, s1)), #("snd", i64(2, s2))], s0), s3)
   let result = infer(state_with_hole, term)
 

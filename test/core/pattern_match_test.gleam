@@ -29,7 +29,6 @@ pub fn main() {
 // HELPER FUNCTIONS
 // ============================================================================
 
-fn get_s() { state.initial_state() }
 const s0 = Span("pattern_match_test", 0, 0, 0, 0)
 const s1 = Span("pattern_match_test", 1, 1, 1, 1)
 const s2 = Span("pattern_match_test", 2, 2, 2, 2)
@@ -78,7 +77,7 @@ fn var(i, span) {
 }
 
 fn case_(p, b, s) {
-  c.Case(p, b, None, s)
+  ast.Case(p, b, None, s)
 }
 
 fn match_(arg, motive, cases, s) {

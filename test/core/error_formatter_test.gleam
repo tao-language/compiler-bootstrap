@@ -1,4 +1,5 @@
-import core/core.{type Error, TypeMismatch, VarUndefined, HoleUnsolved, VTyp, VLitT, I32T, F64T}
+import core/ast.{VTyp, VLitT, I32T, F64T}
+import core/state.{type Error, TypeMismatch, VarUndefined, HoleUnsolved}
 import core/error_formatter
 import core/color.{default_config, no_color}
 import gleam/string

@@ -12,6 +12,7 @@ import core/ast as ast
 import core/state as state
 import gleeunit
 import gleeunit/should
+import gleam/list
 import syntax/grammar.{Span}
 import core/eval.{eval}
 
@@ -23,7 +24,6 @@ pub fn main() {
 // TEST HELPERS
 // ============================================================================
 
-fn get_s() { state.initial_state() }
 
 const s1 = Span("eval_test", 1, 1, 1, 1)
 
@@ -70,10 +70,10 @@ fn vhole(i) {
 // ============================================================================
 
 pub fn range_test() {
-  c.range(0, 0, 1) |> should.equal([])
-  c.range(0, 1, 1) |> should.equal([0])
-  c.range(0, 2, 1) |> should.equal([0, 1])
-  c.range(0, 3, 1) |> should.equal([0, 1, 2])
+  list.range(0, 0) |> should.equal([])
+  list.range(0, 1) |> should.equal([0])
+  list.range(0, 2) |> should.equal([0, 1])
+  list.range(0, 3) |> should.equal([0, 1, 2])
 }
 
 // ============================================================================
@@ -81,8 +81,8 @@ pub fn range_test() {
 // ============================================================================
 
 pub fn eval_typ_test() {
-  eval(c.ffi_build, [], typ(0, s1)) |> should.equal(ast.VTyp(0))
-  eval(c.ffi_build, [], typ(1, s1)) |> should.equal(ast.VTyp(1))
+  eval(state.initial_ffis(), [], typ(0, s1)) |> should.equal(ast.VTyp(0))
+  eval(state.initial_ffis(), [], typ(1, s1)) |> should.equal(ast.VTyp(1))
 }
 
 // ============================================================================
@@ -90,17 +90,17 @@ pub fn eval_typ_test() {
 // ============================================================================
 
 pub fn eval_lit_test() {
-  eval(c.ffi_build, [], lit(ast.I32(1), s1))
+  eval(state.initial_ffis(), [], lit(ast.I32(1), s1))
   |> should.equal(ast.VLit(ast.I32(1)))
-  eval(c.ffi_build, [], lit(ast.I64(1), s1))
+  eval(state.initial_ffis(), [], lit(ast.I64(1), s1))
   |> should.equal(ast.VLit(ast.I64(1)))
-  eval(c.ffi_build, [], lit(ast.U32(1), s1))
+  eval(state.initial_ffis(), [], lit(ast.U32(1), s1))
   |> should.equal(ast.VLit(ast.U32(1)))
-  eval(c.ffi_build, [], lit(ast.U64(1), s1))
+  eval(state.initial_ffis(), [], lit(ast.U64(1), s1))
   |> should.equal(ast.VLit(ast.U64(1)))
-  eval(c.ffi_build, [], lit(ast.F32(1.0), s1))
+  eval(state.initial_ffis(), [], lit(ast.F32(1.0), s1))
   |> should.equal(ast.VLit(ast.F32(1.0)))
-  eval(c.ffi_build, [], lit(ast.F64(1.0), s1))
+  eval(state.initial_ffis(), [], lit(ast.F64(1.0), s1))
   |> should.equal(ast.VLit(ast.F64(1.0)))
 }
 
@@ -109,17 +109,17 @@ pub fn eval_lit_test() {
 // ============================================================================
 
 pub fn eval_litt_test() {
-  eval(c.ffi_build, [], litt(ast.I32T, s1))
+  eval(state.initial_ffis(), [], litt(ast.I32T, s1))
   |> should.equal(ast.VLitT(ast.I32T))
-  eval(c.ffi_build, [], litt(ast.I64T, s1))
+  eval(state.initial_ffis(), [], litt(ast.I64T, s1))
   |> should.equal(ast.VLitT(ast.I64T))
-  eval(c.ffi_build, [], litt(ast.U32T, s1))
+  eval(state.initial_ffis(), [], litt(ast.U32T, s1))
   |> should.equal(ast.VLitT(ast.U32T))
-  eval(c.ffi_build, [], litt(ast.U64T, s1))
+  eval(state.initial_ffis(), [], litt(ast.U64T, s1))
   |> should.equal(ast.VLitT(ast.U64T))
-  eval(c.ffi_build, [], litt(ast.F32T, s1))
+  eval(state.initial_ffis(), [], litt(ast.F32T, s1))
   |> should.equal(ast.VLitT(ast.F32T))
-  eval(c.ffi_build, [], litt(ast.F64T, s1))
+  eval(state.initial_ffis(), [], litt(ast.F64T, s1))
   |> should.equal(ast.VLitT(ast.F64T))
 }
 
@@ -129,8 +129,8 @@ pub fn eval_litt_test() {
 
 pub fn eval_var_test() {
   let env = [v32(0)]
-  eval(c.ffi_build, env, var(0, s1)) |> should.equal(v32(0))
-  eval(c.ffi_build, env, var(1, s1)) |> should.equal(ast.VErr)
+  eval(state.initial_ffis(), env, var(0, s1)) |> should.equal(v32(0))
+  eval(state.initial_ffis(), env, var(1, s1)) |> should.equal(ast.VErr)
 }
 
 // ============================================================================
@@ -138,6 +138,6 @@ pub fn eval_var_test() {
 // ============================================================================
 
 pub fn eval_hole_test() {
-  eval(c.ffi_build, [], hole(0, s1)) |> should.equal(vhole(0))
-  eval(c.ffi_build, [], hole(1, s1)) |> should.equal(vhole(1))
+  eval(state.initial_ffis(), [], hole(0, s1)) |> should.equal(vhole(0))
+  eval(state.initial_ffis(), [], hole(1, s1)) |> should.equal(vhole(1))
 }

@@ -30,7 +30,10 @@
 /// 2. Run the CLI to see actual output
 /// 3. Copy the output to `.output.txt`
 /// 4. The test will automatically pick it up
-import core/core.{type Error, SyntaxError, infer, initial_state, quote}
+import core/ast as ast
+import core/state.{type Error, SyntaxError, initial_state}
+import core/infer.{infer}
+import core/quote.{quote}
 import core/syntax
 import gleam/list
 import gleam/result

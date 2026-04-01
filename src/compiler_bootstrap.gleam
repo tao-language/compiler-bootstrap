@@ -421,7 +421,7 @@ fn check_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
       }
 
       // Run type checker
-      let #(_type_result, _type_annotation, final_state) = infer(initial_state(), parse_result.ast)
+      let #(_type_result, _type_annotation, final_state) = infer(initial_state, parse_result.ast)
 
       case final_state.errors {
         [_err, ..] -> {
@@ -498,7 +498,7 @@ fn check_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 
       // Run type checker on Core term
       // Use ctrs from desugaring for exhaustiveness checking
-      let initial_state_with_ctrs = initial_state() |> update_state_ctrs(dc.ctrs)
+      let initial_state_with_ctrs = initial_state |> update_state_ctrs(dc.ctrs)
       let #(_type_result, _type_annotation, final_state) = infer(initial_state_with_ctrs, term)
 
       case final_state.errors {
@@ -594,7 +594,7 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     False -> Nil
   }
 
-  let #(_type_result, _type_annotation, type_state) = infer(initial_state(), parse_result.ast)
+  let #(_type_result, _type_annotation, type_state) = infer(initial_state, parse_result.ast)
   let type_errors = type_state.errors
 
   // Report type errors
@@ -716,7 +716,7 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     False -> Nil
   }
 
-  let #(_type_result, _type_annotation, type_state) = infer(initial_state(), term)
+  let #(_type_result, _type_annotation, type_state) = infer(initial_state, term)
   let type_errors = type_state.errors
 
   // Report type errors

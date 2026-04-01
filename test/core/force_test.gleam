@@ -34,19 +34,19 @@ fn vhole(i) {
 
 pub fn force_no_hole_test() {
   // Force on a value without holes returns the same value
-  force(c.ffi_build, [], v32t) |> should.equal(v32t)
-  force(c.ffi_build, [], ast.VTyp(0)) |> should.equal(ast.VTyp(0))
+  force(state.initial_ffis(), [], v32t) |> should.equal(v32t)
+  force(state.initial_ffis(), [], ast.VTyp(0)) |> should.equal(ast.VTyp(0))
 }
 
 pub fn force_unsolved_hole_test() {
   // Force on unsolved hole returns the hole
-  force(c.ffi_build, [], vhole(0)) |> should.equal(vhole(0))
+  force(state.initial_ffis(), [], vhole(0)) |> should.equal(vhole(0))
 }
 
 pub fn force_solved_hole_test() {
   // Force on solved hole returns the solution
   let sub = [#(0, v32t)]
-  force(c.ffi_build, sub, vhole(0)) |> should.equal(v32t)
+  force(state.initial_ffis(), sub, vhole(0)) |> should.equal(v32t)
 }
 
 // ============================================================================
@@ -57,7 +57,7 @@ pub fn force_hole_with_spine_test() {
   // Force on solved hole with spine applies the spine
   let sub = [#(0, ast.VLam([], "x", [], ast.Var(0, s1)))]
   let v = ast.VNeut(ast.HHole(0), [ast.EApp(v32t)])
-  force(c.ffi_build, sub, v) |> should.equal(v32t)
+  force(state.initial_ffis(), sub, v) |> should.equal(v32t)
 }
 
 // ============================================================================
@@ -67,5 +67,5 @@ pub fn force_hole_with_spine_test() {
 pub fn force_nested_hole_test() {
   // Force recursively resolves nested holes
   let sub = [#(0, vhole(1)), #(1, v32t)]
-  force(c.ffi_build, sub, vhole(0)) |> should.equal(v32t)
+  force(state.initial_ffis(), sub, vhole(0)) |> should.equal(v32t)
 }

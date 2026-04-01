@@ -59,7 +59,7 @@ pub fn check_type_mismatch_test() {
 pub fn check_type_with_hole_test() {
   // When one type has a hole, it gets solved
   check_type(s, vhole(0), v32t, s1, s2)
-  |> should.equal(#(v32t, state.State(..s, sub: [#(0, v32t)])))
+  |> should.equal(#(v32t, state.State(..s, subst: [#(0, v32t)])))
 }
 
 // ============================================================================
@@ -73,7 +73,7 @@ pub fn infer_multiple_errors_test() {
   let #(_, _, s) = infer(s, term)
 
   // Should have at least 1 error (VarUndefined)
-  case list.length(get_s().errors) >= 1 {
+  case list.length(s.errors) >= 1 {
     True -> True
     False -> False
   }
@@ -82,8 +82,8 @@ pub fn infer_multiple_errors_test() {
 
 pub fn check_accumulates_errors_test() {
   // Type mismatch should be recorded, not thrown
-  let #(_, s) = check(s, ast.Lit(ast.I32(1), s1), v64t, s2)
+  let #(_, _, s) = check(s, ast.Lit(ast.I32(1), s1), v64t, 0)
 
-  get_s().errors
+  s.errors
   |> should.equal([state.TypeMismatch(v32t, v64t, s1, s2)])
 }

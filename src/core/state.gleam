@@ -83,19 +83,17 @@ pub type PHead {
 // INITIAL STATE
 // ============================================================================
 
-pub fn initial_state() -> State {
-  State(
-    ctrs: [],
-    vars: [],
-    subst: [],
-    errors: [],
-    warnings: [],
-    hole_counter: 0,
-    var_counter: 0,
-    step_counter: 0,
-    max_steps: 10000,
-  )
-}
+pub const initial_state = State(
+  ctrs: [],
+  vars: [],
+  subst: [],
+  errors: [],
+  warnings: [],
+  hole_counter: 0,
+  var_counter: 0,
+  step_counter: 0,
+  max_steps: 10000,
+)
 
 // ============================================================================
 // STATE HELPERS

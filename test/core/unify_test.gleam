@@ -21,7 +21,6 @@ pub fn main() {
 // TEST HELPERS (shared with other test modules)
 // ============================================================================
 
-fn get_s() { state.initial_state() }
 
 const s1 = Span("unify_test", 1, 1, 1, 1)
 
@@ -149,7 +148,7 @@ pub fn unify_hole_with_different_hole_test() {
   case result {
     Ok(s) -> {
       // Hole 0 should be solved to hole 1
-      list.key_find(get_s().sub, 0) |> should.equal(Ok(vhole(1)))
+      list.key_find(s.sub, 0) |> should.equal(Ok(vhole(1)))
     }
     Error(_) -> should.fail()
   }
