@@ -173,3 +173,186 @@ fn free_holes_cases(cases: List(ast.Case), seen: List(Int), acc: List(Int)) -> L
     }
   })
 }
+
+// ============================================================================
+// IMPLICIT PARAMETER INSTANTIATION
+// ============================================================================
+
+/// Instantiate implicit parameters with fresh holes.
+/// Returns a substitution list mapping parameter indices to hole values.
+pub fn instantiate_implicit_params(
+  implicit_params: List(String),
+  s: state.State,
+) -> #(List(#(Int, ast.Value)), state.State) {
+  instantiate_implicit_params_loop(implicit_params, s, [])
+}
+
+fn instantiate_implicit_params_loop(
+  implicit_params: List(String),
+  s: state.State,
+  acc: List(#(Int, ast.Value)),
+) -> #(List(#(Int, ast.Value)), state.State) {
+  case implicit_params {
+    [] -> #(list.reverse(acc), s)
+    [_name, ..rest] -> {
+      let #(hole_val, s) = new_hole(s)
+      let index = list.length(acc)
+      instantiate_implicit_params_loop(rest, s, [#(index, hole_val), ..acc])
+    }
+  }
+}
+
+fn new_hole(s: state.State) -> #(ast.Value, state.State) {
+  let id = s.hole_counter
+  let hole_val = ast.VNeut(ast.HHole(id), [])
+  let s = state.State(..s, hole_counter: id + 1)
+  #(hole_val, s)
+}
+
+/// Substitute implicit parameter indices with their values in a value.
+pub fn subst_value_with_implicit_vars(
+  subst: List(#(Int, ast.Value)),
+  value: ast.Value,
+) -> ast.Value {
+  subst_value_with_implicit_vars_loop(subst, value)
+}
+
+fn subst_value_with_implicit_vars_loop(
+  subst: List(#(Int, ast.Value)),
+  value: ast.Value,
+) -> ast.Value {
+  case value {
+    ast.VNeut(ast.HVar(index), spine) -> {
+      case list.key_find(subst, index) {
+        Ok(replacement) -> replacement
+        Error(Nil) -> ast.VNeut(ast.HVar(index), list.map(spine, fn(e) { subst_elim_with_implicit_vars(subst, e) }))
+      }
+    }
+    ast.VRcd(fields) -> {
+      ast.VRcd(list.map(fields, fn(pair) {
+        #(pair.0, subst_value_with_implicit_vars_loop(subst, pair.1))
+      }))
+    }
+    ast.VPi(_, _, _, domain, codomain) -> {
+      // Don't substitute under binders
+      value
+    }
+    _ -> value
+  }
+}
+
+/// Substitute implicit parameter indices with their values in a term.
+pub fn subst_term_with_implicit_vars(
+  subst: List(#(Int, ast.Value)),
+  term: ast.Term,
+) -> ast.Term {
+  case term {
+    ast.Var(index, span) -> {
+      case list.key_find(subst, index) {
+        Ok(ast.VNeut(ast.HHole(_), _)) | Ok(ast.VNeut(ast.HVar(_), _)) -> {
+          // Can't directly convert value to term, return as-is
+          term
+        }
+        Ok(_) -> term
+        Error(Nil) -> term
+      }
+    }
+    ast.Hole(_, _) -> term
+    ast.Typ(_, _) -> term
+    ast.Lit(_, _) -> term
+    ast.LitT(_, _) -> term
+    ast.Unit(_) -> term
+    ast.Err(_, _) -> term
+    ast.Ann(inner, ty, span) -> {
+      ast.Ann(subst_term_with_implicit_vars(subst, inner), ty, span)
+    }
+    ast.Lam(implicit, param, body, span) -> {
+      // Don't substitute under binders
+      term
+    }
+    ast.Pi(implicit, name, in_term, out_term, span) -> {
+      ast.Pi(implicit, name, subst_term_with_implicit_vars(subst, in_term), subst_term_with_implicit_vars(subst, out_term), span)
+    }
+    ast.App(fun, implicit, arg, span) -> {
+      ast.App(subst_term_with_implicit_vars(subst, fun), implicit, subst_term_with_implicit_vars(subst, arg), span)
+    }
+    ast.Rcd(fields, span) -> {
+      ast.Rcd(list.map(fields, fn(pair) {
+        #(pair.0, subst_term_with_implicit_vars(subst, pair.1))
+      }), span)
+    }
+    ast.Ctr(tag, arg, span) -> {
+      ast.Ctr(tag, subst_term_with_implicit_vars(subst, arg), span)
+    }
+    ast.Dot(arg, name, span) -> {
+      ast.Dot(subst_term_with_implicit_vars(subst, arg), name, span)
+    }
+    ast.Match(arg, motive, cases, span) -> {
+      ast.Match(
+        subst_term_with_implicit_vars(subst, arg),
+        subst_term_with_implicit_vars(subst, motive),
+        list.map(cases, fn(c) {
+          ast.Case(
+            pattern: subst_pattern_with_implicit_vars(subst, c.pattern),
+            body: subst_term_with_implicit_vars(subst, c.body),
+            guard: c.guard,
+            span: c.span,
+          )
+        }),
+        span,
+      )
+    }
+    ast.Call(name, args, span) -> {
+      ast.Call(name, list.map(args, fn(a) { subst_term_with_implicit_vars(subst, a) }), span)
+    }
+    ast.Comptime(inner, span) -> {
+      ast.Comptime(subst_term_with_implicit_vars(subst, inner), span)
+    }
+    ast.Fix(name, body, span) -> {
+      ast.Fix(name, subst_term_with_implicit_vars(subst, body), span)
+    }
+  }
+}
+
+fn subst_pattern_with_implicit_vars(
+  subst: List(#(Int, ast.Value)),
+  pattern: ast.Pattern,
+) -> ast.Pattern {
+  case pattern {
+    ast.PAs(inner, name) -> ast.PAs(subst_pattern_with_implicit_vars(subst, inner), name)
+    ast.PCtr(tag, arg) -> ast.PCtr(tag, subst_pattern_with_implicit_vars(subst, arg))
+    ast.PLit(_) -> pattern
+    ast.PLitT(_) -> pattern
+    ast.PTyp(_) -> pattern
+    ast.PRcd(fields) -> ast.PRcd(list.map(fields, fn(pair) {
+      #(pair.0, subst_pattern_with_implicit_vars(subst, pair.1))
+    }))
+    ast.PUnit -> pattern
+    ast.PAny -> pattern
+  }
+}
+
+fn subst_elim_with_implicit_vars(
+  subst: List(#(Int, ast.Value)),
+  elim: ast.Elim,
+) -> ast.Elim {
+  case elim {
+    ast.EApp(val) -> ast.EApp(subst_value_with_implicit_vars_loop(subst, val))
+    ast.EAppImplicit(val) -> ast.EAppImplicit(subst_value_with_implicit_vars_loop(subst, val))
+    ast.EDot(name) -> ast.EDot(name)
+    ast.EMatch(env, motive, cases) -> {
+      ast.EMatch(
+        env,
+        motive,
+        list.map(cases, fn(c) {
+          ast.Case(
+            pattern: c.pattern,
+            body: c.body,
+            guard: c.guard,
+            span: c.span,
+          )
+        }),
+      )
+    }
+  }
+}

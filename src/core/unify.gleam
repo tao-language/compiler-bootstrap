@@ -30,7 +30,7 @@ pub fn unify(
   }
 }
 
-fn unify_result(
+pub fn unify_result(
   s: state.State,
   v1: ast.Value,
   v2: ast.Value,

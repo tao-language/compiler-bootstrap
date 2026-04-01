@@ -6,7 +6,7 @@ import gleam/option.{type Option, None, Some}
 import syntax/grammar.{type Span, Span}
 import core/ast as ast
 import core/state as state
-import core/eval as eval
+import core/eval.{do_app, eval}
 import core/quote as quote
 import core/subst as subst
 import core/unify as unify
@@ -193,36 +193,67 @@ fn infer_app(
   span: Span,
 ) -> #(ast.Value, ast.Type, state.State) {
   let #(fun_val, fun_ty, s) = infer(s, fun)
-  let #(arg_val, arg_ty, s) = infer(s, arg)
-  
-  // Handle hole function types by creating a fresh VPi and unifying
-  let fun_ty = case fun_ty {
-    ast.VNeut(ast.HHole(id), []) -> {
-      // Create a fresh VPi type for the hole
-      let domain_hole = ast.VNeut(ast.HHole(s.hole_counter), [])
-      let s = state.State(..s, hole_counter: s.hole_counter + 1)
-      let codomain_hole_term = ast.Hole(s.hole_counter, span)
-      let s = state.State(..s, hole_counter: s.hole_counter + 1)
-      let vpi_ty = ast.VPi([], "f", [], domain_hole, codomain_hole_term)
-      // Unify the hole with the VPi type
-      let #(_subst, s) = unify.unify(s, 0, ast.VNeut(ast.HHole(id), []), vpi_ty, span, span)
-      vpi_ty
-    }
-    _ -> fun_ty
-  }
-  
   case fun_ty {
-    ast.VPi(_, _, env, domain, codomain) -> {
-      let #(_, s) = check_type(s, arg_ty, domain, get_span(arg), span)
-      let codomain_val = eval.eval(s.ffi, env, codomain)
-      let result_ty = subst.force(s.ffi, s.subst, codomain_val)
-      let app_val = ast.VNeut(ast.HVar(0), [ast.EApp(arg_val)])
-      #(app_val, result_ty, s)
+    ast.VPi(implicit_params, _, pi_env, domain, codomain) -> {
+      // Instantiate implicit type variables with fresh holes
+      let #(implicit_subst, s) = subst.instantiate_implicit_params(implicit_params, s)
+
+      // Apply substitution to domain and codomain
+      let domain_instantiated =
+        subst.subst_value_with_implicit_vars(implicit_subst, domain)
+      let codomain_instantiated =
+        subst.subst_term_with_implicit_vars(implicit_subst, codomain)
+
+      // Check argument against instantiated domain
+      let #(arg_val, _arg_ty, s) = check.check(s, arg, domain_instantiated, get_span(arg))
+      // Evaluate codomain with argument in environment
+      let out_val = eval(s.ffi, [arg_val, ..pi_env], codomain_instantiated)
+      let out_val_forced = subst.force(s.ffi, s.subst, out_val)
+      #(do_app(s.ffi, get_env(s), fun, implicit, arg, span), out_val_forced, s)
     }
-    ast.VErr -> #(ast.VErr, ast.VErr, s)
+    ast.VNeut(ast.HHole(hole_id), spine) -> {
+      // Hole expansion: ?1 applied to arg means ?1 = (?2 -> ?3)
+      let env = get_env(s)
+      let #(arg_ty_hole_val, s) = new_hole(s)
+      let result_ty_hole_id = s.hole_counter
+      let #(result_ty_hole_val, s) = new_hole(s)
+      // Create the expanded function type: (?2 -> ?3)
+      let fun_ty_expanded =
+        ast.VPi(
+          [],
+          "_",
+          env,
+          arg_ty_hole_val,
+          ast.Hole(result_ty_hole_id, span),
+        )
+      // Unify the original hole with the expanded type
+      case unify.unify_result(s, ast.VNeut(ast.HHole(hole_id), []), fun_ty_expanded, span, span) {
+        Ok(s) -> {
+          // Check the argument against the domain hole
+          let #(arg_val, _arg_ty, s) = check.check(s, arg, arg_ty_hole_val, get_span(arg))
+          // Force the result hole through substitution to get the solved type
+          let out_val = subst.force(s.ffi, s.subst, result_ty_hole_val)
+          #(do_app(s.ffi, get_env(s), fun, implicit, arg, span), out_val, s)
+        }
+        Error(_) -> {
+          // Avoid adding duplicate error if fun_ty is already VErr
+          case fun_ty {
+            ast.VErr -> #(ast.VErr, ast.VErr, s)
+            _ -> #(ast.VErr, ast.VErr, state.with_err(s, state.NotAFunction(fun, fun_ty)))
+          }
+        }
+      }
+    }
+    ast.VNeut(ast.HStepLimit, _) -> {
+      // Step limit exceeded - return error
+      #(ast.VErr, ast.VErr, state.with_err(s, state.NotAFunction(fun, fun_ty)))
+    }
     _ -> {
-      let s = state.State(..s, errors: [state.NotAFunction(fun, fun_ty), ..s.errors])
-      #(ast.VErr, ast.VErr, s)
+      // Avoid adding duplicate error if fun_ty is already VErr
+      case fun_ty {
+        ast.VErr -> #(ast.VErr, ast.VErr, s)
+        _ -> #(ast.VErr, ast.VErr, state.with_err(s, state.NotAFunction(fun, fun_ty)))
+      }
     }
   }
 }
