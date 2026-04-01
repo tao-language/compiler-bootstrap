@@ -17,7 +17,7 @@ pub fn main() {
 }
 
 const span = Span("test", 0, 0, 0, 0)
-const s = c.initial_state
+const s = state.initial_state
 
 /// Test that create_implicit_bindings creates correct number of holes
 pub fn create_implicit_bindings_count_test() {
@@ -44,7 +44,7 @@ pub fn create_implicit_bindings_unique_holes_test() {
   // Extract hole IDs from bindings
   let hole_ids = list.map(bindings, fn(b) {
     case b.1.0 {
-      c.VNeut(c.HHole(id), []) -> id
+      ast.VNeut(ast.HHole(id), []) -> id
       _ -> -1
     }
   })
@@ -61,7 +61,7 @@ pub fn create_implicit_bindings_hole_values_test() {
   // Each binding should have HHole value
   let all_holes = list.all(bindings, fn(b) {
     case b.1.0 {
-      c.VNeut(c.HHole(_), []) -> True
+      ast.VNeut(ast.HHole(_), []) -> True
       _ -> False
     }
   })

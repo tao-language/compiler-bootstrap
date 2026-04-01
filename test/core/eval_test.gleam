@@ -13,6 +13,7 @@ import core/state as state
 import gleeunit
 import gleeunit/should
 import syntax/grammar.{Span}
+import core/eval.{eval}
 
 pub fn main() {
   gleeunit.main()
@@ -22,46 +23,46 @@ pub fn main() {
 // TEST HELPERS
 // ============================================================================
 
-const s = c.initial_state
+const s = state.initial_state
 
 const s1 = Span("eval_test", 1, 1, 1, 1)
 
 const s2 = Span("eval_test", 2, 2, 2, 2)
 
 fn typ(l, s) {
-  c.Typ(l, s)
+  ast.Typ(l, s)
 }
 
 fn lit(v, s) {
-  c.Lit(v, s)
+  ast.Lit(v, s)
 }
 
 fn litt(t, s) {
-  c.LitT(t, s)
+  ast.LitT(t, s)
 }
 
 fn var(i, s) {
-  c.Var(i, s)
+  ast.Var(i, s)
 }
 
 fn hole(id, s) {
-  c.Hole(id, s)
+  ast.Hole(id, s)
 }
 
 fn v32(v) {
-  c.VLit(c.I32(v))
+  ast.VLit(ast.I32(v))
 }
 
 fn v64(v) {
-  c.VLit(c.I64(v))
+  ast.VLit(ast.I64(v))
 }
 
-const v32t = c.VLitT(c.I32T)
+const v32t = ast.VLitT(ast.I32T)
 
-const v64t = c.VLitT(c.I64T)
+const v64t = ast.VLitT(ast.I64T)
 
 fn vhole(i) {
-  c.VNeut(c.HHole(i), [])
+  ast.VNeut(ast.HHole(i), [])
 }
 
 // ============================================================================
@@ -80,8 +81,8 @@ pub fn range_test() {
 // ============================================================================
 
 pub fn eval_typ_test() {
-  c.eval(c.ffi_build, [], typ(0, s1)) |> should.equal(c.VTyp(0))
-  c.eval(c.ffi_build, [], typ(1, s1)) |> should.equal(c.VTyp(1))
+  eval(c.ffi_build, [], typ(0, s1)) |> should.equal(ast.VTyp(0))
+  eval(c.ffi_build, [], typ(1, s1)) |> should.equal(ast.VTyp(1))
 }
 
 // ============================================================================
@@ -89,18 +90,18 @@ pub fn eval_typ_test() {
 // ============================================================================
 
 pub fn eval_lit_test() {
-  c.eval(c.ffi_build, [], lit(c.I32(1), s1))
-  |> should.equal(c.VLit(c.I32(1)))
-  c.eval(c.ffi_build, [], lit(c.I64(1), s1))
-  |> should.equal(c.VLit(c.I64(1)))
-  c.eval(c.ffi_build, [], lit(c.U32(1), s1))
-  |> should.equal(c.VLit(c.U32(1)))
-  c.eval(c.ffi_build, [], lit(c.U64(1), s1))
-  |> should.equal(c.VLit(c.U64(1)))
-  c.eval(c.ffi_build, [], lit(c.F32(1.0), s1))
-  |> should.equal(c.VLit(c.F32(1.0)))
-  c.eval(c.ffi_build, [], lit(c.F64(1.0), s1))
-  |> should.equal(c.VLit(c.F64(1.0)))
+  eval(c.ffi_build, [], lit(ast.I32(1), s1))
+  |> should.equal(ast.VLit(ast.I32(1)))
+  eval(c.ffi_build, [], lit(ast.I64(1), s1))
+  |> should.equal(ast.VLit(ast.I64(1)))
+  eval(c.ffi_build, [], lit(ast.U32(1), s1))
+  |> should.equal(ast.VLit(ast.U32(1)))
+  eval(c.ffi_build, [], lit(ast.U64(1), s1))
+  |> should.equal(ast.VLit(ast.U64(1)))
+  eval(c.ffi_build, [], lit(ast.F32(1.0), s1))
+  |> should.equal(ast.VLit(ast.F32(1.0)))
+  eval(c.ffi_build, [], lit(ast.F64(1.0), s1))
+  |> should.equal(ast.VLit(ast.F64(1.0)))
 }
 
 // ============================================================================
@@ -108,18 +109,18 @@ pub fn eval_lit_test() {
 // ============================================================================
 
 pub fn eval_litt_test() {
-  c.eval(c.ffi_build, [], litt(c.I32T, s1))
-  |> should.equal(c.VLitT(c.I32T))
-  c.eval(c.ffi_build, [], litt(c.I64T, s1))
-  |> should.equal(c.VLitT(c.I64T))
-  c.eval(c.ffi_build, [], litt(c.U32T, s1))
-  |> should.equal(c.VLitT(c.U32T))
-  c.eval(c.ffi_build, [], litt(c.U64T, s1))
-  |> should.equal(c.VLitT(c.U64T))
-  c.eval(c.ffi_build, [], litt(c.F32T, s1))
-  |> should.equal(c.VLitT(c.F32T))
-  c.eval(c.ffi_build, [], litt(c.F64T, s1))
-  |> should.equal(c.VLitT(c.F64T))
+  eval(c.ffi_build, [], litt(ast.I32T, s1))
+  |> should.equal(ast.VLitT(ast.I32T))
+  eval(c.ffi_build, [], litt(ast.I64T, s1))
+  |> should.equal(ast.VLitT(ast.I64T))
+  eval(c.ffi_build, [], litt(ast.U32T, s1))
+  |> should.equal(ast.VLitT(ast.U32T))
+  eval(c.ffi_build, [], litt(ast.U64T, s1))
+  |> should.equal(ast.VLitT(ast.U64T))
+  eval(c.ffi_build, [], litt(ast.F32T, s1))
+  |> should.equal(ast.VLitT(ast.F32T))
+  eval(c.ffi_build, [], litt(ast.F64T, s1))
+  |> should.equal(ast.VLitT(ast.F64T))
 }
 
 // ============================================================================
@@ -128,8 +129,8 @@ pub fn eval_litt_test() {
 
 pub fn eval_var_test() {
   let env = [v32(0)]
-  c.eval(c.ffi_build, env, var(0, s1)) |> should.equal(v32(0))
-  c.eval(c.ffi_build, env, var(1, s1)) |> should.equal(c.VErr)
+  eval(c.ffi_build, env, var(0, s1)) |> should.equal(v32(0))
+  eval(c.ffi_build, env, var(1, s1)) |> should.equal(ast.VErr)
 }
 
 // ============================================================================
@@ -137,6 +138,6 @@ pub fn eval_var_test() {
 // ============================================================================
 
 pub fn eval_hole_test() {
-  c.eval(c.ffi_build, [], hole(0, s1)) |> should.equal(vhole(0))
-  c.eval(c.ffi_build, [], hole(1, s1)) |> should.equal(vhole(1))
+  eval(c.ffi_build, [], hole(0, s1)) |> should.equal(vhole(0))
+  eval(c.ffi_build, [], hole(1, s1)) |> should.equal(vhole(1))
 }

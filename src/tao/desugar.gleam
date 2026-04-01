@@ -45,7 +45,7 @@ import tao/import_ast.{
   ImportSelectiveAlias, ImportWildcard,
   type ImportItem, ImportName, ImportType, ImportOperator,
 }
-import core/core.{type Term, type Literal as CoreLiteral, type LiteralType, I32T, I64T, F32T, F64T, type Pattern as CorePattern, type Case as CoreCaseType, type CtrDef, CtrDef, type CtrEnv, Err, Var, Rcd, Dot, Lit, LitT, Unit, Call, Lam, App, Typ, I32, F64, Match as CoreMatch, Case, Fix, PAny, PAs, PLit as PPlit, PRcd, PCtr as PPCtr, PUnit, PTyp, PLitT, Hole, Ctr, Ann, Pi}
+import core/ast as core_ast
 
 // ============================================================================
 // CORE TERM TYPES (simplified for desugaring)
@@ -81,7 +81,7 @@ pub type CoreTerm {
   /// DoBlock (sequence of statements)
   CoreDoBlock(stmts: List(CoreTerm), result: CoreTerm, span: Span)
 
-  /// Type universe (Typ(n) represents Type(n))
+  /// Type universe (core_ast.Typ(n) represents Type(n))
   CoreTyp(universe: Int, span: Span)
 
   /// Builtin type reference (e.g., "String", "Int")
@@ -94,7 +94,7 @@ pub type CoreTerm {
   CoreLit(value: String, span: Span)
 
   /// Pattern match with cases
-  CoreMatchCore(arg: CoreTerm, motive: CoreTerm, cases: List(CoreCaseType), span: Span)
+  CoreMatchCore(arg: CoreTerm, motive: CoreTerm, cases: List(core_ast.Case), span: Span)
 
   /// Fixpoint operator for recursion
   CoreFix(name: String, body: CoreTerm, span: Span)
@@ -141,7 +141,7 @@ pub type DesugarContext {
     /// Stack of loop contexts (for nested loops)
     loop_stack: List(LoopContext),
     /// Constructor definitions from type declarations
-    ctrs: CtrEnv,
+    ctrs: core_ast.CtrEnv,
   )
 }
 
@@ -208,8 +208,8 @@ fn process_type_definitions(
     case stmt {
       StmtType(name, type_params, constructors, _span) -> {
         // Add the type itself as a constructor (types are constructors of universes)
-        // The type constructor has no arguments and returns Typ(0) (the universe)
-        let type_ctr = #(name, CtrDef(params: type_params, arg_ty: Unit(Span("unit", 0, 0, 0, 0)), ret_ty: Typ(0, Span("type", 0, 0, 0, 0))))
+        // The type constructor has no arguments and returns core_ast.Typ(0) (the universe)
+        let type_ctr = #(name, core_ast.CtrDef(params: type_params, arg_ty: core_ast.Unit(Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0))))
         let new_ctrs = tao_type_to_core_ctrs(name, type_params, constructors)
         let all_ctrs = [type_ctr, ..new_ctrs]
         DesugarContext(..acc_dc, ctrs: list.append(acc_dc.ctrs, all_ctrs))
@@ -224,23 +224,23 @@ fn tao_type_to_core_ctrs(
   type_name: String,
   type_params: List(String),
   constructors: List(Constructor),
-) -> CtrEnv {
+) -> core_ast.CtrEnv {
   list.map(constructors, fn(ctr) {
     let ctr_def = tao_constructor_to_ctr_def(type_name, type_params, ctr)
     #(ctr.name, ctr_def)
   })
 }
 
-/// Convert a Tao constructor to a Core CtrDef.
+/// Convert a Tao constructor to a Core core_ast.CtrDef.
 fn tao_constructor_to_ctr_def(
   type_name: String,
   type_params: List(String),
   constructor: Constructor,
-) -> CtrDef {
+) -> core_ast.CtrDef {
   let Constructor(_name, fields, _span) = constructor
   
   let arg_ty = case fields {
-    [] -> Unit(Span("unit", 0, 0, 0, 0))
+    [] -> core_ast.Unit(Span("unit", 0, 0, 0, 0))
     [field] -> constructor_field_to_type(field)
     fields -> {
       let field_types = list.index_map(fields, fn(field, index) {
@@ -249,17 +249,17 @@ fn tao_constructor_to_ctr_def(
           NamedField(name, t) -> #(name, type_ast_to_core(t))
         }
       })
-      Rcd(field_types, Span("rcd", 0, 0, 0, 0))
+      core_ast.Rcd(field_types, Span("rcd", 0, 0, 0, 0))
     }
   }
   
   let ret_ty = build_type_app(type_name, type_params)
   
-  CtrDef(params: type_params, arg_ty: arg_ty, ret_ty: ret_ty)
+  core_ast.CtrDef(params: type_params, arg_ty: arg_ty, ret_ty: ret_ty)
 }
 
 /// Convert a constructor field to a Core type.
-fn constructor_field_to_type(field: ConstructorField) -> Term {
+fn constructor_field_to_type(field: ConstructorField) -> core_ast.Term {
   case field {
     UnnamedField(t) -> type_ast_to_core(t)
     NamedField(_name, t) -> type_ast_to_core(t)
@@ -267,35 +267,35 @@ fn constructor_field_to_type(field: ConstructorField) -> Term {
 }
 
 /// Build type application: TypeName(param1, param2, ...)
-fn build_type_app(type_name: String, type_params: List(String)) -> Term {
+fn build_type_app(type_name: String, type_params: List(String)) -> core_ast.Term {
   let span = Span("type_app", 0, 0, 0, 0)
   case type_params {
-    [] -> Ctr(type_name, Unit(span), span)
-    _params -> Ctr(type_name, Unit(span), span)
+    [] -> core_ast.Ctr(type_name, core_ast.Unit(span), span)
+    _params -> core_ast.Ctr(type_name, core_ast.Unit(span), span)
   }
 }
 
 /// Convert Tao TypeAst to Core Term.
 /// Note: This is a simplified version that doesn't handle type parameters.
 /// Use build_core_type_from_ast for full type annotation support.
-fn type_ast_to_core(t: TypeAst) -> Term {
+fn type_ast_to_core(t: TypeAst) -> core_ast.Term {
   case t {
     TVar(name) -> {
       // Check if this is a known builtin type
       case name {
-        "I32" -> LitT(I32T, Span("i32", 0, 0, 0, 0))
-        "I64" -> LitT(I64T, Span("i64", 0, 0, 0, 0))
-        "F32" -> LitT(F32T, Span("f32", 0, 0, 0, 0))
-        "F64" -> LitT(F64T, Span("f64", 0, 0, 0, 0))
-        "Bool" -> Ctr("Bool", Unit(Span("unit", 0, 0, 0, 0)), Span("bool", 0, 0, 0, 0))
-        _ -> Hole(0, Span("type_var", 0, 0, 0, 0))
+        "I32" -> core_ast.LitT(core_ast.I32T, Span("i32", 0, 0, 0, 0))
+        "I64" -> core_ast.LitT(core_ast.I64T, Span("i64", 0, 0, 0, 0))
+        "F32" -> core_ast.LitT(core_ast.F32T, Span("f32", 0, 0, 0, 0))
+        "F64" -> core_ast.LitT(core_ast.F64T, Span("f64", 0, 0, 0, 0))
+        "Bool" -> core_ast.Ctr("Bool", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("bool", 0, 0, 0, 0))
+        _ -> core_ast.Hole(0, Span("type_var", 0, 0, 0, 0))
       }
     }
-    TApp(name, _args) -> Ctr(name, Unit(Span("unit", 0, 0, 0, 0)), Span("tapp", 0, 0, 0, 0))
-    TFn(_params, _ret) -> Typ(1, Span("fn", 0, 0, 0, 0))
-    TRecord(_fields) -> Typ(0, Span("rcd", 0, 0, 0, 0))
-    TTuple(_elems) -> Typ(0, Span("tuple", 0, 0, 0, 0))
-    THole -> Hole(0, Span("hole", 0, 0, 0, 0))
+    TApp(name, _args) -> core_ast.Ctr(name, core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("tapp", 0, 0, 0, 0))
+    TFn(_params, _ret) -> core_ast.Typ(1, Span("fn", 0, 0, 0, 0))
+    TRecord(_fields) -> core_ast.Typ(0, Span("rcd", 0, 0, 0, 0))
+    TTuple(_elems) -> core_ast.Typ(0, Span("tuple", 0, 0, 0, 0))
+    THole -> core_ast.Hole(0, Span("hole", 0, 0, 0, 0))
   }
 }
 
@@ -310,10 +310,10 @@ fn build_core_type_from_ast(t: TypeAst, dc: DesugarContext, span: Span) -> #(Cor
     TVar(name) -> {
       // Check if this is a known builtin type or a type variable
       case name {
-        "I32" -> #(CoreBuiltinType("I32T", span), dc)
-        "I64" -> #(CoreBuiltinType("I64T", span), dc)
-        "F32" -> #(CoreBuiltinType("F32T", span), dc)
-        "F64" -> #(CoreBuiltinType("F64T", span), dc)
+        "I32" -> #(CoreBuiltinType("core_ast.I32T", span), dc)
+        "I64" -> #(CoreBuiltinType("core_ast.I64T", span), dc)
+        "F32" -> #(CoreBuiltinType("core_ast.F32T", span), dc)
+        "F64" -> #(CoreBuiltinType("core_ast.F64T", span), dc)
         "Bool" -> #(CoreCtr("Bool", CoreUnit(span), span), dc)
         "Option" -> #(CoreCtr("Option", CoreUnit(span), span), dc)
         "Result" -> #(CoreCtr("Result", CoreUnit(span), span), dc)
@@ -382,9 +382,9 @@ fn build_core_type_args(args: List(TypeAst), dc: DesugarContext, span: Span) -> 
 }
 
 /// Build function type from parameter types and return type.
-/// For a function (a: A, b: B) -> C, builds: Pi(_, A, Pi(_, B, C))
+/// For a function (a: A, b: B) -> C, builds: core_ast.Pi(_, A, core_ast.Pi(_, B, C))
 fn build_fn_type(param_types: List(CoreTerm), ret_type: CoreTerm, span: Span) -> CoreTerm {
-  // Build nested Pi types: Pi(_, param1, Pi(_, param2, ... ret_type))
+  // Build nested Pi types: core_ast.Pi(_, param1, core_ast.Pi(_, param2, ... ret_type))
   // Using fold with reverse to simulate foldr
   let reversed = list.reverse(param_types)
   list.fold(reversed, ret_type, fn(acc, param_ty) {
@@ -393,7 +393,7 @@ fn build_fn_type(param_types: List(CoreTerm), ret_type: CoreTerm, span: Span) ->
 }
 
 /// Check if a type name exists in the constructor environment.
-fn lookup_type_in_ctrs(ctrs: CtrEnv, type_name: String) -> Bool {
+fn lookup_type_in_ctrs(ctrs: core_ast.CtrEnv, type_name: String) -> Bool {
   case list.find(ctrs, fn(ctr) { ctr.0 == type_name }) {
     Ok(_) -> True
     Error(_) -> False
@@ -404,7 +404,7 @@ fn lookup_type_in_ctrs(ctrs: CtrEnv, type_name: String) -> Bool {
 pub fn desugar_module(
   module: Module,
   ctx: GlobalContext,
-) -> #(Term, DesugarContext) {
+) -> #(core_ast.Term, DesugarContext) {
   let dc = DesugarContext(
     global: ctx,
     current_module: module.path,
@@ -1103,8 +1103,8 @@ fn desugar_for(
 
   // Build the fixpoint body: match collection { | [] -> () | x::xs -> ... }
   // Empty list case: return unit (loop done)
-  let nil_clause = Case(
-    pattern: PPCtr("Nil", PUnit),
+  let nil_clause = core_ast.Case(
+    pattern: core_ast.PCtr("Nil", core_ast.PUnit),
     body: core_term_to_term(CoreRcd([], span)),
     guard: None,
     span: span,
@@ -1120,8 +1120,8 @@ fn desugar_for(
       let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
       
       // Use PAs to bind the head to the pattern variable
-      let cons_clause = Case(
-        pattern: PPCtr("Cons", PAs(PAny, name)),
+      let cons_clause = core_ast.Case(
+        pattern: core_ast.PCtr("Cons", core_ast.PAs(core_ast.PAny, name)),
         body: core_term_to_term(body_with_rec),
         guard: None,
         span: span,
@@ -1142,8 +1142,8 @@ fn desugar_for(
       // for _ in collection { body } → match collection { | _::rest -> body; for_loop() | _ -> () }
       let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
       
-      let cons_clause = Case(
-        pattern: PPCtr("Cons", PAs(PAny, "_for_head")),
+      let cons_clause = core_ast.Case(
+        pattern: core_ast.PCtr("Cons", core_ast.PAs(core_ast.PAny, "_for_head")),
         body: core_term_to_term(body_with_rec),
         guard: None,
         span: span,
@@ -1164,8 +1164,8 @@ fn desugar_for(
     _ -> {
       let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
       
-      let cons_clause = Case(
-        pattern: PPCtr("Cons", PAs(PAny, "_for_head")),
+      let cons_clause = core_ast.Case(
+        pattern: core_ast.PCtr("Cons", core_ast.PAs(core_ast.PAny, "_for_head")),
         body: core_term_to_term(body_with_rec),
         guard: None,
         span: span,
@@ -1214,16 +1214,16 @@ fn desugar_while(
 
   // Build match on condition: match condition { | True -> body; loop () | _ -> () }
   // True clause: execute body and recurse
-  let true_clause = Case(
-    pattern: PPCtr("True", PUnit),
+  let true_clause = core_ast.Case(
+    pattern: core_ast.PCtr("True", core_ast.PUnit),
     body: core_term_to_term(body_with_rec),
     guard: None,
     span: span,
   )
 
   // Default clause: return unit (exit loop)
-  let default_clause = Case(
-    pattern: PAny,
+  let default_clause = core_ast.Case(
+    pattern: core_ast.PAny,
     body: core_term_to_term(CoreRcd([], span)),
     guard: None,
     span: span,
@@ -1281,7 +1281,7 @@ fn desugar_loop(
 pub fn desugar_expr(
   expr: Expr,
   dc: DesugarContext,
-) -> #(Term, DesugarContext) {
+) -> #(core_ast.Term, DesugarContext) {
   let #(core_term, dc1) = desugar_expr_core(expr, dc)
   #(core_term_to_term(core_term), dc1)
 }
@@ -1442,12 +1442,12 @@ fn desugar_type_ast(
       // Type application - build nested applications
       let #(core_args, dc1) = desugar_type_args(args, dc)
       let base = case name {
-        "I32" -> CoreBuiltinType("I32T", Span(name, 0, 0, 0, 0))
-        "I64" -> CoreBuiltinType("I64T", Span(name, 0, 0, 0, 0))
-        "U32" -> CoreBuiltinType("U32T", Span(name, 0, 0, 0, 0))
-        "U64" -> CoreBuiltinType("U64T", Span(name, 0, 0, 0, 0))
-        "F32" -> CoreBuiltinType("F32T", Span(name, 0, 0, 0, 0))
-        "F64" -> CoreBuiltinType("F64T", Span(name, 0, 0, 0, 0))
+        "I32" -> CoreBuiltinType("core_ast.I32T", Span(name, 0, 0, 0, 0))
+        "I64" -> CoreBuiltinType("core_ast.I64T", Span(name, 0, 0, 0, 0))
+        "U32" -> CoreBuiltinType("core_ast.U32T", Span(name, 0, 0, 0, 0))
+        "U64" -> CoreBuiltinType("core_ast.U64T", Span(name, 0, 0, 0, 0))
+        "F32" -> CoreBuiltinType("core_ast.F32T", Span(name, 0, 0, 0, 0))
+        "F64" -> CoreBuiltinType("core_ast.F64T", Span(name, 0, 0, 0, 0))
         "Bool" -> CoreVar("Bool", Span(name, 0, 0, 0, 0))
         "Option" -> CoreVar("Option", Span(name, 0, 0, 0, 0))
         "Result" -> CoreVar("Result", Span(name, 0, 0, 0, 0))
@@ -1529,11 +1529,11 @@ fn desugar_exprs_loop(
 }
 
 /// Convert a Tao literal to a Core literal.
-fn tao_literal_to_core_literal(literal: Literal) -> CoreLiteral {
+fn tao_literal_to_core_literal(literal: Literal) -> core_ast.Literal {
   case literal {
-    LitInt(n) -> core.I32(n)
-    LitFloat(f) -> core.F64(f)
-    LitString(_s) -> core.I32(0)  // Strings not directly supported in core literals
+    LitInt(n) -> core_ast.I32(n)
+    LitFloat(f) -> core_ast.F64(f)
+    LitString(_s) -> core_ast.I32(0)  // Strings not directly supported in core literals
   }
 }
 
@@ -1840,16 +1840,16 @@ fn desugar_match_clauses_to_cases(
   clauses: List(MatchClause),
   span: Span,
   dc: DesugarContext,
-) -> #(List(CoreCaseType), DesugarContext) {
+) -> #(List(core_ast.Case), DesugarContext) {
   desugar_cases_loop(clauses, [], span, dc)
 }
 
 fn desugar_cases_loop(
   clauses: List(MatchClause),
-  acc: List(CoreCaseType),
+  acc: List(core_ast.Case),
   span: Span,
   dc: DesugarContext,
-) -> #(List(CoreCaseType), DesugarContext) {
+) -> #(List(core_ast.Case), DesugarContext) {
   case clauses {
     [] -> #(list.reverse(acc), dc)
     [clause, ..rest] -> {
@@ -1864,7 +1864,7 @@ fn desugar_single_case(
   clause: MatchClause,
   span: Span,
   dc: DesugarContext,
-) -> #(CoreCaseType, DesugarContext) {
+) -> #(core_ast.Case, DesugarContext) {
   let pattern = clause.pattern
   let guard = clause.guard
   let body = clause.body
@@ -1887,7 +1887,7 @@ fn desugar_single_case(
   // Convert body to Term
   let core_body_term = core_term_to_term(core_body)
 
-  let core_case = Case(core_pattern, core_body_term, core_guard, span)
+  let core_case = core_ast.Case(core_pattern, core_body_term, core_guard, span)
   #(core_case, dc2)
 }
 
@@ -1895,22 +1895,22 @@ fn desugar_single_case(
 fn tao_pattern_to_core_pattern(
   pattern: Pattern,
   dc: DesugarContext,
-) -> #(CorePattern, DesugarContext) {
+) -> #(core_ast.Pattern, DesugarContext) {
   case pattern {
     ast.PVar(name, _pattern_span) -> {
       // Variable pattern: bind to as-pattern
-      let core_pattern = PAs(PAny, name)
+      let core_pattern = core_ast.PAs(core_ast.PAny, name)
       let dc1 = add_local(dc, name)
       #(core_pattern, dc1)
     }
     ast.PAny(_pattern_span) -> {
       // Wildcard pattern (AST)
-      #(PAny, dc)
+      #(core_ast.PAny, dc)
     }
     ast.PLit(literal, _pattern_span) -> {
       // Literal pattern
       let core_lit = tao_literal_to_core_literal(literal)
-      #(PPlit(core_lit), dc)
+      #(core_ast.PLit(core_lit), dc)
     }
     ast.PCtr(name, args, _pattern_span) -> {
       // Constructor pattern
@@ -1919,12 +1919,12 @@ fn tao_pattern_to_core_pattern(
     ast.PRecord(field_names, _pattern_span) -> {
       // Record pattern: {x, y} → {x = x, y = y}
       let core_fields = list.map(field_names, fn(field_name) {
-        #(field_name, PAs(PAny, field_name))
+        #(field_name, core_ast.PAs(core_ast.PAny, field_name))
       })
       let dc1 = list.fold(field_names, dc, fn(acc, name) {
         add_local(acc, name)
       })
-      #(PRcd(core_fields), dc1)
+      #(core_ast.PRcd(core_fields), dc1)
     }
     ast.PTuple(items, _pattern_span) -> {
       // Tuple pattern: (a, b) → record with numeric fields
@@ -1935,13 +1935,13 @@ fn tao_pattern_to_core_pattern(
       tao_list_pattern_to_core(items, rest_name, dc)
     }
     ast.POr(_patterns, _pattern_span) -> {
-      // Or pattern: simplified to PAny (full support needs core changes)
-      #(PAny, dc)
+      // Or pattern: simplified to core_ast.PAny (full support needs core changes)
+      #(core_ast.PAny, dc)
     }
     ast.PAs(inner_pattern, alias, _pattern_span) -> {
       // As pattern: x @ Some(_)
       let #(core_inner, dc1) = tao_pattern_to_core_pattern(inner_pattern, dc)
-      let core_pattern = PAs(core_inner, alias)
+      let core_pattern = core_ast.PAs(core_inner, alias)
       let dc2 = add_local(dc1, alias)
       #(core_pattern, dc2)
     }
@@ -1953,11 +1953,11 @@ fn tao_ctr_pattern_to_core(
   name: String,
   args: List(Pattern),
   dc: DesugarContext,
-) -> #(CorePattern, DesugarContext) {
+) -> #(core_ast.Pattern, DesugarContext) {
   case args {
     [] -> {
       // Nullary constructor
-      #(PPCtr(name, PUnit), dc)
+      #(core_ast.PCtr(name, core_ast.PUnit), dc)
     }
     [first, ..rest] -> {
       // Build nested constructor pattern
@@ -1970,21 +1970,21 @@ fn tao_ctr_pattern_to_core_loop(
   name: String,
   args: List(Pattern),
   dc: DesugarContext,
-) -> #(CorePattern, DesugarContext) {
+) -> #(core_ast.Pattern, DesugarContext) {
   case args {
     [] -> {
-      #(PUnit, dc)
+      #(core_ast.PUnit, dc)
     }
     [first] -> {
       // Last argument
       let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
-      #(PPCtr(name, core_first), dc1)
+      #(core_ast.PCtr(name, core_first), dc1)
     }
     [first, ..rest] -> {
       // Build nested pattern
       let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
       let #(core_rest, dc2) = tao_ctr_pattern_to_core_loop(name, rest, dc1)
-      #(PPCtr(name, core_first), dc2)
+      #(core_ast.PCtr(name, core_first), dc2)
     }
   }
 }
@@ -1993,19 +1993,19 @@ fn tao_ctr_pattern_to_core_loop(
 fn tao_tuple_pattern_to_core(
   items: List(Pattern),
   dc: DesugarContext,
-) -> #(CorePattern, DesugarContext) {
+) -> #(core_ast.Pattern, DesugarContext) {
   tao_tuple_pattern_loop(items, 0, [], dc)
 }
 
 fn tao_tuple_pattern_loop(
   items: List(Pattern),
   index: Int,
-  acc: List(#(String, CorePattern)),
+  acc: List(#(String, core_ast.Pattern)),
   dc: DesugarContext,
-) -> #(CorePattern, DesugarContext) {
+) -> #(core_ast.Pattern, DesugarContext) {
   case items {
     [] -> {
-      #(PRcd(list.reverse(acc)), dc)
+      #(core_ast.PRcd(list.reverse(acc)), dc)
     }
     [item, ..rest] -> {
       let field_name = int.to_string(index)
@@ -2020,19 +2020,19 @@ fn tao_list_pattern_to_core(
   items: List(Pattern),
   rest_name: Option(String),
   dc: DesugarContext,
-) -> #(CorePattern, DesugarContext) {
+) -> #(core_ast.Pattern, DesugarContext) {
   case items {
     [] -> {
       // Empty list: Nil
       case rest_name {
         Some(name) -> {
           // [..rest] or [] with rest
-          let core_pattern = PPCtr("Nil", PUnit)
+          let core_pattern = core_ast.PCtr("Nil", core_ast.PUnit)
           let dc1 = add_local(dc, name)
-          #(PAs(core_pattern, name), dc1)
+          #(core_ast.PAs(core_pattern, name), dc1)
         }
         None -> {
-          #(PPCtr("Nil", PUnit), dc)
+          #(core_ast.PCtr("Nil", core_ast.PUnit), dc)
         }
       }
     }
@@ -2040,7 +2040,7 @@ fn tao_list_pattern_to_core(
       // Non-empty list: Cons(h, t)
       let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
       let #(core_rest, dc2) = tao_list_rest_pattern_to_core(rest, rest_name, dc1)
-      #(PPCtr("Cons", core_first), dc2)
+      #(core_ast.PCtr("Cons", core_first), dc2)
     }
   }
 }
@@ -2049,18 +2049,18 @@ fn tao_list_rest_pattern_to_core(
   rest: List(Pattern),
   rest_name: Option(String),
   dc: DesugarContext,
-) -> #(CorePattern, DesugarContext) {
+) -> #(core_ast.Pattern, DesugarContext) {
   case rest {
     [] -> {
       // End of list: Nil
       case rest_name {
         Some(name) -> {
-          let core_pattern = PPCtr("Nil", PUnit)
+          let core_pattern = core_ast.PCtr("Nil", core_ast.PUnit)
           let dc1 = add_local(dc, name)
-          #(PAs(core_pattern, name), dc1)
+          #(core_ast.PAs(core_pattern, name), dc1)
         }
         None -> {
-          #(PPCtr("Nil", PUnit), dc)
+          #(core_ast.PCtr("Nil", core_ast.PUnit), dc)
         }
       }
     }
@@ -2068,7 +2068,7 @@ fn tao_list_rest_pattern_to_core(
       // More elements: Cons(h, t)
       let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
       let #(core_rest, dc2) = tao_list_rest_pattern_to_core(rest_rest, rest_name, dc1)
-      #(PPCtr("Cons", core_first), dc2)
+      #(core_ast.PCtr("Cons", core_first), dc2)
     }
   }
 }
@@ -2303,11 +2303,11 @@ pub fn make_module_field(
 // ============================================================================
 
 /// Convert a simplified CoreTerm to core/core.Term.
-pub fn core_term_to_term(term: CoreTerm) -> Term {
+pub fn core_term_to_term(term: CoreTerm) -> core_ast.Term {
   core_term_to_term_loop(term, [])
 }
 
-fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
+fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> core_ast.Term {
   // Debug: print the term being converted
   // io.println("Converting: " <> debug_core_term(term) <> " with env: " <> inspect(env))
   case term {
@@ -2316,38 +2316,38 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
       case int.parse(name) {
         Ok(index) -> {
           // Already a De Bruijn index - use directly
-          Var(index: index, span: span)
+          core_ast.Var(index: index, span: span)
         }
         Error(_) -> {
           // Named variable - look up in environment
           case find_var_index(env, name, 0) {
-            Some(index) -> Var(index: index, span: span)
-            None -> Var(index: 0, span: span)  // Undefined variable
+            Some(index) -> core_ast.Var(index: index, span: span)
+            None -> core_ast.Var(index: 0, span: span)  // Undefined variable
           }
         }
       }
     }
     CoreCall(name, args, span) -> {
       // Convert CoreCall to core/core.Call for FFI builtin
-      Call(name, list.map(args, fn(a) { core_term_to_term_loop(a, env) }), span)
+      core_ast.Call(name, list.map(args, fn(a) { core_term_to_term_loop(a, env) }), span)
     }
     CoreModuleRef(_, span) -> {
       // Module reference - should have been replaced by create_module_record
       // Fallback to a hole
-      Hole(0, span)
+      core_ast.Hole(0, span)
     }
     CoreLam(param, body, span) -> {
       // Add parameter to environment for the body
       // Use a hole for the parameter type to enable type inference
-      Lam(
+      core_ast.Lam(
         implicit: [],
-        param: #(param, Hole(-1, span)),
+        param: #(param, core_ast.Hole(-1, span)),
         body: core_term_to_term_loop(body, [param, ..env]),
         span: span,
       )
     }
     CoreApp(fun, arg, span) -> {
-      App(
+      core_ast.App(
         fun: core_term_to_term_loop(fun, env),
         implicit: [],
         arg: core_term_to_term_loop(arg, env),
@@ -2355,7 +2355,7 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
       )
     }
     CoreRcd(fields, span) -> {
-      Rcd(
+      core_ast.Rcd(
         fields: list.map(fields, fn(pair) {
           #(pair.0, core_term_to_term_loop(pair.1, env))
         }),
@@ -2363,7 +2363,7 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
       )
     }
     CoreDot(record, field, span) -> {
-      Dot(
+      core_ast.Dot(
         arg: core_term_to_term_loop(record, env),
         field: field,
         span: span,
@@ -2380,30 +2380,30 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
     }
     CoreTyp(universe, span) -> {
       // Convert CoreTyp to core/core.Typ (type universe)
-      Typ(universe: universe, span: span)
+      core_ast.Typ(universe: universe, span: span)
     }
     CoreBuiltinType(name, span) -> {
       // Convert CoreBuiltinType to a type variable
       // For now, use a hole as a placeholder
-      Hole(id: -1, span: span)
+      core_ast.Hole(id: -1, span: span)
     }
     CoreHole(id, span) -> {
       // Convert CoreHole to core/core.Hole (metavariable)
-      Hole(id: id, span: span)
+      core_ast.Hole(id: id, span: span)
     }
     CoreLit(value, span) -> {
       // Try to parse as integer first
       case int.parse(value) {
-        Ok(n) -> Lit(value: I32(n), span: span)
+        Ok(n) -> core_ast.Lit(value: core_ast.I32(n), span: span)
         Error(_) -> {
           // Not an integer - try float
           case float.parse(value) {
-            Ok(f) -> Lit(value: F64(f), span: span)
+            Ok(f) -> core_ast.Lit(value: core_ast.F64(f), span: span)
             Error(_) -> {
               // String literal - core language doesn't support strings directly
               // For now, represent as unit to avoid type errors
               // A full implementation would represent strings as arrays of characters
-              Unit(span)
+              core_ast.Unit(span)
             }
           }
         }
@@ -2412,7 +2412,7 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
     CoreMatchCore(arg, motive, cases, span) -> {
       // Convert CoreMatchCore to core/core.Match
       // Cases are already core.Case with Term bodies
-      CoreMatch(
+      core_ast.Match(
         arg: core_term_to_term_loop(arg, env),
         motive: core_term_to_term_loop(motive, env),
         cases: cases,
@@ -2421,15 +2421,15 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
     }
     CoreFix(name, body, span) -> {
       // Convert CoreFix to core/core.Fix
-      Fix(name, core_term_to_term_loop(body, [name, ..env]), span)
+      core_ast.Fix(name, core_term_to_term_loop(body, [name, ..env]), span)
     }
     CoreCtr(tag, arg, span) -> {
       // Convert CoreCtr to core/core.Ctr
-      Ctr(tag, core_term_to_term_loop(arg, env), span)
+      core_ast.Ctr(tag, core_term_to_term_loop(arg, env), span)
     }
     CorePi(implicit, name, domain, codomain, span) -> {
       // Convert CorePi to core/core.Pi (dependent function type)
-      Pi(
+      core_ast.Pi(
         implicit: implicit,
         name: name,
         in_term: core_term_to_term_loop(domain, env),
@@ -2439,7 +2439,7 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
     }
     CoreAnn(term, typ, span) -> {
       // Convert CoreAnn to core/core.Ann (type annotation)
-      Ann(
+      core_ast.Ann(
         core_term_to_term_loop(term, env),
         core_term_to_term_loop(typ, env),
         span,
@@ -2447,9 +2447,9 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> Term {
     }
     CoreUnit(span) -> {
       // Convert CoreUnit to core/core.Unit
-      Unit(span)
+      core_ast.Unit(span)
     }
-    CoreErr(message, span) -> Err(message: message, span: span)
+    CoreErr(message, span) -> core_ast.Err(message: message, span: span)
   }
 }
 

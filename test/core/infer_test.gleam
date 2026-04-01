@@ -11,6 +11,7 @@ import gleam/list
 import gleeunit
 import gleeunit/should
 import syntax/grammar.{Span}
+import core/infer.{infer}
 
 pub fn main() {
   gleeunit.main()
@@ -20,7 +21,7 @@ pub fn main() {
 // TEST HELPERS
 // ============================================================================
 
-const s = c.initial_state
+const s = state.initial_state
 
 const s0 = Span("infer_test", 0, 0, 0, 0)
 
@@ -31,63 +32,63 @@ const s2 = Span("infer_test", 2, 2, 2, 2)
 const s3 = Span("infer_test", 3, 3, 3, 3)
 
 fn typ(l, s) {
-  c.Typ(l, s)
+  ast.Typ(l, s)
 }
 
 fn lit(v, s) {
-  c.Lit(v, s)
+  ast.Lit(v, s)
 }
 
 fn litt(t, s) {
-  c.LitT(t, s)
+  ast.LitT(t, s)
 }
 
 fn var(i, s) {
-  c.Var(i, s)
+  ast.Var(i, s)
 }
 
 fn hole(id, s) {
-  c.Hole(id, s)
+  ast.Hole(id, s)
 }
 
 fn ctr(k, arg, s) {
-  c.Ctr(k, arg, s)
+  ast.Ctr(k, arg, s)
 }
 
 fn rcd(fields, s) {
-  c.Rcd(fields, s)
+  ast.Rcd(fields, s)
 }
 
 fn i32(v, s) {
-  lit(c.I32(v), s)
+  lit(ast.I32(v), s)
 }
 
 fn i64(v, s) {
-  lit(c.I64(v), s)
+  lit(ast.I64(v), s)
 }
 
 fn i32t(s) {
-  litt(c.I32T, s)
+  litt(ast.I32T, s)
 }
 
 fn i64t(s) {
-  litt(c.I64T, s)
+  litt(ast.I64T, s)
 }
 
 fn v32(v) {
-  c.VLit(c.I32(v))
+  ast.VLit(ast.I32(v))
 }
 
 fn v64(v) {
-  c.VLit(c.I64(v))
+  ast.VLit(ast.I64(v))
 }
 
-const v32t = c.VLitT(c.I32T)
+const v32t = ast.VLitT(ast.I32T)
 
-const v64t = c.VLitT(c.I64T)
+const v64t = ast.VLitT(ast.I64T)
 
 fn vhole(i) {
-  c.VNeut(c.HHole(i), [])
+  ast.VNeut(ast.HHole(i), [])
 }
 
 // ============================================================================
@@ -95,8 +96,8 @@ fn vhole(i) {
 // ============================================================================
 
 pub fn infer_typ_test() {
-  c.infer(s, typ(0, s1))
-  |> should.equal(#(c.VTyp(0), c.VTyp(1), s))
+  infer(s, typ(0, s1))
+  |> should.equal(#(ast.VTyp(0), ast.VTyp(1), s))
 }
 
 // ============================================================================
@@ -104,18 +105,18 @@ pub fn infer_typ_test() {
 // ============================================================================
 
 pub fn infer_lit_test() {
-  c.infer(s, lit(c.I32(1), s1))
-  |> should.equal(#(c.VLit(c.I32(1)), c.VLitT(c.I32T), s))
-  c.infer(s, lit(c.I64(1), s1))
-  |> should.equal(#(c.VLit(c.I64(1)), c.VLitT(c.I64T), s))
-  c.infer(s, lit(c.U32(1), s1))
-  |> should.equal(#(c.VLit(c.U32(1)), c.VLitT(c.U32T), s))
-  c.infer(s, lit(c.U64(1), s1))
-  |> should.equal(#(c.VLit(c.U64(1)), c.VLitT(c.U64T), s))
-  c.infer(s, lit(c.F32(1.0), s1))
-  |> should.equal(#(c.VLit(c.F32(1.0)), c.VLitT(c.F32T), s))
-  c.infer(s, lit(c.F64(1.0), s1))
-  |> should.equal(#(c.VLit(c.F64(1.0)), c.VLitT(c.F64T), s))
+  infer(s, lit(ast.I32(1), s1))
+  |> should.equal(#(ast.VLit(ast.I32(1)), ast.VLitT(ast.I32T), s))
+  infer(s, lit(ast.I64(1), s1))
+  |> should.equal(#(ast.VLit(ast.I64(1)), ast.VLitT(ast.I64T), s))
+  infer(s, lit(ast.U32(1), s1))
+  |> should.equal(#(ast.VLit(ast.U32(1)), ast.VLitT(ast.U32T), s))
+  infer(s, lit(ast.U64(1), s1))
+  |> should.equal(#(ast.VLit(ast.U64(1)), ast.VLitT(ast.U64T), s))
+  infer(s, lit(ast.F32(1.0), s1))
+  |> should.equal(#(ast.VLit(ast.F32(1.0)), ast.VLitT(ast.F32T), s))
+  infer(s, lit(ast.F64(1.0), s1))
+  |> should.equal(#(ast.VLit(ast.F64(1.0)), ast.VLitT(ast.F64T), s))
 }
 
 // ============================================================================
@@ -123,18 +124,18 @@ pub fn infer_lit_test() {
 // ============================================================================
 
 pub fn infer_litt_test() {
-  c.infer(s, litt(c.I32T, s1))
-  |> should.equal(#(c.VLitT(c.I32T), c.VTyp(0), s))
-  c.infer(s, litt(c.I64T, s1))
-  |> should.equal(#(c.VLitT(c.I64T), c.VTyp(0), s))
-  c.infer(s, litt(c.U32T, s1))
-  |> should.equal(#(c.VLitT(c.U32T), c.VTyp(0), s))
-  c.infer(s, litt(c.U64T, s1))
-  |> should.equal(#(c.VLitT(c.U64T), c.VTyp(0), s))
-  c.infer(s, litt(c.F32T, s1))
-  |> should.equal(#(c.VLitT(c.F32T), c.VTyp(0), s))
-  c.infer(s, litt(c.F64T, s1))
-  |> should.equal(#(c.VLitT(c.F64T), c.VTyp(0), s))
+  infer(s, litt(ast.I32T, s1))
+  |> should.equal(#(ast.VLitT(ast.I32T), ast.VTyp(0), s))
+  infer(s, litt(ast.I64T, s1))
+  |> should.equal(#(ast.VLitT(ast.I64T), ast.VTyp(0), s))
+  infer(s, litt(ast.U32T, s1))
+  |> should.equal(#(ast.VLitT(ast.U32T), ast.VTyp(0), s))
+  infer(s, litt(ast.U64T, s1))
+  |> should.equal(#(ast.VLitT(ast.U64T), ast.VTyp(0), s))
+  infer(s, litt(ast.F32T, s1))
+  |> should.equal(#(ast.VLitT(ast.F32T), ast.VTyp(0), s))
+  infer(s, litt(ast.F64T, s1))
+  |> should.equal(#(ast.VLitT(ast.F64T), ast.VTyp(0), s))
 }
 
 // ============================================================================
@@ -142,13 +143,13 @@ pub fn infer_litt_test() {
 // ============================================================================
 
 pub fn infer_var_test() {
-  let s = c.State(..s, ctx: [#("x", #(v32(1), v32t))])
-  c.infer(s, var(0, s1)) |> should.equal(#(v32(1), v32t, s))
-  c.infer(s, var(1, s1))
+  let s = state.State(..s, ctx: [#("x", #(v32(1), v32t))])
+  infer(s, var(0, s1)) |> should.equal(#(v32(1), v32t, s))
+  infer(s, var(1, s1))
   |> should.equal(#(
-    c.VErr,
-    c.VErr,
-    c.State(..s, errors: [c.VarUndefined(1, s1)]),
+    ast.VErr,
+    ast.VErr,
+    state.State(..s, errors: [state.VarUndefined(1, s1)]),
   ))
 }
 
@@ -157,8 +158,8 @@ pub fn infer_var_test() {
 // ============================================================================
 
 pub fn infer_hole_test() {
-  let state_with_hole = c.State(..s, hole: 1)
-  let result = c.infer(state_with_hole, hole(0, s1))
+  let state_with_hole = state.State(..s, hole: 1)
+  let result = infer(state_with_hole, hole(0, s1))
   // Check result is a tuple with 3 elements
   case result {
     #(_, _, _) -> True |> should.be_true
@@ -170,14 +171,14 @@ pub fn infer_hole_test() {
 // ============================================================================
 
 pub fn infer_rcd_test() {
-  c.infer(s, rcd([], s0))
-  |> should.equal(#(c.VRcd([]), c.VRcd([]), s))
-  c.infer(s, rcd([#("a", i32(1, s1))], s0))
-  |> should.equal(#(c.VRcd([#("a", v32(1))]), c.VRcd([#("a", v32t)]), s))
-  c.infer(s, rcd([#("a", i32(1, s1)), #("b", i64(2, s2))], s0))
+  infer(s, rcd([], s0))
+  |> should.equal(#(ast.VRcd([]), ast.VRcd([]), s))
+  infer(s, rcd([#("a", i32(1, s1))], s0))
+  |> should.equal(#(ast.VRcd([#("a", v32(1))]), ast.VRcd([#("a", v32t)]), s))
+  infer(s, rcd([#("a", i32(1, s1)), #("b", i64(2, s2))], s0))
   |> should.equal(#(
-    c.VRcd([#("a", v32(1)), #("b", v64(2))]),
-    c.VRcd([#("a", v32t), #("b", v64t)]),
+    ast.VRcd([#("a", v32(1)), #("b", v64(2))]),
+    ast.VRcd([#("a", v32t), #("b", v64t)]),
     s,
   ))
 }
@@ -188,7 +189,7 @@ pub fn infer_rcd_test() {
 
 pub fn infer_ctr_test() {
   // Constructor inference returns a result tuple
-  let result = c.infer(s, ctr("A", i32(1, s1), s2))
+  let result = infer(s, ctr("A", i32(1, s1), s2))
   // Check result is a tuple with 3 elements
   case result {
     #(_, _, _) -> True |> should.be_true
@@ -197,9 +198,9 @@ pub fn infer_ctr_test() {
 
 pub fn infer_ctr_arg_bind_test() {
   // Constructor argument binds the implicit type parameter
-  let state_with_hole = c.State(..s, hole: 1)
+  let state_with_hole = state.State(..s, hole: 1)
   let term = ctr("Some", i32(42, s1), s2)
-  let result = c.infer(state_with_hole, term)
+  let result = infer(state_with_hole, term)
 
   // Check result is a tuple with 3 elements (type inference works)
   case result {
@@ -209,9 +210,9 @@ pub fn infer_ctr_arg_bind_test() {
 
 pub fn infer_ctr_multiple_args_test() {
   // Constructor with multiple arguments
-  let state_with_hole = c.State(..s, hole: 1)
+  let state_with_hole = state.State(..s, hole: 1)
   let term = ctr("Pair", rcd([#("fst", i32(1, s1)), #("snd", i64(2, s2))], s0), s3)
-  let result = c.infer(state_with_hole, term)
+  let result = infer(state_with_hole, term)
 
   // Check result is a tuple with 3 elements (type inference works)
   case result {

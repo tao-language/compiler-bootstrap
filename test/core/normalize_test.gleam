@@ -13,6 +13,7 @@ import core/state as state
 import gleeunit
 import gleeunit/should
 import syntax/grammar.{Span}
+import core/quote.{normalize}
 
 pub fn main() {
   gleeunit.main()
@@ -31,28 +32,28 @@ const s1 = Span("normalize_test", 1, 1, 1, 1)
 pub fn normalize_id_test() {
   // Normalize the identity function
   // The parameter type is quoted from VNeut(HVar(lvl), []) which gives Var(-1)
-  let id = c.Lam([], #("x", c.Hole(-1, s1)), c.Var(0, s1), s1)
-  c.normalize(c.ffi_build, [], id, s1)
-  |> should.equal(c.Lam([], #("x", c.Var(-1, s1)), c.Var(0, s1), s1))
+  let id = ast.Lam([], #("x", ast.Hole(-1, s1)), ast.Var(0, s1), s1)
+  normalize(c.ffi_build, [], id, s1)
+  |> should.equal(ast.Lam([], #("x", ast.Var(-1, s1)), ast.Var(0, s1), s1))
 }
 
 pub fn normalize_app_test() {
   // Normalize (λx. x) y → y
-  let id = c.Lam([], #("x", c.Hole(-1, s1)), c.Var(0, s1), s1)
-  let arg = c.LitT(c.I32T, s1)
-  let app = c.App(id, [], arg, s1)
-  c.normalize(c.ffi_build, [], app, s1)
-  |> should.equal(c.LitT(c.I32T, s1))
+  let id = ast.Lam([], #("x", ast.Hole(-1, s1)), ast.Var(0, s1), s1)
+  let arg = ast.LitT(ast.I32T, s1)
+  let app = ast.App(id, [], arg, s1)
+  normalize(c.ffi_build, [], app, s1)
+  |> should.equal(ast.LitT(ast.I32T, s1))
 }
 
 pub fn normalize_nested_app_test() {
   // Normalize (λx. λy. x) a b → a
-  let lam_inner = c.Lam([], #("y", c.Hole(-1, s1)), c.Var(1, s1), s1)
-  let lam1 = c.Lam([], #("x", c.Hole(-1, s1)), lam_inner, s1)
-  let app1 = c.App(lam1, [], c.LitT(c.I32T, s1), s1)
-  let app2 = c.App(app1, [], c.LitT(c.I64T, s1), s1)
-  c.normalize(c.ffi_build, [], app2, s1)
-  |> should.equal(c.LitT(c.I32T, s1))
+  let lam_inner = ast.Lam([], #("y", ast.Hole(-1, s1)), ast.Var(1, s1), s1)
+  let lam1 = ast.Lam([], #("x", ast.Hole(-1, s1)), lam_inner, s1)
+  let app1 = ast.App(lam1, [], ast.LitT(ast.I32T, s1), s1)
+  let app2 = ast.App(app1, [], ast.LitT(ast.I64T, s1), s1)
+  normalize(c.ffi_build, [], app2, s1)
+  |> should.equal(ast.LitT(ast.I32T, s1))
 }
 
 // ============================================================================
@@ -61,10 +62,10 @@ pub fn normalize_nested_app_test() {
 
 pub fn normalize_dot_test() {
   // Normalize {a = 1}.a → 1
-  let rcd = c.Rcd([#("a", c.Lit(c.I32(1), s1))], s1)
-  let dot = c.Dot(rcd, "a", s1)
-  c.normalize(c.ffi_build, [], dot, s1)
-  |> should.equal(c.Lit(c.I32(1), s1))
+  let rcd = ast.Rcd([#("a", ast.Lit(ast.I32(1), s1))], s1)
+  let dot = ast.Dot(rcd, "a", s1)
+  normalize(c.ffi_build, [], dot, s1)
+  |> should.equal(ast.Lit(ast.I32(1), s1))
 }
 
 // ============================================================================
@@ -73,7 +74,7 @@ pub fn normalize_dot_test() {
 
 pub fn normalize_ann_test() {
   // Normalize (1 : I32) → 1
-  let ann = c.Ann(c.Lit(c.I32(1), s1), c.LitT(c.I32T, s1), s1)
-  c.normalize(c.ffi_build, [], ann, s1)
-  |> should.equal(c.Lit(c.I32(1), s1))
+  let ann = ast.Ann(ast.Lit(ast.I32(1), s1), ast.LitT(ast.I32T, s1), s1)
+  normalize(c.ffi_build, [], ann, s1)
+  |> should.equal(ast.Lit(ast.I32(1), s1))
 }
