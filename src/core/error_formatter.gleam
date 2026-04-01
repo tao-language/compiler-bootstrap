@@ -26,6 +26,7 @@ import core/state.{
   SpineMismatch, TODO,
   AllowRead, AllowWrite,
 }
+import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -495,29 +496,60 @@ fn type_to_string(ty: ast.Type) -> String {
 
 fn ctr_to_string(ctr) -> String {
   case ctr {
-    ast.VCtr(tag, _) -> tag
+    ast.VCtr(tag, ast.VUnit) -> tag
+    ast.VCtr(tag, arg) -> "#" <> tag <> "(" <> value_to_string(arg) <> ")"
+  }
+}
+
+fn value_to_string(val: ast.Value) -> String {
+  case val {
+    ast.VUnit -> "Unit"
+    ast.VTyp(_) -> "Type"
+    ast.VLit(lit) -> literal_from_value(lit)
+    ast.VLitT(lit) -> literal_type_to_string(lit)
+    ast.VNeut(head, _) -> head_to_string(head)
+    ast.VRcd(_) -> "{...}"
+    ast.VCtrValue(ctr) -> ctr_to_string(ctr)
+    ast.VLam(_, _, _, _) -> "λ"
+    ast.VPi(_, _, _, domain, _) -> "(" <> type_to_string(domain) <> ") → ..."
+    ast.VRecord(_) -> "Record{...}"
+    ast.VCall(name, _) -> name <> "(...)"
+    ast.VFix(_, _, _) -> "fix"
+    ast.VUnit -> "Unit"
+    ast.VErr -> "⊥"
+  }
+}
+
+fn literal_from_value(lit: ast.Literal) -> String {
+  case lit {
+    ast.I32(n) -> int.to_string(n)
+    ast.I64(n) -> int.to_string(n)
+    ast.U32(n) -> int.to_string(n)
+    ast.U64(n) -> int.to_string(n)
+    ast.F32(f) -> "" <> float.to_string(f)
+    ast.F64(f) -> "" <> float.to_string(f)
   }
 }
 
 fn literal_type_to_string(lit: ast.LiteralType) -> String {
   case lit {
-    ast.I32T -> "%ast.I32"
-    ast.I64T -> "%ast.I64"
-    ast.U32T -> "%ast.U32"
-    ast.U64T -> "%ast.U64"
-    ast.F32T -> "%ast.F32"
-    ast.F64T -> "%ast.F64"
+    ast.I32T -> "Int"
+    ast.I64T -> "Int"
+    ast.U32T -> "Int"
+    ast.U64T -> "Int"
+    ast.F32T -> "Float"
+    ast.F64T -> "Float"
   }
 }
 
 fn literal_type_from_value(lit: ast.Literal) -> String {
   case lit {
-    ast.I32(_) -> "%ast.I32"
-    ast.I64(_) -> "%ast.I64"
-    ast.U32(_) -> "%ast.U32"
-    ast.U64(_) -> "%ast.U64"
-    ast.F32(_) -> "%ast.F32"
-    ast.F64(_) -> "%ast.F64"
+    ast.I32(_) -> "Int"
+    ast.I64(_) -> "Int"
+    ast.U32(_) -> "Int"
+    ast.U64(_) -> "Int"
+    ast.F32(_) -> "Float"
+    ast.F64(_) -> "Float"
   }
 }
 

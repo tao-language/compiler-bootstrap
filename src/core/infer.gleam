@@ -9,6 +9,7 @@ import core/state as state
 import core/eval as eval
 import core/quote as quote
 import core/subst as subst
+import core/unify as unify
 import core/check.{check, check_type, check_ctr_def}
 
 pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.State) {
@@ -186,6 +187,22 @@ fn infer_app(
 ) -> #(ast.Value, ast.Type, state.State) {
   let #(fun_val, fun_ty, s) = infer(s, fun)
   let #(arg_val, arg_ty, s) = infer(s, arg)
+  
+  // Handle hole function types by creating a fresh VPi and unifying
+  let fun_ty = case fun_ty {
+    ast.VNeut(ast.HHole(id), []) -> {
+      // Create a fresh VPi type for the hole
+      let domain_hole = ast.VNeut(ast.HHole(s.hole_counter), [])
+      let s = state.State(..s, hole_counter: s.hole_counter + 1)
+      let codomain_hole_term = ast.Hole(s.hole_counter, span)
+      let s = state.State(..s, hole_counter: s.hole_counter + 1)
+      let vpi_ty = ast.VPi([], "f", [], domain_hole, codomain_hole_term)
+      // Unify the hole with the VPi type
+      let #(_subst, s) = unify.unify(s, 0, ast.VNeut(ast.HHole(id), []), vpi_ty, span, span)
+      vpi_ty
+    }
+    _ -> fun_ty
+  }
   
   case fun_ty {
     ast.VPi(_, _, env, domain, codomain) -> {
