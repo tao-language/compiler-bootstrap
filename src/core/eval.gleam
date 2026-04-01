@@ -1,9 +1,9 @@
 // ============================================================================
-// CORE EVAL - Evaluation (Normalization by Evaluation)
+// CORE EVAL
+import gleam/option.{type Option, None, Some}
 // ============================================================================
 /// Evaluation reduces terms to values in a given environment.
 import gleam/list
-import gleam/option.{type Option, None, Some}
 import gleam/result
 import syntax/grammar.{type Span}
 import core/ast as ast

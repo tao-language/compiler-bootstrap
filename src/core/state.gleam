@@ -1,8 +1,6 @@
 // ============================================================================
 // CORE STATE - Type Checking State and Error Handling
 // ============================================================================
-import gleam/list
-import gleam/int
 import gleam/option.{type Option, None, Some}
 import syntax/grammar.{type Span}
 import core/ast as ast
