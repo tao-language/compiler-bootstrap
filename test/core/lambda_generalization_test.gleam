@@ -11,6 +11,7 @@
 /// The fix requires renaming nested implicit params to avoid collisions.
 import core/ast as ast
 import core/state as state
+import core/infer.{infer}
 import gleam/list
 import gleam/option.{None, Some}
 import gleeunit
@@ -46,7 +47,7 @@ pub fn nested_lambda_hvar_independence_test() {
   let #(_, ty, s) = infer(s, k)
   
   // Should have no errors
-  result_state.errors
+  s.errors
   |> should.equal([])
   
   // Type should be a VPi (function type) with implicit params
@@ -74,10 +75,10 @@ pub fn k_combinator_application_test() {
   let app2 = ast.App(app1, [], ast.Lit(ast.I32(20), span), span)
   
   let s = state.initial_state
-  let #(_val, ty, state) = infer(state, app2)
+  let #(_val, ty, s2) = infer(s, app2)
   
   // Should have no errors
-  result_state.errors
+  s.errors
   |> should.equal([])
   
   // Result type should be I32 type (VLitT(I32T)), not a hole
@@ -97,10 +98,10 @@ pub fn church_numeral_zero_test() {
   let inner = ast.Lam([], #("x", ast.Hole(-1, span)), ast.Var(0, span), span)
   let zero = ast.Lam([], #("f", ast.Hole(-1, span)), inner, span)
   
-  let #(_, ty, result_state) = infer(s, zero)
+  let #(_, ty, result_state): #(ast.Value, ast.Type, state.State) = infer(s, zero)
   
   // Should have no errors
-  result_state.errors
+  s.errors
   |> should.equal([])
   
   // Type should be VPi with implicit params (polymorphic)
