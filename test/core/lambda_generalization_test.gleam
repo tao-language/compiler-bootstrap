@@ -9,7 +9,8 @@
 /// - This causes type errors during application: "type ?X is not callable"
 ///
 /// The fix requires renaming nested implicit params to avoid collisions.
-import core/core as c
+import core/ast as ast
+import core/state as state
 import gleam/list
 import gleam/option.{None, Some}
 import gleeunit

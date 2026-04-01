@@ -2,8 +2,9 @@
 // ERROR REPORTING
 // ============================================================================
 /// Convert parse and type errors to diagnostics with source snippets.
-import core/core.{
-  type CtrValue, type Error as TypeError,
+import core/ast as ast
+import core/state.{
+  type Error as TypeError,
   TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction,
   ArityMismatch, CtrUndefined, MatchRedundantCase, MatchMissingCase,
   ComptimePermissionDenied, InfiniteType,
@@ -440,35 +441,35 @@ fn type_to_string(value) -> String {
 // Helper function to convert values to readable strings
 fn value_to_string(value) -> String {
   case value {
-    core.VTyp(universe) -> "%Type(" <> int.to_string(universe) <> ")"
-    core.VLit(literal) -> literal_to_string(literal)
-    core.VLitT(literal_type) -> literal_type_to_string(literal_type)
-    core.VNeut(head, spine) -> neutral_to_string(head, spine)
-    core.VRcd(fields) -> record_fields_to_string(fields)
-    core.VCtrValue(ctr) -> ctr_value_to_string(ctr)
-    core.VLam(implicit, name, _env, _body) -> {
+    ast.VTyp(universe) -> "%Type(" <> int.to_string(universe) <> ")"
+    ast.VLit(literal) -> literal_to_string(literal)
+    ast.VLitT(literal_type) -> literal_type_to_string(literal_type)
+    ast.VNeut(head, spine) -> neutral_to_string(head, spine)
+    ast.VRcd(fields) -> record_fields_to_string(fields)
+    ast.VCtrValue(ctr) -> ctr_value_to_string(ctr)
+    ast.VLam(implicit, name, _env, _body) -> {
       let implicit_str = case implicit {
         [] -> ""
         _ -> "<" <> string.join(implicit, ", ") <> ">"
       }
       "%fn" <> implicit_str <> "(" <> name <> ") { ... }"
     }
-    core.VPi(implicit, name, _env, in_val, _out) -> {
+    ast.VPi(implicit, name, _env, in_val, _out) -> {
       let implicit_str = case implicit {
         [] -> ""
         _ -> "<" <> string.join(implicit, ", ") <> ">"
       }
       "%pi" <> implicit_str <> "(" <> name <> ": " <> value_to_string(in_val) <> ") -> ..."
     }
-    core.VRecord(fields) -> {
+    ast.VRecord(fields) -> {
       "{" <> string.join(list.map(fields, fn(f) { f.0 <> ": ..." }), ", ") <> "}"
     }
-    core.VCall(name, args) -> {
+    ast.VCall(name, args) -> {
       name <> "(" <> args |> list.map(value_to_string) |> string.join(", ") <> ")"
     }
-    core.VFix(_name, _env, _body) -> "fix(...)"
-    core.VUnit -> "Unit"
-    core.VErr -> "<error>"
+    ast.VFix(_name, _env, _body) -> "fix(...)"
+    ast.VUnit -> "Unit"
+    ast.VErr -> "<error>"
   }
 }
 
@@ -482,43 +483,43 @@ fn neutral_to_string(head, spine) -> String {
 
 fn literal_to_string(literal) -> String {
   case literal {
-    core.I32(n) -> int.to_string(n)
-    core.I64(n) -> int.to_string(n) <> "i64"
-    core.U32(n) -> int.to_string(n) <> "u32"
-    core.U64(n) -> int.to_string(n) <> "u64"
-    core.F32(f) -> float.to_string(f) <> "f32"
-    core.F64(f) -> float.to_string(f)
+    ast.I32(n) -> int.to_string(n)
+    ast.I64(n) -> int.to_string(n) <> "i64"
+    ast.U32(n) -> int.to_string(n) <> "u32"
+    ast.U64(n) -> int.to_string(n) <> "u64"
+    ast.F32(f) -> float.to_string(f) <> "f32"
+    ast.F64(f) -> float.to_string(f)
   }
 }
 
 fn literal_type_to_string(literal_type) -> String {
   case literal_type {
-    core.I32T -> "Int"
-    core.I64T -> "Int64"
-    core.U32T -> "UInt32"
-    core.U64T -> "UInt64"
-    core.F32T -> "Float32"
-    core.F64T -> "Float"
+    ast.I32T -> "Int"
+    ast.I64T -> "Int64"
+    ast.U32T -> "UInt32"
+    ast.U64T -> "UInt64"
+    ast.F32T -> "Float32"
+    ast.F64T -> "Float"
   }
 }
 
 fn head_to_string(head) -> String {
   case head {
-    core.HVar(level) -> "var[" <> int.to_string(level) <> "]"
-    core.HHole(id) -> "?" <> int.to_string(id)
-    core.HStepLimit -> "<step-limit>"
+    ast.HVar(level) -> "var[" <> int.to_string(level) <> "]"
+    ast.HHole(id) -> "?" <> int.to_string(id)
+    ast.HStepLimit -> "<step-limit>"
   }
 }
 
-fn ctr_value_to_string(ctr: core.CtrValue) -> String {
+fn ctr_value_to_string(ctr: ast.CtrValue) -> String {
   case ctr {
-    core.VCtr(tag, arg) -> "#" <> tag <> "(" <> value_to_string(arg) <> ")"
+    ast.VCtr(tag, arg) -> "#" <> tag <> "(" <> value_to_string(arg) <> ")"
   }
 }
 
-fn record_fields_to_string(fields: List(#(String, core.Value))) -> String {
+fn record_fields_to_string(fields: List(#(String, ast.Value))) -> String {
   fields
-  |> list.map(fn(f: #(String, core.Value)) { f.0 <> ": " <> value_to_string(f.1) })
+  |> list.map(fn(f: #(String, ast.Value)) { f.0 <> ": " <> value_to_string(f.1) })
   |> string.join(", ")
   |> fn(s) { "{" <> s <> "}" }
 }

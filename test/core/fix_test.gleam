@@ -11,7 +11,8 @@
 /// - One assertion per test
 /// - Structural equality checks
 /// - Descriptive test names
-import core/core as c
+import core/ast as ast
+import core/state as state
 import syntax/grammar.{Span}
 import gleam/list
 import gleeunit

@@ -13,7 +13,11 @@ import tao/syntax.{parse_module, type Expr, parse as parse_expr, Int as TaoInt, 
 import syntax/grammar.{type ParseResult, type Span, Span}
 import tao/desugar.{desugar_module, type DesugarContext}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module}
-import core/core.{type Term, type State, type Value, type Error as CoreError, initial_state, infer, eval, quote, normalize, Err, SyntaxError, TypeMismatch, VarUndefined, CtrUndefined, HoleUnsolved, MatchRedundantCase, MatchMissingCase, RcdMissingFields, DotFieldNotFound, DotOnNonCtr, InfiniteType, SpineMismatch, ArityMismatch, NotAFunction, PatternMismatch, CtrUnsolvedParam, TODO as CoreTODO, ComptimePermissionDenied}
+import core/ast.{type Term, type Value, Err as CoreErr}
+import core/state.{type State, type Error as CoreError, initial_state, SyntaxError, TypeMismatch, VarUndefined, CtrUndefined, HoleUnsolved, MatchRedundantCase, MatchMissingCase, RcdMissingFields, DotFieldNotFound, DotOnNonCtr, InfiniteType, SpineMismatch, ArityMismatch, NotAFunction, PatternMismatch, CtrUnsolvedParam, TODO as CoreTODO, ComptimePermissionDenied}
+import core/infer.{infer}
+import core/eval.{eval}
+import core/quote.{quote, normalize}
 import core/syntax as core_syntax
 import gleam/list
 import gleam/option.{type Option, Some, None}
@@ -336,7 +340,7 @@ fn expr_to_core_term(exprs: List(Expr)) -> Term {
   let span = Span("", 0, 0, 0, 0)
 
   case exprs {
-    [] -> Err("No expressions", span)
+    [] -> CoreErr("No expressions", span)
     [_expr, ..] -> {
       // Desugar single expression
       let body = exprs_to_stmts(exprs)

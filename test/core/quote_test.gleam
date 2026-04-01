@@ -8,7 +8,8 @@
 /// - Displaying inferred types
 /// - Normalization by evaluation
 /// - Error message generation
-import core/core as c
+import core/ast as ast
+import core/state as state
 import gleeunit
 import gleeunit/should
 import syntax/grammar.{Span}

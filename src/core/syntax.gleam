@@ -18,12 +18,13 @@
 /// - Literal types: `%I32`, `%I64`, `%F64`
 ///
 /// Both parser and formatter are derived from this single grammar definition.
-import core/core.{
-  type Case, type Error, type Literal, type LiteralType, type Pattern, type Term, Ann, App,
+import core/ast.{
+  type Case, type Literal, type LiteralType, type Pattern, type Term, Ann, App,
   Call, Case, Comptime, Ctr, Dot, Err, F32, F32T, F64, F64T, Fix, Hole, I32,
   I32T, I64, I64T, Lam, Lit, LitT, Match, PAny, PAs, PCtr, PUnit, PLit, PLitT, PRcd,
   PTyp, Pi, Rcd, Typ, U32, U32T, U64, U64T, Var, Unit,
 }
+import core/state.{type Error}
 import gleam/float
 import gleam/int
 import gleam/list
@@ -263,7 +264,7 @@ pub fn parse(source: String) -> ParseResult(Term) {
               // Has errors - return error AST with error list
               let placeholder =
                 
-                  core.Err("Parse error: see errors list",
+                  ast.Err("Parse error: see errors list",
                   grammar.Span("", 0, 0, 0, 0),
                 )
               ParseResult(ast: placeholder, errors: errors)
@@ -278,7 +279,7 @@ pub fn parse(source: String) -> ParseResult(Term) {
         AsFields(_) -> {
           let placeholder =
             
-              core.Err("Expected expression, got field list",
+              ast.Err("Expected expression, got field list",
               grammar.Span("", 0, 0, 0, 0),
             )
           ParseResult(ast: placeholder, errors: [
@@ -288,7 +289,7 @@ pub fn parse(source: String) -> ParseResult(Term) {
         AsCases(_) -> {
           let placeholder =
             
-              core.Err("Expected expression, got case list",
+              ast.Err("Expected expression, got case list",
               grammar.Span("", 0, 0, 0, 0),
             )
           ParseResult(ast: placeholder, errors: [
@@ -298,7 +299,7 @@ pub fn parse(source: String) -> ParseResult(Term) {
         AsPattern(_) -> {
           let placeholder =
             
-              core.Err("Expected expression, got pattern",
+              ast.Err("Expected expression, got pattern",
               grammar.Span("", 0, 0, 0, 0),
             )
           ParseResult(ast: placeholder, errors: [
@@ -308,7 +309,7 @@ pub fn parse(source: String) -> ParseResult(Term) {
         AsArgs(_) -> {
           let placeholder =
             
-              core.Err("Expected expression, got argument list",
+              ast.Err("Expected expression, got argument list",
               grammar.Span("", 0, 0, 0, 0),
             )
           ParseResult(ast: placeholder, errors: [
@@ -1720,26 +1721,26 @@ pub fn term_to_string(term: Term) -> String {
 fn term_to_string_loop(term: Term, bindings: List(String)) -> String {
   let data = term
   case data {
-    core.Typ(k, _) -> "%Type" <> int.to_string(k)
-    core.Lit(literal, _) -> literal_to_string(literal)
-    core.LitT(literal_type, _) -> literal_type_to_string(literal_type)
-    core.Var(index, _) -> {
+    ast.Typ(k, _) -> "%Type" <> int.to_string(k)
+    ast.Lit(literal, _) -> literal_to_string(literal)
+    ast.LitT(literal_type, _) -> literal_type_to_string(literal_type)
+    ast.Var(index, _) -> {
       case get_binding(bindings, index) {
         Ok(name) -> name
         Error(Nil) -> "var" <> int.to_string(index)
       }
     }
-    core.Hole(id, _) -> "?" <> int.to_string(id)
-    core.Err(msg, _) -> "Err(" <> msg <> ")"
-    core.Rcd(fields, _) -> {
+    ast.Hole(id, _) -> "?" <> int.to_string(id)
+    ast.Err(msg, _) -> "Err(" <> msg <> ")"
+    ast.Rcd(fields, _) -> {
       let field_strs = fields |> list.map(fn(f) { f.0 <> ": " <> term_to_string_loop(f.1, bindings) })
       "{" <> string.join(field_strs, ", ") <> "}"
     }
-    core.Ctr(tag, arg, _) -> "#" <> tag <> "(" <> term_to_string_loop(arg, bindings) <> ")"
-    core.Unit(_) -> "#Unit"
-    core.Dot(arg, field, _) -> term_to_string_loop(arg, bindings) <> "." <> field
-    core.Ann(term, typ, _) -> "(" <> term_to_string_loop(term, bindings) <> ": " <> term_to_string_loop(typ, bindings) <> ")"
-    core.Lam(implicit, param, body, _) -> {
+    ast.Ctr(tag, arg, _) -> "#" <> tag <> "(" <> term_to_string_loop(arg, bindings) <> ")"
+    ast.Unit(_) -> "#Unit"
+    ast.Dot(arg, field, _) -> term_to_string_loop(arg, bindings) <> "." <> field
+    ast.Ann(term, typ, _) -> "(" <> term_to_string_loop(term, bindings) <> ": " <> term_to_string_loop(typ, bindings) <> ")"
+    ast.Lam(implicit, param, body, _) -> {
       let #(name, _) = param
       let implicit_str = case implicit {
         [] -> ""
@@ -1747,50 +1748,50 @@ fn term_to_string_loop(term: Term, bindings: List(String)) -> String {
       }
       "%fn" <> implicit_str <> "(" <> name <> ") -> " <> term_to_string_loop(body, [name, ..bindings])
     }
-    core.Pi(implicit, name, in_ty, out_ty, _) -> {
+    ast.Pi(implicit, name, in_ty, out_ty, _) -> {
       let implicit_str = case implicit {
         [] -> ""
         _ -> "<" <> string.join(implicit, ", ") <> ">"
       }
       "%pi" <> implicit_str <> "(" <> name <> ": " <> term_to_string_loop(in_ty, bindings) <> ") -> " <> term_to_string_loop(out_ty, [name, ..bindings])
     }
-    core.App(fun, implicit, arg, _) -> {
+    ast.App(fun, implicit, arg, _) -> {
       let implicit_str = case implicit {
         [] -> ""
         _ -> "<" <> string.join(list.map(implicit, fn(t) { term_to_string_loop(t, bindings) }), ", ") <> ">"
       }
       term_to_string_loop(fun, bindings) <> implicit_str <> "(" <> term_to_string_loop(arg, bindings) <> ")"
     }
-    core.Match(arg, _motive, _cases, _) -> {
+    ast.Match(arg, _motive, _cases, _) -> {
       "match(" <> term_to_string_loop(arg, bindings) <> ") { ... }"
     }
-    core.Call(name, args, _) -> {
+    ast.Call(name, args, _) -> {
       name <> "(" <> string.join(args |> list.map(fn(a) { term_to_string_loop(a, bindings) }), ", ") <> ")"
     }
-    core.Comptime(term, _) -> "comptime { " <> term_to_string_loop(term, bindings) <> " }"
-    core.Fix(name, body, _) -> "fix " <> name <> " -> " <> term_to_string_loop(body, [name, ..bindings])
+    ast.Comptime(term, _) -> "comptime { " <> term_to_string_loop(term, bindings) <> " }"
+    ast.Fix(name, body, _) -> "fix " <> name <> " -> " <> term_to_string_loop(body, [name, ..bindings])
   }
 }
 
-fn literal_to_string(literal: core.Literal) -> String {
+fn literal_to_string(literal: ast.Literal) -> String {
   case literal {
-    core.I32(n) -> int.to_string(n)
-    core.I64(n) -> int.to_string(n)
-    core.U32(n) -> int.to_string(n)
-    core.U64(n) -> int.to_string(n)
-    core.F32(f) -> float_to_string(f)
-    core.F64(f) -> float_to_string(f)
+    ast.I32(n) -> int.to_string(n)
+    ast.I64(n) -> int.to_string(n)
+    ast.U32(n) -> int.to_string(n)
+    ast.U64(n) -> int.to_string(n)
+    ast.F32(f) -> float_to_string(f)
+    ast.F64(f) -> float_to_string(f)
   }
 }
 
-fn literal_type_to_string(literal_type: core.LiteralType) -> String {
+fn literal_type_to_string(literal_type: ast.LiteralType) -> String {
   case literal_type {
-    core.I32T -> "%I32"
-    core.I64T -> "%I64"
-    core.U32T -> "%U32"
-    core.U64T -> "%U64"
-    core.F32T -> "%F32"
-    core.F64T -> "%F64"
+    ast.I32T -> "%I32"
+    ast.I64T -> "%I64"
+    ast.U32T -> "%U32"
+    ast.U64T -> "%U64"
+    ast.F32T -> "%F32"
+    ast.F64T -> "%F64"
   }
 }
 

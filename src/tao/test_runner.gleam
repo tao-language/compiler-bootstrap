@@ -7,7 +7,10 @@
 /// - **[../plans/tao/11-test-system.md](../plans/tao/11-test-system.md)** - Test system specification
 import tao/test_parser.{type Test, type ExpectedResult, Expression, Pattern, type Annotation, Skip, Timeout}
 import tao/syntax.{type Expr, Int, Float, Var, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, Test as SyntaxTest, Run as SyntaxRun, If, For, While, Loop, Break, Continue, Import, Ctr, TypeDecl}
-import core/core.{type Term, type State, initial_state, eval, quote, type Value, Err}
+import core/ast.{type Term, type Value, Err as CoreErr}
+import core/state.{type State, initial_state}
+import core/eval.{eval}
+import core/quote.{quote}
 import core/syntax as core_syntax
 import syntax/grammar.{type Span, Span}
 import gleam/list
@@ -130,7 +133,7 @@ fn desugar_expression(expr: Expr) -> Term {
   // TODO: Use new desugarer module
   // For now, return a placeholder
   let span = get_expr_span(expr)
-  Err(message: "Desugaring not yet implemented", span: span)
+  CoreErr(message: "Desugaring not yet implemented", span: span)
 }
 
 /// Get span from expression.

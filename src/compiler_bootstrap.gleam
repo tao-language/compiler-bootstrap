@@ -10,7 +10,12 @@
 /// gleam run --help                         # Show help
 /// ```
 import argv
-import core/core.{type Term, type Error as TypeError, type State, initial_state, infer, eval, quote, Err, force}
+import core/ast.{type Term, Err as CoreErr}
+import core/state.{type Error as TypeError, type State, initial_state}
+import core/infer.{infer}
+import core/eval.{eval}
+import core/quote.{quote}
+import core/subst.{force}
 import core/syntax as core_syntax
 import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var as TaoVar, Int as TaoInt, Float as TaoFloat, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlockExpr, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, Str as TaoStr, Test as TaoTest, Run as TaoRun, If as TaoIf, For, While, Loop, Break, Continue, Import, Ctr, TypeDecl, expr_to_ast}
 import tao/desugar.{desugar_module}

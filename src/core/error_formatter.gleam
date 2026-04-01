@@ -5,30 +5,25 @@
 ///
 /// Produces output like:
 /// ```
-/// ❌ error[E0101]: Type mismatch
+/// ❌ error[E0101]: ast.Type mismatch
 ///    ┌─ src/file.core:3:5
 ///    │
-///  3 │ (x : %I32) -> x
-///    │     ━━━━━ expected %Type, found %I32
+///  3 │ (x : %ast.I32) -> x
+///    │     ━━━━━ expected %ast.Type, found %ast.I32
 ///    │
-///    💡 expected because this is %Type
-///    📝 note: %Type and %I32 are incompatible types
+///    💡 expected because this is %ast.Type
+///    📝 note: %ast.Type and %ast.I32 are incompatible types
 ///    🔧 help: use a type annotation or check your term
 /// ```
 import core/color.{type ColorConfig, should_use_colors, default_config, colorize_error_header, colorize_warning_header, colorize_info_header, colorize_note, colorize_help, strip_ansi_codes}
-import core/core.{
-  type Error, type Type, type Pattern, type Value as Val, type LiteralType,
-  type Literal, type Head, type Permission, type Term,
+import core/ast as ast
+import core/state.{
+  type Error, type Permission,
   SyntaxError, TypeMismatch, PatternMismatch, NotAFunction, VarUndefined, HoleUnsolved,
   ArityMismatch, CtrUndefined, MatchRedundantCase, MatchMissingCase,
   ComptimePermissionDenied, InfiniteType,
   RcdMissingFields, CtrUnsolvedParam, DotFieldNotFound, DotOnNonCtr,
   SpineMismatch, TODO,
-  PAny, PAs, PTyp, PLit, PLitT, PRcd, PCtr, PUnit,
-  HVar, HHole, HStepLimit, get_span,
-  VTyp, VLit, VLitT, VNeut, VRcd, VCtrValue, VCtr, VLam, VPi, VRecord, VCall, VFix, VUnit, VErr,
-  I32, I64, U32, U64, F32, F64,
-  I32T, I64T, U32T, U64T, F32T, F64T,
   AllowRead, AllowWrite,
 }
 import gleam/int
@@ -84,7 +79,7 @@ pub fn error_code(error: Error) -> String {
 pub fn error_message(error: Error) -> String {
   case error {
     SyntaxError(..) -> "Syntax error"
-    TypeMismatch(..) -> "Type mismatch"
+    TypeMismatch(..) -> "ast.Type mismatch"
     VarUndefined(..) -> "Undefined variable"
     NotAFunction(..) -> "Cannot call non-function value"
     ArityMismatch(..) -> "Wrong number of arguments"
@@ -96,8 +91,8 @@ pub fn error_message(error: Error) -> String {
     DotFieldNotFound(..) -> "Field not found"
     DotOnNonCtr(..) -> "Cannot access field on non-record"
     SpineMismatch(..) -> "Function application mismatch"
-    PatternMismatch(..) -> "Pattern type mismatch"
-    MatchMissingCase(..) -> "Pattern match not exhaustive"
+    PatternMismatch(..) -> "ast.Pattern type mismatch"
+    MatchMissingCase(..) -> "ast.Pattern match not exhaustive"
     MatchRedundantCase(..) -> "Redundant pattern"
     ComptimePermissionDenied(..) -> "Permission denied"
     TODO(..) -> "TODO: Not yet implemented"
@@ -178,7 +173,7 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         code: code,
         severity: severity,
         message: message,
-        primary_span: to_source_span(get_span(fun)),
+        primary_span: to_source_span(ast.get_span(fun)),
         spans: [],
         notes: [
           "This value has type " <> type_to_string(fun_ty) <> ", which is not callable",
@@ -259,7 +254,7 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
         primary_span: to_source_span(span),
         spans: [],
         notes: [
-          "Pattern match is not exhaustive",
+          "ast.Pattern match is not exhaustive",
           "Missing case for: " <> pattern_to_string(pattern),
         ],
         hints: [
@@ -301,7 +296,7 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
           ),
         ],
         notes: [
-          "Pattern has incompatible type",
+          "ast.Pattern has incompatible type",
           "The pattern expects " <> type_to_string(expected_type) <> " but the matched value has a different type",
         ],
         hints: [
@@ -478,79 +473,79 @@ fn to_source_span(span: grammar.Span) -> source_snippet.Span {
   source_snippet.Span(span.file, span.start_line, span.start_col, span.end_line, span.end_col)
 }
 
-fn type_to_string(ty: Type) -> String {
+fn type_to_string(ty: ast.Type) -> String {
   case ty {
-    VTyp(_) -> "Type"
-    VLit(lit) -> literal_type_from_value(lit)
-    VLitT(lit) -> literal_type_to_string(lit)
-    VNeut(head, _) -> head_to_string(head)
-    VRcd(_) -> "{...}"
-    VCtrValue(ctr) -> ctr_to_string(ctr)
-    VLam(_, _, _, _) -> "λ"
-    VPi(_, _, _, domain, _) ->
+    ast.VTyp(_) -> "ast.Type"
+    ast.VLit(lit) -> literal_type_from_value(lit)
+    ast.VLitT(lit) -> literal_type_to_string(lit)
+    ast.VNeut(head, _) -> head_to_string(head)
+    ast.VRcd(_) -> "{...}"
+    ast.VCtrValue(ctr) -> ctr_to_string(ctr)
+    ast.VLam(_, _, _, _) -> "λ"
+    ast.VPi(_, _, _, domain, _) ->
       "(" <> type_to_string(domain) <> ") → ..."
-    VRcd(_) -> "{...}"
-    VRecord(_) -> "Record{...}"
-    VCall(name, _) -> name
-    VFix(_, _, _) -> "fix"
-    VUnit -> "Unit"
-    VErr -> "⊥"
+    ast.VRcd(_) -> "{...}"
+    ast.VRecord(_) -> "Record{...}"
+    ast.VCall(name, _) -> name
+    ast.VFix(_, _, _) -> "fix"
+    ast.VUnit -> "Unit"
+    ast.VErr -> "⊥"
   }
 }
 
 fn ctr_to_string(ctr) -> String {
   case ctr {
-    VCtr(tag, _) -> tag
+    ast.VCtr(tag, _) -> tag
   }
 }
 
-fn literal_type_to_string(lit: LiteralType) -> String {
+fn literal_type_to_string(lit: ast.LiteralType) -> String {
   case lit {
-    I32T -> "%I32"
-    I64T -> "%I64"
-    U32T -> "%U32"
-    U64T -> "%U64"
-    F32T -> "%F32"
-    F64T -> "%F64"
+    ast.I32T -> "%ast.I32"
+    ast.I64T -> "%ast.I64"
+    ast.U32T -> "%ast.U32"
+    ast.U64T -> "%ast.U64"
+    ast.F32T -> "%ast.F32"
+    ast.F64T -> "%ast.F64"
   }
 }
 
-fn literal_type_from_value(lit: Literal) -> String {
+fn literal_type_from_value(lit: ast.Literal) -> String {
   case lit {
-    I32(_) -> "%I32"
-    I64(_) -> "%I64"
-    U32(_) -> "%U32"
-    U64(_) -> "%U64"
-    F32(_) -> "%F32"
-    F64(_) -> "%F64"
+    ast.I32(_) -> "%ast.I32"
+    ast.I64(_) -> "%ast.I64"
+    ast.U32(_) -> "%ast.U32"
+    ast.U64(_) -> "%ast.U64"
+    ast.F32(_) -> "%ast.F32"
+    ast.F64(_) -> "%ast.F64"
   }
 }
 
-fn value_to_type(value: Val) -> Type {
+fn value_to_type(value: ast.Value) -> ast.Type {
   value
 }
 
-fn pattern_to_string(pattern: Pattern) -> String {
+fn pattern_to_string(pattern: ast.Pattern) -> String {
   case pattern {
-    PAny -> "_"
-    PAs(pat, name) -> name <> "@" <> pattern_to_string(pat)
-    PTyp(_) -> "Type"
-    PLit(lit) -> literal_to_string(lit)
-    PLitT(lit) -> literal_type_to_string(lit)
-    PRcd(fields) -> "{ " <> list.map(fields, fn(f) { f.0 <> " = ..." }) |> string.join(", ") <> " }"
-    PCtr(tag, arg) -> tag <> "(" <> pattern_to_string(arg) <> ")"
-    PUnit -> "Unit"
+    ast.PAny -> "_"
+    ast.PAs(pat, name) -> name <> "@" <> pattern_to_string(pat)
+    ast.PTyp(_) -> "ast.Type"
+    ast.PLit(lit) -> literal_to_string(lit)
+    ast.PLitT(lit) -> literal_type_to_string(lit)
+    ast.PRcd(fields) -> "{ " <> list.map(fields, fn(f) { f.0 <> " = ..." }) |> string.join(", ") <> " }"
+    ast.PCtr(tag, arg) -> tag <> "(" <> pattern_to_string(arg) <> ")"
+    ast.PUnit -> "Unit"
   }
 }
 
-fn literal_to_string(lit: Literal) -> String {
+fn literal_to_string(lit: ast.Literal) -> String {
   case lit {
-    I32(n) -> int.to_string(n)
-    I64(n) -> int.to_string(n)
-    U32(n) -> int.to_string(n)
-    U64(n) -> int.to_string(n)
-    F32(f) -> float_to_string(f)
-    F64(f) -> float_to_string(f)
+    ast.I32(n) -> int.to_string(n)
+    ast.I64(n) -> int.to_string(n)
+    ast.U32(n) -> int.to_string(n)
+    ast.U64(n) -> int.to_string(n)
+    ast.F32(f) -> float_to_string(f)
+    ast.F64(f) -> float_to_string(f)
   }
 }
 
@@ -563,11 +558,11 @@ fn float_to_string(f: Float) -> String {
   }
 }
 
-fn head_to_string(head: Head) -> String {
+fn head_to_string(head: ast.Head) -> String {
   case head {
-    HVar(index) -> "var[" <> int.to_string(index) <> "]"
-    HHole(id) -> "hole[" <> int.to_string(id) <> "]"
-    HStepLimit -> "<step-limit>"
+    ast.HVar(index) -> "var[" <> int.to_string(index) <> "]"
+    ast.HHole(id) -> "hole[" <> int.to_string(id) <> "]"
+    ast.HStepLimit -> "<step-limit>"
   }
 }
 
@@ -578,7 +573,7 @@ fn permission_to_string(perm: Permission) -> String {
   }
 }
 
-fn type_mismatch_hints(expected: Type, got: Type, _source: String, _span: grammar.Span) -> List(String) {
+fn type_mismatch_hints(expected: ast.Type, got: ast.Type, _source: String, _span: grammar.Span) -> List(String) {
   // Provide contextual hints based on the types involved
   let base_hints = [
     "Check that the expression has the expected type",
@@ -590,10 +585,10 @@ fn type_mismatch_hints(expected: Type, got: Type, _source: String, _span: gramma
   let got_str = type_to_string(got)
 
   let specific_hints = case expected_str, got_str {
-    "$I32", "$F64" -> ["Use `round` or `floor` to convert Float to Int"]
-    "$F64", "$I32" -> ["Use `to_float` to convert Int to Float"]
-    "$String", "$I32" -> ["Use `int.to_string` to convert Int to String"]
-    "$I32", "$String" -> ["Use `int.parse` to convert String to Int"]
+    "$ast.I32", "$ast.F64" -> ["Use `round` or `floor` to convert Float to Int"]
+    "$ast.F64", "$ast.I32" -> ["Use `to_float` to convert Int to Float"]
+    "$String", "$ast.I32" -> ["Use `int.to_string` to convert Int to String"]
+    "$ast.I32", "$String" -> ["Use `int.parse` to convert String to Int"]
     _, _ -> []
   }
 

@@ -5,7 +5,8 @@
 ///
 /// Force resolves holes through a substitution, recursively.
 /// It's used during type checking to get concrete types from holes.
-import core/core as c
+import core/ast as ast
+import core/state as state
 import gleeunit
 import gleeunit/should
 import syntax/grammar.{Span}

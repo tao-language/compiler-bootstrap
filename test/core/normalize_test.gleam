@@ -8,7 +8,8 @@
 /// 2. Quoting back to syntax
 ///
 /// This is used for type equality checking and term reduction.
-import core/core as c
+import core/ast as ast
+import core/state as state
 import gleeunit
 import gleeunit/should
 import syntax/grammar.{Span}

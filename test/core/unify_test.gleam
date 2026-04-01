@@ -5,7 +5,8 @@
 ///
 /// Unification checks type equality and solves constraints.
 /// It's the core algorithm for type checking with holes and inference.
-import core/core as c
+import core/ast as ast
+import core/state as state
 import gleam/list
 import gleeunit
 import gleeunit/should

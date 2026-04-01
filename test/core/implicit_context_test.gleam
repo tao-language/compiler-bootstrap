@@ -5,7 +5,8 @@
 ///
 /// These tests verify that implicit parameters are correctly added to the
 /// context before body inference, ensuring proper De Bruijn index handling.
-import core/core as c
+import core/ast as ast
+import core/state as state
 import gleam/list
 import gleeunit
 import gleeunit/should

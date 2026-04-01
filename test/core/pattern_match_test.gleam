@@ -13,7 +13,8 @@
 /// - Structural equality checks
 /// - Descriptive test names
 /// - Comments for non-obvious tests
-import core/core as c
+import core/ast as ast
+import core/state as state
 import syntax/grammar.{Span}
 import gleam/list
 import gleam/option.{None}

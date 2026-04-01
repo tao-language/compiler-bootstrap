@@ -5,7 +5,8 @@
 ///
 /// Type inference determines the type of a term.
 /// It works together with type checking in a bidirectional system.
-import core/core as c
+import core/ast as ast
+import core/state as state
 import gleam/list
 import gleeunit
 import gleeunit/should

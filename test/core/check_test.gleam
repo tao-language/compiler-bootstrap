@@ -8,7 +8,8 @@
 /// - infer: Determine the type of a value (inference)
 ///
 /// Error accumulation ensures all errors are reported, not just the first.
-import core/core as c
+import core/ast as ast
+import core/state as state
 import gleam/list
 import gleeunit
 import gleeunit/should

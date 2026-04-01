@@ -4,7 +4,8 @@
 /// Tests for Tao desugarer.
 ///
 /// The desugarer converts Tao AST to core language terms.
-import core/core as c
+import core/ast as ast
+import core/state as state
 import tao/desugar.{desugar_module, desugar_expr, desugar_stmt, type DesugarContext, DesugarContext}
 import tao/global_context.{new_context, with_prelude}
 import gleeunit
