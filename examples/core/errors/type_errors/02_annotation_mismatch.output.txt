@@ -3,7 +3,7 @@ error[E0101]: Type mismatch
 1 │ // Type Error: Type mismatch
 2 │ // Trying to use %I32 where %Type is expected (function parameter type)
 3 │ (x : %I32) -> (x : %Type(1))
-                   ^ -----
+                   ^ -
 4 │ 
   = note: %Type(1) and Int are incompatible types
   = note: The expression produces %Type(1) but Int is expected here

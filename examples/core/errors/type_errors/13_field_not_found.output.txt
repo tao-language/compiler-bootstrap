@@ -1,4 +1,4 @@
-error[E0111]: Cannot access field on non-record
+error[E0110]: Field not found
   ┌─ input:5:19
 2 │ // Similar to RcdMissingFields but occurs in a different context
 3 │ // This error happens when a function expects a record with certain fields
@@ -7,9 +7,8 @@ error[E0111]: Cannot access field on non-record
                       ^
 6 │ get_x({y: 2})
 7 │ 
-  = note: Cannot access field `x` on this value
-  = note: Field access (.field) only works on records
-  = hint: Use a record value instead of a primitive
-  = hint: Check that you're accessing a record, not a number or other type
-  = hint: Wrap the value in a record: {value: x}.field
-
+  = note: Field `x` not found
+  = note: Available fields: y
+  = hint: Check the field name for typos
+  = hint: Use one of the available fields listed above
+  = hint: Add the field to the record definition if needed

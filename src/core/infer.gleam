@@ -29,10 +29,17 @@ pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.Sta
         }
       }
     ast.Hole(id, span) -> {
-      let id = s.hole_counter
-      let hole_ty = ast.VNeut(ast.HHole(id), [])
-      let s = state.State(..s, hole_counter: id + 1, errors: [state.HoleUnsolved(id, span), ..s.errors])
-      #(ast.VNeut(ast.HHole(id), []), hole_ty, s)
+      // Preserve negative hole IDs (special holes from desugarer)
+      let hole_id = case id < 0 {
+        True -> id
+        False -> s.hole_counter
+      }
+      let hole_ty = ast.VNeut(ast.HHole(hole_id), [])
+      let s = case id < 0 {
+        True -> s  // Don't increment counter or add error for special holes
+        False -> state.State(..s, hole_counter: s.hole_counter + 1, errors: [state.HoleUnsolved(hole_id, span), ..s.errors])
+      }
+      #(ast.VNeut(ast.HHole(hole_id), []), hole_ty, s)
     }
     ast.Rcd(fields, span) -> {
       let #(fields_val, fields_ty, s) = infer_fields(s, fields)
@@ -228,12 +235,96 @@ pub fn infer_match(
   span: Span,
 ) -> #(ast.Value, ast.Type, state.State) {
   let #(arg_val, arg_ty, s) = infer(s, arg)
+  
+  // First infer all case bodies to get their types
+  let #(case_results, case_tys, s) = infer_cases_with_types(s, cases, arg_ty)
+  
+  // Now infer the motive and unify with case body types
   let #(motive_val, motive_ty, s) = infer(s, motive)
   
-  let #(case_results, s) = infer_cases(s, cases, arg_ty, motive_val)
+  // Unify motive type with all case body types
+  let s = unify_motive_with_cases(s, motive_ty, case_tys, span)
+  
+  // Solve hole -999 in the motive body with the unified result type
+  // This is a special hole used by the desugarer as a placeholder
+  let s = solve_motive_hole(s, motive_val, motive_ty)
   
   let result_val = ast.VNeut(ast.HVar(0), [ast.EMatch([], motive_val, case_results)])
   #(result_val, motive_ty, s)
+}
+
+fn solve_motive_hole(s: state.State, motive_val: ast.Value, motive_ty: ast.Type) -> state.State {
+  // Extract the body term from the motive lambda
+  case motive_val {
+    ast.VLam(_, _, _, body_term) -> {
+      // If the body is a hole -999, solve it with the motive type (result type)
+      case body_term {
+        ast.Hole(hole_id, _) if hole_id == -999 -> {
+          // Add substitution: hole -999 = motive_ty (as a value)
+          let s = state.State(..s, subst: [ #(hole_id, motive_ty), ..s.subst ])
+          s
+        }
+        _ -> s
+      }
+    }
+    _ -> s
+  }
+}
+
+fn infer_cases_with_types(
+  s: state.State,
+  cases: List(ast.Case),
+  arg_ty: ast.Type,
+) -> #(List(ast.Case), List(ast.Type), state.State) {
+  infer_cases_with_types_loop(s, cases, arg_ty, [], [])
+}
+
+fn infer_cases_with_types_loop(
+  s: state.State,
+  cases: List(ast.Case),
+  arg_ty: ast.Type,
+  acc_cases: List(ast.Case),
+  acc_tys: List(ast.Type),
+) -> #(List(ast.Case), List(ast.Type), state.State) {
+  case cases {
+    [] -> #(list.reverse(acc_cases), list.reverse(acc_tys), s)
+    [c, ..rest] -> {
+      let patterns = [c.pattern]
+      let body = c.body
+      let #(_pattern_vals, s) = infer_patterns(s, patterns, arg_ty)
+      let #(body_val, body_ty, s) = infer(s, body)
+      infer_cases_with_types_loop(s, rest, arg_ty, [c, ..acc_cases], [body_ty, ..acc_tys])
+    }
+  }
+}
+
+fn unify_motive_with_cases(
+  s: state.State,
+  motive_ty: ast.Type,
+  case_tys: List(ast.Type),
+  span: Span,
+) -> state.State {
+  // Extract the codomain from the motive VPi type
+  let motive_result_ty = case motive_ty {
+    ast.VPi(_, _, env, _domain, codomain) -> eval.eval(s.ffi, env, codomain)
+    _ -> motive_ty
+  }
+  unify_motive_loop(s, motive_result_ty, case_tys, span)
+}
+
+fn unify_motive_loop(
+  s: state.State,
+  motive_result_ty: ast.Type,
+  case_tys: List(ast.Type),
+  span: Span,
+) -> state.State {
+  case case_tys {
+    [] -> s
+    [case_ty, ..rest] -> {
+      let #(_subst, s) = unify.unify(s, 0, motive_result_ty, case_ty, span, span)
+      unify_motive_loop(s, motive_result_ty, rest, span)
+    }
+  }
 }
 
 fn infer_cases(
