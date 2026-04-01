@@ -352,8 +352,8 @@ fn report_test_failure(_result: TestResult) -> Nil {
 }
 
 /// Update State.ctrs with constructor definitions from desugaring.
-fn update_state_ctrs(state: core.State, ctrs: core.CtrEnv) -> core.State {
-  core.State(..state, ctrs: ctrs)
+fn update_state_ctrs(state: State, ctrs: ast.CtrEnv) -> State {
+  State(..state, ctrs: ctrs)
 }
 
 // ============================================================================

@@ -8,7 +8,7 @@
 import tao/test_parser.{type Test, type ExpectedResult, Expression, Pattern, type Annotation, Skip, Timeout}
 import tao/syntax.{type Expr, Int, Float, Var, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, Test as SyntaxTest, Run as SyntaxRun, If, For, While, Loop, Break, Continue, Import, Ctr, TypeDecl}
 import core/ast.{type Term, type Value, Err as CoreErr}
-import core/state.{type State, initial_state}
+import core/state.{type State, initial_state, initial_ffis}
 import core/eval.{eval}
 import core/quote.{quote}
 import core/syntax as core_syntax
@@ -100,7 +100,7 @@ fn find_timeout(annotations: List(Annotation)) -> option.Option(Int) {
 fn run_test_expression(test_item: Test, _timeout: Int, source: String) -> TestResult {
   // Evaluate the expression
   let env = []
-  let ffi = initial_state.ffi
+  let ffi = initial_ffis()
   let expr_term = desugar_expression(test_item.expression)
 
   let value = eval(ffi, env, expr_term)
@@ -177,7 +177,7 @@ fn values_equal(v1: Value, v2: Value) -> Bool {
 fn format_value(value: Value) -> String {
   // Quote back to syntax and format
   let span = Span("", 0, 0, 0, 0)
-  let term = quote(initial_state.ffi, 0, value, span)
+  let term = quote(initial_ffis(), 0, value, span)
   core_syntax.format(term)
 }
 
