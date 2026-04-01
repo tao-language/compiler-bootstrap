@@ -11,6 +11,8 @@ import gleam/list
 import gleeunit
 import gleeunit/should
 import syntax/grammar.{Span}
+
+const s = state.initial_state
 import core/unify.{unify}
 
 pub fn main() {

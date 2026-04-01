@@ -17,6 +17,8 @@ import gleeunit
 import gleeunit/should
 import syntax/grammar.{Span}
 
+const s = state.initial_state
+
 // Helper span constant
 const span = Span("test", 0, 0, 0, 0)
 
@@ -40,11 +42,11 @@ pub fn nested_lambda_hvar_independence_test() {
   // Outer: x -> (y -> x)
   let k = ast.Lam([], #("x", ast.Hole(-1, span)), inner, span)
   
-  let state = state.initial_state()
-  let #(_, ty, state) = infer(state, k)
+  let s = state.initial_state
+  let #(_, ty, s) = infer(s, k)
   
   // Should have no errors
-  state.errors
+  result_state.errors
   |> should.equal([])
   
   // Type should be a VPi (function type) with implicit params
@@ -71,11 +73,11 @@ pub fn k_combinator_application_test() {
   let app1 = ast.App(k, [], ast.Lit(ast.I32(10), span), span)
   let app2 = ast.App(app1, [], ast.Lit(ast.I32(20), span), span)
   
-  let state = state.initial_state()
+  let s = state.initial_state
   let #(_val, ty, state) = infer(state, app2)
   
   // Should have no errors
-  state.errors
+  result_state.errors
   |> should.equal([])
   
   // Result type should be I32 type (VLitT(I32T)), not a hole
@@ -95,11 +97,10 @@ pub fn church_numeral_zero_test() {
   let inner = ast.Lam([], #("x", ast.Hole(-1, span)), ast.Var(0, span), span)
   let zero = ast.Lam([], #("f", ast.Hole(-1, span)), inner, span)
   
-  let state = state.initial_state()
-  let #(_, ty, state) = infer(state, zero)
+  let #(_, ty, result_state) = infer(s, zero)
   
   // Should have no errors
-  state.errors
+  result_state.errors
   |> should.equal([])
   
   // Type should be VPi with implicit params (polymorphic)

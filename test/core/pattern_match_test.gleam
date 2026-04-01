@@ -16,6 +16,8 @@
 import core/ast as ast
 import core/state as state
 import syntax/grammar.{Span}
+
+const s = state.initial_state
 import gleam/list
 import gleam/option.{None}
 import gleeunit

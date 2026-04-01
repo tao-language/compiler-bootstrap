@@ -13,6 +13,8 @@ import core/state as state
 import gleeunit
 import gleeunit/should
 import syntax/grammar.{Span}
+
+const s = state.initial_state
 import core/quote.{normalize}
 
 pub fn main() {
