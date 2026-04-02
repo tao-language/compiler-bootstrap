@@ -39,102 +39,68 @@ let app2 = ast.App(app1, [], ast.Lit(ast.I32(20), span), span)
 // Expected: type = I32T, no errors
 ```
 
-**Debug Tests Added:**
+**Debug Tests Added (14 total):**
 
-1. `k_combinator_debug_hole_depths_test` - ✓ PASSING
-   - Verifies hole depths are tracked (depth 0 for outer lambda, depth 1 for inner)
-   
-2. `k_combinator_debug_type_structure_test` - ✓ PASSING
-   - Verifies inferred type is VPi (polymorphic function type)
-   
-3. `k_combinator_debug_substitution_test` - ✓ PASSING
-   - Verifies substitutions are created during inference
-   
-4. `k_combinator_debug_application_test` - ✗ FAILING
-   - First application `k(10)` should return a function type or solved hole
-   
-5. `k_combinator_debug_full_application_test` - ✗ FAILING
-   - Full application `k(10)(20)` should return I32T or solved hole
+**Passing Tests (11):**
+1. `k_combinator_debug_hole_depths_test` - Hole depths tracked correctly
+2. `k_combinator_debug_type_structure_test` - Type is VPi (polymorphic)
+3. `k_combinator_debug_substitution_test` - Substitutions created
+4. `simple_app_debug_test` - Non-poly application works (`id(42)`)
+5. `k_combinator_type_before_app_test` - Type structure correct
+6. `vpi_hvar_domain_test` - HVar domain checking works
+7. `implicit_param_instantiation_test` - Implicit subst works
+8. `subst_value_with_implicit_vars_test` - HVar substitution works
+9. `k_combinator_codomain_trace_test` - Codomain structure verified
+10. `k_combinator_hole_id_trace_test` - Hole IDs correct (2 holes created)
+11. `identity_function_baseline_test` - Identity function works
 
-6. `simple_app_debug_test` - ✓ PASSING (NEW)
-   - Tests `id(42)` where `id = x -> x`
-   - **KEY INSIGHT**: Non-polymorphic application works correctly!
-   
-7. `k_combinator_type_before_app_test` - ✓ PASSING (NEW)
-   - Verifies k combinator type structure before application
-
-8. `vpi_hvar_domain_test` - ✓ PASSING (NEW)
-   - Tests checking argument against HVar domain
-   - Confirms HVar domain checking works
-
-9. `implicit_param_instantiation_test` - ✓ PASSING (NEW)
-   - Verifies implicit parameter instantiation creates correct substitution
-   - Confirms `instantiate_implicit_params` works correctly
-
-10. `subst_value_with_implicit_vars_test` - ✓ PASSING (NEW)
-    - Verifies substitution application to values with HVar
-    - Confirms `subst_value_with_implicit_vars` works correctly
-
-11. `k_combinator_full_trace_test` - ✗ FAILING (NEW)
-    - End-to-end trace of k combinator application
-    - Confirms failure occurs during application, not inference
+**Failing Tests (3):**
+1. `k_combinator_debug_application_test` - First application fails
+2. `k_combinator_debug_full_application_test` - Full application fails
+3. `k_combinator_full_trace_test` - End-to-end fails
 
 **Root Cause Analysis:**
 
-The debug tests reveal:
-- ✓ Hole depths ARE being tracked correctly
-- ✓ Type structure IS correct (VPi with implicit params)
-- ✓ Substitutions ARE being created during inference
-- ✓ **Non-polymorphic application works** (`id(42)` returns I32T)
-- ✓ **Implicit parameter instantiation works** correctly
-- ✓ **HVar substitution works** correctly
-- ✗ **Polymorphic application fails** (`k(10)` doesn't solve holes)
+After extensive debugging with 14 tests, the root cause is now CLEAR:
 
-**CRITICAL INSIGHT:**
+**The Issue: Inner Lambda's Parameter Type Hole is Independent**
 
-The issue is **NOT** with:
-- Hole creation or tracking
-- Lambda type inference
-- Implicit parameter instantiation
-- HVar substitution
-- General hole unification
+For `k = λx. λy. x`:
 
-The `simple_app_debug_test`, `implicit_param_instantiation_test`, and `subst_value_with_implicit_vars_test` prove that all the individual components work correctly.
+1. **Inner lambda `λy. x`** creates:
+   - `HHole(1)` for y's type (independent hole!)
+   - Body `x` has type `HHole(0)` (from outer lambda)
+   - Type: `VPi(["_1"], "y", [HHole(1)], HHole(1), Hole(0))`
 
-**The issue is SPECIFIC TO THE INTERACTION** between:
-1. Polymorphic lambda type inference (with multiple implicit params)
-2. Application hole expansion in `infer_app`
+2. **Outer lambda `λx. (λy. x)`** generalizes:
+   - Only hole 0 (hole 1 is filtered by depth)
+   - Type: `VPi(["_0", "_1"], ..., HHole(0), <inner_lambda_VPi>)`
 
-**Technical Details:**
+3. **During application `k(10)`**:
+   - Domain `HHole(0)` unifies with `I32T` ✓
+   - Codomain evaluates to inner lambda's VPi
+   - Inner lambda's domain `HHole(1)` is **NOT unified** ✗
+   - Result type has unsolved hole 1
 
-Looking at `infer_app` for VPi types:
-```gleam
-ast.VPi(implicit_params, _, pi_env, domain, codomain) -> {
-  // Instantiate implicit type variables with fresh holes
-  let #(implicit_subst, s) = subst.instantiate_implicit_params(implicit_params, s)
+**Why Identity Works:**
 
-  // Apply substitution to domain and codomain
-  let domain_instantiated = subst.subst_value_with_implicit_vars(implicit_subst, domain)
-  let codomain_instantiated = subst.subst_term_with_implicit_vars(implicit_subst, codomain)
+For `id = λx. x`:
+- Type: `VPi(["_0"], ..., HHole(0), Hole(0))`
+- Domain and codomain reference the SAME hole
+- Unifying domain automatically solves codomain ✓
 
-  // Check argument against instantiated domain
-  let #(arg_val, s) = check(s, arg, domain_instantiated, get_span(arg))
-  ...
-}
-```
+**Why K Combinator Fails:**
 
-The flow is:
-1. Extract implicit params from VPi
-2. Create fresh holes for each implicit param
-3. Apply substitution to domain (HVar → fresh hole)
-4. Check argument against domain (should unify hole with I32T)
-5. **BUG**: The hole from step 3 is not being solved by step 4
+For `k = λx. λy. x`:
+- Inner lambda creates INDEPENDENT hole for its parameter
+- Outer lambda's domain and inner lambda's domain are DIFFERENT holes
+- Unifying outer domain doesn't solve inner domain ✗
 
-**HYPOTHESIS:**
+**THE FUNDAMENTAL PROBLEM:**
 
-The issue may be that when `check` unifies the argument type with `domain_instantiated`, the hole in `domain_instantiated` is a FRESH hole created by `instantiate_implicit_params`, not the original hole from the lambda's type. The unification solves the fresh hole, but this doesn't propagate back to the original type.
+The inner lambda's parameter type should be connected to the outer lambda's structure, but it's created as an independent hole. This is actually CORRECT behavior for the inner lambda in isolation, but when the inner lambda becomes the codomain of the outer lambda, the holes should be related.
 
-**Status:** 🔍 ROOT CAUSE NARROWED - Issue is in how `infer_app` handles hole unification for polymorphic lambdas
+**Status:** 🔍 ROOT CAUSE IDENTIFIED - Inner lambda creates independent parameter hole
 
 ---
 
@@ -209,17 +175,51 @@ rm src/core/core.gleam
 
 ## Action Plan
 
-### Phase 1: Fix Lambda Generalization (1 failure) - ROOT CAUSE NARROWED
+### Phase 1: Fix Lambda Generalization (1 failure) - ROOT CAUSE IDENTIFIED
+
+**Root Cause:** Inner lambda creates independent parameter hole that doesn't unify during outer lambda application.
+
+**Potential Fixes:**
+
+**Option A: Connect inner lambda's domain to outer lambda's structure**
+- When the inner lambda's body is a variable reference, use the variable's type as the inner lambda's domain
+- This would make `λy. x` have type `VPi([], "y", [HHole(0)], HHole(0), HHole(0))` instead of `VPi(["_1"], "y", [HHole(1)], HHole(1), Hole(0))`
+- Problem: This changes the semantics of lambda inference
+
+**Option B: Fix infer_app to handle nested VPi types**
+- When the codomain is a VPi, also instantiate and unify its domain
+- During application, recursively process nested VPi types
+- Problem: Complex, may break other cases
+
+**Option C: Don't generalize inner lambda's parameter when it's not used**
+- For `λy. x`, the parameter y is not used in the body
+- The inner lambda's type could be `HHole(0) → HHole(0)` (monomorphic)
+- Problem: Loses polymorphism for cases where parameter IS used
+
+**Option D: Fix the relationship between implicit params and lambda domains**
+- The issue is that implicit params ["_0", "_1"] map to holes [0, 1]
+- But hole 1 (inner lambda's param) should reference hole 0 (outer lambda's param)
+- Need to create the inner lambda's domain as a reference to the outer structure
+
+**Recommended Fix: Option D**
+- When inferring nested lambdas, the inner lambda's implicit params should reference the outer lambda's holes
+- For `λx. λy. x`, the type should be `VPi(["_0", "_1"], ..., HHole(0), VPi([], "y", [HHole(0)], HHole(0), HHole(0)))`
+- The inner lambda's domain `HHole(0)` references the outer lambda's domain
+
+**Implementation:**
+- In lambda inference, when the body is a lambda, check if the inner lambda's parameter is used
+- If not used (like in K combinator), don't create a new hole for the parameter
+- Use the appropriate outer hole instead
+
 - [x] Add lambda depth tracking to State
 - [x] Record hole depths during creation
 - [x] Filter holes by depth during generalization
-- [x] Add debug tests to isolate the issue (11 tests total)
-- [x] Identify root cause: infer_app hole unification
+- [x] Add debug tests to isolate the issue (14 tests total)
+- [x] Identify root cause: inner lambda creates independent hole
 - [x] Key insight: Non-polymorphic application works, polymorphic fails
 - [x] Verify implicit parameter instantiation works
 - [x] Verify HVar substitution works
-- [ ] Fix infer_app to properly propagate hole solutions
-- [ ] The fresh hole created by instantiate_implicit_params needs to be unified with the argument type
+- [ ] Implement fix for nested lambda hole connection
 - [ ] Test with k_combinator
 
 ### Phase 2: Fix Pattern Match Exhaustiveness (1 failure)
