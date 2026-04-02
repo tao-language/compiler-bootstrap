@@ -8,9 +8,7 @@
 
 ✅ **Verified against `src/core/core.gleam.bak` (original monolithic implementation)**
 
-The exact same tests fail in both the original and modular implementations.
-
-**Conclusion: The migration introduced ZERO regressions. All failures are pre-existing bugs.**
+All 4 failures exist in the original implementation. The migration introduced ZERO regressions.
 
 ---
 
@@ -18,27 +16,13 @@ The exact same tests fail in both the original and modular implementations.
 
 | Category | Count | Type | Status |
 |----------|-------|------|--------|
-| Lambda generalization | 1 | Pre-existing bug | To be fixed |
+| Lambda generalization | 1 | Pre-existing bug | Partial fix: depth tracking added |
 | Pattern matching exhaustiveness | 1 | Pre-existing bug | To be fixed |
 | Example output | 1 (2 sub-failures) | Pre-existing format mismatch | To be fixed |
 
 ---
 
-## 1. Example Output File Failures (2 sub-failures)
-
-### Test: `core@examples_test.type_errors_examples_test`
-
-**Sub-failures:**
-- `08_pattern_mismatch`
-- `10_infinite_type`
-
-**Root Cause:** The expected output files need to be updated to match the current compiler error format which includes error codes (e.g., "error[E0101]:").
-
-**Status:** 🔄 IN PROGRESS - Expected output files updated, investigating test file reading issue
-
----
-
-## 2. Lambda Generalization Failure (PRE-EXISTING BUG)
+## 1. Lambda Generalization Failure (PRE-EXISTING BUG)
 
 ### Test: `core@lambda_generalization_test.k_combinator_application_test`
 
@@ -52,37 +36,57 @@ let k = ast.Lam([], #("x", ast.Hole(-1, span)), inner, span)
 let app1 = ast.App(k, [], ast.Lit(ast.I32(10), span), span)
 let app2 = ast.App(app1, [], ast.Lit(ast.I32(20), span), span)
 
-// Expected: type = I32, no errors
+// Expected: type = I32T, no errors
 ```
 
 **Root Cause Analysis:**
 
-The issue is with hole generalization in nested lambdas. When generalizing the outer lambda `λx`, holes from the inner lambda's type are incorrectly included in the generalization set.
+The issue is with hole generalization in nested lambdas. When generalizing the outer lambda `λx`, holes from the inner lambda's VPi type are incorrectly included in the generalization set.
 
 **Technical Details:**
 
 For `λx. λy. x`:
 
-1. **Inner lambda `λy`** generalizes hole 1 (y's type), producing type `?1 → ?0` where ?0 is x's type from outer scope
+1. **Inner lambda `λy`** creates hole 1 for y's type, producing type `VPi(..., hole_1, hole_0)` where hole_0 is x's type from outer scope
 
 2. **Outer lambda `λx`** sees:
    - `domain_holes = [0]` (x's type hole)
-   - `codomain_holes = [1]` (from inner lambda's generalized type)
-   - `holes_to_generalize = [0, 1]` ← **BUG: Should only generalize [0]**
+   - `codomain_holes = [1, 0]` (from inner lambda's VPi domain and codomain)
+   - `all_holes = [0, 1]`
+   - **Bug**: `holes_to_generalize = [0, 1]` ← Should only generalize [0]
 
-Hole 1 belongs to the inner lambda's parameter and should NOT be generalized at the outer lambda level. The filtering logic `id >= body_holes_start` doesn't correctly exclude holes from nested lambda binders.
+Hole 1 belongs to the inner lambda's parameter and should NOT be generalized at the outer lambda level.
 
-**Why This Is Subtle:**
+**Fix Implemented (Partial):**
 
-The hole filtering uses `holes_before` to track which holes existed before the current lambda body. However, when the body is itself a lambda, the inner lambda's parameter holes are created during the outer lambda's body inference, so they pass the filter.
+Added lambda depth tracking to State:
+- `lambda_depth: Int` - Tracks current lambda nesting depth
+- `hole_depths: List(#(Int, Int))` - Maps hole_id → depth where created
 
-**Fix Required:**
+During lambda inference:
+- Increment `lambda_depth` before inferring body
+- Record hole depth when creating holes
+- Filter holes by depth during generalization
 
-The generalization logic needs to track which holes belong to which lambda binder level, not just which holes were created during body inference. One approach:
-- Track the lambda depth when creating holes
-- Only generalize holes at the current lambda depth
+**Why It's Not Fully Fixed:**
 
-**Status:** 🔍 ANALYZED - Fix requires careful hole ownership tracking
+The depth tracking is correct, but there's still an issue with how VPi types are handled during function application. The hole unification during `infer_app` may not be correctly solving the generalized holes.
+
+**Status:** 🔄 PARTIALLY FIXED - Depth tracking added, application logic needs investigation
+
+---
+
+## 2. Example Output File Failures (2 sub-failures)
+
+### Test: `core@examples_test.type_errors_examples_test`
+
+**Sub-failures:**
+- `08_pattern_mismatch`
+- `10_infinite_type`
+
+**Root Cause:** The expected output files need to be updated to match the current compiler error format which includes error codes (e.g., "error[E0101]:").
+
+**Status:** 🔄 IN PROGRESS - Expected output files updated, investigating test file reading issue
 
 ---
 
@@ -126,6 +130,7 @@ The following pattern matching tests were FIXED by updating them to check types 
 | Unify tests | N/A (new tests) | Passing | **IMPROVED** |
 | Code organization | 4,349 lines | 10 modular modules | **IMPROVED** |
 | Pattern match tests | 0/10 passing | 9/10 passing | **IMPROVED** |
+| Lambda depth tracking | N/A | Implemented | **NEW FEATURE** |
 
 **Verification Method:**
 ```bash
@@ -142,9 +147,12 @@ rm src/core/core.gleam
 
 ## Action Plan
 
-### Phase 1: Fix Lambda Generalization (1 failure)
-- [ ] Debug hole generalization for nested lambdas
-- [ ] Track hole ownership by lambda binder level
+### Phase 1: Fix Lambda Generalization (1 failure) - IN PROGRESS
+- [x] Add lambda depth tracking to State
+- [x] Record hole depths during creation
+- [x] Filter holes by depth during generalization
+- [ ] Debug VPi handling during function application
+- [ ] Verify hole unification in infer_app
 - [ ] Test with k_combinator
 
 ### Phase 2: Fix Pattern Match Exhaustiveness (1 failure)
@@ -157,4 +165,5 @@ rm src/core/core.gleam
 
 ### Phase 4: Final Documentation
 - [ ] Update QWEN.md with 375/379 test count
+- [ ] Document lambda depth tracking feature
 - [ ] Mark all issues as resolved
