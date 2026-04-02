@@ -286,35 +286,101 @@ pub fn infer_match(
   cases: List(ast.Case),
   span: Span,
 ) -> #(ast.Value, ast.Type, state.State) {
+  // Step 1: Infer argument to get scrutinee type
   let #(arg_val, arg_ty, s) = infer(s, arg)
-  
-  // First infer all case bodies to get their types
-  let #(case_results, case_tys, s) = infer_cases_with_types(s, cases, arg_ty)
-  
-  // Now infer the motive and unify with case body types
+
+  // Step 2: Infer motive FIRST to get the expected result type
   let #(motive_val, motive_ty, s) = infer(s, motive)
-  
-  // Unify motive type with all case body types
-  let s = unify_motive_with_cases(s, motive_ty, case_tys, span)
-  
-  // Solve hole -999 in the motive body with the unified result type
-  // This is a special hole used by the desugarer as a placeholder
-  let s = solve_motive_hole(s, motive_val, motive_ty)
-  
+
+  // Step 3: Extract motive result type (codomain for dependent, or a fresh hole)
+  let #(motive_result_ty, s) = extract_motive_result_type(s, motive_val, motive_ty)
+
+  // Step 4: Check each case body against the motive result type
+  let #(case_results, s) = check_cases(s, cases, arg_ty, motive_result_ty)
+
+  // Step 5: Solve hole -999 in the motive body with the result type
+  let s = solve_motive_hole(s, motive_val, motive_result_ty)
+
+  // Step 6: Build result value
   let result_val = ast.VNeut(ast.HVar(0), [ast.EMatch([], motive_val, case_results)])
   #(result_val, motive_ty, s)
 }
 
-fn solve_motive_hole(s: state.State, motive_val: ast.Value, motive_ty: ast.Type) -> state.State {
+/// Extract the result type from a motive.
+/// For dependent motives (λp. ResultTy), extract ResultTy.
+/// For non-dependent motives, return the type as-is.
+fn extract_motive_result_type(s: state.State, motive_val: ast.Value, motive_ty: ast.Type) -> #(ast.Type, state.State) {
+  case motive_val {
+    ast.VLam(_, _, env, body_term) -> {
+      // Motive is a lambda - the body should be the result type (or a hole placeholder)
+      case body_term {
+        ast.Hole(-999, _) -> {
+          // Hole placeholder - create a fresh hole for the result type
+          // This hole will be unified with the actual result type from case bodies
+          let #(hole_ty, new_s) = new_hole(s)
+          #(hole_ty, new_s)
+        }
+        _ -> {
+          // Evaluate body to get result type
+          let body_val = eval.eval(s.ffi, env, body_term)
+          // Return the body value as the result type
+          #(body_val, s)
+        }
+      }
+    }
+    ast.VPi(_, _, env, _domain, codomain) -> {
+      // Motive type is a Pi type - extract codomain as result type
+      let codomain_val = eval.eval(s.ffi, env, codomain)
+      #(codomain_val, s)
+    }
+    _ -> #(motive_ty, s)
+  }
+}
+
+/// Check all case bodies against the expected result type.
+fn check_cases(
+  s: state.State,
+  cases: List(ast.Case),
+  arg_ty: ast.Type,
+  result_ty: ast.Type,
+) -> #(List(ast.Case), state.State) {
+  check_cases_loop(s, cases, arg_ty, result_ty, [])
+}
+
+fn check_cases_loop(
+  s: state.State,
+  cases: List(ast.Case),
+  arg_ty: ast.Type,
+  result_ty: ast.Type,
+  acc: List(ast.Case),
+) -> #(List(ast.Case), state.State) {
+  case cases {
+    [] -> #(list.reverse(acc), s)
+    [c, ..rest] -> {
+      let patterns = [c.pattern]
+      let body = c.body
+      // Infer patterns to bind pattern variables
+      let #(pattern_vals, s) = infer_patterns(s, patterns, arg_ty)
+      // Check body against result type
+      let #(body_val, s) = check(s, body, result_ty, get_span(body))
+      // Update case with checked body
+      let checked_case = ast.Case(c.pattern, body, c.guard, c.span)
+      check_cases_loop(s, rest, arg_ty, result_ty, [checked_case, ..acc])
+    }
+  }
+}
+
+fn solve_motive_hole(s: state.State, motive_val: ast.Value, result_ty: ast.Type) -> state.State {
   // Extract the body term from the motive lambda
   case motive_val {
-    ast.VLam(_, _, _, body_term) -> {
-      // If the body is a hole -999, solve it with the motive type (result type)
+    ast.VLam(_, _, env, body_term) -> {
+      // If the body is a hole -999, solve it with the result type
       case body_term {
         ast.Hole(hole_id, _) if hole_id == -999 -> {
-          // Add substitution: hole -999 = motive_ty (as a value)
-          let s = state.State(..s, subst: [ #(hole_id, motive_ty), ..s.subst ])
-          s
+          // Convert result type to value for substitution
+          let result_val = eval.eval(s.ffi, env, result_ty_to_term(result_ty))
+          // Add substitution: hole -999 = result_val
+          state.State(..s, subst: [ #(hole_id, result_val), ..s.subst ])
         }
         _ -> s
       }
@@ -323,86 +389,46 @@ fn solve_motive_hole(s: state.State, motive_val: ast.Value, motive_ty: ast.Type)
   }
 }
 
-fn infer_cases_with_types(
-  s: state.State,
-  cases: List(ast.Case),
-  arg_ty: ast.Type,
-) -> #(List(ast.Case), List(ast.Type), state.State) {
-  infer_cases_with_types_loop(s, cases, arg_ty, [], [])
-}
-
-fn infer_cases_with_types_loop(
-  s: state.State,
-  cases: List(ast.Case),
-  arg_ty: ast.Type,
-  acc_cases: List(ast.Case),
-  acc_tys: List(ast.Type),
-) -> #(List(ast.Case), List(ast.Type), state.State) {
-  case cases {
-    [] -> #(list.reverse(acc_cases), list.reverse(acc_tys), s)
-    [c, ..rest] -> {
-      let patterns = [c.pattern]
-      let body = c.body
-      let #(_pattern_vals, s) = infer_patterns(s, patterns, arg_ty)
-      let #(body_val, body_ty, s) = infer(s, body)
-      infer_cases_with_types_loop(s, rest, arg_ty, [c, ..acc_cases], [body_ty, ..acc_tys])
-    }
+/// Convert a Type to a Term for evaluation.
+fn result_ty_to_term(ty: ast.Type) -> ast.Term {
+  let empty_span = Span("", 0, 0, 0, 0)
+  case ty {
+    ast.VTyp(k) -> ast.Typ(k, empty_span)
+    ast.VLit(lit) -> ast.Lit(lit, empty_span)
+    ast.VLitT(lit_t) -> ast.LitT(lit_t, empty_span)
+    ast.VNeut(head, spine) -> value_head_to_term(head, spine, empty_span)
+    ast.VRcd(fields) -> ast.Rcd(list.map(fields, fn(f) { #(f.0, ast.Hole(0, empty_span)) }), empty_span)
+    ast.VLam(impl, name, env, body) -> ast.Lam(impl, #(name, ast.Hole(-1, empty_span)), body, empty_span)
+    ast.VPi(impl, name, env, in_val, out) -> ast.Pi(impl, name, ast.Hole(-1, empty_span), out, empty_span)
+    ast.VCtrValue(ast.VCtr(tag, arg)) -> ast.Ctr(tag, ast.Hole(0, empty_span), empty_span)
+    ast.VUnit -> ast.Unit(empty_span)
+    ast.VErr -> ast.Err("type_to_term", empty_span)
+    ast.VCall(name, args) -> ast.Call(name, [], empty_span)
+    ast.VFix(name, env, body) -> ast.Fix(name, body, empty_span)
+    ast.VRecord(fields) -> ast.Rcd([], empty_span)
   }
 }
 
-fn unify_motive_with_cases(
-  s: state.State,
-  motive_ty: ast.Type,
-  case_tys: List(ast.Type),
-  span: Span,
-) -> state.State {
-  // Extract the codomain from the motive VPi type
-  let motive_result_ty = case motive_ty {
-    ast.VPi(_, _, env, _domain, codomain) -> eval.eval(s.ffi, env, codomain)
-    _ -> motive_ty
+fn value_head_to_term(head: ast.Head, spine: List(ast.Elim), s: Span) -> ast.Term {
+  let base = case head {
+    ast.HVar(level) -> ast.Var(level, s)
+    ast.HHole(id) -> ast.Hole(id, s)
+    ast.HStepLimit -> ast.Hole(0, s)
   }
-  unify_motive_loop(s, motive_result_ty, case_tys, span)
+  spine_to_term(base, spine, s)
 }
 
-fn unify_motive_loop(
-  s: state.State,
-  motive_result_ty: ast.Type,
-  case_tys: List(ast.Type),
-  span: Span,
-) -> state.State {
-  case case_tys {
-    [] -> s
-    [case_ty, ..rest] -> {
-      let #(_subst, s) = unify.unify(s, 0, motive_result_ty, case_ty, span, span)
-      unify_motive_loop(s, motive_result_ty, rest, span)
-    }
-  }
-}
-
-fn infer_cases(
-  s: state.State,
-  cases: List(ast.Case),
-  arg_ty: ast.Type,
-  motive_val: ast.Value,
-) -> #(List(ast.Case), state.State) {
-  infer_cases_loop(s, cases, arg_ty, motive_val, [])
-}
-
-fn infer_cases_loop(
-  s: state.State,
-  cases: List(ast.Case),
-  arg_ty: ast.Type,
-  motive_val: ast.Value,
-  acc: List(ast.Case),
-) -> #(List(ast.Case), state.State) {
-  case cases {
-    [] -> #(list.reverse(acc), s)
-    [c, ..rest] -> {
-      let patterns = [c.pattern]
-      let body = c.body
-      let #(pattern_vals, s) = infer_patterns(s, patterns, arg_ty)
-      let #(body_val, _, s) = infer(s, body)
-      infer_cases_loop(s, rest, arg_ty, motive_val, [c, ..acc])
+fn spine_to_term(base: ast.Term, spine: List(ast.Elim), s: Span) -> ast.Term {
+  case spine {
+    [] -> base
+    [first, ..rest] -> {
+      let applied = case first {
+        ast.EDot(name) -> ast.Dot(base, name, s)
+        ast.EApp(arg) -> ast.App(base, [], ast.Hole(0, s), s)
+        ast.EAppImplicit(arg) -> base
+        ast.EMatch(env, motive, cases) -> ast.Match(base, ast.Hole(0, s), [], s)
+      }
+      spine_to_term(applied, rest, s)
     }
   }
 }

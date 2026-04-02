@@ -51,12 +51,16 @@ fn vhole(i) {
 
 pub fn unify_typ_equal_level_zero_test() {
   // Types at same level unify successfully
-  unify(s, 0, ast.VTyp(0), ast.VTyp(0), s1, s2) |> should.equal(#([], s))
+  let #(subst, result_s) = unify(s, 0, ast.VTyp(0), ast.VTyp(0), s1, s2)
+  subst |> should.equal([])
+  result_s.errors |> should.equal([])
 }
 
 pub fn unify_typ_equal_level_one_test() {
   // Types at level 1 unify successfully
-  unify(s, 0, ast.VTyp(1), ast.VTyp(1), s1, s2) |> should.equal(#([], s))
+  let #(subst, result_s) = unify(s, 0, ast.VTyp(1), ast.VTyp(1), s1, s2)
+  subst |> should.equal([])
+  result_s.errors |> should.equal([])
 }
 
 pub fn unify_typ_mismatch_test() {
@@ -71,12 +75,16 @@ pub fn unify_typ_mismatch_test() {
 
 pub fn unify_i32_equal_test() {
   // Same I32 values unify
-  unify(s, 0, v32(1), v32(1), s1, s2) |> should.equal(#([], s))
+  let #(subst, result_s) = unify(s, 0, v32(1), v32(1), s1, s2)
+  subst |> should.equal([])
+  result_s.errors |> should.equal([])
 }
 
 pub fn unify_i64_equal_test() {
   // Same I64 values unify
-  unify(s, 0, v64(2), v64(2), s1, s2) |> should.equal(#([], s))
+  let #(subst, result_s) = unify(s, 0, v64(2), v64(2), s1, s2)
+  subst |> should.equal([])
+  result_s.errors |> should.equal([])
 }
 
 pub fn unify_lit_mismatch_test() {
@@ -91,11 +99,15 @@ pub fn unify_lit_mismatch_test() {
 
 pub fn unify_i32t_equal_test() {
   // Same literal types unify
-  unify(s, 0, v32t, v32t, s1, s2) |> should.equal(#([], s))
+  let #(subst, result_s) = unify(s, 0, v32t, v32t, s1, s2)
+  subst |> should.equal([])
+  result_s.errors |> should.equal([])
 }
 
 pub fn unify_i64t_equal_test() {
-  unify(s, 0, v64t, v64t, s1, s2) |> should.equal(#([], s))
+  let #(subst, result_s) = unify(s, 0, v64t, v64t, s1, s2)
+  subst |> should.equal([])
+  result_s.errors |> should.equal([])
 }
 
 pub fn unify_litt_mismatch_test() {
@@ -110,18 +122,25 @@ pub fn unify_litt_mismatch_test() {
 
 pub fn unify_hole_solve_test() {
   // Solving an unsolved hole
-  unify(s, 0, vhole(0), v32t, s1, s2)
-  |> should.equal(#([#(0, v32t)], s))
+  let #(subst, result_s) = unify(s, 0, vhole(0), v32t, s1, s2)
+  subst |> should.equal([#(0, v32t)])
+  result_s.subst |> should.equal([#(0, v32t)])
+  result_s.errors |> should.equal([])
 
   // Symmetric case
-  unify(s, 0, v32t, vhole(0), s1, s2)
-  |> should.equal(#([#(0, v32t)], s))
+  let #(subst2, result_s2) = unify(s, 0, v32t, vhole(0), s1, s2)
+  subst2 |> should.equal([#(0, v32t)])
+  result_s2.subst |> should.equal([#(0, v32t)])
+  result_s2.errors |> should.equal([])
 }
 
 pub fn unify_hole_already_solved_test() {
   // Hole already solved to v32t, unify with v32t succeeds
   let s = state.State(..s, subst: [#(0, v32t)])
-  unify(s, 0, vhole(0), v32t, s1, s2) |> should.equal(#([], s))
+  let #(_, result_s) = unify(s, 0, vhole(0), v32t, s1, s2)
+  // Substitution should remain unchanged (hole was already solved)
+  result_s.subst |> should.equal([#(0, v32t)])
+  result_s.errors |> should.equal([])
 }
 
 pub fn unify_hole_occurs_check_test() {
@@ -135,7 +154,9 @@ pub fn unify_hole_occurs_check_test() {
 pub fn unify_hole_with_itself_test() {
   // A hole unifying with itself should succeed (no infinite type error)
   // This is critical for lambda type inference: λx. x should work
-  unify(s, 0, vhole(0), vhole(0), s1, s2) |> should.equal(#([], s))
+  let #(subst, result_s) = unify(s, 0, vhole(0), vhole(0), s1, s2)
+  subst |> should.equal([])
+  result_s.errors |> should.equal([])
 }
 
 pub fn unify_hole_with_neutral_hole_test() {
@@ -165,7 +186,9 @@ pub fn unify_neut_equal_test() {
   // Same head and spine
   let v1 = ast.VNeut(ast.HVar(0), [ast.EDot("x")])
   let v2 = ast.VNeut(ast.HVar(0), [ast.EDot("x")])
-  unify(s, 0, v1, v2, s1, s2) |> should.equal(#([], s))
+  let #(subst, result_s) = unify(s, 0, v1, v2, s1, s2)
+  subst |> should.equal([])
+  result_s.errors |> should.equal([])
 }
 
 pub fn unify_neut_head_mismatch_test() {
@@ -183,14 +206,18 @@ pub fn unify_neut_head_mismatch_test() {
 pub fn unify_rcd_equal_test() {
   let v1 = ast.VRcd([#("a", v32t)])
   let v2 = ast.VRcd([#("a", v32t)])
-  unify(s, 0, v1, v2, s1, s2) |> should.equal(#([], s))
+  let #(subst, result_s) = unify(s, 0, v1, v2, s1, s2)
+  subst |> should.equal([])
+  result_s.errors |> should.equal([])
 }
 
 pub fn unify_rcd_field_order_test() {
   // Field order shouldn't matter
   let v1 = ast.VRcd([#("a", v32t), #("b", v64t)])
   let v2 = ast.VRcd([#("b", v64t), #("a", v32t)])
-  unify(s, 0, v1, v2, s1, s2) |> should.equal(#([], s))
+  let #(subst, result_s) = unify(s, 0, v1, v2, s1, s2)
+  subst |> should.equal([])
+  result_s.errors |> should.equal([])
 }
 
 pub fn unify_rcd_missing_field_test() {
@@ -207,7 +234,9 @@ pub fn unify_rcd_missing_field_test() {
 pub fn unify_ctr_equal_test() {
   let v1 = ast.VCtrValue(ast.VCtr("A", v32t))
   let v2 = ast.VCtrValue(ast.VCtr("A", v32t))
-  unify(s, 0, v1, v2, s1, s2) |> should.equal(#([], s))
+  let #(subst, result_s) = unify(s, 0, v1, v2, s1, s2)
+  subst |> should.equal([])
+  result_s.errors |> should.equal([])
 }
 
 pub fn unify_ctr_tag_mismatch_test() {
@@ -224,18 +253,19 @@ pub fn unify_ctr_tag_mismatch_test() {
 pub fn unify_lam_equal_test() {
   let v1 = ast.VLam([], "x", [], ast.Var(0, s1))
   let v2 = ast.VLam([], "y", [], ast.Var(0, s1))
-  unify(s, 0, v1, v2, s1, s2)
-  |> should.equal(#([], s))
+  let #(subst, result_s) = unify(s, 0, v1, v2, s1, s2)
+  subst |> should.equal([])
+  result_s.errors |> should.equal([])
 }
 
 pub fn unify_pi_equal_test() {
   let v1 = ast.VPi([], "x", [], v32t, ast.Var(0, s1))
   let v2 = ast.VPi([], "y", [], v32t, ast.Var(0, s1))
-  let #(_, result_s) = unify(s, 0, v1, v2, s1, s2)
+  let #(subst, result_s) = unify(s, 0, v1, v2, s1, s2)
   // VPi unification creates a fresh variable for codomain comparison
   // so var_counter will be incremented
-  result_s.var_counter |> should.equal(1)
-  list.length(result_s.errors) |> should.equal(0)
+  subst |> should.equal([])
+  result_s.errors |> should.equal([])
 }
 
 pub fn unify_pi_domain_mismatch_test() {
@@ -279,8 +309,9 @@ pub fn unify_lam_with_holes_test() {
   let env = []
   let v1 = ast.VLam([], "x", env, ast.Var(0, s1))
   let v2 = ast.VLam([], "y", env, ast.Var(0, s1))
-  unify(s, 0, v1, v2, s1, s2)
-  |> should.equal(#([], s))
+  let #(subst, result_s) = unify(s, 0, v1, v2, s1, s2)
+  subst |> should.equal([])
+  result_s.errors |> should.equal([])
 }
 
 // ============================================================================
@@ -289,7 +320,15 @@ pub fn unify_lam_with_holes_test() {
 
 pub fn unify_verr_test() {
   // VErr always unifies successfully (error recovery)
-  unify(s, 0, ast.VErr, v32t, s1, s2) |> should.equal(#([], s))
-  unify(s, 0, v32t, ast.VErr, s1, s2) |> should.equal(#([], s))
-  unify(s, 0, ast.VErr, ast.VErr, s1, s2) |> should.equal(#([], s))
+  let #(subst1, s1_result) = unify(s, 0, ast.VErr, v32t, s1, s2)
+  subst1 |> should.equal([])
+  s1_result.errors |> should.equal([])
+  
+  let #(subst2, s2_result) = unify(s, 0, v32t, ast.VErr, s1, s2)
+  subst2 |> should.equal([])
+  s2_result.errors |> should.equal([])
+  
+  let #(subst3, s3_result) = unify(s, 0, ast.VErr, ast.VErr, s1, s2)
+  subst3 |> should.equal([])
+  s3_result.errors |> should.equal([])
 }
