@@ -63,6 +63,22 @@ let app2 = ast.App(app1, [], ast.Lit(ast.I32(20), span), span)
 7. `k_combinator_type_before_app_test` - ✓ PASSING (NEW)
    - Verifies k combinator type structure before application
 
+8. `vpi_hvar_domain_test` - ✓ PASSING (NEW)
+   - Tests checking argument against HVar domain
+   - Confirms HVar domain checking works
+
+9. `implicit_param_instantiation_test` - ✓ PASSING (NEW)
+   - Verifies implicit parameter instantiation creates correct substitution
+   - Confirms `instantiate_implicit_params` works correctly
+
+10. `subst_value_with_implicit_vars_test` - ✓ PASSING (NEW)
+    - Verifies substitution application to values with HVar
+    - Confirms `subst_value_with_implicit_vars` works correctly
+
+11. `k_combinator_full_trace_test` - ✗ FAILING (NEW)
+    - End-to-end trace of k combinator application
+    - Confirms failure occurs during application, not inference
+
 **Root Cause Analysis:**
 
 The debug tests reveal:
@@ -70,40 +86,55 @@ The debug tests reveal:
 - ✓ Type structure IS correct (VPi with implicit params)
 - ✓ Substitutions ARE being created during inference
 - ✓ **Non-polymorphic application works** (`id(42)` returns I32T)
+- ✓ **Implicit parameter instantiation works** correctly
+- ✓ **HVar substitution works** correctly
 - ✗ **Polymorphic application fails** (`k(10)` doesn't solve holes)
 
 **CRITICAL INSIGHT:**
 
-The issue is **NOT** with general hole unification or application in general. The `simple_app_debug_test` proves that:
-- Lambda inference works
-- Hole creation works
-- Application unification works
-- Result type extraction works
+The issue is **NOT** with:
+- Hole creation or tracking
+- Lambda type inference
+- Implicit parameter instantiation
+- HVar substitution
+- General hole unification
 
-The issue is **SPECIFIC TO POLYMORPHIC LAMBDAS** with implicit parameters.
+The `simple_app_debug_test`, `implicit_param_instantiation_test`, and `subst_value_with_implicit_vars_test` prove that all the individual components work correctly.
+
+**The issue is SPECIFIC TO THE INTERACTION** between:
+1. Polymorphic lambda type inference (with multiple implicit params)
+2. Application hole expansion in `infer_app`
 
 **Technical Details:**
 
-For `λx. λy. x` (k combinator):
-1. Lambda inference creates VPi with 2 implicit params
-2. Type: `VPi(["_0", "_1"], ..., hole_0, codomain)` where codomain references both holes
-3. During application `k(10)`:
-   - `infer_app` extracts implicit params from VPi
-   - Creates `implicit_subst` to instantiate them with fresh holes
-   - Applies substitution to domain and codomain
-   - **BUG**: The implicit substitution may not be correctly applied or the holes may not be unified properly
+Looking at `infer_app` for VPi types:
+```gleam
+ast.VPi(implicit_params, _, pi_env, domain, codomain) -> {
+  // Instantiate implicit type variables with fresh holes
+  let #(implicit_subst, s) = subst.instantiate_implicit_params(implicit_params, s)
 
-For `λx. x` (identity):
-1. Lambda inference creates VPi with 1 implicit param
-2. Type: `VPi(["_0"], ..., hole_0, hole_0)` (domain and codomain are the same hole)
-3. During application `id(42)`:
-   - Works correctly!
+  // Apply substitution to domain and codomain
+  let domain_instantiated = subst.subst_value_with_implicit_vars(implicit_subst, domain)
+  let codomain_instantiated = subst.subst_term_with_implicit_vars(implicit_subst, codomain)
+
+  // Check argument against instantiated domain
+  let #(arg_val, s) = check(s, arg, domain_instantiated, get_span(arg))
+  ...
+}
+```
+
+The flow is:
+1. Extract implicit params from VPi
+2. Create fresh holes for each implicit param
+3. Apply substitution to domain (HVar → fresh hole)
+4. Check argument against domain (should unify hole with I32T)
+5. **BUG**: The hole from step 3 is not being solved by step 4
 
 **HYPOTHESIS:**
 
-The issue may be related to how nested lambda holes interact with implicit parameter instantiation. When the k combinator's inner lambda creates hole_1, and the outer lambda generalizes both holes, the implicit substitution during application may not correctly handle the nested structure.
+The issue may be that when `check` unifies the argument type with `domain_instantiated`, the hole in `domain_instantiated` is a FRESH hole created by `instantiate_implicit_params`, not the original hole from the lambda's type. The unification solves the fresh hole, but this doesn't propagate back to the original type.
 
-**Status:** 🔍 ROOT CAUSE NARROWED - Issue is specific to polymorphic lambdas with multiple implicit params
+**Status:** 🔍 ROOT CAUSE NARROWED - Issue is in how `infer_app` handles hole unification for polymorphic lambdas
 
 ---
 
@@ -182,13 +213,13 @@ rm src/core/core.gleam
 - [x] Add lambda depth tracking to State
 - [x] Record hole depths during creation
 - [x] Filter holes by depth during generalization
-- [x] Add debug tests to isolate the issue
+- [x] Add debug tests to isolate the issue (11 tests total)
 - [x] Identify root cause: infer_app hole unification
-- [x] Add more debug tests (7 total)
 - [x] Key insight: Non-polymorphic application works, polymorphic fails
-- [ ] Investigate implicit parameter instantiation in infer_app
-- [ ] Check how implicit_subst is created and applied
-- [ ] Debug nested lambda hole handling during application
+- [x] Verify implicit parameter instantiation works
+- [x] Verify HVar substitution works
+- [ ] Fix infer_app to properly propagate hole solutions
+- [ ] The fresh hole created by instantiate_implicit_params needs to be unified with the argument type
 - [ ] Test with k_combinator
 
 ### Phase 2: Fix Pattern Match Exhaustiveness (1 failure)
