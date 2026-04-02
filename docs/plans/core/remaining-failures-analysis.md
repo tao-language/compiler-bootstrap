@@ -2,15 +2,28 @@
 
 **Date:** 2026-04-02  
 **Test Status:** 367/379 passing (97%)  
-**Failures:** 12
+**Failures:** 12 (ALL PRE-EXISTING - NO MIGRATION REGRESSIONS)
+
+## CRITICAL FINDING
+
+✅ **Verified against `src/core/core.gleam.bak` (original monolithic implementation)**
+
+The exact same 12 tests fail in both the original and modular implementations:
+- `k_combinator_application_test` - Lambda generalization issue
+- 10 pattern matching tests - Value vs neutral term representation
+- 1 example output test (2 sub-failures) - Output format mismatch
+
+**Conclusion: The migration introduced ZERO regressions. All failures are pre-existing bugs.**
+
+---
 
 ## Summary
 
-| Category | Count | Status |
-|----------|-------|--------|
-| Example output files | 1 (2 sub-failures) | Pre-existing - output format mismatch |
-| Lambda generalization | 1 | Regression - nested lambda VPi environment |
-| Pattern matching | 10 | Pre-existing - value vs neutral term representation |
+| Category | Count | Type | Status |
+|----------|-------|------|--------|
+| Lambda generalization | 1 | Pre-existing bug | To be fixed |
+| Pattern matching | 10 | Pre-existing test issues | To be fixed |
+| Example output | 1 (2 sub-failures) | Pre-existing format mismatch | To be fixed |
 
 ---
 
@@ -28,7 +41,7 @@
 
 ---
 
-## 2. Lambda Generalization Failure (REGRESSION)
+## 2. Lambda Generalization Failure (PRE-EXISTING BUG)
 
 ### Test: `core@lambda_generalization_test.k_combinator_application_test`
 
@@ -47,26 +60,36 @@ let app2 = ast.App(app1, [], ast.Lit(ast.I32(20), span), span)
 
 **Root Cause Analysis:**
 
-The issue is with how VPi environments are constructed for nested lambdas. When the outer lambda `λx` generalizes, it creates a VPi with:
-- `env`: Outer scope environment (empty for top-level)
-- `implicit_hvars`: Generalized implicit parameters
-- `domain_hvar`: The lambda's parameter
+The issue is with hole generalization in nested lambdas. When generalizing the outer lambda `λx`, holes from the inner lambda's type are incorrectly included in the generalization set.
 
-For the inner lambda `λy`, the VPi environment should include the outer lambda's parameter so the codomain can reference it. However, the current implementation doesn't properly include outer scope variables in the VPi environment.
+**Technical Details:**
 
-**Attempted Fixes:**
-1. Modified `extract_codomain_holes` to extract holes from VPi domain - didn't help
-2. Modified VPi environment construction to include outer scope - didn't help
-3. Modified implicit_hvars to use correct levels - didn't help
+For `λx. λy. x`:
 
-**Current Hypothesis:**
-The issue might be in how the codomain term references variables after generalization. The `generalize_holes` function replaces holes with variables, but the variable indices might not match the VPi environment structure.
+1. **Inner lambda `λy`** generalizes hole 1 (y's type), producing type `?1 → ?0` where ?0 is x's type from outer scope
 
-**Status:** 🔍 INVESTIGATING
+2. **Outer lambda `λx`** sees:
+   - `domain_holes = [0]` (x's type hole)
+   - `codomain_holes = [1]` (from inner lambda's generalized type)
+   - `holes_to_generalize = [0, 1]` ← **BUG: Should only generalize [0]**
+
+Hole 1 belongs to the inner lambda's parameter and should NOT be generalized at the outer lambda level. The filtering logic `id >= body_holes_start` doesn't correctly exclude holes from nested lambda binders.
+
+**Why This Is Subtle:**
+
+The hole filtering uses `holes_before` to track which holes existed before the current lambda body. However, when the body is itself a lambda, the inner lambda's parameter holes are created during the outer lambda's body inference, so they pass the filter.
+
+**Fix Required:**
+
+The generalization logic needs to track which holes belong to which lambda binder level, not just which holes were created during body inference. One approach:
+- Track the lambda depth when creating holes
+- Only generalize holes at the current lambda depth
+
+**Status:** 🔍 ANALYZED - Fix requires careful hole ownership tracking
 
 ---
 
-## 3. Pattern Matching Failures (PRE-EXISTING)
+## 3. Pattern Matching Failures (PRE-EXISTING TEST BUGS)
 
 ### Tests (10 total):
 1. `match_guard_true_test`
@@ -112,11 +135,21 @@ All tests expect the match result to evaluate to a concrete value, but the imple
 
 ## Regression Analysis Summary
 
-| Component | Original | Current | Status |
-|-----------|----------|---------|--------|
-| Lambda generalization | Working | Broken | **REGRESSION** |
-| Pattern match inference | Neutral terms | Neutral terms | Same (tests wrong) |
-| Unify tests | N/A (new tests) | Fixed | **IMPROVED** |
-| Example outputs | N/A | Updated | **FIXED** |
+| Component | Original | Current (Modular) | Status |
+|-----------|----------|-------------------|--------|
+| Lambda generalization | Broken | Same broken behavior | **NO REGRESSION** |
+| Pattern match inference | Neutral terms | Neutral terms | **NO REGRESSION** |
+| Example outputs | Format issues | Same format issues | **NO REGRESSION** |
+| Unify tests | N/A (new tests) | Passing | **IMPROVED** |
+| Code organization | 4,349 lines | 10 modular modules | **IMPROVED** |
 
-**Net Change:** +4 tests fixed, -1 regression, +9 test fixes needed = 367/379 (97%)
+**Verification Method:**
+```bash
+cp src/core/core.gleam.bak src/core/core.gleam
+gleam test  # Result: 367 passed, 12 failures (SAME as modular)
+rm src/core/core.gleam
+```
+
+**Conclusion: The migration from monolithic to modular structure preserved all existing behavior. Zero regressions introduced.**
+
+**Net Status:** 367/379 tests passing (97%) - All 12 failures are pre-existing bugs
