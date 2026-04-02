@@ -17,6 +17,7 @@ import core/unify
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/int
+import gleam/bool
 import gleeunit
 import gleeunit/should
 import syntax/grammar.{Span}
@@ -323,6 +324,7 @@ pub fn k_combinator_type_before_app_test() {
     ast.VPi(implicit, name, env, domain, out_term) -> {
       let domain_info = case domain {
         ast.VNeut(ast.HHole(id), []) -> "hole_" <> int.to_string(id)
+        ast.VNeut(ast.HVar(lvl), []) -> "var_" <> int.to_string(lvl)
         ast.VLitT(_) -> "literal"
         _ -> "other"
       }
@@ -338,4 +340,119 @@ pub fn k_combinator_type_before_app_test() {
     _ -> False
   }
   is_vpi |> should.be_true()
+}
+
+/// Debug test: Test VPi with HVar domain (simulating polymorphic lambda)
+pub fn vpi_hvar_domain_test() {
+  let s = state.initial_state
+  let env = []
+  
+  // Create a VPi type with HVar domain (like polymorphic lambda after instantiation)
+  // VPi([], "_", [], HVar(0), Hole(1))
+  let domain = ast.VNeut(ast.HVar(0), [])
+  let codomain_term = ast.Hole(1, span)
+  let vpi_type = ast.VPi([], "_", env, domain, codomain_term)
+  
+  // Create an argument (I32 literal)
+  let arg = ast.Lit(ast.I32(42), span)
+  
+  // Check argument against HVar domain
+  let #(arg_val, s) = infer.check(s, arg, domain, span)
+  
+  // The HVar(0) should now be solved in the substitution
+  // But HVar is a level-based reference, not a hole ID
+  // So we need to check if the substitution has the right mapping
+  
+  // For now, just verify the check succeeded
+  let has_no_errors = list.length(s.errors) == 0
+  has_no_errors |> should.be_true()
+}
+
+/// Debug test: Test implicit parameter instantiation
+pub fn implicit_param_instantiation_test() {
+  let s = state.initial_state
+  
+  // Simulate implicit params ["_0", "_1"]
+  let implicit_params = ["_0", "_1"]
+  
+  // Instantiate them
+  let #(implicit_subst, s) = subst.instantiate_implicit_params(implicit_params, s)
+  
+  // Should have 2 substitutions
+  list.length(implicit_subst) |> should.equal(2)
+  
+  // Each should map index to a hole
+  let all_holes = list.all(implicit_subst, fn(kv) {
+    case kv.1 {
+      ast.VNeut(ast.HHole(_), []) -> True
+      _ -> False
+    }
+  })
+  all_holes |> should.be_true()
+}
+
+/// Debug test: Test subst_value_with_implicit_vars
+pub fn subst_value_with_implicit_vars_test() {
+  // Create implicit substitution by inferring a lambda with 2 params
+  // id2 = x -> y -> x (but we just want the holes)
+  let inner = ast.Lam([], #("y", ast.Hole(-1, span)), ast.Var(0, span), span)
+  let lam = ast.Lam([], #("x", ast.Hole(-1, span)), inner, span)
+  
+  let s = state.initial_state
+  let #(_val, ty, s) = infer(s, lam)
+  
+  // ty should be VPi with 2 implicits
+  case ty {
+    ast.VPi(impl, _, _, domain, _codomain) -> {
+      // Should have 2 implicit params
+      list.length(impl) |> should.equal(2)
+      
+      // Domain should be a hole (HVar or HHole)
+      let domain_is_neut = case domain {
+        ast.VNeut(_, _) -> True
+        _ -> False
+      }
+      domain_is_neut |> should.be_true()
+    }
+    _ -> {
+      // Should be VPi
+      True |> should.be_false()
+    }
+  }
+}
+
+/// Debug test: Full trace of k combinator application
+pub fn k_combinator_full_trace_test() {
+  // Build: k = x -> y -> x
+  let inner = ast.Lam([], #("y", ast.Hole(-1, span)), ast.Var(1, span), span)
+  let k = ast.Lam([], #("x", ast.Hole(-1, span)), inner, span)
+  
+  // Build: k(10)
+  let app = ast.App(k, [], ast.Lit(ast.I32(10), span), span)
+  
+  let s = state.initial_state
+  
+  // Step 1: Infer k
+  let #(k_val, k_ty, s) = infer(s, k)
+  
+  // k_ty should be VPi with 2 implicits
+  let k_ty_info = case k_ty {
+    ast.VPi(impl, _, _, domain, _) -> {
+      let domain_is_hvar = case domain {
+        ast.VNeut(ast.HVar(_), _) -> True
+        _ -> False
+      }
+      "impl=" <> int.to_string(list.length(impl)) <> ", domain_is_hvar=" <> bool.to_string(domain_is_hvar)
+    }
+    _ -> "not_VPi"
+  }
+  
+  // Step 2: Infer application
+  let #(_app_val, app_ty, s) = infer(s, app)
+  
+  // Check for errors
+  let has_errors = list.length(s.errors) > 0
+  
+  // If there are errors, the test should fail with details
+  has_errors |> should.be_false()
 }
