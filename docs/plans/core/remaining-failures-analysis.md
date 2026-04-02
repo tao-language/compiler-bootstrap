@@ -56,31 +56,54 @@ let app2 = ast.App(app1, [], ast.Lit(ast.I32(20), span), span)
 5. `k_combinator_debug_full_application_test` - ✗ FAILING
    - Full application `k(10)(20)` should return I32T or solved hole
 
+6. `simple_app_debug_test` - ✓ PASSING (NEW)
+   - Tests `id(42)` where `id = x -> x`
+   - **KEY INSIGHT**: Non-polymorphic application works correctly!
+   
+7. `k_combinator_type_before_app_test` - ✓ PASSING (NEW)
+   - Verifies k combinator type structure before application
+
 **Root Cause Analysis:**
 
 The debug tests reveal:
 - ✓ Hole depths ARE being tracked correctly
 - ✓ Type structure IS correct (VPi with implicit params)
 - ✓ Substitutions ARE being created during inference
-- ✗ **Application is NOT solving holes correctly**
+- ✓ **Non-polymorphic application works** (`id(42)` returns I32T)
+- ✗ **Polymorphic application fails** (`k(10)` doesn't solve holes)
+
+**CRITICAL INSIGHT:**
+
+The issue is **NOT** with general hole unification or application in general. The `simple_app_debug_test` proves that:
+- Lambda inference works
+- Hole creation works
+- Application unification works
+- Result type extraction works
+
+The issue is **SPECIFIC TO POLYMORPHIC LAMBDAS** with implicit parameters.
 
 **Technical Details:**
 
-For `λx. λy. x`:
+For `λx. λy. x` (k combinator):
+1. Lambda inference creates VPi with 2 implicit params
+2. Type: `VPi(["_0", "_1"], ..., hole_0, codomain)` where codomain references both holes
+3. During application `k(10)`:
+   - `infer_app` extracts implicit params from VPi
+   - Creates `implicit_subst` to instantiate them with fresh holes
+   - Applies substitution to domain and codomain
+   - **BUG**: The implicit substitution may not be correctly applied or the holes may not be unified properly
 
-1. **Lambda inference** correctly creates holes and tracks depths
-2. **Type structure** is correct: `VPi(2 implicits, ..., domain=hole_0, codomain=...)`
-3. **During application** `k(10)`:
-   - Function type should be unified with `I32T → ?result`
-   - Hole 0 should be solved to `I32T`
-   - Result should be the codomain with hole 0 substituted
-   - **BUG**: Hole is not being solved correctly
+For `λx. x` (identity):
+1. Lambda inference creates VPi with 1 implicit param
+2. Type: `VPi(["_0"], ..., hole_0, hole_0)` (domain and codomain are the same hole)
+3. During application `id(42)`:
+   - Works correctly!
 
-**Fix Required:**
+**HYPOTHESIS:**
 
-The issue is in `infer_app` - the hole unification during function application is not working correctly. The `unify` function may not be correctly updating the substitution, or the result type extraction after unification may not be applying the substitution.
+The issue may be related to how nested lambda holes interact with implicit parameter instantiation. When the k combinator's inner lambda creates hole_1, and the outer lambda generalizes both holes, the implicit substitution during application may not correctly handle the nested structure.
 
-**Status:** 🔍 ROOT CAUSE IDENTIFIED - Issue is in `infer_app` hole unification
+**Status:** 🔍 ROOT CAUSE NARROWED - Issue is specific to polymorphic lambdas with multiple implicit params
 
 ---
 
@@ -155,15 +178,17 @@ rm src/core/core.gleam
 
 ## Action Plan
 
-### Phase 1: Fix Lambda Generalization (1 failure) - ROOT CAUSE IDENTIFIED
+### Phase 1: Fix Lambda Generalization (1 failure) - ROOT CAUSE NARROWED
 - [x] Add lambda depth tracking to State
 - [x] Record hole depths during creation
 - [x] Filter holes by depth during generalization
 - [x] Add debug tests to isolate the issue
 - [x] Identify root cause: infer_app hole unification
-- [ ] Debug infer_app to find why holes aren't being solved
-- [ ] Check unify function for correct substitution updates
-- [ ] Verify result type extraction applies substitution
+- [x] Add more debug tests (7 total)
+- [x] Key insight: Non-polymorphic application works, polymorphic fails
+- [ ] Investigate implicit parameter instantiation in infer_app
+- [ ] Check how implicit_subst is created and applied
+- [ ] Debug nested lambda hole handling during application
 - [ ] Test with k_combinator
 
 ### Phase 2: Fix Pattern Match Exhaustiveness (1 failure)
