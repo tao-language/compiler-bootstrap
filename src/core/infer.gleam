@@ -109,7 +109,11 @@ pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.Sta
       let #(_fresh, s) = def_var(s, name, domain_val)
       let s = state.State(..s, level: s.level + 1)
 
+      // Increment lambda depth before inferring body (track nesting)
+      let s = state.State(..s, lambda_depth: s.lambda_depth + 1)
       let #(body_val, body_ty, s) = infer(s, body)
+      // Decrement lambda depth after inferring the body
+      let s = state.State(..s, lambda_depth: s.lambda_depth - 1)
 
       // Decrement level after inferring the body
       let s = state.State(..s, level: s.level - 1)
@@ -123,10 +127,16 @@ pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.Sta
       let codomain_holes = subst.free_holes_in_value(codomain_forced)
       let all_holes = list.unique(list.append(domain_holes, codomain_holes))
 
-      // Filter to only holes from body inference (exclude implicit param placeholders)
-      let body_holes_start = holes_before + list.length(implicit)
+      // Filter holes: only generalize holes at current lambda depth
+      // Holes from nested lambdas (deeper depth) should NOT be generalized here
+      let current_depth = s.lambda_depth
       let holes_to_generalize =
-        list.filter(all_holes, fn(id) { id >= body_holes_start })
+        list.filter(all_holes, fn(id) {
+          case list.key_find(s.hole_depths, id) {
+            Ok(hole_depth) -> hole_depth == current_depth
+            Error(Nil) -> True  // If no depth recorded, include it (shouldn't happen)
+          }
+        })
 
       // Always generalize for lambdas to ensure polymorphic types
       let quote_lvl = list.length(env) + list.length(implicit) + 1
@@ -661,7 +671,12 @@ fn def_var(s: state.State, name: String, ty: ast.Value) -> #(ast.Value, state.St
 fn new_hole(s: state.State) -> #(ast.Type, state.State) {
   let id = s.hole_counter
   let hole_ty = ast.VNeut(ast.HHole(id), [])
-  let s = state.State(..s, hole_counter: id + 1)
+  // Record the hole depth for proper generalization filtering
+  let s = state.State(
+    ..s,
+    hole_counter: id + 1,
+    hole_depths: [#(id, s.lambda_depth), ..s.hole_depths],
+  )
   #(hole_ty, s)
 }
 
@@ -1135,7 +1150,12 @@ pub fn check_type(
 fn new_hole_value(s: state.State) -> #(ast.Value, state.State) {
   let id = s.hole_counter
   let hole_val = ast.VNeut(ast.HHole(id), [])
-  let s = state.State(..s, hole_counter: id + 1)
+  // Record the hole depth for proper generalization filtering
+  let s = state.State(
+    ..s,
+    hole_counter: id + 1,
+    hole_depths: [#(id, s.lambda_depth), ..s.hole_depths],
+  )
   #(hole_val, s)
 }
 

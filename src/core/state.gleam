@@ -30,6 +30,8 @@ pub type State {
     hole_counter: Int,
     var_counter: Int,
     level: Int,  // Absolute De Bruijn level for HVar indices
+    lambda_depth: Int,  // Tracks nesting depth of lambdas for hole generalization
+    hole_depths: List(#(Int, Int)),  // Maps hole_id → lambda_depth where created
     step_counter: Int,
     max_steps: Int,
     ffi: FFI,
@@ -92,6 +94,8 @@ pub const initial_state = State(
   hole_counter: 0,
   var_counter: 0,
   level: 0,  // Start at level 0 (root)
+  lambda_depth: 0,  // Start at depth 0 (no nested lambdas)
+  hole_depths: [],  // No holes created yet
   step_counter: 0,
   max_steps: 10000,
   ffi: initial_ffis,
