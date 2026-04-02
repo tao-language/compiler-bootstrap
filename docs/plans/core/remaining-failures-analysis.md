@@ -39,40 +39,48 @@ let app2 = ast.App(app1, [], ast.Lit(ast.I32(20), span), span)
 // Expected: type = I32T, no errors
 ```
 
+**Debug Tests Added:**
+
+1. `k_combinator_debug_hole_depths_test` - ✓ PASSING
+   - Verifies hole depths are tracked (depth 0 for outer lambda, depth 1 for inner)
+   
+2. `k_combinator_debug_type_structure_test` - ✓ PASSING
+   - Verifies inferred type is VPi (polymorphic function type)
+   
+3. `k_combinator_debug_substitution_test` - ✓ PASSING
+   - Verifies substitutions are created during inference
+   
+4. `k_combinator_debug_application_test` - ✗ FAILING
+   - First application `k(10)` should return a function type or solved hole
+   
+5. `k_combinator_debug_full_application_test` - ✗ FAILING
+   - Full application `k(10)(20)` should return I32T or solved hole
+
 **Root Cause Analysis:**
 
-The issue is with hole generalization in nested lambdas. When generalizing the outer lambda `λx`, holes from the inner lambda's VPi type are incorrectly included in the generalization set.
+The debug tests reveal:
+- ✓ Hole depths ARE being tracked correctly
+- ✓ Type structure IS correct (VPi with implicit params)
+- ✓ Substitutions ARE being created during inference
+- ✗ **Application is NOT solving holes correctly**
 
 **Technical Details:**
 
 For `λx. λy. x`:
 
-1. **Inner lambda `λy`** creates hole 1 for y's type, producing type `VPi(..., hole_1, hole_0)` where hole_0 is x's type from outer scope
+1. **Lambda inference** correctly creates holes and tracks depths
+2. **Type structure** is correct: `VPi(2 implicits, ..., domain=hole_0, codomain=...)`
+3. **During application** `k(10)`:
+   - Function type should be unified with `I32T → ?result`
+   - Hole 0 should be solved to `I32T`
+   - Result should be the codomain with hole 0 substituted
+   - **BUG**: Hole is not being solved correctly
 
-2. **Outer lambda `λx`** sees:
-   - `domain_holes = [0]` (x's type hole)
-   - `codomain_holes = [1, 0]` (from inner lambda's VPi domain and codomain)
-   - `all_holes = [0, 1]`
-   - **Bug**: `holes_to_generalize = [0, 1]` ← Should only generalize [0]
+**Fix Required:**
 
-Hole 1 belongs to the inner lambda's parameter and should NOT be generalized at the outer lambda level.
+The issue is in `infer_app` - the hole unification during function application is not working correctly. The `unify` function may not be correctly updating the substitution, or the result type extraction after unification may not be applying the substitution.
 
-**Fix Implemented (Partial):**
-
-Added lambda depth tracking to State:
-- `lambda_depth: Int` - Tracks current lambda nesting depth
-- `hole_depths: List(#(Int, Int))` - Maps hole_id → depth where created
-
-During lambda inference:
-- Increment `lambda_depth` before inferring body
-- Record hole depth when creating holes
-- Filter holes by depth during generalization
-
-**Why It's Not Fully Fixed:**
-
-The depth tracking is correct, but there's still an issue with how VPi types are handled during function application. The hole unification during `infer_app` may not be correctly solving the generalized holes.
-
-**Status:** 🔄 PARTIALLY FIXED - Depth tracking added, application logic needs investigation
+**Status:** 🔍 ROOT CAUSE IDENTIFIED - Issue is in `infer_app` hole unification
 
 ---
 
@@ -147,12 +155,15 @@ rm src/core/core.gleam
 
 ## Action Plan
 
-### Phase 1: Fix Lambda Generalization (1 failure) - IN PROGRESS
+### Phase 1: Fix Lambda Generalization (1 failure) - ROOT CAUSE IDENTIFIED
 - [x] Add lambda depth tracking to State
 - [x] Record hole depths during creation
 - [x] Filter holes by depth during generalization
-- [ ] Debug VPi handling during function application
-- [ ] Verify hole unification in infer_app
+- [x] Add debug tests to isolate the issue
+- [x] Identify root cause: infer_app hole unification
+- [ ] Debug infer_app to find why holes aren't being solved
+- [ ] Check unify function for correct substitution updates
+- [ ] Verify result type extraction applies substitution
 - [ ] Test with k_combinator
 
 ### Phase 2: Fix Pattern Match Exhaustiveness (1 failure)
@@ -164,6 +175,6 @@ rm src/core/core.gleam
 - [ ] Verify expected output format matches actual
 
 ### Phase 4: Final Documentation
-- [ ] Update QWEN.md with 375/379 test count
+- [ ] Update QWEN.md with current test count
 - [ ] Document lambda depth tracking feature
 - [ ] Mark all issues as resolved
