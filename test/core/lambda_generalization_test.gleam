@@ -456,3 +456,110 @@ pub fn k_combinator_full_trace_test() {
   // If there are errors, the test should fail with details
   has_errors |> should.be_false()
 }
+
+/// Debug test: Check what the codomain term looks like after generalization
+pub fn k_combinator_codomain_trace_test() {
+  // Build: k = x -> y -> x
+  let inner = ast.Lam([], #("y", ast.Hole(-1, span)), ast.Var(1, span), span)
+  let k = ast.Lam([], #("x", ast.Hole(-1, span)), inner, span)
+  
+  let s = state.initial_state
+  let #(_val, ty, s) = infer(s, k)
+  
+  // ty should be VPi with 2 implicits
+  case ty {
+    ast.VPi(impl, _, _, domain, _codomain_term) -> {
+      // Check implicit count
+      list.length(impl) |> should.equal(2)
+      
+      // Check domain is a hole
+      let domain_is_hole = case domain {
+        ast.VNeut(ast.HHole(_), []) -> True
+        _ -> False
+      }
+      domain_is_hole |> should.be_true()
+      
+      // The codomain_term is quoted, so we can't directly inspect it here
+      // But we know it should reference the implicit params
+    }
+    _ -> {
+      // Should be VPi
+      True |> should.be_false()
+    }
+  }
+  
+  // Verify no errors
+  list.length(s.errors) |> should.equal(0)
+}
+
+/// Debug test: Trace hole IDs through k combinator inference
+pub fn k_combinator_hole_id_trace_test() {
+  let s = state.initial_state
+  
+  // After inferring k, check hole IDs
+  let inner = ast.Lam([], #("y", ast.Hole(-1, span)), ast.Var(1, span), span)
+  let k = ast.Lam([], #("x", ast.Hole(-1, span)), inner, span)
+  let #(_val, _ty, s) = infer(s, k)
+  
+  // Should have created 2 holes (one for each lambda param)
+  s.hole_counter |> should.equal(2)
+  
+  // Check hole depths
+  let has_depth_0 = list.any(s.hole_depths, fn(d) { d.1 == 0 })
+  let has_depth_1 = list.any(s.hole_depths, fn(d) { d.1 == 1 })
+  has_depth_0 |> should.be_true()
+  has_depth_1 |> should.be_true()
+}
+
+/// Debug test: Verify identity function works (baseline)
+pub fn identity_function_baseline_test() {
+  // Build: id = x -> x
+  let id = ast.Lam([], #("x", ast.Hole(-1, span)), ast.Var(0, span), span)
+  
+  // Build: id(42)
+  let app = ast.App(id, [], ast.Lit(ast.I32(42), span), span)
+  
+  let s = state.initial_state
+  let #(_val, ty, s) = infer(s, app)
+  
+  // Should have no errors
+  list.length(s.errors) |> should.equal(0)
+  
+  // Result type should be I32T
+  let is_i32 = case ty {
+    ast.VLitT(ast.I32T) -> True
+    _ -> False
+  }
+  is_i32 |> should.be_true()
+}
+
+/// Debug test: Check inner lambda type in k combinator
+pub fn k_combinator_inner_lambda_type_test() {
+  let s = state.initial_state
+  
+  // Infer just the inner lambda: λy. x (where x is at index 1)
+  // We need to set up the environment first
+  let inner = ast.Lam([], #("y", ast.Hole(-1, span)), ast.Var(1, span), span)
+  
+  // Create outer lambda context by binding x first
+  let outer = ast.Lam([], #("x", ast.Hole(-1, span)), inner, span)
+  let #(_val, ty, s) = infer(s, outer)
+  
+  // The type should be VPi with 2 implicits
+  case ty {
+    ast.VPi(impl, _, _, domain, _codomain) -> {
+      // Check we have 2 implicit params
+      list.length(impl) |> should.equal(2)
+      
+      // Domain should be a hole (for x's type)
+      let domain_is_hole = case domain {
+        ast.VNeut(ast.HHole(_), []) -> True
+        _ -> False
+      }
+      domain_is_hole |> should.be_true()
+    }
+    _ -> {
+      True |> should.be_false()
+    }
+  }
+}
