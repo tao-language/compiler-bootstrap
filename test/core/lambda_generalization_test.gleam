@@ -13,6 +13,7 @@ import core/ast as ast
 import core/state as state
 import core/infer.{infer}
 import core/subst as subst
+import core/unify
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/int
@@ -138,7 +139,7 @@ pub fn church_numeral_zero_test() {
 }
 
 // ============================================================================
-// DEBUG TESTS FOR K COMBINATOR
+// DEBUG TESTS FOR K COMBINATOR - DETAILED UNIFICATION ANALYSIS
 // ============================================================================
 // 
 // KEY FINDINGS FROM DEBUG TESTS:
@@ -151,6 +152,15 @@ pub fn church_numeral_zero_test() {
 // ROOT CAUSE: The issue is in infer_app - hole unification during function
 // application is not working correctly. The holes created for lambda parameters
 // are not being solved when arguments are applied.
+//
+// DETAILED ANALYSIS:
+// When applying k(10) where k : VPi(2 implicits, _, _, hole_0, codomain):
+// 1. infer_app extracts domain = hole_0 and codomain
+// 2. It creates arg_ty_hole_val and result_ty_hole_val for the application
+// 3. It creates fun_ty_expanded = VPi([], "_", env, arg_ty_hole_val, Hole(result_ty_hole_id))
+// 4. It unifies VNeut(HHole(hole_id), []) with fun_ty_expanded
+// 5. The unify should add hole_id -> fun_ty_expanded to substitution
+// 6. But the result type extraction doesn't properly force through the substitution
 //
 // ============================================================================
 
@@ -272,4 +282,60 @@ pub fn k_combinator_debug_substitution_test() {
   // After successful inference, holes should be solved to concrete types
   let has_substitutions = list.length(s2.subst) > 0
   has_substitutions |> should.be_true()
+}
+
+/// Debug test: Test simple function application (non-polymorphic)
+pub fn simple_app_debug_test() {
+  // Build: id = x -> x (simple identity)
+  let id = ast.Lam([], #("x", ast.Hole(-1, span)), ast.Var(0, span), span)
+  
+  // Build: id(42)
+  let app = ast.App(id, [], ast.Lit(ast.I32(42), span), span)
+  
+  let s = state.initial_state
+  let #(_val, ty, s2) = infer(s, app)
+  
+  // Should have no errors
+  s2.errors |> should.equal([])
+  
+  // Result type should be I32T
+  let is_i32_type = case ty {
+    ast.VLitT(ast.I32T) -> True
+    _ -> False
+  }
+  is_i32_type |> should.be_true()
+}
+
+/// Debug test: Inspect k combinator type before application
+pub fn k_combinator_type_before_app_test() {
+  // Build: k = x -> y -> x
+  let inner = ast.Lam([], #("y", ast.Hole(-1, span)), ast.Var(1, span), span)
+  let k = ast.Lam([], #("x", ast.Hole(-1, span)), inner, span)
+
+  let s = state.initial_state
+  let #(_val, ty, s2) = infer(s, k)
+
+  // Should have no errors
+  s2.errors |> should.equal([])
+  
+  // Inspect the type structure
+  let type_info = case ty {
+    ast.VPi(implicit, name, env, domain, out_term) -> {
+      let domain_info = case domain {
+        ast.VNeut(ast.HHole(id), []) -> "hole_" <> int.to_string(id)
+        ast.VLitT(_) -> "literal"
+        _ -> "other"
+      }
+      "VPi(implicit=" <> int.to_string(list.length(implicit)) 
+        <> ", domain=" <> domain_info <> ")"
+    }
+    _ -> "not_VPi"
+  }
+  
+  // Type should be VPi with implicits
+  let is_vpi = case ty {
+    ast.VPi(_, _, _, _, _) -> True
+    _ -> False
+  }
+  is_vpi |> should.be_true()
 }
