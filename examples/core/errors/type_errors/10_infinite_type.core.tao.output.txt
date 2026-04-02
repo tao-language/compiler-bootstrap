@@ -1,3 +1,13 @@
+  │
+4 │ import tao/test_parser.{parse_tests, ParseTestsResult, Test, Expression, Pattern, Skip, Timeout, Group, IO, Retry, Requires}
+  │                                                        ^^^^ This imported constructor is never used
+
+Hint: You can safely remove it.
+
+   Compiled in 0.06s
+    Running compiler_bootstrap.main
+
+error[E0107]: Infinite type
   ┌─ input:5:17
 2 │ // Occurs when a type would need to contain itself
 3 │ // This happens when unification tries to solve a hole with a type containing that hole

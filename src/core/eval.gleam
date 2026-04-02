@@ -19,7 +19,7 @@ pub fn eval(ffi: state.FFI, env: ast.Env, term: ast.Term) -> ast.Value {
     ast.Lit(value, _) -> ast.VLit(value)
     ast.LitT(typ, _) -> ast.VLitT(typ)
     ast.Var(index, _) -> list_get(env, index) |> result.lazy_unwrap(fn() { ast.VErr })
-    ast.Hole(_, _) -> ast.VNeut(ast.HHole(0), [])
+    ast.Hole(id, _) -> ast.VNeut(ast.HHole(id), [])
     ast.Err(_, _) -> ast.VErr
     ast.Rcd(fields, _) -> {
       let values = list.map(fields, fn(f) { #(f.0, eval(ffi, env, f.1)) })

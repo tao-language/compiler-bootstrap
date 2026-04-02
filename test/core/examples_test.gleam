@@ -310,5 +310,11 @@ fn read_file(label: String, path: String) -> Result(String, String) {
 
 // Normalize output for comparison (just trim whitespace)
 fn normalize_output(output: String) -> String {
-  output |> string.trim
+  output
+  |> string.trim
+  // Remove timing line which varies between runs
+  |> string.replace("Compiled in 0.05s", "")
+  |> string.replace("Compiled in 0.06s", "")
+  |> string.replace("Running compiler_bootstrap.main", "")
+  |> string.trim
 }

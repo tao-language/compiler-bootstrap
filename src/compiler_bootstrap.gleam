@@ -624,7 +624,7 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   }
 
   let env = []
-  let ffi = initial_ffis()
+  let ffi = initial_ffis
   let value = eval(ffi, env, parse_result.ast)
   // Force the value with the substitution from type checking to solve any holes
   let forced_value = force(ffi, type_state.subst, value)
@@ -746,7 +746,7 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   }
 
   let env = []
-  let ffi = initial_ffis()
+  let ffi = initial_ffis
   let value = eval(ffi, env, term)
   // Force the value with the substitution from type checking to solve any holes
   let forced_value = force(ffi, type_state.subst, value)

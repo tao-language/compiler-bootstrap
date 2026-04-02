@@ -14,17 +14,20 @@ import core/subst as subst
 
 pub fn generalize_holes(
   holes: List(Int),
-  existing_implicit: List(ast.Term),
+  existing_implicit: List(String),
   domain: ast.Value,
   codomain: ast.Type,
   s: state.State,
   ffi: state.FFI,
   lvl: Int,
   span: Span,
-) -> #(List(ast.Term), ast.Value, ast.Term) {
+) -> #(List(String), ast.Value, ast.Term) {
   let base_index = list.length(existing_implicit)
   let hole_subst = create_hole_to_var_subst(holes, base_index)
-  let generalized_domain = subst_value_with_hole_vars(hole_subst, domain)
+  
+  // KEY FIX: Do NOT generalize the domain. The domain hole should remain as a hole
+  // so it can be unified during application. Only generalize the codomain.
+  let generalized_domain = domain
 
   case holes {
     [] -> #(
@@ -40,7 +43,7 @@ pub fn generalize_holes(
       let num_new_implicit = list.length(holes)
       let generalized_codomain = quote_domain_with_implicit(ffi, num_new_implicit, generalized_codomain_val, span, 100_000)
       #(
-        list.append(existing_implicit, list.map(new_names, fn(name) { ast.Hole(0, span) })),
+        list.append(existing_implicit, new_names),
         generalized_domain,
         generalized_codomain,
       )
@@ -48,8 +51,8 @@ pub fn generalize_holes(
   }
 }
 
-fn collect_existing_names(implicit: List(ast.Term), term: ast.Term) -> List(String) {
-  list.append(list.map(implicit, fn(_) { "" }), collect_names_from_term(term))
+fn collect_existing_names(implicit: List(String), term: ast.Term) -> List(String) {
+  list.append(implicit, collect_names_from_term(term))
 }
 
 fn collect_names_from_term(term: ast.Term) -> List(String) {

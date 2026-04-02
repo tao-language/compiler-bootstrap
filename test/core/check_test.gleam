@@ -44,22 +44,19 @@ fn vhole(i) {
 // ============================================================================
 
 pub fn check_type_equal_test() {
-  check_type(s, v32t, v32t, s1, s2)
-  |> should.equal(#(v32t, s))
+  let #(s2, _) = check_type(s, v32t, v32t, s1, s2)
+  s2 |> should.equal(s)
 }
 
 pub fn check_type_mismatch_test() {
-  check_type(s, v32t, v64t, s1, s2)
-  |> should.equal(#(
-    v32t,
-    state.State(..s, errors: [state.TypeMismatch(v32t, v64t, s1, s2)]),
-  ))
+  let #(s_result, _) = check_type(s, v32t, v64t, s1, s2)
+  s_result |> should.equal(state.State(..s, errors: [state.TypeMismatch(v32t, v64t, s1, s2)]))
 }
 
 pub fn check_type_with_hole_test() {
   // When one type has a hole, it gets solved
-  check_type(s, vhole(0), v32t, s1, s2)
-  |> should.equal(#(v32t, state.State(..s, subst: [#(0, v32t)])))
+  let #(s_result, _) = check_type(s, vhole(0), v32t, s1, s2)
+  s_result |> should.equal(state.State(..s, subst: [#(0, v32t)]))
 }
 
 // ============================================================================
@@ -82,8 +79,8 @@ pub fn infer_multiple_errors_test() {
 
 pub fn check_accumulates_errors_test() {
   // Type mismatch should be recorded, not thrown
-  let #(_, _, s) = check(s, ast.Lit(ast.I32(1), s1), v64t, s1)
+  let #(_, s) = check(s, ast.Lit(ast.I32(1), s1), v64t, s1)
 
   s.errors
-  |> should.equal([state.TypeMismatch(v32t, v64t, s1, s2)])
+  |> should.equal([state.TypeMismatch(v32t, v64t, Span("", 0, 0, 0, 0), s1)])
 }

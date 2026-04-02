@@ -124,7 +124,7 @@ pub fn fix_quote_roundtrip_test() {
   let term = fix("f", body, s1)
   let #(_, _, s2) = infer(state.initial_state, term)
   // Quote the value back
-  let quoted = quote(state.initial_ffis(), 0, ast.VFix("f", [], body), s0)
+  let quoted = quote(state.initial_ffis, 0, ast.VFix("f", [], body), s0)
   // Should quote back to a Fix term
   case quoted {
     ast.Fix(_, _, _) -> True |> should.be_true

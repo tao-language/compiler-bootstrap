@@ -61,8 +61,8 @@ pub fn unify_typ_equal_level_one_test() {
 
 pub fn unify_typ_mismatch_test() {
   // Types at different levels fail to unify
-  unify(s, 0, ast.VTyp(0), ast.VTyp(1), s1, s2)
-  |> should.equal(#([], s))
+  let #(_, result_s) = unify(s, 0, ast.VTyp(0), ast.VTyp(1), s1, s2)
+  list.length(result_s.errors) |> should.equal(1)
 }
 
 // ============================================================================
@@ -81,8 +81,8 @@ pub fn unify_i64_equal_test() {
 
 pub fn unify_lit_mismatch_test() {
   // Different I32 values fail to unify
-  unify(s, 0, v32(1), v32(2), s1, s2)
-  |> should.equal(#([], s))
+  let #(_, result_s) = unify(s, 0, v32(1), v32(2), s1, s2)
+  list.length(result_s.errors) |> should.equal(1)
 }
 
 // ============================================================================
@@ -100,8 +100,8 @@ pub fn unify_i64t_equal_test() {
 
 pub fn unify_litt_mismatch_test() {
   // Different literal types fail to unify
-  unify(s, 0, v32t, v64t, s1, s2)
-  |> should.equal(#([], s))  // Error case
+  let #(_, result_s) = unify(s, 0, v32t, v64t, s1, s2)
+  list.length(result_s.errors) |> should.equal(1)
 }
 
 // ============================================================================
@@ -128,8 +128,8 @@ pub fn unify_hole_occurs_check_test() {
   // Occurs check: hole cannot be solved to a type containing itself
   // Note: This tests the occurs check through a neutral term spine
   let val = ast.VNeut(ast.HHole(0), [ast.EApp(v32t)])
-  unify(s, 0, vhole(0), val, s1, s2)
-  |> should.equal(#([], s))  // Error case
+  let #(_, result_s) = unify(s, 0, vhole(0), val, s1, s2)
+  list.length(result_s.errors) |> should.equal(1)
 }
 
 pub fn unify_hole_with_itself_test() {
@@ -141,8 +141,8 @@ pub fn unify_hole_with_itself_test() {
 pub fn unify_hole_with_neutral_hole_test() {
   // Hole unifying with neutral term containing same hole should fail
   let val = ast.VNeut(ast.HHole(0), [ast.EApp(v32t)])
-  unify(s, 0, vhole(0), val, s1, s2)
-  |> should.equal(#([], s))  // Error case
+  let #(_, result_s) = unify(s, 0, vhole(0), val, s1, s2)
+  list.length(result_s.errors) |> should.equal(1)
 }
 
 pub fn unify_hole_with_different_hole_test() {
@@ -172,8 +172,8 @@ pub fn unify_neut_head_mismatch_test() {
   // Different heads should fail
   let v1 = ast.VNeut(ast.HVar(0), [])
   let v2 = ast.VNeut(ast.HVar(1), [])
-  unify(s, 0, v1, v2, s1, s2)
-  |> should.equal(#([], s))  // Error case
+  let #(_, result_s) = unify(s, 0, v1, v2, s1, s2)
+  list.length(result_s.errors) |> should.equal(1)
 }
 
 // ============================================================================
@@ -196,8 +196,8 @@ pub fn unify_rcd_field_order_test() {
 pub fn unify_rcd_missing_field_test() {
   let v1 = ast.VRcd([#("a", v32t)])
   let v2 = ast.VRcd([])
-  unify(s, 0, v1, v2, s1, s2)
-  |> should.equal(#([], s))  // Error case
+  let #(_, result_s) = unify(s, 0, v1, v2, s1, s2)
+  list.length(result_s.errors) |> should.equal(1)
 }
 
 // ============================================================================
@@ -213,8 +213,8 @@ pub fn unify_ctr_equal_test() {
 pub fn unify_ctr_tag_mismatch_test() {
   let v1 = ast.VCtrValue(ast.VCtr("A", v32t))
   let v2 = ast.VCtrValue(ast.VCtr("B", v32t))
-  unify(s, 0, v1, v2, s1, s2)
-  |> should.equal(#([], s))  // Error case
+  let #(_, result_s) = unify(s, 0, v1, v2, s1, s2)
+  list.length(result_s.errors) |> should.equal(1)
 }
 
 // ============================================================================
@@ -231,15 +231,23 @@ pub fn unify_lam_equal_test() {
 pub fn unify_pi_equal_test() {
   let v1 = ast.VPi([], "x", [], v32t, ast.Var(0, s1))
   let v2 = ast.VPi([], "y", [], v32t, ast.Var(0, s1))
-  unify(s, 0, v1, v2, s1, s2)
-  |> should.equal(#([], s))
+  let #(_, result_s) = unify(s, 0, v1, v2, s1, s2)
+  // VPi unification creates a fresh variable for codomain comparison
+  // so var_counter will be incremented
+  result_s.var_counter |> should.equal(1)
+  list.length(result_s.errors) |> should.equal(0)
 }
 
 pub fn unify_pi_domain_mismatch_test() {
   let v1 = ast.VPi([], "x", [], v32t, ast.Var(0, s1))
   let v2 = ast.VPi([], "x", [], v64t, ast.Var(0, s1))
-  unify(s, 0, v1, v2, s1, s2)
-  |> should.equal(#([], s))  // Error case
+  let result = unify(s, 0, v1, v2, s1, s2)
+  // Unification fails due to domain mismatch, error is added to state
+  case result {
+    #(_, result_s) -> {
+      list.length(result_s.errors) |> should.equal(1)
+    }
+  }
 }
 
 pub fn unify_pi_with_holes_test() {

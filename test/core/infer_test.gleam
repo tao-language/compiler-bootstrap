@@ -146,11 +146,12 @@ pub fn infer_litt_test() {
 pub fn infer_var_test() {
   let s = state.State(..state.initial_state, vars: [#("x", #(v32(1), v32t))])
   infer(s, var(0, s1)) |> should.equal(#(v32(1), v32t, s))
-  infer(s, var(1, s1))
+  let s_with_var = state.State(..state.initial_state, vars: [#("x", #(v32(1), v32t))])
+  infer(s_with_var, var(1, s1))
   |> should.equal(#(
     ast.VErr,
     ast.VErr,
-    state.State(..state.initial_state, errors: [state.VarUndefined(1, s1)]),
+    state.State(..s_with_var, errors: [state.VarUndefined(1, s1)]),
   ))
 }
 

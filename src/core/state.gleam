@@ -29,6 +29,7 @@ pub type State {
     warnings: List(Error),
     hole_counter: Int,
     var_counter: Int,
+    level: Int,  // Absolute De Bruijn level for HVar indices
     step_counter: Int,
     max_steps: Int,
     ffi: FFI,
@@ -90,9 +91,10 @@ pub const initial_state = State(
   warnings: [],
   hole_counter: 0,
   var_counter: 0,
+  level: 0,  // Start at level 0 (root)
   step_counter: 0,
   max_steps: 10000,
-  ffi: [],
+  ffi: initial_ffis,
 )
 
 // ============================================================================
@@ -224,13 +226,11 @@ fn bool_to_value(b: Bool) -> ast.Value {
   }
 }
 
-pub fn initial_ffis() -> FFI {
-  [
-    #("add", Builtin(ffi_add, [])),
-    #("sub", Builtin(ffi_sub, [])),
-    #("mul", Builtin(ffi_mul, [])),
-    #("div", Builtin(ffi_div, [])),
-    #("eq", Builtin(ffi_eq, [])),
-    #("lt", Builtin(ffi_lt, [])),
-  ]
-}
+pub const initial_ffis: FFI = [
+  #("add", Builtin(ffi_add, [])),
+  #("sub", Builtin(ffi_sub, [])),
+  #("mul", Builtin(ffi_mul, [])),
+  #("div", Builtin(ffi_div, [])),
+  #("eq", Builtin(ffi_eq, [])),
+  #("lt", Builtin(ffi_lt, [])),
+]

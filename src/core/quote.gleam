@@ -43,12 +43,18 @@ fn quote_loop_impl(ffi: state.FFI, lvl: Int, value: ast.Value, s: Span, steps: I
       ast.Rcd(terms, s)
     }
     ast.VLam(implicit, name, env, body) -> {
-      let body_term = quote_term_in_env(ffi, lvl + 1, env, body, s, steps - 1)
-      ast.Lam(implicit, #(name, ast.Hole(-1, s)), body_term, s)
+      // Add a fresh HVar to represent the bound variable
+      let extended_env = list.append(env, [ast.VNeut(ast.HVar(lvl), [])])
+      let body_term = quote_term_in_env(ffi, lvl + 1, extended_env, body, s, steps - 1)
+      // Quote the parameter type from the bound variable
+      let param_ty = quote_loop(ffi, lvl, ast.VNeut(ast.HVar(lvl), []), s, steps - 1)
+      ast.Lam(implicit, #(name, param_ty), body_term, s)
     }
     ast.VPi(implicit, name, env, in_val, out_term) -> {
       let in_term = quote_loop(ffi, lvl, in_val, s, steps - 1)
-      let out_term_quoted = quote_term_in_env(ffi, lvl + 1, env, out_term, s, steps - 1)
+      // Add a fresh HVar to represent the bound variable
+      let extended_env = list.append(env, [ast.VNeut(ast.HVar(lvl), [])])
+      let out_term_quoted = quote_term_in_env(ffi, lvl + 1, extended_env, out_term, s, steps - 1)
       ast.Pi(implicit, name, in_term, out_term_quoted, s)
     }
     ast.VRecord(fields) -> {
@@ -60,14 +66,16 @@ fn quote_loop_impl(ffi: state.FFI, lvl: Int, value: ast.Value, s: Span, steps: I
       ast.Call(name, arg_terms, s)
     }
     ast.VFix(name, env, body) -> {
-      let body_term = quote_term_in_env(ffi, lvl, env, body, s, steps - 1)
+      // Add a fresh HVar to represent the recursive function
+      let extended_env = list.append(env, [ast.VNeut(ast.HVar(lvl), [])])
+      let body_term = quote_term_in_env(ffi, lvl, extended_env, body, s, steps - 1)
       ast.Fix(name, body_term, s)
     }
     ast.VCtrValue(ast.VCtr(tag, arg)) -> {
       ast.Ctr(tag, quote_loop(ffi, lvl, arg, s, steps - 1), s)
     }
     ast.VUnit -> ast.Unit(s)
-    ast.VErr -> ast.Err("quote error", s)
+    ast.VErr -> ast.Hole(-1, s)  // Quote VErr as a special hole
   }
 }
 
@@ -81,13 +89,15 @@ fn quote_neut(
 ) -> ast.Term {
   let base = case head {
     ast.HVar(level) -> {
+      // HVar uses absolute De Bruijn levels. Convert to relative Var index.
+      // index = lvl - level - 1 (standard De Bruijn conversion)
       let index = lvl - level - 1
       ast.Var(index, s)
     }
     ast.HHole(id) -> ast.Hole(id, s)
     ast.HStepLimit -> ast.Hole(0, s)
   }
-  
+
   quote_spine(ffi, lvl, base, spine, s, steps)
 }
 

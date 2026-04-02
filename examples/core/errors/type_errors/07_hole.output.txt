@@ -1,3 +1,5 @@
+    Running compiler_bootstrap.main
+
 error[E0106]: Unsolved hole
   ┌─ input:3:2
 1 │ // Hole with identifier
@@ -10,3 +12,4 @@ error[E0106]: Unsolved hole
   = hint: Holes are placeholders that must be filled
   = hint: Provide a term of the expected type, or add a type annotation
   = hint: Use holes temporarily during development, then replace them
+

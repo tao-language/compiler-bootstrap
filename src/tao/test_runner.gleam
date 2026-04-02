@@ -100,7 +100,7 @@ fn find_timeout(annotations: List(Annotation)) -> option.Option(Int) {
 fn run_test_expression(test_item: Test, _timeout: Int, source: String) -> TestResult {
   // Evaluate the expression
   let env = []
-  let ffi = initial_ffis()
+  let ffi = initial_ffis
   let expr_term = desugar_expression(test_item.expression)
 
   let value = eval(ffi, env, expr_term)
@@ -177,7 +177,7 @@ fn values_equal(v1: Value, v2: Value) -> Bool {
 fn format_value(value: Value) -> String {
   // Quote back to syntax and format
   let span = Span("", 0, 0, 0, 0)
-  let term = quote(initial_ffis(), 0, value, span)
+  let term = quote(initial_ffis, 0, value, span)
   core_syntax.format(term)
 }
 

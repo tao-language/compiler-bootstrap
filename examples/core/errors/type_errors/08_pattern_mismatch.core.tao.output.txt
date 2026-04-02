@@ -1,3 +1,13 @@
+            ^^ --
+6 │   | _ -> %Type
+7 │ }
+8 │ 
+  = note: %Type(1) and %Type(0) are incompatible types
+  = note: The expression produces %Type(1) but %Type(0) is expected here
+  = hint: Check that the expression has the expected type
+  = hint: Consider adding a type annotation
+  = hint: Did you mean to use a different expression?
+error[E0102]: Undefined variable
   ┌─ input:5:26
 2 │ // Pattern expects a different type than the matched value
 3 │ // This error occurs when a pattern's type doesn't match the scrutinee

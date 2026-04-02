@@ -6,6 +6,7 @@ import gleam/option.{type Option, None, Some}
 import syntax/grammar.{type Span}
 import core/ast as ast
 import core/state as state
+import core/eval as eval
 
 pub fn force(ffi: state.FFI, sub: ast.Subst, value: ast.Value) -> ast.Value {
   force_value(ffi, sub, value, 100)
@@ -20,7 +21,11 @@ fn force_value(ffi: state.FFI, sub: ast.Subst, value: ast.Value, steps: Int) -> 
           case head {
             ast.HHole(id) -> {
               case list.key_find(sub, id) {
-                Ok(solution) -> force_value(ffi, sub, solution, steps - 1)
+                Ok(solution) -> {
+                  // Force the solution and apply the spine
+                  let forced_solution = force_value(ffi, sub, solution, steps - 1)
+                  apply_spine(ffi, sub, forced_solution, spine, steps - 1)
+                }
                 Error(Nil) -> value
               }
             }
@@ -31,6 +36,38 @@ fn force_value(ffi: state.FFI, sub: ast.Subst, value: ast.Value, steps: Int) -> 
           }
         }
         _ -> value
+      }
+    }
+  }
+}
+
+fn apply_spine(
+  ffi: state.FFI,
+  sub: ast.Subst,
+  value: ast.Value,
+  spine: List(ast.Elim),
+  steps: Int,
+) -> ast.Value {
+  case spine {
+    [] -> value
+    [first, ..rest] -> {
+      case first {
+        ast.EApp(arg) -> {
+          let forced_arg = force_value(ffi, sub, arg, steps - 1)
+          case value {
+            ast.VLam(_, _, env, body) -> {
+              // Apply the lambda: substitute the argument into the body
+              let new_env = [forced_arg, ..env]
+              let body_value = eval.eval(ffi, new_env, body)
+              apply_spine(ffi, sub, body_value, rest, steps - 1)
+            }
+            _ -> {
+              // Can't apply, just keep the spine
+              apply_spine(ffi, sub, value, rest, steps - 1)
+            }
+          }
+        }
+        _ -> apply_spine(ffi, sub, value, rest, steps - 1)
       }
     }
   }
