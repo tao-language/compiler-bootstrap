@@ -1,3 +1,4 @@
+error[E0101]: Type mismatch
   ┌─ :0:0
 1 │ // Pattern Type Mismatch
 2 │ // Pattern expects a different type than the matched value
@@ -22,4 +23,3 @@ error[E0102]: Undefined variable
   = hint: Check variable name and scope
   = hint: Did you forget to define this variable?
   = hint: Check for typos in the variable name
-

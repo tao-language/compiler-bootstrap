@@ -303,7 +303,8 @@ pub fn infer_match(
 
   // Step 6: Build result value
   let result_val = ast.VNeut(ast.HVar(0), [ast.EMatch([], motive_val, case_results)])
-  #(result_val, motive_ty, s)
+  // Return the result type (motive_result_ty), not the motive type
+  #(result_val, motive_result_ty, s)
 }
 
 /// Extract the result type from a motive.
