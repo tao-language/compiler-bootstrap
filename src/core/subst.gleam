@@ -286,9 +286,13 @@ pub fn subst_term_with_implicit_vars(
   case term {
     ast.Var(index, span) -> {
       case list.key_find(subst, index) {
-        Ok(ast.VNeut(ast.HHole(_), _)) | Ok(ast.VNeut(ast.HVar(_), _)) -> {
-          // Can't directly convert value to term, return as-is
-          term
+        Ok(ast.VNeut(ast.HHole(id), _)) -> {
+          // Convert hole value to hole term
+          ast.Hole(id, span)
+        }
+        Ok(ast.VNeut(ast.HVar(idx), _)) -> {
+          // Convert var value to var term
+          ast.Var(idx, span)
         }
         Ok(_) -> term
         Error(Nil) -> term

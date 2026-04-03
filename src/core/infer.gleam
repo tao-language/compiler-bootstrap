@@ -222,6 +222,23 @@ fn infer_app(
       // Instantiate implicit type variables with fresh holes
       let #(implicit_subst, s) = subst.instantiate_implicit_params(implicit_params, s)
 
+      // KEY FIX: If the domain is a hole and there are implicit params,
+      // add the domain hole to the implicit subst for the first implicit param.
+      // This ensures the codomain term references the domain hole directly.
+      let implicit_subst = case implicit_params, domain {
+        [_, ..], ast.VNeut(ast.HHole(domain_hole_id), []) -> {
+          // Check if the first implicit param's instantiation is a hole
+          case implicit_subst {
+            [#(0, ast.VNeut(ast.HHole(implicit_hole_id), [])), ..rest] -> {
+              // Replace the first implicit param's instantiation with the domain hole
+              [#(0, ast.VNeut(ast.HHole(domain_hole_id), [])), ..rest]
+            }
+            _ -> implicit_subst
+          }
+        }
+        _, _ -> implicit_subst
+      }
+
       // Apply substitution to domain and codomain
       let domain_instantiated =
         subst.subst_value_with_implicit_vars(implicit_subst, domain)

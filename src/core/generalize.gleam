@@ -24,7 +24,7 @@ pub fn generalize_holes(
 ) -> #(List(String), ast.Value, ast.Term) {
   let base_index = list.length(existing_implicit)
   let hole_subst = create_hole_to_var_subst(holes, base_index)
-  
+
   // KEY FIX: Do NOT generalize the domain. The domain hole should remain as a hole
   // so it can be unified during application. Only generalize the codomain.
   let generalized_domain = domain
@@ -314,6 +314,13 @@ fn quote_with_implicit_loop(
       ast.VCtrValue(ast.VCtr(tag, arg)) -> {
         ast.Ctr(tag, quote_with_implicit_loop(ffi, num_implicit, arg, s, lvl + 1, steps - 1), s)
       }
+      ast.VPi(implicit, name, env, in_val, out_term) -> {
+        let in_term = quote_with_implicit_loop(ffi, num_implicit, in_val, s, lvl + 1, steps - 1)
+        // Extend environment with the bound variable
+        let extended_env = list.append(env, [ast.VNeut(ast.HVar(lvl), [])])
+        let out_term_quoted = quote_term_in_env_with_implicit(ffi, num_implicit, lvl + 1, extended_env, out_term, s, steps - 1)
+        ast.Pi(implicit, name, in_term, out_term_quoted, s)
+      }
       ast.VNeut(head, spine) -> {
         quote_spine_with_implicit(ffi, num_implicit, head, spine, s, lvl, steps)
       }
@@ -359,4 +366,17 @@ fn quote_spine_with_implicit(
       ast.Match(base, motive_term, cases, s)
     }
   }
+}
+
+fn quote_term_in_env_with_implicit(
+  ffi: state.FFI,
+  num_implicit: Int,
+  lvl: Int,
+  env: ast.Env,
+  term: ast.Term,
+  s: Span,
+  steps: Int,
+) -> ast.Term {
+  let value = eval.eval(ffi, env, term)
+  quote_with_implicit_loop(ffi, num_implicit, value, s, lvl, steps)
 }
