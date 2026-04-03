@@ -148,7 +148,7 @@ fn unify_elim_list(
   }
 }
 
-fn occurs(sub: ast.Subst, id: Int, value: ast.Value) -> Bool {
+pub fn occurs(sub: ast.Subst, id: Int, value: ast.Value) -> Bool {
   case subst.force([], sub, value) {
     ast.VTyp(_) | ast.VLit(_) | ast.VLitT(_) | ast.VErr -> False
     ast.VNeut(ast.HHole(hole_id), spine) ->
