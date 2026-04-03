@@ -62,14 +62,35 @@ fn apply_spine(
               apply_spine(ffi, sub, body_value, rest, steps - 1)
             }
             _ -> {
-              // Can't apply, just keep the spine
-              apply_spine(ffi, sub, value, rest, steps - 1)
+              // Can't apply, keep as neutral with spine
+              ast.VNeut(ast.HStepLimit, [first, ..build_spine_from_value(value)])
             }
           }
         }
-        _ -> apply_spine(ffi, sub, value, rest, steps - 1)
+        ast.EDot(name) -> {
+          case value {
+            ast.VRcd(fields) -> {
+              case list.key_find(fields, name) {
+                Ok(field_val) -> apply_spine(ffi, sub, field_val, rest, steps - 1)
+                Error(Nil) -> ast.VNeut(ast.HStepLimit, [first, ..build_spine_from_value(value)])
+              }
+            }
+            _ -> ast.VNeut(ast.HStepLimit, [first, ..build_spine_from_value(value)])
+          }
+        }
+        ast.EAppImplicit(_) | ast.EMatch(_, _, _) -> {
+          // Can't reduce these during forcing, keep as neutral
+          ast.VNeut(ast.HStepLimit, [first, ..build_spine_from_value(value)])
+        }
       }
     }
+  }
+}
+
+fn build_spine_from_value(value: ast.Value) -> List(ast.Elim) {
+  case value {
+    ast.VNeut(_, spine) -> spine
+    _ -> []
   }
 }
 
@@ -270,8 +291,21 @@ fn subst_value_with_implicit_vars_loop(
         #(pair.0, subst_value_with_implicit_vars_loop(subst, pair.1))
       }))
     }
+    ast.VRecord(fields) -> {
+      ast.VRecord(list.map(fields, fn(pair) {
+        #(pair.0, subst_value_with_implicit_vars_loop(subst, pair.1))
+      }))
+    }
+    ast.VLam(impl, name, env, body) -> {
+      // Implicit param indices are not bound by lambdas, so substitute in body
+      ast.VLam(impl, name, env, subst_term_with_implicit_vars(subst, body))
+    }
+    ast.VFix(name, env, body) -> {
+      // Implicit param indices are not bound by fixpoints, so substitute in body
+      ast.VFix(name, env, subst_term_with_implicit_vars(subst, body))
+    }
     ast.VPi(_, _, _, domain, codomain) -> {
-      // Don't substitute under binders
+      // Don't substitute under Pi binders
       value
     }
     _ -> value

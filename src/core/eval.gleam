@@ -146,7 +146,13 @@ fn do_match_loop(
 pub fn do_match_pattern(pattern: ast.Pattern, value: ast.Value) -> Result(ast.Env, Nil) {
   case pattern {
     ast.PAny -> Ok([value])
-    ast.PAs(p, _) -> do_match_pattern(p, value)
+    ast.PAs(p, _name) -> {
+      // Bind the matched value, then recurse into inner pattern
+      case do_match_pattern(p, value) {
+        Ok(inner_env) -> Ok([value, ..inner_env])
+        Error(Nil) -> Error(Nil)
+      }
+    }
     ast.PTyp(_) -> Ok([value])
     ast.PLit(lit) -> {
       case value {

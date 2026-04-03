@@ -7,9 +7,10 @@ import gleeunit
 import gleeunit/should
 import gleam/option.{None, Some}
 import tao/desugar.{desugar_module}
-import tao/global_context.{new_context, with_prelude}
+import tao/global_context.{type GlobalContext, new_context, with_prelude}
+import core/ast as core_ast
 import tao/ast.{
-  type Module, type Stmt, type Expr, type Pattern, type Param,
+  type Module as TaoModule, type Stmt as TaoStmt,
   StmtLet, StmtExpr, StmtFor, StmtWhile, StmtLoop, StmtBreak, StmtContinue, StmtReturn, StmtYield,
   Var, Lit, Lambda, Match, BinOp, OpGt,
   PVar,
@@ -22,8 +23,18 @@ pub fn main() {
   gleeunit.main()
 }
 
-fn create_module(body: List(Stmt)) -> Module {
+fn create_module(body: List(TaoStmt)) -> TaoModule {
   ModuleCtr("test", body, Span("test", 0, 0, 0, 0))
+}
+
+fn assert_valid_desugar(module: TaoModule, ctx: GlobalContext) {
+  let #(term, _dc) = desugar_module(module, ctx)
+  // Verify desugaring didn produce an error term
+  let is_valid = case term {
+    core_ast.Err(_, _) -> False
+    _ -> True
+  }
+  is_valid |> should.be_true()
 }
 
 // ============================================================================
@@ -34,8 +45,7 @@ pub fn expression_desugaring_test() {
   let ctx = new_context() |> with_prelude()
   let var_expr = Var("x", Span("test", 0, 0, 0, 0))
   let module = create_module([StmtExpr(var_expr, Span("test", 0, 0, 0, 0))])
-  let #(_term, _dc) = desugar_module(module, ctx)
-  True |> should.be_true()
+  assert_valid_desugar(module, ctx)
 }
 
 // ============================================================================
@@ -44,17 +54,16 @@ pub fn expression_desugaring_test() {
 
 pub fn pattern_matching_test() {
   let ctx = new_context() |> with_prelude()
-  
+
   let scrutinee = Var("x", Span("test", 0, 0, 0, 0))
   let pattern = PVar("y", Span("test", 0, 0, 0, 0))
   let body = Var("y", Span("test", 0, 0, 0, 0))
-  
+
   let clause = MatchClause(pattern, None, body, Span("test", 0, 0, 0, 0))
   let match_expr = Match(scrutinee, [clause], Span("test", 0, 0, 0, 0))
-  
+
   let module = create_module([StmtExpr(match_expr, Span("test", 0, 0, 0, 0))])
-  let #(_term, _dc) = desugar_module(module, ctx)
-  True |> should.be_true()
+  assert_valid_desugar(module, ctx)
 }
 
 // ============================================================================
@@ -70,23 +79,20 @@ pub fn control_flow_test() {
   let body = [StmtExpr(Var("x", Span("test", 0, 0, 0, 0)), Span("test", 0, 0, 0, 0))]
   let for_stmt = StmtFor(pattern, collection, body, Span("test", 0, 0, 0, 0))
   let module = create_module([for_stmt])
-  let #(_term, _dc) = desugar_module(module, ctx)
-  True |> should.be_true()
+  assert_valid_desugar(module, ctx)
 
   // While loop
   let condition = Var("cond", Span("test", 0, 0, 0, 0))
   let while_body = [StmtExpr(Var("x", Span("test", 0, 0, 0, 0)), Span("test", 0, 0, 0, 0))]
   let while_stmt = StmtWhile(condition, while_body, Span("test", 0, 0, 0, 0))
   let module2 = create_module([while_stmt])
-  let #(_term2, _dc2) = desugar_module(module2, ctx)
-  True |> should.be_true()
+  assert_valid_desugar(module2, ctx)
 
   // Loop
   let loop_body = [StmtExpr(Var("x", Span("test", 0, 0, 0, 0)), Span("test", 0, 0, 0, 0))]
   let loop_stmt = StmtLoop(loop_body, Span("test", 0, 0, 0, 0))
   let module3 = create_module([loop_stmt])
-  let #(_term3, _dc3) = desugar_module(module3, ctx)
-  True |> should.be_true()
+  assert_valid_desugar(module3, ctx)
 }
 
 // ============================================================================

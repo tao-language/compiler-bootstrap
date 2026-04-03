@@ -609,13 +609,22 @@ fn infer_fix(
       let ann_ty_val = eval.eval(s.ffi, env, ann_ty)
       let #(_fresh, s) = def_var(s, name, ann_ty_val)
       let #(body_val, s) = check(s, lam, ann_ty_val, span)
-      #(ast.VFix(name, env, body), ann_ty_val, s)
+      // If body is VErr, return VErr type instead of annotation type
+      let result_ty = case body_val {
+        ast.VErr -> ast.VErr
+        _ -> ann_ty_val
+      }
+      #(ast.VFix(name, env, body), result_ty, s)
     }
     _ -> {
       let #(result_ty_hole, s) = new_hole(s)
       let #(_fresh, s) = def_var(s, name, result_ty_hole)
       let #(body_val, s) = check(s, body, result_ty_hole, span)
-      let solved_ty = subst.force(s.ffi, s.subst, result_ty_hole)
+      // If body is VErr, return VErr type instead of solved hole
+      let solved_ty = case body_val {
+        ast.VErr -> ast.VErr
+        _ -> subst.force(s.ffi, s.subst, result_ty_hole)
+      }
       #(ast.VFix(name, env, body), solved_ty, s)
     }
   }

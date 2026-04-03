@@ -12,7 +12,6 @@ import core/ast as ast
 import core/state as state
 import gleeunit
 import gleeunit/should
-import gleam/list
 import syntax/grammar.{Span}
 import core/eval.{eval}
 
@@ -69,12 +68,16 @@ fn vhole(i) {
 // HELPER FUNCTIONS
 // ============================================================================
 
-pub fn range_test() {
-  // Gleam's list.range is inclusive: range(0, 0) = [0]
-  list.range(0, 0) |> should.equal([0])
-  list.range(0, 1) |> should.equal([0, 1])
-  list.range(0, 2) |> should.equal([0, 1, 2])
-  list.range(0, 3) |> should.equal([0, 1, 2, 3])
+fn i32(n, s) {
+  ast.Lit(ast.I32(n), s)
+}
+
+fn lam(name, body, s) {
+  ast.Lam([], #(name, ast.Hole(-1, s)), body, s)
+}
+
+fn app(fun, arg, s) {
+  ast.App(fun, [], arg, s)
 }
 
 // ============================================================================
@@ -141,4 +144,37 @@ pub fn eval_var_test() {
 pub fn eval_hole_test() {
   eval(state.initial_ffis, [], hole(0, s1)) |> should.equal(vhole(0))
   eval(state.initial_ffis, [], hole(1, s1)) |> should.equal(vhole(1))
+}
+
+// ============================================================================
+// LAMBDA BETA-REDUCTION TESTS
+// ============================================================================
+
+pub fn eval_lambda_identity_test() {
+  // (λx. x) 42 should evaluate to 42
+  let identity = lam("x", var(0, s1), s1)  // λx. x
+  let arg = i32(42, s1)
+  let app_term = app(identity, arg, s1)
+  eval(state.initial_ffis, [], app_term) |> should.equal(v32(42))
+}
+
+pub fn eval_lambda_const_test() {
+  // (λx. λy. x) 1 2 should evaluate to 1 (K combinator)
+  let inner_lam = lam("y", var(1, s1), s1)  // λy. x (x is at index 1)
+  let outer_lam = lam("x", inner_lam, s1)   // λx. λy. x
+  let arg1 = i32(1, s1)
+  let arg2 = i32(2, s1)
+  let app1 = app(outer_lam, arg1, s1)
+  let app2 = app(app1, arg2, s1)
+  eval(state.initial_ffis, [], app2) |> should.equal(v32(1))
+}
+
+pub fn eval_lambda_application_test() {
+  // (λf. f 5) (λx. x + 1) - simplified version
+  // (λx. x) (λy. y) 42 should evaluate to 42
+  let identity_inner = lam("y", var(0, s1), s1)
+  let identity_outer = lam("x", identity_inner, s1)
+  let arg = i32(42, s1)
+  let app_term = app(app(identity_outer, identity_outer, s1), arg, s1)
+  eval(state.initial_ffis, [], app_term) |> should.equal(v32(42))
 }

@@ -184,8 +184,8 @@ fn subst_value_with_hole_vars(subst: List(#(Int, Int)), value: ast.Value) -> ast
       ast.VCall(name, list.map(args, fn(a) { subst_value_with_hole_vars(subst, a) }))
     ast.VFix(name, env, body) ->
       ast.VFix(name, env, subst_term_with_hole_vars(subst, body))
-    ast.VRcd(fields) ->
-      ast.VRcd(
+    ast.VRecord(fields) ->
+      ast.VRecord(
         list.map(fields, fn(kv) {
           #(kv.0, subst_value_with_hole_vars(subst, kv.1))
         }),

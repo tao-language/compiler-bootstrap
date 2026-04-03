@@ -70,13 +70,10 @@ pub fn fix_parse_simple_test() {
   // This is the identity function via fixpoint
   let body = var(0, s0)  // f refers to the fixpoint itself
   let term = fix("f", body, s1)
-  let result = infer(state.initial_state, term)
-  // Should type-check (result type is a hole)
-  case result {
-    #(_, ast.VTyp(0), _) -> True |> should.be_true  // Type is %Type
-    #(_, _, _) -> True |> should.be_true  // Or any other type
-    _ -> False |> should.be_true
-  }
+  let #(_val, _ty, s) = infer(state.initial_state, term)
+  // Should type-check with no errors
+  let error_count = list.length(s.errors)
+  error_count |> should.equal(0)
 }
 
 pub fn fix_parse_apply_test() {
@@ -86,12 +83,11 @@ pub fn fix_parse_apply_test() {
   let f = var(0, s1)  // f is the fixpoint
   let body = app(f, x, s2)
   let term = fix("f", body, s3)
-  let result = infer(state.initial_state, term)
-  // Should type-check
-  case result {
-    #(_, _, _) -> True |> should.be_true
-    _ -> False |> should.be_true
-  }
+  let #(_val, _ty, s) = infer(state.initial_state, term)
+  // Should type-check (may have errors due to unbound x)
+  // At least it should complete without crashing
+  let completed = True
+  completed |> should.be_true()
 }
 
 // ============================================================================
@@ -106,12 +102,10 @@ pub fn fix_eval_unfold_test() {
   let fix_term = fix("f", body, s1)
   let arg = i32(42, s2)
   let term = app(fix_term, arg, s3)
-  let result = infer(state.initial_state, term)
-  // Should evaluate (may loop or return neutral term)
-  case result {
-    #(_, _, _) -> True |> should.be_true
-    _ -> False |> should.be_true
-  }
+  let #(_val, _ty, s) = infer(state.initial_state, term)
+  // Should complete without infinite loop (step counter protection)
+  let completed = True
+  completed |> should.be_true()
 }
 
 // ============================================================================
@@ -122,13 +116,13 @@ pub fn fix_quote_roundtrip_test() {
   // fix f -> f should quote back correctly
   let body = var(0, s0)
   let term = fix("f", body, s1)
-  let #(_, _, s2) = infer(state.initial_state, term)
+  let #(_val, _ty, _s) = infer(state.initial_state, term)
   // Quote the value back
   let quoted = quote(state.initial_ffis, 0, ast.VFix("f", [], body), s0)
   // Should quote back to a Fix term
   case quoted {
-    ast.Fix(_, _, _) -> True |> should.be_true
-    _ -> False |> should.be_true
+    ast.Fix(_, _, _) -> True |> should.be_true()
+    _ -> False |> should.be_true()
   }
 }
 
@@ -140,7 +134,11 @@ pub fn fix_occurs_check_test() {
   // Fixpoint should not cause infinite loops in occurs check
   let body = var(0, s0)
   let term = fix("f", body, s1)
-  let #(_, _, s2) = infer(state.initial_state, term)
+  let #(_val, _ty, s) = infer(state.initial_state, term)
   // Should complete without infinite loop
-  True |> should.be_true
+  let completed = True
+  completed |> should.be_true()
+  // And should have no errors for this simple case
+  let error_count = list.length(s.errors)
+  error_count |> should.equal(0)
 }
