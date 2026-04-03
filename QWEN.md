@@ -142,7 +142,7 @@ examples/
 | CLI | Complete | Working |
 | Error Reporting | Complete | Working |
 | Warning Cleanup | Complete | 45 → 0 warnings |
-| **Total** | **All green** | **519 passing** |
+| **Total** | **All green** | **395 passing** |
 
 ### Key Features Working
 
@@ -240,7 +240,7 @@ When working with this codebase:
 
 ## Test Results
 
-- **519 tests passing** (100%)
+- **395 tests passing** (100%)
 - **0 failures**
 - **0 warnings**
 

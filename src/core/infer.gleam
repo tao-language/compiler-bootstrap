@@ -13,6 +13,7 @@ import core/quote as quote
 import core/subst as subst
 import core/unify as unify
 import core/generalize as generalize
+import core/exhaustiveness as exhaustiveness
 
 pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.State) {
   case term {
@@ -325,10 +326,17 @@ pub fn infer_match(
   // Step 4: Check each case body against the motive result type
   let #(case_results, s) = check_cases(s, cases, arg_ty, motive_result_ty)
 
-  // Step 5: Solve hole -999 in the motive body with the result type
+  // Step 5: Exhaustiveness checking
+  let patterns = list.map(cases, fn(c) { [c.pattern] })
+  let exhaustiveness_errors = exhaustiveness.check_exhaustiveness(patterns, [arg_ty], span)
+  let s = list.fold(exhaustiveness_errors, s, fn(s, err) {
+    state.with_err(s, err)
+  })
+
+  // Step 6: Solve hole -999 in the motive body with the result type
   let s = solve_motive_hole(s, motive_val, motive_result_ty)
 
-  // Step 6: Build result value
+  // Step 7: Build result value
   let result_val = ast.VNeut(ast.HVar(0), [ast.EMatch([], motive_val, case_results)])
   // Return the result type (motive_result_ty), not the motive type
   #(result_val, motive_result_ty, s)

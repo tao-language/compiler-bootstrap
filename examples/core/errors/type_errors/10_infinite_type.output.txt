@@ -1,3 +1,4 @@
+error[E0107]: Infinite type
   ┌─ input:5:17
 2 │ // Occurs when a type would need to contain itself
 3 │ // This happens when unification tries to solve a hole with a type containing that hole
@@ -12,4 +13,3 @@
   = hint: Check for recursive type definitions
   = hint: Add a type annotation to break the cycle
   = hint: Consider using a fixpoint combinator instead
-
