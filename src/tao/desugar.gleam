@@ -211,7 +211,8 @@ pub fn process_type_definitions(
       StmtType(name, type_params, constructors, _span) -> {
         // Add the type itself as a constructor (types are constructors of universes)
         // The type constructor has no arguments and returns core_ast.Typ(0) (the universe)
-        let type_ctr = #(name, core_ast.CtrDef(params: type_params, arg_ty: core_ast.Unit(Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0))))
+        // arg_ty is Typ(0) because the argument (Unit) has type Typ(0), not VUnit
+        let type_ctr = #(name, core_ast.CtrDef(params: type_params, arg_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0))))
         let new_ctrs = tao_type_to_core_ctrs(name, type_params, constructors)
         let all_ctrs = [type_ctr, ..new_ctrs]
         DesugarContext(..acc_dc, ctrs: list.append(acc_dc.ctrs, all_ctrs), annotated_types: acc_dc.annotated_types)
@@ -242,7 +243,9 @@ fn tao_constructor_to_ctr_def(
   let Constructor(_name, fields, _span) = constructor
   
   let arg_ty = case fields {
-    [] -> core_ast.Unit(Span("unit", 0, 0, 0, 0))
+    // For nullary constructors, the argument type is Typ(0) because
+    // the implicit Unit argument has type Typ(0) (not VUnit which is the value)
+    [] -> core_ast.Typ(0, Span("unit", 0, 0, 0, 0))
     [field] -> constructor_field_to_type(field)
     fields -> {
       let field_types = list.index_map(fields, fn(field, index) {
@@ -545,7 +548,7 @@ pub fn desugar_module_with_ctrs(
       }
 
       let core_term = CoreDoBlock(core_stmts, core_result, module.span)
-      let term = core_term_to_term(core_term)
+      let term = core_term_to_term_with_annotations(core_term, dc1.annotated_types)
       #(term, dc1)
     }
     False -> {
@@ -555,7 +558,7 @@ pub fn desugar_module_with_ctrs(
       case public_names {
         [] -> {
           let core_term = CoreDoBlock(core_stmts, CoreRcd([], module.span), module.span)
-          let term = core_term_to_term(core_term)
+          let term = core_term_to_term_with_annotations(core_term, dc1.annotated_types)
           #(term, dc1)
         }
         names -> {
@@ -563,7 +566,7 @@ pub fn desugar_module_with_ctrs(
             #(name, CoreVar(name, module.span))
           })
           let core_term = CoreDoBlock(core_stmts, CoreRcd(return_fields, module.span), module.span)
-          let term = core_term_to_term(core_term)
+          let term = core_term_to_term_with_annotations(core_term, dc1.annotated_types)
           #(term, dc1)
         }
       }
@@ -2417,6 +2420,16 @@ pub fn make_module_field(
 /// Convert a simplified CoreTerm to core/core.Term.
 pub fn core_term_to_term(term: CoreTerm) -> core_ast.Term {
   core_term_to_term_loop(term, [], [])
+}
+
+/// Convert a CoreTerm to a core AST term with annotated types.
+/// This is needed for module-level terms where function parameter types
+/// come from the `annotated_types` collected during desugaring.
+pub fn core_term_to_term_with_annotations(
+  term: CoreTerm,
+  annotated_types: List(#(String, CoreTerm)),
+) -> core_ast.Term {
+  core_term_to_term_loop(term, [], annotated_types)
 }
 
 fn core_term_to_term_loop(

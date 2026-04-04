@@ -624,14 +624,20 @@ fn get_public_names_helper(body: List(Stmt), acc: List(String)) -> List(String) 
   case body {
     [] -> list.reverse(acc)
     [stmt, ..rest] -> {
-      case get_stmt_name(stmt) {
-        Some(name) -> {
-          case string.starts_with(name, "_") {
-            False -> get_public_names_helper(rest, [name, ..acc])
-            True -> get_public_names_helper(rest, acc)
+      // Skip type definitions - types are part of the type environment, not values
+      case stmt {
+        StmtType(_, _, _, _) -> get_public_names_helper(rest, acc)
+        _ -> {
+          case get_stmt_name(stmt) {
+            Some(name) -> {
+              case string.starts_with(name, "_") {
+                False -> get_public_names_helper(rest, [name, ..acc])
+                True -> get_public_names_helper(rest, acc)
+              }
+            }
+            None -> get_public_names_helper(rest, acc)
           }
         }
-        None -> get_public_names_helper(rest, acc)
       }
     }
   }
