@@ -515,7 +515,7 @@ pub fn desugar_module(
       // Expression-style module: separate the last expression from the bindings
       // First, desugar all statements EXCEPT the last one
       let all_but_last = drop_last(module.body)
-      let #(core_stmts, dc1) = desugar_stmts(all_but_last, dc_with_types)
+      let #(core_stmts, dc1) = desugar_stmts(all_but_last, dc_with_annotated_types)
 
       // Then, desugar the last expression with the accumulated scope
       let last_stmt = get_last_stmt(module.body)
@@ -541,7 +541,7 @@ pub fn desugar_module(
     }
     False -> {
       // Declaration-style module: desugar all statements and return a record
-      let #(core_stmts, dc1) = desugar_stmts(module.body, dc_with_types)
+      let #(core_stmts, dc1) = desugar_stmts(module.body, dc_with_annotated_types)
       let public_names = get_public_names(module.body)
       case public_names {
         [] -> {

@@ -19,9 +19,7 @@ import core/unify.{occurs}
 import core/subst
 import syntax/grammar.{Span}
 import tao/test_api
-import gleam/io
 import gleam/list
-import gleam/int
 import gleeunit
 import gleeunit/should
 
@@ -198,8 +196,104 @@ pub fn occurs_check_vpi_codomain_test() {
 // ============================================================================
 /// Minimal bool module that triggers the InfiniteType bug.
 pub fn bool_module_minimal_test() {
-  // This test uses the full desugaring pipeline
-  // It should fail until the bug is fixed
+  let source = "
+type Bool = True | False
+
+fn not(b: Bool) -> Bool {
+  match b {
+    | True -> False
+    | False -> True
+  }
+}
+
+fn and(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> b
+    | False -> False
+  }
+}
+
+fn or(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> True
+    | False -> b
+  }
+}
+
+fn xor(a: Bool, b: Bool) -> Bool {
+  and(or(a, b), not(and(a, b)))
+}
+"
+  let #(errors, _results) = test_api.run_test_file(source, "bool_minimal.tao")
+  has_infinite_type(errors) |> should.equal(False)
+}
+
+/// Test with just not and and (no xor)
+pub fn bool_module_no_xor_test() {
+  let source = "
+type Bool = True | False
+
+fn not(b: Bool) -> Bool {
+  match b {
+    | True -> False
+    | False -> True
+  }
+}
+
+fn and(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> b
+    | False -> False
+  }
+}
+
+fn or(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> True
+    | False -> b
+  }
+}
+"
+  let #(errors, _results) = test_api.run_test_file(source, "bool_minimal.tao")
+  has_infinite_type(errors) |> should.equal(False)
+}
+
+/// Test with xor only (no test lines)
+pub fn bool_module_xor_only_test() {
+  let source = "
+type Bool = True | False
+
+fn not(b: Bool) -> Bool {
+  match b {
+    | True -> False
+    | False -> True
+  }
+}
+
+fn and(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> b
+    | False -> False
+  }
+}
+
+fn or(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> True
+    | False -> b
+  }
+}
+
+fn xor(a: Bool, b: Bool) -> Bool {
+  or(a, b)
+}
+"
+  let #(errors, _results) = test_api.run_test_file(source, "bool_minimal.tao")
+  has_infinite_type(errors) |> should.equal(False)
+}
+
+/// Test with full xor body
+pub fn bool_module_full_xor_test() {
   let source = "
 type Bool = True | False
 

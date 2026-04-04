@@ -9,7 +9,7 @@
 /// For detailed documentation see:
 /// - **[../plans/prelude/README.md](../plans/prelude/README.md)** - Prelude implementation plan
 /// - **[../plans/tao/18-stdlib-testing.md](../plans/tao/18-stdlib-testing.md)** - Testing infrastructure
-import tao/syntax.{parse_module, type Expr, parse as parse_expr, Int as TaoInt, Float as TaoFloat, Str as TaoStr, Var as TaoVar, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, If as TaoIf, For as TaoFor, While as TaoWhile, Loop as TaoLoop, Break as TaoBreak, Continue as TaoContinue, Test as TaoTest, Run as TaoRun, Import as TaoImport, Ctr as TaoCtr, TypeDecl as TaoTypeDecl, ConstructorDecl as TaoCtrDecl, expr_to_ast}
+import tao/syntax.{parse_module, type Expr, parse as parse_expr, Int as TaoInt, Float as TaoFloat, Str as TaoStr, Var as TaoVar, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, If as TaoIf, For as TaoFor, While as TaoWhile, Loop as TaoLoop, Break as TaoBreak, Continue as TaoContinue, Test as TaoTest, Run as TaoRun, Import as TaoImport, Ctr as TaoCtr, TypeDecl as TaoTypeDecl, ConstructorDecl as TaoCtrDecl, expr_to_ast, block_to_ast}
 import syntax/grammar.{type ParseResult, type Span, Span}
 import tao/desugar.{desugar_module, type DesugarContext}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module}
@@ -390,6 +390,24 @@ fn exprs_to_stmts(exprs: List(Expr)) -> List(t.Stmt) {
             }
           }
         }), span)
+      }
+      TaoSimpleFn(name, params, return_type, body, span) -> {
+        // Function definitions should be StmtFn, not StmtExpr
+        // This preserves return type annotations for type inference
+        let ast_params = list.map(params, fn(param) {
+          let #(pname, ptype) = param
+          let ast_type = case ptype {
+            Some(t) -> Some(t.TVar(t))
+            None -> None
+          }
+          t.Param(pname, ast_type, span)
+        })
+        let ast_body = block_to_ast(body)
+        let ast_return_type = case return_type {
+          Some(t) -> Some(t.TVar(t))
+          None -> None
+        }
+        t.StmtFn(name, [], ast_params, ast_return_type, ast_body, span)
       }
       _ -> t.StmtExpr(expr_to_ast(expr), get_expr_span(expr))
     }
