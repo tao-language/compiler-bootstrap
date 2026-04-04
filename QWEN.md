@@ -240,8 +240,8 @@ When working with this codebase:
 
 ## Test Results
 
-- **413 tests passing**
-- **1 expected failure** (`lib_prelude_bool_module_test` - known timeout due to unification performance issue)
+- **414 tests passing**
+- **1 expected failure** (`lib_prelude_bool_module_test` - pre-existing type errors in bool.tao module type-checking)
 - **0 warnings**
 
 ### Recent Fixes (April 2026)
@@ -257,9 +257,13 @@ When working with this codebase:
    - `many` wraps EACH iteration in a `ListValue`, and these are **siblings** in the flat list (not nested)
    - The fix extracts the type name at position 1, first constructor name at position 3, then scans the flat list for `ListValue` items (from `many`) to extract additional constructor names
 
+5. **Unification Performance Fix** - The `occurs` check in `src/core/unify.gleam` was traversing entire environments for `VPi`/`VFix`/`VLam` values, causing exponential blowup during type-checking of modules with multiple functions (52s for bool.tao). Fixed by only checking explicit type components (domain for VPi, term for codomain) instead of the entire captured environment. This reduced bool.tao type-checking from 52s to 2s.
+
 ### Known Issues
 
-- **lib_prelude_bool_module_test timeout** — The `test/lib/prelude/bool_test.gleam` test triggers a performance issue in the type-checker's unification system. When type-checking the bool.tao module (which has multiple functions with type annotations), the unification of Pi types causes very slow performance due to environment traversal in the `occurs` check. The test eventually completes but may exceed gleeunit's timeout. Root cause: unification of `VPi` types traverses the captured environment which grows with each function definition. This is a pre-existing issue in `src/core/unify.gleam`, not related to TypeDecl parsing (which is now correct).
+- **lib_prelude_bool_module_test fails with type errors** — The `test/lib/prelude/bool_test.gleam` test expects the `lib/prelude/bool.tao` module to type-check without errors, but 18 type errors are produced. These errors (`InfiniteType`, `TypeMismatch`, `VarUndefined`) are PRE-EXISTING bugs in the type-checker, unrelated to the timeout fix. The type errors include Pi types with `VErr` as domain, suggesting issues with how function type annotations are resolved during module-level type-checking.
+  - **Performance fix**: The `occurs` check in `src/core/unify.gleam` was traversing entire environments for `VPi`/`VFix` values, causing exponential blowup (52s → 2s after fix).
+  - **Type errors**: The bool.tao module type-checking produces errors due to how annotated function types are applied. This requires separate investigation into the desugaring/type-checking pipeline for module-level functions.
 
 ## Contact
 

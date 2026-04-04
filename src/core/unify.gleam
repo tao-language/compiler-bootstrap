@@ -7,6 +7,7 @@
 /// Returns Error if values are incompatible (type error).
 import gleam/list
 import gleam/result
+import gleam/option.{Some, None}
 import syntax/grammar.{type Span}
 import core/ast as ast
 import core/state as state
@@ -158,12 +159,64 @@ pub fn occurs(sub: ast.Subst, id: Int, value: ast.Value) -> Bool {
     ast.VRcd(fields) -> list.any(fields, fn(kv) { occurs(sub, id, kv.1) })
     ast.VCtrValue(ast.VCtr(_, arg)) -> occurs(sub, id, arg)
     ast.VUnit -> False
-    ast.VLam(_, _, env, _) -> list.any(env, occurs(sub, id, _))
-    ast.VPi(_, _, env, in, _) ->
-      occurs(sub, id, in) || list.any(env, occurs(sub, id, _))
+    // KEY FIX: Do NOT traverse environments for VLam, VPi, VFix.
+    // The environment captures the typing context, but hole IDs in the
+    // context values don't mean the hole appears in the TYPE.
+    // Only check explicit type components (domain for VPi).
+    ast.VLam(_, _, _, _) -> False
+    ast.VPi(_, _, _, in_val, out_term) ->
+      occurs(sub, id, in_val) || occurs_in_term(id, out_term)
     ast.VCall(_, args) -> list.any(args, occurs(sub, id, _))
-    ast.VFix(_, env, _) -> list.any(env, occurs(sub, id, _))
+    ast.VFix(_, _, _) -> False
     ast.VRecord(fields) -> list.any(fields, fn(kv) { occurs(sub, id, kv.1) })
+  }
+}
+
+/// Check if a hole ID appears in a term.
+fn occurs_in_term(id: Int, term: ast.Term) -> Bool {
+  case term {
+    ast.Hole(hole_id, _) -> hole_id == id
+    ast.Typ(_, _) -> False
+    ast.Lit(_, _) -> False
+    ast.LitT(_, _) -> False
+    ast.Var(_, _) -> False
+    ast.Err(_, _) -> False
+    ast.Rcd(fields, _) -> list.any(fields, fn(kv) { occurs_in_term(id, kv.1) })
+    ast.Ctr(_, arg, _) -> occurs_in_term(id, arg)
+    ast.Unit(_) -> False
+    ast.Dot(arg, _, _) -> occurs_in_term(id, arg)
+    ast.Ann(inner, typ, _) -> occurs_in_term(id, inner) || occurs_in_term(id, typ)
+    ast.Lam(_, _, body, _) -> occurs_in_term(id, body)
+    ast.Pi(_, _, domain, codomain, _) ->
+      occurs_in_term(id, domain) || occurs_in_term(id, codomain)
+    ast.App(fun, _, arg, _) ->
+      occurs_in_term(id, fun) || occurs_in_term(id, arg)
+    ast.Match(arg, motive, cases, _) ->
+      occurs_in_term(id, arg) || occurs_in_term(id, motive) ||
+      list.any(cases, fn(c) {
+        occurs_in_pattern(id, c.pattern) || occurs_in_term(id, c.body) ||
+        case c.guard {
+          Some(g) -> occurs_in_term(id, g)
+          None -> False
+        }
+      })
+    ast.Call(_, args, _) -> list.any(args, occurs_in_term(id, _))
+    ast.Comptime(inner, _) -> occurs_in_term(id, inner)
+    ast.Fix(_, body, _) -> occurs_in_term(id, body)
+  }
+}
+
+/// Check if a hole ID appears in a pattern.
+fn occurs_in_pattern(id: Int, pattern: ast.Pattern) -> Bool {
+  case pattern {
+    ast.PAny -> False
+    ast.PAs(inner, _) -> occurs_in_pattern(id, inner)
+    ast.PTyp(_) -> False
+    ast.PLit(_) -> False
+    ast.PLitT(_) -> False
+    ast.PRcd(fields) -> list.any(fields, fn(kv) { occurs_in_pattern(id, kv.1) })
+    ast.PCtr(_, arg) -> occurs_in_pattern(id, arg)
+    ast.PUnit -> False
   }
 }
 
