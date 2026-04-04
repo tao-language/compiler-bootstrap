@@ -64,7 +64,7 @@ pub type CoreTerm {
   CoreModuleRef(path: String, span: Span)
 
   /// Lambda abstraction
-  CoreLam(param: String, body: CoreTerm, span: Span)
+  CoreLam(param: String, param_type: Option(CoreTerm), body: CoreTerm, span: Span)
 
   /// Function application
   CoreApp(fun: CoreTerm, arg: CoreTerm, span: Span)
@@ -142,27 +142,29 @@ pub type DesugarContext {
     loop_stack: List(LoopContext),
     /// Constructor definitions from type declarations
     ctrs: core_ast.CtrEnv,
+    /// Annotated function types (name -> type) for module-level bindings
+    annotated_types: List(#(String, CoreTerm)),
   )
 }
 
 /// Add a local variable to the scope.
 fn add_local(dc: DesugarContext, name: String) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs) = dc
-  DesugarContext(global, current_module, [name, ..local_scope], loop_stack, ctrs)
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types) = dc
+  DesugarContext(global, current_module, [name, ..local_scope], loop_stack, ctrs, dc.annotated_types)
 }
 
 /// Enter a loop context.
 fn enter_loop(dc: DesugarContext, fix_name: String) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs) = dc
-  DesugarContext(global, current_module, local_scope, [InLoop(fix_name, BreakReturns), ..loop_stack], ctrs)
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types) = dc
+  DesugarContext(global, current_module, local_scope, [InLoop(fix_name, BreakReturns), ..loop_stack], ctrs, dc.annotated_types)
 }
 
 /// Exit the current loop context.
 fn exit_loop(dc: DesugarContext) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs) = dc
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types) = dc
   case loop_stack {
     [] -> dc  // Should not happen if well-formed
-    [_loop, ..rest] -> DesugarContext(global, current_module, local_scope, rest, ctrs)
+    [_loop, ..rest] -> DesugarContext(global, current_module, local_scope, rest, ctrs, dc.annotated_types)
   }
 }
 
@@ -212,7 +214,7 @@ fn process_type_definitions(
         let type_ctr = #(name, core_ast.CtrDef(params: type_params, arg_ty: core_ast.Unit(Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0))))
         let new_ctrs = tao_type_to_core_ctrs(name, type_params, constructors)
         let all_ctrs = [type_ctr, ..new_ctrs]
-        DesugarContext(..acc_dc, ctrs: list.append(acc_dc.ctrs, all_ctrs))
+        DesugarContext(..acc_dc, ctrs: list.append(acc_dc.ctrs, all_ctrs), annotated_types: acc_dc.annotated_types)
       }
       _ -> acc_dc
     }
@@ -400,6 +402,89 @@ fn lookup_type_in_ctrs(ctrs: core_ast.CtrEnv, type_name: String) -> Bool {
   }
 }
 
+/// Collect annotated function types from module statements.
+/// Returns a list of #(name, type_term) for functions with return type annotations.
+fn collect_annotated_types(
+  stmts: List(Stmt),
+  dc: DesugarContext,
+  span: Span,
+) -> List(#(String, CoreTerm)) {
+  collect_annotated_types_loop(stmts, dc, span, [])
+}
+
+fn collect_annotated_types_loop(
+  stmts: List(Stmt),
+  dc: DesugarContext,
+  span: Span,
+  acc: List(#(String, CoreTerm)),
+) -> List(#(String, CoreTerm)) {
+  case stmts {
+    [] -> list.reverse(acc)
+    [stmt, ..rest] -> {
+      case stmt {
+        StmtFn(name, _type_params, params, Some(return_type), _body, _fn_span) -> {
+          // Build the function type from parameter types and return type
+          let #(param_types, dc1) = build_param_types(params, dc, span)
+          let #(core_ret, dc2) = build_core_type_from_ast(return_type, dc1, span)
+          let fn_type = build_fn_type_from_types(param_types, core_ret, span)
+          collect_annotated_types_loop(rest, dc2, span, [#(name, fn_type), ..acc])
+        }
+        _ -> collect_annotated_types_loop(rest, dc, span, acc)
+      }
+    }
+  }
+}
+
+/// Build a list of parameter types from function parameters.
+fn build_param_types(
+  params: List(Param),
+  dc: DesugarContext,
+  span: Span,
+) -> #(List(CoreTerm), DesugarContext) {
+  build_param_types_loop(params, dc, span, [])
+}
+
+fn build_param_types_loop(
+  params: List(Param),
+  dc: DesugarContext,
+  span: Span,
+  acc: List(CoreTerm),
+) -> #(List(CoreTerm), DesugarContext) {
+  case params {
+    [] -> #(list.reverse(acc), dc)
+    [param, ..rest] -> {
+      let #(core_type, dc1) = case param.type_annotation {
+        Some(type_ast) -> build_core_type_from_ast(type_ast, dc, span)
+        None -> #(CoreHole(-1, span), dc)
+      }
+      build_param_types_loop(rest, dc1, span, [core_type, ..acc])
+    }
+  }
+}
+
+/// Build a function type from a list of parameter types and a return type.
+fn build_fn_type_from_types(
+  param_types: List(CoreTerm),
+  ret_type: CoreTerm,
+  span: Span,
+) -> CoreTerm {
+  build_fn_type_from_types_loop(param_types, ret_type, span)
+}
+
+fn build_fn_type_from_types_loop(
+  param_types: List(CoreTerm),
+  ret_type: CoreTerm,
+  span: Span,
+) -> CoreTerm {
+  case param_types {
+    [] -> ret_type
+    [param_type, ..rest] -> {
+      let inner = build_fn_type_from_types_loop(rest, ret_type, span)
+      CorePi([], "_", param_type, inner, span)
+    }
+  }
+}
+
 /// Desugar a Tao module to a Core term.
 pub fn desugar_module(
   module: Module,
@@ -411,9 +496,16 @@ pub fn desugar_module(
     local_scope: [],
     loop_stack: [],
     ctrs: [],
+    annotated_types: [],
   )
 
+  // Process type definitions FIRST to populate constructor environment
   let dc_with_types = process_type_definitions(module.body, dc)
+
+  // Collect annotated function types AFTER processing type definitions
+  // so that type names like Bool are resolved correctly
+  let annotated_types = collect_annotated_types(module.body, dc_with_types, module.span)
+  let dc_with_annotated_types = DesugarContext(..dc_with_types, annotated_types: annotated_types)
 
   // Check if the last statement is an expression (for expression-style modules)
   let last_is_expr = is_last_stmt_expr(module.body)
@@ -516,14 +608,16 @@ fn build_sequential_term(
   stmts: List(CoreTerm),
   result: CoreTerm,
   span: Span,
+  annotated_types: List(#(String, CoreTerm)),
 ) -> CoreTerm {
-  build_sequential_loop(stmts, result, span)
+  build_sequential_loop(stmts, result, span, annotated_types)
 }
 
 fn build_sequential_loop(
   stmts: List(CoreTerm),
   result: CoreTerm,
   span: Span,
+  annotated_types: List(#(String, CoreTerm)),
 ) -> CoreTerm {
   case stmts {
     [] -> result
@@ -531,13 +625,18 @@ fn build_sequential_loop(
       case stmt {
         CoreLet(name, value, _let_span) -> {
           // let x = e in rest  =>  (λx. process_rest) e
-          let body = build_sequential_loop(rest, result, span)
-          let lam = CoreLam(name, body, span)
+          let body = build_sequential_loop(rest, result, span, annotated_types)
+          // Look up the annotated type for this binding
+          let param_type = case list.key_find(annotated_types, name) {
+            Ok(ty) -> Some(ty)
+            Error(Nil) -> None
+          }
+          let lam = CoreLam(name, param_type, body, span)
           CoreApp(lam, value, span)
         }
         _ -> {
           // Non-let statements are evaluated and discarded, continue with rest
-          build_sequential_loop(rest, result, span)
+          build_sequential_loop(rest, result, span, annotated_types)
         }
       }
     }
@@ -1566,7 +1665,7 @@ fn build_value_lambdas(
     [] -> body
     [param, ..rest] -> {
       let inner = build_value_lambdas(rest, body, span)
-      CoreLam(param.name, inner, span)
+      CoreLam(param.name, None, inner, span)
     }
   }
 }
@@ -1598,7 +1697,7 @@ fn build_value_lambdas_with_scope(
       // Add this param to scope, then build inner lambda
       let dc1 = add_local(dc, param.name)
       let #(inner_body, dc2) = build_value_lambdas_with_scope(rest, body, span, dc1)
-      let core_lam = CoreLam(param.name, inner_body, span)
+      let core_lam = CoreLam(param.name, None, inner_body, span)
       #(core_lam, dc2)
     }
   }
@@ -1640,7 +1739,7 @@ fn build_value_lambdas_with_annotations(
       // the lambda normally. Parameter type annotations will be used during
       // type checking via check(Lam) with expected VPi type.
       // The return type annotation (if any) should be on the outermost fixpoint.
-      let core_lam = CoreLam(param.name, inner_body, span)
+      let core_lam = CoreLam(param.name, None, inner_body, span)
       #(core_lam, dc2)
     }
   }
@@ -1829,7 +1928,7 @@ fn desugar_match(
   // The hole ID -999 is used as a placeholder - the type checker will unify it with the
   // actual result type inferred from the clause bodies.
   // Using a large negative ID to avoid conflicts with type checker's hole counter.
-  let motive = CoreLam("_", CoreHole(-999, span), span)
+  let motive = CoreLam("_", None, CoreHole(-999, span), span)
   let core_match = CoreMatchCore(core_scrutinee, motive, core_cases, span)
 
   #(core_match, dc2)
@@ -2268,7 +2367,7 @@ fn build_lambda_loop(
     [] -> body
     [param, ..rest] -> {
       let inner = build_lambda_loop(rest, body, span)
-      CoreLam(param.name, inner, span)
+      CoreLam(param.name, None, inner, span)
     }
   }
 }
@@ -2304,10 +2403,14 @@ pub fn make_module_field(
 
 /// Convert a simplified CoreTerm to core/core.Term.
 pub fn core_term_to_term(term: CoreTerm) -> core_ast.Term {
-  core_term_to_term_loop(term, [])
+  core_term_to_term_loop(term, [], [])
 }
 
-fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> core_ast.Term {
+fn core_term_to_term_loop(
+  term: CoreTerm,
+  env: List(String),
+  annotated_types: List(#(String, CoreTerm)),
+) -> core_ast.Term {
   // Debug: print the term being converted
   // io.println("Converting: " <> debug_core_term(term) <> " with env: " <> inspect(env))
   case term {
@@ -2329,42 +2432,52 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> core_ast.Term {
     }
     CoreCall(name, args, span) -> {
       // Convert CoreCall to core/core.Call for FFI builtin
-      core_ast.Call(name, list.map(args, fn(a) { core_term_to_term_loop(a, env) }), span)
+      core_ast.Call(name, list.map(args, fn(a) { core_term_to_term_loop(a, env, annotated_types) }), span)
     }
     CoreModuleRef(_, span) -> {
       // Module reference - should have been replaced by create_module_record
       // Fallback to a hole
       core_ast.Hole(0, span)
     }
-    CoreLam(param, body, span) -> {
+    CoreLam(param, None, body, span) -> {
       // Add parameter to environment for the body
       // Use a hole for the parameter type to enable type inference
       core_ast.Lam(
         implicit: [],
         param: #(param, core_ast.Hole(-1, span)),
-        body: core_term_to_term_loop(body, [param, ..env]),
+        body: core_term_to_term_loop(body, [param, ..env], annotated_types),
+        span: span,
+      )
+    }
+    CoreLam(param, Some(param_type), body, span) -> {
+      // Add parameter to environment for the body
+      // Use the annotated type for the parameter type
+      core_ast.Lam(
+        implicit: [],
+        param: #(param, core_term_to_term_loop(param_type, env, annotated_types)),
+        body: core_term_to_term_loop(body, [param, ..env], annotated_types),
         span: span,
       )
     }
     CoreApp(fun, arg, span) -> {
       core_ast.App(
-        fun: core_term_to_term_loop(fun, env),
+        fun: core_term_to_term_loop(fun, env, annotated_types),
         implicit: [],
-        arg: core_term_to_term_loop(arg, env),
+        arg: core_term_to_term_loop(arg, env, annotated_types),
         span: span,
       )
     }
     CoreRcd(fields, span) -> {
       core_ast.Rcd(
         fields: list.map(fields, fn(pair) {
-          #(pair.0, core_term_to_term_loop(pair.1, env))
+          #(pair.0, core_term_to_term_loop(pair.1, env, annotated_types))
         }),
         span: span,
       )
     }
     CoreDot(record, field, span) -> {
       core_ast.Dot(
-        arg: core_term_to_term_loop(record, env),
+        arg: core_term_to_term_loop(record, env, annotated_types),
         field: field,
         span: span,
       )
@@ -2372,11 +2485,11 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> core_ast.Term {
     CoreLet(name, value, span) -> {
       // Let bindings are handled by CoreDoBlock - this shouldn't be reached
       // Just convert the value and ignore the binding
-      core_term_to_term_loop(value, env)
+      core_term_to_term_loop(value, env, annotated_types)
     }
     CoreDoBlock(stmts, result, span) -> {
-      let sequential_core = build_sequential_term(stmts, result, span)
-      core_term_to_term_loop(sequential_core, env)
+      let sequential_core = build_sequential_term(stmts, result, span, annotated_types)
+      core_term_to_term_loop(sequential_core, env, annotated_types)
     }
     CoreTyp(universe, span) -> {
       // Convert CoreTyp to core/core.Typ (type universe)
@@ -2413,35 +2526,35 @@ fn core_term_to_term_loop(term: CoreTerm, env: List(String)) -> core_ast.Term {
       // Convert CoreMatchCore to core/core.Match
       // Cases are already core.Case with Term bodies
       core_ast.Match(
-        arg: core_term_to_term_loop(arg, env),
-        motive: core_term_to_term_loop(motive, env),
+        arg: core_term_to_term_loop(arg, env, annotated_types),
+        motive: core_term_to_term_loop(motive, env, annotated_types),
         cases: cases,
         span: span,
       )
     }
     CoreFix(name, body, span) -> {
       // Convert CoreFix to core/core.Fix
-      core_ast.Fix(name, core_term_to_term_loop(body, [name, ..env]), span)
+      core_ast.Fix(name, core_term_to_term_loop(body, [name, ..env], annotated_types), span)
     }
     CoreCtr(tag, arg, span) -> {
       // Convert CoreCtr to core/core.Ctr
-      core_ast.Ctr(tag, core_term_to_term_loop(arg, env), span)
+      core_ast.Ctr(tag, core_term_to_term_loop(arg, env, annotated_types), span)
     }
     CorePi(implicit, name, domain, codomain, span) -> {
       // Convert CorePi to core/core.Pi (dependent function type)
       core_ast.Pi(
         implicit: implicit,
         name: name,
-        in_term: core_term_to_term_loop(domain, env),
-        out_term: core_term_to_term_loop(codomain, env),
+        in_term: core_term_to_term_loop(domain, env, annotated_types),
+        out_term: core_term_to_term_loop(codomain, env, annotated_types),
         span: span,
       )
     }
     CoreAnn(term, typ, span) -> {
       // Convert CoreAnn to core/core.Ann (type annotation)
       core_ast.Ann(
-        core_term_to_term_loop(term, env),
-        core_term_to_term_loop(typ, env),
+        core_term_to_term_loop(term, env, annotated_types),
+        core_term_to_term_loop(typ, env, annotated_types),
         span,
       )
     }
@@ -2472,7 +2585,7 @@ fn value_span(term: CoreTerm) -> Span {
     CoreVar(_, span) -> span
     CoreCall(_, _, span) -> span
     CoreModuleRef(_, span) -> span
-    CoreLam(_, _, span) -> span
+    CoreLam(_, _, _, span) -> span
     CoreApp(_, _, span) -> span
     CoreRcd(_, span) -> span
     CoreDot(_, _, span) -> span

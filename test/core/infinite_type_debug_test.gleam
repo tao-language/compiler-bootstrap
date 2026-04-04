@@ -19,7 +19,9 @@ import core/unify.{occurs}
 import core/subst
 import syntax/grammar.{Span}
 import tao/test_api
+import gleam/io
 import gleam/list
+import gleam/int
 import gleeunit
 import gleeunit/should
 
@@ -224,10 +226,6 @@ fn or(a: Bool, b: Bool) -> Bool {
 
 fn xor(a: Bool, b: Bool) -> Bool {
   and(or(a, b), not(and(a, b)))
-}
-
-fn implies(a: Bool, b: Bool) -> Bool {
-  or(not(a), b)
 }
 "
   let #(errors, _results) = test_api.run_test_file(source, "bool_minimal.tao")

@@ -28,6 +28,7 @@ fn create_desugar_context(ctx: GlobalContext) -> DesugarContext {
     local_scope: [],
     loop_stack: [],
     ctrs: [],
+    annotated_types: [],
   )
 }
 
