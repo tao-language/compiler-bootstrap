@@ -240,8 +240,8 @@ When working with this codebase:
 
 ## Test Results
 
-- **413 tests passing** (100%)
-- **0 failures**
+- **413 tests passing**
+- **1 expected failure** (`lib_prelude_bool_module_test` - known timeout due to unification performance issue)
 - **0 warnings**
 
 ### Recent Fixes (April 2026)
@@ -259,7 +259,7 @@ When working with this codebase:
 
 ### Known Issues
 
-- **lib/prelude/bool.tao test removed** — The `test/lib/prelude/bool_test.gleam` file was causing gleeunit runtime errors (timeout in `core/unify.gleam` during type-checking). The TypeDecl parsing is now correct, but the test itself hits an infinite loop in unification. This needs separate investigation.
+- **lib_prelude_bool_module_test timeout** — The `test/lib/prelude/bool_test.gleam` test triggers a performance issue in the type-checker's unification system. When type-checking the bool.tao module (which has multiple functions with type annotations), the unification of Pi types causes very slow performance due to environment traversal in the `occurs` check. The test eventually completes but may exceed gleeunit's timeout. Root cause: unification of `VPi` types traverses the captured environment which grows with each function definition. This is a pre-existing issue in `src/core/unify.gleam`, not related to TypeDecl parsing (which is now correct).
 
 ## Contact
 
