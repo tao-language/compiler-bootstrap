@@ -254,7 +254,7 @@ When working with this codebase:
 
 ### Known Issues
 
-- **lib_prelude_bool_module_test** - Fails with `CtrUndefined` errors during main module type-checking. The constructors from type definitions are not being found during type-checking. This needs further investigation.
+- **lib_prelude_bool_module_test** - Fails with `CtrUndefined` errors during main module type-checking. The constructors from type definitions are not being found during type-checking. **Root cause identified**: The `TypeDecl` grammar rule in `src/tao/syntax.gleam` (line ~993) has a case pattern `[_, TokenValue(name_token), _, ListValue(first_ctr_vals), more_ctrs_val]` that does NOT match the actual structure of parsed values, causing it to fall through to the fallback `TypeDecl("", [], Span("empty", 0, 0, 0, 0))`. This produces a `StmtType` with empty name and 0 constructors, so `process_type_definitions` only creates 1 constructor (the type itself with empty name) instead of 3 (Bool, True, False). The fix requires properly extracting the type name and constructor names from the nested `seq` and `many` values structures.
 
 ## Contact
 

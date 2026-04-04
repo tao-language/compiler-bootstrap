@@ -372,7 +372,7 @@ fn format_value(value: Value) -> String {
 // ============================================================================
 
 /// Convert expressions to statements.
-fn exprs_to_stmts(exprs: List(Expr)) -> List(t.Stmt) {
+pub fn exprs_to_stmts(exprs: List(Expr)) -> List(t.Stmt) {
   list.map(exprs, fn(expr) {
     case expr {
       TaoTypeDecl(name, constructors, span) -> {

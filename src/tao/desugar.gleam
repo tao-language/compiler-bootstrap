@@ -202,7 +202,7 @@ fn lookup_var_loop(
 // ============================================================================
 
 /// Process type definitions to populate constructor environment.
-fn process_type_definitions(
+pub fn process_type_definitions(
   stmts: List(Stmt),
   dc: DesugarContext,
 ) -> DesugarContext {
