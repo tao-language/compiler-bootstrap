@@ -1735,11 +1735,15 @@ fn build_value_lambdas_with_annotations(
       let dc1 = add_local(dc, param.name)
       let #(inner_body, dc2) = build_value_lambdas_with_annotations(rest, body, span, dc1)
 
-      // KEY FIX: Don't wrap the inner lambda with CoreAnn. Instead, just build
-      // the lambda normally. Parameter type annotations will be used during
-      // type checking via check(Lam) with expected VPi type.
-      // The return type annotation (if any) should be on the outermost fixpoint.
-      let core_lam = CoreLam(param.name, None, inner_body, span)
+      // Build parameter type from annotation (or hole if no annotation)
+      let param_type = case param.type_annotation {
+        Some(ty_ast) -> {
+          let #(core_ty, _dc) = build_core_type_from_ast(ty_ast, dc, span)
+          Some(core_ty)
+        }
+        None -> None
+      }
+      let core_lam = CoreLam(param.name, param_type, inner_body, span)
       #(core_lam, dc2)
     }
   }
