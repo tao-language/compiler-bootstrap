@@ -991,22 +991,37 @@ pub fn tao_grammar() -> Grammar(Expr) {
             ])),
           ]),
           fn(values) {
-            case values {
-              [_, TokenValue(name_token), _, ListValue(first_ctr_vals), more_ctrs_val] -> {
-                let type_name = name_token.value
-                // Parse first constructor
-                let first_ctr = parse_local_constructor_from_vals(ListValue(first_ctr_vals))
-                // Parse more constructors
-                // more_ctrs_val is ListValue([ListValue([Pipe, ListValue([name, opt])]), ...])
-                let constructors = [
-                  first_ctr,
-                  ..extract_local_constructors_from_more(more_ctrs_val)
-                ]
-                let span = span_from_token(name_token, "tao")
-                TypeDecl(type_name, constructors, span)
-              }
-              _ -> TypeDecl("", [], Span("empty", 0, 0, 0, 0))
+            // seq flattens sub-patterns. many() wraps EACH iteration in ListValue
+            // and these ListValue items are siblings in the flat list (not nested).
+            //
+            // For `type Color = Red | Green | Blue`:
+            // [KeywordValue(type), TokenValue(Color), TokenValue(=), TokenValue(Red),
+            //  ListValue([|, Green]), ListValue([|, Blue])]
+            //
+            // For `type Bool = True | False`:
+            // [KeywordValue(type), TokenValue(Bool), TokenValue(=), TokenValue(True),
+            //  ListValue([|, False])]
+            //
+            // For `type Unit = Unit`:
+            // [KeywordValue(type), TokenValue(Unit), TokenValue(=), TokenValue(Unit)]
+            let type_name = case values {
+              [_, TokenValue(name_tok), ..] -> name_tok.value
+              _ -> ""
             }
+            let first_ctr_name = case values {
+              [_, _, _, TokenValue(ctr_tok), ..] -> ctr_tok.value
+              _ -> ""
+            }
+            // Extract all ListValue items (from many) and collect constructor names
+            let more_ctr_names = extract_many_ctr_names(values)
+            let ctr_names = case first_ctr_name {
+              "" -> more_ctr_names
+              _ -> [first_ctr_name, ..more_ctr_names]
+            }
+            let constructors = list.map(ctr_names, fn(n) {
+              ConstructorDecl(n, [], Span("type", 0, 0, 0, 0))
+            })
+            TypeDecl(type_name, constructors, Span("type", 0, 0, 0, 0))
           },
         ),
       ]),
@@ -3694,6 +3709,37 @@ fn parse_local_constructor_fields_opt(fields_opt: Value(Expr)) -> List(String) {
   case fields_opt {
     ListValue(inner) -> parse_local_fields_list(inner)
     _ -> []
+  }
+}
+
+/// Extract constructor names from many() results scattered in the flat values list.
+/// many(seq([Pipe, seq([Ident, opt])])) produces ListValue items as siblings in the flat list.
+/// Each ListValue contains: [TokenValue(pipe), TokenValue(ctr_name), ...]
+fn extract_many_ctr_names(values: List(Value(Expr))) -> List(String) {
+  extract_many_loop(values, [])
+}
+
+fn extract_many_loop(items: List(Value(Expr)), acc: List(String)) -> List(String) {
+  case items {
+    [] -> list.reverse(acc)
+    [ListValue(inner), ..rest] -> {
+      // Extract constructor name from this many iteration
+      let ctr_name = extract_ctr_name_from_many_item(inner)
+      extract_many_loop(rest, [ctr_name, ..acc])
+    }
+    [_, ..rest] -> extract_many_loop(rest, acc)
+  }
+}
+
+fn extract_ctr_name_from_many_item(inner: List(Value(Expr))) -> String {
+  case inner {
+    [TokenValue(pipe_tok), TokenValue(ctr_tok), ..] -> {
+      case pipe_tok.value == "|" {
+        True -> ctr_tok.value
+        False -> ""
+      }
+    }
+    _ -> ""
   }
 }
 
