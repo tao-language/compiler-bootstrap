@@ -240,9 +240,21 @@ When working with this codebase:
 
 ## Test Results
 
-- **397 tests passing** (100%)
-- **0 failures**
+- **410 tests passing**
+- **1 failure** (lib_prelude_bool_module_test - CtrUndefined errors during type-checking)
 - **0 warnings**
+
+### Recent Fixes (April 2026)
+
+1. **InfiniteType Bug Fix** - Fixed `exprs_to_stmts` to handle `SimpleFn` expressions, converting them to `StmtFn` with return type annotations preserved. This prevented `collect_annotated_types` from collecting function types, causing module-level lambdas to use holes for parameter types.
+
+2. **Two-Pass Module Type Collection** - Added `collect_annotated_types` function to collect function type annotations before desugaring, then use them for module-level lambda parameter types.
+
+3. **Test Expression Constructor Environment** - Added `desugar_module_with_ctrs` to pass the main module's constructor environment to test expression evaluation, preventing `CtrUndefined` errors in test expressions.
+
+### Known Issues
+
+- **lib_prelude_bool_module_test** - Fails with `CtrUndefined` errors during main module type-checking. The constructors from type definitions are not being found during type-checking. This needs further investigation.
 
 ## Contact
 
