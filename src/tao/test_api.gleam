@@ -11,9 +11,9 @@
 /// - **[../plans/tao/18-stdlib-testing.md](../plans/tao/18-stdlib-testing.md)** - Testing infrastructure
 import tao/syntax.{parse_module, type Expr, parse as parse_expr, Int as TaoInt, Float as TaoFloat, Str as TaoStr, Var as TaoVar, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, If as TaoIf, For as TaoFor, While as TaoWhile, Loop as TaoLoop, Break as TaoBreak, Continue as TaoContinue, Test as TaoTest, Run as TaoRun, Import as TaoImport, Ctr as TaoCtr, TypeDecl as TaoTypeDecl, ConstructorDecl as TaoCtrDecl, expr_to_ast, block_to_ast}
 import syntax/grammar.{type ParseResult, type Span, Span}
-import tao/desugar.{desugar_module, type DesugarContext}
+import tao/desugar.{desugar_module, desugar_module_with_ctrs, type DesugarContext}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module}
-import core/ast.{type Term, type Value, Err as CoreErr}
+import core/ast.{type Term, type Value, Err as CoreErr, type CtrEnv}
 import core/state.{type State, State, type Error as CoreError, initial_state, SyntaxError, TypeMismatch, VarUndefined, CtrUndefined, HoleUnsolved, MatchRedundantCase, MatchMissingCase, RcdMissingFields, DotFieldNotFound, DotOnNonCtr, InfiniteType, SpineMismatch, ArityMismatch, NotAFunction, PatternMismatch, CtrUnsolvedParam, TODO as CoreTODO, ComptimePermissionDenied}
 import core/infer.{infer}
 import core/eval.{eval}
@@ -312,7 +312,7 @@ fn run_test(test_expr: TestExpr, state: State) -> TestResult {
   case expr_result.errors {
     [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<parse error>")
     [] -> {
-      let expr_term = expr_to_core_term([expr_result.ast])
+      let expr_term = expr_to_core_term([expr_result.ast], state.ctrs, test_expr.span)
       let actual_value = eval([], [], expr_term)
 
       // Parse and evaluate expected
@@ -320,7 +320,7 @@ fn run_test(test_expr: TestExpr, state: State) -> TestResult {
       case expected_result.errors {
         [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<parse error>")
         [] -> {
-          let expected_term = expr_to_core_term([expected_result.ast])
+          let expected_term = expr_to_core_term([expected_result.ast], state.ctrs, test_expr.span)
           let expected_value = eval([], [], expected_term)
 
           // Compare values
@@ -335,18 +335,15 @@ fn run_test(test_expr: TestExpr, state: State) -> TestResult {
 }
 
 /// Convert Tao AST to Core term.
-fn expr_to_core_term(exprs: List(Expr)) -> Term {
-  // Build a block expression
-  let span = Span("", 0, 0, 0, 0)
-
+fn expr_to_core_term(exprs: List(Expr), ctrs: CtrEnv, span: Span) -> Term {
   case exprs {
     [] -> CoreErr("No expressions", span)
     [_expr, ..] -> {
-      // Desugar single expression
+      // Desugar single expression with the module's constructor environment
       let body = exprs_to_stmts(exprs)
       let module = t.Module("", body, span)
       let ctx = new_context() |> with_prelude()
-      let #(term, _ctx) = desugar_module(module, ctx)
+      let #(term, _ctx) = desugar_module_with_ctrs(module, ctx, ctrs)
       term
     }
   }

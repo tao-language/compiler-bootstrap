@@ -490,12 +490,21 @@ pub fn desugar_module(
   module: Module,
   ctx: GlobalContext,
 ) -> #(core_ast.Term, DesugarContext) {
+  desugar_module_with_ctrs(module, ctx, [])
+}
+
+/// Desugar a Tao module to a Core term with initial constructor environment.
+pub fn desugar_module_with_ctrs(
+  module: Module,
+  ctx: GlobalContext,
+  initial_ctrs: core_ast.CtrEnv,
+) -> #(core_ast.Term, DesugarContext) {
   let dc = DesugarContext(
     global: ctx,
     current_module: module.path,
     local_scope: [],
     loop_stack: [],
-    ctrs: [],
+    ctrs: initial_ctrs,
     annotated_types: [],
   )
 
