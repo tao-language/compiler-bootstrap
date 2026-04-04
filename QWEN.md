@@ -261,7 +261,16 @@ When working with this codebase:
 
 ### Known Issues
 
-- **lib_prelude_bool_module_test fails with type errors** — The `test/lib/prelude/bool_test.gleam` test expects the `lib/prelude/bool.tao` module to type-check without errors, but type errors are produced. These errors (`InfiniteType`, `TypeMismatch`, `VarUndefined`) are PRE-EXISTING bugs in the type-checker. The type errors include Pi types with `VErr` as domain and holes where `Bool` should be, suggesting issues with how function type annotations are resolved during module-level type-checking. This requires separate investigation into the desugaring/type-checking pipeline for module-level functions.
+- **lib_prelude_bool_module_test fails with 4 type errors** — The `test/lib/prelude/bool_test.gleam` test expects the `lib/prelude/bool.tao` module to type-check without errors, but 4 errors remain:
+  - `InfiniteType(0, VNeut(HHole(0), []))` (x2) — Hole 0 is unified with itself during type-checking of function applications
+  - `VarUndefined(11, ...)` and `VarUndefined(15, ...)` — De Bruijn indices out of bounds during type-checking
+
+  **Three fixes applied** (commit 244e190):
+  1. Nullary constructor `arg_ty`: `Unit` (evaluates to `VUnit`) → `Typ(0)` (evaluates to `VTyp(0)`) — eliminates `TypeMismatch(VTyp(0), VUnit)` errors
+  2. `annotated_types` passed to `core_term_to_term` via new `core_term_to_term_with_annotations()` — eliminates `VPi(..., VErr, ...)` domain errors  
+  3. Types excluded from `get_public_names` — eliminates incorrect `CoreVar` references in return record
+
+  **Remaining root cause**: De Bruijn index accumulation in `local_scope` across module statements during desugaring. `lookup_var` returns indices based on accumulated scope (names from ALL previous statements), but type-checking context has fewer elements. This is an architectural issue in `desugar_stmts_loop` — each statement should not accumulate `local_scope` from previous statements.
 
 ## Contact
 
