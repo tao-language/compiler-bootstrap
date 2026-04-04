@@ -261,9 +261,7 @@ When working with this codebase:
 
 ### Known Issues
 
-- **lib_prelude_bool_module_test fails with type errors** — The `test/lib/prelude/bool_test.gleam` test expects the `lib/prelude/bool.tao` module to type-check without errors, but 18 type errors are produced. These errors (`InfiniteType`, `TypeMismatch`, `VarUndefined`) are PRE-EXISTING bugs in the type-checker, unrelated to the timeout fix. The type errors include Pi types with `VErr` as domain, suggesting issues with how function type annotations are resolved during module-level type-checking.
-  - **Performance fix**: The `occurs` check in `src/core/unify.gleam` was traversing entire environments for `VPi`/`VFix` values, causing exponential blowup (52s → 2s after fix).
-  - **Type errors**: The bool.tao module type-checking produces errors due to how annotated function types are applied. This requires separate investigation into the desugaring/type-checking pipeline for module-level functions.
+- **lib_prelude_bool_module_test fails with type errors** — The `test/lib/prelude/bool_test.gleam` test expects the `lib/prelude/bool.tao` module to type-check without errors, but type errors are produced. These errors (`InfiniteType`, `TypeMismatch`, `VarUndefined`) are PRE-EXISTING bugs in the type-checker. The type errors include Pi types with `VErr` as domain and holes where `Bool` should be, suggesting issues with how function type annotations are resolved during module-level type-checking. This requires separate investigation into the desugaring/type-checking pipeline for module-level functions.
 
 ## Contact
 
