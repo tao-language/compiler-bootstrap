@@ -240,8 +240,8 @@ When working with this codebase:
 
 ## Test Results
 
-- **412 tests passing**
-- **4 failures** (`lib_prelude_bool_module_test` - InfiniteType errors from hole unification)
+- **434 tests passing**
+- **6 failures** (see Known Issues below)
 - **0 warnings**
 
 ### Recent Fixes (April 2026)
@@ -259,25 +259,34 @@ When working with this codebase:
 
 5. **Unification Performance Fix** - The `occurs` check in `src/core/unify.gleam` was traversing entire environments for `VPi`/`VFix`/`VLam` values, causing exponential blowup during type-checking of modules with multiple functions (52s for bool.tao). Fixed by only checking explicit type components (domain for VPi, term for codomain) instead of the entire captured environment. This reduced bool.tao type-checking from 52s to 2s.
 
-### Known Issues
+6. **Dynamic Prelude Loading** - Removed ALL hardcoded prelude knowledge from the compiler:
+   - Added `ctr_env` field to `ModuleRef` to store constructor definitions per module
+   - `with_prelude()` now parses prelude source files from `lib/prelude/*.tao`
+   - Imports merge the imported module's `ctr_env` into `dc.ctrs`
+   - All modules create records with holes for public names
+   - Types resolved through `dc.ctrs` during type-checking
+
+7. **Match Motive Unique Hole IDs** - Replaced hardcoded `Hole(-999)` in `desugar_match` with unique hole IDs from `core_hole(dc, span)`, preventing unification conflicts across multiple match expressions.
+
+8. **Implicit Prelude Import Optimization** - Skip implicit prelude imports for modules that define their own types, preventing empty prelude records from interfering with local type resolution.
+
+9. **De Bruijn Level Management** - Fixed level increment/decrement in `infer` Pi case, `check` Lam case, `infer_fix`, and `check` Fix case. Each binder now correctly manages `s.level`, matching the existing pattern in `infer`'s Lam case.
 
 ### Known Issues
 
-- **lib_prelude_bool_module_test fails with 4 type errors** — The `test/lib/prelude/bool_test.gleam` test expects the `lib/prelude/bool.tao` module to type-check without errors, but 4 `InfiniteType` errors remain.
+- **6 tests fail** with `InfiniteType` or `VarUndefined` errors:
+  - `three_match_expressions_no_conflict_test` — 3+ functions with match expressions
+  - `match_different_result_types_test` — matches with different result types
+  - `nested_match_expressions_test` — nested match expressions
+  - `two_functions_minimal_test` — 2 functions with match expressions
+  - `local_option_shadows_prelude_test` — polymorphic type `Option(a)` (parse error)
+  - `lib_prelude_bool_module_test` — prelude module compilation
 
-  **Major refactoring applied** (commit f9792c1):
-  1. Removed ALL hardcoded prelude module handling from `desugar_import`
-  2. Removed ALL hardcoded prelude records from `create_module_record`
-  3. Removed ALL hardcoded builtin types from `build_core_type_from_ast`
-  4. Added `prelude_ctrs` to `GlobalContext` — the ONE place where prelude types are defined
-  5. Added unique hole ID tracking via `DesugarContext.hole_counter`
-  6. Fixed parser type annotation extraction (`extract_type_from_inner`)
+  **Root cause for match/fix tests**: In `core_term_to_term_loop`, when processing `CoreApp(CoreLam(name), CoreFix(name))` from `build_sequential_loop`, both the special CoreApp case and CoreFix add the same name to the env, creating a duplicate entry. The desugared AST has indices computed from `["a", "double_not", "double_not", "not"]` (4 entries) but the type-checker's vars list has `["a", "double_not", "not"]` (3 entries), causing index mismatch.
 
-  **Test progression**: 402 → 415 passing (parser fix), then 412-415 with refactoring
+  **Fix needed**: In the special `CoreApp(CoreLam(name1, ...), CoreFix(name2, ...))` case, when `name1 == name2`, only add one binding to the env instead of duplicating.
 
-  **Root cause**: The `InfiniteType` errors occur because `eval(Hole(id))` creates `VNeut(HHole(id), [])`, and every evaluation of the same hole ID produces the SAME value. When annotation types share hole IDs, unification creates cycles. This requires changing `eval` to accept a mutable hole counter, or changing how holes are represented in annotation types.
-
-  **Impact**: The prelude is no longer hardcoded — new prelude modules and constructors can be added without modifying the compiler. The InfiniteType issue is a separate type-checker bug that requires architectural changes to the hole system.
+  **Impact**: The compiler works correctly for single functions and modules without cross-references. Multi-function modules with 3+ functions show errors due to the env duplication bug.
 
 ## Contact
 
