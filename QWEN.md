@@ -240,8 +240,8 @@ When working with this codebase:
 
 ## Test Results
 
-- **414 tests passing**
-- **1 expected failure** (`lib_prelude_bool_module_test` - pre-existing type errors in bool.tao module type-checking)
+- **412 tests passing**
+- **4 failures** (`lib_prelude_bool_module_test` - InfiniteType errors from hole unification)
 - **0 warnings**
 
 ### Recent Fixes (April 2026)
@@ -263,19 +263,21 @@ When working with this codebase:
 
 ### Known Issues
 
-- **lib_prelude_bool_module_test fails with 2 type errors** — The `test/lib/prelude/bool_test.gleam` test expects the `lib/prelude/bool.tao` module to type-check without errors, but 2 `InfiniteType` errors remain:
-  - `InfiniteType(0, VPi(..., [HVar(4), HVar(3), HVar(2), HVar(1), HVar(0)], ...))` — Hole 0 unified with a VPi type that references itself through its env
-  - `InfiniteType(0, VNeut(HHole(0), []))` — Hole 0 unified with itself
+- **lib_prelude_bool_module_test fails with 4 type errors** — The `test/lib/prelude/bool_test.gleam` test expects the `lib/prelude/bool.tao` module to type-check without errors, but 4 `InfiniteType` errors remain.
 
-  **Five fixes applied** (commits 244e190, f7d3533):
-  1. Nullary constructor `arg_ty`: `Unit` → `Typ(0)` — eliminates `TypeMismatch(VTyp(0), VUnit)` errors
-  2. `annotated_types` passed to `core_term_to_term` — eliminates `VPi(..., VErr, ...)` domain errors
-  3. Types excluded from `get_public_names` — eliminates incorrect `CoreVar` references
-  4. Named variables in `desugar_expr_core` — eliminates `VarUndefined` errors by computing indices from env at conversion time
-  5. CoreApp env fix for sequential binding — Fix body sees Lam's param name, matching type-checker context
+  **Major refactoring applied** (commit f9792c1):
+  1. Removed ALL hardcoded prelude module handling from `desugar_import`
+  2. Removed ALL hardcoded prelude records from `create_module_record`
+  3. Removed ALL hardcoded builtin types from `build_core_type_from_ast`
+  4. Added `prelude_ctrs` to `GlobalContext` — the ONE place where prelude types are defined
+  5. Added unique hole ID tracking via `DesugarContext.hole_counter`
+  6. Fixed parser type annotation extraction (`extract_type_from_inner`)
 
-  **Error progression**: 18+ → 4 (fixes 1-3) → 2 (fixes 4-5)
-  **Remaining**: The 2 `InfiniteType` errors are a pre-existing type-checker issue related to hole unification during function type inference, not related to De Bruijn index computation.
+  **Test progression**: 402 → 415 passing (parser fix), then 412-415 with refactoring
+
+  **Root cause**: The `InfiniteType` errors occur because `eval(Hole(id))` creates `VNeut(HHole(id), [])`, and every evaluation of the same hole ID produces the SAME value. When annotation types share hole IDs, unification creates cycles. This requires changing `eval` to accept a mutable hole counter, or changing how holes are represented in annotation types.
+
+  **Impact**: The prelude is no longer hardcoded — new prelude modules and constructors can be added without modifying the compiler. The InfiniteType issue is a separate type-checker bug that requires architectural changes to the hole system.
 
 ## Contact
 
