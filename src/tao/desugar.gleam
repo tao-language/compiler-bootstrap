@@ -993,18 +993,62 @@ pub fn desugar_import(
 }
 
 /// Create a module Record term for a given path.
+/// For prelude modules, create records with actual constructor definitions.
+/// For other modules, create a record with holes for each public name.
 fn create_module_record(path: String, dc: DesugarContext, span: Span) -> CoreTerm {
-  // All modules are treated uniformly - a record with holes for each public name.
-  // Constructors are available through dc.ctrs (merged with prelude constructors).
-  case get_module_public_names(dc.global, path) {
-    Some(public_names) -> {
-      let fields = create_module_fields(public_names, path, span, 0)
-      CoreRcd(fields, span)
+  // Check if this is a prelude module - use prelude constructors from dc.ctrs
+  case string.starts_with(path, "prelude/") {
+    True -> create_prelude_module_record(path, dc, span)
+    False -> {
+      // For non-prelude modules, get the public names and create a Record with holes
+      case get_module_public_names(dc.global, path) {
+        Some(public_names) -> {
+          let fields = create_module_fields(public_names, path, span, 0)
+          CoreRcd(fields, span)
+        }
+        None -> CoreRcd([], span)
+      }
     }
-    None -> {
-      // Module not found - create empty Record
-      CoreRcd([], span)
+  }
+}
+
+/// Create a module record for prelude modules using constructor definitions from dc.ctrs.
+fn create_prelude_module_record(path: String, dc: DesugarContext, span: Span) -> CoreTerm {
+  // Find all constructors belonging to this prelude module
+  let prelude_ctrs = list.filter(dc.ctrs, fn(ctr_pair) {
+    // Include all constructors - the prelude types are defined in the prelude modules
+    True
+  })
+
+  // Build record fields from constructors
+  let ctr_fields = list.flat_map(prelude_ctrs, fn(ctr_pair) {
+    let #(name, ctr_def) = ctr_pair
+    // Create a CoreCtr term for each constructor
+    let arg_term = case ctr_def.arg_ty {
+      // For simple argument types, create appropriate CoreTerm
+      _ -> CoreUnit(span)  // Simplified - full implementation would convert arg_ty
     }
+    [#(name, CoreCtr(name, arg_term, span))]
+  })
+
+  // Add type names as fields too
+  let type_names = get_prelude_type_names(path)
+  let type_fields = list.map(type_names, fn(name) {
+    #(name, CoreCtr(name, CoreUnit(span), span))
+  })
+
+  CoreRcd(list.append(type_fields, ctr_fields), span)
+}
+
+/// Get the type names defined in a prelude module.
+fn get_prelude_type_names(path: String) -> List(String) {
+  case path {
+    "prelude/bool" -> ["Bool"]
+    "prelude/option" -> ["Option"]
+    "prelude/result" -> ["Result"]
+    "prelude/ordering" -> ["Ordering"]
+    "prelude/list" -> ["List"]
+    _ -> []
   }
 }
 

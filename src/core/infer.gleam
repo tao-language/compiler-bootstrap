@@ -15,6 +15,106 @@ import core/unify as unify
 import core/generalize as generalize
 import core/exhaustiveness as exhaustiveness
 
+// ============================================================================
+// ANNOTATION FRESHENING
+// ============================================================================
+/// Replace negative hole IDs in annotation types with fresh positive IDs.
+///
+/// This prevents the InfiniteType bug where multiple annotation types share
+/// the same negative hole ID (e.g., Hole(-1)), and after evaluation they
+/// all become the same HHole(-1), causing unification cycles.
+///
+/// Each call to freshen_annotation starts with a fresh counter (typically 0),
+/// ensuring isolation between different annotations.
+pub fn freshen_annotation(term: ast.Term, counter: Int) -> #(ast.Term, Int) {
+  case term {
+    ast.Hole(id, span) -> {
+      case id < 0 {
+        True -> #(ast.Hole(counter, span), counter + 1)
+        False -> #(term, counter)  // Preserve non-negative holes
+      }
+    }
+    ast.Pi(implicit, name, domain, codomain, span) -> {
+      let #(fresh_dom, c1) = freshen_annotation(domain, counter)
+      let #(fresh_cod, c2) = freshen_annotation(codomain, c1)
+      #(ast.Pi(implicit, name, fresh_dom, fresh_cod, span), c2)
+    }
+    ast.Lam(implicit, param, body, span) -> {
+      let #(name, param_ty) = param
+      let #(fresh_param_ty, c1) = freshen_annotation(param_ty, counter)
+      let #(fresh_body, c2) = freshen_annotation(body, c1)
+      #(ast.Lam(implicit, #(name, fresh_param_ty), fresh_body, span), c2)
+    }
+    ast.Ctr(tag, arg, span) -> {
+      let #(fresh_arg, c1) = freshen_annotation(arg, counter)
+      #(ast.Ctr(tag, fresh_arg, span), c1)
+    }
+    ast.App(fun, implicit, arg, span) -> {
+      let #(fresh_fun, c1) = freshen_annotation(fun, counter)
+      let #(fresh_arg, c2) = freshen_annotation(arg, c1)
+      #(ast.App(fresh_fun, implicit, fresh_arg, span), c2)
+    }
+    ast.Rcd(fields, span) -> {
+      let #(fresh_fields, c1) = freshen_fields(fields, counter)
+      #(ast.Rcd(fresh_fields, span), c1)
+    }
+    ast.Match(arg, motive, cases, span) -> {
+      let #(fresh_arg, c1) = freshen_annotation(arg, counter)
+      let #(fresh_motive, c2) = freshen_annotation(motive, c1)
+      #(ast.Match(fresh_arg, fresh_motive, cases, span), c2)
+    }
+    ast.Dot(arg, field, span) -> {
+      let #(fresh_arg, c1) = freshen_annotation(arg, counter)
+      #(ast.Dot(fresh_arg, field, span), c1)
+    }
+    ast.Ann(inner, typ, span) -> {
+      let #(fresh_inner, c1) = freshen_annotation(inner, counter)
+      let #(fresh_typ, c2) = freshen_annotation(typ, c1)
+      #(ast.Ann(fresh_inner, fresh_typ, span), c2)
+    }
+    ast.Call(name, args, span) -> {
+      let #(fresh_args, c1) = freshen_term_list(args, counter)
+      #(ast.Call(name, fresh_args, span), c1)
+    }
+    ast.Fix(name, body, span) -> {
+      let #(fresh_body, c1) = freshen_annotation(body, counter)
+      #(ast.Fix(name, fresh_body, span), c1)
+    }
+    ast.Comptime(inner, span) -> {
+      let #(fresh_inner, c1) = freshen_annotation(inner, counter)
+      #(ast.Comptime(fresh_inner, span), c1)
+    }
+    // Terms without sub-terms that can contain holes
+    ast.Typ(_, _) | ast.Lit(_, _) | ast.LitT(_, _) | ast.Var(_, _) | ast.Unit(_) | ast.Err(_, _) ->
+      #(term, counter)
+  }
+}
+
+fn freshen_fields(
+  fields: List(#(String, ast.Term)),
+  counter: Int,
+) -> #(List(#(String, ast.Term)), Int) {
+  case fields {
+    [] -> #([], counter)
+    [#(name, field), ..rest] -> {
+      let #(fresh_field, c1) = freshen_annotation(field, counter)
+      let #(fresh_rest, c2) = freshen_fields(rest, c1)
+      #([#(name, fresh_field), ..fresh_rest], c2)
+    }
+  }
+}
+
+fn freshen_term_list(terms: List(ast.Term), counter: Int) -> #(List(ast.Term), Int) {
+  case terms {
+    [] -> #([], counter)
+    [term, ..rest] -> {
+      let #(fresh_term, c1) = freshen_annotation(term, counter)
+      let #(fresh_rest, c2) = freshen_term_list(rest, c1)
+      #([fresh_term, ..fresh_rest], c2)
+    }
+  }
+}
+
 pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.State) {
   case term {
     ast.Typ(k, span) -> #(ast.VTyp(k), ast.VTyp(k + 1), s)
@@ -104,7 +204,12 @@ pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.Sta
 
       let #(domain_val, s) = case param_ty_term {
         ast.Hole(_, _) -> new_hole(s)
-        _ -> #(eval.eval(s.ffi, get_env(s), param_ty_term), s)
+        _ -> {
+          // KEY FIX: Freshen negative holes in the param type before evaluation.
+          // This ensures each lambda's param type gets unique hole IDs.
+          let #(fresh_ty, _counter) = freshen_annotation(param_ty_term, 0)
+          #(eval.eval(s.ffi, get_env(s), fresh_ty), s)
+        }
       }
       // Bind variable at current level, then increment for the body
       let #(_fresh, s) = def_var(s, name, domain_val)
@@ -640,7 +745,11 @@ fn infer_fix(
   let env = get_env(s)
   case body {
     ast.Ann(lam, ann_ty, _ann_span) -> {
-      let ann_ty_val = eval.eval(s.ffi, env, ann_ty)
+      // KEY FIX: Freshen negative hole IDs in the annotation type before evaluation.
+      // This prevents multiple annotation types from sharing the same HHole(-1)
+      // after evaluation, which causes unification cycles (InfiniteType errors).
+      let #(fresh_ann_ty, _counter) = freshen_annotation(ann_ty, 0)
+      let ann_ty_val = eval.eval(s.ffi, env, fresh_ann_ty)
       let #(_fresh, s) = def_var(s, name, ann_ty_val)
       let #(body_val, s) = check(s, lam, ann_ty_val, span)
       // If body is VErr, return VErr type instead of annotation type
