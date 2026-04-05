@@ -19,6 +19,8 @@ import tao/import_ast.{
   ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias,
   ImportWildcard, type Import,
 }
+import core/ast as core_ast
+import syntax/grammar.{Span}
 
 // ============================================================================
 // GLOBAL CONTEXT
@@ -31,6 +33,8 @@ pub type GlobalContext {
     modules: Dict(String, ModuleRef),
     /// Current module being compiled (for error messages)
     current_module: Option(String),
+    /// Constructor definitions from prelude modules (populated during initialization)
+    prelude_ctrs: core_ast.CtrEnv,
   )
 }
 
@@ -63,6 +67,7 @@ pub fn new_context() -> GlobalContext {
   GlobalContext(
     modules: dict.new(),
     current_module: None,
+    prelude_ctrs: [],
   )
 }
 
@@ -296,6 +301,33 @@ pub fn register_error_module(
 
 /// Initialize global context with prelude modules.
 pub fn with_prelude(ctx: GlobalContext) -> GlobalContext {
+  // Define prelude constructor environments.
+  // This is the ONE place where prelude type definitions are specified.
+  // All other code should use ctx.prelude_ctrs to look up constructors.
+  let prelude_ctrs: core_ast.CtrEnv = [
+    // prelude/bool
+    #("Bool", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)))),
+    #("True", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Bool", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("bool", 0, 0, 0, 0)))),
+    #("False", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Bool", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("bool", 0, 0, 0, 0)))),
+    // prelude/option
+    #("Option", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)))),
+    #("Some", core_ast.CtrDef(params: [], arg_ty: core_ast.Hole(0, Span("some_arg", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Option", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("option", 0, 0, 0, 0)))),
+    #("None", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Option", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("option", 0, 0, 0, 0)))),
+    // prelude/result
+    #("Result", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)))),
+    #("Ok", core_ast.CtrDef(params: [], arg_ty: core_ast.Hole(0, Span("ok_arg", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Result", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("result", 0, 0, 0, 0)))),
+    #("Err", core_ast.CtrDef(params: [], arg_ty: core_ast.Hole(0, Span("err_arg", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Result", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("result", 0, 0, 0, 0)))),
+    // prelude/ordering
+    #("Ordering", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)))),
+    #("LT", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Ordering", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("ordering", 0, 0, 0, 0)))),
+    #("EQ", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Ordering", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("ordering", 0, 0, 0, 0)))),
+    #("GT", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Ordering", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("ordering", 0, 0, 0, 0)))),
+    // prelude/list
+    #("List", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)))),
+    #("Cons", core_ast.CtrDef(params: [], arg_ty: core_ast.Hole(0, Span("cons_arg", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("List", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("list", 0, 0, 0, 0)))),
+    #("Nil", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("List", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("list", 0, 0, 0, 0)))),
+  ]
+
   // Register prelude modules as placeholders with their full paths
   // Each module has its own path (e.g., "prelude/bool", "prelude/option")
   let bool_ref = ModuleRef(
@@ -353,5 +385,6 @@ pub fn with_prelude(ctx: GlobalContext) -> GlobalContext {
   GlobalContext(
     ..ctx4,
     modules: dict.insert(ctx4.modules, "prelude/list", list_ref),
+    prelude_ctrs: prelude_ctrs,
   )
 }

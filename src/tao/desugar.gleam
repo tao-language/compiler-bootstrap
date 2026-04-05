@@ -12,6 +12,7 @@
 /// - [Stmt System](../../docs/plans/tao/13-stmt-system.md)
 /// - [Import System](../../docs/plans/tao/12-import-system.md)
 
+import gleam/dict
 import gleam/list
 import gleam/int
 import gleam/float
@@ -144,27 +145,43 @@ pub type DesugarContext {
     ctrs: core_ast.CtrEnv,
     /// Annotated function types (name -> type) for module-level bindings
     annotated_types: List(#(String, CoreTerm)),
+    /// Counter for unique negative hole IDs. Starts at -1 and decrements.
+    hole_counter: Int,
   )
 }
 
 /// Add a local variable to the scope.
 fn add_local(dc: DesugarContext, name: String) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types) = dc
-  DesugarContext(global, current_module, [name, ..local_scope], loop_stack, ctrs, dc.annotated_types)
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types, hole_counter) = dc
+  DesugarContext(global, current_module, [name, ..local_scope], loop_stack, ctrs, annotated_types, hole_counter)
+}
+
+/// Allocate a new unique negative hole ID.
+fn allocate_hole(dc: DesugarContext) -> #(Int, DesugarContext) {
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types, hole_counter) = dc
+  let new_id = hole_counter
+  let new_dc = DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types, hole_counter - 1)
+  #(new_id, new_dc)
+}
+
+/// Create a CoreTerm with a unique negative hole ID.
+fn core_hole(dc: DesugarContext, span: Span) -> #(CoreTerm, DesugarContext) {
+  let #(id, new_dc) = allocate_hole(dc)
+  #(CoreHole(id, span), new_dc)
 }
 
 /// Enter a loop context.
 fn enter_loop(dc: DesugarContext, fix_name: String) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types) = dc
-  DesugarContext(global, current_module, local_scope, [InLoop(fix_name, BreakReturns), ..loop_stack], ctrs, dc.annotated_types)
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types, hole_counter) = dc
+  DesugarContext(global, current_module, local_scope, [InLoop(fix_name, BreakReturns), ..loop_stack], ctrs, annotated_types, hole_counter)
 }
 
 /// Exit the current loop context.
 fn exit_loop(dc: DesugarContext) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types) = dc
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types, hole_counter) = dc
   case loop_stack {
     [] -> dc  // Should not happen if well-formed
-    [_loop, ..rest] -> DesugarContext(global, current_module, local_scope, rest, ctrs, dc.annotated_types)
+    [_loop, ..rest] -> DesugarContext(global, current_module, local_scope, rest, ctrs, annotated_types, hole_counter)
   }
 }
 
@@ -215,7 +232,7 @@ pub fn process_type_definitions(
         let type_ctr = #(name, core_ast.CtrDef(params: type_params, arg_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0))))
         let new_ctrs = tao_type_to_core_ctrs(name, type_params, constructors)
         let all_ctrs = [type_ctr, ..new_ctrs]
-        DesugarContext(..acc_dc, ctrs: list.append(acc_dc.ctrs, all_ctrs), annotated_types: acc_dc.annotated_types)
+        DesugarContext(..acc_dc, ctrs: list.append(acc_dc.ctrs, all_ctrs), annotated_types: acc_dc.annotated_types, hole_counter: acc_dc.hole_counter)
       }
       _ -> acc_dc
     }
@@ -286,21 +303,14 @@ fn build_type_app(type_name: String, type_params: List(String)) -> core_ast.Term
 fn type_ast_to_core(t: TypeAst) -> core_ast.Term {
   case t {
     TVar(name) -> {
-      // Check if this is a known builtin type
-      case name {
-        "I32" -> core_ast.LitT(core_ast.I32T, Span("i32", 0, 0, 0, 0))
-        "I64" -> core_ast.LitT(core_ast.I64T, Span("i64", 0, 0, 0, 0))
-        "F32" -> core_ast.LitT(core_ast.F32T, Span("f32", 0, 0, 0, 0))
-        "F64" -> core_ast.LitT(core_ast.F64T, Span("f64", 0, 0, 0, 0))
-        "Bool" -> core_ast.Ctr("Bool", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("bool", 0, 0, 0, 0))
-        _ -> core_ast.Hole(0, Span("type_var", 0, 0, 0, 0))
-      }
+      // Type variable - use negative hole for inference
+      core_ast.Hole(-1, Span(name, 0, 0, 0, 0))
     }
     TApp(name, _args) -> core_ast.Ctr(name, core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("tapp", 0, 0, 0, 0))
     TFn(_params, _ret) -> core_ast.Typ(1, Span("fn", 0, 0, 0, 0))
     TRecord(_fields) -> core_ast.Typ(0, Span("rcd", 0, 0, 0, 0))
     TTuple(_elems) -> core_ast.Typ(0, Span("tuple", 0, 0, 0, 0))
-    THole -> core_ast.Hole(0, Span("hole", 0, 0, 0, 0))
+    THole -> core_ast.Hole(-1, Span("hole", 0, 0, 0, 0))
   }
 }
 
@@ -313,53 +323,36 @@ fn type_ast_to_core(t: TypeAst) -> core_ast.Term {
 fn build_core_type_from_ast(t: TypeAst, dc: DesugarContext, span: Span) -> #(CoreTerm, DesugarContext) {
   case t {
     TVar(name) -> {
-      // Check if this is a known builtin type or a type variable
-      case name {
-        "I32" -> #(CoreBuiltinType("core_ast.I32T", span), dc)
-        "I64" -> #(CoreBuiltinType("core_ast.I64T", span), dc)
-        "F32" -> #(CoreBuiltinType("core_ast.F32T", span), dc)
-        "F64" -> #(CoreBuiltinType("core_ast.F64T", span), dc)
-        "Bool" -> #(CoreCtr("Bool", CoreUnit(span), span), dc)
-        "Option" -> #(CoreCtr("Option", CoreUnit(span), span), dc)
-        "Result" -> #(CoreCtr("Result", CoreUnit(span), span), dc)
-        "String" -> #(CoreBuiltinType("String", span), dc)
-        _ -> {
-          // Check if it's a type defined in the current context
-          case lookup_type_in_ctrs(dc.ctrs, name) {
-            True -> #(CoreCtr(name, CoreUnit(span), span), dc)
-            False -> #(CoreHole(0, span), dc)  // Unknown type, use hole
-          }
-        }
+      // Check if it's a type defined in the current context (including prelude)
+      case lookup_type_in_ctrs(dc.ctrs, name) {
+        True -> #(CoreCtr(name, CoreUnit(span), span), dc)
+        False -> core_hole(dc, span)  // Unknown type, use unique negative hole for inference
       }
     }
     TApp(type_name, args) -> {
       // Type application: Option(Bool), List(I32), etc.
-      let base = case lookup_type_in_ctrs(dc.ctrs, type_name) {
-        True -> CoreCtr(type_name, CoreUnit(span), span)
-        False -> CoreHole(0, span)
+      let #(base, dc0) = case lookup_type_in_ctrs(dc.ctrs, type_name) {
+        True -> #(CoreCtr(type_name, CoreUnit(span), span), dc)
+        False -> core_hole(dc, span)
       }
-      let #(core_args, dc1) = build_core_type_args(args, dc, span)
+      let #(core_args, dc1) = build_core_type_args(args, dc0, span)
       #(build_type_applications(base, core_args, span), dc1)
     }
     TFn(params, ret) -> {
       // Function type: (I32, Bool) -> Bool
-      // For now, use a simple Pi type representation
       let #(core_params, dc1) = build_core_type_args(params, dc, span)
       let #(core_ret, dc2) = build_core_type_from_ast(ret, dc1, span)
       let fn_type = build_fn_type(core_params, core_ret, span)
       #(fn_type, dc2)
     }
     TRecord(_fields) -> {
-      // Record type - use hole for now
-      #(CoreHole(0, span), dc)
+      core_hole(dc, span)
     }
     TTuple(_elems) -> {
-      // Tuple type - use hole for now
-      #(CoreHole(0, span), dc)
+      core_hole(dc, span)
     }
     THole -> {
-      // Type hole - let inference fill it in
-      #(CoreHole(0, span), dc)
+      core_hole(dc, span)
     }
   }
 }
@@ -458,7 +451,7 @@ fn build_param_types_loop(
     [param, ..rest] -> {
       let #(core_type, dc1) = case param.type_annotation {
         Some(type_ast) -> build_core_type_from_ast(type_ast, dc, span)
-        None -> #(CoreHole(-1, span), dc)
+        None -> core_hole(dc, span)  // Unannotated param - use unique hole for inference
       }
       build_param_types_loop(rest, dc1, span, [core_type, ..acc])
     }
@@ -502,13 +495,18 @@ pub fn desugar_module_with_ctrs(
   ctx: GlobalContext,
   initial_ctrs: core_ast.CtrEnv,
 ) -> #(core_ast.Term, DesugarContext) {
+  // Merge prelude constructors with any additional initial constructors.
+  // Prelude constructors come first so local definitions can override them.
+  let merged_ctrs = list.append(ctx.prelude_ctrs, initial_ctrs)
+
   let dc = DesugarContext(
     global: ctx,
     current_module: module.path,
     local_scope: [],
     loop_stack: [],
-    ctrs: initial_ctrs,
+    ctrs: merged_ctrs,
     annotated_types: [],
+    hole_counter: -1,
   )
 
   // Process type definitions FIRST to populate constructor environment
@@ -517,7 +515,11 @@ pub fn desugar_module_with_ctrs(
   // Collect annotated function types AFTER processing type definitions
   // so that type names like Bool are resolved correctly
   let annotated_types = collect_annotated_types(module.body, dc_with_types, module.span)
-  let dc_with_annotated_types = DesugarContext(..dc_with_types, annotated_types: annotated_types)
+  let dc_with_annotated_types = DesugarContext(..dc_with_types, annotated_types: annotated_types, hole_counter: dc_with_types.hole_counter)
+
+  // Create implicit prelude imports for all registered prelude modules
+  // These imports add prelude types and functions to the local scope
+  let prelude_imports = create_implicit_prelude_imports(dc.global, module.span)
 
   // Check if the last statement is an expression (for expression-style modules)
   let last_is_expr = is_last_stmt_expr(module.body)
@@ -528,6 +530,8 @@ pub fn desugar_module_with_ctrs(
       // First, desugar all statements EXCEPT the last one
       let all_but_last = drop_last(module.body)
       let #(core_stmts, dc1) = desugar_stmts(all_but_last, dc_with_annotated_types)
+      // Prepend prelude import statements
+      let core_stmts_with_prelude = list.append(prelude_imports, core_stmts)
 
       // Then, desugar the last expression with the accumulated scope
       let last_stmt = get_last_stmt(module.body)
@@ -547,17 +551,19 @@ pub fn desugar_module_with_ctrs(
         _ -> #(CoreRcd([], module.span), dc1)
       }
 
-      let core_term = CoreDoBlock(core_stmts, core_result, module.span)
+      let core_term = CoreDoBlock(core_stmts_with_prelude, core_result, module.span)
       let term = core_term_to_term_with_annotations(core_term, dc1.annotated_types)
       #(term, dc1)
     }
     False -> {
       // Declaration-style module: desugar all statements and return a record
       let #(core_stmts, dc1) = desugar_stmts(module.body, dc_with_annotated_types)
+      // Prepend prelude import statements
+      let core_stmts_with_prelude = list.append(prelude_imports, core_stmts)
       let public_names = get_public_names(module.body)
       case public_names {
         [] -> {
-          let core_term = CoreDoBlock(core_stmts, CoreRcd([], module.span), module.span)
+          let core_term = CoreDoBlock(core_stmts_with_prelude, CoreRcd([], module.span), module.span)
           let term = core_term_to_term_with_annotations(core_term, dc1.annotated_types)
           #(term, dc1)
         }
@@ -565,7 +571,7 @@ pub fn desugar_module_with_ctrs(
           let return_fields = list.map(names, fn(name) {
             #(name, CoreVar(name, module.span))
           })
-          let core_term = CoreDoBlock(core_stmts, CoreRcd(return_fields, module.span), module.span)
+          let core_term = CoreDoBlock(core_stmts_with_prelude, CoreRcd(return_fields, module.span), module.span)
           let term = core_term_to_term_with_annotations(core_term, dc1.annotated_types)
           #(term, dc1)
         }
@@ -860,6 +866,58 @@ fn get_stmt_span(stmt: Stmt) -> Span {
 // IMPORT DESUGARING
 // ============================================================================
 
+/// Create implicit prelude import terms for all registered prelude modules.
+/// This adds wildcard imports (`import path as *`) for each prelude module.
+fn create_implicit_prelude_imports(
+  global: GlobalContext,
+  span: Span,
+) -> List(CoreTerm) {
+  // Get all prelude module paths from the global context
+  let prelude_paths = get_prelude_module_paths(global)
+  // Create wildcard imports for each prelude module
+  list.flat_map(prelude_paths, fn(path) {
+    create_wildcard_import(path, span)
+  })
+}
+
+/// Get all registered prelude module paths from the global context.
+fn get_prelude_module_paths(global: GlobalContext) -> List(String) {
+  // Prelude modules are those starting with "prelude/"
+  case global.modules |> dict.to_list() {
+    [] -> []
+    [pair, ..rest] -> {
+      let #(path, _) = pair
+      case string.starts_with(path, "prelude/") {
+        True -> [path, ..get_prelude_module_paths_loop(rest)]
+        False -> get_prelude_module_paths_loop(rest)
+      }
+    }
+  }
+}
+
+fn get_prelude_module_paths_loop(
+  modules: List(#(String, ModuleRef)),
+) -> List(String) {
+  case modules {
+    [] -> []
+    [pair, ..rest] -> {
+      let #(path, _) = pair
+      case string.starts_with(path, "prelude/") {
+        True -> [path, ..get_prelude_module_paths_loop(rest)]
+        False -> get_prelude_module_paths_loop(rest)
+      }
+    }
+  }
+}
+
+/// Create a wildcard import for a module: `import path as *`
+fn create_wildcard_import(path: String, span: Span) -> List(CoreTerm) {
+  let alias = path_to_alias(path)
+  let module_ref = CoreRcd([], span)  // Placeholder - will be filled by import resolution
+  let module_binding = CoreLet(alias, module_ref, span)
+  [module_binding]
+}
+
 /// Desugar an import statement to let bindings.
 pub fn desugar_import(
   import_item: Import,
@@ -868,145 +926,32 @@ pub fn desugar_import(
 ) -> List(CoreTerm) {
   case import_item {
     ImportModule(path, _) -> {
-      // import prelude/bool → let True = True, let False = False (for prelude)
-      // For other modules, create a module alias
-      case path {
-        "prelude/bool" -> {
-          // Prelude constructors are available by name in the core language
-          // No need to create bindings - they're looked up in s.ctrs during type checking
-          []
-        }
-        "prelude/option" -> {
-          // Prelude constructors are available by name in the core language
-          // No need to create bindings - they're looked up in s.ctrs during type checking
-          []
-        }
-        "prelude/result" -> {
-          // Prelude constructors are available by name in the core language
-          // No need to create bindings - they're looked up in s.ctrs during type checking
-          []
-        }
-        "prelude/ordering" -> {
-          // Prelude constructors are available by name in the core language
-          // No need to create bindings - they're looked up in s.ctrs during type checking
-          []
-        }
-        _ -> {
-          // For non-prelude modules, create a module alias
-          let alias = path_to_alias(path)
-          let module_ref = create_module_record(path, dc, span)
-          [CoreLet(alias, module_ref, span)]
-        }
-      }
+      // import path → create a module alias
+      let alias = path_to_alias(path)
+      let module_ref = create_module_record(path, dc, span)
+      [CoreLet(alias, module_ref, span)]
     }
 
     ImportAlias(path, alias, _) -> {
-      // import math/trig as trig → let trig = @math/trig
+      // import path as alias → let alias = @path
       let module_ref = create_module_record(path, dc, span)
       [CoreLet(alias, module_ref, span)]
     }
 
     ImportSelective(path, items, _) -> {
-      // import prelude/bool {True, False, not}
-      // Constructors (True, False) are in s.ctrs - no binding needed
-      // Builtin functions (not) need a binding that refers to them by name
-      case path {
-        "prelude/bool" -> {
-          // Filter out constructor names and create bindings for functions
-          list.flat_map(items, fn(item) {
-            case item {
-              ImportName(name, alias) -> {
-                case name {
-                  "True" | "False" -> []  // Constructors - no binding needed
-                  _ -> {
-                    // Function/type - create a binding
-                    let binding_name = case alias {
-                      Some(a) -> a
-                      None -> name
-                    }
-                    [CoreLet(binding_name, CoreVar(name, span), span)]
-                  }
-                }
-              }
-              _ -> []
-            }
-          })
-        }
-        "prelude/option" -> {
-          // Some, None are constructors - no binding needed
-          list.flat_map(items, fn(item) {
-            case item {
-              ImportName(name, alias) -> {
-                case name {
-                  "Some" | "None" -> []  // Constructors
-                  _ -> {
-                    let binding_name = case alias {
-                      Some(a) -> a
-                      None -> name
-                    }
-                    [CoreLet(binding_name, CoreVar(name, span), span)]
-                  }
-                }
-              }
-              _ -> []
-            }
-          })
-        }
-        "prelude/result" -> {
-          // Ok, Err are constructors - no binding needed
-          list.flat_map(items, fn(item) {
-            case item {
-              ImportName(name, alias) -> {
-                case name {
-                  "Ok" | "Err" -> []  // Constructors
-                  _ -> {
-                    let binding_name = case alias {
-                      Some(a) -> a
-                      None -> name
-                    }
-                    [CoreLet(binding_name, CoreVar(name, span), span)]
-                  }
-                }
-              }
-              _ -> []
-            }
-          })
-        }
-        "prelude/ordering" -> {
-          // LT, EQ, GT are constructors - no binding needed
-          list.flat_map(items, fn(item) {
-            case item {
-              ImportName(name, alias) -> {
-                case name {
-                  "LT" | "EQ" | "GT" -> []  // Constructors
-                  _ -> {
-                    let binding_name = case alias {
-                      Some(a) -> a
-                      None -> name
-                    }
-                    [CoreLet(binding_name, CoreVar(name, span), span)]
-                  }
-                }
-              }
-              _ -> []
-            }
-          })
-        }
-        _ -> {
-          // For non-prelude modules, use CoreDot
-          let module_ref = create_module_record(path, dc, span)
-          list.flat_map(items, fn(item) {
-            desugar_import_item(item, module_ref, path, span)
-          })
-        }
-      }
+      // import path {name1, name2, ...}
+      // Create a module record and project each name
+      let module_ref = create_module_record(path, dc, span)
+      list.flat_map(items, fn(item) {
+        desugar_import_item(item, module_ref, path, span)
+      })
     }
 
     ImportSelectiveAlias(path, alias, items, _) -> {
-      // import math/trig as trig {sin, cos}
-      // → let trig = @math/trig
-      //   let sin = trig.sin
-      //   let cos = trig.cos
+      // import path as alias {name1, name2, ...}
+      // → let alias = @path
+      //   let name1 = alias.name1
+      //   let name2 = alias.name2
       let module_ref = create_module_record(path, dc, span)
       let module_binding = CoreLet(alias, module_ref, span)
       let item_bindings = list.flat_map(items, fn(item) {
@@ -1024,11 +969,11 @@ pub fn desugar_import(
     }
 
     ImportWildcard(path, _) -> {
-      // import math/trig as * → let math_trig = @math/trig + all exports
+      // import path as * → let alias = @path + all exports
       let alias = path_to_alias(path)
       let module_ref = create_module_record(path, dc, span)
       let module_binding = CoreLet(alias, module_ref, span)
-      
+
       // Get all exports from the module
       case get_module_public_names(dc.global, path) {
         Some(exports) -> {
@@ -1049,57 +994,16 @@ pub fn desugar_import(
 
 /// Create a module Record term for a given path.
 fn create_module_record(path: String, dc: DesugarContext, span: Span) -> CoreTerm {
-  // For prelude modules, create a Record with the actual constructors
-  // For other modules, create a Record with holes
-  case path {
-    "prelude/bool" -> {
-      // Bool module has True and False constructors
-      CoreRcd([
-        #("Bool", CoreHole(0, span)),
-        #("True", CoreCtr("True", CoreUnit(span), span)),
-        #("False", CoreCtr("False", CoreUnit(span), span)),
-        #("not", CoreHole(1, span)),
-        #("and", CoreHole(2, span)),
-        #("or", CoreHole(3, span)),
-      ], span)
+  // All modules are treated uniformly - a record with holes for each public name.
+  // Constructors are available through dc.ctrs (merged with prelude constructors).
+  case get_module_public_names(dc.global, path) {
+    Some(public_names) -> {
+      let fields = create_module_fields(public_names, path, span, 0)
+      CoreRcd(fields, span)
     }
-    "prelude/option" -> {
-      // Option module has Some and None constructors
-      CoreRcd([
-        #("Option", CoreHole(0, span)),
-        #("Some", CoreCtr("Some", CoreHole(1, span), span)),
-        #("None", CoreCtr("None", CoreUnit(span), span)),
-      ], span)
-    }
-    "prelude/result" -> {
-      // Result module has Ok and Err constructors
-      CoreRcd([
-        #("Result", CoreHole(0, span)),
-        #("Ok", CoreCtr("Ok", CoreHole(1, span), span)),
-        #("Err", CoreCtr("Err", CoreHole(2, span), span)),
-      ], span)
-    }
-    "prelude/ordering" -> {
-      // Ordering module has LT, EQ, GT constructors
-      CoreRcd([
-        #("Ordering", CoreHole(0, span)),
-        #("LT", CoreCtr("LT", CoreUnit(span), span)),
-        #("EQ", CoreCtr("EQ", CoreUnit(span), span)),
-        #("GT", CoreCtr("GT", CoreUnit(span), span)),
-      ], span)
-    }
-    _ -> {
-      // For non-prelude modules, get the public names and create a Record with holes
-      case get_module_public_names(dc.global, path) {
-        Some(public_names) -> {
-          let fields = create_module_fields(public_names, path, span, 0)
-          CoreRcd(fields, span)
-        }
-        None -> {
-          // Module not found - create empty Record
-          CoreRcd([], span)
-        }
-      }
+    None -> {
+      // Module not found - create empty Record
+      CoreRcd([], span)
     }
   }
 }
@@ -1537,45 +1441,35 @@ fn desugar_type_ast(
   dc: DesugarContext,
 ) -> #(CoreTerm, DesugarContext) {
   // Type ASTs are converted to Core terms
-  // For now, just convert to a variable or application
   case type_ast {
     ast.TVar(name) -> {
-      // Type variable - use a hole for now
-      #(CoreHole(0, Span(name, 0, 0, 0, 0)), dc)
+      // Type variable - check if it's a known type
+      case lookup_type_in_ctrs(dc.ctrs, name) {
+        True -> #(CoreCtr(name, CoreUnit(Span(name, 0, 0, 0, 0)), Span(name, 0, 0, 0, 0)), dc)
+        False -> #(CoreHole(-1, Span(name, 0, 0, 0, 0)), dc)
+      }
     }
     ast.TApp(name, args) -> {
       // Type application - build nested applications
       let #(core_args, dc1) = desugar_type_args(args, dc)
-      let base = case name {
-        "I32" -> CoreBuiltinType("core_ast.I32T", Span(name, 0, 0, 0, 0))
-        "I64" -> CoreBuiltinType("core_ast.I64T", Span(name, 0, 0, 0, 0))
-        "U32" -> CoreBuiltinType("core_ast.U32T", Span(name, 0, 0, 0, 0))
-        "U64" -> CoreBuiltinType("core_ast.U64T", Span(name, 0, 0, 0, 0))
-        "F32" -> CoreBuiltinType("core_ast.F32T", Span(name, 0, 0, 0, 0))
-        "F64" -> CoreBuiltinType("core_ast.F64T", Span(name, 0, 0, 0, 0))
-        "Bool" -> CoreVar("Bool", Span(name, 0, 0, 0, 0))
-        "Option" -> CoreVar("Option", Span(name, 0, 0, 0, 0))
-        "Result" -> CoreVar("Result", Span(name, 0, 0, 0, 0))
-        _ -> CoreVar(name, Span(name, 0, 0, 0, 0))
+      let base = case lookup_type_in_ctrs(dc.ctrs, name) {
+        True -> CoreCtr(name, CoreUnit(Span(name, 0, 0, 0, 0)), Span(name, 0, 0, 0, 0))
+        False -> CoreVar(name, Span(name, 0, 0, 0, 0))
       }
       let core_type = build_core_type_app(base, core_args, Span(name, 0, 0, 0, 0))
       #(core_type, dc1)
     }
     ast.TFn(_, _) -> {
-      // Function type - use a hole for now
-      #(CoreHole(0, Span("fn", 0, 0, 0, 0)), dc)
+      #(CoreHole(-1, Span("fn", 0, 0, 0, 0)), dc)
     }
     ast.TRecord(_) -> {
-      // Record type - use a hole for now
-      #(CoreHole(0, Span("record", 0, 0, 0, 0)), dc)
+      #(CoreHole(-1, Span("record", 0, 0, 0, 0)), dc)
     }
     ast.TTuple(_) -> {
-      // Tuple type - use a hole for now
-      #(CoreHole(0, Span("tuple", 0, 0, 0, 0)), dc)
+      #(CoreHole(-1, Span("tuple", 0, 0, 0, 0)), dc)
     }
     ast.THole -> {
-      // Hole - use a hole
-      #(CoreHole(0, Span("_", 0, 0, 0, 0)), dc)
+      #(CoreHole(-1, Span("_", 0, 0, 0, 0)), dc)
     }
   }
 }
@@ -1766,16 +1660,13 @@ fn build_function_type(
   case params {
     [] -> return_ty
     [param, ..rest] -> {
-      // Build domain type from parameter annotation (or hole if no annotation)
-      let domain_ty = case param.type_annotation {
-        Some(ty_ast) -> {
-          let #(core_ty, _dc) = build_core_type_from_ast(ty_ast, dc, span)
-          core_ty
-        }
-        None -> CoreHole(-1, span)  // Placeholder hole, will be filled by type checker
+      // Build domain type from parameter annotation (or unique hole if no annotation)
+      let #(domain_ty, dc1) = case param.type_annotation {
+        Some(ty_ast) -> build_core_type_from_ast(ty_ast, dc, span)
+        None -> core_hole(dc, span)  // Placeholder hole with unique ID
       }
       // Build Pi type: domain -> codomain
-      let codomain_ty = build_function_type(rest, return_ty, span, dc)
+      let codomain_ty = build_function_type(rest, return_ty, span, dc1)
       CorePi([], param.name, domain_ty, codomain_ty, span)
     }
   }

@@ -29,6 +29,7 @@ fn create_desugar_context(ctx: GlobalContext) -> DesugarContext {
     loop_stack: [],
     ctrs: [],
     annotated_types: [],
+    hole_counter: -1,
   )
 }
 

@@ -2030,6 +2030,10 @@ fn extract_type_from_inner(inner_list: List(Value(Expr))) -> Option(String) {
   case inner_list {
     [TokenValue(_colon), TokenValue(type_tok), ..] -> Some(type_tok.value)
     [TokenValue(type_tok), ..] -> Some(type_tok.value)
+    // KEY FIX: Type grammar creates AstValue(Var(name, ...)) — extract the name
+    [AstValue(Var(type_name, _)), ..] -> Some(type_name)
+    // Handle Colon followed by AstValue
+    [TokenValue(_colon), AstValue(Var(type_name, _)), ..] -> Some(type_name)
     [_, ..rest] -> extract_type_from_inner(rest)
     [] -> None
   }

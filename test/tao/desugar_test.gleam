@@ -26,7 +26,7 @@ const s1 = Span("desugar_test", 1, 1, 1, 1)
 
 fn new_dc() -> DesugarContext {
   let gc = with_prelude(new_context())
-  DesugarContext(gc, "test", [], [], [], [])
+  DesugarContext(gc, "test", [], [], [], [], -1)
 }
 
 // ============================================================================
