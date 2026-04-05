@@ -287,7 +287,10 @@ pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.Sta
       let env = get_env(s)
       let #(in_val, _, s) = infer(s, in_term)
       let #(_, s) = def_var(s, name, in_val)
+      // Increment level for the codomain - it's in the scope of the bound variable
+      let s = state.State(..s, level: s.level + 1)
       let #(_, _, s) = infer(s, out_term)
+      let s = state.State(..s, level: s.level - 1)
       #(ast.VPi(implicit, name, env, in_val, out_term), ast.VTyp(0), s)
     }
     ast.App(fun, implicit, arg, span) -> infer_app(s, fun, implicit, arg, span)
@@ -751,7 +754,10 @@ fn infer_fix(
       let #(fresh_ann_ty, _counter) = freshen_annotation(ann_ty, 0)
       let ann_ty_val = eval.eval(s.ffi, env, fresh_ann_ty)
       let #(_fresh, s) = def_var(s, name, ann_ty_val)
+      // Increment level for the body - it's in the scope of the fix-bound name
+      let s = state.State(..s, level: s.level + 1)
       let #(body_val, s) = check(s, lam, ann_ty_val, span)
+      let s = state.State(..s, level: s.level - 1)
       // If body is VErr, return VErr type instead of annotation type
       let result_ty = case body_val {
         ast.VErr -> ast.VErr
@@ -762,7 +768,10 @@ fn infer_fix(
     _ -> {
       let #(result_ty_hole, s) = new_hole(s)
       let #(_fresh, s) = def_var(s, name, result_ty_hole)
+      // Increment level for the body - it's in the scope of the fix-bound name
+      let s = state.State(..s, level: s.level + 1)
       let #(body_val, s) = check(s, body, result_ty_hole, span)
+      let s = state.State(..s, level: s.level - 1)
       // If body is VErr, return VErr type instead of solved hole
       let solved_ty = case body_val {
         ast.VErr -> ast.VErr
@@ -1026,7 +1035,10 @@ pub fn check(
       // Fixpoint with expected type: use the expected type instead of creating a hole
       let env = get_env(s)
       let #(_fresh, s) = def_var(s, name, expected_ty)
+      // Increment level for the body - it's in the scope of the fix-bound name
+      let s = state.State(..s, level: s.level + 1)
       let #(body_val, s) = check(s, body, expected_ty, span)
+      let s = state.State(..s, level: s.level - 1)
       let fix_val = ast.VFix(name, env, body)
       #(fix_val, s)
     }
@@ -1034,8 +1046,11 @@ pub fn check(
       case expected_ty {
         ast.VPi(exp_implicit, exp_name, pi_env, domain, codomain) -> {
           let #(_fresh, s) = def_var(s, param.0, domain)
+          // Increment level for the body - it's in the scope of the bound parameter
+          let s = state.State(..s, level: s.level + 1)
           let codomain_val = eval(s.ffi, get_env(s), codomain)
           let #(body_val, s) = check(s, body, codomain_val, span)
+          let s = state.State(..s, level: s.level - 1)
           let lam_val = ast.VLam(implicit, param.0, get_env(s), body)
           #(lam_val, s)
         }
