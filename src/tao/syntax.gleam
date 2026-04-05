@@ -1929,8 +1929,10 @@ fn extract_fn_params(
 
 fn extract_single_fn_param(items: List(Value(Expr))) -> Option(#(String, Option(String))) {
   case items {
-    [TokenValue(name_tok), TokenValue(_colon), ..type_values] -> {
-      let type_str = reconstruct_type_string(type_values)
+    [TokenValue(name_tok), TokenValue(_colon), AstValue(type_expr), .._rest] -> {
+      // Type annotation from opt(seq([Colon, Type]))
+      // The Type rule produces an AstValue
+      let type_str = expr_to_type_string(type_expr)
       Some(#(name_tok.value, Some(type_str)))
     }
     [TokenValue(name_tok), ..] -> {
@@ -3094,6 +3096,14 @@ fn make_overloaded_fn(values) -> Expr {
 fn expr_to_type_string(expr: Expr) -> String {
   case expr {
     Var(name, _) -> name
+    App(func, args, _) -> {
+      let func_str = case func {
+        Var(n, _) -> n
+        _ -> "_"
+      }
+      let args_str = list.map(args, fn(arg) { expr_to_type_string(arg) }) |> string.join(", ")
+      func_str <> "(" <> args_str <> ")"
+    }
     Int(n, _) -> int.to_string(n)
     _ -> "Unknown"
   }

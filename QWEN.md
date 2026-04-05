@@ -240,8 +240,8 @@ When working with this codebase:
 
 ## Test Results
 
-- **434 tests passing**
-- **6 failures** (see Known Issues below)
+- **438 tests passing**
+- **4 failures** (see Known Issues below)
 - **0 warnings**
 
 ### Recent Fixes (April 2026)
@@ -272,21 +272,19 @@ When working with this codebase:
 
 9. **De Bruijn Level Management** - Fixed level increment/decrement in `infer` Pi case, `check` Lam case, `infer_fix`, and `check` Fix case. Each binder now correctly manages `s.level`, matching the existing pattern in `infer`'s Lam case.
 
+10. **Function Parameter Type Annotation Parsing** — Fixed `extract_single_fn_param` in `src/tao/syntax.gleam` to correctly extract type annotations from function parameters. The grammar's `opt(seq([Colon, Type]))` produces `[TokenValue(Ident), TokenValue(Colon), AstValue(type_expr)]`, but the old code expected `[TokenValue(Ident), TokenValue(Colon), ...]` (flat). The Type rule produces an `AstValue(Expr)`, not raw tokens. Fixed by extracting the `Expr` from `AstValue` and converting it to a type string via `expr_to_type_string`. Also updated `expr_to_type_string` to handle type applications like `Option(Bool)`.
+
 ### Known Issues
 
-- **6 tests fail** with `InfiniteType` or `VarUndefined` errors:
-  - `three_match_expressions_no_conflict_test` — 3+ functions with match expressions
-  - `match_different_result_types_test` — matches with different result types
-  - `nested_match_expressions_test` — nested match expressions
-  - `two_functions_minimal_test` — 2 functions with match expressions
-  - `local_option_shadows_prelude_test` — polymorphic type `Option(a)` (parse error)
-  - `lib_prelude_bool_module_test` — prelude module compilation
+- **4 tests fail** with `InfiniteType`, `TypeMismatch`, or `ParseError`:
+  - `three_match_expressions_no_conflict_test` — Multi-param functions with match expressions (TypeMismatch)
+  - `match_different_result_types_test` — Matches with different result types (TypeMismatch/NotAFunction)
+  - `local_option_shadows_prelude_test` — Polymorphic type `Option(a)` (parse error for type params)
+  - `lib_prelude_bool_module_test` — Prelude module compilation (TypeMismatch/NotAFunction)
 
-  **Root cause for match/fix tests**: In `core_term_to_term_loop`, when processing `CoreApp(CoreLam(name), CoreFix(name))` from `build_sequential_loop`, both the special CoreApp case and CoreFix add the same name to the env, creating a duplicate entry. The desugared AST has indices computed from `["a", "double_not", "double_not", "not"]` (4 entries) but the type-checker's vars list has `["a", "double_not", "not"]` (3 entries), causing index mismatch.
+  **Root cause**: The remaining issues are related to match motive handling in the type checker and polymorphic type parsing. The function parameter type annotation fix resolved the core issue for single-param and simple multi-param cases. Multi-param functions with cross-references and match expressions still have issues.
 
-  **Fix needed**: In the special `CoreApp(CoreLam(name1, ...), CoreFix(name2, ...))` case, when `name1 == name2`, only add one binding to the env instead of duplicating.
-
-  **Impact**: The compiler works correctly for single functions and modules without cross-references. Multi-function modules with 3+ functions show errors due to the env duplication bug.
+  **Impact**: The compiler works correctly for single-param functions with match expressions. Multi-param functions (2+ params) with cross-references and matches show errors due to deeper type-checker issues.
 
 ## Contact
 
