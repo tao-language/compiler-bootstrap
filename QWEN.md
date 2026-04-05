@@ -261,16 +261,21 @@ When working with this codebase:
 
 ### Known Issues
 
-- **lib_prelude_bool_module_test fails with 4 type errors** — The `test/lib/prelude/bool_test.gleam` test expects the `lib/prelude/bool.tao` module to type-check without errors, but 4 errors remain:
-  - `InfiniteType(0, VNeut(HHole(0), []))` (x2) — Hole 0 is unified with itself during type-checking of function applications
-  - `VarUndefined(11, ...)` and `VarUndefined(15, ...)` — De Bruijn indices out of bounds during type-checking
+### Known Issues
 
-  **Three fixes applied** (commit 244e190):
-  1. Nullary constructor `arg_ty`: `Unit` (evaluates to `VUnit`) → `Typ(0)` (evaluates to `VTyp(0)`) — eliminates `TypeMismatch(VTyp(0), VUnit)` errors
-  2. `annotated_types` passed to `core_term_to_term` via new `core_term_to_term_with_annotations()` — eliminates `VPi(..., VErr, ...)` domain errors  
-  3. Types excluded from `get_public_names` — eliminates incorrect `CoreVar` references in return record
+- **lib_prelude_bool_module_test fails with 2 type errors** — The `test/lib/prelude/bool_test.gleam` test expects the `lib/prelude/bool.tao` module to type-check without errors, but 2 `InfiniteType` errors remain:
+  - `InfiniteType(0, VPi(..., [HVar(4), HVar(3), HVar(2), HVar(1), HVar(0)], ...))` — Hole 0 unified with a VPi type that references itself through its env
+  - `InfiniteType(0, VNeut(HHole(0), []))` — Hole 0 unified with itself
 
-  **Remaining root cause**: De Bruijn index accumulation in `local_scope` across module statements during desugaring. `lookup_var` returns indices based on accumulated scope (names from ALL previous statements), but type-checking context has fewer elements. This is an architectural issue in `desugar_stmts_loop` — each statement should not accumulate `local_scope` from previous statements.
+  **Five fixes applied** (commits 244e190, f7d3533):
+  1. Nullary constructor `arg_ty`: `Unit` → `Typ(0)` — eliminates `TypeMismatch(VTyp(0), VUnit)` errors
+  2. `annotated_types` passed to `core_term_to_term` — eliminates `VPi(..., VErr, ...)` domain errors
+  3. Types excluded from `get_public_names` — eliminates incorrect `CoreVar` references
+  4. Named variables in `desugar_expr_core` — eliminates `VarUndefined` errors by computing indices from env at conversion time
+  5. CoreApp env fix for sequential binding — Fix body sees Lam's param name, matching type-checker context
+
+  **Error progression**: 18+ → 4 (fixes 1-3) → 2 (fixes 4-5)
+  **Remaining**: The 2 `InfiniteType` errors are a pre-existing type-checker issue related to hole unification during function type inference, not related to De Bruijn index computation.
 
 ## Contact
 
