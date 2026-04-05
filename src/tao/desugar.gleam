@@ -495,16 +495,13 @@ pub fn desugar_module_with_ctrs(
   ctx: GlobalContext,
   initial_ctrs: core_ast.CtrEnv,
 ) -> #(core_ast.Term, DesugarContext) {
-  // Merge prelude constructors with any additional initial constructors.
-  // Prelude constructors come first so local definitions can override them.
-  let merged_ctrs = list.append(ctx.prelude_ctrs, initial_ctrs)
-
+  // Use the initial constructor environment (from prelude or parent modules)
   let dc = DesugarContext(
     global: ctx,
     current_module: module.path,
     local_scope: [],
     loop_stack: [],
-    ctrs: merged_ctrs,
+    ctrs: initial_ctrs,
     annotated_types: [],
     hole_counter: -1,
   )
@@ -737,10 +734,13 @@ pub fn desugar_stmt(
 
     StmtImport(import_item, span) -> {
       // Import → let aliases
-      let core_terms = desugar_import(import_item, dc, span)
+      // First, merge the imported module's constructor environment
+      let dc1 = merge_imported_ctr_env(dc, import_item)
+      // Then create the import bindings
+      let core_terms = desugar_import(import_item, dc1, span)
       // Add all bindings to the context
-      let dc1 = add_import_bindings(dc, core_terms)
-      #(core_terms, dc1)
+      let dc2 = add_import_bindings(dc1, core_terms)
+      #(core_terms, dc2)
     }
 
     StmtType(_name, _type_params, _constructors, _span) -> {
@@ -865,6 +865,43 @@ fn get_stmt_span(stmt: Stmt) -> Span {
 // ============================================================================
 // IMPORT DESUGARING
 // ============================================================================
+
+/// Merge the imported module's constructor environment into dc.ctrs.
+/// This makes the imported module's types and constructors available for type-checking.
+fn merge_imported_ctr_env(dc: DesugarContext, import_item: Import) -> DesugarContext {
+  let module_path = case import_item {
+    ImportModule(path, _) -> path
+    ImportAlias(path, _, _) -> path
+    ImportSelective(path, _, _) -> path
+    ImportSelectiveAlias(path, _, _, _) -> path
+    ImportWildcard(path, _) -> path
+  }
+
+  // Look up the imported module's ctr_env
+  case get_module(dc.global, module_path) {
+    Some(module_ref) -> {
+      // Merge the imported module's constructors with existing ones
+      DesugarContext(
+        global: dc.global,
+        current_module: dc.current_module,
+        local_scope: dc.local_scope,
+        loop_stack: dc.loop_stack,
+        ctrs: list.append(dc.ctrs, module_ref.ctr_env),
+        annotated_types: dc.annotated_types,
+        hole_counter: dc.hole_counter,
+      )
+    }
+    None -> dc  // Module not found - continue without merging
+  }
+}
+
+/// Get a module reference from the global context.
+fn get_module(global: GlobalContext, path: String) -> Option(ModuleRef) {
+  case dict.get(global.modules, path) {
+    Ok(mr) -> Some(mr)
+    Error(_) -> None
+  }
+}
 
 /// Create implicit prelude import terms for all registered prelude modules.
 /// This adds wildcard imports (`import path as *`) for each prelude module.
@@ -993,62 +1030,14 @@ pub fn desugar_import(
 }
 
 /// Create a module Record term for a given path.
-/// For prelude modules, create records with actual constructor definitions.
-/// For other modules, create a record with holes for each public name.
+/// All modules use holes for public names - the actual types come from dc.ctrs.
 fn create_module_record(path: String, dc: DesugarContext, span: Span) -> CoreTerm {
-  // Check if this is a prelude module - use prelude constructors from dc.ctrs
-  case string.starts_with(path, "prelude/") {
-    True -> create_prelude_module_record(path, dc, span)
-    False -> {
-      // For non-prelude modules, get the public names and create a Record with holes
-      case get_module_public_names(dc.global, path) {
-        Some(public_names) -> {
-          let fields = create_module_fields(public_names, path, span, 0)
-          CoreRcd(fields, span)
-        }
-        None -> CoreRcd([], span)
-      }
+  case get_module_public_names(dc.global, path) {
+    Some(public_names) -> {
+      let fields = create_module_fields(public_names, path, span, 0)
+      CoreRcd(fields, span)
     }
-  }
-}
-
-/// Create a module record for prelude modules using constructor definitions from dc.ctrs.
-fn create_prelude_module_record(path: String, dc: DesugarContext, span: Span) -> CoreTerm {
-  // Find all constructors belonging to this prelude module
-  let prelude_ctrs = list.filter(dc.ctrs, fn(ctr_pair) {
-    // Include all constructors - the prelude types are defined in the prelude modules
-    True
-  })
-
-  // Build record fields from constructors
-  let ctr_fields = list.flat_map(prelude_ctrs, fn(ctr_pair) {
-    let #(name, ctr_def) = ctr_pair
-    // Create a CoreCtr term for each constructor
-    let arg_term = case ctr_def.arg_ty {
-      // For simple argument types, create appropriate CoreTerm
-      _ -> CoreUnit(span)  // Simplified - full implementation would convert arg_ty
-    }
-    [#(name, CoreCtr(name, arg_term, span))]
-  })
-
-  // Add type names as fields too
-  let type_names = get_prelude_type_names(path)
-  let type_fields = list.map(type_names, fn(name) {
-    #(name, CoreCtr(name, CoreUnit(span), span))
-  })
-
-  CoreRcd(list.append(type_fields, ctr_fields), span)
-}
-
-/// Get the type names defined in a prelude module.
-fn get_prelude_type_names(path: String) -> List(String) {
-  case path {
-    "prelude/bool" -> ["Bool"]
-    "prelude/option" -> ["Option"]
-    "prelude/result" -> ["Result"]
-    "prelude/ordering" -> ["Ordering"]
-    "prelude/list" -> ["List"]
-    _ -> []
+    None -> CoreRcd([], span)
   }
 }
 

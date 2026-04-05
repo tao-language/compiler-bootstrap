@@ -12,15 +12,19 @@
 
 import gleam/dict.{type Dict}
 import gleam/list
+import gleam/int
 import gleam/option.{type Option, Some, None}
+import gleam/result
 import gleam/string
-import tao/ast.{type Module, get_public_names}
+import syntax/grammar.{type ParseResult, type Span, Span}
+import tao/ast.{type Module, Module as ModuleCtr, get_public_names, StmtType, type Stmt, StmtExpr, type Constructor, Constructor as Ctor, type ConstructorField, NamedField, UnnamedField, type TypeAst, TVar, TApp, THole, TFn, TRecord, TTuple}
 import tao/import_ast.{
   ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias,
   ImportWildcard, type Import,
 }
+import tao/syntax.{parse_module, type Expr, TypeDecl, type ConstructorDecl, ConstructorDecl as CtorDecl}
 import core/ast as core_ast
-import syntax/grammar.{Span}
+import simplifile
 
 // ============================================================================
 // GLOBAL CONTEXT
@@ -33,8 +37,6 @@ pub type GlobalContext {
     modules: Dict(String, ModuleRef),
     /// Current module being compiled (for error messages)
     current_module: Option(String),
-    /// Constructor definitions from prelude modules (populated during initialization)
-    prelude_ctrs: core_ast.CtrEnv,
   )
 }
 
@@ -45,6 +47,8 @@ pub type ModuleRef {
     path: String,
     /// Public names exported by this module
     public_names: List(String),
+    /// Constructor definitions from this module's type declarations
+    ctr_env: core_ast.CtrEnv,
     /// Compiled Core term (None = not yet compiled)
     /// Using dynamic to avoid circular dependency with core
     value: Option(Dynamic),
@@ -67,7 +71,6 @@ pub fn new_context() -> GlobalContext {
   GlobalContext(
     modules: dict.new(),
     current_module: None,
-    prelude_ctrs: [],
   )
 }
 
@@ -82,20 +85,32 @@ pub fn get_current_module(ctx: GlobalContext) -> Option(String) {
 }
 
 /// Register a module placeholder in the global context.
-/// This creates a ModuleRef with None value, allowing circular references.
+/// This creates a ModuleRef with empty ctr_env, allowing circular references.
 pub fn register_module(
   ctx: GlobalContext,
   path: String,
   module: Module,
 ) -> GlobalContext {
+  register_module_with_ctr_env(ctx, path, module, [])
+}
+
+/// Register a module with its constructor environment.
+/// The ctr_env should contain type definitions extracted from the module.
+pub fn register_module_with_ctr_env(
+  ctx: GlobalContext,
+  path: String,
+  module: Module,
+  ctr_env: core_ast.CtrEnv,
+) -> GlobalContext {
   let public_names = get_public_names(module.body)
   let module_ref = ModuleRef(
     path: path,
     public_names: public_names,
+    ctr_env: ctr_env,
     value: None,
     source: Some(module),
   )
-  
+
   GlobalContext(
     ..ctx,
     modules: dict.insert(ctx.modules, path, module_ref),
@@ -269,6 +284,153 @@ fn get_directory_modules_loop(
 }
 
 // ============================================================================
+// CONSTRUCTOR ENVIRONMENT EXTRACTION
+// ============================================================================
+
+/// Extract constructor definitions from parsed module expressions.
+/// This processes TypeDecl expressions directly from the parser output.
+pub fn extract_ctr_env_from_exprs(exprs: List(Expr)) -> core_ast.CtrEnv {
+  extract_ctr_env_from_exprs_loop(exprs, [])
+}
+
+fn extract_ctr_env_from_exprs_loop(
+  exprs: List(Expr),
+  acc: core_ast.CtrEnv,
+) -> core_ast.CtrEnv {
+  case exprs {
+    [] -> acc
+    [expr, ..rest] -> {
+      case expr {
+        TypeDecl(name, ctors, span) -> {
+          // Add the type itself as a constructor
+          let type_ctr = #(name, core_ast.CtrDef(
+            params: [],
+            arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)),
+            ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)),
+          ))
+          let new_ctrs = decl_type_to_core_ctrs(name, ctors, span)
+          let all_ctrs = [type_ctr, ..new_ctrs]
+          extract_ctr_env_from_exprs_loop(rest, list.append(acc, all_ctrs))
+        }
+        _ -> extract_ctr_env_from_exprs_loop(rest, acc)
+      }
+    }
+  }
+}
+
+/// Convert a TypeDecl's constructors to Core CtrDefs.
+fn decl_type_to_core_ctrs(
+  type_name: String,
+  ctors: List(ConstructorDecl),
+  span: Span,
+) -> core_ast.CtrEnv {
+  list.map(ctors, fn(ctr) {
+    let CtorDecl(name, _fields, _ctr_span) = ctr
+    // Fields are stored as strings - for now create simple Unit args
+    let arg_ty = core_ast.Typ(0, Span("unit", 0, 0, 0, 0))
+    let ret_ty = core_ast.Ctr(type_name, core_ast.Unit(Span("unit", 0, 0, 0, 0)), span)
+    let ctr_def = core_ast.CtrDef(params: [], arg_ty: arg_ty, ret_ty: ret_ty)
+    #(name, ctr_def)
+  })
+}
+
+/// Build type application: TypeName(param1, param2, ...)
+fn build_type_app(type_name: String, type_params: List(String)) -> core_ast.Term {
+  let span = Span("type_app", 0, 0, 0, 0)
+  core_ast.Ctr(type_name, core_ast.Unit(span), span)
+}
+
+/// Extract constructor definitions from a module's type declarations.
+/// This is used to populate ctr_env when registering modules.
+pub fn extract_ctr_env_from_module(module: Module) -> core_ast.CtrEnv {
+  extract_ctr_env_loop(module.body, [])
+}
+
+fn extract_ctr_env_loop(
+  stmts: List(Stmt),
+  acc: core_ast.CtrEnv,
+) -> core_ast.CtrEnv {
+  case stmts {
+    [] -> acc
+    [stmt, ..rest] -> {
+      case stmt {
+        StmtType(name, type_params, constructors, _span) -> {
+          // Add the type itself as a constructor
+          let type_ctr = #(name, core_ast.CtrDef(
+            params: type_params,
+            arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)),
+            ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)),
+          ))
+          let new_ctrs = tao_type_to_core_ctrs(name, type_params, constructors)
+          let all_ctrs = [type_ctr, ..new_ctrs]
+          extract_ctr_env_loop(rest, list.append(acc, all_ctrs))
+        }
+        _ -> extract_ctr_env_loop(rest, acc)
+      }
+    }
+  }
+}
+
+/// Convert a Tao type definition to Core constructor definitions.
+fn tao_type_to_core_ctrs(
+  type_name: String,
+  type_params: List(String),
+  constructors: List(Constructor),
+) -> core_ast.CtrEnv {
+  list.map(constructors, fn(ctr) {
+    let ctr_def = tao_constructor_to_ctr_def(type_name, type_params, ctr)
+    #(ctr.name, ctr_def)
+  })
+}
+
+/// Convert a Tao constructor to a Core CtrDef.
+fn tao_constructor_to_ctr_def(
+  type_name: String,
+  type_params: List(String),
+  constructor: Constructor,
+) -> core_ast.CtrDef {
+  let Ctor(_name, fields, _span) = constructor
+
+  let arg_ty = case fields {
+    [] -> core_ast.Typ(0, Span("unit", 0, 0, 0, 0))
+    [field] -> constructor_field_to_type(field)
+    fields -> {
+      let field_types = list.index_map(fields, fn(field, index) {
+        case field {
+          UnnamedField(t) -> #("field_" <> int.to_string(index), type_ast_to_core(t))
+          NamedField(name, t) -> #(name, type_ast_to_core(t))
+        }
+      })
+      core_ast.Rcd(field_types, Span("rcd", 0, 0, 0, 0))
+    }
+  }
+
+  let ret_ty = build_type_app(type_name, type_params)
+
+  core_ast.CtrDef(params: type_params, arg_ty: arg_ty, ret_ty: ret_ty)
+}
+
+/// Convert a constructor field to a Core type.
+fn constructor_field_to_type(field: ConstructorField) -> core_ast.Term {
+  case field {
+    UnnamedField(t) -> type_ast_to_core(t)
+    NamedField(_name, t) -> type_ast_to_core(t)
+  }
+}
+
+/// Convert a Tao type AST to a Core term.
+fn type_ast_to_core(t: TypeAst) -> core_ast.Term {
+  case t {
+    TVar(name) -> core_ast.Ctr(name, core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("type", 0, 0, 0, 0))
+    TApp(name, _args) -> core_ast.Ctr(name, core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("type", 0, 0, 0, 0))
+    TFn(_, _) -> core_ast.Typ(1, Span("fn", 0, 0, 0, 0))
+    TRecord(_) -> core_ast.Typ(0, Span("rcd", 0, 0, 0, 0))
+    TTuple(_) -> core_ast.Typ(0, Span("tuple", 0, 0, 0, 0))
+    THole -> core_ast.Hole(0, Span("hole", 0, 0, 0, 0))
+  }
+}
+
+// ============================================================================
 // ERROR HANDLING
 // ============================================================================
 
@@ -277,6 +439,7 @@ pub fn error_module_ref(path: String, _error: String) -> ModuleRef {
   ModuleRef(
     path: path,
     public_names: [],
+    ctr_env: [],
     value: None,
     source: None,
   )
@@ -299,92 +462,69 @@ pub fn register_error_module(
 // INITIALIZATION
 // ============================================================================
 
-/// Initialize global context with prelude modules.
+/// Initialize global context with prelude modules by reading their source files.
+/// This extracts type definitions from prelude source files and registers them,
+/// avoiding any hardcoded prelude knowledge in the compiler.
 pub fn with_prelude(ctx: GlobalContext) -> GlobalContext {
-  // Define prelude constructor environments.
-  // This is the ONE place where prelude type definitions are specified.
-  // All other code should use ctx.prelude_ctrs to look up constructors.
-  let prelude_ctrs: core_ast.CtrEnv = [
-    // prelude/bool
-    #("Bool", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)))),
-    #("True", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Bool", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("bool", 0, 0, 0, 0)))),
-    #("False", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Bool", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("bool", 0, 0, 0, 0)))),
-    // prelude/option
-    #("Option", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)))),
-    #("Some", core_ast.CtrDef(params: [], arg_ty: core_ast.Hole(0, Span("some_arg", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Option", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("option", 0, 0, 0, 0)))),
-    #("None", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Option", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("option", 0, 0, 0, 0)))),
-    // prelude/result
-    #("Result", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)))),
-    #("Ok", core_ast.CtrDef(params: [], arg_ty: core_ast.Hole(0, Span("ok_arg", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Result", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("result", 0, 0, 0, 0)))),
-    #("Err", core_ast.CtrDef(params: [], arg_ty: core_ast.Hole(0, Span("err_arg", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Result", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("result", 0, 0, 0, 0)))),
-    // prelude/ordering
-    #("Ordering", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)))),
-    #("LT", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Ordering", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("ordering", 0, 0, 0, 0)))),
-    #("EQ", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Ordering", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("ordering", 0, 0, 0, 0)))),
-    #("GT", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("Ordering", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("ordering", 0, 0, 0, 0)))),
-    // prelude/list
-    #("List", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)))),
-    #("Cons", core_ast.CtrDef(params: [], arg_ty: core_ast.Hole(0, Span("cons_arg", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("List", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("list", 0, 0, 0, 0)))),
-    #("Nil", core_ast.CtrDef(params: [], arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)), ret_ty: core_ast.Ctr("List", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("list", 0, 0, 0, 0)))),
+  // List of prelude module paths (relative to lib/)
+  let prelude_paths = [
+    "prelude/bool",
+    "prelude/option",
+    "prelude/result",
+    "prelude/ordering",
+    "prelude/list",
   ]
 
-  // Register prelude modules as placeholders with their full paths
-  // Each module has its own path (e.g., "prelude/bool", "prelude/option")
-  let bool_ref = ModuleRef(
-    path: "prelude/bool",
-    public_names: ["Bool", "True", "False", "not", "and", "or", "xor", "to_int", "from_int", "to_string"],
+  // Register each prelude module by reading and parsing its source file
+  register_prelude_modules_loop(ctx, prelude_paths)
+}
+
+fn register_prelude_modules_loop(
+  ctx: GlobalContext,
+  paths: List(String),
+) -> GlobalContext {
+  case paths {
+    [] -> ctx
+    [path, ..rest] -> {
+      let file_path = "lib/" <> path <> ".tao"
+      case simplifile.read(file_path) {
+        Ok(source) -> {
+          let parse_result = parse_module(source, path <> ".tao")
+          let ctr_env = extract_ctr_env_from_exprs(parse_result.ast)
+          // Create a minimal module with just the type info
+          let module = ModuleCtr(path, [], Span(path, 0, 0, 0, 0))
+          let ctx1 = register_module_with_ctr_env(ctx, path, module, ctr_env)
+          register_prelude_modules_loop(ctx1, rest)
+        }
+        Error(_) -> {
+          // If file not found, register placeholder
+          let ctx1 = register_module_placeholder(ctx, path)
+          register_prelude_modules_loop(ctx1, rest)
+        }
+      }
+    }
+  }
+}
+
+/// Register a prelude module placeholder when source file is not available.
+fn register_module_placeholder(ctx: GlobalContext, path: String) -> GlobalContext {
+  let public_names = case path {
+    "prelude/bool" -> ["Bool", "True", "False", "not", "and", "or", "xor", "to_int", "from_int", "to_string"]
+    "prelude/option" -> ["Option", "Some", "None", "is_some", "is_none", "unwrap", "map", "and_then", "unwrap_or"]
+    "prelude/result" -> ["Result", "Ok", "Err", "is_ok", "is_err", "unwrap", "map", "and_then", "unwrap_or"]
+    "prelude/ordering" -> ["Ordering", "LT", "EQ", "GT", "compare", "reverse"]
+    "prelude/list" -> ["List", "Cons", "Nil", "head", "tail", "is_empty", "length", "map", "fold"]
+    _ -> []
+  }
+  let module_ref = ModuleRef(
+    path: path,
+    public_names: public_names,
+    ctr_env: [],
     value: None,
     source: None,
-  )
-
-  let option_ref = ModuleRef(
-    path: "prelude/option",
-    public_names: ["Option", "Some", "None", "is_some", "is_none", "unwrap", "map", "and_then", "unwrap_or"],
-    value: None,
-    source: None,
-  )
-
-  let result_ref = ModuleRef(
-    path: "prelude/result",
-    public_names: ["Result", "Ok", "Err", "is_ok", "is_err", "unwrap", "map", "and_then", "unwrap_or"],
-    value: None,
-    source: None,
-  )
-
-  let ordering_ref = ModuleRef(
-    path: "prelude/ordering",
-    public_names: ["Ordering", "LT", "EQ", "GT", "compare", "reverse"],
-    value: None,
-    source: None,
-  )
-
-  let list_ref = ModuleRef(
-    path: "prelude/list",
-    public_names: ["List", "Cons", "Nil", "head", "tail", "is_empty", "length", "map", "fold"],
-    value: None,
-    source: None,
-  )
-
-  // Insert all prelude modules
-  let ctx1 = GlobalContext(
-    ..ctx,
-    modules: dict.insert(ctx.modules, "prelude/bool", bool_ref),
-  )
-  let ctx2 = GlobalContext(
-    ..ctx1,
-    modules: dict.insert(ctx1.modules, "prelude/option", option_ref),
-  )
-  let ctx3 = GlobalContext(
-    ..ctx2,
-    modules: dict.insert(ctx2.modules, "prelude/result", result_ref),
-  )
-  let ctx4 = GlobalContext(
-    ..ctx3,
-    modules: dict.insert(ctx3.modules, "prelude/ordering", ordering_ref),
   )
   GlobalContext(
-    ..ctx4,
-    modules: dict.insert(ctx4.modules, "prelude/list", list_ref),
-    prelude_ctrs: prelude_ctrs,
+    ..ctx,
+    modules: dict.insert(ctx.modules, path, module_ref),
   )
 }
