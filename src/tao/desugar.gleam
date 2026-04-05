@@ -1404,18 +1404,12 @@ fn desugar_expr_core(
 ) -> #(CoreTerm, DesugarContext) {
   case expr {
     ast.Var(name, span) -> {
-      // Variable reference - look up in scope for De Bruijn index
-      case lookup_var(dc, name) {
-        Some(index) -> {
-          // Bound variable - use De Bruijn index directly
-          // The index is stored in the CoreVar name as "idx"
-          #(CoreVar(int.to_string(index), span), dc)
-        }
-        None -> {
-          // Free variable - keep as named variable (will be error)
-          #(CoreVar(name, span), dc)
-        }
-      }
+      // KEY FIX: Always use named variables. The De Bruijn index is computed
+      // during `core_term_to_term_loop` from the `env` structure, which correctly
+      // mirrors the type-checker's context (including all enclosing lambdas/fixes).
+      // Previously, indices were pre-computed here against `local_scope`, which
+      // accumulated across statements and didn't match the type-checker's context.
+      #(CoreVar(name, span), dc)
     }
     
     ast.Lit(tao_lit, span) -> {
@@ -2486,10 +2480,25 @@ fn core_term_to_term_loop(
       )
     }
     CoreApp(fun, arg, span) -> {
+      // KEY FIX: For sequential binding of module-level functions
+      // (build_sequential_loop creates CoreApp(CoreLam(name, ..., body), CoreFix(name, ...))),
+      // the Fix body must see the Lam's param name in addition to the Fix's own name.
+      // The type-checker's context has both names (from the sequential Lam and the Fix).
+      //
+      // We add ONLY the Lam's param name here. The Fix's name is added by CoreFix processing.
+      // This gives exactly TWO names in the Fix body env: [fix_name, param_name, ...outer].
+      //
+      // IMPORTANT: Only apply this when the arg is a CoreFix. For regular applications
+      // like f(x) or x + y, the arg should NOT see the fun's param name.
+      let arg_env = case fun, arg {
+        CoreLam(param_name, _, _, _), CoreFix(_, _, _) ->
+          [param_name, ..env]
+        _, _ -> env
+      }
       core_ast.App(
         fun: core_term_to_term_loop(fun, env, annotated_types),
         implicit: [],
-        arg: core_term_to_term_loop(arg, env, annotated_types),
+        arg: core_term_to_term_loop(arg, arg_env, annotated_types),
         span: span,
       )
     }
