@@ -514,9 +514,15 @@ pub fn desugar_module_with_ctrs(
   let annotated_types = collect_annotated_types(module.body, dc_with_types, module.span)
   let dc_with_annotated_types = DesugarContext(..dc_with_types, annotated_types: annotated_types, hole_counter: dc_with_types.hole_counter)
 
-  // Create implicit prelude imports for all registered prelude modules
-  // These imports add prelude types and functions to the local scope
-  let prelude_imports = create_implicit_prelude_imports(dc.global, module.span)
+  // Create implicit prelude imports ONLY if the module doesn't define its own types.
+  // Modules that define their own types (like `type Bool = True | False`) don't need
+  // prelude types - the local types shadow them. Adding prelude imports in this case
+  // creates empty records that interfere with type-checking.
+  let has_type_defs = has_type_definitions(module.body)
+  let prelude_imports = case has_type_defs {
+    True -> []  // Skip implicit prelude imports for self-contained modules
+    False -> create_implicit_prelude_imports(dc.global, module.span)
+  }
 
   // Check if the last statement is an expression (for expression-style modules)
   let last_is_expr = is_last_stmt_expr(module.body)
@@ -590,6 +596,15 @@ fn get_last_stmt(list: List(Stmt)) -> Stmt {
     [] -> StmtExpr(ExprVar("__error__", Span("error", 0, 0, 0, 0)), Span("error", 0, 0, 0, 0))
     [x] -> x
     [_x, ..rest] -> get_last_stmt(rest)
+  }
+}
+
+/// Check if a module body contains type definitions.
+fn has_type_definitions(stmts: List(Stmt)) -> Bool {
+  case stmts {
+    [] -> False
+    [StmtType(_, _, _, _), ..] -> True
+    [_, ..rest] -> has_type_definitions(rest)
   }
 }
 
@@ -1858,14 +1873,14 @@ fn desugar_match(
   let #(core_cases, dc2) = desugar_match_clauses_to_cases(clauses, span, dc1)
 
   // Build Core Match term
-  // For non-dependent matches, use a hole motive that will be unified with the result type.
-  // The hole ID -999 is used as a placeholder - the type checker will unify it with the
-  // actual result type inferred from the clause bodies.
-  // Using a large negative ID to avoid conflicts with type checker's hole counter.
-  let motive = CoreLam("_", None, CoreHole(-999, span), span)
+  // KEY FIX: Use a unique hole ID for the motive instead of a hardcoded -999.
+  // Each match expression gets its own hole ID from the dc's hole_counter,
+  // preventing unification conflicts when multiple matches exist in the same module.
+  let #(motive_hole, dc3) = core_hole(dc2, span)
+  let motive = CoreLam("_", None, motive_hole, span)
   let core_match = CoreMatchCore(core_scrutinee, motive, core_cases, span)
 
-  #(core_match, dc2)
+  #(core_match, dc3)
 }
 
 /// Desugar match clauses to Core Cases.
