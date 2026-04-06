@@ -753,7 +753,11 @@ fn infer_fix(
       // after evaluation, which causes unification cycles (InfiniteType errors).
       let #(fresh_ann_ty, _counter) = freshen_annotation(ann_ty, 0)
       let ann_ty_val = eval.eval(s.ffi, env, fresh_ann_ty)
-      let #(_fresh, s) = def_var(s, name, ann_ty_val)
+      // NOTE: Do NOT call def_var here. The sequential Lam wrapper (from
+      // build_sequential_loop in the desugaring layer) already binds `name`
+      // to the same type. Calling def_var here would add a DUPLICATE entry,
+      // shifting all De Bruijn indices in the Fix body and causing type
+      // mismatches for modules with 3+ functions.
       // Increment level for the body - it's in the scope of the fix-bound name
       let s = state.State(..s, level: s.level + 1)
       let #(body_val, s) = check(s, lam, ann_ty_val, span)
@@ -767,7 +771,8 @@ fn infer_fix(
     }
     _ -> {
       let #(result_ty_hole, s) = new_hole(s)
-      let #(_fresh, s) = def_var(s, name, result_ty_hole)
+      // NOTE: Do NOT call def_var here. The sequential Lam wrapper already
+      // binds `name` (to a hole as well, since there's no annotation).
       // Increment level for the body - it's in the scope of the fix-bound name
       let s = state.State(..s, level: s.level + 1)
       let #(body_val, s) = check(s, body, result_ty_hole, span)
@@ -1032,10 +1037,8 @@ pub fn check(
 ) -> #(ast.Value, state.State) {
   case term {
     ast.Fix(name, body, span) -> {
-      // KEY FIX: For annotated Fix, use annotation type for def_var, not expected_ty.
-      // This ensures the fix-bound name has the correct function type, not just the
-      // return type. Without this, cross-references between functions would see
-      // incorrect types (e.g., Bool instead of Bool -> Bool -> Bool).
+      // For annotated Fix, use annotation type for def_var, not expected_ty.
+      // This ensures the fix-bound name has the correct function type.
       case body {
         ast.Ann(_, ann_ty, _) -> {
           let #(fresh_ann_ty, _counter) = freshen_annotation(ann_ty, 0)

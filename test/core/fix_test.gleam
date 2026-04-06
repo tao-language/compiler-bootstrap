@@ -68,8 +68,12 @@ fn fix(name, body, span) {
 pub fn fix_parse_simple_test() {
   // fix f -> f should parse and type-check
   // This is the identity function via fixpoint
-  let body = var(0, s0)  // f refers to the fixpoint itself
-  let term = fix("f", body, s1)
+  // Note: Fix terms must be wrapped in a sequential Lam to bind the name,
+  // matching the structure produced by build_sequential_loop for Tao modules.
+  let f_body = var(0, s0)  // f refers to the fixpoint itself (bound by Lam)
+  let f_lam = lam("f", f_body, s1)
+  let f_fix = fix("f", f_body, s1)
+  let term = app(f_lam, f_fix, s1)
   let #(_val, _ty, s) = infer(state.initial_state, term)
   // Should type-check with no errors
   let error_count = list.length(s.errors)
@@ -132,8 +136,11 @@ pub fn fix_quote_roundtrip_test() {
 
 pub fn fix_occurs_check_test() {
   // Fixpoint should not cause infinite loops in occurs check
-  let body = var(0, s0)
-  let term = fix("f", body, s1)
+  // Note: Fix terms must be wrapped in a sequential Lam to bind the name.
+  let f_body = var(0, s0)  // f refers to the fixpoint itself
+  let f_lam = lam("f", f_body, s1)
+  let f_fix = fix("f", f_body, s1)
+  let term = app(f_lam, f_fix, s1)
   let #(_val, _ty, s) = infer(state.initial_state, term)
   // Should complete without infinite loop
   let completed = True

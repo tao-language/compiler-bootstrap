@@ -249,9 +249,13 @@ pub fn fix_self_reference_level_test() {
   // Annotation: Pi(x: A, A)
   let pi_type = pi("x", a_type, a_type, s0)
   let ann_lam = ann(x_lam, pi_type, s0)
+  // Fix terms must be wrapped in sequential Lam for name binding.
+  // Structure: App(Lam("f", Pi, Fix("f", Ann(...))), Fix("f", Ann(...)))
+  let outer_lam = lam("f", pi_type, fix("f", ann_lam, s0), s0)
   let fix_term = fix("f", ann_lam, s0)
+  let full_term = app(outer_lam, fix_term, s0)
 
-  let #(_val, _ty, s) = infer(state.initial_state, fix_term)
+  let #(_val, _ty, s) = infer(state.initial_state, full_term)
 
   let has_errors = list.length(s.errors) > 0
   has_errors |> should.equal(False)
@@ -267,9 +271,9 @@ pub fn two_sequential_fixes_level_test() {
 
   // f = fix f -> lam x -> x
   let x_var_f = var(0, s0)
-  let f_lam = lam("x", a_type, x_var_f, s0)
+  let f_lam_body = lam("x", a_type, x_var_f, s0)
   let f_pi = pi("x", a_type, a_type, s0)
-  let f_ann = ann(f_lam, f_pi, s0)
+  let f_ann = ann(f_lam_body, f_pi, s0)
   let f_fix = fix("f", f_ann, s0)
 
   // g = fix g -> lam y -> f y
@@ -277,14 +281,17 @@ pub fn two_sequential_fixes_level_test() {
   let f_var_g = var(2, s0)
   let y_var_g = var(0, s0)
   let app_fy = app(f_var_g, y_var_g, s0)
-  let g_lam = lam("y", a_type, app_fy, s0)
+  let g_lam_body = lam("y", a_type, app_fy, s0)
   let g_pi = pi("y", a_type, a_type, s0)
-  let g_ann = ann(g_lam, g_pi, s0)
+  let g_ann = ann(g_lam_body, g_pi, s0)
   let g_fix = fix("g", g_ann, s0)
 
-  // Wrap: App(Lam("f", ..., App(Lam("g", ..., result), g_fix)), f_fix)
-  // For simplicity, just test g_fix in the context of f
-  let outer_lam = lam("f", f_pi, g_fix, s0)
+  // Sequential structure matching build_sequential_loop:
+  // App(Lam("f", Pi_f, App(Lam("g", Pi_g, result), Fix("g"))), Fix("f"))
+  let result = ast.Rcd([#("f", var(1, s0)), #("g", var(0, s0))], s0)
+  let inner_lam = lam("g", g_pi, result, s0)
+  let inner_app = app(inner_lam, g_fix, s0)
+  let outer_lam = lam("f", f_pi, inner_app, s0)
   let full_term = app(outer_lam, f_fix, s0)
 
   let #(_val, _ty, s) = infer(state.initial_state, full_term)
