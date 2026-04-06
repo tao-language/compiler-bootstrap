@@ -285,9 +285,13 @@ When working with this codebase:
   - `local_option_shadows_prelude_test` — Polymorphic type `Option(a)` (parse error for type params)
   - `lib_prelude_bool_module_test` — Prelude bool module compilation (TypeMismatch/NotAFunction)
 
-  **Root cause**: The type-checker's handling of sequential function definitions with cross-references produces incorrect types for referenced functions. When `xor` calls `or`, `or`'s type in the environment is `Bool` instead of `Bool -> Bool -> Bool`. This traces to `check_ctr_def` and how module-level `Fix(App(...))` structures are processed. The annotation fix in `check` (Fix #11) was a necessary correction but didn't resolve the deeper issue.
+  **Root cause**: Two distinct issues:
+  1. **4 failures**: Multi-function cross-reference type mismatch. When `xor` calls `or`, `or`'s type in the environment is `Bool` instead of `Bool -> Bool -> Bool`. This traces to `check_ctr_def` and how module-level `App(Lam, Fix)` structures are processed. The annotation is on the Lam, not the Fix body, so `check`'s Fix handling doesn't get the correct type. See detailed analysis in `docs/plans/remaining-failures-analysis.md`.
+  2. **1 failure**: TypeDecl grammar doesn't support polymorphic type parameters. `type Option(a) = Some(a) | None` fails to parse.
 
-  **Impact**: The compiler works correctly for single-function modules and simple multi-function modules without cross-references. Multi-function modules with cross-references and match expressions show type errors.
+  **Impact**: The compiler works correctly for single-function modules and simple multi-function modules without cross-references. Multi-function modules with cross-references and match expressions show type errors. Polymorphic type declarations cannot be parsed.
+
+  **Next steps**: Fix TypeDecl grammar (straightforward), then debug multi-function issue with targeted logging.
 
 ## Contact
 
