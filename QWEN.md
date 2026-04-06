@@ -274,17 +274,20 @@ When working with this codebase:
 
 10. **Function Parameter Type Annotation Parsing** — Fixed `extract_single_fn_param` in `src/tao/syntax.gleam` to correctly extract type annotations from function parameters. The grammar's `opt(seq([Colon, Type]))` produces `[TokenValue(Ident), TokenValue(Colon), AstValue(type_expr)]`, but the old code expected `[TokenValue(Ident), TokenValue(Colon), ...]` (flat). The Type rule produces an `AstValue(Expr)`, not raw tokens. Fixed by extracting the `Expr` from `AstValue` and converting it to a type string via `expr_to_type_string`. Also updated `expr_to_type_string` to handle type applications like `Option(Bool)`.
 
+11. **Annotated Fix Type in `check`** — Modified `check` for `Fix` to detect annotated bodies (`Ann(_, ann_ty, _)`) and use the annotation type for `def_var` instead of `expected_ty`. This ensures fix-bound names have the full function type (e.g., `Bool -> Bool -> Bool`) rather than just the return type. This did not resolve the remaining failures, indicating a deeper issue in how sequential function definitions accumulate types.
+
 ### Known Issues
 
-- **4 tests fail** with `InfiniteType`, `TypeMismatch`, or `ParseError`:
-  - `three_match_expressions_no_conflict_test` — Multi-param functions with match expressions (TypeMismatch)
+- **5 tests fail** with `TypeMismatch`, `NotAFunction`, or `ParseError`:
+  - `three_match_expressions_no_conflict_test` — Multi-function cross-referencing types (TypeMismatch/NotAFunction)
   - `match_different_result_types_test` — Matches with different result types (TypeMismatch/NotAFunction)
+  - `match_different_types_test` — Constructor resolution test (AssertionError)
   - `local_option_shadows_prelude_test` — Polymorphic type `Option(a)` (parse error for type params)
-  - `lib_prelude_bool_module_test` — Prelude module compilation (TypeMismatch/NotAFunction)
+  - `lib_prelude_bool_module_test` — Prelude bool module compilation (TypeMismatch/NotAFunction)
 
-  **Root cause**: The remaining issues are related to match motive handling in the type checker and polymorphic type parsing. The function parameter type annotation fix resolved the core issue for single-param and simple multi-param cases. Multi-param functions with cross-references and match expressions still have issues.
+  **Root cause**: The type-checker's handling of sequential function definitions with cross-references produces incorrect types for referenced functions. When `xor` calls `or`, `or`'s type in the environment is `Bool` instead of `Bool -> Bool -> Bool`. This traces to `check_ctr_def` and how module-level `Fix(App(...))` structures are processed. The annotation fix in `check` (Fix #11) was a necessary correction but didn't resolve the deeper issue.
 
-  **Impact**: The compiler works correctly for single-param functions with match expressions. Multi-param functions (2+ params) with cross-references and matches show errors due to deeper type-checker issues.
+  **Impact**: The compiler works correctly for single-function modules and simple multi-function modules without cross-references. Multi-function modules with cross-references and match expressions show type errors.
 
 ## Contact
 

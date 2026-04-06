@@ -1032,15 +1032,35 @@ pub fn check(
 ) -> #(ast.Value, state.State) {
   case term {
     ast.Fix(name, body, span) -> {
-      // Fixpoint with expected type: use the expected type instead of creating a hole
-      let env = get_env(s)
-      let #(_fresh, s) = def_var(s, name, expected_ty)
-      // Increment level for the body - it's in the scope of the fix-bound name
-      let s = state.State(..s, level: s.level + 1)
-      let #(body_val, s) = check(s, body, expected_ty, span)
-      let s = state.State(..s, level: s.level - 1)
-      let fix_val = ast.VFix(name, env, body)
-      #(fix_val, s)
+      // KEY FIX: For annotated Fix, use annotation type for def_var, not expected_ty.
+      // This ensures the fix-bound name has the correct function type, not just the
+      // return type. Without this, cross-references between functions would see
+      // incorrect types (e.g., Bool instead of Bool -> Bool -> Bool).
+      case body {
+        ast.Ann(_, ann_ty, _) -> {
+          let #(fresh_ann_ty, _counter) = freshen_annotation(ann_ty, 0)
+          let ann_ty_val = eval.eval(s.ffi, get_env(s), fresh_ann_ty)
+          let env = get_env(s)
+          let #(_fresh, s) = def_var(s, name, ann_ty_val)
+          // Increment level for the body - it's in the scope of the fix-bound name
+          let s = state.State(..s, level: s.level + 1)
+          let #(body_val, s) = check(s, body, ann_ty_val, span)
+          let s = state.State(..s, level: s.level - 1)
+          let fix_val = ast.VFix(name, env, body)
+          #(fix_val, s)
+        }
+        _ -> {
+          // No annotation: use expected type
+          let env = get_env(s)
+          let #(_fresh, s) = def_var(s, name, expected_ty)
+          // Increment level for the body - it's in the scope of the fix-bound name
+          let s = state.State(..s, level: s.level + 1)
+          let #(body_val, s) = check(s, body, expected_ty, span)
+          let s = state.State(..s, level: s.level - 1)
+          let fix_val = ast.VFix(name, env, body)
+          #(fix_val, s)
+        }
+      }
     }
     ast.Lam(implicit, param, body, span) -> {
       case expected_ty {
