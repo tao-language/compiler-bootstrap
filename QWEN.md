@@ -240,8 +240,8 @@ When working with this codebase:
 
 ## Test Results
 
-- **438 tests passing**
-- **4 failures** (see Known Issues below)
+- **439 tests passing**
+- **5 failures** (see Known Issues below)
 - **0 warnings**
 
 ### Recent Fixes (April 2026)

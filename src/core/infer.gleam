@@ -492,8 +492,8 @@ fn extract_motive_result_type(s: state.State, motive_val: ast.Value, motive_ty: 
     ast.VLam(_, _, env, body_term) -> {
       // Motive is a lambda - the body should be the result type (or a hole placeholder)
       case body_term {
-        ast.Hole(-999, _) -> {
-          // Hole placeholder - create a fresh hole for the result type
+        ast.Hole(id, _) if id < 0 -> {
+          // Negative hole placeholder from desugarer - create a fresh hole for the result type
           // This hole will be unified with the actual result type from case bodies
           let #(hole_ty, new_s) = new_hole(s)
           #(hole_ty, new_s)
@@ -552,12 +552,12 @@ fn solve_motive_hole(s: state.State, motive_val: ast.Value, result_ty: ast.Type)
   // Extract the body term from the motive lambda
   case motive_val {
     ast.VLam(_, _, env, body_term) -> {
-      // If the body is a hole -999, solve it with the result type
+      // If the body is a negative hole (from desugarer), solve it with the result type
       case body_term {
-        ast.Hole(hole_id, _) if hole_id == -999 -> {
+        ast.Hole(hole_id, _) if hole_id < 0 -> {
           // Convert result type to value for substitution
           let result_val = eval.eval(s.ffi, env, result_ty_to_term(result_ty))
-          // Add substitution: hole -999 = result_val
+          // Add substitution: hole = result_val
           state.State(..s, subst: [ #(hole_id, result_val), ..s.subst ])
         }
         _ -> s

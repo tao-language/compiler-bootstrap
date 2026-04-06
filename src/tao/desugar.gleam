@@ -1356,12 +1356,20 @@ fn desugar_expr_core(
 ) -> #(CoreTerm, DesugarContext) {
   case expr {
     ast.Var(name, span) -> {
-      // KEY FIX: Always use named variables. The De Bruijn index is computed
-      // during `core_term_to_term_loop` from the `env` structure, which correctly
-      // mirrors the type-checker's context (including all enclosing lambdas/fixes).
-      // Previously, indices were pre-computed here against `local_scope`, which
-      // accumulated across statements and didn't match the type-checker's context.
-      #(CoreVar(name, span), dc)
+      // KEY FIX: Check if this is a known constructor (not shadowed by a local variable).
+      // The Tao parser doesn't distinguish between variables and constructors — both
+      // are parsed as Var(name). We need to resolve this during desugaring.
+      let is_local = list.any(dc.local_scope, fn(n) { n == name })
+      case is_local {
+        False -> {
+          // Not a local variable — check if it's a known constructor
+          case list.key_find(dc.ctrs, name) {
+            Ok(_) -> #(CoreCtr(name, CoreUnit(span), span), dc)
+            Error(_) -> #(CoreVar(name, span), dc)
+          }
+        }
+        True -> #(CoreVar(name, span), dc)
+      }
     }
     
     ast.Lit(tao_lit, span) -> {
@@ -1709,6 +1717,8 @@ fn build_function_type(
     [] -> return_ty
     [param, ..rest] -> {
       // Build domain type from parameter annotation (or unique hole if no annotation)
+      // KEY FIX: Use dc (current context) for each param, and pass dc1 to recursive call
+      // to ensure hole counter is properly threaded through
       let #(domain_ty, dc1) = case param.type_annotation {
         Some(ty_ast) -> build_core_type_from_ast(ty_ast, dc, span)
         None -> core_hole(dc, span)  // Placeholder hole with unique ID
