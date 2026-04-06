@@ -240,7 +240,7 @@ When working with this codebase:
 
 ## Test Results
 
-- **439 tests passing**
+- **444 tests passing**
 - **5 failures** (see Known Issues below)
 - **0 warnings**
 
@@ -280,17 +280,20 @@ When working with this codebase:
 
 ### Known Issues
 
-- **4 tests fail** with `TypeMismatch` or `NotAFunction`:
+- **5 tests fail** with `TypeMismatch` or `NotAFunction`:
   - `three_match_expressions_no_conflict_test` — Multi-function cross-referencing types (TypeMismatch/NotAFunction)
   - `match_different_result_types_test` — Matches with different result types (TypeMismatch/NotAFunction)
   - `match_different_types_test` — Constructor resolution test (AssertionError)
+  - `three_fn_chain_xref_test` — 3+ function chain cross-reference (TypeMismatch)
   - `lib_prelude_bool_module_test` — Prelude bool module compilation (TypeMismatch/NotAFunction)
 
-  **Root cause**: Multi-function cross-reference type mismatch. When `xor` calls `or`, `or`'s type in the environment is `Bool` instead of `Bool -> Bool -> Bool`. This traces to `check_ctr_def` and how module-level `App(Lam, Fix)` structures are processed. The annotation is on the Lam, not the Fix body, so `check`'s Fix handling doesn't get the correct type. See detailed analysis in `docs/plans/remaining-failures-analysis.md`.
+  **Root cause**: The desugaring of sequential function definitions creates nested `App(Lam, Fix)` structures. The `infer(Lam)` always wraps the body type in a `Pi`, adding an extra function type layer for each binding. With 3+ functions, these layers accumulate causing type mismatches. Single and 2-function modules work correctly because the hole unification resolves before the nesting becomes problematic.
 
-  **Impact**: The compiler works correctly for single-function modules and simple multi-function modules without cross-references. Multi-function modules with cross-references and match expressions show type errors. Polymorphic type declarations now work correctly.
+  **Impact**: The compiler works correctly for modules with up to 2 functions. Modules with 3+ cross-referencing functions show type errors. The core language lacks an `ast.Let` node, which would be needed to fix this properly.
 
-  **Next steps**: Debug multi-function issue with targeted logging in `check` function.
+  **Detailed analysis**: See `docs/plans/remaining-failures-analysis.md`.
+
+  **Next steps**: Add `ast.Let` to core/ast and update `core_term_to_term_loop` and type-checker to handle it.
 
 ## Contact
 
