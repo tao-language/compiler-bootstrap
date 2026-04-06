@@ -203,6 +203,7 @@ fn occurs_in_term(id: Int, term: ast.Term) -> Bool {
     ast.Call(_, args, _) -> list.any(args, occurs_in_term(id, _))
     ast.Comptime(inner, _) -> occurs_in_term(id, inner)
     ast.Fix(_, body, _) -> occurs_in_term(id, body)
+    ast.Let(_, value, body, _) -> occurs_in_term(id, value) || occurs_in_term(id, body)
   }
 }
 

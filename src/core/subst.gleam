@@ -218,6 +218,17 @@ fn free_holes_term(term: ast.Term, seen: List(Int), acc: List(Int)) -> List(Int)
       let motive_holes = free_holes_term(motive, seen, arg_holes)
       free_holes_cases(cases, seen, motive_holes)
     }
+    ast.Let(_, value, body, _) -> {
+      let val_holes = free_holes_term(value, seen, acc)
+      free_holes_term(body, seen, val_holes)
+    }
+    ast.Fix(_, body, _) -> free_holes_term(body, seen, acc)
+    ast.Ann(inner, _, _) -> free_holes_term(inner, seen, acc)
+    ast.Rcd(fields, _) ->
+      list.fold(fields, acc, fn(a, pair) { free_holes_term(pair.1, seen, a) })
+    ast.Ctr(_, arg, _) -> free_holes_term(arg, seen, acc)
+    ast.Dot(arg, _, _) -> free_holes_term(arg, seen, acc)
+    ast.Comptime(inner, _) -> free_holes_term(inner, seen, acc)
     _ -> acc
   }
 }
@@ -385,6 +396,9 @@ pub fn subst_term_with_implicit_vars(
     }
     ast.Fix(name, body, span) -> {
       ast.Fix(name, subst_term_with_implicit_vars(subst, body), span)
+    }
+    ast.Let(name, value, body, span) -> {
+      ast.Let(name, subst_term_with_implicit_vars(subst, value), subst_term_with_implicit_vars(subst, body), span)
     }
   }
 }

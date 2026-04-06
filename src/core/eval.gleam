@@ -40,6 +40,10 @@ pub fn eval(ffi: state.FFI, env: ast.Env, term: ast.Term) -> ast.Value {
     ast.Call(name, args, span) -> do_call(ffi, env, name, args, span)
     ast.Comptime(term, _) -> eval(ffi, env, term)
     ast.Fix(name, body, _) -> ast.VFix(name, env, body)
+    ast.Let(name, value, body, _) -> {
+      let val = eval(ffi, env, value)
+      eval(ffi, [val, ..env], body)
+    }
   }
 }
 

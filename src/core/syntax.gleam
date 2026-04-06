@@ -1627,6 +1627,19 @@ fn format_term(
         formatter.text(msg),
         formatter.text(">"),
       ])
+    ast.Let(name, value, body, _) -> {
+      let inner =
+        formatter.concat([
+          formatter.text("let "),
+          formatter.text(name),
+          formatter.text(" = "),
+          format_term(value, 70, bindings),
+          formatter.text(" in"),
+          formatter.line(),
+          format_term(body, 70, [name, ..bindings]),
+        ])
+      wrap_parens(inner, 70 < parent_prec)
+    }
   }
 }
 
@@ -1770,6 +1783,7 @@ fn term_to_string_loop(term: Term, bindings: List(String)) -> String {
     }
     ast.Comptime(term, _) -> "comptime { " <> term_to_string_loop(term, bindings) <> " }"
     ast.Fix(name, body, _) -> "fix " <> name <> " -> " <> term_to_string_loop(body, [name, ..bindings])
+    ast.Let(name, value, body, _) -> "let " <> name <> " = " <> term_to_string_loop(value, bindings) <> " in " <> term_to_string_loop(body, [name, ..bindings])
   }
 }
 

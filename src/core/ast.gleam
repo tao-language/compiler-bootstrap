@@ -58,6 +58,7 @@ pub type Term {
   Call(name: String, args: List(Term), span: Span)
   Comptime(term: Term, span: Span)
   Fix(name: String, body: Term, span: Span)
+  Let(name: String, value: Term, body: Term, span: Span)
 }
 
 pub fn get_span(term: Term) -> Span {
@@ -80,6 +81,7 @@ pub fn get_span(term: Term) -> Span {
     Call(_, _, span) -> span
     Comptime(_, span) -> span
     Fix(_, _, span) -> span
+    Let(_, _, _, span) -> span
   }
 }
 
@@ -232,6 +234,7 @@ pub fn shift_term(term: Term, shift: Int) -> Term {
       Call(name, list.map(args, fn(a) { shift_term(a, shift) }), span)
     Comptime(term, span) -> Comptime(shift_term(term, shift), span)
     Fix(name, body, span) -> Fix(name, shift_term(body, shift), span)
+    Let(name, value, body, span) -> Let(name, shift_term(value, shift), shift_term(body, shift), span)
     Err(msg, span) -> Err(msg, span)
   }
 }

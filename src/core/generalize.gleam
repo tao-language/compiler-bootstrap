@@ -84,6 +84,7 @@ fn collect_names_from_term_acc(term: ast.Term, acc: List(String)) -> List(String
     ast.Call(_, args, _) -> collect_names_from_terms_acc(args, acc)
     ast.Comptime(inner, _) -> collect_names_from_term_acc(inner, acc)
     ast.Fix(name, body, _) -> collect_names_from_term_acc(body, [name, ..acc])
+    ast.Let(name, value, body, _) -> collect_names_from_term_acc(body, [name, ..collect_names_from_term_acc(value, acc)])
   }
 }
 
@@ -257,6 +258,8 @@ fn subst_term_with_hole_vars(subst: List(#(Int, Int)), term: ast.Term) -> ast.Te
       ast.Comptime(subst_term_with_hole_vars(subst, inner), span)
     ast.Fix(name, body, span) ->
       ast.Fix(name, subst_term_with_hole_vars(subst, body), span)
+    ast.Let(name, value, body, span) ->
+      ast.Let(name, subst_term_with_hole_vars(subst, value), subst_term_with_hole_vars(subst, body), span)
     ast.Typ(_, _) | ast.Lit(_, _) | ast.LitT(_, _) | ast.Var(_, _) | ast.Unit(_) | ast.Err(_, _) -> term
   }
 }

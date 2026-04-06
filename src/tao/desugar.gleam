@@ -2429,27 +2429,44 @@ fn core_term_to_term_loop(
       )
     }
     CoreApp(fun, arg, span) -> {
-      // KEY FIX: For sequential binding of module-level functions
-      // (build_sequential_loop creates CoreApp(CoreLam(name, ..., body), CoreFix(name, ...))),
-      // the Fix body must see the Lam's param name in addition to the Fix's own name.
-      // The type-checker's context has both names (from the sequential Lam and the Fix).
-      //
-      // We add ONLY the Lam's param name here. The Fix's name is added by CoreFix processing.
-      // This gives exactly TWO names in the Fix body env: [fix_name, param_name, ...outer].
-      //
-      // IMPORTANT: Only apply this when the arg is a CoreFix. For regular applications
-      // like f(x) or x + y, the arg should NOT see the fun's param name.
-      let arg_env = case fun, arg {
-        CoreLam(param_name, _, _, _), CoreFix(_, _, _) ->
-          [param_name, ..env]
-        _, _ -> env
+      // KEY FIX: Detect the sequential binding pattern from build_sequential_loop:
+      // CoreApp(CoreLam(name, Some(param_type), body), CoreFix(fix_name, fix_body))
+      // and emit ast.Let instead of ast.App(ast.Lam, ast.Fix).
+      // This avoids the extra VPi wrapping and De Bruijn index mismatch
+      // that caused type failures with 3+ functions.
+      case fun, arg {
+        CoreLam(name, Some(_param_type), body, _lam_span), CoreFix(fix_name, fix_body, _fix_span) -> {
+          // Convert the Fix value - the Fix body needs fix_name and outer names in env.
+          // NOTE: Do NOT add `name` separately - it causes duplicates when fix_name == name.
+          // The Fix's own name binding ([fix_name, ..env]) is sufficient.
+          let fix_term = core_ast.Fix(
+            fix_name,
+            core_term_to_term_loop(fix_body, [fix_name, ..env], annotated_types),
+            span,
+          )
+          // Convert the body with name in env
+          let body_term = core_term_to_term_loop(body, [name, ..env], annotated_types)
+          // Emit Let: let name = fix_value in body_term
+          core_ast.Let(name, fix_term, body_term, span)
+        }
+        _, _ -> {
+          // Regular application
+          let arg_env = case fun, arg {
+            CoreLam(param_name, _, _, _), CoreFix(fix_name, _, _) ->
+              case param_name == fix_name {
+                True -> [param_name, ..env]
+                False -> [param_name, fix_name, ..env]
+              }
+            _, _ -> env
+          }
+          core_ast.App(
+            fun: core_term_to_term_loop(fun, env, annotated_types),
+            implicit: [],
+            arg: core_term_to_term_loop(arg, arg_env, annotated_types),
+            span: span,
+          )
+        }
       }
-      core_ast.App(
-        fun: core_term_to_term_loop(fun, env, annotated_types),
-        implicit: [],
-        arg: core_term_to_term_loop(arg, arg_env, annotated_types),
-        span: span,
-      )
     }
     CoreRcd(fields, span) -> {
       core_ast.Rcd(

@@ -240,8 +240,8 @@ When working with this codebase:
 
 ## Test Results
 
-- **444 tests passing**
-- **5 failures** (see Known Issues below)
+- **445 tests passing**
+- **4 failures** (see Known Issues below)
 - **0 warnings**
 
 ### Recent Fixes (April 2026)
@@ -278,22 +278,24 @@ When working with this codebase:
 
 12. **TypeDecl Grammar Type Parameter Support** — Added support for polymorphic type parameters in `type Name(a) = ...` syntax. Updated `TypeDecl` to include `type_params: List(String)` field. Modified grammar rule to parse optional `("(" Ident ("," Ident)* ")")` after type name. Updated all 7 files that pattern-match on `TypeDecl` to handle the new field. Fixed `extract_type_params` helper function. Now `type Option(a) = Some(a) | None` parses correctly.
 
+13. **`infer(Let)` vars Stack Corruption** — The `infer(Let)` case used `update_last_var_type(s2.vars, val_ty)` which updated vars position 0 after `infer(value)`. But `infer(value)` calls `check(Lam)` which prepends parameter bindings to vars, shifting the Let-bound name down. Position 0 was now the innermost parameter, not the Let-bound name. The Let-bound name kept its hole type, causing cross-reference type failures with 3+ functions. **Fix**: Save `s.vars` immediately after `def_var` (where position 0 IS the Let-bound name), then restore after `infer(value)`, updating position 0's type. Uses De Bruijn position (def_var always prepends), not name lookup.
+
 ### Known Issues
 
-- **5 tests fail** with `TypeMismatch` or `NotAFunction`:
-  - `three_match_expressions_no_conflict_test` — Multi-function cross-referencing types (TypeMismatch/NotAFunction)
-  - `match_different_result_types_test` — Matches with different result types (TypeMismatch/NotAFunction)
-  - `match_different_types_test` — Constructor resolution test (AssertionError)
-  - `three_fn_chain_xref_test` — 3+ function chain cross-reference (TypeMismatch)
-  - `lib_prelude_bool_module_test` — Prelude bool module compilation (TypeMismatch/NotAFunction)
+- **4 tests fail** with `InfiniteType` (pre-existing match motive bug):
+  - `three_match_expressions_no_conflict_test` — 3 functions with match expressions (InfiniteType)
+  - `match_different_result_types_test` — Matches with different result types (InfiniteType)
+  - `match_different_types_test` — Constructor resolution test (InfiniteType)
+  - `lib_prelude_bool_module_test` — Prelude bool module compilation (InfiniteType)
 
-  **Root cause**: The desugaring of sequential function definitions creates nested `App(Lam, Fix)` structures. The `infer(Lam)` always wraps the body type in a `Pi`, adding an extra function type layer for each binding. With 3+ functions, these layers accumulate causing type mismatches. Single and 2-function modules work correctly because the hole unification resolves before the nesting becomes problematic.
+  **Root cause**: Match motive hole IDs conflict during unification, creating infinite type cycles. This is a **separate bug** unrelated to the De Bruijn index fix. All 4 failures produce `InfiniteType` errors for positive hole IDs created during `infer_match`.
 
-  **Impact**: The compiler works correctly for modules with up to 2 functions. Modules with 3+ cross-referencing functions show type errors. The core language lacks an `ast.Let` node, which would be needed to fix this properly.
+  **Impact**: Modules with multiple match expressions (3+ functions, or prelude bool with 5 functions) show type errors. Single and 2-function modules without matches work correctly.
 
   **Detailed analysis**: See `docs/plans/remaining-failures-analysis.md`.
 
-  **Next steps**: Add `ast.Let` to core/ast and update `core_term_to_term_loop` and type-checker to handle it.
+  **Next steps**: Investigate match motive hole generation and unification in `infer_match`.
+
 
 ## Contact
 

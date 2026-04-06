@@ -84,6 +84,11 @@ pub fn freshen_annotation(term: ast.Term, counter: Int) -> #(ast.Term, Int) {
       let #(fresh_inner, c1) = freshen_annotation(inner, counter)
       #(ast.Comptime(fresh_inner, span), c1)
     }
+    ast.Let(name, value, body, span) -> {
+      let #(fresh_value, c1) = freshen_annotation(value, counter)
+      let #(fresh_body, c2) = freshen_annotation(body, c1)
+      #(ast.Let(name, fresh_value, fresh_body, span), c2)
+    }
     // Terms without sub-terms that can contain holes
     ast.Typ(_, _) | ast.Lit(_, _) | ast.LitT(_, _) | ast.Var(_, _) | ast.Unit(_) | ast.Err(_, _) ->
       #(term, counter)
@@ -302,6 +307,31 @@ pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.Sta
       infer(s, quoted)
     }
     ast.Fix(name, body, span) -> infer_fix(s, name, body, span)
+    ast.Let(name, value, body, span) -> {
+      // For recursive bindings (e.g., Let(name, Fix(name, ...), body)),
+      // the value needs to see `name` in the environment.
+      // Bind name to a hole first, then infer the value, then update with the actual type.
+      //
+      // KEY: def_var prepends to position 0 of s.vars (De Bruijn position, not name lookup).
+      // After infer(value), inner bindings from check(Lam) are prepended, pushing the
+      // Let-bound name down. We must restore the saved vars state (where position 0 IS
+      // the Let-bound name) and update only position 0's type.
+      let #(hole_ty, s) = new_hole(s)
+      let #(_fresh, s) = def_var(s, name, hole_ty)
+      // Save: position 0 is the Let-bound name (def_var always prepends)
+      let saved_vars = s.vars
+      let s1 = state.State(..s, level: s.level + 1)
+      let #(val_val, val_ty, s2) = infer(s1, value)
+      // Restore saved vars state, updating position 0's type to the inferred value type
+      let restored_vars = case saved_vars {
+        [#(n, #(val, _old_ty)), ..rest] -> [#(n, #(val, val_ty)), ..rest]
+        [] -> []
+      }
+      let s2 = state.State(..s2, vars: restored_vars)
+      let #(body_val, body_ty, s3) = infer(s2, body)
+      let s4 = state.State(..s3, level: s3.level - 1)
+      #(body_val, body_ty, s4)
+    }
     ast.Err(_, span) -> #(ast.VErr, ast.VErr, s)
   }
 }
@@ -859,6 +889,19 @@ fn def_var(s: state.State, name: String, ty: ast.Value) -> #(ast.Value, state.St
   #(var_val, s)
 }
 
+/// Update the type of the most recently added variable binding.
+/// Used for recursive Let bindings where the value's type is inferred after
+/// the name is bound to a hole.
+fn update_last_var_type(
+  vars: List(#(String, #(ast.Value, ast.Type))),
+  new_ty: ast.Type,
+) -> List(#(String, #(ast.Value, ast.Type))) {
+  case vars {
+    [] -> []
+    [#(name, #(val, _old_ty)), ..rest] -> [#(name, #(val, new_ty)), ..rest]
+  }
+}
+
 fn new_hole(s: state.State) -> #(ast.Type, state.State) {
   let id = s.hole_counter
   let hole_ty = ast.VNeut(ast.HHole(id), [])
@@ -977,6 +1020,9 @@ fn shift_hvar_in_term(term: ast.Term, shift: Int) -> ast.Term {
     ast.Fix(name, body, span) -> {
       ast.Fix(name, shift_hvar_in_term(body, shift + 1), span)
     }
+    ast.Let(name, value, body, span) -> {
+      ast.Let(name, shift_hvar_in_term(value, shift), shift_hvar_in_term(body, shift + 1), span)
+    }
     ast.Err(_, _) -> term
   }
 }
@@ -1015,6 +1061,7 @@ fn get_span(term: ast.Term) -> Span {
     ast.Call(_, _, span) -> span
     ast.Comptime(_, span) -> span
     ast.Fix(_, _, span) -> span
+    ast.Let(_, _, _, span) -> span
     ast.Err(_, span) -> span
   }
 }
@@ -1091,6 +1138,16 @@ pub fn check(
         }
       }
     }
+    ast.Let(name, value, body, span) -> {
+      let #(val_val, s1) = check(s, value, expected_ty, span)
+      // For Let, we don't know the value type precisely yet - infer it
+      let #(inferred_val, inferred_ty, s2) = infer(s1, value)
+      let #(_fresh, s2) = def_var(s2, name, inferred_ty)
+      let s3 = state.State(..s2, level: s2.level + 1)
+      let #(body_val, s4) = check(s3, body, expected_ty, span)
+      let s5 = state.State(..s4, level: s4.level - 1)
+      #(body_val, s5)
+    }
     _ -> {
       let #(value, inferred_ty, s) = infer(s, term)
       case inferred_ty, expected_ty {
@@ -1164,6 +1221,10 @@ fn subst_param_vars(term: ast.Term, params: List(Int), s: state.State) -> ast.Va
     ast.Call(_, _, _) -> ast.VErr
     ast.Comptime(inner, _) -> subst_param_vars(inner, params, s)
     ast.Fix(_, body, _) -> subst_param_vars(body, params, s)
+    ast.Let(_, value, body, _) -> {
+      // For Let, substitute in the body (the value is already evaluated)
+      subst_param_vars(body, params, s)
+    }
     ast.Err(_, _) -> ast.VErr
   }
 }
@@ -1243,6 +1304,8 @@ fn shift_hvar_down_term(term: ast.Term, offset: Int) -> ast.Term {
       ast.Comptime(shift_hvar_down_term(inner, offset), span)
     ast.Fix(name, body, span) ->
       ast.Fix(name, shift_hvar_down_term(body, offset + 1), span)
+    ast.Let(name, value, body, span) ->
+      ast.Let(name, shift_hvar_down_term(value, offset), shift_hvar_down_term(body, offset + 1), span)
     ast.Typ(k, span) -> ast.Typ(k, span)
     ast.Lit(v, span) -> ast.Lit(v, span)
     ast.LitT(t, span) -> ast.LitT(t, span)
@@ -1319,6 +1382,8 @@ fn shift_hvar_up_term(term: ast.Term, shift_amount: Int, offset: Int) -> ast.Ter
       ast.Comptime(shift_hvar_up_term(inner, shift_amount, offset), span)
     ast.Fix(name, body, span) ->
       ast.Fix(name, shift_hvar_up_term(body, shift_amount, offset + 1), span)
+    ast.Let(name, value, body, span) ->
+      ast.Let(name, shift_hvar_up_term(value, shift_amount, offset), shift_hvar_up_term(body, shift_amount, offset + 1), span)
     ast.Typ(k, span) -> ast.Typ(k, span)
     ast.Lit(v, span) -> ast.Lit(v, span)
     ast.LitT(t, span) -> ast.LitT(t, span)
