@@ -152,7 +152,7 @@ pub type Expr {
   /// Constructor application (e.g., True, False, Some(x), None)
   Ctr(name: String, args: List(Expr), span: Span)
   /// Type definition (e.g., type Option = Some(Int) | None)
-  TypeDecl(name: String, constructors: List(ConstructorDecl), span: Span)
+  TypeDecl(name: String, type_params: List(String), constructors: List(ConstructorDecl), span: Span)
 }
 
 /// Constructor definition for type declarations.
@@ -325,7 +325,7 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
       let ast_args = list.map(args, expr_to_ast_loop)
       AstCtr(name, ast_args, span)
     }
-    TypeDecl(name, constructors, span) -> {
+    TypeDecl(name, type_params, constructors, span) -> {
       // Type definition - convert to AST StmtType
       let ast_constructors = list.map(constructors, fn(ctr) {
         let ConstructorDecl(ctr_name, fields, ctr_span) = ctr
@@ -335,7 +335,7 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
         })
         ast.Constructor(ctr_name, list.map(ast_fields, UnnamedField), ctr_span)
       })
-      let stmt_type = ast.StmtType(name, [], ast_constructors, span)
+      let stmt_type = ast.StmtType(name, type_params, ast_constructors, span)
       ast.TypeDecl(stmt_type, span)
     }
   }
@@ -642,7 +642,7 @@ fn get_span(expr: Expr) -> Span {
     Run(_, span) -> span
     Import(_, span) -> span
     Ctr(_, _, span) -> span
-    TypeDecl(_, _, span) -> span
+    TypeDecl(_, _, _, span) -> span
   }
 }
 
@@ -959,12 +959,18 @@ pub fn tao_grammar() -> Grammar(Expr) {
       ]),
       // Type = "type" Ident "=" Constructor ("|" Constructor)*
       // Type definition: type Name = Constructor | Constructor
-      // Simplified: no type parameters for now
+      // Or: type Name(param) = Constructor(param) | Constructor
       rule("TypeDecl", [
         alt(
           seq([
             keyword_pattern("type"),
             token_pattern("Ident"),  // type name
+            opt(seq([
+              token_pattern("LParen"),
+              token_pattern("Ident"),  // type parameter
+              many(seq([token_pattern("Comma"), token_pattern("Ident")])),  // more type params
+              token_pattern("RParen"),
+            ])),
             token_pattern("Equal"),
             // First constructor: Ident ["(" Ident ("," Ident)* ")"]
             seq([
@@ -994,6 +1000,12 @@ pub fn tao_grammar() -> Grammar(Expr) {
             // seq flattens sub-patterns. many() wraps EACH iteration in ListValue
             // and these ListValue items are siblings in the flat list (not nested).
             //
+            // opt(seq(...)) produces either the matched values (flattened into a ListValue)
+            // or nothing (empty list, so nothing added to seq results).
+            //
+            // DEBUG: Print values to understand the structure
+            // (disabled - io not imported in this module)
+            //
             // For `type Color = Red | Green | Blue`:
             // [KeywordValue(type), TokenValue(Color), TokenValue(=), TokenValue(Red),
             //  ListValue([|, Green]), ListValue([|, Blue])]
@@ -1002,14 +1014,43 @@ pub fn tao_grammar() -> Grammar(Expr) {
             // [KeywordValue(type), TokenValue(Bool), TokenValue(=), TokenValue(True),
             //  ListValue([|, False])]
             //
-            // For `type Unit = Unit`:
-            // [KeywordValue(type), TokenValue(Unit), TokenValue(=), TokenValue(Unit)]
+            // For `type Option(a) = Some(a) | None`:
+            // [KeywordValue(type), TokenValue(Option), ListValue([(, a, )]), TokenValue(=),
+            //  TokenValue(Some), ListValue([(, a, )]), ListValue([|, None])]
+            //
+            // Extract type name (position 1)
             let type_name = case values {
               [_, TokenValue(name_tok), ..] -> name_tok.value
               _ -> ""
             }
-            let first_ctr_name = case values {
-              [_, _, _, TokenValue(ctr_tok), ..] -> ctr_tok.value
+            // Check if position 2 has type params (ListValue from opt seq)
+            let type_params = case values {
+              [_, _, ListValue(params_list), ..] -> extract_type_params(params_list)
+              _ -> []
+            }
+            // First constructor name: after type params (if present) and '='
+            // '=' is at position 2 (no params) or position 3 (with params)
+            // We need to skip past the '=' to get the first constructor
+            let first_ctr_offset = case values {
+              [_, _, ListValue(_), TokenValue(eq_tok), ..] -> {
+                case eq_tok.value == "=" {
+                  True -> 4  // Has type params + '=' = 4 items to skip
+                  False -> 3  // Has type params, no '=' found
+                }
+              }
+              [_, _, TokenValue(eq_tok), ..] -> {
+                case eq_tok.value == "=" {
+                  True -> 3  // No type params, has '=' = 3 items to skip
+                  False -> 2  // No type params, no '=' found
+                }
+              }
+              _ -> 3
+            }
+            // DEBUG: show first_ctr_offset and the dropped list
+            // io.println("first_ctr_offset: " <> int.to_string(first_ctr_offset))
+            // io.println("dropped: " <> int.to_string(list.length(list.drop(values, first_ctr_offset))))
+            let first_ctr_name = case list.drop(values, first_ctr_offset) {
+              [TokenValue(ctr_tok), ..] -> ctr_tok.value
               _ -> ""
             }
             // Extract all ListValue items (from many) and collect constructor names
@@ -1021,7 +1062,7 @@ pub fn tao_grammar() -> Grammar(Expr) {
             let constructors = list.map(ctr_names, fn(n) {
               ConstructorDecl(n, [], Span("type", 0, 0, 0, 0))
             })
-            TypeDecl(type_name, constructors, Span("type", 0, 0, 0, 0))
+            TypeDecl(type_name, type_params, constructors, Span("type", 0, 0, 0, 0))
           },
         ),
       ]),
@@ -1763,7 +1804,7 @@ pub fn get_expr_span(expr: Expr) -> Span {
     Run(_, span) -> span
     Import(_, span) -> span
     Ctr(_, _, span) -> span
-    TypeDecl(_, _, span) -> span
+    TypeDecl(_, _, _, span) -> span
   }
 }
 
@@ -1819,7 +1860,7 @@ fn fix_expr_file(expr: Expr, file: String) -> Expr {
     Run(e, s) -> Run(fix_expr_file(e, file), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
     Import(i, s) -> Import(i, Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
     Ctr(n, args, s) -> Ctr(n, list.map(args, fn(a) { fix_expr_file(a, file) }), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
-    TypeDecl(n, ctrs, s) -> TypeDecl(n, list.map(ctrs, fix_ctr_decl_file(_, file)), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
+    TypeDecl(n, tp, ctrs, s) -> TypeDecl(n, tp, list.map(ctrs, fix_ctr_decl_file(_, file)), Span(file, s.start_line, s.start_col, s.end_line, s.end_col))
   }
 }
 
@@ -3515,7 +3556,11 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
         _ -> name <> "(" <> string_join(list.map(args, format_expr), ", ") <> ")"
       }
     }
-    TypeDecl(name, constructors, _) -> {
+    TypeDecl(name, type_params, constructors, _) -> {
+      let params_str = case type_params {
+        [] -> ""
+        _ -> "(" <> string_join(type_params, ", ") <> ")"
+      }
       let ctors_str = string_join(
         list.map(constructors, fn(ctr) {
           let ConstructorDecl(ctr_name, fields, _) = ctr
@@ -3526,7 +3571,7 @@ fn format_expr_loop(expr: Expr, parent_prec: Int) -> String {
         }),
         " | ",
       )
-      "type " <> name <> " = " <> ctors_str
+      "type " <> name <> params_str <> " = " <> ctors_str
     }
   }
 }
@@ -3754,6 +3799,25 @@ fn extract_ctr_name_from_many_item(inner: List(Value(Expr))) -> String {
       }
     }
     _ -> ""
+  }
+}
+
+/// Extract type parameters from the optional type params seq.
+/// The params_list contains: [TokenValue("("), TokenValue(param), many_items, TokenValue(")")]
+fn extract_type_params(params_list: List(Value(Expr))) -> List(String) {
+  extract_type_params_loop(params_list, [])
+}
+
+fn extract_type_params_loop(items: List(Value(Expr)), acc: List(String)) -> List(String) {
+  case items {
+    [] -> list.reverse(acc)
+    [TokenValue(tok), ..rest] -> {
+      case tok.value {
+        "(" | ")" | "," -> extract_type_params_loop(rest, acc)
+        _ -> extract_type_params_loop(rest, [tok.value, ..acc])
+      }
+    }
+    [_, ..rest] -> extract_type_params_loop(rest, acc)
   }
 }
 

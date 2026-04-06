@@ -946,7 +946,7 @@ fn get_expr_span_from_syntax(expr: TaoExpr) -> Span {
     TaoRun(_, span) -> span
     Import(_, span) -> span
     Ctr(_, _, span) -> span
-    TypeDecl(_, _, span) -> span
+    TypeDecl(_, _, _, span) -> span
   }
 }
 

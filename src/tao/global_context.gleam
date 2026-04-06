@@ -301,7 +301,7 @@ fn extract_ctr_env_from_exprs_loop(
     [] -> acc
     [expr, ..rest] -> {
       case expr {
-        TypeDecl(name, ctors, span) -> {
+        TypeDecl(name, _type_params, ctors, span) -> {
           // Add the type itself as a constructor
           let type_ctr = #(name, core_ast.CtrDef(
             params: [],

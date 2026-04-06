@@ -29,7 +29,7 @@ pub fn type_decl_two_constructors_test() {
   }
 
   case first_expr {
-    TaoTypeDecl(name, constructors, _) -> {
+    TaoTypeDecl(name, _type_params, constructors, _) -> {
       name |> should.equal("Bool")
       list.length(constructors) |> should.equal(2)
 
@@ -63,7 +63,7 @@ pub fn type_decl_single_constructor_test() {
   }
 
   case first_expr {
-    TaoTypeDecl(name, constructors, _) -> {
+    TaoTypeDecl(name, _type_params, constructors, _) -> {
       name |> should.equal("Unit")
       list.length(constructors) |> should.equal(1)
 
@@ -89,7 +89,7 @@ pub fn type_decl_three_constructors_test() {
 
   // Debug output
   let first_info = case parse_result.ast {
-    [TaoTypeDecl(n, cs, _), ..] -> "TypeDecl(" <> n <> "," <> int.to_string(list.length(cs)) <> ")"
+    [TaoTypeDecl(n, _tp, cs, _), ..] -> "TypeDecl(" <> n <> "," <> int.to_string(list.length(cs)) <> ")"
     [other, ..] -> "not_TypeDecl"
     [] -> "empty"
   }
@@ -103,7 +103,7 @@ pub fn type_decl_three_constructors_test() {
   }
 
   case first_expr {
-    TaoTypeDecl(name, constructors, _) -> {
+    TaoTypeDecl(name, _type_params, constructors, _) -> {
       name |> should.equal("Color")
       list.length(constructors) |> should.equal(3)
 
@@ -142,7 +142,7 @@ fn not(b: Bool) -> Bool {
 
   let expr_types = list.map(parse_result.ast, fn(expr) {
     case expr {
-      TaoTypeDecl(n, cs, _) -> "TypeDecl(" <> n <> "," <> int.to_string(list.length(cs)) <> ")"
+      TaoTypeDecl(n, _tp, cs, _) -> "TypeDecl(" <> n <> "," <> int.to_string(list.length(cs)) <> ")"
       TaoSimpleFn(n, _, _, _, _) -> "SimpleFn(" <> n <> ")"
       _ -> "other"
     }

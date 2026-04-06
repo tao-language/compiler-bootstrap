@@ -375,10 +375,10 @@ fn format_value(value: Value) -> String {
 pub fn exprs_to_stmts(exprs: List(Expr)) -> List(t.Stmt) {
   list.map(exprs, fn(expr) {
     case expr {
-      TaoTypeDecl(name, constructors, span) -> {
+      TaoTypeDecl(name, type_params, constructors, span) -> {
         // Type declarations should be StmtType, not StmtExpr
         // Convert ConstructorDecl to Constructor
-        t.StmtType(name, [], list.map(constructors, fn(ctr) {
+        t.StmtType(name, type_params, list.map(constructors, fn(ctr) {
           case ctr {
             TaoCtrDecl(ctr_name, _fields, ctr_span) -> {
               // For nullary constructors (True, False), ignore fields
@@ -438,7 +438,7 @@ fn get_expr_span(expr: Expr) -> Span {
     TaoRun(_, span) -> span
     TaoImport(_, span) -> span
     TaoCtr(_, _, span) -> span
-    TaoTypeDecl(_, _, span) -> span
+    TaoTypeDecl(_, _, _, span) -> span
   }
 }
 

@@ -276,22 +276,21 @@ When working with this codebase:
 
 11. **Annotated Fix Type in `check`** — Modified `check` for `Fix` to detect annotated bodies (`Ann(_, ann_ty, _)`) and use the annotation type for `def_var` instead of `expected_ty`. This ensures fix-bound names have the full function type (e.g., `Bool -> Bool -> Bool`) rather than just the return type. This did not resolve the remaining failures, indicating a deeper issue in how sequential function definitions accumulate types.
 
+12. **TypeDecl Grammar Type Parameter Support** — Added support for polymorphic type parameters in `type Name(a) = ...` syntax. Updated `TypeDecl` to include `type_params: List(String)` field. Modified grammar rule to parse optional `("(" Ident ("," Ident)* ")")` after type name. Updated all 7 files that pattern-match on `TypeDecl` to handle the new field. Fixed `extract_type_params` helper function. Now `type Option(a) = Some(a) | None` parses correctly.
+
 ### Known Issues
 
-- **5 tests fail** with `TypeMismatch`, `NotAFunction`, or `ParseError`:
+- **4 tests fail** with `TypeMismatch` or `NotAFunction`:
   - `three_match_expressions_no_conflict_test` — Multi-function cross-referencing types (TypeMismatch/NotAFunction)
   - `match_different_result_types_test` — Matches with different result types (TypeMismatch/NotAFunction)
   - `match_different_types_test` — Constructor resolution test (AssertionError)
-  - `local_option_shadows_prelude_test` — Polymorphic type `Option(a)` (parse error for type params)
   - `lib_prelude_bool_module_test` — Prelude bool module compilation (TypeMismatch/NotAFunction)
 
-  **Root cause**: Two distinct issues:
-  1. **4 failures**: Multi-function cross-reference type mismatch. When `xor` calls `or`, `or`'s type in the environment is `Bool` instead of `Bool -> Bool -> Bool`. This traces to `check_ctr_def` and how module-level `App(Lam, Fix)` structures are processed. The annotation is on the Lam, not the Fix body, so `check`'s Fix handling doesn't get the correct type. See detailed analysis in `docs/plans/remaining-failures-analysis.md`.
-  2. **1 failure**: TypeDecl grammar doesn't support polymorphic type parameters. `type Option(a) = Some(a) | None` fails to parse.
+  **Root cause**: Multi-function cross-reference type mismatch. When `xor` calls `or`, `or`'s type in the environment is `Bool` instead of `Bool -> Bool -> Bool`. This traces to `check_ctr_def` and how module-level `App(Lam, Fix)` structures are processed. The annotation is on the Lam, not the Fix body, so `check`'s Fix handling doesn't get the correct type. See detailed analysis in `docs/plans/remaining-failures-analysis.md`.
 
-  **Impact**: The compiler works correctly for single-function modules and simple multi-function modules without cross-references. Multi-function modules with cross-references and match expressions show type errors. Polymorphic type declarations cannot be parsed.
+  **Impact**: The compiler works correctly for single-function modules and simple multi-function modules without cross-references. Multi-function modules with cross-references and match expressions show type errors. Polymorphic type declarations now work correctly.
 
-  **Next steps**: Fix TypeDecl grammar (straightforward), then debug multi-function issue with targeted logging.
+  **Next steps**: Debug multi-function issue with targeted logging in `check` function.
 
 ## Contact
 
