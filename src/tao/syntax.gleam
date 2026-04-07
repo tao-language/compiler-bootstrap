@@ -1906,22 +1906,23 @@ fn make_simple_fn(values) -> Expr {
 
 /// Extract return type from function values.
 fn extract_return_type_from_values(values: List(Value(Expr))) -> Option(String) {
-  case find_arrow_and_return_type(values, False) {
-    Some(type_values) -> Some(reconstruct_type_string(type_values))
+  case find_arrow_type_expr(values) {
+    Some(type_expr) -> Some(expr_to_type_string(type_expr))
     None -> None
   }
 }
 
-fn find_arrow_and_return_type(values: List(Value(Expr)), found_arrow: Bool) -> Option(List(Value(Expr))) {
+/// Find the Arrow token followed by an AstValue containing the type expression.
+fn find_arrow_type_expr(values: List(Value(Expr))) -> Option(Expr) {
   case values {
     [] -> None
-    [TokenValue(t), ..rest] -> {
+    [TokenValue(t), AstValue(type_expr), ..rest] -> {
       case t.value == "->" {
-        True -> Some(rest)  // Return everything after "->"
-        False -> find_arrow_and_return_type(rest, False)
+        True -> Some(type_expr)
+        False -> find_arrow_type_expr(rest)
       }
     }
-    [_, ..rest] -> find_arrow_and_return_type(rest, False)
+    [_, ..rest] -> find_arrow_type_expr(rest)
   }
 }
 

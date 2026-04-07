@@ -137,17 +137,23 @@ pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.Sta
         }
       }
     ast.Hole(id, span) -> {
-      // Preserve negative hole IDs (special holes from desugarer)
-      let hole_id = case id < 0 {
-        True -> id
-        False -> s.hole_counter
+      // Negative holes (from desugarer) are "unknown types" that need instantiation.
+      // Instantiate each one into a fresh positive hole, ensuring uniqueness.
+      case id < 0 {
+        True -> {
+          // Desugarer hole: instantiate into a fresh positive hole
+          let #(hole_ty, new_s) = new_hole(s)
+          // Value and type are both the fresh hole
+          #(hole_ty, hole_ty, new_s)
+        }
+        False -> {
+          // Positive hole: create it, mark as unsolved
+          let hole_id = s.hole_counter
+          let hole_ty = ast.VNeut(ast.HHole(hole_id), [])
+          let new_s = state.State(..s, hole_counter: s.hole_counter + 1, errors: [state.HoleUnsolved(hole_id, span), ..s.errors])
+          #(ast.VNeut(ast.HHole(hole_id), []), hole_ty, new_s)
+        }
       }
-      let hole_ty = ast.VNeut(ast.HHole(hole_id), [])
-      let s = case id < 0 {
-        True -> s  // Don't increment counter or add error for special holes
-        False -> state.State(..s, hole_counter: s.hole_counter + 1, errors: [state.HoleUnsolved(hole_id, span), ..s.errors])
-      }
-      #(ast.VNeut(ast.HHole(hole_id), []), hole_ty, s)
     }
     ast.Rcd(fields, span) -> {
       let #(fields_val, fields_ty, s) = infer_fields(s, fields)
@@ -505,10 +511,7 @@ pub fn infer_match(
     state.with_err(s, err)
   })
 
-  // Step 6: Solve hole -999 in the motive body with the result type
-  let s = solve_motive_hole(s, motive_val, motive_result_ty)
-
-  // Step 7: Build result value
+  // Step 6: Build result value
   let result_val = ast.VNeut(ast.HVar(0), [ast.EMatch([], motive_val, case_results)])
   // Return the result type (motive_result_ty), not the motive type
   #(result_val, motive_result_ty, s)
@@ -520,21 +523,11 @@ pub fn infer_match(
 fn extract_motive_result_type(s: state.State, motive_val: ast.Value, motive_ty: ast.Type) -> #(ast.Type, state.State) {
   case motive_val {
     ast.VLam(_, _, env, body_term) -> {
-      // Motive is a lambda - the body should be the result type (or a hole placeholder)
-      case body_term {
-        ast.Hole(id, _) if id < 0 -> {
-          // Negative hole placeholder from desugarer - create a fresh hole for the result type
-          // This hole will be unified with the actual result type from case bodies
-          let #(hole_ty, new_s) = new_hole(s)
-          #(hole_ty, new_s)
-        }
-        _ -> {
-          // Evaluate body to get result type
-          let body_val = eval.eval(s.ffi, env, body_term)
-          // Return the body value as the result type
-          #(body_val, s)
-        }
-      }
+      // Motive is a lambda - evaluate body to get result type.
+      // Any negative holes in body_term were already instantiated to fresh
+      // positive holes during infer, so no special handling needed.
+      let body_val = eval.eval(s.ffi, env, body_term)
+      #(body_val, s)
     }
     ast.VPi(_, _, env, _domain, codomain) -> {
       // Motive type is a Pi type - extract codomain as result type
@@ -574,69 +567,6 @@ fn check_cases_loop(
       // Update case with checked body
       let checked_case = ast.Case(c.pattern, body, c.guard, c.span)
       check_cases_loop(s, rest, arg_ty, result_ty, [checked_case, ..acc])
-    }
-  }
-}
-
-fn solve_motive_hole(s: state.State, motive_val: ast.Value, result_ty: ast.Type) -> state.State {
-  // Extract the body term from the motive lambda
-  case motive_val {
-    ast.VLam(_, _, env, body_term) -> {
-      // If the body is a negative hole (from desugarer), solve it with the result type
-      case body_term {
-        ast.Hole(hole_id, _) if hole_id < 0 -> {
-          // Convert result type to value for substitution
-          let result_val = eval.eval(s.ffi, env, result_ty_to_term(result_ty))
-          // Add substitution: hole = result_val
-          state.State(..s, subst: [ #(hole_id, result_val), ..s.subst ])
-        }
-        _ -> s
-      }
-    }
-    _ -> s
-  }
-}
-
-/// Convert a Type to a Term for evaluation.
-fn result_ty_to_term(ty: ast.Type) -> ast.Term {
-  let empty_span = Span("", 0, 0, 0, 0)
-  case ty {
-    ast.VTyp(k) -> ast.Typ(k, empty_span)
-    ast.VLit(lit) -> ast.Lit(lit, empty_span)
-    ast.VLitT(lit_t) -> ast.LitT(lit_t, empty_span)
-    ast.VNeut(head, spine) -> value_head_to_term(head, spine, empty_span)
-    ast.VRcd(fields) -> ast.Rcd(list.map(fields, fn(f) { #(f.0, ast.Hole(0, empty_span)) }), empty_span)
-    ast.VLam(impl, name, env, body) -> ast.Lam(impl, #(name, ast.Hole(-1, empty_span)), body, empty_span)
-    ast.VPi(impl, name, env, in_val, out) -> ast.Pi(impl, name, ast.Hole(-1, empty_span), out, empty_span)
-    ast.VCtrValue(ast.VCtr(tag, arg)) -> ast.Ctr(tag, ast.Hole(0, empty_span), empty_span)
-    ast.VUnit -> ast.Unit(empty_span)
-    ast.VErr -> ast.Err("type_to_term", empty_span)
-    ast.VCall(name, args) -> ast.Call(name, [], empty_span)
-    ast.VFix(name, env, body) -> ast.Fix(name, body, empty_span)
-    ast.VRecord(fields) -> ast.Rcd([], empty_span)
-  }
-}
-
-fn value_head_to_term(head: ast.Head, spine: List(ast.Elim), s: Span) -> ast.Term {
-  let base = case head {
-    ast.HVar(level) -> ast.Var(level, s)
-    ast.HHole(id) -> ast.Hole(id, s)
-    ast.HStepLimit -> ast.Hole(0, s)
-  }
-  spine_to_term(base, spine, s)
-}
-
-fn spine_to_term(base: ast.Term, spine: List(ast.Elim), s: Span) -> ast.Term {
-  case spine {
-    [] -> base
-    [first, ..rest] -> {
-      let applied = case first {
-        ast.EDot(name) -> ast.Dot(base, name, s)
-        ast.EApp(arg) -> ast.App(base, [], ast.Hole(0, s), s)
-        ast.EAppImplicit(arg) -> base
-        ast.EMatch(env, motive, cases) -> ast.Match(base, ast.Hole(0, s), [], s)
-      }
-      spine_to_term(applied, rest, s)
     }
   }
 }

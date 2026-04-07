@@ -22,6 +22,7 @@ fn create_module(body: List(Stmt)) -> Module {
 }
 
 fn create_desugar_context(ctx: GlobalContext) -> DesugarContext {
+  let _ = ctx
   DcCtr(
     global: ctx,
     current_module: "test",
@@ -29,7 +30,6 @@ fn create_desugar_context(ctx: GlobalContext) -> DesugarContext {
     loop_stack: [],
     ctrs: [],
     annotated_types: [],
-    hole_counter: -1,
   )
 }
 

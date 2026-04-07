@@ -150,43 +150,34 @@ pub type DesugarContext {
     ctrs: core_ast.CtrEnv,
     /// Annotated function types (name -> type) for module-level bindings
     annotated_types: List(#(String, CoreTerm)),
-    /// Counter for unique negative hole IDs. Starts at -1 and decrements.
-    hole_counter: Int,
   )
 }
 
 /// Add a local variable to the scope.
 fn add_local(dc: DesugarContext, name: String) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types, hole_counter) = dc
-  DesugarContext(global, current_module, [name, ..local_scope], loop_stack, ctrs, annotated_types, hole_counter)
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types) = dc
+  DesugarContext(global, current_module, [name, ..local_scope], loop_stack, ctrs, annotated_types)
 }
 
-/// Allocate a new unique negative hole ID.
-fn allocate_hole(dc: DesugarContext) -> #(Int, DesugarContext) {
-  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types, hole_counter) = dc
-  let new_id = hole_counter
-  let new_dc = DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types, hole_counter - 1)
-  #(new_id, new_dc)
-}
-
-/// Create a CoreTerm with a unique negative hole ID.
+/// Create a CoreTerm with a hole (unknown type).
+/// The desugarer always uses Hole(-1). During type-checking, `infer` instantiates
+/// each negative hole into a fresh positive hole, ensuring uniqueness.
 fn core_hole(dc: DesugarContext, span: Span) -> #(CoreTerm, DesugarContext) {
-  let #(id, new_dc) = allocate_hole(dc)
-  #(CoreHole(id, span), new_dc)
+  #(CoreHole(-1, span), dc)
 }
 
 /// Enter a loop context.
 fn enter_loop(dc: DesugarContext, fix_name: String) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types, hole_counter) = dc
-  DesugarContext(global, current_module, local_scope, [InLoop(fix_name, BreakReturns), ..loop_stack], ctrs, annotated_types, hole_counter)
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types) = dc
+  DesugarContext(global, current_module, local_scope, [InLoop(fix_name, BreakReturns), ..loop_stack], ctrs, annotated_types)
 }
 
 /// Exit the current loop context.
 fn exit_loop(dc: DesugarContext) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types, hole_counter) = dc
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types) = dc
   case loop_stack {
     [] -> dc  // Should not happen if well-formed
-    [_loop, ..rest] -> DesugarContext(global, current_module, local_scope, rest, ctrs, annotated_types, hole_counter)
+    [_loop, ..rest] -> DesugarContext(global, current_module, local_scope, rest, ctrs, annotated_types)
   }
 }
 
@@ -237,7 +228,7 @@ pub fn process_type_definitions(
         let type_ctr = #(name, core_ast.CtrDef(params: type_params, arg_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)), ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0))))
         let new_ctrs = tao_type_to_core_ctrs(name, type_params, constructors)
         let all_ctrs = [type_ctr, ..new_ctrs]
-        DesugarContext(..acc_dc, ctrs: list.append(acc_dc.ctrs, all_ctrs), annotated_types: acc_dc.annotated_types, hole_counter: acc_dc.hole_counter)
+        DesugarContext(..acc_dc, ctrs: list.append(acc_dc.ctrs, all_ctrs), annotated_types: acc_dc.annotated_types)
       }
       _ -> acc_dc
     }
@@ -331,7 +322,7 @@ fn build_core_type_from_ast(t: TypeAst, dc: DesugarContext, span: Span) -> #(Cor
       // Check if it's a type defined in the current context (including prelude)
       case lookup_type_in_ctrs(dc.ctrs, name) {
         True -> #(CoreCtr(name, CoreUnit(span), span), dc)
-        False -> core_hole(dc, span)  // Unknown type, use unique negative hole for inference
+        False -> core_hole(dc, span)  // Unknown type, use hole placeholder
       }
     }
     TApp(type_name, args) -> {
@@ -403,6 +394,13 @@ fn lookup_type_in_ctrs(ctrs: core_ast.CtrEnv, type_name: String) -> Bool {
   }
 }
 
+/// Debug helper: check if a type name exists in the constructor environment and log.
+fn lookup_type_in_ctrs_debug(ctrs: core_ast.CtrEnv, type_name: String) -> Bool {
+  let result = lookup_type_in_ctrs(ctrs, type_name)
+  // io.println("lookup_type_in_ctrs(" <> type_name <> ") -> " <> bool.to_string(result) <> " (ctrs: " <> int.to_string(list.length(ctrs)) <> ")")
+  result
+}
+
 /// Collect annotated function types from module statements.
 /// Returns a list of #(name, type_term) for functions with return type annotations.
 fn collect_annotated_types(
@@ -456,7 +454,7 @@ fn build_param_types_loop(
     [param, ..rest] -> {
       let #(core_type, dc1) = case param.type_annotation {
         Some(type_ast) -> build_core_type_from_ast(type_ast, dc, span)
-        None -> core_hole(dc, span)  // Unannotated param - use unique hole for inference
+        None -> core_hole(dc, span)  // Unannotated param - use hole placeholder
       }
       build_param_types_loop(rest, dc1, span, [core_type, ..acc])
     }
@@ -508,7 +506,6 @@ pub fn desugar_module_with_ctrs(
     loop_stack: [],
     ctrs: initial_ctrs,
     annotated_types: [],
-    hole_counter: -1,
   )
 
   // Process type definitions FIRST to populate constructor environment
@@ -517,7 +514,7 @@ pub fn desugar_module_with_ctrs(
   // Collect annotated function types AFTER processing type definitions
   // so that type names like Bool are resolved correctly
   let annotated_types = collect_annotated_types(module.body, dc_with_types, module.span)
-  let dc_with_annotated_types = DesugarContext(..dc_with_types, annotated_types: annotated_types, hole_counter: dc_with_types.hole_counter)
+  let dc_with_annotated_types = DesugarContext(..dc_with_types, annotated_types: annotated_types)
 
   // Create implicit prelude imports ONLY if the module doesn't define its own types.
   // Modules that define their own types (like `type Bool = True | False`) don't need
@@ -908,7 +905,6 @@ fn merge_imported_ctr_env(dc: DesugarContext, import_item: Import) -> DesugarCon
         loop_stack: dc.loop_stack,
         ctrs: list.append(dc.ctrs, module_ref.ctr_env),
         annotated_types: dc.annotated_types,
-        hole_counter: dc.hole_counter,
       )
     }
     None -> dc  // Module not found - continue without merging
@@ -1886,9 +1882,8 @@ fn desugar_match(
   let #(core_cases, dc2) = desugar_match_clauses_to_cases(clauses, span, dc1)
 
   // Build Core Match term
-  // KEY FIX: Use a unique hole ID for the motive instead of a hardcoded -999.
-  // Each match expression gets its own hole ID from the dc's hole_counter,
-  // preventing unification conflicts when multiple matches exist in the same module.
+  // The motive uses Hole(-1) as a placeholder. During type-checking, `infer`
+  // instantiates each negative hole into a fresh positive hole, ensuring uniqueness.
   let #(motive_hole, dc3) = core_hole(dc2, span)
   let motive = CoreLam("_", None, motive_hole, span)
   let core_match = CoreMatchCore(core_scrutinee, motive, core_cases, span)
