@@ -169,9 +169,16 @@ fn parse_test_blocks(
                       }
                     }
                     False -> {
-                      // Multi-line test expression, will be handled by parse_test_body
-                      // For now, skip lines starting with `> ` (they need a test name first)
-                      parse_test_blocks(rest, file, acc_tests, acc_errors, pending_annotation)
+                      // Multi-line test: `> expr\nexpected` (no `~>`)
+                      case parse_multi_line_test(rest, file, line_num, rest_content, option.unwrap(pending_annotation, [])) {
+                        #(Some(parsed_test), remaining) -> {
+                          parse_test_blocks(remaining, file, [parsed_test, ..acc_tests], acc_errors, None)
+                        }
+                        #(None, remaining) -> {
+                          // No expected result found, skip this `> ` line
+                          parse_test_blocks(remaining, file, acc_tests, acc_errors, pending_annotation)
+                        }
+                      }
                     }
                   }
                 }
@@ -257,6 +264,82 @@ fn parse_test_body(
           // Expression parse error
           parse_test_blocks(remaining_lines, file, acc_tests, [parse_error, ..acc_errors], None)
         }
+      }
+    }
+  }
+}
+
+/// Parse a multi-line test: `> expr\nexpected` (no `~>` separator).
+/// Collects all `> ` lines as the expression, then finds the next non-empty line as expected.
+/// Returns #(Some(test), remaining_lines) on success, #(None, remaining_lines) on failure.
+fn parse_multi_line_test(
+  lines: List(#(Int, String)),
+  file: String,
+  first_line_num: Int,
+  first_content: String,
+  annotations: List(Annotation),
+) -> #(Option(Test), List(#(Int, String))) {
+  // Collect all consecutive `> ` lines
+  let first = #(first_line_num, first_content)
+  let #(expr_lines, remaining) = collect_all_expr_lines(lines, [first], file)
+
+  // Combine expression lines
+  let expr_source = combine_expression_lines(expr_lines)
+
+  // Parse the expression
+  case parse_expr_result(expr_source) {
+    Ok(expression) -> {
+      // Find expected result: skip empty lines, then take next non-comment line
+      let non_empty = skip_empty_lines(remaining)
+      case non_empty {
+        [] -> #(None, remaining)
+        [next, ..after] -> {
+          let #(line_num, line_content) = next
+          let trimmed = string.trim(line_content)
+          // Stop if we hit a comment (test name or annotation)
+          case string.starts_with(trimmed, "-- ") {
+            True -> #(None, remaining)
+            False -> {
+              let span = Span(file, line_num, 0, line_num, string.length(line_content))
+              let expected_result = parse_expected_result(trimmed, span, file)
+              // Get span from first expr line
+              let expr_span = Span(file, first_line_num, 0, first_line_num, 2 + string.length(first_content))
+              let test_name = expr_source
+              let parsed_test = Test(
+                name: test_name,
+                expression: expression,
+                expected: expected_result,
+                span: expr_span,
+                annotations: annotations,
+              )
+              #(Some(parsed_test), after)
+            }
+          }
+        }
+      }
+    }
+    Error(_) -> #(None, remaining)
+  }
+}
+
+/// Collect all consecutive `> ` expression lines, including the first one already collected.
+fn collect_all_expr_lines(
+  lines: List(#(Int, String)),
+  acc: List(#(Int, String)),
+  file: String,
+) -> #(List(#(Int, String)), List(#(Int, String))) {
+  case lines {
+    [] -> #(list.reverse(acc), [])
+    [line, ..rest] -> {
+      let #(line_num, line_content) = line
+      let trimmed = string.trim(line_content)
+      case string.starts_with(trimmed, "> ") {
+        True -> {
+          let content = string.drop_start(trimmed, 2)
+          let pair = #(line_num, content)
+          collect_all_expr_lines(rest, [pair, ..acc], file)
+        }
+        False -> #(list.reverse(acc), lines)
       }
     }
   }
