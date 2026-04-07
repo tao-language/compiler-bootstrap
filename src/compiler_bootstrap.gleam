@@ -191,7 +191,7 @@ fn print_help() {
   io.println("Commands:")
   io.println("  check <file>    Type-check a file")
   io.println("  run <file>      Type-check and evaluate a file")
-  io.println("  test [paths]    Run tests in specified files or directories")
+  io.println("  test [paths]    Run tests in files or directories (default: current directory)")
   io.println("")
   io.println("Test Options:")
   io.println("  -m, --match <pattern>   Filter tests by name pattern (wildcards supported)")
@@ -202,7 +202,9 @@ fn print_help() {
   io.println("Examples:")
   io.println("  gleam run check example.core.tao")
   io.println("  gleam run run example.core.tao")
-  io.println("  gleam run test lib/prelude/")
+  io.println("  gleam run test                    # Run all tests in current directory")
+  io.println("  gleam run test lib/prelude/       # Run tests in a directory")
+  io.println("  gleam run test file.tao           # Run tests in a file")
   io.println("  gleam run test --match \"* addition\"")
   io.println("  gleam run test --list")
 }
@@ -245,9 +247,9 @@ fn run_test_command(
   verbose: Bool,
   _debug: Bool,
 ) -> Nil {
-  // Default to lib/prelude/ if no paths specified
+  // Default to current directory if no paths specified
   let test_paths = case paths {
-    [] -> ["lib/prelude/"]
+    [] -> ["."]
     _ -> paths
   }
 
@@ -303,18 +305,37 @@ fn collect_tests_from_path(path: String, verbose: Bool) -> List(#(List(Test), St
   }
 }
 
-/// Collect tests from a directory
+/// Collect tests from a directory by recursively finding all .tao files
 fn collect_tests_from_directory(dir_path: String, verbose: Bool) -> List(#(List(Test), String)) {
-  // For now, just return empty list - directory reading needs simplifile.list_dir
-  // This is a placeholder for now
-  case verbose {
-    True -> {
-      io.println("⚠ Directory reading not yet implemented: " <> dir_path)
-      Nil
+  case simplifile.get_files(in: dir_path) {
+    Ok(files) -> {
+      // Filter for .tao files and collect tests from each
+      let tao_files = list.filter(files, fn(f) { string.ends_with(f, ".tao") })
+      list.map(tao_files, fn(file) {
+        case simplifile.read(from: file) {
+          Ok(contents) -> {
+            let parse_result = parse_tests(contents, file)
+            case verbose {
+              True -> {
+                io.println("✓ Found " <> int.to_string(list.length(parse_result.tests)) <> " tests in " <> file)
+                Nil
+              }
+              False -> Nil
+            }
+            #(parse_result.tests, file)
+          }
+          Error(_) -> #([], file)
+        }
+      })
     }
-    False -> Nil
+    Error(_) -> {
+      case verbose {
+        True -> io.println("⚠ Could not read directory: " <> dir_path)
+        False -> Nil
+      }
+      []
+    }
   }
-  []
 }
 
 /// List all tests
