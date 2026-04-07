@@ -54,6 +54,11 @@ import core/ast as core_ast
 /// Simplified Core term representation for desugaring.
 /// Full Core terms are in src/core/core.gleam
 
+/// A single match case (body and guard are CoreTerm, converted later in core_term_to_term_loop)
+pub type CoreCase {
+  CoreCase(pattern: core_ast.Pattern, body: CoreTerm, guard: Option(CoreTerm), span: Span)
+}
+
 pub type CoreTerm {
   /// Variable reference
   CoreVar(name: String, span: Span)
@@ -94,8 +99,8 @@ pub type CoreTerm {
   /// Literal
   CoreLit(value: String, span: Span)
 
-  /// Pattern match with cases
-  CoreMatchCore(arg: CoreTerm, motive: CoreTerm, cases: List(core_ast.Case), span: Span)
+  /// Pattern match with cases (cases hold CoreTerm bodies to be converted later with correct env)
+  CoreMatchCore(arg: CoreTerm, motive: CoreTerm, cases: List(CoreCase), span: Span)
 
   /// Fixpoint operator for recursion
   CoreFix(name: String, body: CoreTerm, span: Span)
@@ -1166,9 +1171,9 @@ fn desugar_for(
 
   // Build the fixpoint body: match collection { | [] -> () | x::xs -> ... }
   // Empty list case: return unit (loop done)
-  let nil_clause = core_ast.Case(
+  let nil_clause = CoreCase(
     pattern: core_ast.PCtr("Nil", core_ast.PUnit),
-    body: core_term_to_term(CoreRcd([], span)),
+    body: CoreRcd([], span),
     guard: None,
     span: span,
   )
@@ -1183,9 +1188,9 @@ fn desugar_for(
       let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
       
       // Use PAs to bind the head to the pattern variable
-      let cons_clause = core_ast.Case(
+      let cons_clause = CoreCase(
         pattern: core_ast.PCtr("Cons", core_ast.PAs(core_ast.PAny, name)),
-        body: core_term_to_term(body_with_rec),
+        body: body_with_rec,
         guard: None,
         span: span,
       )
@@ -1205,9 +1210,9 @@ fn desugar_for(
       // for _ in collection { body } → match collection { | _::rest -> body; for_loop() | _ -> () }
       let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
       
-      let cons_clause = core_ast.Case(
+      let cons_clause = CoreCase(
         pattern: core_ast.PCtr("Cons", core_ast.PAs(core_ast.PAny, "_for_head")),
-        body: core_term_to_term(body_with_rec),
+        body: body_with_rec,
         guard: None,
         span: span,
       )
@@ -1227,9 +1232,9 @@ fn desugar_for(
     _ -> {
       let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
       
-      let cons_clause = core_ast.Case(
+      let cons_clause = CoreCase(
         pattern: core_ast.PCtr("Cons", core_ast.PAs(core_ast.PAny, "_for_head")),
-        body: core_term_to_term(body_with_rec),
+        body: body_with_rec,
         guard: None,
         span: span,
       )
@@ -1277,24 +1282,22 @@ fn desugar_while(
 
   // Build match on condition: match condition { | True -> body; loop () | _ -> () }
   // True clause: execute body and recurse
-  let true_clause = core_ast.Case(
+  let true_clause = CoreCase(
     pattern: core_ast.PCtr("True", core_ast.PUnit),
-    body: core_term_to_term(body_with_rec),
+    body: body_with_rec,
     guard: None,
     span: span,
   )
 
   // Default clause: return unit (exit loop)
-  let default_clause = core_ast.Case(
+  let default_clause = CoreCase(
     pattern: core_ast.PAny,
-    body: core_term_to_term(CoreRcd([], span)),
+    body: CoreRcd([], span),
     guard: None,
     span: span,
   )
 
-  // Match expression as CoreTerm (need to wrap Term back for fixpoint body)
-  // For now, use CoreMatchCore directly with Term bodies
-  // The match result type is Unit
+  // Match expression as CoreTerm
   let match_core = CoreMatchCore(
     arg: core_condition,
     motive: CoreRcd([], span),
@@ -1898,16 +1901,16 @@ fn desugar_match_clauses_to_cases(
   clauses: List(MatchClause),
   span: Span,
   dc: DesugarContext,
-) -> #(List(core_ast.Case), DesugarContext) {
+) -> #(List(CoreCase), DesugarContext) {
   desugar_cases_loop(clauses, [], span, dc)
 }
 
 fn desugar_cases_loop(
   clauses: List(MatchClause),
-  acc: List(core_ast.Case),
+  acc: List(CoreCase),
   span: Span,
   dc: DesugarContext,
-) -> #(List(core_ast.Case), DesugarContext) {
+) -> #(List(CoreCase), DesugarContext) {
   case clauses {
     [] -> #(list.reverse(acc), dc)
     [clause, ..rest] -> {
@@ -1918,34 +1921,34 @@ fn desugar_cases_loop(
 }
 
 /// Desugar a single match clause to a Core Case.
+/// Returns CoreCase with body/guard as CoreTerm (not converted to ast.Term yet),
+/// so they can be converted later with the correct environment.
 fn desugar_single_case(
   clause: MatchClause,
   span: Span,
   dc: DesugarContext,
-) -> #(core_ast.Case, DesugarContext) {
+) -> #(CoreCase, DesugarContext) {
   let pattern = clause.pattern
   let guard = clause.guard
   let body = clause.body
 
-  // Desugar the body to CoreTerm
+  // Desugar the body to CoreTerm (keep as CoreTerm for later conversion)
   let #(core_body, dc1) = desugar_expr_core(body, dc)
 
   // Convert Tao pattern to Core pattern
   let #(core_pattern, dc2) = tao_pattern_to_core_pattern(pattern, dc1)
 
-  // Convert optional guard to Term (core/core.Case expects Option(Term))
+  // Desugar optional guard to CoreTerm (keep as CoreTerm for later conversion)
   let core_guard = case guard {
     Some(guard_expr) -> {
-      let #(core_guard_term, dc3) = desugar_expr_core(guard_expr, dc2)
-      Some(core_term_to_term(core_guard_term))
+      let #(core_guard_term, _dc3) = desugar_expr_core(guard_expr, dc2)
+      Some(core_guard_term)
     }
     None -> None
   }
 
-  // Convert body to Term
-  let core_body_term = core_term_to_term(core_body)
-
-  let core_case = core_ast.Case(core_pattern, core_body_term, core_guard, span)
+  // Return CoreCase with body/guard as CoreTerm (NOT converted to ast.Term yet)
+  let core_case = CoreCase(core_pattern, core_body, core_guard, span)
   #(core_case, dc2)
 }
 
@@ -2525,11 +2528,25 @@ fn core_term_to_term_loop(
     }
     CoreMatchCore(arg, motive, cases, span) -> {
       // Convert CoreMatchCore to core/core.Match
-      // Cases are already core.Case with Term bodies
+      // KEY FIX: Convert each CoreCase body/guard with the current environment.
+      // The body and guard are CoreTerm that may reference variables bound by
+      // enclosing lambdas/lets/fixes. Using the current env ensures correct
+      // De Bruijn indices.
       core_ast.Match(
         arg: core_term_to_term_loop(arg, env, annotated_types),
         motive: core_term_to_term_loop(motive, env, annotated_types),
-        cases: cases,
+        cases: list.map(cases, fn(core_case) {
+          case core_case {
+            CoreCase(pat, body, guard, cspan) -> {
+              let body_term = core_term_to_term_loop(body, env, annotated_types)
+              let guard_term = case guard {
+                Some(g) -> Some(core_term_to_term_loop(g, env, annotated_types))
+                None -> None
+              }
+              core_ast.Case(pat, body_term, guard_term, cspan)
+            }
+          }
+        }),
         span: span,
       )
     }

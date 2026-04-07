@@ -240,8 +240,8 @@ When working with this codebase:
 
 ## Test Results
 
-- **445 tests passing**
-- **4 failures** (see Known Issues below)
+- **446 tests passing**
+- **3 failures** (see Known Issues below)
 - **0 warnings**
 
 ### Recent Fixes (April 2026)
@@ -280,21 +280,20 @@ When working with this codebase:
 
 13. **`infer(Let)` vars Stack Corruption** — The `infer(Let)` case used `update_last_var_type(s2.vars, val_ty)` which updated vars position 0 after `infer(value)`. But `infer(value)` calls `check(Lam)` which prepends parameter bindings to vars, shifting the Let-bound name down. Position 0 was now the innermost parameter, not the Let-bound name. The Let-bound name kept its hole type, causing cross-reference type failures with 3+ functions. **Fix**: Save `s.vars` immediately after `def_var` (where position 0 IS the Let-bound name), then restore after `infer(value)`, updating position 0's type. Uses De Bruijn position (def_var always prepends), not name lookup.
 
+14. **Match Case Body Environment** — `desugar_single_case` called `core_term_to_term(core_body)` with empty env `[]`, causing all `CoreVar(name)` in case bodies to default to `Var(0)`. At type-checking, `Var(0)` resolved to the match motive's `"_"` parameter (typed as a fresh hole), making both function and argument have the same hole type → `InfiniteType`. **Fix**: Keep case bodies as `CoreTerm` (not converted), then convert in `core_term_to_term_loop` with the correct environment containing enclosing lambda/let/fix bindings.
+
 ### Known Issues
 
-- **4 tests fail** with `InfiniteType` (pre-existing match motive bug):
-  - `three_match_expressions_no_conflict_test` — 3 functions with match expressions (InfiniteType)
+- **3 tests fail** (all pre-existing, unrelated to the fixes above):
   - `match_different_result_types_test` — Matches with different result types (InfiniteType)
   - `match_different_types_test` — Constructor resolution test (InfiniteType)
-  - `lib_prelude_bool_module_test` — Prelude bool module compilation (InfiniteType)
+  - `lib_prelude_bool_module_test` — Prelude bool module compilation (18 != 20 test results)
 
-  **Root cause**: Match motive hole IDs conflict during unification, creating infinite type cycles. This is a **separate bug** unrelated to the De Bruijn index fix. All 4 failures produce `InfiniteType` errors for positive hole IDs created during `infer_match`.
-
-  **Impact**: Modules with multiple match expressions (3+ functions, or prelude bool with 5 functions) show type errors. Single and 2-function modules without matches work correctly.
+  **Root cause**: The first two are `InfiniteType` errors in match motive handling — the match motive's fresh hole gets unified with itself through a different path. The third is a test count mismatch (18 test annotations in bool.tao vs expected 20).
 
   **Detailed analysis**: See `docs/plans/remaining-failures-analysis.md`.
 
-  **Next steps**: Investigate match motive hole generation and unification in `infer_match`.
+  **Next steps**: Investigate match motive hole generation and unification in `infer_match`. Fix prelude bool test result count.
 
 
 ## Contact
