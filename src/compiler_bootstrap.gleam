@@ -23,7 +23,7 @@ import tao/global_context.{new_context, with_prelude, set_current_module}
 import tao/compiler.{compile_files, compile_single_file, type CompileResult, type CompileErrorType, ParseError as CompilerParseError, ImportError as CompilerImportError, CircularImport as CompilerCircularImport, ModuleNotFound as CompilerModuleNotFound}
 import tao/ast as tao_ast
 import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType, type Span, Span}
-import tao/test_api.{run_test_file, calculate_summary, all_passed, get_failures, type TestResult, Pass, Fail}
+import tao/test_api.{run_test_file, calculate_summary, all_passed, get_failures, type TestResult}
 import tao/test_reporter.{report_results, report_final_status, list_test_expressions}
 import gleam/int
 import gleam/io

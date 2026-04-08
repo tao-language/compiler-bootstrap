@@ -33,11 +33,11 @@ pub fn report_results(
 /// Report a single test result in verbose mode (shows all tests).
 fn report_result_verbose(result: TestResult) -> Nil {
   case result {
-    Pass(expression) -> {
+    Pass(_file, _line, expression) -> {
       io.println("✓ " <> expression)
     }
-    Fail(expression, expected, actual) -> {
-      io.println("✗ FAIL: " <> expression)
+    Fail(file, line, expression, expected, actual) -> {
+      io.println("✗ FAIL: " <> file <> ":" <> int.to_string(line) <> ": " <> expression)
       io.println("    expected: " <> expected)
       io.println("    actual:   " <> actual)
       io.println("")
@@ -48,9 +48,9 @@ fn report_result_verbose(result: TestResult) -> Nil {
 /// Report a single test result in condensed mode (only failures).
 fn report_result_condensed(result: TestResult) -> Nil {
   case result {
-    Pass(_) -> Nil  // Skip passed tests in condensed mode
-    Fail(expression, expected, actual) -> {
-      io.println("✗ FAIL: " <> expression)
+    Pass(_, _, _) -> Nil  // Skip passed tests in condensed mode
+    Fail(file, line, expression, expected, actual) -> {
+      io.println("✗ FAIL: " <> file <> ":" <> int.to_string(line) <> ": " <> expression)
       io.println("    expected: " <> expected)
       io.println("    actual:   " <> actual)
       io.println("")
@@ -74,8 +74,8 @@ pub fn list_test_expressions(results: List(TestResult)) -> Nil {
   io.println("")
   list.each(results, fn(r) {
     case r {
-      Pass(expr) -> io.println("  - " <> expr)
-      Fail(expr, _, _) -> io.println("  - " <> expr)
+      Pass(_, _, expr) -> io.println("  - " <> expr)
+      Fail(_, _, expr, _, _) -> io.println("  - " <> expr)
     }
   })
   io.println("")

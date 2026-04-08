@@ -106,7 +106,7 @@ pub fn run_test_file_failing_tests() {
 // ============================================================================
 
 pub fn calculate_summary_all_pass() {
-  let results = [Pass("42"), Pass("true")]
+  let results = [Pass("", 0, "42"), Pass("", 0, "true")]
   let summary = calculate_summary(results)
   summary.total |> should.equal(2)
   summary.passed |> should.equal(2)
@@ -114,7 +114,7 @@ pub fn calculate_summary_all_pass() {
 }
 
 pub fn calculate_summary_some_fail() {
-  let results = [Pass("42"), Fail("100", "100", "42")]
+  let results = [Pass("", 0, "42"), Fail("", 0, "100", "100", "42")]
   let summary = calculate_summary(results)
   summary.total |> should.equal(2)
   summary.passed |> should.equal(1)
@@ -126,12 +126,12 @@ pub fn all_passed_empty_list() {
 }
 
 pub fn get_failures_all_pass() {
-  let results = [Pass("42"), Pass("true")]
+  let results = [Pass("", 0, "42"), Pass("", 0, "true")]
   get_failures(results) |> should.equal([])
 }
 
 pub fn get_failures_some_fail() {
-  let results = [Pass("42"), Fail("100", "100", "42")]
+  let results = [Pass("", 0, "42"), Fail("", 0, "100", "100", "42")]
   let failures = get_failures(results)
   list.length(failures) |> should.equal(1)
 }

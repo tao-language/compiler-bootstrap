@@ -293,6 +293,8 @@ When working with this codebase:
 
 20. **Non-Zero Exit Code on Test Failure** — The CLI `gleam run test` always exited with code 0 even when tests failed. **Fix**: Added `src/exit_code.gleam` with `erlang:halt/1` external function. `run_test_command` now returns `Bool` and `main` calls `exit_code.exit(1)` on failure.
 
+21. **Test Failure Location** — Test failures showed `✗ FAIL: test expression` without file/line context. **Fix**: Added `file: String, line: Int` fields to `TestResult.Pass` and `TestResult.Fail`. Output now shows `✗ FAIL: path/to/file.tao:15: test expression` for quick navigation to the failing test.
+
 ### Known Issues
 
 **None** — All 460 tests pass with 0 failures and 0 warnings.

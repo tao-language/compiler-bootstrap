@@ -33,9 +33,9 @@ import tao/ast as t
 /// Result of running a single test.
 pub type TestResult {
   /// Test passed
-  Pass(expression: String)
+  Pass(file: String, line: Int, expression: String)
   /// Test failed - value didn't match expected
-  Fail(expression: String, expected: String, actual: String)
+  Fail(file: String, line: Int, expression: String, expected: String, actual: String)
 }
 
 // ============================================================================
@@ -318,10 +318,12 @@ fn run_test(
   ctx: GlobalContext,
   file_path: String,
 ) -> TestResult {
+  let file = test_expr.span.file
+  let line = test_expr.span.start_line
   // Parse the test expression
   let expr_result: ParseResult(Expr) = parse_expr(test_expr.expression)
   case expr_result.errors {
-    [_, ..] as errs -> Fail(test_expr.expression, test_expr.expected, format_parse_errors(errs))
+    [_, ..] as errs -> Fail(file, line, test_expr.expression, test_expr.expected, format_parse_errors(errs))
     [] -> {
       // Create extended module: original body + test expression as the result
       // Use StmtRun instead of StmtExpr — StmtRun returns its expression as the
@@ -341,7 +343,7 @@ fn run_test(
       case type_state.errors {
         [_, ..] as errs -> {
           // Type error in test expression
-          Fail(test_expr.expression, test_expr.expected, format_type_errors(errs))
+          Fail(file, line, test_expr.expression, test_expr.expected, format_type_errors(errs))
         }
         [] -> {
           // Evaluate the extended module - the result is the test expression's value
@@ -352,7 +354,7 @@ fn run_test(
           // Parse and evaluate expected in the same extended context
           let expected_result: ParseResult(Expr) = parse_expr(test_expr.expected)
           case expected_result.errors {
-            [_, ..] as errs -> Fail(test_expr.expression, test_expr.expected, format_parse_errors(errs))
+            [_, ..] as errs -> Fail(file, line, test_expr.expression, test_expr.expected, format_parse_errors(errs))
             [] -> {
               // Create extended module for expected expression
               let expected_ast = expr_to_ast(expected_result.ast)
@@ -367,13 +369,13 @@ fn run_test(
               let #(_evalue, expected_type, expected_type_state) = infer(expected_eval_state, expected_term)
 
               case expected_type_state.errors {
-                [_, ..] as errs -> Fail(test_expr.expression, test_expr.expected, format_type_errors(errs))
+                [_, ..] as errs -> Fail(file, line, test_expr.expression, test_expr.expected, format_type_errors(errs))
                 [] -> {
                   // Check types match before comparing values
                   case types_match(actual_type, expected_type) {
                     False -> {
                       // Type mismatch - report as type error
-                      Fail(test_expr.expression, test_expr.expected,
+                      Fail(file, line, test_expr.expression, test_expr.expected,
                         "Type mismatch: expected " <> format_type(expected_type) <>
                         ", got " <> format_type(actual_type))
                     }
@@ -383,8 +385,8 @@ fn run_test(
 
                       // Compare values
                       case values_equal(forced_actual, forced_expected) {
-                        True -> Pass(test_expr.expression)
-                        False -> Fail(test_expr.expression, test_expr.expected, format_value(forced_actual))
+                        True -> Pass(file, line, test_expr.expression)
+                        False -> Fail(file, line, test_expr.expression, test_expr.expected, format_value(forced_actual))
                       }
                     }
                   }
@@ -601,8 +603,8 @@ pub type TestSummary {
 pub fn calculate_summary(results: List(TestResult)) -> TestSummary {
   list.fold(results, TestSummary(0, 0, 0), fn(acc, result) {
     case result {
-      Pass(_) -> TestSummary(acc.total + 1, acc.passed + 1, acc.failed)
-      Fail(_, _, _) -> TestSummary(acc.total + 1, acc.passed, acc.failed + 1)
+      Pass(_, _, _) -> TestSummary(acc.total + 1, acc.passed + 1, acc.failed)
+      Fail(_, _, _, _, _) -> TestSummary(acc.total + 1, acc.passed, acc.failed + 1)
     }
   })
 }
@@ -613,8 +615,8 @@ pub fn all_passed(results: List(TestResult)) -> Bool {
     [] -> True
     [result, ..rest] -> {
       case result {
-        Pass(_) -> all_passed(rest)
-        Fail(_, _, _) -> False
+        Pass(_, _, _) -> all_passed(rest)
+        Fail(_, _, _, _, _) -> False
       }
     }
   }
@@ -624,8 +626,8 @@ pub fn all_passed(results: List(TestResult)) -> Bool {
 pub fn get_failures(results: List(TestResult)) -> List(TestResult) {
   list.filter(results, fn(result) {
     case result {
-      Pass(_) -> False
-      Fail(_, _, _) -> True
+      Pass(_, _, _) -> False
+      Fail(_, _, _, _, _) -> True
     }
   })
 }
