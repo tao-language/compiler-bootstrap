@@ -34,7 +34,7 @@ import syntax/grammar.{
   type Grammar, type ParseResult, type Span, Span, Grammar, type Value, AstValue,
   ParensValue, TokenValue, ListValue, KeywordValue,
   InfixLeft,
-  rule, alt, token_pattern, parenthesized, seq, ref, keyword_pattern, many, opt, sep1, delimited,
+  rule, alt, token_pattern, parenthesized, seq, ref, keyword_pattern, many, opt, sep1, delimited, choice,
   infix_binary, left_assoc_rule,
   span_from_values, span_from_token, parse as grammar_parse,
   ParseResult as ParseResultVal,
@@ -681,10 +681,14 @@ pub fn tao_grammar() -> Grammar(Expr) {
   Grammar(
     name: "Tao",
     start: "Program",
-    tokens: ["Ident", "Number", "String", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow", "Slash", "Star", "Comma", "Equal", "Pipe", "Semi"],
-    keywords: ["fn", "let", "mut", "match", "if", "else", "type", "import", "export", "as", "comptime", "true", "false", "for", "in", "while", "loop", "break", "continue", "return", "yield", "test", "run"],
+    tokens: ["Ident", "Number", "String", "LParen", "RParen", "LBrace", "RBrace", "Colon", "Arrow", "Slash", "Star", "Comma", "Equal", "Pipe", "Semi", "Keyword", "Operator"],
+    keywords: ["fn", "let", "mut", "match", "if", "else", "type", "import", "export", "as", "comptime", "true", "false", "for", "in", "while", "loop", "break", "continue", "return", "yield", "test", "run", "and", "or", "not"],
     operators: [
       // Logical operators (precedence 3)
+      // Word-based (Python-style): x and y, x or y
+      infix_binary("and", make_and, InfixLeft, 3, " and "),
+      infix_binary("or", make_or, InfixLeft, 3, " or "),
+      // Symbol-based aliases: x && y, x || y
       infix_binary("&&", make_and, InfixLeft, 3, " && "),
       infix_binary("||", make_or, InfixLeft, 3, " || "),
       // Comparison operators (precedence 5)
@@ -833,16 +837,16 @@ pub fn tao_grammar() -> Grammar(Expr) {
             ])),
             opt(seq([
               keyword_pattern("as"),
-              token_pattern("Ident"),  // alias
+              choice([token_pattern("Ident"), keyword_pattern("and"), keyword_pattern("or"), keyword_pattern("not")]),  // alias (including keywords)
             ])),
             opt(seq([
               opt(token_pattern("Dot")),  // optional . dot for selective import
               token_pattern("LBrace"),
               many(seq([
-                token_pattern("Ident"),
+                choice([token_pattern("Ident"), keyword_pattern("and"), keyword_pattern("or"), keyword_pattern("not")]),  // import name (including keywords)
                 opt(seq([
                   keyword_pattern("as"),
-                  token_pattern("Ident"),
+                  choice([token_pattern("Ident"), keyword_pattern("and"), keyword_pattern("or"), keyword_pattern("not")]),  // alias (including keywords)
                 ])),
                 opt(token_pattern("Comma")),
               ])),
@@ -1138,11 +1142,52 @@ pub fn tao_grammar() -> Grammar(Expr) {
           ]),
           make_overloaded_fn,
         ),
+        // Overloaded function with keyword name: fn (and)(a: Bool, b: Bool) -> Bool { body }
+        alt(
+          seq([
+            keyword_pattern("fn"),
+            token_pattern("LParen"),
+            choice([keyword_pattern("and"), keyword_pattern("or"), keyword_pattern("not")]),  // keyword name
+            token_pattern("RParen"),
+            token_pattern("LParen"),
+            token_pattern("Ident"),  // param name
+            token_pattern("Colon"),
+            ref("Type"),  // param type
+            token_pattern("RParen"),
+            token_pattern("Arrow"),
+            ref("Type"),  // return type
+            ref("Block"),  // body
+          ]),
+          make_overloaded_fn,
+        ),
         // Simple function: fn name(params) { body }
         alt(
           seq([
             keyword_pattern("fn"),
             token_pattern("Ident"),  // function name
+            token_pattern("LParen"),
+            many(seq([
+              token_pattern("Ident"),  // param name
+              opt(seq([
+                token_pattern("Colon"),
+                ref("Type"),  // param type annotation
+              ])),
+              opt(token_pattern("Comma")),
+            ])),
+            token_pattern("RParen"),
+            opt(seq([
+              token_pattern("Arrow"),
+              ref("Type"),  // return type
+            ])),
+            ref("Block"),  // body
+          ]),
+          make_simple_fn,
+        ),
+        // Simple function with keyword name: fn and(a: Bool, b: Bool) -> Bool { body }
+        alt(
+          seq([
+            keyword_pattern("fn"),
+            choice([keyword_pattern("and"), keyword_pattern("or"), keyword_pattern("not")]),  // keyword name
             token_pattern("LParen"),
             many(seq([
               token_pattern("Ident"),  // param name
@@ -1234,6 +1279,19 @@ pub fn tao_grammar() -> Grammar(Expr) {
         alt(
           seq([
             keyword_pattern("!"),
+            ref("Unary"),  // Reference Unary for chaining
+          ]),
+          fn(values) {
+            case values {
+              [_, AstValue(expr)] -> make_not(expr)
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+        // Prefix logical not: not expr (Python-style, can chain: not not x)
+        alt(
+          seq([
+            keyword_pattern("not"),
             ref("Unary"),  // Reference Unary for chaining
           ]),
           fn(values) {
@@ -1350,6 +1408,21 @@ pub fn tao_grammar() -> Grammar(Expr) {
                   False -> make_var([TokenValue(token)])
                 }
               }
+              _ -> Int(0, Span("error", 0, 0, 0, 0))
+            }
+          },
+        ),
+        // Keyword as variable reference: and, or, not (used as function names)
+        // Only match specific keywords, not all keywords (fn, let, etc. must not match)
+        alt(
+          choice([
+            keyword_pattern("and"),
+            keyword_pattern("or"),
+            keyword_pattern("not"),
+          ]),
+          fn(values) {
+            case values {
+              [KeywordValue(token)] -> make_var([TokenValue(token)])
               _ -> Int(0, Span("error", 0, 0, 0, 0))
             }
           },
@@ -1881,8 +1954,10 @@ fn fix_ctr_decl_file(ctr: ConstructorDecl, file: String) -> ConstructorDecl {
 /// Helper to create simple function AST.
 fn make_simple_fn(values) -> Expr {
   // Find the function name (second token, first is "fn")
+  // Handles both Ident tokens and Keyword tokens (for "and", "or")
   let name_token = case values {
     [_, TokenValue(t), ..] -> t
+    [_, KeywordValue(t), ..] -> t
     _ -> panic as "Expected function name"
   }
 
@@ -3106,7 +3181,7 @@ fn make_overloaded_fn(values) -> Expr {
     [
       _,  // "fn"
       _,  // "("
-      TokenValue(name_token),  // operator name
+      TokenValue(name_token),  // operator name (Ident or Operator)
       _,  // ")"
       _,  // "("
       TokenValue(param_name_token),  // param name
@@ -3117,7 +3192,32 @@ fn make_overloaded_fn(values) -> Expr {
       AstValue(return_type_expr),  // return type (parsed as Expr)
       AstValue(body),  // body
     ] -> {
-      // Extract type names from expressions
+      let param_type_str = expr_to_type_string(param_type_expr)
+      let return_type_str = expr_to_type_string(return_type_expr)
+      OverloadedFn(
+        name_token.value,
+        "T",  // type param (simplified for now)
+        param_name_token.value,
+        param_type_str,
+        return_type_str,
+        body,
+        span_from_token(name_token, "tao"),
+      )
+    }
+    [
+      _,  // "fn"
+      _,  // "("
+      KeywordValue(name_token),  // keyword name (e.g., "and", "or")
+      _,  // ")"
+      _,  // "("
+      TokenValue(param_name_token),  // param name
+      _,  // ":"
+      AstValue(param_type_expr),  // param type (parsed as Expr)
+      _,  // ")"
+      _,  // "->"
+      AstValue(return_type_expr),  // return type (parsed as Expr)
+      AstValue(body),  // body
+    ] -> {
       let param_type_str = expr_to_type_string(param_type_expr)
       let return_type_str = expr_to_type_string(return_type_expr)
       OverloadedFn(
@@ -3231,6 +3331,10 @@ fn extract_names_after_lbrace(
       list.reverse(acc)
     }
     [TokenValue(t), ..rest] if in_braces && t.kind == "Ident" -> {
+      extract_names_after_lbrace(rest, in_braces, [ImportName(t.value, None), ..acc])
+    }
+    [KeywordValue(t), ..rest] if in_braces && {t.value == "and" || t.value == "or" || t.value == "not"} -> {
+      // Handle keyword import names (and, or, not)
       extract_names_after_lbrace(rest, in_braces, [ImportName(t.value, None), ..acc])
     }
     [ListValue(inner), ..rest] -> {

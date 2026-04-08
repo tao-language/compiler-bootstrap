@@ -228,6 +228,27 @@ pub fn rule(name: String, alternatives: List(Alternative(a))) -> Rule(a) {
 // PARSER
 // ============================================================================
 
+/// Check if a string is a single lowercase letter (a-z).
+/// Used to distinguish word-based infix operators ("and", "or")
+/// from symbol-based ones ("+", "&&", etc.).
+fn is_word_symbol(s: String) -> Bool {
+  case string.pop_grapheme(s) {
+    Ok(#(first, _rest)) -> is_lowercase_letter(first)
+    Error(_) -> False
+  }
+}
+
+fn is_lowercase_letter(c: String) -> Bool {
+  let codepoints = string.to_utf_codepoints(c)
+  case codepoints {
+    [cp] -> {
+      let code = string.utf_codepoint_to_int(cp)
+      code >= 97 && code <= 122  // 'a' to 'z'
+    }
+    _ -> False
+  }
+}
+
 fn create_operator_pattern(
   operators: List(#(String, Operator(a))),
   first_rule: String,
@@ -236,7 +257,13 @@ fn create_operator_pattern(
     Choice(
       list.map(operators, fn(item) {
         let #(symbol, _op) = item
-        Seq([Op(symbol), Ref(first_rule)])
+        // Word-based operators (like "and", "or") use Keyword pattern
+        // Symbol-based operators (like "+", "&&") use Op pattern
+        let pattern = case is_word_symbol(symbol) {
+          True -> Keyword(symbol)   // Word-based: "and", "or"
+          False -> Op(symbol)       // Symbol-based: "+", "&&", etc.
+        }
+        Seq([pattern, Ref(first_rule)])
       }),
     )
   let pattern =
@@ -264,29 +291,42 @@ fn fold_operators_multi(
     [op_right, ..more] -> {
       case op_right {
         ListValue([TokenValue(op_token), AstValue(right)]) -> {
-          // Find operator by symbol
-          let found =
-            list.find(operators, fn(item) {
-              let #(sym, _) = item
-              sym == op_token.value
-            })
-          case found {
-            Ok(item) -> {
-              let #(_, op): #(String, Operator(a)) = item
-              case op {
-                Infix(_, _, _, _, constructor) -> {
-                  let new_first = constructor(first, right)
-                  fold_operators_multi(new_first, more, operators)
-                }
-                _ -> first
-              }
-            }
-            Error(_) -> first
-          }
+          apply_operator(first, op_token.value, right, more, operators)
+        }
+        ListValue([KeywordValue(op_token), AstValue(right)]) -> {
+          // Word-based operators (e.g., "and", "or") produce KeywordValue
+          apply_operator(first, op_token.value, right, more, operators)
         }
         _ -> first
       }
     }
+  }
+}
+
+fn apply_operator(
+  first: a,
+  op_symbol: String,
+  right: a,
+  more: List(Value(a)),
+  operators: List(#(String, Operator(a))),
+) -> a {
+  let found =
+    list.find(operators, fn(item) {
+      let #(sym, _) = item
+      sym == op_symbol
+    })
+  case found {
+    Ok(item) -> {
+      let #(_, op): #(String, Operator(a)) = item
+      case op {
+        Infix(_, _, _, _, constructor) -> {
+          let new_first = constructor(first, right)
+          fold_operators_multi(new_first, more, operators)
+        }
+        _ -> first
+      }
+    }
+    Error(_) -> first
   }
 }
 

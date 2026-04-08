@@ -4,4 +4,7 @@
 erl_crash.dump
 
 # qwen-code
-.qwen/
+/.qwen/
+
+# pi agent
+/.pi/

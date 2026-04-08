@@ -45,6 +45,10 @@ pub const keywords = [
   "comptime",
   "true",
   "false",
+  // Logical operators (Python-style)
+  "and",
+  "or",
+  "not",
 ]
 
 /// Check if a string is a Tao keyword.

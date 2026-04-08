@@ -283,7 +283,10 @@ fn get_keyword_kind(value: String) -> String {
     | "break"
     | "continue"
     | "return"
-    | "yield" -> "Keyword"
+    | "yield"
+    | "and"
+    | "or"
+    | "not" -> "Keyword"
     _ -> "Ident"
   }
 }
